@@ -66,6 +66,8 @@ $identity = \Type\Generated\BuildIdentity::info();
 
 Windows使用PE与系统加载器枚举，macOS使用Mach-O内嵌段及签名校验；它们的实际完成范围见[平台矩阵](platform-support.md)，不能套用Linux旧验收结论。
 
+Windows 的 API Set（`api-ms-*`、`ext-ms-*`）属于系统契约名。构建器先通过受限的系统加载器解析实际 System32 宿主，再收集其导入闭包与 SHA-256；SDK 中的同名转发文件不作为必须加载的独立宿主。普通 DLL 仍核对声明路径、摘要和实际加载位置。系统管理的延迟导入与发布包承担的延迟导入分别记录；不能为通过启动检查跳过未知依赖。该链路已通过真实 Windows 组件产物的部署审计、错误路径拒绝和等长字节篡改拒绝，见[平台证据](platform-support.md#当前结果与证据)。
+
 - `verifyRuntime()` 是启动检查：确认PHP/ZTS/CPU、所需扩展，逐文件核对应用运行库SHA-256和实际加载路径；macOS另核对实际系统映像UUID。没有移除应用库的字节校验，也不读取业务源码。
 - `verifyDeployment()` 是显式完整审计：先执行相同运行检查，再对macOS记录的整套dyld共享缓存逐字节计算SHA-256。Linux没有此类缓存，执行相同的完整运行库检查；Windows按其实际DLL闭包检查。
 - 标准物联项目与模板的原生产物提供 `verify-runtime` 命令调用完整审计。首次部署、升级或系统更新后，在接收流量前执行；该命令不读取dotenv、不连接业务数据库。普通PHP开发启动器明确拒绝这个仅适用于原生产物的命令。

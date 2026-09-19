@@ -305,3 +305,5 @@ export MQTT_PASSWORD=local-guide-only
 | 积压或恢复失败 | 持久配额、主备同步、稳定 Client ID 和会话参数 |
 
 先验证本篇 TCP 与 WS 跨传输路由及认证失败，再验证实际 TLS、授权隔离、半包期限、重连、持久确认和故障恢复。当前 WS/WSS 与 mTLS 只有有限路径验收，完整标准、容量与多故障域验证尚未完成；部分入口仍有 Unix 限制。Swoole 官方平台能力不等于当前组件入口适配完成，生产 TypePHP 全量编译与单程序交付要求见[构建与部署](../deployment.md)。
+
+最新平台汇总见[平台与验收](../platforms.md#通信结果如何理解)。Windows 四组件消费者不包含 MQTT；HTTP 场景中编译到 MQTT 源码也不能代替 MQTT 协议、持久确认和业务回执的实际运行。

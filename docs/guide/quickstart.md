@@ -22,6 +22,8 @@ composer --version
 
 原生编译还需要与目标平台匹配的 SDK，版本取自 `toolchain.lock.json`，详见[构建与部署](deployment.md)。
 
+先核对[平台与验收](platforms.md)：当前 Windows SDK 尚缺匹配的 Swoole 模块，本文经典 HTTP 服务入口也尚未完成 Windows 适配；组件测试通过不表示本教程的整条应用链路已经通过该平台验收。
+
 ## 创建业务应用
 
 如果已经安装 type-build，并已下载 type-project 模板，可创建不存在的新目录：

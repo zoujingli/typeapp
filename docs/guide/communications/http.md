@@ -190,4 +190,6 @@ HTTPS 可由可信反向代理终止 TLS。标准应用用 `APP_TRUSTED_PROXIES`
 
 发布前验证真实成功与错误响应、认证失败、超大输入、并发上限、慢客户端、下游超时和停止排空。观察 `HttpControl::statistics()` 的在途、拒绝、隔离与清理失败。按[构建与部署](../deployment.md)检查 TypePHP 原生产物，开发态 curl 成功不能替代全量编译与目标平台验收。
 
+各平台当前结果见[平台与验收](../platforms.md#通信结果如何理解)。ARM64 独立 HTTP 场景的 AOT 通过，不代表完整物联应用的线程 HTTP 或 Windows 服务入口已通过。
+
 协议语义参考 [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html)，HTTP/1.1 消息格式参考 [RFC 9112](https://www.rfc-editor.org/rfc/rfc9112.html)。

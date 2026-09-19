@@ -61,6 +61,8 @@ Swoole 持有网络句柄与调度。`type-runtime` 的 `ExecutionScope`、`Dead
 
 当前主仓生产 HTTP 已使用线程内协程；经典 HTTP 的信号路径、经典 WebSocket 服务以及 MQTT 的部分入口仍有平台或旧实现限制。自动选择进程、线程、协程及完整平台验收尚未完成。各篇写明具体入口边界，不把架构要求当作所有平台已验证的结果。
 
+最新平台结果统一见[平台与验收](platforms.md#通信结果如何理解)。ARM64 的独立 HTTP AOT 与 WebSocket PHP 结果各自记录；Windows 组件 AOT 不包含通信验收，TCP/UDP/MQTT 的完整原生矩阵仍待完成。
+
 ## 从示例到交付
 
 按[构建与部署](deployment.md)把全部生产源码交给 TypePHP，在目标平台检查原生产物的启动、协议互通、异常关闭和资源回收。开发态 PHP 示例通过，只能证明对应接口的开发态行为。

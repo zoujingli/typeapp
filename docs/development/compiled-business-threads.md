@@ -2,6 +2,12 @@
 
 本文描述基于 Swoole 的已编译线程入口、作用域、资源归属与 AOT 衔接；完整平台和角色验收条件见[实现规划](../guide/roadmap.md)。
 
+## 当前 SDK 前提
+
+平台现状见[平台与验收](../guide/platforms.md)。当前完整应用声明了编译线程；`NativeBuilder` 先检查已适配并重编译的 PHPX，再核对 Swoole 的 `startNative`、`NATIVE_ENTRY_ABI=2` 和 fiber 通知配置。组件消费者没有使用线程时通过 AOT，不证明该入口可用。
+
+Linux ARM64 实测的官方 Swoole 6.2.2 已开启 Thread，但没有上述项目编译入口；当前 `SwooleThreadSource` 固定源码引用报告为 6.2.1。macOS 平台验收 SDK 缺少适配的 PHPX 且 Swoole 未启用 Thread；Windows 平台验收 SDK 尚缺 Swoole 模块。必须统一固定上游与适配源码、重新构建并验证，不能仅打开 Thread 开关或删除 ABI 检查来宣称完整应用通过。
+
 ## TypePHP 0.9.0 编译接入
 
 当前线程编译基线为 PHP `8.5.10 ZTS`、TypePHP `0.9.0`、PHPX `2.9.0`。TypePHP 0.9 的进程池会直接生成编译命令，绕过适配器的 `compileFile()`；`TypephpCompatibility::compile()` 仅在线程二进制构建中临时将上游 `maxJob` 设为 1，调用父类编译流程后恢复原值。因此源码队列、对象缓存、编译选项和链接仍由 TypePHP 负责，没有另建并行编译器或运行时调度器。
@@ -17,6 +23,8 @@ TypePHP 0.9 将声明拆分为多个 `*_decl.h`。写文件适配现在只把线
 - 应用通信与并发必须基于 Swoole；线程、协程入口按实际构建能力与角色职责选择。选择线程与协程路径后缺少必要能力明确失败，各平台分别生成和验证产物。
 
 ## 官方内置库
+
+构建默认启用 `swoole.enable_library=On`，允许随固定扩展提供的官方 PHP 库按 Swoole 请求初始化机制加载。库版本、构建开关和承载模块摘要随产物核对；该例外只适用于官方内置库，业务、Plugins 与其他生产 PHP 仍全量 AOT。官方库提供的协程入口不补齐 TypeApp 的已编译线程 ABI。
 
 ## 已解析属性与可空调用
 

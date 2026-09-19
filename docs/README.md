@@ -60,6 +60,7 @@ TypeApp 是标准极简框架。先创建自己的应用并组合 Plugins；通�
   <a class="guide-card" href="#/guide/deployment"><span class="guide-index">07 <span aria-hidden="true">↗</span></span><strong>构建与部署</strong><span>从声明生成到全量编译，封装并运行原生应用。</span><span class="guide-meta">BUILD & DEPLOY</span></a>
   <a class="guide-card" href="#/guide/documentation"><span class="guide-index">08 <span aria-hidden="true">↗</span></span><strong>文档站发布</strong><span>导出 Docsify 静态站点并发布到 iots.top，保持公开内容可追溯。</span><span class="guide-meta">DOCUMENTATION</span></a>
   <a class="guide-card" href="#/guide/licensing"><span class="guide-index">09 <span aria-hidden="true">↗</span></span><strong>许可证与归属</strong><span>查看 Apache-2.0 授权、作者与第三方依赖的原始许可证。</span><span class="guide-meta">LICENSING</span></a>
+  <a class="guide-card" href="#/guide/platforms"><span class="guide-index">10 <span aria-hidden="true">↗</span></span><strong>平台与验收</strong><span>查看各平台已通过的场景、SDK 前提和完整交付条件。</span><span class="guide-meta">PLATFORMS</span></a>
 </div>
 
 ## 理解 TypeApp
@@ -83,4 +84,4 @@ flowchart TB
 
 安装文档使用公开仓库的 HTTPS 地址，无需 SSH 密钥即可获取源码。组件尚未发布稳定版本，开发分支不代表稳定交付；安装后请提交应用的 `composer.lock`。
 
-全量编译指生产实现进入 TypePHP 的覆盖门槛，不是测试覆盖率，也不是全部 PHP 包或全部平台已经验收。目标平台为 Linux x64 / ARM64、macOS ARM64 与 Windows x64，以对应版本在该环境上的实际结果为准。
+全量编译指生产实现进入 TypePHP 的覆盖门槛，不是测试覆盖率，也不是全部 PHP 包或全部平台已经验收。Linux x64 / ARM64、macOS ARM64 与 Windows x64 已有不同范围的原生结果，完整应用交付尚未全部完成；统一状态、SDK 限制与完成条件见[平台与验收](guide/platforms.md)。

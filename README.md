@@ -24,6 +24,8 @@ TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力
 
 当前锁定工具链为 PHP 8.5.10 ZTS、TypePHP 0.9.0、PHPX 2.9.0，以仓库中的 `toolchain.lock.json` 与 `composer.lock` 为准。
 
+各目标平台已有不同范围的原生验收结果，完整应用交付尚未全部完成。已通过场景、Swoole/线程 SDK 限制和发布条件统一见[平台与验收](docs/guide/platforms.md)。
+
 ```mermaid
 flowchart TB
   Source["业务、生产组件、生成代码及 PHP 依赖"] -->|TypePHP AOT 编译| App["原生应用"]

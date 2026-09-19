@@ -42,6 +42,8 @@ php vendor/bin/type doctor type-app.json build
 
 正式目标包括 Linux x64/ARM64、macOS ARM64 和 Windows x64。构建、运行库、数据库与停止语义都需要在实际目标环境验证；Docker 或 WSL 中的 Linux 结果不能替代 Windows/macOS 原生结果。
 
+实际状态见[平台与验收](platforms.md)。Windows 的组件产物已通过部署审计与 SQLite 对照，但完整应用尚因缺少 Swoole 模块而未进入 AOT；ARM64 环境的完整应用仍受线程 SDK 接入限制。以下命令描述工具已有入口，执行前仍须满足所选应用和平台的全部前置条件。
+
 ## 全量编译
 
 物联中心成品案例在本仓库根执行：

@@ -16,7 +16,7 @@ Windows数据库来源固定于`.github/windows-databases.json`：MySQL 8.4.11�
 
 Windows便携包需要核对来源、摘要、ZIP结构和x64 PE。PowerShell解析、通用子进程参数、双输出、脱敏、截止逻辑以及非Windows拒绝使用对应测试入口验证；静态检查不能证明Windows ACL、数据库启动、PHP构建或业务已经通过。实际平台结果须由对应runner验证。
 
-Windows x64 已在[完整工作流运行](https://github.com/zoujingli/typeapp/actions/runs/35455624828)中通过73项契约测试、2247个断言、进程与平台行为、真实原生产物的部署审计、运行库篡改拒绝及二次构建缓存，并通过运行、校验、ORM和SQLite四组件完整AOT与真实SQLite对照。API Set由系统加载器解析至实际宿主后核对身份。该结果不包含完整应用：当前Windows SDK准备流程尚未提供匹配的Swoole模块，应用PHP验收在启动前拒绝，后续完整应用AOT、发布搬迁和MySQL/PostgreSQL步骤未执行。补齐模块与线程SDK后须重跑完整入口，不能用组件通过代替应用交付。
+各平台最新已通过范围与限制统一见[平台与验收](../guide/platforms.md)，准确运行与产物身份见[平台证据](platform-support.md#当前结果与证据)。Windows 已通过组件 AOT、SQLite、部署审计和缓存，标准应用仍缺少 Swoole 模块；完整工作流保持失败状态，后续应用发布与 MySQL/PostgreSQL 未执行。补齐模块与线程 SDK 后须重跑完整入口。
 
 macOS选择GitHub标准`macos-15` ARM64标签，不使用Docker或WSL运行应用。准确平台标签见[GitHub runner说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。PHP安装Action固定为已核对提交`f3e473d116dcccaddc5834248c87452386958240`（v2.37.2），请求8.5.10 ZTS后仍按`toolchain.lock.json`校验实际PHP、TypePHP、PHPX；安装器或镜像漂移必须失败，不放宽版本。
 

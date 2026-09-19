@@ -182,4 +182,6 @@ $clientTls = [
 
 上线前验证双端回显、半关闭、拆分与合并读取、总长度超限、超时、TLS 身份错误和异常清理。观察 `statistics()` 与 `addresses()`。一次本地成功不能证明目标容量和所有平台通过，生产全量编译与单程序交付约束见[构建与部署](../deployment.md)。
 
+当前平台结果见[平台与验收](../platforms.md#通信结果如何理解)；基础命令或 HTTP AOT 通过不计为 TCP 完整原生业务矩阵通过。
+
 TCP 协议参考 [RFC 9293](https://www.rfc-editor.org/rfc/rfc9293.html)，其中的可靠字节流语义与应用消息确认需要分别理解。

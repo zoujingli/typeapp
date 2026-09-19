@@ -14,7 +14,7 @@
 
 构建环境使用的 Composer 库，提供 `type <应用构建配置.json>` 入口。它读取应用生产依赖，要求各生产包显式声明可编译源码，再调用固定版本的 TypePHP。
 
-开发入口统一为create、doctor、prepare、dev、watch、test、build；watch复用type-runtime的信号所有权，type-runtime也是构建工具的明确依赖。模式、生命周期与实际验收边界见[开发命令说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/developer-cli.md)。安装本包时应同时配置下列type-runtime私有仓库，不能依赖依赖包传播repositories。
+开发入口统一为create、doctor、prepare、dev、watch、test、build；watch复用type-runtime的信号所有权，type-runtime也是构建工具的明确依赖。模式、生命周期与实际验收边界见[开发命令说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/developer-cli.md)。安装本包时应同时配置下列type-runtime公开仓库，不能依赖依赖包传播repositories。
 
 prepare按完整源码、声明、生成器及锁文件内容身份复用不可变代次，逐次校验清单和生成文件；缺少代次才持锁生成。并发准备不重复串行解析同一输入，损坏或准备期间变化明确拒绝；运行环境和dotenv不参与代次身份，不能以可变current指针跳过验证。
 
@@ -102,7 +102,7 @@ vendor/bin/type --inspect build/type-example
 
 ## AOT 与运行要求
 
-本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP 0.9.0、PHPX 2.9.0，PHP继续锁定8.5.10 ZTS；构建须提供匹配目标平台的完整SDK，四平台完整验收状态按各任务实际证据记录。生产运行库由实际产物清单确定，不把编译SDK、源码或构建秘密复制进运行镜像。
+本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP 0.9.0、PHPX 2.9.0，PHP继续锁定8.5.10 ZTS；构建须提供匹配目标平台的完整SDK，已通过范围和完整应用限制统一见[平台与验收](https://iots.top/#/guide/platforms)。Windows 组件 AOT、SQLite、部署审计和缓存已通过，完整应用仍缺匹配的 Swoole 模块与线程接入。生产运行库由实际产物清单确定，不把编译SDK、源码或构建秘密复制进运行镜像。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。标量存储、引用及std编译期接口按新版规则实现，带上下文的闭包必须完整声明参数；PHP开发对照只使用具有真实等价行为的能力。
 
