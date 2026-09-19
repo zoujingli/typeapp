@@ -68,7 +68,9 @@ python3 -m http.server 3000 --bind 127.0.0.1 --directory "$DOCS_OUTPUT"
 
 物联网和 MQTT 公共指南记录使用流程、配置、确认边界与当前限制，不链接内部研发、任务或验收原件，也不因新增业务扩大导出白名单。README 与研发文档描述当前实现、可复用验证方法和未完成范围，运行报告放在任务专用目录。
 
-搜索索引在浏览器缓存一小时，刷新 Markdown 不会立即替换已有索引。集中更新指南或章节后，递增 `assets/site.js` 中 `search.namespace` 的版本，保留站点 pathname 隔离；当前版本为 `typeapp-guide-v24-`。随同发布新的 site.js，并用新增章节标题验证搜索命中，避免页面已更新而搜索仍展示旧内容。
+平台已通过范围与完整应用限制统一维护在 `guide/platforms.md`；架构、快速开始、通信教程、构建部署和实现规划链接到该页。更新时按平台、源码与产物分别核对证据，组件、PHP 行为和完整应用验收分别描述，不把不同产物的结果合并为全平台通过。
+
+搜索索引在浏览器缓存一小时，刷新 Markdown 不会立即替换已有索引。集中更新指南或章节后，递增 `assets/site.js` 中 `search.namespace` 的版本，保留站点 pathname 隔离；当前值以该配置为准。随同发布新的 site.js，并用新增章节标题验证搜索命中，避免页面已更新而搜索仍展示旧内容。
 
 指南中的流程图、架构图和时序图使用语言标记为 mermaid 的代码块，由本地 `assets/vendor/mermaid/mermaid.min.js` 渲染，颜色映射到站点 CSS 变量。不要引用 CDN，也不要把示意图写成已验收能力。
 
@@ -84,7 +86,7 @@ python3 -m http.server 3000 --bind 127.0.0.1 --directory "$DOCS_OUTPUT"
 
 每轮日志的 `CHECK` 行带 `runner=` 摘要，可与该提交中 `sha256sum tools/deploy-docs-site.sh` 对照。解包后还会把已安装脚本与当前提交的 `tools/deploy-docs-site.sh` 逐字节核对；不一致时失败并写明请先更新已安装 runner，不自动改用仓库脚本，也不继续导出。
 
-公开主仓使用 `https://github.com/zoujingli/typeapp.git` 拉取，部署用户不需要仓库 Deploy Key。公开切换前，现有 SSH 读取方式可继续用于同步；切换时将服务器检出的 origin 更新为该 HTTPS 地址，避免旧仓删除后 Deploy Key 失效。源码检出、凭据和运行脚本均放在 Web 根之外。将经过审核的部署脚本安装为独立、由管理员维护的 runner，计划任务调用它；不要改成直接执行检出工作树里的脚本。
+公开主仓使用 `https://github.com/zoujingli/typeapp.git` 拉取，服务器检出的 origin 使用该 HTTPS 地址，部署用户不需要仓库 Deploy Key。源码检出、凭据和运行脚本均放在 Web 根之外。将经过审核的部署脚本安装为独立、由管理员维护的 runner，计划任务调用它；不要改成直接执行检出工作树里的脚本。
 
 宝塔先创建原生 HTML 站点并绑定所需域名。最终站点根指向发布目录的 `current` 符号链接，创建站点时产生的默认文件应保留在独立初始化目录，不混入版本。Nginx 使用 `try_files $uri $uri/ =404`，不启用 PHP、不回退 HTML；允许 `README.md` 和公开第三方许可证，禁止隐藏文件与内部研发目录。HTML、Markdown、JS、CSS 设置 `Cache-Control: no-cache`，由浏览器重新验证缓存。两个域名共用 SAN 证书，通过宝塔申请、部署和自动续签；HTTP 使用 `$host` 跳转到同域名 HTTPS。ACME 验证路径单独映射到版本目录之外，不能随着 `current` 切换。
 
