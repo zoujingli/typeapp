@@ -1,0 +1,27 @@
+{
+  "name": "zoujingli/type-orm-sqlite",
+  "description": "TypeApp ORM 的 SQLite PDO 驱动，支持文件数据库、内存数据库与迁移。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "ext-pdo_sqlite": "*",
+    "zoujingli/type-orm": "~1.0.0@dev"
+  },
+  "autoload": {
+    "psr-4": {
+      "Type\\Orm\\Sqlite\\": "src/"
+    }
+  },
+  "extra": {
+    "type": {
+      "protocol": 1,
+      "sources": [
+        "src"
+      ]
+    },
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  }
+}
