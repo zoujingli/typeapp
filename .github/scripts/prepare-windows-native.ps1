@@ -28,6 +28,15 @@ Invoke-WebRequest -Uri 'https://github.com/swoole/typephp/releases/download/v0.9
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne '187c2ca1644b37163d5f67725a29752f91da9e058583a8d3e471a71703570ff6') { throw 'TypePHP SDK checksum mismatch.' }
 Expand-Archive -LiteralPath $archive -DestinationPath $Directory
 $sdk = Join-Path $Directory 'tpc_v0.9.0_windows_x64'
+# 发行包把 DLL 放在顶层，锁定编译器要求 PHPX_HOME/build；只保留一个运行库位置。
+$phpxBuild = Join-Path $sdk 'phpx\build'
+$packagedPhpx = Join-Path $sdk 'phpx.dll'
+if (!(Test-Path -LiteralPath $packagedPhpx) -or !(Test-Path -LiteralPath (Join-Path $sdk 'phpx\lib\phpx.lib'))) { throw 'The verified SDK is missing PHPX runtime or import library.' }
+$phpxDigest = (Get-FileHash -Algorithm SHA256 -LiteralPath $packagedPhpx).Hash
+New-Item -ItemType Directory -Force -Path $phpxBuild | Out-Null
+$phpxRuntime = Join-Path $phpxBuild 'phpx.dll'
+Move-Item -LiteralPath $packagedPhpx -Destination $phpxRuntime
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath $phpxRuntime).Hash -ne $phpxDigest) { throw 'PHPX runtime bytes changed while preparing the compiler layout.' }
 $redisArchive = Join-Path $Directory 'redis.zip'
 Invoke-WebRequest -Uri 'https://downloads.php.net/~windows/pecl/releases/redis/6.3.0/php_redis-6.3.0-8.5-ts-vs17-x64.zip' -OutFile $redisArchive
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $redisArchive).Hash.ToLowerInvariant() -ne '1a1e9c721dd64939dbeac1c855eb5bb93a45e5a825ad0e13b42f46731c8223d2') { throw 'Redis extension checksum mismatch.' }
@@ -52,12 +61,13 @@ $empty = Join-Path $Directory 'empty-ini'
 New-Item -ItemType Directory -Path $empty | Out-Null
 $env:PHPRC = $ini
 $env:PHP_INI_SCAN_DIR = $empty
-$env:PATH = $sdk + ';' + $env:PATH
+$env:PATH = $sdk + ';' + $phpxBuild + ';' + $env:PATH
 $settings = @{ PHP_HOME=$sdk; PHPX_HOME=(Join-Path $sdk 'phpx'); PHPRC=$ini; PHP_INI_SCAN_DIR=$empty; COMPOSER_HOME=(Join-Path $Directory 'composer-home'); COMPOSER_NO_INTERACTION='1' }
 foreach ($key in $settings.Keys) {
     [Environment]::SetEnvironmentVariable($key, $settings[$key], 'Process')
     Add-Content -LiteralPath $env:GITHUB_ENV -Value ($key + '=' + $settings[$key]) -Encoding utf8
 }
 Add-Content -LiteralPath $env:GITHUB_PATH -Value $sdk -Encoding utf8
+Add-Content -LiteralPath $env:GITHUB_PATH -Value $phpxBuild -Encoding utf8
 & (Join-Path $sdk 'php.exe') -r 'if(PHP_VERSION!=="8.5.10" || !PHP_ZTS || PHP_INT_SIZE!==8){exit(1);} foreach(["dom","mbstring","pdo_mysql","pdo_pgsql","pdo_sqlite","redis"] as $e){if(!extension_loaded($e)){fwrite(STDERR,"missing ".$e);exit(1);}} if(phpversion("redis")!=="6.3.0"){exit(1);} echo PHP_VERSION," ZTS x64 SDK verified\n";'
 if ($LASTEXITCODE -ne 0) { throw 'The real Windows PHP runtime did not match the SDK contract.' }

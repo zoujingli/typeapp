@@ -2,6 +2,12 @@ name: Windows x64 原生验收
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: 验收范围（native 复用同一代码已通过的契约结果，仅复跑原生链路）
+        type: choice
+        options: [full, native]
+        default: full
   push:
     branches: [main]
 
@@ -39,16 +45,23 @@ jobs:
         run: |
           & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-process.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: 检查公开契约与 Windows 进程行为
+      - name: 检查完整公开契约
+        if: github.event_name != 'workflow_dispatch' || inputs.scope != 'native'
         run: |
-          foreach ($arguments in @(@('vendor/bin/phpunit','--configuration','phpunit.xml'), @('tests/windows-imports.php'), @('tests/testing-portable.php'), @('tests/build-platform.php'), @('tests/helpers.php','--php'))) {
+          & "$env:PHP_HOME/php.exe" vendor/bin/phpunit --configuration phpunit.xml --log-junit build/windows-contracts.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 检查 Windows 进程与平台行为
+        run: |
+          foreach ($arguments in @(@('tests/windows-imports.php'), @('tests/testing-portable.php'), @('tests/build-platform.php'), @('tests/helpers.php','--php'))) {
             & "$env:PHP_HOME/php.exe" @arguments
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-      - name: 原生构建身份与快捷接口
+      - name: 原生构建身份与缓存
         run: |
           & "$env:PHP_HOME/php.exe" tests/build-platform-native.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 四组件原生编译与 SQLite 行为
+        run: |
           & "$env:PHP_HOME/php.exe" tests/helpers-build.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 标准应用编译、SQLite与可搬迁发布
@@ -78,7 +91,10 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
           path: |
+            build/windows-contracts.xml
             build/**/verification.json
             build/**/compile.log
+            build/**/type-app.exe
             build/**/type-app.exe.build.json
+            build/**/type-app.exe.resources/**
             build/windows-database-*/*.log
