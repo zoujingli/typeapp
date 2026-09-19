@@ -1,0 +1,27 @@
+{
+  "name": "zoujingli/type-queue",
+  "description": "TypeApp Redis Streams 队列组件：版本化任务、消费组、独占执行与消息确认。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "zoujingli/type-runtime": "~1.0.0@dev",
+    "zoujingli/type-redis": "~1.0.0@dev"
+  },
+  "autoload": {
+    "psr-4": {
+      "Type\\Queue\\": "src/"
+    }
+  },
+  "extra": {
+    "type": {
+      "protocol": 1,
+      "sources": [
+        "src"
+      ]
+    },
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  }
+}
