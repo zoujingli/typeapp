@@ -55,9 +55,23 @@ function removeTestDirectory(string $directory): void
 function writeTestPhpCommand(string $path, string $code): void
 {
     if (PHP_OS_FAMILY === 'Windows') {
+        static $launcher = null;
+        if ($launcher === null) {
+            $compiler = getenv('SystemRoot') . '/Microsoft.NET/Framework64/v4.0.30319/csc.exe';
+            expect(is_file($compiler), 'Windows 测试命令需要系统 .NET Framework C# 编译器');
+            $build = dirname(__DIR__) . '/build/test-launcher-' . bin2hex(random_bytes(6));
+            expect(mkdir($build, 0700), '无法创建测试入口编译目录');
+            try {
+                successful([$compiler, '/nologo', '/target:exe', '/optimize+', '/out:' . $build . '/command.exe', __DIR__ . '/fixtures/PhpCommand.cs']);
+                $launcher = file_get_contents($build . '/command.exe');
+                expect(is_string($launcher) && $launcher !== '', '无法读取测试入口');
+            } finally {
+                removeTestDirectory($build);
+            }
+        }
         expect(file_put_contents($path . '.php', "<?php\n" . $code) !== false, '无法写入测试命令');
-        $launcher = '@"' . PHP_BINARY . '" "%~dp0' . basename($path) . '.php" %*' . "\r\n";
-        expect(file_put_contents($path . '.cmd', $launcher) !== false, '无法写入 Windows 测试入口');
+        expect(file_put_contents($path . '.php-binary', PHP_BINARY) !== false, '无法写入测试 PHP 路径');
+        expect(file_put_contents($path . '.exe', $launcher) !== false, '无法写入 Windows 测试入口');
     } else {
         expect(file_put_contents($path, "#!/usr/bin/env php\n<?php\n" . $code) !== false && chmod($path, 0755), '无法写入测试入口');
     }
