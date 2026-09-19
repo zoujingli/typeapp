@@ -1,0 +1,12 @@
+(version 1)
+(allow default)
+(deny file-read-data
+    (subpath (param "ROOT_APP"))
+    (subpath (param "ROOT_PLUGIN"))
+    (subpath (param "ROOT_EXAMPLE"))
+    (subpath (param "ROOT_VENDOR"))
+    (subpath (param "APP"))
+    (subpath (param "VENDOR"))
+    (subpath (param "COMPILER"))
+    (literal (param "ROOT_COMPOSER"))
+    (literal (param "COMPOSER")))

@@ -1,0 +1,11 @@
+{
+  "name": "type-tests/imported-library",
+  "description": "第三方源码与资源适配测试库",
+  "type": "library",
+  "license": "proprietary",
+  "autoload": {
+    "psr-4": {"Imported\\": "src/"},
+    "classmap": ["legacy/"],
+    "files": ["functions.php"]
+  }
+}

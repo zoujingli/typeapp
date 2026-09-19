@@ -1,0 +1,24 @@
+{
+  "name": "type-tests/optional-command",
+  "description": "验证已安装但未启用命令的测试插件",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "zoujingli/type-core": "~1.0.0@dev"
+  },
+  "autoload": {
+    "psr-4": {
+      "TypeApp\\Optional\\": "src/"
+    }
+  },
+  "extra": {
+    "type": {
+      "protocol": 1,
+      "sources": ["src"],
+      "module": {
+        "services": [{"id": "optional", "class": "TypeApp\\Optional\\UnavailableCommand"}],
+        "commands": [{"name": "unavailable", "service": "optional"}]
+      }
+    }
+  }
+}

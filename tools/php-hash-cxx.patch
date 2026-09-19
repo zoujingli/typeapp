@@ -1,0 +1,5 @@
+--- a/ext/hash/php_hash.h
++++ b/ext/hash/php_hash.h
+@@ -161 +161 @@
+-		char *base = ecalloc(1, ops->context_size + align);
++		char *base = (char *) ecalloc(1, ops->context_size + align);

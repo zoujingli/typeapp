@@ -1,0 +1,139 @@
+<?php
+
+declare(strict_types=1);
+
+/** 捕获两个输出流，避免子进程因管道写满而互相等待。 */
+function execute(array $command, ?string $directory = null): array
+{
+    $stdout = tmpfile();
+    $stderr = tmpfile();
+    if ($stdout === false || $stderr === false) {
+        throw new RuntimeException('无法创建进程输出缓冲');
+    }
+    try {
+        $process = proc_open($command, [0 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r'], 1 => $stdout, 2 => $stderr], $pipes, $directory);
+        if (!is_resource($process)) {
+            throw new RuntimeException('无法运行验证进程');
+        }
+        $status = proc_close($process);
+        rewind($stdout);
+        rewind($stderr);
+
+        return [$status, stream_get_contents($stdout), stream_get_contents($stderr)];
+    } finally {
+        fclose($stdout);
+        fclose($stderr);
+    }
+}
+
+function expect(bool $condition, string $message): void
+{
+    if (!$condition) {
+        throw new RuntimeException($message);
+    }
+}
+
+/** @param list<array<string, mixed>> $menus @return list<string> */
+function menuPaths(array $menus): array
+{
+    $paths = [];
+    foreach ($menus as $menu) {
+        if (isset($menu['path']) && is_string($menu['path'])) {
+            $paths[] = $menu['path'];
+        }
+        if (isset($menu['children']) && is_array($menu['children'])) {
+            $paths = [...$paths, ...menuPaths($menu['children'])];
+        }
+    }
+    return $paths;
+}
+
+/** @param list<array<string, mixed>> $menus @return list<string> */
+function menuLeafPaths(array $menus): array
+{
+    $paths = [];
+    foreach ($menus as $menu) {
+        if (isset($menu['children']) && is_array($menu['children']) && $menu['children'] !== []) {
+            $paths = [...$paths, ...menuLeafPaths($menu['children'])];
+            continue;
+        }
+        if (isset($menu['path']) && is_string($menu['path'])) {
+            $paths[] = $menu['path'];
+        }
+    }
+    return $paths;
+}
+
+function successful(array $command, ?string $directory = null): string
+{
+    [$status, $stdout, $stderr] = execute($command, $directory);
+    expect($status === 0, '验证进程失败：' . implode(' ', $command) . "\n" . $stdout . $stderr);
+
+    return $stdout;
+}
+
+/** @return array<int,array{parent: int, state: string}> 保留僵尸状态；可按PPID筛选，观察失败不能等同于进程归零。 */
+function unixProcessStates(?int $parent = null): array
+{
+    expect(($parent === null || $parent > 0) && in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true), '进程观察需要明确Unix进程身份');
+    $process = new \Type\Testing\Process(['ps', '-A', '-o', 'pid=,ppid=,stat=']);
+    try {
+        $result = $process->wait(2);
+        expect($result->successful() && trim($result->stdout) !== '', '不能确认子进程清单：进程观察失败');
+        $children = [];
+        foreach (explode("\n", trim($result->stdout)) as $line) {
+            expect(preg_match('/^\s*([1-9][0-9]*)\s+([0-9]+)\s+(\S+)\s*$/D', $line, $match) === 1, '进程观察格式不符');
+            if ($parent === null || (int) $match[2] === $parent) {
+                $children[(int) $match[1]] = ['parent' => (int) $match[2], 'state' => $match[3]];
+            }
+        }
+        ksort($children, SORT_NUMERIC);
+        return $children;
+    } finally {
+        $process->stop();
+    }
+}
+
+function nativeCommand(string $target, bool $isolated = false, array $environmentKeys = []): array
+{
+    $target = realpath($target);
+    expect($target !== false, '原生产物或隔离目录不存在');
+    if ($isolated) {
+        expect(PHP_OS_FAMILY === 'Linux', 'chroot隔离验收仅适用于Linux，其他平台须运行各自的干净部署测试');
+        expect(is_file($target . '/app/type-app'), '隔离目录缺少命令产物');
+        expect(is_file($target . '/app/php.ini') && is_dir($target . '/app/php.d'), '隔离目录缺少明确运行配置');
+        expect(!is_file($target . '/usr/local/bin/php') && !is_dir($target . '/app/vendor'), '隔离目录不应包含 PHP CLI 或业务源码');
+        $prefix = [];
+        if (posix_geteuid() !== 0) {
+            $prefix = ['sudo', '-n'];
+            if ($environmentKeys !== []) {
+                $prefix[] = '--preserve-env=' . implode(',', $environmentKeys);
+            }
+        }
+
+        return [...$prefix, 'env', 'PHPRC=/app/php.ini', 'PHP_INI_SCAN_DIR=/app/php.d', 'chroot', $target, '/app/type-app'];
+    }
+    if (!class_exists(\Type\Build\BuildPlatform::class)) {
+        // 格式校验不应要求主仓未使用的数据库或Redis扩展；独立控制器复用同一轻量校验类。
+        $verifier = dirname(__DIR__) . '/plugin/type-build/src/BuildPlatform.php';
+        expect(is_file($verifier), '独立验收控制器缺少原生格式校验类');
+        require_once $verifier;
+    }
+    (new \Type\Build\BuildPlatform())->assertArtifact($target);
+
+    $nativeIni = getenv('TYPE_NATIVE_PHP_INI');
+    if ($nativeIni !== false) {
+        expect(is_file($nativeIni) && is_dir(dirname($nativeIni) . '/php.d'), '显式原生运行配置缺失');
+        expect(PHP_OS_FAMILY !== 'Windows', 'Windows显式运行配置须由测试进程环境传入PHPRC和PHP_INI_SCAN_DIR，不能依赖Unix env命令');
+        return ['env', 'PHPRC=' . $nativeIni, 'PHP_INI_SCAN_DIR=' . dirname($nativeIni) . '/php.d', $target];
+    }
+
+    return [$target];
+}
+
+/** 镜像仅由本项目的 scratch 打包脚本产生，测试不拉取外部镜像。 */
+function cleanRuntimeCommand(string $image): array
+{
+    expect(preg_match('/^type-app-clean-test:[0-9-]+$/D', $image) === 1, '隔离镜像不属于本次验证');
+    return ['docker', 'run', '--rm', '--pull=never', '--network=none', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--tmpfs', '/tmp:rw,nosuid,nodev,size=16m', $image];
+}
