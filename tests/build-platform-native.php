@@ -76,7 +76,13 @@ $reader = new ArtifactManifest();
 $manifest = $reader->read($artifact);
 expect(($manifest['runtime']['os'] ?? '') === PHP_OS_FAMILY, '平台构建记录了错误OS');
 $deployment = (new \Type\Testing\Process([$artifact, 'verify-deployment']))->wait(60);
-expect($deployment->successful() && $deployment->stdout === "deployment-ok\n" && $deployment->stderr === '', '显式部署完整审计失败：' . $deployment->stderr);
+$deploymentPassed = $deployment->successful() && $deployment->stdout === "deployment-ok\n" && $deployment->stderr === '';
+$deploymentEvidence = ['scope' => 'deployment-audit', 'passed' => $deploymentPassed, 'artifact-sha256' => hash_file('sha256', $artifact),
+    'exit-code' => $deployment->exitCode, 'timed-out' => $deployment->timedOut, 'output-exceeded' => $deployment->outputExceeded,
+    'signal' => $deployment->signal, 'stdout-hex' => bin2hex($deployment->stdout), 'stderr-hex' => bin2hex($deployment->stderr)];
+$deploymentJson = json_encode($deploymentEvidence, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+file_put_contents($consumer . '/verification.json', $deploymentJson . "\n");
+expect($deploymentPassed, '显式部署完整审计失败：' . $deploymentJson);
 if (PHP_OS_FAMILY === 'Darwin') {
     $fixture = $consumer . '/digest-数据.bin';
     foreach (['', 'abc', str_repeat("\0\xff\x80hash\n", 16385)] as $payload) {
