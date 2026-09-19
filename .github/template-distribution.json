@@ -1,0 +1,9 @@
+{
+  "protocol": 1,
+  "source-repository": "zoujingli/typeapp",
+  "composer-name": "zoujingli/type-project",
+  "prefix": "templates/type-project",
+  "repository": "zoujingli/type-project",
+  "branch": "main",
+  "visibility": "public"
+}

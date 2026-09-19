@@ -1,0 +1,111 @@
+{
+  "protocol": 1,
+  "source-repository": "zoujingli/typeapp",
+  "packages": {
+    "type-runtime": {
+      "composer-name": "zoujingli/type-runtime",
+      "prefix": "plugin/type-runtime",
+      "repository": "zoujingli/type-runtime",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-core": {
+      "composer-name": "zoujingli/type-core",
+      "prefix": "plugin/type-core",
+      "repository": "zoujingli/type-core",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-orm": {
+      "composer-name": "zoujingli/type-orm",
+      "prefix": "plugin/type-orm",
+      "repository": "zoujingli/type-orm",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-orm-mysql": {
+      "composer-name": "zoujingli/type-orm-mysql",
+      "prefix": "plugin/type-orm-mysql",
+      "repository": "zoujingli/type-orm-mysql",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-orm-pgsql": {
+      "composer-name": "zoujingli/type-orm-pgsql",
+      "prefix": "plugin/type-orm-pgsql",
+      "repository": "zoujingli/type-orm-pgsql",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-orm-sqlite": {
+      "composer-name": "zoujingli/type-orm-sqlite",
+      "prefix": "plugin/type-orm-sqlite",
+      "repository": "zoujingli/type-orm-sqlite",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-redis": {
+      "composer-name": "zoujingli/type-redis",
+      "prefix": "plugin/type-redis",
+      "repository": "zoujingli/type-redis",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-cache": {
+      "composer-name": "zoujingli/type-cache",
+      "prefix": "plugin/type-cache",
+      "repository": "zoujingli/type-cache",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-validate": {
+      "composer-name": "zoujingli/type-validate",
+      "prefix": "plugin/type-validate",
+      "repository": "zoujingli/type-validate",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-log": {
+      "composer-name": "zoujingli/type-log",
+      "prefix": "plugin/type-log",
+      "repository": "zoujingli/type-log",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-queue": {
+      "composer-name": "zoujingli/type-queue",
+      "prefix": "plugin/type-queue",
+      "repository": "zoujingli/type-queue",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-scheduler": {
+      "composer-name": "zoujingli/type-scheduler",
+      "prefix": "plugin/type-scheduler",
+      "repository": "zoujingli/type-scheduler",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-build": {
+      "composer-name": "zoujingli/type-build",
+      "prefix": "plugin/type-build",
+      "repository": "zoujingli/type-build",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-testing": {
+      "composer-name": "zoujingli/type-testing",
+      "prefix": "plugin/type-testing",
+      "repository": "zoujingli/type-testing",
+      "branch": "main",
+      "visibility": "public"
+    },
+    "type-mqtt": {
+      "composer-name": "zoujingli/type-mqtt",
+      "prefix": "plugin/type-mqtt",
+      "repository": "zoujingli/type-mqtt",
+      "branch": "main",
+      "visibility": "public"
+    }
+  }
+}
