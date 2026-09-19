@@ -1,0 +1,16 @@
+{
+  "mysql": {
+    "version": "8.4.11",
+    "url": "https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.11-winx64.zip",
+    "sha256": "a492371d687d2bab088b0062581144a0044b8964baefdf4faa579292b423d25c",
+    "folder": "mysql-8.4.11-winx64",
+    "source": "https://dev.mysql.com/downloads/mysql/8.4.html"
+  },
+  "pgsql": {
+    "version": "17.11",
+    "url": "https://sbp.enterprisedb.com/getfile.jsp?fileid=1260491",
+    "sha256": "4b8db0930c38f6ef845db919551dedda3b6b845aeb0927b3d79a6e8e9e4537cf",
+    "folder": "pgsql",
+    "source": "https://www.enterprisedb.com/download-postgresql-binaries"
+  }
+}

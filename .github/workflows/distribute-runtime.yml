@@ -1,0 +1,108 @@
+name: 公开运行库分发验证
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: 已通过主分支原生验证的完整提交 SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: type-app-distribution-batch
+  cancel-in-progress: false
+
+jobs:
+  distribute:
+    name: 分发固定提交并从公开子仓重新消费
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      COMPOSER_NO_INTERACTION: '1'
+    steps:
+      - name: 校验输入格式
+        run: '[[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]'
+
+      - name: 检出固定主仓提交
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 验证受信任主分支来源与成功检查
+        shell: bash
+        run: |
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          gh api "repos/zoujingli/typeapp/actions/workflows/native-command.yml/runs?head_sha=${SOURCE_SHA}&status=success&per_page=100" \
+            --jq '.workflow_runs[] | select(.event == "push" and .head_branch == "main" and .head_repository.full_name == "zoujingli/typeapp") | .id' \
+            | grep -Eq '^[0-9]+$'
+
+      - name: 安装锁定的 PHP ZTS 与 Composer
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5.10'
+          coverage: none
+          extensions: dom, filter, mbstring, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, swoole-6.2.2, redis-6.3.0
+          tools: composer:2.10.3
+          ini-values: memory_limit=2G
+        env:
+          phpts: ts
+          fail-fast: true
+
+      - name: 准备 GitHub 已知主机与专用 SSH 代理
+        shell: bash
+        run: |
+          task_known_hosts="$RUNNER_TEMP/type-runtime-known-hosts"
+          gh api meta --jq '.ssh_keys[] | "github.com " + .' > "$task_known_hosts"
+          chmod 600 "$task_known_hosts"
+          eval "$(ssh-agent -s)"
+          printf 'SSH_AUTH_SOCK=%s\nSSH_AGENT_PID=%s\nGIT_SSH_COMMAND=%s\n' "$SSH_AUTH_SOCK" "$SSH_AGENT_PID" "ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$task_known_hosts" >> "$GITHUB_ENV"
+
+      - name: 仅载入运行库子仓专用凭据
+        env:
+          TYPE_RUNTIME_DEPLOY_KEY: ${{ secrets.TYPE_RUNTIME_DEPLOY_KEY }}
+        shell: bash
+        run: |
+          test -n "$TYPE_RUNTIME_DEPLOY_KEY"
+          printf '%s\n' "$TYPE_RUNTIME_DEPLOY_KEY" | ssh-add -
+
+      - name: 安装构建环境与已锁定依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config
+          composer install --no-scripts --no-plugins --prefer-dist --no-progress
+          task_php_home="$(php tools/configure-toolchain.php "$GITHUB_WORKSPACE/.cache/php-sdk" "$(command -v php-config)")"
+          printf 'PHP_HOME=%s\nPHPX_HOME=%s\nLD_LIBRARY_PATH=%s\n' "$task_php_home" "$GITHUB_WORKSPACE/vendor/swoole/phpx" "$GITHUB_WORKSPACE/vendor/swoole/phpx/lib:$task_php_home/lib" >> "$GITHUB_ENV"
+
+      - name: 构建并核对原生 SDK
+        run: bash tools/prepare-toolchain.sh
+
+      - name: 分发运行库并回读固定提交
+        run: php tools/distribute-plugin.php "$SOURCE_SHA" type-runtime
+
+      - name: 从公开分发子仓安装并编译命令
+        run: php tests/consumer.php https://github.com/zoujingli/type-runtime.git
+
+      - name: 保存分发证据
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: type-runtime-distribution
+          if-no-files-found: error
+          retention-days: 7
+          path: build/distribution/type-runtime.json
+
+      - name: 清理任务专用 SSH 代理
+        if: always()
+        shell: bash
+        run: |
+          if test -n "${SSH_AGENT_PID:-}"; then
+            ssh-agent -k
+          fi

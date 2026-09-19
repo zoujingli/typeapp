@@ -1,0 +1,113 @@
+name: Linux ARM64 原生全业务回归
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_source:
+        description: 用于性能比较的完整基准提交，留空时不运行性能组
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  native-regression:
+    if: github.repository == 'zoujingli/typeapp'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(inputs.base_source != '' && '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","benchmark"]' || '["contracts","orm","database","http","redis","tasks","application","recovery","rollout"]') }}
+    env:
+      TYPE_BASE_SOURCE: ${{ inputs.base_source }}
+      COMPOSER_NO_INTERACTION: '1'
+      COMPOSER_PROCESS_TIMEOUT: '1800'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.5.10'
+          coverage: none
+          extensions: dom, filter, ctype, tokenizer, mbstring, iconv, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, sockets, openssl, curl, zip, swoole-6.2.2, redis-6.3.0
+          tools: composer:2.10.3
+          ini-values: memory_limit=2G, display_errors=1, swoole.enable_library=Off, date.timezone=UTC
+        env:
+          phpts: ts
+          fail-fast: true
+      - name: 安装原生工具并定位独立测试实例入口
+        shell: bash
+        run: |
+          test "$(uname -m)" = aarch64
+          sudo apt-get update
+          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config bubblewrap util-linux mysql-server mysql-client postgresql redis-server sqlite3
+          # 此步骤仅用于一次性GitHub runner；包安装器可能启动默认实例，验收只运行控制器自建实例。
+          sudo systemctl stop mysql postgresql redis-server
+          for task_service in mysql postgresql redis-server; do
+            if systemctl is-active --quiet "$task_service"; then
+              echo "默认数据库服务未停止：$task_service" >&2
+              exit 1
+            fi
+          done
+          task_mysql="$GITHUB_WORKSPACE/.cache/native-mysql"
+          mkdir -p "$task_mysql/bin"
+          for task_program in mysqld mysql mysqldump; do ln -s "$(command -v "$task_program")" "$task_mysql/bin/$task_program"; done
+          ln -s /usr/share "$task_mysql/share"
+          task_pgsql="$(dirname "$(pg_config --bindir)")"
+          mkdir -p "$GITHUB_WORKSPACE/.cache/native-redis"
+          task_redis="$GITHUB_WORKSPACE/.cache/native-redis/redis-server"
+          # Debian的多调用文件以argv[0]选择行为，保留服务器名称，避免realpath解析成redis-check-rdb。
+          cp -L "$(command -v redis-server)" "$task_redis"
+          printf 'TYPE_MYSQL_TOOLS=%s\nTYPE_PGSQL_TOOLS=%s\nTYPE_REDIS_SERVER=%s\nTYPE_SQLITE_BACKUP_TOOL=%s\nTYPE_BWRAP_BINARY=%s\n' \
+            "$task_mysql" "$task_pgsql" "$task_redis" "$(command -v sqlite3)" "$(command -v bwrap)" >> "$GITHUB_ENV"
+      - name: 安装锁定源码并准备全量AOT运行时
+        run: |
+          composer validate --strict
+          composer install --no-scripts --no-plugins --prefer-dist --no-progress
+          task_php_home="$(php tools/configure-toolchain.php "$GITHUB_WORKSPACE/.cache/php-sdk" "$(command -v php-config)")"
+          printf 'PHP_HOME=%s\nPHPX_HOME=%s\nLD_LIBRARY_PATH=%s\n' "$task_php_home" "$GITHUB_WORKSPACE/vendor/swoole/phpx" "$GITHUB_WORKSPACE/vendor/swoole/phpx/lib:$task_php_home/lib" >> "$GITHUB_ENV"
+          task_control="$GITHUB_WORKSPACE/.cache/linux-control"
+          mkdir -p "$task_control/php.d"
+          # 独立消费者会关闭额外INI扫描；先固定完整CLI配置，不能丢失实际PDO、Redis及Swoole模块。
+          # shellcheck disable=SC2016
+          php -r '$ini=php_ini_loaded_file();$text=$ini===false?"":file_get_contents($ini);foreach(explode(",",(string)php_ini_scanned_files()) as $file){if(trim($file)!==""){$text.="\n".file_get_contents(trim($file));}}if(file_put_contents($argv[1],$text)!==strlen($text)||!chmod($argv[1],0600)){exit(1);}' "$task_control/php.ini"
+          printf 'PHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
+      - name: 编译并探测原生运行库
+        run: |
+          bash tools/prepare-toolchain.sh
+          bash .github/scripts/prepare-linux-runtime.sh
+      - name: 执行本机原生业务与故障矩阵
+        shell: bash
+        run: |
+          mkdir -p build
+          set -o pipefail
+          bash .github/scripts/run-linux-regression.sh "${{ matrix.suite }}" | tee "build/linux-${{ matrix.suite }}-ci.log"
+      - name: 保存原始构建与行为证据
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: linux-arm64-${{ matrix.suite }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/linux-*-ci.log
+            build/**/*.build.json
+            build/**/verification.json
+            build/**/profile.json
+            build/**/compile.log
+            build/packaged-rollout-build-*/preparation.json
+            build/packaged-rollout-build-*/*.log
+            build/packaged-rollout-*/scenario.log
+            build/linux-recovery-ci-*/preparation.json
+            build/native-linux-*/*.log
+            build/native-database-*/*/*.log
+            build/native-*-tls-*/*.log
+            build/platform-benchmarks-*/preparation.json
+            build/platform-benchmarks-*/*/*.log
+            build/benchmark-pairs-*/*.log
+            build/benchmark-pairs-*/comparison-*.json
+            build/linux-benchmark-ci-*/*.log

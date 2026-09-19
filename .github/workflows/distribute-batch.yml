@@ -1,0 +1,235 @@
+name: 公开插件批次分发
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: 已完整通过 main 原生验证的固定 SHA
+        required: true
+        type: string
+      mode:
+        description: 分支同步或不可变标签
+        type: choice
+        options: [branch, tag]
+        default: branch
+      version:
+        description: 标签模式填写 v1.0.0 或 v1.0.0-rc.1，分支模式留空
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: type-app-distribution-batch
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  SOURCE_SHA: ${{ inputs.source_sha }}
+  BATCH_MODE: ${{ inputs.mode }}
+  BATCH_VERSION: ${{ inputs.version }}
+
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: 核对固定输入
+        run: '[[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]'
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.5.10'
+          coverage: none
+          tools: none
+        env:
+          phpts: ts
+      - name: 生成已验证批次与允许矩阵
+        id: plan
+        run: |
+          task_matrix="$(php tools/distribute-batch.php plan "$SOURCE_SHA" "$BATCH_MODE" "$BATCH_VERSION")"
+          echo "matrix=$task_matrix" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: type-batch-plan
+          path: build/distribution/batch-plan.json
+          if-no-files-found: error
+          retention-days: 90
+
+  consume:
+    needs: collect
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      mysql:
+        image: mysql:8.4.11
+        env:
+          MYSQL_ROOT_PASSWORD: type-app-test-only
+          MYSQL_DATABASE: type_app_test
+        ports: ['3306/tcp']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -ptype-app-test-only"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_USER: type_app
+          POSTGRES_PASSWORD: type-app-test-only
+          POSTGRES_DB: type_app_test
+        ports: ['5432/tcp']
+        options: >-
+          --health-cmd="pg_isready -U type_app -d type_app_test"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.5.10'
+          coverage: none
+          extensions: dom, filter, mbstring, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, swoole-6.2.2, redis-6.3.0
+          tools: composer:2.10.3
+          ini-values: memory_limit=2G, swoole.enable_library=Off
+        env:
+          phpts: ts
+          fail-fast: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: type-batch-result
+          path: build/distribution
+      - name: 准备锁定原生构建环境
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config
+          composer install --no-scripts --no-plugins --prefer-dist --no-progress --no-interaction
+          task_php_home="$(php tools/configure-toolchain.php "$GITHUB_WORKSPACE/.cache/php-sdk" "$(command -v php-config)")"
+          printf 'PHP_HOME=%s\nPHPX_HOME=%s\nLD_LIBRARY_PATH=%s\n' "$task_php_home" "$GITHUB_WORKSPACE/vendor/swoole/phpx" "$GITHUB_WORKSPACE/vendor/swoole/phpx/lib:$task_php_home/lib" >> "$GITHUB_ENV"
+      - run: bash tools/prepare-toolchain.sh
+      - name: 准备与验证实际 embed 运行配置
+        run: bash .github/scripts/prepare-linux-runtime.sh
+      - name: 从全部公开子仓安装并编译公共组合
+        run: php tests/batch-consumer.php build/distribution/batch-result.json --native
+      - name: 从同批公开插件完成三库原生业务集成
+        env:
+          TYPE_TEST_EXECUTION: host
+          TYPE_INTEGRATION_REMOTE: '1'
+          TYPE_INTEGRATION_ISOLATED: '1'
+          TYPE_MYSQL_HOST: 127.0.0.1
+          TYPE_MYSQL_PORT: ${{ job.services.mysql.ports['3306'] }}
+          TYPE_MYSQL_PASSWORD: type-app-test-only
+          TYPE_PGSQL_HOST: 127.0.0.1
+          TYPE_PGSQL_PORT: ${{ job.services.postgres.ports['5432'] }}
+          TYPE_PGSQL_PASSWORD: type-app-test-only
+        run: |
+          docker pull redis:8.10.1
+          composer test:integration-native
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: type-batch-consumption
+          path: |
+            build/batch-consumer-*/verification.json
+            build/batch-consumer-*/composer.lock
+            build/batch-consumer-*/build/type-app.build.json
+            build/integration-consumer-*/verification.json
+            build/integration-consumer-*/composer.lock
+            build/integration-consumer-*/build/integration/type-app.build.json
+          if-no-files-found: warn
+          retention-days: 90
+
+  publish:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.5.10'
+          coverage: none
+          tools: none
+        env:
+          phpts: ts
+      - name: 只载入当前子仓的专用写入密钥
+        env:
+          DISTRIBUTION_KEY: ${{ secrets[matrix.secret] }}
+        shell: bash
+        run: |
+          test -n "$DISTRIBUTION_KEY"
+          task_known_hosts="$RUNNER_TEMP/type-batch-known-hosts"
+          gh api meta --jq '.ssh_keys[] | "github.com " + .' > "$task_known_hosts"
+          chmod 600 "$task_known_hosts"
+          eval "$(ssh-agent -s)"
+          printf '%s\n' "$DISTRIBUTION_KEY" | ssh-add -
+          printf 'SSH_AUTH_SOCK=%s\nSSH_AGENT_PID=%s\nGIT_SSH_COMMAND=%s\n' "$SSH_AUTH_SOCK" "$SSH_AGENT_PID" "ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$task_known_hosts" >> "$GITHUB_ENV"
+      - name: 非强制分发并回读当前插件
+        env:
+          BATCH_PACKAGE: ${{ matrix.name }}
+        run: php tools/distribute-batch.php publish "$SOURCE_SHA" "$BATCH_MODE" "$BATCH_VERSION" "$BATCH_PACKAGE"
+      - name: 保存成功或失败的单项结果
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: type-batch-item-${{ matrix.name }}
+          path: build/distribution/items/${{ matrix.name }}.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: 清理当前任务专用代理
+        if: always()
+        run: |
+          if test -n "${SSH_AGENT_PID:-}"; then
+            ssh-agent -k
+          fi
+
+  collect:
+    needs: [plan, publish]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.5.10'
+          coverage: none
+          tools: none
+        env:
+          phpts: ts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: type-batch-item-*
+          path: build/distribution/items
+          merge-multiple: true
+      - name: 汇总非原子多仓状态
+        run: php tools/distribute-batch.php collect "$SOURCE_SHA" "$BATCH_MODE" "$BATCH_VERSION"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: type-batch-result
+          path: build/distribution/batch-result.json
+          if-no-files-found: error
+          retention-days: 90

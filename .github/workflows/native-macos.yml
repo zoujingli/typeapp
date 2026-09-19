@@ -1,0 +1,104 @@
+name: macOS ARM64 原生验收
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      base_source:
+        description: 用于性能比较的完整基准提交，留空时不运行性能组
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    if: github.repository == 'zoujingli/typeapp'
+    name: macOS ARM64 · ${{ matrix.suite }}
+    runs-on: macos-15
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        suite: ${{ fromJSON(inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable"]') }}
+    env:
+      TYPE_BASE_SOURCE: ${{ inputs.base_source }}
+      COMPOSER_NO_INTERACTION: '1'
+      COMPOSER_PROCESS_TIMEOUT: '1800'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: 安装锁定ZTS PHP与Composer
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
+        with:
+          php-version: '8.5.10'
+          coverage: none
+          extensions: dom, filter, ctype, tokenizer, mbstring, iconv, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, sockets, openssl, curl, zip, redis-6.3.0, ${{ contains(fromJSON('["application","http","orm","reliable","benchmark"]'), matrix.suite) && 'swoole-6.2.2' || ':swoole' }}
+          ini-values: memory_limit=2G, display_errors=1, swoole.enable_library=Off, date.timezone=UTC
+          tools: composer:2.10.3
+        env:
+          phpts: ts
+          fail-fast: true
+      - name: 安装原生构建和专用测试数据库工具
+        run: brew install cmake gmp mpfr pkg-config mysql@8.4 postgresql@17 redis
+      - name: 安装锁定组件与开发依赖
+        run: |
+          composer validate --strict
+          composer install --no-scripts --no-plugins --prefer-dist --no-progress
+      - name: 固定SDK并构建独立PHPX
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          php tools/verify-toolchain.php macos
+          task_php_home="$(php tools/configure-toolchain.php "$GITHUB_WORKSPACE/build/ci-php-sdk" "$(command -v php-config)")"
+          task_phpx_home="$GITHUB_WORKSPACE/build/ci-phpx"
+          test ! -e "$task_phpx_home"
+          mkdir -p "$task_phpx_home"
+          rsync -a --exclude='.git/' --exclude='build/' --exclude='lib/' --exclude='*.o' --exclude='*.obj' --exclude='*.a' --exclude='*.so' --exclude='*.dylib' vendor/swoole/phpx/ "$task_phpx_home/"
+          export PHP_HOME="$task_php_home" PHPX_HOME="$task_phpx_home"
+          bash tools/prepare-toolchain.sh
+          php tests/toolchain-configuration.php "$PHP_HOME/bin/php-config"
+          task_runtime_ini="$(bash tools/prepare-embed-runtime.sh)"
+          # 固定完整控制器INI，独立消费者关闭额外扫描时仍保留所需PDO、Redis和可选Swoole。
+          task_control="$GITHUB_WORKSPACE/.cache/macos-control"
+          mkdir -p "$task_control/php.d"
+          # shellcheck disable=SC2016
+          php -r '$ini=php_ini_loaded_file();$text=$ini===false?"":file_get_contents($ini);foreach(explode(",",(string)php_ini_scanned_files()) as $file){if(trim($file)!==""){$text.="\n".file_get_contents(trim($file));}}if(file_put_contents($argv[1],$text)!==strlen($text)||!chmod($argv[1],0600)){exit(1);}' "$task_control/php.ini"
+          printf 'PHP_HOME=%s\nPHPX_HOME=%s\nTYPE_NATIVE_PHP_INI=%s\nPHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' \
+            "$PHP_HOME" "$PHPX_HOME" "$task_runtime_ini" "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
+      - name: 运行真实原生验收
+        env:
+          TYPE_MACOS_SUITE: ${{ matrix.suite }}
+        run: bash .github/scripts/run-macos-native.sh "$TYPE_MACOS_SUITE"
+      - name: 保存构建与验证结果
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-arm64-${{ matrix.suite }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            build/**/verification.json
+            build/**/*.build.json
+            build/**/profile.json
+            build/**/compile.log
+            build/packaged-rollout-build-*/preparation.json
+            build/packaged-rollout-build-*/old.log
+            build/packaged-rollout-build-*/new.log
+            build/packaged-rollout-*/scenario.log
+            build/macos-recovery-ci-*/preparation.json
+            build/platform-benchmarks-*/preparation.json
+            build/platform-benchmarks-*/*/*.log
+            build/benchmark-pairs-*/*.log
+            build/benchmark-pairs-*/comparison-*.json

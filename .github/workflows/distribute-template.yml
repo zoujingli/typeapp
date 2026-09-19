@@ -1,0 +1,136 @@
+name: 公开应用模板分发与验收
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: 已通过完整原生验证的源码 SHA
+        required: true
+        type: string
+      batch_run:
+        description: 同一源码成功完成的公开插件批次运行 ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: type-app-distribution-batch
+  cancel-in-progress: false
+
+jobs:
+  template:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    services:
+      mysql:
+        image: mysql:8.4.11
+        env:
+          MYSQL_ROOT_PASSWORD: type-app-test-only
+          MYSQL_DATABASE: type_app_test
+        ports: ['3306/tcp']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -ptype-app-test-only"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_USER: type_app
+          POSTGRES_PASSWORD: type-app-test-only
+          POSTGRES_DB: type_app_test
+        ports: ['5432/tcp']
+        options: >-
+          --health-cmd="pg_isready -U type_app -d type_app_test"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      BATCH_RUN: ${{ inputs.batch_run }}
+    steps:
+      - name: 验证固定输入与成功的分发工作流
+        shell: bash
+        run: |
+          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$BATCH_RUN" =~ ^[0-9]+$ ]]
+          task_verified_batch="$(gh api "repos/zoujingli/typeapp/actions/runs/$BATCH_RUN" \
+            --jq '. | select(.path == ".github/workflows/distribute-batch.yml" and .head_branch == "main" and .conclusion == "success" and .event == "workflow_dispatch") | .id')"
+          [[ "$task_verified_batch" == "$BATCH_RUN" ]]
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.5.10'
+          coverage: none
+          extensions: dom, filter, mbstring, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, swoole-6.2.2, redis-6.3.0
+          tools: composer:2.10.3
+          ini-values: memory_limit=2G, swoole.enable_library=Off
+        env:
+          phpts: ts
+          fail-fast: true
+      - name: 获取已完成的固定插件批次
+        run: gh run download "$BATCH_RUN" --repo zoujingli/typeapp --name type-batch-result --dir build/distribution
+      - name: 加载模板专用写入权限
+        env:
+          TYPE_PROJECT_DEPLOY_KEY: ${{ secrets.TYPE_PROJECT_DEPLOY_KEY }}
+        run: |
+          test -n "$TYPE_PROJECT_DEPLOY_KEY"
+          # CLI 保存 secret 会裁掉末尾空白；OpenSSH 私钥需要结尾换行，恢复传输边界而不输出内容。
+          printf -v TYPE_PROJECT_DEPLOY_KEY '%s\n' "$TYPE_PROJECT_DEPLOY_KEY"
+          export TYPE_PROJECT_DEPLOY_KEY
+          php tools/configure-distribution-writer.php
+      - name: 安装锁定的编译环境
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config
+          composer install --no-scripts --no-plugins --no-progress --no-interaction
+          task_php_home="$(php tools/configure-toolchain.php "$GITHUB_WORKSPACE/.cache/php-sdk" "$(command -v php-config)")"
+          printf 'PHP_HOME=%s\nPHPX_HOME=%s\nLD_LIBRARY_PATH=%s\n' "$task_php_home" "$GITHUB_WORKSPACE/vendor/swoole/phpx" "$GITHUB_WORKSPACE/vendor/swoole/phpx/lib:$task_php_home/lib" >> "$GITHUB_ENV"
+      - run: bash tools/prepare-toolchain.sh
+      - name: 准备与验证实际 embed 运行配置
+        run: bash .github/scripts/prepare-linux-runtime.sh
+      - name: 分发并重新获取固定模板内容
+        shell: bash
+        run: |
+          task_template="$(php tools/distribute-template.php "$SOURCE_SHA" build/distribution/batch-result.json)"
+          echo "TYPE_TEMPLATE_SOURCE=$task_template" >> "$GITHUB_ENV"
+      - name: 从真实模板与公开插件安装并编译用户应用
+        env:
+          TYPE_MYSQL_HOST: 127.0.0.1
+          TYPE_MYSQL_PORT: ${{ job.services.mysql.ports['3306'] }}
+          TYPE_MYSQL_PASSWORD: type-app-test-only
+          TYPE_PGSQL_HOST: 127.0.0.1
+          TYPE_PGSQL_PORT: ${{ job.services.postgres.ports['5432'] }}
+          TYPE_PGSQL_PASSWORD: type-app-test-only
+        run: |
+          bash tools/test-template-deployment.sh mysql --host --remote
+          bash tools/test-template-deployment.sh pgsql --host --remote
+          bash tools/test-template-deployment.sh sqlite --host --remote
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: type-project-distribution
+          path: |
+            build/distribution/template.json
+            build/template-*/verification.json
+            build/template-*/composer.lock
+            build/template-*/build/type-project.build.json
+            build/template-deployment-*/report.json
+            build/template-deployment-*/runtime.json
+            build/template-deployment-*/smoke.log
+            build/template-deployment-*/consumer.json
+            build/template-deployment-*/build.log
+          if-no-files-found: warn
+          retention-days: 90
+      - name: 清理当前任务凭据
+        if: always()
+        run: |
+          if test -n "${TYPE_DISTRIBUTION_WRITER_DIRECTORY:-}"; then
+            php tools/cleanup-distribution-writer.php
+          fi
