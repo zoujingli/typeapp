@@ -1,0 +1,9 @@
+(version 1)
+(allow default)
+(deny file-read-data
+    (subpath (param "APP"))
+    (subpath (param "PLUGIN"))
+    (subpath (param "VENDOR"))
+    (subpath (param "CONFIG"))
+    (subpath (param "COMPILER"))
+    (literal (param "COMPOSER")))

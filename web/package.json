@@ -1,0 +1,26 @@
+{
+  "name": "typeapp-iot-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.2",
+  "engines": { "node": ">=20.19.0", "pnpm": ">=10.0.0" },
+  "scripts": {
+    "dev": "pnpm -F @vben/web-antd dev",
+    "build": "pnpm -F @vben/web-antd build",
+    "typecheck": "pnpm -F @vben/web-antd typecheck",
+    "postinstall": "pnpm exec unbuild internal/tailwind-config --stub"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "@vitejs/plugin-vue": "catalog:",
+    "@vben/tailwind-config": "workspace:*",
+    "@vben/tsconfig": "workspace:*",
+    "sass": "catalog:",
+    "typescript": "catalog:",
+    "unbuild": "catalog:",
+    "vite": "catalog:",
+    "vue-tsc": "catalog:"
+  }
+}

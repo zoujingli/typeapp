@@ -1,0 +1,72 @@
+{
+  "name": "iot-baseline-v1",
+  "seed": "typeapp-iot-baseline-v1-20260914",
+  "tenants": 100,
+  "products_per_tenant": 10,
+  "devices_per_product": 10,
+  "telemetry_interval_ms": 10000,
+  "alarm_cycle_seconds": 600,
+  "alarm_device_modulus": 100,
+  "event_interval_seconds": 600,
+  "command_interval_seconds": 60,
+  "web_sessions": 100,
+  "web_interval_ms": 5000,
+  "cache_maximum_records": 10000,
+  "cache_maximum_bytes": 16777216,
+  "model": {
+    "properties": [
+      {"identifier":"ambient_temperature","name":"温度","type":"number","required":true,"unit":"°C","min":-40,"max":125},
+      {"identifier":"relative_humidity","name":"湿度","type":"number","required":true,"unit":"%RH","min":0,"max":100},
+      {"identifier":"inlet_pressure","name":"压力","type":"number","required":true,"unit":"kPa","min":0,"max":2000},
+      {"identifier":"supply_voltage","name":"电压","type":"number","required":true,"unit":"V","min":0,"max":400},
+      {"identifier":"supply_current","name":"电流","type":"number","required":true,"unit":"A","min":0,"max":100},
+      {"identifier":"active_power","name":"有功功率","type":"number","required":true,"unit":"kW","min":0,"max":100},
+      {"identifier":"reactive_power","name":"无功功率","type":"number","required":true,"unit":"kvar","min":-100,"max":100},
+      {"identifier":"power_factor","name":"功率因数","type":"number","required":true,"unit":"1","min":0,"max":1},
+      {"identifier":"cumulative_energy","name":"累计电量","type":"number","required":true,"unit":"kWh","min":0,"max":1000000000},
+      {"identifier":"rms_vibration_velocity","name":"振动","type":"number","required":true,"unit":"mm/s","min":0,"max":100},
+      {"identifier":"supply_frequency","name":"频率","type":"number","required":true,"unit":"Hz","min":0,"max":100},
+      {"identifier":"instantaneous_flow_rate","name":"流量","type":"number","required":true,"unit":"m³/h","min":0,"max":1000},
+      {"identifier":"cumulative_flow","name":"累计流量","type":"number","required":true,"unit":"m³","min":0,"max":1000000000},
+      {"identifier":"motor_rotation_speed","name":"转速","type":"integer","required":true,"unit":"rpm","min":0,"max":10000},
+      {"identifier":"liquid_level","name":"液位","type":"number","required":true,"unit":"m","min":0,"max":20},
+      {"identifier":"battery_charge_percent","name":"电池电量","type":"number","required":true,"unit":"%","min":0,"max":100},
+      {"identifier":"radio_signal_strength","name":"信号强度","type":"integer","required":true,"unit":"dBm","min":-150,"max":0},
+      {"identifier":"operating_time_seconds","name":"运行时长","type":"integer","required":true,"unit":"s","min":0,"max":9007199254740991},
+      {"identifier":"production_cycle_count","name":"计数器","type":"integer","required":true,"unit":"次","min":0,"max":9007199254740991},
+      {"identifier":"temperature_setpoint","name":"设定值","type":"number","required":true,"unit":"°C","min":-40,"max":125},
+      {"identifier":"relay","name":"继电器","type":"boolean","required":true},
+      {"identifier":"maintenance","name":"维护状态","type":"boolean","required":true},
+      {"identifier":"mode","name":"运行模式","type":"enum","required":true,"values":["automatic","manual","standby"]},
+      {"identifier":"fault","name":"故障状态","type":"enum","required":true,"values":["normal","sensor_warning","communication_warning"]},
+      {"identifier":"firmware","name":"固件版本","type":"string","required":true,"min_length":1,"max_length":64},
+      {"identifier":"location","name":"设备位置","type":"string","required":true,"min_length":1,"max_length":256}
+    ],
+    "events": [
+      {"identifier":"inspection","name":"巡检记录","parameters":[
+        {"identifier":"code","name":"巡检代码","type":"integer","required":true,"min":0,"max":100},
+        {"identifier":"detail","name":"巡检说明","type":"string","required":true,"max_length":256}
+      ]}
+    ],
+    "commands": [
+      {"identifier":"set_relay","name":"设置继电器","parameters":[
+        {"identifier":"on","name":"启用继电器","type":"boolean","required":true}
+      ]}
+    ]
+  },
+  "signals": {
+    "ambient_temperature": [20, 10], "relative_humidity": [40, 20], "inlet_pressure": [100, 20],
+    "supply_voltage": [220, 5], "supply_current": [5, 2], "active_power": [10, 4],
+    "reactive_power": [2, 1], "power_factor": [0.8, 0.19],
+    "cumulative_energy": [100000, 50000], "rms_vibration_velocity": [1, 1], "supply_frequency": [49, 2],
+    "instantaneous_flow_rate": [10, 5], "cumulative_flow": [200000, 100000], "motor_rotation_speed": [1450, 100],
+    "liquid_level": [3, 2], "battery_charge_percent": [70, 30], "radio_signal_strength": [-80, 20],
+    "operating_time_seconds": [86400, 86400], "production_cycle_count": [1000, 100000], "temperature_setpoint": [23, 2]
+  },
+  "rules": [
+    {"field":"ambient_temperature","lower":0,"upper":40,"hysteresis":2,"excursion":50},
+    {"field":"inlet_pressure","lower":80,"upper":140,"hysteresis":2,"excursion":150},
+    {"field":"supply_voltage","lower":200,"upper":240,"hysteresis":2,"excursion":250},
+    {"field":"rms_vibration_velocity","lower":0,"upper":4,"hysteresis":0.2,"excursion":6}
+  ]
+}

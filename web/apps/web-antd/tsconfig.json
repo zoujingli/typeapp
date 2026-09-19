@@ -1,0 +1,9 @@
+{
+  "extends": "../../internal/tsconfig/web-app.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "#/*": ["./src/*"] },
+    "moduleResolution": "bundler"
+  },
+  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.mts"]
+}

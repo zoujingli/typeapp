@@ -1,0 +1,45 @@
+.iot-page { padding: 24px; max-width: 1600px; margin: 0 auto; }
+.page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.page-heading h1, .login-card h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; color: hsl(var(--foreground)); }
+.page-heading p { margin: 0; }
+.muted { color: hsl(var(--muted-foreground)); line-height: 1.7; }
+.crud-search-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-items: start; gap: 16px; margin-bottom: 24px; }
+.crud-search-grid__actions { display: flex; gap: 8px; }
+.crud-search-grid__actions .ant-btn { min-width: 72px; }
+.table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; }
+.toolbar-actions, .user-actions { display: flex; align-items: center; gap: 8px; }
+.page-alert { margin-bottom: 20px; }
+.device-data-card { margin-top: 24px; }
+.current-value { overflow-wrap: anywhere; white-space: pre-wrap; }
+.history-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; }
+.history-pagination .toolbar-actions { flex-wrap: wrap; }
+.history-chart-viewport { width: 100%; overflow-x: auto; }
+.history-chart { width: 100%; min-width: 760px; height: auto; color: hsl(var(--muted-foreground)); }
+.history-chart text { fill: currentColor; font-size: 14px; }
+.history-chart-axis { stroke: hsl(var(--border)); }
+.history-chart-line { fill: none; stroke: hsl(var(--primary)); stroke-width: 2; }
+.history-chart-dot { fill: hsl(var(--primary)); }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
+.span-full { grid-column: 1 / -1; }
+.ant-descriptions-item-content, .tenant-title { overflow-wrap: anywhere; }
+.current-tenant { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.user-name { max-width: 130px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.login-page { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; background: radial-gradient(ellipse at 10% 10%, hsl(var(--primary) / 14%), transparent 50%), hsl(var(--background-deep)); }
+.login-card { width: 440px; max-width: 100%; box-shadow: 0 16px 64px hsl(var(--foreground) / 6%); }
+.eyebrow { color: hsl(var(--primary)); font-size: 12px; font-weight: 700; letter-spacing: .16em; margin-bottom: 20px; }
+.login-subtitle { margin-bottom: 28px; }
+.login-note { margin-top: 24px; font-size: 12px; }
+.login-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px; margin-top: 16px; font-size: 13px; }
+.login-links a { color: hsl(var(--primary)); }
+.official-link { display: block; margin-top: 16px; text-align: center; color: hsl(var(--muted-foreground)); font-size: 12px; }
+.ant-btn:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .iot-page { padding: 16px 12px; }
+  .page-heading { align-items: flex-start; }
+  .page-heading .ant-btn { flex-shrink: 0; }
+  .form-grid, .crud-search-grid { grid-template-columns: minmax(0, 1fr); }
+  .current-tenant { max-width: 100px; }
+  .user-actions .ant-btn { padding-inline: 8px; }
+  .user-name { display: none; }
+  .iot-page .ant-card-body { padding: 16px 12px; }
+}
