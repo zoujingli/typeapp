@@ -1,0 +1,144 @@
+# type-log · 日志
+
+[返回组件总览](../components.md)
+
+提供 PSR-3 八级日志、命名通道、JSON Lines、执行关联和脱敏，以有界输出控制内存与停止时间。适合命令、HTTP、队列与调度，由应用显式装配日志生命周期。
+
+## 安装与依赖
+
+需要 PHP `>=8.4 <8.6`、JSON、`type-runtime` 与 `psr/log`，不强制 HTTP、数据库或 Redis。
+
+源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+
+```bash
+composer config minimum-stability dev
+composer config prefer-stable true
+composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
+composer config repositories.type-log vcs https://github.com/zoujingli/type-log.git
+composer require zoujingli/type-log:dev-main
+```
+
+依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+
+## 最小使用示例
+
+下面绑定命令 Scope 并向 stdout 输出两条日志。保存为独立示例的 `app/main.php`，按[运行声明式示例](../components.md#运行声明式示例)用 `main()` 启动。
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Type\Log\Channel;
+use Type\Log\Formatter;
+use Type\Log\LogManager;
+use Type\Log\Output;
+use Type\Runtime\ExecutionScope;
+
+/**
+ * 在一个命令作用域中绑定日志并有界清理，不记录实际数据库凭据。
+ */
+function main(): void
+{
+    $password = getenv('DB_PASSWORD');
+    $secrets = $password === false || $password === '' ? [] : [$password];
+    $logs = new LogManager('readme-example', [
+        'app' => new Channel(Output::stdout(), 'info'),
+        'security' => new Channel(Output::stdout(), 'warning'),
+    ], 0.25, new Formatter(['payment_card'], $secrets));
+    $scope = new ExecutionScope(context: ['command_id' => 'command-123']);
+    try {
+        $scope->open($logs);
+        $logger = $logs->logger($scope, ['trace_id' => 'trace-123']);
+        $logger->info('任务开始：{name}', ['name' => '数据同步']);
+        $logger->channel('security')->warning('访问被拒绝');
+    } finally {
+        $scope->close();
+    }
+}
+```
+
+执行 `php dev.php` 输出两行 JSON，分别来自 app/info 和 security/warning，包含构建 ID 与 command_id/trace_id。示例读取的数据库密码仅用于登记脱敏值，不连接数据库。
+
+## 通道与级别
+
+`LogManager($buildId, $channels, $stopSeconds = 0.25, $formatter = null)` 接收明确构建身份和通道。`Channel($output, $minimumLevel = 'debug')` 决定最低记录级别。
+
+`$logs->logger($scope, $context, $channel = 'app')` 返回 PSR-3 实现；`$logger->channel('security')` 选择同 Scope 的通道。支持 debug、info、notice、warning、error、critical、alert、emergency，无效级别抛 PSR InvalidArgumentException。
+
+构建 ID 由应用传入 Git SHA 或制品摘要，不隐式读取 Git。不要用日志内容判断数据库是否提交成功。
+
+## 生命周期与关联
+
+`$scope->open($logs)` 先登记管理器，再创建 logger。逆序关闭时先使 Logger 失效、清空关联，再排空并关闭输出。进程共享 LogManager 时，请求只关闭自己的 Scope，进程结束再 stop 管理器。
+
+Scope context 保存 request_id/message_id/occurrence_id 等权威关联，logger context 提供补充字段。绑定时复制并脱敏，同名关联以 Scope 为准；普通日志参数不能覆盖构建和执行身份。
+
+Logger 不跨进程、Fiber 或协程复用；子任务使用自己的 Scope 创建绑定。已排队记录保留产生时的上下文，不会在晚些排空时串到下一个请求。
+
+## 消息与脱敏
+
+以下片段放在最小示例 logger 创建后：
+
+```php
+$logger->info('同步完成：{count}', ['count' => 12]);
+$logger->warning('凭据校验失败', [
+    'authorization' => 'Bearer example-placeholder',
+    'user_id' => 7,
+]);
+$statistics = $logs->stats();
+```
+
+authorization 字段被替换为 `[REDACTED]`。默认递归处理 password、token、secret、cookie、apikey、privatekey 等名称，忽略大小写和标点；Formatter 可增加敏感字段和已知敏感字符串。
+
+| Formatter 预算 | 默认值 |
+| --- | --- |
+| `maxDepth` | 6 |
+| `maxItems` | 128 个上下文节点 |
+| `maxStringBytes` | 2048 字节 |
+| Throwable 堆栈 | 最多 12 层，无参数，不记录异常链 |
+
+未知上下文对象只记录类型，不调用其 __toString/jsonSerialize；消息本身的 Stringable 仍是应用代码，应避免阻塞。脱敏不是识别任意自然语言秘密的保证，业务应主动使用明确敏感字段。
+
+## 输出选择与容量
+
+| Output | 使用方式与边界 |
+| --- | --- |
+| `stdout()` | 推荐交给独立日志收集进程 |
+| `file($path)` | 本地绝对路径，已建父目录；追加写，不自动轮转 |
+| `stream($stream, ...)` | 专用可写、支持非阻塞的原生流；默认不接管关闭责任 |
+
+文件输出拒绝远程包装器、符号链接和非普通文件。已有文件权限保持，新建权限服从 umask。轮转后重建 Output，不在进程中假定文件句柄自动指向新文件。
+
+默认每个 Output 最多 1024 条、总 1 MiB、单条 4096 字节。容量满丢弃新记录；格式化后单条过大整体丢弃，不输出无效 JSON。多个通道共享 Output 时容量合并。
+
+每次日志调用只做一次不等待写入，积压可由 `$logs->drain($seconds)` 排空。stop 使用一个总预算，默认 0.25 秒，超时丢弃剩余记录。输出失败退役该 Output，不无限重试，不递归写入另一个日志通道。
+
+## 观测与故障
+
+`stats()` 不发送告警，应用采集以下计数：
+
+| 指标 | 含义 |
+| --- | --- |
+| `filtered` | 被通道最低级别过滤 |
+| `accepted / written` | 进入缓冲 / 完整写出 |
+| `dropped_full / dropped_oversize` | 满载 / 单条超限 |
+| `write_failures / dropped_failure` | 输出退役 / 失败丢弃 |
+| `pending_records / pending_bytes` | 当前积压 |
+| `partial_records / drain_timeouts` | 部分记录 / 排空超时 |
+| `failed / stopped` | 输出当前状态 |
+
+共享 Output 的输出计数会在多个通道中重复显示，汇总时去重；filtered 属于单通道。普通日志不保证 fsync、跨进程原子写或可靠消息投递。
+
+## 常见问题与编译
+
+- info 没出现：检查通道最低级别、容量与 dropped 计数。
+- stop 后日志报错：Logger 所属 Scope 已关闭，不能在下一请求重用。
+- 文件停止超时：普通文件系统内核 I/O 无法被 PHP 非阻塞选项强制中断；需要故障隔离时使用 stdout 收集进程。
+- 上下文串号：确认每个执行建立自己的绑定，没有进程全局“当前请求”。
+
+PSR 源码、格式化与业务日志代码一起 AOT；日志文件和真实秘密不进入构建。本仓库验证入口为 `composer test:log`；原生执行 `composer build:log` 后 `composer test:log-native`。
+
+继续阅读：[运行时](type-runtime.md)、[核心](type-core.md)、[队列](type-queue.md)。
+
+本文以本仓库当前公开接口为依据；安装版本请同时核对包内 README。[对应源码与包说明](https://github.com/zoujingli/type-log)。

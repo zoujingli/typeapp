@@ -1,0 +1,37 @@
+{
+  "name": "zoujingli/type-log",
+  "description": "TypeApp PSR-3 日志组件：结构化日志、多通道、作用域关联与有界输出。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "ext-json": "*",
+    "psr/log": "~3.0.2",
+    "zoujingli/type-runtime": "~1.0.0@dev"
+  },
+  "autoload": {
+    "psr-4": {
+      "Type\\Log\\": "src/"
+    }
+  },
+  "extra": {
+    "type": {
+      "protocol": 1,
+      "sources": [
+        "src"
+      ],
+      "imports": {
+        "psr/log": {
+          "protocol": 1,
+          "version": "3.0.2",
+          "sources": [
+            "src"
+          ]
+        }
+      }
+    },
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  }
+}
