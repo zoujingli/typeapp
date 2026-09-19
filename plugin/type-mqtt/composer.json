@@ -1,0 +1,19 @@
+{
+  "name": "zoujingli/type-mqtt",
+  "description": "TypeApp MQTT 3.1.1/5.0 客户端与服务端组件，提供连接、会话和消息路由能力。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "ext-openssl": "*",
+    "ext-pcre": "*",
+    "ext-json": "*",
+    "zoujingli/type-orm": "~1.0.0@dev",
+    "zoujingli/type-runtime": "~1.0.0@dev"
+  },
+  "autoload": {"psr-4": {"Type\\Mqtt\\": "src/"}},
+  "extra": {
+    "type": {"protocol": 1, "sources": ["src"]},
+    "branch-alias": {"dev-main": "1.0.x-dev"}
+  }
+}
