@@ -1,0 +1,9 @@
+{
+  "name": "zoujingli/type-testing",
+  "description": "TypeApp 开发测试工具：公共断言、受限进程及命令、HTTP 和原生产物集成测试。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {"php": ">=8.4 <8.6", "ext-json": "*", "zoujingli/type-runtime": "~1.0.0@dev"},
+  "autoload": {"psr-4": {"Type\\Testing\\": "src/"}},
+  "extra": {"branch-alias": {"dev-main": "1.0.x-dev"}, "type": {"protocol": 1, "sources": ["src"]}}
+}
