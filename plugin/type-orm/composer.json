@@ -1,0 +1,30 @@
+{
+  "name": "zoujingli/type-orm",
+  "description": "TypeApp ORM：数据库连接、参数化查询、模型与关系、事务、迁移及 Outbox。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "ext-pdo": "*",
+    "zoujingli/type-runtime": "~1.0.0@dev"
+  },
+  "autoload": {
+    "files": [
+      "src/functions.php"
+    ],
+    "psr-4": {
+      "Type\\Orm\\": "src/"
+    }
+  },
+  "extra": {
+    "type": {
+      "protocol": 1,
+      "sources": [
+        "src"
+      ]
+    },
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  }
+}
