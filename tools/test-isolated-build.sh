@@ -69,7 +69,7 @@ if [[ "$task_execution" == host ]]; then
   task_host_common+=(--ro-bind "$task_work/runtime/etc/snmp/snmp.conf" /etc/snmp/snmp.conf
     --ro-bind "$task_work/runtime/var/lib/snmp" /var/lib/snmp)
 fi
-"$task_php" -n "$task_root/tests/isolated-build.php" configuration "$task_root/docs/build-config/type-app.json" > "$task_work/configuration.json"
+"$task_php" -n "$task_root/tests/isolated-build.php" configuration "$task_root/docs/build-config/type-foundation.json" > "$task_work/configuration.json"
 task_common=(--rm --pull=never --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges
   --cpus=2 --tmpfs '/tmp:rw,nosuid,nodev,size=256m')
 task_environment=(env -i "PATH=$task_php_home/bin:/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
@@ -129,12 +129,12 @@ if [[ "$task_execution" == container ]]; then
     --mount "type=bind,source=$task_root,target=/workspace,readonly" \
     --mount "type=bind,source=$task_root/build,target=/workspace/build" \
     --mount "type=bind,source=$task_sdk,target=/opt/phpx,readonly" --workdir /workspace \
-    "$task_image" "${task_environment[@]}" php tests/build-scenario.php --stage docs/build-config/type-app.json "/workspace/$task_relative/inputs" \
+    "$task_image" "${task_environment[@]}" php tests/build-scenario.php --stage docs/build-config/type-foundation.json "/workspace/$task_relative/inputs" \
     | tee "$task_work/stage.json"
 else
   (cd "$task_root" && env -i "PATH=$task_php_home/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC \
     "PHP_HOME=$task_php_home" "PHPX_HOME=$task_sdk" "LD_LIBRARY_PATH=$task_sdk/lib:$task_php_home/lib" \
-    "$task_php_home/bin/php" tests/build-scenario.php --stage docs/build-config/type-app.json "$task_work/inputs") | tee "$task_work/stage.json"
+    "$task_php_home/bin/php" tests/build-scenario.php --stage docs/build-config/type-foundation.json "$task_work/inputs") | tee "$task_work/stage.json"
 fi
 "$task_php" -n "$task_root/tests/isolated-build.php" snapshot "$task_work/inputs" "$task_work/stage.json" > "$task_work/snapshot-before.json"
 mkdir "$task_work/output"
@@ -146,7 +146,7 @@ TYPE_ISOLATION_SECRET_CANARY=type-app-test-only run_isolated_compiler php /dev/s
   < "$task_root/tests/isolated-build.php" > "$task_work/boundary.json"
 
 # 这是完整 TypePHP→C++→ELF 构建，不传 --dry，也不绑定原仓、宿主 home 或缓存。
-run_isolated_compiler php vendor/bin/type docs/build-config/type-app.json 2>&1 | tee "$task_work/compile.log"
+run_isolated_compiler php vendor/bin/type docs/build-config/type-foundation.json 2>&1 | tee "$task_work/compile.log"
 
 # 复用已有九项公共行为用例；执行容器只挂最终 ELF 和固定 SDK，不再挂生产输入。
 tar -C "$task_root" -cf - tests/native.php tests/support.php plugin/type-build/src/BuildPlatform.php | run_isolated_native 2>&1 | tee "$task_work/native.log"

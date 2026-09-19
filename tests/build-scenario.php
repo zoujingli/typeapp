@@ -17,7 +17,7 @@ function buildScenario(string $root, string $configuration, ?string $stage = nul
     if ($withSwoole) {
         expect(in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true), 'Swoole原生场景只接受Unix目标');
         $settings['runtime'][PHP_OS_FAMILY]['extensions'] = array_values(array_unique([
-            ...($settings['runtime'][PHP_OS_FAMILY]['extensions'] ?? []), 'swoole',
+            ...($settings['runtime'][PHP_OS_FAMILY]['extensions'] ?? []), 'sockets', 'swoole',
         ]));
     }
     expect(($settings['project-root'] ?? null) === '../..', '场景必须声明主仓项目根');
@@ -43,7 +43,7 @@ function buildScenario(string $root, string $configuration, ?string $stage = nul
     $composer['autoload'] = ['classmap' => array_values(array_unique($sources))];
     // 命令消费者只安装实际需要的组件；完整集成场景继续安装主仓完整生产依赖。
     $requirements = match (basename($configuration)) {
-        'type-app.json', 'type-build-identity.json' => ['zoujingli/type-runtime' => '~1.0.0@dev'],
+        'type-foundation.json', 'type-build-identity.json' => ['zoujingli/type-runtime' => '~1.0.0@dev'],
         'type-commands.json' => ['zoujingli/type-core' => '~1.0.0@dev'],
         'type-mqtt.json' => ['zoujingli/type-mqtt' => '~1.0.0@dev'],
         'type-tasks.json' => ['zoujingli/type-orm-mysql' => '~1.0.0@dev', 'ext-swoole' => '^6.2'],

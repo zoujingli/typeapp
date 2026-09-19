@@ -144,7 +144,7 @@ function isolatedReport(string $directory, string $image): array
     $inputs = $directory . '/inputs';
     $snapshot = isolatedSnapshot($inputs, $directory . '/stage.json');
     isolatedAssert($snapshot === isolatedJson($directory . '/snapshot-before.json'), '编译后只读输入与编译前不一致');
-    $configuration = isolatedJson($inputs . '/docs/build-config/type-app.json');
+    $configuration = isolatedJson($inputs . '/docs/build-config/type-foundation.json');
     $relativeOutput = $configuration['output'];
     isolatedAssert(is_string($relativeOutput) && str_starts_with($relativeOutput, 'build/'), '验收输出必须位于独立 build 目录');
     $artifact = $directory . '/output/' . substr($relativeOutput, 6);
