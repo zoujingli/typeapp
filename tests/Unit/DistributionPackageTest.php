@@ -51,8 +51,7 @@ final class DistributionPackageTest extends TestCase
             $mapping['packages'] = ['type-runtime' => $mapping['packages']['type-runtime']];
             file_put_contents($directory . '/.github/distribution.json', json_encode($mapping, JSON_THROW_ON_ERROR));
             // 外部操作哨兵确保本地拒绝回归不会接触真实 GitHub。
-            file_put_contents($directory . '/bin/gh', "#!/bin/sh\nprintf '%s\\n' '分发外部操作哨兵' >&2\nexit 99\n");
-            self::assertTrue(chmod($directory . '/bin/gh', 0755));
+            \writeTestPhpCommand($directory . '/bin/gh', 'fwrite(STDERR, "分发外部操作哨兵\n"); exit(99);');
             $package = $directory . '/plugin/type-runtime';
             $license = (string) file_get_contents($root . '/LICENSE');
             file_put_contents($directory . '/LICENSE', $license);
@@ -103,15 +102,7 @@ final class DistributionPackageTest extends TestCase
             self::assertSame(['type-runtime'], array_keys($plan['items']));
             self::assertSame(trim(\successful(['git', 'rev-parse', $source . ':plugin/type-runtime'], $directory)), $plan['items']['type-runtime']['tree']);
         } finally {
-            $entries = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
-            foreach ($entries as $entry) {
-                if ($entry->isDir() && !$entry->isLink()) {
-                    rmdir($entry->getPathname());
-                } else {
-                    unlink($entry->getPathname());
-                }
-            }
-            rmdir($directory);
+            \removeTestDirectory($directory);
         }
     }
 }

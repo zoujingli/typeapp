@@ -87,7 +87,7 @@ PHP;
             $compiler = new ModelCompiler();
             $first = $compiler->compile([$file]);
             self::assertSame($first, $compiler->compile([$file]));
-            self::assertSame([$file], $first['originals']);
+            self::assertSame([str_replace('\\', '/', realpath($file))], $first['originals']);
             self::assertSame('ModelIdentity\\User', $first['models'][0]['class']);
             self::assertStringContainsString('class Companion', $first['code']);
             self::assertStringContainsString('presentName', $first['code']);

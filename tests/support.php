@@ -33,6 +33,36 @@ function expect(bool $condition, string $message): void
     }
 }
 
+/** 仅删除调用者本轮创建的目录；Windows Git 对象先解除只读属性，不跟随链接。 */
+function removeTestDirectory(string $directory): void
+{
+    expect(is_dir($directory) && !is_link($directory), '测试清理需要已拥有的真实目录');
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
+        $path = $entry->getPathname();
+        if ($entry->isDir() && !$entry->isLink()) {
+            expect(rmdir($path), '无法清理测试子目录');
+        } else {
+            if (PHP_OS_FAMILY === 'Windows' && !$entry->isLink()) {
+                expect(chmod($path, 0600), '无法解除测试文件只读属性');
+            }
+            expect(unlink($path), '无法清理测试文件');
+        }
+    }
+    expect(rmdir($directory), '无法清理测试目录');
+}
+
+/** 为隔离外部服务的测试哨兵生成当前平台可执行入口；PHP 正文不含开始标签。 */
+function writeTestPhpCommand(string $path, string $code): void
+{
+    if (PHP_OS_FAMILY === 'Windows') {
+        expect(file_put_contents($path . '.php', "<?php\n" . $code) !== false, '无法写入测试命令');
+        $launcher = '@"' . PHP_BINARY . '" "%~dp0' . basename($path) . '.php" %*' . "\r\n";
+        expect(file_put_contents($path . '.cmd', $launcher) !== false, '无法写入 Windows 测试入口');
+    } else {
+        expect(file_put_contents($path, "#!/usr/bin/env php\n<?php\n" . $code) !== false && chmod($path, 0755), '无法写入测试入口');
+    }
+}
+
 /** @param list<array<string, mixed>> $menus @return list<string> */
 function menuPaths(array $menus): array
 {

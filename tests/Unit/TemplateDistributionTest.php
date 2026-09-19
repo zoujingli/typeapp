@@ -190,10 +190,8 @@ final class TemplateDistributionTest extends TestCase
         file_put_contents($template . '/.gitignore', ".env\n");
         file_put_contents($template . '/scaffold/sqlite.php', '<?php');
         file_put_contents($template . '/app/common/database/DatabaseFactory.php', '<?php');
-        file_put_contents($directory . '/bin/composer', "#!/bin/sh\nprintf '%s\\n' '模板安装哨兵' >&2\nexit 99\n");
-        file_put_contents($directory . '/bin/gh', <<<'PHP'
-#!/usr/bin/env php
-<?php
+        \writeTestPhpCommand($directory . '/bin/composer', 'fwrite(STDERR, "模板安装哨兵\n"); exit(99);');
+        \writeTestPhpCommand($directory . '/bin/gh', <<<'PHP'
 $path = $argv[2] ?? '';
 if (str_starts_with($path, 'repos/zoujingli/typeapp/actions/')) {
     echo json_encode(['workflow_runs' => [['head_sha' => getenv('TYPE_TEST_SOURCE_SHA'), 'conclusion' => 'success',
@@ -205,8 +203,6 @@ if (str_starts_with($path, 'repos/zoujingli/typeapp/actions/')) {
     exit(99);
 }
 PHP);
-        self::assertTrue(chmod($directory . '/bin/composer', 0755));
-        self::assertTrue(chmod($directory . '/bin/gh', 0755));
         foreach ([['git', 'init', '-b', 'main'], ['git', 'config', 'user.name', '模板验收'],
             ['git', 'config', 'user.email', 'test@type-app.invalid'], ['git', 'add', '.'],
             ['git', '-c', 'commit.gpgsign=false', 'commit', '-m', 'test: 固定模板分发']] as $command) {
@@ -256,13 +252,6 @@ PHP);
     /** 仅回收本轮拥有的临时目录，不跟随链接。 */
     private function remove(string $directory): void
     {
-        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST) as $file) {
-            if ($file->isDir() && !$file->isLink()) {
-                rmdir($file->getPathname());
-            } else {
-                unlink($file->getPathname());
-            }
-        }
-        rmdir($directory);
+        \removeTestDirectory($directory);
     }
 }

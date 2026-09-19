@@ -91,15 +91,7 @@ final class DistributionCandidateTest extends TestCase
                 self::assertSame([], $report['components']);
             }
         } finally {
-            $entries = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
-            foreach ($entries as $entry) {
-                if ($entry->isDir() && !$entry->isLink()) {
-                    rmdir($entry->getPathname());
-                } else {
-                    unlink($entry->getPathname());
-                }
-            }
-            rmdir($directory);
+            \removeTestDirectory($directory);
         }
     }
 }

@@ -48,8 +48,7 @@ final class DistributionReportTest extends TestCase
             $mapping['packages'] = ['type-runtime' => $mapping['packages']['type-runtime']];
             file_put_contents($directory . '/.github/distribution.json', json_encode($mapping, JSON_THROW_ON_ERROR));
             foreach (['gh', 'composer'] as $tool) {
-                file_put_contents($directory . '/bin/' . $tool, "#!/bin/sh\nprintf '%s\\n' '下游外部操作哨兵' >&2\nexit 99\n");
-                self::assertTrue(chmod($directory . '/bin/' . $tool, 0755));
+                \writeTestPhpCommand($directory . '/bin/' . $tool, 'fwrite(STDERR, "下游外部操作哨兵\n"); exit(99);');
             }
             file_put_contents($directory . '/.gitignore', "/build/\n");
             $toolchain = "{\"fixture\":\"fixed-toolchain\"}\n";
@@ -147,15 +146,7 @@ final class DistributionReportTest extends TestCase
                 self::assertSame([], glob($checkout . '/build/batch-consumer-*'));
             }
         } finally {
-            $entries = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
-            foreach ($entries as $file) {
-                if ($file->isDir() && !$file->isLink()) {
-                    rmdir($file->getPathname());
-                } else {
-                    unlink($file->getPathname());
-                }
-            }
-            rmdir($directory);
+            \removeTestDirectory($directory);
         }
     }
 }

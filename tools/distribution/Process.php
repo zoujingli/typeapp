@@ -14,7 +14,7 @@ final class Process
             throw new \RuntimeException('无法创建分发输出缓冲');
         }
         try {
-            $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => $output, 2 => $errors], $pipes, $directory);
+            $process = proc_open($command, [0 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r'], 1 => $output, 2 => $errors], $pipes, $directory);
             if (!is_resource($process)) {
                 throw new \RuntimeException('无法启动分发工具');
             }
