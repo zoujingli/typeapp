@@ -4,7 +4,7 @@
 
 开发和功能提交直接在`main`进行。原有Linux x64、Windows和macOS原生工作流的push触发范围均为`main`，不再使用临时验证分支；新增Linux ARM64入口只接受`workflow_dispatch`。远端推送和手动调度沿用会话授权。
 
-macOS与Linux ARM64均保存CLI主INI和扫描INI的完整内容，并使用独立空扫描目录启动控制器，避免独立消费者关闭扫描后丢失PDO、Redis或Swoole。embed信号探测另生成原生运行INI；三库与Linux专项控制器逐个读取实际构建报告中的运行INI，并核对产物平台、架构及身份。macOS按分组安装Swoole6.2.2，contracts/deployment/rollout/recovery保留无Swoole运行边界；Linux ARM64分组显式安装该扩展。安装成功仍须经过真实embed探针，不能靠CLI模块列表证明原生兼容。
+macOS与Linux ARM64均保存CLI主INI和扫描INI的完整内容，并使用独立空扫描目录启动控制器，避免独立消费者关闭扫描后丢失PDO、Redis或Swoole。embed信号探测另生成原生运行INI；三库与Linux专项控制器逐个读取实际构建报告中的运行INI，并核对产物平台、架构及身份。两套工作流均安装Swoole6.2.2并启用官方内置库；实际原生产物仍按场景声明和探测扩展。安装成功仍须经过真实embed探针，不能靠CLI模块列表证明原生兼容。
 
 HTTP 组复用协议、消息、显式及 Attribute 路由、校验、日志的 PHP/AOT 公开用例；文件、信任边界和请求日志统一在 Swoole 入口验证，随后验证真实小容量卷的写满失败与清理。受管任务、慢数据库背压和取消使用专用 MySQL 慢 SQL 场景，不声称另外两库已运行同一种数据库取消机制。标准应用在 Swoole 入口执行三库 PHP/AOT 及缓存对照；ORM、事务、迁移和组合场景按各自实际驱动语义运行。独立调度消费者和调度/队列组合消费者分别安装并全量编译生产依赖。TLS 覆盖 MySQL、PostgreSQL 与 Redis，可靠性使用本轮专属的原生 Redis 进程。
 
@@ -16,13 +16,15 @@ Windows数据库来源固定于`.github/windows-databases.json`：MySQL 8.4.11�
 
 Windows便携包需要核对来源、摘要、ZIP结构和x64 PE。PowerShell解析、通用子进程参数、双输出、脱敏、截止逻辑以及非Windows拒绝使用对应测试入口验证；静态检查不能证明Windows ACL、数据库启动、PHP构建或业务已经通过。实际平台结果须由对应runner验证。
 
+Windows x64 已在[完整工作流运行](https://github.com/zoujingli/typeapp/actions/runs/35455624828)中通过73项契约测试、2247个断言、进程与平台行为、真实原生产物的部署审计、运行库篡改拒绝及二次构建缓存，并通过运行、校验、ORM和SQLite四组件完整AOT与真实SQLite对照。API Set由系统加载器解析至实际宿主后核对身份。该结果不包含完整应用：当前Windows SDK准备流程尚未提供匹配的Swoole模块，应用PHP验收在启动前拒绝，后续完整应用AOT、发布搬迁和MySQL/PostgreSQL步骤未执行。补齐模块与线程SDK后须重跑完整入口，不能用组件通过代替应用交付。
+
 macOS选择GitHub标准`macos-15` ARM64标签，不使用Docker或WSL运行应用。准确平台标签见[GitHub runner说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。PHP安装Action固定为已核对提交`f3e473d116dcccaddc5834248c87452386958240`（v2.37.2），请求8.5.10 ZTS后仍按`toolchain.lock.json`校验实际PHP、TypePHP、PHPX；安装器或镜像漂移必须失败，不放宽版本。
 
 `configure-toolchain.php`共用Linux/macOS显式SDK选择，分别核对libphp.so/libphp.dylib；包装器绑定准确二进制、头文件和embed库。`verify-toolchain.php`可显式选择linux/macos/windows，默认沿用锁文件的主要平台。`prepare-toolchain.sh`按本机Unix平台构建PHPX。CI将PHPX源码复制到新的build目录，排除旧目标文件，不覆盖既有SDK或其他平台产物。
 
 SDK选择器也接受可选的`扩展名=模块绝对路径`参数，例如`pcntl=/专用构建目录/pcntl.so`。它生成独立扩展目录，保留原SDK的其他模块，将所有候选路径与SHA256纳入SDK身份；模块以无覆盖的完整副本保存，避免外部软链接越过构建身份边界。重复名称、无效原生格式、副本/链接篡改均拒绝。补充模块不会安装到原PHP目录，也不会修改业务构建JSON；真实ABI、版本和函数仍由`RuntimeProfile`的embed探针验证，文件存在不等于可用。
 
-macOS契约组覆盖配置、快捷接口、操作生成、进程信号、真实watch、平台身份及非Swoole HTTP；应用组覆盖三库开发/原生物联中心标准项目、缓存对照和空目录接入；部署组覆盖发布搬迁/校验、归档、launchd生命周期及SQLite接入发布。复用现有公开测试，不另造简化业务。
+macOS契约组覆盖配置、快捷接口、操作生成、进程信号、真实watch及平台身份；HTTP专项使用Swoole；应用组覆盖三库开发/原生物联中心标准项目、缓存对照和空目录接入；部署组覆盖发布搬迁/校验、归档、launchd生命周期及SQLite接入发布。上述为工作流配置范围，实际通过项须引用对应运行结果。
 
 macOS的rollout组用同一对全量AOT的1.0.0/1.1.0发布包执行三库升级与回滚。`tests/packaged-rollout.php ... --native-services`不调用Docker：数据库连接由调用者显式提供，原场景仅创建/删除自己的随机新库；`NativeRolloutRedis`集中管理两套前台原生Redis及其私有目录、回环端口、就绪和退出。可靠队列继续要求AOF always/noeviction，缓存采用独立allkeys-lru实例。程序仍在原有源码/SDK不可读、PHP/编译器不可执行的macOS受限视图中运行，迁移失败、消费者先行、延迟消息、四个稳定效果及收缩拒绝断言不变。CI数据库来自该runner新启动的原生MySQL/PostgreSQL；本地另用外部测试数据库时必须分别说明载体，不能混称全套原生服务已通过。
 
