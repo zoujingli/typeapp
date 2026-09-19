@@ -326,13 +326,14 @@ final class PlatformFingerprint
 
     private function windowsLibrary(string $name, string $loader, string $importer): string
     {
-        foreach (array_merge([$loader, $this->phpHome, $this->phpxHome . '/build', $this->phpxHome . '/lib'], explode(';', $this->environment['PATH'])) as $directory) {
-            $candidate = $directory . '/' . $name;
-            if (is_file($candidate)) {
-                return $candidate;
-            }
-        }
+        // API Set 先由系统加载器解析；SDK 同名转发文件不代表实际加载的宿主映像。
         if (preg_match('/^(?:api|ext)-ms-[A-Za-z0-9_.-]+\.dll$/i', $name) !== 1) {
+            foreach (array_merge([$loader, $this->phpHome, $this->phpxHome . '/build', $this->phpxHome . '/lib'], explode(';', $this->environment['PATH'])) as $directory) {
+                $candidate = $directory . '/' . $name;
+                if (is_file($candidate)) {
+                    return $candidate;
+                }
+            }
             throw new RuntimeException('无法解析Windows动态依赖：' . $name);
         }
         $apiKey = strtolower($name);
