@@ -1,0 +1,10 @@
+/vendor/
+/build/
+/.cache/
+/.workbuddy/
+/runtime/
+/.env
+/auth.json
+.DS_Store
+*.o
+*.obj

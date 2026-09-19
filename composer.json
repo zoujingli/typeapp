@@ -1,0 +1,615 @@
+{
+  "name": "zoujingli/typeapp",
+  "description": "TypeApp：以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力的 PHP 应用框架。",
+  "homepage": "https://github.com/zoujingli/typeapp",
+  "type": "project",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "zoujingli/type-core": "~1.0.0@dev",
+    "zoujingli/type-log": "~1.0.0@dev",
+    "zoujingli/type-mqtt": "~1.0.0@dev",
+    "zoujingli/type-orm-mysql": "~1.0.0@dev",
+    "zoujingli/type-orm-pgsql": "~1.0.0@dev",
+    "zoujingli/type-orm-sqlite": "~1.0.0@dev",
+    "zoujingli/type-runtime": "~1.0.0@dev",
+    "zoujingli/type-redis": "~1.0.0@dev",
+    "zoujingli/type-cache": "~1.0.0@dev",
+    "zoujingli/type-queue": "~1.0.0@dev",
+    "zoujingli/type-scheduler": "~1.0.0@dev",
+    "zoujingli/type-validate": "~1.0.0@dev"
+  },
+  "require-dev": {
+    "swoole/ide-helper": ">=6.2.2",
+    "friendsofphp/php-cs-fixer": "3.95.25",
+    "phpunit/phpunit": "13.3.3",
+    "zoujingli/type-build": "~1.0.0@dev",
+    "zoujingli/type-testing": "~1.0.0@dev"
+  },
+  "autoload": {
+    "psr-4": {
+      "app\\": "app/"
+    }
+  },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "plugin/*",
+      "options": {
+        "symlink": true,
+        "versions": {
+          "zoujingli/type-runtime": "1.0.x-dev",
+          "zoujingli/type-build": "1.0.x-dev",
+          "zoujingli/type-testing": "1.0.x-dev",
+          "zoujingli/type-core": "1.0.x-dev",
+          "zoujingli/type-log": "1.0.x-dev",
+          "zoujingli/type-mqtt": "1.0.x-dev",
+          "zoujingli/type-orm": "1.0.x-dev",
+          "zoujingli/type-orm-mysql": "1.0.x-dev",
+          "zoujingli/type-orm-pgsql": "1.0.x-dev",
+          "zoujingli/type-orm-sqlite": "1.0.x-dev",
+          "zoujingli/type-validate": "1.0.x-dev",
+          "zoujingli/type-redis": "1.0.x-dev",
+          "zoujingli/type-cache": "1.0.x-dev",
+          "zoujingli/type-queue": "1.0.x-dev",
+          "zoujingli/type-scheduler": "1.0.x-dev"
+        }
+      }
+    }
+  ],
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "config": {
+    "sort-packages": true,
+    "allow-plugins": false
+  },
+  "scripts": {
+    "cs-check": "@php vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no --sequential",
+    "cs-fix": "@php vendor/bin/php-cs-fixer fix --using-cache=no --sequential",
+    "test:unit": "@php vendor/bin/phpunit --configuration phpunit.xml",
+    "test:configuration-root": "@php tests/configuration-root.php",
+    "typeapp": "@php bin/typeapp",
+    "typeapp:prepare": "@php bin/typeapp-prepare",
+    "test:iot-identity": "@php tests/iot-identity.php --php sqlite --app",
+    "test:iot-identity-native": "@php tests/iot-identity.php build/app/type-app sqlite --app",
+    "test:iot-identity-databases": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/iot-identity-databases.php"
+    ],
+    "typeapp:migrate": "@php bin/typeapp migrate",
+    "typeapp:serve": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php bin/typeapp serve"
+    ],
+    "typeapp:build": "@php vendor/bin/type docs/build-config/type-app.json",
+    "build:mqtt": "@php tests/build-scenario.php docs/build-config/type-mqtt.json",
+    "test:mqtt": "@php tests/mqtt-consumer.php",
+    "test:mqtt-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/mqtt-consumer.php --native"
+    ],
+    "test:mqtt-websocket": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/mqtt-websocket.php"
+    ],
+    "test:mqtt-websocket-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/mqtt-websocket.php --native"
+    ],
+    "test:mqtt-mtls": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/mqtt-mtls.php"
+    ],
+    "test:mqtt-mtls-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/mqtt-mtls.php --native"
+    ],
+    "typeapp:doctor": "@php vendor/bin/type doctor docs/build-config/type-app.json",
+    "typeapp:watch": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php vendor/bin/type watch docs/build-config/type-app.json"
+    ],
+    "test:development-watch": "@php tests/development-watch.php",
+    "test:project-create": "@php tests/project-create.php",
+    "typeapp:package": "@php vendor/bin/type package build/app/type-app build/release .env.example",
+    "test:package": "@php tests/native-package.php build/app/type-app",
+    "test:package-resources": "@php tests/package-resources.php",
+    "test:service-definition": "@php tests/service-definition.php build/app/type-app",
+    "test:service-launchd": "@php tests/native-service.php build/app/type-app",
+    "test:runtime-profile": "@php tests/runtime-profile.php",
+    "test:license": "@php tests/license.php",
+    "test:docs": "@php tests/docs-consistency.php",
+    "test:dependency-notices": "@php tests/dependency-notices.php",
+    "test:notices-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/notices-build.php"
+    ],
+    "test:native-package-clean": "@php tests/native-package-clean.php",
+    "test:native-database-recovery": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/native-database-recovery.php"
+    ],
+    "test:native-database-onboarding": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/native-database-onboarding.php"
+    ],
+    "test:native-database-rollout": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/native-database-rollout.php"
+    ],
+    "test:native-database-application": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/native-database-application.php"
+    ],
+    "test:native-database-orm": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/native-database-orm.php"
+    ],
+    "test:native-database-failures": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/native-database-failures.php"
+    ],
+    "test:package-toolchain": "@php tests/native-package-toolchain.php",
+    "test:php-tool-environment": "@php tests/php-tool-environment.php",
+    "test:process-signals": "@php tests/process-signals.php",
+    "typeapp:test": [
+      "@typeapp:prepare",
+      "@php tests/iot-identity.php --php sqlite --app"
+    ],
+    "typeapp:test-native": [
+      "@php tests/iot-identity.php build/app/type-app sqlite --app",
+      "@php tests/iot-identity.php build/app/type-app mysql --app",
+      "@php tests/iot-identity.php build/app/type-app pgsql --app"
+    ],
+    "test:app-candidate": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/app-candidate.php --php sqlite"
+    ],
+    "test:app-candidate-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/app-candidate.php build/app/type-app sqlite --no-source"
+    ],
+    "test:configuration": "@php tests/configuration.php",
+    "test:helpers": "@php tests/helpers.php --php",
+    "test:helpers-native": "@php tests/helpers-build.php",
+    "test:build-platform": "@php tests/build-platform.php",
+    "test:build-platform-native": "@php tests/build-platform-native.php",
+    "test:testing-portable": "@php tests/testing-portable.php",
+    "test:operations": "@php tests/operations.php --php",
+    "build:operations": "@php tests/build-scenario.php docs/build-config/type-operations.json",
+    "test:operations-native": "@php tests/operations.php build/operations/type-app",
+    "test": [
+      "@test:unit",
+      "@test:configuration",
+      "@check"
+    ],
+    "check": "@php tests/check.php",
+    "test:testing": "@php tests/testing.php",
+    "test:testing-consumer": "@php tests/testing-consumer.php",
+    "test:component-docs": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/documented-components.php"
+    ],
+    "test:docs-deployment": "@php tests/docs-deployment.php",
+    "test:benchmark-pairs": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/benchmark-pairs.php"
+    ],
+    "prepare:platform-benchmarks": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/prepare-platform-benchmarks.php"
+    ],
+    "test:template": [
+      "@php tests/application-template.php mysql",
+      "@php tests/application-template.php pgsql",
+      "@php tests/application-template.php sqlite"
+    ],
+    "test:template-native": [
+      "@php tests/application-template.php mysql --native",
+      "@php tests/application-template.php pgsql --native",
+      "@php tests/application-template.php sqlite --native"
+    ],
+    "test:onboarding": "@php tests/application-template.php sqlite --onboarding",
+    "test:onboarding-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/application-template.php sqlite --onboarding --native --package"
+    ],
+    "test:template-deployment": [
+      "bash tools/test-template-deployment.sh mysql",
+      "bash tools/test-template-deployment.sh pgsql",
+      "bash tools/test-template-deployment.sh sqlite"
+    ],
+    "build:integration": "@php tests/build-scenario.php docs/build-config/type-integration.json",
+    "test:integration": [
+      "bash tools/test-integration.sh mysql",
+      "bash tools/test-integration.sh pgsql",
+      "bash tools/test-integration.sh sqlite"
+    ],
+    "test:integration-native": [
+      "TYPE_INTEGRATION_NATIVE=1 bash tools/test-integration.sh mysql",
+      "TYPE_INTEGRATION_NATIVE=1 bash tools/test-integration.sh pgsql",
+      "TYPE_INTEGRATION_NATIVE=1 bash tools/test-integration.sh sqlite"
+    ],
+    "test:distribution-batch": "@php tests/distribution-batch.php",
+    "test:distribution-candidate": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/distribution-candidate.php"
+    ],
+    "build:native": "@php tests/build-scenario.php docs/build-config/type-foundation.json",
+    "test:native": "@php tests/native.php build/native/type-app",
+    "test:native-conversion": "@php tests/native-source-conversion.php",
+    "test:native-serialization": "@php tests/native-serialization.php",
+    "test:embed-runtime": "@php tests/embed-runtime.php",
+    "test:build-source-collection": "@php tests/build-source-collection.php",
+    "test:isolated-build": "bash tools/test-isolated-build.sh",
+    "test:clean-runtime": "bash tools/test-clean-runtime.sh",
+    "test:native-roles": "bash tools/test-native-roles.sh",
+    "test:native-packaging": "@php tests/native-packaging.php",
+    "build:tls": "@php tests/build-scenario.php docs/build-config/type-tls.json",
+    "test:tls": "bash tools/test-tls.sh --php",
+    "test:tls-native": "bash tools/test-tls.sh build/tls/type-app",
+    "test:consumer": "@php tests/consumer.php",
+    "test:build-errors": "@php tests/build-errors.php",
+    "test:build-cache": "@php tests/build-cache.php",
+    "test:gnu-toolchain": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/gnu-toolchain.php"
+    ],
+    "test:build-install": "@php tests/build-install.php",
+    "build:identity": "@php tests/build-scenario.php docs/build-config/type-build-identity.json",
+    "test:build-identity-native": "@php tests/build-identity-native.php build/identity/type-app",
+    "build:task-reliability": "@php tests/build-scenario.php docs/build-config/type-task-reliability.json",
+    "test:task-reliability": "bash tools/test-task-reliability.sh",
+    "build:rollout": [
+      "@php tests/build-scenario.php docs/build-config/type-rollout-old.json",
+      "@php tests/build-scenario.php docs/build-config/type-rollout-new.json"
+    ],
+    "test:rollout": [
+      "bash tools/test-rollout.sh mysql",
+      "bash tools/test-rollout.sh pgsql",
+      "bash tools/test-rollout.sh sqlite"
+    ],
+    "check:assembly": "@php tests/assembly.php",
+    "build:commands": "@php tests/build-scenario.php docs/build-config/type-commands.json",
+    "test:commands": "@php tests/assembled-native.php build/commands/type-app",
+    "test:assembly-consumer": "@php tests/assembly-consumer.php",
+    "build:mysql": "@php tests/build-scenario.php docs/build-config/type-mysql.json",
+    "test:mysql": "@php tests/database-native.php build/mysql/type-app",
+    "test:mysql-consumer": "@php tests/database-consumer.php",
+    "test:imports": "@php tests/imports-consumer.php",
+    "test:source-rewrites": "@php tests/source-rewrites.php",
+    "build:pgsql": "@php tests/build-scenario.php docs/build-config/type-pgsql.json",
+    "test:pgsql": "@php tests/database-native.php build/pgsql/type-app pgsql",
+    "test:pgsql-consumer": "@php tests/database-consumer.php pgsql",
+    "build:sqlite": "@php tests/build-scenario.php docs/build-config/type-sqlite.json",
+    "test:sqlite": "@php tests/database-native.php build/sqlite/type-app sqlite",
+    "test:sqlite-consumer": "@php tests/database-consumer.php sqlite",
+    "build:query": "@php tests/build-scenario.php docs/build-config/type-query.json",
+    "test:query": "@php tests/query.php build/query/type-app",
+    "build:http": "@php tests/build-scenario.php docs/build-config/type-http.json",
+    "test:http": "@php tests/http-native.php build/http/type-app",
+    "test:files": [
+      "@php tests/upload-storage.php",
+      "@php tests/file-http.php --php"
+    ],
+    "build:files": "@php tests/build-scenario.php docs/build-config/type-file-http.json",
+    "test:files-native": "@php tests/file-http.php build/file-http/type-app",
+    "test:files-pressure": "bash tools/test-file-pressure.sh build/file-http/type-app",
+    "test:deployment-budget": "@php tests/deployment-budget.php",
+    "test:backpressure": "@php tests/backpressure-http.php --php",
+    "build:backpressure": "@php tests/build-scenario.php docs/build-config/type-backpressure-http.json",
+    "test:backpressure-native": "@php tests/backpressure-http.php build/backpressure-http/type-app",
+    "test:log": [
+      "@php tests/log.php",
+      "@php tests/log-behavior.php",
+      "@php tests/log-failures.php",
+      "@php tests/log-http.php --php",
+      "@php tests/log-consumer.php"
+    ],
+    "build:log": [
+      "@php tests/build-scenario.php docs/build-config/type-log.json",
+      "@php tests/build-scenario.php docs/build-config/type-log-behavior.json",
+      "@php tests/build-scenario.php docs/build-config/type-log-failures.json",
+      "@php tests/build-scenario.php docs/build-config/type-log-http.json"
+    ],
+    "test:log-native": [
+      "@php tests/log.php build/log/type-app",
+      "@php tests/log-behavior.php build/log-behavior/type-app",
+      "@php tests/log-failures.php build/log-failures/type-app",
+      "@php tests/log-http.php build/log-http/type-app",
+      "@php tests/log-consumer.php --native"
+    ],
+    "test:pagination": "@php tests/pagination.php --php",
+    "build:pagination": "@php tests/build-scenario.php docs/build-config/type-pagination.json",
+    "test:pagination-native": "@php tests/pagination.php build/pagination/type-app",
+    "test:orm-suite": [
+      "@php tests/orm-suite-consumer.php mysql",
+      "@php tests/orm-suite-consumer.php pgsql",
+      "@php tests/orm-suite-consumer.php sqlite"
+    ],
+    "test:orm-suite-native": [
+      "@php tests/orm-suite-consumer.php mysql --native",
+      "@php tests/orm-suite-consumer.php pgsql --native",
+      "@php tests/orm-suite-consumer.php sqlite --native"
+    ],
+    "build:scheduler-coordination": "@php tests/build-scenario.php docs/build-config/type-scheduler-coordination.json",
+    "test:scheduler-coordination": "@php tests/scheduler-coordination-consumer.php",
+    "test:scheduler-coordination-native": "@php tests/scheduler-coordination-consumer.php --native",
+    "build:http-messages": "@php tests/build-scenario.php docs/build-config/type-http-message.json",
+    "test:http-messages": "@php tests/http-message-native.php build/http-message/type-app",
+    "build:migrations": [
+      "@php tests/build-scenario.php docs/build-config/type-migrations.json",
+      "@php tests/build-scenario.php docs/build-config/type-migrations-core.json"
+    ],
+    "test:migrations": [
+      "@php tests/migrations-native.php build/migrations/type-app mysql",
+      "@php tests/migrations-native.php build/migrations/type-app pgsql",
+      "@php tests/migrations-native.php build/migrations/type-app sqlite",
+      "@php tests/migrations-native.php build/migrations-core/type-app mysql core",
+      "@php tests/migrations-native.php build/migrations-core/type-app pgsql core",
+      "@php tests/migrations-native.php build/migrations-core/type-app sqlite core"
+    ],
+    "test:migrations-consumer": [
+      "@php tests/migrations-consumer.php mysql",
+      "@php tests/migrations-consumer.php pgsql",
+      "@php tests/migrations-consumer.php sqlite"
+    ],
+    "test:validate": "@php tests/validation.php",
+    "test:tenant-http": "@php tests/tenant-http.php --php",
+    "build:tenant-http": "@php tests/build-scenario.php docs/build-config/type-tenant-http.json",
+    "test:tenant-http-native": "@php tests/tenant-http.php build/tenant-http/type-app",
+    "test:queue": "@php tests/queue.php --php",
+    "build:outbox": "@php tests/build-scenario.php docs/build-config/type-outbox.json",
+    "test:outbox-native": [
+      "@php tests/outbox.php build/outbox/type-app mysql",
+      "@php tests/outbox.php build/outbox/type-app pgsql",
+      "@php tests/outbox.php build/outbox/type-app sqlite"
+    ],
+    "test:queue-leases": "@php tests/queue-leases.php --php",
+    "test:queue-retries": "@php tests/queue-retries.php --php",
+    "build:queue-retries": "@php tests/build-scenario.php docs/build-config/type-queue-retries.json",
+    "test:queue-retries-native": "@php tests/queue-retries.php build/queue-retries/type-app",
+    "build:queue-leases": "@php tests/build-scenario.php docs/build-config/type-queue-leases.json",
+    "test:queue-leases-native": "@php tests/queue-leases.php build/queue-leases/type-app",
+    "test:queue-consumer": "@php tests/queue-consumer.php",
+    "build:queue": "@php tests/build-scenario.php docs/build-config/type-queue.json",
+    "test:queue-native": [
+      "@php tests/queue.php build/queue/type-app",
+      "@php tests/queue-consumer.php --native"
+    ],
+    "test:read-write": "@php tests/read-write.php --php sqlite",
+    "build:read-write": "@php tests/build-scenario.php docs/build-config/type-read-write.json",
+    "test:read-write-native": [
+      "@php tests/read-write.php build/read-write/type-app mysql",
+      "@php tests/read-write.php build/read-write/type-app pgsql",
+      "@php tests/read-write.php build/read-write/type-app sqlite"
+    ],
+    "build:identities": "@php tests/build-scenario.php docs/build-config/type-identities.json",
+    "test:identities-native": [
+      "@php tests/identities.php build/identities/type-app mysql",
+      "@php tests/identities.php build/identities/type-app pgsql",
+      "@php tests/identities.php build/identities/type-app sqlite",
+      "@php tests/identity-credentials.php build/identities/type-app mysql",
+      "@php tests/identity-credentials.php build/identities/type-app pgsql"
+    ],
+    "test:tasks": [
+      "@php tests/tasks.php --php",
+      "@php tests/task-http.php --php"
+    ],
+    "build:tasks": [
+      "@php tests/build-scenario.php docs/build-config/type-tasks.json",
+      "@php tests/build-scenario.php docs/build-config/type-task-http.json"
+    ],
+    "test:tasks-native": [
+      "@php tests/tasks.php build/tasks/type-app",
+      "@php tests/task-http.php build/task-http/type-app"
+    ],
+    "test:http-trust": "@php tests/http-trust.php --php",
+    "build:http-trust": "@php tests/build-scenario.php docs/build-config/type-trust-http.json",
+    "test:http-trust-native": "@php tests/http-trust.php build/trust-http/type-app",
+    "test:routing": [
+      "@php tests/routing.php",
+      "@php tests/routing-build.php",
+      "@php tests/routing-http.php --php explicit",
+      "@php tests/routing-http.php --php attributes"
+    ],
+    "build:routing": [
+      "@php tests/build-scenario.php docs/build-config/type-routing.json",
+      "@php tests/build-scenario.php docs/build-config/type-routing-http.json",
+      "@php tests/build-scenario.php docs/build-config/type-routing-attributes.json"
+    ],
+    "test:routing-native": [
+      "@php tests/routing.php build/routing/type-app",
+      "@php tests/routing-http.php build/routing-http/type-app explicit",
+      "@php tests/routing-http.php build/routing-attributes/type-app attributes"
+    ],
+    "build:scheduler": "@php tests/build-scenario.php docs/build-config/type-scheduler.json",
+    "test:scheduler": "@php tests/scheduler.php",
+    "test:scheduler-consumer": "@php tests/scheduler-consumer.php",
+    "test:scheduler-native": "@php tests/scheduler-command.php build/scheduler/type-app --native",
+    "test:scheduler-native-consumer": "@php tests/scheduler-consumer.php --native",
+    "test:redis": "@php tests/redis.php --php",
+    "test:cache": "@php tests/cache.php --php",
+    "test:cache-consistency": "@php tests/cache-consistency.php --php",
+    "build:cache-consistency": "@php tests/build-scenario.php docs/build-config/type-cache-consistency.json",
+    "test:cache-consistency-native": "@php tests/cache-consistency.php build/cache-consistency/type-app",
+    "test:psr-cache": "@php tests/psr-cache.php --php",
+    "test:cache-consumer": "@php tests/cache-consumer.php",
+    "build:psr-cache": "@php tests/build-scenario.php docs/build-config/type-psr-cache.json",
+    "test:psr-cache-native": [
+      "@php tests/psr-cache.php build/psr-cache/type-app",
+      "@php tests/cache-consumer.php --native"
+    ],
+    "build:cache": "@php tests/build-scenario.php docs/build-config/type-cache.json",
+    "test:cache-native": "@php tests/cache.php build/cache/type-app",
+    "test:redis-security": "@php tests/redis-security.php",
+    "test:redis-consumer": "@php tests/redis-consumer.php",
+    "build:redis": "@php tests/build-scenario.php docs/build-config/type-redis.json",
+    "test:redis-native": [
+      "@php tests/redis.php build/redis/type-app",
+      "@php tests/redis-consumer.php --native"
+    ],
+    "build:validate": "@php tests/build-scenario.php docs/build-config/type-validation.json",
+    "test:validate-native": "@php tests/validation.php build/validation/type-app",
+    "test:models": "@php tests/models.php",
+    "test:relations": "@php tests/relations.php",
+    "test:pivots": "@php tests/pivots.php",
+    "test:exact-fields": "@php tests/exact-fields.php",
+    "test:lifecycle": "@php tests/lifecycle.php",
+    "test:optimistic": "@php tests/optimistic.php",
+    "build:optimistic": "@php tests/build-scenario.php docs/build-config/type-optimistic.json",
+    "test:optimistic-native": [
+      "@php tests/optimistic.php build/optimistic/type-app sqlite",
+      "@php tests/optimistic.php build/optimistic/type-app mysql",
+      "@php tests/optimistic.php build/optimistic/type-app pgsql"
+    ],
+    "build:lifecycle": "@php tests/build-scenario.php docs/build-config/type-lifecycle.json",
+    "test:lifecycle-native": [
+      "@php tests/lifecycle.php build/lifecycle/type-app sqlite",
+      "@php tests/lifecycle.php build/lifecycle/type-app mysql",
+      "@php tests/lifecycle.php build/lifecycle/type-app pgsql"
+    ],
+    "build:exact-fields": "@php tests/build-scenario.php docs/build-config/type-exact-fields.json",
+    "test:exact-fields-native": [
+      "@php tests/exact-fields.php build/exact-fields/type-app sqlite",
+      "@php tests/exact-fields.php build/exact-fields/type-app mysql",
+      "@php tests/exact-fields.php build/exact-fields/type-app pgsql"
+    ],
+    "build:pivots": "@php tests/build-scenario.php docs/build-config/type-pivots.json",
+    "test:pivots-native": [
+      "@php tests/pivots.php build/pivots/type-app sqlite",
+      "@php tests/pivots.php build/pivots/type-app mysql",
+      "@php tests/pivots.php build/pivots/type-app pgsql"
+    ],
+    "test:transactions": "@php tests/transactions.php",
+    "test:outcomes": "@php tests/outcomes.php",
+    "test:commit-failure": "@php tests/commit-failure.php --php",
+    "test:websocket": "@php tests/websocket.php",
+    "test:websocket-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/websocket-native.php"
+    ],
+    "test:broker-access": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-access.php --php sqlite"
+    ],
+    "test:broker-access-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-access.php build/app/type-app sqlite --no-source"
+    ],
+    "test:broker-certificates": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-certificates.php --php sqlite"
+    ],
+    "test:broker-certificates-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-certificates.php build/app/type-app sqlite --no-source"
+    ],
+    "test:broker-disconnect": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-disconnect.php --php sqlite"
+    ],
+    "test:broker-disconnect-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-disconnect.php build/app/type-app sqlite --no-source"
+    ],
+    "test:broker-session-terminate": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-session-terminate.php --php pgsql"
+    ],
+    "test:broker-session-terminate-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-session-terminate.php build/app/type-app pgsql --no-source"
+    ],
+    "test:broker-retain-clear": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-retain-clear.php --php pgsql"
+    ],
+    "test:broker-retain-clear-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-retain-clear.php build/app/type-app pgsql --no-source"
+    ],
+    "test:broker-quota": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-quota.php --php pgsql"
+    ],
+    "test:broker-quota-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-quota.php build/app/type-app pgsql --no-source"
+    ],
+    "test:broker-runtime": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-runtime.php --php pgsql"
+    ],
+    "test:broker-runtime-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-runtime.php build/app/type-app pgsql --no-source"
+    ],
+    "test:broker-debug": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-debug.php --php pgsql"
+    ],
+    "test:broker-debug-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-debug.php build/app/type-app pgsql --no-source"
+    ],
+    "test:broker-compat": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-compat.php --php pgsql"
+    ],
+    "test:broker-compat-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-compat.php build/app/type-app pgsql --no-source"
+    ],
+    "test:broker-recovery": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-recovery.php --php pgsql"
+    ],
+    "test:broker-interop": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-interop.php --php pgsql"
+    ],
+    "test:broker-interop-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-interop.php build/app/type-app pgsql --no-source"
+    ],
+    "test:broker-candidate": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-candidate.php --php"
+    ],
+    "test:broker-candidate-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/broker-candidate.php build/app/type-app --no-source --independent"
+    ],
+    "build:outcomes": "@php tests/build-scenario.php docs/build-config/type-outcomes.json",
+    "test:outcomes-native": [
+      "@php tests/outcomes.php build/outcomes/type-app sqlite",
+      "@php tests/outcomes.php build/outcomes/type-app mysql",
+      "@php tests/outcomes.php build/outcomes/type-app pgsql",
+      "@php tests/commit-failure.php build/outcomes/type-app"
+    ],
+    "build:transactions": "@php tests/build-scenario.php docs/build-config/type-transactions.json",
+    "test:transactions-native": [
+      "@php tests/transactions.php build/transactions/type-app sqlite",
+      "@php tests/transactions.php build/transactions/type-app mysql",
+      "@php tests/transactions.php build/transactions/type-app pgsql"
+    ],
+    "build:relations": "@php tests/build-scenario.php docs/build-config/type-relations.json",
+    "test:relations-native": [
+      "@php tests/relations.php build/relations/type-app sqlite",
+      "@php tests/relations.php build/relations/type-app mysql",
+      "@php tests/relations.php build/relations/type-app pgsql"
+    ],
+    "test:model-http": "@php tests/model-http.php --php sqlite",
+    "build:models": [
+      "@php tests/build-scenario.php docs/build-config/type-models.json",
+      "@php tests/build-scenario.php docs/build-config/type-model-http.json"
+    ],
+    "test:models-native": [
+      "@php tests/models.php build/models/type-app sqlite",
+      "@php tests/models.php build/models/type-app mysql",
+      "@php tests/models.php build/models/type-app pgsql",
+      "@php tests/model-http.php build/model-http/type-app mysql"
+    ]
+  }
+}
