@@ -1,4 +1,4 @@
-name: 原生 Windows 私有验收
+name: Windows x64 原生验收
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   windows:
-    if: github.event.repository.private == true
+    if: github.repository == 'zoujingli/typeapp'
     runs-on: windows-2022
     timeout-minutes: 120
     env:
@@ -51,11 +51,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" tests/helpers-build.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: 编译并运行原生 HTTP 控制事件
-        run: |
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $env:TYPE_STREAM_EXPECT_NO_SWOOLE='1'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 标准应用编译、SQLite与可搬迁发布
         run: |
           & "$env:PHP_HOME/php.exe" bin/typeapp-prepare
@@ -75,7 +70,7 @@ jobs:
         run: ./.github/scripts/run-windows-database.ps1 -Driver mysql
       - name: 原生PostgreSQL开发生产与完整模板接入
         run: ./.github/scripts/run-windows-database.ps1 -Driver pgsql
-      - name: 保存私有验收证据
+      - name: 保存原生验收证据
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
