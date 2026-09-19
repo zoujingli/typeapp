@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-query",
+  "entry": "examples/query-command.php",
+  "output": "build/query/type-app",
+  "build-directory": "build/query/compiler"
+}

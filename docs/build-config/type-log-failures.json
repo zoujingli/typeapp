@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-log-failures",
+  "entry": "examples/log-failure-command.php",
+  "output": "build/log-failures/type-app",
+  "build-directory": "build/log-failures/compiler"
+}

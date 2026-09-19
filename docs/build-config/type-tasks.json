@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-tasks",
+  "entry": "examples/tasks-command.php",
+  "output": "build/tasks/type-app",
+  "build-directory": "build/tasks/compiler"
+}

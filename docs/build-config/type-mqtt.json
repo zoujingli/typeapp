@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-mqtt-connection",
+  "entry": "examples/mqtt/main.php",
+  "sources": ["examples/mqtt/main.php"],
+  "output": "build/mqtt/type-app",
+  "build-directory": "build/mqtt/compiler"
+}

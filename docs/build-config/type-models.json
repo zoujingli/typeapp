@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-models",
+  "entry": "examples/model-command.php",
+  "sources": ["examples/model/Drivers.php", "examples/model/Models.php"],
+  "output": "build/models/type-app",
+  "build-directory": "build/models/compiler"
+}

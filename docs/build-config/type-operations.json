@@ -1,0 +1,11 @@
+{
+  "project-root": "../..",
+  "name": "type-operations",
+  "entry": "examples/operations/main.php",
+  "sources": ["examples/operations/UserService.php", "examples/model/Drivers.php"],
+  "operations": {
+    "classes": {"TypeApp\\Operations\\UserOperations": "TypeApp\\Operations\\UserService"}
+  },
+  "output": "build/operations/type-app",
+  "build-directory": "build/operations/compiler"
+}

@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-migrations",
+  "entry": "examples/migration-command.php",
+  "sources": ["examples/migrations/Plan.php", "examples/migrations/DriverFactory.php"],
+  "output": "build/migrations/type-app",
+  "build-directory": "build/migrations/compiler"
+}

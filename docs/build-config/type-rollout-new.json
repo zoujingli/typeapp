@@ -1,0 +1,14 @@
+{
+  "project-root": "../..",
+  "name": "type-rollout-new",
+  "version": "1.1.0",
+  "entry": "examples/rollout-new-command.php",
+  "sources": ["examples/rollout", "examples/model/Drivers.php", "examples/outbox/Adapters.php"],
+  "runtime": {
+    "Linux": {"extensions": ["pcntl"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]},
+    "Darwin": {"extensions": ["pcntl"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]}
+  },
+  "capabilities": {"schema": {"users": [2, 3]}, "messages": {"user.changed": [1, 2]}, "cache": {"users": [2]}},
+  "output": "build/rollout-new/type-app",
+  "build-directory": "build/rollout-new/compiler"
+}

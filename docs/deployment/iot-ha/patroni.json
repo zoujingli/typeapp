@@ -1,0 +1,81 @@
+{
+  "scope": "typeapp-iot",
+  "name": "set_with_PATRONI_NAME",
+  "restapi": {
+    "listen": "127.0.0.1:8008",
+    "connect_address": "127.0.0.1:8008",
+    "certfile": "tls/patroni.crt",
+    "keyfile": "tls/patroni.key",
+    "cafile": "tls/ca.crt",
+    "verify_client": "required"
+  },
+  "ctl": {
+    "insecure": false,
+    "cacert": "tls/ca.crt",
+    "certfile": "tls/patroni-client.crt",
+    "keyfile": "tls/patroni-client.key"
+  },
+  "etcd3": {
+    "hosts": ["127.0.0.1:1"],
+    "use_proxies": true,
+    "protocol": "https",
+    "cacert": "tls/ca.crt",
+    "cert": "tls/etcd-client.crt",
+    "key": "tls/etcd-client.key"
+  },
+  "bootstrap": {
+    "dcs": {
+      "ttl": 30,
+      "loop_wait": 5,
+      "retry_timeout": 5,
+      "primary_start_timeout": 0,
+      "maximum_lag_on_failover": 0,
+      "check_timeline": true,
+      "synchronous_mode": true,
+      "synchronous_mode_strict": true,
+      "synchronous_node_count": 1,
+      "failsafe_mode": false,
+      "postgresql": {
+        "use_pg_rewind": true,
+        "use_slots": true,
+        "parameters": {
+          "fsync": "on",
+          "full_page_writes": "on",
+          "synchronous_commit": "remote_apply",
+          "wal_level": "replica",
+          "wal_log_hints": "on",
+          "hot_standby": "on",
+          "max_wal_senders": 10,
+          "max_replication_slots": 10,
+          "password_encryption": "scram-sha-256"
+        }
+      }
+    },
+    "initdb": [{"encoding": "UTF8"}, "data-checksums"]
+  },
+  "postgresql": {
+    "listen": "127.0.0.1:5432",
+    "connect_address": "127.0.0.1:5432",
+    "data_dir": "data",
+    "pgpass": "replication.pgpass",
+    "authentication": {
+      "superuser": {"username": "iot_cluster_admin", "sslmode": "verify-full", "sslrootcert": "tls/ca.crt"},
+      "replication": {"username": "iot_replication", "sslmode": "verify-full", "sslrootcert": "tls/ca.crt"}
+    },
+    "parameters": {
+      "ssl": "on",
+      "ssl_min_protocol_version": "TLSv1.2",
+      "ssl_cert_file": "../tls/postgresql.crt",
+      "ssl_key_file": "../tls/postgresql.key",
+      "ssl_ca_file": "../tls/ca.crt",
+      "unix_socket_directories": ""
+    },
+    "pg_hba": [
+      "hostssl replication iot_replication all scram-sha-256",
+      "hostssl all all all scram-sha-256"
+    ]
+  },
+  "watchdog": {"mode": "required", "safety_margin": -1},
+  "log": {"level": "INFO", "max_queue_size": 1000, "file_num": 4, "file_size": 26214400},
+  "tags": {"noloadbalance": false, "nosync": false, "nofailover": false}
+}

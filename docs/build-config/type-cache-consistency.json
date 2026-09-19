@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-cache-consistency",
+  "entry": "examples/cache-consistency-command.php",
+  "sources": ["examples/consistency", "examples/model/Drivers.php"],
+  "output": "build/cache-consistency/type-app",
+  "build-directory": "build/cache-consistency/compiler"
+}

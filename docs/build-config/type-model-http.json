@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-model-http",
+  "entry": "examples/model-http-command.php",
+  "sources": ["examples/model"],
+  "output": "build/model-http/type-app",
+  "build-directory": "build/model-http/compiler"
+}

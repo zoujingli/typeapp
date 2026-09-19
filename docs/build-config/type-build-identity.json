@@ -1,0 +1,10 @@
+{
+  "project-root": "../..",
+  "name": "type-build-identity",
+  "version": "1.0.0-dev",
+  "entry": "examples/build-identity-command.php",
+  "compiler": {"optimize": 2, "debug": false, "jobs": 2},
+  "capabilities": {"schema": {"main": [1, 2]}, "messages": {"example.event": [1]}, "cache": {"example": [1]}},
+  "output": "build/identity/type-app",
+  "build-directory": "build/identity/compiler"
+}

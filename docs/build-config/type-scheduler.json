@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-scheduler",
+  "entry": "examples/scheduler-command.php",
+  "sources": ["examples/scheduler"],
+  "output": "build/scheduler/type-app",
+  "build-directory": "build/scheduler/compiler"
+}

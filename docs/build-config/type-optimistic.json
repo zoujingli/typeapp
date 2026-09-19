@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-optimistic",
+  "entry": "examples/optimistic-command.php",
+  "sources": ["examples/model/Drivers.php", "examples/model/Models.php"],
+  "output": "build/optimistic/type-app",
+  "build-directory": "build/optimistic/compiler"
+}

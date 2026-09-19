@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-pagination",
+  "entry": "examples/pagination-command.php",
+  "sources": ["examples/model/Drivers.php", "examples/model/Models.php"],
+  "output": "build/pagination/type-app",
+  "build-directory": "build/pagination/compiler"
+}

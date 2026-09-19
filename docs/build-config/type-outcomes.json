@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-outcomes",
+  "entry": "examples/outcome-command.php",
+  "sources": ["examples/model/Drivers.php", "examples/model/Models.php"],
+  "output": "build/outcomes/type-app",
+  "build-directory": "build/outcomes/compiler"
+}

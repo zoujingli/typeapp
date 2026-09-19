@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-trust-http",
+  "entry": "examples/trust-http-command.php",
+  "sources": ["examples/trust"],
+  "output": "build/trust-http/type-app",
+  "build-directory": "build/trust-http/compiler"
+}

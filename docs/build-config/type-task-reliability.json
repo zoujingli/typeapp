@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-task-reliability",
+  "entry": "examples/task-reliability-command.php",
+  "sources": ["examples/reliability", "examples/scheduler/Tasks.php"],
+  "output": "build/task-reliability/type-app",
+  "build-directory": "build/task-reliability/compiler"
+}

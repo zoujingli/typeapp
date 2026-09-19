@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-routing",
+  "entry": "examples/routing-command.php",
+  "sources": ["examples/routing/Exercise.php"],
+  "output": "build/routing/type-app",
+  "build-directory": "build/routing/compiler"
+}

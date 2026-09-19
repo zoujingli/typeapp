@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-mysql",
+  "entry": "examples/mysql-command.php",
+  "output": "build/mysql/type-app",
+  "build-directory": "build/mysql/compiler"
+}

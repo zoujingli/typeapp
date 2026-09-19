@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-cache",
+  "entry": "examples/cache-command.php",
+  "sources": ["examples/cache"],
+  "output": "build/cache/type-app",
+  "build-directory": "build/cache/compiler"
+}

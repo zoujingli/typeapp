@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-pivots",
+  "entry": "examples/pivot-command.php",
+  "sources": ["examples/model/Drivers.php", "examples/model/ArticleTags.php", "examples/model/Models.php"],
+  "output": "build/pivots/type-app",
+  "build-directory": "build/pivots/compiler"
+}

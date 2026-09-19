@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="104" viewBox="0 0 420 104" fill="none">
+  <!-- 静态 SVG 使用 site.css 中 night / night-line / accent / night-text / night-muted 的标准色值。 -->
+  <g fill="#0c211c" stroke="#2c4a3f"><rect x="12" y="19" width="112" height="54" rx="8"/><rect x="154" y="19" width="112" height="54" rx="8"/><rect x="296" y="19" width="112" height="54" rx="8"/></g>
+  <rect x="154" y="19" width="112" height="54" rx="8" stroke="#65dfbb" stroke-opacity=".6"/>
+  <path d="M124 46h30m-6-4 6 4-6 4m118-4h30m-6-4 6 4-6 4" stroke="#65dfbb" stroke-opacity=".65"/>
+  <g text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13" fill="#e4f5ed"><text x="68" y="42">app + plugin</text><text x="210" y="42">TypePHP</text><text x="352" y="42">Native</text></g>
+  <g text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#99b6a9"><text x="68" y="60">含生产依赖</text><text x="210" y="60">全量编译</text><text x="352" y="60">原生入口</text><text x="210" y="93">生产运行仍需匹配的原生依赖</text></g>
+</svg>

@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-redis",
+  "entry": "examples/redis-command.php",
+  "output": "build/redis/type-app",
+  "build-directory": "build/redis/compiler"
+}

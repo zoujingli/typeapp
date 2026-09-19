@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-scheduler-coordination",
+  "entry": "examples/scheduler-coordination-command.php",
+  "sources": ["examples/coordination", "examples/scheduler/Tasks.php"],
+  "output": "build/scheduler-coordination/type-app",
+  "build-directory": "build/scheduler-coordination/compiler"
+}

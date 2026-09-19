@@ -1,0 +1,12 @@
+{
+  "project-root": "../..",
+  "name": "type-migrations-core",
+  "sources": ["examples/migrations"],
+  "output": "build/migrations-core/type-app",
+  "build-directory": "build/migrations-core/compiler",
+  "application": {
+    "enabled": ["zoujingli/typeapp"],
+    "services": [{"id": "migrations", "class": "TypeApp\\Migrations\\CoreCommand"}],
+    "commands": [{"name": "migrate", "service": "migrations"}]
+  }
+}

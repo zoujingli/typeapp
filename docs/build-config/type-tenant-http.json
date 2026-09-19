@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-tenant-http",
+  "entry": "examples/tenant-http-command.php",
+  "sources": ["examples/tenant"],
+  "output": "build/tenant-http/type-app",
+  "build-directory": "build/tenant-http/compiler"
+}

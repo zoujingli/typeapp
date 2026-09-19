@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "typeapp",
+  "entry": "examples/native-command.php",
+  "output": "build/native/type-app",
+  "build-directory": "build/native/compiler"
+}

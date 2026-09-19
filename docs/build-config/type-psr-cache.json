@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-psr-cache",
+  "entry": "examples/psr-cache-command.php",
+  "sources": ["examples/cache/SerializableNote.php"],
+  "output": "build/psr-cache/type-app",
+  "build-directory": "build/psr-cache/compiler"
+}

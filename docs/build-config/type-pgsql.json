@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-pgsql",
+  "entry": "examples/pgsql-command.php",
+  "output": "build/pgsql/type-app",
+  "build-directory": "build/pgsql/compiler"
+}

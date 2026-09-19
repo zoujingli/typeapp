@@ -1,0 +1,42 @@
+{
+  "project-root": "../..",
+  "name": "type-commands",
+  "sources": ["examples/commands"],
+  "output": "build/commands/type-app",
+  "build-directory": "build/commands/compiler",
+  "application": {
+    "enabled": ["zoujingli/typeapp"],
+    "config": {
+      "name": {"env": "TYPE_APP_NAME", "default": "typeapp"}
+    },
+    "services": [
+      {"id": "greeting", "class": "TypeApp\\Example\\Greeting", "lifetime": "singleton", "arguments": [{"config": "name"}]},
+      {"id": "greet", "class": "TypeApp\\Example\\GreetCommand", "arguments": [{"service": "greeting"}]},
+      {"id": "first", "class": "TypeApp\\Example\\ExampleResource", "arguments": [{"value": "A"}, {"value": false}, {"value": false}]},
+      {"id": "second", "class": "TypeApp\\Example\\ExampleResource", "arguments": [{"value": "B"}, {"value": false}, {"value": false}]},
+      {"id": "broken-start", "class": "TypeApp\\Example\\ExampleResource", "arguments": [{"value": "B"}, {"value": true}, {"value": false}]},
+      {"id": "broken-stop", "class": "TypeApp\\Example\\ExampleResource", "arguments": [{"value": "B"}, {"value": false}, {"value": true}]},
+      {"id": "listener-a", "class": "TypeApp\\Example\\ExampleListener", "arguments": [{"value": "一"}, {"value": false}]},
+      {"id": "listener-b", "class": "TypeApp\\Example\\ExampleListener", "arguments": [{"value": "二"}, {"value": false}]},
+      {"id": "listener-fail", "class": "TypeApp\\Example\\ExampleListener", "arguments": [{"value": "故障"}, {"value": true}]},
+      {"id": "failure", "class": "TypeApp\\Example\\FailingCommand"},
+      {"id": "singleton-value", "class": "TypeApp\\Example\\SequenceValue", "lifetime": "singleton"},
+      {"id": "execution-value", "class": "TypeApp\\Example\\SequenceValue"},
+      {"id": "identity", "class": "TypeApp\\Example\\IdentityCommand", "arguments": [{"service": "singleton-value"}, {"service": "execution-value"}]},
+      {"id": "batch", "class": "TypeApp\\Example\\BatchCommand"},
+      {"id": "snapshot", "class": "TypeApp\\Example\\SnapshotCommand"},
+      {"id": "scope", "class": "TypeApp\\Example\\ScopeCommand"}
+    ],
+    "commands": [
+      {"name": "greet", "service": "greet"},
+      {"name": "lifecycle", "service": "greet", "resources": ["first", "second"], "listeners": [{"event": "ready", "service": "listener-a"}, {"event": "ready", "service": "listener-b"}, {"event": "completed", "service": "listener-a"}]},
+      {"name": "start-failure", "service": "greet", "resources": ["first", "broken-start"]},
+      {"name": "listener-failure", "service": "greet", "resources": ["first", "second"], "listeners": [{"event": "ready", "service": "listener-fail"}, {"event": "ready", "service": "listener-b"}]},
+      {"name": "cleanup-failure", "service": "failure", "resources": ["first", "broken-stop"]},
+      {"name": "identity", "service": "identity"},
+      {"name": "batch", "service": "batch"},
+      {"name": "snapshot", "service": "snapshot"},
+      {"name": "scope", "service": "scope"}
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-sqlite",
+  "entry": "examples/sqlite-command.php",
+  "output": "build/sqlite/type-app",
+  "build-directory": "build/sqlite/compiler"
+}

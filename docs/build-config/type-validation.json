@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-validation",
+  "entry": "examples/validation-command.php",
+  "sources": ["examples/validation"],
+  "output": "build/validation/type-app",
+  "build-directory": "build/validation/compiler"
+}

@@ -1,0 +1,9 @@
+{
+  "project-root": "../..",
+  "name": "type-routing-http",
+  "entry": "examples/routing-http-command.php",
+  "sources": ["examples/routing/Controllers.php", "examples/routing/Middleware.php"],
+  "routing": "examples/routing/route.php",
+  "output": "build/routing-http/type-app",
+  "build-directory": "build/routing-http/compiler"
+}

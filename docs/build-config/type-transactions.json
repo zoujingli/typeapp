@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-transactions",
+  "entry": "examples/transaction-command.php",
+  "sources": ["examples/model/Drivers.php", "examples/model/TransactionExercise.php", "examples/model/Models.php"],
+  "output": "build/transactions/type-app",
+  "build-directory": "build/transactions/compiler"
+}

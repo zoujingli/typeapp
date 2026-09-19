@@ -1,0 +1,1337 @@
+{
+  "rule": "编号来自固定官方正文与附录交叉核对；partial 表示已定位具体断言，整条要求尚未获得完整有效证据，不计通过。client-only 只排除纯客户端义务，服务端接收格式检查仍由相应规则覆盖。",
+  "groups": [
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.1.0-1",
+        "MQTT-3.1.2-1"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttConnectFieldCases",
+          "needle": "非CONNECT首包之后仍接受同流CONNECT"
+        },
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttConnectFieldCases",
+          "needle": "错误协议名仍按MQTT接入"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.1.2-3",
+        "MQTT-3.1.2-9",
+        "MQTT-3.1.3-1",
+        "MQTT-3.1.3-3"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttConnectFieldCases",
+          "needle": "CONNECT字段分类错误"
+        },
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttConnectFieldCases",
+          "needle": "非法CONNECT后仍处理报文"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.1.3-5"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttConnectFieldCases",
+          "needle": "合法1或23字节字母数字Client ID不能建立连接"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-3.1.2-11",
+        "MQTT-3.1.2-13",
+        "MQTT-3.1.2-14",
+        "MQTT-3.1.2-15",
+        "MQTT-3.1.2-18",
+        "MQTT-3.1.2-19",
+        "MQTT-3.1.2-20",
+        "MQTT-3.1.2-21",
+        "MQTT-3.1.2-22",
+        "MQTT-3.1.3-11"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttConnectFieldCases",
+          "needle": "CONNECT字段分类错误"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.1.2-11",
+        "MQTT-3.1.2-12",
+        "MQTT-3.1.2-13",
+        "MQTT-3.1.2-16",
+        "MQTT-3.1.2-17",
+        "MQTT-3.1.2-18",
+        "MQTT-3.1.2-19",
+        "MQTT-3.1.3-12"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttConnectFieldCases",
+          "needle": "CONNECT字段分类错误"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-6.0.0-1",
+        "MQTT-6.0.0-2",
+        "MQTT-6.0.0-4"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/broker-interop.php",
+          "function": "interopWsHandshakeCases",
+          "needle": "文本帧没有按 1003 关闭"
+        },
+        {
+          "file": "tests/broker-interop.php",
+          "function": "interopWsHandshakeCases",
+          "needle": "不匹配 Origin 没有按 1008 关闭"
+        },
+        {
+          "file": "tests/broker-interop.php",
+          "function": "interopWsHandshakeCases",
+          "needle": "握手未选择 mqtt 子协议"
+        },
+        {
+          "file": "tests/broker-interop.php",
+          "function": "interopWsHandshakeCases",
+          "needle": "跨 WebSocket 消息的 CONNECT 半包未重组"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-6.0.0-3"
+      ],
+      "applicability": "client-only",
+      "status": "not-applicable",
+      "reason": "该条约束客户端提供 MQTT 子协议；服务端握手与回显分别按适用条款验证。"
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-2.3.1-2",
+        "MQTT-2.3.1-3",
+        "MQTT-3.1.2-23",
+        "MQTT-3.1.3-7",
+        "MQTT-3.14.4-1",
+        "MQTT-3.14.4-2",
+        "MQTT-4.5.0-2",
+        "MQTT-7.1.2-1"
+      ],
+      "applicability": "client-only",
+      "status": "not-applicable",
+      "reason": "此编号直接约束客户端；服务端重传另由2.3.1-4、4.4.0-1覆盖，空标识拒绝另由3.1.3-8覆盖。"
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-2.2.1-3",
+        "MQTT-3.1.2-20",
+        "MQTT-3.1.2-21",
+        "MQTT-3.1.2-30",
+        "MQTT-3.2.2-4",
+        "MQTT-3.2.2-5",
+        "MQTT-3.2.2-11",
+        "MQTT-3.2.2-14",
+        "MQTT-3.2.2-15",
+        "MQTT-3.2.2-17",
+        "MQTT-3.2.2-18",
+        "MQTT-3.2.2-21",
+        "MQTT-3.3.2-9",
+        "MQTT-3.3.2-10",
+        "MQTT-3.3.4-8",
+        "MQTT-4.5.0-2"
+      ],
+      "applicability": "client-only",
+      "status": "not-applicable",
+      "reason": "纯客户端发送或接收义务；对应服务端格式、额度、别名验证仍适用，不能由本排除免除。"
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.15.2-1",
+        "MQTT-3.15.2-2",
+        "MQTT-3.15.2-3",
+        "MQTT-4.12.0-2",
+        "MQTT-4.12.0-3",
+        "MQTT-4.12.0-5",
+        "MQTT-4.12.1-1",
+        "MQTT-4.12.1-2"
+      ],
+      "applicability": "conditional-unsupported",
+      "status": "not-applicable",
+      "reason": "没有提供增强认证方法，不进入AUTH继续/重新认证分支；不支持方法的拒绝与意外AUTH关闭仍需测试。"
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-7.0.0-1"
+      ],
+      "applicability": "conditional-unsupported",
+      "status": "not-applicable",
+      "reason": "当前Broker不建立到其他Broker的MQTT桥接；组件客户端需要独立的客户端符合性矩阵。"
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-1.5.3-1",
+        "MQTT-1.5.3-2",
+        "MQTT-2.2.2-2",
+        "MQTT-3.1.0-2",
+        "MQTT-3.1.2-2",
+        "MQTT-3.1.2-24",
+        "MQTT-3.1.3-4",
+        "MQTT-3.1.4-1",
+        "MQTT-3.1.4-4",
+        "MQTT-3.2.0-1",
+        "MQTT-3.2.2-5",
+        "MQTT-3.12.4-1",
+        "MQTT-4.8.0-1",
+        "MQTT-7.1.1-1"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttWireCases",
+          "needle": "半包延长了 Keep Alive 或未按 1.5 倍超时"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-1.5.4-1",
+        "MQTT-1.5.4-2",
+        "MQTT-1.5.5-1",
+        "MQTT-3.1.0-2",
+        "MQTT-3.1.2-2",
+        "MQTT-3.1.2-22",
+        "MQTT-3.1.3-4",
+        "MQTT-3.1.3-6",
+        "MQTT-3.1.3-7",
+        "MQTT-3.1.4-1",
+        "MQTT-3.1.4-2",
+        "MQTT-3.1.4-3",
+        "MQTT-3.1.4-5",
+        "MQTT-3.2.0-1",
+        "MQTT-3.2.2-7",
+        "MQTT-3.2.2-16",
+        "MQTT-3.2.2-22",
+        "MQTT-3.12.4-1",
+        "MQTT-4.2.0-1",
+        "MQTT-4.12.0-1",
+        "MQTT-4.13.1-1",
+        "MQTT-4.13.2-1"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttWireCases",
+          "needle": "不支持的增强认证未返回 Bad Authentication Method"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.3.1-2",
+        "MQTT-3.3.1-4",
+        "MQTT-3.3.2-1",
+        "MQTT-3.3.2-2",
+        "MQTT-3.8.1-1",
+        "MQTT-3.8.3-1",
+        "MQTT-3.8.4-1",
+        "MQTT-3.8.4-2",
+        "MQTT-3.9.3-1",
+        "MQTT-3.9.3-2",
+        "MQTT-3.10.1-1",
+        "MQTT-3.10.3-2",
+        "MQTT-4.7.3-1",
+        "MQTT-4.7.3-2"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttMessageCases",
+          "needle": "多项订阅授权拒绝错误"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-3-8.3-4",
+        "MQTT-3.3.5-2"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttMessageCases",
+          "needle": "发布授权拒绝未采用对应版本语义"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.1.2-24",
+        "MQTT-3.1.2-25",
+        "MQTT-3.1.2-26",
+        "MQTT-3.1.2-27",
+        "MQTT-3.3.2-7",
+        "MQTT-3.3.2-8",
+        "MQTT-3.3.2-11",
+        "MQTT-3.3.2-12",
+        "MQTT-3.3.2-16",
+        "MQTT-3.3.2-17",
+        "MQTT-3.3.2-18"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttAliasCases",
+          "needle": "别名复用改变消息或属性顺序"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.3.2-3",
+        "MQTT-3.10.4-1",
+        "MQTT-3.10.4-4",
+        "MQTT-3.10.4-5",
+        "MQTT-4.7.2-1",
+        "MQTT-4.7.3-4"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-subscriptions.php",
+          "function": "mqttSubscriptionCases",
+          "needle": "通配交付错误"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.3.4-3",
+        "MQTT-3.3.4-4",
+        "MQTT-3.8.3-3",
+        "MQTT-3.8.4-3"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-subscriptions.php",
+          "function": "mqttSubscriptionCases",
+          "needle": "重叠订阅遗漏、去重或重复交付标识"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.3.1-1",
+        "MQTT-4.1.0-1",
+        "MQTT-4.4.0-1",
+        "MQTT-4.5.0-1"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-sessions.php",
+          "function": "mqttSessionCases",
+          "needle": "重启未重传原 QoS 1 标识和 DUP"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-3.1.2-4",
+        "MQTT-3.1.2-5",
+        "MQTT-3.1.2-6",
+        "MQTT-3.2.2-1",
+        "MQTT-3.2.2-2",
+        "MQTT-3.2.2-3",
+        "MQTT-2.3.1-4"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-sessions.php",
+          "function": "mqttSessionCases",
+          "needle": "离线 QoS 2 首次交付错误"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.1.2-4",
+        "MQTT-3.1.2-5",
+        "MQTT-3.1.2-6",
+        "MQTT-3.1.2-23",
+        "MQTT-3.2.2-2",
+        "MQTT-3.2.2-3",
+        "MQTT-4.1.0-2"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-sessions.php",
+          "function": "mqttSessionCases",
+          "needle": "恢复期间新旧队列失序"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.3.4-1",
+        "MQTT-4.3.2-1",
+        "MQTT-4.3.2-2"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-qos1.php",
+          "function": "mqttQos1Cases",
+          "needle": "已完成标识被永久去重"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-4.3.2-4",
+        "MQTT-4.3.2-5"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-qos1.php",
+          "function": "mqttQos1Cases",
+          "needle": "PUBACK 前没有同步接管原件"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-4.3.3-1",
+        "MQTT-4.3.3-2"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-qos2.php",
+          "function": "mqttQos2Cases",
+          "needle": "重复握手产生多次持久交付"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-4.3.3-1",
+        "MQTT-4.3.3-2",
+        "MQTT-4.3.3-3",
+        "MQTT-4.3.3-4",
+        "MQTT-4.3.3-5",
+        "MQTT-4.3.3-6",
+        "MQTT-4.3.3-8",
+        "MQTT-4.3.3-10",
+        "MQTT-4.3.3-11",
+        "MQTT-4.3.3-12"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-qos2.php",
+          "function": "mqttQos2Cases",
+          "needle": "重复握手产生多次持久交付"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-4.3.3-7",
+        "MQTT-4.3.3-13"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-qos2.php",
+          "function": "mqttQos2Cases",
+          "needle": "已发 PUBLISH 被 Message Expiry 中止"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-4.9.0-1",
+        "MQTT-4.9.0-2",
+        "MQTT-4.9.0-3"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-qos2.php",
+          "function": "mqttQos2Cases",
+          "needle": "PUBREC 提前归还 QoS 2 窗口"
+        },
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "flow_cases",
+          "needle": "two-deliveries-before-any-ack"
+        },
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "flow_cases",
+          "needle": "one-terminal-ack-releases-exactly-one-delivery"
+        },
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "flow_cases",
+          "needle": "positive-PUBREC-does-not-replenish"
+        },
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "flow_cases",
+          "needle": "zero-quota-subscribe-unsubscribe-inbound-qos1-qos2-and-pubrel"
+        },
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "flow_cases",
+          "needle": "zero-quota-disconnect-eof"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-4.13.2-1"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "flow_cases",
+          "needle": "0x97后没有实际EOF或仍处理合并控制报文"
+        },
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "flow_cases",
+          "needle": "资源拒绝后仍处理合并的后续发布"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-3.3.1-5",
+        "MQTT-3.3.1-6",
+        "MQTT-3.3.1-7",
+        "MQTT-3.3.1-8",
+        "MQTT-3.3.1-9",
+        "MQTT-3.3.1-10",
+        "MQTT-3.3.1-11",
+        "MQTT-3.3.1-12"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-retained.php",
+          "function": "mqttRetainedCases",
+          "needle": "空载荷没有同步清除保留事实"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.3.1-5",
+        "MQTT-3.3.1-6",
+        "MQTT-3.3.1-7",
+        "MQTT-3.3.1-8",
+        "MQTT-3.3.1-9",
+        "MQTT-3.3.1-10",
+        "MQTT-3.3.1-11",
+        "MQTT-3.3.1-12",
+        "MQTT-3.3.1-13"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-retained.php",
+          "function": "mqttRetainedCases",
+          "needle": "RAP 没有保留实时 RETAIN"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-3.6.1-1",
+        "MQTT-3.14.1-1"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttWireCases",
+          "needle": "错误控制响应之后连接未关闭"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-2.1.3-1",
+        "MQTT-3.6.1-1"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttWireCases",
+          "needle": "固定头格式与协议顺序原因码混淆"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.14.1-1"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttWireCases",
+          "needle": "固定头格式与协议顺序原因码混淆"
+        },
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "protocol_probes",
+          "needle": "disconnect-reserved-flags"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-3.1.2-8",
+        "MQTT-3.1.2-10",
+        "MQTT-3.1.2-16",
+        "MQTT-3.1.2-17",
+        "MQTT-3.14.4-3"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-will.php",
+          "function": "mqttWillCases",
+          "needle": "跨版本实时遗嘱内容/QoS/RETAIN 错误"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.1.2-7",
+        "MQTT-3.1.2-8",
+        "MQTT-3.1.2-10",
+        "MQTT-3.1.2-14",
+        "MQTT-3.1.2-15",
+        "MQTT-3.1.3-9",
+        "MQTT-3.14.4-3"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-will.php",
+          "function": "mqttWillCases",
+          "needle": "Will Delay 与会话过期没有取先到期者"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.8.3-4",
+        "MQTT-4.8.2-1",
+        "MQTT-4.8.2-2",
+        "MQTT-4.8.2-3",
+        "MQTT-4.8.2-4",
+        "MQTT-4.8.2-5",
+        "MQTT-4.8.2-6"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-shared.php",
+          "function": "mqttSharedCases",
+          "needle": "禁止改投检查后组失去活性"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-1.5.3-3",
+        "MQTT-2.3.1-5",
+        "MQTT-2.3.1-7",
+        "MQTT-3.8.4-4",
+        "MQTT-3.8.4-5"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttTextCases",
+          "needle": "BOM、UTF-8、Content Type或User Property被剥除、规范化或插入Packet Identifier"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-1.5.4-3",
+        "MQTT-2.2.1-2",
+        "MQTT-2.2.1-6",
+        "MQTT-3.3.2-19",
+        "MQTT-3.3.2-20",
+        "MQTT-3.8.4-5",
+        "MQTT-3.8.4-6",
+        "MQTT-3.8.4-7",
+        "MQTT-3.11.3-1",
+        "MQTT-3.11.3-2"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttTextCases",
+          "needle": "多Topic取消没有合并等量有序UNSUBACK"
+        },
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttTextCases",
+          "needle": "BOM、UTF-8、Content Type或User Property被剥除、规范化或插入Packet Identifier"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-4.7.3-3",
+        "MQTT-3.10.3-1",
+        "MQTT-3.10.4-2",
+        "MQTT-3.10.4-6"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttTextCases",
+          "needle": "合法UTF-8或65535字节Topic订阅被拒绝"
+        },
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttTextCases",
+          "needle": "多Topic取消没有合并等量有序UNSUBACK"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.10.4-3"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-subscriptions.php",
+          "function": "mqttUnsubscribeInflightCases",
+          "needle": "UNSUBSCRIBE丢弃或改写已开始的QoS交换"
+        },
+        {
+          "file": "tests/mqtt-subscriptions.php",
+          "function": "mqttUnsubscribeInflightCases",
+          "needle": "取消后终结确认未完成原QoS交付"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.10.4-1",
+        "MQTT-3.10.4-2"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-subscriptions.php",
+          "function": "mqttUnsubscribeInflightCases",
+          "needle": "UNSUBACK之后目标过滤器仍存在"
+        },
+        {
+          "file": "tests/mqtt-subscriptions.php",
+          "function": "mqttUnsubscribeInflightCases",
+          "needle": "UNSUBACK后新匹配消息仍派生交付"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-1.5.4-1",
+        "MQTT-1.5.7-1"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "protocol_probes",
+          "needle": "user-property-"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.8.3-2",
+        "MQTT-3.10.3-2"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "protocol_probes",
+          "needle": "subscribe-empty-payload"
+        },
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "protocol_probes",
+          "needle": "unsubscribe-empty-payload"
+        },
+        {
+          "file": "tests/mqtt-consumer.php",
+          "function": "mqttMessageCases",
+          "needle": "非法发布订阅未正确拒绝"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-4.6.0-5",
+        "MQTT-4.6.0-6"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "ordered_cases",
+          "needle": "MQTT有序Topic同一来源/Topic/QoS交付顺序改变"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "ids": [
+        "MQTT-4.6.0-6"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-qos1.php",
+          "function": "mqttPublicationOrderCases",
+          "needle": "同源有序Topic在"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-4.6.0-5"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-qos1.php",
+          "function": "mqttPublicationOrderCases",
+          "needle": "同源有序Topic在"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-2.2.2-1",
+        "MQTT-1.5.5-1"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "property_cases",
+          "needle": "nonminimal-property-length"
+        },
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "payload_cases",
+          "needle": "Payload前置SUBACK未保持零属性或订阅未成功"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.3.2-13",
+        "MQTT-3.3.2-14"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "property_cases",
+          "needle": "response-topic-"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.1.3-10",
+        "MQTT-3.3.2-4",
+        "MQTT-3.3.2-15",
+        "MQTT-3.3.2-19",
+        "MQTT-3.3.2-20"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "payload_cases",
+          "needle": "Payload/PFI/响应主题/二进制关联数据/重复User Property顺序发生变化"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.1.2-28"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "payload_cases",
+          "needle": "RequestResponseInformation=0时CONNACK属性不符合部署"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "ids": [
+        "MQTT-3.1.2-29"
+      ],
+      "applicability": "server",
+      "status": "not-run",
+      "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
+      "assertions": [
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "property_cases",
+          "needle": "属性确认前置交换出现意外报文"
+        },
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "property_cases",
+          "needle": "属性PUBCOMP前置PUBREL错误"
+        },
+        {
+          "file": "tests/mqtt-conformance.py",
+          "function": "payload_cases",
+          "needle": "Payload前置SUBACK未保持零属性或订阅未成功"
+        }
+      ]
+    }
+  ],
+  "additionalObligations": [
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "section": "7.1.1",
+      "requirement": "全部服务端出站报文必须符合第2/3章格式；逐包核对固定头、Remaining Length、字段顺序/长度、Packet Identifier、允许的原因码与属性。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "section": "7.1.1 / 4.7",
+      "requirement": "完整Topic匹配语义含空层、大小写、字节一致、Unicode不规范化、最大UTF8字节边界、$Topic排除。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "section": "3.1.4",
+      "requirement": "额外限制、认证或授权失败必须关闭连接，未编号的正文MUST。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "3.1.1"
+      ],
+      "section": "3.2.2.1",
+      "requirement": "CONNACK Connect Acknowledge Flags的7至1位必须为零，未编号的正文MUST。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "section": "2.2.2 / 3.1–3.15",
+      "requirement": "逐种Property Identifier检查所属报文、编码类型、重复规则、数值域、默认值、截断、UTF8对及变长最短编码。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "section": "3.1.3.2.3 / 3.3.2.3.2",
+      "requirement": "Payload Format Indicator为1时Will/PUBLISH载荷必须是UTF8 Character Data；这是载荷语义，不能错误套用Encoded String的NUL限制。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "section": "3.3.1.3",
+      "requirement": "RH=1仅新建订阅重放；正文与非规范附录MQTT-3.3.1-10存在相反表述，以正文裁定。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "section": "3.3.1.3",
+      "requirement": "重放订阅建立时存在的保留原件；后续实时发布不得混入同一保留快照，未接管原件须按持久会话语义恢复。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "section": "4.8.1 / 4.8.2",
+      "requirement": "普通订阅与共享订阅的所有操作语义，特别是共享无保留重放、同组仅一份和QoS2首次发送后不能换成员。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "section": "4.9",
+      "requirement": "每个PUBACK/PUBCOMP（含错误）或原因>=0x80的PUBREC归还一个Send Quota，成功PUBREC不归还；额度不超过初始值，Send Quota和Receive Maximum不是Session State且每次连接重置。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "5.0"
+      ],
+      "section": "4.13",
+      "requirement": "按OASIS区分Malformed Packet、Protocol Error与允许不发送错误包而关闭；第三方默认原因码不作为规范。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "section": "6",
+      "requirement": "启用 WebSocket 后服务端必须按二进制数据帧发送 MQTT 控制报文，不得假设帧与报文对齐，并回显子协议 mqtt；其他数据类型关闭网络连接。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    },
+    {
+      "versions": [
+        "3.1.1",
+        "5.0"
+      ],
+      "section": "7.1.1",
+      "requirement": "Paho参考Broker覆盖统计不是被测Broker条款覆盖；单套件通过不构成MQTT认证。",
+      "status": "not-run",
+      "gap": "按该义务补齐全部适用分支、传输组合及目标平台验证；当前未附运行结果。"
+    }
+  ]
+}

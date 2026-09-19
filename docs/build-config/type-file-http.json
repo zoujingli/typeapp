@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-file-http",
+  "entry": "examples/file-http-command.php",
+  "sources": ["examples/files"],
+  "output": "build/file-http/type-app",
+  "build-directory": "build/file-http/compiler"
+}

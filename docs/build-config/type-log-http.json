@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-log-http",
+  "entry": "examples/log-http-command.php",
+  "sources": ["examples/log"],
+  "output": "build/log-http/type-app",
+  "build-directory": "build/log-http/compiler"
+}

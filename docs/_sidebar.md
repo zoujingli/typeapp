@@ -1,0 +1,49 @@
+- TypeApp 框架
+  - [项目介绍](/)
+  - [快速开始](/guide/quickstart.md)
+  - [系统架构](/guide/architecture.md)
+  - [当前能力与实现规划](/guide/roadmap.md)
+  - [应用结构](/guide/structure.md)
+- 物联中心
+  - [概述](/guide/iot-center.md)
+  - [能力范围](/guide/iot-center.md#能力范围)
+  - [业务架构](/guide/iot-center.md#业务架构)
+  - [准备与启动](/guide/iot-center.md#准备后端与人员账号)
+  - [设备接入](/guide/iot-center.md#设备接入与确认)
+  - [进程与边界](/guide/iot-center.md#进程与维护入口)
+- 开发指南
+  - [配置与环境](/guide/configuration.md)
+  - [路由与中间件](/guide/routing.md)
+  - [数据库与模型](/guide/database.md)
+  - [组件参考](/guide/components.md)
+- 基础通信
+  - [通信导读](/guide/communications.md)
+  - [HTTP](/guide/communications/http.md)
+  - [TCP](/guide/communications/tcp.md)
+  - [UDP](/guide/communications/udp.md)
+  - [MQTT](/guide/communications/mqtt.md)
+  - [WebSocket](/guide/communications/websocket.md)
+- Plugins · 基础
+  - [type-runtime · 运行时](/guide/plugins/type-runtime.md)
+  - [type-core · 核心](/guide/plugins/type-core.md)
+  - [type-validate · 校验](/guide/plugins/type-validate.md)
+  - [type-log · 日志](/guide/plugins/type-log.md)
+- Plugins · 数据与存储
+  - [type-orm · ORM](/guide/plugins/type-orm.md)
+  - [type-orm-mysql · MySQL](/guide/plugins/type-orm-mysql.md)
+  - [type-orm-pgsql · PostgreSQL](/guide/plugins/type-orm-pgsql.md)
+  - [type-orm-sqlite · SQLite](/guide/plugins/type-orm-sqlite.md)
+  - [type-redis · Redis](/guide/plugins/type-redis.md)
+  - [type-cache · 缓存](/guide/plugins/type-cache.md)
+- Plugins · 后台任务
+  - [type-queue · 队列](/guide/plugins/type-queue.md)
+  - [type-scheduler · 调度](/guide/plugins/type-scheduler.md)
+- Plugins · 消息接入
+  - [type-mqtt · MQTT](/guide/plugins/type-mqtt.md)
+- Plugins · 开发工具
+  - [type-build · 构建](/guide/plugins/type-build.md)
+  - [type-testing · 测试](/guide/plugins/type-testing.md)
+- 交付应用
+  - [构建与部署](/guide/deployment.md)
+  - [文档站发布](/guide/documentation.md)
+  - [许可证与归属](/guide/licensing.md)

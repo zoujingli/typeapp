@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-exact-fields",
+  "entry": "examples/exact-command.php",
+  "sources": ["examples/model/Drivers.php", "examples/model/Models.php"],
+  "output": "build/exact-fields/type-app",
+  "build-directory": "build/exact-fields/compiler"
+}

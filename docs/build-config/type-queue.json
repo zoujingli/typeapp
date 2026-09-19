@@ -1,0 +1,9 @@
+{
+  "project-root": "../..",
+  "name": "type-queue",
+  "entry": "examples/queue-command.php",
+  "sources": ["examples/queue"],
+  "queue": {"class": "TypeApp\\QueueExample\\Jobs", "jobs": [{"type": "increment", "version": 1, "handler": "TypeApp\\QueueExample\\Increment"}]},
+  "output": "build/queue/type-app",
+  "build-directory": "build/queue/compiler"
+}

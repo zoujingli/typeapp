@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-task-http",
+  "entry": "examples/task-http-command.php",
+  "sources": ["examples/tasks"],
+  "output": "build/task-http/type-app",
+  "build-directory": "build/task-http/compiler"
+}

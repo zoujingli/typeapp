@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-queue-retries",
+  "entry": "examples/queue-retry-command.php",
+  "sources": ["examples/queue/Increment.php", "examples/queue/RetryJobs.php"],
+  "output": "build/queue-retries/type-app",
+  "build-directory": "build/queue-retries/compiler"
+}

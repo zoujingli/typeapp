@@ -1,0 +1,20 @@
+{
+  "project-root": "../..",
+  "name": "typeapp",
+  "version": "1.0.0-dev",
+  "entry": "app/main.php",
+  "development": {"entry": "bin/typeapp", "prepare": "bin/typeapp-prepare", "output": "build/app/development", "check": ["check"], "watch": ["plugin"]},
+  "sources": ["app"],
+  "threads": {"http": "app\\common\\bootstrap\\Application::httpThread"},
+  "runtime": {
+    "Linux": {"extensions": ["pcntl", "swoole"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]},
+    "Darwin": {"extensions": ["pcntl", "swoole"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]}
+  },
+  "routing": "config/route.php",
+  "config": {
+    "class": "app\\generated\\ProjectConfig",
+    "files": ["config/app.php", "config/database.php", "config/cache.php"]
+  },
+  "output": "build/app/type-app",
+  "build-directory": "build/app/compiler"
+}

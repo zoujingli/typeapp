@@ -1,0 +1,9 @@
+{
+  "project-root": "../..",
+  "name": "type-routing-attributes",
+  "entry": "examples/routing-http-command.php",
+  "sources": ["examples/routing/Controllers.php", "examples/routing/Middleware.php"],
+  "routing": "examples/routing/attribute-route.php",
+  "output": "build/routing-attributes/type-app",
+  "build-directory": "build/routing-attributes/compiler"
+}

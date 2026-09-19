@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-outbox",
+  "entry": "examples/outbox-command.php",
+  "sources": ["examples/model/Drivers.php", "examples/outbox"],
+  "output": "build/outbox/type-app",
+  "build-directory": "build/outbox/compiler"
+}

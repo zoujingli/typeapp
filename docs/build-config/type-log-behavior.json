@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-log-behavior",
+  "entry": "examples/log-behavior-command.php",
+  "output": "build/log-behavior/type-app",
+  "build-directory": "build/log-behavior/compiler"
+}

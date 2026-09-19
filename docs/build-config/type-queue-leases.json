@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-queue-leases",
+  "entry": "examples/queue-lease-command.php",
+  "output": "build/queue-leases/type-app",
+  "build-directory": "build/queue-leases/compiler"
+}

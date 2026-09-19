@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-tls",
+  "entry": "examples/tls-command.php",
+  "output": "build/tls/type-app",
+  "build-directory": "build/tls/compiler"
+}

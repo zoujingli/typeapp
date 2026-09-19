@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-identities",
+  "entry": "examples/identity-command.php",
+  "output": "build/identities/type-app",
+  "build-directory": "build/identities/compiler"
+}

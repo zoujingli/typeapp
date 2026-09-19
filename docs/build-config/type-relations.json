@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-relations",
+  "entry": "examples/relation-command.php",
+  "sources": ["examples/model/Drivers.php", "examples/model/Models.php"],
+  "output": "build/relations/type-app",
+  "build-directory": "build/relations/compiler"
+}

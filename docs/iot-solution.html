@@ -1,0 +1,4314 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#070b12" />
+        <meta
+            name="description"
+            content="TypeApp 物联网中心建设方案：标准设备接入、可靠数据链路、可追溯控制、多租户隔离与高可用架构。"
+        />
+        <title>TypeApp · 物联网中心建设方案</title>
+        <style>
+            :root {
+                color-scheme: dark;
+                --bg: #070b12;
+                --panel: #0d1420;
+                --panel-2: #101b29;
+                --text: #eef4fa;
+                --muted: #99aabd;
+                --line: #213044;
+                --blue: #76baff;
+                --cyan: #7be5e0;
+                --lime: #caf59b;
+                --max: 1240px;
+                --font:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI",
+                    "PingFang SC", "Microsoft YaHei", sans-serif;
+                --mono:
+                    "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            html {
+                scroll-behavior: smooth;
+                scroll-padding-top: 100px;
+            }
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--text);
+                font: 15px/1.85 var(--font);
+                -webkit-font-smoothing: antialiased;
+            }
+            body::before {
+                content: "";
+                position: fixed;
+                inset: 0;
+                pointer-events: none;
+                background: radial-gradient(
+                    ellipse at 80% 0,
+                    rgba(32, 70, 122, 0.11),
+                    transparent 55%
+                );
+                z-index: -1;
+            }
+            a {
+                color: inherit;
+                text-decoration: none;
+            }
+            button,
+            input {
+                font: inherit;
+            }
+            button {
+                cursor: pointer;
+            }
+            button,
+            a,
+            input,
+            summary {
+                -webkit-tap-highlight-color: transparent;
+            }
+            button:focus-visible,
+            a:focus-visible,
+            input:focus-visible,
+            summary:focus-visible {
+                outline: 2px solid var(--cyan);
+                outline-offset: 6px;
+            }
+            button {
+                color: inherit;
+            }
+            ::selection {
+                background: #326589;
+                color: white;
+            }
+            h1,
+            h2,
+            h3,
+            h4,
+            p,
+            figure {
+                margin: 0;
+            }
+            h1,
+            h2,
+            h3,
+            h4 {
+                font-weight: 550;
+            }
+            button svg,
+            a svg {
+                pointer-events: none;
+            }
+            svg {
+                display: block;
+            }
+            .wrap {
+                width: min(var(--max), calc(100% - 112px));
+                margin-inline: auto;
+            }
+            .mono {
+                font-family: var(--mono);
+            }
+            .eyebrow {
+                font: 11px/1.5 var(--mono);
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+                color: var(--cyan);
+            }
+            .muted {
+                color: var(--muted);
+            }
+            .skip {
+                position: fixed;
+                top: -80px;
+                left: 20px;
+                z-index: 100;
+                padding: 10px 20px;
+                background: var(--cyan);
+                color: var(--bg);
+            }
+            .skip:focus {
+                top: 15px;
+            }
+            .icon {
+                width: 24px;
+                height: 24px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.5;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                flex-shrink: 0;
+            }
+            .symbols {
+                position: absolute;
+                width: 0;
+                height: 0;
+                overflow: hidden;
+            }
+            [hidden] {
+                display: none !important;
+            }
+            .header {
+                height: 84px;
+                position: sticky;
+                top: 0;
+                z-index: 30;
+                background: rgba(7, 11, 18, 0.9);
+                backdrop-filter: blur(20px);
+                border-bottom: 1px solid rgba(130, 167, 203, 0.13);
+            }
+            .header-inner {
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 30px;
+            }
+            .brand {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                white-space: nowrap;
+            }
+            .brand-mark {
+                width: 32px;
+                height: 36px;
+                color: var(--cyan);
+            }
+            .brand-word {
+                font-size: 24px;
+                font-weight: 650;
+                letter-spacing: -1px;
+            }
+            .brand-tag {
+                border-left: 1px solid var(--line);
+                padding-left: 16px;
+                margin-left: 6px;
+                color: var(--muted);
+                font: 10px var(--mono);
+                letter-spacing: 0.12em;
+            }
+            .nav {
+                display: flex;
+                align-items: center;
+                gap: 29px;
+                color: #b4c2d1;
+                font-size: 12px;
+            }
+            .nav a {
+                transition: color 0.2s;
+            }
+            .nav a:hover,
+            .nav a[aria-current] {
+                color: var(--cyan);
+            }
+            .nav .nav-cta {
+                border: 1px solid #3a4d60;
+                padding: 7px 14px;
+                border-radius: 3px;
+                color: var(--text);
+                display: flex;
+                gap: 20px;
+                align-items: center;
+            }
+            .nav .icon {
+                width: 13px;
+                height: 13px;
+            }
+            .menu-button {
+                display: none;
+                background: none;
+                border: 1px solid var(--line);
+                border-radius: 4px;
+                padding: 7px 12px;
+            }
+            .reading-progress {
+                position: absolute;
+                bottom: -1px;
+                left: 0;
+                width: 100%;
+                height: 1px;
+                background: var(--cyan);
+                transform: scaleX(0);
+                transform-origin: left;
+            }
+            .hero {
+                position: relative;
+                padding: 48px 0 0;
+                overflow: hidden;
+            }
+            .hero::before {
+                content: "";
+                position: absolute;
+                width: 900px;
+                height: 750px;
+                right: -130px;
+                top: -120px;
+                background: radial-gradient(
+                    ellipse,
+                    rgba(29, 87, 154, 0.15),
+                    transparent 62%
+                );
+                pointer-events: none;
+            }
+            .hero-meta {
+                display: flex;
+                justify-content: space-between;
+                gap: 20px;
+                color: #8597ab;
+                font: 10px var(--mono);
+                letter-spacing: 0.16em;
+            }
+            .hero-meta span:first-child {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .status-dot {
+                display: inline-block;
+                width: 5px;
+                height: 5px;
+                background: var(--cyan);
+                border-radius: 50%;
+                box-shadow: 0 0 12px #7be5e070;
+            }
+            .hero-body {
+                display: grid;
+                grid-template-columns: 1.05fr 1fr;
+                align-items: center;
+                min-height: 562px;
+                position: relative;
+            }
+            .hero-copy {
+                padding: 38px 0 54px;
+                position: relative;
+                z-index: 2;
+            }
+            .hero-kicker {
+                display: inline-flex;
+                align-items: center;
+                gap: 9px;
+                padding: 5px 10px 5px 0;
+                color: var(--cyan);
+                font-size: 12px;
+                letter-spacing: 0.18em;
+                margin-bottom: 25px;
+            }
+            .hero-kicker::before {
+                content: "";
+                height: 1px;
+                width: 30px;
+                background: var(--cyan);
+            }
+            h1 {
+                font-size: clamp(46px, 5.1vw, 74px);
+                line-height: 1.2;
+                letter-spacing: -0.055em;
+                font-weight: 580;
+            }
+            .gradient-text {
+                display: block;
+                background: linear-gradient(
+                    100deg,
+                    #b1d9ff 5%,
+                    #78c6fa 43%,
+                    #84e1d7 95%
+                );
+                background-clip: text;
+                -webkit-background-clip: text;
+                color: transparent;
+                margin-top: 9px;
+            }
+            .hero-lead {
+                font-size: 16px;
+                line-height: 2;
+                color: var(--muted);
+                max-width: 455px;
+                margin-top: 29px;
+            }
+            .hero-actions {
+                display: flex;
+                align-items: center;
+                gap: 27px;
+                margin-top: 35px;
+            }
+            .button {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 28px;
+                padding: 12px 22px;
+                border-radius: 3px;
+                font-size: 13px;
+                font-weight: 600;
+                transition:
+                    transform 0.2s,
+                    background 0.2s;
+            }
+            .button:hover {
+                transform: translateY(-2px);
+            }
+            .button-primary {
+                background: #c1e1ff;
+                color: #09213b;
+            }
+            .button-primary:hover {
+                background: #d8ecff;
+            }
+            .button .icon {
+                width: 16px;
+                height: 16px;
+            }
+            .text-link {
+                font-size: 12px;
+                display: inline-flex;
+                align-items: center;
+                gap: 15px;
+                color: #bdcddd;
+            }
+            .text-link .icon {
+                width: 14px;
+                height: 14px;
+            }
+            .text-link:hover {
+                color: var(--cyan);
+            }
+            .hero-tech {
+                display: flex;
+                gap: 17px;
+                flex-wrap: wrap;
+                margin-top: 33px;
+                color: #7e94aa;
+                font: 10px var(--mono);
+                letter-spacing: 0.06em;
+            }
+            .hero-tech span + span::before {
+                content: "/";
+                margin-right: 17px;
+                color: #344c64;
+            }
+            .network-visual {
+                position: relative;
+                aspect-ratio: 1.05;
+                width: 116%;
+                margin-left: -5%;
+                isolation: isolate;
+            }
+            .network-visual::before {
+                content: "";
+                position: absolute;
+                inset: 18%;
+                border-radius: 50%;
+                box-shadow: 0 0 110px 20px #195b9821;
+                background: radial-gradient(
+                    circle at 35% 30%,
+                    #13396155,
+                    #061323 65%
+                );
+            }
+            .network-canvas {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+            }
+            .globe-fallback {
+                position: absolute;
+                inset: 8%;
+                width: 84%;
+                height: 84%;
+                color: #407caa;
+                opacity: 0.7;
+            }
+            .network-visual.enhanced .globe-fallback {
+                visibility: hidden;
+            }
+            .visual-label {
+                position: absolute;
+                padding: 10px 14px;
+                border: 1px solid #2a4561;
+                background: #0b1725df;
+                backdrop-filter: blur(12px);
+                border-radius: 4px;
+                box-shadow: 0 12px 45px #02070e55;
+            }
+            .visual-label small {
+                display: block;
+                color: #8da6be;
+                font: 9px var(--mono);
+                letter-spacing: 0.12em;
+                margin-bottom: 3px;
+            }
+            .visual-label strong {
+                font-size: 12px;
+                font-weight: 500;
+                letter-spacing: 0.05em;
+            }
+            .visual-label.top {
+                top: 18%;
+                right: 6%;
+            }
+            .visual-label.bottom {
+                bottom: 21%;
+                left: 0;
+            }
+            .visual-label.bottom strong {
+                color: var(--cyan);
+            }
+            .visual-label .status-dot {
+                margin-right: 6px;
+                width: 4px;
+                height: 4px;
+            }
+            .orbit-caption {
+                position: absolute;
+                bottom: 9%;
+                right: 16%;
+                font: 9px var(--mono);
+                color: #6683a1;
+                letter-spacing: 0.2em;
+            }
+            .motion-toggle {
+                position: absolute;
+                right: 0;
+                bottom: 10px;
+                border: 0;
+                background: none;
+                color: #8fa5ba;
+                font-size: 10px;
+                padding: 8px;
+            }
+            .motion-toggle:hover {
+                color: var(--cyan);
+            }
+            .hero-stats {
+                position: relative;
+                border-top: 1px solid var(--line);
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                padding: 32px 0 38px;
+            }
+            .stat {
+                padding: 0 30px;
+                border-left: 1px solid var(--line);
+            }
+            .stat:first-child {
+                border-left: 0;
+                padding-left: 0;
+            }
+            .stat-label {
+                color: var(--muted);
+                font-size: 11px;
+            }
+            .stat-number {
+                font: 46px/1.4 var(--mono);
+                letter-spacing: -0.06em;
+                margin: 8px 0 3px;
+            }
+            .stat-number span {
+                font: 13px var(--font);
+                color: #8ca5bd;
+                margin-left: 7px;
+                letter-spacing: 0;
+            }
+            .stat-caption {
+                font-size: 11px;
+                color: #7f93a9;
+            }
+            .target-tag {
+                display: inline-block;
+                color: var(--cyan);
+                border: 1px solid #315459;
+                border-radius: 3px;
+                padding: 1px 6px;
+                font: 9px/1.6 var(--font);
+                letter-spacing: 0;
+                margin-left: 7px;
+                vertical-align: 1px;
+            }
+            .section {
+                padding: 100px 0;
+                border-top: 1px solid var(--line);
+                position: relative;
+            }
+            .section-head {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 70px;
+                align-items: end;
+                margin-bottom: 42px;
+            }
+            .section-num {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                margin-bottom: 20px;
+            }
+            .section-num span {
+                color: #526c86;
+                font: 11px var(--mono);
+            }
+            h2 {
+                font-size: clamp(28px, 3vw, 40px);
+                line-height: 1.4;
+                letter-spacing: -0.035em;
+            }
+            h2 .dim {
+                color: #7490ac;
+            }
+            .section-intro {
+                color: var(--muted);
+                font-size: 14px;
+                max-width: 480px;
+                justify-self: end;
+            }
+            .section-intro strong {
+                font-weight: 500;
+                color: #d7e8f8;
+            }
+            .subtle {
+                font-size: 11px;
+                color: #8096ab;
+            }
+            .section-note {
+                display: flex;
+                gap: 12px;
+                align-items: start;
+                padding: 19px 0 0;
+                color: #8ba0b6;
+                font-size: 12px;
+            }
+            .section-note .icon {
+                width: 16px;
+                height: 16px;
+                margin-top: 3px;
+                color: var(--blue);
+            }
+            .value-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 46px;
+                margin-top: 55px;
+            }
+            .value-item {
+                border-top: 1px solid #3d5871;
+                padding-top: 25px;
+            }
+            .value-top {
+                display: flex;
+                justify-content: space-between;
+                color: var(--blue);
+                margin-bottom: 25px;
+            }
+            .value-top span {
+                font: 10px var(--mono);
+                letter-spacing: 0.14em;
+                color: #6b86a1;
+            }
+            .value-item h3 {
+                font-size: 21px;
+                margin-bottom: 12px;
+            }
+            .value-item p {
+                font-size: 13px;
+                color: var(--muted);
+                line-height: 1.95;
+            }
+            .value-item .value-detail {
+                color: #c0d6ea;
+                font-size: 11px;
+                margin-top: 23px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .value-detail::before {
+                content: "";
+                width: 4px;
+                height: 4px;
+                background: var(--cyan);
+            }
+            .section-tint {
+                background: linear-gradient(130deg, #0d17238c, transparent 70%);
+            }
+            .architecture {
+                border: 1px solid var(--line);
+                background: linear-gradient(135deg, #0f1c2b99, #0a111d);
+                border-radius: 8px;
+                overflow: hidden;
+            }
+            .diagram-bar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 15px;
+                padding: 17px 24px;
+                border-bottom: 1px solid var(--line);
+                font: 10px var(--mono);
+                letter-spacing: 0.12em;
+                color: #9bb2c9;
+            }
+            .diagram-bar .bar-note {
+                font: 11px var(--font);
+                letter-spacing: 0;
+                color: #738da7;
+            }
+            .architecture-grid {
+                display: grid;
+                grid-template-columns: 1fr 310px;
+            }
+            .arch-stack {
+                padding: 28px;
+                display: grid;
+                gap: 9px;
+                position: relative;
+            }
+            .arch-row {
+                width: 100%;
+                border: 1px solid #25394d;
+                background: #101d2c;
+                display: grid;
+                grid-template-columns: 125px 1fr 20px;
+                align-items: center;
+                gap: 17px;
+                padding: 17px 20px;
+                text-align: left;
+                border-radius: 4px;
+                transition:
+                    border-color 0.2s,
+                    background 0.2s;
+            }
+            .arch-row:hover {
+                background: #162b3f;
+                border-color: #4d7aa0;
+            }
+            .arch-row[aria-pressed="true"] {
+                border-color: #74b9e1;
+                background: linear-gradient(100deg, #18394c, #122331);
+                box-shadow: inset 3px 0 #90d6f0;
+            }
+            .arch-label {
+                font-size: 13px;
+                color: #d7e8f7;
+            }
+            .arch-label small {
+                display: block;
+                font: 8px var(--mono);
+                color: #6e8ea9;
+                letter-spacing: 0.12em;
+                margin-top: 3px;
+            }
+            .arch-items {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 7px 16px;
+                color: #94aec5;
+                font-size: 11px;
+            }
+            .arch-row .icon {
+                width: 15px;
+                height: 15px;
+                color: #7199bb;
+            }
+            .arch-link {
+                text-align: center;
+                color: #6389a8;
+                font: 9px var(--mono);
+                letter-spacing: 0.08em;
+            }
+            .arch-link .line-arrow {
+                display: inline-block;
+                color: var(--cyan);
+                margin: 0 12px;
+            }
+            .arch-aside {
+                border-left: 1px solid var(--line);
+                padding: 32px 27px;
+                background: #0d1825;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }
+            .arch-aside > .icon {
+                width: 33px;
+                height: 33px;
+                color: var(--cyan);
+                margin-bottom: 23px;
+            }
+            .arch-aside h3 {
+                font-size: 21px;
+                margin: 10px 0 15px;
+            }
+            .arch-aside p {
+                color: var(--muted);
+                font-size: 12px;
+                line-height: 2;
+            }
+            .arch-aside .arch-boundary {
+                border-top: 1px solid var(--line);
+                margin-top: 25px;
+                padding-top: 20px;
+                font-size: 11px;
+                color: #bdd4e8;
+            }
+            .arch-footer {
+                padding: 17px 28px;
+                border-top: 1px solid var(--line);
+                display: flex;
+                align-items: center;
+                gap: 25px;
+                color: #89a3bc;
+                font-size: 10px;
+            }
+            .arch-footer strong {
+                color: #b6cde2;
+                font-weight: 500;
+            }
+            .capabilities {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                border-top: 1px solid var(--line);
+                border-left: 1px solid var(--line);
+            }
+            .capability {
+                padding: 29px 25px 26px;
+                border-right: 1px solid var(--line);
+                border-bottom: 1px solid var(--line);
+                transition: background 0.2s;
+            }
+            .capability:hover {
+                background: #101d2b;
+            }
+            .capability > .icon {
+                width: 27px;
+                height: 27px;
+                color: var(--blue);
+                margin-bottom: 25px;
+            }
+            .capability h3 {
+                font-size: 16px;
+                margin-bottom: 12px;
+            }
+            .capability p {
+                font-size: 12px;
+                color: var(--muted);
+                min-height: 72px;
+            }
+            .capability small {
+                display: block;
+                font: 9px var(--mono);
+                letter-spacing: 0.08em;
+                color: #617e9c;
+                margin-top: 23px;
+            }
+            .capability-label {
+                display: flex;
+                justify-content: space-between;
+                gap: 20px;
+                margin-top: 22px;
+                color: #7d97af;
+                font-size: 11px;
+            }
+            .flow-tabs {
+                display: flex;
+                gap: 7px;
+                flex-wrap: wrap;
+                margin-bottom: 28px;
+            }
+            .flow-tab {
+                padding: 10px 22px;
+                border: 1px solid var(--line);
+                border-radius: 4px;
+                background: transparent;
+                color: #95adc3;
+                font-size: 12px;
+            }
+            .flow-tab:hover {
+                border-color: #506b87;
+                color: white;
+            }
+            .flow-tab[aria-selected="true"] {
+                color: var(--cyan);
+                background: #122d35;
+                border-color: #35666c;
+            }
+            .flow-panel {
+                border: 1px solid var(--line);
+                border-radius: 6px;
+                overflow: hidden;
+                background: #0c1520;
+            }
+            .flow-summary {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 50px;
+                padding: 31px 32px;
+                border-bottom: 1px solid var(--line);
+                align-items: center;
+            }
+            .flow-summary h3 {
+                font-size: 23px;
+            }
+            .flow-summary p {
+                color: var(--muted);
+                font-size: 12px;
+            }
+            .flow-steps {
+                padding: 35px 30px;
+                display: grid;
+                grid-template-columns: repeat(5, 1fr);
+                gap: 22px;
+                list-style: none;
+                margin: 0;
+            }
+            .flow-step {
+                position: relative;
+            }
+            .flow-step:not(:last-child)::after {
+                content: "→";
+                position: absolute;
+                right: 0;
+                top: 4px;
+                color: #4d728f;
+                font: 16px var(--mono);
+            }
+            .step-number {
+                display: grid;
+                place-items: center;
+                width: 29px;
+                height: 29px;
+                border: 1px solid #405c74;
+                background: #122638;
+                color: var(--cyan);
+                font: 10px var(--mono);
+                border-radius: 50%;
+                margin-bottom: 17px;
+            }
+            .flow-step h4 {
+                font-size: 13px;
+                margin-bottom: 9px;
+            }
+            .flow-step p {
+                font-size: 11px;
+                color: #90a6bb;
+                line-height: 1.9;
+            }
+            .flow-rule {
+                padding: 19px 32px;
+                background: #112028;
+                border-top: 1px solid #24434b;
+                display: flex;
+                gap: 20px;
+                align-items: baseline;
+                font-size: 12px;
+                color: #a2bdc9;
+            }
+            .flow-rule strong {
+                color: var(--cyan);
+                font-weight: 500;
+                white-space: nowrap;
+            }
+            .flow-timing {
+                display: flex;
+                gap: 20px;
+                margin-top: 21px;
+                flex-wrap: wrap;
+                font-size: 11px;
+                color: #8ba2b9;
+            }
+            .flow-timing span {
+                display: flex;
+                gap: 9px;
+            }
+            .flow-timing b {
+                font: 11px/1.85 var(--mono);
+                color: #d0e4f7;
+            }
+            .security-grid {
+                display: grid;
+                grid-template-columns: 1fr 1.3fr;
+                gap: 60px;
+            }
+            .security-points {
+                display: grid;
+                gap: 29px;
+            }
+            .security-point {
+                display: grid;
+                grid-template-columns: 34px 1fr;
+                gap: 15px;
+            }
+            .security-point .icon {
+                color: var(--cyan);
+                margin-top: 4px;
+            }
+            .security-point h3 {
+                font-size: 16px;
+                margin-bottom: 8px;
+            }
+            .security-point p {
+                color: var(--muted);
+                font-size: 12px;
+            }
+            .table-shell {
+                overflow-x: auto;
+                border: 1px solid var(--line);
+                border-radius: 5px;
+            }
+            table {
+                border-collapse: collapse;
+                width: 100%;
+                font-size: 12px;
+                text-align: left;
+            }
+            caption {
+                text-align: left;
+                padding: 16px 20px;
+                background: #101c2a;
+                color: #c5d7e8;
+                font-size: 12px;
+            }
+            th,
+            td {
+                padding: 15px 18px;
+                border-bottom: 1px solid var(--line);
+                vertical-align: top;
+            }
+            th {
+                color: #9db4ca;
+                font-size: 10px;
+                font-weight: 500;
+                white-space: nowrap;
+                background: #0f1925;
+            }
+            td {
+                color: #b6c7d8;
+            }
+            tr:last-child td {
+                border-bottom: 0;
+            }
+            .permission-table {
+                min-width: 520px;
+            }
+            .permission-table td:not(:first-child) {
+                font-size: 11px;
+            }
+            .allow {
+                color: var(--cyan);
+            }
+            .deny {
+                color: #667f96;
+            }
+            .limited {
+                color: #d6c694;
+            }
+            .security-footnote {
+                font-size: 11px;
+                color: #7c95ad;
+                line-height: 1.9;
+                margin-top: 14px;
+            }
+            .ha-grid {
+                display: grid;
+                grid-template-columns: 1.1fr 1fr;
+                gap: 65px;
+                align-items: start;
+            }
+            .ha-diagram {
+                border: 1px solid var(--line);
+                border-radius: 6px;
+                background: #0c1723;
+                padding: 28px;
+            }
+            .ha-diagram .eyebrow {
+                font-size: 9px;
+                margin-bottom: 25px;
+            }
+            .ha-entry {
+                border: 1px solid #3a526b;
+                padding: 12px;
+                text-align: center;
+                font-size: 12px;
+                border-radius: 4px;
+                background: #122334;
+            }
+            .ha-entry small {
+                display: block;
+                font-size: 10px;
+                color: #8aa3bb;
+            }
+            .ha-connector {
+                height: 36px;
+                display: grid;
+                place-items: center;
+                color: #648caf;
+                font-size: 11px;
+            }
+            .ha-nodes {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+            }
+            .ha-node {
+                text-align: center;
+                border: 1px solid #305569;
+                border-radius: 4px;
+                padding: 19px 4px;
+                background: #0e2630;
+            }
+            .ha-node .icon {
+                margin: 0 auto 12px;
+                color: var(--cyan);
+            }
+            .ha-node strong {
+                display: block;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            .ha-node small {
+                display: block;
+                color: #84a3b3;
+                font: 9px var(--mono);
+                margin-top: 4px;
+            }
+            .ha-sync {
+                text-align: center;
+                font-size: 10px;
+                color: #80bac3;
+                margin: 18px 0 22px;
+            }
+            .ha-backup {
+                border-top: 1px dashed #3a5166;
+                padding-top: 20px;
+                display: flex;
+                gap: 15px;
+                align-items: center;
+            }
+            .ha-backup > .icon {
+                color: #9cbad6;
+            }
+            .ha-backup strong {
+                font-size: 12px;
+                font-weight: 500;
+            }
+            .ha-backup small {
+                display: block;
+                color: #8ba3ba;
+                font-size: 10px;
+            }
+            .ha-metrics {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 28px 32px;
+            }
+            .ha-metric {
+                border-bottom: 1px solid var(--line);
+                padding-bottom: 23px;
+            }
+            .ha-metric .big {
+                font: 42px/1.3 var(--mono);
+                color: #d4eaff;
+                letter-spacing: -0.05em;
+                margin-bottom: 11px;
+            }
+            .ha-metric .big span {
+                font: 13px var(--font);
+                color: var(--muted);
+                letter-spacing: 0;
+                margin-left: 5px;
+            }
+            .ha-metric h3 {
+                font-size: 13px;
+                margin-bottom: 7px;
+            }
+            .ha-metric p {
+                color: #8ca3ba;
+                font-size: 11px;
+            }
+            .ha-principle {
+                border-left: 2px solid #77b6c3;
+                padding-left: 19px;
+                margin-top: 28px;
+                font-size: 12px;
+                color: #a4b9cb;
+            }
+            .capacity-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 26px;
+            }
+            .calculator {
+                border: 1px solid #375970;
+                background:
+                    radial-gradient(
+                        ellipse at 10% 0,
+                        #18354a99,
+                        transparent 70%
+                    ),
+                    #0c1824;
+                border-radius: 6px;
+                padding: 29px;
+            }
+            .calculator-title {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 15px;
+                margin-bottom: 27px;
+            }
+            .calculator-title h3 {
+                font-size: 16px;
+            }
+            .calculator-title span {
+                font: 9px var(--mono);
+                color: var(--cyan);
+                letter-spacing: 0.1em;
+            }
+            .range-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+                gap: 15px;
+            }
+            .range-row label {
+                font-size: 12px;
+                color: #9bb5cc;
+            }
+            .device-count {
+                font: 29px var(--mono);
+                color: #e1effc;
+                letter-spacing: -0.04em;
+            }
+            .device-count small {
+                font: 11px var(--font);
+                color: var(--muted);
+                margin-left: 6px;
+            }
+            input[type="range"] {
+                width: 100%;
+                margin: 21px 0 4px;
+                accent-color: var(--cyan);
+                height: 24px;
+                cursor: pointer;
+            }
+            .range-labels {
+                display: flex;
+                justify-content: space-between;
+                font: 9px var(--mono);
+                color: #7892aa;
+            }
+            .calc-results {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+                padding-top: 29px;
+                margin-top: 22px;
+                border-top: 1px solid #294053;
+            }
+            .calc-result strong {
+                display: block;
+                font: 25px var(--mono);
+                letter-spacing: -0.04em;
+                color: #bfe6f1;
+            }
+            .calc-result strong small {
+                font: 10px var(--mono);
+                color: #98b9cd;
+                margin-left: 4px;
+                letter-spacing: 0;
+            }
+            .calc-result span {
+                font-size: 10px;
+                color: #8da8bf;
+            }
+            .calc-note {
+                margin-top: 24px;
+                font-size: 11px;
+                color: #88a2b9;
+                line-height: 1.9;
+            }
+            .calc-baseline {
+                font-size: 10px;
+                color: #b0cbdf;
+                margin-top: 15px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            .reset-button {
+                background: none;
+                border: 0;
+                color: var(--cyan);
+                font-size: 10px;
+                padding: 5px;
+                white-space: nowrap;
+            }
+            .retention {
+                padding: 27px 29px;
+                border: 1px solid var(--line);
+                border-radius: 6px;
+            }
+            .retention h3 {
+                font-size: 16px;
+                margin-bottom: 25px;
+            }
+            .retention-row {
+                display: grid;
+                grid-template-columns: 90px 1fr 58px;
+                gap: 18px;
+                align-items: center;
+                margin: 22px 0;
+            }
+            .retention-row span {
+                font-size: 12px;
+                color: #a1b5c8;
+            }
+            .retention-bar {
+                height: 4px;
+                background: #172d40;
+                border-radius: 4px;
+            }
+            .retention-bar i {
+                display: block;
+                height: 100%;
+                background: linear-gradient(90deg, #4983b3, #86d4df);
+                border-radius: 4px;
+                width: 100%;
+            }
+            .retention-row b {
+                font: 13px var(--mono);
+                text-align: right;
+                color: #d7eafa;
+            }
+            .retention-row b small {
+                font: 10px var(--font);
+                color: var(--muted);
+            }
+            .retention p {
+                font-size: 11px;
+                color: #8ca3b9;
+                margin-top: 27px;
+            }
+            .resource-strip {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 35px;
+                border-block: 1px solid var(--line);
+                padding: 27px 0;
+                margin-top: 32px;
+            }
+            .resource-strip h4 {
+                font-size: 12px;
+                color: #9cb4ca;
+                margin-bottom: 9px;
+            }
+            .resource-strip strong {
+                font: 15px var(--mono);
+                font-weight: 400;
+                color: #d6e7f7;
+            }
+            .resource-strip p {
+                font-size: 10px;
+                color: #7994ad;
+                margin-top: 8px;
+            }
+            .capacity-details {
+                margin-top: 27px;
+                border-bottom: 1px solid var(--line);
+            }
+            summary {
+                cursor: pointer;
+                list-style: none;
+                display: flex;
+                justify-content: space-between;
+                gap: 20px;
+                padding: 20px 0;
+                color: #c4d8eb;
+                font-size: 13px;
+            }
+            summary::-webkit-details-marker {
+                display: none;
+            }
+            summary::after {
+                content: "+";
+                font: 20px var(--mono);
+                color: var(--cyan);
+            }
+            details[open] > summary::after {
+                content: "−";
+            }
+            .capacity-details table {
+                min-width: 580px;
+            }
+            .capacity-details .table-shell {
+                margin: 7px 0 24px;
+            }
+            .capacity-details td:first-child {
+                width: 125px;
+                white-space: nowrap;
+            }
+            .delivery-stages {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 28px;
+                margin: 50px 0 46px;
+            }
+            .delivery-stage {
+                border-top: 2px solid #426889;
+                padding-top: 21px;
+            }
+            .delivery-stage small {
+                font: 10px var(--mono);
+                color: var(--cyan);
+                letter-spacing: 0.1em;
+            }
+            .delivery-stage h3 {
+                font-size: 18px;
+                margin: 13px 0 11px;
+            }
+            .delivery-stage p {
+                color: #94aabe;
+                font-size: 12px;
+            }
+            .acceptance-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 1px;
+                background: var(--line);
+                border: 1px solid var(--line);
+                border-radius: 5px;
+                overflow: hidden;
+            }
+            .acceptance-item {
+                background: #0c1621;
+                padding: 22px 23px;
+                display: flex;
+                gap: 13px;
+            }
+            .acceptance-item > .icon {
+                width: 20px;
+                height: 20px;
+                color: #89b4cf;
+                margin-top: 4px;
+            }
+            .acceptance-item h4 {
+                font-size: 13px;
+                margin-bottom: 7px;
+            }
+            .acceptance-item p {
+                font-size: 11px;
+                color: #8ca5bb;
+            }
+            .scope-details {
+                margin-top: 20px;
+                border-bottom: 1px solid var(--line);
+            }
+            .scope-content {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 40px;
+                padding: 7px 0 27px;
+            }
+            .scope-content h4 {
+                font-size: 13px;
+                color: #b9cfe1;
+                margin-bottom: 10px;
+            }
+            .scope-content p {
+                font-size: 12px;
+                color: #879fb5;
+            }
+            .evidence-note {
+                margin-top: 27px;
+                font-size: 12px;
+                color: #99afc3;
+                padding: 18px 22px;
+                border-left: 2px solid #526d85;
+                background: #101923;
+            }
+            .evidence-note strong {
+                color: #d0dfed;
+                font-weight: 500;
+            }
+            .closing {
+                padding: 75px 0 64px;
+                border-top: 1px solid var(--line);
+                background: radial-gradient(
+                    ellipse at 25% 100%,
+                    #12304b55,
+                    transparent 60%
+                );
+            }
+            .closing-inner {
+                display: flex;
+                justify-content: space-between;
+                gap: 35px;
+                align-items: center;
+            }
+            .closing h2 {
+                font-size: 35px;
+                margin: 17px 0 12px;
+            }
+            .closing p {
+                font-size: 13px;
+                color: #91a9bf;
+            }
+            .closing .button {
+                border: 1px solid #3b5e7e;
+                color: #c6e2f8;
+            }
+            .footer {
+                border-top: 1px solid var(--line);
+                padding: 24px 0 30px;
+            }
+            .footer-inner {
+                display: flex;
+                justify-content: space-between;
+                gap: 20px;
+                align-items: center;
+                font-size: 10px;
+                color: #718da6;
+            }
+            .footer-brand {
+                color: #c2d6e8;
+                font-size: 15px;
+                font-weight: 600;
+                letter-spacing: -0.04em;
+                margin-right: 18px;
+            }
+            .footer-links {
+                display: flex;
+                gap: 23px;
+            }
+            .footer-links a:hover {
+                color: var(--cyan);
+            }
+            .back-top {
+                position: fixed;
+                right: 22px;
+                bottom: 22px;
+                width: 38px;
+                height: 38px;
+                border: 1px solid #34506a;
+                border-radius: 4px;
+                background: #0e1d2cee;
+                color: #a6c9e7;
+                display: grid;
+                place-items: center;
+                z-index: 20;
+            }
+            .back-top .icon {
+                width: 16px;
+                height: 16px;
+            }
+            .no-script {
+                margin: 20px auto;
+                padding: 12px 20px;
+                color: #c7deed;
+                border: 1px solid var(--line);
+                font-size: 12px;
+            }
+            .brand-period {
+                color: var(--cyan);
+            }
+            .recovery-eyebrow {
+                margin-bottom: 25px;
+            }
+            .retention-bar .raw-retention {
+                width: 3.89%;
+            }
+            .retention-bar .minute-retention {
+                width: 50%;
+            }
+            .security-grid > * {
+                min-width: 0;
+            }
+            @media (min-width: 1600px) {
+                .hero-body {
+                    min-height: 620px;
+                }
+                .network-visual {
+                    width: 121%;
+                }
+                .section {
+                    padding: 110px 0;
+                }
+            }
+            @media (max-width: 1100px) {
+                .wrap {
+                    width: calc(100% - 64px);
+                }
+                .brand-tag {
+                    display: none;
+                }
+                .nav {
+                    gap: 21px;
+                }
+                .hero-body {
+                    min-height: 525px;
+                }
+                .hero-lead {
+                    font-size: 14px;
+                }
+                .network-visual {
+                    width: 118%;
+                    margin-left: -10%;
+                }
+                .hero-meta {
+                    font-size: 9px;
+                }
+                .stat {
+                    padding-inline: 22px;
+                }
+                .stat-number {
+                    font-size: 38px;
+                }
+                .section-head {
+                    gap: 35px;
+                }
+                .architecture-grid {
+                    grid-template-columns: 1fr 265px;
+                }
+                .arch-stack {
+                    padding: 23px;
+                }
+                .arch-row {
+                    grid-template-columns: 100px 1fr 15px;
+                    padding: 15px;
+                    gap: 12px;
+                }
+                .arch-aside {
+                    padding: 25px;
+                }
+                .arch-items {
+                    gap: 5px 10px;
+                    font-size: 10px;
+                }
+                .capability {
+                    padding: 24px 20px;
+                }
+                .security-grid,
+                .ha-grid {
+                    gap: 32px;
+                }
+                .flow-steps {
+                    gap: 15px;
+                    padding: 29px 25px;
+                }
+                .flow-rule {
+                    padding-inline: 25px;
+                }
+                .resource-strip {
+                    gap: 24px;
+                }
+                .resource-strip strong {
+                    font-size: 13px;
+                }
+            }
+            @media (max-width: 800px) {
+                html {
+                    scroll-padding-top: 86px;
+                }
+                .header {
+                    height: 70px;
+                }
+                .wrap {
+                    width: calc(100% - 44px);
+                }
+                .brand-word {
+                    font-size: 23px;
+                }
+                .brand-mark {
+                    width: 28px;
+                    height: 31px;
+                }
+                .menu-button {
+                    display: block;
+                }
+                .nav {
+                    display: none;
+                    position: absolute;
+                    top: 69px;
+                    left: 0;
+                    right: 0;
+                    background: #0c1522;
+                    border-bottom: 1px solid var(--line);
+                    padding: 20px 22px;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 10px 20px;
+                }
+                .nav.open {
+                    display: grid;
+                }
+                .nav a {
+                    padding: 9px;
+                    font-size: 13px;
+                }
+                .nav .nav-cta {
+                    justify-content: space-between;
+                }
+                .hero {
+                    padding-top: 29px;
+                }
+                .hero-meta {
+                    font-size: 8px;
+                    letter-spacing: 0.07em;
+                }
+                .hero-meta > span:last-child {
+                    display: none;
+                }
+                .hero-body {
+                    grid-template-columns: 1fr;
+                    min-height: 0;
+                }
+                .hero-copy {
+                    padding: 43px 0 0;
+                }
+                .hero-kicker {
+                    margin-bottom: 22px;
+                    font-size: 11px;
+                }
+                h1 {
+                    font-size: clamp(40px, 8.5vw, 66px);
+                }
+                .hero-lead {
+                    max-width: 480px;
+                    margin-top: 23px;
+                }
+                .hero-actions {
+                    margin-top: 26px;
+                    gap: 24px;
+                }
+                .hero-tech {
+                    margin-top: 27px;
+                    font-size: 9px;
+                    gap: 13px;
+                }
+                .hero-tech span + span::before {
+                    margin-right: 13px;
+                }
+                .network-visual {
+                    width: 100%;
+                    max-width: 560px;
+                    margin: -3px auto 7px;
+                    aspect-ratio: 1.25;
+                }
+                .visual-label.top {
+                    right: 3%;
+                    top: 21%;
+                }
+                .visual-label.bottom {
+                    left: 2%;
+                    bottom: 20%;
+                }
+                .orbit-caption {
+                    bottom: 5%;
+                    right: 20%;
+                }
+                .motion-toggle {
+                    bottom: 3px;
+                }
+                .hero-stats {
+                    grid-template-columns: repeat(2, 1fr);
+                    padding: 24px 0 28px;
+                    gap: 24px 0;
+                }
+                .stat {
+                    padding: 0 22px;
+                }
+                .stat:nth-child(3) {
+                    padding-left: 0;
+                    border: 0;
+                }
+                .stat-number {
+                    font-size: 37px;
+                    margin-block: 5px;
+                }
+                .stat-caption {
+                    font-size: 10px;
+                }
+                .stat-label {
+                    font-size: 10px;
+                }
+                .section {
+                    padding: 65px 0;
+                }
+                .section-head {
+                    grid-template-columns: 1fr;
+                    gap: 20px;
+                    margin-bottom: 30px;
+                }
+                .section-num {
+                    margin-bottom: 15px;
+                }
+                .section-intro {
+                    justify-self: start;
+                    max-width: 600px;
+                    font-size: 13px;
+                }
+                .value-grid {
+                    gap: 28px;
+                    margin-top: 35px;
+                }
+                .value-item h3 {
+                    font-size: 17px;
+                }
+                .value-item p {
+                    font-size: 12px;
+                }
+                .value-top {
+                    margin-bottom: 22px;
+                }
+                .value-top span {
+                    font-size: 8px;
+                }
+                .value-detail {
+                    line-height: 1.9;
+                }
+                .architecture-grid {
+                    grid-template-columns: 1fr;
+                }
+                .arch-aside {
+                    border-left: 0;
+                    border-top: 1px solid var(--line);
+                    display: block;
+                    padding: 25px;
+                }
+                .arch-aside > .icon {
+                    float: left;
+                    margin: 5px 18px 15px 0;
+                }
+                .arch-aside h3 {
+                    font-size: 20px;
+                    margin-top: 7px;
+                }
+                .arch-aside .arch-boundary {
+                    margin-top: 17px;
+                    padding-top: 15px;
+                }
+                .arch-footer {
+                    gap: 10px 22px;
+                    flex-wrap: wrap;
+                    font-size: 9px;
+                    padding: 17px 23px;
+                }
+                .capabilities {
+                    grid-template-columns: repeat(2, 1fr);
+                }
+                .capability {
+                    padding: 25px;
+                }
+                .capability p {
+                    min-height: 0;
+                }
+                .capability-label {
+                    flex-direction: column;
+                    gap: 5px;
+                    font-size: 10px;
+                }
+                .flow-summary {
+                    gap: 23px;
+                    padding: 25px;
+                    grid-template-columns: 1fr;
+                }
+                .flow-summary h3 {
+                    font-size: 22px;
+                }
+                .flow-steps {
+                    grid-template-columns: 1fr;
+                    gap: 0;
+                    padding: 27px 25px;
+                }
+                .flow-step {
+                    padding-left: 47px;
+                    min-height: 86px;
+                    padding-bottom: 22px;
+                }
+                .flow-step:last-child {
+                    min-height: 0;
+                    padding-bottom: 0;
+                }
+                .flow-step:not(:last-child)::after {
+                    content: "";
+                    width: 1px;
+                    top: 30px;
+                    bottom: 0;
+                    left: 14px;
+                    background: #2a4b65;
+                }
+                .step-number {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                }
+                .flow-step h4 {
+                    margin-bottom: 5px;
+                }
+                .flow-step p {
+                    font-size: 12px;
+                }
+                .flow-rule {
+                    display: block;
+                    font-size: 11px;
+                }
+                .flow-rule strong {
+                    display: block;
+                    margin-bottom: 5px;
+                }
+                .security-grid,
+                .ha-grid {
+                    grid-template-columns: 1fr;
+                    gap: 32px;
+                }
+                .security-points {
+                    grid-template-columns: 1fr;
+                    gap: 24px;
+                }
+                .security-point p {
+                    font-size: 13px;
+                }
+                .permission-table {
+                    min-width: 500px;
+                }
+                .ha-metrics {
+                    gap: 23px 27px;
+                }
+                .ha-metric .big {
+                    font-size: 38px;
+                }
+                .capacity-grid {
+                    grid-template-columns: 1fr;
+                }
+                .calculator,
+                .retention {
+                    padding: 25px;
+                }
+                .resource-strip {
+                    grid-template-columns: 1fr;
+                    gap: 22px;
+                }
+                .resource-strip > div + div {
+                    padding-top: 22px;
+                    border-top: 1px solid var(--line);
+                }
+                .resource-strip strong {
+                    font-size: 15px;
+                }
+                .delivery-stages {
+                    grid-template-columns: 1fr 1fr;
+                    gap: 30px;
+                    margin: 35px 0;
+                }
+                .acceptance-grid {
+                    grid-template-columns: 1fr 1fr;
+                }
+                .scope-content {
+                    grid-template-columns: 1fr;
+                    gap: 25px;
+                }
+                .closing {
+                    padding: 54px 0;
+                }
+                .closing-inner {
+                    align-items: start;
+                    flex-direction: column;
+                    gap: 25px;
+                }
+                .closing h2 {
+                    font-size: 30px;
+                }
+                .footer-inner {
+                    flex-direction: column;
+                    align-items: start;
+                    gap: 17px;
+                }
+                .back-top {
+                    right: 13px;
+                    bottom: 13px;
+                    width: 34px;
+                    height: 34px;
+                }
+                .diagram-bar {
+                    padding: 16px 23px;
+                }
+                .diagram-bar .bar-note {
+                    font-size: 10px;
+                }
+                .section-note {
+                    font-size: 11px;
+                }
+                .target-tag {
+                    font-size: 8px;
+                    margin-left: 4px;
+                }
+            }
+            @media (max-width: 480px) {
+                .value-grid {
+                    grid-template-columns: 1fr;
+                    gap: 28px;
+                }
+                .value-item {
+                    padding-top: 20px;
+                }
+                .value-top {
+                    margin-bottom: 14px;
+                }
+                .value-item h3 {
+                    font-size: 19px;
+                }
+                .value-item .value-detail {
+                    margin-top: 14px;
+                }
+                .value-item p {
+                    font-size: 13px;
+                }
+                .hero-lead {
+                    font-size: 13px;
+                }
+                .hero-actions {
+                    gap: 19px;
+                }
+                .button {
+                    padding: 12px 18px;
+                    gap: 23px;
+                    font-size: 12px;
+                }
+                .text-link {
+                    font-size: 11px;
+                    gap: 10px;
+                }
+                .visual-label {
+                    padding: 8px 10px;
+                }
+                .visual-label strong {
+                    font-size: 10px;
+                }
+                .visual-label small {
+                    font-size: 7px;
+                }
+                .orbit-caption {
+                    font-size: 7px;
+                }
+                .stat-number {
+                    font-size: 33px;
+                }
+                .stat {
+                    padding-right: 0;
+                    padding-left: 18px;
+                }
+                .stat-caption {
+                    font-size: 9px;
+                }
+                .stat-number span {
+                    font-size: 11px;
+                }
+                .arch-stack {
+                    padding: 18px 15px;
+                }
+                .arch-row {
+                    grid-template-columns: 88px 1fr 12px;
+                    padding: 14px 11px;
+                    gap: 10px;
+                }
+                .arch-label {
+                    font-size: 12px;
+                }
+                .arch-label small {
+                    font-size: 7px;
+                }
+                .arch-items {
+                    font-size: 10px;
+                    gap: 3px 8px;
+                }
+                .arch-link {
+                    font-size: 8px;
+                }
+                .arch-link .line-arrow {
+                    margin: 0 5px;
+                }
+                .diagram-bar {
+                    font-size: 9px;
+                    padding: 15px;
+                }
+                .diagram-bar .bar-note {
+                    font-size: 9px;
+                }
+                .arch-aside {
+                    padding: 24px 20px;
+                }
+                .arch-footer {
+                    padding: 15px;
+                    font-size: 9px;
+                }
+                .capability {
+                    padding: 23px 18px;
+                }
+                .capability h3 {
+                    font-size: 14px;
+                }
+                .capability p {
+                    font-size: 11px;
+                }
+                .capability small {
+                    font-size: 8px;
+                    margin-top: 18px;
+                }
+                .flow-tab {
+                    padding: 9px 15px;
+                    font-size: 11px;
+                }
+                .flow-summary,
+                .flow-rule {
+                    padding: 22px;
+                }
+                .flow-steps {
+                    padding: 25px 22px;
+                }
+                .flow-timing {
+                    gap: 10px 17px;
+                    font-size: 10px;
+                }
+                .security-point p {
+                    font-size: 12px;
+                }
+                .ha-diagram {
+                    padding: 22px 18px;
+                }
+                .ha-nodes {
+                    gap: 8px;
+                }
+                .ha-node {
+                    padding: 18px 2px;
+                }
+                .ha-node strong {
+                    font-size: 10px;
+                }
+                .ha-node small {
+                    font-size: 8px;
+                }
+                .ha-metric .big {
+                    font-size: 33px;
+                }
+                .ha-metric h3 {
+                    font-size: 12px;
+                }
+                .calculator,
+                .retention {
+                    padding: 22px;
+                }
+                .calculator-title span {
+                    font-size: 8px;
+                }
+                .device-count {
+                    font-size: 26px;
+                }
+                .calc-result strong {
+                    font-size: 22px;
+                }
+                .calc-result span {
+                    font-size: 9px;
+                }
+                .calc-note {
+                    font-size: 10px;
+                }
+                .calc-baseline {
+                    font-size: 9px;
+                }
+                .retention-row {
+                    grid-template-columns: 77px 1fr 51px;
+                    gap: 12px;
+                }
+                .retention-row span {
+                    font-size: 11px;
+                }
+                .delivery-stages {
+                    gap: 25px;
+                }
+                .delivery-stage h3 {
+                    font-size: 16px;
+                }
+                .delivery-stage p {
+                    font-size: 11px;
+                }
+                .acceptance-grid {
+                    grid-template-columns: 1fr;
+                }
+                .acceptance-item {
+                    padding: 20px;
+                }
+                .scope-details summary,
+                .capacity-details summary {
+                    font-size: 12px;
+                }
+                .closing h2 {
+                    font-size: 27px;
+                }
+                .closing p {
+                    font-size: 12px;
+                }
+                .footer-links {
+                    gap: 19px;
+                    font-size: 10px;
+                }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                html {
+                    scroll-behavior: auto;
+                }
+                *,
+                *::before,
+                *::after {
+                    transition: none !important;
+                    animation: none !important;
+                }
+            }
+        </style>
+    </head>
+    <body id="top">
+        <a class="skip" href="#overview">跳到方案正文</a>
+        <svg
+            class="symbols"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+        >
+            <defs>
+                <symbol id="i-arrow" viewBox="0 0 24 24">
+                    <path d="M4 12h16m-6-6 6 6-6 6" />
+                </symbol>
+                <symbol id="i-up" viewBox="0 0 24 24">
+                    <path d="M12 20V4m-6 6 6-6 6 6" />
+                </symbol>
+                <symbol id="i-diagonal" viewBox="0 0 24 24">
+                    <path d="M5 19 19 5M5 5h14v14" />
+                </symbol>
+                <symbol id="i-network" viewBox="0 0 24 24">
+                    <rect x="9" y="2" width="6" height="5" rx="1" />
+                    <rect x="2" y="17" width="6" height="5" rx="1" />
+                    <rect x="16" y="17" width="6" height="5" rx="1" />
+                    <path d="M12 7v5M5 17v-5h14v5" />
+                </symbol>
+                <symbol id="i-shield" viewBox="0 0 24 24">
+                    <path d="m12 2 8 3v6c0 5-3 8-8 11-5-3-8-6-8-11V5z" />
+                    <path d="m8 12 3 3 5-6" />
+                </symbol>
+                <symbol id="i-box" viewBox="0 0 24 24">
+                    <path
+                        d="m12 2 9 5v10l-9 5-9-5V7zM3 7l9 5 9-5M12 12v10M8 4l9 5"
+                    />
+                </symbol>
+                <symbol id="i-device" viewBox="0 0 24 24">
+                    <rect x="5" y="3" width="14" height="18" rx="2" />
+                    <path
+                        d="M9 7h6M9 11h6M10 17h4M2 8h3m14 0h3M2 16h3m14 0h3"
+                    />
+                </symbol>
+                <symbol id="i-chart" viewBox="0 0 24 24">
+                    <path d="M3 3v18h18M6 15l5-6 4 3 6-8" />
+                </symbol>
+                <symbol id="i-command" viewBox="0 0 24 24">
+                    <path d="m13 2-9 12h7l-1 8 10-13h-8z" />
+                </symbol>
+                <symbol id="i-bell" viewBox="0 0 24 24">
+                    <path d="M5 10a7 7 0 0 1 14 0v6l2 2H3l2-2zM9 21h6M12 1v2" />
+                </symbol>
+                <symbol id="i-users" viewBox="0 0 24 24">
+                    <circle cx="9" cy="7" r="4" />
+                    <path
+                        d="M1 22v-3a8 8 0 0 1 16 0v3M17 4a4 4 0 0 1 0 8m3 3a7 7 0 0 1 3 6"
+                    />
+                </symbol>
+                <symbol id="i-search" viewBox="0 0 24 24">
+                    <circle cx="10" cy="10" r="7" />
+                    <path d="m15 15 7 7M7 10h6m-3-3v6" />
+                </symbol>
+                <symbol id="i-export" viewBox="0 0 24 24">
+                    <path d="M12 2v13m-5-5 5 5 5-5M3 16v6h18v-6" />
+                </symbol>
+                <symbol id="i-server" viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="18" height="7" rx="1" />
+                    <rect x="3" y="14" width="18" height="7" rx="1" />
+                    <path d="M7 6h.01M7 17h.01M12 6h5m-5 11h5" />
+                </symbol>
+                <symbol id="i-database" viewBox="0 0 24 24">
+                    <ellipse cx="12" cy="5" rx="9" ry="3" />
+                    <path d="M3 5v14c0 4 18 4 18 0V5M3 12c0 4 18 4 18 0" />
+                </symbol>
+                <symbol id="i-check" viewBox="0 0 24 24">
+                    <path d="m5 12 4 4L20 5M21 13v7H3V3h12" />
+                </symbol>
+                <symbol id="i-code" viewBox="0 0 24 24">
+                    <path d="m7 6-6 6 6 6m10-12 6 6-6 6M14 3l-4 18" />
+                </symbol>
+                <symbol id="i-info" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 11v6m0-10v.01" />
+                </symbol>
+                <symbol id="i-layers" viewBox="0 0 24 24">
+                    <path
+                        d="m12 2 10 6-10 6L2 8zM2 13l10 6 10-6M2 18l10 6 10-6"
+                    />
+                </symbol>
+            </defs>
+        </svg>
+        <header class="header">
+            <div class="wrap header-inner">
+                <a href="#top" class="brand" aria-label="TypeApp 方案首页"
+                    ><svg
+                        class="brand-mark"
+                        viewBox="0 0 32 36"
+                        fill="none"
+                        aria-hidden="true"
+                    >
+                        <path
+                            d="M16 2 29 9.5v16L16 34 3 25.5v-16L16 2Z"
+                            stroke="currentColor"
+                            stroke-width="1.2"
+                        />
+                        <path
+                            d="m3 9.5 13 8 13-8M16 17.5V34M9 13v9l7 4.5 7-4.5v-9M9 6l14 8"
+                            stroke="currentColor"
+                            stroke-width="1.2"
+                        /></svg
+                    ><span class="brand-word"
+                        >typeapp<span class="brand-period">.</span></span
+                    ><span class="brand-tag">IoT SOLUTIONS</span></a
+                >
+                <button
+                    class="menu-button"
+                    id="menu-button"
+                    type="button"
+                    aria-expanded="false"
+                    aria-controls="main-nav"
+                >
+                    目录 <span aria-hidden="true">＋</span>
+                </button>
+                <nav class="nav" id="main-nav" aria-label="方案导航">
+                    <a href="#overview">方案概览</a
+                    ><a href="#architecture">总体架构</a
+                    ><a href="#capabilities">核心能力</a
+                    ><a href="#reliability">高可用</a
+                    ><a href="#capacity">容量规划</a
+                    ><a href="#delivery" class="nav-cta"
+                        >交付标准
+                        <svg class="icon" aria-hidden="true">
+                            <use href="#i-diagonal" /></svg
+                    ></a>
+                </nav>
+            </div>
+            <div
+                class="reading-progress"
+                id="reading-progress"
+                aria-hidden="true"
+            ></div>
+        </header>
+        <main>
+            <section class="hero" aria-labelledby="hero-title">
+                <div class="wrap">
+                    <div class="hero-meta">
+                        <span
+                            ><i class="status-dot" aria-hidden="true"></i>
+                            TYPEAPP / INTERNET OF THINGS</span
+                        ><span
+                            >SOLUTION DOCUMENT &nbsp; / &nbsp; 2026.09 &nbsp; /
+                            &nbsp; V1.0</span
+                        >
+                    </div>
+                    <div class="hero-body">
+                        <div class="hero-copy">
+                            <p class="hero-kicker">物联网中心建设方案</p>
+                            <h1 id="hero-title">
+                                让设备互联，<span class="gradient-text"
+                                    >让数据可信。</span
+                                >
+                            </h1>
+                            <p class="hero-lead">
+                                从标准接入到可靠数据，从远程控制到业务协同。<br />以清晰架构，构建可管理、可追溯的物联网中心。
+                            </p>
+                            <div class="hero-actions">
+                                <a
+                                    class="button button-primary"
+                                    href="#architecture"
+                                    >探索总体架构
+                                    <svg class="icon" aria-hidden="true">
+                                        <use href="#i-arrow" /></svg></a
+                                ><a class="text-link" href="#overview"
+                                    >阅读完整方案
+                                    <svg class="icon" aria-hidden="true">
+                                        <use href="#i-diagonal" /></svg
+                                ></a>
+                            </div>
+                            <div class="hero-tech">
+                                <span>MQTT 3.1.1 / 5.0</span
+                                ><span>TypePHP AOT</span
+                                ><span>PostgreSQL HA</span>
+                            </div>
+                        </div>
+                        <figure
+                            class="network-visual"
+                            id="network-visual"
+                            aria-label="设备节点围绕物联网中心连接的概念示意，并非实时运行数据"
+                        >
+                            <svg
+                                class="globe-fallback"
+                                viewBox="0 0 500 500"
+                                fill="none"
+                                aria-hidden="true"
+                            >
+                                <circle
+                                    cx="250"
+                                    cy="250"
+                                    r="165"
+                                    stroke="currentColor"
+                                />
+                                <ellipse
+                                    cx="250"
+                                    cy="250"
+                                    rx="80"
+                                    ry="165"
+                                    stroke="currentColor"
+                                />
+                                <ellipse
+                                    cx="250"
+                                    cy="250"
+                                    rx="165"
+                                    ry="65"
+                                    stroke="currentColor"
+                                />
+                                <ellipse
+                                    cx="250"
+                                    cy="250"
+                                    rx="230"
+                                    ry="95"
+                                    stroke="#85c6e1"
+                                    transform="rotate(-25 250 250)"
+                                />
+                                <path
+                                    d="M85 250h330M250 85v330"
+                                    stroke="currentColor"
+                                />
+                                <circle
+                                    cx="117"
+                                    cy="307"
+                                    r="6"
+                                    fill="#7be5e0"
+                                />
+                                <circle
+                                    cx="389"
+                                    cy="190"
+                                    r="5"
+                                    fill="#76baff"
+                                />
+                            </svg>
+                            <canvas
+                                class="network-canvas"
+                                id="network-canvas"
+                                aria-hidden="true"
+                            ></canvas>
+                            <div class="visual-label top">
+                                <small>STANDARD CONNECTIVITY</small
+                                ><strong>MQTT · TLS 安全接入</strong>
+                            </div>
+                            <div class="visual-label bottom">
+                                <small>DURABLE DATA PIPELINE</small
+                                ><strong
+                                    ><i
+                                        class="status-dot"
+                                        aria-hidden="true"
+                                    ></i>
+                                    可靠上报 · 持久回执</strong
+                                >
+                            </div>
+                            <button
+                                type="button"
+                                class="motion-toggle"
+                                id="motion-toggle"
+                                aria-pressed="false"
+                                hidden
+                            >
+                                暂停动效 Ⅱ
+                            </button>
+                            <figcaption class="orbit-caption">
+                                CONNECTED SYSTEM / CONCEPT VIEW
+                            </figcaption>
+                        </figure>
+                    </div>
+                    <section class="hero-stats" aria-label="方案核心验收目标">
+                        <div class="stat">
+                            <div class="stat-label">
+                                设备同时在线
+                                <span class="target-tag">目标</span>
+                            </div>
+                            <div class="stat-number">10,000<span>台</span></div>
+                            <div class="stat-caption">
+                                多租户 · 统一身份与设备管理
+                            </div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">
+                                稳态遥测接收
+                                <span class="target-tag">目标</span>
+                            </div>
+                            <div class="stat-number">
+                                1,000<span>条/秒</span>
+                            </div>
+                            <div class="stat-caption">
+                                约 1 KB / 条 · 连续运行 24 小时
+                            </div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">
+                                持久接收回执
+                                <span class="target-tag">目标</span>
+                            </div>
+                            <div class="stat-number">≤ 1<span>秒</span></div>
+                            <div class="stat-caption">
+                                稳态 p95 · 同步持久提交后确认
+                            </div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">
+                                单节点故障恢复
+                                <span class="target-tag">目标</span>
+                            </div>
+                            <div class="stat-number">≤ 60<span>秒</span></div>
+                            <div class="stat-caption">
+                                恢复可确认接收 · 已确认数据零丢失
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </section>
+            <noscript
+                ><p class="wrap no-script">
+                    正文可直接阅读。启用 JavaScript
+                    后可切换架构说明、业务流程视图并调整容量估算；当前展示全部业务流程与固定容量基线。
+                </p></noscript
+            >
+            <section
+                class="section"
+                id="overview"
+                aria-labelledby="overview-title"
+            >
+                <div class="wrap">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-num">
+                                <span>01 /</span>
+                                <p class="eyebrow">VISION &amp; VALUE</p>
+                            </div>
+                            <h2 id="overview-title">
+                                连接只是起点，<br /><span class="dim"
+                                    >可信业务才是目标。</span
+                                >
+                            </h2>
+                        </div>
+                        <p class="section-intro">
+                            建设统一的设备业务中心，将身份、模型、数据、控制与运营纳入同一套管理体系。让每一次上报有接收依据，每一条指令有结果记录，每一份数据有明确归属。
+                        </p>
+                    </div>
+                    <div class="value-grid">
+                        <article class="value-item">
+                            <div class="value-top">
+                                <svg class="icon" aria-hidden="true">
+                                    <use href="#i-network" /></svg
+                                ><span>01 / CONNECT</span>
+                            </div>
+                            <h3>统一接入与管理</h3>
+                            <p>
+                                自研标准 MQTT
+                                服务连接设备，产品与版本化物模型约定数据含义，统一管理设备从注册、启用到退役的完整生命周期。
+                            </p>
+                            <div class="value-detail">
+                                独立协议组件 + 完整业务应用
+                            </div>
+                        </article>
+                        <article class="value-item">
+                            <div class="value-top">
+                                <svg class="icon" aria-hidden="true">
+                                    <use href="#i-shield" /></svg
+                                ><span>02 / TRUST</span>
+                            </div>
+                            <h3>建立可验证的可靠性</h3>
+                            <p>
+                                通过设备持久缓存、业务消息去重与平台持久接收回执处理断网和重传。控制结果依据设备证据，异常与未知状态清晰可见。
+                            </p>
+                            <div class="value-detail">
+                                可靠接收 + 执行证据 + 故障恢复
+                            </div>
+                        </article>
+                        <article class="value-item">
+                            <div class="value-top">
+                                <svg class="icon" aria-hidden="true">
+                                    <use href="#i-chart" /></svg
+                                ><span>03 / OPERATE</span>
+                            </div>
+                            <h3>形成运营与追溯闭环</h3>
+                            <p>
+                                围绕当前数据、历史曲线、基础告警和操作审计开展日常运营。多租户权限与显式设备转移贯穿查询、控制和数据下载。
+                            </p>
+                            <div class="value-detail">
+                                统一 Web 管理端 + 全过程审计
+                            </div>
+                        </article>
+                    </div>
+                </div>
+            </section>
+            <section
+                class="section section-tint"
+                id="architecture"
+                aria-labelledby="architecture-title"
+            >
+                <div class="wrap">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-num">
+                                <span>02 /</span>
+                                <p class="eyebrow">SYSTEM ARCHITECTURE</p>
+                            </div>
+                            <h2 id="architecture-title">
+                                分层协作，<span class="dim">职责清晰。</span>
+                            </h2>
+                        </div>
+                        <p class="section-intro">
+                            以 TypeApp 业务应用、独立
+                            <strong>type-mqtt</strong> 服务与 Vben Web
+                            管理端组成完整方案。协议连接、业务规则和持久状态各有明确的责任边界。
+                        </p>
+                    </div>
+                    <div class="architecture">
+                        <div class="diagram-bar">
+                            <span>TYPEAPP / ARCHITECTURE MAP</span
+                            ><span class="bar-note" id="architecture-hint"
+                                >五层架构与职责说明</span
+                            >
+                        </div>
+                        <div class="architecture-grid">
+                            <div class="arch-stack">
+                                <button
+                                    class="arch-row"
+                                    type="button"
+                                    data-layer="experience"
+                                    aria-pressed="false"
+                                    aria-controls="arch-detail"
+                                >
+                                    <span class="arch-label"
+                                        >管理体验层<small
+                                            >EXPERIENCE</small
+                                        ></span
+                                    ><span class="arch-items"
+                                        ><span>Vben Web 管理端</span
+                                        ><span>租户工作空间</span
+                                        ><span>运维与审计</span></span
+                                    ><svg class="icon" aria-hidden="true">
+                                        <use href="#i-arrow" />
+                                    </svg>
+                                </button>
+                                <div class="arch-link">
+                                    HTTPS
+                                    <span class="line-arrow">↓ ↑</span> 身份认证
+                                    · 租户权限
+                                </div>
+                                <button
+                                    class="arch-row"
+                                    type="button"
+                                    data-layer="business"
+                                    aria-pressed="true"
+                                    aria-controls="arch-detail"
+                                >
+                                    <span class="arch-label"
+                                        >业务应用层<small>BUSINESS</small></span
+                                    ><span class="arch-items"
+                                        ><span>产品 / 物模型</span
+                                        ><span>设备 / 遥测</span
+                                        ><span>指令 / 告警</span
+                                        ><span>审计 / 导出</span></span
+                                    ><svg class="icon" aria-hidden="true">
+                                        <use href="#i-arrow" />
+                                    </svg>
+                                </button>
+                                <div class="arch-link">
+                                    业务接入
+                                    <span class="line-arrow">↓ ↑</span> 认证授权
+                                    · 持久回执
+                                </div>
+                                <button
+                                    class="arch-row"
+                                    type="button"
+                                    data-layer="broker"
+                                    aria-pressed="false"
+                                    aria-controls="arch-detail"
+                                >
+                                    <span class="arch-label"
+                                        >标准接入层<small
+                                            >CONNECTIVITY</small
+                                        ></span
+                                    ><span class="arch-items"
+                                        ><span>type-mqtt</span
+                                        ><span>QoS 0 / 1 / 2</span
+                                        ><span>会话与订阅路由</span></span
+                                    ><svg class="icon" aria-hidden="true">
+                                        <use href="#i-arrow" />
+                                    </svg>
+                                </button>
+                                <div class="arch-link">
+                                    MQTT 5 / TLS
+                                    <span class="line-arrow">↓ ↑</span> 上报 ·
+                                    控制 · 回执
+                                </div>
+                                <button
+                                    class="arch-row"
+                                    type="button"
+                                    data-layer="device"
+                                    aria-pressed="false"
+                                    aria-controls="arch-detail"
+                                >
+                                    <span class="arch-label"
+                                        >设备执行层<small>DEVICE</small></span
+                                    ><span class="arch-items"
+                                        ><span>独立设备身份</span
+                                        ><span>持久缓存</span
+                                        ><span>去重执行与回执</span></span
+                                    ><svg class="icon" aria-hidden="true">
+                                        <use href="#i-arrow" />
+                                    </svg>
+                                </button>
+                                <div class="arch-link">
+                                    应用与 Broker 共用持久底座
+                                    <span class="line-arrow">↓</span>
+                                </div>
+                                <button
+                                    class="arch-row"
+                                    type="button"
+                                    data-layer="storage"
+                                    aria-pressed="false"
+                                    aria-controls="arch-detail"
+                                >
+                                    <span class="arch-label"
+                                        >数据与运行底座<small
+                                            >FOUNDATION</small
+                                        ></span
+                                    ><span class="arch-items"
+                                        ><span>PostgreSQL 严格同步</span
+                                        ><span>有界任务处理</span
+                                        ><span>独立备份域</span></span
+                                    ><svg class="icon" aria-hidden="true">
+                                        <use href="#i-arrow" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <aside
+                                class="arch-aside"
+                                id="arch-detail"
+                                aria-live="polite"
+                                aria-atomic="true"
+                            >
+                                <svg class="icon" aria-hidden="true">
+                                    <use id="arch-icon" href="#i-layers" />
+                                </svg>
+                                <p class="eyebrow" id="arch-code">
+                                    BUSINESS APPLICATION
+                                </p>
+                                <h3 id="arch-title">业务有明确的所有者</h3>
+                                <p id="arch-description">
+                                    TypeApp
+                                    应用负责租户、产品、物模型、设备、可靠接收、遥测、指令、告警与审计。复用框架的
+                                    HTTP、ORM、校验、日志、Outbox、队列与调度能力。
+                                </p>
+                                <p class="arch-boundary" id="arch-boundary">
+                                    应用校验业务契约；Broker
+                                    负责标准消息能力。生产 PHP 实现统一进入
+                                    TypePHP 全量 AOT。
+                                </p>
+                            </aside>
+                        </div>
+                        <div class="arch-footer">
+                            <strong>贯穿各层</strong><span>租户隔离</span
+                            ><span>稳定业务身份</span><span>有界资源</span
+                            ><span>可追溯证据</span
+                            ><span>全量生产 PHP 编译</span>
+                        </div>
+                    </div>
+                    <p class="section-note">
+                        <svg class="icon" aria-hidden="true">
+                            <use href="#i-info" /></svg
+                        ><span
+                            >Broker 可独立安装、独立进程运行，兼容范围按 OASIS
+                            MQTT 3.1.1 / 5.0 标准验收。设备业务采用 MQTT 5、JSON
+                            与 QoS 1；标准客户端仍可交换合法二进制载荷。</span
+                        >
+                    </p>
+                </div>
+            </section>
+            <section
+                class="section"
+                id="capabilities"
+                aria-labelledby="capabilities-title"
+            >
+                <div class="wrap">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-num">
+                                <span>03 /</span>
+                                <p class="eyebrow">PLATFORM CAPABILITIES</p>
+                            </div>
+                            <h2 id="capabilities-title">
+                                设备业务，<span class="dim">一站贯通。</span>
+                            </h2>
+                        </div>
+                        <p class="section-intro">
+                            围绕管理者与操作人员的真实工作组织八类能力。从设备接入前的契约定义，到运行中的观测、控制与追溯，形成完整业务路径。
+                        </p>
+                    </div>
+                    <div class="capabilities">
+                        <article class="capability">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-box" />
+                            </svg>
+                            <h3>产品与物模型</h3>
+                            <p>
+                                定义属性、事件和指令。发布版本不可变，设备确认切换，历史保留当时的模型与单位。
+                            </p>
+                            <small>PRODUCT &amp; MODEL</small>
+                        </article>
+                        <article class="capability">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-device" />
+                            </svg>
+                            <h3>设备全生命周期</h3>
+                            <p>
+                                预注册、独立凭据、启用、禁用与退役。分别呈现管理状态、连接状态及数据新鲜度。
+                            </p>
+                            <small>DEVICE LIFECYCLE</small>
+                        </article>
+                        <article class="capability">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-chart" />
+                            </svg>
+                            <h3>遥测与历史分析</h3>
+                            <p>
+                                当前值、原始历史与分钟聚合。乱序不回退当前值，合法补传修正历史，缺测保持为空。
+                            </p>
+                            <small>TELEMETRY &amp; HISTORY</small>
+                        </article>
+                        <article class="capability">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-command" />
+                            </svg>
+                            <h3>控制与结果对账</h3>
+                            <p>
+                                在线指令、原始截止时间、同 ID
+                                有限重投。设备去重执行，未知结果通过查询和回执对账。
+                            </p>
+                            <small>COMMAND &amp; RECEIPT</small>
+                        </article>
+                        <article class="capability">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-bell" />
+                            </svg>
+                            <h3>告警与站内通知</h3>
+                            <p>
+                                单属性阈值与恢复回差，连续三次有效样本触发或恢复。人工确认与数值恢复独立记录。
+                            </p>
+                            <small>ALARM &amp; NOTIFICATION</small>
+                        </article>
+                        <article class="capability">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-users" />
+                            </svg>
+                            <h3>多租户协作</h3>
+                            <p>
+                                租户成员与角色分权。设备转移由双方管理员确认，历史归属不变。
+                            </p>
+                            <small>TENANT &amp; ACCESS</small>
+                        </article>
+                        <article class="capability">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-search" />
+                            </svg>
+                            <h3>运行观测与审计</h3>
+                            <p>
+                                追踪连接、速率、确认延迟、积压与拒绝。敏感操作记录主体和结果，日志与审计脱敏。
+                            </p>
+                            <small>OBSERVABILITY &amp; AUDIT</small>
+                        </article>
+                        <article class="capability">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-export" />
+                            </svg>
+                            <h3>查询与异步导出</h3>
+                            <p>
+                                稳定分页、最多 2,000 点曲线，CSV
+                                服务端异步生成。任务可取消，下载重新验证权限。
+                            </p>
+                            <small>QUERY &amp; EXPORT</small>
+                        </article>
+                    </div>
+                    <div class="capability-label">
+                        <span
+                            >统一管理体验：列表 · 筛选 · 编辑抽屉 · 设备独立详情
+                            · 明确异步状态</span
+                        ><span>Vben Admin Pro / 亮暗主题 / 窄屏适配</span>
+                    </div>
+                </div>
+            </section>
+            <section
+                class="section section-tint"
+                id="dataflow"
+                aria-labelledby="dataflow-title"
+            >
+                <div class="wrap">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-num">
+                                <span>04 /</span>
+                                <p class="eyebrow">BUSINESS FLOWS</p>
+                            </div>
+                            <h2 id="dataflow-title">
+                                每一步，<span class="dim">都有业务依据。</span>
+                            </h2>
+                        </div>
+                        <p class="section-intro">
+                            上报是否被持久接收、设备是否真实执行、数据属于哪个组织，需要不同的证据。三条关键链路明确正常路径、异常处理与完成条件。
+                        </p>
+                    </div>
+                    <div
+                        class="flow-tabs"
+                        role="tablist"
+                        aria-label="业务流程"
+                        hidden
+                    >
+                        <button
+                            class="flow-tab"
+                            id="tab-ingestion"
+                            role="tab"
+                            aria-selected="true"
+                            aria-controls="flow-ingestion"
+                            tabindex="0"
+                            type="button"
+                        >
+                            01 &nbsp; 可靠上报</button
+                        ><button
+                            class="flow-tab"
+                            id="tab-command"
+                            role="tab"
+                            aria-selected="false"
+                            aria-controls="flow-command"
+                            tabindex="-1"
+                            type="button"
+                        >
+                            02 &nbsp; 指令闭环</button
+                        ><button
+                            class="flow-tab"
+                            id="tab-transfer"
+                            role="tab"
+                            aria-selected="false"
+                            aria-controls="flow-transfer"
+                            tabindex="-1"
+                            type="button"
+                        >
+                            03 &nbsp; 设备转移
+                        </button>
+                    </div>
+                    <div
+                        class="flow-panel"
+                        id="flow-ingestion"
+                        role="tabpanel"
+                        aria-labelledby="tab-ingestion"
+                        tabindex="0"
+                    >
+                        <div class="flow-summary">
+                            <h3>收到持久回执，才算可靠接收。</h3>
+                            <p>
+                                设备保留未确认原件。网络中断或回执丢失时使用相同业务身份重传，让重复到达与业务接收保持一致。
+                            </p>
+                        </div>
+                        <ol class="flow-steps">
+                            <li class="flow-step">
+                                <span class="step-number">01</span>
+                                <h4>设备持久缓存</h4>
+                                <p>
+                                    采样数据先写入本地缓存，保留跨重启稳定的设备、归属阶段和递增序号。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">02</span>
+                                <h4>标准安全接入</h4>
+                                <p>
+                                    经 MQTT 5 / TLS 上报，校验设备凭据和 Topic
+                                    权限，按 QoS 1 交付。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">03</span>
+                                <h4>平台持久接收</h4>
+                                <p>
+                                    验证身份、物模型和时间，持久去重，并取得
+                                    PostgreSQL 同步提交证据。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">04</span>
+                                <h4>返回业务回执</h4>
+                                <p>
+                                    平台返回独立持久接收回执；设备核对成功后清理对应缓存原件。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">05</span>
+                                <h4>业务数据可用</h4>
+                                <p>
+                                    独立推进当前值、历史、聚合与告警；处理可恢复，迟到数据按规则修正历史。
+                                </p>
+                            </li>
+                        </ol>
+                        <div class="flow-rule">
+                            <strong>关键边界</strong
+                            ><span
+                                >MQTT PUBACK
+                                表示协议确认；平台持久接收回执表示业务持久接收。后续聚合或告警完成不作为清理设备缓存的前提。</span
+                            >
+                        </div>
+                    </div>
+                    <div
+                        class="flow-panel"
+                        id="flow-command"
+                        role="tabpanel"
+                        aria-labelledby="tab-command"
+                        tabindex="0"
+                    >
+                        <div class="flow-summary">
+                            <h3>控制看执行证据，未知继续对账。</h3>
+                            <p>
+                                平台受理、协议交付与设备执行分别记录。设备可能已经动作但回执丢失，因此缺少结果时保留“指令结果未知”。
+                            </p>
+                        </div>
+                        <ol class="flow-steps">
+                            <li class="flow-step">
+                                <span class="step-number">01</span>
+                                <h4>校验并持久创建</h4>
+                                <p>
+                                    核对租户权限与指令模型，持久保存指令 ID
+                                    和原始截止时间。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">02</span>
+                                <h4>在线有限发送</h4>
+                                <p>
+                                    默认有效期 60 秒，在第 0、10、30
+                                    秒最多尝试三次，离线控制拒绝。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">03</span>
+                                <h4>设备去重执行</h4>
+                                <p>
+                                    检查可信时间、期限及持久去重记录。同一 ID
+                                    不重复启动设备动作。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">04</span>
+                                <h4>核对执行回执</h4>
+                                <p>
+                                    设备报告执行结果，平台记录成功或失败；第 60
+                                    秒仍无结果则进入未知。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">05</span>
+                                <h4>查询与迟到对账</h4>
+                                <p>
+                                    第 60、120、300
+                                    秒自动查询，之后可主动查询。合法迟到回执补全结果。
+                                </p>
+                            </li>
+                        </ol>
+                        <div class="flow-rule">
+                            <strong>关键边界</strong
+                            ><span
+                                >查询结果不重新执行。重投沿用同一 ID
+                                与原截止时间，且以设备具备持久去重能力为前提；创建新
+                                ID 意味着新的设备动作。</span
+                            >
+                        </div>
+                    </div>
+                    <div
+                        class="flow-panel"
+                        id="flow-transfer"
+                        role="tabpanel"
+                        aria-labelledby="tab-transfer"
+                        tabindex="0"
+                    >
+                        <div class="flow-summary">
+                            <h3>设备可转移，历史归属保持清晰。</h3>
+                            <p>
+                                转移是一项双方确认的业务操作。先处理旧阶段的缓存、控制和权限，再形成新归属阶段，避免旧业务穿透租户边界。
+                            </p>
+                        </div>
+                        <ol class="flow-steps">
+                            <li class="flow-step">
+                                <span class="step-number">01</span>
+                                <h4>双方管理员确认</h4>
+                                <p>
+                                    源租户发起，目标租户接受，并匹配结构一致的目标产品与模型版本。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">02</span>
+                                <h4>冻结新控制</h4>
+                                <p>
+                                    停止创建新的设备动作，核对所有未完成指令及仍然未知的执行结果。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">03</span>
+                                <h4>排空与设备确认</h4>
+                                <p>
+                                    设备排空未确认上报，确认具备切换条件；条件不满足则保持待处理。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">04</span>
+                                <h4>隔离旧连接与授权</h4>
+                                <p>
+                                    失效旧凭据、连接、订阅、恢复会话及待投递消息，轮换为新凭据。
+                                </p>
+                            </li>
+                            <li class="flow-step">
+                                <span class="step-number">05</span>
+                                <h4>激活新归属阶段</h4>
+                                <p>
+                                    新租户接收切换后的数据。旧遥测、指令和审计继续属于原租户。
+                                </p>
+                            </li>
+                        </ol>
+                        <div class="flow-rule">
+                            <strong>关键边界</strong
+                            ><span
+                                >结果未知、缓存未排空、设备未确认或旧会话未隔离时不切换。超时保持待处理，不静默强制成功或自动恢复旧授权。</span
+                            >
+                        </div>
+                    </div>
+                    <div class="flow-timing">
+                        <span><b>24 h</b> 基线设备持久缓存</span
+                        ><span><b>48 h</b> 首次上报年龄上限</span
+                        ><span><b>7 d</b> 平台去重凭据保留</span
+                        ><span><b>60 s</b> 指令默认有效期</span>
+                    </div>
+                </div>
+            </section>
+            <section
+                class="section"
+                id="security"
+                aria-labelledby="security-title"
+            >
+                <div class="wrap">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-num">
+                                <span>05 /</span>
+                                <p class="eyebrow">SECURITY &amp; OWNERSHIP</p>
+                            </div>
+                            <h2 id="security-title">
+                                多租户协同，<br /><span class="dim"
+                                    >每次访问都有边界。</span
+                                >
+                            </h2>
+                        </div>
+                        <p class="section-intro">
+                            以组织归属、人员角色与设备身份共同约束访问。授权检查贯穿接口请求、连接恢复、消息投递、历史查询和文件下载。
+                        </p>
+                    </div>
+                    <div class="security-grid">
+                        <div class="security-points">
+                            <div class="security-point">
+                                <svg class="icon" aria-hidden="true">
+                                    <use href="#i-shield" />
+                                </svg>
+                                <div>
+                                    <h3>设备身份独立、可撤销</h3>
+                                    <p>
+                                        每设备独立凭据，生产使用 TLS 1.2 /
+                                        1.3，优先
+                                        1.3。凭据仅生成时显示，服务端保存不可逆验证值；轮换、吊销和禁用使旧连接及恢复会话失效。
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="security-point">
+                                <svg class="icon" aria-hidden="true">
+                                    <use href="#i-users" />
+                                </svg>
+                                <div>
+                                    <h3>租户归属与角色分权</h3>
+                                    <p>
+                                        设备同一时刻只属于一个租户。用户可加入多个租户，但每次操作都校验当前上下文；平台管理员身份不自动获得租户设备控制权。
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="security-point">
+                                <svg class="icon" aria-hidden="true">
+                                    <use href="#i-search" />
+                                </svg>
+                                <div>
+                                    <h3>限时支持、全过程追溯</h3>
+                                    <p>
+                                        跨租户支持由租户管理员授权，最长 1
+                                        小时、默认只读，控制等动作需单独授权。可随时撤销，敏感操作、授权变更与转移留下脱敏审计。
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <section
+                                class="table-shell"
+                                tabindex="0"
+                                aria-label="角色权限表，窄屏可横向滚动"
+                            >
+                                <table class="permission-table">
+                                    <caption>
+                                        角色与动作权限
+                                    </caption>
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">业务动作</th>
+                                            <th scope="col">租户管理员</th>
+                                            <th scope="col">操作员</th>
+                                            <th scope="col">只读成员</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>查询数据与已有结果</td>
+                                            <td class="allow">允许</td>
+                                            <td class="allow">允许</td>
+                                            <td class="allow">允许</td>
+                                        </tr>
+                                        <tr>
+                                            <td>下发控制 / 主动结果查询</td>
+                                            <td class="allow">允许</td>
+                                            <td class="allow">允许</td>
+                                            <td class="deny">—</td>
+                                        </tr>
+                                        <tr>
+                                            <td>确认告警 / 创建导出</td>
+                                            <td class="allow">允许</td>
+                                            <td class="allow">允许</td>
+                                            <td class="deny">—</td>
+                                        </tr>
+                                        <tr>
+                                            <td>管理产品 / 设备 / 凭据</td>
+                                            <td class="allow">允许</td>
+                                            <td class="deny">—</td>
+                                            <td class="deny">—</td>
+                                        </tr>
+                                        <tr>
+                                            <td>管理成员 / 规则 / 模型</td>
+                                            <td class="allow">允许</td>
+                                            <td class="deny">—</td>
+                                            <td class="deny">—</td>
+                                        </tr>
+                                        <tr>
+                                            <td>设备转移</td>
+                                            <td class="allow">本方管理员</td>
+                                            <td class="deny">—</td>
+                                            <td class="deny">—</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </section>
+                            <p class="security-footnote">
+                                平台人员按当前角色与租户范围操作，不具备转授、租户管理或设备转移权限。菜单和按钮控制不能替代服务端授权校验。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section
+                class="section section-tint"
+                id="reliability"
+                aria-labelledby="reliability-title"
+            >
+                <div class="wrap">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-num">
+                                <span>06 /</span>
+                                <p class="eyebrow">RESILIENCE BY DESIGN</p>
+                            </div>
+                            <h2 id="reliability-title">
+                                以持久事实，<br /><span class="dim"
+                                    >应对不确定的故障。</span
+                                >
+                            </h2>
+                        </div>
+                        <p class="section-intro">
+                            生产以 Linux x64、应用与 Broker 多实例、PostgreSQL
+                            严格同步高可用为基础。分别验证单节点故障、集中重连与独立备份恢复。
+                        </p>
+                    </div>
+                    <div class="ha-grid">
+                        <figure
+                            class="ha-diagram"
+                            aria-label="生产高可用拓扑示意：两个可切换入口、三个应用与 Broker 节点、PostgreSQL 三节点严格同步与独立备份域"
+                        >
+                            <p class="eyebrow">
+                                PRODUCTION TOPOLOGY / 设计拓扑
+                            </p>
+                            <div class="ha-entry">
+                                双入口 · 三个独立节点上的协调投票角色<small
+                                    >入口可切换 · 旧主与旧会话所有者隔离</small
+                                >
+                            </div>
+                            <div class="ha-connector" aria-hidden="true">
+                                ↓ &nbsp; 流量分配与会话接管 &nbsp; ↓
+                            </div>
+                            <div class="ha-nodes">
+                                <div class="ha-node">
+                                    <svg class="icon" aria-hidden="true">
+                                        <use href="#i-server" /></svg
+                                    ><strong>应用 / Broker</strong
+                                    ><small>NODE 01</small>
+                                </div>
+                                <div class="ha-node">
+                                    <svg class="icon" aria-hidden="true">
+                                        <use href="#i-server" /></svg
+                                    ><strong>应用 / Broker</strong
+                                    ><small>NODE 02</small>
+                                </div>
+                                <div class="ha-node">
+                                    <svg class="icon" aria-hidden="true">
+                                        <use href="#i-server" /></svg
+                                    ><strong>应用 / Broker</strong
+                                    ><small>NODE 03</small>
+                                </div>
+                            </div>
+                            <div class="ha-connector" aria-hidden="true">
+                                ↓ &nbsp; 业务事实与 Broker 持久状态 &nbsp; ↓
+                            </div>
+                            <div class="ha-nodes">
+                                <div class="ha-node">
+                                    <svg class="icon" aria-hidden="true">
+                                        <use href="#i-database" /></svg
+                                    ><strong>PostgreSQL 主库</strong
+                                    ><small>PRIMARY</small>
+                                </div>
+                                <div class="ha-node">
+                                    <svg class="icon" aria-hidden="true">
+                                        <use href="#i-database" /></svg
+                                    ><strong>PostgreSQL 备库</strong
+                                    ><small>REPLICA 01</small>
+                                </div>
+                                <div class="ha-node">
+                                    <svg class="icon" aria-hidden="true">
+                                        <use href="#i-database" /></svg
+                                    ><strong>PostgreSQL 备库</strong
+                                    ><small>REPLICA 02</small>
+                                </div>
+                            </div>
+                            <p class="ha-sync">
+                                至少一台合格同步备库完成持久写入后才确认
+                            </p>
+                            <div class="ha-backup">
+                                <svg class="icon" aria-hidden="true">
+                                    <use href="#i-export" />
+                                </svg>
+                                <div>
+                                    <strong>独立备份域</strong
+                                    ><small
+                                        >全量 / 增量备份 + 持续 WAL 归档 · 7
+                                        天恢复链</small
+                                    >
+                                </div>
+                            </div>
+                        </figure>
+                        <div>
+                            <p class="eyebrow recovery-eyebrow">
+                                RECOVERY OBJECTIVES / 验收目标
+                            </p>
+                            <div class="ha-metrics">
+                                <article class="ha-metric">
+                                    <div class="big">≤ 60<span>秒</span></div>
+                                    <h3>单节点故障恢复</h3>
+                                    <p>
+                                        覆盖进程、主机、磁盘与单节点网络隔离，恢复可确认的业务接收。
+                                    </p>
+                                </article>
+                                <article class="ha-metric">
+                                    <div class="big">0<span>条丢失</span></div>
+                                    <h3>已确认持久数据</h3>
+                                    <p>
+                                        限定单节点故障范围，对照设备已获持久回执的稳定消息
+                                        ID 验证。
+                                    </p>
+                                </article>
+                                <article class="ha-metric">
+                                    <div class="big">≤ 5<span>分钟</span></div>
+                                    <h3>备份恢复 RPO</h3>
+                                    <p>
+                                        独立备份域与持续 WAL
+                                        归档，控制整站故障或误删除的数据恢复点。
+                                    </p>
+                                </article>
+                                <article class="ha-metric">
+                                    <div class="big">≤ 4<span>小时</span></div>
+                                    <h3>业务恢复 RTO</h3>
+                                    <p>
+                                        包含授权核对，以及设备接入、查询和控制恢复；按目标数据量演练。
+                                    </p>
+                                </article>
+                            </div>
+                            <p class="ha-principle">
+                                失去同步条件时停止成功确认；网络分区中，仅一致性成立的一侧继续确认。恢复旧备份后先核对凭据、成员授权与设备归属，再开放业务。
+                            </p>
+                        </div>
+                    </div>
+                    <p class="section-note">
+                        <svg class="icon" aria-hidden="true">
+                            <use href="#i-info" /></svg
+                        ><span
+                            >单节点恢复与整站灾备采用不同验收条件。通用框架保持
+                            MySQL、PostgreSQL、SQLite
+                            支持；本方案的生产同步高可用与容量目标以 PostgreSQL
+                            验证。</span
+                        >
+                    </p>
+                </div>
+            </section>
+            <section
+                class="section"
+                id="capacity"
+                aria-labelledby="capacity-title"
+            >
+                <div class="wrap">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-num">
+                                <span>07 /</span>
+                                <p class="eyebrow">
+                                    CAPACITY &amp; PERFORMANCE
+                                </p>
+                            </div>
+                            <h2 id="capacity-title">
+                                规模有依据，<br /><span class="dim"
+                                    >资源有预算。</span
+                                >
+                            </h2>
+                        </div>
+                        <p class="section-intro">
+                            固定设备模型、上报频率、消息大小与数据保留期，量化接收、查询与恢复成本。容量必须在接近保留上限的数据规模下验证。
+                        </p>
+                    </div>
+                    <div class="capacity-grid">
+                        <div class="calculator">
+                            <div class="calculator-title">
+                                <h3>遥测载荷估算</h3>
+                                <span>CAPACITY EXPLORER</span>
+                            </div>
+                            <div class="range-row">
+                                <label for="device-range">在线设备数量</label>
+                                <div class="device-count">
+                                    <output
+                                        id="device-output"
+                                        for="device-range"
+                                        >10,000</output
+                                    ><small>台</small>
+                                </div>
+                            </div>
+                            <input
+                                id="device-range"
+                                type="range"
+                                min="1000"
+                                max="10000"
+                                step="1000"
+                                value="10000"
+                                aria-describedby="calc-note"
+                                disabled
+                            />
+                            <div class="range-labels">
+                                <span>1,000</span><span>5,000</span
+                                ><span>10,000</span>
+                            </div>
+                            <div
+                                class="calc-results"
+                                aria-live="polite"
+                                aria-atomic="true"
+                            >
+                                <div class="calc-result">
+                                    <strong
+                                        ><output
+                                            id="rate-output"
+                                            for="device-range"
+                                            >1,000</output
+                                        ><small>/s</small></strong
+                                    ><span>稳态遥测条数</span>
+                                </div>
+                                <div class="calc-result">
+                                    <strong
+                                        ><output
+                                            id="day-output"
+                                            for="device-range"
+                                            >86.4</output
+                                        ><small>GB</small></strong
+                                    ><span>每日纯载荷</span>
+                                </div>
+                                <div class="calc-result">
+                                    <strong
+                                        ><output
+                                            id="week-output"
+                                            for="device-range"
+                                            >604.8</output
+                                        ><small>GB</small></strong
+                                    ><span>7 天纯载荷</span>
+                                </div>
+                            </div>
+                            <p class="calc-note" id="calc-note">
+                                按每设备每 10 秒上报 1 KB、1 KB = 1000 B
+                                计算，仅作线性载荷估算。未计协议、元数据、索引、复制、聚合、WAL
+                                与备份，不代表已验证的服务容量。
+                            </p>
+                            <div class="calc-baseline">
+                                <span
+                                    >方案基线：100 租户 × 10 产品 × 10
+                                    设备</span
+                                ><button
+                                    id="reset-capacity"
+                                    class="reset-button"
+                                    type="button"
+                                    hidden
+                                >
+                                    恢复基线 ↺
+                                </button>
+                            </div>
+                        </div>
+                        <div class="retention">
+                            <h3>分层数据保留</h3>
+                            <div class="retention-row">
+                                <span>原始遥测</span>
+                                <div class="retention-bar" aria-hidden="true">
+                                    <i class="raw-retention"></i>
+                                </div>
+                                <b>7 <small>天</small></b>
+                            </div>
+                            <div class="retention-row">
+                                <span>分钟聚合</span>
+                                <div class="retention-bar" aria-hidden="true">
+                                    <i class="minute-retention"></i>
+                                </div>
+                                <b>90 <small>天</small></b>
+                            </div>
+                            <div class="retention-row">
+                                <span>指令记录</span>
+                                <div class="retention-bar" aria-hidden="true">
+                                    <i></i>
+                                </div>
+                                <b>180 <small>天</small></b>
+                            </div>
+                            <div class="retention-row">
+                                <span>审计 / 通知</span>
+                                <div class="retention-bar" aria-hidden="true">
+                                    <i></i>
+                                </div>
+                                <b>180 <small>天</small></b>
+                            </div>
+                            <p>
+                                原始遥测从首次持久接收计时，聚合从 UTC
+                                分钟窗口结束计时。告警在结束后保留 180
+                                天，活动告警不自动清理；导出文件保留 24
+                                小时，下载仍重验权限。
+                            </p>
+                        </div>
+                    </div>
+                    <div class="resource-strip">
+                        <div>
+                            <h4>应用与 Broker · 初始验收上限</h4>
+                            <strong>3 × 8 vCPU / 16 GiB</strong>
+                            <p>三个节点；协调与入口共置时计入节点资源预算。</p>
+                        </div>
+                        <div>
+                            <h4>PostgreSQL · 初始验收上限</h4>
+                            <strong>3 × 16 vCPU / 64 GiB / 8 TB</strong>
+                            <p>
+                                每节点 8 TB 可用 NVMe；每个完整副本至少保留 30%
+                                余量。
+                            </p>
+                        </div>
+                        <div>
+                            <h4>网络与独立资源</h4>
+                            <strong>Linux x64 · ≤ 2 ms</strong>
+                            <p>
+                                同步网络单程延迟目标；负载发生器和独立备份另列。
+                            </p>
+                        </div>
+                    </div>
+                    <details class="capacity-details" open>
+                        <summary>
+                            性能与恢复验收矩阵
+                            <span class="subtle"
+                                >固定基线 · 同一产物 · 真实依赖</span
+                            >
+                        </summary>
+                        <section
+                            class="table-shell"
+                            tabindex="0"
+                            aria-label="性能验收矩阵，窄屏可横向滚动"
+                        >
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">验证场景</th>
+                                        <th scope="col">目标与观察口径</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>24 小时稳态</td>
+                                        <td>
+                                            10,000 台在线、1,000 条/秒、每条约 1
+                                            KB，预置接近 7 天原始与 90
+                                            天聚合的数据规模。
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>接收与可见性</td>
+                                        <td>
+                                            入口收到完整报文至持久接收回执 p95 ≤
+                                            1 秒；至业务查询可见 p95 ≤ 2 秒。
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Web 并发查询</td>
+                                        <td>
+                                            100 个并发会话；普通列表与单设备 24
+                                            小时曲线各自 p95 ≤ 2 秒，单图最多
+                                            2,000 点并标明实际粒度。
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>短时突发</td>
+                                        <td>
+                                            3,000 条/秒持续 10 分钟；随后 15
+                                            分钟内恢复稳态积压，已确认数据完整且资源有界。
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>集中重连</td>
+                                        <td>
+                                            10,000 台设备随机退避，在 60
+                                            秒内完成
+                                            TLS、认证及持久会话重连，重放另记耗时。
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>长断线追赶</td>
+                                        <td>
+                                            8,640 万条历史积压，持续接收 1,000
+                                            条/秒新遥测；历史平均处理至少 2,000
+                                            条/秒，总处理平均至少 3,000
+                                            条/秒，12 小时内清空。
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>故障与灾备</td>
+                                        <td>
+                                            单节点故障 60
+                                            秒内恢复可确认接收且已确认数据零丢失；独立备份按目标数据量演练
+                                            RPO ≤ 5 分钟、RTO ≤ 4 小时。
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </section>
+                    </details>
+                    <p class="section-note">
+                        <svg class="icon" aria-hidden="true">
+                            <use href="#i-info" /></svg
+                        ><span
+                            >以上是已确认的设计基线与待验证目标。每个副本独立核算原始、聚合、账本、索引、WAL
+                            和维护空间，复制容量不能按分片相加；资源配置不代表已采购、已部署或已证明足够。</span
+                        >
+                    </p>
+                </div>
+            </section>
+            <section
+                class="section section-tint"
+                id="delivery"
+                aria-labelledby="delivery-title"
+            >
+                <div class="wrap">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-num">
+                                <span>08 /</span>
+                                <p class="eyebrow">DELIVERY &amp; ACCEPTANCE</p>
+                            </div>
+                            <h2 id="delivery-title">
+                                从方案走向交付，<br /><span class="dim"
+                                    >以真实证据闭环。</span
+                                >
+                            </h2>
+                        </div>
+                        <p class="section-intro">
+                            所有约定能力构成一次完整交付。按可观察的纵向行为组织实施，以同一源码、锁定依赖和编译产物核对功能、协议、页面与运行结果。
+                        </p>
+                    </div>
+                    <div class="delivery-stages">
+                        <article class="delivery-stage">
+                            <small>WORKSTREAM 01</small>
+                            <h3>接入与身份</h3>
+                            <p>
+                                贯通独立 Broker、标准客户端、TLS
+                                认证与租户管理，建立产品模型和设备接入契约。
+                            </p>
+                        </article>
+                        <article class="delivery-stage">
+                            <small>WORKSTREAM 02</small>
+                            <h3>设备业务闭环</h3>
+                            <p>
+                                完成持久回执、断网补传、历史聚合、指令对账、告警、转移与统一
+                                Web 管理。
+                            </p>
+                        </article>
+                        <article class="delivery-stage">
+                            <small>WORKSTREAM 03</small>
+                            <h3>故障与运行保障</h3>
+                            <p>
+                                验证跨节点接管、持久状态恢复、旧所有者隔离、观测审计与备份后的授权核对。
+                            </p>
+                        </article>
+                        <article class="delivery-stage">
+                            <small>WORKSTREAM 04</small>
+                            <h3>完整规模验收</h3>
+                            <p>
+                                冻结完整 AOT
+                                候选，完成目标负载、故障演练、真实设备联调和正式平台兼容证据。
+                            </p>
+                        </article>
+                    </div>
+                    <div class="acceptance-grid">
+                        <article class="acceptance-item">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-check" />
+                            </svg>
+                            <div>
+                                <h4>完整业务与异常路径</h4>
+                                <p>
+                                    以公开接口与真实管理页面观察结果，覆盖断网、重复、撤权、迟到与未知状态。
+                                </p>
+                            </div>
+                        </article>
+                        <article class="acceptance-item">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-network" />
+                            </svg>
+                            <div>
+                                <h4>标准与独立互操作</h4>
+                                <p>
+                                    按适用 MQTT
+                                    标准条款核对正向与负向行为，通过多种独立客户端交叉验证。
+                                </p>
+                            </div>
+                        </article>
+                        <article class="acceptance-item">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-code" />
+                            </svg>
+                            <div>
+                                <h4>全量 AOT 与无源码部署</h4>
+                                <p>
+                                    框架、Broker、业务及全部生产 PHP
+                                    依赖一起编译，验证原生入口与独立组件消费。
+                                </p>
+                            </div>
+                        </article>
+                        <article class="acceptance-item">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-device" />
+                            </svg>
+                            <div>
+                                <h4>至少一款真实设备</h4>
+                                <p>
+                                    覆盖认证、上报、缓存、控制、执行回执、掉电去重与转移，留存设备和固件证据。
+                                </p>
+                            </div>
+                        </article>
+                        <article class="acceptance-item">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-chart" />
+                            </svg>
+                            <div>
+                                <h4>目标规模与资源趋势</h4>
+                                <p>
+                                    同一物模型、数据量与混合负载，记录 p50 / p95
+                                    / p99、CPU、内存、磁盘和积压。
+                                </p>
+                            </div>
+                        </article>
+                        <article class="acceptance-item">
+                            <svg class="icon" aria-hidden="true">
+                                <use href="#i-shield" />
+                            </svg>
+                            <div>
+                                <h4>恢复与授权正确性</h4>
+                                <p>
+                                    核对已确认消息
+                                    ID、恢复时间与授权状态，防止旧凭据和转移前会话重新生效。
+                                </p>
+                            </div>
+                        </article>
+                    </div>
+                    <details class="scope-details">
+                        <summary>交付边界与协作条件</summary>
+                        <div class="scope-content">
+                            <div>
+                                <h4>平台与设备侧共同交付</h4>
+                                <p>
+                                    平台提供协议、标准客户端用例、模拟器和联调流程；设备侧提供适配固件、样机及责任方。真实设备、完整负载环境和独立备份域须落实并核验，模拟器不替代样机验收。TypePHP
+                                    AOT 仍保留必要的 PHPX、libphp
+                                    与原生扩展运行依赖。
+                                </p>
+                            </div>
+                            <div>
+                                <h4>本次不包含的扩展能力</h4>
+                                <p>
+                                    OTA、网关子设备、可视化规则编排、外部短信 /
+                                    邮件 / Webhook 通知，以及 WS /
+                                    WSS、MQTT-SN、MQTT 3.1、私有设备协议、MQTT 5
+                                    增强认证方法和 EMQX 专有管理 API
+                                    不在本次范围内。通用框架的三库与正式平台支持义务继续保留。
+                                </p>
+                            </div>
+                        </div>
+                    </details>
+                    <p class="evidence-note">
+                        <strong>方案口径：</strong
+                        >本页呈现已确认的建设范围、设计选择与验收目标，不作为全部能力已通过生产验收的证明。各项实施与验证结果以对应版本的证据记录为准，完整交付以全部必要验收通过为条件。
+                    </p>
+                </div>
+            </section>
+            <section class="closing" aria-labelledby="closing-title">
+                <div class="wrap closing-inner">
+                    <div>
+                        <p class="eyebrow">
+                            CONNECT WITH CLARITY. OPERATE WITH CONFIDENCE.
+                        </p>
+                        <h2 id="closing-title">
+                            让每一次连接，进入可信的业务闭环。
+                        </h2>
+                        <p>标准接入 · 可靠数据 · 可追溯控制 · 明确归属</p>
+                    </div>
+                    <a
+                        class="button"
+                        href="https://github.com/zoujingli/typeapp/issues/93"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >查看完整规格
+                        <svg class="icon" aria-hidden="true">
+                            <use href="#i-diagonal" /></svg
+                    ></a>
+                </div>
+            </section>
+        </main>
+        <footer class="footer">
+            <div class="wrap footer-inner">
+                <div>
+                    <span class="footer-brand">typeapp.</span>物联网中心建设方案
+                    <span class="mono">/ 2026.09</span>
+                </div>
+                <div class="footer-links">
+                    <a
+                        href="https://github.com/zoujingli/typeapp/issues/93"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >方案依据 #93 ↗</a
+                    ><a href="#security">安全与归属</a
+                    ><a href="#dataflow">业务流程</a
+                    ><a href="#top">返回顶部 ↑</a>
+                </div>
+            </div>
+        </footer>
+        <a
+            class="back-top"
+            id="back-top"
+            href="#top"
+            aria-label="返回顶部"
+            hidden
+            ><svg class="icon" aria-hidden="true"><use href="#i-up" /></svg
+        ></a>
+        <script>
+            "use strict";
+            // 正文、图形与交互全部内置，离线打开时不依赖外部资源。
+            const menuButton = document.getElementById("menu-button");
+            const navigation = document.getElementById("main-nav");
+            function closeMenu() {
+                navigation.classList.remove("open");
+                menuButton.setAttribute("aria-expanded", "false");
+            }
+            menuButton.addEventListener("click", () => {
+                const open =
+                    menuButton.getAttribute("aria-expanded") !== "true";
+                menuButton.setAttribute("aria-expanded", String(open));
+                navigation.classList.toggle("open", open);
+            });
+            navigation.addEventListener("click", (event) => {
+                if (event.target.closest("a")) closeMenu();
+            });
+            document.addEventListener("keydown", (event) => {
+                if (
+                    event.key === "Escape" &&
+                    menuButton.getAttribute("aria-expanded") === "true"
+                ) {
+                    closeMenu();
+                    menuButton.focus();
+                }
+            });
+            document.addEventListener("click", (event) => {
+                if (!event.target.closest(".header")) closeMenu();
+            });
+            const desktopMenu = matchMedia("(min-width: 801px)");
+            desktopMenu.addEventListener("change", closeMenu);
+
+            const layers = {
+                experience: {
+                    code: "UNIFIED MANAGEMENT",
+                    title: "让日常管理保持一致",
+                    icon: "i-users",
+                    description:
+                        "Vben Web 管理端覆盖租户、产品、设备详情、指令、告警、审计和导出任务。统一筛选、分页、抽屉、主题与异步反馈，窄屏也能完成真实操作。",
+                    boundary:
+                        "管理端经 HTTPS 访问应用。每次请求重验当前租户与动作权限；页面可见性不能作为授权依据。",
+                },
+                business: {
+                    code: "BUSINESS APPLICATION",
+                    title: "业务有明确的所有者",
+                    icon: "i-layers",
+                    description:
+                        "TypeApp 应用负责租户、产品、物模型、设备、可靠接收、遥测、指令、告警与审计。复用框架的 HTTP、ORM、校验、日志、Outbox、队列与调度能力。",
+                    boundary:
+                        "应用校验业务契约；Broker 负责标准消息能力。生产 PHP 实现统一进入 TypePHP 全量 AOT。",
+                },
+                broker: {
+                    code: "STANDARD MQTT BROKER",
+                    title: "标准协议，独立运行",
+                    icon: "i-network",
+                    description:
+                        "type-mqtt 独立安装并运行，承担 MQTT 3.1.1 / 5.0 的连接、会话、订阅路由、QoS、保留消息、遗嘱和恢复。跨节点接管隔离旧所有者的写入与投递。",
+                    boundary:
+                        "标准 Broker 保留合法二进制载荷。JSON、物模型与业务时间属于设备应用契约，不强加给全部 MQTT 客户端。",
+                },
+                device: {
+                    code: "DEVICE CONTRACT",
+                    title: "可靠性从设备开始",
+                    icon: "i-device",
+                    description:
+                        "设备持有独立凭据，通过 MQTT 5 / TLS 按物模型上报。可靠消息先持久缓存，以稳定身份重传；执行控制前检查期限与持久去重记录，并返回执行回执。",
+                    boundary:
+                        "收到平台持久接收回执才释放上报缓存；指令去重和结果记录跨掉电重启保留。固件与样机由设备侧责任方交付。",
+                },
+                storage: {
+                    code: "DURABLE FOUNDATION",
+                    title: "用持久事实支撑恢复",
+                    icon: "i-database",
+                    description:
+                        "PostgreSQL 严格同步保存业务接收事实及 Broker 恢复状态。应用采用有界批量、时间分区、保留清理和可恢复任务，独立备份域保留完整恢复链。",
+                    boundary:
+                        "应用与 Broker 直接使用持久底座，设备不直接连接数据库。Redis、队列和缓存不替代约定的同步持久接收边界。",
+                },
+            };
+            const layerButtons = Array.from(
+                document.querySelectorAll("[data-layer]"),
+            );
+            document.getElementById("architecture-hint").textContent =
+                "点击层级，查看职责与边界";
+            layerButtons.forEach((button) =>
+                button.addEventListener("click", () => {
+                    const layer = layers[button.dataset.layer];
+                    layerButtons.forEach((item) =>
+                        item.setAttribute(
+                            "aria-pressed",
+                            String(item === button),
+                        ),
+                    );
+                    document.getElementById("arch-code").textContent =
+                        layer.code;
+                    document.getElementById("arch-title").textContent =
+                        layer.title;
+                    document.getElementById("arch-description").textContent =
+                        layer.description;
+                    document.getElementById("arch-boundary").textContent =
+                        layer.boundary;
+                    document
+                        .getElementById("arch-icon")
+                        .setAttribute("href", "#" + layer.icon);
+                }),
+            );
+
+            const flowTabs = Array.from(document.querySelectorAll(".flow-tab"));
+            function selectFlow(tab, moveFocus = false) {
+                flowTabs.forEach((item) => {
+                    const selected = item === tab;
+                    item.setAttribute("aria-selected", String(selected));
+                    item.tabIndex = selected ? 0 : -1;
+                    document.getElementById(
+                        item.getAttribute("aria-controls"),
+                    ).hidden = !selected;
+                });
+                if (moveFocus) tab.focus();
+            }
+            document.querySelector(".flow-tabs").hidden = false;
+            selectFlow(flowTabs[0]);
+            flowTabs.forEach((tab, index) => {
+                tab.addEventListener("click", () => selectFlow(tab));
+                tab.addEventListener("keydown", (event) => {
+                    let next;
+                    if (event.key === "ArrowRight")
+                        next = (index + 1) % flowTabs.length;
+                    if (event.key === "ArrowLeft")
+                        next = (index + flowTabs.length - 1) % flowTabs.length;
+                    if (event.key === "Home") next = 0;
+                    if (event.key === "End") next = flowTabs.length - 1;
+                    if (next !== undefined) {
+                        event.preventDefault();
+                        selectFlow(flowTabs[next], true);
+                    }
+                });
+            });
+
+            const range = document.getElementById("device-range");
+            const numberFormat = new Intl.NumberFormat("en-US");
+            function updateCapacity() {
+                const devices = Number(range.value);
+                document.getElementById("device-output").textContent =
+                    numberFormat.format(devices);
+                document.getElementById("rate-output").textContent =
+                    numberFormat.format(devices / 10);
+                document.getElementById("day-output").textContent = (
+                    ((devices / 10) * 86400 * 1000) /
+                    1e9
+                ).toFixed(1);
+                document.getElementById("week-output").textContent = (
+                    ((devices / 10) * 86400 * 7 * 1000) /
+                    1e9
+                ).toFixed(1);
+                range.setAttribute(
+                    "aria-valuetext",
+                    numberFormat.format(devices) + " 台设备",
+                );
+            }
+            range.disabled = false;
+            range.addEventListener("input", updateCapacity);
+            document.getElementById("reset-capacity").hidden = false;
+            document
+                .getElementById("reset-capacity")
+                .addEventListener("click", () => {
+                    range.value = "10000";
+                    updateCapacity();
+                });
+            updateCapacity();
+
+            const progress = document.getElementById("reading-progress");
+            const backTop = document.getElementById("back-top");
+            const sections = Array.from(
+                document.querySelectorAll("main > section[id]"),
+            );
+            const navLinks = Array.from(navigation.querySelectorAll("a"));
+            let scrollPending = false;
+            function updateReading() {
+                const scrollable =
+                    document.documentElement.scrollHeight - innerHeight;
+                progress.style.transform =
+                    "scaleX(" +
+                    Math.max(
+                        0,
+                        Math.min(1, scrollY / Math.max(1, scrollable)),
+                    ) +
+                    ")";
+                backTop.hidden = scrollY < 700;
+                let currentId = "";
+                sections.forEach((section) => {
+                    if (section.getBoundingClientRect().top <= 150)
+                        currentId = section.id;
+                });
+                navLinks.forEach((link) => {
+                    if (link.hash === "#" + currentId)
+                        link.setAttribute("aria-current", "location");
+                    else link.removeAttribute("aria-current");
+                });
+                scrollPending = false;
+            }
+            function scheduleReading() {
+                if (!scrollPending) {
+                    scrollPending = true;
+                    requestAnimationFrame(updateReading);
+                }
+            }
+            addEventListener("scroll", scheduleReading, { passive: true });
+            addEventListener("resize", scheduleReading);
+            document
+                .querySelectorAll("details")
+                .forEach((detail) =>
+                    detail.addEventListener("toggle", scheduleReading),
+                );
+            updateReading();
+
+            // 装饰球体固定为 850 个粒子；离开视口、页面隐藏或暂停时停止渲染。
+            (() => {
+                const canvas = document.getElementById("network-canvas");
+                const context = canvas.getContext("2d");
+                if (!context) return;
+                const visual = document.getElementById("network-visual");
+                const motionButton = document.getElementById("motion-toggle");
+                const motionPreference = matchMedia(
+                    "(prefers-reduced-motion: reduce)",
+                );
+                let paused = motionPreference.matches;
+                let visible = false;
+                let frame = 0;
+                let previousTime = 0;
+                let lastDraw = 0;
+                let rotation = 0.45;
+                let width = 0;
+                let height = 0;
+                const points = [];
+                const total = 850;
+                const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+                for (let index = 0; index < total; index++) {
+                    const y = 1 - (index / (total - 1)) * 2;
+                    const radius = Math.sqrt(1 - y * y);
+                    const theta = goldenAngle * index;
+                    points.push({
+                        x: Math.cos(theta) * radius,
+                        y,
+                        z: Math.sin(theta) * radius,
+                        highlight: index % 47 === 0,
+                    });
+                }
+                function project(x, y, z) {
+                    const cos = Math.cos(rotation),
+                        sin = Math.sin(rotation);
+                    const rx = x * cos + z * sin,
+                        rz = z * cos - x * sin;
+                    const tilt = -0.22;
+                    const ry = y * Math.cos(tilt) - rz * Math.sin(tilt);
+                    const depth = y * Math.sin(tilt) + rz * Math.cos(tilt);
+                    const radius = Math.min(width, height) * 0.32;
+                    const perspective = 3.7 / (3.7 - depth);
+                    return {
+                        x: width * 0.51 + rx * radius * perspective,
+                        y: height * 0.48 + ry * radius * perspective,
+                        z: depth,
+                        scale: perspective,
+                    };
+                }
+                function sphereLine(coordinates, opacity) {
+                    context.beginPath();
+                    coordinates.forEach((point, index) => {
+                        const p = project(point[0], point[1], point[2]);
+                        if (index === 0) context.moveTo(p.x, p.y);
+                        else context.lineTo(p.x, p.y);
+                    });
+                    context.strokeStyle = "rgba(82,154,211," + opacity + ")";
+                    context.lineWidth = 0.65;
+                    context.stroke();
+                }
+                function draw() {
+                    if (!width || !height) return;
+                    context.clearRect(0, 0, width, height);
+                    const cx = width * 0.51,
+                        cy = height * 0.48,
+                        radius = Math.min(width, height) * 0.32;
+                    const glow = context.createRadialGradient(
+                        cx - radius * 0.24,
+                        cy - radius * 0.3,
+                        0,
+                        cx,
+                        cy,
+                        radius * 1.36,
+                    );
+                    glow.addColorStop(0, "rgba(35,101,156,.15)");
+                    glow.addColorStop(0.65, "rgba(18,64,107,.1)");
+                    glow.addColorStop(1, "rgba(7,11,18,0)");
+                    context.fillStyle = glow;
+                    context.fillRect(0, 0, width, height);
+                    context.save();
+                    context.translate(cx, cy);
+                    context.rotate(-0.38);
+                    [1.28, 1.53].forEach((size, index) => {
+                        context.beginPath();
+                        context.ellipse(
+                            0,
+                            0,
+                            radius * size,
+                            radius * size * 0.45,
+                            0,
+                            0,
+                            Math.PI * 2,
+                        );
+                        context.lineWidth = index ? 0.65 : 1;
+                        context.strokeStyle = index
+                            ? "rgba(75,128,179,.26)"
+                            : "rgba(117,197,228,.48)";
+                        context.stroke();
+                        if (!index) {
+                            const a = rotation * 1.6;
+                            const px = Math.cos(a) * radius * size,
+                                py = Math.sin(a) * radius * size * 0.45;
+                            context.shadowColor = "#84e5e0";
+                            context.shadowBlur = 16;
+                            context.beginPath();
+                            context.arc(px, py, 3.2, 0, Math.PI * 2);
+                            context.fillStyle = "#b4f3f0";
+                            context.fill();
+                            context.shadowBlur = 0;
+                        }
+                    });
+                    context.restore();
+                    for (let latitude = -60; latitude <= 60; latitude += 30) {
+                        const phi = (latitude * Math.PI) / 180,
+                            coordinates = [];
+                        for (let step = 0; step <= 80; step++) {
+                            const theta = (step / 80) * Math.PI * 2;
+                            coordinates.push([
+                                Math.cos(phi) * Math.cos(theta),
+                                Math.sin(phi),
+                                Math.cos(phi) * Math.sin(theta),
+                            ]);
+                        }
+                        sphereLine(coordinates, 0.18);
+                    }
+                    for (let longitude = 0; longitude < 180; longitude += 30) {
+                        const theta = (longitude * Math.PI) / 180,
+                            coordinates = [];
+                        for (let step = 0; step <= 80; step++) {
+                            const phi = (step / 80) * Math.PI * 2;
+                            coordinates.push([
+                                Math.cos(phi) * Math.cos(theta),
+                                Math.sin(phi),
+                                Math.cos(phi) * Math.sin(theta),
+                            ]);
+                        }
+                        sphereLine(coordinates, 0.13);
+                    }
+                    const projected = points.map((point) => ({
+                        ...project(point.x, point.y, point.z),
+                        highlight: point.highlight,
+                    }));
+                    projected.sort((a, b) => a.z - b.z);
+                    projected.forEach((point) => {
+                        const opacity = 0.18 + (point.z + 1) * 0.32;
+                        context.beginPath();
+                        context.arc(
+                            point.x,
+                            point.y,
+                            (point.highlight ? 2 : 0.8) * point.scale,
+                            0,
+                            Math.PI * 2,
+                        );
+                        context.fillStyle = point.highlight
+                            ? "rgba(157,235,235," + opacity + ")"
+                            : "rgba(107,172,222," + opacity + ")";
+                        context.fill();
+                        if (point.highlight && point.z > 0.4) {
+                            context.beginPath();
+                            context.arc(point.x, point.y, 5.5, 0, Math.PI * 2);
+                            context.strokeStyle = "rgba(113,207,219,.25)";
+                            context.lineWidth = 0.7;
+                            context.stroke();
+                        }
+                    });
+                    const linked = projected.filter(
+                        (point) => point.highlight && point.z > 0.2,
+                    );
+                    context.strokeStyle = "rgba(115,201,228,.22)";
+                    context.lineWidth = 0.65;
+                    for (let i = 0; i < linked.length - 1; i++) {
+                        const a = linked[i],
+                            b = linked[i + 1];
+                        if (Math.hypot(a.x - b.x, a.y - b.y) < radius * 1.25) {
+                            context.beginPath();
+                            context.moveTo(a.x, a.y);
+                            context.lineTo(b.x, b.y);
+                            context.stroke();
+                        }
+                    }
+                    const ticks = 48;
+                    context.strokeStyle = "rgba(113,156,194,.3)";
+                    context.lineWidth = 0.75;
+                    for (let i = 0; i < ticks; i++) {
+                        const a = (i / ticks) * Math.PI * 2,
+                            r = radius * 1.15;
+                        context.beginPath();
+                        context.moveTo(
+                            cx + Math.cos(a) * r,
+                            cy + Math.sin(a) * r,
+                        );
+                        context.lineTo(
+                            cx + Math.cos(a) * (r + (i % 4 ? 3 : 7)),
+                            cy + Math.sin(a) * (r + (i % 4 ? 3 : 7)),
+                        );
+                        context.stroke();
+                    }
+                }
+                function tick(time) {
+                    frame = 0;
+                    if (paused || !visible || document.hidden) return;
+                    if (time - lastDraw >= 32) {
+                        rotation += previousTime
+                            ? Math.min(time - previousTime, 100) * 0.000065
+                            : 0;
+                        previousTime = time;
+                        lastDraw = time;
+                        draw();
+                    }
+                    frame = requestAnimationFrame(tick);
+                }
+                function reconcile() {
+                    if (frame) cancelAnimationFrame(frame);
+                    frame = 0;
+                    previousTime = 0;
+                    if (!paused && visible && !document.hidden)
+                        frame = requestAnimationFrame(tick);
+                    motionButton.textContent = paused
+                        ? "播放动效 ▷"
+                        : "暂停动效 Ⅱ";
+                    motionButton.setAttribute("aria-pressed", String(paused));
+                }
+                const resizeObserver = new ResizeObserver((entries) => {
+                    width = entries[0].contentRect.width;
+                    height = entries[0].contentRect.height;
+                    const ratio = Math.min(devicePixelRatio || 1, 2);
+                    canvas.width = Math.round(width * ratio);
+                    canvas.height = Math.round(height * ratio);
+                    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+                    draw();
+                });
+                resizeObserver.observe(visual);
+                new IntersectionObserver(
+                    (entries) => {
+                        visible = entries[0].isIntersecting;
+                        reconcile();
+                    },
+                    { threshold: 0.05 },
+                ).observe(visual);
+                document.addEventListener("visibilitychange", reconcile);
+                motionPreference.addEventListener("change", (event) => {
+                    paused = event.matches;
+                    reconcile();
+                });
+                motionButton.addEventListener("click", () => {
+                    paused = !paused;
+                    reconcile();
+                });
+                motionButton.hidden = false;
+                visual.classList.add("enhanced");
+                reconcile();
+            })();
+        </script>
+    </body>
+</html>

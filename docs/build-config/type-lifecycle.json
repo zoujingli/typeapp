@@ -1,0 +1,8 @@
+{
+  "project-root": "../..",
+  "name": "type-lifecycle",
+  "entry": "examples/lifecycle-command.php",
+  "sources": ["examples/model/Drivers.php", "examples/model/DocumentObserver.php", "examples/model/LifecycleExercise.php", "examples/model/Models.php"],
+  "output": "build/lifecycle/type-app",
+  "build-directory": "build/lifecycle/compiler"
+}

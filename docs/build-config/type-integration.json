@@ -1,0 +1,10 @@
+{
+  "project-root": "../..",
+  "name": "type-integration",
+  "version": "1.0.0-dev",
+  "entry": "examples/integration-command.php",
+  "sources": ["examples/integration", "examples/model/Drivers.php", "examples/orm-suite/Schema.php", "examples/outbox/Adapters.php", "examples/coordination/QueueDispatchTask.php", "examples/orm-suite/Models.php"],
+  "capabilities": {"schema": {"integration": [1]}, "messages": {"article.published": [1], "article.audit": [1]}, "cache": {"article-dto": [1]}},
+  "output": "build/integration/type-app",
+  "build-directory": "build/integration/compiler"
+}

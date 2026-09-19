@@ -1,0 +1,14 @@
+{
+  "project-root": "../..",
+  "name": "type-rollout-old",
+  "version": "1.0.0",
+  "entry": "examples/rollout-old-command.php",
+  "sources": ["examples/rollout", "examples/model/Drivers.php", "examples/outbox/Adapters.php"],
+  "runtime": {
+    "Linux": {"extensions": ["pcntl"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]},
+    "Darwin": {"extensions": ["pcntl"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]}
+  },
+  "capabilities": {"schema": {"users": [1, 2]}, "messages": {"user.changed": [1]}, "cache": {"users": [1]}},
+  "output": "build/rollout-old/type-app",
+  "build-directory": "build/rollout-old/compiler"
+}

@@ -1,0 +1,7 @@
+{
+  "project-root": "../..",
+  "name": "type-http-message",
+  "entry": "examples/http-message-command.php",
+  "output": "build/http-message/type-app",
+  "build-directory": "build/http-message/compiler"
+}
