@@ -1,0 +1,27 @@
+{
+  "name": "zoujingli/type-orm-mysql",
+  "description": "TypeApp ORM 的 MySQL PDO 驱动，提供连接配置、查询方言与迁移支持。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "ext-pdo_mysql": "*",
+    "zoujingli/type-orm": "~1.0.0@dev"
+  },
+  "autoload": {
+    "psr-4": {
+      "Type\\Orm\\Mysql\\": "src/"
+    }
+  },
+  "extra": {
+    "type": {
+      "protocol": 1,
+      "sources": [
+        "src"
+      ]
+    },
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  }
+}
