@@ -1,0 +1,26 @@
+{
+  "name": "zoujingli/type-runtime",
+  "description": "TypeApp 运行组件：基于 Swoole 的线程、协程、执行作用域与资源生命周期管理。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "ext-filter": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Type\\Runtime\\": "src/"
+    }
+  },
+  "extra": {
+    "type": {
+      "protocol": 1,
+      "sources": [
+        "src"
+      ]
+    },
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  }
+}
