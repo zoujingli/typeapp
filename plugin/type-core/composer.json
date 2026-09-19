@@ -1,0 +1,63 @@
+{
+  "name": "zoujingli/type-core",
+  "description": "TypeApp 核心组件：配置、命令、事件及 HTTP、TCP、UDP、WebSocket 通信。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "psr/http-message": "^2.0",
+    "psr/http-factory": "^1.1",
+    "psr/http-server-handler": "^1.0",
+    "psr/http-server-middleware": "^1.0",
+    "zoujingli/type-runtime": "~1.0.0@dev"
+  },
+  "suggest": {
+    "ext-swoole": "^6.2：HTTP 传输固定复用 SwooleServer 与协程运行能力"
+  },
+  "autoload": {
+    "psr-4": {
+      "Type\\Core\\": "src/"
+    }
+  },
+  "extra": {
+    "type": {
+      "protocol": 1,
+      "sources": [
+        "src"
+      ],
+      "imports": {
+        "psr/http-message": {
+          "protocol": 1,
+          "version": "2.0",
+          "sources": [
+            "src"
+          ]
+        },
+        "psr/http-factory": {
+          "protocol": 1,
+          "version": "1.1.0",
+          "sources": [
+            "src"
+          ]
+        },
+        "psr/http-server-handler": {
+          "protocol": 1,
+          "version": "1.0.2",
+          "sources": [
+            "src"
+          ]
+        },
+        "psr/http-server-middleware": {
+          "protocol": 1,
+          "version": "1.0.2",
+          "sources": [
+            "src"
+          ]
+        }
+      }
+    },
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  }
+}
