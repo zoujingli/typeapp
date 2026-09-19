@@ -1,0 +1,36 @@
+{
+  "name": "zoujingli/type-cache",
+  "description": "TypeApp Redis 缓存组件：显式类型编解码、TTL、命名空间隔离及 PSR 缓存接口。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "psr/simple-cache": "^3.0",
+    "zoujingli/type-redis": "~1.0.0@dev"
+  },
+  "autoload": {
+    "psr-4": {
+      "Type\\Cache\\": "src/"
+    }
+  },
+  "extra": {
+    "type": {
+      "protocol": 1,
+      "sources": [
+        "src"
+      ],
+      "imports": {
+        "psr/simple-cache": {
+          "protocol": 1,
+          "version": "3.0.0",
+          "sources": [
+            "src"
+          ]
+        }
+      }
+    },
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  }
+}
