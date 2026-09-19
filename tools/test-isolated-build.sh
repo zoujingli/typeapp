@@ -133,6 +133,7 @@ if [[ "$task_execution" == container ]]; then
     | tee "$task_work/stage.json"
 else
   (cd "$task_root" && env -i "PATH=$task_php_home/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC \
+    "COMPOSER_HOME=$task_work/composer-home" \
     "PHP_HOME=$task_php_home" "PHPX_HOME=$task_sdk" "LD_LIBRARY_PATH=$task_sdk/lib:$task_php_home/lib" \
     "$task_php_home/bin/php" tests/build-scenario.php --stage docs/build-config/type-foundation.json "$task_work/inputs") | tee "$task_work/stage.json"
 fi
