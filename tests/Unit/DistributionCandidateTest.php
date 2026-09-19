@@ -17,12 +17,13 @@ final class DistributionCandidateTest extends TestCase
     public static function archiveAttributes(): iterable
     {
         yield 'committed-inputs' => ['', '需要显式TYPE_COMPOSER_PHAR'];
+        yield 'automatic-crlf' => ['', '需要显式TYPE_COMPOSER_PHAR', true];
         yield 'export-ignore' => ["src/Value.php export-ignore\n", 'Git 快照文件集合不一致'];
         yield 'export-subst' => ["src/Value.php export-subst\n", 'Git 快照字节不一致'];
     }
 
     #[DataProvider('archiveAttributes')]
-    public function testCandidatePreparationKeepsGitInputsAndFailureEvidence(string $attributes, string $expectedFailure): void
+    public function testCandidatePreparationKeepsGitInputsAndFailureEvidence(string $attributes, string $expectedFailure, bool $autocrlf = false): void
     {
         $root = dirname(__DIR__, 2);
         $directory = $root . '/build/candidate-preparation-' . bin2hex(random_bytes(6));
@@ -56,6 +57,7 @@ final class DistributionCandidateTest extends TestCase
             file_put_contents($directory . '/examples/native-command.php', $entry);
             file_put_contents($directory . '/toolchain.lock.json', $toolchain);
             foreach ([['git', 'init', '-b', 'main'], ['git', 'config', 'user.name', '候选验收'],
+                ['git', 'config', 'core.autocrlf', $autocrlf ? 'true' : 'false'],
                 ['git', 'config', 'user.email', 'test@type-app.invalid'], ['git', 'add', '.'],
                 ['git', '-c', 'commit.gpgsign=false', 'commit', '-m', 'test: 固定候选输入']] as $command) {
                 \successful($command, $directory);

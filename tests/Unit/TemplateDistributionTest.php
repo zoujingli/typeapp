@@ -35,9 +35,9 @@ final class TemplateDistributionTest extends TestCase
         try {
             [$source, $environment, $batch] = $this->prepare($directory, false);
             if ($case === 'clone-failed') {
-                $environment['GIT_CONFIG_KEY_1'] = 'url.file://' . $directory . '/build/missing.git.insteadOf';
+                $environment['GIT_CONFIG_KEY_1'] = 'url.' . \testGitFileUrl($directory . '/build/missing.git') . '.insteadOf';
             } elseif ($case === 'publish-failed') {
-                $environment['GIT_CONFIG_KEY_0'] = 'url.file://' . $directory . '/build/missing.git.insteadOf';
+                $environment['GIT_CONFIG_KEY_0'] = 'url.' . \testGitFileUrl($directory . '/build/missing.git') . '.insteadOf';
             } elseif ($case === 'invalid-batch') {
                 $batch['id'] = str_repeat('0', 64);
                 file_put_contents($directory . '/build/distribution/batch-result.json', json_encode($batch, JSON_THROW_ON_ERROR));
@@ -224,10 +224,10 @@ PHP);
         $environment = getenv();
         unset($environment['TYPE_TEMPLATE_SOURCE'], $environment['TYPE_COMPOSER_PHAR']);
         $environment['TYPE_TEST_SOURCE_SHA'] = $source;
-        $environment['PATH'] = $directory . '/bin' . PATH_SEPARATOR . ($environment['PATH'] ?? '');
+        $environment = \testCommandEnvironment($directory . '/bin', $environment);
         $environment['COMPOSER_BINARY'] = $directory . '/bin/composer';
         $environment['GIT_CONFIG_COUNT'] = '3';
-        $environment['GIT_CONFIG_KEY_0'] = 'url.file://' . $directory . '/build/template.git.insteadOf';
+        $environment['GIT_CONFIG_KEY_0'] = 'url.' . \testGitFileUrl($directory . '/build/template.git') . '.insteadOf';
         $environment['GIT_CONFIG_VALUE_0'] = 'git@github.com:zoujingli/type-project.git';
         $environment['GIT_CONFIG_KEY_1'] = $environment['GIT_CONFIG_KEY_0'];
         $environment['GIT_CONFIG_VALUE_1'] = 'https://github.com/zoujingli/type-project.git';

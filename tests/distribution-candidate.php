@@ -26,7 +26,8 @@ function candidateArchive(string $root, string $split, string $directory): array
     ksort($expected);
     expect(mkdir($directory, 0700), '无法建立候选包目录');
     $tar = $directory . '.tar';
-    GitProcess::output(['git', 'archive', '--format=tar', '--output=' . $tar, $split], $root);
+    // 归档字节必须对应 Git 对象，不能受宿主默认换行配置影响。
+    GitProcess::output(['git', '-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'archive', '--format=tar', '--output=' . $tar, $split], $root);
     expect((new PharData($tar))->extractTo($directory), '无法解包候选Git内容');
     $files = [];
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS)) as $file) {

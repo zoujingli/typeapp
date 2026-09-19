@@ -78,7 +78,7 @@ final class DistributionPackageTest extends TestCase
             $source = trim(\successful(['git', 'rev-parse', 'HEAD'], $directory));
             \successful(['git', 'update-ref', 'refs/remotes/origin/main', $source], $directory);
             $environment = getenv();
-            $environment['PATH'] = $directory . '/bin' . PATH_SEPARATOR . ($environment['PATH'] ?? '');
+            $environment = \testCommandEnvironment($directory . '/bin', $environment);
             $process = new Process([PHP_BINARY, $directory . '/tools/distribute-plugin.php', $source, 'type-runtime'], $directory, $environment);
             try {
                 $result = $process->wait(30);

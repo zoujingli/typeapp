@@ -63,6 +63,27 @@ function writeTestPhpCommand(string $path, string $code): void
     }
 }
 
+/** 前置本轮哨兵目录，保留 Windows 不区分大小写的 Path，并避免重复环境键。 */
+function testCommandEnvironment(string $directory, array $environment): array
+{
+    $original = '';
+    foreach ($environment as $key => $value) {
+        if ($key === 'PATH' || (PHP_OS_FAMILY === 'Windows' && strcasecmp($key, 'PATH') === 0)) {
+            $original = $value;
+            unset($environment[$key]);
+        }
+    }
+    $environment['PATH'] = $directory . PATH_SEPARATOR . $original;
+    return $environment;
+}
+
+/** 本地 Git 夹具 URL；Windows 盘符属于路径，不能被解释为远端主机。 */
+function testGitFileUrl(string $path): string
+{
+    $path = str_replace('\\', '/', $path);
+    return 'file://' . (preg_match('/^[A-Za-z]:\//D', $path) === 1 ? '/' : '') . $path;
+}
+
 /** @param list<array<string, mixed>> $menus @return list<string> */
 function menuPaths(array $menus): array
 {

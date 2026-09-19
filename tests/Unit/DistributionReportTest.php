@@ -108,13 +108,13 @@ final class DistributionReportTest extends TestCase
             $checkout = $directory;
             if ($change === 'shallow') {
                 $checkout = $directory . '/build/shallow';
-                \successful(['git', 'clone', '--depth=1', 'file://' . $directory, $checkout], $directory);
+                \successful(['git', 'clone', '--depth=1', \testGitFileUrl($directory), $checkout], $directory);
                 self::assertTrue(mkdir($checkout . '/build', 0700));
             }
             $reportPath = $checkout . '/build/batch-result.json';
             file_put_contents($reportPath, json_encode($report, JSON_THROW_ON_ERROR));
             $environment = getenv();
-            $environment['PATH'] = $directory . '/bin' . PATH_SEPARATOR . ($environment['PATH'] ?? '');
+            $environment = \testCommandEnvironment($directory . '/bin', $environment);
             $environment['COMPOSER_BINARY'] = $directory . '/bin/composer';
             $command = $entry === 'template'
                 ? [PHP_BINARY, $checkout . '/tools/distribute-template.php', $source, $reportPath]
