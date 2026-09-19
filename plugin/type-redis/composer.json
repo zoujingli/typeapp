@@ -1,0 +1,27 @@
+{
+  "name": "zoujingli/type-redis",
+  "description": "TypeApp Redis 组件：基于 phpredis 的命名连接、连接池与独占事务。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "ext-redis": "^6.3",
+    "zoujingli/type-runtime": "~1.0.0@dev"
+  },
+  "autoload": {
+    "psr-4": {
+      "Type\\Redis\\": "src/"
+    }
+  },
+  "extra": {
+    "type": {
+      "protocol": 1,
+      "sources": [
+        "src"
+      ]
+    },
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  }
+}
