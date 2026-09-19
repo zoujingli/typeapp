@@ -62,7 +62,7 @@ function writeTestPhpCommand(string $path, string $code): void
             $build = dirname(__DIR__) . '/build/test-launcher-' . bin2hex(random_bytes(6));
             expect(mkdir($build, 0700), '无法创建测试入口编译目录');
             try {
-                successful([$compiler, '/nologo', '/target:exe', '/optimize+', '/out:' . $build . '/command.exe', __DIR__ . '/fixtures/PhpCommand.cs']);
+                successful([realpath($compiler), '/nologo', '/target:exe', '/optimize+', '/out:command.exe', realpath(__DIR__ . '/fixtures/PhpCommand.cs')], $build);
                 $launcher = file_get_contents($build . '/command.exe');
                 expect(is_string($launcher) && $launcher !== '', '无法读取测试入口');
             } finally {
