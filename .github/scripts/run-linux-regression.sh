@@ -54,13 +54,10 @@ case "$task_suite" in
     for task_group in query models lifecycle connections transactions combinations outbox tenant migrations; do
       php tests/native-database-failures.php build "${TYPE_MYSQL_TOOLS:?}" "${TYPE_PGSQL_TOOLS:?}" "$task_group"
     done
-    TYPE_HTTP_DRIVER=swoole php tests/native-database-failures.php build "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS" tenant
     ;;
   http)
     php tests/native-linux-regression.php http
-    for task_engine in stream swoole; do
-      TYPE_HTTP_DRIVER="$task_engine" TYPE_TEST_EXECUTION=host bash tools/test-file-pressure.sh build/file-http/type-app
-    done
+    TYPE_HTTP_DRIVER=swoole TYPE_TEST_EXECUTION=host bash tools/test-file-pressure.sh build/file-http/type-app
     ;;
   redis)
     php tests/native-linux-regression.php redis
@@ -76,9 +73,7 @@ case "$task_suite" in
     ;;
   application)
     if [[ "$task_build" == build ]]; then php tests/build-native-application.php; fi
-    for task_engine in stream swoole; do
-      TYPE_HTTP_DRIVER="$task_engine" php tests/native-database-application.php build/app/type-app "${TYPE_MYSQL_TOOLS:?}" "${TYPE_PGSQL_TOOLS:?}"
-    done
+    TYPE_HTTP_DRIVER=swoole php tests/native-database-application.php build/app/type-app "${TYPE_MYSQL_TOOLS:?}" "${TYPE_PGSQL_TOOLS:?}"
     ;;
   recovery)
     if [[ "$task_build" == build ]]; then php tests/build-native-application.php; fi

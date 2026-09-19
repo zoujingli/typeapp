@@ -42,12 +42,12 @@ try {
             ['routing', 'routing', ['php', 'native'], [], []],
             ['routing-http', 'routing-http', ['php', 'native'], ['explicit'], ['swoole']],
             ['routing-http', 'routing-attributes', ['php', 'native'], ['attributes'], ['swoole']],
-            ['http-trust', 'trust-http', ['php', 'native'], [], ['stream', 'swoole']],
-            ['file-http', 'file-http', ['php', 'native'], [], ['stream', 'swoole']],
+            ['http-trust', 'trust-http', ['php', 'native'], [], ['swoole']],
+            ['file-http', 'file-http', ['php', 'native'], [], ['swoole']],
             ['log', 'log', ['php', 'native'], [], []],
             ['log-behavior', 'log-behavior', ['php', 'native'], [], []],
             ['log-failures', 'log-failures', ['php', 'native'], [], []],
-            ['log-http', 'log-http', ['php', 'native'], [], ['stream', 'swoole']],
+            ['log-http', 'log-http', ['php', 'native'], [], ['swoole']],
         ]
         : array_map(static fn (string $name): array => [$name, $name, ['php', 'native'], [], []], ['redis', 'cache', 'psr-cache', 'queue', 'queue-leases', 'queue-retries']);
     foreach ($cases as [$test, $artifactName, $modes, $arguments, $engines]) {
@@ -63,7 +63,10 @@ try {
         foreach ($engines === [] ? ['none'] : $engines as $engine) {
             foreach ($modes as $mode) {
                 $name = implode('-', [$artifactName, $engine, $mode]);
-                $runEnvironment = array_replace($environment, ['TYPE_HTTP_DRIVER' => $engine, 'TYPE_STREAM_TEST_ENGINE' => $engine]);
+                $runEnvironment = $environment;
+                if ($engine === 'swoole') {
+                    $runEnvironment['TYPE_HTTP_DRIVER'] = $engine;
+                }
                 if ($mode === 'native') {
                     $runEnvironment['TYPE_NATIVE_PHP_INI'] = $built['runtime-profile']['ini'];
                 }

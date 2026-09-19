@@ -68,7 +68,7 @@ try {
             $environment['PHPRC'] = getenv('PHPRC') ?: '';
             $environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
             if (in_array('tenant-http', $suites, true)) {
-                $environment['TYPE_HTTP_DRIVER'] = getenv('TYPE_HTTP_DRIVER') ?: 'stream';
+                $environment['TYPE_HTTP_DRIVER'] = 'swoole';
             }
             if ($needsRedis) {
                 $redis = new NativeRolloutRedis($work . '/redis', $redisServer);

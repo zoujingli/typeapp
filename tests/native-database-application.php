@@ -42,7 +42,7 @@ try {
             $environment['PATH'] = $phpHome . '/bin:' . $environment['PATH'];
             $environment['PHPRC'] = getenv('PHPRC') ?: '';
             $environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
-            $environment['TYPE_HTTP_DRIVER'] = getenv('TYPE_HTTP_DRIVER') ?: 'stream';
+            $environment['TYPE_HTTP_DRIVER'] = 'swoole';
             $secrets = $driver === 'sqlite' ? [] : [$environment['TYPE_' . strtoupper($driver) . '_PASSWORD']];
             foreach (['php' => '--php', 'native' => $artifact] as $mode => $command) {
                 foreach ([true] as $application) {

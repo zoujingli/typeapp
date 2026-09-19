@@ -35,7 +35,7 @@ jobs:
           coverage: none
           extensions: dom, filter, ctype, tokenizer, mbstring, iconv, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, sockets, openssl, curl, zip, swoole-6.2.2, redis-6.3.0
           tools: composer:2.10.3
-          ini-values: memory_limit=2G, display_errors=1, swoole.enable_library=Off, date.timezone=UTC
+          ini-values: memory_limit=2G, display_errors=1, swoole.enable_library=On, date.timezone=UTC
         env:
           phpts: ts
           fail-fast: true
