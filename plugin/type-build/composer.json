@@ -1,0 +1,30 @@
+{
+  "name": "zoujingli/type-build",
+  "description": "TypeApp 构建工具：生产依赖审计、声明生成、TypePHP AOT 编译与原生应用打包。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "ext-json": "*",
+    "composer-runtime-api": "^2.2",
+    "zoujingli/type-runtime": "~1.0.0@dev",
+    "nikic/php-parser": "^5.8",
+    "phpstan/phpdoc-parser": "^2.3.5",
+    "swoole/phpx": "~2.9.0",
+    "swoole/typephp": "~0.9.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Type\\Build\\": "src/"
+    }
+  },
+  "bin": [
+    "bin/type",
+    "bin/type-compiler"
+  ],
+  "extra": {
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  }
+}

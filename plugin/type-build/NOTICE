@@ -1,0 +1,25 @@
+TypeApp
+
+Copyright 2026 Anyon
+
+Official website: https://iots.top
+
+The first-party source code, documentation, examples, tests, configuration,
+templates, and web application in this repository are licensed under the
+Apache License, Version 2.0. See LICENSE for the complete text.
+
+Third-party materials retain their original licenses and copyright notices:
+
+* Vue Vben Admin and SmartAdminDeveloper-derived web materials retain the
+  upstream notices documented in web/UPSTREAM.md and web/LICENSE.
+* Docsify, PrismJS, and Mermaid assets retain their MIT license texts in
+  docs/assets/vendor/*/LICENSE.
+* Composer and native dependencies retain their declared licenses and source
+  notices. A build or release package may include a generated NOTICES.md with
+  the exact dependency inventory and original material hashes.
+* swoole/typephp is GPL-3.0-only and is a separate build-time dependency. It
+  is not relicensed by this repository and is not evidence that first-party
+  TypeApp source is GPL-licensed.
+
+TypeApp, TypePHP, Swoole, Vben Admin, and other product names are trademarks
+or names of their respective owners. This notice grants no trademark rights.

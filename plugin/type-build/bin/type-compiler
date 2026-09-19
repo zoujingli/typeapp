@@ -1,0 +1,11 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// 使用同一受限 Composer 加载器启动 TypePHP，不执行应用初始化文件。
+require dirname(__DIR__) . '/src/bootstrap.php';
+$compilerRoot = Composer\InstalledVersions::getInstallPath('swoole/typephp');
+Type\Build\TypephpCompatibility::install($compilerRoot);
+$GLOBALS['_composer_autoload_path'] = dirname(__DIR__) . '/src/bootstrap.php';
+require $compilerRoot . '/bin/tpc.php';

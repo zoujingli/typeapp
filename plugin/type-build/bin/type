@@ -1,0 +1,121 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Type\Build\NativeBuilder;
+
+if (count($argv) === 2 && in_array($argv[1], ['help', '--help'], true)) {
+    echo <<<'HELP'
+Type 开发与构建工具（生产运行使用发布目录的run/run.cmd）
+
+  type create <已授权本地模板目录> <新项目目录> [sqlite|mysql|pgsql]
+  type doctor <构建配置.json> [development|build]
+  type prepare <构建配置.json>
+  type dev <构建配置.json> [应用参数...]
+  type watch <构建配置.json> [应用参数...]
+  type test <构建配置.json> [测试参数...]
+  type build <构建配置.json>
+  type package <原生产物> <新发布目录> [.env.example]
+  type verify-package <发布目录> <受信清单SHA256>
+  type archive <发布目录> <新归档.zip或.tar.gz> <受信清单SHA256>
+  type service <发布目录> <服务声明.json> <新服务目录> <受信清单SHA256>
+
+保留type <构建配置.json>及--stage/--inspect/--verify/--install-lock接口。
+检测、PHP执行、原生构建和部署验收是不同结果；未验证平台不能标为完成。
+HELP;
+    echo PHP_EOL;
+    exit(0);
+}
+
+try {
+    require dirname(__DIR__) . '/src/bootstrap.php';
+    if (($argv[1] ?? '') === 'service' && count($argv) === 6) {
+        $specification = Type\Build\BuildPlatform::resolve($argv[3]);
+        if (!is_file($specification) || filesize($specification) > 65536) { throw new RuntimeException('服务声明须为不超过64KiB的本地JSON文件'); }
+        $settings = json_decode(file_get_contents($specification), true, 32, JSON_THROW_ON_ERROR);
+        if (!is_array($settings) || array_is_list($settings)) { throw new RuntimeException('服务声明必须是JSON对象'); }
+        echo json_encode((new Type\Build\ServiceDefinition())->create($argv[2], $argv[4], $argv[5], $settings), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+        exit(0);
+    }
+    if (($argv[1] ?? '') === 'create' && in_array(count($argv), [4, 5], true)) {
+        echo json_encode((new Type\Build\ProjectCreator())->create($argv[2], $argv[3], $argv[4] ?? 'sqlite'), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+        exit(0);
+    }
+    if (($argv[1] ?? '') === 'watch' && count($argv) >= 3) {
+        (new Type\Build\DevelopmentWatcher())->run($argv[2], count($argv) > 3 ? array_slice($argv, 3) : ['serve']);
+        exit(0);
+    }
+    if (($argv[1] ?? '') === 'doctor' && in_array(count($argv), [3, 4], true)) {
+        $scope = $argv[3] ?? 'development';
+        if (!in_array($scope, ['development', 'build'], true)) { throw new InvalidArgumentException('doctor范围只接受development或build'); }
+        $diagnosis = (new Type\Build\EnvironmentDoctor())->inspect($argv[2]);
+        $diagnosis['requested-scope'] = $scope;
+        echo json_encode($diagnosis, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+        exit($diagnosis[$scope]['ready'] ? 0 : 1);
+    }
+    if (($argv[1] ?? '') === 'prepare' && count($argv) === 3) {
+        echo json_encode((new Type\Build\DevelopmentBuilder())->prepareConfiguration($argv[2]), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+        exit(0);
+    }
+    if (in_array($argv[1] ?? '', ['dev', 'test'], true) && count($argv) >= 3) {
+        $project = (new Type\Build\BuildProject())->read($argv[2]);
+        $selection = $argv[1] === 'dev' ? [$project['settings']['development']['entry'] ?? null] : ($project['settings']['development']['test'] ?? []);
+        if (!is_array($selection) || !array_is_list($selection) || $selection === []) { throw new RuntimeException('请显式声明development.entry或development.test'); }
+        foreach ($selection as $argument) { if (!is_string($argument) || $argument === '' || str_contains($argument, "\0")) { throw new RuntimeException('开发/测试入口参数无效'); } }
+        $entry = $selection[0];
+        $file = Type\Build\BuildPlatform::resolve($project['root'] . '/' . $entry);
+        if (!Type\Build\BuildPlatform::contains($project['root'], $file) || !is_file($file)) { throw new RuntimeException('开发入口超出项目'); }
+        $argv = [$file, ...array_slice($selection, 1), ...array_slice($argv, 3)];
+        $argc = count($argv);
+        $_SERVER['argv'] = $argv;
+        $_SERVER['argc'] = $argc;
+        $_SERVER['SCRIPT_FILENAME'] = $file;
+        $_SERVER['PHP_SELF'] = $file;
+        require $file;
+        exit(0);
+    }
+    if (($argv[1] ?? '') === 'archive' && count($argv) === 5) {
+        echo json_encode((new Type\Build\PackageArchive())->create($argv[2], $argv[3], $argv[4]), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+        exit(0);
+    }
+    if (in_array($argv[1] ?? '', ['package', '--package'], true) && in_array(count($argv), [4, 5], true)) {
+        echo json_encode((new Type\Build\NativePackage())->create($argv[2], $argv[3], $argv[4] ?? null), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+        exit(0);
+    }
+    if (in_array($argv[1] ?? '', ['verify-package', '--verify-package'], true) && count($argv) === 4) {
+        (new Type\Build\NativePackage())->verify($argv[2], $argv[3]);
+        echo '发布清单、原生产物、运行库和资源字节校验通过。' . PHP_EOL;
+        exit(0);
+    }
+    if (($argv[1] ?? '') === '--stage' && count($argv) === 4) {
+        echo json_encode((new NativeBuilder())->stage($argv[2], $argv[3]), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+        exit(0);
+    }
+    if (($argv[1] ?? '') === '--inspect' && count($argv) === 3) {
+        echo json_encode((new Type\Build\ArtifactManifest())->read($argv[2]), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+        exit(0);
+    }
+    if (($argv[1] ?? '') === '--verify' && in_array(count($argv), [4, 5], true)) {
+        $manifest = (new Type\Build\ArtifactManifest())->read($argv[2], null, $argv[3]);
+        $libraries = isset($argv[4]) ? json_decode(file_get_contents($argv[4]), true, 512, JSON_THROW_ON_ERROR) : [];
+        (new Type\Build\ArtifactManifest())->verifyRuntime($manifest, $libraries);
+        (new Type\Build\ArtifactManifest())->verifyResources($argv[2], $manifest);
+        echo '产物摘要、运行 ABI 与原生库身份校验通过。' . PHP_EOL;
+        exit(0);
+    }
+    if (($argv[1] ?? '') === '--install-lock' && count($argv) === 4) {
+        (new Type\Build\BuildEnvironment())->installLocked($argv[2], $argv[3]);
+        echo '隔离依赖安装完成，未执行 Composer 脚本或插件。' . PHP_EOL;
+        exit(0);
+    }
+    if (($argv[1] ?? '') === 'build' && count($argv) === 3) { $argv = [$argv[0], $argv[2]]; }
+    if (count($argv) !== 2) {
+        throw new InvalidArgumentException('用法：type <应用构建配置.json>');
+    }
+    $report = (new NativeBuilder())->build((string) $argv[1]);
+    echo '原生构建完成：' . $report['output'] . PHP_EOL;
+} catch (Throwable $error) {
+    fwrite(STDERR, '构建失败：' . $error->getMessage() . PHP_EOL);
+    exit(1);
+}
