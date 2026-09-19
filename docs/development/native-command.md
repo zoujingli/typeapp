@@ -7,13 +7,13 @@
 - 示例命令输出中文问候，支持名称、重复次数与帮助；错误参数输出中文错误并返回退出码 64。
 - 独立消费项目分别复制安装 runtime 和 build，使用自己的 Composer 命令代理和自定义依赖目录构建，不依赖主仓生产源码软链接。
 
-构建器使用 Composer 生成的 TypePHP 命令代理，避免绕过其依赖加载。内部候选文件名使用合法标识符，验证 ELF 后才替换最终产物；失败不会把旧二进制报告为本次成功结果。
+构建器使用 Composer 生成的 TypePHP 命令代理，避免绕过其依赖加载。内部候选文件名使用合法标识符，按目标平台验证 ELF、Mach-O 或 PE 后才替换最终产物；失败不会把旧二进制报告为本次成功结果。基础命令使用 `docs/build-config/type-foundation.json`，完整应用使用 `docs/build-config/type-app.json`，两者不能互相代替验收。
 
 ## 锁定与环境
 
-需要 Linux 环境下的 PHP embed SDK、C++17 编译器、CMake、GMP 与 MPFR。PHP_HOME 必须指向包含 php-config 和 libphp 的同一安装，PHPX_HOME 指向当前已安装并构建的 PHPX；不要混用不同 PHP 版本、ZTS/NTS 或机器架构的库。
+Linux/macOS 需要对应平台的 PHP embed SDK、C++17 编译器、CMake、GMP 与 MPFR。`PHP_HOME` 必须指向包含 php-config 和 libphp 的同一安装，`PHPX_HOME` 指向当前已安装并构建的 PHPX。Windows 使用匹配的 ZTS SDK 与 MSVC；准备入口见 `.github/scripts/prepare-windows-native.ps1`。不要混用不同 PHP 版本、ZTS/NTS 或机器架构的库，版本与引用以 `toolchain.lock.json` 为准。
 
-GitHub Actions 使用 Linux x64。开发机也可在 Linux 容器中做对应架构的补充验证；本机其他项目的工具链镜像不是本项目公开分发依赖。
+GitHub Actions 分别提供 Linux x64、Linux ARM64、macOS ARM64 和 Windows x64 验收入口。工作流存在不代表该平台完整通过；PHP 行为、组件 AOT、完整应用、实际通信、无源码部署和性能分别记录结果。Linux 容器或虚拟机验证还须记录实际架构与是否使用模拟器，本机其他项目的工具链镜像不是本项目公开分发依赖。
 
 ## 安装和快速检查
 
@@ -23,7 +23,7 @@ composer validate --strict
 composer check
 ```
 
-快速检查覆盖 PHP 语法及 Arguments 公共接口，不代替 AOT 验证。没有 Linux SDK 的普通 PHP 环境可以执行这一组检查，但不能声明原生构建通过。
+快速检查覆盖 PHP 语法及 Arguments 公共接口，不代替 AOT 验证。没有目标平台 SDK 的 PHP 环境可以执行这一组检查，但不能声明原生构建通过。
 
 ## Linux 原生验证
 
@@ -56,8 +56,12 @@ php tests/native.php --chroot "$task_sandbox"
 
 隔离执行需要 Linux root 或可用于 chroot 的非交互 sudo。该步骤仅验证命令运行，不部署服务，也不启动或替换本地前端。
 
-## 尚未覆盖的范围
+## 组件与通信验收
 
-完整 AST 依赖装配、第三方包兼容适配、全部 Composer 高级配置、运行时作用域和增量缓存策略由各自后续任务处理。本轮构建器对不支持的输入报错；不提供业务源码解释回退。
+在匹配的 SDK 环境中，`php tests/build-platform-native.php` 验证真实产物、运行库身份和缓存；`php tests/helpers-build.php` 全量编译 SQLite、ORM、校验与运行组件，并对照 PHP 和原生业务结果。这些入口使用自身的测试目录，不等同于完整应用或无源码部署验收。
 
-当前自有包为私有开发，公开许可证尚未确定；第三方依赖保留自身许可证。构建目录、依赖目录及验证临时目录不进入版本控制。
+通信依赖 Swoole，启用其官方内置库。Unix HTTP 场景可用 `php tests/build-scenario.php --with-swoole docs/build-config/type-http.json` 构建，再运行 `php tests/http-native.php build/http/type-app`；此场景同时声明 sockets 与 Swoole，避免 CLI 已加载模块而 embed 缺少依赖。`php tests/websocket.php` 验证 PHP 模式的 HTTP 同端口、分片、WSS 和生命周期，不证明 WebSocket AOT 已通过。
+
+完整应用还需满足[编译业务线程](compiled-business-threads.md)的 PHPX 与 Swoole ABI 校验。普通组件构建通过不能替代线程 SDK 验收，也不能绕过校验退回业务源码解释执行。当前边界与后续目标见[实现对齐](current-implementation-alignment.md)和[实现规划](../guide/roadmap.md)。
+
+第一方代码与文档按 Apache-2.0 公开，第三方依赖保留自身许可证。验收完成后保留必要日志、源码与工具链身份、产物摘要，回收本轮安装副本、构建中间文件和测试资源；构建目录、依赖目录及原始验收记录不进入版本控制。

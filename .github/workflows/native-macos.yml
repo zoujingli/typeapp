@@ -44,8 +44,8 @@ jobs:
         with:
           php-version: '8.5.10'
           coverage: none
-          extensions: dom, filter, ctype, tokenizer, mbstring, iconv, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, sockets, openssl, curl, zip, redis-6.3.0, ${{ contains(fromJSON('["application","http","orm","reliable","benchmark"]'), matrix.suite) && 'swoole-6.2.2' || ':swoole' }}
-          ini-values: memory_limit=2G, display_errors=1, swoole.enable_library=Off, date.timezone=UTC
+          extensions: dom, filter, ctype, tokenizer, mbstring, iconv, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, sockets, openssl, curl, zip, redis-6.3.0, swoole-6.2.2
+          ini-values: memory_limit=2G, display_errors=1, swoole.enable_library=On, date.timezone=UTC
           tools: composer:2.10.3
         env:
           phpts: ts

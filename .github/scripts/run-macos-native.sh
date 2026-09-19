@@ -129,9 +129,7 @@ case "$task_suite" in
   application)
     composer typeapp:prepare
     php tests/build-native-application.php
-    for task_engine in stream swoole; do
-      TYPE_HTTP_DRIVER="$task_engine" php tests/native-database-application.php build/app/type-app "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")"
-    done
+    TYPE_HTTP_DRIVER=swoole php tests/native-database-application.php build/app/type-app "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")"
     for task_driver in mysql pgsql sqlite; do php tests/application-template.php "$task_driver" --onboarding --native --package; done
     ;;
   deployment)
@@ -186,21 +184,19 @@ case "$task_suite" in
     done
     php tests/log-consumer.php
     php tests/log-consumer.php --native
-    for task_engine in stream swoole; do
-      export TYPE_HTTP_DRIVER="$task_engine"
-      for task_mode in --php native; do
-        if [[ "$task_mode" == native ]]; then
-          php tests/file-http.php build/file-http/type-app
-          php tests/http-trust.php build/trust-http/type-app
-          php tests/log-http.php build/log-http/type-app
-        else
-          php tests/file-http.php --php
-          php tests/http-trust.php --php
-          php tests/log-http.php --php
-        fi
-      done
-      TYPE_TEST_EXECUTION=host bash tools/test-file-pressure.sh build/file-http/type-app
+    export TYPE_HTTP_DRIVER=swoole
+    for task_mode in --php native; do
+      if [[ "$task_mode" == native ]]; then
+        php tests/file-http.php build/file-http/type-app
+        php tests/http-trust.php build/trust-http/type-app
+        php tests/log-http.php build/log-http/type-app
+      else
+        php tests/file-http.php --php
+        php tests/http-trust.php --php
+        php tests/log-http.php --php
+      fi
     done
+    TYPE_TEST_EXECUTION=host bash tools/test-file-pressure.sh build/file-http/type-app
     ;;
   orm)
     for task_config in type-query type-pagination type-models type-exact-fields type-relations type-pivots type-lifecycle type-optimistic type-identities type-read-write type-transactions type-outcomes type-migrations type-migrations-core; do
