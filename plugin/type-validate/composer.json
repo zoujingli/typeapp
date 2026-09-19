@@ -1,0 +1,29 @@
+{
+  "name": "zoujingli/type-validate",
+  "description": "TypeApp 输入校验组件：显式输入来源、嵌套 DTO、字段规则与部分更新校验。",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.4 <8.6",
+    "zoujingli/type-runtime": "~1.0.0@dev"
+  },
+  "autoload": {
+    "files": [
+      "src/functions.php"
+    ],
+    "psr-4": {
+      "Type\\Validate\\": "src/"
+    }
+  },
+  "extra": {
+    "type": {
+      "protocol": 1,
+      "sources": [
+        "src"
+      ]
+    },
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  }
+}
