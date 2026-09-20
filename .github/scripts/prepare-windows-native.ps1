@@ -54,6 +54,18 @@ function Get-VerifiedArchive {
     Invoke-WebRequest -Uri $Url -OutFile $Path
     if ((Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant() -ne $Digest) { throw ('构建依赖摘要不符：' + [IO.Path]::GetFileName($Path)) }
 }
+$taskToolsReference = '1142e4abaf90ceb6cc25d983797b25cc948669cf'
+$taskToolsDigest = '083324ab6ad0f5b8727539d717600ab0f29a2fe84bd147095cf0b115a63a45c4'
+$taskToolsArchive = Join-Path $Directory 'php-sdk-tools.zip'
+Get-VerifiedArchive ('https://codeload.github.com/php/php-sdk-binary-tools/zip/' + $taskToolsReference) $taskToolsDigest $taskToolsArchive
+Expand-Archive -LiteralPath $taskToolsArchive -DestinationPath $Directory
+$taskTools = Join-Path $Directory ('php-sdk-binary-tools-' + $taskToolsReference)
+# phpize 的 configure 需要 PHP 官方 SDK 工具，即使不重新生成 PHP 解析器也会检查 bison/re2c。
+$env:PATH = (Join-Path $taskTools 'bin') + ';' + (Join-Path $taskTools 'msys2/usr/bin') + ';' + $env:PATH
+foreach ($taskTool in @('bison', 're2c')) {
+    & (Join-Path $taskTools ('msys2/usr/bin/' + $taskTool + '.exe')) --version | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw ('PHP SDK 构建工具不能运行：' + $taskTool) }
+}
 $taskDevelArchive = Join-Path $Directory 'php-devel.zip'
 Get-VerifiedArchive 'https://downloads.php.net/~windows/releases/php-devel-pack-8.5.10-Win32-vs17-x64.zip' '0031d279f13f21e81fd62f9a98e919f28b1875ba457916d60daed85586e479dd' $taskDevelArchive
 Expand-Archive -LiteralPath $taskDevelArchive -DestinationPath (Join-Path $Directory 'php-devel')
@@ -145,4 +157,4 @@ Add-Content -LiteralPath $env:GITHUB_PATH -Value $sdk -Encoding utf8
 Add-Content -LiteralPath $env:GITHUB_PATH -Value $phpxBuild -Encoding utf8
 & (Join-Path $sdk 'php.exe') -r 'if(PHP_VERSION!=="8.5.10" || !PHP_ZTS || PHP_INT_SIZE!==8){exit(1);} foreach(["dom","mbstring","pdo_mysql","pdo_pgsql","pdo_sqlite","redis","swoole"] as $e){if(!extension_loaded($e)){fwrite(STDERR,"missing ".$e);exit(1);}} if(phpversion("redis")!=="6.3.0" || version_compare(phpversion("swoole"),"6.2","<") || version_compare(phpversion("swoole"),"7",">=") || !filter_var(ini_get("swoole.enable_library"),FILTER_VALIDATE_BOOL)){exit(1);} echo PHP_VERSION," ZTS x64 SDK verified; Swoole ",phpversion("swoole"),"\n";'
 if ($LASTEXITCODE -ne 0) { throw 'The real Windows PHP runtime did not match the SDK contract.' }
-@{ platform='Windows'; architecture='x64'; php='8.5.10'; swoole_source=$taskSwooleReference; swoole_sha256=(Get-FileHash -LiteralPath (Join-Path $sdk 'ext/php_swoole.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); phpx_source='6f2089379cbc7ae22dacf0faa65dd05e40d72c20'; phpx_sha256=(Get-FileHash -LiteralPath (Join-Path $phpxBuild 'phpx.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); dependencies=$taskDependencies; passed=$true } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
+@{ platform='Windows'; architecture='x64'; php='8.5.10'; sdk_tools_source=$taskToolsReference; sdk_tools_sha256=$taskToolsDigest; swoole_source=$taskSwooleReference; swoole_sha256=(Get-FileHash -LiteralPath (Join-Path $sdk 'ext/php_swoole.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); phpx_source='6f2089379cbc7ae22dacf0faa65dd05e40d72c20'; phpx_sha256=(Get-FileHash -LiteralPath (Join-Path $phpxBuild 'phpx.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); dependencies=$taskDependencies; passed=$true } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
