@@ -50,6 +50,9 @@ jobs:
         env:
           phpts: ts
           fail-fast: true
+          MACOSX_DEPLOYMENT_TARGET: '15.0'
+          SWOOLE_CONFIGURE_OPTS: --enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-pgsql --enable-swoole-sqlite
+          SWOOLE_DARWIN_LIBS: c-ares, libpq, sqlite
       - name: 安装原生构建和专用测试数据库工具
         run: brew install cmake gmp mpfr pkg-config mysql@8.4 postgresql@17 redis
       - name: 安装锁定组件与开发依赖
@@ -70,7 +73,7 @@ jobs:
           bash tools/prepare-toolchain.sh
           php tests/toolchain-configuration.php "$PHP_HOME/bin/php-config"
           task_runtime_ini="$(bash tools/prepare-embed-runtime.sh)"
-          # 固定完整控制器INI，独立消费者关闭额外扫描时仍保留所需PDO、Redis和可选Swoole。
+          # 固定完整控制器INI，独立消费者关闭额外扫描时仍保留所需PDO、Redis和Swoole。
           task_control="$GITHUB_WORKSPACE/.cache/macos-control"
           mkdir -p "$task_control/php.d"
           # shellcheck disable=SC2016

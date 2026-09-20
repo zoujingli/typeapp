@@ -39,6 +39,8 @@ jobs:
         env:
           phpts: ts
           fail-fast: true
+          SWOOLE_CONFIGURE_OPTS: --enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-pgsql --enable-swoole-sqlite
+          SWOOLE_LINUX_LIBS: libc-ares-dev, libpq-dev, libsqlite3-dev
       - name: 安装原生工具并定位独立测试实例入口
         shell: bash
         run: |

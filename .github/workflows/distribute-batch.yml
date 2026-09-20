@@ -101,7 +101,7 @@ jobs:
           coverage: none
           extensions: dom, filter, mbstring, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, swoole-6.2.2, redis-6.3.0
           tools: composer:2.10.3
-          ini-values: memory_limit=2G, swoole.enable_library=Off
+          ini-values: memory_limit=2G, swoole.enable_library=On
         env:
           phpts: ts
           fail-fast: true

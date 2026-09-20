@@ -376,6 +376,21 @@ jobs:
           composer build:optimistic
           composer test:optimistic-native
 
+      - name: 准备主从选路的独立本机数据库工具
+        if: matrix.suite == 'data'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes mysql-server mysql-client postgresql
+          sudo systemctl stop mysql postgresql
+          for task_service in mysql postgresql; do
+            if systemctl is-active --quiet "$task_service"; then exit 1; fi
+          done
+          task_mysql="$GITHUB_WORKSPACE/.cache/routing-mysql"
+          mkdir -p "$task_mysql/bin"
+          for task_program in mysqld mysql mysqldump; do ln -s "$(command -v "$task_program")" "$task_mysql/bin/$task_program"; done
+          ln -s /usr/share "$task_mysql/share"
+          printf 'TYPE_MYSQL_TOOLS=%s\nTYPE_PGSQL_TOOLS=%s\n' "$task_mysql" "$(dirname "$(pg_config --bindir)")" >> "$GITHUB_ENV"
+
       - name: 验证原生事务、连接身份、Outbox 与租户
         if: matrix.suite == 'data'
         run: |
@@ -432,7 +447,7 @@ jobs:
           TYPE_TEST_EXECUTION=host TYPE_ROLLOUT_NATIVE=1 bash tools/test-rollout.sh pgsql
           TYPE_TEST_EXECUTION=host TYPE_ROLLOUT_NATIVE=1 bash tools/test-rollout.sh sqlite
 
-      - name: 验证十四插件的三库原生集成与采样报告
+      - name: 验证全部分发组件的三库原生集成与采样报告
         if: matrix.suite == 'integration'
         run: TYPE_TEST_EXECUTION=host TYPE_INTEGRATION_ISOLATED=1 composer test:integration-native
 

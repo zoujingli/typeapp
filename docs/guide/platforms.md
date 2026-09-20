@@ -8,10 +8,10 @@ TypeApp 的目标平台为 Linux x64、Linux ARM64、macOS ARM64 和 Windows x64
 
 | 平台与实际环境 | 已通过的范围 | 完整应用边界 |
 | --- | --- | --- |
-| Linux x64 | 按锁定工具链执行组件、应用、五种通信和三库语义检查 | 以同一产物完成无源码运行、资源回收和发布包验收 |
-| Linux ARM64 | 使用 ARM64 Swoole 构建执行组件、应用、五种通信和三库语义检查 | 以同一产物完成无源码运行、资源回收和发布包验收 |
-| macOS ARM64 | 使用 ARM64 Swoole 构建执行组件、应用、五种通信和三库语义检查 | 以同一产物完成无源码运行、资源回收和发布包验收 |
-| Windows x64 | 使用 Windows Swoole 构建执行组件、应用、五种通信和三库语义检查 | 以同一产物完成无源码运行、资源回收和发布包验收 |
+| Linux x64 | 基础命令的全量 AOT 与实际运行 | 当前 ORM、完整应用及全部通信仍需同提交验收 |
+| Linux ARM64（虚拟机） | 三库独立 ORM 的 PHP、AOT 与移除源码运行 | 新增真实锁等待、完整应用、全部通信及最终同提交验收待完成 |
+| macOS ARM64 | 三库独立 ORM 与真实锁等待、应用身份 HTTP；TCP/UDP 双线程和协程、WS/WSS 独立原生运行 | 完整协议、故障、单程序交付及最终同提交验收待完成 |
+| Windows x64 | 已有四组件消费者、SQLite 原生行为与部署审计结果 | 新 Swoole 构建、三库独立 ORM 和完整应用仍待实际验收 |
 
 “四组件”指 `type-runtime`、`type-validate`、`type-orm` 和 `type-orm-sqlite` 的完整生产源码。SQLite 对照证明该场景的 PHP 与原生结果一致，不代表 MySQL、PostgreSQL 或物联中心全部业务已通过。Windows 原生部署审计验证的是组件消费者的实际程序和运行库，尚不包含完整应用的可搬迁发布包。
 
@@ -29,7 +29,7 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 原生构建基线为 PHP 8.5.10 ZTS、TypePHP 0.9.0、PHPX 2.9.0，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 另外固定版本、源码、构建开关、模块摘要和官方内置库配置；CLI 加载成功还需要对应 embed 环境验证。不能只复制一个扩展文件就认定 ABI 匹配。
 
-进程不可用时采用官方线程或协程是框架要求，当前自动选择执行方式及部分角色接入仍待完成。Swoole 官方已有 Windows 原生能力，当前 Windows SDK 缺少模块属于本项目准备流程的缺口；经典 Server/Process、线程和协程须按所选官方构建分别核验。
+进程不可用时采用官方线程或协程是框架要求，当前自动选择执行方式及部分角色接入仍待完成。Swoole 官方已有 Windows 原生能力，项目的 Windows 准备脚本已配置固定源码构建，实际模块与运行结果仍需验证；经典 Server/Process、线程和协程须按所选官方构建分别核验。
 
 当前已编译线程入口还依赖受控的 PHPX 与 Swoole 接入。Linux ARM64 实测中，官方 Swoole 6.2.2 启用 Thread 后并不提供 TypeApp 当前要求的 `startNative` 和 `NATIVE_ENTRY_ABI=2`；这些是项目编译适配标识，不是官方标准 API。普通 Thread 可用不等于已编译业务线程可用。需要让固定上游版本、必要适配和 SDK 构建流程一致，再完成生命周期与全量 AOT 验收。
 

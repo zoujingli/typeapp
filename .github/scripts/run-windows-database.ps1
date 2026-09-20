@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][ValidateSet('mysql', 'pgsql')][string]$Driver)
+param([Parameter(Mandatory)][ValidateSet('mysql', 'pgsql')][string]$Driver, [switch]$OrmOnly)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 # 不接管镜像预装服务，不使用Docker/WSL；只在可丢弃的原生runner工作。
@@ -122,9 +122,15 @@ try {
     $taskProbe = '$d=getenv("TYPE_DB_PROBE_DRIVER");$p="TYPE_".strtoupper($d)."_";$dsn=($d==="mysql"?"mysql:":"pgsql:")."host=".getenv($p."HOST").";port=".getenv($p."PORT").";dbname=".getenv($p."DATABASE");$until=microtime(true)+60;do{try{$c=new PDO($dsn,getenv($p."USER"),getenv($p."PASSWORD"));if((int)$c->query("SELECT 1")->fetchColumn()===1){exit(0);}}catch(Throwable){}usleep(100000);}while(microtime(true)<$until);exit(1);'
     Invoke-TaskProcess $taskPhp @('-r', $taskProbe) (Join-Path $taskEvidence 'ready.log') 90 $taskEnvironment | Out-Null
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
-    Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', '--php', $Driver, '--app') (Join-Path $taskEvidence 'development.log') 180 $taskEnvironment | Out-Null
-    Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', 'build/app/type-app.exe', $Driver, '--app') (Join-Path $taskEvidence 'native.log') 180 $taskEnvironment | Out-Null
-    Invoke-TaskProcess $taskPhp @('tests/application-template.php', $Driver, '--onboarding', '--native', '--package') (Join-Path $taskEvidence 'onboarding.log') 2400 $taskEnvironment | Out-Null
+    if ($OrmOnly) {
+        foreach ($taskMode in @('php', 'native')) {
+            Invoke-TaskProcess $taskPhp @('tests/orm-suite-consumer.php', $Driver, ('--' + $taskMode)) (Join-Path $taskEvidence ('orm-' + $taskMode + '.log')) 2400 $taskEnvironment | Out-Null
+        }
+    } else {
+        Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', '--php', $Driver, '--app') (Join-Path $taskEvidence 'development.log') 180 $taskEnvironment | Out-Null
+        Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', 'build/app/type-app.exe', $Driver, '--app') (Join-Path $taskEvidence 'native.log') 180 $taskEnvironment | Out-Null
+        Invoke-TaskProcess $taskPhp @('tests/application-template.php', $Driver, '--onboarding', '--native', '--package') (Join-Path $taskEvidence 'onboarding.log') 2400 $taskEnvironment | Out-Null
+    }
     $taskPassed = $true
 } finally {
     if ($null -ne $taskServer) {
@@ -142,7 +148,7 @@ try {
         try { Invoke-TaskProcess (Join-Path $taskBin 'pg_ctl.exe') @('-D', $taskData, '-m', 'fast', '-w', '-t', '30', 'stop') (Join-Path $taskEvidence 'stop.log') 45 | Out-Null } catch { $taskCleanupPassed = $false }
     }
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
-    $taskRecord = @{ platform='Windows'; driver=$Driver; version=$taskSource.version; archive_sha256=$taskSource.sha256; scope='native dedicated database process, development/AOT and isolated template package'; passed=($taskPassed -and $taskCleanupPassed); owned_process_cleanup=$taskCleanupPassed; installed_service=$false }
+    $taskRecord = @{ platform='Windows'; driver=$Driver; version=$taskSource.version; archive_sha256=$taskSource.sha256; scope=$(if ($OrmOnly) { 'isolated ORM Composer consumption, PHP/AOT and source removal' } else { 'native dedicated database process, development/AOT and isolated template package' }); passed=($taskPassed -and $taskCleanupPassed); owned_process_cleanup=$taskCleanupPassed; installed_service=$false }
     $taskRecord | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
     if (!$taskCleanupPassed) { throw '本轮数据库未正常清理，不能记作通过。' }
 }
