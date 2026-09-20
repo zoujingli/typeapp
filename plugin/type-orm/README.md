@@ -2,6 +2,8 @@
 
 提供独立于 HTTP 核心的驱动协议、受管连接、参数化查询、模型/关系、事务、迁移与 Outbox。数据库差异由所选驱动及明确的查询方言处理，不提供隐藏的写入重试或跨系统事务保证。
 
+业务实体 CRUD 优先使用 Model。当前模型接口仍要求显式 `Connection`，受管池归还时关闭物理 PDO；无参模型调用、默认读从写主、`master()` 主读及物理连接复用属于待实施范围，不能按已交付能力使用。已确定的规则与验收见开发主仓的[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)。
+
 ## 安装与版本
 
 本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。

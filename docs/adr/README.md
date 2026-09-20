@@ -22,3 +22,4 @@
 - [标准项目与主仓业务保持单一来源](0020-standard-project-single-business-source.md)
 - [Swoole 唯一底层与单程序交付](0021-required-swoole-and-single-program.md)
 - [显式装配与边界契约](0022-explicit-assembly-and-boundary-contracts.md)
+- [Model 优先的业务 CRUD 边界](0023-model-first-crud-boundary.md)

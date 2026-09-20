@@ -2,6 +2,8 @@
 
 模型复用 type-orm 的 `Connection` 和不可变 `Query`，运行时不依赖 core；HTTP 示例由应用组合 core、校验器和 ORM。
 
+当前接口仍需要显式连接，下文示例按现有代码执行。已确定的业务标准是由框架自动借还连接，普通查询默认读从、写入使用主库，通过 `master()` 明确主读；接口调整、事务与上下文边界见[Model 自动连接与主从路由](model-connections.md)。无参调用与自动选路尚待实施验收。
+
 ## 声明与生成
 
 模型直接继承 `Type\Orm\Model`，CLI 与 HTTP 示例共用 `examples/model/Models.php`。`Table` Attribute 声明表、主键及生命周期字段；PHP 属性声明字段名、类型和可空性，`Column` 补充列名、精确数值类型、赋值权限及输出可见性。完整示例与迁移步骤见[模型指南](../guide/plugins/type-orm.md#models-relations-output)。

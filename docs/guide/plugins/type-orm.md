@@ -4,6 +4,8 @@
 
 提供受管数据库连接、不可变 Query、生成模型、关系、分页、事务、迁移和事务 Outbox。ORM 不选择数据库；安装一个驱动后使用同一公开入口，并保留数据库本身的能力差异。
 
+业务 CRUD 优先使用[Model 与关系](#models-relations-output)。当前模型查询和保存需要显式 `Connection`；已确定的自动连接、默认读从写主及 `master()` 主读规则见[模型连接与主从路由](../../development/model-connections.md)，这些入口尚待实施。本文的连接和表查询示例说明当前底层能力，不代表普通业务必须自行管理连接。
+
 ## 安装与依赖
 
 需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7`、PDO 与 `type-runtime`；实际访问数据另装 MySQL、PostgreSQL 或 SQLite 驱动。Swoole 管理协程执行、等待、取消和连接租约，PDO 及所选 PDO 驱动负责数据库协议和 SQL 语义。
@@ -20,9 +22,9 @@ composer require zoujingli/type-orm:dev-main
 
 依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
-## 最小使用示例
+## 底层连接与查询示例
 
-以下是业务服务函数，接收当前作用域的 `Connection`，不含独立 `main()`。调用者须准备 `users(id, name, age)` 表，并从驱动文档的完整入口取得连接。
+以下演示当前底层接口，接收当前作用域的 `Connection`，不含独立 `main()`。调用者须准备 `users(id, name, age)` 表，并从驱动文档的完整入口取得连接；领域实体 CRUD 使用模型入口。
 
 ```php
 <?php
@@ -62,13 +64,13 @@ function renameUser(Connection $connection, int $id, string $name): int
 
 从[MySQL](type-orm-mysql.md)、[PostgreSQL](type-orm-pgsql.md)或[SQLite](type-orm-sqlite.md)选择驱动，再创建 `Database($driver, $capacity = 4, $idleLimit = 2)`。每次执行新建 `ExecutionScope`，调用 `$database->connect($scope)`。
 
-Scope 关闭归还租约，Database 由进程所有者关闭。数据库池保留逻辑槽位，归还时关闭物理 PDO，会话状态不会泄漏到下一请求。连接只在借用时建立；满载立即拒绝，不能跨进程或执行者借用。
+Scope 关闭归还租约，Database 由进程所有者关闭。当前数据库池保留逻辑槽位，归还时关闭物理 PDO，会话状态不会泄漏到下一请求；物理连接复用仍待实施。连接只在借用时建立；同步调用满载立即拒绝，Swoole 协程按有界等待配置排队，连接不能跨进程或执行者使用。
 
 多个命名连接使用 `DatabaseManager(['default' => $writer, 'reporting' => $reader])`，通过 `connect($scope, 'reporting')` 显式选择。`rotate($name, $newDriver)` 切换凭据代次，旧租约保留旧身份到归还；同名连接最多保留两个未排空旧代。
 
 ## 常用查询与写入
 
-在最小示例中的服务函数内使用：
+在上述底层示例函数中使用：
 
 ```php
 $base = $connection->table('users')->where('age', '>=', 18);
