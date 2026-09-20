@@ -4,7 +4,7 @@
 
 ORM 使用 PDO 访问数据库协议；Swoole 提供执行上下文、协程等待、父子取消、Deadline 和连接资源生命周期；TypePHP 负责 ORM、模型及业务代码的全量 AOT 编译。ORM 不新增数据库网络协议、连接线程池或私有协程调度器。
 
-业务数据访问以领域 Model 为标准。已确定的接口方向为无参 `Model::query()`、`save()`，框架自动管理连接；默认写主、读从，`master()` 指定主读，事务固定同一主库连接，从库故障明确失败。当前 Model 仍要求显式连接，物理 PDO 复用也尚待完成，详见[模型连接与主从路由](../development/model-connections.md)和[实现规划](roadmap.md)。
+业务数据访问以领域 Model 为标准。`Model::query()`、`Model::search($input)` 和模型的 `save()` 无需连接参数，框架从当前执行作用域自动取得受管连接；默认写主、读从，`master()` 指定主读，事务固定同一主库连接，从库故障明确失败。PostgreSQL 完整重置后可复用物理 PDO，MySQL、SQLite 当前归还即关闭；框架接口、驱动限制及交付条件见[模型连接与主从路由](../development/model-connections.md)和[实现规划](roadmap.md)。
 
 ## 选择数据库
 
@@ -18,15 +18,14 @@ ORM 使用 PDO 访问数据库协议；Swoole 提供执行上下文、协程等�
 
 ## 显式迁移
 
-在本仓库根执行：
+物联中心通过 `app:install` 初始化空库，同时建立身份、租户和权限数据，具体参数见[双端身份初始化](../development/iot-identity.md#初始化)。安装完成后，在本仓库根查询迁移状态：
 
 ```bash
-composer typeapp:migrate -- run
 composer typeapp:migrate -- status
 composer typeapp:migrate -- history
 ```
 
-独立模板将上述入口替换为 `php dev.php migrate`。`run` 按版本执行，重复执行保持幂等；SQLite 只有在显式运行迁移时创建数据文件。
+物联中心的 `migrate` 提供 `status`、`history` 和经核对后的 `recover`，不提供独立建表的 `run`。通用应用模板使用 `php dev.php migrate run` 初始化自身模型所需的表，并提供 `status`、`history` 查询；模板不包含物联中心的身份安装流程。框架迁移按版本和校验和执行，已完成版本重复运行保持幂等。
 
 迁移具有校验和和历史记录。MySQL DDL 不等同于事务性 DDL：失败后先检查数据库实际状态与迁移历史，再决定恢复或重试，不能假定自动回滚。PostgreSQL、SQLite 也要按各自的事务、锁与文件语义验证。
 
@@ -36,9 +35,9 @@ composer typeapp:migrate -- history
 
 在 `app/` 的领域 `model/` 目录中声明直接继承 `Type\Orm\Model` 的业务类，用 `#[Table(...)]` 指定表，用公开类型属性声明字段。物联中心先完成身份/租户模型与服务，再覆盖角色权限、产品、物模型、设备、遥测、告警、通知和导出任务；该范围是实施要求，不表示所有业务已完成 Model 迁移。`Column` 补充列名、精确类型、赋值权限和输出可见性，可空性来自 `?string` 等 PHP 类型。
 
-构建器从 `sources` 静态识别模型，保留原类名和业务方法，生成字段映射、水合工厂、查询入口和属性钩子。业务服务负责租户条件、角色权限和设备归属；不能用通用 users 表或跨租户全表查询替代这些约束。PHP 开发入口先加载本代转换结果，AOT 编译同一结果；业务源码、完整转换结果和生成器身份都进入审计。不要直接加载未经准备的模型源码。
+构建器从 `sources` 静态识别模型，保留原类名和业务方法，生成字段映射、水合工厂、查询入口和属性钩子。应用验证租户访问资格、角色权限和设备归属后绑定可信上下文；框架按模型租户字段自动限定查询与写入，缺失或冲突时拒绝操作，业务无需逐次追加租户条件。PHP 开发入口先加载本代转换结果，AOT 编译同一结果；业务源码、完整转换结果和生成器身份都进入审计。不要直接加载未经准备的模型源码。
 
-旧 `models` 构建键及模型 JSON 已移除；保留旧键会收到迁移错误。删除旧声明并将 PHP 模型加入 `sources` 后重新 prepare/build，旧模型缓存不能复用。完整声明与开发加载例子见[模型与关系](plugins/type-orm.md#models-relations-output)。
+将 PHP 模型所在目录加入构建配置的 `sources`，再执行 prepare/build。完整声明与开发加载例子见[模型与关系](plugins/type-orm.md#models-relations-output)。
 
 查询的 `find()`、`first()` 未命中返回 null，`get()` 返回列表。过滤、选列、排序与限制返回新的查询对象；部分字段查询保留持久化所需的主键，响应字段仍应显式选择。
 

@@ -23,7 +23,7 @@ TypeApp 以 TypePHP 编译生产代码，以 Swoole 承担通信与基础并发�
 | --- | --- | --- |
 | 当前执行作用域 | 已接入 HTTP、WebSocket 公开回调、生成 CLI、队列、调度和受管子任务；TCP/UDP 示例显式绑定 | MQTT 网络回调与全部后台入口继续收口，验证连续执行不串状态及异常恢复；PHP 与原生分别验收，见[当前作用域](../development/managed-tasks.md#当前作用域与应用绑定) |
 | Model 自动连接与主从路由 | 已实现无连接 Model CRUD、静态 search、Db 同库事务、上下文租户隔离及执行期主从选路；macOS ARM64 与 Linux ARM64 虚拟机的三库独立 Composer 消费、AOT 与移除源码运行通过，包含上下文、租户模型及中间表隔离；事务外写后仍默认读从 | 完成入口接入、完整上下文与路由故障专项、物理 PDO 复用及同提交平台验收；接口与边界见[模型连接与主从路由](../development/model-connections.md) |
-| 物理数据库连接复用 | PostgreSQL 使用完整重置后复用 PDO；MySQL、SQLite 无完整重置保证时关闭。三库独立 PHP/原生消费覆盖污染隔离与错误退役 | 完成故障、性能对照及同提交平台验收；MySQL 标准 PDO 缺少完整重置接口，SQLite 完整重置未实现，保留对应能力缺口 |
+| 物理数据库连接复用 | PostgreSQL 使用完整重置后复用 PDO；MySQL、SQLite 无完整重置保证时关闭。macOS ARM64、Linux ARM64 的三库独立 PHP/原生消费覆盖污染、断连及凭据代次；macOS 的 PostgreSQL 已完成同负载 PHP/原生复用性能对照 | 完成其他平台和负载对照及同提交验收；MySQL 标准 PDO 缺少完整重置接口，SQLite 完整重置未实现，保留对应能力缺口 |
 | Model 上下文自动租户隔离 | 已按编译期字段映射约束查询、持久化及关系中间表，三库独立消费 PHP/原生覆盖缺失、冲突、OR、部分投影及上下文切换拒绝 | 完成同提交平台验收，不实现业务认证；规则见[自动租户隔离](../development/model-connections.md#自动租户隔离) |
 | Swoole 通信与并发验收 | 代码已统一由 Swoole 承担 Broker、客户端、持久工作、设备授权和 CRL HTTPS；仍需按产物完成协议与平台组合验收 | 验证 TLS、QoS、保活、重连、取消、资源释放、持久确认和 CRL 更新，并记录同一产物证据 |
 | 按平台能力选择执行方式 | 入口根据 Swoole 构建能力选择 Process、Thread 或 Coroutine；各角色仍需逐平台验证隔离、容量与停止 | 按官方能力运行对应角色，记录状态隔离、容量、停止和资源回收证据 |

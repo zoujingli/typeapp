@@ -294,7 +294,7 @@ sequenceDiagram
 
 | 角色 | 用途及前置条件 |
 | --- | --- |
-| `serve` | 人员与租户 HTTP API；先显式迁移业务表 |
+| `serve` | 人员与租户 HTTP API；先通过 `app:install` 完成空库安装 |
 | `iot:mqtt-install` | 显式安装 MQTT 持久表，并取得同步提交证明 |
 | `iot:mqtt` | 独立 Broker；使用 Swoole Server 与 Process/Thread/Coroutine 角色能力；准备真实 TLS、PostgreSQL 同步主备、唯一节点身份和 worker 命令 |
 | `iot:ingest` | 独立数据接收；准备单独服务凭据与 TLS CA |
