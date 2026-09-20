@@ -33,7 +33,7 @@ $response = $partial->project(['id', 'name']);
 
 `docs/build-config/type-model-http.json` 编译 `/users` 的 GET、POST、PATCH、DELETE 入口，查询参数 `id` 指定记录，`fields[]` 从输出白名单选择字段。列表最多返回 100 条；POST 返回 201，未找到返回 404，输入错误返回 422。该示例只监听回环地址，数据库结构由部署迁移或测试夹具准备。
 
-本切片在请求所在工作进程创建数据库连接，物化响应后归还。HTTP 共享连接池和协程等待、取消行为由运行时任务统一扩展。
+请求、消息和后台任务都在自己的 `ExecutionScope` 中借用连接。Swoole 管理协程等待、父子取消、Deadline 与真实收尾；连接仍由 PDO 及所选驱动执行 SQL，作用域关闭后才归还租约。
 
 `tests/models.php` 在三种真实数据库验证生成访问器、水合、CRUD、部分字段、null、批量赋值、安全输出和失效状态。`tests/model-http.php` 通过真实 HTTP 与 MySQL/SQLite 验证相同业务路径。MySQL HTTP 测试创建独立随机数据库，退出后只清理该测试数据库；SQLite 使用独立临时文件。
 

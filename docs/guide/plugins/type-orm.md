@@ -6,7 +6,7 @@
 
 ## 安装与依赖
 
-需要 PHP `>=8.4 <8.6`、PDO 与 `type-runtime`；实际访问数据另装 MySQL、PostgreSQL 或 SQLite 驱动。
+需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7`、PDO 与 `type-runtime`；实际访问数据另装 MySQL、PostgreSQL 或 SQLite 驱动。Swoole 管理协程执行、等待、取消和连接租约，PDO 及所选 PDO 驱动负责数据库协议和 SQL 语义。
 
 源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
 

@@ -6,7 +6,7 @@
 
 ## 安装与依赖
 
-需要 PHP `>=8.4 <8.6`，依赖 `type-runtime` 和 PSR HTTP 接口。配置、命令与 PSR 处理链可独立使用，因此 Composer 安装本包不强制 Swoole；使用 HTTP、WebSocket、TCP、UDP 网络入口必须提供匹配的 Swoole 扩展。
+需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7`，依赖 `type-runtime` 和 PSR HTTP 接口。Swoole 是本组件配置、命令与 HTTP、WebSocket、TCP、UDP 通信入口的运行时基础；安装本包时即校验该硬依赖。
 
 源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
 

@@ -4,7 +4,7 @@
 
 ## 首次使用前的环境检查
 
-先准备Git、Composer 2和对模板及所选私有组件的SSH读取权限。开发PHP的包声明范围是`>=8.4 <8.6`；核心包不强制Swoole，ORM要求PDO，运行库与构建工具还需要filter、JSON、DOM等扩展。选择Swoole引擎时额外提供兼容扩展。完整传递依赖以Composer平台检查为准，不用`--ignore-platform-reqs`绕过缺失扩展。
+先准备 Git、Composer 2 和对模板及所选组件的 HTTPS 读取权限。开发 PHP 的包声明范围是 `>=8.4 <8.6`；模板固定要求 Swoole `>=6.2 <7`，ORM 要求 PDO，运行库与构建工具还需要 filter、JSON、DOM 等扩展。完整传递依赖以 Composer 平台检查为准，不用 `--ignore-platform-reqs` 绕过缺失扩展。
 
 | 选择的数据库 | 必需 PDO 驱动 | 额外准备 |
 | --- | --- | --- |

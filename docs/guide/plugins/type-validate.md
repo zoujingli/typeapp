@@ -6,7 +6,7 @@
 
 ## 安装与依赖
 
-需要 PHP `>=8.4 <8.6` 和 `type-runtime`，不要求 Swoole、PDO 或 Redis。
+需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7` 和 `type-runtime`；Swoole 依赖由运行组件传递提供。本组件不额外要求 PDO 或 Redis。
 
 源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
 

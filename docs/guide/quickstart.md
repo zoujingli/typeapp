@@ -12,7 +12,7 @@ flowchart TB
 
 ## 准备环境
 
-开发 CLI 使用 PHP `>=8.4 <8.6`、Composer 和所选数据库的 PDO 扩展。SQLite 需要 `pdo_sqlite`；MySQL、PostgreSQL 分别需要 `pdo_mysql`、`pdo_pgsql`。下文 HTTP 服务还需要匹配的 Swoole 扩展与 Unix 信号能力，具体要求见[type-core](plugins/type-core.md#启动-http-服务)。
+开发 CLI 使用 PHP `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选数据库的 PDO 扩展。SQLite 需要 `pdo_sqlite`；MySQL、PostgreSQL 分别需要 `pdo_mysql`、`pdo_pgsql`。HTTP 服务还需要目标平台支持的 Unix 信号能力，具体要求见[type-core](plugins/type-core.md#启动-http-服务)。
 
 ```bash
 php -v

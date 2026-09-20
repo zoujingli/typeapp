@@ -22,7 +22,7 @@ TypeApp 应用的通信与基础并发必须使用 Swoole；线程与协程入�
 
 `ExecutionScope` 保存一次请求、消息、命令或后台任务的有界字符串上下文、单调截止时间、取消信号和任务树预算。上下文适合放置 `request_id`、`tenant_id`、`operation_id` 等关联标识；连接、事务、Socket、可变业务对象和大载荷必须由当前作用域登记或通过受控参数传递，不能放进进程全局变量。
 
-`ExecutionScope::spawn()` 只在当前 Swoole 线程内创建协程。子协程取得新的 `ExecutionOwner` 和独立作用域，复制父上下文快照，共享只能缩短的截止时间、取消信号及 `TaskBudget`；父作用域中的连接和租约不转移，子协程必须重新借用。资源归属由进程、原生线程、请求代次、协程 ID 和 Fiber 身份校验，跨边界误用会抛出执行者错误。
+`ExecutionScope::spawn()` 只在当前 Swoole 线程内创建协程。子协程取得新的 `ExecutionOwner` 和独立作用域，复制父上下文快照，共享只能缩短的截止时间、父子取消信号及 `TaskBudget`；父取消、关闭或 Deadline 到期会唤醒子协程，子协程完成真实收尾后解除父子监听。父作用域中的连接和租约不转移，子协程必须重新借用。资源归属由进程、原生线程、请求代次、协程 ID 和 Fiber 身份校验，跨边界误用会抛出执行者错误。
 
 `ManagedTask::await()` 只返回真实完成的结果或异常。等待超时发送取消意图但不提前归还额度，作用域保持 `closing`，直到后代和原生资源真实退出后才进入 `closed`。这套规则让 HTTP、WebSocket、TCP、UDP、MQTT、数据库和后台任务共享同一个上下文模型。
 
@@ -43,7 +43,7 @@ composer require zoujingli/type-runtime:dev-main
 
 还提供 `ExecutionScope`、`ManagedResource`、有界 `ResourcePool` 与 `ResourceLease`：按登记顺序启动，逆序停止；部分启动失败可收尾，单个清理失败不阻止其余资源释放。作用域绑定当前执行者，受管子任务共享截止和容量预算，资源操作实际退出前继续持有租约。
 
-`ManagedResource::stop()` 抛错后，作用域继续持有失败项并保持 `closing`；同一所有者再次 `close()` 只收尾剩余项，成功项不重复停止。资源实现须保留再次收尾所需状态；正常返回也可表示在途所有权已交给既有池或原生完成回调。迟到子任务不能越过失败资源将作用域标成 `closed`，不增加后台重试或 Timer。`WorkLifecycle::finish()` 遇到未关闭作用域会撤销就绪并保持在途额度，拒绝替换该作用域；业务已返回且真实清理完成后，统计回收额度，角色仍保持停止。
+`ManagedResource::stop()` 抛错后，作用域继续持有失败项并保持 `closing`；同一所有者再次 `close()` 只收尾剩余项，成功项不重复停止。资源实现须保留再次收尾所需状态；正常返回也可表示在途所有权已交给既有池或原生完成回调。迟到子任务不能越过失败资源将作用域标成 `closed`，资源清理本身不增加后台重试；Deadline 唤醒使用作用域登记的 Swoole Timer，并在关闭时撤销。`WorkLifecycle::finish()` 遇到未关闭作用域会撤销就绪并保持在途额度，拒绝替换该作用域；业务已返回且真实清理完成后，统计回收额度，角色仍保持停止。
 
 运行时回调使用固定签名：`ExecutionScope::spawn()` 接收 `Closure(ExecutionScope): mixed`，子任务始终获得自己的作用域；`ResourceLease::hold()` 接收 `Closure(ReusableResource): mixed`；`ResourcePool` 工厂为 `Closure(): ReusableResource`。即使不使用上下文也须声明相应参数，TypePHP 对非 variadic 回调严格检查实参数量。依赖通过构造或 `use` 捕获传入，业务扩展不依赖参数引用写回。
 
@@ -96,7 +96,7 @@ function main(int $argc, array $argv): void
 
 ## AOT 与运行要求
 
-参数和作用域辅助接口可以独立使用；TypeApp 应用统一依赖 Swoole，HTTP、数据库和 Redis 组件按业务安装。Composer 声明 `ext-filter`；线程与协程路径必须具备匹配的 Swoole 原生能力，业务线程还需要上文的受控 ABI 与完整编译入口。AOT 运行仍依赖匹配的 PHPX/libphp，不能把不需要 PHP CLI 解释器写成不需要 PHP 运行库。
+参数和作用域辅助接口可以独立使用；TypeApp 应用统一依赖 Swoole，HTTP、数据库和 Redis 组件按业务安装。Composer 声明 `ext-filter` 与 `ext-swoole >=6.2 <7`；线程与协程路径使用匹配的 Swoole 原生能力，业务线程还需要上文的受控 ABI 与完整编译入口。AOT 运行仍依赖匹配的 PHPX/libphp，不能把不需要 PHP CLI 解释器写成不需要 PHP 运行库。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

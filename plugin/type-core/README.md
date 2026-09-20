@@ -90,7 +90,7 @@ function main(): void
 
 ## AOT 与运行要求
 
-Composer 安装核心不强制 `ext-swoole`，配置、命令、路由与 PSR-7/15/17 处理链可独立使用。HTTP、WebSocket、TCP、UDP 网络入口需要匹配的 Swoole 原生能力，当前运行基线要求 Swoole `>=6.2 <7`；允许固定官方内置 PHP 库。各协议按目标平台实际构建能力选择 Server、协程 Server 或 Socket，分别完成原生验收。AOT 仍需匹配的 PHPX/libphp 与实际使用的原生扩展，PSR 接口及整个核心源码一起编译。
+Composer 安装核心必须满足 `ext-swoole >=6.2 <7`，Swoole 是通信和基础并发的硬依赖。HTTP、WebSocket、TCP、UDP 网络入口复用 Swoole 原生能力；允许固定官方内置 PHP 库。各协议按目标平台实际构建能力选择 Server、协程 Server 或 Socket，分别完成原生验收。AOT 仍需匹配的 PHPX/libphp 与实际使用的原生扩展，PSR 接口及整个核心源码一起编译。
 
 当前 `HttpServerInterface` 只管理 HTTP 请求与响应。`SwooleServer` 对带 `Upgrade` 的请求返回 `501 / upgrade_not_supported` 并关闭连接。需要 HTTP 与 WebSocket 共用服务和端口时，由一个 `WebSocket\Server` 实例持有监听，通过 `onRequest()` 显式处理普通 HTTP 请求。
 

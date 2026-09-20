@@ -14,13 +14,13 @@ composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.
 composer require zoujingli/type-orm:dev-main
 ```
 
-`dev-main` 的分支别名为 `1.0.x-dev`；本仓组件间使用 `~1.0.0@dev` 约束。开发分支不等于已发布稳定 1.0 版本。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+`dev-main` 的分支别名为 `1.0.x-dev`；本仓组件间使用 `~1.0.0@dev` 约束。开发分支不等于已发布稳定 1.0 版本。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。运行时通过 `type-runtime` 传递硬依赖 `ext-swoole >=6.2 <7`，PDO 和所选 PDO 驱动仍是数据库访问的直接依赖。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
 Database 通过 type-runtime 的有界池按作用域借还会话。Connection 不返回底层 PDO，支持 query、execute、lastInsertId 和固定连接的事务闭包；关闭租约或作用域后不能继续使用。归还时关闭物理 PDO 会话，池只保留逻辑槽位，下一次借用重建声明基线。
 
 池归属创建它的进程和线程请求，同线程协程可独立借用，连接仍独占于原作用域和执行者。同步调用者满载立即拒绝；Swoole 协程默认最多排队 64 个等待者、等待 1 秒，实际截止取作用域和借用上限中的较小值。`Database` 与 `DatabaseManager` 构造器在 `$budget` 后接受 `$waiterLimit`、`$waitSeconds`；`Database::connect($scope, 0)` 或 `DatabaseManager::connect($scope, 'default', 0)` 显式即时借用。取消、截止、退役与凭据轮换均撤销等待，不能提前归还仍在使用或关闭失败的连接额度。
 
-同一服务端连接域的命名池和旧凭据代次共用一个 `DeploymentBudget`。其第六个参数为每进程最大同时使用连接的线程数，包含主线程及未退出旧代；每线程只获得分配份额，调用者须按部署计划启动线程并在旧代 join 后再复用份额。标准应用配置 `APP_DATABASE_THREADS`、`DB_POOL_WAITERS` 和 `DB_POOL_WAIT_MS`，池统计返回等待时长、拒绝、在途、关闭及隔离数。线程内排队使用 Swoole Channel；该变化不代表 SQLite 文件操作或三库全部操作已经协程化，物理连接复用仍由后续数据库任务验收。
+同一服务端连接域的命名池和旧凭据代次共用一个 `DeploymentBudget`。其第六个参数为每进程最大同时使用连接的线程数，包含主线程及未退出旧代；每线程只获得分配份额，调用者须按部署计划启动线程并在旧代 join 后再复用份额。标准应用配置 `APP_DATABASE_THREADS`、`DB_POOL_WAITERS` 和 `DB_POOL_WAIT_MS`，池统计返回等待时长、拒绝、在途、关闭及隔离数。线程内排队使用 Swoole Channel；PDO 仍负责真实数据库协议和会话，Swoole 只负责执行上下文、等待、取消与资源生命周期。
 
 query/execute 是受管 SQL 入口；会话修改及 DDL 使用 raw，执行后租约不再复用。归还处理残留事务并关闭物理会话，下一请求不会继承角色、schema、时区、临时表或 PRAGMA。SQL 错误的会话被标记为不可复用，框架不自动重试写入。
 

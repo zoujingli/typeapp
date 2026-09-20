@@ -1,29 +1,38 @@
-# 原生数据库命令
+# ORM 运行与数据库验收
 
-当前对应 ，建立数据库中立接口、MySQL 驱动和有界同步连接池。
+`type-orm` 的数据库协议由 PDO 及所选 PDO 驱动承担。MySQL、PostgreSQL 和 SQLite 的连接、SQL 语义、事务特性及错误行为仍以真实数据库为准；Swoole 不实现数据库协议，也不替换 PDO。Swoole 负责协程执行、等待、取消和资源收尾边界，TypePHP 负责 ORM、模型和业务代码的全量 AOT 编译。
 
- 增加独立 PostgreSQL 驱动。通过 TYPE_PGSQL_HOST、TYPE_PGSQL_PORT、TYPE_PGSQL_DATABASE、TYPE_PGSQL_USER、TYPE_PGSQL_PASSWORD 指定专属测试服务，运行 `composer build:pgsql`、`composer test:pgsql` 和 `composer test:pgsql-consumer`。测试采用 PostgreSQL 的 identity/RETURNING 与真实事务行为，不复用 MySQL 方言冒充兼容。
+## 运行边界
 
- 增加 SQLite 文件与内存驱动，使用 `composer build:sqlite`、`composer test:sqlite` 和 `composer test:sqlite-consumer` 验证。验证器只创建专属临时文件；崩溃用例明确启动子进程并确认其被 SIGKILL 终止，再重新打开数据库检查已提交内容，不能用普通异常退出冒充崩溃恢复。
+- `ExecutionScope` 是一次请求、消息或后台任务的资源所有者。连接必须在当前作用域借用并在 `finally` 中关闭，不能存入全局变量。
+- `Database` 通过 `type-runtime` 的有界 `ResourcePool` 管理 PDO 会话。连接租约绑定创建它的进程、线程、协程和 Fiber，跨协程、线程或进程使用会被拒绝。
+- `query/execute` 是受管 SQL 入口；会话设置和 DDL 使用 `raw/rawQuery` 并使当前会话退役，框架不自动重试未知提交。
+- 父作用域取消、关闭或 Deadline 到期会唤醒子协程。子作用域完成真实收尾后才解除父子监听并归还连接、预算和池容量；等待超时不会提前释放仍在途的 PDO 会话。
 
-在已准备的 Linux TypePHP 工具链中安装 pdo_mysql，通过 TYPE_MYSQL_HOST、TYPE_MYSQL_PORT、TYPE_MYSQL_DATABASE、TYPE_MYSQL_USER、TYPE_MYSQL_PASSWORD 指定专属测试数据库，运行：
+## 事务与模型
+
+事务固定使用借入的 `Connection`。嵌套事务使用数据库支持的 savepoint；异常回滚当前层，最外层提交确认后才运行 `afterCommit`。提交确认失败属于未知结果，不能自动重跑写入。模型、关系、乐观锁、迁移和 Outbox 均通过同一连接执行，回滚或提交未知后应重新查询失效模型。
+
+PDO 负责参数绑定、预处理、事务和驱动差异；ORM 负责不可变查询、模型状态、字段校验、连接租约和结果投影。ORM 不新增数据库网络层、连接线程池或私有协程调度器。
+
+## 可复现检查
+
+SQLite 不依赖外部服务：
 
 ```bash
-composer build:mysql
-composer test:mysql
-composer test:mysql-consumer
+composer test:orm-context
+composer test:orm-suite sqlite
 ```
 
-命令只操作连接专属临时表，验证参数数据不作为 SQL、主键、读取、更新、删除、提交、回滚、SQL 错误、满载拒绝与释放后失效。独立消费项目只安装 ORM、MySQL 驱动和 runtime 生产包，使用自己的构建工具编译，不依赖 HTTP 核心。
+配置真实 MySQL 或 PostgreSQL 后运行对应 PHP 消费验收：
 
-测试凭据只适用于隔离测试服务，不是生产配置。测试不会连接或修改现有业务数据库。
+```bash
+composer test:orm-suite
+composer test:orm-suite-native
+```
 
-## 当前同步接口
+独立消费者必须保留 Swoole `>=6.2 <7`，报告记录 PHP、Swoole 版本、加载方式（静态或动态）、实际 PDO 驱动、构建包清单及运行模式。未配置 `TYPE_MYSQL_*` 或 `TYPE_PGSQL_*` 时，相关矩阵应明确标记为未运行，不得用 SQLite 结果代替。
 
-- ExecutionScope 负责关闭登记的租约；Connection.close 可提前归还，之后调用明确失败。
-- ResourcePool 的容量、空闲上限明确，同步满载立即拒绝，等待者上限为零。
-- 工厂异常归还预留容量，残留事务清理失败或 SQL 错误的资源丢弃，不无限重连。
-- query/execute 由调用者承担受管 SQL 约定，改变会话或执行 DDL 使用 raw 并退役租约；不把简单 ping 当作完整会话重置。
-- 当前不支持嵌套事务和协程等待；后续按已列出的事务、会话和并发任务扩展。
+## 交付判定
 
-这些限制是本切片的真实边界，不代表整个 ORM 已完成。完整交付仍需模型、三库能力矩阵、迁移、回滚状态和故障验收。
+ORM 只有在 SQLite、MySQL、PostgreSQL 的 PHP 与独立 Composer 消费、TypePHP AOT、移除业务源码后的原生运行，以及目标平台的 Swoole、PDO 驱动、协程上下文和资源所有权验收均有同一提交证据后，才可在发布文档中称为完整交付。单次 PHP 测试通过只证明对应模式和数据库的行为。
