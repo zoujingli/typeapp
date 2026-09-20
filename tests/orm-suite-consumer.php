@@ -313,6 +313,15 @@ try {
     }
     expect($result['scope_checks'] === ['binding-restore', 'snapshot', 'child-transaction', 'connection-owner', 'closed-connection',
         'parent-cancel', 'parent-close', 'deadline', 'late-release', 'database-io-wait'], '独立消费者缺少上下文与租约专项结果');
+    $sessionChecks = ['crud', 'query', 'execute', 'raw', 'raw-query', 'session-isolation', 'error-retirement'];
+    if ($driver === 'pgsql') {
+        $sessionChecks[] = 'reset-failure-retirement';
+    }
+    if ($driver !== 'sqlite') {
+        $sessionChecks[] = 'disconnect-retirement';
+    }
+    $sessionChecks[] = 'credential-generation';
+    expect($result['sessions']['checks'] === $sessionChecks, '独立消费者缺少物理会话故障与代次验收');
     $barrier = $consumer . '/race-barrier';
     file_put_contents($barrier, '');
     putenv('TYPE_SUITE_BARRIER=' . $barrier);

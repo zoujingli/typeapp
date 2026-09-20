@@ -94,9 +94,11 @@ php tests/orm-suite-consumer.php sqlite --native
 
 同一消费者还验证当前作用域恢复、可信上下文快照、子事务独立、跨协程连接拒绝、关闭作用域后的缓存连接拒绝、父取消/关闭/Deadline 传播，以及等待超时后租约继续占用至任务结束。`database-io-wait` 用两个真实连接竞争同一行：持锁期间子任务等待超时，连接与在途预算保持占用；释放锁后等待实际收尾，核对最终数据没有丢失或重复写入。超时后的任务仍报告取消，数据库写入可能已经完成，不能据此透明重试。会话报告分别记录 PostgreSQL 完整重置后的物理复用、MySQL/SQLite 的保守关闭及污染隔离；普通 CRUD 物理复用不能仅由池槽位计数证明。
 
+网络数据库会话用例通过独立控制连接终止自身的测试会话，验证归还时断连会退役、PostgreSQL 重置失败有记录，以及空闲会话失效后明确报错且不透明重试。三库均验证凭据代次轮换：活动旧租约保持原身份并能收尾，新借用使用新代次，旧代排空后不再进入空闲集合。这里验证代次与租约生命周期，真实数据库密码变更另由 `tests/identity-credentials.php` 验证。
+
 消费者启动前启用 `CoroutineRuntime::enableIo()`。MySQL 需要 mysqlnd 和网络 hook，PostgreSQL、SQLite 分别需要官方 `--enable-swoole-pgsql`、`--enable-swoole-sqlite` 构建选项；缺失时真实锁等待验收不能通过。报告的 `swoole_hook_flags` 记录实际启用值。Swoole 会在扩展初始化时注册其编入的 PDO 驱动，所以 `PDO::getAvailableDrivers()` 可能包含没有独立加载 `pdo_*` 模块的驱动；`swoole_pdo_drivers` 单独记录该来源，`runtime_extensions` 继续验证独立模块过滤，生产包清单仍只能包含所选 ORM 驱动。
 
-macOS ARM64 和 Linux ARM64 已有三库独立消费的 PHP、AOT 与移除源码运行结果；Linux 结果来自 Colima ARM64 虚拟机内的专用容器。新增真实数据库锁等待后，三平台须按同一提交重新验收，旧结果不覆盖新增用例。Windows x64 工作流提供 `orm` 验收范围，复用专用数据库实例入口顺序执行三库；实际结果、真实主从故障与最终平台汇总尚未完成。
+macOS ARM64 和 Linux ARM64 已通过三库独立消费的 PHP、AOT 与移除源码运行，包含真实数据库锁等待和关闭作用域后的缓存连接拒绝；Linux 结果来自 Colima ARM64 虚拟机内的专用容器。macOS 还通过新增的断连、重置失败及凭据代次专项，Linux 须同步复验这些用例。Windows x64 工作流提供 `orm` 验收范围，复用专用数据库实例入口顺序执行三库；实际 Windows 结果与最终同提交平台汇总尚未完成。主从选路另有三库 PHP/AOT 实测，不将两台具有受控数据差异的服务器称为复制集群。
 
 验收工具支持用 `TYPE_SWOOLE_MODULE` 指定已核验的动态模块，将其复制到独立消费者并通过 `runtime.modules` 固定摘要。PHP、embed 探针与原生产物的扩展来源分别核对，不能仅改变 PHP 的 ini 后假定原生构建自动使用相同模块；原生构建仍以应用声明和实际 SDK 探测为准。
 

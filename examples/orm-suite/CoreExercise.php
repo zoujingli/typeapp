@@ -329,8 +329,63 @@ final class CoreExercise
             self::check(self::reject(static fn (): array => $connection->query('SELECT * FROM type_session_missing_table')), '数据库错误没有传播');
             $connection->close();
             self::check($database->statistics()['idle'] === 0, '出错的物理会话进入了空闲池');
+            $checks = ['crud', 'query', 'execute', 'raw', 'raw-query', 'session-isolation', 'error-retirement'];
+            if ($name !== 'sqlite') {
+                $control = $driver->connect();
+                try {
+                    $connection = $database->connect($scope);
+                    $terminated = (int) $connection->query($name === 'pgsql' ? 'SELECT pg_backend_pid() AS id' : 'SELECT CONNECTION_ID() AS id')[0]['id'];
+                    if ($name === 'pgsql') {
+                        $control->exec('SELECT pg_terminate_backend(' . $terminated . ', 1000)');
+                    } else {
+                        $control->exec('KILL CONNECTION ' . $terminated);
+                    }
+                    // 不先执行用户 SQL：失效会话必须在归还/重置路径中退役。
+                    $connection->close();
+                    self::check($database->statistics()['created'] === 0 && $database->statistics()['idle'] === 0, '归还时断连的会话没有退役');
+                    if ($name === 'pgsql') {
+                        self::check($database->statistics()['cleanup_failures'] === 1, 'PostgreSQL 重置失败未被记录');
+                        $checks[] = 'reset-failure-retirement';
+                    }
+                    $connection = $database->connect($scope);
+                    $replacement = (int) $connection->query($name === 'pgsql' ? 'SELECT pg_backend_pid() AS id' : 'SELECT CONNECTION_ID() AS id')[0]['id'];
+                    self::check($replacement !== $terminated, '断连后借出了相同物理会话');
+                    $connection->close();
+                    if ($name === 'pgsql') {
+                        $control->exec('SELECT pg_terminate_backend(' . $replacement . ', 1000)');
+                        $connection = $database->connect($scope);
+                        self::check(self::reject(static fn (): array => $connection->query('SELECT 7 AS value')), '失效空闲连接发生透明重试');
+                        $connection->close();
+                        self::check($database->statistics()['created'] === 0, '失效空闲连接未在失败后回收');
+                    }
+                    $connection = $database->connect($scope);
+                    self::check((int) $connection->query('SELECT 7 AS value')[0]['value'] === 7, '断连回收后无法建立新会话');
+                    $connection->close();
+                    $checks[] = 'disconnect-retirement';
+                } finally {
+                    $control = null;
+                }
+            }
+            $manager = new DatabaseManager(['default' => $driver], 1, 1);
+            try {
+                $old = $manager->connect($scope);
+                $manager->rotate('default', DriverFactory::create('writer', 2));
+                $next = $manager->connect($scope);
+                self::check($old->identity()['credential-generation'] === 1 && $next->identity()['credential-generation'] === 2
+                    && (int) $old->query('SELECT 1 AS value')[0]['value'] === 1
+                    && (int) $next->query('SELECT 2 AS value')[0]['value'] === 2, '轮换没有保持旧租约并启用新代次');
+                self::check(self::reject(static function () use ($manager): void {
+                    $manager->rotate('default', DriverFactory::create('writer', 2));
+                }), '轮换允许重用凭据代次');
+                $old->close();
+                self::check(($manager->statistics()['retired-generations']['default'] ?? 0) === 0, '旧凭据代次归还后仍可复用');
+                $next->close();
+                $checks[] = 'credential-generation';
+            } finally {
+                $manager->close();
+            }
             return ['driver' => $name, 'physical_reuse' => $name === 'pgsql', 'connection_ids' => $identities,
-                'checks' => ['crud', 'query', 'execute', 'raw', 'raw-query', 'session-isolation', 'error-retirement']];
+                'checks' => $checks];
         } finally {
             $connection?->close();
             try {

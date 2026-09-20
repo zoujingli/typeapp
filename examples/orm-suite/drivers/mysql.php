@@ -9,7 +9,8 @@ use Type\Orm\Mysql\MysqlDriver;
 
 final class DriverFactory
 {
-    public static function create(string $role = 'writer'): Driver
+    /** 按独立消费者配置建立驱动；代次用于真实租约轮换验收。 */
+    public static function create(string $role = 'writer', int $generation = 1): Driver
     {
         return new MysqlDriver(
             (string) (getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1'),
@@ -17,7 +18,7 @@ final class DriverFactory
             (string) (getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test'),
             (string) (getenv('TYPE_MYSQL_USER') ?: 'root'),
             (string) (getenv('TYPE_MYSQL_PASSWORD') ?: ''),
-            1,
+            $generation,
             $role
         );
     }
