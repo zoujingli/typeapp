@@ -7,12 +7,15 @@ namespace Type\Runtime;
 use RuntimeException;
 use Throwable;
 use Closure;
+use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 use Swoole\Timer;
 
 /** 单次执行的资源所有权；线程请求、Fiber 和协程均参与检查。 */
 final class ExecutionScope
 {
+    private const CURRENT_KEY = 'type.runtime.execution_scope';
+
     private array $resources = [];
 
     private string $state = 'active';
@@ -21,6 +24,7 @@ final class ExecutionScope
     private Deadline $deadline;
     private Cancellation $cancellation;
     private array $context = [];
+    private array $bindings = [];
     private array $children = [];
     private array $childErrors = [];
     private int $childSequence = 0;
@@ -76,6 +80,74 @@ final class ExecutionScope
         if ($this->deadline->expired()) {
             throw new TaskException('deadline_exceeded', '执行作用域截止预算已用尽');
         }
+    }
+
+    /**
+     * 取得当前协程显式绑定的作用域；不向父协程查找或继承资源。
+     *
+     * @throws TaskException 不在协程内、未绑定作用域、已取消或截止。
+     * @throws RuntimeException 作用域已关闭或不属于当前执行者。
+     */
+    public static function current(): self
+    {
+        CoroutineRuntime::assertAvailable();
+        if (Coroutine::getCid() < 0) {
+            throw new TaskException('coroutine_required', '当前作用域需要 Swoole 协程上下文');
+        }
+        $scope = Coroutine::getContext()[self::CURRENT_KEY] ?? null;
+        if (!$scope instanceof self) {
+            throw new TaskException('scope_missing', '当前协程没有绑定执行作用域');
+        }
+        $scope->assertActive();
+        return $scope;
+    }
+
+    /**
+     * 在当前协程临时绑定作用域；正常返回和异常均恢复外层，创建者仍负责关闭。
+     *
+     * 新作用域不会继承外层绑定；同作用域重入暂时覆盖指定值，返回后恢复。
+     * 绑定值只能由应用验证后显式提供，构造时的关联 context 不会自动成为绑定值。
+     * @param Closure(ExecutionScope): mixed $operation 当前工作。
+     * @param array<string, string> $bindings 应用确认的字符串值，不接受资源或可变对象。
+     * @throws TaskException 不在协程内、作用域已取消或截止。
+     * @throws RuntimeException 作用域已关闭或不属于当前执行者。
+     */
+    public function run(Closure $operation, array $bindings = []): mixed
+    {
+        $this->assertActive();
+        CoroutineRuntime::assertAvailable();
+        if (Coroutine::getCid() < 0) {
+            throw new TaskException('coroutine_required', '绑定作用域需要先进入 Swoole 协程');
+        }
+        $snapshot = [];
+        foreach ($bindings as $key => $value) {
+            if (!is_string($key) || !is_string($value)) {
+                throw new \InvalidArgumentException('作用域绑定只接受显式字符串标识');
+            }
+            $snapshot[$key] = $value;
+        }
+        $context = Coroutine::getContext();
+        $previous = $context[self::CURRENT_KEY] ?? null;
+        $previousBindings = $this->bindings;
+        $this->bindings = $snapshot + $previousBindings;
+        $context[self::CURRENT_KEY] = $this;
+        try {
+            return $operation($this);
+        } finally {
+            $this->bindings = $previousBindings;
+            if ($previous === null) {
+                unset($context[self::CURRENT_KEY]);
+            } else {
+                $context[self::CURRENT_KEY] = $previous;
+            }
+        }
+    }
+
+    /** 读取应用显式绑定的值；缺失返回 null，不从消息关联 context 推断身份。 */
+    public function binding(string $name): ?string
+    {
+        $this->assertActive();
+        return $this->bindings[$name] ?? null;
     }
 
     public function assertOwner(): void
@@ -235,7 +307,8 @@ final class ExecutionScope
                         $this->state = 'closed';
                         $this->completion?->close();
                     }
-                }
+                },
+                $this->bindings
             );
         } catch (Throwable $error) {
             unset($this->children[$id]);

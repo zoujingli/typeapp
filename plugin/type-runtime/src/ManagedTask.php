@@ -26,8 +26,9 @@ final class ManagedTask
      * @param Closure(ExecutionScope): mixed $operation 作用域内的任务体。
      * @param array<string, string> $context 父作用域的上下文快照，不携带父资源。
      * @param Closure(ManagedTask): void $finished 完成并清理后的通知。
+     * @param array<string, string> $bindings 创建子任务时的应用绑定值快照。
      */
-    public function __construct(Closure $operation, Deadline $deadline, array $context, int $childLimit, float $cleanupSeconds, TaskBudget $budget, Cancellation $parentCancellation, Closure $finished)
+    public function __construct(Closure $operation, Deadline $deadline, array $context, int $childLimit, float $cleanupSeconds, TaskBudget $budget, Cancellation $parentCancellation, Closure $finished, array $bindings = [])
     {
         if (!extension_loaded('swoole') || Coroutine::getCid() < 0) {
             throw new TaskException('coroutine_required', '受管子任务需要 Swoole 协程上下文');
@@ -40,11 +41,10 @@ final class ManagedTask
             $this->cancellation->cancel();
         });
         $this->completion = new Channel(1);
-        $cid = Coroutine::create(function () use ($operation, $context, $childLimit, $cleanupSeconds, $budget, $finished): void {
+        $cid = Coroutine::create(function () use ($operation, $context, $childLimit, $cleanupSeconds, $budget, $finished, $bindings): void {
             $scope = new ExecutionScope($this->deadline, $context, $childLimit, $cleanupSeconds, $this->cancellation, $budget);
             try {
-                $scope->assertActive();
-                $this->result = $operation($scope);
+                $this->result = $scope->run($operation, $bindings);
             } catch (Throwable $error) {
                 $this->error = $error;
             } finally {

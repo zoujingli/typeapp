@@ -1,6 +1,34 @@
 # 受管子任务与截止预算
 
-runtime 的作用域状态为 active → closing → closed，所有业务借用校验进程、线程请求、Fiber、Swoole 协程和租约代次。上下文只通过作用域显式传递；子任务复制字符串快照，共享截止、取消和任务预算，不共享父连接或可变对象。整体的进程/线程/协程使用和控制见[进程、线程与协程](../guide/runtime.md)。
+runtime 的作用域状态为 active → closing → closed，所有业务借用校验进程、线程请求、Fiber、Swoole 协程和租约代次。作用域显式绑定到当前 Swoole 协程；子任务复制字符串快照，共享截止、取消和任务预算，不共享父连接或可变对象。整体的进程/线程/协程使用和控制见[进程、线程与协程](../guide/runtime.md)。
+
+## 当前作用域与应用绑定
+
+`ExecutionScope::current()` 取得通过 `run()` 绑定到当前协程的作用域，并校验活性和执行者。`run()` 的回调为 `Closure(ExecutionScope): mixed`，正常返回和异常均恢复外层；同作用域重入不会另建资源，嵌套独立作用域不会继承外层身份。关闭责任仍属于创建者。
+
+```php
+CoroutineRuntime::run(static function (): void {
+    $scope = new ExecutionScope(null, ['request_id' => 'operation-1']);
+    try {
+        $scope->run(static function (ExecutionScope $current): void {
+            $task = $current->spawn(static function (ExecutionScope $child): string {
+                return ExecutionScope::current()->context()['request_id'];
+            });
+            echo $task->await();
+        });
+    } finally {
+        $scope->close();
+    }
+});
+```
+
+上例使用 `Type\Runtime\CoroutineRuntime` 和 `Type\Runtime\ExecutionScope`。独立入口在官方 Scheduler 的协程中创建资源；已有协程时复用当前执行者，保留启动期 hook flags，异常原样传回。不允许把外部执行者的连接带入新协程。
+
+`context()` 返回请求或消息的关联信息，不能直接授予权限。应用在完成验证后通过 `run($operation, ['tenant_id' => $verifiedTenantId])` 显式绑定字符串值，组件以 `binding('tenant_id')` 读取；运行时不验证业务身份，也不查询业务表。输入数组中的引用被切断，绑定在重入结束后恢复；受管子任务取得创建当时的绑定快照及独立当前作用域，普通原生子协程不隐式继承。
+
+无绑定时 `current()` 抛 `scope_missing`；非协程调用抛 `coroutine_required`；关闭、取消、截止和跨执行者使用遵守原有拒绝规则。当前已提供上述公共入口和受管子任务绑定，HTTP、协议消息、CLI 装配、队列与定时任务的自动接入仍在实施，不能把该入口视为全部角色已经迁移。
+
+## 子任务与真实收尾
 
 `ExecutionScope` 可配置单调时钟 `Deadline`、显式字符串上下文、子任务容量和清理预算。`spawn()` 创建拥有独立作用域的子任务，继承同一个剩余截止时间和上下文副本，不继承父连接及可变模型。整个子任务树共用容量，递归创建不能绕过根上限。
 
@@ -13,3 +41,7 @@ Scope 关闭时先拒绝新工作并取消子任务，再用共享清理预算�
 `ResourceLease::hold()` 将句柄使用期与等待期分开，ORM 的查询、写入、事务以及 Redis 调用均在实际操作期间持有容量。跨协程捕获父连接会被拒绝。完成的子任务错误需要 await 观察或由 Scope 收尾报告，未观察错误数量同样受限。
 
 PHP 真实 MySQL 运行验证包括延迟 SELECT、短等待超时、父先关闭、跨协程捕获、共享子树预算、清理超时后完成及新连接恢复。HTTP 验证包括 503 返回期间池仍满、客户端断开后收尾、后续请求不串结果。对应原生入口为 `docs/build-config/type-tasks.json` 与 `docs/build-config/type-task-http.json`，最终原生验收仍待集中完成。
+
+`php tests/tasks.php --php --scope-only` 单独验证通用当前作用域、嵌套恢复、绑定快照、原生子协程隔离及 hook 配置，不连接数据库，也不读取身份业务数据。相同场景包含在 `type-tasks.json` 的编译输入内，原生运行时使用 `php tests/tasks.php build/tasks/type-app --scope-only`；PHP 通过不代表原生或完整角色验收通过。
+
+通用绑定契约已通过 PHP 行为验证，以及 macOS ARM64 上仅包含 `type-runtime` 全量生产源码的 TypePHP 0.9 原生验证。原生环境为 PHP 8.5.10 ZTS、Swoole 6.2.1；禁止读取应用、组件、vendor 与测试入口源码后相同测试仍通过。这一结果只覆盖当前作用域契约，各角色自动接入、ORM 和其他平台仍按各自范围验收。

@@ -22,7 +22,15 @@ TypeApp 应用的通信与基础并发必须使用 Swoole；线程与协程入�
 
 `ExecutionScope` 保存一次请求、消息、命令或后台任务的有界字符串上下文、单调截止时间、取消信号和任务树预算。上下文适合放置 `request_id`、`tenant_id`、`operation_id` 等关联标识；连接、事务、Socket、可变业务对象和大载荷必须由当前作用域登记或通过受控参数传递，不能放进进程全局变量。
 
+`$scope->run($operation, $bindings)` 在当前 Swoole 协程内绑定作用域，回调签名为 `Closure(ExecutionScope): mixed`；`ExecutionScope::current()` 取得该绑定并检查资源所有者及活性。正常返回或抛出异常都会恢复外层绑定，`run()` 不代替创建者的 `close()`。同作用域重入复用现有资源，独立作用域不继承外层绑定；无绑定抛 `scope_missing`，非协程抛 `coroutine_required`。
+
+构造参数 `context` 是关联信息，队列消息也可携带它。`run()` 的 `bindings` 是应用验证后显式提供的字符串值，通过 `$scope->binding($name)` 读取，缺失返回 null；关联信息不会自动成为这些绑定。两类值均取快照，不能传入连接、事务或可变对象。框架不读取账号、成员或角色，也不替应用确认身份、权限或租户资格。
+
+独立命令可用 `CoroutineRuntime::run(Closure(): mixed)` 进入官方 Swoole Scheduler，并在回调内创建作用域和资源；已有协程时直接执行，不另建执行者，不改变启动时的 hook flags。不要把在外部协程创建的连接带入回调。当前公开绑定入口和受管子任务已接入，HTTP、协议回调、队列及调度入口的自动绑定仍需逐项迁移；不能假定所有入口已经能直接调用 `current()`。
+
 `ExecutionScope::spawn()` 只在当前 Swoole 线程内创建协程。子协程取得新的 `ExecutionOwner` 和独立作用域，复制父上下文快照，共享只能缩短的截止时间、父子取消信号及 `TaskBudget`；父取消、关闭或 Deadline 到期会唤醒子协程，子协程完成真实收尾后解除父子监听。父作用域中的连接和租约不转移，子协程必须重新借用。资源归属由进程、原生线程、请求代次、协程 ID 和 Fiber 身份校验，跨边界误用会抛出执行者错误。
+
+受管子任务执行期间自动绑定自己的作用域，复制创建当时的应用绑定值。父作用域随后重入或变更绑定不会改变子任务快照；直接用 `Coroutine::create()` 创建的协程不会隐式查找父作用域，须自行建立边界。
 
 `ManagedTask::await()` 只返回真实完成的结果或异常。等待超时发送取消意图但不提前归还额度，作用域保持 `closing`，直到后代和原生资源真实退出后才进入 `closed`。这套规则让 HTTP、WebSocket、TCP、UDP、MQTT、数据库和后台任务共享同一个上下文模型。
 

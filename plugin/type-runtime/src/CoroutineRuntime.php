@@ -4,9 +4,47 @@ declare(strict_types=1);
 
 namespace Type\Runtime;
 
-/** 显式启用可选的 Swoole 协程能力，不改变未选择该引擎的业务运行方式。 */
+use Closure;
+use Swoole\Coroutine;
+use Swoole\Coroutine\Scheduler;
+use Throwable;
+
+/** 沿用 Swoole 的协程、线程和启动期 hook，衔接已编译业务入口。 */
 final class CoroutineRuntime
 {
+    /**
+     * 已在协程时直接调用，否则由官方 Scheduler 运行；保留启动期 hook 配置。
+     *
+     * 必须在回调内创建作用域和连接，不能将外层执行者持有的资源带入新协程。
+     * 本入口不创建作用域、不接管已有事件循环，异常原样传回调用者。
+     * @param Closure(): mixed $operation 协程中的装配和工作入口。
+     * @throws TaskException Swoole 不可用或协程启动失败。
+     */
+    public static function run(Closure $operation): mixed
+    {
+        self::assertAvailable();
+        if (Coroutine::getCid() >= 0) {
+            return $operation();
+        }
+        $scheduler = new Scheduler();
+        $scheduler->set(['hook_flags' => \Swoole\Runtime::getHookFlags()]);
+        $result = null;
+        $failure = null;
+        if ($scheduler->add(static function () use ($operation, &$result, &$failure): void {
+            try {
+                $result = $operation();
+            } catch (Throwable $error) {
+                $failure = $error;
+            }
+        }) === false || !$scheduler->start()) {
+            throw new TaskException('coroutine_start_failed', '无法启动 Swoole 协程入口');
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
+        return $result;
+    }
+
     /**
      * 启动构建时登记的业务入口；调用者负责 join 后再关闭进程运行时。
      *

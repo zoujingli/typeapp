@@ -8,6 +8,7 @@ use Type\Orm\Database;
 use Type\Orm\Mysql\MysqlDriver;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\TaskException;
 
 function taskExpect(bool $condition, string $message): void
@@ -17,8 +18,126 @@ function taskExpect(bool $condition, string $message): void
     }
 }
 
+/** 无业务模型或外部服务的运行时契约，同一入口用于 PHP 和全量 AOT 验收。 */
+function verifyCurrentScopes(): void
+{
+    $flags = \Swoole\Runtime::getHookFlags();
+    $failure = new RuntimeException('保留原始异常');
+    try {
+        CoroutineRuntime::run(static function () use ($failure): void {
+            throw $failure;
+        });
+        throw new RuntimeException('协程入口吞掉异常');
+    } catch (RuntimeException $caught) {
+        taskExpect($caught === $failure, '协程入口改变原始异常');
+    }
+    $result = CoroutineRuntime::run(static function (): int {
+        try {
+            ExecutionScope::current();
+            throw new RuntimeException('未绑定时取得了当前作用域');
+        } catch (TaskException $missing) {
+            taskExpect($missing->errorCode() === 'scope_missing', '未绑定错误码不符');
+        }
+        $parent = new ExecutionScope(null, ['tenant_id' => 'message-value']);
+        try {
+            $reference = 'verified-a';
+            $bindings = ['tenant_id' => &$reference];
+            $value = $parent->run(static function (ExecutionScope $scope) use (&$reference): int {
+                $reference = 'untrusted-change';
+                taskExpect(ExecutionScope::current() === $scope && $scope->binding('tenant_id') === 'verified-a', '当前绑定保留了外部引用');
+                $cid = Coroutine::getCid();
+                taskExpect(CoroutineRuntime::run(static fn (): int => Coroutine::getCid()) === $cid, '已有协程中另建了执行者');
+                $scope->run(static function (ExecutionScope $inner): void {
+                    taskExpect(ExecutionScope::current() === $inner && $inner->binding('tenant_id') === 'verified-b', '同作用域重入没有临时覆盖绑定');
+                }, ['tenant_id' => 'verified-b']);
+                taskExpect($scope->binding('tenant_id') === 'verified-a', '重入后绑定没有恢复');
+                $nested = new ExecutionScope();
+                try {
+                    $nested->run(static function (ExecutionScope $inner): void {
+                        taskExpect(ExecutionScope::current() === $inner && $inner->binding('tenant_id') === null, '独立作用域继承了外层身份');
+                        throw new RuntimeException('nested-failure');
+                    });
+                } catch (RuntimeException $nestedError) {
+                    taskExpect($nestedError->getMessage() === 'nested-failure', '嵌套作用域异常丢失');
+                } finally {
+                    $nested->close();
+                }
+                taskExpect(ExecutionScope::current() === $scope, '异常后没有恢复外层作用域');
+                $release = new \Swoole\Coroutine\Channel(1);
+                $child = $scope->spawn(static function (ExecutionScope $own) use ($scope, $release): string {
+                    taskExpect($release->pop(1) === true, '子任务没有收到继续信号');
+                    taskExpect(ExecutionScope::current() === $own && $own !== $scope, '子任务继承了父作用域');
+                    taskExpect($own->context()['tenant_id'] === 'message-value', '子任务关联信息丢失');
+                    try {
+                        $scope->run(static fn (ExecutionScope $wrong): int => 0);
+                        throw new RuntimeException('接受跨协程作用域');
+                    } catch (RuntimeException $ownerError) {
+                        taskExpect(str_contains($ownerError->getMessage(), '执行者'), '跨协程作用域错误不明确');
+                    }
+                    return $own->binding('tenant_id') ?? '';
+                });
+                $scope->run(static function (ExecutionScope $inner) use ($release, $child): void {
+                    $release->push(true);
+                    taskExpect($child->await() === 'verified-a', '子任务快照被父后续绑定修改');
+                    taskExpect($inner->binding('tenant_id') === 'verified-c', '子任务污染父绑定');
+                }, ['tenant_id' => 'verified-c']);
+                $rawResult = new \Swoole\Coroutine\Channel(1);
+                Coroutine::create(static function () use ($rawResult): void {
+                    try {
+                        ExecutionScope::current();
+                        $rawResult->push('inherited');
+                    } catch (TaskException $rawError) {
+                        $rawResult->push($rawError->errorCode());
+                    }
+                });
+                taskExpect($rawResult->pop(1) === 'scope_missing', '原生子协程隐式继承父作用域');
+                return 42;
+            }, $bindings);
+            taskExpect($value === 42 && $parent->binding('tenant_id') === null, 'run 返回值或绑定回收错误');
+            $parent->run(static function (ExecutionScope $scope): void {
+                taskExpect($scope->binding('tenant_id') === null, '消息关联值被当成可信身份');
+            });
+            try {
+                $parent->run(static fn (ExecutionScope $scope): int => 0, ['bad' => new \stdClass()]);
+                throw new RuntimeException('绑定允许可变对象');
+            } catch (\InvalidArgumentException) {
+            }
+            try {
+                ExecutionScope::current();
+                throw new RuntimeException('完成后残留当前绑定');
+            } catch (TaskException $finished) {
+                taskExpect($finished->errorCode() === 'scope_missing', '完成后错误码不符');
+            }
+            $parent->run(static function (ExecutionScope $scope): void {
+                $scope->close();
+                try {
+                    ExecutionScope::current();
+                    throw new RuntimeException('closed scope accepted');
+                } catch (RuntimeException $closed) {
+                    taskExpect(str_contains($closed->getMessage(), '关闭'), '关闭作用域没有明确拒绝');
+                }
+            });
+            return $value;
+        } finally {
+            $parent->close();
+        }
+    });
+    taskExpect($result === 42 && \Swoole\Runtime::getHookFlags() === $flags, '入口返回值或 hook 配置改变');
+    try {
+        ExecutionScope::current();
+        throw new RuntimeException('非协程取得当前作用域');
+    } catch (TaskException $outside) {
+        taskExpect($outside->errorCode() === 'coroutine_required', '非协程错误码不符');
+    }
+}
+
 function main(int $argc, array $argv): void
 {
+    verifyCurrentScopes();
+    if (($argv[1] ?? '') === '--scope-only') {
+        echo "当前作用域、嵌套恢复、可信值快照与协程隔离通过。\n";
+        return;
+    }
     \Type\Runtime\CoroutineRuntime::enableIo();
     $scheduler = new Scheduler();
     $failure = null;
