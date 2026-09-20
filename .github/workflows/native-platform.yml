@@ -113,7 +113,10 @@ jobs:
             build/windows-contracts.xml
             build/**/verification.json
             build/**/compile.log
-            build/orm-suite-*/build.log
+            build/orm-suite-*/*.log
+            build/orm-suite-*/behavior.json
+            build/orm-suite-*/race.json
+            build/orm-suite-*/increment.json
             build/orm-suite-*/release/**
             build/**/type-app.exe
             build/**/type-app.exe.build.json

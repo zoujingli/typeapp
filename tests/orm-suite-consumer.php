@@ -313,6 +313,8 @@ try {
     $command = $native ? [$consumer . '/release/' . (PHP_OS_FAMILY === 'Windows' ? 'run.cmd' : 'run')] : [PHP_BINARY, '-r', $launcher];
     $sourceRemoval = $native ? ormRemoveSources($consumer) : [];
     $result = json_decode(ormSuccessful([...$command, 'run'], $consumer), true, 32, JSON_THROW_ON_ERROR);
+    // 分阶段保存原始结果；后续并发失败不能抹去已完成场景的证据。
+    file_put_contents($consumer . '/behavior.json', json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     expect($result['driver'] === $driver && in_array($driver, $result['pdo_extensions'], true), '业务运行了错误驱动');
     $businessStaticExtensions = $native ? $nativeStaticExtensions : $staticExtensions;
     $businessRuntimeExtensions = $native ? $nativeRuntimeExtensions : $runtimeExtensions;
@@ -349,15 +351,19 @@ try {
         $children[] = [$process, $output];
     }
     $outcomes = [];
-    foreach ($children as [$process, $output]) {
+    $raceStatuses = [];
+    foreach ($children as $index => [$process, $output]) {
         $status = proc_close($process);
         rewind($output);
         $text = stream_get_contents($output);
-        expect($status === 0, '并发文章更新失败：' . $text);
+        file_put_contents($consumer . '/race-' . $index . '.log', $text);
+        $raceStatuses[] = $status;
         $outcomes[] = trim($text);
     }
+    file_put_contents($consumer . '/race.json', json_encode(['statuses' => $raceStatuses, 'outputs' => $outcomes], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+    expect($raceStatuses === [0, 0], '并发文章更新失败，详见 ' . $consumer . '/race.json');
     sort($outcomes);
-    expect($outcomes === ['conflict', 'updated'], '两个独立进程没有产生唯一成功与明确冲突');
+    expect($outcomes === ['conflict', 'updated'], '两个独立进程没有产生唯一成功与明确冲突，详见 ' . $consumer . '/race.json');
     expect(json_decode(ormSuccessful([...$command, 'verify', (string) $result['race_id']], $consumer), true, 8, JSON_THROW_ON_ERROR) === ['views' => 1, 'version' => 2], '并发落库版本错误');
     file_put_contents($barrier, '');
     $atomicChildren = [];
@@ -369,12 +375,18 @@ try {
         $atomicChildren[] = [$process, $output];
         $children[] = [$process, $output];
     }
-    foreach ($atomicChildren as [$process, $output]) {
+    $atomicStatuses = [];
+    $atomicOutcomes = [];
+    foreach ($atomicChildren as $index => [$process, $output]) {
         $status = proc_close($process);
         rewind($output);
         $text = stream_get_contents($output);
-        expect($status === 0 && trim($text) === 'incremented', '并发原子更新失败：' . $text);
+        file_put_contents($consumer . '/increment-' . $index . '.log', $text);
+        $atomicStatuses[] = $status;
+        $atomicOutcomes[] = trim($text);
     }
+    file_put_contents($consumer . '/increment.json', json_encode(['statuses' => $atomicStatuses, 'outputs' => $atomicOutcomes], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+    expect($atomicStatuses === [0, 0] && $atomicOutcomes === ['incremented', 'incremented'], '并发原子更新失败，详见 ' . $consumer . '/increment.json');
     $result['atomic_increment'] = json_decode(ormSuccessful([...$command, 'verify-increment', (string) $result['race_id']], $consumer), true, 8, JSON_THROW_ON_ERROR);
     $result['mode'] = $native ? 'native' : 'php';
     if ($native) {
