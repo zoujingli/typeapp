@@ -4,7 +4,7 @@
 
 提供受管数据库连接、不可变 Query、生成模型、关系、分页、事务、迁移和事务 Outbox。ORM 不选择数据库；安装一个驱动后使用同一公开入口，并保留数据库本身的能力差异。
 
-业务 CRUD 优先使用[Model 与关系](#models-relations-output)。当前模型查询和保存需要显式 `Connection`；已确定的自动连接、默认读从写主及 `master()` 主读规则见[模型连接与主从路由](../../development/model-connections.md)，这些入口尚待实施。本文的连接和表查询示例说明当前底层能力，不代表普通业务必须自行管理连接。
+业务 CRUD 优先使用[Model 与关系](#models-relations-output)。当前模型查询和保存需要显式 `Connection`；已确定的自动连接、静态 `search()`、上下文自动租户隔离、默认读从写主及 `master()` 主读规则见[模型连接与主从路由](../../development/model-connections.md)，这些入口尚待实施。本文的连接和表查询示例说明当前底层能力，不代表普通业务必须自行管理连接。
 
 ## 安装与依赖
 
