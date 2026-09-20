@@ -1555,7 +1555,8 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
     $installCommand = [...$command, 'app:install', 'same-login', '平台管理员', 'same-login', '客户管理员', '初始租户'];
     $server = null;
     $inspection = null;
-    $report = ['status' => 'running', 'driver' => $driver, 'native' => $target !== '--php', 'no_source' => $noSource, 'http_checks' => 0];
+    $report = ['status' => 'running', 'driver' => $driver, 'native' => $target !== '--php',
+        'binary_sha256' => $target === '--php' ? null : hash_file('sha256', $target), 'no_source' => $noSource, 'http_checks' => 0];
     try {
         foreach ([['migrate', 'run'], ['iot:user', 'legacy-user', '旧开通'], ['iot:support-clean']] as $legacy) {
             $retired = new Process([...$command, ...$legacy], $root, $environment + $credentials);

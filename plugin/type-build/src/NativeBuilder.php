@@ -295,10 +295,6 @@ final class NativeBuilder
         // JSON 也是有效 YAML，避免为写出几项配置增加另一层序列化实现。
         $project = ['name' => $name, 'mode' => 'bin', 'sources' => array_values($compilerSources),
             'optimize' => $compilerOptions['optimize'], 'debug' => $compilerOptions['debug']];
-        if (array_key_exists('threads', $settings)) {
-            $project['extension-dependencies'] = ['swoole'];
-        }
-        $this->writeJson($projectFile, $project);
         // Composer 代理负责把构建环境的自动加载器传给 TypePHP。
         $binDirectory = $GLOBALS['_composer_bin_dir'] ?? null;
         if (!is_string($binDirectory)) {
@@ -335,6 +331,12 @@ final class NativeBuilder
             array_values(array_unique($extensions)),
             $runtimeDeclaration
         );
+        if (array_key_exists('threads', $settings)) {
+            // 线程入口在 MINIT 注册应用；仅依赖 Swoole 会将其提前到动态 PDO 驱动之前。
+            // 沿用已验证的运行扩展清单，让 PDO 先完成注册，再由 Swoole 接管协程驱动。
+            $project['extension-dependencies'] = array_keys($profile['extensions']);
+        }
+        $this->writeJson($projectFile, $project);
         $native = $environment->fingerprint($phpHome, $phpxHome, array_values(array_unique($extensions)), $profile['module-files']);
         $native['runtime']['extensions'] = $profile['extensions'];
         $native['runtime']['functions'] = $profile['functions'];

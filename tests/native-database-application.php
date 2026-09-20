@@ -30,57 +30,61 @@ expect(mkdir($base, 0700), '无法创建本轮三库业务验收目录');
 $report = ['status' => 'running', 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'database-execution' => 'native',
     'docker-used' => false, 'artifact-sha256' => hash_file('sha256', $artifact), 'build-id' => $manifest['build-id'], 'drivers' => []];
 try {
+    // 先用最终产物启动全部声明扩展，避免 PHP CLI 的加载成功掩盖线程入口的模块顺序错误。
+    $startupEnvironment = array_replace($buildEnvironment, [
+        'PHPRC' => $built['runtime-profile']['ini'],
+        'PHP_INI_SCAN_DIR' => dirname($built['runtime-profile']['ini']) . '/php.d',
+    ]);
+    $startup = nativeDatabaseCommand([$artifact, 'help'], $startupEnvironment, [], $base . '/native-startup.log', 30);
+    expect(str_contains($startup, 'app:install'), '原生应用没有完成运行扩展初始化与命令分发');
+    $report['native-startup'] = 'passed';
     foreach ($drivers as $driver) {
         echo '本机原生数据库与 PHP/AOT 物联中心对照：' . $driver . "\n";
         $work = $base . '/' . $driver;
-        $database = null;
-        $entry = ['status' => 'running'];
-        $failed = null;
-        try {
-            $database = new NativeDatabase($work, $driver, $tools[$driver] ?? []);
-            $environment = array_replace($buildEnvironment, $database->environment());
-            $environment['PATH'] = $phpHome . '/bin:' . $environment['PATH'];
-            $environment['PHPRC'] = getenv('PHPRC') ?: '';
-            $environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
-            $secrets = $driver === 'sqlite' ? [] : [$environment['TYPE_' . strtoupper($driver) . '_PASSWORD']];
-            foreach (['php' => '--php', 'native' => $artifact] as $mode => $command) {
-                foreach ([true] as $application) {
-                    $label = $mode . '-application';
-                    $arguments = ['--app'];
-                    $runEnvironment = $environment;
-                    if ($mode === 'native') {
-                        $runEnvironment['TYPE_NATIVE_PHP_INI'] = $built['runtime-profile']['ini'];
-                    }
-                    $output = nativeDatabaseCommand([PHP_BINARY, $root . '/tests/iot-identity.php', $command, $driver, ...$arguments], $runEnvironment, $secrets, $work . '/' . $label . '.log', 120);
-                    expect(preg_match('#通过：(.*?/verification\.json)\s*$#u', $output, $matches) === 1, '物联中心入口没有返回真实验收报告');
-                    $evidence = json_decode((string) file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
-                    expect($evidence['status'] === 'passed' && $evidence['driver'] === $driver && $evidence['native'] === ($mode === 'native'), '物联中心报告的驱动、入口模式或结果不符');
-                    if ($mode === 'native') {
-                        expect($evidence['binary']['sha256'] === $report['artifact-sha256'], '三库没有使用同一原生产物');
-                    }
-                    $entry[$label . '-evidence'] = $matches[1];
-                    $entry[$label . '-evidence-sha256'] = hash_file('sha256', $matches[1]);
-                    echo $output;
+        expect(mkdir($work, 0700), '无法创建本轮驱动验收目录');
+        $entry = ['status' => 'running', 'databases' => []];
+        foreach (['php' => '--php', 'native' => $artifact] as $mode => $command) {
+            $database = null;
+            $failed = null;
+            try {
+                // 每轮必须从空库验证安装；不能让 PHP 的业务数据成为原生轮的输入。
+                $database = new NativeDatabase($work . '/' . $mode, $driver, $tools[$driver] ?? []);
+                $environment = array_replace($buildEnvironment, $database->environment());
+                $environment['PATH'] = $phpHome . '/bin:' . $environment['PATH'];
+                $environment['PHPRC'] = getenv('PHPRC') ?: '';
+                $environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
+                $secrets = $driver === 'sqlite' ? [] : [$environment['TYPE_' . strtoupper($driver) . '_PASSWORD']];
+                $label = $mode . '-application';
+                if ($mode === 'native') {
+                    $environment['TYPE_NATIVE_PHP_INI'] = $built['runtime-profile']['ini'];
                 }
-            }
-            $entry['status'] = 'passed';
-        } catch (Throwable $failure) {
-            $failed = $failure;
-            $entry['status'] = 'failed';
-        } finally {
-            if ($database !== null) {
-                try {
-                    $database->close();
-                } catch (Throwable $cleanupFailure) {
-                    $entry['status'] = 'failed';
-                    $failed ??= $cleanupFailure;
+                $output = nativeDatabaseCommand([PHP_BINARY, $root . '/tests/iot-identity.php', $command, $driver, '--app'], $environment, $secrets, $work . '/' . $label . '.log', 120);
+                expect(preg_match('#通过：(.*?/verification\.json)\s*$#u', $output, $matches) === 1, '物联中心入口没有返回真实验收报告');
+                $evidence = json_decode((string) file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
+                expect($evidence['status'] === 'passed' && $evidence['driver'] === $driver && $evidence['native'] === ($mode === 'native'), '物联中心报告的驱动、入口模式或结果不符');
+                if ($mode === 'native') {
+                    expect($evidence['binary_sha256'] === $report['artifact-sha256'], '三库没有使用同一原生产物');
                 }
-                $entry = array_replace($entry, $database->evidence());
+                $entry[$label . '-evidence'] = $matches[1];
+                $entry[$label . '-evidence-sha256'] = hash_file('sha256', $matches[1]);
+                echo $output;
+            } catch (Throwable $failure) {
+                $failed = $failure;
+            } finally {
+                if ($database !== null) {
+                    try {
+                        $database->close();
+                    } catch (Throwable $cleanupFailure) {
+                        $failed ??= $cleanupFailure;
+                    }
+                    $entry['databases'][$mode] = $database->evidence();
+                }
+                $entry['status'] = $failed !== null ? 'failed' : ($mode === 'native' ? 'passed' : 'running');
+                $report['drivers'][$driver] = $entry;
             }
-            $report['drivers'][$driver] = $entry;
-        }
-        if ($failed !== null) {
-            throw $failed;
+            if ($failed !== null) {
+                throw $failed;
+            }
         }
     }
     $report['status'] = 'passed';
