@@ -11,6 +11,8 @@ TypeApp 以 TypePHP 编译生产代码，以 Swoole 承担通信与基础并发�
 
 各平台已通过的组件、HTTP、SQLite 与命令场景统一记录在[平台与验收](platforms.md)。Linux x64 基础命令、ARM64 场景与 Windows 组件结果分别成立，完整应用、全部通信和单程序交付仍按下表推进。
 
+架构整理采用“标准共用、协议独立、显式装配”：继续复用 PSR、Swoole、`ExecutionScope` 和 `ManagedResource`，不新增通用 DI、统一 Transport/Server 管理器或运行时扫描层。后续优化只在真实边界补接口和统计，先以 HTTP/WebSocket 共用服务验证，再按同一约定推进 TCP、UDP、MQTT。
+
 ## 待完成工作与验收条件
 
 | 工作 | 当前代码边界 | 完成条件 |

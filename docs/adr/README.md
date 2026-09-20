@@ -21,3 +21,4 @@
 - [业务应用的数据与接口边界](0019-business-app-clean-rebuild.md)
 - [标准项目与主仓业务保持单一来源](0020-standard-project-single-business-source.md)
 - [Swoole 唯一底层与单程序交付](0021-required-swoole-and-single-program.md)
+- [显式装配与边界契约](0022-explicit-assembly-and-boundary-contracts.md)

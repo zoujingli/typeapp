@@ -17,6 +17,12 @@ Plugins 是这些框架组件的统称。组件按 Composer 包选择和锁定�
 
 TypeApp 的职责是把这些能力组织成可开发、可编译、可部署的应用。TypePHP 负责编译 PHP 调用代码，Swoole 负责执行其原生能力；构建过程与运行时关系分别描述。
 
+## 精简装配与标准共用
+
+TypeApp 优先复用 PSR、Swoole 以及现有 `ExecutionScope`、`ManagedResource` 和配置约定。应用入口显式构造需要的组件，组件只在通信、存储、日志、队列等真实替换边界使用接口；不增加通用运行时容器、未知源码扫描、AOP 代理或万能基础类。应用按声明顺序启动资源、按逆序停止资源，启动失败回收已启动部分，停止先拒绝新工作再在有界期限内排空。
+
+HTTP、WebSocket、TCP、UDP、MQTT 保留各自协议入口和失败语义，只共用生命周期、资源预算、统计和关闭约定。HTTP 与 WebSocket 共用端口时由同一个 Swoole Server 持有监听，不引入额外的统一 Transport 或 Server 管理器。
+
 ## 构建期与运行期
 
 ```mermaid
