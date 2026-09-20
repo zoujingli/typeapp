@@ -28,6 +28,8 @@ CoroutineRuntime::run(static function (): void {
 
 无绑定时 `current()` 抛 `scope_missing`；非协程调用抛 `coroutine_required`；关闭、取消、截止和跨执行者使用遵守原有拒绝规则。HTTP 请求、WebSocket 公开回调、生成 CLI、队列及定时任务已接入当前作用域。自定义 Socket 消息和 MQTT 持久处理角色仍须在其实际装配入口绑定，不能把通用入口的验证视为全部协议角色已经迁移。
 
+MQTT Broker 当前以 `enable_coroutine=false` 保持协议状态机串行运行，其认证、授权和连接观察回调尚未建立当前协程作用域。这些回调不能直接调用无连接的 Model 或 Db，也不能在已有 Server 事件循环内嵌套启动 Scheduler。后续接入须同时保证消息顺序、资源所有权和真实收尾；仅开启协程选项或给回调套一层 `run()` 不构成完成。MQTT 客户端的同步 `receive()` 返回消息，由调用它的应用入口建立自己的作用域。
+
 ## 子任务与真实收尾
 
 `ExecutionScope` 可配置单调时钟 `Deadline`、显式字符串上下文、子任务容量和清理预算。`spawn()` 创建拥有独立作用域的子任务，继承同一个剩余截止时间和上下文副本，不继承父连接及可变模型。整个子任务树共用容量，递归创建不能绕过根上限。
