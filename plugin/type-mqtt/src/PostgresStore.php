@@ -7,9 +7,12 @@ namespace Type\Mqtt;
 use Closure;
 use Type\Orm\Connection;
 use Type\Orm\Database;
+use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
 use Type\Orm\Driver;
 use Type\Orm\TransactionOutcome;
 use Type\Runtime\Deadline;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 
 /**
@@ -210,55 +213,60 @@ final class PostgresStore
      */
     public function transaction(string $operationId, Closure $operation, string $mode = 'default'): CommitResult
     {
-        if (!self::identifier($operationId, 32) || !in_array($mode, ['default', 'schema'], true)) {
-            return new CommitResult($operationId, 'rejected', 0x83);
-        }
-        $database = new Database($this->driver, 1, 0);
-        $scope = new ExecutionScope(new Deadline(3.0));
-        $connection = null;
-        $state = 'rejected';
-        $reason = 0x88;
-        $barrier = '';
-        $replicas = [];
-        $released = true;
-        $value = [];
-        try {
-            $connection = $database->connect($scope);
-            $connection->rawQuery("SELECT set_config('application_name', ?, false), set_config('synchronous_commit', 'remote_apply', false), "
-                . "set_config('statement_timeout', '1500', false), set_config('lock_timeout', '1000', false), "
-                . "set_config('idle_in_transaction_session_timeout', '1500', false)", ['type_mqtt_' . $operationId]);
-            if ($this->synchronous($connection)) {
-                $value = $connection->transaction(function (Connection $transaction) use ($operation): array {
-                    if (!$this->synchronous($transaction)) {
-                        throw new ProtocolError(0x88);
-                    }
-                    return $operation($transaction);
-                }, $mode);
-                // COMMIT 可能在 SyncRep 被取消后仍返回 true；它本身不足以证明同步接管。
-                $state = 'unknown';
-                // remote_apply 在等待备库前已刷盘本次 COMMIT。取实际刷盘末尾，避免 insert 指针把尚无记录的下一页头计入屏障。
-                $barrier = (string) $connection->query('SELECT pg_current_wal_flush_lsn()::text AS lsn')[0]['lsn'];
-                do {
-                    $replicas = $this->replicas($connection, $barrier);
-                    if (count($replicas) === 1 && self::truth($replicas[0]['proven']) && $this->synchronous($connection)) {
-                        $state = 'committed';
-                        $reason = 0;
-                        break;
-                    }
-                    usleep(10000);
-                } while (!$scope->deadline()->expired());
+        return CoroutineRuntime::run(function () use ($operationId, $operation, $mode): CommitResult {
+            if (!self::identifier($operationId, 32) || !in_array($mode, ['default', 'schema'], true)) {
+                return new CommitResult($operationId, 'rejected', 0x83);
             }
-        } catch (\Throwable $failure) {
-            $outcome = $connection === null ? TransactionOutcome::NOT_STARTED : $connection->transactionOutcome();
-            $state = in_array($outcome, [TransactionOutcome::UNKNOWN, TransactionOutcome::COMMITTED], true) ? 'unknown' : 'rejected';
-            $reason = $state === 'rejected' && $failure instanceof ProtocolError ? $failure->reason : 0x88;
-        } finally {
-            $released = $this->release($scope, $database);
-        }
-        return new CommitResult($operationId, $state, $reason, $barrier === '' ? [] : ['wal_lsn' => $barrier, 'replicas' => $replicas], $released, $state === 'committed' ? $value : []);
+            $database = new DatabaseManager(['default' => $this->driver], 1, 0);
+            Db::configure($database);
+            $scope = new ExecutionScope(new Deadline(3.0));
+            $connection = null;
+            $state = 'rejected';
+            $reason = 0x88;
+            $barrier = '';
+            $replicas = [];
+            $released = true;
+            $value = [];
+            try {
+                $scope->run(function (ExecutionScope $current) use ($operationId, $operation, $mode, $scope, &$connection, &$state, &$reason, &$barrier, &$replicas, &$value): void {
+                    $connection = Db::connection('default', true);
+                    $connection->rawQuery("SELECT set_config('application_name', ?, false), set_config('synchronous_commit', 'remote_apply', false), "
+                        . "set_config('statement_timeout', '1500', false), set_config('lock_timeout', '1000', false), "
+                        . "set_config('idle_in_transaction_session_timeout', '1500', false)", ['type_mqtt_' . $operationId]);
+                    if ($this->synchronous($connection)) {
+                        $value = $connection->transaction(function (Connection $transaction) use ($operation): array {
+                            if (!$this->synchronous($transaction)) {
+                                throw new ProtocolError(0x88);
+                            }
+                            return $operation($transaction);
+                        }, $mode);
+                        // COMMIT 可能在 SyncRep 被取消后仍返回 true；它本身不足以证明同步接管。
+                        $state = 'unknown';
+                        // remote_apply 在等待备库前已刷盘本次 COMMIT。取实际刷盘末尾，避免 insert 指针把尚无记录的下一页头计入屏障。
+                        $barrier = (string) $connection->query('SELECT pg_current_wal_flush_lsn()::text AS lsn')[0]['lsn'];
+                        do {
+                            $replicas = $this->replicas($connection, $barrier);
+                            if (count($replicas) === 1 && self::truth($replicas[0]['proven']) && $this->synchronous($connection)) {
+                                $state = 'committed';
+                                $reason = 0;
+                                break;
+                            }
+                            usleep(10000);
+                        } while (!$scope->deadline()->expired());
+                    }
+                });
+            } catch (\Throwable $failure) {
+                $outcome = $connection === null ? TransactionOutcome::NOT_STARTED : $connection->transactionOutcome();
+                $state = in_array($outcome, [TransactionOutcome::UNKNOWN, TransactionOutcome::COMMITTED], true) ? 'unknown' : 'rejected';
+                $reason = $state === 'rejected' && $failure instanceof ProtocolError ? $failure->reason : 0x88;
+            } finally {
+                $released = $this->release($scope, $database);
+            }
+            return new CommitResult($operationId, $state, $reason, $barrier === '' ? [] : ['wal_lsn' => $barrier, 'replicas' => $replicas], $released, $state === 'committed' ? $value : []);
+        });
     }
 
-    private function release(ExecutionScope $scope, Database $database): bool
+    private function release(ExecutionScope $scope, Database|DatabaseManager $database): bool
     {
         $released = true;
         try {
@@ -272,6 +280,14 @@ final class PostgresStore
             $released = false;
         }
         $statistics = $database->statistics();
+        if ($database instanceof DatabaseManager) {
+            foreach ($statistics['active'] as $pool) {
+                if ($pool['leased'] !== 0 || $pool['idle'] !== 0) {
+                    return false;
+                }
+            }
+            return $released && $scope->state() === 'closed';
+        }
         return $released && $scope->state() === 'closed' && $statistics['leased'] === 0 && $statistics['idle'] === 0;
     }
 

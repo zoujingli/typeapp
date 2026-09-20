@@ -74,11 +74,11 @@ final class ExecutionScope
         if ($this->state !== 'active') {
             throw new RuntimeException('执行作用域已经关闭或正在关闭');
         }
-        if ($this->cancellation->cancelled()) {
-            throw new TaskException('cancelled', '执行作用域已经取消');
-        }
         if ($this->deadline->expired()) {
             throw new TaskException('deadline_exceeded', '执行作用域截止预算已用尽');
+        }
+        if ($this->cancellation->cancelled()) {
+            throw new TaskException('cancelled', '执行作用域已经取消');
         }
     }
 

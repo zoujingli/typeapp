@@ -7,23 +7,23 @@ namespace Type\Orm;
 use Closure;
 use Type\Runtime\ExecutionScope;
 
-/** 一个执行作用域的读写选择与粘滞状态，不放进全局配置。 */
+/** 一个执行作用域的主从选择；只有活动事务固定主库，普通写入不改变后续读取。 */
 final class ReadWriteSession
 {
     private DatabaseManager $manager;
     private ExecutionScope $scope;
     private string $primaryName;
-    private string $replicaName;
+    private ?string $replicaName;
     private ?Connection $primary = null;
     private ?Connection $replica = null;
-    private bool $sticky = false;
     private string $outcome = TransactionOutcome::NOT_STARTED;
 
-    public function __construct(DatabaseManager $manager, ExecutionScope $scope, string $primary = 'primary', string $replica = 'replica')
+    public function __construct(DatabaseManager $manager, ExecutionScope $scope, string $primary = 'primary', ?string $replica = 'replica')
     {
         $writer = $manager->identity($primary);
-        $reader = $manager->identity($replica);
-        if ($writer['role'] !== 'writer' || $reader['role'] !== 'reader' || $writer['driver'] !== $reader['driver']) {
+        $reader = $replica === null ? null : $manager->identity($replica);
+        if ($writer['role'] !== 'writer' || ($reader !== null && ($reader['role'] !== 'reader' || $writer['driver'] !== $reader['driver']
+            || $writer['database'] !== $reader['database'] || $writer['driver'] === 'sqlite'))) {
             throw new DatabaseException('主从连接必须是同驱动的 writer 与 reader 身份');
         }
         $this->manager = $manager;
@@ -36,10 +36,14 @@ final class ReadWriteSession
     {
         $this->scope->assertActive();
         $this->certain();
-        if ($strong || $this->sticky) {
+        if ($strong || $this->replicaName === null || $this->inTransaction()) {
             return $this->primary();
         }
-        $this->replica ??= $this->manager->connect($this->scope, $this->replicaName);
+        try {
+            $this->replica ??= $this->manager->connect($this->scope, $this->replicaName);
+        } catch (DatabaseException $error) {
+            throw new ModelException('reader_unavailable', '已配置的只读端点不可用，不转投主库', $error);
+        }
         return $this->replica;
     }
 
@@ -47,16 +51,15 @@ final class ReadWriteSession
     {
         $this->scope->assertActive();
         $this->certain();
-        $this->sticky = true;
         return $this->primary();
     }
 
     /** @param Closure(Connection): mixed $operation 接收实际主库事务连接。 */
-    public function transaction(Closure $operation): mixed
+    public function transaction(Closure $operation, string $mode = 'default'): mixed
     {
         $connection = $this->write();
         try {
-            return $connection->transaction($operation);
+            return $connection->transaction($operation, $mode);
         } finally {
             $this->outcome = $connection->transactionOutcome();
         }
@@ -73,7 +76,6 @@ final class ReadWriteSession
             $this->primary->close();
             $this->primary = null;
         }
-        $this->sticky = true;
         return $this->primary();
     }
 
@@ -83,6 +85,12 @@ final class ReadWriteSession
             $this->outcome = $this->primary->transactionOutcome();
         }
         return $this->outcome;
+    }
+
+    public function inTransaction(): bool
+    {
+        $this->scope->assertActive();
+        return $this->primary !== null && $this->primary->transactionDepth() > 0;
     }
 
     private function primary(): Connection

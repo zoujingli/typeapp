@@ -288,7 +288,9 @@ final class SwooleServer implements HttpServerInterface
             $request = $request->withAttribute('type.raw-target', $target . ($query === '' ? '' : '?' . $query));
             $messages['request'] = $request;
             $dispatching = true;
-            $messages['response'] = $this->handler->handle($request);
+            $messages['response'] = $scope->run(function (ExecutionScope $current) use ($request): ResponseInterface {
+                return $this->handler->handle($request);
+            });
         } catch (HttpError $error) {
             $messages['response'] = $this->error($error->status(), $error->errorCode());
         } catch (TaskException $error) {

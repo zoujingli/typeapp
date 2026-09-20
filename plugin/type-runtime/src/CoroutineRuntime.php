@@ -106,7 +106,7 @@ final class CoroutineRuntime
     }
 
     /**
-     * 仅在主线程启用 Swoole TCP、文件 API 与等待钩子；保留已有配置，可重复调用。
+     * 在主线程启动期补齐网络、等待与已编译的 PDO 钩子；保留已有配置，可重复调用。
      *
      * 子线程直接使用启动前安装的原生 hook，不重复修改进程配置。
      * 文件 hook 的完整有界接入仍在独立验收，不作为普通线程和网络的启动前置。
@@ -115,13 +115,22 @@ final class CoroutineRuntime
     public static function enableIo(): void
     {
         self::assertAvailable();
-        if (class_exists(\Swoole\Thread::class, false) && !\Swoole\Thread::getInfo()['is_main_thread']) {
-            throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
+        $required = SWOOLE_HOOK_TCP | SWOOLE_HOOK_SSL | SWOOLE_HOOK_TLS
+            | SWOOLE_HOOK_SLEEP | SWOOLE_HOOK_STREAM_FUNCTION;
+        if (defined('SWOOLE_HOOK_UNIX')) {
+            $required |= (int) constant('SWOOLE_HOOK_UNIX');
         }
-        $required = SWOOLE_HOOK_TCP | SWOOLE_HOOK_SLEEP | SWOOLE_HOOK_STREAM_FUNCTION;
+        foreach (['pdo_pgsql' => 'SWOOLE_HOOK_PDO_PGSQL', 'pdo_sqlite' => 'SWOOLE_HOOK_PDO_SQLITE'] as $extension => $hook) {
+            if (extension_loaded($extension) && defined($hook)) {
+                $required |= (int) constant($hook);
+            }
+        }
         $current = \Swoole\Runtime::getHookFlags();
         if (($current & $required) === $required) {
             return;
+        }
+        if (class_exists(\Swoole\Thread::class, false) && !\Swoole\Thread::getInfo()['is_main_thread']) {
+            throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
         }
         if (class_exists(\Swoole\Thread::class, false) && \Swoole\Thread::activeCount() > 1) {
             throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');

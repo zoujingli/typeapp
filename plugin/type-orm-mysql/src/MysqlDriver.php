@@ -51,6 +51,12 @@ final class MysqlDriver implements Driver
         return 'mysql';
     }
 
+    /** @internal 标准 PDO MySQL 没有完整会话重置接口，归还时退役物理连接。 */
+    public function reset(PDO $pdo): bool
+    {
+        return false;
+    }
+
     public function identity(): array
     {
         return ['driver' => 'mysql', 'endpoint' => $this->host . ':' . $this->port, 'database' => $this->database,

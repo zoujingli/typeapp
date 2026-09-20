@@ -57,6 +57,14 @@ final class DailyReport implements Task
  */
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
+        scheduleExample($argv);
+    });
+}
+
+/** @param list<string> $argv */
+function scheduleExample(array $argv): void
+{
     $path = $argv[1] ?? '';
     if ($path === '') {
         throw new InvalidArgumentException('请传入已准备目录中的调度状态文件绝对路径');
@@ -114,6 +122,8 @@ $definition = new \Type\Scheduler\Definition(
 首次运行也在有限回看窗口内选取计划，按时间升序最多执行三次。每个任务每轮最多补跑 1000 次，回看最多 366 天。同步任务耗时会影响下一轮，不以无限补跑追赶积压。
 
 Scheduler 还有 historyLimit=1000、tickLimit=100、executionMilliseconds=30000；tickLimit 是同一轮所有定义的总触发上限，范围 1–1000，单任务执行预算最大一小时。
+
+Scheduler、状态存储与连接在同一 Swoole 协程内装配和使用，`tick()` 不在已有协程时于读取状态前报告 `coroutine_required`。每次计划的工厂与 Task 回调内，`ExecutionScope::current()` 等于 `$context->scope()`；正常返回和失败均恢复前一绑定。不同计划不会继承前一次执行的身份、连接或事务。
 
 ## 持久状态与中断
 

@@ -8,6 +8,7 @@ use JsonSerializable;
 use Closure;
 use DateTimeImmutable;
 use DateTimeZone;
+use Type\Runtime\ExecutionScope;
 
 /** 持久化字段封装在状态中，生成访问器同样经过未加载与失效检查。 */
 abstract class Model implements JsonSerializable
@@ -21,10 +22,14 @@ abstract class Model implements JsonSerializable
     private ?array $pivotValues = null;
     private ?ModelBehavior $behavior;
     private array $computed = [];
+    private ExecutionScope $execution;
+    private int|string|null $tenantIdentity;
 
     protected function __construct(ModelDefinition $definition, array $values, bool $persisted = false, ?ModelBehavior $behavior = null)
     {
+        $this->execution = ExecutionScope::current();
         $this->definition = $definition;
+        $this->tenantIdentity = $definition->tenantIdentity($this->execution);
         $this->state = new ModelState();
         $this->persisted = $persisted;
         $this->behavior = $behavior;
@@ -40,7 +45,14 @@ abstract class Model implements JsonSerializable
                 throw new ModelException('missing_version', '水合版本化模型必须包含有效版本');
             }
             $this->original = $this->values;
+            $tenant = $definition->tenantField();
+            if ($tenant !== null && (!array_key_exists($tenant, $this->values) || $this->values[$tenant] !== $this->tenantIdentity)) {
+                throw new ModelException('tenant_scope_conflict', '水合模型缺少租户归属或与当前范围不符');
+            }
         } else {
+            if ($definition->tenantField() !== null) {
+                $this->values[$definition->tenantField()] = $this->tenantIdentity;
+            }
             $this->fill($values);
         }
     }
@@ -81,6 +93,10 @@ abstract class Model implements JsonSerializable
     public function set(string $field, mixed $value): void
     {
         $this->assertValid();
+        if ($field === $this->definition->tenantField()) {
+            $this->assertTenantValue($value);
+            return;
+        }
         if ($this->persisted && $field === $this->definition->key()) {
             throw new ModelException('field_not_fillable', '持久化模型的主键不能改变');
         }
@@ -117,6 +133,10 @@ abstract class Model implements JsonSerializable
                 throw new ModelException('unknown_field', '模型字段名必须是字符串');
             }
             $field = $this->definition->field($name);
+            if ($name === $this->definition->tenantField()) {
+                $this->assertTenantValue($value);
+                continue;
+            }
             if (!$field->fillable() || ($this->persisted && $name === $this->definition->key())) {
                 throw new ModelException('field_not_fillable', '字段不允许批量赋值：' . $name);
             }
@@ -140,9 +160,47 @@ abstract class Model implements JsonSerializable
         return $dirty;
     }
 
-    public function save(Connection $connection): string
+    public function save(): string
     {
+        $connection = $this->connection();
         return $this->writing($connection, fn (): string => $this->saveRecord($connection));
+    }
+
+    /**
+     * 只推进模型的乐观锁版本，用于撤销会话、重算授权等没有业务字段变化的动作。
+     * 版本仍通过当前模型主键和已加载版本条件更新，成功后模型状态与 save() 一致。
+     */
+    public function touch(): string
+    {
+        $connection = $this->connection();
+        return $this->writing($connection, function () use ($connection): string {
+            $this->assertValid();
+            if (!$this->persisted) {
+                throw new ModelException('not_persisted', '未持久化模型不能触达版本');
+            }
+            $version = $this->definition->versionField();
+            if ($version === null) {
+                return 'unchanged';
+            }
+            $connection->trackModel($this);
+            if (!$this->event('saving', true) || !$this->event('updating', true)) {
+                return 'cancelled';
+            }
+            $expected = $this->version();
+            $next = $this->nextVersion($expected);
+            $key = $this->definition->key();
+            $query = $this->recordQuery($connection)
+                ->where($this->definition->field($key)->column(), '=', $this->rawValue($key))
+                ->where($this->definition->field($version)->column(), '=', $expected);
+            $this->definition->assertStorage($connection, [$version]);
+            $affected = $query->update([$this->definition->field($version)->column() => $next]);
+            $this->assertVersionWrite($connection, $affected, $expected, false);
+            $this->values[$version] = $next;
+            $this->original[$version] = $next;
+            $this->event('updated', false);
+            $this->event('saved', false);
+            return 'updated';
+        });
     }
 
     private function saveRecord(Connection $connection): string
@@ -150,7 +208,7 @@ abstract class Model implements JsonSerializable
         $this->assertValid();
         $connection->trackModel($this);
         $key = $this->definition->key();
-        $query = $connection->table($this->definition->table());
+        $query = $this->persisted ? $this->recordQuery($connection) : $connection->table($this->definition->table());
         if ($this->persisted && $this->dirty() === []) {
             return 'unchanged';
         }
@@ -222,13 +280,15 @@ abstract class Model implements JsonSerializable
         return $affected === 0 ? 'unchanged' : 'updated';
     }
 
-    public function delete(Connection $connection): bool
+    public function delete(): bool
     {
+        $connection = $this->connection();
         return $this->writing($connection, fn (): bool => $this->deleteRecord($connection, false));
     }
 
-    public function forceDelete(Connection $connection): bool
+    public function forceDelete(): bool
     {
+        $connection = $this->connection();
         return $this->writing($connection, fn (): bool => $this->deleteRecord($connection, true));
     }
 
@@ -243,7 +303,7 @@ abstract class Model implements JsonSerializable
             return false;
         }
         $key = $this->definition->key();
-        $query = $connection->table($this->definition->table())->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
+        $query = $this->recordQuery($connection)->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
         $version = $this->definition->versionField();
         $expectedVersion = $this->version();
         if ($expectedVersion !== null) {
@@ -285,8 +345,9 @@ abstract class Model implements JsonSerializable
         return $affected > 0;
     }
 
-    public function restore(Connection $connection): bool
+    public function restore(): bool
     {
+        $connection = $this->connection();
         return $this->writing($connection, function () use ($connection): bool {
             $this->assertValid();
             $soft = $this->definition->softDeleteField();
@@ -298,7 +359,7 @@ abstract class Model implements JsonSerializable
                 return false;
             }
             $key = $this->definition->key();
-            $query = $connection->table($this->definition->table())->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
+            $query = $this->recordQuery($connection)->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
             $version = $this->definition->versionField();
             $expectedVersion = $this->version();
             $values = [$this->definition->field($soft)->column() => null];
@@ -341,6 +402,39 @@ abstract class Model implements JsonSerializable
         return $this->behavior === null || $this->behavior->dispatch($name, $this, $cancellable);
     }
 
+    private function connection(): Connection
+    {
+        if (ExecutionScope::current() !== $this->execution) {
+            throw new ModelException('model_scope_mismatch', '模型不能跨执行作用域持久化，请在当前作用域重新查询');
+        }
+        $this->assertValid();
+        return Db::connection($this->definition->database(), true);
+    }
+
+    private function assertTenantValue(mixed $value): void
+    {
+        if ($this->definition->field($this->definition->tenantField())->normalize($value) !== $this->tenantIdentity) {
+            throw new ModelException('tenant_scope_conflict', '普通模型赋值不能改变租户归属');
+        }
+    }
+
+    private function recordQuery(Connection $connection): Query
+    {
+        $this->assertValid();
+        $query = $connection->table($this->definition->table());
+        $field = $this->definition->tenantField();
+        return $field === null ? $query : $query->where($this->definition->field($field)->column(), '=', $this->definition->field($field)->encode($this->tenantIdentity));
+    }
+
+    /** @internal 水合保留原始租户身份，未显式选择的租户字段不冒充已加载业务字段。 */
+    public function retainProjection(array $fields): void
+    {
+        $field = $this->definition->tenantField();
+        if ($field !== null && !in_array($field, $fields, true)) {
+            unset($this->values[$field]);
+        }
+    }
+
     private function writing(Connection $connection, Closure $operation): mixed
     {
         $this->state->enterWrite();
@@ -377,16 +471,15 @@ abstract class Model implements JsonSerializable
         if ($affected > 1) {
             throw new ModelException('non_unique_key', '模型主键必须唯一');
         }
-        $dialect = new SqlDialect($connection->driverName(), $connection->serverVersion());
         $key = $this->definition->key();
         $version = $this->definition->versionField();
-        $sql = 'SELECT ' . $dialect->identifier($this->definition->field($version)->column()) . ' AS type_version FROM '
-            . $dialect->identifier($this->definition->table()) . ' WHERE ' . $dialect->identifier($this->definition->field($key)->column()) . ' = ?';
+        $query = $this->recordQuery($connection)->select(['type_version' => $this->definition->field($version)->column()])
+            ->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
         // MySQL RR 下必须读当前记录，不能用旧快照把已删除误判为版本冲突。
         if ($connection->driverName() !== 'sqlite') {
-            $sql .= ' FOR UPDATE';
+            $query = $query->lockForUpdate();
         }
-        $rows = $connection->query($sql, [$this->rawValue($key)]);
+        $rows = $query->get();
         if ($rows === []) {
             throw new ModelException('not_found', '写入目标已经不存在');
         }
@@ -546,6 +639,12 @@ abstract class Model implements JsonSerializable
     protected function assertValid(): void
     {
         $this->state->assertValid();
+        if (ExecutionScope::current() !== $this->execution) {
+            throw new ModelException('model_scope_mismatch', '模型属于另一执行作用域，请在当前作用域重新查询');
+        }
+        if ($this->definition->tenantIdentity($this->execution) !== $this->tenantIdentity) {
+            throw new ModelException('tenant_context_changed', '已有模型的租户上下文已经改变');
+        }
     }
 
     private function encode(array $values): array

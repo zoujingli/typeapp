@@ -29,6 +29,13 @@ function outboxExpect(bool $condition, string $message): void
 
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+        outboxScenario($argc, $argv);
+    });
+}
+
+function outboxScenario(int $argc, array $argv): void
+{
     if (($argv[1] ?? '') === 'help' || ($argv[2] ?? '') === 'help') {
         echo "Outbox 独立角色：<mysql|pgsql|sqlite> setup|relay|consume|replay|consume-replay|collect|tokens；每轮有界执行并关闭资源。\n";
         return;

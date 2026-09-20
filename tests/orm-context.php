@@ -8,6 +8,8 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 use Type\Orm\Database;
+use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
 use Type\Orm\Sqlite\SqliteDriver;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
@@ -36,6 +38,36 @@ try {
             expect($contextScope->context()['request_id'] === 'root', '子作用域修改污染父上下文');
         } finally {
             $contextScope->close();
+        }
+
+        // 可信值复制给子任务；事务和连接只属于各自的执行者。
+        $manager = new DatabaseManager(['default' => new SqliteDriver(':memory:')], 2, 0);
+        Db::configure($manager);
+        $parent = new ExecutionScope();
+        try {
+            $parent->run(static function (ExecutionScope $current) use ($manager): void {
+                $outer = Db::connection('default', true);
+                Db::transaction(static function () use ($current, $outer, $manager): void {
+                    $child = $current->spawn(static function (ExecutionScope $scope) use ($outer): array {
+                        expect(ExecutionScope::current() === $scope, '任务没有绑定自身当前作用域');
+                        $connection = Db::connection('default', true);
+                        expect($connection !== $outer && $connection->transactionDepth() === 0, '子任务继承了父连接或事务');
+                        return Db::transaction(static function () use ($connection, $scope): array {
+                            expect($connection->transactionDepth() === 1, '子任务事务未独立建立');
+                            return ['tenant' => $scope->binding('tenant_id'), 'value' => (int) $connection->query('SELECT 7 AS value')[0]['value']];
+                        });
+                    });
+                    expect($child->await() === ['tenant' => 'tenant-a', 'value' => 7], '子任务可信上下文或独立事务返回值不符');
+                    expect(
+                        $outer->transactionDepth() === 1 && $manager->statistics()['active']['default']['leased'] === 1,
+                        '子任务关闭影响父事务或未归还自身连接'
+                    );
+                });
+                expect($outer->transactionDepth() === 0, '父事务没有独立完成');
+            }, ['tenant_id' => 'tenant-a']);
+        } finally {
+            $parent->close();
+            $manager->close();
         }
 
         $cancelScope = new ExecutionScope();

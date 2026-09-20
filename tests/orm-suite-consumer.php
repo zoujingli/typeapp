@@ -40,22 +40,28 @@ function ormWriteRuntimeIni(string $directory, string|false $mainIni, array $sca
         $scanContents = ormRuntimeIni(file_get_contents($sourceIni), $driver);
         expect(file_put_contents($directory . '/php.d/' . sprintf('%04d', $position) . '.ini', $scanContents) === strlen($scanContents), '无法保存扩展运行配置');
     }
-    $limits = "date.timezone=UTC\nmemory_limit=256M\nswoole.enable_library=Off\n";
+    $limits = "date.timezone=UTC\nmemory_limit=256M\nswoole.enable_library=On\n";
     expect(file_put_contents($directory . '/php.d/zz-runtime.ini', $limits) === strlen($limits), '无法保存运行期限制');
 }
 
 /** 业务与探针必须同时通过退出码和错误输出，不吞掉扩展重复加载等启动警告。 */
 function ormSuccessful(array $command, string $directory): string
 {
-    [$status, $stdout, $stderr] = execute($command, $directory);
-    expect($status === 0 && $stderr === '', '独立 ORM 运行失败或存在错误输出：' . $stdout . $stderr);
-    return $stdout;
+    $process = new Type\Testing\Process($command, $directory);
+    try {
+        $result = $process->wait(120);
+        expect($result->successful() && $result->stderr === '', '独立 ORM 运行失败或存在错误输出（timeout='
+            . (int) $result->timedOut . '）：' . $result->stdout . $result->stderr);
+        return $result->stdout;
+    } finally {
+        $process->stop();
+    }
 }
 
 /** 读取所选实际embed探针协议；不拿PHP CLI模块清单代替原生模块。 */
 function ormNativeExtensions(string $probe, string $ini, string $scan, string $directory): array
 {
-    if (basename($probe) !== 'embed-probe') {
+    if (!in_array(basename($probe), ['embed-probe', 'embed-probe.exe'], true)) {
         return explode("\n", trim(ormSuccessful(['env', 'PHPRC=' . $ini, 'PHP_INI_SCAN_DIR=' . $scan, $probe, '--extensions'], $directory)));
     }
     $result = json_decode(ormSuccessful([$probe, $ini, $scan], $directory), true, 32, JSON_THROW_ON_ERROR);
@@ -94,11 +100,53 @@ function ormSwooleReport(array $runtime, array $static): array
         'loading' => in_array('swoole', $staticNames, true) ? 'static' : (in_array('swoole', $runtimeNames, true) ? 'dynamic' : 'missing')];
 }
 
+/** 原生运行前保全并移除本消费环境的 PHP 输入，逐文件验证压缩包可恢复。 */
+function ormRemoveSources(string $consumer): array
+{
+    $archive = $consumer . '/source-inputs.tar';
+    $snapshot = new PharData($archive);
+    $hashes = [];
+    $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($consumer, FilesystemIterator::SKIP_DOTS));
+    foreach ($iterator as $file) {
+        if ($file->isFile() && !$file->isLink() && strtolower($file->getExtension()) === 'php') {
+            $relative = substr($file->getPathname(), strlen($consumer) + 1);
+            $hashes[$relative] = hash_file('sha256', $file->getPathname());
+            $snapshot->addFile($file->getPathname(), $relative);
+        }
+    }
+    expect($hashes !== [], '消费环境没有可保全的 PHP 输入');
+    $snapshot->compress(Phar::GZ);
+    unset($snapshot);
+    $verified = new PharData($archive . '.gz');
+    foreach ($hashes as $relative => $hash) {
+        expect(isset($verified[$relative]) && hash('sha256', $verified[$relative]->getContent()) === $hash, '原始源码归档回读不符：' . $relative);
+    }
+    unset($verified);
+    unlink($archive);
+    foreach (['app', 'vendor', 'build/compiler'] as $directory) {
+        removeTestDirectory($consumer . '/' . $directory);
+    }
+    foreach ($hashes as $relative => $hash) {
+        $file = $consumer . '/' . $relative;
+        if (is_file($file)) {
+            expect(unlink($file), '无法移除已归档源码：' . $relative);
+        }
+    }
+    $record = ['archive' => 'source-inputs.tar.gz', 'sha256' => hash_file('sha256', $archive . '.gz'), 'sources' => $hashes];
+    file_put_contents($consumer . '/source-inputs.json', json_encode($record, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    return ['archive_sha256' => $record['sha256'], 'removed_php_files' => count($hashes)];
+}
+
 $comment = '; TypePHP 原生进程的共享信号模块';
 expect(ormRuntimeIni($comment . "\r\nextension=pdo_mysql\nextension=pdo_pgsql\nextension=swoole\n", 'mysql')
     === $comment . "\nextension=pdo_mysql\nextension=swoole\n\n", '中文注释或非选定驱动配置过滤错误');
 
 $root = dirname(__DIR__);
+$sourceIdentity = [
+    'commit' => trim(successful(['git', 'rev-parse', 'HEAD'], $root)),
+    'dirty' => trim(successful(['git', 'status', '--porcelain=v1', '--untracked-files=normal'], $root)) !== '',
+    'toolchain_lock_sha256' => hash_file('sha256', $root . '/toolchain.lock.json'),
+];
 $driver = $argv[1] ?? 'sqlite';
 $mode = $argv[2] ?? '--php';
 expect(in_array($mode, ['--php', '--native'], true), '验收模式必须显式为 --php 或 --native');
@@ -106,6 +154,7 @@ $native = $mode === '--native';
 expect(in_array($driver, ['mysql', 'pgsql', 'sqlite'], true), '未知业务矩阵驱动');
 $consumer = $root . '/build/orm-suite-' . $driver . '-' . bin2hex(random_bytes(5));
 expect(mkdir($consumer . '/app', 0755, true) && mkdir($consumer . '/php.d'), '无法创建独立业务消费项目');
+$artifact = (new Type\Build\BuildPlatform())->output($consumer . '/build/type-app');
 $repositories = [];
 foreach (['type-runtime', 'type-orm', 'type-orm-' . $driver, 'type-build'] as $package) {
     $repositories[] = ['type' => 'path', 'url' => '../../plugin/' . $package,
@@ -129,6 +178,18 @@ foreach (['main.php', 'Suite.php', 'CoreExercise.php', 'Schema.php', 'ArticleObs
 expect(copy($root . '/examples/orm-suite/drivers/' . $driver . '.php', $consumer . '/app/DriverFactory.php'), '无法复制所选驱动工厂');
 expect(copy($root . '/examples/orm-suite/application.json', $consumer . '/application.json')
     && copy($root . '/toolchain.lock.json', $consumer . '/toolchain.lock.json'), '无法复制编译与工具链配置');
+$swooleModule = getenv('TYPE_SWOOLE_MODULE');
+if ($native && is_string($swooleModule) && $swooleModule !== '') {
+    $swooleModule = Type\Build\BuildPlatform::resolve($swooleModule);
+    expect(is_file($swooleModule) && mkdir($consumer . '/modules', 0700), '无法准备指定的 Swoole 模块');
+    $moduleName = PHP_OS_FAMILY === 'Windows' ? 'php_swoole.dll' : 'swoole.so';
+    expect(copy($swooleModule, $consumer . '/modules/' . $moduleName), '无法保全指定的 Swoole 模块');
+    $configuration = json_decode(file_get_contents($consumer . '/application.json'), true, 512, JSON_THROW_ON_ERROR);
+    $configuration['runtime'][PHP_OS_FAMILY]['modules']['swoole'] = [
+        'file' => 'modules/' . $moduleName, 'sha256' => hash_file('sha256', $swooleModule),
+    ];
+    file_put_contents($consumer . '/application.json', json_encode($configuration, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+}
 
 // 安装与编译沿用完整构建环境；运行期才切换配置，保留 PDO 基础和标准扩展。
 $staticExtensions = json_decode(successful([PHP_BINARY, '-n', '-r', 'echo json_encode(get_loaded_extensions());']), true, 32, JSON_THROW_ON_ERROR);
@@ -143,9 +204,9 @@ $nativeStaticExtensions = [];
 $nativeBuildReport = null;
 if ($native) {
     expect($nativeIni !== false && is_file($nativeIni), '原生独立消费者需要先准备实际 embed 运行配置');
-    $embedProbe = dirname($nativeIni) . '/embed-probe';
+    $embedProbe = (new Type\Build\BuildPlatform())->output(dirname($nativeIni) . '/embed-probe');
     if (!is_executable($embedProbe)) {
-        $embedProbe = dirname($nativeIni) . '/probe';
+        $embedProbe = (new Type\Build\BuildPlatform())->output(dirname($nativeIni) . '/probe');
     }
     expect(is_executable($embedProbe), '实际 embed 模块探针不存在');
     $nativeScanFiles = glob(dirname($nativeIni) . '/php.d/*.ini');
@@ -178,8 +239,13 @@ try {
         $databaseCreated = true;
         putenv($variable . '=' . $databaseName);
     }
-    $composerBinary = getenv('COMPOSER_BINARY') ?: 'composer';
-    successful([$composerBinary, 'install', '--no-interaction', '--no-scripts', '--no-plugins', '--prefer-dist', '--no-progress'], $consumer);
+    $composerCommand = [getenv('COMPOSER_BINARY') ?: 'composer'];
+    $composerPhar = getenv('TYPE_COMPOSER_PHAR');
+    if (is_string($composerPhar) && $composerPhar !== '') {
+        expect(is_file($composerPhar), '显式 Composer PHAR 不存在');
+        $composerCommand = [PHP_BINARY, Type\Build\BuildPlatform::resolve($composerPhar)];
+    }
+    successful([...$composerCommand, 'install', '--no-interaction', '--no-scripts', '--no-plugins', '--prefer-dist', '--no-progress'], $consumer);
     $lock = json_decode(file_get_contents($consumer . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
     $packages = array_column($lock['packages'], 'name');
     sort($packages);
@@ -195,7 +261,7 @@ try {
         [$buildStatus, $buildOutput, $buildError] = execute([PHP_BINARY, $consumer . '/vendor/bin/type', $consumer . '/application.json'], $consumer);
         file_put_contents($consumer . '/build.log', $buildOutput . $buildError);
         expect($buildStatus === 0, '独立 ORM 编译失败，完整输出见 ' . $consumer . '/build.log');
-        $report = json_decode(file_get_contents($consumer . '/build/type-app.build.json'), true, 512, JSON_THROW_ON_ERROR);
+        $report = json_decode(file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
         $nativeBuildReport = $report;
         $actual = array_keys($report['production-packages']);
         sort($actual);
@@ -203,11 +269,11 @@ try {
         foreach ($report['sources'] as $source) {
             expect(str_starts_with($source, $consumer . '/'), '原生产物仍然编译主仓文件');
         }
-        $release = (new Type\Build\NativePackage())->create($consumer . '/build/type-app', $consumer . '/release');
+        $release = (new Type\Build\NativePackage())->create($artifact, $consumer . '/release');
         (new Type\Build\NativePackage())->verify($release['directory'], $release['manifest-sha256']);
     }
     // 运行时移除全部构建工具，确保业务仅消费三个生产包。
-    successful([$composerBinary, 'install', '--no-dev', '--no-interaction', '--no-scripts', '--no-plugins', '--no-progress'], $consumer);
+    successful([...$composerCommand, 'install', '--no-dev', '--no-interaction', '--no-scripts', '--no-plugins', '--no-progress'], $consumer);
     putenv('PHP_INI_SCAN_DIR=' . $consumer . '/php.d');
     putenv('PHPRC=' . $consumer . '/php.ini');
     if ($native) {
@@ -217,7 +283,7 @@ try {
     ormAssertExtensions($buildExtensions, $runtimeExtensions, $staticExtensions, $driver);
     $swoole = ormSwooleReport($runtimeExtensions, $staticExtensions);
     // 此命令忽略 Composer platform 覆盖，检查真正加载的运行期扩展；不能用忽略参数伪装通过。
-    successful([$composerBinary, 'check-platform-reqs', '--no-dev'], $consumer);
+    successful([...$composerCommand, 'check-platform-reqs', '--no-dev'], $consumer);
     $installed = json_decode(file_get_contents($consumer . '/vendor/composer/installed.json'), true, 512, JSON_THROW_ON_ERROR);
     $actual = array_column($installed['packages'], 'name');
     sort($actual);
@@ -229,24 +295,31 @@ try {
     $launcher .= ' foreach (get_included_files() as $file) { if (!str_starts_with(realpath($file), ' . var_export($consumer . '/', true)
         . ')) { throw new RuntimeException("业务加载了消费环境之外的 PHP 文件"); } } main($argc, $argv);';
     $command = $native ? [$consumer . '/release/' . (PHP_OS_FAMILY === 'Windows' ? 'run.cmd' : 'run')] : [PHP_BINARY, '-r', $launcher];
+    $sourceRemoval = $native ? ormRemoveSources($consumer) : [];
     $result = json_decode(ormSuccessful([...$command, 'run'], $consumer), true, 32, JSON_THROW_ON_ERROR);
     expect($result['driver'] === $driver && in_array($driver, $result['pdo_extensions'], true), '业务运行了错误驱动');
     $businessStaticExtensions = $native ? $nativeStaticExtensions : $staticExtensions;
+    $businessRuntimeExtensions = $native ? $nativeRuntimeExtensions : $runtimeExtensions;
     foreach (['mysql', 'pgsql', 'sqlite'] as $candidate) {
         if ($candidate !== $driver && !in_array('pdo_' . $candidate, $businessStaticExtensions, true)) {
-            expect(!in_array($candidate, $result['pdo_extensions'], true), '未选动态驱动扩展仍在加载');
+            expect(!in_array('pdo_' . $candidate, $businessRuntimeExtensions, true), '未选动态驱动扩展仍在加载');
+            // 官方 Swoole 可在 MINIT 注册编入扩展的 PDO 驱动；它不是独立的 pdo_* 模块。
+            expect(!in_array($candidate, $result['pdo_extensions'], true)
+                || in_array($candidate, $result['swoole_pdo_drivers'], true), '存在来源未记录的 PDO 驱动');
         }
     }
-    foreach (['models', 'relations', 'soft_delete', 'events', 'scopes', 'pagination', 'optimistic_lock', 'migrations', 'strong_read', 'core_queries'] as $behavior) {
+    foreach (['models', 'relations', 'soft_delete', 'events', 'scopes', 'pagination', 'optimistic_lock', 'migrations', 'strong_read', 'core_queries', 'tenant_isolation'] as $behavior) {
         expect($result[$behavior] === true, '业务矩阵缺少验收项：' . $behavior);
     }
+    expect($result['scope_checks'] === ['binding-restore', 'snapshot', 'child-transaction', 'connection-owner', 'closed-connection',
+        'parent-cancel', 'parent-close', 'deadline', 'late-release', 'database-io-wait'], '独立消费者缺少上下文与租约专项结果');
     $barrier = $consumer . '/race-barrier';
     file_put_contents($barrier, '');
     putenv('TYPE_SUITE_BARRIER=' . $barrier);
     for ($index = 0; $index < 2; $index++) {
         $output = tmpfile();
         expect($output !== false, '无法准备并发进程输出');
-        $process = proc_open([...$command, 'race', (string) $result['race_id']], [0 => ['file', '/dev/null', 'r'], 1 => $output, 2 => $output], $pipes, $consumer);
+        $process = proc_open([...$command, 'race', (string) $result['race_id']], [0 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r'], 1 => $output, 2 => $output], $pipes, $consumer);
         expect(is_resource($process), '无法启动真实并发文章更新');
         $children[] = [$process, $output];
     }
@@ -266,7 +339,7 @@ try {
     for ($index = 0; $index < 2; $index++) {
         $output = tmpfile();
         expect($output !== false, '无法准备原子更新输出');
-        $process = proc_open([...$command, 'increment', (string) $result['race_id']], [0 => ['file', '/dev/null', 'r'], 1 => $output, 2 => $output], $pipes, $consumer);
+        $process = proc_open([...$command, 'increment', (string) $result['race_id']], [0 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r'], 1 => $output, 2 => $output], $pipes, $consumer);
         expect(is_resource($process), '无法启动原子更新进程');
         $atomicChildren[] = [$process, $output];
         $children[] = [$process, $output];
@@ -280,7 +353,7 @@ try {
     $result['atomic_increment'] = json_decode(ormSuccessful([...$command, 'verify-increment', (string) $result['race_id']], $consumer), true, 8, JSON_THROW_ON_ERROR);
     $result['mode'] = $native ? 'native' : 'php';
     if ($native) {
-        $result['deployment'] = ['manifest_sha256' => $release['manifest-sha256'], 'business_source_files' => 0];
+        $result['deployment'] = ['manifest_sha256' => $release['manifest-sha256'], 'business_source_files' => 0, 'source_removal' => $sourceRemoval];
     }
     $result['production_packages'] = $packages;
     $result['race'] = $outcomes;
@@ -303,6 +376,7 @@ try {
         expect($swoole['loaded'] === true, '原生运行环境缺少 Swoole');
     }
     $result['swoole'] = $swoole;
+    $result['source'] = $sourceIdentity;
     file_put_contents($consumer . '/verification.json', json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     echo $driver . ' 独立 Composer 用户、文章、标签业务与双进程并发通过；报告：' . $consumer . "/verification.json\n";
 } finally {

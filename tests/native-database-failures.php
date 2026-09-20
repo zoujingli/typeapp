@@ -93,7 +93,8 @@ try {
                     };
                     $command = $mode === 'php' ? '--php' : $artifacts[$program]['file'];
                     $test = in_array($suite, ['migrations', 'migrations-core'], true) ? 'migrations-native' : $suite;
-                    $arguments = $suite === 'migrations-core' ? ['core'] : [];
+                    $arguments = $suite === 'migrations-core' ? ['core']
+                        : ($suite === 'read-write' && $driver !== 'sqlite' ? [$tools[$driver]['root']] : []);
                     $log = $work . '/' . $suite . '-' . $mode . '.log';
                     $runEnvironment = $environment;
                     if ($mode === 'native') {

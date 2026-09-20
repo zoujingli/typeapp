@@ -20,6 +20,17 @@ use TypeApp\ModelExample\Drivers;
 
 function main(int $argc, array $argv): void
 {
+    if (($argv[1] ?? '') === 'serve') {
+        integrationScenario($argc, $argv);
+        return;
+    }
+    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+        integrationScenario($argc, $argv);
+    });
+}
+
+function integrationScenario(int $argc, array $argv): void
+{
     try {
         $mode = $argv[1] ?? 'help';
         if ($mode === 'help') {
@@ -42,6 +53,8 @@ function main(int $argc, array $argv): void
             return;
         }
         if ($mode === 'serve') {
+            $manager = new \Type\Orm\DatabaseManager(['default' => $driver]);
+            \Type\Orm\Db::configure($manager);
             $port = filter_var(getenv('TYPE_HTTP_PORT'), FILTER_VALIDATE_INT);
             $token = (string) getenv('TYPE_INTEGRATION_TOKEN');
             if (!is_int($port) || $port < 1 || $port > 65535 || strlen($token) < 32) {
@@ -49,7 +62,7 @@ function main(int $argc, array $argv): void
             }
             $messages = new Factory();
             $router = new Router($messages, $messages);
-            $router->add('GET', '/article', static fn (): Endpoint => new Endpoint($driver, $application));
+            $router->add('GET', '/article', static fn (): Endpoint => new Endpoint($application));
             $pipeline = new Pipeline([static fn (): RequestPolicy => new RequestPolicy(['127.0.0.1:' . $port]),
                 static fn (): Authentication => new Authentication(
                     static fn (string $input): ?Identity => hash_equals($token, $input) ? new Identity('integration') : null,
@@ -58,7 +71,11 @@ function main(int $argc, array $argv): void
                     $messages
                 )], $router);
             CoroutineRuntime::enableIo();
-            (new SwooleServer($pipeline, $messages, $messages, $messages, null, new HttpControl(probes: true)))->serve('127.0.0.1', $port);
+            try {
+                (new SwooleServer($pipeline, $messages, $messages, $messages, null, new HttpControl(probes: true)))->serve('127.0.0.1', $port);
+            } finally {
+                $manager->close();
+            }
             return;
         }
         throw new InvalidArgumentException('未知集成应用角色');

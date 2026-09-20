@@ -34,12 +34,44 @@ namespace TypeApp\OrmSuite {
         #[\Type\Orm\Attribute\HasOne(Details::class, 'user_id')]
         public ?Details $details;
 
+        #[\Type\Orm\Attribute\BelongsToMany(ScopedRecord::class, 'type_suite_scoped_links', 'user_id', 'record_id', pivotTenant: 'tenant_id')]
+        public array $records;
+
         /** 业务方法在开发与 AOT 转换后保留。 */
         public function displayLabel(): string
         {
             return '用户：' . $this->name;
         }
 
+    }
+}
+
+namespace TypeApp\OrmSuite {
+
+    /** 消费者自己的租户实体；不依赖应用账号或权限。 */
+    #[\Type\Orm\Attribute\Table('type_suite_scoped_records', softDelete: 'deleted_at', version: 'version')]
+    final class ScopedRecord extends \Type\Orm\Model
+    {
+        public int $id;
+        public string $tenant_id;
+        public string $title;
+        public int $value;
+
+        #[\Type\Orm\Attribute\Column(fillable: false, required: false)]
+        public ?\DateTimeImmutable $deleted_at;
+
+        #[\Type\Orm\Attribute\Column(fillable: false, required: false)]
+        public int $version;
+    }
+
+    #[\Type\Orm\Attribute\Table('type_suite_scoped_labels', tenant: 'workspace')]
+    final class ScopedLabel extends \Type\Orm\Model
+    {
+        public int $id;
+        #[\Type\Orm\Attribute\Column(name: 'owner_ref')]
+        public string $workspace;
+        public string $scope_id;
+        public string $label;
     }
 }
 

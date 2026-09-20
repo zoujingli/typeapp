@@ -18,7 +18,7 @@ $environment['TYPE_HTTP_LOG_FILE'] = $file;
 $launcher = 'require ' . var_export($root . '/tests/log-bootstrap.php', true) . '; require '
     . var_export($root . '/examples/log/Http.php', true) . '; require '
     . var_export($root . '/examples/log-http-command.php', true) . '; main($argc, $argv);';
-$command = isset($argv[1]) && $argv[1] !== '--php' ? nativeCommand($argv[1]) : [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r', $launcher];
+$command = isset($argv[1]) && $argv[1] !== '--php' ? nativeCommand($argv[1]) : [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $launcher];
 $process = null;
 try {
     $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => $log, 2 => $log], $pipes, null, $environment);

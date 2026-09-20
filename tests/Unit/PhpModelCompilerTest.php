@@ -13,11 +13,20 @@ final class PhpModelCompilerTest extends TestCase
 {
     public function testInvalidDeclarationsAreRejectedWithoutLoadingBusinessCode(): void
     {
-        $prefix = '<?php declare(strict_types=1); namespace ModelInvalid; use Type\\Orm\\Model; use Type\\Orm\\Attribute\\{Table, Column, HasMany}; ';
+        $prefix = '<?php declare(strict_types=1); namespace ModelInvalid; use Type\\Orm\\Model; use Type\\Orm\\Attribute\\{Table, Column, HasMany, BelongsToMany}; ';
         $invalid = [
             "#[Table('users')] class User extends Model { public int \$id; public string \$name; #[Column(name: 'name')] public string \$duplicate; }",
             "#[Table('users')] class User extends Model { public int \$id; public string \$id; }",
             "#[Table('users')] class User extends Model { public int \$id; public function mapping(): void {} }",
+            "#[Table('users')] class User extends Model { public int \$id; public static function search(): void {} }",
+            "#[Table('users')] class User extends Model { public int \$id; public static function SeArCh(): void {} }",
+            "#[Table('users', database: 'invalid/database')] class User extends Model { public int \$id; }",
+            "#[Table('users', tenant: 'missing')] class User extends Model { public int \$id; }",
+            "#[Table('users')] class User extends Model { public int \$id; public ?string \$tenant_id; }",
+            "#[Table('users')] class User extends Model { public int \$id; public bool \$tenant_id; }",
+            "#[Table('users')] class User extends Model { public int \$id; #[BelongsToMany(User::class, 'links', 'left_id', 'right_id', pivotTenant: 'bad.field')] public array \$links; }",
+            "#[Table('users')] class User extends Model { public int \$id; #[BelongsToMany(User::class, 'links', 'left_id', 'right_id', pivotTenant: 'left_id')] public array \$links; }",
+            "#[Table('users')] class User extends Model { public int \$id; #[BelongsToMany(User::class, 'links', 'left_id', 'right_id', pivotFields: ['Tenant_Id'], pivotTenant: 'tenant_id')] public array \$links; }",
             "#[Table('users')] class User extends Model { public int \$id; public function __construct() {} }",
             "#[Table('users')] class User extends Model { public int \$id; public function getId(): int { return 1; } }",
             "#[Table('users')] class User extends Model { public int \$id = 1; }",
@@ -91,6 +100,8 @@ PHP;
             self::assertSame('ModelIdentity\\User', $first['models'][0]['class']);
             self::assertStringContainsString('class Companion', $first['code']);
             self::assertStringContainsString('presentName', $first['code']);
+            self::assertStringContainsString("public static function query(string \$alias = '')", $first['code']);
+            self::assertStringContainsString("public static function search(array \$input = [], string \$alias = '')", $first['code']);
             file_put_contents($file, str_replace('before:', 'after:', $source));
             self::assertNotSame(hash('sha256', $first['code']), hash('sha256', $compiler->compile([$file])['code']));
             self::assertFalse(class_exists('ModelIdentity\\User', false));

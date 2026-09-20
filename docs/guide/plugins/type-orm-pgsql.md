@@ -107,7 +107,7 @@ id 列应由数据库 identity 或默认值生成。返回的是所选列的行�
 
 指定 schema 会在连接初始化时设置 search_path；指定 databaseRole 会 SET ROLE。应用若需要多个身份，使用 `DatabaseManager` 以名字登记驱动，不能每次请求临时拼接不可信标识符。
 
-`raw/rawQuery` 执行会话修改后标记租约不可复用。归还时关闭物理会话，下一次借用重新建立声明基线；跨进程、Fiber 或协程复用已借出的 Connection 会被拒绝。
+`query/execute/raw/rawQuery` 采用同一会话边界。归还时先关闭结果和事务，执行官方 `DISCARD ALL` 并恢复配置的角色、schema、时区、DateStyle 与只读用途，成功后允许物理连接进入有界空闲池；重置失败、SQL 错误或未知提交则关闭退役。跨进程、Fiber 或协程使用已借出的 Connection 会被拒绝。
 
 ## 事务与迁移
 

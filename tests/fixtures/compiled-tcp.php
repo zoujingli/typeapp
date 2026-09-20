@@ -50,7 +50,7 @@ final class TcpProbe
     {
         $input = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
         try {
-            self::check(!defined('SWOOLE_LIBRARY'), '工作线程加载了 PHP 内置库');
+            self::check(defined('SWOOLE_LIBRARY'), '工作线程未加载 Swoole 官方内置库');
             $foreign = unserialize(base64_decode($input['owner']), ['allowed_classes' => [ExecutionOwner::class]]);
             self::check($foreign instanceof ExecutionOwner, '缺少线程身份');
             if ($input['mode'] === 'thread') {
@@ -61,7 +61,7 @@ final class TcpProbe
             $outside->stop();
             Coroutine::create(static function () use ($input): void {
                 try {
-                    self::check(!defined('SWOOLE_LIBRARY') && !class_exists('Swoole\\ConnectionPool', false), '首次协程解释了内嵌 PHP');
+                    self::check(defined('SWOOLE_LIBRARY') && class_exists('Swoole\\ConnectionPool', false), '首次协程缺少 Swoole 官方内置库');
                     $plan = new DeploymentBudget(24, 1, 1, 1, 0, 2);
                     self::check($plan->statistics()['per_thread'] === 6, '线程预算被复制');
                     $budget = $plan->poolBudget();
@@ -95,7 +95,7 @@ final class TcpProbe
                 }
             });
             Swoole\Event::wait();
-            self::check(!defined('SWOOLE_LIBRARY'), '协程退出时加载了内嵌库');
+            self::check(defined('SWOOLE_LIBRARY'), '协程退出时丢失 Swoole 官方内置库');
             if (self::$failure !== null) {
                 throw self::$failure;
             }

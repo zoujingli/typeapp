@@ -15,7 +15,7 @@ if (isset($argv[1]) && $argv[1] !== '--php') {
 } else {
     $launcher = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; require ' . var_export($root . '/examples/tasks/Http.php', true)
         . '; require ' . var_export($root . '/examples/task-http-command.php', true) . '; main($argc, $argv);';
-    $command = [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r', $launcher];
+    $command = [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $launcher];
 }
 $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
 expect(is_resource($socket), '无法分配子任务请求端口');

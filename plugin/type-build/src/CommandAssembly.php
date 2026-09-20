@@ -289,6 +289,9 @@ final class CommandAssembly
         }
         $help = '可用命令：help、check、' . implode('、', array_keys($commands)) . "\n";
         $code .= "    public function run(string \$name, array \$arguments): int\n    {\n";
+        $code .= "        \\Type\\Runtime\\CoroutineRuntime::enableIo();\n";
+        $code .= "        return \\Type\\Runtime\\CoroutineRuntime::run(fn (): int => \$this->execute(\$name, \$arguments));\n    }\n";
+        $code .= "    private function execute(string \$name, array \$arguments): int\n    {\n";
         $code .= "        if (\$name === 'help') { echo " . var_export($help, true) . "; return 0; }\n";
         $code .= "        if (\$name === 'check') { echo \"离线配置检查通过。\\n\"; return 0; }\n";
         $code .= "        if (\$this->running) { throw new \\RuntimeException('命令应用不能重入执行'); }\n        \$this->running = true;\n        try {\n            switch (\$name) {\n";

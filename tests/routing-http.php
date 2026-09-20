@@ -33,7 +33,7 @@ $launcher = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; r
     . '; require ' . var_export($root . '/examples/routing/Controllers.php', true)
     . '; require ' . var_export($root . '/examples/routing/Middleware.php', true)
     . '; require ' . var_export($root . '/examples/routing-http-command.php', true) . '; main($argc, $argv);';
-$command = isset($argv[1]) && $argv[1] !== '--php' ? nativeCommand($argv[1]) : [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r', $launcher];
+$command = isset($argv[1]) && $argv[1] !== '--php' ? nativeCommand($argv[1]) : [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $launcher];
 $process = null;
 $graceful = true;
 try {

@@ -10,8 +10,6 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use RuntimeException;
-use Type\Orm\Database;
-use Type\Orm\Driver;
 use Type\Orm\ModelException;
 use Type\Orm\TransactionException;
 use Type\Runtime\ExecutionScope;
@@ -22,13 +20,11 @@ use Type\Validate\ValidationException;
 
 final class CounterHandler implements RequestHandlerInterface
 {
-    private Driver $driver;
     private ResponseFactoryInterface $responses;
     private StreamFactoryInterface $streams;
 
-    public function __construct(Driver $driver, ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
+    public function __construct(ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
     {
-        $this->driver = $driver;
         $this->responses = $responses;
         $this->streams = $streams;
     }
@@ -39,16 +35,13 @@ final class CounterHandler implements RequestHandlerInterface
         if (!$scope instanceof ExecutionScope) {
             throw new RuntimeException('版本请求缺少作用域');
         }
-        $database = new Database($this->driver, 1, 0);
-        $connection = null;
         try {
             $method = $request->getMethod();
-            $connection = $database->connect($scope);
             $counter = null;
             if ($method !== 'POST') {
                 $query = (new Schema(['id' => Field::integer()->from('query')->cast()->required()->range(1, PHP_INT_MAX)]))
                     ->validate((new Input([]))->withQuery($request->getUri()->getQuery()));
-                $counter = Counter::query($connection)->find($query->get('id'));
+                $counter = Counter::query()->find($query->get('id'));
                 if ($counter === null) {
                     throw new ModelException('not_found', '记录不存在');
                 }
@@ -72,7 +65,7 @@ final class CounterHandler implements RequestHandlerInterface
                     }
                     $counter->setValue($data->get('value'));
                 }
-                $counter->save($connection);
+                $counter->save();
             }
             $result = ['data' => $counter->project(['id', 'value', 'version'])];
         } catch (ValidationException $error) {
@@ -90,11 +83,6 @@ final class CounterHandler implements RequestHandlerInterface
         } catch (TransactionException $error) {
             $status = 503;
             $result = ['error' => 'transaction_failed', 'outcome' => $error->outcome()];
-        } finally {
-            if ($connection !== null) {
-                $connection->close();
-            }
-            $database->close();
         }
         return $this->responses->createResponse($status)->withHeader('Content-Type', 'application/json')
             ->withBody($this->streams->createStream((string) json_encode($result, JSON_THROW_ON_ERROR)));

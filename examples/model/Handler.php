@@ -10,8 +10,6 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use RuntimeException;
-use Type\Orm\Database;
-use Type\Orm\Driver;
 use Type\Orm\ModelException;
 use Type\Orm\Connection;
 use Type\Orm\ModelQuery;
@@ -24,13 +22,11 @@ use Type\Validate\ValidationException;
 
 final class Handler implements RequestHandlerInterface
 {
-    private Driver $driver;
     private ResponseFactoryInterface $responses;
     private StreamFactoryInterface $streams;
 
-    public function __construct(Driver $driver, ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
+    public function __construct(ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
     {
-        $this->driver = $driver;
         $this->responses = $responses;
         $this->streams = $streams;
     }
@@ -41,9 +37,6 @@ final class Handler implements RequestHandlerInterface
         if (!$scope instanceof ExecutionScope) {
             throw new RuntimeException('用户请求缺少执行作用域');
         }
-        // 本切片在实际工作进程内创建连接；响应已物化后主动归还。
-        $database = new Database($this->driver, 1, 0);
-        $connection = null;
         try {
             $method = $request->getMethod();
             $input = (new Input([]))->withQuery($request->getUri()->getQuery());
@@ -58,15 +51,14 @@ final class Handler implements RequestHandlerInterface
                 throw new ValidationException(['with' => ['get_only']]);
             }
             $fields = $parameters->has('fields') ? $parameters->get('fields') : ['id', 'name', 'age', 'active', 'note'];
-            $connection = $database->connect($scope);
-            $query = User::query($connection)->select($fields);
+            $query = User::query()->select($fields);
             $relationFields = [];
             foreach ($parameters->has('with') ? $parameters->get('with') : [] as $name) {
                 if ($name === 'articles') {
-                    $query = $query->with('articles', Relation::hasMany(static fn (Connection $connection): ModelQuery => Article::query($connection), 'user_id'));
+                    $query = $query->with('articles', Relation::hasMany(static fn (Connection $connection): ModelQuery => Article::query()->onConnection($connection), 'user_id'));
                     $relationFields['articles'] = ['id', 'title'];
                 } else {
-                    $query = $query->with('profile', Relation::hasOne(static fn (Connection $connection): ModelQuery => Profile::query($connection), 'user_id'));
+                    $query = $query->with('profile', Relation::hasOne(static fn (Connection $connection): ModelQuery => Profile::query()->onConnection($connection), 'user_id'));
                     $relationFields['profile'] = ['bio'];
                 }
             }
@@ -89,7 +81,7 @@ final class Handler implements RequestHandlerInterface
                 if ($user === null) {
                     throw new ModelException('not_found', '用户不存在');
                 }
-                $result = ['deleted' => $user->delete($connection)];
+                $result = ['deleted' => $user->delete()];
             } else {
                 if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
                     throw new ValidationException(['body' => ['json_required']], 415, 'unsupported_media_type');
@@ -111,8 +103,8 @@ final class Handler implements RequestHandlerInterface
                     }
                     $user->fill($data->toArray());
                 }
-                $user->save($connection);
-                $user = User::query($connection)->find($user->getId());
+                $user->save();
+                $user = User::query()->find($user->getId());
                 $result = ['data' => $user->project($fields)];
             }
         } catch (ValidationException $error) {
@@ -124,11 +116,6 @@ final class Handler implements RequestHandlerInterface
             }
             $status = 404;
             $result = ['error' => $error->errorCode()];
-        } finally {
-            if ($connection !== null) {
-                $connection->close();
-            }
-            $database->close();
         }
         return $this->responses->createResponse($status)->withHeader('Content-Type', 'application/json')
             ->withBody($this->streams->createStream((string) json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));

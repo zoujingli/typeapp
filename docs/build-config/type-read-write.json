@@ -2,6 +2,7 @@
   "project-root": "../..",
   "name": "type-read-write",
   "entry": "examples/read-write-command.php",
+  "sources": ["examples/model/Models.php"],
   "output": "build/read-write/type-app",
   "build-directory": "build/read-write/compiler"
 }

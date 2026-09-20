@@ -14,6 +14,7 @@ use Type\Core\Http\Message\Factory;
 use Type\Core\Http\Tenant;
 use Type\Orm\Connection;
 use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
 use Type\Orm\DatabaseException;
 use Type\Orm\Model;
 use Type\Orm\ModelDefinition;
@@ -64,7 +65,7 @@ final class Endpoint implements RequestHandlerInterface
         $cacheIdentity = '';
         $failed = false;
         try {
-            $connection = $this->databases->connect($scope, $tenant->connection());
+            $connection = Db::connection($tenant->connection(), true);
             $identity = $connection->identity();
             $generation = (int) $identity['credential-generation'];
             $currentOwner = $connection->query('SELECT owner FROM tenant_values WHERE id = ?', [1])[0]['owner'];
@@ -85,12 +86,14 @@ final class Endpoint implements RequestHandlerInterface
             );
             $cacheIdentity = $store->identity();
             $cache = new TypedCache($store, JsonCodec::data(), 30000);
-            $models = new ModelQuery($connection, TenantValue::mapping(), static fn (array $values): TenantValue => new TenantValue($values));
+            $models = $tenant->id() === 'alpha'
+                ? new ModelQuery(AlphaValue::mapping(), static fn (array $values): AlphaValue => new AlphaValue($values))
+                : new ModelQuery(BetaValue::mapping(), static fn (array $values): BetaValue => new BetaValue($values));
             if ($input->has('fail') && $input->get('fail')) {
                 $entity = $models->find(1);
                 $connection->transaction(static function (Connection $transaction) use ($entity): void {
                     $entity->set('visits', 99);
-                    $entity->save($transaction);
+                    $entity->save();
                     throw new \RuntimeException('tenant failure sentinel');
                 });
             }
@@ -123,7 +126,7 @@ final class Endpoint implements RequestHandlerInterface
                     $rows = $connection->table('tenant_values', 'v')->select(['owner' => 'v.owner', 'label' => 'l.label'])
                         ->join('tenant_labels', 'v.id', '=', 'l.id', 'l')->get();
                     $entity->set('visits', 1);
-                    $entity->save($connection);
+                    $entity->save();
                     $raw = $connection->rawQuery('SELECT owner FROM tenant_values WHERE id = ?', [1])[0]['owner'];
                     if ($entity->get('owner') !== $rows[0]['owner']) {
                         throw new \RuntimeException('租户模型与Join结果不一致');
@@ -152,8 +155,12 @@ final class Endpoint implements RequestHandlerInterface
     }
 }
 
-/** 所有租户复用同一模型映射，由已授权连接决定物理资源。 */
-final class TenantValue extends Model
+/** 物理数据库隔离示例；逻辑数据源固定在各具体模型，HTTP 输入只参与授权。 */
+abstract class TenantValue extends Model
+{
+}
+
+final class AlphaValue extends TenantValue
 {
     /** @param array<string,mixed> $values 当前租户查询得到的字段。 */
     public function __construct(array $values)
@@ -161,10 +168,26 @@ final class TenantValue extends Model
         parent::__construct(self::mapping(), $values, true);
     }
 
-    /** 不使用全局where模拟租户隔离，映射在每个已授权资源内保持一致。 */
+    /** alpha-db 是启动期已配置的数据源，与 beta-db 有独立数据库权限。 */
     public static function mapping(): ModelDefinition
     {
         return new ModelDefinition('tenant_values', 'id', ['id' => new ModelField('id', 'integer'),
-            'owner' => new ModelField('owner', 'string'), 'visits' => new ModelField('visits', 'integer')]);
+            'owner' => new ModelField('owner', 'string'), 'visits' => new ModelField('visits', 'integer')], database: 'alpha-db');
+    }
+}
+
+final class BetaValue extends TenantValue
+{
+    /** @param array<string,mixed> $values 当前数据源查询得到的字段。 */
+    public function __construct(array $values)
+    {
+        parent::__construct(self::mapping(), $values, true);
+    }
+
+    /** beta-db 是启动期已配置的数据源，与 alpha-db 有独立数据库权限。 */
+    public static function mapping(): ModelDefinition
+    {
+        return new ModelDefinition('tenant_values', 'id', ['id' => new ModelField('id', 'integer'),
+            'owner' => new ModelField('owner', 'string'), 'visits' => new ModelField('visits', 'integer')], database: 'beta-db');
     }
 }

@@ -18,7 +18,8 @@ final class RelationDefinition
         private string $table = '',
         private string $sourcePivot = '',
         private string $targetPivot = '',
-        private array $pivotFields = []
+        private array $pivotFields = [],
+        private ?string $pivotTenant = null
     ) {
         if (!in_array($kind, ['HasOne', 'HasMany', 'BelongsTo', 'BelongsToMany'], true)) {
             throw new ModelException('invalid_relation', '未知关系类型');
@@ -40,7 +41,7 @@ final class RelationDefinition
             return $nested === '' ? ($constraint === null ? $query : $query->scope($constraint)) : $query->with($nested, $constraint);
         };
         if ($this->kind === 'BelongsToMany') {
-            return new ManyToMany($factory, $this->table, $this->sourcePivot, $this->targetPivot, $this->source, $this->related, $this->pivotFields, 250);
+            return new ManyToMany($factory, $this->table, $this->sourcePivot, $this->targetPivot, $this->source, $this->related, $this->pivotFields, 250, $this->pivotTenant);
         }
         return new KeyRelation($factory, $this->source, $this->related, $this->kind === 'HasMany', 250);
     }
@@ -53,7 +54,7 @@ final class RelationDefinition
             $query = $query->scope($constraint);
         }
         if ($this->kind === 'BelongsToMany') {
-            return $query->correlatePivot($this->table, $this->sourcePivot, $this->targetPivot, $this->related, $parentColumn, $alias . '_pivot');
+            return $query->correlatePivot($this->table, $this->sourcePivot, $this->targetPivot, $this->related, $parentColumn, $alias . '_pivot', $this->pivotTenant);
         }
         return $query->correlate($this->related, $parentColumn);
     }

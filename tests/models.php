@@ -7,7 +7,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 $root = dirname(__DIR__);
 $generated = (new Type\Build\ModelCompiler())->compile([$root . '/examples/model/Models.php'])['code'];
-$file = tempnam(sys_get_temp_dir(), 'type_models_');
+$file = tempnam($root . '/build', 'type_models_');
 expect($file !== false, '无法创建模型生成文件');
 file_put_contents($file, $generated);
 try {

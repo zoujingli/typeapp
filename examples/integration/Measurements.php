@@ -4,16 +4,15 @@ declare(strict_types=1);
 
 namespace TypeApp\Integration;
 
-use Type\Orm\Connection;
-use Type\Orm\Database;
+use Type\Orm\DatabaseManager;
 
 /** 固定业务输入下的有界采样；记录环境与原始窗口，不推断通用性能倍数。 */
 final class Measurements
 {
-    public static function run(Connection $connection, Database $database, int $articleId): array
+    public static function run(DatabaseManager $database, int $articleId): array
     {
         for ($warmup = 0; $warmup < 50; $warmup++) {
-            Reader::article($connection, $articleId);
+            Reader::article($articleId);
         }
         $samples = [];
         $latencies = [];
@@ -22,7 +21,7 @@ final class Measurements
         memory_reset_peak_usage();
         for ($iteration = 0; $iteration < 500; $iteration++) {
             $before = hrtime(true);
-            $row = Reader::article($connection, $articleId);
+            $row = Reader::article($articleId);
             if ($row['views'] !== 1 || $row['status'] !== 'audited') {
                 throw new \RuntimeException('测量期间文章业务结果变化');
             }

@@ -4,11 +4,13 @@
 
 提供受管数据库连接、不可变 Query、生成模型、关系、分页、事务、迁移和事务 Outbox。ORM 不选择数据库；安装一个驱动后使用同一公开入口，并保留数据库本身的能力差异。
 
-业务 CRUD 优先使用[Model 与关系](#models-relations-output)。当前模型查询和保存需要显式 `Connection`；已确定的自动连接、静态 `search()`、上下文自动租户隔离、默认读从写主及 `master()` 主读规则见[模型连接与主从路由](../../development/model-connections.md)，这些入口尚待实施。本文的连接和表查询示例说明当前底层能力，不代表普通业务必须自行管理连接。
+业务 CRUD 使用[Model 与关系](#models-relations-output)，查询和保存无需传入 `Connection`。框架从当前 Swoole 作用域选择端点并管理租约；静态 `search()`、自动租户隔离、默认读从写主及 `master()` 的配置和完整示例见[模型连接与主从路由](../../development/model-connections.md)。下面的显式连接和表查询用于基础设施与受控聚合。物理 PDO 复用和完整原生平台验收仍以实际验证结果为准。
 
 ## 安装与依赖
 
 需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7`、PDO 与 `type-runtime`；实际访问数据另装 MySQL、PostgreSQL 或 SQLite 驱动。Swoole 管理协程执行、等待、取消和连接租约，PDO 及所选 PDO 驱动负责数据库协议和 SQL 语义。
+
+协程数据库等待需要对应的官方构建能力：MySQL 使用 mysqlnd 与网络 hook，PostgreSQL、SQLite 分别需要 Swoole 的 `--enable-swoole-pgsql`、`--enable-swoole-sqlite`。应用启动时调用 `CoroutineRuntime::enableIo()`，为已加载的 PDO 扩展启用可用 hook；生成的命令入口与 HTTP 宿主已接入。自定义入口在启动业务线程及协程前配置，`CoroutineRuntime::run()` 保留既定 hook，不在任务中改写进程配置。只有扩展版本满足要求，不能证明 PDO 等待已经协程化。
 
 源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
 
@@ -21,6 +23,84 @@ composer require zoujingli/type-orm:dev-main
 ```
 
 依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+
+<a id="models-relations-output"></a>
+
+## 模型、关系与输出
+
+模型映射由[构建工具](type-build.md)生成，完整应用组织见[数据库与模型](../database.md)。`ModelQuery` 的 `find/first` 返回模型或 null，`get` 返回模型列表。
+
+例如在独立应用的生产源码中声明：
+
+```php
+<?php
+declare(strict_types=1);
+
+namespace DocsExample;
+
+use Type\Orm\Model;
+use Type\Orm\Attribute\Table;
+
+#[Table('users')]
+final class User extends Model
+{
+    public int $id;
+    public string $name;
+    public int $age;
+}
+```
+
+将该文件纳入应用 `sources`，然后 prepare/build。数据库应已有 `users` 表，并将 id 定义为该数据库真实的自动主键；模型声明不创建表。旧 `models` 构建键和模型 JSON 已移除，使用旧键会收到迁移错误。转换保留业务类名和方法，原文件及完整转换结果共同进入构建身份；不要为业务类另建生成基类。
+
+PHP 开发需要在加载业务入口前加载本次生成结果。在开发启动器已加载 Composer 后使用下列片段，生产 AOT 会自动纳入这些生成文件：
+
+```php
+$generation = (new \Type\Build\DevelopmentBuilder())
+    ->prepareConfiguration(__DIR__ . '/type-app.json');
+foreach ($generation['files'] as $file) {
+    require $generation['directory'] . '/' . $file;
+}
+```
+
+在入口已装配 `DatabaseManager` 并绑定当前执行作用域后，业务直接创建、查询并部分更新模型：
+
+```php
+$user = new \DocsExample\User(['name' => '示例', 'age' => 20]);
+$created = $user->save();
+$partial = \DocsExample\User::query()->master()->select(['name'])->find($user->id);
+if ($partial !== null) {
+    $partial->name = '新名称';
+    $partial->save();
+    $response = $partial->project(['id', 'name']);
+}
+```
+
+创建返回 `created`；部分查询自动保留主键，保存只写改动的 name，响应明确投影 id/name。业务扩展可以复用生成映射；不要编辑生成文件保存业务方法。
+
+| 操作 | 语义 |
+| --- | --- |
+| `loaded/get/set/fill` | 区分未加载、null 与值；fill 按声明的赋值白名单整批校验 |
+| `dirty/save` | 只写真实变化；返回 created、updated、unchanged 或行为取消时的 cancelled |
+| `project/toArray` | 按输出可见性投影，隐藏字段不可对外读取 |
+| `with($name, $relation)` | 显式批量加载关系，`related($name)` 读取已加载结果 |
+| `delete/restore/forceDelete` | 软删除、恢复、物理删除，取决于模型声明 |
+| `scope/search` | 组合不可变查询；搜索器只能来自显式映射 |
+
+模型直接继承 `Model`，不通过继承或 trait 合并字段，不定义生成的构造、映射、查询及访问器方法。属性必须单独声明、公开、非静态、带类型且无默认值；生成器拒绝重复映射和成员冲突。兼容的 `getName/setName` 访问器仍然经过模型状态。JSON 数组只支持整值赋回，不支持属性引用或间接修改。
+
+模型源码不能使用依赖文件位置的 `__DIR__/__FILE__`，所需资源位置通过显式配置传入，避免代码转换改变资源解析。不能覆盖 `get/set/related` 状态入口，字段转换通过 `ModelBehavior` 声明；未知或放错位置的模型 Attribute 在构建时拒绝。
+
+`Column(name: 'display_name')` 指定数据库列；`Column(type: 'decimal', precision: 30, scale: 2)` 配合 `string` 属性声明精确数值。`Table(softDelete: 'deleted_at', version: 'version')` 引用 PHP 属性名，生命周期属性由框架管理。`visible: false` 控制输出，与 `fillable: false` 的赋值限制独立。
+
+关系属性可声明 `HasOne(Target::class, 'foreignKey')`、`HasMany`、`BelongsTo(Target::class, 'foreignKey')` 或 `BelongsToMany(Target::class, 'pivot_table', 'source_id', 'target_id')`。单模型关系使用可空目标类型，列表使用 `array`；键参数指向模型属性，中间表键使用实际列名。`with('articles.tags')` 批量加载，读取 `$user->articles` 不发起 SQL；显式 `Relation` 工厂仍可传给 `with($name, $relation)`。
+
+`whereHas/whereDoesntHave` 在数据库过滤完整关系路径。`withCount('articles')`、`withSum('articles', 'views')` 使用子查询计算，支持目标 `ModelQuery` 约束和嵌套路径，保留软删除范围。结果通过 `computed('articles_count')` 读取；只有 `project(['name'], [], ['articles_count'])` 显式包含计算值。计算值不进入 `dirty/save/toArray`。
+
+路径最多八层，统计约束不接受 LIMIT；无匹配记录时 COUNT 为 0、SUM 为 null。SQLite 对精确数值 TEXT 列的求和明确报 `exact_sum_unsupported`；MySQL/PostgreSQL 精确算术也要求实际数值存储，不允许文本隐式转换后丢失精度。
+
+已有模型列表使用 `User::query()->with('articles.tags')->load($models)` 补加载；`loadMissing($models)` 复用已经加载的结果，深层路径继续补齐缺失关系。父记录、子模型与 pivot 共享显式读取预算。模型查询始终返回模型；任意联表投影和分组数据使用 `Query`。
+
+`decimal/bigint` 使用精确字符串，拒绝有损浮点输入；`datetime` 使用带时区日期并统一 UTC。SQLite 的精确字段使用满足声明的 TEXT 列，不能让数值亲和转换损失精度。
 
 ## 底层连接与查询示例
 
@@ -35,7 +115,7 @@ use Type\Orm\Connection;
 use Type\Orm\Conditions;
 
 /**
- * 应用服务的声明式方法；调用方传入当前作用域的连接，不保留全局 PDO。
+ * 底层查询演示；只在迁移、基础设施或明确的聚合边界传入作用域连接。
  *
  * @return list<array<string, mixed>>
  */
@@ -64,7 +144,7 @@ function renameUser(Connection $connection, int $id, string $name): int
 
 从[MySQL](type-orm-mysql.md)、[PostgreSQL](type-orm-pgsql.md)或[SQLite](type-orm-sqlite.md)选择驱动，再创建 `Database($driver, $capacity = 4, $idleLimit = 2)`。每次执行新建 `ExecutionScope`，调用 `$database->connect($scope)`。
 
-Scope 关闭归还租约，Database 由进程所有者关闭。当前数据库池保留逻辑槽位，归还时关闭物理 PDO，会话状态不会泄漏到下一请求；物理连接复用仍待实施。连接只在借用时建立；同步调用满载立即拒绝，Swoole 协程按有界等待配置排队，连接不能跨进程或执行者使用。
+Scope 关闭归还租约，Database 由进程所有者关闭。PostgreSQL 完整重置会话后保留物理 PDO；MySQL 和 SQLite 当前归还时关闭物理连接，重建会话基线。重置失败、SQL 错误和未知提交均退役，不把状态交给下一请求。连接只在借用时建立；同步调用满载立即拒绝，Swoole 协程按有界等待配置排队，连接不能跨进程或执行者使用。具体条件见[连接身份与会话隔离](../../development/database-identities.md)。
 
 多个命名连接使用 `DatabaseManager(['default' => $writer, 'reporting' => $reader])`，通过 `connect($scope, 'reporting')` 显式选择。`rotate($name, $newDriver)` 切换凭据代次，旧租约保留旧身份到归还；同名连接最多保留两个未排空旧代。
 
@@ -94,7 +174,7 @@ $deleted = $connection->table('users')->where('id', '=', 7)->delete();
 | 动态排序 | `orderByAllowed($input, $allowed)`，使用白名单映射 |
 | 能力检查 | `capabilities()`，不将不支持的操作模拟为成功 |
 
-`query/execute` 是受管 SQL 入口；DDL 和会话修改走 `raw/rawQuery`，会将租约标记为不可复用。不要通过业务连接泄露底层 PDO。
+`query/execute` 与 `raw/rawQuery` 遵守相同的事务和会话重置边界，SQL 首关键词不代表没有副作用；完整重置失败便退役。不要通过业务连接泄露底层 PDO。
 
 ## 组合查询与诊断
 
@@ -142,89 +222,11 @@ $nextPage = $next === null ? null
 
 `chunk($size, $consumer)` 分批交付行数组；`RowStream::each()` 每次交付一行，返回 false 可提前结束。流式读取必须在连接和 Scope 存活期间完成并关闭流，避免将全部结果重新累积到内存。
 
-<a id="models-relations-output"></a>
-
-## 模型、关系与输出
-
-模型映射由[构建工具](type-build.md)生成，完整应用组织见[数据库与模型](../database.md)。`ModelQuery` 的 `find/first` 返回模型或 null，`get` 返回模型列表。
-
-例如在独立应用的生产源码中声明：
-
-```php
-<?php
-declare(strict_types=1);
-
-namespace DocsExample;
-
-use Type\Orm\Model;
-use Type\Orm\Attribute\Table;
-
-#[Table('users')]
-final class User extends Model
-{
-    public int $id;
-    public string $name;
-    public int $age;
-}
-```
-
-将该文件纳入应用 `sources`，然后 prepare/build。数据库应已有 `users` 表，并将 id 定义为该数据库真实的自动主键；模型声明不创建表。旧 `models` 构建键和模型 JSON 已移除，使用旧键会收到迁移错误。转换保留业务类名和方法，原文件及完整转换结果共同进入构建身份；不要为业务类另建生成基类。
-
-PHP 开发需要在加载业务入口前加载本次生成结果。在开发启动器已加载 Composer 后使用下列片段，生产 AOT 会自动纳入这些生成文件：
-
-```php
-$generation = (new \Type\Build\DevelopmentBuilder())
-    ->prepareConfiguration(__DIR__ . '/type-app.json');
-foreach ($generation['files'] as $file) {
-    require $generation['directory'] . '/' . $file;
-}
-```
-
-在持有连接的业务函数中创建、查询并部分更新模型：
-
-```php
-$user = new \DocsExample\User(['name' => '示例', 'age' => 20]);
-$created = $user->save($connection);
-$partial = \DocsExample\User::query($connection)->select(['name'])->find($user->id);
-if ($partial !== null) {
-    $partial->name = '新名称';
-    $partial->save($connection);
-    $response = $partial->project(['id', 'name']);
-}
-```
-
-创建返回 `created`；部分查询自动保留主键，保存只写改动的 name，响应明确投影 id/name。业务扩展可以复用生成映射；不要编辑生成文件保存业务方法。
-
-| 操作 | 语义 |
-| --- | --- |
-| `loaded/get/set/fill` | 区分未加载、null 与值；fill 按声明的赋值白名单整批校验 |
-| `dirty/save` | 只写真实变化；返回 created、updated、unchanged 或行为取消时的 cancelled |
-| `project/toArray` | 按输出可见性投影，隐藏字段不可对外读取 |
-| `with($name, $relation)` | 显式批量加载关系，`related($name)` 读取已加载结果 |
-| `delete/restore/forceDelete` | 软删除、恢复、物理删除，取决于模型声明 |
-| `scope/search` | 组合不可变查询；搜索器只能来自显式映射 |
-
-模型直接继承 `Model`，不通过继承或 trait 合并字段，不定义生成的构造、映射、查询及访问器方法。属性必须单独声明、公开、非静态、带类型且无默认值；生成器拒绝重复映射和成员冲突。兼容的 `getName/setName` 访问器仍然经过模型状态。JSON 数组只支持整值赋回，不支持属性引用或间接修改。
-
-模型源码不能使用依赖文件位置的 `__DIR__/__FILE__`，所需资源位置通过显式配置传入，避免代码转换改变资源解析。不能覆盖 `get/set/related` 状态入口，字段转换通过 `ModelBehavior` 声明；未知或放错位置的模型 Attribute 在构建时拒绝。
-
-`Column(name: 'display_name')` 指定数据库列；`Column(type: 'decimal', precision: 30, scale: 2)` 配合 `string` 属性声明精确数值。`Table(softDelete: 'deleted_at', version: 'version')` 引用 PHP 属性名，生命周期属性由框架管理。`visible: false` 控制输出，与 `fillable: false` 的赋值限制独立。
-
-关系属性可声明 `HasOne(Target::class, 'foreignKey')`、`HasMany`、`BelongsTo(Target::class, 'foreignKey')` 或 `BelongsToMany(Target::class, 'pivot_table', 'source_id', 'target_id')`。单模型关系使用可空目标类型，列表使用 `array`；键参数指向模型属性，中间表键使用实际列名。`with('articles.tags')` 批量加载，读取 `$user->articles` 不发起 SQL；显式 `Relation` 工厂仍可传给 `with($name, $relation)`。
-
-`whereHas/whereDoesntHave` 在数据库过滤完整关系路径。`withCount('articles')`、`withSum('articles', 'views')` 使用子查询计算，支持目标 `ModelQuery` 约束和嵌套路径，保留软删除范围。结果通过 `computed('articles_count')` 读取；只有 `project(['name'], [], ['articles_count'])` 显式包含计算值。计算值不进入 `dirty/save/toArray`。
-
-路径最多八层，统计约束不接受 LIMIT；无匹配记录时 COUNT 为 0、SUM 为 null。SQLite 对精确数值 TEXT 列的求和明确报 `exact_sum_unsupported`；MySQL/PostgreSQL 精确算术也要求实际数值存储，不允许文本隐式转换后丢失精度。
-
-已有模型列表使用 `User::query($connection)->with('articles.tags')->load($models)` 补加载；`loadMissing($models)` 复用已经加载的结果，深层路径继续补齐缺失关系。父记录、子模型与 pivot 共享显式读取预算。模型查询始终返回模型；任意联表投影和分组数据使用 `Query`。
-
-`decimal/bigint` 使用精确字符串，拒绝有损浮点输入；`datetime` 使用带时区日期并统一 UTC。SQLite 的精确字段使用满足声明的 TEXT 列，不能让数值亲和转换损失精度。
-
 ## 事务与提交结果
 
-`transaction(static function (Connection $transaction): mixed { ... })` 使用固定连接，嵌套事务通过 savepoint。异常触发回滚，参与该层的模型失效，后续需要重新查询。
+业务使用 `Db::transaction(static function (): mixed { ... })`，无需接收连接；事务内的模型读写自动固定到当前数据源主库，嵌套事务通过 savepoint，跨数据源访问明确拒绝。底层 `$connection->transaction()` 仍把实际连接传给基础设施回调。异常触发回滚，参与该层的模型失效，后续需要重新查询。
 
-`afterCommit(static function (): void { ... })` 在最外层提交确认后执行。回调失败并不撤销已经提交的数据；提交确认失败属于未知结果，不能自动重跑业务。`transactionOutcome()` 用于观察当前结果，异常处理要区分回滚、提交未知和提交后失败。
+`Db::afterCommit(static function (): void { ... })` 在最外层提交确认后执行。回调失败并不撤销已经提交的数据；提交确认失败属于未知结果，不能自动重跑业务。`transactionOutcome()` 用于观察当前结果，异常处理要区分回滚、提交未知和提交后失败。
 
 模型声明 `version` 后使用主键与旧版本匹配，冲突为 `optimistic_conflict`；底层 Query 批量写入不会自动加入模型版本或触发逐模型事件。`#[Transactional]` 只在显式生成的组合入口中生效。
 
@@ -335,5 +337,7 @@ Store 默认领取租约为 30000 毫秒，重放保留窗口为 604800 秒。�
 | 更新影响行数差异 | 按实际驱动语义解释，不推断三库完全相同 |
 
 生产输入包含 ORM、所选驱动、模型及生成结果。本仓库可运行 `composer test:models`、`composer test:relations`、`composer test:transactions` 与 `composer test:outcomes`；三库真实独立消费和原生验收分别使用 `test:orm-suite` 与 `test:orm-suite-native`。
+
+独立消费必须保留 Swoole 硬依赖，并记录实际扩展版本和加载方式。原生验收归档、回读核对 PHP 输入后移除应用、vendor 和生成源码，再运行原 release 产物；报告中的 `deployment.source_removal` 记录归档摘要与移除文件数。自动租户、关系中间表、模型筛选和事务等行为按各库真实结果验证；同提交的目标平台验收仍单独记录。
 
 本文以本仓库当前公开接口为依据；安装版本请同时核对包内 README。[对应源码与包说明](https://github.com/zoujingli/type-orm)。

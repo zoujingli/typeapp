@@ -478,7 +478,7 @@ final class Broker
             return;
         }
         $secure = !$this->options->allowPlaintext;
-        $server = new \Swoole\Server($host, $port, SWOOLE_BASE, self::nativeTcp($host) | ($secure ? SWOOLE_SSL : 0));
+        $tcpServer = new \Swoole\Server($host, $port, SWOOLE_BASE, self::nativeTcp($host) | ($secure ? SWOOLE_SSL : 0));
         if ($secure) {
             $settings = array_merge($settings, $this->swooleTls(false));
         }
@@ -488,11 +488,11 @@ final class Broker
             'open_mqtt_protocol' => false,
             'open_tcp_nodelay' => true,
         ]);
-        if (!$server->set($settings)) {
+        if (!$tcpServer->set($settings)) {
             throw new \RuntimeException('MQTT 原生 TCP 配置未被接受');
         }
         if ($this->options->mtlsPort > 0) {
-            $mtls = $server->addListener($host, $this->options->mtlsPort, self::nativeTcp($host) | SWOOLE_SSL);
+            $mtls = $tcpServer->addListener($host, $this->options->mtlsPort, self::nativeTcp($host) | SWOOLE_SSL);
             if ($mtls === false) {
                 throw new \RuntimeException('MQTT mTLS 监听失败，请检查地址、端口与权限');
             }
@@ -505,7 +505,7 @@ final class Broker
                 throw new \RuntimeException('MQTT mTLS 监听配置未被接受');
             }
         }
-        $this->launchNative($server, 0, $port);
+        $this->launchNative($tcpServer, 0, $port);
     }
 
     /** IPv6 必须用 TCP6；IPv4 的 TCP 套接字不能绑定 ::1。 */

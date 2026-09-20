@@ -42,6 +42,10 @@ try {
             $environment['COMPOSER_CACHE_DIR'] = $root . '/.cache/composer';
             $environment['COMPOSER_PROCESS_TIMEOUT'] = '1200';
             $environment['TYPE_NATIVE_PHP_INI'] = $nativeIni;
+            $swooleModule = getenv('TYPE_SWOOLE_MODULE');
+            if (is_string($swooleModule) && $swooleModule !== '') {
+                $environment['TYPE_SWOOLE_MODULE'] = BuildPlatform::resolve($swooleModule);
+            }
             $secrets = $driver === 'sqlite' ? [] : [$environment['TYPE_' . strtoupper($driver) . '_PASSWORD']];
             foreach (['php', 'native'] as $mode) {
                 echo '本机原生数据库独立ORM消费：' . $driver . '/' . $mode . "\n";

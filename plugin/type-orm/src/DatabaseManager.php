@@ -10,6 +10,7 @@ use Type\Runtime\DeploymentBudget;
 final class DatabaseManager
 {
     private array $drivers = [];
+    private array $readers = [];
     private array $databases = [];
     private array $retired = [];
     private int $capacity;
@@ -26,9 +27,30 @@ final class DatabaseManager
             || $waiterLimit < 0 || $waiterLimit > 65536 || !is_finite($waitSeconds) || $waitSeconds < 0 || $waitSeconds > 60) {
             throw new DatabaseException('命名数据库或容量无效');
         }
-        foreach ($connections as $name => $driver) {
-            if (!is_string($name) || !preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $name) || !$driver instanceof Driver) {
+        foreach ($connections as $name => $configuration) {
+            if (!is_string($name) || !preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $name)) {
                 throw new DatabaseException('数据库命名声明无效');
+            }
+            $driver = $configuration;
+            if (is_array($configuration)) {
+                if (array_diff(array_keys($configuration), ['master', 'reader']) !== [] || !isset($configuration['master'])) {
+                    throw new DatabaseException('逻辑数据源只接受 master 和可选 reader');
+                }
+                $driver = $configuration['master'];
+                $reader = $configuration['reader'] ?? null;
+                if (!$driver instanceof Driver || $driver->identity()['role'] !== 'writer'
+                    || ($reader !== null && (!$reader instanceof Driver || $reader->identity()['role'] !== 'reader'
+                        || $driver->name() === 'sqlite' || $reader->name() !== $driver->name()
+                        || $reader->identity()['database'] !== $driver->identity()['database']))) {
+                    throw new DatabaseException('主从必须是同驱动同逻辑数据库的 writer/reader，SQLite 只使用单库');
+                }
+                if ($reader !== null) {
+                    $this->readers[$name] = $name . ':reader';
+                    $this->drivers[$name . ':reader'] = $reader;
+                }
+            }
+            if (!$driver instanceof Driver) {
+                throw new DatabaseException('数据库端点必须是显式驱动配置');
             }
             $this->drivers[$name] = $driver;
         }
@@ -37,6 +59,16 @@ final class DatabaseManager
         $this->budget = $budget;
         $this->waiterLimit = $waiterLimit;
         $this->waitSeconds = $waitSeconds;
+    }
+
+    /** @internal 每个执行作用域按逻辑数据源持有一个读写会话，实际操作才借用端点。 */
+    public function session(ExecutionScope $scope, string $database = 'default'): ReadWriteSession
+    {
+        if ($this->closed || !isset($this->drivers[$database]) || str_contains($database, ':')
+            || $this->drivers[$database]->identity()['role'] !== 'writer') {
+            throw new ModelException('database_unavailable', '逻辑数据源不存在、不是主库或已关闭');
+        }
+        return new ReadWriteSession($this, $scope, $database, $this->readers[$database] ?? null);
     }
 
     /** null 沿用池等待配置；0 即时借用，不继承其他执行者的连接。 */
@@ -54,6 +86,12 @@ final class DatabaseManager
     {
         if ($this->closed || !isset($this->drivers[$name]) || $driver->identity()['credential-generation'] <= $this->drivers[$name]->identity()['credential-generation']) {
             throw new DatabaseException('连接轮换必须明确增加凭据代次');
+        }
+        $previous = $this->drivers[$name]->identity();
+        $replacement = $driver->identity();
+        if ($driver->name() !== $this->drivers[$name]->name() || $replacement['database'] !== $previous['database']
+            || $replacement['role'] !== $previous['role']) {
+            throw new DatabaseException('凭据轮换不能改变逻辑数据库、驱动或主从职责');
         }
         $this->collect();
         if (count($this->retired[$name] ?? []) >= 2) {

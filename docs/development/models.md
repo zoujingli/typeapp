@@ -2,7 +2,7 @@
 
 模型复用 type-orm 的 `Connection` 和不可变 `Query`，运行时不依赖 core；HTTP 示例由应用组合 core、校验器和 ORM。
 
-当前接口仍需要显式连接，下文示例按现有代码执行。已确定的业务标准是由框架自动借还连接，普通查询默认读从、写入使用主库，通过 `master()` 明确主读；具有指定租户字段的模型由上下文自动约束归属。接口调整、静态 `search()`、事务与上下文边界见[Model 自动连接与主从路由](model-connections.md)。无参调用、自动选路与自动租户隔离尚待实施验收。
+普通模型操作不传连接：框架按当前 Swoole 执行作用域自动借还，普通查询默认读从、写入使用主库，通过 `master()` 明确主读；具有指定租户字段的模型由可信上下文约束归属。启动装配、静态 `search()`、事务与上下文边界见[Model 自动连接与主从路由](model-connections.md)。API、PHP 行为、AOT 和完整平台验收分别记录。
 
 ## 声明与生成
 
@@ -14,12 +14,12 @@
 
 ```php
 $user = new User(['name' => '开发者', 'age' => 20, 'active' => true, 'secret' => '内部字段']);
-$user->save($connection);
+$user->save();
 $id = $user->id;
 
-$partial = User::query($connection)->select(['name'])->find($id);
+$partial = User::query()->master()->select(['name'])->findOrFail($id);
 $partial->name = '已修改';
-$partial->save($connection);
+$partial->save();
 $response = $partial->project(['id', 'name']);
 ```
 

@@ -24,6 +24,13 @@ function queueExpect(bool $condition, string $message): void
 
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+        queueScenario($argc, $argv);
+    });
+}
+
+function queueScenario(int $argc, array $argv): void
+{
     if (($argv[1] ?? '') === '--help') {
         echo "队列验证：编译注册任务、投递、消费与幂等确认。\n";
         return;

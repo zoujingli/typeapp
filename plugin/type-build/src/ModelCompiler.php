@@ -50,7 +50,7 @@ final class ModelCompiler
                 $class = isset($node->namespacedName) ? $node->namespacedName->toString() : $node->name->toString();
                 $parent = $node->extends?->toString() ?? '';
                 $classes[strtolower($class)] = strtolower($parent);
-                $table = $this->attribute($node->attrGroups, 'Table', ['name', 'primary', 'generatedPrimary', 'softDelete', 'version']);
+                $table = $this->attribute($node->attrGroups, 'Table', ['name', 'primary', 'generatedPrimary', 'softDelete', 'version', 'database', 'tenant']);
                 if ($table === null) {
                     foreach ($node->getProperties() as $property) {
                         foreach ($property->attrGroups as $group) {
@@ -194,7 +194,10 @@ final class ModelCompiler
     {
         $model = ['class' => $class, 'table' => $table['name'] ?? '', 'primary' => $table['primary'] ?? 'id',
             'generated-primary' => $table['generatedPrimary'] ?? true, 'soft-delete' => $table['softDelete'] ?? null,
-            'version' => $table['version'] ?? null, 'fields' => [], 'relations' => []];
+            'version' => $table['version'] ?? null, 'database' => $table['database'] ?? 'default', 'tenant' => $table['tenant'] ?? null, 'fields' => [], 'relations' => []];
+        if (!is_string($model['database']) || preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $model['database']) !== 1) {
+            throw new RuntimeException('模型逻辑数据源名称无效：' . $class);
+        }
         $properties = [];
         foreach ($node->stmts as $member) {
             if ($member instanceof Node\Stmt\ClassMethod
@@ -273,7 +276,7 @@ final class ModelCompiler
         $result = null;
         foreach (['HasOne' => ['target', 'foreignKey', 'localKey'], 'HasMany' => ['target', 'foreignKey', 'localKey'],
             'BelongsTo' => ['target', 'foreignKey', 'ownerKey'],
-            'BelongsToMany' => ['target', 'table', 'sourcePivotKey', 'targetPivotKey', 'sourceKey', 'targetKey', 'pivotFields']] as $kind => $parameters) {
+            'BelongsToMany' => ['target', 'table', 'sourcePivotKey', 'targetPivotKey', 'sourceKey', 'targetKey', 'pivotFields', 'pivotTenant']] as $kind => $parameters) {
             $arguments = $this->attribute($groups, $kind, $parameters);
             if ($arguments === null) {
                 continue;
@@ -293,11 +296,19 @@ final class ModelCompiler
                 $target = $models[strtolower($relation['target'])] ?? null;
                 $sourceKey = $relation['kind'] === 'BelongsTo' ? ($relation['foreignKey'] ?? '') : ($relation['localKey'] ?? $relation['sourceKey'] ?? 'id');
                 $targetKey = in_array($relation['kind'], ['HasOne', 'HasMany'], true) ? ($relation['foreignKey'] ?? '') : ($relation['ownerKey'] ?? $relation['targetKey'] ?? 'id');
-                if ($target === null || !isset($model['fields'][$sourceKey]) || !isset($target['fields'][$targetKey])
+                if ($target === null || $target['database'] !== $model['database'] || !isset($model['fields'][$sourceKey]) || !isset($target['fields'][$targetKey])
                     || $model['fields'][$sourceKey]['type'] !== $target['fields'][$targetKey]['type']) {
                     throw new RuntimeException('关系目标、键或类型无效：' . $model['class'] . '::' . $name);
                 }
                 if ($relation['kind'] === 'BelongsToMany') {
+                    $tenant = $relation['pivotTenant'] ?? null;
+                    if ($tenant !== null && (!is_string($tenant) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $tenant)
+                        || in_array(strtolower($tenant), array_map('strtolower', array_merge(
+                            [$relation['sourcePivotKey'] ?? '', $relation['targetPivotKey'] ?? ''],
+                            $relation['pivotFields'] ?? []
+                        )), true))) {
+                        throw new RuntimeException('中间表租户列无效或与可写字段冲突：' . $name);
+                    }
                     foreach (['table', 'sourcePivotKey', 'targetPivotKey'] as $key) {
                         if (!is_string($relation[$key] ?? null) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $relation[$key])) {
                             throw new RuntimeException('中间表关系声明无效：' . $name . '.' . $key);
@@ -322,7 +333,7 @@ final class ModelCompiler
             }
             $known[strtolower($model['class'])] = true;
             foreach (array_keys($model) as $key) {
-                if (!in_array($key, ['class', 'table', 'primary', 'generated-primary', 'fields', 'soft-delete', 'version', 'relations'], true)) {
+                if (!in_array($key, ['class', 'table', 'primary', 'generated-primary', 'fields', 'soft-delete', 'version', 'relations', 'database', 'tenant'], true)) {
                     throw new RuntimeException('未知模型配置：' . $key);
                 }
             }
@@ -332,6 +343,16 @@ final class ModelCompiler
             $fields = $model['fields'] ?? [];
             $softDelete = $model['soft-delete'] ?? null;
             $version = $model['version'] ?? null;
+            $tenant = $model['tenant'];
+            foreach ($fields as $name => $field) {
+                if ($tenant === null && ($field['column'] ?? $name) === 'tenant_id') {
+                    $tenant = $name;
+                }
+            }
+            if ($tenant !== null && (!is_string($tenant) || !isset($fields[$tenant]) || ($fields[$tenant]['nullable'] ?? false)
+                || !in_array($fields[$tenant]['type'], ['integer', 'string', 'bigint'], true))) {
+                throw new RuntimeException('模型租户字段必须映射到非空字符串或整数身份');
+            }
             if (!is_string($table) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/D', $table)
                 || !is_string($primary) || !is_array($fields) || !isset($fields[$primary]) || !is_bool($generated)) {
                 throw new RuntimeException('模型表、主键或字段声明无效：' . $model['class']);
@@ -406,12 +427,14 @@ final class ModelCompiler
             $namespace = implode('\\', $parts);
             $definition = 'new \\Type\\Orm\\ModelDefinition(' . var_export($table, true) . ', ' . var_export($primary, true)
                 . ', [' . implode(', ', $declarations) . '], ' . var_export($generated, true) . ', ' . var_export($softDelete, true) . ', ' . var_export($version, true)
-                . ', ' . $this->renderRelations($model['relations']) . ')';
+                . ', ' . $this->renderRelations($model['relations']) . ', ' . var_export($model['database'], true) . ', ' . var_export($tenant, true) . ')';
             $code .= "\nnamespace {$namespace} {\nclass {$class} extends \\Type\\Orm\\Model\n{\n";
             $code .= "    /** @param array<string, mixed> \$values 新建字段；persisted 仅供水合工厂使用。 */\n    public function __construct(array \$values = [], bool \$persisted = false, ?\\Type\\Orm\\ModelBehavior \$behavior = null) { parent::__construct(self::mapping(), \$values, \$persisted, \$behavior); }\n";
             $code .= "    /** 返回静态声明的字段和关系映射，不访问数据库。 */\n    public static function mapping(): \\Type\\Orm\\ModelDefinition { return {$definition}; }\n";
-            $code .= "    /** 创建绑定当前连接的不可变模型查询；结果保持本业务类。 */\n    public static function query(\\Type\\Orm\\Connection \$connection, string \$alias = ''): \\Type\\Orm\\ModelQuery\n    {\n"
-                . "        return new \\Type\\Orm\\ModelQuery(\$connection, self::mapping(), static fn (array \$row): {$class} => new {$class}(\$row, true), \$alias);\n    }\n";
+            $code .= "    /** 创建当前作用域的不可变模型查询，执行时自动选择连接。 */\n    public static function query(string \$alias = ''): \\Type\\Orm\\ModelQuery\n    {\n"
+                . "        return new \\Type\\Orm\\ModelQuery(self::mapping(), static fn (array \$row): {$class} => new {$class}(\$row, true), \$alias);\n    }\n";
+            $code .= "    /** 使用显式输入创建筛选助手，不读取 Request 或推断筛选字段。 */\n    public static function search(array \$input = [], string \$alias = ''): \\Type\\Orm\\Helper\\QueryHelper\n    {\n"
+                . "        return \\_query(self::query(\$alias), \$input);\n    }\n";
             $code .= $accessors . "}\n}\n";
         }
         try {
@@ -431,9 +454,10 @@ final class ModelCompiler
             $targetKey = in_array($relation['kind'], ['HasOne', 'HasMany'], true) ? $relation['foreignKey'] : ($relation['ownerKey'] ?? $relation['targetKey'] ?? 'id');
             $code[] = var_export($name, true) . ' => new \\Type\\Orm\\RelationDefinition('
                 . var_export($relation['kind'], true) . ', static fn (\\Type\\Orm\\Connection $connection, string $alias): \\Type\\Orm\\ModelQuery => '
-                . $target . '::query($connection, $alias), ' . var_export($sourceKey, true) . ', ' . var_export($targetKey, true)
+                . $target . '::query($alias)->onConnection($connection), ' . var_export($sourceKey, true) . ', ' . var_export($targetKey, true)
                 . ', ' . var_export($relation['table'] ?? '', true) . ', ' . var_export($relation['sourcePivotKey'] ?? '', true)
-                . ', ' . var_export($relation['targetPivotKey'] ?? '', true) . ', ' . var_export($relation['pivotFields'] ?? [], true) . ')';
+                . ', ' . var_export($relation['targetPivotKey'] ?? '', true) . ', ' . var_export($relation['pivotFields'] ?? [], true)
+                . ', ' . var_export($relation['pivotTenant'] ?? null, true) . ')';
         }
         return '[' . implode(', ', $code) . ']';
     }

@@ -50,7 +50,7 @@ final class UdpProbe
     {
         $input = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
         try {
-            self::check(!defined('SWOOLE_LIBRARY'), '业务线程启动时加载了 PHP 内置库');
+            self::check(defined('SWOOLE_LIBRARY'), '业务线程未加载 Swoole 官方内置库');
             $foreign = unserialize(base64_decode($input['owner']), ['allowed_classes' => [ExecutionOwner::class]]);
             self::check($foreign instanceof ExecutionOwner, '缺少线程归属证明');
             if ($input['mode'] === 'thread') {
@@ -63,7 +63,7 @@ final class UdpProbe
             self::rejected(static fn (): UdpSocket => new UdpSocket(new ResourceBudget(1), '127.0.0.1', 0, 8192, ['write_timeout' => null]), 'udp_invalid_configuration');
             Coroutine::create(static function () use ($input): void {
                 try {
-                    self::check(!defined('SWOOLE_LIBRARY') && !class_exists('Swoole\\ConnectionPool', false), '原生协程偷偷解释了 PHP 内置库');
+                    self::check(defined('SWOOLE_LIBRARY') && class_exists('Swoole\\ConnectionPool', false), '原生协程缺少 Swoole 官方内置库');
                     $plan = new DeploymentBudget(8, 1, 1, 1, 0, 2);
                     self::check($plan->statistics()['per_thread'] === 2, '部署额度被线程复制');
                     foreach (['udp4' => '127.0.0.1', 'udp6' => '::1'] as $kind => $host) {
@@ -77,7 +77,7 @@ final class UdpProbe
                 }
             });
             Swoole\Event::wait();
-            self::check(!defined('SWOOLE_LIBRARY'), '协程关闭时加载了 PHP 内置库');
+            self::check(defined('SWOOLE_LIBRARY'), '协程关闭时丢失 Swoole 官方内置库');
             if (self::$failure !== null) {
                 throw self::$failure;
             }

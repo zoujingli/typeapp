@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Orm\Mysql\MysqlDriver;
@@ -14,57 +15,66 @@ $root = dirname(__DIR__);
 $driver = $argv[1];
 $native = ($argv[2] ?? '') === '--native';
 $environment = getenv();
-$isolated = ($argv[3] ?? '') === '--chroot';
-$sandbox = $isolated ? realpath($argv[4] ?? '') : null;
-Assert::true(!$isolated || ($native && is_string($sandbox) && is_file($sandbox . '/app/type-app')), '隔离集成需要已打包的原生产物');
-$environment['TYPE_MODEL_DRIVER'] = $driver;
-$environment['TYPE_INTEGRATION_APP'] = 'integration-' . bin2hex(random_bytes(6));
-$environment['TYPE_INTEGRATION_LOG'] = $root . '/build/integration.log';
-$environment['TYPE_INTEGRATION_HMAC'] = bin2hex(random_bytes(32));
-$environment['TYPE_INTEGRATION_TOKEN'] = bin2hex(random_bytes(24));
-$logFile = $environment['TYPE_INTEGRATION_LOG'];
-if (!is_dir($root . '/build')) {
-    mkdir($root . '/build', 0700);
-}
-if ($isolated) {
-    Assert::true(!is_dir($sandbox . '/app/vendor') && !is_file($sandbox . '/usr/local/bin/php'), '隔离目录不应有 Composer 或 PHP CLI');
-    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sandbox, FilesystemIterator::SKIP_DOTS)) as $entry) {
-        Assert::true(!$entry->isFile() || strtolower($entry->getExtension()) !== 'php', '隔离部署夹带了 PHP 源码');
-    }
-    $environment['PHPRC'] = '/app/php.ini';
-    $environment['PHP_INI_SCAN_DIR'] = '/app/php.d';
-    $environment['TYPE_INTEGRATION_LOG'] = '/tmp/integration.log';
-    $logFile = $sandbox . '/tmp/integration.log';
-    $command = ['chroot', $sandbox, '/app/type-app'];
-    if (posix_geteuid() !== 0) {
-        $keys = ['PHPRC', 'PHP_INI_SCAN_DIR', 'TYPE_MODEL_DRIVER', 'TYPE_HTTP_PORT', 'TYPE_SQLITE_FILE',
-            'TYPE_INTEGRATION_APP', 'TYPE_INTEGRATION_LOG', 'TYPE_INTEGRATION_HMAC', 'TYPE_INTEGRATION_TOKEN',
-            'TYPE_REDIS_HOST', 'TYPE_INTEGRATION_CACHE_HOST', 'TYPE_MYSQL_HOST', 'TYPE_MYSQL_PORT', 'TYPE_MYSQL_DATABASE',
-            'TYPE_MYSQL_USER', 'TYPE_MYSQL_PASSWORD', 'TYPE_PGSQL_HOST', 'TYPE_PGSQL_PORT', 'TYPE_PGSQL_DATABASE', 'TYPE_PGSQL_USER', 'TYPE_PGSQL_PASSWORD'];
-        $command = ['sudo', '-n', '--preserve-env=' . implode(',', $keys), ...$command];
-    }
-} elseif ($native) {
-    $command = [$root . '/build/integration/type-app'];
-    $nativeIni = getenv('TYPE_NATIVE_PHP_INI');
-    if ($nativeIni !== false) {
-        Assert::true(is_file($nativeIni) && is_dir(dirname($nativeIni) . '/php.d'), '显式原生运行配置缺失');
-        $environment['PHPRC'] = $nativeIni;
-        $environment['PHP_INI_SCAN_DIR'] = dirname($nativeIni) . '/php.d';
-    }
-} else {
-    $models = new Type\Build\ModelCompiler();
-    $file = $root . '/build/models.php';
-    file_put_contents($file, $models->compile([$root . '/examples/orm-suite/Models.php'])['code']);
-    $command = [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r', 'require ' . var_export($root . '/vendor/autoload.php', true) . ';require ' . var_export($file, true)
-        . ';require ' . var_export($root . '/examples/integration-command.php', true) . ';main($argc,$argv);'];
-}
+$work = $root . '/build/integration-run-' . bin2hex(random_bytes(6));
+Assert::true(mkdir($work, 0700, true), '无法创建集成测试专属目录');
 $admin = null;
 $created = false;
-$database = 'type_full_' . bin2hex(random_bytes(6));
 $http = null;
 try {
+    $isolated = ($argv[3] ?? '') === '--chroot';
+    $sandbox = $isolated ? realpath($argv[4] ?? '') : null;
+    Assert::true(!$isolated || ($native && is_string($sandbox) && is_file($sandbox . '/app/type-app')), '隔离集成需要已打包的原生产物');
+    $environment['TYPE_MODEL_DRIVER'] = $driver;
+    $environment['TYPE_INTEGRATION_APP'] = 'integration-' . bin2hex(random_bytes(6));
+    $environment['TYPE_INTEGRATION_LOG'] = $work . '/integration.log';
+    $environment['TYPE_INTEGRATION_HMAC'] = bin2hex(random_bytes(32));
+    $environment['TYPE_INTEGRATION_TOKEN'] = bin2hex(random_bytes(24));
+    $logFile = $environment['TYPE_INTEGRATION_LOG'];
+    if (!is_dir($root . '/build')) {
+        mkdir($root . '/build', 0700);
+    }
+    if ($isolated) {
+        Assert::true(!is_dir($sandbox . '/app/vendor') && !is_file($sandbox . '/usr/local/bin/php'), '隔离目录不应有 Composer 或 PHP CLI');
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sandbox, FilesystemIterator::SKIP_DOTS)) as $entry) {
+            Assert::true(!$entry->isFile() || strtolower($entry->getExtension()) !== 'php', '隔离部署夹带了 PHP 源码');
+        }
+        $environment['PHPRC'] = '/app/php.ini';
+        $environment['PHP_INI_SCAN_DIR'] = '/app/php.d';
+        $environment['TYPE_INTEGRATION_LOG'] = '/tmp/' . basename($work) . '.log';
+        $logFile = $sandbox . $environment['TYPE_INTEGRATION_LOG'];
+        $command = ['chroot', $sandbox, '/app/type-app'];
+        if (posix_geteuid() !== 0) {
+            $keys = ['PHPRC', 'PHP_INI_SCAN_DIR', 'TYPE_MODEL_DRIVER', 'TYPE_HTTP_PORT', 'TYPE_SQLITE_FILE',
+                'TYPE_INTEGRATION_APP', 'TYPE_INTEGRATION_LOG', 'TYPE_INTEGRATION_HMAC', 'TYPE_INTEGRATION_TOKEN',
+                'TYPE_REDIS_HOST', 'TYPE_REDIS_PORT', 'TYPE_INTEGRATION_CACHE_HOST', 'TYPE_INTEGRATION_CACHE_PORT', 'TYPE_MYSQL_HOST', 'TYPE_MYSQL_PORT', 'TYPE_MYSQL_DATABASE',
+                'TYPE_MYSQL_USER', 'TYPE_MYSQL_PASSWORD', 'TYPE_PGSQL_HOST', 'TYPE_PGSQL_PORT', 'TYPE_PGSQL_DATABASE', 'TYPE_PGSQL_USER', 'TYPE_PGSQL_PASSWORD'];
+            $command = ['sudo', '-n', '--preserve-env=' . implode(',', $keys), ...$command];
+        }
+    } elseif ($native) {
+        $command = [$root . '/build/integration/type-app'];
+        $nativeIni = getenv('TYPE_NATIVE_PHP_INI');
+        if ($nativeIni !== false) {
+            Assert::true(is_file($nativeIni) && is_dir(dirname($nativeIni) . '/php.d'), '显式原生运行配置缺失');
+            $environment['PHPRC'] = $nativeIni;
+            $environment['PHP_INI_SCAN_DIR'] = dirname($nativeIni) . '/php.d';
+        }
+    } else {
+        $models = new Type\Build\ModelCompiler();
+        $file = $work . '/models.php';
+        file_put_contents($file, $models->compile([$root . '/examples/orm-suite/Models.php'])['code']);
+        $launch = 'require ' . var_export($root . '/vendor/autoload.php', true) . ';require ' . var_export($file, true) . ';';
+        foreach (['examples/model/Drivers.php', 'examples/orm-suite/Schema.php', 'examples/outbox/Adapters.php', 'examples/coordination/QueueDispatchTask.php'] as $source) {
+            $launch .= 'require_once ' . var_export($root . '/' . $source, true) . ';';
+        }
+        foreach (glob($root . '/examples/integration/*.php') as $source) {
+            $launch .= 'require_once ' . var_export($source, true) . ';';
+        }
+        $launch .= 'require ' . var_export($root . '/examples/integration-command.php', true) . ';main($argc,$argv);';
+        $command = [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $launch];
+    }
+    $database = 'type_full_' . bin2hex(random_bytes(6));
     if ($driver === 'sqlite') {
-        $environment['TYPE_SQLITE_FILE'] = $isolated ? '/tmp/database.sqlite' : $root . '/build/database.sqlite';
+        $environment['TYPE_SQLITE_FILE'] = $isolated ? '/tmp/' . basename($work) . '.sqlite' : $work . '/database.sqlite';
     } elseif ($driver === 'mysql') {
         $admin = (new MysqlDriver(getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1', (int) (getenv('TYPE_MYSQL_PORT') ?: 3306), getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test', getenv('TYPE_MYSQL_USER') ?: 'root', getenv('TYPE_MYSQL_PASSWORD') ?: ''))->connect();
         $admin->exec('CREATE DATABASE ' . $database);
@@ -126,13 +136,39 @@ try {
     $report['native'] = $native;
     $report['http'] = true;
     $report['deployment'] = $isolated ? 'chroot-without-php-source' : 'development-runtime';
-    file_put_contents($root . '/verification.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+    $reportFile = $root . '/.cache/integration-evidence/' . basename($work) . '.json';
+    foreach ($argv as $argument) {
+        if (str_starts_with($argument, '--report=')) {
+            $reportFile = substr($argument, 9);
+        }
+    }
+    if (!is_dir(dirname($reportFile))) {
+        Assert::true(mkdir(dirname($reportFile), 0700, true), '无法创建集成报告目录');
+    }
+    file_put_contents($reportFile, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     echo $driver . ' 用户文章、关系、精确值、缓存、Outbox、任务、Cron、日志与 HTTP 贯通，查询 ' . round($report['measurements']['operations_per_second'], 1) . " 次/秒。\n";
 } finally {
-    if ($http !== null) {
-        $http->stop(2);
-    }
-    if ($admin !== null && $created) {
-        $admin->exec('DROP DATABASE ' . $database);
+    try {
+        $http?->stop(2);
+        if ($admin !== null && $created) {
+            $admin->exec('DROP DATABASE ' . $database);
+        }
+    } finally {
+        if (isset($logFile) && is_file($logFile)) {
+            $evidence = $root . '/.cache/integration-evidence';
+            if (!is_dir($evidence)) {
+                mkdir($evidence, 0700, true);
+            }
+            Assert::true(copy($logFile, $evidence . '/' . basename($work) . '.log'), '无法保全集成日志');
+        }
+        if (($isolated ?? false) && is_string($sandbox)) {
+            foreach (['.log', '.sqlite', '.sqlite-wal', '.sqlite-shm', '.sqlite.type-migration.lock'] as $suffix) {
+                $owned = $sandbox . '/tmp/' . basename($work) . $suffix;
+                if (is_file($owned)) {
+                    unlink($owned);
+                }
+            }
+        }
+        removeTestDirectory($work);
     }
 }

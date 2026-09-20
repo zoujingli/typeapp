@@ -114,24 +114,16 @@ final class Connection
         return $this->operation(static fn (PdoSession $session): int => $session->execute($sql, $parameters), $sql, $parameters);
     }
 
-    /** 非受管的会话操作使用该入口，租约归还时直接销毁。 */
+    /** 原生 SQL 使用与 execute 相同的事务、失败和驱动会话重置边界。 */
     public function raw(string $sql, array $parameters = []): int
     {
-        $this->writes++;
-        return $this->operation(static function (PdoSession $session) use ($sql, $parameters): int {
-            $session->retire();
-            return $session->execute($sql, $parameters);
-        }, $sql, $parameters);
+        return $this->execute($sql, $parameters);
     }
 
-    /** 需要结果集的原生 SQL 同样退役租约，避免会话副作用进入空闲池。 */
+    /** 查询结果不代表没有副作用；与 query 一样仅在完整重置后允许复用。 */
     public function rawQuery(string $sql, array $parameters = []): array
     {
-        $this->recordRead(count($parameters));
-        return $this->operation(static function (PdoSession $session) use ($sql, $parameters): array {
-            $session->retire();
-            return $session->query($sql, $parameters);
-        }, $sql, $parameters);
+        return $this->query($sql, $parameters);
     }
 
     public function lastInsertId(): string

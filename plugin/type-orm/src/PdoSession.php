@@ -297,13 +297,19 @@ final class PdoSession implements ReusableResource
 
     public function reset(): bool
     {
+        $clean = false;
         try {
             $this->rollback();
+            if ($this->reusable && $this->pdo !== null) {
+                $clean = $this->driver->reset($this->pdo);
+            }
+            return $clean;
         } finally {
-            $this->pdo = null;
+            if (!$clean) {
+                $this->reusable = false;
+                $this->pdo = null;
+            }
         }
-        // 复用逻辑槽位，物理会话在下一次借用时重建，完整消除原生会话副作用。
-        return $this->reusable;
     }
 
     /** 池丢弃会话时关闭游标与 PDO；返回才表示底层句柄已释放。 */

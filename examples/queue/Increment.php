@@ -38,6 +38,9 @@ final class Increment implements Job
     }
     public function handle(JobContext $context, array $payload): void
     {
+        if (ExecutionScope::current() !== $context->scope() || ExecutionScope::current()->binding('tenant_id') !== null) {
+            throw new \RuntimeException('任务当前作用域错误，或普通消息关联数据进入可信绑定');
+        }
         $context->assertActive();
         if (++$this->calls !== 1 || !is_int($payload['amount'] ?? null)) {
             throw new \RuntimeException('任务实例被复用或载荷无效');

@@ -74,6 +74,13 @@ function reliabilitySchedulerStop(): void
 
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+        taskReliabilityScenario($argc, $argv);
+    });
+}
+
+function taskReliabilityScenario(int $argc, array $argv): void
+{
     $mode = (string) ($argv[1] ?? 'seed');
     if ($mode === 'scheduler-stop') {
         reliabilitySchedulerStop();

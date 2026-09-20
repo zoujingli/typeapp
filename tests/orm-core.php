@@ -37,4 +37,14 @@ try {
     echo $driver . ' 属性模型、组合查询、关系计算、分页和诊断通过。' . PHP_EOL;
 } finally {
     $database?->close();
+    $evidence = $root . '/.cache/orm-core-evidence';
+    if (!is_dir($evidence)) {
+        mkdir($evidence, 0700, true);
+    }
+    file_put_contents($evidence . '/' . basename($work) . '.json', json_encode([
+        'driver' => $driver, 'swoole' => phpversion('swoole'),
+        'database' => $database?->evidence(),
+        'output' => is_file($work . '/result.log') ? file_get_contents($work . '/result.log') : null,
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    removeTestDirectory($work);
 }

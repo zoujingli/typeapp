@@ -64,7 +64,7 @@ final class Endpoint implements RequestHandlerInterface
         $scope = $request->getAttribute('type.scope');
         $database = $this->connections->get();
         $factory = new Factory();
-        if (!$scope instanceof ExecutionScope) {
+        if (!$scope instanceof ExecutionScope || ExecutionScope::current() !== $scope) {
             throw new \RuntimeException('缺少请求作用域');
         }
         $status = 200;

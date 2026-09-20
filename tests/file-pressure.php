@@ -70,7 +70,7 @@ foreach ([$incoming, $storageRoot] as $directory) {
     expect(is_string($directory) && is_dir($directory) && !is_link($directory) && disk_total_space($directory) <= 2097152
         && disk_total_space($directory) >= 262144 && $empty, '上传压力验收要求两个空的专属小容量文件系统（macOS仅允许系统事件元数据）');
 }
-$command = $binary === '--php' ? [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r',
+$command = $binary === '--php' ? [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r',
     'require ' . var_export($root . '/vendor/autoload.php', true) . ';require ' . var_export($root . '/examples/files/Endpoint.php', true)
     . ';require ' . var_export($root . '/examples/files/DownloadStream.php', true) . ';require ' . var_export($root . '/examples/file-http-command.php', true) . ';main($argc,$argv);'] : nativeCommand($binary);
 $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);

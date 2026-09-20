@@ -7,9 +7,14 @@ namespace TypeApp\OrmSuite;
 use Closure;
 use RuntimeException;
 use Throwable;
+use Swoole\Coroutine;
+use Swoole\Coroutine\Channel;
 use Type\Orm\Connection;
 use Type\Orm\Database;
+use Type\Orm\DatabaseManager;
 use Type\Orm\DatabaseException;
+use Type\Orm\Driver;
+use Type\Orm\Db;
 use Type\Orm\ModelConditions;
 use Type\Orm\ModelException;
 use Type\Orm\ModelQuery;
@@ -17,13 +22,334 @@ use Type\Orm\Query;
 use Type\Orm\QueryEvent;
 use Type\Orm\TransactionOutcome;
 use Type\Runtime\ExecutionScope;
+use Type\Runtime\Deadline;
+use Type\Runtime\ManagedTask;
+use Type\Runtime\TaskException;
 
 /** 三库共用的属性、组合查询、关系计算和诊断公共行为验收。 */
 final class CoreExercise
 {
+    /** 独立消费者的真实驱动与原生产物共同验证上下文和租约边界。 */
+    public static function scopes(Driver $driver): array
+    {
+        self::check(self::reject(static fn (): ExecutionScope => ExecutionScope::current(), 'scope_missing'), '消费者入口残留先前作用域');
+        $manager = new DatabaseManager(['default' => $driver], 2, 0);
+        Db::configure($manager);
+        $parent = new ExecutionScope(context: ['request_id' => 'parent']);
+        try {
+            $cached = $parent->run(static function (ExecutionScope $current) use ($manager): Connection {
+                $outer = Db::connection('default', true);
+                Db::transaction(static function () use ($outer, $current, $manager): void {
+                    $ready = new Channel(1);
+                    $resume = new Channel(1);
+                    $task = $current->spawn(static function (ExecutionScope $child) use ($outer, $ready, $resume): array {
+                        self::check(ExecutionScope::current() === $child, '子任务没有绑定自身作用域');
+                        self::check(self::reject(static fn (): array => $outer->query('SELECT 1')), '子协程使用了父连接');
+                        $connection = Db::connection('default', true);
+                        self::check($connection !== $outer && $connection->transactionDepth() === 0, '子任务继承父连接或事务');
+                        $ready->push(true);
+                        self::check($resume->pop(1) === true, '子任务没有收到继续信号');
+                        return Db::transaction(static function () use ($child, $connection): array {
+                            $snapshot = $child->context();
+                            $snapshot['request_id'] = 'child';
+                            self::check($connection->transactionDepth() === 1, '子事务没有独立开始');
+                            return ['tenant' => $child->binding('tenant_id'), 'context' => $snapshot,
+                                'value' => (int) $connection->query('SELECT 7 AS value')[0]['value']];
+                        });
+                    });
+                    self::check($ready->pop(1) === true, '子任务没有建立独立连接');
+                    try {
+                        $current->run(static function (ExecutionScope $nested) use ($resume, $task): void {
+                            self::check($nested->binding('tenant_id') === 'tenant-b', '重入没有临时覆盖绑定');
+                            $resume->push(true);
+                            self::check($task->await(1) === ['tenant' => 'tenant-a', 'context' => ['request_id' => 'child'], 'value' => 7], '父子可信值快照相互污染');
+                            throw new RuntimeException('scope_restore_probe');
+                        }, ['tenant_id' => 'tenant-b']);
+                    } catch (RuntimeException $error) {
+                        self::check($error->getMessage() === 'scope_restore_probe', '子任务或重入失败');
+                    }
+                    self::check($current->binding('tenant_id') === 'tenant-a' && $current->context()['request_id'] === 'parent', '异常没有恢复绑定或父上下文');
+                    self::check($outer->transactionDepth() === 1 && $manager->statistics()['active']['default']['leased'] === 1, '子任务关闭改变了父事务或残留连接');
+                });
+                self::check($outer->transactionDepth() === 0, '父事务未完成');
+                return $outer;
+            }, ['tenant_id' => 'tenant-a']);
+        } finally {
+            $parent->close();
+            $manager->close();
+        }
+        self::check(self::reject(static fn (): array => $cached->query('SELECT 1')), '关闭作用域后缓存连接仍能执行 SQL');
+        self::check($manager->statistics()['active']['default']['leased'] === 0, '关闭作用域后仍有活动租约');
+        self::check(self::reject(static fn (): ExecutionScope => ExecutionScope::current(), 'scope_missing'), '退出回调残留当前作用域');
+
+        foreach (['cancel', 'close', 'deadline'] as $mode) {
+            $scope = new ExecutionScope($mode === 'deadline' ? new Deadline(0.05) : null);
+            $signal = new Channel(1);
+            try {
+                $task = $scope->spawn(static function (ExecutionScope $child) use ($signal): bool {
+                    $subscription = $child->cancellation()->subscribe(static function () use ($signal): void {
+                        $signal->close();
+                    });
+                    try {
+                        $signal->pop(1);
+                        self::check($child->cancellation()->cancelled(), '父取消、关闭或截止未唤醒子任务');
+                        return true;
+                    } finally {
+                        $child->cancellation()->unsubscribe($subscription);
+                    }
+                });
+                if ($mode === 'cancel') {
+                    $scope->cancellation()->cancel();
+                } elseif ($mode === 'close') {
+                    $scope->close();
+                }
+                try {
+                    self::check($task->await(1) === true, '取消通知结果错误');
+                } catch (TaskException $error) {
+                    self::check($mode === 'deadline' && $error->errorCode() === 'task_timeout', '取消等待错误码不符');
+                }
+                self::check($task->join(new Deadline(1)) && $task->finished(), '子任务没有真实收尾');
+            } finally {
+                $scope->close();
+            }
+        }
+
+        $database = new Database($driver, 1, 0);
+        $waiting = new ExecutionScope();
+        $entered = new Channel(1);
+        try {
+            $delayed = $waiting->spawn(static function (ExecutionScope $child) use ($database, $entered): void {
+                $connection = $database->connect($child);
+                self::check((int) $connection->query('SELECT 1 AS value')[0]['value'] === 1, '迟到收尾场景未建立真实数据库租约');
+                $entered->push(true);
+                Coroutine::sleep(0.08);
+            });
+            self::check($entered->pop(1) === true, '任务没有借到连接');
+            self::check(self::reject(static fn (): mixed => $delayed->await(0.001), 'task_timeout'), '等待没有超时');
+            self::check(!$delayed->finished() && $database->statistics()['leased'] === 1, '等待超时提前释放连接');
+            self::check($delayed->join(new Deadline(1)) && $database->statistics()['leased'] === 0, '任务收尾没有归还租约');
+        } finally {
+            $waiting->close();
+            $database->close();
+        }
+        self::databaseWait($driver);
+        return ['binding-restore', 'snapshot', 'child-transaction', 'connection-owner', 'closed-connection', 'parent-cancel', 'parent-close', 'deadline', 'late-release', 'database-io-wait'];
+    }
+
+    /** 真实写锁等待期间让出协程；停止等待不能提前归还仍在执行 SQL 的连接。 */
+    private static function databaseWait(Driver $driver): void
+    {
+        $controller = new Database($driver, 1, 0);
+        $worker = new Database($driver, 1, 0);
+        $scope = new ExecutionScope();
+        $waiting = new ExecutionScope();
+        $entered = new Channel(1);
+        $connection = $controller->connect($scope);
+        try {
+            $connection->execute('CREATE TABLE type_scope_io_lock (id INTEGER PRIMARY KEY, value INTEGER NOT NULL)');
+            $connection->execute('INSERT INTO type_scope_io_lock (id, value) VALUES (1, 0)');
+            $task = $connection->transaction(static function (Connection $locked) use ($worker, $waiting, $entered): ManagedTask {
+                $locked->execute('UPDATE type_scope_io_lock SET value = 1 WHERE id = 1');
+                $task = $waiting->spawn(static function (ExecutionScope $child) use ($worker, $entered): int {
+                    $contender = $worker->connect($child);
+                    // 先完成连接初始化，观察的在途操作只包含等待行锁的 UPDATE。
+                    $contender->query('SELECT 1');
+                    $entered->push(true);
+                    return $contender->execute('UPDATE type_scope_io_lock SET value = value + 1 WHERE id = 1');
+                });
+                self::check($entered->pop(2) === true, '数据库等待任务没有开始');
+                self::check(self::reject(static fn (): mixed => $task->await(0.01), 'task_timeout'), '真实数据库锁等待没有让出协程');
+                $statistics = $worker->statistics();
+                self::check(!$task->finished() && $statistics['leased'] === 1 && $statistics['in_flight'] === 1, '真实数据库操作完成前丢失租约或在途预算');
+                return $task;
+            });
+            self::check($task->join(new Deadline(2)) && self::reject(static fn (): mixed => $task->await(0.1), 'cancelled'), '释放数据库锁后操作没有按取消状态收尾');
+            self::check($worker->statistics()['leased'] === 0 && $worker->statistics()['in_flight'] === 0, '数据库操作收尾后仍占用租约');
+            self::check((int) $connection->query('SELECT value FROM type_scope_io_lock WHERE id = 1')[0]['value'] === 2, '数据库等待后发生丢失或重复写入');
+        } finally {
+            $waiting->close();
+            try {
+                $connection->execute('DROP TABLE IF EXISTS type_scope_io_lock');
+            } finally {
+                $scope->close();
+                $worker->close();
+                $controller->close();
+            }
+        }
+    }
+
+    /** 同一消费程序验证租户 CRUD、全局父模型关系、部分投影及异常边界。 */
+    public static function tenants(ExecutionScope $scope, int $userId): void
+    {
+        $connection = Db::connection('default', true);
+        $driver = $connection->driverName();
+        $key = match ($driver) {
+            'mysql' => 'BIGINT PRIMARY KEY AUTO_INCREMENT',
+            'pgsql' => 'BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY',
+            default => 'INTEGER PRIMARY KEY AUTOINCREMENT',
+        };
+        $date = match ($driver) {
+            'mysql' => 'DATETIME(6)', 'pgsql' => 'TIMESTAMP(6)', default => 'TEXT'
+        };
+        $connection->raw('CREATE TABLE type_suite_scoped_records (id ' . $key . ', tenant_id VARCHAR(50) NOT NULL, title VARCHAR(100) NOT NULL, value INTEGER NOT NULL, deleted_at ' . $date . ' NULL, version BIGINT NOT NULL)');
+        $connection->raw('CREATE TABLE type_suite_scoped_labels (id ' . $key . ', owner_ref VARCHAR(50) NOT NULL, scope_id VARCHAR(50) NOT NULL, label VARCHAR(100) NOT NULL)');
+        $connection->raw('CREATE TABLE type_suite_scoped_links (user_id INTEGER NOT NULL, record_id INTEGER NOT NULL, tenant_id VARCHAR(50) NOT NULL, PRIMARY KEY (user_id, record_id, tenant_id))');
+        self::check(self::reject(static fn (): int => ScopedRecord::query()->count(), 'tenant_scope_required'), '缺失可信租户没有拒绝');
+        $untrusted = new ExecutionScope(context: ['tenant_id' => 'tenant-a']);
+        try {
+            $untrusted->run(static function (ExecutionScope $current): void {
+                self::check(self::reject(static fn (): int => ScopedRecord::query()->count(), 'tenant_scope_required'), '关联数据冒充租户身份');
+            });
+        } finally {
+            $untrusted->close();
+        }
+        $ids = [];
+        foreach (['tenant-a', 'tenant-b'] as $tenant) {
+            $ids[$tenant] = $scope->run(static function (ExecutionScope $current) use ($tenant, $userId): int {
+                $record = new ScopedRecord(['title' => $tenant, 'value' => 1]);
+                self::check($record->save() === 'created' && $record->getTenantId() === $tenant, '租户新增未自动填充');
+                $label = new ScopedLabel(['scope_id' => '普通范围', 'label' => $tenant]);
+                $label->save();
+                self::check($label->getWorkspace() === $tenant, '特殊租户列没有生效');
+                $parent = User::query()->find($userId);
+                self::check($parent->definition()->relation('records')->loader()->attach($parent, $record->getId()), '关联未自动填充中间表租户');
+                return $record->getId();
+            }, ['tenant_id' => $tenant]);
+        }
+        $scope->run(static function (ExecutionScope $current) use ($ids, $userId): void {
+            $base = ScopedRecord::query();
+            $rows = ScopedRecord::search(['title' => 'tenant-a'])->equal('title')->query()->paginate(1, 10);
+            self::check($rows->total() === 1 && $rows->items()[0]->getId() === $ids['tenant-a'], 'search 分页没有隔离');
+            self::check($base->where('title', '=', '缺失')->orWhere('title', '=', 'tenant-b')->count() === 0
+                && $base->find($ids['tenant-b']) === null, 'OR 或主键读取泄漏');
+            self::check(ScopedLabel::query()->count() === 1 && ScopedLabel::query()->first()->getScopeId() === '普通范围', '特殊字段隔离错误');
+            $parent = User::query()->with('records')->withCount('records')->find($userId);
+            self::check(count($parent->related('records')) === 1 && $parent->computed('records_count') === 1, '全局父模型关系越界');
+            $links = $parent->definition()->relation('records')->loader();
+            self::check(!$links->detach($parent, $ids['tenant-b']), '解绑修改了其他租户');
+            self::check(self::reject(static fn (): bool => $links->attach($parent, $ids['tenant-b']), 'related_not_found'), '挂载接受了其他租户目标');
+            $parent = User::query()->find($userId);
+            self::check($links->sync($parent, []) === ['attached' => 0, 'detached' => 1, 'updated' => 0], '关系同步未限定租户');
+            Db::connection('default', true)->table('type_suite_scoped_links')->insert(['user_id' => $userId, 'record_id' => $ids['tenant-a'], 'tenant_id' => 'tenant-b']);
+            self::check(User::query()->with('records')->find($userId)->related('records') === []
+                && !User::query()->where('id', '=', $userId)->whereHas('records')->exists(), '中间表自身租户范围失效');
+            $partial = $base->select(['title'])->find($ids['tenant-a']);
+            self::check(!$partial->loaded('tenant_id'), '投影伪装加载租户列');
+            $partial->setTitle('已修改');
+            self::check($partial->save() === 'updated' && $partial->getVersion() === 2, '投影丢失原始归属或版本');
+            self::check(self::reject(static fn (): mixed => $partial->fill(['title' => '错误', 'tenant_id' => 'tenant-b']), 'tenant_scope_conflict')
+                && $partial->getTitle() === '已修改', '冲突赋值发生部分修改');
+            self::check(self::reject(static fn (): ScopedRecord => new ScopedRecord(['tenant_id' => 'tenant-b']), 'tenant_scope_conflict'), '新增接受冲突归属');
+            self::check(self::reject(static fn (): int => $base->increment('tenant_id'), 'invalid_increment_field'), '原子修改允许改变归属');
+            $current->run(static function (ExecutionScope $other) use ($base, $partial): void {
+                self::check(self::reject(static fn (): int => $base->count(), 'tenant_context_changed')
+                    && self::reject(static fn (): string => $partial->save(), 'tenant_context_changed'), '已有对象静默切换租户');
+            }, ['tenant_id' => 'tenant-b']);
+            self::check($partial->delete() && $base->count() === 0 && $base->onlyTrashed()->count() === 1, '软删除越界');
+            self::check($partial->restore() && $partial->touch() === 'updated' && $partial->forceDelete(), '恢复或强制删除失败');
+        }, ['tenant_id' => 'tenant-a']);
+        $scope->run(static function (ExecutionScope $current) use ($userId): void {
+            self::check(ScopedRecord::query()->count() === 1 && ScopedRecord::query()->first()->getVersion() === 1
+                && count(User::query()->with('records')->find($userId)->related('records')) === 1, '其他租户实体或关系被修改');
+        }, ['tenant_id' => 'tenant-b']);
+        self::check($scope->binding('tenant_id') === null, '租户绑定没有恢复');
+    }
+
+    /** 连续租约通过真实服务端身份验证复用；任意 SQL 和触发器遵循相同重置边界。 */
+    public static function sessions(Driver $driver): array
+    {
+        $database = new Database($driver, 1, 1);
+        $scope = new ExecutionScope();
+        $name = $driver->name();
+        $connection = null;
+        try {
+            $connection = $database->connect($scope);
+            $connection->execute('CREATE TABLE type_session_probe (id INTEGER PRIMARY KEY, value INTEGER NOT NULL)');
+            if ($name === 'pgsql') {
+                $connection->execute("CREATE FUNCTION type_session_dirty() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN PERFORM set_config(''TimeZone'', ''Asia/Shanghai'', false); PERFORM pg_advisory_lock(962091); RETURN NEW; END'");
+                $connection->execute('CREATE TRIGGER type_session_dirty BEFORE INSERT ON type_session_probe FOR EACH ROW EXECUTE FUNCTION type_session_dirty()');
+            }
+            $connection->close();
+            $identities = [];
+            for ($index = 0; $index < 4; $index++) {
+                $connection = $database->connect($scope);
+                if ($name !== 'sqlite') {
+                    $id = $connection->query($name === 'pgsql' ? 'SELECT pg_backend_pid() AS id' : 'SELECT CONNECTION_ID() AS id')[0]['id'];
+                    $identities[] = (string) $id;
+                }
+                $connection->table('type_session_probe')->insert(['id' => $index, 'value' => 1]);
+                self::check(
+                    $connection->table('type_session_probe')->where('id', '=', $index)->increment('value') === 1
+                    && (int) $connection->table('type_session_probe')->where('id', '=', $index)->value('value') === 2,
+                    '连续租约的实际 CRUD 失败'
+                );
+                if ($name === 'pgsql') {
+                    // SELECT 调用存储函数和生成 INSERT 的触发器都可能有会话副作用。
+                    $connection->query("SELECT set_config('DateStyle', 'SQL, DMY', false)");
+                    $connection->rawQuery("SELECT set_config('application_name', 'session-contaminated', false)");
+                    $connection->execute('SET search_path TO pg_catalog');
+                    $connection->raw('CREATE TEMPORARY TABLE type_session_temp (id INTEGER)');
+                } elseif ($name === 'mysql') {
+                    $connection->query("SELECT GET_LOCK('type_session_probe_lock', 0)");
+                    $connection->raw('SET @type_session_secret = 77');
+                    $connection->execute("SET time_zone = '+08:00'");
+                    $connection->rawQuery("SELECT GET_LOCK('type_session_raw_lock', 0)");
+                } else {
+                    $connection->execute('PRAGMA foreign_keys = OFF');
+                    $connection->raw('CREATE TEMPORARY TABLE type_session_temp (id INTEGER)');
+                    $connection->query('PRAGMA busy_timeout = 0');
+                    $connection->rawQuery('PRAGMA query_only = ON');
+                }
+                $connection->close();
+                $connection = $database->connect($scope);
+                if ($name === 'pgsql') {
+                    $state = $connection->query("SELECT current_setting('TimeZone') AS zone, current_setting('DateStyle') AS style, current_schema() AS schema, current_setting('application_name') AS application, (SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()) AS locks, to_regclass('pg_temp.type_session_temp') AS temporary")[0];
+                    self::check(
+                        $state['zone'] === 'UTC' && $state['style'] === 'ISO, YMD' && $state['schema'] !== 'pg_catalog'
+                        && $state['application'] !== 'session-contaminated' && (int) $state['locks'] === 0 && $state['temporary'] === null,
+                        'PostgreSQL 重置没有清除字符串 SQL 或触发器副作用'
+                    );
+                } elseif ($name === 'mysql') {
+                    $state = $connection->query("SELECT @@time_zone AS zone, @type_session_secret AS secret, IS_FREE_LOCK('type_session_probe_lock') AS first_lock, IS_FREE_LOCK('type_session_raw_lock') AS second_lock")[0];
+                    self::check(
+                        $state['zone'] === '+00:00' && $state['secret'] === null && (int) $state['first_lock'] === 1 && (int) $state['second_lock'] === 1,
+                        'MySQL 未退役带变量或命名锁的会话'
+                    );
+                } else {
+                    self::check((int) $connection->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1
+                        && (int) $connection->query('PRAGMA busy_timeout')[0]['timeout'] === $driver->identity()['session']['busy-milliseconds']
+                        && (int) $connection->query('PRAGMA query_only')[0]['query_only'] === 0
+                        && $connection->query("SELECT name FROM sqlite_temp_master WHERE name = 'type_session_temp'") === [], 'SQLite 会话状态泄漏');
+                }
+                $connection->table('type_session_probe')->where('id', '=', $index)->delete();
+                $connection->close();
+            }
+            self::check($name === 'sqlite' || count(array_unique($identities)) === ($name === 'pgsql' ? 1 : 4), '物理连接身份与驱动重置能力不一致');
+            $connection = $database->connect($scope);
+            self::check(self::reject(static fn (): array => $connection->query('SELECT * FROM type_session_missing_table')), '数据库错误没有传播');
+            $connection->close();
+            self::check($database->statistics()['idle'] === 0, '出错的物理会话进入了空闲池');
+            return ['driver' => $name, 'physical_reuse' => $name === 'pgsql', 'connection_ids' => $identities,
+                'checks' => ['crud', 'query', 'execute', 'raw', 'raw-query', 'session-isolation', 'error-retirement']];
+        } finally {
+            $connection?->close();
+            try {
+                $cleanup = $database->connect($scope);
+                $cleanup->execute('DROP TABLE IF EXISTS type_session_probe');
+                if ($name === 'pgsql') {
+                    $cleanup->execute('DROP FUNCTION IF EXISTS type_session_dirty()');
+                }
+                $cleanup->close();
+            } finally {
+                $scope->close();
+                $database->close();
+            }
+        }
+    }
+
     public static function run(Connection $connection, int $userId, int $articleId): void
     {
-        $user = User::query($connection)->findOrFail($userId);
+        $user = User::query()->findOrFail($userId);
         self::check($user->name === '用户甲' && $user->displayLabel() === '用户：用户甲', '转换没有保留属性或业务方法');
         $user->name = '属性修改';
         self::check($user->dirty() === ['name' => '属性修改'], '属性修改绕过了变更追踪');
@@ -52,10 +378,10 @@ final class CoreExercise
         $user->profile = $profile;
         self::check(array_key_exists('profile', $user->dirty()), 'JSON 整值赋回没有登记变更');
         self::check(!str_contains(json_encode($user, JSON_THROW_ON_ERROR), '仅供内部'), 'JSON 输出泄露隐藏字段');
-        $partial = User::query($connection)->select(['name'])->findOrFail($userId);
+        $partial = User::query()->select(['name'])->findOrFail($userId);
         self::check(self::reject(static fn () => $partial->active, 'field_not_loaded'), '未加载属性被当作 null');
         self::check(self::reject(static fn () => $partial->articles, 'relation_not_loaded'), '关系属性触发了隐式读取');
-        $post = Article::query($connection)->findOrFail($articleId);
+        $post = Article::query()->findOrFail($articleId);
         self::check($post->deleted_at === null && self::reject(static function () use ($post): void {
             $post->version = 100;
         }, 'field_not_fillable'), 'null 或只读生命周期属性错误');
@@ -63,18 +389,23 @@ final class CoreExercise
             $post->id = 100;
         }, 'field_not_fillable'), '持久化主键允许修改');
 
-        $base = Article::query($connection);
+        $base = Article::query();
+        self::check(
+            self::reject(static fn () => $base->scope(static fn (ModelQuery $query): ModelQuery => User::query()), 'invalid_scope')
+            && self::reject(static fn () => $base->search(['user' => 1], ['user' => static fn (ModelQuery $query, mixed $value): ModelQuery => User::query()]), 'invalid_searcher'),
+            '范围或搜索器允许替换模型查询'
+        );
         $grouped = $base->whereGroup(static fn (ModelConditions $conditions): ModelConditions => $conditions->where('status', '=', 'published')
             ->orWhere('title', '=', '草稿篇'))->whereNotIn('id', []);
         self::check($grouped->count() === 3 && $base->whereNull('deleted_at')->count() === 3, '模型条件组或 NULL/NOT IN 错误');
         self::check($base->where('status', '=', 'draft')->orWhere('views', '=', 10)->count() === 2, '模型 OR 映射错误');
-        self::check(User::query($connection)->whereJson('profile', ['enabled'], true)->exists(), '模型 JSON 标量条件错误');
+        self::check(User::query()->whereJson('profile', ['enabled'], true)->exists(), '模型 JSON 标量条件错误');
         self::check($base->orderBy('id')->value('views') === 10 && count($base->pluck('title', 'id')) === 3, '模型值提取或类型转换错误');
         self::check(self::reject(static fn () => $base->findOrFail(-1), 'not_found') && !$base->whereIn('id', [])->exists(), '模型缺失语义错误');
         $before = $connection->statistics();
         self::check(str_contains($grouped->toSql(), 'SELECT') && count($grouped->bindings()) === 2 && $connection->statistics() === $before, 'SQL 预览执行了数据库读取');
 
-        $users = User::query($connection);
+        $users = User::query();
         $counted = $users->whereHas('articles.tags', static fn (ModelQuery $query): ModelQuery => $query->where('label', '=', '框架'))
             ->withCount('articles')->withCount('articles.tags')->withSum('articles', 'views')->findOrFail($userId);
         self::check($counted->computed('articles_count') === 3 && $counted->computed('articles_tags_count') === 2
@@ -91,18 +422,18 @@ final class CoreExercise
             ->whereHas('articles.author.articles')->count() === 1, '嵌套回调或循环关系路径的别名发生遮蔽');
         self::check($users->withCount('articles', static fn (ModelQuery $query): ModelQuery => $query->where('status', '=', 'draft'), 'drafts')
             ->firstOrFail()->computed('drafts') === 1, '统计丢失显式子查询约束');
-        $post->delete($connection);
+        $post->delete();
         self::check(
             $users->withCount('articles')->firstOrFail()->computed('articles_count') === 2
             && $users->whereHas('articles.tags')->count() === 0
             && $users->withCount('articles', static fn (ModelQuery $query): ModelQuery => $query->withTrashed(), 'all_posts')->firstOrFail()->computed('all_posts') === 3,
             '关系过滤或统计丢失软删除范围'
         );
-        $post->restore($connection);
+        $post->restore();
         $creditQuery = $users->where('id', '=', $userId);
         if ($connection->driverName() === 'sqlite') {
             self::check(self::reject(static fn () => $creditQuery->increment('credit'), 'exact_arithmetic_unsupported'), 'SQLite 对精确文本执行了隐式算术');
-            self::check(self::reject(static fn () => $base->withSum('author', 'credit'), 'exact_sum_unsupported'), 'SQLite 对精确文本执行了不精确求和');
+            self::check(self::reject(static fn () => $base->withSum('author', 'credit')->get(), 'exact_sum_unsupported'), 'SQLite 对精确文本执行了不精确求和');
         } else {
             self::check($base->withSum('author', 'credit')->firstOrFail()->computed('author_credit_sum') === $user->credit, '关系统计损失精确小数');
             self::check($creditQuery->increment('credit') === 1 && $creditQuery->decrement('credit') === 1
@@ -125,10 +456,10 @@ final class CoreExercise
 
         self::queries($connection, $userId, $articleId);
         self::diagnostics($connection, $articleId);
-        $snapshot = Article::query($connection)->findOrFail($articleId);
+        $snapshot = Article::query()->findOrFail($articleId);
         self::check($base->where('id', '=', $articleId)->increment('views', 2) === 1 && $base->findOrFail($articleId)->views === 12, '原子自增错误');
         $snapshot->views = 90;
-        self::check(self::reject(static fn () => $snapshot->save($connection), 'optimistic_conflict'), '原子自增没有使旧版本过期');
+        self::check(self::reject(static fn () => $snapshot->save(), 'optimistic_conflict'), '原子自增没有使旧版本过期');
         self::check(
             $base->where('id', '=', $articleId)->decrement('views', 2) === 1 && $base->findOrFail($articleId)->views === 10,
             '原子自减或数据库影响行数错误'
@@ -140,7 +471,7 @@ final class CoreExercise
         $rollback = null;
         try {
             $connection->transaction(static function (Connection $transaction) use ($articleId, &$rollback): void {
-                $rollback = Article::query($transaction)->findOrFail($articleId);
+                $rollback = Article::query()->findOrFail($articleId);
                 throw new RuntimeException('rollback');
             });
         } catch (RuntimeException) {
@@ -216,8 +547,8 @@ final class CoreExercise
             count($uniqueUnion->pluck('id')) === 3 && (int) $uniqueUnion->orderBy('id')->value('id') === $articleId,
             '合并查询值提取改变了分支投影'
         );
-        $simple = Article::query($connection)->simplePaginate(2, 2);
-        self::check(count($simple->items()) === 1 && !$simple->hasMore() && Article::query($connection)->simplePaginate(1, 2)->hasMore(), '无总数分页边界错误');
+        $simple = Article::query()->simplePaginate(2, 2);
+        self::check(count($simple->items()) === 1 && !$simple->hasMore() && Article::query()->simplePaginate(1, 2)->hasMore(), '无总数分页边界错误');
         self::check($posts->simplePaginate(4, 2)->items() === [] && $posts->where('id', '=', -1)->increment('views') === 0, '空页或零影响行数错误');
     }
 
@@ -274,6 +605,8 @@ final class CoreExercise
         try {
             $operation();
         } catch (ModelException $error) {
+            return $code === '' || $error->errorCode() === $code;
+        } catch (TaskException $error) {
             return $code === '' || $error->errorCode() === $code;
         } catch (Throwable) {
             return $code === '';

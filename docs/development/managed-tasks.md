@@ -26,7 +26,7 @@ CoroutineRuntime::run(static function (): void {
 
 `context()` 返回请求或消息的关联信息，不能直接授予权限。应用在完成验证后通过 `run($operation, ['tenant_id' => $verifiedTenantId])` 显式绑定字符串值，组件以 `binding('tenant_id')` 读取；运行时不验证业务身份，也不查询业务表。输入数组中的引用被切断，绑定在重入结束后恢复；受管子任务取得创建当时的绑定快照及独立当前作用域，普通原生子协程不隐式继承。
 
-无绑定时 `current()` 抛 `scope_missing`；非协程调用抛 `coroutine_required`；关闭、取消、截止和跨执行者使用遵守原有拒绝规则。当前已提供上述公共入口和受管子任务绑定，HTTP、协议消息、CLI 装配、队列与定时任务的自动接入仍在实施，不能把该入口视为全部角色已经迁移。
+无绑定时 `current()` 抛 `scope_missing`；非协程调用抛 `coroutine_required`；关闭、取消、截止和跨执行者使用遵守原有拒绝规则。HTTP 请求、WebSocket 公开回调、生成 CLI、队列及定时任务已接入当前作用域。自定义 Socket 消息和 MQTT 持久处理角色仍须在其实际装配入口绑定，不能把通用入口的验证视为全部协议角色已经迁移。
 
 ## 子任务与真实收尾
 

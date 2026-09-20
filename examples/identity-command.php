@@ -104,7 +104,7 @@ function main(int $argc, array $argv): void
             identityExpect($state['id'] !== $sessionId && $state['zone'] === '+00:00' && $state['value'] === null, 'MySQL 会话污染下一租约');
         } elseif ($driver === 'pgsql') {
             $state = $next->query("SELECT pg_backend_pid() AS id, current_setting('TimeZone') AS zone, current_schema() AS schema")[0];
-            identityExpect($state['id'] !== $sessionId && $state['zone'] === 'UTC' && $state['schema'] !== 'pg_catalog', 'PostgreSQL 会话污染下一租约');
+            identityExpect($state['id'] === $sessionId && $state['zone'] === 'UTC' && $state['schema'] !== 'pg_catalog', 'PostgreSQL 没有复用已完整重置的会话');
         } else {
             identityExpect((int) $next->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1 && (int) $next->query('PRAGMA busy_timeout')[0]['timeout'] === 1000, 'SQLite PRAGMA 污染下一租约');
         }

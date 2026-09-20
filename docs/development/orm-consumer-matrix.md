@@ -28,13 +28,13 @@ JSON 对象的属性顺序不作跨库保证；读取后分别断言字段内容
 ## 公共行锁接口
 
 ```php
-$connection->transaction(static function (Connection $transaction): void {
-    $article = $transaction->table('articles')->where('id', '=', 42)->lockForUpdate()->first();
+Db::transaction(static function (): void {
+    $article = Article::query()->where('id', '=', 42)->lockForUpdate()->first();
     // 同一事务内完成依赖该行状态的工作。
 });
 
-$connection->transaction(static function (Connection $transaction): void {
-    $available = $transaction->table('articles')->orderBy('id')->limit(20)->lockForUpdate(true)->get();
+Db::transaction(static function (): void {
+    $available = Article::query()->orderBy('id')->limit(20)->lockForUpdate(true)->get();
 });
 ```
 
@@ -58,7 +58,9 @@ Composer 的 `config.platform` 显式把未选 PDO 扩展标为不存在，确�
 
 三驱动都创建自己的专属测试数据库，SQLite 使用专属本地文件以支持跨迁移连接和双进程访问；普通内存库的连接隔离单独验证，不冒充跨进程共享。测试结束删除这些准确命名的测试资源，保留消费者源码、Composer 锁文件、生成的模型与结果报告，便于复现。迁移使用框架 Migrator，不通过测试脚本替代业务建表。SQL 数据差异由公开模型与关系接口验证。
 
-强一致检查证明 reader/writer 身份约束、显式主库读取和写后粘滞；这里的两个用途指向同一测试服务，不把它冒充真实复制延迟演练。实际主从延迟和未知提交对账仍使用独立验证入口。
+本矩阵验证未配置副本时读取落到主库，以及显式主读与事务边界。默认读从、写主、事务外写后不粘主及从库故障拒绝由 `tests/read-write.php` 的独立实例验证；实际复制延迟和未知提交对账使用相应专项入口。
+
+主从验证器分别启动主库和只读端点，MySQL/PostgreSQL 需要本机数据库工具目录。可通过第四个命令参数指定，或使用 `TYPE_MYSQL_TOOLS`、`TYPE_PGSQL_TOOLS`；目录须包含对应的 `bin` 工具，验证器只清理自己创建的实例。SQLite 不需要服务工具。统一故障矩阵会传入已核验的工具目录，Composer 主从脚本读取上述环境变量。
 
 ## 执行入口
 
@@ -86,9 +88,17 @@ php tests/orm-suite-consumer.php pgsql --native
 php tests/orm-suite-consumer.php sqlite --native
 ```
 
-原生模式会先从消费者自己的包、模型与应用源码编译，再核对构建报告中的生产包和源码路径，随后移除构建依赖并运行 ELF 的 `run/race/verify` 三个行为。没有 PHP 源码回退；任一步失败直接使验证失败。三库配置分离与最终同提交 CI 均须执行，单项本地结果不能代替组合验收。
+原生模式先从消费者自己的包、模型与应用源码编译，核对生产包、源码清单和二进制摘要，再逐文件归档并回读源码摘要，移除应用、生产包及编译缓存中的 PHP 输入。之后由同一原生产物执行 CRUD、并发竞争和最终状态查询。报告记录移除的 PHP 文件数量、源码归档摘要、实际 Swoole 版本与静态/动态加载方式；不同平台按实际可执行格式验收，任一步失败均使验证失败。
 
-本任务没有修改根 Composer、CI 或公共完成状态文档；主仓集成时接入上述六条命令，并归档每个消费者的验证报告与原生构建身份即可。
+每份消费者报告同时保存主仓提交、工作区是否有修改及工具链锁摘要。开发中的成功结果单独成立；只有三个目标平台均来自同一提交且工作区干净，才计入同提交验收。
+
+同一消费者还验证当前作用域恢复、可信上下文快照、子事务独立、跨协程连接拒绝、关闭作用域后的缓存连接拒绝、父取消/关闭/Deadline 传播，以及等待超时后租约继续占用至任务结束。`database-io-wait` 用两个真实连接竞争同一行：持锁期间子任务等待超时，连接与在途预算保持占用；释放锁后等待实际收尾，核对最终数据没有丢失或重复写入。超时后的任务仍报告取消，数据库写入可能已经完成，不能据此透明重试。会话报告分别记录 PostgreSQL 完整重置后的物理复用、MySQL/SQLite 的保守关闭及污染隔离；普通 CRUD 物理复用不能仅由池槽位计数证明。
+
+消费者启动前启用 `CoroutineRuntime::enableIo()`。MySQL 需要 mysqlnd 和网络 hook，PostgreSQL、SQLite 分别需要官方 `--enable-swoole-pgsql`、`--enable-swoole-sqlite` 构建选项；缺失时真实锁等待验收不能通过。报告的 `swoole_hook_flags` 记录实际启用值。Swoole 会在扩展初始化时注册其编入的 PDO 驱动，所以 `PDO::getAvailableDrivers()` 可能包含没有独立加载 `pdo_*` 模块的驱动；`swoole_pdo_drivers` 单独记录该来源，`runtime_extensions` 继续验证独立模块过滤，生产包清单仍只能包含所选 ORM 驱动。
+
+macOS ARM64 和 Linux ARM64 已有三库独立消费的 PHP、AOT 与移除源码运行结果；Linux 结果来自 Colima ARM64 虚拟机内的专用容器。新增真实数据库锁等待后，三平台须按同一提交重新验收，旧结果不覆盖新增用例。Windows x64 工作流提供 `orm` 验收范围，复用专用数据库实例入口顺序执行三库；实际结果、真实主从故障与最终平台汇总尚未完成。
+
+验收工具支持用 `TYPE_SWOOLE_MODULE` 指定已核验的动态模块，将其复制到独立消费者并通过 `runtime.modules` 固定摘要。PHP、embed 探针与原生产物的扩展来源分别核对，不能仅改变 PHP 的 ini 后假定原生构建自动使用相同模块；原生构建仍以应用声明和实际 SDK 探测为准。
 
 ## 本机原生数据库矩阵入口
 

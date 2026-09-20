@@ -1,6 +1,6 @@
 # Model 自动连接与主从路由
 
-本文记录框架 ORM 已确定的接口约定与待实施范围。当前 `ModelCompiler` 仍生成需要 `Connection` 的查询入口，模型保存也需要显式连接；下文去掉连接参数的模型 API、静态 `search()`、自动租户隔离、`master()` 和 `Db` 事务入口是实施目标，尚不能作为当前可运行示例。自动连接、自动租户隔离、静态筛选助手和物理连接复用共同构成框架 ORM 的交付范围；物联中心身份与租户服务另按业务任务接入和验收。
+模型通过当前 Swoole 协程中的执行作用域自动取得受管连接。`ModelCompiler` 生成无连接参数的 `query()`、静态 `search()`，模型持久化、自动租户隔离、`master()` 和 `Db` 事务使用同一作用域。PostgreSQL 使用完整会话重置后复用 PDO，MySQL、SQLite 暂时归还即断开。三库物理复用、独立消费、AOT 与同提交平台验收全部完成后，才能声明 ORM 完整交付。物联中心身份与租户服务按独立业务任务接入和验收。
 
 ## 框架与业务边界
 
@@ -14,14 +14,14 @@
 
 业务 Service 围绕具体 Model 表达查询、赋值、持久化和事务意图，框架负责选择数据源、从池中借用连接并按执行作用域释放。具有指定租户字段的模型从当前可信执行上下文自动取得租户归属，业务不逐次补租户条件。
 
-目标调用形式如下，`CustomerMember` 属于已规划的身份/租户模型：
+已声明模型的调用形式如下，`WorkspaceMember` 表示消费应用中带租户字段的成员实体：
 
 ```php
 // 入口已验证并建立租户上下文；普通查询读从库，未配置从库时读主库。
-$members = CustomerMember::query()->get();
+$members = WorkspaceMember::query()->get();
 
 // 授权检查、写后确认等明确需要主库的读取。
-$member = CustomerMember::query()->master()->findOrFail($memberId);
+$member = WorkspaceMember::query()->master()->findOrFail($memberId);
 $member->enabled = false;
 $member->save();
 ```
@@ -35,7 +35,7 @@ $member->save();
 生成模型的查询入口为 `query(string $alias = ''): ModelQuery`，新增 `search(array $input = [], string $alias = ''): QueryHelper`，内部只调用 `\_query(self::query($alias), $input)`。模型的查询和保存入口不保留 `Connection` 参数，显式连接仍属于底层接口。
 
 ```php
-$members = CustomerMember::search(['enabled' => true, 'keyword' => '甲'])
+$members = WorkspaceMember::search(['enabled' => true, 'keyword' => '甲'])
     ->equal('enabled')
     ->like(['keyword' => 'name'])
     ->query()
@@ -51,7 +51,7 @@ $members = CustomerMember::search(['enabled' => true, 'keyword' => '甲'])
 
 ## 自动租户隔离
 
-默认在模型列映射中识别 `tenant_id`；特殊模型通过 `Table` 声明实际租户字段，例如客户角色的 `scope_id`。字段映射在编译期确定，运行时从当前 Swoole 执行作用域读取租户身份；不扫描数据库来猜测归属，不以字段是否允许批量赋值决定隔离是否生效。普通业务不提供 `forTenant()`，连接池和物理 PDO 均不保存业务租户身份。
+默认在模型列映射中识别 `tenant_id`；特殊模型通过 `Table(tenant: 'scope_id')` 声明对应属性。字段映射在编译期确定，运行时从当前 Swoole 执行作用域读取租户身份；不扫描数据库来猜测归属，不以字段是否允许批量赋值决定隔离是否生效。普通业务不提供 `forTenant()`，连接池和物理 PDO 均不保存业务租户身份。
 
 具有租户字段的模型在缺少可信租户上下文时明确报错，不执行无范围查询；没有租户字段的全局模型不受此限制。新增自动填充当前租户，显式输入与上下文冲突时拒绝。普通赋值、批量赋值和保存不能改变已有记录的租户归属；跨租户转移使用专门业务流程，保留授权、审计和原有一致性规则。
 
@@ -65,7 +65,7 @@ $members = CustomerMember::search(['enabled' => true, 'keyword' => '甲'])
 
 受管子任务继承已验证租户标识的值快照，使用自己的作用域、会话和租约，不继承父事务。持久后台任务从服务端记录恢复来源，按业务要求重验会话和当前权限后建立租户上下文；消息携带的普通关联数据不能自行建立可信身份。任务退出恢复或清除绑定，已受理操作的结果对账仍按原业务规则继续。
 
-当前 HTTP 作用域在认证前创建，认证结果仍主要保存在请求属性；尚未形成模型自动隔离所需的可信上下文链路。框架完善通用绑定、受管子任务与后台任务的生命周期并用独立消费者验证隔离；应用另行接入认证结果与租户选择，验证自己的连续请求和消息不会串用身份。
+HTTP 作用域在认证前创建。框架 HTTP、WebSocket 回调、队列和调度任务在执行处理器前绑定各自的作用域；可信租户身份仍由应用验证后提供。请求属性、`ExecutionScope` 构造参数中的 `context` 和消息载荷不会自动成为授权身份。业务接入必须另外验证连续请求、消息和后台恢复不会串用身份。
 
 ## 路由与一致性
 
@@ -86,6 +86,17 @@ $members = CustomerMember::search(['enabled' => true, 'keyword' => '甲'])
 
 每个逻辑数据源先配置一个主库端点和可选的一个只读端点；只读端点可以是数据库代理，不在 ORM 中增加复制管理或多副本选举。主从必须对应相同逻辑数据和驱动方言，SQLite 按单库使用。现有 `database.budget.replicas` 表示应用部署副本数量，不能复用为数据库从库配置。
 
+启动装配时，`$writer`、`$reader` 是驱动配置对象，分别声明 `writer` 和 `reader` 角色。两者的数据库名及驱动必须一致，地址可以不同；未配置副本时只传 `$writer`。
+
+```php
+$databases = new \Type\Orm\DatabaseManager([
+    'default' => ['master' => $writer, 'reader' => $reader],
+], capacity: 4, idleLimit: 2, waiterLimit: 64, waitSeconds: 1.0);
+\Type\Orm\Db::configure($databases);
+```
+
+构造和配置不连接数据库；执行查询、生成实际 SQL 或开启事务时才借用。应用所有者在全部请求和任务收尾后调用 `$databases->close()`。凭据轮换必须增加代次，且不得借轮换改变数据库、驱动或端点的主从职责。
+
 ## 协程上下文与事务
 
 应用入口显式装配数据库配置和 `DatabaseManager`；请求、消息、队列、定时任务和 CLI 在各自既有执行边界绑定 ORM 使用的作用域。绑定直接使用 Swoole 当前协程上下文，不引入通用 DI 或新的调度器；没有有效作用域时明确失败，不临时创建无法回收的全局连接。
@@ -98,11 +109,33 @@ $members = CustomerMember::search(['enabled' => true, 'keyword' => '甲'])
 
 手写业务事务采用 `Type\Orm\Db::transaction(Closure $operation, string $database = 'default'): mixed`，回调固定为 `Closure(): mixed`；提交后操作采用 `Db::afterCommit(Closure $operation, string $database = 'default'): void`，回调固定为 `Closure(): void`。`Db` 复用当前作用域的读写会话和现有事务实现，不持有全局活动连接。`#[Transactional]` 默认选择 default 数据源，指定数据源使用 `#[Transactional(database: 'archive')]`；模型声明使用 `Table` 的 `database` 参数，默认为 default。事务声明不再以业务方法中的 Connection 形参名选择连接。
 
-TypePHP 的生成查询、关系工厂和事务声明入口必须一起修改。`#[Transactional]` 的生成调用不能继续强制业务方法声明 `Connection` 形参；直接调用未经生成包装的原方法仍不会自动开启事务。PHP 与 AOT 编译使用同一份生成结果。
+独立命令在 `CoroutineRuntime::run()` 内创建、绑定和关闭作用域；已由 HTTP 或任务宿主建立的作用域直接使用。下面的 `$tenantId` 必须是应用完成资格校验的结果：
+
+```php
+\Type\Runtime\CoroutineRuntime::enableIo();
+\Type\Runtime\CoroutineRuntime::run(static function () use ($tenantId): void {
+    $scope = new \Type\Runtime\ExecutionScope();
+    try {
+        $scope->run(static function (\Type\Runtime\ExecutionScope $current): void {
+            \Type\Orm\Db::transaction(static function (): void {
+                $member = WorkspaceMember::query()->master()->findOrFail('member-id');
+                $member->name = '成员姓名';
+                $member->save();
+            });
+        }, ['tenant_id' => $tenantId]);
+    } finally {
+        $scope->close();
+    }
+});
+```
+
+同一作用域临时绑定其他已授权范围时，`run()` 在正常返回或异常后恢复原值。绑定前创建的查询和模型不会随之改变归属；需要在目标范围中重新查询。`tenant_scope_required` 表示租户模型缺失身份，`tenant_context_changed` 表示既有查询的上下文已改变，`model_scope_mismatch` 表示对象跨越执行作用域；这些错误均不能通过去掉隔离条件重试。
+
+生成查询、关系工厂和事务声明入口使用同一无连接契约。`#[Transactional]` 包装器通过 `Db` 调用业务方法；直接调用未经生成包装的原方法不会自动开启事务。PHP 与 AOT 编译使用同一份生成结果，仍须分别验证运行结果。
 
 ## 连接池与物理会话复用
 
-当前 `DatabaseManager → Database → ResourcePool → PdoSession` 已提供容量、等待、租约、凭据轮换和执行者校验。`PdoSession::reset()` 归还时关闭物理 PDO，空闲槽位复用不等于物理连接复用；标准应用目前还将空闲保留数设为零。
+当前 `DatabaseManager → Database → ResourcePool → PdoSession` 已提供容量、等待、租约、凭据轮换和执行者校验。`PdoSession::reset()` 先处理结果流和未结束事务，再由驱动确认会话是否可以保留。PostgreSQL 执行 `DISCARD ALL` 并恢复配置基线后复用物理 PDO；MySQL、SQLite 当前归还即断开。池容量、空闲上限与物理复用是不同概念，空闲槽位复用不等于物理连接复用。
 
 目标是在既有池中复用经过验证的干净 PDO 会话，避免普通模型操作反复认证建连。池容量、空闲上限和等待期限保持有界；归还必须关闭结果游标、处理未结束事务、清除本次作用域引用并恢复驱动声明的会话基线。会话修改、不可确认的状态、失效连接、重置失败和旧凭据代次均不能作为正常空闲连接再次借出，必须隔离并关闭。
 

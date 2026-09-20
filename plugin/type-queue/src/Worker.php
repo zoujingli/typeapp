@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Type\Queue;
 
 use Type\Runtime\ExecutionOwner;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\Deadline;
 use Type\Runtime\WorkLifecycle;
@@ -30,8 +31,13 @@ final class Worker
         $this->retries = $retries ?? new RetryPolicy();
         $this->lifecycle = new WorkLifecycle();
     }
+    /** Worker 及其队列连接在调用方的 Swoole 协程内装配；每条投递独立绑定作用域。 */
     public function runOnce(): bool
     {
+        CoroutineRuntime::assertAvailable();
+        if (\Swoole\Coroutine::getCid() < 0) {
+            throw new \Type\Runtime\TaskException('coroutine_required', '队列入口需要先在 Swoole 协程内装配资源');
+        }
         $this->owner->assertCurrent();
         if ($this->busy) {
             $this->counts['busy_rejected']++;
@@ -73,11 +79,13 @@ final class Worker
             $this->lifecycle->attach($scope);
             $error = null;
             try {
-                $context = new JobContext($scope, $reservation);
-                $context->assertActive();
-                $job = $this->registry->create($context);
-                $job->handle($context, $reservation->message()->payload());
-                $context->assertActive();
+                $scope->run(function (ExecutionScope $current) use ($reservation): void {
+                    $context = new JobContext($current, $reservation);
+                    $context->assertActive();
+                    $job = $this->registry->create($context);
+                    $job->handle($context, $reservation->message()->payload());
+                    $context->assertActive();
+                });
             } catch (Throwable $failure) {
                 $error = $failure;
             } finally {

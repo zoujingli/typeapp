@@ -44,6 +44,17 @@ final class Application
     }
     public static function run(int $release, array $arguments): void
     {
+        if (($arguments[1] ?? '') === 'serve') {
+            self::execute($release, $arguments);
+            return;
+        }
+        \Type\Runtime\CoroutineRuntime::run(static function () use ($release, $arguments): void {
+            self::execute($release, $arguments);
+        });
+    }
+
+    private static function execute(int $release, array $arguments): void
+    {
         try {
             $compatibility = self::compatibility($release);
             $mode = $arguments[1] ?? 'metadata';

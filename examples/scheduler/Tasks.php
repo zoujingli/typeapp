@@ -53,6 +53,9 @@ final class SummaryTask implements Task
     public function run(TaskContext $context): array
     {
         $context->scope()->assertActive();
+        if (\Type\Runtime\ExecutionScope::current() !== $context->scope()) {
+            throw new \RuntimeException('调度任务未绑定自己的作用域');
+        }
 
         return ['message' => '计划任务已完成', 'scheduled_at' => $context->scheduledAt()->format('Y-m-d\TH:i:s\Z')];
     }

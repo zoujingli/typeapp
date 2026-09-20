@@ -45,7 +45,8 @@ flowchart LR
 | `max_frame_bytes` | 1048576 字节 | 1–1048576；当前用于服务端 `send()` 的单条消息检查 |
 | `package_max_bytes` | 2097152 字节 | 原生包限制，介于 `max_frame_bytes` 和其两倍之间 |
 | `max_connections` | 64 个 | 1–4096；连接准入上限 |
-| `max_queued_bytes` | 1048576 字节 | 1–1048576；组件内正在提交的发送字节上限 |
+| `max_queued_bytes` | 1048576 字节 | 1–1048576；单连接入站在途消息与待处理消息的合计字节上限，也分别限制正在提交的发送字节 |
+| `max_pending_messages` | 16 条 | 1–1024；单连接等待进入消息回调的条数上限 |
 | `idle_seconds` | `0.0` | 空闲检查默认关闭；范围 0.0–600.0 秒 |
 | `heartbeat_seconds` | `0.0` | 原生检查间隔；启用空闲检查时必须大于 0 |
 | `message_seconds` | `30.0` | 单消息作用域期限，范围 `(0, 60]` 秒 |
@@ -57,7 +58,7 @@ flowchart LR
 
 秒数字段按示例使用浮点数，开关使用布尔值。这些是组件的选项白名单，其中包含应用资源策略；不能把所有键都当作 Swoole 原生参数，也不支持任意 `Server::set()` 透传。
 
-当前入站由原生 `package_max_length` 限制，`onMessage()` 前没有再按 `max_frame_bytes` 检查重组消息。业务需要更小载荷时，在消息入口验证长度后再解析。`max_queued_bytes` 的计数在 `push()` 返回后扣减，不代表原生缓冲已排空；慢消费者控制仍需结合原生发送结果与实际缓冲行为验收，不能把该值当作完整的背压保证。
+入站先由原生 `package_max_length` 限制，重组后再按 `max_frame_bytes` 检查消息。等待业务回调的消息同时受条数、字节和 `message_seconds` 等待期限限制，超限关闭当前连接。发送侧 `max_queued_bytes` 的计数在 `push()` 返回后扣减，不代表原生缓冲已排空；慢消费者控制仍需结合原生发送结果与实际缓冲行为验收。
 
 客户端工厂为 `Client::create($budget, $host, $port, $path, $tls, $headers, $maxMessageBytes, $connectTimeout, $tlsOptions)`：路径默认 `/`、TLS 默认 `false`、头默认空、消息上限默认 1 MiB、连接期限默认 5.0 秒。TLS 选项仅支持 `ssl_cafile`、`ssl_host_name`、`ssl_protocols`，强制验证证书链；每次收发期限为 `(0, 60]` 秒。
 
@@ -198,7 +199,7 @@ HTTP 中间件不会自动应用到 Upgrade、连接和后续消息。共用端�
 
 ## 应用设计与资源生命周期
 
-当前服务端是经典 Swoole WebSocket Server、单 worker、顺序回调，未启用回调协程化。`onMessage()` 的作用域管理本条消息资源，不等于自动创建消息协程；不能假定可在回调里随意使用要求已有协程的接口。需要耗时业务时，应使用明确的 Swoole 执行方式和有界任务装配，不在回调无限阻塞。
+当前服务端是经典 Swoole WebSocket Server、单 worker，启用官方回调协程。同一连接通过 Swoole Channel 顺序进入业务回调，`onOpen()` 完成后才处理消息；一个连接等待 I/O 时，其他连接可继续执行。每次公开回调拥有独立的当前作用域，`onMessage()` 中 `ExecutionScope::current()` 与传入的作用域相同。回调退出后收尾，连接本身不保留租户身份、数据库租约或事务；应用需按本条消息验证身份并建立可信绑定。取消或停止不提前释放仍在执行的子任务额度。
 
 回调签名为 `(int $fd, string $data, bool $binary, ExecutionScope $scope): void`。数据库租约等短期资源跟随消息作用域清理，连接只保存必要身份和订阅状态。广播需要限制接收人数、单消息大小与慢客户端队列，不给每条连接保留无限历史。
 

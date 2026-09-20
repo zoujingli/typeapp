@@ -90,7 +90,7 @@ try {
     } else {
         $launcher = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; require ' . var_export($root . '/examples/tenant/Endpoint.php', true)
             . '; require ' . var_export($root . '/examples/tenant-http-command.php', true) . '; main($argc,$argv);';
-        $command = [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r', $launcher];
+        $command = [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $launcher];
     }
     $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => $log, 2 => $log], $pipes, null, $environment);
     expect(is_resource($process), '无法启动租户服务');

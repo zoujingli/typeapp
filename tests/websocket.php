@@ -326,6 +326,13 @@ try {
         $client->start();
         expect($client->statistics()['state'] === 'active', 'WebSocket 客户端未完成握手');
 
+        foreach (['slow', 'second', 'third'] as $message) {
+            $client->send($message, false);
+        }
+        foreach (['slow', 'second', 'third'] as $message) {
+            expect($client->receive(5.0) === $message, '慢消息后续回调丢失或乱序');
+        }
+
         $client->send('文本消息', false);
         expect($client->receive(5.0) === '文本消息', '文本消息未正确回显');
 

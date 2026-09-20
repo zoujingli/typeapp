@@ -160,12 +160,13 @@ final class SnapshotCommand implements Command
     }
 }
 
-/** 通过公开作用域入口验证取消、截止、关闭拒绝及创建子任务失败后的预算归还。 */
+/** 通过命令当前作用域验证取消、截止、关闭拒绝及子任务的独立绑定与预算归还。 */
 final class ScopeCommand implements Command
 {
     public function run(Configuration $configuration, array $arguments): int
     {
         $cancellation = new \Type\Runtime\Cancellation();
+        $commandScope = \Type\Runtime\ExecutionScope::current();
         $scope = new \Type\Runtime\ExecutionScope(cancellation: $cancellation);
         $scope->open(new ExampleResource('scope', false, false));
         $cancellation->cancel();
@@ -191,16 +192,11 @@ final class ScopeCommand implements Command
         }
         $expired->close();
         $parent = new \Type\Runtime\ExecutionScope();
-        $childRejected = false;
-        try {
-            $parent->spawn(static fn (\Type\Runtime\ExecutionScope $child): int => 1);
-        } catch (\Type\Runtime\TaskException $childError) {
-            $childRejected = $childError->errorCode() === 'coroutine_required';
-        }
+        $childResult = $parent->spawn(static fn (\Type\Runtime\ExecutionScope $child): bool => \Type\Runtime\ExecutionScope::current() === $child)->await();
         $parent->close();
-        if (!$cancelled || !$closedRejected || !$deadlineRejected || !$childRejected
+        if (!$cancelled || !$closedRejected || !$deadlineRejected || $childResult !== true || \Type\Runtime\ExecutionScope::current() !== $commandScope
             || $scope->state() !== 'closed' || $expired->state() !== 'closed' || $parent->state() !== 'closed' || $parent->activeTasks() !== 0) {
-            throw new RuntimeException('作用域状态或创建失败后的预算未恢复');
+            throw new RuntimeException('作用域状态、子任务绑定或预算未恢复');
         }
         echo "取消、截止、关闭拒绝与子任务预算恢复通过。\n";
         return 0;

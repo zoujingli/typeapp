@@ -7,7 +7,8 @@ use Type\Validate\Helper\ValidateHelper;
 use Type\Validate\Input;
 use Type\Validate\Schema;
 use Type\Validate\ValidationException;
-use Type\Orm\Database;
+use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
 use Type\Orm\DatabaseException;
 use Type\Orm\Connection;
 use Type\Orm\Model;
@@ -179,7 +180,7 @@ function helpersOrdering(Connection $connection): void
     }
     helpersAssert($strictDuplicate, 'orderBy原有重复分页列契约被改变');
 
-    $modelBase = (new ModelQuery($connection, TypeHelperSortedUser::mapping(), static fn (array $values): TypeHelperSortedUser => new TypeHelperSortedUser($values)))
+    $modelBase = (new ModelQuery(TypeHelperSortedUser::mapping(), static fn (array $values): TypeHelperSortedUser => new TypeHelperSortedUser($values)))
         ->where('tenant', '=', 1);
     $modelAllowed = ['oldest' => 'years', 'label' => 'label', 'id' => 'id'];
     $modelSorted = _query($modelBase, ['sort' => 'oldest', 'direction' => 'DESC', 'page' => 2, 'page_size' => 2])->order($modelAllowed);
@@ -324,119 +325,124 @@ function helpersDefaults(): void
 /** 显式入口只使用测试自建输入，不读取隐式全局请求。 */
 function main(int $argc, array $argv): void
 {
-    helpersDefaults();
-    $rules = ['age' => Field::integer()->required(), 'active' => Field::boolean()->required(), 'note' => Field::text()->nullable(), 'missing' => Field::text()];
-    $checked = _vali($rules, ['age' => 0, 'active' => false, 'note' => null, 'ignored' => '不返回']);
-    helpersAssert($checked === ['age' => 0, 'active' => false, 'note' => null], '快捷校验混淆了零、false、null或未声明字段');
-    $data = ValidateHelper::data(new Schema($rules), new Input(['body' => ['age' => 1, 'active' => true, 'note' => null]]));
-    helpersAssert($data->has('note') && $data->get('note') === null && !$data->has('missing'), 'Data没有保留missing与null');
-    helpersAssert(_vali($rules, [], patch: true) === [], 'PATCH为缺失输入制造了值');
-    helpersAssert(_vali(['name' => Field::text()->required()], ['name' => '']) === ['name' => ''], 'required不应被助手改成隐式非空规则');
-    $input = new Input(['route' => ['id' => '9'], 'query' => ['id' => '7'], 'body' => ['id' => '5']]);
-    helpersAssert(_vali(['id' => Field::integer()->cast()->from('route')], $input) === ['id' => 9], '快捷校验合并了不同输入来源');
-    helpersAssert(_vali(['name' => Field::text()->required()->inScenarios(['create'])], [], scenario: 'update') === [], '场景被助手忽略');
-    $failed = false;
-    try {
-        _vali(['name' => Field::text()->required()->length(1, 20)], ['name' => '']);
-    } catch (ValidationException $error) {
-        $failed = $error->errors() === ['name' => ['length']];
-    }
-    helpersAssert($failed, '显式非空规则没有生效');
-    $redacted = false;
-    try {
-        _vali(['age' => Field::integer()], ['age' => 'sensitive-test-value']);
-    } catch (ValidationException $error) {
-        $redacted = !str_contains($error->getMessage(), 'sensitive-test-value') && $error->errors() === ['age' => ['type_integer']];
-    }
-    helpersAssert($redacted, '错误信息泄露输入值或丢失稳定错误码');
-    $legacyRejected = false;
-    try {
-        _vali(['name.require' => '名称必填'], []);
-    } catch (InvalidArgumentException) {
-        $legacyRejected = true;
-    }
-    helpersAssert($legacyRejected, '有限DSL之外的字符串规则不能静默忽略');
-    $database = new Database(new SqliteDriver(':memory:'));
-    $scope = new ExecutionScope();
-    try {
-        $connection = $database->connect($scope);
-        $connection->execute('CREATE TABLE helper_users (id INTEGER PRIMARY KEY, tenant INTEGER NOT NULL, age INTEGER NOT NULL, active INTEGER NOT NULL, note TEXT, name TEXT NOT NULL)');
-        foreach ([[1, 1, 0, 0, null, '中文甲'], [2, 1, 18, 1, '', '中文乙'], [3, 1, 30, 1, '备注', 'Other'], [4, 2, 20, 1, null, '中文甲']] as $row) {
-            $connection->execute('INSERT INTO helper_users (id, tenant, age, active, note, name) VALUES (?, ?, ?, ?, ?, ?)', $row);
-        }
-        $base = $connection->table('helper_users')->where('tenant', '=', 1)->orderBy('id');
-        $helper = _query($base, ['age' => 0, 'active' => false, 'note' => null, 'order' => 'id DESC; DROP TABLE helper_users']);
-        $filtered = $helper->equal('age,active,note')->query()->get();
-        helpersAssert(array_column($filtered, 'id') === [1], '等值筛选遗漏0、false或NULL');
-        helpersAssert(count($helper->query()->get()) === 3 && count($base->get()) === 3, '链式筛选修改了原查询或原助手');
-        helpersAssert(count(_query($base, ['age' => ''])->equal('age')->query()->get()) === 3, '空字符串没有按约定跳过');
-        helpersAssert(count(_query($base, [])->equal('age')->query()->get()) === 3, '缺失输入没有跳过');
-        helpersAssert(array_column(_query($base, ['keyword' => '中文'])->like(['keyword' => 'name'])->query()->get(), 'id') === [1, 2], '白名单列映射模糊筛选错误');
-        helpersAssert(array_column(_query($base, ['id' => '1, 3,4'])->in('id')->query()->get(), 'id') === [1, 3], 'IN筛选绕过原有租户约束');
-        helpersAssert(_query($base, ['id' => []])->in('id')->query()->get() === [], '空IN列表不应退化为全表');
-        helpersAssert(array_column(_query($base, ['age' => [18, 30]])->between('age')->query()->get(), 'id') === [2, 3], '边界值范围筛选错误');
-        helpersAssert(_query($base, ['name' => "x' OR 1=1 --"])->equal('name')->query()->get() === [], '注入文本改变了查询语义');
-        helpersAssert(count(_query($base, ['name' => '%'])->like('name')->query()->get()) === 3, 'LIKE通配符应沿用数据库语义');
-        $page = _query($base, ['page' => '2', 'page_size' => '1'])->paginatePage();
-        helpersAssert($page->total() === 3 && $page->number() === 2 && array_column($page->items(), 'id') === [2], '受限分页结果错误');
-        $rejected = false;
+    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
+        helpersDefaults();
+        $rules = ['age' => Field::integer()->required(), 'active' => Field::boolean()->required(), 'note' => Field::text()->nullable(), 'missing' => Field::text()];
+        $checked = _vali($rules, ['age' => 0, 'active' => false, 'note' => null, 'ignored' => '不返回']);
+        helpersAssert($checked === ['age' => 0, 'active' => false, 'note' => null], '快捷校验混淆了零、false、null或未声明字段');
+        $data = ValidateHelper::data(new Schema($rules), new Input(['body' => ['age' => 1, 'active' => true, 'note' => null]]));
+        helpersAssert($data->has('note') && $data->get('note') === null && !$data->has('missing'), 'Data没有保留missing与null');
+        helpersAssert(_vali($rules, [], patch: true) === [], 'PATCH为缺失输入制造了值');
+        helpersAssert(_vali(['name' => Field::text()->required()], ['name' => '']) === ['name' => ''], 'required不应被助手改成隐式非空规则');
+        $input = new Input(['route' => ['id' => '9'], 'query' => ['id' => '7'], 'body' => ['id' => '5']]);
+        helpersAssert(_vali(['id' => Field::integer()->cast()->from('route')], $input) === ['id' => 9], '快捷校验合并了不同输入来源');
+        helpersAssert(_vali(['name' => Field::text()->required()->inScenarios(['create'])], [], scenario: 'update') === [], '场景被助手忽略');
+        $failed = false;
         try {
-            _query($base, [])->equal(['name' => 'id OR 1=1']);
+            _vali(['name' => Field::text()->required()->length(1, 20)], ['name' => '']);
+        } catch (ValidationException $error) {
+            $failed = $error->errors() === ['name' => ['length']];
+        }
+        helpersAssert($failed, '显式非空规则没有生效');
+        $redacted = false;
+        try {
+            _vali(['age' => Field::integer()], ['age' => 'sensitive-test-value']);
+        } catch (ValidationException $error) {
+            $redacted = !str_contains($error->getMessage(), 'sensitive-test-value') && $error->errors() === ['age' => ['type_integer']];
+        }
+        helpersAssert($redacted, '错误信息泄露输入值或丢失稳定错误码');
+        $legacyRejected = false;
+        try {
+            _vali(['name.require' => '名称必填'], []);
         } catch (InvalidArgumentException) {
-            $rejected = true;
+            $legacyRejected = true;
         }
-        helpersAssert($rejected, '非法开发侧列声明不能因缺失输入而被忽略');
-        foreach (['page' => [0, -1, true, null, '01', '1e2', '2.5', '10001', '9999999999999999999999'], 'page_size' => [0, -1, false, null, '1001']] as $pageKey => $values) {
-            foreach ($values as $invalidValue) {
-                $pageRejected = false;
-                try {
-                    _query($base, [$pageKey => $invalidValue])->paginatePage();
-                } catch (InvalidArgumentException) {
-                    $pageRejected = true;
-                }
-                helpersAssert($pageRejected, '非法分页输入未被拒绝');
-            }
-        }
-        $invalidFilters = [['IN', null], ['IN', [1, null]], ['IN', '1,,2'], ['IN', array_fill(0, 1001, 1)],
-            ['BETWEEN', [1]], ['BETWEEN', [1, null]], ['BETWEEN', '1 - 2'], ['LIKE', false], ['LIKE', null], ['=', new stdClass()]];
-        foreach ($invalidFilters as $invalidFilter) {
-            $inputHelper = _query($base, ['age' => $invalidFilter[1]]);
-            $filterRejected = false;
-            try {
-                if ($invalidFilter[0] === 'IN') {
-                    $inputHelper->in('age');
-                } elseif ($invalidFilter[0] === 'BETWEEN') {
-                    $inputHelper->between('age');
-                } elseif ($invalidFilter[0] === 'LIKE') {
-                    $inputHelper->like('age');
-                } else {
-                    $inputHelper->equal('age');
-                }
-            } catch (InvalidArgumentException) {
-                $filterRejected = true;
-            }
-            helpersAssert($filterRejected, '歧义或越界筛选输入未被拒绝');
-        }
-        $modelBase = (new ModelQuery($connection, TypeHelperUser::mapping(), static fn (array $values): TypeHelperUser => new TypeHelperUser($values)))
-            ->where('tenant', '=', 1)->orderBy('id');
-        $modelFiltered = _query($modelBase, ['id' => [1, 4], 'active' => false, 'note' => null])->in('id')->equal('active,note')->query();
-        helpersAssert($modelFiltered instanceof ModelQuery, '模型查询被助手降成无映射查询');
-        $models = $modelFiltered->get();
-        helpersAssert(count($models) === 1 && $models[0]->get('id') === 1 && count($modelBase->get()) === 3, '模型筛选丢失类型、租户约束或不可变性');
-        $modelPage = _query($modelBase, ['age' => [18, 30], 'keyword' => '中文'])->between('age')->like(['keyword' => 'name'])->paginatePage();
-        helpersAssert($modelPage->total() === 1 && $modelPage->items()[0]->get('id') === 2, '模型范围、LIKE或分页未经过公开模型查询');
-        $global = $_GET;
-        $_GET = ['tenant' => 2, 'age' => 999, 'name' => '泄露'];
+        helpersAssert($legacyRejected, '有限DSL之外的字符串规则不能静默忽略');
+        $database = new DatabaseManager(['default' => new SqliteDriver(':memory:')]);
+        Db::configure($database);
+        $scope = new ExecutionScope();
         try {
-            helpersAssert(count(_query($base)->equal('age')->query()->get()) === 3, '查询助手读取了隐式全局输入');
-            helpersAssert(_vali(['name' => Field::text()], []) === [], '校验助手读取了隐式全局输入');
+            $scope->run(static function (ExecutionScope $current) use ($database, &$scope, $argv): void {
+                $connection = Db::connection('default', true);
+                $connection->execute('CREATE TABLE helper_users (id INTEGER PRIMARY KEY, tenant INTEGER NOT NULL, age INTEGER NOT NULL, active INTEGER NOT NULL, note TEXT, name TEXT NOT NULL)');
+                foreach ([[1, 1, 0, 0, null, '中文甲'], [2, 1, 18, 1, '', '中文乙'], [3, 1, 30, 1, '备注', 'Other'], [4, 2, 20, 1, null, '中文甲']] as $row) {
+                    $connection->execute('INSERT INTO helper_users (id, tenant, age, active, note, name) VALUES (?, ?, ?, ?, ?, ?)', $row);
+                }
+                $base = $connection->table('helper_users')->where('tenant', '=', 1)->orderBy('id');
+                $helper = _query($base, ['age' => 0, 'active' => false, 'note' => null, 'order' => 'id DESC; DROP TABLE helper_users']);
+                $filtered = $helper->equal('age,active,note')->query()->get();
+                helpersAssert(array_column($filtered, 'id') === [1], '等值筛选遗漏0、false或NULL');
+                helpersAssert(count($helper->query()->get()) === 3 && count($base->get()) === 3, '链式筛选修改了原查询或原助手');
+                helpersAssert(count(_query($base, ['age' => ''])->equal('age')->query()->get()) === 3, '空字符串没有按约定跳过');
+                helpersAssert(count(_query($base, [])->equal('age')->query()->get()) === 3, '缺失输入没有跳过');
+                helpersAssert(array_column(_query($base, ['keyword' => '中文'])->like(['keyword' => 'name'])->query()->get(), 'id') === [1, 2], '白名单列映射模糊筛选错误');
+                helpersAssert(array_column(_query($base, ['id' => '1, 3,4'])->in('id')->query()->get(), 'id') === [1, 3], 'IN筛选绕过原有租户约束');
+                helpersAssert(_query($base, ['id' => []])->in('id')->query()->get() === [], '空IN列表不应退化为全表');
+                helpersAssert(array_column(_query($base, ['age' => [18, 30]])->between('age')->query()->get(), 'id') === [2, 3], '边界值范围筛选错误');
+                helpersAssert(_query($base, ['name' => "x' OR 1=1 --"])->equal('name')->query()->get() === [], '注入文本改变了查询语义');
+                helpersAssert(count(_query($base, ['name' => '%'])->like('name')->query()->get()) === 3, 'LIKE通配符应沿用数据库语义');
+                $page = _query($base, ['page' => '2', 'page_size' => '1'])->paginatePage();
+                helpersAssert($page->total() === 3 && $page->number() === 2 && array_column($page->items(), 'id') === [2], '受限分页结果错误');
+                $rejected = false;
+                try {
+                    _query($base, [])->equal(['name' => 'id OR 1=1']);
+                } catch (InvalidArgumentException) {
+                    $rejected = true;
+                }
+                helpersAssert($rejected, '非法开发侧列声明不能因缺失输入而被忽略');
+                foreach (['page' => [0, -1, true, null, '01', '1e2', '2.5', '10001', '9999999999999999999999'], 'page_size' => [0, -1, false, null, '1001']] as $pageKey => $values) {
+                    foreach ($values as $invalidValue) {
+                        $pageRejected = false;
+                        try {
+                            _query($base, [$pageKey => $invalidValue])->paginatePage();
+                        } catch (InvalidArgumentException) {
+                            $pageRejected = true;
+                        }
+                        helpersAssert($pageRejected, '非法分页输入未被拒绝');
+                    }
+                }
+                $invalidFilters = [['IN', null], ['IN', [1, null]], ['IN', '1,,2'], ['IN', array_fill(0, 1001, 1)],
+                    ['BETWEEN', [1]], ['BETWEEN', [1, null]], ['BETWEEN', '1 - 2'], ['LIKE', false], ['LIKE', null], ['=', new stdClass()]];
+                foreach ($invalidFilters as $invalidFilter) {
+                    $inputHelper = _query($base, ['age' => $invalidFilter[1]]);
+                    $filterRejected = false;
+                    try {
+                        if ($invalidFilter[0] === 'IN') {
+                            $inputHelper->in('age');
+                        } elseif ($invalidFilter[0] === 'BETWEEN') {
+                            $inputHelper->between('age');
+                        } elseif ($invalidFilter[0] === 'LIKE') {
+                            $inputHelper->like('age');
+                        } else {
+                            $inputHelper->equal('age');
+                        }
+                    } catch (InvalidArgumentException) {
+                        $filterRejected = true;
+                    }
+                    helpersAssert($filterRejected, '歧义或越界筛选输入未被拒绝');
+                }
+                $modelBase = (new ModelQuery(TypeHelperUser::mapping(), static fn (array $values): TypeHelperUser => new TypeHelperUser($values)))
+                    ->where('tenant', '=', 1)->orderBy('id');
+                $modelFiltered = _query($modelBase, ['id' => [1, 4], 'active' => false, 'note' => null])->in('id')->equal('active,note')->query();
+                helpersAssert($modelFiltered instanceof ModelQuery, '模型查询被助手降成无映射查询');
+                $models = $modelFiltered->get();
+                helpersAssert(count($models) === 1 && $models[0]->get('id') === 1 && count($modelBase->get()) === 3, '模型筛选丢失类型、租户约束或不可变性');
+                $modelPage = _query($modelBase, ['age' => [18, 30], 'keyword' => '中文'])->between('age')->like(['keyword' => 'name'])->paginatePage();
+                helpersAssert($modelPage->total() === 1 && $modelPage->items()[0]->get('id') === 2, '模型范围、LIKE或分页未经过公开模型查询');
+                $global = $_GET;
+                $_GET = ['tenant' => 2, 'age' => 999, 'name' => '泄露'];
+                try {
+                    helpersAssert(count(_query($base)->equal('age')->query()->get()) === 3, '查询助手读取了隐式全局输入');
+                    helpersAssert(_vali(['name' => Field::text()], []) === [], '校验助手读取了隐式全局输入');
+                } finally {
+                    $_GET = $global;
+                }
+                helpersOrdering($connection);
+            });
         } finally {
-            $_GET = $global;
+            $scope->close();
+            $database->close();
         }
-        helpersOrdering($connection);
-    } finally {
-        $scope->close();
-        $database->close();
-    }
-    echo "显式输入快捷校验、受限查询、白名单排序与SQLite真实结果通过。\n";
+        echo "显式输入快捷校验、受限查询、白名单排序与SQLite真实结果通过。\n";
+    });
 }

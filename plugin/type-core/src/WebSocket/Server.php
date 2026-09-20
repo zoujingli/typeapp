@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Type\Core\WebSocket;
 
 use Swoole\Coroutine;
+use Swoole\Coroutine\Channel;
 use Swoole\Http\Request as HttpRequest;
 use Swoole\Http\Response as HttpResponse;
 use Swoole\WebSocket\Frame;
@@ -36,6 +37,8 @@ final class Server implements ManagedResource
     private string $state = 'new';
     private bool $allocated = false;
     private array $connections = [];
+    private array $incomingBytes = [];
+    private array $scopes = [];
     private array $queuedBytes = [];
     private int $sentBytes = 0;
     private int $receivedBytes = 0;
@@ -69,7 +72,7 @@ final class Server implements ManagedResource
      * 创建尚未监听的服务。端口 0 由系统分配，实际端口在 serve 后由 statistics 报告。
      *
      * @param array{subprotocol?: string, allowed_origins?: list<string>, max_frame_bytes?: int,
-     *     package_max_bytes?: int, max_connections?: int, max_queued_bytes?: int, idle_seconds?: float,
+     *     package_max_bytes?: int, max_connections?: int, max_queued_bytes?: int, max_pending_messages?: int, idle_seconds?: float,
      *     heartbeat_seconds?: float, message_seconds?: float, open_websocket_close_frame?: bool,
      *     open_websocket_ping_frame?: bool, open_websocket_pong_frame?: bool, websocket_compression?: bool,
      *     open_ssl?: bool, ssl_cert_file?: string, ssl_key_file?: string, ssl_passphrase?: string,
@@ -216,10 +219,12 @@ final class Server implements ManagedResource
     public function disconnect(int $fd, int $code = 1000, string $reason = ''): void
     {
         $this->owner->assertCurrent();
+        $gate = $this->connections[$fd] ?? null;
+        unset($this->connections[$fd], $this->queuedBytes[$fd], $this->incomingBytes[$fd]);
+        $gate?->close();
         if ($this->server !== null && $this->server->isEstablished($fd)) {
             $this->server->disconnect($fd, $code, $reason);
         }
-        unset($this->connections[$fd], $this->queuedBytes[$fd]);
     }
 
     /**
@@ -232,14 +237,16 @@ final class Server implements ManagedResource
             return;
         }
         $this->state = 'stopping';
+        foreach ($this->scopes as $scope) {
+            $scope->cancellation()->cancel();
+        }
         if ($this->server !== null) {
             foreach (array_keys($this->connections) as $fd) {
-                if ($this->server->isEstablished($fd)) {
-                    $this->server->disconnect($fd, 1001, 'server_stopping');
-                }
+                $this->disconnect($fd, 1001, 'server_stopping');
             }
             $this->connections = [];
             $this->queuedBytes = [];
+            $this->incomingBytes = [];
             $this->server->shutdown();
         }
         $this->release();
@@ -310,10 +317,21 @@ final class Server implements ManagedResource
                 $this->disconnect($fd, 1008, 'origin_not_allowed');
                 return;
             }
-            $this->connections[$fd] = true;
+            $gate = new Channel(1);
+            $this->connections[$fd] = $gate;
             $this->acceptedCount++;
-            if ($this->onOpen !== null) {
-                ($this->onOpen)($fd, $headers, $verified);
+            try {
+                if ($this->onOpen !== null) {
+                    $this->invoke(function (ExecutionScope $scope) use ($fd, $headers, $verified): void {
+                        ($this->onOpen)($fd, $headers, $verified);
+                    }, ['connection' => (string) $fd]);
+                }
+            } catch (\Throwable $error) {
+                $this->disconnect($fd, 1011, 'open_failed');
+            } finally {
+                if (($this->connections[$fd] ?? null) === $gate) {
+                    $gate->push(true);
+                }
             }
         });
 
@@ -332,35 +350,54 @@ final class Server implements ManagedResource
             if ($this->onMessage === null) {
                 return;
             }
-            // 同一连接串行投递：在途消息未返回前不投递下一条，保证只有一个所有者。
-            $owner = $this->connections[$fd];
-            if ($owner !== true) {
+            // 官方 Channel 串行放行业务；等待者同时受条数、字节和期限限制。
+            $gate = $this->connections[$fd];
+            $pending = ($this->incomingBytes[$fd] ?? 0) + $received;
+            if ($received > $this->options['max_frame_bytes'] || $pending > $this->options['max_queued_bytes']
+                || $gate->stats()['consumer_num'] >= $this->options['max_pending_messages']) {
+                $this->rejectedCount++;
+                $this->disconnect($fd, 1009, 'message_queue_full');
                 return;
             }
-            $this->connections[$fd] = Coroutine::getCid();
-            $scope = new ExecutionScope(
-                new Deadline($this->options['message_seconds']),
-                ['connection' => (string) $fd]
-            );
+            $this->incomingBytes[$fd] = $pending;
+            $acquired = false;
             try {
-                ($this->onMessage)($fd, $frame->data, $frame->opcode !== \WEBSOCKET_OPCODE_TEXT, $scope);
-            } finally {
-                try {
-                    $scope->close();
-                } catch (\Throwable $error) {
-                    fwrite(STDERR, "WebSocket 消息作用域清理失败。\n");
+                $acquired = $gate->pop($this->options['message_seconds']) === true;
+                if (!$acquired || ($this->connections[$fd] ?? null) !== $gate) {
+                    if (($this->connections[$fd] ?? null) === $gate) {
+                        $this->disconnect($fd, 1013, 'message_wait_timeout');
+                    }
+                    return;
                 }
-                if (isset($this->connections[$fd])) {
-                    $this->connections[$fd] = true;
+                $this->invoke(function (ExecutionScope $scope) use ($fd, $frame): void {
+                    ($this->onMessage)($fd, $frame->data, $frame->opcode !== \WEBSOCKET_OPCODE_TEXT, $scope);
+                }, ['connection' => (string) $fd]);
+            } catch (\Throwable $error) {
+                if (($this->connections[$fd] ?? null) === $gate) {
+                    $this->disconnect($fd, 1011, 'message_failed');
+                }
+            } finally {
+                if (($this->connections[$fd] ?? null) === $gate) {
+                    $this->incomingBytes[$fd] -= $received;
+                    if ($acquired) {
+                        $gate->push(true);
+                    }
                 }
             }
         });
 
         $native->on('close', function (NativeServer $server, int $fd, int $reactorId): void {
-            $known = isset($this->connections[$fd]);
-            unset($this->connections[$fd], $this->queuedBytes[$fd]);
-            if ($known && $this->onClose !== null) {
-                ($this->onClose)($fd, $reactorId);
+            $gate = $this->connections[$fd] ?? null;
+            unset($this->connections[$fd], $this->queuedBytes[$fd], $this->incomingBytes[$fd]);
+            $gate?->close();
+            if ($gate !== null && $this->onClose !== null) {
+                try {
+                    $this->invoke(function (ExecutionScope $scope) use ($fd, $reactorId): void {
+                        ($this->onClose)($fd, $reactorId);
+                    }, ['connection' => (string) $fd]);
+                } catch (\Throwable $error) {
+                    $this->stop();
+                }
             }
         });
 
@@ -370,15 +407,56 @@ final class Server implements ManagedResource
                 $response->end('not_found');
                 return;
             }
-            ($this->onRequest)($request, $response);
+            try {
+                $this->invoke(function (ExecutionScope $scope) use ($request, $response): void {
+                    ($this->onRequest)($request, $response);
+                });
+            } catch (\Throwable $error) {
+                if ($response->isWritable()) {
+                    $response->status(500);
+                    $response->end('request_failed');
+                }
+            }
         });
+    }
+
+    /**
+     * 每次公开回调拥有独立资源；异常和停止不提前释放尚未收尾的作用域额度。
+     * @param \Closure(ExecutionScope): void $operation
+     * @param array<string, string> $context
+     */
+    private function invoke(\Closure $operation, array $context = []): void
+    {
+        $scope = new ExecutionScope(new Deadline($this->options['message_seconds']), $context);
+        $id = spl_object_id($scope);
+        $this->scopes[$id] = $scope;
+        try {
+            $scope->run($operation);
+        } finally {
+            try {
+                $scope->close();
+            } finally {
+                if ($scope->state() === 'closed') {
+                    unset($this->scopes[$id]);
+                } else {
+                    $this->stop();
+                    // 保持原协程所有权，直到后代真实结束；永久清理故障由角色监督处理。
+                    $scope->awaitClosed();
+                    unset($this->scopes[$id]);
+                }
+                if ($this->state === 'stopping') {
+                    $this->release();
+                }
+            }
+        }
     }
 
     private function apply(NativeServer $native): void
     {
         $settings = [
             'worker_num' => 1,
-            'enable_coroutine' => false,
+            'enable_coroutine' => true,
+            'max_coroutine' => $this->options['max_connections'] * ($this->options['max_pending_messages'] + 2) + 32,
             'log_level' => \SWOOLE_LOG_ERROR,
             'log_file' => '/dev/null',
             'package_max_length' => $this->options['package_max_bytes'],
@@ -414,6 +492,9 @@ final class Server implements ManagedResource
 
     private function release(): void
     {
+        if ($this->scopes !== []) {
+            return;
+        }
         $this->server = null;
         $this->state = 'closed';
         if ($this->allocated) {
@@ -450,20 +531,21 @@ final class Server implements ManagedResource
             throw new TaskException('websocket_invalid_configuration', 'WebSocket 监听需要数字 IP 与 0–65535 端口');
         }
         $allowed = ['subprotocol', 'allowed_origins', 'max_frame_bytes', 'package_max_bytes', 'max_connections',
-            'max_queued_bytes', 'idle_seconds', 'heartbeat_seconds', 'message_seconds', 'open_websocket_close_frame',
+            'max_queued_bytes', 'max_pending_messages', 'idle_seconds', 'heartbeat_seconds', 'message_seconds', 'open_websocket_close_frame',
             'open_websocket_ping_frame', 'open_websocket_pong_frame', 'websocket_compression', 'open_ssl',
             'ssl_cert_file', 'ssl_key_file', 'ssl_passphrase', 'ssl_protocols'];
         if (array_diff(array_keys($options), $allowed) !== []) {
             throw new TaskException('websocket_invalid_configuration', 'WebSocket 含有未声明的监听选项');
         }
         $options += ['subprotocol' => '', 'allowed_origins' => [], 'max_frame_bytes' => 1048576, 'package_max_bytes' => 2097152,
-            'max_connections' => 64, 'max_queued_bytes' => 1048576, 'idle_seconds' => 0.0, 'heartbeat_seconds' => 0.0,
+            'max_connections' => 64, 'max_queued_bytes' => 1048576, 'max_pending_messages' => 16, 'idle_seconds' => 0.0, 'heartbeat_seconds' => 0.0,
             'message_seconds' => 30.0, 'open_websocket_close_frame' => true, 'open_websocket_ping_frame' => false,
             'open_websocket_pong_frame' => false, 'websocket_compression' => false, 'open_ssl' => false];
         if (!is_string($options['subprotocol']) || !is_array($options['allowed_origins']) || !is_int($options['max_frame_bytes'])
             || $options['max_frame_bytes'] < 1 || $options['max_frame_bytes'] > 1048576
             || !is_int($options['max_queued_bytes']) || $options['max_queued_bytes'] < 1 || $options['max_queued_bytes'] > 1048576
             || !is_int($options['max_connections']) || $options['max_connections'] < 1 || $options['max_connections'] > 4096
+            || !is_int($options['max_pending_messages']) || $options['max_pending_messages'] < 1 || $options['max_pending_messages'] > 1024
             || !is_int($options['package_max_bytes']) || $options['package_max_bytes'] < $options['max_frame_bytes']
             || $options['package_max_bytes'] > 2 * $options['max_frame_bytes']
             || !is_float($options['idle_seconds']) || $options['idle_seconds'] < 0 || $options['idle_seconds'] > 600

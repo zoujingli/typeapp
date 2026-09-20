@@ -26,7 +26,20 @@ if (!is_array($options)) {
 }
 $lease = (string) getenv('TYPE_WS_LEASE');
 $server = Server::create(new ResourceBudget(8), '127.0.0.1', $port, $options);
+$server->onOpen(function (int $fd, array $headers, bool $verified): void {
+    ExecutionScope::current()->assertActive();
+    \Swoole\Coroutine::sleep(0.02);
+});
 $server->onMessage(function (int $fd, string $data, bool $binary, ExecutionScope $scope) use ($server, $lease): void {
+    if (ExecutionScope::current() !== $scope || $scope->binding('tenant_id') !== null) {
+        throw new RuntimeException('消息作用域未绑定或继承了前次身份');
+    }
+    if ($data === 'slow') {
+        \Swoole\Coroutine::sleep(0.05);
+    }
+    if ($data === 'fail') {
+        throw new RuntimeException('消息失败回归');
+    }
     if ($lease !== '') {
         $scope->open(new class ($lease) implements ManagedResource {
             public function __construct(private string $path)
@@ -53,6 +66,7 @@ $server->onMessage(function (int $fd, string $data, bool $binary, ExecutionScope
     }
 });
 $server->onRequest(function ($request, $response) use ($server): void {
+    ExecutionScope::current()->assertActive();
     $target = (string) ($request->server['request_uri'] ?? '/');
     if ($target === '/stop') {
         $response->status(200);

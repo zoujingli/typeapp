@@ -15,9 +15,10 @@ final class ModelDefinition
     private ?string $softDelete;
     private ?string $version;
 
-    public function __construct(string $table, string $key, array $fields, bool $generatedKey = true, ?string $softDelete = null, ?string $version = null, private array $relations = [])
+    public function __construct(string $table, string $key, array $fields, bool $generatedKey = true, ?string $softDelete = null, ?string $version = null, private array $relations = [], private string $database = 'default', private ?string $tenant = null)
     {
-        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/D', $table) || !isset($fields[$key])) {
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/D', $table) || !isset($fields[$key])
+            || preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $database) !== 1) {
             throw new InvalidArgumentException('模型表或主键映射无效');
         }
         $columns = [];
@@ -33,6 +34,15 @@ final class ModelDefinition
         $this->table = $table;
         $this->key = $key;
         $this->fields = $checked;
+        foreach ($checked as $name => $field) {
+            if ($this->tenant === null && $field->column() === 'tenant_id') {
+                $this->tenant = $name;
+            }
+        }
+        if ($this->tenant !== null && (!isset($checked[$this->tenant]) || $checked[$this->tenant]->allowsNull()
+            || !in_array($checked[$this->tenant]->typeName(), ['integer', 'string', 'bigint'], true))) {
+            throw new InvalidArgumentException('租户字段必须是已映射的非空字符串或整数身份');
+        }
         $this->generatedKey = $generatedKey;
         if ($softDelete !== null && (!isset($fields[$softDelete]) || $fields[$softDelete]->typeName() !== 'datetime'
             || !$fields[$softDelete]->allowsNull() || $fields[$softDelete]->fillable())) {
@@ -55,6 +65,28 @@ final class ModelDefinition
     public function table(): string
     {
         return $this->table;
+    }
+    public function database(): string
+    {
+        return $this->database;
+    }
+
+    public function tenantField(): ?string
+    {
+        return $this->tenant;
+    }
+
+    /** 当前应用已经验证的租户值；关联 context 与查询输入不能代替可信绑定。 */
+    public function tenantIdentity(\Type\Runtime\ExecutionScope $scope): int|string|null
+    {
+        if ($this->tenant === null) {
+            return null;
+        }
+        $value = $scope->binding('tenant_id');
+        if ($value === null || $value === '') {
+            throw new ModelException('tenant_scope_required', '租户模型需要当前作用域的可信租户身份');
+        }
+        return $this->field($this->tenant)->normalize($value, true);
     }
     public function key(): string
     {

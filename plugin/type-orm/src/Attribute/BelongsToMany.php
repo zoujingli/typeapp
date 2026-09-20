@@ -18,7 +18,8 @@ final class BelongsToMany
         public string $targetPivotKey,
         public string $sourceKey = 'id',
         public string $targetKey = 'id',
-        public array $pivotFields = []
+        public array $pivotFields = [],
+        public ?string $pivotTenant = null
     ) {
     }
 }

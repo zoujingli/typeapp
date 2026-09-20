@@ -8,7 +8,7 @@ namespace Type\Orm\Attribute;
 #[\Attribute(\Attribute::TARGET_METHOD)]
 final class Transactional
 {
-    public function __construct(public string $connection = 'connection')
+    public function __construct(public string $database = 'default')
     {
     }
 }

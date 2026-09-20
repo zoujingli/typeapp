@@ -5,15 +5,16 @@ declare(strict_types=1);
 namespace Type\Orm\Outbox;
 
 use Type\Orm\Database;
+use Type\Orm\DatabaseManager;
 use Type\Orm\DatabaseException;
 use Type\Runtime\ExecutionScope;
 
 final class Relay
 {
-    private Database $database;
+    private Database|DatabaseManager $database;
     private Store $store;
     private Publisher $publisher;
-    public function __construct(Database $database, Store $store, Publisher $publisher)
+    public function __construct(Database|DatabaseManager $database, Store $store, Publisher $publisher)
     {
         $this->database = $database;
         $this->store = $store;

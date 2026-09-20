@@ -18,6 +18,13 @@ use TypeApp\SchedulerExample\CleanupFailureTask;
 
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+        schedulerScenario($argc, $argv);
+    });
+}
+
+function schedulerScenario(int $argc, array $argv): void
+{
     $scenario = getenv('TYPE_SCHEDULER_SCENARIO') ?: 'normal';
     $fixed = getenv('TYPE_SCHEDULER_NOW') ?: '';
     $clock = $fixed === '' ? new SystemClock() : new ControlledClock($fixed);

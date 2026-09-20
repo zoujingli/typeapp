@@ -37,6 +37,16 @@ function buildScenario(string $root, string $configuration, ?string $stage = nul
             scenarioCopy($root . '/' . $relative, $work . '/' . $relative);
         }
     }
+    $swooleModule = getenv('TYPE_SWOOLE_MODULE');
+    if ($withSwoole && is_string($swooleModule) && $swooleModule !== '') {
+        $swooleModule = BuildPlatform::resolve($swooleModule);
+        expect(is_file($swooleModule), '指定的 Swoole 模块不存在');
+        expect(mkdir($work . '/modules', 0700), '无法创建独立模块目录');
+        expect(copy($swooleModule, $work . '/modules/swoole.so'), '无法保全指定的 Swoole 模块');
+        $settings['runtime'][PHP_OS_FAMILY]['modules']['swoole'] = [
+            'file' => 'modules/swoole.so', 'sha256' => hash_file('sha256', $swooleModule),
+        ];
+    }
     $composer = json_decode(file_get_contents($work . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
     $originalName = $composer['name'];
     $composer['name'] = 'type-tests/scenario';

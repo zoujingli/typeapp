@@ -1,17 +1,14 @@
 # 显式关系与批量预加载
 
-关系加载复用当前 Connection 与 ModelQuery，返回当前查询创建的模型，不使用全局身份表或隐式懒加载。
+关系加载复用父查询选定的连接与当前作用域，返回当前查询创建的模型。业务通过模型声明关系并按名称加载；框架在编译期生成关系工厂，不使用全局身份表或隐式懒加载。
 
 ```php
-$articles = Relation::hasMany(
-    static fn (Connection $connection): ModelQuery => Article::query($connection)->select(['title']),
-    'user_id',
-);
-$users = User::query($connection)->select(['name'])->with('articles', $articles)->get();
+// User 的 articles 属性以 #[HasMany(Article::class, foreignKey: 'user_id')] 声明。
+$users = User::query()->select(['name'])->with('articles')->get();
 $output = $users[0]->project(['name'], ['articles' => ['title']]);
 ```
 
-`Relation::belongsTo` 使用当前模型的外键匹配目标键；`hasOne/hasMany` 使用当前模型键匹配目标外键。各工厂可设置键名和批量大小，默认每批 250 个不同键，上限 1000。空父集合和全部外键为 null 时不查询目标表。
+`BelongsTo` 使用当前模型的外键匹配目标键；`HasOne/HasMany` 使用当前模型键匹配目标外键。声明可设置键名和批量大小，默认每批 250 个不同键，上限 1000。空父集合和全部外键为 null 时不查询目标表。租户模型的关系查询仍受可信租户范围限制；事务或 `master()` 下的关系沿用主库，关系两端必须属于同一逻辑数据源。
 
 预加载补齐两侧匹配键，保留目标查询的筛选、字段选择与排序，最后追加目标主键以保证稳定顺序。单条关系未匹配返回 null，多条关系未匹配返回 `[]`；单条关系匹配多条记录报 `non_unique_relation`，应由真实唯一约束保证基数。
 
@@ -23,13 +20,23 @@ Connection 的统计包含读取尝试数、写入尝试数和最近 128 次读�
 
 HTTP 示例可使用 `/users?with[]=articles&with[]=profile` 读取用户、文章和简介。关系选择只用于 GET，其余方法明确拒绝该参数。数据库完整性或映射错误按服务器异常处理，不冒充客户端校验失败。
 
-三库 PHP 路径、真实 MySQL/SQLite HTTP、关联变更、空外键、单条基数错误和查询预算已有检查；相同应用入口已接入原生 CI，待集中验收后关闭任务。
+三库 PHP 路径覆盖关联变更、空外键、单条基数错误和查询预算；HTTP 与原生结果分别验证，CI 入口存在不代表目标平台已经通过。
 
 ## 多对多与中间表
 
 提供 `Relation::belongsToMany()`，声明目标查询、中间表、两侧键、可写可输出的中间表字段和批量大小。中间表需要两侧外键、关系对的唯一约束，键类型和比较规则保持一致；MySQL 使用 InnoDB。
 
-`attach()` 返回是否新增关系，重复挂载不新增记录，显式提供的中间表字段可以更新。`detach()` 返回是否移除关系，不存在时返回 false。`sync()` 接收 `[{id, pivot}]` 列表，避免 PHP 数组键转换 ID；先校验全部目标，再原子移除、增加和更新，空列表只移除当前父记录的关系。返回的 `updated` 是对已有关系提供字段的记录数，不冒充各驱动的实际变化行数。
+`attach()` 返回是否新增关系，重复挂载不新增记录，显式提供的中间表字段可以更新。`detach()` 返回是否移除关系，不存在或目标不在当前可见范围内时返回 false。`sync()` 接收 `[{id, pivot}]` 列表，避免 PHP 数组键转换 ID；先校验全部目标，再原子移除、增加和更新。空列表只移除当前父记录在目标模型可见范围内的关系，不影响其他租户或被目标条件排除的记录。返回的 `updated` 是对已有关系提供字段的记录数，不冒充各驱动的实际变化行数。
+
+中间表自身带有租户列时，使用 `pivotTenant` 声明实际列名。它与目标 Model 的租户隔离同时生效，也适用于全局父模型：
+
+```php
+// User 为全局账号，Label 为带 tenant_id 的模型。
+#[BelongsToMany(Label::class, 'user_labels', 'user_id', 'label_id', pivotTenant: 'tenant_id')]
+public array $labels;
+```
+
+预加载、`whereHas()`、关系聚合和写入均限定中间表的当前可信租户。新增绑定自动填充该列；`pivotTenant` 不得与两侧关系键或可写 `pivotFields` 重名，也不能从普通 pivot 输入修改。缺少可信租户时拒绝执行；应用仍须在入口验证访问资格。无独立状态的绑定表使用关系即可；具有自身状态、审计或版本的关联实体应声明独立 Model。
 
 写入在事务中锁定父记录；MySQL/PostgreSQL 使用行锁，SQLite 的独立操作使用 IMMEDIATE 事务。已有外层事务时通过 savepoint 组合；SQLite 外层延迟事务升级冲突会明确失败，不隐式重试。成功写入清除该父模型的旧关系缓存，失败遵循模型事务失效规则。
 

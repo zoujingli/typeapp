@@ -20,6 +20,13 @@ use TypeApp\SchedulerExample\ControlledClock;
 
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+        schedulerCoordinationScenario($argc, $argv);
+    });
+}
+
+function schedulerCoordinationScenario(int $argc, array $argv): void
+{
     if ($argc < 2 || ($argc === 2 && $argv[1] === 'help')) {
         echo "调度协调命令：once、history、work <次数> <间隔毫秒>。\n";
         return;

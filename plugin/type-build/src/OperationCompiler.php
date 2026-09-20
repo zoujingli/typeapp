@@ -138,7 +138,6 @@ final class OperationCompiler
             $prefix .= '_';
         }
         $serviceVariable = '$' . $prefix . '_service';
-        $transactionVariable = '$' . $prefix . '_transaction';
         $body = "        {$serviceVariable} = \$this->service;\n";
         $transaction = $attributes[self::TRANSACTIONAL] ?? null;
         $cacheable = $attributes[self::CACHEABLE] ?? null;
@@ -167,27 +166,21 @@ final class OperationCompiler
             $body .= '        return $' . $cacheParameter . '->remember(' . $key . ', static function () use (' . implode(', ', $captures) . '): '
                 . $return . " {\n            return " . $serviceVariable . '->' . $name . '(' . implode(', ', $arguments) . ");\n        }, " . $ttl . ");\n";
         } elseif ($transaction !== null) {
-            $connection = $transaction['connection'] ?? 'connection';
-            if (!is_string($connection) || strcasecmp($parameterTypes[$connection] ?? '', '\\Type\\Orm\\Connection') !== 0) {
-                throw new RuntimeException('Transactional.connection 必须指向非空 Type\\Orm\\Connection 形参');
+            $database = $transaction['database'] ?? 'default';
+            if (!is_string($database) || preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $database) !== 1) {
+                throw new RuntimeException('Transactional.database 必须是逻辑数据源名称');
             }
-            $captures = [$serviceVariable];
-            foreach ($arguments as $parameterName => $variable) {
-                if ($parameterName !== $connection) {
-                    $captures[] = $variable;
-                }
-            }
-            $arguments[$connection] = $transactionVariable;
+            $captures = array_merge([$serviceVariable], array_values($arguments));
             $call = $serviceVariable . '->' . $name . '(' . implode(', ', $arguments) . ')';
-            $body .= '        ' . ($return === 'void' ? '' : 'return ') . '$' . $connection . '->transaction(static function (\\Type\\Orm\\Connection '
-                . $transactionVariable . ') use (' . implode(', ', $captures) . '): ' . $return . " {\n";
+            $body .= '        ' . ($return === 'void' ? '' : 'return ') . '\\Type\\Orm\\Db::transaction(static function () use ('
+                . implode(', ', $captures) . '): ' . $return . " {\n";
             if ($eviction !== null) {
                 // 成功提交之前登记；失败时由 Connection 丢弃当前帧，嵌套成功合并至父帧。
-                $evictCaptures = array_values(array_filter($arguments, static fn (string $value): bool => $value !== $transactionVariable));
-                $body .= '            ' . $transactionVariable . '->afterCommit(static function () use (' . implode(', ', $evictCaptures)
-                    . "): void {\n                " . $eviction['expression'] . ";\n            });\n";
+                $evictCaptures = array_values($arguments);
+                $body .= '            \\Type\\Orm\\Db::afterCommit(static function () use (' . implode(', ', $evictCaptures)
+                    . "): void {\n                " . $eviction['expression'] . ";\n            }, " . var_export($database, true) . ");\n";
             }
-            $body .= '            ' . ($return === 'void' ? '' : 'return ') . $call . ";\n        });\n";
+            $body .= '            ' . ($return === 'void' ? '' : 'return ') . $call . ";\n        }, " . var_export($database, true) . ");\n";
         } else {
             $valueVariable = '$' . $prefix . '_result';
             $body .= '        ' . ($return === 'void' ? '' : ($eviction === null ? 'return ' : $valueVariable . ' = '))
@@ -299,7 +292,7 @@ final class OperationCompiler
                 $position = 0;
                 $named = false;
                 $names = match ($name) {
-                    self::TRANSACTIONAL => ['connection'], self::CACHEABLE => ['cache', 'key', 'ttlMilliseconds'], self::CACHE_EVICT => ['cache', 'key', 'all'],
+                    self::TRANSACTIONAL => ['database'], self::CACHEABLE => ['cache', 'key', 'ttlMilliseconds'], self::CACHE_EVICT => ['cache', 'key', 'all'],
                 };
                 foreach ($attribute->args as $argument) {
                     if ($argument->byRef || $argument->unpack || ($argument->name === null && $named)) {

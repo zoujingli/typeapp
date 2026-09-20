@@ -1,16 +1,29 @@
 # 嵌套事务与模型失效
 
-事务复用一个逻辑 Connection 与排他租约，内层采用三库共有的 savepoint 语义，不另借连接。
+业务通过 `Db::transaction()` 表达同库事务，回调没有连接参数并保留返回值。当前作用域内的 Model 读取、写入和关系查询使用同一主库租约；内层采用三库共有的 savepoint 语义，不另借连接，访问另一逻辑数据源报 `cross_database_transaction`。
 
-`Connection::transaction($operation, $mode = 'default')` 保留业务返回值；业务异常完成回滚后继续抛出原异常。SQLite 可显式选择 `immediate`，在开始时取得写事务；内层沿用外层模式，不切换隔离方式。`transactionDepth()` 返回当前嵌套深度。
+```php
+$id = Db::transaction(static function (): int {
+    $user = new User(['name' => '成员甲', 'age' => 20]);
+    $user->save();
+    Db::afterCommit(static function (): void {
+        invalidateUserList();
+    });
+    return $user->getId();
+});
+```
+
+应用启动期通过 `Db::configure()` 装配管理器，调用时须处于已绑定的 Swoole 执行作用域。完整装配示例见[模型连接与主从路由](model-connections.md)。事务外普通查询按读库配置路由，写入后需要立刻确认时显式使用 `master()`；框架不自动粘主。
+
+`Db::transaction($operation, $database = 'default', $mode = 'default')` 保留业务返回值；业务异常完成回滚后继续抛出原异常。SQLite 可通过 `mode: 'immediate'` 在开始时取得写事务；内层沿用外层模式，不切换隔离方式。基础设施的 `Connection::transaction($operation, $mode)` 保留显式连接回调，`transactionDepth()` 返回当前嵌套深度。
 
 每层事务登记经该连接水合、保存或删除的模型。内层成功后将登记合并到父层；内层回滚只使本层登记失效，外层回滚使所有合并的参与对象失效。需要让只做内存编辑的对象参与该事务时，可以显式调用 `trackModel()`。不同查询得到的对象分别登记，不使用隐式全局身份表。
 
 失效后不能读字段、读关系、JSON 序列化、PHP 序列化或继续保存；自增 ID 同样通过受控访问器检查。克隆共享失效状态，不能在回滚前复制对象来绕过登记。模型不会自动恢复为原快照或自动重载，调用者显式重新查询。
 
-运行时 `ExecutionOwner` 同时检查进程、PHP Fiber 和可选的 Swoole 协程。Scope 与租约都执行所有权检查，其他执行者不能查询或关闭当前作用域。`ResourceLease::hold()` 在操作退出前保留资源和池容量；关闭租约只是发出关闭意图，事务会在结束前检查该意图并安全回滚，之后才归还资源。
+运行时 `ExecutionOwner` 同时检查进程、线程请求、PHP Fiber 和 Swoole 协程。Scope 与租约都执行所有权检查，其他执行者不能查询或关闭当前作用域。受管子任务继承可信值快照，但新建作用域并独立取得连接与事务。`ResourceLease::hold()` 在操作退出前保留资源和池容量；关闭租约只是发出关闭意图，事务会在结束前检查该意图并安全回滚，之后才归还资源。
 
-事务控制发生故障时丢弃可复用资格，并拒绝继续使用该连接。截止时间、受管子任务和在途 I/O 收尾须在对应运行时入口继续完善并验证。
+事务控制发生故障时丢弃可复用资格，并拒绝继续使用该连接。取消与截止会拒绝新工作；等待超时不代表底层 I/O 已经停止，在途操作真实退出前仍占用租约和容量。PHP 专项覆盖父取消、Deadline、子任务隔离与等待超时，原生及平台结果按实际产物另行验收。
 
 ## 事务结果与提交后回调
 

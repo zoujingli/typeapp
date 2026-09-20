@@ -7,6 +7,7 @@ namespace Type\Scheduler;
 use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
 use Throwable;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\Deadline;
 use Type\Runtime\WorkLifecycle;
@@ -45,8 +46,13 @@ final class Scheduler
         $this->lifecycle = new WorkLifecycle();
     }
 
+    /** 状态存储与调度器在同一 Swoole 协程内装配；每次任务调用独立绑定作用域。 */
     public function tick(): array
     {
+        CoroutineRuntime::assertAvailable();
+        if (\Swoole\Coroutine::getCid() < 0) {
+            throw new \Type\Runtime\TaskException('coroutine_required', '调度入口需要先在 Swoole 协程内装配资源');
+        }
         if (!$this->lifecycle->begin()) {
             return [];
         }
@@ -124,9 +130,12 @@ final class Scheduler
                     $index = count($state['records']) - 1;
                     $this->store->save($state);
                     try {
-                        $context->assertActive();
-                        $record['result'] = $definition->create($context)->run($context);
-                        $context->assertActive();
+                        $record['result'] = $scope->run(static function (ExecutionScope $current) use ($definition, $context): array {
+                            $context->assertActive();
+                            $result = $definition->create($context)->run($context);
+                            $context->assertActive();
+                            return $result;
+                        });
                         $encoded = json_encode($record['result'], JSON_THROW_ON_ERROR);
                         if (strlen($encoded) > 65536) {
                             throw new InvalidArgumentException('TYPE_SCHEDULER_RESULT：任务结果超过 64 KiB');

@@ -35,7 +35,7 @@ foreach (['old', 'new'] as $version) {
         $loader .= 'require ' . var_export($root . '/' . $file, true) . ';';
     }
     $loader .= 'require ' . var_export($root . '/examples/rollout-' . $version . '-command.php', true) . ';main($argc,$argv);';
-    $commands[$version] = $externalCommands[$version] ?? ($native ? nativeCommand($root . '/build/rollout-' . $version . '/type-app') : [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r', $loader]);
+    $commands[$version] = $externalCommands[$version] ?? ($native ? nativeCommand($root . '/build/rollout-' . $version . '/type-app') : [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $loader]);
 }
 $environment = getenv();
 $delayInput = getenv('TYPE_ROLLOUT_DELAY_MS');

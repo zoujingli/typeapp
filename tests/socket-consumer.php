@@ -19,6 +19,10 @@ expect(BuildPlatform::contains($root . '/build', $work) && !str_contains($work, 
 $artifact = (new BuildPlatform())->output($work . '/build/native/type-app');
 $runner = new BuildEnvironment();
 $environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME'));
+// 安装与编译子进程使用已核验的 CLI 扩展配置；运行期仍由产物自己的探针选择模块。
+$environment['PHPRC'] = php_ini_loaded_file() ?: '';
+$environment['PHP_INI_SCAN_DIR'] = (string) (getenv('PHP_INI_SCAN_DIR') ?: '');
+$environment['COMPOSER_CACHE_DIR'] = (string) (getenv('COMPOSER_CACHE_DIR') ?: $root . '/.cache/composer');
 if (!$verify) {
     expect(!file_exists($work) && mkdir($work . '/app', 0700, true), '需要尚不存在的独立消费者目录');
     $composer = [
@@ -34,8 +38,19 @@ if (!$verify) {
     }
     $configuration = ['name' => $protocol . '-consumer', 'entry' => 'app/main.php', 'sources' => ['app'],
         'output' => (new BuildPlatform())->output('build/native/type-app'), 'build-directory' => 'build/native/compiler',
-        'threads' => [$protocol => ucfirst($protocol) . 'Probe::run'], 'runtime' => [PHP_OS_FAMILY => ['extensions' => ['swoole']]],
+        'threads' => [$protocol => ucfirst($protocol) . 'Probe::run'], 'runtime' => [PHP_OS_FAMILY => ['extensions' => ['sockets', 'swoole']]],
         'compiler' => ['debug' => true, 'jobs' => 2]];
+    $swooleModule = getenv('TYPE_SWOOLE_MODULE');
+    if (is_string($swooleModule) && $swooleModule !== '') {
+        $swooleModule = BuildPlatform::resolve($swooleModule);
+        expect(is_file($swooleModule), '指定的 Swoole 模块不存在');
+        expect(mkdir($work . '/modules', 0700), '无法创建独立模块目录');
+        $moduleName = PHP_OS_FAMILY === 'Windows' ? 'php_swoole.dll' : 'swoole.so';
+        expect(copy($swooleModule, $work . '/modules/' . $moduleName), '无法保全指定的 Swoole 模块');
+        $configuration['runtime'][PHP_OS_FAMILY]['modules']['swoole'] = [
+            'file' => 'modules/' . $moduleName, 'sha256' => hash_file('sha256', $swooleModule),
+        ];
+    }
     foreach (['composer.json' => $composer, 'type-app.json' => $configuration] as $file => $data) {
         file_put_contents($work . '/' . $file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     }
@@ -137,6 +152,9 @@ try {
     if ($peer !== null) {
         $peer->stop();
         file_put_contents($run . '/peer.json', json_encode(['stdout' => $peer->stdout(), 'stderr' => $peer->stderr()], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    }
+    if (is_file($run . '/key.pem')) {
+        expect(unlink($run . '/key.pem'), '无法回收独立通信测试私钥');
     }
 }
 file_put_contents($run . '/verification.json', json_encode(['build-id' => $report['build-id'], 'sha256' => $report['sha256'],

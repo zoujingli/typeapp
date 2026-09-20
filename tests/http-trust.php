@@ -28,7 +28,7 @@ if (isset($argv[1]) && $argv[1] !== '--php') {
     $launcher = 'require ' . var_export($root . '/vendor/autoload.php', true)
         . '; require ' . var_export($root . '/examples/trust/Endpoint.php', true)
         . '; require ' . var_export($root . '/examples/trust-http-command.php', true) . '; main($argc, $argv);';
-    $command = [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r', $launcher];
+    $command = [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $launcher];
 }
 foreach ([false, true] as $trusted) {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);

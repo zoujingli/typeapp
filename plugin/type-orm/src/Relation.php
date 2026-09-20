@@ -17,9 +17,10 @@ abstract class Relation
         string $sourceKey = 'id',
         string $targetKey = 'id',
         array $pivotFields = [],
-        int $batchSize = 250
+        int $batchSize = 250,
+        ?string $pivotTenant = null
     ): ManyToMany {
-        return new ManyToMany($target, $table, $sourcePivotKey, $targetPivotKey, $sourceKey, $targetKey, $pivotFields, $batchSize);
+        return new ManyToMany($target, $table, $sourcePivotKey, $targetPivotKey, $sourceKey, $targetKey, $pivotFields, $batchSize, $pivotTenant);
     }
 
     /** @param Closure(Connection): ModelQuery $target 接收关联查询所用连接。 */

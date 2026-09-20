@@ -9,7 +9,7 @@ use Type\Cache\Attribute\Cacheable;
 use Type\Cache\Attribute\CacheEvict;
 use Type\Cache\TypedCache;
 use Type\Orm\Attribute\Transactional;
-use Type\Orm\Connection;
+use Type\Orm\Db;
 
 /** 普通业务对象：只有显式生成的 UserOperations 才提供事务和缓存语义。 */
 final class UserService
@@ -18,39 +18,39 @@ final class UserService
     private int $changes = 0;
 
     /** 示例表仅归当前连接所有，三库的重复消费均不遗留业务表。 */
-    public function initialize(Connection $connection): void
+    public function initialize(): void
     {
-        $connection->execute('CREATE TEMPORARY TABLE operation_users (id INTEGER PRIMARY KEY, name VARCHAR(100) NOT NULL)');
+        Db::connection('default', true)->execute('CREATE TEMPORARY TABLE operation_users (id INTEGER PRIMARY KEY, name VARCHAR(100) NOT NULL)');
     }
 
-    #[Transactional(connection: 'connection')]
-    public function create(Connection $connection, int $id, string $name, bool $fail = false): void
+    #[Transactional]
+    public function create(int $id, string $name, bool $fail = false): void
     {
-        $connection->execute('INSERT INTO operation_users (id, name) VALUES (?, ?)', [$id, $name]);
+        Db::connection('default', true)->execute('INSERT INTO operation_users (id, name) VALUES (?, ?)', [$id, $name]);
         if ($fail) {
             throw new RuntimeException('预期业务失败');
         }
     }
 
     /** 返回明确的缺失状态；普通未标注的方法仍保留完全相同的类型。 */
-    public function read(Connection $connection, int $id): ?string
+    public function read(int $id): ?string
     {
-        $rows = $connection->query('SELECT name FROM operation_users WHERE id = ?', [$id]);
+        $rows = Db::connection('default', true)->query('SELECT name FROM operation_users WHERE id = ?', [$id]);
         return $rows === [] ? null : (string) $rows[0]['name'];
     }
 
     #[Cacheable(cache: 'cache', key: 'user:{id}', ttlMilliseconds: 60000)]
-    public function cached(Connection $connection, TypedCache $cache, int $id): ?string
+    public function cached(TypedCache $cache, int $id): ?string
     {
         $this->loads++;
-        return $this->read($connection, $id);
+        return $this->read($id);
     }
 
     #[Cacheable(cache: 'cache', key: 'short-user:{id}', ttlMilliseconds: 25)]
-    public function shortLived(Connection $connection, TypedCache $cache, int $id): ?string
+    public function shortLived(TypedCache $cache, int $id): ?string
     {
         $this->loads++;
-        return $this->read($connection, $id);
+        return $this->read($id);
     }
 
     #[Cacheable(cache: 'cache', key: 'failure:{id}', ttlMilliseconds: 60000)]
@@ -85,23 +85,23 @@ final class UserService
         return $_type_operation_service;
     }
 
-    #[Transactional(connection: 'connection')]
+    #[Transactional]
     #[CacheEvict(cache: 'cache', key: 'user:{id}')]
-    public function rename(Connection $connection, TypedCache $cache, int $id, string $name, bool $fail = false): string
+    public function rename(TypedCache $cache, int $id, string $name, bool $fail = false): string
     {
         $this->changes++;
-        $connection->execute('UPDATE operation_users SET name = ? WHERE id = ?', [$name, $id]);
+        Db::connection('default', true)->execute('UPDATE operation_users SET name = ? WHERE id = ?', [$name, $id]);
         if ($fail) {
             throw new RuntimeException('预期修改失败');
         }
         return $name;
     }
 
-    #[Transactional(connection: 'connection')]
+    #[Transactional]
     #[CacheEvict(cache: 'cache', all: true)]
-    public function clearAfterWrite(Connection $connection, TypedCache $cache, int $id, array $data): void
+    public function clearAfterWrite(TypedCache $cache, int $id, array $data): void
     {
-        $connection->execute('UPDATE operation_users SET name = ? WHERE id = ?', [(string) $data['name'], $id]);
+        Db::connection('default', true)->execute('UPDATE operation_users SET name = ? WHERE id = ?', [(string) $data['name'], $id]);
     }
 
     #[CacheEvict(cache: 'cache', key: 'user:{id}')]

@@ -57,6 +57,13 @@ final class ReadmeJob implements Job
  */
 function main(): void
 {
+    \Type\Runtime\CoroutineRuntime::run(static function (): void {
+        consumeExample();
+    });
+}
+
+function consumeExample(): void
+{
     $host = getenv('REDIS_HOST');
     $port = filter_var(getenv('REDIS_PORT') === false ? '6379' : getenv('REDIS_PORT'), FILTER_VALIDATE_INT,
         ['options' => ['min_range' => 1, 'max_range' => 65535]]);
@@ -94,6 +101,8 @@ function main(): void
 `Message($id, $type, $version, $payload, $context = [])` 只保存稳定 ID、类型版本、JSON 数据和字符串关联上下文，不从消息反序列化任意类。
 
 `Registry::register($type, $version, $factory)` 的工厂为 `Closure(JobContext): Job`。每次执行创建新 Job 与 Scope，即使不使用上下文也要保留参数。Job 的 `handle(JobContext $context, array $payload): void` 负责校验具体业务载荷。
+
+Worker 在当前 Swoole 协程内串行处理投递，工厂与 Job 回调中的 `ExecutionScope::current()` 等于 `$context->scope()`。消息关联 context 只用于追踪，不自动成为可信绑定。应用在验证任务身份后建立绑定；失败、重试和下一条投递均使用各自的作用域。Worker、Queue 和连接在同一协程内创建，非协程调用 `runOnce()` 会在领取前报告 `coroutine_required`。
 
 `$context->message()->id()` 是权威消息身份；在业务数据库唯一约束或目标服务的幂等接口内同时核对 ID 和载荷身份，不能仅靠“先查询是否处理”防重。
 

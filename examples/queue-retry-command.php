@@ -24,6 +24,13 @@ function retryExpect(bool $condition, string $message): void
 
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+        queueRetryScenario($argc, $argv);
+    });
+}
+
+function queueRetryScenario(int $argc, array $argv): void
+{
     $manager = new RedisManager(['default' => new RedisConfiguration(
         (string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
         (int) (getenv('TYPE_REDIS_PORT') ?: 6379)

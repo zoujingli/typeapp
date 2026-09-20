@@ -29,7 +29,7 @@ try {
         }
         $filtered .= $line . "\n";
     }
-    $ini = $filtered . "\nswoole.enable_library=Off\n";
+    $ini = $filtered . "\nswoole.enable_library=On\n";
     if ($mode === 'shared') {
         $ini .= "; TypePHP 原生进程的共享信号模块\nextension=" . $pcntl . "\n";
     }

@@ -28,6 +28,11 @@ final class SqliteMigrationLockDriver implements Driver
         return $this->driver->identity();
     }
 
+    public function reset(PDO $pdo): bool
+    {
+        return $this->driver->reset($pdo);
+    }
+
     public function connect(): PDO
     {
         // PDO 的旧 sqliteCreateFunction 在 PHP 8.5 弃用；测试需要真实驱动专属接口。

@@ -91,7 +91,7 @@ $rows = $connection->table('users')->where('id', '=', 7)->get();
 echo json_encode($rows, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
 ```
 
-结果包含 id=7、age=21。这里的 DDL 只在该内存会话创建示例表；持久文件应通过版本化 Migrator 管理结构，避免每次请求执行建表。`raw()` 标记会话不再复用，不会立即关闭当前租约。
+结果包含 id=7、age=21。这里的 DDL 只在该内存会话创建示例表；持久文件应通过版本化 Migrator 管理结构，避免每次请求执行建表。SQLite 当前在租约归还时关闭物理连接，以隔离 PRAGMA、附加库和临时对象；执行 `raw()` 不会立即关闭当前租约。
 
 ## 并发、锁与事务
 

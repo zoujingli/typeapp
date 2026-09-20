@@ -929,7 +929,7 @@ if ($native) {
     if (successful([PHP_BINARY, '-r', 'echo extension_loaded("swoole") ? "yes" : "no";'], $consumer) === 'no') {
         $module = (string) (getenv('TYPE_SWOOLE_MODULE') ?: ini_get('extension_dir') . '/swoole.so');
         expect(is_file($module), '原生事件测试需要匹配SDK的Swoole模块');
-        $runtimeOptions = ['-d', 'extension=' . $module, '-d', 'swoole.enable_library=Off'];
+        $runtimeOptions = ['-d', 'extension=' . $module, '-d', 'swoole.enable_library=On'];
     }
     $command = [PHP_BINARY, ...$runtimeOptions, '-r', 'require "vendor/autoload.php"; require "app/main.php"; main($argc, $argv);', '--'];
     $workerCommand = $command;

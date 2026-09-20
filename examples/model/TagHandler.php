@@ -10,8 +10,6 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use RuntimeException;
-use Type\Orm\Database;
-use Type\Orm\Driver;
 use Type\Orm\ModelException;
 use Type\Orm\TransactionException;
 use Type\Runtime\ExecutionScope;
@@ -22,13 +20,11 @@ use Type\Validate\ValidationException;
 
 final class TagHandler implements RequestHandlerInterface
 {
-    private Driver $driver;
     private ResponseFactoryInterface $responses;
     private StreamFactoryInterface $streams;
 
-    public function __construct(Driver $driver, ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
+    public function __construct(ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
     {
-        $this->driver = $driver;
         $this->responses = $responses;
         $this->streams = $streams;
     }
@@ -39,13 +35,10 @@ final class TagHandler implements RequestHandlerInterface
         if (!$scope instanceof ExecutionScope) {
             throw new RuntimeException('标签请求缺少作用域');
         }
-        $database = new Database($this->driver, 1, 0);
-        $connection = null;
         try {
             $query = (new Schema(['id' => Field::integer()->from('query')->cast()->required()->range(1, PHP_INT_MAX)]))
                 ->validate((new Input([]))->withQuery($request->getUri()->getQuery()));
-            $connection = $database->connect($scope);
-            $article = Article::query($connection)->find($query->get('id'));
+            $article = Article::query()->find($query->get('id'));
             if ($article === null) {
                 throw new ModelException('not_found', '文章不存在');
             }
@@ -62,17 +55,17 @@ final class TagHandler implements RequestHandlerInterface
                         'pivot' => Field::object(new Schema(['position' => $position])),
                     ])))->required()->length(0, 500)]);
                     $data = $schema->validate($input);
-                    $tags->sync($connection, $article, $data->get('items'));
+                    $tags->sync($article, $data->get('items'));
                 } else {
                     $data = (new Schema(['tag_id' => Field::integer()->required()->range(1, PHP_INT_MAX), 'position' => $position]))->validate($input);
                     if ($request->getMethod() === 'DELETE') {
-                        $tags->detach($connection, $article, $data->get('tag_id'));
+                        $tags->detach($article, $data->get('tag_id'));
                     } else {
-                        $tags->attach($connection, $article, $data->get('tag_id'), $data->has('position') ? ['position' => $data->get('position')] : []);
+                        $tags->attach($article, $data->get('tag_id'), $data->has('position') ? ['position' => $data->get('position')] : []);
                     }
                 }
             }
-            $article = Article::query($connection)->with('tags', $tags)->find($query->get('id'));
+            $article = Article::query()->with('tags', $tags)->find($query->get('id'));
             $result = ['data' => []];
             foreach ($article->related('tags') as $tag) {
                 $result['data'][] = $tag->project(['id', 'label']) + ['pivot' => $tag->pivot()];
@@ -95,11 +88,6 @@ final class TagHandler implements RequestHandlerInterface
                 throw $error;
             }
             $result = ['error' => $error->errorCode()];
-        } finally {
-            if ($connection !== null) {
-                $connection->close();
-            }
-            $database->close();
         }
         return $this->responses->createResponse($status)->withHeader('Content-Type', 'application/json')
             ->withBody($this->streams->createStream((string) json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));

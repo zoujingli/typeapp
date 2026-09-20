@@ -32,7 +32,7 @@ $page->next();      // 下一页位置；末页和空结果为 null。
 ## 有界模型与关系批次
 
 ```php
-$people = User::query($connection)->select(['name'])->with('articles', $articles);
+$people = User::query()->select(['name'])->with('articles');
 $page = $people->paginate(2, 20, 1000);
 $next = $people->cursorPaginate(100, $cursor, 1000);
 

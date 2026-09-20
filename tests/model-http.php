@@ -72,7 +72,7 @@ try {
             . '; require ' . var_export($root . '/examples/model/InvoiceHandler.php', true)
             . '; require ' . var_export($root . '/examples/model/CounterHandler.php', true)
             . '; require ' . var_export($root . '/examples/model-http-command.php', true) . '; main($argc, $argv);';
-        $command = [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r', $launcher];
+        $command = [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $launcher];
     } else {
         $command = nativeCommand($argv[1]);
     }

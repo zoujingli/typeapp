@@ -93,7 +93,7 @@ function mqttMtlsExtensionArgs(array $extensions, bool $forChild = false): array
         $arguments[] = 'extension=' . $module;
         if ($extension === 'swoole') {
             $arguments[] = '-d';
-            $arguments[] = 'swoole.enable_library=Off';
+            $arguments[] = 'swoole.enable_library=On';
         }
     }
     return $arguments;

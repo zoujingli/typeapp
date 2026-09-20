@@ -10,7 +10,7 @@ if (isset($argv[1]) && !in_array($argv[1], ['--php', '--scope-only'], true)) {
 } else {
     $launcher = 'require ' . var_export($root . '/vendor/autoload.php', true)
         . '; require ' . var_export($root . '/examples/tasks-command.php', true) . '; main($argc, $argv);';
-    $command = [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r', $launcher, '--'];
+    $command = [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $launcher, '--'];
 }
 $scopeOnly = in_array('--scope-only', $argv, true);
 if ($scopeOnly) {

@@ -15,7 +15,9 @@ final class Table
         public string $primary = 'id',
         public bool $generatedPrimary = true,
         public ?string $softDelete = null,
-        public ?string $version = null
+        public ?string $version = null,
+        public string $database = 'default',
+        public ?string $tenant = null
     ) {
     }
 }

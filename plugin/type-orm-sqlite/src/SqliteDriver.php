@@ -23,7 +23,9 @@ final class SqliteDriver implements Driver
         if ($filename === '' || str_contains($filename, "\0") || $busyMilliseconds < 0 || $busyMilliseconds > 60000 || $generation < 1 || !in_array($role, ['reader', 'writer'], true)) {
             throw new DatabaseException('SQLite 配置无效');
         }
-        if ($filename !== ':memory:' && (!str_starts_with($filename, '/') || !is_dir(dirname($filename)))) {
+        $absolute = str_starts_with($filename, '/')
+            || (PHP_OS_FAMILY === 'Windows' && preg_match('~^[A-Za-z]:/~D', str_replace('\\', '/', $filename)) === 1);
+        if ($filename !== ':memory:' && (!$absolute || !is_dir(dirname($filename)))) {
             throw new DatabaseException('SQLite 文件库需要存在的本地目录与绝对文件路径');
         }
         $this->filename = $filename;
@@ -37,6 +39,12 @@ final class SqliteDriver implements Driver
     public function name(): string
     {
         return 'sqlite';
+    }
+
+    /** @internal 任意 PRAGMA、临时对象与附加库无法完整重置时关闭会话。 */
+    public function reset(PDO $pdo): bool
+    {
+        return false;
     }
 
     public function identity(): array

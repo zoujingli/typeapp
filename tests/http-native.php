@@ -14,7 +14,7 @@ if ($mode === 'PHP') {
         . var_export($root . '/examples/validation/UserInput.php', true) . '; require '
         . var_export($root . '/examples/validation/Handler.php', true) . '; require '
         . var_export($root . '/examples/http-command.php', true) . '; main($argc, $argv);';
-    $command = [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r', $launcher];
+    $command = [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $launcher];
 } else {
     $command = nativeCommand($binary);
 }

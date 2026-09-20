@@ -70,6 +70,7 @@ function main(int $argc, array $argv): void
     }
     $redis = new RedisManager(['default' => new RedisConfiguration((string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379))], [Purpose::SCRIPT => 16]);
     $databases = new DatabaseManager($drivers, 8, 8);
+    \Type\Orm\Db::configure($databases);
     $logFile = getenv('TYPE_TENANT_LOG');
     $logs = new LogManager('tenant-test', ['app' => new Channel($logFile === false ? Output::stderr() : Output::file($logFile))]);
     $router->add('GET', '/tenant', static fn (): Endpoint => new Endpoint($databases, $replacements, $redis, $logs));

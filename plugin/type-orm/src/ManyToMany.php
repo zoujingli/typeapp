@@ -27,7 +27,8 @@ final class ManyToMany extends Relation
         string $source,
         string $related,
         array $fields,
-        int $batchSize
+        int $batchSize,
+        private ?string $pivotTenant = null
     ) {
         if ($batchSize < 1 || $batchSize > 1000 || strtolower($sourcePivot) === strtolower($targetPivot)
             || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/D', $table)
@@ -40,6 +41,10 @@ final class ManyToMany extends Relation
             }
         }
         $normalizedFields = array_map('strtolower', $fields);
+        if ($pivotTenant !== null && (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $pivotTenant)
+            || in_array(strtolower($pivotTenant), array_merge($normalizedFields, [strtolower($sourcePivot), strtolower($targetPivot)]), true))) {
+            throw new InvalidArgumentException('中间表租户列不能覆盖关系键或业务字段');
+        }
         if (count(array_unique($normalizedFields)) !== count($fields)
             || array_intersect($normalizedFields, [strtolower($sourcePivot), strtolower($targetPivot)]) !== []) {
             throw new InvalidArgumentException('中间表业务字段不能覆盖关系键');
@@ -84,6 +89,7 @@ final class ManyToMany extends Relation
         foreach (array_chunk(array_values($keys), $this->batchSize) as $chunk) {
             $query = $connection->table($this->table)->select(array_merge([$this->sourcePivot, $this->targetPivot], $this->fields))
                 ->whereIn($this->sourcePivot, $chunk)->orderBy($this->sourcePivot)->orderBy($this->targetPivot);
+            $query = $this->restrictPivot($query);
             $rows = ($budget === null ? $query : $query->limit($budget->remaining() + 1))->get();
             $budget?->consume(count($rows));
             foreach ($rows as $row) {
@@ -124,9 +130,10 @@ final class ManyToMany extends Relation
     }
 
     /** 返回是否新增关系；重复挂载可更新显式提供的中间表字段。 */
-    public function attach(Connection $connection, Model $parent, int|string $id, array $values = []): bool
+    public function attach(Model $parent, int|string $id, array $values = []): bool
     {
         $this->validateValues($values);
+        $connection = Db::connection($parent->definition()->database(), true);
         return $this->mutate($connection, $parent, function (mixed $source) use ($connection, $id, $values): bool {
             $this->targets($connection, [$id], true);
             $query = $this->pivotQuery($connection, $source)->where($this->targetPivot, '=', $id);
@@ -144,14 +151,18 @@ final class ManyToMany extends Relation
                 }
                 return false;
             }
-            $connection->table($this->table)->insert([$this->sourcePivot => $source, $this->targetPivot => $id] + $values);
+            $connection->table($this->table)->insert($this->pivotValues($source, $id, $values));
             return true;
         });
     }
 
-    public function detach(Connection $connection, Model $parent, int|string $id): bool
+    public function detach(Model $parent, int|string $id): bool
     {
+        $connection = Db::connection($parent->definition()->database(), true);
         return $this->mutate($connection, $parent, function (mixed $source) use ($connection, $id): bool {
+            if ($this->targets($connection, [$id], false) === []) {
+                return false;
+            }
             $query = $this->pivotQuery($connection, $source)->where($this->targetPivot, '=', $id);
             $rows = $query->get();
             if (count($rows) > 1) {
@@ -169,7 +180,7 @@ final class ManyToMany extends Relation
     }
 
     /** items 为 [{id: 整数或字符串, pivot: 字段映射}]，避免 PHP 数组键转换 ID。 */
-    public function sync(Connection $connection, Model $parent, array $items): array
+    public function sync(Model $parent, array $items): array
     {
         if (!array_is_list($items)) {
             throw new ModelException('invalid_pivot_input', '同步关系需要记录列表');
@@ -188,6 +199,7 @@ final class ManyToMany extends Relation
             $this->validateValues($values);
             $desired[$identity] = ['id' => $item['id'], 'pivot' => $values];
         }
+        $connection = Db::connection($parent->definition()->database(), true);
         return $this->mutate($connection, $parent, function (mixed $source) use ($connection, $desired): array {
             $ids = [];
             foreach ($desired as $item) {
@@ -207,14 +219,15 @@ final class ManyToMany extends Relation
                 $existing[$existingIdentity] = $row;
             }
             $result = ['attached' => 0, 'detached' => 0, 'updated' => 0];
+            $visible = $this->targets($connection, array_column($existing, $this->targetPivot), false);
             foreach ($existing as $key => $row) {
-                if (!isset($desired[$key])) {
+                if (!isset($desired[$key]) && isset($visible[$key])) {
                     $result['detached'] += $query->where($this->targetPivot, '=', $row[$this->targetPivot])->delete();
                 }
             }
             foreach ($desired as $key => $item) {
                 if (!isset($existing[$key])) {
-                    $connection->table($this->table)->insert([$this->sourcePivot => $source, $this->targetPivot => $item['id']] + $item['pivot']);
+                    $connection->table($this->table)->insert($this->pivotValues($source, $item['id'], $item['pivot']));
                     $result['attached']++;
                 } elseif ($item['pivot'] !== []) {
                     $query->where($this->targetPivot, '=', $item['id'])->update($item['pivot']);
@@ -236,13 +249,20 @@ final class ManyToMany extends Relation
         return $connection->transaction(function (Connection $transaction) use ($parent, $source, $operation): mixed {
             $transaction->trackModel($parent);
             $definition = $parent->definition();
-            $dialect = new SqlDialect($transaction->driverName(), $transaction->serverVersion());
-            $sql = 'SELECT ' . $dialect->identifier($definition->field($this->source)->column()) . ' AS type_relation_key FROM '
-                . $dialect->identifier($definition->table()) . ' WHERE ' . $dialect->identifier($definition->field($definition->key())->column()) . ' = ?';
-            if ($transaction->driverName() !== 'sqlite') {
-                $sql .= ' FOR UPDATE';
+            $query = $transaction->table($definition->table())
+                ->select(['type_relation_key' => $definition->field($this->source)->column()])
+                ->where($definition->field($definition->key())->column(), '=', $parent->rawValue($definition->key()));
+            if ($definition->tenantField() !== null) {
+                $field = $definition->field($definition->tenantField());
+                $query = $query->where($field->column(), '=', $field->encode($definition->tenantIdentity(\Type\Runtime\ExecutionScope::current())));
             }
-            $rows = $transaction->query($sql, [$parent->rawValue($definition->key())]);
+            if ($definition->softDeleteField() !== null) {
+                $query = $query->where($definition->field($definition->softDeleteField())->column(), '=', null);
+            }
+            if ($transaction->driverName() !== 'sqlite') {
+                $query = $query->lockForUpdate();
+            }
+            $rows = $query->get();
             if (count($rows) !== 1) {
                 throw new ModelException('not_found', '父记录不存在或主键不唯一');
             }
@@ -288,7 +308,30 @@ final class ManyToMany extends Relation
 
     private function pivotQuery(Connection $connection, mixed $source): Query
     {
-        return $connection->table($this->table)->where($this->sourcePivot, '=', $source);
+        return $this->restrictPivot($connection->table($this->table)->where($this->sourcePivot, '=', $source));
+    }
+
+    private function restrictPivot(Query $query): Query
+    {
+        return $this->pivotTenant === null ? $query : $query->where($this->pivotTenant, '=', $this->tenantIdentity());
+    }
+
+    private function pivotValues(mixed $source, int|string $target, array $values): array
+    {
+        $row = [$this->sourcePivot => $source, $this->targetPivot => $target] + $values;
+        if ($this->pivotTenant !== null) {
+            $row[$this->pivotTenant] = $this->tenantIdentity();
+        }
+        return $row;
+    }
+
+    private function tenantIdentity(): string
+    {
+        $tenant = \Type\Runtime\ExecutionScope::current()->binding('tenant_id');
+        if ($tenant === null || $tenant === '') {
+            throw new ModelException('tenant_scope_required', '中间表关系需要可信租户上下文');
+        }
+        return $tenant;
     }
 
     private function validateValues(array $values): void

@@ -23,22 +23,24 @@ use Type\Cache\Attribute\Cacheable;
 use Type\Cache\Attribute\CacheEvict;
 use Type\Cache\TypedCache;
 use Type\Orm\Attribute\Transactional;
-use Type\Orm\Connection;
+use app\common\model\User;
 
 final class UserService
 {
     #[Cacheable(cache: 'cache', key: 'user:{id}', ttlMilliseconds: 60000)]
-    public function find(Connection $connection, TypedCache $cache, int $id): ?array
+    public function find(TypedCache $cache, int $id): ?array
     {
-        $rows = $connection->query('SELECT id, name FROM users WHERE id = ?', [$id]);
-        return $rows === [] ? null : $rows[0];
+        $user = User::query()->find($id);
+        return $user === null ? null : $user->project(['id', 'name']);
     }
 
-    #[Transactional(connection: 'connection')]
+    #[Transactional]
     #[CacheEvict(cache: 'cache', key: 'user:{id}')]
-    public function rename(Connection $connection, TypedCache $cache, int $id, string $name): void
+    public function rename(TypedCache $cache, int $id, string $name): void
     {
-        $connection->execute('UPDATE users SET name = ? WHERE id = ?', [$name, $id]);
+        $user = User::query()->findOrFail($id);
+        $user->name = $name;
+        $user->save();
     }
 }
 ```
@@ -47,14 +49,14 @@ final class UserService
 
 ```php
 $operations = new \app\generated\UserOperations($userService);
-$operations->rename($connection, $cache, 7, '中文名称');
+$operations->rename($cache, 7, '中文名称');
 ```
 
 直接调用 `$userService->rename(...)` **不会**开启事务或清理缓存。原业务内部的 `$this->find(...)` 同样是普通调用；需要复合操作时在调用者显式组合生成对象，不隐式改变原类的自调用语义。
 
 ## 事务与失效顺序
 
-`Transactional.connection` 必须指向该方法的非空 `Type\Orm\Connection` 形参。生成代码使用 `Connection::transaction()` 的完整 `(Connection): 返回类型` 闭包，直接将当前事务连接传给原方法。`void` 方法不生成 `return 表达式`，其他返回值原样返回。
+示例中的 `User` 是消费应用声明并编译的领域模型；应用启动装配 `Db`，宿主在调用操作前绑定当前执行作用域。`#[Transactional]` 默认使用 `default` 数据源，`#[Transactional(database: 'archive')]` 显式指定其他逻辑数据源；不接受 `connection` 参数。生成代码调用 `Db::transaction()`，闭包为 `Closure(): 返回类型`，业务方法无需接收连接。`void` 方法不生成 `return 表达式`，其他返回值原样返回。
 
 没有重试、异常吞掉或事务状态猜测；保存点、取消、回滚、未知提交结果均沿用原连接的真实语义。
 
@@ -81,7 +83,7 @@ key 是非空模板，使用 `{参数名}` 引用标量形参；所有业务标�
 - 静态/抽象/魔术方法、引用返回、引用参数、variadic、无参数或返回类型。
 - `never`、`callable`、`iterable`、交叉类型以及组合对象中语义不同的 `self/static/parent`。
 - 未声明的业务类、条件声明类、生成类冲突，以及当前不能完整展开的继承或 Trait 服务。
-- 缺失或可空的 Connection/TypedCache 参数、缓存 key 遗漏参数或模板语法错误、缓存任意数组/对象入参、非法组合与 TTL。
+- 非法逻辑数据源名、缺失或可空的 TypedCache 参数、缓存 key 遗漏参数或模板语法错误、缓存任意数组/对象入参、非法组合与 TTL。
 
 普通已支持类型的公开实例方法会保留参数名、默认常量、返回类型和 PHPDoc，并直接转发；private/protected 辅助方法留在原 service 内，不复制实现。默认值只接受可直接静态求值的常量表达式，不读取业务类常量或执行代码。DocBlock 的 `@Transactional` / `@Cacheable` 不会被隐式解释为 Attribute。
 

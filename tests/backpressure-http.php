@@ -6,7 +6,7 @@ require __DIR__ . '/support.php';
 require __DIR__ . '/http-support.php';
 $root = dirname(__DIR__);
 $binary = $argv[1] ?? '--php';
-$command = $binary === '--php' ? [PHP_BINARY, '-d', 'swoole.enable_library=Off', '-r', 'require ' . var_export($root . '/vendor/autoload.php', true)
+$command = $binary === '--php' ? [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', 'require ' . var_export($root . '/vendor/autoload.php', true)
     . '; require ' . var_export($root . '/examples/backpressure/Endpoint.php', true) . '; require ' . var_export($root . '/examples/backpressure-http-command.php', true) . '; main($argc, $argv);'] : nativeCommand($binary);
 $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
 $port = (int) substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);

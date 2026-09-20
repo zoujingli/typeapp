@@ -78,20 +78,34 @@ final class PgsqlDriver implements Driver
                 $this->password,
                 [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_STRINGIFY_FETCHES => false, PDO::ATTR_EMULATE_PREPARES => false]
             );
-            $pdo->exec("SET TIME ZONE 'UTC'");
-            $pdo->exec('SET DateStyle TO ISO, YMD');
-            if ($this->databaseRole !== null) {
-                $pdo->exec('SET ROLE "' . $this->databaseRole . '"');
-            }
-            if ($this->schema !== null) {
-                $pdo->exec('SET search_path TO "' . $this->schema . '"');
-            }
-            if ($this->identity['role'] === 'reader') {
-                $pdo->exec('SET default_transaction_read_only = ON');
-            }
+            $this->initialize($pdo);
             return $pdo;
         } catch (PDOException $error) {
             throw new DatabaseException('PostgreSQL 连接失败', 0, $error);
         }
+    }
+
+    /** @internal PostgreSQL 官方 DISCARD ALL 清除角色、变量、临时对象、通知及会话锁。 */
+    public function reset(PDO $pdo): bool
+    {
+        if ($pdo->inTransaction()) {
+            return false;
+        }
+        $pdo->exec('DISCARD ALL');
+        $this->initialize($pdo);
+        return true;
+    }
+
+    private function initialize(PDO $pdo): void
+    {
+        $pdo->exec("SET TIME ZONE 'UTC'");
+        $pdo->exec('SET DateStyle TO ISO, YMD');
+        if ($this->databaseRole !== null) {
+            $pdo->exec('SET ROLE "' . $this->databaseRole . '"');
+        }
+        if ($this->schema !== null) {
+            $pdo->exec('SET search_path TO "' . $this->schema . '"');
+        }
+        $pdo->exec('SET default_transaction_read_only = ' . ($this->identity['role'] === 'reader' ? 'ON' : 'OFF'));
     }
 }

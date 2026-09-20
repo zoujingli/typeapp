@@ -14,7 +14,7 @@ final class ArticleTags
     public static function relation(int $batchSize = 250): ManyToMany
     {
         return Relation::belongsToMany(
-            static fn (Connection $connection): ModelQuery => Tag::query($connection)->select(['label']),
+            static fn (Connection $connection): ModelQuery => Tag::query()->onConnection($connection)->select(['label']),
             'type_model_article_tag',
             'article_id',
             'tag_id',

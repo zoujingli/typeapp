@@ -6,7 +6,7 @@ require __DIR__ . '/support.php';
 
 function integrationExecution(array $command, string $consumer): array
 {
-    $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => STDOUT, 2 => STDERR], $pipes, $consumer);
+    $process = proc_open([...$command, '--report=' . $consumer . '/verification.json'], [0 => ['file', '/dev/null', 'r'], 1 => STDOUT, 2 => STDERR], $pipes, $consumer);
     expect(is_resource($process) && proc_close($process) === 0, '完整业务集成失败');
     return json_decode(file_get_contents($consumer . '/verification.json'), true, 512, JSON_THROW_ON_ERROR);
 }
@@ -67,9 +67,10 @@ foreach (array_merge($lock['packages'], $lock['packages-dev']) as $package) {
     }
     expect(!is_link($consumer . '/vendor/' . $package['name']), '完整消费不能借用主仓符号链接');
 }
-expect(count($packages) === 14, '完整集成必须独立安装十四个库与驱动');
+expect(count($packages) === count($mapping['packages']), '完整集成必须独立安装分发清单内全部组件');
 mkdir($consumer . '/tests', 0700);
 copy($root . '/tests/integration-run.php', $consumer . '/tests/run.php');
+copy($root . '/tests/support.php', $consumer . '/tests/support.php');
 $build = null;
 if ($native) {
     $started = hrtime(true);

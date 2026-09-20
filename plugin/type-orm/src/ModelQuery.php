@@ -5,14 +5,19 @@ declare(strict_types=1);
 namespace Type\Orm;
 
 use Closure;
+use Type\Runtime\ExecutionScope;
 
 /** 查询条件保持不可变，水合只经过显式生成工厂。 */
 final class ModelQuery
 {
     private ModelDefinition $definition;
-    private Query $query;
+    private ?Query $query = null;
     private Closure $hydrate;
-    private Connection $connection;
+    private ?Connection $connection = null;
+    private ExecutionScope $execution;
+    private array $operations = [];
+    private bool $primary = false;
+    private ?string $tenantBinding;
     private array $selected;
     private array $relations = [];
     private bool $limited = false;
@@ -25,18 +30,84 @@ final class ModelQuery
     private array $arithmeticChecks = [];
 
     /** @param Closure(array): Model $hydrate 接收数据库行并返回对应模型。 */
-    public function __construct(Connection $connection, ModelDefinition $definition, Closure $hydrate, string $alias = '')
+    public function __construct(ModelDefinition $definition, Closure $hydrate, string $alias = '')
     {
+        $this->execution = ExecutionScope::current();
+        $this->tenantBinding = $this->execution->binding('tenant_id');
         $this->definition = $definition;
         $this->alias = $alias;
-        $this->query = $connection->table($definition->table(), $alias)->select($this->projection($definition->names()));
         $this->hydrate = $hydrate;
-        $this->connection = $connection;
         $this->selected = $definition->names();
+    }
+
+    /** 仅本查询及其关系读取主库；不借连接，也不改变其他查询。 */
+    public function master(): ModelQuery
+    {
+        if ($this->connection !== null && $this->connection->identity()['role'] !== 'writer') {
+            throw new ModelException('relation_route_conflict', '关系已绑定只读连接，请在父查询选择 master');
+        }
+        $copy = clone $this;
+        $copy->primary = true;
+        return $copy;
+    }
+
+    /** @internal 关系必须沿用父查询已经选定的执行连接。 */
+    public function onConnection(Connection $connection): ModelQuery
+    {
+        $this->assertExecution();
+        if ($connection !== Db::connection($this->definition->database(), $connection->identity()['role'] === 'writer')) {
+            throw new ModelException('relation_connection_mismatch', '关系必须使用当前逻辑数据源和作用域的执行连接');
+        }
+        if ($this->query !== null) {
+            if ($this->connection !== $connection) {
+                throw new ModelException('relation_connection_mismatch', '已构造的关系 SQL 不能更换连接');
+            }
+            return clone $this;
+        }
+        $copy = clone $this;
+        $copy->connection = $connection;
+        return $copy->materialize();
+    }
+
+    private function assertExecution(): void
+    {
+        if (ExecutionScope::current() !== $this->execution) {
+            throw new ModelException('model_scope_mismatch', '模型查询不能跨执行作用域使用');
+        }
+        if ($this->execution->binding('tenant_id') !== $this->tenantBinding) {
+            throw new ModelException('tenant_context_changed', '已有模型查询的租户上下文已经改变，请重新构造查询');
+        }
+        $this->definition->tenantIdentity($this->execution);
+    }
+
+    /** @param Closure(ModelQuery): ModelQuery $operation 延迟构造 SQL，选路之前不访问端点。 */
+    private function defer(Closure $operation): ModelQuery
+    {
+        $copy = clone $this;
+        $copy->operations[] = $operation;
+        return $copy;
+    }
+
+    private function materialize(bool $write = false): ModelQuery
+    {
+        $this->assertExecution();
+        $copy = clone $this;
+        $copy->connection ??= Db::connection($this->definition->database(), $write || $this->primary);
+        $copy->query = $copy->connection->table($this->definition->table(), $this->alias)
+            ->select($this->projection($this->selected));
+        $copy->operations = [];
+        foreach ($this->operations as $operation) {
+            $copy = $operation($copy);
+        }
+        return $copy;
     }
 
     public function where(string $field, string $operator, mixed $value, string $boolean = 'AND'): ModelQuery
     {
+        if ($this->query === null) {
+            $this->definition->field($field);
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->where($field, $operator, $value, $boolean));
+        }
         $copy = clone $this;
         $mapping = $this->definition->field($field);
         $copy->query = $this->query->where($this->column($field), $operator, $value === null ? null : $mapping->encode($mapping->normalize($value)), $boolean);
@@ -45,6 +116,10 @@ final class ModelQuery
 
     public function whereIn(string $field, array $values, bool $not = false, string $boolean = 'AND'): ModelQuery
     {
+        if ($this->query === null) {
+            $this->definition->field($field);
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->whereIn($field, $values, $not, $boolean));
+        }
         $copy = clone $this;
         $mapping = $this->definition->field($field);
         $parameters = [];
@@ -76,6 +151,9 @@ final class ModelQuery
     /** @param Closure(ModelConditions): ModelConditions $group 返回模型条件组，不接受原始列。 */
     public function whereGroup(Closure $group, string $boolean = 'AND'): ModelQuery
     {
+        if ($this->query === null) {
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->whereGroup($group, $boolean));
+        }
         $definition = $this->definition;
         $alias = $this->alias;
         $copy = clone $this;
@@ -91,6 +169,9 @@ final class ModelQuery
         if ($this->definition->field($field)->typeName() !== 'json') {
             throw new ModelException('invalid_json_field', 'JSON 条件只能用于 JSON 模型字段');
         }
+        if ($this->query === null) {
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->whereJson($field, $path, $value));
+        }
         $copy = clone $this;
         $copy->query = $this->query->whereJson($this->column($field), $path, $value);
         return $copy;
@@ -99,7 +180,10 @@ final class ModelQuery
     /** 执行时必须处于活动事务；能力不足的驱动明确拒绝。 */
     public function lockForUpdate(bool $skipLocked = false): ModelQuery
     {
-        $copy = clone $this;
+        if ($this->query === null) {
+            return $this->master()->defer(static fn (ModelQuery $query): ModelQuery => $query->lockForUpdate($skipLocked));
+        }
+        $copy = $this->master();
         $copy->query = $this->query->lockForUpdate($skipLocked);
         return $copy;
     }
@@ -107,12 +191,18 @@ final class ModelQuery
     /** 只生成 SQL，不做存储目录查询或模型水合。 */
     public function toSql(): string
     {
+        if ($this->query === null) {
+            return $this->materialize()->toSql();
+        }
         return $this->readingQuery(false)->toSql();
     }
 
     /** 显式预览原始绑定值，不执行目标查询。 */
     public function bindings(): array
     {
+        if ($this->query === null) {
+            return $this->materialize()->bindings();
+        }
         return $this->readingQuery(false)->bindings();
     }
 
@@ -127,12 +217,23 @@ final class ModelQuery
             $fields[] = $this->definition->versionField();
         }
         $copy->selected = array_values(array_unique($fields));
+        if ($this->query === null) {
+            $this->projection($copy->selected);
+            return $copy;
+        }
         $copy->query = $this->query->select($this->projection($copy->selected));
         return $copy;
     }
 
     public function orderBy(string $field, string $direction = 'ASC'): ModelQuery
     {
+        if (!in_array(strtoupper($direction), ['ASC', 'DESC'], true)) {
+            throw new DatabaseException('排序方向只支持 ASC 或 DESC');
+        }
+        if ($this->query === null) {
+            $this->definition->field($field);
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->orderBy($field, $direction));
+        }
         $copy = clone $this;
         $copy->query = $this->query->orderBy($this->column($field), $direction);
         return $copy;
@@ -148,6 +249,13 @@ final class ModelQuery
      */
     public function orderByIfAbsent(string $field, string $direction = 'ASC'): ModelQuery
     {
+        if (!in_array(strtoupper($direction), ['ASC', 'DESC'], true)) {
+            throw new DatabaseException('排序方向只支持 ASC 或 DESC');
+        }
+        if ($this->query === null) {
+            $this->definition->field($field);
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->orderByIfAbsent($field, $direction));
+        }
         $copy = clone $this;
         $copy->query = $this->query->orderByIfAbsent($this->column($field), $direction);
 
@@ -156,6 +264,11 @@ final class ModelQuery
 
     public function limit(int $count, int $offset = 0): ModelQuery
     {
+        if ($this->query === null) {
+            $copy = $this->defer(static fn (ModelQuery $query): ModelQuery => $query->limit($count, $offset));
+            $copy->limited = true;
+            return $copy;
+        }
         $copy = clone $this;
         $copy->query = $this->query->limit($count, $offset);
         $copy->limited = true;
@@ -164,12 +277,18 @@ final class ModelQuery
 
     public function get(): array
     {
+        if ($this->query === null) {
+            return $this->materialize()->get();
+        }
         return $this->hydrateRows($this->readingQuery()->get());
     }
 
     /** @internal 关联与批量消费者使用显式共享预算；不无界物化一对多结果。 */
     public function getBounded(int $maxRows, ?ReadBudget $budget = null): array
     {
+        if ($this->query === null) {
+            return $this->materialize()->getBounded($maxRows, $budget);
+        }
         if ($maxRows < 0 || $maxRows > 100000 || $this->limited) {
             throw new ModelException('invalid_read_budget', '有界模型查询不接受已有 LIMIT 或无效行数上限');
         }
@@ -184,6 +303,9 @@ final class ModelQuery
 
     public function paginate(int $page = 1, int $perPage = 20, int $maxRows = 10000): Page
     {
+        if ($this->query === null) {
+            return $this->materialize()->paginate($page, $perPage, $maxRows);
+        }
         $budget = new ReadBudget($maxRows);
         $result = $this->readingQuery()->paginate($page, $perPage, $this->definition->field($this->definition->key())->column());
         return new Page($this->hydrateRows($result->items(), $budget), $result->total(), $result->number(), $result->perPage());
@@ -192,6 +314,9 @@ final class ModelQuery
     /** 无总数分页，模型与预加载结果共享读取预算。 */
     public function simplePaginate(int $page = 1, int $perPage = 20, int $maxRows = 10000): SimplePage
     {
+        if ($this->query === null) {
+            return $this->materialize()->simplePaginate($page, $perPage, $maxRows);
+        }
         $budget = new ReadBudget($maxRows);
         $result = $this->readingQuery()->simplePaginate($page, $perPage, $this->definition->field($this->definition->key())->column());
         return new SimplePage($this->hydrateRows($result->items(), $budget), $result->number(), $result->perPage(), $result->hasMore());
@@ -199,6 +324,9 @@ final class ModelQuery
 
     public function cursorPaginate(int $perPage = 100, ?string $after = null, int $maxRows = 10000): CursorPage
     {
+        if ($this->query === null) {
+            return $this->materialize()->cursorPaginate($perPage, $after, $maxRows);
+        }
         $budget = new ReadBudget($maxRows);
         $result = $this->readingQuery()->cursorPaginate($perPage, $after, $this->definition->field($this->definition->key())->column());
         return new CursorPage($this->hydrateRows($result->items(), $budget), $result->next());
@@ -210,6 +338,9 @@ final class ModelQuery
      */
     public function chunk(int $size, Closure $consumer, int $maxRows = 10000): int
     {
+        if ($this->query === null) {
+            return $this->materialize()->chunk($size, $consumer, $maxRows);
+        }
         if ($this->connection->transactionDepth() !== 0) {
             throw new ModelException('streaming_transaction_unsupported', '模型分批导出需要事务外连接，避免事务状态无限保留已加载模型');
         }
@@ -234,6 +365,9 @@ final class ModelQuery
     private function readingQuery(bool $validateStorage = true): Query
     {
         $fields = $this->selected;
+        if ($this->definition->tenantField() !== null) {
+            $fields[] = $this->definition->tenantField();
+        }
         foreach ($this->relations as $relation) {
             $fields[] = $relation->sourceKey();
         }
@@ -253,6 +387,10 @@ final class ModelQuery
     private function hydrateRows(array $rows, ?ReadBudget $budget = null): array
     {
         $budget?->consume(count($rows));
+        $retained = $this->selected;
+        foreach ($this->relations as $relation) {
+            $retained[] = $relation->sourceKey();
+        }
         $models = [];
         foreach ($rows as $row) {
             $computed = [];
@@ -266,6 +404,7 @@ final class ModelQuery
                 throw new ModelException('invalid_hydrator', '水合工厂没有返回 Model');
             }
             $this->connection->trackModel($model);
+            $model->retainProjection($retained);
             foreach ($computed as $alias => $value) {
                 $model->setComputed($alias, $value);
             }
@@ -318,6 +457,9 @@ final class ModelQuery
     /** 数据库端关系存在过滤，支持嵌套路径；约束作用于路径末端。 */
     public function whereHas(string $path, ?Closure $constraint = null, bool $not = false): ModelQuery
     {
+        if ($this->query === null) {
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->whereHas($path, $constraint, $not));
+        }
         $parts = $this->relationPath($path);
         $relation = $this->definition->relation($parts[0]);
         $alias = '__type_relation_' . $this->relationDepth;
@@ -356,6 +498,9 @@ final class ModelQuery
 
     private function withAggregate(string $path, string $function, string $field, ?Closure $constraint, string $alias): ModelQuery
     {
+        if ($this->query === null) {
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->withAggregate($path, $function, $field, $constraint, $alias));
+        }
         if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,39}$/D', $alias) || in_array($alias, $this->definition->names(), true)
             || isset($this->computations[$alias])) {
             throw new ModelException('invalid_computed_alias', '计算值别名无效、重复或与模型字段冲突');
@@ -401,6 +546,9 @@ final class ModelQuery
     /** 已有模型列表显式批量补加载；父模型不重查，所有关系共享预算。 */
     public function load(array $models, bool $missingOnly = false, int $maxRows = 10000): array
     {
+        if ($this->query === null) {
+            return $this->materialize()->load($models, $missingOnly, $maxRows);
+        }
         $budget = new ReadBudget($maxRows);
         return $this->loadWithBudget($models, $missingOnly, $budget);
     }
@@ -466,17 +614,29 @@ final class ModelQuery
     /** @internal 保留目标模型范围后附加相关列比较。 */
     public function correlate(string $field, string $parentColumn): ModelQuery
     {
+        if ($this->query === null) {
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->correlate($field, $parentColumn));
+        }
         $copy = clone $this;
         $copy->query = $this->query->whereColumn($this->column($field), '=', $parentColumn);
         return $copy;
     }
 
     /** @internal 中间表只参加关系 SQL，不投影进模型状态。 */
-    public function correlatePivot(string $table, string $sourcePivot, string $targetPivot, string $targetKey, string $parentColumn, string $alias): ModelQuery
+    public function correlatePivot(string $table, string $sourcePivot, string $targetPivot, string $targetKey, string $parentColumn, string $alias, ?string $pivotTenant = null): ModelQuery
     {
+        if ($this->query === null) {
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->correlatePivot($table, $sourcePivot, $targetPivot, $targetKey, $parentColumn, $alias, $pivotTenant));
+        }
         $copy = clone $this;
         $copy->query = $this->query->join($table, $this->column($targetKey), '=', $alias . '.' . $targetPivot, $alias)
             ->whereColumn($alias . '.' . $sourcePivot, '=', $parentColumn);
+        if ($pivotTenant !== null) {
+            if ($this->tenantBinding === null || $this->tenantBinding === '') {
+                throw new ModelException('tenant_scope_required', '中间表关系需要可信租户上下文');
+            }
+            $copy->query = $copy->query->where($alias . '.' . $pivotTenant, '=', $this->tenantBinding);
+        }
         return $copy;
     }
 
@@ -532,6 +692,9 @@ final class ModelQuery
     /** 不水合模型、不加载关系地检查匹配行。 */
     public function exists(): bool
     {
+        if ($this->query === null) {
+            return $this->materialize()->exists();
+        }
         return $this->visibleQuery()->exists();
     }
 
@@ -550,6 +713,9 @@ final class ModelQuery
     /** 只读取所需字段并按模型类型转换，空结果返回 null。 */
     public function value(string $field): mixed
     {
+        if ($this->query === null) {
+            return $this->materialize()->value($field);
+        }
         $mapping = $this->definition->field($field);
         $this->definition->assertStorage($this->connection, [$field]);
         $row = $this->visibleQuery()->select(['__type_value' => $this->column($field)])->first();
@@ -559,6 +725,9 @@ final class ModelQuery
     /** 返回类型化字段列表或唯一键映射，不水合无关模型。 */
     public function pluck(string $field, ?string $key = null): array
     {
+        if ($this->query === null) {
+            return $this->materialize()->pluck($field, $key);
+        }
         $mapping = $this->definition->field($field);
         $keyColumn = $key === null ? null : $this->column($key);
         $this->definition->assertStorage($this->connection, $key === null ? [$field] : [$field, $key]);
@@ -584,8 +753,11 @@ final class ModelQuery
 
     private function arithmetic(string $field, int $amount, bool $decrement): int
     {
+        if ($this->query === null) {
+            return $this->materialize(true)->arithmetic($field, $amount, $decrement);
+        }
         $mapping = $this->definition->field($field);
-        if (!$mapping->fillable() || $field === $this->definition->key() || $field === $this->definition->versionField()
+        if (!$mapping->fillable() || $field === $this->definition->key() || $field === $this->definition->versionField() || $field === $this->definition->tenantField()
             || !in_array($mapping->typeName(), ['integer', 'bigint', 'decimal'], true)) {
             throw new ModelException('invalid_increment_field', '原子增减只能修改可赋值的普通数值字段');
         }
@@ -599,6 +771,9 @@ final class ModelQuery
 
     public function count(): int
     {
+        if ($this->query === null) {
+            return $this->materialize()->count();
+        }
         return (int) $this->visibleQuery()->aggregate('COUNT');
     }
 
@@ -637,7 +812,8 @@ final class ModelQuery
     {
         $query = $scope($this);
         if (!$query instanceof ModelQuery || $query->connection !== $this->connection || $query->definition !== $this->definition
-            || $query->hydrate !== $this->hydrate || $query->alias !== $this->alias) {
+            || $query->hydrate !== $this->hydrate || $query->alias !== $this->alias
+            || $query->execution !== $this->execution || $query->tenantBinding !== $this->tenantBinding) {
             throw new ModelException('invalid_scope', '查询范围必须返回 ModelQuery');
         }
         return $query;
@@ -652,8 +828,10 @@ final class ModelQuery
                 throw new ModelException('unknown_searcher', '没有声明该搜索器：' . $name);
             }
             $query = ($searchers[$name])($query, $value);
-            if (!$query instanceof ModelQuery) {
-                throw new ModelException('invalid_searcher', '搜索器必须返回 ModelQuery');
+            if (!$query instanceof ModelQuery || $query->connection !== $this->connection || $query->definition !== $this->definition
+                || $query->hydrate !== $this->hydrate || $query->alias !== $this->alias
+                || $query->execution !== $this->execution || $query->tenantBinding !== $this->tenantBinding) {
+                throw new ModelException('invalid_searcher', '搜索器必须在原模型、范围与作用域内继续查询');
             }
         }
         return $query;
@@ -661,10 +839,17 @@ final class ModelQuery
 
     private function visibleQuery(): Query
     {
+        $this->assertExecution();
+        $query = $this->query;
+        $tenant = $this->definition->tenantField();
+        if ($tenant !== null) {
+            // Conditions 已将之前所有业务条件作为独立括号组，最后追加的 AND 不会被 OR 放宽。
+            $query = $query->where($this->column($tenant), '=', $this->definition->field($tenant)->encode($this->definition->tenantIdentity($this->execution)));
+        }
         $field = $this->definition->softDeleteField();
         if ($field === null || $this->trashed === 'all') {
-            return $this->query;
+            return $query;
         }
-        return $this->query->whereNull($this->column($field), $this->trashed === 'only');
+        return $query->where($this->column($field), $this->trashed === 'only' ? '!=' : '=', null);
     }
 }

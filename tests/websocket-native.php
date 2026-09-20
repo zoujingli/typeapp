@@ -16,6 +16,9 @@ function wsNativeExtensionArgs(array $extensions): array
     $arguments = [];
     $directory = (string) ini_get('extension_dir');
     foreach ($extensions as $extension) {
+        if (extension_loaded($extension)) {
+            continue;
+        }
         $module = $directory . '/' . $extension . '.so';
         if ($extension === 'swoole') {
             $module = (string) (getenv('TYPE_SWOOLE_MODULE') ?: $module);
@@ -27,7 +30,7 @@ function wsNativeExtensionArgs(array $extensions): array
         $arguments[] = 'extension=' . $module;
         if ($extension === 'swoole') {
             $arguments[] = '-d';
-            $arguments[] = 'swoole.enable_library=Off';
+            $arguments[] = 'swoole.enable_library=On';
         }
     }
     return $arguments;
@@ -140,27 +143,42 @@ function wsNativeFrame(string $payload): string
     return $header . $mask . $masked;
 }
 
-function wsNativeRemove(string $directory): void
+/** 逐文件回读生产 PHP 归档后移除源码，保留原产物、依赖身份和运行证据。 */
+function wsNativePreserveSources(string $consumer): array
 {
-    if (!is_dir($directory)) {
-        return;
-    }
-    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+    $archive = $consumer . '/source-inputs.tar';
+    $snapshot = new PharData($archive);
+    $hashes = [];
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($consumer, FilesystemIterator::SKIP_DOTS));
     foreach ($files as $file) {
-        $path = $file->getPathname();
-        if (is_link($path) || $file->isFile()) {
-            unlink($path);
-        } else {
-            rmdir($path);
+        if ($file->isFile() && !$file->isLink() && strtolower($file->getExtension()) === 'php') {
+            $relative = substr($file->getPathname(), strlen($consumer) + 1);
+            $hashes[$relative] = hash_file('sha256', $file->getPathname());
+            $snapshot->addFile($file->getPathname(), $relative);
         }
     }
-    rmdir($directory);
+    expect($hashes !== [], 'WebSocket 消费者缺少编译输入');
+    $snapshot->compress(Phar::GZ);
+    unset($snapshot);
+    $restored = new PharData($archive . '.gz');
+    foreach ($hashes as $relative => $hash) {
+        expect(isset($restored[$relative]) && hash('sha256', $restored[$relative]->getContent()) === $hash, 'WebSocket 输入归档回读失败');
+    }
+    unset($restored);
+    unlink($archive);
+    foreach ($hashes as $relative => $hash) {
+        expect(unlink($consumer . '/' . $relative), '无法移除已保全的 PHP 输入');
+    }
+    $record = ['archive' => 'source-inputs.tar.gz', 'sha256' => hash_file('sha256', $archive . '.gz'), 'sources' => $hashes];
+    file_put_contents($consumer . '/source-inputs.json', json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+    return ['archive_sha256' => $record['sha256'], 'removed_php_files' => count($hashes)];
 }
 
 $root = dirname(__DIR__);
 $consumer = $root . '/build/websocket-native-' . bin2hex(random_bytes(5));
 expect(mkdir($consumer . '/app', 0700, true), '无法创建独立 WebSocket 消费者目录');
 $verified = [];
+$failure = null;
 $previousPhpx = getenv('PHPX_HOME');
 try {
     $toolchain = json_decode((string) file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
@@ -186,7 +204,7 @@ try {
         'name' => 'type-websocket', 'entry' => 'app/main.php', 'sources' => ['app/main.php'],
         'output' => 'build/websocket/type-app', 'build-directory' => 'build/websocket/compiler',
         'runtime' => [PHP_OS_FAMILY => [
-            'extensions' => ['mysqlnd', 'swoole'],
+            'extensions' => ['mysqlnd', 'sockets', 'swoole'],
             'modules' => ['swoole' => ['file' => 'swoole.so', 'sha256' => $hash]],
         ]],
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
@@ -203,12 +221,19 @@ try {
     foreach ($report['sources'] as $source) {
         expect(str_starts_with($source, $consumer . '/'), '独立 WebSocket 仍编译主仓源码');
     }
+    $verified['native'] = [
+        'artifact' => $report['sha256'], 'build_id' => $report['build-id'],
+        'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
+        'php' => PHP_VERSION, 'swoole' => $report['runtime-profile']['extensions']['swoole'],
+        'swoole_module_sha256' => $hash, 'source_count' => count($report['sources']),
+    ];
     $command = nativeCommand($consumer . '/build/websocket/type-app');
     $runtime = $consumer . '/runtime';
     expect(mkdir($runtime, 0700), '无法创建 WebSocket 无源码运行目录');
     copy($consumer . '/build/websocket/type-app', $runtime . '/type-app');
     chmod($runtime . '/type-app', 0700);
-    copy($report['runtime-profile']['ini'], $runtime . '/php.ini');
+    expect(copy($report['runtime-profile']['ini'], $runtime . '/php.ini'), '无法保全原生运行配置');
+    expect(copy(dirname($report['runtime-profile']['ini']) . '/profile.json', $runtime . '/profile.json'), '无法保全原生模块探测报告');
     if (PHP_OS_FAMILY === 'Darwin') {
         $policy = ['sandbox-exec', '-f', $root . '/tests/fixtures/mqtt-no-source.sb'];
         foreach (['ROOT_APP' => $root . '/app', 'ROOT_PLUGIN' => $root . '/plugin', 'ROOT_EXAMPLE' => $root . '/examples',
@@ -225,9 +250,11 @@ try {
     $environment = getenv();
     expect(is_array($environment), '无法读取原生 WebSocket 测试环境');
     unset($environment['PHPRC'], $environment['PHP_INI_SCAN_DIR']);
+    $verified['source_removal'] = wsNativePreserveSources($consumer);
 
     $wsPort = wsNativePort();
     $wsProcess = new Process([...$command, 'server', '127.0.0.1', (string) $wsPort], $runtime, $environment);
+    $socket = null;
     try {
         wsNativeReady($wsProcess, $wsPort);
         [$socket, $header, $key] = wsNativeHandshake($wsPort, false);
@@ -251,11 +278,16 @@ try {
         expect($stopped->successful(), '原生产物 WS 服务停止失败：' . $stopped->stderr);
         $verified['ws'] = true;
     } finally {
+        if (is_resource($socket)) {
+            fclose($socket);
+        }
         $wsProcess->stop();
+        file_put_contents($consumer . '/ws.stdout.log', $wsProcess->stdout());
+        file_put_contents($consumer . '/ws.stderr.log', $wsProcess->stderr());
     }
 
     $certificateConfiguration = $consumer . '/certificate.cnf';
-    file_put_contents($certificateConfiguration, "[req]\ndistinguished_name=dn\nx509_extensions=server\n[dn]\n[server]\nsubjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\n");
+    file_put_contents($certificateConfiguration, "[req]\ndistinguished_name=dn\nx509_extensions=server\n[dn]\n[server]\nsubjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\nextendedKeyUsage=serverAuth\n");
     $certificateOptions = ['config' => $certificateConfiguration, 'private_key_bits' => 2048, 'digest_alg' => 'sha256'];
     $keyMaterial = openssl_pkey_new($certificateOptions);
     $csr = openssl_csr_new(['commonName' => '127.0.0.1'], $keyMaterial, $certificateOptions);
@@ -270,61 +302,56 @@ try {
     $wssProcess = new Process([
         ...$command, 'server', '127.0.0.1', (string) $wssPort, $consumer . '/certificate.pem', $consumer . '/private.pem',
     ], $runtime, $environment);
+    $wss = null;
     try {
-        $deadline = microtime(true) + 3;
-        $wssAlive = true;
-        while (microtime(true) < $deadline) {
-            if (!$wssProcess->running()) {
-                $wssAlive = false;
-                break;
+        wsNativeReady($wssProcess, $wssPort, $consumer . '/certificate.pem');
+        [$wss, $wssHeader] = wsNativeHandshake($wssPort, true, $consumer . '/certificate.pem');
+        expect(str_contains($wssHeader, '101'), '原生产物 WSS 握手失败：' . $wssHeader);
+        fwrite($wss, wsNativeFrame('native-wss'));
+        $wssEcho = '';
+        $echoDeadline = microtime(true) + 5;
+        while (microtime(true) < $echoDeadline && !str_contains($wssEcho, 'native-wss')) {
+            $chunk = fread($wss, 1024);
+            if ($chunk === false || $chunk === '') {
+                usleep(10000);
+                continue;
             }
-            usleep(20000);
+            $wssEcho .= $chunk;
         }
-        if (!$wssAlive) {
-            $verified['wss'] = [
-                'skipped' => 'typephp-swoole-server-ssl',
-                'detail' => 'TypePHP 编译后的 Swoole\\WebSocket\\Server::set(ssl_cert_file) 在 OpenSSL 初始化时 SIGSEGV；WSS 已在 PHP 协程环境验收',
-            ];
-        } else {
-            wsNativeReady($wssProcess, $wssPort, $consumer . '/certificate.pem');
-            [$wss, $wssHeader] = wsNativeHandshake($wssPort, true, $consumer . '/certificate.pem');
-            expect(str_contains($wssHeader, '101'), '原生产物 WSS 握手失败：' . $wssHeader);
-            fwrite($wss, wsNativeFrame('native-wss'));
-            $wssEcho = '';
-            $echoDeadline = microtime(true) + 5;
-            while (microtime(true) < $echoDeadline && !str_contains($wssEcho, 'native-wss')) {
-                $chunk = fread($wss, 1024);
-                if ($chunk === false || $chunk === '') {
-                    usleep(10000);
-                    continue;
-                }
-                $wssEcho .= $chunk;
-            }
-            expect(str_contains($wssEcho, 'native-wss'), '原生产物 WSS 回显失败：' . bin2hex(substr($wssEcho, 0, 24)));
-            fclose($wss);
-            $wssStopped = $wssProcess->wait(5);
-            expect($wssStopped->successful(), '原生产物 WSS 服务停止失败：' . $wssStopped->stderr);
-            $verified['wss'] = true;
-        }
+        expect(str_contains($wssEcho, 'native-wss'), '原生产物 WSS 回显失败：' . bin2hex(substr($wssEcho, 0, 24)));
+        fclose($wss);
+        $wssStopped = $wssProcess->wait(5);
+        expect($wssStopped->successful(), '原生产物 WSS 服务停止失败：' . $wssStopped->stderr);
+        $verified['wss'] = true;
     } finally {
+        if (is_resource($wss)) {
+            fclose($wss);
+        }
         $wssProcess->stop();
+        file_put_contents($consumer . '/wss.stdout.log', $wssProcess->stdout());
+        file_put_contents($consumer . '/wss.stderr.log', $wssProcess->stderr());
     }
-
-    $verified['native'] = [
-        'artifact' => $report['sha256'],
-        'platform' => PHP_OS_FAMILY,
-        'architecture' => (string) ($report['architecture'] ?? ''),
-        'php' => (string) ($report['php'] ?? ''),
-    ];
+    foreach (['app', 'vendor', 'build/websocket/compiler', 'phpx-home'] as $part) {
+        if (is_dir($consumer . '/' . $part)) {
+            removeTestDirectory($consumer . '/' . $part);
+        }
+    }
+} catch (Throwable $error) {
+    $failure = $error;
+    throw $error;
 } finally {
     if (is_string($previousPhpx) && $previousPhpx !== '') {
         putenv('PHPX_HOME=' . $previousPhpx);
     } else {
         putenv('PHPX_HOME');
     }
-    if (isset($verified['native']) && ($verified['ws'] ?? false) && isset($verified['wss'])) {
-        wsNativeRemove($consumer);
+    if (is_file($consumer . '/private.pem')) {
+        expect(unlink($consumer . '/private.pem'), '无法回收 WSS 测试私钥');
     }
+    file_put_contents($consumer . '/verification.json', json_encode([
+        'ok' => $failure === null, 'verified' => $verified, 'error' => $failure?->getMessage(),
+        'private_key_removed' => !is_file($consumer . '/private.pem'),
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 }
 
-echo json_encode(['ok' => true, 'verified' => $verified], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), "\n";
+echo json_encode(['ok' => true, 'verified' => $verified, 'evidence' => $consumer . '/verification.json'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), "\n";
