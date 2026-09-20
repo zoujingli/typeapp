@@ -9,10 +9,8 @@
     "psr/http-factory": "^1.1",
     "psr/http-server-handler": "^1.0",
     "psr/http-server-middleware": "^1.0",
+    "ext-swoole": ">=6.2 <7",
     "zoujingli/type-runtime": "~1.0.0@dev"
-  },
-  "suggest": {
-    "ext-swoole": "^6.2：HTTP 传输固定复用 SwooleServer 与协程运行能力"
   },
   "autoload": {
     "psr-4": {

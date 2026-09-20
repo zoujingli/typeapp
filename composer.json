@@ -6,6 +6,7 @@
   "license": "Apache-2.0",
   "require": {
     "php": ">=8.4 <8.6",
+    "ext-swoole": ">=6.2 <7",
     "zoujingli/type-core": "~1.0.0@dev",
     "zoujingli/type-log": "~1.0.0@dev",
     "zoujingli/type-mqtt": "~1.0.0@dev",
@@ -332,6 +333,7 @@
       "@php tests/orm-suite-consumer.php pgsql --native",
       "@php tests/orm-suite-consumer.php sqlite --native"
     ],
+    "test:orm-context": "@php tests/orm-context.php",
     "build:scheduler-coordination": "@php tests/build-scenario.php docs/build-config/type-scheduler-coordination.json",
     "test:scheduler-coordination": "@php tests/scheduler-coordination-consumer.php",
     "test:scheduler-coordination-native": "@php tests/scheduler-coordination-consumer.php --native",

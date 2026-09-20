@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "78cacfea37999f419d059a7a7a5da6c7",
+    "content-hash": "be0341a30f0781dbf63862a3f3dc0739",
     "packages": [
         {
             "name": "dragonmantank/cron-expression",
@@ -446,7 +446,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-cache",
-                "reference": "753284f1164f48f16683e562f9472830d04bf64d"
+                "reference": "5989197c34d048578d8029af822a1447aae1893f"
             },
             "require": {
                 "php": ">=8.4 <8.6",
@@ -482,7 +482,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "显式类型、TTL 与命名空间代次隔离的 Redis 缓存",
+            "description": "TypeApp Redis 缓存组件：显式类型编解码、TTL、命名空间隔离及 PSR 缓存接口。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -494,18 +494,16 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-core",
-                "reference": "71f0a44d286d9f73cef2590baaa121a1626c8db3"
+                "reference": "f4c8618bb68e99f72d8db1592893307330ac2ab7"
             },
             "require": {
+                "ext-swoole": ">=6.2 <7",
                 "php": ">=8.4 <8.6",
                 "psr/http-factory": "^1.1",
                 "psr/http-message": "^2.0",
                 "psr/http-server-handler": "^1.0",
                 "psr/http-server-middleware": "^1.0",
                 "zoujingli/type-runtime": "~1.0.0@dev"
-            },
-            "suggest": {
-                "ext-swoole": "^6.2：HTTP 传输固定复用 SwooleServer 与协程运行能力"
             },
             "type": "library",
             "extra": {
@@ -557,7 +555,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "TypeApp 框架的配置快照、命令执行与同步事件核心",
+            "description": "TypeApp 核心组件：配置、命令、事件及 HTTP、TCP、UDP、WebSocket 通信。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -569,7 +567,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-log",
-                "reference": "7c0972780a6f2b1244b13f4361ef41b80caab84f"
+                "reference": "fb7d99d6259c745880332af32c4afe1c529ac5e4"
             },
             "require": {
                 "ext-json": "*",
@@ -606,7 +604,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "PSR-3 结构化日志、作用域关联与有界输出",
+            "description": "TypeApp PSR-3 日志组件：结构化日志、多通道、作用域关联与有界输出。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -618,7 +616,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-mqtt",
-                "reference": "4a5f83fc45bff14bddc6b2e4e8ca1f3481eeb7ae"
+                "reference": "3f408c87af3f79f157e9292abe3ec72137f9ac7e"
             },
             "require": {
                 "ext-json": "*",
@@ -648,7 +646,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "TypeApp 独立 MQTT 服务端连接与协议能力",
+            "description": "TypeApp MQTT 3.1.1/5.0 客户端与服务端组件，提供连接、会话和消息路由能力。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -660,7 +658,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-orm",
-                "reference": "fda80feb83bcd339c31e2220a1b38ea74e7e7fab"
+                "reference": "af3e9d4194790c9f8ecb1d5b85e1898ab53193de"
             },
             "require": {
                 "ext-pdo": "*",
@@ -690,7 +688,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "TypeApp 框架的数据库中立连接与事务接口",
+            "description": "TypeApp ORM：数据库连接、参数化查询、模型与关系、事务、迁移及 Outbox。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -702,7 +700,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-orm-mysql",
-                "reference": "86df919142f8d6504df1bf65b4f2da3df466c584"
+                "reference": "d22c48ffaac6fcc68482b1e989b40ea9ea9df4e4"
             },
             "require": {
                 "ext-pdo_mysql": "*",
@@ -729,7 +727,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "Type ORM 的 MySQL 原生 PDO 驱动",
+            "description": "TypeApp ORM 的 MySQL PDO 驱动，提供连接配置、查询方言与迁移支持。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -741,7 +739,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-orm-pgsql",
-                "reference": "78361ea854a20605764dce3c74ada223a4630790"
+                "reference": "0ed1cc99cbf4333833b3dc74c99bc528dadb7481"
             },
             "require": {
                 "ext-pdo_pgsql": "*",
@@ -768,7 +766,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "Type ORM 的 PostgreSQL 原生 PDO 驱动",
+            "description": "TypeApp ORM 的 PostgreSQL PDO 驱动，提供连接配置、查询方言与迁移支持。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -780,7 +778,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-orm-sqlite",
-                "reference": "834b94fff82644dd6c29be345032f263bbfb05f5"
+                "reference": "313be66dd7c2aaced06c1a188d69560501017e6e"
             },
             "require": {
                 "ext-pdo_sqlite": "*",
@@ -807,7 +805,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "Type ORM 的 SQLite 文件与内存数据库驱动",
+            "description": "TypeApp ORM 的 SQLite PDO 驱动，支持文件数据库、内存数据库与迁移。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -819,7 +817,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-queue",
-                "reference": "7c1818de9be81c67c5fbfb6dd9290c7dc961474f"
+                "reference": "76aa905f0d35aae2f32ea9bb2241174ddeb2fc6c"
             },
             "require": {
                 "php": ">=8.4 <8.6",
@@ -846,7 +844,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "版本化 Redis Streams 任务、独占执行与原子确认",
+            "description": "TypeApp Redis Streams 队列组件：版本化任务、消费组、独占执行与消息确认。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -858,7 +856,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-redis",
-                "reference": "6b1ec3fbcbb426eb64e838cefac58cc9b9bebc83"
+                "reference": "0182ed32526c300e8c6c640454802d0a59b16d2f"
             },
             "require": {
                 "ext-redis": "^6.3",
@@ -885,7 +883,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "原生 Redis 客户端的命名连接、用途池与独占事务",
+            "description": "TypeApp Redis 组件：基于 phpredis 的命名连接、连接池与独占事务。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -897,10 +895,11 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-runtime",
-                "reference": "183a8a403e46496859356d77ae53591d91bde3ea"
+                "reference": "79e34dbdfaae0d9a3afe95ae1109a21a7058aa68"
             },
             "require": {
                 "ext-filter": "*",
+                "ext-swoole": ">=6.2 <7",
                 "php": ">=8.4 <8.6"
             },
             "type": "library",
@@ -923,7 +922,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "TypeApp 框架的原生命令运行能力",
+            "description": "TypeApp 运行组件：基于 Swoole 的线程、协程、执行作用域与资源生命周期管理。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -935,7 +934,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-scheduler",
-                "reference": "00f5aa257600869106849715a4a6def199dc2516"
+                "reference": "5319222610aec743e0d9af9cae7a7688828d09b8"
             },
             "require": {
                 "dragonmantank/cron-expression": "~3.6.0",
@@ -974,7 +973,7 @@
                                 {
                                     "source": "src/Cron/CronExpression.php",
                                     "sha256": "d257d01d5f331236e20854c4b0bb611e8dbcc41d9f2c09fa1398a30e00027ca2",
-                                    "reason": "区分表达式文本与对象，并按TypePHP 0.8显式传递动态日期引用，保持日期合并、克隆和写回语义。",
+                                    "reason": "区分表达式文本与对象，并按TypePHP 0.9显式传递动态日期引用，保持日期合并、克隆和写回语义。",
                                     "replacements": [
                                         {
                                             "from": "$domExpression = sprintf(",
@@ -1011,7 +1010,7 @@
                                 {
                                     "source": "src/Cron/FieldInterface.php",
                                     "sha256": "158a32eded9733c46b9eb36dc61280aa5dfbd03cf7882ed4f6cd9aabdafca79a",
-                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.8的引用存储边界。",
+                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
                                     "replacements": [
                                         {
                                             "from": "DateTimeInterface &$date",
@@ -1023,7 +1022,7 @@
                                 {
                                     "source": "src/Cron/DayOfMonthField.php",
                                     "sha256": "b69d63d2a2890106c1bc544f31cb8df097012018bfb845f97b4d23ca3df538eb",
-                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.8的引用存储边界。",
+                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
                                     "replacements": [
                                         {
                                             "from": "DateTimeInterface &$date",
@@ -1035,7 +1034,7 @@
                                 {
                                     "source": "src/Cron/DayOfWeekField.php",
                                     "sha256": "e10b47a3189aeec98681f699b8ecf2ea216e8f7b87f3aab8ed92618f06fd2f79",
-                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.8的引用存储边界。",
+                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
                                     "replacements": [
                                         {
                                             "from": "DateTimeInterface &$date",
@@ -1047,7 +1046,7 @@
                                 {
                                     "source": "src/Cron/HoursField.php",
                                     "sha256": "8e4693f16203ceea8aad5d322b9add6a1682c2dd4f3d640700832a4612c00e81",
-                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.8的引用存储边界。",
+                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
                                     "replacements": [
                                         {
                                             "from": "DateTimeInterface &$date",
@@ -1059,7 +1058,7 @@
                                 {
                                     "source": "src/Cron/MinutesField.php",
                                     "sha256": "bc18b0bb62c77105583e1e09526fb20a57fcc3e2557619faeb2dc3325c4d0bb9",
-                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.8的引用存储边界。",
+                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
                                     "replacements": [
                                         {
                                             "from": "DateTimeInterface &$date",
@@ -1071,7 +1070,7 @@
                                 {
                                     "source": "src/Cron/MonthField.php",
                                     "sha256": "96ef40989010fba773e494f35e378894a18a9e08def04508995328aa74c49b49",
-                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.8的引用存储边界。",
+                                    "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
                                     "replacements": [
                                         {
                                             "from": "DateTimeInterface &$date",
@@ -1103,7 +1102,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "TypeApp 框架的 Cron、间隔调度与独立任务执行",
+            "description": "TypeApp 任务调度组件：Cron、固定间隔、时区、有限补跑与独立作用域执行。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -1115,7 +1114,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-validate",
-                "reference": "2a8cdad6fa159c84fcc5e464d5cf45070dad657f"
+                "reference": "1fdce0bed22d8ffe08f437e83ab7630867d9d172"
             },
             "require": {
                 "php": ">=8.4 <8.6",
@@ -1144,7 +1143,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "显式输入来源、嵌套 DTO 与部分更新校验",
+            "description": "TypeApp 输入校验组件：显式输入来源、嵌套 DTO、字段规则与部分更新校验。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -6476,7 +6475,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-build",
-                "reference": "63273409af6bee319859445145efc8a2ce8675f6"
+                "reference": "7b9d328c822acf6b92b9f939c6a632927965e107"
             },
             "require": {
                 "composer-runtime-api": "^2.2",
@@ -6506,7 +6505,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "Type 应用的生产依赖检查与原生构建入口",
+            "description": "TypeApp 构建工具：生产依赖审计、声明生成、TypePHP AOT 编译与原生应用打包。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -6518,7 +6517,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-testing",
-                "reference": "161900b26d29bc9d6d3531bdfa6dfe79bbbea3dc"
+                "reference": "8ebb085c02e9762ed67beb6c5b887ca9eca19e31"
             },
             "require": {
                 "ext-json": "*",
@@ -6545,7 +6544,7 @@
             "license": [
                 "Apache-2.0"
             ],
-            "description": "Type 应用的公共断言、受限进程与 HTTP 集成测试工具",
+            "description": "TypeApp 开发测试工具：公共断言、受限进程及命令、HTTP 和原生产物集成测试。",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -6573,7 +6572,8 @@
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
-        "php": ">=8.4 <8.6"
+        "php": ">=8.4 <8.6",
+        "ext-swoole": ">=6.2 <7"
     },
     "platform-dev": {},
     "plugin-api-version": "2.9.0"
