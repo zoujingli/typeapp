@@ -21,7 +21,7 @@ composer require zoujingli/type-runtime:dev-main
 
 ## 最小使用示例
 
-将以下代码保存为独立物联中心应用的 `app/main.php`。按[运行声明式示例](../components.md#运行声明式示例)准备开发启动器，使用带参数的 `main($argc, $argv)` 调用。
+将以下代码保存为独立应用的 `app/main.php`。按[运行声明式示例](../components.md#运行声明式示例)准备开发启动器，使用带参数的 `main($argc, $argv)` 调用。
 
 ```php
 <?php

@@ -90,4 +90,4 @@ composer test:validate-native
 ```
 
 - [TypePHP 回调与输入语义](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)
-- [TypeApp 标准物联中心项目](https://github.com/zoujingli/typeapp/blob/main/docs/development/typeapp.md)
+- [成品案例：物联中心](https://github.com/zoujingli/typeapp/blob/main/docs/development/typeapp.md)

@@ -297,7 +297,7 @@ function main(int $argc, array $argv): void
 }
 ```
 
-在独立物联中心应用根执行以下命令。使用新的示例文件，不指向已有业务库：
+在独立应用根执行以下命令。使用新的示例文件，不指向已有业务库：
 
 ```bash
 mkdir -p var/docs-outbox

@@ -143,7 +143,7 @@ curl -i --max-time 5 http://127.0.0.1:9501/missing
 
 ### HTTP 引擎
 
-`SwooleServer::serve()` 在经典 worker 与协程上下文中执行，要求 Swoole `>=6.2 <7`，允许固定官方内置 PHP 库。`serveThread()` 供主仓物联中心的生产 HTTP 在业务线程内启动协程服务，两者共用 PSR 处理链。缺少相应 Swoole 能力时明确失败。TLS 可交给受信任反向代理终止。
+`SwooleServer::serve()` 在经典 worker 与协程上下文中执行，要求 Swoole `>=6.2 <7`，允许固定官方内置 PHP 库。`serveThread()` 供编译后的业务线程启动协程 HTTP 服务，两者共用 PSR 处理链。应用负责选择并装配入口；缺少相应 Swoole 能力时明确失败。TLS 可交给受信任反向代理终止。
 
 本 HTTP 入口对协议升级返回 `501 / upgrade_not_supported`。要共用 HTTP 与 WebSocket 服务和端口，使用下一节的 `WebSocket\Server` 持有监听，通过 `onRequest()` 接收普通 HTTP 请求并显式装配处理链，见[共用服务](../communications/websocket.md#http-与-websocket-共用服务)。同步数据库调用要配置超时；生产并发和资源预算按实际入口验收。
 

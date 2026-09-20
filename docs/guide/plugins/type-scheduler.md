@@ -73,7 +73,7 @@ function main(int $argc, array $argv): void
 }
 ```
 
-在独立物联中心应用根准备状态目录并运行：
+在独立应用根准备状态目录并运行：
 
 ```bash
 mkdir -p var/scheduler
@@ -157,7 +157,7 @@ try {
 exit($status);
 ```
 
-然后在同一物联中心应用根执行：
+然后在同一应用根执行：
 
 ```bash
 php dev.php "$TYPE_SCHEDULER_STATE" help

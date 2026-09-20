@@ -159,5 +159,5 @@ php tests/configuration.php
 ```
 
 - [嵌套配置与 dotenv](https://github.com/zoujingli/typeapp/blob/main/docs/development/configuration.md)
-- [TypeApp 标准物联中心项目](https://github.com/zoujingli/typeapp/blob/main/docs/development/typeapp.md)
+- [成品案例：物联中心](https://github.com/zoujingli/typeapp/blob/main/docs/development/typeapp.md)
 - [HTTP 接入安全](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-trust.md)
