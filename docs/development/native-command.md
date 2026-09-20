@@ -68,6 +68,8 @@ Windows IOCP 源码引用 PHP 文件辅助头前，还需要 Zend 的内联定�
 
 PHP 官方 Windows 依赖包使用 `libsqlite3.lib`，固定 Swoole 配置的 SQLite 探测同时接受该库名。配置完成后必须在实际生成头文件中确认 MySQL、PostgreSQL、SQLite hook 均已启用，缺少任一项立即停止；不能将可加载的普通 PDO 扩展当作协程等待已实现。
 
+同一 Windows 构建清单还需在启用 PostgreSQL、SQLite 时纳入各自的官方协程实现源文件，并按官方依赖包的实际名称链接 `libzstd_a.lib`。这些调整沿用配置原文摘要和唯一替换检查，不改变数据库协议、等待方式或压缩行为；上游构建清单完整且能通过相同链接和运行验收后撤除。
+
 通信依赖 Swoole，启用其官方内置库。Unix HTTP 场景可用 `php tests/build-scenario.php --with-swoole docs/build-config/type-http.json` 构建，再运行 `php tests/http-native.php build/http/type-app`；此场景同时声明 sockets 与 Swoole，避免 CLI 已加载模块而 embed 缺少依赖。`php tests/websocket.php` 验证 PHP 模式的 HTTP 同端口、分片、WSS 和生命周期，不证明 WebSocket AOT 已通过。
 
 完整应用还需满足[编译业务线程](compiled-business-threads.md)的 PHPX 与 Swoole ABI 校验。普通组件构建通过不能替代线程 SDK 验收，也不能绕过校验退回业务源码解释执行。当前边界与后续目标见[实现对齐](current-implementation-alignment.md)和[实现规划](../guide/roadmap.md)。

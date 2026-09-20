@@ -105,12 +105,19 @@ $taskConfigText = [IO.File]::ReadAllText($taskConfig)
 $taskLibraryProbe = 'CHECK_LIB("libpq.lib", "swoole", PHP_PGSQL_DIR)'
 $taskHeaderProbe = 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PGSQL_DIR)'
 $taskSqliteProbe = 'CHECK_LIB("sqlite3.lib", "swoole", null)'
-foreach ($taskProbe in @($taskLibraryProbe, $taskHeaderProbe, $taskSqliteProbe)) {
-    if ([regex]::Matches($taskConfigText, [regex]::Escape($taskProbe)).Count -ne 1) { throw 'Swoole libpq 配置适配位置不唯一。' }
+$taskZstdProbe = 'CHECK_LIB("libzstd.lib", "swoole", null)'
+$taskPgsqlSources = 'swoole_source_files += PHP_THIRDPARTY_DIR + "\\pdo_pgsql\\pgsql_driver.c ";'
+$taskSqliteSources = 'swoole_source_files += "thirdparty\\pdo_sqlite\\sqlite_driver.c ";'
+foreach ($taskProbe in @($taskLibraryProbe, $taskHeaderProbe, $taskSqliteProbe, $taskZstdProbe, $taskPgsqlSources, $taskSqliteSources)) {
+    if ([regex]::Matches($taskConfigText, [regex]::Escape($taskProbe)).Count -ne 1) { throw 'Swoole Windows 配置适配位置不唯一。' }
 }
 $taskConfigText = $taskConfigText.Replace($taskLibraryProbe, 'CHECK_LIB("libpq.lib", "swoole", null)')
 $taskConfigText = $taskConfigText.Replace($taskHeaderProbe, 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PHP_BUILD + "\\include\\libpq")')
 $taskConfigText = $taskConfigText.Replace($taskSqliteProbe, 'CHECK_LIB("libsqlite3.lib;sqlite3.lib", "swoole", null)')
+$taskConfigText = $taskConfigText.Replace($taskZstdProbe, 'CHECK_LIB("libzstd_a.lib;libzstd.lib", "swoole", null)')
+# 官方 hook 实现必须与 PDO 适配一起编译；只补构建清单，不替换数据库等待机制。
+$taskConfigText = $taskConfigText.Replace($taskPgsqlSources, ('swoole_source_files += "ext-src\\swoole_pgsql.cc ";' + "`n`t`t" + $taskPgsqlSources))
+$taskConfigText = $taskConfigText.Replace($taskSqliteSources, ('swoole_source_files += "ext-src\\swoole_sqlite.cc ";' + "`n`t`t" + $taskSqliteSources))
 [IO.File]::WriteAllText($taskConfig, $taskConfigText, [Text.UTF8Encoding]::new($false))
 @{ file='config.w32'; before=$taskConfigBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-config-source.json') -Encoding utf8
 # IOCP 直接引用 PHP 文件辅助头，需要先加载其使用的 Zend 内联定义。
