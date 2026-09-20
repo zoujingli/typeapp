@@ -13,7 +13,9 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 | Linux x64 | [基础命令运行](https://github.com/zoujingli/typeapp/actions/runs/35452574738)，源码 `fed4efae5826bdca69a613743e1c6c459addd565`；产物 SHA-256 `ea87c232b80b9498d8083f3b2f1e4ed18d4a99c762e9fa69dc983253e845ddc2` | 26 个源码输入、29 个编译单元、9 项原生命令；断网只读 AOT 与真实运行 |
 | Linux ARM64 | Colima ARM64 虚拟机，PHP 8.5.10 ZTS、TypePHP 0.9.0、Swoole 6.2.2 | 三库独立 ORM 的 PHP、AOT 与移除源码运行通过；完整应用、五种通信及最终同提交验收仍待完成 |
 | macOS ARM64 | PHP 8.5.10 ZTS、TypePHP 0.9.0；三库独立 ORM 与完整应用使用的受控 Swoole 模块实际为 6.2.1 | 三库独立 ORM 的 PHP、AOT、无源码运行及真实数据库锁等待通过；TCP/UDP 双线程与协程、WS/WSS 独立原生运行通过；完整应用身份 HTTP 已有三库原生结果，完整协议、故障及最终同提交验收仍待完成 |
-| Windows x64 | PHP 8.5.10 ZTS x64/embed、TypePHP 0.9.0、固定源码构建的 Swoole 6.2.1 与重编译的 PHPX | SDK 构建和加载、完整契约及部分独立 ORM 原生运行已通过；各数据库当前范围见[平台与验收](../guide/platforms.md)，完整应用及最终同提交验收仍待完成 |
+| Windows x64 | PHP 8.5.10 ZTS x64/embed、TypePHP 0.9.0、固定源码构建的 Swoole 6.2.1 与重编译的 PHPX | SDK 构建和加载、完整契约及三库独立 ORM 的 PHP、AOT、移除源码运行分别通过；PostgreSQL 物理复用与污染隔离通过，MySQL/SQLite 复用及最终同提交验收仍待完成 |
+
+Windows PostgreSQL 的[完整消费者验收](https://github.com/zoujingli/typeapp/actions/runs/35536000136)对应源码 `d464fd2fdf35c7d8095a4b36f24381365c322a63`，数据库为 PostgreSQL 17.11，原生程序 SHA-256 为 `05225ea86f924691b5000ec8d53d8f653aab8b5268b15a0690e07475d3436c3c`。PHP 与原生模式均通过十项作用域检查、双进程乐观锁、原子更新、会话复用与故障退役；原生消费者编译 89 个源码输入，移除 100 个 PHP 文件后运行通过。32 个发布文件均通过清单大小与摘要校验，85 份原始框架及消费者源码与该提交一致，专属数据库正常清理。该结果使用[Windows IOCP 名称限定适配](native-ci.md)，不能与其他提交的数据库或平台结果合并为最终同提交验收。
 
 每个平台的产物身份、源码摘要、扩展摘要和运行结果必须随本次构建重新记录；更换任一工具链或扩展都不能沿用旧产物结论。配置检查不计为原生通过。
 
