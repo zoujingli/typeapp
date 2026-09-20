@@ -8,6 +8,11 @@ on:
         type: choice
         options: [full, native, orm]
         default: full
+      orm_driver:
+        description: 仅 scope=orm 生效；单库结果不代表三库验收
+        type: choice
+        options: [all, sqlite, mysql, pgsql]
+        default: all
   push:
     branches: [main]
 
@@ -57,6 +62,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - name: 三库独立 ORM 与 Swoole 上下文验收
+        env:
+          TYPE_ORM_DRIVER: ${{ inputs.scope == 'orm' && inputs.orm_driver || 'all' }}
         run: |
           $taskProfile = & "$env:PHP_HOME/php.exe" -r 'require "vendor/autoload.php"; $root=getcwd(); $p=(new Type\Build\RuntimeProfile())->prepare($root,$root."/build/windows-orm-runtime",getenv("PHP_HOME"),getenv("PHPX_HOME"),["pdo","pdo_mysql","pdo_pgsql","pdo_sqlite","sockets","swoole"]); echo $p["ini"];'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -64,12 +71,18 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_ENV -Value ('TYPE_NATIVE_PHP_INI=' + $taskProfile) -Encoding utf8
           $env:TYPE_COMPOSER_PHAR="$env:PHP_HOME/composer.phar"
           Add-Content -LiteralPath $env:GITHUB_ENV -Value ('TYPE_COMPOSER_PHAR=' + $env:TYPE_COMPOSER_PHAR) -Encoding utf8
-          foreach ($taskMode in @('--php', '--native')) {
-            & "$env:PHP_HOME/php.exe" tests/orm-suite-consumer.php sqlite $taskMode
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:TYPE_ORM_DRIVER -notin @('all', 'sqlite', 'mysql', 'pgsql')) { throw 'ORM 验收驱动无效。' }
+          if ($env:TYPE_ORM_DRIVER -in @('all', 'sqlite')) {
+            foreach ($taskMode in @('--php', '--native')) {
+              & "$env:PHP_HOME/php.exe" tests/orm-suite-consumer.php sqlite $taskMode
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
           }
-          ./.github/scripts/run-windows-database.ps1 -Driver mysql -OrmOnly
-          ./.github/scripts/run-windows-database.ps1 -Driver pgsql -OrmOnly
+          foreach ($taskDriver in @('mysql', 'pgsql')) {
+            if ($env:TYPE_ORM_DRIVER -in @('all', $taskDriver)) {
+              ./.github/scripts/run-windows-database.ps1 -Driver $taskDriver -OrmOnly
+            }
+          }
       - name: 原生构建身份与缓存
         if: inputs.scope != 'orm'
         run: |

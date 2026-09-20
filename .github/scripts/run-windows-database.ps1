@@ -58,6 +58,7 @@ function Complete-TaskProcess {
     $taskErrorOutput = if ($null -ne $Handle.Error) { $Handle.Error.GetAwaiter().GetResult() } else { '' }
     $taskText = $taskOutput + $taskErrorOutput
     foreach ($taskSecret in $script:taskSecrets) { $taskText = $taskText.Replace($taskSecret, '<REDACTED>') }
+    $taskText += "`n[process] exit=" + $Handle.Process.ExitCode + '; timeout=' + $taskTimedOut + "`n"
     [IO.File]::WriteAllText($Log, $taskText, [Text.UTF8Encoding]::new($false))
     if ($taskTimedOut -or $Handle.Process.ExitCode -ne 0) { throw ('原生命令失败，详见：' + $Log) }
     return $taskOutput
@@ -130,6 +131,18 @@ try {
     Invoke-TaskProcess $taskPhp @('-r', $taskProbe) (Join-Path $taskEvidence 'ready.log') 90 $taskEnvironment | Out-Null
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
     if ($OrmOnly) {
+        if ($Driver -eq 'pgsql') {
+            $taskProbeFailed = $false
+            foreach ($taskProbeMode in @('sync', 'hook', 'runtime')) {
+                try {
+                    Invoke-TaskProcess $taskPhp @('.github/scripts/probe-windows-pgsql.php', $taskProbeMode) (Join-Path $taskEvidence ('pdo-' + $taskProbeMode + '.log')) 30 $taskEnvironment | Out-Null
+                } catch {
+                    $taskProbeFailed = $true
+                    Write-Output ('PDO PostgreSQL 接缝验证失败：' + $taskProbeMode)
+                }
+            }
+            if ($taskProbeFailed) { throw 'PDO PostgreSQL 接缝验证未通过，详见 pdo-*.log。' }
+        }
         foreach ($taskMode in @('php', 'native')) {
             Invoke-TaskProcess $taskPhp @('tests/orm-suite-consumer.php', $Driver, ('--' + $taskMode)) (Join-Path $taskEvidence ('orm-' + $taskMode + '.log')) 2400 $taskEnvironment | Out-Null
         }
