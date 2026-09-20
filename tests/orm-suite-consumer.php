@@ -6,7 +6,7 @@ require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 require dirname(__DIR__) . '/examples/model/Drivers.php';
 
-/** 保留基础扩展和加载顺序，移除未选 PDO 驱动及 ORM 不需要的协程扩展。 */
+/** 保留基础扩展和加载顺序，只移除未选 PDO 驱动；Swoole 是 ORM 运行时硬依赖。 */
 function ormRuntimeIni(string $source, string $driver): string
 {
     $result = '';
@@ -16,9 +16,6 @@ function ormRuntimeIni(string $source, string $driver): string
             expect(is_array($directive), '无法解析运行期扩展加载声明');
             $module = strtolower(basename(str_replace('\\', '/', (string) array_values($directive)[0])));
             $module = preg_replace('/^(?:php_)?(.+?)(?:\.so|\.dll)?$/D', '$1', $module);
-            if ($module === 'swoole') {
-                continue;
-            }
             if (str_starts_with($module, 'pdo_') && $module !== 'pdo_' . $driver) {
                 continue;
             }
@@ -72,13 +69,11 @@ function ormNativeExtensions(string $probe, string $ini, string $scan, string $d
 
 function ormAssertExtensions(array $build, array $runtime, array $static, string $driver): void
 {
+    expect(in_array('swoole', array_map('strtolower', $runtime), true)
+        || in_array('swoole', array_map('strtolower', $static), true), '独立 ORM 运行环境缺少 Swoole');
     foreach ($build as $extension) {
         $normalized = strtolower($extension);
         $pdoDriver = str_starts_with($normalized, 'pdo_');
-        if ($normalized === 'swoole' && !in_array($extension, $static, true)) {
-            expect(!in_array($extension, $runtime, true), '独立 ORM 运行环境仍依赖可选 Swoole');
-            continue;
-        }
         if (!$pdoDriver || $normalized === 'pdo_' . $driver || in_array($extension, $static, true)) {
             expect(in_array($extension, $runtime, true), '运行配置丢失所需扩展：' . $extension);
         } else {
@@ -87,9 +82,21 @@ function ormAssertExtensions(array $build, array $runtime, array $static, string
     }
 }
 
+/** @return array{loaded: bool, version: string, loading: string} */
+function ormSwooleReport(array $runtime, array $static): array
+{
+    $runtimeNames = array_map('strtolower', $runtime);
+    $staticNames = array_map('strtolower', $static);
+    $version = phpversion('swoole');
+    expect(extension_loaded('swoole') && is_string($version) && version_compare($version, '6.2', '>=')
+        && version_compare($version, '7.0', '<'), 'Swoole 版本必须满足 >=6.2 <7');
+    return ['loaded' => true, 'version' => $version,
+        'loading' => in_array('swoole', $staticNames, true) ? 'static' : (in_array('swoole', $runtimeNames, true) ? 'dynamic' : 'missing')];
+}
+
 $comment = '; TypePHP 原生进程的共享信号模块';
 expect(ormRuntimeIni($comment . "\r\nextension=pdo_mysql\nextension=pdo_pgsql\nextension=swoole\n", 'mysql')
-    === $comment . "\nextension=pdo_mysql\n\n", '中文注释或非选定驱动配置过滤错误');
+    === $comment . "\nextension=pdo_mysql\nextension=swoole\n\n", '中文注释或非选定驱动配置过滤错误');
 
 $root = dirname(__DIR__);
 $driver = $argv[1] ?? 'sqlite';
@@ -133,6 +140,7 @@ expect(is_array($scanFiles), '无法读取运行期 PHP 扫描目录');
 ormWriteRuntimeIni($consumer, php_ini_loaded_file(), $scanFiles, $driver);
 $nativeRuntimeExtensions = [];
 $nativeStaticExtensions = [];
+$nativeBuildReport = null;
 if ($native) {
     expect($nativeIni !== false && is_file($nativeIni), '原生独立消费者需要先准备实际 embed 运行配置');
     $embedProbe = dirname($nativeIni) . '/embed-probe';
@@ -188,6 +196,7 @@ try {
         file_put_contents($consumer . '/build.log', $buildOutput . $buildError);
         expect($buildStatus === 0, '独立 ORM 编译失败，完整输出见 ' . $consumer . '/build.log');
         $report = json_decode(file_get_contents($consumer . '/build/type-app.build.json'), true, 512, JSON_THROW_ON_ERROR);
+        $nativeBuildReport = $report;
         $actual = array_keys($report['production-packages']);
         sort($actual);
         expect($actual === $packages, '编译产物混入其他生产驱动');
@@ -206,6 +215,7 @@ try {
     }
     $runtimeExtensions = json_decode(ormSuccessful([PHP_BINARY, '-r', 'echo json_encode(get_loaded_extensions());'], $consumer), true, 32, JSON_THROW_ON_ERROR);
     ormAssertExtensions($buildExtensions, $runtimeExtensions, $staticExtensions, $driver);
+    $swoole = ormSwooleReport($runtimeExtensions, $staticExtensions);
     // 此命令忽略 Composer platform 覆盖，检查真正加载的运行期扩展；不能用忽略参数伪装通过。
     successful([$composerBinary, 'check-platform-reqs', '--no-dev'], $consumer);
     $installed = json_decode(file_get_contents($consumer . '/vendor/composer/installed.json'), true, 512, JSON_THROW_ON_ERROR);
@@ -279,6 +289,20 @@ try {
     $result['static_extensions'] = $staticExtensions;
     $result['native_runtime_extensions'] = $nativeRuntimeExtensions;
     $result['native_static_extensions'] = $nativeStaticExtensions;
+    if ($native) {
+        $nativeVersion = $nativeBuildReport['runtime-profile']['extensions']['swoole'] ?? null;
+        expect(
+            is_string($nativeVersion) && version_compare($nativeVersion, '6.2', '>=') && version_compare($nativeVersion, '7', '<'),
+            '原生构建报告缺少有效 Swoole 版本'
+        );
+        $nativeStaticNames = array_map('strtolower', $nativeStaticExtensions);
+        $nativeRuntimeNames = array_map('strtolower', $nativeRuntimeExtensions);
+        $swoole = ['loaded' => in_array('swoole', $nativeStaticNames, true) || in_array('swoole', $nativeRuntimeNames, true),
+            'version' => $nativeVersion,
+            'loading' => in_array('swoole', $nativeStaticNames, true) ? 'static' : (in_array('swoole', $nativeRuntimeNames, true) ? 'dynamic' : 'missing')];
+        expect($swoole['loaded'] === true, '原生运行环境缺少 Swoole');
+    }
+    $result['swoole'] = $swoole;
     file_put_contents($consumer . '/verification.json', json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     echo $driver . ' 独立 Composer 用户、文章、标签业务与双进程并发通过；报告：' . $consumer . "/verification.json\n";
 } finally {
