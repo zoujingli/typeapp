@@ -62,7 +62,7 @@ php tests/native.php --chroot "$task_sandbox"
 
 Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收流程、且同一代码的契约套件已通过时，可手动选择 `scope=native` 定向复跑；报告须同时引用契约与原生运行的源码身份，不能把跳过项记为本次通过。准备脚本固定并核验 PHP 官方 SDK 构建工具，提供 `phpize` 配置必需的 bison、re2c 等程序；工具身份与 Swoole、PHPX 身份一同记录。PHPX DLL 放入编译器要求的 `PHPX_HOME/build`，并统一加载路径；工作流分别记录构建身份、四组件和完整应用的结果，保存日志、清单与实际程序产物。
 
-固定 Swoole 的 Windows 配置引用了未声明的 PostgreSQL 路径变量。准备脚本仅在原文摘要和替换位置匹配时，将库与头文件探测接入 PHP 官方 `--with-php-build` 依赖目录，并记录适配前后摘要；不改变 PDO 协议实现或关闭协程 hook。上游支持同一独立构建方式并通过三库验收后撤除此适配。
+固定 Swoole 的 Windows 配置引用了未声明的 PostgreSQL 路径变量。准备脚本仅在原文摘要和替换位置匹配时，将库与头文件探测接入 PHP 官方 `--with-php-build` 依赖目录，并记录适配前后摘要；不改变 PDO 协议实现或关闭协程 hook。上游支持同一独立构建方式并通过三库验收后撤除此适配。Swoole 的 PHP 8.5 实现使用指定初始化，MSVC 构建时显式启用 C++20，结束后恢复原编译选项；该选项不改变 TypePHP 的 PHP 语言契约。
 
 通信依赖 Swoole，启用其官方内置库。Unix HTTP 场景可用 `php tests/build-scenario.php --with-swoole docs/build-config/type-http.json` 构建，再运行 `php tests/http-native.php build/http/type-app`；此场景同时声明 sockets 与 Swoole，避免 CLI 已加载模块而 embed 缺少依赖。`php tests/websocket.php` 验证 PHP 模式的 HTTP 同端口、分片、WSS 和生命周期，不证明 WebSocket AOT 已通过。
 

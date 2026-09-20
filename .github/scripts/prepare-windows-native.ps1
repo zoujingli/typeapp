@@ -117,8 +117,13 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Swoole phpize 失败。' }
     & .\configure.bat '--enable-swoole=shared' '--enable-swoole-thread' '--enable-mysqlnd' '--enable-php-sockets' '--enable-swoole-pgsql' '--enable-swoole-sqlite' "--with-php-build=$taskDeps" '--with-mp=2' 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
     if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath 'Makefile')) { throw 'Swoole Windows 配置失败。' }
-    & nmake /nologo 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'swoole-build.log')
-    if ($LASTEXITCODE -ne 0) { throw 'Swoole Windows 编译失败。' }
+    # PHP 8.5 的官方 Swoole 关闭回调使用指定初始化；MSVC 需要显式 C++20。
+    $taskCompilerOptions = $env:_CL_
+    try {
+        $env:_CL_ = ($taskCompilerOptions + ' /std:c++20').Trim()
+        & nmake /nologo 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'swoole-build.log')
+        if ($LASTEXITCODE -ne 0) { throw 'Swoole Windows 编译失败。' }
+    } finally { $env:_CL_ = $taskCompilerOptions }
 } finally { Pop-Location }
 $taskModules = @(Get-ChildItem -LiteralPath $taskSwoole -Filter php_swoole.dll -File -Recurse)
 if ($taskModules.Count -ne 1) { throw 'Swoole 构建没有产生唯一扩展。' }
