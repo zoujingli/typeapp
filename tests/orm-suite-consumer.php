@@ -434,7 +434,8 @@ try {
     putenv($previousIni === false ? 'PHPRC' : 'PHPRC=' . $previousIni);
     putenv($previousNativeIni === false ? 'TYPE_NATIVE_PHP_INI' : 'TYPE_NATIVE_PHP_INI=' . $previousNativeIni);
     putenv($previousBarrier === false ? 'TYPE_SUITE_BARRIER' : 'TYPE_SUITE_BARRIER=' . $previousBarrier);
-    foreach ([$consumer . '/business.sqlite', $consumer . '/business.sqlite-wal', $consumer . '/business.sqlite-shm', $consumer . '/race-barrier'] as $file) {
+    foreach ([$consumer . '/business.sqlite', $consumer . '/business.sqlite-wal', $consumer . '/business.sqlite-shm',
+        $consumer . '/business.sqlite.type-migration.lock', $consumer . '/race-barrier'] as $file) {
         if (is_file($file)) {
             unlink($file);
         }
