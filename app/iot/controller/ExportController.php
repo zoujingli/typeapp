@@ -139,7 +139,7 @@ final class ExportController
         if (!$scope instanceof ExecutionScope) {
             throw new \RuntimeException('导出接口需要受管请求作用域');
         }
-        return $this->database->connect($scope);
+        return \Type\Orm\Db::connection('default', true);
     }
 
     private function response(int $status, array $data): ResponseInterface

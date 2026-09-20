@@ -14,7 +14,11 @@ $native = in_array('--native', $argv, true);
 expect(in_array($requested, ['sqlite', 'mysql', 'pgsql', 'all'], true) && array_diff(array_slice($argv, 2), ['--native']) === [], '用法：php tests/iot-ingestion.php [sqlite|mysql|pgsql|all] [--native]');
 $fixture = $root . '/tests/fixtures/iot-ingestion-cases.php';
 expect(copy($fixture, $base . '/fixture.php'), '无法保全本轮接收输入');
-$command = [PHP_BINARY, '-r', 'require $argv[1]; require $argv[2]; main(2, [$argv[2], $argv[3]]);', $root . '/vendor/autoload.php', $base . '/fixture.php'];
+$generated = $base . '/models-development.php';
+if (!$native) {
+    file_put_contents($generated, (new Type\Build\ModelCompiler())->compile([$root . '/app'])['code']);
+}
+$command = [PHP_BINARY, '-r', 'require $argv[1]; require $argv[2]; require $argv[3]; main(2, [$argv[3], $argv[4]]);', $root . '/vendor/autoload.php', $generated, $base . '/fixture.php'];
 $report = ['status' => 'running', 'execution' => $native ? 'native-public-services' : 'php-public-services',
     'fixture-sha256' => hash_file('sha256', $fixture), 'drivers' => [], 'synchronous-durability' => '由完整MQTT同步接收验收证明，本脚本不声明'];
 if ($native) {

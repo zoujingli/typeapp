@@ -184,17 +184,18 @@ final class ProductService
     {
         try {
             if (!$write) {
-                $current = (new IdentityService('customer'))->refresh($connection, $identity);
+                $current = (new IdentityService('customer'))->refresh($identity);
                 if ($current === null || $current->subject() !== $identity->subject()) {
                     throw new HttpError(401, 'unauthenticated');
                 }
-                $permissions = RoleService::permissions($connection, $current, 'customer', $tenantId);
+                $permissions = RoleService::permissions($current, 'customer', $tenantId);
                 if (!in_array('customer.products.read', $permissions, true)) {
                     throw new HttpError(403, 'permission_denied');
                 }
                 return $operation($connection, ['permissions' => $permissions, 'menus' => RoleService::menus('customer', $permissions), 'identity' => IdentityService::context($current, $tenantId)]);
             }
-            return RoleService::authorized($connection, $identity, null, 'customer.products.manage', static function (Connection $transaction, Identity $current, array $permissions) use ($tenantId, $action, $subjectId, $operation): array {
+            return RoleService::authorized($identity, null, 'customer.products.manage', static function (Identity $current, array $permissions) use ($tenantId, $action, $subjectId, $operation): array {
+                $transaction = \Type\Orm\Db::connection('default', true);
                 $context = ['permissions' => $permissions, 'menus' => RoleService::menus('customer', $permissions), 'identity' => IdentityService::context($current, $tenantId)];
                 $result = $operation($transaction, $context);
                 AuditLog::append($transaction, $tenantId, $current, $action, $result['id'] ?? $subjectId, 'success', ['context' => 'product-model', 'version' => $result['model_version'] ?? ($result['version'] ?? 0)], 'customer');

@@ -141,17 +141,18 @@ final class DeviceService
         $node = $realm . '.devices.' . $permission;
         try {
             if (!$write) {
-                $current = (new IdentityService($realm))->refresh($connection, $identity);
+                $current = (new IdentityService($realm))->refresh($identity);
                 if ($current === null || $current->subject() !== $identity->subject()) {
                     throw new HttpError(401, 'unauthenticated');
                 }
-                $permissions = RoleService::permissions($connection, $current, $realm, $tenantId);
+                $permissions = RoleService::permissions($current, $realm, $tenantId);
                 if (!in_array($node, $permissions, true)) {
                     throw new HttpError(403, 'permission_denied');
                 }
                 return $operation($connection, $current, ['permissions' => $permissions, 'menus' => RoleService::menus($realm, $permissions), 'identity' => IdentityService::context($current, $tenantId)]);
             }
-            return RoleService::authorized($connection, $identity, null, $node, static function (Connection $transaction, Identity $current, array $permissions) use ($operation, $realm, $tenantId): array {
+            return RoleService::authorized($identity, null, $node, static function (Identity $current, array $permissions) use ($operation, $realm, $tenantId): array {
+                $transaction = \Type\Orm\Db::connection('default', true);
                 return $operation($transaction, $current, ['permissions' => $permissions, 'menus' => RoleService::menus($realm, $permissions), 'identity' => IdentityService::context($current, $tenantId)]);
             }, $realm, $tenantId);
         } catch (HttpError $failure) {
@@ -274,7 +275,7 @@ final class DeviceService
         if ($transaction->transactionDepth() < 1) {
             throw new \LogicException('model_switch_transaction_required');
         }
-        RoleService::lockAuthorization($transaction);
+        RoleService::lockAuthorization();
         $query = $transaction->table('iot_model_switches')->where('next_attempt_at', '<=', time())->orderBy('next_attempt_at')->orderBy('id')->limit(1);
         $record = $query->first();
         if ($record === null) {
@@ -289,11 +290,11 @@ final class DeviceService
         }
         $now = time();
         $source = json_decode($record['dispatch_context'], true, 8, JSON_THROW_ON_ERROR);
-        $current = (new IdentityService('customer'))->resume($transaction, $source);
+        $current = (new IdentityService('customer'))->resume($source);
         $allowed = false;
         if ($current !== null) {
             try {
-                $allowed = in_array('customer.devices.model-switch', RoleService::permissions($transaction, $current, 'customer', $record['tenant_id']), true);
+                $allowed = in_array('customer.devices.model-switch', RoleService::permissions($current, 'customer', $record['tenant_id']), true);
             } catch (HttpError $revoked) {
                 $allowed = false;
             }

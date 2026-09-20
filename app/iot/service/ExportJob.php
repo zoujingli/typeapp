@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace app\iot\service;
 
-use Type\Orm\Database;
+use Type\Orm\Db;
 use Type\Queue\Job;
 use Type\Queue\JobContext;
 
 /** 把队列租约及任务作用域绑定到一次导出分块；连接在成功和异常路径都归还。 */
 final class ExportJob implements Job
 {
-    /** 复用后台角色拥有的池；Job不创建第二套连接配置。 */
-    public function __construct(private Database $database, private ExportService $exports)
+    /** 复用后台角色装配的数据库；Job不创建第二套连接配置。 */
+    public function __construct(private ExportService $exports)
     {
     }
 
@@ -20,7 +20,7 @@ final class ExportJob implements Job
     public function handle(JobContext $context, array $payload): void
     {
         $context->assertActive();
-        $connection = $this->database->connect($context->scope());
+        $connection = Db::connection('default', true);
         try {
             $this->exports->advance($connection, $context, $payload);
         } catch (\RuntimeException $failure) {

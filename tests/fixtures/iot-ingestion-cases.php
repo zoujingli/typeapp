@@ -19,12 +19,14 @@ use app\iot\service\TransferService;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Orm\Connection;
-use Type\Orm\Database;
+use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
 use Type\Orm\Migration\Migrator;
 use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Orm\Sqlite\SqliteDriver;
 use Type\Runtime\ExecutionScope;
+use Type\Runtime\CoroutineRuntime;
 
 
 /** 测试持有真实登录令牌；缓存只在本装置进程中存在，不写入业务来源或审计。 */
@@ -34,8 +36,8 @@ function fixtureSession(Connection $connection, string $login, string $realm = '
     $key = $realm . ':' . $login;
     if (!isset($sessions[$key])) {
         $service = new IdentityService($realm);
-        $token = $service->login($connection, $login, 'Test-ingestion-password')['accessToken'];
-        $sessions[$key] = ['token' => $token, 'identity' => $service->authenticate($connection, $token)];
+        $token = $service->login($login, 'Test-ingestion-password')['accessToken'];
+        $sessions[$key] = ['token' => $token, 'identity' => $service->authenticate($token)];
     }
     return $sessions[$key];
 }
@@ -44,9 +46,9 @@ function fixtureSession(Connection $connection, string $login, string $realm = '
 function fixtureChange(Connection $connection, Identity $identity, string $action, string $id, array $data, string $tenant = ''): array
 {
     $realm = $identity->attributes()['realm'];
-    $login = (new IdentityService($realm))->user($connection, $identity->subject())['login'];
+    $login = (new IdentityService($realm))->user($identity->subject())['login'];
     $session = fixtureSession($connection, $login, $realm);
-    return RoleService::change($connection, $identity, $session['token'], $action, $id, $data, $realm, $realm === 'admin' ? 'platform' : $tenant);
+    return RoleService::change($identity, $session['token'], $action, $id, $data, $realm, $realm === 'admin' ? 'platform' : $tenant);
 }
 
 function fixtureTenant(Connection $connection, Identity $platform, string $name, string $owner): array
@@ -228,13 +230,13 @@ function modelSwitchCases(Connection $connection, Identity $identity, string $te
         $partial = $buffer->enqueue(3, 'telemetry', time(), (object) ['mode' => 'auto']);
         expect($send($partial['payload'], time())['code'] === 'accepted' && count($current()['fields']) === 1
             && $current()['fields'][0]['identifier'] === 'mode', '回切首次部分更新合并了旧区间字段');
-        $readerUser = (new IdentityService())->provision($connection, 'switch-reader', '模型只读', 'Test-ingestion-password', false);
+        $readerUser = (new IdentityService())->provision('switch-reader', '模型只读', 'Test-ingestion-password', false);
         $reader = fixtureMember($connection, $identity, $tenantId, 'switch-reader', ['customer.devices.read']);
         expect($devices->modelSwitches($connection, $reader, $tenantId, $id, 1, 2)['total'] === 6, '只读分页缺失模型切换事实');
         try { $devices->switchModel($connection, $reader, $tenantId, $id, bin2hex(random_bytes(16)), 1, fixtureDeviceVersion($connection, $id)); throw new RuntimeException('只读主动切换成功'); }
         catch (HttpError $denied) { expect($denied->status() === 403, '切换权限未由服务端拒绝'); }
         expect(ProductService::publishedModel($connection, $tenantId, $product['id'], 1)['definition'] === $definition, '切换改写已发布模型');
-        (new IdentityService())->provision($connection, 'switch-origin', '单一模型切换权限', 'Test-ingestion-password', false);
+        (new IdentityService())->provision('switch-origin', '单一模型切换权限', 'Test-ingestion-password', false);
         $limited = fixtureMember($connection, $identity, $tenantId, 'switch-origin', ['customer.devices.model-switch']);
         $switchRole = $connection->table('customer_roles')->where('scope_id', '=', $tenantId)->where('name', '=', 'switch-origin')->first();
         $revokedId = bin2hex(random_bytes(16));
@@ -268,7 +270,7 @@ function modelSwitchCases(Connection $connection, Identity $identity, string $te
 function transferCases(Connection $connection, Identity $sourceIdentity, Identity $platform, string $sourceTenant, string $sourceProduct): array
 {
     $tenants = new TenantService(); $products = new ProductService(); $devices = new DeviceService();
-    $targetUser = (new IdentityService())->provision($connection, 'transfer-target', '目标管理员', 'Test-ingestion-password', false);
+    $targetUser = (new IdentityService())->provision('transfer-target', '目标管理员', 'Test-ingestion-password', false);
     $targetIdentity = fixtureSession($connection, 'transfer-target')['identity'];
     $targetTenant = fixtureTenant($connection, $platform, '转入组织', 'transfer-target')['id'];
     $registration = $devices->register($connection, $sourceIdentity, $sourceTenant, $sourceProduct, 1, '双方冻结设备');
@@ -287,7 +289,7 @@ function transferCases(Connection $connection, Identity $sourceIdentity, Identit
     $decision = ['decision_id' => bin2hex(random_bytes(16)), 'action' => 'reject'];
     foreach (['operator', 'readonly'] as $role) {
         $login = 'transfer-' . $role;
-        $user = (new IdentityService())->provision($connection, $login, '转移查看人员', 'Test-ingestion-password', false);
+        $user = (new IdentityService())->provision($login, '转移查看人员', 'Test-ingestion-password', false);
         $identity = fixtureSession($connection, $login)['identity'];
         foreach ([$sourceTenant, $targetTenant] as $fixtureTenant) {
             fixtureMember($connection, $fixtureTenant === $sourceTenant ? $sourceIdentity : $targetIdentity, $fixtureTenant, $login, ['customer.transfers.read']);
@@ -380,7 +382,7 @@ function transferCases(Connection $connection, Identity $sourceIdentity, Identit
 function ownershipCases(Connection $connection, Identity $sourceIdentity, Identity $platform, string $sourceTenant, string $sourceProduct): array
 {
     $tenants = new TenantService(); $devices = new DeviceService();
-    $user = (new IdentityService())->provision($connection, 'ownership-target', '切换目标管理员', 'Test-ingestion-password', false);
+    $user = (new IdentityService())->provision('ownership-target', '切换目标管理员', 'Test-ingestion-password', false);
     $targetIdentity = fixtureSession($connection, 'ownership-target')['identity'];
     $targetTenant = fixtureTenant($connection, $platform, '正式归属目标', 'ownership-target')['id'];
     $registration = $devices->register($connection, $sourceIdentity, $sourceTenant, $sourceProduct, 1, '正式切换设备');
@@ -576,7 +578,7 @@ function commandCases(Connection $connection, Identity $identity, string $tenant
     $connection->table('iot_device_connections')->where('device_id', '=', $id)->update(['status' => 'online', 'node_id' => $node, 'run_id' => $run, 'observed_at' => time()]);
     try { fixtureCommand($connection, $identity, $tenantId, $id, 'switch', (object) ['on' => 'true']); throw new RuntimeException('指令值未按发布模型校验'); }
     catch (\Type\Validate\ValidationException) { }
-    $readonly = (new IdentityService())->provision($connection, 'command-reader', '指令只读', 'Test-ingestion-password', false);
+    $readonly = (new IdentityService())->provision('command-reader', '指令只读', 'Test-ingestion-password', false);
     $reader = fixtureMember($connection, $identity, $tenantId, 'command-reader', ['customer.commands.read']);
     try { fixtureCommand($connection, $reader, $tenantId, $id, 'switch', (object) ['on' => true]); throw new RuntimeException('只读成员发起了控制'); }
     catch (HttpError $denied) { expect($denied->status() === 403, '控制权限必须服务端校验'); }
@@ -590,7 +592,7 @@ function commandCases(Connection $connection, Identity $identity, string $tenant
     $connection->table('iot_commands')->where('id', '=', $expired['id'])->update(['accepted_at' => time() - 61, 'deadline_at' => time() - 1]);
     expect($transaction(static fn (Connection $tx): ?array => CommandService::claim($tx)) === null
         && CommandService::detail($connection, $identity, $tenantId, $id, $expired['id'])['execution'] === 'not_dispatched', '从未领取且到期的指令不能误标设备结果未知');
-    (new IdentityService())->provision($connection, 'command-origin', '单一指令权限', 'Test-ingestion-password', false);
+    (new IdentityService())->provision('command-origin', '单一指令权限', 'Test-ingestion-password', false);
     $limited = fixtureMember($connection, $identity, $tenantId, 'command-origin', ['customer.commands.create']);
     $revokedCommand = fixtureCommand($connection, $limited, $tenantId, $id, 'switch', (object) ['on' => true]);
     $role = $connection->table('customer_roles')->where('scope_id', '=', $tenantId)->where('name', '=', 'command-origin')->first();
@@ -598,24 +600,24 @@ function commandCases(Connection $connection, Identity $identity, string $tenant
     expect($transaction(static fn (Connection $tx): ?array => CommandService::claim($tx)) === null
         && CommandService::detail($connection, $identity, $tenantId, $id, $revokedCommand['id'])['dispatch_stop_reason'] === 'source_permission_revoked', '真实角色撤权后仍领取排队动作');
     $original = $make();
-    $otherLogin = (new IdentityService())->login($connection, 'owner', 'Test-ingestion-password');
-    $otherSession = (new IdentityService())->authenticate($connection, $otherLogin['accessToken']);
+    $otherLogin = (new IdentityService())->login('owner', 'Test-ingestion-password');
+    $otherSession = (new IdentityService())->authenticate($otherLogin['accessToken']);
     try { fixtureCommand($connection, $otherSession, $tenantId, $id, 'switch', (object) ['on' => true], $original['id']); throw new RuntimeException('同账号另一会话重用了原动作'); }
     catch (HttpError $conflict) { expect($conflict->errorCode() === 'command_identity_conflict', '指令幂等没有绑定原会话'); }
     CommandService::cancel($connection, $identity, $tenantId, $id, $original['id'], bin2hex(random_bytes(16)));
     $adminService = new IdentityService('admin');
-    $adminLogin = $adminService->login($connection, 'platform', 'Test-ingestion-password');
-    $adminIdentity = $adminService->authenticate($connection, $adminLogin['accessToken']);
+    $adminLogin = $adminService->login('platform', 'Test-ingestion-password');
+    $adminIdentity = $adminService->authenticate($adminLogin['accessToken']);
     $customerVersion = (int) $connection->table('customer_users')->where('id', '=', $identity->subject())->first()['version'];
-    $simulated = RoleService::change($connection, $adminIdentity, $adminLogin['accessToken'], 'admin.customers.impersonate', $identity->subject(), ['version' => $customerVersion]);
-    $simulatedIdentity = (new IdentityService())->authenticate($connection, $simulated['accessToken']);
+    $simulated = RoleService::change($adminIdentity, $adminLogin['accessToken'], 'admin.customers.impersonate', $identity->subject(), ['version' => $customerVersion]);
+    $simulatedIdentity = (new IdentityService())->authenticate($simulated['accessToken']);
     $simulatedCommand = fixtureCommand($connection, $simulatedIdentity, $tenantId, $id, 'switch', (object) ['on' => true]);
     $storedSource = json_decode($connection->table('iot_commands')->where('id', '=', $simulatedCommand['id'])->first()['source_context'], true, 8, JSON_THROW_ON_ERROR);
     expect($storedSource['actor_id'] === $adminIdentity->subject() && $storedSource['customer_id'] === $identity->subject()
         && $storedSource['source_session_id'] === $adminIdentity->attributes()['session_id'] && $storedSource['tenant_id'] === $tenantId, '模拟指令丢失真实来源');
     try { fixtureCommand($connection, $identity, $tenantId, $id, 'switch', (object) ['on' => true], $simulatedCommand['id']); throw new RuntimeException('普通会话重用了模拟动作'); }
     catch (HttpError $conflict) { expect($conflict->errorCode() === 'command_identity_conflict', '模拟与普通上下文未隔离'); }
-    $adminService->logout($connection, $adminIdentity, $adminLogin['accessToken']);
+    $adminService->logout($adminIdentity, $adminLogin['accessToken']);
     expect($transaction(static fn (Connection $tx): ?array => CommandService::claim($tx)) === null
         && CommandService::detail($connection, $identity, $tenantId, $id, $simulatedCommand['id'])['execution'] === 'not_dispatched', '真实模拟来源退出后仍领取排队动作');
     $record = $make();
@@ -796,6 +798,7 @@ function commandCases(Connection $connection, Identity $identity, string $tenant
 
 function main(int $argc, array $argv): void
 {
+    CoroutineRuntime::run(static function () use ($argv): void {
     $name = $argv[1];
     $environment = getenv();
     $prefix = 'TYPE_' . strtoupper($name) . '_';
@@ -808,12 +811,14 @@ function main(int $argc, array $argv): void
     $scope = null;
     try {
         $installation = Schema::install($driver, ['platform', '平台', 'owner', '租户管理员', '接收租户'], 'Test-ingestion-password', 'Test-ingestion-password');
-        $pool = new Database($driver, 2, 1);
+        $pool = new DatabaseManager(['default' => $driver], 2, 1);
+        Db::configure($pool);
         $scope = new ExecutionScope();
-        $connection = $pool->connect($scope);
+        $scope->run(static function (ExecutionScope $currentScope) use ($installation, $name, &$scope): void {
+        $connection = Db::connection('default', true);
         $identityService = new IdentityService();
         $owner = $installation['customer'];
-        $outsider = $identityService->provision($connection, 'outsider', '其他人员', 'Test-ingestion-password', false);
+        $outsider = $identityService->provision('outsider', '其他人员', 'Test-ingestion-password', false);
         $platform = fixtureSession($connection, 'platform', 'admin')['identity'];
         $identity = fixtureSession($connection, 'owner')['identity'];
         $tenants = new TenantService();
@@ -1018,11 +1023,15 @@ function main(int $argc, array $argv): void
         $ownershipChecks = ownershipCases($connection, $identity, $platform, $tenant['id'], $product['id']);
         $scope->close();
         $scope = new ExecutionScope();
-        $reopened = $pool->connect($scope);
+        $scope->run(static function (ExecutionScope $reopenedScope) use ($identity, $tenant, $device, $newer, $before, $freshnessChecks, $commandChecks, $modelChecks, $transferChecks, $ownershipChecks): void {
+        $reopened = Db::connection('default', true);
         expect(IngestionService::current($reopened, $identity, $tenant['id'], $device['id'])['sequence'] === $newer['sequence'], '更换连接后仍读取持久当前事实');
         echo json_encode(['status' => 'passed', 'accepted-facts' => $before, 'checks' => ['idempotency', 'new-receipt-write-barrier', 'exact-canonical-content', 'sequence-order', 'per-field-time', 'event', '48h-and-clock-boundaries', 'rollback', 'independent-consumers', 'tenant-isolation', 'latest-first-reception', 'receipt-tie-order', 'ownership-model-isolation', 'reopen', 'bounded-device-status', 'status-no-receipt', 'status-stale-isolation', ...$freshnessChecks, ...$commandChecks, ...$modelChecks, ...$transferChecks, ...$ownershipChecks]], JSON_THROW_ON_ERROR), "\n";
+        });
+        });
     } finally {
         $scope?->close();
         $pool?->close();
     }
+    });
 }

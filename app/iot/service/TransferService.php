@@ -26,7 +26,8 @@ final class TransferService
         if ($tenantId === $targetTenant) {
             throw new HttpError(422, 'transfer_target_invalid');
         }
-        return self::write($connection, $identity, $tenantId, 'request', $transferId, static function (Connection $transaction, Identity $current, array $permissions) use ($tenantId, $deviceId, $targetTenant, $transferId, $version): array {
+        return self::write($connection, $identity, $tenantId, 'request', $transferId, static function (Identity $current, array $permissions) use ($tenantId, $deviceId, $targetTenant, $transferId, $version): array {
+            $transaction = \Type\Orm\Db::connection('default', true);
             self::lockTenants($transaction, $tenantId, $targetTenant);
             $device = self::lockedDevice($transaction, $deviceId);
             $stored = self::lockedRecord($transaction, $transferId);
@@ -73,7 +74,8 @@ final class TransferService
         $hash = IngestionService::contentHash(json_encode((object) $decision, JSON_THROW_ON_ERROR));
         // 不在等待租户锁之前建立MySQL一致性快照；邀请身份不可改，锁后重验成员与审批事实。
         $invitation = self::visible($connection, $identity, $tenantId, $transferId, $action);
-        return self::write($connection, $identity, $tenantId, $action, $transferId, static function (Connection $transaction, Identity $current, array $permissions) use ($tenantId, $transferId, $decision, $action, $decisionId, $hash, $invitation): array {
+        return self::write($connection, $identity, $tenantId, $action, $transferId, static function (Identity $current, array $permissions) use ($tenantId, $transferId, $decision, $action, $decisionId, $hash, $invitation): array {
+            $transaction = \Type\Orm\Db::connection('default', true);
             self::lockTenants($transaction, $invitation['source_tenant_id'], $invitation['target_tenant_id'], $action === 'accept');
             if ($invitation[$action === 'cancel' ? 'source_tenant_id' : 'target_tenant_id'] !== $tenantId) {
                 throw new HttpError(403, $action === 'cancel' ? 'transfer_source_required' : 'transfer_target_admin_required');
@@ -168,7 +170,8 @@ final class TransferService
     public static function retry(Connection $connection, Identity $identity, string $tenantId, string $transferId, int $version): array
     {
         $invitation = self::visible($connection, $identity, $tenantId, $transferId, 'retry');
-        return self::write($connection, $identity, $tenantId, 'retry', $transferId, static function (Connection $transaction, Identity $current, array $permissions) use ($tenantId, $transferId, $invitation, $version): array {
+        return self::write($connection, $identity, $tenantId, 'retry', $transferId, static function (Identity $current, array $permissions) use ($tenantId, $transferId, $invitation, $version): array {
+            $transaction = \Type\Orm\Db::connection('default', true);
             self::lockTenants($transaction, $invitation['source_tenant_id'], $invitation['target_tenant_id']);
             $device = self::lockedDevice($transaction, $invitation['device_id']);
             if ($device === null || $device['transfer_id'] !== $transferId || $device['ownership_id'] !== $invitation['ownership_id']) {
@@ -196,7 +199,8 @@ final class TransferService
             throw new HttpError(422, 'transfer_switch_invalid');
         }
         $invitation = self::visible($connection, $identity, $tenantId, $transferId, 'switch');
-        return self::write($connection, $identity, $tenantId, 'switch', $transferId, static function (Connection $transaction, Identity $current, array $permissions) use ($tenantId, $transferId, $switchId, $invitation, $version): array {
+        return self::write($connection, $identity, $tenantId, 'switch', $transferId, static function (Identity $current, array $permissions) use ($tenantId, $transferId, $switchId, $invitation, $version): array {
+            $transaction = \Type\Orm\Db::connection('default', true);
             self::lockTenants($transaction, $invitation['source_tenant_id'], $invitation['target_tenant_id']);
             if ($tenantId !== $invitation['target_tenant_id']) {
                 throw new HttpError(403, 'transfer_target_admin_required');
@@ -551,12 +555,12 @@ final class TransferService
 
     /**
      * 同一授权事务与原业务共享连接；独立写节点不隐式要求转移查询节点。
-     * @param Closure(Connection, Identity, list<string>): array<string, mixed> $operation 锁后重验身份的原业务。
+     * @param Closure(Identity, list<string>): array<string, mixed> $operation 锁后重验身份的原业务。
      */
     private static function write(Connection $connection, Identity $identity, string $tenantId, string $action, string $id, Closure $operation): array
     {
         try {
-            return RoleService::authorized($connection, $identity, null, 'customer.transfers.' . $action, $operation, 'customer', $tenantId);
+            return RoleService::authorized($identity, null, 'customer.transfers.' . $action, $operation, 'customer', $tenantId);
         } catch (HttpError $failure) {
             AuditLog::append(
                 $connection,
@@ -574,11 +578,11 @@ final class TransferService
 
     private static function authorize(Connection $connection, Identity $identity, string $tenantId, string $action): array
     {
-        $current = (new IdentityService('customer'))->refresh($connection, $identity);
+        $current = (new IdentityService('customer'))->refresh($identity);
         if ($current === null || $current->subject() !== $identity->subject()) {
             throw new HttpError(401, 'unauthenticated');
         }
-        $permissions = RoleService::permissions($connection, $current, 'customer', $tenantId);
+        $permissions = RoleService::permissions($current, 'customer', $tenantId);
         if (!in_array('customer.transfers.' . $action, $permissions, true)) {
             throw new HttpError(403, 'permission_denied');
         }

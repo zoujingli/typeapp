@@ -239,7 +239,7 @@ final class IngestionWorker
             }
             if (($request['action'] ?? '') === 'command_claim') {
                 return $store->transaction($operationId, static function (Connection $transaction) use ($request): array {
-                    \app\common\service\RoleService::lockAuthorization($transaction);
+                    \app\common\service\RoleService::lockAuthorization();
                     self::observe($transaction, $request);
                     return ['transfer' => TransferService::claim($transaction), 'switch' => DeviceService::claimModelSwitch($transaction), 'command' => CommandService::claim($transaction)];
                 });

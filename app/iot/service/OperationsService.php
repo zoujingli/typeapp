@@ -73,7 +73,7 @@ final class OperationsService
     /** 平台运行节点独立授权；只返回数值元数据，HTTP存活与同步持久依赖就绪分别展示。 */
     public static function platform(Connection $connection, Identity $identity, string $mqttCommand = '[]'): array
     {
-        $access = RoleService::readContext($connection, $identity, 'admin', '', 'operations.read');
+        $access = RoleService::readContext($identity, 'admin', '', 'operations.read');
         $now = time();
         $nodes = [];
         foreach ($connection->table('iot_runtime_metrics')->orderBy('kind')->orderBy('node_id')->limit(64)->get() as $row) {
@@ -121,7 +121,7 @@ final class OperationsService
             }
         }
         $persistent['quarantined'] = self::$persistentQuarantined;
-        if ($access !== RoleService::readContext($connection, $identity, 'admin', '', 'operations.read')) {
+        if ($access !== RoleService::readContext($identity, 'admin', '', 'operations.read')) {
             throw new HttpError(403, 'authorization_changed');
         }
         return ['scope' => 'platform', 'generated_at' => time(), 'freshness_seconds' => 15, 'nodes' => $nodes,
@@ -148,7 +148,7 @@ final class OperationsService
     /** 租户只获得自己的首次接收记录和有界设备页；设备投影沿用现有连接和实时遥测规则。 */
     public static function tenant(Connection $connection, Identity $identity, string $tenantId, int $page, int $perPage, array $filters): array
     {
-        $access = RoleService::readContext($connection, $identity, 'customer', $tenantId, 'operations.read');
+        $access = RoleService::readContext($identity, 'customer', $tenantId, 'operations.read');
         $devices = DeviceService::observations($connection, $tenantId, $page, $perPage, $filters);
         $freshness = IngestionService::freshness($connection, $tenantId, array_column($devices['items'], 'id'));
         $now = time();
@@ -167,7 +167,7 @@ final class OperationsService
                 'current' => ['freshness' => $current['freshness'], 'received_at' => $current['received_at'], 'sampled_at' => $current['sampled_at']]];
         }
         $devices['items'] = $items;
-        if ($access !== RoleService::readContext($connection, $identity, 'customer', $tenantId, 'operations.read')) {
+        if ($access !== RoleService::readContext($identity, 'customer', $tenantId, 'operations.read')) {
             throw new HttpError(403, 'authorization_changed');
         }
         return ['scope' => 'tenant', 'generated_at' => $now, 'window_seconds' => 60,

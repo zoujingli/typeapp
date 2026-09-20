@@ -82,34 +82,40 @@ final class Schema
      */
     public static function install(Driver $driver, array $accounts, string $adminPassword, string $customerPassword): array
     {
-        if (count($accounts) !== 5 || trim($accounts[4]) === '' || strlen($accounts[4]) > 100) {
-            throw new HttpError(422, 'installation_input_invalid');
-        }
-        IdentityService::validateAccount($accounts[0], $accounts[1], $adminPassword);
-        IdentityService::validateAccount($accounts[2], $accounts[3], $customerPassword);
-        (new Migrator($driver))->run(self::migrations($driver->name()), true);
-        $database = new Database($driver, 1, 0);
-        $scope = new ExecutionScope();
-        try {
-            return $database->connect($scope)->transaction(static function (Connection $connection) use ($accounts, $adminPassword, $customerPassword): array {
-                $installation = bin2hex(random_bytes(16));
-                $now = time();
-                $connection->table('app_installation')->insert(['id' => 1, 'installation_id' => $installation, 'schema_version' => 1, 'created_at' => $now]);
-                $connection->table('app_site_settings')->insert(['id' => 1, ...SiteSettings::defaults(), 'version' => 1, 'created_at' => $now, 'updated_at' => $now]);
-                $admin = (new IdentityService('admin'))->provision($connection, $accounts[0], $accounts[1], $adminPassword, false);
-                $customer = (new IdentityService('customer'))->provision($connection, $accounts[2], $accounts[3], $customerPassword, false);
-                $tenant = bin2hex(random_bytes(16));
-                $member = bin2hex(random_bytes(16));
-                $connection->table('iot_tenants')->insert(['id' => $tenant, 'name' => trim($accounts[4]), 'created_at' => time()]);
-                $connection->table('customer_members')->insert(['id' => $member, 'tenant_id' => $tenant, 'user_id' => $customer['id'], 'name' => $customer['name'], 'created_at' => time()]);
-                RoleService::initializeScope($connection, 'admin', 'platform', (string) $admin['id']);
-                RoleService::initializeScope($connection, 'customer', $tenant, $member);
-                CompatService::recordUpgrade($connection);
-                return ['installation_id' => $installation, 'admin' => $admin, 'customer' => $customer, 'tenant_id' => $tenant];
-            }, $driver->name() === 'sqlite' ? 'immediate' : 'default');
-        } finally {
-            $scope->close();
-            $database->close();
-        }
+        return \Type\Runtime\CoroutineRuntime::run(static function () use ($driver, $accounts, $adminPassword, $customerPassword): array {
+            if (count($accounts) !== 5 || trim($accounts[4]) === '' || strlen($accounts[4]) > 100) {
+                throw new HttpError(422, 'installation_input_invalid');
+            }
+            IdentityService::validateAccount($accounts[0], $accounts[1], $adminPassword);
+            IdentityService::validateAccount($accounts[2], $accounts[3], $customerPassword);
+            (new Migrator($driver))->run(self::migrations($driver->name()), true);
+            $database = new \Type\Orm\DatabaseManager(['default' => $driver], 1, 0);
+            \Type\Orm\Db::configure($database);
+            $scope = new ExecutionScope();
+            try {
+                return $scope->run(static function (ExecutionScope $current) use ($driver, $accounts, $adminPassword, $customerPassword): array {
+                    return \Type\Orm\Db::transaction(static function () use ($accounts, $adminPassword, $customerPassword): array {
+                        $connection = \Type\Orm\Db::connection('default', true);
+                        $installation = bin2hex(random_bytes(16));
+                        $now = time();
+                        $connection->table('app_installation')->insert(['id' => 1, 'installation_id' => $installation, 'schema_version' => 1, 'created_at' => $now]);
+                        $connection->table('app_site_settings')->insert(['id' => 1, ...SiteSettings::defaults(), 'version' => 1, 'created_at' => $now, 'updated_at' => $now]);
+                        $admin = (new IdentityService('admin'))->provision($accounts[0], $accounts[1], $adminPassword, false);
+                        $customer = (new IdentityService('customer'))->provision($accounts[2], $accounts[3], $customerPassword, false);
+                        $tenant = bin2hex(random_bytes(16));
+                        $member = bin2hex(random_bytes(16));
+                        $connection->table('iot_tenants')->insert(['id' => $tenant, 'name' => trim($accounts[4]), 'created_at' => time()]);
+                        $connection->table('customer_members')->insert(['id' => $member, 'tenant_id' => $tenant, 'user_id' => $customer['id'], 'name' => $customer['name'], 'created_at' => time()]);
+                        RoleService::initializeScope('admin', 'platform', (string) $admin['id']);
+                        RoleService::initializeScope('customer', $tenant, $member);
+                        CompatService::recordUpgrade($connection);
+                        return ['installation_id' => $installation, 'admin' => $admin, 'customer' => $customer, 'tenant_id' => $tenant];
+                    }, 'default', $driver->name() === 'sqlite' ? 'immediate' : 'default');
+                });
+            } finally {
+                $scope->close();
+                $database->close();
+            }
+        });
     }
 }

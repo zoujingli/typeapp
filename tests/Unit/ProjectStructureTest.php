@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace TypeTests\Unit;
 
 use PHPUnit\Framework\TestCase;
+use PhpParser\Node;
+use PhpParser\NodeFinder;
+use PhpParser\ParserFactory;
+use PhpParser\PrettyPrinter\Standard;
 
 /** 检查可独立组合的包声明与应用结构，不连接外部服务。 */
 final class ProjectStructureTest extends TestCase
@@ -100,6 +104,65 @@ final class ProjectStructureTest extends TestCase
         self::assertSame('0.9.0', ltrim($development['swoole/typephp']['version'], 'v'));
         self::assertSame('2.9.0', ltrim($development['swoole/phpx']['version'], 'v'));
         self::assertSame('2.3.5', ltrim($development['phpstan/phpdoc-parser']['version'], 'v'));
+    }
+
+    /** 身份切片普通实体 CRUD 使用 Model；底层例外精确限定到方法和数据集合。 */
+    public function testIdentityPersistenceDoesNotReintroduceUnscopedEntityQueries(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $parser = (new ParserFactory())->createForNewestSupportedVersion();
+        $finder = new NodeFinder();
+        $printer = new Standard();
+        $files = [
+            'IdentityService' => 'app/common/service/IdentityService.php',
+            'RoleService' => 'app/common/service/RoleService.php',
+            'TenantService' => 'app/iot/service/TenantService.php',
+        ];
+        // 安装互斥、本人租户投影及固定权限码集合不属于普通实体 CRUD。
+        $tables = [
+            'IdentityService::changeSelf' => "'app_installation'",
+            'IdentityService::logout' => "'app_installation'",
+            'RoleService::lockAuthorization' => "'app_installation'",
+            'TenantService::availableTenants' => "'iot_tenants'",
+            'RoleService::initializeScope' => '$realm . \'_role_permissions\'',
+            'RoleService::directory' => '$realm . \'_role_permissions\'',
+            'RoleService::requireHighest' => '$realm . \'_role_permissions\'',
+            'RoleService::role' => '$realm . \'_role_permissions\'',
+            'RoleService::changeRole' => '$realm . \'_role_permissions\'',
+        ];
+        $projections = ['TenantService::tenants', 'RoleService::permissions', 'RoleService::change', 'RoleService::requireHighest', 'RoleService::protectSubject'];
+        foreach ($files as $class => $file) {
+            $tree = $parser->parse((string) file_get_contents($root . '/' . $file));
+            foreach ($finder->findInstanceOf($tree, Node\Stmt\ClassMethod::class) as $method) {
+                $owner = $class . '::' . $method->name->toString();
+                if ($method->isPublic()) {
+                    foreach ($method->params as $parameter) {
+                        self::assertNotSame('Connection', $parameter->type instanceof Node\Name ? $parameter->type->getLast() : '', $owner);
+                    }
+                }
+                foreach ($finder->findInstanceOf($method->stmts ?? [], Node\Expr\MethodCall::class) as $call) {
+                    if (!$call->name instanceof Node\Identifier) {
+                        continue;
+                    }
+                    $name = strtolower($call->name->toString());
+                    if (!in_array($name, ['table', 'query', 'execute', 'raw', 'rawquery'], true) || ($name === 'query' && $call->args === [])) {
+                        continue;
+                    }
+                    $location = $file . ':' . $call->getStartLine() . ' ' . $owner;
+                    self::assertContains($name, ['table', 'query'], $location . ' 不允许实体原始写入');
+                    if ($name === 'table') {
+                        self::assertArrayHasKey($owner, $tables, $location . ' 必须通过 Model 访问实体');
+                        self::assertSame($tables[$owner], $printer->prettyPrintExpr($call->args[0]->value), $location);
+                    } else {
+                        self::assertContains($owner, $projections, $location . ' 未声明跨模型投影');
+                        self::assertInstanceOf(Node\Scalar\String_::class, $call->args[0]->value, $location . ' SQL 必须是固定声明');
+                        $sql = $call->args[0]->value->value;
+                        self::assertMatchesRegularExpression('/^SELECT\s.+\sJOIN\s/is', $sql, $location);
+                        self::assertStringNotContainsString(';', $sql, $location . ' 不允许多语句');
+                    }
+                }
+            }
+        }
     }
 
     /** @return array<string, mixed> 已检查的项目声明。 */

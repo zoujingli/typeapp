@@ -66,7 +66,7 @@ final class ExportService
         ksort($frozen);
         $requestHash = hash('sha256', json_encode([$tenantId, $deviceId, $kind, $frozen, $timezone], JSON_THROW_ON_ERROR));
         return $connection->transaction(function (Connection $transaction) use ($identity, $tenantId, $deviceId, $kind, $frozen, $window, $timezone, $id, $requestHash): array {
-            RoleService::lockAuthorization($transaction);
+            RoleService::lockAuthorization();
             self::capacityLock($transaction);
             $context = self::authorize($transaction, $identity, $tenantId, 'create');
             $existing = $transaction->table('iot_exports')->where('id', '=', $id)->first();
@@ -127,7 +127,7 @@ final class ExportService
     {
         self::authorize($connection, $identity, $tenantId, 'cancel');
         $result = $connection->transaction(function (Connection $transaction) use ($identity, $tenantId, $id): array {
-            RoleService::lockAuthorization($transaction);
+            RoleService::lockAuthorization();
             $row = self::record($transaction, $tenantId, $id, true);
             $context = self::authorize($transaction, $identity, $tenantId, 'cancel');
             self::requireOrigin($row, $context);
@@ -153,7 +153,7 @@ final class ExportService
     {
         self::authorize($connection, $identity, $tenantId, 'create');
         return $connection->transaction(function (Connection $transaction) use ($identity, $tenantId, $id): array {
-            RoleService::lockAuthorization($transaction);
+            RoleService::lockAuthorization();
             self::capacityLock($transaction);
             $row = self::record($transaction, $tenantId, $id, true);
             $context = self::authorize($transaction, $identity, $tenantId, 'create');
@@ -207,7 +207,7 @@ final class ExportService
         }
         $id = $payload['id'];
         $admitted = $connection->transaction(static function (Connection $transaction) use ($payload, $context, $id): string {
-            RoleService::lockAuthorization($transaction);
+            RoleService::lockAuthorization();
             self::capacityLock($transaction);
             $query = $transaction->table('iot_exports')->where('id', '=', $id);
             $row = ($transaction->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
@@ -234,7 +234,7 @@ final class ExportService
         }
         $terminal = $connection->transaction(function (Connection $transaction) use ($context, $payload, $id): bool {
             $context->assertActive();
-            RoleService::lockAuthorization($transaction);
+            RoleService::lockAuthorization();
             $query = $transaction->table('iot_exports')->where('id', '=', $id);
             $row = ($transaction->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
             $store = new Store('iot_export_outbox');
@@ -462,11 +462,11 @@ final class ExportService
     /** 每次HTTP请求重验准确客户会话、模拟来源及独立动作节点；写入先锁授权和业务行。 */
     private static function authorize(Connection $connection, Identity $identity, string $tenantId, string $action): array
     {
-        $current = (new IdentityService('customer'))->refresh($connection, $identity);
+        $current = (new IdentityService('customer'))->refresh($identity);
         if ($current === null) {
             throw new HttpError(401, 'unauthenticated');
         }
-        $permissions = RoleService::permissions($connection, $current, 'customer', $tenantId);
+        $permissions = RoleService::permissions($current, 'customer', $tenantId);
         if (!in_array('customer.exports.' . $action, $permissions, true)) {
             throw new HttpError(403, 'permission_denied');
         }
@@ -485,12 +485,12 @@ final class ExportService
     private static function sourceAuthorized(Connection $connection, array $row): bool
     {
         $source = json_decode($row['source_context'], true, 8, JSON_THROW_ON_ERROR);
-        $current = (new IdentityService('customer'))->resume($connection, $source);
+        $current = (new IdentityService('customer'))->resume($source);
         if ($current === null || IdentityService::context($current, $row['tenant_id'])['key'] !== $row['scope_key']) {
             return false;
         }
         try {
-            return in_array('customer.exports.create', RoleService::permissions($connection, $current, 'customer', $row['tenant_id']), true);
+            return in_array('customer.exports.create', RoleService::permissions($current, 'customer', $row['tenant_id']), true);
         } catch (HttpError $denied) {
             return false;
         }

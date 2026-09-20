@@ -49,7 +49,7 @@ final class BrokerController
             'login' => Field::text()->required()->length(3, 100)->matches('/^[a-z0-9][a-z0-9_.@-]{2,99}$/D'),
             'password' => Field::text()->required()->length(1, 72)
         ], $input);
-        return $this->response(['data' => $this->identities->login($this->connection($request), $data['login'], $data['password'], (string)$request->getAttribute('app.request_id', ''))]);
+        return $this->response(['data' => $this->identities->login($data['login'], $data['password'], (string)$request->getAttribute('app.request_id', ''))]);
     }
 
     /** 每次请求核对当前账号状态；独立权限不借用 IoT 平台或租户令牌。 */
@@ -57,7 +57,7 @@ final class BrokerController
     public function me(ServerRequestInterface $request): ResponseInterface
     {
         $identity = $this->identity($request);
-        return $this->response(['data' => ['user' => $this->identities->user($this->connection($request), $identity->subject()), 'context' => null]]);
+        return $this->response(['data' => ['user' => $this->identities->user($identity->subject()), 'context' => null]]);
     }
 
     /** 只撤销当前已认证令牌，成功提交后才报告退出。 */
@@ -66,7 +66,7 @@ final class BrokerController
     {
         // 管理权限被撤销后仍允许销毁自己的登录令牌，不能因此被困在无权限页面。
         $identity = $this->identity($request, false);
-        $this->identities->logout($this->connection($request), $identity->subject(), substr($request->getHeaderLine('Authorization'), 7), (string)$request->getAttribute('app.request_id', ''));
+        $this->identities->logout($identity->subject(), substr($request->getHeaderLine('Authorization'), 7), (string)$request->getAttribute('app.request_id', ''));
         return $this->response(['data' => ['logged_out' => true]]);
     }
 
@@ -182,7 +182,7 @@ final class BrokerController
                           'permissions' => ['audit.read', 'broker.read'], 'tenant_id' => null, 'support_id' => null, 'support_version' => null, 'support_expires_at' => null];
         $connection = $this->connection($request);
         $result = AuditLog::brokerSearch($connection, 'broker', $authorization, $request->getUri()->getQuery(), $parameters['id'] ?? '');
-        if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+        if (!$this->identities->user($identity->subject())['platform_admin']) {
             throw new HttpError(403, 'forbidden');
         }
         return $this->response($result);
@@ -212,7 +212,7 @@ final class BrokerController
                 $connection->close();
                 $connection = $this->connection($request);
             }
-            if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+            if (!$this->identities->user($identity->subject())['platform_admin']) {
                 throw new HttpError(403, 'forbidden');
             }
         } catch (HttpError $error) {
@@ -237,7 +237,7 @@ final class BrokerController
         $context = ['tenant_id' => null, 'actor_id' => $identity->subject(), 'actor_realm' => 'broker',
             'permissions' => ['broker.write'], 'identity' => null];
         try {
-            if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+            if (!$this->identities->user($identity->subject())['platform_admin']) {
                 throw new HttpError(403, 'forbidden');
             }
             if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
@@ -254,7 +254,7 @@ final class BrokerController
             $requestId = (string) $request->getAttribute('app.request_id', '');
             $requestId = $requestId === '' ? bin2hex(random_bytes(16)) : $requestId;
             $result = ConnectionOperations::request($connection, $context, $ownerId, $payload, $requestId);
-            if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+            if (!$this->identities->user($identity->subject())['platform_admin']) {
                 throw new HttpError(403, 'forbidden');
             }
             return $this->response($result);
@@ -278,7 +278,7 @@ final class BrokerController
         $detail = ['found' => false, 'item' => ['id' => $sessionId], 'observed_at' => time(), 'source' => 'durable_store'];
         $subscriptions = ['items' => []];
         try {
-            if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+            if (!$this->identities->user($identity->subject())['platform_admin']) {
                 throw new HttpError(403, 'forbidden');
             }
             try {
@@ -309,7 +309,7 @@ final class BrokerController
         $item['observed_at'] = $detail['observed_at'];
         $item['source'] = $detail['source'];
         $preview = ConnectionOperations::preview($item, $subscriptions['items'] ?? []);
-        if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+        if (!$this->identities->user($identity->subject())['platform_admin']) {
             throw new HttpError(403, 'forbidden');
         }
         $this->resourceAudit($connection, $request, $identity, ['resource' => 'sessions', 'id' => $sessionId], ['item' => $item], 'success', 'termination_preview');
@@ -332,7 +332,7 @@ final class BrokerController
         $payload = [];
         $detail = ['found' => false, 'item' => ['id' => $sessionId], 'observed_at' => time(), 'source' => 'durable_store'];
         try {
-            if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+            if (!$this->identities->user($identity->subject())['platform_admin']) {
                 throw new HttpError(403, 'forbidden');
             }
             if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
@@ -359,7 +359,7 @@ final class BrokerController
                         'id' => $sessionId, 'session_generation' => (int) $existing['session_generation'],
                         'node_id' => $existing['node_id'], 'node_run_id' => $existing['node_run_id'] ?? '',
                     ], null, $payload, $requestId);
-                    if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+                    if (!$this->identities->user($identity->subject())['platform_admin']) {
                         throw new HttpError(403, 'forbidden');
                     }
                     return $this->response($result);
@@ -382,7 +382,7 @@ final class BrokerController
             $item = $detail['item'];
             $item['source'] = $detail['source'];
             $result = ConnectionOperations::requestTerminate($connection, $context, $sessionId, $item, $live, $payload, $requestId);
-            if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+            if (!$this->identities->user($identity->subject())['platform_admin']) {
                 throw new HttpError(403, 'forbidden');
             }
             return $this->response($result);
@@ -405,7 +405,7 @@ final class BrokerController
         $connection = $this->connection($request);
         $detail = ['found' => false, 'item' => ['id' => $resourceId], 'observed_at' => time(), 'source' => 'durable_store'];
         try {
-            if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+            if (!$this->identities->user($identity->subject())['platform_admin']) {
                 throw new HttpError(403, 'forbidden');
             }
             try {
@@ -422,7 +422,7 @@ final class BrokerController
         $item['observed_at'] = $detail['observed_at'];
         $item['source'] = $detail['source'];
         $preview = ConnectionOperations::previewRetained($item);
-        if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+        if (!$this->identities->user($identity->subject())['platform_admin']) {
             throw new HttpError(403, 'forbidden');
         }
         $this->resourceAudit($connection, $request, $identity, ['resource' => 'retained', 'id' => $resourceId], ['item' => $item], 'success', 'clearance_preview');
@@ -445,7 +445,7 @@ final class BrokerController
         $payload = [];
         $detail = ['found' => false, 'item' => ['id' => $resourceId], 'observed_at' => time(), 'source' => 'durable_store'];
         try {
-            if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+            if (!$this->identities->user($identity->subject())['platform_admin']) {
                 throw new HttpError(403, 'forbidden');
             }
             if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
@@ -471,7 +471,7 @@ final class BrokerController
                     $result = ConnectionOperations::requestClear($connection, $context, $resourceId, [
                         'id' => $resourceId, 'generation' => (int) $existing['session_generation'],
                     ], $payload, $requestId);
-                    if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+                    if (!$this->identities->user($identity->subject())['platform_admin']) {
                         throw new HttpError(403, 'forbidden');
                     }
                     return $this->response($result);
@@ -493,7 +493,7 @@ final class BrokerController
             $item = $detail['item'];
             $item['source'] = $detail['source'];
             $result = ConnectionOperations::requestClear($connection, $context, $resourceId, $item, $payload, $requestId);
-            if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+            if (!$this->identities->user($identity->subject())['platform_admin']) {
                 throw new HttpError(403, 'forbidden');
             }
             return $this->response($result);
@@ -510,7 +510,7 @@ final class BrokerController
         $identity = $this->identity($request);
         $operationId = $request->getAttribute('type.route.params', [])['id'] ?? '';
         $connection = $this->connection($request);
-        if (!$this->identities->user($connection, $identity->subject())['platform_admin']) {
+        if (!$this->identities->user($identity->subject())['platform_admin']) {
             throw new HttpError(403, 'forbidden');
         }
         return $this->response(ConnectionOperations::result($connection, [
@@ -650,7 +650,7 @@ final class BrokerController
         if (!$scope instanceof ExecutionScope) {
             throw new \RuntimeException('broker_request_scope_required');
         }
-        return $this->database->connect($scope);
+        return \Type\Orm\Db::connection('default', true);
     }
 
     private function response(array $data, int $status = 200): ResponseInterface

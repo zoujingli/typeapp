@@ -23,7 +23,8 @@ final class CommandService
         if (!preg_match('/^[a-f0-9]{32}$/D', $commandId)) {
             throw new HttpError(422, 'command_identity_invalid');
         }
-        return self::write($connection, $identity, $tenantId, 'create', $commandId, static function (Connection $transaction, Identity $current, array $permissions) use ($tenantId, $deviceId, $identifier, $values, $commandId, $version): array {
+        return self::write($connection, $identity, $tenantId, 'create', $commandId, static function (Identity $current, array $permissions) use ($tenantId, $deviceId, $identifier, $values, $commandId, $version): array {
+            $transaction = \Type\Orm\Db::connection('default', true);
             $deviceQuery = $transaction->table('iot_devices')->where('id', '=', $deviceId);
             $device = ($transaction->driverName() === 'sqlite' ? $deviceQuery : $deviceQuery->lockForUpdate())->first();
             $existingQuery = $transaction->table('iot_commands')->where('id', '=', $commandId);
@@ -84,7 +85,8 @@ final class CommandService
         if (!preg_match('/^[a-f0-9]{32}$/D', $cancelId)) {
             throw new HttpError(422, 'command_cancel_identity_invalid');
         }
-        return self::write($connection, $identity, $tenantId, 'cancel', $commandId, static function (Connection $transaction, Identity $current, array $permissions) use ($tenantId, $deviceId, $commandId, $cancelId): array {
+        return self::write($connection, $identity, $tenantId, 'cancel', $commandId, static function (Identity $current, array $permissions) use ($tenantId, $deviceId, $commandId, $cancelId): array {
+            $transaction = \Type\Orm\Db::connection('default', true);
             $query = $transaction->table('iot_commands')->where('id', '=', $commandId)->where('tenant_id', '=', $tenantId)->where('device_id', '=', $deviceId);
             $record = ($transaction->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
             if ($record === null) {
@@ -160,7 +162,8 @@ final class CommandService
         if (!preg_match('/^[a-f0-9]{32}$/D', $queryId)) {
             throw new HttpError(422, 'command_query_identity_invalid');
         }
-        return self::write($connection, $identity, $tenantId, 'query', $commandId, static function (Connection $transaction, Identity $current, array $permissions) use ($tenantId, $deviceId, $commandId, $queryId): array {
+        return self::write($connection, $identity, $tenantId, 'query', $commandId, static function (Identity $current, array $permissions) use ($tenantId, $deviceId, $commandId, $queryId): array {
+            $transaction = \Type\Orm\Db::connection('default', true);
             $deviceQuery = $transaction->table('iot_devices')->where('id', '=', $deviceId);
             $device = ($transaction->driverName() === 'sqlite' ? $deviceQuery : $deviceQuery->lockForUpdate())->first();
             $lookup = $transaction->table('iot_commands')->where('id', '=', $commandId)->where('tenant_id', '=', $tenantId)->where('device_id', '=', $deviceId);
@@ -269,7 +272,7 @@ final class CommandService
     public static function claim(Connection $transaction): ?array
     {
         self::transaction($transaction);
-        RoleService::lockAuthorization($transaction);
+        RoleService::lockAuthorization();
         $now = time();
         $query = $transaction->table('iot_commands')->whereNull('manual_query_id', true)->orderBy('accepted_at')->orderBy('id')->limit(1);
         $record = $query->first();
@@ -315,11 +318,11 @@ final class CommandService
         if ($attempt['kind'] === 'send' || $attempt['trigger_kind'] === 'manual') {
             try {
                 $source = json_decode($attempt['source_context'], true, 8, JSON_THROW_ON_ERROR);
-                $current = (new IdentityService('customer'))->resume($transaction, $source);
+                $current = (new IdentityService('customer'))->resume($source);
                 if ($current === null) {
                     throw new HttpError(401, 'unauthenticated');
                 }
-                $permissions = RoleService::permissions($transaction, $current, 'customer', $record['tenant_id']);
+                $permissions = RoleService::permissions($current, 'customer', $record['tenant_id']);
                 if (!in_array('customer.commands.' . ($attempt['kind'] === 'send' ? 'create' : 'query'), $permissions, true)) {
                     throw new HttpError(403, 'permission_denied');
                 }
@@ -586,11 +589,11 @@ final class CommandService
         return json_decode($record['source_context'], true, 8, JSON_THROW_ON_ERROR)['key'] === IdentityService::context($identity, $tenantId)['key'];
     }
 
-    /** @param Closure(Connection, Identity, list<string>): array<string, mixed> $operation 原业务与当前授权共享事务。 */
+    /** @param Closure(Identity, list<string>): array<string, mixed> $operation 原业务与当前授权共享事务。 */
     private static function write(Connection $connection, Identity $identity, string $tenantId, string $action, string $id, Closure $operation): array
     {
         try {
-            return RoleService::authorized($connection, $identity, null, 'customer.commands.' . $action, $operation, 'customer', $tenantId);
+            return RoleService::authorized($identity, null, 'customer.commands.' . $action, $operation, 'customer', $tenantId);
         } catch (HttpError $failure) {
             AuditLog::append(
                 $connection,
@@ -608,11 +611,11 @@ final class CommandService
 
     private static function authorize(Connection $connection, Identity $identity, string $tenantId, string $action): array
     {
-        $current = (new IdentityService('customer'))->refresh($connection, $identity);
+        $current = (new IdentityService('customer'))->refresh($identity);
         if ($current === null) {
             throw new HttpError(401, 'unauthenticated');
         }
-        $permissions = RoleService::permissions($connection, $current, 'customer', $tenantId);
+        $permissions = RoleService::permissions($current, 'customer', $tenantId);
         if (!in_array('customer.commands.' . $action, $permissions, true)) {
             throw new HttpError(403, 'permission_denied');
         }

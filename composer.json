@@ -454,6 +454,7 @@
     "build:validate": "@php tests/build-scenario.php docs/build-config/type-validation.json",
     "test:validate-native": "@php tests/validation.php build/validation/type-app",
     "test:models": "@php tests/models.php",
+    "test:app-models": "@php tests/app-models.php",
     "test:relations": "@php tests/relations.php",
     "test:pivots": "@php tests/pivots.php",
     "test:exact-fields": "@php tests/exact-fields.php",

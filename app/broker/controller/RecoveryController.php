@@ -68,7 +68,7 @@ final class RecoveryController
                 throw new HttpError(403, 'identity_scope_forbidden');
             }
             if (in_array('broker_admin', $identity->roles(), true)) {
-                if (!$this->identities->user($this->connection($request), $identity->subject())['platform_admin']) {
+                if (!$this->identities->user($identity->subject())['platform_admin']) {
                     throw new HttpError(403, 'forbidden');
                 }
                 return ['tenant_id' => null, 'actor_id' => $identity->subject(), 'actor_realm' => 'broker',
@@ -77,7 +77,7 @@ final class RecoveryController
             if (!in_array('realm:admin', $identity->roles(), true)) {
                 throw new HttpError(403, 'forbidden');
             }
-            $access = RoleService::readContext($this->connection($request), $identity, 'admin', '', 'broker.read');
+            $access = RoleService::readContext($identity, 'admin', '', 'broker.read');
             return ['tenant_id' => null, 'actor_id' => $identity->subject(), 'actor_realm' => 'admin',
                 'permissions' => $access['permissions'], 'identity' => $identity];
         }
@@ -85,7 +85,7 @@ final class RecoveryController
         if (count($headers) !== 1 || $headers[0] !== $parameters['tenant']) {
             throw new HttpError(403, 'tenant_context_mismatch');
         }
-        $access = RoleService::readContext($this->connection($request), $identity, 'customer', $parameters['tenant'], 'broker.read');
+        $access = RoleService::readContext($identity, 'customer', $parameters['tenant'], 'broker.read');
         return ['tenant_id' => $parameters['tenant'], 'actor_id' => $identity->subject(), 'actor_realm' => 'customer',
             'permissions' => $access['permissions'], 'identity' => $identity];
     }
@@ -130,7 +130,7 @@ final class RecoveryController
         if (!$scope instanceof ExecutionScope) {
             throw new \RuntimeException('broker_request_scope_required');
         }
-        return $this->database->connect($scope);
+        return \Type\Orm\Db::connection('default', true);
     }
 
     /** @param array<string, mixed> $data */

@@ -67,9 +67,9 @@ final class AdminController
         ], $input);
         $parameters = $request->getAttribute('type.route.params', []);
         if ($kind === 'tenants') {
-            return $this->response((new TenantService())->tenants($this->connection($request), $identity, $filters, true, (string) ($parameters['id'] ?? '')));
+            return $this->response((new TenantService())->tenants($identity, $filters, true, (string) ($parameters['id'] ?? '')));
         }
-        return $this->response(RoleService::directory($this->connection($request), $identity, $kind, (string) ($parameters['id'] ?? ''), $filters));
+        return $this->response(RoleService::directory($identity, $kind, (string) ($parameters['id'] ?? ''), $filters));
     }
 
     /** 返回脱敏后的启动配置目录及当前权限；配置值来源和版本来自同一 .env 快照。 */
@@ -77,7 +77,7 @@ final class AdminController
     public function configuration(ServerRequestInterface $request): ResponseInterface
     {
         $identity = $this->identity($request);
-        $context = RoleService::readContext($this->connection($request), $identity, 'admin', '', 'config.read');
+        $context = RoleService::readContext($identity, 'admin', '', 'config.read');
         try {
             $view = Settings::configurationView($this->basePath);
         } catch (InvalidArgumentException|RuntimeException) {
@@ -92,7 +92,7 @@ final class AdminController
     {
         $identity = $this->identity($request);
         $connection = $this->connection($request);
-        $context = RoleService::readContext($connection, $identity, 'admin', '', 'site.read');
+        $context = RoleService::readContext($identity, 'admin', '', 'site.read');
         return $this->response(SiteSettings::adminView($connection) + ['permissions' => $context['permissions'], 'catalog' => RoleService::catalog('admin'), 'menus' => RoleService::menus('admin', $context['permissions'])]);
     }
 
@@ -115,7 +115,8 @@ final class AdminController
             throw new HttpError(422, 'site_settings_input_invalid');
         }
         $token = substr($request->getHeaderLine('Authorization'), 7);
-        $result = RoleService::authorized($this->connection($request), $identity, $token, 'admin.site.manage', function (Connection $transaction, Identity $current, array $permissions) use ($body, $changes): array {
+        $result = RoleService::authorized($identity, $token, 'admin.site.manage', function (Identity $current, array $permissions) use ($body, $changes): array {
+            $transaction = \Type\Orm\Db::connection('default', true);
             $result = SiteSettings::update($transaction, (int) $body['version'], $changes);
             AuditLog::append($transaction, null, $current, 'admin.site.update', 'site_settings', 'success', [
                 'reason' => implode(',', $result['changed']), 'version' => $result['version'],
@@ -146,7 +147,8 @@ final class AdminController
         $token = substr($request->getHeaderLine('Authorization'), 7);
         $basePath = $this->basePath;
         try {
-            $result = RoleService::authorized($this->connection($request), $identity, $token, 'admin.config.manage', function (Connection $transaction, Identity $current, array $permissions) use ($body, $changes, $basePath): array {
+            $result = RoleService::authorized($identity, $token, 'admin.config.manage', function (Identity $current, array $permissions) use ($body, $changes, $basePath): array {
+                $transaction = \Type\Orm\Db::connection('default', true);
                 $result = Settings::configurationUpdate($basePath, (string) $body['version'], $changes);
                 AuditLog::append($transaction, null, $current, 'admin.configuration.update', 'configuration', 'success', [
                     'reason' => implode(',', $result['changed']), 'version' => $result['version'],
@@ -234,7 +236,7 @@ final class AdminController
         if ($action === 'admin.tenants.administrators.remove') {
             $data['member_id'] = (string) ($parameters['member_id'] ?? '');
         }
-        return $this->response(RoleService::change($this->connection($request), $identity, substr($request->getHeaderLine('Authorization'), 7), $action, (string) ($parameters['id'] ?? ''), $data));
+        return $this->response(RoleService::change($identity, substr($request->getHeaderLine('Authorization'), 7), $action, (string) ($parameters['id'] ?? ''), $data));
     }
 
     private function identity(ServerRequestInterface $request): Identity
@@ -257,7 +259,7 @@ final class AdminController
         if (!$scope instanceof ExecutionScope) {
             throw new \RuntimeException('平台管理接口需要受管请求作用域');
         }
-        return $this->database->connect($scope);
+        return \Type\Orm\Db::connection('default', true);
     }
 
     private function response(array $data): ResponseInterface

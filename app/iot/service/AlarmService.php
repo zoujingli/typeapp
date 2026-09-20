@@ -25,7 +25,7 @@ final class AlarmService
         try {
             self::authorize($connection, $identity, $tenantId, 'customer.alarms.acknowledge');
             return $connection->transaction(static function (Connection $transaction) use ($identity, $tenantId, $alarmId): array {
-                RoleService::lockAuthorization($transaction);
+                RoleService::lockAuthorization();
                 $query = $transaction->table('iot_alarms')->where('id', '=', $alarmId)->where('tenant_id', '=', $tenantId);
                 $alarm = ($transaction->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
                 $context = self::authorize($transaction, $identity, $tenantId, 'customer.alarms.acknowledge');
@@ -113,7 +113,7 @@ final class AlarmService
         try {
             self::authorize($connection, $identity, $tenantId, 'customer.alarms.manage');
             return $connection->transaction(static function (Connection $transaction) use ($identity, $tenantId, $data, $ruleId): array {
-                RoleService::lockAuthorization($transaction);
+                RoleService::lockAuthorization();
                 // MySQL一致性读快照须在设备锁之后建立，才能看到等待期间提交的序号与告警状态。
                 $rule = $ruleId === '' ? [] : self::findRule($transaction, $tenantId, $ruleId, true);
                 $deviceId = $ruleId === '' ? ($data['device_id'] ?? '') : $rule['device_id'];
@@ -284,11 +284,11 @@ final class AlarmService
     /** 即时重验客户会话、模拟来源及当前租户权限；写入方在授权锁和业务锁之后调用。 */
     private static function authorize(Connection $connection, Identity $identity, string $tenantId, string $permission): array
     {
-        $current = (new IdentityService('customer'))->refresh($connection, $identity);
+        $current = (new IdentityService('customer'))->refresh($identity);
         if ($current === null) {
             throw new HttpError(401, 'unauthenticated');
         }
-        $permissions = RoleService::permissions($connection, $current, 'customer', $tenantId);
+        $permissions = RoleService::permissions($current, 'customer', $tenantId);
         if (!in_array($permission, $permissions, true)) {
             throw new HttpError(403, 'permission_denied');
         }

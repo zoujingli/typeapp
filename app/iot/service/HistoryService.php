@@ -218,11 +218,11 @@ final class HistoryService
      */
     public static function authorize(Connection $connection, Identity $identity, string $tenantId, string $deviceId): void
     {
-        $current = (new IdentityService('customer'))->refresh($connection, $identity);
+        $current = (new IdentityService('customer'))->refresh($identity);
         if ($current === null) {
             throw new HttpError(401, 'unauthenticated');
         }
-        if (!in_array('customer.telemetry.read', RoleService::permissions($connection, $current, 'customer', $tenantId), true)) {
+        if (!in_array('customer.telemetry.read', RoleService::permissions($current, 'customer', $tenantId), true)) {
             throw new HttpError(403, 'permission_denied');
         }
         self::requireDeviceScope($connection, $tenantId, $deviceId);

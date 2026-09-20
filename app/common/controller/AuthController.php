@@ -47,7 +47,7 @@ final class AuthController
             'login' => Field::text()->required()->length(3, 100)->matches('/^[a-z0-9][a-z0-9_.@-]{2,99}$/D'),
             'password' => Field::text()->required()->length(1, 72),
         ], $input);
-        return $this->response((new IdentityService($realm))->login($this->connection($request), $data['login'], $data['password'], (string) $request->getAttribute('app.request_id', '')));
+        return $this->response((new IdentityService($realm))->login($data['login'], $data['password'], (string) $request->getAttribute('app.request_id', '')));
     }
 
     /** 登录页只读取公开品牌和主题白名单，不需要也不接受任何身份凭据。 */
@@ -81,8 +81,8 @@ final class AuthController
                 $selected = $selection[0];
             }
         }
-        $permissions = RoleService::permissions($connection, $identity, $realm, $tenantId);
-        return $this->response(['user' => (new IdentityService($realm))->user($connection, $identity->subject()),
+        $permissions = RoleService::permissions($identity, $realm, $tenantId);
+        return $this->response(['user' => (new IdentityService($realm))->user($identity->subject()),
             'permissions' => $permissions, 'menus' => RoleService::menus($realm, $permissions),
             'catalog' => RoleService::catalog($realm), 'tenants' => $tenants, 'tenant_id' => $tenantId, 'tenant' => $selected === [] ? null : $selected,
             'identity' => IdentityService::context($identity, $tenantId)]);
@@ -105,7 +105,7 @@ final class AuthController
             'per_page' => Field::integer()->cast()->range(1, 100)->defaultValue(20)->from('query'),
             'search' => Field::text()->length(0, 100)->defaultValue('')->from('query'),
         ], $input);
-        return $this->response((new TenantService())->tenants($this->connection($request), $this->identity($request), $filters + ['enabled' => 1], false));
+        return $this->response((new TenantService())->tenants($this->identity($request), $filters + ['enabled' => 1], false));
     }
 
     /** 当前租户成员与角色列表共用固定筛选，详情仍按当前权限和归属查询。 */
@@ -130,8 +130,8 @@ final class AuthController
         $identity = $this->identity($request);
         $parameters = $request->getAttribute('type.route.params', []);
         return $this->response(str_starts_with((string) $request->getAttribute('type.route'), 'customer.roles.')
-            ? RoleService::directory($connection, $identity, 'roles', (string) ($parameters['id'] ?? ''), $filters, 'customer', $tenantId)
-            : (new TenantService())->members($connection, $identity, $tenantId, (string) ($parameters['id'] ?? ''), $filters));
+            ? RoleService::directory($identity, 'roles', (string) ($parameters['id'] ?? ''), $filters, 'customer', $tenantId)
+            : (new TenantService())->members($identity, $tenantId, (string) ($parameters['id'] ?? ''), $filters));
     }
 
     /** 成员和角色只接受固定动作字段；写入共用授权事务，不接受全局身份变更。 */
@@ -175,7 +175,7 @@ final class AuthController
         }
         $data = \_vali($fields, $input);
         $parameters = $request->getAttribute('type.route.params', []);
-        return $this->response(RoleService::change($this->connection($request), $this->identity($request), substr($request->getHeaderLine('Authorization'), 7), $action, (string) ($parameters['id'] ?? ''), $data, 'customer', $tenantId));
+        return $this->response(RoleService::change($this->identity($request), substr($request->getHeaderLine('Authorization'), 7), $action, (string) ($parameters['id'] ?? ''), $data, 'customer', $tenantId));
     }
 
     /** 返回受权限保护的个人工作区，直接访问同样检查当前角色。 */
@@ -186,10 +186,10 @@ final class AuthController
         $realm = $this->realm($request);
         $connection = $this->connection($request);
         $identity = $this->identity($request);
-        if (!in_array('identity.read', RoleService::permissions($connection, $identity, $realm, $request->getHeaderLine('X-Tenant-Id')), true)) {
+        if (!in_array('identity.read', RoleService::permissions($identity, $realm, $request->getHeaderLine('X-Tenant-Id')), true)) {
             throw new HttpError(403, 'permission_denied');
         }
-        return $this->response(['user' => (new IdentityService($realm))->user($connection, $identity->subject())]);
+        return $this->response(['user' => (new IdentityService($realm))->user($identity->subject())]);
     }
 
     /** 本人账号维护与租户业务授权分开；拒绝目标 ID、租户和模拟来源字段。 */
@@ -213,7 +213,7 @@ final class AuthController
             throw new HttpError(422, 'identity_input_invalid');
         }
         $data = \_vali($fields, $input);
-        return $this->response((new IdentityService('customer'))->changeSelf($this->connection($request), $this->identity($request), substr($request->getHeaderLine('Authorization'), 7), $action, $data));
+        return $this->response((new IdentityService('customer'))->changeSelf($this->identity($request), substr($request->getHeaderLine('Authorization'), 7), $action, $data));
     }
 
     /** 无角色账号仍可主动退出；只撤销请求携带的本域当前令牌。 */
@@ -221,7 +221,7 @@ final class AuthController
     #[Route('/customer/auth/logout', methods: ['POST'], name: 'customer.logout', middleware: ['customer.auth'])]
     public function logout(ServerRequestInterface $request): ResponseInterface
     {
-        (new IdentityService($this->realm($request)))->logout($this->connection($request), $this->identity($request), substr($request->getHeaderLine('Authorization'), 7), (string) $request->getAttribute('app.request_id', ''));
+        (new IdentityService($this->realm($request)))->logout($this->identity($request), substr($request->getHeaderLine('Authorization'), 7), (string) $request->getAttribute('app.request_id', ''));
         return $this->response(['logged_out' => true]);
     }
 
@@ -268,7 +268,7 @@ final class AuthController
         if (!$scope instanceof ExecutionScope) {
             throw new \RuntimeException('人员接口需要受管请求作用域');
         }
-        $connection = $this->database->connect($scope);
+        $connection = \Type\Orm\Db::connection('default', true);
         $installation = $connection->table('app_installation')->where('id', '=', 1)->first();
         if ($installation === null || (int) $installation['schema_version'] !== 1) {
             throw new HttpError(503, 'installation_incomplete');

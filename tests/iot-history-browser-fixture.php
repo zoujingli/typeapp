@@ -160,7 +160,7 @@ try {
     $now = time() - 10;
     try {
         $fixtureConnection = $pool->connect($scope);
-        $actor = (new IdentityService('customer'))->authenticate($fixtureConnection, $token);
+        $actor = (new IdentityService('customer'))->authenticate($token);
         expect($actor !== null, '浏览器数据装置必须使用真实客户会话');
         if ($transfers) {
             $node = 'transfer-browser';

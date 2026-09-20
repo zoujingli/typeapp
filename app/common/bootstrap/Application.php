@@ -99,6 +99,7 @@ final class Application
             if (class_exists(\Type\Generated\BuildIdentity::class, false)) {
                 \Type\Generated\BuildIdentity::verifyRuntime();
             }
+            CoroutineRuntime::enableIo();
             if ($command === 'help' || $command === '--help') {
                 if (count($arguments) > 2) {
                     throw new InvalidArgumentException('help 不接受额外参数');
@@ -292,55 +293,60 @@ final class Application
             throw new InvalidArgumentException($prefix . '参数无效，请使用help；每次isolate/review/restore最多处理100个主体');
         }
         DatabaseFactory::requireExisting($settings, $basePath);
-        $database = new \Type\Orm\Database(DatabaseFactory::create($settings, $basePath), 1, 0);
-        $scope = new ExecutionScope();
-        try {
-            $connection = $database->connect($scope);
-            if ($operation === 'gate') {
-                \app\iot\service\RecoveryService::ready($connection, $host);
-                return;
-            }
-            if ($operation === 'review') {
-                $offset = filter_var($arguments[4], FILTER_VALIDATE_INT);
-                if ($offset === false || $offset < 0) {
-                    throw new InvalidArgumentException('核对偏移量必须为非负整数');
-                }
-                $path = Settings::absolutePath($arguments[2]) ? $arguments[2] : $basePath . '/' . $arguments[2];
-                $metadata = @lstat($path);
-                if ($metadata === false || ($metadata['mode'] & 0170000) !== 0100000 || ($metadata['mode'] & 0077) !== 0 || $metadata['size'] > 67108864) {
-                    throw new InvalidArgumentException('恢复清单必须是至多64MiB且仅属主可访问的普通文件');
-                }
-                $stream = @fopen($path, 'rb');
-                if (!is_resource($stream)) {
-                    throw new InvalidArgumentException('恢复清单不可读');
-                }
-                try {
-                    $opened = fstat($stream);
-                    if ($opened === false || $opened['dev'] !== $metadata['dev'] || $opened['ino'] !== $metadata['ino'] || $opened['mode'] !== $metadata['mode']) {
-                        throw new InvalidArgumentException('恢复清单文件身份已改变');
+        CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments, $host, $operation): void {
+            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
+            \Type\Orm\Db::configure($database);
+            $scope = new ExecutionScope();
+            try {
+                $scope->run(static function (ExecutionScope $current) use ($basePath, $arguments, $host, $operation): void {
+                    $connection = \Type\Orm\Db::connection('default', true);
+                    if ($operation === 'gate') {
+                        \app\iot\service\RecoveryService::ready($connection, $host);
+                        return;
                     }
-                    $contents = stream_get_contents($stream, 67108865);
-                    if ($contents === false) {
-                        throw new InvalidArgumentException('恢复清单读取失败');
+                    if ($operation === 'review') {
+                        $offset = filter_var($arguments[4], FILTER_VALIDATE_INT);
+                        if ($offset === false || $offset < 0) {
+                            throw new InvalidArgumentException('核对偏移量必须为非负整数');
+                        }
+                        $path = Settings::absolutePath($arguments[2]) ? $arguments[2] : $basePath . '/' . $arguments[2];
+                        $metadata = @lstat($path);
+                        if ($metadata === false || ($metadata['mode'] & 0170000) !== 0100000 || ($metadata['mode'] & 0077) !== 0 || $metadata['size'] > 67108864) {
+                            throw new InvalidArgumentException('恢复清单必须是至多64MiB且仅属主可访问的普通文件');
+                        }
+                        $stream = @fopen($path, 'rb');
+                        if (!is_resource($stream)) {
+                            throw new InvalidArgumentException('恢复清单不可读');
+                        }
+                        try {
+                            $opened = fstat($stream);
+                            if ($opened === false || $opened['dev'] !== $metadata['dev'] || $opened['ino'] !== $metadata['ino'] || $opened['mode'] !== $metadata['mode']) {
+                                throw new InvalidArgumentException('恢复清单文件身份已改变');
+                            }
+                            $contents = stream_get_contents($stream, 67108865);
+                            if ($contents === false) {
+                                throw new InvalidArgumentException('恢复清单读取失败');
+                            }
+                        } finally {
+                            fclose($stream);
+                        }
+                        $record = \app\iot\service\RecoveryService::review($connection, $arguments[1], $contents, $arguments[3], $offset, $host);
+                    } else {
+                        $record = match ($operation) {
+                            'snapshot' => \app\iot\service\RecoveryService::snapshot($connection, $host),
+                            'status' => \app\iot\service\RecoveryService::status($connection, $host),
+                            'begin' => \app\iot\service\RecoveryService::begin($connection, $arguments[1], $arguments[2], $arguments[3], $host),
+                            'isolate' => \app\iot\service\RecoveryService::isolate($connection, $arguments[1], $host),
+                            default => \app\iot\service\RecoveryService::restore($connection, $arguments[1], $host),
+                        };
                     }
-                } finally {
-                    fclose($stream);
-                }
-                $record = \app\iot\service\RecoveryService::review($connection, $arguments[1], $contents, $arguments[3], $offset, $host);
-            } else {
-                $record = match ($operation) {
-                    'snapshot' => \app\iot\service\RecoveryService::snapshot($connection, $host),
-                    'status' => \app\iot\service\RecoveryService::status($connection, $host),
-                    'begin' => \app\iot\service\RecoveryService::begin($connection, $arguments[1], $arguments[2], $arguments[3], $host),
-                    'isolate' => \app\iot\service\RecoveryService::isolate($connection, $arguments[1], $host),
-                    default => \app\iot\service\RecoveryService::restore($connection, $arguments[1], $host),
-                };
+                    echo json_encode($record, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n";
+                });
+            } finally {
+                $scope->close();
+                $database->close();
             }
-            echo json_encode($record, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n";
-        } finally {
-            $scope->close();
-            $database->close();
-        }
+        });
     }
 
     /** 相对私有文件目录以APP_BASE_PATH为基准，HTTP和后台角色采用同一启动配置。 */
@@ -353,52 +359,57 @@ final class Application
     /** 有界后台角色复用Outbox、队列和Worker；只有工作角色连接Redis，清理可在队列故障时独立执行。 */
     private static function exports(Repository $settings, string $basePath, string $command, array $arguments): void
     {
-        $limit = filter_var($arguments[0] ?? '100', FILTER_VALIDATE_INT);
-        if (count($arguments) > 1 || $limit === false || $limit < 1 || $limit > ($command === 'iot:exports-clean' ? 100 : ($command === 'iot:exports-work' ? 3600 : 10000))) {
-            throw new InvalidArgumentException('导出参数需为有界批次，work参数为1至3600秒');
-        }
-        DatabaseFactory::requireExisting($settings, $basePath);
-        $database = new \Type\Orm\Database(DatabaseFactory::create($settings, $basePath), 2, 0);
-        $scope = new ExecutionScope();
-        $exports = self::exportService($settings, $basePath);
-        $redis = null;
-        $signals = new \Type\Runtime\ProcessSignals();
-        try {
-            if ($command === 'iot:exports-clean') {
-                echo json_encode(['data' => $exports->clean($database->connect($scope), $limit)], JSON_THROW_ON_ERROR) . "\n";
-                return;
+        \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $command, $arguments): void {
+            $limit = filter_var($arguments[0] ?? '100', FILTER_VALIDATE_INT);
+            if (count($arguments) > 1 || $limit === false || $limit < 1 || $limit > ($command === 'iot:exports-clean' ? 100 : ($command === 'iot:exports-work' ? 3600 : 10000))) {
+                throw new InvalidArgumentException('导出参数需为有界批次，work参数为1至3600秒');
             }
-            $redis = new \Type\Redis\RedisManager(['exports' => Settings::redis($settings, $basePath, 'exports')]);
-            $queue = new \Type\Queue\Queue($redis->connection($scope, 'exports', \Type\Redis\Purpose::SCRIPT), $settings->text('app.exports.namespace'), 'exports', 60000, 2000);
-            $registry = new \Type\Queue\Registry();
-            $registry->register('iot.export', 1, static fn (\Type\Queue\JobContext $context): ExportJob => new ExportJob($database, $exports));
-            $worker = new \Type\Queue\Worker($queue, $registry, 'exports-' . getmypid(), new \Type\Queue\RetryPolicy(100, 1000, 60000, 30000));
-            $signals->attach(static function () use ($worker): void {
-                $worker->stop(5.0);
-            });
-            $relay = new \Type\Orm\Outbox\Relay($database, new \Type\Orm\Outbox\Store('iot_export_outbox'), new ExportPublisher($queue));
-            $processed = 0;
-            $published = 0;
-            $deadline = microtime(true) + ($command === 'iot:exports-work' ? $limit : 3600);
-            while ($worker->ready() && microtime(true) < $deadline && ($command === 'iot:exports-work' || $processed < $limit)) {
-                $signals->dispatch();
-                $published += $relay->runOnce(10);
-                if ($worker->runOnce()) {
-                    $processed++;
-                } elseif ($command !== 'iot:exports-work') {
-                    break;
-                } else {
-                    usleep(50000);
-                }
+            DatabaseFactory::requireExisting($settings, $basePath);
+            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 2, 0);
+            \Type\Orm\Db::configure($database);
+            $scope = new ExecutionScope();
+            $exports = self::exportService($settings, $basePath);
+            $redis = null;
+            $signals = new \Type\Runtime\ProcessSignals();
+            try {
+                $scope->run(static function (ExecutionScope $current) use ($settings, $basePath, $command, $limit, $database, $scope, $exports, &$redis, $signals): void {
+                    if ($command === 'iot:exports-clean') {
+                        echo json_encode(['data' => $exports->clean(\Type\Orm\Db::connection('default', true), $limit)], JSON_THROW_ON_ERROR) . "\n";
+                        return;
+                    }
+                    $redis = new \Type\Redis\RedisManager(['exports' => Settings::redis($settings, $basePath, 'exports')]);
+                    $queue = new \Type\Queue\Queue($redis->connection($scope, 'exports', \Type\Redis\Purpose::SCRIPT), $settings->text('app.exports.namespace'), 'exports', 60000, 2000);
+                    $registry = new \Type\Queue\Registry();
+                    $registry->register('iot.export', 1, static fn (\Type\Queue\JobContext $context): ExportJob => new ExportJob($exports));
+                    $worker = new \Type\Queue\Worker($queue, $registry, 'exports-' . getmypid(), new \Type\Queue\RetryPolicy(100, 1000, 60000, 30000));
+                    $signals->attach(static function () use ($worker): void {
+                        $worker->stop(5.0);
+                    });
+                    $relay = new \Type\Orm\Outbox\Relay($database, new \Type\Orm\Outbox\Store('iot_export_outbox'), new ExportPublisher($queue));
+                    $processed = 0;
+                    $published = 0;
+                    $deadline = microtime(true) + ($command === 'iot:exports-work' ? $limit : 3600);
+                    while ($worker->ready() && microtime(true) < $deadline && ($command === 'iot:exports-work' || $processed < $limit)) {
+                        $signals->dispatch();
+                        $published += $relay->runOnce(10);
+                        if ($worker->runOnce()) {
+                            $processed++;
+                        } elseif ($command !== 'iot:exports-work') {
+                            break;
+                        } else {
+                            usleep(50000);
+                        }
+                    }
+                    $worker->stop(5.0);
+                    echo json_encode(['data' => ['published' => $published, 'processed' => $processed, 'worker' => $worker->statistics()]], JSON_THROW_ON_ERROR) . "\n";
+                });
+            } finally {
+                $signals->close();
+                $scope->close();
+                $database->close();
+                $redis?->close();
             }
-            $worker->stop(5.0);
-            echo json_encode(['data' => ['published' => $published, 'processed' => $processed, 'worker' => $worker->statistics()]], JSON_THROW_ON_ERROR) . "\n";
-        } finally {
-            $signals->close();
-            $scope->close();
-            $database->close();
-            $redis?->close();
-        }
+        });
     }
 
     /** 设备本地SQLite缓存与平台数据库装配独立；网络发送复用标准客户端及受管信号。 */
@@ -662,6 +673,7 @@ final class Application
             $compat->close();
         }
         $database = Settings::database($settings, $basePath);
+        \Type\Orm\Db::configure($database);
         $messages = new Factory();
         $router = new Router($messages, $messages);
         $adminIdentities = new IdentityService('admin');
@@ -684,9 +696,9 @@ final class Application
             AlarmController::class => static fn (): AlarmController => new AlarmController($database, $messages),
             ExportController::class => static fn (): ExportController => new ExportController($database, $messages, self::exportService($settings, $basePath)),
         ], [
-            'admin.auth' => static fn (): IotAuthentication => new IotAuthentication($database, $adminIdentities, $messages),
-            'customer.auth' => static fn (): IotAuthentication => new IotAuthentication($database, $customerIdentities, $messages),
-            'broker.auth' => static fn (): IotAuthentication => new IotAuthentication($database, $brokerIdentities, $messages),
+            'admin.auth' => static fn (): IotAuthentication => new IotAuthentication($adminIdentities, $messages),
+            'customer.auth' => static fn (): IotAuthentication => new IotAuthentication($customerIdentities, $messages),
+            'broker.auth' => static fn (): IotAuthentication => new IotAuthentication($brokerIdentities, $messages),
             'broker.probe' => static fn (): Authentication => new Authentication(
                 static fn (string $provided): ?Identity => $probeToken !== '' && hash_equals($probeToken, $provided) ? new Identity('broker-probe', ['broker_probe']) : null,
                 static fn (Identity $identity, CanonicalRequest $request, string $method): bool => in_array('broker_probe', $identity->roles(), true),
@@ -729,90 +741,107 @@ final class Application
             throw new InvalidArgumentException('清理批次最大1000');
         }
         DatabaseFactory::requireExisting($settings, $basePath);
-        $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
-        $scope = new ExecutionScope();
-        try {
-            $connection = $database->connect($scope);
-            $result = match ($kind) {
-                'iot:command-clean' => CommandService::prune($connection, $batch),
-                default => AuditLog::prune($connection, $batch, $realm),
-            };
-            echo json_encode(['data' => $result], JSON_THROW_ON_ERROR) . "\n";
-        } finally {
-            $scope->close();
-            $database->close();
-        }
+        CoroutineRuntime::run(static function () use ($settings, $basePath, $kind, $batch, $realm): void {
+            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
+            \Type\Orm\Db::configure($database);
+            $scope = new ExecutionScope();
+            try {
+                $scope->run(static function (ExecutionScope $current) use ($kind, $batch, $realm): void {
+                    $connection = \Type\Orm\Db::connection('default', true);
+                    $result = match ($kind) {
+                        'iot:command-clean' => CommandService::prune($connection, $batch),
+                        default => AuditLog::prune($connection, $batch, $realm),
+                    };
+                    echo json_encode(['data' => $result], JSON_THROW_ON_ERROR) . "\n";
+                });
+            } finally {
+                $scope->close();
+                $database->close();
+            }
+        });
     }
 
     /** 告警角色有界处理独立待办，命令结束时释放受管资源。 */
     private static function alarm(Repository $settings, string $basePath, array $arguments): void
     {
-        if (count($arguments) > 1 || (isset($arguments[0]) && (!preg_match('/^[1-9][0-9]{0,2}$/D', $arguments[0]) || (int) $arguments[0] > 100))) {
-            throw new InvalidArgumentException('iot:alarm 只接受一个1至100的可选批次');
-        }
-        DatabaseFactory::requireExisting($settings, $basePath);
-        $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
-        $scope = new ExecutionScope();
-        try {
-            echo json_encode(['data' => AlarmService::run($database->connect($scope), isset($arguments[0]) ? (int) $arguments[0] : 100)], JSON_THROW_ON_ERROR) . "\n";
-        } finally {
-            $scope->close();
-            $database->close();
-        }
+        \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): void {
+            if (count($arguments) > 1 || (isset($arguments[0]) && (!preg_match('/^[1-9][0-9]{0,2}$/D', $arguments[0]) || (int) $arguments[0] > 100))) {
+                throw new InvalidArgumentException('iot:alarm 只接受一个1至100的可选批次');
+            }
+            DatabaseFactory::requireExisting($settings, $basePath);
+            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
+            \Type\Orm\Db::configure($database);
+            $scope = new ExecutionScope();
+            try {
+                $scope->run(static function (ExecutionScope $current) use ($arguments): void {
+                    echo json_encode(['data' => AlarmService::run(\Type\Orm\Db::connection('default', true), isset($arguments[0]) ? (int) $arguments[0] : 100)], JSON_THROW_ON_ERROR) . "\n";
+                });
+            } finally {
+                $scope->close();
+                $database->close();
+            }
+        });
     }
 
     /** 通知角色执行有界恢复、relay及worker；清理和HTTP不依赖Redis可用。 */
     private static function notices(Repository $settings, string $basePath, bool $cleanup, array $arguments): void
     {
-        $batch = filter_var($arguments[0] ?? '100', FILTER_VALIDATE_INT);
-        if (count($arguments) > 1 || $batch === false || $batch < 1 || $batch > 100) {
-            throw new InvalidArgumentException('通知角色只接受1至100的可选批次');
-        }
-        DatabaseFactory::requireExisting($settings, $basePath);
-        $database = new \Type\Orm\Database(DatabaseFactory::create($settings, $basePath), 2, 0);
-        $scope = new ExecutionScope();
-        $redis = null;
-        $signals = new \Type\Runtime\ProcessSignals();
-        try {
-            if ($cleanup) {
-                echo json_encode(['data' => \app\iot\service\NoticeService::clean($database->connect($scope), $batch)], JSON_THROW_ON_ERROR) . "\n";
-                return;
+        \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $cleanup, $arguments): void {
+            $batch = filter_var($arguments[0] ?? '100', FILTER_VALIDATE_INT);
+            if (count($arguments) > 1 || $batch === false || $batch < 1 || $batch > 100) {
+                throw new InvalidArgumentException('通知角色只接受1至100的可选批次');
             }
-            $recovery = \app\iot\service\NoticeService::recover($database->connect($scope), $batch);
-            $redis = new \Type\Redis\RedisManager(['notices' => Settings::redis($settings, $basePath, 'notices')]);
-            $queue = new \Type\Queue\Queue($redis->connection($scope, 'notices', \Type\Redis\Purpose::SCRIPT), $settings->text('app.notices.namespace'), 'notices', 60000, 10000);
-            $collected = $queue->collect($batch);
-            $service = new \app\iot\service\NoticeService($database, $queue);
-            $registry = new \Type\Queue\Registry();
-            $registry->register('iot.notice', 1, static fn (\Type\Queue\JobContext $context): \app\iot\service\NoticeService => $service);
-            $worker = new \Type\Queue\Worker($queue, $registry, 'notices-' . getmypid(), new \Type\Queue\RetryPolicy(10, 1000, 60000, 30000));
-            $signals->attach(static function () use ($worker): void {
-                $worker->stop(5.0);
-            });
-            $relay = new \Type\Orm\Outbox\Relay($database, new \Type\Orm\Outbox\Store('iot_notice_outbox'), $service);
-            $processed = 0;
-            $published = 0;
-            while ($processed < $batch && $worker->ready()) {
-                $signals->dispatch();
-                // 先消费已有任务，队列满额时仍能释放容量。
-                if ($worker->runOnce()) {
-                    $processed++;
-                    continue;
-                }
-                $sent = $relay->runOnce(min(10, $batch - $processed));
-                $published += $sent;
-                if ($sent === 0) {
-                    break;
-                }
+            DatabaseFactory::requireExisting($settings, $basePath);
+            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 2, 0);
+            \Type\Orm\Db::configure($database);
+            $scope = new ExecutionScope();
+            $redis = null;
+            $signals = new \Type\Runtime\ProcessSignals();
+            try {
+                $scope->run(static function (ExecutionScope $current) use ($settings, $basePath, $cleanup, $batch, $database, $scope, &$redis, $signals): void {
+                    if ($cleanup) {
+                        echo json_encode(['data' => \app\iot\service\NoticeService::clean(\Type\Orm\Db::connection('default', true), $batch)], JSON_THROW_ON_ERROR) . "\n";
+                        return;
+                    }
+                    $recoveryConnection = \Type\Orm\Db::connection('default', true);
+                    $recovery = \app\iot\service\NoticeService::recover($recoveryConnection, $batch);
+                    $recoveryConnection->close();
+                    $redis = new \Type\Redis\RedisManager(['notices' => Settings::redis($settings, $basePath, 'notices')]);
+                    $queue = new \Type\Queue\Queue($redis->connection($scope, 'notices', \Type\Redis\Purpose::SCRIPT), $settings->text('app.notices.namespace'), 'notices', 60000, 10000);
+                    $collected = $queue->collect($batch);
+                    $service = new \app\iot\service\NoticeService($queue);
+                    $registry = new \Type\Queue\Registry();
+                    $registry->register('iot.notice', 1, static fn (\Type\Queue\JobContext $context): \app\iot\service\NoticeService => $service);
+                    $worker = new \Type\Queue\Worker($queue, $registry, 'notices-' . getmypid(), new \Type\Queue\RetryPolicy(10, 1000, 60000, 30000));
+                    $signals->attach(static function () use ($worker): void {
+                        $worker->stop(5.0);
+                    });
+                    $relay = new \Type\Orm\Outbox\Relay($database, new \Type\Orm\Outbox\Store('iot_notice_outbox'), $service);
+                    $processed = 0;
+                    $published = 0;
+                    while ($processed < $batch && $worker->ready()) {
+                        $signals->dispatch();
+                        // 先消费已有任务，队列满额时仍能释放容量。
+                        if ($worker->runOnce()) {
+                            $processed++;
+                            continue;
+                        }
+                        $sent = $relay->runOnce(min(10, $batch - $processed));
+                        $published += $sent;
+                        if ($sent === 0) {
+                            break;
+                        }
+                    }
+                    $worker->stop(5.0);
+                    echo json_encode(['data' => $recovery + ['published' => $published, 'processed' => $processed, 'quarantine_collected' => $collected, 'worker' => $worker->statistics()]], JSON_THROW_ON_ERROR) . "\n";
+                });
+            } finally {
+                $signals->close();
+                $scope->close();
+                $database->close();
+                $redis?->close();
             }
-            $worker->stop(5.0);
-            echo json_encode(['data' => $recovery + ['published' => $published, 'processed' => $processed, 'quarantine_collected' => $collected, 'worker' => $worker->statistics()]], JSON_THROW_ON_ERROR) . "\n";
-        } finally {
-            $signals->close();
-            $scope->close();
-            $database->close();
-            $redis?->close();
-        }
+        });
     }
 
     /** 聚合和回收共享已有数据库作用域；角色只运行一批，不启动HTTP或持有空闲连接。 */
@@ -824,15 +853,20 @@ final class Application
         }
         $batch = isset($arguments[0]) ? (int) $arguments[0] : $maximum;
         DatabaseFactory::requireExisting($settings, $basePath);
-        $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
-        $scope = new ExecutionScope();
-        try {
-            $connection = $database->connect($scope);
-            echo json_encode(['data' => $cleanup ? AggregateService::prune($connection, $batch) : AggregateService::run($connection, $batch)], JSON_THROW_ON_ERROR) . "\n";
-        } finally {
-            $scope->close();
-            $database->close();
-        }
+        CoroutineRuntime::run(static function () use ($settings, $basePath, $cleanup, $batch): void {
+            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
+            \Type\Orm\Db::configure($database);
+            $scope = new ExecutionScope();
+            try {
+                $scope->run(static function (ExecutionScope $current) use ($cleanup, $batch): void {
+                    $connection = \Type\Orm\Db::connection('default', true);
+                    echo json_encode(['data' => $cleanup ? AggregateService::prune($connection, $batch) : AggregateService::run($connection, $batch)], JSON_THROW_ON_ERROR) . "\n";
+                });
+            } finally {
+                $scope->close();
+                $database->close();
+            }
+        });
     }
 
     /** 一次只回收一批到期历史；续扫游标跳过未完成消费者，下一轮从头重查阻塞项。 */
@@ -846,14 +880,19 @@ final class Application
             throw new InvalidArgumentException('历史清理批次最大1000');
         }
         DatabaseFactory::requireExisting($settings, $basePath);
-        $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
-        $scope = new ExecutionScope();
-        try {
-            echo json_encode(['data' => HistoryService::prune($database->connect($scope), $batch, $arguments[1] ?? '')], JSON_THROW_ON_ERROR) . "\n";
-        } finally {
-            $scope->close();
-            $database->close();
-        }
+        CoroutineRuntime::run(static function () use ($settings, $basePath, $batch, $arguments): void {
+            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
+            \Type\Orm\Db::configure($database);
+            $scope = new ExecutionScope();
+            try {
+                $scope->run(static function (ExecutionScope $current) use ($batch, $arguments): void {
+                    echo json_encode(['data' => HistoryService::prune(\Type\Orm\Db::connection('default', true), $batch, $arguments[1] ?? '')], JSON_THROW_ON_ERROR) . "\n";
+                });
+            } finally {
+                $scope->close();
+                $database->close();
+            }
+        });
     }
 
     /**
@@ -974,18 +1013,30 @@ final class Application
             self::serve($settings, $basePath, $development, true);
             return 0;
         }
-        $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
-        $scope = new ExecutionScope();
-        try {
-            if ($command === 'broker:user') {
+        if ($command === 'broker:user') {
+            return \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): int {
                 $password = getenv('BROKER_ADMIN_PASSWORD');
                 if (!is_string($password)) {
                     throw new InvalidArgumentException('请通过 BROKER_ADMIN_PASSWORD 提供独立管理员初始化密码');
                 }
-                $user = (new IdentityService('broker'))->provision($database->connect($scope), $arguments[0], $arguments[1], $password, true);
-                echo json_encode(['data' => $user], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
-                return 0;
-            }
+                $manager = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
+                \Type\Orm\Db::configure($manager);
+                $work = new ExecutionScope();
+                try {
+                    return $work->run(static function (ExecutionScope $current) use ($arguments, $password): int {
+                        $user = (new IdentityService('broker'))->provision($arguments[0], $arguments[1], $password, true);
+                        echo json_encode(['data' => $user], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
+                        return 0;
+                    });
+                } finally {
+                    $work->close();
+                    $manager->close();
+                }
+            });
+        }
+        $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
+        $scope = new ExecutionScope();
+        try {
             $host = $settings->text('app.broker.listen');
             $port = Settings::integer($settings, 'app.broker.port', 1, 65535);
             $plaintext = $settings->boolean('app.broker.plaintext');

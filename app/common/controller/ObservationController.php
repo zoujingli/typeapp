@@ -71,7 +71,7 @@ final class ObservationController
         $connection = $this->connection($request);
         $access = [];
         try {
-            $access = RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.read');
+            $access = RoleService::readContext($identity, $realm, $tenant, 'broker.read');
             $authorization = $tenant === '' ? ['all_metadata' => true]
                 : ['all_metadata' => false, 'resource_scope' => 'iot:' . $tenant, 'topic_namespace' => 'iot/' . $tenant];
             $command = $this->mqttCommand === '' ? [] : json_decode($this->mqttCommand, true, 8, JSON_THROW_ON_ERROR);
@@ -93,7 +93,7 @@ final class ObservationController
                 $connection->close();
                 $connection = $this->connection($request);
             }
-            if ($access !== RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.read')) {
+            if ($access !== RoleService::readContext($identity, $realm, $tenant, 'broker.read')) {
                 throw new HttpError(403, 'broker_authorization_changed');
             }
         } catch (HttpError $error) {
@@ -150,7 +150,7 @@ final class ObservationController
         $detail = ['found' => false, 'item' => ['id' => $sessionId], 'observed_at' => time(), 'source' => 'durable_store'];
         $subscriptions = ['items' => []];
         try {
-            $access = RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.read');
+            $access = RoleService::readContext($identity, $realm, $tenant, 'broker.read');
             $bind = json_encode($access, JSON_THROW_ON_ERROR);
             try {
                 $detail = ResourceQueries::query($connection, $this->storeWorker(), 'sessions', '', $sessionId, $authorization, $bind);
@@ -164,7 +164,7 @@ final class ObservationController
                 $connection->close();
                 $connection = $this->connection($request);
             }
-            if ($access !== RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.read')) {
+            if ($access !== RoleService::readContext($identity, $realm, $tenant, 'broker.read')) {
                 throw new HttpError(403, 'broker_authorization_changed');
             }
         } catch (HttpError $error) {
@@ -199,7 +199,7 @@ final class ObservationController
         $detail = ['found' => false, 'item' => ['id' => $sessionId], 'observed_at' => time(), 'source' => 'durable_store'];
         $payload = [];
         try {
-            $access = RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.write');
+            $access = RoleService::readContext($identity, $realm, $tenant, 'broker.write');
             if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
                 throw new HttpError(415, 'json_required');
             }
@@ -237,7 +237,7 @@ final class ObservationController
                         'id' => $sessionId, 'session_generation' => (int) $existing['session_generation'],
                         'node_id' => $existing['node_id'], 'node_run_id' => $existing['node_run_id'] ?? '',
                     ], null, $payload, $requestId);
-                    if ($access !== RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.write')) {
+                    if ($access !== RoleService::readContext($identity, $realm, $tenant, 'broker.write')) {
                         throw new HttpError(403, 'broker_authorization_changed');
                     }
                     return $this->response($result);
@@ -272,7 +272,7 @@ final class ObservationController
             $item = $detail['item'];
             $item['source'] = $detail['source'];
             $result = ConnectionOperations::requestTerminate($connection, $context, $sessionId, $item, $live, $payload, $requestId);
-            if ($access !== RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.write')) {
+            if ($access !== RoleService::readContext($identity, $realm, $tenant, 'broker.write')) {
                 throw new HttpError(403, 'broker_authorization_changed');
             }
             return $this->response($result);
@@ -302,7 +302,7 @@ final class ObservationController
         $bind = '';
         $detail = ['found' => false, 'item' => ['id' => $resourceId], 'observed_at' => time(), 'source' => 'durable_store'];
         try {
-            $access = RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.read');
+            $access = RoleService::readContext($identity, $realm, $tenant, 'broker.read');
             $bind = json_encode($access, JSON_THROW_ON_ERROR);
             try {
                 $detail = ResourceQueries::query($connection, $this->storeWorker(), 'retained', '', $resourceId, $authorization, $bind);
@@ -310,7 +310,7 @@ final class ObservationController
                 $connection->close();
                 $connection = $this->connection($request);
             }
-            if ($access !== RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.read')) {
+            if ($access !== RoleService::readContext($identity, $realm, $tenant, 'broker.read')) {
                 throw new HttpError(403, 'broker_authorization_changed');
             }
         } catch (HttpError $error) {
@@ -345,7 +345,7 @@ final class ObservationController
         $detail = ['found' => false, 'item' => ['id' => $resourceId], 'observed_at' => time(), 'source' => 'durable_store'];
         $payload = [];
         try {
-            $access = RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.write');
+            $access = RoleService::readContext($identity, $realm, $tenant, 'broker.write');
             if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
                 throw new HttpError(415, 'json_required');
             }
@@ -382,7 +382,7 @@ final class ObservationController
                     $result = ConnectionOperations::requestClear($connection, $context, $resourceId, [
                         'id' => $resourceId, 'generation' => (int) $existing['session_generation'],
                     ], $payload, $requestId);
-                    if ($access !== RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.write')) {
+                    if ($access !== RoleService::readContext($identity, $realm, $tenant, 'broker.write')) {
                         throw new HttpError(403, 'broker_authorization_changed');
                     }
                     return $this->response($result);
@@ -416,7 +416,7 @@ final class ObservationController
             $item = $detail['item'];
             $item['source'] = $detail['source'];
             $result = ConnectionOperations::requestClear($connection, $context, $resourceId, $item, $payload, $requestId);
-            if ($access !== RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.write')) {
+            if ($access !== RoleService::readContext($identity, $realm, $tenant, 'broker.write')) {
                 throw new HttpError(403, 'broker_authorization_changed');
             }
             return $this->response($result);
@@ -436,7 +436,7 @@ final class ObservationController
         $identity = $this->identity($request);
         $operationId = $request->getAttribute('type.route.params', [])['id'] ?? '';
         $connection = $this->connection($request);
-        $access = RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.read');
+        $access = RoleService::readContext($identity, $realm, $tenant, 'broker.read');
         $origin = IdentityService::context($identity, $tenant);
         unset($origin['actor_name'], $origin['expires_at']);
         return $this->response(ConnectionOperations::result($connection, [
@@ -459,7 +459,7 @@ final class ObservationController
         $connection = $this->connection($request);
         $access = [];
         try {
-            $access = RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.write');
+            $access = RoleService::readContext($identity, $realm, $tenant, 'broker.write');
             if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
                 throw new HttpError(415, 'json_required');
             }
@@ -486,7 +486,7 @@ final class ObservationController
             $requestId = (string) $request->getAttribute('app.request_id', '');
             $requestId = $requestId === '' ? bin2hex(random_bytes(16)) : $requestId;
             $result = $operation($connection, $context, $ownerId, $payload, $requestId);
-            if ($access !== RoleService::readContext($connection, $identity, $realm, $tenant, 'broker.write')) {
+            if ($access !== RoleService::readContext($identity, $realm, $tenant, 'broker.write')) {
                 throw new HttpError(403, 'broker_authorization_changed');
             }
             return $this->response($result);
@@ -589,7 +589,7 @@ final class ObservationController
         if (!$scope instanceof ExecutionScope) {
             throw new \RuntimeException('观察接口需要受管请求作用域');
         }
-        return $this->database->connect($scope);
+        return \Type\Orm\Db::connection('default', true);
     }
 
     /**

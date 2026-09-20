@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace app\iot\service;
 
+use app\common\model\CustomerMember;
+use app\common\model\CustomerUser;
+use app\common\model\CustomerRole;
+use app\common\model\Tenant;
 use app\common\service\AuditLog;
 use app\common\service\IdentityService;
 use app\common\service\RoleService;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Orm\Connection;
+use Type\Orm\Model;
+use Type\Orm\ModelQuery;
 use Type\Orm\Query;
 
 /** 双端租户与成员管理；权限来自当前范围的多角色，写入在真实锁内重验。 */
@@ -20,32 +26,29 @@ final class TenantService
      * @param array{page:int,per_page:int,search:string,enabled:int} $filters 已校验的固定筛选。
      * @return array<string, mixed> 稳定分页与明确租户投影；平台详情另含当前有效最高管理员。
      */
-    public function tenants(Connection $connection, Identity $identity, array $filters, bool $platform, string $id = ''): array
+    public function tenants(Identity $identity, array $filters, bool $platform, string $id = ''): array
     {
-        $rows = $connection->table('iot_tenants', 't')->select(['t.id', 't.name', 't.enabled', 't.version', 't.created_at']);
+        $connection = \Type\Orm\Db::connection('default', true);
+        if (!$platform) {
+            return $this->availableTenants($identity, $filters, $id);
+        }
+        $rows = Tenant::query()->master();
         $permissions = [];
         if ($platform) {
-            $permissions = RoleService::permissions($connection, $identity, 'admin');
+            $permissions = RoleService::permissions($identity, 'admin');
             if (!in_array('admin.tenants.read', $permissions, true)) {
                 throw new HttpError(403, 'permission_denied');
             }
             if ($filters['enabled'] !== -1) {
-                $rows = $rows->where('t.enabled', '=', $filters['enabled']);
+                $rows = $rows->where('enabled', '=', (bool) $filters['enabled']);
             }
-        } else {
-            if (!in_array('realm:customer', $identity->roles(), true)) {
-                throw new HttpError(403, 'identity_realm_forbidden');
-            }
-            (new IdentityService('customer'))->user($connection, $identity->subject());
-            $rows = $rows->join('customer_members', 'm.tenant_id', '=', 't.id', 'm')->where('m.user_id', '=', $identity->subject())
-                ->where('m.enabled', '=', 1)->where('m.recovery_verified', '=', 1)->where('t.enabled', '=', 1);
         }
         if ($id !== '') {
-            $rows = $rows->where('t.id', '=', $id);
+            $rows = $rows->where('id', '=', $id);
         } elseif ($filters['search'] !== '') {
-            $rows = $rows->where('t.name', 'LIKE', '%' . $filters['search'] . '%');
+            $rows = $rows->where('name', 'LIKE', '%' . $filters['search'] . '%');
         }
-        $result = $this->joinedPage($rows->orderBy('t.created_at', 'DESC')->orderBy('t.id'), $id === '' ? $filters['page'] : 1, $id === '' ? $filters['per_page'] : 1);
+        $result = $this->modelPage($rows->orderBy('created_at', 'DESC')->orderBy('id'), $id === '' ? $filters['page'] : 1, $id === '' ? $filters['per_page'] : 1);
         if ($id !== '' && $result['items'] === []) {
             throw new HttpError(404, 'tenant_not_found');
         }
@@ -58,14 +61,38 @@ final class TenantService
         return $result;
     }
 
+    /** 登录后选租户之前的受控跨模型投影；范围始终取已认证账号，不建立租户绑定。 */
+    private function availableTenants(Identity $identity, array $filters, string $id): array
+    {
+        if (!in_array('realm:customer', $identity->roles(), true)) {
+            throw new HttpError(403, 'identity_realm_forbidden');
+        }
+        (new IdentityService('customer'))->user($identity->subject());
+        $connection = \Type\Orm\Db::connection('default', true);
+        $rows = $connection->table('iot_tenants', 't')->join('customer_members', 't.id', '=', 'm.tenant_id', 'm')
+            ->select(['id' => 't.id', 'name' => 't.name', 'enabled' => 't.enabled', 'version' => 't.version', 'created_at' => 't.created_at'])
+            ->where('m.user_id', '=', $identity->subject())->where('m.enabled', '=', 1)->where('m.recovery_verified', '=', 1)->where('t.enabled', '=', 1);
+        if ($id !== '') {
+            $rows = $rows->where('t.id', '=', $id);
+        } elseif ($filters['search'] !== '') {
+            $rows = $rows->where('t.name', 'LIKE', '%' . $filters['search'] . '%');
+        }
+        $result = $this->joinedPage($rows->orderBy('t.created_at', 'DESC')->orderBy('t.id'), $id === '' ? $filters['page'] : 1, $id === '' ? $filters['per_page'] : 1);
+        if ($id !== '' && $result['items'] === []) {
+            throw new HttpError(404, 'tenant_not_found');
+        }
+        return $result;
+    }
+
     /**
      * RoleService 在安装行锁内重验平台会话和独立动作权限后调用。
      * 新客户、成员、角色和审计属于同一事务；关联已有客户不能修改全局资料、状态或凭据。
      * @param array<string, mixed> $data 固定动作字段；创建的稳定id仅用于拒绝重复，不赋予身份。
      * @return array<string, mixed> 无秘密的租户资料；失败由外层事务整体回滚。
      */
-    public function change(Connection $connection, Identity $identity, string $action, string $id, array $data): array
+    public function change(Identity $identity, string $action, string $id, array $data): array
     {
+        $connection = \Type\Orm\Db::connection('default', true);
         if ($connection->transactionDepth() < 1 || !in_array('realm:admin', $identity->roles(), true)) {
             throw new \LogicException('tenant_change_requires_authorized_transaction');
         }
@@ -74,57 +101,62 @@ final class TenantService
         }
         if ($action === 'admin.tenants.create') {
             $id = $data['id'];
-            if ($connection->table('iot_tenants')->where('id', '=', $id)->first() !== null) {
+            if (Tenant::query()->master()->find($id) !== null) {
                 throw new HttpError(409, 'tenant_exists');
             }
             if ($data['new_customer']) {
                 if (!isset($data['owner_name'], $data['owner_password'])) {
                     throw new HttpError(422, 'tenant_owner_input_invalid');
                 }
-                $owner = (new IdentityService('customer'))->provision($connection, $data['owner_login'], $data['owner_name'], $data['owner_password'], false, '', $identity->subject(), 'admin');
+                $owner = (new IdentityService('customer'))->provision($data['owner_login'], $data['owner_name'], $data['owner_password'], false, '', $identity->subject(), 'admin');
             } else {
                 if (array_key_exists('owner_name', $data) || array_key_exists('owner_password', $data)) {
                     throw new HttpError(422, 'tenant_owner_input_invalid');
                 }
-                $query = $connection->table('customer_users')->where('login', '=', $data['owner_login'])->where('enabled', '=', 1)->where('recovery_verified', '=', 1);
-                $owner = ($connection->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
-                if ($owner === null) {
+                $query = CustomerUser::query()->master()->where('login', '=', $data['owner_login'])->where('enabled', '=', true)->where('recovery_verified', '=', true);
+                $account = ($connection->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
+                if ($account === null) {
                     throw new HttpError(422, 'owner_not_available');
                 }
+                $owner = $account->project(['id', 'name']);
             }
-            $tenant = ['id' => $id, 'name' => trim($data['name']), 'enabled' => 1, 'version' => 1, 'created_at' => time()];
-            $connection->table('iot_tenants')->insert($tenant);
+            $tenant = new Tenant(['id' => $id, 'name' => trim($data['name']), 'enabled' => true, 'created_at' => time()]);
+            $tenant->save();
             $memberId = bin2hex(random_bytes(16));
-            $connection->table('customer_members')->insert(['id' => $memberId, 'tenant_id' => $id, 'user_id' => $owner['id'], 'name' => $owner['name'], 'created_at' => time()]);
-            RoleService::initializeScope($connection, 'customer', $id, $memberId);
+            $member = new CustomerMember([
+                'id' => $memberId, 'tenant_id' => $id, 'user_id' => $owner['id'], 'name' => $owner['name'],
+                'enabled' => true, 'recovery_verified' => true, 'created_at' => time(),
+            ]);
+            $member->save();
+            RoleService::initializeScope('customer', $id, $memberId);
             AuditLog::append($connection, $id, $identity->subject(), 'member.added', $memberId, 'success', ['grantee_id' => $owner['id'], 'context' => 'admin', 'version' => 1], 'admin');
         } elseif (str_starts_with($action, 'admin.tenants.administrators.')) {
             return $this->changeAdministrator($connection, $identity, $action, $id, $data);
         } else {
-            $query = $connection->table('iot_tenants')->where('id', '=', $id);
-            $tenant = ($connection->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
+            $query = Tenant::query()->master()->where('id', '=', $id);
+            $query = $connection->driverName() === 'sqlite' ? $query : $query->lockForUpdate();
+            $tenant = $query->first();
             if ($tenant === null) {
                 throw new HttpError(404, 'tenant_not_found');
             }
-            if ((int) $tenant['version'] !== $data['version']) {
+            if ($tenant->getVersion() !== $data['version']) {
                 throw new HttpError(409, 'stale_version');
             }
-            $changes = ['version' => $data['version'] + 1];
             if ($action === 'admin.tenants.update') {
-                $changes['name'] = trim($data['name']);
+                $tenant->setName(trim($data['name']));
             } elseif ($action === 'admin.tenants.status') {
-                $changes['enabled'] = $data['enabled'] ? 1 : 0;
+                $tenant->setEnabled((bool) $data['enabled']);
             } else {
                 throw new \InvalidArgumentException('tenant_action_invalid');
             }
-            $query->update($changes);
-            $tenant = array_replace($tenant, $changes);
+            $tenant->save();
         }
-        if ((int) $tenant['enabled'] === 1) {
-            RoleService::requireHighest($connection, 'customer', $id);
+        if ($tenant->getEnabled()) {
+            RoleService::requireHighest('customer', $id);
         }
-        AuditLog::append($connection, $id, $identity->subject(), $action, $id, 'success', ['version' => (int) $tenant['version'], 'context' => 'admin'], 'admin');
-        return $tenant;
+        $values = $this->tenantValues($tenant);
+        AuditLog::append($connection, $id, $identity->subject(), $action, $id, 'success', ['version' => $values['version'], 'context' => 'admin'], 'admin');
+        return $values;
     }
 
     /**
@@ -138,40 +170,37 @@ final class TenantService
         if ($connection->transactionDepth() < 1 || !in_array('realm:admin', $identity->roles(), true)) {
             throw new \LogicException('tenant_administrator_change_requires_authorized_transaction');
         }
-        $tenantQuery = $connection->table('iot_tenants')->where('id', '=', $tenantId);
+        $tenantQuery = Tenant::query()->master()->where('id', '=', $tenantId);
         $tenant = ($connection->driverName() === 'sqlite' ? $tenantQuery : $tenantQuery->lockForUpdate())->first();
         if ($tenant === null) {
             throw new HttpError(404, 'tenant_not_found');
         }
-        if ((int) $tenant['version'] !== $data['version']) {
+        if ($tenant->getVersion() !== $data['version']) {
             throw new HttpError(409, 'stale_version');
         }
-        $roleQuery = $connection->table('customer_roles')->where('scope_id', '=', $tenantId)->where('protected', '=', 1);
+        $roleQuery = CustomerRole::query()->master()->where('protected', '=', true);
         $highest = ($connection->driverName() === 'sqlite' ? $roleQuery : $roleQuery->lockForUpdate())->first();
-        if ($highest === null || (int) $highest['enabled'] !== 1 || (int) $highest['recovery_verified'] !== 1) {
+        if ($highest === null || !$highest->getEnabled() || !$highest->getRecoveryVerified()) {
             throw new HttpError(409, 'tenant_admin_role_unavailable');
         }
         $now = time();
         if ($action === 'admin.tenants.administrators.remove') {
-            $memberQuery = $connection->table('customer_members')->where('tenant_id', '=', $tenantId)->where('id', '=', $data['member_id']);
+            $memberQuery = CustomerMember::query()->master()->where('id', '=', $data['member_id']);
             $member = ($connection->driverName() === 'sqlite' ? $memberQuery : $memberQuery->lockForUpdate())->first();
             if ($member === null) {
                 throw new HttpError(404, 'member_not_found');
             }
-            if ((int) $member['version'] !== $data['member_version']) {
+            if ($member->getVersion() !== $data['member_version']) {
                 throw new HttpError(409, 'stale_version');
             }
-            $binding = $connection->table('customer_member_roles')->where('tenant_id', '=', $tenantId)->where('member_id', '=', $member['id'])->where('role_id', '=', $highest['id'])->first();
-            if ($binding === null) {
+            if (!$member->definition()->relation('roles')->loader()->detach($member, $highest->getId())) {
                 throw new HttpError(409, 'administrator_not_found');
             }
-            $connection->table('customer_member_roles')->where('tenant_id', '=', $tenantId)->where('member_id', '=', $member['id'])->where('role_id', '=', $highest['id'])->delete();
-            $connection->table('customer_members')->where('tenant_id', '=', $tenantId)->where('id', '=', $member['id'])->update(['version' => (int) $member['version'] + 1]);
-            $resultMember = array_replace($member, ['version' => (int) $member['version'] + 1]);
-            RoleService::requireHighest($connection, 'customer', $tenantId);
-            $tenant = $this->advanceAdministratorTenant($connection, $tenantQuery, $tenant, $data['version']);
-            AuditLog::append($connection, $tenantId, $identity, $action, (string) $member['id'], 'success', ['version' => (int) $resultMember['version'], 'grantee_id' => (string) $member['user_id'], 'context' => 'admin'], 'admin');
-            return ['tenant' => $tenant, 'administrator' => null, 'removed_member_id' => $member['id']];
+            $member->touch();
+            RoleService::requireHighest('customer', $tenantId);
+            $tenant->touch();
+            AuditLog::append($connection, $tenantId, $identity, $action, $member->getId(), 'success', ['version' => $member->getVersion(), 'grantee_id' => $member->getUserId(), 'context' => 'admin'], 'admin');
+            return ['tenant' => $this->tenantValues($tenant), 'administrator' => null, 'removed_member_id' => $member->getId()];
         }
 
         $isNew = (bool) $data['new_customer'];
@@ -179,107 +208,89 @@ final class TenantService
             if (!isset($data['owner_name'], $data['owner_password'])) {
                 throw new HttpError(422, 'tenant_owner_input_invalid');
             }
-            $user = (new IdentityService('customer'))->provision($connection, $data['login'], $data['owner_name'], $data['owner_password'], false, '', $identity, 'admin');
+            $user = (new IdentityService('customer'))->provision($data['login'], $data['owner_name'], $data['owner_password'], false, '', $identity, 'admin');
         } else {
             if (array_key_exists('owner_name', $data) || array_key_exists('owner_password', $data)) {
                 throw new HttpError(422, 'tenant_owner_input_invalid');
             }
-            $userQuery = $connection->table('customer_users')->where('login', '=', $data['login'])->where('enabled', '=', 1)->where('recovery_verified', '=', 1);
-            $user = ($connection->driverName() === 'sqlite' ? $userQuery : $userQuery->lockForUpdate())->first();
-            if ($user === null) {
+            $userQuery = CustomerUser::query()->master()->where('login', '=', $data['login'])->where('enabled', '=', true)->where('recovery_verified', '=', true);
+            $account = ($connection->driverName() === 'sqlite' ? $userQuery : $userQuery->lockForUpdate())->first();
+            if ($account === null) {
                 throw new HttpError(422, 'administrator_account_unavailable');
             }
+            $user = $account->project(['id', 'login', 'name']);
         }
-        $memberQuery = $connection->table('customer_members')->where('tenant_id', '=', $tenantId)->where('user_id', '=', $user['id']);
+        $memberQuery = CustomerMember::query()->master()->with('roles')->where('user_id', '=', $user['id']);
         $member = ($connection->driverName() === 'sqlite' ? $memberQuery : $memberQuery->lockForUpdate())->first();
         if ($member !== null) {
-            if ((int) $member['enabled'] !== 1 || (int) $member['recovery_verified'] !== 1) {
+            if (!$member->getEnabled() || !$member->getRecoveryVerified()) {
                 throw new HttpError(422, 'administrator_member_unavailable');
             }
-            if ($connection->table('customer_member_roles')->where('tenant_id', '=', $tenantId)->where('member_id', '=', $member['id'])->where('role_id', '=', $highest['id'])->first() !== null) {
-                throw new HttpError(409, 'administrator_exists');
+            foreach ($member->related('roles') as $role) {
+                if ($role->getId() === $highest->getId()) {
+                    throw new HttpError(409, 'administrator_exists');
+                }
             }
         } else {
-            $member = ['id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenantId, 'user_id' => $user['id'], 'name' => $user['name'], 'enabled' => 1, 'recovery_verified' => 1, 'version' => 1, 'created_at' => $now];
-            $connection->table('customer_members')->insert($member);
+            $member = new CustomerMember(['id' => bin2hex(random_bytes(16)), 'user_id' => $user['id'], 'name' => $user['name'], 'enabled' => true, 'recovery_verified' => true, 'created_at' => $now]);
+            $member->save();
         }
         $replacement = null;
         if ($action === 'admin.tenants.administrators.replace') {
-            if (!isset($data['replace_member_id'], $data['replace_member_version']) || $data['replace_member_id'] === $member['id']) {
+            if (!isset($data['replace_member_id'], $data['replace_member_version']) || $data['replace_member_id'] === $member->getId()) {
                 throw new HttpError(422, 'administrator_replacement_invalid');
             }
-            $replacementQuery = $connection->table('customer_members')->where('tenant_id', '=', $tenantId)->where('id', '=', $data['replace_member_id']);
+            $replacementQuery = CustomerMember::query()->master()->where('id', '=', $data['replace_member_id']);
             $replacement = ($connection->driverName() === 'sqlite' ? $replacementQuery : $replacementQuery->lockForUpdate())->first();
             if ($replacement === null) {
                 throw new HttpError(404, 'member_not_found');
             }
-            if ((int) $replacement['version'] !== $data['replace_member_version']) {
+            if ($replacement->getVersion() !== $data['replace_member_version']) {
                 throw new HttpError(409, 'stale_version');
             }
-            if ($connection->table('customer_member_roles')->where('tenant_id', '=', $tenantId)->where('member_id', '=', $replacement['id'])->where('role_id', '=', $highest['id'])->first() === null) {
+            if (!$replacement->definition()->relation('roles')->loader()->detach($replacement, $highest->getId())) {
                 throw new HttpError(409, 'administrator_not_found');
             }
         }
-        $memberVersion = (int) $member['version'] + 1;
-        $connection->table('customer_member_roles')->insert(['tenant_id' => $tenantId, 'member_id' => $member['id'], 'role_id' => $highest['id']]);
-        $connection->table('customer_members')->where('tenant_id', '=', $tenantId)->where('id', '=', $member['id'])->update(['version' => $memberVersion]);
-        $member['version'] = $memberVersion;
+        $member->definition()->relation('roles')->loader()->attach($member, $highest->getId());
+        $member->touch();
+        $memberVersion = $member->getVersion();
         if ($replacement !== null) {
-            $connection->table('customer_member_roles')->where('tenant_id', '=', $tenantId)->where('member_id', '=', $replacement['id'])->where('role_id', '=', $highest['id'])->delete();
-            $connection->table('customer_members')->where('tenant_id', '=', $tenantId)->where('id', '=', $replacement['id'])->update(['version' => (int) $replacement['version'] + 1]);
+            $replacement->touch();
         }
-        RoleService::requireHighest($connection, 'customer', $tenantId);
-        $tenant = $this->advanceAdministratorTenant($connection, $tenantQuery, $tenant, $data['version']);
-        AuditLog::append($connection, $tenantId, $identity, $action, (string) $member['id'], 'success', ['version' => $memberVersion, 'grantee_id' => (string) $member['user_id'], 'context' => 'admin'], 'admin');
-        return ['tenant' => $tenant, 'administrator' => ['id' => $user['id'], 'member_id' => $member['id'], 'member_version' => $memberVersion, 'login' => $user['login'], 'name' => $user['name']], 'replaced_member_id' => $replacement['id'] ?? null];
-    }
-
-    /** 推进租户版本并返回不含内部列的稳定投影。 */
-    private function advanceAdministratorTenant(Connection $connection, Query $query, array $tenant, int $version): array
-    {
-        $changes = ['version' => $version + 1];
-        $query->update($changes);
-        return array_replace($tenant, $changes);
+        RoleService::requireHighest('customer', $tenantId);
+        $tenant->touch();
+        AuditLog::append($connection, $tenantId, $identity, $action, $member->getId(), 'success', ['version' => $memberVersion, 'grantee_id' => $member->getUserId(), 'context' => 'admin'], 'admin');
+        return ['tenant' => $this->tenantValues($tenant), 'administrator' => ['id' => $user['id'], 'member_id' => $member->getId(), 'member_version' => $memberVersion, 'login' => $user['login'], 'name' => $user['name']], 'replaced_member_id' => $replacement?->getId()];
     }
 
     /** @return array<string, mixed> 当前租户成员投影与分页角色，不读取其他租户或全局凭据。 */
-    public function members(Connection $connection, Identity $identity, string $tenantId, string $id, array $filters): array
+    public function members(Identity $identity, string $tenantId, string $id, array $filters): array
     {
-        $permissions = RoleService::permissions($connection, $identity, 'customer', $tenantId);
+        $permissions = RoleService::permissions($identity, 'customer', $tenantId);
         if (!in_array('customer.members.read', $permissions, true)) {
             throw new HttpError(403, 'permission_denied');
         }
-        $rows = $connection->table('customer_members', 'm')->join('customer_users', 'u.id', '=', 'm.user_id', 'u')->where('m.tenant_id', '=', $tenantId)
-            ->select(['m.id', 'm.tenant_id', 'm.user_id', 'm.name', 'm.enabled', 'm.version', 'm.created_at', 'm.recovery_verified', 'u.login']);
-        if ($id !== '') {
-            $rows = $rows->where('m.id', '=', $id);
-        } else {
-            if ($filters['search'] !== '') {
-                $rows = $rows->where('u.login', 'LIKE', '%' . $filters['search'] . '%');
-            }
-            if ($filters['enabled'] !== -1) {
-                $rows = $rows->where('m.enabled', '=', $filters['enabled']);
-            }
-        }
-        $result = $this->joinedPage($rows->orderBy('m.created_at', 'DESC')->orderBy('m.id'), $id === '' ? $filters['page'] : 1, $id === '' ? $filters['per_page'] : 1);
-        if ($id !== '' && $result['items'] === []) {
-            throw new HttpError(404, 'member_not_found');
-        }
-        if ($result['items'] !== []) {
-            $ids = array_column($result['items'], 'id');
-            $roles = $connection->query('SELECT b.member_id, r.id, r.name, r.enabled, r.protected, r.version, r.recovery_verified FROM customer_member_roles b JOIN customer_roles r ON r.id = b.role_id AND r.scope_id = b.tenant_id WHERE b.tenant_id = ? AND b.member_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY r.name, r.id', [$tenantId, ...$ids]);
-            foreach ($result['items'] as $index => $member) {
-                $assigned = [];
-                foreach ($roles as $role) {
-                    if ($role['member_id'] === $member['id']) {
-                        unset($role['member_id']);
-                        $assigned[] = $role;
-                    }
+        return \Type\Runtime\ExecutionScope::current()->run(function (\Type\Runtime\ExecutionScope $current) use ($id, $filters, $permissions): array {
+            $rows = CustomerMember::query()->master()->with('user')->with('roles', static fn (ModelQuery $roles): ModelQuery => $roles
+                ->select(['id', 'name', 'enabled', 'protected', 'version', 'recovery_verified'])->orderBy('name')->orderBy('id'));
+            if ($id !== '') {
+                $rows = $rows->where('id', '=', $id);
+            } else {
+                if ($filters['search'] !== '') {
+                    $rows = $rows->whereHas('user', static fn (\Type\Orm\ModelQuery $conditions): \Type\Orm\ModelQuery => $conditions
+                        ->where('login', 'LIKE', '%' . $filters['search'] . '%'));
                 }
-                $result['items'][$index]['roles'] = $assigned;
+                if ($filters['enabled'] !== -1) {
+                    $rows = $rows->where('enabled', '=', (bool) $filters['enabled']);
+                }
             }
-        }
-        return $result + ['permissions' => $permissions, 'catalog' => RoleService::catalog('customer'), 'menus' => RoleService::menus('customer', $permissions)];
+            $result = $this->memberPage($rows->orderBy('created_at', 'DESC')->orderBy('id'), $id === '' ? $filters['page'] : 1, $id === '' ? $filters['per_page'] : 1);
+            if ($id !== '' && $result['items'] === []) {
+                throw new HttpError(404, 'member_not_found');
+            }
+            return $result + ['permissions' => $permissions, 'catalog' => RoleService::catalog('customer'), 'menus' => RoleService::menus('customer', $permissions)];
+        }, ['tenant_id' => $tenantId]);
     }
 
     /**
@@ -288,8 +299,9 @@ final class TenantService
      * @param array<string, mixed> 已校验的动作字段、版本和显式角色绑定。
      * @return array<string, mixed> 成员回执，永不返回全局口令或其他租户信息。
      */
-    public function changeMember(Connection $connection, Identity $identity, string $tenantId, string $action, string $id, array $data): array
+    public function changeMember(Identity $identity, string $tenantId, string $action, string $id, array $data): array
     {
+        $connection = \Type\Orm\Db::connection('default', true);
         if ($connection->transactionDepth() < 1 || !in_array('realm:customer', $identity->roles(), true)) {
             throw new \LogicException('member_change_requires_authorized_transaction');
         }
@@ -302,50 +314,100 @@ final class TenantService
                 if (!isset($data['account_name'], $data['password'])) {
                     throw new HttpError(422, 'member_input_invalid');
                 }
-                $user = (new IdentityService('customer'))->provision($connection, $data['login'], $data['account_name'], $data['password'], false, '', $identity);
+                $user = (new IdentityService('customer'))->provision($data['login'], $data['account_name'], $data['password'], false, '', $identity);
             } else {
                 if (array_key_exists('account_name', $data) || array_key_exists('password', $data)) {
                     throw new HttpError(422, 'member_input_invalid');
                 }
-                $query = $connection->table('customer_users')->where('login', '=', $data['login'])->where('enabled', '=', 1)->where('recovery_verified', '=', 1);
-                $user = ($connection->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
+                $query = CustomerUser::query()->master()->where('login', '=', $data['login'])->where('enabled', '=', true)->where('recovery_verified', '=', true);
+                $query = $connection->driverName() === 'sqlite' ? $query : $query->lockForUpdate();
+                $userModel = $query->first();
+                $user = $userModel === null ? null : [
+                    'id' => $userModel->getId(), 'name' => $userModel->getName(), 'login' => $userModel->getLogin(),
+                ];
             }
             if ($user === null) {
                 throw new HttpError(422, 'account_not_available');
             }
-            if ($connection->table('customer_members')->where('tenant_id', '=', $tenantId)->where('user_id', '=', $user['id'])->first() !== null) {
+            if (CustomerMember::query()->master()->where('user_id', '=', $user['id'])->first() !== null) {
                 throw new HttpError(409, 'member_exists');
             }
             $id = bin2hex(random_bytes(16));
-            $member = ['id' => $id, 'tenant_id' => $tenantId, 'user_id' => $user['id'], 'name' => trim($data['name']), 'enabled' => 1, 'recovery_verified' => 1, 'version' => 1, 'created_at' => time()];
-            $connection->table('customer_members')->insert($member);
+            $member = new CustomerMember([
+                'id' => $id, 'tenant_id' => $tenantId, 'user_id' => $user['id'], 'name' => trim($data['name']),
+                'enabled' => true, 'recovery_verified' => true, 'created_at' => time(),
+            ]);
+            $member->save();
         } else {
-            $query = $connection->table('customer_members')->where('tenant_id', '=', $tenantId)->where('id', '=', $id);
+            $query = CustomerMember::query()->master()->where('id', '=', $id);
             $member = $query->first();
             if ($member === null) {
                 throw new HttpError(404, 'member_not_found');
             }
-            if ((int) $member['version'] !== $data['version']) {
+            if ($member->getVersion() !== $data['version']) {
                 throw new HttpError(409, 'stale_version');
             }
             if ($action === 'customer.members.delete') {
-                $connection->table('customer_member_roles')->where('tenant_id', '=', $tenantId)->where('member_id', '=', $id)->delete();
-                $query->delete();
+                $user = ['id' => $member->getUserId()];
+                $member->definition()->relation('roles')->loader()->sync($member, []);
+                $member->delete();
             } else {
-                $changes = ['version' => $data['version'] + 1];
                 if ($action === 'customer.members.update') {
-                    $changes['name'] = trim($data['name']);
+                    $member->setName(trim($data['name']));
                 } elseif ($action === 'customer.members.status') {
-                    $changes['enabled'] = $data['enabled'] ? 1 : 0;
+                    $member->setEnabled((bool) $data['enabled']);
                 } else {
                     throw new \InvalidArgumentException('member_action_invalid');
                 }
-                $query->update($changes);
-                $member = array_replace($member, $changes);
+                $member->save();
             }
         }
-        AuditLog::append($connection, $tenantId, $identity, $action, $id, 'success', ['version' => (int) $member['version'], 'grantee_id' => $member['user_id'], 'context' => 'customer'], 'customer');
-        return $action === 'customer.members.delete' ? ['id' => $id, 'deleted' => true] : $member;
+        if ($action === 'customer.members.delete') {
+            AuditLog::append($connection, $tenantId, $identity, $action, $id, 'success', ['version' => $data['version'], 'grantee_id' => $user['id'] ?? '', 'context' => 'customer'], 'customer');
+            return ['id' => $id, 'deleted' => true];
+        }
+        $values = $this->memberValues($member);
+        AuditLog::append($connection, $tenantId, $identity, $action, $id, 'success', ['version' => $values['version'], 'grantee_id' => $values['user_id'], 'context' => 'customer'], 'customer');
+        return $values;
+    }
+
+    /** 模型查询分页只返回显式字段投影，不把持久化对象直接交给 HTTP。 */
+    private function modelPage(ModelQuery $rows, int $page, int $perPage): array
+    {
+        if ($page < 1 || $page > 100000 || $perPage < 1 || $perPage > 100) {
+            throw new HttpError(422, 'invalid_pagination');
+        }
+        $result = $rows->paginate($page, $perPage);
+        $items = [];
+        foreach ($result->items() as $tenant) {
+            $items[] = $this->tenantValues($tenant);
+        }
+        return ['items' => $items, 'total' => $result->total(), 'page' => $result->number(), 'per_page' => $result->perPage()];
+    }
+
+    /** 成员查询使用关联模型投影登录名，租户条件由已验证的当前执行上下文固定。 */
+    private function memberPage(ModelQuery $rows, int $page, int $perPage): array
+    {
+        if ($page < 1 || $page > 100000 || $perPage < 1 || $perPage > 100) {
+            throw new HttpError(422, 'invalid_pagination');
+        }
+        $result = $rows->paginate($page, $perPage);
+        $items = [];
+        foreach ($result->items() as $member) {
+            $values = $this->memberValues($member);
+            $user = $member->related('user');
+            $values['login'] = $user === null ? '' : $user->getLogin();
+            $values['roles'] = [];
+            foreach ($member->related('roles') as $role) {
+                $values['roles'][] = [
+                    'id' => $role->getId(), 'name' => $role->getName(), 'enabled' => $role->getEnabled() ? 1 : 0,
+                    'protected' => $role->getProtected() ? 1 : 0, 'version' => $role->getVersion(),
+                    'recovery_verified' => $role->getRecoveryVerified() ? 1 : 0,
+                ];
+            }
+            $items[] = $values;
+        }
+        return ['items' => $items, 'total' => $result->total(), 'page' => $result->number(), 'per_page' => $result->perPage()];
     }
 
     /** 两个列表的关联均由真实唯一键保证一对一，并已按主表主键收尾排序。 */
@@ -357,12 +419,24 @@ final class TenantService
         return ['items' => $rows->limit($perPage, ($page - 1) * $perPage)->get(), 'total' => (int) $rows->aggregate('COUNT'), 'page' => $page, 'per_page' => $perPage];
     }
 
-    /** 在真实租户行上建立写序列，避免两个管理员互相删除而留下零管理员。 */
-    private function lock(Connection $connection, string $tenantId): void
+    /** 租户 Model 的稳定 HTTP 投影；数据库布尔值保持既有整数契约。 */
+    private function tenantValues(Tenant $tenant): array
     {
-        if ($connection->execute('UPDATE iot_tenants SET version = version + 1 WHERE id = ?', [$tenantId]) !== 1) {
-            throw new HttpError(403, 'tenant_forbidden');
-        }
+        return [
+            'id' => $tenant->getId(), 'name' => $tenant->getName(), 'enabled' => $tenant->getEnabled() ? 1 : 0,
+            'version' => $tenant->getVersion(), 'created_at' => $tenant->getCreatedAt(),
+        ];
+    }
+
+    /** 成员 Model 的稳定业务投影，不包含全局客户凭据。 */
+    private function memberValues(CustomerMember $member): array
+    {
+        return [
+            'id' => $member->getId(), 'tenant_id' => $member->getTenantId(), 'user_id' => $member->getUserId(),
+            'name' => $member->getName(), 'enabled' => $member->getEnabled() ? 1 : 0,
+            'version' => $member->getVersion(), 'created_at' => $member->getCreatedAt(),
+            'recovery_verified' => $member->getRecoveryVerified() ? 1 : 0,
+        ];
     }
 
     private function platform(Identity $identity): void

@@ -11,7 +11,7 @@ use RuntimeException;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Orm\Connection;
-use Type\Orm\Database;
+use Type\Orm\Db;
 use Type\Orm\Outbox\Publisher;
 use Type\Orm\Outbox\Record;
 use Type\Orm\Outbox\Store;
@@ -26,7 +26,7 @@ final class NoticeService implements Publisher, Job
     private const RETENTION = 15552000;
 
     /** 数据库及队列连接由调用角色拥有，构造不连接外部服务。 */
-    public function __construct(private Database $database, private Queue $queue)
+    public function __construct(private Queue $queue)
     {
     }
 
@@ -69,7 +69,8 @@ final class NoticeService implements Publisher, Job
      */
     public function handle(JobContext $context, array $payload): void
     {
-        $connection = $this->database->connect($context->scope());
+        $context->assertActive();
+        $connection = Db::connection('default', true);
         $connection->transaction(static function (Connection $transaction) use ($context, $payload): void {
             $id = $context->message()->id();
             $query = $transaction->table('iot_notice_outbox')->where('id', '=', $id);
@@ -143,11 +144,11 @@ final class NoticeService implements Publisher, Job
      */
     public static function notifications(Connection $connection, Identity $identity, string $tenantId, array $filters): array
     {
-        $current = (new IdentityService('customer'))->refresh($connection, $identity);
+        $current = (new IdentityService('customer'))->refresh($identity);
         if ($current === null) {
             throw new HttpError(401, 'unauthenticated');
         }
-        $permissions = RoleService::permissions($connection, $current, 'customer', $tenantId);
+        $permissions = RoleService::permissions($current, 'customer', $tenantId);
         if (!in_array('customer.notifications.read', $permissions, true)) {
             throw new HttpError(403, 'permission_denied');
         }

@@ -66,7 +66,7 @@ final class AuditLog
      */
     public static function search(Connection $connection, Identity $identity, string $realm, string $tenantId, string $query, string $eventId = '', string $source = '', bool $brokerOnly = false): array
     {
-        $access = RoleService::readContext($connection, $identity, $realm, $tenantId, 'audit.read');
+        $access = RoleService::readContext($identity, $realm, $tenantId, 'audit.read');
         if ($brokerOnly && !in_array($realm . '.broker.read', $access['permissions'], true)) {
             throw new HttpError(403, 'permission_denied');
         }
@@ -74,7 +74,7 @@ final class AuditLog
             throw new HttpError(400, 'audit_source_invalid');
         }
         $result = self::events($connection, $realm, $access, $query, $eventId, true, $source, $brokerOnly);
-        if ($access !== RoleService::readContext($connection, $identity, $realm, $tenantId, 'audit.read')) {
+        if ($access !== RoleService::readContext($identity, $realm, $tenantId, 'audit.read')) {
             throw new HttpError(403, 'authorization_changed');
         }
         return $result;
