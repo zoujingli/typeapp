@@ -104,11 +104,13 @@ if ((Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvari
 $taskConfigText = [IO.File]::ReadAllText($taskConfig)
 $taskLibraryProbe = 'CHECK_LIB("libpq.lib", "swoole", PHP_PGSQL_DIR)'
 $taskHeaderProbe = 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PGSQL_DIR)'
-foreach ($taskProbe in @($taskLibraryProbe, $taskHeaderProbe)) {
+$taskSqliteProbe = 'CHECK_LIB("sqlite3.lib", "swoole", null)'
+foreach ($taskProbe in @($taskLibraryProbe, $taskHeaderProbe, $taskSqliteProbe)) {
     if ([regex]::Matches($taskConfigText, [regex]::Escape($taskProbe)).Count -ne 1) { throw 'Swoole libpq 配置适配位置不唯一。' }
 }
 $taskConfigText = $taskConfigText.Replace($taskLibraryProbe, 'CHECK_LIB("libpq.lib", "swoole", null)')
 $taskConfigText = $taskConfigText.Replace($taskHeaderProbe, 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PHP_BUILD + "\\include\\libpq")')
+$taskConfigText = $taskConfigText.Replace($taskSqliteProbe, 'CHECK_LIB("libsqlite3.lib;sqlite3.lib", "swoole", null)')
 [IO.File]::WriteAllText($taskConfig, $taskConfigText, [Text.UTF8Encoding]::new($false))
 @{ file='config.w32'; before=$taskConfigBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-config-source.json') -Encoding utf8
 # IOCP 直接引用 PHP 文件辅助头，需要先加载其使用的 Zend 内联定义。
@@ -131,6 +133,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Swoole phpize 失败。' }
     & .\configure.bat '--enable-swoole=shared' '--enable-swoole-thread' '--enable-mysqlnd' '--enable-php-sockets' '--enable-swoole-pgsql' '--enable-swoole-sqlite' "--with-php-build=$taskDeps" '--with-mp=2' 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
     if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath 'Makefile')) { throw 'Swoole Windows 配置失败。' }
+    $taskFeatures = [IO.File]::ReadAllText((Join-Path $taskDevel 'include/main/config.pickle.h'))
+    foreach ($taskFeature in @('SW_USE_MYSQLND', 'SW_USE_PGSQL', 'SW_USE_SQLITE')) {
+        if ($taskFeatures -notmatch ('(?m)^#define\s+' + $taskFeature + '\s+1\b')) { throw ('Swoole 缺少必需 PDO hook：' + $taskFeature) }
+    }
     # PHP 8.5 的官方 Swoole 关闭回调使用指定初始化；MSVC 需要显式 C++20。
     $taskCompilerOptions = $env:_CL_
     try {
