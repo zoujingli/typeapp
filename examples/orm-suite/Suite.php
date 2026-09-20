@@ -188,18 +188,7 @@ final class Suite
     public static function race(Connection $connection, int $id): string
     {
         $article = Article::query()->find($id);
-        $file = (string) getenv('TYPE_SUITE_BARRIER');
-        if ($file === '' || !is_file($file)) {
-            throw new RuntimeException('缺少并发验证屏障');
-        }
-        file_put_contents($file, "ready\n", FILE_APPEND | LOCK_EX);
-        $deadline = microtime(true) + 10;
-        while (substr_count((string) file_get_contents($file), "\n") < 2) {
-            if (microtime(true) > $deadline) {
-                throw new RuntimeException('并发更新屏障超时');
-            }
-            usleep(1000);
-        }
+        self::awaitPeer();
         $article->setViews($article->getViews() + 1);
         try {
             $article->save();
@@ -222,22 +211,57 @@ final class Suite
     /** 两个真实进程同时更新同一行，数据库计算新值和版本，避免读改写丢失。 */
     public static function incrementRace(Connection $connection, int $id): string
     {
-        $file = (string) getenv('TYPE_SUITE_BARRIER');
-        if ($file === '' || !is_file($file)) {
-            throw new RuntimeException('缺少原子更新屏障');
-        }
-        file_put_contents($file, "ready\n", FILE_APPEND | LOCK_EX);
-        $deadline = microtime(true) + 10;
-        while (substr_count((string) file_get_contents($file), "\n") < 2) {
-            if (microtime(true) > $deadline) {
-                throw new RuntimeException('原子更新屏障超时');
-            }
-            usleep(1000);
-        }
+        self::awaitPeer();
         for ($index = 0; $index < 20; $index++) {
             self::check(Article::query()->where('id', '=', $id)->increment('views') === 1, '原子更新影响行数错误');
         }
         return 'incremented';
+    }
+
+    /** 两进程各写一次就绪标记；读写均持锁，兼容 Windows 的强制文件锁。 */
+    private static function awaitPeer(): void
+    {
+        $file = (string) getenv('TYPE_SUITE_BARRIER');
+        if ($file === '' || !is_file($file)) {
+            throw new RuntimeException('缺少并发验证屏障');
+        }
+        $handle = fopen($file, 'r+b');
+        if ($handle === false) {
+            throw new RuntimeException('无法打开并发验证屏障');
+        }
+        $announced = false;
+        $deadline = microtime(true) + 10;
+        try {
+            while (microtime(true) < $deadline) {
+                // 非阻塞尝试也受同一截止约束，不能在持锁时睡眠等待对端。
+                if (flock($handle, ($announced ? LOCK_SH : LOCK_EX) | LOCK_NB)) {
+                    try {
+                        if (!$announced) {
+                            if (fseek($handle, 0, SEEK_END) !== 0 || fwrite($handle, "ready\n") !== 6 || !fflush($handle)) {
+                                throw new RuntimeException('无法写入并发验证屏障');
+                            }
+                            $announced = true;
+                        }
+                        if (!rewind($handle)) {
+                            throw new RuntimeException('无法定位并发验证屏障');
+                        }
+                        $contents = stream_get_contents($handle, 64);
+                        if ($contents === false) {
+                            throw new RuntimeException('无法读取并发验证屏障');
+                        }
+                        if (substr_count($contents, "\n") >= 2) {
+                            return;
+                        }
+                    } finally {
+                        flock($handle, LOCK_UN);
+                    }
+                }
+                usleep(1000);
+            }
+            throw new RuntimeException('并发更新屏障超时');
+        } finally {
+            fclose($handle);
+        }
     }
 
     /** 两进程各二十次更新全部保留，版本同步递增。 */
