@@ -48,7 +48,7 @@ Db::transaction(static function (): void {
 - `zoujingli/type-orm`
 - 对应的一个 `zoujingli/type-orm-mysql`、`type-orm-pgsql` 或 `type-orm-sqlite`
 
-开发依赖只用于准备模型与原生构建；运行前执行 `composer install --no-dev`，检查安装清单中已经移除所有构建工具。业务实际包含的 PHP 文件必须全部位于消费者目录，未选驱动类不能存在。三个消费者共同使用相同业务文件，不通过删减场景让某个驱动通过。
+开发依赖只用于准备模型与原生构建；运行前执行 `composer install --no-dev`，检查安装清单中已经移除所有构建工具。业务实际包含的 PHP 文件必须全部位于消费者目录，未选驱动类不能存在。路径归属先解析真实位置，再按目标平台统一分隔符和大小写语义，并保留目录边界检查；源码归档采用统一的相对路径。三个消费者共同使用相同业务文件，不通过删减场景让某个驱动通过。
 
 Composer 的 `config.platform` 显式把未选 PDO 扩展标为不存在，确保依赖求解不会隐式要求它们。安装、模型生成、编译和移除开发包时保留完整构建环境；直到运行业务前才切换 PHPRC 与扫描目录。运行配置按原顺序复制已加载的主 ini 和扫描文件，只删除未选 PDO 驱动的 `extension=` 指令，保留 PDO 基础、Phar、mbstring 及其他标准／运行扩展，包括动态扩展的原路径与配置。新 PHP 子进程检查实际扩展清单后，再执行不受 platform 覆盖影响的 `composer check-platform-reqs --no-dev`；没有忽略平台检查。
 

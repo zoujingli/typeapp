@@ -109,7 +109,7 @@ function ormRemoveSources(string $consumer): array
     $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($consumer, FilesystemIterator::SKIP_DOTS));
     foreach ($iterator as $file) {
         if ($file->isFile() && !$file->isLink() && strtolower($file->getExtension()) === 'php') {
-            $relative = substr($file->getPathname(), strlen($consumer) + 1);
+            $relative = Type\Build\BuildPlatform::path(substr($file->getPathname(), strlen($consumer) + 1));
             $hashes[$relative] = hash_file('sha256', $file->getPathname());
             $snapshot->addFile($file->getPathname(), $relative);
         }
@@ -141,7 +141,7 @@ $comment = '; TypePHP 原生进程的共享信号模块';
 expect(ormRuntimeIni($comment . "\r\nextension=pdo_mysql\nextension=pdo_pgsql\nextension=swoole\n", 'mysql')
     === $comment . "\nextension=pdo_mysql\nextension=swoole\n\n", '中文注释或非选定驱动配置过滤错误');
 
-$root = dirname(__DIR__);
+$root = Type\Build\BuildPlatform::resolve(dirname(__DIR__));
 $sourceIdentity = [
     'commit' => trim(successful(['git', 'rev-parse', 'HEAD'], $root)),
     'dirty' => trim(successful(['git', 'status', '--porcelain=v1', '--untracked-files=normal'], $root)) !== '',
@@ -267,7 +267,7 @@ try {
         sort($actual);
         expect($actual === $packages, '编译产物混入其他生产驱动');
         foreach ($report['sources'] as $source) {
-            expect(str_starts_with($source, $consumer . '/'), '原生产物仍然编译主仓文件');
+            expect(Type\Build\BuildPlatform::contains($consumer, $source), '原生产物仍然编译主仓文件');
         }
         $release = (new Type\Build\NativePackage())->create($artifact, $consumer . '/release');
         (new Type\Build\NativePackage())->verify($release['directory'], $release['manifest-sha256']);
@@ -292,7 +292,10 @@ try {
     foreach (['DriverFactory.php', 'Schema.php', 'ArticleObserver.php', 'CoreExercise.php', 'Suite.php', 'main.php'] as $file) {
         $launcher .= ' require ' . var_export($consumer . '/app/' . $file, true) . ';';
     }
-    $launcher .= ' foreach (get_included_files() as $file) { if (!str_starts_with(realpath($file), ' . var_export($consumer . '/', true)
+    $consumerPrefix = PHP_OS_FAMILY === 'Windows' ? strtolower($consumer . '/') : $consumer . '/';
+    $launcher .= ' foreach (get_included_files() as $file) { $resolved = realpath($file);'
+        . ' if ($resolved === false || !str_starts_with(PHP_OS_FAMILY === "Windows" ? strtolower(str_replace(chr(92), "/", $resolved)) : $resolved, '
+        . var_export($consumerPrefix, true)
         . ')) { throw new RuntimeException("业务加载了消费环境之外的 PHP 文件"); } } main($argc, $argv);';
     $command = $native ? [$consumer . '/release/' . (PHP_OS_FAMILY === 'Windows' ? 'run.cmd' : 'run')] : [PHP_BINARY, '-r', $launcher];
     $sourceRemoval = $native ? ormRemoveSources($consumer) : [];
