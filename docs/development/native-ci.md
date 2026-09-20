@@ -14,6 +14,8 @@ Windows数据库来源固定于`.github/windows-databases.json`：MySQL 8.4.11�
 
 `.github/scripts/run-windows-database.ps1`只允许GitHub Windows runner，在新的RUNNER_TEMP目录设置当前账号私有ACL，使用回环端口及随机测试凭据，独立启动mysqld或pg_ctl管理的新集群；不安装Windows Service、不启动/修改预装数据库服务。通过真实PHP连接确认就绪，再复用三库物联中心标准项目和模板的开发/AOT/发布测试；退出时仅停止本轮实例、删除本轮临时凭据并记录结果。模板安装可显式传入`TYPE_COMPOSER_PHAR`，确保用锁定PHP执行Composer而非依赖系统批处理包装器。
 
+Windows 的 `pg_ctl start` 会把标准句柄继承给常驻 CMD/PostgreSQL 进程，因此启动输出沿用 CI 控制台，服务日志写入专属文件并在停止后脱敏保存。启动是否成功由 `pg_ctl` 的有界等待和退出码、真实 PDO 就绪检查共同确认，不以常驻后代关闭输出管道作为启动条件；其他短生命周期命令继续完整收集输出并检查管道关闭。该行为依据固定版本的 [PostgreSQL 启动实现](https://github.com/postgres/postgres/blob/REL_17_11/src/bin/pg_ctl/pg_ctl.c)，不改变数据库协议或后台服务管理方式。
+
 Windows便携包需要核对来源、摘要、ZIP结构和x64 PE。PowerShell解析、通用子进程参数、双输出、脱敏、截止逻辑以及非Windows拒绝使用对应测试入口验证；静态检查不能证明Windows ACL、数据库启动、PHP构建或业务已经通过。实际平台结果须由对应runner验证。
 
 各平台最新范围与限制统一见[平台与验收](../guide/platforms.md)，准确运行与产物身份见[平台证据](platform-support.md#当前结果与证据)。每次更换 Swoole、PHPX、libphp 或目标架构后都必须重跑完整入口；组件、SQLite 或单项命令结果不能替代应用、通信、三库和无源码发布验收。

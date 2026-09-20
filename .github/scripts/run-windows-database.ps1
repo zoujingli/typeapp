@@ -26,18 +26,24 @@ Write-Output ('::add-mask::' + $taskPassword)
 $script:taskSecrets = @($taskPassword)
 
 function Start-TaskProcess {
-    param([string]$File, [string[]]$CommandArguments, [hashtable]$Environment = @{})
+    param([string]$File, [string[]]$CommandArguments, [hashtable]$Environment = @{}, [switch]$InheritOutput)
     $taskInfo = [Diagnostics.ProcessStartInfo]::new()
     $taskInfo.FileName = $File
     $taskInfo.WorkingDirectory = $taskRoot
     $taskInfo.UseShellExecute = $false
     $taskInfo.CreateNoWindow = $true
-    $taskInfo.RedirectStandardOutput = $true
-    $taskInfo.RedirectStandardError = $true
+    $taskInfo.RedirectStandardOutput = !$InheritOutput
+    $taskInfo.RedirectStandardError = !$InheritOutput
     foreach ($taskArgument in $CommandArguments) { $taskInfo.ArgumentList.Add($taskArgument) }
     foreach ($taskKey in $Environment.Keys) { $taskInfo.Environment[$taskKey] = [string]$Environment[$taskKey] }
     $taskProcess = [Diagnostics.Process]::Start($taskInfo)
-    return @{ Process=$taskProcess; Output=$taskProcess.StandardOutput.ReadToEndAsync(); Error=$taskProcess.StandardError.ReadToEndAsync() }
+    $taskOutput = $null
+    $taskError = $null
+    if (!$InheritOutput) {
+        $taskOutput = $taskProcess.StandardOutput.ReadToEndAsync()
+        $taskError = $taskProcess.StandardError.ReadToEndAsync()
+    }
+    return @{ Process=$taskProcess; Output=$taskOutput; Error=$taskError }
 }
 
 function Complete-TaskProcess {
@@ -47,9 +53,9 @@ function Complete-TaskProcess {
         $Handle.Process.Kill($true)
         if (!$Handle.Process.WaitForExit(10000)) { throw '本轮子进程未确认退出。' }
     }
-    if (!$Handle.Output.Wait(10000) -or !$Handle.Error.Wait(10000)) { throw '子进程已退出但输出管道未关闭，不能记作通过。' }
-    $taskOutput = $Handle.Output.GetAwaiter().GetResult()
-    $taskErrorOutput = $Handle.Error.GetAwaiter().GetResult()
+    if (($null -ne $Handle.Output -and !$Handle.Output.Wait(10000)) -or ($null -ne $Handle.Error -and !$Handle.Error.Wait(10000))) { throw '子进程已退出但输出管道未关闭，不能记作通过。' }
+    $taskOutput = if ($null -ne $Handle.Output) { $Handle.Output.GetAwaiter().GetResult() } else { '' }
+    $taskErrorOutput = if ($null -ne $Handle.Error) { $Handle.Error.GetAwaiter().GetResult() } else { '' }
     $taskText = $taskOutput + $taskErrorOutput
     foreach ($taskSecret in $script:taskSecrets) { $taskText = $taskText.Replace($taskSecret, '<REDACTED>') }
     [IO.File]::WriteAllText($Log, $taskText, [Text.UTF8Encoding]::new($false))
@@ -58,8 +64,8 @@ function Complete-TaskProcess {
 }
 
 function Invoke-TaskProcess {
-    param([string]$File, [string[]]$CommandArguments, [string]$Log, [int]$Seconds = 120, [hashtable]$Environment = @{})
-    $taskHandle = Start-TaskProcess $File $CommandArguments $Environment
+    param([string]$File, [string[]]$CommandArguments, [string]$Log, [int]$Seconds = 120, [hashtable]$Environment = @{}, [switch]$InheritOutput)
+    $taskHandle = Start-TaskProcess $File $CommandArguments $Environment -InheritOutput:$InheritOutput
     try { return Complete-TaskProcess $taskHandle $Seconds $Log } finally { $taskHandle.Process.Dispose() }
 }
 
@@ -113,7 +119,8 @@ try {
         Invoke-TaskProcess (Join-Path $taskBin 'initdb.exe') @('-D', $taskData, '-U', 'type_app', '--auth=scram-sha-256', '--encoding=UTF8', '--locale=C', "--pwfile=$taskSecretFile") (Join-Path $taskEvidence 'initialize.log') | Out-Null
         Remove-Item -LiteralPath $taskSecretFile
         $taskPgStarted = $true
-        Invoke-TaskProcess $taskVersionTool @('-D', $taskData, '-l', (Join-Path $taskWork 'postgres.log'), '-w', '-t', '60', '-o', "-h 127.0.0.1 -p $taskPort", 'start') (Join-Path $taskEvidence 'start.log') | Out-Null
+        # pg_ctl 会把标准句柄传给常驻的 CMD/postgres；启动输出沿用 CI 控制台，不能等待专用管道 EOF。
+        Invoke-TaskProcess $taskVersionTool @('-D', $taskData, '-l', (Join-Path $taskWork 'postgres.log'), '-w', '-t', '60', '-o', "-h 127.0.0.1 -p $taskPort", 'start') (Join-Path $taskEvidence 'start.log') -InheritOutput | Out-Null
         Invoke-TaskProcess (Join-Path $taskBin 'createdb.exe') @('-h', '127.0.0.1', '-p', [string]$taskPort, '-U', 'type_app', '--no-password', 'type_app_test') (Join-Path $taskEvidence 'create-database.log') 60 @{ PGPASSWORD=$taskPassword } | Out-Null
         $taskUser = 'type_app'
     }
@@ -146,6 +153,11 @@ try {
     }
     if ($taskPgStarted -and (Test-Path -LiteralPath (Join-Path $taskData 'postmaster.pid'))) {
         try { Invoke-TaskProcess (Join-Path $taskBin 'pg_ctl.exe') @('-D', $taskData, '-m', 'fast', '-w', '-t', '30', 'stop') (Join-Path $taskEvidence 'stop.log') 45 | Out-Null } catch { $taskCleanupPassed = $false }
+    }
+    if ($Driver -eq 'pgsql' -and (Test-Path -LiteralPath (Join-Path $taskWork 'postgres.log'))) {
+        $taskServerLog = [string](Get-Content -LiteralPath (Join-Path $taskWork 'postgres.log') -Raw)
+        foreach ($taskSecret in $script:taskSecrets) { $taskServerLog = $taskServerLog.Replace($taskSecret, '<REDACTED>') }
+        [IO.File]::WriteAllText((Join-Path $taskEvidence 'server.log'), $taskServerLog, [Text.UTF8Encoding]::new($false))
     }
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
     $taskRecord = @{ platform='Windows'; driver=$Driver; version=$taskSource.version; archive_sha256=$taskSource.sha256; scope=$(if ($OrmOnly) { 'isolated ORM Composer consumption, PHP/AOT and source removal' } else { 'native dedicated database process, development/AOT and isolated template package' }); passed=($taskPassed -and $taskCleanupPassed); owned_process_cleanup=$taskCleanupPassed; installed_service=$false }
