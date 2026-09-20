@@ -1014,7 +1014,7 @@ final class RecoveryArchive
         }
     }
 
-    /** 复用数组proc_open与有界双流排空；仅允许PG17固定维护程序，失败不继续删除。 */
+    /** 使用 Swoole Process 执行固定 PG17 维护程序，并在截止内有界排空标准输出。 */
     private function postgres(string $tools, string $name, array $arguments): string
     {
         if (hrtime(true) >= $this->backupDeadline) {
@@ -1035,48 +1035,54 @@ final class RecoveryArchive
             }
             $this->verifiedTools[$program] = true;
         }
-        $environment = getenv();
-        $environment['LC_ALL'] = 'C';
-        $pipes = [];
-        $process = proc_open([$program, ...$arguments], [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->directory, $environment, ['bypass_shell' => true]);
-        if (!is_resource($process)) {
+        $command = [$program, ...$arguments];
+        $process = new \Swoole\Process(static function (\Swoole\Process $worker) use ($command): void {
+            putenv('LC_ALL=C');
+            $worker->exec($command[0], array_slice($command, 1));
+        }, true, SOCK_STREAM);
+        $pid = $process->start();
+        if (!is_int($pid) || $pid < 1) {
             throw new RuntimeException('recovery_backup_tool_failed');
         }
         $output = '';
-        $errors = '';
         $complete = false;
         $deadline = $this->backupDeadline;
         try {
-            foreach ($pipes as $pipe) {
-                stream_set_blocking($pipe, false);
-            }
-            do {
-                $output .= (string) fread($pipes[1], 65536);
-                $errors .= (string) fread($pipes[2], 65536);
-                if (strlen($output) + strlen($errors) > 1048576) {
+            $process->setBlocking(false);
+            while (hrtime(true) < $deadline) {
+                $chunk = $process->read(65536);
+                if (is_string($chunk) && $chunk !== '') {
+                    $output .= $chunk;
+                }
+                if (strlen($output) > 1048576) {
                     break;
                 }
-                $status = proc_get_status($process);
-                if (!$status['running']) {
-                    $output .= (string) stream_get_contents($pipes[1], 1048577);
-                    $errors .= (string) stream_get_contents($pipes[2], 1048577);
-                    $complete = $status['exitcode'] === 0 && strlen($output) + strlen($errors) <= 1048576;
+                if (!\Swoole\Process::kill($pid, 0)) {
+                    do {
+                        $tail = $process->read(65536);
+                        if (!is_string($tail) || $tail === '') {
+                            break;
+                        }
+                        $output .= $tail;
+                    } while (strlen($output) <= 1048576);
+                    $status = \Swoole\Process::wait(false);
+                    $complete = is_array($status) && ($status['pid'] ?? 0) === $pid && ($status['code'] ?? 1) === 0 && strlen($output) <= 1048576;
                     break;
                 }
                 usleep(10000);
-            } while (hrtime(true) < $deadline);
+            }
             if (!$complete) {
                 throw new RuntimeException('recovery_backup_tool_failed');
             }
             return $output;
         } finally {
             if (!$complete) {
-                proc_terminate($process, 9);
+                @\Swoole\Process::kill($pid, SIGKILL);
             }
-            foreach ($pipes as $pipe) {
-                fclose($pipe);
+            $process->close();
+            if (!$complete) {
+                \Swoole\Process::wait(false);
             }
-            proc_close($process);
         }
     }
 

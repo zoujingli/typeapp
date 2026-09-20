@@ -87,11 +87,7 @@ final class DownloadStream implements StreamInterface
         }
         if ($this->mode === '/disconnect' || $this->mode === '/timeout-stream') {
             $microseconds = $this->mode === '/disconnect' ? 5000 : 1050000;
-            if ((getenv('TYPE_HTTP_DRIVER') ?: 'swoole') === 'stream') {
-                usleep($microseconds);
-            } else {
-                \Swoole\Coroutine::sleep($microseconds / 1000000.0);
-            }
+            \Swoole\Coroutine::sleep($microseconds / 1000000.0);
         }
         $this->reads++;
         return $this->stream->read($length);

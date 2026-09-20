@@ -23,10 +23,6 @@ function main(int $argc, array $argv): void
     foreach (['/log', '/fail', '/previous'] as $path) {
         $router->add('GET', $path, static fn (): Handler => new Handler($previous));
     }
-    $driver = getenv('TYPE_HTTP_DRIVER') ?: 'swoole';
-    $server = match ($driver) {
-        'swoole' => new SwooleServer($router, $messages, $messages, $messages),
-        default => throw new InvalidArgumentException('HTTP 测试引擎无效'),
-    };
+    $server = new SwooleServer($router, $messages, $messages, $messages);
     $server->serve('127.0.0.1', $port);
 }

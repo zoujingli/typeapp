@@ -45,13 +45,8 @@ final class Broker
     private int $commitQuotaRefusals = 0;
     private int $flushTimeouts = 0;
     private int $handshakeTimeouts = 0;
-    /** @var array<int,mixed> 单轮就绪流，键去重且不超连接及监听预算；回调不执行业务。 */
-    private array $readyRead = [];
-    /** @var array<int,mixed> 单轮就绪输出流；仍由连接自己的发送缓冲和截止约束。 */
-    private array $readyWrite = [];
-    private bool $eventListener = false;
     private int $eventTimer = 0;
-    /** 仅 WS/WSS 启动时持有；未配置 WebSocket 时保持 null，沿用 PHP 流循环。 */
+    /** 当前 Swoole Server，统一持有 TCP、TLS 与 WebSocket 监听。 */
     private mixed $nativeServer = null;
     /**
      * 需要重载握手 CA 的 Swoole 监听端口。
@@ -194,15 +189,11 @@ final class Broker
         if ($this->started || $this->stopping) {
             throw new \RuntimeException('MQTT 服务实例不能重复启动');
         }
-        if ($this->options->ioDriver === 'swoole') {
-            CoroutineRuntime::assertAvailable();
-            // 独立Broker进程使用同一顺序状态机，不为就绪通知创建协程或启用I/O钩子。
-            // macOS默认poll把4096批次误作总事件容量；明确选kqueue，Linux沿用原生epoll。
-            if (!swoole_async_set(['enable_coroutine' => false, 'enable_kqueue' => PHP_OS_FAMILY === 'Darwin'])) {
-                throw new \RuntimeException('MQTT 原生事件驱动配置失败');
-            }
+        CoroutineRuntime::assertAvailable();
+        // Broker 的监听、TLS、收发、定时和关闭均由 Swoole Server 承担；不安装 PHP 流就绪轮询。
+        if (!swoole_async_set(['enable_coroutine' => false, 'enable_kqueue' => PHP_OS_FAMILY === 'Darwin'])) {
+            throw new \RuntimeException('MQTT 原生事件驱动配置失败');
         }
-        $settings = ['socket' => ['backlog' => $this->options->maximumConnections]];
         if (!$this->options->allowPlaintext) {
             // 第一份须为与私钥匹配的叶证书；其后的中间 CA 由 Swoole/OpenSSL 作为链下发。
             $certificate = @openssl_x509_read((string) file_get_contents($this->options->certificate));
@@ -227,14 +218,9 @@ final class Broker
                 }
                 $this->rememberServerExpiry($sniParsed);
             }
-            if ($this->nativeEnabled() && $this->options->privateKeyPassphrase !== '') {
+            if ($this->options->privateKeyPassphrase !== '') {
                 $this->nativeKeyFile = $this->materializeNativePrivateKey();
             }
-            $settings['ssl'] = ['local_cert' => $this->options->certificate, 'local_pk' => $this->options->privateKey,
-                'passphrase' => $this->options->privateKeyPassphrase, 'verify_peer' => false,
-                'disable_compression' => true, 'security_level' => 2, 'ciphers' => self::tlsCiphers(),
-                // OpenSSL 服务端默认不接纳 early data；不调用允许 0-RTT 的 API。
-                'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_SERVER | STREAM_CRYPTO_METHOD_TLSv1_3_SERVER];
         }
         if ($this->options->clientCa !== '') {
             clearstatcache(true, $this->options->clientCa);
@@ -272,25 +258,6 @@ final class Broker
             $this->overlapMtime = (int) filemtime($this->options->clientOverlap);
             $this->overlapSize = (int) filesize($this->options->clientOverlap);
         }
-        $listener = null;
-        if (!$this->nativeEnabled()) {
-            $context = stream_context_create($settings);
-            $address = str_contains($host, ':') ? '[' . $host . ']' : $host;
-            $errorNumber = 0;
-            $errorMessage = '';
-            $bindDeadline = new Deadline($this->options->handshakeSeconds);
-            do {
-                $listener = @stream_socket_server('tcp://' . $address . ':' . $port, $errorNumber, $errorMessage, STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, $context);
-                if ($listener !== false || $bindDeadline->expired()) {
-                    break;
-                }
-                // 硬停止后的受控 worker 可能短暂继承监听描述符；只等其截止释放，仍要求独占绑定。
-                usleep(10000);
-            } while (true);
-            if ($listener === false) {
-                throw new \RuntimeException('MQTT 监听失败，请检查地址、端口与权限');
-            }
-        }
         $this->started = true;
         try {
             if ($this->options->clustered) {
@@ -317,94 +284,10 @@ final class Broker
             $this->signals?->attach(function (): void {
                 $this->stop();
             });
-            if ($this->nativeEnabled()) {
-                $this->serveNative($host, $port);
-            } else {
-                if (!stream_set_blocking($listener, false)) {
-                    throw new \RuntimeException('MQTT 监听无法切换非阻塞模式');
-                }
-                $reader = function (mixed $socket): void {
-                    $this->readyRead[(int) $socket] = $socket;
-                };
-                $writer = function (mixed $socket): void {
-                    $this->readyWrite[(int) $socket] = $socket;
-                };
-                if ($this->options->ioDriver === 'swoole') {
-                    if (\Swoole\Event::add($listener, $reader, null, SWOOLE_EVENT_READ) === false) {
-                        throw new \RuntimeException('MQTT 原生监听事件注册失败');
-                    }
-                    $this->eventListener = true;
-                    $timer = \Swoole\Timer::tick(50, function (int $timerId): void {
-                        // 只唤醒单次dispatch；截止、信号和worker仍由既有tick统一处理。
-                    });
-                    if ($timer === false) {
-                        throw new \RuntimeException('MQTT 原生事件唤醒注册失败');
-                    }
-                    $this->eventTimer = $timer;
-                }
-                while (!$this->stopping) {
-                    $this->signals?->dispatch();
-                    $this->tick();
-                    $read = $this->options->ioDriver === 'swoole' ? [] : [$listener];
-                    $write = [];
-                    $except = [];
-                    foreach ($this->connections as $connection) {
-                        if ($connection->alive()) {
-                            if ($this->options->ioDriver === 'swoole') {
-                                $this->watch($connection, $reader, $writer);
-                                // SSL及PHP流可能已有数据而内核fd不再可读；每轮仍只安排一次有界读取。
-                                if ($connection->readPending && !$connection->closing) {
-                                    $read[(int) $connection->socket] = $connection->socket;
-                                }
-                                continue;
-                            }
-                            if (!$connection->closing) {
-                                $read[] = $connection->socket;
-                            }
-                            if ($connection->output !== '') {
-                                $write[] = $connection->socket;
-                            }
-                        }
-                    }
-                    if ($this->options->ioDriver === 'swoole') {
-                        $this->readyRead = [];
-                        $this->readyWrite = [];
-                        $selected = \Swoole\Event::dispatch() ? count($this->readyRead) + count($this->readyWrite) : false;
-                        $read = $this->readyRead + $read;
-                        $write = $this->readyWrite;
-                    } else {
-                        $selected = @stream_select($read, $write, $except, 0, 50000);
-                    }
-                    if ($selected === false) {
-                        // 信号中断不会延长任何连接预算。
-                        continue;
-                    }
-                    foreach ($write as $writable) {
-                        $connection = $this->connections[(int) $writable];
-                        $this->flush($connection);
-                    }
-                    foreach ($read as $readable) {
-                        if ($readable === $listener) {
-                            $this->accept($listener);
-                        } else {
-                            $connection = $this->connections[(int) $readable];
-                            if (!$connection->closing && $connection->alive()) {
-                                $this->receive($connection);
-                            }
-                        }
-                    }
-                }
-            }
+            $this->serveNative($host, $port);
         } finally {
             $this->stopping = true;
             $this->shutdownNative();
-            if ($this->eventListener && is_resource($listener)) {
-                \Swoole\Event::del($listener);
-                $this->eventListener = false;
-            }
-            if (is_resource($listener)) {
-                fclose($listener);
-            }
             foreach ($this->connections as $connection) {
                 $this->disconnect($connection, 0x8b);
                 $connection->flush();
@@ -414,17 +297,7 @@ final class Broker
                 $this->closed++;
             }
             $this->connections = [];
-            if ($this->eventTimer !== 0) {
-                \Swoole\Timer::clear($this->eventTimer);
-                $this->eventTimer = 0;
-            }
-            if ($this->options->ioDriver === 'swoole' && !$this->nativeEnabled()) {
-                \Swoole\Event::wait();
-            }
-            $this->readyRead = [];
-            $this->readyWrite = [];
             // 已启动工作沿用原有界截止；正常停机不把仍可确认的事务强制转为未知。
-            // 最多 32 个并发工作；逐次终结当前已接管事实，不在退出时丢弃未知状态。
             while ($this->commits !== [] || $this->closingSessions !== []) {
                 $this->pollCommits();
                 if ($this->commits !== []) {
@@ -532,10 +405,10 @@ final class Broker
         $this->stop();
     }
 
-    /** 配置了 WS/WSS 或专用 mTLS 时改用同一 Swoole Server 作为唯一反应器。 */
+    /** MQTT 监听始终由 Swoole Server 持有；没有可选驱动或 PHP 流回退。 */
     private function nativeEnabled(): bool
     {
-        return $this->websocketEnabled() || $this->options->mtlsPort > 0;
+        return true;
     }
 
     /** 配置了明文 WS 或 WSS 时主端口改为 WebSocket Server。 */
@@ -544,15 +417,9 @@ final class Broker
         return $this->options->wsPort > 0 || $this->options->wssPort > 0;
     }
 
-    /**
-     * 以 Swoole Server 持有事件循环：WS/WSS 用 WebSocket Server，仅 mTLS 用 TCP Server。
-     * 顺序状态机保持 enable_coroutine=false；TLS 与 WebSocket 分帧交给原生。
-     */
+    /** 以一个 Swoole Server 持有所有监听；TLS 与 WebSocket 分帧交给原生。 */
     private function serveNative(string $host, int $port): void
     {
-        if (PHP_OS_FAMILY === 'Windows') {
-            throw new \RuntimeException('MQTT 原生 Server 需要 Unix 上的经典 Swoole Server，当前平台未验收');
-        }
         $settings = [
             'worker_num' => 1,
             'enable_coroutine' => false,
@@ -574,7 +441,7 @@ final class Broker
             $settings['websocket_compression'] = false;
             $settings['websocket_subprotocol'] = 'mqtt';
             if ($secureWs) {
-                $settings = $settings + $this->swooleTls($this->options->clientCa !== '');
+                $settings = array_merge($settings, $this->swooleTls($this->options->clientCa !== ''));
             }
             if (!$server->set($settings)) {
                 throw new \RuntimeException('MQTT WebSocket 原生配置未被接受');
@@ -588,7 +455,7 @@ final class Broker
             }
             $tcpSettings = ['open_http_protocol' => false, 'open_websocket_protocol' => false, 'open_mqtt_protocol' => false, 'open_tcp_nodelay' => true];
             if (!$this->options->allowPlaintext) {
-                $tcpSettings = $tcpSettings + $this->swooleTls(false);
+                $tcpSettings = array_merge($tcpSettings, $this->swooleTls(false));
             }
             if (method_exists($tcp, 'set') && $tcp->set($tcpSettings) === false) {
                 throw new \RuntimeException('MQTT TCP 监听配置未被接受');
@@ -599,8 +466,10 @@ final class Broker
                     throw new \RuntimeException('MQTT mTLS 监听失败，请检查地址、端口与权限');
                 }
                 $this->rememberHandshakePort($mtls);
-                $mtlsSettings = ['open_http_protocol' => false, 'open_websocket_protocol' => false, 'open_mqtt_protocol' => false, 'open_tcp_nodelay' => true]
-                    + $this->swooleTls(true);
+                $mtlsSettings = array_merge(
+                    ['open_http_protocol' => false, 'open_websocket_protocol' => false, 'open_mqtt_protocol' => false, 'open_tcp_nodelay' => true],
+                    $this->swooleTls(true)
+                );
                 if (method_exists($mtls, 'set') && $mtls->set($mtlsSettings) === false) {
                     throw new \RuntimeException('MQTT mTLS 监听配置未被接受');
                 }
@@ -608,27 +477,35 @@ final class Broker
             $this->launchNative($server, $wsPort, $port);
             return;
         }
-        $mtlsServer = new \Swoole\Server($host, $this->options->mtlsPort, SWOOLE_BASE, self::nativeTcp($host) | SWOOLE_SSL);
-        $settings = $settings + $this->swooleTls(true) + [
+        $secure = !$this->options->allowPlaintext;
+        $server = new \Swoole\Server($host, $port, SWOOLE_BASE, self::nativeTcp($host) | ($secure ? SWOOLE_SSL : 0));
+        if ($secure) {
+            $settings = array_merge($settings, $this->swooleTls(false));
+        }
+        $settings = array_merge($settings, [
             'open_http_protocol' => false,
             'open_websocket_protocol' => false,
             'open_mqtt_protocol' => false,
             'open_tcp_nodelay' => true,
-        ];
-        if (!$mtlsServer->set($settings)) {
-            throw new \RuntimeException('MQTT 原生 mTLS 配置未被接受');
+        ]);
+        if (!$server->set($settings)) {
+            throw new \RuntimeException('MQTT 原生 TCP 配置未被接受');
         }
-        $this->rememberHandshakePort($this->primaryPort($mtlsServer));
-        $tcp = $mtlsServer->addListener($host, $port, self::nativeTcp($host) | SWOOLE_SSL);
-        if ($tcp === false) {
-            throw new \RuntimeException('MQTT TCP 监听失败，请检查地址、端口与权限');
+        if ($this->options->mtlsPort > 0) {
+            $mtls = $server->addListener($host, $this->options->mtlsPort, self::nativeTcp($host) | SWOOLE_SSL);
+            if ($mtls === false) {
+                throw new \RuntimeException('MQTT mTLS 监听失败，请检查地址、端口与权限');
+            }
+            $this->rememberHandshakePort($mtls);
+            $mtlsSettings = array_merge(
+                ['open_http_protocol' => false, 'open_websocket_protocol' => false, 'open_mqtt_protocol' => false, 'open_tcp_nodelay' => true],
+                $this->swooleTls(true)
+            );
+            if (method_exists($mtls, 'set') && $mtls->set($mtlsSettings) === false) {
+                throw new \RuntimeException('MQTT mTLS 监听配置未被接受');
+            }
         }
-        $tcpSettings = ['open_http_protocol' => false, 'open_websocket_protocol' => false, 'open_mqtt_protocol' => false, 'open_tcp_nodelay' => true]
-            + $this->swooleTls(false);
-        if (method_exists($tcp, 'set') && $tcp->set($tcpSettings) === false) {
-            throw new \RuntimeException('MQTT TCP 监听配置未被接受');
-        }
-        $this->launchNative($mtlsServer, 0, $port);
+        $this->launchNative($server, 0, $port);
     }
 
     /** IPv6 必须用 TCP6；IPv4 的 TCP 套接字不能绑定 ::1。 */
@@ -1052,29 +929,6 @@ final class Broker
         $this->nativeKeyFile = '';
     }
 
-    /**
-     * 仅在读写兴趣变化时更新原生监听，不复制协议处理或让扩展接管发送缓冲。
-     * @param \Closure(mixed): void $reader 单轮可读流观察。
-     * @param \Closure(mixed): void $writer 单轮可写流观察。
-     */
-    private function watch(Connection $connection, \Closure $reader, \Closure $writer): void
-    {
-        $mask = ($connection->closing ? 0 : SWOOLE_EVENT_READ) | ($connection->output === '' ? 0 : SWOOLE_EVENT_WRITE);
-        if ($mask === $connection->eventMask) {
-            return;
-        }
-        if ($mask === 0) {
-            \Swoole\Event::del($connection->socket);
-        } elseif ($connection->eventMask === 0) {
-            if (\Swoole\Event::add($connection->socket, $reader, $writer, $mask) === false) {
-                throw new \RuntimeException('MQTT 原生连接事件注册失败');
-            }
-        } elseif (!\Swoole\Event::set($connection->socket, null, null, $mask)) {
-            throw new \RuntimeException('MQTT 原生连接事件更新失败');
-        }
-        $connection->eventMask = $mask;
-    }
-
     /** @return array<string,int|bool> 连接、缓冲和持久操作计数，不包含凭据及客户端标识。 */
     public function statistics(): array
     {
@@ -1088,11 +942,9 @@ final class Broker
         $services = 0;
         $incoming = 0;
         $outgoing = 0;
-        $events = $this->eventListener ? 1 : 0;
+        $events = count($this->connections);
         $pendingReads = 0;
         foreach ($this->connections as $connection) {
-            $events += $connection->eventMask === 0 ? 0 : 1;
-            $pendingReads += $connection->readPending ? 1 : 0;
             $devices += $connection->capacityClass === 'device' && !$connection->closing ? 1 : 0;
             $services += $connection->capacityClass === 'application' && !$connection->closing ? 1 : 0;
             $incoming += count($connection->incoming) + count($connection->incomingQos2);
@@ -1116,7 +968,7 @@ final class Broker
             'quotaRevision' => $this->appliedQuotaVersion,
             'incomingExchanges' => $incoming, 'outgoingExchanges' => $outgoing,
             'eventRegistrations' => $events, 'eventTimers' => $this->eventTimer === 0 ? 0 : 1,
-            'readyEvents' => count($this->readyRead) + count($this->readyWrite), 'pendingReads' => $pendingReads,
+            'readyEvents' => 0, 'pendingReads' => $pendingReads,
             'connectionQuotaRefusals' => $this->connectionQuotaRefusals, 'packetQuotaRefusals' => $this->packetQuotaRefusals,
             'subscriptionQuotaRefusals' => $this->subscriptionQuotaRefusals, 'commitQuotaRefusals' => $this->commitQuotaRefusals,
             'flushTimeouts' => $this->flushTimeouts, 'handshakeTimeouts' => $this->handshakeTimeouts,
@@ -2205,29 +2057,6 @@ final class Broker
         }
     }
 
-    /** @param resource $listener */
-    private function accept(mixed $listener): void
-    {
-        $peer = '';
-        $socket = @stream_socket_accept($listener, 0, $peer);
-        if ($socket === false) {
-            return;
-        }
-        if (count($this->connections) + count($this->closingSessions) >= $this->startupMaximumConnections || !stream_set_blocking($socket, false)) {
-            $this->connectionQuotaRefusals++;
-            fclose($socket);
-            $this->rejected++;
-            return;
-        }
-        // 原生事件只观察内核fd；禁止PHP额外预读，避免末段控制报文留在流缓冲却没有新的可读事件。
-        if ($this->options->ioDriver === 'swoole' && stream_set_read_buffer($socket, 0) !== 0) {
-            fclose($socket);
-            throw new \RuntimeException('MQTT 原生事件无法禁用流预读');
-        }
-        $this->connections[(int) $socket] = new Connection($socket, $peer, $this->options->handshakeSeconds);
-        $this->accepted++;
-    }
-
     /** 全节点只保留一条遗嘱原件及一个工作；空轮询和失败均有节流，复用全局 worker 容量。 */
     private function willCommit(string $action, array $request): void
     {
@@ -2869,7 +2698,7 @@ final class Broker
     {
         $connection->flush();
         if ($this->observer !== null && $connection->connackSent && !$connection->observed
-            && !$connection->closing && $connection->alive() && ($connection->transport !== 'stream' || !stream_get_meta_data($connection->socket)['eof'])) {
+            && !$connection->closing && $connection->alive()) {
             $connection->observed = true;
             try {
                 if ($this->observer instanceof ResourceConnectionObserver) {
@@ -2913,45 +2742,6 @@ final class Broker
         } catch (\Throwable) {
             $this->observationFailures++;
             $this->stop();
-        }
-    }
-
-    private function receive(Connection $connection): void
-    {
-        $connection->readPending = false;
-        if (!$this->options->allowPlaintext && !$connection->secure) {
-            $result = @stream_socket_enable_crypto($connection->socket, true, STREAM_CRYPTO_METHOD_TLSv1_2_SERVER | STREAM_CRYPTO_METHOD_TLSv1_3_SERVER);
-            // 未完成的SSL握手也可能等待输出或内部缓冲；在既有握手截止内继续非阻塞推进。
-            $connection->readPending = $this->options->ioDriver === 'swoole' && $result !== false;
-            if ($result === false) {
-                $connection->close();
-                $this->rejected++;
-            } elseif ($result === true) {
-                $connection->secure = true;
-            }
-            // TLS 成功后的应用数据可以已经缓存在 SSL 层，立即尝试一次非阻塞读取。
-            if (!$connection->secure) {
-                return;
-            }
-            if ($this->serverCertificateExpired(time())) {
-                $this->disconnect($connection, 0x8b);
-                return;
-            }
-        }
-        $capacity = $this->options->maximumPacketBytes - strlen($connection->input);
-        if ($capacity <= 0) {
-            $this->disconnect($connection, 0x95);
-            return;
-        }
-        $bytes = @fread($connection->socket, min($capacity, 16384));
-        // feof会主动SSL_peek，把刚到达的数据留在SSL缓冲；这里只观察刚才非阻塞读取的EOF结果。
-        if ($bytes === false || ($bytes === '' && stream_get_meta_data($connection->socket)['eof'])) {
-            $connection->close();
-            return;
-        }
-        if ($bytes !== '') {
-            $connection->readPending = $this->options->ioDriver === 'swoole';
-            $this->ingest($connection, $bytes);
         }
     }
 
@@ -3278,55 +3068,30 @@ final class Broker
         if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || !isset($parts['host']) || !is_string($parts['host']) || $parts['host'] === '') {
             return;
         }
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'timeout' => 10,
-                'ignore_errors' => true,
-                'follow_location' => 0,
-                'max_redirects' => 0,
-            ],
-            'ssl' => [
-                'cafile' => $ca,
-                'verify_peer' => true,
-                'verify_peer_name' => true,
-                'peer_name' => $parts['host'],
-                'disable_compression' => true,
-                'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT,
-            ],
-        ]);
-        $handle = @fopen($url, 'rb', false, $context);
-        if ($handle === false) {
-            return;
-        }
-        $status = 0;
-        $meta = stream_get_meta_data($handle);
-        $headers = $meta['wrapper_data'] ?? [];
-        if (is_array($headers)) {
-            foreach ($headers as $line) {
-                if (is_string($line) && preg_match('/^HTTP\/[0-9.]+\s+(\d{3})/', $line, $match) === 1) {
-                    $status = (int) $match[1];
-                }
-            }
-        }
-        if ($status !== 200) {
-            fclose($handle);
-            return;
+        $port = isset($parts['port']) && is_int($parts['port']) ? $parts['port'] : 443;
+        $path = (string) ($parts['path'] ?? '/');
+        if (isset($parts['query']) && is_string($parts['query']) && $parts['query'] !== '') {
+            $path .= '?' . $parts['query'];
         }
         $body = '';
-        while (!feof($handle)) {
-            $chunk = fread($handle, 8192);
-            if (!is_string($chunk) || $chunk === '') {
-                break;
+        $status = 0;
+        \Swoole\Coroutine\run(static function () use ($parts, $port, $path, $ca, &$body, &$status): void {
+            $client = new \Swoole\Coroutine\Http\Client($parts['host'], $port, true);
+            $client->set([
+                'timeout' => 10,
+                'ssl_verify_peer' => true,
+                'ssl_allow_self_signed' => false,
+                'ssl_cafile' => $ca,
+                'ssl_host_name' => $parts['host'],
+                'follow_location' => false,
+            ]);
+            if ($client->get($path)) {
+                $status = (int) $client->statusCode;
+                $body = is_string($client->body) ? $client->body : '';
             }
-            $body .= $chunk;
-            if (strlen($body) > 1048576) {
-                fclose($handle);
-                return;
-            }
-        }
-        fclose($handle);
-        if (!str_contains($body, 'BEGIN X509 CRL')) {
+            $client->close();
+        });
+        if ($status !== 200 || $body === '' || strlen($body) > 1048576 || !str_contains($body, 'BEGIN X509 CRL')) {
             return;
         }
         $temporary = dirname($output) . '/.' . basename($output) . '.' . bin2hex(random_bytes(4)) . '.tmp';

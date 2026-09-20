@@ -498,7 +498,7 @@ try {
     $nodeEnvironment = $environment + [
         'BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => $mqttPassword,
         'BROKER_TOPIC_PREFIX' => 'broker-access/', 'BROKER_NODE_ID' => 'cert-node',
-        'BROKER_PLAINTEXT' => 'false', 'BROKER_IO_DRIVER' => 'swoole',
+        'BROKER_PLAINTEXT' => 'false',
         'BROKER_PORT' => substr(strrchr($addresses[1], ':'), 1),
         'BROKER_MTLS_PORT' => substr(strrchr($addresses[3], ':'), 1),
         'BROKER_CERTIFICATE' => $certs['server'], 'BROKER_PRIVATE_KEY' => $certs['key'],
@@ -806,7 +806,7 @@ try {
     $appEnvironment['DB_SQLITE_FILE'] = 'app.sqlite';
     $appEnvironment['APP_PORT'] = substr(strrchr($addresses[2], ':'), 1);
     $appEnvironment['APP_ALLOWED_HOSTS'] = $addresses[2];
-    unset($appEnvironment['BROKER_CLIENT_USERNAME'], $appEnvironment['BROKER_CLIENT_PASSWORD'], $appEnvironment['BROKER_TOPIC_PREFIX'], $appEnvironment['BROKER_NODE_ID'], $appEnvironment['BROKER_PLAINTEXT'], $appEnvironment['BROKER_IO_DRIVER'], $appEnvironment['BROKER_PORT'], $appEnvironment['BROKER_MTLS_PORT'], $appEnvironment['BROKER_CERTIFICATE'], $appEnvironment['BROKER_PRIVATE_KEY'], $appEnvironment['BROKER_CLIENT_CA']);
+    unset($appEnvironment['BROKER_CLIENT_USERNAME'], $appEnvironment['BROKER_CLIENT_PASSWORD'], $appEnvironment['BROKER_TOPIC_PREFIX'], $appEnvironment['BROKER_NODE_ID'], $appEnvironment['BROKER_PLAINTEXT'], $appEnvironment['BROKER_PORT'], $appEnvironment['BROKER_MTLS_PORT'], $appEnvironment['BROKER_CERTIFICATE'], $appEnvironment['BROKER_PRIVATE_KEY'], $appEnvironment['BROKER_CLIENT_CA']);
     $appPassword = bin2hex(random_bytes(16));
     $secrets[] = $appPassword;
     $appInstall = new Process([...$command, 'app:install', 'platform-admin', '平台管理员', 'customer-admin', '客户管理员', '授权租户'], $root, $appEnvironment + [

@@ -93,4 +93,4 @@ expect($seen['request-next'] === ['request-start', 'request-complete'] && $seen[
 foreach (['http-context-secret', 'http-step-secret', 'http-exception-secret'] as $secret) {
     expect(!str_contains($wire, $secret), 'HTTP 日志敏感值没有脱敏');
 }
-echo '日志真实 HTTP（' . (getenv('TYPE_HTTP_DRIVER') ?: 'swoole') . "）：24 个同时连接的独立上下文、旧请求失效、异常脱敏与停止清理通过。\n";
+echo "日志真实 HTTP（Swoole）：24 个同时连接的独立上下文、旧请求失效、异常脱敏与停止清理通过。\n";

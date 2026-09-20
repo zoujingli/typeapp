@@ -88,11 +88,7 @@ final class Handler implements RequestHandlerInterface
             $value = ['previous_rejected' => $this->previous->rejected()];
         } else {
             $this->previous->save($logger);
-            if ((getenv('TYPE_HTTP_DRIVER') ?: 'swoole') === 'stream') {
-                usleep(10000);
-            } else {
-                \Swoole\Coroutine::sleep(0.01);
-            }
+            \Swoole\Coroutine::sleep(0.01);
             $marker = $request->getHeaderLine('X-Test-Marker');
             $logger->notice('request-step', ['marker' => $marker, 'password' => 'http-step-secret']);
             $value = ['marker' => $marker];

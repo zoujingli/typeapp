@@ -133,7 +133,7 @@ function main(int $argc, array $argv): void
 {
     $arguments = new Arguments(
         $argv,
-        ['host', 'port', 'ws-port', 'wss-port', 'mtls-port', 'allowed-origins', 'store-worker', 'terminate-session', 'actor', 'node-id', 'fence-node', 'node-run-id', 'proof-ref'],
+        ['host', 'port', 'ws-port', 'wss-port', 'mtls-port', 'allowed-origins', 'store-worker-pipe', 'terminate-session', 'actor', 'node-id', 'fence-node', 'node-run-id', 'proof-ref'],
         ['plaintext', 'install-store', 'store-statistics', 'clustered', 'node-statistics']
     );
     $workerConfiguration = (string) getenv('MQTT_WORKER_COMMAND');
@@ -141,7 +141,7 @@ function main(int $argc, array $argv): void
     if (!is_array($workerCommand)) {
         throw new RuntimeException('MQTT_WORKER_COMMAND 必须是显式命令参数数组');
     }
-    if ($arguments->has('store-worker')) {
+    if ($arguments->has('store-worker-pipe')) {
         $retainedMessages = (string) getenv('MQTT_RETAINED_MAX_MESSAGES');
         $retainedBytes = (string) getenv('MQTT_RETAINED_MAX_BYTES');
         $sharedMessages = (string) getenv('MQTT_SHARED_MAX_MESSAGES');
@@ -167,7 +167,7 @@ function main(int $argc, array $argv): void
             mqttBudget('MQTT_APPLICATION_MAX_MESSAGES', 1000000),
             mqttBudget('MQTT_APPLICATION_MAX_BYTES', 2147483648)
         );
-        PendingCommit::work($store, $arguments->text('store-worker', ''));
+        PendingCommit::work($store, $arguments->text('store-worker-pipe', ''));
         return;
     }
     if ($arguments->has('install-store') || $arguments->has('terminate-session') || $arguments->has('store-statistics') || $arguments->has('node-statistics') || $arguments->has('fence-node')) {
@@ -206,10 +206,9 @@ function main(int $argc, array $argv): void
         privateKey: (string) getenv('MQTT_PRIVATE_KEY'),
         privateKeyPassphrase: (string) getenv('MQTT_PRIVATE_KEY_PASSPHRASE'),
         allowPlaintext: $arguments->has('plaintext'),
-        maximumConnections: mqttBudget('MQTT_MAX_CONNECTIONS', getenv('MQTT_IO_DRIVER') === 'swoole' ? 10100 : 256),
+        maximumConnections: mqttBudget('MQTT_MAX_CONNECTIONS', 10100),
         maximumDeviceConnections: mqttBudget('MQTT_MAX_DEVICE_CONNECTIONS', 10000),
         maximumServiceConnections: mqttBudget('MQTT_MAX_SERVICE_CONNECTIONS', 100),
-        ioDriver: (string) (getenv('MQTT_IO_DRIVER') ?: 'stream'),
         clustered: $arguments->has('clustered'),
         wsPort: $arguments->integer('ws-port', 0, 0, 65535),
         wssPort: $wssPort,

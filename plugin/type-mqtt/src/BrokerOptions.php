@@ -38,7 +38,6 @@ final class BrokerOptions
         public readonly bool $handleSignals = true,
         public readonly int $maximumDeviceConnections = 10000,
         public readonly int $maximumServiceConnections = 100,
-        public readonly string $ioDriver = 'stream',
         public readonly bool $clustered = false,
         public readonly int $wsPort = 0,
         public readonly int $wssPort = 0,
@@ -54,9 +53,7 @@ final class BrokerOptions
         public readonly string $sniCertificate = '',
         public readonly string $sniPrivateKey = ''
     ) {
-        // 原生事件驱动显式选择；stream_select 保留自己的描述符上限，不按扩展存在与否偷偷切换。
-        if (!in_array($ioDriver, ['stream', 'swoole'], true)
-            || $maximumConnections < 1 || $maximumConnections > ($ioDriver === 'swoole' ? 10100 : 512)
+        if ($maximumConnections < 1 || $maximumConnections > 10100
             || $maximumPacketBytes < 128 || $maximumPacketBytes > 1048576
             || !is_finite($handshakeSeconds) || $handshakeSeconds <= 0 || $handshakeSeconds > 60
             || !is_finite($partialPacketSeconds) || $partialPacketSeconds <= 0 || $partialPacketSeconds > 60
@@ -65,9 +62,6 @@ final class BrokerOptions
             || $wsPort < 0 || $wsPort > 65535 || $wssPort < 0 || $wssPort > 65535
             || $mtlsPort < 0 || $mtlsPort > 65535) {
             throw new \InvalidArgumentException('MQTT 连接、报文或等待预算无效');
-        }
-        if (($wsPort > 0 || $wssPort > 0 || $mtlsPort > 0) && $ioDriver !== 'swoole') {
-            throw new \InvalidArgumentException('MQTT WebSocket 与 mTLS 需要 ioDriver=swoole');
         }
         if ($wsPort > 0 && $wssPort > 0) {
             throw new \InvalidArgumentException('MQTT 明文 WS 与 WSS 不能在同一进程同时开启');
@@ -97,9 +91,6 @@ final class BrokerOptions
             throw new \InvalidArgumentException('MQTT 客户端 CRL 刷新间隔必须在 1 到 3600 秒之间');
         }
         if ($clientCrlUrl !== '') {
-            if ($ioDriver !== 'swoole') {
-                throw new \InvalidArgumentException('MQTT HTTPS CRL 刷新需要 ioDriver=swoole');
-            }
             if ($clientCrl === '' || $clientCa === '') {
                 throw new \InvalidArgumentException('MQTT HTTPS CRL 刷新需要同时配置客户端 CA 与本地 CRL 文件');
             }
@@ -137,9 +128,6 @@ final class BrokerOptions
             throw new \InvalidArgumentException('MQTT SNI 需要同时配置主机名、证书链与私钥');
         }
         if ($sniHost !== '') {
-            if ($ioDriver !== 'swoole') {
-                throw new \InvalidArgumentException('MQTT SNI 证书需要 ioDriver=swoole');
-            }
             if ($sniHost !== strtolower($sniHost) || strlen($sniHost) > 253
                 || filter_var($sniHost, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false
                 || filter_var($sniHost, FILTER_VALIDATE_IP) !== false) {

@@ -6,10 +6,10 @@ namespace Type\Mqtt;
 
 use Type\Runtime\Deadline;
 
-/** @internal 一条连接的所有者；明文/TLS/WebSocket、帧缓冲和发送预算均随连接回收。 */
+/** @internal 一条 Swoole 连接的所有者；明文/TLS/WebSocket、帧缓冲和发送预算均随连接回收。 */
 final class Connection
 {
-    /** 连接表键：PHP 流资源 ID 或原生 Server fd。 */
+    /** 连接表键：Swoole Server fd；内部发布者没有网络连接，编号为0。 */
     public readonly int $id;
     public string $input = '';
     public string $output = '';
@@ -27,8 +27,6 @@ final class Connection
     public ?string $resourceScope = null;
     /** 认证后由消费者分类，不采用客户端属性或标识前缀自报身份。 */
     public string $capacityClass = '';
-    /** 原生就绪事件由本连接在关闭socket前注销；零表示没有注册。 */
-    public int $eventMask = 0;
     /** 原生接纳序号；Swoole close 只回收同一序号，避免 fd 复用后误伤新连接。 */
     public int $nativeInstance = 0;
     /** @var null|\Closure(int, int): void */
@@ -98,21 +96,24 @@ final class Connection
     public string $retainedFilter = '';
 
     /**
-     * @param resource|int|null $socket 已接收的非阻塞网络流，或原生 Server 连接 fd；遗嘱投递可为空。
-     * @param string $transport `stream` 为 PHP 流；`tcp`/`websocket` 为同一 Swoole Server 上的监听。
+     * @param int|null $socket Swoole Server 连接 fd；内部发布者可为空。
+     * @param string $transport `tcp`/`websocket` 为 Swoole Server 监听，`internal` 表示无网络的内部发布者。
      */
     public function __construct(
         public mixed $socket,
         public readonly string $peer,
         float $handshakeSeconds,
-        public readonly string $transport = 'stream',
+        public readonly string $transport = 'internal',
         public mixed $native = null
     ) {
-        if (!in_array($transport, ['stream', 'tcp', 'websocket'], true)) {
+        if (!in_array($transport, ['internal', 'tcp', 'websocket'], true)) {
             throw new \InvalidArgumentException('MQTT 连接传输无效');
         }
-        if ($transport === 'stream') {
-            $this->id = is_resource($socket) ? (int) $socket : 0;
+        if ($transport === 'internal') {
+            if ($socket !== null) {
+                throw new \InvalidArgumentException('MQTT 内部发布者不能持有网络 fd');
+            }
+            $this->id = 0;
         } else {
             if (!is_int($socket) || $socket < 1) {
                 throw new \InvalidArgumentException('MQTT 原生连接需要有效 fd');
@@ -128,7 +129,7 @@ final class Connection
     /** 网络仍可读写时为真；关闭后 socket 置空，不把已回收 fd 当作活连接。 */
     public function alive(): bool
     {
-        return $this->transport === 'stream' ? is_resource($this->socket) : $this->socket !== null;
+        return $this->transport !== 'internal' && is_int($this->socket) && $this->socket > 0 && $this->native !== null;
     }
 
     /** 观察与统计使用的传输名称；WebSocket 的 TLS 记为 wss。 */
@@ -242,11 +243,7 @@ final class Connection
             return;
         }
         $chunk = substr($this->output, 0, 16384);
-        if ($this->transport === 'stream') {
-            $written = @fwrite($this->socket, $this->output, strlen($chunk));
-        } else {
-            $written = $this->flushNative($chunk);
-        }
+        $written = $this->flushNative($chunk);
         if ($written === false) {
             $this->close();
             return;
@@ -277,13 +274,7 @@ final class Connection
         if ($this->endedAt === 0.0) {
             $this->endedAt = microtime(true);
         }
-        if ($this->transport === 'stream' && is_resource($this->socket)) {
-            if ($this->eventMask !== 0) {
-                \Swoole\Event::del($this->socket);
-                $this->eventMask = 0;
-            }
-            fclose($this->socket);
-        } elseif ($this->transport !== 'stream' && is_int($this->socket) && $this->native !== null) {
+        if ($this->transport !== 'internal' && is_int($this->socket) && $this->native !== null) {
             $fd = $this->socket;
             $native = $this->native;
             $instance = $this->nativeInstance;

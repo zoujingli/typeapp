@@ -8,7 +8,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 use Type\Build\BuildPlatform;
 
 $root = BuildPlatform::resolve(dirname(__DIR__));
-expect(in_array(PHP_OS_FAMILY, ['Linux', 'Darwin'], true) && $argc === 1, '标准应用双引擎构建需要Unix目标');
+expect(in_array(PHP_OS_FAMILY, ['Linux', 'Darwin'], true) && $argc === 1, '标准应用Swoole原生产物构建需要Unix目标');
 $base = $root . '/build/application-inputs-' . bin2hex(random_bytes(6));
 expect(mkdir($base, 0700), '无法创建本轮应用构建声明');
 $settings = json_decode(file_get_contents($root . '/docs/build-config/type-app.json'), true, 512, JSON_THROW_ON_ERROR);

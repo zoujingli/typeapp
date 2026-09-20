@@ -34,10 +34,6 @@ function main(int $argc, array $argv): void
         return null;
     }, static fn (Identity $identity, CanonicalRequest $request, string $method): bool => in_array('reader', $identity->roles(), true), $factory, $factory);
     $pipeline = new Pipeline([static fn (): RequestPolicy => $policy, static fn (): Cors => $cors, static fn (): Authentication => $authentication], $router);
-    $driver = getenv('TYPE_HTTP_DRIVER') ?: 'swoole';
-    $server = match ($driver) {
-        'swoole' => new SwooleServer($pipeline, $factory, $factory, $factory, control: new HttpControl(probes: true)),
-        default => throw new InvalidArgumentException('HTTP 测试引擎无效'),
-    };
+    $server = new SwooleServer($pipeline, $factory, $factory, $factory, control: new HttpControl(probes: true));
     $server->serve('127.0.0.1', (int) (getenv('TYPE_HTTP_PORT') ?: 19503));
 }

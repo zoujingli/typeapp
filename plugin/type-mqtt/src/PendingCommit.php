@@ -8,14 +8,12 @@ use Closure;
 use Type\Runtime\Deadline;
 
 /**
- * 一个有截止的持久 worker 及其精确后端清理；网络循环只轮询回环 IPC，不执行阻塞 PDO。
+ * 一个有截止的持久 worker 及其精确后端清理；父子进程通过 Swoole Process 管道交换有界消息，不执行阻塞 PDO。
  * 未证明远端后端消失的结果 released=false，调用者必须保留该资源配额，不能无限重启。
  */
 final class PendingCommit
 {
-    private mixed $process = null;
-    private mixed $listener = null;
-    private mixed $socket = null;
+    private ?\Swoole\Process $process = null;
     private string $token = '';
     private string $input = '';
     private string $output = '';
@@ -29,7 +27,7 @@ final class PendingCommit
     public readonly string $operationId;
 
     /**
-     * @param list<string> $command 显式编译应用命令，不经过 shell；该入口须识别 --store-worker。
+     * @param list<string> $command 显式编译应用命令，不经过 shell；该入口须识别 --store-worker-pipe。
      * @param array<string,mixed> $request 由 PostgresStore 定义的消息/交付操作；不包含连接凭据。
      * @throws \RuntimeException 无法取得本地 IPC 或进程资源。
      */
@@ -61,15 +59,14 @@ final class PendingCommit
         if (!$this->killed) {
             $this->exchange();
         }
-        $status = proc_get_status($this->process);
-        if (!$status['running']) {
+        $running = $this->process !== null && \Swoole\Process::kill($this->process->pid, 0);
+        if (!$running) {
             // worker 正常退出时大响应仍可能留在内核接收缓冲；在同一截止内继续有界读取到完整结果或 EOF。
-            if ($this->received === null && is_resource($this->socket) && !feof($this->socket) && !$this->deadline->expired()) {
+            if ($this->received === null && $this->process !== null && !$this->deadline->expired()) {
                 return null;
             }
-            proc_close($this->process);
-            $this->process = null;
-            $this->closeStreams();
+            \Swoole\Process::wait(false);
+            $this->closePipe();
             if ($this->received !== null && $this->received->released && ($this->cleaning || $this->received->state !== 'unknown')) {
                 $this->result = $this->received;
             } elseif ($this->cleaning) {
@@ -85,9 +82,9 @@ final class PendingCommit
         } elseif ($this->deadline->expired() && !$this->killed) {
             // SyncRep 不检查客户端断线；杀本地 worker 后仍须专用连接执行 pg_terminate_backend。
             // 已收到的结果属于已完成操作；终止本地收尾不能撤销确认，下一轮仍须观察进程退出和 released。
-            proc_terminate($this->process, 9);
+            \Swoole\Process::kill($this->process->pid, SIGKILL);
             $this->killed = true;
-            $this->closeStreams();
+            $this->closePipe();
         }
         return $this->result;
     }
@@ -107,56 +104,40 @@ final class PendingCommit
         $this->received = null;
         $this->token = bin2hex(random_bytes(32));
         $this->deadline = new Deadline($this->seconds);
-        $errorNumber = 0;
-        $errorMessage = '';
-        $this->listener = @stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorMessage);
-        if ($this->listener === false || !stream_set_blocking($this->listener, false)) {
-            $this->closeStreams();
-            throw new \RuntimeException('MQTT 持久 IPC 监听失败');
-        }
-        $endpoint = stream_socket_get_name($this->listener, false);
-        $environment = getenv();
-        $environment['MQTT_WORKER_TOKEN'] = $this->token;
-        $discard = PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null';
-        $pipes = [];
-        $this->process = @proc_open(
-            [...$this->command, '--store-worker=' . $endpoint],
-            [0 => ['file', $discard, 'r'], 1 => ['file', $discard, 'w'], 2 => ['file', $discard, 'w']],
-            $pipes,
-            null,
-            $environment,
-            ['bypass_shell' => true, 'suppress_errors' => true]
-        );
-        if (!is_resource($this->process)) {
-            $this->closeStreams();
+        $token = $this->token;
+        $command = [...$this->command, '--store-worker-pipe'];
+        $this->process = new \Swoole\Process(static function (\Swoole\Process $process) use ($command, $token): void {
+            putenv('MQTT_WORKER_TOKEN=' . $token);
+            $process->exec($command[0], array_slice($command, 1));
+        }, true, SOCK_STREAM);
+        $pid = $this->process->start();
+        if (!is_int($pid) || $pid < 1) {
+            $this->closePipe();
             throw new \RuntimeException('MQTT 持久 worker 启动失败');
         }
+        $this->process->setBlocking(false);
     }
 
     private function exchange(): void
     {
-        if (!is_resource($this->socket)) {
-            $candidate = @stream_socket_accept($this->listener, 0);
-            if ($candidate === false) {
-                return;
-            }
-            stream_set_blocking($candidate, false);
-            $this->socket = $candidate;
+        if ($this->process === null) {
+            return;
         }
-        $chunk = @fread($this->socket, 65536);
-        if ($chunk === false || strlen($this->input) + strlen($chunk) > 2097152) {
+        $chunk = $this->process->read(65536);
+        if (is_string($chunk) && strlen($chunk) + strlen($this->input) > 2097152) {
             $this->cancel();
             return;
         }
-        $this->input .= $chunk;
+        if (is_string($chunk) && $chunk !== '') {
+            $this->input .= $chunk;
+        }
         $newline = strpos($this->input, "\n");
         if ($newline !== false) {
             $line = substr($this->input, 0, $newline);
             $this->input = substr($this->input, $newline + 1);
             if (!$this->authenticated) {
                 if (!hash_equals($this->token, $line)) {
-                    fclose($this->socket);
-                    $this->socket = null;
+                    $this->closePipe();
                     $this->input = '';
                     return;
                 }
@@ -178,8 +159,8 @@ final class PendingCommit
             }
         }
         if ($this->output !== '') {
-            $written = @fwrite($this->socket, $this->output, min(strlen($this->output), 65536));
-            if ($written === false) {
+            $written = $this->process->write(substr($this->output, 0, 65536));
+            if ($written === false || $written === 0) {
                 $this->cancel();
             } else {
                 $this->output = substr($this->output, $written);
@@ -187,16 +168,12 @@ final class PendingCommit
         }
     }
 
-    private function closeStreams(): void
+    private function closePipe(): void
     {
-        if (is_resource($this->socket)) {
-            fclose($this->socket);
+        if ($this->process !== null) {
+            $this->process->close();
         }
-        if (is_resource($this->listener)) {
-            fclose($this->listener);
-        }
-        $this->socket = null;
-        $this->listener = null;
+        $this->process = null;
         $this->input = '';
         $this->output = '';
     }
@@ -208,39 +185,28 @@ final class PendingCommit
      */
     public static function work(PostgresStore $store, string $endpoint, ?Closure $operation = null): void
     {
-        if (preg_match('/^127\.0\.0\.1:[1-9][0-9]{0,4}$/D', $endpoint) !== 1) {
-            throw new \InvalidArgumentException('MQTT 持久 worker 只接受明确回环端点');
+        if ($endpoint !== 'pipe') {
+            throw new \InvalidArgumentException('MQTT 持久 worker 只接受 Swoole Process 管道');
         }
         $token = (string) getenv('MQTT_WORKER_TOKEN');
         if (preg_match('/^[a-f0-9]{64}$/D', $token) !== 1) {
             throw new \RuntimeException('MQTT 持久 worker 缺少调用身份');
         }
-        $errorNumber = 0;
-        $errorMessage = '';
-        $socket = @stream_socket_client('tcp://' . $endpoint, $errorNumber, $errorMessage, 2.0);
-        if ($socket === false) {
-            throw new \RuntimeException('MQTT 持久 worker 无法连接调用方');
+        self::write(STDOUT, $token . "\n");
+        $line = fgets(STDIN, 2097153);
+        if (!is_string($line) || !str_ends_with($line, "\n")) {
+            throw new \RuntimeException('MQTT 持久请求超过字节或等待预算');
         }
-        try {
-            stream_set_timeout($socket, 8);
-            self::write($socket, $token . "\n");
-            $line = fgets($socket, 2097153);
-            if (!is_string($line) || !str_ends_with($line, "\n")) {
-                throw new \RuntimeException('MQTT 持久请求超过字节或等待预算');
-            }
-            $request = json_decode($line, true, 32, JSON_THROW_ON_ERROR);
-            if (!is_array($request) || !is_string($request['operation_id'] ?? null)) {
-                throw new \RuntimeException('MQTT 持久请求身份无效');
-            }
-            if (($request['action'] ?? '') === 'cleanup') {
-                $result = new CommitResult($request['operation_id'], 'unknown', 0x88, [], $store->cleanup($request['operation_id']));
-            } else {
-                $result = $operation === null ? $store->execute($request) : $operation($request);
-            }
-            self::write($socket, json_encode($result->data(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n");
-        } finally {
-            fclose($socket);
+        $request = json_decode($line, true, 32, JSON_THROW_ON_ERROR);
+        if (!is_array($request) || !is_string($request['operation_id'] ?? null)) {
+            throw new \RuntimeException('MQTT 持久请求身份无效');
         }
+        if (($request['action'] ?? '') === 'cleanup') {
+            $result = new CommitResult($request['operation_id'], 'unknown', 0x88, [], $store->cleanup($request['operation_id']));
+        } else {
+            $result = $operation === null ? $store->execute($request) : $operation($request);
+        }
+        self::write(STDOUT, json_encode($result->data(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n");
     }
 
     /** @param resource $socket */

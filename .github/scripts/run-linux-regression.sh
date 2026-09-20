@@ -57,7 +57,7 @@ case "$task_suite" in
     ;;
   http)
     php tests/native-linux-regression.php http
-    TYPE_HTTP_DRIVER=swoole TYPE_TEST_EXECUTION=host bash tools/test-file-pressure.sh build/file-http/type-app
+    TYPE_TEST_EXECUTION=host bash tools/test-file-pressure.sh build/file-http/type-app
     ;;
   redis)
     php tests/native-linux-regression.php redis
@@ -73,7 +73,7 @@ case "$task_suite" in
     ;;
   application)
     if [[ "$task_build" == build ]]; then php tests/build-native-application.php; fi
-    TYPE_HTTP_DRIVER=swoole php tests/native-database-application.php build/app/type-app "${TYPE_MYSQL_TOOLS:?}" "${TYPE_PGSQL_TOOLS:?}"
+    php tests/native-database-application.php build/app/type-app "${TYPE_MYSQL_TOOLS:?}" "${TYPE_PGSQL_TOOLS:?}"
     ;;
   recovery)
     if [[ "$task_build" == build ]]; then php tests/build-native-application.php; fi

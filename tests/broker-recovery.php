@@ -268,7 +268,7 @@ try {
     $nodeEnvironment = $dbEnvironment + [
         'BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => $mqttPassword,
         'BROKER_TOPIC_PREFIX' => 'broker-recovery/', 'BROKER_NODE_ID' => 'recovery-node',
-        'BROKER_LISTEN' => '127.0.0.1', 'BROKER_PLAINTEXT' => 'false', 'BROKER_IO_DRIVER' => 'swoole',
+        'BROKER_LISTEN' => '127.0.0.1', 'BROKER_PLAINTEXT' => 'false',
         'BROKER_PORT' => (string) $tlsPort, 'BROKER_WSS_PORT' => (string) $wssPort,
         'BROKER_CERTIFICATE' => $certs['server'], 'BROKER_PRIVATE_KEY' => $certs['key'],
         'BROKER_ALLOWED_ORIGINS' => $previewOrigin,
@@ -543,7 +543,7 @@ try {
     $appEnvironment['APP_BASE_PATH'] = $appBase;
     $appEnvironment['APP_PORT'] = substr(strrchr($addresses[2], ':'), 1);
     $appEnvironment['APP_ALLOWED_HOSTS'] = $addresses[2];
-    unset($appEnvironment['BROKER_CLIENT_USERNAME'], $appEnvironment['BROKER_CLIENT_PASSWORD'], $appEnvironment['BROKER_TOPIC_PREFIX'], $appEnvironment['BROKER_NODE_ID'], $appEnvironment['BROKER_PLAINTEXT'], $appEnvironment['BROKER_IO_DRIVER'], $appEnvironment['BROKER_PORT'], $appEnvironment['BROKER_COMMAND'], $appEnvironment['BROKER_STANDBY_NAMES'], $appEnvironment['BROKER_ALLOWED_ORIGINS'], $appEnvironment['BROKER_WSS_PORT']);
+    unset($appEnvironment['BROKER_CLIENT_USERNAME'], $appEnvironment['BROKER_CLIENT_PASSWORD'], $appEnvironment['BROKER_TOPIC_PREFIX'], $appEnvironment['BROKER_NODE_ID'], $appEnvironment['BROKER_PLAINTEXT'], $appEnvironment['BROKER_PORT'], $appEnvironment['BROKER_COMMAND'], $appEnvironment['BROKER_STANDBY_NAMES'], $appEnvironment['BROKER_ALLOWED_ORIGINS'], $appEnvironment['BROKER_WSS_PORT']);
     $appEnvironment['DB_DRIVER'] = 'sqlite';
     $appEnvironment['DB_SQLITE_FILE'] = 'app.sqlite';
     unset($appEnvironment['DB_HOST'], $appEnvironment['DB_PORT'], $appEnvironment['DB_DATABASE'], $appEnvironment['DB_USERNAME'], $appEnvironment['DB_PASSWORD']);

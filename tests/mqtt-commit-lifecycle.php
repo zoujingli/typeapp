@@ -7,17 +7,17 @@ use Type\Testing\Process;
 /** 复用独立消费者及真实存储；只在测试应用中延迟结果发送后的进程退出。 */
 function mqttCommitLifecycleApplication(string $source): string
 {
-    $entry = "    if (\$arguments->has('store-worker')) {";
+    $entry = "    if (\$arguments->has('store-worker-pipe')) {";
     expect(substr_count($source, $entry) === 1, '持久生命周期测试入口变化');
     $source = str_replace($entry, <<<'PHP'
     $lifecycleCase = (string) getenv('TYPE_MQTT_COMMIT_LIFECYCLE');
-    if ($lifecycleCase !== '' && !$arguments->has('store-worker')) {
+    if ($lifecycleCase !== '' && !$arguments->has('store-worker-pipe')) {
         mqttCommitLifecycle($workerCommand, $lifecycleCase);
         return;
     }
-    if ($arguments->has('store-worker')) {
+    if ($arguments->has('store-worker-pipe')) {
 PHP, $source);
-    $worker = "        PendingCommit::work(\$store, \$arguments->text('store-worker', ''));";
+    $worker = "        PendingCommit::work(\$store, \$arguments->text('store-worker-pipe', ''));";
     expect(substr_count($source, $worker) === 1, '持久生命周期worker入口变化');
     $source = str_replace($worker, <<<'PHP'
         $lifecycle = (object) ['executed' => false, 'result' => []];

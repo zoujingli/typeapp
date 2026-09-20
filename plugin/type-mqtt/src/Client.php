@@ -51,7 +51,7 @@ final class Client
      * host为明确IP，避免同步DNS解析越过等待预算；peerName可指定证书中的DNS名称。
      * TLS默认校验证书链和主机名，caFile为空时使用系统信任；allowPlaintext仅供显式调试。
      * 不预分配报文槽；排队上限为receiveMaximum条和maximumPacketBytes×receiveMaximum字节。
-     * coroutine显式选择原生Socket，必须在同一协程内建连及使用；不满足能力要求时不回退。
+     * coroutine为真时使用原生协程Socket；同步调用使用Swoole Client，二者都不回退到PHP流。
      * @throws \InvalidArgumentException 身份、网络位置、TLS或预算非法。
      */
     public function __construct(
@@ -110,38 +110,7 @@ final class Client
             if ($this->coroutine) {
                 $this->connectSocket($deadline);
             } else {
-                $settings = ['ssl' => ['verify_peer' => true, 'verify_peer_name' => true,
-                                       'peer_name' => $this->peerName === '' ? $this->host : $this->peerName,
-                                       'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT]];
-                if ($this->caFile !== '') {
-                    $settings['ssl']['cafile'] = $this->caFile;
-                }
-                $address = str_contains($this->host, ':') ? '[' . $this->host . ']' : $this->host;
-                $errorNumber = 0;
-                $errorMessage = '';
-                $this->socket = @stream_socket_client(
-                    'tcp://' . $address . ':' . $this->port,
-                    $errorNumber,
-                    $errorMessage,
-                    0.0,
-                    STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT,
-                    stream_context_create($settings)
-                );
-                if (!is_resource($this->socket) || !stream_set_blocking($this->socket, false)) {
-                    throw new \RuntimeException('mqtt_client_connect_failed');
-                }
-                $this->waitIo($deadline, true);
-                if (!$this->allowPlaintext) {
-                    do {
-                        $secured = @stream_socket_enable_crypto($this->socket, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT);
-                        if ($secured === false) {
-                            throw new \RuntimeException('mqtt_client_tls_failed');
-                        }
-                        if ($secured !== true) {
-                            $this->waitIo($deadline, false);
-                        }
-                    } while ($secured !== true);
-                }
+                $this->connectSwooleClient($deadline);
             }
             $connectProperties = "\x11" . pack('N', $this->sessionExpiry) . "\x21" . pack('n', $this->receiveMaximum)
                 . "\x27" . pack('N', $this->maximumPacketBytes) . "\x22\0\0";
@@ -285,7 +254,7 @@ final class Client
     }
 
     /**
-     * 仅显式业务确认发送PUBACK；写出完成才移除本次凭据。旧网络凭据或重复确认均拒绝。
+     * 仅显式业务确认发送 PUBACK；写出完成才移除本次凭据。过期回执凭据或重复确认均拒绝。
      * @throws \LogicException 凭据不属于当前待确认交付。
      */
     public function acknowledge(string $receipt, int $reason = 0, float $timeout = 3.0): void
@@ -330,8 +299,8 @@ final class Client
         $this->resetNetwork();
         if ($socket instanceof Socket) {
             $socket->close();
-        } elseif (is_resource($socket)) {
-            fclose($socket);
+        } elseif ($socket instanceof \Swoole\Client) {
+            $socket->close();
         }
     }
 
@@ -606,8 +575,14 @@ final class Client
                     $this->socketFailure($deadline, 'mqtt_client_disconnected');
                 }
             } else {
-                $bytes = @fread($this->socket, min(16384, $this->maximumPacketBytes - strlen($this->input)));
-                if ($bytes === false || ($bytes === '' && feof($this->socket))) {
+                /** @var \Swoole\Client $socket */
+                $socket = $this->socket;
+                $bytes = $socket->recv(min(16384, $this->maximumPacketBytes - strlen($this->input)), $this->readTimeout($deadline));
+                $this->assertSocket();
+                if ($bytes === false && in_array($socket->errCode, [SOCKET_ETIMEDOUT, SOCKET_EAGAIN], true)) {
+                    continue;
+                }
+                if ($bytes === false || $bytes === '') {
                     throw new \RuntimeException('mqtt_client_disconnected');
                 }
             }
@@ -617,8 +592,6 @@ final class Client
                     $this->partial = new Deadline(5.0);
                 }
                 $this->input .= $bytes;
-            } else {
-                $this->waitIo($deadline, false, !$required);
             }
         }
     }
@@ -640,41 +613,29 @@ final class Client
             $this->lastWrite = self::now();
             return;
         }
+        /** @var \Swoole\Client $socket */
+        $socket = $this->socket;
         $offset = 0;
         while ($offset < strlen($packet)) {
             $this->assertSocket();
             if ($deadline->expired()) {
                 throw new \RuntimeException('mqtt_client_timeout');
             }
-            $written = @fwrite($this->socket, substr($packet, $offset, 16384));
-            if ($written === false || ($written === 0 && feof($this->socket))) {
+            $written = $socket->send(substr($packet, $offset, 16384));
+            if ($written === false || ($written === 0 && $socket->errCode !== SOCKET_EAGAIN)) {
                 throw new \RuntimeException('mqtt_client_disconnected');
             }
             $offset += $written;
             if ($written === 0) {
-                $this->waitIo($deadline, true);
+                $pause = min(0.01, max(0.000001, $deadline->remaining() ?? 0.01));
+                if ($this->coroutine) {
+                    \Swoole\Coroutine::sleep($pause);
+                } else {
+                    usleep((int) ceil($pause * 1000000.0));
+                }
             }
         }
         $this->lastWrite = self::now();
-    }
-
-    private function waitIo(Deadline $deadline, bool $write, bool $allowTimeout = false): void
-    {
-        $this->assertSocket();
-        if ($deadline->expired()) {
-            if ($allowTimeout) {
-                return;
-            }
-            throw new \RuntimeException('mqtt_client_timeout');
-        }
-        $read = $write ? [] : [$this->socket];
-        $writes = $write ? [$this->socket] : [];
-        $except = [$this->socket];
-        $selected = @stream_select($read, $writes, $except, 0, max(1, (int)(min(0.05, $deadline->remaining() ?? 0.05) * 1000000.0)));
-        $this->assertSocket();
-        if (($selected === false && !$this->stopped) || $except !== []) {
-            throw new \RuntimeException('mqtt_client_network_failed');
-        }
     }
 
     private function reserve(): int
@@ -716,6 +677,28 @@ final class Client
     }
 
     /** 连接与TLS共用一次截止；原生握手的分段读超时另以单次Timer约束总预算。 */
+    private function connectSwooleClient(Deadline $deadline): void
+    {
+        $client = new \Swoole\Client(str_contains($this->host, ':') ? SWOOLE_SOCK_TCP6 : SWOOLE_SOCK_TCP, SWOOLE_SOCK_SYNC);
+        $settings = ['open_tcp_nodelay' => true, 'timeout' => max(0.000001, $deadline->remaining() ?? 0.001),
+            'connect_timeout' => max(0.000001, $deadline->remaining() ?? 0.001), 'write_timeout' => max(0.000001, $deadline->remaining() ?? 0.001),
+            'read_timeout' => max(0.000001, $deadline->remaining() ?? 0.001)];
+        if (!$this->allowPlaintext) {
+            $settings += ['open_ssl' => true, 'ssl_verify_peer' => true, 'ssl_allow_self_signed' => false,
+                'ssl_host_name' => $this->peerName === '' ? $this->host : $this->peerName,
+                'ssl_protocols' => SWOOLE_SSL_TLSv1_2 | SWOOLE_SSL_TLSv1_3];
+            if ($this->caFile !== '') {
+                $settings['ssl_cafile'] = $this->caFile;
+            }
+        }
+        if (!$client->set($settings) || $deadline->expired()
+            || !$client->connect($this->host, $this->port, max(0.000001, $deadline->remaining() ?? 0.001))) {
+            $this->socket = $client;
+            $this->socketFailure($deadline, $this->allowPlaintext ? 'mqtt_client_connect_failed' : 'mqtt_client_tls_failed');
+        }
+        $this->socket = $client;
+    }
+
     private function connectSocket(Deadline $deadline): void
     {
         $socket = new Socket(str_contains($this->host, ':') ? AF_INET6 : AF_INET, SOCK_STREAM);

@@ -99,16 +99,16 @@ function benchmarkSample(Process $server, Closure $operation, int $warmup, int $
 }
 
 /** @return array{Process,HttpClient} 就绪由真实HTTP响应证明。 */
-function benchmarkServer(string $artifact, array $environment, string $root, bool $stream): array
+function benchmarkServer(string $artifact, array $environment, string $root): array
 {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $message);
     expect(is_resource($listener), '无法分配基准端口');
     $address = stream_socket_get_name($listener, false);
     $port = substr(strrchr($address, ':'), 1);
     fclose($listener);
-    $environment[$stream ? 'TYPE_STREAM_TEST_PORT' : 'APP_PORT'] = $port;
+    $environment['APP_PORT'] = $port;
     $environment['APP_ALLOWED_HOSTS'] = $address;
-    $process = new Process($stream ? [$artifact] : [$artifact, 'serve'], $root, $environment, 16777216);
+    $process = new Process([$artifact, 'serve'], $root, $environment, 16777216);
     $client = new HttpClient('http://' . $address, 10, 4194304);
     $deadline = microtime(true) + 15;
     try {
@@ -135,34 +135,28 @@ if (($argv[1] ?? '') === '--hold-lock') {
 }
 
 $root = realpath(dirname(__DIR__));
-$arguments = new Arguments($argv, ['binary', 'stream-binary', 'driver', 'database-tools', 'repetitions', 'iterations', 'warmup', 'engine'], []);
+$arguments = new Arguments($argv, ['binary', 'driver', 'database-tools', 'repetitions', 'iterations', 'warmup'], []);
 $artifact = realpath($arguments->text('binary', ''));
-$streamArtifact = realpath($arguments->text('stream-binary', ''));
 $driver = $arguments->text('driver', 'sqlite');
-$engine = $arguments->text('engine', 'stream');
-expect(in_array($engine, ['stream', 'swoole'], true), '负载引擎须显式选择stream或swoole');
 expect(in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true) && in_array($driver, ['mysql', 'pgsql', 'sqlite'], true), '本入口只对实际Unix原生目标和三库测量');
-expect(is_string($artifact) && is_string($streamArtifact), '需要真实标准应用和文件流产物');
+expect(is_string($artifact), '需要真实标准应用产物');
 (new BuildPlatform())->assertArtifact($artifact);
-(new BuildPlatform())->assertArtifact($streamArtifact);
 $artifactHash = hash_file('sha256', $artifact);
-$streamHash = hash_file('sha256', $streamArtifact);
 $repetitions = $arguments->integer('repetitions', 3, 1, 10);
 $iterations = $arguments->integer('iterations', 30, 1, 500);
 $warmup = $arguments->integer('warmup', 5, 0, 100);
 $tools = $driver === 'sqlite' ? [] : NativeDatabase::tools($driver, $arguments->text('database-tools', ''));
 $base = $root . '/build/application-benchmark-' . bin2hex(random_bytes(6));
 expect(mkdir($base, 0700), '无法创建基准目录');
-$report = ['status' => 'running', 'path_base' => 'project-root', 'driver' => $driver, 'engine' => $engine, 'sampling_protocol' => 2,
+$report = ['status' => 'running', 'path_base' => 'project-root', 'driver' => $driver, 'transport' => 'swoole', 'sampling_protocol' => 2,
     'host' => ['os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'kernel' => php_uname('r'), 'controller_php' => PHP_VERSION],
-    'artifact_sha256' => $artifactHash, 'stream_artifact_sha256' => $streamHash, 'repetitions' => []];
+    'artifact_sha256' => $artifactHash, 'repetitions' => []];
 try {
     for ($round = 0; $round < $repetitions; $round++) {
         $work = $base . '/round-' . $round;
         expect(mkdir($work . '/app', 0700, true) && mkdir($work . '/php.d', 0700), '无法准备本轮数据目录');
         $database = new NativeDatabase($work . '/database', $driver, $tools);
         $server = null;
-        $streamServer = null;
         try {
             $environment = array_replace((new BuildPlatform())->environment(getenv('PHP_HOME'), getenv('PHPX_HOME')), $database->environment());
             $environment['PHPRC'] = getenv('PHPRC') ?: '';
@@ -170,7 +164,6 @@ try {
             $adminPassword = 'Benchmark-admin-password-2026';
             $customerPassword = 'Benchmark-customer-password-2026';
             $environment += ['APP_BASE_PATH' => $work . '/app', 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false',
-                'TYPE_STREAM_TEST_ENGINE' => $engine,
                 'APP_ADMIN_PASSWORD' => $adminPassword, 'APP_CUSTOMER_PASSWORD' => $customerPassword,
                 'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'data/benchmark.sqlite'];
             if ($driver !== 'sqlite') {
@@ -185,7 +178,7 @@ try {
             } finally {
                 $migration->stop();
             }
-            [$server, $client] = benchmarkServer($artifact, $environment, $root, false);
+            [$server, $client] = benchmarkServer($artifact, $environment, $root);
             $login = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
                 'login' => 'platform-admin', 'password' => $adminPassword,
             ], JSON_THROW_ON_ERROR));
@@ -261,22 +254,10 @@ try {
             }, $warmup, $iterations);
             $measurements['slow-database']['initial_statuses_including_warmup'] = $slowStatuses;
             $measurements['slow-database']['contention'] = '持有真实写锁50ms；SQLite允许BUSY后确认无写入并由客户端重试一次，其余驱动等待行锁。';
-            $file = $work . '/stream.bin';
-            $bytes = str_repeat('0123456789abcdef', 32768);
-            file_put_contents($file, $bytes);
-            $fileHash = hash('sha256', $bytes);
-            $streamEnvironment = $environment + ['TYPE_STREAM_TEST_FILE' => $file];
-            [$streamServer, $streamClient] = benchmarkServer($streamArtifact, $streamEnvironment, $root, true);
-            $measurements['file-stream'] = benchmarkSample($streamServer, static function () use ($streamClient, $fileHash): float {
-                $started = hrtime(true);
-                $response = $streamClient->request('GET', '/file');
-                expect($response->status === 200 && strlen($response->body) === 524288 && hash('sha256', $response->body) === $fileHash, '文件流内容或长度错误');
-                return (hrtime(true) - $started) / 1e6;
-            }, $warmup, $iterations);
             $report['repetitions'][] = $measurements;
         } finally {
             $cleanupError = null;
-            foreach ([$streamServer, $server] as $process) {
+            foreach ([$server] as $process) {
                 if ($process !== null) {
                     try {
                         expect($process->stop(10)->successful(), '基准服务未正常退出');
@@ -295,7 +276,7 @@ try {
             }
         }
     }
-    expect(hash_file('sha256', $artifact) === $artifactHash && hash_file('sha256', $streamArtifact) === $streamHash, '测量期间产物变化');
+    expect(hash_file('sha256', $artifact) === $artifactHash, '测量期间产物变化');
     $report['status'] = 'passed';
 } finally {
     if ($report['status'] !== 'passed') {
@@ -303,4 +284,4 @@ try {
     }
     file_put_contents($base . '/verification.json', json_encode($report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n");
 }
-echo '真实应用四类负载测量完成：' . substr($base, strlen($root) + 1) . "/verification.json\n";
+echo '真实应用三类负载测量完成：' . substr($base, strlen($root) + 1) . "/verification.json\n";

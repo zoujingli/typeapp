@@ -67,9 +67,6 @@ try {
             $environment['PATH'] = $phpHome . '/bin:' . $environment['PATH'];
             $environment['PHPRC'] = getenv('PHPRC') ?: '';
             $environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
-            if (in_array('tenant-http', $suites, true)) {
-                $environment['TYPE_HTTP_DRIVER'] = 'swoole';
-            }
             if ($needsRedis) {
                 $redis = new NativeRolloutRedis($work . '/redis', $redisServer);
                 $environment = array_replace($environment, $redis->environment());

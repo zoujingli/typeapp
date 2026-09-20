@@ -23,10 +23,6 @@ function main(int $argc, array $argv): void
     $temporary = getenv('TYPE_HTTP_UPLOAD_TEMP');
     $limits = new RequestLimits(262144, 4, 4, 2, 131072, 1024, $temporary === false ? null : $temporary);
     $control = new HttpControl(requestSeconds: 1.0);
-    $driver = getenv('TYPE_HTTP_DRIVER') ?: 'swoole';
-    $server = match ($driver) {
-        'swoole' => new SwooleServer($router, $factory, $factory, $factory, $limits, $control),
-        default => throw new InvalidArgumentException('HTTP 测试引擎无效'),
-    };
+    $server = new SwooleServer($router, $factory, $factory, $factory, $limits, $control);
     $server->serve('127.0.0.1', (int) getenv('TYPE_HTTP_PORT'));
 }

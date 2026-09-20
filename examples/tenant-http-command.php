@@ -101,10 +101,7 @@ function main(int $argc, array $argv): void
             $logs->stop();
         }
     };
-    $server = match (getenv('TYPE_HTTP_DRIVER') ?: 'swoole') {
-        'swoole' => new SwooleServer($pipeline, $factory, $factory, $factory, onWorkerStop: $cleanup),
-        default => throw new InvalidArgumentException('租户HTTP测试引擎无效'),
-    };
+    $server = new SwooleServer($pipeline, $factory, $factory, $factory, onWorkerStop: $cleanup);
     try {
         $server->serve('127.0.0.1', (int) getenv('TYPE_HTTP_PORT'));
     } finally {

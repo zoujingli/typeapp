@@ -65,7 +65,7 @@ function rolloutCommand(array $command, array $environment, bool $server = false
 {
     if (isset($command['linux-package'])) {
         expect(PHP_OS_FAMILY === 'Linux' && isset($command['release-sha256']), 'Linux发布运行需要受信包身份');
-        return ['/usr/bin/env', 'PATH=/usr/bin:/bin', 'TYPE_HTTP_DRIVER=stream', 'TYPE_HTTP_LISTEN=127.0.0.1',
+        return ['/usr/bin/env', 'PATH=/usr/bin:/bin', 'TYPE_HTTP_LISTEN=127.0.0.1',
             'TYPE_APP_RELEASE_SHA256=' . $command['release-sha256'],
             ...sandboxPackageCommand(dirname(__DIR__), $command['linux-package'], [$environment['TYPE_ROLLOUT_DATA_PARENT']], $processInfo)];
     }

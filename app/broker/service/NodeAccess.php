@@ -38,7 +38,7 @@ final class NodeAccess implements IdentityAccessPolicy, CertificateAccessPolicy,
     private CrlHttpsFetch $crlFetch;
 
     /**
-     * @param array{host:string,port:int,transport:string,ws_port?:int,wss_port?:int,mtls_port?:int,io_driver?:string,plaintext?:int,allowed_origins?:string} $listener 实际交给 Broker 的监听配置，不含密钥。
+     * @param array{host:string,port:int,transport:string,ws_port?:int,wss_port?:int,mtls_port?:int,plaintext?:int,allowed_origins?:string} $listener 实际交给 Broker 的监听配置，不含密钥。
      * @param array<string, int> $limits 本次进程实际启动额度；缺省沿用规格默认值。
      */
     public function __construct(private DatabaseManager $database, private string $nodeId, private string $username, private string $password, private string $topicPrefix, private array $listener, private bool $durable = false, array $limits = [], string $clientCa = '', string $certificate = '')

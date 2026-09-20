@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Broker 运行配置页：校验并保存监听、I/O 与证书路径。
+ * Broker 运行配置页：校验并保存监听与证书路径。
  * 页面不执行重启；握手 CA 由节点在线重载，已有连接保持到吊销或到期。
  */
 import type { TableColumnsType } from 'ant-design-vue';
@@ -13,10 +13,10 @@ import CrudTableActions from '../components/crud-table-actions.vue';
 import { buildTableScrollX, estimateVisibleActionColumnWidth } from '../utils/table';
 import { ApiError, errorText, isCanceled, request, session } from '../api';
 
-type ConfigKey = 'listen' | 'port' | 'ws_port' | 'wss_port' | 'mtls_port' | 'io_driver' | 'plaintext' | 'allowed_origins';
+type ConfigKey = 'listen' | 'port' | 'ws_port' | 'wss_port' | 'mtls_port' | 'plaintext' | 'allowed_origins';
 interface RuntimeConfig {
   listen: string; port: number; ws_port: number; wss_port: number; mtls_port: number;
-  io_driver: string; plaintext: boolean; allowed_origins: string;
+  plaintext: boolean; allowed_origins: string;
 }
 interface NodeState { node_id: string; applied_version: number; state: string; updated_at: number }
 interface LoadedNode { node_id: string; config: RuntimeConfig; certificate_sha256: string; handshake_ca_sha256: string; observed_at: number }
@@ -34,12 +34,12 @@ interface RuntimePage {
 interface RevisionPage { items: Revision[]; total: number; page: number; per_page: number; current_version: number; publish_paused: boolean }
 const emptyConfig = (): RuntimeConfig => ({
   listen: '127.0.0.1', port: 8883, ws_port: 0, wss_port: 0, mtls_port: 0,
-  io_driver: 'swoole', plaintext: false, allowed_origins: '',
+  plaintext: false, allowed_origins: '',
 });
 const fields: { key: ConfigKey; label: string }[] = [
   { key: 'listen', label: '监听地址' }, { key: 'port', label: 'TCP 端口' },
   { key: 'ws_port', label: '明文 WS 端口' }, { key: 'wss_port', label: 'WSS 端口' },
-  { key: 'mtls_port', label: 'mTLS 端口' }, { key: 'io_driver', label: 'I/O 驱动' },
+  { key: 'mtls_port', label: 'mTLS 端口' },
   { key: 'plaintext', label: '明文模式' }, { key: 'allowed_origins', label: 'Origin 白名单' },
 ];
 const route = useRoute();
@@ -86,7 +86,7 @@ function payload() {
   return {
     expected_version: result.value.current_version,
     listen: draft.listen, port: Number(draft.port), ws_port: Number(draft.ws_port), wss_port: Number(draft.wss_port),
-    mtls_port: Number(draft.mtls_port), io_driver: draft.io_driver, plaintext: draft.plaintext === true,
+    mtls_port: Number(draft.mtls_port), plaintext: draft.plaintext === true,
     allowed_origins: draft.allowed_origins,
   };
 }
@@ -175,13 +175,13 @@ onBeforeUnmount(() => { generation++; pending?.abort(); clearInterval(timer); do
 <template>
   <section class="iot-page">
     <header class="page-heading">
-      <div><h1>Broker 运行配置</h1><p class="muted">{{ platform ? '平台监听、I/O 与节点证书路径' : session.realm === 'broker' ? '独立监听、I/O 与节点证书路径' : '当前租户可见的全局运行配置' }}。当前版本 v{{ result.current_version }}{{ paused ? ' · 部分失败已暂停后续保存' : '' }}</p></div>
+      <div><h1>Broker 运行配置</h1><p class="muted">{{ platform ? '平台监听与节点证书路径' : session.realm === 'broker' ? '独立监听与节点证书路径' : '当前租户可见的全局运行配置' }}。当前版本 v{{ result.current_version }}{{ paused ? ' · 部分失败已暂停后续保存' : '' }}</p></div>
       <div class="crud-search-grid__actions"><Button @click="showHistory">版本生效</Button></div>
     </header>
     <Alert v-if="failure" class="page-alert" type="error" show-icon role="alert" :message="denied ? failure : `运行配置刷新失败：${failure}`" />
     <Alert v-if="!canRead" class="page-alert" type="warning" show-icon message="当前账号无权查看 Broker 运行配置" />
     <Alert v-else-if="canRead && !canWrite" class="page-alert" type="info" show-icon message="当前角色可查看已保存配置与节点加载身份，保存、重试和回退仅限独立或平台管理员。" />
-    <Alert v-else class="page-alert" type="info" show-icon message="本页只校验并保存。监听、端口、I/O 与节点证书路径须由运维重启后生效。握手 CA 在节点心跳后在线重载，已有连接保持到吊销或到期。私钥不会出现在页面或接口中。" />
+    <Alert v-else class="page-alert" type="info" show-icon message="本页只校验并保存。监听、端口与节点证书路径须由运维重启后生效。握手 CA 在节点心跳后在线重载，已有连接保持到吊销或到期。私钥不会出现在页面或接口中。" />
     <Card>
       <form class="crud-search-grid" @submit.prevent="runPreview()">
         <CrudSearchField label="监听地址">
@@ -198,9 +198,6 @@ onBeforeUnmount(() => { generation++; pending?.abort(); clearInterval(timer); do
         </CrudSearchField>
         <CrudSearchField label="mTLS 端口">
           <InputNumber v-model:value="draft.mtls_port" aria-label="mTLS 端口" :min="0" :max="65535" :precision="0" style="width:100%" :disabled="busy || publishing || !canWrite" />
-        </CrudSearchField>
-        <CrudSearchField label="I/O 驱动">
-          <Select v-model:value="draft.io_driver" aria-label="I/O 驱动" style="width:100%" :options="[{ value: 'swoole', label: 'swoole' }, { value: 'stream', label: 'stream' }]" :disabled="busy || publishing || !canWrite" />
         </CrudSearchField>
         <CrudSearchField label="明文模式">
           <Checkbox v-model:checked="draft.plaintext" :disabled="busy || publishing || !canWrite">允许明文调试</Checkbox>

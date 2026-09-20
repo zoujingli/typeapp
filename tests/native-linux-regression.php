@@ -64,16 +64,13 @@ try {
             foreach ($modes as $mode) {
                 $name = implode('-', [$artifactName, $engine, $mode]);
                 $runEnvironment = $environment;
-                if ($engine === 'swoole') {
-                    $runEnvironment['TYPE_HTTP_DRIVER'] = $engine;
-                }
                 if ($mode === 'native') {
                     $runEnvironment['TYPE_NATIVE_PHP_INI'] = $built['runtime-profile']['ini'];
                 }
                 $target = $mode === 'native' ? [$artifact] : ($test === 'validation' ? [] : ['--php']);
                 $log = $base . '/' . $name . '.log';
                 echo nativeDatabaseCommand([PHP_BINARY, $root . '/tests/' . $test . '.php', ...$target, ...$arguments], $runEnvironment, [], $log, 180);
-                $report['runs'][] = ['test' => $test, 'artifact' => $artifactName, 'mode' => $mode, 'engine' => $engine,
+                $report['runs'][] = ['test' => $test, 'artifact' => $artifactName, 'mode' => $mode, 'transport' => $engine,
                     'log' => basename($log), 'log-sha256' => hash_file('sha256', $log), 'status' => 'passed'];
             }
         }

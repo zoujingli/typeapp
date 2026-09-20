@@ -15,7 +15,7 @@ use Type\Validate\Field;
 final class RuntimeService
 {
     /** @var list<string> 快照字段；不含私钥与绝对秘密。 */
-    private const KEYS = ['listen', 'port', 'ws_port', 'wss_port', 'mtls_port', 'io_driver', 'plaintext', 'allowed_origins'];
+    private const KEYS = ['listen', 'port', 'ws_port', 'wss_port', 'mtls_port', 'plaintext', 'allowed_origins'];
 
     /**
      * 节点首次启动把实际监听身份写入版本 1 并标为已生效。
@@ -45,7 +45,7 @@ final class RuntimeService
     {
         return [
             'listen' => '127.0.0.1', 'port' => 8883, 'ws_port' => 0, 'wss_port' => 0, 'mtls_port' => 0,
-            'io_driver' => 'swoole', 'plaintext' => false, 'allowed_origins' => '',
+            'plaintext' => false, 'allowed_origins' => '',
         ];
     }
 
@@ -64,7 +64,6 @@ final class RuntimeService
             'ws_port' => (int) ($listener['ws_port'] ?? 0),
             'wss_port' => (int) ($listener['wss_port'] ?? 0),
             'mtls_port' => (int) ($listener['mtls_port'] ?? 0),
-            'io_driver' => (string) ($listener['io_driver'] ?? 'swoole'),
             'plaintext' => array_key_exists('plaintext', $listener) ? (bool) $listener['plaintext'] : $transport === 'tcp',
             'allowed_origins' => (string) ($listener['allowed_origins'] ?? ''),
         ], self::defaults());
@@ -85,7 +84,6 @@ final class RuntimeService
         $ws = getenv('IOT_MQTT_WS_PORT');
         $wss = getenv('IOT_MQTT_WSS_PORT');
         $mtls = getenv('IOT_MQTT_MTLS_PORT');
-        $driver = getenv('IOT_MQTT_IO_DRIVER');
         $origins = getenv('IOT_MQTT_ALLOWED_ORIGINS');
         return self::normalize([
             'listen' => $listen,
@@ -93,7 +91,6 @@ final class RuntimeService
             'ws_port' => is_string($ws) && $ws !== '' ? (int) $ws : 0,
             'wss_port' => is_string($wss) && $wss !== '' ? (int) $wss : 0,
             'mtls_port' => is_string($mtls) && $mtls !== '' ? (int) $mtls : 0,
-            'io_driver' => is_string($driver) && $driver !== '' ? $driver : 'swoole',
             'plaintext' => false,
             'allowed_origins' => is_string($origins) ? $origins : '',
         ], self::defaults());
@@ -327,7 +324,6 @@ final class RuntimeService
             'ws_port' => Field::integer()->cast()->range(0, 65535),
             'wss_port' => Field::integer()->cast()->range(0, 65535),
             'mtls_port' => Field::integer()->cast()->range(0, 65535),
-            'io_driver' => Field::text()->length(1, 16),
             'plaintext' => Field::boolean(),
             'allowed_origins' => Field::text()->length(0, 2000),
         ];
@@ -507,13 +503,6 @@ final class RuntimeService
             }
             $config[$key] = $source[$key];
         }
-        if (array_key_exists('io_driver', $source)) {
-            $driver = (string) $source['io_driver'];
-            if (!in_array($driver, ['stream', 'swoole'], true)) {
-                throw new HttpError(422, 'broker_runtime_invalid');
-            }
-            $config['io_driver'] = $driver;
-        }
         if (array_key_exists('plaintext', $source)) {
             if ($source['plaintext'] !== true && $source['plaintext'] !== false) {
                 throw new HttpError(422, 'broker_runtime_invalid');
@@ -537,7 +526,6 @@ final class RuntimeService
         $ws = (int) $config['ws_port'];
         $wss = (int) $config['wss_port'];
         $mtls = (int) $config['mtls_port'];
-        $driver = (string) $config['io_driver'];
         $plaintext = (bool) $config['plaintext'];
         if ($ws > 0 && $wss > 0) {
             throw new HttpError(422, 'broker_runtime_invalid');
@@ -546,9 +534,6 @@ final class RuntimeService
             throw new HttpError(422, 'broker_runtime_invalid');
         }
         if (($wss > 0 || $mtls > 0) && $plaintext) {
-            throw new HttpError(422, 'broker_runtime_invalid');
-        }
-        if (($ws > 0 || $wss > 0 || $mtls > 0) && $driver !== 'swoole') {
             throw new HttpError(422, 'broker_runtime_invalid');
         }
         $used = [$port];

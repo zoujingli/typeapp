@@ -226,7 +226,7 @@ foreach (['alpha', 'beta'] as $tenant) {
 }
 expect($namespaces['alpha'][1] !== $namespaces['beta'][1] && $namespaces['alpha'][2] !== $namespaces['beta'][2], '不同租户共享缓存身份');
 file_put_contents($record . '/verification.json', json_encode(['status' => 'passed', 'driver' => $kind,
-    'engine' => getenv('TYPE_HTTP_DRIVER') ?: 'swoole', 'mode' => ($argv[1] ?? '--php') === '--php' ? 'php' : 'native',
+    'transport' => 'swoole', 'mode' => ($argv[1] ?? '--php') === '--php' ? 'php' : 'native',
     'namespaces' => $namespaces, 'reused' => $reused, 'rolled_back_failures' => $failures, 'shutdown' => $shutdown,
     'log_sha256' => hash('sha256', $wire), 'database_permissions' => $kind === 'sqlite' ? 'not-applicable-file-mapping' : 'verified'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
 echo '租户身份与日志证据：' . substr($record, strlen($root) + 1) . "/verification.json\n";

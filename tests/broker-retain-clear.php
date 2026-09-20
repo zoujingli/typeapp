@@ -173,7 +173,7 @@ try {
     $nodeEnvironment = $environment + [
         'BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => $mqttPassword,
         'BROKER_TOPIC_PREFIX' => 'broker-retain/', 'BROKER_NODE_ID' => 'retain-node',
-        'BROKER_PLAINTEXT' => 'true', 'BROKER_IO_DRIVER' => 'stream',
+        'BROKER_PLAINTEXT' => 'true',
         'BROKER_PORT' => substr(strrchr($addresses[1], ':'), 1),
     ];
     $node = new Process([...$command, 'broker:run'], $root, $nodeEnvironment);
@@ -319,7 +319,7 @@ try {
     $appEnvironment['APP_BASE_PATH'] = $appBase;
     $appEnvironment['APP_PORT'] = substr(strrchr($addresses[2], ':'), 1);
     $appEnvironment['APP_ALLOWED_HOSTS'] = $addresses[2];
-    unset($appEnvironment['BROKER_CLIENT_USERNAME'], $appEnvironment['BROKER_CLIENT_PASSWORD'], $appEnvironment['BROKER_TOPIC_PREFIX'], $appEnvironment['BROKER_NODE_ID'], $appEnvironment['BROKER_PLAINTEXT'], $appEnvironment['BROKER_IO_DRIVER'], $appEnvironment['BROKER_PORT'], $appEnvironment['BROKER_COMMAND'], $appEnvironment['BROKER_STANDBY_NAMES']);
+    unset($appEnvironment['BROKER_CLIENT_USERNAME'], $appEnvironment['BROKER_CLIENT_PASSWORD'], $appEnvironment['BROKER_TOPIC_PREFIX'], $appEnvironment['BROKER_NODE_ID'], $appEnvironment['BROKER_PLAINTEXT'], $appEnvironment['BROKER_PORT'], $appEnvironment['BROKER_COMMAND'], $appEnvironment['BROKER_STANDBY_NAMES']);
     $appEnvironment['DB_DRIVER'] = 'sqlite';
     $appEnvironment['DB_SQLITE_FILE'] = 'app.sqlite';
     unset($appEnvironment['DB_HOST'], $appEnvironment['DB_PORT'], $appEnvironment['DB_DATABASE'], $appEnvironment['DB_USERNAME'], $appEnvironment['DB_PASSWORD']);

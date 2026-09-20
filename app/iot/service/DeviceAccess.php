@@ -48,8 +48,13 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
      */
     public function __construct(private array $command, private string $nodeId, private array $limits = [])
     {
-        if (PHP_OS_FAMILY === 'Windows') {
-            throw new RuntimeException('设备接入工作进程当前需要Unix非阻塞管道');
+        if ($command === [] || !array_is_list($command)) {
+            throw new RuntimeException('device_access_command_invalid');
+        }
+        foreach ($command as $argument) {
+            if (!is_string($argument) || $argument === '' || str_contains($argument, "\0")) {
+                throw new RuntimeException('device_access_command_invalid');
+            }
         }
         $this->runId = bin2hex(random_bytes(16));
         $this->startedAt = hrtime(true);
@@ -375,51 +380,49 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
         if (strlen($input) > self::MAXIMUM_REQUEST_BYTES) {
             return ['allowed' => false];
         }
-        $pipes = [];
         $environment = getenv();
         $environment['PGAPPNAME'] = 'type_mqtt_' . $operationId;
-        $process = proc_open(
-            [...$this->command, 'iot:mqtt-access'],
-            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']],
-            $pipes,
-            null,
-            $environment,
-            ['bypass_shell' => true]
-        );
-        if (!is_resource($process)) {
+        $command = [...$this->command, 'iot:mqtt-access'];
+        $process = new \Swoole\Process(static function (\Swoole\Process $worker) use ($command, $environment): void {
+            foreach ($environment as $key => $value) {
+                if (is_string($key) && is_string($value)) {
+                    putenv($key . '=' . $value);
+                }
+            }
+            $worker->exec($command[0], array_slice($command, 1));
+        }, true, SOCK_STREAM);
+        $pid = $process->start();
+        if (!is_int($pid) || $pid < 1) {
             $this->failed = true;
             throw new RuntimeException('device_access_unavailable');
         }
+        $process->setBlocking(false);
         $output = '';
         $complete = false;
         $deadline = new Deadline(3.0);
         try {
-            foreach ($pipes as $pipe) {
-                if (!stream_set_blocking($pipe, false)) {
-                    throw new RuntimeException('device_access_pipe_unavailable');
-                }
-            }
             do {
                 if ($input !== '') {
-                    $written = @fwrite($pipes[0], $input, min(strlen($input), 16384));
-                    if ($written === false) {
+                    $written = $process->write(substr($input, 0, 16384));
+                    if ($written === false || $written === 0) {
                         break;
                     }
                     $input = substr($input, $written);
                 }
-                $chunk = @fread($pipes[1], 1025);
-                if ($chunk === false) {
-                    break;
+                $chunk = $process->read(1025);
+                if (is_string($chunk) && $chunk !== '') {
+                    $output .= $chunk;
                 }
-                $output .= $chunk;
                 if (strlen($output) > 1024) {
                     break;
                 }
-                $status = proc_get_status($process);
-                if (!$status['running']) {
+                if (!@\Swoole\Process::kill($pid, 0)) {
                     // 子进程退出后仍排空内核管道，不能丢失尾部响应。
-                    $output .= (string) stream_get_contents($pipes[1], 1025);
-                    $complete = $status['exitcode'] === 0 && strlen($output) <= 1024 && str_ends_with($output, "\n");
+                    $tail = $process->read(1025);
+                    if (is_string($tail) && $tail !== '') {
+                        $output .= $tail;
+                    }
+                    $complete = strlen($output) <= 1024 && str_ends_with($output, "\n");
                     break;
                 }
                 usleep(1000);
@@ -428,13 +431,10 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
             $complete = false;
         } finally {
             if (!$complete) {
-                proc_terminate($process, 9);
+                @\Swoole\Process::kill($pid, SIGKILL);
                 $this->failed = true;
             }
-            foreach ($pipes as $pipe) {
-                fclose($pipe);
-            }
-            proc_close($process);
+            $process->close();
         }
         if (!$complete) {
             // 复用持久worker的精确application_name清理，不把本地进程退出当作远端已回收。

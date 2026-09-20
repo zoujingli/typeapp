@@ -174,7 +174,7 @@ try {
     if (getenv('TYPE_HTTP_UPLOAD_TEMP')) {
         expect(glob(getenv('TYPE_HTTP_UPLOAD_TEMP') . '/swoole.upfile.*') === [], '接入层临时上传没有清理');
     }
-    echo '文件 HTTP（' . (getenv('TYPE_HTTP_DRIVER') ?: 'swoole') . "）：服务端键、multipart、输入与磁盘配额、8 MiB 下载、HEAD、中断、真实发送背压、发送前后异常和截止清理通过。\n";
+    echo "文件 HTTP（Swoole）：服务端键、multipart、输入与磁盘配额、8 MiB 下载、HEAD、中断、真实发送背压、发送前后异常和截止清理通过。\n";
 } finally {
     proc_terminate($process, SIGTERM);
     $deadline = microtime(true) + 5;

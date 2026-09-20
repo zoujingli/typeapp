@@ -159,7 +159,7 @@ try {
             continue;
         }
         if ($platform === 'Darwin') {
-            $command = ['/usr/bin/env', 'PATH=/usr/bin:/bin', 'TYPE_HTTP_DRIVER=stream', 'TYPE_HTTP_LISTEN=127.0.0.1',
+            $command = ['/usr/bin/env', 'PATH=/usr/bin:/bin', 'TYPE_HTTP_LISTEN=127.0.0.1',
                 'TYPE_APP_RELEASE_SHA256=' . $prepared['variants'][$variant]['release-sha256'],
                 ...sandboxPackageCommand($root, $package, [$base . '/data'])];
             $commands[$variant] = ['command' => $command, 'server' => $command];
@@ -172,7 +172,7 @@ try {
             '--env', 'TYPE_REDIS_HOST=queue', '--env', 'TYPE_REDIS_PORT=6379', '--env', 'TYPE_ROLLOUT_CACHE_HOST=cache', '--env', 'TYPE_ROLLOUT_CACHE_PORT=6379',
             '--env', 'TYPE_MYSQL_HOST=database', '--env', 'TYPE_MYSQL_PORT=3306', '--env', 'TYPE_MYSQL_USER=root', '--env', 'TYPE_MYSQL_DATABASE', '--env', 'TYPE_MYSQL_PASSWORD',
             '--env', 'TYPE_PGSQL_HOST=database', '--env', 'TYPE_PGSQL_PORT=5432', '--env', 'TYPE_PGSQL_USER=type_app', '--env', 'TYPE_PGSQL_DATABASE', '--env', 'TYPE_PGSQL_PASSWORD',
-            '--env', 'TYPE_HTTP_DRIVER=stream', '--env', 'TYPE_HTTP_LISTEN=0.0.0.0', '--env', 'TYPE_HTTP_PORT',
+            '--env', 'TYPE_HTTP_LISTEN=0.0.0.0', '--env', 'TYPE_HTTP_PORT',
             '--env', 'TYPE_APP_RELEASE_SHA256=' . $prepared['variants'][$variant]['release-sha256']];
         $commands[$variant] = ['command' => [...$command, $image['image']], 'server' => [...$command, '--publish', '127.0.0.1:{{port}}:{{port}}', $image['image']]];
     }

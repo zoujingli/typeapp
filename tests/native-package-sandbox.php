@@ -85,7 +85,7 @@ function linuxPackageCommand(string $root, string $package, array $dataDirectori
         'TYPE_MODEL_DRIVER', 'TYPE_ROLLOUT_APP', 'TYPE_SQLITE_FILE', 'TYPE_REDIS_HOST', 'TYPE_REDIS_PORT', 'TYPE_ROLLOUT_CACHE_HOST', 'TYPE_ROLLOUT_CACHE_PORT',
         'TYPE_MYSQL_HOST', 'TYPE_MYSQL_PORT', 'TYPE_MYSQL_DATABASE', 'TYPE_MYSQL_USER', 'TYPE_MYSQL_PASSWORD',
         'TYPE_PGSQL_HOST', 'TYPE_PGSQL_PORT', 'TYPE_PGSQL_DATABASE', 'TYPE_PGSQL_USER', 'TYPE_PGSQL_PASSWORD',
-        'TYPE_HTTP_DRIVER', 'TYPE_HTTP_LISTEN', 'TYPE_HTTP_PORT'];
+        'TYPE_HTTP_LISTEN', 'TYPE_HTTP_PORT'];
     $prefix = ['sudo', '-n', '--preserve-env=' . implode(',', $preserved)];
     $privilege = $prefix;
     $prefix = [...$prefix, $bwrap, '--die-with-parent', '--new-session', '--unshare-pid', '--unshare-ipc', '--unshare-uts',

@@ -122,4 +122,4 @@ foreach ([false, true] as $trusted) {
         expect(!$state['running'], '信任验证服务没有正常停止');
     }
 }
-echo 'HTTP 信任（' . (getenv('TYPE_HTTP_DRIVER') ?: 'swoole') . "）：代理 Host、规范化路径、签名、身份、CORS 与正文重放检查通过。\n";
+echo "HTTP 信任（Swoole）：代理 Host、规范化路径、签名、身份、CORS 与正文重放检查通过。\n";

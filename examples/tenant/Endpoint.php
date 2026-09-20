@@ -138,11 +138,7 @@ final class Endpoint implements RequestHandlerInterface
                     default => 'PRAGMA foreign_keys = OFF',
                 });
             }
-            if ((getenv('TYPE_HTTP_DRIVER') ?: 'swoole') === 'stream') {
-                usleep(5000);
-            } else {
-                \Swoole\Coroutine::sleep(0.005);
-            }
+            \Swoole\Coroutine::sleep(0.005);
             return $factory->createResponse()->withHeader('Content-Type', 'application/json')->withBody($factory->createStream((string) json_encode($value, JSON_THROW_ON_ERROR)));
         } catch (\Throwable $failure) {
             $failed = true;

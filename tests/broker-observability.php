@@ -1009,7 +1009,7 @@ function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string
         try {
             $identityResult = $identity->wait(1);
             expect($identityResult->successful() && preg_match('/(?:^|\s)broker:store(?:\s|$)/', $identityResult->stdout) === 1
-                && str_contains($identityResult->stdout, '--store-worker=127.0.0.1:'), '准确本地进程不是公开broker:store入口');
+                && str_contains($identityResult->stdout, '--store-worker-pipe'), '准确本地进程不是公开broker:store入口');
         } finally {
             $identity->stop();
         }

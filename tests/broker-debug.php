@@ -136,10 +136,15 @@ $target = $argv[1] ?? '--php';
 $driver = $argv[2] ?? 'pgsql';
 expect($driver === 'pgsql', '调试凭据验收需要 PostgreSQL 同步存储');
 if ($target === '--php') {
-    $swoole = getenv('TYPE_SWOOLE_MODULE');
-    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
-    expect(is_file($swoole), 'PHP 调试凭据验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
-    $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
+    if (extension_loaded('swoole')) {
+        // Swoole CLI 可以静态编译扩展，静态扩展没有可重复加载的 swoole.so 文件。
+        $command = [PHP_BINARY, $root . '/bin/typeapp'];
+    } else {
+        $swoole = getenv('TYPE_SWOOLE_MODULE');
+        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+        expect(is_file($swoole), 'PHP 调试凭据验收需要已加载Swoole或TYPE_SWOOLE_MODULE');
+        $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
+    }
 } else {
     $command = nativeCommand($target);
 }
@@ -274,7 +279,7 @@ try {
     $nodeEnvironment = $environment + [
         'BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => $mqttPassword,
         'BROKER_TOPIC_PREFIX' => 'broker-debug/', 'BROKER_NODE_ID' => 'debug-node',
-        'BROKER_LISTEN' => '127.0.0.1', 'BROKER_PLAINTEXT' => 'false', 'BROKER_IO_DRIVER' => 'swoole',
+        'BROKER_LISTEN' => '127.0.0.1', 'BROKER_PLAINTEXT' => 'false',
         'BROKER_PORT' => (string) $tlsPort, 'BROKER_WSS_PORT' => (string) $wssPort,
         'BROKER_CERTIFICATE' => $certs['server'], 'BROKER_PRIVATE_KEY' => $certs['key'],
         'BROKER_ALLOWED_ORIGINS' => $previewOrigin,
@@ -519,7 +524,7 @@ try {
     $appEnvironment['APP_BASE_PATH'] = $appBase;
     $appEnvironment['APP_PORT'] = substr(strrchr($addresses[2], ':'), 1);
     $appEnvironment['APP_ALLOWED_HOSTS'] = $addresses[2];
-    unset($appEnvironment['BROKER_CLIENT_USERNAME'], $appEnvironment['BROKER_CLIENT_PASSWORD'], $appEnvironment['BROKER_TOPIC_PREFIX'], $appEnvironment['BROKER_NODE_ID'], $appEnvironment['BROKER_PLAINTEXT'], $appEnvironment['BROKER_IO_DRIVER'], $appEnvironment['BROKER_PORT'], $appEnvironment['BROKER_WSS_PORT'], $appEnvironment['BROKER_COMMAND'], $appEnvironment['BROKER_STANDBY_NAMES'], $appEnvironment['BROKER_ALLOWED_ORIGINS']);
+    unset($appEnvironment['BROKER_CLIENT_USERNAME'], $appEnvironment['BROKER_CLIENT_PASSWORD'], $appEnvironment['BROKER_TOPIC_PREFIX'], $appEnvironment['BROKER_NODE_ID'], $appEnvironment['BROKER_PLAINTEXT'], $appEnvironment['BROKER_PORT'], $appEnvironment['BROKER_WSS_PORT'], $appEnvironment['BROKER_COMMAND'], $appEnvironment['BROKER_STANDBY_NAMES'], $appEnvironment['BROKER_ALLOWED_ORIGINS']);
     $appEnvironment['DB_DRIVER'] = 'sqlite';
     $appEnvironment['DB_SQLITE_FILE'] = 'app.sqlite';
     unset($appEnvironment['DB_HOST'], $appEnvironment['DB_PORT'], $appEnvironment['DB_DATABASE'], $appEnvironment['DB_USERNAME'], $appEnvironment['DB_PASSWORD']);

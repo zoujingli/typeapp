@@ -155,7 +155,7 @@ try {
     $nodeEnvironment = $environment + [
         'BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => $mqttPassword,
         'BROKER_TOPIC_PREFIX' => 'broker-disconnect/', 'BROKER_NODE_ID' => 'disconnect-node',
-        'BROKER_PLAINTEXT' => 'true', 'BROKER_IO_DRIVER' => 'stream',
+        'BROKER_PLAINTEXT' => 'true',
         'BROKER_PORT' => substr(strrchr($addresses[1], ':'), 1),
     ];
     $node = new Process([...$command, 'broker:run'], $root, $nodeEnvironment);
@@ -282,7 +282,7 @@ try {
     $appEnvironment['DB_SQLITE_FILE'] = 'app.sqlite';
     $appEnvironment['APP_PORT'] = substr(strrchr($addresses[2], ':'), 1);
     $appEnvironment['APP_ALLOWED_HOSTS'] = $addresses[2];
-    unset($appEnvironment['BROKER_CLIENT_USERNAME'], $appEnvironment['BROKER_CLIENT_PASSWORD'], $appEnvironment['BROKER_TOPIC_PREFIX'], $appEnvironment['BROKER_NODE_ID'], $appEnvironment['BROKER_PLAINTEXT'], $appEnvironment['BROKER_IO_DRIVER'], $appEnvironment['BROKER_PORT']);
+    unset($appEnvironment['BROKER_CLIENT_USERNAME'], $appEnvironment['BROKER_CLIENT_PASSWORD'], $appEnvironment['BROKER_TOPIC_PREFIX'], $appEnvironment['BROKER_NODE_ID'], $appEnvironment['BROKER_PLAINTEXT'], $appEnvironment['BROKER_PORT']);
     $appPassword = bin2hex(random_bytes(16));
     $secrets[] = $appPassword;
     $appInstall = new Process([...$command, 'app:install', 'platform-admin', '平台管理员', 'customer-admin', '客户管理员', '断开租户'], $root, $appEnvironment + [

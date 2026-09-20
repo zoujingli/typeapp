@@ -11,7 +11,6 @@ return [
         'listen' => env('BROKER_LISTEN', '127.0.0.1'),
         'port' => env('BROKER_PORT', 8883),
         'node_id' => env('BROKER_NODE_ID', 'default'),
-        'io_driver' => env('BROKER_IO_DRIVER', 'swoole'),
         'plaintext' => env('BROKER_PLAINTEXT', false),
         'ws_port' => env('BROKER_WS_PORT', 0),
         'wss_port' => env('BROKER_WSS_PORT', 0),
@@ -38,7 +37,6 @@ return [
         'redis_ca' => env('IOT_EXPORT_REDIS_CA', ''),
     ],
     'mqtt' => [
-        'io_driver' => env('IOT_MQTT_IO_DRIVER', 'swoole'),
         'listen' => env('IOT_MQTT_LISTEN', '127.0.0.1'),
         'port' => env('IOT_MQTT_PORT', 8883),
         'ws_port' => env('IOT_MQTT_WS_PORT', 0),

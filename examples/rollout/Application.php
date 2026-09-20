@@ -208,15 +208,11 @@ final class Application
         }
         return new RedisManager(['queue' => new RedisConfiguration($queue, $queuePort), 'cache' => new RedisConfiguration($cache, $cachePort)]);
     }
-    /** 演练共用同一HTTP业务；仅显式选择swoole时启用其依赖和协程环境。 */
+    /** 演练共用同一HTTP业务；服务端统一使用Swoole并启用协程I/O。 */
     private static function server(Router $router, Factory $messages): HttpServerInterface
     {
-        $engine = (string) (getenv('TYPE_HTTP_DRIVER') ?: 'swoole');
-        if ($engine === 'swoole') {
-            \Type\Runtime\CoroutineRuntime::enableIo();
-            return new SwooleServer($router, $messages, $messages, $messages, null, new HttpControl(probes: true));
-        }
-        throw new \InvalidArgumentException('发布演练HTTP引擎不支持');
+        \Type\Runtime\CoroutineRuntime::enableIo();
+        return new SwooleServer($router, $messages, $messages, $messages, null, new HttpControl(probes: true));
     }
     public static function cache(RedisManager $manager, ExecutionScope $scope, int $release): TypedCache
     {

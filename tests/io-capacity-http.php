@@ -83,64 +83,61 @@ $resource = fopen($file, 'x+b');
 expect($resource !== false && ftruncate($resource, 16777216) && fclose($resource), '无法建立超量真实文件');
 $results = [];
 try {
-    foreach (['stream', 'swoole'] as $driver) {
-        $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-        $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
-        fclose($listener);
-        $environment['TYPE_HTTP_DRIVER'] = $driver;
-        $environment['TYPE_HTTP_PORT'] = (string) $port;
-        $environment['TYPE_CAPACITY_FILE'] = $file;
-        $server = new Process([...$policy, $binary], $work, $environment);
-        try {
-            $deadline = microtime(true) + 10;
-            do {
-                expect($server->running(), 'HTTP 容量服务提前退出：' . $server->stderr() . $server->stdout());
-                $connection = @stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 0.1);
-                if (is_resource($connection)) {
-                    fclose($connection);
-                    break;
-                }
-                usleep(10000);
-            } while (microtime(true) < $deadline);
-            foreach (['/native', '/framework', '/api/native', '/api/framework', '/metadata', '/first',
-                '/unrelated-runtime', '/unrelated-swoole', '/api/unrelated-runtime', '/api/unrelated-swoole'] as $path) {
-                [$status, $body, $headers] = httpRequest($port, 'GET', $path);
-                $capacity = !str_contains($path, 'unrelated');
-                $data = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
-                expect(
-                    $status === ($capacity ? 503 : 500)
-                    && $data['error'] === ($capacity ? 'resource_capacity_exceeded' : 'internal_error')
-                    && str_contains($headers, 'retry-after: 1') === $capacity,
-                    $driver . ' 错误响应不符：' . $path . ' ' . $status . ' ' . $body
-                );
-                expect(!str_contains($body, 'private-') && !str_contains($body, $root), '响应泄漏内部信息');
-                if (str_starts_with($path, '/api/')) {
-                    expect(preg_match('/^[a-f0-9]{32}$/D', $data['request_id'] ?? '') === 1, '应用请求关联丢失');
-                }
-                [$recovered, $content] = httpRequest($port, 'GET', '/healthy');
-                expect($recovered === 200 && $content === 'healthy', '拒绝后服务不能继续处理请求');
-                $results[] = ['driver' => $driver, 'path' => $path, 'status' => $status, 'error' => $data['error']];
+    $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
+    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    fclose($listener);
+    $environment['TYPE_HTTP_PORT'] = (string) $port;
+    $environment['TYPE_CAPACITY_FILE'] = $file;
+    $server = new Process([...$policy, $binary], $work, $environment);
+    try {
+        $deadline = microtime(true) + 10;
+        do {
+            expect($server->running(), 'HTTP 容量服务提前退出：' . $server->stderr() . $server->stdout());
+            $connection = @stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 0.1);
+            if (is_resource($connection)) {
+                fclose($connection);
+                break;
             }
-            [$status, $body, $headers] = httpRequest($port, 'HEAD', '/metadata');
-            expect($status === 503 && $body === '' && str_contains($headers, 'retry-after: 1'), 'HEAD 元信息容量拒绝丢失');
-            $connection = sendHttp($port, 'GET', '/later');
-            $wire = stream_get_contents($connection);
-            fclose($connection);
-            expect(str_starts_with($wire, 'HTTP/1.1 200') && substr_count($wire, 'HTTP/1.1') === 1
-                && !str_contains($wire, 'resource_capacity_exceeded') && !str_ends_with($wire, "0\r\n\r\n")
-                && strlen($wire) > 16384 && strlen($wire) < 32768, '首块后拒绝伪装完整响应或拼接第二份响应');
-            echo $driver . "：原生容量拒绝、应用错误边界、发送前后与恢复通过。\n";
-        } finally {
-            $stopped = $server->stop(2.0);
-            file_put_contents($work . '/' . $driver . '.stdout.log', $server->stdout());
-            file_put_contents($work . '/' . $driver . '.stderr.log', $server->stderr());
-            file_put_contents($work . '/' . $driver . '.exit.json', json_encode(['exit' => $stopped->exitCode,
-                'signal' => $stopped->signal, 'timed-out' => $stopped->timedOut], JSON_THROW_ON_ERROR) . "\n");
-            expect(!$server->running(), '本轮服务未退出');
-            $released = @stream_socket_server('tcp://127.0.0.1:' . $port, $errno, $error);
-            expect(is_resource($released), '本轮 HTTP 监听端口未释放');
-            fclose($released);
+            usleep(10000);
+        } while (microtime(true) < $deadline);
+        foreach (['/native', '/framework', '/api/native', '/api/framework', '/metadata', '/first',
+            '/unrelated-runtime', '/unrelated-swoole', '/api/unrelated-runtime', '/api/unrelated-swoole'] as $path) {
+            [$status, $body, $headers] = httpRequest($port, 'GET', $path);
+            $capacity = !str_contains($path, 'unrelated');
+            $data = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+            expect(
+                $status === ($capacity ? 503 : 500)
+                && $data['error'] === ($capacity ? 'resource_capacity_exceeded' : 'internal_error')
+                && str_contains($headers, 'retry-after: 1') === $capacity,
+                'Swoole 错误响应不符：' . $path . ' ' . $status . ' ' . $body
+            );
+            expect(!str_contains($body, 'private-') && !str_contains($body, $root), '响应泄漏内部信息');
+            if (str_starts_with($path, '/api/')) {
+                expect(preg_match('/^[a-f0-9]{32}$/D', $data['request_id'] ?? '') === 1, '应用请求关联丢失');
+            }
+            [$recovered, $content] = httpRequest($port, 'GET', '/healthy');
+            expect($recovered === 200 && $content === 'healthy', '拒绝后服务不能继续处理请求');
+            $results[] = ['transport' => 'swoole', 'path' => $path, 'status' => $status, 'error' => $data['error']];
         }
+        [$status, $body, $headers] = httpRequest($port, 'HEAD', '/metadata');
+        expect($status === 503 && $body === '' && str_contains($headers, 'retry-after: 1'), 'HEAD 元信息容量拒绝丢失');
+        $connection = sendHttp($port, 'GET', '/later');
+        $wire = stream_get_contents($connection);
+        fclose($connection);
+        expect(str_starts_with($wire, 'HTTP/1.1 200') && substr_count($wire, 'HTTP/1.1') === 1
+            && !str_contains($wire, 'resource_capacity_exceeded') && !str_ends_with($wire, "0\r\n\r\n")
+            && strlen($wire) > 16384 && strlen($wire) < 32768, '首块后拒绝伪装完整响应或拼接第二份响应');
+        echo "Swoole：原生容量拒绝、应用错误边界、发送前后与恢复通过。\n";
+    } finally {
+        $stopped = $server->stop(2.0);
+        file_put_contents($work . '/swoole.stdout.log', $server->stdout());
+        file_put_contents($work . '/swoole.stderr.log', $server->stderr());
+        file_put_contents($work . '/swoole.exit.json', json_encode(['exit' => $stopped->exitCode,
+            'signal' => $stopped->signal, 'timed-out' => $stopped->timedOut], JSON_THROW_ON_ERROR) . "\n");
+        expect(!$server->running(), '本轮服务未退出');
+        $released = @stream_socket_server('tcp://127.0.0.1:' . $port, $errno, $error);
+        expect(is_resource($released), '本轮 HTTP 监听端口未释放');
+        fclose($released);
     }
     file_put_contents($work . '/http-evidence.json', json_encode(['build-id' => $report['build-id'], 'sha256' => $report['sha256'],
         'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'source-denied' => $policy !== [],

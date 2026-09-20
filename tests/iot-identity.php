@@ -1874,7 +1874,6 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
 if (in_array('--broker', $argv, true)) {
     require_once __DIR__ . '/broker-observability.php';
     $observability = in_array('--broker-observability', $argv, true);
-    $brokerDriver = in_array('--swoole', $argv, true) ? 'swoole' : 'stream';
     $environment['BROKER_PROBE_TOKEN'] = bin2hex(random_bytes(32));
     if ($observability) {
         expect(
@@ -1900,7 +1899,7 @@ if (in_array('--broker', $argv, true)) {
     expect($browserDist === '' || ($observability && is_file($browserDist . '/index.html')), '浏览器验收需要观测场景及本次独立前端产物');
     $checks = 0;
     $brokerReport = ['status' => 'running', 'scope' => 'broker-management', 'native' => $target !== '--php', 'driver' => $driver,
-        'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'no_source' => $noSource, 'io_driver' => $brokerDriver];
+        'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'no_source' => $noSource, 'transport' => 'swoole'];
     try {
         $install = new Process([...$command, 'broker:install'], $root, $environment);
         try {
@@ -1950,7 +1949,7 @@ if (in_array('--broker', $argv, true)) {
             usleep(10000);
         } while (microtime(true) < $deadline);
         if (in_array('--quarantine-only', $argv, true)) {
-            expect($observability && $brokerDriver === 'swoole' && $browserDist === '', '隔离专项需要Swoole同步存储装置，不能组合浏览器');
+            expect($observability && $browserDist === '', '隔离专项需要Swoole同步存储装置，不能组合浏览器');
             $brokerReport['scope'] = 'broker-concurrent-quarantine';
             $brokerReport['concurrent_quarantine'] = brokerConcurrentQuarantine(
                 $GLOBALS['brokerObservabilitySync'],
@@ -2066,7 +2065,7 @@ if (in_array('--broker', $argv, true)) {
         $request('GET', '/broker/nodes?per_page=101', $token, null, 422);
         expect($request('GET', '/broker/nodes', $token, null, 200)['total'] === 0, '未启动 Broker 应显示真实空结果');
         $nodeEnvironment = $environment + ['BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => bin2hex(random_bytes(16)),
-            'BROKER_TOPIC_PREFIX' => 'broker-test/', 'BROKER_NODE_ID' => 'broker-functional' . ($browserDist !== '' ? '-' . str_repeat('node', 11) : ''), 'BROKER_PLAINTEXT' => 'true', 'BROKER_IO_DRIVER' => $brokerDriver,
+            'BROKER_TOPIC_PREFIX' => 'broker-test/', 'BROKER_NODE_ID' => 'broker-functional' . ($browserDist !== '' ? '-' . str_repeat('node', 11) : ''), 'BROKER_PLAINTEXT' => 'true',
             'BROKER_PORT' => substr(strrchr($addresses[1], ':'), 1)];
         $node = new Process([...$command, 'broker:run'], $root, $nodeEnvironment);
         $deadline = microtime(true) + 10;
@@ -2277,17 +2276,15 @@ if (in_array('--broker', $argv, true)) {
         expect(!str_contains(json_encode($audit), $password) && !str_contains(json_encode($audit), $token), '管理审计泄漏秘密');
         $inspection = null;
         if ($observability) {
-            if ($brokerDriver === 'swoole') {
-                $brokerReport['concurrent_quarantine'] = brokerConcurrentQuarantine(
-                    $GLOBALS['brokerObservabilitySync'],
-                    $client,
-                    $probeToken,
-                    $environment,
-                    $server,
-                    $checks,
-                    $base
-                );
-            }
+            $brokerReport['concurrent_quarantine'] = brokerConcurrentQuarantine(
+                $GLOBALS['brokerObservabilitySync'],
+                $client,
+                $probeToken,
+                $environment,
+                $server,
+                $checks,
+                $base
+            );
             $brokerReport['management_dependency_fault'] = brokerManagementUnavailable(
                 $GLOBALS['brokerObservabilitySync'],
                 $GLOBALS['brokerObservabilityDatabase'],

@@ -129,7 +129,7 @@ case "$task_suite" in
   application)
     composer typeapp:prepare
     php tests/build-native-application.php
-    TYPE_HTTP_DRIVER=swoole php tests/native-database-application.php build/app/type-app "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")"
+    php tests/native-database-application.php build/app/type-app "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")"
     for task_driver in mysql pgsql sqlite; do php tests/application-template.php "$task_driver" --onboarding --native --package; done
     ;;
   deployment)
@@ -184,7 +184,6 @@ case "$task_suite" in
     done
     php tests/log-consumer.php
     php tests/log-consumer.php --native
-    export TYPE_HTTP_DRIVER=swoole
     for task_mode in --php native; do
       if [[ "$task_mode" == native ]]; then
         php tests/file-http.php build/file-http/type-app
@@ -217,7 +216,7 @@ case "$task_suite" in
     for task_group in combinations outbox tenant; do
       php tests/native-database-failures.php build "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")" "$task_group"
     done
-    TYPE_HTTP_DRIVER=swoole php tests/native-database-failures.php build "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")" tenant
+    php tests/native-database-failures.php build "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")" tenant
     php tests/redis.php --php
     php tests/redis-security.php
     for task_consumer in redis cache queue; do

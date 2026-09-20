@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace app\broker\service;
 
 /**
- * 管理端受控 HTTPS CRL 源：复用 Swoole Process 阻塞 GET，不在心跳里等待网络。
+ * 管理端受控 HTTPS CRL 源：由 Swoole Process 隔离任务，并在子进程内使用协程 HTTP Client。
  * 失败不覆盖已接纳列表；不跟随跳转；客户端不能指定地址。
  */
 final class CrlHttpsFetch
@@ -90,64 +90,38 @@ final class CrlHttpsFetch
         $this->running = [];
     }
 
-    /**
-     * 子进程内阻塞 GET；校验 HTTPS、不跟随跳转、正文至多 1 MiB。
-     */
+    /** 使用 Swoole 协程 HTTP Client；校验 HTTPS、不跟随跳转、正文至多 1 MiB。 */
     private static function download(string $url, string $caFile, string $output): void
     {
         $parts = parse_url($url);
         if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || !isset($parts['host']) || !is_string($parts['host']) || $parts['host'] === '') {
             return;
         }
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'timeout' => 10,
-                'ignore_errors' => true,
-                'follow_location' => 0,
-                'max_redirects' => 0,
-            ],
-            'ssl' => [
-                'cafile' => $caFile,
-                'verify_peer' => true,
-                'verify_peer_name' => true,
-                'peer_name' => $parts['host'],
-                'disable_compression' => true,
-                'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT,
-            ],
-        ]);
-        $handle = @fopen($url, 'rb', false, $context);
-        if ($handle === false) {
-            return;
-        }
-        $status = 0;
-        $meta = stream_get_meta_data($handle);
-        $headers = $meta['wrapper_data'] ?? [];
-        if (is_array($headers)) {
-            foreach ($headers as $line) {
-                if (is_string($line) && preg_match('/^HTTP\/[0-9.]+\s+(\d{3})/', $line, $match) === 1) {
-                    $status = (int) $match[1];
-                }
-            }
-        }
-        if ($status !== 200) {
-            fclose($handle);
-            return;
+        $port = isset($parts['port']) && is_int($parts['port']) ? $parts['port'] : 443;
+        $path = (string) ($parts['path'] ?? '/');
+        if (isset($parts['query']) && is_string($parts['query']) && $parts['query'] !== '') {
+            $path .= '?' . $parts['query'];
         }
         $body = '';
-        while (!feof($handle)) {
-            $chunk = fread($handle, 8192);
-            if (!is_string($chunk) || $chunk === '') {
-                break;
+        $status = 0;
+        \Swoole\Coroutine\run(static function () use ($parts, $port, $path, $caFile, &$body, &$status): void {
+            $client = new \Swoole\Coroutine\Http\Client($parts['host'], $port, true);
+            $client->set([
+                'timeout' => 10,
+                'ssl_verify_peer' => true,
+                'ssl_allow_self_signed' => false,
+                'ssl_cafile' => $caFile,
+                'ssl_host_name' => $parts['host'],
+                'follow_location' => false,
+                'body_max_len' => 1048576,
+            ]);
+            if ($client->get($path)) {
+                $status = (int) $client->statusCode;
+                $body = is_string($client->body) ? $client->body : '';
             }
-            $body .= $chunk;
-            if (strlen($body) > 1048576) {
-                fclose($handle);
-                return;
-            }
-        }
-        fclose($handle);
-        if (!str_contains($body, 'BEGIN X509 CRL')) {
+            $client->close();
+        });
+        if ($status !== 200 || $body === '' || strlen($body) > 1048576 || !str_contains($body, 'BEGIN X509 CRL')) {
             return;
         }
         $temporary = $output . '.tmp';

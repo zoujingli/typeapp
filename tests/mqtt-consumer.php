@@ -827,7 +827,7 @@ $native = in_array('--native', $argv, true);
 $commitLifecycleOnly = in_array('--commit-lifecycle-only', $argv, true);
 expect(!$commitLifecycleOnly || array_diff(array_slice($argv, 1), ['--native', '--commit-lifecycle-only']) === [], '持久生命周期专项不能与其他场景组合');
 $connectFieldsOnly = in_array('--connect-fields-only', $argv, true);
-expect(!$connectFieldsOnly || array_diff(array_slice($argv, 1), ['--native', '--swoole', '--connect-fields-only']) === [], '连接字段专项不能与其他场景组合');
+expect(!$connectFieldsOnly || array_diff(array_slice($argv, 1), ['--native', '--connect-fields-only']) === [], '连接字段专项不能与其他场景组合');
 expect(!in_array('--client-only', $argv, true) || in_array('--client', $argv, true), '--client-only必须同时选择--client');
 expect(!in_array('--client-peer-only', $argv, true) || (in_array('--client', $argv, true) && in_array('--client-only', $argv, true)), '--client-peer-only必须同时选择--client和--client-only');
 $clientCoroutine = in_array('--client-coroutine', $argv, true);
@@ -835,10 +835,9 @@ $clientThread = in_array('--client-thread', $argv, true);
 expect(!$clientCoroutine || in_array('--client-peer-only', $argv, true), '协程客户端专项需要--client-peer-only');
 expect(!$clientThread || ($clientCoroutine && $native), '业务线程客户端专项需要原生协程产物');
 $conformance = in_array('--conformance-only', $argv, true);
-expect(!$conformance || array_diff(array_slice($argv, 1), ['--native', '--swoole', '--conformance-only']) === [], '一致性套件使用独立授权装置，不能组合其他场景');
+expect(!$conformance || array_diff(array_slice($argv, 1), ['--native', '--conformance-only']) === [], '一致性套件使用独立授权装置，不能组合其他场景');
 $identityOnly = in_array('--identity-only', $argv, true);
-expect(!$identityOnly || array_diff(array_slice($argv, 1), ['--native', '--swoole', '--identity-only']) === [], '身份专项使用独立授权装置，不能组合其他场景');
-$ioDriver = in_array('--swoole', $argv, true) ? 'swoole' : 'stream';
+expect(!$identityOnly || array_diff(array_slice($argv, 1), ['--native', '--identity-only']) === [], '身份专项使用独立授权装置，不能组合其他场景');
 $consumer = $root . '/build/mqtt-consumer-' . bin2hex(random_bytes(5));
 expect(mkdir($consumer . '/app', 0700, true), '无法创建独立 MQTT 消费者');
 $toolchain = json_decode(file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
@@ -884,9 +883,7 @@ if (in_array('--client', $argv, true)) {
 copy($root . '/toolchain.lock.json', $consumer . '/toolchain.lock.json');
 $configuration = ['name' => 'type-mqtt-connection', 'entry' => 'app/main.php', 'sources' => ['app/main.php'],
     'output' => 'build/mqtt/type-app', 'build-directory' => 'build/mqtt/compiler'];
-if ($ioDriver === 'swoole' || $clientCoroutine) {
-    $configuration['runtime'] = [PHP_OS_FAMILY => ['extensions' => ['swoole']]];
-}
+$configuration['runtime'] = [PHP_OS_FAMILY => ['extensions' => ['swoole']]];
 if ($clientThread) {
     $configuration['threads'] = ['client-peer' => 'clientPeerThread'];
 }
@@ -929,7 +926,7 @@ if ($native) {
     }
 } else {
     $runtimeOptions = [];
-    if (($ioDriver === 'swoole' || $clientCoroutine) && successful([PHP_BINARY, '-r', 'echo extension_loaded("swoole") ? "yes" : "no";'], $consumer) === 'no') {
+    if (successful([PHP_BINARY, '-r', 'echo extension_loaded("swoole") ? "yes" : "no";'], $consumer) === 'no') {
         $module = (string) (getenv('TYPE_SWOOLE_MODULE') ?: ini_get('extension_dir') . '/swoole.so');
         expect(is_file($module), '原生事件测试需要匹配SDK的Swoole模块');
         $runtimeOptions = ['-d', 'extension=' . $module, '-d', 'swoole.enable_library=Off'];
@@ -940,7 +937,6 @@ if ($native) {
 $environment = getenv();
 $environment['CLIENT_COROUTINE'] = $clientCoroutine ? '1' : '0';
 $environment['CLIENT_THREAD'] = $clientThread ? '1' : '0';
-$environment['MQTT_IO_DRIVER'] = $ioDriver;
 $environment['MQTT_PASSWORD'] = 'mqtt-test-secret';
 $environment['MQTT_CERTIFICATE'] = '';
 $environment['MQTT_PRIVATE_KEY'] = '';
@@ -1097,7 +1093,7 @@ if (in_array('--cluster', $argv, true) || in_array('--cluster-only', $argv, true
 if ($conformance) {
     $verified['conformance'] = mqttConformanceCases($root, $consumer, $command, $workerCommand, $environment);
 }
-$evidence = ['mode' => $native ? 'aot' : 'php', 'io-driver' => $ioDriver, 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
+$evidence = ['mode' => $native ? 'aot' : 'php', 'transport' => 'swoole', 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
     'read-cases' => $readCaseCount,
     'no-source-runtime' => $native && PHP_OS_FAMILY === 'Darwin' ? 'kernel-denied-production-and-generated-source' : 'not-verified',
     'checks' => $verified, 'build' => $native ? array_intersect_key($report, array_flip(['build-id', 'sha256', 'typephp', 'typephp-reference', 'phpx', 'phpx-reference', 'production-packages'])) : null];

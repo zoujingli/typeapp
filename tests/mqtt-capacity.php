@@ -273,7 +273,6 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
 /** 验证真实网络连接上限；无持久worker的QoS0引擎场景不能代替设备同步接收及24小时负载。 */
 function mqttConnectionScaleCases(string $consumer, array $command, array $environment): array
 {
-    expect(($environment['MQTT_IO_DRIVER'] ?? '') === 'swoole', '超过512连接必须显式选择原生事件驱动');
     $devices = (int) (getenv('MQTT_SCALE_DEVICES') ?: 10000);
     expect($devices > 512 && $devices <= 10000, '连接规模须为513..10000');
     $services = 100;

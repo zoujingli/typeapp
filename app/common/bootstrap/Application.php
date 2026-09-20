@@ -489,7 +489,7 @@ final class Application
 
     /**
      * 应用设备接入角色；HTTP及注册继续支持三库，持久MQTT设备会话只用约定的PostgreSQL同步后端。
-     * @param list<string> $arguments 持久worker接受明确IPC端点；节点硬隔离登记接受精确运行身份与已完成的隔离证明。
+     * @param list<string> $arguments 持久worker通过 Swoole Process 管道接入；节点硬隔离登记接受精确运行身份与已完成的隔离证明。
      */
     private static function mqtt(Repository $settings, string $basePath, string $role, array $arguments): void
     {
@@ -498,8 +498,8 @@ final class Application
         }
         $driver = DatabaseFactory::create($settings, $basePath);
         if ($role === 'iot:mqtt-store' || $role === 'iot:ingest-store') {
-            if (count($arguments) !== 1 || !str_starts_with($arguments[0], '--store-worker=')) {
-                throw new InvalidArgumentException('持久worker需要明确IPC端点');
+            if ($arguments !== ['--store-worker-pipe']) {
+                throw new InvalidArgumentException('持久worker需要 Swoole Process 管道');
             }
             $store = new PostgresStore(
                 $driver,
@@ -515,9 +515,9 @@ final class Application
                 maximumApplicationBytes: Settings::integer($settings, 'app.mqtt.maximum_application_bytes', 1, 2147483648)
             );
             if ($role === 'iot:ingest-store') {
-                IngestionWorker::work($store, substr($arguments[0], 15));
+                IngestionWorker::work($store, 'pipe');
             } else {
-                PendingCommit::work($store, substr($arguments[0], 15));
+                PendingCommit::work($store, 'pipe');
             }
             return;
         }
@@ -600,7 +600,6 @@ final class Application
                 maximumConnections: Settings::integer($settings, 'app.mqtt.maximum_connections', 1, 10100),
                 maximumDeviceConnections: Settings::integer($settings, 'app.mqtt.maximum_device_connections', 1, 10000),
                 maximumServiceConnections: Settings::integer($settings, 'app.mqtt.maximum_service_connections', 0, 100),
-                ioDriver: $settings->text('app.mqtt.io_driver'),
                 clustered: $settings->boolean('app.mqtt.clustered'),
                 wsPort: Settings::integer($settings, 'app.mqtt.ws_port', 0, 65535),
                 wssPort: Settings::integer($settings, 'app.mqtt.wss_port', 0, 65535),
@@ -931,10 +930,10 @@ final class Application
             return 0;
         }
         if ($command === 'broker:store') {
-            if (DatabaseFactory::name($settings) !== 'pgsql' || !str_starts_with($arguments[0], '--store-worker=')) {
-                throw new InvalidArgumentException('独立持久worker需要PostgreSQL和明确IPC端点');
+            if (DatabaseFactory::name($settings) !== 'pgsql' || $arguments !== ['--store-worker-pipe']) {
+                throw new InvalidArgumentException('独立持久worker需要PostgreSQL和 Swoole Process 管道');
             }
-            PendingCommit::work(new PostgresStore(DatabaseFactory::create($settings, $basePath), $settings->text('app.broker.standby')), substr($arguments[0], 15));
+            PendingCommit::work(new PostgresStore(DatabaseFactory::create($settings, $basePath), $settings->text('app.broker.standby')), 'pipe');
             return 0;
         }
         $worker = self::brokerWorker($settings);
@@ -998,7 +997,6 @@ final class Application
                 certificate: $certificate === '' || Settings::absolutePath($certificate) ? $certificate : $basePath . '/' . $certificate,
                 privateKey: $privateKey === '' || Settings::absolutePath($privateKey) ? $privateKey : $basePath . '/' . $privateKey,
                 allowPlaintext: $plaintext,
-                ioDriver: $settings->text('app.broker.io_driver'),
                 clustered: $worker !== [],
                 wsPort: Settings::integer($settings, 'app.broker.ws_port', 0, 65535),
                 wssPort: Settings::integer($settings, 'app.broker.wss_port', 0, 65535),
@@ -1019,7 +1017,7 @@ final class Application
                 [
                     'host' => $host, 'port' => $port, 'transport' => $plaintext ? 'tcp' : 'tls',
                     'ws_port' => $options->wsPort, 'wss_port' => $options->wssPort, 'mtls_port' => $options->mtlsPort,
-                    'io_driver' => $options->ioDriver, 'plaintext' => $plaintext ? 1 : 0,
+                    'plaintext' => $plaintext ? 1 : 0,
                     'allowed_origins' => implode(',', $options->allowedOrigins),
                 ],
                 $worker !== [],

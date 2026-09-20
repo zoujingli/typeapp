@@ -812,7 +812,6 @@ expect(is_array($environment), '无法读取 MQTT mTLS 测试环境');
 unset($environment['PHPRC'], $environment['PHP_INI_SCAN_DIR']);
 putenv('PHPRC');
 putenv('PHP_INI_SCAN_DIR');
-$environment['MQTT_IO_DRIVER'] = 'swoole';
 $environment['MQTT_PASSWORD'] = 'mqtt-test-secret';
 $environment['MQTT_CERTIFICATE'] = $certs['server'];
 $environment['MQTT_PRIVATE_KEY'] = $certs['key'];

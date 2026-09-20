@@ -467,10 +467,6 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
     $environment['IOT_MQTT_PRIVATE_KEY'] = 'private.pem';
     $environment['IOT_MQTT_PORT'] = (string) $port;
     $environment['IOT_MQTT_NODE_ID'] = 't14-test';
-    if (in_array('--mqtt-stream', $GLOBALS['argv'], true)) {
-        $environment['IOT_MQTT_IO_DRIVER'] = 'stream';
-        $environment['IOT_MQTT_MAXIMUM_CONNECTIONS'] = '256';
-    }
     $ingestion = in_array('--ingestion', $GLOBALS['argv'], true);
     if ($ingestion) {
         expect(array_intersect($GLOBALS['argv'], ['--business', '--history', '--aggregate']) === [], '真实接收与查询投影使用各自独立数据');
