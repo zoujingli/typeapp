@@ -2,22 +2,20 @@
 
 ## 复用与清理
 
-| 需要的行为 | 直接复用 | 保留的项目职责与旧路径处置 |
+| 需要的行为 | 直接复用 | 保留的项目职责 |
 | --- | --- | --- |
 | 连接与 TLS | 原生 Socket `connect()`、`setProtocol()`、`sslHandshake()`；沿用 `open_ssl`、`ssl_verify_peer`、`ssl_host_name`、`ssl_cafile`、`ssl_protocols`。 | 明确 IP 与证书身份，TLS 1.2/1.3，连接和握手共用总截止。握手分段读之外以单次原生 Timer 取消到期等待。 |
-| 接收与发送 | `recv()`、`sendAll()` 及原生超时。 | 最多一个报文的输入预算、Receive Maximum、MQTT 保活和原始半包期限。协程路径不再经过旧 select 查询或手写部分发送循环；同步兼容分支继续保留。 |
+| 接收与发送 | `recv()`、`sendAll()` 及原生超时。 | 最多一个报文的输入预算、Receive Maximum、MQTT 保活和原始半包期限。协程模式使用 Swoole Coroutine Socket，同步模式使用 Swoole Client；两者共用同一份 MQTT 状态机。 |
 | 归属、取消与关闭 | 既有 `ExecutionOwner`、Socket 原生取消和关闭。 | 实例固定在首次建连的协程，同线程控制方可停止；先撤销本地持有再关闭，防止被唤醒的失败清理重复关闭。 |
 | 协议结果 | 现有 Message、PacketReader 与 Client 状态机。 | 手动 PUBACK、旧 receipt 拒绝、接收窗口、未知发布与显式重连保持原有语义。没有新增 Client/Socket 管理层或原生补丁。 |
 
 `coroutine: true` 不会替应用建立事件循环或创建业务协程；没有协程上下文时返回 `mqtt_client_coroutine_required`。基础能力检查沿用 `CoroutineRuntime::assertAvailable()`，不在业务线程重新修改 hook。`stop()` 返回后，被唤醒的原等待报告 `mqtt_client_stopped`；直接原生取消报告 `mqtt_client_cancelled`，超时报告 `mqtt_client_timeout`。这些错误均不能证明远端发布未发生。
 
-## 原生分包的暂缓条件
+## 原生分包边界
 
-固定源码为 Swoole `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`（版本字符串 6.2.1）。[原生 recv_packet](https://github.com/swoole/swoole-src/blob/0f3bee2f0ed8704ce33a336e7feabb0115411dd7/src/coroutine/socket.cc) 在返回值小于等于零时清空读缓冲；[MQTT 长度解析](https://github.com/swoole/swoole-src/blob/0f3bee2f0ed8704ce33a336e7feabb0115411dd7/src/protocol/mqtt.cc)也不拒绝非最短编码。
+当前锁定的 Swoole 构建提供 Socket 连接、TLS、收发和超时，但其报文辅助接口不能同时满足 MQTT 半包续收、非最短编码拒绝和应用总期限。因此 `Client::frame()` 保留一份有界输入缓冲，继续由 TypeApp 校验固定头、剩余长度、属性和 QoS；不在其上增加后台读循环、第二套完成通道或自建协议引擎。
 
-本地原生复现发送 `30 03 61`，第一次 `recvPacket(0.04)` 超时，再发 `62 63`，下一次字节读取只得到 `62 63`，先前半包已经丢弃。现有公共契约要求短 `receive()` 超时返回 null 并允许继续接收同一报文；完整缓冲帧也不应因业务处理超过五秒而丢失。因此不能直接删掉 `Client::frame()`，也不为了替换方法名新增后台读循环、另一套完成通道或原生补丁。
-
-后续若原生接口能保留半包并暴露实际接收期限，或已确认的连接生命周期能以有界方式等价表达上述行为，再替换网络累积缓冲，继续保留固定头、最短编码、属性及 QoS 校验。当前只有一份应用输入缓冲，未同时启用原生 MQTT 分包。
+升级 Swoole 后，只有在原生接口能保留半包、暴露接收期限并覆盖相同输入校验时，才重新评估这份缓冲；升级前后的 PHP、AOT 和真实 TCP/TLS 对端验证必须使用同一套场景。
 
 ## 验证入口
 

@@ -42,7 +42,7 @@ php vendor/bin/type doctor type-app.json build
 
 正式目标包括 Linux x64/ARM64、macOS ARM64 和 Windows x64。构建、运行库、数据库与停止语义都需要在实际目标环境验证；Docker 或 WSL 中的 Linux 结果不能替代 Windows/macOS 原生结果。
 
-实际状态见[平台与验收](platforms.md)。Windows 的组件产物已通过部署审计与 SQLite 对照，但完整应用尚因缺少 Swoole 模块而未进入 AOT；ARM64 环境的完整应用仍受线程 SDK 接入限制。以下命令描述工具已有入口，执行前仍须满足所选应用和平台的全部前置条件。
+实际状态见[平台与验收](platforms.md)。每个平台都必须提供匹配的 Swoole、PHPX、libphp 和生产扩展，再以同一产物完成完整应用 AOT、通信、数据库和无源码部署验收。以下命令描述工具已有入口，执行前仍须满足所选应用和平台的全部前置条件。
 
 ## 全量编译
 
@@ -104,7 +104,7 @@ build/release/run help
 
 设备 MQTT 与接收角色要求 PostgreSQL 严格同步主备和真实 TLS。先完成业务迁移及 `iot:mqtt-install`，再由角色宿主启动相应入口；`IOT_MQTT_COMMAND` 明确指向同一已验证应用产物。运行包必须携带匹配的 Swoole 原生扩展。管理 API 三库通过不构成 MQTT 三种存储后端或高可用通过证明。
 
-当前应用的 Broker 接入策略依赖 Unix 非阻塞管道，`iot:mqtt` 在 Windows 启动时仍会拒绝；这是待迁移的项目入口限制。Swoole 官方已有 Windows 通信与协程能力，应用须完成线程/协程接入及原生验收，详见[平台与执行方式](communications.md#平台与执行方式)。
+Broker 接入、持久工作和设备授权均使用 Swoole 官方 Process、Thread 或 Coroutine 管道与网络能力；平台按实际构建能力选择执行方式，不按操作系统名称拒绝通信入口。完整角色隔离、停止和原生验收仍以对应平台产物证据为准，详见[平台与执行方式](communications.md#平台与执行方式)。
 
 每个 Broker 配置唯一稳定节点名，并保留本次运行身份。`iot:mqtt-fence` 只登记精确旧实例已完成的基础设施硬隔离，不能代替断开网络或停止旧主。私有导出目录、WAL、备份、秘密及设备缓存与 Web 静态目录分开管理；所有角色保留有界停止、失败日志与未知结果。
 

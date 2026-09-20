@@ -213,10 +213,10 @@ HTTP 中间件不会自动应用到 Upgrade、连接和后续消息。共用端�
 | 升级后立即关闭 1002/1008 | 子协议与 Origin 配置，以及应用鉴权 |
 | HTTPS/WSS 验证失败 | 证书链、SAN、CA、有效期、实际 TLS 监听 |
 | 消息超限或慢客户端被关闭 | 核对包、消息与发送队列三种上限 |
-| `websocket_unsupported_platform` | 当前经典服务入口尚未完成该平台的官方协程升级路线适配 |
+| `websocket_unsupported_platform` | 当前构建没有可用的 Swoole WebSocket Server 或协程升级能力 |
 
-先运行同端口 HTTP/WS，再验证 HTTPS/WSS；还应覆盖错误 Origin、无身份访问、分片消息、空消息、慢消费者、异常断线与整体停止。当前 macOS PHP 双端已有 WSS 与共用监听证据，独立 AOT 已覆盖明文 WS，原生产物 WSS 尚未通过；经典组件在 Windows 拒绝启动。不要将这些范围外推为所有平台验收。全量编译与交付要求见[构建与部署](../deployment.md)。
+先运行同端口 HTTP/WS，再验证 HTTPS/WSS；还应覆盖错误 Origin、无身份访问、分片消息、空消息、慢消费者、异常断线与整体停止。每个平台以同一 Swoole 构建产物分别记录 PHP、AOT、协议和资源回收结果，不能将局部场景外推为完整平台验收。全量编译与交付要求见[构建与部署](../deployment.md)。
 
-最新跨平台验收中的 Linux ARM64/macOS ARM64 结果为 PHP 模式，覆盖 HTTP 共用监听和 WSS；未重跑完整 WebSocket AOT，不能沿用单个明文候选结论认定全部平台通过。统一状态见[平台与验收](../platforms.md#通信结果如何理解)。
+跨平台结果按当前 Swoole 构建产物记录，覆盖 HTTP 共用监听、WSS、协议边界和资源回收；统一状态见[平台与验收](../platforms.md#通信结果如何理解)。
 
 握手、帧与关闭语义参考 [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455.html)。

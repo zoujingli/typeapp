@@ -1,8 +1,8 @@
 # type-mqtt
 
-可独立安装和独立进程运行的 TypeApp MQTT 服务端组件。当前提供 MQTT 3.1.1/5.0 的 TCP/TLS 连接、认证、CONNECT/CONNACK、PING、DISCONNECT、客户端标识接管、精确及通配订阅/取消、MQTT 5 订阅选项与标识、二进制 QoS 0 路由，以及明确配置 PostgreSQL 同步持久存储后的QoS 1/2 双向交付、保留消息、持久会话、遗嘱与延迟遗嘱、MQTT 5 共享订阅、重启恢复及跨节点接管与路由。不能将本组件当前状态称为完整 Broker。
+可独立安装和独立进程运行的 TypeApp MQTT 服务端组件。提供 MQTT 3.1.1/5.0 的 TCP/TLS 连接、认证、CONNECT/CONNACK、PING、DISCONNECT、客户端标识接管、精确及通配订阅/取消、MQTT 5 订阅选项与标识、二进制 QoS 0 路由，以及明确配置 PostgreSQL 同步持久存储后的 QoS 1/2 双向交付、保留消息、持久会话、遗嘱与延迟遗嘱、MQTT 5 共享订阅、重启恢复及跨节点接管与路由。
 
-通信与基础并发必须使用 Swoole 官方能力；进程不可用时使用官方线程/协程。当前组件仍有旧通信分支和平台入口限制，需按[最新架构与实现差距](https://github.com/zoujingli/typeapp/blob/main/docs/development/current-implementation-alignment.md#swoole-唯一底层与单程序交付)继续迁移。
+通信与基础并发统一使用 Swoole 官方能力；服务端监听由 Swoole Server 管理，客户端同步模式使用 Swoole Client，协程模式使用 Swoole Coroutine Socket，持久 worker 使用 Swoole Process 管道。进程不可用时按目标平台使用官方线程或协程，并重新核对隔离与停止语义。
 
 ## 安装与版本
 
@@ -21,7 +21,7 @@ composer require zoujingli/type-mqtt:dev-main
 
 ## 安装与启动
 
-要求 PHP 8.4/8.5、OpenSSL、PCRE、JSON、PDO、`type-runtime` 与 `type-orm`；启用示例 PostgreSQL 存储时另安装 `type-orm-pgsql` 和原生 `pdo_pgsql`。Unix 的独立进程停止使用 PCNTL；Windows 使用 runtime 已有控制台信号入口。本包第一方源码按 Apache-2.0 提供；当前仍由主仓维护，是否进入分发批次由维护者按协议、容量和平台验收决定。本地独立消费者使用真实安装副本验证，不把主仓源码或实验结果当作稳定发布。
+要求 PHP 8.4/8.5、Swoole、OpenSSL、PCRE、JSON、PDO、`type-runtime` 与 `type-orm`；启用示例 PostgreSQL 存储时另安装 `type-orm-pgsql` 和原生 `pdo_pgsql`。服务端、客户端、持久 worker 和协程 HTTP 均使用 Swoole 官方能力，按目标平台实际构建能力选择进程、线程或协程执行方式。本包第一方源码按 Apache-2.0 提供；当前仍由主仓维护，是否进入分发批次由维护者按协议、容量和平台验收决定。本地独立消费者使用真实安装副本验证，不把主仓源码或实验结果当作稳定发布。
 
 ```sh
 composer require zoujingli/type-mqtt:'~1.0.0@dev'
@@ -57,10 +57,10 @@ composer require zoujingli/type-mqtt:'~1.0.0@dev'
 | `MQTT_CERTIFICATE` | PEM 服务端证书链路径；第一份为叶证书，其后可跟中间 CA。过期、尚未生效或缺少 serverAuth 的叶证书拒绝启动。已启动后叶证书到期则断开 TLS 会话（MQTT 5 `0x8b`），并拒绝新的 TLS 接入。 |
 | `MQTT_PRIVATE_KEY` | PEM 私钥路径；启动检查与证书匹配，不匹配则拒绝启动。 |
 | `MQTT_PRIVATE_KEY_PASSPHRASE` | 加密私钥口令，可为空。Swoole 6.2 原生入口不接线 `ssl_passphrase`，Broker 启动期解密为临时钥再监听，退出删除。口令错误拒绝启动，不进入日志。 |
-| `MQTT_SNI_HOST`、`MQTT_SNI_CERTIFICATE`、`MQTT_SNI_PRIVATE_KEY` | 可选一组 SNI 主机名与证书链。三者须同时提供；主机名须为小写域名。Swoole `ssl_sni_certs` 按 SNI 选用该链，缺省仍用 `MQTT_CERTIFICATE`。SNI 私钥本切片不解密口令。过期或非 serverAuth 的 SNI 叶证书拒绝启动。需要 `MQTT_IO_DRIVER=swoole`。 |
+| `MQTT_SNI_HOST`、`MQTT_SNI_CERTIFICATE`、`MQTT_SNI_PRIVATE_KEY` | 可选一组 SNI 主机名与证书链。三者须同时提供；主机名须为小写域名。Swoole `ssl_sni_certs` 按 SNI 选用该链，缺省仍用 `MQTT_CERTIFICATE`。SNI 私钥本切片不解密口令。过期或非 serverAuth 的 SNI 叶证书拒绝启动。 |
 | `--host`、`--port` | 明确 IPv4 或 IPv6 地址与端口，默认 `127.0.0.1:8883`。IPv6 原生监听使用 `SWOOLE_SOCK_TCP6`。 |
 | `--plaintext` | 仅供独立客户端调试的显式明文开关，不与 TLS 配置混用，生产设备不用此开关。 |
-| `--ws-port`、`--wss-port` | 可选 MQTT over WebSocket 端口，`0` 关闭。明文 WS 必须同时 `--plaintext`；WSS 与 TCP TLS 共用证书，二者不能同进程同时开启。需要 `MQTT_IO_DRIVER=swoole`。配置 `MQTT_CLIENT_CA` 时，WSS 主端口校验客户端证书。 |
+| `--ws-port`、`--wss-port` | 可选 MQTT over WebSocket 端口，`0` 关闭。明文 WS 必须同时 `--plaintext`；WSS 与 TCP TLS 共用证书，二者不能同进程同时开启。配置 `MQTT_CLIENT_CA` 时，WSS 主端口校验客户端证书。 |
 | `--mtls-port`、`MQTT_CLIENT_CA`、`MQTT_CLIENT_CRL`、`MQTT_CLIENT_CRL_URL`、`MQTT_CLIENT_CRL_INTERVAL`、`MQTT_CLIENT_REVOKE`、`MQTT_CLIENT_OVERLAP`、`MQTT_CLIENT_FINGERPRINT` | 可选专用 mTLS TCP 端口。Swoole 用 CA 校验客户端证书链；`MQTT_CLIENT_CA` 可为含根与签发中间 CA 的 PEM 包，文件更新后按 mtime 重载 SSL_CTX，只影响新连接。CRL 用包内能核验签名的那份证书。Broker 再按 SSL 客户端用途核对有效期，并在配置了 PEM CRL 时拒绝已吊销证书。`MQTT_CLIENT_REVOKE` 是平台直接吊销的序列号名单，不经 CA 签名，本进程已接纳项只增不减。`MQTT_CLIENT_OVERLAP` 是换证重叠指纹窗口，缺截止默认 24 小时、最长 24 小时，清零或到期后断开旧证书；吊销与到期无重叠宽限。CRL 文件更新、HTTPS 源刷新、CRL 文件缺失或过期、平台名单增列、重叠结束或已连接证书到期后断开对应会话。配置了 CRL 时文件缺失会拒绝该 CA；拉取失败且旧列表仍有效则继续使用。`MQTT_CLIENT_CRL_URL` 须为启动期 https 地址，默认每 300 秒由 `Swoole\Process` 拉取并写入本地 CRL 文件；失败保留旧列表。示例按指纹映射 `mtls` 身份，可逗号分隔多个指纹。无 CONNECT 凭据可单独认证；同时提供错误密码不会降级。普通 TLS 端口仍只接受账号凭据。 |
 | `--allowed-origins` | 逗号分隔的小写 Origin 白名单；有 Origin 时精确匹配，缺失 Origin 仍走 MQTT 认证。 |
 | `MQTT_WORKER_COMMAND` | 显式启动同一应用持久 worker 的 JSON 参数数组，例如部署目录内的 `["./type-app"]`。相对路径以启动工作目录为准；不经 shell，不从 PHP_BINARY 猜测原生入口。缺省只开放 QoS 0。 |
@@ -70,8 +70,7 @@ composer require zoujingli/type-mqtt:'~1.0.0@dev'
 | `--install-store` | 监听前显式建立组件表和索引，仍经过有截止的 worker 与同步证明；运行时不自动迁移。 |
 | `--terminate-session`、`--actor` | 明确终止 Client ID 对应会话并记录管理员身份；仅用于受控管理命令，不向设备暴露。 |
 | `--store-statistics` | 通过有界 worker 读取同一事务快照的分类用量及额度；失败或未知仍返回 `CommitResult`，不能把空值当零积压。 |
-| `MQTT_IO_DRIVER` | 当前示例须显式设置为 `swoole`，要求匹配运行时的 Swoole >=6.2 <7，允许固定官方内置 PHP 库；内部迁移完成后删除此选择键。 |
-| `MQTT_MAX_CONNECTIONS`、`MQTT_MAX_DEVICE_CONNECTIONS`、`MQTT_MAX_SERVICE_CONNECTIONS` | `swoole` 配置下示例默认及上限10100。分类额度默认10000设备及100服务，实际受物理预算限制，规则见下文。 |
+| `MQTT_MAX_CONNECTIONS`、`MQTT_MAX_DEVICE_CONNECTIONS`、`MQTT_MAX_SERVICE_CONNECTIONS` | Swoole Server 配置下示例默认及上限 10100。分类额度默认 10000 设备及 100 服务，实际受物理预算限制，规则见下文。 |
 | `MQTT_MAX_SESSIONS` | 存储会话总额，默认20000，包含当前在线零期限会话记录及应用会话，可调低。 |
 | `MQTT_DEVICE_MAX_MESSAGES`、`MQTT_DEVICE_MAX_BYTES` | 单设备会话默认10000条/16 MiB，可调低。 |
 | `MQTT_APPLICATION_MAX_MESSAGES`、`MQTT_APPLICATION_MAX_BYTES` | 单应用消费会话默认1000000条/2 GiB，可调低。 |
@@ -133,7 +132,7 @@ try {
 | `unsubscribe(string $filter, float $timeout = 5.0): int` | 等待UNSUBACK；0表示取消，0x11表示原订阅不存在。 |
 | `publish(Message $message, float $timeout = 5.0): int` | 只接管QoS1，收到合法成功PUBACK后返回0/0x10；负确认抛`ProtocolError`。网络失败或截止后可能已经发布，不能宣称未接收。 |
 | `receive(float $timeout = 1.0): ?array` | 返回`message`、不透明`receipt`、`duplicate`及`subscription_identifiers`；普通等待截止返回null，网络和协议失败抛异常。 |
-| `acknowledge(string $receipt, int $reason = 0, float $timeout = 3.0): void` | 明确写出入站PUBACK；不自动调用，不接受旧网络凭据或重复确认。QoS0的receipt为空，不应确认。 |
+| `acknowledge(string $receipt, int $reason = 0, float $timeout = 3.0): void` | 明确写出入站 PUBACK；不自动调用，不接受过期回执凭据或重复确认。QoS 0 的 receipt 为空，不应确认。 |
 | `close(bool $graceful = true): void`、`stop(): void` | close有界尝试DISCONNECT后释放网络；stop立即取消等待，不确认任何消息。 |
 | `statistics(): array` | 返回连接、缓冲字节、队列、未确认数及未知发布标记；不包含密码、载荷或Topic。 |
 
@@ -195,9 +194,9 @@ MQTT 5 CONNACK 声明 Receive Maximum=32、Topic Alias Maximum=32 和配置的�
 | `release` | `operation_id/message_id/session_id/reason`；同步保存入站 QoS 2 的 PUBREL（reason=0/0x92），提交成功后才能发送 PUBCOMP。 |
 | `abandon` | `operation_id/session_id`；显式终结当前清洁会话的 pending 交付；共享 QoS 1 按下述会话终止策略归还仍存在的组，原件和终结行保留。 |
 
-`PendingCommit` 每次持久操作默认五秒硬截止，失败后精确清理另有五秒预算；全局最多 32 个工作或未证明回收的隔离名额。IPC 是随机身份令牌保护的回环 socket，请求和响应各最多 2 MiB；大响应在 worker 退出后仍在原截止内分次排空。停止本地 worker 不能保证 PostgreSQL 的 SyncRep 后端退出，因此未知结果另外调用 `cleanup($operationId)`，精确终止同数据库、角色和唯一 application_name 的后端并验证消失。无法证明回收时保留隔离配额，继续耗尽后拒绝新接管；未知写入不自动重试。Broker 空闲连接不持有数据库事务。强制杀死整个服务仍不等于优雅清理，不能据本切片推定跨节点故障恢复已完成。
+`PendingCommit` 每次持久操作默认五秒硬截止，失败后精确清理另有五秒预算；全局最多 32 个工作或未证明回收的隔离名额。持久 worker 由 Swoole Process 创建并通过受控管道交换消息，请求和响应各最多 2 MiB；大响应在 worker 退出后仍在原截止内分次排空。停止本地 worker 不能保证 PostgreSQL 的 SyncRep 后端退出，因此未知结果另外调用 `cleanup($operationId)`，精确终止同数据库、角色和唯一 application_name 的后端并验证消失。无法证明回收时保留隔离配额，继续耗尽后拒绝新接管；未知写入不自动重试。Broker 空闲连接不持有数据库事务。强制杀死整个服务仍不等于优雅清理，不能据本切片推定跨节点故障恢复已完成。
 
-正常停机时，已经启动的持久工作继续使用原有截止；相关工作释放后，按原始结束时间完成零期限会话删除或持久会话离线登记。停机不主动取消已启动工作，也不刷新截止；尚未启动的排队请求明确拒绝，真实提交失败或未知仍计入统计，停机期间不无限重试。主仓 `php tests/mqtt-consumer.php --native --swoole --session-shutdown-only` 用真实会话行锁精确定位结束事务，覆盖双版本 TCP/TLS、零/有限/无限期限及同步备库退出，并用表锁定位消息接收、会话恢复和保留读取，验证停机排空及重启后的真实交付；完整 `--session` 或 `--session-only` 同时运行这一专项。
+正常停机时，已经启动的持久工作继续使用原有截止；相关工作释放后，按原始结束时间完成零期限会话删除或持久会话离线登记。停机不主动取消已启动工作，也不刷新截止；尚未启动的排队请求明确拒绝，真实提交失败或未知仍计入统计，停机期间不无限重试。主仓 `php tests/mqtt-consumer.php --native --session-shutdown-only` 用真实会话行锁精确定位结束事务，覆盖双版本 TCP/TLS、零/有限/无限期限及同步备库退出，并用表锁定位消息接收、会话恢复和保留读取，验证停机排空及重启后的真实交付；完整 `--session` 或 `--session-only` 同时运行这一专项。
 
 同一发布连接按接收顺序启动接管工作，普通有序 Topic 的同源消息不会因数据库抢锁或 worker 结果回收次序反转。尚未启动的消息仍占上述32项额度，排队最多五秒，启动后继续使用既有工作及清理截止；其他连接可并发推进。前项拒绝或未知时取消该来源尚未启动的后项，未启动请求不产生持久副本，也不记作未知写入。非集群 QoS 0 保留接管之后的普通 QoS 0 同样按序等待，并复用接收时选定的在线目标；这类普通 QoS 0 不因此写入持久存储或取得协议确认。集群 QoS 0 的有界在线转发事实及断线丢弃规则见下文。
 
@@ -231,9 +230,9 @@ QoS 1 已分配副本断线后等待原 Session 恢复，Session 终止时才可
 
 `Broker` 第六参数 `classify` 为可选 `Closure(ConnectPacket): string`，在认证成功后调用，返回 `device` 或 `application`；省略时全部按设备处理。消费者必须依据受信认证身份分类，客户端标识前缀、User Property 或客户端自称服务都不授予较大额度。示例以已通过独立服务密码认证的用户名分类；分类不扩大 Topic 授权。`session_open.capacity_class` 保存分类，旧调用者缺省 `device`；已有会话恢复时分类不一致拒绝 `0x87`，显式 Clean Start 才按新分类建立新会话。升级前先通过 `--install-store` 添加该字段，历史会话按设备处理。
 
-`BrokerOptions` 的分类额度上限为10000设备和100服务。当前创建时显式传入 `ioDriver: 'swoole'`，物理上限可设置为10100；该参数及旧网络分支尚待删除，普通 TCP/TLS 仍需完全接入原生 Server/Socket。注入分类器时实际服务额度取配置值与“物理上限减一”的较小者，设备额度取配置值与剩余物理名额的较小者；示例当前配置默认10000设备加100服务。没有分类器时不预留无法认证的服务名额。分类时先预留名额，再处理接管及持久会话；同 Client ID 的替换不重复占分类名额。未认证握手及待登记关闭仍共用物理预算和独立截止，握手洪泛不享有身份分类保证。
+`BrokerOptions` 的分类额度上限为10000设备和100服务。物理上限为 10100；所有监听与收发均由 Swoole Server 承担。注入分类器时实际服务额度取配置值与“物理上限减一”的较小者，设备额度取配置值与剩余物理名额的较小者；示例当前配置默认10000设备加100服务。没有分类器时不预留无法认证的服务名额。分类时先预留名额，再处理接管及持久会话；同 Client ID 的替换不重复占分类名额。未认证握手及待登记关闭仍共用物理预算和独立截止，握手洪泛不享有身份分类保证。
 
-原生事件驱动复用同一TCP/TLS流、协议状态机、认证及持久工作入口；不启用协程或I/O钩子，不让扩展接管发送缓冲或MQTT协议。独立Broker进程在已有事件循环建立前显式配置，macOS启用kqueue避免默认poll的4096事件总量限制，Linux沿用epoll。连接关闭前注销事件；读写兴趣变化才更新注册，每轮就绪集合按连接键去重。接受流后禁止PHP额外预读；成功读取后在下一轮再作一次非阻塞续读，直到暂时无数据，避免后续控制报文仅留在PHP或SSL缓冲而没有新的内核事件。空读后的EOF只取流元数据，避免`feof()`主动`SSL_peek`将新报文吸入SSL内部缓冲。未完成的TLS握手同样在既有截止内继续推进。内核通知与续读按连接去重，每连接每轮仍只读取至多16KiB。50ms唤醒继续执行原有信号、worker、握手及发送截止；退出注销监听、连接和定时器，再释放事件循环。`eventRegistrations/eventTimers/readyEvents/pendingReads` 提供当前用量并在正常退出归零。同步授权占用一轮后，已到发送截止的连接先尝试原有16KiB非阻塞写，未排空仍关闭，不刷新截止。
+Swoole Server 复用 TCP/TLS、WebSocket 升级、协议状态机、认证及持久工作入口；Swoole 事件循环负责监听、收发、定时与关闭，应用只维护 MQTT 报文状态、授权、持久提交和资源预算。所有网络连接都由原生 Swoole 生命周期持有，发送缓冲和半包期限由组件按 MQTT 语义管理。
 
 应用须在自己的构建配置 `runtime.Linux.extensions`（macOS验证对应 `runtime.Darwin.extensions`）加入 `swoole`，由现有构建器核验真实 embed 扩展、SDK模块和摘要。操作系统文件描述符、TLS内存及全部设备持久会话仍需按部署资源核算，放宽可配置连接数不等于达到业务负载和恢复指标。
 
@@ -245,7 +244,7 @@ QoS 1 已分配副本断线后等待原 Session 恢复，Session 终止时才可
 
 容量功能验证使用 `php tests/mqtt-consumer.php --capacity`，原生加 `--native`；`--capacity-only` 只作开发定位。测试在独立真实同步主备、TCP/TLS上调低额度，核对分类认证、服务预留、持久会话上限、百订阅替换、设备/应用/共享/全局的条数与字节先满、标准拒绝、慢确认恢复、消费后释放与退出清理。目标规模、Linux x64和独立故障域仍须单独验收。
 
-同一测试入口加 `--swoole` 验证原生事件驱动；`--connection-scale` 另建立10000设备及100服务真实TCP/TLS连接，逐连接PING、满额拒绝、服务名额和关闭后描述符复用。开发定位可用 `--connection-scale-only` 及 `MQTT_SCALE_DEVICES=600`。同机规模阶段以进程锁串行执行，等待最多十分钟，避免多个万连接客户端耗尽同一临时端口范围；其余协议与存储场景可并行。该连接引擎场景使用标准Keep Alive=0及QoS0，没有持久worker；报告实际连接数、连接与PING耗时、单次Broker RSS及退出统计，不能代替Keep Alive=30、TLS认证/会话恢复、同步业务接收或24小时固定负载。
+同一测试入口直接使用 Swoole 验证原生通信；`--connection-scale` 另建立10000设备及100服务真实TCP/TLS连接，逐连接PING、满额拒绝、服务名额和关闭后描述符复用。开发定位可用 `--connection-scale-only` 及 `MQTT_SCALE_DEVICES=600`。同机规模阶段以进程锁串行执行，等待最多十分钟，避免多个万连接客户端耗尽同一临时端口范围；其余协议与存储场景可并行。该连接引擎场景使用标准Keep Alive=0及QoS0，没有持久worker；报告实际连接数、连接与PING耗时、单次Broker RSS及退出统计，不能代替Keep Alive=30、TLS认证/会话恢复、同步业务接收或24小时固定负载。
 
 升级必须显式执行 `--install-store`：新增组及成员表、消息真实 RETAIN、交付的 `group_id/shared_filter`，将旧消息/会话唯一约束改为普通副本部分唯一索引及消息/组唯一索引。旧交付默认普通身份，二进制原件和既有在途阶段保持。
 
@@ -315,7 +314,7 @@ CONNECT 的遗嘱 Topic、QoS、RETAIN、载荷及 MQTT 5 属性在接纳前校�
 
 ## 验证与 TypePHP
 
-全部 `src` 生产代码在 Composer `extra.type.sources` 声明；独立应用、runtime 及实际生产依赖一并由当前锁定的 TypePHP 0.9.0/PHPX 2.9.0 编译，生产无 Composer 自动加载或业务 PHP 源码解释回退。通信与并发统一依赖匹配版本的 Swoole 原生机制，固定官方内置 PHP 库按官方机制加载。旧网络路径清理完成前，组件与新架构的对齐状态保持未完成。PHP 检查、原生编译、原生协议执行及无源码部署必须分别记录，不能互相代替。
+全部 `src` 生产代码在 Composer `extra.type.sources` 声明；独立应用、runtime 及实际生产依赖一并由当前锁定的 TypePHP 0.9.0/PHPX 2.9.0 编译，生产无 Composer 自动加载或业务 PHP 源码解释回退。通信与并发统一依赖匹配版本的 Swoole 原生机制，固定官方内置 PHP 库按官方机制加载。PHP 检查、原生编译、原生协议执行及无源码部署必须分别记录，不能互相代替。
 
 主仓验证入口：
 

@@ -22,7 +22,7 @@ Swoole 6.2.2 的 multipart 路径可以创建自身临时文件；`http_parse_po
 
 `composer test:files` 验证真实 PHP HTTP 上传、恶意存储键、multipart 二进制、所有输入限额、保存和异常回收、8 MiB 下载、HEAD、发送后异常、客户端上传和下载中断。`tests/upload-storage.php` 验证数量配额、锁竞争时的清理、截止预算和重复保存。
 
-停止读取回归使用本轮 64 MiB 文件：客户端收到响应前缀后停止读取，要求服务在期限内关闭流，并确认没有读完或发送完整文件。该大小用于实际触发 socket/Swoole 发送背压；不能用能一次进入发送缓冲区的小文件证明等待有界。PHP 与 AOT 分别在 stream/Swoole 上执行同一用例。
+停止读取回归使用本轮 64 MiB 文件：客户端收到响应前缀后停止读取，要求服务在期限内关闭连接，并确认没有读完或发送完整文件。该大小用于实际触发 Swoole 发送背压；不能用能一次进入发送缓冲区的小文件证明等待有界。PHP 与 AOT 均通过 Swoole 入口执行同一用例。
 
 实际 Linux 小容量 tmpfs 写满测试通过：运行该脚本时把 `TYPE_UPLOAD_FAULT_DIRECTORY` 指向独立 64 KiB tmpfs。HTTP 的独立 1 MiB 暂存卷验证用 `TYPE_HTTP_UPLOAD_TEMP` 指定，检查 Swoole 临时文件也在请求后消失。不要把测试写满目录指向用户已有存储。
 

@@ -78,7 +78,7 @@ MySQL/PostgreSQL 使用 `DB_HOST`、`DB_PORT`、`DB_DATABASE`、`DB_USERNAME`、
 | `IOT_EXPORT_*` | 私有导出目录、专用 Redis 连接和命名空间 |
 | `IOT_NOTICES_*` | 通知消费的专用 Redis 连接和命名空间 |
 
-Swoole 是必需通信底层。当前业务仍保留 `IOT_MQTT_IO_DRIVER=swoole` 配置键，组件和调用者迁移完成后应一并移除驱动选择；现有配置不代表全部内部网络路径已完成迁移。`IOT_MQTT_COMMAND` 是当前应用的 JSON 命令参数数组，不经 shell；开发可显式指向 PHP 与 `bin/typeapp`，原生部署改为该产物入口。设备接入与接收角色要求 PostgreSQL 严格同步主备，不能沿用物联中心成品案例的默认 SQLite。启动角色及使用流程见[物联网中心](iot-center.md)。
+Swoole 是必需通信与基础并发底层。Broker、客户端、持久 worker 和设备授权均直接使用 Swoole 官方能力，不再配置可切换的网络驱动。`IOT_MQTT_COMMAND` 是当前应用的 JSON 命令参数数组，不经 shell；开发可显式指向 PHP 与 `bin/typeapp`，原生部署改为该产物入口。设备接入与接收角色要求 PostgreSQL 严格同步主备，不能沿用物联中心成品案例的默认 SQLite。启动角色及使用流程见[物联网中心](iot-center.md)。
 
 ## 调试边界
 

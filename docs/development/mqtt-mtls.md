@@ -17,7 +17,7 @@ Swoole TLS 只开 1.2/1.3 并 `ssl_prefer_server_ciphers`，TLS 1.2 仅 ECDHE AE
 | 用途与有效期 | `openssl_x509_checkpurpose(X509_PURPOSE_SSL_CLIENT)` | Swoole 仍可能放行过期、尚未生效或 `serverAuth` 证书，Broker 在取指纹前拒绝 |
 | 握手 CA 文件 | 同一 `Timer::tick(50)` 按文件 mtime/`size` 调用监听 `Port::set` | Swoole `Server::set` 在启动后拒绝。`Port::set` 重建 `SSL_CTX`（`SSL_CTX_load_verify_locations`），只影响新连接。节点心跳把当前受信 CA 公钥写入 `clientCa`。管理端登记见 [Broker 管理](broker-management.md) |
 | 签名 CRL | 启动导入；Swoole `Timer::tick(50)` 按文件更新重载 | 已列入序列号的新连接不能取指纹；较新列表接纳后断开已连接的对应会话；thisUpdate 回退忽略；已接纳序列号只增不减；文件缺失或过期拒绝该 CA 并断开，恢复后可再接入；CA 包内任一份证书可核验 CRL 签名 |
-| HTTPS CRL | `Swoole\Process` 阻塞 GET，写入 `clientCrl` | 启动期 https URL，默认 300 秒；不跟随跳转；失败不覆盖旧文件。客户端不能指定地址。不证明集群 5 秒 |
+| HTTPS CRL | `Swoole\Process` 隔离任务与 `Swoole\Coroutine\Http\Client` | 启动期 https URL，默认 300 秒；不跟随跳转；失败不覆盖旧文件。客户端不能指定地址。不证明集群 5 秒 |
 | 平台吊销 | 同一 `Timer::tick(50)` 按文件 mtime 重载 | 无签名序列号名单；已接纳只增不减；新连接拒绝，已连接断开。不必等待 CA CRL |
 | 换证重叠 | 同一 `Timer::tick(50)` 按文件 mtime 重载 | 指纹加截止时间；缺截止默认 24 小时，上限 24 小时；清零或到期断开。吊销与到期无宽限 |
 | 叶证书到期 | 握手写入 `validTo_time_t`；同一 `Timer::tick(50)` 每秒核一次 | 已连接 mTLS 会话在客户端 notAfter 到达后断开；不保存 PEM，不重读磁盘证书 |
@@ -25,7 +25,7 @@ Swoole TLS 只开 1.2/1.3 并 `ssl_prefer_server_ciphers`，TLS 1.2 仅 ECDHE AE
 | 证书事实 | `onConnect` 的 `ssl_client_cert`，WSS 在 `onOpen` 套到连接 | SHA-256 指纹、序列号与 notAfter 写入连接，不保存 PEM |
 | 认证 | `CertificateAccessPolicy` | 无 CONNECT 凭据可单独认证；同时提供凭据必须同一主体，失败不降级 |
 
-未配置 `mtlsPort` 时行为不变。配置后要求 `ioDriver=swoole`，该进程改用 `Swoole\Server`（若同时开 WS 则仍是 `WebSocket\Server`）。Windows 启动期拒绝。
+未配置 `mtlsPort` 时行为不变。配置后仍由同一 Swoole Server 持有 TLS 与 mTLS 监听；若同时启用 WebSocket，则在同一服务生命周期内处理 Upgrade 和 MQTT 帧。平台按实际构建的 Swoole 能力选择进程、线程或协程执行方式。
 
 ## 已验证
 
@@ -54,10 +54,10 @@ Swoole TLS 只开 1.2/1.3 并 `ssl_prefer_server_ciphers`，TLS 1.2 仅 ECDHE AE
 - 同进程 mTLS 发布到达 TLS 订阅者
 - 配置 `MQTT_CLIENT_CA` 的 WSS：无客户端证书、过期、`serverAuth`、CRL 已列入或平台吊销名单已列入不能建立 MQTT 会话；证书单独认证后发布到达同进程 TLS 订阅者
 
-## 未验收
+## 验收边界
 
 - 失联节点 5 秒集群完成证明
-- Linux x64、Linux ARM64、Windows
-- 本切片未重跑独立消费者原生产物
+- Linux x64、Linux ARM64、Windows 的完整范围按平台验收记录维护。
+- 独立消费者原生产物按对应构建报告记录。
 - 管理端导入/展示 CRL 与平台吊销见 [Broker 管理](broker-management.md)
 - 管理端握手 CA 热加载与监听滚动见 [Broker 管理](broker-management.md)

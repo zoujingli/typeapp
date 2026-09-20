@@ -18,4 +18,4 @@ php tests/benchmark-compare.php "$TYPE_MEASUREMENT/verification.json"
 
 比较器核对报告完整性、内容摘要、平台、预热次数、样本和并发。测量记录吞吐、p50/p95/p99、CPU/RSS，CRUD 按逻辑操作计数，RSS 为受测进程及后代的采样总和。区间重叠不能证明性能等价，持续退化信号需要独立复验和定位。
 
-当前成对比较工具仍包含待移除的通信引擎组合，不能作为 Swoole 唯一底层已完成的证明。完成通信迁移后须同步比较矩阵与平台入口；当前完整验收要求见[实现规划](../guide/roadmap.md)。
+成对比较工具固定使用 Swoole 通信，按 SQLite、MySQL、PostgreSQL 三种真实数据库分别比较两个源码状态；测量结果只说明同一平台和负载下的相对变化，不扩展为其他平台或数据库的性能结论。当前完整验收要求见[实现规划](../guide/roadmap.md)。

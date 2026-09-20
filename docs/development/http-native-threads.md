@@ -54,7 +54,7 @@
 
 显式 `typeapp_http1_input=true` 在原生回调覆盖前拒绝重复 Host、Authorization、Content-Type，大小写不影响判定，错误沿用上游 400 与连接关闭。其他头使用上游已有的 `array_add_or_merge` 保存多值，不建立镜像表；Content-Length 重复以及 Content-Length/Transfer-Encoding 冲突仍由 llhttp 拒绝。此选项只接受布尔值，私有能力标识为 `Coroutine\Http\Server::TYPEAPP_HTTP1_INPUT_ABI=1`。开启时限定 HTTP/1.0 与 HTTP/1.1，HTTP/2 前言返回 505，避免另一条解析路径绕过本候选；未开启时不改变上游解析行为。它不代表 HTTP/2 已完成输入安全适配。
 
-调用 `handleNative()` 的监听方须设置原生 `http_parse_cookie=false`，保留 Cookie 字符串或多行数组。原同步 stream 实现（已移除）的 Cookie 校验迁入既有 RequestBody，由两个入口共用：重复名称返回 `invalid_cookie`，超过字段数量返回 `too_many_cookies`，继续使用原来的名称校验及 URL 解码语义。SwooleServer 的转换直接传递原生多值头和 `server_protocol`，不再把数组转成 `Array`；缺失 Host 明确拒绝，不能由 URI 构造器补出可信的 localhost。
+调用 `handleNative()` 的监听方须设置原生 `http_parse_cookie=false`，保留 Cookie 字符串或多行数组。Cookie 校验由既有 RequestBody 统一处理：重复名称返回 `invalid_cookie`，超过字段数量返回 `too_many_cookies`，继续使用原来的名称校验及 URL 解码语义。SwooleServer 的转换直接传递原生多值头和 `server_protocol`，不再把数组转成 `Array`；缺失 Host 明确拒绝，不能由 URI 构造器补出可信的 localhost。
 
 原生修改归 type-build，PSR/输入策略仍归 type-core。经典 `serve()` 已复用 Cookie 与 PSR 转换，但没有获得本协程候选的关键重复头拒绝；默认切换仍待完整验收。上游提供等价的重复头保留/拒绝机制后，撤除输入补丁及私有配置，重跑相同 TCP 与源码禁读 AOT 回归。新 HTTP/2 或 WebSocket 路径须各自验证输入和升级授权，不能继承本节结论。
 

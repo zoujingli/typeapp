@@ -22,7 +22,7 @@ build/app/type-app broker:serve
 
 ## 实际节点采样
 
-另一受控进程运行 `broker:run`，管理 HTTP 与 MQTT 进程使用同一管理数据库。节点配置为 `BROKER_NODE_ID`、`BROKER_LISTEN`、`BROKER_PORT`、`BROKER_IO_DRIVER`、`BROKER_CERTIFICATE` 和 `BROKER_PRIVATE_KEY`；默认 TLS，证书和密钥必须真实可读。明确的明文调试才设置 `BROKER_PLAINTEXT=true`，并保持证书配置为空。MQTT 用独立 `BROKER_CLIENT_USERNAME`、`BROKER_CLIENT_PASSWORD` 认证，只授权 `BROKER_TOPIC_PREFIX` 指定的 Topic 前缀；前缀以 `/` 结尾，不允许通配符。
+另一受控进程运行 `broker:run`，管理 HTTP 与 MQTT 进程使用同一管理数据库。节点配置为 `BROKER_NODE_ID`、`BROKER_LISTEN`、`BROKER_PORT`、`BROKER_CERTIFICATE` 和 `BROKER_PRIVATE_KEY`；默认 TLS，证书和密钥必须真实可读。明确的明文调试才设置 `BROKER_PLAINTEXT=true`，并保持证书配置为空。MQTT 用独立 `BROKER_CLIENT_USERNAME`、`BROKER_CLIENT_PASSWORD` 认证，只授权 `BROKER_TOPIC_PREFIX` 指定的 Topic 前缀；前缀以 `/` 结尾，不允许通配符。通信、连接关闭和基础并发均由 Swoole 官方能力提供。
 
 未配置 `BROKER_COMMAND` 时使用 QoS 0 非持久运行路径，拒绝持久会话、QoS 1/2 发布和保留发布，订阅最多授予 QoS 0。可靠接收须配置下述持久装配。
 

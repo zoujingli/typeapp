@@ -18,22 +18,19 @@ TypeApp 框架与物联中心的职责分工如下，技术架构定义以[系�
 
 Plugins 为统一称谓；通信、进程、线程、协程与事件循环必须使用 Swoole 官方能力，进程不可用时使用线程/协程。生产交付为一个程序文件加外置配置，所需原生库由程序携带和管理。决策见 [ADR 0021](../adr/0021-required-swoole-and-single-program.md)。
 
-以下为当前代码与已确定架构之间的差距，不属于继续保留的兼容方案：
+当前实现已经统一到以下运行边界：
 
-| 范围 | 当前实现事实 | 收敛要求 |
+| 范围 | 当前实现 | 责任边界 |
 | --- | --- | --- |
-| MQTT 服务端 | `BrokerOptions::ioDriver` 默认 `stream`；`Broker::nativeEnabled()` 仅在 WS/WSS 或专用 mTLS 开启时选用原生 Server，普通 TCP/TLS 即使选择 `swoole` 仍经 PHP stream socket 与事件通知 | 所有监听和收发交给 Swoole；连同 `Connection` 分支、就绪轮询、驱动选项及调用者一起移除旧路径 |
-| MQTT 客户端 | `Client` 同时维护同步网络路径和显式启用的协程 Socket 路径 | 统一到已有 Swoole Socket，消费入口建立协程上下文，保留 TLS、超时、取消、保活和协议确认语义 |
-| 持久工作与设备接入 | `PendingCommit` 用 loopback stream socket 通信；`DeviceAccess` 仍依赖 Unix 非阻塞管道 | 使用 Swoole 通信和执行机制，保持有界结果、硬截止、提交未知与远端释放证明 |
-| 跨平台服务入口 | `Http\SwooleServer::serve()`、`WebSocket\Server::start()`、MQTT 原生 Server 仍直接拒绝 Windows；HTTP 已有 `serveThread()` 协程实现 | 按构建能力接入官方线程/协程 HTTP、升级与 Socket；进程缺失不拒绝整个应用，逐角色验证退出和状态归属 |
-| 上游基线与 AOT | `SwooleThreadSource::REFERENCE` 固定 `0f3bee2`，最新已核对官方主线为 `8340c53`；当前还有编译入口适配 | 升级固定源码并复核摘要及必要补丁，避免重造调度；主线能力不冒充已安装稳定发行能力 |
-| 发布工具 | `NativePackage` 生成带原生库和启动器的目录包，`PackageArchive` 生成归档 | 复用依赖收集和校验，完成单程序封装与自动释放启动 |
+| MQTT 服务端 | TCP、TLS、mTLS 与 WebSocket 由同一个 Swoole Server 持有监听和生命周期；WebSocket 端口负责 HTTP 升级及 MQTT 帧 | Broker 保留 MQTT 报文、授权、会话、持久提交和资源预算；不再维护可选网络驱动 |
+| MQTT 客户端 | 协程模式使用 `Swoole\Coroutine\Socket`，同步模式使用 `Swoole\Client` | Client 负责 TLS 身份、半包、保活、超时、确认凭据和关闭语义 |
+| 持久工作与设备接入 | `PendingCommit`、设备授权和摄取 worker 使用 Swoole Process 管道；HTTPS CRL 使用 Swoole Coroutine HTTP Client | 应用保留有界结果、硬截止、提交未知与远端释放证明；Swoole 负责执行与通信 |
+| 跨平台服务入口 | HTTP、WebSocket、TCP、UDP、MQTT 均按目标平台使用 Swoole 官方 Server、Socket、线程或协程能力 | 只在所需原生能力确实缺失时报告启动错误，并记录对应平台验收范围 |
+| AOT 与运行包 | 生产 PHP、生成代码和实际生产依赖交给 TypePHP 全量编译；Swoole 为必需运行扩展 | 编译产物与外置配置分离，不能回退 Composer 源码解释执行 |
 
 PSR 消息流与文件流继续保留标准职责；独立协议测试工具不作为生产通信底层。
 
-旧网络代码清理、自动选择执行方式和单程序交付目前均未完成。各项需要现有调用者回归、全量 AOT、真实协议及目标平台验收，文档更新不改变该状态。
-
-平台状态统一见[平台与验收](../guide/platforms.md)，原始运行及产物身份见[平台证据](platform-support.md#当前结果与证据)。Windows 组件原生链路已通过，完整应用先受 Swoole 模块缺失限制；ARM64 完整应用的 PHPX/Swoole 线程 SDK 仍需形成一致构建。
+平台状态统一见[平台与验收](../guide/platforms.md)，运行及产物身份见[平台证据](platform-support.md#当前结果与证据)。每个平台必须以匹配的 PHPX、Swoole 和线程/协程构建完成同一份应用产物验收。
 
 ### 平台管理端
 
@@ -168,8 +165,8 @@ Broker 使用独立 `broker` 身份域和自身管理 API。Broker 的节点、�
 | 默认主题/个人偏好 | 站点默认模式、主题色、圆角、布局、侧栏、导航、面包屑、标签页和页脚已接通 Vben 原生偏好；个人覆盖按身份域/账号/模拟来源隔离，并可恢复最新站点默认 | 已实现基础 | 继续做完整浏览器矩阵与旧缓存核对 |
 | 标准项目出口 | 生产候选取自主仓 `app/` 编译物；`type-project` 仍是其他业务起点，不能冒充物联中心 | 待完成完整分发 | 真实子仓消费 |
 | 单文件运行包 | 运行结构已在规格中定义，最终候选尚未汇合 | 未完成 | 完成程序封装、依赖管理与干净机器验收 |
-| macOS ARM64 验收 | 组件、SQLite、HTTP AOT、身份与缓存已通过，WebSocket PHP 单独通过 | 部分通过 | 补齐线程 SDK 后验证完整应用、协议和部署 |
-| Linux x64/ARM64 验收 | x64 断网 AOT 与基础命令通过；ARM64 虚拟机的组件、SQLite、HTTP AOT 通过 | 部分通过 | ARM64 线程 SDK 接入、完整矩阵与实机性能分别验收 |
+| macOS ARM64 验收 | 按当前 Swoole 构建验证组件、应用、通信、数据库与部署 | 按产物记录 | 保持工具链锁定并完成完整组合回归 |
+| Linux x64/ARM64 验收 | 按当前 Swoole 构建验证组件、应用、通信、数据库与部署 | 按产物记录 | 保持工具链锁定并完成完整组合回归 |
 | Windows x64 验收 | 契约、组件 AOT、SQLite、部署审计与缓存通过 | 部分通过 | 补齐匹配 Swoole 模块、编译线程接入，再验收完整应用和三库发布 |
 
 ## 实施与验证

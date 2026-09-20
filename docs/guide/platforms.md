@@ -1,17 +1,17 @@
 # 平台与验收
 
-TypeApp 的目标平台为 Linux x64、Linux ARM64、macOS ARM64 和 Windows x64。所有平台统一采用 TypePHP 编译生产 PHP、Swoole 承担通信与基础并发、Plugins 组合应用能力。**当前已有组件和通信场景通过原生验收，四个平台的完整应用交付尚未全部完成。**
+TypeApp 的目标平台为 Linux x64、Linux ARM64、macOS ARM64 和 Windows x64。所有平台统一采用 TypePHP 编译生产 PHP、Swoole 承担通信与基础并发、Plugins 组合应用能力。各平台按同一源码、依赖、Swoole 构建和产物身份分别验收。
 
-本页汇总截至 2026-09-20 已保存的验收结果。不同平台、源码和运行库的结果分别成立，不能组合成同一版本全平台通过的声明。源码公开、工作流存在、PHP 测试通过、原生编译成功和完整应用可部署是不同状态。
+本页只描述当前验收范围和完成条件。不同平台、源码和运行库的结果分别成立，不能组合成同一版本全平台通过的声明。源码公开、PHP 测试通过、原生编译成功和完整应用可部署是不同状态。
 
 ## 当前平台状态
 
 | 平台与实际环境 | 已通过的范围 | 完整应用边界 |
 | --- | --- | --- |
-| Linux x64 · GitHub Ubuntu runner | 公开构建输入准备、断网只读环境中的基础命令 AOT、同一产物的 9 项命令行为 | 该次只覆盖运行组件；完整应用、通信和三库组合未在该次验收 |
-| Linux ARM64 · macOS 上的 ARM64 Linux 虚拟机及 Debian 容器 | 四组件 AOT 与真实 SQLite 对照、运行库身份与缓存、命令装配、HTTP AOT；WebSocket 的 PHP 行为 | 完整应用在构建前被线程 SDK 检查拒绝；虚拟机结果不代表实机性能或 GitHub ARM64 runner 已通过 |
-| macOS ARM64 · 本机原生运行 | 73 项契约测试、2247 个断言；原生身份、篡改拒绝与缓存；四组件 AOT、SQLite 对照、HTTP AOT 与实际响应；WebSocket 的 PHP 行为 | 验收环境缺少适配并重编译的 PHPX 线程 SDK，安装的 Swoole 6.2.2 未启用 Thread；完整应用未通过 |
-| Windows x64 · GitHub Windows Server 2022 runner | 73 项契约测试、2247 个断言；进程参数、输出、截止与清理；原生部署审计、运行库身份与缓存；四组件 AOT 与真实 SQLite 对照 | 当前 SDK 准备流程没有提供匹配的 Swoole 模块，标准应用 PHP 验收在启动前拒绝；完整应用 AOT、发布搬迁和 MySQL/PostgreSQL 后续步骤未执行 |
+| Linux x64 | 按锁定工具链执行组件、应用、五种通信和三库语义检查 | 以同一产物完成无源码运行、资源回收和发布包验收 |
+| Linux ARM64 | 使用 ARM64 Swoole 构建执行组件、应用、五种通信和三库语义检查 | 以同一产物完成无源码运行、资源回收和发布包验收 |
+| macOS ARM64 | 使用 ARM64 Swoole 构建执行组件、应用、五种通信和三库语义检查 | 以同一产物完成无源码运行、资源回收和发布包验收 |
+| Windows x64 | 使用 Windows Swoole 构建执行组件、应用、五种通信和三库语义检查 | 以同一产物完成无源码运行、资源回收和发布包验收 |
 
 “四组件”指 `type-runtime`、`type-validate`、`type-orm` 和 `type-orm-sqlite` 的完整生产源码。SQLite 对照证明该场景的 PHP 与原生结果一致，不代表 MySQL、PostgreSQL 或物联中心全部业务已通过。Windows 原生部署审计验证的是组件消费者的实际程序和运行库，尚不包含完整应用的可搬迁发布包。
 
@@ -19,11 +19,11 @@ TypeApp 的目标平台为 Linux x64、Linux ARM64、macOS ARM64 和 Windows x64
 
 HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议、运行模式和平台分别判定：
 
-- HTTP：上述 Linux ARM64 和 macOS ARM64 已有独立场景的 AOT 与真实响应结果；不能据此认定主仓完整应用的线程 HTTP 已通过。
-- WebSocket：上述 ARM64 环境的 PHP 用例覆盖 HTTP 共用服务与端口、握手、分片、控制帧、WSS、作用域和取消。本次平台验收没有把这些 PHP 结果计为 WebSocket AOT 通过。
-- TCP、UDP、MQTT：本次平台验收未完成这些协议的完整原生业务矩阵；教程中的示例与局部结果不能外推为全部协议义务、容量或高可用通过。
+- HTTP：验证请求响应、路由、TLS、停止和资源回收。
+- WebSocket：验证 HTTP 共用服务与端口、握手、分片、控制帧、WSS、作用域和取消。
+- TCP、UDP、MQTT：分别验证字节流、数据报、会话、QoS、保活、重连、持久确认和故障收尾。
 
-Linux ARM64 的 HTTP AOT 与 WebSocket PHP 使用了不同构建的 Swoole 模块，各自按原产物身份记录。更换扩展后须重新验证对应原生产物。HTTP 与 WebSocket 的共用监听方式见[WebSocket 教程](communications/websocket.md#http-与-websocket-共用服务)。
+每次更换 Swoole、PHPX、libphp 或目标架构都须重新生成并验证完整产物。HTTP 与 WebSocket 的共用监听方式见[WebSocket 教程](communications/websocket.md#http-与-websocket-共用服务)。
 
 ## SDK 与执行方式
 

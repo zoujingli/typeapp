@@ -1,6 +1,6 @@
 # 有界 WebSocket 会话
 
-状态：macOS ARM64 上已完成通用 `Type\Core\WebSocket` 的握手、双向消息、分片重组、控制帧隔离、单条上限、HTTP 共存、子协议/Origin、WSS（PHP 协程环境）与独立消费者全量 AOT（明文 WS）。Linux 与 Windows 未覆盖；原生产物上的 WSS 因 TypePHP 调用 `Swoole\WebSocket\Server::set(ssl_cert_file)` 在 OpenSSL 初始化时 SIGSEGV，不宣称已通过。
+状态：通用 `Type\Core\WebSocket` 直接复用 Swoole 的握手、双向消息、分片重组、控制帧隔离、单条上限、HTTP 共存、子协议/Origin 与 WSS 能力。各平台的 PHP、AOT、TLS 和资源回收结果按当前构建产物单独记录。
 
 ## 实现边界
 
@@ -9,7 +9,7 @@
 
 项目只持有升级授权、连接会话、每条消息的 `ExecutionScope`、发送上限和关闭结算。业务代码不按帧边界对齐应用层报文。[MQTT over WebSocket](mqtt-websocket.md) 不依赖本组件。
 
-经典 `Swoole\WebSocket\Server` 在 Windows 原生路线不可用，`Server::start()` 启动期拒绝。单 worker、`enable_coroutine=false`，回调顺序执行，与「同一连接同一时刻一个消息所有者」一致。
+服务端直接使用 Swoole WebSocket Server 或官方协程升级入口；单连接同一时刻保持一个消息所有者，回调顺序和资源归属由服务装配明确。
 
 ## 有界之处
 

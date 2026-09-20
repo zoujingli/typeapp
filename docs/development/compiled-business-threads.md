@@ -6,7 +6,7 @@
 
 平台现状见[平台与验收](../guide/platforms.md)。当前完整应用声明了编译线程；`NativeBuilder` 先检查已适配并重编译的 PHPX，再核对 Swoole 的 `startNative`、`NATIVE_ENTRY_ABI=2` 和 fiber 通知配置。组件消费者没有使用线程时通过 AOT，不证明该入口可用。
 
-Linux ARM64 实测的官方 Swoole 6.2.2 已开启 Thread，但没有上述项目编译入口；当前 `SwooleThreadSource` 固定源码引用报告为 6.2.1。macOS 平台验收 SDK 缺少适配的 PHPX 且 Swoole 未启用 Thread；Windows 平台验收 SDK 尚缺 Swoole 模块。必须统一固定上游与适配源码、重新构建并验证，不能仅打开 Thread 开关或删除 ABI 检查来宣称完整应用通过。
+各平台必须使用同一锁定的 TypePHP、PHPX、Swoole 版本与构建开关；Swoole Thread、Coroutine 和 Server 的实际可用性由目标产物探针确认。仅打开某个扩展开关或通过静态检查不能证明完整应用线程、协程和通信入口可用。
 
 ## TypePHP 0.9.0 编译接入
 

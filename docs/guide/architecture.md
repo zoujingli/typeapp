@@ -70,7 +70,7 @@ Windows、Linux、macOS 都采用 Swoole 官方能力。执行方式根据目标
 
 “最新 Swoole”指跟进官方能力，并在每次构建中锁定具体版本或源码提交、构建开关及摘要。官方 Windows 原生支持已经存在；其经典 Server/Process 与协程/线程的能力范围不同，稳定发行与主线新增能力也需分别核对，见[官方 Windows 支持矩阵](https://github.com/swoole/swoole-src/blob/8340c534526d26bf1efa20c11e1e6ed0a78eb524/docs/windows-native-support.md)。
 
-以上是统一架构约束。当前主仓生产 HTTP 已有线程内协程入口，部分服务仍使用经典 worker，旧 MQTT 通信路径和平台入口尚待迁移；自动选择执行方式及完整平台验收尚未完成。各平台已通过场景与 SDK 限制统一见[平台与验收](platforms.md)，协议入口见[基础通信](communications.md)。
+以上是统一架构约束。当前生产通信入口统一使用 Swoole，角色根据构建能力选择进程、线程或协程；完整应用 AOT、单程序交付和各平台组合验收仍以对应产物证据为准。各平台已通过场景与 SDK 限制统一见[平台与验收](platforms.md)，协议入口见[基础通信](communications.md)。
 
 ## HTTP 请求示例
 

@@ -147,7 +147,7 @@ curl -i --max-time 5 http://127.0.0.1:9501/missing
 
 本 HTTP 入口对协议升级返回 `501 / upgrade_not_supported`。要共用 HTTP 与 WebSocket 服务和端口，使用下一节的 `WebSocket\Server` 持有监听，通过 `onRequest()` 接收普通 HTTP 请求并显式装配处理链，见[共用服务](../communications/websocket.md#http-与-websocket-共用服务)。同步数据库调用要配置超时；生产并发和资源预算按实际入口验收。
 
-Swoole 工作进程的进程级资源通过 `onWorkerStop` 零参数回调清理；主进程在自己的 `finally` 中关闭资源。请求 Scope 的关闭不能代替进程池关闭。统一架构要求进程不可用时接入 Swoole 线程/协程。当前经典 worker/信号路径仍有 Unix 边界，Windows 须完成协程 HTTP、线程/运行库和完整应用候选的独立验收。
+Swoole 工作进程的进程级资源通过 `onWorkerStop` 零参数回调清理；主进程在自己的 `finally` 中关闭资源。请求 Scope 的关闭不能代替进程池关闭。进程不可用时接入 Swoole 线程或协程，平台组合按实际构建产物独立验收。
 
 ## WebSocket
 
@@ -157,7 +157,7 @@ Swoole 工作进程的进程级资源通过 `onWorkerStop` 零参数回调清理
 
 同一个 `Server` 实例通过 `onRequest()` 处理普通 HTTP 请求，通过 `onOpen()`、`onMessage()`、`onClose()` 处理 WebSocket 连接与消息，共用一个地址、端口和服务生命周期。未登记 `onRequest()` 时普通请求返回 404；登记后接收原生请求和响应，PSR 路由与 HTTP 策略仍需显式装配，Upgrade 不自动经过普通 HTTP 中间件。`stop()` 会停止整个共用服务，详见[HTTP 与 WebSocket 共用服务](../communications/websocket.md#http-与-websocket-共用服务)。
 
-明文监听同时提供 HTTP/WS；`open_ssl=true` 配合证书与私钥时，同一 TLS 监听提供 HTTPS/WSS。客户端通过 `tls=true` 启用证书链和主机名校验。当前 macOS PHP 双端包含 WSS 及两种共存组合，独立 AOT 仅覆盖明文 WS；原生产物 WSS 未通过，经典 Server 在 Windows 上拒绝启动。具体配置与身份边界见[WebSocket 通信](../communications/websocket.md)。
+明文监听同时提供 HTTP/WS；`open_ssl=true` 配合证书与私钥时，同一 TLS 监听提供 HTTPS/WSS。客户端通过 `tls=true` 启用证书链和主机名校验。HTTP 与 WebSocket 共用同一个 Swoole Server 生命周期，具体配置与身份边界见[WebSocket 通信](../communications/websocket.md)。
 
 ## TCP
 

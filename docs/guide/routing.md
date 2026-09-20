@@ -106,7 +106,7 @@ sequenceDiagram
 | `SwooleServer::serve()` | 经典 worker 与协程；用于开发 HTTP、Broker 管理 HTTP 和通用模板 HTTP |
 | `SwooleServer::serveThread()` | 业务线程内协程服务；用于主仓物联中心的生产 HTTP |
 
-两者使用相同的 PSR 业务处理链与逐请求清理逻辑，要求匹配的 Swoole 扩展和原生 ABI。对外 TLS 可由受信任的反向代理终止。统一架构要求进程不可用时使用 Swoole 线程/协程；当前经典 worker/信号适配仍有 Unix 边界，Windows 的协程 HTTP 入口和运行库组合尚待接入与独立验收。
+两者使用相同的 PSR 业务处理链与逐请求清理逻辑，要求匹配的 Swoole 扩展和原生 ABI。对外 TLS 可由受信任的反向代理终止。进程不可用时使用 Swoole 线程或协程，平台组合按实际构建产物独立验收。
 
 `SwooleServer` 对协议升级返回 `501 / upgrade_not_supported`。要在同一服务、同一端口同时提供 HTTP 与 WebSocket，使用 `WebSocket\Server` 承载监听，在 `onRequest()` 中显式装配普通 HTTP 处理链；WebSocket Upgrade、连接与消息由原生握手及对应回调处理。普通 HTTP 路由和中间件不会自动约束升级路径或验证 WebSocket 身份。具体分工、TLS 与生命周期见[HTTP 与 WebSocket 共用服务](communications/websocket.md#http-与-websocket-共用服务)。
 

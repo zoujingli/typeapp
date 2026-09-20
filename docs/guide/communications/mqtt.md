@@ -49,7 +49,7 @@ sequenceDiagram
 | --- | --- | --- |
 | `certificate` / `privateKey` / `privateKeyPassphrase` | 空字符串 | TLS 证书链、私钥与可选口令；生产显式配置 |
 | `allowPlaintext` | `false` | 明文仅用于显式本机调试 |
-| `maximumConnections` | 256 个 | `swoole` 配置上界为 10100，不代表已验收的在线容量 |
+| `maximumConnections` | 256 个 | Swoole Server 的连接上限，物理上限为 10100，不代表已验收的在线容量 |
 | `maximumPacketBytes` | 1048576 字节 | 完整 MQTT 报文上限，范围 128–1048576 |
 | `handshakeSeconds` | 10.0 秒 | 握手等待，范围 `(0, 60]` |
 | `partialPacketSeconds` | 15.0 秒 | 半包等待，范围 `(0, 60]` |
@@ -58,9 +58,9 @@ sequenceDiagram
 | `allowedOrigins` | `[]` | WebSocket 来源限制，生产应明确允许来源 |
 | `mtlsPort` / `clientCa` | 0 / 空字符串 | 专用双向 TLS 监听与客户端 CA |
 | `handleSignals` | `true` | 由 Broker 处理停止信号；嵌入时需宿主接管停止 |
-| `ioDriver` | 本文必须显式设为 `swoole` | 当前待移除的迁移参数，不作为多引擎扩展点 |
+| `workerCommand` | 空数组 | 通过 Swoole Process 管道启动持久 worker；为空时只开放 QoS 0 |
 
-当前仅设置 `ioDriver: 'swoole'` 时，普通 TCP/TLS 内部仍有待迁移路径。本文同时开启 `wsPort`，使用当前组件已接入的 Swoole 原生 Server 来承载 WS 与 TCP 监听。这里是现有实现的使用前提；最终架构必须消除对附加监听的依赖，不能把它当作长期配置标准。
+Broker 的 TCP、TLS、mTLS 与 WebSocket 监听均由同一个 Swoole Server 生命周期管理；WebSocket 监听启用时，HTTP 升级和 MQTT 帧共用该服务。持久 worker 使用 Swoole Process 管道，客户端协程模式使用 Swoole Coroutine Socket，同步模式使用 Swoole Client。
 
 `wsPort`、`wssPort`、`mtlsPort` 不能与主端口重复；同一进程不能同时开启明文 WS 与 WSS，WSS/mTLS 不能混用明文调试配置。证书生命周期、持久资源与集群参数集中在[组件参考](../plugins/type-mqtt.md)，无需把它们复制成另一套配置体系。
 
@@ -111,7 +111,6 @@ function main(): void
             maximumConnections: 32,
             maximumDeviceConnections: 32,
             maximumServiceConnections: 0,
-            ioDriver: 'swoole',
             wsPort: 8083,
             allowedOrigins: ['http://localhost:8080']
         )
@@ -304,6 +303,6 @@ export MQTT_PASSWORD=local-guide-only
 | 重复消费 | 按业务 ID 去重，不把协议可靠性解释成业务恰好一次 |
 | 积压或恢复失败 | 持久配额、主备同步、稳定 Client ID 和会话参数 |
 
-先验证本篇 TCP 与 WS 跨传输路由及认证失败，再验证实际 TLS、授权隔离、半包期限、重连、持久确认和故障恢复。当前 WS/WSS 与 mTLS 只有有限路径验收，完整标准、容量与多故障域验证尚未完成；部分入口仍有 Unix 限制。Swoole 官方平台能力不等于当前组件入口适配完成，生产 TypePHP 全量编译与单程序交付要求见[构建与部署](../deployment.md)。
+先验证本篇 TCP 与 WS 跨传输路由及认证失败，再验证实际 TLS、授权隔离、半包期限、重连、持久确认和故障恢复。完整标准、容量与多故障域验证仍需按目标平台分别记录；生产 TypePHP 全量编译与单程序交付要求见[构建与部署](../deployment.md)。
 
 最新平台汇总见[平台与验收](../platforms.md#通信结果如何理解)。Windows 四组件消费者不包含 MQTT；HTTP 场景中编译到 MQTT 源码也不能代替 MQTT 协议、持久确认和业务回执的实际运行。

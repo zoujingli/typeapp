@@ -30,7 +30,7 @@ flowchart TB
   Broker --> Swoole
 ```
 
-图示为架构归属；当前实现差距见下文。TypePHP 是编译器，Plugins 是源码组件，Swoole 是原生运行基础；TypeApp 把它们组织为可开发、编译、运行与交付的应用框架，详见[系统架构](architecture.md)。
+图示为能力归属。TypePHP 是编译器，Plugins 是源码组件，Swoole 是原生运行基础；TypeApp 把它们组织为可开发、编译、运行与交付的应用框架，详见[系统架构](architecture.md)。
 
 ## 如何使用教程
 
@@ -59,7 +59,7 @@ Swoole 持有网络句柄与调度。`type-runtime` 的 `ExecutionScope`、`Dead
 
 框架统一使用 Swoole 官方能力；进程不可用时应使用官方线程或协程，不按操作系统名称选另一套网络引擎。Swoole 官方平台支持与 TypeApp 某个入口完成适配需要分别验证。
 
-当前主仓生产 HTTP 已使用线程内协程；经典 HTTP 的信号路径、经典 WebSocket 服务以及 MQTT 的部分入口仍有平台或旧实现限制。自动选择进程、线程、协程及完整平台验收尚未完成。各篇写明具体入口边界，不把架构要求当作所有平台已验证的结果。
+当前主仓的 HTTP、TCP、UDP、MQTT 与 WebSocket 生产入口均固定使用 Swoole；角色根据目标构建能力选择 Swoole Process、Thread 或 Coroutine。完整协议矩阵、三库组合、无源码部署及各平台资源回收仍需按同一产物分别验收，单个 PHP 示例不能代替完整平台结果。
 
 最新平台结果统一见[平台与验收](platforms.md#通信结果如何理解)。ARM64 的独立 HTTP AOT 与 WebSocket PHP 结果各自记录；Windows 组件 AOT 不包含通信验收，TCP/UDP/MQTT 的完整原生矩阵仍待完成。
 

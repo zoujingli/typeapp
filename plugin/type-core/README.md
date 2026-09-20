@@ -36,7 +36,7 @@ composer require zoujingli/type-core:dev-main
 
 ## HTTP
 
-HTTP 使用 PSR-7/15/17 接口。`Http\Message\Factory` 创建消息和流，`Http\Router` 接收静态路由或生成路由，以及每次执行的处理器与中间件工厂。HTTP 传输固定复用 `Http\SwooleServer`，网络与基础并发必须使用 Swoole 原生 Server、协程和 hook。统一架构要求进程不可用时接入官方线程/协程；当前 Windows 入口仍有待迁移限制，须完成匹配官方构建和独立原生验收。
+HTTP 使用 PSR-7/15/17 接口。`Http\Message\Factory` 创建消息和流，`Http\Router` 接收静态路由或生成路由，以及每次执行的处理器与中间件工厂。HTTP 传输固定复用 `Http\SwooleServer`，网络与基础并发必须使用 Swoole 原生 Server、协程和 hook。进程不可用时按目标构建能力使用官方线程或协程，并分别记录原生验收结果。
 
 `SwooleServer::handleNative(Request, Response)` 是内部协作入口，让当前线程的原生 HTTP 回调复用上述 PSR 转换、错误映射、响应发送及逐请求清理；经典 `serve()` 同样调用它。监听方仍负责连接额度、就绪、排空和线程监督，不能只注册这个回调就视为完整线程服务。显式候选及实际验收见[HTTP 线程接入](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-native-threads.md)。
 
@@ -90,7 +90,7 @@ function main(): void
 
 ## AOT 与运行要求
 
-Composer 安装核心不强制 `ext-swoole`，配置、命令、路由与 PSR-7/15/17 处理链可独立使用。HTTP、WebSocket、TCP、UDP 网络入口需要匹配的 Swoole 原生能力，当前运行基线要求 Swoole `>=6.2 <7`；允许固定官方内置 PHP 库。经典 HTTP worker／信号适配仅限 Unix，经典 WebSocket Server 在 Windows 上拒绝启动；各协议的目标平台需分别完成原生验收。AOT 仍需匹配的 PHPX/libphp 与实际使用的原生扩展，PSR 接口及整个核心源码一起编译。
+Composer 安装核心不强制 `ext-swoole`，配置、命令、路由与 PSR-7/15/17 处理链可独立使用。HTTP、WebSocket、TCP、UDP 网络入口需要匹配的 Swoole 原生能力，当前运行基线要求 Swoole `>=6.2 <7`；允许固定官方内置 PHP 库。各协议按目标平台实际构建能力选择 Server、协程 Server 或 Socket，分别完成原生验收。AOT 仍需匹配的 PHPX/libphp 与实际使用的原生扩展，PSR 接口及整个核心源码一起编译。
 
 当前 `HttpServerInterface` 只管理 HTTP 请求与响应。`SwooleServer` 对带 `Upgrade` 的请求返回 `501 / upgrade_not_supported` 并关闭连接。需要 HTTP 与 WebSocket 共用服务和端口时，由一个 `WebSocket\Server` 实例持有监听，通过 `onRequest()` 显式处理普通 HTTP 请求。
 
@@ -108,13 +108,13 @@ Swoole 的请求在实际 worker 中执行，该进程不会返回主进程的 `
 
 `onMessage` 登记的回调以第四个参数接收本条消息的作用域：数据库连接必须挂在其上，回调返回后立即关闭，即使对端仍连接或尚未读取回显，事务也不会继续占用。当前服务端使用单 worker、顺序回调，消息作用域不自动创建协程，慢回调会影响共用服务内的 HTTP 和 WebSocket 处理；客户端的业务处理作用域由调用方管理。每条连接同一时刻只有一个消息所有者；`send($fd, $data, $binary, $seconds)` 对单条消息与排队字节双重设限，超限即关闭该连接而不静默丢弃。控制帧（PING/PONG/CLOSE）不进入业务消息路径，也不延长任何业务超时。
 
-WSS 通过 `open_ssl=true` 以及成对的 `ssl_cert_file`/`ssl_key_file` 启用，仅允许 TLS 1.2/1.3，不启用压缩或 0-RTT；本进程终止 TLS，四层透传同样走这一套证书，七层反代终止 TLS 后转到本进程时保持 `open_ssl=false`。客户端 `tls=true` 时强制校验证书链和主机名，可用 `ssl_cafile`/`ssl_host_name`。经典 `Swoole\WebSocket\Server` 在 Windows 原生路线不可用，`Server::start()` 会拒绝。
+WSS 通过 `open_ssl=true` 以及成对的 `ssl_cert_file`/`ssl_key_file` 启用，仅允许 TLS 1.2/1.3，不启用压缩或 0-RTT；本进程终止 TLS，四层透传同样走这一套证书，七层反代终止 TLS 后转到本进程时保持 `open_ssl=false`。客户端 `tls=true` 时强制校验证书链和主机名，可用 `ssl_cafile`/`ssl_host_name`。目标平台按实际构建能力选择 Swoole WebSocket Server 或协程升级入口。
 
 边界与默认值：帧上限与排队上限各为 1 B–1 MiB（默认 1 MiB），连接数 1–4096（默认 64），`package_max_bytes` 必须介于帧上限与两倍之间，`message_seconds` 为 (0,60] 秒（默认 30）。期限均为 (0,60] 秒。客户端 `receive($seconds)` 返回原生已重组的一条完整消息，`null` 表示关闭或超时，不代表收到空消息。
 
 服务端可对 `subprotocol` 与 `allowed_origins` 设策略：**Swoole 原生的 `websocket_subprotocol` 会无条件回显配置值**（客户端不发或发其他值时也回显），因此本组件在握手完成时另行核对客户端是否真的提供该子协议，未提供按 1002 关闭；Origin 存在时必须与白名单精确匹配，不匹配按 1008 关闭。**Origin 缺失不直接拒绝**——那是非浏览器标准工具的常见情形，`onOpen` 第三参数为 `false` 交由业务鉴权。
 
-可编译示例如 [examples/websocket/main.php](https://github.com/zoujingli/typeapp/blob/main/examples/websocket/main.php)。当前已在 macOS ARM64 的普通 PHP 协程环境完成握手、分片、二进制、控制帧、上限、HTTP 共存、子协议/Origin、WSS 与消息作用域验收；独立消费者全量 AOT 覆盖明文 WS。原生产物 WSS 因 TypePHP 调用 `Swoole\WebSocket\Server::set(ssl_cert_file)` 在 OpenSSL 初始化时 SIGSEGV，不宣称已通过。Linux 与 Windows 未覆盖，不外推。MQTT over WS 由 `type-mqtt` 自行复用 Swoole，不依赖本组件。
+可编译示例如 [examples/websocket/main.php](https://github.com/zoujingli/typeapp/blob/main/examples/websocket/main.php)。握手、分片、二进制、控制帧、上限、HTTP 共存、子协议/Origin、WSS 与消息作用域均由 Swoole 原生入口承载；各平台的 PHP、AOT、TLS 和资源回收结果按实际构建产物分别记录。MQTT over WS 由 `type-mqtt` 自行复用 Swoole，不依赖本组件。
 
 ## TCP
 

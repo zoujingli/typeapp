@@ -24,7 +24,7 @@
 
 ## 真实接收角色
 
-`iot:ingest` 是独立长驻消费者；`iot:ingest-store --store-worker=<endpoint>` 是仅由应用启动的有界持久工作角色。先按[设备说明](iot-devices.md)完成应用迁移、同步PostgreSQL配置和 `iot:mqtt-install`，再运行Broker及消费者。两者使用同一版本编译产物，`IOT_MQTT_COMMAND` 仍是应用入口的JSON参数数组；生产不能改用PHP源码入口。
+`iot:ingest` 是独立长驻消费者；`iot:ingest-store --store-worker-pipe` 是仅由应用启动、通过 Swoole Process 管道接入的有界持久工作角色。先按[设备说明](iot-devices.md)完成应用迁移、同步PostgreSQL配置和 `iot:mqtt-install`，再运行Broker及消费者。两者使用同一版本编译产物，`IOT_MQTT_COMMAND` 仍是应用入口的JSON参数数组；生产不能改用PHP源码入口。
 
 消费者复用组件 `Client`，通过MQTT 5/TLS订阅 `$share/ingestion/iot/+/devices/+/epochs/+/up`，QoS 1、Keep Alive 30秒、会话期限86400秒。实例名由 `IOT_INGESTION_INSTANCE` 指定，形成稳定Client ID `iot-ingestion-{instance}`；同一实例重启沿用原名，并发实例各用不同名字。连接位置、CA及证书名分别由 `IOT_INGESTION_HOST/PORT/CA/PEER_NAME` 配置，CA相对 `APP_BASE_PATH` 解析，强制校验证书。
 

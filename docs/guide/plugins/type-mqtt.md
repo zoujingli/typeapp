@@ -26,7 +26,7 @@ composer config repositories.type-orm-pgsql vcs https://github.com/zoujingli/typ
 composer require zoujingli/type-orm-pgsql:dev-main
 ```
 
-PHP 要求 `>=8.4 <8.6`，依赖 OpenSSL、PCRE、JSON 及上述组件；持久后端需要 PDO PostgreSQL。通信必须基于 Swoole，当前运行基线为 `>=6.2 <7`，允许固定官方内置 PHP 库按官方机制加载。当前组件仍有旧网络路径与 Unix 进程限制，尚未完全符合[统一架构](../architecture.md#运行方式与平台)；须继续完成调用者迁移和线程/协程接入。原生运行仍需对应扩展，不回退执行业务 PHP 源码。
+PHP 要求 `>=8.4 <8.6`，依赖 OpenSSL、PCRE、JSON 及上述组件；持久后端需要 PDO PostgreSQL。通信、进程、线程、协程与事件循环统一使用 Swoole `>=6.2 <7` 的官方能力，允许固定官方内置 PHP 库按官方机制加载。Broker 服务端由 Swoole Server 承担，客户端同步模式使用 Swoole Client，协程模式使用 Swoole Coroutine Socket，持久 worker 使用 Swoole Process 管道。原生运行仍需对应扩展，不回退执行业务 PHP 源码。
 
 ## 认证与最小启动
 
@@ -46,7 +46,6 @@ $broker = new \Type\Mqtt\Broker($access, new \Type\Mqtt\BrokerOptions(
     certificate: (string) getenv('MQTT_CERTIFICATE'),
     privateKey: (string) getenv('MQTT_PRIVATE_KEY'),
     privateKeyPassphrase: (string) getenv('MQTT_PRIVATE_KEY_PASSPHRASE'),
-    ioDriver: 'swoole'
 ));
 $broker->serve('127.0.0.1', 8883);
 ```
@@ -61,15 +60,15 @@ $broker->serve('127.0.0.1', 8883);
 
 | 能力 | 当前行为 |
 | --- | --- |
-| 协议与传输 | MQTT 3.1.1 / 5.0，TCP / TLS；WS/WSS 与专用 mTLS（含 WSS 客户端证书）仅 macOS ARM64 有限路径已验证（Swoole 原生）；不提供 3.1、MQTT-SN 或增强认证 |
+| 协议与传输 | MQTT 3.1.1 / 5.0，TCP / TLS；可选 WS/WSS 与专用 mTLS（含 WSS 客户端证书）；不提供 3.1、MQTT-SN 或增强认证 |
 | 普通路由 | 精确、`+`、`#` 过滤器，重叠订阅、取消及二进制载荷 |
 | MQTT 5 属性 | 订阅选项与标识、Topic Alias、消息期限、内容与关联属性，受各自上下文限制 |
 | 无持久 worker | QoS 0 路由；不声称提供持久会话或可靠离线交付 |
 | 显式同步持久后端 | QoS 1/2 双向交付、保留、会话恢复、遗嘱及延迟遗嘱、共享订阅和跨节点路由 |
 | 完整入站报文 | 最大 1 MiB；默认握手 10 秒、半包 15 秒，Keep Alive 使用实际完整控制报文刷新；Swoole 入口关闭 Nagle |
-| 当前 `swoole` 配置的连接预算 | 上限 10100；示例默认设备 10000、服务 100，仍受物理额度限制 |
+| Swoole Server 连接预算 | 上限 10100；示例默认设备 10000、服务 100，仍受物理额度限制 |
 
-上例中的 `ioDriver` 是当前组件尚待移除的选择参数；选择 `swoole` 后，普通 TCP/TLS 仍有待迁移的内部网络路径。这些额度是拒绝和资源约束，不是原生网络迁移或万台在线验收结果。每连接最多 100 个订阅，重复订阅替换选项；分类必须由已认证身份确定，不能相信客户端自行申报。TLS/认证/订阅/报文或存储失败不伪造成功确认。
+这些额度是拒绝和资源约束，不是万台在线验收结果。每连接最多 100 个订阅，重复订阅替换选项；分类必须由已认证身份确定，不能相信客户端自行申报。TLS/认证/订阅/报文或存储失败不伪造成功确认。
 
 同一连接取消订阅后，新匹配发布不再派生投递，未开始的保留游标停止；已经开始的 QoS 1/2 交换仍须完成。MQTT 标准允许继续发送取消前已经缓冲但未开始的交付，不能用 UNSUBACK 推断全部历史输出已经清空。
 
@@ -104,10 +103,10 @@ $broker->serve('127.0.0.1', 8883);
 
 客户端默认 TLS，使用明确 IP 连接，并通过 `peerName` 指定证书身份，避免同步 DNS 越过等待预算。每次公开等待大于零且不超过 60 秒；默认入站 Receive Maximum 为 32，完整包最大 1 MiB。缓冲有条数和字节界限，半包从首字节起最多等待 5 秒，消费前面的完整包不会刷新尾部半包的期限。调用方持续接收以处理保活，不能无限阻塞业务处理。
 
-当前使用 Swoole Socket 需要在已有协程中传入 `coroutine: true`；该路径已有连接、TLS、收发与关闭实现。同步调用者尚待迁入协程宿主，不能仅更改参数默认值就宣称整体迁移完成。
+使用 Swoole Coroutine Socket 时需要在已有协程中传入 `coroutine: true`；同步调用者使用 Swoole Client。两种模式都保留连接、TLS、收发、保活、超时与关闭语义。
 
 ## 验证与使用边界
 
-专题回归不能当作完整标准验收。macOS ARM64 上已有同一会话的 WS/WSS 有限路径，以及组件内专用 mTLS 入口（含无源码原生产物）；二者都不能写成完整标准或完整证书生命周期。物联接入在 Windows 上会拒绝启动。高可用、真实设备和目标容量见[物联网中心](../iot-center.md)。
+专题回归不能当作完整标准验收。WS/WSS、mTLS、持久后端和多节点接管均需按目标平台分别验证；高可用、真实设备和目标容量见[物联网中心](../iot-center.md)。
 
 `IOT_MQTT_*` 是业务配置，与本页独立示例的 `MQTT_*` 不同。接口以安装副本的 `plugin/type-mqtt/README.md` 为准。
