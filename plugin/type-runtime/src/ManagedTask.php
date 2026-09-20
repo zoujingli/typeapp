@@ -13,6 +13,8 @@ final class ManagedTask
 {
     private ExecutionOwner $owner;
     private Cancellation $cancellation;
+    private Cancellation $parentCancellation;
+    private int $parentSubscription;
     private Deadline $deadline;
     private Channel $completion;
     private bool $finished = false;
@@ -25,7 +27,7 @@ final class ManagedTask
      * @param array<string, string> $context 父作用域的上下文快照，不携带父资源。
      * @param Closure(ManagedTask): void $finished 完成并清理后的通知。
      */
-    public function __construct(Closure $operation, Deadline $deadline, array $context, int $childLimit, float $cleanupSeconds, TaskBudget $budget, Closure $finished)
+    public function __construct(Closure $operation, Deadline $deadline, array $context, int $childLimit, float $cleanupSeconds, TaskBudget $budget, Cancellation $parentCancellation, Closure $finished)
     {
         if (!extension_loaded('swoole') || Coroutine::getCid() < 0) {
             throw new TaskException('coroutine_required', '受管子任务需要 Swoole 协程上下文');
@@ -33,6 +35,10 @@ final class ManagedTask
         $this->owner = new ExecutionOwner();
         $this->deadline = $deadline;
         $this->cancellation = new Cancellation();
+        $this->parentCancellation = $parentCancellation;
+        $this->parentSubscription = $parentCancellation->subscribe(function (): void {
+            $this->cancellation->cancel();
+        });
         $this->completion = new Channel(1);
         $cid = Coroutine::create(function () use ($operation, $context, $childLimit, $cleanupSeconds, $budget, $finished): void {
             $scope = new ExecutionScope($this->deadline, $context, $childLimit, $cleanupSeconds, $this->cancellation, $budget);
@@ -51,12 +57,14 @@ final class ManagedTask
                 }
                 // 清理超时不表示后代已经退出，整个子树结束前继续占用共享预算。
                 $scope->awaitClosed();
+                $this->detachParentCancellation();
                 $this->finished = true;
                 $finished($this);
                 $this->completion->push(true);
             }
         });
         if ($cid === false) {
+            $this->detachParentCancellation();
             throw new TaskException('spawn_failed', '无法创建受管子任务');
         }
     }
@@ -120,5 +128,13 @@ final class ManagedTask
         }
         $this->completion->pop($seconds ?? -1);
         return $this->finished;
+    }
+
+    private function detachParentCancellation(): void
+    {
+        if ($this->parentSubscription !== 0) {
+            $this->parentCancellation->unsubscribe($this->parentSubscription);
+            $this->parentSubscription = 0;
+        }
     }
 }
