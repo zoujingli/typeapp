@@ -192,7 +192,7 @@ final class BuildPlatform
         return $environment;
     }
 
-    /** @return list<string> 上游平台实际要求的PHP与PHPX运行库。 */
+    /** @return list<string> 锁定TypePHP平台实际要求的PHP、PHPX与数值运行库。 */
     public function runtimeLibraries(string $phpHome, string $phpxHome): array
     {
         if ($this->family === 'Windows') {
@@ -204,7 +204,9 @@ final class BuildPlatform
             if ($imports['is_zts'] !== (bool) PHP_ZTS || !is_file($phpxHome . '/lib/phpx.lib')) {
                 throw new RuntimeException('Windows PHP/PHPX导入库或ZTS身份不匹配');
             }
-            $libraries = [$core, $runtime];
+            // TypePHP的Windows链接清单直接引用mpdecimal C/C++导入库；PHPX自身不一定导入C++包装库。
+            // 两者必须在编译前进入身份与发布清单，不能依赖开发机PATH补齐。
+            $libraries = [$core, $runtime, $phpHome . '/libmpdec-4.0.1.dll', $phpHome . '/libmpdec++-4.0.1.dll'];
         } else {
             $platform = $this->family === 'Darwin' ? new \TypePhp\Platform\Macos() : new \TypePhp\Platform\Linux();
             $detected = $platform->detectPhpLibs($phpHome);

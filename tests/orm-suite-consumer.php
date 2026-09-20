@@ -50,8 +50,9 @@ function ormSuccessful(array $command, string $directory): string
     $process = new Type\Testing\Process($command, $directory);
     try {
         $result = $process->wait(120);
-        expect($result->successful() && $result->stderr === '', '独立 ORM 运行失败或存在错误输出（timeout='
-            . (int) $result->timedOut . '）：' . $result->stdout . $result->stderr);
+        expect($result->successful() && $result->stderr === '', '独立 ORM 运行失败或存在错误输出（exit='
+            . $result->exitCode . ', signal=' . ($result->signal ?? 'none') . ', timeout='
+            . (int) $result->timedOut . ', output_exceeded=' . (int) $result->outputExceeded . '）：' . $result->stdout . $result->stderr);
         return $result->stdout;
     } finally {
         $process->stop();
@@ -268,6 +269,18 @@ try {
         expect($actual === $packages, '编译产物混入其他生产驱动');
         foreach ($report['sources'] as $source) {
             expect(Type\Build\BuildPlatform::contains($consumer, $source), '原生产物仍然编译主仓文件');
+        }
+        if (PHP_OS_FAMILY === 'Windows') {
+            $platformEnvironment = (new Type\Build\BuildPlatform())->environment(getenv('PHP_HOME'), getenv('PHPX_HOME'));
+            $importTable = (new Type\Build\BuildEnvironment())->run(['dumpbin.exe', '/DEPENDENTS', $artifact], $consumer, $platformEnvironment, 60);
+            $imports = (new Type\Build\WindowsImports())->parse($importTable);
+            $recordedLibraries = array_map('strtolower', array_column($report['manifest']['native-libraries'], 'name'));
+            foreach (array_merge($imports['required'], $imports['delayed']) as $libraryName) {
+                // API-set由受限系统加载器映射为宿主DLL；其他导入必须直接进入清单。
+                if (preg_match('/^(?:api|ext)-ms-[A-Za-z0-9_.-]+\.dll$/i', $libraryName) !== 1) {
+                    expect(in_array(strtolower($libraryName), $recordedLibraries, true), '原生产物导入未进入运行库清单：' . $libraryName);
+                }
+            }
         }
         $release = (new Type\Build\NativePackage())->create($artifact, $consumer . '/release');
         (new Type\Build\NativePackage())->verify($release['directory'], $release['manifest-sha256']);
