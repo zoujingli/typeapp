@@ -1,6 +1,7 @@
-param([Parameter(Mandatory)][ValidateSet('mysql', 'pgsql')][string]$Driver, [switch]$OrmOnly)
+param([Parameter(Mandatory)][ValidateSet('mysql', 'pgsql')][string]$Driver, [switch]$OrmOnly, [switch]$ProbeOnly)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($ProbeOnly -and (!$OrmOnly -or $Driver -ne 'pgsql')) { throw '原生接缝诊断仅用于 PostgreSQL ORM。' }
 # 不接管镜像预装服务，不使用Docker/WSL；只在可丢弃的原生runner工作。
 if (!$IsWindows -or $env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows') {
     throw '此入口只接受GitHub Windows原生runner。'
@@ -68,6 +69,25 @@ function Invoke-TaskProcess {
     param([string]$File, [string[]]$CommandArguments, [string]$Log, [int]$Seconds = 120, [hashtable]$Environment = @{}, [switch]$InheritOutput)
     $taskHandle = Start-TaskProcess $File $CommandArguments $Environment -InheritOutput:$InheritOutput
     try { return Complete-TaskProcess $taskHandle $Seconds $Log } finally { $taskHandle.Process.Dispose() }
+}
+
+function Trace-TaskPgsqlProbe {
+    param([string]$Mode, [hashtable]$Environment)
+    # 仅对已经失败的最小探针取栈；不改变原验收结果，不保存进程内存或环境变量。
+    $taskCdb = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/Debuggers/x64/cdb.exe'
+    $taskLldb = Get-Command lldb.exe -ErrorAction SilentlyContinue
+    $taskTraceLog = Join-Path $taskEvidence ('pdo-' + $Mode + '-stack.log')
+    try {
+        if (Test-Path -LiteralPath $taskCdb) {
+            Invoke-TaskProcess $taskCdb @('-G', '-y', (Join-Path $env:PHP_HOME 'ext'), '-c', 'sxe -c ".echo [pdo-native-crash];.exr -1;k;lm;q" av;g', $taskPhp, '.github/scripts/probe-windows-pgsql.php', $Mode) $taskTraceLog 60 $Environment | Out-Null
+        } elseif ($null -ne $taskLldb) {
+            Invoke-TaskProcess $taskLldb.Source @('--batch', '-o', 'run', '-k', 'thread backtrace all', '-k', 'image list', '-k', 'quit', '--', $taskPhp, '.github/scripts/probe-windows-pgsql.php', $Mode) $taskTraceLog 60 $Environment | Out-Null
+        } else {
+            [IO.File]::WriteAllText($taskTraceLog, '当前镜像未找到 CDB 或 LLDB；原探针失败结果保持。', [Text.UTF8Encoding]::new($false))
+        }
+    } catch {
+        Write-Output ('原生诊断结束，原探针失败结果保持：' + $Mode)
+    }
 }
 
 function Get-TaskPort {
@@ -139,12 +159,15 @@ try {
                 } catch {
                     $taskProbeFailed = $true
                     Write-Output ('PDO PostgreSQL 接缝验证失败：' + $taskProbeMode)
+                    if ($taskProbeMode -eq 'hook') { Trace-TaskPgsqlProbe $taskProbeMode $taskEnvironment }
                 }
             }
             if ($taskProbeFailed) { throw 'PDO PostgreSQL 接缝验证未通过，详见 pdo-*.log。' }
         }
-        foreach ($taskMode in @('php', 'native')) {
-            Invoke-TaskProcess $taskPhp @('tests/orm-suite-consumer.php', $Driver, ('--' + $taskMode)) (Join-Path $taskEvidence ('orm-' + $taskMode + '.log')) 2400 $taskEnvironment | Out-Null
+        if (!$ProbeOnly) {
+            foreach ($taskMode in @('php', 'native')) {
+                Invoke-TaskProcess $taskPhp @('tests/orm-suite-consumer.php', $Driver, ('--' + $taskMode)) (Join-Path $taskEvidence ('orm-' + $taskMode + '.log')) 2400 $taskEnvironment | Out-Null
+            }
         }
     } else {
         Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', '--php', $Driver, '--app') (Join-Path $taskEvidence 'development.log') 180 $taskEnvironment | Out-Null
@@ -173,7 +196,7 @@ try {
         [IO.File]::WriteAllText((Join-Path $taskEvidence 'server.log'), $taskServerLog, [Text.UTF8Encoding]::new($false))
     }
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
-    $taskRecord = @{ platform='Windows'; driver=$Driver; version=$taskSource.version; archive_sha256=$taskSource.sha256; scope=$(if ($OrmOnly) { 'isolated ORM Composer consumption, PHP/AOT and source removal' } else { 'native dedicated database process, development/AOT and isolated template package' }); passed=($taskPassed -and $taskCleanupPassed); owned_process_cleanup=$taskCleanupPassed; installed_service=$false }
+    $taskRecord = @{ platform='Windows'; driver=$Driver; version=$taskSource.version; archive_sha256=$taskSource.sha256; scope=$(if ($ProbeOnly) { 'PDO/Swoole PostgreSQL probe only; not ORM acceptance' } elseif ($OrmOnly) { 'isolated ORM Composer consumption, PHP/AOT and source removal' } else { 'native dedicated database process, development/AOT and isolated template package' }); passed=($taskPassed -and $taskCleanupPassed); owned_process_cleanup=$taskCleanupPassed; installed_service=$false }
     $taskRecord | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
     if (!$taskCleanupPassed) { throw '本轮数据库未正常清理，不能记作通过。' }
 }

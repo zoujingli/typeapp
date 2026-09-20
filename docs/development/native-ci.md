@@ -20,6 +20,8 @@ Windows便携包需要核对来源、摘要、ZIP结构和x64 PE。PowerShell解
 
 Windows 工作流的 `scope=orm` 默认顺序验收三库；诊断时可用 `orm_driver` 选择一个驱动，结果只代表该数据库。PostgreSQL 在完整消费者前先验证同步 PDO、仅 PostgreSQL hook、框架既定 hook 三种独立进程的连接、参数查询、事务和重置，保存逐阶段日志，以区分原生驱动故障与模型行为失败。探针通过不能代替完整 PHP、AOT 与移除源码验收。
 
+`scope=pgsql-probe` 仅准备相同原生环境并执行 PostgreSQL 探针，不运行契约套件和 ORM 消费者，报告明确标记诊断范围。hook 探针失败时，若镜像具有 CDB 或 LLDB，额外收集有界的调用栈及模块列表；调试器结果不改变原失败结论，不保存进程内存或完整环境变量。修复后仍须运行 `scope=orm` 的完整行为验收。
+
 各平台最新范围与限制统一见[平台与验收](../guide/platforms.md)，准确运行与产物身份见[平台证据](platform-support.md#当前结果与证据)。每次更换 Swoole、PHPX、libphp 或目标架构后都必须重跑完整入口；组件、SQLite 或单项命令结果不能替代应用、通信、三库和无源码发布验收。
 
 macOS选择GitHub标准`macos-15` ARM64标签，不使用Docker或WSL运行应用。准确平台标签见[GitHub runner说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。PHP安装Action固定为已核对提交`f3e473d116dcccaddc5834248c87452386958240`（v2.37.2），请求8.5.10 ZTS后仍按`toolchain.lock.json`校验实际PHP、TypePHP、PHPX；安装器或镜像漂移必须失败，不放宽版本。

@@ -155,6 +155,10 @@ try {
 $taskModules = @(Get-ChildItem -LiteralPath $taskSwoole -Filter php_swoole.dll -File -Recurse)
 if ($taskModules.Count -ne 1) { throw 'Swoole 构建没有产生唯一扩展。' }
 Copy-Item -LiteralPath $taskModules[0].FullName -Destination (Join-Path $sdk 'ext/php_swoole.dll')
+$taskSwooleSymbols = [IO.Path]::ChangeExtension($taskModules[0].FullName, '.pdb')
+if (Test-Path -LiteralPath $taskSwooleSymbols) {
+    Copy-Item -LiteralPath $taskSwooleSymbols -Destination (Join-Path $sdk 'ext/php_swoole.pdb')
+}
 # 将实际链接的依赖与 SDK 放在同一搜索目录，运行清单随后从真实加载模块核验。
 Get-ChildItem -LiteralPath (Join-Path $taskDeps 'bin') -Filter '*.dll' -File | Copy-Item -Destination $sdk -Force
 

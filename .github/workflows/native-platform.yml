@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 验收范围（native 复用同一代码已通过的契约结果，仅复跑原生链路）
+        description: 验收范围（native 复用已有契约结果；pgsql-probe 仅诊断原生接缝）
         type: choice
-        options: [full, native, orm]
+        options: [full, native, orm, pgsql-probe]
         default: full
       orm_driver:
         description: 仅 scope=orm 生效；单库结果不代表三库验收
@@ -51,17 +51,19 @@ jobs:
           & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-process.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 检查完整公开契约
-        if: github.event_name != 'workflow_dispatch' || inputs.scope != 'native'
+        if: github.event_name != 'workflow_dispatch' || (inputs.scope != 'native' && inputs.scope != 'pgsql-probe')
         run: |
           & "$env:PHP_HOME/php.exe" vendor/bin/phpunit --configuration phpunit.xml --log-junit build/windows-contracts.xml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 检查 Windows 进程与平台行为
+        if: inputs.scope != 'pgsql-probe'
         run: |
           foreach ($arguments in @(@('tests/windows-imports.php'), @('tests/testing-portable.php'), @('tests/build-platform.php'), @('tests/helpers.php','--php'))) {
             & "$env:PHP_HOME/php.exe" @arguments
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - name: 三库独立 ORM 与 Swoole 上下文验收
+        if: inputs.scope != 'pgsql-probe'
         env:
           TYPE_ORM_DRIVER: ${{ inputs.scope == 'orm' && inputs.orm_driver || 'all' }}
         run: |
@@ -83,18 +85,21 @@ jobs:
               ./.github/scripts/run-windows-database.ps1 -Driver $taskDriver -OrmOnly
             }
           }
+      - name: PostgreSQL 原生接缝诊断
+        if: inputs.scope == 'pgsql-probe'
+        run: ./.github/scripts/run-windows-database.ps1 -Driver pgsql -OrmOnly -ProbeOnly
       - name: 原生构建身份与缓存
-        if: inputs.scope != 'orm'
+        if: inputs.scope != 'orm' && inputs.scope != 'pgsql-probe'
         run: |
           & "$env:PHP_HOME/php.exe" tests/build-platform-native.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 四组件原生编译与 SQLite 行为
-        if: inputs.scope != 'orm'
+        if: inputs.scope != 'orm' && inputs.scope != 'pgsql-probe'
         run: |
           & "$env:PHP_HOME/php.exe" tests/helpers-build.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 标准应用编译、SQLite与可搬迁发布
-        if: inputs.scope != 'orm'
+        if: inputs.scope != 'orm' && inputs.scope != 'pgsql-probe'
         run: |
           & "$env:PHP_HOME/php.exe" bin/typeapp-prepare
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -110,10 +115,10 @@ jobs:
           & "$env:PHP_HOME/php.exe" tests/application-template.php sqlite --onboarding --native --package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 原生MySQL开发生产与完整模板接入
-        if: inputs.scope != 'orm'
+        if: inputs.scope != 'orm' && inputs.scope != 'pgsql-probe'
         run: ./.github/scripts/run-windows-database.ps1 -Driver mysql
       - name: 原生PostgreSQL开发生产与完整模板接入
-        if: inputs.scope != 'orm'
+        if: inputs.scope != 'orm' && inputs.scope != 'pgsql-probe'
         run: ./.github/scripts/run-windows-database.ps1 -Driver pgsql
       - name: 保存原生验收证据
         if: always()
