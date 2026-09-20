@@ -4,7 +4,7 @@
 
 `examples/orm-suite` 包含共同的模型声明、业务流程、文章观察器、迁移计划和应用入口。三个消费者只选择各自的 `DriverFactory` 文件。业务不包含私有 PDO 补丁或临时替代 ORM；字段存储的真实差异集中声明在迁移计划中：
 
-| 行为或存储 | MySQL 8.4.11 | PostgreSQL 17.11 | SQLite 3.40.1 |
+| 行为或存储 | MySQL | PostgreSQL | SQLite |
 | --- | --- | --- | --- |
 | 主键存储 | AUTO_INCREMENT | IDENTITY | INTEGER PRIMARY KEY |
 | 模型返回生成主键 | 同连接 lastInsertId | INSERT RETURNING | INSERT RETURNING |
@@ -23,7 +23,7 @@
 | 任意唯一键 upsert | 显式独立入口 | 明确拒绝 | 明确拒绝 |
 | 未实现的 serializable 事务模式 | 明确拒绝 | 明确拒绝 | 明确拒绝 |
 
-JSON 对象的属性顺序不作跨库保证；读取后分别断言字段内容和类型，数组次序仍由 JSON 数组本身表达。JSON 标量比较区分整数与字符串；复合对象/数组比较在共同接口处拒绝。模型的主键回读是已声明的数据库等价实现，不要求 MySQL 提供不存在的 INSERT RETURNING。
+各平台的实际数据库版本记录在消费者的 `verification.json` 中，不能将一个平台的版本当作所有平台的运行基线。JSON 对象的属性顺序不作跨库保证；读取后分别断言字段内容和类型，数组次序仍由 JSON 数组本身表达。JSON 标量比较区分整数与字符串；复合对象/数组比较在共同接口处拒绝。模型的主键回读是已声明的数据库等价实现，不要求 MySQL 提供不存在的 INSERT RETURNING。
 
 ## 公共行锁接口
 
@@ -100,7 +100,7 @@ php tests/orm-suite-consumer.php sqlite --native
 
 消费者启动前启用 `CoroutineRuntime::enableIo()`。MySQL 需要 mysqlnd 和网络 hook，PostgreSQL、SQLite 分别需要官方 `--enable-swoole-pgsql`、`--enable-swoole-sqlite` 构建选项；缺失时真实锁等待验收不能通过。报告的 `swoole_hook_flags` 记录实际启用值。Swoole 会在扩展初始化时注册其编入的 PDO 驱动，所以 `PDO::getAvailableDrivers()` 可能包含没有独立加载 `pdo_*` 模块的驱动；`swoole_pdo_drivers` 单独记录该来源，`runtime_extensions` 继续验证独立模块过滤，生产包清单仍只能包含所选 ORM 驱动。
 
-macOS ARM64 和 Linux ARM64 已通过三库独立消费的 PHP、AOT 与移除源码运行，包含真实数据库锁等待、关闭作用域后的缓存连接拒绝、断连退役、PostgreSQL 重置失败和凭据代次专项；Linux 结果来自 Colima ARM64 虚拟机内的专用容器。Windows x64 的 Swoole SDK 构建、扩展加载、PHPUnit、SQLite PHP/AOT 与移除源码运行、MySQL PHP 消费和 AOT 编译已通过；MySQL 无源码运行的双进程乐观锁场景未通过，PostgreSQL 尚未完成。工作流提供 `orm` 验收范围，复用专用数据库实例入口顺序执行三库，并保留运行包、编译清单、主场景结果及两个子进程的退出码和原始输出。分阶段证据不代表整套验收通过。主从选路另有三库 PHP/AOT 实测，不将两台具有受控数据差异的服务器称为复制集群。
+macOS ARM64 和 Linux ARM64 已通过三库独立消费的 PHP、AOT 与移除源码运行，包含真实数据库锁等待、关闭作用域后的缓存连接拒绝、断连退役、PostgreSQL 重置失败和凭据代次专项；Linux 结果来自 Colima ARM64 虚拟机内的专用容器。Windows x64 的 Swoole SDK 构建、扩展加载和 PHPUnit 已通过，SQLite/MySQL 均通过独立 PHP、AOT 与移除源码运行，包含十项上下文与资源专项、双进程乐观锁和原子更新；PostgreSQL 尚未完成。工作流提供 `orm` 验收范围，复用专用数据库实例入口顺序执行三库，并保留运行包、编译清单、主场景结果及两个子进程的退出码和原始输出。分阶段证据不代表整套验收通过。主从选路另有三库 PHP/AOT 实测，不将两台具有受控数据差异的服务器称为复制集群。
 
 Linux ARM64 另使用 QEMU 7.2.22 user-mode 显式执行 ARM64 动态加载器及程序，完成三库无源码运行、上下文与资源专项，以及两个独立模拟进程的乐观锁竞争和原子更新。仅设置容器的 `--platform linux/arm64` 不计为 CPU 指令模拟；报告保存模拟器版本和摘要、宿主环境、程序及运行库摘要、源码提交和各场景结果。该批补测使用源码提交 `5c3e19b` 的保留产物，运行前逐文件校验且没有业务 PHP 源码，不等同于后续提交重新编译或最终同提交平台验收。
 

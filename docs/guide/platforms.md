@@ -11,7 +11,7 @@ TypeApp 的目标平台为 Linux x64、Linux ARM64、macOS ARM64 和 Windows x64
 | Linux x64 | 基础命令的全量 AOT 与实际运行 | 当前 ORM、完整应用及全部通信仍需同提交验收 |
 | Linux ARM64（虚拟机及 QEMU 指令模拟） | 三库独立 ORM 的 PHP、AOT 与移除源码运行，包含锁等待、断连退役与凭据代次；保留的无源码产物另通过 QEMU 三库上下文、乐观锁和原子更新验收 | QEMU 补测与原产物提交绑定，完整应用、全部通信及最终同提交验收待完成 |
 | macOS ARM64 | 三库独立 ORM 与真实锁等待、完整应用 AOT 产物的三库身份 HTTP 和无源码运行包；TCP/UDP 双线程和协程、WS/WSS 独立原生运行 | 完整协议、故障、单程序交付及最终同提交验收待完成 |
-| Windows x64 | Swoole SDK 构建与加载、PHPUnit；独立 ORM 的 SQLite PHP、AOT 与移除源码运行，MySQL PHP 消费和 AOT 编译；已有四组件消费者、SQLite 原生行为与部署审计结果 | MySQL 无源码运行的双进程乐观锁场景未通过，PostgreSQL、完整应用及最终同提交验收待完成 |
+| Windows x64 | Swoole SDK 构建与加载、PHPUnit；独立 ORM 的 SQLite/MySQL PHP、AOT 与移除源码运行，包含上下文、双进程乐观锁与原子更新；已有四组件消费者与部署审计结果 | PostgreSQL、完整应用及最终同提交验收待完成 |
 
 “四组件”指 `type-runtime`、`type-validate`、`type-orm` 和 `type-orm-sqlite` 的完整生产源码。SQLite 对照证明该场景的 PHP 与原生结果一致，不代表 MySQL、PostgreSQL 或物联中心全部业务已通过。Windows 原生部署审计验证的是组件消费者的实际程序和运行库，尚不包含完整应用的可搬迁发布包。
 
