@@ -96,12 +96,27 @@ $taskSwoole = Join-Path $Directory ('swoole-src-' + $taskSwooleReference)
 $taskPatch = 'foreach(["SwooleThreadSource","SwooleHttpSource","SwooleSocketSource"] as $name){require $argv[1]."/plugin/type-build/src/".$name.".php";$class="Type\\Build\\".$name;$patch=new $class();$report[$name]=$patch->apply($argv[2]);} $report["tls"]=(new Type\Build\SwooleSocketSource())->applyTls($argv[2]);echo json_encode($report,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);'
 & (Join-Path $sdk 'php.exe') -n -r $taskPatch $taskRoot $taskSwoole | Set-Content -LiteralPath (Join-Path $taskEvidence 'swoole-source.json') -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw '固定 Swoole 源码适配核验失败。' }
+# 固定版本未声明 PHP_PGSQL_DIR；独立 phpize 构建使用已有 --with-php-build 依赖目录。
+# 上游配置能独立发现 libpq 后撤除此适配，不能因此关闭 PostgreSQL hook。
+$taskConfig = Join-Path $taskSwoole 'config.w32'
+$taskConfigBefore = '02a801b07d5bb38edea0f88465271454f54d4625d6e71e0c15db3935bef789ac'
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() -ne $taskConfigBefore) { throw 'Swoole Windows 配置原文不符。' }
+$taskConfigText = [IO.File]::ReadAllText($taskConfig)
+$taskLibraryProbe = 'CHECK_LIB("libpq.lib", "swoole", PHP_PGSQL_DIR)'
+$taskHeaderProbe = 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PGSQL_DIR)'
+foreach ($taskProbe in @($taskLibraryProbe, $taskHeaderProbe)) {
+    if ([regex]::Matches($taskConfigText, [regex]::Escape($taskProbe)).Count -ne 1) { throw 'Swoole libpq 配置适配位置不唯一。' }
+}
+$taskConfigText = $taskConfigText.Replace($taskLibraryProbe, 'CHECK_LIB("libpq.lib", "swoole", null)')
+$taskConfigText = $taskConfigText.Replace($taskHeaderProbe, 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PHP_BUILD + "\\include\\libpq")')
+[IO.File]::WriteAllText($taskConfig, $taskConfigText, [Text.UTF8Encoding]::new($false))
+@{ file='config.w32'; before=$taskConfigBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-config-source.json') -Encoding utf8
 Push-Location $taskSwoole
 try {
     & (Join-Path $taskDevel 'phpize.bat') 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'phpize.log')
     if ($LASTEXITCODE -ne 0) { throw 'Swoole phpize 失败。' }
     & .\configure.bat '--enable-swoole=shared' '--enable-swoole-thread' '--enable-mysqlnd' '--enable-php-sockets' '--enable-swoole-pgsql' '--enable-swoole-sqlite' "--with-php-build=$taskDeps" '--with-mp=2' 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
-    if ($LASTEXITCODE -ne 0) { throw 'Swoole Windows 配置失败。' }
+    if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath 'Makefile')) { throw 'Swoole Windows 配置失败。' }
     & nmake /nologo 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'swoole-build.log')
     if ($LASTEXITCODE -ne 0) { throw 'Swoole Windows 编译失败。' }
 } finally { Pop-Location }
