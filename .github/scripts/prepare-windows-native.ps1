@@ -111,6 +111,20 @@ $taskConfigText = $taskConfigText.Replace($taskLibraryProbe, 'CHECK_LIB("libpq.l
 $taskConfigText = $taskConfigText.Replace($taskHeaderProbe, 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PHP_BUILD + "\\include\\libpq")')
 [IO.File]::WriteAllText($taskConfig, $taskConfigText, [Text.UTF8Encoding]::new($false))
 @{ file='config.w32'; before=$taskConfigBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-config-source.json') -Encoding utf8
+# IOCP 直接引用 PHP 文件辅助头，需要先加载其使用的 Zend 内联定义。
+# 仅补头文件依赖；上游补齐包含顺序并通过 Windows 编译后撤除。
+$taskIocp = Join-Path $taskSwoole 'src/coroutine/iocp.cc'
+$taskIocpBefore = 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990'
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath $taskIocp).Hash.ToLowerInvariant() -ne $taskIocpBefore) { throw 'Swoole IOCP 原文不符。' }
+$taskIocpText = [IO.File]::ReadAllText($taskIocp)
+$taskIocpInclude = '#include "win32/ioutil.h"'
+if ([regex]::Matches($taskIocpText, [regex]::Escape($taskIocpInclude)).Count -ne 1) { throw 'Swoole IOCP 头文件适配位置不唯一。' }
+$taskIocpReplacement = @'
+#include "Zend/zend_portability.h"
+#include "win32/ioutil.h"
+'@
+[IO.File]::WriteAllText($taskIocp, $taskIocpText.Replace($taskIocpInclude, $taskIocpReplacement), [Text.UTF8Encoding]::new($false))
+@{ file='src/coroutine/iocp.cc'; before=$taskIocpBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskIocp).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-iocp-source.json') -Encoding utf8
 Push-Location $taskSwoole
 try {
     & (Join-Path $taskDevel 'phpize.bat') 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'phpize.log')

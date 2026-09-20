@@ -64,6 +64,8 @@ Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收�
 
 固定 Swoole 的 Windows 配置引用了未声明的 PostgreSQL 路径变量。准备脚本仅在原文摘要和替换位置匹配时，将库与头文件探测接入 PHP 官方 `--with-php-build` 依赖目录，并记录适配前后摘要；不改变 PDO 协议实现或关闭协程 hook。上游支持同一独立构建方式并通过三库验收后撤除此适配。Swoole 的 PHP 8.5 实现使用指定初始化，MSVC 构建时显式启用 C++20，结束后恢复原编译选项；该选项不改变 TypePHP 的 PHP 语言契约。
 
+Windows IOCP 源码引用 PHP 文件辅助头前，还需要 Zend 的内联定义。准备脚本按固定原文摘要补齐头文件依赖，并单独保存适配身份；不修改 IOCP 的提交、等待或完成逻辑。上游补齐包含顺序并通过相同 Windows 编译与运行验收后撤除此适配。
+
 通信依赖 Swoole，启用其官方内置库。Unix HTTP 场景可用 `php tests/build-scenario.php --with-swoole docs/build-config/type-http.json` 构建，再运行 `php tests/http-native.php build/http/type-app`；此场景同时声明 sockets 与 Swoole，避免 CLI 已加载模块而 embed 缺少依赖。`php tests/websocket.php` 验证 PHP 模式的 HTTP 同端口、分片、WSS 和生命周期，不证明 WebSocket AOT 已通过。
 
 完整应用还需满足[编译业务线程](compiled-business-threads.md)的 PHPX 与 Swoole ABI 校验。普通组件构建通过不能替代线程 SDK 验收，也不能绕过校验退回业务源码解释执行。当前边界与后续目标见[实现对齐](current-implementation-alignment.md)和[实现规划](../guide/roadmap.md)。
