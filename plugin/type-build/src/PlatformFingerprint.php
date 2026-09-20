@@ -195,6 +195,25 @@ final class PlatformFingerprint
     /** @param list<string> $roots 动态库或本机工具闭包的已验证入口。 */
     private function dependencies(array $roots, string $applicationDirectory): array
     {
+        // 扩展可位于SDK的ext或显式外部目录；已声明的同进程模块参与DLL名称解析。
+        // 映射只属于本次闭包，不能让独立编译工具继承应用的扩展或运行库。
+        $declaredWindowsLibraries = [];
+        if (PHP_OS_FAMILY === 'Windows') {
+            foreach ($roots as $root) {
+                $rootPath = realpath($root);
+                if ($rootPath === false || !is_file($rootPath)) {
+                    throw new RuntimeException('平台动态依赖路径不存在：' . $root);
+                }
+                $rootName = strtolower(basename($rootPath));
+                if (isset($declaredWindowsLibraries[$rootName])) {
+                    if (hash_file('sha256', $declaredWindowsLibraries[$rootName]) !== hash_file('sha256', $rootPath)) {
+                        throw new RuntimeException('同名平台运行库存在不同身份：' . basename($rootPath));
+                    }
+                    continue;
+                }
+                $declaredWindowsLibraries[$rootName] = BuildPlatform::path($rootPath);
+            }
+        }
         $queue = array_map(static fn (string $file): array => [$file, false], $roots);
         $seen = [];
         $libraries = [];
@@ -223,10 +242,11 @@ final class PlatformFingerprint
                 $entry['system'] = BuildPlatform::contains($this->environment['SystemRoot'], $real);
                 $entry['deferred'] = $deferred;
             }
-            if (isset($libraries[$name]) && $libraries[$name]['sha256'] !== $entry['sha256']) {
+            $libraryKey = PHP_OS_FAMILY === 'Windows' ? strtolower($name) : $name;
+            if (isset($libraries[$libraryKey]) && $libraries[$libraryKey]['sha256'] !== $entry['sha256']) {
                 throw new RuntimeException('同名平台运行库存在不同身份：' . $name);
             }
-            $libraries[$name] = $entry;
+            $libraries[$libraryKey] = $entry;
             if (PHP_OS_FAMILY === 'Darwin') {
                 $output = $this->command(['/usr/bin/otool', '-L', $real]);
                 foreach (explode("\n", $output) as $line) {
@@ -257,7 +277,7 @@ final class PlatformFingerprint
                             }
                         }
                         try {
-                            $queue[] = [$this->windowsLibrary($dependencyName, $applicationDirectory, basename($real)), $deferred || $kind === 'delayed'];
+                            $queue[] = [$this->windowsLibrary($dependencyName, $applicationDirectory, basename($real), $declaredWindowsLibraries), $deferred || $kind === 'delayed'];
                         } catch (RuntimeException $error) {
                             throw new RuntimeException($error->getMessage() . "\n父映像依赖表：\n" . $output, 0, $error);
                         }
@@ -324,10 +344,18 @@ final class PlatformFingerprint
         return null;
     }
 
-    private function windowsLibrary(string $name, string $loader, string $importer): string
+    /** @param array<string, string> $declared 小写DLL名称到本次闭包明确声明的文件。 */
+    private function windowsLibrary(string $name, string $loader, string $importer, array $declared): string
     {
         // API Set 先由系统加载器解析；SDK 同名转发文件不代表实际加载的宿主映像。
         if (preg_match('/^(?:api|ext)-ms-[A-Za-z0-9_.-]+\.dll$/i', $name) !== 1) {
+            $declaredPath = $declared[strtolower($name)] ?? null;
+            if ($declaredPath !== null) {
+                if (!is_file($declaredPath)) {
+                    throw new RuntimeException('已声明Windows动态依赖路径不存在：' . $name);
+                }
+                return $declaredPath;
+            }
             foreach (array_merge([$loader, $this->phpHome, $this->phpxHome . '/build', $this->phpxHome . '/lib'], explode(';', $this->environment['PATH'])) as $directory) {
                 $candidate = $directory . '/' . $name;
                 if (is_file($candidate)) {

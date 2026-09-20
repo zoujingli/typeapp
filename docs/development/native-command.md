@@ -62,6 +62,8 @@ php tests/native.php --chroot "$task_sandbox"
 
 Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收流程、且同一代码的契约套件已通过时，可手动选择 `scope=native` 定向复跑；报告须同时引用契约与原生运行的源码身份，不能把跳过项记为本次通过。准备脚本固定并核验 PHP 官方 SDK 构建工具，提供 `phpize` 配置必需的 bison、re2c 等程序；工具身份与 Swoole、PHPX 身份一同记录。PHPX DLL 放入编译器要求的 `PHPX_HOME/build`，并统一加载路径；工作流分别记录构建身份、四组件和完整应用的结果，保存日志、清单与实际程序产物。
 
+Windows 运行库核验会将运行配置明确声明的扩展文件纳入同一组 DLL 依赖解析。例如 Swoole 导入的 `php_sockets.dll` 使用已声明的 sockets 模块，不要求把扩展目录加入全局 PATH。DLL 名称按 Windows 的大小写无关规则匹配，同名不同内容仍拒绝；API-set 继续由受限系统加载器解析。每个编译工具独立核验自己的依赖，不能借用应用的模块映射。
+
 固定 Swoole 的 Windows 配置引用了未声明的 PostgreSQL 路径变量。准备脚本仅在原文摘要和替换位置匹配时，将库与头文件探测接入 PHP 官方 `--with-php-build` 依赖目录，并记录适配前后摘要；不改变 PDO 协议实现或关闭协程 hook。上游支持同一独立构建方式并通过三库验收后撤除此适配。Swoole 的 PHP 8.5 实现使用指定初始化，MSVC 构建时显式启用 C++20，结束后恢复原编译选项；该选项不改变 TypePHP 的 PHP 语言契约。
 
 Windows IOCP 源码引用 PHP 文件辅助头前，还需要 Zend 的内联定义。准备脚本按固定原文摘要补齐头文件依赖，并单独保存适配身份；不修改 IOCP 的提交、等待或完成逻辑。上游补齐包含顺序并通过相同 Windows 编译与运行验收后撤除此适配。
