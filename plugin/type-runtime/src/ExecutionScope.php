@@ -166,6 +166,10 @@ final class ExecutionScope
         $resource->start();
     }
 
+    /**
+     * 取消并收尾当前作用域；监听异常不跳过后续清理，重复关闭不重复释放。
+     * @throws RuntimeException 取消监听、子任务或资源清理失败；已能收尾的资源仍会释放。
+     */
     public function close(): void
     {
         if ($this->state === 'closed') {
@@ -178,9 +182,14 @@ final class ExecutionScope
         $this->closeInProgress = true;
         try {
             $this->state = 'closing';
-            $this->cancellation->cancel();
-            $this->stopDeadlineTimer();
             $errors = [];
+            try {
+                $this->cancellation->cancel();
+            } catch (Throwable $cancelError) {
+                // 监听异常仍需报告，但不能跳过子任务与已登记资源的收尾。
+                $errors[] = $cancelError->getMessage();
+            }
+            $this->stopDeadlineTimer();
             foreach ($this->children as $child) {
                 if ($child instanceof ManagedTask) {
                     $child->cancel();

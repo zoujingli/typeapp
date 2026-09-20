@@ -10,6 +10,22 @@ use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\TaskException;
+use Type\Runtime\ManagedResource;
+
+/** 通过受管资源公开契约观察关闭次数，不依赖数据库或外部服务。 */
+final class TaskCleanupResource implements ManagedResource
+{
+    public int $stops = 0;
+
+    public function start(): void
+    {
+    }
+
+    public function stop(): void
+    {
+        $this->stops++;
+    }
+}
 
 function taskExpect(bool $condition, string $message): void
 {
@@ -32,6 +48,25 @@ function verifyCurrentScopes(): void
         taskExpect($caught === $failure, '协程入口改变原始异常');
     }
     $result = CoroutineRuntime::run(static function (): int {
+        $closing = new ExecutionScope();
+        $resource = new TaskCleanupResource();
+        $closing->open($resource);
+        $closing->cancellation()->subscribe(static function (): void {
+            throw new RuntimeException('cancellation-listener-failure');
+        });
+        $reported = false;
+        try {
+            $closing->close();
+        } catch (RuntimeException $closeError) {
+            $reported = str_contains($closeError->getMessage(), 'cancellation-listener-failure');
+        }
+        try {
+            taskExpect($reported && $closing->state() === 'closed' && $resource->stops === 1, '取消监听异常跳过资源收尾');
+            $closing->close();
+            taskExpect($resource->stops === 1, '重复关闭再次释放资源');
+        } finally {
+            $closing->close();
+        }
         try {
             ExecutionScope::current();
             throw new RuntimeException('未绑定时取得了当前作用域');
