@@ -104,7 +104,7 @@ $user = $connection->table('users')->where('id', '=', $id)->first();
 
 `upsertAnyUnique($rows, $updateColumns)` 使用 MySQL 任意唯一键冲突语义；它不能保证只针对你指定的某一唯一索引。跨库的 `upsert($rows, $uniqueBy, $updateColumns)` 要按方言支持使用。
 
-普通 DML 使用 `$connection->transaction(static function (Connection $transaction): mixed { ... })`；嵌套事务使用 savepoint。业务须选择支持事务的表引擎，不能将非事务表当作有回滚保证。
+业务 Model CRUD 使用 `Db::transaction(static function (): mixed { ... })`，无需传入连接；嵌套事务使用 savepoint。迁移和受限基础设施的显式连接使用 `$connection->transaction(static function (Connection $transaction): mixed { ... })`。业务须选择支持事务的表引擎，不能将非事务表当作有回滚保证。
 
 迁移 DDL 必须声明 `transactional=false`。ALTER/CREATE 等操作可能隐式提交，失败之前已生效的结果保留。检查实际结构与迁移历史后再显式恢复；不能用自动重试掩盖不确定结果。
 
@@ -124,7 +124,7 @@ $user = $connection->table('users')->where('id', '=', $id)->first();
 | 提交确认失败 | 结果可能未知，先对账，再决定恢复 |
 | 同步池容量耗尽 | 在每次请求 finally 关闭 Scope，并控制工作进程总连接数 |
 
-Scope 关闭归还连接，Database 关闭进程池；SQL 错误或会话修改后不再复用会话。不要跨请求保存 Connection。
+Scope 关闭归还租约，Database 由应用所有者关闭。MySQL 当前每次归还均关闭物理 PDO，包括成功的普通 CRUD；标准 PDO MySQL 未提供完整会话重置接口，不能只恢复时区和 SQL 模式后就把可能包含变量、临时对象或命名锁的连接交给下一请求。连接池仍管理容量、等待与租约，同一作用域内继续使用已借用的连接。不要跨请求保存 Connection；具体边界见[模型连接与主从路由](../../development/model-connections.md#连接池与物理会话复用)。
 
 ## 编译与验证
 
