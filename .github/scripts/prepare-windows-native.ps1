@@ -47,6 +47,8 @@ Copy-Item -LiteralPath (Join-Path $redis 'php_redis.dll') -Destination (Join-Pat
 # 扩展使用官方 Windows/phpize 构建入口；SDK 发行包不包含 Swoole。
 # 下载均固定摘要，补丁仍由已有适配类核验原文，不修改共享安装或上游工作树。
 $taskRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$taskTar = Join-Path $env:SystemRoot 'System32/tar.exe'
+if (!(Test-Path -LiteralPath $taskTar)) { throw 'Windows 系统 tar 不存在。' }
 $taskEvidence = Join-Path $taskRoot ('build/windows-runtime-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $taskEvidence | Out-Null
 function Get-VerifiedArchive {
@@ -88,7 +90,7 @@ foreach ($taskDependency in $taskDependencies.Keys) {
 $taskSwooleReference = '0f3bee2f0ed8704ce33a336e7feabb0115411dd7'
 $taskSwooleArchive = Join-Path $Directory 'swoole.tar.gz'
 Get-VerifiedArchive ('https://codeload.github.com/swoole/swoole-src/tar.gz/' + $taskSwooleReference) 'b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea' $taskSwooleArchive
-& tar -xzf $taskSwooleArchive -C $Directory
+& $taskTar -xzf $taskSwooleArchive -C $Directory
 if ($LASTEXITCODE -ne 0) { throw 'Swoole 源码解包失败。' }
 $taskSwoole = Join-Path $Directory ('swoole-src-' + $taskSwooleReference)
 $taskPatch = 'foreach(["SwooleThreadSource","SwooleHttpSource","SwooleSocketSource"] as $name){require $argv[1]."/plugin/type-build/src/".$name.".php";$class="Type\\Build\\".$name;$patch=new $class();$report[$name]=$patch->apply($argv[2]);} $report["tls"]=(new Type\Build\SwooleSocketSource())->applyTls($argv[2]);echo json_encode($report,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);'
@@ -111,7 +113,7 @@ Get-ChildItem -LiteralPath (Join-Path $taskDeps 'bin') -Filter '*.dll' -File | C
 
 $taskPhpxArchive = Join-Path $Directory 'phpx.tar.gz'
 Get-VerifiedArchive 'https://codeload.github.com/swoole/phpx/tar.gz/6f2089379cbc7ae22dacf0faa65dd05e40d72c20' '0f61ced42f3a023ba7596abf92c2c11bb96077e86b193d3168199fb14f221db3' $taskPhpxArchive
-& tar -xzf $taskPhpxArchive -C $Directory
+& $taskTar -xzf $taskPhpxArchive -C $Directory
 if ($LASTEXITCODE -ne 0) { throw 'PHPX 源码解包失败。' }
 $taskPhpx = Join-Path $Directory 'phpx-6f2089379cbc7ae22dacf0faa65dd05e40d72c20'
 & (Join-Path $sdk 'php.exe') -n -r 'require $argv[1]."/plugin/type-build/src/PhpxThreadSource.php";echo json_encode((new Type\Build\PhpxThreadSource())->apply($argv[2]),JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);' $taskRoot $taskPhpx | Set-Content -LiteralPath (Join-Path $taskEvidence 'phpx-source.json') -Encoding utf8
