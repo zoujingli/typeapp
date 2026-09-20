@@ -11,7 +11,7 @@ use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Orm\Sqlite\SqliteDriver;
 use Type\Runtime\ExecutionScope;
 
-function identityDriver(string $name, int $generation = 1, string $role = 'writer', ?string $schema = null, ?string $password = null): Driver
+function identityDriver(string $name, int $generation = 1, string $role = 'writer', ?string $schema = null, ?string $password = null, ?string $databaseRole = null): Driver
 {
     if ($name === 'sqlite') {
         return new SqliteDriver((string) getenv('TYPE_SQLITE_FILE'), 1000, true, $generation, $role);
@@ -35,7 +35,8 @@ function identityDriver(string $name, int $generation = 1, string $role = 'write
         $password ?? (string) (getenv('TYPE_PGSQL_PASSWORD') ?: ''),
         $generation,
         $role,
-        $schema
+        $schema,
+        $databaseRole
     );
 }
 
@@ -49,6 +50,11 @@ function identityExpect(bool $condition, string $message): void
 function main(int $argc, array $argv): void
 {
     $driver = (string) ($argv[1] ?? 'sqlite');
+    if (($argv[2] ?? '') === 'session-baseline') {
+        identityExpect($driver === 'pgsql', '角色与 schema 会话基线仅适用于 PostgreSQL');
+        identitySessionBaseline();
+        return;
+    }
     $manager = new DatabaseManager(['default' => identityDriver($driver), 'reader' => identityDriver($driver, 1, 'reader')], 1, 1);
     $scope = new ExecutionScope();
     try {
@@ -171,4 +177,37 @@ function main(int $argc, array $argv): void
         $scope->close();
         $manager->close();
     }
+}
+
+/** 同一物理会话归还后恢复配置角色、schema 与读写用途，PHP 和 AOT 使用相同断言。 */
+function identitySessionBaseline(): void
+{
+    $schema = (string) getenv('TYPE_IDENTITY_SCHEMA');
+    $databaseRole = (string) getenv('TYPE_IDENTITY_ROLE');
+    foreach (['writer', 'reader'] as $role) {
+        $database = new Database(identityDriver('pgsql', 1, $role, $schema, null, $databaseRole), 1, 1);
+        $scope = new ExecutionScope();
+        try {
+            $connection = $database->connect($scope);
+            $row = $connection->query("SELECT pg_backend_pid() AS id, current_user AS role, current_schema() AS schema, current_setting('default_transaction_read_only') AS read_only")[0];
+            identityExpect($row['role'] === $databaseRole && $row['schema'] === $schema
+                && $row['read_only'] === ($role === 'reader' ? 'on' : 'off'), 'PostgreSQL 会话基线没有初始化');
+            // 查询也可调用有副作用的函数；只读用途不能代替归还时完整重置。
+            $connection->query("SELECT set_config('role', session_user, false)");
+            $connection->query("SELECT set_config('search_path', 'pg_catalog', false), set_config('default_transaction_read_only', ?, false)", [$role === 'reader' ? 'off' : 'on']);
+            $dirty = $connection->query("SELECT current_user AS role, current_schema() AS schema, current_setting('default_transaction_read_only') AS read_only")[0];
+            identityExpect($dirty['role'] !== $row['role'] && $dirty['schema'] === 'pg_catalog'
+                && $dirty['read_only'] !== $row['read_only'], 'PostgreSQL 污染场景未实际改变会话状态');
+            $connection->close();
+            $next = $database->connect($scope);
+            $restored = $next->query("SELECT pg_backend_pid() AS id, current_user AS role, current_schema() AS schema, current_setting('default_transaction_read_only') AS read_only")[0];
+            identityExpect($restored === $row, 'PostgreSQL 未复用物理会话或未恢复角色、schema 和读写用途');
+            $next->close();
+            identityExpect($database->statistics()['idle'] === 1, '恢复基线后没有归还可借物理会话');
+        } finally {
+            $scope->close();
+            $database->close();
+        }
+    }
+    echo "PostgreSQL 物理会话复用与角色、schema、读写用途恢复通过。\n";
 }

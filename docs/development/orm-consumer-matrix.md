@@ -94,7 +94,7 @@ php tests/orm-suite-consumer.php sqlite --native
 
 同一消费者还验证当前作用域恢复、可信上下文快照、子事务独立、跨协程连接拒绝、关闭作用域后的缓存连接拒绝、父取消/关闭/Deadline 传播，以及等待超时后租约继续占用至任务结束。`database-io-wait` 用两个真实连接竞争同一行：持锁期间子任务等待超时，连接与在途预算保持占用；释放锁后等待实际收尾，核对最终数据没有丢失或重复写入。超时后的任务仍报告取消，数据库写入可能已经完成，不能据此透明重试。会话报告分别记录 PostgreSQL 完整重置后的物理复用、MySQL/SQLite 的保守关闭及污染隔离；普通 CRUD 物理复用不能仅由池槽位计数证明。
 
-网络数据库会话用例通过独立控制连接终止自身的测试会话，验证归还时断连会退役、PostgreSQL 重置失败有记录，以及空闲会话失效后明确报错且不透明重试。三库均验证凭据代次轮换：活动旧租约保持原身份并能收尾，新借用使用新代次，旧代排空后不再进入空闲集合。这里验证代次与租约生命周期，真实数据库密码变更另由 `tests/identity-credentials.php` 验证。
+网络数据库会话用例通过独立控制连接终止自身的测试会话，验证归还时断连会退役、PostgreSQL 重置失败有记录，以及空闲会话失效后明确报错且不透明重试。三库均验证凭据代次轮换：活动旧租约保持原身份并能收尾，新借用使用新代次，旧代排空后不再进入空闲集合。这里验证代次与租约生命周期，真实数据库密码变更另由 `tests/identity-credentials.php` 验证。该入口还通过所选 PHP 或原生身份命令验证 PostgreSQL 配置角色、schema 和读写用途的初始化、污染与恢复，并核对归还后复用同一物理连接；测试进程只负责创建及回收专用角色和 schema。
 
 消费者启动前启用 `CoroutineRuntime::enableIo()`。MySQL 需要 mysqlnd 和网络 hook，PostgreSQL、SQLite 分别需要官方 `--enable-swoole-pgsql`、`--enable-swoole-sqlite` 构建选项；缺失时真实锁等待验收不能通过。报告的 `swoole_hook_flags` 记录实际启用值。Swoole 会在扩展初始化时注册其编入的 PDO 驱动，所以 `PDO::getAvailableDrivers()` 可能包含没有独立加载 `pdo_*` 模块的驱动；`swoole_pdo_drivers` 单独记录该来源，`runtime_extensions` 继续验证独立模块过滤，生产包清单仍只能包含所选 ORM 驱动。
 

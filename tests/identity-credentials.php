@@ -60,31 +60,16 @@ try {
         $schema = $user;
         $admin->exec('CREATE SCHEMA "' . $schema . '" AUTHORIZATION "' . $user . '"');
         try {
-            $configuration = new Type\Orm\Pgsql\PgsqlDriver(
-                getenv('TYPE_PGSQL_HOST') ?: '127.0.0.1',
-                (int) (getenv('TYPE_PGSQL_PORT') ?: 5432),
-                getenv('TYPE_PGSQL_DATABASE') ?: 'type_app_test',
-                getenv('TYPE_PGSQL_USER') ?: 'type_app',
-                getenv('TYPE_PGSQL_PASSWORD') ?: '',
-                1,
-                'writer',
-                $schema,
-                $user
-            );
-            $database = new Type\Orm\Database($configuration, 1, 1);
-            $scope = new Type\Runtime\ExecutionScope();
+            $baselineEnvironment = getenv();
+            $baselineEnvironment['TYPE_IDENTITY_SCHEMA'] = $schema;
+            $baselineEnvironment['TYPE_IDENTITY_ROLE'] = $user;
+            $baseline = new Type\Testing\Process([...$command, $driver, 'session-baseline'], $root, $baselineEnvironment);
             try {
-                $connection = $database->connect($scope);
-                $row = $connection->query('SELECT current_user AS role, current_schema() AS schema')[0];
-                expect($row['role'] === $user && $row['schema'] === $schema, 'role/schema 基线没有初始化');
-                $connection->execute('RESET ROLE');
-                $connection->execute('SET search_path TO pg_catalog');
-                $connection->close();
-                $row = $database->connect($scope)->query('SELECT current_user AS role, current_schema() AS schema')[0];
-                expect($row['role'] === $user && $row['schema'] === $schema, 'role/schema 状态跨租约泄漏');
+                $baselineResult = $baseline->wait(30);
+                expect($baselineResult->successful() && $baselineResult->stderr === ''
+                    && $baselineResult->stdout === "PostgreSQL 物理会话复用与角色、schema、读写用途恢复通过。\n", 'role/schema 原生入口验收失败：' . $baselineResult->stdout . $baselineResult->stderr);
             } finally {
-                $scope->close();
-                $database->close();
+                $baseline->stop();
             }
         } finally {
             $admin->exec('DROP SCHEMA "' . $schema . '"');
