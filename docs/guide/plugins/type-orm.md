@@ -8,7 +8,7 @@
 
 ## 安装与依赖
 
-需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7`、PDO 与 `type-runtime`；实际访问数据另装 MySQL、PostgreSQL 或 SQLite 驱动。Swoole 管理协程执行、等待、取消和连接租约，PDO 及所选 PDO 驱动负责数据库协议和 SQL 语义。
+需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7`、PDO 与 `type-runtime`；实际访问数据另装 MySQL、PostgreSQL 或 SQLite 驱动。Swoole 提供协程执行与等待，`type-runtime` 在原生上下文、Channel 和 Timer 上管理作用域、取消和截止，ORM 管理连接租约与会话恢复。PDO 及所选 PDO 驱动负责数据库协议和 SQL 语义。
 
 协程数据库等待需要对应的官方构建能力：MySQL 使用 mysqlnd 与网络 hook，PostgreSQL、SQLite 分别需要 Swoole 的 `--enable-swoole-pgsql`、`--enable-swoole-sqlite`。应用启动时调用 `CoroutineRuntime::enableIo()`，为已加载的 PDO 扩展启用可用 hook；生成的命令入口与 HTTP 宿主已接入。自定义入口在启动业务线程及协程前配置，`CoroutineRuntime::run()` 保留既定 hook，不在任务中改写进程配置。只有扩展版本满足要求，不能证明 PDO 等待已经协程化。
 

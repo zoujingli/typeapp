@@ -35,7 +35,7 @@ $response = $partial->project(['id', 'name']);
 
 `docs/build-config/type-model-http.json` 编译 `/users` 的 GET、POST、PATCH、DELETE 入口，查询参数 `id` 指定记录，`fields[]` 从输出白名单选择字段。列表最多返回 100 条；POST 返回 201，未找到返回 404，输入错误返回 422。该示例只监听回环地址，数据库结构由部署迁移或测试夹具准备。
 
-请求、消息和后台任务都在自己的 `ExecutionScope` 中借用连接。Swoole 管理协程等待、父子取消、Deadline 与真实收尾；连接仍由 PDO 及所选驱动执行 SQL，作用域关闭后才归还租约。
+模型操作要求入口先绑定本次工作的 `ExecutionScope`；各入口的接入范围及 MQTT 回调限制见[当前作用域](managed-tasks.md#当前作用域与应用绑定)。Swoole 提供协程等待，`type-runtime` 基于原生上下文、Channel 和 Timer 管理父子取消、Deadline 与真实收尾。SQL 由 PDO 及所选驱动执行；连接显式关闭或作用域收尾时归还租约，尚未结束的操作继续占用资源。
 
 `tests/models.php` 在三种真实数据库验证生成访问器、水合、CRUD、部分字段、null、批量赋值、安全输出和失效状态。`tests/model-http.php` 通过真实 HTTP 与 MySQL/SQLite 验证相同业务路径。MySQL HTTP 测试创建独立随机数据库，退出后只清理该测试数据库；SQLite 使用独立临时文件。
 
@@ -57,7 +57,7 @@ MySQL 连接初始化 UTC 和严格模式，PostgreSQL 初始化 UTC 与 ISO Dat
 
 模型通过 `Table(softDelete: 'deleted_at')` 指向不可批量赋值的可空 datetime 字段。默认查询过滤已删除记录；`withTrashed/onlyTrashed/withoutTrashed` 显式选择范围，不支持软删除的模型拒绝这些操作。`delete/restore/forceDelete` 分别软删除、恢复、物理删除，物理删除后对象失效。
 
-`scope()` 和 `search()` 组合不可变查询。搜索器必须来自显式映射，未知搜索键被拒绝。当前批量修改使用底层 Query，不触发逐模型事件或行为转换，已经加载的对象需要显式重新查询。
+`ModelQuery::scope()` 和实例 `search()` 组合不可变查询。搜索器必须来自显式映射，未知搜索键被拒绝；静态 `Model::search()` 创建显式输入的筛选助手，两者职责不同。批量算术使用 `ModelQuery::increment/decrement`，遵守模型租户范围并在主库执行；受控的底层 Query 批量写入不触发逐模型事件或行为转换，已经加载的对象需要显式重新查询。
 
 `ModelBehavior` 是不可变声明：修改器在类型规范化前处理输入，获取器只处理读取和输出；持久化及关系匹配使用原始存储值，展示获取器不能改变写入身份。修改器、获取器各接收一个值。属性赋值、`set` 和批量 `fill` 均遵守赋值白名单；持久化主键和生命周期字段受保护。
 

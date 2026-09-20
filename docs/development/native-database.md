@@ -1,6 +1,6 @@
 # ORM 运行与数据库验收
 
-`type-orm` 的数据库协议由 PDO 及所选 PDO 驱动承担。MySQL、PostgreSQL 和 SQLite 的连接、SQL 语义、事务特性及错误行为仍以真实数据库为准；Swoole 不实现数据库协议，也不替换 PDO。Swoole 负责协程执行、等待、取消和资源收尾边界，TypePHP 负责 ORM、模型和业务代码的全量 AOT 编译。
+`type-orm` 的数据库协议由 PDO 及所选 PDO 驱动承担。MySQL、PostgreSQL 和 SQLite 的连接、SQL 语义、事务特性及错误行为仍以真实数据库为准。Swoole 提供协程执行、上下文与等待，`type-runtime` 基于原生机制管理取消、截止及资源收尾，ORM 管理连接租约与会话恢复；TypePHP 负责 ORM、模型和业务代码的全量 AOT 编译。
 
 ## 运行边界
 

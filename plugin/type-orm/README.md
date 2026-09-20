@@ -22,7 +22,7 @@ Database 通过 type-runtime 的有界池按作用域借还会话。Connection �
 
 池归属创建它的进程和线程请求，同线程协程可独立借用，连接仍独占于原作用域和执行者。同步调用者满载立即拒绝；Swoole 协程默认最多排队 64 个等待者、等待 1 秒，实际截止取作用域和借用上限中的较小值。`Database` 与 `DatabaseManager` 构造器在 `$budget` 后接受 `$waiterLimit`、`$waitSeconds`；`Database::connect($scope, 0)` 或 `DatabaseManager::connect($scope, 'default', 0)` 显式即时借用。取消、截止、退役与凭据轮换均撤销等待，不能提前归还仍在使用或关闭失败的连接额度。
 
-同一服务端连接域的命名池和旧凭据代次共用一个 `DeploymentBudget`。其第六个参数为每进程最大同时使用连接的线程数，包含主线程及未退出旧代；每线程只获得分配份额，调用者须按部署计划启动线程并在旧代 join 后再复用份额。标准应用配置 `APP_DATABASE_THREADS`、`DB_POOL_WAITERS` 和 `DB_POOL_WAIT_MS`，池统计返回等待时长、拒绝、在途、关闭及隔离数。线程内排队使用 Swoole Channel；PDO 仍负责真实数据库协议和会话，Swoole 只负责执行上下文、等待、取消与资源生命周期。
+同一服务端连接域的命名池和旧凭据代次共用一个 `DeploymentBudget`。其第六个参数为每进程最大同时使用连接的线程数，包含主线程及未退出旧代；每线程只获得分配份额，调用者须按部署计划启动线程并在旧代 join 后再复用份额。标准应用配置 `APP_DATABASE_THREADS`、`DB_POOL_WAITERS` 和 `DB_POOL_WAIT_MS`，池统计返回等待时长、拒绝、在途、关闭及隔离数。线程内排队使用 Swoole Channel；PDO 负责数据库协议和会话，Swoole 提供协程上下文与等待，`type-runtime` 管理作用域、取消、截止与资源收尾，ORM 负责连接租约和会话恢复。
 
 query/execute 与 raw/rawQuery 遵守相同的事务及会话边界；不能以 SELECT 等首关键词推断没有副作用。完整重置覆盖存储函数和触发器产生的会话状态，无法证明干净时关闭退役。SQL 错误和未知提交的会话不可复用，框架不自动重试写入。
 
