@@ -56,9 +56,9 @@ if ($mode === 'sync') {
     }
     $scheduler = new \Swoole\Coroutine\Scheduler();
     $scheduler->set(['hook_flags' => $flags]);
-    if (!$scheduler->add(static function (): void {
+    if ($scheduler->add(static function (): void {
         pgsqlProbeConnection();
-    }) || !$scheduler->start()) {
+    }) === false || !$scheduler->start()) {
         throw new RuntimeException('PostgreSQL 探针协程未完成');
     }
 }
