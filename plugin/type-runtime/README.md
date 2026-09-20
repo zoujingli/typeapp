@@ -1,6 +1,6 @@
 # type-runtime
 
-线程与线程内协程是 TypeApp 的运行时基础能力，由本组件统一承接。按照 [TypePHP＋Swoole 底层决策](https://github.com/zoujingli/typeapp/blob/main/docs/adr/0015-typephp-and-swoole-foundation.md)，TypePHP 负责框架与业务的全量编译，Swoole 提供原生线程、协程和事件循环；各业务角色共用执行作用域、资源所有权及预算契约。
+进程、线程与协程是 TypeApp 的运行时基础能力，由 Swoole 统一提供；本组件承接执行作用域、资源所有权及预算契约。TypePHP 负责框架与业务的全量编译，Swoole 提供原生进程、线程、协程、通信和事件循环；各业务角色共用同一套作用域和真实收尾规则。
 
 构建期登记的业务线程通过 `CoroutineRuntime::startThread()` 启动，复用 Swoole Thread 句柄；需要受控 Swoole/PHPX ABI 2、开启 fiber 通知、完整 AOT 入口及调用者显式 join。接入方式、参数预算、线程内协程和失败收尾的实际验证边界见[已编译业务线程](https://github.com/zoujingli/typeapp/blob/main/docs/development/compiled-business-threads.md)。
 
@@ -17,6 +17,14 @@
 TypeApp 应用的通信与基础并发必须使用 Swoole；线程与协程入口按角色职责及构建能力选择，缺少必需能力时明确失败。完整角色与目标平台验收条件见[实现规划](https://github.com/zoujingli/typeapp/blob/main/docs/guide/roadmap.md)。
 
 提供参数解析、受管执行作用域、资源池/租约以及截止/取消预算，不承担 HTTP 或数据库协议。`Type\Runtime\Arguments` 读取显式声明的命令选项；重复选项、未知选项、缺失值和整数越界都会抛出 `InvalidArgumentException`。
+
+### 协程上下文与资源所有权
+
+`ExecutionScope` 保存一次请求、消息、命令或后台任务的有界字符串上下文、单调截止时间、取消信号和任务树预算。上下文适合放置 `request_id`、`tenant_id`、`operation_id` 等关联标识；连接、事务、Socket、可变业务对象和大载荷必须由当前作用域登记或通过受控参数传递，不能放进进程全局变量。
+
+`ExecutionScope::spawn()` 只在当前 Swoole 线程内创建协程。子协程取得新的 `ExecutionOwner` 和独立作用域，复制父上下文快照，共享只能缩短的截止时间、取消信号及 `TaskBudget`；父作用域中的连接和租约不转移，子协程必须重新借用。资源归属由进程、原生线程、请求代次、协程 ID 和 Fiber 身份校验，跨边界误用会抛出执行者错误。
+
+`ManagedTask::await()` 只返回真实完成的结果或异常。等待超时发送取消意图但不提前归还额度，作用域保持 `closing`，直到后代和原生资源真实退出后才进入 `closed`。这套规则让 HTTP、WebSocket、TCP、UDP、MQTT、数据库和后台任务共享同一个上下文模型。
 
 ## 安装与版本
 

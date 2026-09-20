@@ -16,7 +16,7 @@ TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力
 | TypePHP | 构建期的 AOT 编译器，将生产 PHP 实现编译为原生代码 |
 | Swoole | 运行期的原生扩展，提供线程、协程、网络与 I/O 能力 |
 | Plugins | Composer 管理的 `type-xxxx` 框架组件，源码在 `plugin/type-*`；构建与测试工具按开发依赖使用 |
-| 运行 | Swoole 是唯一通信与并发底层；进程不可用时使用官方线程/协程，当前接入状态见[系统架构](docs/guide/architecture.md#运行方式与平台) |
+| 运行 | Swoole 是唯一通信与并发底层；进程、线程、协程按角色能力选择，协程上下文与资源边界见[运行时指南](docs/guide/runtime.md) |
 | 编译 | 生产源码覆盖门槛为全量 AOT；这不是测试覆盖率，也不是全部 PHP 包或全部平台已验收 |
 | 交付 | 一个程序文件加外置配置，原生运行库由程序携带和管理；当前打包仍为目录包，见[构建与部署](docs/guide/deployment.md) |
 | 其他业务 | 用 `type-project` 创建独立应用，按需安装 Plugins |
@@ -69,7 +69,7 @@ HTTP 路由来自控制器 `#[Route]` 或 `config/route.php`；`#[Transactional]
 
 | 读者 | 入口 |
 | --- | --- |
-| 框架开发 | [公开指南](https://iots.top) · [快速开始](docs/guide/quickstart.md) · [系统架构](docs/guide/architecture.md) |
+| 框架开发 | [公开指南](https://iots.top) · [快速开始](docs/guide/quickstart.md) · [系统架构](docs/guide/architecture.md) · [运行时指南](docs/guide/runtime.md) |
 | 成品案例 | [物联网中心](docs/guide/iot-center.md) |
 | 许可证 | [LICENSE](LICENSE) · [NOTICE](NOTICE) · [许可证说明](docs/guide/licensing.md) |
 | 协作约定 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) |

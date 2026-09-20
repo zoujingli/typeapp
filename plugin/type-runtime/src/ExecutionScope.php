@@ -31,6 +31,9 @@ final class ExecutionScope
     private TaskBudget $taskBudget;
     private ?Channel $completion = null;
 
+    /**
+     * @param array<string, string> $context 只保存有界关联标识；资源句柄和可变对象必须由当前作用域登记。
+     */
     public function __construct(?Deadline $deadline = null, array $context = [], int $childLimit = 16, float $cleanupSeconds = 5.0, ?Cancellation $cancellation = null, ?TaskBudget $taskBudget = null)
     {
         $this->owner = new ExecutionOwner();
@@ -174,6 +177,7 @@ final class ExecutionScope
             $this->shutdownDeadline = $deadline;
         }
     }
+    /** 返回创建时的上下文快照；修改返回数组不会影响当前或父作用域。 */
     public function context(): array
     {
         return $this->context;

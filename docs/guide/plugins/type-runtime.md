@@ -2,11 +2,11 @@
 
 [返回组件总览](../components.md)
 
-为一次 HTTP 请求、命令或后台任务建立明确的资源边界：参数先校验，资源按顺序启动，结束时逆序关闭；截止时间、取消和容量沿调用链传递。其他插件的数据库连接、Redis 租约和日志绑定都复用这一层。
+为一次 HTTP 请求、命令或后台任务建立明确的资源边界：参数先校验，资源按顺序启动，结束时逆序关闭；截止时间、取消和容量沿调用链传递。其他插件的数据库连接、Redis 租约和日志绑定都复用这一层。进程、线程和协程的整体选择见[进程、线程与协程](../runtime.md)。
 
 ## 安装与依赖
 
-需要 PHP `>=8.4 <8.6` 和 `ext-filter`。同步作用域无需 Swoole；只有使用受管协程任务时才需要 Swoole 与协程上下文。
+需要 PHP `>=8.4 <8.6` 和 `ext-filter`。TypeApp 的通信、进程、线程和协程统一使用 Swoole；同步作用域可以只做本地计算，但使用通信或受管子任务时必须进入匹配的 Swoole 执行上下文。
 
 源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
 
@@ -90,6 +90,14 @@ try {
 
 自定义资源实现 `ManagedResource::start()/stop()`，以 `$scope->open($resource)` 登记。登记发生在启动之前，因此部分启动失败也会清理；`stop()` 必须能处理该状态。单个关闭异常不阻止其他资源关闭。
 
+## 协程上下文与所有权
+
+`ExecutionScope` 是业务上下文的显式边界，不使用进程全局“当前请求”。上下文只接受有界字符串键和值，例如 `request_id`、`tenant_id`、`operation_id`；连接、事务、Socket、可变模型、闭包和大载荷必须由作用域单独登记或传递受控值。
+
+`spawn()` 在当前线程内创建 Swoole 协程，并为子协程建立新的作用域和执行者：字符串上下文按快照复制，`Deadline`、取消信号和 `TaskBudget` 继续共享，父作用域登记的连接和租约不自动转移。父作用域缩短截止或取消后，子协程只能在合作式检查和可让出的原生操作处停止；`await()` 超时不会提前释放仍在途的资源。
+
+资源使用会校验进程、原生线程、请求代次、Swoole 协程和 Fiber 身份。把父连接捕获到子协程、把作用域传到另一线程，或在关闭后继续借用，都会被拒绝。跨线程只传递有界标量或编码数据，进入新执行者后重新创建作用域和资源。
+
 ## 资源池与租约
 
 `ResourcePool($factory, $capacity, $idleLimit)` 接收零参数工厂，返回实现 `ReusableResource` 的对象；通过 `borrow($scope)` 获取 `ResourceLease`。业务使用 `hold(static function (ReusableResource $resource): mixed { ... })`，在途操作结束前持有容量。不要把租约内资源保存到其他请求。
@@ -98,7 +106,7 @@ try {
 
 ## 受管并发
 
-在 `Swoole\Coroutine\run()` 内调用 `$scope->spawn(static function (ExecutionScope $child): mixed { ... })`。子任务使用自己的 Scope 登记资源，通过任务对象等待结果；父 Scope 关闭时取消并等待受管子任务。回调即使不使用上下文，也必须保留参数。
+在 `Swoole\Coroutine\run()` 内调用 `$scope->spawn(static function (ExecutionScope $child): mixed { ... })`。子任务使用自己的 Scope 登记资源，通过任务对象等待结果；父 Scope 关闭时取消并等待受管子任务。回调即使不使用上下文，也必须保留参数。线程入口使用 `CoroutineRuntime::startThread()`，进程角色使用 Swoole Server/Process；三者都遵守同一作用域关闭和真实收尾规则。
 
 同步命令不必启用协程。缺少协程上下文抛 `TaskException`，错误码为 `coroutine_required`；不会自动改成串行执行。
 
@@ -107,7 +115,7 @@ try {
 | 现象 | 原因与处理 |
 | --- | --- |
 | `deadline_exceeded` / `cancelled` | 当前预算耗尽或已取消，停止发起新操作并清理 |
-| 执行者不匹配 | Scope/连接跨了进程、Fiber 或协程；在当前执行者重新创建 |
+| 执行者不匹配 | Scope/连接跨了进程、线程、Fiber 或协程；在当前执行者重新创建 |
 | 池满 | 检查租约释放与进程数，再按下游容量调整上限 |
 | close 后仍有底层 I/O | 取消是合作式的；原生阻塞操作还需要驱动超时和进程监督 |
 

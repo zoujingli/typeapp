@@ -51,21 +51,22 @@ TypeApp 是标准极简框架。先创建自己的应用并组合 Plugins；通�
 
 <div class="guide-grid">
   <a class="guide-card" href="#/guide/architecture"><span class="guide-index">00 <span aria-hidden="true">↗</span></span><strong>系统架构</strong><span>理解 TypeApp、TypePHP、Swoole 与 Plugins 的职责及关系。</span><span class="guide-meta">ARCHITECTURE</span></a>
-  <a class="guide-card" href="#/guide/structure"><span class="guide-index">01 <span aria-hidden="true">↗</span></span><strong>应用结构</strong><span>组织控制器、服务与模型，让业务拥有清晰的边界。</span><span class="guide-meta">APPLICATION</span></a>
-  <a class="guide-card" href="#/guide/configuration"><span class="guide-index">02 <span aria-hidden="true">↗</span></span><strong>配置与环境</strong><span>管理环境变量与启动配置，区分构建声明和运行数据。</span><span class="guide-meta">CONFIGURATION</span></a>
-  <a class="guide-card" href="#/guide/routing"><span class="guide-index">03 <span aria-hidden="true">↗</span></span><strong>路由与中间件</strong><span>声明路由、接收请求，将业务逻辑连接到 HTTP 服务。</span><span class="guide-meta">HTTP & ROUTING</span></a>
-  <a class="guide-card" href="#/guide/database"><span class="guide-index">04 <span aria-hidden="true">↗</span></span><strong>数据库与模型</strong><span>使用 MySQL、PostgreSQL 或 SQLite，处理查询与事务。</span><span class="guide-meta">DATABASE</span></a>
-  <a class="guide-card" href="#/guide/components"><span class="guide-index">05 <span aria-hidden="true">↗</span></span><strong>组件参考</strong><span>了解各 Plugins 的职责与接口，按应用需要组合。</span><span class="guide-meta">PLUGINS</span></a>
-  <a class="guide-card" href="#/guide/communications"><span class="guide-index">06 <span aria-hidden="true">↗</span></span><strong>基础通信</strong><span>HTTP、TCP、UDP、MQTT、WebSocket 独立教程：配置、实例与应用。</span><span class="guide-meta">COMMUNICATIONS</span></a>
-  <a class="guide-card" href="#/guide/deployment"><span class="guide-index">07 <span aria-hidden="true">↗</span></span><strong>构建与部署</strong><span>从声明生成到全量编译，封装并运行原生应用。</span><span class="guide-meta">BUILD & DEPLOY</span></a>
-  <a class="guide-card" href="#/guide/documentation"><span class="guide-index">08 <span aria-hidden="true">↗</span></span><strong>文档站发布</strong><span>导出 Docsify 静态站点并发布到 iots.top，保持公开内容可追溯。</span><span class="guide-meta">DOCUMENTATION</span></a>
-  <a class="guide-card" href="#/guide/licensing"><span class="guide-index">09 <span aria-hidden="true">↗</span></span><strong>许可证与归属</strong><span>查看 Apache-2.0 授权、作者与第三方依赖的原始许可证。</span><span class="guide-meta">LICENSING</span></a>
-  <a class="guide-card" href="#/guide/platforms"><span class="guide-index">10 <span aria-hidden="true">↗</span></span><strong>平台与验收</strong><span>查看各平台已通过的场景、SDK 前提和完整交付条件。</span><span class="guide-meta">PLATFORMS</span></a>
+  <a class="guide-card" href="#/guide/runtime"><span class="guide-index">01 <span aria-hidden="true">↗</span></span><strong>进程、线程与协程</strong><span>掌握执行层次、协程上下文、资源所有权与停止控制。</span><span class="guide-meta">RUNTIME</span></a>
+  <a class="guide-card" href="#/guide/structure"><span class="guide-index">02 <span aria-hidden="true">↗</span></span><strong>应用结构</strong><span>组织控制器、服务与模型，让业务拥有清晰的边界。</span><span class="guide-meta">APPLICATION</span></a>
+  <a class="guide-card" href="#/guide/configuration"><span class="guide-index">03 <span aria-hidden="true">↗</span></span><strong>配置与环境</strong><span>管理环境变量与启动配置，区分构建声明和运行数据。</span><span class="guide-meta">CONFIGURATION</span></a>
+  <a class="guide-card" href="#/guide/routing"><span class="guide-index">04 <span aria-hidden="true">↗</span></span><strong>路由与中间件</strong><span>声明路由、接收请求，将业务逻辑连接到 HTTP 服务。</span><span class="guide-meta">HTTP & ROUTING</span></a>
+  <a class="guide-card" href="#/guide/database"><span class="guide-index">05 <span aria-hidden="true">↗</span></span><strong>数据库与模型</strong><span>使用 MySQL、PostgreSQL 或 SQLite，处理查询与事务。</span><span class="guide-meta">DATABASE</span></a>
+  <a class="guide-card" href="#/guide/components"><span class="guide-index">06 <span aria-hidden="true">↗</span></span><strong>组件参考</strong><span>了解各 Plugins 的职责与接口，按应用需要组合。</span><span class="guide-meta">PLUGINS</span></a>
+  <a class="guide-card" href="#/guide/communications"><span class="guide-index">07 <span aria-hidden="true">↗</span></span><strong>基础通信</strong><span>HTTP、TCP、UDP、MQTT、WebSocket 独立教程：配置、实例与应用。</span><span class="guide-meta">COMMUNICATIONS</span></a>
+  <a class="guide-card" href="#/guide/deployment"><span class="guide-index">08 <span aria-hidden="true">↗</span></span><strong>构建与部署</strong><span>从声明生成到全量编译，封装并运行原生应用。</span><span class="guide-meta">BUILD & DEPLOY</span></a>
+  <a class="guide-card" href="#/guide/documentation"><span class="guide-index">09 <span aria-hidden="true">↗</span></span><strong>文档站发布</strong><span>导出 Docsify 静态站点并发布到 iots.top，保持公开内容可追溯。</span><span class="guide-meta">DOCUMENTATION</span></a>
+  <a class="guide-card" href="#/guide/licensing"><span class="guide-index">10 <span aria-hidden="true">↗</span></span><strong>许可证与归属</strong><span>查看 Apache-2.0 授权、作者与第三方依赖的原始许可证。</span><span class="guide-meta">LICENSING</span></a>
+  <a class="guide-card" href="#/guide/platforms"><span class="guide-index">11 <span aria-hidden="true">↗</span></span><strong>平台与验收</strong><span>查看各平台已通过的场景、SDK 前提和完整交付条件。</span><span class="guide-meta">PLATFORMS</span></a>
 </div>
 
 ## 理解 TypeApp
 
-TypeApp 统一应用开发、组件组合、构建与运行约定。TypePHP 是构建期的编译器；Swoole 是提供线程、协程、网络与 I/O 的原生扩展；Plugins 是 Composer 管理的 `type-xxxx` 框架组件。新的独立业务从 `type-project` 起步，按需安装组件。
+TypeApp 统一应用开发、组件组合、构建与运行约定。TypePHP 是构建期的编译器；Swoole 是提供进程、线程、协程、网络与 I/O 的原生扩展；Plugins 是 Composer 管理的 `type-xxxx` 框架组件。新的独立业务从 `type-project` 起步，按需安装组件。进程、线程、协程的执行边界和协程上下文见[运行时指南](guide/runtime.md)。
 
 业务、生产组件、生成代码与其他生产 PHP 依赖进入同一次 AOT 构建。Swoole 原生扩展作为运行依赖提供能力，不是交给 TypePHP 编译的 PHP 组件。完整职责、运行依赖及编译边界见[系统架构](guide/architecture.md)。
 

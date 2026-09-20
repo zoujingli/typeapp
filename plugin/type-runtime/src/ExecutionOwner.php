@@ -7,7 +7,7 @@ namespace Type\Runtime;
 use Fiber;
 use RuntimeException;
 
-/** 资源归属线程请求；租约还区分该线程内的 Fiber 与 Swoole 协程。 */
+/** 资源归属进程、线程请求、Fiber 与 Swoole 协程；上下文值本身不授予资源访问权。 */
 final class ExecutionOwner
 {
     private static ?string $generation = null;

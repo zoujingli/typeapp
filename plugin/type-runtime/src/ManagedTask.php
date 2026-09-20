@@ -22,6 +22,7 @@ final class ManagedTask
 
     /**
      * @param Closure(ExecutionScope): mixed $operation 作用域内的任务体。
+     * @param array<string, string> $context 父作用域的上下文快照，不携带父资源。
      * @param Closure(ManagedTask): void $finished 完成并清理后的通知。
      */
     public function __construct(Closure $operation, Deadline $deadline, array $context, int $childLimit, float $cleanupSeconds, TaskBudget $budget, Closure $finished)
