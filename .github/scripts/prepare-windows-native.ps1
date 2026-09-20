@@ -121,7 +121,7 @@ $taskConfigText = $taskConfigText.Replace($taskSqliteSources, ('swoole_source_fi
 [IO.File]::WriteAllText($taskConfig, $taskConfigText, [Text.UTF8Encoding]::new($false))
 @{ file='config.w32'; before=$taskConfigBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-config-source.json') -Encoding utf8
 # IOCP 直接引用 PHP 文件辅助头，需要先加载其使用的 Zend 内联定义。
-# 仅补头文件依赖；上游补齐包含顺序并通过 Windows 编译后撤除。
+# 上游补齐包含顺序并通过 Windows 编译后撤除此头文件适配。
 $taskIocp = Join-Path $taskSwoole 'src/coroutine/iocp.cc'
 $taskIocpBefore = 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990'
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $taskIocp).Hash.ToLowerInvariant() -ne $taskIocpBefore) { throw 'Swoole IOCP 原文不符。' }
@@ -132,7 +132,13 @@ $taskIocpReplacement = @'
 #include "Zend/zend_portability.h"
 #include "win32/ioutil.h"
 '@
-[IO.File]::WriteAllText($taskIocp, $taskIocpText.Replace($taskIocpInclude, $taskIocpReplacement), [Text.UTF8Encoding]::new($false))
+$taskIocpText = $taskIocpText.Replace($taskIocpInclude, $taskIocpReplacement)
+# poll 宏同时改名成员方法；未限定的 WSAPoll 会递归调用自身并耗尽协程栈。
+# 只限定到 WinSock 全局函数；上游消除名称遮蔽且 PostgreSQL hook 回归通过后撤除。
+$taskIocpPoll = 'int retval = WSAPoll(fds, nfds, 0);'
+if ([regex]::Matches($taskIocpText, [regex]::Escape($taskIocpPoll)).Count -ne 1) { throw 'Swoole IOCP 轮询适配位置不唯一。' }
+$taskIocpText = $taskIocpText.Replace($taskIocpPoll, 'int retval = ::WSAPoll(fds, nfds, 0);')
+[IO.File]::WriteAllText($taskIocp, $taskIocpText, [Text.UTF8Encoding]::new($false))
 @{ file='src/coroutine/iocp.cc'; before=$taskIocpBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskIocp).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-iocp-source.json') -Encoding utf8
 Push-Location $taskSwoole
 try {

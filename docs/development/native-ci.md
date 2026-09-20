@@ -22,6 +22,8 @@ Windows 工作流的 `scope=orm` 默认顺序验收三库；诊断时可用 `orm
 
 `scope=pgsql-probe` 仅准备相同原生环境并执行 PostgreSQL 探针，不运行契约套件和 ORM 消费者，报告明确标记诊断范围。hook 探针失败时，若镜像具有 CDB 或 LLDB，额外收集有界的调用栈及模块列表；调试器结果不改变原失败结论，不保存进程内存或完整环境变量。修复后仍须运行 `scope=orm` 的完整行为验收。
 
+Windows SDK 构建对固定 Swoole 源码的 IOCP 轮询作一处名称限定：`poll` 宏会将成员方法改名为 `WSAPoll`，方法内部必须使用 `::WSAPoll` 调用全局 WinSock 函数，避免名称遮蔽造成自递归。适配校验原文件 SHA256 和唯一替换位置，并记录修改后摘要；保持官方的协程等待、超时和套接字所有权。直接 PDO PostgreSQL hook 建连与原生递归栈构成缺口依据，现有三种探针及独立消费者负责回归；上游消除遮蔽且同一回归通过后撤除这项适配。
+
 各平台最新范围与限制统一见[平台与验收](../guide/platforms.md)，准确运行与产物身份见[平台证据](platform-support.md#当前结果与证据)。每次更换 Swoole、PHPX、libphp 或目标架构后都必须重跑完整入口；组件、SQLite 或单项命令结果不能替代应用、通信、三库和无源码发布验收。
 
 macOS选择GitHub标准`macos-15` ARM64标签，不使用Docker或WSL运行应用。准确平台标签见[GitHub runner说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。PHP安装Action固定为已核对提交`f3e473d116dcccaddc5834248c87452386958240`（v2.37.2），请求8.5.10 ZTS后仍按`toolchain.lock.json`校验实际PHP、TypePHP、PHPX；安装器或镜像漂移必须失败，不放宽版本。
