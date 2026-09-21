@@ -20,6 +20,8 @@ final class PhpModelCompilerTest extends TestCase
             "#[Table('users')] class User extends Model { public int \$id; public function mapping(): void {} }",
             "#[Table('users')] class User extends Model { public int \$id; public static function search(): void {} }",
             "#[Table('users')] class User extends Model { public int \$id; public static function SeArCh(): void {} }",
+            "#[Table('users')] class User extends Model { public int \$id; public static function find(): void {} }",
+            "#[Table('users')] class User extends Model { public int \$id; public static function create(): void {} }",
             "#[Table('users', database: 'invalid/database')] class User extends Model { public int \$id; }",
             "#[Table('users', tenant: 'missing')] class User extends Model { public int \$id; }",
             "#[Table('users')] class User extends Model { public int \$id; public ?string \$tenant_id; }",
@@ -102,6 +104,8 @@ PHP;
             self::assertStringContainsString('presentName', $first['code']);
             self::assertStringContainsString("public static function query(string \$alias = '')", $first['code']);
             self::assertStringContainsString("public static function search(array \$input = [], string \$alias = '')", $first['code']);
+            self::assertStringContainsString('public static function find(int|string $id): ?User', $first['code']);
+            self::assertStringContainsString('public static function create(array $values): User', $first['code']);
             file_put_contents($file, str_replace('before:', 'after:', $source));
             self::assertNotSame(hash('sha256', $first['code']), hash('sha256', $compiler->compile([$file])['code']));
             self::assertFalse(class_exists('ModelIdentity\\User', false));

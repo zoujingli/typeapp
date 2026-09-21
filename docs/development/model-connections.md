@@ -1,6 +1,6 @@
 # Model 自动连接与主从路由
 
-模型通过当前 Swoole 协程中的执行作用域自动取得受管连接。`ModelCompiler` 生成无连接参数的 `query()`、静态 `search()`，模型持久化、自动租户隔离、`master()` 和 `Db` 事务使用同一作用域。PostgreSQL 使用完整会话重置后复用 PDO，MySQL、SQLite 暂时归还即断开。三库物理复用、独立消费、AOT 与同提交平台验收全部完成后，才能声明 ORM 完整交付。物联中心身份与租户服务按独立业务任务接入和验收。
+模型通过当前 Swoole 协程中的执行作用域自动取得受管连接。`ModelCompiler` 生成无连接参数的 `query()`、`search()`、`find()` 和 `create()`，模型持久化、自动租户隔离、`master()` 和 `Db` 事务使用同一作用域。PostgreSQL 使用完整会话重置后复用 PDO，MySQL、SQLite 暂时归还即断开。三库物理复用、独立消费、AOT 与同提交平台验收全部完成后，才能声明 ORM 完整交付。物联中心身份与租户服务按独立业务任务接入和验收。
 
 ## 框架与业务边界
 
@@ -32,7 +32,7 @@ $member->save();
 
 ## 静态筛选助手
 
-生成模型的查询入口为 `query(string $alias = ''): ModelQuery`，新增 `search(array $input = [], string $alias = ''): QueryHelper`，内部只调用 `\_query(self::query($alias), $input)`。模型的查询和保存入口不保留 `Connection` 参数，显式连接仍属于底层接口。
+生成模型的公共入口为 `query(string $alias = ''): ModelQuery`、`search(array $input = [], string $alias = ''): QueryHelper`、`find(int|string $id): ?Model` 和 `create(array $values): Model`。`search()` 内部只调用 `\_query(self::query($alias), $input)`；`find()` 按当前模型范围返回水合模型或 `null`，`create()` 严格赋值并保存后返回模型。模型的查询、创建和保存入口不保留 `Connection` 参数，显式连接仍属于底层接口。
 
 ```php
 $members = WorkspaceMember::search(['enabled' => true, 'keyword' => '甲'])

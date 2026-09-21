@@ -435,6 +435,10 @@ final class ModelCompiler
                 . "        return new \\Type\\Orm\\ModelQuery(self::mapping(), static fn (array \$row): {$class} => new {$class}(\$row, true), \$alias);\n    }\n";
             $code .= "    /** 使用显式输入创建筛选助手，不读取 Request 或推断筛选字段。 */\n    public static function search(array \$input = [], string \$alias = ''): \\Type\\Orm\\Helper\\QueryHelper\n    {\n"
                 . "        return \\_query(self::query(\$alias), \$input);\n    }\n";
+            $code .= "    /** 按主键查找当前模型；记录不存在时返回 null。 */\n    public static function find(int|string \$id): ?{$class}\n    {\n"
+                . "        return self::query()->find(\$id);\n    }\n";
+            $code .= "    /** 创建并保存当前模型，行为取消时明确失败。 */\n    public static function create(array \$values): {$class}\n    {\n"
+                . "        \$model = new {$class}(\$values);\n        if (\$model->save() === 'cancelled') {\n            throw new \\Type\\Orm\\ModelException('model_creation_cancelled', '模型创建被取消');\n        }\n        return \$model;\n    }\n";
             $code .= $accessors . "}\n}\n";
         }
         try {

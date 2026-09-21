@@ -33,8 +33,9 @@ try {
                 $connection = Db::connection('default', true);
                 $connection->raw('CREATE TABLE iot_tenants (id VARCHAR(32) PRIMARY KEY, name VARCHAR(100) NOT NULL, enabled INTEGER NOT NULL, version INTEGER NOT NULL, created_at INTEGER NOT NULL)');
                 $connection->raw('CREATE TABLE customer_members (id VARCHAR(32) PRIMARY KEY, tenant_id VARCHAR(32) NOT NULL, user_id VARCHAR(32) NOT NULL, name VARCHAR(100) NOT NULL, enabled INTEGER NOT NULL, recovery_verified INTEGER NOT NULL, version INTEGER NOT NULL, created_at INTEGER NOT NULL)');
-                $tenant = new Tenant(['id' => 'tenant-a', 'name' => '租户甲', 'enabled' => true, 'created_at' => time()]);
-                expect($tenant->save() === 'created', '租户目录新增需要不必要的租户或连接');
+                $tenant = Tenant::create(['id' => 'tenant-a', 'name' => '租户甲', 'enabled' => true, 'created_at' => time()]);
+                expect($tenant instanceof Tenant && $tenant->isPersisted(), '静态 create 没有返回已持久化租户');
+                expect(Tenant::find('tenant-a') instanceof Tenant && Tenant::find('missing') === null, '静态 find 的水合或缺失语义错误');
                 try {
                     CustomerMember::query()->get();
                     throw new RuntimeException('普通关联元数据被误认为可信租户身份');

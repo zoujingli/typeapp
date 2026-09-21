@@ -65,8 +65,8 @@ foreach ($generation['files'] as $file) {
 在入口已装配 `DatabaseManager` 并绑定当前执行作用域后，业务直接创建、查询并部分更新模型：
 
 ```php
-$user = new \DocsExample\User(['name' => '示例', 'age' => 20]);
-$created = $user->save();
+$user = \DocsExample\User::create(['name' => '示例', 'age' => 20]);
+$same = \DocsExample\User::find($user->id);
 $partial = \DocsExample\User::query()->master()->select(['name'])->find($user->id);
 if ($partial !== null) {
     $partial->name = '新名称';
@@ -75,10 +75,12 @@ if ($partial !== null) {
 }
 ```
 
-创建返回 `created`；部分查询自动保留主键，保存只写改动的 name，响应明确投影 id/name。业务扩展可以复用生成映射；不要编辑生成文件保存业务方法。
+`Model::create(array $values): Model` 返回已持久化模型，并复用严格字段、租户、版本和必填约束；行为取消时抛出 `model_creation_cancelled`。`Model::find(int|string $id): ?Model` 按当前作用域查找，未找到返回 `null`，仍遵守自动租户范围和主从路由。部分查询自动保留主键，保存只写改动的 name，响应明确投影 id/name。业务扩展可以复用生成映射；不要编辑生成文件保存业务方法。
 
 | 操作 | 语义 |
 | --- | --- |
+| `Model::create/find` | 无连接创建或按主键查找；创建返回已持久化模型，查找缺失返回 `null` |
+| `Model::query/search` | 创建模型查询或显式白名单筛选助手，不读取请求参数 |
 | `loaded/get/set/fill` | 区分未加载、null 与值；fill 按声明的赋值白名单整批校验 |
 | `dirty/save` | 只写真实变化；返回 created、updated、unchanged 或行为取消时的 cancelled |
 | `project/toArray` | 按输出可见性投影，隐藏字段不可对外读取 |

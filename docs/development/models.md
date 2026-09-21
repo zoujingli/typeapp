@@ -2,7 +2,7 @@
 
 模型复用 type-orm 的 `Connection` 和不可变 `Query`，运行时不依赖 core；HTTP 示例由应用组合 core、校验器和 ORM。
 
-普通模型操作不传连接：框架按当前 Swoole 执行作用域自动借还，普通查询默认读从、写入使用主库，通过 `master()` 明确主读；具有指定租户字段的模型由可信上下文约束归属。启动装配、静态 `search()`、事务与上下文边界见[Model 自动连接与主从路由](model-connections.md)。API、PHP 行为、AOT 和完整平台验收分别记录。
+普通模型操作不传连接：框架按当前 Swoole 执行作用域自动借还，普通查询默认读从、写入使用主库，通过 `master()` 明确主读；具有指定租户字段的模型由可信上下文约束归属。启动装配、静态 `create/find/search()`、事务与上下文边界见[Model 自动连接与主从路由](model-connections.md)。API、PHP 行为、AOT 和完整平台验收分别记录。
 
 ## 声明与生成
 
@@ -13,8 +13,8 @@
 ## 使用
 
 ```php
-$user = new User(['name' => '开发者', 'age' => 20, 'active' => true, 'secret' => '内部字段']);
-$user->save();
+$user = User::create(['name' => '开发者', 'age' => 20, 'active' => true, 'secret' => '内部字段']);
+$same = User::find($user->id);
 $id = $user->id;
 
 $partial = User::query()->master()->select(['name'])->findOrFail($id);
@@ -23,7 +23,7 @@ $partial->save();
 $response = $partial->project(['id', 'name']);
 ```
 
-查询的 `find/first` 未找到时返回 null，`get` 返回模型列表，空列表为 `[]`。`where`、`whereIn`、`select`、排序和条数限制均返回新查询。部分字段查询自动保留主键用于持久化，但响应仍由显式 `project()` 决定。
+`Model::create(array $values): Model` 严格校验字段、租户、版本和必填约束，成功返回已持久化模型；行为钩子取消创建时抛出 `model_creation_cancelled`。`Model::find(int|string $id): ?Model` 按当前模型范围查找，未找到返回 `null`，不会绕过租户或读写路由。查询的 `find/first` 未找到时返回 null，`get` 返回模型列表，空列表为 `[]`。`where`、`whereIn`、`select`、排序和条数限制均返回新查询。部分字段查询自动保留主键用于持久化，但响应仍由显式 `project()` 决定。
 
 字段缺失不使用未初始化 PHP 属性表示。`loaded()` 检查加载状态，访问未加载字段报 `field_not_loaded`，未知字段报 `unknown_field`，可空字段的 null 是已加载值。`fill()` 先整批验证再修改；未知字段、不可赋值字段和持久化后的主键更改均拒绝。业务赋值默认严格类型，数据库水合单独完成整数和布尔转换。
 
