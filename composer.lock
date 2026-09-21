@@ -6498,6 +6498,9 @@
                 }
             },
             "autoload": {
+                "files": [
+                    "src/PhpTokenCompatibility.php"
+                ],
                 "psr-4": {
                     "Type\\Build\\": "src/"
                 }
