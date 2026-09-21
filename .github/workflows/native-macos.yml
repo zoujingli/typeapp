@@ -49,9 +49,14 @@ jobs:
             task_pgsql_include="$task_pgsql_include/postgresql"
           fi
           task_pgsql_lib="$($task_pgsql/bin/pg_config --libdir)"
-          task_pgsql_pc="$(find "$task_pgsql" -type f -name libpq.pc -print -quit)"
-          task_pgsql_pkg="${task_pgsql_pc:+${task_pgsql_pc%/*}}"
           [[ -f "$task_pgsql_include/libpq-fe.h" && -f "$task_pgsql_lib/libpq.dylib" ]] || exit 1
+          task_pgsql_pkg="$RUNNER_TEMP/libpq-pkgconfig"
+          mkdir -p "$task_pgsql_pkg"
+          {
+            printf 'prefix=%s\n' "$task_pgsql"
+            printf 'exec_prefix=${prefix}\nlibdir=%s\nincludedir=%s\n' "$task_pgsql_lib" "$task_pgsql_include"
+            printf 'Name: libpq\nDescription: PostgreSQL client library\nVersion: 17\nLibs: -L%s -lpq\nCflags: -I%s\n' "$task_pgsql_lib" "$task_pgsql_include"
+          } > "$task_pgsql_pkg/libpq.pc"
           printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s %s\nLDFLAGS=-L%s %s\nLIBPQ_CFLAGS=-I%s\nLIBPQ_LIBS=-L%s -lpq\n' \
             "$task_pgsql_pkg" "${PKG_CONFIG_PATH:-}" "$task_pgsql_include" "${CPPFLAGS:-}" "$task_pgsql_lib" "${LDFLAGS:-}" "$task_pgsql_include" "$task_pgsql_lib" >> "$GITHUB_ENV"
       - name: 安装锁定ZTS PHP与Composer
