@@ -41,7 +41,7 @@ jobs:
           fetch-depth: 0
       - name: 安装原生构建和专用测试数据库工具
         run: |
-          brew install cmake gmp mpfr pcre2 pkg-config mysql@8.4 postgresql@17 redis
+          brew install cmake gmp mpfr pcre2 pkg-config libpq mysql@8.4 postgresql@17 redis
           # PHP 的 pcre 扩展头文件会直接包含 pcre2.h；setup-php 编译 Swoole
           # 时需要它位于标准 Homebrew include 路径中。
           task_pcre2="$(brew --prefix pcre2)"
@@ -56,12 +56,11 @@ jobs:
           printf 'PCRE2_PREFIX=%s\n' "$task_pcre2" >> "$GITHUB_ENV"
       - name: 暴露 PostgreSQL 构建头文件与 pkg-config
         run: |
-          task_pgsql="$(brew --prefix postgresql@17)"
-          task_pgsql_include="$($task_pgsql/bin/pg_config --includedir)"
-          if [[ ! -f "$task_pgsql_include/libpq-fe.h" && -f "$task_pgsql_include/postgresql/libpq-fe.h" ]]; then
-            task_pgsql_include="$task_pgsql_include/postgresql"
-          fi
-          task_pgsql_lib="$($task_pgsql/bin/pg_config --libdir)"
+          # setup-php 的 pdo_pgsql 使用 Homebrew libpq；Swoole 必须链接同一
+          # 个 dylib 身份。postgresql@17 仅提供本轮隔离数据库服务和客户端工具。
+          task_pgsql="$(brew --prefix libpq)"
+          task_pgsql_include="$task_pgsql/include"
+          task_pgsql_lib="$task_pgsql/lib"
           [[ -f "$task_pgsql_include/libpq-fe.h" && -f "$task_pgsql_lib/libpq.dylib" ]] || exit 1
           task_pgsql_pkg="$RUNNER_TEMP/libpq-pkgconfig"
           mkdir -p "$task_pgsql_pkg"
@@ -94,6 +93,14 @@ jobs:
           SWOOLE_DARWIN_LIBS: c-ares, libpq, sqlite
           CFLAGS: -I/opt/homebrew/opt/pcre2/include
           CXXFLAGS: -I/opt/homebrew/opt/pcre2/include
+      - name: 核对 PHP 扩展的 PostgreSQL 动态库身份
+        run: |
+          task_extension_dir="$(php-config --extension-dir)"
+          otool -L "$task_extension_dir/pdo_pgsql.so" | tee "$RUNNER_TEMP/pdo-pgsql-otool.log"
+          otool -L "$task_extension_dir/swoole.so" | tee "$RUNNER_TEMP/swoole-otool.log"
+          task_pdo_pq="$(otool -L "$task_extension_dir/pdo_pgsql.so" | awk '/libpq\.5\.dylib/{print $1; exit}')"
+          task_swoole_pq="$(otool -L "$task_extension_dir/swoole.so" | awk '/libpq\.5\.dylib/{print $1; exit}')"
+          [[ -n "$task_pdo_pq" && "$task_pdo_pq" == "$task_swoole_pq" ]]
       - name: 安装锁定组件与开发依赖
         run: |
           composer validate --strict
