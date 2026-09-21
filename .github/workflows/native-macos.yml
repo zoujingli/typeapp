@@ -47,8 +47,7 @@ jobs:
           task_pcre2="$(brew --prefix pcre2)"
           brew link --force --overwrite pcre2
           test -f "$task_pcre2/include/pcre2.h"
-          printf 'CPPFLAGS=-I%s/include %s\n' "$task_pcre2" "${CPPFLAGS:-}" >> "$GITHUB_ENV"
-          printf 'LDFLAGS=-L%s/lib %s\n' "$task_pcre2" "${LDFLAGS:-}" >> "$GITHUB_ENV"
+          printf 'PCRE2_PREFIX=%s\n' "$task_pcre2" >> "$GITHUB_ENV"
       - name: 暴露 PostgreSQL 构建头文件与 pkg-config
         run: |
           task_pgsql="$(brew --prefix postgresql@17)"
@@ -72,8 +71,8 @@ jobs:
           mkdir -p "$task_swoole_pgsql/lib/pkgconfig"
           cp "$task_pgsql_pkg/libpq.pc" "$task_swoole_pgsql/lib/pkgconfig/libpq.pc"
           printf 'SWOOLE_CONFIGURE_OPTS=--enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-thread --enable-swoole-pgsql=%s --enable-swoole-sqlite\n' "$task_swoole_pgsql" >> "$GITHUB_ENV"
-          printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s %s\nLDFLAGS=-L%s %s\nLIBPQ_CFLAGS=-I%s\nLIBPQ_LIBS=-L%s -lpq\n' \
-            "$task_pgsql_pkg" "${PKG_CONFIG_PATH:-}" "$task_pgsql_include" "${CPPFLAGS:-}" "$task_pgsql_lib" "${LDFLAGS:-}" "$task_pgsql_include" "$task_pgsql_lib" >> "$GITHUB_ENV"
+          printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s -I%s/include %s\nLDFLAGS=-L%s -L%s/lib %s\nLIBPQ_CFLAGS=-I%s\nLIBPQ_LIBS=-L%s -lpq\n' \
+            "$task_pgsql_pkg" "${PKG_CONFIG_PATH:-}" "$task_pgsql_include" "$PCRE2_PREFIX" "${CPPFLAGS:-}" "$task_pgsql_lib" "$PCRE2_PREFIX" "${LDFLAGS:-}" "$task_pgsql_include" "$task_pgsql_lib" >> "$GITHUB_ENV"
       - name: 安装锁定ZTS PHP与Composer
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
         with:
