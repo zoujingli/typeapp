@@ -491,6 +491,11 @@ final class NativeBuilder
                 $this->directory($work);
                 $command = [PHP_BINARY, ...$threadCompilerArguments, '-d', 'auto_prepend_file=', '-d', 'auto_append_file=', '-d', 'opcache.enable_cli=0', '-d', 'opcache.preload=',
                     $compiler, $projectFile, '--mode', 'bin', '--output', $candidate, '--build-dir', $work, '--job', (string) $compilerOptions['jobs'], '--no-progress'];
+                // Windows 的独立消费者可能复用不完整的 TypePHP 增量清单；
+                // 强制重建声明头，避免生成身份源引用不存在的 *_decl.h。
+                if (PHP_OS_FAMILY === 'Windows') {
+                    $command[] = '--force';
+                }
                 echo $environment->run($command, $root, $compilerEnvironment, 1800);
                 $groups['sources'] = $identityBuilder->sources($sources);
                 if ($identityBuilder->create($groups, $facts)['id'] !== $identity['id']) {

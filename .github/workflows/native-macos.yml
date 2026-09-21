@@ -39,6 +39,13 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: 安装原生构建和专用测试数据库工具
+        run: brew install cmake gmp mpfr pkg-config mysql@8.4 postgresql@17 redis
+      - name: 暴露 PostgreSQL 构建头文件与 pkg-config
+        run: |
+          task_pgsql="$(brew --prefix postgresql@17)"
+          printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s/include %s\nLDFLAGS=-L%s/lib %s\n' \
+            "$task_pgsql/lib/pkgconfig" "${PKG_CONFIG_PATH:-}" "$task_pgsql" "${CPPFLAGS:-}" "$task_pgsql" "${LDFLAGS:-}" >> "$GITHUB_ENV"
       - name: 安装锁定ZTS PHP与Composer
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
         with:
@@ -53,8 +60,6 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: '15.0'
           SWOOLE_CONFIGURE_OPTS: --enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-pgsql --enable-swoole-sqlite
           SWOOLE_DARWIN_LIBS: c-ares, libpq, sqlite
-      - name: 安装原生构建和专用测试数据库工具
-        run: brew install cmake gmp mpfr pkg-config mysql@8.4 postgresql@17 redis
       - name: 安装锁定组件与开发依赖
         run: |
           composer validate --strict

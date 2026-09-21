@@ -164,13 +164,19 @@ function deploymentRun(string $preparedFile, string $image, string $directory): 
     Assert::same(hash_file('sha256', $artifact), $build['sha256'], '模板构建记录与 ELF 不一致');
     $project = deploymentJson($consumer . '/build/compiler/project.yml');
     $sources = $project['sources'];
+    $originalSources = $build['identity']['description']['inputs']['original-sources'] ?? [];
+    Assert::true(is_array($originalSources), '模型编译原始源码记录无效');
     Assert::same(count($sources), count(array_unique($sources)), '实际 TypePHP 源文件清单存在重复路径');
     $entry = $prepared['consumer'] . '/app/main.php';
     Assert::same(1, count(array_filter($sources, static fn (string $path): bool => $path === $entry)), '应用入口必须且只能编译一次');
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($consumer . '/app', FilesystemIterator::SKIP_DOTS)) as $file) {
         if ($file->isFile() && $file->getExtension() === 'php') {
-            $source = $prepared['consumer'] . substr($file->getPathname(), strlen($consumer));
-            Assert::true(in_array($source, $sources, true), 'TypePHP 源文件清单遗漏模板业务类：' . basename($source));
+            $sourcePath = Type\Build\BuildPlatform::path($file->getPathname());
+            $transformed = isset($originalSources[$sourcePath])
+                && is_array($originalSources[$sourcePath])
+                && ($originalSources[$sourcePath]['sha256'] ?? null) === hash_file('sha256', $sourcePath)
+                && in_array($consumer . '/build/compiler/generated-models.php', $sources, true);
+            Assert::true(in_array($sourcePath, $sources, true) || $transformed, 'TypePHP 源文件清单遗漏模板业务类：' . basename($sourcePath));
         }
     }
     $packages = array_keys($build['production-packages']);
