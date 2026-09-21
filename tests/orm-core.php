@@ -25,7 +25,7 @@ try {
     foreach (['drivers/' . $driver . '.php', 'Schema.php', 'ArticleObserver.php', 'CoreExercise.php', 'Suite.php'] as $file) {
         $launch .= 'require ' . var_export($root . '/examples/orm-suite/' . $file, true) . ';';
     }
-    $launch .= 'echo json_encode(TypeApp\\OrmSuite\\Suite::run(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), PHP_EOL;';
+    $launch .= 'Type\\Runtime\\CoroutineRuntime::enableIo(); echo json_encode(TypeApp\\OrmSuite\\Suite::run(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), PHP_EOL;';
     $process = new Type\Testing\Process([PHP_BINARY, '-r', $launch], $root, $environment);
     try {
         $result = $process->wait(60);
