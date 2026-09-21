@@ -57,6 +57,10 @@ jobs:
             printf 'exec_prefix=${prefix}\nlibdir=%s\nincludedir=%s\n' "$task_pgsql_lib" "$task_pgsql_include"
             printf 'Name: libpq\nDescription: PostgreSQL client library\nVersion: 17\nLibs: -L%s -lpq\nCflags: -I%s\n' "$task_pgsql_lib" "$task_pgsql_include"
           } > "$task_pgsql_pkg/libpq.pc"
+          # setup-php 用 sudo 执行 PECL configure，sudo 默认不会保留 LIBPQ_*。
+          # 直接传入 Swoole 的 PostgreSQL 前缀，让其在 configure 内部构造
+          # 自己的 pkg-config 路径，避免依赖被清掉的外部环境变量。
+          printf 'SWOOLE_CONFIGURE_OPTS=--enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-thread --enable-swoole-pgsql=%s --enable-swoole-sqlite\n' "$task_pgsql" >> "$GITHUB_ENV"
           printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s %s\nLDFLAGS=-L%s %s\nLIBPQ_CFLAGS=-I%s\nLIBPQ_LIBS=-L%s -lpq\n' \
             "$task_pgsql_pkg" "${PKG_CONFIG_PATH:-}" "$task_pgsql_include" "${CPPFLAGS:-}" "$task_pgsql_lib" "${LDFLAGS:-}" "$task_pgsql_include" "$task_pgsql_lib" >> "$GITHUB_ENV"
       - name: 安装锁定ZTS PHP与Composer
@@ -71,7 +75,6 @@ jobs:
           phpts: ts
           fail-fast: true
           MACOSX_DEPLOYMENT_TARGET: '15.0'
-          SWOOLE_CONFIGURE_OPTS: --enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-pgsql --enable-swoole-sqlite
           SWOOLE_DARWIN_LIBS: c-ares, libpq, sqlite
       - name: 安装锁定组件与开发依赖
         run: |

@@ -106,6 +106,7 @@ jobs:
         env:
           phpts: ts
           fail-fast: true
+          SWOOLE_CONFIGURE_OPTS: --enable-swoole-thread
 
       - name: 安装原生构建依赖
         run: |
