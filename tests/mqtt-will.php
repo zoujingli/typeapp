@@ -422,9 +422,11 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
             $gate = $sync->connection();
             $gate->beginTransaction();
             $gate->query("SELECT id FROM type_mqtt_sessions WHERE client_id = '" . $id . "' FOR UPDATE")->fetchColumn();
+            $gatePid = (int) $gate->query('SELECT pg_backend_pid()')->fetchColumn();
             mqttWrite($publisher, mqttWillConnect(5, $id, $topic, 'never-accepted', 1, false, 0, 60, $clean));
+            // 观察受控行锁的真实阻塞关系，不依赖存储实现先读取哪些会话字段。
             $backend = mqttUntil(fn (): mixed => $primary->query("SELECT pid FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'"
-                . " AND wait_event_type = 'Lock' AND query LIKE 'SELECT *, (expires_at IS NOT NULL%'")->fetchColumn(), '未知打开未到达指定会话');
+                . " AND wait_event_type = 'Lock' AND " . $gatePid . ' = ANY(pg_blocking_pids(pid))')->fetchColumn(), '未知打开未到达指定会话');
             $standby->query('SELECT pg_wal_replay_pause()')->fetchColumn();
             $gate->rollBack();
             $gate = null;
