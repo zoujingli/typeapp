@@ -95,11 +95,13 @@ jobs:
           CXXFLAGS: -I/opt/homebrew/opt/pcre2/include
       - name: 核对 PHP 扩展的 PostgreSQL 动态库身份
         run: |
-          task_extension_dir="$(php-config --extension-dir)"
-          otool -L "$task_extension_dir/pdo_pgsql.so" | tee "$RUNNER_TEMP/pdo-pgsql-otool.log"
-          otool -L "$task_extension_dir/swoole.so" | tee "$RUNNER_TEMP/swoole-otool.log"
-          task_pdo_pq="$(otool -L "$task_extension_dir/pdo_pgsql.so" | awk '/libpq\.5\.dylib/{print $1; exit}')"
-          task_swoole_pq="$(otool -L "$task_extension_dir/swoole.so" | awk '/libpq\.5\.dylib/{print $1; exit}')"
+          task_pdo_module="$(php -r 'echo (new ReflectionExtension("pdo_pgsql"))->getFileName();')"
+          task_swoole_module="$(php -r 'echo (new ReflectionExtension("swoole"))->getFileName();')"
+          [[ -f "$task_pdo_module" && -f "$task_swoole_module" ]]
+          otool -L "$task_pdo_module" | tee "$RUNNER_TEMP/pdo-pgsql-otool.log"
+          otool -L "$task_swoole_module" | tee "$RUNNER_TEMP/swoole-otool.log"
+          task_pdo_pq="$(otool -L "$task_pdo_module" | awk '/libpq\.5\.dylib/{print $1; exit}')"
+          task_swoole_pq="$(otool -L "$task_swoole_module" | awk '/libpq\.5\.dylib/{print $1; exit}')"
           [[ -n "$task_pdo_pq" && "$task_pdo_pq" == "$task_swoole_pq" ]]
       - name: 安装锁定组件与开发依赖
         run: |
