@@ -86,7 +86,7 @@ function main(int $argc, array $argv): void
         $next = $database->connect($scope);
         databaseExpect((int) $next->query('SELECT 7 AS value')[0]['value'] === 7, '作用域内无法再次借用');
         $next->close();
-        databaseExpect($database->statistics()['idle'] === 1 && $database->statistics()['leased'] === 0, '空闲或借用统计不正确');
+        databaseExpect($database->statistics()['idle'] === 0 && $database->statistics()['leased'] === 0, 'MySQL 安全关闭后不应保留物理会话');
         $scope->close();
         $closed = false;
         try {

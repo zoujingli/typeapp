@@ -325,7 +325,7 @@ final class CoreExercise
                 $connection->table('type_session_probe')->where('id', '=', $index)->delete();
                 $connection->close();
             }
-            self::check($name === 'sqlite' || count(array_unique($identities)) === ($name === 'pgsql' ? 1 : 4), '物理连接身份与驱动重置能力不一致');
+            self::check($name === 'sqlite' || count(array_unique($identities)) === 4, '原生 SQL 退役后不应复用物理会话');
             $connection = $database->connect($scope);
             self::check(self::reject(static fn (): array => $connection->query('SELECT * FROM type_session_missing_table')), '数据库错误没有传播');
             $connection->close();

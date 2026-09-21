@@ -114,16 +114,23 @@ final class Connection
         return $this->operation(static fn (PdoSession $session): int => $session->execute($sql, $parameters), $sql, $parameters);
     }
 
-    /** 原生 SQL 使用与 execute 相同的事务、失败和驱动会话重置边界。 */
+    /**
+     * 执行原生 SQL，并在归还时退役物理会话。
+     *
+     * 原生语句可能改变服务器端变量、临时对象、命名锁或触发器状态，
+     * Connection 无法从 SQL 文本证明这些副作用已经恢复；退役保证未知状态不会进入空闲池。
+     */
     public function raw(string $sql, array $parameters = []): int
     {
-        return $this->execute($sql, $parameters);
+        $this->writes++;
+        return $this->operation(static fn (PdoSession $session): int => $session->execute($sql, $parameters), $sql, $parameters, 'raw', true);
     }
 
-    /** 查询结果不代表没有副作用；与 query 一样仅在完整重置后允许复用。 */
+    /** 原生查询结果不代表没有副作用，归还租约时同样退役物理会话。 */
     public function rawQuery(string $sql, array $parameters = []): array
     {
-        return $this->query($sql, $parameters);
+        $this->recordRead(count($parameters));
+        return $this->operation(static fn (PdoSession $session): array => $session->query($sql, $parameters), $sql, $parameters, 'raw-query', true);
     }
 
     public function lastInsertId(): string
@@ -371,7 +378,7 @@ final class Connection
         return $resource;
     }
 
-    private function operation(Closure $operation, string $sql, array $parameters, string $phase = 'statement'): mixed
+    private function operation(Closure $operation, string $sql, array $parameters, string $phase = 'statement', bool $retire = false): mixed
     {
         $started = hrtime(true);
         $success = false;
@@ -381,18 +388,24 @@ final class Connection
                 $this->guardTransactionSql($sql);
             }
             $this->session();
-            $result = $this->lease->hold(function (ReusableResource $resource) use ($operation): mixed {
+            $result = $this->lease->hold(function (ReusableResource $resource) use ($operation, $retire): mixed {
                 if (!$resource instanceof PdoSession) {
                     throw new DatabaseException('租约中没有数据库会话');
                 }
-                $result = $operation($resource);
                 try {
-                    $this->lease->resource();
-                } catch (Throwable $error) {
-                    $resource->retire();
-                    throw $error;
+                    $result = $operation($resource);
+                    try {
+                        $this->lease->resource();
+                    } catch (Throwable $error) {
+                        $resource->retire();
+                        throw $error;
+                    }
+                    return $result;
+                } finally {
+                    if ($retire) {
+                        $resource->retire();
+                    }
                 }
-                return $result;
             });
             $success = true;
             return $result;

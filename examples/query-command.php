@@ -229,7 +229,7 @@ function main(int $argc, array $argv): void
         $rawRow = $clean->query('SELECT :integer AS integer_value, :missing AS missing_value', ['integer' => 7, 'missing' => null]);
         queryExpect((int) $rawRow[0]['integer_value'] === 7 && $rawRow[0]['missing_value'] === null, '命名参数或 NULL 绑定失败');
         $clean->close();
-        queryExpect($database->statistics()['idle'] === 1, '受管会话没有进入空闲池');
+        queryExpect($database->statistics()['idle'] === ($name === 'pgsql' ? 1 : 0), '受管会话没有按驱动策略归还');
         $unsafe = $database->connect($scope);
         queryExpect((int) $unsafe->rawQuery('SELECT ? AS value', [91])[0]['value'] === 91, '参数化原生查询没有返回结果');
         $unsafe->close();
