@@ -8,7 +8,7 @@ $consumer = $root . '/build/testing-consumer-' . bin2hex(random_bytes(6));
 expect(mkdir($consumer . '/tests', 0700, true), '无法创建测试插件独立消费项目');
 $composer = ['name' => 'type-tests/testing-consumer', 'type' => 'project', 'license' => 'Apache-2.0',
     'require' => ['zoujingli/type-testing' => '~1.0.0@dev'], 'repositories' => [], 'minimum-stability' => 'dev',
-    'config' => ['allow-plugins' => false, 'platform' => ['ext-swoole' => false, 'ext-redis' => false, 'ext-pdo_mysql' => false, 'ext-pdo_pgsql' => false, 'ext-pdo_sqlite' => false]]];
+    'config' => ['allow-plugins' => false, 'platform' => ['ext-redis' => false, 'ext-pdo_mysql' => false, 'ext-pdo_pgsql' => false, 'ext-pdo_sqlite' => false]]];
 foreach (['type-testing', 'type-runtime'] as $name) {
     $composer['repositories'][] = ['type' => 'path', 'url' => $root . '/plugin/' . $name, 'options' => ['symlink' => false, 'versions' => ['zoujingli/' . $name => '1.0.x-dev']]];
 }

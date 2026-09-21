@@ -165,6 +165,25 @@ final class ProjectStructureTest extends TestCase
         }
     }
 
+    /** 角色权限是固定目录中的受控值集合，不扩展成独立业务实体。 */
+    public function testRolePermissionValuesRemainControlledByTheAuthorizationService(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $schema = (string) file_get_contents($root . '/app/common/database/Schema.php');
+        self::assertStringContainsString('PRIMARY KEY (role_id, permission)', $schema);
+
+        $service = (string) file_get_contents($root . '/app/common/service/RoleService.php');
+        self::assertStringContainsString('private static function canGrant', $service);
+        self::assertStringContainsString('count(array_unique($grants))', $service);
+        self::assertStringContainsString('array_diff($grants, array_keys(self::catalog($realm)))', $service);
+        self::assertStringContainsString('$connection->table($realm . \'_role_permissions\')->where(\'role_id\', \'=\', $id)->delete()', $service);
+
+        $documentation = (string) file_get_contents($root . '/docs/development/iot-identity.md');
+        self::assertStringContainsString('权限值集合仅由 `RoleService`', $documentation);
+        self::assertStringContainsString('不是可由客户端任意新增的实体', $documentation);
+        self::assertStringContainsString('initializeScope`、`directory`、`requireHighest`、`role`、`changeRole`', $documentation);
+    }
+
     /** @return array<string, mixed> 已检查的项目声明。 */
     private function json(string $file): array
     {
