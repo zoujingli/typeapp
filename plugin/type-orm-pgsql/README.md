@@ -2,6 +2,8 @@
 
 PostgreSQL 驱动复用 type-orm 的 Connection、事务和作用域池，独立依赖 pdo_pgsql，不要求 MySQL 驱动或 HTTP 核心。
 
+已在 Linux ARM64、macOS ARM64、Windows x64 完成 PostgreSQL 独立消费者的 PHP、AOT 和无源码运行，属于同提交三库 ORM 矩阵，包含物理连接复用与会话隔离。完整应用及生产高可用按各自场景另行验收，环境与证据见[平台与验收](https://iots.top/#/guide/platforms)。
+
 ## 安装与版本
 
 本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。

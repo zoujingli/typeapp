@@ -1,8 +1,8 @@
 # 平台与验收
 
-TypeApp 的目标平台为 Linux x64、Linux ARM64、macOS ARM64 和 Windows x64。所有平台统一采用 TypePHP 编译生产 PHP、Swoole 承担通信与基础并发、Plugins 组合应用能力。各平台按同一源码、依赖、Swoole 构建和产物身份分别验收。
+**已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台已完成的原生编译与运行场景见下表。所有平台统一采用 TypePHP 编译生产 PHP、Swoole 承担通信与基础并发、Plugins 组合应用能力。
 
-本页只描述当前验收范围和完成条件。不同平台、源码和运行库的结果分别成立，不能组合成同一版本全平台通过的声明。源码公开、PHP 测试通过、原生编译成功和完整应用可部署是不同状态。
+本页是平台支持范围的统一入口。支持范围按操作系统、CPU 架构和实际场景判断，未列出的架构尚无已支持声明。不同平台、源码和运行库的结果分别成立，不能组合成同一版本全平台通过的声明。源码公开、PHP 测试通过、原生编译成功和完整应用可部署是不同状态。
 
 ## 当前平台状态
 
@@ -13,9 +13,11 @@ TypeApp 的目标平台为 Linux x64、Linux ARM64、macOS ARM64 和 Windows x64
 | macOS ARM64 | 同提交三库独立 ORM、真实锁等待及主从专项；完整应用 AOT 产物的三库身份 HTTP 和无源码运行包；TCP/UDP 双线程和协程、WS/WSS 独立原生运行 | 完整协议、故障和单程序交付待完成 |
 | Windows x64 | Swoole SDK 构建与加载、PHPUnit；同提交三库独立 ORM 的 PHP、AOT 与移除源码运行，包含上下文、双进程乐观锁与原子更新；PostgreSQL 另验证物理连接复用、污染清理及故障退役 | MySQL/SQLite 物理复用及完整应用待完成 |
 
-独立 ORM 消费者安装标准框架与所选数据库驱动，验证模型和运行时的公开契约，不导入物联中心业务。每种数据库的结果只覆盖实际执行的场景。Windows 原生部署验收包含组件消费者的实际程序和运行库，尚不包含完整应用的可搬迁发布包。
+三库指 MySQL、PostgreSQL、SQLite。独立 ORM 消费者安装标准框架与所选数据库驱动，验证模型和运行时的公开契约，不导入物联中心业务。每种数据库的结果只覆盖实际执行的场景。Windows 原生部署验收包含组件消费者的实际程序和运行库，尚不包含完整应用的可搬迁发布包。Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
 
-macOS ARM64、Linux ARM64、Windows x64 的三库独立 ORM 矩阵已在同一干净源码提交完成，版本与证据见[平台与工具链](../development/platform-support.md#当前结果与证据)。消费者通过 Composer 复制安装本次组件输入；远端分发子仓同步和安装另行验证。MySQL、SQLite 仍采用安全关闭，完整三库物理连接复用及全部协议入口作用域尚未收口，因此不声明 ORM 完整交付。
+Linux x64 基础命令结果对应源码 `fed4efae5826bdca69a613743e1c6c459addd565`；macOS ARM64、Linux ARM64、Windows x64 的三库独立 ORM 矩阵对应干净源码 `5abdb5e53ea9ca67054f69d17113b91eb3402d69`。工具链、产物身份与运行证据见 GitHub 上的[平台与工具链](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#当前结果与证据)。这些记录保留原提交归属，不表示后续每个提交都重新通过了同一矩阵。
+
+消费者通过 Composer 复制安装对应提交的组件输入；远端分发子仓同步和安装另行验证。MySQL、SQLite 仍采用安全关闭，完整三库物理连接复用及全部协议入口作用域尚未收口，因此不声明 ORM 完整交付。
 
 ## 通信结果如何理解
 
@@ -29,7 +31,11 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 ## SDK 与执行方式
 
+开发环境需要 PHP `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选 PDO 驱动；原生构建还需要匹配目标 OS/架构的 PHP ZTS/embed SDK、PHPX 和编译工具。Linux/macOS 使用对应原生工具链，Windows x64 使用匹配的 ZTS SDK 与 MSVC；准备入口见 GitHub 上的[原生命令与 SDK](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-command.md)。
+
 原生构建基线为 PHP 8.5.10 ZTS、TypePHP 0.9.0、PHPX 2.9.0，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 另外固定版本、源码、构建开关、模块摘要和官方内置库配置；CLI 加载成功还需要对应 embed 环境验证。不能只复制一个扩展文件就认定 ABI 匹配。
+
+通用模板的经典 HTTP `serve()` 入口仍要求 Unix worker 与信号能力，当前明确拒绝 Windows；Windows SDK 和 ORM 通过不代表该 HTTP 入口已适配。主仓物联中心生产 HTTP 使用编译业务线程内协程，具体入口与限制见[快速开始](quickstart.md#启动服务)和[type-core](plugins/type-core.md#启动-http-服务)。
 
 进程不可用时采用官方线程或协程是框架要求，当前自动选择执行方式及部分角色接入仍待完成。Swoole 官方已有 Windows 原生能力，项目的 Windows 准备脚本已完成固定源码构建与扩展加载验证；经典 Server/Process、线程和协程的实际业务须按所选官方构建分别核验。
 

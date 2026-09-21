@@ -12,6 +12,8 @@ flowchart TB
 
 ## 准备环境
 
+**已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台通过的命令、ORM 和应用场景不同，选定环境前先核对[平台支持表](platforms.md#当前平台状态)。
+
 开发 CLI 使用 PHP `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选数据库的 PDO 扩展。SQLite 需要 `pdo_sqlite`；MySQL、PostgreSQL 分别需要 `pdo_mysql`、`pdo_pgsql`。HTTP 服务还需要目标平台支持的 Unix 信号能力，具体要求见[type-core](plugins/type-core.md#启动-http-服务)。
 
 ```bash
@@ -22,7 +24,7 @@ composer --version
 
 原生编译还需要与目标平台匹配的 SDK，版本取自 `toolchain.lock.json`，详见[构建与部署](deployment.md)。
 
-先核对[平台与验收](platforms.md)：当前 Windows SDK 尚缺匹配的 Swoole 模块，本文经典 HTTP 服务入口也尚未完成 Windows 适配；组件测试通过不表示本教程的整条应用链路已经通过该平台验收。
+Windows x64 已完成匹配 Swoole SDK 的构建与加载，以及三库独立 ORM 的 PHP、AOT 和无源码运行。本文通用模板的经典 HTTP 服务入口仍要求 Unix worker 与信号能力，当前明确拒绝 Windows；选定平台的组件结果与整条应用链路验收分别记录。
 
 ## 创建业务应用
 

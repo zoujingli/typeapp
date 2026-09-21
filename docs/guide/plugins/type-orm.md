@@ -4,7 +4,9 @@
 
 提供受管数据库连接、不可变 Query、生成模型、关系、分页、事务、迁移和事务 Outbox。ORM 不选择数据库；安装一个驱动后使用同一公开入口，并保留数据库本身的能力差异。
 
-业务 CRUD 使用[Model 与关系](#models-relations-output)，查询和保存无需传入 `Connection`。框架从当前 Swoole 作用域选择端点并管理租约；静态 `search()`、自动租户隔离、默认读从写主及 `master()` 的配置和完整示例见[模型连接与主从路由](../../development/model-connections.md)。下面的显式连接和表查询用于基础设施与受控聚合。物理 PDO 复用和完整原生平台验收仍以实际验证结果为准。
+已在 Linux ARM64、macOS ARM64、Windows x64 完成同提交三库独立 ORM 的 PHP、AOT 和无源码运行；三库指 MySQL、PostgreSQL、SQLite。场景、环境与完整交付限制见[平台支持表](../platforms.md#当前平台状态)。
+
+业务 CRUD 使用[Model 与关系](#models-relations-output)，查询和保存无需传入 `Connection`。框架从当前 Swoole 作用域选择端点并管理租约；静态 `search()`、自动租户隔离、默认读从写主及 `master()` 的配置和完整示例见[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)。下面的显式连接和表查询用于基础设施与受控聚合。物理 PDO 复用和完整原生平台验收仍以实际验证结果为准。
 
 ## 安装与依赖
 
@@ -146,7 +148,7 @@ function renameUser(Connection $connection, int $id, string $name): int
 
 从[MySQL](type-orm-mysql.md)、[PostgreSQL](type-orm-pgsql.md)或[SQLite](type-orm-sqlite.md)选择驱动，再创建 `Database($driver, $capacity = 4, $idleLimit = 2)`。每次执行新建 `ExecutionScope`，调用 `$database->connect($scope)`。
 
-Scope 关闭归还租约，Database 由进程所有者关闭。PostgreSQL 完整重置会话后保留物理 PDO；MySQL 和 SQLite 当前归还时关闭物理连接，重建会话基线。重置失败、SQL 错误和未知提交均退役，不把状态交给下一请求。连接只在借用时建立；同步调用满载立即拒绝，Swoole 协程按有界等待配置排队，连接不能跨进程或执行者使用。具体条件见[连接身份与会话隔离](../../development/database-identities.md)。
+Scope 关闭归还租约，Database 由进程所有者关闭。PostgreSQL 完整重置会话后保留物理 PDO；MySQL 和 SQLite 当前归还时关闭物理连接，重建会话基线。重置失败、SQL 错误和未知提交均退役，不把状态交给下一请求。连接只在借用时建立；同步调用满载立即拒绝，Swoole 协程按有界等待配置排队，连接不能跨进程或执行者使用。具体条件见[连接身份与会话隔离](https://github.com/zoujingli/typeapp/blob/main/docs/development/database-identities.md)。
 
 多个命名连接使用 `DatabaseManager(['default' => $writer, 'reporting' => $reader])`，通过 `connect($scope, 'reporting')` 显式选择。`rotate($name, $newDriver)` 切换凭据代次，旧租约保留旧身份到归还；同名连接最多保留两个未排空旧代。
 

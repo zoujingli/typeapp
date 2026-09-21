@@ -1,5 +1,7 @@
 # type-build
 
+已完成 Linux x64 基础命令、Linux ARM64 / macOS ARM64 / Windows x64 三库独立 ORM 消费者的 AOT 构建与实际运行；macOS ARM64 另有完整应用 AOT 与三库身份 HTTP 结果。各场景的源码、SDK 与产物身份独立记录，完整应用发布和单程序封装仍有待验收项，见[平台与验收](https://iots.top/#/guide/platforms)。
+
 构建声明可通过 `threads` 登记已编译业务入口。构建器核对受控 Swoole/PHPX ABI 2、源码摘要与 fiber 通知配置，并在正常模块启动阶段发布应用符号；线程内协程作用域、初始化失败和清理边界见[已编译业务线程](https://github.com/zoujingli/typeapp/blob/main/docs/development/compiled-business-threads.md)，实际平台结果按该页记录。
 
 线程适配另提供 TypeApp 私有 `Thread::TYPEAPP_JOIN_ABI=1` 与 `joinWithin(int $milliseconds)` 候选，只适用于编译线程；等待完整 C++ 线程局部清理通知后仍由 Swoole join。超时保留所有权，不取消或 detach；非零等待会阻塞调用方线程，只供独立主控使用。它不等于完整停止监督或硬实时截止，固定缺口、验收及撤除条件见同页的“有截止的完成等待候选”。
@@ -102,7 +104,7 @@ vendor/bin/type --inspect build/type-example
 
 ## AOT 与运行要求
 
-本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP 0.9.0、PHPX 2.9.0，PHP继续锁定8.5.10 ZTS；构建须提供匹配目标平台的完整SDK，已通过范围和完整应用限制统一见[平台与验收](https://iots.top/#/guide/platforms)。Windows 已完成匹配 Swoole 模块的构建与加载，组件 AOT、SQLite、部署审计和缓存已有通过结果；编译线程接入及完整应用发布仍待验收。生产运行库由实际产物清单确定，不把编译SDK、源码或构建秘密复制进运行镜像。
+本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP 0.9.0、PHPX 2.9.0，PHP继续锁定8.5.10 ZTS；构建须提供匹配目标平台的完整SDK，已通过范围和完整应用限制统一见[平台与验收](https://iots.top/#/guide/platforms)。Windows x64 已完成匹配 Swoole 模块的构建与加载、三库独立 ORM 的 PHP/AOT 与无源码运行；部署审计和缓存另有已记录结果，编译线程接入及完整应用发布仍待验收。生产运行库由实际产物清单确定，不把编译SDK、源码或构建秘密复制进运行镜像。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。标量存储、引用及std编译期接口按新版规则实现，带上下文的闭包必须完整声明参数；PHP开发对照只使用具有真实等价行为的能力。
 

@@ -2,6 +2,8 @@
 
 MySQL 驱动采用 PDO，连接时明确启用异常、原生预处理和 utf8mb4。构造函数只保存配置，真正连接在作用域借用时建立；缺少已选择的 pdo_mysql 扩展会明确失败。
 
+已在 Linux ARM64、macOS ARM64、Windows x64 完成 MySQL 独立消费者的 PHP、AOT 和无源码运行，属于同提交三库 ORM 矩阵。该结果覆盖本驱动的已记录场景，不代表 MySQL 物理连接复用或完整应用已交付；环境与证据见[平台与验收](https://iots.top/#/guide/platforms)。
+
 ## 安装与版本
 
 本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。

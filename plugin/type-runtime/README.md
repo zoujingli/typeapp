@@ -2,6 +2,8 @@
 
 进程、线程与协程是 TypeApp 的运行时基础能力，由 Swoole 统一提供；本组件承接执行作用域、资源所有权及预算契约。TypePHP 负责框架与业务的全量编译，Swoole 提供原生进程、线程、协程、通信和事件循环；各业务角色共用同一套作用域和真实收尾规则。
 
+已验证范围包含 Linux x64 基础命令，以及 Linux ARM64、macOS ARM64、Windows x64 三库独立 ORM 消费中的作用域、资源归属和会话退役。macOS ARM64 另有已编译线程与通信专项结果；这些结果不代表全部角色在每个平台均已通过，源码与 SDK 边界见[平台与验收](https://iots.top/#/guide/platforms)。
+
 构建期登记的业务线程通过 `CoroutineRuntime::startThread()` 启动，复用 Swoole Thread 句柄；需要受控 Swoole/PHPX ABI 2、开启 fiber 通知、完整 AOT 入口及调用者显式 join。接入方式、参数预算、线程内协程和失败收尾的实际验证边界见[已编译业务线程](https://github.com/zoujingli/typeapp/blob/main/docs/development/compiled-business-threads.md)。
 
 显式完成等待候选直接使用句柄上的 `joinWithin(0..60000)`，额外检查 TypeApp 私有 `Thread::TYPEAPP_JOIN_ABI=1`。超时仍持有线程和资源，不可提前释放额度；非零等待阻塞 OS 线程，仅用于独立主控。它不替代任务停止、排空或永久阻塞后的进程故障处理，旧 `join()` 调用不依赖此候选。

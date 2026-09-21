@@ -40,7 +40,7 @@ php vendor/bin/type doctor type-app.json build
 
 本仓库使用 `docs/build-config/type-app.json` 作为构建配置。doctor 检查所选范围的前置条件，不连接业务服务；检测通过不等于应用已编译或运行验收通过。
 
-正式目标包括 Linux x64/ARM64、macOS ARM64 和 Windows x64。构建、运行库、数据库与停止语义都需要在实际目标环境验证；Docker 或 WSL 中的 Linux 结果不能替代 Windows/macOS 原生结果。
+**已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** Linux x64 已通过基础命令 AOT 与运行；其余三者已通过三库独立 ORM 的 PHP、AOT 和无源码运行，macOS ARM64 另有完整应用 AOT、三库身份 HTTP 和通信专项结果。具体范围和证据归属见[平台支持表](platforms.md#当前平台状态)。构建、运行库、数据库与停止语义都需要在实际目标环境验证；Docker 或 WSL 中的 Linux 结果不能替代 Windows/macOS 原生结果。
 
 实际状态见[平台与验收](platforms.md)。每个平台都必须提供匹配的 Swoole、PHPX、libphp 和生产扩展，再以同一产物完成完整应用 AOT、通信、数据库和无源码部署验收。以下命令描述工具已有入口，执行前仍须满足所选应用和平台的全部前置条件。
 

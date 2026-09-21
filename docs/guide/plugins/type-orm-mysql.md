@@ -124,7 +124,7 @@ $user = $connection->table('users')->where('id', '=', $id)->first();
 | 提交确认失败 | 结果可能未知，先对账，再决定恢复 |
 | 同步池容量耗尽 | 在每次请求 finally 关闭 Scope，并控制工作进程总连接数 |
 
-Scope 关闭归还租约，Database 由应用所有者关闭。MySQL 当前每次归还均关闭物理 PDO，包括成功的普通 CRUD；标准 PDO MySQL 未提供完整会话重置接口，不能只恢复时区和 SQL 模式后就把可能包含变量、临时对象或命名锁的连接交给下一请求。连接池仍管理容量、等待与租约，同一作用域内继续使用已借用的连接。不要跨请求保存 Connection；具体边界见[模型连接与主从路由](../../development/model-connections.md#连接池与物理会话复用)。
+Scope 关闭归还租约，Database 由应用所有者关闭。MySQL 当前每次归还均关闭物理 PDO，包括成功的普通 CRUD；标准 PDO MySQL 未提供完整会话重置接口，不能只恢复时区和 SQL 模式后就把可能包含变量、临时对象或命名锁的连接交给下一请求。连接池仍管理容量、等待与租约，同一作用域内继续使用已借用的连接。不要跨请求保存 Connection；具体边界见[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md#连接池与物理会话复用)。
 
 ## 编译与验证
 

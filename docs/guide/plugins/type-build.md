@@ -144,7 +144,7 @@ php vendor/bin/type archive build/release build/type-example.tar.gz "$TYPE_RELEA
 
 运行包包含匹配 PHPX/libphp 和实际原生扩展，不包含 Composer、编译 SDK 或业务 PHP 回退入口。生产资源与开发工具分开，平台可用性以该版本实际验收为准。
 
-各平台已通过范围和 SDK 限制见[平台与验收](../platforms.md)。Windows 已完成匹配 Swoole 模块的构建与加载，组件消费者的 AOT、SQLite、运行库部署审计与缓存已有通过结果；编译线程接入及完整应用发布继续按实际产物验收。目录包与归档也不等于单程序封装完成。
+已验证的构建与运行场景包括 Linux x64 基础命令，以及 Linux ARM64、macOS ARM64、Windows x64 三库独立 ORM 消费者的 PHP、AOT 和无源码运行；macOS ARM64 另有完整应用 AOT 和三库身份 HTTP 结果。Windows x64 已完成匹配 Swoole 模块的构建与加载，运行库部署审计与缓存也有已记录结果。各场景的提交、SDK 与完整应用限制见[平台与验收](../platforms.md)；目录包与归档不等于单程序封装完成。
 
 ## 常见问题
 

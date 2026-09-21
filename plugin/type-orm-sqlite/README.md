@@ -2,6 +2,8 @@
 
 SQLite 驱动支持本地文件和普通 `:memory:`，每连接显式设置外键、busy 等待上限；文件库默认验证 WAL 并采用 FULL 同步。
 
+已在 Linux ARM64、macOS ARM64、Windows x64 完成 SQLite 独立消费者的 PHP、AOT 和无源码运行，属于同提交三库 ORM 矩阵。Windows 文件库支持盘符绝对路径；当前归还时关闭物理连接，物理复用及完整应用不计为完成，环境与证据见[平台与验收](https://iots.top/#/guide/platforms)。
+
 ## 安装与版本
 
 本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。

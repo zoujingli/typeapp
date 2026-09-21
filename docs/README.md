@@ -27,6 +27,8 @@
   </div>
 </section>
 
+> **已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台已完成的原生编译与运行场景见[平台支持表](guide/platforms.md#当前平台状态)。完整应用、全部协议及单程序交付仍有待验收项。
+
 <div class="feature-grid">
   <div><span class="feature-number">01 / TYPEPHP</span><h2>全量编译</h2><p>生产 PHP 实现与生成代码，<br>在构建期编译为原生代码。</p></div>
   <div><span class="feature-number">02 / SWOOLE</span><h2>通信与并发底层</h2><p>统一使用官方通信与并发能力，<br>减少开发和平台适配成本。</p></div>
@@ -85,4 +87,4 @@ flowchart TB
 
 安装文档使用公开仓库的 HTTPS 地址，无需 SSH 密钥即可获取源码。组件尚未发布稳定版本，开发分支不代表稳定交付；安装后请提交应用的 `composer.lock`。
 
-全量编译指生产实现进入 TypePHP 的覆盖门槛，不是测试覆盖率，也不是全部 PHP 包或全部平台已经验收。Linux x64 / ARM64、macOS ARM64 与 Windows x64 已有不同范围的原生结果，完整应用交付尚未全部完成；统一状态、SDK 限制与完成条件见[平台与验收](guide/platforms.md)。
+全量编译指生产实现进入 TypePHP 的覆盖门槛，不是测试覆盖率，也不是全部 PHP 包或全部平台已经验收。平台支持按所列架构与实际场景成立，环境前提、证据身份与完整交付条件见[平台与验收](guide/platforms.md)。

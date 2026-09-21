@@ -8,6 +8,19 @@ TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力
 
 文档站：[iots.top](https://iots.top)。该地址提供项目说明与公开文档；业务 API、管理端和设备接入地址由部署环境决定。
 
+## 已验证平台
+
+**已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台已完成的原生编译与运行场景见[平台支持表](docs/guide/platforms.md#当前平台状态)。
+
+| 平台 | 已验证范围摘要 |
+| --- | --- |
+| Linux x64 | 基础命令全量 AOT 与实际运行 |
+| Linux ARM64 | 三库独立 ORM 的 PHP、AOT 和无源码运行 |
+| macOS ARM64 | 三库 ORM、完整应用 AOT、三库身份 HTTP，以及已记录的通信场景 |
+| Windows x64 | Swoole SDK 构建与加载、三库独立 ORM 的 PHP、AOT 和无源码运行 |
+
+三库指 MySQL、PostgreSQL、SQLite。以上结果对应各自记录的源码与产物，完整应用、全部协议及单程序交付仍有待验收项；环境前提、证据身份和剩余限制统一见[平台与验收](docs/guide/platforms.md)。未列出的架构尚无已支持声明。
+
 ## 定位
 
 | | 说明 |
@@ -23,8 +36,6 @@ TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力
 | 物联中心 | 成品案例，不是框架本身；文档见[物联网中心](docs/guide/iot-center.md) |
 
 当前锁定工具链为 PHP 8.5.10 ZTS、TypePHP 0.9.0、PHPX 2.9.0，以仓库中的 `toolchain.lock.json` 与 `composer.lock` 为准。
-
-各目标平台已有不同范围的原生验收结果，完整应用交付尚未全部完成。已通过场景、Swoole/线程 SDK 限制和发布条件统一见[平台与验收](docs/guide/platforms.md)。
 
 ```mermaid
 flowchart TB

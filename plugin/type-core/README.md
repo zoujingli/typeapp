@@ -1,5 +1,7 @@
 # type-core
 
+本组件在 macOS ARM64 已有应用身份 HTTP、TCP/UDP 双线程与协程、WS/WSS 的原生运行结果。其他平台的命令或 ORM 结果不代替核心通信验收，各协议与完整应用限制见[平台与验收](https://iots.top/#/guide/platforms)。经典 HTTP `serve()` 当前仍要求 Unix worker 与信号能力，明确拒绝 Windows。
+
 提供字符串与嵌套配置快照、命令执行、同步事件，以及 HTTP、WebSocket、TCP、UDP 四项基础通信。各协议保持自己的公开入口与数据语义，通过 type-runtime 的执行作用域和资源预算管理生命周期。
 
 | 能力 | 服务端 | 客户端 | 数据语义 |
