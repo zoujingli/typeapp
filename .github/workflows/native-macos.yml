@@ -127,8 +127,12 @@ jobs:
           # 固定完整控制器INI，独立消费者关闭额外扫描时仍保留所需PDO、Redis和Swoole。
           task_control="$GITHUB_WORKSPACE/.cache/macos-control"
           mkdir -p "$task_control/php.d"
+          task_swoole_module="$(bash tools/prepare-swoole-module.sh)"
+          printf 'TYPE_SWOOLE_MODULE=%s\n' "$task_swoole_module" >> "$GITHUB_ENV"
           # shellcheck disable=SC2016
           php -r '$ini=php_ini_loaded_file();$text=$ini===false?"":file_get_contents($ini);foreach(explode(",",(string)php_ini_scanned_files()) as $file){if(trim($file)!==""){$text.="\n".file_get_contents(trim($file));}}if(file_put_contents($argv[1],$text)!==strlen($text)||!chmod($argv[1],0600)){exit(1);}' "$task_control/php.ini"
+          sed -i -E '/^[[:space:]]*extension[[:space:]]*=.*swoole([.]so)?[[:space:]]*$/Id' "$task_control/php.ini"
+          printf 'extension=%s\n' "$task_swoole_module" >> "$task_control/php.ini"
           printf 'PHP_HOME=%s\nPHPX_HOME=%s\nTYPE_NATIVE_PHP_INI=%s\nPHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' \
             "$PHP_HOME" "$PHPX_HOME" "$task_runtime_ini" "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
       - name: 运行真实原生验收
