@@ -22,6 +22,21 @@ foreach ($runtimeTokenIds as $tokenName => $tokenId) {
     }
 }
 
+// 关闭 tokenizer 扩展时，PHP 的三个开放/关闭标签令牌不会出现在
+// token_name() 或 PHP-Parser 的常量表中。它们是 PHP 8.4/8.5 的稳定
+// 内置编号；优先保留运行时已经提供的值，再补齐缺失项。
+$specialTokenIds = [
+    'T_OPEN_TAG' => 393,
+    'T_OPEN_TAG_WITH_ECHO' => 394,
+    'T_CLOSE_TAG' => 395,
+];
+foreach ($specialTokenIds as $tokenName => $tokenId) {
+    if (defined($tokenName)) {
+        continue;
+    }
+    define($tokenName, $runtimeTokenIds[$tokenName] ?? $tokenId);
+}
+
 if (class_exists(\PhpParser\Parser\Php8::class)) {
     foreach ((new ReflectionClass(\PhpParser\Parser\Php8::class))->getConstants() as $tokenName => $tokenId) {
         if (!str_starts_with($tokenName, 'T_') || defined($tokenName)) {
