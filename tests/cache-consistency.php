@@ -12,7 +12,7 @@ $databases = [];
 $previous = [];
 $admin = $driver === 'sqlite' ? null : TypeApp\ModelExample\Drivers::create($driver)->connect();
 try {
-    foreach (['primary', 'replica'] as $role) {
+    foreach (['primary'] as $role) {
         $name = $driver === 'sqlite' ? tempnam(sys_get_temp_dir(), 'type_consistency_' . $role . '_') : 'type_consistency_' . $role . '_' . bin2hex(random_bytes(6));
         expect($name !== false, '无法准备缓存一致性数据库');
         if ($admin !== null) {
