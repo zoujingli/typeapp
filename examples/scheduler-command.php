@@ -18,12 +18,12 @@ use TypeApp\SchedulerExample\CleanupFailureTask;
 
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
-        schedulerScenario($argc, $argv);
-    });
+    $GLOBALS['type_app_exit_status'] = (int) \Type\Runtime\CoroutineRuntime::run(
+        static fn (): int => schedulerScenario($argc, $argv)
+    );
 }
 
-function schedulerScenario(int $argc, array $argv): void
+function schedulerScenario(int $argc, array $argv): int
 {
     $scenario = getenv('TYPE_SCHEDULER_SCENARIO') ?: 'normal';
     $fixed = getenv('TYPE_SCHEDULER_NOW') ?: '';
@@ -53,7 +53,5 @@ function schedulerScenario(int $argc, array $argv): void
     }
     $milliseconds = $execution === false ? 30000 : (int) $execution;
     $status = (new SchedulerConsole(new Scheduler($clock, $store, $definitions, executionMilliseconds: $milliseconds)))->run(array_slice($argv, 1));
-    if ($status !== 0) {
-        exit($status);
-    }
+    return $status;
 }

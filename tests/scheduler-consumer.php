@@ -28,6 +28,7 @@ require __DIR__ . '/vendor/autoload.php';
 require __DIR__ . '/app/Tasks.php';
 require __DIR__ . '/app/main.php';
 main($argc, $argv);
+exit((int) ($GLOBALS['type_app_exit_status'] ?? 0));
 PHP);
 successful([getenv('COMPOSER_BINARY') ?: 'composer', 'install', '--no-interaction', '--no-scripts', '--no-plugins', '--prefer-dist', '--no-progress'], $consumer);
 $installed = json_decode(file_get_contents($consumer . '/vendor/composer/installed.json'), true, 512, JSON_THROW_ON_ERROR);
