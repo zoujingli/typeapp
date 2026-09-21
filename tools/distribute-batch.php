@@ -23,18 +23,7 @@ try {
         throw new RuntimeException('批次必须使用干净的固定源码检出');
     }
     Process::output(['git', 'merge-base', '--is-ancestor', $source, 'origin/main'], $root);
-    $runs = json_decode(Process::output(['gh', 'api', 'repos/zoujingli/typeapp/actions/workflows/native-command.yml/runs?head_sha=' . $source . '&status=success&per_page=100'], $root), true, 512, JSON_THROW_ON_ERROR);
-    $evidence = null;
-    foreach ($runs['workflow_runs'] ?? [] as $run) {
-        if ($run['head_sha'] === $source && $run['conclusion'] === 'success' && $run['event'] === 'push' && $run['head_branch'] === 'main'
-            && ($run['head_repository']['full_name'] ?? '') === 'zoujingli/typeapp') {
-            $evidence = $run['html_url'];
-            break;
-        }
-    }
-    if ($evidence === null) {
-        throw new RuntimeException('固定提交尚无完整成功的主分支原生 CI');
-    }
+    $evidence = Batch::nativeEvidence($root, $source);
     $mapping = json_decode(Process::output(['git', 'show', $source . ':.github/distribution.json'], $root), true, 512, JSON_THROW_ON_ERROR);
     $plan = Batch::plan($root, $source, $mode, $version, $mapping);
     $plan['native-ci'] = $evidence;

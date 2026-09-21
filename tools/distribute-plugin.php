@@ -37,20 +37,7 @@ try {
     $item = Batch::package($root, $source, $packageName, $mapping['packages']);
     $split = $item['split'];
 
-    $runs = json_decode(Process::output([
-        'gh', 'api', 'repos/zoujingli/typeapp/actions/workflows/native-command.yml/runs?head_sha=' . $source . '&status=success&per_page=100',
-    ], $root), true, 512, JSON_THROW_ON_ERROR);
-    $verifiedRun = null;
-    foreach ($runs['workflow_runs'] ?? [] as $run) {
-        if ($run['head_sha'] === $source && $run['conclusion'] === 'success' && $run['event'] === 'push'
-            && $run['head_branch'] === 'main' && ($run['head_repository']['full_name'] ?? '') === 'zoujingli/typeapp') {
-            $verifiedRun = $run;
-            break;
-        }
-    }
-    if ($verifiedRun === null) {
-        throw new RuntimeException('该主仓提交尚无成功的主分支原生 CI 证据');
-    }
+    $evidence = Batch::nativeEvidence($root, $source);
     $actual = json_decode(Process::output(['gh', 'api', 'repos/' . $package['repository']], $root), true, 512, JSON_THROW_ON_ERROR);
     if (($actual['full_name'] ?? '') !== $package['repository'] || ($actual['private'] ?? null) !== false
         || ($actual['visibility'] ?? '') !== 'public' || ($actual['archived'] ?? true) !== false) {
@@ -78,7 +65,7 @@ try {
         'package' => $package['composer-name'], 'source-commit' => $source,
         'split-commit' => $split, 'repository' => $package['repository'],
         'branch' => $package['branch'], 'visibility' => 'public',
-        'previous-commit' => $previous, 'native-ci' => $verifiedRun['html_url'],
+        'previous-commit' => $previous, 'native-ci' => $evidence,
         'git-version' => Process::output(['git', '--version'], $root),
         'already-current' => $previous === $split,
     ];

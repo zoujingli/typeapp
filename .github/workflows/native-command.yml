@@ -547,3 +547,15 @@ jobs:
             build/**/type-app
             build/**/type-project
             toolchain.lock.json
+
+  native-complete:
+    name: native-complete
+    needs: native-command
+    if: always() && (github.event_name != 'workflow_dispatch' || inputs.suite == 'all')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: 核对完整矩阵结果
+        env:
+          MATRIX_RESULT: ${{ needs.native-command.result }}
+        run: test "$MATRIX_RESULT" = success

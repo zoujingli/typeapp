@@ -27,17 +27,7 @@ try {
     $batch = json_decode(file_get_contents($batchFile), true, 512, JSON_THROW_ON_ERROR);
     $packages = json_decode(Process::output(['git', 'show', $source . ':.github/distribution.json'], $root), true, 512, JSON_THROW_ON_ERROR);
     Batch::verifyReport($root, $source, $batch, $packages);
-    $runs = json_decode(Process::output(['gh', 'api', 'repos/zoujingli/typeapp/actions/workflows/native-command.yml/runs?head_sha=' . $source . '&status=success&per_page=100'], $root), true, 512, JSON_THROW_ON_ERROR);
-    $verified = false;
-    foreach ($runs['workflow_runs'] ?? [] as $run) {
-        if ($run['head_sha'] === $source && $run['conclusion'] === 'success' && $run['event'] === 'push' && $run['head_branch'] === 'main'
-            && ($run['head_repository']['full_name'] ?? '') === 'zoujingli/typeapp') {
-            $verified = true;
-        }
-    }
-    if (!$verified) {
-        throw new RuntimeException('该源码尚无完整原生验证');
-    }
+    $report['native-ci'] = Batch::nativeEvidence($root, $source);
     $mapping = json_decode(file_get_contents($root . '/.github/template-distribution.json'), true, 512, JSON_THROW_ON_ERROR);
     if (($mapping['protocol'] ?? 0) !== 1 || ($mapping['source-repository'] ?? '') !== 'zoujingli/typeapp'
         || ($mapping['prefix'] ?? '') !== 'templates/type-project' || ($mapping['repository'] ?? '') !== 'zoujingli/type-project'

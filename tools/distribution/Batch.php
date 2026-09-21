@@ -7,6 +7,40 @@ namespace TypeApp\Distribution;
 /** 批次只由固定 Git 输入决定；报告不能替代远端引用的实际状态。 */
 final class Batch
 {
+    /**
+     * 核对同一主仓 SHA、工作流及执行轮次的完整原生验收；单项手动重跑不能用于发布。
+     * @throws \RuntimeException 缺少完整成功结果或任务列表不完整。
+     */
+    public static function nativeEvidence(string $root, string $source): string
+    {
+        if (!preg_match('/^[a-f0-9]{40}$/D', $source)) {
+            throw new \InvalidArgumentException('原生验收需要固定完整 SHA');
+        }
+        $runs = json_decode(Process::output(['gh', 'api', 'repos/zoujingli/typeapp/actions/workflows/native-command.yml/runs?head_sha=' . $source . '&status=success&per_page=100'], $root), true, 512, JSON_THROW_ON_ERROR);
+        foreach ($runs['workflow_runs'] ?? [] as $run) {
+            if (($run['head_sha'] ?? '') !== $source || ($run['status'] ?? '') !== 'completed'
+                || ($run['conclusion'] ?? '') !== 'success' || !in_array($run['event'] ?? '', ['push', 'workflow_dispatch'], true)
+                || ($run['head_branch'] ?? '') !== 'main' || ($run['head_repository']['full_name'] ?? '') !== 'zoujingli/typeapp'
+                || ($run['path'] ?? '') !== '.github/workflows/native-command.yml'
+                || !is_int($run['id'] ?? null) || $run['id'] < 1 || !is_int($run['run_attempt'] ?? null) || $run['run_attempt'] < 1) {
+                continue;
+            }
+            $jobs = json_decode(Process::output(['gh', 'api', 'repos/zoujingli/typeapp/actions/runs/' . $run['id'] . '/attempts/' . $run['run_attempt'] . '/jobs?per_page=100'], $root), true, 512, JSON_THROW_ON_ERROR);
+            $complete = false;
+            $successful = is_array($jobs['jobs'] ?? null) && ($jobs['total_count'] ?? 0) === count($jobs['jobs']) && $jobs['total_count'] > 0;
+            foreach ($jobs['jobs'] ?? [] as $job) {
+                if (($job['head_sha'] ?? '') !== $source || ($job['status'] ?? '') !== 'completed' || ($job['conclusion'] ?? '') !== 'success') {
+                    $successful = false;
+                }
+                $complete = $complete || ($job['name'] ?? '') === 'native-complete';
+            }
+            if ($successful && $complete) {
+                return 'https://github.com/zoujingli/typeapp/actions/runs/' . $run['id'] . '/attempts/' . $run['run_attempt'];
+            }
+        }
+        throw new \RuntimeException('固定提交尚无完整成功的主分支原生 CI');
+    }
+
     /** 从固定提交核对全部组件，计划身份不受工作区补写内容影响。 */
     public static function plan(string $root, string $source, string $mode, string $version, array $mapping): array
     {

@@ -25,6 +25,10 @@ final class TemplateDistributionTest extends TestCase
         yield 'clone-failed' => ['clone-failed'];
         yield 'publish-failed' => ['publish-failed'];
         yield 'invalid-batch' => ['invalid-batch'];
+        foreach (['dispatch', 'partial-suite', 'failed-job', 'skipped-summary', 'wrong-sha', 'wrong-repository',
+            'wrong-branch', 'wrong-workflow', 'pull-request', 'incomplete-jobs'] as $case) {
+            yield $case => [$case];
+        }
     }
 
     #[DataProvider('publicationCases')]
@@ -34,6 +38,8 @@ final class TemplateDistributionTest extends TestCase
         self::assertTrue(mkdir($directory, 0700));
         try {
             [$source, $environment, $batch] = $this->prepare($directory, false);
+            $environment['TYPE_TEST_NATIVE_CASE'] = $case;
+            $expectedSuccess = in_array($case, ['success', 'dispatch'], true);
             if ($case === 'clone-failed') {
                 $environment['GIT_CONFIG_KEY_1'] = 'url.' . \testGitFileUrl($directory . '/build/missing.git') . '.insteadOf';
             } elseif ($case === 'publish-failed') {
@@ -44,11 +50,12 @@ final class TemplateDistributionTest extends TestCase
                 file_put_contents($directory . '/build/distribution/template.json', '{"status":"published","checkout-verified":true}');
             }
             $result = $this->publish($directory, $source, $environment);
-            self::assertSame($case === 'success', $result->successful(), $result->stdout . $result->stderr);
+            self::assertSame($expectedSuccess, $result->successful(), $result->stdout . $result->stderr);
             $report = json_decode((string) file_get_contents($directory . '/build/distribution/template.json'), true, 512, JSON_THROW_ON_ERROR);
             self::assertSame($source, $report['source']);
-            self::assertSame($case === 'success', $report['checkout-verified']);
-            if ($case === 'success') {
+            self::assertSame($expectedSuccess, $report['checkout-verified']);
+            if ($expectedSuccess) {
+                self::assertSame('https://github.com/zoujingli/typeapp/actions/runs/123/attempts/2', $report['native-ci']);
                 self::assertSame('published', $report['status']);
                 self::assertSame('published', $report['publish-status']);
                 self::assertSame($batch['id'], $report['framework-batch']);
@@ -72,7 +79,8 @@ final class TemplateDistributionTest extends TestCase
                     self::assertSame('publish', $report['stage']);
                 } else {
                     self::assertSame('preparation', $report['stage']);
-                    self::assertStringContainsString('批次', $report['error']);
+                    self::assertStringContainsString($case === 'invalid-batch' ? '批次' : '原生 CI', $report['error']);
+                    self::assertSame('', trim(\successful(['git', '--git-dir=' . $directory . '/build/template.git', 'for-each-ref', 'refs/heads/'], $directory)));
                 }
             }
         } finally {
@@ -193,9 +201,23 @@ final class TemplateDistributionTest extends TestCase
         \writeTestPhpCommand($directory . '/bin/composer', 'fwrite(STDERR, "模板安装哨兵\n"); exit(99);');
         \writeTestPhpCommand($directory . '/bin/gh', <<<'PHP'
 $path = $argv[2] ?? '';
-if (str_starts_with($path, 'repos/zoujingli/typeapp/actions/')) {
-    echo json_encode(['workflow_runs' => [['head_sha' => getenv('TYPE_TEST_SOURCE_SHA'), 'conclusion' => 'success',
-        'event' => 'push', 'head_branch' => 'main', 'head_repository' => ['full_name' => 'zoujingli/typeapp']]]]);
+$case = getenv('TYPE_TEST_NATIVE_CASE') ?: 'success';
+$source = getenv('TYPE_TEST_SOURCE_SHA');
+if ($path === 'repos/zoujingli/typeapp/actions/workflows/native-command.yml/runs?head_sha=' . $source . '&status=success&per_page=100') {
+    echo json_encode(['workflow_runs' => [['id' => 123, 'run_attempt' => 2, 'status' => 'completed',
+        'head_sha' => $case === 'wrong-sha' ? str_repeat('0', 40) : $source, 'conclusion' => 'success',
+        'path' => $case === 'wrong-workflow' ? '.github/workflows/other.yml' : '.github/workflows/native-command.yml',
+        'event' => $case === 'pull-request' ? 'pull_request' : ($case === 'success' ? 'push' : 'workflow_dispatch'),
+        'head_branch' => $case === 'wrong-branch' ? 'feature' : 'main',
+        'head_repository' => ['full_name' => $case === 'wrong-repository' ? 'other/typeapp' : 'zoujingli/typeapp']]]]);
+} elseif ($path === 'repos/zoujingli/typeapp/actions/runs/123/attempts/2/jobs?per_page=100') {
+    $jobs = [['name' => 'Linux x64 原生验收 · foundation', 'head_sha' => $source, 'status' => 'completed',
+        'conclusion' => $case === 'failed-job' ? 'failure' : 'success']];
+    if ($case !== 'partial-suite') {
+        $jobs[] = ['name' => 'native-complete', 'head_sha' => $source, 'status' => 'completed',
+            'conclusion' => $case === 'skipped-summary' ? 'skipped' : 'success'];
+    }
+    echo json_encode(['total_count' => count($jobs) + ($case === 'incomplete-jobs' ? 1 : 0), 'jobs' => $jobs]);
 } elseif ($path === 'repos/zoujingli/type-project') {
     echo json_encode(['full_name' => 'zoujingli/type-project', 'private' => false, 'visibility' => 'public', 'archived' => false]);
 } else {
@@ -223,6 +245,7 @@ PHP);
         \successful(['git', 'init', '--bare', '--initial-branch=main', $directory . '/build/template.git'], $directory);
         $environment = getenv();
         unset($environment['TYPE_TEMPLATE_SOURCE'], $environment['TYPE_COMPOSER_PHAR']);
+        $environment['TYPE_TEST_NATIVE_CASE'] = 'success';
         $environment['TYPE_TEST_SOURCE_SHA'] = $source;
         $environment = \testCommandEnvironment($directory . '/bin', $environment);
         $environment['COMPOSER_BINARY'] = $directory . '/bin/composer';
