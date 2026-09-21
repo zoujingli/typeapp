@@ -40,7 +40,15 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: 安装原生构建和专用测试数据库工具
-        run: brew install cmake gmp mpfr pkg-config mysql@8.4 postgresql@17 redis
+        run: |
+          brew install cmake gmp mpfr pcre2 pkg-config mysql@8.4 postgresql@17 redis
+          # PHP 的 pcre 扩展头文件会直接包含 pcre2.h；setup-php 编译 Swoole
+          # 时需要它位于标准 Homebrew include 路径中。
+          task_pcre2="$(brew --prefix pcre2)"
+          brew link --force --overwrite pcre2
+          test -f "$task_pcre2/include/pcre2.h"
+          printf 'CPPFLAGS=-I%s/include %s\n' "$task_pcre2" "${CPPFLAGS:-}" >> "$GITHUB_ENV"
+          printf 'LDFLAGS=-L%s/lib %s\n' "$task_pcre2" "${LDFLAGS:-}" >> "$GITHUB_ENV"
       - name: 暴露 PostgreSQL 构建头文件与 pkg-config
         run: |
           task_pgsql="$(brew --prefix postgresql@17)"
