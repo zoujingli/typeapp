@@ -100,8 +100,14 @@ try {
         $environment['DB_USERNAME'] = $settings['USER'];
         $environment['DB_PASSWORD'] = $settings['PASSWORD'];
     }
-    $migration = (new Process([...$command, 'migrate', 'run'], $package, $environment))->wait(20);
-    expect($migration->successful(), '源码不可访问时迁移失败：' . $migration->stderr);
+    $password = bin2hex(random_bytes(16));
+    $initialization = $project === $root
+        ? [...$command, 'app:install', 'package-admin', '发布管理员', 'package-customer', '发布客户', '发布租户']
+        : [...$command, 'migrate', 'run'];
+    $installed = (new Process($initialization, $package, $environment + [
+        'APP_ADMIN_PASSWORD' => $password, 'APP_CUSTOMER_PASSWORD' => $password . '-customer',
+    ]))->wait(20);
+    expect($installed->successful(), '源码不可访问时应用初始化失败：' . $installed->stderr);
 
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($listener), '无法选择部署验收端口');
@@ -131,10 +137,30 @@ try {
         if (getenv('TYPE_TEMPLATE_EXPECTED_MESSAGE') !== false) {
             expect($client->request('GET', '/', $headers)->json()['message'] === getenv('TYPE_TEMPLATE_EXPECTED_MESSAGE'), '无源码部署没有运行创建后修改的业务');
         }
-        expect($client->request('GET', '/users')->status === 401, '部署丢失授权');
-        $user = $client->request('POST', '/users', $headers, '{"name":"包验收用户","age":21}');
-        expect($user->status === 201 && $client->request('GET', '/users?sort=age&direction=DESC', $headers)->json()['total'] === 1, '部署业务、排序或数据库写入失败');
-        expect($client->request('GET', '/users?sort=email', $headers)->status === 422, '部署绕过了校验白名单');
+        if ($project === $root) {
+            expect($client->request('GET', '/admin/users')->status === 401, '部署丢失授权');
+            $login = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
+                'login' => 'package-admin', 'password' => $password,
+            ], JSON_THROW_ON_ERROR));
+            expect($login->status === 200, '部署管理员登录失败');
+            $headers['Authorization'] = 'Bearer ' . $login->json()['data']['accessToken'];
+            $user = $client->request('POST', '/admin/users', $headers, json_encode([
+                'login' => 'package-user', 'name' => '包验收用户', 'password' => $password,
+            ], JSON_THROW_ON_ERROR));
+            expect($user->status === 200, '部署人员创建失败');
+            $saved = $user->json()['data'];
+            $listed = $client->request('GET', '/admin/users?search=package-user', $headers);
+            expect($listed->status === 200 && $listed->json()['data']['total'] === 1, '部署人员查询失败');
+            $invalid = $client->request('PATCH', '/admin/users/' . $saved['id'], $headers, json_encode([
+                'version' => 1, 'login' => 'package-user', 'name' => '资料', 'password' => $password,
+            ], JSON_THROW_ON_ERROR));
+            expect($invalid->status === 422, '部署绕过了人员资料字段白名单');
+        } else {
+            expect($client->request('GET', '/users')->status === 401, '部署丢失授权');
+            $user = $client->request('POST', '/users', $headers, '{"name":"包验收用户","age":21}');
+            expect($user->status === 201 && $client->request('GET', '/users?sort=age&direction=DESC', $headers)->json()['total'] === 1, '部署业务、排序或数据库写入失败');
+            expect($client->request('GET', '/users?sort=email', $headers)->status === 422, '部署绕过了校验白名单');
+        }
         $stopped = stopPackageProcess($process, $package, $processInfo, 5);
         expect($stopped->successful(), '部署进程未正常停止：' . json_encode(['exit' => $stopped->exitCode, 'signal' => $stopped->signal, 'timeout' => $stopped->timedOut]));
     } finally {
@@ -184,7 +210,7 @@ $record = ['os' => PHP_OS_FAMILY, 'driver' => $driver, 'artifact-sha256' => $rel
     'package' => $package, 'project' => $project, 'relocated' => true, 'source-and-sdk-read-denied' => $isolated, 'scope' => '当前应用' . $driver . '原生发布闭环，不代表其他平台已验收',
     'business-message' => getenv('TYPE_TEMPLATE_EXPECTED_MESSAGE') ?: null,
     'composer-read-and-php-compiler-exec-denied' => $isolated,
-    'checks' => ['no-source-payload', 'no-overwrite', 'secret-rejection', 'help', 'external-trusted-digest-rejection', 'deployment-audit', 'migration', 'http-auth-crud-query-validation', 'graceful-stop', 'same-size-tamper-rejection', 'executable-permissions']];
+    'checks' => ['no-source-payload', 'no-overwrite', 'secret-rejection', 'help', 'external-trusted-digest-rejection', 'deployment-audit', 'application-initialization', 'http-auth-crud-query-validation', 'graceful-stop', 'same-size-tamper-rejection', 'executable-permissions']];
 if ($driver !== 'sqlite') {
     $record['checks'][] = 'dedicated-database-created-and-removed';
 }
