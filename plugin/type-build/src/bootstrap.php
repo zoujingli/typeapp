@@ -92,6 +92,11 @@ $loader->addClassMap($classMap);
 $loader->register(true);
 $GLOBALS['__type_build_vendor_directory'] = $vendorDirectory;
 $GLOBALS['__type_build_loader'] = $loader;
+
+// Composer 的 autoload.files 在隔离消费者或锁文件来自旧生成器时可能没有被
+// 重放；构建入口必须先恢复 PHP-Parser 使用的 T_* 常量，再开始任何解析工作。
+require_once __DIR__ . '/PhpTokenCompatibility.php';
+
 foreach (array_keys($functionFiles) as $file) {
     require_once $file;
 }

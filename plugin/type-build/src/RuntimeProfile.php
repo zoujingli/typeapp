@@ -102,6 +102,15 @@ final class RuntimeProfile
                 }
             } else {
                 $candidate = $extensionDirectory . '/' . (PHP_OS_FAMILY === 'Windows' ? 'php_' . $name . '.dll' : $name . '.so');
+                // Linux/macOS 验收会先按固定源码构建 TypeApp 适配版 Swoole。
+                // 宿主 PHP 目录可能仍有另一个版本，必须优先使用本轮明确提供的模块，
+                // 否则运行清单记录宿主版本而原生进程加载适配版，最终身份校验必然失败。
+                if ($name === 'swoole') {
+                    $environmentModule = getenv('TYPE_SWOOLE_MODULE');
+                    if (is_string($environmentModule) && $environmentModule !== '' && is_file($environmentModule)) {
+                        $candidate = $environmentModule;
+                    }
+                }
                 // setup-php 的 curl 可能属于宿主 PHP，而不是锁定 SDK 的扩展目录。
                 // CI/独立消费者通过 TYPE_CURL_MODULE 明确提供同 ABI 文件；只对 curl
                 // 读取该受控候选，其他扩展仍必须来自 SDK 或 runtime.modules。
