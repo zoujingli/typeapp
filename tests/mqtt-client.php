@@ -156,7 +156,7 @@ function clientPeerCase(array $settings): void
     $tls = str_starts_with($scenario, 'tls-');
     $client = new Type\Mqtt\Client('127.0.0.1', $settings['port'], 'wire-production-client', 'example', 'test',
         $tls && $scenario !== 'tls-untrusted' ? $settings['certificate'] : '', $scenario === 'tls-hostname' ? 'invalid.example' : '',
-        $scenario === 'keepalive-wait' ? 1 : 30, 86400, 1048576, 2, !$tls, $coroutine);
+        $scenario === 'keepalive-wait' ? 1 : 30, 86400, 1048576, 2, !$tls, $coroutine && $scenario !== 'default-coroutine-owner');
     $progress = new stdClass();
     $progress->ticks = 0;
     $timer = $coroutine ? Swoole\Timer::tick(10, static function (int $timerId) use ($progress): void { ++$progress->ticks; }) : null;
@@ -190,7 +190,7 @@ function clientPeerCase(array $settings): void
             });
             $client->receive(5.0);
             throw new RuntimeException('wire_cancel_unexpected_success');
-        } elseif ($scenario === 'foreign-owner') {
+        } elseif ($scenario === 'foreign-owner' || $scenario === 'default-coroutine-owner') {
             $foreign = new Swoole\Coroutine\Channel(1);
             Swoole\Coroutine::create(static function () use ($client, $foreign): void {
                 try {
@@ -374,7 +374,8 @@ function mqttClientPeerCases(string $consumer, array $command, array $environmen
         'tls-stall' => [null, '', null],
     ];
     if (($environment['CLIENT_COROUTINE'] ?? '') === '1') {
-        $cases += ['stop-wait' => [null, '', null], 'cancel-wait' => [null, '', null], 'foreign-owner' => [null, '', null], 'parallel-client' => [null, '', null]];
+        $cases += ['stop-wait' => [null, '', null], 'cancel-wait' => [null, '', null], 'foreign-owner' => [null, '', null],
+            'default-coroutine-owner' => [null, '', null], 'parallel-client' => [null, '', null]];
     }
     expect(array_diff($only, array_keys($cases)) === [], '指定的客户端场景不存在');
     if ($only !== []) {

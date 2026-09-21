@@ -1085,6 +1085,14 @@ if (in_array('--client', $argv, true)) {
     $verified['client'] = in_array('--client-peer-only', $argv, true)
         ? ['independent-peer' => mqttClientPeerCases($consumer, $command, $environment)]
         : mqttClientCases($root, $consumer, $command, $workerCommand, $environment);
+    if (in_array('--client-peer-only', $argv, true) && !$clientThread) {
+        // 同一产物验证两种公开调用方式，避免只验证已有协程而遗漏默认非协程入口。
+        $verified['client'][$clientCoroutine ? 'synchronous-entrypoint' : 'coroutine-entrypoint'] = mqttClientPeerCases(
+            $consumer,
+            $command,
+            array_replace($environment, ['CLIENT_COROUTINE' => $clientCoroutine ? '0' : '1'])
+        );
+    }
 }
 if (in_array('--cluster', $argv, true) || in_array('--cluster-only', $argv, true)) {
     require_once __DIR__ . '/mqtt-cluster.php';
