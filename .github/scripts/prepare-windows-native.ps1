@@ -23,8 +23,23 @@ foreach ($line in $variables) {
     }
 }
 
+function Get-VerifiedDownload {
+    param([string]$Url, [string]$Path)
+    $lastError = $null
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Invoke-WebRequest -Uri $Url -OutFile $Path -ErrorAction Stop
+            return
+        } catch {
+            $lastError = $_
+            if ($attempt -lt 3) { Start-Sleep -Seconds (5 * $attempt) }
+        }
+    }
+    throw $lastError
+}
+
 $archive = Join-Path $Directory 'typephp.zip'
-Invoke-WebRequest -Uri 'https://github.com/swoole/typephp/releases/download/v0.9.0/tpc_v0.9.0_windows_x64.zip' -OutFile $archive
+Get-VerifiedDownload 'https://github.com/swoole/typephp/releases/download/v0.9.0/tpc_v0.9.0_windows_x64.zip' $archive
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne '187c2ca1644b37163d5f67725a29752f91da9e058583a8d3e471a71703570ff6') { throw 'TypePHP SDK checksum mismatch.' }
 Expand-Archive -LiteralPath $archive -DestinationPath $Directory
 $sdk = Join-Path $Directory 'tpc_v0.9.0_windows_x64'
@@ -38,7 +53,7 @@ $phpxRuntime = Join-Path $phpxBuild 'phpx.dll'
 Move-Item -LiteralPath $packagedPhpx -Destination $phpxRuntime
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $phpxRuntime).Hash -ne $phpxDigest) { throw 'PHPX runtime bytes changed while preparing the compiler layout.' }
 $redisArchive = Join-Path $Directory 'redis.zip'
-Invoke-WebRequest -Uri 'https://downloads.php.net/~windows/pecl/releases/redis/6.3.0/php_redis-6.3.0-8.5-ts-vs17-x64.zip' -OutFile $redisArchive
+Get-VerifiedDownload 'https://downloads.php.net/~windows/pecl/releases/redis/6.3.0/php_redis-6.3.0-8.5-ts-vs17-x64.zip' $redisArchive
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $redisArchive).Hash.ToLowerInvariant() -ne '1a1e9c721dd64939dbeac1c855eb5bb93a45e5a825ad0e13b42f46731c8223d2') { throw 'Redis extension checksum mismatch.' }
 $redis = Join-Path $Directory 'redis'
 Expand-Archive -LiteralPath $redisArchive -DestinationPath $redis
@@ -53,7 +68,7 @@ $taskEvidence = Join-Path $taskRoot ('build/windows-runtime-' + [Guid]::NewGuid(
 New-Item -ItemType Directory -Path $taskEvidence | Out-Null
 function Get-VerifiedArchive {
     param([string]$Url, [string]$Digest, [string]$Path)
-    Invoke-WebRequest -Uri $Url -OutFile $Path
+    Get-VerifiedDownload $Url $Path
     if ((Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant() -ne $Digest) { throw ('构建依赖摘要不符：' + [IO.Path]::GetFileName($Path)) }
 }
 $taskToolsReference = '1142e4abaf90ceb6cc25d983797b25cc948669cf'
