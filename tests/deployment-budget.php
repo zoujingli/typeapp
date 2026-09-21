@@ -12,14 +12,17 @@ use Type\Runtime\ExecutionScope;
 
 $budget = new DeploymentBudget(60, 3, 1, 6, 12);
 expect($budget->statistics()['per_process'] === 2 && $budget->statistics()['maximum_application_connections'] === 48, '部署增量或管理预留未计入预算');
-$manager = new DatabaseManager(['default' => new SqliteDriver(':memory:'), 'other' => new SqliteDriver(':memory:')], 4, 0, $budget);
+$work = sys_get_temp_dir() . '/type-deployment-budget-' . bin2hex(random_bytes(8));
+expect(mkdir($work, 0700), '无法创建部署预算测试目录');
+$filename = $work . '/database.sqlite';
+$manager = new DatabaseManager(['default' => new SqliteDriver($filename), 'other' => new SqliteDriver(':memory:')], 4, 0, $budget);
 $first = new ExecutionScope();
 $second = new ExecutionScope();
 $third = new ExecutionScope();
 try {
     $one = $manager->connect($first);
     $two = $manager->connect($second, 'other');
-    $manager->rotate('default', new SqliteDriver(':memory:', 1000, true, 2));
+    $manager->rotate('default', new SqliteDriver($filename, 1000, true, 2));
     $rejected = false;
     try {
         $manager->connect($third);
@@ -53,4 +56,5 @@ try {
     $second->close();
     $third->close();
     $manager->close();
+    removeTestDirectory($work);
 }

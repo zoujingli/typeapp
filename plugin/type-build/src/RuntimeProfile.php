@@ -189,7 +189,7 @@ final class RuntimeProfile
             $data = json_decode($output, true, 32, JSON_THROW_ON_ERROR);
         } catch (\JsonException $error) {
             // 一些PHP启动警告走stdout；严格协议同样拒绝，不能只检查stderr和退出码。
-            throw new RuntimeException('原生探针输出包含启动诊断或不是完整JSON协议', 0, $error);
+            throw new RuntimeException('原生探针输出包含启动诊断或不是完整JSON协议：' . "\n" . $output, 0, $error);
         }
         if (!is_array($data) || ($data['protocol'] ?? null) !== 1 || ($data['sapi'] ?? null) !== 'embed'
             || ($data['php'] ?? null) !== PHP_VERSION || ($data['zts'] ?? null) !== (bool) PHP_ZTS

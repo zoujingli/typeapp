@@ -29,7 +29,7 @@ function buildScenario(string $root, string $configuration, ?string $stage = nul
     $output = (new BuildPlatform())->output($settings['output']);
     expect(str_starts_with($output, 'build/') && dirname($output) !== 'build' && !str_contains($output, '..'), '场景输出必须位于build的专属子目录');
     $work = $root . '/build/scenario-consumer-' . bin2hex(random_bytes(6));
-    expect(mkdir($work, 0700), '无法创建独立场景消费者');
+    expect(mkdir($work, 0700, true), '无法创建独立场景消费者');
     $tracked = explode("\0", rtrim(successful(['git', 'ls-files', '-z'], $root), "\0"));
     foreach ($tracked as $relative) {
         expect($relative !== '' && !str_starts_with($relative, '/') && !str_contains($relative, '..'), '源码清单中的路径无效');

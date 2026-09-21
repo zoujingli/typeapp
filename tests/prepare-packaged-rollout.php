@@ -12,7 +12,7 @@ $identity = $argv[1] ?? bin2hex(random_bytes(6));
 expect(count($argv) <= 2 && preg_match('/^[a-f0-9]{12}$/D', $identity) === 1, '可选构建身份必须是12位小写十六进制，不能传入路径');
 $base = $root . '/build/packaged-rollout-build-' . $identity;
 expect(!file_exists($base) && !is_link($base), '不能覆盖既有双版本构建目录');
-expect(mkdir($base, 0700), '无法创建双版本构建目录');
+expect(mkdir($base, 0700, true), '无法创建双版本构建目录');
 $relative = substr($base, strlen($root) + 1);
 $variants = [];
 foreach (['old' => '1.0.0', 'new' => '1.1.0'] as $variant => $version) {
