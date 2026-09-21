@@ -392,6 +392,32 @@ final class NativeBuilder
         }
         unset($resource);
         $compilerEnvironment = $native['build-environment'] ?? $environment->environment($phpHome, $phpxHome);
+        // 原生编译器子进程使用独立的受控 PHP 配置。BuildPlatform 会主动过滤
+        // 外部环境，避免认证和业务变量泄漏；这里仅接入调用方明确提供的
+        // PHPRC 与 PHP_INI_SCAN_DIR，确保 PHP-Parser、TypePHP 和线程编译器
+        // 使用与当前主进程一致的 tokenizer 及其它构建扩展。
+        $iniFile = getenv('PHPRC');
+        if ($iniFile !== false && $iniFile !== '') {
+            if (!is_file($iniFile)) {
+                throw new RuntimeException('编译子进程的PHPRC必须指向已存在文件');
+            }
+            $compilerEnvironment['PHPRC'] = BuildPlatform::resolve($iniFile);
+        }
+        $iniScan = getenv('PHP_INI_SCAN_DIR');
+        if ($iniScan !== false) {
+            $separator = PHP_OS_FAMILY === 'Windows' ? ';' : ':';
+            $scanDirectories = [];
+            foreach (explode($separator, $iniScan) as $directory) {
+                if ($directory === '') {
+                    continue;
+                }
+                if (!is_dir($directory)) {
+                    throw new RuntimeException('编译子进程的PHP_INI_SCAN_DIR必须指向已存在目录');
+                }
+                $scanDirectories[] = BuildPlatform::resolve($directory);
+            }
+            $compilerEnvironment['PHP_INI_SCAN_DIR'] = implode($separator, $scanDirectories);
+        }
         $threadCompilerArguments = [];
         if (array_key_exists('threads', $settings)) {
             $threadCompilerArguments = ['-c', $profile['ini'], '-d', 'memory_limit=1G'];
