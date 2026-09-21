@@ -74,9 +74,15 @@ jobs:
           $env:TYPE_COMPOSER_PHAR="$env:PHP_HOME/composer.phar"
           Add-Content -LiteralPath $env:GITHUB_ENV -Value ('TYPE_COMPOSER_PHAR=' + $env:TYPE_COMPOSER_PHAR) -Encoding utf8
           if ($env:TYPE_ORM_DRIVER -notin @('all', 'sqlite', 'mysql', 'pgsql')) { throw 'ORM 验收驱动无效。' }
+          & "$env:PHP_HOME/php.exe" tests/build-scenario.php docs/build-config/type-read-write.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($env:TYPE_ORM_DRIVER -in @('all', 'sqlite')) {
             foreach ($taskMode in @('--php', '--native')) {
               & "$env:PHP_HOME/php.exe" tests/orm-suite-consumer.php sqlite $taskMode
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+            foreach ($taskTarget in @('--php', 'build/read-write/type-app.exe')) {
+              & "$env:PHP_HOME/php.exe" tests/read-write.php $taskTarget sqlite
               if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             }
           }
@@ -143,3 +149,4 @@ jobs:
             build/windows-runtime-*/*.log
             build/windows-runtime-*/*-source.json
             build/orm-suite-*/source-inputs.json
+            build/orm-routing-evidence/*.json

@@ -11,8 +11,9 @@ use Type\Build\BuildPlatform;
 /** 仅为主仓组件演示创建独立消费者；生产构建继续使用原有type入口和完整自动加载审计。 */
 function buildScenario(string $root, string $configuration, ?string $stage = null, bool $withSwoole = false): void
 {
-    $configuration = realpath($configuration);
-    expect(is_string($configuration) && str_starts_with($configuration, $root . '/docs/build-config/'), '只接受主仓登记的构建场景');
+    $root = BuildPlatform::resolve($root);
+    $configuration = BuildPlatform::resolve($configuration);
+    expect(str_starts_with($configuration, $root . '/docs/build-config/'), '只接受主仓登记的构建场景');
     $settings = json_decode(file_get_contents($configuration), true, 512, JSON_THROW_ON_ERROR);
     if ($withSwoole) {
         expect(in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true), 'Swoole原生场景只接受Unix目标');
@@ -90,7 +91,10 @@ function buildScenario(string $root, string $configuration, ?string $stage = nul
     $relativeConfiguration = substr($configuration, strlen($root) + 1);
     file_put_contents($work . '/' . $relativeConfiguration, json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
     // 使用原锁文件最小化求解并实际安装；不把未安装组件伪装为生产依赖或移入开发依赖。
-    successful([getenv('COMPOSER_BINARY') ?: 'composer', 'update', '--minimal-changes', '--no-interaction', '--no-scripts', '--no-plugins', '--prefer-dist', '--no-progress'], $work);
+    $composerPhar = getenv('TYPE_COMPOSER_PHAR');
+    $composerCommand = is_string($composerPhar) && $composerPhar !== ''
+        ? [PHP_BINARY, BuildPlatform::resolve($composerPhar)] : [getenv('COMPOSER_BINARY') ?: 'composer'];
+    successful([...$composerCommand, 'update', '--minimal-changes', '--no-interaction', '--no-scripts', '--no-plugins', '--prefer-dist', '--no-progress'], $work);
     if ($stage !== null) {
         $destination = BuildPlatform::path($stage);
         BuildLock::path($destination);

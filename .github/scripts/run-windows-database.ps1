@@ -104,6 +104,10 @@ $taskArchive = Join-Path $taskWork 'database.zip'
 $taskExtract = Join-Path $taskWork 'tools'
 $taskServer = $null
 $taskPgStarted = $false
+$taskReaderServer = $null
+$taskReaderPgStarted = $false
+$taskReaderData = Join-Path $taskWork 'reader-data'
+$taskReaderPort = Get-TaskPort
 $taskData = Join-Path $taskWork 'data'
 $taskSecretFile = Join-Path $taskWork 'initial-secret.txt'
 $taskPhp = Join-Path $env:PHP_HOME 'php.exe'
@@ -168,6 +172,32 @@ try {
             foreach ($taskMode in @('php', 'native')) {
                 Invoke-TaskProcess $taskPhp @('tests/orm-suite-consumer.php', $Driver, ('--' + $taskMode)) (Join-Path $taskEvidence ('orm-' + $taskMode + '.log')) 2400 $taskEnvironment | Out-Null
             }
+            # 第二个实例有独立数据与端口；用受控差异验证路由，不将其称为复制集群。
+            if ($taskReaderPort -eq $taskPort) { $taskReaderPort = Get-TaskPort }
+            if ($Driver -eq 'mysql') {
+                Invoke-TaskProcess $taskVersionTool @('--no-defaults', '--initialize-insecure', "--basedir=$taskMysqlRoot", "--datadir=$taskReaderData") (Join-Path $taskEvidence 'reader-initialize.log') | Out-Null
+                [IO.File]::WriteAllText($taskSecretFile, $taskSql, [Text.UTF8Encoding]::new($false))
+                $taskReaderServer = Start-TaskProcess $taskVersionTool @('--no-defaults', "--basedir=$taskMysqlRoot", "--datadir=$taskReaderData", '--bind-address=127.0.0.1', "--port=$taskReaderPort", '--mysqlx=OFF', "--init-file=$taskSecretFile", '--console')
+            } else {
+                [IO.File]::WriteAllText($taskSecretFile, $taskPassword + "`n", [Text.UTF8Encoding]::new($false))
+                Invoke-TaskProcess (Join-Path $taskBin 'initdb.exe') @('-D', $taskReaderData, '-U', 'type_app', '--auth=scram-sha-256', '--encoding=UTF8', '--locale=C', "--pwfile=$taskSecretFile") (Join-Path $taskEvidence 'reader-initialize.log') | Out-Null
+                Remove-Item -LiteralPath $taskSecretFile
+                $taskReaderPgStarted = $true
+                Invoke-TaskProcess $taskVersionTool @('-D', $taskReaderData, '-l', (Join-Path $taskWork 'reader-postgres.log'), '-w', '-t', '60', '-o', "-h 127.0.0.1 -p $taskReaderPort", 'start') (Join-Path $taskEvidence 'reader-start.log') -InheritOutput | Out-Null
+                Invoke-TaskProcess (Join-Path $taskBin 'createdb.exe') @('-h', '127.0.0.1', '-p', [string]$taskReaderPort, '-U', 'type_app', '--no-password', 'type_app_test') (Join-Path $taskEvidence 'reader-create-database.log') 60 @{ PGPASSWORD=$taskPassword } | Out-Null
+            }
+            $taskReaderEnvironment = $taskEnvironment.Clone()
+            $taskReaderEnvironment[$taskPrefix+'PORT'] = [string]$taskReaderPort
+            Invoke-TaskProcess $taskPhp @('-r', $taskProbe) (Join-Path $taskEvidence 'reader-ready.log') 90 $taskReaderEnvironment | Out-Null
+            if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
+            foreach ($taskKey in @('HOST', 'PORT', 'DATABASE', 'USER', 'PASSWORD')) {
+                $taskEnvironment['TYPE_READER_' + $Driver.ToUpperInvariant() + '_' + $taskKey] = $taskReaderEnvironment[$taskPrefix+$taskKey]
+            }
+            $taskEnvironment['TYPE_READ_WRITE_EXTERNAL'] = '1'
+            foreach ($taskMode in @('php', 'native')) {
+                $taskTarget = if ($taskMode -eq 'php') { '--php' } else { 'build/read-write/type-app.exe' }
+                Invoke-TaskProcess $taskPhp @('tests/read-write.php', $taskTarget, $Driver) (Join-Path $taskEvidence ('read-write-' + $taskMode + '.log')) 120 $taskEnvironment | Out-Null
+            }
         }
     } else {
         Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', '--php', $Driver, '--app') (Join-Path $taskEvidence 'development.log') 180 $taskEnvironment | Out-Null
@@ -176,6 +206,25 @@ try {
     }
     $taskPassed = $true
 } finally {
+    if ($null -ne $taskReaderServer) {
+        try {
+            if (!$taskReaderServer.Process.HasExited) {
+                Invoke-TaskProcess (Join-Path $taskBin 'mysqladmin.exe') @('--no-defaults', '--protocol=TCP', '--host=127.0.0.1', "--port=$taskReaderPort", '--user=root', 'shutdown') (Join-Path $taskEvidence 'reader-stop.log') 30 @{ MYSQL_PWD=$taskPassword } | Out-Null
+            }
+            Complete-TaskProcess $taskReaderServer 30 (Join-Path $taskEvidence 'reader-server.log') | Out-Null
+        } catch {
+            $taskCleanupPassed = $false
+            if (!$taskReaderServer.Process.HasExited) { $taskReaderServer.Process.Kill($true); $taskReaderServer.Process.WaitForExit(10000) | Out-Null }
+        } finally { $taskReaderServer.Process.Dispose() }
+    }
+    if ($taskReaderPgStarted -and (Test-Path -LiteralPath (Join-Path $taskReaderData 'postmaster.pid'))) {
+        try { Invoke-TaskProcess (Join-Path $taskBin 'pg_ctl.exe') @('-D', $taskReaderData, '-m', 'fast', '-w', '-t', '30', 'stop') (Join-Path $taskEvidence 'reader-stop.log') 45 | Out-Null } catch { $taskCleanupPassed = $false }
+    }
+    if ($Driver -eq 'pgsql' -and (Test-Path -LiteralPath (Join-Path $taskWork 'reader-postgres.log'))) {
+        $taskReaderLog = [string](Get-Content -LiteralPath (Join-Path $taskWork 'reader-postgres.log') -Raw)
+        foreach ($taskSecret in $script:taskSecrets) { $taskReaderLog = $taskReaderLog.Replace($taskSecret, '<REDACTED>') }
+        [IO.File]::WriteAllText((Join-Path $taskEvidence 'reader-server.log'), $taskReaderLog, [Text.UTF8Encoding]::new($false))
+    }
     if ($null -ne $taskServer) {
         try {
             if (!$taskServer.Process.HasExited) {
@@ -196,7 +245,10 @@ try {
         [IO.File]::WriteAllText((Join-Path $taskEvidence 'server.log'), $taskServerLog, [Text.UTF8Encoding]::new($false))
     }
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
-    $taskRecord = @{ platform='Windows'; driver=$Driver; version=$taskSource.version; archive_sha256=$taskSource.sha256; scope=$(if ($ProbeOnly) { 'PDO/Swoole PostgreSQL probe only; not ORM acceptance' } elseif ($OrmOnly) { 'isolated ORM Composer consumption, PHP/AOT and source removal' } else { 'native dedicated database process, development/AOT and isolated template package' }); passed=($taskPassed -and $taskCleanupPassed); owned_process_cleanup=$taskCleanupPassed; installed_service=$false }
+    $taskRecord = @{ platform='Windows'; driver=$Driver; version=$taskSource.version; archive_sha256=$taskSource.sha256; scope=$(if ($ProbeOnly) { 'PDO/Swoole PostgreSQL probe only; not ORM acceptance' } elseif ($OrmOnly) { 'isolated ORM Composer consumption, PHP/AOT, source removal and distinct read/write endpoints' } else { 'native dedicated database process, development/AOT and isolated template package' }); passed=($taskPassed -and $taskCleanupPassed); owned_process_cleanup=$taskCleanupPassed; installed_service=$false }
     $taskRecord | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
     if (!$taskCleanupPassed) { throw '本轮数据库未正常清理，不能记作通过。' }
+    # 日志与摘要已经保全；只删除本轮创建且所有进程已正常退出的私有目录。
+    if ([IO.Path]::GetDirectoryName($taskWork) -ne [IO.Path]::GetFullPath($env:RUNNER_TEMP) -or [IO.Path]::GetFileName($taskWork) -ne ('type-native-db-' + $taskIdentity)) { throw '数据库临时目录归属不符。' }
+    Remove-Item -LiteralPath $taskWork -Recurse -Force
 }

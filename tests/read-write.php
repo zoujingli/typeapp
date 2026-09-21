@@ -9,12 +9,15 @@ require __DIR__ . '/native-database.php';
 $root = dirname(__DIR__);
 $driver = $argv[2] ?? 'sqlite';
 expect(in_array($driver, ['mysql', 'pgsql', 'sqlite'], true), '未知主从驱动');
-$tools = $driver === 'sqlite' ? [] : NativeDatabase::tools($driver, $argv[3] ?? (getenv('TYPE_' . strtoupper($driver) . '_TOOLS') ?: ''));
+$external = getenv('TYPE_READ_WRITE_EXTERNAL') === '1';
+expect(!$external || (PHP_OS_FAMILY === 'Windows' && getenv('GITHUB_ACTIONS') === 'true'
+    && getenv('RUNNER_OS') === 'Windows' && $driver !== 'sqlite'), '外部端点只接受 Windows CI 装置自建的独立实例');
+$tools = $driver === 'sqlite' || $external ? [] : NativeDatabase::tools($driver, $argv[3] ?? (getenv('TYPE_' . strtoupper($driver) . '_TOOLS') ?: ''));
 $work = $root . '/build/read-write-' . bin2hex(random_bytes(6));
 expect(mkdir($work, 0700), '无法创建主从验收目录');
 $servers = [];
 $connections = [];
-$report = ['driver' => $driver, 'passed' => false];
+$report = ['driver' => $driver, 'platform' => PHP_OS_FAMILY, 'external-owned-endpoints' => $external, 'passed' => false];
 try {
     $environment = getenv();
     foreach ($driver === 'sqlite' ? ['primary'] : ['primary', 'reader'] as $role) {
@@ -22,10 +25,20 @@ try {
             $name = $work . '/database.sqlite';
             $pdo = new PDO('sqlite:' . $name);
         } else {
-            $server = new NativeDatabase($work . '/' . $role, $driver, $tools);
-            $servers[$role] = $server;
-            $values = $server->environment();
             $prefix = 'TYPE_' . strtoupper($driver) . '_';
+            if ($external) {
+                $prefix = ($role === 'reader' ? 'TYPE_READER_' : 'TYPE_') . strtoupper($driver) . '_';
+                $values = $environment;
+                foreach (['HOST', 'PORT', 'DATABASE', 'USER', 'PASSWORD'] as $key) {
+                    expect(is_string($values[$prefix . $key] ?? null) && $values[$prefix . $key] !== '', '缺少隔离主从端点配置');
+                }
+                expect($values[$prefix . 'HOST'] === '127.0.0.1', '主从装置只使用本机隔离实例');
+                expect($environment['TYPE_' . strtoupper($driver) . '_PORT'] !== $environment['TYPE_READER_' . strtoupper($driver) . '_PORT'], '主从不能共用同一端点');
+            } else {
+                $server = new NativeDatabase($work . '/' . $role, $driver, $tools);
+                $servers[$role] = $server;
+                $values = $server->environment();
+            }
             $name = $values[$prefix . 'DATABASE'];
             $pdo = new PDO(
                 $driver . ':host=' . $values[$prefix . 'HOST'] . ';port=' . $values[$prefix . 'PORT'] . ';dbname=' . $name,
@@ -51,7 +64,18 @@ try {
     $generated = (new Type\Build\ModelCompiler())->compile([$root . '/examples/model/Models.php']);
     file_put_contents($work . '/models.php', $generated['code']);
     if (isset($argv[1]) && $argv[1] !== '--php') {
-        $command = nativeCommand($argv[1]);
+        if (PHP_OS_FAMILY === 'Windows') {
+            $artifact = Type\Build\BuildPlatform::resolve($argv[1]);
+            (new Type\Build\BuildPlatform())->assertArtifact($artifact);
+            $build = json_decode(file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+            $ini = $build['runtime-profile']['ini'];
+            expect(is_file($ini) && is_dir(dirname($ini) . '/php.d'), '原生主从运行配置缺失');
+            $environment['PHPRC'] = $ini;
+            $environment['PHP_INI_SCAN_DIR'] = dirname($ini) . '/php.d';
+            $command = [$artifact];
+        } else {
+            $command = nativeCommand($argv[1]);
+        }
     } else {
         $launcher = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; require ' . var_export($work . '/models.php', true)
             . '; require ' . var_export($root . '/examples/read-write-command.php', true) . '; main($argc, $argv);';
@@ -75,12 +99,18 @@ try {
     echo $result->stdout;
 } finally {
     $pdo = null;
+    if ($external) {
+        foreach ($connections as $connection) {
+            $connection->exec('DROP TABLE type_rw_probe');
+        }
+        $connection = null;
+    }
     $connections = [];
     foreach ($servers as $role => $server) {
         $server->close();
         $report[$role] = $server->evidence();
     }
-    $evidence = $root . '/.cache/orm-routing-evidence';
+    $evidence = $root . (PHP_OS_FAMILY === 'Windows' ? '/build' : '/.cache') . '/orm-routing-evidence';
     if (!is_dir($evidence)) {
         expect(mkdir($evidence, 0700, true), '无法创建主从验收证据目录');
     }
