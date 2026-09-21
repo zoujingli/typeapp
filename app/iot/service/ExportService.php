@@ -16,6 +16,7 @@ use Type\Core\Http\Identity;
 use Type\Orm\Connection;
 use Type\Orm\Outbox\Store;
 use Type\Queue\JobContext;
+use Type\Runtime\ExecutionScope;
 
 /** 历史导出的业务事实与文件所有者；固定快照、可恢复进度和当前授权不交给浏览器或Redis保存。 */
 final class ExportService
@@ -219,12 +220,14 @@ final class ExportService
                 self::revoked($transaction, $row, $context);
                 return 'revoked';
             }
-            $active = $transaction->table('iot_exports')->where('status', '=', 'running');
-            if ($row['status'] === 'queued' && ((int) $active->aggregate('COUNT') >= 10 || (int) $active->where('tenant_id', '=', $row['tenant_id'])->aggregate('COUNT') >= 2)) {
-                throw new RuntimeException('export_waiting_for_capacity');
-            }
-            $query->update(['status' => 'running']);
-            return 'ready';
+            return $context->scope()->run(static function (ExecutionScope $scope) use ($transaction, $query, $row): string {
+                $active = $transaction->table('iot_exports')->where('status', '=', 'running');
+                if ($row['status'] === 'queued' && ((int) $active->aggregate('COUNT') >= 10 || (int) $active->where('tenant_id', '=', $row['tenant_id'])->aggregate('COUNT') >= 2)) {
+                    throw new RuntimeException('export_waiting_for_capacity');
+                }
+                $query->update(['status' => 'running']);
+                return 'ready';
+            }, ['tenant_id' => (string) $row['tenant_id']]);
         }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
         if ($admitted !== 'ready') {
             if ($admitted === 'revoked') {
@@ -255,86 +258,89 @@ final class ExportService
                 self::revoked($transaction, $row, $context);
                 return true;
             }
-            if (!$store->consumed($transaction, $context->message()->id(), 'export-step:' . $payload['step'])) {
-                return false;
-            }
-            // 业务行锁内先验证终态再创建文件，取消/清理之后的旧任务不会重新留下空文件。
-            if (!is_dir($this->directory) && !@mkdir($this->directory, 0700, true) && !is_dir($this->directory)) {
-                throw new RuntimeException('export_storage_unavailable');
-            }
-            $file = @fopen($this->path($id), 'c+b');
-            if ($file === false) {
-                throw new RuntimeException('export_storage_unavailable');
-            }
-            try {
-                if (!flock($file, LOCK_EX | LOCK_NB)) {
-                    throw new RuntimeException('export_file_busy');
+            // 只绑定刚刚重验的服务端来源；消息关联值不参与授权，异常也恢复外层绑定。
+            return $context->scope()->run(function (ExecutionScope $scope) use ($store, $transaction, $context, $payload, $id, $row, $query): bool {
+                if (!$store->consumed($transaction, $context->message()->id(), 'export-step:' . $payload['step'])) {
+                    return false;
                 }
-                $filters = json_decode($row['filters_json'], true, 12, JSON_THROW_ON_ERROR);
-                $descending = str_ends_with($filters['sort'], 'desc');
-                $where = 'export_id = ?';
-                $parameters = [$id];
-                if ($row['last_id'] !== '') {
-                    $operator = $descending ? '<' : '>';
-                    $where .= ' AND (position_time ' . $operator . ' ? OR (position_time = ? AND source_id ' . $operator . ' ?))';
-                    array_push($parameters, (int) $row['last_time'], (int) $row['last_time'], $row['last_id']);
-                }
-                $direction = $descending ? 'DESC' : 'ASC';
-                $rows = $transaction->query('SELECT * FROM iot_export_rows WHERE ' . $where . ' ORDER BY position_time ' . $direction . ', source_id ' . $direction . ' LIMIT 100', $parameters);
-                $buffer = (int) $row['file_bytes'] === 0 ? "\xEF\xBB\xBF" . self::csv(['数据类型', '记录标识', '设备标识', '产品标识', '模型版本', '归属阶段', '采样时间', '首次接收或最近修正时间', '分钟结束', '业务序号', '当前值推进', '属性或六项统计', '当时物模型', '时区']) : '';
-                $zone = new DateTimeZone($row['timezone']);
-                foreach ($rows as $snapshot) {
-                    $context->assertActive();
-                    $buffer .= self::line($snapshot, $row, $zone);
-                }
-                $completed = (int) $row['completed_rows'] + count($rows);
-                $bytes = (int) $row['file_bytes'] + strlen($buffer);
-                if ($completed > self::MAX_ROWS || $bytes > self::MAX_BYTES || ($rows === [] && $completed !== (int) $row['total_rows'])) {
-                    $query->update(['status' => 'failed', 'error_code' => 'export_limit_or_snapshot_invalid', 'updated_at' => time()]);
-                    return true;
-                }
-                $offset = (int) $row['file_bytes'];
-                $size = fstat($file)['size'];
-                if ($size < $offset) {
-                    $query->update(['status' => 'failed', 'error_code' => 'export_file_unavailable', 'updated_at' => time()]);
-                    return true;
-                }
-                if (!@ftruncate($file, $offset) || @fseek($file, $offset) !== 0) {
+                // 业务行锁内先验证终态再创建文件，取消/清理之后的旧任务不会重新留下空文件。
+                if (!is_dir($this->directory) && !@mkdir($this->directory, 0700, true) && !is_dir($this->directory)) {
                     throw new RuntimeException('export_storage_unavailable');
                 }
-                $written = 0;
-                while ($written < strlen($buffer)) {
-                    $context->assertActive();
-                    $count = @fwrite($file, substr($buffer, $written));
-                    if ($count === false || $count === 0) {
+                $file = @fopen($this->path($id), 'c+b');
+                if ($file === false) {
+                    throw new RuntimeException('export_storage_unavailable');
+                }
+                try {
+                    if (!flock($file, LOCK_EX | LOCK_NB)) {
+                        throw new RuntimeException('export_file_busy');
+                    }
+                    $filters = json_decode($row['filters_json'], true, 12, JSON_THROW_ON_ERROR);
+                    $descending = str_ends_with($filters['sort'], 'desc');
+                    $where = 'export_id = ?';
+                    $parameters = [$id];
+                    if ($row['last_id'] !== '') {
+                        $operator = $descending ? '<' : '>';
+                        $where .= ' AND (position_time ' . $operator . ' ? OR (position_time = ? AND source_id ' . $operator . ' ?))';
+                        array_push($parameters, (int) $row['last_time'], (int) $row['last_time'], $row['last_id']);
+                    }
+                    $direction = $descending ? 'DESC' : 'ASC';
+                    $rows = $transaction->query('SELECT * FROM iot_export_rows WHERE ' . $where . ' ORDER BY position_time ' . $direction . ', source_id ' . $direction . ' LIMIT 100', $parameters);
+                    $buffer = (int) $row['file_bytes'] === 0 ? "\xEF\xBB\xBF" . self::csv(['数据类型', '记录标识', '设备标识', '产品标识', '模型版本', '归属阶段', '采样时间', '首次接收或最近修正时间', '分钟结束', '业务序号', '当前值推进', '属性或六项统计', '当时物模型', '时区']) : '';
+                    $zone = new DateTimeZone($row['timezone']);
+                    foreach ($rows as $snapshot) {
+                        $context->assertActive();
+                        $buffer .= self::line($snapshot, $row, $zone);
+                    }
+                    $completed = (int) $row['completed_rows'] + count($rows);
+                    $bytes = (int) $row['file_bytes'] + strlen($buffer);
+                    if ($completed > self::MAX_ROWS || $bytes > self::MAX_BYTES || ($rows === [] && $completed !== (int) $row['total_rows'])) {
+                        $query->update(['status' => 'failed', 'error_code' => 'export_limit_or_snapshot_invalid', 'updated_at' => time()]);
+                        return true;
+                    }
+                    $offset = (int) $row['file_bytes'];
+                    $size = fstat($file)['size'];
+                    if ($size < $offset) {
+                        $query->update(['status' => 'failed', 'error_code' => 'export_file_unavailable', 'updated_at' => time()]);
+                        return true;
+                    }
+                    if (!@ftruncate($file, $offset) || @fseek($file, $offset) !== 0) {
                         throw new RuntimeException('export_storage_unavailable');
                     }
-                    $written += $count;
+                    $written = 0;
+                    while ($written < strlen($buffer)) {
+                        $context->assertActive();
+                        $count = @fwrite($file, substr($buffer, $written));
+                        if ($count === false || $count === 0) {
+                            throw new RuntimeException('export_storage_unavailable');
+                        }
+                        $written += $count;
+                    }
+                    if (!@fflush($file) || !@fsync($file)) {
+                        throw new RuntimeException('export_storage_unavailable');
+                    }
+                    $context->assertActive();
+                    $done = $completed === (int) $row['total_rows'];
+                    $changes = ['status' => $done ? 'succeeded' : 'running', 'completed_rows' => $completed, 'file_bytes' => $bytes,
+                        'step' => $payload['step'] + 1, 'updated_at' => time(), 'file_hash' => $done ? hash_file('sha256', $this->path($id)) : ''];
+                    if ($done) {
+                        $changes['expires_at'] = time() + 86400;
+                    }
+                    if ($rows !== []) {
+                        $last = $rows[count($rows) - 1];
+                        $changes['last_time'] = (int) $last['position_time'];
+                        $changes['last_id'] = $last['source_id'];
+                    }
+                    $query->update($changes);
+                    if (!$done) {
+                        self::intent($transaction, $id, $payload['step'] + 1);
+                    }
+                    return false;
+                } finally {
+                    flock($file, LOCK_UN);
+                    fclose($file);
                 }
-                if (!@fflush($file) || !@fsync($file)) {
-                    throw new RuntimeException('export_storage_unavailable');
-                }
-                $context->assertActive();
-                $done = $completed === (int) $row['total_rows'];
-                $changes = ['status' => $done ? 'succeeded' : 'running', 'completed_rows' => $completed, 'file_bytes' => $bytes,
-                    'step' => $payload['step'] + 1, 'updated_at' => time(), 'file_hash' => $done ? hash_file('sha256', $this->path($id)) : ''];
-                if ($done) {
-                    $changes['expires_at'] = time() + 86400;
-                }
-                if ($rows !== []) {
-                    $last = $rows[count($rows) - 1];
-                    $changes['last_time'] = (int) $last['position_time'];
-                    $changes['last_id'] = $last['source_id'];
-                }
-                $query->update($changes);
-                if (!$done) {
-                    self::intent($transaction, $id, $payload['step'] + 1);
-                }
-                return false;
-            } finally {
-                flock($file, LOCK_UN);
-                fclose($file);
-            }
+            }, ['tenant_id' => (string) $row['tenant_id']]);
         }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
         if ($terminal) {
             $this->removeFile($id);

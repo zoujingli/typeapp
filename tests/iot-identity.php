@@ -1634,7 +1634,9 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         } while (!$ready && microtime(true) < $deadline);
         expect($ready, '双端HTTP未就绪');
         $checks = 0;
-        $request = static function (string $method, string $path, string $token, array $headers, ?array $data, int $expected) use ($client, &$checks): array {
+        $request = static function (string $method, string $path, string $token, array $headers, ?array $data, int $expected) use ($client, &$checks, &$server): array {
+            // 连续请求及时排空双输出；日志仍由 Process 保留，不能让管道背压阻塞服务。
+            expect($server->running(), '双端HTTP提前退出：' . $server->stderr());
             $response = $client->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
             expect($response->status === $expected, '双端状态错误：' . $path . ' expected=' . $expected . ' actual=' . $response->status);
             expect(!str_contains($response->body, 'password_hash'), '双端响应包含凭据散列');

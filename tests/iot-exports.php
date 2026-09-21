@@ -88,9 +88,14 @@ function iotExportChecks(Closure $request, array $tokens, string $tenantA, strin
         expect($created['status'] === 'queued' && $created['total_rows'] === 205 && $created['completed_rows'] === 0, '创建只能排队且冻结全部筛选，不能只导出当前20条页面');
         $request('GET', $jobsPath . '/' . $created['id'] . '/download', $admin, $tenantA, null, 409, 'export_not_ready');
         expect($request('GET', $historyPath . '?' . http_build_query(['from' => $sampled - 1, 'to' => $received, 'per_page' => 1]), $viewer, $tenantA, null, 200)['total'] === 205, '导出与页面筛选不一致');
+        // 真实消息携带的关联元数据不能替换服务端保存的租户或身份来源。
+        $messageContext = $database->prepare('UPDATE iot_export_outbox SET context = ? WHERE id = ?');
+        $messageContext->execute([json_encode(['tenant_id' => $tenantB, 'customer_id' => 'forged-customer'], JSON_THROW_ON_ERROR), $created['id'] . ':0']);
         $run(1);
         $partial = $job($created['id']);
         expect($partial['status'] === 'running' && $partial['completed_rows'] === 100, '后台单次分块应有界且进度持久');
+        expect($partial['tenant_id'] === $tenantA, '消息关联值替换了持久任务的可信租户');
+        $checks[] = 'message-metadata-cannot-replace-persisted-tenant';
         $file = $base . '/storage/exports/' . $created['id'] . '.csv';
         file_put_contents($file, 'uncommitted-tail', FILE_APPEND);
         $redis->crashAndRestartReliable();
@@ -207,13 +212,14 @@ function iotExportChecks(Closure $request, array $tokens, string $tenantA, strin
         $request('GET', $jobsPath . '/' . $created['id'] . '/download', $simulated, $tenantA, null, 404);
         $exitTask = $create([], $simulated);
         $request('POST', '/customer/auth/logout', $simulated, null, [], 200);
+        $messageContext->execute([json_encode(['tenant_id' => $tenantA, 'session_id' => $fixture['source']['identity']['session_id']], JSON_THROW_ON_ERROR), $exitTask['id'] . ':0']);
         $run();
         $stored = $database->prepare('SELECT * FROM iot_exports WHERE id = ?');
         $stored->execute([$exitTask['id']]);
         $exited = $stored->fetch(PDO::FETCH_ASSOC);
         $stored->closeCursor();
         expect($exited['error_code'] === 'export_permission_revoked' && (int) $exited['completed_rows'] === 0
-            && !is_file($base . '/storage/exports/' . $exitTask['id'] . '.csv'), '模拟退出后未发生的新输出必须停止');
+            && !is_file($base . '/storage/exports/' . $exitTask['id'] . '.csv'), '模拟退出后未发生的新输出必须停止，消息关联值不能恢复授权');
         $request('GET', $jobsPath . '/' . $simulatedTask['id'] . '/download', $simulated, $tenantA, null, 401);
         $replacement = $request('POST', '/admin/customers/' . $fixture['simulated']['identity']['customer_id'] . '/impersonate', $fixture['source']['accessToken'], null, ['version' => 1], 200)['data']['accessToken'];
         $request('GET', $jobsPath . '/' . $simulatedTask['id'] . '/download', $replacement, $tenantA, null, 404);

@@ -18,9 +18,10 @@
 | `customer_roles` | `app\common\model\CustomerRole` | 将 `scope_id` 映射为租户字段，自动隔离并使用模型乐观锁 |
 | `admin_user_roles` | `AdminUser.roles`、`AdminRole.users` | 纯绑定关系，由 `BelongsToMany` 管理 |
 | `customer_member_roles` | `CustomerMember.roles`、`CustomerRole.members` | 纯绑定关系；中间表以 `pivotTenant: 'tenant_id'` 隔离 |
+| `admin_role_permissions`、`customer_role_permissions` | `RoleService` 维护的固定权限值集合 | 以角色与权限码唯一定位；无独立实体状态，在授权事务内整体维护 |
 | `broker_users`、`broker_sessions` | `app\broker\model\BrokerUser`、`BrokerSession` | 独立 Broker 管理域的账号和会话 |
 
-角色实体与人员角色绑定已通过 Model 和关系持久化。静态检查限制三个 Service 的底层表查询：安装互斥、本人租户投影、最后管理员保护和固定权限码集合按具体方法与数据集合登记，不向整个 Service 开放例外。角色权限集合的持久化归属仍需收口；macOS ARM64 同一完整应用 AOT 产物已通过三库身份 HTTP 与移除源码运行，其他平台及完整业务组合另行验收。完整身份表结构以 `app/common/database/Schema.php` 为准；角色授权规则由 `RoleService` 维护，权限码取自固定目录，不是可由客户端任意新增的实体。
+角色实体与人员角色绑定已通过 Model 和关系持久化。静态检查限制三个 Service 的底层表查询：安装互斥、本人租户投影、最后管理员保护和固定权限码集合按具体方法与数据集合登记，不向整个 Service 开放例外。权限值集合仅由 `RoleService` 的 `initializeScope`、`directory`、`requireHighest`、`role`、`changeRole` 访问对应表；授权聚合的固定 SQL 单独登记。完整身份表结构以 `app/common/database/Schema.php` 为准；角色授权规则由 `RoleService` 维护，权限码取自固定目录，不是可由客户端任意新增的实体。macOS ARM64 同一完整应用 AOT 产物已通过三库身份 HTTP 与移除源码运行，其他平台及完整业务组合另行验收。
 
 登录、会话撤销检查、权限与租户资格验证明确读取主库。修改通过 `Db::transaction()` 保持同库事务，业务与审计共用该作用域的主库租约；事务外写后需要立即确认结果时显式 `master()`。账户资料版本由身份服务在授权和账号锁内推进，错误原密码只改变既定失败计数，不推进资料版本。租户、成员的普通模型保存使用各自声明的版本字段，不把这两种版本合同混为一谈。
 
@@ -71,7 +72,7 @@ php bin/typeapp app:install platform-admin '平台管理员' customer-admin '客
 
 平台人员可在明确的 `admin.customers.impersonate` 权限下进入客户工作区。模拟会话绑定来源管理会话、目标客户和期限，权限只取目标客户当前租户角色；退出来源、撤销来源或停用目标都会撤销派生会话。审计记录真实操作人、来源会话、目标客户、租户、动作和结果，不记录密码、令牌或设备秘密。
 
-后台导出从已持久化的来源信息恢复身份，执行时重新验证会话、模拟来源和当前权限。队列消息仅定位已保存任务，不直接建立授权上下文。Worker 为每次任务绑定独立作用域，模型重验与任务状态写入使用同一主库事务；受管子协程只复制可信标识值，不能继承父连接或父事务。
+后台导出从已持久化的来源信息恢复身份，执行时重新验证会话、模拟来源和当前权限。队列消息仅定位已保存任务，消息中的租户、账号或会话关联值不直接建立授权上下文。Worker 为每次任务绑定独立作用域；领取和每次分块在主库授权锁内重新验证来源后，临时绑定持久任务的租户，正常退出和异常均恢复外层绑定。身份模型重验与任务状态写入使用同一主库事务；受管子协程只复制可信标识值，不能继承父连接或父事务。权限失效时停止新增输出，已提交进度、审计和资源清理继续按原有合同完成。
 
 ## 验证
 
