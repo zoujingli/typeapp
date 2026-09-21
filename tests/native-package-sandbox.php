@@ -97,6 +97,15 @@ function linuxPackageCommand(string $root, string $package, array $dataDirectori
         }
     }
     array_push($prefix, '--proc', '/proc', '--dev', '/dev', '--perms', '1777', '--tmpfs', '/tmp');
+    // /usr 需要提供运行库，但不能把控制端 PHP、编译器和其他工具带入发布进程。
+    // 将 /usr/bin 覆盖为临时目录后，只重新开放 namespace 设置器和探针所需的固定工具。
+    // 这样 PHP_BINARY 位于 /usr/bin 时也能被真实阻断，而不是仅依赖 PATH 隐藏。
+    array_push($prefix, '--tmpfs', '/usr/bin');
+    foreach (['sh', 'setpriv', 'cat', 'id'] as $task_program) {
+        $task_path = '/usr/bin/' . $task_program;
+        expect(is_file($task_path) && is_executable($task_path), '隔离探针工具不存在：' . $task_path);
+        array_push($prefix, '--ro-bind', $task_path, $task_path);
+    }
     $mounts = [$package => true];
     foreach ($dataDirectories as $directory) {
         $resolved = realpath($directory);

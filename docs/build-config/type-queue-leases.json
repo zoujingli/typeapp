@@ -2,6 +2,10 @@
   "project-root": "../..",
   "name": "type-queue-leases",
   "entry": "examples/queue-lease-command.php",
+  "runtime": {
+    "Linux": {"extensions": ["posix"], "functions": ["posix_kill"]},
+    "Darwin": {"extensions": ["posix"], "functions": ["posix_kill"]}
+  },
   "output": "build/queue-leases/type-app",
   "build-directory": "build/queue-leases/compiler"
 }
