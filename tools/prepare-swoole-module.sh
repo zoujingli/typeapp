@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'task_status=$?; echo "Swoole 适配构建在第 ${LINENO} 行失败（退出码 ${task_status}）。" >&2' ERR
 
 # 构建固定上游并应用 TypeApp 已核验的 Swoole 接缝；输出可复制的动态模块路径。
 : "${GITHUB_WORKSPACE:?需要 GitHub 工作区}"
@@ -28,6 +29,7 @@ fi
 }
 tar -xzf "$task_archive" -C "$RUNNER_TEMP"
 [[ -d "$task_source" ]] || { echo 'Swoole 固定源码目录不存在。' >&2; exit 1; }
+echo '已准备固定 Swoole 源码。' >&2
 
 "$PHP_HOME/bin/php" -n -r '
 require $argv[1] . "/plugin/type-build/src/SwooleThreadSource.php";
@@ -35,19 +37,21 @@ require $argv[1] . "/plugin/type-build/src/SwooleHttpSource.php";
 require $argv[1] . "/plugin/type-build/src/SwooleSocketSource.php";
 $directory = $argv[2];
 $report = [];
-$report["thread"] = (new Type\\Build\\SwooleThreadSource())->apply($directory);
-$report["http"] = (new Type\\Build\\SwooleHttpSource())->apply($directory);
-$report["socket"] = (new Type\\Build\\SwooleSocketSource())->apply($directory);
-$report["tls"] = (new Type\\Build\\SwooleSocketSource())->applyTls($directory);
+$report["thread"] = (new Type\Build\SwooleThreadSource())->apply($directory);
+$report["http"] = (new Type\Build\SwooleHttpSource())->apply($directory);
+$report["socket"] = (new Type\Build\SwooleSocketSource())->apply($directory);
+$report["tls"] = (new Type\Build\SwooleSocketSource())->applyTls($directory);
 fwrite(STDERR, json_encode($report, JSON_THROW_ON_ERROR) . PHP_EOL);
 ' "$task_root" "$task_source"
 
 read -r -a task_options <<< "$SWOOLE_CONFIGURE_OPTS"
+command -v phpize >&2
+command -v php-config >&2
 (
     cd "$task_source"
     "$(command -v phpize)" >/dev/null
-    ./configure --with-php-config="$(command -v php-config)" --enable-swoole=shared "${task_options[@]}" >/dev/null
-    make -j2 >/dev/null
+    ./configure --with-php-config="$(command -v php-config)" --enable-swoole=shared "${task_options[@]}" >&2
+    make -j2 >&2
 )
 [[ -f "$task_source/modules/swoole.so" ]] || { echo 'Swoole 适配模块构建失败。' >&2; exit 1; }
 mkdir -p "$(dirname "$task_module")"
