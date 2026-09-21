@@ -16,6 +16,12 @@ if (function_exists('token_name')) {
     }
 }
 
+foreach ($runtimeTokenIds as $tokenName => $tokenId) {
+    if (!defined($tokenName)) {
+        define($tokenName, $tokenId);
+    }
+}
+
 if (class_exists(\PhpParser\Parser\Php8::class)) {
     foreach ((new ReflectionClass(\PhpParser\Parser\Php8::class))->getConstants() as $tokenName => $tokenId) {
         if (!str_starts_with($tokenName, 'T_') || defined($tokenName)) {
