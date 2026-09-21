@@ -44,8 +44,8 @@ jobs:
       - name: 暴露 PostgreSQL 构建头文件与 pkg-config
         run: |
           task_pgsql="$(brew --prefix postgresql@17)"
-          printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s/include %s\nLDFLAGS=-L%s/lib %s\n' \
-            "$task_pgsql/lib/pkgconfig" "${PKG_CONFIG_PATH:-}" "$task_pgsql" "${CPPFLAGS:-}" "$task_pgsql" "${LDFLAGS:-}" >> "$GITHUB_ENV"
+          printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s/include %s\nLDFLAGS=-L%s/lib %s\nLIBPQ_CFLAGS=-I%s/include\nLIBPQ_LIBS=-L%s/lib -lpq\n' \
+            "$task_pgsql/lib/pkgconfig" "${PKG_CONFIG_PATH:-}" "$task_pgsql" "${CPPFLAGS:-}" "$task_pgsql" "${LDFLAGS:-}" "$task_pgsql" "$task_pgsql" >> "$GITHUB_ENV"
       - name: 安装锁定ZTS PHP与Composer
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
         with:

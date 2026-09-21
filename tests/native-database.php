@@ -200,14 +200,16 @@ final class NativeDatabase
         fclose($socket);
         $data = $this->directory . '/data';
         if ($this->driver === 'mysql') {
+            $owner = posix_getpwuid(posix_geteuid())['name'] ?? '';
+            expect(is_string($owner) && preg_match('/^[A-Za-z_][A-Za-z0-9_.-]*$/', $owner) === 1, '无法确定本轮MySQL实例的测试用户');
             $short = trim($this->command(['/usr/bin/mktemp', '-d', '/tmp/type-db-XXXXXXXX'], 'socket-directory.log', 5));
             expect(preg_match('#^/tmp/type-db-[A-Za-z0-9]{8}$#D', $short) === 1 && is_dir($short)
                 && fileowner($short) === posix_geteuid() && (fileperms($short) & 0077) === 0, '短socket目录归属或权限不符');
             $this->socketDirectory = $short;
-            $this->command([$tools['mysqld'], '--no-defaults', '--initialize-insecure', '--basedir=' . $tools['root'], '--datadir=' . $data], 'initialize.log');
+            $this->command([$tools['mysqld'], '--no-defaults', '--user=' . $owner, '--initialize-insecure', '--basedir=' . $tools['root'], '--datadir=' . $data], 'initialize.log');
             $setup = "ALTER USER 'root'@'localhost' IDENTIFIED BY '" . $this->password . "';\nCREATE DATABASE type_app_test;\n";
             expect(file_put_contents($this->directory . '/initialize.sql', $setup) === strlen($setup) && chmod($this->directory . '/initialize.sql', 0600), '无法写入私有初始化声明');
-            $command = [$tools['mysqld'], '--no-defaults', '--basedir=' . $tools['root'], '--datadir=' . $data,
+            $command = [$tools['mysqld'], '--no-defaults', '--user=' . $owner, '--basedir=' . $tools['root'], '--datadir=' . $data,
                 '--bind-address=127.0.0.1', '--port=' . $port, '--socket=' . $short . '/mysql.sock', '--pid-file=' . $data . '/mysql.pid',
                 '--mysqlx=OFF', '--skip-log-bin', '--innodb-buffer-pool-size=64M', '--innodb-redo-log-capacity=64M', '--init-file=' . $this->directory . '/initialize.sql'];
             if ($this->tls !== []) {
