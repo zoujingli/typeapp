@@ -43,8 +43,15 @@ function start(credential = a, overrides = {}, endpoint = url) {
 }
 async function connect(credential = a, overrides = {}) {
   const client = start(credential, overrides);
-  const [ack] = await once(client, 'connect');
-  return { client, ack };
+  const waiting = new AbortController();
+  const closed = () => waiting.abort(new Error('MQTT connection closed before CONNACK'));
+  client.once('close', closed);
+  try {
+    const [ack] = await once(client, 'connect', { signal: waiting.signal });
+    return { client, ack };
+  } finally {
+    client.off('close', closed);
+  }
 }
 async function denied(credential = a, overrides = {}, endpoint = url, reason = null) {
   const client = start(credential, overrides, endpoint);

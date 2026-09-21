@@ -2313,8 +2313,12 @@ final class Broker
         $this->reloadHandshakeCa();
         $this->enforceServerCertificate(time());
         $this->invalidateAuthorization();
+        // 管理策略可以等待独立进程；在等待段之间推进已接纳的持久工作，
+        // 避免 worker 身份交换、会话打开和保存每步都额外等待一整轮管理查询。
+        $this->pollCommits();
         $this->applyDisconnect();
         $this->applyTermination();
+        $this->pollCommits();
         $this->applyClearance();
         $this->applyQuota();
         $this->pollCommits();
