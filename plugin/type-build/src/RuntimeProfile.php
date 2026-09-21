@@ -50,7 +50,7 @@ final class RuntimeProfile
                 throw new RuntimeException('运行扩展候选需要规范名称、文件与准确SHA256');
             }
         }
-        $required = $this->names(array_values(array_unique(array_merge($requirements, $extra, array_keys($fallbacks)))), false);
+        $required = $this->dependencies($this->names(array_values(array_unique(array_merge($requirements, $extra, array_keys($fallbacks)))), false));
         BuildLock::path($directory);
         $leaf = basename($directory);
         $directory = BuildPlatform::resolve(dirname($directory)) . '/' . $leaf;
@@ -107,7 +107,6 @@ final class RuntimeProfile
             $modules[$name] = $file;
             $hashes[$name] = (string) hash_file('sha256', $file);
         }
-        ksort($modules);
         ksort($hashes);
         $ini = $directory . '/native.ini';
         $this->write($ini, (new RuntimeIni())->generate($modules));
@@ -135,6 +134,48 @@ final class RuntimeProfile
             'base-extensions' => $base['extensions']], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
         return ['extensions' => $versions, 'functions' => $functions, 'module-files' => $modules, 'module-sha256' => $hashes,
             'files' => [$source, $probe, $baseIni, $ini, $evidence, ...array_values($modules)], 'ini' => $ini, 'probe' => $probe];
+    }
+
+    /** 构建 PHP 的扩展元数据只补充必需依赖，实际选定模块仍由独立 embed 验证。 */
+    private function dependencies(array $names): array
+    {
+        $pending = array_fill_keys($names, []);
+        $queue = $names;
+        for ($index = 0; $index < count($queue); $index++) {
+            $name = $queue[$index];
+            if (!extension_loaded($name)) {
+                continue;
+            }
+            foreach ((new \ReflectionExtension($name))->getDependencies() as $dependency => $kind) {
+                if (!str_starts_with($kind, 'Required')) {
+                    continue;
+                }
+                $dependency = strtolower($dependency);
+                $pending[$name][] = $dependency;
+                if (!array_key_exists($dependency, $pending)) {
+                    $pending[$dependency] = [];
+                    $queue[] = $dependency;
+                    if (count($queue) > 128) {
+                        throw new RuntimeException('运行扩展的必需依赖超过128项');
+                    }
+                }
+            }
+        }
+        $ordered = [];
+        while ($pending !== []) {
+            $progress = false;
+            foreach ($pending as $name => $dependencies) {
+                if (array_diff($dependencies, $ordered) === []) {
+                    $ordered[] = $name;
+                    unset($pending[$name]);
+                    $progress = true;
+                }
+            }
+            if (!$progress) {
+                throw new RuntimeException('运行扩展存在循环必需依赖');
+            }
+        }
+        return $ordered;
     }
 
     private function names(mixed $values, bool $functions): array

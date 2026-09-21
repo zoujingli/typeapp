@@ -48,6 +48,19 @@ try {
 }
 expect($rejected, '探针的成功退出掩盖了启动警告');
 $checks = ['real-embed', 'builtin-not-loaded-twice', 'deterministic', 'required-function-rejection', 'runtime-function-gate', 'warning-rejection'];
+$swooleRuntime = [];
+$swooleModule = getenv('TYPE_SWOOLE_MODULE');
+if (is_string($swooleModule) && $swooleModule !== '') {
+    expect(is_file($swooleModule), '指定的 Swoole 模块不存在');
+    $swooleRuntime[PHP_OS_FAMILY]['modules']['swoole'] = ['file' => $swooleModule, 'sha256' => hash_file('sha256', $swooleModule)];
+}
+$swoole = $profile->prepare($root, $base . '/swoole', $phpHome, $phpxHome, ['swoole'], $swooleRuntime);
+foreach ((new ReflectionExtension('swoole'))->getDependencies() as $dependency => $kind) {
+    if (str_starts_with($kind, 'Required')) {
+        expect(array_key_exists(strtolower($dependency), $swoole['extensions']), 'Swoole 必需扩展未纳入原生产物身份：' . $dependency);
+    }
+}
+$checks[] = 'swoole-required-extension-dependencies';
 $otherPlatform = PHP_OS_FAMILY === 'Linux' ? 'Darwin' : 'Linux';
 $skipped = $profile->prepare($root, $base . '/inactive', $phpHome, $phpxHome, ['json'], [
     $otherPlatform => ['modules' => ['pcntl' => ['file' => '/not-present/inactive-platform.so', 'sha256' => str_repeat('0', 64)]]],
