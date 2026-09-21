@@ -44,8 +44,16 @@ jobs:
       - name: 暴露 PostgreSQL 构建头文件与 pkg-config
         run: |
           task_pgsql="$(brew --prefix postgresql@17)"
-          printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s/include %s\nLDFLAGS=-L%s/lib %s\nLIBPQ_CFLAGS=-I%s/include\nLIBPQ_LIBS=-L%s/lib -lpq\n' \
-            "$task_pgsql/lib/pkgconfig" "${PKG_CONFIG_PATH:-}" "$task_pgsql" "${CPPFLAGS:-}" "$task_pgsql" "${LDFLAGS:-}" "$task_pgsql" "$task_pgsql" >> "$GITHUB_ENV"
+          task_pgsql_include="$($task_pgsql/bin/pg_config --includedir)"
+          if [[ ! -f "$task_pgsql_include/libpq-fe.h" && -f "$task_pgsql_include/postgresql/libpq-fe.h" ]]; then
+            task_pgsql_include="$task_pgsql_include/postgresql"
+          fi
+          task_pgsql_lib="$($task_pgsql/bin/pg_config --libdir)"
+          task_pgsql_pc="$(find "$task_pgsql" -type f -name libpq.pc -print -quit)"
+          task_pgsql_pkg="${task_pgsql_pc:+${task_pgsql_pc%/*}}"
+          [[ -f "$task_pgsql_include/libpq-fe.h" && -f "$task_pgsql_lib/libpq.dylib" ]] || exit 1
+          printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s %s\nLDFLAGS=-L%s %s\nLIBPQ_CFLAGS=-I%s\nLIBPQ_LIBS=-L%s -lpq\n' \
+            "$task_pgsql_pkg" "${PKG_CONFIG_PATH:-}" "$task_pgsql_include" "${CPPFLAGS:-}" "$task_pgsql_lib" "${LDFLAGS:-}" "$task_pgsql_include" "$task_pgsql_lib" >> "$GITHUB_ENV"
       - name: 安装锁定ZTS PHP与Composer
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
         with:
