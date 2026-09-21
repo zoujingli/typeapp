@@ -4,8 +4,7 @@
 
 ```php
 $id = Db::transaction(static function (): int {
-    $user = new User(['name' => '成员甲', 'age' => 20]);
-    $user->save();
+    $user = User::create(['name' => '成员甲', 'age' => 20]);
     Db::afterCommit(static function (): void {
         invalidateUserList();
     });

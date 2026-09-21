@@ -1,6 +1,6 @@
 # PHP 类型属性模型与 CRUD
 
-模型复用 type-orm 的 `Connection` 和不可变 `Query`，运行时不依赖 core；HTTP 示例由应用组合 core、校验器和 ORM。
+模型复用 type-orm 的模型查询和不可变 `Query`，运行时不依赖 core；HTTP 示例由应用组合 core、校验器和 ORM。`Connection` 只属于迁移、驱动验收及其他受限基础设施入口，不作为业务 Model 的参数。
 
 普通模型操作不传连接：框架按当前 Swoole 执行作用域自动借还，普通查询默认读从、写入使用主库，通过 `master()` 明确主读；具有指定租户字段的模型由可信上下文约束归属。启动装配、静态 `create/find/search()`、事务与上下文边界见[Model 自动连接与主从路由](model-connections.md)。API、PHP 行为、AOT 和完整平台验收分别记录。
 
