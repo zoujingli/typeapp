@@ -75,6 +75,8 @@ jobs:
           composer install --no-scripts --no-plugins --prefer-dist --no-progress
           task_php_home="$(php tools/configure-toolchain.php "$GITHUB_WORKSPACE/.cache/php-sdk" "$(command -v php-config)")"
           printf 'PHP_HOME=%s\nPHPX_HOME=%s\nLD_LIBRARY_PATH=%s\n' "$task_php_home" "$GITHUB_WORKSPACE/vendor/swoole/phpx" "$GITHUB_WORKSPACE/vendor/swoole/phpx/lib:$task_php_home/lib" >> "$GITHUB_ENV"
+          export PHP_HOME="$task_php_home"
+          export SWOOLE_CONFIGURE_OPTS='--enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-thread --enable-swoole-pgsql --enable-swoole-sqlite'
           task_control="$GITHUB_WORKSPACE/.cache/linux-control"
           mkdir -p "$task_control/php.d"
           task_swoole_module="$(bash tools/prepare-swoole-module.sh)"
