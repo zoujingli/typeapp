@@ -47,6 +47,15 @@ function buildScenario(string $root, string $configuration, ?string $stage = nul
         $settings['runtime'][PHP_OS_FAMILY]['modules']['swoole'] = [
             'file' => 'modules/swoole.so', 'sha256' => hash_file('sha256', $swooleModule),
         ];
+        $curlModule = getenv('TYPE_CURL_MODULE');
+        if (is_string($curlModule) && $curlModule !== '') {
+            $curlModule = BuildPlatform::resolve($curlModule);
+            expect(is_file($curlModule), '指定的 curl 模块不存在');
+            expect(copy($curlModule, $work . '/modules/curl.so'), '无法保全指定的 curl 模块');
+            $settings['runtime'][PHP_OS_FAMILY]['modules']['curl'] = [
+                'file' => 'modules/curl.so', 'sha256' => hash_file('sha256', $curlModule),
+            ];
+        }
     }
     $composer = json_decode(file_get_contents($work . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
     $originalName = $composer['name'];

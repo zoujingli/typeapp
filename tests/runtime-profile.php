@@ -55,6 +55,14 @@ if (is_string($swooleModule) && $swooleModule !== '') {
     $swooleRuntime[PHP_OS_FAMILY]['modules']['swoole'] = ['file' => $swooleModule, 'sha256' => hash_file('sha256', $swooleModule)];
 }
 $swoole = $profile->prepare($root, $base . '/swoole', $phpHome, $phpxHome, ['swoole'], $swooleRuntime);
+expect(array_key_exists('curl', $swoole['extensions']), 'Swoole运行配置必须同时包含curl扩展');
+if (isset($swoole['module-files']['curl'], $swoole['module-files']['swoole'])) {
+    $iniText = (string) file_get_contents($swoole['ini']);
+    expect(
+        strpos($iniText, $swoole['module-files']['curl']) < strpos($iniText, $swoole['module-files']['swoole']),
+        'curl必须在Swoole之前加载'
+    );
+}
 foreach ((new ReflectionExtension('swoole'))->getDependencies() as $dependency => $kind) {
     if (str_starts_with($kind, 'Required')) {
         expect(array_key_exists(strtolower($dependency), $swoole['extensions']), 'Swoole 必需扩展未纳入原生产物身份：' . $dependency);

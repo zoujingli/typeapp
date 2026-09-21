@@ -50,7 +50,14 @@ final class RuntimeProfile
                 throw new RuntimeException('运行扩展候选需要规范名称、文件与准确SHA256');
             }
         }
-        $required = $this->dependencies($this->names(array_values(array_unique(array_merge($requirements, $extra, array_keys($fallbacks)))), false));
+        $requested = $this->names(array_values(array_unique(array_merge($requirements, $extra, array_keys($fallbacks)))), false);
+        // 当前 Swoole 构建启用了原生 cURL I/O 时，模块会引用 curl_multi_ce。
+        // curl 不是 PHP 扩展元数据中的必需依赖，不能依赖 ReflectionExtension 补齐；
+        // 将其纳入同一运行身份，dependencies() 会把它排在 Swoole 之前。
+        if (in_array('swoole', $requested, true)) {
+            $requested[] = 'curl';
+        }
+        $required = $this->dependencies($requested);
         BuildLock::path($directory);
         $leaf = basename($directory);
         $directory = BuildPlatform::resolve(dirname($directory)) . '/' . $leaf;
@@ -95,6 +102,15 @@ final class RuntimeProfile
                 }
             } else {
                 $candidate = $extensionDirectory . '/' . (PHP_OS_FAMILY === 'Windows' ? 'php_' . $name . '.dll' : $name . '.so');
+                // setup-php 的 curl 可能属于宿主 PHP，而不是锁定 SDK 的扩展目录。
+                // CI/独立消费者通过 TYPE_CURL_MODULE 明确提供同 ABI 文件；只对 curl
+                // 读取该受控候选，其他扩展仍必须来自 SDK 或 runtime.modules。
+                if ($name === 'curl' && !is_file($candidate)) {
+                    $environmentModule = getenv('TYPE_CURL_MODULE');
+                    if (is_string($environmentModule) && $environmentModule !== '' && is_file($environmentModule)) {
+                        $candidate = $environmentModule;
+                    }
+                }
                 if (!is_file($candidate)) {
                     throw new RuntimeException('实际embed缺少运行扩展：' . $name . '；请提供匹配SDK模块或runtime.modules候选');
                 }
