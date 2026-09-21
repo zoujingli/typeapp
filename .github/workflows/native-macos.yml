@@ -60,7 +60,10 @@ jobs:
           # setup-php 用 sudo 执行 PECL configure，sudo 默认不会保留 LIBPQ_*。
           # 直接传入 Swoole 的 PostgreSQL 前缀，让其在 configure 内部构造
           # 自己的 pkg-config 路径，避免依赖被清掉的外部环境变量。
-          printf 'SWOOLE_CONFIGURE_OPTS=--enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-thread --enable-swoole-pgsql=%s --enable-swoole-sqlite\n' "$task_pgsql" >> "$GITHUB_ENV"
+          task_swoole_pgsql="$RUNNER_TEMP/libpq-prefix"
+          mkdir -p "$task_swoole_pgsql/lib/pkgconfig"
+          cp "$task_pgsql_pkg/libpq.pc" "$task_swoole_pgsql/lib/pkgconfig/libpq.pc"
+          printf 'SWOOLE_CONFIGURE_OPTS=--enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-thread --enable-swoole-pgsql=%s --enable-swoole-sqlite\n' "$task_swoole_pgsql" >> "$GITHUB_ENV"
           printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s %s\nLDFLAGS=-L%s %s\nLIBPQ_CFLAGS=-I%s\nLIBPQ_LIBS=-L%s -lpq\n' \
             "$task_pgsql_pkg" "${PKG_CONFIG_PATH:-}" "$task_pgsql_include" "${CPPFLAGS:-}" "$task_pgsql_lib" "${LDFLAGS:-}" "$task_pgsql_include" "$task_pgsql_lib" >> "$GITHUB_ENV"
       - name: 安装锁定ZTS PHP与Composer
