@@ -46,7 +46,8 @@ jobs:
         run: |
           test "$(uname -m)" = aarch64
           sudo apt-get update
-          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config bubblewrap util-linux mysql-server mysql-client postgresql redis-server sqlite3
+          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config libc-ares-dev bubblewrap util-linux mysql-server mysql-client postgresql redis-server sqlite3
+          pkg-config --modversion libcares
           # 此步骤仅用于一次性GitHub runner；包安装器可能启动默认实例，验收只运行控制器自建实例。
           sudo systemctl stop mysql postgresql redis-server
           for task_service in mysql postgresql redis-server; do
