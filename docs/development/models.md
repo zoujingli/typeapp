@@ -57,7 +57,7 @@ MySQL 连接初始化 UTC 和严格模式，PostgreSQL 初始化 UTC 与 ISO Dat
 
 模型通过 `Table(softDelete: 'deleted_at')` 指向不可批量赋值的可空 datetime 字段。默认查询过滤已删除记录；`withTrashed/onlyTrashed/withoutTrashed` 显式选择范围，不支持软删除的模型拒绝这些操作。`delete/restore/forceDelete` 分别软删除、恢复、物理删除，物理删除后对象失效。
 
-`ModelQuery::scope()` 和实例 `search()` 组合不可变查询。搜索器必须来自显式映射，未知搜索键被拒绝；静态 `Model::search()` 创建显式输入的筛选助手，两者职责不同。批量算术使用 `ModelQuery::increment/decrement`，遵守模型租户范围并在主库执行；受控的底层 Query 批量写入不触发逐模型事件或行为转换，已经加载的对象需要显式重新查询。
+`ModelQuery::scope()` 和实例 `search()` 组合不可变查询。搜索器必须来自显式映射，未知搜索键被拒绝；静态 `Model::search()` 创建显式输入的筛选助手，在 `query()` 或 `paginatePage()` 时以 `unknown_search_field` 拒绝未声明的输入键，两者职责不同。批量算术使用 `ModelQuery::increment/decrement`，遵守模型租户范围并在主库执行；受控的底层 Query 批量写入不触发逐模型事件或行为转换，已经加载的对象需要显式重新查询。
 
 `ModelBehavior` 是不可变声明：修改器在类型规范化前处理输入，获取器只处理读取和输出；持久化及关系匹配使用原始存储值，展示获取器不能改变写入身份。修改器、获取器各接收一个值。属性赋值、`set` 和批量 `fill` 均遵守赋值白名单；持久化主键和生命周期字段受保护。
 

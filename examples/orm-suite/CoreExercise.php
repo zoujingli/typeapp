@@ -206,8 +206,8 @@ final class CoreExercise
         $ids = [];
         foreach (['tenant-a', 'tenant-b'] as $tenant) {
             $ids[$tenant] = $scope->run(static function (ExecutionScope $current) use ($tenant, $userId): int {
-                $record = new ScopedRecord(['title' => $tenant, 'value' => 1]);
-                self::check($record->save() === 'created' && $record->getTenantId() === $tenant, '租户新增未自动填充');
+                $record = ScopedRecord::create(['title' => $tenant, 'value' => 1]);
+                self::check($record->isPersisted() && $record->getTenantId() === $tenant, '静态新增未自动填充租户');
                 $label = new ScopedLabel(['scope_id' => '普通范围', 'label' => $tenant]);
                 $label->save();
                 self::check($label->getWorkspace() === $tenant, '特殊租户列没有生效');
@@ -221,7 +221,8 @@ final class CoreExercise
             $rows = ScopedRecord::search(['title' => 'tenant-a'])->equal('title')->query()->paginate(1, 10);
             self::check($rows->total() === 1 && $rows->items()[0]->getId() === $ids['tenant-a'], 'search 分页没有隔离');
             self::check($base->where('title', '=', '缺失')->orWhere('title', '=', 'tenant-b')->count() === 0
-                && $base->find($ids['tenant-b']) === null, 'OR 或主键读取泄漏');
+                && ScopedRecord::find($ids['tenant-b']) === null
+                && ScopedRecord::find($ids['tenant-a'])->getTitle() === 'tenant-a', 'OR 或静态主键读取泄漏');
             self::check(ScopedLabel::query()->count() === 1 && ScopedLabel::query()->first()->getScopeId() === '普通范围', '特殊字段隔离错误');
             $parent = User::query()->with('records')->withCount('records')->find($userId);
             self::check(count($parent->related('records')) === 1 && $parent->computed('records_count') === 1, '全局父模型关系越界');
@@ -239,7 +240,7 @@ final class CoreExercise
             self::check($partial->save() === 'updated' && $partial->getVersion() === 2, '投影丢失原始归属或版本');
             self::check(self::reject(static fn (): mixed => $partial->fill(['title' => '错误', 'tenant_id' => 'tenant-b']), 'tenant_scope_conflict')
                 && $partial->getTitle() === '已修改', '冲突赋值发生部分修改');
-            self::check(self::reject(static fn (): ScopedRecord => new ScopedRecord(['tenant_id' => 'tenant-b']), 'tenant_scope_conflict'), '新增接受冲突归属');
+            self::check(self::reject(static fn (): ScopedRecord => ScopedRecord::create(['tenant_id' => 'tenant-b', 'title' => '冲突', 'value' => 0]), 'tenant_scope_conflict'), '静态新增接受冲突归属');
             self::check(self::reject(static fn (): int => $base->increment('tenant_id'), 'invalid_increment_field'), '原子修改允许改变归属');
             $current->run(static function (ExecutionScope $other) use ($base, $partial): void {
                 self::check(self::reject(static fn (): int => $base->count(), 'tenant_context_changed')

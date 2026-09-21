@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Type\Orm\Helper;
 
 use InvalidArgumentException;
+use Type\Orm\ModelException;
 use Type\Orm\ModelQuery;
 use Type\Orm\Page;
 use Type\Orm\Query;
@@ -16,6 +17,9 @@ final class QueryHelper
 
     /** @var array<string, mixed> 仅从调用者显式接收的输入。 */
     private array $input;
+
+    /** @var array<string, bool> 模型助手已声明的输入键；分页键由固定分页入口保留。 */
+    private array $declared = ['page' => true, 'page_size' => true];
 
     /**
      * 查询已由调用者绑定连接、模型与租户范围，助手不会另建查询。
@@ -120,6 +124,8 @@ final class QueryHelper
             $orders = [$mapping[$selected] => $directionValue === '' ? 'ASC' : $this->direction($directionValue)];
         }
         $copy = clone $this;
+        $copy->declared[$fieldKey] = true;
+        $copy->declared[$directionKey] = true;
         foreach ($orders as $orderColumn => $orderDirection) {
             $copy->query = $copy->query->orderByIfAbsent($orderColumn, $orderDirection);
         }
@@ -127,9 +133,14 @@ final class QueryHelper
         return $copy;
     }
 
-    /** 返回保留既有范围约束的查询，执行与资源生命周期仍由原查询负责。 */
+    /**
+     * 返回保留既有范围约束的查询，执行与资源生命周期仍由原查询负责。
+     *
+     * @throws ModelException 模型助手包含未声明的输入键。
+     */
     public function query(): Query|ModelQuery
     {
+        $this->validateInput();
         return $this->query;
     }
 
@@ -137,9 +148,11 @@ final class QueryHelper
      * 从显式输入page/page_size读取正整数并执行受限分页，不隐式修改排序。
      *
      * @throws InvalidArgumentException 页码、条数不是规范正整数或超过开发者限额。
+     * @throws ModelException 模型助手包含未声明的输入键。
      */
     public function paginatePage(int $defaultPerPage = 20, int $maxPerPage = 100, int $maxPage = 10000): Page
     {
+        $this->validateInput();
         if ($defaultPerPage < 1 || $maxPerPage < $defaultPerPage || $maxPerPage > 1000 || $maxPage < 1 || $maxPage > 1000000) {
             throw new InvalidArgumentException('分页默认值和限额无效');
         }
@@ -158,6 +171,7 @@ final class QueryHelper
         $mapping = $this->fields($fields);
         $copy = clone $this;
         foreach ($mapping as $inputName => $column) {
+            $copy->declared[$inputName] = true;
             if (!array_key_exists($inputName, $this->input) || $this->input[$inputName] === '') {
                 continue;
             }
@@ -186,6 +200,19 @@ final class QueryHelper
             }
         }
         return $copy;
+    }
+
+    /** 链式声明完成后再验证，避免后续方法尚未声明的输入被提前拒绝。 */
+    private function validateInput(): void
+    {
+        if (!$this->query instanceof ModelQuery) {
+            return;
+        }
+        foreach ($this->input as $name => $value) {
+            if (!array_key_exists($name, $this->declared)) {
+                throw new ModelException('unknown_search_field', '模型筛选包含未声明的输入键');
+            }
+        }
     }
 
     /** @return array<string, string> 已校验输入名到列名的映射。 */

@@ -80,7 +80,7 @@ if ($partial !== null) {
 | 操作 | 语义 |
 | --- | --- |
 | `Model::create/find` | 无连接创建或按主键查找；创建返回已持久化模型，查找缺失返回 `null` |
-| `Model::query/search` | 创建模型查询或显式白名单筛选助手，不读取请求参数 |
+| `Model::query/search` | 创建模型查询或显式白名单筛选助手，不读取请求参数；助手取回查询或分页前拒绝未声明的输入键 |
 | `loaded/get/set/fill` | 区分未加载、null 与值；fill 按声明的赋值白名单整批校验 |
 | `dirty/save` | 只写真实变化；返回 created、updated、unchanged 或行为取消时的 cancelled |
 | `project/toArray` | 按输出可见性投影，隐藏字段不可对外读取 |
@@ -334,6 +334,7 @@ Store 默认领取租约为 30000 毫秒，重放保留窗口为 604800 秒。�
 | --- | --- |
 | `field_not_loaded` | 补选字段或显式投影，不用默认值掩盖未加载 |
 | `unknown_field / hidden_field` | 核对映射、赋值白名单和响应字段 |
+| `unknown_search_field` | 核对传给模型助手的输入键与筛选、排序声明；分页使用 `page/page_size` |
 | `optimistic_conflict` | 重新读取并决定业务冲突处理，不能盲重试旧模型 |
 | SQL 出错后继续使用对象 | 会话可能已失效，结束当前 Scope 并建立新执行 |
 | 更新影响行数差异 | 按实际驱动语义解释，不推断三库完全相同 |

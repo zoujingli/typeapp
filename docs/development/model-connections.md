@@ -43,7 +43,9 @@ $members = WorkspaceMember::search(['enabled' => true, 'keyword' => '甲'])
     ->get();
 ```
 
-三种入口具有不同职责：`Model::query()` 返回模型查询，`Model::search()` 创建不可变筛选助手，`ModelQuery::search()` 执行显式搜索器组合。`_query()` 的输入、返回类型和字段白名单语义不变；`QueryHelper::query()` 仍声明 `Query|ModelQuery`，模型静态入口创建的助手实际保留 `ModelQuery`。PHP 和 AOT 都必须验证上述连续调用。
+三种入口具有不同职责：`Model::query()` 返回模型查询，`Model::search()` 创建不可变筛选助手，`ModelQuery::search()` 执行显式搜索器组合。`_query()` 的输入和返回类型不变；`QueryHelper::query()` 仍声明 `Query|ModelQuery`，模型静态入口创建的助手实际保留 `ModelQuery`。PHP 和 AOT 都必须验证上述连续调用。
+
+模型助手只接受链式筛选方法声明的输入键，`order()` 声明排序字段与方向的输入键，`page/page_size` 为固定分页键。调用 `query()` 或 `paginatePage()` 时，其他输入键一律报 `unknown_search_field`，包括值为空字符串、null、false 或 0 的未知键，避免拼写错误静默扩大结果集。键的声明随助手克隆，不会修改已有助手。分页键只由 `paginatePage()` 消费；取回查询后使用 `ModelQuery::paginate()` 则以显式实参为准。直接包装底层表 Query 时，助手仍只选取已声明的筛选输入。
 
 助手不读取全局 Request，不将输入键自动解释为筛选字段，也不决定业务权限。模型租户隔离由底层 ModelQuery 根据上下文统一执行，`search()` 和直接 `query()` 遵守相同边界。缺失输入和空字符串跳过、`0/false` 有效、`null` 表达空值的既有筛选规则保持不变。助手的 `paginatePage()` 会执行查询，模型入口的分页同样自动遵守租户范围；其他业务筛选仍由调用者显式声明。直接包装底层表 Query 的助手不具有模型租户隔离能力。
 

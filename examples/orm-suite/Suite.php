@@ -49,11 +49,16 @@ final class Suite
                 $lazy = User::query();
                 self::check($manager->statistics()['active'] === [], '构造查询提前借用了连接');
                 $connection = Db::connection('default', true);
-                $user = new User(['name' => '用户甲', 'active' => true, 'external_id' => '123456789012345678901234567890',
+                $user = User::create(['name' => '用户甲', 'active' => true, 'external_id' => '123456789012345678901234567890',
                     'credit' => '12345678901234567890.12', 'profile' => ['tier' => 'gold', 'enabled' => true, 'number' => 1],
                     'joined_at' => new DateTimeImmutable('2026-09-09T08:30:01.123456+08:00'), 'secret' => '仅供内部']);
-                self::check($user->save() === 'created' && $user->getId() > 0, '模型创建或主键返回错误');
-                $freshUser = User::query()->find($user->getId());
+                self::check($user->isPersisted() && $user->getId() > 0, '静态模型创建或主键返回错误');
+                $freshUser = User::find($user->getId());
+                self::check(User::find(2147483647) === null
+                    && self::reject(static fn () => User::create(['unknown' => true]), 'unknown_field')
+                    && self::reject(static fn () => User::create(['name' => 1]), 'invalid_field_type')
+                    && self::reject(static fn () => User::create([]), 'required_field')
+                    && self::reject(static fn () => Article::create(['version' => 99]), 'field_not_fillable'), '静态 CRUD 没有保持未命中或严格赋值边界');
                 $profile = $freshUser->getProfile();
                 self::check($freshUser->getExternalId() === '123456789012345678901234567890' && $freshUser->getCredit() === '12345678901234567890.12'
                     && $freshUser->getActive() === true && count($profile) === 3 && $profile['tier'] === 'gold' && $profile['enabled'] === true && $profile['number'] === 1
@@ -123,6 +128,21 @@ final class Suite
                     && Db::connection() === $connection, '未配置副本时没有使用主库');
                 $helper = User::search(['active' => true, 'name' => '用户甲'])->equal('active')->like('name');
                 self::check($helper instanceof \Type\Orm\Helper\QueryHelper && $helper->query()->firstOrFail()->getId() === $user->getId(), '静态 search 与模型水合不一致');
+                $unfiltered = User::search(['enabled' => true, 'keyword' => '用户甲', 'sort' => 'name', 'page' => 1, 'page_size' => 1]);
+                $filtered = $unfiltered->equal(['enabled' => 'active'])->like(['keyword' => 'name'])->order(['name']);
+                self::check($filtered->query()->firstOrFail()->getId() === $user->getId()
+                    && User::search(['keyword' => '用户甲'], 'member')->like(['keyword' => 'name'])->query()->firstOrFail()->getId() === $user->getId()
+                    && $filtered->paginatePage()->items()[0]->getId() === $user->getId()
+                    && self::reject(static fn () => $unfiltered->query(), 'unknown_search_field'), '筛选映射、别名、排序分页或不可变声明错误');
+                foreach ([['actvie' => true], ['unexpected' => ''], ['unexpected' => null], ['unexpected' => false], ['unexpected' => 0]] as $unknownInput) {
+                    $unknown = User::search($unknownInput)->equal('active');
+                    self::check(self::reject(static fn () => $unknown->query(), 'unknown_search_field')
+                        && self::reject(static fn () => $unknown->paginatePage(), 'unknown_search_field'), '模型筛选静默忽略了未知键');
+                }
+                self::check(User::search(['active' => false])->equal('active')->query()->count() === 0
+                    && User::search(['id' => 0])->equal('id')->query()->count() === 0
+                    && User::search(['active' => ''])->equal('active')->query()->count() === 1
+                    && Article::search(['deleted_at' => null])->equal('deleted_at')->query()->count() === 3, '已声明筛选丢失空串、零值、布尔或空值语义');
                 $race = new Article(['user_id' => $user->getId(), 'title' => '并发更新', 'status' => 'published', 'views' => 0]);
                 $race->save();
                 return ['driver' => $driver->name(), 'version' => $connection->serverVersion(), 'scope_checks' => $scopes, 'sessions' => $sessions, 'race_id' => $race->getId(),
