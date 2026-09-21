@@ -45,5 +45,19 @@ if [[ ! -f "$task_work/pcntl.so" ]]; then
   cp "$task_configure/modules/pcntl.so" "$task_work/pcntl.so"
 fi
 php "$task_root/tools/configure-embed-runtime.php" "$task_work" shared >/dev/null
+
+# 原生运行配置必须使用本轮核验的 Swoole 与 curl 模块。控制器配置可能仍带有
+# setup-php 的旧模块声明；清理后按依赖顺序追加，避免 embed 解析到错误的 ABI。
+if [[ -n "${TYPE_CURL_MODULE:-}" || -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
+  task_clean="$task_work/php.ini.clean"
+  awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*(swoole|curl)/' "$task_work/php.ini" > "$task_clean"
+  mv "$task_clean" "$task_work/php.ini"
+  if [[ -n "${TYPE_CURL_MODULE:-}" ]]; then
+    printf 'extension=%s\n' "$TYPE_CURL_MODULE" >> "$task_work/php.ini"
+  fi
+  if [[ -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
+    printf 'extension=%s\n' "$TYPE_SWOOLE_MODULE" >> "$task_work/php.ini"
+  fi
+fi
 test "$(probe_modules)" = '1 1 1 1'
 printf '%s\n' "$task_work/php.ini"

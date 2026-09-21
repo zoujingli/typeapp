@@ -136,8 +136,14 @@ jobs:
           [[ -f "$task_curl_module" ]] || { echo "缺少 PHP curl 扩展：$task_curl_module" >&2; exit 1; }
           printf 'extension=%s\n' "$task_curl_module" >> "$task_control/php.ini"
           printf 'extension=%s\n' "$task_swoole_module" >> "$task_control/php.ini"
-          printf 'PHP_HOME=%s\nPHPX_HOME=%s\nTYPE_NATIVE_PHP_INI=%s\nPHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' \
-            "$PHP_HOME" "$PHPX_HOME" "$task_runtime_ini" "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
+          task_runtime_clean="$GITHUB_WORKSPACE/.cache/embed-runtime/8.5.10/php.ini.clean"
+          awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*(swoole|curl)/' "$task_runtime_ini" > "$task_runtime_clean"
+          mv "$task_runtime_clean" "$task_runtime_ini"
+          printf 'extension=%s\nextension=%s\n' "$task_curl_module" "$task_swoole_module" >> "$task_runtime_ini"
+          task_runtime_probe="$GITHUB_WORKSPACE/.cache/embed-runtime/8.5.10/probe"
+          [[ "$(PHPRC="$task_runtime_ini" PHP_INI_SCAN_DIR="$task_control/php.d" "$task_runtime_probe")" == '1 1 1 1' ]]
+          printf 'TYPE_CURL_MODULE=%s\nPHP_HOME=%s\nPHPX_HOME=%s\nTYPE_NATIVE_PHP_INI=%s\nPHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' \
+            "$task_curl_module" "$PHP_HOME" "$PHPX_HOME" "$task_runtime_ini" "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
       - name: 运行真实原生验收
         env:
           TYPE_MACOS_SUITE: ${{ matrix.suite }}

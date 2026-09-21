@@ -90,7 +90,7 @@ jobs:
           [[ -f "$task_curl_module" ]] || { echo "缺少 PHP curl 扩展：$task_curl_module" >&2; exit 1; }
           printf 'extension=%s\n' "$task_curl_module" >> "$task_control/php.ini"
           printf 'extension=%s\n' "$task_swoole_module" >> "$task_control/php.ini"
-          printf 'PHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
+          printf 'TYPE_CURL_MODULE=%s\nPHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' "$task_curl_module" "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
       - name: 编译并探测原生运行库
         run: |
           bash tools/prepare-toolchain.sh
