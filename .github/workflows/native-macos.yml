@@ -142,8 +142,10 @@ jobs:
           printf 'TYPE_SWOOLE_MODULE=%s\n' "$task_swoole_module" >> "$GITHUB_ENV"
           # shellcheck disable=SC2016
           php -r '$ini=php_ini_loaded_file();$text=$ini===false?"":file_get_contents($ini);foreach(explode(",",(string)php_ini_scanned_files()) as $file){if(trim($file)!==""){$text.="\n".file_get_contents(trim($file));}}if(file_put_contents($argv[1],$text)!==strlen($text)||!chmod($argv[1],0600)){exit(1);}' "$task_control/php.ini"
-          sed -i -E '/^[[:space:]]*extension[[:space:]]*=.*(swoole|curl)/Id' "$task_control/php.ini"
+          sed -i -E '/^[[:space:]]*extension[[:space:]]*=.*(swoole|curl|tokenizer)/Id' "$task_control/php.ini"
           task_curl_module="$(php-config --extension-dir)/curl.so"
+          task_tokenizer_module="$(php-config --extension-dir)/tokenizer.so"
+          [[ -f "$task_tokenizer_module" ]] || { echo "缺少 PHP tokenizer 扩展：$task_tokenizer_module" >&2; exit 1; }
           if [[ -f "$task_curl_module" ]]; then
             printf 'extension=%s\n' "$task_curl_module" >> "$task_control/php.ini"
           else
@@ -157,6 +159,7 @@ jobs:
             task_curl_module=""
             echo 'curl=provided-by-php' | tee "$RUNNER_TEMP/curl-module.log"
           fi
+          printf 'extension=%s\n' "$task_tokenizer_module" >> "$task_control/php.ini"
           printf 'extension=%s\n' "$task_swoole_module" >> "$task_control/php.ini"
           task_runtime_clean="$GITHUB_WORKSPACE/.cache/embed-runtime/8.5.10/php.ini.clean"
           awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*(swoole|curl)/' "$task_runtime_ini" > "$task_runtime_clean"
