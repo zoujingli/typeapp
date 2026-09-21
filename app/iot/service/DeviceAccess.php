@@ -21,6 +21,8 @@ use Type\Mqtt\ResourceAccessPolicy;
 use Type\Mqtt\ResourceConnectionObserver;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Connection;
+use Type\Orm\Db;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
 
@@ -302,63 +304,77 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
      */
     public static function work(DatabaseManager $database, string $serviceCredential = '', string $serviceVerifier = ''): void
     {
+        CoroutineRuntime::run(static function () use ($database, $serviceCredential, $serviceVerifier): void {
+            self::workCurrent($database, $serviceCredential, $serviceVerifier);
+        });
+    }
+
+    private static function workCurrent(DatabaseManager $database, string $serviceCredential, string $serviceVerifier): void
+    {
         $line = fgets(STDIN, self::MAXIMUM_REQUEST_BYTES + 1);
         $request = is_string($line) && str_ends_with($line, "\n") ? json_decode($line, true, 8, JSON_THROW_ON_ERROR) : null;
         if (!is_array($request) || !in_array($request['action'] ?? '', ['authenticate', 'authenticate_certificate', 'authorize', 'connected', 'disconnected', 'subscription', 'heartbeat', 'stopped', 'invalidation_next', 'invalidation_completed', 'disconnect_next', 'disconnect_completed', 'terminate_next', 'terminate_completed', 'clear_next', 'clear_completed', 'quota_next'], true)
             || preg_match('/^[a-f0-9]{32}$/D', (string) ($request['operation_id'] ?? '')) !== 1) {
             throw new RuntimeException('device_access_request_invalid');
         }
+        Db::configure($database);
         $scope = new ExecutionScope(new Deadline(2.0));
         try {
-            $connection = $database->connect($scope);
-            $connection->rawQuery("SELECT set_config('application_name', ?, false), set_config('statement_timeout', '1000', false), "
-                . "set_config('lock_timeout', '500', false), set_config('idle_in_transaction_session_timeout', '1000', false), "
-                . "set_config('synchronous_commit', 'remote_apply', false)", ['type_mqtt_' . $request['operation_id']]);
-            if ($request['action'] === 'subscription') {
-                ResourceObservations::subscription(
-                    $connection,
-                    $request['node_id'],
-                    $request['run_id'],
-                    $request['owner_id'],
-                    $request['filter'],
-                    $request['subscription'],
-                    (int) $request['observed_at']
-                );
-                $result = ['allowed' => true];
-            } elseif ($request['action'] === 'disconnect_next') {
-                $result = ['allowed' => true, 'disconnect' => ConnectionOperations::next($connection, (string) $request['node_id'])];
-            } elseif ($request['action'] === 'disconnect_completed') {
-                $result = ['allowed' => true, 'completed' => ConnectionOperations::complete($connection, (string) $request['disconnect_id'], (string) $request['outcome'])];
-            } elseif ($request['action'] === 'terminate_next') {
-                $result = ['allowed' => true, 'termination' => ConnectionOperations::next($connection, (string) $request['node_id'], 'session_terminate')];
-            } elseif ($request['action'] === 'terminate_completed') {
-                $result = ['allowed' => true, 'completed' => ConnectionOperations::complete($connection, (string) $request['terminate_id'], (string) $request['outcome'])];
-            } elseif ($request['action'] === 'quota_next') {
-                $limits = QuotaService::defaults();
-                if (is_array($request['limits'] ?? null)) {
-                    foreach (array_keys($limits) as $key) {
-                        if (is_int($request['limits'][$key] ?? null)) {
-                            $limits[$key] = $request['limits'][$key];
+            $result = $scope->run(static function (ExecutionScope $current) use ($request, $serviceCredential, $serviceVerifier): array {
+                $connection = Db::connection('default', true);
+                $connection->rawQuery("SELECT set_config('application_name', ?, false), set_config('statement_timeout', '1000', false), "
+                    . "set_config('lock_timeout', '500', false), set_config('idle_in_transaction_session_timeout', '1000', false), "
+                    . "set_config('synchronous_commit', 'remote_apply', false)", ['type_mqtt_' . $request['operation_id']]);
+                if ($request['action'] === 'subscription') {
+                    ResourceObservations::subscription(
+                        $connection,
+                        $request['node_id'],
+                        $request['run_id'],
+                        $request['owner_id'],
+                        $request['filter'],
+                        $request['subscription'],
+                        (int) $request['observed_at']
+                    );
+                    $result = ['allowed' => true];
+                } elseif ($request['action'] === 'disconnect_next') {
+                    $result = ['allowed' => true, 'disconnect' => ConnectionOperations::next($connection, (string) $request['node_id'])];
+                } elseif ($request['action'] === 'disconnect_completed') {
+                    $result = ['allowed' => true, 'completed' => ConnectionOperations::complete($connection, (string) $request['disconnect_id'], (string) $request['outcome'])];
+                } elseif ($request['action'] === 'terminate_next') {
+                    $result = ['allowed' => true, 'termination' => ConnectionOperations::next($connection, (string) $request['node_id'], 'session_terminate')];
+                } elseif ($request['action'] === 'terminate_completed') {
+                    $result = ['allowed' => true, 'completed' => ConnectionOperations::complete($connection, (string) $request['terminate_id'], (string) $request['outcome'])];
+                } elseif ($request['action'] === 'quota_next') {
+                    $limits = QuotaService::defaults();
+                    if (is_array($request['limits'] ?? null)) {
+                        foreach (array_keys($limits) as $key) {
+                            if (is_int($request['limits'][$key] ?? null)) {
+                                $limits[$key] = $request['limits'][$key];
+                            }
                         }
                     }
+                    QuotaService::ensureBootstrap($connection, $limits);
+                    $result = ['allowed' => true, 'quota' => QuotaService::currentSnapshot($connection)];
+                } elseif ($request['action'] === 'clear_next') {
+                    $result = ['allowed' => true, 'clearance' => ConnectionOperations::next($connection, (string) $request['node_id'], 'retain_clear')];
+                } elseif ($request['action'] === 'clear_completed') {
+                    $result = ['allowed' => true, 'completed' => ConnectionOperations::complete($connection, (string) $request['clear_id'], (string) $request['outcome'])];
+                } else {
+                    $result = str_starts_with((string) ($request['username'] ?? ''), 'service:')
+                        ? self::serviceAccess($connection, $request, $serviceCredential, $serviceVerifier)
+                        : DeviceService::access($connection, $request);
                 }
-                QuotaService::ensureBootstrap($connection, $limits);
-                $result = ['allowed' => true, 'quota' => QuotaService::currentSnapshot($connection)];
-            } elseif ($request['action'] === 'clear_next') {
-                $result = ['allowed' => true, 'clearance' => ConnectionOperations::next($connection, (string) $request['node_id'], 'retain_clear')];
-            } elseif ($request['action'] === 'clear_completed') {
-                $result = ['allowed' => true, 'completed' => ConnectionOperations::complete($connection, (string) $request['clear_id'], (string) $request['outcome'])];
-            } else {
-                $result = str_starts_with((string) ($request['username'] ?? ''), 'service:')
-                    ? self::serviceAccess($connection, $request, $serviceCredential, $serviceVerifier)
-                    : DeviceService::access($connection, $request);
-            }
-            if (in_array($request['action'], ['heartbeat', 'stopped'], true) && is_array($request['metrics'] ?? null)) {
-                OperationsService::observe($connection, 'broker', $request['node_id'], $request['run_id'], $request['metrics'], $request['initial']);
-            }
+                if (in_array($request['action'], ['heartbeat', 'stopped'], true) && is_array($request['metrics'] ?? null)) {
+                    OperationsService::observe($connection, 'broker', $request['node_id'], $request['run_id'], $request['metrics'], $request['initial']);
+                }
+                return $result;
+            });
         } finally {
-            $scope->close();
-            $database->close();
+            try {
+                $scope->close();
+            } finally {
+                $database->close();
+            }
         }
         echo json_encode($result, JSON_THROW_ON_ERROR), "\n";
     }
@@ -370,6 +386,14 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
      * @return array<string, mixed>
      */
     private function request(array $request): array
+    {
+        CoroutineRuntime::enableIo();
+        return CoroutineRuntime::run(function () use ($request): array {
+            return $this->requestCurrent($request);
+        });
+    }
+
+    private function requestCurrent(array $request): array
     {
         if ($this->failed) {
             throw new RuntimeException('device_access_unavailable');
@@ -383,46 +407,42 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
         $environment = getenv();
         $environment['PGAPPNAME'] = 'type_mqtt_' . $operationId;
         $command = [...$this->command, 'iot:mqtt-access'];
-        $process = new \Swoole\Process(static function (\Swoole\Process $worker) use ($command, $environment): void {
-            foreach ($environment as $key => $value) {
-                if (is_string($key) && is_string($value)) {
-                    putenv($key . '=' . $value);
-                }
-            }
-            $worker->exec($command[0], array_slice($command, 1));
-        }, true, SOCK_STREAM);
-        $pid = $process->start();
-        if (!is_int($pid) || $pid < 1) {
+        $pipes = [];
+        $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, null, $environment);
+        if (!is_resource($process)) {
             $this->failed = true;
             throw new RuntimeException('device_access_unavailable');
         }
-        $process->setBlocking(false);
+        foreach ($pipes as $pipe) {
+            stream_set_blocking($pipe, false);
+        }
         $output = '';
         $complete = false;
         $deadline = new Deadline(3.0);
         try {
             do {
                 if ($input !== '') {
-                    $written = $process->write(substr($input, 0, 16384));
+                    $written = fwrite($pipes[0], substr($input, 0, 16384));
                     if ($written === false || $written === 0) {
                         break;
                     }
                     $input = substr($input, $written);
                 }
-                $chunk = $process->read(1025);
+                $chunk = fread($pipes[1], 1025);
                 if (is_string($chunk) && $chunk !== '') {
                     $output .= $chunk;
                 }
                 if (strlen($output) > 1024) {
                     break;
                 }
-                if (!@\Swoole\Process::kill($pid, 0)) {
+                $status = proc_get_status($process);
+                if (!$status['running']) {
                     // 子进程退出后仍排空内核管道，不能丢失尾部响应。
-                    $tail = $process->read(1025);
+                    $tail = fread($pipes[1], 1025);
                     if (is_string($tail) && $tail !== '') {
                         $output .= $tail;
                     }
-                    $complete = strlen($output) <= 1024 && str_ends_with($output, "\n");
+                    $complete = $status['exitcode'] === 0 && strlen($output) <= 1024 && str_ends_with($output, "\n");
                     break;
                 }
                 usleep(1000);
@@ -431,10 +451,13 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
             $complete = false;
         } finally {
             if (!$complete) {
-                @\Swoole\Process::kill($pid, SIGKILL);
+                proc_terminate($process, SIGKILL);
                 $this->failed = true;
             }
-            $process->close();
+            foreach ($pipes as $pipe) {
+                fclose($pipe);
+            }
+            proc_close($process);
         }
         if (!$complete) {
             // 复用持久worker的精确application_name清理，不把本地进程退出当作远端已回收。
@@ -447,7 +470,12 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
             } while ($result === null);
             throw new RuntimeException($result->released ? 'device_access_unavailable' : 'device_access_backend_quarantined');
         }
-        $data = json_decode($output, true, 4, JSON_THROW_ON_ERROR);
+        try {
+            $data = json_decode($output, true, 4, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            $this->failed = true;
+            throw new RuntimeException('device_access_response_invalid');
+        }
         if (!is_array($data) || !is_bool($data['allowed'] ?? null)) {
             $this->failed = true;
             throw new RuntimeException('device_access_response_invalid');

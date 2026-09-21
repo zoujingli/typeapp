@@ -500,7 +500,7 @@ final class Application
 
     /**
      * 应用设备接入角色；HTTP及注册继续支持三库，持久MQTT设备会话只用约定的PostgreSQL同步后端。
-     * @param list<string> $arguments 持久worker通过 Swoole Process 管道接入；节点硬隔离登记接受精确运行身份与已完成的隔离证明。
+     * @param list<string> $arguments 持久worker通过 Swoole PROC hook 管理的进程管道接入；节点硬隔离登记接受精确运行身份与已完成的隔离证明。
      */
     private static function mqtt(Repository $settings, string $basePath, string $role, array $arguments): void
     {
@@ -510,7 +510,7 @@ final class Application
         $driver = DatabaseFactory::create($settings, $basePath);
         if ($role === 'iot:mqtt-store' || $role === 'iot:ingest-store') {
             if ($arguments !== ['--store-worker-pipe']) {
-                throw new InvalidArgumentException('持久worker需要 Swoole Process 管道');
+                throw new InvalidArgumentException('持久worker需要 Swoole PROC hook 管理的进程管道');
             }
             $store = new PostgresStore(
                 $driver,
@@ -970,7 +970,7 @@ final class Application
         }
         if ($command === 'broker:store') {
             if (DatabaseFactory::name($settings) !== 'pgsql' || $arguments !== ['--store-worker-pipe']) {
-                throw new InvalidArgumentException('独立持久worker需要PostgreSQL和 Swoole Process 管道');
+                throw new InvalidArgumentException('独立持久worker需要PostgreSQL和 Swoole PROC hook 管理的进程管道');
             }
             PendingCommit::work(new PostgresStore(DatabaseFactory::create($settings, $basePath), $settings->text('app.broker.standby')), 'pipe');
             return 0;

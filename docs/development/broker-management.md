@@ -127,7 +127,7 @@ build/app/type-app app:audit-clean customer 1000
 
 ### 签名 CRL 与平台吊销
 
-独立与双端共用 `broker_access_crls`、`broker_access_crl_serials` 与 `broker_access_platform_serials`。管理员导入 PEM 签名 CRL，或登记受控 HTTPS 源（默认 300 秒，由 `broker:run` 用 Swoole Process 拉取）。校验签名、颁发者、有效期和 thisUpdate 顺序后才持久接纳；已接纳序列号只增不减，普通回退不能复活。获取状态与执行状态分开展示：刷新失败且旧列表仍有效则继续使用；配置后缺失或过期拒绝该 CA 新接入，健康节点约 5 秒内停止相关旧连接，并给出恢复条件。平台直接吊销序列号不经 CA 签名，立即进入同一撤权流程。客户端不能指定下载地址，不查询 OCSP。尚未有节点上报且无待撤权时，版本记为已生效，避免双端管理库在启动 MQTT 前二次写入被暂停。握手 CA 文件热重载遵守证书轮换的代次与生效规则。
+独立与双端共用 `broker_access_crls`、`broker_access_crl_serials` 与 `broker_access_platform_serials`。管理员导入 PEM 签名 CRL，或登记受控 HTTPS 源（默认 300 秒，由 `broker:run` 用官方协程 HTTP 客户端拉取）。校验签名、颁发者、有效期和 thisUpdate 顺序后才持久接纳；已接纳序列号只增不减，普通回退不能复活。获取状态与执行状态分开展示：刷新失败且旧列表仍有效则继续使用；配置后缺失或过期拒绝该 CA 新接入，健康节点约 5 秒内停止相关旧连接，并给出恢复条件。平台直接吊销序列号不经 CA 签名，立即进入同一撤权流程。客户端不能指定下载地址，不查询 OCSP。尚未有节点上报且无待撤权时，版本记为已生效，避免双端管理库在启动 MQTT 前二次写入被暂停。握手 CA 文件热重载遵守证书轮换的代次与生效规则。
 
 | 查询范围 | 列表入口 | 写入 |
 | --- | --- | --- |

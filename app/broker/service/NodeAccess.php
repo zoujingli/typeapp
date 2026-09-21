@@ -416,7 +416,7 @@ final class NodeAccess implements IdentityAccessPolicy, CertificateAccessPolicy,
         }
     }
 
-    /** 到期则 fork Swoole Process 拉取 HTTPS CRL；接纳后才排队撤权。 */
+    /** 到期则启动有界 Swoole 协程 HTTP 请求拉取 CRL；接纳后才排队撤权。 */
     private function refreshCrls(): void
     {
         $scope = new ExecutionScope(new Deadline(2.0));

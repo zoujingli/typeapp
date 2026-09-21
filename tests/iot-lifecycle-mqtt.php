@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Type\Testing\Process;
 
 /** 真实管理HTTP、TLS标准客户端及同步主备共同证明授权失效；只控制本函数拥有的进程和数据库。 */
-function iotLifecycleMqttChecks(Closure $request, array $evidence, array $environment, string $base, PDO $database, Process $broker, #[SensitiveParameter] string $servicePassword, Closure $startBroker): array
+function iotLifecycleMqttChecks(Closure $request, array $evidence, array $command, array $environment, string $base, PDO $database, Process $broker, #[SensitiveParameter] string $servicePassword, Closure $startBroker): array
 {
     $root = dirname(__DIR__);
     $devices = '/customer/tenants/' . $evidence['tenant'] . '/devices';
@@ -206,7 +206,7 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $enviro
             $repeatInput = $base . '/invalidation-completed.json';
             file_put_contents($repeatInput, json_encode(['action' => 'invalidation_completed', 'operation_id' => bin2hex(random_bytes(16)),
                 'invalidation_id' => $originCompleted['authorization']['id'], 'node_id' => $originCompleted['authorization']['node_id']], JSON_THROW_ON_ERROR) . "\n");
-            $repeat = new Process([...json_decode($environment['IOT_MQTT_COMMAND'], true, 8, JSON_THROW_ON_ERROR), 'iot:mqtt-access'], $root, $environment, 2048, $repeatInput);
+            $repeat = new Process([...$command, 'iot:mqtt-access'], $root, $environment, 2048, $repeatInput);
             try {
                 $repeated = $repeat->wait(10);
                 expect($repeated->successful() && json_decode($repeated->stdout, true, 8, JSON_THROW_ON_ERROR)['allowed'] === true, '重复完成回调未正常收尾');

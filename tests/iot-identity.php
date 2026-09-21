@@ -1489,6 +1489,7 @@ if ($target === '--php') {
 } else {
     $command = nativeCommand($target);
 }
+$workerCommand = $command;
 $base = $root . '/build/iot-identity-' . bin2hex(random_bytes(6));
 expect(mkdir($base, 0700, true), '无法创建身份测试数据根');
 $noSource = in_array('--no-source', $argv, true);
@@ -1511,7 +1512,12 @@ if ($noSource) {
     }
     $probe = 'foreach(array_slice($argv,1) as $path){if(@file_get_contents($path)!==false)throw new RuntimeException("source readable");} echo "source-denied\n";';
     expect(successful([...$policy, PHP_BINARY, '-n', '-r', $probe, ...$probeFiles], $runtime) === "source-denied\n", '无源码隔离策略未生效');
+    // 内核策略由子进程继承；工作角色直接执行运行包，不为每次持久操作重复安装相同策略。
+    $childProbe = '$child=proc_open([PHP_BINARY,"-n","-r",$argv[1],...array_slice($argv,2)],[0=>STDIN,1=>STDOUT,2=>STDERR],$pipes);'
+        . 'if(!is_resource($child)){exit(1);}exit(proc_close($child));';
+    expect(successful([...$policy, PHP_BINARY, '-n', '-r', $childProbe, $probe, ...$probeFiles], $runtime) === "source-denied\n", '子进程未继承无源码隔离策略');
     $command = [...$policy, $runtime . '/run'];
+    $workerCommand = [$runtime . '/run'];
 }
 $environment = getenv();
 foreach (array_keys($environment) as $key) {
@@ -1533,8 +1539,9 @@ if ($driver !== 'sqlite') {
 $environment['APP_API_TOKEN'] = bin2hex(random_bytes(32));
 $environment['APP_CACHE_ENABLED'] = 'false';
 $environment['APP_DEBUG'] = 'true';
-if (in_array('--operations', $argv, true) || in_array('--load-phases', $argv, true) || in_array('--broker-resources', $argv, true)) {
-    $environment['IOT_MQTT_COMMAND'] = json_encode($command, JSON_THROW_ON_ERROR);
+if (in_array('--operations', $argv, true) || in_array('--load-phases', $argv, true) || in_array('--broker-resources', $argv, true)
+    || in_array('--device-mqtt', $argv, true)) {
+    $environment['IOT_MQTT_COMMAND'] = json_encode($workerCommand, JSON_THROW_ON_ERROR);
 }
 if (in_array('--operations', $argv, true)) {
     require_once __DIR__ . '/iot-operations.php';
@@ -1893,7 +1900,7 @@ if (in_array('--broker', $argv, true)) {
             $driver === 'pgsql' && ($GLOBALS['brokerObservabilitySync'] ?? null) instanceof PostgresSync,
             'Broker故障验证必须由专属真实同步主备装置启动'
         );
-        $environment['BROKER_COMMAND'] = json_encode($command, JSON_THROW_ON_ERROR);
+        $environment['BROKER_COMMAND'] = json_encode($workerCommand, JSON_THROW_ON_ERROR);
         $environment['BROKER_STANDBY_NAMES'] = 'broker_observe_sync';
     }
     $server = null;
@@ -2363,7 +2370,7 @@ if (in_array('--iot-audit-fence', $argv, true)) {
         $driver === 'pgsql' && ($GLOBALS['brokerObservabilitySync'] ?? null) instanceof PostgresSync,
         'IoT隔离审计命令必须由专属真实同步主备装置启动'
     );
-    $environment['IOT_MQTT_COMMAND'] = json_encode($command, JSON_THROW_ON_ERROR);
+    $environment['IOT_MQTT_COMMAND'] = json_encode($workerCommand, JSON_THROW_ON_ERROR);
     $environment['IOT_MQTT_STANDBY'] = 'broker_observe_sync';
     $fenceReport = ['status' => 'running', 'native' => $target !== '--php', 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
         'driver' => $driver, 'binary_sha256' => $target === '--php' ? null : hash_file('sha256', $target),

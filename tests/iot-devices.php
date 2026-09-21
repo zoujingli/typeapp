@@ -462,7 +462,7 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
     $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $message);
     $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
-    $environment['IOT_MQTT_COMMAND'] = json_encode($command, JSON_THROW_ON_ERROR);
+    $environment['IOT_MQTT_COMMAND'] ??= json_encode($command, JSON_THROW_ON_ERROR);
     $environment['IOT_MQTT_CERTIFICATE'] = 'certificate.pem';
     $environment['IOT_MQTT_PRIVATE_KEY'] = 'private.pem';
     $environment['IOT_MQTT_PORT'] = (string) $port;
@@ -561,7 +561,13 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
             );
             try {
                 $result = $client->wait($mode === 'broker-resources' && getenv('TYPE_BROKER_RESOURCE_DIST') ? 480 : 80);
-                expect($result->successful(), '设备标准客户端验证失败：' . $result->stderr . $result->stdout . $broker->stderr() . $broker->stdout());
+                if (!$result->successful()) {
+                    $broker->stop(15);
+                }
+                expect($result->successful(), '设备标准客户端验证失败（mode=' . $mode . ', exit=' . $result->exitCode
+                    . ', timeout=' . (int) $result->timedOut . ', outputExceeded=' . (int) $result->outputExceeded
+                    . ', signal=' . ($result->signal ?? 'none') . '）：'
+                    . $result->stderr . $result->stdout . $broker->stderr() . $broker->stdout());
                 $cases[$mode][] = json_decode(trim($result->stdout), true, 8, JSON_THROW_ON_ERROR);
             } finally {
                 $client->stop();
@@ -630,7 +636,7 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
         }
         if ($lifecycle) {
             require_once __DIR__ . '/iot-lifecycle-mqtt.php';
-            return iotLifecycleMqttChecks($request, $evidence, $clientEnvironment, $base, $database, $process, $servicePassword, $start);
+            return iotLifecycleMqttChecks($request, $evidence, $command, $clientEnvironment, $base, $database, $process, $servicePassword, $start);
         }
         if ($ingestion) {
             require_once __DIR__ . '/iot-ingestion-mqtt.php';

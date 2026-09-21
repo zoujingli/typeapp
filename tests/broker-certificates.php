@@ -387,10 +387,20 @@ $target = $argv[1] ?? '--php';
 $driver = $argv[2] ?? 'sqlite';
 expect(in_array($driver, ['sqlite', 'mysql', 'pgsql'], true), '证书授权验收需要明确的受支持驱动');
 if ($target === '--php') {
-    $swoole = getenv('TYPE_SWOOLE_MODULE');
-    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
-    expect(is_file($swoole), 'PHP 证书授权验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
-    $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
+    // 子进程继承 INI，不继承父进程的 -d；探测实际扩展，避免重复加载污染命令响应。
+    [$probeStatus, $loadedSwoole, $probeError] = execute([PHP_BINARY, '-r', 'echo extension_loaded("swoole") ? phpversion("swoole") : "";']);
+    expect($probeStatus === 0 && $probeError === '', 'PHP 证书授权验收的基础运行配置无效：' . $probeError);
+    $command = [PHP_BINARY];
+    if ($loadedSwoole === '') {
+        $swoole = getenv('TYPE_SWOOLE_MODULE');
+        $moduleName = PHP_OS_FAMILY === 'Windows' ? 'php_swoole.dll' : 'swoole.so';
+        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/\\') . '/' . $moduleName;
+        expect(is_file($swoole), 'PHP 证书授权验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中匹配平台的 Swoole 模块');
+        array_push($command, '-d', 'extension=' . $swoole);
+    } else {
+        expect(version_compare($loadedSwoole, '6.2', '>=') && version_compare($loadedSwoole, '7', '<'), 'PHP 证书授权验收需要 Swoole >=6.2 <7');
+    }
+    array_push($command, '-d', 'swoole.enable_library=On', $root . '/bin/typeapp');
 } else {
     $command = nativeCommand($target);
 }
