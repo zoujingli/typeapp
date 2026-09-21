@@ -86,6 +86,8 @@ jobs:
           fail-fast: true
           MACOSX_DEPLOYMENT_TARGET: '15.0'
           SWOOLE_DARWIN_LIBS: c-ares, libpq, sqlite
+          CFLAGS: -I/opt/homebrew/opt/pcre2/include
+          CXXFLAGS: -I/opt/homebrew/opt/pcre2/include
       - name: 安装锁定组件与开发依赖
         run: |
           composer validate --strict
