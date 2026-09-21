@@ -2,21 +2,28 @@
 
 declare(strict_types=1);
 
-// PHP 8.5 不再导出 T_THROW 常量；PHP-Parser 仍通过常量名建立令牌映射，
-// 因此在加载解析器前恢复该稳定映射。构建器可能关闭 tokenizer，不能依赖
-// token_get_all() 作为唯一来源。
-if (!defined('T_THROW')) {
-    $tokenId = null;
-    if (function_exists('token_get_all')) {
-        foreach (token_get_all('<?php throw 0;') as $token) {
-            if (is_array($token) && $token[1] === 'throw') {
-                $tokenId = $token[0];
-                break;
-            }
+// PHP 8.5 可能不再导出完整的 T_* 常量；PHP-Parser 仍通过常量名建立
+// 令牌映射。优先从当前运行时的 token_name() 反查实际编号，再以解析器
+// 生成的稳定编号兜底。这样 CLI、AOT 子进程和关闭额外 INI 扫描的运行时
+// 使用同一套映射，不依赖某一个扩展配置或 token_get_all() 示例。
+$runtimeTokenIds = [];
+if (function_exists('token_name')) {
+    for ($tokenId = 256; $tokenId < 1024; $tokenId++) {
+        $tokenName = token_name($tokenId);
+        if (is_string($tokenName) && str_starts_with($tokenName, 'T_')) {
+            $runtimeTokenIds[$tokenName] = $tokenId;
         }
     }
-    if (!is_int($tokenId) && class_exists(\PhpParser\Parser\Php8::class)) {
-        $tokenId = \PhpParser\Parser\Php8::T_THROW;
+}
+
+if (class_exists(\PhpParser\Parser\Php8::class)) {
+    foreach ((new ReflectionClass(\PhpParser\Parser\Php8::class))->getConstants() as $tokenName => $tokenId) {
+        if (!str_starts_with($tokenName, 'T_') || defined($tokenName)) {
+            continue;
+        }
+        $runtimeTokenId = $runtimeTokenIds[$tokenName] ?? $tokenId;
+        if (is_int($runtimeTokenId)) {
+            define($tokenName, $runtimeTokenId);
+        }
     }
-    define('T_THROW', is_int($tokenId) ? $tokenId : 258);
 }
