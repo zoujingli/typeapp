@@ -14,6 +14,9 @@
     "swoole/typephp": "~0.9.0"
   },
   "autoload": {
+    "files": [
+      "src/PhpTokenCompatibility.php"
+    ],
     "psr-4": {
       "Type\\Build\\": "src/"
     }

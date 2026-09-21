@@ -85,7 +85,10 @@ jobs:
           # 独立消费者会关闭额外INI扫描；先固定完整CLI配置，不能丢失实际PDO、Redis及Swoole模块。
           # shellcheck disable=SC2016
           php -r '$ini=php_ini_loaded_file();$text=$ini===false?"":file_get_contents($ini);foreach(explode(",",(string)php_ini_scanned_files()) as $file){if(trim($file)!==""){$text.="\n".file_get_contents(trim($file));}}if(file_put_contents($argv[1],$text)!==strlen($text)||!chmod($argv[1],0600)){exit(1);}' "$task_control/php.ini"
-          sed -i -E '/^[[:space:]]*extension[[:space:]]*=.*swoole([.]so)?[[:space:]]*$/Id' "$task_control/php.ini"
+          sed -i -E '/^[[:space:]]*extension[[:space:]]*=.*(swoole|curl)([.]so)?[[:space:]]*$/Id' "$task_control/php.ini"
+          task_curl_module="$(php-config --extension-dir)/curl.so"
+          [[ -f "$task_curl_module" ]] || { echo "缺少 PHP curl 扩展：$task_curl_module" >&2; exit 1; }
+          printf 'extension=%s\n' "$task_curl_module" >> "$task_control/php.ini"
           printf 'extension=%s\n' "$task_swoole_module" >> "$task_control/php.ini"
           printf 'PHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
       - name: 编译并探测原生运行库
