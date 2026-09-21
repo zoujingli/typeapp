@@ -47,6 +47,12 @@ jobs:
           task_pcre2="$(brew --prefix pcre2)"
           brew link --force --overwrite pcre2
           test -f "$task_pcre2/include/pcre2.h"
+          # setup-php 通过 sudo pecl 构建 Swoole，不保留自定义 CFLAGS；
+          # macOS clang 默认搜索 /usr/local/include，建立标准头文件接缝。
+          sudo mkdir -p /usr/local/include
+          sudo ln -sf "$task_pcre2/include/pcre2.h" /usr/local/include/pcre2.h
+          sudo ln -sf "$task_pcre2/include/pcre2posix.h" /usr/local/include/pcre2posix.h
+          test -f /usr/local/include/pcre2.h
           printf 'PCRE2_PREFIX=%s\n' "$task_pcre2" >> "$GITHUB_ENV"
       - name: 暴露 PostgreSQL 构建头文件与 pkg-config
         run: |
