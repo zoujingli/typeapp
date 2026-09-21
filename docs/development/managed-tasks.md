@@ -26,9 +26,13 @@ CoroutineRuntime::run(static function (): void {
 
 `context()` 返回请求或消息的关联信息，不能直接授予权限。应用在完成验证后通过 `run($operation, ['tenant_id' => $verifiedTenantId])` 显式绑定字符串值，组件以 `binding('tenant_id')` 读取；运行时不验证业务身份，也不查询业务表。输入数组中的引用被切断，绑定在重入结束后恢复；受管子任务取得创建当时的绑定快照及独立当前作用域，普通原生子协程不隐式继承。
 
-无绑定时 `current()` 抛 `scope_missing`；非协程调用抛 `coroutine_required`；关闭、取消、截止和跨执行者使用遵守原有拒绝规则。HTTP 请求、WebSocket 公开回调、生成 CLI、队列及定时任务已接入当前作用域。自定义 Socket 消息和 MQTT 持久处理角色仍须在其实际装配入口绑定，不能把通用入口的验证视为全部协议角色已经迁移。
+无绑定时 `current()` 抛 `scope_missing`；非协程调用抛 `coroutine_required`；关闭、取消、截止和跨执行者使用遵守原有拒绝规则。HTTP 请求、WebSocket 公开回调、MQTT Broker 事件、生成 CLI、队列及定时任务已接入当前作用域。自定义 Socket 消息仍须在其实际装配入口绑定。持久 worker 的公开操作回调及设备授权 worker 在自己的协程内创建作用域，不从管道输入自动授予租户；具体业务装配和平台验证分别记录。
 
-MQTT Broker 当前以 `enable_coroutine=false` 保持协议状态机串行运行，其认证、授权和连接观察回调尚未建立当前协程作用域。这些回调不能直接调用无连接的 Model 或 Db，也不能在已有 Server 事件循环内嵌套启动 Scheduler。后续接入须同时保证消息顺序、资源所有权和真实收尾；仅开启协程选项或给回调套一层 `run()` 不构成完成。MQTT 客户端的同步 `receive()` 返回消息，由调用它的应用入口建立自己的作用域。
+MQTT Broker 保持原生事件自动协程关闭，在有界接纳后显式使用官方 `Coroutine::create()` 与一个 `Channel` 串行处理协议事件；每次处理创建独立作用域。等待与执行共用 `BrokerOptions::callbackSeconds`，同一连接在途事件全部收尾才恢复原生读取；定时维护至多一项在途，不堆积 tick。认证、授权及观察回调可以使用当前作用域，但普通关联信息不成为可信绑定。连接关闭立即撤销传输资格，排队事件按接纳代次排除失效 fd；停止前等待作用域真实收尾，停止观察在独立作用域内完成。启动前补齐官方 I/O 与 PROC hook；已有 Server 事件循环内不嵌套 Scheduler。MQTT 客户端的同步 `receive()` 返回消息，由调用它的应用入口建立自己的作用域。
+
+Broker 的停止信号使用 Swoole 异步 worker 退出机制；撤销维护定时器并关闭在途 CRL HTTP 客户端后，继续等待在途协程收尾，超出原生等待上限则报告未完整收尾。
+
+`php tests/mqtt-consumer.php --scopes` 通过独立安装的组件、真实 TCP/TLS 和 MQTT 客户端验证连续认证、授权、观察、子任务快照、异常恢复、截止及清理超时。加 `--native` 对相同装配执行完整 AOT 和禁止读取生产源码的原生验证；这些入口的存在不等于目标平台矩阵全部通过。
 
 ## 子任务与真实收尾
 

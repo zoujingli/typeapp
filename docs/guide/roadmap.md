@@ -21,7 +21,7 @@ TypeApp 以 TypePHP 编译生产代码，以 Swoole 承担通信与基础并发�
 
 | 工作 | 当前代码边界 | 完成条件 |
 | --- | --- | --- |
-| 当前执行作用域 | 已接入 HTTP、WebSocket 公开回调、生成 CLI、队列、调度和受管子任务；TCP/UDP 示例显式绑定 | MQTT 网络回调与全部后台入口继续收口，验证连续执行不串状态及异常恢复；PHP 与原生分别验收，见[当前作用域](../development/managed-tasks.md#当前作用域与应用绑定) |
+| 当前执行作用域 | 已接入 HTTP、WebSocket 公开回调、MQTT Broker 事件、生成 CLI、队列、调度和受管子任务；TCP/UDP 示例显式绑定。MQTT 的隔离、异常恢复、停止信号与晚完成已通过 macOS ARM64 PHP/AOT 独立消费及无源码边界验证 | 独立持久处理角色按实际装配继续核对；协议与后台业务的完整平台结果分别验收，见[当前作用域](../development/managed-tasks.md#当前作用域与应用绑定) |
 | Model 自动连接与主从路由 | 生成模型已提供无连接 `query/search/find/create`，`Db` 提供无连接同库事务；查询执行时按读写意图选择主从，事务外写后仍默认读从。macOS ARM64、Linux ARM64、Windows x64 的同提交三库独立消费、AOT、无源码和上下文矩阵通过；macOS 主从专项 PHP/AOT 通过 | 完成远端组件分发消费及其他平台独立主从端点验收；全部协议入口作用域和物理 PDO 复用分别收口。接口与边界见[模型连接与主从路由](../development/model-connections.md) |
 | 物理数据库连接复用 | PostgreSQL 使用完整重置后复用 PDO；MySQL、SQLite 无完整重置保证时安全关闭。macOS ARM64、Linux ARM64、Windows x64 的同提交三库 PHP/原生消费覆盖会话隔离、故障退役及凭据代次；macOS PostgreSQL 已完成同负载复用性能对照 | 完成其他平台负载对照；MySQL 标准 PDO 缺少完整重置接口，SQLite 完整重置未实现，完整三库物理复用保持未完成 |
 | Model 上下文自动租户隔离 | 已按编译期字段映射约束查询、持久化及关系中间表；macOS ARM64、Linux ARM64、Windows x64 同提交三库 PHP/原生消费覆盖缺失、冲突、OR、部分投影及上下文切换拒绝 | 继续完成协议入口接入与远端组件消费；应用独立验证业务认证，规则见[自动租户隔离](../development/model-connections.md#自动租户隔离) |

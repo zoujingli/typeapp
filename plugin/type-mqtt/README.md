@@ -2,7 +2,7 @@
 
 可独立安装和独立进程运行的 TypeApp MQTT 服务端组件。提供 MQTT 3.1.1/5.0 的 TCP/TLS 连接、认证、CONNECT/CONNACK、PING、DISCONNECT、客户端标识接管、精确及通配订阅/取消、MQTT 5 订阅选项与标识、二进制 QoS 0 路由，以及明确配置 PostgreSQL 同步持久存储后的 QoS 1/2 双向交付、保留消息、持久会话、遗嘱与延迟遗嘱、MQTT 5 共享订阅、重启恢复及跨节点接管与路由。
 
-通信与基础并发统一使用 Swoole 官方能力；服务端监听由 Swoole Server 管理，客户端同步模式使用 Swoole Client，协程模式使用 Swoole Coroutine Socket，持久 worker 使用 Swoole Process 管道。进程不可用时按目标平台使用官方线程或协程，并重新核对隔离与停止语义。
+通信与基础并发统一使用 Swoole 官方能力；服务端监听由 Swoole Server 管理，客户端统一使用 Swoole Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行，持久 worker 使用 Swoole PROC hook 管理的进程管道。进程不可用时按目标平台使用官方线程或协程，并重新核对隔离与停止语义。
 
 ## 安装与版本
 
@@ -85,12 +85,16 @@ TLS 同时接受 1.2/1.3，双版本客户端协商到 1.3，拒绝 1.1，TLS 1.
 - Keep Alive 使用客户端实际值和单调时间；仅完整合法控制报文刷新，超过 1.5 倍后断开，零值保持不按 Keep Alive 超时。半包不能无限延长其单独的读取预算。Swoole 入口开启 `open_tcp_nodelay`，WebSocket PING 不刷新 MQTT Keep Alive。
 - MQTT 5 不支持增强认证方法时返回 `0x8c`；认证拒绝为 `0x86`。已连客户端协议错误用 DISCONNECT 原因码，3.1.1 不伪造不存在的原因码。客户端声明的 Maximum Packet Size 同样限制服务端控制响应。
 - 遗嘱需要持久 worker，未配置时返回服务不可用；配置后支持两版遗嘱及会话恢复，省略或显式零期限不被替换为内部 TTL。CONNACK 不声明未交付的消息能力。
-- 最大入站完整 Control Packet 为 1 MiB。缓冲按实际字节增长；每连接完整报文输出队列最多 2 MiB，每轮最多处理 32 个完整报文，短写只继续未发后缀，发送预算一秒。到期先按正常16 KiB预算尝试一次非阻塞写，仍有积压才回收；截止不刷新，避免同步授权占用循环时直接丢掉已就绪的小响应。TLS/CONNECT 默认为十秒、半包读取十五秒。
+- 最大入站完整 Control Packet 为 1 MiB。一次 TCP/WS 读取可以包含多个报文，按剩余缓冲容量分段解析，不把读取总长度当成单报文长度。每连接应用输出队列及原生 `buffer_output_size` 各为 2 MiB；原生 send/push 接管有界输出并负责短写，每次解析至多处理 32 个完整报文。应用输出的一秒截止不刷新，原生无法接管时关闭连接。TLS/CONNECT 默认为十秒、半包读取十五秒。
 - 连接额度用尽时拒绝新连接；可配置上限不构成已达万台在线的容量声明。认证异常不泄漏实现或密码，拒绝不会终止其他连接；强制结束进程由操作系统回收资源，不伪称已优雅排空。
 
 ## 目录与主要接口
 
 `Broker` 拥有监听、事件循环和连接集合；`BrokerOptions` 校验一次启动的传输与资源配置；`AccessPolicy` 是消费者认证授权边界；`ConnectPacket` 保存已验证连接事实。内部 `Connection` 拥有 socket、订阅与缓冲，`PacketReader` 只解析完整报文边界，`ProtocolError` 传递标准原因码。应用不依赖两个内部类型。
+
+认证、授权和连接观察在当前 Swoole 执行作用域内运行，应用可调用 `ExecutionScope::current()`，并在验证身份后临时绑定租户供 Model 使用。原生事件自动协程保持关闭，Broker 有界接纳后使用官方协程与一个 Channel，保持全局协议状态机串行。`BrokerOptions::callbackSeconds` 默认 30 秒、范围 `(0, 60]`，排队与回调共用；总事件最多为启动连接上限加 32，总输入最多 32 MiB，同一连接在途时暂停原生读取。子任务未真实结束时不会归还事件额度或提前放行下一项；清理超时停止角色并等待真实收尾。停止观察也有独立作用域。事件关联值不构成授权，启动期补齐官方网络、等待、PDO 及 PROC hook，保留已有 hook 配置。
+
+停止信号使用 Swoole `reload_async=true`；`workerExit` 撤销维护定时器并拒绝新事件，原生 `max_wait_time` 为向上取整的 `callbackSeconds + 6` 秒。超出该上限仍有事件时报告 `mqtt_callback_shutdown_incomplete`，不能作为正常排空；后续持久会话清理仍遵守各自截止。
 
 ### 有明确确认边界的 MQTT 5 客户端
 
@@ -194,7 +198,7 @@ MQTT 5 CONNACK 声明 Receive Maximum=32、Topic Alias Maximum=32 和配置的�
 | `release` | `operation_id/message_id/session_id/reason`；同步保存入站 QoS 2 的 PUBREL（reason=0/0x92），提交成功后才能发送 PUBCOMP。 |
 | `abandon` | `operation_id/session_id`；显式终结当前清洁会话的 pending 交付；共享 QoS 1 按下述会话终止策略归还仍存在的组，原件和终结行保留。 |
 
-`PendingCommit` 每次持久操作默认五秒硬截止，失败后精确清理另有五秒预算；全局最多 32 个工作或未证明回收的隔离名额。持久 worker 由 Swoole Process 创建并通过受控管道交换消息，请求和响应各最多 2 MiB；大响应在 worker 退出后仍在原截止内分次排空。停止本地 worker 不能保证 PostgreSQL 的 SyncRep 后端退出，因此未知结果另外调用 `cleanup($operationId)`，精确终止同数据库、角色和唯一 application_name 的后端并验证消失。无法证明回收时保留隔离配额，继续耗尽后拒绝新接管；未知写入不自动重试。Broker 空闲连接不持有数据库事务。强制杀死整个服务仍不等于优雅清理，不能据本切片推定跨节点故障恢复已完成。
+`PendingCommit` 的命令参数数组不经过 shell；调用、轮询与关闭均在官方协程中执行。`SWOOLE_HOOK_PROC` 使用原生 exec 路径，避免在协程中 fork 后继续执行 PHP 回调。每次持久操作默认五秒硬截止，失败后精确清理另有五秒预算；全局最多 32 个工作或未证明回收的隔离名额。持久 worker 由 Swoole 的 `SWOOLE_HOOK_PROC` 创建并通过受控管道交换消息，请求和响应各最多 2 MiB；大响应在 worker 退出后仍在原截止内分次排空。停止本地 worker 不能保证 PostgreSQL 的 SyncRep 后端退出，因此未知结果另外调用 `cleanup($operationId)`，精确终止同数据库、角色和唯一 application_name 的后端并验证消失。无法证明回收时保留隔离配额，继续耗尽后拒绝新接管；未知写入不自动重试。Broker 空闲连接不持有数据库事务。强制杀死整个服务仍不等于优雅清理，不能据本切片推定跨节点故障恢复已完成。
 
 正常停机时，已经启动的持久工作继续使用原有截止；相关工作释放后，按原始结束时间完成零期限会话删除或持久会话离线登记。停机不主动取消已启动工作，也不刷新截止；尚未启动的排队请求明确拒绝，真实提交失败或未知仍计入统计，停机期间不无限重试。主仓 `php tests/mqtt-consumer.php --native --session-shutdown-only` 用真实会话行锁精确定位结束事务，覆盖双版本 TCP/TLS、零/有限/无限期限及同步备库退出，并用表锁定位消息接收、会话恢复和保留读取，验证停机排空及重启后的真实交付；完整 `--session` 或 `--session-only` 同时运行这一专项。
 

@@ -26,7 +26,9 @@ TypeApp 应用的通信与基础并发必须使用 Swoole；线程与协程入�
 
 构造参数 `context` 是关联信息，队列消息也可携带它。`run()` 的 `bindings` 是应用验证后显式提供的字符串值，通过 `$scope->binding($name)` 读取，缺失返回 null；关联信息不会自动成为这些绑定。两类值均取快照，不能传入连接、事务或可变对象。框架不读取账号、成员或角色，也不替应用确认身份、权限或租户资格。
 
-独立命令可用 `CoroutineRuntime::run(Closure(): mixed)` 进入官方 Swoole Scheduler，并在回调内创建作用域和资源；已有协程时直接执行，不另建执行者，不改变启动时的 hook flags。不要把在外部协程创建的连接带入回调。当前公开绑定入口和受管子任务已接入，HTTP、协议回调、队列及调度入口的自动绑定仍需逐项迁移；不能假定所有入口已经能直接调用 `current()`。
+独立命令可用 `CoroutineRuntime::run(Closure(): mixed)` 进入官方 Swoole Scheduler，并在回调内创建作用域和资源；已有协程时直接执行，不另建执行者，不改变启动时的 hook flags。不要把在外部协程创建的连接带入回调。HTTP、WebSocket、MQTT Broker 事件、持久 worker、生成 CLI、队列、调度及受管子任务已接入；自定义 Socket 消息由应用入口显式绑定。各角色和平台的实际验证范围见[受管任务](https://github.com/zoujingli/typeapp/blob/main/docs/development/managed-tasks.md)。
+
+`CoroutineRuntime::enableIo()` 在启动期补齐官方网络、等待、PDO 和 `SWOOLE_HOOK_PROC`，保留已有 hook。独立命令进程使用参数数组及 Swoole 接管的 `proc_open` 管道，启动、状态、终止和回收在协程中完成；不在协程中调用会在 fork 后执行 PHP 回调的 `Swoole\Process::start()`。
 
 `ExecutionScope::spawn()` 只在当前 Swoole 线程内创建协程。子协程取得新的 `ExecutionOwner` 和独立作用域，复制父上下文快照，共享只能缩短的截止时间、父子取消信号及 `TaskBudget`；父取消、关闭或 Deadline 到期会唤醒子协程，子协程完成真实收尾后解除父子监听。父作用域中的连接和租约不转移，子协程必须重新借用。资源归属由进程、原生线程、请求代次、协程 ID 和 Fiber 身份校验，跨边界误用会抛出执行者错误。
 

@@ -816,6 +816,176 @@ function mqttWireCases(int $port, ?string $certificate): int
     return $cases + 1;
 }
 
+/** 仅替换独立消费者的公开策略/观察接口，让真实网络检查作用域与串行收尾。 */
+function mqttScopeApplication(string $source): string
+{
+    $start = 'new Broker(new ExampleMqttAccess(), new BrokerOptions(';
+    $end = "    });\n    \$broker->serve";
+    expect(substr_count($source, $start) === 1 && substr_count($source, $end) === 1, '作用域装配入口变化');
+    $source = str_replace($start, "new Broker(new ScopeMqttAccess(), new BrokerOptions(callbackSeconds: getenv('MQTT_SCOPE_TIMEOUT') === '1' ? 0.05 : 30.0,", $source);
+    return str_replace($end, "    }, observer: new ScopeMqttObserver());\n    \$broker->serve", $source) . <<<'PHP'
+
+final class ScopeMqttAccess implements \Type\Mqtt\AccessPolicy
+{
+    private ExampleMqttAccess $access;
+    private ?\Type\Runtime\ExecutionScope $previous = null;
+    private bool $childActive = false;
+    public function __construct()
+    {
+        $this->access = new ExampleMqttAccess();
+    }
+    public function authenticate(ConnectPacket $connect, string $peer, bool $secure): bool
+    {
+        $scope = \Type\Runtime\ExecutionScope::current();
+        if ($this->childActive || ($this->previous !== null && $this->previous->state() !== 'closed')
+            || $scope->binding('tenant_id') !== null) {
+            throw new RuntimeException('mqtt_scope_not_isolated');
+        }
+        $this->previous = $scope;
+        $scope->run(function (\Type\Runtime\ExecutionScope $current): void {
+            $current->spawn(static function (\Type\Runtime\ExecutionScope $child) use ($current): void {
+                if (\Type\Runtime\ExecutionScope::current() !== $child || $child === $current
+                    || $child->binding('tenant_id') !== 'verified-tenant') {
+                    throw new RuntimeException('mqtt_child_scope_invalid');
+                }
+                \Swoole\Coroutine::sleep(0.001);
+            })->await();
+        }, ['tenant_id' => 'verified-tenant']);
+        if ($scope->binding('tenant_id') !== null) {
+            throw new RuntimeException('mqtt_binding_not_restored');
+        }
+        // 不主动 await：下一次认证必须等本次入口真正收尾，即使本次认证抛错。
+        $this->childActive = true;
+        $seconds = $connect->clientId === 'scope-cleanup-late' ? 5.2 : (in_array($connect->clientId, ['scope-deadline', 'scope-signal'], true) ? 0.15 : 0.02);
+        $scope->spawn(function (\Type\Runtime\ExecutionScope $child) use ($seconds): void {
+            \Swoole\Coroutine::sleep($seconds);
+            $this->childActive = false;
+        });
+        if ($connect->clientId === 'scope-deadline') {
+            \Swoole\Coroutine::sleep(0.08);
+            $scope->assertActive();
+        }
+        \Swoole\Coroutine::sleep(0.001);
+        if ($connect->clientId === 'scope-throw') {
+            throw new RuntimeException('mqtt_scope_expected_failure');
+        }
+        return $this->access->authenticate($connect, $peer, $secure);
+    }
+    public function authorize(ConnectPacket $connect, string $topic, string $action, int $qos): bool
+    {
+        if (\Type\Runtime\ExecutionScope::current()->binding('tenant_id') !== null) {
+            throw new RuntimeException('mqtt_authorization_binding_leaked');
+        }
+        return $this->access->authorize($connect, $topic, $action, $qos);
+    }
+}
+
+final class ScopeMqttObserver implements \Type\Mqtt\ConnectionObserver
+{
+    public function connected(string $clientId, string $username, string $ownerId, int $observedAt): void { $this->check(); }
+    public function disconnected(string $clientId, string $username, string $ownerId, int $observedAt, int $reason): void { $this->check(); }
+    public function heartbeat(int $observedAt): void { $this->check(); }
+    public function stopped(int $observedAt): void { $this->check(); }
+    private function check(): void
+    {
+        if (\Type\Runtime\ExecutionScope::current()->binding('tenant_id') !== null) {
+            throw new RuntimeException('mqtt_observer_binding_leaked');
+        }
+    }
+}
+PHP;
+}
+
+/** 同时提交多连接认证，验证全局串行及异常之后的独立作用域。 */
+function mqttScopeCases(int $port, ?string $certificate): int
+{
+    $clients = [];
+    try {
+        foreach (['scope-first', 'scope-throw', 'scope-after-failure', 'scope-final'] as $id) {
+            $clients[$id] = mqttSocket($port, $certificate);
+            mqttWrite($clients[$id], mqttConnect(5, $id));
+        }
+        foreach ($clients as $id => $client) {
+            if ($id === 'scope-throw') {
+                $ack = mqttRead($client);
+                expect(strlen($ack) >= 4 && ord($ack[0]) === 0x20 && ord($ack[3]) >= 0x80, '认证异常未拒绝');
+            } else {
+                mqttAck($client, 5);
+                mqttQuiet($client);
+            }
+        }
+    } finally {
+        foreach ($clients as $client) {
+            fclose($client);
+        }
+    }
+    return 4;
+}
+
+/** 截止与清理超时分别验证；资源仍被使用时不能运行下一事件或提前停止角色。 */
+function mqttScopeLifecycleCases(string $consumer, array $command, array $environment): array
+{
+    $environment['MQTT_CERTIFICATE'] = '';
+    $environment['MQTT_PRIVATE_KEY'] = '';
+    $environment['MQTT_PRIVATE_KEY_PASSPHRASE'] = '';
+    $results = [];
+    foreach (['signal', 'deadline', 'cleanup-late'] as $case) {
+        $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
+        expect(is_resource($listener), '无法分配作用域专项端口');
+        $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+        fclose($listener);
+        $environment['MQTT_SCOPE_TIMEOUT'] = $case === 'deadline' ? '1' : '0';
+        $process = new Process([...$command, '--plaintext', '--port=' . $port], $consumer, $environment);
+        $socket = null;
+        try {
+            $until = microtime(true) + 10;
+            do {
+                expect($process->running(), '作用域专项提前退出：' . $process->stderr());
+                try {
+                    $socket = mqttSocket($port, null);
+                    break;
+                } catch (RuntimeException) {
+                    usleep(10000);
+                }
+            } while (microtime(true) < $until);
+            expect(is_resource($socket), '作用域专项未就绪');
+            $started = microtime(true);
+            mqttWrite($socket, mqttConnect(5, 'scope-' . $case));
+            if ($case === 'signal') {
+                mqttAck($socket, 5);
+                $stopped = $process->stop(3);
+                expect(microtime(true) - $started >= 0.14, '停止信号提前结束了在途子任务');
+            } elseif ($case === 'deadline') {
+                $ack = mqttRead($socket);
+                expect(strlen($ack) >= 4 && ord($ack[3]) >= 0x80, '截止后的认证仍然成功');
+                fclose($socket);
+                $socket = null;
+                // 子任务持续 150ms，已超过维护事件的 50ms 排队预算；角色停止仍须等真实收尾。
+                $stopped = $process->wait(3);
+                expect(microtime(true) - $started >= 0.14, '维护超时提前释放了未完成子任务');
+            } else {
+                mqttAck($socket, 5);
+                // 已发送 CONNACK 不表示后代结束；清理预算耗尽后应等待真实收尾再退出。
+                $stopped = $process->wait(8);
+                expect(microtime(true) - $started >= 5.15, '清理超时提前释放了角色');
+            }
+            expect($stopped->successful() && $stopped->stderr === '', '作用域专项退出失败：' . $stopped->stderr);
+            $statistics = json_decode(trim($stopped->stdout), true, 512, JSON_THROW_ON_ERROR);
+            expect($statistics['readyEvents'] === 0 && $statistics['pendingEventBytes'] === 0 && $statistics['connections'] === 0
+                && $statistics['observationFailures'] === 0, '作用域专项遗留资源或停止观察失去上下文');
+            expect($statistics['callbackFailures'] === ($case === 'signal' ? 0 : 1), '作用域专项未按预期处理异常');
+            $results[$case] = ['passed' => true, 'statistics' => $statistics];
+        } finally {
+            if (is_resource($socket)) {
+                fclose($socket);
+            }
+            $stopped = $process->stop();
+            file_put_contents($consumer . '/scope-' . $case . '.log', $stopped->stdout . $stopped->stderr);
+        }
+    }
+    return $results;
+}
+
 $readCaseCount = mqttReadCases();
 if (in_array('--read-only', $argv, true)) {
     echo json_encode(['readCases' => $readCaseCount], JSON_THROW_ON_ERROR), "\n";
@@ -838,6 +1008,8 @@ $conformance = in_array('--conformance-only', $argv, true);
 expect(!$conformance || array_diff(array_slice($argv, 1), ['--native', '--conformance-only']) === [], '一致性套件使用独立授权装置，不能组合其他场景');
 $identityOnly = in_array('--identity-only', $argv, true);
 expect(!$identityOnly || array_diff(array_slice($argv, 1), ['--native', '--identity-only']) === [], '身份专项使用独立授权装置，不能组合其他场景');
+$scopes = in_array('--scopes', $argv, true);
+expect(!$scopes || array_diff(array_slice($argv, 1), ['--native', '--scopes']) === [], '作用域专项使用独立授权装置，不能组合其他场景');
 $consumer = $root . '/build/mqtt-consumer-' . bin2hex(random_bytes(5));
 expect(mkdir($consumer . '/app', 0700, true), '无法创建独立 MQTT 消费者');
 $toolchain = json_decode(file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
@@ -855,6 +1027,9 @@ file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_PRET
 file_put_contents($consumer . '/package.json', json_encode(['name' => 'type-mqtt-client-test', 'private' => true,
     'dependencies' => ['mqtt' => '5.15.0']], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 copy($root . '/examples/mqtt/main.php', $consumer . '/app/main.php');
+if ($scopes) {
+    file_put_contents($consumer . '/app/main.php', mqttScopeApplication(file_get_contents($consumer . '/app/main.php')));
+}
 if ($commitLifecycleOnly) {
     require_once __DIR__ . '/mqtt-commit-lifecycle.php';
     file_put_contents($consumer . '/app/main.php', mqttCommitLifecycleApplication(file_get_contents($consumer . '/app/main.php')));
@@ -884,6 +1059,14 @@ copy($root . '/toolchain.lock.json', $consumer . '/toolchain.lock.json');
 $configuration = ['name' => 'type-mqtt-connection', 'entry' => 'app/main.php', 'sources' => ['app/main.php'],
     'output' => 'build/mqtt/type-app', 'build-directory' => 'build/mqtt/compiler'];
 $configuration['runtime'] = [PHP_OS_FAMILY => ['extensions' => ['swoole']]];
+if ($native && is_string(getenv('TYPE_SWOOLE_MODULE')) && getenv('TYPE_SWOOLE_MODULE') !== '') {
+    $module = realpath(getenv('TYPE_SWOOLE_MODULE'));
+    expect(is_string($module) && is_file($module), '指定的 Swoole 运行模块不存在');
+    expect(copy($module, $consumer . '/swoole.so'), '无法固定 Swoole 运行模块');
+    $configuration['runtime'][PHP_OS_FAMILY]['modules']['swoole'] = [
+        'file' => 'swoole.so', 'sha256' => hash_file('sha256', $consumer . '/swoole.so'),
+    ];
+}
 if ($clientThread) {
     $configuration['threads'] = ['client-peer' => 'clientPeerThread'];
 }
@@ -985,6 +1168,7 @@ foreach ($commitLifecycleOnly || in_array('--qos1-only', $argv, true) || in_arra
             }
         } while (!$ready && microtime(true) < $until);
         expect($ready, 'MQTT 未通过真实 CONNECT 就绪检查：' . $process->stderr());
+        $scopeCases = $scopes ? mqttScopeCases($port, $certificate) : 0;
         $connectFieldCaseCount = mqttConnectFieldCases($port, $certificate);
         $caseCount = $connectFieldsOnly ? 0 : mqttWireCases($port, $certificate);
         $messageCaseCount = $connectFieldsOnly ? 0 : mqttMessageCases($port, $certificate);
@@ -1027,12 +1211,16 @@ foreach ($commitLifecycleOnly || in_array('--qos1-only', $argv, true) || in_arra
         $statistics = json_decode(trim($result->stdout), true, 512, JSON_THROW_ON_ERROR);
         expect($statistics['connections'] === 0 && $statistics['stopping'] && $statistics['closed'] === $statistics['accepted'], 'MQTT 连接资源没有完整回收');
         expect($statistics['subscriptions'] === 0 && $statistics['bufferedBytes'] === 0, 'MQTT 订阅或半包/发送缓冲没有完整回收');
+        expect(!$scopes || ($statistics['observationFailures'] === 0 && $statistics['readyEvents'] === 0
+            && $statistics['pendingEventBytes'] === 0 && $statistics['callbackFailures'] === 0), '作用域、观察或事件清理失败');
         expect($connectFieldsOnly || ($statistics['delivered'] > 0 && $statistics['dropped'] > 0), '消息测试未覆盖交付及丢弃');
         $verified[$tls ? 'tls' : 'tcp'] = ['connect-field-cases' => $connectFieldCaseCount, 'wire-cases' => $caseCount,
             'message-cases' => $connectFieldsOnly ? 0 : $messageCaseCount + 1, 'text-cases' => $textCaseCount, 'alias-cases' => $aliasCaseCount, 'subscription-cases' => $subscriptionCaseCount,
+            'scope-cases' => $scopeCases,
             'client' => $connectFieldsOnly ? 'raw-wire' : 'MQTT.js 5.15.0', 'client-version-pairs' => $connectFieldsOnly ? [] : [[4, 4], [4, 5], [5, 4], [5, 5]], 'statistics' => $statistics];
     } finally {
-        $process->stop();
+        $stopped = $process->stop();
+        file_put_contents($consumer . '/' . ($tls ? 'tls' : 'tcp') . '-broker.log', $stopped->stdout . $stopped->stderr);
     }
 }
 if ($commitLifecycleOnly || in_array('--qos1', $argv, true) || in_array('--qos1-only', $argv, true) || in_array('--qos2', $argv, true) || in_array('--retained', $argv, true)) {
@@ -1100,6 +1288,9 @@ if (in_array('--cluster', $argv, true) || in_array('--cluster-only', $argv, true
 }
 if ($conformance) {
     $verified['conformance'] = mqttConformanceCases($root, $consumer, $command, $workerCommand, $environment);
+}
+if ($scopes) {
+    $verified['scope-lifecycle'] = mqttScopeLifecycleCases($consumer, $command, $environment);
 }
 $evidence = ['mode' => $native ? 'aot' : 'php', 'transport' => 'swoole', 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
     'read-cases' => $readCaseCount,

@@ -18,13 +18,14 @@ final class BrokerOptions
      * @param int $mtlsPort 专用 mTLS 端口；0 表示关闭。与凭据 TLS 入口分开，需要可读客户端 CA。
      * @param string $clientCa 校验客户端证书的 CA 文件，可为含根与签发中间 CA 的 PEM 包；mTLS TCP 或 WSS 入口使用。
      * @param string $clientCrl 可选 PEM CRL；须由 clientCa 包内某份 CA 签发。Swoole 不核吊销列表，Broker 在取指纹前拒绝已列入的证书。
-     * @param string $clientCrlUrl 可选管理员受控 HTTPS CRL 源；只从启动配置读取，不接受客户端指定。拉取由 Swoole Process 完成，写入 clientCrl 后沿用文件重载。
+     * @param string $clientCrlUrl 可选管理员受控 HTTPS CRL 源；只从启动配置读取，不接受客户端指定。拉取由 Swoole 协程 HTTP 客户端完成，写入 clientCrl 后沿用文件重载。
      * @param int $clientCrlInterval HTTPS 刷新间隔秒，默认 300，范围 1–3600。
      * @param string $clientRevoke 可选平台吊销名单，每行一个证书序列号十六进制；不经 CA 签名，已接纳项本进程内只增不减。
      * @param string $clientOverlap 可选换证重叠名单，每行指纹与截止 Unix 时间；缺截止默认 24 小时，上限 24 小时，零或过去立即结束。吊销与到期无重叠宽限。
      * @param string $sniHost 可选 SNI 主机名，须小写域名；与 sniCertificate、sniPrivateKey 同时提供。
      * @param string $sniCertificate SNI 主机对应的 PEM 证书链；第一份为叶证书。
      * @param string $sniPrivateKey SNI 主机对应的 PEM 私钥；本切片不解密口令，须为明文钥。
+     * @param float $callbackSeconds 单次原生事件排队与业务回调的共同截止秒数；清理完成前仍占用事件额度。
      */
     public function __construct(
         public readonly string $certificate = '',
@@ -51,7 +52,8 @@ final class BrokerOptions
         public readonly string $clientOverlap = '',
         public readonly string $sniHost = '',
         public readonly string $sniCertificate = '',
-        public readonly string $sniPrivateKey = ''
+        public readonly string $sniPrivateKey = '',
+        public readonly float $callbackSeconds = 30.0
     ) {
         if ($maximumConnections < 1 || $maximumConnections > 10100
             || $maximumPacketBytes < 128 || $maximumPacketBytes > 1048576
@@ -60,7 +62,8 @@ final class BrokerOptions
             || $maximumDeviceConnections < 1 || $maximumDeviceConnections > 10000
             || $maximumServiceConnections < 0 || $maximumServiceConnections > 100
             || $wsPort < 0 || $wsPort > 65535 || $wssPort < 0 || $wssPort > 65535
-            || $mtlsPort < 0 || $mtlsPort > 65535) {
+            || $mtlsPort < 0 || $mtlsPort > 65535
+            || !is_finite($callbackSeconds) || $callbackSeconds <= 0 || $callbackSeconds > 60) {
             throw new \InvalidArgumentException('MQTT 连接、报文或等待预算无效');
         }
         if ($wsPort > 0 && $wssPort > 0) {

@@ -7,10 +7,10 @@ use Type\Testing\Process;
 /** 独立消费者在公开worker回调内模拟事务前后延迟，不向Broker加入测试开关。 */
 function mqttOrderingApplication(string $source): string
 {
-    $original = "PendingCommit::work(\$store, \$arguments->text('store-worker-pipe', ''));";
+    $original = "PendingCommit::work(\$store, 'pipe');";
     expect(substr_count($source, $original) === 1, '可靠发布worker装配入口变化');
     return str_replace($original, <<<'PHP'
-PendingCommit::work($store, $arguments->text('store-worker-pipe', ''), function (array $request) use ($store): \Type\Mqtt\CommitResult {
+PendingCommit::work($store, 'pipe', function (array $request) use ($store): \Type\Mqtt\CommitResult {
             $subscriptionGate = '';
             $subscriptionAfter = false;
             if (($request['action'] ?? '') === 'session_save' && isset($request['retained'][0])

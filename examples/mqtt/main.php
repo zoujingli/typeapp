@@ -133,8 +133,8 @@ function main(int $argc, array $argv): void
 {
     $arguments = new Arguments(
         $argv,
-        ['host', 'port', 'ws-port', 'wss-port', 'mtls-port', 'allowed-origins', 'store-worker-pipe', 'terminate-session', 'actor', 'node-id', 'fence-node', 'node-run-id', 'proof-ref'],
-        ['plaintext', 'install-store', 'store-statistics', 'clustered', 'node-statistics']
+        ['host', 'port', 'ws-port', 'wss-port', 'mtls-port', 'allowed-origins', 'terminate-session', 'actor', 'node-id', 'fence-node', 'node-run-id', 'proof-ref'],
+        ['plaintext', 'install-store', 'store-statistics', 'clustered', 'node-statistics', 'store-worker-pipe']
     );
     $workerConfiguration = (string) getenv('MQTT_WORKER_COMMAND');
     $workerCommand = $workerConfiguration === '' ? [] : json_decode($workerConfiguration, true, 32, JSON_THROW_ON_ERROR);
@@ -167,7 +167,7 @@ function main(int $argc, array $argv): void
             mqttBudget('MQTT_APPLICATION_MAX_MESSAGES', 1000000),
             mqttBudget('MQTT_APPLICATION_MAX_BYTES', 2147483648)
         );
-        PendingCommit::work($store, $arguments->text('store-worker-pipe', ''));
+        PendingCommit::work($store, 'pipe');
         return;
     }
     if ($arguments->has('install-store') || $arguments->has('terminate-session') || $arguments->has('store-statistics') || $arguments->has('node-statistics') || $arguments->has('fence-node')) {

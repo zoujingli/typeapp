@@ -23,8 +23,8 @@ Plugins 为统一称谓；通信、进程、线程、协程与事件循环必须
 | 范围 | 当前实现 | 责任边界 |
 | --- | --- | --- |
 | MQTT 服务端 | TCP、TLS、mTLS 与 WebSocket 由同一个 Swoole Server 持有监听和生命周期；WebSocket 端口负责 HTTP 升级及 MQTT 帧 | Broker 保留 MQTT 报文、授权、会话、持久提交和资源预算；不再维护可选网络驱动 |
-| MQTT 客户端 | 协程模式使用 `Swoole\Coroutine\Socket`，同步模式使用 `Swoole\Client` | Client 负责 TLS 身份、半包、保活、超时、确认凭据和关闭语义 |
-| 持久工作与设备接入 | `PendingCommit`、设备授权和摄取 worker 使用 Swoole Process 管道；HTTPS CRL 使用 Swoole Coroutine HTTP Client | 应用保留有界结果、硬截止、提交未知与远端释放证明；Swoole 负责执行与通信 |
+| MQTT 客户端 | 统一使用 `Swoole\Coroutine\Socket`；非协程调用沿现有 CoroutineRuntime 使用官方 Scheduler | Client 负责 TLS 身份、半包、保活、超时、确认凭据和关闭语义 |
+| 持久工作与设备接入 | `PendingCommit`、设备授权和摄取 worker 使用 Swoole PROC hook 管理的进程管道；HTTPS CRL 使用 Swoole Coroutine HTTP Client | 应用保留有界结果、硬截止、提交未知与远端释放证明；Swoole 负责执行与通信 |
 | 跨平台服务入口 | HTTP、WebSocket、TCP、UDP、MQTT 均按目标平台使用 Swoole 官方 Server、Socket、线程或协程能力 | 只在所需原生能力确实缺失时报告启动错误，并记录对应平台验收范围 |
 | AOT 与运行包 | 生产 PHP、生成代码和实际生产依赖交给 TypePHP 全量编译；Swoole 为必需运行扩展 | 编译产物与外置配置分离，不能回退 Composer 源码解释执行 |
 

@@ -78,8 +78,12 @@ function mqttMtlsExtensionArgs(array $extensions, bool $forChild = false): array
 {
     $arguments = [];
     $directory = (string) ini_get('extension_dir');
+    // 子进程继承 INI，但不继承父进程命令行的 -d 扩展配置。
+    $loaded = $forChild
+        ? json_decode(successful([PHP_BINARY, '-r', 'echo json_encode(get_loaded_extensions(), JSON_THROW_ON_ERROR);']), true, 32, JSON_THROW_ON_ERROR)
+        : get_loaded_extensions();
     foreach ($extensions as $extension) {
-        if (!$forChild && extension_loaded($extension)) {
+        if (in_array($extension, $loaded, true)) {
             continue;
         }
         $module = $directory . '/' . $extension . '.so';
@@ -582,6 +586,59 @@ function mqttMtlsCrlHttpsWait(int $port, string $ca): void
     expect(false, 'HTTPS CRL 源未就绪');
 }
 
+/** PHP 和 AOT 复用真实 HTTPS 源，验证刷新、超大响应拒绝及停止收尾。 */
+function mqttMtlsCrlRefresh(array $launcher, array $php, string $root, string $consumer, array $environment, array $certs): void
+{
+    $crlCache = $consumer . '/crl-cache.pem';
+    mqttMtlsCrl(dirname($certs['crl']), $certs['crl'], ['04']);
+    expect(copy($certs['crl'], $crlCache), '无法复制 CRL 缓存');
+    $httpsPort = mqttMtlsPort();
+    $https = new Process([...$php, __FILE__], $root, array_replace($environment, [
+        'MQTT_MTLS_CRL_HTTPS' => '1',
+        'MQTT_MTLS_CRL_HTTPS_PORT' => (string) $httpsPort,
+        'MQTT_MTLS_CRL_HTTPS_FILE' => $certs['crl'],
+    ]));
+    try {
+        mqttMtlsCrlHttpsWait($httpsPort, $certs['ca']);
+        $tlsPort = mqttMtlsPort();
+        $mtlsPort = mqttMtlsPort();
+        $broker = new Process([...$launcher, '--host=127.0.0.1', '--port=' . $tlsPort, '--mtls-port=' . $mtlsPort], $root, array_replace($environment, [
+            'MQTT_CLIENT_CRL' => $crlCache,
+            'MQTT_CLIENT_CRL_URL' => 'https://127.0.0.1:' . $httpsPort . '/crl.pem',
+            'MQTT_CLIENT_CRL_INTERVAL' => '1',
+        ]));
+        $live = null;
+        try {
+            mqttMtlsWait($broker, $tlsPort, $certs['ca']);
+            $live = mqttMtlsSocket($mtlsPort, $certs['ca'], $certs['client'], $certs['clientKey']);
+            mqttMtlsWrite($live, mqttMtlsConnect('mtls-https', false));
+            $ack = mqttMtlsRead($live);
+            expect(ord($ack[0]) === 0x20 && ord($ack[3]) === 0, 'HTTPS CRL 刷新前 CONNECT 失败：' . bin2hex($ack));
+            // 吊销列表本身有效，但整个 HTTP 正文超限；不能写入缓存或断开当前合法连接。
+            $accepted = (string) file_get_contents($crlCache);
+            mqttMtlsCrl(dirname($certs['crl']), $certs['crl'], ['04', mqttMtlsSerial($certs['client'])]);
+            $revoked = (string) file_get_contents($certs['crl']);
+            expect(file_put_contents($certs['crl'], $revoked . str_repeat("\n", 1048577)) !== false, '无法写入超限 CRL 装置');
+            usleep(2200000);
+            expect(file_get_contents($crlCache) === $accepted, '超限 HTTPS 响应覆盖了已接纳 CRL');
+            mqttMtlsWrite($live, "\xc0\x00");
+            expect(mqttMtlsRead($live) === "\xd0\x00", '拒绝超限 CRL 后合法连接未保持可用');
+            expect(file_put_contents($certs['crl'], $revoked) === strlen($revoked), '无法恢复有效 CRL');
+            expect(mqttMtlsClosed($live, 8), 'HTTPS 刷新 CRL 后已连接证书没有断开');
+            $result = $broker->stop(5);
+            expect($result->successful() && $result->stderr === '', 'HTTPS CRL Broker 停止失败：' . $result->stderr);
+        } finally {
+            if (is_resource($live)) {
+                fclose($live);
+            }
+            $broker->stop();
+        }
+    } finally {
+        $https->stop();
+        mqttMtlsCrl(dirname($certs['crl']), $certs['crl'], ['04']);
+    }
+}
+
 function mqttMtlsSerial(string $pem): string
 {
     $certificate = openssl_x509_read((string) file_get_contents($pem));
@@ -809,9 +866,6 @@ $php = $nativeOnly ? [PHP_BINARY] : mqttMtlsPhp();
 $launcher = [...$php, '-r', 'require "vendor/autoload.php"; require "examples/mqtt/main.php"; main($argc, $argv);', '--'];
 $environment = getenv();
 expect(is_array($environment), '无法读取 MQTT mTLS 测试环境');
-unset($environment['PHPRC'], $environment['PHP_INI_SCAN_DIR']);
-putenv('PHPRC');
-putenv('PHP_INI_SCAN_DIR');
 $environment['MQTT_PASSWORD'] = 'mqtt-test-secret';
 $environment['MQTT_CERTIFICATE'] = $certs['server'];
 $environment['MQTT_PRIVATE_KEY'] = $certs['key'];
@@ -1230,42 +1284,9 @@ try {
         $result = $process->stop(5);
         expect($result->successful() && $result->stderr === '', 'mTLS Broker 停止失败：' . $result->stderr);
 
-        $crlCache = $consumer . '/crl-cache.pem';
-        expect(copy($certs['crl'], $crlCache) !== false, '无法复制 CRL 缓存');
-        $httpsPort = mqttMtlsPort();
-        $https = new Process([...$php, __FILE__], $root, array_replace($environment, [
-            'MQTT_MTLS_CRL_HTTPS' => '1',
-            'MQTT_MTLS_CRL_HTTPS_PORT' => (string) $httpsPort,
-            'MQTT_MTLS_CRL_HTTPS_FILE' => $certs['crl'],
-        ]));
-        try {
-            mqttMtlsCrlHttpsWait($httpsPort, $certs['ca']);
-            $tlsPort = mqttMtlsPort();
-            $mtlsPort = mqttMtlsPort();
-            $httpsBroker = new Process([...$launcher, '--host=127.0.0.1', '--port=' . $tlsPort, '--mtls-port=' . $mtlsPort], $root, array_replace($environment, [
-                'MQTT_CLIENT_CRL' => $crlCache,
-                'MQTT_CLIENT_CRL_URL' => 'https://127.0.0.1:' . $httpsPort . '/crl.pem',
-                'MQTT_CLIENT_CRL_INTERVAL' => '1',
-            ]));
-            try {
-                mqttMtlsWait($httpsBroker, $tlsPort, $certs['ca']);
-                $httpsLive = mqttMtlsSocket($mtlsPort, $certs['ca'], $certs['client'], $certs['clientKey']);
-                mqttMtlsWrite($httpsLive, mqttMtlsConnect('mtls-https', false));
-                $httpsAck = mqttMtlsRead($httpsLive);
-                expect(ord($httpsAck[0]) === 0x20 && ord($httpsAck[3]) === 0, 'HTTPS CRL 刷新前 CONNECT 失败：' . bin2hex($httpsAck));
-                mqttMtlsCrl(dirname($certs['crl']), $certs['crl'], ['04', mqttMtlsSerial($certs['client'])]);
-                expect(mqttMtlsClosed($httpsLive, 8), 'HTTPS 刷新 CRL 后已连接证书没有断开');
-                fclose($httpsLive);
-                $verified['revoke-https'] = true;
-                mqttMtlsCrl(dirname($certs['crl']), $certs['crl'], ['04']);
-                $httpsResult = $httpsBroker->stop(5);
-                expect($httpsResult->successful() && $httpsResult->stderr === '', 'HTTPS CRL Broker 停止失败：' . $httpsResult->stderr);
-            } finally {
-                $httpsBroker->stop();
-            }
-        } finally {
-            $https->stop();
-        }
+        mqttMtlsCrlRefresh($launcher, $php, $root, $consumer, $environment, $certs);
+        $verified['revoke-https'] = true;
+        $verified['crl-https-size-limit'] = true;
 
         $tlsPort = mqttMtlsPort();
         $wssPort = mqttMtlsPort();
@@ -1404,6 +1425,7 @@ try {
         } finally {
             $nativeWssProcess->stop();
         }
+        mqttMtlsCrlRefresh($command, mqttMtlsPhp(), $root, $consumer, $environment, $certs);
         expect(isset($report['sha256']) && is_string($report['sha256']) && $report['sha256'] !== '', '缺少 MQTT mTLS 原生产物摘要');
         $verified['native'] = [
             'artifact' => $report['sha256'],
@@ -1412,6 +1434,8 @@ try {
             'php' => (string) ($report['php'] ?? ''),
             'mtls' => true,
             'wss' => true,
+            'revoke-https' => true,
+            'crl-https-size-limit' => true,
         ];
     }
 } finally {

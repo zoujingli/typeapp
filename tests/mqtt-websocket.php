@@ -72,8 +72,12 @@ function mqttWsExtensionArgs(array $extensions, bool $forChild = false): array
 {
     $arguments = [];
     $directory = (string) ini_get('extension_dir');
+    // 子进程继承 INI，但不继承父进程命令行的 -d 扩展配置。
+    $loaded = $forChild
+        ? json_decode(successful([PHP_BINARY, '-r', 'echo json_encode(get_loaded_extensions(), JSON_THROW_ON_ERROR);']), true, 32, JSON_THROW_ON_ERROR)
+        : get_loaded_extensions();
     foreach ($extensions as $extension) {
-        if (!$forChild && extension_loaded($extension)) {
+        if (in_array($extension, $loaded, true)) {
             continue;
         }
         $module = $directory . '/' . $extension . '.so';
@@ -349,7 +353,7 @@ file_put_contents($consumer . '/package.json', json_encode(['name' => 'type-mqtt
 successful(['npm', 'install', '--ignore-scripts', '--no-audit', '--no-fund'], $consumer);
 
 $certificateConfiguration = $consumer . '/certificate.cnf';
-file_put_contents($certificateConfiguration, "[req]\ndistinguished_name=dn\nx509_extensions=server\n[dn]\n[server]\nsubjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\n");
+file_put_contents($certificateConfiguration, "[req]\ndistinguished_name=dn\nx509_extensions=server\n[dn]\n[server]\nsubjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\nextendedKeyUsage=serverAuth\n");
 $certificateOptions = ['config' => $certificateConfiguration, 'private_key_bits' => 2048, 'digest_alg' => 'sha256'];
 $key = openssl_pkey_new($certificateOptions);
 $request = openssl_csr_new(['commonName' => '127.0.0.1'], $key, $certificateOptions);
@@ -365,9 +369,6 @@ $php = $nativeOnly ? [PHP_BINARY] : mqttWsPhp();
 $launcher = [...$php, '-r', 'require "vendor/autoload.php"; require "examples/mqtt/main.php"; main($argc, $argv);', '--'];
 $environment = getenv();
 expect(is_array($environment), '无法读取 MQTT WebSocket 测试环境');
-unset($environment['PHPRC'], $environment['PHP_INI_SCAN_DIR']);
-putenv('PHPRC');
-putenv('PHP_INI_SCAN_DIR');
 $environment['MQTT_PASSWORD'] = 'mqtt-test-secret';
 $environment['MQTT_CERTIFICATE'] = '';
 $environment['MQTT_PRIVATE_KEY'] = '';

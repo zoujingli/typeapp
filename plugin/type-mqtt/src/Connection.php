@@ -242,8 +242,8 @@ final class Connection
         if ($this->output === '' || !$this->alive()) {
             return;
         }
-        $chunk = substr($this->output, 0, 16384);
-        $written = $this->flushNative($chunk);
+        // 输出已由 queue() 限制为 2 MiB；原生 send/push 负责短写与可写通知。
+        $written = $this->flushNative($this->output);
         if ($written === false) {
             $this->close();
             return;
@@ -320,7 +320,7 @@ final class Connection
         $this->closing = true;
     }
 
-    /** 把至多 16 KiB 交给原生发送缓冲；成功视为整段已入队，失败由调用方关闭。 */
+    /** 把有界输出交给原生发送缓冲；成功视为整段已入队，失败由调用方关闭。 */
     private function flushNative(string $chunk): int|false
     {
         if ($this->native === null || !is_int($this->socket)) {

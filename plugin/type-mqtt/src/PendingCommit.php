@@ -5,15 +5,20 @@ declare(strict_types=1);
 namespace Type\Mqtt;
 
 use Closure;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\Deadline;
+use Type\Runtime\ExecutionScope;
 
 /**
- * 一个有截止的持久 worker 及其精确后端清理；父子进程通过 Swoole Process 管道交换有界消息，不执行阻塞 PDO。
+ * 一个有截止的持久 worker 及其精确后端清理；通过 Swoole PROC hook 的进程管道交换有界消息，不执行阻塞 PDO。
  * 未证明远端后端消失的结果 released=false，调用者必须保留该资源配额，不能无限重启。
  */
 final class PendingCommit
 {
-    private ?\Swoole\Process $process = null;
+    /** @var resource|null Swoole PROC hook 管理的独立命令进程。 */
+    private mixed $process = null;
+    /** @var array<int, resource> 子进程标准输入与合并输出；只关闭本实例持有的句柄。 */
+    private array $pipes = [];
     private string $token = '';
     private string $input = '';
     private string $output = '';
@@ -43,15 +48,25 @@ final class PendingCommit
             }
         }
         $this->operationId = $request['operation_id'];
+        CoroutineRuntime::enableIo();
         $this->serializedRequest = json_encode($request, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n";
         if (strlen($this->serializedRequest) > 2097152) {
             throw new ProtocolError(0x97);
         }
-        $this->launch();
+        CoroutineRuntime::run(function (): void {
+            $this->launch();
+        });
     }
 
     /** 返回空表示仍有本地工作；最终 released=false 表示远端资源无法证明回收，须隔离容量。 */
     public function poll(): ?CommitResult
+    {
+        return CoroutineRuntime::run(function (): ?CommitResult {
+            return $this->pollCurrent();
+        });
+    }
+
+    private function pollCurrent(): ?CommitResult
     {
         if ($this->result !== null) {
             return $this->result;
@@ -59,14 +74,17 @@ final class PendingCommit
         if (!$this->killed) {
             $this->exchange();
         }
-        $running = $this->process !== null && \Swoole\Process::kill($this->process->pid, 0);
+        $running = $this->process !== null && proc_get_status($this->process)['running'];
         if (!$running) {
             // worker 正常退出时大响应仍可能留在内核接收缓冲；在同一截止内继续有界读取到完整结果或 EOF。
             if ($this->received === null && $this->process !== null && !$this->deadline->expired()) {
                 return null;
             }
-            \Swoole\Process::wait(false);
             $this->closePipe();
+            if ($this->process !== null) {
+                proc_close($this->process);
+                $this->process = null;
+            }
             if ($this->received !== null && $this->received->released && ($this->cleaning || $this->received->state !== 'unknown')) {
                 $this->result = $this->received;
             } elseif ($this->cleaning) {
@@ -82,7 +100,7 @@ final class PendingCommit
         } elseif ($this->deadline->expired() && !$this->killed) {
             // SyncRep 不检查客户端断线；杀本地 worker 后仍须专用连接执行 pg_terminate_backend。
             // 已收到的结果属于已完成操作；终止本地收尾不能撤销确认，下一轮仍须观察进程退出和 released。
-            \Swoole\Process::kill($this->process->pid, SIGKILL);
+            proc_terminate($this->process, SIGKILL);
             $this->killed = true;
             $this->closePipe();
         }
@@ -104,26 +122,29 @@ final class PendingCommit
         $this->received = null;
         $this->token = bin2hex(random_bytes(32));
         $this->deadline = new Deadline($this->seconds);
-        $token = $this->token;
         $command = [...$this->command, '--store-worker-pipe'];
-        $this->process = new \Swoole\Process(static function (\Swoole\Process $process) use ($command, $token): void {
-            putenv('MQTT_WORKER_TOKEN=' . $token);
-            $process->exec($command[0], array_slice($command, 1));
-        }, true, SOCK_STREAM);
-        $pid = $this->process->start();
-        if (!is_int($pid) || $pid < 1) {
+        $environment = getenv();
+        $environment['MQTT_WORKER_TOKEN'] = $this->token;
+        $pipes = [];
+        // Swoole 的 PROC hook 使用 exec 专用原生路径；不会在协程中 fork 后继续执行 PHP 回调。
+        $this->process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, null, $environment);
+        $this->pipes = $pipes;
+        if (!is_resource($this->process)) {
+            $this->process = null;
             $this->closePipe();
             throw new \RuntimeException('MQTT 持久 worker 启动失败');
         }
-        $this->process->setBlocking(false);
+        foreach ($this->pipes as $pipe) {
+            stream_set_blocking($pipe, false);
+        }
     }
 
     private function exchange(): void
     {
-        if ($this->process === null) {
+        if ($this->process === null || $this->pipes === []) {
             return;
         }
-        $chunk = $this->process->read(65536);
+        $chunk = fread($this->pipes[1], 65536);
         if (is_string($chunk) && strlen($chunk) + strlen($this->input) > 2097152) {
             $this->cancel();
             return;
@@ -137,6 +158,7 @@ final class PendingCommit
             $this->input = substr($this->input, $newline + 1);
             if (!$this->authenticated) {
                 if (!hash_equals($this->token, $line)) {
+                    $this->cancel();
                     $this->closePipe();
                     $this->input = '';
                     return;
@@ -159,7 +181,7 @@ final class PendingCommit
             }
         }
         if ($this->output !== '') {
-            $written = $this->process->write(substr($this->output, 0, 65536));
+            $written = fwrite($this->pipes[0], substr($this->output, 0, 65536));
             if ($written === false || $written === 0) {
                 $this->cancel();
             } else {
@@ -170,10 +192,10 @@ final class PendingCommit
 
     private function closePipe(): void
     {
-        if ($this->process !== null) {
-            $this->process->close();
+        foreach ($this->pipes as $pipe) {
+            fclose($pipe);
         }
-        $this->process = null;
+        $this->pipes = [];
         $this->input = '';
         $this->output = '';
     }
@@ -186,7 +208,7 @@ final class PendingCommit
     public static function work(PostgresStore $store, string $endpoint, ?Closure $operation = null): void
     {
         if ($endpoint !== 'pipe') {
-            throw new \InvalidArgumentException('MQTT 持久 worker 只接受 Swoole Process 管道');
+            throw new \InvalidArgumentException('MQTT 持久 worker 只接受 Swoole 管理的进程管道');
         }
         $token = (string) getenv('MQTT_WORKER_TOKEN');
         if (preg_match('/^[a-f0-9]{64}$/D', $token) !== 1) {
@@ -201,11 +223,25 @@ final class PendingCommit
         if (!is_array($request) || !is_string($request['operation_id'] ?? null)) {
             throw new \RuntimeException('MQTT 持久请求身份无效');
         }
-        if (($request['action'] ?? '') === 'cleanup') {
-            $result = new CommitResult($request['operation_id'], 'unknown', 0x88, [], $store->cleanup($request['operation_id']));
-        } else {
-            $result = $operation === null ? $store->execute($request) : $operation($request);
-        }
+        $result = CoroutineRuntime::run(static function () use ($request, $store, $operation): CommitResult {
+            $scope = new ExecutionScope();
+            try {
+                return $scope->run(static function (ExecutionScope $current) use ($request, $store, $operation): CommitResult {
+                    if (($request['action'] ?? '') === 'cleanup') {
+                        return new CommitResult($request['operation_id'], 'unknown', 0x88, [], $store->cleanup($request['operation_id']));
+                    }
+                    return $operation === null ? $store->execute($request) : $operation($request);
+                });
+            } finally {
+                try {
+                    $scope->close();
+                } finally {
+                    if ($scope->state() !== 'closed') {
+                        $scope->awaitClosed();
+                    }
+                }
+            }
+        });
         self::write(STDOUT, json_encode($result->data(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n");
     }
 

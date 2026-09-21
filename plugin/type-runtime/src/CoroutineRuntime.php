@@ -106,7 +106,7 @@ final class CoroutineRuntime
     }
 
     /**
-     * 在主线程启动期补齐网络、等待与已编译的 PDO 钩子；保留已有配置，可重复调用。
+     * 在主线程启动期补齐网络、等待、独立命令进程及已编译的 PDO 钩子；保留已有配置，可重复调用。
      *
      * 子线程直接使用启动前安装的原生 hook，不重复修改进程配置。
      * 文件 hook 的完整有界接入仍在独立验收，不作为普通线程和网络的启动前置。
@@ -115,7 +115,7 @@ final class CoroutineRuntime
     public static function enableIo(): void
     {
         self::assertAvailable();
-        $required = SWOOLE_HOOK_TCP | SWOOLE_HOOK_SSL | SWOOLE_HOOK_TLS
+        $required = SWOOLE_HOOK_TCP | SWOOLE_HOOK_SSL | SWOOLE_HOOK_TLS | SWOOLE_HOOK_PROC
             | SWOOLE_HOOK_SLEEP | SWOOLE_HOOK_STREAM_FUNCTION;
         if (defined('SWOOLE_HOOK_UNIX')) {
             $required |= (int) constant('SWOOLE_HOOK_UNIX');

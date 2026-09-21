@@ -26,7 +26,7 @@ composer config repositories.type-orm-pgsql vcs https://github.com/zoujingli/typ
 composer require zoujingli/type-orm-pgsql:dev-main
 ```
 
-PHP 要求 `>=8.4 <8.6`，依赖 OpenSSL、PCRE、JSON 及上述组件；持久后端需要 PDO PostgreSQL。通信、进程、线程、协程与事件循环统一使用 Swoole `>=6.2 <7` 的官方能力，允许固定官方内置 PHP 库按官方机制加载。Broker 服务端由 Swoole Server 承担，客户端同步模式使用 Swoole Client，协程模式使用 Swoole Coroutine Socket，持久 worker 使用 Swoole Process 管道。原生运行仍需对应扩展，不回退执行业务 PHP 源码。
+PHP 要求 `>=8.4 <8.6`，依赖 OpenSSL、PCRE、JSON 及上述组件；持久后端需要 PDO PostgreSQL。通信、进程、线程、协程与事件循环统一使用 Swoole `>=6.2 <7` 的官方能力，允许固定官方内置 PHP 库按官方机制加载。Broker 服务端由 Swoole Server 承担，客户端统一使用 Swoole Coroutine Socket，非协程调用沿现有 CoroutineRuntime 使用官方 Scheduler，持久 worker 使用 Swoole PROC hook 管理的进程管道。原生运行仍需对应扩展，不回退执行业务 PHP 源码。
 
 ## 认证与最小启动
 
@@ -103,7 +103,7 @@ $broker->serve('127.0.0.1', 8883);
 
 客户端默认 TLS，使用明确 IP 连接，并通过 `peerName` 指定证书身份，避免同步 DNS 越过等待预算。每次公开等待大于零且不超过 60 秒；默认入站 Receive Maximum 为 32，完整包最大 1 MiB。缓冲有条数和字节界限，半包从首字节起最多等待 5 秒，消费前面的完整包不会刷新尾部半包的期限。调用方持续接收以处理保活，不能无限阻塞业务处理。
 
-使用 Swoole Coroutine Socket 时需要在已有协程中传入 `coroutine: true`；同步调用者使用 Swoole Client。两种模式都保留连接、TLS、收发、保活、超时与关闭语义。
+在协程内建连时，连接自动绑定到建连执行者；传入 `coroutine: true` 另要求入口已有协程。非协程入口可使用默认参数，由现有 CoroutineRuntime 在官方 Scheduler 中执行网络等待。两种调用方式共用 Coroutine Socket 与相同的连接、TLS、收发、保活、超时和关闭语义；已有事件循环的原生回调须先进入其协程，不能嵌套 Scheduler。
 
 ## 验证与使用边界
 

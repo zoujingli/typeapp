@@ -17,17 +17,24 @@ function mqttCommitLifecycleApplication(string $source): string
     }
     if ($arguments->has('store-worker-pipe')) {
 PHP, $source);
-    $worker = "        PendingCommit::work(\$store, \$arguments->text('store-worker-pipe', ''));";
+    $worker = "        PendingCommit::work(\$store, 'pipe');";
     expect(substr_count($source, $worker) === 1, '持久生命周期worker入口变化');
     $source = str_replace($worker, <<<'PHP'
         $lifecycle = (object) ['executed' => false, 'result' => []];
-        PendingCommit::work($store, $arguments->text('store-worker', ''), function (array $request) use ($store, $lifecycle, $lifecycleCase): \Type\Mqtt\CommitResult {
+        PendingCommit::work($store, 'pipe', function (array $request) use ($store, $lifecycle, $lifecycleCase): \Type\Mqtt\CommitResult {
+            $current = \Type\Runtime\ExecutionScope::current();
+            if ($current->binding('tenant_id') !== null) {
+                throw new RuntimeException('持久 worker 不得从输入推断租户');
+            }
             $lifecycle->executed = true;
             if ($lifecycleCase === 'cancel-before-result') {
                 file_put_contents(getcwd() . '/lifecycle-ready.json', json_encode(['phase' => 'before', 'pid' => getmypid()], JSON_THROW_ON_ERROR));
                 mqttLifecycleWait();
             }
             $result = $store->execute($request);
+            if (\Type\Runtime\ExecutionScope::current() !== $current) {
+                throw new RuntimeException('存储操作未恢复 worker 当前作用域');
+            }
             $lifecycle->result = $result->data();
             return $result;
         });

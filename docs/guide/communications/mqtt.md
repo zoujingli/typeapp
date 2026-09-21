@@ -53,14 +53,15 @@ sequenceDiagram
 | `maximumPacketBytes` | 1048576 字节 | 完整 MQTT 报文上限，范围 128–1048576 |
 | `handshakeSeconds` | 10.0 秒 | 握手等待，范围 `(0, 60]` |
 | `partialPacketSeconds` | 15.0 秒 | 半包等待，范围 `(0, 60]` |
+| `callbackSeconds` | 30.0 秒 | 原生事件排队和业务回调共用的截止，范围 `(0, 60]`；真实收尾后才归还额度 |
 | `maximumDeviceConnections` / `maximumServiceConnections` | 10000 / 100 个 | 分类预算，同时受物理连接上限约束 |
 | `wsPort` / `wssPort` | 0，关闭 | MQTT over WebSocket 的额外监听；本机示例显式设 `wsPort` |
 | `allowedOrigins` | `[]` | WebSocket 来源限制，生产应明确允许来源 |
 | `mtlsPort` / `clientCa` | 0 / 空字符串 | 专用双向 TLS 监听与客户端 CA |
 | `handleSignals` | `true` | 由 Broker 处理停止信号；嵌入时需宿主接管停止 |
-| `workerCommand` | 空数组 | 通过 Swoole Process 管道启动持久 worker；为空时只开放 QoS 0 |
+| `workerCommand` | 空数组 | 通过 Swoole PROC hook 管理的进程管道启动持久 worker；为空时只开放 QoS 0 |
 
-Broker 的 TCP、TLS、mTLS 与 WebSocket 监听均由同一个 Swoole Server 生命周期管理；WebSocket 监听启用时，HTTP 升级和 MQTT 帧共用该服务。持久 worker 使用 Swoole Process 管道，客户端协程模式使用 Swoole Coroutine Socket，同步模式使用 Swoole Client。
+Broker 的 TCP、TLS、mTLS 与 WebSocket 监听均由同一个 Swoole Server 生命周期管理；WebSocket 监听启用时，HTTP 升级和 MQTT 帧共用该服务。持久 worker 使用 Swoole PROC hook 管理的进程管道，客户端统一使用 Swoole Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行。
 
 `wsPort`、`wssPort`、`mtlsPort` 不能与主端口重复；同一进程不能同时开启明文 WS 与 WSS，WSS/mTLS 不能混用明文调试配置。证书生命周期、持久资源与集群参数集中在[组件参考](../plugins/type-mqtt.md)，无需把它们复制成另一套配置体系。
 
@@ -264,7 +265,13 @@ export MQTT_PASSWORD=local-guide-only
 
 `authenticate()` 每次 CONNECT 验证身份，`authorize()` 检查 publish/subscribe 权限，交付还需核对实际 Topic。设备 ID 不应直接由客户端任意声明；按认证身份绑定 Topic 前缀，通配符与共享组也不能扩大权限。生产授权建议区分设备的遥测发布、命令订阅与服务管理权限；示例的单个共享密码不适合真实设备部署。
 
-当前 Broker 的认证、授权及连接观察回调运行在关闭自动协程的串行状态机中，尚未绑定框架当前作用域。因此这些回调不能直接使用无连接 Model 或 Db；应用也不能在既有事件循环里嵌套启动 Scheduler。作用域接入需要与消息顺序和资源收尾共同验收，当前边界见[受管任务与作用域](../../development/managed-tasks.md#当前作用域与应用绑定)。本篇的静态授权示例不依赖数据库作用域。
+Broker 在官方 Swoole 协程中处理原生事件，使用一个 Channel 保持协议状态机全局串行。认证、授权、连接观察及停止观察均能取得 `ExecutionScope::current()`；按数据源完成启动装配后，可以使用无连接 Model 或 Db。已有事件循环内不再启动 Scheduler，I/O hook 沿用应用启动期配置。
+
+每次事件独立建立并关闭作用域，排队及回调共用 `callbackSeconds`；事件总数最多为启动连接上限加 32，输入字节总额为 32 MiB，同一连接有在途事件时暂停原生读取。回调异常只关闭对应连接，维护事件失败停止角色。关闭期间若子任务尚未结束，仍持有串行资格和事件额度，停止角色前等待真实收尾。作用域截止不能强制撤销已经发生的 SQL 或远端副作用。
+
+进程停止信号沿用 Swoole `reload_async=true`，`workerExit` 停止接纳并清除 Broker 维护定时器，让在途协程继续收尾；`max_wait_time` 为向上取整的 `callbackSeconds + 6` 秒，覆盖回调、默认五秒清理预算及时间粒度余量。这是原生 worker 的等待上限，不包括随后持久会话的结束工作；超过上限而仍有事件未结束时明确失败，不能视为优雅退出。
+
+作用域中的连接编号和事件名仅用于关联，不能授予租户身份。认证策略先从可信来源验证身份，再用当前作用域的 `run($operation, ['tenant_id' => $verifiedTenant])` 临时绑定业务范围；结束或异常均恢复原绑定，受管子任务只继承可信值快照。框架不会把 Client ID、用户名、Topic 或消息属性自动解释成租户。通用规则见[受管任务与作用域](../../development/managed-tasks.md#当前作用域与应用绑定)。
 
 ## 可靠交付、会话与持久存储
 

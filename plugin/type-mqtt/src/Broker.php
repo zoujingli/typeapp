@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Type\Mqtt;
 
+use Swoole\Coroutine;
+use Swoole\Coroutine\Channel;
 use Type\Runtime\Deadline;
 use Type\Runtime\CoroutineRuntime;
+use Type\Runtime\ExecutionScope;
 use Type\Runtime\ProcessSignals;
 
 /**
@@ -18,6 +21,7 @@ final class Broker
     private array $connections = [];
     private bool $started = false;
     private bool $stopping = false;
+    private bool $nativeExiting = false;
     private int $accepted = 0;
     private int $rejected = 0;
     private int $closed = 0;
@@ -46,6 +50,17 @@ final class Broker
     private int $flushTimeouts = 0;
     private int $handshakeTimeouts = 0;
     private int $eventTimer = 0;
+    /** 官方 Channel 串行放行协议状态机；事件额度在作用域真实关闭后归还。 */
+    private ?Channel $eventGate = null;
+    private int $pendingEvents = 0;
+    private int $pendingEventBytes = 0;
+    private int $callbackFailures = 0;
+    private int $eventQuotaRefusals = 0;
+    private bool $tickPending = false;
+    /** @var array<int, int> 原生事件接纳代次；排队期间关闭或复用的 fd 不再执行旧事件。 */
+    private array $nativeEpochs = [];
+    /** @var array<int, int> 同一原生连接在途事件数；全部收尾才恢复原生读取。 */
+    private array $pendingFdEvents = [];
     /** 当前 Swoole Server，统一持有 TCP、TLS 与 WebSocket 监听。 */
     private mixed $nativeServer = null;
     /**
@@ -70,7 +85,8 @@ final class Broker
     private int $crlSize = 0;
     private bool $crlUnavailable = false;
     private int $certificateEnforceAt = 0;
-    private int $crlFetchPid = 0;
+    private bool $crlFetching = false;
+    private ?\Swoole\Coroutine\Http\Client $crlClient = null;
     private int $crlFetchAt = 0;
     /** @var array<string, true> 平台吊销序列号，本进程内只增不减。 */
     private array $platformRevoked = [];
@@ -189,8 +205,8 @@ final class Broker
         if ($this->started || $this->stopping) {
             throw new \RuntimeException('MQTT 服务实例不能重复启动');
         }
-        CoroutineRuntime::assertAvailable();
-        // Broker 的监听、TLS、收发、定时和关闭均由 Swoole Server 承担；不安装 PHP 流就绪轮询。
+        CoroutineRuntime::enableIo();
+        // 原生事件只接纳工作；显式协程与全局 Channel 保持状态机串行，不嵌套 Scheduler。
         if (!swoole_async_set(['enable_coroutine' => false, 'enable_kqueue' => PHP_OS_FAMILY === 'Darwin'])) {
             throw new \RuntimeException('MQTT 原生事件驱动配置失败');
         }
@@ -285,38 +301,62 @@ final class Broker
                 $this->stop();
             });
             $this->serveNative($host, $port);
+            if ($this->pendingEvents !== 0 || $this->crlFetching) {
+                throw new \RuntimeException('mqtt_callback_shutdown_incomplete');
+            }
         } finally {
             $this->stopping = true;
             $this->shutdownNative();
-            foreach ($this->connections as $connection) {
-                $this->disconnect($connection, 0x8b);
-                $connection->flush();
-                $connection->close();
-                $this->observeClosed($connection);
-                $this->finishSession($connection);
-                $this->closed++;
-            }
-            $this->connections = [];
-            // 已启动工作沿用原有界截止；正常停机不把仍可确认的事务强制转为未知。
-            while ($this->commits !== [] || $this->closingSessions !== []) {
-                $this->pollCommits();
-                if ($this->commits !== []) {
-                    usleep(10000);
+            CoroutineRuntime::run(function (): void {
+                $scope = new ExecutionScope();
+                try {
+                    $scope->run(function (ExecutionScope $current): void {
+                        foreach ($this->connections as $connection) {
+                            $this->disconnect($connection, 0x8b);
+                            $connection->flush();
+                            $connection->close();
+                            $this->observeClosed($connection);
+                            $this->finishSession($connection);
+                            $this->closed++;
+                        }
+                        $this->connections = [];
+                        // 已启动工作沿用原有界截止；正常停机不把仍可确认的事务强制转为未知。
+                        while ($this->commits !== [] || $this->closingSessions !== []) {
+                            $this->pollCommits();
+                            if ($this->commits !== []) {
+                                usleep(10000);
+                            }
+                        }
+                        if ($this->options->clustered && $this->nodeGeneration > 0 && $this->quarantinedCommits === 0) {
+                            $retired = $this->nodeRequest('node_close');
+                            if ($retired->state !== 'committed' || !$retired->released) {
+                                $this->nodeFailures++;
+                            }
+                        }
+                        $this->nodeFences = [];
+                        $this->signals?->close();
+                        try {
+                            $this->observer?->stopped(time());
+                        } catch (\Throwable) {
+                            $this->observationFailures++;
+                        }
+                    });
+                } finally {
+                    try {
+                        $scope->close();
+                    } finally {
+                        if ($scope->state() !== 'closed') {
+                            $scope->awaitClosed();
+                        }
+                        $this->eventGate?->close();
+                        $this->eventGate = null;
+                        $this->nativeEpochs = [];
+                        $this->pendingFdEvents = [];
+                        $this->closingNativeInstances = [];
+                        $this->pendingCertificates = [];
+                    }
                 }
-            }
-            if ($this->options->clustered && $this->nodeGeneration > 0 && $this->quarantinedCommits === 0) {
-                $retired = $this->nodeRequest('node_close');
-                if ($retired->state !== 'committed' || !$retired->released) {
-                    $this->nodeFailures++;
-                }
-            }
-            $this->nodeFences = [];
-            $this->signals?->close();
-            try {
-                $this->observer?->stopped(time());
-            } catch (\Throwable) {
-                $this->observationFailures++;
-            }
+            });
         }
     }
 
@@ -324,7 +364,7 @@ final class Broker
     public function stop(): void
     {
         $this->stopping = true;
-        if ($this->nativeServer !== null) {
+        if ($this->nativeServer !== null && $this->pendingEvents === 0 && !$this->nativeExiting) {
             try {
                 $this->nativeServer->shutdown();
             } catch (\Throwable) {
@@ -427,8 +467,10 @@ final class Broker
             'log_file' => '/dev/null',
             'max_connection' => min(10100, $this->options->maximumConnections + 16),
             'max_request' => 0,
-            'reload_async' => false,
+            'reload_async' => true,
+            'max_wait_time' => (int) ceil($this->options->callbackSeconds + 6),
             'package_max_length' => min(2097152, $this->options->maximumPacketBytes * 2),
+            'buffer_output_size' => 2097152,
             'open_tcp_nodelay' => true,
         ];
         if ($this->websocketEnabled()) {
@@ -566,16 +608,22 @@ final class Broker
             $timer = \Swoole\Timer::tick(50, function (int $timerId) use ($native): void {
                 if ($this->stopping) {
                     $this->stopClientCrlFetch();
-                    $native->shutdown();
+                    $this->stop();
                     return;
                 }
-                $this->signals?->dispatch();
-                $this->tick();
-                foreach ($this->connections as $connection) {
-                    if ($connection->output !== '' && $connection->alive()) {
-                        $this->flush($connection);
-                    }
+                if ($this->tickPending) {
+                    return;
                 }
+                $this->tickPending = true;
+                $this->nativeEvent('tick', function (ExecutionScope $scope) use ($native): void {
+                    $this->signals?->dispatch();
+                    $this->tick();
+                    foreach ($this->connections as $connection) {
+                        if ($connection->output !== '' && $connection->alive()) {
+                            $this->flush($connection);
+                        }
+                    }
+                });
             });
             if ($timer === false) {
                 throw new \RuntimeException('MQTT 原生定时唤醒注册失败');
@@ -583,89 +631,108 @@ final class Broker
             $this->eventTimer = $timer;
         });
         $server->on('connect', function (\Swoole\Server $native, int $fd, int $reactorId) use ($wsPort, $tcpPort): void {
-            $info = $native->getClientInfo($fd, $reactorId);
-            if (!is_array($info)) {
-                $info = $native->getClientInfo($fd);
+            // 先撤销旧传输，避免正在让出的回调把输出写入复用后的连接；持久收尾仍串行执行。
+            $previous = $this->connections[$fd] ?? null;
+            if ($previous !== null) {
+                $previous->socket = null;
+                $previous->native = null;
             }
-            $listen = is_array($info) ? (int) ($info['server_port'] ?? 0) : 0;
-            if ($wsPort > 0 && $this->options->clientCa !== '' && $listen === $wsPort) {
-                $this->pendingCertificates[$fd] = $this->certificateFromInfo(is_array($info) ? $info : []);
-                return;
-            }
-            if ($this->options->mtlsPort > 0 && $listen === $this->options->mtlsPort) {
-                $facts = $this->certificateFromInfo(is_array($info) ? $info : []);
-                $this->acceptNative($native, $fd, 'tcp', true, is_array($info) ? $info : [], $facts['fingerprint'], true, $facts['serial'], $facts['notAfter']);
-                return;
-            }
-            // WebSocket 连接在 onOpen 建表；此处只接收 TCP/TLS 监听上的 fd。
-            if ($listen !== $tcpPort || ($wsPort > 0 && $listen === $wsPort)) {
-                return;
-            }
-            $this->acceptNative($native, $fd, 'tcp', !$this->options->allowPlaintext, is_array($info) ? $info : []);
+            $this->nativeEpochs[$fd] = ++$this->nativeInstances;
+            $this->pendingFdEvents[$fd] = 0;
+            $this->nativeEvent('connect', function (ExecutionScope $scope) use ($native, $fd, $reactorId, $wsPort, $tcpPort): void {
+                $info = $native->getClientInfo($fd, $reactorId);
+                if (!is_array($info)) {
+                    $info = $native->getClientInfo($fd);
+                }
+                $listen = is_array($info) ? (int) ($info['server_port'] ?? 0) : 0;
+                if ($wsPort > 0 && $this->options->clientCa !== '' && $listen === $wsPort) {
+                    $this->pendingCertificates[$fd] = $this->certificateFromInfo(is_array($info) ? $info : []);
+                    return;
+                }
+                if ($this->options->mtlsPort > 0 && $listen === $this->options->mtlsPort) {
+                    $facts = $this->certificateFromInfo(is_array($info) ? $info : []);
+                    $this->acceptNative($native, $fd, 'tcp', true, is_array($info) ? $info : [], $facts['fingerprint'], true, $facts['serial'], $facts['notAfter']);
+                    return;
+                }
+                // WebSocket 连接在 onOpen 建表；此处只接收 TCP/TLS 监听上的 fd。
+                if ($listen !== $tcpPort || ($wsPort > 0 && $listen === $wsPort)) {
+                    return;
+                }
+                $this->acceptNative($native, $fd, 'tcp', !$this->options->allowPlaintext, is_array($info) ? $info : []);
+            }, $fd);
         });
         $server->on('receive', function (\Swoole\Server $native, int $fd, int $reactorId, string $data): void {
-            $connection = $this->connections[$fd] ?? null;
-            if ($connection === null || $connection->transport !== 'tcp' || $connection->closing) {
-                return;
-            }
-            $this->ingest($connection, $data);
-            if ($connection->output !== '') {
-                $this->flush($connection);
-            }
+            $this->nativeEvent('receive', function (ExecutionScope $scope) use ($fd, $data): void {
+                $connection = $this->connections[$fd] ?? null;
+                if ($connection === null || $connection->transport !== 'tcp' || $connection->closing) {
+                    return;
+                }
+                $this->ingest($connection, $data);
+                if ($connection->output !== '') {
+                    $this->flush($connection);
+                }
+            }, $fd, strlen($data));
         });
         if ($this->websocketEnabled() && $server instanceof \Swoole\WebSocket\Server) {
             $server->on('open', function (\Swoole\WebSocket\Server $native, \Swoole\Http\Request $request): void {
                 $fd = $request->fd;
-                $headers = [];
-                foreach ($request->header as $name => $value) {
-                    $headers[(string) $name] = (string) $value;
+                if (!isset($this->nativeEpochs[$fd])) {
+                    $this->nativeEpochs[$fd] = ++$this->nativeInstances;
                 }
-                if (!self::offersMqtt($headers)) {
-                    $this->rejected++;
-                    $native->disconnect($fd, 1002, 'subprotocol_not_offered');
-                    return;
-                }
-                $origin = strtolower($headers['origin'] ?? $headers['sec-websocket-origin'] ?? '');
-                if ($this->options->allowedOrigins !== [] && $origin !== '' && !in_array($origin, $this->options->allowedOrigins, true)) {
-                    $this->rejected++;
-                    $native->disconnect($fd, 1008, 'origin_not_allowed');
-                    return;
-                }
-                $info = $native->getClientInfo($fd);
-                $mutual = $this->options->wssPort > 0 && $this->options->clientCa !== '';
-                $facts = $this->pendingCertificates[$fd] ?? ['fingerprint' => '', 'serial' => '', 'notAfter' => 0];
-                unset($this->pendingCertificates[$fd]);
-                if ($mutual && $facts['fingerprint'] === '') {
-                    $facts = $this->certificateFromInfo(is_array($info) ? $info : []);
-                }
-                if ($mutual && $facts['fingerprint'] === '') {
-                    $this->rejected++;
-                    $native->disconnect($fd, 1008, 'client_certificate_required');
-                    return;
-                }
-                $this->acceptNative($native, $fd, 'websocket', $this->options->wssPort > 0, is_array($info) ? $info : [], $facts['fingerprint'], $mutual, $facts['serial'], $facts['notAfter']);
+                $this->nativeEvent('open', function (ExecutionScope $scope) use ($native, $request, $fd): void {
+                    $headers = [];
+                    foreach ($request->header as $name => $value) {
+                        $headers[(string) $name] = (string) $value;
+                    }
+                    if (!self::offersMqtt($headers)) {
+                        $this->rejected++;
+                        $native->disconnect($fd, 1002, 'subprotocol_not_offered');
+                        return;
+                    }
+                    $origin = strtolower($headers['origin'] ?? $headers['sec-websocket-origin'] ?? '');
+                    if ($this->options->allowedOrigins !== [] && $origin !== '' && !in_array($origin, $this->options->allowedOrigins, true)) {
+                        $this->rejected++;
+                        $native->disconnect($fd, 1008, 'origin_not_allowed');
+                        return;
+                    }
+                    $info = $native->getClientInfo($fd);
+                    $mutual = $this->options->wssPort > 0 && $this->options->clientCa !== '';
+                    $facts = $this->pendingCertificates[$fd] ?? ['fingerprint' => '', 'serial' => '', 'notAfter' => 0];
+                    unset($this->pendingCertificates[$fd]);
+                    if ($mutual && $facts['fingerprint'] === '') {
+                        $facts = $this->certificateFromInfo(is_array($info) ? $info : []);
+                    }
+                    if ($mutual && $facts['fingerprint'] === '') {
+                        $this->rejected++;
+                        $native->disconnect($fd, 1008, 'client_certificate_required');
+                        return;
+                    }
+                    $this->acceptNative($native, $fd, 'websocket', $this->options->wssPort > 0, is_array($info) ? $info : [], $facts['fingerprint'], $mutual, $facts['serial'], $facts['notAfter']);
+                }, $fd);
             });
             $server->on('message', function (\Swoole\WebSocket\Server $native, \Swoole\WebSocket\Frame $frame): void {
-                $connection = $this->connections[$frame->fd] ?? null;
-                if ($connection === null || $connection->transport !== 'websocket' || !$connection->alive()) {
-                    return;
-                }
-                if ($frame->opcode === WEBSOCKET_OPCODE_PING || $frame->opcode === WEBSOCKET_OPCODE_PONG
-                    || $frame->opcode === WEBSOCKET_OPCODE_CLOSE) {
-                    return;
-                }
-                if ($frame->opcode === WEBSOCKET_OPCODE_TEXT) {
-                    $native->disconnect($frame->fd, 1003, 'mqtt_binary_required');
-                    $connection->close();
-                    return;
-                }
-                if ($connection->closing) {
-                    return;
-                }
-                $this->ingest($connection, $frame->data);
-                if ($connection->output !== '') {
-                    $this->flush($connection);
-                }
+                $this->nativeEvent('message', function (ExecutionScope $scope) use ($native, $frame): void {
+                    $connection = $this->connections[$frame->fd] ?? null;
+                    if ($connection === null || $connection->transport !== 'websocket' || !$connection->alive()) {
+                        return;
+                    }
+                    if ($frame->opcode === WEBSOCKET_OPCODE_PING || $frame->opcode === WEBSOCKET_OPCODE_PONG
+                        || $frame->opcode === WEBSOCKET_OPCODE_CLOSE) {
+                        return;
+                    }
+                    if ($frame->opcode === WEBSOCKET_OPCODE_TEXT) {
+                        $native->disconnect($frame->fd, 1003, 'mqtt_binary_required');
+                        $connection->close();
+                        return;
+                    }
+                    if ($connection->closing) {
+                        return;
+                    }
+                    $this->ingest($connection, $frame->data);
+                    if ($connection->output !== '') {
+                        $this->flush($connection);
+                    }
+                }, $frame->fd, strlen($frame->data));
             });
             $server->on('request', function (\Swoole\Http\Request $request, \Swoole\Http\Response $response): void {
                 $response->status(404);
@@ -673,9 +740,13 @@ final class Broker
             });
         }
         $server->on('close', function (\Swoole\Server $native, int $fd, int $reactorId): void {
-            unset($this->pendingCertificates[$fd]);
             $closingInstance = $this->closingNativeInstances[$fd] ?? 0;
             unset($this->closingNativeInstances[$fd]);
+            if ($closingInstance !== 0 && ($this->nativeEpochs[$fd] ?? 0) !== $closingInstance) {
+                return;
+            }
+            // 原生关闭立即撤销传输资格；观察与持久收尾仍由串行事件处理。
+            unset($this->pendingCertificates[$fd], $this->nativeEpochs[$fd], $this->pendingFdEvents[$fd]);
             $connection = $this->connections[$fd] ?? null;
             if ($closingInstance !== 0 && ($connection === null || $connection->nativeInstance !== $closingInstance)) {
                 return;
@@ -690,12 +761,111 @@ final class Broker
                 $connection->endedAt = microtime(true);
             }
         });
-        $server->on('workerStop', function (\Swoole\Server $native, int $workerId): void {
+        $server->on('workerExit', function (\Swoole\Server $native, int $workerId): void {
+            $this->stopping = true;
+            $this->nativeExiting = true;
             if ($this->eventTimer !== 0) {
                 \Swoole\Timer::clear($this->eventTimer);
                 $this->eventTimer = 0;
             }
+            $this->stopClientCrlFetch();
         });
+    }
+
+    /**
+     * 直接使用官方协程和 Channel，有界等待后才创建本次作用域。
+     * 原生回调不自动开协程，故接纳计数先于 create；过载关闭当前连接，维护事件失败则停止角色。
+     * @param \Closure(ExecutionScope): void $operation
+     */
+    private function nativeEvent(string $event, \Closure $operation, int $fd = 0, int $bytes = 0): void
+    {
+        if ($this->stopping || $this->pendingEvents >= $this->startupMaximumConnections + 32
+            || $this->pendingEventBytes + $bytes > 33554432) {
+            $this->eventQuotaRefusals++;
+            if ($fd > 0) {
+                $this->nativeServer?->close($fd, true);
+            } else {
+                $this->tickPending = false;
+                $this->stop();
+            }
+            return;
+        }
+        $epoch = $fd > 0 ? ($this->nativeEpochs[$fd] ?? 0) : 0;
+        $deadline = new Deadline($this->options->callbackSeconds);
+        if ($fd > 0) {
+            $this->pendingFdEvents[$fd] = ($this->pendingFdEvents[$fd] ?? 0) + 1;
+            $this->nativeServer?->pause($fd);
+        }
+        $this->pendingEvents++;
+        $this->pendingEventBytes += $bytes;
+        $created = Coroutine::create(function () use ($event, $operation, $fd, $bytes, $epoch, $deadline): void {
+            $acquired = false;
+            try {
+                if ($this->eventGate === null) {
+                    $this->eventGate = new Channel(1);
+                    $this->eventGate->push(true);
+                }
+                if ($deadline->expired()) {
+                    throw new \RuntimeException('mqtt_callback_wait_timeout');
+                }
+                $acquired = $this->eventGate->pop((float) $deadline->remaining()) === true;
+                if (!$acquired) {
+                    throw new \RuntimeException('mqtt_callback_wait_timeout');
+                }
+                if ($this->stopping || ($fd > 0 && ($epoch === 0 || ($this->nativeEpochs[$fd] ?? 0) !== $epoch))) {
+                    return;
+                }
+                $scope = new ExecutionScope($deadline, ['protocol' => 'mqtt', 'event' => $event, 'connection' => (string) $fd]);
+                try {
+                    $scope->run($operation);
+                } finally {
+                    try {
+                        $scope->close();
+                    } finally {
+                        if ($scope->state() !== 'closed') {
+                            $this->stop();
+                            $scope->awaitClosed();
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+                $this->callbackFailures++;
+                if ($fd > 0 && ($this->nativeEpochs[$fd] ?? 0) === $epoch) {
+                    $this->nativeServer?->close($fd, true);
+                } elseif ($fd === 0) {
+                    $this->stop();
+                }
+            } finally {
+                $this->completeNativeEvent($event, $fd, $bytes, $epoch, $acquired);
+            }
+        });
+        if ($created === false) {
+            $this->callbackFailures++;
+            $this->completeNativeEvent($event, $fd, $bytes, $epoch, false);
+            $this->stop();
+        }
+    }
+
+    /** 正常、异常及创建失败共用额度归还；只有仍属同一接纳代次的连接才恢复读取。 */
+    private function completeNativeEvent(string $event, int $fd, int $bytes, int $epoch, bool $acquired): void
+    {
+        $this->pendingEvents--;
+        $this->pendingEventBytes -= $bytes;
+        if ($fd > 0 && ($this->nativeEpochs[$fd] ?? 0) === $epoch) {
+            $this->pendingFdEvents[$fd]--;
+            if ($this->pendingFdEvents[$fd] === 0 && !$this->stopping) {
+                $this->nativeServer?->resume($fd);
+            }
+        }
+        if ($event === 'tick') {
+            $this->tickPending = false;
+        }
+        if ($acquired) {
+            $this->eventGate?->push(true);
+        }
+        if ($this->stopping && $this->pendingEvents === 0) {
+            $this->stop();
+        }
     }
 
     private function releaseNativeFd(int $fd): void
@@ -746,7 +916,7 @@ final class Broker
         $connection->clientCertificateFingerprint = $fingerprint;
         $connection->clientCertificateSerial = $serial;
         $connection->clientCertificateNotAfter = $notAfter;
-        $connection->nativeInstance = ++$this->nativeInstances;
+        $connection->nativeInstance = $this->nativeEpochs[$fd];
         $connection->noteNativeClosing = function (int $closedFd, int $instance): void {
             $this->closingNativeInstances[$closedFd] = $instance;
         };
@@ -872,19 +1042,22 @@ final class Broker
 
     private function ingest(Connection $connection, string $bytes): void
     {
-        if ($bytes === '') {
-            return;
+        $offset = 0;
+        // TCP/WS 的一次读取可同时包含最大报文和下一报文；上限约束未解析缓冲，不约束读取总长度。
+        while ($offset < strlen($bytes) && !$connection->closing) {
+            $capacity = $this->options->maximumPacketBytes - strlen($connection->input);
+            if ($capacity <= 0) {
+                $this->disconnect($connection, 0x95);
+                return;
+            }
+            if ($connection->input === '') {
+                $connection->partial = new Deadline($this->options->partialPacketSeconds);
+            }
+            $chunk = substr($bytes, $offset, $capacity);
+            $offset += strlen($chunk);
+            $connection->input .= $chunk;
+            $this->packets($connection);
         }
-        $capacity = $this->options->maximumPacketBytes - strlen($connection->input);
-        if ($capacity <= 0 || strlen($bytes) > $capacity) {
-            $this->disconnect($connection, 0x95);
-            return;
-        }
-        if ($connection->input === '') {
-            $connection->partial = new Deadline($this->options->partialPacketSeconds);
-        }
-        $connection->input .= $bytes;
-        $this->packets($connection);
     }
 
     private function shutdownNative(): void
@@ -968,7 +1141,9 @@ final class Broker
             'quotaRevision' => $this->appliedQuotaVersion,
             'incomingExchanges' => $incoming, 'outgoingExchanges' => $outgoing,
             'eventRegistrations' => $events, 'eventTimers' => $this->eventTimer === 0 ? 0 : 1,
-            'readyEvents' => 0, 'pendingReads' => $pendingReads,
+            'readyEvents' => $this->pendingEvents, 'pendingReads' => $pendingReads,
+            'pendingEventBytes' => $this->pendingEventBytes, 'callbackFailures' => $this->callbackFailures,
+            'eventQuotaRefusals' => $this->eventQuotaRefusals,
             'connectionQuotaRefusals' => $this->connectionQuotaRefusals, 'packetQuotaRefusals' => $this->packetQuotaRefusals,
             'subscriptionQuotaRefusals' => $this->subscriptionQuotaRefusals, 'commitQuotaRefusals' => $this->commitQuotaRefusals,
             'flushTimeouts' => $this->flushTimeouts, 'handshakeTimeouts' => $this->handshakeTimeouts,
@@ -2171,7 +2346,7 @@ final class Broker
             }
             if ($connection->flush?->expired()) {
                 // 同步授权可能占用上一次循环。先作一次有界非阻塞写，避免把已就绪响应误判为慢接收方。
-                // 不重置截止；正常16KiB写预算之后仍有积压就关闭，慢端不能因此无限延长缓冲寿命。
+                // 不重置截止；原生发送仍未接管就关闭，慢端不能因此无限延长缓冲寿命。
                 $this->flush($connection);
                 if ($connection->flush?->expired()) {
                     $this->flushTimeouts++;
@@ -3013,56 +3188,37 @@ final class Broker
         return false;
     }
 
-    /** 到期则 fork 一个 Swoole Process 拉取 HTTPS CRL；不在 tick 里阻塞 HTTP。 */
+    /** 至多一个官方协程 HTTP 下载在途；不派生会继承现有协程的 PHP 进程。 */
     private function spawnClientCrlFetch(): void
     {
-        if ($this->options->clientCrlUrl === '' || $this->stopping) {
+        if ($this->options->clientCrlUrl === '' || $this->stopping || $this->crlFetching || time() < $this->crlFetchAt) {
             return;
         }
-        if ($this->crlFetchPid > 0) {
-            $waited = \Swoole\Process::wait(false);
-            if (is_array($waited) && (int) ($waited['pid'] ?? 0) === $this->crlFetchPid) {
-                $this->crlFetchPid = 0;
-            } elseif (@\Swoole\Process::kill($this->crlFetchPid, 0)) {
-                return;
-            } else {
-                $this->crlFetchPid = 0;
+        $this->crlFetchAt = time() + (int) $this->options->clientCrlInterval;
+        $this->crlFetching = true;
+        $created = Coroutine::create(function (): void {
+            try {
+                $this->downloadClientCrl($this->options->clientCrlUrl, $this->options->clientCa, $this->options->clientCrl);
+            } catch (\Throwable) {
+                // 保留原列表，既有 CRL 有效期规则决定是否继续接受连接。
+            } finally {
+                $this->crlClient?->close();
+                $this->crlClient = null;
+                $this->crlFetching = false;
             }
+        });
+        if ($created === false) {
+            $this->crlFetching = false;
         }
-        $now = time();
-        if ($now < $this->crlFetchAt) {
-            return;
-        }
-        $url = $this->options->clientCrlUrl;
-        $ca = $this->options->clientCa;
-        $output = $this->options->clientCrl;
-        $process = new \Swoole\Process(static function (\Swoole\Process $worker) use ($url, $ca, $output): void {
-            self::downloadClientCrl($url, $ca, $output);
-        }, false, 0);
-        $pid = $process->start();
-        $interval = (int) $this->options->clientCrlInterval;
-        if (!is_int($pid) || $pid <= 0) {
-            $this->crlFetchAt = $now + $interval;
-            return;
-        }
-        $this->crlFetchPid = $pid;
-        $this->crlFetchAt = $now + $interval;
     }
 
     private function stopClientCrlFetch(): void
     {
-        if ($this->crlFetchPid <= 0) {
-            return;
-        }
-        @\Swoole\Process::kill($this->crlFetchPid, SIGTERM);
-        \Swoole\Process::wait(false);
-        $this->crlFetchPid = 0;
+        $this->crlClient?->close();
     }
 
-    /**
-     * 子进程内阻塞拉取；失败保持原文件。校验与接纳仍由父进程 tick 完成。
-     */
-    private static function downloadClientCrl(string $url, string $ca, string $output): void
+    /** 下载失败或停止时保持原文件；校验与接纳仍由串行 tick 完成。 */
+    private function downloadClientCrl(string $url, string $ca, string $output): void
     {
         $parts = parse_url($url);
         if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || !isset($parts['host']) || !is_string($parts['host']) || $parts['host'] === '') {
@@ -3073,24 +3229,31 @@ final class Broker
         if (isset($parts['query']) && is_string($parts['query']) && $parts['query'] !== '') {
             $path .= '?' . $parts['query'];
         }
+        $client = new \Swoole\Coroutine\Http\Client($parts['host'], $port, true);
+        $this->crlClient = $client;
         $body = '';
-        $status = 0;
-        \Swoole\Coroutine\run(static function () use ($parts, $port, $path, $ca, &$body, &$status): void {
-            $client = new \Swoole\Coroutine\Http\Client($parts['host'], $port, true);
-            $client->set([
-                'timeout' => 10,
-                'ssl_verify_peer' => true,
-                'ssl_allow_self_signed' => false,
-                'ssl_cafile' => $ca,
-                'ssl_host_name' => $parts['host'],
-                'follow_location' => false,
-            ]);
-            if ($client->get($path)) {
-                $status = (int) $client->statusCode;
-                $body = is_string($client->body) ? $client->body : '';
-            }
-            $client->close();
-        });
+        $client->set([
+            'timeout' => 10,
+            'ssl_verify_peer' => true,
+            'ssl_allow_self_signed' => false,
+            'ssl_cafile' => $ca,
+            'ssl_host_name' => $parts['host'],
+            'follow_location' => false,
+            'http_compression' => false,
+            'body_decompression' => false,
+            'write_func' => static function (\Swoole\Coroutine\Http\Client $http, string $chunk) use (&$body): void {
+                if (strlen($body) + strlen($chunk) > 1048576) {
+                    throw new \RuntimeException('crl_response_too_large');
+                }
+                $body .= $chunk;
+            },
+        ]);
+        $received = $client->get($path);
+        $status = (int) $client->statusCode;
+        $client->close();
+        if (!$received || $this->stopping) {
+            return;
+        }
         if ($status !== 200 || $body === '' || strlen($body) > 1048576 || !str_contains($body, 'BEGIN X509 CRL')) {
             return;
         }
