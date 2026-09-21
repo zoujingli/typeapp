@@ -95,8 +95,11 @@ jobs:
           CXXFLAGS: -I/opt/homebrew/opt/pcre2/include
       - name: 核对 PHP 扩展的 PostgreSQL 动态库身份
         run: |
-          task_pdo_module="$(php -r 'echo (new ReflectionExtension("pdo_pgsql"))->getFileName();')"
-          task_swoole_module="$(php -r 'echo (new ReflectionExtension("swoole"))->getFileName();')"
+          # ReflectionExtension 不提供文件路径；从当前 PHP 实际使用的
+          # extension_dir 解析已加载模块，避免假设 php-config 的 SDK 目录。
+          task_extension_dir="$(php -r 'echo ini_get("extension_dir");')"
+          task_pdo_module="$(find "$task_extension_dir" -maxdepth 1 -type f -name 'pdo_pgsql.so' -print -quit)"
+          task_swoole_module="$(find "$task_extension_dir" -maxdepth 1 -type f -name 'swoole.so' -print -quit)"
           [[ -f "$task_pdo_module" && -f "$task_swoole_module" ]]
           otool -L "$task_pdo_module" | tee "$RUNNER_TEMP/pdo-pgsql-otool.log"
           otool -L "$task_swoole_module" | tee "$RUNNER_TEMP/swoole-otool.log"
