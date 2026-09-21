@@ -57,7 +57,10 @@ jobs:
           done
           task_mysql="$GITHUB_WORKSPACE/.cache/native-mysql"
           mkdir -p "$task_mysql/bin"
-          for task_program in mysqld mysql mysqldump; do ln -s "$(command -v "$task_program")" "$task_mysql/bin/$task_program"; done
+          # Ubuntu 的 mysqld AppArmor 规则按真实路径限制自定义数据目录；复制到
+          # 本轮工具根后启动，仍由当前测试用户持有，避免触碰系统实例或共享目录。
+          cp -L "$(command -v mysqld)" "$task_mysql/bin/mysqld"
+          for task_program in mysql mysqldump; do ln -s "$(command -v "$task_program")" "$task_mysql/bin/$task_program"; done
           ln -s /usr/share "$task_mysql/share"
           task_pgsql="$(dirname "$(pg_config --bindir)")"
           mkdir -p "$GITHUB_WORKSPACE/.cache/native-redis"
