@@ -24,7 +24,7 @@ try {
     $history = json_decode(successful([...$command, 'history']), true, 512, JSON_THROW_ON_ERROR);
     expect($history[0]['occurrence_id'] === $first[0]['occurrence_id'] && $history[1]['finished_at'] === strtotime('2026-09-09T12:00:00Z'), '执行身份或完成记录没有持久化');
     [$status, , $stderr] = execute([...$command, 'shell', 'touch', $directory . '/forbidden']);
-    expect($status === 70 && str_contains($stderr, 'TYPE_SCHEDULER_CONFIG') && !is_file($directory . '/forbidden'), '配置执行了任意命令');
+    expect($status === 70 && str_contains($stderr, 'TYPE_SCHEDULER_CONFIG') && !is_file($directory . '/forbidden'), '配置执行了任意命令：status=' . $status . ' stderr=' . $stderr);
     expect(successful([...$command, 'work', '2', '1']) === "[]\n[]\n", '有界调度循环重复执行同一时刻');
 
     putenv('TYPE_SCHEDULER_STATE=' . $directory . '/crash.json');

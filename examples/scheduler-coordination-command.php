@@ -20,16 +20,17 @@ use TypeApp\SchedulerExample\ControlledClock;
 
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
-        schedulerCoordinationScenario($argc, $argv);
-    });
+    // 协程内的 exit() 会被 Swoole 转成 ExitException，宿主只能在协程返回后读取退出码。
+    $GLOBALS['type_app_exit_status'] = (int) \Type\Runtime\CoroutineRuntime::run(
+        static fn (): int => schedulerCoordinationScenario($argc, $argv)
+    );
 }
 
-function schedulerCoordinationScenario(int $argc, array $argv): void
+function schedulerCoordinationScenario(int $argc, array $argv): int
 {
     if ($argc < 2 || ($argc === 2 && $argv[1] === 'help')) {
         echo "调度协调命令：once、history、work <次数> <间隔毫秒>。\n";
-        return;
+        return 0;
     }
     $application = getenv('TYPE_COORDINATION_APP') ?: 'type-app-coordination';
     $manager = new RedisManager(['default' => new RedisConfiguration(
@@ -62,7 +63,6 @@ function schedulerCoordinationScenario(int $argc, array $argv): void
         $scope->close();
         $manager->close();
     }
-    if ($status !== 0) {
-        exit($status);
-    }
+
+    return $status;
 }

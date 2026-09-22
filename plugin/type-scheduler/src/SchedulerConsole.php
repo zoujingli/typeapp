@@ -61,6 +61,7 @@ final class SchedulerConsole
             return $status;
         } catch (Throwable $error) {
             fwrite(STDERR, $error->getMessage() . PHP_EOL);
+            fflush(STDERR);
             return str_contains($error->getMessage(), 'TYPE_SCHEDULER_BUSY') ? 75 : 70;
         }
     }

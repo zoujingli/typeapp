@@ -33,6 +33,7 @@ require __DIR__ . '/app/QueueDispatchTask.php';
 require __DIR__ . '/app/ReportTask.php';
 require __DIR__ . '/app/main.php';
 main($argc, $argv);
+exit((int) ($GLOBALS['type_app_exit_status'] ?? 0));
 PHP);
 successful([getenv('COMPOSER_BINARY') ?: 'composer', 'install', '--no-interaction', '--no-scripts', '--no-plugins', '--prefer-dist', '--no-progress'], $consumer);
 echo successful([PHP_BINARY, $root . '/tests/scheduler-coordination.php', $consumer . '/vendor/autoload.php']);
