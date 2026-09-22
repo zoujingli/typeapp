@@ -29,7 +29,9 @@ try {
         }
         $filtered .= $line . "\n";
     }
-    $ini = $filtered . "\nswoole.enable_library=On\n";
+    // 已编译线程入口要求 swoole.enable_fiber_mock。宿主 CLI 默认关闭它，
+    // 原生进程若沿用这份 embed 配置，启动时会报 compiled_thread_unavailable。
+    $ini = $filtered . "\nswoole.enable_library=On\nswoole.enable_fiber_mock=On\n";
     if ($mode === 'shared') {
         $ini .= "; TypePHP 原生进程的共享信号模块\nextension=" . $pcntl . "\n";
     }

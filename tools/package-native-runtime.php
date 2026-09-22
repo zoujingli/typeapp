@@ -73,6 +73,7 @@ function packageIni(string $input, string $sandbox): void
     }
     $configuration = ['expose_php' => '0', 'enable_dl' => '0', 'allow_url_include' => '0', 'auto_prepend_file' => '', 'auto_append_file' => '',
         'user_ini.filename' => '', 'include_path' => '', 'opcache.enable' => '0', 'opcache.enable_cli' => '0', 'swoole.enable_library' => 'Off',
+        'swoole.enable_fiber_mock' => 'On',
         'display_errors' => 'stderr', 'display_startup_errors' => '1', 'log_errors' => '0', 'memory_limit' => '256M', 'date.timezone' => 'UTC'];
     $extensions = [];
     $declared = [];
