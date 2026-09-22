@@ -62,7 +62,7 @@ final class SwooleStaticModule
         foreach ($before as $name) {
             $moduleFiles[] = $request['module-files'][$name];
         }
-        $libraries = [...self::sharedModuleLinkTokens($moduleFiles), ...$built['libraries']];
+        $libraries = [...self::sharedModuleLinkTokens($moduleFiles), ...$built['link-flags'], ...$built['libraries']];
         $objects = [];
         foreach ($built['objects'] as $path) {
             $objects[] = ['path' => $path, 'sha256' => hash_file('sha256', $path)];
@@ -78,7 +78,7 @@ final class SwooleStaticModule
     /**
      * @param array{runtime-extensions:list<string>, module-files:array<string, string>, project:string, cache:string, php-home:string, phpx-home:string, root:string, native-ini:string, result:string, dynamic-extensions:list<string>, source?:string} $request
      * @param list<string> $flags
-     * @return array{objects:list<string>, libraries:list<string>}
+     * @return array{objects:list<string>, libraries:list<string>, link-flags:list<string>}
      */
     private function build(array $request, array $flags): array
     {
@@ -122,7 +122,9 @@ final class SwooleStaticModule
                 if (!is_array($decoded)) {
                     throw new RuntimeException('Swoole 静态清单无效');
                 }
-                $decoded['libraries'] = $this->nativeLibraries((string) ($decoded['shared'] ?? ''), $environment);
+                $native = $this->nativeLibraries((string) ($decoded['shared'] ?? ''), $environment);
+                $decoded['libraries'] = $native['files'];
+                $decoded['link-flags'] = $native['flags'];
                 $this->writeJson($manifestFile, $decoded);
                 $manifest = $this->reusable($manifestFile, $flags);
             }
@@ -131,10 +133,10 @@ final class SwooleStaticModule
             throw new RuntimeException('Swoole 静态清单无效');
         }
 
-        return ['objects' => $manifest['objects'], 'libraries' => $manifest['libraries']];
+        return ['objects' => $manifest['objects'], 'libraries' => $manifest['libraries'], 'link-flags' => $manifest['link-flags']];
     }
 
-    /** @param list<string> $flags @return array{objects:list<string>, libraries:list<string>}|null */
+    /** @param list<string> $flags @return array{objects:list<string>, libraries:list<string>, link-flags:list<string>}|null */
     private function reusable(string $manifest, array $flags): ?array
     {
         if (!is_file($manifest)) {
@@ -142,7 +144,8 @@ final class SwooleStaticModule
         }
         $data = json_decode((string) file_get_contents($manifest), true);
         if (!is_array($data) || ($data['flags'] ?? null) !== $flags || ($data['source'] ?? null) !== SwooleFeatureSelection::SOURCE
-            || !is_array($data['objects'] ?? null) || $data['objects'] === [] || !is_array($data['libraries'] ?? null)) {
+            || !is_array($data['objects'] ?? null) || $data['objects'] === [] || !is_array($data['libraries'] ?? null)
+            || !is_array($data['link-flags'] ?? null)) {
             return null;
         }
         $objects = [];
@@ -159,8 +162,15 @@ final class SwooleStaticModule
             }
             $libraries[] = $library;
         }
+        $linkFlags = [];
+        foreach ($data['link-flags'] as $flag) {
+            if (!is_string($flag) || preg_match('/^-l[A-Za-z0-9_]+$/', $flag) !== 1) {
+                return null;
+            }
+            $linkFlags[] = $flag;
+        }
 
-        return ['objects' => $objects, 'libraries' => $libraries];
+        return ['objects' => $objects, 'libraries' => $libraries, 'link-flags' => $linkFlags];
     }
 
     /** @param array<string, mixed> $request @return array{runtime-extensions:list<string>, module-files:array<string, string>, project:string, cache:string, php-home:string, phpx-home:string, root:string, native-ini:string, result:string, dynamic-extensions:list<string>, source?:string} */
@@ -248,11 +258,31 @@ final class SwooleStaticModule
         return $this->runner->run([$nm, '-u', $object], dirname($object), $environment, 30);
     }
 
-    /** @return list<string> */
+    /**
+     * Darwin 的 /usr/lib 与 /System/Library 在 dyld 共享缓存里，不能按普通文件复制或链接。
+     *
+     * @return string|null 例如 /usr/lib/libz.1.dylib → -lz；Homebrew 实文件返回 null。
+     */
+    public static function darwinSystemLinkFlag(string $path): ?string
+    {
+        if ($path === '' || str_contains($path, "\0")) {
+            return null;
+        }
+        if (!str_starts_with($path, '/usr/lib/') && !str_starts_with($path, '/System/Library/')) {
+            return null;
+        }
+        if (preg_match('/^lib([A-Za-z0-9_]+)/', basename($path), $match) !== 1) {
+            return null;
+        }
+
+        return '-l' . $match[1];
+    }
+
+    /** @return array{files:list<string>, flags:list<string>} */
     private function nativeLibraries(string $shared, array $environment): array
     {
         if ($shared === '' || !is_file($shared)) {
-            return [];
+            return ['files' => [], 'flags' => []];
         }
         if (PHP_OS_FAMILY === 'Darwin') {
             $output = $this->runner->run(['/usr/bin/otool', '-L', $shared], dirname($shared), $environment, 30);
@@ -262,19 +292,28 @@ final class SwooleStaticModule
                 throw new RuntimeException('静态 Swoole 缺少传递依赖');
             }
         }
-        $libraries = [];
+        $files = [];
+        $flags = [];
         foreach (preg_split('/\R/', $output) ?: [] as $line) {
             if (preg_match('~=>\s*(/\S+)~', $line, $match) !== 1 && preg_match('~^\s*(/\S+)~', $line, $match) !== 1) {
                 continue;
             }
             $path = $match[1];
-            if (!is_file($path) || $this->ignoredLibrary($path) || realpath($path) === realpath($shared)) {
+            if ($this->ignoredLibrary($path) || realpath($path) === realpath($shared)) {
                 continue;
             }
-            $libraries[] = $path;
+            $flag = self::darwinSystemLinkFlag($path);
+            if ($flag !== null) {
+                $flags[] = $flag;
+                continue;
+            }
+            if (!is_file($path)) {
+                continue;
+            }
+            $files[] = $path;
         }
 
-        return array_values(array_unique($libraries));
+        return ['files' => array_values(array_unique($files)), 'flags' => array_values(array_unique($flags))];
     }
 
     private function ignoredLibrary(string $path): bool

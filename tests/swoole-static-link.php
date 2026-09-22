@@ -162,6 +162,11 @@ try {
     rmdir($linkRoot);
 }
 
+expect(SwooleStaticModule::darwinSystemLinkFlag('/usr/lib/libz.1.dylib') === '-lz', 'Darwin 没有把 dyld 缓存中的 libz 转成 -lz');
+expect(SwooleStaticModule::darwinSystemLinkFlag('/usr/lib/libsqlite3.dylib') === '-lsqlite3', 'Darwin 没有把 dyld 缓存中的 libsqlite3 转成 -lsqlite3');
+expect(SwooleStaticModule::darwinSystemLinkFlag('/opt/homebrew/opt/libpq/lib/libpq.5.dylib') === null, 'Homebrew 实文件被当成了系统 -l 开关');
+expect(SwooleStaticModule::darwinSystemLinkFlag('/usr/lib/libSystem.B.dylib') === '-lSystem', '系统库名字没有按 lib 前缀切开');
+
 expect(SwooleFeatureSelection::canonicalFlags(['--enable-swoole-pgsql=/tmp/libpq-prefix', '--enable-sockets'])
     === SwooleFeatureSelection::canonicalFlags(['--enable-sockets', '--enable-swoole-pgsql']), '带查找前缀的 pgsql 开关没有被当成同一可选块');
 expect($selection->sharedModulesBeforeSwoole(['--enable-sockets', '--enable-swoole-pgsql=/tmp/libpq'], $modules) === ['sockets', 'pdo', 'pdo_pgsql'], 'pgsql 查找前缀没有选出 PDO 模块');
