@@ -1562,6 +1562,20 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
     $installCommand = [...$command, 'app:install', 'same-login', '平台管理员', 'same-login', '客户管理员', '初始租户'];
     $server = null;
     $inspection = null;
+    $isolatedDatabase = null;
+    $isolatedAdmin = null;
+    // 全新安装拒绝当前库中的任何对象。共享验收库里已有其他任务的表，必须换独立库。
+    if ($driver !== 'sqlite') {
+        $isolatedDatabase = 'type_identity_' . bin2hex(random_bytes(6));
+        $isolatedAdmin = new PDO(
+            $driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $environment['DB_DATABASE'],
+            $environment['DB_USERNAME'] ?? null,
+            $environment['DB_PASSWORD'] ?? null,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        );
+        $isolatedAdmin->exec('CREATE DATABASE ' . ($driver === 'mysql' ? '`' . $isolatedDatabase . '`' : $isolatedDatabase));
+        $environment['DB_DATABASE'] = $isolatedDatabase;
+    }
     $report = ['status' => 'running', 'driver' => $driver, 'native' => $target !== '--php',
         'binary_sha256' => $target === '--php' ? null : hash_file('sha256', $target), 'no_source' => $noSource, 'http_checks' => 0];
     try {
@@ -1885,6 +1899,10 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
             file_put_contents($base . '/http.log', str_replace(array_values($credentials), '<REDACTED>', $server->stdout() . $server->stderr()));
         }
         $inspection = null;
+        if ($isolatedAdmin instanceof PDO && is_string($isolatedDatabase)) {
+            $isolatedAdmin->exec('DROP DATABASE ' . ($driver === 'mysql' ? '`' . $isolatedDatabase . '`' : $isolatedDatabase));
+            $isolatedAdmin = null;
+        }
         file_put_contents($base . '/verification.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
         expect($server === null || ($stopped->successful() && !$server->running()), '双端服务没有正常排空退出');
     }
