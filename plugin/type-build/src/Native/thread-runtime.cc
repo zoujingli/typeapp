@@ -166,7 +166,7 @@ bool startup_embed(int argc, char **argv) {
     static const char defaults[] = "html_errors=0\nimplicit_flush=1\noutput_buffering=0\nmax_execution_time=0\nmax_input_time=-1\n";
     php_embed_module.ini_entries = defaults;
     php_embed_module.executable_location = argv ? argv[0] : nullptr;
-    // 内建模块先启动。Swoole 及其必须提前登记的驱动紧随其后，早于 INI 里的动态扩展。
+    // 内建模块先启动。sockets/PDO 由官方 php_load_extension 登记，再挂上静态 Swoole，早于 INI 动态扩展。
     type_app_previous_extensions = php_register_internal_extensions_func;
     php_register_internal_extensions_func = type_app_register_internal_extensions;
     const auto module_result = php_module_startup(&php_embed_module, application_module);

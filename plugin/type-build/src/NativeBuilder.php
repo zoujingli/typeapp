@@ -333,8 +333,8 @@ final class NativeBuilder
         );
         if (array_key_exists('threads', $settings)) {
             // 静态 Swoole 在内建模块回调里启动，早于 INI 动态扩展。
-            // 这里保留完整依赖名单，让应用模块等到 PDO 等扩展登记之后再启动；
-            // Swoole 会在 MINIT 替换的驱动改由同一回调提前登记。
+            // sockets 与 PDO 走官方 php_load_extension，再挂上 swoole_module_entry。
+            // 这里保留完整依赖名单，让应用模块等到这些扩展登记之后再启动。
             $project['extension-dependencies'] = array_keys($profile['extensions']);
         }
         $this->writeJson($projectFile, $project);

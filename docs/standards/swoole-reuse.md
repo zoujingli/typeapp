@@ -34,7 +34,7 @@ Swoole 内置 PHP 库中的 ConnectionPool 等不等于 C++ 原生能力。该�
 - Windows、Linux、macOS 统一依赖 Swoole，按实际构建的能力选择入口。进程不可用时使用官方线程/协程；线程不可用时在当前执行单元内使用协程。这不是默认必须先开进程，也不允许用自建线程池、调度器或网络引擎填补差异。
 - 经典 Server/Process 不可用时，HTTP/WS 采用官方协程 HTTP Server 与升级/帧能力，TCP/UDP 采用协程 Socket；线程构建需 PHP ZTS 和对应开关。独立命令在协程内使用官方 `SWOOLE_HOOK_PROC` 接管 `proc_open`、状态、终止与回收，参数数组不经 shell；管道是本地 IPC，不是网络 stream 回退。只有确切的必需能力缺失才报告启动错误，不以 Windows 名称直接否定官方通信能力。线程与协程不提供进程级故障隔离，降级后重新核对共享状态、硬停止、连接归属和资源总额。
 - 跟进最新官方能力，发布时固定具体版本或提交、构建选项及源码摘要，升级后重验。官方主线支持、稳定发行与当前安装产物分别核对；不能自动追随未固定的 `master`，也不能把主线新增能力写成旧发行包已经具备。来源见[平台与工具链](../development/platform-support.md)。
-- 线程应用只链入一个官方 `swoole_module_entry`。可选的 thread、pgsql、sqlite、mysqlnd 由编译统计和已声明扩展决定；curl 仅在静态目标出现未定义符号 `curl_multi_ce` 时排在该模块之前。核心事件循环、协程、Server、HTTP/WebSocket 和 Channel 随该模块保留，不按 PHP 类拆分，也不改用 php-nano。
+- 线程应用只链入一个官方 `swoole_module_entry`。可选的 thread、pgsql、sqlite、mysqlnd 由编译统计和已声明扩展决定；`--enable-sockets` 时同一 ABI 的 sockets 先按官方 `php_load_extension` 登记。curl 仅在静态目标出现未定义符号 `curl_multi_ce` 时排在该模块之前。核心事件循环、协程、Server、HTTP/WebSocket 和 Channel 随该模块保留，不按 PHP 类拆分，也不改用 php-nano。
 - 先在 macOS ARM64 完成开发和真实行为验收，之后汇合其他正式目标。平台适配与补丁的可用性逐平台记录，不把仅一个平台的 ABI 检查写成全平台已支持。
 
 ## 原生补丁准入与撤除

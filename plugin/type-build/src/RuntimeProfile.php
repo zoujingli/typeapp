@@ -54,8 +54,11 @@ final class RuntimeProfile
         // 当前 Swoole 构建启用了原生 cURL I/O 时，共享模块会引用 curl_multi_ce。
         // 编译探针仍把 curl 排在超集 swoole.so 之前。产品静态链接是否带上 curl，
         // 由目标文件里的未定义符号决定，不在这里按名称加入。
+        // sockets 的 socket_ce 是 --enable-sockets 下的链接依赖；探针也加载同一 ABI 文件，
+        // 产品再按官方 php_load_extension 在静态 Swoole 之前登记。
         if (in_array('swoole', $requested, true)) {
             $requested[] = 'curl';
+            $requested[] = 'sockets';
         }
         $required = $this->dependencies($requested);
         BuildLock::path($directory);

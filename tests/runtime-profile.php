@@ -56,6 +56,7 @@ if (is_string($swooleModule) && $swooleModule !== '') {
 }
 $swoole = $profile->prepare($root, $base . '/swoole', $phpHome, $phpxHome, ['swoole'], $swooleRuntime);
 expect(array_key_exists('curl', $swoole['extensions']), 'Swoole运行配置必须同时包含curl扩展');
+expect(array_key_exists('sockets', $swoole['extensions']), 'Swoole运行配置必须同时包含sockets扩展');
 if (isset($swoole['module-files']['curl'], $swoole['module-files']['swoole'])) {
     $iniText = (string) file_get_contents($swoole['ini']);
     expect(

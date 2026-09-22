@@ -127,9 +127,9 @@ final class SwooleFeatureSelection
     }
 
     /**
-     * pgsql/sqlite 会在 Swoole MINIT 里登记 PDO 驱动，对应的共享模块必须先注册。
+     * sockets 提供静态 Swoole 需要的 socket_ce；pgsql/sqlite 会在 Swoole MINIT 里登记 PDO 驱动。
      *
-     * 只返回模块文件清单里真实存在的项，不把已经内置的 PDO 再登记一次。
+     * 只返回模块文件清单里真实存在的项，不把已经内置的扩展再登记一次。
      *
      * @param list<string> $flags
      * @param array<string, string> $moduleFiles 扩展名到共享模块路径。
@@ -140,6 +140,9 @@ final class SwooleFeatureSelection
         $pgsql = in_array('--enable-swoole-pgsql', $flags, true);
         $sqlite = in_array('--enable-swoole-sqlite', $flags, true);
         $names = [];
+        if (in_array('--enable-sockets', $flags, true) && isset($moduleFiles['sockets'])) {
+            $names[] = 'sockets';
+        }
         if (($pgsql || $sqlite) && isset($moduleFiles['pdo'])) {
             $names[] = 'pdo';
         }

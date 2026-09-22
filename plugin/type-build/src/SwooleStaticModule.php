@@ -62,7 +62,7 @@ final class SwooleStaticModule
         foreach ($before as $name) {
             $moduleFiles[] = $request['module-files'][$name];
         }
-        $libraries = [...$this->moduleTokens($moduleFiles), ...$built['libraries']];
+        $libraries = [...self::sharedModuleLinkTokens($moduleFiles), ...$built['libraries']];
         $objects = [];
         foreach ($built['objects'] as $path) {
             $objects[] = ['path' => $path, 'sha256' => hash_file('sha256', $path)];
@@ -259,10 +259,22 @@ final class SwooleStaticModule
         return false;
     }
 
-    /** @param list<string> $files @return list<string> */
-    private function moduleTokens(array $files): array
+    /**
+     * GNU ld 默认 --as-needed 会丢掉当时还看不到引用的 .so；sockets/PDO 必须留在链接行上。
+     *
+     * Apple ld 不接受 -l:，直接使用绝对路径。
+     *
+     * @param list<string> $files
+     * @return list<string>
+     * @throws RuntimeException 共享模块文件不存在。
+     */
+    public static function sharedModuleLinkTokens(array $files): array
     {
-        $tokens = [];
+        if ($files === []) {
+            return [];
+        }
+        $darwin = PHP_OS_FAMILY === 'Darwin';
+        $tokens = $darwin ? [] : ['-Wl,--no-as-needed'];
         $directories = [];
         foreach ($files as $file) {
             if (!is_file($file)) {
@@ -271,41 +283,56 @@ final class SwooleStaticModule
             $directory = dirname($file);
             if (!isset($directories[$directory])) {
                 $directories[$directory] = true;
-                $tokens[] = PHP_OS_FAMILY === 'Darwin' ? '-Wl,-rpath,' . $directory : '-Wl,--enable-new-dtags,-rpath,' . $directory;
-                if (PHP_OS_FAMILY !== 'Darwin') {
+                $tokens[] = $darwin ? '-Wl,-rpath,' . $directory : '-Wl,--enable-new-dtags,-rpath,' . $directory;
+                if (!$darwin) {
                     $tokens[] = '-L' . $directory;
                 }
             }
-            // GNU ld 用 -l: 保留 SONAME。Apple ld 不接受这个写法，直接交给绝对路径。
-            $tokens[] = PHP_OS_FAMILY === 'Darwin' ? $file : '-l:' . basename($file);
+            $tokens[] = $darwin ? $file : '-l:' . basename($file);
+        }
+        if (!$darwin) {
+            $tokens[] = '-Wl,--as-needed';
         }
 
         return $tokens;
     }
 
+    /**
+     * 共享模块走官方 php_load_extension，只把静态 Swoole 的 swoole_module_entry 登记为内置模块。
+     *
+     * 已登记的名字直接跳过；php_load_extension 在模块已存在时会失败。不写入 SDK 绝对路径，运行时按 INI 的 extension_dir 解析。
+     *
+     * @param list<string> $sharedModules
+     * @throws RuntimeException 模块名不是 sockets、pdo、pdo_pgsql、pdo_sqlite 或 curl。
+     */
+    public static function registrarSource(array $sharedModules): string
+    {
+        $allowed = ['sockets' => true, 'pdo' => true, 'pdo_pgsql' => true, 'pdo_sqlite' => true, 'curl' => true];
+        $calls = '';
+        foreach ($sharedModules as $name) {
+            if (!is_string($name) || !isset($allowed[$name])) {
+                throw new RuntimeException('没有可登记的模块入口：' . (is_string($name) ? $name : ''));
+            }
+            $calls .= '    if (type_app_load_shared("' . $name . '", sizeof("' . $name . '") - 1) != SUCCESS) {' . "\n"
+                . "        return FAILURE;\n    }\n";
+        }
+
+        return "extern \"C\" {\n#include <php.h>\n#include \"ext/standard/dl.h\"\n}\n\n"
+            . "extern zend_module_entry swoole_module_entry;\n\n"
+            . "static int type_app_load_shared(const char *name, size_t length)\n{\n"
+            . "    if (zend_hash_str_exists(&module_registry, name, length)) {\n        return SUCCESS;\n    }\n"
+            . "    return php_load_extension(name, MODULE_PERSISTENT, 0);\n}\n\n"
+            . "extern \"C\" int type_app_register_static_modules(void)\n{\n"
+            . $calls
+            . "    if (!zend_hash_str_exists(&module_registry, \"swoole\", sizeof(\"swoole\") - 1)\n"
+            . "        && zend_register_internal_module(&swoole_module_entry) == nullptr) {\n        return FAILURE;\n    }\n"
+            . "    return SUCCESS;\n}\n";
+    }
+
     /** @param list<string> $modules */
     private function writeRegistrar(string $path, array $modules): void
     {
-        $entries = ['pdo' => 'pdo_module_entry', 'pdo_pgsql' => 'pdo_pgsql_module_entry', 'pdo_sqlite' => 'pdo_sqlite_module_entry',
-            'curl' => 'curl_module_entry', 'swoole' => 'swoole_module_entry'];
-        if (!in_array('swoole', $modules, true)) {
-            $modules[] = 'swoole';
-        }
-        $externs = '';
-        $calls = '';
-        foreach ($modules as $name) {
-            if (!isset($entries[$name])) {
-                throw new RuntimeException('没有可登记的模块入口：' . $name);
-            }
-            $symbol = $entries[$name];
-            $externs .= 'extern zend_module_entry ' . $symbol . ";\n";
-            $calls .= '    if (type_app_register_one("' . $name . '", sizeof("' . $name . '") - 1, &' . $symbol . ") != SUCCESS) {\n        return FAILURE;\n    }\n";
-        }
-        $source = "extern \"C\" {\n#include <php.h>\n}\n\n" . $externs . "\nstatic int type_app_register_one(const char *name, size_t length, zend_module_entry *entry)\n{\n"
-            . "    if (zend_hash_str_exists(&module_registry, name, length)) {\n        return SUCCESS;\n    }\n"
-            . "    return zend_register_internal_module(entry) == nullptr ? FAILURE : SUCCESS;\n}\n\n"
-            . "extern \"C\" int type_app_register_static_modules(void)\n{\n" . $calls . "    return SUCCESS;\n}\n";
-        $this->writeText($path, $source);
+        $this->writeText($path, self::registrarSource($modules));
     }
 
     /** @param list<string> $objects */
