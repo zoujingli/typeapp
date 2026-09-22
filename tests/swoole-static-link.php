@@ -89,4 +89,34 @@ try {
     }
 }
 
+$objectRoot = sys_get_temp_dir() . '/swoole-objects-' . bin2hex(random_bytes(4));
+expect(mkdir($objectRoot . '/ext-src/.libs', 0700, true) && mkdir($objectRoot . '/src/os/.libs', 0700, true)
+    && mkdir($objectRoot . '/thirdparty/php85/pdo_pgsql/.libs', 0700, true) && mkdir($objectRoot . '/.libs', 0700, true), '无法创建目标文件探测目录');
+try {
+    expect(file_put_contents($objectRoot . '/ext-src/.libs/php_swoole.o', 'o') === 1, '无法写入扩展目标');
+    expect(file_put_contents($objectRoot . '/src/os/.libs/async_thread.o', 'o') === 1, '无法写入运行时目标');
+    expect(file_put_contents($objectRoot . '/thirdparty/php85/pdo_pgsql/.libs/pgsql_driver.o', 'o') === 1, '无法写入已打开的可选块目标');
+    expect(file_put_contents($objectRoot . '/.libs/swoole.o', 'combined') === 8, '无法写入整模块目标');
+    $listed = [];
+    $scanner = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($objectRoot, FilesystemIterator::SKIP_DOTS));
+    foreach ($scanner as $file) {
+        if (!$file->isFile() || $file->getExtension() !== 'o') {
+            continue;
+        }
+        $path = str_replace('\\', '/', $file->getPathname());
+        if (!str_contains($path, '/.libs/') || $file->getFilename() === 'swoole.o') {
+            continue;
+        }
+        $listed[] = $path;
+    }
+    sort($listed);
+    expect(count($listed) === 3, 'phpize 分文件目标没有按各目录 .libs 收集');
+    expect(!in_array($objectRoot . '/.libs/swoole.o', $listed, true), '整模块 swoole.o 被和分文件目标叠在一起');
+} finally {
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($objectRoot, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $file) {
+        $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+    }
+    rmdir($objectRoot);
+}
+
 echo "Swoole 使用选择、符号检查与发布配置通过\n";

@@ -13,11 +13,22 @@ fi
 : "${PHP_HOME:?需要锁定的 PHP SDK}"
 : "${SWOOLE_CONFIGURE_OPTS:?需要 Swoole 配置选项}"
 
+export PATH="$PHP_HOME/bin:$PATH"
+task_phpize="$PHP_HOME/bin/phpize"
+task_php_config="$PHP_HOME/bin/php-config"
+[[ -x "$task_phpize" ]] || task_phpize="$(command -v phpize || true)"
+[[ -x "$task_php_config" ]] || task_php_config="$(command -v php-config || true)"
+if [[ -z "$task_phpize" || -z "$task_php_config" ]]; then
+    echo '需要 phpize 与 php-config。' >&2
+    exit 1
+fi
+
 task_reference='0f3bee2f0ed8704ce33a336e7feabb0115411dd7'
 task_digest='b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea'
 task_artifact="${TYPE_SWOOLE_ARTIFACT:-shared}"
 task_source="${TYPE_SWOOLE_SOURCE:-$task_temp/swoole-src-$task_reference}"
 task_module="$task_root/.cache/native-modules/swoole.so"
+task_opts_file="$task_source/.typeapp-configure-opts"
 read -r -a task_options <<< "$SWOOLE_CONFIGURE_OPTS"
 
 if [[ ! -f "$task_source/config.m4" ]]; then
@@ -69,6 +80,10 @@ task_log() {
     fi
 }
 
+same_configure_opts() {
+    [[ -f "$task_opts_file" ]] && [[ "$(cat "$task_opts_file")" == "$SWOOLE_CONFIGURE_OPTS" ]]
+}
+
 compile_tree() {
     local task_kind="$1"
     local task_had_marker=0
@@ -80,18 +95,24 @@ compile_tree() {
         printf '%s\n' "$task_reference" > "$task_source/.typeapp-patches-applied"
     fi
     [[ -f "$task_source/.typeapp-patches-applied" ]] || { echo 'Swoole 补丁未应用。' >&2; exit 1; }
-    task_log bash -c 'cd "$1" && "$(command -v phpize)" && ./configure --with-php-config="$(command -v php-config)" --enable-swoole="$2" "${@:3}" && make -j2' \
-        bash "$task_source" "$task_kind" "${task_options[@]}"
+    if ! task_log bash -c 'cd "$1" && "$2" && ./configure --with-php-config="$3" --enable-swoole="$4" "${@:5}" && make -j2' \
+        bash "$task_source" "$task_phpize" "$task_php_config" "$task_kind" "${task_options[@]}"; then
+        return 1
+    fi
+    printf '%s\n' "$SWOOLE_CONFIGURE_OPTS" > "$task_opts_file"
 }
 
 collect_objects() {
-    # phpize 把这个扩展自己的 PIC 目标放在源码根的 .libs。
-    # 不收 thirdparty 或其他目录里的 .o，避免把未选中的可选块再链进来。
-    task_members=()
-    if [[ -d "$task_source/.libs" ]]; then
-        while IFS= read -r task_member; do
-            [[ -n "$task_member" ]] && task_members+=("$task_member")
-        done < <(find "$task_source/.libs" -maxdepth 1 -type f -name '*.o' | sort)
+    # phpize 把每个编译单元放到对应目录的 .libs，例如 ext-src/.libs、src/os/.libs、
+    # thirdparty/php85/pdo_pgsql/.libs。未打开的可选块根本不会生成这些 .o。
+    # 根目录 .libs/swoole.o 是整模块再定位目标，不能和分文件 .o 一起 ld -r。
+    local task_members=()
+    local task_member
+    while IFS= read -r task_member; do
+        [[ -n "$task_member" ]] && task_members+=("$task_member")
+    done < <(find "$task_source" -type f -path '*/.libs/*.o' ! -name 'swoole.o' | sort)
+    if [[ ${#task_members[@]} -eq 0 && -f "$task_source/.libs/swoole.o" ]]; then
+        task_members+=("$task_source/.libs/swoole.o")
     fi
     [[ ${#task_members[@]} -gt 0 ]] || return 1
     mkdir -p "$task_static_dir"
@@ -103,9 +124,16 @@ collect_objects() {
     [[ -s "$task_static_dir/swoole.o" ]]
 }
 
+dump_build_log() {
+    if [[ -n "${TYPE_SWOOLE_LOG:-}" && -f "$TYPE_SWOOLE_LOG" ]]; then
+        echo '最近的 Swoole 构建日志：' >&2
+        tail -n 80 "$TYPE_SWOOLE_LOG" >&2 || true
+    fi
+}
+
 build_shared() {
-    command -v phpize >&2
-    command -v php-config >&2
+    echo "$task_phpize" >&2
+    echo "$task_php_config" >&2
     compile_tree shared
     [[ -f "$task_source/modules/swoole.so" ]] || { echo 'Swoole 适配模块构建失败。' >&2; exit 1; }
     mkdir -p "$(dirname "$task_module")"
@@ -116,12 +144,18 @@ build_shared() {
 build_static() {
     : "${TYPE_SWOOLE_STATIC_DIR:?静态产物需要 TYPE_SWOOLE_STATIC_DIR}"
     task_static_dir="$TYPE_SWOOLE_STATIC_DIR"
-    command -v phpize >&2
-    command -v php-config >&2
-    if ! compile_tree static || ! collect_objects; then
+    echo "$task_phpize" >&2
+    echo "$task_php_config" >&2
+    if same_configure_opts && [[ -f "$task_source/modules/swoole.so" ]] && collect_objects; then
+        echo '复用已按相同开关编译的 Swoole 目标。' >&2
+    elif ! compile_tree static || ! collect_objects; then
         echo 'Swoole 静态配置没有留下可链接目标，改为同一开关的共享编译并抽出 .o。' >&2
         compile_tree shared
-        collect_objects || { echo '静态 Swoole 没有目标文件。' >&2; exit 1; }
+        collect_objects || {
+            dump_build_log
+            echo '静态 Swoole 没有目标文件。' >&2
+            exit 1
+        }
     fi
     if [[ ! -f "$task_source/modules/swoole.so" ]]; then
         compile_tree shared
