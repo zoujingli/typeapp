@@ -89,9 +89,17 @@ jobs:
           task_curl_module="$(php-config --extension-dir)/curl.so"
           [[ -f "$task_curl_module" ]] || { echo "缺少 PHP curl 扩展：$task_curl_module" >&2; exit 1; }
           task_tokenizer_module="$(php-config --extension-dir)/tokenizer.so"
-          [[ -f "$task_tokenizer_module" ]] || { echo "缺少 PHP tokenizer 扩展：$task_tokenizer_module" >&2; exit 1; }
+          if [[ ! -f "$task_tokenizer_module" ]]; then
+            [[ "$(php -r 'echo extension_loaded("tokenizer") && function_exists("token_get_all") ? "1" : "0";')" == "1" ]] || {
+              echo "缺少 PHP tokenizer 扩展：$task_tokenizer_module" >&2
+              exit 1
+            }
+            task_tokenizer_module=""
+          fi
           printf 'extension=%s\n' "$task_curl_module" >> "$task_control/php.ini"
-          printf 'extension=%s\n' "$task_tokenizer_module" >> "$task_control/php.ini"
+          if [[ -n "$task_tokenizer_module" ]]; then
+            printf 'extension=%s\n' "$task_tokenizer_module" >> "$task_control/php.ini"
+          fi
           printf 'extension=%s\n' "$task_swoole_module" >> "$task_control/php.ini"
           printf 'TYPE_CURL_MODULE=%s\nPHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' "$task_curl_module" "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
       - name: 编译并探测原生运行库

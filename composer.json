@@ -251,6 +251,7 @@
     "test:tls-native": "bash tools/test-tls.sh build/tls/type-app",
     "test:consumer": "@php tests/consumer.php",
     "test:build-errors": "@php tests/build-errors.php",
+    "test:compiler-tokenizer": "@php tests/compiler-tokenizer.php",
     "test:build-cache": "@php tests/build-cache.php",
     "test:gnu-toolchain": [
       "Composer\\Config::disableProcessTimeout",
