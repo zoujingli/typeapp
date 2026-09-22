@@ -422,6 +422,20 @@ final class NativeBuilder
         if (array_key_exists('threads', $settings)) {
             $threadCompilerArguments = ['-c', $profile['ini'], '-d', 'memory_limit=1G'];
             $compilerEnvironment['PHP_INI_SCAN_DIR'] = dirname($profile['ini']) . '/php.d';
+            // -c 会替换 PHPRC。运行探针只装嵌入所需扩展，共享 tokenizer 不会
+            // 跟着进去；TypePHP 解析源码仍需要 token_get_all。内置词法模块无需追加。
+            if (!$this->runtimeProvidesTokenizer($profile['ini'], $environment, $root, $compilerEnvironment)) {
+                $tokenizer = self::tokenizerLoadArguments(false, self::loadedTokenizerModule());
+                array_splice($threadCompilerArguments, 2, 0, $tokenizer);
+                $loaded = trim($environment->run(
+                    [PHP_BINARY, ...$threadCompilerArguments, '-d', 'auto_prepend_file=', '-d', 'auto_append_file=', '-d', 'opcache.enable_cli=0', '-r', 'echo function_exists("token_get_all") ? "1" : "0";'],
+                    $root,
+                    $compilerEnvironment
+                ));
+                if ($loaded !== '1') {
+                    throw new RuntimeException('编译子进程无法加载 tokenizer');
+                }
+            }
             $available = $environment->run(
                 [PHP_BINARY, ...$threadCompilerArguments, '-r',
                 'echo PHP_ZTS && class_exists("Swoole\\\\Thread", false) && method_exists("Swoole\\\\Thread", "startNative") && defined("Swoole\\\\Thread::NATIVE_ENTRY_ABI") && constant("Swoole\\\\Thread::NATIVE_ENTRY_ABI") === 2 && filter_var(ini_get("swoole.enable_fiber_mock"), FILTER_VALIDATE_BOOL) ? "ready" : "missing";'],
@@ -513,7 +527,9 @@ final class NativeBuilder
             $manifest,
             $output,
             function (string $candidate) use ($identity, $groups, $facts, $sources, $identityBuilder, $compiler, $projectFile, $buildDirectory, $compilerOptions, $root, $environment, $compilerEnvironment, $threadCompilerArguments): void {
-                $work = $buildDirectory . '/attempts/' . $identity['id'] . '/' . bin2hex(random_bytes(6));
+                // 工作目录必须短。声明头位于该目录的 include/ 下，文件名还带源码相对路径。
+                // Windows 可用路径上限是 259 个字符；把完整构建身份放进目录后，MSVC 打不开生成头。
+                $work = $buildDirectory . '/attempts/' . bin2hex(random_bytes(4));
                 $this->directory($work);
                 $command = [PHP_BINARY, ...$threadCompilerArguments, '-d', 'auto_prepend_file=', '-d', 'auto_append_file=', '-d', 'opcache.enable_cli=0', '-d', 'opcache.preload=',
                     $compiler, $projectFile, '--mode', 'bin', '--output', $candidate, '--build-dir', $work, '--job', (string) $compilerOptions['jobs'], '--no-progress'];
@@ -687,6 +703,126 @@ final class NativeBuilder
         $target = $root . '/' . $relative;
         BuildLock::path($target);
         return $target;
+    }
+
+    /**
+     * 运行配置已经提供 token_get_all 时不追加模块；否则要求当前进程能指出一个已存在的词法模块。
+     *
+     * @return list<string>
+     */
+    public static function tokenizerLoadArguments(bool $runtimeHasTokenizer, ?string $moduleFile): array
+    {
+        if ($runtimeHasTokenizer) {
+            return [];
+        }
+        if (!is_string($moduleFile) || !is_file($moduleFile)) {
+            throw new RuntimeException('编译子进程缺少 tokenizer，当前运行配置没有可加载的词法模块');
+        }
+
+        return ['-d', 'extension=' . BuildPlatform::resolve($moduleFile)];
+    }
+
+    /** 从已加载的 INI 文本解析 tokenizer 模块；相对名称按扩展目录补齐，注释行不生效。 */
+    public static function tokenizerModuleFromIni(string $ini, string $extensionDirectory): ?string
+    {
+        $found = null;
+        $matched = preg_match_all('/^[ \t]*extension[ \t]*=[ \t]*"?([^"\r\n;#]+)"?[ \t]*$/mi', $ini, $matches);
+        if ($matched === false || $matches[1] === []) {
+            return self::tokenizerModuleInDirectory($extensionDirectory);
+        }
+        foreach ($matches[1] as $value) {
+            $value = trim($value);
+            $base = strtolower(basename(str_replace('\\', '/', $value)));
+            if (!in_array($base, ['tokenizer', 'tokenizer.so', 'php_tokenizer.dll'], true)) {
+                continue;
+            }
+            $candidate = self::existingTokenizerFile($value, $extensionDirectory, $base);
+            if ($candidate !== null) {
+                $found = $candidate;
+            }
+        }
+
+        return $found ?? self::tokenizerModuleInDirectory($extensionDirectory);
+    }
+
+    private function runtimeProvidesTokenizer(string $runtimeIni, BuildEnvironment $environment, string $root, array $compilerEnvironment): bool
+    {
+        $present = trim($environment->run(
+            [PHP_BINARY, '-c', $runtimeIni, '-d', 'auto_prepend_file=', '-d', 'auto_append_file=', '-d', 'opcache.enable_cli=0', '-r', 'echo function_exists("token_get_all") ? "1" : "0";'],
+            $root,
+            $compilerEnvironment
+        ));
+
+        return $present === '1';
+    }
+
+    private static function loadedTokenizerModule(): ?string
+    {
+        $chunks = [];
+        $loaded = php_ini_loaded_file();
+        if (is_string($loaded) && $loaded !== '' && is_file($loaded)) {
+            $text = file_get_contents($loaded);
+            if (is_string($text)) {
+                $chunks[] = $text;
+            }
+        }
+        foreach (explode(',', (string) php_ini_scanned_files()) as $file) {
+            $file = trim($file);
+            if ($file === '' || !is_file($file)) {
+                continue;
+            }
+            $text = file_get_contents($file);
+            if (is_string($text)) {
+                $chunks[] = $text;
+            }
+        }
+        $directory = ini_get('extension_dir');
+
+        return self::tokenizerModuleFromIni(implode("\n", $chunks), is_string($directory) ? $directory : '');
+    }
+
+    private static function existingTokenizerFile(string $value, string $extensionDirectory, string $base): ?string
+    {
+        $normalized = str_replace('\\', '/', $value);
+        $absolute = str_starts_with($normalized, '/')
+            || str_starts_with($value, '\\')
+            || preg_match('/^[A-Za-z]:[\\\\\\/]/', $value) === 1;
+        $candidates = [];
+        if ($absolute) {
+            $candidates[] = $value;
+        } else {
+            $directory = rtrim(str_replace('\\', '/', $extensionDirectory), '/');
+            if ($directory !== '') {
+                $candidates[] = $directory . '/' . basename($normalized);
+                if ($base === 'tokenizer') {
+                    $candidates[] = $directory . '/tokenizer.so';
+                    $candidates[] = $directory . '/php_tokenizer.dll';
+                }
+            }
+        }
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static function tokenizerModuleInDirectory(string $extensionDirectory): ?string
+    {
+        $directory = rtrim(str_replace('\\', '/', $extensionDirectory), '/');
+        if ($directory === '') {
+            return null;
+        }
+        foreach (['tokenizer.so', 'php_tokenizer.dll'] as $name) {
+            $candidate = $directory . '/' . $name;
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     private function directory(string $directory): void
