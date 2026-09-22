@@ -111,7 +111,7 @@ jobs:
       - name: 安装原生构建依赖
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config
+          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config libc-ares-dev libpq-dev libsqlite3-dev
 
       - name: 安装根项目与本地插件
         run: |
@@ -184,6 +184,15 @@ jobs:
       - name: 构建 PHPX 原生运行库
         run: bash tools/prepare-toolchain.sh
 
+      - name: 构建带线程接缝的 Swoole 模块
+        run: |
+          export SWOOLE_CONFIGURE_OPTS='--enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-thread --enable-swoole-pgsql --enable-swoole-sqlite'
+          task_swoole_module="$(bash tools/prepare-swoole-module.sh)"
+          printf 'TYPE_SWOOLE_MODULE=%s\n' "$task_swoole_module" >> "$GITHUB_ENV"
+          task_curl_module="$(php-config --extension-dir)/curl.so"
+          if [[ -f "$task_curl_module" ]]; then
+            printf 'TYPE_CURL_MODULE=%s\n' "$task_curl_module" >> "$GITHUB_ENV"
+          fi
       - name: 准备原生进程的共享信号扩展
         run: bash .github/scripts/prepare-linux-runtime.sh
 

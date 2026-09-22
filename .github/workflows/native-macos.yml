@@ -142,7 +142,10 @@ jobs:
           printf 'TYPE_SWOOLE_MODULE=%s\n' "$task_swoole_module" >> "$GITHUB_ENV"
           # shellcheck disable=SC2016
           php -r '$ini=php_ini_loaded_file();$text=$ini===false?"":file_get_contents($ini);foreach(explode(",",(string)php_ini_scanned_files()) as $file){if(trim($file)!==""){$text.="\n".file_get_contents(trim($file));}}if(file_put_contents($argv[1],$text)!==strlen($text)||!chmod($argv[1],0600)){exit(1);}' "$task_control/php.ini"
-          sed -i -E '/^[[:space:]]*extension[[:space:]]*=.*(swoole|curl|tokenizer)/Id' "$task_control/php.ini"
+          # BSD sed 把紧跟 -i 的参数当作备份后缀。写成 -i -E 时扩展正则不生效，
+          # 旧的 swoole 声明仍留在配置里，再追加适配模块就会重复加载。
+          sed -E -i.bak '/^[[:space:]]*extension[[:space:]]*=.*(swoole|curl|tokenizer)/Id' "$task_control/php.ini"
+          rm -f "$task_control/php.ini.bak"
           task_curl_module="$(php-config --extension-dir)/curl.so"
           task_tokenizer_module="$(php-config --extension-dir)/tokenizer.so"
           if [[ ! -f "$task_tokenizer_module" ]]; then
