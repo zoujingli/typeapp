@@ -78,10 +78,11 @@ expect(array_column($libraries, 'name') === ['libphp.so', 'pdo_pgsql.so'], '发�
 $ini = tempnam(sys_get_temp_dir(), 'swoole-ini-');
 expect(is_string($ini), '无法创建运行配置临时文件');
 try {
-    $probe = "swoole.enable_library=On\nswoole.enable_fiber_mock=On\nextension=\"/sdk/curl.so\"\nextension=\"/sdk/sockets.so\"\nextension=\"/sdk/pdo_pgsql.so\"\nextension=\"/sdk/swoole.so\"\n";
+    $probe = "swoole.enable_library=On\nswoole.enable_fiber_mock=On\nextension_dir=\nextension=\"/sdk/curl.so\"\nextension=\"/sdk/sockets.so\"\nextension=\"/sdk/pdo_pgsql.so\"\nextension=\"/sdk/swoole.so\"\n";
     expect(file_put_contents($ini, $probe) === strlen($probe), '无法写入探针配置');
-    $product = (new RuntimeIni())->withoutExtensions($ini, ['swoole', 'sockets', 'pdo_pgsql']);
+    $product = (new RuntimeIni())->withoutExtensions($ini, ['swoole', 'sockets', 'pdo_pgsql'], '/sdk');
     expect(str_contains($product, 'swoole.enable_library=On') && str_contains($product, 'swoole.enable_fiber_mock=On'), '静态链接后丢掉了官方库和纤程模拟开关');
+    expect(str_contains($product, 'extension_dir="/sdk"'), '产物配置没有给官方 php_load_extension 提供 extension_dir');
     expect(str_contains($product, 'curl.so') && !str_contains($product, 'swoole.so') && !str_contains($product, 'pdo_pgsql.so') && !str_contains($product, 'sockets.so'), '原生配置仍加载已经链入的模块');
     $release = (new RuntimeIni())->generate(['curl.so'], 'lib');
     expect(!str_contains($release, 'swoole') || str_contains($release, 'swoole.enable_library=On'), '发布配置意外写入了动态 Swoole');

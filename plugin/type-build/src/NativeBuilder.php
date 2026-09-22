@@ -355,6 +355,7 @@ final class NativeBuilder
         $runtimeIni = $profile['ini'];
         $swooleLinkFacts = null;
         $swooleResultFile = null;
+        $productExtensionDirectory = null;
         if (array_key_exists('threads', $settings)) {
             $selection = new SwooleFeatureSelection();
             $staticFlags = $selection->select([], [], array_keys($profile['extensions']), true);
@@ -364,7 +365,8 @@ final class NativeBuilder
             }
             $native['native-libraries'] = $selection->productLibraries($native['native-libraries']);
             $runtimeIni = dirname($profile['ini']) . '/product.ini';
-            $this->writeText($runtimeIni, (new RuntimeIni())->withoutExtensions($profile['ini'], $internalExtensions));
+            $productExtensionDirectory = $this->sharedModuleDirectory($profile['module-files'], $internalExtensions);
+            $this->writeText($runtimeIni, (new RuntimeIni())->withoutExtensions($profile['ini'], $internalExtensions, $productExtensionDirectory));
             $swooleResultFile = $buildDirectory . '/swoole-link-result.json';
             $swooleLinkFacts = ['protocol' => 1, 'source' => SwooleFeatureSelection::SOURCE, 'mode' => 'static',
                 'flags' => $staticFlags, 'internal-extensions' => $internalExtensions];
@@ -604,7 +606,7 @@ final class NativeBuilder
                     $dropped[] = $extension;
                 }
             }
-            $this->writeText($runtimeIni, (new RuntimeIni())->withoutExtensions($profile['ini'], $dropped));
+            $this->writeText($runtimeIni, (new RuntimeIni())->withoutExtensions($profile['ini'], $dropped, $productExtensionDirectory));
         }
         $report = [
             'output' => $output,
@@ -647,6 +649,27 @@ final class NativeBuilder
         $this->writeJson($reportFile, $report);
 
         return $report;
+    }
+
+    /**
+     * 官方 php_load_extension 只认 INI 的 extension_dir 加模块名，不把 SDK 路径写进登记器。
+     *
+     * @param array<string, string> $moduleFiles
+     * @param list<string> $names
+     */
+    private function sharedModuleDirectory(array $moduleFiles, array $names): ?string
+    {
+        foreach ([...$names, ...array_keys($moduleFiles)] as $name) {
+            if (!is_string($name) || !isset($moduleFiles[$name])) {
+                continue;
+            }
+            $path = $moduleFiles[$name];
+            if (is_string($path) && is_file($path)) {
+                return dirname($path);
+            }
+        }
+
+        return null;
     }
 
     /**

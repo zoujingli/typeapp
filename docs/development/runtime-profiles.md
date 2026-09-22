@@ -1,6 +1,6 @@
 # 真实embed运行依赖
 
-探针和发布包共用`RuntimeIni`生成INI：禁用预加载、运行时动态扩展与外部源码包含，统一路径转义和控制字符/环境插值拒绝。探针使用空extension_dir及绝对模块路径，发布使用明确lib/bin及相对文件名；模块顺序由调用方提供，不被重新排序。共享生成器不读取宿主INI，也不替代`RuntimeProfile`的真实ABI/函数加载验证。默认 `swoole.enable_library=On`，官方内置 PHP 库在 Swoole 请求初始化中加载；该例外不允许业务或其他依赖解释回退。模块摘要约束内嵌库字节，INI 和实际公开函数要求一起参与构建身份。
+探针和发布包共用`RuntimeIni`生成INI：禁用预加载、运行时动态扩展与外部源码包含，统一路径转义和控制字符/环境插值拒绝。探针使用空extension_dir及绝对模块路径，发布使用明确lib/bin及相对文件名；线程应用的产物 INI 把 `extension_dir` 写成 sockets/PDO 所在目录，供官方 `php_load_extension` 按模块名解析，登记器不写入 SDK 绝对路径。模块顺序由调用方提供，不被重新排序。共享生成器不读取宿主INI，也不替代`RuntimeProfile`的真实ABI/函数加载验证。默认 `swoole.enable_library=On`，官方内置 PHP 库在 Swoole 请求初始化中加载；该例外不允许业务或其他依赖解释回退。模块摘要约束内嵌库字节，INI 和实际公开函数要求一起参与构建身份。
 
 `RuntimeProfile`属于`type-build`，只在构建端运行。它不执行应用PHP、不读取.env、不复制宿主INI；直接初始化选定SDK的embed，读取模块和函数表，并核对版本、ZTS及实际加载的核心库路径。CLI具有某个扩展不再被当作embed已有该能力的证据。
 

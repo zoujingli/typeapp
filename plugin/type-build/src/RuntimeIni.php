@@ -33,10 +33,13 @@ final class RuntimeIni
     /**
      * 去掉已经链进主程序的扩展行，保留其余指令和顺序。
      *
+     * 产物配置需要真实的 extension_dir，官方 php_load_extension 只按模块名解析；登记器不写入 SDK 绝对路径。
+     *
      * @param list<string> $extensions 扩展名，不含路径。
-     * @throws RuntimeException 探针配置不存在，或扩展名无效。
+     * @param string|null $extensionDirectory 非 null 时覆盖 extension_dir；空字符串写成空值。
+     * @throws RuntimeException 探针配置不存在，或扩展名/目录无效。
      */
-    public function withoutExtensions(string $ini, array $extensions): string
+    public function withoutExtensions(string $ini, array $extensions, ?string $extensionDirectory = null): string
     {
         $text = is_file($ini) ? file_get_contents($ini) : false;
         if (!is_string($text)) {
@@ -57,6 +60,7 @@ final class RuntimeIni
             array_pop($lines);
         }
         $kept = [];
+        $replaced = false;
         foreach ($lines as $line) {
             if (preg_match('/^\s*extension\s*=\s*"?([^"\s]+)"?\s*$/i', $line, $match) === 1) {
                 $base = strtolower(basename(str_replace('\\', '/', $match[1])));
@@ -64,7 +68,15 @@ final class RuntimeIni
                     continue;
                 }
             }
+            if ($extensionDirectory !== null && preg_match('/^\s*extension_dir\s*=/i', $line) === 1) {
+                $kept[] = 'extension_dir=' . ($extensionDirectory === '' ? '' : $this->quote($extensionDirectory));
+                $replaced = true;
+                continue;
+            }
             $kept[] = $line;
+        }
+        if ($extensionDirectory !== null && !$replaced) {
+            $kept[] = 'extension_dir=' . ($extensionDirectory === '' ? '' : $this->quote($extensionDirectory));
         }
 
         return implode("\n", $kept) . "\n";
