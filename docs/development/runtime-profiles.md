@@ -45,7 +45,7 @@ Composer生产依赖的`ext-*`要求自动参与探测。构建器读取构建 P
 
 探针在自己的C进程中设置PHPRC/扫描目录，避免让构建用PHP CLI误加载只属于embed的共享模块。它只查询运行时注册信息，不执行PHP脚本；这与把业务交给解释器运行是不同路径。[锁定PHP embed实现](https://github.com/php/php-src/blob/php-8.5.10/sapi/embed/php_embed.c)
 
-线程应用把探针 INI 和原生产物 INI 分开。探针继续 `extension=` 指向超集 `swoole.so`，并加载同一 ABI 的 `sockets` 与 `curl`，供 TypePHP 反射。原生产物和发布 INI 去掉 `extension=swoole`，以及已经由官方 `php_load_extension` 在静态 Swoole 之前登记的 `sockets`/PDO（及按符号决定的 curl）；发布包不复制 `swoole.so` / `php_swoole.dll`。`swoole.enable_library` 与 `swoole.enable_fiber_mock` 保留。构建报告里的 `runtime-profile.ini` 指向这份不含动态 Swoole 的配置，避免静态模块旁边再被 dlopen。产品开关来自编译统计和已声明扩展；静态目标里出现未定义符号 `curl_multi_ce`（Mach-O 上写作 `_curl_multi_ce`）时，同 ABI 的 curl 改在 Swoole 之前登记，不再按类名猜测。共享 PHP 模块只导出隐藏的 `get_module`，不能按 `pdo_*_module_entry` 去链接。
+线程应用把探针 INI 和原生产物 INI 分开。探针继续 `extension=` 指向超集 `swoole.so`，并加载同一 ABI 的 `sockets` 与 `curl`，供 TypePHP 反射。原生产物和发布 INI 去掉 `extension=swoole`，以及已经由官方 `php_load_extension` 在静态 Swoole 之前登记的 `sockets`/PDO（及按符号决定的 curl）；发布包不复制 `swoole.so` / `php_swoole.dll`。产品静态目标在 `ld -r` 之后去掉 DWARF 调试段，避免 phpize 默认 `-g` 把主程序胀到发布归档无法在既定内存限制内完成。`swoole.enable_library` 与 `swoole.enable_fiber_mock` 保留。构建报告里的 `runtime-profile.ini` 指向这份不含动态 Swoole 的配置，避免静态模块旁边再被 dlopen。产品开关来自编译统计和已声明扩展；静态目标里出现未定义符号 `curl_multi_ce`（Mach-O 上写作 `_curl_multi_ce`）时，同 ABI 的 curl 改在 Swoole 之前登记，不再按类名猜测。共享 PHP 模块只导出隐藏的 `get_module`，不能按 `pdo_*_module_entry` 去链接。
 
 ## 产物与运行
 

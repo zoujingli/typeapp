@@ -2,7 +2,7 @@
 
 已完成 Linux x64 基础命令、Linux ARM64 / macOS ARM64 / Windows x64 三库独立 ORM 消费者的 AOT 构建与实际运行；macOS ARM64 另有完整应用 AOT 与三库身份 HTTP 结果。各场景的源码、SDK 与产物身份独立记录，完整应用发布和单程序封装仍有待验收项，见[平台与验收](https://iots.top/#/guide/platforms)。
 
-构建声明可通过 `threads` 登记已编译业务入口。构建器核对受控 Swoole/PHPX ABI 2、源码摘要与 fiber 通知配置，并在正常模块启动阶段发布应用符号。线程应用按编译统计和运行声明选择官方 Swoole 开关，把该模块链进主程序；编译探针仍加载超集共享模块，sockets/PDO 在进程内用官方 `php_load_extension` 先于静态 Swoole 登记。发布配置不再 `extension=swoole`，也不再复制 `swoole.so`。线程内协程作用域、初始化失败和清理边界见[已编译业务线程](https://github.com/zoujingli/typeapp/blob/main/docs/development/compiled-business-threads.md)，实际平台结果按该页记录。
+构建声明可通过 `threads` 登记已编译业务入口。构建器核对受控 Swoole/PHPX ABI 2、源码摘要与 fiber 通知配置，并在正常模块启动阶段发布应用符号。线程应用按编译统计和运行声明选择官方 Swoole 开关，把该模块链进主程序；编译探针仍加载超集共享模块，sockets/PDO 在进程内用官方 `php_load_extension` 先于静态 Swoole 登记。产品静态目标去掉调试段后链入，发布配置不再 `extension=swoole`，也不再复制 `swoole.so`。线程内协程作用域、初始化失败和清理边界见[已编译业务线程](https://github.com/zoujingli/typeapp/blob/main/docs/development/compiled-business-threads.md)，实际平台结果按该页记录。
 
 线程适配另提供 TypeApp 私有 `Thread::TYPEAPP_JOIN_ABI=1` 与 `joinWithin(int $milliseconds)` 候选，只适用于编译线程；等待完整 C++ 线程局部清理通知后仍由 Swoole join。超时保留所有权，不取消或 detach；非零等待会阻塞调用方线程，只供独立主控使用。它不等于完整停止监督或硬实时截止，固定缺口、验收及撤除条件见同页的“有截止的完成等待候选”。
 

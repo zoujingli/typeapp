@@ -121,6 +121,15 @@ collect_objects() {
     else
         ld -r -o "$task_static_dir/swoole.o" "${task_members[@]}"
     fi
+    [[ -s "$task_static_dir/swoole.o" ]] || return 1
+    # phpize 默认 -g；调试段会把主程序胀到发布归档在 128 MiB 限制下无法完成。
+    # --strip-debug / Darwin -S 只去掉 DWARF，保留链接所需的 swoole_module_entry。
+    command -v strip >/dev/null || { echo '静态 Swoole 需要 strip 去掉调试段。' >&2; return 1; }
+    if [[ "$(uname -s)" == Darwin ]]; then
+        strip -S "$task_static_dir/swoole.o"
+    else
+        strip --strip-debug "$task_static_dir/swoole.o"
+    fi
     [[ -s "$task_static_dir/swoole.o" ]]
 }
 

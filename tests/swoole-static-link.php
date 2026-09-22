@@ -162,4 +162,7 @@ try {
     rmdir($linkRoot);
 }
 
+$script = (string) file_get_contents(dirname(__DIR__) . '/tools/prepare-swoole-module.sh');
+expect(str_contains($script, 'strip --strip-debug') && str_contains($script, 'strip -S'), '静态目标没有去掉调试段');
+
 echo "Swoole 使用选择、符号检查与发布配置通过\n";
