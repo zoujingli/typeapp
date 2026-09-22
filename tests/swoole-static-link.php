@@ -162,8 +162,13 @@ try {
     rmdir($linkRoot);
 }
 
+expect(SwooleFeatureSelection::canonicalFlags(['--enable-swoole-pgsql=/tmp/libpq-prefix', '--enable-sockets'])
+    === SwooleFeatureSelection::canonicalFlags(['--enable-sockets', '--enable-swoole-pgsql']), '带查找前缀的 pgsql 开关没有被当成同一可选块');
+expect($selection->sharedModulesBeforeSwoole(['--enable-sockets', '--enable-swoole-pgsql=/tmp/libpq'], $modules) === ['sockets', 'pdo', 'pdo_pgsql'], 'pgsql 查找前缀没有选出 PDO 模块');
+
 $script = (string) file_get_contents(dirname(__DIR__) . '/tools/prepare-swoole-module.sh');
 expect(str_contains($script, 'strip --strip-debug') && str_contains($script, 'strip -S'), '静态目标没有去掉调试段');
+expect(str_contains($script, 'canonical_opts') && str_contains($script, '%%=*'), '静态复用没有忽略 configure 查找前缀');
 
 $bashRoot = sys_get_temp_dir() . '/swoole-bash-' . bin2hex(random_bytes(4));
 expect(mkdir($bashRoot, 0700, true), '无法创建 bash 探测目录');

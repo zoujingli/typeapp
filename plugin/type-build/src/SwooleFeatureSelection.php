@@ -127,6 +127,26 @@ final class SwooleFeatureSelection
     }
 
     /**
+     * 复用已编译目标时只比较官方块名字，忽略 --enable-swoole-pgsql=/path 这类查找前缀。
+     *
+     * @param list<string> $flags
+     * @return list<string>
+     */
+    public static function canonicalFlags(array $flags): array
+    {
+        $names = [];
+        foreach ($flags as $flag) {
+            if (!is_string($flag) || $flag === '') {
+                continue;
+            }
+            $names[] = explode('=', $flag, 2)[0];
+        }
+        sort($names);
+
+        return array_values($names);
+    }
+
+    /**
      * sockets 提供静态 Swoole 需要的 socket_ce；pgsql/sqlite 会在 Swoole MINIT 里登记 PDO 驱动。
      *
      * 只返回模块文件清单里真实存在的项，不把已经内置的扩展再登记一次。
@@ -137,6 +157,7 @@ final class SwooleFeatureSelection
      */
     public function sharedModulesBeforeSwoole(array $flags, array $moduleFiles): array
     {
+        $flags = self::canonicalFlags($flags);
         $pgsql = in_array('--enable-swoole-pgsql', $flags, true);
         $sqlite = in_array('--enable-swoole-sqlite', $flags, true);
         $names = [];
@@ -172,6 +193,7 @@ final class SwooleFeatureSelection
             }
             $runtime[] = strtolower($extension);
         }
+        $flags = self::canonicalFlags($flags);
         foreach (['--enable-swoole-pgsql' => 'pdo_pgsql', '--enable-swoole-sqlite' => 'pdo_sqlite'] as $flag => $extension) {
             if (in_array($flag, $flags, true) && !in_array($extension, $runtime, true)) {
                 throw new RuntimeException('运行声明缺少 ' . $extension);

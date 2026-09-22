@@ -45,7 +45,7 @@ Composer生产依赖的`ext-*`要求自动参与探测。构建器读取构建 P
 
 探针在自己的C进程中设置PHPRC/扫描目录，避免让构建用PHP CLI误加载只属于embed的共享模块。它只查询运行时注册信息，不执行PHP脚本；这与把业务交给解释器运行是不同路径。[锁定PHP embed实现](https://github.com/php/php-src/blob/php-8.5.10/sapi/embed/php_embed.c)
 
-线程应用把探针 INI 和原生产物 INI 分开。探针继续 `extension=` 指向超集 `swoole.so`，并加载同一 ABI 的 `sockets` 与 `curl`，供 TypePHP 反射。原生产物和发布 INI 去掉 `extension=swoole`，以及已经由官方 `php_load_extension` 在静态 Swoole 之前登记的 `sockets`/PDO（及按符号决定的 curl）；发布包不复制 `swoole.so` / `php_swoole.dll`。产品静态目标在 `ld -r` 之后去掉 DWARF 调试段，避免 phpize 默认 `-g` 把主程序胀到发布归档无法在既定内存限制内完成。Darwin 重建静态目标时把工具链 PATH 里的 bash 解析成绝对路径再交给 `pcntl_exec`，因为它不搜索 PATH。`swoole.enable_library` 与 `swoole.enable_fiber_mock` 保留。构建报告里的 `runtime-profile.ini` 指向这份不含动态 Swoole 的配置，避免静态模块旁边再被 dlopen。产品开关来自编译统计和已声明扩展；静态目标里出现未定义符号 `curl_multi_ce`（Mach-O 上写作 `_curl_multi_ce`）时，同 ABI 的 curl 改在 Swoole 之前登记，不再按类名猜测。共享 PHP 模块只导出隐藏的 `get_module`，不能按 `pdo_*_module_entry` 去链接。
+线程应用把探针 INI 和原生产物 INI 分开。探针继续 `extension=` 指向超集 `swoole.so`，并加载同一 ABI 的 `sockets` 与 `curl`，供 TypePHP 反射。原生产物和发布 INI 去掉 `extension=swoole`，以及已经由官方 `php_load_extension` 在静态 Swoole 之前登记的 `sockets`/PDO（及按符号决定的 curl）；发布包不复制 `swoole.so` / `php_swoole.dll`。产品静态目标在 `ld -r` 之后去掉 DWARF 调试段，避免 phpize 默认 `-g` 把主程序胀到发布归档无法在既定内存限制内完成。Darwin 重建静态目标时把工具链 PATH 里的 bash 解析成绝对路径再交给 `pcntl_exec`，因为它不搜索 PATH。复用已编译目标时只比较官方块名字，因此 `--enable-swoole-pgsql=/path` 与 `--enable-swoole-pgsql` 视为同一开关。`swoole.enable_library` 与 `swoole.enable_fiber_mock` 保留。构建报告里的 `runtime-profile.ini` 指向这份不含动态 Swoole 的配置，避免静态模块旁边再被 dlopen。产品开关来自编译统计和已声明扩展；静态目标里出现未定义符号 `curl_multi_ce`（Mach-O 上写作 `_curl_multi_ce`）时，同 ABI 的 curl 改在 Swoole 之前登记，不再按类名猜测。共享 PHP 模块只导出隐藏的 `get_module`，不能按 `pdo_*_module_entry` 去链接。
 
 ## 产物与运行
 
@@ -55,6 +55,6 @@ Composer生产依赖的`ext-*`要求自动参与探测。构建器读取构建 P
 
 ## 已执行验收
 
-`tests/runtime-profile.php`在Linux和macOS使用真实SDK验证：内置能力不重复加载、非当前平台/不需要的候选不读取、探针字节重复生成稳定、模块摘要、缺失函数、启动警告以及同平台非扩展库拒绝。Linux另验证共享PCNTL的版本与函数表；macOS保留其实际内置PCNTL路径。`tests/swoole-static-link.php`验证线程开关、PDO 驱动映射、超集没有的符号会失败、`curl_multi_ce` 不会匹配 `php_curl_multi_ce`，sockets/PDO 按官方 `php_load_extension` 排在静态 `swoole_module_entry` 之前，发布配置不再写入动态 Swoole，以及静态重建把 bash 解析成绝对路径。该测试不编译 Swoole，也不代替目标机上的启动、`startNative` ABI 和 PDO 协程挂钩验收。
+`tests/runtime-profile.php`在Linux和macOS使用真实SDK验证：内置能力不重复加载、非当前平台/不需要的候选不读取、探针字节重复生成稳定、模块摘要、缺失函数、启动警告以及同平台非扩展库拒绝。Linux另验证共享PCNTL的版本与函数表；macOS保留其实际内置PCNTL路径。`tests/swoole-static-link.php`验证线程开关、PDO 驱动映射、超集没有的符号会失败、`curl_multi_ce` 不会匹配 `php_curl_multi_ce`，sockets/PDO 按官方 `php_load_extension` 排在静态 `swoole_module_entry` 之前，发布配置不再写入动态 Swoole，静态重建把 bash 解析成绝对路径，以及带查找前缀的 configure 开关可以复用已编译目标。该测试不编译 Swoole，也不代替目标机上的启动、`startNative` ABI 和 PDO 协程挂钩验收。
 
 Windows探针编译/模块加载仍待可用原生runner验证。原有隔离构建、所有平台最终同一源码快照CI和完整发布门禁仍须分别完成。

@@ -80,8 +80,26 @@ task_log() {
     fi
 }
 
+# 与 SwooleFeatureSelection::canonicalFlags 一致：只比较官方块名字。
+canonical_opts() {
+    local task_opt
+    local task_names=()
+    for task_opt in "$@"; do
+        [[ -n "$task_opt" ]] || continue
+        task_names+=("${task_opt%%=*}")
+    done
+    if [[ ${#task_names[@]} -eq 0 ]]; then
+        printf '\n'
+        return
+    fi
+    printf '%s\n' "${task_names[@]}" | LC_ALL=C sort | paste -sd' ' -
+}
+
 same_configure_opts() {
-    [[ -f "$task_opts_file" ]] && [[ "$(cat "$task_opts_file")" == "$SWOOLE_CONFIGURE_OPTS" ]]
+    [[ -f "$task_opts_file" ]] || return 1
+    local task_existing
+    read -r -a task_existing <<< "$(cat "$task_opts_file")"
+    [[ "$(canonical_opts "${task_existing[@]}")" == "$(canonical_opts "${task_options[@]}")" ]]
 }
 
 compile_tree() {
@@ -159,12 +177,11 @@ build_static() {
         echo '复用已按相同开关编译的 Swoole 目标。' >&2
     elif ! compile_tree static || ! collect_objects; then
         echo 'Swoole 静态配置没有留下可链接目标，改为同一开关的共享编译并抽出 .o。' >&2
-        compile_tree shared
-        collect_objects || {
+        if ! compile_tree shared || ! collect_objects; then
             dump_build_log
             echo '静态 Swoole 没有目标文件。' >&2
             exit 1
-        }
+        fi
     fi
     if [[ ! -f "$task_source/modules/swoole.so" ]]; then
         compile_tree shared
