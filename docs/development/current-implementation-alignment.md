@@ -26,7 +26,7 @@ Plugins 为统一称谓；通信、进程、线程、协程与事件循环必须
 | MQTT 客户端 | 统一使用 `Swoole\Coroutine\Socket`；非协程调用沿现有 CoroutineRuntime 使用官方 Scheduler | Client 负责 TLS 身份、半包、保活、超时、确认凭据和关闭语义 |
 | 持久工作与设备接入 | `PendingCommit`、设备授权和摄取 worker 使用 Swoole PROC hook 管理的进程管道；HTTPS CRL 使用 Swoole Coroutine HTTP Client | 应用保留有界结果、硬截止、提交未知与远端释放证明；Swoole 负责执行与通信 |
 | 跨平台服务入口 | HTTP、WebSocket、TCP、UDP、MQTT 均按目标平台使用 Swoole 官方 Server、Socket、线程或协程能力 | 只在所需原生能力确实缺失时报告启动错误，并记录对应平台验收范围 |
-| AOT 与运行包 | 生产 PHP、生成代码和实际生产依赖交给 TypePHP 全量编译；Swoole 为必需运行扩展 | 编译产物与外置配置分离，不能回退 Composer 源码解释执行 |
+| AOT 与运行包 | 生产 PHP、生成代码和实际生产依赖交给 TypePHP 全量编译。线程应用按本次使用把官方 Swoole 链进主程序；没有线程声明时 Swoole 仍是共享运行扩展。PHPX、libphp 与其余扩展仍是运行依赖 | 编译产物与外置配置分离，不能回退 Composer 源码解释执行。目录包还不是单程序文件 |
 
 PSR 消息流与文件流继续保留标准职责；独立协议测试工具不作为生产通信底层。
 

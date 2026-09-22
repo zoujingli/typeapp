@@ -6,7 +6,7 @@
 
 ## 声明
 
-Composer生产依赖的`ext-*`要求自动参与探测。构建器读取构建 PHP 中对应扩展声明的必需依赖，递归补齐并按依赖顺序加载；Swoole 运行声明还会显式补齐同一 ABI 的 `curl`，确保 `curl` 在 `swoole` 之前加载。独立消费者应把本轮核验的两个模块都复制到消费者目录并登记在 `runtime.modules`；CI 使用 `TYPE_CURL_MODULE` 作为受控的 curl 候选。只读扩展元数据不执行应用，不引入可选或冲突扩展。新增依赖的实际版本、模块摘要和加载结果同样进入产物身份。应用额外运行能力使用构建JSON的`runtime`，按真实宿主平台分开：
+Composer生产依赖的`ext-*`要求自动参与探测。构建器读取构建 PHP 中对应扩展声明的必需依赖，递归补齐并按依赖顺序加载；Swoole 运行声明还会显式补齐同一 ABI 的 `curl`，确保探针里的 `curl` 在超集 `swoole.so` 之前加载。独立消费者应把本轮核验的两个模块都复制到消费者目录并登记在 `runtime.modules`；CI 使用 `TYPE_CURL_MODULE` 作为受控的 curl 候选。只读扩展元数据不执行应用，不引入可选或冲突扩展。新增依赖的实际版本、模块摘要和加载结果同样进入产物身份。应用额外运行能力使用构建JSON的`runtime`，按真实宿主平台分开：
 
 ```json
 {
@@ -45,14 +45,16 @@ Composer生产依赖的`ext-*`要求自动参与探测。构建器读取构建 P
 
 探针在自己的C进程中设置PHPRC/扫描目录，避免让构建用PHP CLI误加载只属于embed的共享模块。它只查询运行时注册信息，不执行PHP脚本；这与把业务交给解释器运行是不同路径。[锁定PHP embed实现](https://github.com/php/php-src/blob/php-8.5.10/sapi/embed/php_embed.c)
 
+线程应用把探针 INI 和原生产物 INI 分开。探针继续 `extension=` 指向超集 `swoole.so`，供 TypePHP 反射。原生产物和发布 INI 去掉 `extension=swoole`，发布包不复制 `swoole.so` / `php_swoole.dll`。`swoole.enable_library` 与 `swoole.enable_fiber_mock` 保留。构建报告里的 `runtime-profile.ini` 指向这份不含动态 Swoole 的配置，避免静态模块旁边再被 dlopen。产品开关来自编译统计和已声明扩展；静态目标里出现未定义符号 `curl_multi_ce`（Mach-O 上写作 `_curl_multi_ce`）时，同 ABI 的 curl 改在 Swoole 之前登记，不再按类名猜测。
+
 ## 产物与运行
 
-构建目录的`runtime-profile/native.ini`用于原生产物的本机调试，引用构建端模块位置，不能当作可搬迁部署配置。构建报告包含该路径和实际扩展/函数要求。生产仍使用`type package`生成的发布目录；发布INI引用已经复制并校验的库，不依赖SDK或构建探针。
+构建目录的`runtime-profile/native.ini`是编译探针使用的配置，引用构建端模块位置，不能当作可搬迁部署配置。线程应用另写同目录的`product.ini`作为构建报告中的运行配置，其中没有动态 Swoole。生产仍使用`type package`生成的发布目录；发布INI引用已经复制并校验的库，不依赖SDK或构建探针。
 
 生成的`BuildIdentity::verifyRuntime()`检查扩展版本和明确要求的函数，并继续执行原有运行库字节/实际加载检查。新增运行依赖影响构建身份与缓存，不复用缺少这些依赖的旧产物。
 
 ## 已执行验收
 
-`tests/runtime-profile.php`在Linux和macOS使用真实SDK验证：内置能力不重复加载、非当前平台/不需要的候选不读取、探针字节重复生成稳定、模块摘要、缺失函数、启动警告以及同平台非扩展库拒绝。Linux另验证共享PCNTL的版本与函数表；macOS保留其实际内置PCNTL路径。
+`tests/runtime-profile.php`在Linux和macOS使用真实SDK验证：内置能力不重复加载、非当前平台/不需要的候选不读取、探针字节重复生成稳定、模块摘要、缺失函数、启动警告以及同平台非扩展库拒绝。Linux另验证共享PCNTL的版本与函数表；macOS保留其实际内置PCNTL路径。`tests/swoole-static-link.php`验证线程开关、PDO 驱动映射、超集没有的符号会失败、`curl_multi_ce` 不会匹配 `php_curl_multi_ce`，以及发布配置不再写入动态 Swoole。该测试不编译 Swoole，也不代替目标机上的启动、`startNative` ABI 和 PDO 协程挂钩验收。
 
 Windows探针编译/模块加载仍待可用原生runner验证。原有隔离构建、所有平台最终同一源码快照CI和完整发布门禁仍须分别完成。

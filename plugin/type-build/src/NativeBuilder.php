@@ -332,8 +332,9 @@ final class NativeBuilder
             $runtimeDeclaration
         );
         if (array_key_exists('threads', $settings)) {
-            // 线程入口在 MINIT 注册应用；仅依赖 Swoole 会将其提前到动态 PDO 驱动之前。
-            // 沿用已验证的运行扩展清单，让 PDO 先完成注册，再由 Swoole 接管协程驱动。
+            // 静态 Swoole 在内建模块回调里启动，早于 INI 动态扩展。
+            // 这里保留完整依赖名单，让应用模块等到 PDO 等扩展登记之后再启动；
+            // Swoole 会在 MINIT 替换的驱动改由同一回调提前登记。
             $project['extension-dependencies'] = array_keys($profile['extensions']);
         }
         $this->writeJson($projectFile, $project);
@@ -350,6 +351,23 @@ final class NativeBuilder
             if (($libraryHashes[$moduleKey] ?? null) !== $profile['module-sha256'][$extension]) {
                 throw new RuntimeException('运行扩展在指纹收集中变化：' . $extension);
             }
+        }
+        $runtimeIni = $profile['ini'];
+        $swooleLinkFacts = null;
+        $swooleResultFile = null;
+        if (array_key_exists('threads', $settings)) {
+            $selection = new SwooleFeatureSelection();
+            $staticFlags = $selection->select([], [], array_keys($profile['extensions']), true);
+            $internalExtensions = [...$selection->sharedModulesBeforeSwoole($staticFlags, $profile['module-files']), 'swoole'];
+            foreach ($internalExtensions as $internalExtension) {
+                unset($native['extension-modules'][$internalExtension]);
+            }
+            $native['native-libraries'] = $selection->productLibraries($native['native-libraries']);
+            $runtimeIni = dirname($profile['ini']) . '/product.ini';
+            $this->writeText($runtimeIni, (new RuntimeIni())->withoutExtensions($profile['ini'], $internalExtensions));
+            $swooleResultFile = $buildDirectory . '/swoole-link-result.json';
+            $swooleLinkFacts = ['protocol' => 1, 'source' => SwooleFeatureSelection::SOURCE, 'mode' => 'static',
+                'flags' => $staticFlags, 'internal-extensions' => $internalExtensions];
         }
         $noticeDeclaration = $settings['notices'] ?? [];
         if (!is_array($noticeDeclaration)) {
@@ -488,6 +506,9 @@ final class NativeBuilder
         $facts = ['name' => $name, 'version' => $version, 'workspace' => $root, 'settings-sha256' => BuildIdentity::digest($settings),
             'composer-sha256' => BuildIdentity::digest($composer), 'production-packages' => $included, 'native' => $nativeFacts,
             'compiler' => $compilerOptions, 'capabilities' => $capabilities, 'resource-generation' => $resourceIdentity];
+        if ($swooleLinkFacts !== null) {
+            $facts['swoole-link'] = $swooleLinkFacts;
+        }
         $identity = $identityBuilder->create($groups, $facts);
         if ($stage !== null) {
             $auditPaths = $applicationAuditInputs;
@@ -522,11 +543,27 @@ final class NativeBuilder
         }
         $this->writeJson($projectFile, $project);
         $cacheDirectory = $this->destination($root, $settings['cache-directory'] ?? 'build/cache/artifacts');
+        if ($swooleLinkFacts !== null && is_string($swooleResultFile)) {
+            $linkFile = $buildDirectory . '/swoole-link.json';
+            $linkRequest = ['runtime-extensions' => array_keys($profile['extensions']), 'module-files' => $profile['module-files'],
+                'project' => $projectFile, 'cache' => $buildDirectory . '/swoole-static', 'php-home' => $phpHome, 'phpx-home' => $phpxHome,
+                'root' => $root, 'native-ini' => $runtimeIni, 'result' => $swooleResultFile,
+                'dynamic-extensions' => array_keys($native['extension-modules'])];
+            $preparedSource = getenv('TYPE_SWOOLE_SOURCE');
+            if (is_string($preparedSource) && is_file($preparedSource . '/config.m4')) {
+                $linkRequest['source'] = BuildPlatform::resolve($preparedSource);
+            }
+            $this->writeJson($linkFile, $linkRequest);
+            $compilerEnvironment['TYPE_APP_SWOOLE_LINK'] = $linkFile;
+            if (is_file($swooleResultFile) && !unlink($swooleResultFile)) {
+                throw new RuntimeException('无法清理过期的 Swoole 静态链接结果');
+            }
+        }
         $cache = (new ArtifactCache($cacheDirectory))->materialize(
             $identity,
             $manifest,
             $output,
-            function (string $candidate) use ($identity, $groups, $facts, $sources, $identityBuilder, $compiler, $projectFile, $buildDirectory, $compilerOptions, $root, $environment, $compilerEnvironment, $threadCompilerArguments): void {
+            function (string $candidate) use (&$manifest, $runtimeIni, $swooleResultFile, $identity, $groups, $facts, $sources, $identityBuilder, $compiler, $projectFile, $buildDirectory, $compilerOptions, $root, $environment, $compilerEnvironment, $threadCompilerArguments): void {
                 // 工作目录必须短。声明头位于该目录的 include/ 下，文件名还带源码相对路径。
                 // Windows 可用路径上限是 259 个字符；把完整构建身份放进目录后，MSVC 打不开生成头。
                 $work = $buildDirectory . '/attempts/' . bin2hex(random_bytes(4));
@@ -539,6 +576,9 @@ final class NativeBuilder
                     $command[] = '--force';
                 }
                 echo $environment->run($command, $root, $compilerEnvironment, 1800);
+                if (is_string($swooleResultFile)) {
+                    $this->applyStaticSwooleResult($manifest, $swooleResultFile, $runtimeIni);
+                }
                 $groups['sources'] = $identityBuilder->sources($sources);
                 if ($identityBuilder->create($groups, $facts)['id'] !== $identity['id']) {
                     throw new RuntimeException('构建过程中输入发生变化，拒绝发布或缓存该产物');
@@ -556,6 +596,16 @@ final class NativeBuilder
             }
         );
 
+        if ($swooleLinkFacts !== null) {
+            $sealedManifest = (new ArtifactManifest())->read($output, $identity['id']);
+            $dropped = [];
+            foreach (array_keys($profile['module-files']) as $extension) {
+                if (!isset($sealedManifest['extension-modules'][$extension])) {
+                    $dropped[] = $extension;
+                }
+            }
+            $this->writeText($runtimeIni, (new RuntimeIni())->withoutExtensions($profile['ini'], $dropped));
+        }
         $report = [
             'output' => $output,
             'build-id' => $identity['id'],
@@ -569,7 +619,7 @@ final class NativeBuilder
             'zts' => (bool) PHP_ZTS,
             'architecture' => php_uname('m'),
             'build-extensions' => array_map(static fn (string $extension): array => ['name' => $extension, 'version' => phpversion($extension)], get_loaded_extensions()),
-            'runtime-profile' => ['ini' => $profile['ini'], 'probe' => $profile['probe'], 'extensions' => $profile['extensions'], 'functions' => $profile['functions']],
+            'runtime-profile' => ['ini' => $runtimeIni, 'probe' => $profile['probe'], 'extensions' => $profile['extensions'], 'functions' => $profile['functions']],
             'dependency-notices' => $notices['summary'],
             'typephp' => InstalledVersions::getPrettyVersion('swoole/typephp'),
             'typephp-reference' => InstalledVersions::getReference('swoole/typephp'),
@@ -588,9 +638,42 @@ final class NativeBuilder
             'resources' => array_values($resources),
             'native-libraries' => array_map(static fn (string $library): array => ['path' => $library, 'sha256' => hash_file('sha256', $library)], $libraries),
         ];
+        if (is_string($swooleResultFile) && is_file($swooleResultFile)) {
+            $linked = json_decode((string) file_get_contents($swooleResultFile), true, 32, JSON_THROW_ON_ERROR);
+            if (is_array($linked)) {
+                $report['swoole-link'] = $linked;
+            }
+        }
         $this->writeJson($reportFile, $report);
 
         return $report;
+    }
+
+    /**
+     * 编译期间才知道的进程内模块，从发布清单和原生 INI 中去掉，避免再 dlopen 一次。
+     *
+     * @param array<string, mixed> $manifest
+     */
+    private function applyStaticSwooleResult(array &$manifest, string $resultFile, string $nativeIni): void
+    {
+        if (!is_file($resultFile)) {
+            throw new RuntimeException('线程应用没有产生 Swoole 静态链接结果');
+        }
+        $result = json_decode((string) file_get_contents($resultFile), true, 32, JSON_THROW_ON_ERROR);
+        if (!is_array($result) || !is_array($result['internalize'] ?? null) || !is_array($manifest['extension-modules'] ?? null)) {
+            throw new RuntimeException('Swoole 静态链接结果无效');
+        }
+        $internalize = [];
+        foreach ($result['internalize'] as $extension) {
+            if (!is_string($extension) || $extension === '') {
+                throw new RuntimeException('Swoole 静态链接结果无效');
+            }
+            unset($manifest['extension-modules'][$extension]);
+            $internalize[] = $extension;
+        }
+        if ($internalize !== []) {
+            $this->writeText($nativeIni, (new RuntimeIni())->withoutExtensions($nativeIni, $internalize));
+        }
     }
 
     private function platformPackage(string $name): bool

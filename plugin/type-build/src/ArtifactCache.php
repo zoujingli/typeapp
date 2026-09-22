@@ -25,10 +25,12 @@ final class ArtifactCache
     }
 
     /**
+     * 编译回调可以在封印前改写清单，例如去掉已经改成进程内模块的扩展。
+     *
      * @param Closure(string): void $compile 接收临时候选产物路径。
      * @param (Closure(): void)|null $validateInputs 发布候选产物前零参数复核输入。
      */
-    public function materialize(array $identity, array $manifest, string $output, Closure $compile, ?Closure $validateInputs = null): array
+    public function materialize(array $identity, array &$manifest, string $output, Closure $compile, ?Closure $validateInputs = null): array
     {
         BuildIdentity::assertValid($identity);
         BuildLock::path($output);
@@ -36,7 +38,7 @@ final class ArtifactCache
             throw new RuntimeException('缓存身份与产物清单不一致');
         }
         $id = $identity['id'];
-        return BuildLock::run($this->directory . '/' . $id . '.lock', function () use ($identity, $manifest, $output, $compile, $validateInputs, $id): array {
+        return BuildLock::run($this->directory . '/' . $id . '.lock', function () use ($identity, &$manifest, $output, $compile, $validateInputs, $id): array {
             $entry = $this->directory . '/' . $id;
             $started = hrtime(true);
             $reason = 'absent';

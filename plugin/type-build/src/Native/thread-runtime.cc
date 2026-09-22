@@ -22,12 +22,15 @@ END_EXTERN_C()
 #include <string>
 
 extern "C" void type_app_compiled_process_main(int, char **);
+extern "C" int type_app_register_static_modules(void);
+extern "C" int type_app_register_internal_extensions(void);
 #if !defined(PHP_WIN32)
 extern "C" char **save_ps_args(int, char **);
 #endif
 
 namespace {
 zend_module_entry *application_module = nullptr;
+int (*type_app_previous_extensions)(void) = nullptr;
 bool embed_started = false;
 bool sapi_started = false;
 bool tsrm_started = false;
@@ -133,6 +136,10 @@ void shutdown_embed() {
 #endif
     application_module = nullptr;
     embed_started = false;
+    if (type_app_previous_extensions != nullptr) {
+        php_register_internal_extensions_func = type_app_previous_extensions;
+        type_app_previous_extensions = nullptr;
+    }
 }
 
 bool startup_embed(int argc, char **argv) {
@@ -159,6 +166,9 @@ bool startup_embed(int argc, char **argv) {
     static const char defaults[] = "html_errors=0\nimplicit_flush=1\noutput_buffering=0\nmax_execution_time=0\nmax_input_time=-1\n";
     php_embed_module.ini_entries = defaults;
     php_embed_module.executable_location = argv ? argv[0] : nullptr;
+    // 内建模块先启动。Swoole 及其必须提前登记的驱动紧随其后，早于 INI 里的动态扩展。
+    type_app_previous_extensions = php_register_internal_extensions_func;
+    php_register_internal_extensions_func = type_app_register_internal_extensions;
     const auto module_result = php_module_startup(&php_embed_module, application_module);
     module_started = php_get_module_initialized();
     if (module_result != SUCCESS) { return false; }
@@ -185,6 +195,13 @@ void register_standard_stream(const char *name, const char *path, const char *mo
     ZEND_CONSTANT_SET_FLAGS(&constant, CONST_CS, 0);
     zend_register_constant(&constant);
 }
+}
+
+extern "C" int type_app_register_internal_extensions(void) {
+    if (type_app_previous_extensions != nullptr && type_app_previous_extensions() != SUCCESS) {
+        return FAILURE;
+    }
+    return type_app_register_static_modules();
 }
 
 extern "C" int typephp_runtime_start(typephp_module_getter get_module, int argc, char **argv) {

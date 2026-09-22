@@ -30,6 +30,46 @@ final class RuntimeIni
         return $ini;
     }
 
+    /**
+     * 去掉已经链进主程序的扩展行，保留其余指令和顺序。
+     *
+     * @param list<string> $extensions 扩展名，不含路径。
+     * @throws RuntimeException 探针配置不存在，或扩展名无效。
+     */
+    public function withoutExtensions(string $ini, array $extensions): string
+    {
+        $text = is_file($ini) ? file_get_contents($ini) : false;
+        if (!is_string($text)) {
+            throw new RuntimeException('无法读取运行配置');
+        }
+        $drop = [];
+        foreach ($extensions as $extension) {
+            if (!is_string($extension) || preg_match('/^[a-z_][a-z0-9_]*$/iD', $extension) !== 1) {
+                throw new RuntimeException('运行扩展名称无效');
+            }
+            $name = strtolower($extension);
+            $drop[$name] = true;
+            $drop[$name . '.so'] = true;
+            $drop['php_' . $name . '.dll'] = true;
+        }
+        $lines = preg_split('/\R/', $text) ?: [];
+        if ($lines !== [] && $lines[count($lines) - 1] === '') {
+            array_pop($lines);
+        }
+        $kept = [];
+        foreach ($lines as $line) {
+            if (preg_match('/^\s*extension\s*=\s*"?([^"\s]+)"?\s*$/i', $line, $match) === 1) {
+                $base = strtolower(basename(str_replace('\\', '/', $match[1])));
+                if (isset($drop[$base])) {
+                    continue;
+                }
+            }
+            $kept[] = $line;
+        }
+
+        return implode("\n", $kept) . "\n";
+    }
+
     private function quote(string $value): string
     {
         if (preg_match('/[\x00-\x1f\x7f]/', $value) || str_contains($value, '${')) {

@@ -51,9 +51,9 @@ final class RuntimeProfile
             }
         }
         $requested = $this->names(array_values(array_unique(array_merge($requirements, $extra, array_keys($fallbacks)))), false);
-        // 当前 Swoole 构建启用了原生 cURL I/O 时，模块会引用 curl_multi_ce。
-        // curl 不是 PHP 扩展元数据中的必需依赖，不能依赖 ReflectionExtension 补齐；
-        // 将其纳入同一运行身份，dependencies() 会把它排在 Swoole 之前。
+        // 当前 Swoole 构建启用了原生 cURL I/O 时，共享模块会引用 curl_multi_ce。
+        // 编译探针仍把 curl 排在超集 swoole.so 之前。产品静态链接是否带上 curl，
+        // 由目标文件里的未定义符号决定，不在这里按名称加入。
         if (in_array('swoole', $requested, true)) {
             $requested[] = 'curl';
         }

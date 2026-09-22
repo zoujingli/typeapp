@@ -529,6 +529,32 @@ CPP, '    type_app_request_clean();');
         if (!$this->threaded()) {
             return parent::compile($sourceFiles);
         }
+        $request = getenv('TYPE_APP_SWOOLE_LINK');
+        if (!is_string($request) || $request === '' || !is_file($request)) {
+            throw new RuntimeException('线程应用需要静态链入 Swoole');
+        }
+        $statistics = $this->getCompilationStatistics();
+        $linked = (new SwooleStaticModule())->link(
+            $request,
+            array_keys($statistics->get(\TypePhp\Analysis\CompilationStatistics::CLASSES)),
+            array_keys($statistics->get(\TypePhp\Analysis\CompilationStatistics::FUNCTIONS))
+        );
+        $cacheRoot = dirname($linked['registrar']);
+        $this->projectObjectFiles = array_values(array_filter(
+            $this->projectObjectFiles,
+            static fn (string $object): bool => !str_starts_with($object, $cacheRoot . '/')
+        ));
+        foreach ($linked['objects'] as $object) {
+            $this->projectObjectFiles[] = $object;
+        }
+        $this->projectObjectFiles = array_values(array_unique($this->projectObjectFiles));
+        foreach ($linked['libraries'] as $library) {
+            $quoted = escapeshellarg($library);
+            if (!str_contains($this->ldflags, $quoted)) {
+                $this->ldflags = trim($this->ldflags . ' ' . $quoted);
+            }
+        }
+        $sourceFiles[] = $linked['registrar'];
         $maxJob = $this->maxJob;
         $this->maxJob = 1;
         try {
