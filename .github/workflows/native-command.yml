@@ -188,11 +188,31 @@ jobs:
         run: |
           export SWOOLE_CONFIGURE_OPTS='--enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-thread --enable-swoole-pgsql --enable-swoole-sqlite'
           task_swoole_module="$(bash tools/prepare-swoole-module.sh)"
-          printf 'TYPE_SWOOLE_MODULE=%s\n' "$task_swoole_module" >> "$GITHUB_ENV"
+          task_control="$GITHUB_WORKSPACE/.cache/linux-control"
+          mkdir -p "$task_control/php.d"
+          # 后续步骤和 embed 配置都要只看到这一份模块。官方 swoole.so 与适配模块同名，
+          # 同时进入部署清单时 /lib/swoole.so 会冲突，版本也会对不上。
+          php -r '$ini=php_ini_loaded_file();$text=$ini===false?"":file_get_contents($ini);foreach(explode(",",(string)php_ini_scanned_files()) as $file){if(trim($file)!==""){$text.="\n".file_get_contents(trim($file));}}if(file_put_contents($argv[1],$text)!==strlen($text)||!chmod($argv[1],0600)){exit(1);}' "$task_control/php.ini"
+          sed -E -i.bak '/^[[:space:]]*extension[[:space:]]*=.*(swoole|curl|tokenizer)/Id' "$task_control/php.ini"
+          rm -f "$task_control/php.ini.bak"
           task_curl_module="$(php-config --extension-dir)/curl.so"
+          task_tokenizer_module="$(php-config --extension-dir)/tokenizer.so"
           if [[ -f "$task_curl_module" ]]; then
+            printf 'extension=%s\n' "$task_curl_module" >> "$task_control/php.ini"
             printf 'TYPE_CURL_MODULE=%s\n' "$task_curl_module" >> "$GITHUB_ENV"
           fi
+          if [[ -f "$task_tokenizer_module" ]]; then
+            printf 'extension=%s\n' "$task_tokenizer_module" >> "$task_control/php.ini"
+          fi
+          printf 'extension=%s\n' "$task_swoole_module" >> "$task_control/php.ini"
+          task_probe_error="$RUNNER_TEMP/swoole-control.err"
+          task_probe="$(PHP_INI_SCAN_DIR="$task_control/php.d" php -c "$task_control/php.ini" -r 'echo method_exists("Swoole\\Thread","startNative") ? "ready" : "missing";' 2>"$task_probe_error")"
+          if [[ -s "$task_probe_error" || "$task_probe" != "ready" ]]; then
+            cat "$task_probe_error" >&2
+            echo "控制器没有加载带 startNative 的唯一 Swoole 模块。" >&2
+            exit 1
+          fi
+          printf 'TYPE_SWOOLE_MODULE=%s\nPHPRC=%s\nPHP_INI_SCAN_DIR=%s\n' "$task_swoole_module" "$task_control/php.ini" "$task_control/php.d" >> "$GITHUB_ENV"
       - name: 准备原生进程的共享信号扩展
         run: bash .github/scripts/prepare-linux-runtime.sh
 
