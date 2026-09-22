@@ -165,4 +165,20 @@ try {
 $script = (string) file_get_contents(dirname(__DIR__) . '/tools/prepare-swoole-module.sh');
 expect(str_contains($script, 'strip --strip-debug') && str_contains($script, 'strip -S'), '静态目标没有去掉调试段');
 
+$bashRoot = sys_get_temp_dir() . '/swoole-bash-' . bin2hex(random_bytes(4));
+expect(mkdir($bashRoot, 0700, true), '无法创建 bash 探测目录');
+$fakeBash = $bashRoot . '/bash';
+try {
+    expect(file_put_contents($fakeBash, "#!/bin/sh\n") !== false && chmod($fakeBash, 0755), '无法写入 PATH 中的 bash');
+    $preferred = SwooleStaticModule::absoluteBash($bashRoot . ':/usr/bin:/bin');
+    expect($preferred === realpath($fakeBash) && str_starts_with($preferred, '/') && str_ends_with($preferred, '/bash'), '静态构建没有按工具链 PATH 解析绝对 bash');
+    $fallback = SwooleStaticModule::absoluteBash('/no/such/dir');
+    expect(str_starts_with($fallback, '/') && str_ends_with($fallback, '/bash') && is_executable($fallback), '缺少 PATH 项时没有回退到 /bin/bash');
+} finally {
+    if (is_file($fakeBash)) {
+        unlink($fakeBash);
+    }
+    rmdir($bashRoot);
+}
+
 echo "Swoole 使用选择、符号检查与发布配置通过\n";

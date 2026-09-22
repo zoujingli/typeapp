@@ -107,7 +107,12 @@ final class SwooleStaticModule
             if (!is_dir($environment['RUNNER_TEMP']) && !mkdir($environment['RUNNER_TEMP'], 0700, true) && !is_dir($environment['RUNNER_TEMP'])) {
                 throw new RuntimeException('无法创建 Swoole 源码目录');
             }
-            $produced = trim($this->runner->run(['bash', $this->script($request['root'])], $request['root'], $environment, 1800));
+            $produced = trim($this->runner->run(
+                [self::absoluteBash((string) $environment['PATH']), $this->script($request['root'])],
+                $request['root'],
+                $environment,
+                1800
+            ));
             if ($produced !== $manifestFile || !is_file($manifestFile)) {
                 throw new RuntimeException('Swoole 静态构建没有返回清单');
             }
@@ -196,6 +201,31 @@ final class SwooleStaticModule
         $data['module-files'] = $modules;
 
         return $data;
+    }
+
+    /**
+     * Darwin 的 pcntl_exec 不搜索 PATH，必须把 bash 解析成绝对路径后再交给构建子进程。
+     *
+     * 目录顺序与 BuildPlatform 的 Unix PATH 一致；找不到时回退到 /bin/bash。
+     *
+     * @throws RuntimeException 工具链 PATH 和 /bin 都没有可执行的 bash。
+     */
+    public static function absoluteBash(string $path): string
+    {
+        foreach ([...explode(':', $path), '/bin'] as $directory) {
+            if ($directory === '') {
+                continue;
+            }
+            $candidate = $directory . '/bash';
+            if (!is_executable($candidate)) {
+                continue;
+            }
+            $resolved = realpath($candidate);
+            if (is_string($resolved) && str_ends_with($resolved, '/bash')) {
+                return $resolved;
+            }
+        }
+        throw new RuntimeException('工具链缺少可执行的 bash');
     }
 
     private function script(string $root): string
