@@ -175,6 +175,15 @@ $script = (string) file_get_contents(dirname(__DIR__) . '/tools/prepare-swoole-m
 expect(str_contains($script, 'strip --strip-debug') && str_contains($script, 'strip -S'), '静态目标没有去掉调试段');
 expect(str_contains($script, 'canonical_opts') && str_contains($script, '%%=*'), '静态复用没有忽略 configure 查找前缀');
 
+$packageTest = (string) file_get_contents(dirname(__DIR__) . '/tests/native-package.php');
+$archiveTest = (string) file_get_contents(dirname(__DIR__) . '/tests/package-archive.php');
+$templateTest = (string) file_get_contents(dirname(__DIR__) . '/tests/application-template.php');
+expect(preg_match('/package-archive\\.php[^;]*wait\\((\\d+)\\)/', $packageTest, $outerWait) === 1
+    && preg_match('/->wait\\((\\d+)\\)/', $archiveTest, $innerWait) === 1
+    && (int) $outerWait[1] >= 2 * (int) $innerWait[1], '发布归档外层等待短于 zip 与 tar.gz 两次创建');
+expect(preg_match('/native-package\\.php.*?--archive.*?wait\\((\\d+)\\)/s', $templateTest, $templateWait) === 1
+    && (int) $templateWait[1] > (int) $outerWait[1], '模板发布等待短于归档两轮格式加上打包');
+
 $bashRoot = sys_get_temp_dir() . '/swoole-bash-' . bin2hex(random_bytes(4));
 expect(mkdir($bashRoot, 0700, true), '无法创建 bash 探测目录');
 $fakeBash = $bashRoot . '/bash';

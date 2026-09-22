@@ -12,7 +12,7 @@ php vendor/bin/type archive build/release build/release.tar.gz <同一受信清�
 
 标准应用提供 `composer typeapp:package`，模板提供 `composer package`。目标已存在时拒绝覆盖；升级使用新的版本目录，不能删除旧目录来掩盖迁移/回滚缺口。打包要求同平台、身份生成协议3的真实产物；Windows入口允许省略构建器添加的`.exe`后缀。
 
-gzip归档先流式核对展开字节数及SHA-256与磁盘tar完全一致，再逐文件核对tar载荷与发布清单，避免`phar://`重新读取gzip时将完整归档留在内存。`tests/package-archive.php`通过公开`type archive`在128 MiB限制下创建两种格式，再使用Phar解包ZIP、原生`tar`解包tar.gz并验证实际原生启动；验收控制端需要可用的`tar`命令。
+gzip归档先流式核对展开字节数及SHA-256与磁盘tar完全一致，再逐文件核对tar载荷与发布清单，避免`phar://`重新读取gzip时将完整归档留在内存。`tests/package-archive.php`通过公开`type archive`在128 MiB限制下创建两种格式，再使用Phar解包ZIP、原生`tar`解包tar.gz并验证实际原生启动；每种格式单独最多90秒，调用方必须覆盖两轮创建和解包，不能用单次90秒卡住整个脚本。验收控制端需要可用的`tar`命令。
 
 ## 发布布局
 

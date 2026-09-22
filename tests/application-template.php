@@ -254,7 +254,8 @@ try {
         $packageEnvironment['TYPE_TEMPLATE_EXPECTED_MESSAGE'] = $marker;
         $packaging = new Process([PHP_BINARY, $root . '/tests/native-package.php', $environment['TYPE_APP_BINARY'], '--archive'], $root, $packageEnvironment, 2097152);
         try {
-            $packaged = $packaging->wait(180);
+            // 覆盖 native-package.php 的打包、业务核对以及 zip/tar.gz 两轮归档。
+            $packaged = $packaging->wait(360);
             $secrets = array_values(array_filter([$packageEnvironment['TYPE_MYSQL_PASSWORD'] ?? '', $packageEnvironment['TYPE_PGSQL_PASSWORD'] ?? ''], static fn (string $secret): bool => $secret !== ''));
             file_put_contents($consumer . '/package.log', str_replace($secrets, '<REDACTED>', $packaged->stdout . $packaged->stderr));
             expect($packaged->successful(), '独立模板发布和搬迁验收失败，见：' . $consumer . '/package.log');

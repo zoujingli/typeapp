@@ -22,6 +22,7 @@ $records = [];
 try {
     foreach (['zip', 'tar.gz'] as $format) {
         // 独立公开CLI固定使用128 MiB，捕获归档校验重新整体解压造成的内存回退。
+        // 每种格式单独最多 90 秒；调用方必须覆盖 zip 与 tar.gz 两轮，不能只用 90 秒。
         $creation = (new Process([PHP_BINARY, '-d', 'memory_limit=128M', dirname(__DIR__) . '/vendor/bin/type',
             'archive', $directory, $base . '/release.' . $format, $digest]))->wait(90);
         expect($creation->successful(), '128 MiB归档创建失败：' . $creation->stdout . $creation->stderr);

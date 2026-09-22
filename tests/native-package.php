@@ -216,7 +216,8 @@ if ($driver !== 'sqlite') {
 }
 file_put_contents($base . '/verification.json', json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
 if (in_array('--archive', $argv, true)) {
-    $archived = (new Process([PHP_BINARY, $root . '/tests/package-archive.php', $package, $created['manifest-sha256']], $root))->wait(90);
+    // zip 与 tar.gz 各自最多 90 秒，外加解包、清单核对和原生启动；单次 90 秒会在第二份格式上被杀掉。
+    $archived = (new Process([PHP_BINARY, $root . '/tests/package-archive.php', $package, $created['manifest-sha256']], $root))->wait(240);
     // PHP致命错误可能写入stdout；不能只转发stderr而丢失内存耗尽等真实原因。
     $archiveStatus = json_encode(['exit-code' => $archived->exitCode, 'timed-out' => $archived->timedOut,
         'output-exceeded' => $archived->outputExceeded, 'signal' => $archived->signal], JSON_THROW_ON_ERROR);
