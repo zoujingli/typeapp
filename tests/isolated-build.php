@@ -189,7 +189,7 @@ try {
     $result = match ($mode) {
         'configuration' => isolatedConfiguration($argv[2] ?? ''),
         'snapshot' => isolatedSnapshot($argv[2] ?? '', $argv[3] ?? ''),
-        'boundary' => isolatedBoundary($argv[2] ?? '', isset($argv[3]) && ctype_digit($argv[3]) ? (int) $argv[3] : -1, $argv[4] ?? ''),
+        'boundary' => isolatedBoundary($argv[2] ?? '', isset($argv[3]) && preg_match('/^[0-9]+$/D', (string) $argv[3]) === 1 ? (int) $argv[3] : -1, $argv[4] ?? ''),
         'report' => isolatedReport($argv[2] ?? '', $argv[3] ?? ''),
         default => throw new RuntimeException('用法：isolated-build.php configuration <配置> | snapshot <目录> <stage记录> | boundary | report <验收目录> <镜像摘要>'),
     };

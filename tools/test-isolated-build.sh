@@ -62,8 +62,9 @@ esac
 mkdir -p "$task_root/build"
 task_work="$(mktemp -d "$task_root/build/isolated-build-XXXXXX")"
 task_relative="${task_work#"$task_root/"}"
-# host 隔离用 env -i，必须自备受控 Swoole 扫描目录，不能依赖宿主 PHP_INI_SCAN_DIR。
+# host 隔离用 env -i，必须自备受控 Swoole 与锁定 PHP 的扫描目录，不能依赖宿主 PHP_INI_SCAN_DIR。
 task_cli_d=""
+task_isolated_php="$task_php_home/bin/php"
 if [[ "$task_execution" == host && -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
   [[ "$TYPE_SWOOLE_MODULE" == /* && -f "$TYPE_SWOOLE_MODULE" ]] || { echo 'TYPE_SWOOLE_MODULE 不是可读的绝对路径。' >&2; exit 1; }
   task_cli_d="$task_work/php.d"
@@ -71,6 +72,10 @@ if [[ "$task_execution" == host && -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
   printf 'extension=%s\nswoole.enable_fiber_mock=On\nmemory_limit=2G\n' "$TYPE_SWOOLE_MODULE" > "$task_cli_d/swoole.ini"
   host_parent_directories "$TYPE_SWOOLE_MODULE"
   task_host_common+=(--ro-bind "$TYPE_SWOOLE_MODULE" "$TYPE_SWOOLE_MODULE" --ro-bind "$task_cli_d" "$task_cli_d")
+  if [[ -d "$task_php_home/etc/php.d" ]]; then
+    host_parent_directories "$task_php_home/etc/php.d"
+    task_host_common+=(--ro-bind "$task_php_home/etc/php.d" "$task_php_home/etc/php.d")
+  fi
 fi
 if [[ "$task_execution" == host ]]; then
   # 某些锁定 SDK 静态预置 SNMP；只绑定自生成的无凭据启动配置与空目录，不绑定宿主 /etc/snmp。
@@ -85,7 +90,11 @@ task_common=(--rm --pull=never --network=none --read-only --cap-drop=ALL --secur
 task_environment=(env -i "PATH=$task_php_home/bin:/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
   "PHP_HOME=$task_php_home" PHPX_HOME=/opt/phpx "LD_LIBRARY_PATH=/opt/phpx/lib:$task_php_home/lib")
 if [[ -n "$task_cli_d" ]]; then
-  task_environment+=("PHP_INI_SCAN_DIR=$task_cli_d" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
+  task_scan="$task_cli_d"
+  if [[ -d "$task_php_home/etc/php.d" ]]; then
+    task_scan="$task_cli_d:$task_php_home/etc/php.d"
+  fi
+  task_environment+=("PHP_INI_SCAN_DIR=$task_scan" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
 fi
 task_compile_mounts=(--mount "type=bind,source=$task_work/inputs,target=/input,readonly"
   --mount "type=bind,source=$task_work/output,target=/input/build"
@@ -152,10 +161,14 @@ else
     "COMPOSER_HOME=$task_work/composer-home"
     "PHP_HOME=$task_php_home" "PHPX_HOME=$task_sdk" "LD_LIBRARY_PATH=$task_sdk/lib:$task_php_home/lib")
   if [[ -n "$task_cli_d" ]]; then
-    task_stage_env+=("PHP_INI_SCAN_DIR=$task_cli_d" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
+    task_scan="$task_cli_d"
+    if [[ -d "$task_php_home/etc/php.d" ]]; then
+      task_scan="$task_cli_d:$task_php_home/etc/php.d"
+    fi
+    task_stage_env+=("PHP_INI_SCAN_DIR=$task_scan" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
   fi
   (cd "$task_root" && "${task_stage_env[@]}" \
-    "$task_php_home/bin/php" tests/build-scenario.php --stage docs/build-config/type-foundation.json "$task_work/inputs") | tee "$task_work/stage.json"
+    "$task_isolated_php" tests/build-scenario.php --stage docs/build-config/type-foundation.json "$task_work/inputs") | tee "$task_work/stage.json"
 fi
 "$task_php" -n "$task_root/tests/isolated-build.php" snapshot "$task_work/inputs" "$task_work/stage.json" > "$task_work/snapshot-before.json"
 mkdir "$task_work/output"
@@ -163,11 +176,12 @@ if [[ -d "$task_work/inputs/build" ]]; then cp -R "$task_work/inputs/build/." "$
 
 # 测试控制器通过标准输入送入临时进程，不挂载原始仓库或测试目录。
 # 无害哨兵只在宿主环境中，探针必须确认它和认证变量均未进入容器。
-TYPE_ISOLATION_SECRET_CANARY=type-app-test-only run_isolated_compiler php /dev/stdin boundary "$task_root" "${task_user:-0}" "$task_execution" \
+# host 隔离必须用锁定 PHP 的绝对路径，避免 /usr/bin/php 抢先且缺少静态扩展。
+TYPE_ISOLATION_SECRET_CANARY=type-app-test-only run_isolated_compiler "$task_isolated_php" /dev/stdin boundary "$task_root" "${task_user:-0}" "$task_execution" \
   < "$task_root/tests/isolated-build.php" > "$task_work/boundary.json"
 
 # 这是完整 TypePHP→C++→ELF 构建，不传 --dry，也不绑定原仓、宿主 home 或缓存。
-run_isolated_compiler php vendor/bin/type docs/build-config/type-foundation.json 2>&1 | tee "$task_work/compile.log"
+run_isolated_compiler "$task_isolated_php" vendor/bin/type docs/build-config/type-foundation.json 2>&1 | tee "$task_work/compile.log"
 
 # 复用已有九项公共行为用例；执行容器只挂最终 ELF 和固定 SDK，不再挂生产输入。
 tar -C "$task_root" -cf - tests/native.php tests/support.php plugin/type-build/src/BuildPlatform.php | run_isolated_native 2>&1 | tee "$task_work/native.log"

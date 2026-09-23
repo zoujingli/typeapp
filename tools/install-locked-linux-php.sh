@@ -23,7 +23,7 @@ if [[ -x "$task_prefix/bin/php" && -x "$task_prefix/bin/php-config" ]]; then
   task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";' 2>/dev/null)"
   if [[ "$task_version" == "${task_lock_php} zts" && -f "$task_prefix/lib/libphp.so" \
     && -f "$("$task_prefix/bin/php-config" --extension-dir)/curl.so" ]] \
-    && "$task_prefix/bin/php" -r 'exit(extension_loaded("redis") && phpversion("redis")==="6.3.0" && extension_loaded("curl") && extension_loaded("pdo_mysql") && extension_loaded("pdo_pgsql") && extension_loaded("pdo_sqlite") ? 0 : 1);' 2>/dev/null; then
+    && "$task_prefix/bin/php" -r 'exit(extension_loaded("ctype") && function_exists("ctype_digit") && extension_loaded("redis") && phpversion("redis")==="6.3.0" && extension_loaded("curl") && extension_loaded("pdo_mysql") && extension_loaded("pdo_pgsql") && extension_loaded("pdo_sqlite") ? 0 : 1);' 2>/dev/null; then
     printf '%s\n' "$task_prefix"
     exit 0
   fi
@@ -102,6 +102,6 @@ if ! "$task_prefix/bin/php" -m 2>/dev/null | grep -qx redis; then
   printf 'extension=redis.so\n' > "$task_prefix/etc/php.d/redis.ini"
 fi
 
-"$task_prefix/bin/php" -r 'if (PHP_VERSION !== "8.5.10" || !PHP_ZTS || !extension_loaded("curl") || !extension_loaded("pdo_mysql") || !extension_loaded("pdo_pgsql") || !extension_loaded("pdo_sqlite") || !extension_loaded("redis") || phpversion("redis") !== "6.3.0") { fwrite(STDERR, "锁定 PHP 扩展不完整\n"); exit(1); }' >&2
+"$task_prefix/bin/php" -r 'if (PHP_VERSION !== "8.5.10" || !PHP_ZTS || !extension_loaded("ctype") || !function_exists("ctype_digit") || !extension_loaded("curl") || !extension_loaded("pdo_mysql") || !extension_loaded("pdo_pgsql") || !extension_loaded("pdo_sqlite") || !extension_loaded("redis") || phpversion("redis") !== "6.3.0") { fwrite(STDERR, "锁定 PHP 扩展不完整\n"); exit(1); }' >&2
 
 printf '%s\n' "$task_prefix"
