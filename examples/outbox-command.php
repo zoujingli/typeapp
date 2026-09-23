@@ -42,9 +42,10 @@ function outboxScenario(int $argc, array $argv): void
     }
     $driver = Drivers::create((string) ($argv[1] ?? 'sqlite'));
     $mode = (string) ($argv[2] ?? 'setup');
-    // 独立部署正向角色需要容纳网络/调度延迟；所有故障模式仍保持原来的短租约和保留期。
-    $deploymentCheck = getenv('TYPE_OUTBOX_DEPLOYMENT_CHECK') === '1' && in_array($mode, ['setup', 'relay', 'consume-replay'], true);
-    $store = new Store('type_outbox', $deploymentCheck ? 5000 : 100, $deploymentCheck ? 60 : 1);
+    // 正向角色需要容纳 Redis/调度延迟；crash/tokens/collect 故障演练仍用短租约与短保留期。
+    $forward = in_array($mode, ['setup', 'relay', 'consume', 'replay', 'consume-replay'], true)
+        || getenv('TYPE_OUTBOX_DEPLOYMENT_CHECK') === '1' && in_array($mode, ['setup', 'relay', 'consume-replay'], true);
+    $store = new Store('type_outbox', $forward ? 5000 : 100, $forward ? 60 : 1);
     $database = new Database($driver, 2, 0);
     $scope = new ExecutionScope();
     $manager = new RedisManager(['default' => new RedisConfiguration((string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379))]);
