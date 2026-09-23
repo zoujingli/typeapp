@@ -78,6 +78,19 @@ jobs:
           printf 'SWOOLE_CONFIGURE_OPTS=--enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-thread --enable-swoole-pgsql=%s --enable-swoole-sqlite\n' "$task_swoole_pgsql" >> "$GITHUB_ENV"
           printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s -I%s/include %s\nLDFLAGS=-L%s -L%s/lib %s\nLIBPQ_CFLAGS=-I%s\nLIBPQ_LIBS=-L%s -lpq\n' \
             "$task_pgsql_pkg" "${PKG_CONFIG_PATH:-}" "$task_pgsql_include" "$PCRE2_PREFIX" "${CPPFLAGS:-}" "$task_pgsql_lib" "$PCRE2_PREFIX" "${LDFLAGS:-}" "$task_pgsql_include" "$task_pgsql_lib" >> "$GITHUB_ENV"
+      - name: 将 Homebrew ZTS PHP 固定到锁定补丁
+        run: |
+          # setup-php 把 8.5.10 截成 8.5，再安装 php-zts 的当前补丁。
+          # 工具链锁定仍是 8.5.10。先把 tap 停在最后一版 8.5.10_1 瓶，
+          # 并且目录必须已经存在，setup-php 才不会改拉默认分支。
+          brew tap shivammathur/php
+          task_php_tap="$(brew --repository shivammathur/php)"
+          [[ -d "$task_php_tap/.git" ]]
+          git -C "$task_php_tap" fetch --depth 1 origin 0274c190fd1708e4656cdc43b533bbd650c7c937
+          git -C "$task_php_tap" checkout --detach --force FETCH_HEAD
+          [[ "$(git -C "$task_php_tap" rev-parse HEAD)" == "0274c190fd1708e4656cdc43b533bbd650c7c937" ]]
+          grep -F 'php-8.5.10.tar.xz' "$task_php_tap/Formula/php-zts.rb"
+          [[ -e "$task_php_tap/Aliases/php@8.5-zts" ]]
       - name: 安装锁定ZTS PHP与Composer
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
         with:
@@ -95,6 +108,8 @@ jobs:
           CXXFLAGS: -I/opt/homebrew/opt/pcre2/include
       - name: 核对 PHP 扩展的 PostgreSQL 动态库身份
         run: |
+          task_php="$(php -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
+          [[ "$task_php" == "8.5.10 zts" ]] || { printf '锁定 PHP 未生效：%s\n' "$task_php" >&2; exit 1; }
           # ReflectionExtension 不提供文件路径；从当前 PHP 实际使用的
           # extension_dir 解析已加载模块，避免假设 php-config 的 SDK 目录。
           task_extension_dir="$(php -r 'echo ini_get("extension_dir");')"
