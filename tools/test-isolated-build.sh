@@ -75,15 +75,32 @@ if [[ "$task_execution" == host && "$task_real_php_home" != "$task_php_home" ]];
 fi
 if [[ "$task_execution" == host && -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
   [[ "$TYPE_SWOOLE_MODULE" == /* && -f "$TYPE_SWOOLE_MODULE" ]] || { echo 'TYPE_SWOOLE_MODULE 不是可读的绝对路径。' >&2; exit 1; }
+  # 受控扩展拷进隔离工作区并只扫描这一目录：curl 必须先于 swoole；
+  # 不依赖远端 embed-runtime 路径的父目录空挂载，也不与锁定前缀 php.d 重复声明 curl。
   task_cli_d="$task_work/php.d"
-  mkdir -p "$task_cli_d"
-  printf 'extension=%s\nswoole.enable_fiber_mock=On\nmemory_limit=2G\n' "$TYPE_SWOOLE_MODULE" > "$task_cli_d/swoole.ini"
-  host_parent_directories "$TYPE_SWOOLE_MODULE"
-  task_host_common+=(--ro-bind "$TYPE_SWOOLE_MODULE" "$TYPE_SWOOLE_MODULE" --ro-bind "$task_cli_d" "$task_cli_d")
-  if [[ -d "$task_real_php_home/etc/php.d" ]]; then
-    host_parent_directories "$task_real_php_home/etc/php.d"
-    task_host_common+=(--ro-bind "$task_real_php_home/etc/php.d" "$task_real_php_home/etc/php.d")
+  task_modules="$task_work/modules"
+  mkdir -p "$task_cli_d" "$task_modules"
+  task_extension_dir="$("$task_real_php_home/bin/php-config" --extension-dir)"
+  task_curl_module="${TYPE_CURL_MODULE:-}"
+  if [[ -z "$task_curl_module" || ! -f "$task_curl_module" ]]; then
+    task_curl_module="$task_extension_dir/curl.so"
   fi
+  task_redis_module="$task_extension_dir/redis.so"
+  [[ -f "$task_curl_module" ]] || { echo "隔离构建缺少 curl 共享模块：$task_curl_module" >&2; exit 1; }
+  [[ -f "$task_redis_module" ]] || { echo "隔离构建缺少 redis 共享模块：$task_redis_module" >&2; exit 1; }
+  cp "$task_curl_module" "$task_modules/curl.so"
+  cp "$task_redis_module" "$task_modules/redis.so"
+  cp "$TYPE_SWOOLE_MODULE" "$task_modules/swoole.so"
+  chmod 0644 "$task_modules/curl.so" "$task_modules/redis.so" "$task_modules/swoole.so"
+  printf 'extension=%s\n' "$task_modules/curl.so" > "$task_cli_d/00-curl.ini"
+  printf 'extension=%s\n' "$task_modules/redis.so" > "$task_cli_d/10-redis.ini"
+  printf 'extension=%s\nswoole.enable_fiber_mock=On\ndisplay_startup_errors=1\nmemory_limit=2G\n' \
+    "$task_modules/swoole.so" > "$task_cli_d/20-swoole.ini"
+  host_parent_directories "$task_modules/swoole.so"
+  host_parent_directories "$task_cli_d/20-swoole.ini"
+  task_host_common+=(--ro-bind "$task_modules" "$task_modules" --ro-bind "$task_cli_d" "$task_cli_d")
+  TYPE_SWOOLE_MODULE="$task_modules/swoole.so"
+  TYPE_CURL_MODULE="$task_modules/curl.so"
 fi
 if [[ "$task_execution" == host ]]; then
   # 某些锁定 SDK 静态预置 SNMP；只绑定自生成的无凭据启动配置与空目录，不绑定宿主 /etc/snmp。
@@ -98,11 +115,11 @@ task_common=(--rm --pull=never --network=none --read-only --cap-drop=ALL --secur
 task_environment=(env -i "PATH=$task_real_php_home/bin:$task_php_home/bin:/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
   "PHP_HOME=$task_php_home" PHPX_HOME=/opt/phpx "LD_LIBRARY_PATH=/opt/phpx/lib:$task_real_php_home/lib:$task_php_home/lib")
 if [[ -n "$task_cli_d" ]]; then
-  task_scan="$task_cli_d"
-  if [[ -d "$task_real_php_home/etc/php.d" ]]; then
-    task_scan="$task_cli_d:$task_real_php_home/etc/php.d"
+  # 只扫描工作区内的受控 ini，避免锁定前缀 php.d 再次加载 curl。
+  task_environment+=("PHP_INI_SCAN_DIR=$task_cli_d" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
+  if [[ -n "${TYPE_CURL_MODULE:-}" ]]; then
+    task_environment+=("TYPE_CURL_MODULE=$TYPE_CURL_MODULE")
   fi
-  task_environment+=("PHP_INI_SCAN_DIR=$task_scan" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
 fi
 task_compile_mounts=(--mount "type=bind,source=$task_work/inputs,target=/input,readonly"
   --mount "type=bind,source=$task_work/output,target=/input/build"
@@ -169,11 +186,10 @@ else
     "COMPOSER_HOME=$task_work/composer-home"
     "PHP_HOME=$task_php_home" "PHPX_HOME=$task_sdk" "LD_LIBRARY_PATH=$task_sdk/lib:$task_real_php_home/lib:$task_php_home/lib")
   if [[ -n "$task_cli_d" ]]; then
-    task_scan="$task_cli_d"
-    if [[ -d "$task_real_php_home/etc/php.d" ]]; then
-      task_scan="$task_cli_d:$task_real_php_home/etc/php.d"
+    task_stage_env+=("PHP_INI_SCAN_DIR=$task_cli_d" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
+    if [[ -n "${TYPE_CURL_MODULE:-}" ]]; then
+      task_stage_env+=("TYPE_CURL_MODULE=$TYPE_CURL_MODULE")
     fi
-    task_stage_env+=("PHP_INI_SCAN_DIR=$task_scan" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
   fi
   (cd "$task_root" && "${task_stage_env[@]}" \
     "$task_isolated_php" tests/build-scenario.php --stage docs/build-config/type-foundation.json "$task_work/inputs") | tee "$task_work/stage.json"
@@ -187,6 +203,21 @@ if [[ -d "$task_work/inputs/build" ]]; then cp -R "$task_work/inputs/build/." "$
 # host 隔离必须用锁定 PHP 的绝对路径，避免 /usr/bin/php 抢先且缺少静态扩展。
 TYPE_ISOLATION_SECRET_CANARY=type-app-test-only run_isolated_compiler "$task_isolated_php" /dev/stdin boundary "$task_root" "${task_user:-0}" "$task_execution" \
   < "$task_root/tests/isolated-build.php" > "$task_work/boundary.json"
+
+# 编译前确认沙箱内 CLI 已加载生产扩展；失败时留下 --ini / -m / 启动诊断。
+if [[ -n "$task_cli_d" ]]; then
+  if ! run_isolated_compiler "$task_isolated_php" -d display_startup_errors=1 -d display_errors=1 -r \
+    'foreach (["curl","swoole","redis","pdo_mysql","pdo_pgsql","pdo_sqlite"] as $name) { if (!extension_loaded($name)) { fwrite(STDERR, "missing:$name\n"); exit(1);} } echo "isolated-extensions-ready\n";' \
+    >"$task_work/extension-preflight.log" 2>&1; then
+    {
+      echo '隔离构建扩展预检失败'
+      cat "$task_work/extension-preflight.log"
+      run_isolated_compiler "$task_isolated_php" --ini || true
+      run_isolated_compiler "$task_isolated_php" -m || true
+    } | tee "$task_work/compile.log" >&2
+    exit 1
+  fi
+fi
 
 # 这是完整 TypePHP→C++→ELF 构建，不传 --dry，也不绑定原仓、宿主 home 或缓存。
 run_isolated_compiler "$task_isolated_php" vendor/bin/type docs/build-config/type-foundation.json 2>&1 | tee "$task_work/compile.log"
