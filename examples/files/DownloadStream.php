@@ -88,6 +88,8 @@ final class DownloadStream implements StreamInterface
         if ($this->mode === '/disconnect' || $this->mode === '/timeout-stream') {
             $microseconds = $this->mode === '/disconnect' ? 5000 : 1050000;
             \Swoole\Coroutine::sleep($microseconds / 1000000.0);
+            // 取消只会让休眠返回。截止已过时必须在写出第一块之前失败，避免半截分块响应。
+            $this->scope->assertActive();
         }
         $this->reads++;
         return $this->stream->read($length);
