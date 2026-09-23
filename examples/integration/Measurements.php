@@ -32,10 +32,12 @@ final class Measurements
             }
         }
         $elapsed = (hrtime(true) - $started) / 1000000000;
+        // TypePHP 将除法降为原生运算；SQLite 等极快路径下 elapsed 可能为 0，直接触发 SIGFPE。
+        $rate = $elapsed > 0.0 ? 500 / $elapsed : 0.0;
         sort($latencies, SORT_NUMERIC);
         $usage = getrusage();
         return ['workload' => '单连接重复查询同一文章及作者、多对多标签，校验结果；每 50 次采样', 'warmup_iterations' => 50,
-            'iterations' => 500, 'concurrency' => 1, 'elapsed_seconds' => $elapsed, 'operations_per_second' => 500 / $elapsed,
+            'iterations' => 500, 'concurrency' => 1, 'elapsed_seconds' => $elapsed, 'operations_per_second' => $rate,
             'latency_ms' => ['p50' => $latencies[249], 'p95' => $latencies[474], 'p99' => $latencies[494]], 'errors' => 0,
             'zend_peak_delta_bytes' => max(0, memory_get_peak_usage(true) - $baseline), 'samples' => $samples,
             'process_peak_rss' => $usage['ru_maxrss'], 'rss_unit' => PHP_OS_FAMILY === 'Darwin' ? 'bytes' : 'KiB',
