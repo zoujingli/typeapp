@@ -120,7 +120,7 @@ final class CoroutineRuntime
         if (defined('SWOOLE_HOOK_UNIX')) {
             $required |= (int) constant('SWOOLE_HOOK_UNIX');
         }
-        foreach (['pdo_pgsql' => 'SWOOLE_HOOK_PDO_PGSQL', 'pdo_sqlite' => 'SWOOLE_HOOK_PDO_SQLITE'] as $extension => $hook) {
+        foreach (['pdo_mysql' => 'SWOOLE_HOOK_PDO_MYSQL', 'pdo_pgsql' => 'SWOOLE_HOOK_PDO_PGSQL', 'pdo_sqlite' => 'SWOOLE_HOOK_PDO_SQLITE'] as $extension => $hook) {
             if (extension_loaded($extension) && defined($hook)) {
                 $required |= (int) constant($hook);
             }
