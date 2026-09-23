@@ -50,6 +50,7 @@ sudo apt-get install --yes --no-install-recommends \
     --enable-embed=shared --enable-zts \
     --with-config-file-path="$task_prefix/etc" --with-config-file-scan-dir="$task_prefix/etc/php.d" \
     --enable-filter --enable-tokenizer --enable-ctype --enable-mbstring --disable-mbregex \
+    --enable-session \
     --with-libxml --enable-dom --enable-xml --enable-simplexml --enable-xmlreader --enable-xmlwriter \
     --enable-phar --enable-pdo --enable-mysqlnd --with-pdo-mysql=mysqlnd --with-pdo-pgsql \
     --with-pdo-sqlite --with-sqlite3 --enable-pcntl --enable-posix --enable-sockets \

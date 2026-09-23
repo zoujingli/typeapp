@@ -114,7 +114,7 @@ jobs:
           path: |
             .cache/php-sdk/8.5.10-zts
             .cache/php-sdk-build/8.5.10-zts
-          key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v1
+          key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v2
 
       - name: 换用工具链锁定的 PHP 8.5.10 ZTS
         run: |
