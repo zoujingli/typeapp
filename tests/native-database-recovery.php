@@ -42,7 +42,9 @@ try {
             ));
             $environment['PHPRC'] = getenv('PHPRC') ?: '';
             $environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
-            foreach (['TYPE_BWRAP_BINARY', 'TYPE_SQLITE_BACKUP_TOOL', 'PATH'] as $name) {
+            // 保留气泡包装与 SQLite 工具声明；不得用宿主 PATH 覆盖 NativeDatabase
+            // 已把版本化 bin 放在最前的顺序，否则 Ubuntu 的 /usr/bin/pg_dump 包装脚本会抢先。
+            foreach (['TYPE_BWRAP_BINARY', 'TYPE_SQLITE_BACKUP_TOOL'] as $name) {
                 if (getenv($name) !== false && getenv($name) !== '') {
                     $environment[$name] = (string) getenv($name);
                 }
