@@ -23,8 +23,15 @@ function nativeRecoveryRun(array $command, array $environment, ?string $stdin = 
     try {
         $result = $process->wait($seconds);
         $secrets = array_values(array_filter([$environment['DB_PASSWORD'] ?? '', $environment['MYSQL_PWD'] ?? '', $environment['PGPASSWORD'] ?? '', $environment['APP_API_TOKEN'] ?? ''], static fn (string $secret): bool => $secret !== ''));
-        // 不将可能含配置或数据库内容的stdout作为失败诊断打印。
-        expect($result->successful(), '恢复验收命令失败（exit=' . $result->exitCode . ', timeout=' . (int) $result->timedOut . '）：' . str_replace($secrets, '<REDACTED>', $result->stderr));
+        // 失败诊断可含 stderr；stdout 仅在 stderr 为空时附带，避免默认打印备份正文。
+        $detail = str_replace($secrets, '<REDACTED>', $result->stderr);
+        if ($detail === '' && $result->stdout !== '') {
+            $detail = str_replace($secrets, '<REDACTED>', $result->stdout);
+        }
+        if ($result->signal !== null) {
+            $detail = 'signal=' . $result->signal . ($detail !== '' ? ' ' . $detail : '');
+        }
+        expect($result->successful(), '恢复验收命令失败（exit=' . $result->exitCode . ', timeout=' . (int) $result->timedOut . '）：' . $detail);
         return $result->stdout;
     } finally {
         $process->stop();
@@ -136,7 +143,7 @@ chmod($data . '/.env', 0600);
 chmod($data . '/uploads/example.bin', 0600);
 $environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $data, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false',
     'APP_CACHE_ENABLED' => 'false', 'APP_ADMIN_PASSWORD' => bin2hex(random_bytes(16)), 'APP_CUSTOMER_PASSWORD' => bin2hex(random_bytes(16)),
-    'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'var/app.sqlite', 'TYPE_APP_RELEASE_SHA256' => $digest];
+    'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'var/app.sqlite', 'TYPE_APP_RELEASE_SHA256' => $digest, 'TYPE_APP_TRACE' => '1'];
 $tools = match ($driver) {
     'mysql' => ['dump' => ['mysqldump'], 'restore' => ['mysql']],
     'pgsql' => ['dump' => ['pg_dump'], 'restore' => ['pg_restore']],
