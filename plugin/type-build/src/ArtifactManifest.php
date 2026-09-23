@@ -238,12 +238,17 @@ final class BuildIdentity
         }
         foreach ($manifest['system-images'] as $systemImage) {
             $found = false;
+            $declaredPath = (string) $systemImage['path'];
+            $declaredUuid = (string) $systemImage['uuid'];
             foreach ($images as $image) {
                 $parts = explode("\n", $image, 2);
-                // dyld 可能以 Cryptex/沙箱前缀报告同一系统库；Mach-O UUID 才是稳定身份。
-                if (($parts[1] ?? '') === $systemImage['uuid']) { $found = true; break; }
+                $imagePath = $parts[0];
+                $imageUuid = $parts[1] ?? '';
+                // dyld 可能以 Cryptex/沙箱前缀报告同一系统库；UUID 优先，路径后缀兜底。
+                if ($declaredUuid !== '' && $imageUuid === $declaredUuid) { $found = true; break; }
+                if ($imagePath === $declaredPath || str_ends_with($imagePath, $declaredPath)) { $found = true; break; }
             }
-            if (!$found) { throw new \RuntimeException('系统共享映像未以声明UUID加载：' . $systemImage['path']); }
+            if (!$found) { throw new \RuntimeException('系统共享映像未以声明UUID加载：' . $declaredPath); }
         }
     }
 
