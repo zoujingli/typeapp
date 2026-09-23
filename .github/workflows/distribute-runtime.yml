@@ -63,26 +63,22 @@ jobs:
           path: |
             .cache/php-sdk/8.5.10-zts
             .cache/php-sdk-build/8.5.10-zts
-          key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v3
+          key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v4
 
       - name: 换用工具链锁定的 PHP 8.5.10 ZTS
         run: |
           set -euo pipefail
-          # setup-php 对 ZTS 只认 8.5，会装上 php-builder 当前补丁；工具链锁仍是 8.5.10。
           task_php="$(php -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
           if [[ "$task_php" != "8.5.10 zts" ]]; then
-            printf 'setup-php 实际版本为 %s，改用源码锁定安装
-' "$task_php"
+            printf 'setup-php 实际版本为 %s，改用源码锁定安装\n' "$task_php"
             task_prefix="$(bash tools/install-locked-linux-php.sh)"
             [[ "$task_prefix" == /* && -x "$task_prefix/bin/php" ]]
-            printf '%s/bin
-' "$task_prefix" >> "$GITHUB_PATH"
+            printf '%s/bin\n' "$task_prefix" >> "$GITHUB_PATH"
             export PATH="$task_prefix/bin:$PATH"
             hash -r
           fi
           task_php="$(php -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
-          [[ "$task_php" == "8.5.10 zts" ]] || { printf '锁定 PHP 未生效：%s
-' "$task_php" >&2; exit 1; }
+          [[ "$task_php" == "8.5.10 zts" ]] || { printf '锁定 PHP 未生效：%s\n' "$task_php" >&2; exit 1; }
 
       - name: 准备 GitHub 已知主机与专用 SSH 代理
         shell: bash
