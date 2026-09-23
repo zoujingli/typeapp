@@ -40,7 +40,8 @@ echo successful([PHP_BINARY, $root . '/tests/scheduler-command.php', $consumer .
 if ($native) {
     expect(copy($root . '/toolchain.lock.json', $consumer . '/toolchain.lock.json'), '无法复制工具链约束');
     $settings = ['name' => 'scheduler-consumer', 'entry' => 'app/main.php', 'sources' => ['app/Tasks.php'],
-        'output' => 'build/type-app', 'build-directory' => 'build/compiler'];
+        'output' => 'build/type-app', 'build-directory' => 'build/compiler',
+        'runtime' => ['Linux' => ['extensions' => ['posix']], 'Darwin' => ['extensions' => ['posix']]]];
     file_put_contents($consumer . '/application.json', json_encode($settings, JSON_THROW_ON_ERROR));
     successful([PHP_BINARY, $consumer . '/vendor/bin/type', $consumer . '/application.json'], $consumer);
     $build = json_decode(file_get_contents($consumer . '/build/type-app.build.json'), true, 512, JSON_THROW_ON_ERROR);

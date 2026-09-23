@@ -192,9 +192,12 @@ jobs:
         env:
           SWOOLE_CONFIGURE_OPTS: --enable-swoole-thread
         run: |
-          task_swoole_module="$(bash tools/prepare-swoole-module.sh)"
+          task_built="$(bash tools/prepare-swoole-module.sh)"
+          task_runtime_dir="$(dirname "${TYPE_NATIVE_PHP_INI:?}")"
+          cp "$task_built" "$task_runtime_dir/swoole.so"
+          task_swoole_module="$task_runtime_dir/swoole.so"
           printf 'TYPE_SWOOLE_MODULE=%s\n' "$task_swoole_module" >> "$GITHUB_ENV"
-          task_ini="${TYPE_NATIVE_PHP_INI:?}"
+          task_ini="$TYPE_NATIVE_PHP_INI"
           task_clean="$(mktemp)"
           awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*swoole/ && tolower($0) !~ /^[[:space:]]*swoole.enable_fiber_mock/' "$task_ini" > "$task_clean"
           printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" >> "$task_clean"

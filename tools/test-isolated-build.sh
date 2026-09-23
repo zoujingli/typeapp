@@ -113,6 +113,9 @@ run_isolated_native() {
       if [[ -f "$task_runtime_directory/pcntl.so" ]]; then
         task_runtime_mounts+=(--ro-bind "$task_runtime_directory/pcntl.so" "$task_runtime_directory/pcntl.so")
       fi
+      if [[ -f "$task_runtime_directory/swoole.so" ]]; then
+        task_runtime_mounts+=(--ro-bind "$task_runtime_directory/swoole.so" "$task_runtime_directory/swoole.so")
+      fi
       task_runtime_environment=("TYPE_NATIVE_PHP_INI=$task_runtime_directory/php.ini")
     fi
     "${task_supervisor[@]}" "${task_host_common[@]}" "${task_runtime_mounts[@]}" \
