@@ -277,7 +277,10 @@ final class PlatformFingerprint
                             }
                         }
                         try {
-                            $queue[] = [$this->windowsLibrary($dependencyName, $applicationDirectory, basename($real), $declaredWindowsLibraries), $deferred || $kind === 'delayed'];
+                            // mpdecimal C++ 包装库常出现在导入表中，但 TypePHP 进程通常不映射它；
+                            // 仍须进入发布闭包，审计仅在实际观察到加载时要求路径一致。
+                            $queue[] = [$this->windowsLibrary($dependencyName, $applicationDirectory, basename($real), $declaredWindowsLibraries),
+                                $deferred || $kind === 'delayed' || preg_match('/^libmpdec\+\+/i', $dependencyName) === 1];
                         } catch (RuntimeException $error) {
                             throw new RuntimeException($error->getMessage() . "\n父映像依赖表：\n" . $output, 0, $error);
                         }
