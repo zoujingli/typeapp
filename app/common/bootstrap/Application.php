@@ -914,9 +914,12 @@ final class Application
             throw new InvalidArgumentException('新应用请使用 app:install 初始化空库；不通过迁移入口升级旧模式');
         }
         DatabaseFactory::requireExisting($settings, $basePath);
-        $driver = DatabaseFactory::create($settings, $basePath);
 
-        return (new MigrationConsole(new Migrator($driver), Schema::migrations($driver->name())))->run($arguments);
+        return CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): int {
+            $driver = DatabaseFactory::create($settings, $basePath);
+
+            return (new MigrationConsole(new Migrator($driver), Schema::migrations($driver->name())))->run($arguments);
+        });
     }
 
     /** 独立管理角色只连接自己的账号与采样表；恢复核对走 broker:recovery，不经过 IoT 人员表或隐式迁移。 */
@@ -941,24 +944,30 @@ final class Application
         if ($command === 'broker:install') {
             DatabaseFactory::prepareMigration($settings, $basePath);
             $driver = DatabaseFactory::create($settings, $basePath);
-            $result = (new MigrationConsole(new Migrator($driver), \app\broker\database\Schema::migrations($driver->name())))->run(['run']);
+            $result = CoroutineRuntime::run(static function () use ($driver): int {
+                return (new MigrationConsole(new Migrator($driver), \app\broker\database\Schema::migrations($driver->name())))->run(['run']);
+            });
             if ($result !== 0) {
                 return $result;
             }
-            $database = new DatabaseManager(['default' => $driver], 1, 0);
-            $scope = new ExecutionScope();
-            try {
-                CompatService::recordUpgrade($database->connect($scope));
-            } finally {
-                $scope->close();
-                $database->close();
-            }
-            return 0;
+            return CoroutineRuntime::run(static function () use ($driver): int {
+                $database = new DatabaseManager(['default' => $driver], 1, 0);
+                $scope = new ExecutionScope();
+                try {
+                    CompatService::recordUpgrade($database->connect($scope));
+                } finally {
+                    $scope->close();
+                    $database->close();
+                }
+                return 0;
+            });
         }
         DatabaseFactory::requireExisting($settings, $basePath);
         if ($command === 'broker:migrate') {
-            $driver = DatabaseFactory::create($settings, $basePath);
-            return (new MigrationConsole(new Migrator($driver), \app\broker\database\Schema::migrations($driver->name())))->run($arguments);
+            return CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): int {
+                $driver = DatabaseFactory::create($settings, $basePath);
+                return (new MigrationConsole(new Migrator($driver), \app\broker\database\Schema::migrations($driver->name())))->run($arguments);
+            });
         }
         if ($command === 'broker:recovery') {
             self::recovery($settings, $basePath, $arguments, 'broker');
@@ -1001,16 +1010,18 @@ final class Application
             if ($result->state !== 'committed' || !$result->released) {
                 throw new \RuntimeException('broker_store_install_unconfirmed');
             }
-            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
-            $scope = new ExecutionScope();
-            try {
-                CompatService::recordStore($database->connect($scope));
-            } finally {
-                $scope->close();
-                $database->close();
-            }
-            echo "独立Broker持久存储已取得同步提交证明。\n";
-            return 0;
+            return CoroutineRuntime::run(static function () use ($settings, $basePath): int {
+                $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
+                $scope = new ExecutionScope();
+                try {
+                    CompatService::recordStore($database->connect($scope));
+                } finally {
+                    $scope->close();
+                    $database->close();
+                }
+                echo "独立Broker持久存储已取得同步提交证明。\n";
+                return 0;
+            });
         }
         if ($command === 'broker:serve') {
             self::serve($settings, $basePath, $development, true);
