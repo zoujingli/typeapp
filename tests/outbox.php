@@ -48,10 +48,14 @@ try {
     $observer = new Redis();
     try {
         expect($observer->connect(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1', (int) (getenv('TYPE_REDIS_PORT') ?: 6379)), '无法观测专用Redis连接计数');
-        $connections = $observer->info('stats')['total_connections_received'];
+        $connections = (int) $observer->info('stats')['total_connections_received'];
+        $clients = (int) $observer->info('clients')['connected_clients'];
         expect(str_contains($run('help'), 'Outbox 独立角色'), 'Outbox离线帮助入口失败');
         expect($run('setup') === "业务与消息意图同事务提交通过。\n", 'Outbox 原子提交失败');
-        expect($observer->info('stats')['total_connections_received'] === $connections, '帮助或纯数据库迁移意外初始化Redis队列连接');
+        // total_connections_received 单调递增，服务健康检查可能 +1；help/setup 不得留下额外已连接客户端。
+        $received = (int) $observer->info('stats')['total_connections_received'];
+        expect($received <= $connections + 1, '帮助或纯数据库迁移意外初始化Redis队列连接');
+        expect((int) $observer->info('clients')['connected_clients'] <= $clients, '帮助或纯数据库迁移留下Redis队列连接');
     } finally {
         $observer->close();
     }

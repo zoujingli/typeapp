@@ -48,7 +48,6 @@ function outboxScenario(int $argc, array $argv): void
     $store = new Store('type_outbox', $forward ? 5000 : 100, $forward ? 60 : 1);
     $database = new Database($driver, 2, 0);
     $scope = new ExecutionScope();
-    $manager = new RedisManager(['default' => new RedisConfiguration((string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379))]);
     try {
         if ($mode === 'setup') {
             (new Migrator($driver))->run([$store->migration($driver->name(), '2026090901'),
@@ -72,6 +71,26 @@ function outboxScenario(int $argc, array $argv): void
             echo "业务与消息意图同事务提交通过。\n";
             return;
         }
+        if ($mode === 'collect' || $mode === 'tokens') {
+            $connection = $database->connect($scope);
+            if ($mode === 'collect') {
+                outboxExpect($store->collect($connection) === 1 && $store->status($connection, 'stable-business') === null, '超过重放窗口未回收已消费记录');
+                echo "已消费消息保留期回收通过。\n";
+                return;
+            }
+            $connection->transaction(static fn (Connection $transaction): bool => $store->enqueue($transaction, 'unconsumed', 'delivered', 1, ['value' => '保留对账']));
+            $old = $store->claim($connection, 1)[0];
+            usleep(150000);
+            $new = $store->claim($connection, 1)[0];
+            outboxExpect($old->id() === $new->id() && $old->token() !== $new->token()
+                && !$store->accepted($connection, $old, 'old-receipt') && $store->accepted($connection, $new, 'new-receipt'), '旧 relay token 仍能覆盖新领取');
+            usleep(1100000);
+            outboxExpect($store->collect($connection) === 0 && $store->status($connection, 'unconsumed') !== null, '没有消费凭据就删除了消息意图');
+            echo "Outbox 旧 token 拒绝与未消费意图保留通过。\n";
+            return;
+        }
+        // 仅发布/消费角色需要 Redis；help/setup/collect/tokens 不得构造连接管理器。
+        $manager = new RedisManager(['default' => new RedisConfiguration((string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379))]);
         $queue = new Queue($manager->connection($scope, 'default', Purpose::SCRIPT), (string) getenv('TYPE_OUTBOX_APPLICATION'));
         if ($mode === 'crash' || $mode === 'relay' || $mode === 'replay') {
             if ($mode === 'replay') {
@@ -102,27 +121,12 @@ function outboxScenario(int $argc, array $argv): void
             echo "重复投递幂等消费与保留凭据通过。\n";
             return;
         }
-        if ($mode === 'collect') {
-            outboxExpect($store->collect($connection) === 1 && $store->status($connection, 'stable-business') === null, '超过重放窗口未回收已消费记录');
-            echo "已消费消息保留期回收通过。\n";
-            return;
-        }
-        if ($mode === 'tokens') {
-            $connection->transaction(static fn (Connection $transaction): bool => $store->enqueue($transaction, 'unconsumed', 'delivered', 1, ['value' => '保留对账']));
-            $old = $store->claim($connection, 1)[0];
-            usleep(150000);
-            $new = $store->claim($connection, 1)[0];
-            outboxExpect($old->id() === $new->id() && $old->token() !== $new->token()
-                && !$store->accepted($connection, $old, 'old-receipt') && $store->accepted($connection, $new, 'new-receipt'), '旧 relay token 仍能覆盖新领取');
-            usleep(1100000);
-            outboxExpect($store->collect($connection) === 0 && $store->status($connection, 'unconsumed') !== null, '没有消费凭据就删除了消息意图');
-            echo "Outbox 旧 token 拒绝与未消费意图保留通过。\n";
-            return;
-        }
         throw new RuntimeException('未知 Outbox 演练命令');
     } finally {
         $scope->close();
         $database->close();
-        $manager->close();
+        if (isset($manager)) {
+            $manager->close();
+        }
     }
 }
