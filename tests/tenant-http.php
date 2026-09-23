@@ -217,8 +217,12 @@ foreach ($rows as $row) {
 }
 expect($failures === 2 && is_array($shutdown), '失败与停止日志不完整');
 foreach (['alpha', 'beta'] as $tenant) {
-    expect(($reused[$tenant] ?? false) && isset($namespaces[$tenant][1], $namespaces[$tenant][2])
-        && $namespaces[$tenant][1] !== $namespaces[$tenant][2], '没有真实复用空闲租约或轮换缓存身份');
+    expect(isset($namespaces[$tenant][1], $namespaces[$tenant][2])
+        && $namespaces[$tenant][1] !== $namespaces[$tenant][2], '轮换没有改变缓存身份');
+    // PostgreSQL 归还后可复用物理连接。MySQL、SQLite 无法完整重置，归还即关闭，空闲池必须保持为空。
+    $reusedIdle = $reused[$tenant] ?? false;
+    expect($reusedIdle === ($kind === 'pgsql'), $kind === 'pgsql'
+        ? 'PostgreSQL 没有真实复用空闲租约' : '无法完整重置的驱动把物理连接放回了空闲池');
     expect(isset($shutdown['before']['active'][$tenant . '-db'], $shutdown['after']['active'][$tenant . '-db'])
         && $shutdown['before']['active'][$tenant . '-db']['leased'] === 0
         && $shutdown['before']['active'][$tenant . '-db']['created'] <= 8
