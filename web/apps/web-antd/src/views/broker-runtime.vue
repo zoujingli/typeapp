@@ -6,7 +6,7 @@
 import type { TableColumnsType } from 'ant-design-vue';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Alert, Button, Card, Checkbox, Input, InputNumber, Select, Table, Tag, message } from 'ant-design-vue';
+import { Alert, Button, Card, Checkbox, Input, InputNumber, Table, Tag, message } from 'ant-design-vue';
 import AppDrawer from '../components/app-drawer/app-drawer.vue';
 import CrudSearchField from '../components/crud-search-field.vue';
 import CrudTableActions from '../components/crud-table-actions.vue';
