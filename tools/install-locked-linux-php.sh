@@ -19,6 +19,7 @@ fi
 if [[ -x "$task_prefix/bin/php" && -x "$task_prefix/bin/php-config" ]]; then
   # 清理误写入可缓存前缀的受控 Swoole 声明，避免启动警告污染版本探测。
   rm -f "$task_prefix/etc/php.d/zz-typeapp-swoole.ini"
+  printf 'memory_limit=2G\ndisplay_errors=1\n' > "$task_prefix/etc/php.d/zz-typeapp-cli.ini"
   task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";' 2>/dev/null)"
   if [[ "$task_version" == "${task_lock_php} zts" && -f "$task_prefix/lib/libphp.so" \
     && -f "$("$task_prefix/bin/php-config" --extension-dir)/curl.so" ]] \
@@ -67,6 +68,7 @@ mkdir -p "$task_prefix/etc/php.d"
 if [[ -f "$("$task_prefix/bin/php-config" --extension-dir)/curl.so" ]]; then
   printf 'extension=curl.so\n' > "$task_prefix/etc/php.d/curl.ini"
 fi
+printf 'memory_limit=2G\ndisplay_errors=1\n' > "$task_prefix/etc/php.d/zz-typeapp-cli.ini"
 
 task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
 [[ "$task_version" == "${task_lock_php} zts" ]] || {
