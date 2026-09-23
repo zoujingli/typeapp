@@ -187,6 +187,20 @@ jobs:
       - name: 准备原生进程的共享信号扩展
         run: bash .github/scripts/prepare-linux-runtime.sh
 
+      - name: 构建带 startNative 的受控 Swoole
+        shell: bash
+        env:
+          SWOOLE_CONFIGURE_OPTS: --enable-swoole-thread
+        run: |
+          task_swoole_module="$(bash tools/prepare-swoole-module.sh)"
+          printf 'TYPE_SWOOLE_MODULE=%s\n' "$task_swoole_module" >> "$GITHUB_ENV"
+          task_ini="${TYPE_NATIVE_PHP_INI:?}"
+          task_clean="$(mktemp)"
+          awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*swoole/ && tolower($0) !~ /^[[:space:]]*swoole.enable_fiber_mock/' "$task_ini" > "$task_clean"
+          printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" >> "$task_clean"
+          mv "$task_clean" "$task_ini"
+          [[ "$(php -n -d "extension=$task_swoole_module" -d swoole.enable_fiber_mock=On -r 'echo PHP_ZTS && class_exists("Swoole\\Thread", false) && method_exists("Swoole\\Thread", "startNative") && constant("Swoole\\Thread::NATIVE_ENTRY_ABI") === 2 ? "ready" : "missing";')" == ready ]]
+
       - name: 验证SDK共享模块与真实embed衔接
         if: matrix.suite == 'foundation'
         run: |
