@@ -26,7 +26,7 @@ Windows SDK 构建对固定 Swoole 源码的 IOCP 轮询作一处名称限定：
 
 各平台最新范围与限制统一见[平台与验收](../guide/platforms.md)，准确运行与产物身份见[平台证据](platform-support.md#当前结果与证据)。每次更换 Swoole、PHPX、libphp 或目标架构后都必须重跑完整入口；组件、SQLite 或单项命令结果不能替代应用、通信、三库和无源码发布验收。
 
-macOS选择GitHub标准`macos-15` ARM64标签，不使用Docker或WSL运行应用。准确平台标签见[GitHub runner说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。PHP安装Action固定为已核对提交`f3e473d116dcccaddc5834248c87452386958240`（v2.37.2），请求8.5.10 ZTS后仍按`toolchain.lock.json`校验实际PHP、TypePHP、PHPX；安装器或镜像漂移必须失败，不放宽版本。
+macOS选择GitHub标准`macos-15` ARM64标签，不使用Docker或WSL运行应用。准确平台标签见[GitHub runner说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。PHP安装Action固定为已核对提交`f3e473d116dcccaddc5834248c87452386958240`（v2.37.2），请求8.5.10 ZTS后仍按`toolchain.lock.json`校验实际PHP、TypePHP、PHPX；安装器或镜像漂移必须失败，不放宽版本。macOS先把`shivammathur/php` tap停在仍提供`php-8.5.10`瓶的提交；Linux在setup-php之后若实际版本不是8.5.10，则用`tools/install-locked-linux-php.sh`从官方源码构建并缓存锁定ZTS SDK。
 
 `configure-toolchain.php`共用Linux/macOS显式SDK选择，分别核对libphp.so/libphp.dylib；包装器绑定准确二进制、头文件和embed库。`verify-toolchain.php`可显式选择linux/macos/windows，默认沿用锁文件的主要平台。`prepare-toolchain.sh`按本机Unix平台构建PHPX。CI将PHPX源码复制到新的build目录，排除旧目标文件，不覆盖既有SDK或其他平台产物。
 
