@@ -254,6 +254,8 @@ curl -fsS -H "Authorization: Bearer ${BROKER_PROBE_TOKEN}" http://127.0.0.1:PORT
 
 独立候选测试使用 `composer test:broker-candidate`；原生入口为 `php tests/broker-candidate.php build/app/type-app --no-source --independent`。独立安装需要 `TYPE_COMPOSER_PHAR`，持久接收链需要 `TYPE_PGSQL_TOOLS`。验证同时观察协议确认、业务持久回执、公开当前值与设备缓存清理，完整平台、容量和故障验证另行执行。
 
+Darwin arm64 上，PHP 与独立无源码原生候选均已通过：独立安装、证书身份、调试、恢复与持久业务回执五项，原生另含组件安装和复用完整生产 AOT；`device_mqtt.facts` 为 4。通过的原生产物摘要 `9094bcba4682ddf5c8ee2403740d2db29b4e7e62ca0ec88bbdc1032a7bce8529`，构建标识 `b4bc90f80cb108ad95880ca3b5cf126fe712158f3eb8b02d761b2e35ac778d9d`。MySQL、Linux、Windows 以及容量和故障域尚未用这次产物验收。
+
 ### 独立安装与登录
 
 `tests/iot-identity.php` 的 `--broker` 场景复用实际应用命令及 HTTP，验证独立安装、账号隔离、权限、真实 MQTT 连接计数、正常停止和审计；`tests/iot-identity-databases.php` 可追加同一参数逐库运行，原生可追加 `--no-source`。
