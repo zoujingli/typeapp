@@ -89,7 +89,8 @@ try {
     $process = new Process([...$command, 'scenario'], $root, $environment);
     try {
         $result = $process->wait(120);
-        Assert::true($result->successful(), '集成场景失败：' . $result->stderr);
+        Assert::true($result->successful(), '集成场景失败（exit=' . $result->exitCode . ', timeout=' . (int) $result->timedOut . '）：'
+            . $result->stderr . ($result->stdout !== '' ? "\n" . $result->stdout : ''));
         $report = json_decode($result->stdout, true, 512, JSON_THROW_ON_ERROR);
     } finally {
         $process->stop();
