@@ -32,18 +32,23 @@ tar -xzf "$task_archive" -C "$RUNNER_TEMP"
 [[ -d "$task_source" ]] || { echo 'Swoole 固定源码目录不存在。' >&2; exit 1; }
 echo '已准备固定 Swoole 源码。' >&2
 
-"$PHP_HOME/bin/php" -n -r '
-require $argv[1] . "/plugin/type-build/src/SwooleThreadSource.php";
-require $argv[1] . "/plugin/type-build/src/SwooleHttpSource.php";
-require $argv[1] . "/plugin/type-build/src/SwooleSocketSource.php";
+task_patch="$(mktemp "${TMPDIR:-/tmp}/swoole-patch.XXXXXX.php")"
+cat >"$task_patch" <<'PHP'
+<?php
+declare(strict_types=1);
+require $argv[1] . '/plugin/type-build/src/SwooleThreadSource.php';
+require $argv[1] . '/plugin/type-build/src/SwooleHttpSource.php';
+require $argv[1] . '/plugin/type-build/src/SwooleSocketSource.php';
 $directory = $argv[2];
 $report = [];
-$report["thread"] = (new Type\Build\SwooleThreadSource())->apply($directory);
-$report["http"] = (new Type\Build\SwooleHttpSource())->apply($directory);
-$report["socket"] = (new Type\Build\SwooleSocketSource())->apply($directory);
-$report["tls"] = (new Type\Build\SwooleSocketSource())->applyTls($directory);
+$report['thread'] = (new Type\Build\SwooleThreadSource())->apply($directory);
+$report['http'] = (new Type\Build\SwooleHttpSource())->apply($directory);
+$report['socket'] = (new Type\Build\SwooleSocketSource())->apply($directory);
+$report['tls'] = (new Type\Build\SwooleSocketSource())->applyTls($directory);
 fwrite(STDERR, json_encode($report, JSON_THROW_ON_ERROR) . PHP_EOL);
-' "$task_root" "$task_source"
+PHP
+"$PHP_HOME/bin/php" -n "$task_patch" "$task_root" "$task_source"
+rm -f "$task_patch"
 
 read -r -a task_options <<< "$SWOOLE_CONFIGURE_OPTS"
 command -v phpize >&2
@@ -58,4 +63,5 @@ command -v php-config >&2
 mkdir -p "$(dirname "$task_module")"
 cp "$task_source/modules/swoole.so" "$task_module"
 [[ -f "$task_module" ]] || { echo 'Swoole 适配模块复制失败。' >&2; exit 1; }
+echo "Swoole 适配模块已就绪：$task_module" >&2
 printf '%s\n' "$task_module"
