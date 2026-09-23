@@ -236,17 +236,25 @@ final class BuildIdentity
             // 延迟依赖（如 libmpdec++）常在导入表中但不映射；同名副本若从旁路目录映射也不按缺载失败。
             if (!$loaded && !($library['deferred'] ?? false)) { throw new \RuntimeException('运行库未按声明路径实际加载：' . $library['name']); }
         }
+        $packagedNames = [];
+        foreach ($manifest['native-libraries'] as $library) {
+            $packagedNames[basename((string) $library['path'])] = true;
+            $packagedNames[(string) $library['name']] = true;
+        }
         foreach ($manifest['system-images'] as $systemImage) {
             $found = false;
             $declaredPath = (string) $systemImage['path'];
-            $declaredUuid = (string) $systemImage['uuid'];
+            $declaredUuid = strtoupper((string) $systemImage['uuid']);
+            $declaredBase = basename($declaredPath);
             foreach ($images as $image) {
                 $parts = explode("\n", $image, 2);
                 $imagePath = $parts[0];
-                $imageUuid = $parts[1] ?? '';
+                $imageUuid = strtoupper($parts[1] ?? '');
                 // dyld 可能以 Cryptex/沙箱前缀报告同一系统库；UUID 优先，路径后缀兜底。
                 if ($declaredUuid !== '' && $imageUuid === $declaredUuid) { $found = true; break; }
                 if ($imagePath === $declaredPath || str_ends_with($imagePath, $declaredPath)) { $found = true; break; }
+                // 打包进产物的同名运行库会遮蔽系统桩（如 Homebrew libsqlite3 替代 /usr/lib/libsqlite3.dylib）。
+                if (isset($packagedNames[$declaredBase]) && basename($imagePath) === $declaredBase) { $found = true; break; }
             }
             if (!$found) { throw new \RuntimeException('系统共享映像未以声明UUID加载：' . $declaredPath); }
         }
