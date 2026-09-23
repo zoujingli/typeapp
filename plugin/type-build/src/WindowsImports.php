@@ -22,7 +22,7 @@ final class WindowsImports
                 $section = 'delayed';
             } elseif ($line === 'Summary') {
                 $section = '';
-            } elseif (preg_match('/^[A-Za-z0-9_.-]+\.dll$/iD', $line)) {
+            } elseif (preg_match('/^[A-Za-z0-9_.+-]+\.dll$/iD', $line)) {
                 if ($section === '') {
                     throw new RuntimeException('Windows依赖表包含未分类DLL，不能推测加载阶段');
                 }

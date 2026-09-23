@@ -6,8 +6,8 @@ require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 $parser = new Type\Build\WindowsImports();
-$table = "Dump of file C:\\Windows\\System32\\advapi32.dll\r\n  Image has the following dependencies:\r\n KERNELBASE.dll\r\n ntdll.dll\r\n  Image has the following delay load dependencies:\r\n CRYPTSP.dll\r\n ext-ms-win32-subsystem-query-l1-1-0.dll\r\n Summary\r\n 1000 .data\r\n";
-expect($parser->parse($table) === ['required' => ['KERNELBASE.dll', 'ntdll.dll'],
+$table = "Dump of file C:\\Windows\\System32\\advapi32.dll\r\n  Image has the following dependencies:\r\n KERNELBASE.dll\r\n ntdll.dll\r\n libmpdec++-4.0.1.dll\r\n  Image has the following delay load dependencies:\r\n CRYPTSP.dll\r\n ext-ms-win32-subsystem-query-l1-1-0.dll\r\n Summary\r\n 1000 .data\r\n";
+expect($parser->parse($table) === ['required' => ['KERNELBASE.dll', 'ntdll.dll', 'libmpdec++-4.0.1.dll'],
     'delayed' => ['CRYPTSP.dll', 'ext-ms-win32-subsystem-query-l1-1-0.dll']], '延迟导入被误判为必需加载');
 $rejected = false;
 try {
