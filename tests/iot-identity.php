@@ -1558,6 +1558,20 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
     expect(in_array('--devices', $argv, true) || array_intersect($argv, ['--audit', '--operations']) === [], '审计与观察验收需要新设备及模拟身份装置');
     expect(in_array('--devices', $argv, true) || array_intersect($argv, ['--business', '--history', '--aggregate', '--alarms']) === [], '遥测、告警、转移和指令需要新设备装置');
     expect(in_array('--devices', $argv, true) || array_intersect($argv, ['--lifecycle', '--device-mqtt', '--lifecycle-mqtt']) === [], '生命周期与MQTT需要新设备装置');
+    $ownedDatabase = null;
+    $sharedDatabase = $environment['DB_DATABASE'] ?? '';
+    if ($driver !== 'sqlite') {
+        $ownedDatabase = 'type_app_id_' . bin2hex(random_bytes(4));
+        $admin = new PDO(
+            $driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $sharedDatabase,
+            $environment['DB_USERNAME'],
+            $environment['DB_PASSWORD'],
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        );
+        $admin->exec('CREATE DATABASE ' . $ownedDatabase);
+        $admin = null;
+        $environment['DB_DATABASE'] = $ownedDatabase;
+    }
     $password = bin2hex(random_bytes(16));
     $credentials = ['APP_ADMIN_PASSWORD' => $password, 'APP_CUSTOMER_PASSWORD' => $password . '-customer'];
     $installCommand = [...$command, 'app:install', 'same-login', '平台管理员', 'same-login', '客户管理员', '初始租户'];
@@ -1886,6 +1900,16 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
             file_put_contents($base . '/http.log', str_replace(array_values($credentials), '<REDACTED>', $server->stdout() . $server->stderr()));
         }
         $inspection = null;
+        if ($ownedDatabase !== null) {
+            $cleanup = new PDO(
+                $driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $sharedDatabase,
+                $environment['DB_USERNAME'],
+                $environment['DB_PASSWORD'],
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+            );
+            $cleanup->exec('DROP DATABASE IF EXISTS ' . $ownedDatabase);
+            $cleanup = null;
+        }
         file_put_contents($base . '/verification.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
         expect($server === null || ($stopped->successful() && !$server->running()), '双端服务没有正常排空退出');
     }

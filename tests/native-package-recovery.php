@@ -224,14 +224,27 @@ try {
         $sourceDatabase->exec('INSERT INTO recovery_meta.owner_probe SELECT current_user');
     }
     $history = nativeRecoveryRun([...$sourceCommand, 'migrate', 'history'], $environment);
-    $headers = ['Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'];
+    $adminPassword = $environment['APP_ADMIN_PASSWORD'];
     [$original, $client, $processInfo] = nativeRecoveryServer($root, $package, $environment);
     $children[] = [$original, $processInfo];
-    expect($client->request('GET', '/users')->status === 401, '恢复夹具丢失授权');
-    $user = $client->request('POST', '/users', $headers, '{"name":"备份用户","age":22}');
-    expect($user->status === 201 && $client->request('DELETE', '/users/' . $user->json()['data']['id'], $headers)->status === 200, '无法准备真实软删除状态');
+    expect($client->request('GET', '/admin/users')->status === 401, '恢复夹具丢失授权');
+    $login = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
+        'login' => 'recovery-admin', 'password' => $adminPassword,
+    ], JSON_THROW_ON_ERROR));
+    expect($login->status === 200, '恢复管理员登录失败');
+    $headers = ['Authorization' => 'Bearer ' . $login->json()['data']['accessToken'], 'Content-Type' => 'application/json'];
+    $user = $client->request('POST', '/admin/users', $headers, json_encode([
+        'login' => 'backup-user', 'name' => '备份用户', 'password' => $adminPassword,
+    ], JSON_THROW_ON_ERROR));
+    expect($user->status === 200, '无法创建恢复夹具人员');
+    $saved = $user->json()['data'];
+    $disabled = $client->request('POST', '/admin/users/' . $saved['id'] . '/status', $headers, json_encode([
+        'version' => $saved['version'], 'enabled' => false,
+    ], JSON_THROW_ON_ERROR));
+    expect($disabled->status === 200 && empty($disabled->json()['data']['enabled']), '无法准备真实停用状态');
     expect(stopPackageProcess($original, $package, $processInfo, 10)->successful(), '备份前应用没有正常停止');
-    $snapshotRows = $sourceDatabase->query('SELECT * FROM users ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+    $snapshotRows = $sourceDatabase->query('SELECT id, login, name, enabled, version FROM admin_users ORDER BY login')->fetchAll(PDO::FETCH_ASSOC);
+    expect(count($snapshotRows) === 2, '备份点人员数量不符');
     expect(mkdir($backup, 0700), '不能覆盖既有恢复点');
     if ($driver === 'sqlite') {
         clearstatcache();
@@ -240,7 +253,7 @@ try {
         expect(!str_contains($backup, "'"), 'SQLite维护工具测试路径不能含单引号');
         nativeRecoveryRun([...$tools['dump'], $data . '/var/app.sqlite', '.timeout 5000', ".backup '" . $backup . "/database.dump'"], $toolEnvironment);
         expect(trim(nativeRecoveryRun([...$tools['dump'], $backup . '/database.dump', 'PRAGMA integrity_check'], $toolEnvironment)) === 'ok', 'SQLite备份完整性检查失败');
-        expect(trim(nativeRecoveryRun([...$tools['dump'], $backup . '/database.dump', 'SELECT COUNT(*) FROM users'], $toolEnvironment)) === '1', '备份没有包含WAL中的已提交数据');
+        expect(trim(nativeRecoveryRun([...$tools['dump'], $backup . '/database.dump', 'SELECT COUNT(*) FROM admin_users'], $toolEnvironment)) === '2', '备份没有包含WAL中的已提交数据');
         $checkpoint = trim(nativeRecoveryRun([...$tools['dump'], $data . '/var/app.sqlite', 'PRAGMA wal_checkpoint(TRUNCATE)'], $toolEnvironment));
         expect($checkpoint === '0|0|0', '源SQLite检查点没有完整完成');
     } else {
@@ -315,7 +328,15 @@ try {
     expect($rejected, '恢复覆盖了原数据根');
     [$original, $client, $processInfo] = nativeRecoveryServer($root, $package, $environment);
     $children[] = [$original, $processInfo];
-    expect($client->request('POST', '/users', $headers, '{"name":"备份之后写入","age":31}')->status === 201, '无法验证恢复点之后的数据变化');
+    $login = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
+        'login' => 'recovery-admin', 'password' => $adminPassword,
+    ], JSON_THROW_ON_ERROR));
+    expect($login->status === 200, '备份后源库管理员登录失败');
+    $headers = ['Authorization' => 'Bearer ' . $login->json()['data']['accessToken'], 'Content-Type' => 'application/json'];
+    $afterBackup = $client->request('POST', '/admin/users', $headers, json_encode([
+        'login' => 'after-backup', 'name' => '备份之后写入', 'password' => $adminPassword,
+    ], JSON_THROW_ON_ERROR));
+    expect($afterBackup->status === 200, '无法验证恢复点之后的数据变化');
     expect(stopPackageProcess($original, $package, $processInfo, 10)->successful(), '源应用再次停止失败');
     file_put_contents($data . '/uploads/example.bin', 'asset-after-backup');
     file_put_contents($data . '/.env', "APP_NAME=after-backup\nAPP_API_TOKEN=" . $token . "\n");
@@ -344,7 +365,7 @@ try {
     expect($rejected, '数据库恢复没有拒绝既有目标');
     nativeRecoveryRestore($driver, $backup, $trusted, $target, $connection, $restoreCommand, $toolEnvironment, $expected);
     $verified = $driver === 'sqlite' ? new PDO('sqlite:' . $target) : nativeRecoveryConnection($driver, $connection, $target);
-    expect($verified->query('SELECT * FROM users ORDER BY id')->fetchAll(PDO::FETCH_ASSOC) === $snapshotRows, '恢复后的实际业务字段与备份点不一致');
+    expect($verified->query('SELECT id, login, name, enabled, version FROM admin_users ORDER BY login')->fetchAll(PDO::FETCH_ASSOC) === $snapshotRows, '恢复后的实际业务字段与备份点不一致');
     if ($driver === 'sqlite') {
         expect($verified->query('PRAGMA integrity_check')->fetchColumn() === 'ok', '恢复后的SQLite文件不完整');
     } else {
@@ -362,16 +383,26 @@ try {
     expect(file_get_contents($restored . '/.env') === $configuration && hash_file('sha256', $restored . '/uploads/example.bin') === $files['asset.bin']['sha256'], '恢复的配置或资源不一致');
     [$application, $client, $processInfo] = nativeRecoveryServer($root, $package, $restoreEnvironment);
     $children[] = [$application, $processInfo];
-    expect($client->request('GET', '/users', $headers)->json()['total'] === 0, '恢复保留了备份点之后的写入或丢失软删除状态');
-    $createdUser = $client->request('POST', '/users', $headers, '{"name":"恢复后写入","age":29}');
-    expect($createdUser->status === 201, '恢复后原生应用无法写入');
-    $readUser = $client->request('GET', '/users/' . $createdUser->json()['data']['id'], $headers);
-    expect($readUser->status === 200 && $readUser->json()['data']['name'] === '恢复后写入', '恢复后的新写入无法从原生入口读回');
+    $login = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
+        'login' => 'recovery-admin', 'password' => $adminPassword,
+    ], JSON_THROW_ON_ERROR));
+    expect($login->status === 200, '恢复后管理员登录失败');
+    $headers = ['Authorization' => 'Bearer ' . $login->json()['data']['accessToken'], 'Content-Type' => 'application/json'];
+    $listed = $client->request('GET', '/admin/users?search=after-backup', $headers);
+    expect($listed->status === 200 && $listed->json()['data']['total'] === 0, '恢复保留了备份点之后的写入');
+    $disabledListed = $client->request('GET', '/admin/users?search=backup-user&enabled=0', $headers);
+    expect($disabledListed->status === 200 && $disabledListed->json()['data']['total'] === 1, '恢复丢失了备份点停用状态');
+    $createdUser = $client->request('POST', '/admin/users', $headers, json_encode([
+        'login' => 'restored-write', 'name' => '恢复后写入', 'password' => $adminPassword,
+    ], JSON_THROW_ON_ERROR));
+    expect($createdUser->status === 200, '恢复后原生应用无法写入');
+    $readUser = $client->request('GET', '/admin/users/' . $createdUser->json()['data']['id'], $headers);
+    expect($readUser->status === 200 && $readUser->json()['data']['items'][0]['name'] === '恢复后写入', '恢复后的新写入无法从原生入口读回');
     expect(stopPackageProcess($application, $package, $processInfo, 10)->successful(), '恢复后的应用没有正常停止');
     nativeRecoveryRun([...$restoredCommand, 'migrate', 'status'], $restoreEnvironment);
     expect(nativeRecoveryRun([...$restoredCommand, 'migrate', 'history'], $restoreEnvironment) === $restoredHistory, '恢复后重复迁移改动了既有历史');
     $sourceDatabase ??= new PDO('sqlite:' . $data . '/var/app.sqlite');
-    expect((int) $sourceDatabase->query('SELECT COUNT(*) FROM users')->fetchColumn() === 2, '恢复改动了原数据库');
+    expect((int) $sourceDatabase->query('SELECT COUNT(*) FROM admin_users')->fetchColumn() === 3, '恢复改动了原数据库');
     expect(file_get_contents($data . '/uploads/example.bin') === 'asset-after-backup'
         && file_get_contents($data . '/.env') === "APP_NAME=after-backup\nAPP_API_TOKEN=" . $token . "\n", '恢复覆盖了原配置或资源');
     recoveryVerify($backup, $trusted, $expected);

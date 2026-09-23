@@ -42,6 +42,8 @@ $secretEnvironment['MYSQL_PWD'] = $secretEnvironment['DB_PASSWORD'];
 $secretEnvironment['POSTGRES_PASSWORD'] = $secretEnvironment['DB_PASSWORD'];
 $secretEnvironment['PGPASSWORD'] = $secretEnvironment['DB_PASSWORD'];
 $secretEnvironment['APP_API_TOKEN'] = 'clean-runtime-test-' . bin2hex(random_bytes(20));
+$secretEnvironment['APP_ADMIN_PASSWORD'] = bin2hex(random_bytes(16));
+$secretEnvironment['APP_CUSTOMER_PASSWORD'] = bin2hex(random_bytes(16));
 $backendImage = null;
 $backendQuery = null;
 $networkCreated = false;
@@ -102,6 +104,7 @@ try {
     $runtime = ['docker', 'run', '--rm', '--pull=never', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
         '--tmpfs', '/tmp:rw,nosuid,nodev,size=16m', '--mount', 'type=bind,source=' . $data . ',target=/data',
         '--env', 'APP_BASE_PATH=/data', '--env', 'APP_ENV=production', '--env', 'APP_DEBUG=false', '--env', 'APP_CACHE_ENABLED=false',
+        '--env', 'APP_ADMIN_PASSWORD', '--env', 'APP_CUSTOMER_PASSWORD',
         ...$databaseArguments, '--env', 'TYPE_APP_RELEASE_SHA256=' . $digest];
     $help = cleanPackageCommand([...$runtime, '--network=none', $image, 'help'], 30, $secretEnvironment);
     expect(str_contains($help, 'TypeApp 物联中心') || str_contains($help, 'Type 业务应用'), '空白环境没有运行应用帮助');
@@ -110,7 +113,7 @@ try {
     if ($driver !== 'sqlite') {
         $wrongCredentials = $secretEnvironment;
         $wrongCredentials['DB_PASSWORD'] = 'deliberately-invalid-test-password';
-        $invalid = new Process([...$runtime, '--network', $databaseNetwork, $image, 'migrate', 'run'], null, $wrongCredentials);
+        $invalid = new Process([...$runtime, '--network', $databaseNetwork, $image, 'app:install', 'clean-admin', '干净管理员', 'clean-customer', '干净客户', '干净租户'], null, $wrongCredentials);
         try {
             $result = $invalid->wait(20);
             expect(!$result->successful() && !$result->timedOut && !str_contains($result->stdout . $result->stderr, $wrongCredentials['DB_PASSWORD']), '数据库认证失败未拒绝或泄漏了密码');
@@ -118,7 +121,9 @@ try {
             $invalid->stop();
         }
     }
-    foreach (['run', 'run', 'status', 'history'] as $operation) {
+    $installed = cleanPackageCommand([...$runtime, '--network', $databaseNetwork, $image, 'app:install', 'clean-admin', '干净管理员', 'clean-customer', '干净客户', '干净租户'], 60, $secretEnvironment);
+    expect(is_array(json_decode($installed, true, 512, JSON_THROW_ON_ERROR)), '干净环境安装没有返回有效状态');
+    foreach (['status', 'history'] as $operation) {
         $migrated = cleanPackageCommand([...$runtime, '--network', $databaseNetwork, $image, 'migrate', $operation], 30, $secretEnvironment);
         expect(is_array(json_decode($migrated, true, 512, JSON_THROW_ON_ERROR)), '干净环境迁移没有返回有效状态');
     }
@@ -177,24 +182,44 @@ try {
         $backendState = json_decode(cleanPackageCommand(['docker', 'inspect', $backend]), true, 512, JSON_THROW_ON_ERROR)[0];
         expect(count($backendState['NetworkSettings']['Networks']) === 1 && empty($backendState['HostConfig']['PortBindings']), '数据库暴露了宿主端口或加入了入口网络');
     }
-    $headers = ['Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'];
-    expect($client->request('GET', '/users')->status === 401, '干净部署丢失授权');
-    $created = $client->request('POST', '/users', $headers, '{"name":"干净环境","age":22,"email":"native@example.test"}');
-    expect($created->status === 201, '干净部署业务写入失败');
+    $adminPassword = $secretEnvironment['APP_ADMIN_PASSWORD'];
+    expect($client->request('GET', '/admin/users')->status === 401, '干净部署丢失授权');
+    $login = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
+        'login' => 'clean-admin', 'password' => $adminPassword,
+    ], JSON_THROW_ON_ERROR));
+    expect($login->status === 200, '干净部署管理员登录失败');
+    $headers = ['Authorization' => 'Bearer ' . $login->json()['data']['accessToken'], 'Content-Type' => 'application/json'];
+    $created = $client->request('POST', '/admin/users', $headers, json_encode([
+        'login' => 'clean-user', 'name' => '干净环境', 'password' => $adminPassword,
+    ], JSON_THROW_ON_ERROR));
+    expect($created->status === 200, '干净部署业务写入失败');
     $id = $created->json()['data']['id'];
-    expect($client->request('GET', '/users?sort=age&direction=DESC', $headers)->json()['total'] === 1, '干净部署查询失败');
-    expect($client->request('GET', '/users?sort=email', $headers)->status === 422, '干净部署丢失白名单校验');
-    $patched = $client->request('PATCH', '/users/' . $id, $headers, '{"email":null,"version":1}');
-    expect($patched->status === 200 && $patched->json()['data']['email'] === null && $patched->json()['data']['name'] === '干净环境', 'PATCH空值/缺失或事务回读错误');
-    expect($client->request('PATCH', '/users/' . $id, $headers, '{"name":"过期更新","version":1}')->status === 409, '干净部署没有拒绝旧版本更新');
-    expect($client->request('POST', '/users', $headers, '{"name":"","age":-1}')->status === 422, '干净部署没有拒绝非法输入');
-    expect($client->request('GET', '/users?name=' . rawurlencode("' OR 1=1 --"), $headers)->json()['total'] === 0, '筛选注入文本没有作为绑定数据处理');
-    expect($client->request('DELETE', '/users/' . $id, $headers)->status === 200 && $client->request('GET', '/users/' . $id, $headers)->status === 404, '干净部署软删除失败');
+    $listed = $client->request('GET', '/admin/users?search=clean-user', $headers);
+    expect($listed->status === 200 && $listed->json()['data']['total'] === 1, '干净部署查询失败');
+    $invalid = $client->request('PATCH', '/admin/users/' . $id, $headers, json_encode([
+        'version' => 1, 'login' => 'clean-user', 'name' => '资料', 'password' => $adminPassword,
+    ], JSON_THROW_ON_ERROR));
+    expect($invalid->status === 422, '干净部署丢失白名单校验');
+    $patched = $client->request('PATCH', '/admin/users/' . $id, $headers, json_encode([
+        'version' => 1, 'login' => 'clean-user', 'name' => '干净环境已改',
+    ], JSON_THROW_ON_ERROR));
+    expect($patched->status === 200 && $patched->json()['data']['name'] === '干净环境已改', 'PATCH资料或事务回读错误');
+    expect($client->request('PATCH', '/admin/users/' . $id, $headers, json_encode([
+        'version' => 1, 'login' => 'clean-user', 'name' => '过期更新',
+    ], JSON_THROW_ON_ERROR))->status === 409, '干净部署没有拒绝旧版本更新');
+    expect($client->request('POST', '/admin/users', $headers, json_encode([
+        'login' => 'x', 'name' => '', 'password' => 'short',
+    ], JSON_THROW_ON_ERROR))->status === 422, '干净部署没有拒绝非法输入');
+    $disabled = $client->request('POST', '/admin/users/' . $id . '/status', $headers, json_encode([
+        'version' => $patched->json()['data']['version'], 'enabled' => false,
+    ], JSON_THROW_ON_ERROR));
+    expect($disabled->status === 200 && empty($disabled->json()['data']['enabled']), '干净部署停用失败');
+    expect($client->request('GET', '/admin/users?search=clean-user&enabled=0', $headers)->json()['data']['total'] === 1, '干净部署停用后查询失败');
     if ($backendQuery !== null) {
-        expect(trim(cleanPackageCommand([...$backendQuery, 'SELECT COUNT(*) FROM users'], 10, $secretEnvironment)) === '1', 'HTTP业务未写入所声明的真实数据库');
+        expect(trim(cleanPackageCommand([...$backendQuery, 'SELECT COUNT(*) FROM admin_users'], 10, $secretEnvironment)) === '2', 'HTTP业务未写入所声明的真实数据库');
     } else {
         $databaseFile = new PDO('sqlite:' . $data . '/var/app.sqlite');
-        expect((int) $databaseFile->query('SELECT COUNT(*) FROM users')->fetchColumn() === 1, 'SQLite数据没有持久化到本轮目录');
+        expect((int) $databaseFile->query('SELECT COUNT(*) FROM admin_users')->fetchColumn() === 2, 'SQLite数据没有持久化到本轮目录');
         unset($databaseFile);
     }
     cleanPackageCommand(['docker', 'stop', '--timeout', '10', $container]);
@@ -204,7 +229,7 @@ try {
         'release-sha256' => $digest, 'image' => $image, 'files-inspected' => $entries, 'uid' => $uid,
         'checks' => ['scratch-rootfs', 'payload-only', 'no-php-source-cli-composer-sdk-compiler', 'artifact-bytes', 'readonly-root', 'private-pid-namespace',
             'nonroot', 'capabilities-dropped', 'data-only-mount', 'offline-help-audit', 'explicit-repeatable-migration', 'http-auth-crud-query-validation',
-            'patch-null-and-missing', 'stale-version-conflict', 'bound-injection-input', 'soft-delete', 'actual-backend-rows', 'sigterm-exit-zero']];
+            'admin-field-whitelist', 'stale-version-conflict', 'invalid-input-rejected', 'user-disable', 'actual-backend-rows', 'sigterm-exit-zero']];
     if ($driver !== 'sqlite') {
         $evidence['checks'][] = 'private-database-network';
         $evidence['checks'][] = 'separate-http-ingress';

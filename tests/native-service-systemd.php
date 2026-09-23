@@ -80,7 +80,10 @@ file_put_contents($runtime . '/.env', "APP_ENV=production\nAPP_DEBUG=true\nAPP_L
 chmod($runtime . '/.env', 0600);
 $linked = false;
 try {
-    $migration = systemdRemote(['env', 'APP_BASE_PATH=' . $runtime, 'APP_ENV=production', 'APP_DEBUG=false', 'TYPE_APP_RELEASE_SHA256=' . $record['release-sha256'], $release . '/run', 'migrate', 'run'], $prefix);
+    $password = bin2hex(random_bytes(16));
+    $migration = systemdRemote(['env', 'APP_BASE_PATH=' . $runtime, 'APP_ENV=production', 'APP_DEBUG=false', 'TYPE_APP_RELEASE_SHA256=' . $record['release-sha256'],
+        'APP_ADMIN_PASSWORD=' . $password, 'APP_CUSTOMER_PASSWORD=' . $password . '-customer',
+        $release . '/run', 'app:install', 'service-admin', '服务管理员', 'service-customer', '服务客户', '服务租户'], $prefix);
     expect($migration['code'] === 0, 'Linux发布包显式迁移失败：' . $migration['stderr']);
     // 旧版systemd-analyze会绑定/替换用户管理器socket（上游#36540）。解析器只能接触本轮私有运行目录。
     $controlRuntime = systemdRemote(['printenv', 'XDG_RUNTIME_DIR'], $prefix);
@@ -120,15 +123,23 @@ try {
     $expectedUser = systemdRemote(['id', '-u', $record['user']], $prefix);
     expect($expectedUser['code'] === 0 && preg_match('/^Uid:\s+([0-9]+)/m', $identity['stdout'], $userMatch) === 1
         && $userMatch[1] !== '0' && $userMatch[1] === trim($expectedUser['stdout']), 'systemd应用没有使用声明的非root账号');
-    expect($client->request('GET', '/users')->status === 401, '系统服务丢失授权');
-    $headers = ['Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'];
+    expect($client->request('GET', '/admin/users')->status === 401, '系统服务丢失授权');
+    $login = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
+        'login' => 'service-admin', 'password' => $password,
+    ], JSON_THROW_ON_ERROR));
+    expect($login->status === 200, 'systemd管理员登录失败');
+    $headers = ['Authorization' => 'Bearer ' . $login->json()['data']['accessToken'], 'Content-Type' => 'application/json'];
     if (getenv('TYPE_TEMPLATE_EXPECTED_MESSAGE') !== false) {
         expect($client->request('GET', '/', $headers)->json()['message'] === getenv('TYPE_TEMPLATE_EXPECTED_MESSAGE'), 'systemd没有运行接入时修改的业务');
     }
-    expect($client->request('POST', '/users', $headers, '{"name":"系统服务验收","age":28}')->status === 201, '系统服务业务写入失败');
+    $created = $client->request('POST', '/admin/users', $headers, json_encode([
+        'login' => 'systemd-user', 'name' => '系统服务验收', 'password' => $password,
+    ], JSON_THROW_ON_ERROR));
+    expect($created->status === 200, '系统服务业务写入失败');
     expect(systemdRemote(['systemctl', '--user', 'kill', '--signal=SIGKILL', '--kill-whom=main', $unit], $prefix)['code'] === 0, '不能对本轮主进程注入崩溃');
     $replacement = systemdReady($unit, $client, $prefix, $pid);
-    expect($client->request('GET', '/users', $headers)->json()['total'] === 1, 'systemd重启后丢失外部数据');
+    $listed = $client->request('GET', '/admin/users?search=systemd-user', $headers);
+    expect($listed->status === 200 && $listed->json()['data']['total'] === 1, 'systemd重启后丢失外部数据');
     $restarts = (int) systemdProperty($unit, 'NRestarts', $prefix);
     expect($restarts >= 1, '没有记录服务管理器自动重启');
     expect(systemdRemote(['systemctl', '--user', 'stop', $unit], $prefix)['code'] === 0, '系统服务停止失败');

@@ -154,8 +154,15 @@ function cleanPackageRecovery(array $context): array
     try {
         $startedOriginal = true;
         [$originalClient] = recoveryStart($context, $data, $context['network'], $originalApp);
-        $headers = ['Authorization' => 'Bearer ' . $context['environment']['APP_API_TOKEN'], 'Content-Type' => 'application/json'];
-        expect($originalClient->request('POST', '/users', $headers, '{"name":"备份之后写入","age":31}')->status === 201, '不能验证恢复点之后的源数据变化');
+        $adminPassword = $context['environment']['APP_ADMIN_PASSWORD'];
+        $login = $originalClient->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
+            'login' => 'clean-admin', 'password' => $adminPassword,
+        ], JSON_THROW_ON_ERROR));
+        expect($login->status === 200, '恢复演练源库管理员登录失败');
+        $headers = ['Authorization' => 'Bearer ' . $login->json()['data']['accessToken'], 'Content-Type' => 'application/json'];
+        expect($originalClient->request('POST', '/admin/users', $headers, json_encode([
+            'login' => 'after-backup', 'name' => '备份之后写入', 'password' => $adminPassword,
+        ], JSON_THROW_ON_ERROR))->status === 200, '不能验证恢复点之后的源数据变化');
         recoveryStop($originalApp);
         $startedOriginal = false;
         file_put_contents($data . '/uploads/example.bin', 'asset-after-backup');
@@ -203,7 +210,7 @@ function cleanPackageRecovery(array $context): array
             } while (!$ready && microtime(true) < $deadline);
             expect($ready, '新恢复数据库未就绪');
             recoveryRestoreServer($context, $restoredBackend, $query, $backup, $trusted);
-            expect(trim(cleanPackageCommand([...$query, 'SELECT COUNT(*) FROM users'], 10, $context['environment'])) === '1', '恢复没有回到指定备份点');
+            expect(trim(cleanPackageCommand([...$query, 'SELECT COUNT(*) FROM admin_users'], 10, $context['environment'])) === '2', '恢复没有回到指定备份点');
             $restoreRuntime = $context['runtime'];
             $databaseNetwork = $restoredNetwork;
         }
@@ -214,19 +221,26 @@ function cleanPackageRecovery(array $context): array
         } unset($argument);
         $history = cleanPackageCommand([...$restoreRuntime, '--network', $databaseNetwork, $context['image'], 'migrate', 'history'], 30, $context['environment']);
         expect(hash('sha256', $history) === $record['migration-history-sha256'], '恢复遗漏或改动迁移历史');
-        cleanPackageCommand([...$restoreRuntime, '--network', $databaseNetwork, $context['image'], 'migrate', 'run'], 30, $context['environment']);
+        cleanPackageCommand([...$restoreRuntime, '--network', $databaseNetwork, $context['image'], 'migrate', 'status'], 30, $context['environment']);
         expect(file_get_contents($restoreData . '/.env') === $configuration && hash_file('sha256', $restoreData . '/uploads/example.bin') === $files['asset.bin']['sha256'], '外部配置或资源恢复不一致');
         $createdRestored = true;
         [$restoredClient] = recoveryStart($context, $restoreData, $restoredNetwork, $restoredApp);
-        expect($restoredClient->request('GET', '/users', $headers)->json()['total'] === 0, '恢复错误地保留了备份点之后的写入或丢失软删除状态');
-        expect($restoredClient->request('POST', '/users', $headers, '{"name":"恢复后写入","age":29}')->status === 201, '恢复后原生业务不可写');
+        $login = $restoredClient->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
+            'login' => 'clean-admin', 'password' => $adminPassword,
+        ], JSON_THROW_ON_ERROR));
+        expect($login->status === 200, '恢复后管理员登录失败');
+        $headers = ['Authorization' => 'Bearer ' . $login->json()['data']['accessToken'], 'Content-Type' => 'application/json'];
+        expect($restoredClient->request('GET', '/admin/users?search=after-backup', $headers)->json()['data']['total'] === 0, '恢复错误地保留了备份点之后的写入');
+        expect($restoredClient->request('POST', '/admin/users', $headers, json_encode([
+            'login' => 'restored-write', 'name' => '恢复后写入', 'password' => $adminPassword,
+        ], JSON_THROW_ON_ERROR))->status === 200, '恢复后原生业务不可写');
         recoveryStop($restoredApp);
         $createdRestored = false;
         if ($driver !== 'sqlite') {
-            expect(trim(cleanPackageCommand([...$context['backend-query'], 'SELECT COUNT(*) FROM users'], 10, $context['environment'])) === '2', '恢复修改了原数据库');
+            expect(trim(cleanPackageCommand([...$context['backend-query'], 'SELECT COUNT(*) FROM admin_users'], 10, $context['environment'])) === '3', '恢复修改了原数据库');
         } else {
             $source = new PDO('sqlite:' . $data . '/var/app.sqlite');
-            expect((int) $source->query('SELECT COUNT(*) FROM users')->fetchColumn() === 2, '恢复覆盖了原SQLite数据');
+            expect((int) $source->query('SELECT COUNT(*) FROM admin_users')->fetchColumn() === 3, '恢复覆盖了原SQLite数据');
             unset($source);
         }
         recoveryVerify($backup, $trusted, $expected);

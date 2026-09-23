@@ -37,8 +37,10 @@ $configuration = "APP_ENV=production\nAPP_DEBUG=true\nAPP_LISTEN=127.0.0.1\nAPP_
     . "\nAPP_CACHE_ENABLED=false\nDB_DRIVER=sqlite\nDB_SQLITE_FILE=var/app.sqlite\nAPP_API_TOKEN=" . $token . "\n";
 file_put_contents($runtime . '/.env', $configuration);
 chmod($runtime . '/.env', 0600);
-$environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $runtime, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'TYPE_APP_RELEASE_SHA256' => $package['manifest-sha256']];
-$migration = new Process([$package['directory'] . '/run', 'migrate', 'run'], $package['directory'], $environment);
+$password = bin2hex(random_bytes(16));
+$environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $runtime, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'TYPE_APP_RELEASE_SHA256' => $package['manifest-sha256'],
+    'APP_ADMIN_PASSWORD' => $password, 'APP_CUSTOMER_PASSWORD' => $password . '-customer'];
+$migration = new Process([$package['directory'] . '/run', 'app:install', 'launchd-admin', '服务管理员', 'launchd-customer', '服务客户', '服务租户'], $package['directory'], $environment);
 try {
     $migrated = $migration->wait(15);
     expect($migrated->successful(), '服务前显式迁移失败：' . $migrated->stderr);
@@ -101,15 +103,23 @@ try {
     $command = trim(successful(['/bin/ps', '-p', (string) $pid, '-o', 'comm=']));
     expect($command === $package['directory'] . '/bin/app', 'launchd主进程不是发布包中的原生应用：' . $command);
     expect((int) trim(successful(['/bin/ps', '-p', (string) $pid, '-o', 'uid='])) === posix_geteuid() && posix_geteuid() !== 0, 'launchd应用没有以预期非root账号运行');
-    expect($client->request('GET', '/users')->status === 401, '服务入口丢失授权');
-    $headers = ['Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'];
+    expect($client->request('GET', '/admin/users')->status === 401, '服务入口丢失授权');
+    $login = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
+        'login' => 'launchd-admin', 'password' => $password,
+    ], JSON_THROW_ON_ERROR));
+    expect($login->status === 200, 'launchd管理员登录失败');
+    $headers = ['Authorization' => 'Bearer ' . $login->json()['data']['accessToken'], 'Content-Type' => 'application/json'];
     if (getenv('TYPE_TEMPLATE_EXPECTED_MESSAGE') !== false) {
         expect($client->request('GET', '/', $headers)->json()['message'] === getenv('TYPE_TEMPLATE_EXPECTED_MESSAGE'), 'launchd没有运行接入时修改的业务');
     }
-    expect($client->request('POST', '/users', $headers, '{"name":"服务验收","age":25}')->status === 201, '服务模式CRUD失败');
+    $created = $client->request('POST', '/admin/users', $headers, json_encode([
+        'login' => 'service-user', 'name' => '服务验收', 'password' => $password,
+    ], JSON_THROW_ON_ERROR));
+    expect($created->status === 200, '服务模式CRUD失败');
     expect(serviceControl(['kill', 'SIGKILL', $target])['code'] === 0, '无法对本轮作业注入崩溃');
     $replacement = readyService($target, $client, $pid);
-    expect($client->request('GET', '/users', $headers)->json()['total'] === 1, '崩溃重启丢失外部数据库');
+    $listed = $client->request('GET', '/admin/users?search=service-user', $headers);
+    expect($listed->status === 200 && $listed->json()['data']['total'] === 1, '崩溃重启丢失外部数据库');
     expect(serviceControl(['kill', 'SIGTERM', $target])['code'] === 0, '无法向本轮作业发送正常停止');
     $deadline = microtime(true) + 10;
     while (servicePid($target) !== 0 && microtime(true) < $deadline) {
