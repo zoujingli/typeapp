@@ -188,8 +188,16 @@ function nativeCommand(string $target, bool $isolated = false, array $environmen
 
     $nativeIni = getenv('TYPE_NATIVE_PHP_INI');
     if ($nativeIni !== false) {
-        expect(is_file($nativeIni) && is_dir(dirname($nativeIni) . '/php.d'), '显式原生运行配置缺失');
-        expect(PHP_OS_FAMILY !== 'Windows', 'Windows显式运行配置须由测试进程环境传入PHPRC和PHP_INI_SCAN_DIR，不能依赖Unix env命令');
+        $scanDirectory = dirname($nativeIni) . DIRECTORY_SEPARATOR . 'php.d';
+        expect(is_file($nativeIni) && is_dir($scanDirectory), '显式原生运行配置缺失');
+        if (PHP_OS_FAMILY === 'Windows') {
+            // Windows 没有可靠的 env 前缀命令；写入本进程环境，execute/proc_open 子进程继承。
+            putenv('PHPRC=' . $nativeIni);
+            putenv('PHP_INI_SCAN_DIR=' . $scanDirectory);
+
+            return [$target];
+        }
+
         return ['env', 'PHPRC=' . $nativeIni, 'PHP_INI_SCAN_DIR=' . dirname($nativeIni) . '/php.d', $target];
     }
 
