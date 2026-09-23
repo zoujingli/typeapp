@@ -286,6 +286,7 @@ body:has(.hero) { --content-max-width: 1120px; }
 .guide-meta { margin-top: auto; color: var(--muted); font: 9px ui-monospace, monospace; letter-spacing: .1em; }
 .site-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; width: var(--content-max-width); max-width: calc(100% - var(--content-margin-inline) * 2); margin: 0 auto; padding: 24px 0 30px; border-top: 1px solid var(--border-color); color: var(--muted); font-size: 11px; }
 .site-legal { display: flex; flex-wrap: wrap; align-items: baseline; margin: 0; }
+.site-record-icon { display: inline-block; width: 18px; height: 20px; margin-right: 4px; vertical-align: middle; }
 .site-legal a:not(:last-child)::after { content: "·"; margin: 0 10px; color: var(--line); pointer-events: none; }
 .site-footer a { color: var(--muted); text-decoration: none; }
 .site-footer a:hover { color: var(--brand); }

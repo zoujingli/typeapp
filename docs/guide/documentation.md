@@ -52,7 +52,7 @@ bash tools/deploy-docs-site.sh \
 1. 在本地预览和 `bash tools/test-docs-deployment.sh` 中验证首次发布、更新、无变化、失败保留、回滚和版本清理。
 2. 检查 `LICENSE`、`NOTICE` 和 `assets/vendor/` 许可材料随导出目录存在。
 3. 在真实站点核对 HTTPS、证书续期、缓存重新验证、深层 hash 刷新和真实 404。
-4. 发布后在页脚核对作者 Anyon、Apache-2.0、NOTICE、许可证说明和备案号。
+4. 发布后在页脚核对「TypeApp · 物联开源分享」、Apache-2.0、NOTICE、许可证说明、粤 ICP 备案号和粤公网安备备案号；确认公安备案图标显示在备案号左侧，图标与文字共同链接到对应备案查询页，并在新窗口打开。
 
 回滚时暂停计划任务，确认部署锁空闲，再把 `current` 原子切换到指定 `releases/` 目录。修复提交明确进入远端分支后才能恢复自动同步，避免下一轮发布覆盖人工回滚。
 

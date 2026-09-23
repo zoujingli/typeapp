@@ -1,6 +1,8 @@
 # 文档站维护
 
-站点入口为 `index.html`，使用 Docsify 5.0.0 在浏览器中渲染 Markdown，无 Node/npm 构建步骤。页面标题为「TypeApp - 物联开源分享」，其中「物联开源分享」是 iots.top 的备案网站名称。页脚展示作者 Anyon、Apache-2.0、NOTICE、许可证说明，并链接备案号到工信部备案查询网站。
+站点入口为 `index.html`，使用 Docsify 5.0.0 在浏览器中渲染 Markdown，无 Node/npm 构建步骤。页面标题为「TypeApp - 物联开源分享」，其中「物联开源分享」是 iots.top 的备案网站名称。页脚展示「TypeApp · 物联开源分享」、Apache-2.0、NOTICE、许可证说明，以及粤 ICP 和粤公网安备备案信息。
+
+粤ICP备16006642号链接到工信部备案查询网站；粤公网安备44200102446399号与左侧公安备案图标共同链接到 `https://beian.mps.gov.cn/#/query/webSearch?code=44200102446399`。两类备案链接均使用 `target="_blank"` 和 `rel="noopener noreferrer"`。公安备案图标使用所提供 PNG 原图的 Base64 数据，等比例显示为 18×20，不发起独立图片请求。
 
 ## 内容与资源
 
@@ -16,7 +18,7 @@
 
 指南间使用相对当前 Markdown 文件的链接，与 `relativePath: true` 一致，也可直接在仓库中阅读。全站侧栏、导航和 404 页使用 Docsify 路由根的 `/guide/xxx.md`；首页 HTML 中使用 `#/guide/xxx`。Hash 路由支持根路径和子目录部署，静态服务器无需 SPA 路径重写。
 
-标题由 `index.html` 和 `assets/site.js` 的 `siteTitle` 保持一致；Docsify 页面切换时通过 `pageTitleFormatter` 保留网站名称。作者、许可证与备案信息在静态 HTML 的 footer 中，渲染后移到正文下方，不会因换页重复追加。页脚链接使用普通段落，不使用 `nav`，避免被 Docsify 的 `mergeNavbar` 收走。首页不以法律声明开场；文档与业务地址的边界写在「使用前了解」。
+标题由 `index.html` 和 `assets/site.js` 的 `siteTitle` 保持一致；Docsify 页面切换时通过 `pageTitleFormatter` 保留网站名称。项目与站点名称、许可证与备案信息在静态 HTML 的 footer 中，渲染后移到正文下方，不会因换页重复追加。页脚链接使用普通段落，不使用 `nav`，避免被 Docsify 的 `mergeNavbar` 收走。首页不以法律声明开场；文档与业务地址的边界写在「使用前了解」。
 
 首页使用 HTML 组织主视觉与指南卡片，正文指南仍使用普通 Markdown。首页标题保留 `tabindex="-1"`，供 Docsify 在路由跳转后聚焦，避免其自动滚动遮住主视觉顶部。手机顶部栏在 `index.html` 中定义，导航和搜索继续使用 Docsify 原有侧栏。
 
@@ -75,6 +77,8 @@ python3 -m http.server 3000 --bind 127.0.0.1 --directory "$DOCS_OUTPUT"
 指南中的流程图、架构图和时序图使用语言标记为 mermaid 的代码块，由本地 `assets/vendor/mermaid/mermaid.min.js` 渲染，颜色映射到站点 CSS 变量。不要引用 CDN，也不要把示意图写成已验收能力。
 
 浏览器检查首页、每个指南、章节锚点、搜索命中与无结果、代码复制、404 返回链接、窄屏导航和页脚。分别从站点根和子目录进入深层 Hash 地址并刷新，核对资源请求无遗漏。
+
+页脚检查名称「TypeApp · 物联开源分享」、许可链接及两类备案号；确认公安备案图标与文案对齐、整体链接正确，首页、深层路由和窄屏页面均能完整显示。
 
 更新依赖时从固定版本的 npm 包获取发行文件，核对包完整性，保留许可原文并更新 `assets/vendor/README.md` 的版本与摘要；不在浏览器引用浮动版本的 CDN。导出目录必须保留许可文件，不能把第三方许可误当成 TypeApp 项目许可。
 
