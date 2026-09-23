@@ -135,7 +135,8 @@ file_put_contents($data . '/uploads/example.bin', "backup-resource\0" . random_b
 chmod($data . '/.env', 0600);
 chmod($data . '/uploads/example.bin', 0600);
 $environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $data, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false',
-    'APP_CACHE_ENABLED' => 'false', 'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'var/app.sqlite', 'TYPE_APP_RELEASE_SHA256' => $digest];
+    'APP_CACHE_ENABLED' => 'false', 'APP_ADMIN_PASSWORD' => bin2hex(random_bytes(16)), 'APP_CUSTOMER_PASSWORD' => bin2hex(random_bytes(16)),
+    'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'var/app.sqlite', 'TYPE_APP_RELEASE_SHA256' => $digest];
 $tools = match ($driver) {
     'mysql' => ['dump' => ['mysqldump'], 'restore' => ['mysql']],
     'pgsql' => ['dump' => ['pg_dump'], 'restore' => ['pg_restore']],
@@ -212,8 +213,7 @@ try {
     $sourceCommand = sandboxPackageCommand($root, $package, [$data]);
     nativeRecoveryRun([...$sourceCommand, 'help'], $environment);
     nativeRecoveryRun([...$sourceCommand, 'verify-runtime'], $environment);
-    nativeRecoveryRun([...$sourceCommand, 'migrate', 'run'], $environment);
-    nativeRecoveryRun([...$sourceCommand, 'migrate', 'run'], $environment);
+    nativeRecoveryRun([...$sourceCommand, 'app:install', 'recovery-admin', '恢复管理员', 'recovery-customer', '恢复客户', '恢复租户'], $environment);
     if ($driver === 'sqlite') {
         // 保留维护连接，使应用退出后仍有真实WAL，而不是仅备份已自动检查点的主文件。
         $sourceDatabase = new PDO('sqlite:' . $data . '/var/app.sqlite');
@@ -358,7 +358,7 @@ try {
     $restoredCommand = sandboxPackageCommand($root, $package, [$restored]);
     $restoredHistory = nativeRecoveryRun([...$restoredCommand, 'migrate', 'history'], $restoreEnvironment);
     expect(hash('sha256', $restoredHistory) === $snapshot['migration-history-sha256'], '恢复遗漏或改动迁移历史');
-    nativeRecoveryRun([...$restoredCommand, 'migrate', 'run'], $restoreEnvironment);
+    nativeRecoveryRun([...$restoredCommand, 'migrate', 'status'], $restoreEnvironment);
     expect(file_get_contents($restored . '/.env') === $configuration && hash_file('sha256', $restored . '/uploads/example.bin') === $files['asset.bin']['sha256'], '恢复的配置或资源不一致');
     [$application, $client, $processInfo] = nativeRecoveryServer($root, $package, $restoreEnvironment);
     $children[] = [$application, $processInfo];
@@ -368,7 +368,7 @@ try {
     $readUser = $client->request('GET', '/users/' . $createdUser->json()['data']['id'], $headers);
     expect($readUser->status === 200 && $readUser->json()['data']['name'] === '恢复后写入', '恢复后的新写入无法从原生入口读回');
     expect(stopPackageProcess($application, $package, $processInfo, 10)->successful(), '恢复后的应用没有正常停止');
-    nativeRecoveryRun([...$restoredCommand, 'migrate', 'run'], $restoreEnvironment);
+    nativeRecoveryRun([...$restoredCommand, 'migrate', 'status'], $restoreEnvironment);
     expect(nativeRecoveryRun([...$restoredCommand, 'migrate', 'history'], $restoreEnvironment) === $restoredHistory, '恢复后重复迁移改动了既有历史');
     $sourceDatabase ??= new PDO('sqlite:' . $data . '/var/app.sqlite');
     expect((int) $sourceDatabase->query('SELECT COUNT(*) FROM users')->fetchColumn() === 2, '恢复改动了原数据库');

@@ -254,7 +254,8 @@ final class NativePackage
         $prefix = <<<'SH'
 #!/bin/sh
 set -eu
-root=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
+# 隔离运行时只挂入少量 /usr/bin 程序，不能调用 dirname。
+root=$(CDPATH='' cd -- "${0%/*}" && pwd -P)
 cd "$root"
 unset LD_PRELOAD LD_AUDIT DYLD_INSERT_LIBRARIES DYLD_FRAMEWORK_PATH DYLD_FALLBACK_FRAMEWORK_PATH DYLD_VERSIONED_LIBRARY_PATH DYLD_FALLBACK_LIBRARY_PATH PHP_HOME PHPX_HOME
 TYPE_APP_RUNTIME_ROOT="$root"
