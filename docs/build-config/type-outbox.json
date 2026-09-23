@@ -3,6 +3,10 @@
   "name": "type-outbox",
   "entry": "examples/outbox-command.php",
   "sources": ["examples/model/Drivers.php", "examples/outbox"],
+  "runtime": {
+    "Linux": {"extensions": ["posix"], "functions": ["posix_kill"]},
+    "Darwin": {"extensions": ["posix"], "functions": ["posix_kill"]}
+  },
   "output": "build/outbox/type-app",
   "build-directory": "build/outbox/compiler"
 }
