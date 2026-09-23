@@ -209,7 +209,6 @@ jobs:
           mkdir -p "$task_scan_dir"
           printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" > "$task_scan_dir/zz-typeapp-swoole.ini"
           php -m | grep -qx swoole
-          printf 'PHPRC=%s\n' "$task_ini" >> "$GITHUB_ENV"
 
       - name: 检查源码与公开 PHP 行为
         if: matrix.suite == 'foundation'
