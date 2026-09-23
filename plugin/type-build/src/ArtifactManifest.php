@@ -240,9 +240,10 @@ final class BuildIdentity
             $found = false;
             foreach ($images as $image) {
                 $parts = explode("\n", $image, 2);
-                if ($parts[0] === $systemImage['path'] && ($parts[1] ?? '') === $systemImage['uuid']) { $found = true; }
+                // dyld 可能以 Cryptex/沙箱前缀报告同一系统库；Mach-O UUID 才是稳定身份。
+                if (($parts[1] ?? '') === $systemImage['uuid']) { $found = true; break; }
             }
-            if (!$found) { throw new \RuntimeException('系统共享映像未以声明UUID加载'); }
+            if (!$found) { throw new \RuntimeException('系统共享映像未以声明UUID加载：' . $systemImage['path']); }
         }
     }
 
