@@ -36,12 +36,15 @@ try {
         $failed = null;
         try {
             $database = new NativeDatabase($work, $driver, $tools[$driver] ?? []);
-            $environment = array_replace((new BuildPlatform())->environment(getenv('PHP_HOME') ?: '', getenv('PHPX_HOME') ?: ''), $database->environment());
+            $environment = controlledRuntimeEnvironment(array_replace(
+                (new BuildPlatform())->environment(getenv('PHP_HOME') ?: '', getenv('PHPX_HOME') ?: ''),
+                $database->environment(),
+            ));
             $environment['PHPRC'] = getenv('PHPRC') ?: '';
             $environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
-            foreach (['TYPE_BWRAP_BINARY', 'TYPE_SQLITE_BACKUP_TOOL'] as $name) {
-                if (getenv($name) !== false) {
-                    $environment[$name] = getenv($name);
+            foreach (['TYPE_BWRAP_BINARY', 'TYPE_SQLITE_BACKUP_TOOL', 'PATH'] as $name) {
+                if (getenv($name) !== false && getenv($name) !== '') {
+                    $environment[$name] = (string) getenv($name);
                 }
             }
             $secrets = $driver === 'sqlite' ? [] : [$environment['TYPE_' . strtoupper($driver) . '_PASSWORD']];

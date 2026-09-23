@@ -19,11 +19,11 @@ expect(mkdir($base . '/composer-home', 0700), '无法创建本轮独立Composer�
 $controlIni = getenv('PHPRC') ?: '';
 $controlScan = getenv('PHP_INI_SCAN_DIR') ?: '';
 expect(is_file($controlIni) && is_dir($controlScan), '需要明确的完整控制器INI及独立扫描目录');
-$environment = array_replace((new BuildPlatform())->environment(getenv('PHP_HOME') ?: '', getenv('PHPX_HOME') ?: ''), [
+$environment = controlledRuntimeEnvironment(array_replace((new BuildPlatform())->environment(getenv('PHP_HOME') ?: '', getenv('PHPX_HOME') ?: ''), [
     'PATH' => getenv('PATH') ?: '', 'PHPRC' => $controlIni, 'PHP_INI_SCAN_DIR' => $controlScan,
     'COMPOSER_BINARY' => getenv('COMPOSER_BINARY') ?: 'composer', 'COMPOSER_HOME' => $base . '/composer-home',
     'COMPOSER_CACHE_DIR' => $root . '/.cache/composer', 'COMPOSER_PROCESS_TIMEOUT' => '1800',
-]);
+]));
 $report = ['status' => 'running', 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'suite' => $suite,
     'toolchain-lock-sha256' => hash_file('sha256', $root . '/toolchain.lock.json'),
     'control-ini-sha256' => hash_file('sha256', $controlIni), 'runs' => [], 'artifacts' => []];

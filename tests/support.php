@@ -137,6 +137,23 @@ function successful(array $command, ?string $directory = null): string
     return $stdout;
 }
 
+/**
+ * 把本轮受控模块路径并入子进程环境。Process 会整表替换环境，不能依赖宿主继承。
+ *
+ * @param array<string, string> $environment
+ * @return array<string, string>
+ */
+function controlledRuntimeEnvironment(array $environment): array
+{
+    foreach (['TYPE_SWOOLE_MODULE', 'TYPE_CURL_MODULE', 'TYPE_NATIVE_PHP_INI'] as $key) {
+        $value = getenv($key);
+        if (is_string($value) && $value !== '') {
+            $environment[$key] = $value;
+        }
+    }
+    return $environment;
+}
+
 /** @return array<int,array{parent: int, state: string}> 保留僵尸状态；可按PPID筛选，观察失败不能等同于进程归零。 */
 function unixProcessStates(?int $parent = null): array
 {
