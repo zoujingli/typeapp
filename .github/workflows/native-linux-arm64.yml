@@ -47,7 +47,7 @@ jobs:
           path: |
             .cache/php-sdk/8.5.10-zts
             .cache/php-sdk-build/8.5.10-zts
-          key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v4
+          key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v5
       - name: 换用工具链锁定的 PHP 8.5.10 ZTS
         run: |
           set -euo pipefail
@@ -110,7 +110,16 @@ jobs:
           php -r '$ini=php_ini_loaded_file();$text=$ini===false?"":file_get_contents($ini);foreach(explode(",",(string)php_ini_scanned_files()) as $file){if(trim($file)!==""){$text.="\n".file_get_contents(trim($file));}}if(file_put_contents($argv[1],$text)!==strlen($text)||!chmod($argv[1],0600)){exit(1);}' "$task_control/php.ini"
           sed -i -E '/^[[:space:]]*extension[[:space:]]*=.*(swoole|curl|tokenizer)/Id' "$task_control/php.ini"
           task_curl_module="$(php-config --extension-dir)/curl.so"
-          [[ -f "$task_curl_module" ]] || { echo "缺少 PHP curl 扩展：$task_curl_module" >&2; exit 1; }
+          if [[ -f "$task_curl_module" ]]; then
+            printf 'extension=%s\n' "$task_curl_module" >> "$task_control/php.ini"
+          else
+            # 与 macOS 一致：锁定 PHP 可能把 curl 编进主程序，不产出独立 curl.so。
+            [[ "$(php -r 'echo extension_loaded("curl") ? "1" : "0";')" == "1" ]] || {
+              echo "缺少 PHP curl 扩展：$task_curl_module" >&2
+              exit 1
+            }
+            task_curl_module=""
+          fi
           task_tokenizer_module="$(php-config --extension-dir)/tokenizer.so"
           if [[ ! -f "$task_tokenizer_module" ]]; then
             [[ "$(php -r 'echo extension_loaded("tokenizer") && function_exists("token_get_all") ? "1" : "0";')" == "1" ]] || {
@@ -119,7 +128,6 @@ jobs:
             }
             task_tokenizer_module=""
           fi
-          printf 'extension=%s\n' "$task_curl_module" >> "$task_control/php.ini"
           if [[ -n "$task_tokenizer_module" ]]; then
             printf 'extension=%s\n' "$task_tokenizer_module" >> "$task_control/php.ini"
           fi

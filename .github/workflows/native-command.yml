@@ -114,7 +114,7 @@ jobs:
           path: |
             .cache/php-sdk/8.5.10-zts
             .cache/php-sdk-build/8.5.10-zts
-          key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v4
+          key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v5
 
       - name: 换用工具链锁定的 PHP 8.5.10 ZTS
         run: |
@@ -238,10 +238,30 @@ jobs:
             task_php_probe+=(-d "extension=$task_pdo")
           fi
           task_php_probe+=(-d "extension=$task_swoole_module" -d swoole.enable_fiber_mock=On)
-          task_probe="$("${task_php_probe[@]}" -r 'echo PHP_ZTS && class_exists("Swoole\\Thread", false) && method_exists("Swoole\\Thread", "startNative") && constant("Swoole\\Thread::NATIVE_ENTRY_ABI") === 2 ? "ready" : "missing";')"
+          # 用临时脚本代替 php -r，避免扩展加载后 CLI 参数被吞掉导致空代码。
+          task_probe_script="$(mktemp)"
+          cat >"$task_probe_script" <<'PHP'
+<?php
+echo (PHP_ZTS
+    && class_exists(\Swoole\Thread::class, false)
+    && method_exists(\Swoole\Thread::class, 'startNative')
+    && defined(\Swoole\Thread::class . '::NATIVE_ENTRY_ABI')
+    && constant(\Swoole\Thread::class . '::NATIVE_ENTRY_ABI') === 2) ? 'ready' : 'missing';
+PHP
+          task_probe="$("${task_php_probe[@]}" "$task_probe_script" 2>"$task_probe_script.err" || true)"
+          if [[ -s "$task_probe_script.err" ]]; then
+            cat "$task_probe_script.err" >&2
+          fi
+          rm -f "$task_probe_script" "$task_probe_script.err"
           printf '受控 Swoole 探针：%s\n' "$task_probe"
           [[ "$task_probe" == ready ]]
-          task_hooks="$("${task_php_probe[@]}" -r 'echo defined("SWOOLE_HOOK_PDO_PGSQL") && defined("SWOOLE_HOOK_PDO_SQLITE") ? "hooks" : "missing";')"
+          task_hooks_script="$(mktemp)"
+          cat >"$task_hooks_script" <<'PHP'
+<?php
+echo defined('SWOOLE_HOOK_PDO_PGSQL') && defined('SWOOLE_HOOK_PDO_SQLITE') ? 'hooks' : 'missing';
+PHP
+          task_hooks="$("${task_php_probe[@]}" "$task_hooks_script")"
+          rm -f "$task_hooks_script"
           printf '受控 Swoole PDO 钩子：%s\n' "$task_hooks"
           [[ "$task_hooks" == hooks ]]
 

@@ -18,8 +18,9 @@ fi
 
 if [[ -x "$task_prefix/bin/php" && -x "$task_prefix/bin/php-config" ]]; then
   task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
-  if [[ "$task_version" == "${task_lock_php} zts" && -f "$task_prefix/lib/libphp.so" ]] \
-    && "$task_prefix/bin/php" -r 'exit(extension_loaded("redis") && phpversion("redis")==="6.3.0" && extension_loaded("pdo_mysql") && extension_loaded("pdo_pgsql") && extension_loaded("pdo_sqlite") ? 0 : 1);'; then
+  if [[ "$task_version" == "${task_lock_php} zts" && -f "$task_prefix/lib/libphp.so" \
+    && -f "$("$task_prefix/bin/php-config" --extension-dir)/curl.so" ]] \
+    && "$task_prefix/bin/php" -r 'exit(extension_loaded("redis") && phpversion("redis")==="6.3.0" && extension_loaded("curl") && extension_loaded("pdo_mysql") && extension_loaded("pdo_pgsql") && extension_loaded("pdo_sqlite") ? 0 : 1);'; then
     printf '%s\n' "$task_prefix"
     exit 0
   fi
@@ -55,11 +56,15 @@ sudo apt-get install --yes --no-install-recommends \
     --with-libxml --enable-dom --enable-xml --enable-simplexml --enable-xmlreader --enable-xmlwriter \
     --enable-phar --enable-pdo --enable-mysqlnd --with-pdo-mysql=mysqlnd --with-pdo-pgsql \
     --with-pdo-sqlite --with-sqlite3 --enable-pcntl --enable-posix --enable-sockets \
-    --with-openssl --with-curl --with-zlib --with-zip --with-iconv
+    --with-openssl --with-curl=shared --with-zlib --with-zip --with-iconv
   make -j"$(nproc)"
   make install
 ) >&2
 mkdir -p "$task_prefix/etc/php.d"
+# curl 以 shared 产出，供控制器 / 独立消费显式声明模块路径。
+if [[ -f "$("$task_prefix/bin/php-config" --extension-dir)/curl.so" ]]; then
+  printf 'extension=curl.so\n' > "$task_prefix/etc/php.d/curl.ini"
+fi
 
 task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
 [[ "$task_version" == "${task_lock_php} zts" ]] || {
@@ -68,6 +73,10 @@ task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : 
 }
 [[ -f "$task_prefix/lib/libphp.so" ]] || {
   printf '锁定 PHP 缺少 libphp.so\n' >&2
+  exit 1
+}
+[[ -f "$("$task_prefix/bin/php-config" --extension-dir)/curl.so" ]] || {
+  printf '锁定 PHP 缺少 curl.so\n' >&2
   exit 1
 }
 
@@ -89,6 +98,6 @@ if ! "$task_prefix/bin/php" -m 2>/dev/null | grep -qx redis; then
   printf 'extension=redis.so\n' > "$task_prefix/etc/php.d/redis.ini"
 fi
 
-"$task_prefix/bin/php" -r 'if (PHP_VERSION !== "8.5.10" || !PHP_ZTS || !extension_loaded("pdo_mysql") || !extension_loaded("pdo_pgsql") || !extension_loaded("pdo_sqlite") || !extension_loaded("redis") || phpversion("redis") !== "6.3.0") { fwrite(STDERR, "锁定 PHP 扩展不完整\n"); exit(1); }' >&2
+"$task_prefix/bin/php" -r 'if (PHP_VERSION !== "8.5.10" || !PHP_ZTS || !extension_loaded("curl") || !extension_loaded("pdo_mysql") || !extension_loaded("pdo_pgsql") || !extension_loaded("pdo_sqlite") || !extension_loaded("redis") || phpversion("redis") !== "6.3.0") { fwrite(STDERR, "锁定 PHP 扩展不完整\n"); exit(1); }' >&2
 
 printf '%s\n' "$task_prefix"
