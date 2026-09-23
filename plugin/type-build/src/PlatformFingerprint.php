@@ -214,7 +214,10 @@ final class PlatformFingerprint
                 $declaredWindowsLibraries[$rootName] = BuildPlatform::path($rootPath);
             }
         }
-        $queue = array_map(static fn (string $file): array => [$file, false], $roots);
+        $queue = array_map(static function (string $file): array {
+            // mpdecimal C/C++ 常进入发布闭包，但 TypePHP 进程未用到十进制时通常不映射。
+            return [$file, preg_match('/^libmpdec/i', basename($file)) === 1];
+        }, $roots);
         $seen = [];
         $libraries = [];
         while ($queue !== []) {
@@ -277,10 +280,10 @@ final class PlatformFingerprint
                             }
                         }
                         try {
-                            // mpdecimal C++ 包装库常出现在导入表中，但 TypePHP 进程通常不映射它；
-                            // 仍须进入发布闭包，审计仅在实际观察到加载时要求路径一致。
+                            // mpdecimal 常出现在导入表中，但 TypePHP 进程通常不映射它；
+                            // 仍须进入发布闭包，审计仅在实际按声明路径加载时要求一致。
                             $queue[] = [$this->windowsLibrary($dependencyName, $applicationDirectory, basename($real), $declaredWindowsLibraries),
-                                $deferred || $kind === 'delayed' || preg_match('/^libmpdec\+\+/i', $dependencyName) === 1];
+                                $deferred || $kind === 'delayed' || preg_match('/^libmpdec/i', $dependencyName) === 1];
                         } catch (RuntimeException $error) {
                             throw new RuntimeException($error->getMessage() . "\n父映像依赖表：\n" . $output, 0, $error);
                         }
