@@ -101,6 +101,10 @@ final class NativePackage
             $ini = (new RuntimeIni())->generate($extensions, $libraryDirectory);
             $this->write($stage, 'runtime/php.ini', $ini, 'runtime-configuration', $files);
             $this->directory($stage . '/runtime/empty');
+            // SDK 常静态预置 SNMP；关闭隐式 MIB 搜索，避免宿主/Homebrew 路径污染启动标准流。
+            $this->directory($stage . '/runtime/snmp');
+            $this->directory($stage . '/runtime/snmp/persist');
+            $this->write($stage, 'runtime/snmp/snmp.conf', "# 不加载宿主 MIB 或认证配置；专用 SNMP 业务须显式提供其运行资源。\nmibs :\n", 'runtime-configuration', $files);
             $launcher = PHP_OS_FAMILY === 'Windows' ? 'run.cmd' : 'run';
             $this->write($stage, $launcher, $this->launcher($binary, $interpreter), 'launcher', $files, 0755);
             $instructions = "# 原生发布目录\n\n本目录不包含业务PHP源码、Composer或编译工具链。\n\n1. 从独立受信渠道核对release.json的SHA-256及发布来源。\n2. 将config/env.example复制为.env并填写实际配置，或通过外部环境/APP_BASE_PATH指定配置。秘密不应回写发布包。\n3. 执行./run verify-runtime（Windows为run.cmd verify-runtime）完成目标机审计，再按应用help执行迁移与启动。\n4. 数据、日志和.env由部署环境维护；升级采用新的版本目录，不覆盖旧目录。数据库变更的回滚能力由迁移计划决定。\n\n启动时检查文件字节与实际加载库，不替代发布渠道的真实性验证或操作系统安全。构建报告中的系统版本/映像要求仍适用；未经对应平台验收不得宣称支持。\n";
@@ -249,7 +253,7 @@ final class NativePackage
     private function launcher(string $binary, string $interpreter): string
     {
         if (PHP_OS_FAMILY === 'Windows') {
-            return "@echo off\r\nsetlocal\r\ncd /d \"%~dp0\"\r\nset \"TYPE_APP_RUNTIME_ROOT=%~dp0\"\r\nset \"PHPRC=%~dp0runtime\\php.ini\"\r\nset \"PHP_INI_SCAN_DIR=%~dp0runtime\\empty\"\r\nset \"PHP_HOME=\"\r\nset \"PHPX_HOME=\"\r\nset \"PATH=%~dp0bin;%SystemRoot%\\System32\"\r\n\"%~dp0bin\\app.exe\" %*\r\nexit /b %errorlevel%\r\n";
+            return "@echo off\r\nsetlocal\r\ncd /d \"%~dp0\"\r\nset \"TYPE_APP_RUNTIME_ROOT=%~dp0\"\r\nset \"PHPRC=%~dp0runtime\\php.ini\"\r\nset \"PHP_INI_SCAN_DIR=%~dp0runtime\\empty\"\r\nset \"SNMPCONFPATH=%~dp0runtime\\snmp\"\r\nset \"SNMP_PERSISTENT_DIR=%~dp0runtime\\snmp\\persist\"\r\nset \"PHP_HOME=\"\r\nset \"PHPX_HOME=\"\r\nset \"PATH=%~dp0bin;%SystemRoot%\\System32\"\r\n\"%~dp0bin\\app.exe\" %*\r\nexit /b %errorlevel%\r\n";
         }
         $prefix = <<<'SH'
 #!/bin/sh
@@ -261,7 +265,9 @@ unset LD_PRELOAD LD_AUDIT DYLD_INSERT_LIBRARIES DYLD_FRAMEWORK_PATH DYLD_FALLBAC
 TYPE_APP_RUNTIME_ROOT="$root"
 PHPRC="$root/runtime/php.ini"
 PHP_INI_SCAN_DIR="$root/runtime/empty"
-export TYPE_APP_RUNTIME_ROOT PHPRC PHP_INI_SCAN_DIR
+SNMPCONFPATH="$root/runtime/snmp"
+SNMP_PERSISTENT_DIR="$root/runtime/snmp/persist"
+export TYPE_APP_RUNTIME_ROOT PHPRC PHP_INI_SCAN_DIR SNMPCONFPATH SNMP_PERSISTENT_DIR
 SH;
         if (PHP_OS_FAMILY === 'Darwin') {
             return $prefix . "\nDYLD_LIBRARY_PATH=\"\$root/lib\"\nexport DYLD_LIBRARY_PATH\nexec \"\$root/bin/app\" \"\$@\"\n";

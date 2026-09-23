@@ -122,7 +122,7 @@ try {
         }
     }
     $installed = cleanPackageCommand([...$runtime, '--network', $databaseNetwork, $image, 'app:install', 'clean-admin', '干净管理员', 'clean-customer', '干净客户', '干净租户'], 60, $secretEnvironment);
-    expect(is_array(json_decode($installed, true, 512, JSON_THROW_ON_ERROR)), '干净环境安装没有返回有效状态');
+    expect(is_array(json_decode($installed, true, 512, JSON_THROW_ON_ERROR)), '干净环境安装没有返回有效状态：' . bin2hex($installed));
     foreach (['status', 'history'] as $operation) {
         $migrated = cleanPackageCommand([...$runtime, '--network', $databaseNetwork, $image, 'migrate', $operation], 30, $secretEnvironment);
         expect(is_array(json_decode($migrated, true, 512, JSON_THROW_ON_ERROR)), '干净环境迁移没有返回有效状态');
