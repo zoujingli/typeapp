@@ -84,7 +84,7 @@ foreach ($taskTool in @('bison', 're2c')) {
     if ($LASTEXITCODE -ne 0) { throw ('PHP SDK 构建工具不能运行：' + $taskTool) }
 }
 $taskDevelArchive = Join-Path $Directory 'php-devel.zip'
-Get-VerifiedArchive 'https://downloads.php.net/~windows/releases/php-devel-pack-8.5.10-Win32-vs17-x64.zip' '0031d279f13f21e81fd62f9a98e919f28b1875ba457916d60daed85586e479dd' $taskDevelArchive
+Get-VerifiedArchive 'https://downloads.php.net/~windows/releases/archives/php-devel-pack-8.5.10-Win32-vs17-x64.zip' '0031d279f13f21e81fd62f9a98e919f28b1875ba457916d60daed85586e479dd' $taskDevelArchive
 Expand-Archive -LiteralPath $taskDevelArchive -DestinationPath (Join-Path $Directory 'php-devel')
 $taskDevel = Join-Path $Directory 'php-devel/php-8.5.10-devel-vs17-x64'
 $taskDependencies = @{
