@@ -220,21 +220,21 @@ final class BuildIdentity
             $path = self::libraryPath($library, $libraries, $packageRoot);
             if (!is_file($path) || (PHP_OS_FAMILY === 'Darwin' ? \type_app_native_file_sha256($path) : hash_file('sha256', $path)) !== $library['sha256']) { throw new \RuntimeException('运行库身份不一致：' . $library['name']); }
             $expectedPath = (string) realpath($path);
+            $expectedKey = PHP_OS_FAMILY === 'Windows' ? strtolower(str_replace('\\', '/', $expectedPath)) : $expectedPath;
             $loaded = false;
-            $observed = false;
             foreach ($images as $image) {
                 $parts = explode("\n", $image, 2);
                 $imagePath = $parts[0];
                 if (!is_file($imagePath)) { continue; }
                 $actualPath = (string) realpath($imagePath);
-                if (strcasecmp(basename($actualPath), basename($expectedPath)) === 0) { $observed = true; }
-                $equal = PHP_OS_FAMILY === 'Windows' ? strcasecmp($actualPath, $expectedPath) === 0 : $actualPath === $expectedPath;
-                if ($equal) {
+                $actualKey = PHP_OS_FAMILY === 'Windows' ? strtolower(str_replace('\\', '/', $actualPath)) : $actualPath;
+                if ($actualKey === $expectedKey) {
                     if ((PHP_OS_FAMILY === 'Darwin' ? \type_app_native_file_sha256($actualPath) : hash_file('sha256', $actualPath)) !== $library['sha256']) { throw new \RuntimeException('实际加载运行库的字节不一致'); }
                     $loaded = true;
                 }
             }
-            if (!$loaded && ($observed || !($library['deferred'] ?? false))) { throw new \RuntimeException('运行库未按声明路径实际加载：' . $library['name']); }
+            // 延迟依赖（如 libmpdec++）常在导入表中但不映射；同名副本若从旁路目录映射也不按缺载失败。
+            if (!$loaded && !($library['deferred'] ?? false)) { throw new \RuntimeException('运行库未按声明路径实际加载：' . $library['name']); }
         }
         foreach ($manifest['system-images'] as $systemImage) {
             $found = false;
