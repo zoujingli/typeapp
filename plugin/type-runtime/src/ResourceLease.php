@@ -26,6 +26,11 @@ final class ResourceLease implements ManagedResource
         $this->scope->assertActive();
     }
 
+    public function released(): bool
+    {
+        return $this->released;
+    }
+
     public function resource(): ReusableResource
     {
         $this->scope->assertActive();

@@ -39,6 +39,9 @@ final class ReadWriteSession
         if ($strong || $this->replicaName === null || $this->inTransaction()) {
             return $this->primary();
         }
+        if ($this->replica !== null && $this->replica->released()) {
+            $this->replica = null;
+        }
         try {
             $this->replica ??= $this->manager->connect($this->scope, $this->replicaName);
         } catch (DatabaseException $error) {
@@ -95,6 +98,13 @@ final class ReadWriteSession
 
     private function primary(): Connection
     {
+        // 显式 close() 只归还当前租约；同一作用域的下一次读写必须重新领取，不能复用已归还连接。
+        if ($this->primary !== null && $this->primary->released()) {
+            if ($this->primary->transactionDepth() > 0) {
+                throw new DatabaseException('活动事务的连接已经归还');
+            }
+            $this->primary = null;
+        }
         $this->primary ??= $this->manager->connect($this->scope, $this->primaryName);
         return $this->primary;
     }

@@ -317,6 +317,11 @@ final class Connection
         }
     }
 
+    public function released(): bool
+    {
+        return $this->lease->released();
+    }
+
     public function close(): void
     {
         if ($this->notifying) {
