@@ -111,7 +111,7 @@ jobs:
       - name: 安装原生构建依赖
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config
+          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config libpq-dev libsqlite3-dev
 
       - name: 安装根项目与本地插件
         run: |
@@ -190,7 +190,9 @@ jobs:
       - name: 构建带 startNative 的受控 Swoole
         shell: bash
         env:
-          SWOOLE_CONFIGURE_OPTS: --enable-swoole-thread
+          # PostgreSQL、SQLite 的真实锁等待必须让出协程。缺少对应构建选项时，
+          # 阻塞的 PDO 会占住线程，PostgreSQL 默认无限等锁，原生验收在输出前超时。
+          SWOOLE_CONFIGURE_OPTS: --enable-swoole-thread --enable-swoole-pgsql --enable-swoole-sqlite
         run: |
           task_built="$(bash tools/prepare-swoole-module.sh)"
           task_runtime_dir="$(dirname "${TYPE_NATIVE_PHP_INI:?}")"
@@ -203,6 +205,7 @@ jobs:
           printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" >> "$task_clean"
           mv "$task_clean" "$task_ini"
           [[ "$(php -n -d "extension=$task_swoole_module" -d swoole.enable_fiber_mock=On -r 'echo PHP_ZTS && class_exists("Swoole\\Thread", false) && method_exists("Swoole\\Thread", "startNative") && constant("Swoole\\Thread::NATIVE_ENTRY_ABI") === 2 ? "ready" : "missing";')" == ready ]]
+          [[ "$(php -n -d "extension=$task_swoole_module" -r 'echo defined("SWOOLE_HOOK_PDO_PGSQL") && defined("SWOOLE_HOOK_PDO_SQLITE") ? "hooks" : "missing";')" == hooks ]]
 
       - name: 验证SDK共享模块与真实embed衔接
         if: matrix.suite == 'foundation'
