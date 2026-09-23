@@ -18,9 +18,14 @@ use TypeApp\SchedulerExample\CleanupFailureTask;
 
 function main(int $argc, array $argv): void
 {
-    $GLOBALS['type_app_exit_status'] = (int) \Type\Runtime\CoroutineRuntime::run(
+    $status = (int) \Type\Runtime\CoroutineRuntime::run(
         static fn (): int => schedulerScenario($argc, $argv)
     );
+    $GLOBALS['type_app_exit_status'] = $status;
+    // 原生包装只在全局值可读时补退出码；非零状态在协程结束后直接退出。
+    if ($status !== 0) {
+        exit($status);
+    }
 }
 
 function schedulerScenario(int $argc, array $argv): int
