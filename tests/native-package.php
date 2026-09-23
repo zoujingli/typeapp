@@ -56,7 +56,7 @@ unlink($base . '/.env.example');
 $runtime = $base . '/runtime-data';
 expect(mkdir($runtime, 0700), '无法创建发布之外的独立运行数据根');
 $environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $runtime, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false', 'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'var/app.sqlite',
-    'APP_API_TOKEN' => 'package-test-' . bin2hex(random_bytes(20)), 'TYPE_APP_RELEASE_SHA256' => $created['manifest-sha256']];
+    'APP_API_TOKEN' => 'package-test-' . bin2hex(random_bytes(20)), 'TYPE_APP_RELEASE_SHA256' => $created['manifest-sha256'], 'TYPE_APP_TRACE' => '1'];
 $command = [$package . (PHP_OS_FAMILY === 'Windows' ? '/run.cmd' : '/run')];
 $isolated = false;
 if (PHP_OS_FAMILY === 'Darwin' || (PHP_OS_FAMILY === 'Linux' && getenv('TYPE_BWRAP_BINARY') !== false)) {

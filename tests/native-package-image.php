@@ -66,9 +66,9 @@ function cleanPackageImage(string $package, string $digest, string $base, int $u
     expect(isset($manifest['files']['lib/' . $loader]), '加载器未纳入发布字节清单');
     $entrypoint = ['/app/lib/' . $loader, '--library-path', '/app/lib', '/app/' . $manifest['artifact']['path']];
     file_put_contents($base . '/Dockerfile', "FROM scratch\nCOPY --chown=" . $uid . ':' . $uid . " payload/ /app/\nUSER " . $uid . ':' . $uid . "\nWORKDIR /app\n"
-        . "ENV PHPRC=/app/runtime/php.ini PHP_INI_SCAN_DIR=/app/runtime/empty TYPE_APP_RUNTIME_ROOT=/app"
-        . " SNMPCONFPATH=/app/runtime/snmp SNMP_PERSISTENT_DIR=/app/runtime/snmp/persist\nENTRYPOINT "
-        . json_encode($entrypoint, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
+      . 'ENV PHPRC=/app/runtime/php.ini PHP_INI_SCAN_DIR=/app/runtime/empty TYPE_APP_RUNTIME_ROOT=/app'
+      . " SNMPCONFPATH=/app/runtime/snmp SNMP_PERSISTENT_DIR=/app/runtime/snmp/persist\nENTRYPOINT "
+      . json_encode($entrypoint, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
     $tag = 'type-native-clean-test:' . $identity;
     $inspection = 'type-native-clean-inspect-' . $identity;
     $built = false;
