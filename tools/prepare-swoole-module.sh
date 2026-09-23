@@ -9,6 +9,7 @@ trap 'task_status=$?; echo "Swoole 适配构建在第 ${LINENO} 行失败（退�
 : "${SWOOLE_CONFIGURE_OPTS:?需要 Swoole 配置选项}"
 
 task_root="$GITHUB_WORKSPACE"
+# 与 setup-php 的 swoole-6.2.1 及本仓 Swoole*Source 固定原文对齐；受控构建再启用 pgsql/sqlite 钩子与 startNative。
 task_reference='0f3bee2f0ed8704ce33a336e7feabb0115411dd7'
 task_archive="$RUNNER_TEMP/swoole-src.tar.gz"
 task_source="$RUNNER_TEMP/swoole-src-$task_reference"
