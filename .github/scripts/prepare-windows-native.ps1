@@ -25,15 +25,15 @@ foreach ($line in $variables) {
 
 function Get-VerifiedDownload {
     param([string]$Url, [string]$Path)
+    $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
+    if (!(Test-Path -LiteralPath $curl)) { throw 'Windows 系统 curl 不存在。' }
     $lastError = $null
     for ($attempt = 1; $attempt -le 3; $attempt++) {
-        try {
-            Invoke-WebRequest -Uri $Url -OutFile $Path -ErrorAction Stop
-            return
-        } catch {
-            $lastError = $_
-            if ($attempt -lt 3) { Start-Sleep -Seconds (5 * $attempt) }
-        }
+        & $curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 180 -A 'typeapp-sdk-fetch' -o $Path $Url
+        if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $Path) -and (Get-Item -LiteralPath $Path).Length -gt 0) { return }
+        $lastError = "下载失败（$LASTEXITCODE）：$Url"
+        if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force }
+        if ($attempt -lt 3) { Start-Sleep -Seconds (5 * $attempt) }
     }
     throw $lastError
 }
