@@ -114,15 +114,22 @@ jobs:
           key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v3
       - name: 换用工具链锁定的 PHP 8.5.10 ZTS
         run: |
+          set -euo pipefail
+          # setup-php 对 ZTS 只认 8.5，会装上 php-builder 当前补丁；工具链锁仍是 8.5.10。
           task_php="$(php -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
           if [[ "$task_php" != "8.5.10 zts" ]]; then
-            printf 'setup-php 实际版本为 %s，改用源码锁定安装\n' "$task_php"
-            task_prefix="20 20 12 61 79 80 81 701 33 98 100 204 250 395 398 399 400bash tools/install-locked-linux-php.sh | tail -n 1)"
-            printf '%s/bin\n' "$task_prefix" >> "$GITHUB_PATH"
+            printf 'setup-php 实际版本为 %s，改用源码锁定安装
+' "$task_php"
+            task_prefix="$(bash tools/install-locked-linux-php.sh)"
+            [[ "$task_prefix" == /* && -x "$task_prefix/bin/php" ]]
+            printf '%s/bin
+' "$task_prefix" >> "$GITHUB_PATH"
             export PATH="$task_prefix/bin:$PATH"
+            hash -r
           fi
           task_php="$(php -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
-          [[ "$task_php" == "8.5.10 zts" ]] || { printf '锁定 PHP 未生效：%s\n' "$task_php" >&2; exit 1; }
+          [[ "$task_php" == "8.5.10 zts" ]] || { printf '锁定 PHP 未生效：%s
+' "$task_php" >&2; exit 1; }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: type-batch-result
