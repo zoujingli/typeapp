@@ -2,6 +2,7 @@
 # 在 Linux CI 上安装工具链锁定的 PHP 8.5.10 ZTS + embed。
 # setup-php 对 ZTS 只认主版本并拉取 php-builder 当前补丁（现为 8.5.11），
 # 与 macOS 固定 Homebrew 瓶同理，这里从官方源码构建锁定补丁。
+# 标准输出仅打印安装前缀；构建日志一律写入 stderr，避免被命令替换吞进 PATH。
 set -euo pipefail
 
 task_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,19 +30,19 @@ task_archive="$task_work/php-${task_lock_php}.tar.xz"
 if [[ ! -f "$task_archive" ]]; then
   curl --fail --location --silent --show-error --retry 3 \
     "https://www.php.net/distributions/php-${task_lock_php}.tar.xz" \
-    --output "$task_archive"
+    --output "$task_archive" >&2
 fi
 printf '%s  %s\n' "$task_archive_sha" "$task_archive" | sha256sum --check >&2
 
 if [[ ! -d "$task_work/src/php-${task_lock_php}" ]]; then
-  tar -xJf "$task_archive" -C "$task_work/src"
+  tar -xJf "$task_archive" -C "$task_work/src" >&2
 fi
 
-sudo apt-get update
+sudo apt-get update >&2
 sudo apt-get install --yes --no-install-recommends \
   build-essential autoconf bison re2c pkg-config \
   libxml2-dev libssl-dev libcurl4-openssl-dev libsqlite3-dev \
-  libpq-dev libonig-dev libzip-dev zlib1g-dev
+  libpq-dev libonig-dev libzip-dev zlib1g-dev >&2
 
 (
   cd "$task_work/src/php-${task_lock_php}"
@@ -57,7 +58,7 @@ sudo apt-get install --yes --no-install-recommends \
     --with-openssl --with-curl --with-zlib --with-zip --with-iconv
   make -j"$(nproc)"
   make install
-)
+) >&2
 mkdir -p "$task_prefix/etc/php.d"
 
 task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
@@ -75,8 +76,8 @@ if ! "$task_prefix/bin/php" -m 2>/dev/null | grep -qx redis; then
   task_redis_src="$task_work/redis-6.3.0"
   if [[ ! -d "$task_redis_src" ]]; then
     curl --fail --location --silent --show-error --retry 3 \
-      https://pecl.php.net/get/redis-6.3.0.tgz --output "$task_work/redis-6.3.0.tgz"
-    tar -xzf "$task_work/redis-6.3.0.tgz" -C "$task_work"
+      https://pecl.php.net/get/redis-6.3.0.tgz --output "$task_work/redis-6.3.0.tgz" >&2
+    tar -xzf "$task_work/redis-6.3.0.tgz" -C "$task_work" >&2
   fi
   (
     cd "$task_redis_src"
@@ -84,10 +85,10 @@ if ! "$task_prefix/bin/php" -m 2>/dev/null | grep -qx redis; then
     ./configure --with-php-config="$task_prefix/bin/php-config"
     make -j"$(nproc)"
     make install
-  )
+  ) >&2
   printf 'extension=redis.so\n' > "$task_prefix/etc/php.d/redis.ini"
 fi
 
-"$task_prefix/bin/php" -r 'if (PHP_VERSION !== "8.5.10" || !PHP_ZTS || !extension_loaded("pdo_mysql") || !extension_loaded("pdo_pgsql") || !extension_loaded("pdo_sqlite") || !extension_loaded("redis") || phpversion("redis") !== "6.3.0") { fwrite(STDERR, "锁定 PHP 扩展不完整\n"); exit(1); }'
+"$task_prefix/bin/php" -r 'if (PHP_VERSION !== "8.5.10" || !PHP_ZTS || !extension_loaded("pdo_mysql") || !extension_loaded("pdo_pgsql") || !extension_loaded("pdo_sqlite") || !extension_loaded("redis") || phpversion("redis") !== "6.3.0") { fwrite(STDERR, "锁定 PHP 扩展不完整\n"); exit(1); }' >&2
 
 printf '%s\n' "$task_prefix"
