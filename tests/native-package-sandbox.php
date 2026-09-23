@@ -44,7 +44,7 @@ function sandboxPackageCommand(string $root, string $package, array $dataDirecto
         // 发布目录可能位于开发工具父目录内，例外仍只限已校验的包和显式数据目录。
         . '(deny file-read-data (require-all (require-any ' . $dependencyFilters . ')' . $readExceptions . '))'
         . '(deny process-exec (require-all (subpath ' . $quote($root) . ') (require-not (subpath ' . $quote($package) . '))))'
-        . '(deny process-exec (require-all (require-any ' . $dependencyFilters . '(literal ' . $quote(PHP_BINARY) . '))'
+        . '(deny process-exec (require-all (require-any ' . $dependencyFilters . '(literal ' . $quote(PHP_BINARY) . ') (literal "/usr/bin/clang") (literal "/usr/bin/clang++"))'
         . '(require-not (subpath ' . $quote($package) . '))))';
     $prefix = ['/usr/bin/sandbox-exec', '-p', $profile];
     // 先证明同一策略可读发布文件，避免策略语法错误使所有负向探针假通过。
@@ -60,7 +60,7 @@ function sandboxPackageCommand(string $root, string $package, array $dataDirecto
     expect($compiler->successful(), '控制端编译器不可用，不能证明执行被隔离拒绝');
     foreach ([[PHP_BINARY, '-v'], ['/usr/bin/clang', '--version']] as $tool) {
         $denied = (new Process([...$prefix, ...$tool]))->wait(3);
-        expect(!$denied->successful() && !$denied->timedOut, '隔离环境仍可执行PHP/编译器');
+        expect(!$denied->successful() && !$denied->timedOut, '隔离环境仍可执行PHP/编译器：' . implode(' ', $tool));
     }
     return [...$prefix, $package . '/run'];
 }

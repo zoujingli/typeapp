@@ -21,17 +21,6 @@ final class ResponseEmitter
         try {
             if ($scope !== null) {
                 $scope->assertActive();
-                $remaining = $scope->deadline()->remaining();
-                if ($remaining !== null) {
-                    $coroutine = \Swoole\Coroutine::getCid();
-                    // Swoole的send_yield默认无限等待；只唤醒本次发送协程，资源仍由原所有者清理。
-                    $sendTimer = (int) \Swoole\Timer::after(max(1, (int) ceil($remaining * 1000)), static function () use ($coroutine): void {
-                        \Swoole\Coroutine::cancel($coroutine);
-                    });
-                    if ($sendTimer < 1) {
-                        throw new \RuntimeException('无法设置HTTP响应发送截止');
-                    }
-                }
             }
             $stream = $message->getBody();
             if ($stream->isSeekable()) {
@@ -43,6 +32,21 @@ final class ResponseEmitter
             $chunk = $noBody || $stream->eof() ? '' : $stream->read(16384);
             if (!$noBody && (($size !== null && strlen($chunk) > $size) || ($chunk === '' && (!$stream->eof() || ($size !== null && $size !== 0))))) {
                 throw new \RuntimeException('响应流长度或读取进度无效');
+            }
+            if ($scope !== null) {
+                // 第一块读取期间取消协程会让随后的错误响应写不完整。截止由读取方的 assertActive 判定。
+                $scope->assertActive();
+                $remaining = $scope->deadline()->remaining();
+                if ($remaining !== null) {
+                    $coroutine = \Swoole\Coroutine::getCid();
+                    // Swoole的send_yield默认无限等待；只唤醒本次发送协程，资源仍由原所有者清理。
+                    $sendTimer = (int) \Swoole\Timer::after(max(1, (int) ceil($remaining * 1000)), static function () use ($coroutine): void {
+                        \Swoole\Coroutine::cancel($coroutine);
+                    });
+                    if ($sendTimer < 1) {
+                        throw new \RuntimeException('无法设置HTTP响应发送截止');
+                    }
+                }
             }
             $output->status($status);
             foreach ($message->getHeaders() as $name => $values) {
