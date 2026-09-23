@@ -204,8 +204,21 @@ jobs:
           awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*swoole/ && tolower($0) !~ /^[[:space:]]*swoole.enable_fiber_mock/' "$task_ini" > "$task_clean"
           printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" >> "$task_clean"
           mv "$task_clean" "$task_ini"
-          [[ "$(php -n -d "extension=$task_swoole_module" -d swoole.enable_fiber_mock=On -r 'echo PHP_ZTS && class_exists("Swoole\\Thread", false) && method_exists("Swoole\\Thread", "startNative") && constant("Swoole\\Thread::NATIVE_ENTRY_ABI") === 2 ? "ready" : "missing";')" == ready ]]
-          [[ "$(php -n -d "extension=$task_swoole_module" -r 'echo defined("SWOOLE_HOOK_PDO_PGSQL") && defined("SWOOLE_HOOK_PDO_SQLITE") ? "hooks" : "missing";')" == hooks ]]
+          # 启用 pgsql/sqlite 后 Swoole 把 pdo 标成必需模块。php -n 不会加载它，
+          # 模块初始化失败又默认不显示，探针会把启动失败看成缺少 startNative。
+          task_php_probe=(php -n -d display_startup_errors=1 -d display_errors=1)
+          if ! php -n -r 'exit(extension_loaded("pdo") ? 0 : 1)'; then
+            task_pdo="$(php-config --extension-dir)/pdo.so"
+            [[ -f "$task_pdo" ]]
+            task_php_probe+=(-d "extension=$task_pdo")
+          fi
+          task_php_probe+=(-d "extension=$task_swoole_module" -d swoole.enable_fiber_mock=On)
+          task_probe="$("${task_php_probe[@]}" -r 'echo PHP_ZTS && class_exists("Swoole\\Thread", false) && method_exists("Swoole\\Thread", "startNative") && constant("Swoole\\Thread::NATIVE_ENTRY_ABI") === 2 ? "ready" : "missing";')"
+          printf '受控 Swoole 探针：%s\n' "$task_probe"
+          [[ "$task_probe" == ready ]]
+          task_hooks="$("${task_php_probe[@]}" -r 'echo defined("SWOOLE_HOOK_PDO_PGSQL") && defined("SWOOLE_HOOK_PDO_SQLITE") ? "hooks" : "missing";')"
+          printf '受控 Swoole PDO 钩子：%s\n' "$task_hooks"
+          [[ "$task_hooks" == hooks ]]
 
       - name: 验证SDK共享模块与真实embed衔接
         if: matrix.suite == 'foundation'
