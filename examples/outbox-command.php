@@ -91,42 +91,43 @@ function outboxScenario(int $argc, array $argv): void
         }
         // 仅发布/消费角色需要 Redis；help/setup/collect/tokens 不得构造连接管理器。
         $manager = new RedisManager(['default' => new RedisConfiguration((string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379))]);
-        $queue = new Queue($manager->connection($scope, 'default', Purpose::SCRIPT), (string) getenv('TYPE_OUTBOX_APPLICATION'));
-        if ($mode === 'crash' || $mode === 'relay' || $mode === 'replay') {
-            if ($mode === 'replay') {
-                $connection = $database->connect($scope);
-                outboxExpect($store->replay($connection, 'stable-business', '验证人工对账重放'), '重放窗口内不能重放');
-                $connection->close();
-            }
-            $count = (new Relay($database, $store, new QueuePublisher($queue, $mode === 'crash')))->runOnce(10);
-            outboxExpect($count === 1, 'relay 没有发布保留意图');
-            echo "消息发布及 token 标记通过。\n";
-            return;
-        }
-        $connection = $database->connect($scope);
-        if ($mode === 'consume' || $mode === 'consume-replay') {
-            $registry = new Registry();
-            $registry->register('delivered', 1, static fn (JobContext $context): Delivered => new Delivered($driver, $store));
-            $worker = new Worker($queue, $registry, 'outbox-worker');
-            $processed = 0;
-            while ($worker->runOnce()) {
-                if (++$processed > 10) {
-                    throw new RuntimeException('消费数量异常');
+        try {
+            $queue = new Queue($manager->connection($scope, 'default', Purpose::SCRIPT), (string) getenv('TYPE_OUTBOX_APPLICATION'));
+            if ($mode === 'crash' || $mode === 'relay' || $mode === 'replay') {
+                if ($mode === 'replay') {
+                    $connection = $database->connect($scope);
+                    outboxExpect($store->replay($connection, 'stable-business', '验证人工对账重放'), '重放窗口内不能重放');
+                    $connection->close();
                 }
+                $count = (new Relay($database, $store, new QueuePublisher($queue, $mode === 'crash')))->runOnce(10);
+                outboxExpect($count === 1, 'relay 没有发布保留意图');
+                echo "消息发布及 token 标记通过。\n";
+                return;
             }
-            outboxExpect($processed === ($mode === 'consume' ? 2 : 1) && (int) $connection->table('type_outbox_effects')->aggregate('COUNT') === 1, '重发消息产生重复效果');
-            $record = $store->status($connection, 'stable-business');
-            outboxExpect($record['state'] === 'published' && $record['consumed_receipt'] === 'receipt:stable-business' && $record['accepted_receipt'] !== null, '没有保留接受和消费凭据');
-            outboxExpect($store->collect($connection) === 0, '保留窗口内删除了消息意图');
-            echo "重复投递幂等消费与保留凭据通过。\n";
-            return;
+            $connection = $database->connect($scope);
+            if ($mode === 'consume' || $mode === 'consume-replay') {
+                $registry = new Registry();
+                $registry->register('delivered', 1, static fn (JobContext $context): Delivered => new Delivered($driver, $store));
+                $worker = new Worker($queue, $registry, 'outbox-worker');
+                $processed = 0;
+                while ($worker->runOnce()) {
+                    if (++$processed > 10) {
+                        throw new RuntimeException('消费数量异常');
+                    }
+                }
+                outboxExpect($processed === ($mode === 'consume' ? 2 : 1) && (int) $connection->table('type_outbox_effects')->aggregate('COUNT') === 1, '重发消息产生重复效果');
+                $record = $store->status($connection, 'stable-business');
+                outboxExpect($record['state'] === 'published' && $record['consumed_receipt'] === 'receipt:stable-business' && $record['accepted_receipt'] !== null, '没有保留接受和消费凭据');
+                outboxExpect($store->collect($connection) === 0, '保留窗口内删除了消息意图');
+                echo "重复投递幂等消费与保留凭据通过。\n";
+                return;
+            }
+            throw new RuntimeException('未知 Outbox 演练命令');
+        } finally {
+            $manager->close();
         }
-        throw new RuntimeException('未知 Outbox 演练命令');
     } finally {
         $scope->close();
         $database->close();
-        if (isset($manager)) {
-            $manager->close();
-        }
     }
 }
