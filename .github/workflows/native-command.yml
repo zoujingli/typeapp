@@ -176,15 +176,8 @@ jobs:
           awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*swoole/ && tolower($0) !~ /^[[:space:]]*swoole.enable_fiber_mock/' "$task_ini" > "$task_clean"
           printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" >> "$task_clean"
           mv "$task_clean" "$task_ini"
-          # 启用 pgsql/sqlite 后 Swoole 把 pdo 标成必需模块。php -n 不会加载它，
-          # 模块初始化失败又默认不显示，探针会把启动失败看成缺少 startNative。
-          task_php_probe=(php -n -d display_startup_errors=1 -d display_errors=1)
-          if ! php -n -m 2>/dev/null | grep -qx pdo; then
-            task_pdo="$(php-config --extension-dir)/pdo.so"
-            [[ -f "$task_pdo" ]] || { echo "缺少 pdo.so：$task_pdo" >&2; exit 1; }
-            task_php_probe+=(-d "extension=$task_pdo")
-          fi
-          task_php_probe+=(-d "extension=$task_swoole_module" -d swoole.enable_fiber_mock=On)
+          # 探针走已写好的运行 ini（含 PDO 等），不要 php -n 再去拼不存在的 pdo.so。
+          task_php_probe=(env "PHPRC=$task_ini" "PHP_INI_SCAN_DIR=" php -d display_startup_errors=1 -d display_errors=1)
           task_probe_script="$(mktemp)"
           printf '%s\n' '<?php' \
             'echo (PHP_ZTS' \
