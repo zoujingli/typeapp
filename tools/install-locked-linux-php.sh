@@ -17,10 +17,12 @@ if [[ "$(uname -s)" != Linux ]]; then
 fi
 
 if [[ -x "$task_prefix/bin/php" && -x "$task_prefix/bin/php-config" ]]; then
-  task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
+  # 清理误写入可缓存前缀的受控 Swoole 声明，避免启动警告污染版本探测。
+  rm -f "$task_prefix/etc/php.d/zz-typeapp-swoole.ini"
+  task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";' 2>/dev/null)"
   if [[ "$task_version" == "${task_lock_php} zts" && -f "$task_prefix/lib/libphp.so" \
     && -f "$("$task_prefix/bin/php-config" --extension-dir)/curl.so" ]] \
-    && "$task_prefix/bin/php" -r 'exit(extension_loaded("redis") && phpversion("redis")==="6.3.0" && extension_loaded("curl") && extension_loaded("pdo_mysql") && extension_loaded("pdo_pgsql") && extension_loaded("pdo_sqlite") ? 0 : 1);'; then
+    && "$task_prefix/bin/php" -r 'exit(extension_loaded("redis") && phpversion("redis")==="6.3.0" && extension_loaded("curl") && extension_loaded("pdo_mysql") && extension_loaded("pdo_pgsql") && extension_loaded("pdo_sqlite") ? 0 : 1);' 2>/dev/null; then
     printf '%s\n' "$task_prefix"
     exit 0
   fi

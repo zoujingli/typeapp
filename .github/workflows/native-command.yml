@@ -114,7 +114,7 @@ jobs:
           path: |
             .cache/php-sdk/8.5.10-zts
             .cache/php-sdk-build/8.5.10-zts
-          key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v5
+          key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v6
 
       - name: 换用工具链锁定的 PHP 8.5.10 ZTS
         run: |
@@ -204,10 +204,13 @@ jobs:
           rm -f "$task_hooks_script"
           printf '受控 Swoole PDO 钩子：%s\n' "$task_hooks"
           [[ "$task_hooks" == hooks ]]
-          # 锁定 PHP 的 CLI 默认扫描目录挂上受控模块，供 foundation / 装配等后续步骤使用。
-          task_scan_dir="$(php-config --prefix)/etc/php.d"
-          mkdir -p "$task_scan_dir"
-          printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" > "$task_scan_dir/zz-typeapp-swoole.ini"
+          # 受控模块写入工作区扫描目录，避免污染可缓存的 PHP 前缀。
+          task_cli_d="$GITHUB_WORKSPACE/.cache/typeapp-php.d"
+          mkdir -p "$task_cli_d"
+          printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" > "$task_cli_d/zz-typeapp-swoole.ini"
+          task_default_scan="$(php-config --prefix)/etc/php.d"
+          printf 'PHP_INI_SCAN_DIR=%s:%s\n' "$task_cli_d" "$task_default_scan" >> "$GITHUB_ENV"
+          export PHP_INI_SCAN_DIR="$task_cli_d:$task_default_scan"
           php -m | grep -qx swoole
 
       - name: 检查源码与公开 PHP 行为
