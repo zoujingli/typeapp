@@ -103,7 +103,7 @@ function buildScenario(string $root, string $configuration, ?string $stage = nul
     $composerPhar = getenv('TYPE_COMPOSER_PHAR');
     $composerCommand = is_string($composerPhar) && $composerPhar !== ''
         ? [PHP_BINARY, BuildPlatform::resolve($composerPhar)] : [getenv('COMPOSER_BINARY') ?: 'composer'];
-    successful([...$composerCommand, 'update', '--minimal-changes', '--no-interaction', '--no-scripts', '--no-plugins', '--prefer-dist', '--no-progress'], $work);
+    successful([...$composerCommand, 'update', '--minimal-changes', '--no-interaction', '--no-scripts', '--no-plugins', '--prefer-dist', '--no-progress', '--ignore-platform-req=ext-swoole'], $work);
     if ($stage !== null) {
         $destination = BuildPlatform::path($stage);
         BuildLock::path($destination);

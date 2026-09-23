@@ -50,9 +50,26 @@ final class PackageArchive
                 $archive[$relative]->chmod(fileperms($directory . '/' . $relative) & 0777);
             }
             if ($format === 'tar.gz') {
-                $compressed = $archive->compress(Phar::GZ);
-                unset($compressed);
                 $packed = $container . '.gz';
+                $gzip = PHP_OS_FAMILY === 'Windows' ? null : (is_file('/usr/bin/gzip') ? '/usr/bin/gzip' : (is_file('/bin/gzip') ? '/bin/gzip' : null));
+                if ($gzip !== null) {
+                    // Phar::compress 会把完整 tar 留在内存；公开 CLI 固定 128 MiB，优先系统 gzip 流式落盘。
+                    $null = '/dev/null';
+                    $pipes = [];
+                    $process = proc_open([$gzip, '-n', '-c', $container], [0 => ['file', $null, 'r'], 1 => ['file', $packed, 'wb'], 2 => ['pipe', 'w']], $pipes);
+                    if (!is_resource($process)) {
+                        throw new RuntimeException('无法启动 gzip 压缩发布归档');
+                    }
+                    $stderr = stream_get_contents($pipes[2]);
+                    fclose($pipes[2]);
+                    $status = proc_close($process);
+                    if ($status !== 0 || !is_file($packed) || filesize($packed) < 1) {
+                        throw new RuntimeException('无法压缩发布归档：' . $stderr);
+                    }
+                } else {
+                    $compressed = $archive->compress(Phar::GZ);
+                    unset($compressed);
+                }
             } else {
                 $packed = $container;
             }
