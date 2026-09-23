@@ -62,7 +62,12 @@ final class Endpoint implements RequestHandlerInterface
         } else {
             $connection = $this->databases->connect($scope, $path === '/alternate' ? 'alternate' : 'default');
             file_put_contents((string) getenv('TYPE_BACKPRESSURE_TRACE'), $path . "\n", FILE_APPEND | LOCK_EX);
-            $data = $connection->query('SELECT SLEEP(' . ($path === '/deadline' ? '0.8' : ($path === '/quick' ? '0' : '0.25')) . ') AS waited')[0];
+            if ($path === '/slow' || $path === '/alternate') {
+                // Swoole 6.2 没有 MySQL PDO 钩子，查询里的 SLEEP 会占住唯一 worker。
+                // 租约在协程休眠期间保持，后续借用才能撞上共享额度。
+                \Swoole\Coroutine::sleep(0.25);
+            }
+            $data = $connection->query('SELECT SLEEP(' . ($path === '/deadline' ? '0.8' : '0') . ') AS waited')[0];
         }
         return $factory->createResponse()->withHeader('Content-Type', 'application/json')->withBody($factory->createStream(json_encode($data, JSON_THROW_ON_ERROR)));
     }
