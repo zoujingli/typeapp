@@ -668,6 +668,9 @@ final class Broker
                     return;
                 }
                 $this->ingest($connection, $data);
+                if ($connection->authPending && $connection->alive() && !$connection->closing) {
+                    $this->completeConnectAuth($connection);
+                }
                 if ($connection->output !== '') {
                     $this->flush($connection);
                 }
@@ -729,6 +732,9 @@ final class Broker
                         return;
                     }
                     $this->ingest($connection, $frame->data);
+                    if ($connection->authPending && $connection->alive() && !$connection->closing) {
+                        $this->completeConnectAuth($connection);
+                    }
                     if ($connection->output !== '') {
                         $this->flush($connection);
                     }
@@ -791,31 +797,32 @@ final class Broker
             return;
         }
         $epoch = $fd > 0 ? ($this->nativeEpochs[$fd] ?? 0) : 0;
-        $deadline = new Deadline($this->options->callbackSeconds);
         if ($fd > 0) {
             $this->pendingFdEvents[$fd] = ($this->pendingFdEvents[$fd] ?? 0) + 1;
-            $this->nativeServer?->pause($fd);
         }
         $this->pendingEvents++;
         $this->pendingEventBytes += $bytes;
-        $created = Coroutine::create(function () use ($event, $operation, $fd, $bytes, $epoch, $deadline): void {
+        $created = Coroutine::create(function () use ($event, $operation, $fd, $bytes, $epoch): void {
             $acquired = false;
+            $paused = false;
             try {
                 if ($this->eventGate === null) {
                     $this->eventGate = new Channel(1);
                     $this->eventGate->push(true);
                 }
-                if ($deadline->expired()) {
-                    throw new \RuntimeException('mqtt_callback_wait_timeout');
-                }
-                $acquired = $this->eventGate->pop((float) $deadline->remaining()) === true;
+                // 排队不占用业务截止，也不提前 pause；否则 TLS 握手会在等事件门时被掐断。
+                $acquired = $this->eventGate->pop($this->options->callbackSeconds) === true;
                 if (!$acquired) {
                     throw new \RuntimeException('mqtt_callback_wait_timeout');
                 }
                 if ($this->stopping || ($fd > 0 && ($epoch === 0 || ($this->nativeEpochs[$fd] ?? 0) !== $epoch))) {
                     return;
                 }
-                $scope = new ExecutionScope($deadline, ['protocol' => 'mqtt', 'event' => $event, 'connection' => (string) $fd]);
+                if ($fd > 0) {
+                    $this->nativeServer?->pause($fd);
+                    $paused = true;
+                }
+                $scope = new ExecutionScope(new Deadline($this->options->callbackSeconds), ['protocol' => 'mqtt', 'event' => $event, 'connection' => (string) $fd]);
                 try {
                     $scope->run($operation);
                 } finally {
@@ -828,32 +835,33 @@ final class Broker
                         }
                     }
                 }
-            } catch (\Throwable) {
+            } catch (\Throwable $error) {
                 $this->callbackFailures++;
-                if ($fd > 0 && ($this->nativeEpochs[$fd] ?? 0) === $epoch) {
+                $queued = $error instanceof \RuntimeException && $error->getMessage() === 'mqtt_callback_wait_timeout';
+                if (!$queued && $fd > 0 && ($this->nativeEpochs[$fd] ?? 0) === $epoch) {
                     $this->nativeServer?->close($fd, true);
-                } elseif ($fd === 0) {
+                } elseif (!$queued && $fd === 0) {
                     $this->stop();
                 }
             } finally {
-                $this->completeNativeEvent($event, $fd, $bytes, $epoch, $acquired);
+                $this->completeNativeEvent($event, $fd, $bytes, $epoch, $acquired, $paused);
             }
         });
         if ($created === false) {
             $this->callbackFailures++;
-            $this->completeNativeEvent($event, $fd, $bytes, $epoch, false);
+            $this->completeNativeEvent($event, $fd, $bytes, $epoch, false, false);
             $this->stop();
         }
     }
 
-    /** 正常、异常及创建失败共用额度归还；只有仍属同一接纳代次的连接才恢复读取。 */
-    private function completeNativeEvent(string $event, int $fd, int $bytes, int $epoch, bool $acquired): void
+    /** 正常、异常及创建失败共用额度归还；只有本次确实暂停过的连接才恢复读取。 */
+    private function completeNativeEvent(string $event, int $fd, int $bytes, int $epoch, bool $acquired, bool $paused): void
     {
         $this->pendingEvents--;
         $this->pendingEventBytes -= $bytes;
         if ($fd > 0 && ($this->nativeEpochs[$fd] ?? 0) === $epoch) {
             $this->pendingFdEvents[$fd]--;
-            if ($this->pendingFdEvents[$fd] === 0 && !$this->stopping) {
+            if ($paused && $this->pendingFdEvents[$fd] === 0 && !$this->stopping) {
                 $this->nativeServer?->resume($fd);
             }
         }
@@ -2306,6 +2314,24 @@ final class Broker
 
     private function tick(): void
     {
+        $authenticated = 0;
+        foreach ($this->connections as $connection) {
+            if ($connection->authPending && $connection->alive() && !$connection->closing) {
+                $this->completeConnectAuth($connection);
+                if ($connection->output !== '') {
+                    $this->flush($connection);
+                }
+                if (++$authenticated >= 4) {
+                    break;
+                }
+            }
+        }
+        $this->pollCommits();
+        foreach ($this->connections as $connection) {
+            if ($connection->alive() && $connection->output !== '') {
+                $this->flush($connection);
+            }
+        }
         $this->spawnClientCrlFetch();
         $this->reloadPlatformRevoke();
         $this->reloadClientOverlap();
@@ -2356,7 +2382,8 @@ final class Broker
                     $this->flushTimeouts++;
                     $connection->close();
                 }
-            } elseif (!$connection->connected && $connection->handshake->expired()) {
+            } elseif (!$connection->connected && !$connection->authPending && !$connection->sessionPending && $connection->handshake->expired() && $connection->input === '') {
+                // 半包走 partial 截止；会话打开等待不能按空闲握手掐断。
                 $this->handshakeTimeouts++;
                 $connection->close();
                 $this->rejected++;
@@ -2927,7 +2954,7 @@ final class Broker
     /** 每次至多处理 32 个完整控制报文，其他连接获得循环机会。 */
     private function packets(Connection $connection): void
     {
-        if ($connection->sessionPending) {
+        if ($connection->sessionPending || $connection->authPending) {
             return;
         }
         try {
@@ -2979,7 +3006,7 @@ final class Broker
                 if ($connection->connected && !$connection->closing) {
                     $connection->activity();
                 }
-                if ($connection->sessionPending) {
+                if ($connection->sessionPending || $connection->authPending) {
                     return;
                 }
             }
@@ -3428,13 +3455,19 @@ final class Broker
         }
     }
 
-    private function packet(Connection $connection, int $head, string $payload): void
+    /**
+     * 完成已解码 CONNECT 的同步认证。放在 tick，避免收包回调里的数据库锁堵住事件循环。
+     */
+    private function completeConnectAuth(Connection $connection): void
     {
-        if ($head === 0x10) {
-            if ($connection->connected) {
-                throw new ProtocolError(0x82);
-            }
-            $connection->connect->decode($payload);
+        if (!$connection->authPending) {
+            return;
+        }
+        $connection->authPending = false;
+        if ($connection->closing || !$connection->alive()) {
+            return;
+        }
+        try {
             $this->authenticateConnection($connection);
             if ($this->access instanceof ResourceAccessPolicy && $connection->identity !== null) {
                 try {
@@ -3505,6 +3538,30 @@ final class Broker
                 $connection->connected = true;
                 $connection->activity();
             }
+        } catch (ProtocolError $error) {
+            $this->rejected++;
+            $this->packetQuotaRefusals += $error->reason === 0x97 ? 1 : 0;
+            if (!$connection->connected && in_array($connection->connect->version, [4, 5], true)) {
+                $this->connack($connection, $error->reason);
+            } else {
+                $this->disconnect($connection, $error->reason);
+            }
+        } catch (\Throwable) {
+            // 名额锁等待超时后下一拍重试，不把排队中的 CONNECT 直接拆掉。
+            if ($connection->alive() && !$connection->closing && !$connection->connected) {
+                $connection->authPending = true;
+            }
+        }
+    }
+
+    private function packet(Connection $connection, int $head, string $payload): void
+    {
+        if ($head === 0x10) {
+            if ($connection->connected || $connection->authPending) {
+                throw new ProtocolError(0x82);
+            }
+            $connection->connect->decode($payload);
+            $connection->authPending = true;
         } elseif (($head >> 4) === 3) {
             $qos = ($head >> 1) & 3;
             if ($qos > 0 && $this->workerCommand === []) {
@@ -3699,7 +3756,7 @@ final class Broker
     {
         foreach ($this->connections as $other) {
             if ($other !== $connection && $other->connect->clientId === $connection->connect->clientId
-                && ($other->alive() || $this->sessionBusy($other))) {
+                && !$other->closing && ($other->alive() || $this->sessionBusy($other))) {
                 return;
             }
         }
@@ -3711,7 +3768,8 @@ final class Broker
             }
         }
         foreach ($this->commits as $commit) {
-            if (isset($commit['connection']) && $commit['connection']->connect->clientId === $connection->connect->clientId) {
+            if (isset($commit['connection']) && $commit['connection']->connect->clientId === $connection->connect->clientId
+                && !($connection->connect->cleanStart || $connection->sessionExpiry === 0)) {
                 return;
             }
         }

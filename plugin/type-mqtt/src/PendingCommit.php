@@ -181,9 +181,11 @@ final class PendingCommit
             }
         }
         if ($this->output !== '') {
-            $written = fwrite($this->pipes[0], substr($this->output, 0, 65536));
+            $written = @fwrite($this->pipes[0], substr($this->output, 0, 4096));
             if ($written === false || $written === 0) {
-                $this->cancel();
+                if ($this->deadline->expired()) {
+                    $this->cancel();
+                }
             } else {
                 $this->output = substr($this->output, $written);
             }

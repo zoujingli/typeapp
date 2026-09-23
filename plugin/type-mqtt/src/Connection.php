@@ -31,6 +31,8 @@ final class Connection
     public int $nativeInstance = 0;
     /** @var null|\Closure(int, int): void */
     public mixed $noteNativeClosing = null;
+    /** CONNECT 已解码，等待 tick 完成同步认证，避免在收包回调里堵住事件循环。 */
+    public bool $authPending = false;
     public bool $readPending = false;
     public int $connackRemaining = 0;
     public bool $connackSent = false;
