@@ -141,7 +141,7 @@ jobs:
       - name: 安装根项目与本地插件
         run: |
           composer validate --strict
-          composer install --no-scripts --no-plugins --prefer-dist --no-progress
+          composer install --no-scripts --no-plugins --prefer-dist --no-progress --ignore-platform-req=ext-swoole
 
       - name: 检查源码与公开 PHP 行为
         if: matrix.suite == 'foundation'

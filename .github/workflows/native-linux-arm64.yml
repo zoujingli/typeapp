@@ -96,7 +96,7 @@ jobs:
       - name: 安装锁定源码并准备全量AOT运行时
         run: |
           composer validate --strict
-          composer install --no-scripts --no-plugins --prefer-dist --no-progress
+          composer install --no-scripts --no-plugins --prefer-dist --no-progress --ignore-platform-req=ext-swoole
           task_php_home="$(php tools/configure-toolchain.php "$GITHUB_WORKSPACE/.cache/php-sdk" "$(command -v php-config)")"
           printf 'PHP_HOME=%s\nPHPX_HOME=%s\nLD_LIBRARY_PATH=%s\n' "$task_php_home" "$GITHUB_WORKSPACE/vendor/swoole/phpx" "$GITHUB_WORKSPACE/vendor/swoole/phpx/lib:$task_php_home/lib" >> "$GITHUB_ENV"
           export PHP_HOME="$task_php_home"
