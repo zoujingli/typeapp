@@ -240,14 +240,13 @@ jobs:
           task_php_probe+=(-d "extension=$task_swoole_module" -d swoole.enable_fiber_mock=On)
           # 用临时脚本代替 php -r，避免扩展加载后 CLI 参数被吞掉导致空代码。
           task_probe_script="$(mktemp)"
-          cat >"$task_probe_script" <<'PHP'
-<?php
-echo (PHP_ZTS
-    && class_exists(\Swoole\Thread::class, false)
-    && method_exists(\Swoole\Thread::class, 'startNative')
-    && defined(\Swoole\Thread::class . '::NATIVE_ENTRY_ABI')
-    && constant(\Swoole\Thread::class . '::NATIVE_ENTRY_ABI') === 2) ? 'ready' : 'missing';
-PHP
+          printf '%s\n' '<?php' \
+            'echo (PHP_ZTS' \
+            '    && class_exists(\Swoole\Thread::class, false)' \
+            '    && method_exists(\Swoole\Thread::class, "startNative")' \
+            '    && defined(\Swoole\Thread::class . "::NATIVE_ENTRY_ABI")' \
+            '    && constant(\Swoole\Thread::class . "::NATIVE_ENTRY_ABI") === 2) ? "ready" : "missing";' \
+            >"$task_probe_script"
           task_probe="$("${task_php_probe[@]}" "$task_probe_script" 2>"$task_probe_script.err" || true)"
           if [[ -s "$task_probe_script.err" ]]; then
             cat "$task_probe_script.err" >&2
@@ -256,10 +255,9 @@ PHP
           printf '受控 Swoole 探针：%s\n' "$task_probe"
           [[ "$task_probe" == ready ]]
           task_hooks_script="$(mktemp)"
-          cat >"$task_hooks_script" <<'PHP'
-<?php
-echo defined('SWOOLE_HOOK_PDO_PGSQL') && defined('SWOOLE_HOOK_PDO_SQLITE') ? 'hooks' : 'missing';
-PHP
+          printf '%s\n' '<?php' \
+            'echo defined("SWOOLE_HOOK_PDO_PGSQL") && defined("SWOOLE_HOOK_PDO_SQLITE") ? "hooks" : "missing";' \
+            >"$task_hooks_script"
           task_hooks="$("${task_php_probe[@]}" "$task_hooks_script")"
           rm -f "$task_hooks_script"
           printf '受控 Swoole PDO 钩子：%s\n' "$task_hooks"
