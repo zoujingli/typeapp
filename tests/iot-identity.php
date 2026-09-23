@@ -1485,7 +1485,8 @@ if ($target === '--php') {
     } else {
         expect(version_compare($loadedSwoole, '6.2', '>=') && version_compare($loadedSwoole, '7', '<'), 'PHP 身份验收需要 Swoole >=6.2 <7');
     }
-    array_push($command, '-d', 'swoole.enable_library=On', $root . '/bin/typeapp');
+    // 当前应用引导会解析全部生产源码，CLI 默认 128M 会在安装阶段耗尽。
+    array_push($command, '-d', 'memory_limit=512M', '-d', 'swoole.enable_library=On', $root . '/bin/typeapp');
 } else {
     $command = nativeCommand($target);
 }
@@ -1572,7 +1573,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
                 $output = $rejected->stdout . $rejected->stderr;
                 expect(!$rejected->successful(), '旧入口仍然有效：' . implode(' ', $legacy) . ' ' . $output);
                 if ($legacy === ['migrate', 'run']) {
-                    expect(str_contains($output, 'app:install'), 'migrate run 未指向 app:install');
+                    expect(str_contains($output, 'app:install'), 'migrate run 未指向 app:install：' . $output);
                 } else {
                     expect(str_contains($output, '未知应用命令'), '旧命令未被拒绝：' . implode(' ', $legacy));
                 }

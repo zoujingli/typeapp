@@ -400,7 +400,7 @@ if ($target === '--php') {
     } else {
         expect(version_compare($loadedSwoole, '6.2', '>=') && version_compare($loadedSwoole, '7', '<'), 'PHP 证书授权验收需要 Swoole >=6.2 <7');
     }
-    array_push($command, '-d', 'swoole.enable_library=On', $root . '/bin/typeapp');
+    array_push($command, '-d', 'memory_limit=512M', '-d', 'swoole.enable_library=On', $root . '/bin/typeapp');
 } else {
     $command = nativeCommand($target);
 }

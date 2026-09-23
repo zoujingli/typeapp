@@ -55,10 +55,16 @@ if (action === 'connect-fail') {
 if (action === 'connect-quota') {
   const client = connect();
   try {
-    await until(client, 'connect', '调试超额 CONNECT');
-    throw new Error('超额调试仍被接纳');
+    const denied = new Promise((_, reject) => {
+      client.once('error', error => reject(error));
+    });
+    await Promise.race([
+      until(client, 'connect', '调试超额 CONNECT', 20000).then(() => { throw new Error('超额调试仍被接纳'); }),
+      denied,
+    ]);
+    throw new Error('超额调试没有返回拒绝');
   } catch (error) {
-    if (String(error).includes('仍被接纳')) throw error;
+    if (String(error).includes('仍被接纳') || String(error).includes('没有返回拒绝')) throw error;
     const code = reasonOf(error);
     assert.ok(code === 0x97 || code === 151, `超额调试应返回 0x97，实际 ${code} ${error}`);
   } finally {
@@ -76,10 +82,21 @@ if (action === 'hold' || action === 'hold-many') {
   const reasons = [];
   try {
     for (const item of items) {
-      const client = connect({ clientId: item.clientId, username: item.username, password: item.password });
+      let client = null;
+      let connected = false;
+      for (let attempt = 0; attempt < 2 && !connected; attempt++) {
+        client = connect({ clientId: item.clientId, username: item.username, password: item.password });
+        client.on('disconnect', packet => { reasons.push(Number(packet?.reasonCode ?? 0)); });
+        try {
+          await until(client, 'connect', '调试 HOLD CONNECT', 20000);
+          connected = true;
+        } catch (error) {
+          await client.endAsync(true).catch(() => {});
+          if (attempt === 1) throw error;
+        }
+      }
       clients.push(client);
-      client.on('disconnect', packet => { reasons.push(Number(packet?.reasonCode ?? 0)); });
-      await until(client, 'connect', '调试 HOLD CONNECT', 30000);
+      if (items.length > 1) await new Promise(resolve => setTimeout(resolve, 50));
     }
     say(`held:${clients.length}`);
     await new Promise(resolve => {

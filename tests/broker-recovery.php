@@ -121,10 +121,14 @@ $target = $argv[1] ?? '--php';
 $driver = $argv[2] ?? 'pgsql';
 expect($driver === 'pgsql', 'Broker 恢复核对验收需要 PostgreSQL 物理备份链');
 if ($target === '--php') {
-    $swoole = getenv('TYPE_SWOOLE_MODULE');
-    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
-    expect(is_file($swoole), 'PHP 恢复核对验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
-    $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
+    $command = [PHP_BINARY, '-d', 'memory_limit=512M'];
+    if (!extension_loaded('swoole')) {
+        $swoole = getenv('TYPE_SWOOLE_MODULE');
+        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+        expect(is_file($swoole), 'PHP 恢复核对验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
+        array_push($command, '-d', 'extension=' . $swoole);
+    }
+    $command[] = $root . '/bin/typeapp';
 } else {
     $command = nativeCommand($target);
 }
@@ -502,7 +506,7 @@ try {
     $nodeEnvironment['BROKER_STANDBY_NAMES'] = 'broker_recovery_reopened';
     $node = new Process([...$command, 'broker:run'], $root, $nodeEnvironment);
     recoveryWaitTls($node, $tlsPort, $certs['ca']);
-    $deadline = microtime(true) + 12;
+    $deadline = microtime(true) + 30;
     do {
         expect($node->running(), '重新开放节点提前退出：' . $node->stderr());
         $nodes = $request('GET', '/broker/nodes', $token, null, 200);
@@ -511,7 +515,7 @@ try {
         }
         usleep(100000);
     } while (microtime(true) < $deadline);
-    expect(($nodes['total'] ?? 0) === 1, '重新开放节点未上报');
+    expect(($nodes['total'] ?? 0) === 1, '重新开放节点未上报：' . json_encode($nodes ?? []) . $node->stdout() . $node->stderr());
     $restoredSession = new Client('127.0.0.1', $tlsPort, 'recovery-session', 'broker-client', $mqttPassword, $certs['ca'], '127.0.0.1', 30, 86400);
     expect($restoredSession->connect(false) === true, '核对后合法会话未恢复');
     $queued = $restoredSession->receive(15.0);

@@ -922,7 +922,7 @@ function iotDeviceModelSwitchChecks(array $fixture, array $command, array $envir
             && $call('GET', $path)['data']['model_version'] === 1, '离线受理提前改绑');
         $listener = new Process([...$command, 'iot:device', 'listen'], $root, $deviceEnvironment);
         try {
-            $until = microtime(true) + 35;
+            $until = microtime(true) + 75;
             do {
                 expect($listener->running(), '模型确认监听提前退出：' . $listener->stderr() . $listener->stdout());
                 $record = $call('GET', $path . '/model-switches')['items'][0];

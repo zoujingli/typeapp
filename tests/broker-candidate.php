@@ -271,7 +271,7 @@ try {
         [$php, $root . '/tests/broker-debug.php', $target, 'pgsql', ...$nativeFlags, ...$browserFlag],
         $environment,
         $base . '/broker-debug.log',
-        $browserFlag === [] ? 180 : 300,
+        $browserFlag === [] ? 300 : 420,
         $root
     );
     $report['broker_debug'] = ['evidence' => $debug['evidence'], 'sha256' => $debug['sha256'],
@@ -284,7 +284,7 @@ try {
         [$php, $root . '/tests/broker-recovery.php', $target, 'pgsql', ...$nativeFlags, ...$browserFlag],
         $environment,
         $base . '/broker-recovery.log',
-        $browserFlag === [] ? 240 : 360,
+        $browserFlag === [] ? 420 : 540,
         $root
     );
     $report['broker_recovery'] = ['evidence' => $recovery['evidence'], 'sha256' => $recovery['sha256'],

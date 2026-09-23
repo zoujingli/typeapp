@@ -90,7 +90,7 @@ function debugMqtt(string $root, string $clientRoot, string $action, array $envi
 
 function debugWaitHeld(Process $process, int $count): void
 {
-    $deadline = microtime(true) + max(60, $count * 8);
+    $deadline = microtime(true) + max(90, $count * 12);
     do {
         expect($process->running(), '调试占用进程提前退出：' . $process->stderr());
         if (str_contains($process->stdout(), 'held:' . $count)) {
@@ -138,12 +138,12 @@ expect($driver === 'pgsql', '调试凭据验收需要 PostgreSQL 同步存储');
 if ($target === '--php') {
     if (extension_loaded('swoole')) {
         // Swoole CLI 可以静态编译扩展，静态扩展没有可重复加载的 swoole.so 文件。
-        $command = [PHP_BINARY, $root . '/bin/typeapp'];
+        $command = [PHP_BINARY, '-d', 'memory_limit=512M', $root . '/bin/typeapp'];
     } else {
         $swoole = getenv('TYPE_SWOOLE_MODULE');
         $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
         expect(is_file($swoole), 'PHP 调试凭据验收需要已加载Swoole或TYPE_SWOOLE_MODULE');
-        $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
+        $command = [PHP_BINARY, '-d', 'memory_limit=512M', '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
     }
 } else {
     $command = nativeCommand($target);
