@@ -264,6 +264,9 @@ final class Application
                 $publicMessage = $error->errorCode();
             }
             fwrite(STDERR, 'TypeApp 物联中心启动或命令失败：' . $publicMessage . "\n");
+            if (getenv('TYPE_APP_TRACE') === '1' && $publicMessage === 'internal_error') {
+                fwrite(STDERR, $error::class . ': ' . $message . "\n");
+            }
             if ($debug) {
                 fwrite(STDERR, json_encode([
                     'error' => 'internal_error',
