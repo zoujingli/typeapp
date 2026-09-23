@@ -64,7 +64,15 @@ task_work="$(mktemp -d "$task_root/build/isolated-build-XXXXXX")"
 task_relative="${task_work#"$task_root/"}"
 # host 隔离用 env -i，必须自备受控 Swoole 与锁定 PHP 的扫描目录，不能依赖宿主 PHP_INI_SCAN_DIR。
 task_cli_d=""
-task_isolated_php="$task_php_home/bin/php"
+# configure-toolchain 的 PHP_HOME 可能是哈希目录；bin/php 常符号链接到 8.5.10-zts。
+# bubblewrap 只绑定 PHP_HOME 时链接目标不可见，必须解析并额外绑定真实前缀。
+task_isolated_php="$(readlink -f "$task_php_home/bin/php")"
+[[ -x "$task_isolated_php" ]] || { echo "锁定 PHP 可执行文件不可用：$task_php_home/bin/php" >&2; exit 1; }
+task_real_php_home="$(cd "$(dirname "$task_isolated_php")/.." && pwd)"
+if [[ "$task_execution" == host && "$task_real_php_home" != "$task_php_home" ]]; then
+  host_parent_directories "$task_real_php_home"
+  task_host_common+=(--ro-bind "$task_real_php_home" "$task_real_php_home")
+fi
 if [[ "$task_execution" == host && -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
   [[ "$TYPE_SWOOLE_MODULE" == /* && -f "$TYPE_SWOOLE_MODULE" ]] || { echo 'TYPE_SWOOLE_MODULE 不是可读的绝对路径。' >&2; exit 1; }
   task_cli_d="$task_work/php.d"
@@ -72,9 +80,9 @@ if [[ "$task_execution" == host && -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
   printf 'extension=%s\nswoole.enable_fiber_mock=On\nmemory_limit=2G\n' "$TYPE_SWOOLE_MODULE" > "$task_cli_d/swoole.ini"
   host_parent_directories "$TYPE_SWOOLE_MODULE"
   task_host_common+=(--ro-bind "$TYPE_SWOOLE_MODULE" "$TYPE_SWOOLE_MODULE" --ro-bind "$task_cli_d" "$task_cli_d")
-  if [[ -d "$task_php_home/etc/php.d" ]]; then
-    host_parent_directories "$task_php_home/etc/php.d"
-    task_host_common+=(--ro-bind "$task_php_home/etc/php.d" "$task_php_home/etc/php.d")
+  if [[ -d "$task_real_php_home/etc/php.d" ]]; then
+    host_parent_directories "$task_real_php_home/etc/php.d"
+    task_host_common+=(--ro-bind "$task_real_php_home/etc/php.d" "$task_real_php_home/etc/php.d")
   fi
 fi
 if [[ "$task_execution" == host ]]; then
@@ -87,12 +95,12 @@ fi
 "$task_php" -n "$task_root/tests/isolated-build.php" configuration "$task_root/docs/build-config/type-foundation.json" > "$task_work/configuration.json"
 task_common=(--rm --pull=never --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges
   --cpus=2 --tmpfs '/tmp:rw,nosuid,nodev,size=256m')
-task_environment=(env -i "PATH=$task_php_home/bin:/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
-  "PHP_HOME=$task_php_home" PHPX_HOME=/opt/phpx "LD_LIBRARY_PATH=/opt/phpx/lib:$task_php_home/lib")
+task_environment=(env -i "PATH=$task_real_php_home/bin:$task_php_home/bin:/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
+  "PHP_HOME=$task_php_home" PHPX_HOME=/opt/phpx "LD_LIBRARY_PATH=/opt/phpx/lib:$task_real_php_home/lib:$task_php_home/lib")
 if [[ -n "$task_cli_d" ]]; then
   task_scan="$task_cli_d"
-  if [[ -d "$task_php_home/etc/php.d" ]]; then
-    task_scan="$task_cli_d:$task_php_home/etc/php.d"
+  if [[ -d "$task_real_php_home/etc/php.d" ]]; then
+    task_scan="$task_cli_d:$task_real_php_home/etc/php.d"
   fi
   task_environment+=("PHP_INI_SCAN_DIR=$task_scan" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
 fi
@@ -157,13 +165,13 @@ if [[ "$task_execution" == container ]]; then
     "$task_image" "${task_environment[@]}" php tests/build-scenario.php --stage docs/build-config/type-foundation.json "/workspace/$task_relative/inputs" \
     | tee "$task_work/stage.json"
 else
-  task_stage_env=(env -i "PATH=$task_php_home/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
+  task_stage_env=(env -i "PATH=$task_real_php_home/bin:$task_php_home/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
     "COMPOSER_HOME=$task_work/composer-home"
-    "PHP_HOME=$task_php_home" "PHPX_HOME=$task_sdk" "LD_LIBRARY_PATH=$task_sdk/lib:$task_php_home/lib")
+    "PHP_HOME=$task_php_home" "PHPX_HOME=$task_sdk" "LD_LIBRARY_PATH=$task_sdk/lib:$task_real_php_home/lib:$task_php_home/lib")
   if [[ -n "$task_cli_d" ]]; then
     task_scan="$task_cli_d"
-    if [[ -d "$task_php_home/etc/php.d" ]]; then
-      task_scan="$task_cli_d:$task_php_home/etc/php.d"
+    if [[ -d "$task_real_php_home/etc/php.d" ]]; then
+      task_scan="$task_cli_d:$task_real_php_home/etc/php.d"
     fi
     task_stage_env+=("PHP_INI_SCAN_DIR=$task_scan" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
   fi
