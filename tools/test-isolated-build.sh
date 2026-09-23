@@ -62,6 +62,16 @@ esac
 mkdir -p "$task_root/build"
 task_work="$(mktemp -d "$task_root/build/isolated-build-XXXXXX")"
 task_relative="${task_work#"$task_root/"}"
+# host 隔离用 env -i，必须自备受控 Swoole 扫描目录，不能依赖宿主 PHP_INI_SCAN_DIR。
+task_cli_d=""
+if [[ "$task_execution" == host && -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
+  [[ "$TYPE_SWOOLE_MODULE" == /* && -f "$TYPE_SWOOLE_MODULE" ]] || { echo 'TYPE_SWOOLE_MODULE 不是可读的绝对路径。' >&2; exit 1; }
+  task_cli_d="$task_work/php.d"
+  mkdir -p "$task_cli_d"
+  printf 'extension=%s\nswoole.enable_fiber_mock=On\nmemory_limit=2G\n' "$TYPE_SWOOLE_MODULE" > "$task_cli_d/swoole.ini"
+  host_parent_directories "$TYPE_SWOOLE_MODULE"
+  task_host_common+=(--ro-bind "$TYPE_SWOOLE_MODULE" "$TYPE_SWOOLE_MODULE" --ro-bind "$task_cli_d" "$task_cli_d")
+fi
 if [[ "$task_execution" == host ]]; then
   # 某些锁定 SDK 静态预置 SNMP；只绑定自生成的无凭据启动配置与空目录，不绑定宿主 /etc/snmp。
   mkdir "$task_work/runtime"
@@ -74,6 +84,9 @@ task_common=(--rm --pull=never --network=none --read-only --cap-drop=ALL --secur
   --cpus=2 --tmpfs '/tmp:rw,nosuid,nodev,size=256m')
 task_environment=(env -i "PATH=$task_php_home/bin:/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
   "PHP_HOME=$task_php_home" PHPX_HOME=/opt/phpx "LD_LIBRARY_PATH=/opt/phpx/lib:$task_php_home/lib")
+if [[ -n "$task_cli_d" ]]; then
+  task_environment+=("PHP_INI_SCAN_DIR=$task_cli_d" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
+fi
 task_compile_mounts=(--mount "type=bind,source=$task_work/inputs,target=/input,readonly"
   --mount "type=bind,source=$task_work/output,target=/input/build"
   --mount "type=bind,source=$task_sdk,target=/opt/phpx,readonly" --workdir /input)
@@ -135,9 +148,13 @@ if [[ "$task_execution" == container ]]; then
     "$task_image" "${task_environment[@]}" php tests/build-scenario.php --stage docs/build-config/type-foundation.json "/workspace/$task_relative/inputs" \
     | tee "$task_work/stage.json"
 else
-  (cd "$task_root" && env -i "PATH=$task_php_home/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC \
-    "COMPOSER_HOME=$task_work/composer-home" \
-    "PHP_HOME=$task_php_home" "PHPX_HOME=$task_sdk" "LD_LIBRARY_PATH=$task_sdk/lib:$task_php_home/lib" \
+  task_stage_env=(env -i "PATH=$task_php_home/bin:/usr/bin:/bin" LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
+    "COMPOSER_HOME=$task_work/composer-home"
+    "PHP_HOME=$task_php_home" "PHPX_HOME=$task_sdk" "LD_LIBRARY_PATH=$task_sdk/lib:$task_php_home/lib")
+  if [[ -n "$task_cli_d" ]]; then
+    task_stage_env+=("PHP_INI_SCAN_DIR=$task_cli_d" "TYPE_SWOOLE_MODULE=$TYPE_SWOOLE_MODULE")
+  fi
+  (cd "$task_root" && "${task_stage_env[@]}" \
     "$task_php_home/bin/php" tests/build-scenario.php --stage docs/build-config/type-foundation.json "$task_work/inputs") | tee "$task_work/stage.json"
 fi
 "$task_php" -n "$task_root/tests/isolated-build.php" snapshot "$task_work/inputs" "$task_work/stage.json" > "$task_work/snapshot-before.json"
