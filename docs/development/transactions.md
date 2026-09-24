@@ -32,6 +32,10 @@ $id = Db::transaction(static function (): int {
 
 `afterCommit()` 只能在活动事务中登记。内层成功将回调按登记顺序合并，内层回滚丢弃其回调；最外层确认提交后才依次执行。单个回调失败继续执行后续回调，最后通过 `AfterCommitException` 汇总错误，该异常始终携带 COMMITTED。它不保证可靠消息投递，可靠跨系统衔接使用 Outbox。
 
+业务 `Db` 入口通过捕获 `TransactionException` 并读取 `outcome()` 判断协议结果；`AfterCommitException::errors()` 保留各回调错误。`Connection::transactionOutcome()` 和 `ReadWriteSession::reconcile()` 属于显式基础设施对象，`Db` 没有对应方法。普通模型业务提交未知后退出原作用域，在新作用域以 `master()` 和稳定操作 ID 对账；不复用原模型，不把连接恢复等同于旧事务已确定。
+
+当前已确认一处缺陷：提交后回调再开启事务并得到 UNKNOWN 时，外层回调收尾会把连接最新状态覆写为 COMMITTED，后续 Db 操作失去未知结果标记。外层已提交事实和回调事务结果必须分别保留；在修复及回归前，不依赖该组合完成对账。具体触发与验收要求见[操作闭环与待闭合项](model-connections.md#操作闭环与待闭合项)。
+
 普通事务接受参数化 SELECT、INSERT、UPDATE、DELETE，拒绝显式事务控制和多语句。事务与迁移共用单语句词法检查，对注释、美元引用及模式相关反斜杠明确拒绝。PG/SQLite 的事务 DDL 经显式 `schema` 模式执行，迁移执行器使用该模式；MySQL 迁移仍独立使用非事务 DDL。MySQL 的业务事务要求表使用 InnoDB 等实际支持事务的存储引擎。
 
 PHP 三库的结果、回调顺序和迁移回归已经验证。`tests/mysql-commit-proxy.php` 是受控测试代理，分别在开始前、COMMIT 转发前和数据库确认 COMMIT 后切断连接；不记录认证包、SQL 或参数值。测试经真实 MySQL 验证事务体执行次数为 0/1、回调始终不执行、模型按状态失效、实际写入为 0/0/1。相同代理可连接编译产物，原生验收仍待最终集中完成。

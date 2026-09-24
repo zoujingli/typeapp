@@ -4,7 +4,7 @@
 
 提供受管数据库连接、不可变 Query、生成模型、关系、分页、事务、迁移和事务 Outbox。ORM 不选择数据库；安装一个驱动后使用同一公开入口，并保留数据库本身的能力差异。
 
-已在 Linux ARM64、macOS ARM64、Windows x64 完成同提交三库独立 ORM 的 PHP、AOT 和无源码运行；三库指 MySQL、PostgreSQL、SQLite。场景、环境与完整交付限制见[平台支持表](../platforms.md#当前平台状态)。
+历史源码 `5abdb5e53ea9ca67054f69d17113b91eb3402d69` 在 Linux ARM64、macOS ARM64、Windows x64 完成三库独立 ORM 的 PHP、AOT 和无源码运行；三库指 MySQL、PostgreSQL、SQLite。该记录使用本地 Composer 包复制安装，当前四平台与公开分发消费仍需分别验收，见[平台支持表](../platforms.md#当前平台状态)。
 
 业务 CRUD 使用[Model 与关系](#models-relations-output)，查询和保存无需传入 `Connection`。框架从当前 Swoole 作用域选择端点并管理租约；静态 `search()`、自动租户隔离、默认读从写主及 `master()` 的配置和完整示例见[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)。下面的显式连接和表查询用于基础设施与受控聚合。物理 PDO 复用和完整原生平台验收仍以实际验证结果为准。
 
@@ -180,7 +180,7 @@ $deleted = $connection->table('users')->where('id', '=', 7)->delete();
 | 动态排序 | `orderByAllowed($input, $allowed)`，使用白名单映射 |
 | 能力检查 | `capabilities()`，不将不支持的操作模拟为成功 |
 
-`query/execute` 与 `raw/rawQuery` 遵守相同的事务和会话重置边界，SQL 首关键词不代表没有副作用；完整重置失败便退役。不要通过业务连接泄露底层 PDO。
+`query/execute` 与 `raw/rawQuery` 共用事务和资源所有权检查。当前 `raw/rawQuery` 标记归还时退役；`query/execute` 则交由驱动判断能否完整重置，失败便退役。SQL 首关键词不代表没有副作用，不能据此判断会话是否干净。不要通过业务连接泄露底层 PDO。
 
 ## 组合查询与诊断
 
@@ -232,7 +232,9 @@ $nextPage = $next === null ? null
 
 业务使用 `Db::transaction(static function (): mixed { ... })`，无需接收连接；事务内的模型读写自动固定到当前数据源主库，嵌套事务通过 savepoint，跨数据源访问明确拒绝。底层 `$connection->transaction()` 仍把实际连接传给基础设施回调。异常触发回滚，参与该层的模型失效，后续需要重新查询。
 
-`Db::afterCommit(static function (): void { ... })` 在最外层提交确认后执行。回调失败并不撤销已经提交的数据；提交确认失败属于未知结果，不能自动重跑业务。`transactionOutcome()` 用于观察当前结果，异常处理要区分回滚、提交未知和提交后失败。
+`Db::afterCommit(static function (): void { ... })` 在最外层提交确认后执行。回调失败并不撤销已经提交的数据；提交确认失败属于未知结果，不能自动重跑业务。业务通过 `TransactionException::outcome()` 判断协议失败的结果，`AfterCommitException` 表示外层已经提交，具体回调错误由 `errors()` 返回。`transactionOutcome()` 属于底层 `Connection`，`Db` 没有同名方法。
+
+提交未知后结束原作用域，在新的作用域通过主库和稳定操作 ID 对账，不继续使用原连接或参与模型。`ReadWriteSession::reconcile()` 是显式会话入口，不是 `Db` 的方法；目前提交后回调再次开启事务还有结果覆盖问题，具体边界见[事务说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/transactions.md)。
 
 模型声明 `version` 后使用主键与旧版本匹配，冲突为 `optimistic_conflict`；底层 Query 批量写入不会自动加入模型版本或触发逐模型事件。`#[Transactional]` 只在显式生成的组合入口中生效。
 

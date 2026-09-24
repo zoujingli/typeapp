@@ -2,7 +2,7 @@
 
 提供独立于 HTTP 核心的驱动协议、受管连接、参数化查询、模型/关系、事务、迁移与 Outbox。数据库差异由所选驱动及明确的查询方言处理，不提供隐藏的写入重试或跨系统事务保证。
 
-已在 Linux ARM64、macOS ARM64、Windows x64 完成同提交三库独立消费者的 PHP、AOT 和无源码运行，三库分别为 MySQL、PostgreSQL、SQLite。Linux x64 当前记录的基础命令结果不代替 ORM 验收；具体场景、环境与剩余限制见[平台与验收](https://iots.top/#/guide/platforms)。
+历史源码 `5abdb5e53ea9ca67054f69d17113b91eb3402d69` 在 Linux ARM64、macOS ARM64、Windows x64 完成三库独立消费者的 PHP、AOT 和无源码运行，三库分别为 MySQL、PostgreSQL、SQLite。该记录使用本地 Composer 包复制安装，不等于当前公开子仓已完成独立消费验收；Linux x64 的基础命令结果也不代替 ORM 验收。当前目标覆盖四个平台，具体身份、场景与剩余限制见[平台与验收](https://iots.top/#/guide/platforms)。
 
 业务实体 CRUD 使用无连接参数的 Model。启动时由 `Db::configure()` 装配数据库管理器，模型在当前 Swoole 执行作用域中按需借用连接；默认读从写主，`master()` 指定主读，事务内固定同一主库，事务外写后不自动粘主。具有租户字段的模型从应用已验证并绑定的上下文自动隔离，缺失身份拒绝执行。PostgreSQL 已实现完整会话重置后的 PDO 复用；MySQL、SQLite 的物理复用及完整原生平台验收仍有缺口，当前能力和限制见开发主仓的[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)。
 
@@ -26,7 +26,7 @@ Database 通过 type-runtime 的有界池按作用域借还会话。Connection �
 
 同一服务端连接域的命名池和旧凭据代次共用一个 `DeploymentBudget`。其第六个参数为每进程最大同时使用连接的线程数，包含主线程及未退出旧代；每线程只获得分配份额，调用者须按部署计划启动线程并在旧代 join 后再复用份额。标准应用配置 `APP_DATABASE_THREADS`、`DB_POOL_WAITERS` 和 `DB_POOL_WAIT_MS`，池统计返回等待时长、拒绝、在途、关闭及隔离数。线程内排队使用 Swoole Channel；PDO 负责数据库协议和会话，Swoole 提供协程上下文与等待，`type-runtime` 管理作用域、取消、截止与资源收尾，ORM 负责连接租约和会话恢复。
 
-query/execute 与 raw/rawQuery 遵守相同的事务及会话边界；不能以 SELECT 等首关键词推断没有副作用。完整重置覆盖存储函数和触发器产生的会话状态，无法证明干净时关闭退役。SQL 错误和未知提交的会话不可复用，框架不自动重试写入。
+`query/execute` 与 `raw/rawQuery` 共用事务和资源所有权检查；当前复用策略有区别：`raw/rawQuery` 标记归还时退役，`query/execute` 在归还时交由驱动判断能否完整重置。不能以 SELECT 等首关键词推断没有副作用；存储函数、触发器及会话状态也属于重置验证范围。SQL 错误和未知提交的会话不可复用，框架不自动重试写入。
 
 `DatabaseManager` 管理明确命名连接和凭据代次轮换。驱动 `identity()` 不含密码，记录端点、数据库、认证身份、TLS、会话配置与读写角色。旧代池停止新借用，已借出租约保持原身份直到归还；每个命名连接最多保留两个未排空旧代。详情见开发主仓 `docs/development/database-identities.md`。
 
@@ -35,6 +35,8 @@ query/execute 与 raw/rawQuery 遵守相同的事务及会话边界；不能以 
 回调签名由调用入口固定，TypePHP 不会忽略多余实参；未使用的参数也应保留。业务 `Db::transaction()` 为 `Closure(): mixed`，`Db::afterCommit()` 为 `Closure(): void`；底层 `Connection::transaction()` 仍接收 `Closure(Connection): mixed`。条件分组为 `Closure(Conditions): Conditions`，生成关系工厂为 `Closure(Connection): ModelQuery`。`ModelQuery::scope()` 接收 `Closure(ModelQuery): ModelQuery`，实例 `search()` 的每个搜索器接收 `Closure(ModelQuery, mixed): ModelQuery`；静态 `Model::search(array $input = [], string $alias = '')` 返回 `QueryHelper`，只消费显式输入和筛选白名单。模型 getter/setter 只接收字段值。普通和模型 `chunk()` 分别传一个行数组或模型数组，`RowStream::each()` 传一个当前行数组，仅返回 `false` 提前结束，也可以使用 `void` 消费者。
 
 `Connection::table()` 提供不可变 Query，支持条件、Join、聚合、JSON 标量、批量写入和明确的三库能力差异。`Model`、`ModelQuery` 与生成映射提供受控访问、变更追踪、部分字段保存和安全输出；详细用法见开发主仓 `docs/development/models.md`。本包第一方源码按 Apache-2.0 提供；具体仓库可见性和分发批次由维护者管理。
+
+模型 CRUD、事务结果与作用域收尾的完整路径见[数据库与模型](https://iots.top/#/guide/database)。当前 `ModelQuery` 的集合写入仅有 `increment/decrement`，没有批量 `update/delete/insertMany/upsert`；表 Query 的同名能力不等于模型能力。已确认的查询、关系补加载和提交后事务边界问题见[待闭合项](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md#操作闭环与待闭合项)。
 
 ## 迁移
 

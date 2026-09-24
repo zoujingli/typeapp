@@ -6,6 +6,45 @@ ORM 使用 PDO 访问数据库协议，Swoole 提供协程上下文、等待、C
 
 业务数据访问以领域 Model 为标准。`Model::query()`、`Model::search($input)` 和模型的 `save()` 无需连接参数，框架从当前执行作用域自动取得受管连接；默认写主、读从，`master()` 指定主读，事务固定同一主库连接，从库故障明确失败。PostgreSQL 完整重置后可复用物理 PDO，MySQL、SQLite 当前归还即关闭；框架接口、驱动限制及交付条件见[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)和[实现规划](roadmap.md)。
 
+## 一次模型操作怎样完成
+
+先声明模型和迁移，再由构建工具生成模型映射；开发与 TypePHP 编译共用转换结果。模型声明不自动建表，迁移成功后才进入业务读写。应用启动时装配 `DatabaseManager`，请求或任务入口创建执行作用域，并在验证访问资格后绑定租户身份。
+
+```mermaid
+%%{init: {'sequence': {'actorMargin': 24, 'width': 120, 'mirrorActors': false}}}%%
+sequenceDiagram
+    participant B as 业务入口
+    participant S as 执行作用域
+    participant M as ORM 模型与会话
+    participant D as 数据库
+    B->>S: 绑定工作与可信身份
+    B->>M: 查询、赋值、保存或删除
+    M->>S: 校验归属、取消<br/>与截止时间
+    M->>M: 选路并按需借用连接
+    M->>D: 参数化 SQL
+    D-->>M: 数据、影响数量<br/>或事务结果
+    M-->>B: 模型或明确异常
+    B->>B: 显式投影业务输出
+    B->>S: 退出并关闭作用域
+    S->>M: 等待真实收尾<br/>归还租约
+    M->>D: 清理游标与事务<br/>重置或关闭会话
+```
+
+同一作用域按数据源复用读写会话，连续操作复用已取得的租约；不会每次调用 Model 都重新连接。跨作用域再次借用时，是否保留原物理 PDO 取决于驱动的重置能力。请求结束只归还本次租约，应用所有者在请求和任务排空后关闭管理器。模型、查询和活动事务不能跨作用域共享；异步任务传递必要的值，在自己的作用域中重新查询。
+
+| 业务动作 | 当前入口 | 完成时需要确认 |
+| --- | --- | --- |
+| 新增、查找 | `create/find/query/search` | 严格赋值、租户范围、未命中和输出字段 |
+| 修改、删除、恢复 | 实例 `save/delete/restore/forceDelete` | 影响记录、软删除、版本冲突及对象是否仍有效 |
+| 列表与关系 | `get/paginate/with/load/loadMissing` | 有界结果、稳定排序、匹配模型与数据源；关系不隐式懒加载 |
+| 集合算术 | `ModelQuery::increment/decrement` | 返回影响数量，推进版本；已加载对象需要重新查询 |
+| 多步写入 | `Db::transaction/afterCommit` | 同库提交、回滚、未知结果和提交后失败分别处理 |
+| 外部投递 | 事务 Outbox 与应用 Publisher | 写入意图、实际投递、目标幂等和后续对账 |
+
+当前 `ModelQuery` 没有批量 `update/delete/insertMany/upsert`。底层表 Query 的批量写入不自动获得模型字段、租户、软删除和事件语义，不能作为普通业务绕过 Model 的默认入口。
+
+检查已发现跨数据源关系补加载、带别名分页、`first()` 偏移、集合算术版本上限及提交后新事务状态的边界缺陷，尚未修复。触发方式、预期结果与验收顺序集中维护在[操作闭环与待闭合项](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md#操作闭环与待闭合项)，不能把常规 CRUD 用例通过视为完整闭环通过。
+
 ## 选择数据库
 
 | 数据库 | 组件 | 准备事项 |
@@ -60,6 +99,8 @@ composer typeapp:migrate -- history
 PATCH 的缺失字段保持不变，明确的 null 用于清空可空字段。提交版本应来自最近一次读取，不应在客户端固定为 1。
 
 ## 事务与精确值
+
+普通业务异常在确认回滚后原样抛出；提交不能确认时通过 `TransactionException::outcome()` 保留 `UNKNOWN`，不能自动重试。结束原作用域后，在新作用域通过主库和业务操作 ID 核对实际结果。`AfterCommitException` 表示外层已经提交但后续回调失败，不能把它当作可以重跑原事务的信号。
 
 事务/缓存 Attribute 通过构建生成的操作组合对象执行；直接调用原服务不会自动开启事务。可靠外部效果可使用事务 Outbox，在事务内记录意图，再由转发器交付；消费者仍须处理重复。
 
