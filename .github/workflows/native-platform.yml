@@ -67,7 +67,8 @@ jobs:
         env:
           TYPE_ORM_DRIVER: ${{ inputs.scope == 'orm' && inputs.orm_driver || 'all' }}
         run: |
-          $taskProfile = & "$env:PHP_HOME/php.exe" -r 'require "vendor/autoload.php"; $root=getcwd(); $p=(new Type\Build\RuntimeProfile())->prepare($root,$root."/build/windows-orm-runtime",getenv("PHP_HOME"),getenv("PHPX_HOME"),["pdo","pdo_mysql","pdo_pgsql","pdo_sqlite","sockets","swoole"]); echo $p["ini"];'
+          # openssl 须先于 typephp_artifact 加载；完整应用产物会声明该必需依赖。
+          $taskProfile = & "$env:PHP_HOME/php.exe" -r 'require "vendor/autoload.php"; $root=getcwd(); $p=(new Type\Build\RuntimeProfile())->prepare($root,$root."/build/windows-orm-runtime",getenv("PHP_HOME"),getenv("PHPX_HOME"),["openssl","pdo","pdo_mysql","pdo_pgsql","pdo_sqlite","sockets","swoole"]); echo $p["ini"];'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:TYPE_NATIVE_PHP_INI=$taskProfile
           Add-Content -LiteralPath $env:GITHUB_ENV -Value ('TYPE_NATIVE_PHP_INI=' + $taskProfile) -Encoding utf8
