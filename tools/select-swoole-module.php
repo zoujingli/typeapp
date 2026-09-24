@@ -5,10 +5,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/plugin/type-build/src/BundledSwoole.php';
 
 try {
-    $module = (new Type\Build\BundledSwoole())->select(dirname(__DIR__));
-    if ($module === null) {
-        throw new RuntimeException('项目没有内置 Swoole 清单');
-    }
+    $module = (new Type\Build\BundledSwoole())->select();
     echo $module['file'], "\n";
 } catch (Throwable $error) {
     fwrite(STDERR, $error->getMessage() . "\n");

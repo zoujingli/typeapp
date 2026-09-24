@@ -118,6 +118,7 @@
     "test:service-definition": "@php tests/service-definition.php build/app/type-app",
     "test:service-launchd": "@php tests/native-service.php build/app/type-app",
     "test:runtime-profile": "@php tests/runtime-profile.php",
+    "test:bundled-swoole-consumer": "@php tests/bundled-swoole-consumer.php",
     "test:license": "@php tests/license.php",
     "test:docs": "@php tests/docs-consistency.php",
     "test:dependency-notices": "@php tests/dependency-notices.php",

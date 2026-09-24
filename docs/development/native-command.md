@@ -15,7 +15,7 @@ Linux/macOS 需要对应平台的 PHP embed SDK、C++17 编译器、CMake、GMP 
 
 GitHub Actions 分别提供 Linux x64、Linux ARM64、macOS ARM64 和 Windows x64 验收入口。工作流存在不代表该平台完整通过；PHP 行为、组件 AOT、完整应用、实际通信、无源码部署和性能分别记录结果。Linux 容器或虚拟机验证还须记录实际架构与是否使用模拟器，本机其他项目的工具链镜像不是本项目公开分发依赖。
 
-主仓在 [bin/swoole](../../bin/swoole/README.md) 保存这四个平台的 Swoole 模块、固定来源、SHA-256 和第三方许可证。匹配 PHP 8.5.10 ZTS 的构建默认直接读取本地文件，不下载或重新编译 Swoole。选择顺序为真实 embed 已内置、显式 `runtime.modules`、有效的 `TYPE_SWOOLE_MODULE`、项目内置清单、SDK 扩展目录；项目存在清单却缺少匹配 ABI、摘要不符或源码适配已变更时明确失败。没有内置清单的独立应用沿用自己的 SDK。
+构建组件在 [plugin/type-build/resources/swoole](../../plugin/type-build/resources/swoole/README.md) 保存这四个平台的 Swoole 模块、固定来源、SHA-256 和第三方许可证。匹配 PHP 8.5.10 ZTS 的构建默认直接读取本地文件，不下载或重新编译 Swoole。选择顺序为真实 embed 已内置、显式 `runtime.modules`、有效的 `TYPE_SWOOLE_MODULE`、构建组件内置清单。清单缺失、没有匹配 ABI、摘要不符或源码适配已变更时明确失败；独立应用通过 Composer 安装完整的 `type-build` 后使用相同规则，其他扩展继续按 SDK 或显式候选解析。
 
 `tools/prepare-swoole-module.sh` 和 Windows SDK 准备脚本默认复用这些文件。维护者显式设置 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 才下载固定 Swoole 源码并应用当前适配；Unix 重建还需提供 `RUNNER_TEMP` 和 `SWOOLE_CONFIGURE_OPTS`。PHP SDK、PHPX 及其他依赖的准备不因此变为离线。内置共享模块是构建输入，最终程序静态链接和启动不释放运行库仍按[静态验证记录](static-runtime-feasibility.md)推进。
 

@@ -87,13 +87,13 @@ $rejectionOutput = (new BuildEnvironment())->run([PHP_BINARY, '-c', $pgsql['ini'
 expect($rejectionOutput === 'pgsql-connection-rejected', 'PostgreSQL 连接拒绝路径没有正常返回');
 $checks[] = 'pgsql-connection-rejection-without-crash';
 // 在真实 embed 上分别观察默认、环境候选和显式声明的优先级。
-$bundled = (new BundledSwoole())->select($root);
-if ($bundled !== null && isset($swoole['module-files']['swoole'])) {
+$bundled = (new BundledSwoole())->select();
+if (isset($swoole['module-files']['swoole'])) {
     $previous = getenv('TYPE_SWOOLE_MODULE');
     try {
         putenv('TYPE_SWOOLE_MODULE');
         $default = $profile->prepare($root, $base . '/bundled-default', $phpHome, $phpxHome, ['swoole']);
-        expect($default['module-files']['swoole'] === $bundled['file'], '默认构建没有选择项目内置 Swoole');
+        expect($default['module-files']['swoole'] === $bundled['file'], '默认构建没有选择构建组件内置 Swoole');
         expect(in_array($bundled['manifest'], $default['files'], true), '内置清单没有纳入构建身份');
         $copy = $base . '/swoole.' . (PHP_OS_FAMILY === 'Windows' ? 'dll' : 'so');
         expect(copy($bundled['file'], $copy), '无法准备模块选择对照');

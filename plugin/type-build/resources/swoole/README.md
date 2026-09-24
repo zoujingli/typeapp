@@ -1,6 +1,6 @@
 # 内置 Swoole 构建输入
 
-此目录保存真实的 Swoole 6.2.1 预编译扩展。获取仓库后，匹配的构建直接校验、复用本地文件，不再下载或编译 Swoole；文件不是 Git LFS 指针。固定 PHP 为 **8.5.10、ZTS、非 debug、64 位**，其他 ABI 不自动混用。
+此目录保存真实的 Swoole 6.2.1 预编译扩展。安装完整的 `zoujingli/type-build` 组件后，匹配的构建直接校验、复用本地文件，不再下载或编译 Swoole；文件不是 Git LFS 指针。固定 PHP 为 **8.5.10、ZTS、非 debug、64 位**，其他 ABI 不自动混用。
 
 | 目录 | 平台与边界 |
 | --- | --- |
@@ -17,10 +17,11 @@ Linux 文件不适用于 Alpine/musl。macOS Intel、Windows ARM64、NTS 或其�
 
 1. 真实 embed 已内置的 Swoole 不重复加载。
 2. 显式 `runtime.modules` 声明优先，其次为有效的 `TYPE_SWOOLE_MODULE`。
-3. 项目存在 [manifest.json](manifest.json) 时，按操作系统、架构和 PHP ABI 选择本目录文件，校验 SHA-256 及三个 `Swoole*Source` 适配类的身份；不匹配时失败。
-4. 没有内置清单的独立应用继续使用 SDK 扩展目录。
+3. 默认读取本组件的 [manifest.json](manifest.json)，按操作系统、架构和 PHP ABI 选择本目录文件，校验 SHA-256 及三个 `Swoole*Source` 适配类的身份；清单缺失或不匹配时失败。
 
-实际 embed 仍须通过模块加载、版本、依赖和警告检查，清单和选中模块一同进入构建身份。在其他应用中复用时，应保留整个 `bin/swoole` 目录及其许可材料，并使用相同版本的 `type-build` 适配代码。
+实际 embed 仍须通过模块加载、版本、依赖和警告检查，清单和选中模块一同进入构建身份。独立应用直接使用已安装组件的 `resources/swoole`，路径不依赖应用根目录或当前工作目录。其他扩展继续按 SDK 或显式候选解析；本目录是构建输入，不声明为应用资源，不会把四个平台的文件全部复制到应用产物。
+
+以下维护脚本位于 [TypeApp 开发主仓](https://github.com/zoujingli/typeapp)，从主仓执行；独立应用正常构建无需运行这些脚本。
 
 ```bash
 # 使用 PHP_HOME 指向的锁定 SDK；可从任意工作目录运行该脚本。
@@ -59,6 +60,6 @@ bash tools/prepare-swoole-module.sh
 
 验收包括准确机器类型和 SHA-256、真实 PHP 加载、原生线程 ABI、协程和 PDO hook，以及真实 embed 和应用 AOT 的对应回归。macOS 必须确认没有未解析的 PostgreSQL 私有符号，并实际验证 PDO 连接失败返回异常；仅加载扩展不能发现遗漏静态依赖导致的延迟绑定崩溃。Linux x64 当前构建/加载在 ARM64 主机的 x64 模拟环境完成，性能不作平台原生测量结论。
 
-**这些文件是共享扩展构建输入。** PHP SDK、PHPX 和其他依赖仍须准备；本目录不代表整个构建离线，也不代表应用已经静态链接成单文件。“单程序加配置、启动不释放运行库”的目标见[静态链接验证](../../docs/development/static-runtime-feasibility.md)。
+**这些文件是共享扩展构建输入。** PHP SDK、PHPX 和其他依赖仍须准备；本目录不代表整个构建离线，也不代表应用已经静态链接成单文件。“单程序加配置、启动不释放运行库”的目标见[静态链接验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/static-runtime-feasibility.md)。
 
-本批模块的全量 AOT、三库无源码运行、链接修复及未验证范围见[实施与验证记录](../../docs/development/swoole-bundle.md)。
+本批模块的全量 AOT、三库无源码运行、链接修复及未验证范围见[实施与验证记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/swoole-bundle.md)。

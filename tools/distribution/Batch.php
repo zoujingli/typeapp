@@ -98,7 +98,7 @@ final class Batch
         }
         foreach ($paths as $path) {
             $allowedManual = $name === 'type-build' && in_array($path, ['docs/operations.md', 'NOTICE'], true);
-            if ((!$allowedManual && !preg_match('~^(?:composer\.json|README\.md|LICENSE(?:\.md)?|NOTICE|(?:src|bin|stubs|resources)/[A-Za-z0-9_./-]+)$~D', $path))
+            if ((!$allowedManual && !preg_match('~^(?:\.gitattributes|composer\.json|README\.md|LICENSE(?:\.md)?|NOTICE|(?:src|bin|stubs|resources)/[A-Za-z0-9_./@-]+)$~D', $path))
                 || preg_match('~(?:^|/)(?:\.env(?:\.[^/]+)?|auth\.json|id_rsa|id_ed25519|vendor|build|\.git)(?:/|$)~', $path)) {
                 throw new \RuntimeException('分发包包含未允许内容：' . $name . '/' . $path);
             }

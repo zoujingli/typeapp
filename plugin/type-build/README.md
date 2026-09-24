@@ -46,6 +46,8 @@ composer require --dev zoujingli/type-build:dev-main
 
 第三方源码中需要调整的已知 TypePHP 语义可通过 `rewrites` 声明准确文件、SHA-256、中文原因和有限替换。构建器先审计完整生产源码，再生成保持行号的完整适配副本，原 Composer 文件保持不变；原文、适配结果与映射均参与构建身份。版本、摘要或匹配次数变化即拒绝使用旧适配，具体约束见[第三方适配说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/source-imports.md#版本限定的源码适配)。
 
+本组件在 [resources/swoole](resources/swoole/README.md) 携带四个平台的 Swoole 6.2.1 共享模块、固定清单及原始许可证。匹配 PHP 8.5.10 ZTS 的构建默认按组件安装位置校验并复用，不另行下载 Swoole；独立应用无需复制主仓目录。真实 embed 已内置、显式 `runtime.modules` 和有效 `TYPE_SWOOLE_MODULE` 优先；默认内置清单缺失、ABI 不匹配或内容校验失败时明确拒绝。PHP SDK、PHPX 和其他原生依赖仍需准备，此能力不等于完整静态单程序交付。
+
 构建会初始化真正的embed探针，区分CLI和embed的内置扩展；运行声明按Linux/Darwin/Windows分开。缺失模块可由SDK标准目录或显式文件/SHA256候选提供，加载警告、ABI不符或缺少函数在编译前拒绝。选中的共享扩展、依赖及运行配置进入构建身份和发布清单，不在部署后手工补库。当前 INI 默认 `swoole.enable_library=On`，仅允许固定 Swoole 官方内置 PHP 库沿用官方加载；库内容由承载扩展字节摘要约束，源码版本与构建开关随产物证据核对，其余生产 PHP 仍全量 AOT。参见[真实embed运行依赖](https://github.com/zoujingli/typeapp/blob/main/docs/development/runtime-profiles.md)。
 
 支持手写入口与声明式命令装配两种模式。装配模式读取生产源码 AST，验证显式依赖、接口与生命周期关系，生成直接工厂和命令入口；环境配置在应用启动时取得。禁用模块不注册命令，但其生产源码仍接受编译检查。

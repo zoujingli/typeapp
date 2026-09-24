@@ -109,11 +109,9 @@ final class RuntimeProfile
                     if (is_string($environmentModule) && $environmentModule !== '' && is_file($environmentModule)) {
                         $candidate = $environmentModule;
                     } else {
-                        $bundled = (new BundledSwoole())->select($root);
-                        if ($bundled !== null) {
-                            $candidate = $bundled['file'];
-                            $bundledFiles = [$bundled['manifest']];
-                        }
+                        $bundled = (new BundledSwoole())->select();
+                        $candidate = $bundled['file'];
+                        $bundledFiles = [$bundled['manifest']];
                     }
                 }
                 // setup-php 的 curl 可能属于宿主 PHP，而不是锁定 SDK 的扩展目录。

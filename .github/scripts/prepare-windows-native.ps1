@@ -60,7 +60,7 @@ $redis = Join-Path $Directory 'redis'
 Expand-Archive -LiteralPath $redisArchive -DestinationPath $redis
 Copy-Item -LiteralPath (Join-Path $redis 'php_redis.dll') -Destination (Join-Path $sdk 'ext\php_redis.dll')
 
-# 默认复用 bin/swoole 的固定模块；维护者显式重建时使用官方 Windows/phpize 入口。
+# 默认复用 type-build 组件的固定模块；维护者显式重建时使用官方 Windows/phpize 入口。
 # PHP SDK、PHPX 与其他原生依赖仍独立准备。
 $taskRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $taskTar = Join-Path $env:SystemRoot 'System32/tar.exe'
@@ -188,7 +188,7 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
     $taskBundledSwoole = & (Join-Path $sdk 'php.exe') -n (Join-Path $taskRoot 'tools/select-swoole-module.php')
     if ($LASTEXITCODE -ne 0 -or !$taskBundledSwoole -or !(Test-Path -LiteralPath $taskBundledSwoole -PathType Leaf)) { throw '项目内置 Swoole 校验失败。' }
     Copy-Item -LiteralPath $taskBundledSwoole -Destination (Join-Path $sdk 'ext/php_swoole.dll')
-    Copy-Item -LiteralPath (Join-Path $taskRoot 'bin/swoole/manifest.json') -Destination (Join-Path $taskEvidence 'swoole-bundle.json')
+    Copy-Item -LiteralPath (Join-Path $taskRoot 'plugin/type-build/resources/swoole/manifest.json') -Destination (Join-Path $taskEvidence 'swoole-bundle.json')
     $taskToolsReference = $null
     $taskToolsDigest = $null
     Write-Host '已复用项目内置 Swoole，无需下载或编译 Swoole 源码。'

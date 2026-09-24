@@ -21,6 +21,8 @@ final class DistributionPackageTest extends TestCase
     public static function packageContents(): iterable
     {
         yield 'complete' => ['', null, ''];
+        yield 'git-attributes' => ['.gitattributes', "*.php text eol=lf\n", ''];
+        yield 'versioned-third-party-license' => ['resources/swoole/LICENSES/openssl@3/LICENSE.txt', 'upstream-license', ''];
         yield 'missing-license' => ['LICENSE', null, '缺少分发文件'];
         yield 'missing-notice' => ['NOTICE', null, '缺少分发文件'];
         yield 'missing-readme' => ['README.md', null, '缺少分发文件'];
@@ -28,6 +30,8 @@ final class DistributionPackageTest extends TestCase
         yield 'empty-notice' => ['NOTICE', " \n", '分发说明不能为空'];
         yield 'empty-readme' => ['README.md', "\n", '分发说明不能为空'];
         yield 'unapproved-file' => ['auth.json', '{}', '分发包包含未允许内容'];
+        yield 'unapproved-hidden-file' => ['.gitconfig', '[core]', '分发包包含未允许内容'];
+        yield 'nested-secret' => ['resources/swoole/auth.json', '{}', '分发包包含未允许内容'];
         yield 'unmapped-dependency' => ['composer.json', json_encode([
             'name' => 'zoujingli/type-runtime', 'type' => 'library', 'license' => 'Apache-2.0',
             'require' => ['zoujingli/type-unmapped' => '^1.0'],
@@ -67,6 +71,9 @@ final class DistributionPackageTest extends TestCase
                 if ($content === null) {
                     unlink($package . '/' . $changed);
                 } else {
+                    if (!is_dir(dirname($package . '/' . $changed))) {
+                        self::assertTrue(mkdir(dirname($package . '/' . $changed), 0700, true));
+                    }
                     file_put_contents($package . '/' . $changed, $content);
                 }
             }

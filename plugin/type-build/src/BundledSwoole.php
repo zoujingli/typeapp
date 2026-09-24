@@ -6,19 +6,20 @@ namespace Type\Build;
 
 use RuntimeException;
 
-/** 构建期选择项目内固定的 Swoole 模块；实际加载仍由 RuntimeProfile 验证。 */
+/** 构建期选择本组件携带的固定 Swoole 模块；实际加载仍由 RuntimeProfile 验证。 */
 final class BundledSwoole
 {
     /**
-     * 没有内置目录的独立项目继续使用自己的 SDK；已声明的内置模块不匹配则明确拒绝。
+     * 以组件安装位置定位，不受消费应用目录或当前工作目录影响。
      *
-     * @return array{file:string,sha256:string,manifest:string}|null
+     * @return array{file:string,sha256:string,manifest:string}
+     * @throws RuntimeException 清单缺失、模块不匹配或内容校验失败。
      */
-    public function select(string $root): ?array
+    public function select(): array
     {
-        $manifest = $root . '/bin/swoole/manifest.json';
+        $manifest = dirname(__DIR__) . '/resources/swoole/manifest.json';
         if (!is_file($manifest)) {
-            return null;
+            throw new RuntimeException('构建组件缺少内置 Swoole 清单，请重新安装完整的 type-build');
         }
         $data = json_decode((string) file_get_contents($manifest), true, 32, JSON_THROW_ON_ERROR);
         if (!is_array($data) || ($data['schema'] ?? null) !== 1 || !is_array($data['modules'] ?? null)) {

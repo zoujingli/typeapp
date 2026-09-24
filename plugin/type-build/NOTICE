@@ -14,6 +14,10 @@ Third-party materials retain their original licenses and copyright notices:
   upstream notices documented in web/UPSTREAM.md and web/LICENSE.
 * Docsify, PrismJS, and Mermaid assets retain their MIT license texts in
   docs/assets/vendor/*/LICENSE.
+* Prebuilt Swoole modules in resources/swoole retain their upstream licenses
+  and third-party notices in resources/swoole/LICENSES. Sources, checksums,
+  build variants, and platform limits are recorded in resources/swoole/manifest.json
+  and resources/swoole/README.md. These modules include TypeApp adaptations.
 * Composer and native dependencies retain their declared licenses and source
   notices. A build or release package may include a generated NOTICES.md with
   the exact dependency inventory and original material hashes.
