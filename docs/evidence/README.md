@@ -6,7 +6,8 @@
 | --- | --- |
 | [TypePHP 0.9.3 升级](typephp-upgrade-0.9.3.md) | macOS ARM64 编译线程、全量应用、三库无源码运行与性能对照 |
 | [内置模块与组件迁移](swoole-bundle.md) | 四平台文件身份、独立组件选择及 macOS ARM64 原生回归 |
+| [组件文档与公共 Composer 发布](components-publication.md) | 16 包公共索引与自动同步、15 组件实际安装、模板业务、Docsify 及许可打包回归 |
 
-两份记录从 `docs/development/` 原名迁入，仅修正相对链接，正文中的提交、构建 ID、程序摘要和原始证据归档保持不变。迁移前版本可从主仓提交 `b74d633861710ab05e2bf5b78de68dd395da27f6` 追溯。其他历史平台运行仍由[平台证据索引](../development/platform-support.md)关联。
+前两份记录从 `docs/development/` 原名迁入，仅修正相对链接，正文中的提交、构建 ID、程序摘要和原始证据归档保持不变。迁移前版本可从主仓提交 `b74d633861710ab05e2bf5b78de68dd395da27f6` 追溯。其他历史平台运行仍由[平台证据索引](../development/platform-support.md)关联。
 
 原始日志保存在记录所列的受控归档中，本目录不重复保存机器路径、临时执行日志或秘密配置，也不进入公开 Docsify 站点导出。
