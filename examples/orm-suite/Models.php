@@ -4,6 +4,15 @@ declare(strict_types=1);
 
 namespace TypeApp\OrmSuite {
 
+    /** 不声明版本字段的集合算术同样需要完整回滚。 */
+    #[\Type\Orm\Attribute\Table('type_suite_counters', generatedPrimary: false)]
+    final class CounterRecord extends \Type\Orm\Model
+    {
+        public int $id;
+        public string $tenant_id;
+        public int $value;
+    }
+
     /** 集合写入回归使用显式主键，覆盖大集合的整批回滚。 */
     #[\Type\Orm\Attribute\Table('type_suite_mutations', generatedPrimary: false, softDelete: 'deleted_at', version: 'version')]
     final class MutationRecord extends \Type\Orm\Model

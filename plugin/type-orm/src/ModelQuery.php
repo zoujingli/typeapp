@@ -746,7 +746,7 @@ final class ModelQuery
         return $result;
     }
 
-    /** 原子修改普通数值字段；已有模型不会自动刷新，版本字段自动递增以保持乐观锁。 */
+    /** 原子修改普通数值字段；失败回滚整条写入，已有模型不刷新，声明的版本字段同时递增。 */
     public function increment(string $field, int $amount = 1): int
     {
         return $this->arithmetic($field, $amount, false);
@@ -775,10 +775,7 @@ final class ModelQuery
         $this->definition->assertStorage($this->connection, [$field]);
         $this->definition->assertArithmeticStorage($this->connection, $field);
         $version = $this->definition->versionField();
-        if ($version === null) {
-            return $query->adjust($mapping->column(), $amount, $decrement);
-        }
-        $versionColumn = $this->definition->field($version)->column();
+        $versionColumn = $version === null ? null : $this->definition->field($version)->column();
         return $this->mutate($query, static fn (Query $target): int => $target->adjust($mapping->column(), $amount, $decrement, $versionColumn));
     }
 

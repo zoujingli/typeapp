@@ -45,6 +45,7 @@ final class MutationExercise
             $connection->table('type_suite_mutations')->insertMany($chunk);
         }
         $scope->run(static function (ExecutionScope $current) use ($connection): void {
+            self::unversionedArithmetic($connection);
             $base = MutationRecord::query();
             self::storageEdges($connection, $base);
             $offset = $base->orderBy('id')->limit(3, 1);
@@ -125,6 +126,51 @@ final class MutationExercise
                 self::check($untouched->id === 10002 && $untouched->version === 1 && $untouched->value === 0, '集合写入越过租户范围');
             }, ['tenant_id' => 'tenant-b']);
         }, ['tenant_id' => 'tenant-a']);
+    }
+
+    /** 无版本模型的整条算术写入覆盖约束、触发器、保存点和万行成功路径。 */
+    private static function unversionedArithmetic(Connection $connection): void
+    {
+        $connection->execute('CREATE TABLE type_suite_counters (id INTEGER PRIMARY KEY, tenant_id VARCHAR(50) NOT NULL, '
+            . 'value INTEGER NOT NULL, CHECK (id <> 10001 OR value BETWEEN -1 AND 1))'
+            . ($connection->driverName() === 'mysql' ? ' ENGINE=InnoDB' : ''));
+        $seed = [];
+        for ($id = 1; $id <= 10002; $id++) {
+            $seed[] = ['id' => $id, 'tenant_id' => $id === 10002 ? 'tenant-b' : 'tenant-a', 'value' => 0];
+        }
+        foreach (array_chunk($seed, 500) as $chunk) {
+            $connection->table('type_suite_counters')->insertMany($chunk);
+        }
+        $base = CounterRecord::query();
+        if ($connection->driverName() === 'sqlite') {
+            $connection->execute("CREATE TRIGGER type_counter_fail BEFORE UPDATE ON type_suite_counters WHEN OLD.id = 10001 BEGIN SELECT RAISE(FAIL, 'later row'); END");
+            try {
+                self::check(self::reject(static fn (): int => $base->allowAll()->increment('value'))
+                    && $base->where('value', '!=', 0)->count() === 0, '无版本增量在 SQLite 触发器失败后部分提交');
+                self::check(self::reject(static fn (): int => $base->allowAll()->decrement('value'))
+                    && $base->where('value', '!=', 0)->count() === 0, '无版本减量在 SQLite 触发器失败后部分提交');
+            } finally {
+                $connection->execute('DROP TRIGGER type_counter_fail');
+            }
+        }
+        self::check(self::reject(static fn (): int => $base->allowAll()->increment('value', 2))
+            && self::reject(static fn (): int => $base->allowAll()->decrement('value', 2))
+            && $base->where('value', '!=', 0)->count() === 0, '无版本算术约束失败没有完整回滚');
+        self::check(self::reject(static fn (): mixed => Db::transaction(static function () use ($base, $connection): void {
+            self::check(
+                self::reject(static fn (): int => $base->allowAll()->increment('value', 2))
+                && $connection->transactionDepth() === 1 && $base->where('value', '!=', 0)->count() === 0,
+                '无版本算术失败破坏外层事务或留下部分写入'
+            );
+            self::check($base->where('id', '=', 1)->increment('value') === 1, '保存点回滚后不能继续外层事务');
+            throw new RuntimeException('rollback');
+        })) && $base->where('value', '!=', 0)->count() === 0, '无版本算术逃逸外层回滚');
+        self::check(
+            $base->allowAll()->increment('value') === 10001 && $base->allowAll()->decrement('value') === 10001
+            && $base->where('value', '!=', 0)->count() === 0
+            && (int) $connection->table('type_suite_counters')->where('id', '=', 10002)->first()['value'] === 0,
+            '无版本算术被截断、计算错误或越过租户范围'
+        );
     }
 
     /** 用真实数据库配置及触发器验证整条写入失败，避免约束被静默跳过。 */

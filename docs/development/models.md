@@ -82,6 +82,8 @@ $deleted = Article::query()->where('status', '=', 'archived')->delete();
 
 约束或版本错误保留 `DatabaseException` 和原始数据库原因链，事务或保存点回滚本次整条写入，不把其他约束错误误报为版本耗尽。提交无法确认时仍是 `UNKNOWN`，需对账，不能承诺已回滚或自动重试。无版本的同值更新保留驱动计数差异：MySQL 默认报告实际改变的行数，PostgreSQL/SQLite 报告匹配行数。
 
+`increment/decrement` 无论是否声明版本字段都使用同一事务保护；触发器或末行约束失败时不能留下前面行的修改。已有外层事务时使用保存点回滚本次操作，外层仍可继续工作；这不增加匹配行数限制，也不把集合写入拆成多次提交。
+
 ## 实例事件与副作用
 
 观察器实现 `ModelObserver::onEvent($event, $model)`。新增顺序为 saving → creating → SQL → created → saved；更新对应 updating/updated；删除、恢复与强制删除分别使用 deleting/deleted、restoring/restored、forceDeleting/forceDeleted。读取通知 retrieved。前置事件返回 false 取消写入，保存返回 `cancelled`；没有变化的保存返回 `unchanged` 且不触发写入事件。
