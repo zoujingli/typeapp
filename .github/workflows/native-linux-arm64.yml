@@ -33,14 +33,12 @@ jobs:
         with:
           php-version: '8.5.10'
           coverage: none
-          extensions: dom, filter, ctype, tokenizer, mbstring, iconv, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, sockets, openssl, curl, zip, swoole-6.2.1, redis-6.3.0
+          extensions: dom, filter, ctype, tokenizer, mbstring, iconv, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, sockets, openssl, curl, zip, redis-6.3.0
           tools: composer:2.10.3
           ini-values: memory_limit=2G, display_errors=1, swoole.enable_library=On, date.timezone=UTC
         env:
           phpts: ts
           fail-fast: true
-          SWOOLE_CONFIGURE_OPTS: --enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-thread --enable-swoole-pgsql --enable-swoole-sqlite
-          SWOOLE_LINUX_LIBS: libc-ares-dev, libpq-dev, libsqlite3-dev
       - name: 缓存工具链锁定的 Linux PHP
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
@@ -69,7 +67,7 @@ jobs:
         run: |
           test "$(uname -m)" = aarch64
           sudo apt-get update
-          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config libc-ares-dev bubblewrap util-linux mysql-server mysql-client postgresql redis-server sqlite3
+          sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config libc-ares-dev libpq-dev libsqlite3-dev libcurl4-openssl-dev bubblewrap util-linux mysql-server mysql-client postgresql redis-server sqlite3
           pkg-config --modversion libcares
           # 此步骤仅用于一次性GitHub runner；包安装器可能启动默认实例，验收只运行控制器自建实例。
           sudo systemctl stop mysql postgresql redis-server

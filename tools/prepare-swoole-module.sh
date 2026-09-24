@@ -2,13 +2,18 @@
 set -euo pipefail
 trap 'task_status=$?; echo "Swoole 适配构建在第 ${LINENO} 行失败（退出码 ${task_status}）。" >&2' ERR
 
-# 构建固定上游并应用 TypeApp 已核验的 Swoole 接缝；输出可复制的动态模块路径。
-: "${GITHUB_WORKSPACE:?需要 GitHub 工作区}"
-: "${RUNNER_TEMP:?需要 runner 临时目录}"
+# 默认复用仓库内模块；维护者显式选择源码构建时才下载固定上游。
 : "${PHP_HOME:?需要锁定的 PHP SDK}"
-: "${SWOOLE_CONFIGURE_OPTS:?需要 Swoole 配置选项}"
 
-task_root="$GITHUB_WORKSPACE"
+task_root="${GITHUB_WORKSPACE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+if [[ "${TYPE_SWOOLE_BUILD_FROM_SOURCE:-0}" != 1 ]]; then
+    task_module="$("$PHP_HOME/bin/php" -n "$task_root/tools/select-swoole-module.php")"
+    echo "复用项目内置 Swoole：$task_module" >&2
+    printf '%s\n' "$task_module"
+    exit 0
+fi
+: "${RUNNER_TEMP:?需要 runner 临时目录}"
+: "${SWOOLE_CONFIGURE_OPTS:?需要 Swoole 配置选项}"
 # 与 setup-php 的 swoole-6.2.1 及本仓 Swoole*Source 固定原文对齐；受控构建再启用 pgsql/sqlite 钩子与 startNative。
 task_reference='0f3bee2f0ed8704ce33a336e7feabb0115411dd7'
 task_archive="$RUNNER_TEMP/swoole-src.tar.gz"

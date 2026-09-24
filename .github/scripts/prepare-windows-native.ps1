@@ -60,8 +60,8 @@ $redis = Join-Path $Directory 'redis'
 Expand-Archive -LiteralPath $redisArchive -DestinationPath $redis
 Copy-Item -LiteralPath (Join-Path $redis 'php_redis.dll') -Destination (Join-Path $sdk 'ext\php_redis.dll')
 
-# 扩展使用官方 Windows/phpize 构建入口；SDK 发行包不包含 Swoole。
-# 下载均固定摘要，补丁仍由已有适配类核验原文，不修改共享安装或上游工作树。
+# 默认复用 bin/swoole 的固定模块；维护者显式重建时使用官方 Windows/phpize 入口。
+# PHP SDK、PHPX 与其他原生依赖仍独立准备。
 $taskRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $taskTar = Join-Path $env:SystemRoot 'System32/tar.exe'
 if (!(Test-Path -LiteralPath $taskTar)) { throw 'Windows 系统 tar 不存在。' }
@@ -74,20 +74,22 @@ function Get-VerifiedArchive {
 }
 $taskToolsReference = '1142e4abaf90ceb6cc25d983797b25cc948669cf'
 $taskToolsDigest = '083324ab6ad0f5b8727539d717600ab0f29a2fe84bd147095cf0b115a63a45c4'
-$taskToolsArchive = Join-Path $Directory 'php-sdk-tools.zip'
-Get-VerifiedArchive ('https://codeload.github.com/php/php-sdk-binary-tools/zip/' + $taskToolsReference) $taskToolsDigest $taskToolsArchive
-Expand-Archive -LiteralPath $taskToolsArchive -DestinationPath $Directory
-$taskTools = Join-Path $Directory ('php-sdk-binary-tools-' + $taskToolsReference)
-# phpize 的 configure 需要 PHP 官方 SDK 工具，即使不重新生成 PHP 解析器也会检查 bison/re2c。
-$env:PATH = (Join-Path $taskTools 'bin') + ';' + (Join-Path $taskTools 'msys2/usr/bin') + ';' + $env:PATH
-foreach ($taskTool in @('bison', 're2c')) {
-    & (Join-Path $taskTools ('msys2/usr/bin/' + $taskTool + '.exe')) --version | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw ('PHP SDK 构建工具不能运行：' + $taskTool) }
+if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
+    $taskToolsArchive = Join-Path $Directory 'php-sdk-tools.zip'
+    Get-VerifiedArchive ('https://codeload.github.com/php/php-sdk-binary-tools/zip/' + $taskToolsReference) $taskToolsDigest $taskToolsArchive
+    Expand-Archive -LiteralPath $taskToolsArchive -DestinationPath $Directory
+    $taskTools = Join-Path $Directory ('php-sdk-binary-tools-' + $taskToolsReference)
+    # phpize 的 configure 需要 PHP 官方 SDK 工具，即使不重新生成 PHP 解析器也会检查 bison/re2c。
+    $env:PATH = (Join-Path $taskTools 'bin') + ';' + (Join-Path $taskTools 'msys2/usr/bin') + ';' + $env:PATH
+    foreach ($taskTool in @('bison', 're2c')) {
+        & (Join-Path $taskTools ('msys2/usr/bin/' + $taskTool + '.exe')) --version | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw ('PHP SDK 构建工具不能运行：' + $taskTool) }
+    }
+    $taskDevelArchive = Join-Path $Directory 'php-devel.zip'
+    Get-VerifiedArchive 'https://downloads.php.net/~windows/releases/archives/php-devel-pack-8.5.10-Win32-vs17-x64.zip' '0031d279f13f21e81fd62f9a98e919f28b1875ba457916d60daed85586e479dd' $taskDevelArchive
+    Expand-Archive -LiteralPath $taskDevelArchive -DestinationPath (Join-Path $Directory 'php-devel')
+    $taskDevel = Join-Path $Directory 'php-devel/php-8.5.10-devel-vs17-x64'
 }
-$taskDevelArchive = Join-Path $Directory 'php-devel.zip'
-Get-VerifiedArchive 'https://downloads.php.net/~windows/releases/archives/php-devel-pack-8.5.10-Win32-vs17-x64.zip' '0031d279f13f21e81fd62f9a98e919f28b1875ba457916d60daed85586e479dd' $taskDevelArchive
-Expand-Archive -LiteralPath $taskDevelArchive -DestinationPath (Join-Path $Directory 'php-devel')
-$taskDevel = Join-Path $Directory 'php-devel/php-8.5.10-devel-vs17-x64'
 $taskDependencies = @{
     'openssl-3.5.7-vs17-x64.zip' = 'bc86233e1f0826b0e0c8b745ed5221a781a1d403c6f69bb8fbe086e07dd3979e'
     'zlib-1.3.2-vs17-x64.zip' = '3038dbd503d494718898a150f93d79627df442c344d1d6e77ec413cdeec7999e'
@@ -104,82 +106,92 @@ foreach ($taskDependency in $taskDependencies.Keys) {
     Expand-Archive -LiteralPath $taskZip -DestinationPath $taskDeps -Force
 }
 $taskSwooleReference = '0f3bee2f0ed8704ce33a336e7feabb0115411dd7'
-$taskSwooleArchive = Join-Path $Directory 'swoole.tar.gz'
-Get-VerifiedArchive ('https://codeload.github.com/swoole/swoole-src/tar.gz/' + $taskSwooleReference) 'b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea' $taskSwooleArchive
-& $taskTar -xzf $taskSwooleArchive -C $Directory
-if ($LASTEXITCODE -ne 0) { throw 'Swoole 源码解包失败。' }
-$taskSwoole = Join-Path $Directory ('swoole-src-' + $taskSwooleReference)
-$taskPatch = 'foreach(["SwooleThreadSource","SwooleHttpSource","SwooleSocketSource"] as $name){require $argv[1]."/plugin/type-build/src/".$name.".php";$class="Type\\Build\\".$name;$patch=new $class();$report[$name]=$patch->apply($argv[2]);} $report["tls"]=(new Type\Build\SwooleSocketSource())->applyTls($argv[2]);echo json_encode($report,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);'
-& (Join-Path $sdk 'php.exe') -n -r $taskPatch $taskRoot $taskSwoole | Set-Content -LiteralPath (Join-Path $taskEvidence 'swoole-source.json') -Encoding utf8
-if ($LASTEXITCODE -ne 0) { throw '固定 Swoole 源码适配核验失败。' }
-# 固定版本未声明 PHP_PGSQL_DIR；独立 phpize 构建使用已有 --with-php-build 依赖目录。
-# 上游配置能独立发现 libpq 后撤除此适配，不能因此关闭 PostgreSQL hook。
-$taskConfig = Join-Path $taskSwoole 'config.w32'
-$taskConfigBefore = '02a801b07d5bb38edea0f88465271454f54d4625d6e71e0c15db3935bef789ac'
-if ((Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() -ne $taskConfigBefore) { throw 'Swoole Windows 配置原文不符。' }
-$taskConfigText = [IO.File]::ReadAllText($taskConfig)
-$taskLibraryProbe = 'CHECK_LIB("libpq.lib", "swoole", PHP_PGSQL_DIR)'
-$taskHeaderProbe = 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PGSQL_DIR)'
-$taskSqliteProbe = 'CHECK_LIB("sqlite3.lib", "swoole", null)'
-$taskZstdProbe = 'CHECK_LIB("libzstd.lib", "swoole", null)'
-$taskPgsqlSources = 'swoole_source_files += PHP_THIRDPARTY_DIR + "\\pdo_pgsql\\pgsql_driver.c ";'
-$taskSqliteSources = 'swoole_source_files += "thirdparty\\pdo_sqlite\\sqlite_driver.c ";'
-foreach ($taskProbe in @($taskLibraryProbe, $taskHeaderProbe, $taskSqliteProbe, $taskZstdProbe, $taskPgsqlSources, $taskSqliteSources)) {
-    if ([regex]::Matches($taskConfigText, [regex]::Escape($taskProbe)).Count -ne 1) { throw 'Swoole Windows 配置适配位置不唯一。' }
-}
-$taskConfigText = $taskConfigText.Replace($taskLibraryProbe, 'CHECK_LIB("libpq.lib", "swoole", null)')
-$taskConfigText = $taskConfigText.Replace($taskHeaderProbe, 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PHP_BUILD + "\\include\\libpq")')
-$taskConfigText = $taskConfigText.Replace($taskSqliteProbe, 'CHECK_LIB("libsqlite3.lib;sqlite3.lib", "swoole", null)')
-$taskConfigText = $taskConfigText.Replace($taskZstdProbe, 'CHECK_LIB("libzstd_a.lib;libzstd.lib", "swoole", null)')
-# 官方 hook 实现必须与 PDO 适配一起编译；只补构建清单，不替换数据库等待机制。
-$taskConfigText = $taskConfigText.Replace($taskPgsqlSources, ('swoole_source_files += "ext-src\\swoole_pgsql.cc ";' + "`n`t`t" + $taskPgsqlSources))
-$taskConfigText = $taskConfigText.Replace($taskSqliteSources, ('swoole_source_files += "ext-src\\swoole_sqlite.cc ";' + "`n`t`t" + $taskSqliteSources))
-[IO.File]::WriteAllText($taskConfig, $taskConfigText, [Text.UTF8Encoding]::new($false))
-@{ file='config.w32'; before=$taskConfigBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-config-source.json') -Encoding utf8
-# IOCP 直接引用 PHP 文件辅助头，需要先加载其使用的 Zend 内联定义。
-# 上游补齐包含顺序并通过 Windows 编译后撤除此头文件适配。
-$taskIocp = Join-Path $taskSwoole 'src/coroutine/iocp.cc'
-$taskIocpBefore = 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990'
-if ((Get-FileHash -Algorithm SHA256 -LiteralPath $taskIocp).Hash.ToLowerInvariant() -ne $taskIocpBefore) { throw 'Swoole IOCP 原文不符。' }
-$taskIocpText = [IO.File]::ReadAllText($taskIocp)
-$taskIocpInclude = '#include "win32/ioutil.h"'
-if ([regex]::Matches($taskIocpText, [regex]::Escape($taskIocpInclude)).Count -ne 1) { throw 'Swoole IOCP 头文件适配位置不唯一。' }
-$taskIocpReplacement = @'
+if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
+    $taskSwooleArchive = Join-Path $Directory 'swoole.tar.gz'
+    Get-VerifiedArchive ('https://codeload.github.com/swoole/swoole-src/tar.gz/' + $taskSwooleReference) 'b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea' $taskSwooleArchive
+    & $taskTar -xzf $taskSwooleArchive -C $Directory
+    if ($LASTEXITCODE -ne 0) { throw 'Swoole 源码解包失败。' }
+    $taskSwoole = Join-Path $Directory ('swoole-src-' + $taskSwooleReference)
+    $taskPatch = 'foreach(["SwooleThreadSource","SwooleHttpSource","SwooleSocketSource"] as $name){require $argv[1]."/plugin/type-build/src/".$name.".php";$class="Type\\Build\\".$name;$patch=new $class();$report[$name]=$patch->apply($argv[2]);} $report["tls"]=(new Type\Build\SwooleSocketSource())->applyTls($argv[2]);echo json_encode($report,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);'
+    & (Join-Path $sdk 'php.exe') -n -r $taskPatch $taskRoot $taskSwoole | Set-Content -LiteralPath (Join-Path $taskEvidence 'swoole-source.json') -Encoding utf8
+    if ($LASTEXITCODE -ne 0) { throw '固定 Swoole 源码适配核验失败。' }
+    # 固定版本未声明 PHP_PGSQL_DIR；独立 phpize 构建使用已有 --with-php-build 依赖目录。
+    # 上游配置能独立发现 libpq 后撤除此适配，不能因此关闭 PostgreSQL hook。
+    $taskConfig = Join-Path $taskSwoole 'config.w32'
+    $taskConfigBefore = '02a801b07d5bb38edea0f88465271454f54d4625d6e71e0c15db3935bef789ac'
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() -ne $taskConfigBefore) { throw 'Swoole Windows 配置原文不符。' }
+    $taskConfigText = [IO.File]::ReadAllText($taskConfig)
+    $taskLibraryProbe = 'CHECK_LIB("libpq.lib", "swoole", PHP_PGSQL_DIR)'
+    $taskHeaderProbe = 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PGSQL_DIR)'
+    $taskSqliteProbe = 'CHECK_LIB("sqlite3.lib", "swoole", null)'
+    $taskZstdProbe = 'CHECK_LIB("libzstd.lib", "swoole", null)'
+    $taskPgsqlSources = 'swoole_source_files += PHP_THIRDPARTY_DIR + "\\pdo_pgsql\\pgsql_driver.c ";'
+    $taskSqliteSources = 'swoole_source_files += "thirdparty\\pdo_sqlite\\sqlite_driver.c ";'
+    foreach ($taskProbe in @($taskLibraryProbe, $taskHeaderProbe, $taskSqliteProbe, $taskZstdProbe, $taskPgsqlSources, $taskSqliteSources)) {
+        if ([regex]::Matches($taskConfigText, [regex]::Escape($taskProbe)).Count -ne 1) { throw 'Swoole Windows 配置适配位置不唯一。' }
+    }
+    $taskConfigText = $taskConfigText.Replace($taskLibraryProbe, 'CHECK_LIB("libpq.lib", "swoole", null)')
+    $taskConfigText = $taskConfigText.Replace($taskHeaderProbe, 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PHP_BUILD + "\\include\\libpq")')
+    $taskConfigText = $taskConfigText.Replace($taskSqliteProbe, 'CHECK_LIB("libsqlite3.lib;sqlite3.lib", "swoole", null)')
+    $taskConfigText = $taskConfigText.Replace($taskZstdProbe, 'CHECK_LIB("libzstd_a.lib;libzstd.lib", "swoole", null)')
+    # 官方 hook 实现必须与 PDO 适配一起编译；只补构建清单，不替换数据库等待机制。
+    $taskConfigText = $taskConfigText.Replace($taskPgsqlSources, ('swoole_source_files += "ext-src\\swoole_pgsql.cc ";' + "`n`t`t" + $taskPgsqlSources))
+    $taskConfigText = $taskConfigText.Replace($taskSqliteSources, ('swoole_source_files += "ext-src\\swoole_sqlite.cc ";' + "`n`t`t" + $taskSqliteSources))
+    [IO.File]::WriteAllText($taskConfig, $taskConfigText, [Text.UTF8Encoding]::new($false))
+    @{ file='config.w32'; before=$taskConfigBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-config-source.json') -Encoding utf8
+    # IOCP 直接引用 PHP 文件辅助头，需要先加载其使用的 Zend 内联定义。
+    # 上游补齐包含顺序并通过 Windows 编译后撤除此头文件适配。
+    $taskIocp = Join-Path $taskSwoole 'src/coroutine/iocp.cc'
+    $taskIocpBefore = 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990'
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $taskIocp).Hash.ToLowerInvariant() -ne $taskIocpBefore) { throw 'Swoole IOCP 原文不符。' }
+    $taskIocpText = [IO.File]::ReadAllText($taskIocp)
+    $taskIocpInclude = '#include "win32/ioutil.h"'
+    if ([regex]::Matches($taskIocpText, [regex]::Escape($taskIocpInclude)).Count -ne 1) { throw 'Swoole IOCP 头文件适配位置不唯一。' }
+    $taskIocpReplacement = @'
 #include "Zend/zend_portability.h"
 #include "win32/ioutil.h"
 '@
-$taskIocpText = $taskIocpText.Replace($taskIocpInclude, $taskIocpReplacement)
-# poll 宏同时改名成员方法；未限定的 WSAPoll 会递归调用自身并耗尽协程栈。
-# 只限定到 WinSock 全局函数；上游消除名称遮蔽且 PostgreSQL hook 回归通过后撤除。
-$taskIocpPoll = 'int retval = WSAPoll(fds, nfds, 0);'
-if ([regex]::Matches($taskIocpText, [regex]::Escape($taskIocpPoll)).Count -ne 1) { throw 'Swoole IOCP 轮询适配位置不唯一。' }
-$taskIocpText = $taskIocpText.Replace($taskIocpPoll, 'int retval = ::WSAPoll(fds, nfds, 0);')
-[IO.File]::WriteAllText($taskIocp, $taskIocpText, [Text.UTF8Encoding]::new($false))
-@{ file='src/coroutine/iocp.cc'; before=$taskIocpBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskIocp).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-iocp-source.json') -Encoding utf8
-Push-Location $taskSwoole
-try {
-    & (Join-Path $taskDevel 'phpize.bat') 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'phpize.log')
-    if ($LASTEXITCODE -ne 0) { throw 'Swoole phpize 失败。' }
-    & .\configure.bat '--enable-swoole=shared' '--enable-swoole-thread' '--enable-mysqlnd' '--enable-php-sockets' '--enable-swoole-pgsql' '--enable-swoole-sqlite' "--with-php-build=$taskDeps" '--with-mp=2' 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
-    if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath 'Makefile')) { throw 'Swoole Windows 配置失败。' }
-    $taskFeatures = [IO.File]::ReadAllText((Join-Path $taskDevel 'include/main/config.pickle.h'))
-    foreach ($taskFeature in @('SW_USE_MYSQLND', 'SW_USE_PGSQL', 'SW_USE_SQLITE')) {
-        if ($taskFeatures -notmatch ('(?m)^#define\s+' + $taskFeature + '\s+1\b')) { throw ('Swoole 缺少必需 PDO hook：' + $taskFeature) }
-    }
-    # PHP 8.5 的官方 Swoole 关闭回调使用指定初始化；MSVC 需要显式 C++20。
-    $taskCompilerOptions = $env:_CL_
+    $taskIocpText = $taskIocpText.Replace($taskIocpInclude, $taskIocpReplacement)
+    # poll 宏同时改名成员方法；未限定的 WSAPoll 会递归调用自身并耗尽协程栈。
+    # 只限定到 WinSock 全局函数；上游消除名称遮蔽且 PostgreSQL hook 回归通过后撤除。
+    $taskIocpPoll = 'int retval = WSAPoll(fds, nfds, 0);'
+    if ([regex]::Matches($taskIocpText, [regex]::Escape($taskIocpPoll)).Count -ne 1) { throw 'Swoole IOCP 轮询适配位置不唯一。' }
+    $taskIocpText = $taskIocpText.Replace($taskIocpPoll, 'int retval = ::WSAPoll(fds, nfds, 0);')
+    [IO.File]::WriteAllText($taskIocp, $taskIocpText, [Text.UTF8Encoding]::new($false))
+    @{ file='src/coroutine/iocp.cc'; before=$taskIocpBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskIocp).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-iocp-source.json') -Encoding utf8
+    Push-Location $taskSwoole
     try {
-        $env:_CL_ = ($taskCompilerOptions + ' /std:c++20').Trim()
-        & nmake /nologo 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'swoole-build.log')
-        if ($LASTEXITCODE -ne 0) { throw 'Swoole Windows 编译失败。' }
-    } finally { $env:_CL_ = $taskCompilerOptions }
-} finally { Pop-Location }
-$taskModules = @(Get-ChildItem -LiteralPath $taskSwoole -Filter php_swoole.dll -File -Recurse)
-if ($taskModules.Count -ne 1) { throw 'Swoole 构建没有产生唯一扩展。' }
-Copy-Item -LiteralPath $taskModules[0].FullName -Destination (Join-Path $sdk 'ext/php_swoole.dll')
-$taskSwooleSymbols = [IO.Path]::ChangeExtension($taskModules[0].FullName, '.pdb')
-if (Test-Path -LiteralPath $taskSwooleSymbols) {
-    Copy-Item -LiteralPath $taskSwooleSymbols -Destination (Join-Path $sdk 'ext/php_swoole.pdb')
+        & (Join-Path $taskDevel 'phpize.bat') 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'phpize.log')
+        if ($LASTEXITCODE -ne 0) { throw 'Swoole phpize 失败。' }
+        & .\configure.bat '--enable-swoole=shared' '--enable-swoole-thread' '--enable-mysqlnd' '--enable-php-sockets' '--enable-swoole-pgsql' '--enable-swoole-sqlite' "--with-php-build=$taskDeps" '--with-mp=2' 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
+        if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath 'Makefile')) { throw 'Swoole Windows 配置失败。' }
+        $taskFeatures = [IO.File]::ReadAllText((Join-Path $taskDevel 'include/main/config.pickle.h'))
+        foreach ($taskFeature in @('SW_USE_MYSQLND', 'SW_USE_PGSQL', 'SW_USE_SQLITE')) {
+            if ($taskFeatures -notmatch ('(?m)^#define\s+' + $taskFeature + '\s+1\b')) { throw ('Swoole 缺少必需 PDO hook：' + $taskFeature) }
+        }
+        # PHP 8.5 的官方 Swoole 关闭回调使用指定初始化；MSVC 需要显式 C++20。
+        $taskCompilerOptions = $env:_CL_
+        try {
+            $env:_CL_ = ($taskCompilerOptions + ' /std:c++20').Trim()
+            & nmake /nologo 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'swoole-build.log')
+            if ($LASTEXITCODE -ne 0) { throw 'Swoole Windows 编译失败。' }
+        } finally { $env:_CL_ = $taskCompilerOptions }
+    } finally { Pop-Location }
+    $taskModules = @(Get-ChildItem -LiteralPath $taskSwoole -Filter php_swoole.dll -File -Recurse)
+    if ($taskModules.Count -ne 1) { throw 'Swoole 构建没有产生唯一扩展。' }
+    Copy-Item -LiteralPath $taskModules[0].FullName -Destination (Join-Path $sdk 'ext/php_swoole.dll')
+    $taskSwooleSymbols = [IO.Path]::ChangeExtension($taskModules[0].FullName, '.pdb')
+    if (Test-Path -LiteralPath $taskSwooleSymbols) {
+        Copy-Item -LiteralPath $taskSwooleSymbols -Destination (Join-Path $sdk 'ext/php_swoole.pdb')
+    }
+} else {
+    $taskBundledSwoole = & (Join-Path $sdk 'php.exe') -n (Join-Path $taskRoot 'tools/select-swoole-module.php')
+    if ($LASTEXITCODE -ne 0 -or !$taskBundledSwoole -or !(Test-Path -LiteralPath $taskBundledSwoole -PathType Leaf)) { throw '项目内置 Swoole 校验失败。' }
+    Copy-Item -LiteralPath $taskBundledSwoole -Destination (Join-Path $sdk 'ext/php_swoole.dll')
+    Copy-Item -LiteralPath (Join-Path $taskRoot 'bin/swoole/manifest.json') -Destination (Join-Path $taskEvidence 'swoole-bundle.json')
+    $taskToolsReference = $null
+    $taskToolsDigest = $null
+    Write-Host '已复用项目内置 Swoole，无需下载或编译 Swoole 源码。'
 }
 # 将实际链接的依赖与 SDK 放在同一搜索目录，运行清单随后从真实加载模块核验。
 Get-ChildItem -LiteralPath (Join-Path $taskDeps 'bin') -Filter '*.dll' -File | Copy-Item -Destination $sdk -Force
@@ -232,4 +244,6 @@ Add-Content -LiteralPath $env:GITHUB_PATH -Value $sdk -Encoding utf8
 Add-Content -LiteralPath $env:GITHUB_PATH -Value $phpxBuild -Encoding utf8
 & (Join-Path $sdk 'php.exe') -r 'if(PHP_VERSION!=="8.5.10" || !PHP_ZTS || PHP_INT_SIZE!==8){exit(1);} foreach(["dom","mbstring","pdo_mysql","pdo_pgsql","pdo_sqlite","redis","swoole"] as $e){if(!extension_loaded($e)){fwrite(STDERR,"missing ".$e);exit(1);}} if(phpversion("redis")!=="6.3.0" || version_compare(phpversion("swoole"),"6.2","<") || version_compare(phpversion("swoole"),"7",">=") || !filter_var(ini_get("swoole.enable_library"),FILTER_VALIDATE_BOOL)){exit(1);} echo PHP_VERSION," ZTS x64 SDK verified; Swoole ",phpversion("swoole"),"\n";'
 if ($LASTEXITCODE -ne 0) { throw 'The real Windows PHP runtime did not match the SDK contract.' }
+& (Join-Path $sdk 'php.exe') -r 'if(!method_exists(Swoole\Thread::class,"startNative") || Swoole\Thread::NATIVE_ENTRY_ABI!==2 || !defined("SWOOLE_HOOK_PDO_PGSQL") || !defined("SWOOLE_HOOK_PDO_SQLITE")){exit(1);}'
+if ($LASTEXITCODE -ne 0) { throw 'Swoole 原生线程 ABI 或 PDO hook 不完整。' }
 @{ platform='Windows'; architecture='x64'; php='8.5.10'; sdk_tools_source=$taskToolsReference; sdk_tools_sha256=$taskToolsDigest; swoole_source=$taskSwooleReference; swoole_sha256=(Get-FileHash -LiteralPath (Join-Path $sdk 'ext/php_swoole.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); phpx_source='0dfa613d2057dcd4aa319ec9b6816f68df2403e4'; phpx_sha256=(Get-FileHash -LiteralPath (Join-Path $phpxBuild 'phpx.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); dependencies=$taskDependencies; passed=$true } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8

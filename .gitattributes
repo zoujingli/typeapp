@@ -1,1 +1,7 @@
 *.php text eol=lf
+# 预编译模块和原始许可材料的摘要在所有平台保持一致。
+bin/swoole/** -text
+# 上游许可证按原始字节保存，包括其行尾空白。
+bin/swoole/LICENSES/** -whitespace
+bin/swoole/**/*.so binary
+bin/swoole/**/*.dll binary

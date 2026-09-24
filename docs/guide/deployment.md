@@ -31,6 +31,8 @@ flowchart LR
 
 工具链版本以当前项目的 `toolchain.lock.json` 为准，生产依赖以 `composer.lock` 为准。准备与目标 OS、架构一致的 SDK 和扩展，再检查构建环境。
 
+主仓已内置四个平台的 [Swoole 共享模块](../../bin/swoole/README.md)，构建时默认校验并复用，无需下载 Swoole。它们不替代 PHP SDK 或其他原生依赖，也不表示上述完整静态单程序目标已经完成。
+
 独立应用根执行：
 
 ```bash

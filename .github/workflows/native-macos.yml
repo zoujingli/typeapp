@@ -42,42 +42,12 @@ jobs:
       - name: 安装原生构建和专用测试数据库工具
         run: |
           brew install cmake gmp mpfr pcre2 pkg-config libpq mysql@8.4 postgresql@17 redis
-          # PHP 的 pcre 扩展头文件会直接包含 pcre2.h；setup-php 编译 Swoole
-          # 时需要它位于标准 Homebrew include 路径中。
+          # PHPX 使用 PHP 扩展头文件中的 pcre2.h；路径从当前 Homebrew 解析。
           task_pcre2="$(brew --prefix pcre2)"
           brew link --force --overwrite pcre2
           test -f "$task_pcre2/include/pcre2.h"
-          # setup-php 通过 sudo pecl 构建 Swoole，不保留自定义 CFLAGS；
-          # macOS clang 默认搜索 /usr/local/include，建立标准头文件接缝。
-          sudo mkdir -p /usr/local/include
-          sudo ln -sf "$task_pcre2/include/pcre2.h" /usr/local/include/pcre2.h
-          sudo ln -sf "$task_pcre2/include/pcre2posix.h" /usr/local/include/pcre2posix.h
-          test -f /usr/local/include/pcre2.h
-          printf 'PCRE2_PREFIX=%s\n' "$task_pcre2" >> "$GITHUB_ENV"
-      - name: 暴露 PostgreSQL 构建头文件与 pkg-config
-        run: |
-          # setup-php 的 pdo_pgsql 使用 Homebrew libpq；Swoole 必须链接同一
-          # 个 dylib 身份。postgresql@17 仅提供本轮隔离数据库服务和客户端工具。
-          task_pgsql="$(brew --prefix libpq)"
-          task_pgsql_include="$task_pgsql/include"
-          task_pgsql_lib="$task_pgsql/lib"
-          [[ -f "$task_pgsql_include/libpq-fe.h" && -f "$task_pgsql_lib/libpq.dylib" ]] || exit 1
-          task_pgsql_pkg="$RUNNER_TEMP/libpq-pkgconfig"
-          mkdir -p "$task_pgsql_pkg"
-          {
-            printf 'prefix=%s\n' "$task_pgsql"
-            printf 'exec_prefix=${prefix}\nlibdir=%s\nincludedir=%s\n' "$task_pgsql_lib" "$task_pgsql_include"
-            printf 'Name: libpq\nDescription: PostgreSQL client library\nVersion: 17\nLibs: -L%s -lpq\nCflags: -I%s\n' "$task_pgsql_lib" "$task_pgsql_include"
-          } > "$task_pgsql_pkg/libpq.pc"
-          # setup-php 用 sudo 执行 PECL configure，sudo 默认不会保留 LIBPQ_*。
-          # 直接传入 Swoole 的 PostgreSQL 前缀，让其在 configure 内部构造
-          # 自己的 pkg-config 路径，避免依赖被清掉的外部环境变量。
-          task_swoole_pgsql="$RUNNER_TEMP/libpq-prefix"
-          mkdir -p "$task_swoole_pgsql/lib/pkgconfig"
-          cp "$task_pgsql_pkg/libpq.pc" "$task_swoole_pgsql/lib/pkgconfig/libpq.pc"
-          printf 'SWOOLE_CONFIGURE_OPTS=--enable-sockets --enable-mysqlnd --enable-cares --enable-swoole-thread --enable-swoole-pgsql=%s --enable-swoole-sqlite\n' "$task_swoole_pgsql" >> "$GITHUB_ENV"
-          printf 'PKG_CONFIG_PATH=%s:%s\nCPPFLAGS=-I%s -I%s/include %s\nLDFLAGS=-L%s -L%s/lib %s\nLIBPQ_CFLAGS=-I%s\nLIBPQ_LIBS=-L%s -lpq\n' \
-            "$task_pgsql_pkg" "${PKG_CONFIG_PATH:-}" "$task_pgsql_include" "$PCRE2_PREFIX" "${CPPFLAGS:-}" "$task_pgsql_lib" "$PCRE2_PREFIX" "${LDFLAGS:-}" "$task_pgsql_include" "$task_pgsql_lib" >> "$GITHUB_ENV"
+          printf 'PCRE2_PREFIX=%s\nCPPFLAGS=-I%s/include %s\nLDFLAGS=-L%s/lib %s\n' \
+            "$task_pcre2" "$task_pcre2" "${CPPFLAGS:-}" "$task_pcre2" "${LDFLAGS:-}" >> "$GITHUB_ENV"
       - name: 将 Homebrew ZTS PHP 固定到锁定补丁
         run: |
           # setup-php 把 8.5.10 截成 8.5，再安装 php-zts 的当前补丁。
@@ -96,46 +66,22 @@ jobs:
         with:
           php-version: '8.5.10'
           coverage: none
-          extensions: dom, filter, ctype, tokenizer, mbstring, iconv, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, sockets, openssl, curl, zip, redis-6.3.0, swoole-6.2.1
+          extensions: dom, filter, ctype, tokenizer, mbstring, iconv, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, sockets, openssl, curl, zip, redis-6.3.0
           ini-values: memory_limit=2G, display_errors=1, swoole.enable_library=On, date.timezone=UTC
           tools: composer:2.10.3
         env:
           phpts: ts
           fail-fast: true
           MACOSX_DEPLOYMENT_TARGET: '15.0'
-          SWOOLE_DARWIN_LIBS: c-ares, libpq, sqlite
-          CFLAGS: -I/opt/homebrew/opt/pcre2/include
-          CXXFLAGS: -I/opt/homebrew/opt/pcre2/include
-      - name: 核对 PHP 扩展的 PostgreSQL 动态库身份
+      - name: 核对内置 Swoole 与锁定 PHP
         run: |
-          task_php="$(php -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
-          [[ "$task_php" == "8.5.10 zts" ]] || { printf '锁定 PHP 未生效：%s\n' "$task_php" >&2; exit 1; }
-          # ReflectionExtension 不提供文件路径；从当前 PHP 实际使用的
-          # extension_dir 解析已加载模块，避免假设 php-config 的 SDK 目录。
-          task_extension_dir="$(php -r 'echo ini_get("extension_dir");')"
-          # setup-php 在 macOS 可能以符号链接暴露 PECL 扩展；跟随链接后再
-          # 检查真实文件，避免把已加载的 pdo_pgsql 误判为空路径。
-          task_pdo_module="$(find -L "$task_extension_dir" -maxdepth 1 -name 'pdo_pgsql.so' -print -quit)"
-          task_swoole_module="$(find -L "$task_extension_dir" -maxdepth 1 -name 'swoole.so' -print -quit)"
-          [[ -f "$task_swoole_module" ]]
+          task_swoole_module="$(php -n tools/select-swoole-module.php)"
           otool -L "$task_swoole_module" | tee "$RUNNER_TEMP/swoole-otool.log"
-          task_swoole_pq="$(otool -L "$task_swoole_module" | awk '/libpq\.5\.dylib/{print $1; exit}')"
-          [[ -n "$task_swoole_pq" ]]
-          if [[ -n "$task_pdo_module" ]]; then
-            otool -L "$task_pdo_module" | tee "$RUNNER_TEMP/pdo-pgsql-otool.log"
-            task_pdo_pq="$(otool -L "$task_pdo_module" | awk '/libpq\.5\.dylib/{print $1; exit}')"
-            [[ -n "$task_pdo_pq" && "$task_pdo_pq" == "$task_swoole_pq" ]]
-          else
-            # Swoole 的 macOS PHP 8.5 构建可直接提供 pdo_pgsql；此时没有
-            # 独立模块文件可供 otool 检查，但已加载驱动必然使用同一 Swoole
-            # 扩展内的 libpq。保留加载状态作为验收证据。
-            [[ "$(php -r 'echo extension_loaded("pdo_pgsql") ? "1" : "0";')" == "1" ]]
-            printf 'pdo_pgsql=provided-by-swoole\n' | tee "$RUNNER_TEMP/pdo-pgsql-otool.log"
-          fi
+          php -d "extension=$task_swoole_module" -r 'if (!extension_loaded("swoole") || Swoole\Thread::NATIVE_ENTRY_ABI !== 2) { exit(1); }'
       - name: 安装锁定组件与开发依赖
         run: |
           composer validate --strict
-          composer install --no-scripts --no-plugins --prefer-dist --no-progress
+          composer install --no-scripts --no-plugins --prefer-dist --no-progress --ignore-platform-req=ext-swoole
       - name: 固定SDK并构建独立PHPX
         shell: bash
         run: |

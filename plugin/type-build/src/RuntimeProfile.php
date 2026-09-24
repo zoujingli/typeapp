@@ -88,6 +88,7 @@ final class RuntimeProfile
         $base = $this->probe($probe, $baseIni, $scan, $directory, $environment, $functions);
         $modules = [];
         $hashes = [];
+        $bundledFiles = [];
         foreach ($required as $name) {
             if (array_key_exists($name, $base['extensions'])) {
                 continue;
@@ -102,13 +103,17 @@ final class RuntimeProfile
                 }
             } else {
                 $candidate = $extensionDirectory . '/' . (PHP_OS_FAMILY === 'Windows' ? 'php_' . $name . '.dll' : $name . '.so');
-                // Linux/macOS 验收会先按固定源码构建 TypeApp 适配版 Swoole。
-                // 宿主 PHP 目录可能仍有另一个版本，必须优先使用本轮明确提供的模块，
-                // 否则运行清单记录宿主版本而原生进程加载适配版，最终身份校验必然失败。
+                // 显式模块优先；主仓默认复用内置版本，独立消费者可继续使用自己的 SDK。
                 if ($name === 'swoole') {
                     $environmentModule = getenv('TYPE_SWOOLE_MODULE');
                     if (is_string($environmentModule) && $environmentModule !== '' && is_file($environmentModule)) {
                         $candidate = $environmentModule;
+                    } else {
+                        $bundled = (new BundledSwoole())->select($root);
+                        if ($bundled !== null) {
+                            $candidate = $bundled['file'];
+                            $bundledFiles = [$bundled['manifest']];
+                        }
                     }
                 }
                 // setup-php 的 curl 可能属于宿主 PHP，而不是锁定 SDK 的扩展目录。
@@ -158,7 +163,7 @@ final class RuntimeProfile
             'extensions' => $versions, 'functions' => $functions, 'modules' => $modules, 'module-sha256' => $hashes,
             'base-extensions' => $base['extensions']], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
         return ['extensions' => $versions, 'functions' => $functions, 'module-files' => $modules, 'module-sha256' => $hashes,
-            'files' => [$source, $probe, $baseIni, $ini, $evidence, ...array_values($modules)], 'ini' => $ini, 'probe' => $probe];
+            'files' => [$source, $probe, $baseIni, $ini, $evidence, ...array_values($modules), ...$bundledFiles], 'ini' => $ini, 'probe' => $probe];
     }
 
     /** 构建 PHP 的扩展元数据只补充必需依赖，实际选定模块仍由独立 embed 验证。 */

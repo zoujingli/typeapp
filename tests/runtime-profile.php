@@ -7,6 +7,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Build\ArtifactManifest;
 use Type\Build\BuildEnvironment;
+use Type\Build\BundledSwoole;
 use Type\Build\RuntimeProfile;
 
 $root = dirname(__DIR__);
@@ -69,6 +70,45 @@ foreach ((new ReflectionExtension('swoole'))->getDependencies() as $dependency =
     }
 }
 $checks[] = 'swoole-required-extension-dependencies';
+// 模块加载成功仍可能缺少延迟绑定符号；实际走连接失败路径，必须得到 PDO 异常而非崩溃。
+$pgsql = $profile->prepare($root, $base . '/pgsql-rejection', $phpHome, $phpxHome, ['swoole', 'pdo_pgsql'], $swooleRuntime);
+$rejection = <<<'PHP'
+try {
+    new PDO('pgsql:host=127.0.0.1;port=0;dbname=postgres;connect_timeout=1', 'probe', 'probe');
+    exit(1);
+} catch (PDOException $error) {
+    if (($error->errorInfo[0] ?? null) !== '08006') {
+        throw $error;
+    }
+    echo 'pgsql-connection-rejected';
+}
+PHP;
+$rejectionOutput = (new BuildEnvironment())->run([PHP_BINARY, '-c', $pgsql['ini'], '-r', $rejection], $root, $environment, 10, null, true);
+expect($rejectionOutput === 'pgsql-connection-rejected', 'PostgreSQL 连接拒绝路径没有正常返回');
+$checks[] = 'pgsql-connection-rejection-without-crash';
+// 在真实 embed 上分别观察默认、环境候选和显式声明的优先级。
+$bundled = (new BundledSwoole())->select($root);
+if ($bundled !== null && isset($swoole['module-files']['swoole'])) {
+    $previous = getenv('TYPE_SWOOLE_MODULE');
+    try {
+        putenv('TYPE_SWOOLE_MODULE');
+        $default = $profile->prepare($root, $base . '/bundled-default', $phpHome, $phpxHome, ['swoole']);
+        expect($default['module-files']['swoole'] === $bundled['file'], '默认构建没有选择项目内置 Swoole');
+        expect(in_array($bundled['manifest'], $default['files'], true), '内置清单没有纳入构建身份');
+        $copy = $base . '/swoole.' . (PHP_OS_FAMILY === 'Windows' ? 'dll' : 'so');
+        expect(copy($bundled['file'], $copy), '无法准备模块选择对照');
+        putenv('TYPE_SWOOLE_MODULE=' . $copy);
+        $environmentSelection = $profile->prepare($root, $base . '/bundled-environment', $phpHome, $phpxHome, ['swoole']);
+        expect($environmentSelection['module-files']['swoole'] === $copy, '显式环境模块没有优先于内置模块');
+        $declared = $profile->prepare($root, $base . '/bundled-declaration', $phpHome, $phpxHome, ['swoole'], [
+            PHP_OS_FAMILY => ['modules' => ['swoole' => ['file' => $bundled['file'], 'sha256' => $bundled['sha256']]]],
+        ]);
+        expect($declared['module-files']['swoole'] === $bundled['file'], 'runtime.modules 没有优先于环境模块');
+        $checks[] = 'bundled-default-and-explicit-priority';
+    } finally {
+        putenv($previous === false ? 'TYPE_SWOOLE_MODULE' : 'TYPE_SWOOLE_MODULE=' . $previous);
+    }
+}
 $otherPlatform = PHP_OS_FAMILY === 'Linux' ? 'Darwin' : 'Linux';
 $skipped = $profile->prepare($root, $base . '/inactive', $phpHome, $phpxHome, ['json'], [
     $otherPlatform => ['modules' => ['pcntl' => ['file' => '/not-present/inactive-platform.so', 'sha256' => str_repeat('0', 64)]]],

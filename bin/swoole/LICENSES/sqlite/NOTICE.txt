@@ -1,0 +1,12 @@
+SQLite 3.53.3
+Source: https://www.sqlite.org/2026/sqlite-autoconf-3530300.tar.gz
+The following notice is reproduced from the upstream sqlite3.h header:
+
+** 2001-09-15
+**
+** The author disclaims copyright to this source code.  In place of
+** a legal notice, here is a blessing:
+**
+**    May you do good and not evil.
+**    May you find forgiveness for yourself and forgive others.
+**    May you share freely, never taking more than you give.

@@ -17,6 +17,10 @@ Third-party materials retain their original licenses and copyright notices:
 * Composer and native dependencies retain their declared licenses and source
   notices. A build or release package may include a generated NOTICES.md with
   the exact dependency inventory and original material hashes.
+* Prebuilt Swoole modules in bin/swoole retain their upstream license and
+  bundled third-party notices in bin/swoole/LICENSES. Sources, build variants,
+  checksums, and platform limits are recorded in bin/swoole/manifest.json and
+  bin/swoole/README.md. These modules contain TypeApp's documented adaptations.
 * swoole/typephp is GPL-3.0-only and is a separate build-time dependency. It
   is not relicensed by this repository and is not evidence that first-party
   TypeApp source is GPL-licensed.

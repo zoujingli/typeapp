@@ -15,6 +15,10 @@ Linux/macOS 需要对应平台的 PHP embed SDK、C++17 编译器、CMake、GMP 
 
 GitHub Actions 分别提供 Linux x64、Linux ARM64、macOS ARM64 和 Windows x64 验收入口。工作流存在不代表该平台完整通过；PHP 行为、组件 AOT、完整应用、实际通信、无源码部署和性能分别记录结果。Linux 容器或虚拟机验证还须记录实际架构与是否使用模拟器，本机其他项目的工具链镜像不是本项目公开分发依赖。
 
+主仓在 [bin/swoole](../../bin/swoole/README.md) 保存这四个平台的 Swoole 模块、固定来源、SHA-256 和第三方许可证。匹配 PHP 8.5.10 ZTS 的构建默认直接读取本地文件，不下载或重新编译 Swoole。选择顺序为真实 embed 已内置、显式 `runtime.modules`、有效的 `TYPE_SWOOLE_MODULE`、项目内置清单、SDK 扩展目录；项目存在清单却缺少匹配 ABI、摘要不符或源码适配已变更时明确失败。没有内置清单的独立应用沿用自己的 SDK。
+
+`tools/prepare-swoole-module.sh` 和 Windows SDK 准备脚本默认复用这些文件。维护者显式设置 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 才下载固定 Swoole 源码并应用当前适配；Unix 重建还需提供 `RUNNER_TEMP` 和 `SWOOLE_CONFIGURE_OPTS`。PHP SDK、PHPX 及其他依赖的准备不因此变为离线。内置共享模块是构建输入，最终程序静态链接和启动不释放运行库仍按[静态验证记录](static-runtime-feasibility.md)推进。
+
 ## 安装和快速检查
 
 ```bash
@@ -60,7 +64,7 @@ php tests/native.php --chroot "$task_sandbox"
 
 在匹配的 SDK 环境中，`php tests/build-platform-native.php` 验证真实产物、运行库身份和缓存；`php tests/helpers-build.php` 全量编译 SQLite、ORM、校验与运行组件，并对照 PHP 和原生业务结果。这些入口使用自身的测试目录，不等同于完整应用或无源码部署验收。
 
-Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收流程、且同一代码的契约套件已通过时，可手动选择 `scope=native` 定向复跑；报告须同时引用契约与原生运行的源码身份，不能把跳过项记为本次通过。准备脚本固定并核验 PHP 官方 SDK 构建工具，提供 `phpize` 配置必需的 bison、re2c 等程序；工具身份与 Swoole、PHPX 身份一同记录。PHPX DLL 放入编译器要求的 `PHPX_HOME/build`，并统一加载路径；工作流分别记录构建身份、四组件和完整应用的结果，保存日志、清单与实际程序产物。
+Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收流程、且同一代码的契约套件已通过时，可手动选择 `scope=native` 定向复跑；报告须同时引用契约与原生运行的源码身份，不能把跳过项记为本次通过。显式重建 Swoole 时，准备脚本固定并核验 PHP 官方 SDK 构建工具，提供 `phpize` 配置必需的 bison、re2c 等程序；默认复用 DLL 时跳过这组工具和 Swoole 源码下载。PHPX DLL 放入编译器要求的 `PHPX_HOME/build`，并统一加载路径；工作流分别记录构建身份、四组件和完整应用的结果，保存日志、清单与实际程序产物。
 
 Windows 运行库核验会将运行配置明确声明的扩展文件纳入同一组 DLL 依赖解析。例如 Swoole 导入的 `php_sockets.dll` 使用已声明的 sockets 模块，不要求把扩展目录加入全局 PATH。DLL 名称按 Windows 的大小写无关规则匹配，同名不同内容仍拒绝；API-set 继续由受限系统加载器解析。每个编译工具独立核验自己的依赖，不能借用应用的模块映射。
 

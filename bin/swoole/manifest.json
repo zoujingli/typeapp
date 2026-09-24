@@ -1,0 +1,302 @@
+{
+  "schema": 1,
+  "swoole": "6.2.1",
+  "source": {
+    "repository": "https://github.com/swoole/swoole-src",
+    "reference": "0f3bee2f0ed8704ce33a336e7feabb0115411dd7",
+    "archive-sha256": "b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea"
+  },
+  "php-abi": {
+    "version": "8.5.10",
+    "module-api": 20250925,
+    "zts": true,
+    "debug": false,
+    "bits": 64
+  },
+  "native-entry-abi": 2,
+  "patches": {
+    "SwooleThreadSource": "3a252a82666e862235693fd164dabacebc592cc1e80f9d0919eb14542e237f1a",
+    "SwooleHttpSource": "b4c9295a2a7bf00890e8ff55fda75530471686f7209f13d23e842eee9e5db0fb",
+    "SwooleSocketSource": "a6df729eb8c8f0c2de67a0a2a8b2479baa0a592ee0d87d22cb9087d22695551b"
+  },
+  "adapted-sources": {
+    "SwooleThreadSource": {
+      "ext-src/swoole_thread.cc": {
+        "before": "962f0a3fa23700c512d5833dc48dbd3d180a246f8419c54219b5dd95094aa6a8",
+        "after": "2a5fe8a171215e6b0bef9a4e718cae04c64fa7539b97ed7f0ac074544ce04f5a"
+      },
+      "ext-src/php_swoole_thread.h": {
+        "before": "002c8cd826170c254a8aa2c974982b94aee26dc7bd56f6278aff58b1835355fa",
+        "after": "04d4be91f5ff45287b7b1eb104ed64b3f025d42d6da85b5d0f9e256cd9182736"
+      },
+      "ext-src/stubs/php_swoole_thread.stub.php": {
+        "before": "3099a42713d5822dc2ce7ff4a1f12de47ca0f374f37aa212ebfae135a2db4c18",
+        "after": "417cc57044cf22559d43da1d8c48d10cc085875fc67441fa4f7df9220081b3e1"
+      },
+      "ext-src/swoole_coroutine.cc": {
+        "before": "46346877709b3ef3981802abd07022cf81d2f7d606ad56d86b855d2c822f8831",
+        "after": "a99a62577946de1944ae0dfbdbf0515a63e4c0b0b715c4065fe73f8490cc1681"
+      },
+      "ext-src/php_swoole.cc": {
+        "before": "2700bba0b0e823e59482f5d812aaaf9b94302908923d7bf787deac3d68ace29c",
+        "after": "69708ed158952c9652da24a2570ac80e2cd85dbd25afc23d78c748386080e4f8"
+      },
+      "ext-src/php_swoole_private.h": {
+        "before": "c310a42529fa90eabad77edd55c6e3bd903e36cd7caad98f25c2b6fd18a67d07",
+        "after": "4815320567e523fae5cff2a41efedab81227e0a142cbdbcc44a34c5a3d70540f"
+      }
+    },
+    "SwooleHttpSource": {
+      "ext-src/swoole_http_server_coro.cc": {
+        "before": "711fa3732141b3b90bf098157936729003bcaebe74f7bc9fa0b8e130a98e47d2",
+        "after": "a89555f835344616cd567f767d46ab6c364d2d27019aaa71e7587fd79cac2845"
+      },
+      "ext-src/stubs/php_swoole_http_server_coro.stub.php": {
+        "before": "c656a32f9758ac831d2213ed6fe64aac9dffc3e1211f90f853786cfa2edc992a",
+        "after": "6fefcbb4f1178dcaf3fd3d9238d47bb0196e01628bb7fb2683b3a022b0b6d85f"
+      },
+      "ext-src/swoole_http_request.cc": {
+        "before": "33719a36f822333338d46a686a59de89db2f7872b2d73ca442e6a912d74cb9a2",
+        "after": "90c2d44120240d7152ee41c2d87fc37694134f0f7324b0cdd214392fa43a2a36"
+      },
+      "ext-src/php_swoole_http.h": {
+        "before": "aa879b1cb2dcab56ee53956d4242cfdb65c4a7030d977db158ae21289d8a8b05",
+        "after": "d21f303570f45ec4a88d733cfd62d51402d6663e79f5f7d6fa2098e578c63b29"
+      }
+    },
+    "SwooleSocketSource": {
+      "ext-src/swoole_socket_coro.cc": {
+        "before": "0bf446e5d66184507c13e664c165eb9d83e296a105cf5a1e80cf8b994c1a8b4c",
+        "after": "312839e34eb78a368ba41c1fc3b8cb8f9c68f1b978fb254be2b69556be9613a0"
+      }
+    },
+    "tls": {
+      "src/network/socket.cc": {
+        "before": "e6919bae549f08932e6922c118b830d1f9fe6e5318efb874a7909ccd2a3814bd",
+        "after": "f01060072961edc461566f36e9a644fcbab8fededd3d77dcaa611552a093202f"
+      }
+    }
+  },
+  "modules": {
+    "Darwin-arm64-8.5.10-zts": {
+      "file": "macos-arm64/php-8.5.10-zts/swoole.so",
+      "sha256": "71b627d23bf702e33a70305e715566067ba20c95792f810f24c5819bcc2ac8c7",
+      "bytes": 9237168,
+      "verification": {
+        "status": "passed",
+        "php": "8.5.10",
+        "zts": true,
+        "swoole": "6.2.1",
+        "architecture": "arm64",
+        "native_entry_abi": 2,
+        "coroutine_and_sqlite": true,
+        "swoole_info": "6.2.1"
+      },
+      "build": {
+        "deployment-target": "15.0",
+        "tested-os": "27.0",
+        "configure": [
+          "--enable-swoole=shared",
+          "--enable-swoole-thread",
+          "--enable-sockets",
+          "--enable-mysqlnd",
+          "--enable-cares",
+          "--enable-swoole-pgsql=<libpq-prefix>",
+          "--enable-swoole-sqlite"
+        ],
+        "static-library-link": "-Wl,-load_hidden,<archive>",
+        "system-libraries": [
+          "libz",
+          "libSystem",
+          "libc++"
+        ],
+        "static-archives-sha256": {
+          "postgresql-17.11": "ceb260014a52a301829ec640816943d23b9639fadca4c3331b902cb75a478717",
+          "postgresql-17.11-common": "11c70cb4c5b34885d53f9c3f1d2effff75686a5cce5a6e92034ec8507cef269f",
+          "postgresql-17.11-port": "2cdd30c0a9731c4180f96db8e170f9dcc0907fb8bac1deeab386457eb4743699",
+          "sqlite-3.53.3": "90a3d2c660535f408d35a1a50f2824f7cea2ae163797dcefec6ee8470ebc1c3d",
+          "c-ares-1.34.8": "05352976299d2e628dfeabf39ac0d27b374035cf3377fe4b2c7f8218378f2916",
+          "openssl-3.6.3-ssl": "eda2827f28015c70d4a599c09670fc0c2d963f7d4b7e6167f8100005dd46d1c1",
+          "openssl-3.6.3-crypto": "0e8aad0c40ff0729b1ec09e2d587a90ddbfe35b4f375a5d3ac8320af534e4d68",
+          "brotli-1.2.0-encoder": "b3c0fb5ab972b6d061b33c3ff6e25ab95552c1458d9f9a9383f75ffe542f1a49",
+          "brotli-1.2.0-decoder": "b537e0b03c4760bbd446aa60fa3e4994813974c17ee105e2c810f13c3595bfe1",
+          "brotli-1.2.0-common": "7e066b369eb99f01361d1ee6dc7345b9e5313463db166805e42fe23ded7b41bc"
+        },
+        "dependency-bottles": {
+          "openssl@3": {
+            "manifest": "sha256:f8a009c02cb2ac4ec027ee6805c08c3cd11694c6cba9a187004d97afe146f64a",
+            "archive": "sha256:f8b0b5b2eda9321265b7483ce7ea167012c32afed73a127e8e18ebe9f1d9dffe",
+            "source": "https://ghcr.io/v2/homebrew/core/openssl/3",
+            "platform": {
+              "architecture": "arm64",
+              "os": "darwin",
+              "os.version": "macOS 15.7"
+            }
+          },
+          "sqlite": {
+            "manifest": "sha256:4d94a7f942a77a764c00661d17287d9a75d98dc58f81550dd1f1ac69d2aaddd1",
+            "archive": "sha256:91bdb4c104eea3e2290667873b1409f5215f841b93b299ad48e09fd59f480f17",
+            "source": "https://ghcr.io/v2/homebrew/core/sqlite",
+            "platform": {
+              "architecture": "arm64",
+              "os": "darwin",
+              "os.version": "macOS 15.7"
+            }
+          },
+          "c-ares": {
+            "manifest": "sha256:00b2de62d57c243daa5f6033bca82a10e26df6c00dd101d982cc322443202306",
+            "archive": "sha256:cf56a78a008c16b5b430f5183178b644904fad00a55e6e57a20a835ecc45d33a",
+            "source": "https://ghcr.io/v2/homebrew/core/c-ares",
+            "platform": {
+              "architecture": "arm64",
+              "os": "darwin",
+              "os.version": "macOS 15.7"
+            }
+          }
+        },
+        "dependency-sources": {
+          "postgresql": {
+            "version": "17.11",
+            "url": "https://ftp.postgresql.org/pub/source/v17.11/postgresql-17.11.tar.bz2",
+            "sha256": "dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979"
+          },
+          "brotli": {
+            "version": "1.2.0",
+            "url": "https://github.com/google/brotli/archive/refs/tags/v1.2.0.tar.gz",
+            "sha256": "816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfec"
+          }
+        }
+      }
+    },
+    "Linux-arm64-8.5.10-zts": {
+      "file": "linux-arm64/php-8.5.10-zts/swoole.so",
+      "sha256": "592611702c3ec2431e33fe162f4dccde1bd6cb029d93cbabf3e41183e33829ca",
+      "bytes": 3374248,
+      "build": {
+        "image": "php:8.5.10-zts-bookworm",
+        "manifest-digest": "sha256:6d417535666c59c08d2e448faaa3571ec0762da197c503df31ee23c73a3c27a3",
+        "libc": "glibc",
+        "glibc-baseline": "2.36",
+        "configure": [
+          "--enable-swoole=shared",
+          "--enable-swoole-thread",
+          "--enable-sockets",
+          "--enable-mysqlnd",
+          "--enable-cares",
+          "--enable-swoole-pgsql",
+          "--enable-swoole-sqlite",
+          "--with-openssl-dir=/usr",
+          "--enable-swoole-curl"
+        ],
+        "execution": "native-arm64"
+      },
+      "verification": {
+        "status": "passed",
+        "php": "8.5.10",
+        "zts": true,
+        "swoole": "6.2.1",
+        "architecture": "aarch64",
+        "native_entry_abi": 2,
+        "coroutine_and_sqlite": true,
+        "swoole_info": "6.2.1"
+      }
+    },
+    "Linux-x64-8.5.10-zts": {
+      "file": "linux-x64/php-8.5.10-zts/swoole.so",
+      "sha256": "7d22a13d14206bfc2c864d9191b93acea7807ef2496ea0d2eb6f9eb886ccae61",
+      "bytes": 3508480,
+      "build": {
+        "image": "php:8.5.10-zts-bookworm",
+        "manifest-digest": "sha256:6d417535666c59c08d2e448faaa3571ec0762da197c503df31ee23c73a3c27a3",
+        "libc": "glibc",
+        "glibc-baseline": "2.36",
+        "configure": [
+          "--enable-swoole=shared",
+          "--enable-swoole-thread",
+          "--enable-sockets",
+          "--enable-mysqlnd",
+          "--enable-cares",
+          "--enable-swoole-pgsql",
+          "--enable-swoole-sqlite",
+          "--with-openssl-dir=/usr",
+          "--enable-swoole-curl"
+        ],
+        "execution": "x64-emulated-on-arm64"
+      },
+      "verification": {
+        "status": "passed",
+        "php": "8.5.10",
+        "zts": true,
+        "swoole": "6.2.1",
+        "architecture": "x86_64",
+        "native_entry_abi": 2,
+        "coroutine_and_sqlite": true,
+        "swoole_info": "6.2.1"
+      }
+    },
+    "Windows-x64-8.5.10-zts": {
+      "file": "windows-x64/php-8.5.10-zts/php_swoole.dll",
+      "sha256": "e079c9c0da478d38fe1430178d869dc7d1a2aa12031621c3682ccdcfc842f05d",
+      "bytes": 2382336,
+      "build": {
+        "compiler": "MSVC VS17 x64 C++20",
+        "source-commit": "82285b3e96e6d171dceebfbb2d8fd8b95e688752",
+        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/35967392758",
+        "artifact": "windows-native-evidence",
+        "artifact-id": 10796129267,
+        "module-verification": "passed",
+        "workflow-conclusion": "failure",
+        "configure": [
+          "--enable-swoole=shared",
+          "--enable-swoole-thread",
+          "--enable-mysqlnd",
+          "--enable-php-sockets",
+          "--enable-swoole-pgsql",
+          "--enable-swoole-sqlite",
+          "--with-php-build=<dependencies>",
+          "--with-mp=2"
+        ],
+        "additional-adaptations": [
+          {
+            "file": "config.w32",
+            "before": "02a801b07d5bb38edea0f88465271454f54d4625d6e71e0c15db3935bef789ac",
+            "after": "ae1f71e4553dced87c59dbf89ddc394cd04e51c5a4719f41f1297618645c8434"
+          },
+          {
+            "file": "src/coroutine/iocp.cc",
+            "before": "f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990",
+            "after": "24b51ad8233480e5e71dd2270e072cd784ad79750e0b2f9a3f45ed933286440e"
+          }
+        ],
+        "dependencies": {
+          "zlib-1.3.2-vs17-x64.zip": "3038dbd503d494718898a150f93d79627df442c344d1d6e77ec413cdeec7999e",
+          "nghttp2-1.70.0-vs17-x64.zip": "51e21698b80f4e1a151508656f6ca7caf13adfef65dfefbc160645cf9c1129f1",
+          "brotli-1.2.0-vs17-x64.zip": "61aec2187d4317826b374f4f2d8ef4b652edb46ae9d5b68820a840c94427644e",
+          "libpq-16.15-vs17-x64.zip": "f5fa47ebb2cf650428870e24ab2b8a7ce9663a782ddb9d790dfb432fd22e4728",
+          "openssl-3.5.7-vs17-x64.zip": "bc86233e1f0826b0e0c8b745ed5221a781a1d403c6f69bb8fbe086e07dd3979e",
+          "sqlite3-3.53.4-vs17-x64.zip": "abb5e36fc76803b4df9a63ab56b931f37058d62c9e6303172015ff4f101ef4cd",
+          "libzstd-1.5.7-vs17-x64.zip": "59dbce5548104788ccfc5040bb7140916454fd0138d306705bd9b3d67741dc4a"
+        }
+      }
+    }
+  },
+  "licenses": {
+    "LICENSES/brotli/LICENSE": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
+    "LICENSES/c-ares/LICENSE.md": "460f5e768fda3752ca2169a95df062578a10fb126bfd65f3b9b1a1bed2f84807",
+    "LICENSES/openssl@3/LICENSE.txt": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+    "LICENSES/postgresql/COPYRIGHT": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd",
+    "LICENSES/sqlite/NOTICE.txt": "5013a97b806c30631f50bc4c5f547252ed4ba5c2364438062acf391a828ec253",
+    "LICENSES/swoole/LICENSE": "d0764616053bc4b1bd1e74a26bedd16a04f1bf979ecff92fe77ff114892852ae",
+    "LICENSES/swoole/thirdparty/boost/asm/LICENSE": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
+    "LICENSES/swoole/thirdparty/hiredis/COPYING": "dca05ce8fc87a8261783b4aed0deef8becc9350b6aa770bc714d0c1833b896eb",
+    "LICENSES/swoole/thirdparty/llhttp/LICENSE": "ebca854e0134cd256d673627c20499f42577eb74bacf08b9f25b626a73c91277",
+    "LICENSES/swoole/thirdparty/llhttp/LICENSE-MIT": "ebca854e0134cd256d673627c20499f42577eb74bacf08b9f25b626a73c91277",
+    "LICENSES/swoole/thirdparty/nghttp2/COPYING": "6b94f3abc1aabd0c72a7c7d92a77f79dda7c8a0cb3df839a97890b4116a2de2a",
+    "LICENSES/swoole/thirdparty/nghttp2/LICENSE": "ffa41df32d0576b95b72a2ee2026157d553bc099fe8e7f20e4cf3cb72ecca7b1",
+    "LICENSES/swoole/thirdparty/nlohmann/LICENSE.MIT": "c983d69523377819db3c377b390d5644f5ec53bec9b7c4a0f1ed893bb743d045",
+    "LICENSES/swoole/thirdparty/php/LICENSE": "080d0d0cca64181ef8bf1df9fba0c6f0c485f78f79540c479a45b593bb3b33b5",
+    "LICENSES/swoole/thirdparty/php/ssh2/LICENSE": "ac7c56f1e416ce6e60abcf26269395128bc9e5a2e4f3293e5dcc124aac606508",
+    "LICENSES/zlib/LICENSE": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+    "LICENSES/zstd/LICENSE": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+  }
+}
