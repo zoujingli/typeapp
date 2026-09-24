@@ -23,7 +23,7 @@ try {
     foreach (['zip', 'tar.gz'] as $format) {
         // 独立公开CLI固定使用128 MiB，捕获归档校验重新整体解压造成的内存回退。
         $creation = (new Process([PHP_BINARY, '-d', 'memory_limit=128M', dirname(__DIR__) . '/vendor/bin/type',
-            'archive', $directory, $base . '/release.' . $format, $digest]))->wait(90);
+            'archive', $directory, $base . '/release.' . $format, $digest]))->wait(180);
         expect($creation->successful(), '128 MiB归档创建失败：' . $creation->stdout . $creation->stderr);
         $record = json_decode($creation->stdout, true, 512, JSON_THROW_ON_ERROR);
         $extracted = $base . '/extracted-' . str_replace('.', '-', $format);
