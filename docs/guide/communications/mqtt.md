@@ -271,7 +271,7 @@ Broker 在官方 Swoole 协程中处理原生事件，使用一个 Channel 保�
 
 进程停止信号沿用 Swoole `reload_async=true`，`workerExit` 停止接纳并清除 Broker 维护定时器，让在途协程继续收尾；`max_wait_time` 为向上取整的 `callbackSeconds + 6` 秒，覆盖回调、默认五秒清理预算及时间粒度余量。这是原生 worker 的等待上限，不包括随后持久会话的结束工作；超过上限而仍有事件未结束时明确失败，不能视为优雅退出。
 
-作用域中的连接编号和事件名仅用于关联，不能授予租户身份。认证策略先从可信来源验证身份，再用当前作用域的 `run($operation, ['tenant_id' => $verifiedTenant])` 临时绑定业务范围；结束或异常均恢复原绑定，受管子任务只继承可信值快照。框架不会把 Client ID、用户名、Topic 或消息属性自动解释成租户。通用规则见[受管任务与作用域](../../development/managed-tasks.md#当前作用域与应用绑定)。
+作用域中的连接编号和事件名仅用于关联，不能授予租户身份。认证策略先从可信来源验证身份，再用当前作用域的 `run($operation, ['tenant_id' => $verifiedTenant])` 临时绑定业务范围；结束或异常均恢复原绑定，受管子任务只继承可信值快照。框架不会把 Client ID、用户名、Topic 或消息属性自动解释成租户。通用规则见[受管任务与作用域](https://github.com/zoujingli/typeapp/blob/main/docs/development/managed-tasks.md#当前作用域与应用绑定)。
 
 ## 可靠交付、会话与持久存储
 

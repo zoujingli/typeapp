@@ -24,6 +24,8 @@ composer --version
 
 原生编译还需要与目标平台匹配的 SDK，版本取自 `toolchain.lock.json`，详见[构建与部署](deployment.md)。
 
+`type-build` 已携带匹配 PHP 8.5.10 ZTS 的四平台 Swoole 6.2.1 模块，原生构建默认校验并复用；安装组件不会自动为开发 CLI 修改 ini。平台限制、覆盖顺序及其余依赖见[内置 Swoole 与运行依赖](plugins/type-build.md#内置-swoole-与运行依赖)。
+
 Windows x64 已完成匹配 Swoole SDK 的构建与加载，以及三库独立 ORM 的 PHP、AOT 和无源码运行。本文通用模板的经典 HTTP 服务入口仍要求 Unix worker 与信号能力，当前明确拒绝 Windows；选定平台的组件结果与整条应用链路验收分别记录。
 
 ## 创建业务应用
@@ -72,6 +74,8 @@ composer package
 ```
 
 完整构建将应用、Plugins、生成代码和生产依赖交给 TypePHP；运行包不携带业务源码。修改路由、模型或生产代码后需要重新构建。
+
+当前 `composer package` 生成携带实际运行库的目录包。“一个程序加配置、非系统库静态链接、启动不释放运行库”仍是待完成目标，详见[交付约定](deployment.md#单程序交付约定)。
 
 ## 成品案例
 

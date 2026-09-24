@@ -103,7 +103,7 @@ final class RuntimeProfile
                 }
             } else {
                 $candidate = $extensionDirectory . '/' . (PHP_OS_FAMILY === 'Windows' ? 'php_' . $name . '.dll' : $name . '.so');
-                // 显式模块优先；主仓默认复用内置版本，独立消费者可继续使用自己的 SDK。
+                // 显式模块优先；主仓与独立消费者均默认复用构建组件内置的 Swoole。
                 if ($name === 'swoole') {
                     $environmentModule = getenv('TYPE_SWOOLE_MODULE');
                     if (is_string($environmentModule) && $environmentModule !== '' && is_file($environmentModule)) {

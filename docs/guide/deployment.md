@@ -14,7 +14,7 @@ flowchart LR
 
 ## 单程序交付约定
 
-每个目标平台交付自己的原生程序，外置 `.env` 保存部署配置。PHPX、libphp、Swoole 及其他非系统原生依赖在构建期静态链接进程序，启动时不向磁盘释放运行库；允许使用目标操作系统自带的库。部署人员无需手动安装、拆分或配置这些运行库。该要求尚在[静态链接可行性验证](../development/static-runtime-feasibility.md)阶段。
+每个目标平台交付自己的原生程序，外置 `.env` 保存部署配置。PHPX、libphp、Swoole 及其他非系统原生依赖在构建期静态链接进程序，启动时不向磁盘释放运行库；允许使用目标操作系统自带的库。部署人员无需手动安装、拆分或配置这些运行库。该要求尚在[静态链接可行性验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/static-runtime-feasibility.md)阶段。
 
 | 项目 | 交付和维护方式 |
 | --- | --- |
@@ -31,7 +31,7 @@ flowchart LR
 
 工具链版本以当前项目的 `toolchain.lock.json` 为准，生产依赖以 `composer.lock` 为准。准备与目标 OS、架构一致的 SDK 和扩展，再检查构建环境。
 
-构建组件已内置四个平台的 [Swoole 共享模块](../../plugin/type-build/resources/swoole/README.md)，构建时默认校验并复用，无需下载 Swoole。它们不替代 PHP SDK 或其他原生依赖，也不表示上述完整静态单程序目标已经完成。
+构建组件已内置四个平台的 [Swoole 共享模块](plugins/type-build.md#内置-swoole-与运行依赖)，随 Composer 包安装，构建时默认校验并复用，无需另行下载 Swoole。它们固定匹配 PHP 8.5.10 ZTS、非 debug、64 位 ABI；只收集所选模块与实际依赖，不要求应用声明整目录资源。PHP SDK、PHPX 和其他原生依赖仍需准备，完整静态单程序目标继续待完成。
 
 独立应用根执行：
 

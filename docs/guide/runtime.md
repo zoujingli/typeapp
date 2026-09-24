@@ -52,7 +52,7 @@ TypeApp 把“当前工作是谁、还能运行多久、如何停止”放在显
 
 `$scope->run($operation, $bindings)` 把作用域绑定到当前 Swoole 协程，组件通过 `ExecutionScope::current()` 取得并校验它；嵌套调用结束或异常时恢复外层，创建者负责关闭。`CoroutineRuntime::run()` 供独立入口进入官方 Scheduler，在回调内创建作用域和连接；已有协程时直接执行并保留启动期 hook 配置。
 
-构造参数 `context` 只用于关联；消息携带的 `tenant_id` 不自动授予租户访问资格。应用完成认证和授权后，显式提供 `bindings` 字符串值；组件通过 `binding($name)` 读取。框架拥有快照、执行者和资源边界，应用拥有身份与业务规则。HTTP、WebSocket 公开回调、MQTT Broker 事件、生成 CLI、队列、调度和受管子任务已接入当前作用域；自定义 Socket 消息在其装配入口显式绑定，实际用法与验证范围见[当前作用域](../development/managed-tasks.md#当前作用域与应用绑定)。
+构造参数 `context` 只用于关联；消息携带的 `tenant_id` 不自动授予租户访问资格。应用完成认证和授权后，显式提供 `bindings` 字符串值；组件通过 `binding($name)` 读取。框架拥有快照、执行者和资源边界，应用拥有身份与业务规则。HTTP、WebSocket 公开回调、MQTT Broker 事件、生成 CLI、队列、调度和受管子任务已接入当前作用域；自定义 Socket 消息在其装配入口显式绑定，实际用法与验证范围见[当前作用域](https://github.com/zoujingli/typeapp/blob/main/docs/development/managed-tasks.md#当前作用域与应用绑定)。
 
 ### 上下文怎样随协程传递
 

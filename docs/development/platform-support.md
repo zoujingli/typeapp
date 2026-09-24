@@ -10,6 +10,8 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 当前构建基线已升级为 TypePHP 0.9.3／PHPX 2.9.2，PHP 保持 8.5.10 ZTS。本次 macOS ARM64 原生验证和同源码性能对照见[升级验收](typephp-upgrade-0.9.3.md)；下表保留历史版本的实际结果，不能据此宣布新版 Linux／Windows 验收通过。
 
+四平台 Swoole 6.2.1 模块已迁入构建组件，随 Composer 独立安装后默认复用。迁移后的 macOS 全量 AOT、同一程序三库无源码 HTTP、独立消费及未运行的平台项单独记录在[迁移验收](swoole-bundle.md#迁入构建组件后的验证)，不覆盖下表的历史身份。
+
 | 平台 | 已保存结果与身份 | 范围 |
 | --- | --- | --- |
 | Linux x64 | [基础命令运行](https://github.com/zoujingli/typeapp/actions/runs/35452574738)，源码 `fed4efae5826bdca69a613743e1c6c459addd565`；产物 SHA-256 `ea87c232b80b9498d8083f3b2f1e4ed18d4a99c762e9fa69dc983253e845ddc2` | 26 个源码输入、29 个编译单元、9 项原生命令；断网只读 AOT 与真实运行 |
@@ -27,7 +29,7 @@ Windows ORM 验收由原生数据库装置另外创建两个独立端口和数�
 
 ## 继续验收的前置条件
 
-- Windows：SDK 准备入口已验证匹配 PHP 8.5.10 ZTS x64/embed 的 Swoole 构建与加载；每次构建仍须核对扩展依赖、SDK 布局、`php_swoole.dll` 版本和官方内置库，缺少模块时明确失败。应用 PHP 装置先探测子进程已有的扩展，再按平台补加载，避免重复加载；模块可通过 `TYPE_SWOOLE_MODULE` 显式定位。
+- Windows：当前 SDK 准备入口默认复用 `plugin/type-build/resources/swoole` 中匹配 PHP 8.5.10 ZTS x64/embed 的 DLL；仅在 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 时下载固定 Swoole 源码及专用 phpize 工具。历史源码构建与加载已有结果，本次迁移后未重跑 Windows 准备脚本或完整应用；每次仍须核对扩展依赖、SDK 布局、模块版本和官方内置库。应用 PHP 装置先探测子进程已有扩展，避免重复加载；模块可通过 `TYPE_SWOOLE_MODULE` 显式定位。
 - 已编译线程：`NativeBuilder` 要求已适配并重编译的 PHPX、Swoole `startNative`/`NATIVE_ENTRY_ABI=2` 与 fiber 通知配置；官方 Swoole 6.2.2 的普通 Thread 不提供这些项目标识。具体接入见[已编译业务线程](compiled-business-threads.md)。
 - macOS 扩展构建：设置与所选 PHP SDK 相符的 `MACOSX_DEPLOYMENT_TARGET`，通过 `pkg-config` 定位匹配的 OpenSSL。实际模块须使用两级符号绑定，TLS 符号明确链接到所选 OpenSSL；不能依赖平面命名空间从已加载的系统库中猜测同名实现。用真实 TCP/TLS 与 WSS 行为验证链接结果。
 - 完整应用：满足 SDK 前置后重新执行应用、五种通信、三库、发布搬迁与无源码部署。Windows 组件审计成功不能替代 `NativePackage` 的完整应用发布验收。

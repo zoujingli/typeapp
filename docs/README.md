@@ -37,7 +37,9 @@
 
 ## 从这里开始
 
-TypeApp 是标准极简框架。先创建自己的应用并组合 Plugins；通信与基础并发必须使用 Swoole。生产交付约定为一个程序文件加外置配置，当前打包进度见[构建与部署](guide/deployment.md)。物联中心是基于框架构建的成品案例。
+TypeApp 是标准极简框架。先创建自己的应用并组合 Plugins；通信与基础并发必须使用 Swoole。生产交付目标为一个程序文件加外置配置，非系统运行库静态链接、启动不释放；当前仍提供目录包，进度见[构建与部署](guide/deployment.md)。物联中心是基于框架构建的成品案例。
+
+`type-build` 已随组件携带四平台 Swoole 共享模块，匹配的构建可直接校验并复用，无需另行下载 Swoole。安装位置、PHP ABI 和覆盖顺序见[内置 Swoole 与运行依赖](guide/plugins/type-build.md#内置-swoole-与运行依赖)。
 
 <div class="doc-paths">
   <a class="start-guide" href="#/guide/quickstart">
@@ -60,7 +62,7 @@ TypeApp 是标准极简框架。先创建自己的应用并组合 Plugins；通�
   <a class="guide-card" href="#/guide/database"><span class="guide-index">05 <span aria-hidden="true">↗</span></span><strong>数据库与模型</strong><span>使用 MySQL、PostgreSQL 或 SQLite，处理查询与事务。</span><span class="guide-meta">DATABASE</span></a>
   <a class="guide-card" href="#/guide/components"><span class="guide-index">06 <span aria-hidden="true">↗</span></span><strong>组件参考</strong><span>了解各 Plugins 的职责与接口，按应用需要组合。</span><span class="guide-meta">PLUGINS</span></a>
   <a class="guide-card" href="#/guide/communications"><span class="guide-index">07 <span aria-hidden="true">↗</span></span><strong>基础通信</strong><span>HTTP、TCP、UDP、MQTT、WebSocket 独立教程：配置、实例与应用。</span><span class="guide-meta">COMMUNICATIONS</span></a>
-  <a class="guide-card" href="#/guide/deployment"><span class="guide-index">08 <span aria-hidden="true">↗</span></span><strong>构建与部署</strong><span>从声明生成到全量编译，封装并运行原生应用。</span><span class="guide-meta">BUILD & DEPLOY</span></a>
+  <a class="guide-card" href="#/guide/deployment"><span class="guide-index">08 <span aria-hidden="true">↗</span></span><strong>构建与部署</strong><span>复用内置 Swoole，完成全量编译；了解目录包与静态单程序目标。</span><span class="guide-meta">BUILD & DEPLOY</span></a>
   <a class="guide-card" href="#/guide/documentation"><span class="guide-index">09 <span aria-hidden="true">↗</span></span><strong>文档站发布</strong><span>导出 Docsify 静态站点并发布到 iots.top，保持公开内容可追溯。</span><span class="guide-meta">DOCUMENTATION</span></a>
   <a class="guide-card" href="#/guide/licensing"><span class="guide-index">10 <span aria-hidden="true">↗</span></span><strong>许可证与归属</strong><span>查看 Apache-2.0 授权、作者与第三方依赖的原始许可证。</span><span class="guide-meta">LICENSING</span></a>
   <a class="guide-card" href="#/guide/platforms"><span class="guide-index">11 <span aria-hidden="true">↗</span></span><strong>平台与验收</strong><span>查看各平台已通过的场景、SDK 前提和完整交付条件。</span><span class="guide-meta">PLATFORMS</span></a>

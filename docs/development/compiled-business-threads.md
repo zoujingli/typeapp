@@ -90,7 +90,9 @@ $status = $thread->getExitStatus();
 
 主入口使用进程标题初始化函数返回的 `argv` 副本，保持完整启动参数；该函数会改写原始参数槽，不能忽略其返回值后继续传递旧指针。
 
-准备源码副本后，可通过安装后的构建包调用适配器，例如：
+匹配 ABI 的普通构建默认复用 `type-build` 在 `resources/swoole/` 内携带的已适配模块，不必重新编译 Swoole。选择、覆盖和失败语义见[运行依赖](runtime-profiles.md#选择与失败语义)；维护者更新源码适配或 ABI 时，才按[资源重建说明](../../plugin/type-build/resources/swoole/README.md#维护与重建)准备新的模块和清单。PHPX 仍需独立准备。
+
+维护者准备源码副本后，可通过安装后的构建包调用适配器，例如：
 
 ```sh
 php -r 'require "vendor/autoload.php"; echo json_encode((new Type\Build\SwooleThreadSource())->apply($argv[1]), JSON_PRETTY_PRINT), PHP_EOL;' "$task_swoole_source"

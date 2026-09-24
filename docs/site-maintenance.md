@@ -68,11 +68,13 @@ python3 -m http.server 3000 --bind 127.0.0.1 --directory "$DOCS_OUTPUT"
 
 基础通信按 `guide/communications/http.md`、`tcp.md`、`udp.md`、`mqtt.md`、`websocket.md` 分篇，菜单保持 HTTP / TCP / UDP / MQTT / WebSocket 顺序。`guide/communications.md` 只保留协议选择与共享约定；组件页维护安装与高级接口参考。更新协议教程时核对描述、配置、完整入口、双端命令、预期结果、应用设计、资源关闭与当前限制，不只复制 API 列表。
 
-物联网和 MQTT 公共指南记录使用流程、配置、确认边界与当前限制，不链接内部研发、任务或验收原件，也不因新增业务扩大导出白名单。README 与研发文档描述当前实现、可复用验证方法和未完成范围，运行报告放在任务专用目录。
+物联网和 MQTT 公共指南记录使用流程、配置、确认边界与当前限制，不因新增业务扩大导出白名单。公开页之间使用站内相对链接；确需补充源码或版本化验收依据时，显式链接 GitHub，不能把未导出的 `development/`、`standards/` 或仓库 `plugin/` 当成站内路由。原始运行报告放在任务专用目录，README 与研发文档保留方法和实际限制。
 
 平台已通过范围与完整应用限制统一维护在 `guide/platforms.md`；架构、快速开始、通信教程、构建部署和实现规划链接到该页。更新时按平台、源码与产物分别核对证据，组件、PHP 行为和完整应用验收分别描述，不把不同产物的结果合并为全平台通过。
 
 搜索索引在浏览器缓存一小时，刷新 Markdown 不会立即替换已有索引。集中更新指南或章节后，递增 `assets/site.js` 中 `search.namespace` 的版本，保留站点 pathname 隔离；当前值以该配置为准。随同发布新的 site.js，并用新增章节标题验证搜索命中，避免页面已更新而搜索仍展示旧内容。
+
+许可证下载链接使用与页脚一致的 HTML `href="LICENSE"` / `href="NOTICE"`，相对站点根页面解析，兼容子目录部署。不要让 Docsify 将它们编译为 `#/LICENSE` / `#/NOTICE` Markdown 路由，否则会请求不存在的 `.md` 文件。
 
 指南中的流程图、架构图和时序图使用语言标记为 mermaid 的代码块，由本地 `assets/vendor/mermaid/mermaid.min.js` 渲染，颜色映射到站点 CSS 变量。不要引用 CDN，也不要把示意图写成已验收能力。
 

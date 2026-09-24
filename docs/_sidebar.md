@@ -47,5 +47,6 @@
   - [type-testing · 测试](/guide/plugins/type-testing.md)
 - 交付应用
   - [构建与部署](/guide/deployment.md)
+  - [内置 Swoole 与运行依赖](/guide/plugins/type-build.md#内置-swoole-与运行依赖)
   - [文档站发布](/guide/documentation.md)
   - [许可证与归属](/guide/licensing.md)

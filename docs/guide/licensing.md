@@ -2,7 +2,7 @@
 
 TypeApp 由 Anyon 维护，源码按 Apache License 2.0 发布。
 
-你现在阅读的 [iots.top](https://iots.top) 是项目文档站。完整授权文本见 [`LICENSE`](../LICENSE)，第三方来源见 [`NOTICE`](../NOTICE)。业务接口、管理后台和设备接入需要在你自己的部署里配置。
+你现在阅读的 [iots.top](https://iots.top) 是项目文档站。完整授权文本见 <a href="LICENSE">LICENSE</a>，第三方来源见 <a href="NOTICE">NOTICE</a>。业务接口、管理后台和设备接入需要在你自己的部署里配置。
 
 ## 项目源码
 
@@ -25,6 +25,8 @@ Apache-2.0 允许在满足许可证、版权、修改说明和 NOTICE 要求的�
 | Docsify、PrismJS、Mermaid | 保留各自 MIT 许可证原文和版权声明 |
 
 `swoole/typephp` 的 GPL-3.0-only 不会把 TypeApp 第一方代码改成 GPL，也不能把构建工具误写成生产运行时许可证。原生发布包另行生成 `NOTICES.md`，其中记录实际构建输入和第三方材料摘要。
+
+`type-build` 内置模块的 `resources/swoole/manifest.json` 记录固定来源、适配、依赖及摘要，`resources/swoole/LICENSES/` 保存 Swoole 和所含第三方材料的原始许可证。它们随 Composer 组件分发；再分发模块时应一并保留适用许可与归属，不能只复制 `.so/.dll`。详细清单见[资源说明与许可目录](https://github.com/zoujingli/typeapp/tree/main/plugin/type-build/resources/swoole)。
 
 ## 分发检查
 

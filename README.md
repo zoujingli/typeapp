@@ -31,11 +31,13 @@ TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力
 | Plugins | Composer 管理的 `type-xxxx` 框架组件，源码在 `plugin/type-*`；构建与测试工具按开发依赖使用 |
 | 运行 | Swoole 是唯一通信与并发底层；进程、线程、协程按角色能力选择，协程上下文与资源边界见[运行时指南](docs/guide/runtime.md) |
 | 编译 | 生产源码覆盖门槛为全量 AOT；这不是测试覆盖率，也不是全部 PHP 包或全部平台已验收 |
-| 交付 | 一个程序文件加外置配置，原生运行库由程序携带和管理；当前打包仍为目录包，见[构建与部署](docs/guide/deployment.md) |
+| 交付 | 目标为一个程序文件加外置配置，非系统原生库静态链接、启动不释放；当前打包仍为目录包，见[构建与部署](docs/guide/deployment.md) |
 | 其他业务 | 用 `type-project` 创建独立应用，按需安装 Plugins |
 | 物联中心 | 成品案例，不是框架本身；文档见[物联网中心](docs/guide/iot-center.md) |
 
 当前锁定工具链为 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2，以仓库中的 `toolchain.lock.json` 与 `composer.lock` 为准。
+
+`type-build` 已在 `plugin/type-build/resources/swoole/` 内置四平台 Swoole 6.2.1 共享模块，随 Composer 构建组件分发。匹配的构建默认校验并复用，无需另行下载 Swoole；独立应用直接使用组件安装目录中的资源。适用 ABI、选择顺序与依赖要求见[内置 Swoole](docs/guide/plugins/type-build.md#内置-swoole-与运行依赖)。这仍是共享扩展输入，完整静态单程序目标尚未完成。
 
 ```mermaid
 flowchart TB

@@ -46,6 +46,8 @@ flowchart TB
 
 Composer 负责包的安装、依赖解析与版本锁定；`type-build` 收集完整生产源码并生成路由、配置、模型等显式代码，再调用 TypePHP。Swoole 原生扩展本身不作为 PHP 组件交给 TypePHP 编译，PHPX、libphp 与实际使用的扩展仍属于运行依赖。生产请求直接执行已编译入口，不在请求链中调用编译器或通过 Composer 加载业务源码。
 
+`type-build` 的 `resources/swoole/` 随构建组件提供四平台预编译模块、清单和许可材料。构建按组件安装位置选择匹配的模块并校验身份，应用产物只收集所选模块及实际依赖；无需将整目录声明为应用资源。它解决 Swoole 构建输入的复用，当前仍采用共享扩展，选择顺序及 ABI 边界见[内置 Swoole](plugins/type-build.md#内置-swoole-与运行依赖)。
+
 全量 AOT 覆盖框架、业务、生成代码与实际安装的生产 PHP 依赖；仅作开发用途的构建和测试工具不因此进入应用产物。当前约定允许固定 Swoole 扩展的官方内置 PHP 库按官方机制加载，并把其版本、摘要和构建开关纳入产物身份；该库仍是 PHP 实现，这个例外不适用于业务、Plugins 或其他第三方 PHP 源码。
 
 ## 原生能力与框架职责
@@ -128,10 +130,10 @@ sequenceDiagram
 
 ## 运行与发布边界
 
-开发时可以通过 PHP 开发入口加载 Composer 和 PHP 源码，便于快速反馈；生产必须执行 TypePHP 全量编译。交付约定是**一个程序文件加外置配置**：程序携带并自动管理 PHPX、libphp、Swoole 等所需原生库，运行时按需创建数据与日志，用户无需分别安装 PHP、Swoole 或编译工具链。`.env` 是启动数据，不能进入源码清单、构建身份或公开文档站。
+开发时可以通过 PHP 开发入口加载 Composer 和 PHP 源码，便于快速反馈；生产必须执行 TypePHP 全量编译。交付目标是**一个程序文件加外置配置**：PHPX、libphp、Swoole 及其他非系统原生库在构建期静态链接，启动不释放运行库；允许依赖目标操作系统自带库。运行时按需创建数据与日志，用户无需分别安装 PHP、Swoole 或编译工具链。`.env` 是启动数据，不能进入源码清单、构建身份或公开文档站。
 
 一个程序文件可包含多个角色入口，不等于所有角色只能运行在一个进程或线程。不同平台分别构建对应程序；当前 `type package` 仍生成目录包，单文件封装与启动尚未完成，现有命令及目标边界见[构建与部署](deployment.md)。
 
-项目源码按 Apache-2.0 提供，Swoole、TypePHP、Vben Admin Pro、Docsify、PrismJS 和数据库/系统库保留各自许可证。许可证边界见[许可证与归属](licensing.md)，站点根目录同时提供 [`LICENSE`](../LICENSE) 和 [`NOTICE`](../NOTICE)。
+项目源码按 Apache-2.0 提供，Swoole、TypePHP、Vben Admin Pro、Docsify、PrismJS 和数据库/系统库保留各自许可证。许可证边界见[许可证与归属](licensing.md)，站点根目录同时提供 <a href="LICENSE">LICENSE</a> 和 <a href="NOTICE">NOTICE</a>。
 
 [快速开始](quickstart.md) · [配置与环境](configuration.md) · [组件参考](components.md)

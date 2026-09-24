@@ -76,6 +76,8 @@
 - [多实例调度协调与队列组合](scheduler-coordination.md)
 - [调度组件实施与验收](scheduler.md)
 - [第三方源码与资源适配](source-imports.md)
+- [完整静态链接可行性](static-runtime-feasibility.md)
+- [内置 Swoole 模块实施与验证](swoole-bundle.md)
 - [Swoole 文件 I/O 接入](swoole-file-io.md)
 - [可靠存储故障与任务优雅停止](task-reliability.md)
 - [工作线程内的 TCP/TLS 原生通信](tcp-native-io.md)
@@ -84,6 +86,7 @@
 - [数据库与 Redis 的 TLS 验证](tls-verification.md)
 - [嵌套事务与模型失效](transactions.md)
 - [标准物联应用](typeapp.md)
+- [TypePHP 0.9.3 升级验收](typephp-upgrade-0.9.3.md)
 - [有界原生 UDP 接入](udp-native-io.md)
 - [有界 WebSocket 会话](websocket.md)
 

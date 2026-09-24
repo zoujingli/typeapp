@@ -74,6 +74,38 @@ vendor/bin/type --inspect build/type-example
 
 除 `project-root` 外，上述源码与产物路径按选定项目根解析。不要在应用配置写入本机 SDK 的固定安装路径，SDK 在构建环境显式提供。
 
+## 内置 Swoole 与运行依赖
+
+`type-build` 随 Composer 包携带 Swoole 6.2.1 的四平台共享模块、清单和原始许可证。主仓位置是 `plugin/type-build/resources/swoole/`，独立应用通常安装在 `vendor/zoujingli/type-build/resources/swoole/`；构建组件按自身安装位置查找，不依赖应用根目录或当前工作目录。应用无需复制主仓目录，也无需增加 `resources` 声明；根目录 `build/` 继续只保存不入仓的生成产物。
+
+预编译模块固定使用 **PHP 8.5.10、ZTS、非 debug、64 位 ABI**。当前主仓工具链为 TypePHP 0.9.3、PHPX 2.9.2，准确版本以应用的工具链锁和 Composer 锁文件为准。
+
+| 资源子目录 | 平台与限制 |
+| --- | --- |
+| `linux-x64/php-8.5.10-zts/swoole.so` | Linux x86-64，Debian 12 / glibc 2.36 构建基线 |
+| `linux-arm64/php-8.5.10-zts/swoole.so` | Linux ARM64，Debian 12 / glibc 2.36 构建基线 |
+| `macos-arm64/php-8.5.10-zts/swoole.so` | macOS ARM64，部署目标 15.0；实际运行验证为 macOS 27，15 实机待验收 |
+| `windows-x64/php-8.5.10-zts/php_swoole.dll` | Windows x64，PHP 官方 VS17 ZTS ABI |
+
+Linux 模块不适用于 Alpine/musl；NTS、其他 PHP 版本、macOS Intel 和 Windows ARM64 未提供内置文件。模块包含项目的编译线程、HTTP、Socket 与 TLS 适配，普通官方 Thread 可用不代表满足项目的编译入口 ABI。
+
+### 选择与失败处理
+
+运行依赖按以下顺序选择：
+
+1. 真实 embed 已内置 Swoole 时，不重复加载共享模块。
+2. 使用显式 `runtime.modules` 声明的候选。
+3. 未显式声明时，使用有效的 `TYPE_SWOOLE_MODULE` 文件候选。
+4. 否则从组件的 `manifest.json` 选择匹配模块，校验 SHA-256 和源码适配身份。
+
+默认内置清单缺失、ABI 不匹配、文件越界、摘要不符或源码适配过期时，构建明确失败，不自动回退到 SDK 中的 Swoole。修复方式是安装完整且匹配的组件，或明确提供已验证的模块覆盖；不要只修改清单摘要。其他扩展仍按 SDK 或显式候选解析。最终还要通过真实 embed 的加载、版本、必需函数与警告检查，PHP CLI 加载成功不能替代这些检查。
+
+匹配模块的选择无需联网，也无需另行下载或编译 Swoole；PHP SDK、PHPX 和其他依赖仍需准备，Composer 安装及整个构建不因此自动离线。组件安装也不会自动修改开发 PHP 的 ini；`type dev` 所用 CLI 仍需加载匹配的扩展。
+
+所选清单和模块进入构建身份，应用产物只收集当前平台选中的模块及实际依赖，不会携带全部四平台模块。再分发须保留适用的原始许可证，见[许可证与归属](../licensing.md#第三方边界)。源码、摘要、依赖和维护者的 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 重建入口见[资源说明](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。
+
+这些 `.so/.dll` 是共享扩展构建输入。**完整静态链接、单程序加配置、启动不释放运行库仍未完成**，当前目录包与最终交付要求见[构建与部署](../deployment.md#单程序交付约定)。
+
 ## 开发与编译入口
 
 | 命令 | 用途 |
@@ -152,13 +184,14 @@ php vendor/bin/type archive build/release build/type-example.tar.gz "$TYPE_RELEA
 | --- | --- |
 | 生产源码遗漏 | 对照 Composer autoload 和 sources 补齐输入 |
 | imports 摘要不匹配 | 核对锁定依赖，更新真实适配并重新验证 |
-| CLI 有扩展但构建缺失 | 以真实 embed 探针为准，补齐 runtime 声明与 SDK 模块 |
+| CLI 有扩展但构建缺失 | 以真实 embed 探针为准，核对内置 Swoole 的 ABI、显式覆盖及其他 SDK 扩展 |
+| 内置 Swoole 校验失败 | 核对完整安装、清单、模块及源码适配身份；更新组件或提供已验证覆盖，不绕过摘要校验 |
 | 缓存未复用 | 检查源码、锁文件、工具链、参数和资源身份变化 |
 | 构建失败但旧文件还在 | 失败不会把旧产物认定为本次成功；检查本次退出码与报告 |
 
 ## 验证与继续阅读
 
-本仓库验证入口：`composer test:build-errors`、`composer test:build-source-collection`、`composer test:build-cache`、`composer test:imports`。原生发布和无源码运行另做对应产物验收。
+本仓库验证入口：`composer test:build-errors`、`composer test:build-source-collection`、`composer test:build-cache`、`composer test:imports`。`composer test:bundled-swoole-consumer` 验证组件真实拆分和 Composer 独立安装后的本地选择、字节及许可材料；原生发布和无源码运行另做对应产物验收。
 
 继续阅读：[构建与部署](../deployment.md)、[测试工具](type-testing.md)、[组件安装](../components.md)。
 
