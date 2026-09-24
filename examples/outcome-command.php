@@ -17,6 +17,11 @@ use Type\Runtime\CoroutineRuntime;
 use TypeApp\ModelExample\Drivers;
 use TypeApp\ModelExample\User;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function outcomeExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -24,6 +29,11 @@ function outcomeExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 在协程内验证事务提交结果与提交后回调，故障模式保留未知结果。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     CoroutineRuntime::run(static function () use ($argc, $argv): void {
@@ -31,6 +41,11 @@ function main(int $argc, array $argv): void
     });
 }
 
+/**
+ * 区分已提交、回滚与未知事务结果，检查回调和模型状态；故障模式使用受控连接。
+ *
+ * @param list<string> $argv 程序路径与数据库或故障模式。
+ */
 function runOutcome(int $argc, array $argv): void
 {
     $mode = (string) ($argv[1] ?? 'sqlite');

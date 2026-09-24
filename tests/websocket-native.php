@@ -36,6 +36,7 @@ function wsNativeExtensionArgs(array $extensions): array
     return $arguments;
 }
 
+/** 为独立消费者创建私有 PHPX 头文件适配目录，其余工具文件通过链接复用，不修改共享 SDK。 */
 function wsNativePhpxHome(string $consumer): string
 {
     $source = getenv('PHPX_HOME');
@@ -72,6 +73,7 @@ function wsNativePhpxHome(string $consumer): string
     return $home;
 }
 
+/** 获取回环空闲端口后关闭临时监听；调用者负责尽快启动本轮服务。 */
 function wsNativePort(): int
 {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
@@ -81,6 +83,7 @@ function wsNativePort(): int
     return $port;
 }
 
+/** 在 15 秒轮询预算内确认原生产物仍存活且 TCP/TLS 握手成功；探测连接立即关闭。 */
 function wsNativeReady(Process $process, int $port, string $cafile = ''): void
 {
     $deadline = microtime(true) + 15;
@@ -102,6 +105,11 @@ function wsNativeReady(Process $process, int $port, string $cafile = ''): void
     throw new RuntimeException('原生产物 WebSocket 服务未就绪：' . $process->stderr());
 }
 
+/**
+ * 以 5 秒连接和读取超时完成测试握手；返回的连接由调用者关闭，响应头由调用者核验。
+ *
+ * @return array{resource, string, string} 连接、原始响应头、客户端握手随机键。
+ */
 function wsNativeHandshake(int $port, bool $tls, string $cafile = ''): array
 {
     if ($tls) {
@@ -131,6 +139,7 @@ function wsNativeHandshake(int $port, bool $tls, string $cafile = ''): array
     return [$connection, $header, $key];
 }
 
+/** 构造带客户端掩码的短二进制帧；调用者必须保证载荷少于 126 字节。 */
 function wsNativeFrame(string $payload): string
 {
     $length = strlen($payload);

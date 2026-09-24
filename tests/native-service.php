@@ -56,6 +56,12 @@ foreach (['service.json', basename($service['descriptor']), 'SERVICE.md'] as $fi
     expect(!str_contains(file_get_contents($service['directory'] . '/' . $file), $token), '服务描述泄漏了运行秘密');
 }
 
+/**
+ * 在 10 秒控制预算内执行 launchctl 并返回分离的退出码与输出，最后回收子进程。
+ *
+ * @param list<string> $arguments
+ * @return array{code: int, stdout: string, stderr: string}
+ */
 function serviceControl(array $arguments): array
 {
     $process = new Process(['/bin/launchctl', ...$arguments]);
@@ -68,12 +74,14 @@ function serviceControl(array $arguments): array
     }
 }
 
+/** 从 launchctl 输出读取服务进程号；没有运行进程时返回 0。 */
 function servicePid(string $target): int
 {
     $state = serviceControl(['print', $target]);
     return $state['code'] === 0 && preg_match('/\bpid = ([0-9]+)/', $state['stdout'], $match) === 1 ? (int) $match[1] : 0;
 }
 
+/** 在 20 秒轮询预算内要求新服务进程号且 /readyz 成功，返回已观察到的新进程号。 */
 function readyService(string $target, HttpClient $client, int $previous = 0): int
 {
     $deadline = microtime(true) + 20;

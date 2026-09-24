@@ -11,6 +11,11 @@ use TypeApp\ModelExample\Drivers;
 use TypeApp\ModelExample\ScopedRecord;
 use TypeApp\ModelExample\ScopedLabel;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function modelExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -18,6 +23,11 @@ function modelExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 核对非法模型操作的精确错误码，未抛错或错误码不同均使演练失败。
+ *
+ * @param Closure(): mixed $operation 预期被模型接口拒绝的操作。
+ */
 function modelRejects(Closure $operation, string $expectedCode): void
 {
     try {
@@ -29,6 +39,11 @@ function modelRejects(Closure $operation, string $expectedCode): void
     throw new RuntimeException('模型没有拒绝非法操作：' . $expectedCode);
 }
 
+/**
+ * 在所选驱动验证模型 CRUD、水合、部分字段与安全输出，依赖显式当前作用域。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {

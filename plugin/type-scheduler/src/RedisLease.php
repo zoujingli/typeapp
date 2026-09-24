@@ -31,6 +31,12 @@ final class RedisLease implements ExecutionLease, ScriptGuard
         $this->owner = new ExecutionOwner();
     }
 
+    /**
+     * 以随机 token 和持久代次原子获取权威 Redis 租约，不等待其他持有者退出。
+     *
+     * @param int $milliseconds 租期 10 至 3600000 毫秒。
+     * @throws LeaseException 参数无效、已有持有者或代次响应无效。
+     */
     public static function acquire(RedisConnection $redis, string $namespace, int $milliseconds = 30000): RedisLease
     {
         if ($namespace === '' || strlen($namespace) > 500 || $milliseconds < 10 || $milliseconds > 3600000) {
@@ -53,17 +59,24 @@ LUA;
         return new RedisLease($redis, $namespace . ':lock', $token, $generation, $milliseconds);
     }
 
+    /** 验证本地执行者和租约状态后返回精确代次文本；此读取不查询 Redis。 */
     public function generation(): string
     {
         $this->assertLocal();
         return $this->generation;
     }
 
+    /** 通过权威 Redis 脚本核对持有权，未知响应视为不能继续执行。 */
     public function assertOwned(): void
     {
         $this->execute($this->redis, 'return 1', [], []);
     }
 
+    /**
+     * 仅为 token 与代次仍匹配的持有者刷新 TTL；未知结果使本地租约失效。
+     *
+     * @throws LeaseException 续租失败、结果未知或旧执行者已经失权。
+     */
     public function renew(): void
     {
         $this->assertLocal();
@@ -83,11 +96,24 @@ LUA;
         }
     }
 
+    /**
+     * 在租约本身的 Redis 连接内原子检查持有权，再运行可信业务脚本。
+     *
+     * @param list<string> $keys 同一目标中的业务键。
+     * @param list<string|int|float> $arguments 有限标量参数。
+     */
     public function effect(string $script, array $keys = [], array $arguments = []): mixed
     {
         return $this->execute($this->redis, $script, $keys, $arguments);
     }
 
+    /**
+     * 要求目标为取得租约的同一连接；Lua 校验与副作用在一次脚本内完成。
+     *
+     * @param list<string> $keys 最多 1000 个非空键。
+     * @param list<string|int|float> $arguments 最多 1000 个有限标量参数。
+     * @throws LeaseException 参数非法、目标不同、租约失效或效果结果未知。
+     */
     public function execute(RedisConnection $target, string $script, array $keys, array $arguments): mixed
     {
         $this->assertLocal();
@@ -128,6 +154,11 @@ LUA;
         return $result[1] ?? null;
     }
 
+    /**
+     * 按 token 与代次条件删除租约；未知结果不重试删除，等待自然到期。
+     *
+     * @throws LeaseException 服务端不能确认释放或持有权已改变。
+     */
     public function release(): void
     {
         $this->owner->assertCurrent();

@@ -7,6 +7,7 @@ namespace Type\Core\Http\Message;
 use InvalidArgumentException;
 use Psr\Http\Message\UriInterface;
 
+/** PSR-7 URI 值对象，规范协议及主机大小写并保留正确百分号编码。 */
 final class Uri implements UriInterface
 {
     private string $scheme = '';
@@ -17,6 +18,7 @@ final class Uri implements UriInterface
     private string $query = '';
     private string $fragment = '';
 
+    /** 解析 URI，拒绝控制字符或无效结构，并编码非 ASCII 和组件中的非法字节。 */
     public function __construct(string $uri = '')
     {
         if (preg_match('/[\x00-\x1f\x7f]/', $uri)) {
@@ -39,11 +41,13 @@ final class Uri implements UriInterface
         }
     }
 
+    /** 返回规范为小写的协议名，不含冒号。 */
     public function getScheme(): string
     {
         return $this->scheme;
     }
 
+    /** 组合用户信息、主机和非默认端口；缺少主机时返回空文本。 */
     public function getAuthority(): string
     {
         if ($this->host === '') {
@@ -53,16 +57,19 @@ final class Uri implements UriInterface
         return ($this->userInfo === '' ? '' : $this->userInfo . '@') . $this->host . ($port === null ? '' : ':' . $port);
     }
 
+    /** 返回已编码用户信息，不含尾部 @；可能包含秘密，不宜用于日志。 */
     public function getUserInfo(): string
     {
         return $this->userInfo;
     }
 
+    /** 返回小写主机名或带方括号的 IP 字面值。 */
     public function getHost(): string
     {
         return $this->host;
     }
 
+    /** 返回显式非默认端口；HTTP 80、HTTPS 443 或未声明端口返回 null。 */
     public function getPort(): ?int
     {
         if (($this->scheme === 'http' && $this->port === 80) || ($this->scheme === 'https' && $this->port === 443)) {
@@ -71,21 +78,25 @@ final class Uri implements UriInterface
         return $this->port;
     }
 
+    /** 返回已编码路径，不对点段进行自动解析。 */
     public function getPath(): string
     {
         return $this->path;
     }
 
+    /** 返回已编码查询文本，不含前导问号。 */
     public function getQuery(): string
     {
         return $this->query;
     }
 
+    /** 返回已编码片段文本，不含前导井号。 */
     public function getFragment(): string
     {
         return $this->fragment;
     }
 
+    /** 校验协议名并在副本中保存小写形式，空文本移除协议。 */
     public function withScheme(string $scheme): UriInterface
     {
         $copy = clone $this;
@@ -93,6 +104,7 @@ final class Uri implements UriInterface
         return $copy;
     }
 
+    /** 编码用户与可选密码并返回副本，空用户名会移除全部用户信息。 */
     public function withUserInfo(string $user, ?string $password = null): UriInterface
     {
         $copy = clone $this;
@@ -100,6 +112,7 @@ final class Uri implements UriInterface
         return $copy;
     }
 
+    /** 校验主机名或 IP 字面值并返回小写副本，空文本移除主机。 */
     public function withHost(string $host): UriInterface
     {
         $copy = clone $this;
@@ -107,6 +120,7 @@ final class Uri implements UriInterface
         return $copy;
     }
 
+    /** 在副本中设置 0 至 65535 端口，null 移除端口；展示时隐藏默认端口。 */
     public function withPort(?int $port): UriInterface
     {
         if ($port !== null && ($port < 0 || $port > 65535)) {
@@ -117,6 +131,7 @@ final class Uri implements UriInterface
         return $copy;
     }
 
+    /** 编码路径中的非法字节并返回副本，已有效编码的百分号保持不变。 */
     public function withPath(string $path): UriInterface
     {
         $copy = clone $this;
@@ -124,6 +139,7 @@ final class Uri implements UriInterface
         return $copy;
     }
 
+    /** 编码查询组件并返回副本，调用方不传前导问号。 */
     public function withQuery(string $query): UriInterface
     {
         $copy = clone $this;
@@ -131,6 +147,7 @@ final class Uri implements UriInterface
         return $copy;
     }
 
+    /** 编码片段组件并返回副本，调用方不传前导井号。 */
     public function withFragment(string $fragment): UriInterface
     {
         $copy = clone $this;
@@ -138,6 +155,7 @@ final class Uri implements UriInterface
         return $copy;
     }
 
+    /** 按 URI 组件组合文本，并处理空 authority 下容易误解为协议或主机的路径。 */
     public function __toString(): string
     {
         $authority = $this->getAuthority();

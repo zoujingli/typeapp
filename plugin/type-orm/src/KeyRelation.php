@@ -30,16 +30,27 @@ final class KeyRelation extends Relation
         $this->batchSize = $batchSize;
     }
 
+    /** 返回父模型关联属性名，匹配时读取存储值而非展示获取器。 */
     public function sourceKey(): string
     {
         return $this->source;
     }
 
+    /**
+     * 批量加载关系并写回父模型，沿用父查询已经选定的连接。
+     *
+     * @param list<Model> $models
+     */
     public function load(Connection $connection, array $models, string $name): void
     {
         $this->loadRows($connection, $models, $name);
     }
 
+    /**
+     * 在共享行数预算内批量加载；超限拒绝，不把截断关系交给业务。
+     *
+     * @param list<Model> $models
+     */
     public function loadBounded(Connection $connection, array $models, string $name, ReadBudget $budget): void
     {
         $this->loadRows($connection, $models, $name, $budget);

@@ -13,6 +13,7 @@ function mqttField(string $value): string
     return pack('n', strlen($value)) . $value;
 }
 
+/** 独立编码 MQTT 可变长度整数；调用方提供协议允许范围内的值。 */
 function mqttLength(int $value): string
 {
     $bytes = '';
@@ -24,6 +25,7 @@ function mqttLength(int $value): string
     return $bytes;
 }
 
+/** 构造 MQTT 3.1.1 或 5 的线协议 CONNECT；keepalive 单位为秒，properties 为已编码 MQTT 5 属性。 */
 function mqttConnect(int $version, string $id = 'wire-client', int $keepalive = 10, string $properties = '', string $password = 'mqtt-test-secret'): string
 {
     $payload = mqttField('MQTT') . chr($version) . "\xc2" . pack('n', $keepalive)
@@ -153,6 +155,11 @@ function mqttReadCases(): int
     return count($cases);
 }
 
+/**
+ * 处理测试连接短写，直到报文字节全部发送；连接错误使测试失败，所有权仍归调用者。
+ *
+ * @param resource $socket
+ */
 function mqttWrite(mixed $socket, string $bytes): void
 {
     $offset = 0;
@@ -163,6 +170,11 @@ function mqttWrite(mixed $socket, string $bytes): void
     }
 }
 
+/**
+ * 读取成功且无历史会话的 CONNACK，并核验对应协议版本的确认布局。
+ *
+ * @param resource $socket
+ */
 function mqttAck(mixed $socket, int $version): string
 {
     $ack = mqttRead($socket);
@@ -171,22 +183,26 @@ function mqttAck(mixed $socket, int $version): string
     return $ack;
 }
 
+/** 以固定头和独立编码的剩余长度包装 MQTT 正文字节，用于构造预期线协议数据。 */
 function mqttPacket(int $header, string $body): string
 {
     return chr($header) . mqttLength(strlen($body)) . $body;
 }
 
+/** 按协议版本构造订阅或取消订阅报文；调用者明确报文标识符和订阅选项。 */
 function mqttSubscription(int $version, string $topic, int $identifier = 1, int $options = 0, bool $subscribe = true): string
 {
     return mqttPacket($subscribe ? 0x82 : 0xa2, pack('n', $identifier) . ($version === 5 ? "\0" : '')
         . mqttField($topic) . ($subscribe ? chr($options) : ''));
 }
 
+/** 构造指定版本的 QoS 0 发布报文，MQTT 5 属性由调用者提供编码后的字节。 */
 function mqttPublish(int $version, string $topic, string $payload, string $properties = ''): string
 {
     return mqttPacket(0x30, mqttField($topic) . ($version === 5 ? mqttLength(strlen($properties)) . $properties : '') . $payload);
 }
 
+/** 生成预期 SUBACK 或 UNSUBACK 字节，供实际服务响应进行独立比对。 */
 function mqttSubscriptionAck(int $version, string $reasons = "\0", int $identifier = 1, bool $subscribe = true): string
 {
     return mqttPacket($subscribe ? 0x90 : 0xb0, pack('n', $identifier) . ($version === 5 ? "\0" : '')
@@ -613,6 +629,7 @@ function mqttConnectFieldCases(int $port, ?string $certificate): int
     return $cases;
 }
 
+/** 以真实连接覆盖 MQTT 3.1.1/5 的分片、粘包、认证与错误输入，返回已完成用例数。 */
 function mqttWireCases(int $port, ?string $certificate): int
 {
     $cases = 0;

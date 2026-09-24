@@ -25,6 +25,12 @@ function ormRuntimeIni(string $source, string $driver): string
     return $result;
 }
 
+/**
+ * 生成独立 php.ini 与扫描目录，移除未选动态 PDO 驱动并保留所需扩展和运行限制。
+ *
+ * @param string|false $mainIni false 表示无主配置文件。
+ * @param list<string> $scanFiles
+ */
 function ormWriteRuntimeIni(string $directory, string|false $mainIni, array $scanFiles, string $driver): void
 {
     if (!is_dir($directory . '/php.d')) {
@@ -74,6 +80,13 @@ function ormNativeExtensions(string $probe, string $ini, string $scan, string $d
     return array_keys($result['extensions']);
 }
 
+/**
+ * 验证运行环境具有 Swoole 与所选数据库驱动，且未意外丢失所需扩展或加载其他动态 PDO 驱动。
+ *
+ * @param list<string> $build
+ * @param list<string> $runtime
+ * @param list<string> $static
+ */
 function ormAssertExtensions(array $build, array $runtime, array $static, string $driver): void
 {
     expect(in_array('swoole', array_map('strtolower', $runtime), true)

@@ -16,6 +16,12 @@ final class RedisStateStore implements LeasedStateStore
     private ?RedisLease $lease = null;
     private ?ExecutionOwner $owner = null;
 
+    /**
+     * 绑定稳定应用/组名与借用的 script 连接，存储不负责关闭外层连接。
+     *
+     * @param int $leaseMilliseconds 整个 tick 的租约时长，10 至 3600000 毫秒。
+     * @throws LeaseException 身份或租约配置无效。
+     */
     public function __construct(RedisConnection $redis, string $application, string $name = 'default', int $leaseMilliseconds = 30000)
     {
         if ($application === '' || strlen($application) > 500 || !preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $name)
@@ -27,11 +33,17 @@ final class RedisStateStore implements LeasedStateStore
         $this->milliseconds = $leaseMilliseconds;
     }
 
+    /** 返回由应用和组名派生的 Redis 键前缀；不同实例应保持相同业务分组。 */
     public function identity(): string
     {
         return $this->root;
     }
 
+    /**
+     * 获取组租约并仅在首代初始化状态；已有代次但状态丢失时停止以保留现场。
+     *
+     * @throws LeaseException 已占用、租约冲突或共享状态缺失。
+     */
     public function acquire(): void
     {
         if ($this->lease !== null) {
@@ -57,6 +69,11 @@ LUA, [$this->root . ':state'], [$this->lease->generation(), StateCodec::encode([
         }
     }
 
+    /**
+     * 返回本次 acquire() 的租约，供任务包装为自身作用域权限。
+     *
+     * @throws LeaseException 当前存储未持有租约。
+     */
     public function lease(): ExecutionLease
     {
         if ($this->lease === null) {
@@ -65,6 +82,11 @@ LUA, [$this->root . ':state'], [$this->lease->generation(), StateCodec::encode([
         return $this->lease;
     }
 
+    /**
+     * 在租约保护的读取中取得并验证共享状态，不自动重置丢失游标。
+     *
+     * @return array{protocol: int, cursors: array<string, int>, records: list<array<string, mixed>>}
+     */
     public function load(): array
     {
         if ($this->lease === null) {
@@ -80,6 +102,11 @@ LUA, [$this->root . ':state'], [$this->lease->generation(), StateCodec::encode([
         return StateCodec::decode($encoded);
     }
 
+    /**
+     * 验证编码预算，先续租再在持有权保护下覆盖状态，不给状态和代次设置 TTL。
+     *
+     * @param array{protocol: int, cursors: array<string, int>, records: list<array<string, mixed>>} $state 待保存的完整状态。
+     */
     public function save(array $state): void
     {
         if ($this->lease === null) {
@@ -90,6 +117,7 @@ LUA, [$this->root . ':state'], [$this->lease->generation(), StateCodec::encode([
         $this->lease->effect("redis.call('SET',KEYS[1],ARGV[1]); return 1", [$this->root . ':state'], [$encoded]);
     }
 
+    /** 清除本地持有关系并条件释放当前组租约，外层 Redis 连接继续由应用管理。 */
     public function release(): void
     {
         $this->owner?->assertCurrent();

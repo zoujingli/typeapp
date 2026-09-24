@@ -14,8 +14,10 @@ use Type\Core\Http\UploadStorage;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\ManagedResource;
 
+/** 提供上传、临时文件和分块响应演练，所有文件仅在专属测试目录内处理。 */
 final class Endpoint implements RequestHandlerInterface
 {
+    /** 按路径选择上传或下载场景，资源登记到当前 HTTP Scope 后再返回响应。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $factory = new Factory();
@@ -55,18 +57,22 @@ final class Endpoint implements RequestHandlerInterface
     }
 }
 
+/** 记录请求作用域清理时刻，与响应流关闭迹线一起核对顺序。 */
 final class Lifecycle implements ManagedResource
 {
     private ExecutionScope $scope;
     private string $marker;
+    /** 绑定本次 Scope 与迹线标记，不在构造时写文件。 */
     public function __construct(ExecutionScope $scope, string $marker)
     {
         $this->scope = $scope;
         $this->marker = $marker;
     }
+    /** 不分配额外资源，观察重点在请求退出的 stop。 */
     public function start(): void
     {
     }
+    /** 记录作用域状态，供外部测试检查流关闭与 Scope 退出的先后。 */
     public function stop(): void
     {
         file_put_contents((string) getenv('TYPE_UPLOAD_TRACE'), 'scope:' . $this->marker . ':' . $this->scope->state() . "\n", FILE_APPEND | LOCK_EX);

@@ -15,6 +15,11 @@ use Type\Runtime\ExecutionScope;
 use TypeApp\QueueExample\Resource;
 use TypeApp\QueueExample\RetryJob;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function retryExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -22,6 +27,11 @@ function retryExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 在协程内验证延迟提升、有限重试、隔离与转移故障后的恢复。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
@@ -29,6 +39,11 @@ function main(int $argc, array $argv): void
     });
 }
 
+/**
+ * 验证延迟、超时、重试与隔离转移，使用随机应用命名空间避免混入其他消息。
+ *
+ * @param list<string> $argv 程序路径及演练参数。
+ */
 function queueRetryScenario(int $argc, array $argv): void
 {
     $manager = new RedisManager(['default' => new RedisConfiguration(

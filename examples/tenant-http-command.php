@@ -54,6 +54,11 @@ function tenantDriver(string $kind, string $tenant, int $generation): Driver
     };
 }
 
+/**
+ * 装配多租户 HTTP、数据库、缓存与日志；每个请求只使用已授权租户资源。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $factory = new Factory();

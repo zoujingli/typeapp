@@ -13,6 +13,7 @@ final class ArtifactCache
 {
     private string $directory;
 
+    /** 校验或创建仅归构建用户所有的缓存目录；路径不允许经过符号链接。 */
     public function __construct(string $directory)
     {
         BuildLock::path($directory);

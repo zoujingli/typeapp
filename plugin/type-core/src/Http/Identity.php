@@ -6,6 +6,7 @@ namespace Type\Core\Http;
 
 use InvalidArgumentException;
 
+/** 认证所有者建立的主体、角色与属性快照，授权仍须检查当前业务事实。 */
 final class Identity
 {
     private string $subject;
@@ -23,10 +24,15 @@ final class Identity
         }
         $this->subject = $subject;
     }
+    /** 返回已认证的非空主体标识。 */
     public function subject(): string
     {
         return $this->subject;
     }
+    /**
+     * 返回认证时的角色列表，不在读取时重新查询权限。
+     * @return list<string>
+     */
     public function roles(): array
     {
         return $this->roles;

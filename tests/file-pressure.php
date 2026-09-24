@@ -5,6 +5,11 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require __DIR__ . '/http-support.php';
 
+/**
+ * 发送受控 multipart 上传；complete 为 false 时声明额外 4096 字节以保持请求在途。
+ *
+ * @return resource 由 pressureClose 读取结果并关闭的测试连接。
+ */
 function pressureUpload(int $port, string $path, string $content, bool $complete = true): mixed
 {
     $socket = stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 2);
@@ -25,6 +30,11 @@ function pressureUpload(int $port, string $path, string $content, bool $complete
     return $socket;
 }
 
+/**
+ * 读取压力测试响应并关闭连接；无响应返回 0，读取超时或非 HTTP 响应视为失败。
+ *
+ * @param resource $socket
+ */
 function pressureClose(mixed $socket): int
 {
     try {
@@ -40,6 +50,7 @@ function pressureClose(mixed $socket): int
     }
 }
 
+/** 向本轮专属且受限的测试卷写入直到空间不足，并关闭文件；不得用于普通数据目录或宿主根分区。 */
 function pressureFill(string $path): void
 {
     $handle = fopen($path, 'xb');

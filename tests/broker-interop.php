@@ -11,6 +11,13 @@ use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
 if (!function_exists('identityCommand')) {
+    /**
+     * 执行人员管理命令并在 30 秒内要求成功，解析 JSON 后回收子进程。
+     *
+     * @param list<string> $command
+     * @param array<string, string> $environment
+     * @return array<string, mixed>
+     */
     function identityCommand(array $command, array $environment): array
     {
         $process = new Process($command, dirname(__DIR__), $environment);
@@ -34,6 +41,7 @@ function interopField(string $value): string
     return pack('n', strlen($value)) . $value;
 }
 
+/** 独立编码 MQTT 可变长度整数，用于互操作测试的原始报文构造。 */
 function interopLength(int $value): string
 {
     $bytes = '';
@@ -45,6 +53,7 @@ function interopLength(int $value): string
     return $bytes;
 }
 
+/** 构造带指定身份的 MQTT 3.1.1/5 CONNECT；keepalive 和 MQTT 5 会话 expiry 均为秒。 */
 function interopConnect(int $version, string $id, string $username, string $password, int $keepalive = 30, int $expiry = 0): string
 {
     $flags = "\xc2";
@@ -58,6 +67,7 @@ function interopConnect(int $version, string $id, string $username, string $pass
     return "\x10" . interopLength(strlen($payload)) . $payload;
 }
 
+/** 按指定操作码构造 FIN 置位且带客户端随机掩码的 WebSocket 帧。 */
 function interopFrame(string $payload, int $opcode): string
 {
     $length = strlen($payload);
@@ -77,6 +87,11 @@ function interopFrame(string $payload, int $opcode): string
     return $header . $mask . $masked;
 }
 
+/**
+ * 读取数据帧载荷并跳过 ping/pong；关闭帧及截断使测试失败，连接由调用者回收。
+ *
+ * @param resource $socket
+ */
 function interopWsRead(mixed $socket): string
 {
     $header = '';
@@ -162,12 +177,18 @@ function interopWsHandshake(int $port, array $headers, string $ca, string $origi
     return [$socket, $response];
 }
 
+/**
+ * 将 MQTT 报文封装为客户端二进制 WebSocket 帧，要求一次完整写出。
+ *
+ * @param resource $socket 调用者持有并负责关闭的连接。
+ */
 function interopWsWrite(mixed $socket, string $packet): void
 {
     $frame = interopFrame($packet, 0x2);
     expect(fwrite($socket, $frame) === strlen($frame), 'MQTT WSS 报文未写完');
 }
 
+/** 在 15 秒轮询预算内确认互操作节点存活并通过 CA 与主机名校验的 TLS 握手。 */
 function interopWaitTls(Process $process, int $port, string $ca): void
 {
     $deadline = microtime(true) + 15;
@@ -224,6 +245,7 @@ function interopCertFiles(string $directory): array
     return $paths;
 }
 
+/** 在 10 秒轮询预算内确认管理进程存活且 /readyz 返回 200。 */
 function interopWaitHttp(Process $process, HttpClient $client): void
 {
     $deadline = microtime(true) + 10;
@@ -240,6 +262,13 @@ function interopWaitHttp(Process $process, HttpClient $client): void
     expect(false, '互操作管理 HTTP 未就绪');
 }
 
+/**
+ * 在 12 秒轮询预算内等待指定访问修订生效，超时报告最后观察状态。
+ *
+ * @param callable(string, string, string, ?array, int): array<string, mixed> $request
+ * @param array<string, mixed> $revision
+ * @return array<string, mixed>
+ */
 function interopWaitRevision(callable $request, string $token, array $revision, string $message): array
 {
     $deadline = microtime(true) + 12;
@@ -280,6 +309,7 @@ function interopJs(string $root, string $clientRoot, string $action, array $envi
     }
 }
 
+/** 核验 MQTT 5 CONNACK 声明的接收上限、主题别名上限和 1 MiB 最大报文限制。 */
 function interopConnackLimits(string $packet): void
 {
     expect(ord($packet[0]) === 0x20 && ord($packet[2]) === 0 && ord($packet[3]) === 0, 'WSS MQTT5 CONNACK 失败：' . bin2hex($packet));
@@ -288,6 +318,7 @@ function interopConnackLimits(string $packet): void
     expect(str_contains($packet, "\x27" . pack('N', 1048576)), 'CONNACK 未声明 Maximum Packet Size 1 MiB');
 }
 
+/** 通过真实 WSS 连接验证 Origin、子协议和帧类型边界，以及跨帧 MQTT 报文重组。 */
 function interopWsHandshakeCases(int $wssPort, string $ca, string $username, string $password, string $allowedOrigin): void
 {
     [$denied, $deniedHeader] = interopWsHandshake($wssPort, ['Sec-WebSocket-Protocol: mqtt'], $ca, 'http://denied.test');

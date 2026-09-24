@@ -66,6 +66,7 @@ function handleDropdownTrigger(event: Event) {
   scheduleDropdownWidth(triggerWidth);
 }
 
+/** 分阶段等待挂载和布局完成；新触发会撤销上一轮尚未执行的计时器。 */
 function scheduleDropdownWidth(triggerWidth: number) {
   clearPendingTimers();
   queueDropdownWidthApply(triggerWidth);
@@ -155,6 +156,7 @@ function measureDropdownTextWidth(node: HTMLElement) {
   return Math.ceil(context.measureText(text).width);
 }
 
+// 页面卸载后撤销剩余延迟测量，避免继续调整其他页面的下拉层。
 onBeforeUnmount(clearPendingTimers);
 </script>
 

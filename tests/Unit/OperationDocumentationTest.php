@@ -10,6 +10,7 @@ use Type\Build\OperationCompiler;
 /** 通过公开生成入口核对跨命名空间后的文档类型，不加载业务类。 */
 final class OperationDocumentationTest extends TestCase
 {
+    /** 验证生成服务文档在原命名语境中解析别名、数组字段、常量及局部类型，且不加载业务类。 */
     public function testAliasesShapesConstantsAndLocalTypesKeepTheirContext(): void
     {
         $root = dirname(__DIR__, 2);
@@ -65,6 +66,7 @@ PHP);
         }
     }
 
+    /** 验证类级模板与类型定义可供生成方法使用，不把属性声明误写为生成成员。 */
     public function testClassTypeDefinitionsRemainAvailableWithoutInventingMembers(): void
     {
         $root = dirname(__DIR__, 2);

@@ -19,6 +19,10 @@ function sdkCommand(string $configuration, string $option): string
     return trim($output);
 }
 
+/**
+ * 创建 SDK 来源链接；相同链接可复用，任何不同目标或普通文件均拒绝覆盖。
+ * @throws RuntimeException 目标已占用、来源变化或链接创建失败。
+ */
 function sdkLink(string $source, string $target): void
 {
     if (is_link($target)) {

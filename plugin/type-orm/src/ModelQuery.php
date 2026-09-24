@@ -105,6 +105,7 @@ final class ModelQuery
         return $copy;
     }
 
+    /** 按模型属性编码比较值并返回新查询，租户与软删除范围在执行时统一加入。 */
     public function where(string $field, string $operator, mixed $value, string $boolean = 'AND'): ModelQuery
     {
         if ($this->query === null) {
@@ -117,6 +118,11 @@ final class ModelQuery
         return $copy;
     }
 
+    /**
+     * 按字段类型规范化集合值，返回新模型查询。
+     *
+     * @param list<mixed> $values 值须符合声明的模型字段类型。
+     */
     public function whereIn(string $field, array $values, bool $not = false, string $boolean = 'AND'): ModelQuery
     {
         if ($this->query === null) {
@@ -209,6 +215,11 @@ final class ModelQuery
         return $this->readingQuery(false)->bindings();
     }
 
+    /**
+     * 选择部分模型字段并自动保留主键及生命周期字段，未加载字段保持不可读。
+     *
+     * @param list<string> $fields
+     */
     public function select(array $fields): ModelQuery
     {
         $copy = clone $this;
@@ -229,6 +240,7 @@ final class ModelQuery
         return $copy;
     }
 
+    /** 按映射属性排序，方向只接受 ASC/DESC；保留原查询。 */
     public function orderBy(string $field, string $direction = 'ASC'): ModelQuery
     {
         if (!in_array(strtoupper($direction), ['ASC', 'DESC'], true)) {
@@ -266,6 +278,7 @@ final class ModelQuery
         return $copy;
     }
 
+    /** 声明显式读取条数与偏移；不作为集合写入的隐式分批限制。 */
     public function limit(int $count, int $offset = 0): ModelQuery
     {
         if ($this->query === null) {
@@ -279,6 +292,11 @@ final class ModelQuery
         return $copy;
     }
 
+    /**
+     * 执行查询并水合模型与显式关系；未命中返回空列表。
+     *
+     * @return list<Model>
+     */
     public function get(): array
     {
         if ($this->query === null) {
@@ -305,6 +323,11 @@ final class ModelQuery
         return $this->hydrateRows($rows, $budget);
     }
 
+    /**
+     * 执行总数分页，当前页模型和全部预加载结果共享读取预算。
+     *
+     * @param int $maxRows 本页水合的行数预算；超限抛错，不返回截断关系，也不限制写入行数。
+     */
     public function paginate(int $page = 1, int $perPage = 20, int $maxRows = 10000): Page
     {
         if ($this->query === null) {
@@ -326,6 +349,11 @@ final class ModelQuery
         return new SimplePage($this->hydrateRows($result->items(), $budget), $result->number(), $result->perPage(), $result->hasMore());
     }
 
+    /**
+     * 按稳定主键排序继续读取，游标绑定查询身份及条件。
+     *
+     * @param int $maxRows 本页模型与关联共用的读取预算，不用于集合写入。
+     */
     public function cursorPaginate(int $perPage = 100, ?string $after = null, int $maxRows = 10000): CursorPage
     {
         if ($this->query === null) {
@@ -682,6 +710,7 @@ final class ModelQuery
         return $this->orderBy($this->definition->key());
     }
 
+    /** 返回首个已水合模型或 null，沿用当前租户与主从选择。 */
     public function first(): ?Model
     {
         if ($this->query === null) {
@@ -691,6 +720,7 @@ final class ModelQuery
         return $row === null ? null : $this->hydrateRows([$row])[0];
     }
 
+    /** 按映射主键查询，缺失返回 null，不绕过当前筛选与租户约束。 */
     public function find(int|string $id): ?Model
     {
         return $this->where($this->definition->key(), '=', $id)->first();
@@ -887,6 +917,7 @@ final class ModelQuery
         }, $mode);
     }
 
+    /** 计数当前可见模型行，不水合模型或预加载关系。 */
     public function count(): int
     {
         if ($this->query === null) {
@@ -895,14 +926,17 @@ final class ModelQuery
         return (int) $this->visibleQuery()->aggregate('COUNT');
     }
 
+    /** 返回同时包含软删除与未删除行的新查询；模型须声明软删除。 */
     public function withTrashed(): ModelQuery
     {
         return $this->trashedMode('all');
     }
+    /** 返回仅包含软删除行的新查询，租户范围仍生效。 */
     public function onlyTrashed(): ModelQuery
     {
         return $this->trashedMode('only');
     }
+    /** 返回排除软删除行的新查询，恢复默认可见范围。 */
     public function withoutTrashed(): ModelQuery
     {
         return $this->trashedMode('without');
@@ -918,6 +952,7 @@ final class ModelQuery
         return $copy;
     }
 
+    /** 为新查询声明水合模型的行为，并供集合更新的字段修改器使用。 */
     public function withBehavior(ModelBehavior $behavior): ModelQuery
     {
         $copy = clone $this;

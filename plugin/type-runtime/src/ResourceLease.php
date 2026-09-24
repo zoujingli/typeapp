@@ -7,6 +7,7 @@ namespace Type\Runtime;
 use Closure;
 use RuntimeException;
 
+/** 作用域独占的池租约；借用资源不跨执行者，归还不早于实际操作完成。 */
 final class ResourceLease implements ManagedResource
 {
     private ResourcePool $pool;
@@ -14,6 +15,7 @@ final class ResourceLease implements ManagedResource
     private int $id;
     private bool $released = false;
 
+    /** @internal 仅由池为已分配的资源创建，调用者通过 ResourcePool::borrow() 借用。 */
     public function __construct(ResourcePool $pool, ExecutionScope $scope, int $id)
     {
         $this->pool = $pool;
@@ -21,16 +23,22 @@ final class ResourceLease implements ManagedResource
         $this->id = $id;
     }
 
+    /** 登记租约时检查作用域仍可用；物理资源由池负责创建。 */
     public function start(): void
     {
         $this->scope->assertActive();
     }
 
+    /** 返回归还意图是否已登记；不等于底层资源已完成关闭或复用。 */
     public function released(): bool
     {
         return $this->released;
     }
 
+    /**
+     * 在所有者作用域内取得资源；有在途操作时应使用 hold() 管理持有期。
+     * @throws RuntimeException 作用域不可用、租约已归还或资源不可借用。
+     */
     public function resource(): ReusableResource
     {
         $this->scope->assertActive();
@@ -41,6 +49,7 @@ final class ResourceLease implements ManagedResource
         return $this->pool->resource($this->id);
     }
 
+    /** 幂等登记归还；池继续持有仍在途的操作，不能据此转移资源所有权。 */
     public function stop(): void
     {
         if (!$this->released) {

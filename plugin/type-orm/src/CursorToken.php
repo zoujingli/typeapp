@@ -9,6 +9,11 @@ use Throwable;
 /** @internal 游标只是查询位置，不能作为授权；值始终重新绑定到 SQL。 */
 final class CursorToken
 {
+    /**
+     * 编码查询身份与排序位置，长度不超过 8192 字节；不作为签名或授权令牌。
+     *
+     * @param list<scalar> $values
+     */
     public static function encode(string $shape, array $values): string
     {
         try {
@@ -22,6 +27,12 @@ final class CursorToken
         return $token;
     }
 
+    /**
+     * 校验游标形状、查询身份与排序值数量，返回可重新绑定的标量。
+     *
+     * @return list<scalar>
+     * @throws DatabaseException 游标损坏、身份不符或排序值非法。
+     */
     public static function decode(string $token, string $shape, int $count): array
     {
         if (strlen($token) > 8192 || !preg_match('/^[A-Za-z0-9_-]+$/D', $token)) {

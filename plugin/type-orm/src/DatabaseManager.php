@@ -7,6 +7,7 @@ namespace Type\Orm;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\DeploymentBudget;
 
+/** 命名数据源、主从端点与凭据代次的所有者；复用同一运行时资源池协议。 */
 final class DatabaseManager
 {
     private array $drivers = [];
@@ -20,7 +21,11 @@ final class DatabaseManager
     private int $waiterLimit;
     private float $waitSeconds;
 
-    /** 各命名连接与旧凭据代次共用预算；协程等待上限单位为秒。 */
+    /**
+     * 各命名连接与旧凭据代次共用预算；协程等待上限单位为秒。
+     *
+     * @param array<string, Driver|array{master: Driver, reader?: Driver|null}> $connections 命名端点或逻辑主从数据源。
+     */
     public function __construct(array $connections, int $capacity = 4, int $idleLimit = 2, ?DeploymentBudget $budget = null, int $waiterLimit = 64, float $waitSeconds = 1.0)
     {
         if ($connections === [] || count($connections) > 64 || $capacity < 1 || $idleLimit < 0 || $idleLimit > $capacity
@@ -105,6 +110,12 @@ final class DatabaseManager
         $this->drivers[$name] = $driver;
     }
 
+    /**
+     * 读取当前命名端点配置身份，不建立连接。
+     *
+     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码。
+     * @throws DatabaseException 名称未声明。
+     */
     public function identity(string $name = 'default'): array
     {
         if (!isset($this->drivers[$name])) {
@@ -113,6 +124,11 @@ final class DatabaseManager
         return $this->drivers[$name]->identity();
     }
 
+    /**
+     * 收集已排空的旧代并返回活动池计数，不把旧代计为可借用端点。
+     *
+     * @return array{active: array<string, array<string, int|float>>, 'retired-generations': array<string, int>}
+     */
     public function statistics(): array
     {
         $this->collect();
@@ -123,6 +139,7 @@ final class DatabaseManager
         return ['active' => $statistics, 'retired-generations' => array_map('count', $this->retired)];
     }
 
+    /** 关闭活动及退役代次的池，之后拒绝新借用；由应用生命周期统一调用。 */
     public function close(): void
     {
         $this->closed = true;

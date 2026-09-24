@@ -12,12 +12,22 @@ final class SerializedPayload
     private int $position = 0;
     private int $nodes = 0;
 
+    /**
+     * 接收已取得的载荷和受信类型列表，本阶段不调用反序列化钩子。
+     *
+     * @param list<class-string> $classes
+     */
     public function __construct(string $payload, array $classes)
     {
         $this->payload = $payload;
         $this->classes = $classes;
     }
 
+    /**
+     * 验证完整载荷、深度、节点数及对象类型；尾随数据或未知类型明确拒绝。
+     *
+     * @throws CacheException 载荷不满足受信序列化格式。
+     */
     public function verify(): void
     {
         $this->value(0);

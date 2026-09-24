@@ -31,9 +31,11 @@ const canExport = computed(() => session.realm === 'customer' && session.permiss
 const canReadExports = computed(() => session.realm === 'customer' && session.permissions.includes('customer.exports.read'));
 const canCancelExports = computed(() => session.permissions.includes('customer.exports.cancel'));
 const canDownloadExports = computed(() => session.permissions.includes('customer.exports.download'));
+/** 未确认受理的导出请求，绑定身份、租户、设备及首次筛选参数。 */
 type ExportSubmission = { identity: string; tenant: string; device: string; data: Record<string, unknown> };
 const exportSubmission = ref<ExportSubmission | null>(null);
 const exportStorageKey = () => `typeapp.export.${session.identity?.key || ''}`;
+/** 恢复当前工作区的原导出请求；损坏缓存直接清除，不产生新任务。 */
 function restoreExport() {
   exportSubmission.value = null;
   try {
@@ -55,6 +57,7 @@ const exportColumns: TableColumnsType<ExportTask> = [
   { title: '操作', key: 'actions', fixed: 'right', width: estimateVisibleActionColumnWidth([{ label: '详情' }, { label: '下载' }, { label: '取消' }]) },
 ];
 function clearExportPoll() { if (exportTimer) clearTimeout(exportTimer); exportTimer = null; }
+/** 仅在抽屉打开且可读时查询；完成后再安排轮询，过期响应不回写列表。 */
 async function loadExports(page = exportPage.value) {
   const tenant = session.tenant?.id;
   if (!tenant || !exportOpen.value || !canReadExports.value || exportBusy.value) return;
@@ -73,6 +76,7 @@ async function loadExports(page = exportPage.value) {
   }
 }
 function showExports() { exportOpen.value = true; void loadExports(); }
+/** 确认后先保存请求标识；受理结果未知时复用原请求，避免生成重复导出。 */
 function createExport() {
   const tenant = session.tenant?.id;
   if (!tenant || !session.identity?.key || (canRead.value && !result.value && !exportSubmission.value) || exportCreating.value || busy.value || !canExport.value) return;

@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/support.php';
 /** 内置模块通过内容、机器类型和适配身份核验，不能用占位文件替代原生扩展。 */
 final class BundledSwooleTest extends TestCase
 {
+    /** 核验入仓模块及许可材料的摘要、原生文件格式和机器类型与清单一致。 */
     public function testCommittedModulesHaveTheDeclaredContentAndMachineTypes(): void
     {
         $directory = dirname(__DIR__, 2) . '/plugin/type-build/resources/swoole';
@@ -40,6 +41,7 @@ final class BundledSwooleTest extends TestCase
         }
     }
 
+    /** 验证内置资源选择拒绝缺失、篡改、错误 ABI 和过期源码适配。 */
     public function testSelectionRejectsCorruptionMissingFilesWrongAbiAndStalePatches(): void
     {
         $root = dirname(__DIR__, 2);

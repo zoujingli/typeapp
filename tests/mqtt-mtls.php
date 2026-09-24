@@ -19,6 +19,7 @@ function mqttMtlsField(string $value): string
     return pack('n', strlen($value)) . $value;
 }
 
+/** 独立编码 MQTT 可变长度整数，用于 mTLS 测试报文，输入须在协议范围内。 */
 function mqttMtlsLength(int $value): string
 {
     $bytes = '';
@@ -30,6 +31,7 @@ function mqttMtlsLength(int $value): string
     return $bytes;
 }
 
+/** 构造 MQTT 5 CONNECT，按开关携带测试用户名及密码；keepAlive 单位为秒。 */
 function mqttMtlsConnect(string $id, bool $credentials, string $password = 'mqtt-test-secret', int $keepAlive = 10): string
 {
     $flags = $credentials ? "\xc2" : "\x02";
@@ -40,18 +42,21 @@ function mqttMtlsConnect(string $id, bool $credentials, string $password = 'mqtt
     return "\x10" . mqttMtlsLength(strlen($payload)) . $payload;
 }
 
+/** 构造 MQTT 5 QoS 0 订阅，使用固定测试报文标识符 1。 */
 function mqttMtlsSubscribe(string $topic): string
 {
     $body = "\x00\x01\x00" . mqttMtlsField($topic) . "\x00";
     return "\x82" . mqttMtlsLength(strlen($body)) . $body;
 }
 
+/** 构造无属性的 MQTT 5 QoS 0 发布报文。 */
 function mqttMtlsPublish(string $topic, string $payload): string
 {
     $body = mqttMtlsField($topic) . "\0" . $payload;
     return "\x30" . mqttMtlsLength(strlen($body)) . $body;
 }
 
+/** 在指定 IPv4 或 IPv6 地址获取空闲端口后关闭监听；返回值不预留端口占用。 */
 function mqttMtlsPort(string $host = '127.0.0.1'): int
 {
     $address = str_contains($host, ':') ? '[' . $host . ']' : $host;
@@ -103,6 +108,7 @@ function mqttMtlsExtensionArgs(array $extensions, bool $forChild = false): array
     return $arguments;
 }
 
+/** 需要时以明确扩展参数重启 mTLS 测试一次，环境哨兵防循环并透传退出码。 */
 function mqttMtlsReexec(): void
 {
     if (getenv('MQTT_MTLS_REEXEC') === '1') {
@@ -254,6 +260,11 @@ function mqttMtlsCertificates(string $directory): array
     return $paths;
 }
 
+/**
+ * 建立 5 秒超时的测试 TLS 连接，独立指定连接地址与证书主机名，并可携带客户端证书。
+ *
+ * @return resource 成功连接及捕获的证书信息由调用者使用，连接由调用者关闭。
+ */
 function mqttMtlsSocket(int $port, string $ca, ?string $client = null, ?string $clientKey = null, int $crypto = STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT, string $ciphers = '', string $peer = '127.0.0.1', string $connectHost = ''): mixed
 {
     $ssl = [
@@ -282,6 +293,11 @@ function mqttMtlsSocket(int $port, string $ca, ?string $client = null, ?string $
     return $socket;
 }
 
+/**
+ * 读取实际握手采用的 TLS 协议版本，缺失协商信息时失败。
+ *
+ * @param resource $socket
+ */
 function mqttMtlsProtocol(mixed $socket): string
 {
     $meta = stream_get_meta_data($socket);
@@ -291,6 +307,11 @@ function mqttMtlsProtocol(mixed $socket): string
     return $protocol;
 }
 
+/**
+ * 读取实际握手采用的密码套件，缺失协商信息时失败。
+ *
+ * @param resource $socket
+ */
 function mqttMtlsCipher(mixed $socket): string
 {
     $meta = stream_get_meta_data($socket);
@@ -314,6 +335,11 @@ function mqttMtlsOpensslClient(int $port, string $ca, array $flags): array
     return ['status' => $status, 'output' => $stdout . $stderr];
 }
 
+/**
+ * 读取测试证书主题的 commonName，缺失字段或解析失败时中止断言。
+ *
+ * @param OpenSSLCertificate|string $certificate
+ */
 function mqttMtlsCommonName(mixed $certificate): string
 {
     $parsed = openssl_x509_parse($certificate, false);
@@ -321,6 +347,11 @@ function mqttMtlsCommonName(mixed $certificate): string
     return $parsed['subject']['commonName'];
 }
 
+/**
+ * 读取完整 MQTT 报文，任何头部、长度或正文截断都视为失败；不关闭连接。
+ *
+ * @param resource $socket
+ */
 function mqttMtlsRead(mixed $socket): string
 {
     $first = @fread($socket, 1);
@@ -345,6 +376,11 @@ function mqttMtlsRead(mixed $socket): string
     return $wire;
 }
 
+/**
+ * 要求 MQTT 测试报文一次完整写出，短写即失败；不转移连接所有权。
+ *
+ * @param resource $socket
+ */
 function mqttMtlsWrite(mixed $socket, string $bytes): void
 {
     expect(fwrite($socket, $bytes) === strlen($bytes), 'MQTT 写入失败');
@@ -367,6 +403,7 @@ function mqttMtlsRejectsStartup(array $launcher, string $root, array $environmen
     expect(str_contains($result->stderr . $result->stdout, $needle), $message . '：' . $result->stderr . $result->stdout);
 }
 
+/** 在 15 秒轮询预算内验证节点存活、TLS 握手及成功 CONNACK，确认 MQTT 入口可用。 */
 function mqttMtlsWait(Process $process, int $port, string $ca, string $peer = '127.0.0.1'): void
 {
     $ready = false;
@@ -387,6 +424,7 @@ function mqttMtlsWait(Process $process, int $port, string $ca, string $peer = '1
     expect($ready, 'MQTT 未通过 TLS CONNECT 就绪：' . $process->stderr());
 }
 
+/** 以指定操作码生成 FIN 置位、带随机客户端掩码的 WebSocket 帧。 */
 function mqttMtlsWsFrame(string $payload, int $opcode = 0x2): string
 {
     $length = strlen($payload);
@@ -406,6 +444,11 @@ function mqttMtlsWsFrame(string $payload, int $opcode = 0x2): string
     return $header . $mask . $masked;
 }
 
+/**
+ * 读取 WebSocket 数据载荷并跳过 ping/pong；关闭帧及截断使测试失败，连接由调用者回收。
+ *
+ * @param resource $socket
+ */
 function mqttMtlsWsRead(mixed $socket): string
 {
     $header = '';
@@ -454,6 +497,7 @@ function mqttMtlsWsRead(mixed $socket): string
     return $payload;
 }
 
+/** 读取 PEM 证书文件，返回小写无冒号的 SHA-256 指纹用于证书身份比对。 */
 function mqttMtlsFingerprint(string $pem): string
 {
     $certificate = openssl_x509_read((string) file_get_contents($pem));
@@ -463,6 +507,7 @@ function mqttMtlsFingerprint(string $pem): string
     return strtolower(str_replace(':', '', $fingerprint));
 }
 
+/** 使用测试 CA 为指定 CSR 签发明确序列号和有效期的证书，并确认输出可读；日期采用 OpenSSL 参数格式。 */
 function mqttMtlsIssue(string $directory, string $extensions, string $notBefore, string $notAfter, string $output, int $serial, string $issuer = 'ca.pem', string $issuerKey = 'ca.key', string $csr = 'client.csr'): void
 {
     successful([
@@ -518,6 +563,7 @@ function mqttMtlsOverlapFile(string $path, array $lines): void
     expect(file_put_contents($path, $body) !== false, '无法写出换证重叠名单');
 }
 
+/** 运行本轮 mTLS 测试专属 HTTPS CRL 源，参数来自显式测试环境；服务端不要求客户端证书。 */
 function mqttMtlsServeCrlHttps(): void
 {
     $port = (int) getenv('MQTT_MTLS_CRL_HTTPS_PORT');
@@ -564,6 +610,7 @@ function mqttMtlsServeCrlHttps(): void
     }
 }
 
+/** 在 5 秒轮询预算内以校验证书和主机名的 HTTPS 请求确认 CRL 内容可读。 */
 function mqttMtlsCrlHttpsWait(int $port, string $ca): void
 {
     $until = microtime(true) + 5;
@@ -639,6 +686,7 @@ function mqttMtlsCrlRefresh(array $launcher, array $php, string $root, string $c
     }
 }
 
+/** 读取 PEM 文件中的证书序列号并按吊销列表规则统一十六进制表示。 */
 function mqttMtlsSerial(string $pem): string
 {
     $certificate = openssl_x509_read((string) file_get_contents($pem));
@@ -648,6 +696,7 @@ function mqttMtlsSerial(string $pem): string
     return CertificateRevocationList::serialHex($parsed['serialNumberHex']);
 }
 
+/** 读取 PEM 文件中证书的到期时间，返回 Unix 秒数。 */
 function mqttMtlsNotAfter(string $pem): int
 {
     $certificate = openssl_x509_read((string) file_get_contents($pem));
@@ -657,6 +706,11 @@ function mqttMtlsNotAfter(string $pem): int
     return $parsed['validTo_time_t'];
 }
 
+/**
+ * 在秒数轮询预算内发送 PING 并观察断开，过滤 PINGRESP 后返回 DISCONNECT 或剩余字节供调用方断言。
+ *
+ * @param resource $socket 连接由调用者持有并关闭。
+ */
 function mqttMtlsAwaitDisconnect(mixed $socket, float $seconds): string
 {
     stream_set_timeout($socket, 1);
@@ -695,6 +749,11 @@ function mqttMtlsAwaitDisconnect(mixed $socket, float $seconds): string
     return $wire;
 }
 
+/**
+ * 在秒数轮询预算内以 PING 探测关闭，写失败、EOF 或 DISCONNECT 均视为关闭；超时返回 false。
+ *
+ * @param resource $socket 连接由调用者持有并关闭。
+ */
 function mqttMtlsClosed(mixed $socket, float $seconds): bool
 {
     stream_set_timeout($socket, 1);
@@ -728,6 +787,7 @@ function mqttMtlsClosed(mixed $socket, float $seconds): bool
     return false;
 }
 
+/** 尝试使用指定客户端证书连接并发送 CONNECT；握手或读取失败以及非成功 CONNACK 均表示测试拒绝。 */
 function mqttMtlsRejected(int $port, string $ca, string $client, string $clientKey, string $id = 'mtls-bad-cert'): bool
 {
     try {
@@ -785,12 +845,18 @@ function mqttMtlsWsHandshake(int $port, string $ca, ?string $client = null, ?str
     return [$socket, $response];
 }
 
+/**
+ * 把 MQTT 报文封装为客户端二进制 WSS 帧，要求一次完整写出。
+ *
+ * @param resource $socket 连接仍由调用者负责关闭。
+ */
 function mqttMtlsWsWrite(mixed $socket, string $packet): void
 {
     $frame = mqttMtlsWsFrame($packet);
     expect(fwrite($socket, $frame) === strlen($frame), 'MQTT WSS 报文未写完');
 }
 
+/** 尝试证书认证、WSS 升级和 MQTT CONNECT，返回测试观察到的拒绝结果。 */
 function mqttMtlsWsRejected(int $port, string $ca, ?string $client = null, ?string $clientKey = null, string $id = 'wss-bad-cert'): bool
 {
     try {

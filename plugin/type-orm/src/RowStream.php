@@ -17,6 +17,7 @@ final class RowStream
     private int $rows = 0;
     private ExecutionOwner $owner;
 
+    /** @internal 绑定已打开游标与所属租约；maxRowBytes 为单行字节上限。 */
     public function __construct(private ResourceLease $lease, private PdoSession $session, private int $id, private int $maxRowBytes)
     {
         $this->owner = new ExecutionOwner();
@@ -26,6 +27,11 @@ final class RowStream
         }
     }
 
+    /**
+     * 读取一行，结束返回 null；超限或异常关闭游标，不能跨执行者读取。
+     *
+     * @return array<string, mixed>|null
+     */
     public function next(): ?array
     {
         $this->owner->assertCurrent();
@@ -81,6 +87,7 @@ final class RowStream
         }
     }
 
+    /** 显式关闭游标并恢复流占用的会话状态；调用必须来自原执行者。 */
     public function close(): void
     {
         $this->owner->assertCurrent();
@@ -90,10 +97,12 @@ final class RowStream
         }
     }
 
+    /** 检查本包装或底层游标是否已关闭，不再推进读取。 */
     public function closed(): bool
     {
         return $this->closed || !$this->session->streamActive($this->id);
     }
+    /** 返回本流已成功交付的行数，不执行总数查询。 */
     public function rows(): int
     {
         return $this->rows;

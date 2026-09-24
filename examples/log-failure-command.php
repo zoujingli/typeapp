@@ -7,6 +7,11 @@ use Type\Log\LogManager;
 use Type\Log\Output;
 use Type\Runtime\ExecutionScope;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function failureExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -14,6 +19,11 @@ function failureExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 用自有子进程管道制造满载和断开，验证有限日志排空并回收进程。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $child = proc_open(['/bin/sleep', '10'], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);

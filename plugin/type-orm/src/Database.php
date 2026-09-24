@@ -9,6 +9,7 @@ use Type\Runtime\ResourcePool;
 use Type\Runtime\DeploymentBudget;
 use Type\Runtime\ReusableResource;
 
+/** 单一驱动身份的延迟资源池；作用域拥有连接租约，应用拥有池。 */
 final class Database
 {
     private ?ResourcePool $pool = null;
@@ -69,6 +70,11 @@ final class Database
         return new Connection($lease, $this->driver->identity());
     }
 
+    /**
+     * 读取本池的租约、空闲、等待及隔离计数，未借用时不创建物理连接。
+     *
+     * @return array<string, int|float>
+     */
     public function statistics(): array
     {
         return $this->pool === null ? ['capacity' => $this->capacity, 'created' => 0, 'leased' => 0, 'idle' => 0, 'idle_limit' => $this->idleLimit,
@@ -76,17 +82,24 @@ final class Database
             'wait_seconds' => 0.0, 'in_flight' => 0, 'quarantined' => 0, 'closing' => 0] : $this->pool->statistics();
     }
 
+    /** 停止接受新工作并关闭池；进程所有者负责在业务作用域收尾后调用。 */
     public function close(): void
     {
         $this->closed = true;
         $this->pool?->close();
     }
 
+    /** 阻止本代继续借出，已借出的租约按原身份运行至归还。 */
     public function retire(): void
     {
         $this->retired = true;
         $this->pool?->retire();
     }
+    /**
+     * 取得驱动声明的端点与会话身份。
+     *
+     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码。
+     */
     public function identity(): array
     {
         return $this->driver->identity();

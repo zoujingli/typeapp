@@ -16,17 +16,20 @@ use Type\Orm\DatabaseManager;
 use Type\Runtime\DeploymentBudget;
 use Type\Runtime\ExecutionScope;
 
+/** 用真实数据库等待、日志和部署预算观察 HTTP 背压及停止状态。 */
 final class Endpoint implements RequestHandlerInterface
 {
     private DatabaseManager $databases;
     private HttpControl $control;
     private DeploymentBudget $budget;
+    /** 借用数据库、HTTP 控制与部署预算，不另行放大连接额度。 */
     public function __construct(DatabaseManager $databases, HttpControl $control, DeploymentBudget $budget)
     {
         $this->databases = $databases;
         $this->control = $control;
         $this->budget = $budget;
     }
+    /** 按显式路径触发受控负载或统计查询；日志绑定当前请求作用域。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $scope = $request->getAttribute('type.scope');

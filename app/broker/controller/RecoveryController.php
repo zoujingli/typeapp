@@ -21,6 +21,7 @@ use Type\Runtime\ExecutionScope;
 /** 查询当前恢复核对进度；不含主体指纹，租户只读，写入由维护命令完成。 */
 final class RecoveryController
 {
+    /** 保存请求处理所需的数据库、身份服务和响应工厂；连接在请求作用域中借用。 */
     public function __construct(private DatabaseManager $database, private IdentityService $identities, private Factory $messages)
     {
     }

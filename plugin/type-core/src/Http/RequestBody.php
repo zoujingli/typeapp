@@ -15,13 +15,16 @@ final class RequestBody implements ManagedResource
 {
     private RequestLimits $limits;
     private array $streams = [];
+    /** 复用接入层相同的请求预算，持有本次解析创建的所有正文流。 */
     public function __construct(RequestLimits $limits)
     {
         $this->limits = $limits;
     }
+    /** 登记资源生命周期；解析流按需创建，此时无需分配。 */
     public function start(): void
     {
     }
+    /** 关闭本解析器创建的全部正文与上传流，随后清空持有列表。 */
     public function stop(): void
     {
         foreach ($this->streams as $stream) {
@@ -92,6 +95,10 @@ final class RequestBody implements ManagedResource
         return $values;
     }
 
+    /**
+     * 按媒体类型处理受限表单或 multipart；JSON 只校验结构预算，保留原始正文。
+     * @throws HttpError 正文、字段、上传或编码违反输入限制。
+     */
     public function parse(ServerRequestInterface $request, string $content): ServerRequestInterface
     {
         if (strlen($content) > $this->limits->bytes) {

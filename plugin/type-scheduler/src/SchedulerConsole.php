@@ -11,11 +11,18 @@ final class SchedulerConsole
 {
     private Scheduler $scheduler;
 
+    /** 绑定应用已装配的调度器；命令不替调用方管理调度器停止。 */
     public function __construct(Scheduler $scheduler)
     {
         $this->scheduler = $scheduler;
     }
 
+    /**
+     * 运行 help、once、history 或有限 work；输出 JSON 历史，调用方传递退出状态。
+     *
+     * @param list<string> $arguments 不含程序路径；work 的间隔单位为毫秒。
+     * @return int 成功为 0，失败为 70，本地存储执行冲突为 75。
+     */
     public function run(array $arguments): int
     {
         try {

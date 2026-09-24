@@ -27,6 +27,7 @@ namespace TypeApp\OrmSuite {
         public int $version;
     }
 
+    /** 使用 archive 逻辑库的集合写入模型，验证同表不同连接身份不能混合关系加载。 */
     #[\Type\Orm\Attribute\Table('type_suite_mutations', generatedPrimary: false, softDelete: 'deleted_at', version: 'version', database: 'archive')]
     final class ArchiveMutationRecord extends \Type\Orm\Model
     {
@@ -100,6 +101,7 @@ namespace TypeApp\OrmSuite {
         public int $version;
     }
 
+    /** 通过 workspace 属性映射 owner_ref，验证租户字段采用声明映射而非固定列名。 */
     #[\Type\Orm\Attribute\Table('type_suite_scoped_labels', tenant: 'workspace')]
     final class ScopedLabel extends \Type\Orm\Model
     {

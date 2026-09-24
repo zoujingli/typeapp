@@ -65,6 +65,13 @@ final class SourceSet
             'declarations' => [$vendor . '/composer/installed.json']];
     }
 
+    /**
+     * 核对单个生产包的协议、源码、自动加载、资源和有限适配声明。
+     * @param array<string, mixed> $package Composer 包元数据。
+     * @param array<string, mixed> $metadata 协议 1 的编译声明或精确版本适配。
+     * @return array<string, mixed> 已展开并审计的源码集。
+     * @throws RuntimeException 入口遗漏、资源越界、版本或适配约束不满足。
+     */
     public function describe(string $root, array $package, array $metadata): array
     {
         if (($metadata['protocol'] ?? null) !== 1 || !is_array($metadata['sources'] ?? null) || $metadata['sources'] === []) {

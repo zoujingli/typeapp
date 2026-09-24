@@ -29,6 +29,7 @@ final class JsonCodec implements Codec
         $this->decode = $decode;
     }
 
+    /** 构造只接受 null、标量和数组的 JSON 编解码器；对象须使用显式工厂。 */
     public static function data(string $format = 'json-data-v1'): JsonCodec
     {
         $validate = static function (mixed $value): mixed {
@@ -38,11 +39,13 @@ final class JsonCodec implements Codec
         return new JsonCodec($format, $validate, $validate);
     }
 
+    /** 返回与缓存载荷一起保存的格式身份，用于拒绝旧格式读取。 */
     public function format(): string
     {
         return $this->format;
     }
 
+    /** 先执行显式转换，再校验 JSON 数据类型及深度；失败不写入缓存。 */
     public function encode(mixed $value): string
     {
         $data = ($this->encode)($value);
@@ -50,6 +53,7 @@ final class JsonCodec implements Codec
         return json_encode($data, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION | JSON_UNESCAPED_UNICODE);
     }
 
+    /** 校验 JSON 后交给显式业务工厂；失败转换为 CacheException。 */
     public function decode(string $payload): mixed
     {
         try {

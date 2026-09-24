@@ -6,8 +6,14 @@ namespace Type\Build;
 
 use RuntimeException;
 
+/** 构建期把有界任务类型和版本声明编译为显式 Registry 注册代码。 */
 final class JobCompiler
 {
+    /**
+     * 生成任务注册类，任务工厂保留 JobContext 参数，不在构建期执行任务。
+     * @param array{class: class-string, jobs: list<array{type: string, version: int, handler: class-string}>} $configuration 注册声明。
+     * @throws RuntimeException 声明无效、任务版本重复或超过任务数量预算。
+     */
     public function generate(array $configuration): string
     {
         $class = $configuration['class'] ?? '';

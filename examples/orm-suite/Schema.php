@@ -9,6 +9,11 @@ use Type\Orm\Migration\Migration;
 /** 三种物理存储声明明确列出差异；业务层始终使用同一模型与操作。 */
 final class Schema
 {
+    /**
+     * 为同一业务声明三库等价表与约束，保留主键和字段存储的真实差异。
+     *
+     * @return list<\Type\Orm\Migration\Migration>
+     */
     public static function plan(string $driver): array
     {
         $id = match ($driver) {

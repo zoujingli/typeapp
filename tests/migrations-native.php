@@ -36,17 +36,31 @@ putenv('TYPE_REDIS_PORT=1');
 putenv('TYPE_HTTP_PORT=1');
 putenv('TYPE_MIGRATION_SCENARIO=normal');
 
+/**
+ * 要求迁移命令成功并解析 JSON 结果，保持命令与参数的独立数组边界。
+ *
+ * @param list<string> $command
+ * @param list<string> $arguments
+ * @return list<array<string, mixed>>
+ */
 function migrationResult(array $command, array $arguments): array
 {
     return json_decode(successful([...$command, ...$arguments]), true, 512, JSON_THROW_ON_ERROR);
 }
 
+/**
+ * 验证迁移失败同时满足退出码、稳定错误码和空标准输出的命令契约。
+ *
+ * @param list<string> $command
+ * @param list<string> $arguments
+ */
 function migrationFailure(array $command, array $arguments, string $code, int $exitCode = 70): void
 {
     [$status, $stdout, $stderr] = execute([...$command, ...$arguments]);
     expect($status === $exitCode && str_contains($stderr, $code) && $stdout === '', '迁移没有按约定失败：' . $stdout . $stderr);
 }
 
+/** 连接本轮迁移测试选定的真实数据库，SQLite 使用指定临时文件；连接由调用者释放。 */
 function migrationPdo(string $driver, string $file): PDO
 {
     if ($driver === 'mysql') {
@@ -69,6 +83,7 @@ function migrationPdo(string $driver, string $file): PDO
     return new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 }
 
+/** 按实际数据库方言检查当前库或 schema 中的表，表名通过绑定参数传入。 */
 function migrationTableExists(PDO $pdo, string $driver, string $table): bool
 {
     $sql = $driver === 'mysql' ? 'SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'

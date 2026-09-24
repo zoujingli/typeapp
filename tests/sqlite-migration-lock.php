@@ -14,25 +14,34 @@ use Type\Orm\Sqlite\SqliteDriver;
 /** 在真实 SQLite 回调中暂停迁移，方便第二个独立进程竞争同一公开入口。 */
 final class SqliteMigrationLockDriver implements Driver
 {
+    /** 保存真实 SQLite 驱动及本轮锁测试的就绪、放行哨兵路径，不改变连接身份。 */
     public function __construct(private SqliteDriver $driver, private string $ready, private string $release)
     {
     }
 
+    /** 沿用真实驱动名，使锁测试仍走 SQLite 方言。 */
     public function name(): string
     {
         return $this->driver->name();
     }
 
+    /**
+     * 沿用真实驱动的端点身份，避免测试包装器创建不同的连接池身份。
+     *
+     * @return array<string, mixed>
+     */
     public function identity(): array
     {
         return $this->driver->identity();
     }
 
+    /** 委托真实驱动恢复会话基线，只有底层确认可复用时才返回 true。 */
     public function reset(PDO $pdo): bool
     {
         return $this->driver->reset($pdo);
     }
 
+    /** 建立 WAL 与完整同步的真实 SQLite 会话，并注册等待放行文件的测试函数；连接由会话所有者释放。 */
     public function connect(): PDO
     {
         // PDO 的旧 sqliteCreateFunction 在 PHP 8.5 弃用；测试需要真实驱动专属接口。

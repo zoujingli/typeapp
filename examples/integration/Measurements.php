@@ -9,6 +9,11 @@ use Type\Orm\DatabaseManager;
 /** 固定业务输入下的有界采样；记录环境与原始窗口，不推断通用性能倍数。 */
 final class Measurements
 {
+    /**
+     * 预热后采样同一文章读取，记录延迟与资源用量；不据单次结果宣称跨机器性能。
+     *
+     * @return array<string, mixed> 当前运行的测量结果。
+     */
     public static function run(DatabaseManager $database, int $articleId): array
     {
         for ($warmup = 0; $warmup < 50; $warmup++) {

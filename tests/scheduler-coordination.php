@@ -17,6 +17,11 @@ use Type\Scheduler\RedisLease;
 use Type\Scheduler\RedisStateStore;
 use Type\Scheduler\TaskContext;
 
+/**
+ * 要求租约操作抛出指定稳定原因的 LeaseException，其他结果均使断言失败。
+ *
+ * @param Closure(): mixed $operation
+ */
 function coordinationReject(Closure $operation, string $reason): void
 {
     $rejected = false;

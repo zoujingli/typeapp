@@ -24,6 +24,11 @@ use Type\Orm\Relation;
 /** 一个业务流程，三种安装仅替换 DriverFactory 与声明式物理存储。 */
 final class Suite
 {
+    /**
+     * 在统一协程入口执行当前驱动的业务套件，返回实际行为验证摘要。
+     *
+     * @return array<string, mixed>
+     */
     public static function run(): array
     {
         return CoroutineRuntime::run(static fn (): array => self::execute());
@@ -208,6 +213,7 @@ final class Suite
         return $capabilities;
     }
 
+    /** 等待另一独立进程后尝试保存同一旧版本，返回成功或冲突结果。 */
     public static function race(Connection $connection, int $id): string
     {
         $article = Article::query()->find($id);
@@ -224,6 +230,11 @@ final class Suite
         }
     }
 
+    /**
+     * 核对双进程竞争后仅一次更新留存，返回精确版本与计数。
+     *
+     * @return array{views: int, version: int}
+     */
     public static function verifyRace(Connection $connection, int $id): array
     {
         $article = Article::query()->find($id);

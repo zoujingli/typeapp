@@ -7,6 +7,13 @@ namespace Type\Redis;
 /** 启动阶段只读检查实际服务；同实例不同逻辑数据库不构成故障域隔离。 */
 final class StoragePolicy
 {
+    /**
+     * 临时连接两个服务并只读检查故障域、容量与持久化策略，所有退出路径关闭连接。
+     *
+     * @param string $appendFsync 接受 always 或 everysec；不修改 Redis 配置。
+     * @return array{reliable: array<string, mixed>, cache: array<string, mixed>, isolated: bool, configured_fsync_window_seconds: int}
+     * @throws RedisException 服务相同、存储策略不符或无法取得诊断信息。
+     */
     public static function verify(RedisConfiguration $reliable, RedisConfiguration $cache, string $appendFsync = 'always'): array
     {
         if (!in_array($appendFsync, ['always', 'everysec'], true)) {

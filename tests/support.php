@@ -26,6 +26,11 @@ function execute(array $command, ?string $directory = null): array
     }
 }
 
+/**
+ * 要求测试前提或观察结果为真；失败消息由调用者提供，不应包含凭据。
+ *
+ * @throws RuntimeException 条件不成立。
+ */
 function expect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -129,6 +134,12 @@ function menuLeafPaths(array $menus): array
     return $paths;
 }
 
+/**
+ * 执行参数数组并要求零退出码，成功时返回标准输出。
+ *
+ * @param list<string> $command
+ * @throws RuntimeException 命令执行失败。
+ */
 function successful(array $command, ?string $directory = null): string
 {
     [$status, $stdout, $stderr] = execute($command, $directory);
@@ -176,6 +187,12 @@ function unixProcessStates(?int $parent = null): array
     }
 }
 
+/**
+ * 验证原生产物并构造启动参数；隔离模式仅用于 Linux chroot，要求目录不含 PHP CLI 或 vendor。
+ *
+ * @param list<string> $environmentKeys 隔离提权时明确保留的环境变量名。
+ * @return list<string>
+ */
 function nativeCommand(string $target, bool $isolated = false, array $environmentKeys = []): array
 {
     $target = realpath($target);

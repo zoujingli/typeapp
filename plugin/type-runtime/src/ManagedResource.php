@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Type\Runtime;
 
+/** 由执行作用域拥有的资源；启动前登记，结束时按登记逆序收尾。 */
 interface ManagedResource
 {
+    /** 初始化资源；部分启动失败也必须允许 stop() 执行清理。 */
     public function start(): void;
 
     /**

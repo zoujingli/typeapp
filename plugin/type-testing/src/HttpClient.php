@@ -13,6 +13,12 @@ final class HttpClient
     private string $hostHeader;
     private float $seconds;
     private int $maximumBytes;
+    /**
+     * 配置独立协议测试客户端；仅接受 HTTP(S) 的主机与端口。
+     * @param float $seconds 每次请求包含连接、写入和读取的总秒数，范围为 (0, 60]。
+     * @param int $maximumBytes 请求和响应正文的字节上限，范围为 1 至 64 MiB。
+     * @throws \InvalidArgumentException 地址包含凭据、查询、片段、非根路径或预算无效。
+     */
     public function __construct(string $base, float $seconds = 3.0, int $maximumBytes = 2097152)
     {
         $parts = parse_url($base);
@@ -31,6 +37,12 @@ final class HttpClient
         $this->maximumBytes = $maximumBytes;
     }
 
+    /**
+     * 通过独立连接发送一次请求，任何返回或异常路径都会关闭连接。
+     * @param array<string, string> $headers 业务请求头；帧长度和连接头由客户端管理。
+     * @throws \InvalidArgumentException 请求参数无效、正文超量或覆盖受控请求头。
+     * @throws \RuntimeException 连接、截止、响应帧或响应容量检查失败。
+     */
     public function request(string $method, string $target, array $headers = [], string $body = ''): HttpResponse
     {
         if (!preg_match('/^[A-Z]+$/D', $method) || !str_starts_with($target, '/') || preg_match('/[\x00-\x20\x7f]/', $target) || strlen($body) > $this->maximumBytes) {

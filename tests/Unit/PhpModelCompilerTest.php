@@ -11,6 +11,7 @@ use Type\Build\ModelCompiler;
 /** 静态声明错误在构建前拒绝；业务行为通过三库独立消费者另行验收。 */
 final class PhpModelCompilerTest extends TestCase
 {
+    /** 验证非法模型声明在构建期被拒绝，且检查过程不加载业务类。 */
     public function testInvalidDeclarationsAreRejectedWithoutLoadingBusinessCode(): void
     {
         $prefix = '<?php declare(strict_types=1); namespace ModelInvalid; use Type\\Orm\\Model; use Type\\Orm\\Attribute\\{Table, Column, HasMany, BelongsToMany}; ';
@@ -74,6 +75,7 @@ final class PhpModelCompilerTest extends TestCase
         }
     }
 
+    /** 验证同名模型的源码变化会改变生成身份，避免复用过期生成结果。 */
     public function testSameClassAndSourceChangesDetermineGeneratedIdentity(): void
     {
         $directory = dirname(__DIR__, 2) . '/build/model-identity-' . bin2hex(random_bytes(6));
@@ -115,6 +117,7 @@ PHP;
         }
     }
 
+    /** 验证旧模型配置始终给出明确迁移诊断。 */
     public function testLegacyConfigurationAlwaysReportsMigration(): void
     {
         $this->expectException(RuntimeException::class);
@@ -122,6 +125,7 @@ PHP;
         (new ModelCompiler())->assertConfiguration(['models' => []]);
     }
 
+    /** 验证已安装依赖中的模型应用源码适配，依赖变化后开发缓存失效。 */
     public function testInstalledDependencyModelsUseAdaptationsAndInvalidateDevelopmentCache(): void
     {
         $root = dirname(__DIR__, 2);

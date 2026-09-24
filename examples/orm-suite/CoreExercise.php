@@ -403,6 +403,7 @@ final class CoreExercise
         }
     }
 
+    /** 在已有业务数据上验证模型脏字段、持久状态、字段保护和集合查询行为。 */
     public static function run(Connection $connection, int $userId, int $articleId): void
     {
         $user = User::query()->findOrFail($userId);

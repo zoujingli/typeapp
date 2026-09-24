@@ -44,6 +44,7 @@ function recoveryStart(array $context, string $data, string $network, string $na
     throw new RuntimeException('隔离恢复应用未就绪');
 }
 
+/** 停止并移除本轮专属恢复容器，要求 10 秒停止预算内正常退出；调用者确保名称归属。 */
 function recoveryStop(string $name): void
 {
     cleanPackageCommand(['docker', 'stop', '--timeout', '10', $name]);

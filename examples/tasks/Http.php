@@ -14,14 +14,17 @@ use Type\Runtime\ExecutionScope;
 use Type\Runtime\ManagedResource;
 use Type\Runtime\TaskException;
 
+/** 在工作执行单元中延迟建立示例数据库实例，观察请求子任务对租约的持有。 */
 final class Connections
 {
     private Driver $driver;
     private ?Database $database = null;
+    /** 保存驱动声明，构造时不建立物理连接。 */
     public function __construct(Driver $driver)
     {
         $this->driver = $driver;
     }
+    /** 首次使用才建立受限数据库实例，后续请求复用同一管理对象。 */
     public function get(): Database
     {
         $this->database ??= new Database($this->driver, 1, 1);
@@ -29,36 +32,43 @@ final class Connections
     }
 }
 
+/** 将资源开启和关闭写入专属迹线，用于核对迟完成任务的收尾顺序。 */
 final class Trace implements ManagedResource
 {
     private string $file;
     private string $marker;
+    /** 登记迹线文件与单次执行标记，不在构造时写文件。 */
     public function __construct(string $file, string $marker)
     {
         $this->file = $file;
         $this->marker = $marker;
     }
+    /** 追加开启记录，使外部测试观察资源已进入作用域。 */
     public function start(): void
     {
         file_put_contents($this->file, 'open:' . $this->marker . PHP_EOL, FILE_APPEND | LOCK_EX);
     }
+    /** 追加关闭记录，使外部测试核对真实清理时刻。 */
     public function stop(): void
     {
         file_put_contents($this->file, 'close:' . $this->marker . PHP_EOL, FILE_APPEND | LOCK_EX);
     }
 }
 
+/** 通过受管请求子任务制造完成、取消与延迟释放，验证数据库归属。 */
 final class Endpoint implements RequestHandlerInterface
 {
     private Connections $connections;
     private string $mode;
     private string $trace;
+    /** 注入本执行单元连接来源、故障模式与专属迹线路径。 */
     public function __construct(Connections $connections, string $mode, string $trace)
     {
         $this->connections = $connections;
         $this->mode = $mode;
         $this->trace = $trace;
     }
+    /** 在当前 HTTP 作用域中运行指定任务模式；不把子任务尚未结束视为已释放。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $scope = $request->getAttribute('type.scope');

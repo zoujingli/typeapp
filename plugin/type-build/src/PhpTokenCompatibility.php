@@ -7,6 +7,7 @@ declare(strict_types=1);
 // 提供等价的最小实现，保持解析器的 Token 接口可用；正常运行时已有
 // 原生类则完全复用原生实现。
 if (!class_exists('PhpToken', false)) {
+    /** 仅在受控构建 PHP 缺失原生 PhpToken 类时启用的解析器接口适配。 */
     class PhpToken
     {
         public int $id;
@@ -14,6 +15,7 @@ if (!class_exists('PhpToken', false)) {
         public int $line;
         public int $pos;
 
+        /** 保存词法 token 编号、原始文本、起始行与字节偏移；未知位置用 -1。 */
         public function __construct(int $id, string $text, int $line = -1, int $pos = -1)
         {
             $this->id = $id;
@@ -48,6 +50,7 @@ if (!class_exists('PhpToken', false)) {
             return $tokens;
         }
 
+        /** 返回当前运行时的 token 名称，单字节 token 返回字符，无法识别时返回 null。 */
         public function getTokenName(): ?string
         {
             if ($this->id < 256) {
@@ -80,6 +83,7 @@ if (!class_exists('PhpToken', false)) {
             return false;
         }
 
+        /** 判定空白、注释和开标签等可忽略 token，沿用当前运行时常量编号。 */
         public function isIgnorable(): bool
         {
             foreach (['T_WHITESPACE', 'T_COMMENT', 'T_DOC_COMMENT', 'T_OPEN_TAG'] as $name) {
@@ -90,6 +94,7 @@ if (!class_exists('PhpToken', false)) {
             return false;
         }
 
+        /** 返回原始 token 文本，保留空白及注释字节供格式保留输出使用。 */
         public function __toString(): string
         {
             return $this->text;

@@ -8,6 +8,7 @@ namespace Type\Cache\Attribute;
 #[\Attribute(\Attribute::TARGET_METHOD)]
 final class CacheEvict
 {
+    /** 声明键失效或整代失效；与事务组合时由生成入口延迟到最终提交确认后执行。 */
     public function __construct(public string $cache, public string $key = '', public bool $all = false)
     {
     }

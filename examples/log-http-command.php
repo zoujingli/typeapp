@@ -9,6 +9,11 @@ use TypeApp\LogExample\Handler;
 use TypeApp\LogExample\LogMiddleware;
 use TypeApp\LogExample\PreviousLogger;
 
+/**
+ * 启动写入专属文件的 HTTP 日志示例，校验请求关联与旧 Logger 失效。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $port = filter_var(getenv('TYPE_HTTP_PORT') ?: '19503', FILTER_VALIDATE_INT);

@@ -76,11 +76,13 @@ final class CertificateRevocationList
         return $now >= $this->thisUpdate && $now <= $this->nextUpdate;
     }
 
+    /** 返回当前 CRL 的签发时间，单位为 UTC Unix 秒。 */
     public function thisUpdate(): int
     {
         return $this->thisUpdate;
     }
 
+    /** 返回 CRL 可接受窗口的截止时间，单位为 UTC Unix 秒。 */
     public function nextUpdate(): int
     {
         return $this->nextUpdate;
@@ -117,6 +119,7 @@ final class CertificateRevocationList
         return new self($serials, $newer->thisUpdate, $newer->nextUpdate);
     }
 
+    /** 将证书序列号规范化为小写十六进制比较值；非法输入返回空串。 */
     public static function serialHex(string $hex): string
     {
         return self::normalizeSerial($hex);

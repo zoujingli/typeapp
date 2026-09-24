@@ -68,6 +68,11 @@ final class ExecutionScope
         }
     }
 
+    /**
+     * 在每次发起工作前校验执行者、生命周期、取消和业务截止。
+     * @throws TaskException 已取消或截止预算耗尽。
+     * @throws RuntimeException 已关闭、正在关闭或跨执行者使用。
+     */
     public function assertActive(): void
     {
         $this->assertOwner();
@@ -150,11 +155,16 @@ final class ExecutionScope
         return $this->bindings[$name] ?? null;
     }
 
+    /** 校验进程、线程、请求代次、协程和 Fiber 身份；清理时不要求仍处于 active。 */
     public function assertOwner(): void
     {
         $this->owner->assertCurrent();
     }
 
+    /**
+     * 先登记所有权再启动资源，同一实例只启动一次；启动失败仍交由 close() 收尾。
+     * @throws \Throwable 作用域不可用或资源启动失败；创建者仍须在 finally 关闭作用域。
+     */
     public function open(ManagedResource $resource): void
     {
         $this->assertActive();
@@ -232,6 +242,7 @@ final class ExecutionScope
         }
     }
 
+    /** 返回 active、closing 或 closed；closing 可能仍持有未完成资源。 */
     public function state(): string
     {
         return $this->state;
@@ -256,6 +267,7 @@ final class ExecutionScope
             $this->completion->pop();
         }
     }
+    /** 返回任务树共享的截止对象；缩短它会影响现有子任务。 */
     public function deadline(): Deadline
     {
         return $this->deadline;
@@ -277,6 +289,7 @@ final class ExecutionScope
     {
         return $this->context;
     }
+    /** 返回当前作用域尚未完整收尾的直接子任务数量。 */
     public function activeTasks(): int
     {
         return $this->taskBudget->active();

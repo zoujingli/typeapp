@@ -36,6 +36,7 @@ function runtimeCertField(string $value): string
     return pack('n', strlen($value)) . $value;
 }
 
+/** 独立编码 MQTT 可变长度整数，供证书运行配置测试构造线协议报文。 */
 function runtimeCertLength(int $value): string
 {
     $bytes = '';
@@ -47,6 +48,7 @@ function runtimeCertLength(int $value): string
     return $bytes;
 }
 
+/** 构造 MQTT 5 CONNECT，保活为 10 秒；用户名或密码为空时分别省略对应标志和字段。 */
 function runtimeCertConnect(string $id, string $username = '', string $password = ''): string
 {
     $flags = 0x02;
@@ -66,12 +68,22 @@ function runtimeCertConnect(string $id, string $username = '', string $password 
     return "\x10" . runtimeCertLength(strlen($payload)) . $payload;
 }
 
+/**
+ * 要求测试 MQTT 报文字节一次完整写入，短写按失败报告；连接仍归调用者。
+ *
+ * @param resource $socket
+ */
 function runtimeCertWrite(mixed $socket, string $bytes): void
 {
     $written = fwrite($socket, $bytes);
     expect($written === strlen($bytes), 'MQTT 写入不完整');
 }
 
+/**
+ * 读取完整 MQTT 固定头、剩余长度与正文，截断即失败；连接仍由调用者关闭。
+ *
+ * @param resource $socket
+ */
 function runtimeCertRead(mixed $socket): string
 {
     $first = @fread($socket, 1);
@@ -96,6 +108,11 @@ function runtimeCertRead(mixed $socket): string
     return $wire;
 }
 
+/**
+ * 建立 5 秒超时且校验 CA 与回环主机名的 TLS 连接，可携带测试客户端证书。
+ *
+ * @return resource 成功连接由调用者关闭。
+ */
 function runtimeCertSocket(int $port, string $ca, ?string $client = null, ?string $clientKey = null): mixed
 {
     $ssl = [
@@ -113,6 +130,7 @@ function runtimeCertSocket(int $port, string $ca, ?string $client = null, ?strin
     return $socket;
 }
 
+/** 在 15 秒轮询预算内确认运行配置节点存活，并完成校验证书与主机名的 TLS 握手。 */
 function runtimeCertWait(Process $process, int $port, string $ca): void
 {
     $deadline = microtime(true) + 15;
@@ -131,6 +149,7 @@ function runtimeCertWait(Process $process, int $port, string $ca): void
     expect(false, '运行配置节点 TLS 入口未就绪：' . $process->stderr());
 }
 
+/** 从 PEM 证书内容计算小写且无冒号的 SHA-256 指纹，供身份绑定断言使用。 */
 function runtimeCertFingerprint(string $pem): string
 {
     $certificate = openssl_x509_read($pem);

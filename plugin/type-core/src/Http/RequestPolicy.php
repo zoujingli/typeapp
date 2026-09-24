@@ -12,11 +12,17 @@ use Psr\Http\Server\RequestHandlerInterface;
 use Type\Runtime\QueryString;
 use Type\Runtime\QueryStringException;
 
+/** 建立 HTTP 来源、代理和路径的信任边界，输出唯一规范化请求身份。 */
 final class RequestPolicy implements MiddlewareInterface
 {
     private array $hosts;
     private array $proxies;
 
+    /**
+     * 固定允许的 Host 及可信代理；来源白名单不能为空。
+     * @param list<string> $allowedAuthorities 主机名及可选端口。
+     * @param list<string> $trustedProxies 允许覆盖来源信息的 IP 或 CIDR。
+     */
     public function __construct(array $allowedAuthorities, array $trustedProxies = [])
     {
         if ($allowedAuthorities === []) {
@@ -44,6 +50,10 @@ final class RequestPolicy implements MiddlewareInterface
         }
     }
 
+    /**
+     * 验证来源、可信代理链、路径和查询，再设置 type.request 并移除转发头。
+     * @throws HttpError 来源不可信、转发信息冲突或请求编码有歧义。
+     */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $peer = (string) ($request->getServerParams()['remote_addr'] ?? $request->getServerParams()['REMOTE_ADDR'] ?? '');

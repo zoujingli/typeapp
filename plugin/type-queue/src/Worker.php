@@ -11,6 +11,7 @@ use Type\Runtime\Deadline;
 use Type\Runtime\WorkLifecycle;
 use Throwable;
 
+/** 在所属协程内串行消费消息；每次独立作用域收尾后才确认或安排重投。 */
 final class Worker
 {
     private Queue $queue;
@@ -22,6 +23,7 @@ final class Worker
         'storage_failures' => 0, 'cleanup_failures' => 0, 'message_age_ms' => 0, 'busy_rejected' => 0];
     private ExecutionOwner $owner;
     private RetryPolicy $retries;
+    /** 绑定队列、显式注册表与消费者身份；在实际运行的同一协程内构造。 */
     public function __construct(Queue $queue, Registry $registry, string $consumer, ?RetryPolicy $retries = null)
     {
         $this->queue = $queue;
@@ -127,19 +129,33 @@ final class Worker
             $this->lifecycle->finish();
         }
     }
+    /** 撤销就绪并按秒数预算等待在途收尾；不关闭应用创建的 RedisManager。 */
     public function stop(float $drainSeconds = 5.0): void
     {
         $this->lifecycle->stop($drainSeconds);
     }
+    /** 返回是否仍接受下一条投递；存储或清理失败后会撤销就绪。 */
     public function ready(): bool
     {
         return $this->lifecycle->ready();
     }
+    /**
+     * 读取生命周期与任务累计计数；不触发队列查询。
+     *
+     * @return array<string, int|bool|string> 包含消息年龄毫秒、清理失败数及重试上限。
+     */
     public function statistics(): array
     {
         return $this->lifecycle->statistics() + $this->counts + ['retry_limit' => $this->retries->maximumAttempts()];
     }
 
+    /**
+     * 串行执行有限次领取，遇空队列或停止即返回；不是永久监听循环。
+     *
+     * @param int $maximum 单轮最多处理 1 至 10000 次。
+     * @return int 已处理的投递数，包含失败转移和隔离。
+     * @throws QueueException 上限非法或队列/清理协议失败。
+     */
     public function run(int $maximum = 100): int
     {
         if ($maximum < 1 || $maximum > 10000) {

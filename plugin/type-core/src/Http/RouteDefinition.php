@@ -15,6 +15,12 @@ final class RouteDefinition
     private ?string $name;
     private string $priority = '';
 
+    /**
+     * 验证编译器生成的路径段，静态段优先级高于参数段。
+     * @param list<string> $methods 不重复的大写 HTTP 方法。
+     * @param list<array{literal: string}|array{parameter: string, pattern: string}> $segments 完整路径段声明。
+     * @throws InvalidArgumentException 名称、方法或路径段声明非法。
+     */
     public function __construct(array $methods, string $path, array $segments, ?string $name = null)
     {
         if ($methods === [] || !array_is_list($methods)
@@ -62,23 +68,31 @@ final class RouteDefinition
         $this->name = $name;
     }
 
+    /** @return list<string> 当前路由明确接受的 HTTP 方法。 */
     public function methods(): array
     {
         return $this->methods;
     }
+    /** 返回声明路径，用于诊断与构建身份，不替代参数匹配。 */
     public function path(): string
     {
         return $this->path;
     }
+    /** 返回反向 URL 使用的路由名；未命名时为 null。 */
     public function name(): ?string
     {
         return $this->name;
     }
+    /** @internal 按段返回静态 1、参数 0 的排序键，避免登记顺序决定路由。 */
     public function priority(): string
     {
         return $this->priority;
     }
 
+    /**
+     * 解码路径并匹配各段约束，无效或不匹配时返回 null。
+     * @return array<string, string>|null 匹配成功的参数；静态路由为空数组。
+     */
     public function match(string $path): ?array
     {
         $pieces = self::decodePath($path);
@@ -107,6 +121,12 @@ final class RouteDefinition
         return $parameters;
     }
 
+    /**
+     * 按同一参数约束生成编码后的相对 URL，拒绝缺失或多余路径参数。
+     * @param array<string, string|int> $parameters 路径参数。
+     * @param array<string, mixed> $query 交给 RFC 3986 查询编码器的参数。
+     * @throws InvalidArgumentException 路径参数缺失、非法或未使用。
+     */
     public function url(array $parameters = [], array $query = [], string $fragment = ''): string
     {
         $pieces = [];
@@ -149,6 +169,10 @@ final class RouteDefinition
         return true;
     }
 
+    /**
+     * 按段解码一次，拒绝斜线编码、点段、控制字符或非法 UTF-8。
+     * @return list<string>|null 根路径为空列表，非法路径返回 null。
+     */
     public static function decodePath(string $path): ?array
     {
         if (!str_starts_with($path, '/') || str_starts_with($path, '//') || preg_match('/%(?![A-Fa-f0-9]{2})/', $path)) {

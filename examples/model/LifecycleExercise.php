@@ -10,8 +10,14 @@ use Type\Orm\ModelBehavior;
 use Type\Orm\ModelException;
 use Type\Orm\ModelQuery;
 
+/** 组合字段访问器、查询范围、软删除与事件，验证生命周期的可观察结果。 */
 final class LifecycleExercise
 {
+    /**
+     * 在当前连接验证生命周期与事务回滚，不将观察器记录当作提交事实。
+     *
+     * @return array<string, mixed> 演练结果摘要。
+     */
     public static function verify(Connection $connection): array
     {
         $observer = new DocumentObserver();

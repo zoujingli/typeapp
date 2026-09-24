@@ -7,6 +7,11 @@ use Type\Orm\Database;
 use Type\Orm\Sqlite\SqliteDriver;
 use Type\Runtime\ExecutionScope;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function databaseExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -14,6 +19,7 @@ function databaseExpect(bool $condition, string $message): void
     }
 }
 
+/** 在受控文件制造 WAL 写入中断或读取恢复结果，崩溃阶段故意不走正常收尾。 */
 function sqliteRecovery(string $mode, string $filename): void
 {
     $scope = new ExecutionScope();
@@ -36,6 +42,11 @@ function sqliteRecovery(string $mode, string $filename): void
     }
 }
 
+/**
+ * 在专属 SQLite 文件验证读写、事务、租约与 WAL 崩溃恢复；按参数选择故障阶段。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     if (($argv[1] ?? '') === 'test-drivers') {

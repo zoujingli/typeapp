@@ -10,6 +10,11 @@ function isolatedAssert(bool $condition, string $message): void
     }
 }
 
+/**
+ * 读取隔离验收 JSON 记录并要求数组结构，解析失败直接中止验收。
+ *
+ * @return array<string, mixed>
+ */
 function isolatedJson(string $file): array
 {
     $value = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
@@ -17,6 +22,7 @@ function isolatedJson(string $file): array
     return $value;
 }
 
+/** 向指定隔离边界写入专属探针并要求拒绝；若意外成功则先删探针，再报告边界失效。 */
 function isolatedWriteDenied(string $file): void
 {
     $written = @file_put_contents($file, 'type-app-isolation-test-only', LOCK_EX);
@@ -26,6 +32,11 @@ function isolatedWriteDenied(string $file): void
     isolatedAssert($written === false, '隔离边界允许写入：' . dirname($file));
 }
 
+/**
+ * 校验隔离配置固定入口、输出及最多两个编译任务，返回已确认的构建参数。
+ *
+ * @return array{compiler-jobs: int, output: string}
+ */
 function isolatedConfiguration(string $file): array
 {
     $settings = isolatedJson($file);
@@ -35,6 +46,11 @@ function isolatedConfiguration(string $file): array
     return ['compiler-jobs' => $jobs, 'output' => $settings['output']];
 }
 
+/**
+ * 核验 stage 快照的摘要、内部链接和文件白名单，并拒绝凭据及越界路径。
+ *
+ * @return array{files: int, internal-links: int, inactive-internal-links: int, manifest-sha256: string}
+ */
 function isolatedSnapshot(string $directory, string $stageFile): array
 {
     $directory = realpath($directory) ?: throw new RuntimeException('隔离输入目录不存在');
@@ -83,6 +99,11 @@ function isolatedSnapshot(string $directory, string $stageFile): array
         'manifest-sha256' => hash_file('sha256', $directory . '/build-inputs.json')];
 }
 
+/**
+ * 在真实 Linux 隔离环境检查用户、能力、断网、只读挂载及凭据不可见，保存可观察的边界结果。
+ *
+ * @return array<string, mixed>
+ */
 function isolatedBoundary(string $originalRoot, int $expectedUid, string $execution): array
 {
     isolatedAssert(PHP_OS_FAMILY === 'Linux', '边界检查必须运行在真实 Linux 容器');
@@ -139,6 +160,11 @@ function isolatedBoundary(string $originalRoot, int $expectedUid, string $execut
         'capabilities' => [], 'effective-uid' => posix_geteuid(), 'no-new-privileges' => true, 'credentials' => 'absent', 'original-workspace' => 'not-mounted', 'build-output' => 'writable'];
 }
 
+/**
+ * 核验隔离产物摘要、首次真实编译、完整生产依赖和九项原生命令结果，汇总对应构建身份。
+ *
+ * @return array<string, mixed>
+ */
 function isolatedReport(string $directory, string $image): array
 {
     $inputs = $directory . '/inputs';

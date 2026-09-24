@@ -9,10 +9,15 @@ use Psr\Http\Message\StreamInterface;
 use RuntimeException;
 use Throwable;
 
+/** 拥有底层 PHP 流的 PSR-7 正文适配器；显式关闭或分离决定资源归属。 */
 final class Stream implements StreamInterface
 {
     private mixed $resource;
 
+    /**
+     * 接管有效流资源，关闭此对象也会关闭该句柄；原调用方不再并行管理它。
+     * @param resource $resource 已打开的 PHP stream 资源。
+     */
     public function __construct(mixed $resource)
     {
         if (!is_resource($resource) || get_resource_type($resource) !== 'stream') {
@@ -21,11 +26,13 @@ final class Stream implements StreamInterface
         $this->resource = $resource;
     }
 
+    /** 释放仍由本对象持有的流；需要确认刷新结果时应提前显式 close()。 */
     public function __destruct()
     {
         $this->close();
     }
 
+    /** 可定位时从头读取全部内容；读取失败返回空文本，流位置不会恢复。 */
     public function __toString(): string
     {
         try {
@@ -51,6 +58,10 @@ final class Stream implements StreamInterface
         $this->resource = null;
     }
 
+    /**
+     * 分离句柄但不关闭，关闭责任转交调用者。
+     * @return resource|null
+     */
     public function detach(): mixed
     {
         $resource = $this->resource;
@@ -58,6 +69,7 @@ final class Stream implements StreamInterface
         return $resource;
     }
 
+    /** 返回底层流报告的字节大小，已关闭或无法取得状态时返回 null。 */
     public function getSize(): ?int
     {
         if (!is_resource($this->resource)) {
@@ -67,6 +79,7 @@ final class Stream implements StreamInterface
         return $stat === false ? null : (int) $stat['size'];
     }
 
+    /** 返回当前字节偏移；已关闭或底层不支持定位时抛出 RuntimeException。 */
     public function tell(): int
     {
         $this->assertOpen();
@@ -77,16 +90,19 @@ final class Stream implements StreamInterface
         return $position;
     }
 
+    /** 已关闭、已分离或底层读取到末尾时返回 true。 */
     public function eof(): bool
     {
         return !is_resource($this->resource) || feof($this->resource);
     }
 
+    /** 仅有效句柄声明支持定位时返回 true。 */
     public function isSeekable(): bool
     {
         return is_resource($this->resource) && (bool) $this->getMetadata('seekable');
     }
 
+    /** 按字节偏移定位；不支持定位、参考位置非法或底层失败时抛出 RuntimeException。 */
     public function seek(int $offset, int $whence = SEEK_SET): void
     {
         if (!$this->isSeekable() || !in_array($whence, [SEEK_SET, SEEK_CUR, SEEK_END], true)
@@ -95,16 +111,19 @@ final class Stream implements StreamInterface
         }
     }
 
+    /** 定位到流起点，失败语义与 seek(0) 相同。 */
     public function rewind(): void
     {
         $this->seek(0);
     }
 
+    /** 按有效句柄的打开模式判断是否允许写入。 */
     public function isWritable(): bool
     {
         return is_resource($this->resource) && strpbrk((string) $this->getMetadata('mode'), 'waxc+') !== false;
     }
 
+    /** 写入字节并返回实际数量，允许短写；调用方负责循环直至完成或停止。 */
     public function write(string $string): int
     {
         if (!$this->isWritable()) {
@@ -117,11 +136,13 @@ final class Stream implements StreamInterface
         return $written;
     }
 
+    /** 按有效句柄的打开模式判断是否允许读取。 */
     public function isReadable(): bool
     {
         return is_resource($this->resource) && strpbrk((string) $this->getMetadata('mode'), 'r+') !== false;
     }
 
+    /** 最多读取指定字节数，0 返回空文本；负数或不可读流会抛出 RuntimeException。 */
     public function read(int $length): string
     {
         if ($length < 0 || !$this->isReadable()) {
@@ -137,6 +158,7 @@ final class Stream implements StreamInterface
         return $content;
     }
 
+    /** 读取当前位置到末尾的内容；调用方须先约束可读取数据量。 */
     public function getContents(): string
     {
         if (!$this->isReadable()) {
@@ -149,6 +171,7 @@ final class Stream implements StreamInterface
         return $content;
     }
 
+    /** 返回全部流元数据或指定键，缺失键返回 null，关闭流的全部元数据为空数组。 */
     public function getMetadata(?string $key = null): mixed
     {
         $metadata = is_resource($this->resource) ? stream_get_meta_data($this->resource) : [];

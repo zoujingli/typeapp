@@ -310,6 +310,7 @@ function brokerCertCrl(string $directory, string $output, array $serials): void
     expect(is_file($output) && is_readable($output), '无法写出测试 CRL');
 }
 
+/** 运行本轮证书测试的独立 HTTPS CRL 源；服务端不要求客户端证书，监听参数来自显式测试环境。 */
 function brokerCertServeCrlHttps(): void
 {
     $port = (int) getenv('BROKER_CRL_HTTPS_PORT');
@@ -356,6 +357,7 @@ function brokerCertServeCrlHttps(): void
     }
 }
 
+/** 在 8 秒轮询预算内通过校验证书的 HTTPS 请求确认 CRL 内容可读。 */
 function brokerCertCrlHttpsWait(int $port, string $ca): void
 {
     $deadline = microtime(true) + 8;

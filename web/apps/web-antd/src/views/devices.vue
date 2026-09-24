@@ -99,6 +99,7 @@ const columns = computed<TableColumnsType<Device>>(() => [
 ]);
 const pagination = computed(() => ({ current: result.value.page, pageSize: result.value.per_page, total: result.value.total, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }));
 function stopRefresh() { clearTimeout(refreshTimer); refreshTimer = undefined; }
+/** 可读且可见时逐轮刷新；上一轮未结束时不再启动新的自动请求。 */
 function scheduleRefresh() {
   stopRefresh();
   if (active && canRead.value && !document.hidden) refreshTimer = setTimeout(() => { if (!busy.value) void load(result.value.page, result.value.per_page, true); }, 5000);
@@ -240,6 +241,7 @@ function clear() {
 function reject(error: unknown) {
   if (clearAdminAccess(error)) { clear(); failure.value = '当前设备权限已失效，请重新选择工作区或登录。'; }
 }
+// 工作区改变时清理列表、凭据展示和在途操作，重新获取服务端授权后的状态。
 watch([() => session.tenant?.id, () => session.token, () => session.realm], () => {
   clear();
   if (!platform.value && !session.tenant && router.currentRoute.value.path === '/devices') void router.replace('/tenants');

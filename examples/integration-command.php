@@ -18,6 +18,11 @@ use TypeApp\Integration\Endpoint;
 use TypeApp\Integration\Scenario;
 use TypeApp\ModelExample\Drivers;
 
+/**
+ * 在 Swoole 协程内运行 ORM、缓存、Outbox、队列和日志的组合示例。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     if (($argv[1] ?? '') === 'serve') {
@@ -29,6 +34,11 @@ function main(int $argc, array $argv): void
     });
 }
 
+/**
+ * 按显式驱动和角色运行组合业务，输出验证结果并关闭本轮管理器。
+ *
+ * @param list<string> $argv 程序路径及组合业务参数。
+ */
 function integrationScenario(int $argc, array $argv): void
 {
     try {

@@ -15,27 +15,37 @@ use Type\Scheduler\Scheduler;
 use Type\Scheduler\Task;
 use Type\Scheduler\TaskContext;
 
+/** 为调度测试提供可显式推进的 Unix 时钟，避免依赖真实等待。 */
 final class TestSchedulerClock implements ClockInterface
 {
+    /** 保存当前测试时刻，timestamp 单位为 Unix 秒。 */
     public function __construct(public int $timestamp)
     {
     }
+    /** 将当前测试秒数转换为不可变时间，用于触发确定的调度窗口。 */
     public function now(): DateTimeImmutable
     {
         return new DateTimeImmutable('@' . $this->timestamp);
     }
 }
 
+/** 记录任务调用与资源生命周期，可分别注入执行失败和清理失败。 */
 final class TestScheduledTask implements Task
 {
     public static array $scopes = [];
     public static array $events = [];
     private int $calls = 0;
 
+    /** 设置本轮任务和资源收尾的故障开关，不改变调度器实现。 */
     public function __construct(private bool $failure = false, private bool $cleanupFailure = false)
     {
     }
 
+    /**
+     * 验证当前作用域并登记受管资源，记录调用后按配置触发故障。
+     *
+     * @return array{calls: int}
+     */
     public function run(TaskContext $context): array
     {
         expect(\Type\Runtime\ExecutionScope::current() === $context->scope(), '调度任务当前作用域错误');
@@ -50,15 +60,19 @@ final class TestScheduledTask implements Task
     }
 }
 
+/** 记录受管资源的打开和关闭顺序，并允许测试清理异常的传播。 */
 final class TestScheduledResource implements ManagedResource
 {
+    /** 指定资源关闭时是否抛出测试异常。 */
     public function __construct(private bool $failure)
     {
     }
+    /** 记录资源已进入任务作用域，供生命周期顺序断言使用。 */
     public function start(): void
     {
         TestScheduledTask::$events[] = 'start';
     }
+    /** 记录资源关闭事件，再按故障开关抛错，以验证其余清理仍会继续。 */
     public function stop(): void
     {
         TestScheduledTask::$events[] = 'stop';
@@ -68,6 +82,11 @@ final class TestScheduledResource implements ManagedResource
     }
 }
 
+/**
+ * 取得指定调度窗口内最多 20 个发生时刻，并统一格式化为 UTC 文本。
+ *
+ * @return list<string>
+ */
 function scheduledTimes(CronSchedule $schedule, string $after, string $through): array
 {
     return array_map(

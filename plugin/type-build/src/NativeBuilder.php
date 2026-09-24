@@ -10,6 +10,11 @@ use RuntimeException;
 /** 将显式声明的生产源码交给 TypePHP；本类只在构建环境运行。 */
 final class NativeBuilder
 {
+    /**
+     * 在输出锁内审计、生成并全量 AOT；仅成功候选可替换应用产物。
+     * @return array<string, mixed> 本次构建的源码、身份、缓存及产物报告。
+     * @throws RuntimeException 声明、工具链、完整性、运行探针或编译失败。
+     */
     public function build(string $configuration): array
     {
         $configuration = BuildPlatform::resolve($configuration);
@@ -20,6 +25,10 @@ final class NativeBuilder
         return BuildLock::run($output . '.lock', fn (): array => $this->buildLocked($configuration, null));
     }
 
+    /**
+     * 先完成同一输入审计，再复制隔离构建输入，不执行应用业务入口。
+     * @return array<string, mixed> 隔离目录、输入摘要及本次审计报告。
+     */
     public function stage(string $configuration, string $destination): array
     {
         $configuration = BuildPlatform::resolve($configuration);

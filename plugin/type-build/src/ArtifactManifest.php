@@ -11,6 +11,11 @@ final class ArtifactManifest
 {
     private const MAGIC = 'TYPEAPP1';
 
+    /**
+     * 封存候选原生文件的身份；ELF/PE 追加清单，Mach-O 校验已内嵌清单。
+     * @param array<string, mixed> $manifest 当前构建生成的身份清单。
+     * @return array<string, mixed> 最终清单，不等于受信发布渠道的签名。
+     */
     public function seal(string $artifact, array $manifest): array
     {
         BuildLock::path($artifact);
@@ -41,6 +46,11 @@ final class ArtifactManifest
         return $manifest;
     }
 
+    /**
+     * 不执行产物即可读取并校验格式及字节身份；受信摘要须由外部交付记录提供。
+     * @return array<string, mixed>
+     * @throws RuntimeException 清单缺失、格式非法或与预期身份不一致。
+     */
     public function read(string $artifact, ?string $expectedBuildId = null, ?string $expectedSha256 = null): array
     {
         clearstatcache(true, $artifact);
@@ -133,6 +143,10 @@ final class ArtifactManifest
         }
     }
 
+    /**
+     * 校验产物旁资源代次的相对路径及摘要，拒绝越界和符号链接。
+     * @param array<string, mixed> $manifest 已验证的产物身份清单。
+     */
     public function verifyResources(string $artifact, array $manifest): void
     {
         $generation = $manifest['resource-generation'] ?? null;
@@ -154,6 +168,10 @@ final class ArtifactManifest
         }
     }
 
+    /**
+     * 生成与应用一起编译的身份查询和运行校验类；返回 PHP 声明，不执行它。
+     * @param array<string, mixed> $manifest 已确定的本次产物清单。
+     */
     public function accessor(array $manifest): string
     {
         if (($manifest['runtime']['os'] ?? 'Linux') !== 'Linux') {

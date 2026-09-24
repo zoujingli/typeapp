@@ -228,6 +228,10 @@ function packageLibraries(string $artifact, string $sandbox): void
     }
 }
 
+/**
+ * 为隔离运行目录复制有界 hosts/DNS 配置，并固定仅使用 files/DNS 的名称解析。
+ * @throws RuntimeException 配置含 NUL、超过 1 MiB 或无法写入目标。
+ */
 function packageNetwork(string $sandbox): void
 {
     if (!is_dir($sandbox . '/etc') && !mkdir($sandbox . '/etc', 0755)) {

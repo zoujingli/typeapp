@@ -26,6 +26,7 @@ function packagingArtifact(string $source, string $directory, array $resources):
     return $target;
 }
 
+/** 递归删除本轮目录包临时目录，不跟随符号链接；调用者必须确认目录归属。 */
 function packagingRemove(string $directory): void
 {
     if (!is_dir($directory)) {

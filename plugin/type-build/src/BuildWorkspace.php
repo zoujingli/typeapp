@@ -9,6 +9,12 @@ use RuntimeException;
 /** 将已核验输入复制到独立目录，运行配置、Git 认证和未声明文件不进入构建挂载。 */
 final class BuildWorkspace
 {
+    /**
+     * 复制已核验输入到项目 build 下的新目录，SDK 独立提供，秘密与认证文件拒绝进入。
+     * @param array<string, array<string, array{sha256: string, bytes: int}>> $groups 构建身份中的文件组。
+     * @param list<string> $auditPaths 保留自动加载审计关系所需的占位路径。
+     * @return array{directory: string, files: int, inputs-sha256: string}
+     */
     public function create(string $root, string $destination, array $groups, array $auditPaths = []): array
     {
         $root = BuildPlatform::resolve($root);

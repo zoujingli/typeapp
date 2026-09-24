@@ -5,6 +5,12 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require __DIR__ . '/http-support.php';
 
+/**
+ * 发送带可覆盖身份和代理头的真实 HTTP 请求，读取结果后关闭连接。
+ *
+ * @param array<string, string|int> $headers
+ * @return array{int, string, string}
+ */
 function trustRequest(int $port, string $path, array $headers = [], string $method = 'GET', string $body = ''): array
 {
     $connection = stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 3);

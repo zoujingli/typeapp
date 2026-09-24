@@ -30,6 +30,12 @@ $command = ($argv[3] ?? '') === '--native' ? nativeCommand($argv[2]) : [PHP_BINA
     $applications = [];
     $children = [];
 
+    /**
+     * 启动一次独立调度命令并保留两个临时输出流；返回资源交由 coordinationWait 回收。
+     *
+     * @param list<string> $command
+     * @return array{resource, resource, resource}
+     */
     function coordinationStart(array $command): array
     {
         $stdout = tmpfile();
@@ -40,6 +46,12 @@ $command = ($argv[3] ?? '') === '--native' ? nativeCommand($argv[2]) : [PHP_BINA
         return [$process, $stdout, $stderr];
     }
 
+    /**
+     * 最多等待子进程 6 秒，超时终止后读取输出并关闭全部资源；超时仍按失败报告。
+     *
+     * @param array{resource, resource, resource} $child
+     * @return array{int, string, string}
+     */
     function coordinationWait(array $child): array
     {
         [$process, $stdout, $stderr] = $child;
@@ -65,6 +77,7 @@ $command = ($argv[3] ?? '') === '--native' ? nativeCommand($argv[2]) : [PHP_BINA
         return [$state['exitcode'], $out, $error];
     }
 
+    /** 设置本轮调度子进程继承的应用、模式、日期与修订环境，不用于应用生产配置。 */
     function coordinationEnvironment(string $application, string $mode, string $date, string $revision): void
     {
         putenv('TYPE_COORDINATION_APP=' . $application);

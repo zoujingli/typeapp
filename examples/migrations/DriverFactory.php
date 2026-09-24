@@ -9,8 +9,10 @@ use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Orm\Sqlite\SqliteDriver;
 
+/** 从示例专用环境变量选择三库驱动，不在组件内自动读取业务配置。 */
 final class DriverFactory
 {
+    /** 按显式测试配置构造驱动；SQLite 未指定文件时使用示例默认路径。 */
     public static function create(): Driver
     {
         $driver = getenv('TYPE_MIGRATION_DRIVER') ?: 'sqlite';

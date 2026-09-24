@@ -12,6 +12,11 @@ use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\DeploymentBudget;
 use TypeApp\Backpressure\Endpoint;
 
+/**
+ * 启动连接预算与 HTTP 背压示例；数据库、日志路径与监听参数来自受控测试环境。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     CoroutineRuntime::enableIo();

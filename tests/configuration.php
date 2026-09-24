@@ -9,6 +9,11 @@ use Type\Core\Config\Environment;
 use Type\Core\Config\Repository;
 use Type\Build\ConfigCompiler;
 
+/**
+ * 要求配置操作抛出包含约定诊断的异常，并验证错误信息未泄漏测试秘密。
+ *
+ * @param Closure(): mixed $operation
+ */
 function configurationRejects(Closure $operation, string $expected, string $secret = 'configuration-secret-canary'): void
 {
     try {

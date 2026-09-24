@@ -6,6 +6,11 @@ use Type\Validate\Input;
 use Type\Validate\ValidationException;
 use TypeApp\ValidationExample\UserInput;
 
+/**
+ * 按命令参数校验 JSON、query 与 PATCH，输出有效数据或不含原值的结构化错误。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     try {

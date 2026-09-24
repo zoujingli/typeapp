@@ -17,6 +17,7 @@ function mqttWsField(string $value): string
     return pack('n', strlen($value)) . $value;
 }
 
+/** 独立编码 MQTT 可变长度字段，避免测试与生产编解码器共享实现缺陷；输入须在协议范围内。 */
 function mqttWsLength(int $value): string
 {
     $bytes = '';
@@ -28,6 +29,7 @@ function mqttWsLength(int $value): string
     return $bytes;
 }
 
+/** 构造 MQTT 3.1.1 或 5 的测试 CONNECT 报文；keepalive 单位为秒。 */
 function mqttWsConnect(int $version, string $id, int $keepalive = 10): string
 {
     $payload = mqttWsField('MQTT') . chr($version) . "\xc2" . pack('n', $keepalive)
@@ -35,18 +37,21 @@ function mqttWsConnect(int $version, string $id, int $keepalive = 10): string
     return "\x10" . mqttWsLength(strlen($payload)) . $payload;
 }
 
+/** 构造 MQTT 5 的 QoS 0 订阅报文，使用测试固定报文标识符。 */
 function mqttWsSubscribe(string $topic): string
 {
     $body = "\x00\x01\x00" . mqttWsField($topic) . "\x00";
     return "\x82" . mqttWsLength(strlen($body)) . $body;
 }
 
+/** 构造无属性的 MQTT 5 QoS 0 发布报文，用于核对 WebSocket 传输后的字节。 */
 function mqttWsPublish(string $topic, string $payload): string
 {
     $body = mqttWsField($topic) . "\0" . $payload;
     return "\x30" . mqttWsLength(strlen($body)) . $body;
 }
 
+/** 获取回环空闲端口并关闭临时监听；返回值只用于本轮测试，不保留端口占用。 */
 function mqttWsPort(): int
 {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
@@ -97,6 +102,7 @@ function mqttWsExtensionArgs(array $extensions, bool $forChild = false): array
     return $arguments;
 }
 
+/** 按指定操作码和 FIN 位构造带随机客户端掩码的 WebSocket 帧。 */
 function mqttWsFrame(string $payload, int $opcode, bool $fin = true): string
 {
     $length = strlen($payload);
@@ -116,6 +122,11 @@ function mqttWsFrame(string $payload, int $opcode, bool $fin = true): string
     return $header . $mask . $masked;
 }
 
+/**
+ * 读取一个测试 WebSocket 数据帧载荷，跳过 ping/pong，关闭帧或截断导致失败；连接仍归调用者。
+ *
+ * @param resource $socket
+ */
 function mqttWsRead(mixed $socket): string
 {
     $header = '';
@@ -198,12 +209,22 @@ function mqttWsHandshake(int $port, array $headers = [], bool $tls = false, ?str
     return [$socket, $response];
 }
 
+/**
+ * 将 MQTT 报文封装为客户端二进制帧并要求一次完整写出；连接仍归调用者。
+ *
+ * @param resource $socket
+ */
 function mqttWsWrite(mixed $socket, string $packet): void
 {
     $frame = mqttWsFrame($packet, 0x2);
     expect(fwrite($socket, $frame) === strlen($frame), 'MQTT WebSocket 报文未写完');
 }
 
+/**
+ * 建立 5 秒超时的测试 TCP/TLS 连接；TLS 验证指定 CA 和主机名，成功连接由调用者关闭。
+ *
+ * @return resource
+ */
 function mqttTcpSocket(int $port, ?string $certificate = null): mixed
 {
     $options = $certificate === null ? [] : ['ssl' => ['cafile' => $certificate, 'verify_peer' => true,
@@ -215,6 +236,11 @@ function mqttTcpSocket(int $port, ?string $certificate = null): mixed
     return $socket;
 }
 
+/**
+ * 读取完整 MQTT 固定头、剩余长度及正文，截断时失败；不关闭借用的连接。
+ *
+ * @param resource $socket
+ */
 function mqttTcpRead(mixed $socket): string
 {
     $first = fread($socket, 1);
@@ -239,6 +265,11 @@ function mqttTcpRead(mixed $socket): string
     return $wire;
 }
 
+/**
+ * 要求测试 MQTT 报文一次完整写出，短写视为失败；不转移连接所有权。
+ *
+ * @param resource $socket
+ */
 function mqttTcpWrite(mixed $socket, string $bytes): void
 {
     expect(fwrite($socket, $bytes) === strlen($bytes), 'MQTT TCP 写入失败');
@@ -286,6 +317,7 @@ function mqttJsClient(array $command, string $directory): void
     expect(false, $last);
 }
 
+/** 缺少运行扩展时以显式扩展参数重启一次测试，并通过环境哨兵防止循环。 */
 function mqttWsReexec(): void
 {
     if (getenv('MQTT_WS_REEXEC') === '1') {

@@ -10,6 +10,7 @@ use Attribute;
 #[Attribute(Attribute::TARGET_CLASS)]
 final class Table
 {
+    /** 声明逻辑数据源、主键与生命周期属性；生成映射不会创建真实数据库表。 */
     public function __construct(
         public string $name,
         public string $primary = 'id',

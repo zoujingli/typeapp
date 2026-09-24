@@ -57,17 +57,20 @@ abstract class Model implements JsonSerializable
         }
     }
 
+    /** 检查当前有效模型是否已持久化，不重新访问数据库。 */
     public function isPersisted(): bool
     {
         $this->assertValid();
         return $this->persisted;
     }
+    /** 取得本模型的静态映射；失效或跨作用域模型不可继续读取。 */
     public function definition(): ModelDefinition
     {
         $this->assertValid();
         return $this->definition;
     }
 
+    /** 检查声明字段是否已加载；已加载的 null 仍返回 true，未知字段抛错。 */
     public function loaded(string $field): bool
     {
         $this->assertValid();
@@ -75,6 +78,7 @@ abstract class Model implements JsonSerializable
         return array_key_exists($field, $this->values);
     }
 
+    /** 读取已加载字段并应用显式获取器，未加载字段不自动查询数据库。 */
     public function get(string $field): mixed
     {
         $value = $this->rawValue($field);
@@ -90,6 +94,7 @@ abstract class Model implements JsonSerializable
         return $this->values[$field];
     }
 
+    /** 按赋值白名单规范化单字段，不能改变已持久化主键、租户或受管生命周期字段。 */
     public function set(string $field, mixed $value): void
     {
         $this->assertValid();
@@ -124,6 +129,11 @@ abstract class Model implements JsonSerializable
         throw new ModelException('unknown_field', '模型属性没有声明：' . $name);
     }
 
+    /**
+     * 整批校验通过才更新内存字段，非法字段不会留下部分赋值。
+     *
+     * @param array<string, mixed> $values 使用模型属性名，不能传任意数据库列。
+     */
     public function fill(array $values): void
     {
         $this->assertValid();
@@ -148,6 +158,11 @@ abstract class Model implements JsonSerializable
         }
     }
 
+    /**
+     * 按字段编码语义比较持久化快照，只返回真实变更。
+     *
+     * @return array<string, mixed>
+     */
     public function dirty(): array
     {
         $this->assertValid();
@@ -160,6 +175,12 @@ abstract class Model implements JsonSerializable
         return $dirty;
     }
 
+    /**
+     * 保存当前作用域模型的变更，复用字段、租户、版本和行为约束。
+     *
+     * @return string created、updated、unchanged 或前置行为取消时的 cancelled。
+     * @throws ModelException 状态、字段、必填、存储精度或乐观锁约束不满足。
+     */
     public function save(): string
     {
         $connection = $this->connection();
@@ -280,12 +301,14 @@ abstract class Model implements JsonSerializable
         return $affected === 0 ? 'unchanged' : 'updated';
     }
 
+    /** 按映射执行软删除或物理删除，保留版本与租户约束；前置事件可取消。 */
     public function delete(): bool
     {
         $connection = $this->connection();
         return $this->writing($connection, fn (): bool => $this->deleteRecord($connection, false));
     }
 
+    /** 显式物理删除并使对象失效；不会绕过租户和乐观锁边界。 */
     public function forceDelete(): bool
     {
         $connection = $this->connection();
@@ -345,6 +368,7 @@ abstract class Model implements JsonSerializable
         return $affected > 0;
     }
 
+    /** 恢复支持软删除的已持久化模型，成功后清除旧关系快照。 */
     public function restore(): bool
     {
         $connection = $this->connection();
@@ -385,6 +409,7 @@ abstract class Model implements JsonSerializable
         });
     }
 
+    /** 为当前有效模型设置显式行为；观察器生命周期由应用负责。 */
     public function useBehavior(ModelBehavior $behavior): void
     {
         $this->assertValid();
@@ -491,6 +516,14 @@ abstract class Model implements JsonSerializable
         }
     }
 
+    /**
+     * 只输出显式选择且允许可见的字段、已加载关系与计算值。
+     *
+     * @param list<string> $fields
+     * @param array<string, list<string>> $relations 关系名到目标字段列表。
+     * @param list<string> $computed 只读计算结果别名。
+     * @return array<string, mixed>
+     */
     public function project(array $fields, array $relations = [], array $computed = []): array
     {
         $this->assertValid();
@@ -543,12 +576,14 @@ abstract class Model implements JsonSerializable
         $this->computed[$alias] = $value;
     }
 
+    /** 检查关系结果是否已登记，已加载的 null 或空列表均返回 true。 */
     public function relationLoaded(string $name): bool
     {
         $this->assertValid();
         return array_key_exists($name, $this->relations);
     }
 
+    /** 清空本模型的关系快照；下次读取须重新显式加载。 */
     public function forgetRelations(): void
     {
         $this->assertValid();
@@ -566,6 +601,11 @@ abstract class Model implements JsonSerializable
         $this->pivotValues = $copy;
     }
 
+    /**
+     * 读取预加载时允许输出的中间表字段；未加载抛 pivot_not_loaded。
+     *
+     * @return array<string, mixed>
+     */
     public function pivot(): array
     {
         $this->assertValid();
@@ -575,6 +615,11 @@ abstract class Model implements JsonSerializable
         return $this->pivotValues;
     }
 
+    /**
+     * 读取已加载关系，不触发 SQL；缺失抛 relation_not_loaded。
+     *
+     * @return Model|list<Model>|null
+     */
     public function related(string $name): mixed
     {
         if (!$this->relationLoaded($name)) {
@@ -603,6 +648,11 @@ abstract class Model implements JsonSerializable
         $this->relations[$name] = $value;
     }
 
+    /**
+     * 输出已加载且可见的字段；关系和计算值只有 project 显式选择才输出。
+     *
+     * @return array<string, mixed>
+     */
     public function toArray(): array
     {
         $this->assertValid();
@@ -615,22 +665,35 @@ abstract class Model implements JsonSerializable
         return $this->project($fields);
     }
 
+    /** @internal 使共享模型状态失效，回滚、删除等路径由 ORM 调用。 */
     public function invalidate(): void
     {
         $this->state->invalidate();
     }
 
+    /** JSON 序列化沿用安全字段投影，不泄露持久化状态或自动展开关系。 */
     public function jsonSerialize(): mixed
     {
         return $this->toArray();
     }
 
+    /**
+     * 拒绝序列化持久化状态；跨作用域数据传输应使用显式 DTO。
+     *
+     * @throws ModelException 模型状态不可用，或以 serialization_unsupported 拒绝序列化。
+     */
     public function __serialize(): array
     {
         $this->assertValid();
         throw new ModelException('serialization_unsupported', '模型请通过显式 DTO 输出，不序列化持久化状态');
     }
 
+    /**
+     * 拒绝从载荷重建持久化模型；必须使用声明的水合工厂。
+     *
+     * @param array<string, mixed> $data
+     * @throws ModelException 始终拒绝，以 serialization_unsupported 报告。
+     */
     public function __unserialize(array $data): void
     {
         throw new ModelException('serialization_unsupported', '模型必须通过声明的水合工厂创建');

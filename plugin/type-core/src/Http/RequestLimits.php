@@ -7,6 +7,10 @@ namespace Type\Core\Http;
 /** 传输字节上限由所选 HTTP 引擎在读取时执行；解析前再校验结构预算。 */
 final class RequestLimits
 {
+    /**
+     * 声明字节、字段、深度和上传数量预算；临时上传目录须位于容量受限的专用文件系统。
+     * @throws \InvalidArgumentException 任一预算无效或临时空间不能满足声明。
+     */
     public function __construct(
         public readonly int $bytes = 1048576,
         public readonly int $fields = 100,
@@ -33,6 +37,10 @@ final class RequestLimits
         }
     }
 
+    /**
+     * 仅检查 JSON 结构深度和字段数量，不负责解码或验证全部 JSON 语法。
+     * @throws HttpError 结构深度或字段数量超过请求预算。
+     */
     public function json(string $content): void
     {
         $stack = [];

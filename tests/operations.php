@@ -11,6 +11,7 @@ $compiler = new Type\Build\OperationCompiler();
 $result = $compiler->generate($root, ['classes' => ['TypeApp\\Operations\\UserOperations' => 'TypeApp\\Operations\\UserService']], [$source]);
 expect(is_array($result['operations'] ?? null), '公开生成结果缺少操作声明');
 
+/** 将非法操作声明写入本轮临时文件，验证生成器按约定拒绝，最后删除文件。 */
 function rejectedOperation(string $declaration, string $message): void
 {
     $file = tempnam(sys_get_temp_dir(), 'type_operation_invalid_');

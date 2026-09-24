@@ -10,6 +10,7 @@ function embedProbe(string $probe, string $directory): array
     return execute(['env', 'PHPRC=' . $directory . '/php.ini', 'PHP_INI_SCAN_DIR=' . $directory . '/php.d', $probe]);
 }
 
+/** 运行独立 embed 探针，要求零退出码、四项能力均为 1 且错误输出为空。 */
 function embedExpectReady(string $probe, string $directory): void
 {
     [$status, $stdout, $stderr] = embedProbe($probe, $directory);

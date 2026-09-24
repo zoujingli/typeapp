@@ -11,6 +11,10 @@ final class Configuration
 {
     private array $values;
 
+    /**
+     * 建立启动时的字符串快照，不接受对象或隐式类型转换。
+     * @param array<string, string> $values 已解析的配置键值。
+     */
     public function __construct(array $values)
     {
         $snapshot = [];
@@ -23,6 +27,10 @@ final class Configuration
         $this->values = $snapshot;
     }
 
+    /**
+     * 按声明读取进程环境，仅变量不存在时使用默认值，保留显式空字符串。
+     * @param array<string, array{env: string, default: string}> $definitions 环境映射。
+     */
     public static function fromEnvironment(array $definitions): Configuration
     {
         $values = [];
@@ -34,6 +42,10 @@ final class Configuration
         return new Configuration($values);
     }
 
+    /**
+     * 按完整键名读取字符串，不解析点路径。
+     * @throws InvalidArgumentException 配置键未声明。
+     */
     public function text(string $key): string
     {
         if (!array_key_exists($key, $this->values)) {

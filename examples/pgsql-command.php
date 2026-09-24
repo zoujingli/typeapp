@@ -7,6 +7,11 @@ use Type\Orm\Database;
 use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Runtime\ExecutionScope;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function databaseExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -54,6 +59,11 @@ function databaseSession(Connection $owner): void
     }
 }
 
+/**
+ * 在专属 PostgreSQL 数据库验证读写、事务、会话恢复与连接池。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     if (($argv[1] ?? '') === 'test-drivers') {

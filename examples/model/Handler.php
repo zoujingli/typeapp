@@ -20,17 +20,20 @@ use Type\Validate\Input;
 use Type\Validate\Schema;
 use Type\Validate\ValidationException;
 
+/** 通过真实 HTTP 演示用户模型 CRUD 与校验错误映射。 */
 final class Handler implements RequestHandlerInterface
 {
     private ResponseFactoryInterface $responses;
     private StreamFactoryInterface $streams;
 
+    /** 注入 PSR 响应和流工厂，数据库由当前作用域解析。 */
     public function __construct(ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
     {
         $this->responses = $responses;
         $this->streams = $streams;
     }
 
+    /** 在请求 Scope 中处理用户读取与写入，将字段错误和不存在映射为明确响应。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $scope = $request->getAttribute('type.scope');

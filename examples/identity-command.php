@@ -11,6 +11,7 @@ use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Orm\Sqlite\SqliteDriver;
 use Type\Runtime\ExecutionScope;
 
+/** 构造带角色、凭据代次与会话基线的驱动，供身份切换和退役验收。 */
 function identityDriver(string $name, int $generation = 1, string $role = 'writer', ?string $schema = null, ?string $password = null, ?string $databaseRole = null): Driver
 {
     if ($name === 'sqlite') {
@@ -40,6 +41,11 @@ function identityDriver(string $name, int $generation = 1, string $role = 'write
     );
 }
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function identityExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -47,6 +53,11 @@ function identityExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 验证数据库身份、读写用途、凭据代次轮换和独立进程租约边界。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $driver = (string) ($argv[1] ?? 'sqlite');

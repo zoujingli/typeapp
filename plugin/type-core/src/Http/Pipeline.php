@@ -10,6 +10,7 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use RuntimeException;
 
+/** 按显式次序组合 PSR-15 中间件，每次请求保留独立的后续处理位置。 */
 final class Pipeline implements RequestHandlerInterface
 {
     private array $factories;
@@ -24,6 +25,7 @@ final class Pipeline implements RequestHandlerInterface
         $this->position = $position;
     }
 
+    /** 执行当前位置的中间件，末尾交给最终处理器；异常按调用链向外传播。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         if ($this->position >= count($this->factories)) {

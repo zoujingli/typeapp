@@ -16,12 +16,18 @@ final class RedisSession implements ReusableResource
     private bool $reusable = true;
     private string $queued = '';
 
+    /** 建立本物理会话，创建失败不会向池交付可用资源。 */
     public function __construct(RedisConfiguration $configuration)
     {
         $this->configuration = $configuration;
         $this->client = $configuration->connect();
     }
 
+    /**
+     * 在健康会话发送已校验命令，I/O 中断标记结果 UNKNOWN。
+     *
+     * @param list<string|int|float> $arguments
+     */
     public function command(string $command, array $arguments): mixed
     {
         $this->healthy();
@@ -36,6 +42,12 @@ final class RedisSession implements ReusableResource
         }
     }
 
+    /**
+     * 执行已校验批次；任何未确认结果都使会话失效。
+     *
+     * @param list<array{0: string, 1: list<string|int|float>}> $commands
+     * @return list<mixed>
+     */
     public function pipeline(array $commands): array
     {
         $this->healthy();
@@ -66,6 +78,11 @@ final class RedisSession implements ReusableResource
         }
     }
 
+    /**
+     * 建立当前会话的乐观检查；空键列表不发送 WATCH。
+     *
+     * @param list<string> $keys
+     */
     public function watch(array $keys): void
     {
         $this->healthy();
@@ -82,6 +99,11 @@ final class RedisSession implements ReusableResource
         }
     }
 
+    /**
+     * 将命令入队并执行 EXEC，冲突返回未提交结果，不重跑回调。
+     *
+     * @param list<array{0: string, 1: list<string|int|float>}> $commands
+     */
     public function transaction(array $commands): TransactionResult
     {
         $this->healthy();
@@ -112,6 +134,7 @@ final class RedisSession implements ReusableResource
         }
     }
 
+    /** 清除健康会话的 WATCH 状态；清理失败标记失效，阻止重新入池。 */
     public function unwatch(): void
     {
         if ($this->failed || $this->queued !== '') {
@@ -126,6 +149,12 @@ final class RedisSession implements ReusableResource
         }
     }
 
+    /**
+     * 执行脚本后禁止物理连接复用，避免未知脚本状态泄露到后续请求。
+     *
+     * @param list<string> $keys
+     * @param list<string|int|float> $arguments
+     */
     public function script(string $script, array $keys, array $arguments): mixed
     {
         $this->healthy();
@@ -143,6 +172,7 @@ final class RedisSession implements ReusableResource
         }
     }
 
+    /** 恢复选库、序列化、前缀及重试基线；失败或脚本会话关闭并返回 false。 */
     public function reset(): bool
     {
         if ($this->failed || !$this->reusable || $this->queued !== '') {

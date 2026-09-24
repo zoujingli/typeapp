@@ -1,9 +1,11 @@
+/** 计算横向滚动所需的最小列信息，支持嵌套表头。 */
 export interface TableColumnLike {
   children?: TableColumnLike[];
   minWidth?: number | string;
   width?: number | string;
 }
 
+/** 表格宽度预算，数值均按 CSS 像素估算。 */
 export interface BuildTableScrollXOptions {
   defaultColumnWidth?: number;
   extraWidth?: number;
@@ -11,15 +13,18 @@ export interface BuildTableScrollXOptions {
   selectionWidth?: number;
 }
 
+/** 操作标签为空或为 false 时不占显示宽度。 */
 export type TableActionText = false | null | string | undefined;
 
 
+/** 操作是否显示及是否内联的宽度提示，不包含操作授权逻辑。 */
 export interface TableActionWidthLike {
   inline?: boolean;
   label?: TableActionText;
   visible?: boolean;
 }
 
+/** 将折叠菜单规则纳入操作列宽度估算。 */
 export interface EstimateVisibleActionColumnWidthOptions extends EstimateActionColumnWidthOptions {
   explicitInline?: boolean;
   inlineBeforeMore?: number;
@@ -27,6 +32,7 @@ export interface EstimateVisibleActionColumnWidthOptions extends EstimateActionC
   moreLabel?: string;
 }
 
+/** 按钮文本、间距和安全余量的像素估算参数，不进行真实 DOM 测量。 */
 export interface EstimateActionColumnWidthOptions {
   charWidth?: number;
   gapWidth?: number;
@@ -85,6 +91,7 @@ function resolveColumnWidth(column: TableColumnLike, fallbackWidth: number): num
   return fallbackWidth;
 }
 
+/** 累加列宽、选择列与余量，返回不低于最小值的横向滚动宽度。 */
 export function buildTableScrollX(
   columns: TableColumnLike[],
   options: BuildTableScrollXOptions = {},
@@ -125,6 +132,7 @@ function estimateActionTextWidth(text: string, charWidth: number) {
   }, 0);
 }
 
+/** 按各行可见标签估算按钮总宽度，取最宽值并限制到允许范围。 */
 export function estimateActionColumnWidth(
   actionRows: TableActionText[] | TableActionText[][],
   options: EstimateActionColumnWidthOptions = {},
@@ -206,6 +214,7 @@ function collapseActionRow(
   return [...labels.slice(0, inlineBeforeMore), moreLabel];
 }
 
+/** 先按内联或更多菜单规则折叠动作，再估算实际显示列宽。 */
 export function estimateVisibleActionColumnWidth(
   actionRows: (TableActionText | TableActionWidthLike)[] | (TableActionText | TableActionWidthLike)[][],
   options: EstimateVisibleActionColumnWidthOptions = {},

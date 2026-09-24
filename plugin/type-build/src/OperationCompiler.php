@@ -370,11 +370,13 @@ final class OperationCompiler
         foreach (array_keys($files) as $file) {
             try {
                 $resolver = new NameResolver();
-                $capture = new class ($resolver) extends \PhpParser\NodeVisitorAbstract {
+                $capture = new /** 构建期捕获各类声明处的名称语境，不执行业务类。 */ class ($resolver) extends \PhpParser\NodeVisitorAbstract {
+                    /** 共享同一遍历中的名称解析器，以保留 use 别名和命名空间。 */
                     public function __construct(private NameResolver $resolver)
                     {
                     }
 
+                    /** 在类声明处保存名称语境快照，不替换 PHP 语法节点。 */
                     public function enterNode(Node $node): ?Node
                     {
                         if ($node instanceof Node\Stmt\ClassLike) {

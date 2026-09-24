@@ -27,6 +27,7 @@ use Type\Runtime\ExecutionScope;
 /** 三库与独立 AOT 消费者共用的集合写入、读取组合和提交后事务回归。 */
 final class MutationExercise
 {
+    /** 在专属三库表验证完整集合写入、租户与软删除约束、算术回滚和关系加载身份。 */
     public static function run(ExecutionScope $scope): void
     {
         $connection = Db::connection('default', true);
@@ -314,6 +315,11 @@ final class MutationExercise
 /** 手写映射回归，证明相同属性名不能代替完整映射身份。 */
 final class MappingProbe extends Model
 {
+    /**
+     * 以指定映射水合探针模型，验证同表同字段名也不能混用不同映射。
+     *
+     * @param array<string, mixed> $row 已读取数据库字段。
+     */
     public function __construct(ModelDefinition $definition, array $row)
     {
         parent::__construct($definition, $row, true);

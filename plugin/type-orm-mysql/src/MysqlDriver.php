@@ -9,6 +9,7 @@ use PDOException;
 use Type\Orm\DatabaseException;
 use Type\Orm\Driver;
 
+/** MySQL 驱动配置与会话初始化；连接生命周期交由 ORM 资源池管理。 */
 final class MysqlDriver implements Driver
 {
     private string $host;
@@ -21,6 +22,14 @@ final class MysqlDriver implements Driver
     private ?string $caFile;
     private string $caHash;
 
+    /**
+     * 保存端点配置并验证连接身份，不在构造阶段建立数据库连接。
+     *
+     * 会话使用 utf8mb4、UTC 与严格模式；CA 非空时要求 TLS。
+     * role 为 writer 或 reader；generation 用于凭据/配置轮换，不代表业务数据版本。
+     *
+     * @throws DatabaseException 地址、角色、代次或文件配置无效。
+     */
     public function __construct(
         string $host,
         int $port,
@@ -46,6 +55,7 @@ final class MysqlDriver implements Driver
         $this->caHash = $caFile === null ? '' : hash_file('sha256', $caFile);
     }
 
+    /** 返回 MySQL 对应的固定方言名称。 */
     public function name(): string
     {
         return 'mysql';
@@ -57,6 +67,11 @@ final class MysqlDriver implements Driver
         return false;
     }
 
+    /**
+     * 返回当前端点与会话策略身份，供池隔离及凭据代次核对。
+     *
+     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码。
+     */
     public function identity(): array
     {
         return ['driver' => 'mysql', 'endpoint' => $this->host . ':' . $this->port, 'database' => $this->database,
@@ -65,6 +80,12 @@ final class MysqlDriver implements Driver
             'session' => ['timezone' => '+00:00', 'strict' => true]];
     }
 
+    /**
+     * 创建新 PDO 并确认驱动要求的会话基线；失败向上抛出，不回退到其他数据库。
+     *
+     * @return PDO 由调用者或受管 PdoSession 拥有的真实连接。
+     * @throws DatabaseException 扩展、连接或会话初始化不满足约定。
+     */
     public function connect(): PDO
     {
         if (!extension_loaded('pdo_mysql')) {

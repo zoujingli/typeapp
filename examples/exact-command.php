@@ -9,6 +9,11 @@ use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\Drivers;
 use TypeApp\ModelExample\Invoice;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function exactExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -16,6 +21,11 @@ function exactExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 验证精确数值、UTC 微秒、部分字段及 null 的三库保存语义。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {

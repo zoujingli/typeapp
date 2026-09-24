@@ -12,6 +12,11 @@ use Type\Orm\ModelException;
 /** CLI 与 HTTP 共用的事务验收路径，结束时只移除本次创建的记录。 */
 final class TransactionExercise
 {
+    /**
+     * 验证嵌套事务中的模型对象状态与回滚失效，保留外层可继续执行的边界。
+     *
+     * @return array<string, mixed> 实际观察到的事务结果。
+     */
     public static function verify(Connection $connection): array
     {
         $before = User::query()->count();

@@ -9,11 +9,18 @@ use Type\Orm\DatabaseException;
 use Type\Orm\Migration\Migration;
 use Type\Orm\SqlDialect;
 
+/** 业务事务中的消息意图及投递凭据；未知效果保留对账，不承诺跨系统原子事务。 */
 final class Store
 {
     private string $table;
     private int $leaseMilliseconds;
     private int $retentionSeconds;
+    /**
+     * 声明 Outbox 表与保留策略，构造不执行建表。
+     *
+     * @param int $leaseMilliseconds 领取租约毫秒数，范围 10 至 3600000。
+     * @param int $retentionSeconds 发布后重放窗口秒数，范围 1 至 31536000。
+     */
     public function __construct(string $table = 'type_outbox', int $leaseMilliseconds = 30000, int $retentionSeconds = 604800)
     {
         if (!preg_match('/^[a-z][a-z0-9_]{0,47}$/D', $table) || $leaseMilliseconds < 10 || $leaseMilliseconds > 3600000
@@ -25,6 +32,7 @@ final class Store
         $this->retentionSeconds = $retentionSeconds;
     }
 
+    /** 返回建表迁移供应用加入完整计划，不直接修改数据库。 */
     public function migration(string $driver, string $version): Migration
     {
         if (!in_array($driver, ['mysql', 'pgsql', 'sqlite'], true)) {
@@ -39,6 +47,12 @@ final class Store
         ], $driver !== 'mysql');
     }
 
+    /**
+     * 在业务同一事务登记意图；同 ID 同内容返回 false，不同内容拒绝。
+     *
+     * @param array<array-key, mixed> $payload 仅允许有限 JSON 数据。
+     * @param array<string, string> $context 显式上下文，连同载荷最多 60000 字节。
+     */
     public function enqueue(Connection $connection, string $id, string $topic, int $version, array $payload, array $context = []): bool
     {
         if ($connection->transactionDepth() === 0) {
@@ -71,6 +85,12 @@ final class Store
         return true;
     }
 
+    /**
+     * 在专属短事务领取待投递或租约过期记录，递增次数并生成新 token。
+     *
+     * @param int $limit 1 至 1000 条。
+     * @return list<Record>
+     */
     public function claim(Connection $connection, int $limit = 100): array
     {
         $this->limit($limit);
@@ -97,6 +117,7 @@ final class Store
         }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
     }
 
+    /** 在事务外以有效 token 和未过期租约登记实际接受凭据，失去领取权返回 false。 */
     public function accepted(Connection $connection, Record $record, string $receipt): bool
     {
         if ($connection->transactionDepth() !== 0 || $receipt === '' || strlen($receipt) > 2000) {
@@ -107,6 +128,7 @@ final class Store
             ->update(['state' => 'published', 'accepted_receipt' => $receipt, 'published_at' => $now, 'lease_until' => 0, 'token' => '']) === 1;
     }
 
+    /** 把消费凭据与业务效果放在同一活动事务登记，已有凭据返回 false。 */
     public function consumed(Connection $connection, string $id, string $receipt): bool
     {
         if ($connection->transactionDepth() === 0 || $receipt === '' || strlen($receipt) > 2000) {
@@ -115,11 +137,17 @@ final class Store
         return $connection->table($this->table)->where('id', '=', $id)->whereNull('consumed_receipt')->update(['consumed_receipt' => $receipt, 'consumed_at' => $this->now($connection)]) === 1;
     }
 
+    /**
+     * 按稳定消息 ID 读取现状及凭据；缺失返回 null。
+     *
+     * @return array<string, mixed>|null
+     */
     public function status(Connection $connection, string $id): ?array
     {
         return $connection->table($this->table)->where('id', '=', $id)->first();
     }
 
+    /** 凭人工说明重放保留期内的已发布记录，保留原消息 ID 供目标幂等。 */
     public function replay(Connection $connection, string $id, string $reason): bool
     {
         if (trim($reason) === '' || strlen($reason) > 2000) {

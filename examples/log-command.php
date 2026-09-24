@@ -7,6 +7,11 @@ use Type\Log\LogManager;
 use Type\Log\Output;
 use Type\Runtime\ExecutionScope;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function logExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -14,6 +19,11 @@ function logExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 以命令作用域验证 PSR-3、级别过滤与关联身份，结束时关闭日志资源。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $output = Output::stdout();

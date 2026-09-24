@@ -7,6 +7,7 @@ namespace Type\Queue;
 use Type\Redis\RedisConnection;
 use Type\Redis\ScriptGuard;
 
+/** Redis Streams 队列及租约协议；容量包含待处理、延迟和隔离记录，不裁剪未确认消息。 */
 final class Queue
 {
     private RedisConnection $redis;
@@ -16,6 +17,14 @@ final class Queue
     private int $capacity;
     private int $retention;
     private array $counts = ['publish_rejected' => 0, 'storage_failures' => 0, 'lease_rejected' => 0];
+    /**
+     * 绑定稳定应用/队列命名空间和借用的 script 连接，不接管连接关闭责任。
+     *
+     * @param int $leaseMilliseconds 单次领取租约，10 至 3600000 毫秒。
+     * @param int $capacity 全部在库消息容量，1 至 1000000 条。
+     * @param int $retentionSeconds 隔离记录保留期，1 至 31536000 秒。
+     * @throws QueueException 身份或容量配置无效。
+     */
     public function __construct(RedisConnection $redis, string $application, string $name = 'default', int $leaseMilliseconds = 30000, int $capacity = 10000, int $retentionSeconds = 604800)
     {
         if ($application === '' || !preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $name) || $leaseMilliseconds < 10 || $leaseMilliseconds > 3600000
@@ -30,6 +39,12 @@ final class Queue
         $this->retention = $retentionSeconds;
     }
 
+    /**
+     * 在容量允许时原子追加消息；可选 guard 与投递须使用同一 RedisConnection。
+     *
+     * @return string Redis Stream 投递标识；不同于业务消息 ID。
+     * @throws QueueException 回执格式未知，需核对实际入库，不能盲目重新投递。
+     */
     public function publish(Message $message, ?ScriptGuard $guard = null): string
     {
         $encoded = $message->encode();
@@ -52,11 +67,19 @@ LUA;
         return $receipt;
     }
 
+    /** 返回应用与队列名派生的 Redis 键前缀，保持滚动升级中的命名空间。 */
     public function identity(): string
     {
         return $this->root;
     }
 
+    /**
+     * 保存延迟消息，到期后由 promote() 转入 Stream；0 毫秒直接投递。
+     *
+     * @param int $delayMilliseconds 0 至 31536000000 毫秒。
+     * @return string 延迟记录标识，或零延迟时的 Stream 标识。
+     * @throws QueueException 延迟超出范围。
+     */
     public function publishDelayed(Message $message, int $delayMilliseconds): string
     {
         if ($delayMilliseconds < 0 || $delayMilliseconds > 31536000000) {
@@ -84,6 +107,12 @@ LUA;
         }
     }
 
+    /**
+     * 按 Redis 时间原子转移已到期消息，不改变稳定消息 ID。
+     *
+     * @param int $limit 单次最多转移 1 至 1000 条。
+     * @return int 实际转入 Stream 的记录数量。
+     */
     public function promote(int $limit = 100): int
     {
         $this->limit($limit);
@@ -100,6 +129,12 @@ LUA;
         return (int) $this->script($script, [$this->root . ':delayed', $this->root . ':delayed-data', $this->root . ':stream'], [$limit]);
     }
 
+    /**
+     * 非阻塞地领取一条新投递并原子登记持有者凭据与租期。
+     *
+     * @return Reservation|null 无可领取消息时返回 null。
+     * @throws QueueException 消费者非法、返回协议错误或非法消息已隔离。
+     */
     public function reserve(string $consumer): ?Reservation
     {
         if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/D', $consumer)) {
@@ -119,6 +154,11 @@ LUA;
         return $this->reservation($result, $consumer, $token);
     }
 
+    /**
+     * 从有限待处理窗口接管租期到期的旧投递；存活旧持有者会被 token 拒绝。
+     *
+     * @return Reservation|null 本次窗口没有可接管投递时返回 null。
+     */
     public function reclaim(string $consumer): ?Reservation
     {
         if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/D', $consumer)) {
@@ -176,16 +216,31 @@ LUA;
         return new Reservation($this, (string) $result[0], $consumer, $token, $message, $attempt + (int) $result[2] - 1, $enqueuedAt, max(0, (int) $result[3] - $enqueuedAt));
     }
 
+    /**
+     * 在 Redis 中核对本次投递的消费组归属、token 与租期。
+     *
+     * @internal
+     */
     public function owns(Reservation $reservation): bool
     {
         return $this->verify($reservation, 'check');
     }
 
+    /**
+     * 持有权有效时原子确认、删除投递并清除租约；失效返回 false。
+     *
+     * @internal
+     */
     public function acknowledge(Reservation $reservation): bool
     {
         return $this->verify($reservation, 'ack');
     }
 
+    /**
+     * 仅为服务端仍认可的持有者刷新租期；失效返回 false。
+     *
+     * @internal
+     */
     public function renew(Reservation $reservation): bool
     {
         return $this->verify($reservation, 'renew');
@@ -217,6 +272,11 @@ LUA;
         return $result[1] ?? null;
     }
 
+    /**
+     * 读取一份 Redis 队列统计并附加当前实例错误计数；不把读取失败当作零积压。
+     *
+     * @return array<string, int> 条数、容量、消息年龄毫秒及本地累计计数。
+     */
     public function statistics(): array
     {
         $result = $this->script(
@@ -231,11 +291,21 @@ LUA,
             'capacity' => $this->capacity, 'backlog' => (int) $result[0] + (int) $result[2], 'oldest_stream_age_ms' => (int) $result[4]] + $this->counts;
     }
 
+    /**
+     * 仅读取当前实例累计失败计数，不发起 Redis 请求。
+     *
+     * @return array{publish_rejected: int, storage_failures: int, lease_rejected: int}
+     */
     public function counters(): array
     {
         return $this->counts;
     }
 
+    /**
+     * 在同一脚本中验证持有权并转移失败消息；null 延迟表示隔离。
+     *
+     * @internal
+     */
     public function fail(Reservation $reservation, string $reason, ?int $delayMilliseconds): bool
     {
         return $this->transfer(
@@ -272,6 +342,12 @@ LUA;
         ) === 1;
     }
 
+    /**
+     * 读取尚在保留期内的隔离记录，不删除或重放消息。
+     *
+     * @param int $limit 返回 1 至 1000 条。
+     * @return list<array{receipt: string, message: string, attempt: int, reason: string, due: int, enqueued_at: int}> due 为保留截止的 Unix 毫秒。
+     */
     public function quarantined(int $limit = 100): array
     {
         $this->limit($limit);
@@ -286,6 +362,12 @@ LUA;
         return $result;
     }
 
+    /**
+     * 显式重放仍在保留期内的隔离记录，保留业务消息 ID 并将尝试次数重置为 1。
+     *
+     * @return string 新 Stream 投递标识。
+     * @throws QueueException 标识非法、记录缺失或已过保留期。
+     */
     public function replay(string $receipt): string
     {
         if (!preg_match('/^[0-9]+-[0-9]+$/D', $receipt)) {
@@ -304,6 +386,12 @@ LUA;
         return $result;
     }
 
+    /**
+     * 按 Redis 时间有界删除已过保留期的隔离记录，不删除待处理消息。
+     *
+     * @param int $limit 单次最多删除 1 至 1000 条。
+     * @return int 实际删除条数。
+     */
     public function collect(int $limit = 100): int
     {
         $this->limit($limit);

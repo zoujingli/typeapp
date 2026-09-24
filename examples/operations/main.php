@@ -19,6 +19,11 @@ use TypeApp\Operations\UserOperations;
 use TypeApp\Operations\UserService;
 use TypeApp\ModelExample\Drivers;
 
+/**
+ * 将生成服务组合入口的断言失败转为明确异常。
+ *
+ * @throws RuntimeException 断言不成立。
+ */
 function operationsAssert(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -42,6 +47,11 @@ function operationsUnknown(UserOperations $operations, TypedCache $cache): void
     echo json_encode(['outcome' => $outcome, 'cached' => $cached, 'calls' => $operations->changes()], JSON_THROW_ON_ERROR) . "\n";
 }
 
+/**
+ * 在专属三库与 Redis 验证生成的事务、缓存与提交后失效操作。
+ *
+ * @param list<string> $argv 程序路径与数据库驱动参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {

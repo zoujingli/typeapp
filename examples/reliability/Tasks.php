@@ -13,15 +13,22 @@ use Type\Scheduler\Scheduler;
 use Type\Scheduler\Task;
 use Type\Scheduler\TaskContext;
 
+/** 以受管 Redis 效果观察队列持久恢复、延迟和不合作任务停止。 */
 final class DurableJob implements Job
 {
     private string $key;
     private string $mode;
+    /** 选择专属效果键和延迟故障模式，不在构造时获取租约。 */
     public function __construct(string $key, string $mode = 'normal')
     {
         $this->key = $key;
         $this->mode = $mode;
     }
+    /**
+     * 记录开始事实后按模式等待，在有效检查点处理消息效果。
+     *
+     * @param array<array-key, mixed> $payload 演练消息数据。
+     */
     public function handle(JobContext $context, array $payload): void
     {
         $context->reservation()->effect("return redis.call('SET',KEYS[1],'yes')", [$this->key . ':started']);
@@ -42,15 +49,22 @@ LUA, [$this->key . ':done', $this->key . ':count'], [$context->message()->id()])
     }
 }
 
+/** 在调度租约保护下修改持久计数，供 Redis 重启后核对游标与效果。 */
 final class DurableSchedule implements Task
 {
     private RedisConnection $redis;
     private string $key;
+    /** 借用与调度状态同一目标的 Redis 连接和独立计数键。 */
     public function __construct(RedisConnection $redis, string $key)
     {
         $this->redis = $redis;
         $this->key = $key;
     }
+    /**
+     * 要求支持原子脚本的调度租约，再完成一次有保护的计数。
+     *
+     * @return array<string, mixed> 本次效果与计划摘要。
+     */
     public function run(TaskContext $context): array
     {
         $guard = $context->lease();
@@ -69,19 +83,31 @@ final class StoppingSchedule implements Task
     private array $stopping = [];
     private string $deadlineError = '';
 
+    /** 绑定当前调度器，供任务内部触发受控停止，不接管其资源。 */
     public function attach(Scheduler $scheduler): void
     {
         $this->scheduler = $scheduler;
     }
+    /**
+     * 读取停止瞬间的生命周期快照。
+     *
+     * @return array<string, mixed>
+     */
     public function stopping(): array
     {
         return $this->stopping;
     }
+    /** 返回停止缩短截止后捕获到的错误标识。 */
     public function deadlineError(): string
     {
         return $this->deadlineError;
     }
 
+    /**
+     * 在任务内部触发短预算停止，并验证当前上下文的后续有效性。
+     *
+     * @return array<string, mixed> 停止与截止观察结果。
+     */
     public function run(TaskContext $context): array
     {
         if ($this->scheduler === null) {

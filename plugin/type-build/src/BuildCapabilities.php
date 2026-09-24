@@ -6,8 +6,15 @@ namespace Type\Build;
 
 use RuntimeException;
 
+/** 合并应用与生产组件的协议能力声明，给发布兼容检查提供显式输入。 */
 final class BuildCapabilities
 {
+    /**
+     * 校验并合并数据库、消息和缓存版本集合，相同名称的冲突声明直接失败。
+     * @param array<string, mixed> $settings 应用构建配置。
+     * @param array<string, array<string, mixed>> $packages 已选中的生产包元数据。
+     * @return array<string, array<string, list<int>>>
+     */
     public function collect(array $settings, array $packages): array
     {
         $declarations = [$settings['capabilities'] ?? []];

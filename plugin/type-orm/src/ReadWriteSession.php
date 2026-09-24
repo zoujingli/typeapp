@@ -18,6 +18,7 @@ final class ReadWriteSession
     private ?Connection $replica = null;
     private string $outcome = TransactionOutcome::NOT_STARTED;
 
+    /** 绑定当前作用域及同逻辑库的主从名称，配置验证不借用物理连接。 */
     public function __construct(DatabaseManager $manager, ExecutionScope $scope, string $primary = 'primary', ?string $replica = 'replica')
     {
         $writer = $manager->identity($primary);
@@ -32,6 +33,7 @@ final class ReadWriteSession
         $this->replicaName = $replica;
     }
 
+    /** 事务内或 strong=true 选择主库，其余选择已配置的从库；从库失败不静默转投。 */
     public function read(bool $strong = false): Connection
     {
         $this->scope->assertActive();
@@ -50,6 +52,7 @@ final class ReadWriteSession
         return $this->replica;
     }
 
+    /** 取得当前作用域的主库租约；先前结果 UNKNOWN 时拒绝继续业务写入。 */
     public function write(): Connection
     {
         $this->scope->assertActive();
@@ -85,6 +88,7 @@ final class ReadWriteSession
         return $this->primary();
     }
 
+    /** 读取并保留已观察到的 UNKNOWN；显式对账不会抹去该事实。 */
     public function outcome(): string
     {
         if ($this->outcome !== TransactionOutcome::UNKNOWN && $this->primary !== null) {
@@ -93,6 +97,7 @@ final class ReadWriteSession
         return $this->outcome;
     }
 
+    /** 检查本作用域主库是否处于活动事务，不因普通写入改变后续读路由。 */
     public function inTransaction(): bool
     {
         $this->scope->assertActive();

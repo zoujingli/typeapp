@@ -18,6 +18,10 @@ final class HttpControl
     private int $cleanupFailures = 0;
     private int $completed = 0;
     private int $peak = 0;
+    /**
+     * 为一个 HTTP 宿主设定请求、连接和子任务上限；所有时间预算均以秒表示。
+     * @throws \InvalidArgumentException 并发上限或业务、排空、清理预算不一致。
+     */
     public function __construct(
         public readonly int $maximumRequests = 64,
         public readonly int $maximumConnections = 256,
@@ -34,6 +38,7 @@ final class HttpControl
             throw new \InvalidArgumentException('HTTP 并发、截止或排空预算无效');
         }
     }
+    /** 为本次请求保留额度并建立作用域，满载或停止接单时返回 null。 */
     public function begin(): ?ExecutionScope
     {
         $this->reap();
@@ -46,6 +51,7 @@ final class HttpControl
         $this->peak = max($this->peak, count($this->scopes));
         return $scope;
     }
+    /** 发送及作用域收尾后登记结果；未完全关闭的作用域继续占额并撤销就绪。 */
     public function finish(ExecutionScope $scope, bool $cleanupFailed): void
     {
         $id = spl_object_id($scope);
@@ -60,6 +66,7 @@ final class HttpControl
             $this->accepting = false;
         }
     }
+    /** 停止接单并缩短全部在途作用域的截止，重复调用不会延长排空期。 */
     public function stop(): void
     {
         $this->accepting = false;
@@ -69,14 +76,20 @@ final class HttpControl
             $scope->limitCleanup($this->drain);
         }
     }
+    /** 当前仍接单且有请求额度时返回 true，不替代外部依赖健康检查。 */
     public function ready(): bool
     {
         return $this->accepting && count($this->scopes) < $this->maximumRequests;
     }
+    /** 读取停止接单状态，true 不代表请求已经排空。 */
     public function stopping(): bool
     {
         return !$this->accepting;
     }
+    /**
+     * 生成已启用的 /readyz 或 /livez 探针；其他情况返回 null。
+     * @return array{status: int, body: array<string, bool>}|null
+     */
     public function probe(string $path): ?array
     {
         if (!$this->probes || !in_array($path, ['/readyz', '/livez'], true)) {
@@ -85,16 +98,22 @@ final class HttpControl
         return ['status' => $path === '/livez' || $this->ready() ? 200 : 503,
             'body' => $path === '/livez' ? ['live' => true] : ['ready' => $this->ready()]];
     }
+    /** 检查隔离清理或排空超期是否需要宿主终止；此方法本身不杀进程。 */
     public function mustTerminate(): bool
     {
         $this->reap();
         return $this->quarantined !== [] || ($this->drain !== null && $this->drain->expired() && $this->scopes !== []);
     }
+    /** 刷新延迟收尾后检查是否已停止接单且没有在途请求。 */
     public function drained(): bool
     {
         $this->reap();
         return !$this->accepting && $this->scopes === [];
     }
+    /**
+     * 返回当前宿主的请求与清理统计，隔离资源仍计入 in_flight。
+     * @return array<string, int|bool>
+     */
     public function statistics(): array
     {
         $this->reap();

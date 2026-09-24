@@ -17,8 +17,10 @@ use Type\Validate\Input;
 use Type\Validate\Schema;
 use Type\Validate\ValidationException;
 
+/** 只接受经请求策略规范化与认证的输入，展示可相信的请求身份。 */
 final class Endpoint implements RequestHandlerInterface
 {
+    /** 验证规范请求与身份对象已经就绪，再返回允许观察的字段。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $canonical = $request->getAttribute('type.request');

@@ -10,6 +10,7 @@ use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Orm\Sqlite\SqliteDriver;
 
+/** 为独立模型示例选择数据库实现，生产应用应使用自己的配置装配。 */
 final class Drivers
 {
     /** 为受控示例选择驱动；可显式指定独立数据库及读写用途，默认保留现有测试环境。 */

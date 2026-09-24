@@ -2,11 +2,21 @@
 
 declare(strict_types=1);
 
+/**
+ * 发送并读取一次独立 HTTP 请求，返回状态、正文和小写响应头，连接在读取后关闭。
+ *
+ * @return array{int, string, string}
+ */
 function httpRequest(int $port, string $method, string $path, string $marker = '', string $body = ''): array
 {
     return receiveHttp(sendHttp($port, $method, $path, $marker, $body));
 }
 
+/**
+ * 发送带测试标记的 JSON 请求，保留连接用于并发观察；调用方须交给 receiveHttp 读取并关闭。
+ *
+ * @return resource
+ */
 function sendHttp(int $port, string $method, string $path, string $marker = '', string $body = '')
 {
     $connection = stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 3);
@@ -18,6 +28,12 @@ function sendHttp(int $port, string $method, string $path, string $marker = '', 
     return $connection;
 }
 
+/**
+ * 读取 HTTP 响应并解码 chunked 正文，返回状态及原始头文本；成功或失败均关闭传入连接。
+ *
+ * @param resource $connection 所有权在调用时转入本函数。
+ * @return array{int, string, string} 状态码、正文、小写响应头。
+ */
 function receiveHttp($connection): array
 {
     try {

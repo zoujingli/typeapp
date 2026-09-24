@@ -6,6 +6,7 @@ namespace Type\Orm;
 
 use InvalidArgumentException;
 
+/** 模型的静态数据库映射；负责字段、生命周期、租户和实际存储一致性。 */
 final class ModelDefinition
 {
     private string $table;
@@ -15,6 +16,13 @@ final class ModelDefinition
     private ?string $softDelete;
     private ?string $version;
 
+    /**
+     * 固定字段与关系映射，并检查租户、版本和软删除声明之间的约束。
+     *
+     * @param array<string, ModelField> $fields 模型属性名到字段策略。
+     * @param array<string, RelationDefinition> $relations 模型属性名到关系策略。
+     * @param class-string<Model>|string $modelClass 生成模型的稳定类身份，底层手工映射可为空。
+     */
     public function __construct(string $table, string $key, array $fields, bool $generatedKey = true, ?string $softDelete = null, ?string $version = null, private array $relations = [], private string $database = 'default', private ?string $tenant = null, private string $modelClass = '')
     {
         if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/D', $table) || !isset($fields[$key])
@@ -62,15 +70,18 @@ final class ModelDefinition
         }
     }
 
+    /** 返回映射的真实表名，不接受运行时任意切换表。 */
     public function table(): string
     {
         return $this->table;
     }
+    /** 返回逻辑数据源名称，由 Db 在当前作用域选路。 */
     public function database(): string
     {
         return $this->database;
     }
 
+    /** 返回租户模型属性名；null 表示该模型未声明租户范围。 */
     public function tenantField(): ?string
     {
         return $this->tenant;
@@ -88,22 +99,31 @@ final class ModelDefinition
         }
         return $this->field($this->tenant)->normalize($value, true);
     }
+    /** 返回模型主键属性名，与真实数据库列名可能不同。 */
     public function key(): string
     {
         return $this->key;
     }
+    /** 表示插入时是否允许由数据库生成主键。 */
     public function generatedKey(): bool
     {
         return $this->generatedKey;
     }
+    /** 返回受管软删除时间属性；null 表示默认执行物理删除。 */
     public function softDeleteField(): ?string
     {
         return $this->softDelete;
     }
+    /** 返回受管乐观锁属性；null 表示没有模型版本比较。 */
     public function versionField(): ?string
     {
         return $this->version;
     }
+    /**
+     * 按声明顺序列出模型字段，不含关系与计算值。
+     *
+     * @return list<string>
+     */
     public function names(): array
     {
         return array_keys($this->fields);
@@ -135,6 +155,7 @@ final class ModelDefinition
         return $this->relations[$name];
     }
 
+    /** 取得声明字段策略，未知属性以 unknown_field 拒绝。 */
     public function field(string $name): ModelField
     {
         if (!isset($this->fields[$name])) {
@@ -143,6 +164,12 @@ final class ModelDefinition
         return $this->fields[$name];
     }
 
+    /**
+     * 把模型属性投影转换为真实列映射，保留属性名作为结果别名。
+     *
+     * @param list<string> $fields
+     * @return array<string, string>
+     */
     public function columns(array $fields): array
     {
         $columns = [];

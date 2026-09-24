@@ -24,6 +24,7 @@ use Type\Validate\Input;
 /** 监听、I/O 与节点证书路径的校验保存；页面不执行重启，生效观察来自节点上报的加载身份。 */
 final class RuntimeController
 {
+    /** 保存请求处理所需的数据库、身份服务和响应工厂；连接在请求作用域中借用。 */
     public function __construct(private DatabaseManager $database, private IdentityService $identities, private Factory $messages)
     {
     }
@@ -126,6 +127,7 @@ final class RuntimeController
         }
     }
 
+    /** 核对写权限后重试运行配置版本，并记录审计；成功响应不代表全部节点已生效。 */
     #[Route('/broker/runtime/revisions/{id}/retry', methods: ['POST'], name: 'broker.runtime-retry', middleware: ['broker.auth'])]
     #[Route('/admin/broker/runtime/revisions/{id}/retry', methods: ['POST'], name: 'admin.broker-runtime-retry', middleware: ['admin.auth'])]
     #[Route('/customer/tenants/{tenant}/broker/runtime/revisions/{id}/retry', methods: ['POST'], name: 'customer.broker-runtime-retry', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}'])]
@@ -136,6 +138,7 @@ final class RuntimeController
         });
     }
 
+    /** 将获授权的回退交给运行配置服务并审计，不在 HTTP 请求中重启节点。 */
     #[Route('/broker/runtime/revisions/{id}/rollback', methods: ['POST'], name: 'broker.runtime-rollback', middleware: ['broker.auth'])]
     #[Route('/admin/broker/runtime/revisions/{id}/rollback', methods: ['POST'], name: 'admin.broker-runtime-rollback', middleware: ['admin.auth'])]
     #[Route('/customer/tenants/{tenant}/broker/runtime/revisions/{id}/rollback', methods: ['POST'], name: 'customer.broker-runtime-rollback', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}'])]

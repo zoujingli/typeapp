@@ -15,11 +15,16 @@ final class WorkLifecycle
     private ?Deadline $drain = null;
     private int $rejected = 0;
 
+    /** 绑定当前进程的单工作角色；fork 后应在新进程重新创建。 */
     public function __construct()
     {
         $this->process = (int) getmypid();
     }
 
+    /**
+     * 占用唯一在途位置；停止接单后返回 false，不继续预取。
+     * @throws TaskException 当前角色已有未完成工作或在另一进程使用。
+     */
     public function begin(): bool
     {
         $this->assertProcess();
@@ -35,6 +40,7 @@ final class WorkLifecycle
         return true;
     }
 
+    /** 将本次工作绑定到其资源作用域，并继承已开始的排空截止。 */
     public function attach(ExecutionScope $scope): void
     {
         $this->assertProcess();
@@ -52,6 +58,7 @@ final class WorkLifecycle
         }
     }
 
+    /** 作用域完整关闭后归还工作位置；尚未收尾时停止接单并保留所有权。 */
     public function finish(): void
     {
         $this->assertProcess();
@@ -65,6 +72,10 @@ final class WorkLifecycle
         $this->cleanupPending = false;
     }
 
+    /**
+     * 撤销就绪并限制在途工作的剩余排空秒数，重复调用只会缩短预算。
+     * @throws \InvalidArgumentException 秒数不在 0 至 60 范围内或不是有限值。
+     */
     public function stop(float $seconds = 5.0): void
     {
         $this->assertProcess();
@@ -84,11 +95,16 @@ final class WorkLifecycle
         }
     }
 
+    /** 当前进程是否仍允许接收新工作；不表示当前在途位置为空。 */
     public function ready(): bool
     {
         $this->assertProcess();
         return $this->ready;
     }
+    /**
+     * 刷新已完成的延迟清理，并返回角色状态与单工作额度。
+     * @return array{ready: bool, state: string, in_flight: int, execution_limit: int, prefetch_limit: int, rejected: int, drain_expired: bool}
+     */
     public function statistics(): array
     {
         $this->assertProcess();

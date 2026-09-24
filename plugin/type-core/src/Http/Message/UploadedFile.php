@@ -9,6 +9,7 @@ use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UploadedFileInterface;
 use RuntimeException;
 
+/** PSR-7 上传内容及客户端元数据，成功移动后禁止再次读取或移动。 */
 final class UploadedFile implements UploadedFileInterface
 {
     private StreamInterface $stream;
@@ -18,6 +19,11 @@ final class UploadedFile implements UploadedFileInterface
     private ?string $mediaType;
     private bool $moved = false;
 
+    /**
+     * 验证上传错误码和可读性；size 以字节计，null 尝试从流读取大小。
+     * @param string|null $filename 客户端声明名称，不能直接作为可信存储路径。
+     * @param string|null $mediaType 客户端声明媒体类型，不能替代内容检查。
+     */
     public function __construct(
         StreamInterface $stream,
         ?int $size = null,
@@ -37,12 +43,17 @@ final class UploadedFile implements UploadedFileInterface
         $this->mediaType = $mediaType;
     }
 
+    /** 返回共享上传流；上传失败或已移动时抛出 RuntimeException。 */
     public function getStream(): StreamInterface
     {
         $this->assertAvailable();
         return $this->stream;
     }
 
+    /**
+     * 把内容移至本地目标并关闭原流；目标目录由调用方准备，失败由调用方处理。
+     * @throws RuntimeException 内容复制、移动、源清理或关闭失败；异常时需核对目标是否已生成。
+     */
     public function moveTo(string $targetPath): void
     {
         $this->assertAvailable();
@@ -119,21 +130,25 @@ final class UploadedFile implements UploadedFileInterface
         }
     }
 
+    /** 返回构造时声明或观测的字节大小，未知时为 null。 */
     public function getSize(): ?int
     {
         return $this->size;
     }
 
+    /** 返回 PHP UPLOAD_ERR_* 错误码，不把失败上传伪装为空文件。 */
     public function getError(): int
     {
         return $this->error;
     }
 
+    /** 返回未经信任的客户端文件名；不得直接拼接为存储路径。 */
     public function getClientFilename(): ?string
     {
         return $this->filename;
     }
 
+    /** 返回未经信任的客户端媒体类型；文件内容仍由应用独立校验。 */
     public function getClientMediaType(): ?string
     {
         return $this->mediaType;

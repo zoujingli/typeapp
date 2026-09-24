@@ -12,6 +12,11 @@ final class IntervalSchedule implements Schedule
     private int $seconds;
     private int $anchor;
 
+    /**
+     * 设置固定间隔秒数与 Unix UTC 秒锚点，重启不重新计时。
+     *
+     * @throws InvalidArgumentException 间隔不在 1 秒至 366 天，或锚点早于 Unix 纪元。
+     */
     public function __construct(int $seconds, int $anchor = 0)
     {
         if ($seconds < 1 || $seconds > 31622400 || $anchor < 0) {
@@ -21,6 +26,12 @@ final class IntervalSchedule implements Schedule
         $this->anchor = $anchor;
     }
 
+    /**
+     * 选取 (after, through] 内最新的有限计划时刻，再按时间升序返回。
+     *
+     * @return list<int> UTC Unix 秒；空区间或仍早于锚点时返回空列表。
+     * @throws InvalidArgumentException limit 不在 1 至 1000。
+     */
     public function occurrences(int $after, int $through, int $limit): array
     {
         if ($limit < 1 || $limit > 1000) {
@@ -39,6 +50,7 @@ final class IntervalSchedule implements Schedule
         return array_reverse($result);
     }
 
+    /** 返回包含秒数和固定锚点的计划标识，用于执行历史。 */
     public function description(): string
     {
         return 'interval:' . $this->seconds . ':anchor:' . $this->anchor;

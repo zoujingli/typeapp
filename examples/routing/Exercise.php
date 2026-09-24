@@ -13,8 +13,10 @@ use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RouteDefinition;
 use Type\Core\Http\Router;
 
+/** 回显已匹配路由名和参数，供离线 HTTP 消息验证。 */
 final class EchoHandler implements RequestHandlerInterface
 {
+    /** 将路由属性编码为 JSON，不重新解析或猜测路径参数。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $messages = new Factory();
@@ -24,8 +26,10 @@ final class EchoHandler implements RequestHandlerInterface
     }
 }
 
+/** 在进程内验证路由匹配、URL 生成与拒绝路径，不启动网络监听。 */
 final class Exercise
 {
+    /** 构造固定路由并覆盖编码、约束与冲突行为，失败直接抛出。 */
     public static function run(): void
     {
         $messages = new Factory();
@@ -106,6 +110,11 @@ final class Exercise
         self::check($authority, '静态路由允许生成外部 authority URL');
     }
 
+    /**
+     * 把匹配断言失败转为明确异常。
+     *
+     * @throws RuntimeException 断言条件不成立。
+     */
     public static function check(bool $condition, string $message): void
     {
         if (!$condition) {

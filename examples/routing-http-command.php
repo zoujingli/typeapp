@@ -9,6 +9,11 @@ use TypeApp\Generated\Routes;
 use TypeApp\RoutingExample\BooksController;
 use TypeApp\RoutingExample\TraceMiddleware;
 
+/**
+ * 启动生成路由与分层中间件示例，供真实 HTTP 检查匹配和实例隔离。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $port = filter_var(getenv('TYPE_HTTP_PORT') ?: '19502', FILTER_VALIDATE_INT);

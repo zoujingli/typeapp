@@ -144,16 +144,19 @@ final class Repository
         return $result;
     }
 
+    /** 仅展示配置段名称，所有值脱敏，避免调试输出泄露秘密。 */
     public function __debugInfo(): array
     {
         return ['sections' => array_keys($this->values), 'values' => '[REDACTED]'];
     }
 
+    /** @throws RuntimeException 配置快照可能含秘密，禁止序列化保存或转移。 */
     public function __serialize(): array
     {
         throw new RuntimeException('配置快照不允许序列化');
     }
 
+    /** @throws RuntimeException 配置必须由启动声明建立，禁止反序列化恢复。 */
     public function __unserialize(#[\SensitiveParameter] array $data): void
     {
         throw new RuntimeException('配置快照不允许反序列化');

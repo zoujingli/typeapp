@@ -8,6 +8,7 @@ use ReflectionReference;
 use SplObjectStorage;
 use Throwable;
 
+/** 保留 PHP 类型的签名序列化；签名用于完整性校验，不提供数据加密。 */
 final class SignedSerializer
 {
     private string $secret;
@@ -15,6 +16,13 @@ final class SignedSerializer
     private string $policy;
     private int $limit;
 
+    /**
+     * 建立受信类型策略；密钥从运行配置传入，不能写入编译常量。
+     *
+     * @param list<class-string> $classes 已加载的受信对象类型，其序列化钩子属于应用代码。
+     * @param int $maxBytes 含签名头的总载荷字节上限，范围 128 至 16 MiB。
+     * @throws InvalidCacheArgument 密钥少于 32 字节、类型不存在或限制无效。
+     */
     public function __construct(#[\SensitiveParameter] string $secret, array $classes = [], int $maxBytes = 1048576)
     {
         if (strlen($secret) < 32 || $maxBytes < 128 || $maxBytes > 16777216 || !array_is_list($classes)) {
@@ -33,6 +41,7 @@ final class SignedSerializer
         $this->policy = hash('sha256', json_encode($classes, JSON_THROW_ON_ERROR));
     }
 
+    /** 验证受信类型和资源边界后序列化，将命名空间、代次、键及完整载荷绑定到 HMAC。 */
     public function encode(mixed $value, string $namespace, string $generation, string $key): string
     {
         $references = [];
@@ -49,6 +58,11 @@ final class SignedSerializer
         return "TSC1\n" . $this->policy . "\n" . $this->signature($payload, $namespace, $generation, $key) . "\n" . $payload;
     }
 
+    /**
+     * 先校验身份、签名与载荷结构，再调用受信类型的反序列化过程。
+     *
+     * @throws CacheException 载荷过大、被篡改、类型不符或解码失败。
+     */
     public function decode(string $value, string $namespace, string $generation, string $key): mixed
     {
         if (strlen($value) > $this->limit) {

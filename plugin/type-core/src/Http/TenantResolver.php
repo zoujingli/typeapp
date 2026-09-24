@@ -10,6 +10,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
+/** 在认证之后选择固定租户映射，并通过应用授权回调确认访问权限。 */
 final class TenantResolver implements MiddlewareInterface
 {
     private array $tenants = [];
@@ -32,6 +33,10 @@ final class TenantResolver implements MiddlewareInterface
         }
         $this->authorize = $authorize;
     }
+    /**
+     * 消费单值 X-Tenant 头，授权后移除该外来头并设置 type.tenant。
+     * @throws HttpError 身份缺失、租户未知或授权未通过。
+     */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $identity = $request->getAttribute('type.identity');

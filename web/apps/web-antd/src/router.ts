@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { activateRealm, ApiError, isCanceled, loadUser, loginPath, selectTenant, session, sessionExitPath } from './api';
 
+/** 三个身份域共用页面注册；导航守卫负责界面上下文，服务端仍独立执行每次授权。 */
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [

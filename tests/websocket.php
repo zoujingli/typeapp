@@ -37,6 +37,7 @@ function wsFrame(string $payload, int $opcode, bool $fin = true): string
     return $header . $mask . $masked;
 }
 
+/** 借助回环临时监听获取空闲端口；返回前关闭监听，因此端口不被预留。 */
 function wsPort(): int
 {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
@@ -70,6 +71,7 @@ function wsStart(array $options = [], bool $lease = false): array
     return ['process' => $process, 'port' => $port, 'lease' => $marker];
 }
 
+/** 在 10 秒轮询预算内检查进程存活及 TCP/TLS 握手；探测连接立即关闭，不代表业务初始化完成。 */
 function wsReady(Process $process, int $port, string $cafile = ''): void
 {
     $deadline = microtime(true) + 10;
@@ -96,6 +98,11 @@ function wsReady(Process $process, int $port, string $cafile = ''): void
     throw new RuntimeException('WebSocket 服务未就绪：' . $process->stderr());
 }
 
+/**
+ * 创建验证测试 CA 和回环主机名的 TLS 客户端上下文。
+ *
+ * @return resource 供测试连接借用的流上下文。
+ */
 function wsTlsContext(string $cafile, int $crypto = STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT)
 {
     return stream_context_create([
@@ -131,6 +138,7 @@ function wsCertificate(): array
     return ['certificate' => $certificate, 'key' => $private, 'directory' => $directory];
 }
 
+/** 删除本轮拥有的临时目录及其内容，不跟随符号链接；调用者必须先确认目录归属。 */
 function wsCleanup(string $directory): void
 {
     if (!is_dir($directory)) {
@@ -187,6 +195,7 @@ function wsHandshake(int $port, string $path = '/ws', array $headers = [], bool 
     return [$connection, $header, $key];
 }
 
+/** 发送一次独立 HTTP 或 HTTPS 请求，返回原始响应并关闭连接；HTTPS 使用指定测试 CA。 */
 function wsHttp(int $port, string $path, bool $tls = false, string $cafile = ''): string
 {
     if ($tls) {
@@ -210,6 +219,7 @@ function wsHttp(int $port, string $path, bool $tls = false, string $cafile = '')
     return $response;
 }
 
+/** 最多等待 5 秒观察租约文件变为 closed；超时返回最后内容，由调用方断言清理结果。 */
 function wsLease(string $path): string
 {
     $deadline = microtime(true) + 5;
@@ -239,6 +249,11 @@ function wsRejected(int $port, array $headers, bool $tls = false, array $tlsOpti
     }
 }
 
+/**
+ * 构造显式加载所需 mysqlnd 和 Swoole 的测试 PHP 命令，保留数组参数边界。
+ *
+ * @return list<string>
+ */
 function wsPhp(): array
 {
     $directory = (string) ini_get('extension_dir');
@@ -260,6 +275,7 @@ function wsPhp(): array
     return $command;
 }
 
+/** 扩展尚未加载时以明确配置重启测试一次；环境哨兵防止递归重启，并透传子进程退出码。 */
 function wsReexec(): void
 {
     if (getenv('TYPE_WS_REEXEC') === '1' || extension_loaded('swoole')) {

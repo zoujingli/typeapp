@@ -28,6 +28,7 @@ use Type\Validate\Field;
 use Type\Validate\Input;
 use Type\Validate\Schema;
 
+/** 多租户请求的资源隔离示例，串联受信租户、数据库、缓存与执行日志。 */
 final class Endpoint implements RequestHandlerInterface
 {
     private DatabaseManager $databases;
@@ -43,6 +44,7 @@ final class Endpoint implements RequestHandlerInterface
         $this->redis = $redis;
         $this->logs = $logs;
     }
+    /** 拒绝未授权租户资源，再在当前请求作用域内执行业务与隔离检查。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $tenant = $request->getAttribute('type.tenant');
@@ -160,6 +162,7 @@ abstract class TenantValue extends Model
 {
 }
 
+/** 绑定租户甲数据源的具名模型，供跨请求连接隔离回归。 */
 final class AlphaValue extends TenantValue
 {
     /** @param array<string,mixed> $values 当前租户查询得到的字段。 */
@@ -176,6 +179,7 @@ final class AlphaValue extends TenantValue
     }
 }
 
+/** 绑定租户乙数据源的具名模型，与甲使用独立的映射身份。 */
 final class BetaValue extends TenantValue
 {
     /** @param array<string,mixed> $values 当前数据源查询得到的字段。 */

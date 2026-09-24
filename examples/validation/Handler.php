@@ -12,17 +12,20 @@ use Psr\Http\Server\RequestHandlerInterface;
 use Type\Validate\Input;
 use Type\Validate\ValidationException;
 
+/** 将分源校验接入 HTTP，保留内容类型、解析和字段错误的不同状态。 */
 final class Handler implements RequestHandlerInterface
 {
     private ResponseFactoryInterface $responses;
     private StreamFactoryInterface $streams;
 
+    /** 注入 PSR 响应与流工厂，校验规则不依赖 HTTP 运行时全局状态。 */
     public function __construct(ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
     {
         $this->responses = $responses;
         $this->streams = $streams;
     }
 
+    /** 只接受 JSON 内容类型，在预算内解析正文和 query，再输出有效数据或安全字段错误。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         try {

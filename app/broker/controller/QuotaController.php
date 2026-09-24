@@ -129,6 +129,7 @@ final class QuotaController
         }
     }
 
+    /** 核对写权限后重试配额版本，并记录审计；成功响应不代表全部节点已生效。 */
     #[Route('/broker/quotas/revisions/{id}/retry', methods: ['POST'], name: 'broker.quota-retry', middleware: ['broker.auth'])]
     #[Route('/admin/broker/quotas/revisions/{id}/retry', methods: ['POST'], name: 'admin.broker-quota-retry', middleware: ['admin.auth'])]
     #[Route('/customer/tenants/{tenant}/broker/quotas/revisions/{id}/retry', methods: ['POST'], name: 'customer.broker-quota-retry', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}'])]
@@ -139,6 +140,7 @@ final class QuotaController
         });
     }
 
+    /** 将获授权的回退交给配额服务并审计，不在 HTTP 请求中重启节点。 */
     #[Route('/broker/quotas/revisions/{id}/rollback', methods: ['POST'], name: 'broker.quota-rollback', middleware: ['broker.auth'])]
     #[Route('/admin/broker/quotas/revisions/{id}/rollback', methods: ['POST'], name: 'admin.broker-quota-rollback', middleware: ['admin.auth'])]
     #[Route('/customer/tenants/{tenant}/broker/quotas/revisions/{id}/rollback', methods: ['POST'], name: 'customer.broker-quota-rollback', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}'])]

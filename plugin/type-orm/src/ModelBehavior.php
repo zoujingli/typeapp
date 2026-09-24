@@ -14,6 +14,7 @@ final class ModelBehavior
     private array $getters = [];
     private array $setters = [];
 
+    /** 返回追加观察器的新行为声明，原声明保持不变。 */
     public function observe(ModelObserver $observer): ModelBehavior
     {
         $copy = clone $this;
@@ -39,16 +40,19 @@ final class ModelBehavior
         return $copy;
     }
 
+    /** @internal 运行已登记的字段获取器，未配置时保留原值。 */
     public function read(string $field, mixed $value): mixed
     {
         return isset($this->getters[$field]) ? ($this->getters[$field])($value) : $value;
     }
 
+    /** @internal 在类型规范化之前运行修改器，未配置时保留输入值。 */
     public function write(string $field, mixed $value): mixed
     {
         return isset($this->setters[$field]) ? ($this->setters[$field])($value) : $value;
     }
 
+    /** @internal 依声明顺序通知观察器；只允许可取消的前置事件以 false 中止。 */
     public function dispatch(string $event, Model $model, bool $cancellable): bool
     {
         foreach ($this->observers as $observer) {

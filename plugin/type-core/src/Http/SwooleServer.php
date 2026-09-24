@@ -20,7 +20,7 @@ use Type\Runtime\ExecutionScope;
 use Type\Runtime\CapacityException;
 use Type\Runtime\TaskException;
 
-/** 可选的 Swoole 协程 HTTP 引擎；业务 handler 与其他引擎共用。 */
+/** 以 Swoole 承接 HTTP；Unix worker、Windows 协程宿主及编译业务线程共用 PSR 处理链。 */
 final class SwooleServer implements HttpServerInterface
 {
     private RequestHandlerInterface $handler;
@@ -35,7 +35,7 @@ final class SwooleServer implements HttpServerInterface
     private ?Throwable $threadFailure = null;
 
     /**
-     * @param Closure():void|null $onWorkerStop 请求排空后在实际worker的同步停止阶段执行；硬终止无法保证回调。
+     * @param Closure():void|null $onWorkerStop Unix worker 停止、Windows 协程 HTTP 退出或编译线程请求完整收尾时的清理；硬终止无法保证回调。
      */
     public function __construct(
         RequestHandlerInterface $handler,
@@ -55,7 +55,7 @@ final class SwooleServer implements HttpServerInterface
         $this->onWorkerStop = $onWorkerStop;
     }
 
-    /** 运行单 worker 服务；仅选用此引擎时要求兼容的 Swoole 扩展。 */
+    /** Unix 使用经典单 worker，Windows 使用协程 HTTP 与控制事件停止；各路径均要求兼容的 Swoole。 */
     public function serve(string $host, int $port): void
     {
         if ($port < 1 || $port > 65535) {

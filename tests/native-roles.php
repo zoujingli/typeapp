@@ -8,6 +8,11 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 use Type\Testing\Assert;
 use Type\Testing\Process;
 
+/**
+ * 在秒数预算内执行独立角色命令并要求成功，退出路径均停止子进程。
+ *
+ * @param list<string> $command
+ */
 function roleProcess(array $command, float $seconds = 15): string
 {
     $process = new Process($command, dirname(__DIR__), getenv());
@@ -20,12 +25,22 @@ function roleProcess(array $command, float $seconds = 15): string
     }
 }
 
+/**
+ * 将角色验收记录完整写入指定 JSON 文件，短写视为失败。
+ *
+ * @param array<string, mixed> $value
+ */
 function roleWrite(string $file, array $value): void
 {
     $text = json_encode($value, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
     Assert::same(strlen($text), file_put_contents($file, $text), '无法保存独立角色验收记录');
 }
 
+/**
+ * 读取角色验收 JSON 记录，格式错误直接使验收失败。
+ *
+ * @return array<string, mixed>
+ */
 function roleJson(string $file): array
 {
     $value = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
@@ -77,6 +92,7 @@ function roleRun(string $name, array $arguments, string $image, array $settings,
     }
 }
 
+/** 在本轮专属 Redis、卷和镜像中验证七个独立角色的业务效果与恢复；记录通过后仍由外层回收资源。 */
 function roleVerify(string $directory, string $identity, string $network, string $redis, string $volume, string $outboxImage, string $schedulerImage): void
 {
     $root = dirname(__DIR__);

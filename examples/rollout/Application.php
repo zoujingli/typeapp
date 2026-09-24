@@ -32,8 +32,10 @@ use Type\Runtime\ProcessSignals;
 use TypeApp\ModelExample\Drivers;
 use TypeApp\OutboxExample\Delivered;
 
+/** 组合新旧角色的迁移、消息与缓存兼容演练，所有阶段由命令显式选择。 */
 final class Application
 {
+    /** 声明所选发布对 schema、消息和缓存格式的可接受版本。 */
     public static function compatibility(int $release): ReleaseCompatibility
     {
         return new ReleaseCompatibility($release === 1 ? '1.0.0' : '1.1.0', [
@@ -42,6 +44,11 @@ final class Application
             'cache' => ['users' => [$release]],
         ]);
     }
+    /**
+     * 监听角色直接进入原生服务，其他角色进入统一协程再装配资源。
+     *
+     * @param list<string> $arguments 含程序路径的角色命令参数。
+     */
     public static function run(int $release, array $arguments): void
     {
         if (($arguments[1] ?? '') === 'serve') {
@@ -208,6 +215,7 @@ final class Application
             exit(70);
         }
     }
+    /** 要求消息与缓存指向两个不同 Redis 端点，返回由调用方关闭的管理器。 */
     public static function redis(): RedisManager
     {
         $queue = (string) getenv('TYPE_REDIS_HOST');
@@ -225,6 +233,7 @@ final class Application
         \Type\Runtime\CoroutineRuntime::enableIo();
         return new SwooleServer($router, $messages, $messages, $messages, null, new HttpControl(probes: true));
     }
+    /** 按发布版本创建缓存编码器，底层租约绑定当前作用域。 */
     public static function cache(RedisManager $manager, ExecutionScope $scope, int $release): TypedCache
     {
         return new TypedCache(new NamespaceStore($manager->connection($scope, 'cache', Purpose::SCRIPT), (string) getenv('TYPE_ROLLOUT_APP'), 'test', 'users'), new Codec($release), 2000);

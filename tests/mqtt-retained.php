@@ -52,6 +52,11 @@ function mqttRetainedComplete(mixed $socket, array $message): void
     }
 }
 
+/**
+ * 发送保留消息并完成对应 QoS 确认链；借用连接不在此关闭，失败诊断不包含业务载荷。
+ *
+ * @param resource $socket
+ */
 function mqttRetainedPublish(mixed $socket, int $version, string $topic, string $payload, int $qos, string $properties = ''): void
 {
     try {

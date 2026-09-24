@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\ResourcePool;
 
+/** 按端点与用途复用运行时资源池；各次业务借用由 ExecutionScope 独立拥有。 */
 final class RedisManager
 {
     private array $configurations = [];
@@ -16,6 +17,12 @@ final class RedisManager
     private ?int $processId = null;
     private bool $closed = false;
 
+    /**
+     * 声明端点与各用途容量，首次借用才创建池。
+     *
+     * @param array<string, RedisConfiguration> $configurations 1 至 64 个命名端点。
+     * @param array<string, int> $capacities 以 Purpose 常量为键，各容量为 1 至 1024。
+     */
     public function __construct(array $configurations, array $capacities = [])
     {
         if ($configurations === [] || count($configurations) > 64) {
@@ -58,6 +65,11 @@ final class RedisManager
         return new RedisConnection($this->pools[$key]->borrow($scope, $waitSeconds), $purpose);
     }
 
+    /**
+     * 读取当前进程各命名连接、用途池的计数；未借用用途不创建池。
+     *
+     * @return array<string, array<string, int|float>>
+     */
     public function statistics(): array
     {
         if ($this->processId !== null) {
@@ -70,6 +82,7 @@ final class RedisManager
         return $statistics;
     }
 
+    /** 拒绝后续借用并关闭本管理器创建的池；应由工作进程所有者调用。 */
     public function close(): void
     {
         if ($this->processId !== null) {

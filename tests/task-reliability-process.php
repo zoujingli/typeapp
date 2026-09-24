@@ -134,7 +134,8 @@ if (in_array('--scheduler-stop-only', $argv, true)) {
             echo successful([...$command, 'recover-stop']);
         }
         $file = sys_get_temp_dir() . '/type-stop-scheduler-' . bin2hex(random_bytes(6)) . '.json';
-        $clock = new class () implements ClockInterface {
+        $clock = new /** 为任务排空测试固定调度时刻，避免等待真实分钟边界。 */ class () implements ClockInterface {
+            /** 返回 Unix 第 600 秒的不可变时间，确定触发本轮调度任务。 */
             public function now(): DateTimeImmutable
             {
                 return new DateTimeImmutable('@600');
@@ -142,10 +143,16 @@ if (in_array('--scheduler-stop-only', $argv, true)) {
         };
         $scheduler = null;
         $factory = static function (TaskContext $context) use (&$scheduler): Task {
-            return new class ($scheduler) implements Task {
+            return new /** 在任务内部触发调度器停止，用于验证超过排空期限后上下文取消。 */ class ($scheduler) implements Task {
+                /** 借用正在执行本任务的调度器，仅用于注入停止信号。 */
                 public function __construct(private Scheduler $scheduler)
                 {
                 }
+                /**
+                 * 请求 0.01 秒排空并等待 0.03 秒，再检查任务已取消；取消未生效时返回空结果暴露测试失败。
+                 *
+                 * @return array{}
+                 */
                 public function run(TaskContext $context): array
                 {
                     $this->scheduler->stop(0.01);

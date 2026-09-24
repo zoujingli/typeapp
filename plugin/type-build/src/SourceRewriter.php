@@ -10,6 +10,12 @@ use RuntimeException;
 /** 在构建目录生成版本限定的完整源码快照，不修改 Composer 安装内容。 */
 final class SourceRewriter
 {
+    /**
+     * 校验固定源码摘要和替换次数后生成完整适配副本，原 Composer 文件保持不变。
+     * @param list<string> $sources 审计后的完整生产源码。
+     * @param array<string, array<string, mixed>> $sourceSets 版本限定的组件源码声明。
+     * @return array{sources: list<string>, originals: list<string>, mapping: list<array<string, string>>}
+     */
     public function apply(array $sources, array $sourceSets, string $directory): array
     {
         $mapping = [];

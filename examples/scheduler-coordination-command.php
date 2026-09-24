@@ -18,6 +18,11 @@ use TypeApp\Coordination\QueueDispatchTask;
 use TypeApp\Coordination\ReportTask;
 use TypeApp\SchedulerExample\ControlledClock;
 
+/**
+ * 执行 Redis 多实例调度命令，在协程结束后向进程传递退出码。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $status = (int) \Type\Runtime\CoroutineRuntime::run(
@@ -30,6 +35,11 @@ function main(int $argc, array $argv): void
     }
 }
 
+/**
+ * 创建同一 Redis 目标的状态与队列，执行有限调度并关闭借用资源。
+ *
+ * @param list<string> $argv 程序路径与控制台参数。
+ */
 function schedulerCoordinationScenario(int $argc, array $argv): int
 {
     if ($argc < 2 || ($argc === 2 && $argv[1] === 'help')) {

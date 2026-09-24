@@ -1120,6 +1120,11 @@ function mqttSessionConnect(int $version, string $id, bool $clean = false, ?int 
     return mqttPacket(0x10, $body);
 }
 
+/**
+ * 读取成功 CONNACK，并验证 session_present 与预期一致；借用连接不在此关闭。
+ *
+ * @param resource $socket
+ */
 function mqttSessionAck(mixed $socket, bool $present): void
 {
     $ack = mqttRead($socket);
@@ -1518,6 +1523,14 @@ function mqttSessionShutdownCases(string $root, string $consumer, array $command
     }
 }
 
+/**
+ * 使用专属 PostgreSQL 主备和工作进程验证 MQTT 会话恢复，退出路径回收连接及测试服务。
+ *
+ * @param list<string> $command
+ * @param list<string> $workerCommand
+ * @param array<string, string> $environment
+ * @return array{cases: int, subscription-cases: int, replication: array<string, mixed>, statistics: array<string, mixed>}
+ */
 function mqttSessionCases(string $root, string $consumer, array $command, array $workerCommand, array $environment): array
 {
     ini_set('zend.exception_ignore_args', '1');

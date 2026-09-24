@@ -10,6 +10,7 @@ use Stringable;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\ManagedResource;
 
+/** 进程内的日志通道管理器；执行关联由各 Scope 独立持有，输出由管理器统一停止。 */
 final class LogManager implements ManagedResource
 {
     private string $build;
@@ -20,6 +21,12 @@ final class LogManager implements ManagedResource
     private float $stopSeconds;
     private Formatter $formatter;
 
+    /**
+     * 登记明确构建身份和输出通道；停止时间为全部输出共享的总秒数。
+     *
+     * @param array<string, Channel> $channels 通道名到输出配置，最多 64 项。
+     * @throws InvalidArgumentException 构建身份、通道或停止预算无效。
+     */
     public function __construct(string $buildId, array $channels, float $stopSeconds = 0.25, ?Formatter $formatter = null)
     {
         if ($buildId === '' || strlen($buildId) > 256 || $channels === [] || count($channels) > 64
@@ -38,11 +45,18 @@ final class LogManager implements ManagedResource
         }
     }
 
+    /** 检查进程归属与停止状态；不能从停止状态重新启动。 */
     public function start(): void
     {
         $this->assertOpen();
     }
 
+    /**
+     * 为活动作用域登记日志绑定；同名关联以作用域 context 为准。
+     *
+     * @param array<array-key, mixed> $context 补充关联，在绑定时复制并脱敏。
+     * @throws InvalidArgumentException 通道未注册。
+     */
     public function logger(ExecutionScope $scope, array $context = [], string $channel = 'app'): Logger
     {
         $this->assertOpen();
@@ -54,6 +68,12 @@ final class LogManager implements ManagedResource
         return new Logger($this, $binding, $channel);
     }
 
+    /**
+     * 检查通道已登记，供同管理器的 Logger 切换通道。
+     *
+     * @internal
+     * @throws InvalidArgumentException 通道未注册。
+     */
     public function assertChannel(string $name): void
     {
         if (!isset($this->channels[$name])) {
@@ -76,6 +96,11 @@ final class LogManager implements ManagedResource
         $output->drain();
     }
 
+    /**
+     * 在一个总秒数预算内排空各独立输出；0 表示不等待后续可写事件。
+     *
+     * @throws InvalidArgumentException 秒数非有限值或不在 0 至 60 之间。
+     */
     public function drain(float $seconds = 0.0): void
     {
         $this->assertOpen();
@@ -88,6 +113,7 @@ final class LogManager implements ManagedResource
         }
     }
 
+    /** 停止所有独立输出，预算到期丢弃余下记录；重复调用不再次关闭。 */
     public function stop(): void
     {
         if ($this->stopped) {
@@ -101,6 +127,11 @@ final class LogManager implements ManagedResource
         $this->stopped = true;
     }
 
+    /**
+     * 读取通道过滤与输出计数；共享输出的计数不能按通道相加。
+     *
+     * @return array<string, array<string, int|bool>> 通道名称到累计计数与当前状态。
+     */
     public function stats(): array
     {
         $stats = [];

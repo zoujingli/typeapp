@@ -96,6 +96,7 @@ final class RuntimeService
         ], self::defaults());
     }
 
+    /** 返回最近创建的运行配置版本号；尚无版本返回 0，不表示该版本已在所有节点加载。 */
     public static function currentVersion(Connection $connection): int
     {
         $row = $connection->table('broker_runtime_revisions')->orderBy('version', 'DESC')->limit(1)->first();
@@ -337,6 +338,7 @@ final class RuntimeService
         return $input;
     }
 
+    /** 最新版本仍待处理或仅部分生效时阻止继续发布，避免覆盖尚未收敛的运行配置。 */
     public static function paused(Connection $connection): bool
     {
         $latest = $connection->table('broker_runtime_revisions')->orderBy('version', 'DESC')->limit(1)->first();

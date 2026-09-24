@@ -62,6 +62,7 @@ function mqttClusterFenceUnknownCase(PostgresSync $sync, string $consumer, array
         'origin_released' => $resolved['value']['origin_released'], 'fact_unchanged' => true, 'standby_replay_resumed' => true];
 }
 
+/** 获取本轮集群测试的回环空闲端口并关闭临时监听，不保留端口占用。 */
 function mqttClusterPort(): int
 {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);

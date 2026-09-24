@@ -11,17 +11,20 @@ use Type\Core\Http\Message\Factory;
 use Type\Orm\Database;
 use Type\Orm\Driver;
 
+/** 提供滚动发布期间的真实 HTTP 读写，响应携带所用发布及 schema 身份。 */
 final class Endpoint implements RequestHandlerInterface
 {
     private Driver $driver;
     private int $release;
     private int $schema;
+    /** 固定当前角色的驱动、发布版本和已验证 schema 阶段。 */
     public function __construct(Driver $driver, int $release, int $schema)
     {
         $this->driver = $driver;
         $this->release = $release;
         $this->schema = $schema;
     }
+    /** 在请求作用域内组合数据库与版本化缓存，退出时关闭本次管理对象。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $scope = $request->getAttribute('type.scope');

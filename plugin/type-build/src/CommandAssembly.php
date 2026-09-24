@@ -14,6 +14,13 @@ use RuntimeException;
 /** 从声明与源码符号生成直接工厂，不在构建期间执行应用类。 */
 final class CommandAssembly
 {
+    /**
+     * 从 AST 和显式模块声明生成命令工厂、入口与装配报告，不加载业务类。
+     * @param array<string, mixed> $application 应用启用模块与环境配置声明。
+     * @param array<string, array<string, mixed>> $modules 可用模块的服务和命令声明。
+     * @param list<string> $sources 完整生产源码路径。
+     * @return array<string, mixed> 生成源码与装配身份。
+     */
     public function generate(array $application, array $modules, array $sources): array
     {
         $enabled = $application['enabled'] ?? null;

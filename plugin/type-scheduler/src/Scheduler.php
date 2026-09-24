@@ -24,6 +24,13 @@ final class Scheduler
     private WorkLifecycle $lifecycle;
     private array $counts = ['triggered' => 0, 'failed' => 0, 'interrupted' => 0, 'storage_failures' => 0, 'cleanup_failures' => 0, 'lease_conflicts' => 0, 'limit_reached' => 0];
 
+    /**
+     * 登记固定任务与有限执行预算；状态存储随 tick 获取和释放，连接由应用管理。
+     *
+     * @param list<Definition> $definitions 任务 ID 唯一的定义，最多 1000 项。
+     * @param int $executionMilliseconds 每次任务的作用域预算，1 至 3600000 毫秒。
+     * @throws InvalidArgumentException 定义重复、类型错误或预算超出范围。
+     */
     public function __construct(ClockInterface $clock, StateStore $store, array $definitions, int $historyLimit = 1000, int $tickLimit = 100, int $executionMilliseconds = 30000)
     {
         if ($historyLimit < 1 || $historyLimit > 10000 || count($definitions) > 1000 || $tickLimit < 1 || $tickLimit > 1000
@@ -71,14 +78,21 @@ final class Scheduler
         }
     }
 
+    /** 撤销就绪并按秒数预算等待收尾；不撤销已发生效果，不关闭外部 RedisManager。 */
     public function stop(float $drainSeconds = 5.0): void
     {
         $this->lifecycle->stop($drainSeconds);
     }
+    /** 返回是否继续接受新 tick 及本轮剩余计划。 */
     public function ready(): bool
     {
         return $this->lifecycle->ready();
     }
+    /**
+     * 读取生命周期与累计执行统计，不打开状态存储。
+     *
+     * @return array<string, int|bool|string> 包含任务/存储/清理失败和 tick 上限。
+     */
     public function statistics(): array
     {
         return $this->lifecycle->statistics() + $this->counts + ['tick_limit' => $this->tickLimit];
@@ -191,6 +205,11 @@ final class Scheduler
         }
     }
 
+    /**
+     * 短暂持有存储执行权读取历史，不运行任务、不修复 interrupted 状态。
+     *
+     * @return list<array<string, mixed>> 已持久记录，时刻为 UTC Unix 秒。
+     */
     public function history(): array
     {
         $this->store->acquire();

@@ -277,6 +277,7 @@ function search(reset = false) {
   applied.value = Object.fromEntries(visibleFields.value.map(field => [field, filters[field as keyof typeof filters]]).filter(([, value]) => value !== ''));
   clear(); void load(0);
 }
+/** 页面可见时维护观察时钟和资源轮询；隐藏后取消在途请求并使响应代次失效。 */
 function visibility() {
   clearInterval(timer);
   clearInterval(clock);
@@ -288,6 +289,7 @@ function visibility() {
 }
 watch(resource, () => { clear(); resetFilters(); denied.value = false; failure.value = ''; void load(0); });
 watch(limit, () => { clear(); void load(0); });
+// 切换身份、租户或页面时清除游标和操作目标，禁止沿用旧授权的资源快照。
 watch(() => [session.generation, session.realm, session.tenant?.id, session.identity?.key, canRead.value, route.path], () => {
   clear(); resetFilters(); failure.value = ''; denied.value = false;
   if (!['/broker-resources', '/admin/broker', '/broker/resources'].includes(route.path)) return;

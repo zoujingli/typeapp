@@ -7,6 +7,11 @@ use Type\Orm\Database;
 use Type\Orm\Mysql\MysqlDriver;
 use Type\Runtime\ExecutionScope;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function databaseExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -14,6 +19,11 @@ function databaseExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 在专属 MySQL 数据库验证真实读写、事务、连接复用边界及退出清理。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     if (($argv[1] ?? '') === 'test-drivers') {

@@ -26,6 +26,7 @@ function mqttQos2Publish(int $version, string $topic, string $payload, int $iden
         . ($version === 5 ? mqttLength(strlen($properties)) . $properties : '') . $payload);
 }
 
+/** 生成 QoS 2 确认链中的指定报文；reason 为 null 时省略原因码字节。 */
 function mqttQos2Ack(int $header, int $identifier, ?int $reason = null): string
 {
     return mqttPacket($header, pack('n', $identifier) . ($reason === null ? '' : chr($reason)));

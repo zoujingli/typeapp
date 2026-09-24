@@ -48,24 +48,37 @@ use TypeApp\OrmSuite\Tag;
 use TypeApp\OrmSuite\User;
 use TypeApp\OutboxExample\QueuePublisher;
 
+/** 组合三库模型、独立 Redis、Outbox、队列与日志的完整示例装配。 */
 final class Scenario
 {
+    /**
+     * 根据驱动声明模型、消息意图和审查凭据表，不在运行中猜测迁移内容。
+     *
+     * @return list<\Type\Orm\Migration\Migration>
+     */
     public static function migrations(Driver $driver): array
     {
         $engine = $driver->name() === 'mysql' ? ' ENGINE=InnoDB' : '';
         return array_merge(\TypeApp\OrmSuite\Schema::plan($driver->name()), [(new Store())->migration($driver->name(), '202609090003'),
             new Migration('202609090004', '保存文章审查任务幂等效果', ['CREATE TABLE integration_audits (id VARCHAR(128) PRIMARY KEY, article_id INTEGER NOT NULL, observed_views INTEGER NOT NULL)' . $engine], $driver->name() !== 'mysql')]);
     }
+    /** 为文章 DTO 建立独立缓存命名空间，租约绑定外层作用域。 */
     public static function cache(RedisManager $redis, ExecutionScope $scope, string $application): TypedCache
     {
         return new TypedCache(new NamespaceStore($redis->connection($scope, 'cache', Purpose::SCRIPT), $application, 'integration', 'article-dto'), JsonCodec::data('article-dto-v1'), 3000);
     }
+    /** 从显式环境建立可靠消息和可淘汰缓存两个连接名，调用方负责关闭。 */
     public static function redis(): RedisManager
     {
         $reliable = new RedisConfiguration((string) getenv('TYPE_REDIS_HOST'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379));
         $cache = new RedisConfiguration((string) getenv('TYPE_INTEGRATION_CACHE_HOST'), (int) (getenv('TYPE_INTEGRATION_CACHE_PORT') ?: 6379));
         return new RedisManager(['queue' => $reliable, 'cache' => $cache], [Purpose::SCRIPT => 4]);
     }
+    /**
+     * 验证可靠存储隔离后运行业务闭环；返回实际观察结果，finally 收尾已打开资源。
+     *
+     * @return array<string, mixed> 业务与资源验证结果。
+     */
     public static function run(Driver $driver, string $application): array
     {
         StoragePolicy::verify(

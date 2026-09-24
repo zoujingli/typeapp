@@ -31,6 +31,7 @@ function writeCache(scope: PreferenceScope) {
   localStorage.setItem(cacheKey(scope), JSON.stringify({ value: JSON.parse(JSON.stringify(preferences)) }));
 }
 
+/** 个人缓存只影响展示习惯，站点名称、入口和授权模式以当前站点默认值为准。 */
 function withoutBrandFields(value: Partial<Preferences>): Partial<Preferences> {
   const result = JSON.parse(JSON.stringify(value)) as PreferencePatch;
   const app = result.app as Partial<Preferences['app']> | undefined;
@@ -110,6 +111,7 @@ export function switchPreferencesScope(realm: string = '', userId: string = '', 
     : `${realm}-${userId}`;
   if (next === activeScope) return;
   writeCache(activeScope);
+  // 恢复另一身份偏好时抑制持久化监听，防止中间默认值覆盖目标缓存。
   switching = true;
   activeScope = next;
   restore(activeScope);

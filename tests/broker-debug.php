@@ -12,6 +12,13 @@ use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
 if (!function_exists('identityCommand')) {
+    /**
+     * 在 30 秒内执行人员管理命令并读取 JSON 结果，退出路径均停止子进程。
+     *
+     * @param list<string> $command
+     * @param array<string, string> $environment
+     * @return array<string, mixed>
+     */
     function identityCommand(array $command, array $environment): array
     {
         $process = new Process($command, dirname(__DIR__), $environment);
@@ -25,6 +32,11 @@ if (!function_exists('identityCommand')) {
     }
 }
 
+/**
+ * 在本轮私有目录签发测试 CA 和服务端证书，私钥限制为 0600；目录由调用者回收。
+ *
+ * @return array{ca: string, server: string, key: string}
+ */
 function debugCertFiles(string $directory): array
 {
     expect(mkdir($directory, 0700), '无法创建证书目录');
@@ -49,6 +61,7 @@ function debugCertFiles(string $directory): array
     return $paths;
 }
 
+/** 在 15 秒轮询预算内确认调试节点存活且通过证书与主机名验证的 TLS 握手。 */
 function debugWaitTls(Process $process, int $port, string $ca): void
 {
     $deadline = microtime(true) + 15;
@@ -67,6 +80,7 @@ function debugWaitTls(Process $process, int $port, string $ca): void
     expect(false, '调试节点 TLS 入口未就绪：' . $process->stderr());
 }
 
+/** 为已提交的异步观测留出 1 秒推进时间；此延时本身不证明业务就绪。 */
 function debugSettle(): void
 {
     usleep(1000000);
@@ -88,6 +102,7 @@ function debugMqtt(string $root, string $clientRoot, string $action, array $envi
     }
 }
 
+/** 等待进程报告全部占用连接就绪，轮询预算取 90 秒与连接数乘 12 秒的较大值。 */
 function debugWaitHeld(Process $process, int $count): void
 {
     $deadline = microtime(true) + max(90, $count * 12);
@@ -101,6 +116,7 @@ function debugWaitHeld(Process $process, int $count): void
     expect(false, '调试占用未就绪：' . $process->stdout() . $process->stderr());
 }
 
+/** 在 35 秒轮询预算内等待调试客户端输出 connected，期间持续确认进程存活。 */
 function debugWaitConnected(Process $process): void
 {
     $deadline = microtime(true) + 35;
@@ -114,6 +130,11 @@ function debugWaitConnected(Process $process): void
     expect(false, '调试连接未就绪：' . $process->stdout() . $process->stderr());
 }
 
+/**
+ * 确认服务连接额度等于预期，且修订已生效或节点已应用。
+ *
+ * @param array<string, mixed> $quotas
+ */
 function debugQuotaReady(array $quotas, int $services): bool
 {
     $state = $quotas['revision']['nodes'][0]['state'] ?? '';
@@ -121,6 +142,7 @@ function debugQuotaReady(array $quotas, int $services): bool
         && (($quotas['revision']['status'] ?? '') === 'effective' || $state === 'applied');
 }
 
+/** 只匹配完整 closed 行或其带冒号的状态行，避免其他输出的子串被误判为连接已关闭。 */
 function debugClosed(string $output): bool
 {
     foreach (preg_split('/\r\n|\n|\r/', trim($output)) as $line) {

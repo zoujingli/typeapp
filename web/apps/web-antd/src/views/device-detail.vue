@@ -29,9 +29,11 @@ const rawValues = ref('{}');
 const actionCommand = ref('');
 const canceling = ref(false);
 const actionBusy = computed(() => commandSaving.value || switchSaving.value || querying.value || canceling.value);
+/** 尚未确认受理的操作；必须保留原标识、版本和参数，不能换新请求重试。 */
 type Intent = { kind: 'create' | 'switch' | 'query' | 'cancel'; path: string; data: Record<string, unknown> };
 const intent = ref<Intent | null>(null);
 function storageKey() { return session.identity?.key ? `typeapp.device-action.${session.identity.key}.${session.tenant?.id}.${route.params.device}` : ''; }
+/** 只恢复当前身份、租户和设备路径内的操作意图。 */
 function restoreIntent() {
   intent.value = null; const key = storageKey(); if (!key) return;
   try {
@@ -39,6 +41,7 @@ function restoreIntent() {
     if (stored && ['create', 'switch', 'query', 'cancel'].includes(stored.kind) && stored.path.startsWith(devicePath() + '/') && stored.data && typeof stored.data === 'object') intent.value = stored;
   } catch { sessionStorage.removeItem(key); }
 }
+/** 先持久记录意图再提交；网络、超时或服务端故障保留原意图供对账。 */
 async function submitIntent<T>(kind: Intent['kind'], path: string, data: Record<string, unknown>): Promise<T> {
   const key = storageKey(); const scope = scopeKey(); const tenant = session.tenant?.id;
   if (!key || !tenant || intent.value && intent.value.kind !== kind) throw new Error('请先确认尚未确定受理的原操作。');
@@ -235,6 +238,7 @@ let pending: AbortController | null = null;
 let active = true;
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 function stopRefresh() { clearTimeout(refreshTimer); refreshTimer = undefined; }
+/** 每轮请求结束后安排下一轮；页面不可见或卸载时停止自动刷新。 */
 function scheduleRefresh() {
   stopRefresh();
   if (active && !document.hidden) refreshTimer = setTimeout(() => { if (!busy.value) void load(); }, 5000);
@@ -274,6 +278,7 @@ async function load() {
     }
   } finally { if (current === version && scope === scopeKey()) { busy.value = false; scheduleRefresh(); } }
 }
+// 设备或身份改变时清除所有视图和局部请求代次，旧响应不能覆盖新工作区。
 watch([() => session.tenant?.id, () => route.params.device, () => session.token, () => session.realm], ([tenant]) => {
   stopRefresh(); version++; pending?.abort(); device.value = null; telemetry.value = null; refreshedAt.value = null; busy.value = false; failure.value = '';
   commands.value = { items: [], total: 0, page: 1, per_page: 20 }; commandOpen.value = false; selectedCommand.value = null; operation.value = null; commandValues.value = {};

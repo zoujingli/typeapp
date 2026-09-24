@@ -7,6 +7,7 @@ namespace Type\Redis;
 use InvalidArgumentException;
 use Throwable;
 
+/** 单个 Redis 端点的不可变连接配置；不提供 Cluster 或 Sentinel 路由。 */
 final class RedisConfiguration
 {
     private string $host;
@@ -19,6 +20,14 @@ final class RedisConfiguration
     private bool $tls;
     private ?string $caFile;
 
+    /**
+     * 保存连接基线，构造时不访问 Redis；认证与 TLS 在实际连接时完成。
+     *
+     * @param float $connectTimeout 建连超时，单位秒，范围 (0, 60]。
+     * @param float $readTimeout 读取超时，单位秒，范围 (0, 60]。
+     * @param string|null $caFile 可读 CA 文件；必须同时启用 TLS。
+     * @throws InvalidArgumentException 地址、凭据组合、期限或证书配置无效。
+     */
     public function __construct(
         string $host = '127.0.0.1',
         int $port = 6379,
@@ -47,11 +56,18 @@ final class RedisConfiguration
         $this->caFile = $caFile;
     }
 
+    /** 返回连接初始化及归还时需要恢复的逻辑数据库编号。 */
     public function database(): int
     {
         return $this->database;
     }
 
+    /**
+     * 建立非持久 phpredis 会话，完成认证、选库及 TLS 校验，并关闭自动重试。
+     *
+     * @return \Redis 调用者负责关闭的原生连接，未启用前缀和序列化。
+     * @throws RedisException 扩展缺失或初始化失败，操作状态为 NOT_STARTED。
+     */
     public function connect(): \Redis
     {
         if (!extension_loaded('redis')) {

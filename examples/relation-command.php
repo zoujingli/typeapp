@@ -14,6 +14,11 @@ use TypeApp\ModelExample\Drivers;
 use TypeApp\ModelExample\Profile;
 use TypeApp\ModelExample\User;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function relationExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -21,6 +26,11 @@ function relationExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 验证三类模型关系、批量加载、缺失值及查询预算，不访问生产数据。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {

@@ -11,6 +11,12 @@ use Type\Testing\Assert;
 use Type\Testing\Process;
 use Type\Testing\ProcessResult;
 
+/**
+ * 以秒数预算执行模板部署控制命令，输出上限为 4 MiB，退出路径均停止进程。
+ *
+ * @param list<string> $command
+ * @param array<string, string>|null $environment null 表示继承当前环境。
+ */
 function deploymentProcess(array $command, ?array $environment = null, float $seconds = 15.0): ProcessResult
 {
     $process = new Process($command, dirname(__DIR__), $environment, 4194304);
@@ -21,6 +27,12 @@ function deploymentProcess(array $command, ?array $environment = null, float $se
     }
 }
 
+/**
+ * 要求模板部署命令在秒数预算内成功，返回标准输出供进一步验证。
+ *
+ * @param list<string> $command
+ * @param array<string, string>|null $environment
+ */
 function deploymentSuccessful(array $command, ?array $environment = null, float $seconds = 15.0): string
 {
     $result = deploymentProcess($command, $environment, $seconds);
@@ -28,6 +40,11 @@ function deploymentSuccessful(array $command, ?array $environment = null, float 
     return $result->stdout;
 }
 
+/**
+ * 读取模板部署 JSON 记录，格式或结构无效时直接失败。
+ *
+ * @return array<string, mixed>
+ */
 function deploymentJson(string $file): array
 {
     $document = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
@@ -35,6 +52,11 @@ function deploymentJson(string $file): array
     return $document;
 }
 
+/**
+ * 完整写入本轮模板部署记录，拒绝短写以免留下貌似成功的截断证据。
+ *
+ * @param array<string, mixed> $record
+ */
 function deploymentRecord(string $file, array $record): void
 {
     $contents = json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
@@ -126,6 +148,7 @@ function deploymentImage(string $image, string $container, string $directory, st
     }
 }
 
+/** 观察指定测试容器的镜像、权限与只读根文件系统边界，并保存真实运行证据。 */
 function deploymentObserve(string $container, string $image, string $directory): void
 {
     $state = json_decode(deploymentSuccessful(['docker', 'inspect', $container]), true, 512, JSON_THROW_ON_ERROR)[0];
@@ -145,6 +168,7 @@ function deploymentObserve(string $container, string $image, string $directory):
         'processes' => trim($processes), 'library-identity' => '启动入口严格验证后 HTTP 已就绪']);
 }
 
+/** 核验已构建模板与镜像身份，再执行无源码业务闭环；按本轮标签回收容器、数据库和卷，失败保全报告。 */
 function deploymentRun(string $preparedFile, string $image, string $directory): void
 {
     $directory = realpath($directory) ?: throw new InvalidArgumentException('模板部署记录目录不存在');

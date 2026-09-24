@@ -18,6 +18,7 @@ final class Suite
         $this->tests[$name] = $operation;
         return $this;
     }
+    /** 按登记顺序重跑全部测试并覆盖上次结果；全部通过返回 0，否则返回 1。 */
     public function run(): int
     {
         $this->results = [];
@@ -36,6 +37,10 @@ final class Suite
         }
         return $failed === 0 ? 0 : 1;
     }
+    /**
+     * 返回最近一次执行的结果，未运行时为空；耗时使用单调时钟并以秒记录。
+     * @return list<array{name: string, passed: bool, seconds: float, exception?: class-string<\Throwable>, message?: string}>
+     */
     public function results(): array
     {
         return $this->results;

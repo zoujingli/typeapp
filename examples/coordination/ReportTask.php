@@ -17,6 +17,7 @@ final class ReportTask implements Task
     private string $key;
     private string $mode;
 
+    /** 注入同一 Redis 目标、投递任务和故障模式；外部角色负责连接生命周期。 */
     public function __construct(RedisConnection $redis, QueueDispatchTask $dispatch, string $key, string $mode)
     {
         $this->redis = $redis;
@@ -25,6 +26,11 @@ final class ReportTask implements Task
         $this->mode = $mode;
     }
 
+    /**
+     * 在租约保护下记录一次计划效果并投递；hold/paused 模式供外部竞争与暂停演练。
+     *
+     * @return array{message_id: string, receipt: string, effect_count: int}
+     */
     public function run(TaskContext $context): array
     {
         $guard = $context->lease();

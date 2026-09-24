@@ -10,6 +10,11 @@ use Type\Runtime\CoroutineRuntime;
 use TypeApp\TaskExample\Connections;
 use TypeApp\TaskExample\Endpoint;
 
+/**
+ * 启动请求子任务与数据库延迟示例，验证响应后仍在途资源的收尾。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     CoroutineRuntime::enableIo();

@@ -123,13 +123,14 @@ final class OperationDocumentation
         $locals += $this->localNames($original);
         $document = (new Doc\NodeTraverser([new Doc\NodeVisitor\CloningVisitor()]))->traverse([$original])[0];
         $resolve = fn (string $name, bool $classReference): string => $this->resolveName($name, $classReference ? [] : $locals);
-        $visitor = new class ($resolve, $this->className) extends Doc\AbstractNodeVisitor {
+        $visitor = new /** 在原声明语境中解析文档类型，保留字段键和模板名称。 */ class ($resolve, $this->className) extends Doc\AbstractNodeVisitor {
             /** @var list<Doc\Node> */
             private array $parents = [];
             /** @param \Closure(string, bool): string $resolve */
             public function __construct(private \Closure $resolve, private string $className)
             {
             }
+            /** 仅改写类型及类常量引用；记录父节点以区分类型名与数组形状键。 */
             public function enterNode(Doc\Node $node): ?Doc\Node
             {
                 $parent = $this->parents === [] ? null : $this->parents[array_key_last($this->parents)];
@@ -150,6 +151,7 @@ final class OperationDocumentation
                 }
                 return null;
             }
+            /** 与 enterNode 成对回收父节点栈，保持相邻文档节点的语境独立。 */
             public function leaveNode(Doc\Node $node): ?Doc\Node
             {
                 array_pop($this->parents);

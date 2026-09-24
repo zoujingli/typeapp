@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 use Type\Core\Http\Message\Factory;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function messageExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -11,6 +16,11 @@ function messageExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 离线验证 PSR 消息、URI 与流的实际字节和不可变复制语义。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $factory = new Factory();

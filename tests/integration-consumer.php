@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 require __DIR__ . '/support.php';
 
+/**
+ * 运行独立消费者并要求成功，从其 verification.json 读取本轮业务报告。
+ *
+ * @param list<string> $command
+ * @return array<string, mixed>
+ */
 function integrationExecution(array $command, string $consumer): array
 {
     $process = proc_open([...$command, '--report=' . $consumer . '/verification.json'], [0 => ['file', '/dev/null', 'r'], 1 => STDOUT, 2 => STDERR], $pipes, $consumer);

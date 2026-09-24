@@ -9,6 +9,10 @@ use RuntimeException;
 /** 编译子进程只接收工具路径与固定区域设置，不继承业务环境、认证或预加载变量。 */
 final class BuildEnvironment
 {
+    /**
+     * 按目标 SDK 生成受限构建子进程环境，不继承业务凭据或任意预加载配置。
+     * @return array<string, string>
+     */
     public function environment(string $phpHome = '', string $phpxHome = ''): array
     {
         return (new BuildPlatform())->environment($phpHome, $phpxHome);
@@ -298,6 +302,10 @@ final class BuildEnvironment
         return $resolved;
     }
 
+    /**
+     * 在已有锁文件的隔离项目安装依赖，禁止插件、脚本、内嵌认证与隐式升级。
+     * @throws RuntimeException 项目或锁缺失、发现秘密或受管 Composer 子进程失败。
+     */
     public function installLocked(string $project, string $composer): void
     {
         $project = realpath($project) ?: throw new RuntimeException('安装项目不存在');

@@ -88,11 +88,21 @@ function main(int $argc, array $argv): void
 PHP;
 }
 
+/**
+ * 根据固定测试租户和归属身份生成设备主题，与实际设备主题规则保持一致。
+ *
+ * @return array<string, string>
+ */
 function simulatorTopics(string $device): array
 {
     return DeviceService::topics(['id' => $device, 'tenant_id' => str_repeat('b', 32), 'ownership_id' => str_repeat('c', 32)]);
 }
 
+/**
+ * 从原始上报构造匹配序号及内容摘要的测试回执；时间固定，非 accepted 代码表示拒绝。
+ *
+ * @return array{app_version: int, type: string, device_id: string, ownership_id: string, sequence: string, content_hash: string, status: string, code: string, received_at: int}
+ */
 function simulatorReceipt(string $payload, string $code = 'accepted'): array
 {
     $envelope = json_decode($payload, true, 32, JSON_THROW_ON_ERROR);
@@ -116,6 +126,11 @@ function simulatorInitial(Process $device): array
     throw new RuntimeException('模拟器没有报告本地入队');
 }
 
+/**
+ * 等待模拟器最多 25 秒并保存输出，验证成功退出及网络缓冲、在途消息全部清空。
+ *
+ * @return array<string, mixed>
+ */
 function simulatorFinished(Process $device, string $evidence): array
 {
     $result = $device->wait(25);

@@ -19,6 +19,7 @@ final class PlatformFingerprint
     private string $phpHome = '';
     private string $phpxHome = '';
 
+    /** 注入受管工具执行器，用其受限环境读取平台与原生依赖事实。 */
     public function __construct(BuildEnvironment $runner)
     {
         $this->runner = $runner;

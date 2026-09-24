@@ -28,6 +28,11 @@ $environment['TYPE_UPLOAD_DIRECTORY'] = $directory;
 $environment['TYPE_DOWNLOAD_FILE'] = $download;
 $environment['TYPE_UPLOAD_TRACE'] = $trace;
 $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => $log, 2 => $log], $pipes, $root, $environment);
+/**
+ * 以 3 秒流超时发送完整上传正文，读取响应后关闭连接。
+ *
+ * @return array{int, string, string} 状态码、正文、小写响应头。
+ */
 function uploadRequest(int $port, string $path, string $content, string $type = 'application/octet-stream'): array
 {
     $connection = stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 3);
@@ -41,6 +46,11 @@ function uploadRequest(int $port, string $path, string $content, string $type = 
     }
     return receiveHttp($connection);
 }
+/**
+ * 按固定测试边界构造 multipart 正文；filename 为 null 表示普通字段，否则表示上传文件。
+ *
+ * @param list<array{string, ?string, string}> $parts 字段名、可空文件名、内容。
+ */
 function multipart(array $parts): string
 {
     $body = '';

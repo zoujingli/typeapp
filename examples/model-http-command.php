@@ -15,6 +15,11 @@ use TypeApp\ModelExample\TagHandler;
 use TypeApp\ModelExample\InvoiceHandler;
 use TypeApp\ModelExample\CounterHandler;
 
+/**
+ * 装配模型 HTTP 路由与所选驱动；SQLite 服务必须使用显式持久文件。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $driverName = (string) (getenv('TYPE_MODEL_DRIVER') ?: 'mysql');

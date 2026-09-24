@@ -13,6 +13,7 @@ use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use RuntimeException;
 
+/** 显式路由及处理链容器；首次处理请求后冻结声明，防止运行中修改路由表。 */
 final class Router implements RequestHandlerInterface
 {
     private array $routes = [];
@@ -24,6 +25,7 @@ final class Router implements RequestHandlerInterface
     private ResponseFactoryInterface $responses;
     private StreamFactoryInterface $streams;
 
+    /** 注入错误响应与正文工厂；路由定义在首次 handle() 前完成登记。 */
     public function __construct(ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
     {
         $this->responses = $responses;
@@ -81,6 +83,12 @@ final class Router implements RequestHandlerInterface
         }
     }
 
+    /**
+     * 从命名路由生成 URL，并拒绝被更具体静态路由覆盖的结果。
+     * @param array<string, string|int> $parameters 必须完整且仅包含该路由路径参数。
+     * @param array<string, mixed> $query RFC 3986 编码的查询参数。
+     * @throws InvalidArgumentException 路由未知、参数不符或生成目标有歧义。
+     */
     public function url(string $name, array $parameters = [], array $query = [], string $fragment = ''): string
     {
         if (!isset($this->named[$name])) {
@@ -103,6 +111,10 @@ final class Router implements RequestHandlerInterface
         $this->middleware[] = $factory;
     }
 
+    /**
+     * 按规范路径和静态优先级匹配，依次执行全局及路由中间件和处理器。
+     * @throws HttpError 已校验的规范请求 URI 被中间步骤改写。
+     */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $this->started = true;

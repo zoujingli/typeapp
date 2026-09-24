@@ -9,6 +9,7 @@ use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 use Throwable;
 
+/** 受父作用域管理的协程结果；任务及后代收尾完成前持续占用执行额度。 */
 final class ManagedTask
 {
     private ExecutionOwner $owner;
@@ -69,6 +70,13 @@ final class ManagedTask
         }
     }
 
+    /**
+     * 等待结果或重抛任务异常；超时取消任务，但不提前归还仍在途的资源。
+     * @param float|null $seconds 本次最多等待的秒数，null 沿用共享截止。
+     * @throws TaskException 等待超时，错误码为 task_timeout。
+     * @throws \InvalidArgumentException 等待秒数为负数或非有限值。
+     * @throws Throwable 任务执行或清理失败。
+     */
     public function await(?float $seconds = null): mixed
     {
         $this->owner->assertCurrent();
@@ -90,11 +98,13 @@ final class ManagedTask
         return $this->result;
     }
 
+    /** 由创建者广播合作式取消；调用返回不表示协程或底层操作已退出。 */
     public function cancel(): void
     {
         $this->owner->assertCurrent();
         $this->cancellation->cancel();
     }
+    /** 只有任务、后代及其作用域完成收尾后才返回 true。 */
     public function finished(): bool
     {
         return $this->finished;

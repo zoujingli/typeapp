@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Psr\Http\Message\MessageInterface;
 use Psr\Http\Message\StreamInterface;
 
+/** PSR-7 消息的不可变元数据基础；with 方法克隆消息，但正文流仍按引用共享。 */
 abstract class Message implements MessageInterface
 {
     protected string $protocol = '1.1';
@@ -15,16 +16,19 @@ abstract class Message implements MessageInterface
     protected array $headerNames = [];
     protected StreamInterface $body;
 
+    /** 绑定正文流，不复制其内容；流的关闭责任由消息使用者明确管理。 */
     public function __construct(StreamInterface $body)
     {
         $this->body = $body;
     }
 
+    /** 返回不含 HTTP/ 前缀的协议版本。 */
     public function getProtocolVersion(): string
     {
         return $this->protocol;
     }
 
+    /** 验证版本格式并返回消息副本，原消息保持不变。 */
     public function withProtocolVersion(string $version): MessageInterface
     {
         if (!preg_match('/^[0-9]+(?:\.[0-9]+)?$/D', $version)) {
@@ -35,27 +39,41 @@ abstract class Message implements MessageInterface
         return $copy;
     }
 
+    /**
+     * 返回保留原名称大小写的响应头快照。
+     * @return array<string, list<string>>
+     */
     public function getHeaders(): array
     {
         return $this->headers;
     }
 
+    /** 以不区分大小写的名称检查消息头是否存在。 */
     public function hasHeader(string $name): bool
     {
         return isset($this->headerNames[strtolower($name)]);
     }
 
+    /**
+     * 以不区分大小写的名称读取全部同名值，缺失返回空列表。
+     * @return list<string>
+     */
     public function getHeader(string $name): array
     {
         $original = $this->headerNames[strtolower($name)] ?? null;
         return $original === null ? [] : $this->headers[$original];
     }
 
+    /** 以逗号连接同名头值；Set-Cookie 等不可合并头应使用 getHeader()。 */
     public function getHeaderLine(string $name): string
     {
         return implode(', ', $this->getHeader($name));
     }
 
+    /**
+     * 返回替换该头全部值的副本，拒绝非法名称或控制字符。
+     * @param string|int|float|list<string|int|float> $value 单值或非空值列表。
+     */
     public function withHeader(string $name, $value): MessageInterface
     {
         $this->validateName($name);
@@ -71,6 +89,10 @@ abstract class Message implements MessageInterface
         return $copy;
     }
 
+    /**
+     * 返回追加同名头值的副本，保留已有头名称的大小写。
+     * @param string|int|float|list<string|int|float> $value 单值或非空值列表。
+     */
     public function withAddedHeader(string $name, $value): MessageInterface
     {
         $this->validateName($name);
@@ -83,6 +105,7 @@ abstract class Message implements MessageInterface
         return $copy;
     }
 
+    /** 以不区分大小写的名称删除指定头，始终返回副本。 */
     public function withoutHeader(string $name): MessageInterface
     {
         $copy = clone $this;
@@ -94,11 +117,13 @@ abstract class Message implements MessageInterface
         return $copy;
     }
 
+    /** 返回共享的可变正文流；读取和定位会影响其他持有者。 */
     public function getBody(): StreamInterface
     {
         return $this->body;
     }
 
+    /** 在副本中绑定新正文流，不关闭原流，也不复制新流内容。 */
     public function withBody(StreamInterface $body): MessageInterface
     {
         $copy = clone $this;

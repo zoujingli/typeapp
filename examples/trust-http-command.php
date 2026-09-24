@@ -14,6 +14,11 @@ use Type\Core\Http\Router;
 use Type\Core\Http\SwooleServer;
 use TypeApp\TrustExample\Endpoint;
 
+/**
+ * 启动请求信任边界示例，显式选择代理白名单并核对规范化身份。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $factory = new Factory();

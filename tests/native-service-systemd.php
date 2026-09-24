@@ -30,6 +30,13 @@ $runtime = $record['runtime-directory'];
 expect(is_dir($runtime) && !file_exists($runtime . '/.env') && !file_exists($runtime . '/var/app.sqlite'), '只能使用本轮空白运行根');
 expect(hash_file('sha256', $release . '/release.json') === $record['release-sha256'], '运行发布包不匹配服务身份');
 
+/**
+ * 通过指定前缀执行 systemd 控制命令，预算为 20 秒，退出路径均回收子进程。
+ *
+ * @param list<string> $command
+ * @param list<string> $prefix
+ * @return array{code: int, stdout: string, stderr: string}
+ */
 function systemdRemote(array $command, array $prefix): array
 {
     $process = new Process([...$prefix, ...$command]);
@@ -42,6 +49,11 @@ function systemdRemote(array $command, array $prefix): array
     }
 }
 
+/**
+ * 读取用户级 systemd 单元的单个属性值，并去除命令输出首尾空白。
+ *
+ * @param list<string> $prefix
+ */
 function systemdProperty(string $unit, string $property, array $prefix): string
 {
     $result = systemdRemote(['systemctl', '--user', 'show', $unit, '--property=' . $property, '--value'], $prefix);
@@ -49,6 +61,11 @@ function systemdProperty(string $unit, string $property, array $prefix): string
     return trim($result['stdout']);
 }
 
+/**
+ * 在 30 秒轮询预算内要求新 MainPID 与旧值不同且 /readyz 成功，返回新进程号。
+ *
+ * @param list<string> $prefix
+ */
 function systemdReady(string $unit, HttpClient $client, array $prefix, int $previous = 0): int
 {
     $deadline = microtime(true) + 30;

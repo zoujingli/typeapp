@@ -22,6 +22,7 @@ final class DistributionCandidateTest extends TestCase
         yield 'export-subst' => ["src/Value.php export-subst\n", 'Git 快照字节不一致'];
     }
 
+    /** 验证候选构建读取固定 Git 输入，并在 Git 属性或后续准备失败时保全对应证据。 */
     #[DataProvider('archiveAttributes')]
     public function testCandidatePreparationKeepsGitInputsAndFailureEvidence(string $attributes, string $expectedFailure, bool $autocrlf = false): void
     {

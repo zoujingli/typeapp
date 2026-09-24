@@ -8,6 +8,7 @@ namespace Type\Cache\Attribute;
 #[\Attribute(\Attribute::TARGET_METHOD)]
 final class Cacheable
 {
+    /** 声明生成操作入口的缓存参数名、键模板及毫秒 TTL；直接调用原方法不生效。 */
     public function __construct(public string $cache, public string $key, public int $ttlMilliseconds = 60000)
     {
     }

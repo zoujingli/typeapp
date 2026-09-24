@@ -12,6 +12,7 @@ use Type\Orm\Sqlite\SqliteDriver;
 use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\ReadWriteProbe;
 
+/** 按读写角色选择数据库端点；broken 模式使用不可用端点检验失败语义。 */
 function readWriteDriver(string $driver, string $database, string $role, bool $broken = false): Driver
 {
     if ($driver === 'sqlite') {
@@ -41,6 +42,11 @@ function readWriteDriver(string $driver, string $database, string $role, bool $b
     );
 }
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function readWriteExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -48,6 +54,11 @@ function readWriteExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 验证模型执行时选路、事务固定与写后不粘主，读写端点由测试配置指定。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {

@@ -70,6 +70,7 @@ const isolatedDebug = computed(() => {
   const subjects = recovery.value?.subjects?.broker_debug;
   return !!subjects && subjects.total > subjects.approved;
 });
+/** 先解除事件回调再强制断开，防止旧连接事件改变新连接状态。 */
 function stopClient() {
   const current = client; client = null;
   if (current) { current.removeAllListeners(); current.end(true); }
@@ -87,6 +88,7 @@ function displayPayload(payload: Buffer | string): { text: string; bytes: number
     return { text: `二进制 (${bytes} 字节) ${preview}`, bytes };
   }
 }
+/** 仅维护有上限的调试显示窗口；淘汰最早显示项不等于删除 Broker 消息。 */
 function pushMessage(topic: string, payload: Buffer | string) {
   const shown = displayPayload(payload);
   const item: DebugMessage = { id: nextId++, at: Math.floor(Date.now() / 1000), topic, payload: shown.text, bytes: shown.bytes };
@@ -111,6 +113,7 @@ function quotaMessage(code: number): string {
 function rememberPublish(topic: string, qos: number, outcome: PublishRecord['outcome'], detail: string) {
   publishes.value = [...publishes.value, { id: nextPublish++, at: Math.floor(Date.now() / 1000), topic, qos, outcome, detail }].slice(-20);
 }
+/** 使用短期凭据建立单次 MQTT 5 连接；禁用自动重连，回调核对连接实例。 */
 function connectMqtt(credential: Credential, password: string) {
   stopClient();
   if (!credential.transport.available || !password) { status.value = 'idle'; return; }
@@ -142,6 +145,7 @@ function connectMqtt(credential: Credential, password: string) {
     status.value = 'interrupted';
   });
 }
+/** expiresAt 为 Unix 秒，提前 30 秒重新签发，定时等待最低为 1 秒。 */
 function scheduleRefresh(expiresAt: number) {
   clearTimeout(expiryTimer);
   const wait = Math.max(1000, expiresAt * 1000 - Date.now() - 30000);
@@ -210,6 +214,7 @@ async function revoke() {
     failure.value = errorText(error);
   } finally { if (version === generation) busy.value = false; }
 }
+/** 区分 QoS 0 写出与 QoS 1 回执；等待超时保留未知结果，不能宣称业务成功。 */
 async function publishTest() {
   if (!client || status.value !== 'connected' || !page.value.credential) return;
   const topic = `${page.value.credential.publish_topic}ping`;
@@ -241,6 +246,7 @@ async function publishTest() {
     }
   } finally { publishing.value = false; }
 }
+/** 隐藏页停止轮询并断开 WSS；恢复显示只刷新元数据，不自动恢复连接。 */
 function visibility() {
   clearInterval(refreshTimer);
   if (document.visibilityState === 'visible') {

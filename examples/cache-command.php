@@ -11,6 +11,11 @@ use Type\Redis\RedisManager;
 use Type\Runtime\ExecutionScope;
 use TypeApp\CacheExample\Profile;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function cacheExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -18,6 +23,11 @@ function cacheExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 以专属缓存命名空间验证类型、TTL、回源、代次隔离与有界回收。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $manager = new RedisManager(['default' => new RedisConfiguration(

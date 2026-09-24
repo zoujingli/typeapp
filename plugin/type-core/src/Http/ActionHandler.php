@@ -20,6 +20,7 @@ final class ActionHandler implements RequestHandlerInterface
         $this->action = $action;
     }
 
+    /** 把本次请求交给构造时的操作，直接返回响应或传播业务异常。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         return ($this->action)($request);

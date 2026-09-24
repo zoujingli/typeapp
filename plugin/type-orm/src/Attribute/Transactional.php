@@ -8,6 +8,7 @@ namespace Type\Orm\Attribute;
 #[\Attribute(\Attribute::TARGET_METHOD)]
 final class Transactional
 {
+    /** 指定生成事务入口使用的逻辑数据源，不在原方法外安装运行时拦截。 */
     public function __construct(public string $database = 'default')
     {
     }

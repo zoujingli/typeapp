@@ -19,6 +19,7 @@ $environment['TYPE_HTTP_PORT'] = (string) $port;
 $environment['TYPE_BACKPRESSURE_TRACE'] = $trace;
 $environment['TYPE_BACKPRESSURE_LOG'] = $logs;
 $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => $output, 2 => $output], $pipes, $root, $environment);
+/** 在 3 秒轮询预算内等待慢 SQL 轨迹达到指定行数，确认请求已进入在途状态。 */
 function pressureWait(string $trace, int $lines): void
 {
     $deadline = microtime(true) + 3;

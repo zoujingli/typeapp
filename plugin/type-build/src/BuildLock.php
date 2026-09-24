@@ -7,6 +7,7 @@ namespace Type\Build;
 use Closure;
 use RuntimeException;
 
+/** 构建文件锁及写入路径门禁，隔离并发构建并拒绝路径跳转。 */
 final class BuildLock
 {
     /** @param Closure(): mixed $operation 持锁后零参数调用。 */
@@ -37,6 +38,10 @@ final class BuildLock
         }
     }
 
+    /**
+     * 校验绝对写入路径的每一段，禁止跳转、符号链接和 Windows 设备名。
+     * @throws RuntimeException 路径不规范或可能写出预期位置。
+     */
     public static function path(string $path): void
     {
         $platform = new BuildPlatform();

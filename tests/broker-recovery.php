@@ -15,6 +15,13 @@ use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
 if (!function_exists('identityCommand')) {
+    /**
+     * 执行人员管理命令并在 30 秒内要求成功，解析 JSON 后回收子进程。
+     *
+     * @param list<string> $command
+     * @param array<string, string> $environment
+     * @return array<string, mixed>
+     */
     function identityCommand(array $command, array $environment): array
     {
         $process = new Process($command, dirname(__DIR__), $environment);
@@ -28,6 +35,11 @@ if (!function_exists('identityCommand')) {
     }
 }
 
+/**
+ * 在本轮私有目录签发恢复测试 CA 和服务端证书，私钥限制为 0600；调用者负责清理目录。
+ *
+ * @return array{ca: string, server: string, key: string}
+ */
 function recoveryCertFiles(string $directory): array
 {
     expect(mkdir($directory, 0700), '无法创建证书目录');
@@ -52,6 +64,7 @@ function recoveryCertFiles(string $directory): array
     return $paths;
 }
 
+/** 在 15 秒轮询预算内确认恢复节点存活并通过证书与主机名验证的 TLS 握手。 */
 function recoveryWaitTls(Process $process, int $port, string $ca): void
 {
     $deadline = microtime(true) + 15;
@@ -70,6 +83,7 @@ function recoveryWaitTls(Process $process, int $port, string $ca): void
     expect(false, '恢复节点 TLS 入口未就绪：' . $process->stderr());
 }
 
+/** 在 15 秒轮询预算内等待恢复管理 /readyz 返回 200，期间确认进程未提前退出。 */
 function recoveryWaitHttp(Process $process, HttpClient $client): void
 {
     $deadline = microtime(true) + 15;
@@ -86,6 +100,13 @@ function recoveryWaitHttp(Process $process, HttpClient $client): void
     expect(false, '恢复管理 HTTP 未就绪：' . $process->stderr());
 }
 
+/**
+ * 在秒数预算内执行恢复命令；成功解析 JSON，预期失败要求退出码 1 并可核验稳定错误码。
+ *
+ * @param list<string> $command
+ * @param array<string, string> $environment
+ * @return array<string, mixed>
+ */
 function recoveryRun(array $command, array $environment, bool $success = true, int $seconds = 30, string $errorCode = ''): array
 {
     $process = new Process($command, dirname(__DIR__), $environment, 1048576);
@@ -101,6 +122,13 @@ function recoveryRun(array $command, array $environment, bool $success = true, i
     }
 }
 
+/**
+ * 在 20 秒轮询预算内等待恢复后的修订生效且具有节点记录，超时附最后状态。
+ *
+ * @param callable(string, string, string, ?array, int): array<string, mixed> $request
+ * @param array<string, mixed> $revision
+ * @return array<string, mixed>
+ */
 function recoveryWaitRevision(callable $request, string $token, array $revision, string $message): array
 {
     $deadline = microtime(true) + 20;

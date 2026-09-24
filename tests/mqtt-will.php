@@ -24,6 +24,11 @@ function mqttWillSilence(mixed $socket, float $seconds): void
     expect(stream_select($read, $write, $except, (int) $seconds, (int) (($seconds - floor($seconds)) * 1000000)) === 0, '遗嘱在禁止窗口内发布或连接意外关闭');
 }
 
+/**
+ * 建立遗嘱观察连接并核验订阅确认；成功返回的连接由调用者关闭。
+ *
+ * @return resource
+ */
 function mqttWillSubscriber(int $port, string $id, string $topic, int $version = 5, int $qos = 2, ?string $certificate = null, string $properties = ''): mixed
 {
     $socket = mqttSocket($port, $certificate);

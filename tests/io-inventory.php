@@ -25,6 +25,7 @@ final class IoInventory
     private array $calls = [];
     private array $definitions = [];
 
+    /** 准备仅用于展示 AST 表达式的打印器；不加载或执行被审计的生产源码。 */
     public function __construct()
     {
         $this->printer = new Standard();

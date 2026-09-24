@@ -8,12 +8,17 @@ use Closure;
 use InvalidArgumentException;
 use Swoole\Coroutine\Channel;
 
+/** 基于单调时钟共享剩余秒数；缩短预算不会延长已有任务的截止。 */
 final class Deadline
 {
     private ?float $end;
     private array $listeners = [];
     private array $changeListeners = [];
     private int $sequence = 0;
+    /**
+     * 从当前时刻建立截止，null 表示无限制，0 表示立即到期。
+     * @throws InvalidArgumentException 秒数为负数或非有限值。
+     */
     public function __construct(?float $seconds = null)
     {
         if ($seconds !== null && (!is_finite($seconds) || $seconds < 0)) {
@@ -21,10 +26,12 @@ final class Deadline
         }
         $this->end = $seconds === null ? null : self::now() + $seconds;
     }
+    /** 返回非负剩余秒数；null 表示未设置业务截止。 */
     public function remaining(): ?float
     {
         return $this->end === null ? null : max(0.0, $this->end - self::now());
     }
+    /** 检查当前单调时钟是否到期；未设置截止时始终为 false。 */
     public function expired(): bool
     {
         return $this->end !== null && $this->end <= self::now();

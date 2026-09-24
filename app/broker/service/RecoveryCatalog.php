@@ -21,11 +21,16 @@ final class RecoveryCatalog
             : [...self::SHARED, 'broker_op_admin', 'broker_op_cust'];
     }
 
+    /** 判断主体是否由 Broker 恢复目录负责；未知种类交给其他恢复处理器。 */
     public static function handles(string $kind): bool
     {
         return in_array($kind, ['broker_user', ...self::SHARED, 'broker_op_admin', 'broker_op_cust', 'broker_op_node'], true);
     }
 
+    /**
+     * 将固定主体种类映射到恢复表，不接受调用方直接指定表名。
+     * @throws HttpError 种类不在恢复白名单中。
+     */
     public static function table(string $kind): string
     {
         return match ($kind) {
@@ -47,6 +52,7 @@ final class RecoveryCatalog
         };
     }
 
+    /** CRL 与平台证书序列号表没有逐行核验标记；调用前须确认种类受支持。 */
     public static function hasVerifiedColumn(string $kind): bool
     {
         return !in_array($kind, ['broker_crl', 'broker_pserial'], true);
@@ -69,6 +75,7 @@ final class RecoveryCatalog
         return (string) $row['id'];
     }
 
+    /** 用带分隔的 CA/租户标识与序列号生成稳定游标，避免不同命名空间的序列号碰撞。 */
     public static function serialId(string $left, string $serial): string
     {
         return substr(hash('sha256', $left . "\0" . $serial), 0, 32);
@@ -225,6 +232,7 @@ final class RecoveryCatalog
         return false;
     }
 
+    /** 核验拒绝仅将未生效、未回退的配置版本标为失败；其他主体保留其原状态。 */
     public static function reject(Connection $transaction, string $kind, string $id): void
     {
         if (in_array($kind, ['broker_access', 'broker_quota', 'broker_runtime'], true)) {
@@ -235,6 +243,7 @@ final class RecoveryCatalog
         }
     }
 
+    /** 在调用方事务中恢复主体核验标记；不含核验列的序列号表无需更新。 */
     public static function restoreVerified(Connection $transaction, string $kind, string $id): void
     {
         if (!self::hasVerifiedColumn($kind)) {

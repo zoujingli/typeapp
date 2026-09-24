@@ -21,6 +21,7 @@ use Type\Runtime\ExecutionScope;
 /** 查询当前应用与管理库的兼容代次及危险回退维护步骤；不含载荷，租户只读。 */
 final class CompatController
 {
+    /** 保存请求处理所需的数据库、身份服务和响应工厂；连接在请求作用域中借用。 */
     public function __construct(private DatabaseManager $database, private IdentityService $identities, private Factory $messages)
     {
     }

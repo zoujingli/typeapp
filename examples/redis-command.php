@@ -9,6 +9,11 @@ use Type\Redis\RedisException;
 use Type\Redis\RedisManager;
 use Type\Runtime\ExecutionScope;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function redisExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -16,6 +21,11 @@ function redisExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 使用受控 Redis 验证命名用途、事务、pipeline、超时和失效连接恢复。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     if (($argv[1] ?? '') === '--help') {

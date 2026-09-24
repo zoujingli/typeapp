@@ -30,6 +30,7 @@ final class DistributionReportTest extends TestCase
         yield 'consumer-valid-workspace' => ['consumer', 'valid-workspace'];
     }
 
+    /** 验证下游消费整个已提交批次的身份和结果，拒绝部分成功、篡改或缺失记录。 */
     #[DataProvider('reports')]
     public function testDownstreamChecksTheEntireCommittedBatch(string $entry, string $change): void
     {

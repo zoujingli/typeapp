@@ -15,6 +15,10 @@ final class ResourceBudget
     private ExecutionOwner $owner;
     private array $listeners = [];
     private int $sequence = 0;
+    /**
+     * 在当前线程请求内分配共享容量，池及凭据代次复用同一实例。
+     * @throws \InvalidArgumentException 容量不在 1 至 1000000 范围内。
+     */
     public function __construct(int $capacity)
     {
         if ($capacity < 1 || $capacity > 1000000) {
@@ -23,6 +27,7 @@ final class ResourceBudget
         $this->capacity = $capacity;
         $this->owner = new ExecutionOwner(false);
     }
+    /** @throws CapacityException 额度已满；本次拒绝计入统计，不等待空位。 */
     public function acquire(): void
     {
         if (!$this->tryAcquire()) {
@@ -73,6 +78,10 @@ final class ResourceBudget
         unset($this->listeners[$id]);
     }
 
+    /**
+     * 返回当前线程请求的预算使用情况，隔离中的资源仍计入 allocated。
+     * @return array{capacity: int, allocated: int, rejected: int, waiters: int}
+     */
     public function statistics(): array
     {
         $this->owner->assertCurrent();

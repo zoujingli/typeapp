@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+/**
+ * 输出生成的构建身份；check-runtime 参数另核对实际加载运行库。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     if ($argc === 2 && $argv[1] === '--check-runtime') {

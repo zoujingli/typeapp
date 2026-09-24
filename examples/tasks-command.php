@@ -17,16 +17,23 @@ final class TaskCleanupResource implements ManagedResource
 {
     public int $stops = 0;
 
+    /** 不分配外部资源，仅用于验证 Scope 对资源生命周期的调用。 */
     public function start(): void
     {
     }
 
+    /** 累计资源关闭次数，确认嵌套和异常退出没有遗漏或重复收尾。 */
     public function stop(): void
     {
         $this->stops++;
     }
 }
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function taskExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -166,6 +173,11 @@ function verifyCurrentScopes(): void
     }
 }
 
+/**
+ * 验证当前作用域、协程子任务、截止与延迟清理；scope-only 模式不依赖外部服务。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     verifyCurrentScopes();

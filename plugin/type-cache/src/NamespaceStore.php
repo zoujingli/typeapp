@@ -14,6 +14,11 @@ final class NamespaceStore
     private string $root;
     private int $maxPayload;
 
+    /**
+     * 绑定 SCRIPT 用途连接及应用、环境、格式身份，不取得连接所有权。
+     *
+     * @param int $maxPayload 单值载荷字节上限，范围 1 至 16 MiB。
+     */
     public function __construct(RedisConnection $redis, string $application, string $environment, string $format, int $maxPayload = 1048576)
     {
         if ($application === '' || $environment === '' || $format === '' || $maxPayload < 1 || $maxPayload > 16777216) {
@@ -24,12 +29,18 @@ final class NamespaceStore
         $this->maxPayload = $maxPayload;
     }
 
+    /** 返回由应用、环境和格式计算的存储身份，供签名绑定使用。 */
     public function identity(): string
     {
         return $this->root;
     }
 
-    /** 同次读取固定代次，并用位置返回结果，避免 PHP 键转换影响映射。 */
+    /**
+     * 同次读取固定代次，并用位置返回结果，避免 PHP 键转换影响映射。
+     *
+     * @param list<string> $keys 最多 1000 个键。
+     * @return array{generation: string, values: list<string|false>} 缺失或单值过大使用 false。
+     */
     public function read(array $keys): array
     {
         $hashes = $this->keys($keys);
@@ -56,7 +67,13 @@ LUA;
         return ['generation' => $generation, 'values' => $result];
     }
 
-    /** generation 与回源时观察的代次不一致时不写入，避免 clear 后回填旧内容。 */
+    /**
+     * generation 与回源时观察的代次不一致时不写入，避免 clear 后回填旧内容。
+     *
+     * @param list<string> $keys
+     * @param list<string> $payloads 与键逐位置对应，单批总载荷不超过 16 MiB。
+     * @param int|null $ttlMilliseconds 正数为毫秒 TTL，null 为永久并登记回收索引。
+     */
     public function write(string $generation, array $keys, array $payloads, ?int $ttlMilliseconds): bool
     {
         $this->generation($generation);
@@ -93,6 +110,11 @@ LUA;
         return $this->redis->script($script, [$this->root . ':active', $this->root], $arguments) === 1;
     }
 
+    /**
+     * 删除当前代指定键并更新索引；已不存在的键仍视为成功。
+     *
+     * @param list<string> $keys 最多 1000 个非空键。
+     */
     public function delete(array $keys): bool
     {
         $hashes = $this->keys($keys);
@@ -105,6 +127,7 @@ LUA;
         return $this->redis->script($script, [$this->root . ':active', $this->root], $hashes) === 1;
     }
 
+    /** 原子切换当前代并登记旧代供后续回收；返回新代身份，不清空整个 Redis。 */
     public function clear(): string
     {
         $generation = bin2hex(random_bytes(16));

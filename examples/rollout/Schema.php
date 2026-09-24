@@ -9,8 +9,14 @@ use Type\Orm\Migration\Migration;
 use Type\Orm\Migration\Migrator;
 use Type\Orm\Outbox\Store;
 
+/** 定义扩展、兼容和收缩三个迁移阶段，供新旧版本共同验收。 */
 final class Schema
 {
+    /**
+     * 生成截至指定阶段的迁移计划，按驱动保留 DDL 事务差异。
+     *
+     * @return list<\Type\Orm\Migration\Migration>
+     */
     public static function plan(Driver $driver, int $phase): array
     {
         if ($phase < 1 || $phase > 3) {
@@ -33,6 +39,7 @@ final class Schema
         }
         return $migrations;
     }
+    /** 从迁移历史读取已成功应用的阶段，不把失败记录当作当前 schema。 */
     public static function current(Driver $driver): int
     {
         $version = 0;

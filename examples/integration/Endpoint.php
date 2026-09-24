@@ -12,13 +12,16 @@ use Type\Validate\Field;
 use Type\Validate\Input;
 use Type\Validate\Schema;
 
+/** 以输入校验、模型读取与缓存展示请求级业务组合，不接管全局入口。 */
 final class Endpoint implements RequestHandlerInterface
 {
     private string $application;
+    /** 保存当前应用的缓存隔离身份。 */
     public function __construct(string $application)
     {
         $this->application = $application;
     }
+    /** 校验查询 ID，在请求作用域内获取文章 DTO；结束时关闭本次创建的 Redis 管理器。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $data = (new Schema(['id' => Field::integer()->from('query')->required()->cast()->range(1, PHP_INT_MAX)]))

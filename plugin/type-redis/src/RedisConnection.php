@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use Type\Runtime\ResourceLease;
 use Type\Runtime\ReusableResource;
 
+/** 绑定执行者和用途的 Redis 租约入口；不能跨请求、协程、Fiber 或进程复用。 */
 final class RedisConnection
 {
     private ResourceLease $lease;
@@ -23,12 +24,19 @@ final class RedisConnection
     private const READS = ['GET', 'MGET', 'EXISTS', 'TTL', 'PTTL', 'TYPE', 'STRLEN', 'GETRANGE', 'HGET', 'HMGET', 'HGETALL', 'HLEN', 'HEXISTS',
         'LINDEX', 'LLEN', 'LRANGE', 'SCARD', 'SISMEMBER', 'SMEMBERS', 'ZCARD', 'ZCOUNT', 'ZRANGE', 'ZREVRANGE', 'ZSCORE', 'ZRANK', 'PING', 'TIME'];
 
+    /** @internal 绑定已借出的租约与用途；生命周期由借用作用域拥有。 */
     public function __construct(ResourceLease $lease, string $purpose)
     {
         $this->lease = $lease;
         $this->purpose = $purpose;
     }
 
+    /**
+     * 执行普通命令；WATCH 回调只允许读取，状态与阻塞命令需使用各自入口。
+     *
+     * @param list<string|int|float> $arguments 不做自动前缀或序列化的原始参数。
+     * @throws RedisException 用途不符、会话失效或服务错误；写入结果需结合 outcome 判断。
+     */
     public function command(string $command, array $arguments = []): mixed
     {
         if ($this->purpose !== Purpose::COMMAND && !($this->purpose === Purpose::TRANSACTION && $this->watching)) {
@@ -41,6 +49,11 @@ final class RedisConnection
         return $this->session(static fn (RedisSession $session): mixed => $session->command($command, $arguments));
     }
 
+    /**
+     * 在 BLOCKING 专用连接中等待；Redis 命令自身的等待参数保持原生单位。
+     *
+     * @param list<string|int|float> $arguments 命令参数，如 BLPOP 的最后一项为等待秒数。
+     */
     public function blocking(string $command, array $arguments): mixed
     {
         $this->purpose(Purpose::BLOCKING);
@@ -51,6 +64,12 @@ final class RedisConnection
         return $this->session(static fn (RedisSession $session): mixed => $session->command($command, $arguments));
     }
 
+    /**
+     * 批量传输命令，不提供事务回滚，失败时可能已执行部分写入。
+     *
+     * @param list<array{0: string, 1: list<string|int|float>}> $commands 最多 1000 条普通命令。
+     * @return list<mixed> 按命令顺序返回原生响应。
+     */
     public function pipeline(array $commands): array
     {
         $this->purpose(Purpose::PIPELINE);
@@ -58,8 +77,12 @@ final class RedisConnection
         return $this->session(static fn (RedisSession $session): array => $session->pipeline($commands));
     }
 
-    /** 回调读取 WATCH 状态并返回 [[命令, 参数列表]]；冲突不会自动重跑。 */
-    /** @param Closure(RedisConnection): array $operation 接收 WATCH 所在连接，返回待提交命令列表。 */
+    /**
+     * 回调只读取 WATCH 状态并返回待提交命令；冲突不会自动重跑，EXEC 错误不保证回滚。
+     *
+     * @param list<string> $keys 最多 1000 个需要监视的非空键。
+     * @param Closure(RedisConnection): list<array{0: string, 1: list<string|int|float>}> $operation 接收 WATCH 所在连接。
+     */
     public function transaction(array $keys, Closure $operation): TransactionResult
     {
         $this->purpose(Purpose::TRANSACTION);
@@ -92,6 +115,12 @@ final class RedisConnection
         });
     }
 
+    /**
+     * 执行应用可信 Lua；服务错误不保证回滚脚本已做出的写入。
+     *
+     * @param list<string> $keys 脚本访问的非空键。
+     * @param list<string|int|float> $arguments 传入 ARGV 的数据，不接受外部提供的脚本源码。
+     */
     public function script(string $script, array $keys = [], array $arguments = []): mixed
     {
         $this->purpose(Purpose::SCRIPT);
@@ -107,11 +136,13 @@ final class RedisConnection
         return $this->session(static fn (RedisSession $session): mixed => $session->script($script, $keys, $arguments));
     }
 
+    /** 读取服务端 CLIENT ID，供实际物理连接身份核验；不是应用账号身份。 */
     public function identity(): int
     {
         return (int) $this->session(static fn (RedisSession $session): mixed => $session->command('CLIENT', ['ID']));
     }
 
+    /** 停止当前租约；作用域关闭也会收尾，归还后不能继续使用本连接。 */
     public function close(): void
     {
         $this->lease->stop();

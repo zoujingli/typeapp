@@ -18,17 +18,20 @@ use Type\Validate\Input;
 use Type\Validate\Schema;
 use Type\Validate\ValidationException;
 
+/** 通过 HTTP 演示带版本字段的计数器更新，拒绝旧客户端覆盖。 */
 final class CounterHandler implements RequestHandlerInterface
 {
     private ResponseFactoryInterface $responses;
     private StreamFactoryInterface $streams;
 
+    /** 注入 PSR 工厂，模型连接由当前请求作用域提供。 */
     public function __construct(ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
     {
         $this->responses = $responses;
         $this->streams = $streams;
     }
 
+    /** 校验显式版本并保存计数器，区分字段错误、404、409 与事务结果未知。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $scope = $request->getAttribute('type.scope');

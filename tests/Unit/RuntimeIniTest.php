@@ -13,6 +13,7 @@ final class RuntimeIniTest extends TestCase
 {
     private const BASE = "expose_php=0\nenable_dl=0\nallow_url_include=0\nauto_prepend_file=\nauto_append_file=\nopcache.preload=\nuser_ini.filename=\ninclude_path=\nopcache.enable=0\nopcache.enable_cli=0\nswoole.enable_library=On\ndisplay_errors=stderr\ndisplay_startup_errors=1\nlog_errors=0\nmemory_limit=256M\ndate.timezone=UTC\n";
 
+    /** 验证探针与目录包使用的运行配置保持约定字节，避免转义策略改变加载结果。 */
     public function testProbeAndPackageKeepTheirExistingBytes(): void
     {
         $ini = new RuntimeIni();
@@ -30,6 +31,7 @@ final class RuntimeIniTest extends TestCase
         }
     }
 
+    /** 验证含引号、反斜线及空格的路径写入 INI 后仍指向原路径。 */
     public function testQuotedPathsRoundTripWithoutChangingTheirMeaning(): void
     {
         foreach (['C:\\SDK folder\\php_redis.dll', '/tmp/模块 "one".so'] as $path) {
@@ -42,6 +44,7 @@ final class RuntimeIniTest extends TestCase
         }
     }
 
+    /** 验证运行库路径拒绝控制字符和变量插值，避免生成额外 INI 指令。 */
     public function testControlCharactersAndInterpolationCannotEnterPaths(): void
     {
         foreach (["/tmp/a\nallow_url_include=1", "path\0name", 'path/${TOKEN}/module.so', "path\x7fname"] as $path) {

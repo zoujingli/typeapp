@@ -8,11 +8,13 @@ use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
 
+/** PSR-7 响应值对象，状态信息不可变，正文流独立管理。 */
 final class Response extends Message implements ResponseInterface
 {
     private int $status;
     private string $reason;
 
+    /** 接受 100 至 599 状态；空原因短语采用内置标准文本，不关闭正文流。 */
     public function __construct(StreamInterface $body, int $status = 200, string $reason = '')
     {
         parent::__construct($body);
@@ -21,11 +23,13 @@ final class Response extends Message implements ResponseInterface
         $this->reason = $reason === '' ? $this->standardReason($status) : $reason;
     }
 
+    /** 返回已校验的 HTTP 响应状态码。 */
     public function getStatusCode(): int
     {
         return $this->status;
     }
 
+    /** 验证状态码与原因短语并返回副本；空短语采用内置标准文本。 */
     public function withStatus(int $code, string $reasonPhrase = ''): ResponseInterface
     {
         $this->validateStatus($code, $reasonPhrase);
@@ -35,6 +39,7 @@ final class Response extends Message implements ResponseInterface
         return $copy;
     }
 
+    /** 返回状态原因短语；未知的合法状态可以没有标准短语。 */
     public function getReasonPhrase(): string
     {
         return $this->reason;

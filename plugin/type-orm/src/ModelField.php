@@ -22,6 +22,7 @@ final class ModelField
     private int $precision;
     private int $scale;
 
+    /** 声明字段类型及赋值、输出策略；精确数值限制总位数与小数位数，拒绝隐式舍入。 */
     public function __construct(
         string $column,
         string $type = 'string',
@@ -48,34 +49,42 @@ final class ModelField
         $this->scale = $scale;
     }
 
+    /** 返回真实数据库列名，业务赋值仍使用模型属性名。 */
     public function column(): string
     {
         return $this->column;
     }
+    /** 表示业务赋值白名单许可，不等同于对外输出许可。 */
     public function fillable(): bool
     {
         return $this->fillable;
     }
+    /** 表示该字段可进入公开投影，不改变数据库读取权限。 */
     public function visible(): bool
     {
         return $this->visible;
     }
+    /** 表示创建模型时必须显式提供值；已声明的自动主键另行处理。 */
     public function required(): bool
     {
         return $this->required;
     }
+    /** 返回规范化策略名称，供查询与真实列校验使用。 */
     public function typeName(): string
     {
         return $this->type;
     }
+    /** 表示显式 null 是否为合法值，与字段是否已加载无关。 */
     public function allowsNull(): bool
     {
         return $this->nullable;
     }
+    /** 返回精确数值允许的总位数，包含整数和小数位。 */
     public function precision(): int
     {
         return $this->precision;
     }
+    /** 返回 decimal 的小数位数，其他字段为零。 */
     public function scale(): int
     {
         return $this->type === 'decimal' ? (int) $this->scale : 0;
@@ -89,6 +98,11 @@ final class ModelField
             && $this->precision === $other->precision && $this->scale === $other->scale && $this->arrayOnly === $other->arrayOnly;
     }
 
+    /**
+     * 按模型规则规范化值；database=true 仅供水合，允许已知 PDO 类型转换。
+     *
+     * @throws ModelException 类型、精度、时区或值域不符合声明。
+     */
     public function normalize(mixed $value, bool $database = false): mixed
     {
         if ($value === null && $this->nullable) {
@@ -130,6 +144,7 @@ final class ModelField
         return $value;
     }
 
+    /** 将规范化值转为数据库绑定值，时间保存 UTC 微秒文本，JSON 显式编码。 */
     public function encode(mixed $value): mixed
     {
         if ($value instanceof DateTimeImmutable && $this->type === 'datetime') {
@@ -138,11 +153,13 @@ final class ModelField
         return $value !== null && $this->type === 'json' ? json_encode($value, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION) : $value;
     }
 
+    /** 转换公开输出格式；datetime 使用 UTC ISO 时间，不改变内部值。 */
     public function output(mixed $value): mixed
     {
         return $value instanceof DateTimeImmutable && $this->type === 'datetime' ? $value->format('Y-m-d\TH:i:s.u\Z') : $value;
     }
 
+    /** 比较数据库编码后的值，避免等价日期或结构造成虚假脏字段。 */
     public function equivalent(mixed $left, mixed $right): bool
     {
         return $this->encode($left) === $this->encode($right);

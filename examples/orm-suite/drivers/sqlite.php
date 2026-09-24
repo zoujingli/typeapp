@@ -7,6 +7,7 @@ namespace TypeApp\OrmSuite;
 use Type\Orm\Driver;
 use Type\Orm\Sqlite\SqliteDriver;
 
+/** 独立消费者的 SQLite 文件驱动入口，使用明确文件和租约代次。 */
 final class DriverFactory
 {
     /** 按独立消费者配置建立驱动；代次用于真实租约轮换验收。 */

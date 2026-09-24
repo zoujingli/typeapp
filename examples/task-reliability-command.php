@@ -29,6 +29,11 @@ use TypeApp\Reliability\DurableSchedule;
 use TypeApp\Reliability\StoppingSchedule;
 use TypeApp\SchedulerExample\ControlledClock;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function reliabilityExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -72,6 +77,11 @@ function reliabilitySchedulerStop(): void
     }
 }
 
+/**
+ * 在协程入口内运行可靠 Redis、停止与恢复演练，故障模式由显式参数选择。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
@@ -79,6 +89,11 @@ function main(int $argc, array $argv): void
     });
 }
 
+/**
+ * 在专属可靠 Redis 执行播种、恢复、写满或停止阶段，按真实副作用核对。
+ *
+ * @param list<string> $argv 程序路径与显式故障演练阶段。
+ */
 function taskReliabilityScenario(int $argc, array $argv): void
 {
     $mode = (string) ($argv[1] ?? 'seed');

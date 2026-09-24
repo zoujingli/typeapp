@@ -13,6 +13,11 @@ use Type\Redis\RedisManager;
 use Type\Runtime\ExecutionScope;
 use TypeApp\CacheExample\SerializableNote;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function psrCacheExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -20,6 +25,11 @@ function psrCacheExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 使用独立 Redis 验证 PSR-16 值类型、TTL、签名和永久数据回收。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $manager = new RedisManager(['default' => new RedisConfiguration(

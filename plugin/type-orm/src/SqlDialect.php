@@ -10,6 +10,7 @@ final class SqlDialect
     private string $driver;
     private string $version;
 
+    /** 固定受支持驱动和可确认的服务版本，不把 MariaDB 自动视为 MySQL。 */
     public function __construct(string $driver, string $version)
     {
         if (!in_array($driver, ['mysql', 'pgsql', 'sqlite'], true)) {
@@ -23,6 +24,11 @@ final class SqlDialect
         $this->version = $matches[1];
     }
 
+    /**
+     * 给出版本对应的 SQL 能力及真实影响行数约定。
+     *
+     * @return array<string, bool|string>
+     */
     public function capabilities(): array
     {
         return [
@@ -43,6 +49,7 @@ final class SqlDialect
         ];
     }
 
+    /** 要求明确支持的布尔能力，否则拒绝执行，不能模拟成功。 */
     public function requireCapability(string $capability): void
     {
         $capabilities = $this->capabilities();
@@ -51,6 +58,7 @@ final class SqlDialect
         }
     }
 
+    /** 校验并按方言引用标识符；语法有效不代表应用授权其访问。 */
     public function identifier(string $identifier, bool $wildcard = false, bool $qualified = true): string
     {
         $parts = explode('.', $identifier);
@@ -74,6 +82,7 @@ final class SqlDialect
         return implode('.', $quoted);
     }
 
+    /** 规范化白名单比较操作符，不允许注入任意 SQL 运算表达式。 */
     public function operator(string $operator): string
     {
         $operator = strtoupper(trim($operator));
@@ -84,6 +93,7 @@ final class SqlDialect
         return $operator;
     }
 
+    /** 为值选择参数占位表达式，必要时显式转换浮点避免 PDO 类型推断失真。 */
     public function placeholder(mixed $value): string
     {
         // PDO 没有浮点参数类型；表达式比较不能依赖列亲和性或错误推断成整数。
@@ -97,6 +107,7 @@ final class SqlDialect
         return '?';
     }
 
+    /** 生成 COUNT/SUM/AVG/MIN/MAX 表达式，列仍须经过标识符校验。 */
     public function aggregate(string $function, string $column): string
     {
         $function = strtoupper($function);
@@ -149,6 +160,7 @@ final class SqlDialect
         return ['(json_type(' . $column . ', ?) = \'text\' AND json_extract(' . $column . ', ?) = CAST(? AS TEXT))', [$jsonPath, $jsonPath, $value]];
     }
 
+    /** 验证标量或 null，并把布尔值转为数据库参数；拒绝非有限浮点。 */
     public function value(mixed $value): mixed
     {
         if ($value !== null && !is_scalar($value)) {

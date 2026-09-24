@@ -9,8 +9,10 @@ use Type\Testing\Process;
 
 require_once dirname(__DIR__) . '/support.php';
 
+/** 覆盖测试命令哨兵的跨平台参数、输出和退出码契约，避免 shell 改写参数。 */
 final class TestCommandTest extends TestCase
 {
+    /** 验证含空格、引号和控制符号的参数保持原样，标准输出、错误输出及非零退出码分别保留。 */
     public function testFixturePreservesArgumentsOutputAndExitWithoutShell(): void
     {
         $root = dirname(__DIR__, 2);

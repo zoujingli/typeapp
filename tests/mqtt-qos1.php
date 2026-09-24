@@ -254,6 +254,11 @@ function mqttReliablePublish(int $version, string $topic, string $payload, int $
         . ($version === 5 ? mqttLength(strlen($properties)) . $properties : '') . $payload);
 }
 
+/**
+ * 在秒数预算内等待条件返回真值，返回该观察值；超时抛出调用者提供的诊断。
+ *
+ * @param Closure(): mixed $condition
+ */
 function mqttUntil(Closure $condition, string $failure, float $seconds = 6.0): mixed
 {
     $until = microtime(true) + $seconds;

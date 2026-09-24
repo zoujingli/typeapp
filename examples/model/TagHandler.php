@@ -18,17 +18,20 @@ use Type\Validate\Input;
 use Type\Validate\Schema;
 use Type\Validate\ValidationException;
 
+/** 以 HTTP 验证文章标签关系的挂载、解除与同步。 */
 final class TagHandler implements RequestHandlerInterface
 {
     private ResponseFactoryInterface $responses;
     private StreamFactoryInterface $streams;
 
+    /** 注入消息工厂，不在处理器构造时借用数据库连接。 */
     public function __construct(ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
     {
         $this->responses = $responses;
         $this->streams = $streams;
     }
 
+    /** 从当前作用域执行关系操作，先校验输入再输出显式业务结果。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $scope = $request->getAttribute('type.scope');

@@ -7,6 +7,12 @@ namespace TypeApp\Distribution;
 /** 不使用 force；标签创建竞争由远端原子引用更新裁决。 */
 final class Publisher
 {
+    /**
+     * 按固定计划推进一个子仓的分支或不可变标签，回读远端引用后才报告成功。
+     * @param array<string, mixed> $plan Batch 生成且已完成范围与许可核验的计划。
+     * @return array<string, mixed> 当前组件的发布回执；历史偏离或写入失败返回 failed。
+     * @throws \RuntimeException 组件不属于计划，尚未进行任何远端写入。
+     */
     public static function publish(string $root, string $remote, array $plan, string $name): array
     {
         $item = $plan['items'][$name] ?? throw new \RuntimeException('插件不在本批次内');

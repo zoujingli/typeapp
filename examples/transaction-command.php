@@ -9,6 +9,11 @@ use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\Drivers;
 use TypeApp\ModelExample\TransactionExercise;
 
+/**
+ * 验证嵌套事务、回滚模型失效与租约所有权，结束时关闭作用域和管理器。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {

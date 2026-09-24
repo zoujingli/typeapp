@@ -54,6 +54,7 @@ final class Cancellation
         unset($this->listeners[$id]);
     }
 
+    /** 读取取消意图；true 不代表在途操作或资源清理已经完成。 */
     public function cancelled(): bool
     {
         return $this->cancelled;

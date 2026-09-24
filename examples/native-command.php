@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 use Type\Runtime\Arguments;
 
+/**
+ * 解析有界重复次数并输出问候，作为无业务依赖的原生入口示例。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     try {

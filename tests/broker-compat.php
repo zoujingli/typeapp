@@ -16,6 +16,13 @@ use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
 if (!function_exists('identityCommand')) {
+    /**
+     * 在 30 秒内执行人员管理命令并解析 JSON，退出路径均停止子进程。
+     *
+     * @param list<string> $command
+     * @param array<string, string> $environment
+     * @return array<string, mixed>
+     */
     function identityCommand(array $command, array $environment): array
     {
         $process = new Process($command, dirname(__DIR__), $environment);
@@ -29,6 +36,11 @@ if (!function_exists('identityCommand')) {
     }
 }
 
+/**
+ * 在本轮私有目录签发兼容测试 CA 和服务端证书，限制私钥权限；目录由调用者回收。
+ *
+ * @return array{ca: string, server: string, key: string}
+ */
 function compatCertFiles(string $directory): array
 {
     expect(mkdir($directory, 0700), '无法创建证书目录');
@@ -53,6 +65,7 @@ function compatCertFiles(string $directory): array
     return $paths;
 }
 
+/** 在 15 秒轮询预算内确认兼容节点存活且通过证书与主机名验证的 TLS 握手。 */
 function compatWaitTls(Process $process, int $port, string $ca): void
 {
     $deadline = microtime(true) + 15;
@@ -71,6 +84,7 @@ function compatWaitTls(Process $process, int $port, string $ca): void
     expect(false, '兼容节点 TLS 入口未就绪：' . $process->stderr());
 }
 
+/** 在 30 秒轮询预算内等待遗嘱占用进程报告 held:1，提前退出或超时均失败。 */
 function compatWaitHeld(Process $process): void
 {
     $deadline = microtime(true) + 30;
@@ -84,6 +98,11 @@ function compatWaitHeld(Process $process): void
     expect(false, '遗嘱占用未就绪：' . $process->stdout() . $process->stderr());
 }
 
+/**
+ * 按本轮环境连接 PostgreSQL，并启用异常错误模式；PDO 由调用者持有和释放。
+ *
+ * @param array<string, string> $environment
+ */
 function compatPdo(array $environment): PDO
 {
     return new PDO(
@@ -94,6 +113,13 @@ function compatPdo(array $environment): PDO
     );
 }
 
+/**
+ * 在 12 秒轮询预算内等待访问修订生效并具有节点记录，超时附最后状态。
+ *
+ * @param callable(string, string, string, ?array, int): array<string, mixed> $request
+ * @param array<string, mixed> $revision
+ * @return array<string, mixed>
+ */
 function compatWaitRevision(callable $request, string $token, array $revision, string $message): array
 {
     $deadline = microtime(true) + 12;

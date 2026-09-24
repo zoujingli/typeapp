@@ -9,6 +9,11 @@ use Type\Orm\Migration\Migration;
 /** 示例迁移定义随应用一起编译，不在生产扫描或解释 PHP 文件。 */
 final class Plan
 {
+    /**
+     * 生成当前数据库方言与故障场景的迁移声明，先限制测试表前缀。
+     *
+     * @return list<\Type\Orm\Migration\Migration> 按版本顺序排列的迁移。
+     */
     public static function migrations(string $driver, string $prefix): array
     {
         if (!preg_match('/^[a-z][a-z0-9_]{0,30}$/D', $prefix)) {

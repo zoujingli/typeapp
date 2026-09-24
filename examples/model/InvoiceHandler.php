@@ -17,17 +17,20 @@ use Type\Validate\Input;
 use Type\Validate\Schema;
 use Type\Validate\ValidationException;
 
+/** 通过 HTTP 验证发票的精确数值与时间字段，不以浮点数替代金额文本。 */
 final class InvoiceHandler implements RequestHandlerInterface
 {
     private ResponseFactoryInterface $responses;
     private StreamFactoryInterface $streams;
 
+    /** 注入消息工厂；运行时模型查询使用请求作用域连接。 */
     public function __construct(ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
     {
         $this->responses = $responses;
         $this->streams = $streams;
     }
 
+    /** 校验发票输入并保存或读取模型，输出安全字段及明确错误状态。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $scope = $request->getAttribute('type.scope');

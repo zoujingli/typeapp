@@ -384,6 +384,7 @@ function httpThreadInputs(int $port): int
     return $checks;
 }
 
+/** 在 5 秒轮询预算内等待线程阶段写入非空哨兵文件，提前退出或超时均失败。 */
 function httpThreadWait(Process $process, string $file): void
 {
     $deadline = microtime(true) + 5;

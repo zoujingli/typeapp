@@ -164,6 +164,12 @@ final class Batch
         }
     }
 
+    /**
+     * 逐项匹配计划身份和回执；任一缺失、错配或失败都会使整个批次 incomplete。
+     * @param array<string, mixed> $plan 固定源码生成的计划。
+     * @param array<string, array<string, mixed>> $reports 组件名到实际分发回执。
+     * @return array<string, mixed> 汇总结果；跨仓发布本身不具有原子性。
+     */
     public static function collect(array $plan, array $reports): array
     {
         $items = [];

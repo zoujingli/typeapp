@@ -11,6 +11,11 @@ use TypeApp\HttpExample\HealthHandler;
 use TypeApp\HttpExample\MarkerMiddleware;
 use TypeApp\ValidationExample\Handler as ValidationHandler;
 
+/**
+ * 启动 PSR HTTP 与请求资源示例，严格校验监听端口并记录作用域收尾。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $port = filter_var(getenv('TYPE_HTTP_PORT') ?: '19501', FILTER_VALIDATE_INT);

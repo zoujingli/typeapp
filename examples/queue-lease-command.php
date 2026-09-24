@@ -10,6 +10,11 @@ use Type\Redis\RedisConfiguration;
 use Type\Redis\RedisManager;
 use Type\Runtime\ExecutionScope;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function leaseExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -17,6 +22,11 @@ function leaseExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 按参数运行队列续租、故障重领与旧 token 拒绝，崩溃阶段需要外部监督。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $mode = (string) ($argv[1] ?? 'normal');

@@ -9,15 +9,18 @@ use Type\Queue\JobContext;
 use Type\Runtime\ManagedResource;
 use Type\Runtime\ExecutionScope;
 
+/** 队列作用域的可观测资源，累计开启/关闭并可注入清理失败。 */
 final class Resource implements ManagedResource
 {
     public static int $opened = 0;
     public static int $closed = 0;
     public static bool $failStop = false;
+    /** 累计资源启动次数，不建立外部连接。 */
     public function start(): void
     {
         self::$opened++;
     }
+    /** 正常累计关闭次数，failStop 时故意失败以阻止提前确认投递。 */
     public function stop(): void
     {
         if (self::$failStop) {
@@ -27,15 +30,22 @@ final class Resource implements ManagedResource
     }
 }
 
+/** 在 Redis 中执行带消息身份的累加，验证任务实例与作用域不跨投递复用。 */
 final class Increment implements Job
 {
     public static ?ExecutionScope $lastScope = null;
     private string $prefix;
     private int $calls = 0;
+    /** 记录演练键前缀，避免不同任务批次共享业务效果。 */
     public function __construct(string $prefix)
     {
         $this->prefix = $prefix;
     }
+    /**
+     * 校验作用域与整数载荷，在租约保护中按稳定消息 ID 去重并累加。
+     *
+     * @param array{amount: int} $payload 待累计的整数。
+     */
     public function handle(JobContext $context, array $payload): void
     {
         if (ExecutionScope::current() !== $context->scope() || ExecutionScope::current()->binding('tenant_id') !== null) {

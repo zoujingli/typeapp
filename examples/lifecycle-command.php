@@ -8,6 +8,11 @@ use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\Drivers;
 use TypeApp\ModelExample\LifecycleExercise;
 
+/**
+ * 验证软删除、恢复、字段转换和模型事件事务，测试表应位于专属数据库。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {

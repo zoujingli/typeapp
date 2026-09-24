@@ -13,6 +13,14 @@ final class Arguments
 
     private array $flags = [];
 
+    /**
+     * 按白名单解析完整命令参数，拒绝重复、未知、缺值及空值选项。
+     *
+     * @param list<string> $argv 包含程序名的命令参数。
+     * @param list<string> $valueOptions 必须携带非空值的选项名，不含前导短横线。
+     * @param list<string> $switches 不接受值的开关名。
+     * @throws InvalidArgumentException 参数不满足上述约束。
+     */
     public function __construct(array $argv, array $valueOptions, array $switches)
     {
         for ($index = 1; $index < count($argv); $index++) {
@@ -56,16 +64,22 @@ final class Arguments
         }
     }
 
+    /** 检查调用者是否显式提供选项或开关，不读取默认值。 */
     public function has(string $name): bool
     {
         return array_key_exists($name, $this->flags) || array_key_exists($name, $this->values);
     }
 
+    /** 读取值选项；仅未提供时返回默认文本，开关应使用 has()。 */
     public function text(string $name, string $default): string
     {
         return array_key_exists($name, $this->values) ? (string) $this->values[$name] : $default;
     }
 
+    /**
+     * 读取闭区间内的整数；显式输入和默认值接受相同校验。
+     * @throws InvalidArgumentException 文本不是整数或超出上下限。
+     */
     public function integer(string $name, int $default, int $minimum, int $maximum): int
     {
         $raw = $this->text($name, (string) $default);

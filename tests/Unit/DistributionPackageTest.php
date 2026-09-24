@@ -38,6 +38,7 @@ final class DistributionPackageTest extends TestCase
         ], JSON_THROW_ON_ERROR), '插件依赖尚未映射'];
     }
 
+    /** 验证分发计划要求固定提交中的组件材料完整，工作区补写不能改变被验证的提交。 */
     #[DataProvider('packageContents')]
     public function testPlanRequiresCompleteCommittedPackageMaterials(string $changed, ?string $content, string $failure): void
     {

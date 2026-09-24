@@ -49,6 +49,7 @@ const mismatch = computed(() => form.matching === 'existing' && Boolean(selected
 const ready = computed(() => Boolean(pendingSubmission.value) || (Number.isInteger(form.version) && Number(form.version) > 0 && (mode.value === 'request' ? /^[a-f0-9]{32}$/.test(form.device_id) && /^[a-f0-9]{32}$/.test(form.target_tenant_id)
   : mode.value !== 'accept' || (form.matching === 'copy' ? canCopy.value && Boolean(form.copy_name.trim()) : /^[a-f0-9]{32}$/.test(form.target_product_id) && Number.isInteger(form.target_model_version) && Number(form.target_model_version) > 0 && !mismatch.value))));
 function time(value: number | null) { return value === null ? '尚无记录' : new Date(Number(value) * 1000).toLocaleString(); }
+/** 每轮完成后安排刷新；不可见或卸载后不继续轮询跨租户转移状态。 */
 function schedule() { clearTimeout(timer); if (active && canRead.value && !document.hidden) timer = setTimeout(() => void load(result.value.page, true), 5000); }
 async function load(page = 1, refresh = false, perPage = result.value.per_page) {
   const tenant = session.tenant?.id; if (!tenant || !canRead.value || !active || document.hidden || saving.value) { schedule(); return; }
@@ -166,6 +167,7 @@ async function readDeviceVersion() {
 function visibility() { clearTimeout(timer); if (document.hidden) { serial++; detailSerial++; pending?.abort(); detailPending?.abort(); busy.value = false; detailBusy.value = false; } else void load(result.value.page, true); }
 watch(() => form.target_product_id, () => { models.value = { items: [], total: 0, page: 1, per_page: 20 }; if (!pendingSubmission.value) form.target_model_version = undefined; if (form.target_product_id) void options('models'); });
 watch(() => form.matching, value => { if (value === 'existing') void options('products'); });
+// 身份变化同时清除三个请求代次和一次性新凭据，避免跨工作区复用转移状态。
 watch([() => session.tenant?.id, () => session.token, () => session.realm], () => {
   serial++; detailSerial++; optionSerial++; clearTimeout(timer); pending?.abort(); detailPending?.abort(); optionPending?.abort();
   selected.value = null; issued.value = null; switchingOpen.value = false; detailOpen.value = false; formOpen.value = false; pendingSubmission.value = null;

@@ -8,18 +8,34 @@ use Type\Log\LogManager;
 use Type\Log\Output;
 use Type\Runtime\ExecutionScope;
 
+/** 故意拒绝字符串转换和 JSON 序列化的上下文值，检验日志不会执行任意对象方法。 */
 final class UnsafeLogValue implements Stringable, JsonSerializable
 {
+    /**
+     * 故意拒绝隐式转文本，供日志消息失败和上下文隔离路径验证。
+     *
+     * @throws RuntimeException 每次调用均失败。
+     */
     public function __toString(): string
     {
         throw new RuntimeException('不能转换');
     }
+    /**
+     * 故意拒绝对象序列化，验证格式化器只记录未知对象类型。
+     *
+     * @throws RuntimeException 每次调用均失败。
+     */
     public function jsonSerialize(): mixed
     {
         throw new RuntimeException('不能序列化');
     }
 }
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function behaviorExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -27,6 +43,11 @@ function behaviorExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 验证脱敏、任意上下文、共享格式化预算与日志作用域隔离。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $bounded = new Formatter(maxItems: 3);

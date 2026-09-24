@@ -15,6 +15,11 @@ use TypeApp\QueueExample\Increment;
 use TypeApp\QueueExample\Resource;
 use TypeApp\QueueExample\Jobs;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function queueExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -22,6 +27,11 @@ function queueExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 在 Swoole 协程内运行消息注册、消费和确认示例，资源装配留在同一执行者内。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
@@ -29,6 +39,11 @@ function main(int $argc, array $argv): void
     });
 }
 
+/**
+ * 在现有协程内建立专属队列，验证任务注册、幂等消费和作用域收尾。
+ *
+ * @param list<string> $argv 程序路径及 help 参数。
+ */
 function queueScenario(int $argc, array $argv): void
 {
     if (($argv[1] ?? '') === '--help') {

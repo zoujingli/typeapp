@@ -12,6 +12,7 @@ final class CacheReader
 {
     private TypedCache $cache;
     private bool $fallback;
+    /** 选择 Redis 故障是否允许降级回源；默认传播错误，业务数据源异常不被吞掉。 */
     public function __construct(TypedCache $cache, bool $fallbackOnRedisFailure = false)
     {
         $this->cache = $cache;

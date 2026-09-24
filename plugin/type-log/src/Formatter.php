@@ -17,6 +17,13 @@ final class Formatter
     private int $maxItems;
     private int $maxStringBytes;
 
+    /**
+     * 登记递归脱敏规则与单次格式化预算；字符串长度按字节计。
+     *
+     * @param list<string> $sensitiveFields 追加敏感字段名，比较时忽略大小写和标点。
+     * @param list<string> $secretValues 需要替换的已知非空秘密文本。
+     * @throws InvalidArgumentException 规则数量、字符串或容量超出允许范围。
+     */
     public function __construct(array $sensitiveFields = [], array $secretValues = [], int $maxDepth = 6, int $maxItems = 128, int $maxStringBytes = 2048)
     {
         if ($maxDepth < 1 || $maxDepth > 16 || $maxItems < 1 || $maxItems > 4096 || $maxStringBytes < 64 || $maxStringBytes > 16384
@@ -44,12 +51,24 @@ final class Formatter
         $this->maxStringBytes = $maxStringBytes;
     }
 
+    /**
+     * 复制并脱敏上下文，限制深度与总节点数；未知对象只保留类型。
+     *
+     * @param array<array-key, mixed> $context 原始上下文，不调用其对象序列化方法。
+     * @return array<array-key, mixed> 可编码为 JSON 的安全副本。
+     */
     public function context(array $context): array
     {
         $budget = $this->maxItems;
         return $this->normalize($context, 0, $budget);
     }
 
+    /**
+     * 以安全上下文替换占位符并生成带换行的 JSON；关联身份应先由 context() 处理。
+     *
+     * @param array<array-key, mixed> $context 本条日志的业务上下文。
+     * @param array<array-key, mixed> $correlation 已复制并脱敏的执行关联。
+     */
     public function record(string $build, string $channel, string $level, string|Stringable $message, array $context, array $correlation): string
     {
         $safe = $this->context($context);

@@ -58,6 +58,13 @@ function iotOperationsChecks(Closure $request, array $tokens, string $tenantA, s
         'fresh-stale-ownership-model-boundaries', 'metadata-without-payload', 'polling-without-audit-writes', 'old-route-removed'], 'driver' => $driver];
 }
 
+/**
+ * 读取真实平台运行概览，检查身份脱敏、节点数量及响应字节预算。
+ *
+ * @param array<string, string> $environment
+ * @param array<string, mixed> $fixture
+ * @return array<string, mixed>
+ */
 function iotOperationsPlatform(array $environment, array $fixture): array
 {
     $client = new HttpClient('http://127.0.0.1:' . $environment['APP_PORT'], 12.0);
@@ -72,6 +79,13 @@ function iotOperationsPlatform(array $environment, array $fixture): array
     return $value;
 }
 
+/**
+ * 在秒数预算内轮询运行观测，接受谓词成立后返回，超时附最后一次观测。
+ *
+ * @param Closure(): array<string, mixed> $read
+ * @param Closure(array<string, mixed>): bool $accept
+ * @return array<string, mixed>
+ */
 function iotOperationsWait(Closure $read, Closure $accept, string $failure, float $seconds = 15.0): array
 {
     $until = microtime(true) + $seconds;

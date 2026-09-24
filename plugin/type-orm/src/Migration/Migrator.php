@@ -17,6 +17,7 @@ final class Migrator
     private Driver $driver;
     private string $table;
 
+    /** 声明迁移专属驱动及记录表名；每次操作建立独立短生命周期连接。 */
     public function __construct(Driver $driver, string $table = 'type_migrations')
     {
         if (!in_array($driver->name(), ['mysql', 'pgsql', 'sqlite'], true) || !preg_match('/^[a-z][a-z0-9_]{0,47}$/D', $table)) {
@@ -26,6 +27,12 @@ final class Migrator
         $this->table = $table;
     }
 
+    /**
+     * 核对完整计划与数据库记录，不执行待应用的迁移 SQL。
+     *
+     * @param list<Migration> $migrations
+     * @return list<array<string, mixed>>
+     */
     public function status(array $migrations): array
     {
         $plan = $this->plan($migrations);
@@ -75,6 +82,11 @@ final class Migrator
         });
     }
 
+    /**
+     * 按事件编号读取迁移与恢复历史，事件表尚未创建时返回空列表。
+     *
+     * @return list<array<string, mixed>>
+     */
     public function history(): array
     {
         return $this->connection(function (Connection $connection): array {

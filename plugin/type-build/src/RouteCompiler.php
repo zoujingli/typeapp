@@ -41,6 +41,12 @@ final class RouteCompiler
         return $value;
     }
 
+    /**
+     * 静态读取生产类和路由声明，拒绝冲突后生成直接注册调用，不执行控制器。
+     * @param array<string, mixed> $configuration 已解析的 routing 声明。
+     * @param list<string> $sources 完整生产源码文件或目录。
+     * @return array{class: string, routes: list<array<string, mixed>>, code: string}
+     */
     public function generate(string $root, array $configuration, array $sources): array
     {
         $this->keys($configuration, ['class', 'routes', 'attributes']);

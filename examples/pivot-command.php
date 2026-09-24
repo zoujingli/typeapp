@@ -11,6 +11,11 @@ use TypeApp\ModelExample\Article;
 use TypeApp\ModelExample\ArticleTags;
 use TypeApp\ModelExample\Drivers;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function pivotExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -18,6 +23,11 @@ function pivotExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 验证多对多挂载、同步、事务与中间表字段；竞争阶段由参数显式选择。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {

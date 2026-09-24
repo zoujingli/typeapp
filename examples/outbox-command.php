@@ -20,6 +20,11 @@ use TypeApp\ModelExample\Drivers;
 use TypeApp\OutboxExample\Delivered;
 use TypeApp\OutboxExample\QueuePublisher;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function outboxExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -27,6 +32,11 @@ function outboxExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 在 Swoole 协程内运行显式 Outbox 角色，每轮有界处理并收尾资源。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
@@ -34,6 +44,11 @@ function main(int $argc, array $argv): void
     });
 }
 
+/**
+ * 按角色选择事务意图、发布、消费、重放或回收，故障阶段不伪造提交结果。
+ *
+ * @param list<string> $argv 程序路径、驱动和明确角色。
+ */
 function outboxScenario(int $argc, array $argv): void
 {
     if (($argv[1] ?? '') === 'help' || ($argv[2] ?? '') === 'help') {

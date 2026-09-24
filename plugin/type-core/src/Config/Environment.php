@@ -230,16 +230,19 @@ final class Environment
         return ['fields' => $fields, 'undeclared' => $undeclared];
     }
 
+    /** 仅展示环境键名，隐藏所有值，避免调试输出泄露秘密。 */
     public function __debugInfo(): array
     {
         return ['keys' => array_keys($this->values), 'values' => '[REDACTED]'];
     }
 
+    /** @throws RuntimeException 环境快照含启动秘密，禁止序列化保存或转移。 */
     public function __serialize(): array
     {
         throw new RuntimeException('环境配置不允许序列化');
     }
 
+    /** @throws RuntimeException 环境快照必须由启动配置加载，禁止反序列化恢复。 */
     public function __unserialize(#[\SensitiveParameter] array $data): void
     {
         throw new RuntimeException('环境配置不允许反序列化');

@@ -93,6 +93,13 @@ function rolloutStop(Process $process, float $seconds): ProcessResult
     }
     return $process->stop($seconds);
 }
+/**
+ * 在 10 秒内执行发布演练命令，按 success 开关要求成功或保留原结果，退出路径停止进程。
+ *
+ * @param array<string, mixed>|list<string> $command 原生、PHP 或目录包启动描述。
+ * @param list<string> $arguments
+ * @param array<string, string> $environment
+ */
 function rolloutCall(array $command, array $arguments, array $environment, bool $success = true): ProcessResult
 {
     $process = new Process([...rolloutCommand($command, $environment), ...$arguments], null, $environment);
@@ -105,6 +112,13 @@ function rolloutCall(array $command, array $arguments, array $environment, bool 
         $process->stop();
     }
 }
+/**
+ * 启动本轮 HTTP 角色并等候 /readyz，成功返回进程与客户端，由调用者结束角色。
+ *
+ * @param array<string, mixed>|list<string> $command
+ * @param array<string, string> $environment
+ * @return array{Process, HttpClient}
+ */
 function rolloutHttp(array $command, array $environment): array
 {
     global $rolloutPackageProcesses;
@@ -132,6 +146,12 @@ function rolloutHttp(array $command, array $environment): array
     rolloutStop($process, 5);
     throw new RuntimeException('发布演练 HTTP 未按时就绪');
 }
+/**
+ * 启动本轮工作角色并等待就绪，返回进程由调用者停止；目录包进程登记独立回收信息。
+ *
+ * @param array<string, mixed>|list<string> $command
+ * @param array<string, string> $environment
+ */
 function rolloutWorker(array $command, array $environment): Process
 {
     global $rolloutPackageProcesses;

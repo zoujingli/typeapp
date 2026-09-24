@@ -42,11 +42,22 @@ final class Output
         $this->maxRecordBytes = $maxRecordBytes;
     }
 
+    /**
+     * 建立延迟打开的 stdout 输出；条数、总字节与单条字节均有上限。
+     *
+     * @throws InvalidArgumentException 容量参数越界。
+     */
     public static function stdout(int $maxRecords = 1024, int $maxBytes = 1048576, int $maxRecordBytes = 4096): Output
     {
         return new Output('php://stdout', $maxRecords, $maxBytes, $maxRecordBytes);
     }
 
+    /**
+     * 建立本地文件追加输出；父目录由应用准备，实际打开时拒绝符号链接和非普通文件。
+     *
+     * @param string $path 以 / 开头的本地绝对路径，不接受 URL 包装器。
+     * @throws InvalidArgumentException 路径或容量参数无效。
+     */
     public static function file(string $path, int $maxRecords = 1024, int $maxBytes = 1048576, int $maxRecordBytes = 4096): Output
     {
         if (!str_starts_with($path, '/') || str_contains($path, "\0") || str_contains($path, '://')) {
@@ -74,6 +85,11 @@ final class Output
         return $output;
     }
 
+    /**
+     * 接纳一条完整记录到内存；满载、过大、停止或失败时整体丢弃并累计计数。
+     *
+     * @return bool true 仅表示已入缓冲，不表示持久写出。
+     */
     public function enqueue(string $line): bool
     {
         $this->assertProcess();
@@ -102,6 +118,12 @@ final class Output
         return true;
     }
 
+    /**
+     * 在给定秒数内尝试写出缓冲，保留部分写出的偏移；失败使输出退役。
+     *
+     * @return bool 本次调用结束时缓冲是否为空。
+     * @throws InvalidArgumentException 秒数非有限值或不在 0 至 60 之间。
+     */
     public function drain(float $seconds = 0.0): bool
     {
         $this->assertProcess();
@@ -174,6 +196,7 @@ final class Output
         }
     }
 
+    /** 先按秒数预算排空，再丢弃剩余记录；关闭自有流或恢复外借流的阻塞模式。 */
     public function stop(float $seconds = 0.25): void
     {
         $this->assertProcess();
@@ -193,6 +216,11 @@ final class Output
         $this->release();
     }
 
+    /**
+     * 读取输出累计计数与当前积压；部分写入不计作完整 written。
+     *
+     * @return array<string, int|bool> 累计数量、积压条数/字节及 failed/stopped 状态。
+     */
     public function stats(): array
     {
         $this->assertProcess();

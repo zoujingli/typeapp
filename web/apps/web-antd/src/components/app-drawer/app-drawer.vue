@@ -73,6 +73,7 @@ const POPUP_WIDTH_PX: Record<PopupWidthSize, number> = {
   full: 1560,
 };
 
+/** 预设宽度保留 32px 视口空隙，窄屏使用可用视口宽度。 */
 function buildPopupWidth(size: PopupWidthSize) {
   return `min(${POPUP_WIDTH_PX[size]}px, calc(100vw - ${POPUP_VIEWPORT_GAP}px))`;
 }
@@ -164,6 +165,7 @@ const mergedBodyStyle = computed<CSSProperties>(() => ({
   ...props.bodyStyle,
 }));
 
+/** 保存过程中统一阻止关闭，避免表单被卸载后丢失提交结果。 */
 function closeDrawer() {
   if (!canClose.value) return;
   emit('update:open', false);

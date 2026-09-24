@@ -7,6 +7,11 @@ use Type\Orm\Migration\Migrator;
 use TypeApp\Migrations\DriverFactory;
 use TypeApp\Migrations\Plan;
 
+/**
+ * 将显式参数交给迁移控制台，并把非零状态传递给宿主进程。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $driver = DriverFactory::create();

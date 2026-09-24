@@ -8,6 +8,11 @@ use Type\Runtime\ExecutionScope;
 use TypeApp\OrmSuite\DriverFactory;
 use TypeApp\OrmSuite\Suite;
 
+/**
+ * 按当前安装驱动运行业务套件或并发角色，验证未安装驱动不会被隐式引用。
+ *
+ * @param list<string> $argv 程序路径与显式业务/竞争角色参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::enableIo();

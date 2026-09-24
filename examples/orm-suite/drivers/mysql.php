@@ -7,6 +7,7 @@ namespace TypeApp\OrmSuite;
 use Type\Orm\Driver;
 use Type\Orm\Mysql\MysqlDriver;
 
+/** 独立消费者的 MySQL 驱动入口，保持业务源码在三库之间不变。 */
 final class DriverFactory
 {
     /** 按独立消费者配置建立驱动；代次用于真实租约轮换验收。 */

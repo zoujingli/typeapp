@@ -13,6 +13,7 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use RuntimeException;
 
+/** 通过应用认证回调建立可信 Identity，再向后续处理链传递。 */
 final class Authentication implements MiddlewareInterface
 {
     private Closure $authenticate;
@@ -32,6 +33,7 @@ final class Authentication implements MiddlewareInterface
         $this->streams = $streams;
     }
 
+    /** 校验本次请求的认证结果并设置 type.identity；失败返回认证错误。 */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $canonical = $request->getAttribute('type.request');

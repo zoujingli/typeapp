@@ -26,6 +26,12 @@ $waiting = false;
 $marker = '';
 $deadline = microtime(true) + 30;
 
+/**
+ * 在同一绝对截止时间内处理故障代理短写，等待不会延长总预算；连接仍由调用者关闭。
+ *
+ * @param resource $target
+ * @param float $deadline microtime(true) 时间基准的绝对秒数。
+ */
 function proxyWrite($target, string $bytes, float $deadline): void
 {
     $offset = 0;

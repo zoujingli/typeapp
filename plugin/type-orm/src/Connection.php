@@ -10,6 +10,7 @@ use Type\Runtime\ResourceLease;
 use Type\Runtime\ReusableResource;
 use Type\Runtime\ExecutionScope;
 
+/** 执行作用域中的数据库租约；集中管理参数绑定、事务事实、模型失效与查询诊断。 */
 final class Connection
 {
     private ResourceLease $lease;
@@ -24,33 +25,52 @@ final class Connection
     private int $listenerSequence = 0;
     private bool $notifying = false;
 
+    /**
+     * @internal 绑定作用域已借出的 PDO 租约及端点身份。
+     *
+     * @param array<string, mixed> $identity
+     */
     public function __construct(ResourceLease $lease, array $identity = [])
     {
         $this->lease = $lease;
         $this->identity = $identity;
     }
 
+    /**
+     * 返回借出时的身份快照，后续凭据轮换不会改变已借出租约。
+     *
+     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码。
+     */
     public function identity(): array
     {
         return $this->identity;
     }
 
+    /**
+     * 执行参数化查询并读取全部行；大结果应选择 stream 或分页。
+     *
+     * @param array<int|string, scalar|null> $parameters 位置参数从零编号，命名参数保留键名。
+     * @return list<array<string, mixed>>
+     */
     public function query(string $sql, array $parameters = []): array
     {
         $this->recordRead(count($parameters));
         return $this->operation(static fn (PdoSession $session): array => $session->query($sql, $parameters), $sql, $parameters);
     }
 
+    /** 为基础设施或跨模型投影建立不可变表查询；业务实体优先使用 Model。 */
     public function table(string $table, string $alias = ''): Query
     {
         return new Query($this, $table, $alias);
     }
 
+    /** 从当前租约读取方言名称，已归还或错误执行者的租约会被拒绝。 */
     public function driverName(): string
     {
         return $this->session()->driverName();
     }
 
+    /** 读取实际服务器版本供能力选择；活跃结果流期间不能插入该操作。 */
     public function serverVersion(): string
     {
         return $this->session()->serverVersion();
@@ -125,6 +145,12 @@ final class Connection
         return new RowStream($this->lease, $session, $id, $maxRowBytes);
     }
 
+    /**
+     * 执行参数化语句并返回数据库报告的影响行数，遵守事务与只读角色检查。
+     *
+     * @param array<int|string, scalar|null> $parameters
+     * @return int 各数据库保留各自的匹配行/改变行语义。
+     */
     public function execute(string $sql, array $parameters = []): int
     {
         $this->writes++;
@@ -150,6 +176,7 @@ final class Connection
         return $this->operation(static fn (PdoSession $session): array => $session->query($sql, $parameters), $sql, $parameters, 'raw-query', true);
     }
 
+    /** 读取同一物理会话最近生成的主键文本；需在租约归还之前调用。 */
     public function lastInsertId(): string
     {
         return $this->session()->lastInsertId();
@@ -268,10 +295,12 @@ final class Connection
         return $result;
     }
 
+    /** 返回当前连接活动事务帧数；内层帧对应保存点。 */
     public function transactionDepth(): int
     {
         return count($this->transactions);
     }
+    /** 返回当前连接最近的事务事实；提交后回调里的新事务可以推进该状态。 */
     public function transactionOutcome(): string
     {
         return $this->outcome;
@@ -333,11 +362,13 @@ final class Connection
         }
     }
 
+    /** 检查租约是否已归还，不能据此绕过执行者或作用域检查。 */
     public function released(): bool
     {
         return $this->lease->released();
     }
 
+    /** 停止当前租约，后续操作拒绝；持有中的原生操作完成前不会转借会话。 */
     public function close(): void
     {
         if ($this->notifying) {

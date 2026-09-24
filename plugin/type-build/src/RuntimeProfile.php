@@ -11,6 +11,7 @@ final class RuntimeProfile
 {
     private BuildEnvironment $runner;
 
+    /** 使用受管子进程执行真实 embed 探针；未指定时创建默认构建执行器。 */
     public function __construct(?BuildEnvironment $runner = null)
     {
         $this->runner = $runner ?? new BuildEnvironment();

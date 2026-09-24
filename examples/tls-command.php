@@ -25,6 +25,7 @@ function tlsPort(int $default): int
     return (int) $value;
 }
 
+/** 为受控 TLS 数据库创建带显式 CA 的驱动，凭据仅从运行环境读取。 */
 function tlsDriver(string $kind, string $host, string $ca): Driver
 {
     $password = (string) getenv('TYPE_TLS_PASSWORD');
@@ -37,6 +38,7 @@ function tlsDriver(string $kind, string $host, string $ca): Driver
     throw new InvalidArgumentException('未知 TLS 数据库驱动');
 }
 
+/** 建立一次真实数据库连接并检查 TLS 身份，finally 关闭作用域与实例。 */
 function tlsDatabase(Driver $driver): void
 {
     $database = new Database($driver, 1, 0);
@@ -67,6 +69,7 @@ function tlsDatabase(Driver $driver): void
     }
 }
 
+/** 向显式 TLS Redis 发送 PING，结束时关闭连接作用域和管理器。 */
 function tlsRedis(string $host, string $ca): void
 {
     $manager = new RedisManager(['tls' => new RedisConfiguration($host, tlsPort(6379), tls: true, caFile: $ca)]);
@@ -81,6 +84,11 @@ function tlsRedis(string $host, string $ca): void
     }
 }
 
+/**
+ * 执行负向 TLS 探针，只识别数据库或 Redis 的连接失败。
+ *
+ * @param Closure(): void $operation 连接或查询的负向演练。
+ */
 function tlsRejected(Closure $operation): bool
 {
     try {
@@ -91,6 +99,11 @@ function tlsRejected(Closure $operation): bool
     return false;
 }
 
+/**
+ * 连接受控数据库或 Redis，分别验证正确信任链、错误 CA 和主机名拒绝。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $kind = $argv[1] ?? '';

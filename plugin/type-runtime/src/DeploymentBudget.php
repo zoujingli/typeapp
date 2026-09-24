@@ -46,6 +46,10 @@ final class DeploymentBudget
         $this->budget ??= new ResourceBudget($this->perThread);
         return $this->budget;
     }
+    /**
+     * 返回部署容量分配快照，不代表服务端实际连接数。
+     * @return array<string, int>
+     */
     public function statistics(): array
     {
         return $this->plan;

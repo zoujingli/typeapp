@@ -11,6 +11,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
+/** 按明确来源、方法与头白名单处理 CORS，并区分预检与业务请求。 */
 final class Cors implements MiddlewareInterface
 {
     private array $origins;
@@ -19,6 +20,12 @@ final class Cors implements MiddlewareInterface
     private bool $credentials;
     private ResponseFactoryInterface $responses;
 
+    /**
+     * 建立跨域访问白名单，凭据模式不能采用通配来源。
+     * @param list<string> $origins 允许的来源。
+     * @param list<string> $methods 允许的 HTTP 方法。
+     * @param list<string> $headers 允许的请求头。
+     */
     public function __construct(
         ResponseFactoryInterface $responses,
         array $origins,
@@ -51,6 +58,7 @@ final class Cors implements MiddlewareInterface
         $this->credentials = $credentials;
     }
 
+    /** 先校验跨域来源与预检，再为业务响应添加适用的 CORS 头。 */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $origin = $request->getHeaderLine('Origin');

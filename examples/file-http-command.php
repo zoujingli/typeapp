@@ -9,6 +9,11 @@ use Type\Core\Http\Router;
 use Type\Core\Http\SwooleServer;
 use TypeApp\FileExample\Endpoint;
 
+/**
+ * 装配上传及分块下载故障路由；文件目录与迹线由专属测试配置提供。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $factory = new Factory();

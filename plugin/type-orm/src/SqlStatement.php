@@ -7,6 +7,7 @@ namespace Type\Orm;
 /** @internal 迁移和事务共用的单语句检查，值应当使用 PDO 参数绑定。 */
 final class SqlStatement
 {
+    /** 识别单语句首操作词，拒绝注释、多语句和歧义引用；不是完整 SQL 权限分析器。 */
     public static function operation(string $sql): string
     {
         $quote = '';

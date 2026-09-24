@@ -7,6 +7,7 @@ namespace TypeApp\OrmSuite;
 use Type\Orm\Driver;
 use Type\Orm\Pgsql\PgsqlDriver;
 
+/** 独立消费者的 PostgreSQL 驱动入口，供同一业务与会话验收使用。 */
 final class DriverFactory
 {
     /** 按独立消费者配置建立驱动；代次用于真实租约轮换验收。 */

@@ -14,6 +14,11 @@ final class FileStateStore implements StateStore
     private mixed $lock = null;
     private ?ExecutionOwner $owner = null;
 
+    /**
+     * 登记已存在本地目录中的状态文件；当前路径语义要求 / 开头的绝对路径。
+     *
+     * @throws RuntimeException 路径、父目录或空字节不符合要求。
+     */
     public function __construct(string $filename)
     {
         if (!str_starts_with($filename, '/') || !is_dir(dirname($filename)) || str_contains($filename, "\0")) {
@@ -22,6 +27,11 @@ final class FileStateStore implements StateStore
         $this->filename = $filename;
     }
 
+    /**
+     * 非阻塞获取稳定 .lock 文件的独占锁，与可原子替换的状态文件分离。
+     *
+     * @throws RuntimeException 当前已持有、其他执行者占用或文件不可用。
+     */
     public function acquire(): void
     {
         if ($this->lock !== null) {
@@ -39,6 +49,11 @@ final class FileStateStore implements StateStore
         $this->lock = $lock;
     }
 
+    /**
+     * 持锁读取至多 16 MiB 的状态；文件不存在才返回首次运行状态，损坏直接失败。
+     *
+     * @return array{protocol: int, cursors: array<string, int>, records: list<array<string, mixed>>}
+     */
     public function load(): array
     {
         $this->assertOwner();
@@ -52,6 +67,12 @@ final class FileStateStore implements StateStore
         return StateCodec::decode($json);
     }
 
+    /**
+     * 持锁写同目录临时文件并同步，再原子替换；失败保留原状态并清理临时文件。
+     *
+     * @param array{protocol: int, cursors: array<string, int>, records: list<array<string, mixed>>} $state 待保存的完整状态。
+     * @throws RuntimeException 临时写入、同步或替换失败。
+     */
     public function save(array $state): void
     {
         $this->assertOwner();
@@ -81,6 +102,7 @@ final class FileStateStore implements StateStore
         }
     }
 
+    /** 由持有执行者释放稳定锁并关闭句柄；未持有时重复调用无副作用。 */
     public function release(): void
     {
         if ($this->lock === null) {

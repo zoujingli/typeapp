@@ -14,6 +14,11 @@ use TypeApp\ModelExample\Article;
 use TypeApp\ModelExample\Drivers;
 use TypeApp\ModelExample\User;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function paginationExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -21,6 +26,11 @@ function paginationExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 执行预期非法查询并只识别数据库或模型拒绝，不吞掉其他实现错误。
+ *
+ * @param Closure(): mixed $operation 预期被拒绝的公开操作。
+ */
 function paginationReject(Closure $operation): bool
 {
     try {
@@ -31,6 +41,11 @@ function paginationReject(Closure $operation): bool
     return false;
 }
 
+/**
+ * 在指定三库驱动上验证分页、分块遍历与内存增长，作用域退出后释放连接。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {

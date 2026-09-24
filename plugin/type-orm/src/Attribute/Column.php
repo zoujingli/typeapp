@@ -10,6 +10,7 @@ use Attribute;
 #[Attribute(Attribute::TARGET_PROPERTY)]
 final class Column
 {
+    /** 补充属性映射；null 策略沿用生成器按属性类型与生命周期推导的默认值。 */
     public function __construct(
         public ?string $name = null,
         public ?string $type = null,

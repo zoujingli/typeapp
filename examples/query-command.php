@@ -11,6 +11,11 @@ use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Orm\Sqlite\SqliteDriver;
 use Type\Runtime\ExecutionScope;
 
+/**
+ * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
+ *
+ * @throws \RuntimeException 条件不成立。
+ */
 function queryExpect(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -18,6 +23,11 @@ function queryExpect(bool $condition, string $message): void
     }
 }
 
+/**
+ * 执行预期非法查询并确认数据库契约拒绝，其他异常仍传播。
+ *
+ * @param Closure(): mixed $operation 预期失败的查询操作。
+ */
 function queryRejected(Closure $operation): bool
 {
     try {
@@ -29,6 +39,7 @@ function queryRejected(Closure $operation): bool
     return false;
 }
 
+/** 按给定驱动名选择专属示例数据库，未知名称明确拒绝。 */
 function queryDriver(string $name): Driver
 {
     if ($name === 'sqlite') {
@@ -55,6 +66,11 @@ function queryDriver(string $name): Driver
     throw new RuntimeException('未知查询驱动');
 }
 
+/**
+ * 在明确驱动上执行参数化查询构建与拒绝路径回归，使用专属测试表。
+ *
+ * @param list<string> $argv 程序路径与该示例的显式参数。
+ */
 function main(int $argc, array $argv): void
 {
     $name = (string) ($argv[1] ?? 'sqlite');

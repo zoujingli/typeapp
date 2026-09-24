@@ -26,6 +26,11 @@ $environment['TYPE_TENANT_LOG'] = $record . '/requests.jsonl';
 $process = null;
 $log = tmpfile();
 expect($log !== false, '无法准备租户日志');
+/**
+ * 发送带身份、租户和独立标记的请求并保留连接，以供后续并发观察和关闭。
+ *
+ * @return resource
+ */
 function tenantRequest(int $port, string $token, string $tenant, string $path = '/tenant')
 {
     static $sequence = 0;

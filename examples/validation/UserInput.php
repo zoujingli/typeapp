@@ -11,6 +11,7 @@ use Type\Validate\Schema;
 /** 应用显式声明字段来源，校验后只输出许可字段。 */
 final class UserInput
 {
+    /** 声明分源字段、嵌套对象与场景，供命令和 HTTP 复用同一输入规则。 */
     public static function schema(): Schema
     {
         return new Schema([

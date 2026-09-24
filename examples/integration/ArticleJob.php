@@ -12,12 +12,14 @@ use Type\Queue\JobContext;
 use Type\Redis\RedisManager;
 use TypeApp\OrmSuite\Article;
 
+/** 消费文章消息，将 Outbox 凭据、模型变更与缓存失效组合成业务闭环。 */
 final class ArticleJob implements Job
 {
     private Store $outbox;
     private RedisManager $redis;
     private string $application;
     private bool $audit;
+    /** 注入 Outbox 与 Redis 管理器，审查模式由显式参数选择。 */
     public function __construct(Store $outbox, RedisManager $redis, string $application, bool $audit = false)
     {
         $this->outbox = $outbox;
@@ -25,6 +27,11 @@ final class ArticleJob implements Job
         $this->application = $application;
         $this->audit = $audit;
     }
+    /**
+     * 校验文章 ID 并在任务作用域内执行幂等业务，相关缓存按提交结果处理。
+     *
+     * @param array{article_id: int} $payload 业务文章身份。
+     */
     public function handle(JobContext $context, array $payload): void
     {
         if (!is_int($payload['article_id'] ?? null) || $payload['article_id'] < 1) {

@@ -16,6 +16,11 @@ final class CronSchedule implements Schedule
     private DateTimeZone $timezone;
     private string $overlap;
 
+    /**
+     * 按五段 Cron 和 IANA 时区计算计划；DST 重叠选 first 或 both，缺失时间跳过。
+     *
+     * @throws InvalidArgumentException Cron、时区或夏令时策略无效。
+     */
     public function __construct(string $expression, string $timezone = 'UTC', string $overlap = 'first')
     {
         if (!in_array($timezone, DateTimeZone::listIdentifiers(DateTimeZone::ALL_WITH_BC), true)
@@ -27,6 +32,12 @@ final class CronSchedule implements Schedule
         $this->overlap = $overlap;
     }
 
+    /**
+     * 在有限查询区间内按当地时间匹配，再返回最新时刻的 UTC 秒升序列表。
+     *
+     * @return list<int> (after, through] 中最多 limit 个 UTC Unix 秒。
+     * @throws InvalidArgumentException 范围超过 366 天、数量越界或时区无转换规则。
+     */
     public function occurrences(int $after, int $through, int $limit): array
     {
         if ($limit < 1 || $limit > 1000 || $through - $after > 31622400) {
@@ -62,6 +73,7 @@ final class CronSchedule implements Schedule
         return array_slice($matches, -$limit);
     }
 
+    /** 返回包含 Cron、时区、缺口与重叠策略的计划描述。 */
     public function description(): string
     {
         return 'cron:' . $this->expression->getExpression() . ':' . $this->timezone->getName() . ':gap-skip:overlap-' . $this->overlap;

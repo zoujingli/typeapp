@@ -31,6 +31,7 @@ final class TemplateDistributionTest extends TestCase
         }
     }
 
+    /** 验证模板发布报告区分准备、发布和检出结果，重复发布保留正确的固定批次身份。 */
     #[DataProvider('publicationCases')]
     public function testPublicationReportIncludesCheckoutOutcome(string $case): void
     {
@@ -97,6 +98,7 @@ final class TemplateDistributionTest extends TestCase
         }
     }
 
+    /** 验证独立模板消费者在配置前拒绝未验证、脏检出或批次不一致的输入。 */
     #[DataProvider('consumerCases')]
     public function testRemoteConsumerRejectsUnverifiedInputsBeforeConfiguration(string $case): void
     {
