@@ -438,7 +438,7 @@ CPP;
                     throw new RuntimeException('线程生成适配缺少请求生命周期');
                 }
                 $request = substr($content, $start, $end - $start);
-                $request = preg_replace('/^php::eval\([^\n]+\);\n/m', '', $request, 1, $count);
+                $request = preg_replace('/^php::eval\([^\r\n]+\);\r?\n/m', '', $request, 1, $count);
                 if ($count !== 1 || !is_string($request)) {
                     throw new RuntimeException('线程生成适配缺少唯一主入口分派');
                 }
