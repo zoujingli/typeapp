@@ -628,6 +628,7 @@ jobs:
             build/template-deployment-*/smoke.log
             build/template-deployment-*/consumer.json
             build/template-deployment-*/build.log
+            build/**/package.log
             build/native-roles-*/report.json
             build/native-roles-*/build-outbox.log
             build/native-roles-*/build-scheduler.log

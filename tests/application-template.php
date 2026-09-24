@@ -257,7 +257,8 @@ try {
             $packaged = $packaging->wait(180);
             $secrets = array_values(array_filter([$packageEnvironment['TYPE_MYSQL_PASSWORD'] ?? '', $packageEnvironment['TYPE_PGSQL_PASSWORD'] ?? ''], static fn (string $secret): bool => $secret !== ''));
             file_put_contents($consumer . '/package.log', str_replace($secrets, '<REDACTED>', $packaged->stdout . $packaged->stderr));
-            expect($packaged->successful(), '独立模板发布和搬迁验收失败，见：' . $consumer . '/package.log');
+            expect($packaged->successful(), '独立模板发布和搬迁验收失败，见：' . $consumer . '/package.log'
+                . (is_file($consumer . '/package.log') ? "\n" . file_get_contents($consumer . '/package.log') : ''));
             echo $packaged->stdout;
         } finally {
             $packaging->stop();

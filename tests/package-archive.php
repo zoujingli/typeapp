@@ -48,8 +48,9 @@ try {
             $command = [...sandboxPackageCommand(dirname(__DIR__), $extracted), 'help'];
         }
         $run = (new Process($command, $extracted, $environment))->wait(10);
-        $helpMarker = getenv('TYPE_PACKAGE_PROJECT') === false ? 'TypeApp 物联中心' : 'Type 业务应用';
-        expect($run->successful() && $run->stderr === '' && str_contains($run->stdout, $helpMarker), '归档解包后启动失败：' . $run->stderr);
+        $project = getenv('TYPE_PACKAGE_PROJECT');
+        $helpMarker = ($project === false || $project === '') ? 'TypeApp 物联中心' : 'Type 业务应用';
+        expect($run->successful() && $run->stderr === '' && str_contains($run->stdout, $helpMarker), '归档解包后启动失败：' . $run->stderr . $run->stdout);
         $rejected = false;
         try {
             (new PackageArchive())->create($directory, $record['file'], $digest);

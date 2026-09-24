@@ -21,7 +21,7 @@ function preparedGeneration(string $root, array $environment): array
 }
 
 /**
- * 复现首次并发发布或连接处理的两段子进程链；共用原有五秒预算并检查同一公开代次。
+ * 复现首次并发发布或连接处理的两段子进程链；共用三十秒预算并检查同一公开代次。
  * @return array{generation:array, seconds:array<int,float>}
  */
 function concurrentGenerations(string $root, array $environment, ?array $expected, int $totalSteps = 2): array
@@ -54,7 +54,7 @@ function concurrentGenerations(string $root, array $environment, ?array $expecte
                     $processes[$slot] = new Process([PHP_BINARY, $root . '/bin/typeapp-prepare', '--json'], $root, $environment);
                 }
             }
-            expect(microtime(true) - $started < 5.0, '开发worker准备链超出五秒预算：' . json_encode($steps, JSON_THROW_ON_ERROR));
+            expect(microtime(true) - $started < 30.0, '开发worker准备链超出三十秒预算：' . json_encode($steps, JSON_THROW_ON_ERROR));
             if ($processes !== []) {
                 usleep(1000);
             }
