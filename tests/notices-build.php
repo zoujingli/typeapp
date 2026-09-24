@@ -37,7 +37,7 @@ foreach (['LICENSE', 'thirdparty/wren-gc/LICENSE'] as $name) {
     $texts[] = ['file' => $file, 'sha256' => hash_file('sha256', $file)];
 }
 $configuration['notices']['native'][PHP_OS_FAMILY][basename($phpxLibrary)] = ['binary-sha256' => hash_file('sha256', $phpxLibrary),
-    'component' => $phpxMetadata['name'], 'version' => '2.9.0', 'license' => $phpxMetadata['license'], 'files' => $texts];
+    'component' => $phpxMetadata['name'], 'version' => '2.9.2', 'license' => $phpxMetadata['license'], 'files' => $texts];
 $configFile = $base . '/type.json';
 file_put_contents($configFile, json_encode($configuration, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 echo "正在编译携带依赖原始材料的标准应用。\n";

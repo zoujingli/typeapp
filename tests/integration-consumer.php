@@ -33,8 +33,8 @@ foreach ($mapping['packages'] as $name => $package) {
     $composer['repositories'][] = $remote ? ['type' => 'git', 'url' => 'https://github.com/' . $package['repository'] . '.git']
         : ['type' => 'path', 'url' => $root . '/' . $package['prefix'], 'options' => ['symlink' => false, 'versions' => [$package['composer-name'] => '1.0.x-dev']]];
 }
-$composer['require-dev']['swoole/typephp'] = '0.9.0';
-$composer['require-dev']['swoole/phpx'] = '2.9.0';
+$composer['require-dev']['swoole/typephp'] = '0.9.3';
+$composer['require-dev']['swoole/phpx'] = '2.9.2';
 $sources = ['examples/integration', 'examples/integration-command.php', 'examples/model/Drivers.php', 'examples/orm-suite/Schema.php', 'examples/orm-suite/Models.php', 'examples/outbox/Adapters.php', 'examples/coordination/QueueDispatchTask.php'];
 foreach ($sources as $source) {
     $entries = is_file($root . '/' . $source) ? [$root . '/' . $source] : new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/' . $source, FilesystemIterator::SKIP_DOTS));

@@ -8,6 +8,8 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 面向使用者的状态统一维护在[平台与验收](../guide/platforms.md)。该页进入 Docsify 公开站点；本文保留执行入口和可复核的产物身份。
 
+当前构建基线已升级为 TypePHP 0.9.3／PHPX 2.9.2，PHP 保持 8.5.10 ZTS。本次 macOS ARM64 原生验证和同源码性能对照见[升级验收](typephp-upgrade-0.9.3.md)；下表保留历史版本的实际结果，不能据此宣布新版 Linux／Windows 验收通过。
+
 | 平台 | 已保存结果与身份 | 范围 |
 | --- | --- | --- |
 | Linux x64 | [基础命令运行](https://github.com/zoujingli/typeapp/actions/runs/35452574738)，源码 `fed4efae5826bdca69a613743e1c6c459addd565`；产物 SHA-256 `ea87c232b80b9498d8083f3b2f1e4ed18d4a99c762e9fa69dc983253e845ddc2` | 26 个源码输入、29 个编译单元、9 项原生命令；断网只读 AOT 与真实运行 |

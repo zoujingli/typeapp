@@ -318,7 +318,7 @@ CONNECT 的遗嘱 Topic、QoS、RETAIN、载荷及 MQTT 5 属性在接纳前校�
 
 ## 验证与 TypePHP
 
-全部 `src` 生产代码在 Composer `extra.type.sources` 声明；独立应用、runtime 及实际生产依赖一并由当前锁定的 TypePHP 0.9.0/PHPX 2.9.0 编译，生产无 Composer 自动加载或业务 PHP 源码解释回退。通信与并发统一依赖匹配版本的 Swoole 原生机制，固定官方内置 PHP 库按官方机制加载。PHP 检查、原生编译、原生协议执行及无源码部署必须分别记录，不能互相代替。
+全部 `src` 生产代码在 Composer `extra.type.sources` 声明；独立应用、runtime 及实际生产依赖一并由当前锁定的 TypePHP 0.9.3/PHPX 2.9.2 编译，生产无 Composer 自动加载或业务 PHP 源码解释回退。通信与并发统一依赖匹配版本的 Swoole 原生机制，固定官方内置 PHP 库按官方机制加载。PHP 检查、原生编译、原生协议执行及无源码部署必须分别记录，不能互相代替。
 
 主仓验证入口：
 

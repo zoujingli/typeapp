@@ -101,8 +101,8 @@ final class ProjectStructureTest extends TestCase
         $development = array_column($lock['packages-dev'], null, 'name');
         self::assertSame('13.3.3', ltrim($development['phpunit/phpunit']['version'], 'v'));
         self::assertSame('3.95.25', ltrim($development['friendsofphp/php-cs-fixer']['version'], 'v'));
-        self::assertSame('0.9.0', ltrim($development['swoole/typephp']['version'], 'v'));
-        self::assertSame('2.9.0', ltrim($development['swoole/phpx']['version'], 'v'));
+        self::assertSame('0.9.3', ltrim($development['swoole/typephp']['version'], 'v'));
+        self::assertSame('2.9.2', ltrim($development['swoole/phpx']['version'], 'v'));
         self::assertSame('2.3.5', ltrim($development['phpstan/phpdoc-parser']['version'], 'v'));
     }
 

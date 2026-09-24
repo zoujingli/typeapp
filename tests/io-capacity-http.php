@@ -22,7 +22,7 @@ $environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv
 if (!$verify) {
     expect(!file_exists($work) && mkdir($work . '/app', 0700, true), '需要尚不存在的消费者目录');
     $composer = ['name' => 'type-tests/io-capacity-http', 'type' => 'project', 'license' => 'Apache-2.0',
-        'require' => [], 'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.0', 'swoole/phpx' => '2.9.0'],
+        'require' => [], 'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.3', 'swoole/phpx' => '2.9.2'],
         'repositories' => [], 'autoload' => ['classmap' => ['app']], 'minimum-stability' => 'dev', 'prefer-stable' => true,
         'config' => ['allow-plugins' => false]];
     // Composer 路径以消费者为基准，保留嵌套目录和含空格路径的可迁移性。

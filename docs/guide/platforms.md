@@ -33,7 +33,9 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 开发环境需要 PHP `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选 PDO 驱动；原生构建还需要匹配目标 OS/架构的 PHP ZTS/embed SDK、PHPX 和编译工具。Linux/macOS 使用对应原生工具链，Windows x64 使用匹配的 ZTS SDK 与 MSVC；准备入口见 GitHub 上的[原生命令与 SDK](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-command.md)。
 
-原生构建基线为 PHP 8.5.10 ZTS、TypePHP 0.9.0、PHPX 2.9.0，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 另外固定版本、源码、构建开关、模块摘要和官方内置库配置；CLI 加载成功还需要对应 embed 环境验证。不能只复制一个扩展文件就认定 ABI 匹配。
+原生构建基线为 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 另外固定版本、源码、构建开关、模块摘要和官方内置库配置；CLI 加载成功还需要对应 embed 环境验证。不能只复制一个扩展文件就认定 ABI 匹配。
+
+上述平台记录包含历史工具链结果；本次升级的 macOS ARM64 验证与性能对照见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/development/typephp-upgrade-0.9.3.md)。Linux／Windows 尚未在新版工具链上重新验收。
 
 通用模板的经典 HTTP `serve()` 入口仍要求 Unix worker 与信号能力，当前明确拒绝 Windows；Windows SDK 和 ORM 通过不代表该 HTTP 入口已适配。主仓物联中心生产 HTTP 使用编译业务线程内协程，具体入口与限制见[快速开始](quickstart.md#启动服务)和[type-core](plugins/type-core.md#启动-http-服务)。
 
@@ -48,7 +50,7 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 1. 全部生产业务、Plugins、生成代码和实际 PHP 依赖进入 TypePHP 编译；源码、工具链、扩展与产物身份完整对应。
 2. HTTP/TCP/UDP/MQTT/WebSocket 的实际业务、异常、取消、停止和资源释放通过；MySQL、PostgreSQL、SQLite 按各自真实语义验证。
 3. 在无业务源码、无 Composer 和无编译 SDK 的目标环境验证启动、迁移、运行库校验、搬迁、升级和恢复。
-4. 完成一个程序文件加外置配置的封装与自动运行库管理，并验证并发首次启动、中断恢复、权限及数据保留。
+4. 完成一个程序文件加外置配置的交付，非系统原生库静态链接、启动不释放运行库，并验证干净环境、权限及数据保留。
 
 当前 `package` 提供目录包，`archive` 提供归档，单程序封装仍待完成。容量与性能需要同平台、同负载和可复现基线，不能用测试数量或模拟环境结果代替。
 

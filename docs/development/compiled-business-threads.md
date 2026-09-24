@@ -8,11 +8,13 @@
 
 各平台必须使用同一锁定的 TypePHP、PHPX、Swoole 版本与构建开关；Swoole Thread、Coroutine 和 Server 的实际可用性由目标产物探针确认。仅打开某个扩展开关或通过静态检查不能证明完整应用线程、协程和通信入口可用。
 
-## TypePHP 0.9.0 编译接入
+## TypePHP 0.9.3 编译接入
 
-当前线程编译基线为 PHP `8.5.10 ZTS`、TypePHP `0.9.0`、PHPX `2.9.0`。TypePHP 0.9 的进程池会直接生成编译命令，绕过适配器的 `compileFile()`；`TypephpCompatibility::compile()` 仅在线程二进制构建中临时将上游 `maxJob` 设为 1，调用父类编译流程后恢复原值。因此源码队列、对象缓存、编译选项和链接仍由 TypePHP 负责，没有另建并行编译器或运行时调度器。
+当前线程编译基线为 PHP `8.5.10 ZTS`、TypePHP `0.9.3`、PHPX `2.9.2`。TypePHP 0.9 的进程池会直接生成编译命令，绕过适配器的 `compileFile()`；`TypephpCompatibility::compile()` 仅在线程二进制构建中临时将上游 `maxJob` 设为 1，调用父类编译流程后恢复原值。因此源码队列、对象缓存、编译选项和链接仍由 TypePHP 负责，没有另建并行编译器或运行时调度器。
 
 TypePHP 0.9 将声明拆分为多个 `*_decl.h`。写文件适配现在只把线程辅助代码注入运行时公共声明头，按当前头文件是否包含符号决定是否跳过；实际存在的变量仍必须唯一替换为线程局部存储。PHPX runtime 通过真实路径匹配后替换为 `plugin/type-build/src/Native/thread-runtime.cc`，避免同名或缓存路径误替换。
+
+0.9.3 的 `CompilerRuntime` 显式标记为源码入口，确保增量生成指纹包含实际编译器源码。新版 runtime 启动函数增加 `pre_shutdown` 参数；本仓应用在 `php_module_startup` 前注册为持久模块，由生成的 MSHUTDOWN 回收枚举 AST 常量，不重复调用上游临时模块路径的清理回调。现有线程消费者同时检查枚举 case 类常量、继承和多次请求重建。
 
 ## 运行时基础能力
 
@@ -28,7 +30,7 @@ TypePHP 0.9 将声明拆分为多个 `*_decl.h`。写文件适配现在只把线
 
 ## 已解析属性与可空调用
 
-修正限定于现有 `TypephpCompatibility::threadPropertyRead()`：已解析属性沿用 TypePHP 原生 `.attr` 路径，只有按名称访问才补调用方作用域。没有修改 Swoole、PHPX、MQTT 状态机或引入新适配层。当前 TypePHP 0.9.0 提交与两个属性生成文件的原文摘要门禁已重新核对；原生生成路径足以承担作用域语义后撤除相应适配。
+修正限定于现有 `TypephpCompatibility::threadPropertyRead()`：已解析属性沿用 TypePHP 原生 `.attr` 路径，只有按名称访问才补调用方作用域。没有修改 Swoole、PHPX、MQTT 状态机或引入新适配层。当前 TypePHP 0.9.3 提交与两个属性生成文件的原文摘要门禁已重新核对；原生生成路径足以承担作用域语义后撤除相应适配。
 
 原因位于现有作用域适配对上游返回值的保存：固定 PHPX 的普通赋值与移动构造都会解开间接值。现通过已有 `direct_ptr()`、`Ctor::Indirect` 与 `Ctor::CopyRef` 显式保存属性目标、引用或值，仍由原 Zend 边界恢复作用域并传播异常；没有修改上游库、增加生产文件或另建属性系统。线程消费者验证原对象写回、数组副本隔离和权限拒绝；MQTT 与完整应用分别运行对应回归。
 
@@ -78,10 +80,10 @@ $status = $thread->getExitStatus();
 
 ## 受控工具链
 
-基础版本为工具链锁中的 PHP 8.5.10 ZTS、TypePHP 0.9.0 与 PHPX 2.9.0。额外适配只写显式的独立源码副本，先核对原文件 SHA-256 和替换次数，不修改已安装的共享 vendor 或 SDK。
+基础版本为工具链锁中的 PHP 8.5.10 ZTS、TypePHP 0.9.3 与 PHPX 2.9.2。额外适配只写显式的独立源码副本，先核对原文件 SHA-256 和替换次数，不修改已安装的共享 vendor 或 SDK。
 
 - `Type\Build\SwooleThreadSource::apply($directory)` 接受 Swoole 源码 `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`，增加 `Thread::startNative` 与 `NATIVE_ENTRY_ABI=2`。该源码实际报告 Swoole **6.2.1**。中断钩子在进程模块初始化/关闭时安装/恢复，线程不再相互覆盖；关闭回调使用其自身的有效 bailout 边界。原生 embed 线程拥有 `php://stdin/stdout/stderr` 的独立 FD 副本，注册及 RSHUTDOWN 均允许请求关闭这些副本，避免每次重建泄漏三个 FD；主请求、CLI 和脚本入口保留原契约。此修复需要重新适配并编译扩展，旧 ABI 2 模块不会自动获得修复。当前构建使用 `swoole.enable_library=On`，继续保留 `swoole.enable_fiber_mock=On`。
-- `Type\Build\PhpxThreadSource::apply($directory)` 接受锁定 PHPX 2.9.0 源码，按线程和协程隔离调试与权限状态，保护 Native finalizer 的堆清理边界。持久字符串保留原有进程寿命，预计算哈希并设为不可变，避免跨线程修改引用计数；`String::offsetSet()` 和 `Variant::setByteOfStr()` 使用 `zend_string_separate()` 取得可写副本，不能使用只按引用计数判断的 `SEPARATE_STRING`。重新编译整份 PHPX；ABI 2、头文件、核心、debug、GC 及字符串源码摘要共同防止混用旧适配。
+- `Type\Build\PhpxThreadSource::apply($directory)` 接受锁定 PHPX 2.9.2 源码，按线程和协程隔离调试与权限状态，保护 Native finalizer 的堆清理边界。持久字符串保留原有进程寿命，预计算哈希并设为不可变，避免跨线程修改引用计数；`String::offsetSet()` 和 `Variant::setByteOfStr()` 使用 `zend_string_separate()` 取得可写副本，不能使用只按引用计数判断的 `SEPARATE_STRING`。重新编译整份 PHPX；ABI 2、头文件、核心、debug、GC 及字符串源码摘要共同防止混用旧适配。
 - `TypephpCompatibility` 使用受审 TypePHP 生成接缝，分离进程主入口与请求初始化；线程应用的主入口直接调用已编译 Zend handler，不使用 `eval`。全局常量存储使用 TLS，类与接口常量使用 Zend 自有的请求常量表；未静态解析的属性读取、nullsafe 读取及数组间接写入携带调用方权限，私有回调在解包后仍保留声明作用域。初始化错误先在编译缓存存活时报告，再按已获得的请求阶段清理。
 
 构建器检查 PHPX 源码与头文件摘要，自动要求 Swoole，使用同一运行配置探测线程方法并启动编译子进程。应用模块声明实际运行配置中的扩展依赖，让 PDO 驱动先完成初始化、Swoole 再接管协程驱动，在 ZTS 符号发布和 RINIT 收集前完成应用注册；工作线程由 Swoole 创建 TSRM 请求并查找已编译入口。主入口只在主线程执行一次。

@@ -17,7 +17,7 @@ $composer = ['name' => 'type-tests/scheduler-consumer', 'type' => 'project', 'li
     'require' => ['zoujingli/type-scheduler' => '~1.0.0@dev'], 'repositories' => $repositories,
     'minimum-stability' => 'dev', 'prefer-stable' => true, 'config' => ['allow-plugins' => false]];
 if ($native) {
-    $composer['require-dev'] = ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.0', 'swoole/phpx' => '2.9.0'];
+    $composer['require-dev'] = ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.3', 'swoole/phpx' => '2.9.2'];
 }
 file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 expect(copy($root . '/examples/scheduler-command.php', $consumer . '/app/main.php'), '无法复制调度命令');

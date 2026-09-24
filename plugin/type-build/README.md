@@ -104,7 +104,7 @@ vendor/bin/type --inspect build/type-example
 
 ## AOT 与运行要求
 
-本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP 0.9.0、PHPX 2.9.0，PHP继续锁定8.5.10 ZTS；构建须提供匹配目标平台的完整SDK，已通过范围和完整应用限制统一见[平台与验收](https://iots.top/#/guide/platforms)。Windows x64 已完成匹配 Swoole 模块的构建与加载、三库独立 ORM 的 PHP/AOT 与无源码运行；部署审计和缓存另有已记录结果，编译线程接入及完整应用发布仍待验收。生产运行库由实际产物清单确定，不把编译SDK、源码或构建秘密复制进运行镜像。
+本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP 0.9.3、PHPX 2.9.2，PHP继续锁定8.5.10 ZTS；构建须提供匹配目标平台的完整SDK，已通过范围和完整应用限制统一见[平台与验收](https://iots.top/#/guide/platforms)。Windows x64 已完成匹配 Swoole 模块的构建与加载、三库独立 ORM 的 PHP/AOT 与无源码运行；部署审计和缓存另有已记录结果，编译线程接入及完整应用发布仍待验收。生产运行库由实际产物清单确定，不把编译SDK、源码或构建秘密复制进运行镜像。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。标量存储、引用及std编译期接口按新版规则实现，带上下文的闭包必须完整声明参数；PHP开发对照只使用具有真实等价行为的能力。
 

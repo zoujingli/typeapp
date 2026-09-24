@@ -8,6 +8,11 @@ use Type\Runtime\ExecutionOwner;
 const THREAD_GLOBAL = ['value' => 'global', 'nested' => [3, 5]];
 const THREAD_TEXT = 'thread-string';
 
+enum ThreadPhase: string
+{
+    case Ready = 'ready';
+}
+
 interface ThreadConstants
 {
     public const CONTRACT = ['interface' => 11];
@@ -16,6 +21,7 @@ interface ThreadConstants
 class ThreadParent implements ThreadConstants
 {
     public const DATA = ['parent' => [13, 17]];
+    public const PHASE = ThreadPhase::Ready;
 }
 
 final class ThreadCleanup
@@ -496,6 +502,7 @@ final class ThreadProbe extends ThreadParent
         self::check(constant('ThreadProbe::DATA') === self::DATA, 'Zend 继承常量表被污染');
         self::check(constant('ThreadProbe::OWN') === self::OWN, 'Zend 自有常量表被污染');
         self::check(constant('ThreadProbe::CONTRACT') === ['interface' => 11], '接口常量表被污染');
+        self::check(self::PHASE === ThreadPhase::Ready && constant('ThreadProbe::PHASE') === ThreadPhase::Ready, '枚举 AST 常量未保留当前请求的 case 身份');
         self::check($instance->defaults === ['instance' => 23], '实例默认数组被污染');
         self::check(self::$state === [$role], '线程静态属性被其他线程改变');
         self::check(threadProbeFunction($role) === $role . ':function', '线程函数符号不可用');

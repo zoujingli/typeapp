@@ -4,11 +4,13 @@
 
 ## 锁定身份
 
-- TypePHP：`v0.9.0`，提交 `f127dadf5dc6e554ff5182fd35a6c499fea47242`
-- PHPX：`v2.9.0`，提交 `6f2089379cbc7ae22dacf0faa65dd05e40d72c20`
+- TypePHP：`v0.9.3`，提交 `8b33cad5c4f9cd2be2980425f522496e9ba0bfce`
+- PHPX：`v2.9.2`，提交 `0dfa613d2057dcd4aa319ec9b6816f68df2403e4`
 - PHP：`8.5.10 ZTS`（目标平台 SDK 必须与实际 PHP、架构和线程模式一致）
 
 准确依赖以根 `composer.lock` 和 `toolchain.lock.json` 为准；模板也必须携带相同的工具链身份。
+
+TypePHP 0.9.3 的匿名类会回退到嵌入 opcode 或 `eval`，本仓构建入口明确拒绝该路径；生产实现使用具名类。静态 PHP embed 构建与源码是否全量 AOT 是两项独立检查，不能以嵌入业务字节码替代编译。
 
 ## 语言规则
 
@@ -26,5 +28,5 @@ TypePHP 编译器的属性访问边界仍由 `Type\Build\TypephpCompatibility` �
 
 ## 一手依据
 
-- [TypePHP v0.9.0](https://github.com/swoole/typephp/tree/v0.9.0)
-- [PHPX v2.9.0](https://github.com/swoole/phpx/tree/v2.9.0)
+- [TypePHP v0.9.3](https://github.com/swoole/typephp/tree/v0.9.3)
+- [PHPX v2.9.2](https://github.com/swoole/phpx/tree/v2.9.2)

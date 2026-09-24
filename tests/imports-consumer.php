@@ -9,7 +9,7 @@ $consumer = $root . '/build/imports-consumer space-' . bin2hex(random_bytes(4));
 expect(mkdir($consumer . '/app', 0755, true), '无法创建适配消费项目');
 $composer = ['name' => 'type-tests/import-consumer', 'type' => 'project', 'license' => 'Apache-2.0',
     'require' => ['type-tests/imported-library' => '1.0.0', 'psr/log' => '3.0.2'],
-    'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.0', 'swoole/phpx' => '2.9.0'],
+    'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.3', 'swoole/phpx' => '2.9.2'],
     'autoload' => ['psr-4' => ['Consumer\\' => 'app/']],
     'repositories' => [
         ['type' => 'path', 'url' => $root . '/plugin/type-build', 'options' => ['symlink' => false, 'versions' => ['zoujingli/type-build' => '1.0.x-dev']]],

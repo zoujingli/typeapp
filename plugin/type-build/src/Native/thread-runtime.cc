@@ -187,7 +187,9 @@ void register_standard_stream(const char *name, const char *path, const char *mo
 }
 }
 
-extern "C" int typephp_runtime_start(typephp_module_getter get_module, int argc, char **argv) {
+// 应用在 php_module_startup 前登记为持久模块；AST 常量由官方 MSHUTDOWN 回收。
+// 0.9.3 的 pre_shutdown 只服务于上游请求启动后登记的临时模块，此处不重复调用。
+extern "C" int typephp_runtime_start(typephp_module_getter get_module, typephp_module_pre_shutdown, int argc, char **argv) {
     if (embed_started) { return 0; }
     if (php::typeAppThreadAbi() != 2) { return 1; }
     application_module = get_module();

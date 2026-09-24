@@ -35,7 +35,7 @@ TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力
 | 其他业务 | 用 `type-project` 创建独立应用，按需安装 Plugins |
 | 物联中心 | 成品案例，不是框架本身；文档见[物联网中心](docs/guide/iot-center.md) |
 
-当前锁定工具链为 PHP 8.5.10 ZTS、TypePHP 0.9.0、PHPX 2.9.0，以仓库中的 `toolchain.lock.json` 与 `composer.lock` 为准。
+当前锁定工具链为 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2，以仓库中的 `toolchain.lock.json` 与 `composer.lock` 为准。
 
 ```mermaid
 flowchart TB

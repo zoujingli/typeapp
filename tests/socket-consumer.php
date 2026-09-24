@@ -28,7 +28,7 @@ if (!$verify) {
     $composer = [
         'name' => 'type-tests/' . $protocol . '-consumer', 'type' => 'project', 'license' => 'Apache-2.0',
         'require' => ['zoujingli/type-core' => '~1.0.0@dev'],
-        'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.0', 'swoole/phpx' => '2.9.0'],
+        'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.3', 'swoole/phpx' => '2.9.2'],
         'repositories' => [], 'autoload' => ['classmap' => ['app']],
         'minimum-stability' => 'dev', 'prefer-stable' => true, 'config' => ['allow-plugins' => false],
     ];

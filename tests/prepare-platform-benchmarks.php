@@ -70,7 +70,8 @@ try {
         $toolchain = json_decode(file_get_contents($project . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
         $cmakeHashes = ['2.7.0' => 'e86aae53348307c34484b29644c2406a7fe51427dc90d7c58aaa55dc6ae35451',
             '2.8.1' => 'a9949224931b9904c21de8a6f15c156cc0fb93253016971794ca2130ff59fcb9',
-            '2.9.0' => 'a9949224931b9904c21de8a6f15c156cc0fb93253016971794ca2130ff59fcb9'];
+            '2.9.0' => 'a9949224931b9904c21de8a6f15c156cc0fb93253016971794ca2130ff59fcb9',
+            '2.9.2' => 'd50299d5d39cba259f310113c63c25a93e59275687f25c573b1ecc10d96e9d22'];
         expect(($cmakeHashes[$toolchain['phpx']['version']] ?? null) === $cmakeSha256, 'PHPX版本与受审构建规则摘要不符');
         $cmake = str_replace(
             'list(FILTER MPDEC_C_SOURCES EXCLUDE REGEX "bench")',

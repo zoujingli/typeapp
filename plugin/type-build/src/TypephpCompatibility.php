@@ -6,6 +6,7 @@ namespace Type\Build;
 
 use Composer\InstalledVersions;
 use RuntimeException;
+use TypePhp\Build\CompilerRuntime;
 use TypePhp\Translator;
 
 /** 构建期限定适配：保留 Zend 异常边界，并为显式线程应用分离 AOT 请求与主入口。 */
@@ -14,8 +15,8 @@ final class TypephpCompatibility extends Translator
     private bool $propertyCompatibilityVerified = false;
 
     private const REFERENCES = [
-        'swoole/typephp' => 'f127dadf5dc6e554ff5182fd35a6c499fea47242',
-        'swoole/phpx' => '6f2089379cbc7ae22dacf0faa65dd05e40d72c20',
+        'swoole/typephp' => '8b33cad5c4f9cd2be2980425f522496e9ba0bfce',
+        'swoole/phpx' => '0dfa613d2057dcd4aa319ec9b6816f68df2403e4',
     ];
 
     /**
@@ -38,17 +39,26 @@ final class TypephpCompatibility extends Translator
         if ($applicationRoot === false) {
             throw new RuntimeException('无法确定应用构建工作目录');
         }
-        new self($applicationRoot);
+        new self($applicationRoot, CompilerRuntime::source($compilerRoot, $compilerRoot . '/bin/tpc.php'));
     }
 
     protected function buildFuncCallConfig(): array
     {
         $configuration = parent::buildFuncCallConfig();
-        // PHPX 2.9.0 的快速路径调用对象钩子后仍未检查 EG(exception)。标准 php::call 已检查
+        // PHPX 2.9.2 的快速路径调用对象钩子后仍未检查 EG(exception)。标准 php::call 已检查
         // 并传播同一异常，也正确清理序列化资源。普通函数和 universal methods 共用此映射。
-        // 上游依据：swoole/phpx@6f208937 的 include/std/json.h 与 include/std/misc.h。
+        // 上游依据：swoole/phpx@0dfa613d 的 include/std/json.h 与 include/std/misc.h。
         unset($configuration['json_encode'], $configuration['serialize'], $configuration['unserialize']);
         return $configuration;
+    }
+
+    /** 上游匿名类使用 opcode 或 eval，不能计入本项目的全量 AOT 产物。 */
+    protected function parseNew(\PhpParser\Node\Expr\New_ $expr): string
+    {
+        if ($expr->class instanceof \PhpParser\Node\Stmt\Class_) {
+            throw new RuntimeException('全量 AOT 不支持匿名类解释回退，请声明具名类');
+        }
+        return parent::parseNew($expr);
     }
 
     protected function getPlatform(): \TypePhp\Platform\PlatformBase
@@ -114,7 +124,7 @@ final class TypephpCompatibility extends Translator
         }
         $source = InstalledVersions::getInstallPath('swoole/typephp') . '/src/Parser/PropertyAccessTrait.php';
         $runtime = InstalledVersions::getInstallPath('swoole/phpx') . '/src/core/variant.cc';
-        if (hash_file('sha256', $source) !== '7320defa230b8ac68314604aea2ffcd9b37455fe586bb777af5d9cc8f00dd859'
+        if (hash_file('sha256', $source) !== 'b9ce2e5a082dc568589f360c84c8b92f4aaa0698921863d2e638192cf32c908d'
             || hash_file('sha256', $runtime) !== '0fb7b9cae9b4b5681e825333cce4b91ac1dc4d6cc6383b28a35ed44ecaf2b10d') {
             throw new RuntimeException('虚拟属性适配需要重新核对 TypePHP/PHPX 原文');
         }
@@ -171,7 +181,7 @@ final class TypephpCompatibility extends Translator
     private function threadPropertyRead(string $result): string
     {
         $source = InstalledVersions::getInstallPath('swoole/typephp') . '/src/Parser/PropertyAccessTrait.php';
-        if (hash_file('sha256', $source) !== '7320defa230b8ac68314604aea2ffcd9b37455fe586bb777af5d9cc8f00dd859') {
+        if (hash_file('sha256', $source) !== 'b9ce2e5a082dc568589f360c84c8b92f4aaa0698921863d2e638192cf32c908d') {
             throw new RuntimeException('属性作用域适配需要重新核对 TypePHP 原文');
         }
         $scope = $this->classDef?->trait ? 'const_cast<zend_class_entry *>(php::FakeScopeGuard::current())'
@@ -274,7 +284,7 @@ final class TypephpCompatibility extends Translator
             return $result;
         }
         $base = InstalledVersions::getInstallPath('swoole/typephp') . '/src/CompilerBase.php';
-        if (hash_file('sha256', $base) !== '794fb9680acd9e869ffc60a1b58ef9d2179fbe8e68f0eb4ef53979d671de6c65') {
+        if (hash_file('sha256', $base) !== 'e94fa76f21fa99871f2a1c8aa5aefd3a47ff68a8f742dfa3be70d935a67c03b8') {
             throw new RuntimeException('回调适配需要重新核对 TypePHP 描述表');
         }
         // 读取构建器的固定静态表，不在生产反射业务签名或猜测 callable 参数。
@@ -332,7 +342,7 @@ final class TypephpCompatibility extends Translator
     public function writeFile(string $file, string $content, bool $force = false): void
     {
         if ($this->threaded()) {
-            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '85735bdf7a0a584b3abf91c011fab369e9d7994abd8f3a0943a3bbdc96c5c3bc') {
+            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== 'a314805dc63c9469cf3151b726088e47b3464afe3a87a9967fee17068e1830a4') {
                 throw new RuntimeException('线程生成适配需要重新核对 TypePHP 原文');
             }
             $extension = basename($file) === 'extension-' . $this->targetName . '.cc';

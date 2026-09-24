@@ -68,4 +68,12 @@ file_put_contents($project . '/composer.json', json_encode($composer, JSON_THROW
 expect($status !== 0 && str_contains($stderr, '生产依赖缺少支持的编译声明：nikic/php-parser'), '没有编译声明的依赖被静默忽略：' . $stderr);
 expect(file_get_contents($project . '/build/program') === '原有产物不能被失败构建覆盖', '拒绝依赖时覆盖了原有产物');
 
-echo "构建入口的路径、工具链身份与依赖拒绝检查通过，共 10 个用例。\n";
+// 编译器升级不能把匿名类悄悄嵌入 opcode，生成成功也不等于全量 AOT。
+$anonymousSource = $project . '/anonymous.php';
+file_put_contents($anonymousSource, '<?php function main(): void { $value = new class { public function name(): string { return "fallback"; } }; echo $value->name(); }');
+[$status, $stdout, $stderr] = execute([PHP_BINARY, $root . '/vendor/bin/type-compiler', $anonymousSource,
+    '--dry', '--mode', 'bin', '--build-dir', $project . '/anonymous-build', '--output', $project . '/anonymous'], $root);
+expect($status !== 0 && str_contains($stdout . $stderr, '全量 AOT 不支持匿名类解释回退'), '匿名类解释回退未被明确拒绝：' . $stdout . $stderr);
+expect(!is_file($project . '/anonymous'), '被拒绝的源码不能生成产物');
+
+echo "构建入口的路径、工具链身份、依赖与解释回退拒绝检查通过，共 11 个用例。\n";

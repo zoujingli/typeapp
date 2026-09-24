@@ -17,7 +17,7 @@ $composer = ['name' => 'type-tests/coordination-consumer', 'type' => 'project', 
     'require' => ['zoujingli/type-scheduler' => '~1.0.0@dev', 'zoujingli/type-queue' => '~1.0.0@dev'],
     'repositories' => $repositories, 'minimum-stability' => 'dev', 'prefer-stable' => true, 'config' => ['allow-plugins' => false]];
 if ($native) {
-    $composer['require-dev'] = ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.0', 'swoole/phpx' => '2.9.0'];
+    $composer['require-dev'] = ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.3', 'swoole/phpx' => '2.9.2'];
 }
 file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 foreach (['examples/scheduler-coordination-command.php' => 'main.php', 'examples/scheduler/Tasks.php' => 'Clock.php',

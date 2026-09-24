@@ -25,8 +25,8 @@ foreach ($mapping['packages'] as $name => $package) {
     $composer[in_array($name, ['type-build', 'type-testing'], true) ? 'require-dev' : 'require'][$package['composer-name']] = $version;
     $composer['repositories'][] = ['type' => 'git', 'url' => 'https://github.com/' . $package['repository'] . '.git'];
 }
-$composer['require-dev']['swoole/typephp'] = '0.9.0';
-$composer['require-dev']['swoole/phpx'] = '2.9.0';
+$composer['require-dev']['swoole/typephp'] = '0.9.3';
+$composer['require-dev']['swoole/phpx'] = '2.9.2';
 $consumer = $root . '/build/batch-consumer-' . bin2hex(random_bytes(6));
 expect(mkdir($consumer, 0700, true), '无法创建独立批次消费项目');
 file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
