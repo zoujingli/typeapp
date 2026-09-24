@@ -262,6 +262,103 @@ final class SwooleServer implements HttpServerInterface
         }
     }
 
+    /**
+     * 在编译业务线程内自行绑定监听；用于 Windows 等尚未验收共享监听副本的平台。
+     *
+     * 控制 Map 与收尾约定同 serveThread；不要求 TYPEAPP_LISTENER_ABI。
+     * @throws TaskException 缺少编译线程能力、监听失败或请求无法完整收尾。
+     */
+    public function serveThreadOwned(string $host, int $port, \Swoole\Thread\Map $state): void
+    {
+        if ($port < 1 || $port > 65535) {
+            throw new InvalidArgumentException('HTTP 监听端口无效');
+        }
+        \Type\Runtime\CoroutineRuntime::assertAvailable();
+        if ($this->threadStarted || !class_exists(\Swoole\Thread::class, false) || \Swoole\Thread::getInfo()['is_main_thread']
+            || \Swoole\Coroutine::getCid() >= 0) {
+            throw new TaskException('http_thread_owner', 'HTTP 线程入口需要独占业务线程事件循环并且只能运行一次');
+        }
+        $this->threadStarted = true;
+        try {
+            \Swoole\Coroutine::set(['max_coroutine' => $this->control->maximumConnections
+                + $this->control->maximumRequests * $this->control->maximumChildren + 2]);
+            $server = new \Swoole\Coroutine\Http\Server($host, $port);
+            $server->set([
+                'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
+                'http_compression' => false, 'package_max_length' => $this->limits->bytes,
+                'socket_timeout' => $this->control->requestSeconds,
+            ]);
+            $server->handle('/', function (Request $request, Response $response): void {
+                $this->handleNative($request, $response);
+            });
+            $created = \Swoole\Coroutine::create(function () use ($server, $state): void {
+                try {
+                    if ($state['stop'] === true) {
+                        $this->control->stop();
+                        return;
+                    }
+                    $timer = \Swoole\Timer::tick(20, function (int $timerId) use ($server, $state): void {
+                        try {
+                            $state['pulse'] = hrtime(true);
+                            if ($this->control->mustTerminate()) {
+                                $state['failed'] = true;
+                                $this->control->stop();
+                            }
+                            if ($state['stop'] === true || $this->control->stopping()) {
+                                $state['ready'] = false;
+                                $this->control->stop();
+                                $server->shutdown();
+                                $this->clearThreadTimer();
+                            }
+                        } catch (Throwable $error) {
+                            $this->threadFailure = $error;
+                            $state['failed'] = true;
+                            $state['ready'] = false;
+                            $this->clearThreadTimer();
+                            $server->shutdown();
+                        }
+                    });
+                    if ($timer === false) {
+                        throw new TaskException('http_thread_timer', '无法启动 HTTP 线程停止检查');
+                    }
+                    $this->watchdog = $timer;
+                    $state['pulse'] = hrtime(true);
+                    $state['ready'] = true;
+                    $server->start();
+                } catch (Throwable $error) {
+                    $this->threadFailure = $error;
+                    $state['failed'] = true;
+                } finally {
+                    $state['ready'] = false;
+                    $this->control->stop();
+                    $this->clearThreadTimer();
+                }
+            });
+            if ($created === false) {
+                throw new TaskException('http_thread_start_failed', '无法启动 HTTP 监听协程');
+            }
+            \Swoole\Event::wait();
+            if ($this->threadFailure !== null) {
+                throw $this->threadFailure;
+            }
+            $statistics = $this->control->statistics();
+            if (($server->errCode !== 0 && $server->errCode !== SOCKET_ECANCELED) || $statistics['in_flight'] !== 0
+                || $statistics['quarantined'] !== 0 || $statistics['cleanup_failures'] !== 0) {
+                throw new TaskException('http_thread_cleanup_failed', 'HTTP 线程没有完整回收请求或原生连接');
+            }
+            $shutdown = $this->onWorkerStop;
+            if ($shutdown !== null) {
+                $shutdown();
+            }
+        } catch (Throwable $error) {
+            $state['failed'] = true;
+            throw $error;
+        } finally {
+            $state['ready'] = false;
+            $this->clearThreadTimer();
+        }
+    }
+
     /** 由所属引擎等待在途作用域排空；不会提前释放连接资源。 */
     public function stop(): void
     {
