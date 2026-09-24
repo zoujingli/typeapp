@@ -1720,6 +1720,34 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         expect($publicSite['name'] === 'TypeApp 物联中心' && $publicSite['description'] === '本地验收配置', '公开站点配置未同步');
         $siteAudit = $inspection->query("SELECT action, result, details FROM admin_audit WHERE action = 'admin.site.update' ORDER BY created_at DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
         expect($siteAudit !== false && $siteAudit['result'] === 'success' && str_contains($siteAudit['details'], 'name'), '站点配置审计未落库');
+        // 与真实设置表单一样提交全部字段，防止字段名清单超过普通审计原因的100字节上限。
+        $siteFields = \app\common\service\SiteSettings::defaults();
+        foreach ($siteFields as $siteKey => $siteValue) {
+            if (is_int($siteValue)) {
+                $siteFields[$siteKey] = (bool) $siteValue;
+            }
+        }
+        $fullSite = $request('PUT', '/admin/site', $adminToken, [], ['version' => 2, 'changes' => $siteFields], 200)['data'];
+        $siteDetails = $inspection->query("SELECT details FROM admin_audit WHERE action = 'admin.site.update'")->fetchAll(PDO::FETCH_COLUMN);
+        $fullSiteAudit = array_values(array_filter($siteDetails, static fn (string $value): bool => (json_decode($value, true, 32, JSON_THROW_ON_ERROR)['version'] ?? 0) === $fullSite['version']));
+        expect(count($fullSiteAudit) === 1 && json_decode($fullSiteAudit[0], true, 32, JSON_THROW_ON_ERROR)['changed_fields'] === implode(',', array_keys($siteFields)), '全字段保存的审计清单被截断或遗漏');
+        $report['site_settings'] = ['defaults' => true, 'full_form_saved' => true, 'complete_field_audit' => true, 'stale_version_rejected' => true];
+        $configurationView = $request('GET', '/admin/configuration', $adminToken, [], null, 200)['data'];
+        $configurationFields = [];
+        foreach ($configurationView['fields'] as $configurationField) {
+            if ($configurationField['editable'] && !$configurationField['read_only'] && !$configurationField['secret']) {
+                $configurationFields[$configurationField['key']] = $configurationField['value'];
+            }
+            if (strlen(implode(',', array_keys($configurationFields))) > 100) {
+                break;
+            }
+        }
+        expect(strlen(implode(',', array_keys($configurationFields))) > 100, '运行配置装置未覆盖长字段清单');
+        $savedConfiguration = $request('PUT', '/admin/configuration', $adminToken, [], ['version' => $configurationView['version'], 'changes' => $configurationFields], 200)['data'];
+        $configurationAudit = $inspection->query("SELECT details FROM admin_audit WHERE action = 'admin.configuration.update'")->fetchColumn();
+        expect($savedConfiguration['restart_required'] === true && is_string($configurationAudit)
+            && json_decode($configurationAudit, true, 32, JSON_THROW_ON_ERROR)['changed_fields'] === implode(',', array_keys($configurationFields)), '运行配置批量保存或变更审计不完整');
+        $report['configuration'] = ['multi_field_saved' => true, 'complete_field_audit' => true, 'restart_required' => true];
         $request('GET', '/admin/profile', $adminToken, [], null, 200);
         $request('GET', '/customer/profile', $customerToken, $tenantHeaders, null, 200);
         $request('GET', '/admin/auth/me', $customerToken, [], null, 401);

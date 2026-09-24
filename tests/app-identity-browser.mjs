@@ -3,6 +3,7 @@ import { realpathSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { brokerPreview } from './broker-resources-browser.mjs';
+import { siteBrowser } from './app-site-browser.mjs';
 
 // PHP 持有真实后端；复用已有静态预览，管理数据经真实页面/API写入，PDO仅负责撤权与长文本夹具。
 const [baseArgument, distArgument, origin] = process.argv.slice(2);
@@ -14,6 +15,10 @@ if (upstream.protocol !== 'http:' || upstream.hostname !== '127.0.0.1' || upstre
 const adminPassword = process.env.APP_ADMIN_PASSWORD;
 const customerPassword = process.env.APP_CUSTOMER_PASSWORD;
 if (!adminPassword || !customerPassword) throw new Error('browser_credentials_required');
+if (process.env.TYPE_APP_BROWSER_CASES === 'site') {
+  await siteBrowser(base, dist, upstream, adminPassword, customerPassword);
+  process.exit(0);
+}
 const database = new DatabaseSync(resolve(base, 'identity.sqlite'));
 database.exec('PRAGMA busy_timeout = 3000');
 const preview = brokerPreview(dist, upstream);
@@ -305,6 +310,8 @@ try {
   await expect(drawer().getByText('页面客户', { exact: true })).toBeVisible(); await close();
   await rowAction(tenantOne.name, '编辑');
   await drawer().getByLabel('租户名称', { exact: true }).fill('并发租户输入保留');
+  // Model 对相同字段值不产生写入；冲突装置必须先提交真实变化，才能推进版本。
+  tenantOne.name += '-并发更新';
   await api('PATCH', `/admin/tenants/${tenantOne.id}`, { name: tenantOne.name, version: Number(tenantOne.version) });
   await save('PATCH', `/admin/tenants/${tenantOne.id}`, 409);
   await expect(drawer().getByRole('alert')).toContainText('记录已被其他人修改');

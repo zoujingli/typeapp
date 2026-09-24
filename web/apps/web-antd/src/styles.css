@@ -35,7 +35,7 @@
 .ant-btn:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; }
 @media (max-width: 640px) {
   .iot-page { padding: 16px 12px; }
-  .page-heading { align-items: flex-start; }
+  .page-heading { align-items: flex-start; flex-wrap: wrap; }
   .page-heading .ant-btn { flex-shrink: 0; }
   .form-grid, .crud-search-grid { grid-template-columns: minmax(0, 1fr); }
   .current-tenant { max-width: 100px; }

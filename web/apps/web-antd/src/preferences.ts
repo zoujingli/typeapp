@@ -56,7 +56,8 @@ function restore(scope: PreferenceScope) {
 export function sitePreferenceOverrides(site: PublicSiteSettings): PreferencePatch {
   return {
     app: { name: site.name, defaultHomePath: '/profile', accessMode: 'frontend', locale: 'zh-CN', layout: site.preferences.layout },
-    logo: { enable: site.logo_url !== '', source: site.logo_url },
+    // VbenLogo 在图片为空时仍展示文字品牌；图片加载失败由原生 Avatar 提供回退。
+    logo: { enable: true, source: site.logo_url },
     copyright: { enable: site.preferences.footer.enable, companyName: site.name, companySiteLink: site.official_url },
     theme: { mode: site.theme.mode, colorPrimary: site.theme.colorPrimary, radius: site.theme.radius },
     sidebar: { collapsed: site.preferences.sidebar.collapsed },

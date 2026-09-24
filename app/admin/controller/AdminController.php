@@ -119,7 +119,7 @@ final class AdminController
             $transaction = \Type\Orm\Db::connection('default', true);
             $result = SiteSettings::update($transaction, (int) $body['version'], $changes);
             AuditLog::append($transaction, null, $current, 'admin.site.update', 'site_settings', 'success', [
-                'reason' => implode(',', $result['changed']), 'version' => $result['version'],
+                'changed_fields' => implode(',', $result['changed']), 'version' => $result['version'],
             ], 'admin');
             return $result + ['permissions' => $permissions, 'catalog' => RoleService::catalog('admin'), 'menus' => RoleService::menus('admin', $permissions)];
         }, 'admin', 'platform');
@@ -151,7 +151,7 @@ final class AdminController
                 $transaction = \Type\Orm\Db::connection('default', true);
                 $result = Settings::configurationUpdate($basePath, (string) $body['version'], $changes);
                 AuditLog::append($transaction, null, $current, 'admin.configuration.update', 'configuration', 'success', [
-                    'reason' => implode(',', $result['changed']), 'version' => $result['version'],
+                    'changed_fields' => implode(',', $result['changed']), 'version' => $result['version'],
                 ], 'admin');
                 return $result;
             }, 'admin', 'platform');

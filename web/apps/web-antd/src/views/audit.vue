@@ -46,7 +46,7 @@ const actions: Record<string, string> = {
 };
 const contexts: Record<string, string> = { 'customer-impersonation': '模拟客户登录', 'tenant-member': '租户成员', platform: '平台管理', identity: '人员身份', 'operator-command': '受控开通', 'product-model': '产品与物模型' };
 const labels: Record<string, string> = {
-  role: '成员角色', previous_role: '原有角色', version: '记录版本', context: '身份上下文', reason: '结果原因', facts: '阶段事实',
+  role: '成员角色', previous_role: '原有角色', version: '记录版本', context: '身份上下文', reason: '结果原因', changed_fields: '变更字段', facts: '阶段事实',
   source: '授权来源', permissions: '获准动作', required_action: '所需动作', decision: '授权结论', support_id: '支持标识', support_version: '支持版本', support_expires_at: '支持到期',
   kind: '目标类型', node_id: '节点标识', node_run_id: '节点运行', observation_run: '观察运行', generation: '目标代次', confirmed: '影响已确认', effect: '影响说明', target_count: '目标数量', proof_hash: '依据摘要',
   store_confirmed: '持久存储已确认', resources_released: '执行资源已释放', observation_isolated: '节点观察已隔离',

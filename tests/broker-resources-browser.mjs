@@ -17,7 +17,7 @@ export function brokerPreview(dist, iotUpstream, brokerUpstream = iotUpstream) {
   const server = createServer((incoming, outgoing) => {
     let path;
     try { path = decodeURIComponent(new URL(incoming.url, 'http://preview.invalid').pathname); } catch { outgoing.writeHead(400).end(); return; }
-    if (['/iot/', '/admin/', '/customer/', '/broker/'].some(prefix => path.startsWith(prefix)) || path === '/readyz') {
+    if (['/public/', '/iot/', '/admin/', '/customer/', '/broker/'].some(prefix => path.startsWith(prefix)) || path === '/readyz') {
       const upstream = path.startsWith('/broker/') ? brokerUpstream : iotUpstream;
       const headers = { ...incoming.headers, host: upstream.host };
       for (const key of ['connection', 'proxy-connection', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-for']) delete headers[key];

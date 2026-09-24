@@ -21,7 +21,7 @@ pnpm build
 IOT_API_ORIGIN=http://127.0.0.1:8080 pnpm dev
 ```
 
-开发服务器绑定 `127.0.0.1:5173`，把 `/admin`、`/customer`、`/broker` 代理到指定的隔离后端；`IOT_API_ORIGIN` 只用于开发服务器，不打入浏览器。生产构建生成忽略入仓的 `web/dist`，并原样携带 `LICENSE`、`NOTICE` 与 `UPSTREAM.md`，不会自动部署或替换本地站点。生产页面与 API 使用同源入口。
+开发服务器绑定 `127.0.0.1:5173`，把 `/public`、`/admin`、`/customer`、`/broker` 代理到指定的隔离后端；`IOT_API_ORIGIN` 只用于开发服务器，不打入浏览器。生产构建生成忽略入仓的 `web/dist`，并原样携带 `LICENSE`、`NOTICE` 与 `UPSTREAM.md`，不会自动部署或替换本地站点。生产页面与 API 使用同源入口。
 
 后端先用 `app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>` 初始化空库；密码只由 `APP_ADMIN_PASSWORD`、`APP_CUSTOMER_PASSWORD` 的受控进程环境提供。没有共享默认密码，已有库不会清空或升级。具体命令、原生构建及运行边界见[标准物联应用说明](../docs/development/typeapp.md)。
 
@@ -39,6 +39,7 @@ IOT_API_ORIGIN=http://127.0.0.1:8080 pnpm dev
 | `/admin/customers` | 客户全局账号查询、创建、资料、启停、独立密码重置及会话撤销 |
 | `/admin/roles` | 固定权限树、自定义角色创建、复制、资料、启停、删除及权限编辑 |
 | `/admin/tenants` | 平台租户列表、详情、创建、资料和启停；创建或准确关联初始客户管理员 |
+| `/admin/site` | 站点名称、官网、Logo、说明和默认界面，版本冲突保护及变更字段审计 |
 | `/admin/configuration` | 查看运行配置来源，维护非敏感启动参数；敏感字段脱敏，保存后提示重启 |
 | `/tenants` | 当前客户的有效租户目录、筛选及工作区切换 |
 | `/members` | 当前租户成员查询、创建或关联客户、局部资料、启停、移除及多角色分配 |
@@ -46,6 +47,11 @@ IOT_API_ORIGIN=http://127.0.0.1:8080 pnpm dev
 | `/products`、`/products/:product/models` | 当前租户产品、模型草稿、发布与精确历史版本 |
 | `/devices` | 当前租户设备登记、资料、详情与接入生命周期 |
 | `/admin/devices` | 全局设备资产、归属筛选、资料与接入生命周期 |
+| `/devices/:device` | 设备详情、当前数据、指令及模型切换 |
+| `/history` | 原始历史、分钟聚合、曲线及异步 CSV 导出任务 |
+| `/transfers` | 设备转移申请、审批及分阶段状态 |
+| `/alarm-rules`、`/alarms`、`/notifications` | 告警规则版本、告警确认与站内通知 |
+| `/audit`、`/admin/audit`、`/operations`、`/admin/operations` | 对应账号域的操作审计和运行概览 |
 | `/broker/login` | 独立 Broker 管理账号登录 |
 | `/broker/nodes`、`/broker/resources`、`/broker/access`、`/broker/audit` | 原独立 Broker 管理页面，由独立宿主提供 API |
 | `/broker-resources`、`/broker-access` | 当前租户 Broker 资源与授权版本 |
@@ -69,4 +75,8 @@ IOT_API_ORIGIN=http://127.0.0.1:8080 pnpm dev
 
 双端角色页使用同一组件，完整展示后端固定目录；节点不能由客户自建。租户角色名称只在本租户唯一，新建和复制默认停用，复制不带人员绑定或最高管理员保护标记。当前有效角色权限取并集，停用、删除或收紧权限立即影响后续请求；删除同步清理绑定并推进成员版本，旧分配表单不能覆盖变化。初始操作员和只读角色可以修改或删除，最高管理员的必要节点、启用状态和最后有效人员受保护。复制、启用、修改已有角色和成员绑定均检查操作者当前权限及目标潜在权限，停用角色不能成为间接提权入口。
 
-旧租户接口、固定角色成员页及其支持授权入口已移除；历史、导出、控制及转移业务按 [](../docs/specs/0204-app-rbac-standard-project.md)逐条转换、复用后重新开放。产品、设备和模拟登录已使用新入口，旧布尔平台身份不再参与这些授权。初始最高管理员拥有当前固定目录的全部节点，操作员和只读角色暂只有个人工作区权限；完整业务和历史责任仍按[任务表](../docs/tickets/app-rbac-standard-project/README.md)推进。
+旧租户接口、固定角色成员页及其支持授权入口已移除。产品、设备、历史、指令、转移、告警、通知与导出已接入双端授权入口；完整设备通信、后台角色和恢复组合仍需按[实现规划](../docs/guide/roadmap.md)验收，不能以页面存在替代业务闭环。
+
+初始最高管理员拥有当前固定目录全部节点；租户操作员和只读成员初始仅含个人工作区权限。安装会保存默认站点信息，但不生成演示设备或遥测，没有共享默认密码。默认值、站点设置流程与未接通字段见[物联中心指南](../docs/guide/iot-center.md#准备后端与人员账号)。
+
+当前采用 Vben 的 BasicLayout、菜单、主题和偏好；业务列表与编辑主要使用 Ant Design Vue 及应用自定义封装，尚未完全达到[页面标准](../docs/standards/iot-web.md)。导航组与路由层级、原生用户入口、表单/表格/抽屉替换和个人默认值合并仍需收口。浏览器专项可通过 `TYPE_APP_BROWSER_CASES=site` 配合 `tests/iot-identity.php --php sqlite --app --browser-dist=<绝对构建目录>` 验证真实站点读取、整页保存、并发冲突、权限及桌面/窄屏界面。完整双端回归不设置该变量。

@@ -18,7 +18,7 @@ final class AuditLog
 
     /**
      * @param string|Identity|array<string, mixed> $actorId 认证身份或可信持久来源保留真实人员；设备事件可传明确设备标识。
-     * @param array<string, string|int> $details 只接受不含秘密的角色、版本与身份上下文。
+     * @param array<string, string|int> $details 只接受不含秘密的角色、版本与身份上下文；配置变更仅记录字段名。
      * @throws InvalidArgumentException 事件或附加字段不在允许范围。
      */
     public static function append(Connection $connection, ?string $tenantId, string|Identity|array $actorId, string $action, string $subjectId, string $result = 'success', array $details = [], string $realm = 'iot'): void
@@ -45,6 +45,14 @@ final class AuditLog
             throw new InvalidArgumentException('审计动作或结果无效');
         }
         foreach ($details as $key => $value) {
+            // 配置页一次保存多个字段，使用独立有界字段清单，不能截断或放宽其他审计事实。
+            if ($key === 'changed_fields') {
+                if (!in_array($action, ['admin.site.update', 'admin.configuration.update'], true) || !is_string($value)
+                    || strlen($value) > 4096 || ($value !== '' && preg_match('/^[A-Za-z][A-Za-z0-9_.]*(?:,[A-Za-z][A-Za-z0-9_.]*)*$/D', $value) !== 1)) {
+                    throw new InvalidArgumentException('审计变更字段无效');
+                }
+                continue;
+            }
             if (!in_array($key, ['role', 'previous_role', 'version', 'context', 'reason', 'device_id', 'ownership_id', 'deadline_at', 'attempt_id', 'scheduled_at', 'claimed_at', 'mqtt_reason', 'kind', 'result_status', 'content_hash', 'switch_id', 'source_version', 'target_version', 'boundary_sequence', 'support_id', 'grantee_id', 'expires_at', 'control_allowed', 'alarm_allowed', 'export_allowed', 'actor_realm', 'customer_id', 'session_id', 'source_session_id', 'impersonation_id', 'scope_key'], true)
                 || (!is_string($value) && !is_int($value)) || strlen((string) $value) > ($key === 'reason' && str_starts_with($action, 'support.') ? 400 : 100)) {
                 throw new InvalidArgumentException('审计附加字段不在脱敏允许范围');
