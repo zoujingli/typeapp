@@ -1389,17 +1389,22 @@ final class Application
     /** 运行已选择的服务器，并在正常退出或异常后关闭；不会自动迁移或生成生产源码。 */
     public static function serve(Repository $settings, string $basePath, bool $development = false, bool $broker = false): void
     {
-        // 生产多线程 HTTP 依赖共享监听；Windows IOCP 共享监听尚未验收（http_thread_cleanup_failed），
-        // 按平台能力回退已验证的单线程协程 HTTP（与模板/开发入口一致）。
-        if (!$broker && !$development && PHP_OS_FAMILY !== 'Windows') {
-            $count = Settings::integer($settings, 'database.budget.threads', 1, 256);
+        if (!$broker && !$development) {
             CoroutineRuntime::enableIo();
+            $listen = $settings->text('app.http.listen');
+            $port = Settings::integer($settings, 'app.http.port', 1, 65535);
+            $payload = json_encode(['base' => $basePath, 'settings' => ['app' => $settings->array('app'), 'database' => $settings->array('database'), 'cache' => $settings->array('cache')], 'listen' => $listen, 'port' => $port], JSON_THROW_ON_ERROR);
+            // Windows IOCP 共享监听尚未验收；单业务线程自行绑定，主控仍走 ThreadSupervisor 停止/join。
+            if (PHP_OS_FAMILY === 'Windows') {
+                (new \Type\Runtime\ThreadSupervisor(1))->run('http', [$payload], null);
+                return;
+            }
+            $count = Settings::integer($settings, 'database.budget.threads', 1, 256);
             $listener = new \Swoole\Coroutine\Socket(AF_INET, SOCK_STREAM, 0);
             try {
-                if (!$listener->bind($settings->text('app.http.listen'), Settings::integer($settings, 'app.http.port', 1, 65535)) || !$listener->listen(128)) {
+                if (!$listener->bind($listen, $port) || !$listener->listen(128)) {
                     throw new \RuntimeException('HTTP 监听失败');
                 }
-                $payload = json_encode(['base' => $basePath, 'settings' => ['app' => $settings->array('app'), 'database' => $settings->array('database'), 'cache' => $settings->array('cache')]], JSON_THROW_ON_ERROR);
                 (new \Type\Runtime\ThreadSupervisor($count))->run('http', array_fill(0, $count, $payload), $listener);
             } finally {
                 $listener->close();
@@ -1421,15 +1426,21 @@ final class Application
         $arguments = \Swoole\Thread::getArguments();
         $listener = $arguments[1] ?? null;
         $state = $arguments[2] ?? null;
-        if (!$listener instanceof \Swoole\Coroutine\Socket || !$state instanceof \Swoole\Thread\Map) {
-            throw new \RuntimeException('HTTP 线程缺少受管监听和停止状态');
+        if (!$state instanceof \Swoole\Thread\Map) {
+            throw new \RuntimeException('HTTP 线程缺少受管停止状态');
         }
         $server = self::server(new Repository($data['settings']), (string) $data['base']);
         if (!$server instanceof SwooleServer) {
             throw new \RuntimeException('HTTP 线程只接受 Swoole');
         }
         try {
-            $server->serveThread($listener, $state);
+            if ($listener instanceof \Swoole\Coroutine\Socket) {
+                $server->serveThread($listener, $state);
+            } elseif ($listener === null && isset($data['listen'], $data['port']) && is_string($data['listen']) && is_int($data['port'])) {
+                $server->serveThreadOwned($data['listen'], $data['port'], $state);
+            } else {
+                throw new \RuntimeException('HTTP 线程缺少受管监听或自绑定地址');
+            }
         } catch (Throwable $error) {
             // Windows 等平台线程异常退出时，主控只看到 thread_exit_unexpected；此处保留可观测的稳定码与类型。
             $code = $error instanceof \Type\Runtime\TaskException ? $error->errorCode() : $error::class;
