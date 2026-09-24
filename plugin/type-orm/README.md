@@ -38,6 +38,8 @@ Database 通过 type-runtime 的有界池按作用域借还会话。Connection �
 
 模型 CRUD、事务结果与作用域收尾的完整路径见[数据库与模型](https://iots.top/#/guide/database)。`ModelQuery::update/delete` 以单条写入 SQL 保留字段、租户、软删除及版本约束，没有额外行数上限；集合操作不触发逐模型观察器，已有对象需重新读取。没有业务条件时须显式 `allowAll()`。模型级 `insertMany/upsert` 尚未提供。具体约束及验收边界见[模型集合写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#模型集合写入)。
 
+模型自身的 SUM、AVG、MIN、MAX 聚合及并发查找或创建入口也尚未提供；重新加载可在当前作用域显式读主库取得新对象，时间字段可由观察器处理。完整[能力边界](https://iots.top/#/guide/database?id=常用能力边界)区分已有模型能力、底层 SQL 与待补接口。协程运行还依赖所选 PDO 的官方 hook；当前缺 hook 的启动拒绝仍需补齐，不能以扩展加载成功替代真实等待验收。
+
 ## 迁移
 
 `Type\Orm\Migration\Migration`、`Migrator` 和 `MigrationConsole` 提供已编译的迁移计划、三库互斥、内容校验、执行历史与显式失败恢复。迁移只连接选择的数据库；MySQL 明确使用非事务 DDL，PostgreSQL、SQLite 普通 DDL 与成功记录原子提交。完整用法和恢复边界见开发主仓 `docs/development/native-migrations.md`。

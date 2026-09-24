@@ -14,7 +14,7 @@
 
 上述扩展在开发与构建环境准备，原生构建默认复用匹配的内置 Swoole 并收集实际依赖。部署时使用完整运行包，另提供所选数据库服务或 SQLite 数据目录，见[环境与依赖](../environment.md)。
 
-协程数据库等待需要对应的官方构建能力：MySQL 使用 mysqlnd 与网络 hook，PostgreSQL、SQLite 分别需要 Swoole 的 `--enable-swoole-pgsql`、`--enable-swoole-sqlite`。应用启动时调用 `CoroutineRuntime::enableIo()`，为已加载的 PDO 扩展启用可用 hook；生成的命令入口与 HTTP 宿主已接入。自定义入口在启动业务线程及协程前配置，`CoroutineRuntime::run()` 保留既定 hook，不在任务中改写进程配置。只有扩展版本满足要求，不能证明 PDO 等待已经协程化。
+协程数据库等待需要对应的官方构建能力：MySQL 使用 mysqlnd 与网络 hook，PostgreSQL、SQLite 分别需要 Swoole 的 `--enable-swoole-pgsql`、`--enable-swoole-sqlite`。应用启动时调用 `CoroutineRuntime::enableIo()`，为已加载的 PDO 扩展启用可用 hook；生成的命令入口与 HTTP 宿主已接入。自定义入口在启动业务线程及协程前配置，`CoroutineRuntime::run()` 保留既定 hook，不在任务中改写进程配置。当前缺失的 PDO hook 会被跳过，所选驱动的启动拒绝尚需补齐；扩展版本满足要求或启动成功都不能证明 PDO 等待已经协程化，见[协程并发的成立条件](../database.md#协程并发的成立条件)。
 
 源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
 
@@ -33,6 +33,8 @@ composer require zoujingli/type-orm:dev-main
 ## 模型、关系与输出
 
 模型映射由[构建工具](type-build.md)生成，完整应用组织见[数据库与模型](../database.md)。`ModelQuery` 的 `find/first` 返回模型或 null，`get` 返回模型列表。
+
+模型自身目前只有计数聚合，批量新增及冲突写入尚未提供；底层 Query 的同名 SQL 能力不自动获得模型约束。支持范围、已有替代路径及待补入口见[常用能力边界](../database.md#常用能力边界)。
 
 例如在独立应用的生产源码中声明：
 
@@ -237,7 +239,7 @@ $nextPage = $next === null ? null
 
 `Db::afterCommit(static function (): void { ... })` 在最外层提交确认后执行。回调失败并不撤销已经提交的数据；提交确认失败属于未知结果，不能自动重跑业务。业务通过 `TransactionException::outcome()` 判断协议失败的结果，`AfterCommitException` 表示外层已经提交，具体回调错误由 `errors()` 返回。`transactionOutcome()` 属于底层 `Connection`，`Db` 没有同名方法。
 
-提交未知后结束原作用域，在新的作用域通过主库和稳定操作 ID 对账，不继续使用原连接或参与模型。`ReadWriteSession::reconcile()` 是显式会话入口，不是 `Db` 的方法；目前提交后回调再次开启事务还有结果覆盖问题，具体边界见[事务说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/transactions.md)。
+提交未知后结束原作用域，在新的作用域通过主库和稳定操作 ID 对账，不继续使用原连接或参与模型。`ReadWriteSession::reconcile()` 是显式会话入口，不是 `Db` 的方法。提交后回调开启新事务时，外层异常保留原事务已提交的事实，连接保留新事务的最新结果，包括 `UNKNOWN`；换连接对账不会清除未知事实，见[事务说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/transactions.md)。
 
 模型声明 `version` 后使用主键与旧版本匹配，冲突为 `optimistic_conflict`；底层 Query 批量写入不会自动加入模型版本或触发逐模型事件。`#[Transactional]` 只在显式生成的组合入口中生效。
 
