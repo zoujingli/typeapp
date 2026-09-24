@@ -16,7 +16,7 @@
 
 开发 PHP 的版本范围是 `>=8.4 <8.6`，Swoole 范围是 `>=6.2 <7`；这不代表任意组合都能使用内置模块。当前原生构建锁定 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2，准确输入取自项目的 `toolchain.lock.json` 与 `composer.lock`。
 
-通用模板的经典 HTTP 开发入口还需要 Unix worker 与信号能力，当前不支持 Windows；主仓生产 HTTP 采用业务线程内协程。选择环境时按[平台与验收](platforms.md)核对实际场景。
+通用模板的 HTTP `serve()` 按平台选择执行方式：Unix 使用经典 worker，Windows 使用协程 HTTP 与控制台停止事件。Windows PHP CLI 使用控制台处理器，原生产物使用编译的控制事件桥；入口需要可用控制台，不能把关闭窗口等同于正常排空。主仓生产 HTTP 采用业务线程内协程。具体入口已实现不等于完整平台验收通过，选择环境时按[平台与验收](platforms.md)核对实际场景。
 
 ## 构建机如何复用内置运行库
 

@@ -4,22 +4,48 @@
 
 以 Redis Streams 保存消息，通过显式 Job 注册、租约领取、Worker、有限重试和隔离记录执行后台任务。交付模型是至少一次，消费者应按稳定消息 ID 在实际业务写入目标实现幂等。
 
+## 投递与业务完成的区别
+
+Queue 负责保存和领取消息，Worker 负责创建独立任务作用域，Job 负责真实业务效果。一次成功投递只是取得 Redis 回执；只有处理器正常返回且作用域已清理，Worker 才确认当前投递。
+
+```mermaid
+sequenceDiagram
+  participant App as 生产者
+  participant Redis as Redis Streams
+  participant Worker as Worker
+  participant Job as Job + Scope
+  App->>Redis: publish(稳定消息 ID)
+  Redis-->>App: Stream 回执
+  Worker->>Redis: 领取或接管到期投递
+  Redis-->>Worker: token + 当前租约
+  Worker->>Job: 新建上下文并执行
+  Job->>Job: 目标端幂等写入
+  Job-->>Worker: 返回或抛出异常
+  Worker->>Job: 关闭作用域
+  alt 成功且清理完成
+    Worker->>Redis: 校验租约后确认并删除投递
+  else 业务失败且清理完成
+    Worker->>Redis: 原子转入延迟或隔离区
+  else 清理仍未完成
+    Worker->>Worker: 停止新领取，保留原投递
+  end
+```
+
+租约防止旧执行者继续操作受管 Redis 状态，不能撤回已发生的数据库、HTTP 或设备效果。业务防重必须与实际效果放在同一目标的原子边界内。
+
 ## 安装与依赖
 
 需要 PHP `>=8.4 <8.6`、`type-runtime`、`type-redis` 和 phpredis。使用专属可靠 Redis，配置容量、noeviction 与 AOF；无需自动安装 core、ORM、cache 或 scheduler。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-redis vcs https://github.com/zoujingli/type-redis.git
-composer config repositories.type-queue vcs https://github.com/zoujingli/type-queue.git
 composer require zoujingli/type-queue:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -53,48 +79,45 @@ final class ReadmeJob implements Job
 }
 
 /**
- * 在明确的示例命名空间执行一次投递与消费，不提供业务幂等保证。
+ * 在启动期启用 I/O hook，并在同一协程内装配、执行及关闭队列资源。
+ * 示例命名空间只用于投递与消费演示，不提供业务幂等保证。
  */
 function main(): void
 {
+    \Type\Runtime\CoroutineRuntime::enableIo();
     \Type\Runtime\CoroutineRuntime::run(static function (): void {
-        consumeExample();
+        $host = getenv('REDIS_HOST');
+        $port = filter_var(getenv('REDIS_PORT') === false ? '6379' : getenv('REDIS_PORT'), FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1, 'max_range' => 65535]]);
+        if (!is_int($port)) {
+            throw new InvalidArgumentException('REDIS_PORT 必须为有效整数端口');
+        }
+        $manager = new RedisManager(['default' => new RedisConfiguration($host === false ? '127.0.0.1' : $host, $port)]);
+        $scope = new ExecutionScope();
+        try {
+            $redis = $manager->connection($scope, 'default', Purpose::SCRIPT);
+            $queue = new Queue($redis, 'readme-example', 'example', 30000, 100);
+            $registry = new Registry();
+            $registry->register('readme.echo', 1, static fn (JobContext $context): Job => new ReadmeJob());
+            $queue->publish(new Message('readme-' . bin2hex(random_bytes(8)), 'readme.echo', 1, []));
+            $worker = new Worker($queue, $registry, 'readme-worker');
+            try {
+                $worker->run(1);
+            } finally {
+                $worker->stop();
+            }
+        } finally {
+            try {
+                $scope->close();
+            } finally {
+                $manager->close();
+            }
+        }
     });
-}
-
-function consumeExample(): void
-{
-    $host = getenv('REDIS_HOST');
-    $port = filter_var(getenv('REDIS_PORT') === false ? '6379' : getenv('REDIS_PORT'), FILTER_VALIDATE_INT,
-        ['options' => ['min_range' => 1, 'max_range' => 65535]]);
-    if (!is_int($port)) {
-        throw new InvalidArgumentException('REDIS_PORT 必须为有效整数端口');
-    }
-    $manager = new RedisManager(['default' => new RedisConfiguration($host === false ? '127.0.0.1' : $host, $port)]);
-    $scope = new ExecutionScope();
-    try {
-        $redis = $manager->connection($scope, 'default', Purpose::SCRIPT);
-        $queue = new Queue($redis, 'readme-example', 'example', 30000, 100);
-        $registry = new Registry();
-        $registry->register('readme.echo', 1, static fn (JobContext $context): Job => new ReadmeJob());
-        $queue->publish(new Message('readme-' . bin2hex(random_bytes(8)), 'readme.echo', 1, []));
-        $worker = new Worker($queue, $registry, 'readme-worker');
-        try {
-            $worker->run(1);
-        } finally {
-            $worker->stop();
-        }
-    } finally {
-        try {
-            $scope->close();
-        } finally {
-            $manager->close();
-        }
-    }
 }
 ```
 
-执行 `php dev.php` 应输出一个 `readme-` 开头的消息 ID。示例仅打印流程；stdout 不具备业务幂等保证，已有积压时本轮可能先消费较早消息。
+执行 `php dev.php` 应输出一个 `readme-` 开头的消息 ID。启动期先启用 I/O hook，随后在 `CoroutineRuntime::run()` 的同一协程内创建管理器、作用域、Queue 和 Worker，并在退出前关闭；不能先在外层借连接再把它带进协程。下面的重试与幂等练习继续放在对应的协程入口或 Job 方法中。示例仅打印流程；stdout 不具备业务幂等保证，已有积压时本轮可能先消费较早消息。
 
 ## 定义消息与处理器
 
@@ -149,6 +172,32 @@ RetryPolicy 默认尝试 3 次、基础延迟 1000ms、最大延迟 60000ms、�
 长任务在检查点调用 `$context->reservation()->renew()` 并 `assertActive()`；没有后台续期可以保护任意阻塞代码的保证。租约到期后，`reclaim($consumer)` 有界重领并替换 token，旧执行者不能确认、续租或发起新的受管效果。
 
 `Reservation::effect($lua, $keys, $arguments)` 在同一 Redis 脚本里先验证租约；其他数据库和 HTTP 效果仍需目标端版本/幂等约束。Lua 异常可能发生在部分写入之后。
+
+## 练习：把 Redis 业务结果与防重放在同一次写入
+
+如果真实业务结果就是 Redis 中的一份接收记录，可以将最小示例 `ReadmeJob::handle()` 的方法体替换为以下代码。它按稳定消息 ID 保存 JSON，并核对重复消息的内容；不另建一个“先查后写”的防重窗口。
+
+```php
+$context->assertActive();
+$message = $context->message();
+$encoded = json_encode($payload, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+$created = $context->reservation()->effect(<<<'LUA'
+local previous=redis.call('GET',KEYS[1])
+if previous then
+ if previous~=ARGV[1] then return redis.error_reply('message payload conflict') end
+ return 0
+end
+redis.call('SET',KEYS[1],ARGV[1])
+return 1
+LUA, ['readme:received:' . $message->id()], [$encoded]);
+echo json_encode(['id' => $message->id(), 'created' => $created === 1], JSON_THROW_ON_ERROR) . "\n";
+```
+
+为了观察重复，在生产者处给同一个 `Message` 投递两次，并将 `run(1)` 改为 `run(2)`。专属空示例队列中，第一次输出 created=true，第二次 false；两次租约均可正常确认。更换载荷而复用 ID 会失败并进入重试流程。对比的是本例编码后的 JSON 字节，业务若需要语义等价应先定义统一编码。
+
+此例只保护同一 Redis 的记录。写 SQL 数据库时应由该数据库的唯一约束和事务共同保护业务效果；不要先在 Redis 标记成功再写数据库。Lua 运行错误也没有通用事务回滚，因此脚本先完成检查，再执行本例唯一的写操作。
+
+示例新增的 `readme:received:<消息 ID>` 是业务数据，队列确认不会删除它。练习后只在专属测试实例按实际生成的 ID 清理；生产去重记录保留时间应覆盖可能的重试与人工重放窗口。
 
 ## 隔离与人工重放
 

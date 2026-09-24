@@ -41,9 +41,18 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 构建组件现已携带四平台 Swoole 6.2.1 共享模块，具体 ABI、系统依赖和选择规则见[内置 Swoole](plugins/type-build.md#内置-swoole-与运行依赖)。模块迁入组件后，独立 Composer 安装的禁网选择、空格路径与不同工作目录验证通过；macOS ARM64 使用 TypePHP 0.9.3／PHPX 2.9.2 完成 255 个生产输入、21 个生产依赖包、271 个编译单元的全量 AOT，同一程序完成三库共 1522 项无源码身份 HTTP 检查。构建身份、程序摘要及原始证据见[迁移验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/swoole-bundle.md#迁入构建组件后的验证)。这批验证未运行 Linux/Windows 全量应用、Windows 准备脚本或 macOS 15 实机，不能把模块齐全视为四平台完整交付。
 
-通用模板的经典 HTTP `serve()` 入口仍要求 Unix worker 与信号能力，当前明确拒绝 Windows；Windows SDK 和 ORM 通过不代表该 HTTP 入口已适配。主仓物联中心生产 HTTP 使用编译业务线程内协程，具体入口与限制见[快速开始](quickstart.md#启动服务)和[type-core](plugins/type-core.md#启动-http-服务)。
+不同服务入口具有各自的执行方式，不能把某一入口的限制套用到整个框架：
 
-进程不可用时采用官方线程或协程是框架要求，当前自动选择执行方式及部分角色接入仍待完成。Swoole 官方已有 Windows 原生能力，项目的 Windows 准备脚本已完成固定源码构建与扩展加载验证；经典 Server/Process、线程和协程的实际业务须按所选官方构建分别核验。
+| 入口 | 当前实现 | 平台边界 |
+| --- | --- | --- |
+| HTTP `serve()`，Unix | 经典 Swoole 单 worker，在协程中处理请求 | 停止沿用原生 worker 生命周期 |
+| HTTP `serve()`，Windows | Swoole 协程 HTTP，`ProcessSignals` 接入控制台停止事件 | CLI 使用 PHP 控制台处理器；embed 需要编译的控制事件桥与可用控制台 |
+| HTTP `serveThread()` / `serveThreadOwned()` | 编译业务线程使用共享监听副本或自行监听，主控监督停止与 join | 需要匹配项目线程 ABI；两种监听方式和各平台单独验收 |
+| `WebSocket\Server::start()` | 经典 Swoole WebSocket Server | 当前 Windows 原生入口明确拒绝，协程升级尚未接入本组件 |
+
+Windows HTTP 已有实现分支，但现有 SDK、ORM 和进程工具结果不能证明新版 HTTP、控制事件排空或完整应用发布已通过；上述未验收项继续保留。主仓物联中心生产 HTTP 使用编译业务线程，通用模板使用 `serve()`，见[快速开始](quickstart.md#启动服务)和[type-core](plugins/type-core.md#启动-http-服务)。
+
+进程不可用时采用官方线程或协程是框架要求；HTTP 已按平台选择入口，其他角色仍需逐项接入和验证。经典 Server/Process、线程和协程的实际业务按所选构建分别核验，上游提供某项能力不能替代应用验收。
 
 当前已编译线程入口还依赖受控的 PHPX 与 Swoole 接入。Linux ARM64 实测中，官方 Swoole 6.2.2 启用 Thread 后并不提供 TypeApp 当前要求的 `startNative` 和 `NATIVE_ENTRY_ABI=2`；这些是项目编译适配标识，不是官方标准 API。普通 Thread 可用不等于已编译业务线程可用。需要让固定上游版本、必要适配和 SDK 构建流程一致，再完成生命周期与全量 AOT 验收。
 

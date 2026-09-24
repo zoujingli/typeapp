@@ -44,9 +44,9 @@
 
 ## 公开 Composer 安装
 
-组件按 .github/distribution.json 登记并从公开 Git 子仓分发，包含 type-mqtt；远端是否已推送以实际仓库为准。消费应用在自己的根 composer.json 配置所选组件和全部传递依赖的 HTTPS 仓库地址，无需 SSH 密钥；Composer 不会继承依赖包里的 repositories，也不假设组件已经进入 Packagist。
+组件按 .github/distribution.json 从主仓拆分到公开 Git 子仓，包含 type-mqtt；15 个组件及 type-project 模板在 Packagist 登记。消费应用通过默认公共索引安装，Composer 自动解析传递依赖，无需额外 repositories。主仓改动需要先分发到子仓，随后 GitHub push webhook 才触发 Packagist 索引更新。
 
-| 所选组件 | 还需配置的传递依赖 |
+| 所选组件 | 自动解析的传递依赖 |
 | --- | --- |
 | `type-runtime` | 无其他第一方包 |
 | `type-build`、`type-core`、`type-testing`、`type-validate`、`type-log`、`type-orm`、`type-redis` | `type-runtime`；build 另有公开编译工具依赖 |
@@ -59,13 +59,10 @@
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
-composer config repositories.type-orm-sqlite vcs https://github.com/zoujingli/type-orm-sqlite.git
 composer require zoujingli/type-orm-sqlite:dev-main
 ```
 
-使用具有对应仓库只读权限的 SSH 身份，或由使用者配置的其他 Composer 认证方式；不得把令牌、SSH 私钥或 `auth.json` 内容写入文档和 Git。应用可以进一步收紧允许的开发依赖策略，以上命令只是与当前组件开发版本一致的最小安装方式。
+公开安装不需要项目分发凭据；不得把令牌、SSH 私钥或 `auth.json` 内容写入文档和 Git。应用可以进一步收紧允许的开发依赖策略，以上命令与当前组件开发版本一致。
 
 每包将 `dev-main` 别名映射到 `1.0.x-dev`，组件间使用 `~1.0.0@dev` 约束；这不是稳定 `1.0.0` 标签。消费应用提交 `composer.lock`，使部署锁定真实分发提交，不在构建时任意更新依赖。根锁文件里选择的包来源决定当前消费的版本，新主仓修改只有完成对应分发才会出现在子仓；GitHub 目录中的新 README 不证明它已经发布。
 
@@ -85,7 +82,29 @@ Composer 负责安装与组合源码，TypePHP 负责把框架、业务、生产
 
 各组件 README 的 `composer test:*` 指向开发主仓根脚本，而非分发子仓自带命令。原生测试先构建对应产物，独立消费者测试负责验证只装所选依赖；三库与外部进程场景使用专属真实环境，不能以 SQLite 或内部 mock 代替另一数据库协议。
 
-`composer test:component-docs -- type-runtime --native`直接提取指定组件README中的首个完整PHP示例，核对文档列出的公开仓库与实际传递依赖，再在新消费者中独立安装、运行及全量编译。构建组件和测试组件放在开发依赖；`type-testing`示例驱动调用方通过`TYPE_DOCUMENTED_TEST_BINARY`给定的真实程序，不进入业务生产依赖。需要显式`PHP_HOME`、`PHPX_HOME`和`TYPE_COMPOSER_PHAR`；三库示例另提供`TYPE_MYSQL_TOOLS`、`TYPE_PGSQL_TOOLS`，Redis相关示例提供`TYPE_REDIS_SERVER`。控制器使用`NativeDatabase`/`NativeRolloutRedis`持有各自专属实例，结束后关闭。ORM文档的服务函数由测试调用者显式安装SQLite驱动并传入真实连接，不隐式增加到ORM包依赖。
+`composer test:component-docs -- type-runtime --native` 提取指定组件 README 中的首个完整 PHP 示例，从 Composer 清单递归计算第一方依赖闭包，再在新消费者中独立安装、运行及全量编译。默认使用本地 path 副本；增加 `--packagist` 后不写任何 repositories，实际从公共索引安装，并记录各组件的源码引用。两种来源的结果分别记录。
+
+构建组件和测试组件放在开发依赖；`type-testing` 示例通过 `TYPE_DOCUMENTED_TEST_BINARY` 指向受控真实程序。原生模式需要 `PHP_HOME`、`PHPX_HOME` 和 `TYPE_COMPOSER_PHAR`；三库示例另提供 `TYPE_MYSQL_TOOLS`、`TYPE_PGSQL_TOOLS`，Redis 示例提供 `TYPE_REDIS_SERVER`。测试装置持有专属数据库和 Redis，结束后关闭。ORM 示例同时提取业务模型声明，由 DevelopmentBuilder 生成实际模型，在 Db 与协程执行作用域中调用无连接的业务接口；测试应用显式安装 SQLite 驱动，不增加 ORM 包的隐式驱动依赖。MQTT 的 README 示例验证离线公共协议契约，不代替网络或持久交付验收。
+
+## Packagist 自动同步
+
+```mermaid
+sequenceDiagram
+  participant Main as TypeApp 主仓
+  participant Repo as 组件 GitHub 子仓
+  participant Index as Packagist
+  participant App as 消费应用
+  Main->>Repo: 固定提交拆分，非强制推送 main
+  Repo->>Index: push webhook
+  Index->>Repo: 读取 composer.json 与 Git 引用
+  App->>Index: composer require / update
+  Index-->>App: 包元数据与分发地址
+  App->>App: composer.lock 固定来源提交
+```
+
+维护者在每个 Packagist 包页检查自动更新状态，并核对 GitHub webhook 的最近投递结果；不把 webhook URL、认证参数或令牌写入公开报告。索引延迟时比较子仓 HEAD 与 Packagist `dev-main` 的 `source.reference`，一致后再运行不含 VCS 配置的独立安装验证。Webhook 只负责索引已发布的子仓，不会替主仓执行源码分发。
+
+源码基线按明确授权发布到开发分支，完整原生验收与稳定版本门槛仍独立执行；不为获得 Composer 可安装状态创建未经验证的稳定标签。
 
 可对已验证消费者执行`php tests/documented-components.php --failures build/消费者目录`，从相同PHP/原生入口核对文档声明的非法参数和配置拒绝，保存新的报告而不改写原始正向记录。每个完整示例的摘要、安装锁、生产包及实际执行结果分别记录；仓库/注释核对不能代替这些真实调用，独立本地副本也不代表远端分发已经完成。
 

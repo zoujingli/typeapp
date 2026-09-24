@@ -1,6 +1,8 @@
 # HTTP 原生线程接入
 
-本页对应 ，承接 [Swoole 复用标准](../standards/swoole-reuse.md)。当前是显式候选：一个原生 TCP 监听经 Swoole 复制到两个业务线程，各线程使用协程 HTTP Server、原生连接准入及既有 PSR 处理链。`serveThread()` 已承接线程内监听与收尾，`ThreadSupervisor` 承接独立主控的停止与 join；默认 `serve()`、应用和模板仍使用原有入口，生产预算配置及四平台验收尚未完成。
+本页承接 [Swoole 复用标准](../standards/swoole-reuse.md)，说明编译业务线程如何复用 Swoole 协程 HTTP、原生连接准入及既有 PSR 处理链。当前主仓物联中心的生产 HTTP 已由 `ThreadSupervisor` 管理：Unix 按配置线程数复制同一原生监听，线程调用 `serveThread()`；Windows 分支使用一个业务线程自行监听，调用 `serveThreadOwned()`，不依赖尚未验收的 IOCP 共享监听。主控负责停止和真实 join，请求及连接额度由各线程自己的宿主管理。
+
+主仓开发入口、Broker 管理 HTTP 和通用模板仍调用 `serve()`；该方法在 Unix 使用经典 worker，在 Windows 使用协程 HTTP 与控制事件桥。以下保留初始接缝设计与独立消费者的专项记录，其中候选状态和后续接入项对应当时的验证范围；不能以接缝结果推定当前完整应用或所有平台通过。当前工具链、应用产物和未完成项统一见[平台与验收](../guide/platforms.md)。
 
 ## 复用与最小缺口
 

@@ -10,7 +10,13 @@ use Type\Build\ArtifactManifest;
 use Type\Build\BuildPlatform;
 use Type\Testing\Process;
 
-/** 通过相同公开入口验证文档声明的参数/配置拒绝，不连接外部业务资源。 */
+/**
+ * 通过相同公开入口验证文档声明的参数/配置拒绝，不连接外部业务资源。
+ *
+ * @param array<string, list<string>> $commands 执行模式到实际入口命令的映射。
+ * @param array<string, string> $environment 传给测试进程的显式环境。
+ * @return list<array{mode: string, exit_code: int|null, rejected: bool}>
+ */
 function documentedFailures(string $name, string $base, array $commands, array $environment): array
 {
     $arguments = match ($name) {
@@ -69,22 +75,20 @@ if (($argv[1] ?? '') === '--failures') {
 $root = realpath(dirname(__DIR__));
 $name = $argv[1] ?? '';
 $native = in_array('--native', $argv, true);
+$packagist = in_array('--packagist', $argv, true);
 $mapping = json_decode(file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
 expect(isset($mapping['packages'][$name]), '需要明确指定分发映射中的组件');
 $readme = file_get_contents($root . '/plugin/' . $name . '/README.md');
 expect(preg_match('~```php\n(<\?php\n.*?)```~s', $readme, $match) === 1, '组件缺少完整声明式PHP示例');
 $example = $match[1];
-preg_match_all('~^composer config repositories\.([a-z0-9-]+) vcs https://github\.com/zoujingli/([a-z0-9-]+)\.git$~m', $readme, $repositoryMatches);
-expect($repositoryMatches[1] === $repositoryMatches[2], '文档仓库名称与真实组件不一致');
-$documentedRepositories = $repositoryMatches[1];
-$required = [$name];
+$required = [$name, 'type-build', ...($name === 'type-orm' ? ['type-orm-sqlite'] : [])];
 $checked = [];
 while ($required !== []) {
     $component = array_pop($required);
     if (isset($checked[$component])) {
         continue;
     }
-    expect(in_array($component, $documentedRepositories, true), '安装说明遗漏依赖仓库：' . $component);
+    expect(isset($mapping['packages'][$component]), '第一方依赖没有分发映射：' . $component);
     $checked[$component] = true;
     $metadata = json_decode(file_get_contents($root . '/plugin/' . $component . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
     foreach (array_keys($metadata['require'] ?? []) as $dependency) {
@@ -98,39 +102,51 @@ expect(mkdir($base, 0700) && mkdir($base . '/app', 0700) && mkdir($base . '/php.
 $developmentOnly = in_array($name, ['type-build', 'type-testing'], true);
 $composer = ['name' => 'type-tests/documented-' . $name, 'type' => 'project', 'license' => 'Apache-2.0',
     'require' => ['php' => '>=8.4 <8.6'], 'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev'],
-    'autoload' => ['classmap' => ['app']], 'repositories' => [], 'minimum-stability' => 'dev', 'prefer-stable' => true,
+    'autoload' => ['classmap' => ['app']], 'minimum-stability' => 'dev', 'prefer-stable' => true,
     'config' => ['allow-plugins' => false]];
 $composer[$developmentOnly ? 'require-dev' : 'require']['zoujingli/' . $name] = '~1.0.0@dev';
 if ($name === 'type-orm') {
-    // README的服务函数接收已有连接，测试调用者显式安装SQLite驱动并持有连接。
+    // 以真实声明式模型和作用域装配调用 README 服务；SQLite 仅用于本次消费者。
     $composer['require']['zoujingli/type-orm-sqlite'] = '~1.0.0@dev';
+    expect(mkdir($base . '/app/model', 0700), '无法创建文档模型目录');
+    expect(preg_match_all('~```php\n(<\?php\n.*?)```~s', $readme, $modelExamples) >= 2, 'ORM 文档缺少实际模型声明');
+    file_put_contents($base . '/app/model/User.php', $modelExamples[1][1]);
     $example .= <<<'PHP'
 
 /** 调用文档服务函数，通过真实SQLite验证条件查询及事务更新。 */
 function main(): void
 {
-    $database = new \Type\Orm\Database(new \Type\Orm\Sqlite\SqliteDriver(':memory:'), 1, 0);
-    $scope = new \Type\Runtime\ExecutionScope();
-    try {
-        $connection = $database->connect($scope);
-        $connection->execute('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)');
-        $connection->execute('INSERT INTO users VALUES (?, ?, ?)', [1, '文档用户', 21]);
-        if (count(findAdultUsers($connection, '文档用户')) !== 1 || renameUser($connection, 1, '已更名') !== 1
-            || count(findAdultUsers($connection, '已更名')) !== 1 || findAdultUsers($connection, '缺失') !== []) {
-            throw new \RuntimeException('文档查询或事务语义不符');
+    \Type\Runtime\CoroutineRuntime::enableIo();
+    \Type\Runtime\CoroutineRuntime::run(static function (): void {
+        $database = new \Type\Orm\DatabaseManager(['default' => new \Type\Orm\Sqlite\SqliteDriver(':memory:')], 1, 0);
+        \Type\Orm\Db::configure($database);
+        $scope = new \Type\Runtime\ExecutionScope();
+        try {
+            $scope->run(static function (\Type\Runtime\ExecutionScope $current): void {
+                $connection = \Type\Orm\Db::connection('default', true);
+                $connection->execute('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER NOT NULL)');
+                $created = \app\model\User::create(['name' => '文档用户', 'age' => 21]);
+                if (findAdultUsers('文档用户') !== [['id' => $created->id, 'name' => '文档用户', 'age' => 21]]
+                    || renameUser($created->id, '已更名') !== 'updated'
+                    || findAdultUsers('已更名') !== [['id' => $created->id, 'name' => '已更名', 'age' => 21]]
+                    || findAdultUsers('缺失') !== []) {
+                    throw new \RuntimeException('文档模型查询或事务语义不符');
+                }
+                echo "ORM文档查询与事务通过。\n";
+            });
+        } finally {
+            try { $scope->close(); } finally { $database->close(); }
         }
-        echo "ORM文档查询与事务通过。\n";
-    } finally {
-        try { $scope->close(); } finally { $database->close(); }
-    }
+    });
 }
 PHP;
 }
-// 构建工具是测试控制端的额外开发依赖；业务仓库闭包已独立与README逐项核对。
-$repositories = array_unique([...$documentedRepositories, 'type-build', 'type-runtime', ...($name === 'type-orm' ? ['type-orm-sqlite'] : [])]);
-foreach ($repositories as $package) {
-    $composer['repositories'][] = ['type' => 'path', 'url' => '../../plugin/' . $package,
-        'options' => ['symlink' => false, 'versions' => ['zoujingli/' . $package => '1.0.x-dev']]];
+// 本地模式从真实 Composer 清单求闭包；公开模式不声明 repositories，也不回退 VCS/path。
+if (!$packagist) {
+    foreach (array_keys($checked) as $package) {
+        $composer['repositories'][] = ['type' => 'path', 'url' => '../../plugin/' . $package,
+            'options' => ['symlink' => false, 'versions' => ['zoujingli/' . $package => '1.0.x-dev']]];
+    }
 }
 file_put_contents($base . '/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
 file_put_contents($base . '/app/main.php', $example);
@@ -152,8 +168,15 @@ nativeDatabaseCommand(
     180
 );
 $lock = json_decode(file_get_contents($base . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
+$installed = [];
 foreach (array_merge($lock['packages'], $lock['packages-dev']) as $package) {
     expect(!is_link($base . '/vendor/' . $package['name']), '独立安装不能依赖主仓软链接');
+    if (str_starts_with($package['name'], 'zoujingli/type-')) {
+        if ($packagist) {
+            expect(($package['dist']['type'] ?? '') !== 'path' && ($package['source']['type'] ?? '') === 'git', '公开安装没有取得真实 Git 分发来源');
+        }
+        $installed[$package['name']] = ['version' => $package['version'], 'source' => $package['source'] ?? null, 'dist' => $package['dist'] ?? null];
+    }
 }
 $production = array_column($lock['packages'], 'name');
 expect(!in_array('zoujingli/type-build', $production, true) && !in_array('zoujingli/type-testing', $production, true), '开发工具进入了业务生产依赖');
@@ -161,9 +184,10 @@ $database = null;
 $redis = null;
 $record = ['status' => 'running', 'component' => $name, 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
     'readme_sha256' => hash('sha256', $readme), 'example_sha256' => hash('sha256', $match[1]),
-    'documented_repositories' => $documentedRepositories,
+    'first_party_closure' => array_keys($checked), 'installed_components' => $installed,
     'composer_lock_sha256' => hash_file('sha256', $base . '/composer.lock'), 'production_packages' => $production,
-    'development_only' => $developmentOnly, 'remote_distribution' => false];
+    'development_only' => $developmentOnly, 'installation' => $packagist ? 'packagist' : 'local-path',
+    'remote_distribution' => $packagist];
 try {
     if (in_array($name, ['type-orm-mysql', 'type-orm-pgsql'], true)) {
         $driver = substr($name, strlen('type-orm-'));
@@ -188,7 +212,15 @@ try {
     };
     expect($name !== 'type-testing' || $arguments[0] !== '', '测试组件示例需要真实TYPE_DOCUMENTED_TEST_BINARY');
     $entryCall = str_contains($example, 'function main(int $argc') ? 'main($argc, $argv);' : 'main();';
-    file_put_contents($base . '/dev.php', "<?php\nrequire __DIR__ . '/vendor/autoload.php';\nrequire __DIR__ . '/vendor/swoole/typephp/src/polyfills.php';\nrequire __DIR__ . '/app/main.php';\n" . $entryCall . "\n");
+    $preparation = $name === 'type-orm' ? <<<'PHP'
+$generation = (new \Type\Build\DevelopmentBuilder())->prepareConfiguration(__DIR__ . '/type-app.json');
+foreach ($generation['files'] as $file) {
+    require $generation['directory'] . '/' . $file;
+}
+
+PHP : '';
+    file_put_contents($base . '/dev.php', "<?php\nrequire __DIR__ . '/vendor/autoload.php';\nrequire __DIR__ . '/vendor/swoole/typephp/src/polyfills.php';\n"
+        . $preparation . "require __DIR__ . '/app/main.php';\n" . $entryCall . "\n");
     $commands = ['php' => [PHP_BINARY, $base . '/dev.php']];
     if ($native && $name !== 'type-testing') {
         echo $name . "：编译独立文档示例。\n";
@@ -232,6 +264,14 @@ try {
             expect($output === "ORM文档查询与事务通过。\n", '文档服务函数没有执行');
         } elseif ($name === 'type-log') {
             expect(str_contains($output, '数据同步') && str_contains($output, '访问被拒绝'), '文档日志示例没有输出两个通道');
+        } elseif ($name === 'type-mqtt') {
+            expect(
+                json_decode($output, true, 512, JSON_THROW_ON_ERROR) === ['protocol' => 5, 'client_id' => 'guide-client',
+                'topic' => 'example/up', 'qos' => 0, 'packet_bytes' => 33, 'publish_header' => 48, 'invalid_topic_rejected' => true],
+                '文档 MQTT 离线报文构建、解码或非法主题拒绝不符'
+            );
+            $record['mqtt_scope'] = 'offline-public-contract';
+            $record['network_protocol_verified'] = false;
         } else {
             expect(is_array(json_decode($output, true, 512, JSON_THROW_ON_ERROR)), '文档调度或测试结果无效');
         }

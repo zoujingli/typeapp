@@ -8,18 +8,15 @@
 
 需要 PHP `>=8.4 <8.6`、`ext-pdo_mysql`、`type-orm` 和 `type-runtime`。先准备数据库、应用账号与相应权限，安装包不会创建数据库或账号。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
-composer config repositories.type-orm-mysql vcs https://github.com/zoujingli/type-orm-mysql.git
 composer require zoujingli/type-orm-mysql:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -71,6 +68,32 @@ function main(): void
 ```
 
 提供有效配置后执行 `php dev.php`，输出含 `value=7` 的 JSON 行列表。读取不创建业务表；整数的具体 PDO 返回类型应以实际驱动结果为准。
+
+### 从连接探测进入业务开发
+
+1. 在专属开发库执行上述只读示例，确认账号、数据库和网络可用。
+2. 用版本化迁移建立实际表，确认表引擎为 InnoDB；模型声明本身不会建表。
+3. 按[数据库与模型教程](../database.md)声明领域 Model、生成映射并在作用域内调用 CRUD。
+4. 业务成功、约束失败和取消都验证 Scope 收尾；提交未知使用稳定业务 ID 对账。
+
+```mermaid
+flowchart LR
+    Config[运行配置] --> Driver[MysqlDriver]
+    Driver --> Init[原生 PDO / utf8mb4 / UTC / 严格模式]
+    Init --> Lease[当前作用域独占租约]
+    Lease --> Work[查询与事务]
+    Work --> Close[作用域收尾关闭物理连接]
+    Close --> Next[下一次借用重新建连]
+```
+
+在最小示例取得 `$connection` 后，可只读检查真实基线：
+
+```php
+$baseline = $connection->query('SELECT @@SESSION.time_zone AS timezone, @@SESSION.sql_mode AS modes');
+echo json_encode($baseline, JSON_THROW_ON_ERROR) . "\n";
+```
+
+timezone 应为 `+00:00`，modes 包含 `STRICT_ALL_TABLES`；不要依赖完整 SQL 模式列表的固定顺序。此检查不证明所有 SQL 都具备相同超时，也不替代事务表检查。
 
 ## 连接配置
 

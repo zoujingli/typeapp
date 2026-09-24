@@ -51,6 +51,19 @@
   </a>
 </div>
 
+## 创建第一个应用
+
+```bash
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main
+cd my-app
+php configure.php sqlite
+composer install --no-plugins --no-scripts
+php dev.php help
+php dev.php check
+```
+
+先选择数据库，再安装依赖；`dev-main` 是开发分支，不代表稳定版本。提交应用的 `composer.lock`，固定实际安装版本。[第一个应用教程](guide/tutorial.md)带你完成迁移、HTTP 增删改查和原生构建；已有本地模板或需要 Git 检出的用户，可使用[快速开始](guide/quickstart.md)中的 `type create` 或 clone 入口。
+
 <div class="guide-grid">
   <a class="guide-card" href="#/guide/typephp"><span class="guide-index">AOT <span aria-hidden="true">↗</span></span><strong>TypePHP 全量编译</strong><span>从 PHP 生产实现到原生程序，理解编译流程、覆盖范围与验证边界。</span><span class="guide-meta">TYPEPHP</span></a>
   <a class="guide-card" href="#/guide/capabilities"><span class="guide-index">MAP <span aria-hidden="true">↗</span></span><strong>基础能力与验收</strong><span>按应用需要选择组件，明确现有入口、行为要求与交付缺口。</span><span class="guide-meta">CAPABILITIES</span></a>
@@ -91,6 +104,6 @@ TypePHP 和 Composer 位于构建侧；生产运行执行已编译的业务与�
 
 源码入口：[TypeApp 主仓](https://github.com/zoujingli/typeapp)、[15 个 Plugins](guide/components.md#组件一览)与 [type-project 应用模板](https://github.com/zoujingli/type-project)。第一方内容统一采用 Apache-2.0，独立仓库附 LICENSE 与 NOTICE。
 
-安装文档使用公开仓库的 HTTPS 地址，无需 SSH 密钥即可获取源码。组件尚未发布稳定版本，开发分支不代表稳定交付；安装后请提交应用的 `composer.lock`。
+应用模板和框架组件通过 Packagist 分发，Composer 自动解析传递依赖，无需逐一配置 Git 仓库。公开分发子仓保留源码、许可证与变更记录；当前使用开发版本，稳定交付范围以各平台实际验收为准。
 
 Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生验证记录，各自通过的场景不同；环境前提与证据身份见[平台与验收](guide/platforms.md)。全量编译指生产实现进入 TypePHP 的覆盖门槛，不等于测试覆盖率或所有 PHP 包兼容。

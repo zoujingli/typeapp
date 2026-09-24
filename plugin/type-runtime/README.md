@@ -1,6 +1,21 @@
 # type-runtime
 
-进程、线程与协程是 TypeApp 的运行时基础能力，由 Swoole 统一提供；本组件承接执行作用域、资源所有权及预算契约。TypePHP 负责框架与业务的全量编译，Swoole 提供原生进程、线程、协程、通信和事件循环；各业务角色共用同一套作用域和真实收尾规则。
+TypeApp 的执行与资源组件，为请求、命令、消息和后台任务管理作用域、资源所有权、截止及容量。TypePHP 编译框架与业务，内置 Swoole 运行库提供原生通信与并发；本组件负责把它们接入可观察的业务生命周期。
+
+## 阅读与操作路径
+
+先运行下方[声明式使用示例](#声明式使用示例)，确认参数校验与作用域清理，再按[运行时教程](https://iots.top/#/guide/plugins/type-runtime)尝试两个受管子任务。连接数据库或 Redis 时在当前作用域借用资源，结束时由创建者在 `finally` 关闭作用域。
+
+```mermaid
+flowchart LR
+    Start[建立本次作用域] --> Work[执行业务与受管子任务]
+    Work --> Close[取消与逆序收尾]
+    Close --> Check{真实收尾完成}
+    Check -->|是| Done[关闭并归还额度]
+    Check -->|否| Hold[保留所有权与额度]
+```
+
+作用域关闭不等于进程池关闭；请求资源由请求所有者收尾，池由进程或线程所有者收尾。超时只表示预算到期，不能据此让另一请求复用仍在途的连接。
 
 已验证范围包含 Linux x64 基础命令，以及 Linux ARM64、macOS ARM64、Windows x64 三库独立 ORM 消费中的作用域、资源归属和会话退役。macOS ARM64 另有已编译线程与通信专项结果；这些结果不代表全部角色在每个平台均已通过，源码与 SDK 边界见[平台与验收](https://iots.top/#/guide/platforms)。
 
@@ -13,6 +28,8 @@
 第四参数可传 `Swoole\Thread\Map`，需要 TypeApp 私有 `TYPEAPP_CONTROL_ARGUMENT_ABI=1`。控制 Map 复用上游原生 ThreadResource，固定在 `getArguments()[2]`；没有 Socket 时下标 1 为 null，未传 Map 时保持旧参数形状。各线程重新取得自己的 Zend 对象，共享的是原生控制数据；不传容器、PDO 或业务对象。
 
 `ThreadSupervisor($maximumThreads, $startupSeconds=10, $progressSeconds=5, $stopSeconds=10)` 以一次 `run($entry, $payloads, $listener=null)` 拥有有限线程组。它要求编译 embed 主线程、原生控制/完成能力及独占事件循环；复用 `ProcessSignals` 和原生 Timer 接收停止与探测完成。`stop()` 幂等撤销组就绪并请求停止，真实 join 后才归还线程额度，`statistics()` 只报告状态、持有、就绪和已 join 数。启动失败或线程异常先收尾其余线程再报告；无法在停止期限内回收时以 `_Exit(75)` 结束角色进程，不 detach 或自动重启。
+
+`ProcessSignals` 独占本进程停止通知，不决定业务排空。Unix 使用 PCNTL 的 SIGINT/SIGTERM；Windows CLI 使用 PHP 控制台处理器，embed 使用编译的控制事件桥并由宿主调用 `dispatch()`。Windows 需要可用控制台，只承接 CTRL_C/CTRL_BREAK；关闭窗口、注销和强制终止不保证清理。宿主必须在结束时 `close()`，不能与已持有信号的 HTTP 入口或线程监督器重复注册。
 
 业务入口通过上述 Map 写 `ready`/`failed` 布尔值及递增的 `pulse` 单调时钟纳秒整数，只读主控写入的 `stop`；只使用这四个固定键。HTTP 已由 `SwooleServer::serveThread()` 完成线程内部分。进度检查只证明事件循环前进，不代替各项 I/O 的截止与真实完成；完整角色迁移和其他平台仍按[实际证据](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-native-threads.md)汇合。
 
@@ -40,12 +57,11 @@ TypeApp 应用的通信与基础并发必须使用 Swoole；线程与协程入�
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
 composer require zoujingli/type-runtime:dev-main
 ```
 

@@ -8,18 +8,15 @@
 
 需要 PHP `>=8.4 <8.6`、`ext-pdo_pgsql`、`type-orm` 和 `type-runtime`。先准备数据库、应用账号与相应权限，安装包不会创建数据库或账号。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
-composer config repositories.type-orm-pgsql vcs https://github.com/zoujingli/type-orm-pgsql.git
 composer require zoujingli/type-orm-pgsql:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -72,6 +69,29 @@ function main(): void
 
 提供有效配置后执行 `php dev.php`，输出含 `value=7` 的 JSON 行列表。读取不创建业务表；整数的具体 PDO 返回类型应以实际驱动结果为准。
 
+### 确认实际数据库身份
+
+先用专属开发数据库运行最小示例，再把下面片段放在取得 `$connection` 后。它只读取当前会话：
+
+```php
+$baseline = $connection->query("SELECT current_schema() AS schema, current_user AS role, current_setting('TimeZone') AS timezone");
+echo json_encode($baseline, JSON_THROW_ON_ERROR) . "\n";
+```
+
+timezone 应为 `UTC`；schema 与 role 应符合实际账号和驱动的显式配置。未指定 schema 时沿用该账号的数据库默认 search_path，不应一律假定是 public。确认身份后再运行迁移并声明 Model，避免表创建在与查询不同的 schema。
+
+```mermaid
+flowchart LR
+    Config[运行配置与可选 schema / role] --> Connect[连接并初始化会话]
+    Connect --> Work[当前作用域查询与事务]
+    Work --> Finish[关闭流与活动事务]
+    Finish --> Reset[DISCARD ALL 并恢复基线]
+    Reset -->|完整成功| Idle[进入有界空闲池]
+    Reset -->|错误或状态不确定| Close[关闭退役]
+```
+
+这条路径解释了“保留物理连接”的前提：必须证明会话基线恢复，而不仅是事务结束。后续用户仍取得新租约，不能复用前一作用域的 Connection 对象。
+
 ## 连接配置
 
 | 最小示例环境键 | 默认值 | 含义 |
@@ -111,7 +131,7 @@ id 列应由数据库 identity 或默认值生成。返回的是所选列的行�
 
 ## 事务与迁移
 
-事务闭包接收实际 `Connection`，异常回滚，嵌套使用 savepoint。提交确认失败仍是未知结果，不自动重跑。
+业务 `Db::transaction()` 的闭包不接收连接；模型在事务内固定主库。基础设施的 `Connection::transaction()` 闭包接收实际 `Connection`。异常回滚，嵌套使用 savepoint；提交确认失败仍是未知结果，不自动重跑。
 
 普通表/索引 DDL 可和迁移成功记录在同一事务提交；`CREATE INDEX CONCURRENTLY`、`DROP INDEX CONCURRENTLY` 和 `VACUUM` 等需要显式非事务迁移。迁移互斥使用当前数据库/schema/记录表对应的 advisory lock；锁竞争立即拒绝，不窃取仍在运行的会话锁。
 

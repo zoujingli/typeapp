@@ -2,15 +2,29 @@
 
 供应用开发期使用的集成测试工具，通过 Composer 的 require-dev 安装。断言作用于插件公共接口、命令输出和真实 HTTP，既可以驱动 PHP 开发入口，也可以驱动已编译二进制；生产应用不会因此加载测试框架或回退解释源码。
 
+## 阅读与操作路径
+
+先用下方例子验证一个不依赖数据库的帮助命令，再按[测试教程](https://iots.top/#/guide/plugins/type-testing)对核心教程的 `/status` 和 `/missing` 发起真实请求。期望分别为成功 JSON 与 404，任何连接、协议或断言失败都应保留真实失败类别。
+
+```mermaid
+flowchart LR
+    Input[独立测试输入] --> Run[公共接口或被测进程]
+    Run --> Assert[状态 · 正文 · 退出码断言]
+    Assert --> Result[Suite 结果和退出码]
+    Run --> Finally[finally 关闭本次资源]
+    Finally --> Evidence[验收身份与结果]
+    Result --> Evidence
+```
+
+测试工具只清理自己创建的资源，不接管用户已有服务。进程例子必须保留 `finally stop()`；HTTP 客户端在每次请求结束或异常后关闭自己的连接。PHP 对照与原生产物使用相同断言时，仍分别记录实际执行结果。
+
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-testing vcs https://github.com/zoujingli/type-testing.git
 composer require --dev zoujingli/type-testing:dev-main
 ```
 
@@ -56,11 +70,11 @@ function main(int $argc, array $argv): void
 
 `Suite::test()` 和 `Assert::throws()` 都接收零参数 `Closure(): mixed`，返回值忽略。需要调用带上下文的业务回调时，在测试体内按该业务接口的完整签名登记，不依赖 PHP 忽略多余实参。
 
-Process 使用数组命令直接启动，不经 shell 插值。stdout/stderr 同时排空，默认总输出上限 2 MiB；等待使用单调总截止。超时或输出超限先终止，宽限后 SIGKILL，只有确认退出才返回 ProcessResult。结果保留退出码、信号、stdout/stderr 和失败原因，重复 wait/stop 返回同一终态。调用者必须在 finally 中 stop，不能依赖 PHP 进程资源析构去等待未知时长。
+Process 使用数组命令直接启动，不经 shell 插值。stdout/stderr 同时排空，默认总输出上限 2 MiB；等待使用单调总截止。超时或输出超限先请求平台停止，宽限后强制终止，只有确认退出才返回 ProcessResult。结果保留退出码、信号、stdout/stderr 和失败原因，重复 wait/stop 返回同一终态。调用者必须在 finally 中 stop，不能依赖 PHP 进程资源析构去等待未知时长。
 
 第五个可选参数`stdinFile`把可读普通文件以只读二进制方式直接连接到子进程标准输入，例如为数据库客户端提供备份文件；默认仍为空输入。不拼接shell重定向，不在父进程中缓存文件内容。相对路径按调用方工作目录解析，不随子进程工作目录改变；目录、设备、缺失及NUL路径在启动前拒绝。调用者负责保持输入内容稳定直至进程结束，此接口不提供文件锁或可信备份校验。
 
-Unix 使用非阻塞管道与 SIGTERM／SIGKILL。Windows 使用 NUL、临时输出文件的独立读句柄与进程组；可用时发送 CTRL_BREAK，无法使用控制事件时终止进程且保留实际非零状态，不声称正常排空。公开跨平台测试为 `tests/testing-portable.php`，Windows 原生运行证据仍待对应 runner 验收。临时输出文件只用于测试，避免写入生产密钥。
+Unix 使用非阻塞管道与 SIGTERM／SIGKILL。Windows 使用 NUL、临时输出文件的独立读句柄与进程组；可用时发送 CTRL_BREAK，无法使用控制事件时终止进程且保留实际非零状态，不声称正常排空。公开跨平台测试为 `tests/testing-portable.php`；[历史 Windows 运行](https://github.com/zoujingli/typeapp/actions/runs/35567372098)已通过进程与平台行为步骤，结果归属其固定提交，不替代新版 HTTP 控制事件排空或完整应用验收。临时输出文件只用于测试，避免写入生产密钥。
 
 进程工具处理自己启动的直接子进程，不是操作系统沙箱；Windows 控制事件会发送到本次创建的进程组，强制终止仅针对直接子进程。涉及子孙进程或不合作内核 I/O 时，使用对应平台的作业对象／服务监督器限制进程树，不将其他用户进程加入清理范围。
 

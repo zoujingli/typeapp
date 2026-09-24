@@ -4,22 +4,33 @@
 
 提供类型化缓存、显式序列化、有限 TTL、回源与命名空间失效；也可通过 SimpleCache 接入 PSR-16。缓存基于 Redis script 用途连接，业务须明确一致性与回收策略。
 
+学习顺序是：用独立命名空间跑通一次回源，再区分命中与 null，最后验证整体失效和旧数据回收。应用拥有数据源与一致性选择，缓存只保存可重新取得的副本。
+
+```mermaid
+flowchart LR
+    App[业务读取] --> Policy[CacheReader 一致性策略]
+    Policy -->|普通读取| Cache[TypedCache 与显式 Codec]
+    Policy -->|强一致读取| Source[应用数据源]
+    Cache -->|命中| Result[业务值]
+    Cache -->|未命中| Source
+    Source --> Result
+    Source -->|仅原代次仍有效时回填| Store[Redis 命名空间]
+    Cache <--> Store
+```
+
 ## 安装与依赖
 
 需要 PHP `>=8.4 <8.6`、`type-redis`、`type-runtime`、phpredis 与 PSR-16 接口。准备与可靠任务存储分离的 Redis；使用事务组合时另装 ORM/build。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-redis vcs https://github.com/zoujingli/type-redis.git
-composer config repositories.type-cache vcs https://github.com/zoujingli/type-cache.git
 composer require zoujingli/type-cache:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -102,6 +113,26 @@ $cache->delete('a');
 
 类型化缓存只允许有限 TTL；构造默认 TTL 必须为正，不能超过最大值。`put` 的零/负 TTL 删除对应键。
 
+### 验证命中、失效与收尾
+
+把下面片段放在最小示例取得 `$cache` 后执行。它只操作该示例命名空间：
+
+```php
+$cache->put('optional-profile', null, 30000);
+$before = $cache->get('optional-profile');
+$generation = $cache->clear();
+$after = $cache->get('optional-profile');
+echo json_encode([
+    'before_hit' => $before->hit(),
+    'before_value' => $before->value(),
+    'after_hit' => $after->hit(),
+    'generation_length' => strlen($generation),
+], JSON_THROW_ON_ERROR) . "\n";
+$cache->collect(100);
+```
+
+正常输出为 `{"before_hit":true,"before_value":null,"after_hit":false,"generation_length":32}`。`clear()` 的结果是新代身份，`collect()` 的结果是实际删除键数；有多少旧键取决于此前运行情况，不应断言每次固定删除数量。最后仍沿用最小示例的 `finally` 关闭资源。
+
 ## 回源与一致性
 
 `remember($key, static fn (): mixed => ..., $ttl, $bypass)` 命中直接返回；未命中执行回源，异常不缓存。bypass=true 只回源，不读取或回填缓存。它不提供跨请求互斥，多个并发未命中可能各自回源。
@@ -113,6 +144,22 @@ $cache->delete('a');
 `$cache->clear()` 原子切换命名空间代次，立即使旧代不可见；不调用 FLUSHDB/FLUSHALL。回源过程中发生 clear，旧请求不会把结果回填到新代。
 
 `$cache->collect(100)` 分批回收旧代键和标记，需要应用周期调用。有限 TTL 的数据会自行过期；永久 PSR 缓存还依赖索引完整性，应使用不会驱逐回收元数据的配置并持续回收。
+
+```mermaid
+sequenceDiagram
+    participant Read as 正在回源的请求
+    participant Store as NamespaceStore
+    participant Write as 修改业务数据的请求
+    Read->>Store: 读取代次 G1，未命中
+    Read->>Read: 查询数据源
+    Write->>Store: clear 切换为 G2
+    Read->>Store: 尝试按 G1 回填
+    Store-->>Read: false，拒绝旧代写入
+    Note over Read,Store: 本次仍返回回源值；后续读取使用 G2
+    Write->>Store: 周期 collect 回收 G1
+```
+
+代次保护解决旧请求污染新缓存的问题，不改变已经进行中的业务读取，也不使数据库和 Redis 组成分布式事务。
 
 ## PSR-16 用法
 

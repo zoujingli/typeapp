@@ -4,21 +4,36 @@
 
 以不可变 Field 和 Schema 校验明确来源的输入，返回 Data 或不携带原始值的 ValidationException。适合 HTTP JSON、查询参数以及应用 DTO，不依赖 HTTP 核心或数据库。
 
+## 从原始输入到业务字段
+
+把解析、字段规则和业务写入分为三个明确边界。客户端传来的字段只有经过 Schema 声明后才会进入 Data；Data 可用于构造 DTO 或部分更新模型，校验器本身不写数据库。
+
+```mermaid
+flowchart LR
+  A[原始 JSON / query] --> B[Input 有界解析]
+  B --> C[Schema 选择来源与场景]
+  C --> D[Field 转换与规则]
+  D -->|全部通过| E[Data 有效字段]
+  E --> F[DTO / 业务服务]
+  B -->|格式或容量错误| G[400 / 413]
+  D -->|字段不通过| H[422 字段路径与错误码]
+```
+
+建议先运行下方最小示例，确认字段来源与类型，再练习 PATCH，最后接入 HTTP 控制器。纯校验不需要创建协程；自定义规则涉及 I/O 时，连接与执行预算仍由调用方作用域管理。
+
 ## 安装与依赖
 
 需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7` 和 `type-runtime`；Swoole 依赖由运行组件传递提供。本组件不额外要求 PDO 或 Redis。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-validate vcs https://github.com/zoujingli/type-validate.git
 composer require zoujingli/type-validate:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -93,6 +108,36 @@ created 的 limit 为整数 20；patched 为零字段 Data，不因 required 报
 默认值也经过转换、类型及规则检查，不能代替 required，也不覆盖明确 null、空串、0、false。默认值只接受受限数据树，不执行工厂、不接受任意对象或循环引用。
 
 `inScenarios(['create'])` 限制适用场景，`validate($input, 'create')` 选择场景；不适用字段不进入结果。
+
+## 练习：更新邮箱时保留缺失与 null
+
+在最小示例的 `main()` 中替换 Schema 和输入代码，运行以下片段。这里邮箱可清空，但不接受空字符串；PATCH 未提供邮箱时不产生更新字段。
+
+```php
+$profile = new Schema([
+    'email' => Field::text()->nullable()->email(),
+]);
+foreach (['{}', '{"email":null}', '{"email":"reader@example.com"}', '{"email":""}'] as $body) {
+    try {
+        $patch = $profile->validate(Input::json($body), 'default', true);
+        echo json_encode([
+            'provided' => $patch->has('email'),
+            'changes' => $patch->toArray(),
+        ], JSON_THROW_ON_ERROR) . "\n";
+    } catch (\Type\Validate\ValidationException $error) {
+        echo json_encode(['status' => $error->status(), 'fields' => $error->errors()], JSON_THROW_ON_ERROR) . "\n";
+    }
+}
+```
+
+| 输入 | 预期结果 | 业务处理 |
+| --- | --- | --- |
+| `{}` | provided=false，changes 为空 | 保留原邮箱 |
+| `{"email":null}` | provided=true，email=null | 明确清空邮箱 |
+| 有效邮箱 | provided=true，保留邮箱文本 | 更新邮箱 |
+| 空字符串 | status=422，email 字段报错 | 不进行业务写入 |
+
+把 `changes` 交给支持部分更新的模型接口即可保留这一区别，不应在校验后再补一个 `email => null`。这一练习不建立外部资源，结束后不需要清理服务或状态文件。
 
 ## 自定义规则与 DTO
 

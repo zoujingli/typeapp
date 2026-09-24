@@ -4,14 +4,11 @@
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-redis vcs https://github.com/zoujingli/type-redis.git
-composer config repositories.type-queue vcs https://github.com/zoujingli/type-queue.git
 composer require zoujingli/type-queue:dev-main
 ```
 
@@ -105,39 +102,56 @@ final class ReadmeJob implements Job
 }
 
 /**
- * 在明确的示例命名空间执行一次投递与消费，不提供业务幂等保证。
+ * 在启动期启用 I/O hook，并在同一协程内装配、执行及关闭队列资源。
+ * 示例命名空间只用于投递与消费演示，不提供业务幂等保证。
  */
 function main(): void
 {
-    $host = getenv('REDIS_HOST');
-    $port = filter_var(getenv('REDIS_PORT') === false ? '6379' : getenv('REDIS_PORT'), FILTER_VALIDATE_INT,
-        ['options' => ['min_range' => 1, 'max_range' => 65535]]);
-    if (!is_int($port)) {
-        throw new InvalidArgumentException('REDIS_PORT 必须为有效整数端口');
-    }
-    $manager = new RedisManager(['default' => new RedisConfiguration($host === false ? '127.0.0.1' : $host, $port)]);
-    $scope = new ExecutionScope();
-    try {
-        $redis = $manager->connection($scope, 'default', Purpose::SCRIPT);
-        $queue = new Queue($redis, 'readme-example', 'example', 30000, 100);
-        $registry = new Registry();
-        $registry->register('readme.echo', 1, static fn (JobContext $context): Job => new ReadmeJob());
-        $queue->publish(new Message('readme-' . bin2hex(random_bytes(8)), 'readme.echo', 1, []));
-        $worker = new Worker($queue, $registry, 'readme-worker');
-        try {
-            $worker->run(1);
-        } finally {
-            $worker->stop();
+    \Type\Runtime\CoroutineRuntime::enableIo();
+    \Type\Runtime\CoroutineRuntime::run(static function (): void {
+        $host = getenv('REDIS_HOST');
+        $port = filter_var(getenv('REDIS_PORT') === false ? '6379' : getenv('REDIS_PORT'), FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1, 'max_range' => 65535]]);
+        if (!is_int($port)) {
+            throw new InvalidArgumentException('REDIS_PORT 必须为有效整数端口');
         }
-    } finally {
+        $manager = new RedisManager(['default' => new RedisConfiguration($host === false ? '127.0.0.1' : $host, $port)]);
+        $scope = new ExecutionScope();
         try {
-            $scope->close();
+            $redis = $manager->connection($scope, 'default', Purpose::SCRIPT);
+            $queue = new Queue($redis, 'readme-example', 'example', 30000, 100);
+            $registry = new Registry();
+            $registry->register('readme.echo', 1, static fn (JobContext $context): Job => new ReadmeJob());
+            $queue->publish(new Message('readme-' . bin2hex(random_bytes(8)), 'readme.echo', 1, []));
+            $worker = new Worker($queue, $registry, 'readme-worker');
+            try {
+                $worker->run(1);
+            } finally {
+                $worker->stop();
+            }
         } finally {
-            $manager->close();
+            try {
+                $scope->close();
+            } finally {
+                $manager->close();
+            }
         }
-    }
+    });
 }
 ```
+
+## 执行路径与教程
+
+```mermaid
+flowchart LR
+  Publish[稳定 ID 投递] --> Stream[Redis Streams]
+  Stream --> Lease[持有者租约]
+  Lease --> Job[Job 独立 Scope]
+  Job --> Cleanup[资源收尾]
+  Cleanup --> Ack[确认 / 延迟 / 隔离]
+```
+
+[队列教程](https://iots.top/#/guide/plugins/type-queue)覆盖投递到确认的时序、完整消费者、Redis 目标端原子防重和隔离重放。消息 ID 在重试中保持不变，Stream 回执标识一次投递；稳定业务身份与实际写入必须一起校验。
 
 ## 接口与源码组织
 
@@ -147,7 +161,7 @@ function main(): void
 
 ## AOT 与运行要求
 
-依赖 runtime 与 `type-redis`，不自动要求 core/ORM/cache/scheduler。消息处理器和生成 Registry 全部 AOT；运行保留 phpredis、PHPX/libphp。可靠 Redis 应独立 noeviction/AOF，控制进程信号的原生入口还需要可用的 pcntl，而不是复用 PHP CLI 模块清单猜测 embed 能力。
+依赖 runtime 与 `type-redis`，不自动要求 core/ORM/cache/scheduler。消息处理器和生成 Registry 全部 AOT；原生运行库按实际产物清单交付，包含所需 Swoole 和 phpredis。可靠 Redis 应独立配置 noeviction/AOF。采用运行时停止信号入口时，Unix 使用 PCNTL，Windows 使用实际控制事件能力；嵌入宿主也可显式调用 stop，不能由开发 CLI 的模块清单推定 embed 能力。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

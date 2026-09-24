@@ -8,13 +8,11 @@
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
 composer require zoujingli/type-orm:dev-main
 ```
 
@@ -87,6 +85,50 @@ function renameUser(int $id, string $name): string
     });
 }
 ```
+
+## 从示例到应用
+
+上面的函数使用 `app/model/User.php` 中的模型声明；字段类型由生成映射执行校验。下面的声明进入应用 `sources`，数据库表通过迁移单独创建。
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace app\model;
+
+use Type\Orm\Attribute\Table;
+use Type\Orm\Model;
+
+/** 用户数据；只向响应投影业务明确允许的字段。 */
+#[Table('users')]
+final class User extends Model
+{
+    public int $id;
+    public string $name;
+    public int $age;
+}
+```
+
+开发启动器先通过 `DevelopmentBuilder::prepareConfiguration()` 加载本次模型生成结果，再加载业务入口；原生构建由 TypePHP 编译同一转换结果。应用启动装配 `DatabaseManager`，每个请求或任务绑定自己的 `ExecutionScope`，在作用域中调用服务函数并在 `finally` 中关闭资源。不要在模型文件顶层执行查询，也不要将活动模型和连接传给另一个协程。
+
+```mermaid
+sequenceDiagram
+    participant App as 请求或任务
+    participant Scope as 当前作用域
+    participant Model as User 模型
+    participant DB as 所选数据库
+    App->>Scope: 绑定已装配的数据源
+    App->>Model: 查询或保存
+    Model->>Scope: 按读写角色取得独占租约
+    Scope->>DB: 参数化 SQL / 事务
+    DB-->>Model: 结果或明确失败
+    Model-->>App: 模型投影或保存状态
+    App->>Scope: finally 关闭作用域
+    Scope->>DB: 清理事务和流，重置或关闭会话
+```
+
+首次接入按照[数据库与模型教程](https://iots.top/#/guide/database)完成模型、迁移、运行配置、业务入口和异常路径；[ORM 组件指南](https://iots.top/#/guide/plugins/type-orm)补充关系、分页、流式读取与事务结果。`maxRows` 只约束显式读取预算，超出时拒绝整个读取结果；集合更新和删除不会因此静默少写或分批提交。
 
 ## 接口与源码组织
 

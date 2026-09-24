@@ -6,21 +6,39 @@
 
 组件已内置四平台 Swoole 模块，匹配构建无需另行下载、编译 Swoole，并自动收集选中模块与实际运行依赖。部署者使用完整运行包，无需安装本构建工具；按阶段的要求见[环境与依赖](../environment.md)。最终目标是一个主程序加外置配置、启动不释放运行库，当前仍提供目录包。
 
+## 构建链路与职责
+
+`type-build` 负责确认“这次编译用了什么”，TypePHP 负责把完整生产实现编译为原生代码。构建工具还要确认真实 embed 能加载需要的原生库，再把选中的运行依赖纳入产物身份；这些步骤不能用开发 PHP 的扩展列表替代。
+
+```mermaid
+flowchart LR
+    App[应用源码与声明] --> Audit[审计完整生产输入]
+    Lock[Composer 与工具链锁] --> Audit
+    Audit --> Generate[生成配置 · 模型 · 路由 · 任务]
+    Generate --> Compile[TypePHP 全量 AOT]
+    SDK[目标平台 SDK] --> Probe[真实 embed 探针]
+    Swoole[组件内置 Swoole 模块] --> Probe
+    Probe --> Compile
+    Compile --> Artifact[原生产物与身份清单]
+    Artifact --> Package[当前 NativePackage 目录包]
+    Package --> Verify[校验后运行与无源码验收]
+```
+
+单程序静态链接是后续交付门槛；本图如实展示当前目录包链路。运行配置在启动时从外部读取，真实 `.env` 不进入编译输入或发布归档。
+
 ## 安装与依赖
 
 使用 `require-dev` 安装。PHP 范围为 `>=8.4 <8.6`；原生构建还需要项目锁定的 ZTS PHP、PHPX 与 TypePHP SDK。以应用 lock 和工具链声明为准，不能仅凭 PHP CLI 可以运行就认定 embed 环境完整。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-build vcs https://github.com/zoujingli/type-build.git
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
 composer require --dev zoujingli/type-build:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -64,6 +82,18 @@ vendor/bin/type --inspect build/type-example
 
 成功构建后运行当前平台生成的可执行文件，应输出 `Type 应用已启动。`。可执行后缀和依赖布局以实际产物为准。本仓库使用 `docs/build-config/` 下的配置；独立应用仍可使用根 `type-app.json`。
 
+按顺序观察每一步，而不只检查最终目录是否出现：
+
+| 步骤 | 应观察的结果 | 失败后处理 |
+| --- | --- | --- |
+| `doctor … build` | 配置归属、锁定 SDK 与构建要求得到检查 | 按实际诊断补齐构建环境 |
+| `prepare` | 生成当前输入对应的开发代次 | 修改声明后重跑，不手改生成文件 |
+| 全量构建 | 当前命令成功退出，并返回本次产物身份 | 保留错误报告，旧二进制不能算本次成功 |
+| `--inspect` | 能读取当前产物的构建 ID、平台和清单 | 清单缺失或损坏时停止打包 |
+| 运行产物 | 输出与 PHP 入口一致 | 分别检查原生加载和业务失败 |
+
+首次构建前还要准备与应用匹配的 `toolchain.lock.json`；标准模板已携带该声明。自行创建最小项目时应沿用[工具链约定](../typephp.md)，不能只复制上面的 JSON 便假定 SDK 已具备。
+
 | 配置 | 含义 |
 | --- | --- |
 | `project-root` | 相对配置文件目录解析；未填时项目根就是配置文件所在目录 |
@@ -103,6 +133,27 @@ Linux 模块不适用于 Alpine/musl；NTS、其他 PHP 版本、macOS Intel 和
 4. 否则从组件的 `manifest.json` 选择匹配模块，校验 SHA-256 和源码适配身份。
 
 默认内置清单缺失、ABI 不匹配、文件越界、摘要不符或源码适配过期时，构建明确失败，不自动回退到 SDK 中的 Swoole。修复方式是安装完整且匹配的组件，或明确提供已验证的模块覆盖；不要只修改清单摘要。其他扩展仍按 SDK 或显式候选解析。最终还要通过真实 embed 的加载、版本、必需函数与警告检查，PHP CLI 加载成功不能替代这些检查。
+
+```mermaid
+sequenceDiagram
+    participant Build as 构建器
+    participant Embed as 真实 embed
+    participant Select as 模块选择
+    participant Package as 构建身份与运行包
+    Build->>Embed: 检查内置扩展
+    alt embed 已有 Swoole
+        Embed-->>Build: 内置能力
+    else 需要共享模块
+        Build->>Select: 显式模块 → 环境候选 → 组件资源
+        Select->>Select: 校验 ABI、路径、摘要、适配身份
+        Select-->>Build: 当前平台的模块与清单
+        Build->>Embed: 加载并检查版本、函数与警告
+    end
+    Embed-->>Build: 运行依赖检查结果
+    Build->>Package: 记录实际选中的模块和依赖
+```
+
+覆盖模块适用于已验证的自建 SDK，不会改变全量编译要求。检查失败时修复输入或适配，不能把失败候选作为可分发产物。
 
 匹配模块的选择无需联网，也无需另行下载或编译 Swoole；PHP SDK、PHPX 和其他依赖仍需准备，Composer 安装及整个构建不因此自动离线。组件安装也不会自动修改开发 PHP 的 ini；`type dev` 所用 CLI 仍需加载匹配的扩展。
 
@@ -166,6 +217,8 @@ Linux 模块不适用于 Alpine/musl；NTS、其他 PHP 版本、macOS Intel 和
 ## 产物、运行包与服务配置
 
 `type package <产物> <新目录> [.env.example]` 生成运行目录，包含依赖清单、资源与操作手册。`type verify-package <目录> <受信清单SHA256>` 校验运行包；可信摘要应来自已验证的交付渠道。
+
+发布根的 `LICENSE`、`NOTICE` 只复制构建身份已记录的应用原文；应用未提供的材料不会以框架许可补位，外部应用也不必采用 Apache-2.0。组件和第三方依赖的原始文本继续按各自归属保存在资源索引中。是否要求材料齐全由构建配置 `notices.require-complete` 决定；缺失项仍会记录在构建报告。新产物使用身份生成协议 4；协议 3 的旧产物只有同时含应用 LICENSE、NOTICE 时可以继续打包，否则需要重新构建。
 
 例如最小示例在构建成功后运行 `php vendor/bin/type package build/type-example build/release`，目标目录必须尚不存在。命令返回的发布清单摘要应通过受信交付记录保存。校验或归档时，在应用根将 `TYPE_RELEASE_SHA256` 设置为该受信 SHA-256，然后执行：
 

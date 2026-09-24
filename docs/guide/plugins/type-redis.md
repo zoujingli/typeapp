@@ -4,21 +4,39 @@
 
 通过命名连接和用途隔离管理 phpredis 会话。提供普通命令、阻塞命令、pipeline、事务和可信脚本入口，供缓存、队列和调度复用。
 
+先用下方 PING 确认端点，再练习带 TTL 的读写与 pipeline，最后按需要接入 WATCH 或 Lua。Redis 服务是外部数据服务；phpredis 和 Swoole 属于应用的原生运行依赖，构建与部署责任见[环境说明](../environment.md)。
+
+```mermaid
+sequenceDiagram
+    participant Work as 请求或任务
+    participant Manager as RedisManager
+    participant Pool as 用途资源池
+    participant Client as phpredis 会话
+    participant Server as Redis 服务
+    Work->>Manager: connection(scope, name, purpose)
+    Manager->>Pool: 按用途借出独占租约
+    Pool-->>Work: RedisConnection
+    Work->>Client: 已校验命令与参数
+    Client->>Server: 原生 Redis 协议
+    Server-->>Client: 响应或错误
+    Client-->>Work: 值或带 outcome 的异常
+    Work->>Pool: finally 关闭作用域
+    Pool->>Client: 恢复基线或关闭会话
+```
+
 ## 安装与依赖
 
 需要 PHP `>=8.4 <8.6`、phpredis `^6.3` 与 `type-runtime`。当前面向独立 Redis 服务，不提供 Cluster、Sentinel 或自动故障切换协议。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-redis vcs https://github.com/zoujingli/type-redis.git
 composer require zoujingli/type-redis:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -88,7 +106,7 @@ function main(): void
 | `TRANSACTION` | 1 | `transaction()`，WATCH + MULTI/EXEC |
 | `SCRIPT` | 1 | `script()` 可信 Lua |
 
-容量范围 1–1024，池满立即拒绝。普通会话可保留少量空闲连接；其余用途归还即销毁。不要使用 command 绕过状态、管理、阻塞或脚本限制。
+容量范围 1–1024。同步调用满载立即拒绝；Swoole 协程默认最多等待 1 秒、排队 64 项，同时受作用域更短截止与取消约束。传入 `connection($scope, 'default', Purpose::COMMAND, 0)` 显式即时借用。普通会话可保留少量空闲连接；其余用途归还即销毁。不要使用 command 绕过状态、管理、阻塞或脚本限制。
 
 ## 常用命令与 pipeline
 
@@ -110,6 +128,16 @@ try {
 ```
 
 批次格式为 `[[命令, 参数列表]]`，最多 1000 项。pipeline 只是批量传输，失败时可能已有部分命令执行。
+
+在片段之后打印结果，正常应得到 `hello` 及 `["hello",1]`：
+
+```php
+echo $value . "\n";
+echo json_encode($replies, JSON_THROW_ON_ERROR) . "\n";
+$redis->command('DEL', ['docs:redis:message']);
+```
+
+这些键专供教程使用，并带 60 秒 TTL；显式删除只清理本例键。若两次操作间超过 TTL，GET 可以返回 false，EXISTS 可以返回 0。业务需根据缺失语义处理，不能把有效期当作跨命令快照。
 
 ## WATCH 事务
 

@@ -18,6 +18,7 @@
   - [设备接入](/guide/iot-center.md#设备接入与确认)
   - [进程与边界](/guide/iot-center.md#进程与维护入口)
 - 开发指南
+  - [应用开发实战](/guide/tutorial.md)
   - [配置与环境](/guide/configuration.md)
   - [路由与中间件](/guide/routing.md)
   - [数据库与模型](/guide/database.md)

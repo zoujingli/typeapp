@@ -4,20 +4,37 @@
 
 为一次 HTTP 请求、命令或后台任务建立明确的资源边界：参数先校验，资源按顺序启动，结束时逆序关闭；截止时间、取消和容量沿调用链传递。其他插件的数据库连接、Redis 租约和日志绑定都复用这一层。进程、线程和协程的整体选择见[进程、线程与协程](../runtime.md)。
 
+## 先理解一次执行
+
+作用域回答三个问题：这次操作还允许继续吗、哪些资源属于它、何时才能归还额度。业务返回和资源收尾是两个时刻；数据库、网络和后台任务都沿用这个区别。
+
+```mermaid
+flowchart LR
+    Entry[请求或任务入口] --> Scope[建立本次 ExecutionScope]
+    Scope --> Work[绑定上下文并执行业务]
+    Work --> Children[等待受管子任务]
+    Children --> Cleanup[逆序关闭已登记资源]
+    Cleanup --> Closed{全部收尾完成}
+    Closed -->|是| Release[关闭作用域并归还额度]
+    Closed -->|否| Hold[保持 closing 和资源所有权]
+    Hold --> Cleanup
+```
+
+图中的再次清理由既有资源所有者或完成路径驱动，不会凭空创建后台重试。先运行下面的参数示例，再尝试受管协程示例，最后接入 ORM 或 Redis，能够分清参数、并发与外部依赖各自的失败。
+
 ## 安装与依赖
 
 需要 PHP `>=8.4 <8.6`、`ext-filter` 和 Swoole `>=6.2 <7`。Swoole 是 TypeApp 通信、进程、线程、协程及事件循环的运行时基础；同步作用域可以只做本地计算，但使用通信或受管子任务时必须进入匹配的 Swoole 执行上下文。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
 composer require zoujingli/type-runtime:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -56,7 +73,7 @@ function main(int $argc, array $argv): void
 
 ## 参数解析
 
-`Arguments($argv, $valueOptions, $switches)` 的第一个数组包含程序名。上例允许 `--name value`、`--name=value` 和 `--quiet`；通过 `text()` 读取字符串，通过 `integer()` 声明默认值及闭区间。空字符串和 `0` 按显式输入处理，业务是否接受由调用方决定。
+`Arguments($argv, $valueOptions, $switches)` 的第一个数组包含程序名。上例允许 `--name value`、`--name=value` 和 `--quiet`；通过 `text()` 读取字符串，通过 `integer()` 声明默认值及闭区间。值选项必须非空，`--name=` 会被拒绝；字符串 `0` 保留为显式输入，整数读取再按业务区间校验。
 
 ## 截止、取消与资源清理
 
@@ -114,9 +131,78 @@ try {
 
 ## 受管并发
 
-在 `Swoole\Coroutine\run()` 内调用 `$scope->spawn(static function (ExecutionScope $child): mixed { ... })`。子任务使用自己的 Scope 登记资源，通过任务对象等待结果；父 Scope 关闭时取消并等待受管子任务。回调即使不使用上下文，也必须保留参数。线程入口使用 `CoroutineRuntime::startThread()`，进程角色使用 Swoole Server/Process；三者都遵守同一作用域关闭和真实收尾规则。
+### 等待两个独立子任务
+
+将下面代码完整替换为示例的 `app/main.php`，开发启动器调用零参数 `main()`。这个例子只使用本地计算和 Swoole 等待，不需要数据库或 Redis；等待用于观察两个子任务交错执行，不能用它推导性能结论。
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Swoole\Coroutine;
+use Type\Runtime\CoroutineRuntime;
+use Type\Runtime\Deadline;
+use Type\Runtime\ExecutionScope;
+
+/** 由父作用域收集两个独立结果，并在退出前确认子任务收尾。 */
+function main(): void
+{
+    CoroutineRuntime::run(static function (): void {
+        $scope = new ExecutionScope(new Deadline(2.0), childLimit: 2);
+        try {
+            $first = $scope->spawn(static function (ExecutionScope $child): int {
+                Coroutine::sleep(0.02);
+                $child->assertActive();
+                return 20;
+            });
+            $second = $scope->spawn(static function (ExecutionScope $child): int {
+                Coroutine::sleep(0.01);
+                $child->assertActive();
+                return 22;
+            });
+            echo (string) ($first->await() + $second->await()) . "\n";
+        } finally {
+            $scope->close();
+        }
+    });
+}
+```
+
+执行 `php dev.php` 应输出 `42`。子任务的完成顺序可以不同，但父任务按明确句柄取得结果。把总截止改为 `0.005` 秒可观察截止或等待失败；这是故意失败的练习，仍要保留 `finally`。接入数据库时，连接应在每个 `$child` 内重新借用，不能捕获父连接供两个任务共享。
+
+```mermaid
+sequenceDiagram
+    participant Parent as 父作用域
+    participant First as 子任务一
+    participant Second as 子任务二
+    Parent->>First: spawn 独立作用域
+    Parent->>Second: spawn 独立作用域
+    Parent->>First: await 等待结果
+    Second-->>Second: 完成工作和资源收尾
+    First-->>Parent: 返回 20
+    Parent->>Second: await
+    Second-->>Parent: 返回 22
+    Parent->>Parent: finally close 并确认收尾
+```
+
+### 接入实际业务
+
+在 `CoroutineRuntime::run()` 的协程中调用 `$scope->spawn(static function (ExecutionScope $child): mixed { ... })`。子任务使用自己的 Scope 登记资源，通过任务对象等待结果；父 Scope 关闭时取消并等待受管子任务。回调即使不使用上下文，也必须保留参数。线程入口使用 `CoroutineRuntime::startThread()`，进程角色使用 Swoole Server/Process；三者都遵守同一作用域关闭和真实收尾规则。
 
 同步命令不必启用协程。缺少协程上下文抛 `TaskException`，错误码为 `coroutine_required`；不会自动改成串行执行。
+
+## 停止信号与宿主
+
+`ProcessSignals` 只把系统停止请求转为一次 `Closure(): void` 通知，排空和资源回收仍由宿主负责。一个进程只允许一个所有者；`attach()` 注册，`close()` 释放注册并恢复原状态。不要在已由 HTTP 入口或 `ThreadSupervisor` 管理信号的进程里重复注册。
+
+| 环境 | 停止来源与条件 |
+| --- | --- |
+| Unix | PCNTL 接收 SIGINT/SIGTERM |
+| Windows PHP CLI | 可用控制台中的 PHP 控制处理器接收 CTRL_C/CTRL_BREAK |
+| Windows embed | 编译的原生控制事件桥；宿主在等待循环调用 `dispatch()` 分发停止标记 |
+
+缺少必需能力时抛出 `signals_unavailable`。关闭窗口、注销或系统强制终止不保证资源排空；线程停止后也必须完成真实 join。HTTP 的 `serve()` 已内置对应停止接入，自定义宿主须显式安排通知、合作式退出与最后清理。各平台实际通过范围见[平台与验收](../platforms.md)。
 
 ## 常见问题
 

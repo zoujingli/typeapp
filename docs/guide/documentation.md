@@ -21,7 +21,7 @@ LICENSE NOTICE   第一方许可证和第三方归属说明
 
 公开指南引用未导出的源码或版本化验收说明时，使用明确的 GitHub 链接；站内相对链接仅指向导出文件。例如 [Swoole 模块使用说明](plugins/type-build.md#内置-swoole-与运行依赖)位于公开组件页，模块二进制与维护记录继续归属源码仓库，不复制进 Docsify 站点。
 
-需求、规格与任务以 GitHub Issues 为唯一权威来源，仓库内不再保留 `docs/specs`、`docs/tickets`、`docs/drafts` 等镜像目录；文档引用这些材料时指向对应 Issue。
+当前实现以源码和配套说明为准，待完成目标统一在[实现规划](roadmap.md)维护。GitHub Issues 用于经授权的协作，不保留 `docs/specs`、`docs/tickets`、`docs/drafts` 等任务镜像；历史验收保留原提交和产物身份，不能当作当前版本通过的依据。
 
 ## 本地预览和导出
 

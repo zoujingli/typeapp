@@ -4,21 +4,45 @@
 
 提供 PSR-3 八级日志、命名通道、JSON Lines、执行关联和脱敏，以有界输出控制内存与停止时间。适合命令、HTTP、队列与调度，由应用显式装配日志生命周期。
 
+## 一条日志的路径
+
+应用在启动时配置 LogManager，每个请求或任务在自己的 Scope 中取得 Logger。关联在绑定时复制，记录在入队前格式化，输出失败通过计数回报。Swoole 提供运行时 I/O 能力；通道、脱敏和容量策略由日志组件负责。
+
+```mermaid
+sequenceDiagram
+  participant App as 应用入口
+  participant Scope as 当前 Scope
+  participant Logs as LogManager
+  participant Logger as Logger
+  participant Output as Output
+  App->>Logs: 配置通道与构建身份
+  App->>Logs: logger(scope, context)
+  Logs->>Scope: 登记 LogContext
+  Logs-->>App: 当前作用域 Logger
+  App->>Logger: info(message, fields)
+  Logger->>Logs: 校验绑定并提交
+  Logs->>Output: 脱敏后入队并尝试写出
+  App->>Scope: close()
+  Scope->>Scope: 清除执行关联
+  App->>Logs: 进程结束时 stop()
+  Logs->>Output: 有界排空并释放
+```
+
+最小示例把管理器也登记到命令 Scope，因此命令退出时一起停止。HTTP 等多请求进程共享管理器时，请求只回收自己的绑定，管理器由进程入口收尾。
+
 ## 安装与依赖
 
 需要 PHP `>=8.4 <8.6`、JSON、`type-runtime` 与 `psr/log`，不强制 HTTP、数据库或 Redis。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-log vcs https://github.com/zoujingli/type-log.git
 composer require zoujingli/type-log:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -99,6 +123,30 @@ authorization 字段被替换为 `[REDACTED]`。默认递归处理 password、to
 | Throwable 堆栈 | 最多 12 层，无参数，不记录异常链 |
 
 未知上下文对象只记录类型，不调用其 __toString/jsonSerialize；消息本身的 Stringable 仍是应用代码，应避免阻塞。脱敏不是识别任意自然语言秘密的保证，业务应主动使用明确敏感字段。
+
+## 练习：确认脱敏与级别过滤
+
+在最小示例的 `try` 内、两条日志之后追加以下代码。所有凭据都是练习占位文本，不应替换成需要展示的真实秘密。
+
+```php
+$logger->debug('调试记录不会进入 info 通道');
+$logger->info('设备状态变更', [
+    'device_id' => 'demo-1',
+    'authorization' => 'Bearer demo-secret',
+    'state' => 'online',
+]);
+$logs->drain(0.1);
+$stats = $logs->stats();
+echo json_encode([
+    'filtered' => $stats['app']['filtered'],
+    'accepted' => $stats['app']['accepted'],
+    'pending' => $stats['app']['pending_records'],
+], JSON_THROW_ON_ERROR) . "\n";
+```
+
+在 stdout 正常可写时，新增的 JSON 日志中 `authorization` 为 `[REDACTED]`，`device_id` 与 `state` 保留。原示例 app 通道已有一条 info，追加后其 `filtered=1`、`accepted=2`、`pending=0`。这是功能观察，不是持久审计保证；管道满载时应按实际 pending/dropped 计数判断。
+
+练习保留原来的 `finally { $scope->close(); }`，让日志绑定先退出、再排空输出。若改成文件输出，先创建应用自己的日志目录，文件轮转与保留由应用或日志收集器管理。
 
 ## 输出选择与容量
 

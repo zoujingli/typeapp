@@ -6,6 +6,22 @@ TypeApp 的开发与构建组件：生成配置、路由和模型，审计完整
 
 最终交付目标为一个主程序文件加外置配置，非系统原生库完整静态链接、启动不释放运行库。当前 `package` 仍生成目录包，`archive` 生成归档，部署须保留完整包。使用入口见[构建指南](https://iots.top/#/guide/plugins/type-build)，开发、构建和部署的分工见[环境与依赖](https://iots.top/#/guide/environment)。
 
+## 阅读与操作路径
+
+首次使用先准备应用声明和匹配 SDK，再依次运行 `doctor`、`prepare`、原生构建与 `--inspect`。下面的[最小构建入口](#最小构建入口)给出完整源码与配置；[构建教程](https://iots.top/#/guide/plugins/type-build)补充各步骤的预期结果、内置模块选择、目录打包与校验命令。
+
+```mermaid
+flowchart LR
+    Input[完整生产源码与锁文件] --> Audit[输入审计与声明生成]
+    Audit --> AOT[TypePHP 全量编译]
+    Runtime[SDK 与匹配运行库] --> Probe[真实 embed 验证]
+    Probe --> AOT
+    AOT --> Identity[原生产物与内容身份]
+    Identity --> Package[当前目录包及校验]
+```
+
+开发生成成功、原生编译成功、无源码运行通过是不同结果。构建失败时保留本次诊断，不能用仍存在的旧产物代替本次验收；生成目录可以重建，应用锁文件、源码和真实验收身份需要保留。
+
 ## 实现与验收范围
 
 已完成 Linux x64 基础命令、Linux ARM64 / macOS ARM64 / Windows x64 三库独立 ORM 消费者的 AOT 构建与实际运行；macOS ARM64 另有完整应用 AOT 与三库身份 HTTP 结果。各场景的源码、SDK 与产物身份独立记录，完整应用发布和单程序封装仍有待验收项，见[平台与验收](https://iots.top/#/guide/platforms)。
@@ -24,7 +40,7 @@ TypeApp 的开发与构建组件：生成配置、路由和模型，审计完整
 
 构建环境使用的 Composer 库，提供 `type <应用构建配置.json>` 入口。它读取应用生产依赖，要求各生产包显式声明可编译源码，再调用固定版本的 TypePHP。
 
-开发入口统一为create、doctor、prepare、dev、watch、test、build；watch复用type-runtime的信号所有权，type-runtime也是构建工具的明确依赖。模式、生命周期与实际验收边界见[开发命令说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/developer-cli.md)。安装本包时应同时配置下列type-runtime公开仓库，不能依赖依赖包传播repositories。
+开发入口统一为create、doctor、prepare、dev、watch、test、build；watch复用type-runtime的信号所有权，type-runtime也是构建工具的明确依赖。模式、生命周期与实际验收边界见[开发命令说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/developer-cli.md)。安装本包时，Composer 从 Packagist 自动解析 type-runtime 及编译工具依赖。
 
 prepare按完整源码、声明、生成器及锁文件内容身份复用不可变代次，逐次校验清单和生成文件；缺少代次才持锁生成。并发准备不重复串行解析同一输入，损坏或准备期间变化明确拒绝；运行环境和dotenv不参与代次身份，不能以可变current指针跳过验证。
 
@@ -38,13 +54,11 @@ prepare按完整源码、声明、生成器及锁文件内容身份复用不可�
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-build vcs https://github.com/zoujingli/type-build.git
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
 composer require --dev zoujingli/type-build:dev-main
 ```
 
@@ -71,6 +85,8 @@ composer require --dev zoujingli/type-build:dev-main
 ## 最小构建入口
 
 `type package`还会将组件内的完整操作手册复制为`OPERATIONS.md`，按同一发布清单校验并进入归档。手册覆盖首次部署、维护窗口、三库备份/恢复与不可自动回滚情况；应用运行端不需要Composer或编译工具。来源见[操作手册](docs/operations.md)。
+
+发布根的 `LICENSE`、`NOTICE` 取自当前应用在构建时记录的原文，实际存在才复制；组件与第三方材料分别保留在依赖资源索引中，不用构建组件的许可替代应用许可。材料缺失继续由 `notices.require-complete` 和构建报告的覆盖状态处理，不强制外部应用采用 Apache-2.0 或提供 NOTICE。身份生成协议 4 支持这一行为；协议 3 的旧产物若同时含两份应用材料仍可打包，否则需要重新构建。
 
 在独立应用中准备 `app/main.php`（全局只声明入口）：
 

@@ -6,14 +6,11 @@ MySQL 驱动采用 PDO，连接时明确启用异常、原生预处理和 utf8mb
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
-composer config repositories.type-orm-mysql vcs https://github.com/zoujingli/type-orm-mysql.git
 composer require zoujingli/type-orm-mysql:dev-main
 ```
 
@@ -71,6 +68,29 @@ function main(): void
     }
 }
 ```
+
+## 验证连接后继续
+
+示例输出 `[{"value":7}]` 表明参数绑定查询成功。下一步在专用数据库中运行版本化迁移，使用 InnoDB 表，再装配 Model CRUD 与事务；连接探测不能代替表结构、约束或回滚验收。
+
+在示例取得 `$connection` 后可以检查实际会话基线：
+
+```php
+$baseline = $connection->query('SELECT @@SESSION.time_zone AS timezone, @@SESSION.sql_mode AS modes');
+echo json_encode($baseline, JSON_THROW_ON_ERROR) . "\n";
+```
+
+默认应看到 `+00:00` 时区和包含 `STRICT_ALL_TABLES` 的模式，模式项顺序以服务器实际结果为准。驱动为每次建立的会话应用基线；当前归还时关闭物理连接，下次借用重新连接。
+
+```mermaid
+flowchart LR
+    Config[MySQL 连接配置] --> Session[建立 PDO 并设置会话基线]
+    Session --> Work[作用域内查询与事务]
+    Work --> Close[归还时清理并关闭]
+    Close --> Next[下次借用重新连接]
+```
+
+环境变量、TLS、基线检查和常见失败处理见[MySQL 教程](https://iots.top/#/guide/plugins/type-orm-mysql)，模型和迁移的完整接入见[数据库与模型](https://iots.top/#/guide/database)。
 
 ## 接口与源码组织
 

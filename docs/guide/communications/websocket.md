@@ -205,6 +205,8 @@ HTTP 中间件不会自动应用到 Upgrade、连接和后续消息。共用端�
 
 服务端 `send()` 成功表示交给原生发送缓冲，不代表对端业务已处理。客户端在已有协程中启动、收发；`receive()` 返回 `null` 表示关闭或本次超时，空字符串是有效消息。`stop()` 关闭客户端，重连要创建新实例，并重新认证、恢复订阅或拉取快照。
 
+当前服务端的经典 Swoole WebSocket Server 路线在 Windows 启动时明确拒绝，协程 HTTP 升级尚未接入本组件。普通 HTTP 的 Windows 协程路径、WebSocket 客户端或其他平台的 WSS 结果，都不能替代该服务端入口的实现与验收。
+
 ## 排障与上线验证
 
 | 现象 | 检查方向 |
@@ -214,7 +216,7 @@ HTTP 中间件不会自动应用到 Upgrade、连接和后续消息。共用端�
 | 升级后立即关闭 1002/1008 | 子协议与 Origin 配置，以及应用鉴权 |
 | HTTPS/WSS 验证失败 | 证书链、SAN、CA、有效期、实际 TLS 监听 |
 | 消息超限或慢客户端被关闭 | 核对包、消息与发送队列三种上限 |
-| `websocket_unsupported_platform` | 当前构建没有可用的 Swoole WebSocket Server 或协程升级能力 |
+| `websocket_unsupported_platform` | 当前服务端明确拒绝 Windows 原生启动，协程升级尚未接入 |
 
 先运行同端口 HTTP/WS，再验证 HTTPS/WSS；还应覆盖错误 Origin、无身份访问、分片消息、空消息、慢消费者、异常断线与整体停止。每个平台以同一 Swoole 构建产物分别记录 PHP、AOT、协议和资源回收结果，不能将局部场景外推为完整平台验收。全量编译与交付要求见[构建与部署](../deployment.md)。
 

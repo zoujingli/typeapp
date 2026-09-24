@@ -4,22 +4,38 @@
 
 按 Cron 或固定间隔执行显式登记的 Task，持久化游标和执行历史，并通过本地锁或 Redis 租约协调执行。任务、时间策略和依赖在构建时确定，运行时不扫描 PHP 文件。
 
+## 时间计划如何变成一次执行
+
+Schedule 只计算时刻，Definition 决定任务身份与错过策略，Scheduler 用持久游标决定本轮执行范围。文件锁或 Redis 租约协调一整个 tick；Swoole 协程承载执行与等待，不代替业务计划或状态协议。
+
+```mermaid
+flowchart TD
+  A[tick 读取当前 UTC 时间] --> B[取得组锁或租约]
+  B --> C[读取游标与历史]
+  C --> D[遗留 running 标为 interrupted]
+  D --> E[计算有限到期时刻]
+  E --> F[先保存 running 与计划游标]
+  F --> G[独立 Scope 执行 Task]
+  G --> H[关闭本次 Scope]
+  H --> I[保存 succeeded 或 failed]
+  I --> J[释放组锁或租约]
+```
+
+因此需要分别观察“本轮没有到期任务”“业务失败”“存储失败”和“上次执行结果待核对”。不能用控制台是否有输出代替任务状态。
+
 ## 安装与依赖
 
 需要 PHP `>=8.4 <8.6`、runtime、Redis、Cron Expression 和 PSR-20。文件调度不连接 Redis，但当前 Composer 传递依赖仍检查 phpredis 扩展。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-redis vcs https://github.com/zoujingli/type-redis.git
-composer config repositories.type-scheduler vcs https://github.com/zoujingli/type-scheduler.git
 composer require zoujingli/type-scheduler:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -51,33 +67,29 @@ final class DailyReport implements Task
 }
 
 /**
- * 执行单次有限调度，文件目录的创建与权限属于部署方责任。
+ * 在启动期启用 I/O hook，再于同一协程装配并执行一次有限调度。
+ * 文件目录的创建与权限属于部署方责任。
  *
  * @param list<string> $argv 第二项为安全本地状态文件路径。
  */
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::enableIo();
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
-        scheduleExample($argv);
+        $path = $argv[1] ?? '';
+        if ($path === '') {
+            throw new InvalidArgumentException('请传入已准备目录中的调度状态文件绝对路径');
+        }
+        $scheduler = new Scheduler(new SystemClock(), new FileStateStore($path), [
+            new Definition('reports.daily', new CronSchedule('0 9 * * *', 'Asia/Shanghai'),
+                static fn (TaskContext $context): Task => new DailyReport()),
+        ]);
+        try {
+            echo json_encode($scheduler->tick(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
+        } finally {
+            $scheduler->stop();
+        }
     });
-}
-
-/** @param list<string> $argv */
-function scheduleExample(array $argv): void
-{
-    $path = $argv[1] ?? '';
-    if ($path === '') {
-        throw new InvalidArgumentException('请传入已准备目录中的调度状态文件绝对路径');
-    }
-    $scheduler = new Scheduler(new SystemClock(), new FileStateStore($path), [
-        new Definition('reports.daily', new CronSchedule('0 9 * * *', 'Asia/Shanghai'),
-            static fn (TaskContext $context): Task => new DailyReport()),
-    ]);
-    try {
-        echo json_encode($scheduler->tick(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
-    } finally {
-        $scheduler->stop();
-    }
 }
 ```
 
@@ -123,7 +135,28 @@ $definition = new \Type\Scheduler\Definition(
 
 Scheduler 还有 historyLimit=1000、tickLimit=100、executionMilliseconds=30000；tickLimit 是同一轮所有定义的总触发上限，范围 1–1000，单任务执行预算最大一小时。
 
-Scheduler、状态存储与连接在同一 Swoole 协程内装配和使用，`tick()` 不在已有协程时于读取状态前报告 `coroutine_required`。每次计划的工厂与 Task 回调内，`ExecutionScope::current()` 等于 `$context->scope()`；正常返回和失败均恢复前一绑定。不同计划不会继承前一次执行的身份、连接或事务。
+入口先在启动期启用 I/O hook；Scheduler、状态存储与连接在 `CoroutineRuntime::run()` 的同一 Swoole 协程内装配和使用，`tick()` 不在已有协程时于读取状态前报告 `coroutine_required`。连接不能从外层执行者带入该协程。每次计划的工厂与 Task 回调内，`ExecutionScope::current()` 等于 `$context->scope()`；正常返回和失败均恢复前一绑定。不同计划不会继承前一次执行的身份、连接或事务。
+
+## 练习：先验证补跑窗口，再接真实时钟
+
+在现有 `DailyReport` 声明下，以下片段可放入 `main()`，单独观察计划选择，不打开状态文件或执行任务。固定输入有助于先确认时间语义。
+
+```php
+$definition = new Definition(
+    'reports.window',
+    new \Type\Scheduler\IntervalSchedule(60),
+    static fn (TaskContext $context): Task => new DailyReport(),
+    misfire: 'catch-up',
+    catchUpLimit: 3,
+    lookbackSeconds: 180
+);
+echo json_encode($definition->due(120, 300), JSON_THROW_ON_ERROR) . "\n";
+echo json_encode($definition->due(300, 300), JSON_THROW_ON_ERROR) . "\n";
+```
+
+输出分别是 `[180,240,300]` 和 `[]`，数值单位为 Unix UTC 秒。第一个区间 `(120,300]` 有三个到期时刻；第二个游标已经推进至本轮时间，没有重复执行空间。`due()` 返回的是待执行计划，不会自行保存游标。
+
+回到文件示例后，把计划临时改为 `IntervalSchedule(1)`，执行 `once` 再看 `history`，核对 `scheduled_at`、`started_at`、`finished_at` 和 `state`。完成后先停止该示例角色，再清理专属练习目录；生产状态文件不能当缓存删除，删除游标可能重新选择历史计划。
 
 ## 持久状态与中断
 

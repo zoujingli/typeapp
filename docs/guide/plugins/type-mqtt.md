@@ -6,27 +6,84 @@
 
 协议模型、完整 Broker 与标准客户端实例、TCP/WS 互通和应用设计见 [MQTT 通信教程](../communications/mqtt.md)。本页保留组件依赖、持久配置与高级接口参考。
 
+## 组件在应用中的位置
+
+MQTT 是设备与服务交换消息的协议组件。应用定义身份、Topic 权限和载荷规则，Broker 维护协议交换，Swoole 作为内置运行库提供连接与协程能力。消息进入业务后，仍由业务服务决定校验、存储和回执。
+
+```mermaid
+flowchart LR
+  Device[设备 / 标准客户端] -->|TCP / TLS / WS / WSS| Broker[type-mqtt Broker]
+  Broker --> Auth[应用认证与 Topic 权限]
+  Broker --> Consumer[业务消费者]
+  Consumer --> Business[校验 / 模型 / 业务回执]
+  Broker -->|显式开启可靠能力| Worker[持久 worker]
+  Worker --> Store[PostgreSQL 同步存储]
+  Runtime[Swoole 内置运行库] -.连接与协程.-> Broker
+```
+
+先在回环地址完成 [QoS 0 Broker 与标准客户端练习](../communications/mqtt.md#完整实例：qos-0-broker)，观察认证、订阅和转发；再配置真实 TLS，最后接入持久后端验证恢复语义。安装组件不会自动启动监听、创建数据库表或开放匿名访问。
+
 ## 安装与依赖
 
-组件源码按 Apache-2.0 提供，位于 `plugin/type-mqtt/`。尚未发布稳定版本标签。独立消费者应核对真实安装副本并提交 `composer.lock`。根应用需显式声明 `type-orm`、`type-runtime`；启用 PostgreSQL 持久后端另需 `type-orm-pgsql`。依赖源不会从包的 `repositories` 自动传递，见[组件安装](../components.md)。
+组件源码按 Apache-2.0 提供，位于 `plugin/type-mqtt/`。尚未发布稳定版本标签。独立消费者应核对真实安装副本并提交 `composer.lock`。`type-orm`、`type-runtime` 由 Composer 从 Packagist 自动解析；启用 PostgreSQL 持久后端时应用另行安装 `type-orm-pgsql`，见[组件安装](../components.md)。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
-composer config repositories.type-mqtt vcs https://github.com/zoujingli/type-mqtt.git
 composer require zoujingli/type-mqtt:dev-main
 ```
 
-通过公开 HTTPS 仓库安装，不需要 SSH 密钥；仓库开放状态见[组件安装](../components.md#安装组件)。`dev-main` 表示开发版本，不是稳定标签。源码与包说明见 [type-mqtt 仓库](https://github.com/zoujingli/type-mqtt)。启用 PostgreSQL 持久后端时，在上述基础上添加：
+通过 Packagist 安装，传递依赖由 Composer 自动解析；版本策略见[组件安装](../components.md#安装组件)。`dev-main` 表示开发版本，不是稳定标签。源码与包说明见 [type-mqtt 仓库](https://github.com/zoujingli/type-mqtt)。启用 PostgreSQL 持久后端时，在上述基础上添加：
 
 ```sh
-composer config repositories.type-orm-pgsql vcs https://github.com/zoujingli/type-orm-pgsql.git
 composer require zoujingli/type-orm-pgsql:dev-main
 ```
 
 PHP 要求 `>=8.4 <8.6`，依赖 OpenSSL、PCRE、JSON 及上述组件；持久后端需要 PDO PostgreSQL。通信、进程、线程、协程与事件循环统一使用 Swoole `>=6.2 <7` 的官方能力，允许固定官方内置 PHP 库按官方机制加载。Broker 服务端由 Swoole Server 承担，客户端统一使用 Swoole Coroutine Socket，非协程调用沿现有 CoroutineRuntime 使用官方 Scheduler，持久 worker 使用 Swoole PROC hook 管理的进程管道。原生运行仍需对应扩展，不回退执行业务 PHP 源码。
+
+## 最小离线示例：连接字段与消息编码
+
+先确认安装后的公开类型能够在应用中使用。将以下代码保存为声明式 `app/main.php`，由开发启动器调用 `main()`；它解析一个完整 CONNECT 正文、编码 QoS 0 PUBLISH，并观察非法 Topic 的拒绝，不打开网络或数据库。
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Type\Mqtt\ConnectPacket;
+use Type\Mqtt\Message;
+use Type\Mqtt\ProtocolError;
+
+/** 验证公开消息类型的离线协议边界，不启动 Broker 或认证任何客户端。 */
+function main(): void
+{
+    $clientId = 'guide-client';
+    $connectBody = pack('n', 4) . 'MQTT' . "\x05\x02" . pack('n', 30)
+        . "\x00" . pack('n', strlen($clientId)) . $clientId;
+    $connect = new ConnectPacket();
+    $connect->decode($connectBody);
+
+    $message = new Message('example/up', '{"temperature":23}', qos: 0);
+    $packet = $message->packet(5);
+    $invalidTopicRejected = false;
+    try {
+        new Message('example/+', '23');
+    } catch (ProtocolError $error) {
+        $invalidTopicRejected = $error->reason === 0x90;
+    }
+    echo json_encode([
+        'protocol' => $connect->version,
+        'client_id' => $connect->clientId,
+        'topic' => $message->topic,
+        'qos' => $message->qos,
+        'packet_bytes' => strlen($packet),
+        'publish_header' => ord($packet[0]),
+        'invalid_topic_rejected' => $invalidTopicRejected,
+    ], JSON_THROW_ON_ERROR) . "\n";
+}
+```
+
+预期输出为 `protocol=5`、`client_id=guide-client`、`topic=example/up`、`qos=0`、`packet_bytes=33`、`publish_header=48`，且 `invalid_topic_rejected=true`。CONNECT 正文解析不代表认证通过；Topic 中的 `+/#` 用于订阅过滤器，不能作为实际发布 Topic。此例只验证离线编解码边界，不替代 TCP、TLS、持久交付或完整协议验收；没有进程、连接或状态文件需要清理。
 
 ## 认证与最小启动
 
@@ -104,6 +161,42 @@ $broker->serve('127.0.0.1', 8883);
 客户端默认 TLS，使用明确 IP 连接，并通过 `peerName` 指定证书身份，避免同步 DNS 越过等待预算。每次公开等待大于零且不超过 60 秒；默认入站 Receive Maximum 为 32，完整包最大 1 MiB。缓冲有条数和字节界限，半包从首字节起最多等待 5 秒，消费前面的完整包不会刷新尾部半包的期限。调用方持续接收以处理保活，不能无限阻塞业务处理。
 
 在协程内建连时，连接自动绑定到建连执行者；传入 `coroutine: true` 另要求入口已有协程。非协程入口可使用默认参数，由现有 CoroutineRuntime 在官方 Scheduler 中执行网络等待。两种调用方式共用 Coroutine Socket 与相同的连接、TLS、收发、保活、超时和关闭语义；已有事件循环的原生回调须先进入其协程，不能嵌套 Scheduler。
+
+## 发布确认与业务回执
+
+可靠模式至少包含两段独立确认。发布者收到 PUBACK，说明 Broker 对该协议交换给出了成功确认；消费应用何时落库、是否向设备返回业务结果，仍由消费方的处理流程决定。
+
+```mermaid
+sequenceDiagram
+  participant Device as 发布者
+  participant Broker as Broker
+  participant Store as 同步持久后端
+  participant Client as Client 消费者
+  participant Business as 业务数据库
+  Device->>Broker: QoS 1 PUBLISH
+  Broker->>Store: 持久请求
+  Store-->>Broker: committed 且工作释放
+  Broker-->>Device: PUBACK
+  Broker->>Client: QoS 1 PUBLISH
+  Client->>Business: 按业务消息身份幂等提交
+  Business-->>Client: 确认提交
+  Client->>Broker: acknowledge(receipt)
+  Note over Client,Device: 业务回执需应用另行定义 Topic 与消息协议
+```
+
+如果业务提交结果未知，不要因为方法抛异常就发布“未处理”或自动生成新业务 ID。先对账；只有确认业务效果已完成时，再确认该次接收凭据。`receipt` 是当前网络交付的不透明凭据，业务幂等键应来自经过认证和校验的应用消息，不能把 receipt 当成跨重连身份。
+
+## 练习顺序与结果检查
+
+| 步骤 | 使用入口 | 应观察的结果 |
+| --- | --- | --- |
+| 1. 本地 QoS 0 互通 | [完整通信示例](../communications/mqtt.md) | 正确凭据可连接，已授权 Topic 可收发 |
+| 2. 认证与权限拒绝 | 相同入口，错误密码或未授权 Topic | 明确拒绝，不出现伪造成功 |
+| 3. TLS 身份核验 | 配置真实证书链、私钥与客户端信任 | 正确主机身份成功，错误身份拒绝 |
+| 4. 可靠持久交付 | 显式安装同步存储并配置 worker | 按 committed/rejected/unknown 处理，未知结果不冒充成功 |
+| 5. 业务恢复 | 业务先持久处理，再显式 acknowledge | 重复交付由业务身份防重，可核对业务回执 |
+
+练习使用专属端口、Topic、客户端 ID 和持久命名空间。结束时先关闭 Client、停止 Broker，再处理测试进程和存储；业务会话及未完成交付不能通过“清空数据库”恢复。高级功能的验收范围按实际平台和故障场景记录。
 
 ## 验证与使用边界
 

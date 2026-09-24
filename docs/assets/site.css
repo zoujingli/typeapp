@@ -1,3 +1,4 @@
+/* 站点与 Mermaid 共用的色彩、文字和间距变量；图示初始化从此读取主题。 */
 :root {
   /* TypeApp 色彩标准：青绿品牌、冷白阅读区、深墨代码区。 */
   --brand: #147d64;
@@ -140,6 +141,7 @@ noscript { display: block; padding: 20px; }
     var(--surface-raised);
   box-shadow: 0 14px 36px color-mix(in srgb, var(--brand) 8%, transparent);
 }
+/* JS 保留 SVG 原始最小宽度；容器负责横向滚动，避免窄屏图中文字被压缩。 */
 .markdown-section .diagram svg { display: block; width: 100%; max-width: 100%; height: auto; margin: 0 auto; }
 .markdown-section .diagram .nodeLabel,
 .markdown-section .diagram .edgeLabel,

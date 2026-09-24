@@ -40,7 +40,7 @@ try {
         || !isset($composer['require-dev']['zoujingli/type-build'], $composer['require-dev']['zoujingli/type-testing'])) {
         throw new RuntimeException('模板包身份或开发依赖不正确');
     }
-    foreach ($composer['repositories'] as $repository) {
+    foreach ($composer['repositories'] ?? [] as $repository) {
         if ($repository['type'] !== 'git' || !preg_match('~^https://github\.com/zoujingli/type-[a-z0-9-]+\.git$~D', $repository['url'])) {
             throw new RuntimeException('模板携带本地或未允许的依赖地址');
         }

@@ -37,22 +37,19 @@ flowchart LR
 
 组件源码统一在 [TypeApp 主仓](https://github.com/zoujingli/typeapp)的 `plugin/type-*` 维护，再分发到各自的 `zoujingli/type-xxxx` 仓库。第一方内容采用 Apache-2.0，各仓库携带 LICENSE 与 NOTICE；[type-project](https://github.com/zoujingli/type-project) 提供独立应用模板。
 
-以下是公开仓库的 HTTPS 安装地址，无需 SSH 密钥。所有仓库使用 `main`，当前只提供开发分支，尚未发布稳定版本，也不假设已登记 Packagist。消费应用应在自己的根 `composer.json` 声明所选组件及其传递依赖；依赖包内的 `repositories` 不会自动传递。
+15 个组件与应用模板均通过 [Packagist](https://packagist.org/packages/zoujingli/) 提供公共索引。Composer 默认使用该索引，应用只声明自己需要的组件，传递依赖自动解析；无需 SSH 密钥或逐个配置 Git 仓库。当前提供 `dev-main` 开发分支，尚未发布稳定版本。
 
-从本仓库路径引用时，以实际检出与 `composer.lock` 为准。若使用独立 Git 源，需要为每个直接依赖及传递依赖分别配置仓库地址。例如安装 SQLite ORM：
+例如在已有 Composer 应用中安装 SQLite ORM：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
-composer config repositories.type-orm-sqlite vcs https://github.com/zoujingli/type-orm-sqlite.git
 composer require zoujingli/type-orm-sqlite:dev-main
 ```
 
 `dev-main` 的分支别名为 `1.0.x-dev`，组件间使用 `~1.0.0@dev` 约束。这些是开发版本，不代表稳定标签。提交应用的 `composer.lock`，让构建固定到实际安装的提交。
 
-| 选择的组件 | 还需声明的传递依赖 |
+| 选择的组件 | Composer 自动解析的第一方依赖 |
 | --- | --- |
 | `type-runtime` | 无 |
 | `type-core`、`type-orm`、`type-validate`、`type-log`、`type-redis`、`type-build`、`type-testing` | `type-runtime` |
@@ -61,6 +58,14 @@ composer require zoujingli/type-orm-sqlite:dev-main
 | `type-mqtt` | `type-orm`、`type-runtime`；PostgreSQL 持久后端另需 `type-orm-pgsql` |
 
 具体公开依赖、扩展和版本要求以所用包的 `composer.json` 为准。
+
+构建与测试工具通常安装为开发依赖：
+
+```bash
+composer require --dev zoujingli/type-build:dev-main zoujingli/type-testing:dev-main
+```
+
+从旧版 VCS 配置迁移时，删除应用根 `composer.json` 中指向这些公共组件的 `repositories` 项，再执行一次受控的 `composer update 'zoujingli/type-*' --with-all-dependencies` 并审阅锁文件。保留应用自己的私有仓库配置。日常部署使用 `composer install` 复现锁定版本，不在部署时自动更新依赖。
 
 各组件页的“安装与依赖”用于源码开发和构建准备。生产组件随业务一起编译，`type-build` 收集实际原生依赖；部署完整运行包时无需再逐个安装 Composer 组件或开发 SDK。外部数据库、Redis 等业务服务按所选能力提供，统一见[环境与依赖](environment.md)。
 

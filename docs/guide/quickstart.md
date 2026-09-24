@@ -16,7 +16,7 @@ flowchart TB
 
 **已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台通过的命令、ORM 和应用场景不同，选定环境前先核对[平台支持表](platforms.md#当前平台状态)。
 
-以下是开发机要求，完整分工见[环境与依赖](environment.md)：PHP CLI `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选数据库的 PDO 扩展。SQLite 需要 `pdo_sqlite`，无需单独数据库服务；MySQL、PostgreSQL 分别需要 `pdo_mysql`、`pdo_pgsql` 及可连接的数据库服务。模板 HTTP 入口还需要 Unix worker 与信号能力，见[type-core](plugins/type-core.md#启动-http-服务)。
+以下是开发机要求，完整分工见[环境与依赖](environment.md)：PHP CLI `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选数据库的 PDO 扩展。SQLite 需要 `pdo_sqlite`，无需单独数据库服务；MySQL、PostgreSQL 分别需要 `pdo_mysql`、`pdo_pgsql` 及可连接的数据库服务。HTTP 按平台选择 Swoole worker 或协程服务，并要求可用的停止控制，见[type-core](plugins/type-core.md#启动-http-服务)。
 
 ```bash
 php -v
@@ -29,11 +29,24 @@ composer --version
 
 `type-build` 已携带匹配 PHP 8.5.10 ZTS 的四平台 Swoole 6.2.1 模块，原生构建默认校验并复用；安装组件不会自动为开发 CLI 修改 ini。平台限制、覆盖顺序及其余依赖见[内置 Swoole 与运行依赖](plugins/type-build.md#内置-swoole-与运行依赖)。
 
-Windows x64 已完成匹配 Swoole SDK 的构建与加载，以及三库独立 ORM 的 PHP、AOT 和无源码运行。本文通用模板的经典 HTTP 服务入口仍要求 Unix worker 与信号能力，当前明确拒绝 Windows；选定平台的组件结果与整条应用链路验收分别记录。
+Windows x64 已有匹配 Swoole SDK、三库独立 ORM 和进程工具的历史验收记录。模板 HTTP 在 Windows 使用协程服务与 ProcessSignals 控制桥，缺少可用控制台或桥接能力时明确失败；最新 HTTP 与全量应用验收仍须单独完成，不能由 ORM 结果推导。
 
 ## 创建业务应用
 
-如果已经安装 type-build，并已下载 type-project 模板，可创建不存在的新目录：
+推荐通过 Composer 从 Packagist 创建应用。先选择驱动，再安装依赖：
+
+```bash
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main
+cd my-app
+php configure.php sqlite
+composer install --no-plugins --no-scripts
+php dev.php help
+php dev.php check
+```
+
+`dev-main` 是当前开发分支，不代表稳定版本。模板和组件已登记 Packagist，传递依赖由 Composer 自动解析，无需配置各个 Git 仓库。创建后提交应用的 `composer.lock`，固定实际源码版本。
+
+如果已经安装 type-build，并已下载 type-project 模板，也可创建不存在的新目录：
 
 ```bash
 php vendor/bin/type create /本地模板目录 /新项目目录 sqlite
@@ -58,7 +71,7 @@ php dev.php check
 
 ## 启动服务
 
-HTTP 传输固定复用 Swoole。当前通用模板使用经典 Swoole worker 与协程入口；主仓物联中心的生产 HTTP 使用业务线程内协程。监听配置与双端示例见 [HTTP 通信](communications/http.md)，其他协议见[通信导读](communications.md)。独立应用开发入口：
+HTTP 传输固定复用 Swoole。通用模板在 Unix 使用 worker，在 Windows 使用协程 HTTP 与停止控制桥；主仓物联中心的生产 HTTP 使用业务线程内协程。监听配置与双端示例见 [HTTP 通信](communications/http.md)，其他协议见[通信导读](communications.md)。独立应用开发入口：
 
 ```bash
 php dev.php serve
@@ -84,4 +97,4 @@ composer package
 
 本仓库还附带物联中心，用来展示如何把 TypeApp 装配成完整业务。它不是框架本身，也不应改写成另一套产品。运行步骤、双端账号、设备与 MQTT 契约见[物联网中心](iot-center.md)。
 
-下一步：[查看组件](components.md) · [配置数据库](configuration.md) · [性能与调优](performance.md)。
+下一步：[完成一个真实应用练习](tutorial.md) · [查看组件](components.md) · [配置数据库](configuration.md)。

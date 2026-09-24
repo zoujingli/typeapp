@@ -171,11 +171,11 @@ HTTPS 可由可信反向代理终止 TLS。标准应用用 `APP_TRUSTED_PROXIES`
 
 ## 并发、停止与平台
 
-`serve()` 使用经典 Swoole worker 与协程；`serveThread()` 用于业务线程内协程 HTTP，主仓生产应用由线程宿主管理。两者复用 PSR 处理链，但宿主、监听与监督方式不同，不能只替换方法名而省略线程装配。
+`serve()` 在 Unix 使用经典 Swoole 单 worker，在 Windows 使用协程 HTTP。编译业务线程有独立入口：`serveThread()` 接收共享监听副本，`serveThreadOwned()` 在线程内创建监听；主仓生产应用由线程宿主管理。各路径复用 PSR 处理链，但监听与监督方式不同，不能只替换方法名而省略装配。
 
-当前 `serve()` 使用 Swoole Server、协程与官方信号/停止机制；`stop()` 撤销请求准入、缩短在途期限，服务在有界排空后关闭。进程不可用时按目标构建能力使用 Swoole 官方线程或协程，保持请求、停止和资源回收语义。
+`stop()` 撤销请求准入、缩短在途期限，由宿主监督排空与停止。Unix `serve()` 沿用原生 worker 生命周期；Windows 通过 `ProcessSignals` 接收 CTRL_C/CTRL_BREAK。Windows CLI 使用 PHP 控制台处理器，embed 需要编译的控制事件桥与可用控制台。关闭窗口、注销或强制终止不保证排空；相应实现存在不代表最新 Windows HTTP 或完整应用已经通过验收。
 
-请求结束清理本次作用域、输入与响应正文流。长生命周期连接池由所属 worker/线程管理，可用服务的零参数 `onWorkerStop` 回调在排空后清理；硬终止不保证回调执行。清理失败不能提前释放额度或伪装健康。
+请求结束清理本次作用域、输入与响应正文流。长生命周期连接池由所属宿主管理：`onWorkerStop` 在 Unix worker 同步停止、Windows 协程 HTTP 退出或编译线程请求完整收尾时调用，Windows `serve()` 没有独立 worker 进程。回调不再启动新工作，硬终止不保证其执行。清理失败不能提前释放额度或伪装健康。
 
 ## 排障与上线验证
 
@@ -186,7 +186,7 @@ HTTPS 可由可信反向代理终止 TLS。标准应用用 `APP_TRUSTED_PROXIES`
 | Upgrade 返回 501 | 当前是普通 HTTP 入口，使用 WebSocket 共用服务装配 |
 | 过载拒绝或 readiness 为 503 | 并发、排空、隔离作用域和下游等待，先查瓶颈再增加额度 |
 | 超时但业务已生效 | 查询幂等记录或业务结果，不直接重复创建 |
-| 当前 worker 入口拒绝平台 | 核对线程/协程入口适配，不解释为 Swoole 缺少该平台 HTTP 能力 |
+| `signals_unavailable` | 核对 Unix PCNTL，或 Windows 控制台、PHP 处理器与 embed 控制事件桥 |
 
 发布前验证真实成功与错误响应、认证失败、超大输入、并发上限、慢客户端、下游超时和停止排空。观察 `HttpControl::statistics()` 的在途、拒绝、隔离与清理失败。按[构建与部署](../deployment.md)检查 TypePHP 原生产物，开发态 curl 成功不能替代全量编译与目标平台验收。
 

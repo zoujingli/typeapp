@@ -76,8 +76,21 @@ if ($onboarding) {
     echo successful([PHP_BINARY, $consumer . '/configure.php', $driver], $consumer);
 }
 $composer = json_decode(file_get_contents($consumer . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
-foreach ($composer['repositories'] as $repository) {
+foreach ($composer['repositories'] ?? [] as $repository) {
     expect($repository['type'] === 'git' && str_starts_with($repository['url'], 'https://github.com/zoujingli/'), '原始模板包含开发主仓路径');
+}
+// 模板通过 Packagist 解析依赖；本地验收仅在测试根显式替换第一方依赖闭包。
+$componentNames = [];
+$pending = array_keys(array_merge($composer['require'], $composer['require-dev']));
+while ($pending !== []) {
+    $packageName = array_pop($pending);
+    if (!str_starts_with($packageName, 'zoujingli/type-') || isset($componentNames[$packageName])) {
+        continue;
+    }
+    $name = substr($packageName, strlen('zoujingli/'));
+    $componentNames[$packageName] = $name;
+    $metadata = json_decode(file_get_contents($root . '/plugin/' . $name . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+    $pending = [...$pending, ...array_keys($metadata['require'] ?? [])];
 }
 $expected = [];
 if (!$remote) {
@@ -86,18 +99,14 @@ if (!$remote) {
         $componentRoot = Type\Build\BuildPlatform::resolve($componentRoot);
         expect(str_starts_with($componentRoot, $root . '/build/') && is_dir($componentRoot), '候选组件必须来自主仓build下的独立快照');
     }
-    foreach ($composer['repositories'] as $index => $repository) {
-        $name = basename($repository['url'], '.git');
+    $composer['repositories'] = [];
+    foreach ($componentNames as $name) {
         $relativePackage = $componentRoot === false ? 'plugin/' . $name : substr($componentRoot, strlen($root) + 1) . '/' . $name;
-        $composer['repositories'][$index] = ['type' => 'path', 'url' => '../../' . $relativePackage, 'options' => ['symlink' => false, 'versions' => ['zoujingli/' . $name => '1.0.x-dev']]];
+        $composer['repositories'][] = ['type' => 'path', 'url' => '../../' . $relativePackage, 'options' => ['symlink' => false, 'versions' => ['zoujingli/' . $name => '1.0.x-dev']]];
     }
 } else {
-    foreach ($composer['repositories'] as $index => $repository) {
-        $name = basename($repository['url'], '.git');
-        expect(
-            isset($mapping['packages'][$name]) && $repository['url'] === 'https://github.com/' . $mapping['packages'][$name]['repository'] . '.git',
-            '模板依赖地址不属于固定分发映射：' . $name
-        );
+    foreach ($componentNames as $name) {
+        expect(isset($mapping['packages'][$name]), '模板依赖不属于固定分发映射：' . $name);
         $item = $batch['items'][$name];
         $expected[$name] = $item['split'];
         $composer[in_array($name, ['type-build', 'type-testing'], true) ? 'require-dev' : 'require'][$item['package']]
@@ -238,12 +247,23 @@ try {
             }
         }
     }
+    if ($native) {
+        // 原生产物核对实际加载路径，不能继承构建控制器或其他产物的模块配置。
+        // 开发入口已用原 CLI 环境验证，此处只绑定本产物声明的运行配置。
+        $runtimeIni = $buildReport['runtime-profile']['ini'] ?? null;
+        expect(is_string($runtimeIni) && is_file($runtimeIni) && is_dir(dirname($runtimeIni) . '/php.d'), '模板原生产物缺少独立运行配置');
+        $environment['PHPRC'] = $runtimeIni;
+        $environment['PHP_INI_SCAN_DIR'] = dirname($runtimeIni) . '/php.d';
+    }
     $testCommand = $onboarding ? [PHP_BINARY, $consumer . '/vendor/bin/type', 'test', 'type-app.json'] : [PHP_BINARY, $consumer . '/tests/smoke.php'];
     $process = new Process($testCommand, $consumer, $environment, 2097152);
     try {
         $result = $process->wait(30);
         echo $result->stdout;
-        expect($result->successful(), '应用模板公开行为失败：' . $result->stderr);
+        expect($result->successful(), '应用模板公开行为失败 ' . json_encode([
+            'exit-code' => $result->exitCode, 'timed-out' => $result->timedOut,
+            'output-exceeded' => $result->outputExceeded, 'signal' => $result->signal,
+        ], JSON_THROW_ON_ERROR) . '：' . $result->stderr);
     } finally {
         $process->stop();
     }

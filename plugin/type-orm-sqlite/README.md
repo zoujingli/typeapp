@@ -6,14 +6,11 @@ SQLite 驱动支持本地文件和普通 `:memory:`，每连接显式设置外�
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
-composer config repositories.type-orm-sqlite vcs https://github.com/zoujingli/type-orm-sqlite.git
 composer require zoujingli/type-orm-sqlite:dev-main
 ```
 
@@ -60,6 +57,23 @@ function main(int $argc, array $argv): void
     }
 }
 ```
+
+## 从内存练习到持久存储
+
+默认示例输出 `[{"value":7}]`，只在当前连接内练习。要保存跨请求数据，先为应用创建可写的本地数据目录，再传入数据库文件的绝对路径。文件数据库通过版本化迁移建表，不能在每次请求中重新执行示例 DDL。
+
+```mermaid
+flowchart LR
+    Choice[应用选择存储方式] --> Memory[内存库]
+    Choice --> File[本地文件库]
+    Memory --> Work[连接作用域内工作]
+    File --> Work
+    Work --> Close[归还时关闭物理连接]
+    Close -->|内存库| Gone[内容销毁]
+    Close -->|文件库| Keep[已提交数据保留]
+```
+
+[SQLite 教程](https://iots.top/#/guide/plugins/type-orm-sqlite)提供建表、参数写入、回滚验证和文件清理步骤。重点观察失败事务后的原值、文件重新打开后的已提交值；SQLite 只有一个写者，增加连接数量不会增加并行写入能力。
 
 ## 接口与源码组织
 

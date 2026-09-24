@@ -2,22 +2,63 @@
 
 可独立安装和独立进程运行的 TypeApp MQTT 服务端组件。提供 MQTT 3.1.1/5.0 的 TCP/TLS 连接、认证、CONNECT/CONNACK、PING、DISCONNECT、客户端标识接管、精确及通配订阅/取消、MQTT 5 订阅选项与标识、二进制 QoS 0 路由，以及明确配置 PostgreSQL 同步持久存储后的 QoS 1/2 双向交付、保留消息、持久会话、遗嘱与延迟遗嘱、MQTT 5 共享订阅、重启恢复及跨节点接管与路由。
 
-通信与基础并发统一使用 Swoole 官方能力；服务端监听由 Swoole Server 管理，客户端统一使用 Swoole Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行，持久 worker 使用 Swoole PROC hook 管理的进程管道。进程不可用时按目标平台使用官方线程或协程，并重新核对隔离与停止语义。
+通信与基础并发统一使用 Swoole 官方能力；服务端监听由 Swoole Server 管理，客户端统一使用 Swoole Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行，持久 worker 使用 Swoole PROC hook 管理的进程管道。当前 Broker 使用经典 Swoole Server，持久 worker 使用受控命令进程；进程能力不可用时所需的角色适配与隔离、停止验收尚不能由接口存在推定完成。
 
 ## 安装与版本
 
-公开仓库推送后，可在应用根目录登记组件及传递依赖，使用 HTTPS 安装开发分支：
+通过 Packagist 在应用根安装开发分支，Composer 自动解析传递依赖，无需额外登记 VCS 仓库：
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
-composer config repositories.type-mqtt vcs https://github.com/zoujingli/type-mqtt.git
 composer require zoujingli/type-mqtt:dev-main
 ```
 
 本组件使用 Apache-2.0，完整材料见 LICENSE 与 NOTICE。开发分支不代表稳定版本或全部协议符合性验收已通过；提交应用的 composer.lock 固定实际源码版本。
+
+## 最小离线示例：连接字段与消息编码
+
+先确认安装后的公开类型能够在应用中使用。将以下代码保存为声明式 `app/main.php`，由开发启动器调用 `main()`；它解析一个完整 CONNECT 正文、编码 QoS 0 PUBLISH，并观察非法 Topic 的拒绝，不打开网络或数据库。
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Type\Mqtt\ConnectPacket;
+use Type\Mqtt\Message;
+use Type\Mqtt\ProtocolError;
+
+/** 验证公开消息类型的离线协议边界，不启动 Broker 或认证任何客户端。 */
+function main(): void
+{
+    $clientId = 'guide-client';
+    $connectBody = pack('n', 4) . 'MQTT' . "\x05\x02" . pack('n', 30)
+        . "\x00" . pack('n', strlen($clientId)) . $clientId;
+    $connect = new ConnectPacket();
+    $connect->decode($connectBody);
+
+    $message = new Message('example/up', '{"temperature":23}', qos: 0);
+    $packet = $message->packet(5);
+    $invalidTopicRejected = false;
+    try {
+        new Message('example/+', '23');
+    } catch (ProtocolError $error) {
+        $invalidTopicRejected = $error->reason === 0x90;
+    }
+    echo json_encode([
+        'protocol' => $connect->version,
+        'client_id' => $connect->clientId,
+        'topic' => $message->topic,
+        'qos' => $message->qos,
+        'packet_bytes' => strlen($packet),
+        'publish_header' => ord($packet[0]),
+        'invalid_topic_rejected' => $invalidTopicRejected,
+    ], JSON_THROW_ON_ERROR) . "\n";
+}
+```
+
+预期输出为 `protocol=5`、`client_id=guide-client`、`topic=example/up`、`qos=0`、`packet_bytes=33`、`publish_header=48`，且 `invalid_topic_rejected=true`。CONNECT 正文解析不代表认证通过；Topic 中的 `+/#` 用于订阅过滤器，不能作为实际发布 Topic。此例只验证离线编解码边界，不替代 TCP、TLS、持久交付或完整协议验收；没有进程、连接或状态文件需要清理。
 
 ## 安装与启动
 
@@ -87,6 +128,19 @@ TLS 同时接受 1.2/1.3，双版本客户端协商到 1.3，拒绝 1.1，TLS 1.
 - 遗嘱需要持久 worker，未配置时返回服务不可用；配置后支持两版遗嘱及会话恢复，省略或显式零期限不被替换为内部 TTL。CONNACK 不声明未交付的消息能力。
 - 最大入站完整 Control Packet 为 1 MiB。一次 TCP/WS 读取可以包含多个报文，按剩余缓冲容量分段解析，不把读取总长度当成单报文长度。每连接应用输出队列及原生 `buffer_output_size` 各为 2 MiB；原生 send/push 接管有界输出并负责短写，每次解析至多处理 32 个完整报文。应用输出的一秒截止不刷新，原生无法接管时关闭连接。TLS/CONNECT 默认为十秒、半包读取十五秒。
 - 连接额度用尽时拒绝新连接；可配置上限不构成已达万台在线的容量声明。认证异常不泄漏实现或密码，拒绝不会终止其他连接；强制结束进程由操作系统回收资源，不伪称已优雅排空。
+
+## 架构位置与教程
+
+```mermaid
+flowchart LR
+  Devices[设备 / 服务客户端] --> Broker[type-mqtt Broker]
+  Broker --> Access[应用身份与 Topic 权限]
+  Broker --> Consumer[业务消费者]
+  Broker -->|可靠能力| Store[PostgreSQL 同步持久后端]
+  Swoole[Swoole 内置运行库] -.连接与协程.-> Broker
+```
+
+[MQTT 通信教程](https://iots.top/#/guide/communications/mqtt)提供可运行 Broker 和标准客户端示例；[组件教程](https://iots.top/#/guide/plugins/type-mqtt)解释能力选择、持久配置和双向确认时序。Swoole 是运行库，认证、消息协议和业务回执仍由应用定义。未经完整标准与目标平台验收的场景不能由安装成功推定可用。
 
 ## 目录与主要接口
 

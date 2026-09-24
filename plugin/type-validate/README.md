@@ -4,13 +4,11 @@
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-validate vcs https://github.com/zoujingli/type-validate.git
 composer require zoujingli/type-validate:dev-main
 ```
 
@@ -67,6 +65,18 @@ $code = Field::text()->required()->when(
 
 PHP 行为由 `tests/validation.php` 辅助验证；相同用例可传入编译 ELF。开发先核对锁定 TypePHP 语法并统一实现，再集中编译验收，实际通过范围以任务记录为准。
 
+## 校验路径与教程
+
+```mermaid
+flowchart LR
+  Input[Input 分源解析] --> Schema[Schema / Field 规则]
+  Schema --> Data[Data 有效字段]
+  Data --> Business[DTO / 部分更新]
+  Schema --> Error[ValidationException]
+```
+
+从最小入口开始，逐步练习分源参数、PATCH 缺失/null、默认值和错误映射，见[输入校验教程](https://iots.top/#/guide/plugins/type-validate)。校验器只返回有效字段，不持有网络或数据库连接；用户规则涉及 I/O 时由调用方管理资源。
+
 ## 接口与源码组织
 
 `Schema/Field` 是声明与组合规则；`Input` 是有界分源解析；`Data` 是存在性明确的校验结果；`ValidationException` 是不携带原始值的公开错误。模块规模小且职责紧密，保留稳定根入口，不建立多层转发类。
@@ -75,7 +85,7 @@ PHP 行为由 `tests/validation.php` 辅助验证；相同用例可传入编译 
 
 ## AOT 与运行要求
 
-独立安装只依赖 `type-runtime`，无需 Swoole、PDO 或 Redis；完整生产源码与调用方 DTO 一起 AOT，运行保留匹配 PHPX/libphp。不能以 PHP 行为通过代替生成规则与业务闭包的原生验收。
+独立安装依赖 `type-runtime`，因此继承其 Swoole 要求；纯字段校验不需要创建协程，也无需 PDO 或 Redis 服务。完整生产源码与调用方 DTO 一起 AOT，原生运行库按实际产物清单交付。不能以 PHP 行为通过代替生成规则与业务闭包的原生验收。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

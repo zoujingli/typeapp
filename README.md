@@ -32,18 +32,20 @@ TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typep
 
 ## 快速开始
 
-以下命令用于源码开发：准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展；模板 HTTP 入口还需 Unix worker 与信号能力。完整环境分工见[环境与依赖](docs/guide/environment.md)，操作见[快速开始](docs/guide/quickstart.md)。创建独立应用：
+以下命令用于源码开发：准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展。完整环境分工见[环境与依赖](docs/guide/environment.md)，平台执行方式与验收范围见[平台与验收](docs/guide/platforms.md)。从 Packagist 创建独立应用，先选择数据库再安装依赖：
 
 ```bash
-git clone https://github.com/zoujingli/type-project.git my-app
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main
 cd my-app
 php configure.php sqlite
-composer install --no-scripts --no-plugins
+composer install --no-plugins --no-scripts
 php dev.php help
-php dev.php serve
+php dev.php check
 ```
 
-按需用 Composer 安装 Plugins，见[组件参考](docs/guide/components.md)与[快速开始](docs/guide/quickstart.md)。生产构建在应用根执行 `composer build`。
+`dev-main` 是开发分支，不代表稳定版本；安装后提交应用的 `composer.lock`，固定实际依赖版本。`--no-install` 保留驱动选择窗口，`configure.php` 必须在首次安装前运行。接着按[第一个应用教程](docs/guide/tutorial.md)完成迁移、令牌配置和真实 HTTP 操作，再按需安装[框架组件](docs/guide/components.md)。生产构建在应用根执行 `composer build`。
+
+也可先 `git clone https://github.com/zoujingli/type-project.git my-app`，再从上面的 `cd my-app` 继续。已有本地模板与 `type-build` 时，可用 `php /构建工具项目/vendor/bin/type create /本地模板目录 /新项目目录 sqlite` 创建应用；该入口已经选择驱动，无需再运行 `configure.php`。详细用法见[快速开始](docs/guide/quickstart.md)。
 
 运行本仓库附带的成品案例物联中心，见[物联网中心](docs/guide/iot-center.md)。
 
@@ -67,7 +69,7 @@ HTTP 路由来自控制器 `#[Route]` 或 `config/route.php`；`#[Transactional]
 
 | 读者 | 入口 |
 | --- | --- |
-| 开始使用 | [公开指南](https://iots.top) · [环境与依赖](docs/guide/environment.md) · [快速开始](docs/guide/quickstart.md) |
+| 开始使用 | [公开指南](https://iots.top) · [环境与依赖](docs/guide/environment.md) · [快速开始](docs/guide/quickstart.md) · [第一个应用](docs/guide/tutorial.md) |
 | 运行与交付 | [系统架构](docs/guide/architecture.md) · [性能与调优](docs/guide/performance.md) · [构建与部署](docs/guide/deployment.md) |
 | 成品案例 | [物联网中心](docs/guide/iot-center.md) |
 | 许可证 | [LICENSE](LICENSE) · [NOTICE](NOTICE) · [许可证说明](docs/guide/licensing.md) |

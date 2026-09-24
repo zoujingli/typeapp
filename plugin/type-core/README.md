@@ -1,6 +1,22 @@
 # type-core
 
-本组件在 macOS ARM64 已有应用身份 HTTP、TCP/UDP 双线程与协程、WS/WSS 的原生运行结果。其他平台的命令或 ORM 结果不代替核心通信验收，各协议与完整应用限制见[平台与验收](https://iots.top/#/guide/platforms)。经典 HTTP `serve()` 当前仍要求 Unix worker 与信号能力，明确拒绝 Windows。
+## 阅读与操作路径
+
+本组件负责应用配置、命令生命周期与基础通信。入门按[核心教程](https://iots.top/#/guide/plugins/type-core)先读取配置，再创建并直接调用 `/status` 路由，最后监听真实 HTTP；每一步都有预期响应和清理方式。需要数据库、校验或缓存时按业务职责安装相应组件。
+
+```mermaid
+flowchart LR
+    Config[启动配置] --> App[应用装配]
+    Route[已生成路由] --> App
+    App --> Core[命令与协议入口]
+    Core --> Business[控制器与业务服务]
+    Core --> Scope[作用域与资源收尾]
+    Core -.通信与协程.-> Native[内置 Swoole 运行库]
+```
+
+TypePHP 将以上生产实现整体编译；原生运行库由构建和发布链管理。当前目录包与最终静态单程序目标分别见[构建与部署](https://iots.top/#/guide/deployment)，安装组件不自动替业务建立认证或公开接口。
+
+本组件在 macOS ARM64 已有应用身份 HTTP、TCP/UDP 双线程与协程、WS/WSS 的原生运行结果。HTTP `serve()` 已分别接入 Unix worker 和 Windows 协程宿主；实现分支、其他平台的命令或 ORM 结果均不代替核心通信验收，各协议与完整应用限制见[平台与验收](https://iots.top/#/guide/platforms)。
 
 提供字符串与嵌套配置快照、命令执行、同步事件，以及 HTTP、WebSocket、TCP、UDP 四项基础通信。各协议保持自己的公开入口与数据语义，通过 type-runtime 的执行作用域和资源预算管理生命周期。
 
@@ -15,13 +31,11 @@
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-core vcs https://github.com/zoujingli/type-core.git
 composer require zoujingli/type-core:dev-main
 ```
 
@@ -96,7 +110,9 @@ Composer 安装核心必须满足 `ext-swoole >=6.2 <7`，Swoole 是通信和基
 
 当前 `HttpServerInterface` 只管理 HTTP 请求与响应。`SwooleServer` 对带 `Upgrade` 的请求返回 `501 / upgrade_not_supported` 并关闭连接。需要 HTTP 与 WebSocket 共用服务和端口时，由一个 `WebSocket\Server` 实例持有监听，通过 `onRequest()` 显式处理普通 HTTP 请求。
 
-Swoole 的请求在实际 worker 中执行，该进程不会返回主进程的 `serve()` 调用。进程级连接池和日志可通过 `SwooleServer(..., onWorkerStop: $cleanup)` 注册零参数关闭回调；回调只在请求排空后的 worker 同步停止阶段运行，不应再启动异步工作。主进程自己的资源仍由调用方在 `finally` 关闭；SIGKILL或未排空的强制退出不能保证执行回调。两个进程的资源所有权不能互相代替。
+`SwooleServer::serve()` 在 Unix 使用经典单 worker，在 Windows 使用协程 HTTP。Windows 由 `ProcessSignals` 接入 CTRL_C/CTRL_BREAK：CLI 使用控制台处理器，embed 使用编译的控制事件桥并要求可用控制台。编译业务线程由独立主控装配：`serveThread()` 接收共享监听副本，`serveThreadOwned()` 在线程内创建监听。各路径共用 PSR 处理链；已有实现与实际平台验收分别判断，见[平台与验收](https://iots.top/#/guide/platforms)。
+
+连接池和日志可通过 `SwooleServer(..., onWorkerStop: $cleanup)` 注册零参数关闭回调。Unix `serve()` 在实际 worker 的同步停止阶段调用；Windows `serve()` 在协程 HTTP 事件循环退出后调用，没有独立 worker 进程。回调关闭当前宿主持有的长期资源，不再启动异步工作；调用者自己的资源仍在 `finally` 关闭。强制终止或关闭控制台窗口不能保证执行清理。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
@@ -108,9 +124,9 @@ Swoole 的请求在实际 worker 中执行，该进程不会返回主进程的 `
 
 `onRequest()` 接收 Swoole 原生请求和响应，未登记时普通请求返回 `404 / not_found`。PSR 消息转换、路由、HTTP 策略与请求资源清理需要应用显式装配；Upgrade 由 Swoole 握手入口处理，不自动经过普通 HTTP 回调和中间件。`onOpen()` 在握手完成后提供连接标识、请求头与 Origin 核对结果，没有 URI 路径或声明式 WebSocket 路由。共用监听不会自动获得 `SwooleServer::serveThread()` 的业务线程模型，见[共用服务指南](https://github.com/zoujingli/typeapp/blob/main/docs/guide/communications/websocket.md#http-与-websocket-共用服务)。
 
-`onMessage` 登记的回调以第四个参数接收本条消息的作用域：数据库连接必须挂在其上，回调返回后立即关闭，即使对端仍连接或尚未读取回显，事务也不会继续占用。当前服务端使用单 worker、顺序回调，消息作用域不自动创建协程，慢回调会影响共用服务内的 HTTP 和 WebSocket 处理；客户端的业务处理作用域由调用方管理。每条连接同一时刻只有一个消息所有者；`send($fd, $data, $binary, $seconds)` 对单条消息与排队字节双重设限，超限即关闭该连接而不静默丢弃。控制帧（PING/PONG/CLOSE）不进入业务消息路径，也不延长任何业务超时。
+`onMessage` 登记的回调以第四个参数接收本条消息的作用域：数据库连接必须挂在其上，回调返回后立即关闭，即使对端仍连接或尚未读取回显，事务也不会继续占用。当前服务端使用单 worker 并启用 Swoole 回调协程，同一连接经 Channel 顺序进入业务回调；可让出的 I/O 等待不阻塞其他连接，CPU 密集或不可让出的调用仍会占用当前线程。客户端的业务处理作用域由调用方管理。每条连接同一时刻只有一个消息所有者；`send($fd, $data, $binary, $seconds)` 对单条消息与排队字节双重设限，超限即关闭该连接而不静默丢弃。控制帧（PING/PONG/CLOSE）不进入业务消息路径，也不延长任何业务超时。
 
-WSS 通过 `open_ssl=true` 以及成对的 `ssl_cert_file`/`ssl_key_file` 启用，仅允许 TLS 1.2/1.3，不启用压缩或 0-RTT；本进程终止 TLS，四层透传同样走这一套证书，七层反代终止 TLS 后转到本进程时保持 `open_ssl=false`。客户端 `tls=true` 时强制校验证书链和主机名，可用 `ssl_cafile`/`ssl_host_name`。目标平台按实际构建能力选择 Swoole WebSocket Server 或协程升级入口。
+WSS 通过 `open_ssl=true` 以及成对的 `ssl_cert_file`/`ssl_key_file` 启用，仅允许 TLS 1.2/1.3，不启用压缩或 0-RTT；本进程终止 TLS，四层透传同样走这一套证书，七层反代终止 TLS 后转到本进程时保持 `open_ssl=false`。客户端 `tls=true` 时强制校验证书链和主机名，可用 `ssl_cafile`/`ssl_host_name`。当前服务端固定使用经典 Swoole WebSocket Server，Windows `start()` 明确抛出 `websocket_unsupported_platform`；协程升级尚未接入本组件，普通 HTTP 的 Windows 路径不能代替 WS/WSS 验收。
 
 边界与默认值：帧上限与排队上限各为 1 B–1 MiB（默认 1 MiB），连接数 1–4096（默认 64），`package_max_bytes` 必须介于帧上限与两倍之间，`message_seconds` 为 (0,60] 秒（默认 30）。期限均为 (0,60] 秒。客户端 `receive($seconds)` 返回原生已重组的一条完整消息，`null` 表示关闭或超时，不代表收到空消息。
 

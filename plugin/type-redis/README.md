@@ -4,13 +4,11 @@
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-redis vcs https://github.com/zoujingli/type-redis.git
 composer require zoujingli/type-redis:dev-main
 ```
 
@@ -78,6 +76,25 @@ PHP 真实 Redis 8.10.1 的用途隔离、数据库隔离、WATCH 冲突、pipel
 `always` 是默认配置；显式选择 `everysec` 意味着接受配置中的同步窗口，返回值 `configured_fsync_window_seconds` 只描述策略，不承诺故障磁盘、异步复制或底层设备的端到端持久性。缓存的实际淘汰和持久化配置随检查结果返回，不强制所有缓存都采用同一淘汰算法。
 
 预检需要 INFO 与 CONFIG GET 的只读诊断权限，不能读取到策略时明确失败。检查不会修改服务器，不替代运行期监控；Worker、Scheduler 不会在每条任务处理中访问缓存服务。生产业务连接仍使用独立命名用途池，预检连接始终关闭。
+
+## 从回显探测到业务命令
+
+示例输出 `type-redis-readme` 后，可按业务用途选池：普通命令使用 command，Lua 使用 script，阻塞等待使用 blocking，批次和事务分别使用 pipeline、transaction。用途隔离避免长等待或协议状态占用普通业务连接，但仍需为同一 Redis 部署配置总预算。
+
+```mermaid
+sequenceDiagram
+    participant App as 业务作用域
+    participant Pool as 命名连接与用途池
+    participant Redis as Redis 服务
+    App->>Pool: 借用对应用途的租约
+    Pool->>Redis: 连接并校验配置
+    App->>Redis: 通过租约执行命令
+    Redis-->>App: 结果或明确失败
+    App->>Pool: finally 关闭作用域
+    Pool->>Redis: 清理状态，重置或关闭
+```
+
+[Redis 教程](https://iots.top/#/guide/plugins/type-redis)包含字符串、pipeline、Lua、事务冲突与清理示例。pipeline 仅减少往返，不提供事务原子性；WATCH 冲突需由业务决定是否重新读取，组件不会自动重试可能已生效的写入。
 
 ## 接口与源码组织
 

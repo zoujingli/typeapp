@@ -8,18 +8,15 @@
 
 需要 PHP `>=8.4 <8.6`、`ext-pdo_sqlite`、`type-orm` 和 `type-runtime`。无需数据库服务器；文件库需要已有的本地目录。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
-composer config repositories.type-orm-sqlite vcs https://github.com/zoujingli/type-orm-sqlite.git
 composer require zoujingli/type-orm-sqlite:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -92,6 +89,41 @@ echo json_encode($rows, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
 ```
 
 结果包含 id=7、age=21。这里的 DDL 只在该内存会话创建示例表；持久文件应通过版本化 Migrator 管理结构，避免每次请求执行建表。SQLite 当前在租约归还时关闭物理连接，以隔离 PRAGMA、附加库和临时对象；执行 `raw()` 不会立即关闭当前租约。
+
+### 验证回滚，而不只验证成功
+
+接在上述 CRUD 片段之后，主动制造一次业务异常：
+
+```php
+try {
+    $connection->transaction(static function (\Type\Orm\Connection $transaction): void {
+        $transaction->table('users')->where('id', '=', 7)->update(['age' => 99]);
+        throw new \LogicException('docs_rollback');
+    });
+} catch (\LogicException $error) {
+    if ($error->getMessage() !== 'docs_rollback') {
+        throw $error;
+    }
+}
+$user = $connection->table('users')->where('id', '=', 7)->first();
+echo json_encode(['age' => $user['age']], JSON_THROW_ON_ERROR) . "\n";
+```
+
+正常输出仍为 `{"age":21}`。原事务已经回滚，不能把 99 当作成功写入。本练习使用表查询；业务 Model 在回滚后还会失效，需要重新查询后继续操作。
+
+```mermaid
+flowchart TB
+    Path[明确的数据位置] --> Choice{存储方式}
+    Choice -->|单次练习| Memory[内存库仅本物理连接可见]
+    Choice -->|跨请求持久化| File[本地文件库及 WAL / SHM]
+    Memory --> Scope[作用域内查询与事务]
+    File --> Scope
+    Scope --> Close[关闭租约与物理会话]
+    Close -->|内存库| Gone[内存库销毁]
+    Close -->|文件库| Keep[文件数据保留]
+```
+
+关闭连接只是资源收尾，不会删除持久文件。完成文件库练习后，先确认所有使用该专属数据库的进程均已退出，再处理其数据库、WAL/SHM 与迁移锁；不要把清理开发样例目录用于生产数据目录。
 
 ## 并发、锁与事务
 

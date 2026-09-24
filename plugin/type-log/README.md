@@ -4,13 +4,11 @@
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-log vcs https://github.com/zoujingli/type-log.git
 composer require zoujingli/type-log:dev-main
 ```
 
@@ -115,6 +113,19 @@ $logger = $logs->logger($scope);
 
 命令、文件、多通道、上下文隔离、任意值、脱敏、真实管道满载与恢复、断开输出、Linux 满设备以及 24 个并发 HTTP 请求均有专门验收入口。历史 PHP 与原生证据分别记录，不由文档更新宣称新的构建已通过。仓库接入与执行命令见[开发说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/logging.md)。
 
+## 输出路径与教程
+
+```mermaid
+flowchart LR
+  Scope[执行 Scope] --> Logger[Logger 绑定]
+  Logger --> Filter[通道级别过滤]
+  Filter --> Format[复制 / 脱敏 / JSON]
+  Format --> Output[有界 Output]
+  Output --> Sink[stdout / 本地文件]
+```
+
+[日志教程](https://iots.top/#/guide/plugins/type-log)包含完整声明式入口、执行关联时序、脱敏与过滤练习、排空统计和清理步骤。成功调用日志方法不等于日志已经持久化；输出计数和应用成功状态应分别观察。
+
 ## 接口与源码组织
 
 `LogManager/Logger/LogContext` 管理生命周期、PSR 接口与作用域关联；`Channel/Level` 描述通道与级别；`Formatter` 负责有界规范化和脱敏；`Output` 持有输出缓冲与实际资源。用户通过构造声明这些差异，不增加全局 logger 或自动上下文。
@@ -123,7 +134,7 @@ $logger = $logs->logger($scope);
 
 ## AOT 与运行要求
 
-生产依赖为 `type-runtime`、`psr/log ~3.0.2` 与 JSON，不要求 core 或数据库。PSR 源码按精确适配版本一起编译，运行保留匹配 PHPX/libphp；HTTP 示例额外依赖对应的 Swoole 原生环境。日志文件和秘密不能作为无源码镜像的默认构建输入。
+生产依赖为 `type-runtime`、`psr/log ~3.0.2` 与 JSON，不要求 core 或数据库。PSR 源码按精确适配版本一起编译，Swoole 要求由 runtime 传递；原生运行库按实际产物清单交付，HTTP 示例另需对应通信入口的原生能力。日志文件和秘密不能作为无源码镜像的默认构建输入。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

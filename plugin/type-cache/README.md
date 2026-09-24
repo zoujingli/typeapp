@@ -4,14 +4,11 @@
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-redis vcs https://github.com/zoujingli/type-redis.git
-composer config repositories.type-cache vcs https://github.com/zoujingli/type-cache.git
 composer require zoujingli/type-cache:dev-main
 ```
 
@@ -86,6 +83,36 @@ DTO、类型、TTL、代次竞争、旧写入拒绝、回源与回收均有真�
 永久 TTL 使用同一代次索引回收：clear 立即使旧代不可见，collect 分批删除旧数据，索引不能被驱逐或手工删除。生产应使用不驱逐元数据的缓存实例并调度 collect，缓存数据不提供可靠消息存储保证。
 
 PSR 真实 Redis 测试包含精确类型、对象钩子、循环引用、TTL、非法键、篡改不执行对象代码和永久旧数据回收；独立 Composer 消费入口为 `tests/cache-consumer.php`，原生模式加 `--native`。
+
+## 验证命中与失效
+
+在最小示例中创建 `$cache` 后，加入以下片段，观察命中的 null 与未命中的区别：
+
+```php
+$cache->put('nullable', null);
+$before = $cache->get('nullable');
+$cache->clear();
+$after = $cache->get('nullable');
+echo json_encode(['before_hit' => $before->hit(), 'before_value' => $before->value(),
+    'after_hit' => $after->hit()], JSON_THROW_ON_ERROR) . "\n";
+$cache->collect(100);
+```
+
+结果应为 `{"before_hit":true,"before_value":null,"after_hit":false}`。`clear()` 只切换本示例命名空间的代次；`collect(100)` 有界回收旧键，不能替代持续的回收调度。
+
+```mermaid
+flowchart TD
+    Read[读取缓存] --> Hit{命中且格式有效}
+    Hit -->|是| Return[返回缓存值，包括 null]
+    Hit -->|否| Source[读取真实数据源]
+    Source --> Generation{读取期间代次未变化}
+    Generation -->|是| Put[按有限 TTL 回填]
+    Generation -->|否| Skip[放弃旧代回填]
+    Put --> Result[返回数据源结果]
+    Skip --> Result
+```
+
+强一致读取、回源失败及清理教程见[缓存组件指南](https://iots.top/#/guide/plugins/type-cache)。数据库提交和 Redis 失效是两个步骤，需要可恢复失效时应记录持久意图；缓存代次不构成跨系统事务。
 
 ## 接口与源码组织
 

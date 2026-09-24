@@ -6,14 +6,11 @@ PostgreSQL 驱动复用 type-orm 的 Connection、事务和作用域池，独立
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
-composer config repositories.type-orm-pgsql vcs https://github.com/zoujingli/type-orm-pgsql.git
 composer require zoujingli/type-orm-pgsql:dev-main
 ```
 
@@ -71,6 +68,27 @@ function main(): void
     }
 }
 ```
+
+## 检查会话并接入模型
+
+参数查询应输出含 `value=7` 的 JSON；该预处理表达式的 PDO 返回值可以是字符串 `"7"`。在示例取得 `$connection` 后，继续检查实际 schema、身份及时区：
+
+```php
+$baseline = $connection->query("SELECT current_schema() AS schema, current_user AS role, current_setting('TimeZone') AS timezone");
+echo json_encode($baseline, JSON_THROW_ON_ERROR) . "\n";
+```
+
+默认时区为 UTC，schema 和角色应对应配置及实际授权；不要把 `public` 当作所有部署的必然结果。随后运行当前 schema 的迁移，再接入模型和事务。一般业务 `Db::transaction()` 接收零参数闭包；底层 `Connection::transaction()` 则向闭包传入同一连接。
+
+```mermaid
+flowchart LR
+    Work[作用域完成] --> Clean[关闭流并结束事务]
+    Clean --> Reset[DISCARD ALL 并恢复配置]
+    Reset -->|成功| Idle[会话可复用]
+    Reset -->|失败| Retire[关闭并退役]
+```
+
+超时、schema、TLS、会话重置与错误排查见[PostgreSQL 教程](https://iots.top/#/guide/plugins/type-orm-pgsql)。重置失败不会将污染会话交给下一个请求。
 
 ## 接口与源码组织
 

@@ -55,4 +55,4 @@ Composer生产依赖的`ext-*`要求自动参与探测。构建器读取构建 P
 
 `tests/runtime-profile.php`在Linux和macOS使用真实SDK验证：内置能力不重复加载、非当前平台/不需要的候选不读取、探针字节重复生成稳定、模块摘要、缺失函数、启动警告以及同平台非扩展库拒绝。Linux另验证共享PCNTL的版本与函数表；macOS保留其实际内置PCNTL路径。
 
-Windows探针编译/模块加载仍待可用原生runner验证。原有隔离构建、所有平台最终同一源码快照CI和完整发布门禁仍须分别完成。
+Windows 已在源码 `5abdb5e53ea9ca67054f69d17113b91eb3402d69` 的[三库独立消费者验收](https://github.com/zoujingli/typeapp/actions/runs/35567372098)中完成 SDK 准备、真实 embed 运行配置与模块加载，并运行对应原生产物。该历史结果保留原工具链身份，不表示本节全部负向用例或新版 Windows HTTP、完整应用发布已经通过。当前锁定工具链的跨平台复验、隔离构建及完整发布门禁仍须分别完成，范围见[平台与工具链](platform-support.md)。

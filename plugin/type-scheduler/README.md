@@ -6,14 +6,11 @@
 
 ## 安装与版本
 
-本组件通过公开 Git 分发子仓安装，不假设已发布到 Packagist。先在应用的 Composer 根配置登记下列组件及传递依赖仓库；HTTPS 读取不需要 SSH 密钥，依赖包自己的 repositories 不会自动传递给消费应用。
+本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-redis vcs https://github.com/zoujingli/type-redis.git
-composer config repositories.type-scheduler vcs https://github.com/zoujingli/type-scheduler.git
 composer require zoujingli/type-scheduler:dev-main
 ```
 
@@ -47,25 +44,29 @@ final class DailyReport implements Task
 }
 
 /**
- * 执行单次有限调度，文件目录的创建与权限属于部署方责任。
+ * 在启动期启用 I/O hook，再于同一协程装配并执行一次有限调度。
+ * 文件目录的创建与权限属于部署方责任。
  *
  * @param list<string> $argv 第二项为安全本地状态文件路径。
  */
 function main(int $argc, array $argv): void
 {
-    $path = $argv[1] ?? '';
-    if ($path === '') {
-        throw new InvalidArgumentException('请传入已准备目录中的调度状态文件绝对路径');
-    }
-    $scheduler = new Scheduler(new SystemClock(), new FileStateStore($path), [
-        new Definition('reports.daily', new CronSchedule('0 9 * * *', 'Asia/Shanghai'),
-            static fn (TaskContext $context): Task => new DailyReport()),
-    ]);
-    try {
-        echo json_encode($scheduler->tick(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
-    } finally {
-        $scheduler->stop();
-    }
+    \Type\Runtime\CoroutineRuntime::enableIo();
+    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
+        $path = $argv[1] ?? '';
+        if ($path === '') {
+            throw new InvalidArgumentException('请传入已准备目录中的调度状态文件绝对路径');
+        }
+        $scheduler = new Scheduler(new SystemClock(), new FileStateStore($path), [
+            new Definition('reports.daily', new CronSchedule('0 9 * * *', 'Asia/Shanghai'),
+                static fn (TaskContext $context): Task => new DailyReport()),
+        ]);
+        try {
+            echo json_encode($scheduler->tick(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
+        } finally {
+            $scheduler->stop();
+        }
+    });
 }
 ```
 
@@ -125,6 +126,19 @@ Scheduler 构造参数 `tickLimit` 默认 100，范围 1 至 1000，限制同一
 
 `statistics()` 暴露就绪/排空/停止、在途、总触发限制、triggered、failed、interrupted、lease_conflicts、storage_failures、limit_reached 和停止拒绝计数。指标键固定，不用任务身份或 occurrence ID 生成无限标签。慢任务的非受管效果仍需监督进程硬时限与业务幂等，不能仅凭取消就绪声称底层操作已经结束。
 
+## 执行路径与教程
+
+```mermaid
+flowchart LR
+  Plan[Cron / 固定间隔] --> Cursor[持久游标与有限补跑]
+  Cursor --> Running[先保存 running]
+  Running --> Task[独立 Scope 执行 Task]
+  Task --> Record[收尾并保存结果]
+  Record --> Unlock[释放组执行权]
+```
+
+[调度教程](https://iots.top/#/guide/plugins/type-scheduler)从单机状态文件开始，解释固定时刻练习、执行历史、Redis 多实例及队列组合。生产游标是业务执行事实，不作为可随意清空的缓存；interrupted 需要核对业务效果。
+
 ## 接口与源码组织
 
 `Schedule/CronSchedule/IntervalSchedule/Definition/SystemClock` 负责时间声明与时钟；`Scheduler/Task/TaskContext/SchedulerConsole` 负责执行入口；`StateStore/FileStateStore/RedisStateStore/StateCodec` 负责持久状态；`ExecutionLease/RedisLease/ScopedLease/LeasedStateStore` 负责当前持有者权限。角色在同一语境内，保持现有公共 FQCN，不为每个类建立一层目录。
@@ -133,7 +147,7 @@ Scheduler 构造参数 `tickLimit` 默认 100，范围 1 至 1000，限制同一
 
 ## AOT 与运行要求
 
-Composer 包含 runtime、Redis、`dragonmantank/cron-expression ~3.6.0` 与 PSR-20；本地文件调度不连 Redis，但当前 Composer 安装仍检查 Redis 扩展依赖。Cron/PSR 源码按精确 imports 一起 AOT，运行携带时区数据与匹配 PHPX/libphp；多实例另需实际 phpredis，信号控制角色需可用 pcntl。
+Composer 包含 runtime、Redis、`dragonmantank/cron-expression ~3.6.0` 与 PSR-20；本地文件调度不连 Redis，但当前 Composer 安装仍检查 Redis 扩展依赖。Cron/PSR 源码按精确 imports 一起 AOT，运行携带时区数据，所需原生库按实际产物清单交付。多实例调度连接真实 Redis 服务；停止信号按 runtime 的平台能力装配，宿主可显式调用 stop。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

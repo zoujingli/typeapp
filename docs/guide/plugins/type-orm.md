@@ -8,6 +8,20 @@
 
 业务 CRUD 使用[Model 与关系](#models-relations-output)，查询和保存无需传入 `Connection`。框架从当前 Swoole 作用域选择端点并管理租约；静态 `search()`、自动租户隔离、默认读从写主及 `master()` 的配置和完整示例见[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)。下面的显式连接和表查询用于基础设施与受控聚合。物理 PDO 复用和完整原生平台验收仍以实际验证结果为准。
 
+第一次接入时，先选择一个驱动并运行它的参数查询示例，再按[数据库与模型](../database.md)完成表迁移、Model 声明和当前作用域装配。本页进一步解释查询、事务及失败恢复，避免把“能连接”当成业务数据闭环。
+
+```mermaid
+flowchart TB
+    Business[业务服务] --> Model[Model / ModelQuery]
+    Model --> Scope[当前执行作用域与 Db 数据源]
+    Scope --> Lease[连接租约与事务]
+    Lease --> Driver[所选 PDO 驱动]
+    Driver --> Storage[(MySQL / PostgreSQL / SQLite)]
+    Migration[迁移与 Outbox 基础设施] --> Lease
+    Compiler[TypePHP 编译框架、模型和生成入口] -.构建期.-> Business
+    Native[Swoole 内置运行库] -.协程上下文及适用 I/O hook.-> Scope
+```
+
 ## 安装与依赖
 
 需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7`、PDO 与 `type-runtime`；实际访问数据另装 MySQL、PostgreSQL 或 SQLite 驱动。Swoole 提供协程执行与等待，`type-runtime` 在原生上下文、Channel 和 Timer 上管理作用域、取消和截止，ORM 管理连接租约与会话恢复。PDO 及所选 PDO 驱动负责数据库协议和 SQL 语义。
@@ -16,17 +30,15 @@
 
 协程数据库等待需要对应的官方构建能力：MySQL 使用 mysqlnd 与网络 hook，PostgreSQL、SQLite 分别需要 Swoole 的 `--enable-swoole-pgsql`、`--enable-swoole-sqlite`。应用启动时调用 `CoroutineRuntime::enableIo()`，为已加载的 PDO 扩展启用可用 hook；生成的命令入口与 HTTP 宿主已接入。自定义入口在启动业务线程及协程前配置，`CoroutineRuntime::run()` 保留既定 hook，不在任务中改写进程配置。当前缺失的 PDO hook 会被跳过，所选驱动的启动拒绝尚需补齐；扩展版本满足要求或启动成功都不能证明 PDO 等待已经协程化，见[协程并发的成立条件](../database.md#协程并发的成立条件)。
 
-源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
+在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
 composer config minimum-stability dev
 composer config prefer-stable true
-composer config repositories.type-runtime vcs https://github.com/zoujingli/type-runtime.git
-composer config repositories.type-orm vcs https://github.com/zoujingli/type-orm.git
 composer require zoujingli/type-orm:dev-main
 ```
 
-依赖包的 repositories 不会传递给根应用，因此上述命令包含组件的全部传递依赖，使用公开 HTTPS 地址，无需 SSH 密钥。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
 
 <a id="models-relations-output"></a>
 
@@ -233,6 +245,19 @@ $nextPage = $next === null ? null
 
 `chunk($size, $consumer)` 分批交付行数组；`RowStream::each()` 每次交付一行，返回 false 可提前结束。流式读取必须在连接和 Scope 存活期间完成并关闭流，避免将全部结果重新累积到内存。
 
+模型分页、预加载和分批遍历中的 `maxRows` 是一次读取的内存预算，统计父模型、子模型和中间表行。超过预算会报 `read_budget_exceeded`，不会把不完整关系作为成功返回。它不限制 `ModelQuery::update/delete/increment/decrement` 的影响行数，也不会把集合写入偷偷拆成多批。
+
+以下片段接续已有的底层 `$connection`，逐行输出已准备好的示例表，并在成功、异常或提前结束时关闭流：
+
+```php
+$stream = $connection->table('users')->select(['id', 'name'])->orderBy('id')->stream(100);
+$exported = $stream->each(static function (array $row): void {
+    echo json_encode($row, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
+});
+```
+
+结果是每行一份 JSON，`$exported` 是已交付行数。这个入口需要事务外连接；不要在回调里对同一租约执行查询或写入。流不会替应用写文件、创建后台任务或缓存全部结果。
+
 ## 事务与提交结果
 
 业务使用 `Db::transaction(static function (): mixed { ... })`，无需接收连接；事务内的模型读写自动固定到当前数据源主库，嵌套事务通过 savepoint，跨数据源访问明确拒绝。底层 `$connection->transaction()` 仍把实际连接传给基础设施回调。异常触发回滚，参与该层的模型失效，后续需要重新查询。
@@ -242,6 +267,30 @@ $nextPage = $next === null ? null
 提交未知后结束原作用域，在新的作用域通过主库和稳定操作 ID 对账，不继续使用原连接或参与模型。`ReadWriteSession::reconcile()` 是显式会话入口，不是 `Db` 的方法。提交后回调开启新事务时，外层异常保留原事务已提交的事实，连接保留新事务的最新结果，包括 `UNKNOWN`；换连接对账不会清除未知事实，见[事务说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/transactions.md)。
 
 模型声明 `version` 后使用主键与旧版本匹配，冲突为 `optimistic_conflict`；底层 Query 批量写入不会自动加入模型版本或触发逐模型事件。`#[Transactional]` 只在显式生成的组合入口中生效。
+
+```mermaid
+sequenceDiagram
+    participant Service as 业务服务
+    participant Tx as Db / Connection
+    participant DB as 数据库
+    participant Effect as 提交后操作
+    Service->>Tx: transaction(业务闭包)
+    Tx->>DB: BEGIN 或 SAVEPOINT
+    Service->>DB: 通过同一作用域执行模型读写
+    alt 业务异常
+        Tx->>DB: ROLLBACK 或回滚保存点
+        Tx-->>Service: 原错误，参与模型失效
+    else 最外层提交已确认
+        Tx->>DB: COMMIT
+        DB-->>Tx: 确认
+        Tx->>Effect: afterCommit 回调
+        Effect-->>Service: 成功或 AfterCommitException
+    else 提交无法确认
+        Tx-->>Service: UNKNOWN，结束原作用域并按操作 ID 对账
+    end
+```
+
+提交后操作适合缓存失效等可补偿动作。需要保证投递意图与业务数据一起落库时，使用下面的 Outbox；单独的回调不是持久消息记录。
 
 ## 迁移与 Outbox
 

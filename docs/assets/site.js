@@ -3,6 +3,7 @@
 
   const siteTitle = 'TypeApp - PHP 原生应用框架 - 物联开源分享';
 
+  /** 挂载首页演示并返回释放函数；动画只演示编译步骤，不执行示例或构建命令。 */
   function mountCodePreview() {
     const preview = document.querySelector('.code-preview');
     if (!preview) return function () {};
@@ -123,7 +124,7 @@
       depth: 3,
       maxAge: 3600000,
       // 集中更新文档时递增版本，避免读者继续使用旧章节索引。
-      namespace: 'typeapp-guide-v31-' + window.location.pathname,
+      namespace: 'typeapp-guide-v32-' + window.location.pathname,
     },
     plugins: [function (hook) {
       let disposePreview = function () {};
@@ -134,6 +135,7 @@
         return value || fallback;
       }
 
+      /** 复用本地 Mermaid，以严格模式渲染；主题从站点 CSS 变量读取一次。 */
       function ensureMermaid() {
         if (!window.mermaid) return false;
         if (mermaidReady) return true;
@@ -198,6 +200,7 @@
         return true;
       }
 
+      /** 兼容 Docsify 与 Prism 的语言标记，同一代码块只收集一次。 */
       function mermaidBlocks() {
         const found = [];
         document.querySelectorAll('.markdown-section pre[data-lang="mermaid"]').forEach(function (pre) {
@@ -210,6 +213,7 @@
         return found;
       }
 
+      /** 内联站点自有 SVG 以应用样式；加载失败保留原图片作为后备展示。 */
       function mountOrbitDiagrams() {
         const hosts = document.querySelectorAll('.orbit-diagram[data-src]');
         return Promise.all(Array.from(hosts).map(function (host) {
@@ -232,6 +236,7 @@
         }));
       }
 
+      /** 用可聚焦滚动容器替换图示代码；失败时保留可检查的图示内容。 */
       function renderDiagrams() {
         if (!ensureMermaid()) return Promise.resolve();
         const blocks = mermaidBlocks();
@@ -267,6 +272,7 @@
         });
       }
 
+      /** 复制代码的纯文本；剪贴板不可用时选中文本供用户手动复制。 */
       function addCopyButtons() {
         document.querySelectorAll('.markdown-section pre > code').forEach(function (code) {
           const pre = code.parentElement;
@@ -296,6 +302,7 @@
         });
       }
 
+      // Docsify 换页复用页面外壳，先释放上一页计时器与监听再挂载新正文。
       hook.beforeEach(function (markdown) {
         disposePreview();
         return markdown;
