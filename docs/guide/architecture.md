@@ -1,6 +1,6 @@
 # 系统架构
 
-TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力的 PHP 应用框架。Swoole 是整个系统通信与基础并发的必需底层。
+TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力的 PHP 应用框架。已集成的 Swoole 能力统一承担网络与并发；构建期完成静态装配，运行期专注业务执行，部署使用携带实际原生依赖的产物。
 
 **TypePHP 编译 · Swoole 运行 · Plugins 扩展。** 业务应用用 `type-project` 创建，再按需安装组件。物联中心是基于框架构建的成品案例，见[物联网中心](iot-center.md)。
 
@@ -16,6 +16,8 @@ TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力
 Plugins 是这些框架组件的统称。组件按 Composer 包选择和锁定，不是 TypePHP 编译器插件、Composer 安装器插件或运行时热插拔二进制模块。新增生产组件后需要重新构建应用。
 
 TypeApp 的职责是把这些能力组织成可开发、可编译、可部署的应用。TypePHP 负责编译 PHP 调用代码，Swoole 负责执行其原生能力；构建过程与运行时关系分别描述。
+
+应用开发者选择组件和业务入口，构建维护者准备一次匹配的工具链并产出运行包，部署者维护配置、数据与外部服务。各阶段要求见[环境与依赖](environment.md)，运行效率与调优见[性能与调优](performance.md)。
 
 ## 精简装配与标准共用
 
@@ -132,7 +134,7 @@ sequenceDiagram
 
 开发时可以通过 PHP 开发入口加载 Composer 和 PHP 源码，便于快速反馈；生产必须执行 TypePHP 全量编译。交付目标是**一个程序文件加外置配置**：PHPX、libphp、Swoole 及其他非系统原生库在构建期静态链接，启动不释放运行库；允许依赖目标操作系统自带库。运行时按需创建数据与日志，用户无需分别安装 PHP、Swoole 或编译工具链。`.env` 是启动数据，不能进入源码清单、构建身份或公开文档站。
 
-一个程序文件可包含多个角色入口，不等于所有角色只能运行在一个进程或线程。不同平台分别构建对应程序；当前 `type package` 仍生成目录包，单文件封装与启动尚未完成，现有命令及目标边界见[构建与部署](deployment.md)。
+一个程序文件可包含多个角色入口，不等于所有角色只能运行在一个进程或线程。不同平台分别构建对应程序；当前 `type package` 仍生成目录包，完整静态单程序尚未完成。现阶段运行库随完整包交付，部署者无需安装 Composer、TypePHP 或编译 SDK；数据库、Redis、证书和持久数据按业务需要管理，见[构建与部署](deployment.md)。
 
 项目源码按 Apache-2.0 提供，Swoole、TypePHP、Vben Admin Pro、Docsify、PrismJS 和数据库/系统库保留各自许可证。许可证边界见[许可证与归属](licensing.md)，站点根目录同时提供 <a href="LICENSE">LICENSE</a> 和 <a href="NOTICE">NOTICE</a>。
 

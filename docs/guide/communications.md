@@ -36,7 +36,7 @@ flowchart TB
 
 每篇均包含协议模型、组件入口、配置、完整示例、双端操作、预期结果、应用设计、关闭与排障。示例使用独立练习应用的 `app/main.php`，不要覆盖现有业务入口。先按[组件安装](components.md#安装组件)配置真实依赖源并固定 `composer.lock`；HTTP、TCP、UDP、WebSocket 安装 `type-core` 与 `type-runtime`，MQTT 按其教程准备依赖。
 
-开发环境需要匹配的 PHP CLI 和 Swoole；当前组件基线是 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7`。用 `php --ri swoole` 检查当前 CLI，不能以 Web 服务加载了扩展推断 CLI 可用。使用当前官方能力并在升级时固定版本、重新验证，不把浮动的“最新版”作为可复现构建依据。
+通信能力已统一接入 Swoole，应用按协议选择组件即可。以下源码练习需要 PHP CLI `>=8.4 <8.6`、Swoole `>=6.2 <7`，用 `php --ri swoole` 检查当前 CLI。原生构建默认复用 `type-build` 内置的匹配模块，生产部署使用完整运行包；安装组件不会自动修改开发 CLI 的 ini，具体分工见[环境与依赖](environment.md)。版本和构建选项固定后再验证对应协议。
 
 示例推荐 PHP 8.5 CLI；TCP 半关闭对 PHP 8.5 常量的要求见 [TCP 实例](communications/tcp.md#完整实例：有界回显)。示例文件只声明函数和类。开发时使用[开发启动器](components.md#运行声明式示例)，安装锁定的 TypePHP 开发工具、加载官方兼容文件并调用 `main()` 或 `main($argc, $argv)`；生产时业务、Plugins、实际依赖和生成代码共同交给 TypePHP 编译。各篇终端命令均从练习应用根目录运行。
 

@@ -1,5 +1,13 @@
 # type-build
 
+TypeApp 的开发与构建组件：生成配置、路由和模型，审计完整生产源码，调用 TypePHP 全量编译，并收集原生依赖形成可校验的运行包。构建工具留在开发环境，部署端无需 Composer、TypePHP 或编译 SDK。
+
+**已内置四平台 Swoole 模块。** 安装包含 `resources/swoole/` 的组件版本后，匹配构建默认校验并复用，无需另行下载、编译 Swoole。应用无需声明整目录资源，只收集当前平台选中的模块与实际依赖；ABI、许可证及覆盖方式见[资源说明](resources/swoole/README.md)。
+
+最终交付目标为一个主程序文件加外置配置，非系统原生库完整静态链接、启动不释放运行库。当前 `package` 仍生成目录包，`archive` 生成归档，部署须保留完整包。使用入口见[构建指南](https://iots.top/#/guide/plugins/type-build)，开发、构建和部署的分工见[环境与依赖](https://iots.top/#/guide/environment)。
+
+## 实现与验收范围
+
 已完成 Linux x64 基础命令、Linux ARM64 / macOS ARM64 / Windows x64 三库独立 ORM 消费者的 AOT 构建与实际运行；macOS ARM64 另有完整应用 AOT 与三库身份 HTTP 结果。各场景的源码、SDK 与产物身份独立记录，完整应用发布和单程序封装仍有待验收项，见[平台与验收](https://iots.top/#/guide/platforms)。
 
 构建声明可通过 `threads` 登记已编译业务入口。构建器核对受控 Swoole/PHPX ABI 2、源码摘要与 fiber 通知配置，并在正常模块启动阶段发布应用符号；线程内协程作用域、初始化失败和清理边界见[已编译业务线程](https://github.com/zoujingli/typeapp/blob/main/docs/development/compiled-business-threads.md)，实际平台结果按该页记录。

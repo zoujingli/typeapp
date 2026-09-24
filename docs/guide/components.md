@@ -62,6 +62,8 @@ composer require zoujingli/type-orm-sqlite:dev-main
 
 具体公开依赖、扩展和版本要求以所用包的 `composer.json` 为准。
 
+各组件页的“安装与依赖”用于源码开发和构建准备。生产组件随业务一起编译，`type-build` 默认复用匹配的内置 Swoole 并收集实际原生依赖；部署完整运行包时无需再逐个安装 Composer 组件或开发 SDK。外部数据库、Redis 等业务服务按所选能力提供，统一见[环境与依赖](environment.md)。
+
 HTTP、TCP、UDP、MQTT、WebSocket 的独立教程见[基础通信](communications.md)，每篇包含配置、双端实例、应用设计与验证。
 
 ## 选择与组合

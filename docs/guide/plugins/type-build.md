@@ -4,6 +4,8 @@
 
 在开发和构建环境中生成配置、路由、模型、任务与操作包装，审计全部生产源码，调用锁定的 TypePHP 编译，并形成可校验的原生产物与运行包。
 
+组件已内置四平台 Swoole 模块，匹配构建无需另行下载、编译 Swoole，并自动收集选中模块与实际运行依赖。部署者使用完整运行包，无需安装本构建工具；按阶段的要求见[环境与依赖](../environment.md)。最终目标是一个主程序加外置配置、启动不释放运行库，当前仍提供目录包。
+
 ## 安装与依赖
 
 使用 `require-dev` 安装。PHP 范围为 `>=8.4 <8.6`；原生构建还需要项目锁定的 ZTS PHP、PHPX 与 TypePHP SDK。以应用 lock 和工具链声明为准，不能仅凭 PHP CLI 可以运行就认定 embed 环境完整。
@@ -76,7 +78,9 @@ vendor/bin/type --inspect build/type-example
 
 ## 内置 Swoole 与运行依赖
 
-`type-build` 随 Composer 包携带 Swoole 6.2.1 的四平台共享模块、清单和原始许可证。主仓位置是 `plugin/type-build/resources/swoole/`，独立应用通常安装在 `vendor/zoujingli/type-build/resources/swoole/`；构建组件按自身安装位置查找，不依赖应用根目录或当前工作目录。应用无需复制主仓目录，也无需增加 `resources` 声明；根目录 `build/` 继续只保存不入仓的生成产物。
+`type-build` 的 Composer 分发内容包含 Swoole 6.2.1 四平台共享模块、清单和原始许可证。主仓位置是 `plugin/type-build/resources/swoole/`，独立应用通常安装在 `vendor/zoujingli/type-build/resources/swoole/`；构建组件按自身安装位置查找，不依赖应用根目录或当前工作目录。应用无需复制主仓目录，也无需增加 `resources` 声明；根目录 `build/` 继续只保存不入仓的生成产物。
+
+独立应用以实际安装提交为准：安装包含上述资源的组件版本，并提交应用的 `composer.lock`。主仓已有实现与远端子仓已分发分别核对，旧分发版本缺少清单时不能直接使用该默认能力。
 
 预编译模块固定使用 **PHP 8.5.10、ZTS、非 debug、64 位 ABI**。当前主仓工具链为 TypePHP 0.9.3、PHPX 2.9.2，准确版本以应用的工具链锁和 Composer 锁文件为准。
 

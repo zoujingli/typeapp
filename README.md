@@ -1,10 +1,17 @@
 # TypeApp
 
-TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力的 PHP 应用框架。通信与基础并发必须使用 Swoole 官方能力。
+TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力的 PHP 应用框架。框架已集成 Swoole 网络、线程、协程与 I/O 能力，面向低开销、高并发和简便部署。
 
 **TypePHP 编译 · Swoole 运行 · Plugins 扩展。** Plugins 是 Composer 管理的 `type-xxxx` 框架组件的统称。其他业务系统用 `type-project` 创建独立应用，再按需安装组件；主仓附带的物联中心是成品案例。
 
-业务、生产组件、生成代码与其他生产 PHP 依赖在构建期交给 [TypePHP](https://github.com/swoole/typephp) 全量编译。Swoole 原生扩展作为运行依赖提供线程、协程、网络与 I/O 能力，不作为 PHP 组件交给 TypePHP 编译。生产运行走已编译入口，仍依赖匹配的 PHPX、libphp 与实际使用的原生扩展。详细关系和编译边界见[系统架构](docs/guide/architecture.md)。
+| 面向应用的能力 | 使用方式 |
+| --- | --- |
+| 内置 Swoole 支持 | `type-build` 携带四平台预编译模块，匹配构建默认校验并复用，无需另行下载、编译 Swoole |
+| 提前完成静态工作 | 业务与生产依赖全量 AOT，路由、配置和模型在构建期生成，运行时执行已编译入口 |
+| 高并发运行基础 | 复用 Swoole 网络与协程，按角色采用线程或进程，并以资源预算控制排队与内存 |
+| 简化生产部署 | 构建收集实际原生依赖，部署完整运行包与配置，无需部署业务 PHP 源码、Composer 或编译 SDK |
+
+**最终交付目标：一个主程序文件 + 外置配置文件，启动不释放运行库。** 当前 `package` 仍生成包含程序与运行库的目录包，完整静态单程序尚未完成，现阶段须整体部署运行包。开发、构建、部署各需准备什么，见[环境与依赖](docs/guide/environment.md)；机制、调优和实测边界见[性能与调优](docs/guide/performance.md)。
 
 文档站：[iots.top](https://iots.top)。该地址提供项目说明与公开文档；业务 API、管理端和设备接入地址由部署环境决定。
 
@@ -37,7 +44,7 @@ TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力
 
 当前锁定工具链为 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2，以仓库中的 `toolchain.lock.json` 与 `composer.lock` 为准。
 
-`type-build` 已在 `plugin/type-build/resources/swoole/` 内置四平台 Swoole 6.2.1 共享模块，随 Composer 构建组件分发。匹配的构建默认校验并复用，无需另行下载 Swoole；独立应用直接使用组件安装目录中的资源。适用 ABI、选择顺序与依赖要求见[内置 Swoole](docs/guide/plugins/type-build.md#内置-swoole-与运行依赖)。这仍是共享扩展输入，完整静态单程序目标尚未完成。
+`type-build` 在 `plugin/type-build/resources/swoole/` 内置四平台 Swoole 6.2.1 共享模块，资源纳入 Composer 组件分发范围。独立应用安装包含这些资源的版本后，直接使用组件安装目录；适用 ABI、选择顺序与依赖要求见[内置 Swoole](docs/guide/plugins/type-build.md#内置-swoole-与运行依赖)。
 
 ```mermaid
 flowchart TB
@@ -48,7 +55,7 @@ flowchart TB
 
 ## 快速开始
 
-开发 CLI 需要 PHP `>=8.4 <8.6`、Composer，以及所选数据库的 PDO 扩展；启动 HTTP 服务还需要匹配的 Swoole 扩展与 Unix 信号能力，见[快速开始](docs/guide/quickstart.md#准备环境)。创建独立应用：
+以下命令用于源码开发：准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展；模板 HTTP 入口还需 Unix worker 与信号能力。完整环境分工见[环境与依赖](docs/guide/environment.md)，操作见[快速开始](docs/guide/quickstart.md)。创建独立应用：
 
 ```bash
 git clone https://github.com/zoujingli/type-project.git my-app
@@ -82,7 +89,8 @@ HTTP 路由来自控制器 `#[Route]` 或 `config/route.php`；`#[Transactional]
 
 | 读者 | 入口 |
 | --- | --- |
-| 框架开发 | [公开指南](https://iots.top) · [快速开始](docs/guide/quickstart.md) · [系统架构](docs/guide/architecture.md) · [运行时指南](docs/guide/runtime.md) |
+| 开始使用 | [公开指南](https://iots.top) · [环境与依赖](docs/guide/environment.md) · [快速开始](docs/guide/quickstart.md) |
+| 运行与交付 | [系统架构](docs/guide/architecture.md) · [性能与调优](docs/guide/performance.md) · [构建与部署](docs/guide/deployment.md) |
 | 成品案例 | [物联网中心](docs/guide/iot-center.md) |
 | 许可证 | [LICENSE](LICENSE) · [NOTICE](NOTICE) · [许可证说明](docs/guide/licensing.md) |
 | 协作约定 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) |

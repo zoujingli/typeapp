@@ -2,6 +2,8 @@
 
 用 `type-project` 创建 TypeApp 应用，再按需用 Composer 安装 Plugins（`type-xxxx` 组件）。TypePHP 负责编译生产 PHP 实现，Swoole 提供原生运行能力，详细关系见[系统架构](architecture.md)。组件源码位于 `plugin/type-*`；尚未发布稳定版本标签。物联中心是成品案例，安装与业务契约见[物联网中心](iot-center.md)。
 
+框架已集成 Swoole 网络与并发，构建组件内置四平台模块，匹配构建默认复用。本文带你从源码开始开发；如果只负责运行成品，请直接看[部署环境](environment.md#部署者需要管理什么)与[首次启动](deployment.md#首次启动)。
+
 ```mermaid
 flowchart TB
   Start["创建业务应用"] --> Create["type-project 创建新目录"]
@@ -14,11 +16,12 @@ flowchart TB
 
 **已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台通过的命令、ORM 和应用场景不同，选定环境前先核对[平台支持表](platforms.md#当前平台状态)。
 
-开发 CLI 使用 PHP `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选数据库的 PDO 扩展。SQLite 需要 `pdo_sqlite`；MySQL、PostgreSQL 分别需要 `pdo_mysql`、`pdo_pgsql`。HTTP 服务还需要目标平台支持的 Unix 信号能力，具体要求见[type-core](plugins/type-core.md#启动-http-服务)。
+以下是开发机要求，完整分工见[环境与依赖](environment.md)：PHP CLI `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选数据库的 PDO 扩展。SQLite 需要 `pdo_sqlite`，无需单独数据库服务；MySQL、PostgreSQL 分别需要 `pdo_mysql`、`pdo_pgsql` 及可连接的数据库服务。模板 HTTP 入口还需要 Unix worker 与信号能力，见[type-core](plugins/type-core.md#启动-http-服务)。
 
 ```bash
 php -v
 php -m
+php --ri swoole
 composer --version
 ```
 
@@ -75,10 +78,10 @@ composer package
 
 完整构建将应用、Plugins、生成代码和生产依赖交给 TypePHP；运行包不携带业务源码。修改路由、模型或生产代码后需要重新构建。
 
-当前 `composer package` 生成携带实际运行库的目录包。“一个程序加配置、非系统库静态链接、启动不释放运行库”仍是待完成目标，详见[交付约定](deployment.md#单程序交付约定)。
+构建负责收集选中的 Swoole 与实际运行库，部署无需携带源码、Composer 和编译 SDK。当前 `composer package` 生成目录包，需整体部署；最终交付目标是一个主程序文件加外置配置，非系统库静态链接、启动不释放运行库，详见[交付约定](deployment.md#单程序交付约定)。
 
 ## 成品案例
 
 本仓库还附带物联中心，用来展示如何把 TypeApp 装配成完整业务。它不是框架本身，也不应改写成另一套产品。运行步骤、双端账号、设备与 MQTT 契约见[物联网中心](iot-center.md)。
 
-下一步：[了解系统架构](architecture.md) · [查看组件](components.md) · [配置数据库](configuration.md)。
+下一步：[查看组件](components.md) · [配置数据库](configuration.md) · [性能与调优](performance.md)。

@@ -1,5 +1,6 @@
 - [文档](/)
 - [快速开始](/guide/quickstart.md)
+- [环境与依赖](/guide/environment.md)
 - [系统架构](/guide/architecture.md)
 - [组件参考](/guide/components.md)
 - [物联中心](/guide/iot-center.md)

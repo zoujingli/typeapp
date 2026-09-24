@@ -2,10 +2,10 @@
   <div class="hero-copy">
     <p class="eyebrow"><span></span> 标准极简框架 · 开发文档</p>
     <h1 id="hero-title" tabindex="-1">TypeApp<span>极简构建，<br>原生运行。</span></h1>
-    <p class="intro">以 TypePHP 全量编译、Swoole 驱动运行、<br>Plugins 组合能力的 PHP 应用框架。</p>
+    <p class="intro">全量编译 PHP，内置 Swoole 能力。<br>面向低开销、高并发与简便部署。</p>
     <div class="hero-actions">
       <a class="primary" href="#/guide/quickstart">开始使用 <span aria-hidden="true">↗</span></a>
-      <a class="secondary" href="#/guide/components">Plugins <span aria-hidden="true">→</span></a>
+      <a class="secondary" href="#/guide/environment">环境与依赖 <span aria-hidden="true">→</span></a>
     </div>
     <p class="hero-caption">TypePHP 编译 · Swoole 运行 · Plugins 扩展</p>
   </div>
@@ -27,19 +27,19 @@
   </div>
 </section>
 
-> **已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台已完成的原生编译与运行场景见[平台支持表](guide/platforms.md#当前平台状态)。完整应用、全部协议及单程序交付仍有待验收项。
+> **交付目标：一个主程序文件 + 外置配置文件，启动不释放运行库。** 当前提供携带原生依赖的目录包，完整静态单程序仍待完成；现阶段按[构建与部署](guide/deployment.md)整体交付运行包。
 
 <div class="feature-grid">
-  <div><span class="feature-number">01 / TYPEPHP</span><h2>全量编译</h2><p>生产 PHP 实现与生成代码，<br>在构建期编译为原生代码。</p></div>
-  <div><span class="feature-number">02 / SWOOLE</span><h2>通信与并发底层</h2><p>统一使用官方通信与并发能力，<br>减少开发和平台适配成本。</p></div>
-  <div><span class="feature-number">03 / PLUGINS</span><h2>Plugins</h2><p>框架组件由 Composer 管理，<br>按需安装 <code>type-xxxx</code>。</p></div>
+  <div><span class="feature-number">01 / TYPEPHP</span><h2>少做运行期工作</h2><p>全量 AOT 与构建期装配，<br>让请求专注业务处理。</p></div>
+  <div><span class="feature-number">02 / SWOOLE</span><h2>内置并发能力</h2><p>复用网络、线程与协程，<br>构建默认选择匹配模块。</p></div>
+  <div><span class="feature-number">03 / DEPLOY</span><h2>简化交付环境</h2><p>随包收集实际运行依赖，<br>部署关注配置与业务服务。</p></div>
 </div>
 
 ## 从这里开始
 
-TypeApp 是标准极简框架。先创建自己的应用并组合 Plugins；通信与基础并发必须使用 Swoole。生产交付目标为一个程序文件加外置配置，非系统运行库静态链接、启动不释放；当前仍提供目录包，进度见[构建与部署](guide/deployment.md)。物联中心是基于框架构建的成品案例。
+用 `type-project` 创建自己的应用，再按需用 Composer 安装 Plugins。TypeApp 已集成 Swoole 通信与并发能力，路由、模型和依赖装配在构建期完成；运行时执行 TypePHP 编译后的业务。物联中心展示一套完整业务的组合方式。
 
-`type-build` 已随组件携带四平台 Swoole 共享模块，匹配的构建可直接校验并复用，无需另行下载 Swoole。安装位置、PHP ABI 和覆盖顺序见[内置 Swoole 与运行依赖](guide/plugins/type-build.md#内置-swoole-与运行依赖)。
+`type-build` 已内置四平台 Swoole 共享模块，匹配构建无需另行下载、编译 Swoole。部署使用经过验证的完整运行包，无需在服务器安装 Composer、TypePHP 或编译 SDK。开发机、构建机和部署机的具体要求见[环境与依赖](guide/environment.md)；性能机制与实测依据见[性能与调优](guide/performance.md)。
 
 <div class="doc-paths">
   <a class="start-guide" href="#/guide/quickstart">
@@ -66,6 +66,8 @@ TypeApp 是标准极简框架。先创建自己的应用并组合 Plugins；通�
   <a class="guide-card" href="#/guide/documentation"><span class="guide-index">09 <span aria-hidden="true">↗</span></span><strong>文档站发布</strong><span>导出 Docsify 静态站点并发布到 iots.top，保持公开内容可追溯。</span><span class="guide-meta">DOCUMENTATION</span></a>
   <a class="guide-card" href="#/guide/licensing"><span class="guide-index">10 <span aria-hidden="true">↗</span></span><strong>许可证与归属</strong><span>查看 Apache-2.0 授权、作者与第三方依赖的原始许可证。</span><span class="guide-meta">LICENSING</span></a>
   <a class="guide-card" href="#/guide/platforms"><span class="guide-index">11 <span aria-hidden="true">↗</span></span><strong>平台与验收</strong><span>查看各平台已通过的场景、SDK 前提和完整交付条件。</span><span class="guide-meta">PLATFORMS</span></a>
+  <a class="guide-card" href="#/guide/environment"><span class="guide-index">12 <span aria-hidden="true">↗</span></span><strong>环境与依赖</strong><span>区分开发、构建和部署环境，了解内置 Swoole 与业务服务要求。</span><span class="guide-meta">ENVIRONMENT</span></a>
+  <a class="guide-card" href="#/guide/performance"><span class="guide-index">13 <span aria-hidden="true">↗</span></span><strong>性能与调优</strong><span>理解低开销与高并发机制，按真实负载调优并验证容量。</span><span class="guide-meta">PERFORMANCE</span></a>
 </div>
 
 ## 理解 TypeApp
@@ -89,4 +91,4 @@ flowchart TB
 
 安装文档使用公开仓库的 HTTPS 地址，无需 SSH 密钥即可获取源码。组件尚未发布稳定版本，开发分支不代表稳定交付；安装后请提交应用的 `composer.lock`。
 
-全量编译指生产实现进入 TypePHP 的覆盖门槛，不是测试覆盖率，也不是全部 PHP 包或全部平台已经验收。平台支持按所列架构与实际场景成立，环境前提、证据身份与完整交付条件见[平台与验收](guide/platforms.md)。
+**已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台通过的场景不同，完整应用和全部协议仍有待验收项；环境前提与证据身份见[平台与验收](guide/platforms.md)。全量编译指生产实现进入 TypePHP 的覆盖门槛，不等于测试覆盖率或所有 PHP 包兼容。

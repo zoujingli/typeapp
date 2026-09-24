@@ -4,6 +4,8 @@ TypeApp 的运行时只有一条主线：TypePHP 在构建期把生产 PHP 编�
 
 本页说明三种执行层次的知识、使用方式和控制边界。它与 [系统架构](architecture.md)、[基础通信](communications.md) 和 [type-runtime](plugins/type-runtime.md) 共同构成运行时约定。
 
+Swoole 能力已接入框架，构建默认复用组件内置的匹配模块。使用者主要选择适合业务的执行方式和资源预算；环境准备见[环境与依赖](environment.md)，并发、吞吐和尾延迟的调优方法见[性能与调优](performance.md)。
+
 ## 三种执行层次
 
 | 层次 | 主要职责 | 状态隔离 | 适合的工作 | 控制方式 |

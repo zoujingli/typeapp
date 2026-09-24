@@ -1,6 +1,8 @@
 # 构建与部署
 
-TypeApp 的生产交付约定是**一个程序文件加外置配置**。生产 PHP 实现由 TypePHP 全量编译，通信与基础并发必须使用 Swoole。当前打包命令仍生成目录包，以下分别说明交付目标与已实现操作。
+TypeApp 把依赖装配与环境校验放在构建阶段：生产 PHP 实现由 TypePHP 全量编译，Swoole 能力由框架集成，匹配模块默认从构建组件复用。部署者使用经过验证的运行包，主要维护配置、业务服务与持久数据。
+
+**最终交付目标是一个主程序文件加外置配置文件，启动不释放运行库。** 当前打包命令仍生成包含程序与实际原生库的目录包，须整体部署。运行端无需 Composer、TypePHP、编译 SDK 或业务 PHP 源码；按阶段列出的要求见[环境与依赖](environment.md)。
 
 开发工具使用 PHP 进行快速准备与调试，两条路径共用业务源码，生产执行已编译入口。本仓库根上的 Composer 脚本面向成品案例物联中心；其他业务用 `type-project` 创建独立应用后，在该应用根执行对应命令。
 
@@ -31,7 +33,7 @@ flowchart LR
 
 工具链版本以当前项目的 `toolchain.lock.json` 为准，生产依赖以 `composer.lock` 为准。准备与目标 OS、架构一致的 SDK 和扩展，再检查构建环境。
 
-构建组件已内置四个平台的 [Swoole 共享模块](plugins/type-build.md#内置-swoole-与运行依赖)，随 Composer 包安装，构建时默认校验并复用，无需另行下载 Swoole。它们固定匹配 PHP 8.5.10 ZTS、非 debug、64 位 ABI；只收集所选模块与实际依赖，不要求应用声明整目录资源。PHP SDK、PHPX 和其他原生依赖仍需准备，完整静态单程序目标继续待完成。
+构建组件已内置四个平台的 [Swoole 共享模块](plugins/type-build.md#内置-swoole-与运行依赖)，安装包含这些资源的版本后，构建默认校验并复用，无需另行下载、编译 Swoole。它们固定匹配 PHP 8.5.10 ZTS、非 debug、64 位 ABI；只收集所选模块与实际依赖，不要求应用声明整目录资源。PHP SDK、PHPX 和其他原生依赖在构建机准备。
 
 独立应用根执行：
 
@@ -44,7 +46,7 @@ php vendor/bin/type doctor type-app.json build
 
 **已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** Linux x64 已通过基础命令 AOT 与运行；其余三者已通过三库独立 ORM 的 PHP、AOT 和无源码运行，macOS ARM64 另有完整应用 AOT、三库身份 HTTP 和通信专项结果。具体范围和证据归属见[平台支持表](platforms.md#当前平台状态)。构建、运行库、数据库与停止语义都需要在实际目标环境验证；Docker 或 WSL 中的 Linux 结果不能替代 Windows/macOS 原生结果。
 
-实际状态见[平台与验收](platforms.md)。每个平台都必须提供匹配的 Swoole、PHPX、libphp 和生产扩展，再以同一产物完成完整应用 AOT、通信、数据库和无源码部署验收。以下命令描述工具已有入口，执行前仍须满足所选应用和平台的全部前置条件。
+构建维护者为目标平台准备匹配的 SDK 与扩展，并以同一产物完成应用、通信、数据库和无源码部署验收。部署者使用对应平台经过验证的包，具体范围见[平台与验收](platforms.md)。
 
 ## 全量编译
 
@@ -75,7 +77,7 @@ build/release/run help
 
 独立模板用 `composer package`。Windows 使用对应发布目录中的 `run.cmd`。
 
-运行包包含原生应用、资源、所需运行库、身份清单、配置示例及操作手册。没有业务 PHP 源码回退，但仍需要匹配的 PHPX、libphp、PDO 等实际原生依赖；不应将其描述为零运行库依赖。
+运行包包含原生应用、资源、所需运行库、身份清单、配置示例及操作手册。PHPX、libphp、Swoole、PDO 等实际非系统依赖由构建收集并随包管理，部署时保留完整布局并执行校验，不需要另装开发 PHP 环境。外部数据库和 Redis 服务仍由部署环境提供。
 
 | 文件或目录 | 用途 |
 | --- | --- |
@@ -87,7 +89,7 @@ build/release/run help
 
 ## 首次启动
 
-在运行环境明确应用数据根、数据库、令牌和 Host/代理配置，然后在发布目录执行：
+将完整运行包放到匹配 OS/架构的服务器，设置应用数据根、数据库、令牌和 Host/代理配置，然后在发布目录执行；Windows 使用对应的 `run.cmd`：
 
 ```bash
 ./run verify-runtime
@@ -104,7 +106,7 @@ build/release/run help
 
 本仓库的物联网中心标准项目共用完整应用构建，但运行角色分别管理：HTTP、MQTT Broker、数据接收、统计、告警、通知和导出不能用单个 `serve` 命令替代。具体角色、环境键和管理端构建见[物联网中心](iot-center.md)。`type-project` 模板不默认包含这些业务与 Web 资源。
 
-设备 MQTT 与接收角色要求 PostgreSQL 严格同步主备和真实 TLS。先完成业务迁移及 `iot:mqtt-install`，再由角色宿主启动相应入口；`IOT_MQTT_COMMAND` 明确指向同一已验证应用产物。运行包必须携带匹配的 Swoole 原生扩展。管理 API 三库通过不构成 MQTT 三种存储后端或高可用通过证明。
+设备 MQTT 与接收角色要求 PostgreSQL 严格同步主备和真实 TLS。先完成业务迁移及 `iot:mqtt-install`，再由角色宿主启动相应入口；`IOT_MQTT_COMMAND` 明确指向同一已验证应用产物。Swoole 原生能力由同一构建及运行包提供。管理 API 三库通过不构成 MQTT 三种存储后端或高可用通过证明。
 
 Broker 接入、持久工作和设备授权均使用 Swoole 官方 Process、Thread 或 Coroutine 管道与网络能力；平台按实际构建能力选择执行方式，不按操作系统名称拒绝通信入口。完整角色隔离、停止和原生验收仍以对应平台产物证据为准，详见[平台与执行方式](communications.md#平台与执行方式)。
 

@@ -340,7 +340,7 @@ body:has(.hero) { --content-max-width: 1120px; }
   .markdown-section pre[data-lang] > code { padding-inline: 18px !important; }
   .markdown-section pre[data-lang]::after { left: 18px; }
   .markdown-section table { display: block; width: 100%; overflow-x: auto; }
-  .markdown-section th, .markdown-section td { padding: 10px 12px; }
+  .markdown-section th, .markdown-section td { min-width: 6em; padding: 10px 12px; }
   .hero { grid-template-columns: 1fr; padding: 29px 26px 15px; border-radius: 15px; }
   .hero .eyebrow { margin-bottom: 23px; font-size: 10px; }
   .markdown-section .hero h1 { font-size: 53px; }

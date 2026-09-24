@@ -119,7 +119,7 @@ docs/build-config/type-app.json  本案例构建配置
 
 ## 准备后端与人员账号
 
-开发 CLI 使用 PHP `>=8.4 <8.6`、Composer 和所选数据库的 PDO 扩展。在仓库根安装依赖并准备空数据库：
+以下步骤用于源码开发：准备 PHP CLI `>=8.4 <8.6`、Composer、匹配的 Swoole 与所选数据库的 PDO 扩展。框架已接入 Swoole，原生构建默认复用构建组件内置的匹配模块；生产部署使用完整运行包，无需安装 Composer 或编译 SDK，分工见[环境与依赖](environment.md)。在仓库根安装依赖并准备空数据库：
 
 ```bash
 git clone https://github.com/zoujingli/typeapp.git
@@ -179,7 +179,7 @@ RBAC 的权限节点和菜单是代码中的固定目录，由 `app\common\servi
 
 ## 启动管理端
 
-使用 Node.js 20.19 以上和 `pnpm@10.28.2`，以下命令从仓库根执行：
+前端开发和构建使用 Node.js 20.19 以上和 `pnpm@10.28.2`，它们不是原生后端的运行依赖。以下命令从仓库根执行：
 
 ```sh
 pnpm --dir web install --frozen-lockfile

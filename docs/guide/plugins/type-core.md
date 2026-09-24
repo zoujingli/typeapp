@@ -8,6 +8,8 @@
 
 需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7`，依赖 `type-runtime` 和 PSR HTTP 接口。Swoole 是本组件配置、命令与 HTTP、WebSocket、TCP、UDP 通信入口的运行时基础；安装本包时即校验该硬依赖。
 
+以上是源码开发与构建要求。框架已接入 Swoole，原生构建默认复用 `type-build` 的匹配内置模块；部署使用包含实际运行库的完整包，见[环境与依赖](../environment.md)。
+
 源码位于本仓库对应 plugin 目录。在消费应用根声明依赖后执行：
 
 ```bash
