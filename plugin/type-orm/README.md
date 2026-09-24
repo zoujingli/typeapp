@@ -36,7 +36,7 @@ Database 通过 type-runtime 的有界池按作用域借还会话。Connection �
 
 `Connection::table()` 提供不可变 Query，支持条件、Join、聚合、JSON 标量、批量写入和明确的三库能力差异。`Model`、`ModelQuery` 与生成映射提供受控访问、变更追踪、部分字段保存和安全输出；详细用法见开发主仓 `docs/development/models.md`。本包第一方源码按 Apache-2.0 提供；具体仓库可见性和分发批次由维护者管理。
 
-模型 CRUD、事务结果与作用域收尾的完整路径见[数据库与模型](https://iots.top/#/guide/database)。当前 `ModelQuery` 的集合写入仅有 `increment/decrement`，没有批量 `update/delete/insertMany/upsert`；表 Query 的同名能力不等于模型能力。已确认的查询、关系补加载和提交后事务边界问题见[待闭合项](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md#操作闭环与待闭合项)。
+模型 CRUD、事务结果与作用域收尾的完整路径见[数据库与模型](https://iots.top/#/guide/database)。`ModelQuery::update/delete` 以单条写入 SQL 保留字段、租户、软删除及版本约束，没有额外行数上限；集合操作不触发逐模型观察器，已有对象需重新读取。没有业务条件时须显式 `allowAll()`。模型级 `insertMany/upsert` 尚未提供。具体约束及验收边界见[模型集合写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#模型集合写入)。
 
 ## 迁移
 

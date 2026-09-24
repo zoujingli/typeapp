@@ -4,6 +4,33 @@ declare(strict_types=1);
 
 namespace TypeApp\OrmSuite {
 
+    /** 集合写入回归使用显式主键，覆盖大集合的整批回滚。 */
+    #[\Type\Orm\Attribute\Table('type_suite_mutations', generatedPrimary: false, softDelete: 'deleted_at', version: 'version')]
+    final class MutationRecord extends \Type\Orm\Model
+    {
+        public int $id;
+        public string $tenant_id;
+        public string $title;
+        public int $value;
+        #[\Type\Orm\Attribute\Column(fillable: false, required: false)]
+        public ?\DateTimeImmutable $deleted_at;
+        #[\Type\Orm\Attribute\Column(fillable: false, required: false)]
+        public int $version;
+    }
+
+    #[\Type\Orm\Attribute\Table('type_suite_mutations', generatedPrimary: false, softDelete: 'deleted_at', version: 'version', database: 'archive')]
+    final class ArchiveMutationRecord extends \Type\Orm\Model
+    {
+        public int $id;
+        public string $tenant_id;
+        public string $title;
+        public int $value;
+        #[\Type\Orm\Attribute\Column(fillable: false, required: false)]
+        public ?\DateTimeImmutable $deleted_at;
+        #[\Type\Orm\Attribute\Column(fillable: false, required: false)]
+        public int $version;
+    }
+
     /** 类型属性模型，构建器保留类名并生成状态访问钩子。 */
     #[\Type\Orm\Attribute\Table('type_suite_users')]
     final class User extends \Type\Orm\Model

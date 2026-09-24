@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Type\Orm;
 
 use Closure;
+use DateTimeImmutable;
+use DateTimeZone;
 use Type\Runtime\ExecutionScope;
 
 /** 查询条件保持不可变，水合只经过显式生成工厂。 */
@@ -19,6 +21,7 @@ final class ModelQuery
     private bool $primary = false;
     private ?string $tenantBinding;
     private array $selected;
+    private bool $explicitSelection = false;
     private array $relations = [];
     private bool $limited = false;
     private string $trashed = 'without';
@@ -209,6 +212,7 @@ final class ModelQuery
     public function select(array $fields): ModelQuery
     {
         $copy = clone $this;
+        $copy->explicitSelection = true;
         $fields[] = $this->definition->key();
         if ($this->definition->softDeleteField() !== null) {
             $fields[] = $this->definition->softDeleteField();
@@ -563,8 +567,7 @@ final class ModelQuery
     {
         $budget->consume(count($models));
         foreach ($models as $model) {
-            if (!$model instanceof Model || $model->definition()->table() !== $this->definition->table()
-                || $model->definition()->names() !== $this->definition->names()) {
+            if (!$model instanceof Model || !$this->definition->sameMapping($model->definition())) {
                 throw new ModelException('invalid_model_list', '批量补加载只接受当前模型的有效列表');
             }
         }
@@ -681,7 +684,11 @@ final class ModelQuery
 
     public function first(): ?Model
     {
-        return $this->limit(1)->get()[0] ?? null;
+        if ($this->query === null) {
+            return $this->materialize()->first();
+        }
+        $row = $this->readingQuery()->first();
+        return $row === null ? null : $this->hydrateRows([$row])[0];
     }
 
     public function find(int|string $id): ?Model
@@ -761,12 +768,126 @@ final class ModelQuery
             || !in_array($mapping->typeName(), ['integer', 'bigint', 'decimal'], true)) {
             throw new ModelException('invalid_increment_field', '原子增减只能修改可赋值的普通数值字段');
         }
-        $this->query->assertWriteIntent();
+        if ($amount < 1) {
+            throw new DatabaseException('原子增减的数量必须为正整数');
+        }
+        $query = $this->writingQuery();
         $this->definition->assertStorage($this->connection, [$field]);
         $this->definition->assertArithmeticStorage($this->connection, $field);
-        $query = $this->visibleQuery()->select(['*']);
         $version = $this->definition->versionField();
-        return $query->adjust($mapping->column(), $amount, $decrement, $version === null ? null : $this->definition->field($version)->column());
+        if ($version === null) {
+            return $query->adjust($mapping->column(), $amount, $decrement);
+        }
+        $versionColumn = $this->definition->field($version)->column();
+        return $this->mutate($query, static fn (Query $target): int => $target->adjust($mapping->column(), $amount, $decrement, $versionColumn));
+    }
+
+    /**
+     * 单条 SQL 集合更新；字段修改器对每份输入执行一次，不触发逐模型事件或刷新已有对象。
+     * @param array<string, mixed> $values 普通可赋值字段。
+     * @throws ModelException 字段或物理存储声明不符合模型约束。
+     * @throws DatabaseException 约束失败（含版本耗尽），整条写入回滚；提交未知时须对账。
+     */
+    public function update(array $values): int
+    {
+        if ($this->query === null) {
+            return $this->materialize(true)->update($values);
+        }
+        $query = $this->writingQuery();
+        if ($values === []) {
+            throw new ModelException('empty_update', '集合更新至少需要一个普通字段');
+        }
+        $encoded = [];
+        foreach ($values as $name => $value) {
+            if (!is_string($name)) {
+                throw new ModelException('unknown_field', '模型字段名必须为字符串');
+            }
+            $field = $this->definition->field($name);
+            if (!$field->fillable() || in_array($name, [$this->definition->key(), $this->definition->tenantField(),
+                $this->definition->versionField(), $this->definition->softDeleteField()], true)) {
+                throw new ModelException('field_not_fillable', '集合写入不能修改受保护字段：' . $name);
+            }
+            $encoded[$field->column()] = $field->encode($field->normalize($this->behavior === null ? $value : $this->behavior->write($name, $value)));
+        }
+        $this->definition->assertStorage($this->connection, array_keys($values));
+        return $this->updateBatch($query, $encoded);
+    }
+
+    /** 单条 SQL 集合删除；软删除只处理尚未删除的行，不触发逐模型事件或领域级联。 */
+    public function delete(): int
+    {
+        if ($this->query === null) {
+            return $this->materialize(true)->delete();
+        }
+        $query = $this->writingQuery();
+        $deleted = $this->definition->softDeleteField();
+        if ($deleted === null) {
+            return $this->mutate($query, static fn (Query $target): int => $target->delete(), false);
+        }
+        $field = $this->definition->field($deleted);
+        $this->definition->assertStorage($this->connection, [$deleted]);
+        return $this->updateBatch(
+            $query->where($field->column(), '=', null),
+            [$field->column() => $field->encode(new DateTimeImmutable('now', new DateTimeZone('UTC')))]
+        );
+    }
+
+    private function updateBatch(Query $query, array $values): int
+    {
+        $version = $this->definition->versionField();
+        $column = $version === null ? null : $this->definition->field($version)->column();
+        return $this->mutate($query, static fn (Query $target): int => $target->updateGuarded($values, $column));
+    }
+
+    private function writingQuery(): Query
+    {
+        $this->query->assertWriteIntent();
+        if ($this->explicitSelection || $this->relations !== [] || $this->computations !== []) {
+            throw new ModelException('invalid_write_query', '集合写入不接受显式投影、预加载或关系计算');
+        }
+        $query = $this->visibleQuery()->select(['*']);
+        $query->assertWritable();
+        return $query;
+    }
+
+    /** 显式允许当前租户及软删除范围内的全量写入。 */
+    public function allowAll(): ModelQuery
+    {
+        if ($this->query === null) {
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->allowAll());
+        }
+        $copy = clone $this;
+        $copy->query = $this->query->allowAll();
+        return $copy;
+    }
+
+    /**
+     * 仅核验物理存储，不预读目标行或隐式分批；事务/保存点覆盖整条写入及失败收尾。
+     * @param Closure(Query): int $write 接收保留业务条件、租户和软删除范围的查询。
+     */
+    private function mutate(Query $query, Closure $write, bool $advanceVersion = true): int
+    {
+        $definition = $this->definition;
+        $mode = $this->connection->driverName() === 'sqlite' && $this->connection->transactionDepth() === 0 ? 'immediate' : 'default';
+        return $this->connection->transaction(static function (Connection $connection) use ($definition, $advanceVersion, $query, $write): int {
+            // 零行读取取得当前表的事务期元数据锁，不把目标记录拉到 PHP 中。
+            $connection->table($definition->table())->whereIn($definition->field($definition->key())->column(), [])->get();
+            $versionName = $advanceVersion ? $definition->versionField() : null;
+            if ($versionName !== null) {
+                $version = $definition->field($versionName)->column();
+                $valid = false;
+                foreach ($connection->columns($definition->table()) as $column) {
+                    if ($column['name'] === $version) {
+                        $valid = !$column['nullable'] && preg_match('/^(?:tinyint|smallint|mediumint|int|integer|bigint)\b/i', $column['type']) === 1;
+                    }
+                }
+                if (!$valid) {
+                    throw new ModelException('unsafe_version_storage', '集合版本推进要求真实的非空整数列');
+                }
+            }
+            $connection->assertAtomicWriteStorage($definition->table());
+            return $write($query);
+        }, $mode);
     }
 
     public function count(): int

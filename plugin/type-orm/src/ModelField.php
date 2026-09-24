@@ -81,6 +81,14 @@ final class ModelField
         return $this->type === 'decimal' ? (int) $this->scale : 0;
     }
 
+    /** @internal 比较声明身份，不执行值转换或行为回调。 */
+    public function sameMapping(ModelField $other): bool
+    {
+        return $this->column === $other->column && $this->type === $other->type && $this->nullable === $other->nullable
+            && $this->fillable === $other->fillable && $this->visible === $other->visible && $this->required === $other->required
+            && $this->precision === $other->precision && $this->scale === $other->scale && $this->arrayOnly === $other->arrayOnly;
+    }
+
     public function normalize(mixed $value, bool $database = false): mixed
     {
         if ($value === null && $this->nullable) {

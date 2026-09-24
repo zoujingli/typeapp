@@ -1,7 +1,7 @@
 {
   "name": "type-orm-suite",
   "entry": "app/main.php",
-  "sources": ["app/Schema.php", "app/ArticleObserver.php", "app/Suite.php", "app/CoreExercise.php", "app/DriverFactory.php", "app/Models.php"],
+  "sources": ["app/Schema.php", "app/ArticleObserver.php", "app/Suite.php", "app/CoreExercise.php", "app/MutationExercise.php", "app/DriverFactory.php", "app/Models.php"],
   "output": "build/type-app",
   "build-directory": "build/compiler",
   "runtime": {

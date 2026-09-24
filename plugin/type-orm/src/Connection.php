@@ -92,6 +92,23 @@ final class Connection
         return $columns;
     }
 
+    /** @internal 核验实际解析到的 MySQL 表及会话，避免非事务表留下部分集合写入。 */
+    public function assertAtomicWriteStorage(string $table): void
+    {
+        if ($this->driverName() !== 'mysql') {
+            return;
+        }
+        $dialect = new SqlDialect('mysql', $this->serverVersion());
+        $sql = 'SHOW CREATE TABLE ' . $dialect->identifier($table);
+        $this->recordRead(0);
+        $schema = $this->operation(static fn (PdoSession $session): array => $session->query($sql, []), $sql, [], 'metadata');
+        $mode = $this->query('SELECT @@SESSION.sql_mode AS modes')[0]['modes'];
+        if (count($schema) !== 1 || preg_match('/^\) ENGINE=InnoDB\b/m', (string) ($schema[0]['Create Table'] ?? '')) !== 1
+            || preg_match('/(?:^|,)(?:STRICT_ALL_TABLES|STRICT_TRANS_TABLES)(?:,|$)/', $mode) !== 1) {
+            throw new ModelException('unsafe_batch_storage', 'MySQL 集合写入需要 InnoDB 事务表及严格 SQL 模式');
+        }
+    }
+
     /** 流关闭前独占本租约；事务内应使用普通查询或在独立连接导出。 */
     public function stream(string $sql, array $parameters = [], int $batchSize = 250, int $maxRowBytes = 1048576): RowStream
     {
@@ -244,7 +261,6 @@ final class Connection
                     $errors[] = $error;
                 }
             }
-            $this->outcome = TransactionOutcome::COMMITTED;
             if ($errors !== []) {
                 throw new AfterCommitException($errors);
             }

@@ -13,6 +13,7 @@ final class Query
     private string $table;
     private string $tableName;
     private string $alias;
+    private string $aliasName;
     private Conditions $conditions;
     private Conditions $having;
     private array $columns = ['*'];
@@ -40,6 +41,7 @@ final class Query
         $this->table = $this->dialect->identifier($table);
         $this->tableName = $table;
         $this->alias = $alias === '' ? '' : $this->dialect->identifier($alias, false, false);
+        $this->aliasName = $alias;
         $this->conditions = new Conditions($this->dialect, $connection);
         $this->having = new Conditions($this->dialect, $connection);
     }
@@ -377,7 +379,7 @@ final class Query
         if ($this->limit !== 0 || $this->lock !== '') {
             throw new DatabaseException('分页不接受已有 LIMIT 或行锁');
         }
-        if (!$this->complex()) {
+        if (!$this->complex(false)) {
             return $this->paginationQuery($primaryKey);
         }
         if ($this->uniqueOrder === []) {
@@ -400,9 +402,9 @@ final class Query
         return $query;
     }
 
-    private function complex(): bool
+    private function complex(bool $includeAlias = true): bool
     {
-        return $this->alias !== '' || $this->joins !== [] || $this->groups !== [] || $this->having->sql() !== ''
+        return ($includeAlias && $this->alias !== '') || $this->joins !== [] || $this->groups !== [] || $this->having->sql() !== ''
             || $this->aggregated || $this->distinct || $this->derived || $this->unions !== [];
     }
 
@@ -480,8 +482,8 @@ final class Query
 
     private function paginationQuery(string $primaryKey): Query
     {
-        if ($this->complex() || $this->limit !== 0 || $this->lock !== '') {
-            throw new DatabaseException('确定分页只接受没有别名、Join、聚合、行锁或已有 LIMIT 的单表查询');
+        if ($this->complex(false) || $this->limit !== 0 || $this->lock !== '') {
+            throw new DatabaseException('确定分页只接受没有 Join、聚合、行锁或已有 LIMIT 的单表查询');
         }
         foreach ($this->columns as $column) {
             if (str_contains($column, '__type_cursor_')) {
@@ -505,24 +507,32 @@ final class Query
         $query = $this;
         $ordered = [];
         foreach ($this->orderFields as $field) {
-            if (in_array($field['column'], $ordered, true)) {
+            $orderedColumn = $this->paginationColumn($field['column']);
+            if (in_array($orderedColumn, $ordered, true)) {
                 throw new DatabaseException('分页排序列不能重复');
             }
-            $ordered[] = $field['column'];
+            $ordered[] = $orderedColumn;
         }
         if (!in_array($primaryKey, $ordered, true)) {
-            $query = $query->orderBy($primaryKey);
+            $query = $query->orderBy(($this->aliasName === '' ? '' : $this->aliasName . '.') . $primaryKey);
         }
         if (count($query->orderFields) > 8) {
             throw new DatabaseException('分页最多支持八个排序列');
         }
         foreach ($query->orderFields as $field) {
-            $column = $columns[$field['column']] ?? null;
+            $column = $columns[$this->paginationColumn($field['column'])] ?? null;
             if ($column === null || $column['nullable'] || preg_match('/json|blob|bytea|binary|real|double|float/i', $column['type'])) {
                 throw new DatabaseException('分页排序只接受真实的非 NULL、非浮点、非 JSON/二进制列');
             }
         }
         return $query;
+    }
+
+    /** 分页校验对应真实表列，SQL 排序仍保留本表别名。 */
+    private function paginationColumn(string $column): string
+    {
+        return $this->aliasName !== '' && str_starts_with($column, $this->aliasName . '.')
+            ? substr($column, strlen($this->aliasName) + 1) : $column;
     }
 
     /** 预览参数化 SQL，不执行目标查询，也不要求预览时已经开启事务。 */
@@ -766,6 +776,20 @@ final class Query
 
     public function update(array $values): int
     {
+        return $this->updateValues($values, null);
+    }
+
+    /** @internal 模型集合写入；版本列须为真实非空整数列，失败由外层事务回滚。 */
+    public function updateGuarded(array $values, ?string $version): int
+    {
+        if ($version !== null && array_key_exists($version, $values)) {
+            throw new DatabaseException('普通赋值不能覆盖版本推进');
+        }
+        return $this->updateValues($values, $version, true);
+    }
+
+    private function updateValues(array $values, ?string $version, bool $guarded = false): int
+    {
         $this->writeShape(true);
         $this->requireWriteIntent();
         $row = $this->rows([$values]);
@@ -773,7 +797,11 @@ final class Query
         foreach ($row[0] as $column) {
             $assignments[] = $this->dialect->identifier($column, false, false) . ' = ?';
         }
-        $sql = 'UPDATE ' . $this->table . ' SET ' . implode(', ', $assignments) . $this->whereSql($this->conditions);
+        if ($version !== null) {
+            $assignments[] = $this->versionAssignment($version);
+        }
+        $sql = ($guarded && $this->connection->driverName() === 'sqlite' ? 'UPDATE OR ABORT ' : 'UPDATE ')
+            . $this->table . ' SET ' . implode(', ', $assignments) . $this->whereSql($this->conditions);
 
         return $this->connection->execute($sql, array_merge($row[1], $this->conditions->parameters()));
     }
@@ -790,7 +818,7 @@ final class Query
         return $this->adjust($column, $amount, true);
     }
 
-    /** @internal 模型原子写入同时递增版本列，防止已有模型覆盖新值。 */
+    /** @internal 模型原子写入同时递增已验证的非空整数版本列，须由事务包裹。 */
     public function adjust(string $column, int $amount, bool $decrement, ?string $version = null): int
     {
         $this->writeShape(true);
@@ -801,14 +829,32 @@ final class Query
         $quoted = $this->dialect->identifier($column, false, false);
         $assignment = $quoted . ' = ' . $quoted . ($decrement ? ' - ?' : ' + ?');
         if ($version !== null) {
-            $versionSql = $this->dialect->identifier($version, false, false);
             if ($version === $column) {
                 throw new DatabaseException('原子增减目标不能同时作为版本列');
             }
-            $assignment .= ', ' . $versionSql . ' = ' . $versionSql . ' + 1';
+            $assignment .= ', ' . $this->versionAssignment($version);
         }
-        return $this->connection->execute('UPDATE ' . $this->table . ' SET ' . $assignment
+        $prefix = $version !== null && $this->connection->driverName() === 'sqlite' ? 'UPDATE OR ABORT ' : 'UPDATE ';
+        return $this->connection->execute($prefix . $this->table . ' SET ' . $assignment
             . $this->whereSql($this->conditions), array_merge([$amount], $this->conditions->parameters()));
+    }
+
+    /** 让数据库在同一语句中拒绝非法版本，避免 SQLite 溢出升 REAL 或竞争窗口。 */
+    private function versionAssignment(string $version): string
+    {
+        $column = $this->dialect->identifier($version, false, false);
+        $valid = $column . ' >= 1 AND ' . $column . ' < ' . PHP_INT_MAX;
+        if ($this->connection->driverName() === 'sqlite') {
+            $valid .= ' AND typeof(' . $column . ") = 'integer'";
+        }
+        // 非法分支在赋值求值时失败，不依赖可能被触发器跳过的 NOT NULL 检查。
+        // 含列的表达式防止 PostgreSQL/MySQL 在有效分支执行前折叠常量错误。
+        $failure = match ($this->connection->driverName()) {
+            'sqlite' => 'abs(-9223372036854775807 - 1)',
+            'pgsql' => '1 / (' . $column . ' - ' . $column . ')',
+            'mysql' => 'CAST(9223372036854775807 AS SIGNED) + CAST(' . $column . ' - ' . $column . ' + 1 AS SIGNED)',
+        };
+        return $column . ' = CASE WHEN ' . $valid . ' THEN ' . $column . ' + 1 ELSE ' . $failure . ' END';
     }
 
     /** 每行通过一个非 NULL 键匹配；单条 CASE UPDATE 不隐式逐条重试。 */
@@ -876,6 +922,13 @@ final class Query
     /** @internal 添加模型默认范围之前验证调用者提供的写入条件。 */
     public function assertWriteIntent(): void
     {
+        $this->requireWriteIntent();
+    }
+
+    /** @internal 集合写入在读取目标前拒绝不能保留的查询形态。 */
+    public function assertWritable(): void
+    {
+        $this->writeShape(true);
         $this->requireWriteIntent();
     }
 

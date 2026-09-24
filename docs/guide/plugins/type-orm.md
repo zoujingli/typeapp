@@ -91,6 +91,9 @@ if ($partial !== null) {
 | `with($name, $relation)` | 显式批量加载关系，`related($name)` 读取已加载结果 |
 | `delete/restore/forceDelete` | 软删除、恢复、物理删除，取决于模型声明 |
 | `scope/search` | 组合不可变查询；搜索器只能来自显式映射 |
+| `ModelQuery::update/delete` | 单条集合写入，保留租户、软删除和版本约束；没有额外行数限制，不触发逐模型事件 |
+
+集合更新只接受普通可赋值字段，`withBehavior()` 的修改器在类型规范化前处理每个输入值。无业务条件时须显式 `allowAll()`，它仍限定当前租户和软删除范围。软删除不重复处理已删除行；已有模型需重新查询。MySQL 使用实际 InnoDB 表和严格 SQL 模式，版本列使用非空整数类型；版本耗尽及数据库约束失败回滚整条写入。提交未知仍须对账。完整语义见[模型集合写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#模型集合写入)。
 
 模型直接继承 `Model`，不通过继承或 trait 合并字段，不定义生成的构造、映射、查询及访问器方法。属性必须单独声明、公开、非静态、带类型且无默认值；生成器拒绝重复映射和成员冲突。兼容的 `getName/setName` 访问器仍然经过模型状态。JSON 数组只支持整值赋回，不支持属性引用或间接修改。
 

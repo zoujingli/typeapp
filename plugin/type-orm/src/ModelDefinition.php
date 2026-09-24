@@ -15,7 +15,7 @@ final class ModelDefinition
     private ?string $softDelete;
     private ?string $version;
 
-    public function __construct(string $table, string $key, array $fields, bool $generatedKey = true, ?string $softDelete = null, ?string $version = null, private array $relations = [], private string $database = 'default', private ?string $tenant = null)
+    public function __construct(string $table, string $key, array $fields, bool $generatedKey = true, ?string $softDelete = null, ?string $version = null, private array $relations = [], private string $database = 'default', private ?string $tenant = null, private string $modelClass = '')
     {
         if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/D', $table) || !isset($fields[$key])
             || preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $database) !== 1) {
@@ -107,6 +107,23 @@ final class ModelDefinition
     public function names(): array
     {
         return array_keys($this->fields);
+    }
+
+    /** @internal 生成映射可重复构造；逻辑数据源、模型类及完整字段契约共同确定身份。 */
+    public function sameMapping(ModelDefinition $other): bool
+    {
+        if ($this->database !== $other->database || $this->modelClass !== $other->modelClass
+            || $this->table !== $other->table || $this->key !== $other->key || $this->generatedKey !== $other->generatedKey
+            || $this->tenant !== $other->tenant || $this->softDelete !== $other->softDelete || $this->version !== $other->version
+            || $this->names() !== $other->names()) {
+            return false;
+        }
+        foreach ($this->fields as $name => $field) {
+            if (!$field->sameMapping($other->fields[$name])) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** 使用同一静态关系声明加载、过滤与统计。 */

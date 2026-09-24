@@ -173,7 +173,7 @@ $composer = ['name' => 'type-tests/orm-suite-' . $driver, 'type' => 'project', '
     'repositories' => $repositories, 'minimum-stability' => 'dev', 'prefer-stable' => true,
     'config' => ['allow-plugins' => false, 'platform' => $forbidden]];
 file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
-foreach (['main.php', 'Suite.php', 'CoreExercise.php', 'Schema.php', 'ArticleObserver.php', 'Models.php'] as $file) {
+foreach (['main.php', 'Suite.php', 'CoreExercise.php', 'MutationExercise.php', 'Schema.php', 'ArticleObserver.php', 'Models.php'] as $file) {
     expect(copy($root . '/examples/orm-suite/' . $file, $consumer . '/app/' . $file), '无法复制独立业务文件');
 }
 expect(copy($root . '/examples/orm-suite/drivers/' . $driver . '.php', $consumer . '/app/DriverFactory.php'), '无法复制所选驱动工厂');
@@ -302,7 +302,7 @@ try {
     sort($actual);
     expect($actual === $packages, '运行环境仍含构建工具依赖');
     $launcher = 'require ' . var_export($consumer . '/vendor/autoload.php', true) . '; require ' . var_export($generated, true) . ';';
-    foreach (['DriverFactory.php', 'Schema.php', 'ArticleObserver.php', 'CoreExercise.php', 'Suite.php', 'main.php'] as $file) {
+    foreach (['DriverFactory.php', 'Schema.php', 'ArticleObserver.php', 'CoreExercise.php', 'MutationExercise.php', 'Suite.php', 'main.php'] as $file) {
         $launcher .= ' require ' . var_export($consumer . '/app/' . $file, true) . ';';
     }
     $consumerPrefix = PHP_OS_FAMILY === 'Windows' ? strtolower($consumer . '/') : $consumer . '/';
@@ -326,7 +326,7 @@ try {
                 || in_array($candidate, $result['swoole_pdo_drivers'], true), '存在来源未记录的 PDO 驱动');
         }
     }
-    foreach (['models', 'relations', 'soft_delete', 'events', 'scopes', 'pagination', 'optimistic_lock', 'migrations', 'strong_read', 'core_queries', 'tenant_isolation'] as $behavior) {
+    foreach (['models', 'relations', 'soft_delete', 'events', 'scopes', 'pagination', 'optimistic_lock', 'migrations', 'strong_read', 'core_queries', 'tenant_isolation', 'model_mutations'] as $behavior) {
         expect($result[$behavior] === true, '业务矩阵缺少验收项：' . $behavior);
     }
     expect($result['scope_checks'] === ['binding-restore', 'snapshot', 'child-transaction', 'connection-owner', 'closed-connection',

@@ -64,7 +64,9 @@ final class ReadWriteSession
         try {
             return $connection->transaction($operation, $mode);
         } finally {
-            $this->outcome = $connection->transactionOutcome();
+            if ($this->outcome !== TransactionOutcome::UNKNOWN) {
+                $this->outcome = $connection->transactionOutcome();
+            }
         }
     }
 
@@ -72,6 +74,7 @@ final class ReadWriteSession
     public function reconcile(): Connection
     {
         $this->scope->assertActive();
+        $this->outcome();
         if ($this->primary !== null) {
             if ($this->primary->transactionDepth() > 0) {
                 throw new DatabaseException('活动事务中不能切换对账连接');

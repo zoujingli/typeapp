@@ -34,6 +34,7 @@ final class Suite
         $driver = DriverFactory::create();
         $scopes = CoreExercise::scopes($driver);
         $sessions = CoreExercise::sessions($driver);
+        $callbacks = MutationExercise::callbacks($driver);
         $plan = Schema::plan($driver->name());
         $migrator = new Migrator($driver, 'type_suite_migrations');
         self::check(array_column($migrator->status($plan), 'state') === ['pending', 'pending'], '新消费环境不是空迁移状态');
@@ -45,7 +46,7 @@ final class Suite
         Db::configure($manager);
         $scope = new ExecutionScope();
         try {
-            return $scope->run(static function (ExecutionScope $current) use ($manager, $driver, $sessions, $scopes): array {
+            return $scope->run(static function (ExecutionScope $current) use ($manager, $driver, $sessions, $scopes, $callbacks): array {
                 $lazy = User::query();
                 self::check($manager->statistics()['active'] === [], '构造查询提前借用了连接');
                 $connection = Db::connection('default', true);
@@ -123,6 +124,7 @@ final class Suite
                 self::check($base->count() === 3 && self::reject(static fn () => $rolledBack->getTitle(), 'model_invalid'), '回滚没有同步模型失效');
                 CoreExercise::run($connection, $user->id, $article->id);
                 CoreExercise::tenants($current, $user->getId());
+                MutationExercise::run($current);
                 $capabilities = self::capabilities($manager, $connection, $article->getId());
                 self::check(User::query()->master()->find($user->getId())->getName() === '用户甲'
                     && Db::connection() === $connection, '未配置副本时没有使用主库');
@@ -147,7 +149,8 @@ final class Suite
                 $race->save();
                 return ['driver' => $driver->name(), 'version' => $connection->serverVersion(), 'scope_checks' => $scopes, 'sessions' => $sessions, 'race_id' => $race->getId(),
                     'models' => true, 'relations' => true, 'soft_delete' => true, 'events' => true, 'scopes' => true, 'core_queries' => true,
-                    'pagination' => true, 'optimistic_lock' => true, 'migrations' => true, 'strong_read' => true, 'tenant_isolation' => true, 'capabilities' => $capabilities];
+                    'pagination' => true, 'optimistic_lock' => true, 'migrations' => true, 'strong_read' => true, 'tenant_isolation' => true,
+                    'model_mutations' => true, 'callback_outcomes' => $callbacks, 'capabilities' => $capabilities];
             });
         } finally {
             $scope->close();

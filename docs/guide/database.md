@@ -38,12 +38,23 @@ sequenceDiagram
 | 修改、删除、恢复 | 实例 `save/delete/restore/forceDelete` | 影响记录、软删除、版本冲突及对象是否仍有效 |
 | 列表与关系 | `get/paginate/with/load/loadMissing` | 有界结果、稳定排序、匹配模型与数据源；关系不隐式懒加载 |
 | 集合算术 | `ModelQuery::increment/decrement` | 返回影响数量，推进版本；已加载对象需要重新查询 |
+| 集合更新、删除 | `ModelQuery::update/delete` | 模型字段、租户及软删除约束，整条写入原子性；不触发逐模型事件 |
 | 多步写入 | `Db::transaction/afterCommit` | 同库提交、回滚、未知结果和提交后失败分别处理 |
 | 外部投递 | 事务 Outbox 与应用 Publisher | 写入意图、实际投递、目标幂等和后续对账 |
 
-当前 `ModelQuery` 没有批量 `update/delete/insertMany/upsert`。底层表 Query 的批量写入不自动获得模型字段、租户、软删除和事件语义，不能作为普通业务绕过 Model 的默认入口。
+模型集合写入在主库执行单条写入 SQL，不额外限制匹配行数，也不要求业务拆批。没有业务条件时须显式 `allowAll()`，它仍保留租户及软删除范围。模型级 `insertMany/upsert` 尚未提供；底层表 Query 的同名能力不自动获得模型约束。
 
-检查已发现跨数据源关系补加载、带别名分页、`first()` 偏移、集合算术版本上限及提交后新事务状态的边界缺陷，尚未修复。触发方式、预期结果与验收顺序集中维护在[操作闭环与待闭合项](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md#操作闭环与待闭合项)，不能把常规 CRUD 用例通过视为完整闭环通过。
+```mermaid
+flowchart TB
+    A[业务条件与字段] --> B[校验模型约束<br/>保留租户和软删除范围]
+    B --> C[主库事务或保存点]
+    C --> D[单条集合写入 SQL<br/>同步检查并推进版本]
+    D -->|成功| E[返回影响数量]
+    D -->|语句失败| F[回滚本次写入]
+    C -->|提交无法确认| G[保留 UNKNOWN<br/>按业务标识对账]
+```
+
+`first()` 保留已有偏移，单表别名可组合分页；关系补加载先校验整个模型列表的归属。集合版本推进与业务字段修改在同一条 SQL 完成，失败时回滚本次写入。完整契约及尚未完成的消费、平台验收见[操作闭环与验收边界](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md#操作闭环与验收边界)。
 
 ## 选择数据库
 
@@ -94,7 +105,7 @@ composer typeapp:migrate -- history
 
 模型声明 `version` 后，写入使用主键与旧版本共同匹配，成功时推进版本。过期版本报 `optimistic_conflict`；物联中心成品案例将其转成 HTTP 409。冲突或事务失败后重新读取模型，不继续复用已经失效的对象。
 
-软删除字段由 `Table(softDelete: 'deleted_at')` 声明。默认查询隐藏已删除记录，`withTrashed()`、`onlyTrashed()` 显式改变查询范围。底层 Query 批量操作不会自动触发逐模型乐观锁或事件，调用者负责其明确语义。`ModelQuery::increment/decrement` 执行条件原子更新，并同时推进声明的版本列；已经读取的模型需要重新查询。
+软删除字段由 `Table(softDelete: 'deleted_at')` 声明。默认查询隐藏已删除记录，`withTrashed()`、`onlyTrashed()` 显式改变查询范围。`ModelQuery::delete()` 按声明软删除或物理删除，软删除不重复处理已删除行。集合更新、软删除及 `increment/decrement` 同时推进声明的版本列；已经读取的模型需要重新查询。集合操作不触发逐模型事件，需要领域副作用时使用实例操作。详细约束见[模型集合写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#模型集合写入)。
 
 PATCH 的缺失字段保持不变，明确的 null 用于清空可空字段。提交版本应来自最近一次读取，不应在客户端固定为 1。
 

@@ -57,11 +57,32 @@ MySQL 连接初始化 UTC 和严格模式，PostgreSQL 初始化 UTC 与 ISO Dat
 
 模型通过 `Table(softDelete: 'deleted_at')` 指向不可批量赋值的可空 datetime 字段。默认查询过滤已删除记录；`withTrashed/onlyTrashed/withoutTrashed` 显式选择范围，不支持软删除的模型拒绝这些操作。`delete/restore/forceDelete` 分别软删除、恢复、物理删除，物理删除后对象失效。
 
-`ModelQuery::scope()` 和实例 `search()` 组合不可变查询。搜索器必须来自显式映射，未知搜索键被拒绝；静态 `Model::search()` 创建显式输入的筛选助手，在 `query()` 或 `paginatePage()` 时以 `unknown_search_field` 拒绝未声明的输入键，两者职责不同。批量算术使用 `ModelQuery::increment/decrement`，遵守模型租户范围并在主库执行；受控的底层 Query 批量写入不触发逐模型事件或行为转换，已经加载的对象需要显式重新查询。
+`ModelQuery::scope()` 和实例 `search()` 组合不可变查询。搜索器必须来自显式映射，未知搜索键被拒绝；静态 `Model::search()` 创建显式输入的筛选助手，在 `query()` 或 `paginatePage()` 时以 `unknown_search_field` 拒绝未声明的输入键，两者职责不同。`first()` 保留已有 offset；单表别名支持普通、无总数及游标分页，排序仍须满足真实主键和字段约束。
 
-模型查询尚无批量 `update/delete/insertMany/upsert`。检查还发现 `first()` 不保留已有 offset、别名单表无法完成分页组合，以及批量算术未拦截版本上限；这些是待修复边界，不是允许调用者依赖的语义，见[操作闭环与待闭合项](model-connections.md#操作闭环与待闭合项)。
+模型查询的批量新增和 upsert 尚未提供；表 Query 的同名能力不自动带入模型约束。
 
 `ModelBehavior` 是不可变声明：修改器在类型规范化前处理输入，获取器只处理读取和输出；持久化及关系匹配使用原始存储值，展示获取器不能改变写入身份。修改器、获取器各接收一个值。属性赋值、`set` 和批量 `fill` 均遵守赋值白名单；持久化主键和生命周期字段受保护。
+
+## 模型集合写入
+
+```php
+$affected = Article::query()->where('status', '=', 'draft')->update(['status' => 'archived']);
+$deleted = Article::query()->where('status', '=', 'archived')->delete();
+```
+
+两者自动选择主库，保留可信租户和软删除范围，以单条写入 SQL 处理集合，返回数据库报告的影响数量。没有额外的 `maxRows` 限制，不把目标行全部载入内存，也不在应用侧隐式分批。没有业务条件时须显式调用 `allowAll()`，自动租户或软删除条件不能代替调用者的全量写入意图。
+
+分页和关系加载中的 `maxRows` 继续表示一个返回批次及其关联的内存预算，超限明确报错。它不参与集合写入的筛选，也不会把写入截断成前若干条。
+
+`update()` 只接受普通可赋值字段；未知字段、空更新、主键、租户、版本及软删除字段直接拒绝。`withBehavior()` 的修改器对每个输入值执行一次，再完成类型规范化、编码和物理存储校验。`delete()` 对声明软删除的模型写入一次 UTC 时间并推进版本；已删除行不重复处理，即使使用 `withTrashed()` 或 `onlyTrashed()`。无软删除声明时物理删除。
+
+集合操作不水合每条模型、不触发逐模型观察器或领域级联，也不自动修改普通时间字段。需要这些副作用时使用实例操作并显式管理事务。已有模型不会自动刷新；版本化集合更新、软删除及 `increment/decrement` 推进版本后，旧模型保存会发生乐观锁冲突。集合写入本身不代表逐条比较调用者先前读到的版本，需要时显式加入版本条件。
+
+写入不接受显式投影、预加载、关系计算、别名、排序、LIMIT 或行锁，避免悄悄忽略读取状态。MySQL 要求实际目标是 InnoDB 且会话处于严格 SQL 模式；版本列必须是数据库中的非空整数列。版本合法性与递增在同一条 SQL 求值，SQLite 还检查实际值的整数类型，避免溢出转换成 REAL。
+
+约束或版本错误保留 `DatabaseException` 和原始数据库原因链，事务或保存点回滚本次整条写入，不把其他约束错误误报为版本耗尽。提交无法确认时仍是 `UNKNOWN`，需对账，不能承诺已回滚或自动重试。无版本的同值更新保留驱动计数差异：MySQL 默认报告实际改变的行数，PostgreSQL/SQLite 报告匹配行数。
+
+## 实例事件与副作用
 
 观察器实现 `ModelObserver::onEvent($event, $model)`。新增顺序为 saving → creating → SQL → created → saved；更新对应 updating/updated；删除、恢复与强制删除分别使用 deleting/deleted、restoring/restored、forceDeleting/forceDeleted。读取通知 retrieved。前置事件返回 false 取消写入，保存返回 `cancelled`；没有变化的保存返回 `unchanged` 且不触发写入事件。
 

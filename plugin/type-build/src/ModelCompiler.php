@@ -427,7 +427,8 @@ final class ModelCompiler
             $namespace = implode('\\', $parts);
             $definition = 'new \\Type\\Orm\\ModelDefinition(' . var_export($table, true) . ', ' . var_export($primary, true)
                 . ', [' . implode(', ', $declarations) . '], ' . var_export($generated, true) . ', ' . var_export($softDelete, true) . ', ' . var_export($version, true)
-                . ', ' . $this->renderRelations($model['relations']) . ', ' . var_export($model['database'], true) . ', ' . var_export($tenant, true) . ')';
+                . ', ' . $this->renderRelations($model['relations']) . ', ' . var_export($model['database'], true) . ', ' . var_export($tenant, true)
+                . ', ' . var_export($model['class'], true) . ')';
             $code .= "\nnamespace {$namespace} {\nclass {$class} extends \\Type\\Orm\\Model\n{\n";
             $code .= "    /** @param array<string, mixed> \$values 新建字段；persisted 仅供水合工厂使用。 */\n    public function __construct(array \$values = [], bool \$persisted = false, ?\\Type\\Orm\\ModelBehavior \$behavior = null) { parent::__construct(self::mapping(), \$values, \$persisted, \$behavior); }\n";
             $code .= "    /** 返回静态声明的字段和关系映射，不访问数据库。 */\n    public static function mapping(): \\Type\\Orm\\ModelDefinition { return {$definition}; }\n";

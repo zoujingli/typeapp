@@ -2,23 +2,23 @@
 
 模型通过当前 Swoole 协程中的执行作用域自动取得受管连接。`ModelCompiler` 生成无连接参数的 `query()`、`search()`、`find()` 和 `create()`，模型持久化、自动租户隔离、`master()` 和 `Db` 事务使用同一作用域。PostgreSQL 使用完整会话重置后复用 PDO，MySQL、SQLite 暂时归还即断开。三库物理复用、独立消费、AOT 与同提交平台验收全部完成后，才能声明 ORM 完整交付。物联中心身份与租户服务按独立业务任务接入和验收。
 
-## 操作闭环与待闭合项
+## 操作闭环与验收边界
 
 操作闭环覆盖模型与迁移声明、生成加载、入口绑定、查询持久化、事务结果、外部效果和真实资源收尾。主路径已具备，重点是公共入口的组合边界和失败语义；不需要另造连接池、Repository 或调度器。业务使用路径与时序见[数据库与模型](../guide/database.md#一次模型操作怎样完成)。
 
-以下问题已在真实 SQLite PHP 路径复现，仍待修复和相应三库、AOT 回归。它们是已有契约的缺陷，不表示其他数据库也会产生完全相同的错误表现。
+查询、写入及提交后处理遵守以下组合契约，回归由独立消费者共用。
 
-| 顺序 | 触发与当前结果 | 应保持的契约与最小复用点 |
+| 入口 | 行为 | 失败边界 |
 | --- | --- | --- |
-| 1 · 数据归属 | `archive` 与 `default` 有同名同字段模型时，后者查询的 `load/loadMissing` 接受前者对象，并挂入后者的关系数据 | `ModelQuery::loadWithBudget()` 校验完整模型和数据源归属；补加载必须在关系 SQL 和对象修改前拒绝错误列表，不能只比较表名、字段名 |
-| 2 · 事务结果 | 外层 `afterCommit` 回调开启新事务且提交未知后，外层收尾把连接的最新结果覆写为 `COMMITTED` | 复用 `Connection` 与 `ReadWriteSession` 的结果传播；外层 `AfterCommitException` 继续表达已提交，回调事务的 `UNKNOWN` 也必须保留，禁止自动重试 |
-| 3 · 查询组合 | `orderBy('id')->limit(1, 1)->get()` 从第二行读取，`first()` 却返回第一行 | `ModelQuery::first()` 保留既有 offset，与底层 `Query::first()` 的行为一致 |
-| 3 · 查询组合 | 单表 `Model::query('alias')->paginate()` 要求 `uniqueOrderBy`，模型查询却没有该入口 | 沿用已有分页与主键排序，单表别名不应让模型分页进入无法满足的接口组合；同步验证普通分页与无总数分页 |
-| 4 · 数值边界 | 模型版本达到 `PHP_INT_MAX` 后执行 `increment()`，SQLite 写入成功但版本变成 REAL，再次水合报 `invalid_field_type` | 集合算术复用模型版本上限约束；越界明确失败，不留下业务字段已改而版本失真的记录，验证整批原子性及驱动真实类型 |
+| `load/loadMissing` | 先检查整个列表的作用域、数据源、生成模型类和完整字段映射，再加载关系 | 同表、同属性名不能代替模型身份；错误列表不产生部分补加载 |
+| `afterCommit` | 外层 `AfterCommitException` 保留 `COMMITTED`，连接保留回调中新事务的最新结果 | 后续事务的 `UNKNOWN` 不被外层收尾覆写，对账不能抹除未知事实 |
+| `first/firstOrFail/find` | 保留已有 offset，继续使用同一水合及关系路径 | 偏移后没有结果仍按各自的 null 或 `not_found` 契约处理 |
+| 单表别名分页 | 普通、无总数、游标分页均校验真实主键和排序列 | 别名支持不放宽 Join、聚合或写入形态限制 |
+| 集合写入及算术 | 单条写入 SQL 保留业务条件、租户与软删除范围，版本在数据库内检查并推进 | 任一版本非法、耗尽或约束失败导致本次写入回滚；提交未知则对账 |
 
-优先闭合上述正确性问题，再处理新能力和性能。`ModelQuery` 当前集合写入只有 `increment/decrement`；批量更新、删除、新增和 upsert 尚未提供。是否增加这些模型入口是新的范围决策，需要先确定字段转换、租户/软删除、版本、返回值及事件语义，不能直接转发底层 Query 后宣称模型闭环完成。现有单模型保存、删除与关系写入不因该缺口改为表查询。
+`ModelQuery` 提供 `update(array $values)`、`delete()` 与 `increment/decrement`。集合更新执行字段白名单、修改器、类型及编码检查；集合删除按模型声明软删除或物理删除。无业务条件时必须显式 `allowAll()`，它仍保留租户及软删除范围。集合写入没有额外行数上限，不预读全部目标，也不隐式拆批；字段与事件语义见[模型集合写入](models.md#模型集合写入)。模型级 `insertMany/upsert` 尚未提供。
 
-验收沿用现有入口：`tests/orm-core.php` 覆盖共同业务和真实锁等待，`tests/orm-context.php` 覆盖作用域与在途收尾，`tests/transactions.php`、`tests/outcomes.php` 覆盖事务；上述新边界需要加入相应公开行为用例。`tests/orm-suite-consumer.php` 另验证隔离安装、双进程竞争及原生无源码运行，不能由核心源码用例代替。PHP 成功、TypePHP 全量编译和同一原生产物运行分别记录。
+验收沿用现有入口：`tests/orm-core.php` 覆盖共同业务和真实锁等待，`tests/orm-context.php` 覆盖作用域与在途收尾，`tests/transactions.php`、`tests/outcomes.php` 覆盖事务。`examples/orm-suite/MutationExercise.php` 增加超过一万行的集合写入、约束失败整批回滚、版本上限、旧对象冲突、身份校验及提交后新事务场景，并验证 MySQL 非严格模式与临时非事务表拒绝、SQLite 非整数版本与触发器边界；`tests/orm-suite-consumer.php` 复用同一行为验证隔离安装、双进程竞争及原生无源码运行。SQLite/PostgreSQL 使用延迟外键验证提交失败；MySQL 不支持该机制，不据此宣称其提交后未知场景已测。PHP 成功、TypePHP 全量编译和原生产物运行分别记录。
 
 已有独立消费者通过本地 Composer path repository 复制组件；公开分发子仓精确提交消费尚需验收。会话报告中的 `physical_reuse` 当前按驱动填写，不是普通 CRUD 连续租约复用的直接测量；PostgreSQL 的同物理连接重置另有 `examples/identity-command.php` 专项。完整交付需要把实际连接身份断言纳入消费者报告，不能仅以空闲槽位或驱动名称推导通过。平台及历史证据见[三驱动独立消费矩阵](orm-consumer-matrix.md)。
 
