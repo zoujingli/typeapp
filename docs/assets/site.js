@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const siteTitle = 'TypeApp - PHP 原生应用框架';
+  const siteTitle = 'TypeApp - PHP 原生应用框架 - 物联开源分享';
 
   function mountCodePreview() {
     const preview = document.querySelector('.code-preview');
