@@ -10,7 +10,7 @@ php vendor/bin/type verify-package build/release <受信发布记录中的releas
 php vendor/bin/type archive build/release build/release.tar.gz <同一受信清单SHA-256>
 ```
 
-标准应用提供 `composer typeapp:package`，模板提供 `composer package`。目标已存在时拒绝覆盖；升级使用新的版本目录，不能删除旧目录来掩盖迁移/回滚缺口。打包要求同平台、身份生成协议3的真实产物；Windows入口允许省略构建器添加的`.exe`后缀。
+标准应用提供 `composer typeapp:package`，模板提供 `composer package`。目标已存在时拒绝覆盖；升级使用新的版本目录，不能删除旧目录来掩盖迁移/回滚缺口。打包要求同平台、身份生成协议 3 或更新的真实产物；协议 3 的产物必须已有应用 LICENSE 与 NOTICE，缺任一项时需要按协议 4 重新构建。Windows 入口允许省略构建器添加的 `.exe` 后缀。
 
 gzip归档先流式核对展开字节数及SHA-256与磁盘tar完全一致，再逐文件核对tar载荷与发布清单，避免`phar://`重新读取gzip时将完整归档留在内存。`tests/package-archive.php`通过公开`type archive`在128 MiB限制下创建两种格式，再使用Phar解包ZIP、原生`tar`解包tar.gz并验证实际原生启动；验收控制端需要可用的`tar`命令。
 
@@ -27,9 +27,13 @@ runtime/empty/                     明确的空INI扫描目录
 config/env.example                 无秘密配置示例
 DEPLOY.md                          运行目录说明
 OPERATIONS.md                      首次部署、升级、备份与恢复操作手册
+LICENSE / NOTICE                   构建时实际存在的应用原始材料
+NOTICES.md                         依赖材料索引与覆盖状态的阅读入口
 ```
 
 暂存目录完成静态校验后才原子发布。应用、库、资源、配置和启动器均有摘要；Unix应用/启动器还须具有执行权限。失败只回收本次暂存目录，不覆盖旧版本。
+
+顶层 LICENSE、NOTICE 来自构建身份已绑定的应用原文，不从当前工作目录或构建组件目录借用。其他命名的许可文本和组件、第三方依赖材料仍保留在各自的资源索引中。协议 4 不强制应用提供这两个特定文件，也不改变应用许可；材料完整性仍由 `notices.require-complete` 门禁与构建报告处理。验包及协议 4 的原生启动会核对顶层材料归属，即使重算发布清单摘要，也不能替换为其他项目的材料。
 
 ## 运行端
 

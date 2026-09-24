@@ -29,9 +29,25 @@ $package = $base . '/moved release';
 expect(rename($created['directory'], $package), '无法搬迁实际发布目录');
 $release = $publisher->verify($package, $created['manifest-sha256']);
 expect(isset($release['files']['OPERATIONS.md']) && file_get_contents($package . '/OPERATIONS.md') === file_get_contents($root . '/plugin/type-build/docs/operations.md'), '发布未包含同一份完整操作手册');
+// 第一方材料属于当前被发布的应用；独立模板与开发主仓有各自的 NOTICE。
 expect(isset($release['files']['LICENSE'], $release['files']['NOTICE'])
-    && file_get_contents($package . '/LICENSE') === file_get_contents($root . '/LICENSE')
-    && file_get_contents($package . '/NOTICE') === file_get_contents($root . '/NOTICE'), '发布未包含完整第一方许可证材料');
+    && file_get_contents($package . '/LICENSE') === file_get_contents($project . '/LICENSE')
+    && file_get_contents($package . '/NOTICE') === file_get_contents($project . '/NOTICE'), '发布未包含当前应用的完整第一方许可证材料');
+$compiledIdentity = (new Type\Build\ArtifactManifest())->read($artifact);
+$resourcePrefix = $release['artifact']['path'] . '.resources/' . $compiledIdentity['resource-generation'] . '/';
+$notices = json_decode((string) file_get_contents($package . '/' . $resourcePrefix . $compiledIdentity['dependency-notices']['index']), true, 128, JSON_THROW_ON_ERROR);
+$thirdPartyDocuments = 0;
+foreach ($notices['components'] as $component) {
+    if ($component['id'] !== 'composer:psr/http-message') {
+        continue;
+    }
+    expect($component['license-declared'] === 'MIT', '第三方许可声明被应用许可替代');
+    foreach ($component['documents'] as $document) {
+        expect(($release['files'][$resourcePrefix . $document['resource']]['sha256'] ?? null) === $document['sha256'], '第三方许可原文被遗漏或替换');
+        $thirdPartyDocuments++;
+    }
+}
+expect($thirdPartyDocuments > 0, '发布验收未覆盖第三方生产依赖的实际许可原文');
 expect(!is_dir($package . '/vendor') && !is_dir($package . '/app'), '发布包含源码或Composer目录');
 foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($package, FilesystemIterator::SKIP_DOTS)) as $entry) {
     expect(!preg_match('/\.(?:php[0-9]?|phtml|phar|inc|cc|cpp|h)$/iD', $entry->getFilename()), '发布包含源码或编译头文件');
@@ -191,6 +207,31 @@ $tamperedRun = (new Process([...$command, 'check'], $package, $environment))->wa
 expect($tamperRejected && $tamperedRun->exitCode === 1 && !$tamperedRun->timedOut, '发布文件等长篡改未在校验和运行入口拒绝');
 file_put_contents($example, $original);
 $publisher->verify($package, $created['manifest-sha256']);
+// 旧协议3产物继续发布；使用新验包入口时，顶层应用原文也必须与其构建归属一致。
+$noticeFile = $package . '/NOTICE';
+$savedNotice = (string) file_get_contents($noticeFile);
+$descriptor = $package . '/release.json';
+$savedDescriptor = (string) file_get_contents($descriptor);
+file_put_contents($noticeFile, "Unrelated application NOTICE\n");
+clearstatcache(true, $noticeFile);
+$forged = $release;
+$forged['files']['NOTICE']['sha256'] = hash_file('sha256', $noticeFile);
+$forged['files']['NOTICE']['bytes'] = filesize($noticeFile);
+file_put_contents($descriptor, json_encode($forged, JSON_THROW_ON_ERROR));
+try {
+    $materialRejected = false;
+    try {
+        $publisher->verify($package, (string) hash_file('sha256', $descriptor));
+    } catch (RuntimeException $error) {
+        $materialRejected = str_contains($error->getMessage(), '第一方材料不属于编译应用');
+    }
+    expect($materialRejected, '重写发布摘要绕过了应用NOTICE归属校验');
+} finally {
+    file_put_contents($noticeFile, $savedNotice);
+    clearstatcache(true, $noticeFile);
+    file_put_contents($descriptor, $savedDescriptor);
+}
+$publisher->verify($package, $created['manifest-sha256']);
 if (PHP_OS_FAMILY !== 'Windows') {
     chmod($package . '/run', 0644);
     clearstatcache();
@@ -210,7 +251,7 @@ $record = ['os' => PHP_OS_FAMILY, 'driver' => $driver, 'artifact-sha256' => $rel
     'package' => $package, 'project' => $project, 'relocated' => true, 'source-and-sdk-read-denied' => $isolated, 'scope' => '当前应用' . $driver . '原生发布闭环，不代表其他平台已验收',
     'business-message' => getenv('TYPE_TEMPLATE_EXPECTED_MESSAGE') ?: null,
     'composer-read-and-php-compiler-exec-denied' => $isolated,
-    'checks' => ['no-source-payload', 'no-overwrite', 'secret-rejection', 'help', 'external-trusted-digest-rejection', 'deployment-audit', 'application-initialization', 'http-auth-crud-query-validation', 'graceful-stop', 'same-size-tamper-rejection', 'executable-permissions']];
+    'checks' => ['no-source-payload', 'no-overwrite', 'secret-rejection', 'help', 'external-trusted-digest-rejection', 'deployment-audit', 'application-initialization', 'http-auth-crud-query-validation', 'graceful-stop', 'same-size-tamper-rejection', 'executable-permissions', 'application-original-materials', 'application-material-identity-rejection', 'third-party-materials-preserved']];
 if ($driver !== 'sqlite') {
     $record['checks'][] = 'dedicated-database-created-and-removed';
 }

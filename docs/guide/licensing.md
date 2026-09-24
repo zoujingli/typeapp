@@ -26,6 +26,8 @@ Apache-2.0 允许在满足许可证、版权、修改说明和 NOTICE 要求的�
 
 `swoole/typephp` 的 GPL-3.0-only 不会把 TypeApp 第一方代码改成 GPL，也不能把构建工具误写成生产运行时许可证。原生发布包另行生成 `NOTICES.md`，其中记录实际构建输入和第三方材料摘要。
 
+运行包顶层的 `LICENSE`、`NOTICE` 来自当前应用在构建时收集的原文，并与产物身份绑定；依赖材料保留在各自的资源索引中。外部应用可以采用自己的许可证，打包工具不会把 `type-build` 的许可证套用给应用。若应用没有某份材料，就不会生成对应文件；需要材料完整性门禁时，在构建配置中启用 `notices.require-complete`。
+
 `type-build` 内置模块的 `resources/swoole/manifest.json` 记录固定来源、适配、依赖及摘要，`resources/swoole/LICENSES/` 保存 Swoole 和所含第三方材料的原始许可证。它们随 Composer 组件分发；再分发模块时应一并保留适用许可与归属，不能只复制 `.so/.dll`。详细清单见[资源说明与许可目录](https://github.com/zoujingli/typeapp/tree/main/plugin/type-build/resources/swoole)。
 
 ## 分发检查

@@ -14,6 +14,8 @@ use RuntimeException;
 final class NativePackage
 {
     /**
+     * 顶层 LICENSE/NOTICE 来自构建身份绑定的应用材料，依赖原文保留在各自的资源索引中。
+     *
      * @return array{directory:string, manifest-sha256:string, build-id:string, files:int}
      * @throws RuntimeException 输入不完整、依赖被改动、配置携密或目标已存在。
      */
@@ -32,6 +34,11 @@ final class NativePackage
             throw new RuntimeException('发布需要同平台身份生成协议3产物，请先重新构建');
         }
         $reader->verifyResources($artifact, $manifest);
+        $applicationMaterials = $this->applicationMaterials($artifact, $manifest);
+        // 协议3的原生校验固定要求这两个文件；不能伪造材料以迁就旧启动器。
+        if (($manifest['generator-protocols']['identity'] ?? 0) < 4 && !isset($applicationMaterials['LICENSE'], $applicationMaterials['NOTICE'])) {
+            throw new RuntimeException('旧产物的发布校验要求 LICENSE 和 NOTICE；应用材料不齐时请使用身份生成协议4重新构建');
+        }
         $parent = BuildPlatform::resolve(dirname($destination));
         $leaf = basename($destination);
         if ($leaf === '' || $leaf === '.' || $leaf === '..' || preg_match('/[\x00-\x1f\x7f]/', $leaf)) {
@@ -114,12 +121,7 @@ final class NativePackage
                 throw new RuntimeException('构建组件缺少完整且有界的部署恢复操作手册');
             }
             $this->write($stage, 'OPERATIONS.md', $operations, 'deployment-instructions', $files);
-            foreach (['LICENSE', 'NOTICE'] as $firstPartyMaterial) {
-                $source = dirname(__DIR__) . '/' . $firstPartyMaterial;
-                $contents = file_get_contents($source);
-                if (!is_string($contents) || $contents === '' || strlen($contents) > 1048576) {
-                    throw new RuntimeException('构建组件缺少完整且有界的许可证材料：' . $firstPartyMaterial);
-                }
+            foreach ($applicationMaterials as $firstPartyMaterial => $contents) {
                 $this->write($stage, $firstPartyMaterial, $contents, 'first-party-license-material', $files);
             }
             $notices = $manifest['dependency-notices'] ?? null;
@@ -192,7 +194,7 @@ final class NativePackage
             throw new RuntimeException('发布缺少原生产物');
         }
         $launcher = ($release['runtime']['os'] ?? '') === 'Windows' ? 'run.cmd' : 'run';
-        foreach ([$launcher, 'runtime/php.ini', 'config/env.example', 'DEPLOY.md', 'LICENSE', 'NOTICE'] as $requiredFile) {
+        foreach ([$launcher, 'runtime/php.ini', 'config/env.example', 'DEPLOY.md'] as $requiredFile) {
             if (!isset($release['files'][$requiredFile])) {
                 throw new RuntimeException('发布清单遗漏必需文件：' . $requiredFile);
             }
@@ -224,7 +226,67 @@ final class NativePackage
             }
         }
         (new ArtifactManifest())->verifyResources($directory . '/' . $binary, $manifest);
+        $applicationMaterials = $this->applicationMaterials($directory . '/' . $binary, $manifest);
+        foreach (['LICENSE', 'NOTICE'] as $name) {
+            $expected = isset($applicationMaterials[$name]) ? hash('sha256', $applicationMaterials[$name]) : null;
+            if (($release['files'][$name]['sha256'] ?? null) !== $expected) {
+                throw new RuntimeException('发布第一方材料不属于编译应用：' . $name);
+            }
+        }
         return $release;
+    }
+
+    /**
+     * 从已校验的产物资源读取应用原始材料，不依赖工作目录、应用源码或构建工具的许可证。
+     *
+     * @param array<string, mixed> $manifest 当前产物的内嵌身份，调用前已核对全部资源摘要。
+     * @return array<string, string> 实际存在的 LICENSE 和 NOTICE 原文；完整性策略沿用构建时 notices.require-complete。
+     * @throws RuntimeException 应用材料归属含糊、资源声明或内容与构建身份不一致。
+     */
+    private function applicationMaterials(string $artifact, array $manifest): array
+    {
+        $notices = $manifest['dependency-notices'] ?? null;
+        if ($notices === null) {
+            return [];
+        }
+        if (!is_array($notices) || !is_string($notices['index'] ?? null) || !is_string($notices['index-sha256'] ?? null)) {
+            throw new RuntimeException('产物缺少应用许可证材料索引，请重新构建');
+        }
+        $resources = array_column($manifest['resources'], null, 'target');
+        $resourceRoot = $artifact . '.resources/' . $manifest['resource-generation'];
+        $index = $this->file($resourceRoot, $notices['index']);
+        if (($resources[$notices['index']]['sha256'] ?? null) !== $notices['index-sha256'] || filesize($index) > 4194304
+            || !hash_equals($notices['index-sha256'], (string) hash_file('sha256', $index))) {
+            throw new RuntimeException('应用许可证材料索引与构建身份不一致');
+        }
+        $metadata = json_decode((string) file_get_contents($index), true, 128, JSON_THROW_ON_ERROR);
+        if (!is_array($metadata) || ($metadata['protocol'] ?? null) !== 1 || !is_array($metadata['components'] ?? null)) {
+            throw new RuntimeException('应用许可证材料索引结构无效');
+        }
+        $applications = array_values(array_filter($metadata['components'], static fn (mixed $component): bool => is_array($component) && ($component['kind'] ?? null) === 'application'));
+        if (count($applications) !== 1 || !is_array($applications[0]['documents'] ?? null)) {
+            throw new RuntimeException('产物需要唯一的应用许可证材料归属');
+        }
+        $materials = [];
+        foreach ($applications[0]['documents'] as $document) {
+            if (!is_array($document) || !in_array($document['name'] ?? null, ['LICENSE', 'NOTICE'], true)) {
+                continue;
+            }
+            $name = $document['name'];
+            $resource = $document['resource'] ?? null;
+            $sha = $document['sha256'] ?? null;
+            if (isset($materials[$name]) || !is_string($resource) || !is_string($sha)
+                || preg_match('/^[a-f0-9]{64}$/D', $sha) !== 1 || ($resources[$resource]['sha256'] ?? null) !== $sha
+                || !is_int($document['bytes'] ?? null) || $document['bytes'] < 1 || $document['bytes'] > 1048576) {
+                throw new RuntimeException('应用许可证材料声明无效：' . $name);
+            }
+            $file = $this->file($resourceRoot, $resource);
+            if (filesize($file) !== $document['bytes'] || !hash_equals($sha, (string) hash_file('sha256', $file))) {
+                throw new RuntimeException('应用许可证材料原文与构建身份不一致：' . $name);
+            }
+            $materials[$name] = (string) file_get_contents($file);
+        }
+        return $materials;
     }
 
     private function example(string $file): string

@@ -48,7 +48,7 @@ final class PackageRuntime
         if (is_array($manifest['dependency-notices'] ?? null) && !isset($release['files']['NOTICES.md'])) {
             throw new \RuntimeException('发布遗漏依赖材料阅读入口');
         }
-        foreach ([$launcher, 'runtime/php.ini', 'config/env.example', 'DEPLOY.md', 'LICENSE', 'NOTICE'] as $requiredFile) {
+        foreach ([$launcher, 'runtime/php.ini', 'config/env.example', 'DEPLOY.md'] as $requiredFile) {
             if (!isset($release['files'][$requiredFile])) { throw new \RuntimeException('发布清单遗漏必需文件'); }
         }
         foreach ($release['files'] as $relative => $entry) {
@@ -67,7 +67,42 @@ final class PackageRuntime
             $resourceFile = self::packageFile($root, $resourceName);
             if (TYPE_PACKAGE_SHA256($resourceFile) !== $resource['sha256']) { throw new \RuntimeException('资源与编译身份不一致'); }
         }
+        self::packageMaterials($root, $binary, $manifest, $release);
         return $root;
+    }
+
+    /** 顶层应用材料只来自已绑定的原文；缺失材料不借用框架许可，不强制外部应用采用特定许可。 */
+    private static function packageMaterials(string $root, string $binary, array $manifest, array $release): void
+    {
+        $materials = [];
+        if (is_array($manifest['dependency-notices'] ?? null)) {
+            $notices = $manifest['dependency-notices'];
+            $index = self::packageFile($root, $binary . '.resources/' . $manifest['resource-generation'] . '/' . $notices['index']);
+            if (filesize($index) > 4194304 || TYPE_PACKAGE_SHA256($index) !== $notices['index-sha256']) {
+                throw new \RuntimeException('应用许可证材料索引与编译身份不一致');
+            }
+            $metadata = json_decode((string) file_get_contents($index), true, 128, JSON_THROW_ON_ERROR);
+            if (!is_array($metadata) || ($metadata['protocol'] ?? null) !== 1 || !is_array($metadata['components'] ?? null)) {
+                throw new \RuntimeException('应用许可证材料索引结构无效');
+            }
+            $applications = 0;
+            foreach ($metadata['components'] as $component) {
+                if (($component['kind'] ?? null) !== 'application') { continue; }
+                $applications++;
+                foreach ($component['documents'] as $document) {
+                    $name = (string) $document['name'];
+                    if ($name !== 'LICENSE' && $name !== 'NOTICE') { continue; }
+                    if (isset($materials[$name])) { throw new \RuntimeException('应用许可证材料归属重复'); }
+                    $materials[$name] = $document['sha256'];
+                }
+            }
+            if ($applications !== 1) { throw new \RuntimeException('产物需要唯一的应用许可证材料归属'); }
+        }
+        foreach (['LICENSE', 'NOTICE'] as $materialName) {
+            if (($release['files'][$materialName]['sha256'] ?? null) !== ($materials[$materialName] ?? null)) {
+                throw new \RuntimeException('发布第一方材料不属于编译应用');
+            }
+        }
     }
 
     /** 路径必须在发布根内，不能通过遍历或目录链接读取外部文件。 */
