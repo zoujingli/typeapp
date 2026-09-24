@@ -1389,7 +1389,9 @@ final class Application
     /** 运行已选择的服务器，并在正常退出或异常后关闭；不会自动迁移或生成生产源码。 */
     public static function serve(Repository $settings, string $basePath, bool $development = false, bool $broker = false): void
     {
-        if (!$broker && !$development) {
+        // 生产多线程 HTTP 依赖共享监听副本；Linux/macOS 已验收。Windows IOCP 共享监听尚未成立
+        // （见 docs/development/http-native-threads.md），按平台能力回退已验证的协程 HTTP。
+        if (!$broker && !$development && PHP_OS_FAMILY !== 'Windows') {
             $count = Settings::integer($settings, 'database.budget.threads', 1, 256);
             CoroutineRuntime::enableIo();
             $listener = new \Swoole\Coroutine\Socket(AF_INET, SOCK_STREAM, 0);
