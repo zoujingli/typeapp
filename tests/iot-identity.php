@@ -1488,6 +1488,13 @@ if ($target === '--php') {
     // 当前应用引导会解析全部生产源码，CLI 默认 128M 会在安装阶段耗尽。
     array_push($command, '-d', 'memory_limit=512M', '-d', 'swoole.enable_library=On', $root . '/bin/typeapp');
 } else {
+    $target = realpath($target);
+    expect($target !== false && is_file($target . '.build.json'), '原生身份验收需要原生产物与构建元数据');
+    $built = json_decode((string) file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+    $profileIni = $built['runtime-profile']['ini'] ?? '';
+    expect(is_string($profileIni) && is_file($profileIni), '原生身份验收需要产物运行配置');
+    // 使用该产物自己的运行配置，避免 CI 共用 ORM 探针缺 openssl 等依赖导致 artifact 无法加载。
+    putenv('TYPE_NATIVE_PHP_INI=' . $profileIni);
     $command = nativeCommand($target);
 }
 $workerCommand = $command;
