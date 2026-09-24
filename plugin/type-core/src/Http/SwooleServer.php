@@ -64,12 +64,13 @@ final class SwooleServer implements HttpServerInterface
         \Type\Runtime\CoroutineRuntime::enableIo();
         if (PHP_OS_FAMILY === 'Windows') {
             // Windows 无 Unix worker/信号协议；协程 HTTP 须挂接停止信号，才能响应 CTRL_BREAK 正常排空。
-            \Type\Runtime\CoroutineRuntime::run(function () use ($host, $port): void {
-                $signals = new \Type\Runtime\ProcessSignals();
-                $signals->attach(function (): void {
-                    $this->control->stop();
-                });
-                try {
+            // embed 原生控制桥须在协程外注册；在 CoroutineRuntime::run 内 attach 曾触发 zend_mm_heap corrupted。
+            $signals = new \Type\Runtime\ProcessSignals();
+            $signals->attach(function (): void {
+                $this->control->stop();
+            });
+            try {
+                \Type\Runtime\CoroutineRuntime::run(function () use ($host, $port, $signals): void {
                     $server = new \Swoole\Coroutine\Http\Server($host, $port);
                     $server->set([
                         'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
@@ -101,10 +102,10 @@ final class SwooleServer implements HttpServerInterface
                             $shutdown();
                         }
                     }
-                } finally {
-                    $signals->close();
-                }
-            });
+                });
+            } finally {
+                $signals->close();
+            }
             return;
         }
         $server = new Server($host, $port, SWOOLE_BASE);
