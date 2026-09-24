@@ -63,37 +63,46 @@ final class SwooleServer implements HttpServerInterface
         }
         \Type\Runtime\CoroutineRuntime::enableIo();
         if (PHP_OS_FAMILY === 'Windows') {
-            // Windows 无 Unix worker/信号协议；在协程内使用 Coroutine HTTP，供误入经典 serve 的路径与模板验收。
+            // Windows 无 Unix worker/信号协议；协程 HTTP 须挂接停止信号，才能响应 CTRL_BREAK 正常排空。
             \Type\Runtime\CoroutineRuntime::run(function () use ($host, $port): void {
-                $server = new \Swoole\Coroutine\Http\Server($host, $port);
-                $server->set([
-                    'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
-                    'http_compression' => false, 'package_max_length' => $this->limits->bytes,
-                    'socket_timeout' => $this->control->requestSeconds,
-                ]);
-                $server->handle('/', function (Request $request, Response $response): void {
-                    $this->handleNative($request, $response);
+                $signals = new \Type\Runtime\ProcessSignals();
+                $signals->attach(function (): void {
+                    $this->control->stop();
                 });
-                $timer = \Swoole\Timer::tick(20, function () use ($server): void {
-                    if ($this->control->mustTerminate()) {
-                        fwrite(STDERR, "HTTP worker 清理超出预算，停止接收并由监督进程回收。\n");
-                        $server->shutdown();
-                    } elseif ($this->control->drained()) {
-                        $server->shutdown();
-                    }
-                });
-                if ($timer === false) {
-                    throw new RuntimeException('无法启动 Windows HTTP 停止检查');
-                }
-                $this->watchdog = $timer;
                 try {
-                    $server->start();
-                } finally {
-                    $this->clearThreadTimer();
-                    $shutdown = $this->onWorkerStop;
-                    if ($shutdown !== null) {
-                        $shutdown();
+                    $server = new \Swoole\Coroutine\Http\Server($host, $port);
+                    $server->set([
+                        'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
+                        'http_compression' => false, 'package_max_length' => $this->limits->bytes,
+                        'socket_timeout' => $this->control->requestSeconds,
+                    ]);
+                    $server->handle('/', function (Request $request, Response $response): void {
+                        $this->handleNative($request, $response);
+                    });
+                    $timer = \Swoole\Timer::tick(20, function () use ($server, $signals): void {
+                        $signals->dispatch();
+                        if ($this->control->mustTerminate()) {
+                            fwrite(STDERR, "HTTP worker 清理超出预算，停止接收并由监督进程回收。\n");
+                            $server->shutdown();
+                        } elseif ($this->control->drained()) {
+                            $server->shutdown();
+                        }
+                    });
+                    if ($timer === false) {
+                        throw new RuntimeException('无法启动 Windows HTTP 停止检查');
                     }
+                    $this->watchdog = $timer;
+                    try {
+                        $server->start();
+                    } finally {
+                        $this->clearThreadTimer();
+                        $shutdown = $this->onWorkerStop;
+                        if ($shutdown !== null) {
+                            $shutdown();
+                        }
+                    }
+                } finally {
+                    $signals->close();
                 }
             });
             return;
