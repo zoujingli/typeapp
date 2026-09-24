@@ -63,7 +63,40 @@ final class SwooleServer implements HttpServerInterface
         }
         \Type\Runtime\CoroutineRuntime::enableIo();
         if (PHP_OS_FAMILY === 'Windows') {
-            throw new RuntimeException('当前 SwooleServer 的 worker 与信号协议需要 Unix；Windows 需使用匹配的官方 Swoole 构建并完成独立原生验收');
+            // Windows 无 Unix worker/信号协议；在协程内使用 Coroutine HTTP，供误入经典 serve 的路径与模板验收。
+            \Type\Runtime\CoroutineRuntime::run(function () use ($host, $port): void {
+                $server = new \Swoole\Coroutine\Http\Server($host, $port);
+                $server->set([
+                    'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
+                    'http_compression' => false, 'package_max_length' => $this->limits->bytes,
+                    'socket_timeout' => $this->control->requestSeconds,
+                ]);
+                $server->handle('/', function (Request $request, Response $response): void {
+                    $this->handleNative($request, $response);
+                });
+                $timer = \Swoole\Timer::tick(20, function () use ($server): void {
+                    if ($this->control->mustTerminate()) {
+                        fwrite(STDERR, "HTTP worker 清理超出预算，停止接收并由监督进程回收。\n");
+                        $server->shutdown();
+                    } elseif ($this->control->drained()) {
+                        $server->shutdown();
+                    }
+                });
+                if ($timer === false) {
+                    throw new RuntimeException('无法启动 Windows HTTP 停止检查');
+                }
+                $this->watchdog = $timer;
+                try {
+                    $server->start();
+                } finally {
+                    $this->clearThreadTimer();
+                    $shutdown = $this->onWorkerStop;
+                    if ($shutdown !== null) {
+                        $shutdown();
+                    }
+                }
+            });
+            return;
         }
         $server = new Server($host, $port, SWOOLE_BASE);
         $settings = ['worker_num' => 1, 'enable_coroutine' => true, 'log_level' => SWOOLE_LOG_ERROR, 'log_file' => '/dev/stderr',
