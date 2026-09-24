@@ -1,6 +1,6 @@
 # 基础通信导读
 
-TypeApp 以 TypePHP 编译业务与 Plugins，以 Swoole 提供网络、进程、线程、协程及事件循环。HTTP、TCP、UDP、MQTT、WebSocket 是面向应用的五项通信能力，分别使用独立教程说明。菜单平级表示它们都是应用可选择的入口，不表示它们处于同一网络层：HTTP、WebSocket 和 MQTT 通常建立在 TCP 之上，MQTT 也可以通过 WebSocket 传输。
+TypeApp 通过框架组件提供通信入口，内部复用 Swoole 运行库的网络和并发机制。HTTP、TCP、UDP、MQTT、WebSocket 是面向应用的五项通信能力，分别使用独立教程说明。菜单平级表示它们都是应用可选择的入口，不表示它们处于同一网络层：HTTP、WebSocket 和 MQTT 通常建立在 TCP 之上，MQTT 也可以通过 WebSocket 传输。
 
 ## 选择通信方式
 
@@ -69,6 +69,6 @@ Swoole 持有网络句柄与调度。`type-runtime` 的 `ExecutionScope`、`Dead
 
 按[构建与部署](deployment.md)把全部生产源码交给 TypePHP，在目标平台检查原生产物的启动、协议互通、异常关闭和资源回收。开发态 PHP 示例通过，只能证明对应接口的开发态行为。
 
-交付目标是一个程序文件加外置配置，原生依赖由程序携带并管理。当前构建仍存在独立原生库和打包工作，不能仅凭本文示例声称单程序交付完成。日志、数据库和业务数据按各自生命周期管理。
+运行库的准备由构建负责，程序、配置和持久数据按[部署约定](deployment.md#单程序交付约定)管理。
 
 继续阅读：[HTTP](communications/http.md) · [TCP](communications/tcp.md) · [UDP](communications/udp.md) · [MQTT](communications/mqtt.md) · [WebSocket](communications/websocket.md)。

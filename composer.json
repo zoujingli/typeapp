@@ -1,6 +1,6 @@
 {
   "name": "zoujingli/typeapp",
-  "description": "TypeApp：以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力的 PHP 应用框架。",
+  "description": "TypeApp：面向原生交付的 PHP 应用框架，基于 TypePHP 全量编译，提供组件装配与应用运行能力。",
   "homepage": "https://github.com/zoujingli/typeapp",
   "type": "project",
   "license": "Apache-2.0",

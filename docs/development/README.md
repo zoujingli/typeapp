@@ -1,19 +1,17 @@
 # 实现说明
 
-本目录描述当前代码、配置、边界及可复用验证方法。公开教程见[使用指南](../guide/)，待完成能力见[实现规划](../guide/roadmap.md)。
+本目录描述当前代码、配置、边界及可复用验证方法。有明确产物身份的历史结果保留在[验收证据](../evidence/README.md)，不作为当前版本的通用通过声明。公开教程见[使用指南](../guide/)，待完成能力见[实现规划](../guide/roadmap.md)。
 
 - [独立业务应用模板](application-template.md)
 - [独立 Broker 管理宿主](broker-management.md)
 - [构建身份、缓存与隔离输入](build-identity.md)
 - [构建拒绝用例的真实依赖](build-rejection-regression.md)
 - [缓存与事务的一致性边界](cache-consistency.md)
-- [完整原生 CI 的分组与工具链](ci-native.md)
 - [无源码运行目录与隔离验收](clean-runtime.md)
 - [编译期命令装配](command-assembly.md)
 - [已编译业务线程](compiled-business-threads.md)
 - [组件组织、安装与实施标准](component-structure.md)
 - [声明式配置与运行时环境](configuration.md)
-- [当前实现说明](current-implementation-alignment.md)
 - [数据库连接身份与会话隔离](database-identities.md)
 - [dependency-notices](dependency-notices.md)
 - [部署与恢复操作手册](deployment-runbook.md)
@@ -25,7 +23,7 @@
 - [HTTP 背压、部署预算与停止](http-backpressure.md)
 - [HTTP 原生线程接入](http-native-threads.md)
 - [HTTP 代理信任、鉴权与正文](http-trust.md)
-- [十四插件的完整业务集成](integration.md)
+- [组件完整业务集成](integration.md)
 - [I/O 验证方法](io-thread-coroutine-baseline.md)
 - [分钟统计、迟到修正与九十天历史](iot-aggregate.md)
 - [实时阈值告警](iot-alarms.md)
@@ -77,7 +75,6 @@
 - [调度组件实施与验收](scheduler.md)
 - [第三方源码与资源适配](source-imports.md)
 - [完整静态链接可行性](static-runtime-feasibility.md)
-- [内置 Swoole 模块实施与验证](swoole-bundle.md)
 - [Swoole 文件 I/O 接入](swoole-file-io.md)
 - [可靠存储故障与任务优雅停止](task-reliability.md)
 - [工作线程内的 TCP/TLS 原生通信](tcp-native-io.md)
@@ -86,7 +83,6 @@
 - [数据库与 Redis 的 TLS 验证](tls-verification.md)
 - [嵌套事务与模型失效](transactions.md)
 - [标准物联应用](typeapp.md)
-- [TypePHP 0.9.3 升级验收](typephp-upgrade-0.9.3.md)
 - [有界原生 UDP 接入](udp-native-io.md)
 - [有界 WebSocket 会话](websocket.md)
 

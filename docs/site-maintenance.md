@@ -1,13 +1,13 @@
 # 文档站维护
 
-站点入口为 `index.html`，使用 Docsify 5.0.0 在浏览器中渲染 Markdown，无 Node/npm 构建步骤。页面标题为「TypeApp - 物联开源分享」，其中「物联开源分享」是 iots.top 的备案网站名称。页脚展示「TypeApp · 物联开源分享」、Apache-2.0、NOTICE、许可证说明，以及粤 ICP 和粤公网安备备案信息。
+站点入口为 `index.html`，使用 Docsify 5.0.0 在浏览器中渲染 Markdown，无 Node/npm 构建步骤。页面标题为「TypeApp - PHP 原生应用框架」；iots.top 的备案网站名称「物联开源分享」保留在页脚，连同 Apache-2.0、NOTICE、许可证说明，以及粤 ICP 和粤公网安备备案信息展示。
 
 粤ICP备16006642号链接到工信部备案查询网站；粤公网安备44200102446399号与左侧公安备案图标共同链接到 `https://beian.mps.gov.cn/#/query/webSearch?code=44200102446399`。两类备案链接均使用 `target="_blank"` 和 `rel="noopener noreferrer"`。公安备案图标使用所提供 PNG 原图的 Base64 数据，等比例显示为 18×20，不发起独立图片请求。
 
 ## 内容与资源
 
 - `README.md`：文档首页。
-- `guide/`：面向框架使用者的指南。`guide/architecture.md` 集中说明 TypeApp 应用框架、TypePHP 编译器、Swoole 原生运行能力与 Plugins 的关系；首页使用同一职责表述。Swoole 为必需的通信与并发底层，单程序加配置为交付约定；现有实现差距须标明。物联中心是成品案例，侧栏独立分组并放在 TypeApp 框架与开发指南之间；框架文档提及它时只作为案例。目录以 `_sidebar.md` 为准。
+- `guide/`：面向框架使用者的指南。`guide/typephp.md` 重点说明核心编译技术；`guide/architecture.md` 描述业务、框架组件与内置原生运行库的分层，Swoole 属于内部运行库。`guide/capabilities.md` 维护基础能力需求与验收入口，`guide/roadmap.md` 只维护未闭合工作。环境按开发、构建、部署区分，单程序契约与当前实现差距集中在 `guide/deployment.md`。物联中心是成品案例，侧栏独立分组；目录以 `_sidebar.md` 为准。
 - `guide/plugins/`：15 个插件的独立使用页，由 `guide/components.md` 汇总，侧栏按用途分组；源码数量不等于已分发或完整验收数量。
 - `_navbar.md`、`_404.md`：顶部导航与未找到页面。
 - `assets/site.js`、`assets/site.css`：站点配置、代码复制、首页动效和主题变量。
@@ -28,15 +28,15 @@ TypeApp 文档使用青绿表达品牌和操作，深墨承载代码与编译过
 
 | 角色 | 变量与标准色 | 使用位置 |
 | --- | --- | --- |
-| 品牌色 | `--brand: d64`、`--brand-strong: e5f4d` | 标志、链接、导航选中态 |
+| 品牌色 | `--brand: #147d64`、`--brand-strong: #0e5f4d` | 标志、链接、导航选中态 |
 | 品牌浅色 | `--brand-soft: #e4f3ed`、`--brand-line: #b5d9cc` | 导航底色、推荐入口、提示框 |
-| 深色区强调 | `--accent: dfbb`、`--accent-soft: #b6f2de` | 主按钮、光标、编译连线 |
+| 深色区强调 | `--accent: #65dfbb`、`--accent-soft: #b6f2de` | 主按钮、光标、编译连线 |
 | 阅读表面 | `--surface: #f8fbfa`、`--surface-raised: #ffffff`、`--surface-muted: #eff5f2` | 页面、卡片、侧栏 |
-| 正文层级 | `--ink: e`、`--text: d54`、`--muted: f65` | 标题、正文、辅助文字 |
+| 正文层级 | `--ink: #16382e`、`--text: #425d54`、`--muted: #586f65` | 标题、正文、辅助文字 |
 | 普通边界 | `--line: #dbe7e1` | 表格、分隔线、输入框 |
-| 代码表面 | `--night: c211c`、`--night-raised: e26`、`--night-line: c4a3f` | 首页、代码面板及其边界 |
-| 深色区文字 | `--night-text: #e4f5ed`、`--night-muted: b6a9` | 代码、注释、辅助说明 |
-| 语法辅助色 | `--syntax-keyword: dc8f4`、`--syntax-literal: #e8c789` | 关键字、变量与数值等语法区分 |
+| 代码表面 | `--night: #0c211c`、`--night-raised: #122e26`、`--night-line: #2c4a3f` | 首页、代码面板及其边界 |
+| 深色区文字 | `--night-text: #e4f5ed`、`--night-muted: #99b6a9` | 代码、注释、辅助说明 |
+| 语法辅助色 | `--syntax-keyword: #8dc8f4`、`--syntax-literal: #e8c789` | 关键字、变量与数值等语法区分 |
 | 警告语义 | `--warning-bg`、`--warning-line`、`--warning-text` | 保留琥珀色警告，避免与普通提示混淆 |
 
 Docsify 和 Prism 的颜色入口映射到上述变量。独立 SVG 不继承页面变量，`favicon.svg` 与 `build-flow.svg` 直接使用标准色；修改对应变量时同步 SVG，`index.html` 的 `theme-color` 与 `--night` 一致。
@@ -77,6 +77,8 @@ python3 -m http.server 3000 --bind 127.0.0.1 --directory "$DOCS_OUTPUT"
 许可证下载链接使用与页脚一致的 HTML `href="LICENSE"` / `href="NOTICE"`，相对站点根页面解析，兼容子目录部署。不要让 Docsify 将它们编译为 `#/LICENSE` / `#/NOTICE` Markdown 路由，否则会请求不存在的 `.md` 文件。
 
 指南中的流程图、架构图和时序图使用语言标记为 mermaid 的代码块，由本地 `assets/vendor/mermaid/mermaid.min.js` 渲染，颜色映射到站点 CSS 变量。不要引用 CDN，也不要把示意图写成已验收能力。
+
+编译流程突出 TypePHP 节点，运行结构把 Swoole 放在内置原生库层。图表保留原始文字尺寸，宽图在图框内横向滚动，聚焦图框后可用方向键查看。窄屏检查标题位于固定导航下方，图表和表格不撑宽整个页面；不能只以 SVG 成功生成判断可读性。
 
 浏览器检查首页、每个指南、章节锚点、搜索命中与无结果、代码复制、404 返回链接、窄屏导航和页脚。分别从站点根和子目录进入深层 Hash 地址并刷新，核对资源请求无遗漏。
 

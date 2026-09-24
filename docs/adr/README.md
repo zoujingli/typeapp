@@ -14,7 +14,7 @@
 - [可靠上报以平台持久接收回执完成](0011-iot-durable-ingestion-receipt.md)
 - [业务线程与协程作用域](0013-business-threads-and-coroutine-scopes.md)
 - [MQTT WebSocket 接入与证书身份](0014-mqtt-websocket-and-certificate-identity.md)
-- [TypePHP 与 Swoole 统一底层](0015-typephp-and-swoole-foundation.md)
+- [编译工具与原生运行库的职责](0015-typephp-and-swoole-foundation.md)
 - [基于 Swoole 的多协议基础通信](0016-swoole-standard-communications.md)
 - [双端身份与租户内 RBAC](0017-dual-realm-tenant-rbac.md)
 - [模拟登录保留真实管理身份](0018-admin-customer-impersonation.md)

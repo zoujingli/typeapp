@@ -1,6 +1,6 @@
 # 组件参考
 
-Plugins 是 TypeApp 中由 Composer 管理的框架组件的统称。当前维护 15 个源码包，均以 `type-xxxx` 命名，Composer 包名为 `zoujingli/type-xxxx`。各组件页说明依赖、接口、配置与失败边界。应用按实际需要组合：生产组件随业务交给 TypePHP 编译，Swoole 原生扩展提供运行能力；构建与测试工具按开发依赖使用。四者关系见[系统架构](architecture.md)。物联中心是成品案例，业务契约见[物联网中心](iot-center.md)。`type-mqtt` 与其余组件使用同一套源码维护规则，其协议与容量验收状态单独记录，须使用对应组件的实际产物验证。
+Plugins 是 TypeApp 中由 Composer 管理的框架组件的统称。当前维护 15 个源码包，均以 `type-xxxx` 命名，Composer 包名为 `zoujingli/type-xxxx`。各组件页说明依赖、接口、配置与失败边界。应用按实际需要组合：生产组件随业务交给 TypePHP 编译，原生运行库随应用交付；构建与测试工具按开发依赖使用。职责分层见[系统架构](architecture.md)。物联中心是成品案例，业务契约见[物联网中心](iot-center.md)。`type-mqtt` 与其余组件使用同一套源码维护规则，其协议与容量验收状态单独记录，须使用对应组件的实际产物验证。
 
 ```mermaid
 flowchart LR
@@ -62,7 +62,7 @@ composer require zoujingli/type-orm-sqlite:dev-main
 
 具体公开依赖、扩展和版本要求以所用包的 `composer.json` 为准。
 
-各组件页的“安装与依赖”用于源码开发和构建准备。生产组件随业务一起编译，`type-build` 默认复用匹配的内置 Swoole 并收集实际原生依赖；部署完整运行包时无需再逐个安装 Composer 组件或开发 SDK。外部数据库、Redis 等业务服务按所选能力提供，统一见[环境与依赖](environment.md)。
+各组件页的“安装与依赖”用于源码开发和构建准备。生产组件随业务一起编译，`type-build` 收集实际原生依赖；部署完整运行包时无需再逐个安装 Composer 组件或开发 SDK。外部数据库、Redis 等业务服务按所选能力提供，统一见[环境与依赖](environment.md)。
 
 HTTP、TCP、UDP、MQTT、WebSocket 的独立教程见[基础通信](communications.md)，每篇包含配置、双端实例、应用设计与验证。
 

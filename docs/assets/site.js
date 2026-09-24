@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const siteTitle = 'TypeApp - 物联开源分享';
+  const siteTitle = 'TypeApp - PHP 原生应用框架';
 
   function mountCodePreview() {
     const preview = document.querySelector('.code-preview');
@@ -123,7 +123,7 @@
       depth: 3,
       maxAge: 3600000,
       // 集中更新文档时递增版本，避免读者继续使用旧章节索引。
-      namespace: 'typeapp-guide-v29-' + window.location.pathname,
+      namespace: 'typeapp-guide-v30-' + window.location.pathname,
     },
     plugins: [function (hook) {
       let disposePreview = function () {};
@@ -242,8 +242,9 @@
           const source = (code ? code.textContent : pre.textContent).replace(/^\s+|\s+$/g, '');
           const figure = document.createElement('figure');
           figure.className = 'diagram';
-          figure.setAttribute('role', 'img');
-          figure.setAttribute('aria-label', '结构示意图');
+          figure.setAttribute('role', 'group');
+          figure.setAttribute('aria-label', '架构图示，可横向滚动查看');
+          figure.tabIndex = 0;
           const host = document.createElement('div');
           host.className = 'mermaid';
           host.textContent = source;
@@ -251,7 +252,15 @@
           pre.replaceWith(figure);
           nodes.push(host);
         });
-        return window.mermaid.run({ nodes: nodes }).catch(function () {
+        return window.mermaid.run({ nodes: nodes }).then(function () {
+          nodes.forEach(function (host) {
+            const svg = host.querySelector('svg');
+            // 窄屏保留图中文字的原始尺寸，由图框滚动，不将整张图缩成微小文字。
+            if (svg && svg.viewBox.baseVal.width > 0) {
+              svg.style.minWidth = svg.viewBox.baseVal.width + 'px';
+            }
+          });
+        }).catch(function () {
           nodes.forEach(function (host) {
             if (!host.querySelector('svg')) host.classList.add('diagram-error');
           });

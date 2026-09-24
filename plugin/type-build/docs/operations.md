@@ -4,7 +4,7 @@
 
 Swoole 能力已由框架集成，匹配的内置模块及实际原生依赖在构建时校验并收集，部署者无需另建 PHP 开发环境。当前交付仍为目录包，须保留程序、运行库及清单的完整布局；“一个主程序文件加外置配置、启动不释放运行库”的完整静态目标尚未完成。外部数据库、Redis、证书与持久数据按业务需要管理，见[环境与依赖](https://iots.top/#/guide/environment)。
 
-当前主仓构建基线为 PHP `8.5.10 ZTS`、TypePHP `0.9.3`、PHPX `2.9.2`；本手册不扩大平台支持范围。升级后的实际验收范围见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/development/typephp-upgrade-0.9.3.md)，Linux、Windows 及其他架构必须使用各自匹配的 SDK 和原生产物重新验证，不能沿用旧版验收结论。
+当前主仓构建基线为 PHP `8.5.10 ZTS`、TypePHP `0.9.3`、PHPX `2.9.2`；本手册不扩大平台支持范围。升级后的实际验收范围见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)，Linux、Windows 及其他架构必须使用各自匹配的 SDK 和原生产物重新验证，不能沿用旧版验收结论。
 
 ## 1. 固定部署对象
 

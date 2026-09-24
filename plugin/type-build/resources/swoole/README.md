@@ -62,4 +62,4 @@ bash tools/prepare-swoole-module.sh
 
 **这些文件是共享扩展构建输入。** PHP SDK、PHPX 和其他依赖仍须准备；本目录不代表整个构建离线，也不代表应用已经静态链接成单文件。“单程序加配置、启动不释放运行库”的目标见[静态链接验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/static-runtime-feasibility.md)。
 
-本批模块的全量 AOT、三库无源码运行、链接修复及未验证范围见[实施与验证记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/swoole-bundle.md)。
+本批模块的全量 AOT、三库无源码运行、链接修复及未验证范围见[实施与验证记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/swoole-bundle.md)。

@@ -1,57 +1,34 @@
 # TypeApp
 
-TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力的 PHP 应用框架。框架已集成 Swoole 网络、线程、协程与 I/O 能力，面向低开销、高并发和简便部署。
+TypeApp 是面向原生交付的 PHP 应用框架。用 PHP 编写业务，按需组合组件，通过 **TypePHP 全量 AOT 编译**生成原生应用。
 
-**TypePHP 编译 · Swoole 运行 · Plugins 扩展。** Plugins 是 Composer 管理的 `type-xxxx` 框架组件的统称。其他业务系统用 `type-project` 创建独立应用，再按需安装组件；主仓附带的物联中心是成品案例。
+框架提供通信、数据、任务与资源管理能力。Swoole 作为内置原生运行库提供网络与并发支持，由构建流程管理并随应用交付，无需在部署端单独安装。TypePHP 和 Composer 用于构建，业务请求不依赖它们。
 
-| 面向应用的能力 | 使用方式 |
-| --- | --- |
-| 内置 Swoole 支持 | `type-build` 携带四平台预编译模块，匹配构建默认校验并复用，无需另行下载、编译 Swoole |
-| 提前完成静态工作 | 业务与生产依赖全量 AOT，路由、配置和模型在构建期生成，运行时执行已编译入口 |
-| 高并发运行基础 | 复用 Swoole 网络与协程，按角色采用线程或进程，并以资源预算控制排队与内存 |
-| 简化生产部署 | 构建收集实际原生依赖，部署完整运行包与配置，无需部署业务 PHP 源码、Composer 或编译 SDK |
+**交付约定是一个主程序文件 + 外置配置文件，启动不释放运行库。当前仍生成携带原生依赖的目录包，完整静态单程序尚未完成。** 实际可用命令与验收差距见[构建与部署](docs/guide/deployment.md)；开发、构建和部署各需准备什么，见[环境与依赖](docs/guide/environment.md)。
 
-**最终交付目标：一个主程序文件 + 外置配置文件，启动不释放运行库。** 当前 `package` 仍生成包含程序与运行库的目录包，完整静态单程序尚未完成，现阶段须整体部署运行包。开发、构建、部署各需准备什么，见[环境与依赖](docs/guide/environment.md)；机制、调优和实测边界见[性能与调优](docs/guide/performance.md)。
+文档站：[iots.top](https://iots.top)。新业务从 `type-project` 创建；主仓附带的物联中心展示框架如何组成业务产品。
 
-文档站：[iots.top](https://iots.top)。该地址提供项目说明与公开文档；业务 API、管理端和设备接入地址由部署环境决定。
-
-## 已验证平台
-
-**已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台已完成的原生编译与运行场景见[平台支持表](docs/guide/platforms.md#当前平台状态)。
-
-| 平台 | 已验证范围摘要 |
-| --- | --- |
-| Linux x64 | 基础命令全量 AOT 与实际运行 |
-| Linux ARM64 | 三库独立 ORM 的 PHP、AOT 和无源码运行 |
-| macOS ARM64 | 三库 ORM、完整应用 AOT、三库身份 HTTP，以及已记录的通信场景 |
-| Windows x64 | Swoole SDK 构建与加载、三库独立 ORM 的 PHP、AOT 和无源码运行 |
-
-三库指 MySQL、PostgreSQL、SQLite。以上结果对应各自记录的源码与产物，完整应用、全部协议及单程序交付仍有待验收项；环境前提、证据身份和剩余限制统一见[平台与验收](docs/guide/platforms.md)。未列出的架构尚无已支持声明。
-
-## 定位
-
-| | 说明 |
-| --- | --- |
-| TypeApp | 统一应用开发、组件组合、构建和运行约定的 PHP 应用框架 |
-| TypePHP | 构建期的 AOT 编译器，将生产 PHP 实现编译为原生代码 |
-| Swoole | 运行期的原生扩展，提供线程、协程、网络与 I/O 能力 |
-| Plugins | Composer 管理的 `type-xxxx` 框架组件，源码在 `plugin/type-*`；构建与测试工具按开发依赖使用 |
-| 运行 | Swoole 是唯一通信与并发底层；进程、线程、协程按角色能力选择，协程上下文与资源边界见[运行时指南](docs/guide/runtime.md) |
-| 编译 | 生产源码覆盖门槛为全量 AOT；这不是测试覆盖率，也不是全部 PHP 包或全部平台已验收 |
-| 交付 | 目标为一个程序文件加外置配置，非系统原生库静态链接、启动不释放；当前打包仍为目录包，见[构建与部署](docs/guide/deployment.md) |
-| 其他业务 | 用 `type-project` 创建独立应用，按需安装 Plugins |
-| 物联中心 | 成品案例，不是框架本身；文档见[物联网中心](docs/guide/iot-center.md) |
-
-当前锁定工具链为 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2，以仓库中的 `toolchain.lock.json` 与 `composer.lock` 为准。
-
-`type-build` 在 `plugin/type-build/resources/swoole/` 内置四平台 Swoole 6.2.1 共享模块，资源纳入 Composer 组件分发范围。独立应用安装包含这些资源的版本后，直接使用组件安装目录；适用 ABI、选择顺序与依赖要求见[内置 Swoole](docs/guide/plugins/type-build.md#内置-swoole-与运行依赖)。
+## 从开发到运行
 
 ```mermaid
 flowchart TB
-  Source["业务、生产组件、生成代码及 PHP 依赖"] -->|TypePHP AOT 编译| App["原生应用"]
-  Swoole["Swoole"] -->|线程、协程与 I/O| App
-  Runtime["PHPX、libphp 与其他原生扩展"] -->|运行依赖| App
+  Source["业务应用 + 按需安装的组件"] --> Build["TypePHP · 全量 AOT 编译"]
+  Build --> App["原生应用 · 业务、组件、内置运行库"]
+  Config["外置配置"] --> App
+  style Build fill:#147d64,color:#ffffff,stroke:#147d64,stroke-width:2px
+  App --> Env["目标操作系统与所需业务服务"]
 ```
+
+| 环节 | TypeApp 提供的能力 |
+| --- | --- |
+| 开发应用 | 显式装配、路由与中间件、三库 ORM、通信与后台任务 |
+| 构建产物 | 提前生成路由、配置和模型；TypePHP 编译全部生产 PHP 输入，校验实际原生依赖 |
+| 运行服务 | 复用内置运行库的网络与协程能力，以作用域、截止和预算控制资源 |
+| 发布维护 | 记录产物身份和摘要，分开管理程序、配置与持久数据 |
+
+TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typephp.md)。生产代码的全量编译门槛不等于全部平台和协议已验收。当前锁定 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2；工具链与生产依赖分别由 `toolchain.lock.json` 和 `composer.lock` 记录。
+
+构建组件包含 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 6.2.1 模块。匹配构建可直接复用；模块格式与 ABI、平台实测范围是不同的检查，见[平台与验收](docs/guide/platforms.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
 
 ## 快速开始
 
@@ -80,6 +57,7 @@ web/                 物联中心 Vben Admin Pro 管理端
 config/              成品案例的应用、数据库配置与路由声明
 docs/guide/          公开使用指南（发布到 iots.top）
 docs/development/    实现规范与验收方法，不进入公开站点
+docs/evidence/       按原产物身份保留的历史验收记录
 tests/               契约、真实依赖与原生验收
 ```
 

@@ -25,10 +25,10 @@
 
 ## 项目约束
 
-- TypeApp 是以 TypePHP 全量编译、Swoole 驱动运行、Plugins 组合能力的 PHP 应用框架。Plugins 是 Composer 管理的 `type-xxxx` 框架组件；构建输入与运行依赖的关系见[系统架构](docs/guide/architecture.md)。`typeapp` 是按 Apache-2.0 公开的开发主仓，`app` 中的物联中心是成品案例，分发子仓是组件发布出口。其他业务用 `type-project` 创建应用并按需安装组件。
+- TypeApp 是面向原生交付的 PHP 应用框架。Plugins 是 Composer 管理的 `type-xxxx` 框架组件，TypePHP 负责编译，Swoole 是随应用交付的内置原生运行库；职责分层见[系统架构](docs/guide/architecture.md)。`typeapp` 是按 Apache-2.0 公开的开发主仓，`app` 中的物联中心是成品案例，分发子仓是组件发布出口。其他业务用 `type-project` 创建应用并按需安装组件。
 - 通信、进程、线程、协程及事件循环必须基于 Swoole 官方能力，平台按实际能力选择执行方式；进程不可用时使用线程/协程。迁移删除旧网络驱动及相关配置、代码和使用说明，不保留 stream 通信回退；具体边界见[Swoole 复用标准](docs/standards/swoole-reuse.md)。
 - 框架与业务生产代码全量交给 TypePHP 编译；支持 MySQL、PostgreSQL、SQLite，按各自真实语义验证。
-- 生产交付为一个程序文件加外置配置，所需原生运行库由程序携带和管理；生成的数据与日志由应用管理。当前打包实现与目标的差距见[构建与部署](docs/guide/deployment.md)，不能把目录包或压缩包当作单文件程序完成。
+- 生产交付为一个主程序文件加外置配置，非系统原生运行库静态链接进程序，启动不释放运行库；生成的数据与日志由应用管理。当前打包实现与目标的差距见[构建与部署](docs/guide/deployment.md)，不能把目录包或压缩包当作单文件程序完成。
 - 所有约定能力属于一次完整交付；按任务记录实际实现与验证范围，不能把目录、文档或一个演示当作框架完成。
 - 主仓、Plugins 分发子仓及应用模板的第一方内容统一采用 Apache-2.0；第三方材料保留原许可证和归属。仓库简介取对应 Composer 清单的实际职责描述，公开分发规则见[项目标准](docs/standards/project.md#源码公开与完整交付)。
 - 保持用户已有修改。仓库重建、历史清理和公开发布按会话中明确的目标与时间执行，既有授权持续有效；源码基线发布与完整产品验收分别记录。

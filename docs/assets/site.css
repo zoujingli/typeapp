@@ -330,7 +330,8 @@ body:has(.hero) { --content-max-width: 1120px; }
   .sidebar-toggle-button { width: 40px; height: 40px; margin: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
   .sidebar-toggle-button span { width: 15px; background: var(--brand-strong); }
   body:has(.sidebar.show) main::before { z-index: 25; background: color-mix(in srgb, var(--night) 34%, transparent); backdrop-filter: blur(2px); }
-  body .markdown-section { margin-top: 64px; padding-top: 28px; padding-bottom: 40px; }
+  body .markdown-section,
+  body:has(.app-nav-merged) .markdown-section { margin-top: 64px; padding-top: 28px; padding-bottom: 40px; }
   body .markdown-section:has(.hero) { margin-top: 84px; padding-top: 0; }
   .markdown-section h1 { font-size: 30px; }
   .markdown-section h2 { font-size: 22px; }

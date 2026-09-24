@@ -1,13 +1,13 @@
 <section class="hero" aria-labelledby="hero-title">
   <div class="hero-copy">
-    <p class="eyebrow"><span></span> 标准极简框架 · 开发文档</p>
+    <p class="eyebrow"><span></span> PHP 应用框架 · 开发文档</p>
     <h1 id="hero-title" tabindex="-1">TypeApp<span>极简构建，<br>原生运行。</span></h1>
-    <p class="intro">全量编译 PHP，内置 Swoole 能力。<br>面向低开销、高并发与简便部署。</p>
+    <p class="intro">用 PHP 编写业务，以 TypePHP 全量编译。<br>构建原生应用，让部署回归程序与配置。</p>
     <div class="hero-actions">
       <a class="primary" href="#/guide/quickstart">开始使用 <span aria-hidden="true">↗</span></a>
       <a class="secondary" href="#/guide/environment">环境与依赖 <span aria-hidden="true">→</span></a>
     </div>
-    <p class="hero-caption">TypePHP 编译 · Swoole 运行 · Plugins 扩展</p>
+    <p class="hero-caption">PHP 开发 · TypePHP 编译 · 原生交付</p>
   </div>
   <div class="hero-visual">
     <figure class="code-preview" aria-labelledby="preview-caption">
@@ -30,16 +30,14 @@
 > **交付目标：一个主程序文件 + 外置配置文件，启动不释放运行库。** 当前提供携带原生依赖的目录包，完整静态单程序仍待完成；现阶段按[构建与部署](guide/deployment.md)整体交付运行包。
 
 <div class="feature-grid">
-  <div><span class="feature-number">01 / TYPEPHP</span><h2>少做运行期工作</h2><p>全量 AOT 与构建期装配，<br>让请求专注业务处理。</p></div>
-  <div><span class="feature-number">02 / SWOOLE</span><h2>内置并发能力</h2><p>复用网络、线程与协程，<br>构建默认选择匹配模块。</p></div>
-  <div><span class="feature-number">03 / DEPLOY</span><h2>简化交付环境</h2><p>随包收集实际运行依赖，<br>部署关注配置与业务服务。</p></div>
+  <div><span class="feature-number">01 / DEVELOP</span><h2>按业务组合</h2><p>路由、模型、通信与任务，<br>通过组件形成应用。</p></div>
+  <div><span class="feature-number">02 / TYPEPHP</span><h2>全量原生编译</h2><p>TypePHP 编译生产实现，<br>装配与依赖校验提前完成。</p></div>
+  <div><span class="feature-number">03 / DEPLOY</span><h2>专注应用运行</h2><p>运行库随应用交付，<br>维护配置与业务数据。</p></div>
 </div>
 
 ## 从这里开始
 
-用 `type-project` 创建自己的应用，再按需用 Composer 安装 Plugins。TypeApp 已集成 Swoole 通信与并发能力，路由、模型和依赖装配在构建期完成；运行时执行 TypePHP 编译后的业务。物联中心展示一套完整业务的组合方式。
-
-`type-build` 已内置四平台 Swoole 共享模块，匹配构建无需另行下载、编译 Swoole。部署使用经过验证的完整运行包，无需在服务器安装 Composer、TypePHP 或编译 SDK。开发机、构建机和部署机的具体要求见[环境与依赖](guide/environment.md)；性能机制与实测依据见[性能与调优](guide/performance.md)。
+从 `type-project` 创建应用，用 Composer 安装所需的框架组件，再编译和验证自己的业务。先阅读[环境与依赖](guide/environment.md)区分开发机、构建机与部署机；[基础能力](guide/capabilities.md)帮助确定应用需要哪些组件。物联中心展示设备接入与多租户业务的组合方式。
 
 <div class="doc-paths">
   <a class="start-guide" href="#/guide/quickstart">
@@ -54,7 +52,9 @@
 </div>
 
 <div class="guide-grid">
-  <a class="guide-card" href="#/guide/architecture"><span class="guide-index">00 <span aria-hidden="true">↗</span></span><strong>系统架构</strong><span>理解 TypeApp、TypePHP、Swoole 与 Plugins 的职责及关系。</span><span class="guide-meta">ARCHITECTURE</span></a>
+  <a class="guide-card" href="#/guide/typephp"><span class="guide-index">AOT <span aria-hidden="true">↗</span></span><strong>TypePHP 全量编译</strong><span>从 PHP 生产实现到原生程序，理解编译流程、覆盖范围与验证边界。</span><span class="guide-meta">TYPEPHP</span></a>
+  <a class="guide-card" href="#/guide/capabilities"><span class="guide-index">MAP <span aria-hidden="true">↗</span></span><strong>基础能力与验收</strong><span>按应用需要选择组件，明确现有入口、行为要求与交付缺口。</span><span class="guide-meta">CAPABILITIES</span></a>
+  <a class="guide-card" href="#/guide/architecture"><span class="guide-index">00 <span aria-hidden="true">↗</span></span><strong>系统架构</strong><span>了解业务、框架组件与内置运行库的分层，以及构建和运行边界。</span><span class="guide-meta">ARCHITECTURE</span></a>
   <a class="guide-card" href="#/guide/runtime"><span class="guide-index">01 <span aria-hidden="true">↗</span></span><strong>进程、线程与协程</strong><span>掌握执行层次、协程上下文、资源所有权与停止控制。</span><span class="guide-meta">RUNTIME</span></a>
   <a class="guide-card" href="#/guide/structure"><span class="guide-index">02 <span aria-hidden="true">↗</span></span><strong>应用结构</strong><span>组织控制器、服务与模型，让业务拥有清晰的边界。</span><span class="guide-meta">APPLICATION</span></a>
   <a class="guide-card" href="#/guide/configuration"><span class="guide-index">03 <span aria-hidden="true">↗</span></span><strong>配置与环境</strong><span>管理环境变量与启动配置，区分构建声明和运行数据。</span><span class="guide-meta">CONFIGURATION</span></a>
@@ -62,33 +62,35 @@
   <a class="guide-card" href="#/guide/database"><span class="guide-index">05 <span aria-hidden="true">↗</span></span><strong>数据库与模型</strong><span>使用 MySQL、PostgreSQL 或 SQLite，处理查询与事务。</span><span class="guide-meta">DATABASE</span></a>
   <a class="guide-card" href="#/guide/components"><span class="guide-index">06 <span aria-hidden="true">↗</span></span><strong>组件参考</strong><span>了解各 Plugins 的职责与接口，按应用需要组合。</span><span class="guide-meta">PLUGINS</span></a>
   <a class="guide-card" href="#/guide/communications"><span class="guide-index">07 <span aria-hidden="true">↗</span></span><strong>基础通信</strong><span>HTTP、TCP、UDP、MQTT、WebSocket 独立教程：配置、实例与应用。</span><span class="guide-meta">COMMUNICATIONS</span></a>
-  <a class="guide-card" href="#/guide/deployment"><span class="guide-index">08 <span aria-hidden="true">↗</span></span><strong>构建与部署</strong><span>复用内置 Swoole，完成全量编译；了解目录包与静态单程序目标。</span><span class="guide-meta">BUILD & DEPLOY</span></a>
+  <a class="guide-card" href="#/guide/deployment"><span class="guide-index">08 <span aria-hidden="true">↗</span></span><strong>构建与部署</strong><span>从源码构建到运行交付，明确程序、配置与持久数据的责任。</span><span class="guide-meta">BUILD & DEPLOY</span></a>
   <a class="guide-card" href="#/guide/documentation"><span class="guide-index">09 <span aria-hidden="true">↗</span></span><strong>文档站发布</strong><span>导出 Docsify 静态站点并发布到 iots.top，保持公开内容可追溯。</span><span class="guide-meta">DOCUMENTATION</span></a>
   <a class="guide-card" href="#/guide/licensing"><span class="guide-index">10 <span aria-hidden="true">↗</span></span><strong>许可证与归属</strong><span>查看 Apache-2.0 授权、作者与第三方依赖的原始许可证。</span><span class="guide-meta">LICENSING</span></a>
   <a class="guide-card" href="#/guide/platforms"><span class="guide-index">11 <span aria-hidden="true">↗</span></span><strong>平台与验收</strong><span>查看各平台已通过的场景、SDK 前提和完整交付条件。</span><span class="guide-meta">PLATFORMS</span></a>
-  <a class="guide-card" href="#/guide/environment"><span class="guide-index">12 <span aria-hidden="true">↗</span></span><strong>环境与依赖</strong><span>区分开发、构建和部署环境，了解内置 Swoole 与业务服务要求。</span><span class="guide-meta">ENVIRONMENT</span></a>
+  <a class="guide-card" href="#/guide/environment"><span class="guide-index">12 <span aria-hidden="true">↗</span></span><strong>环境与依赖</strong><span>分别准备开发、构建与部署环境，确认应用所需的业务服务。</span><span class="guide-meta">ENVIRONMENT</span></a>
   <a class="guide-card" href="#/guide/performance"><span class="guide-index">13 <span aria-hidden="true">↗</span></span><strong>性能与调优</strong><span>理解低开销与高并发机制，按真实负载调优并验证容量。</span><span class="guide-meta">PERFORMANCE</span></a>
 </div>
 
 ## 理解 TypeApp
 
-TypeApp 统一应用开发、组件组合、构建与运行约定。TypePHP 是构建期的编译器；Swoole 是提供进程、线程、协程、网络与 I/O 的原生扩展；Plugins 是 Composer 管理的 `type-xxxx` 框架组件。新的独立业务从 `type-project` 起步，按需安装组件。进程、线程、协程的执行边界和协程上下文见[运行时指南](guide/runtime.md)。
-
-业务、生产组件、生成代码与其他生产 PHP 依赖进入同一次 AOT 构建。Swoole 原生扩展作为运行依赖提供能力，不是交给 TypePHP 编译的 PHP 组件。完整职责、运行依赖及编译边界见[系统架构](guide/architecture.md)。
+应用通过框架组件使用通信、数据和后台任务。内置原生运行库负责执行支持与 I/O，Swoole 是其中提供网络和并发能力的库，由框架接入并随应用交付；部署无需单独安装 Swoole 或另起一个 Swoole 服务。选择它的原因与责任边界见[系统架构](guide/architecture.md#为什么内置-swoole)。
 
 ```mermaid
 flowchart TB
-  Source["业务、生产组件、生成代码及 PHP 依赖"] -->|TypePHP AOT 编译| App["原生应用"]
-  Swoole["Swoole"] -->|线程、协程与 I/O| App
-  Runtime["PHPX、libphp 与其他原生扩展"] -->|运行依赖| App
+  Compiler["TypePHP · 全量 AOT 编译"] --> Business["业务应用"]
+  Business --> Components["框架组件 · 路由 / 模型 / 通信 / 任务"]
+  Components --> Libraries["内置原生运行库 · PHPX / libphp / Swoole / 实际扩展"]
+  Libraries --> OS["操作系统"]
+  style Compiler fill:#147d64,color:#ffffff,stroke:#147d64,stroke-width:2px
 ```
+
+TypePHP 和 Composer 位于构建侧；生产运行执行已编译的业务与组件。运行效率来自构建期准备、可让出的 I/O 与有界资源管理，实际容量由负载测量决定，见[性能与调优](guide/performance.md)。
 
 ## 使用前了解
 
-本站主体是 TypeApp 标准极简框架的开发文档。物联中心是成品案例，文档在独立分组；部署后的 API、管理端和设备接入地址由你自己的环境决定。
+本站主体是 TypeApp 应用框架的开发文档。物联中心是成品案例，文档在独立分组；部署后的 API、管理端和设备接入地址由你自己的环境决定。
 
 源码入口：[TypeApp 主仓](https://github.com/zoujingli/typeapp)、[15 个 Plugins](guide/components.md#组件一览)与 [type-project 应用模板](https://github.com/zoujingli/type-project)。第一方内容统一采用 Apache-2.0，独立仓库附 LICENSE 与 NOTICE。
 
 安装文档使用公开仓库的 HTTPS 地址，无需 SSH 密钥即可获取源码。组件尚未发布稳定版本，开发分支不代表稳定交付；安装后请提交应用的 `composer.lock`。
 
-**已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台通过的场景不同，完整应用和全部协议仍有待验收项；环境前提与证据身份见[平台与验收](guide/platforms.md)。全量编译指生产实现进入 TypePHP 的覆盖门槛，不等于测试覆盖率或所有 PHP 包兼容。
+Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生验证记录，各自通过的场景不同；环境前提与证据身份见[平台与验收](guide/platforms.md)。全量编译指生产实现进入 TypePHP 的覆盖门槛，不等于测试覆盖率或所有 PHP 包兼容。

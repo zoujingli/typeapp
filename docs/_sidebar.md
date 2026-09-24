@@ -2,11 +2,13 @@
   - [项目介绍](/)
   - [环境与依赖](/guide/environment.md)
   - [快速开始](/guide/quickstart.md)
+  - [TypePHP 全量编译](/guide/typephp.md)
   - [系统架构](/guide/architecture.md)
+  - [基础能力与验收](/guide/capabilities.md)
   - [进程、线程与协程](/guide/runtime.md)
   - [性能与调优](/guide/performance.md)
   - [平台与验收](/guide/platforms.md)
-  - [当前能力与实现规划](/guide/roadmap.md)
+  - [实现规划](/guide/roadmap.md)
   - [应用结构](/guide/structure.md)
 - 物联中心
   - [概述](/guide/iot-center.md)
@@ -49,6 +51,5 @@
   - [type-testing · 测试](/guide/plugins/type-testing.md)
 - 交付应用
   - [构建与部署](/guide/deployment.md)
-  - [内置 Swoole 与运行依赖](/guide/plugins/type-build.md#内置-swoole-与运行依赖)
   - [文档站发布](/guide/documentation.md)
   - [许可证与归属](/guide/licensing.md)

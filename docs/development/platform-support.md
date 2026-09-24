@@ -8,9 +8,9 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 面向使用者的状态统一维护在[平台与验收](../guide/platforms.md)。该页进入 Docsify 公开站点；本文保留执行入口和可复核的产物身份。
 
-当前构建基线已升级为 TypePHP 0.9.3／PHPX 2.9.2，PHP 保持 8.5.10 ZTS。本次 macOS ARM64 原生验证和同源码性能对照见[升级验收](typephp-upgrade-0.9.3.md)；下表保留历史版本的实际结果，不能据此宣布新版 Linux／Windows 验收通过。
+当前构建基线已升级为 TypePHP 0.9.3／PHPX 2.9.2，PHP 保持 8.5.10 ZTS。本次 macOS ARM64 原生验证和同源码性能对照见[升级验收](../evidence/typephp-upgrade-0.9.3.md)；下表保留历史版本的实际结果，不能据此宣布新版 Linux／Windows 验收通过。
 
-四平台 Swoole 6.2.1 模块已迁入构建组件，随 Composer 独立安装后默认复用。迁移后的 macOS 全量 AOT、同一程序三库无源码 HTTP、独立消费及未运行的平台项单独记录在[迁移验收](swoole-bundle.md#迁入构建组件后的验证)，不覆盖下表的历史身份。
+四平台 Swoole 6.2.1 模块已迁入构建组件，随 Composer 独立安装后默认复用。迁移后的 macOS 全量 AOT、同一程序三库无源码 HTTP、独立消费及未运行的平台项单独记录在[迁移验收](../evidence/swoole-bundle.md#迁入构建组件后的验证)，不覆盖下表的历史身份。
 
 | 平台 | 已保存结果与身份 | 范围 |
 | --- | --- | --- |

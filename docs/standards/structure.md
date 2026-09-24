@@ -1,6 +1,6 @@
 # 应用与组件结构
 
-`typeapp` 开发主仓维护 TypeApp 应用框架。TypePHP 负责编译，Swoole 提供原生运行能力，Plugins 是 Composer 管理的框架组件，源码在 `plugin/`；职责关系见[系统架构](../guide/architecture.md)。物联中心是成品案例，不是框架本身；其他应用用 `type-project` 创建。业务使用组件的公开接口；组件不会反向依赖根应用。项目及组件命名遵守[项目标准](project.md#命名与兼容边界)。
+`typeapp` 开发主仓维护 TypeApp 应用框架。TypePHP 负责编译，Swoole 属于随应用交付的原生运行库，Plugins 是 Composer 管理的框架组件，源码在 `plugin/`；职责关系见[系统架构](../guide/architecture.md)。物联中心是成品案例，不是框架本身；其他应用用 `type-project` 创建。业务使用组件的公开接口；组件不会反向依赖根应用。项目及组件命名遵守[项目标准](project.md#命名与兼容边界)。
 
 ```text
 app/

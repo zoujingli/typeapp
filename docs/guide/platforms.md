@@ -1,6 +1,6 @@
 # 平台与验收
 
-**已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台已完成的原生编译与运行场景见下表。所有平台统一采用 TypePHP 编译生产 PHP、Swoole 承担通信与基础并发、Plugins 组合应用能力。
+Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录，实际范围见下表。各平台使用 TypePHP 编译业务与生产组件，构建选择匹配的原生运行库；编译器存在平台实现、模块可以加载和应用完整验收分别判断。
 
 本页是平台支持范围的统一入口。支持范围按操作系统、CPU 架构和实际场景判断，未列出的架构尚无已支持声明。不同平台、源码和运行库的结果分别成立，不能组合成同一版本全平台通过的声明。源码公开、PHP 测试通过、原生编译成功和完整应用可部署是不同状态。
 
@@ -37,9 +37,9 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 原生构建基线为 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 另外固定版本、源码、构建开关、模块摘要和官方内置库配置；CLI 加载成功还需要对应 embed 环境验证。不能只复制一个扩展文件就认定 ABI 匹配。
 
-上述平台记录包含历史工具链结果；本次升级的 macOS ARM64 验证与性能对照见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/development/typephp-upgrade-0.9.3.md)。Linux／Windows 尚未在新版工具链上重新验收。
+上述平台记录包含历史工具链结果；本次升级的 macOS ARM64 验证与性能对照见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)。Linux／Windows 尚未在新版工具链上重新验收。
 
-构建组件现已携带四平台 Swoole 6.2.1 共享模块，具体 ABI、系统依赖和选择规则见[内置 Swoole](plugins/type-build.md#内置-swoole-与运行依赖)。模块迁入组件后，独立 Composer 安装的禁网选择、空格路径与不同工作目录验证通过；macOS ARM64 使用 TypePHP 0.9.3／PHPX 2.9.2 完成 255 个生产输入、21 个生产依赖包、271 个编译单元的全量 AOT，同一程序完成三库共 1522 项无源码身份 HTTP 检查。构建身份、程序摘要及原始证据见[迁移验收](https://github.com/zoujingli/typeapp/blob/main/docs/development/swoole-bundle.md#迁入构建组件后的验证)。这批验证未运行 Linux/Windows 全量应用、Windows 准备脚本或 macOS 15 实机，不能把模块齐全视为四平台完整交付。
+构建组件现已携带四平台 Swoole 6.2.1 共享模块，具体 ABI、系统依赖和选择规则见[内置 Swoole](plugins/type-build.md#内置-swoole-与运行依赖)。模块迁入组件后，独立 Composer 安装的禁网选择、空格路径与不同工作目录验证通过；macOS ARM64 使用 TypePHP 0.9.3／PHPX 2.9.2 完成 255 个生产输入、21 个生产依赖包、271 个编译单元的全量 AOT，同一程序完成三库共 1522 项无源码身份 HTTP 检查。构建身份、程序摘要及原始证据见[迁移验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/swoole-bundle.md#迁入构建组件后的验证)。这批验证未运行 Linux/Windows 全量应用、Windows 准备脚本或 macOS 15 实机，不能把模块齐全视为四平台完整交付。
 
 通用模板的经典 HTTP `serve()` 入口仍要求 Unix worker 与信号能力，当前明确拒绝 Windows；Windows SDK 和 ORM 通过不代表该 HTTP 入口已适配。主仓物联中心生产 HTTP 使用编译业务线程内协程，具体入口与限制见[快速开始](quickstart.md#启动服务)和[type-core](plugins/type-core.md#启动-http-服务)。
 

@@ -80,7 +80,7 @@ PHP 官方 Windows 依赖包使用 `libsqlite3.lib`，固定 Swoole 配置的 SQ
 
 通信依赖 Swoole，启用其官方内置库。Unix HTTP 场景可用 `php tests/build-scenario.php --with-swoole docs/build-config/type-http.json` 构建，再运行 `php tests/http-native.php build/http/type-app`；此场景同时声明 sockets 与 Swoole，避免 CLI 已加载模块而 embed 缺少依赖。`php tests/websocket.php` 验证 PHP 模式的 HTTP 同端口、分片、WSS 和生命周期，不证明 WebSocket AOT 已通过。
 
-完整应用还需满足[编译业务线程](compiled-business-threads.md)的 PHPX 与 Swoole ABI 校验。普通组件构建通过不能替代线程 SDK 验收，也不能绕过校验退回业务源码解释执行。当前边界与后续目标见[实现对齐](current-implementation-alignment.md)和[实现规划](../guide/roadmap.md)。
+完整应用还需满足[编译业务线程](compiled-business-threads.md)的 PHPX 与 Swoole ABI 校验。普通组件构建通过不能替代线程 SDK 验收，也不能绕过校验退回业务源码解释执行。当前边界与后续目标见[系统架构](../guide/architecture.md)和[实现规划](../guide/roadmap.md)。
 
 线程产物在模块初始化阶段注册应用，构建器使用实际运行配置中的扩展清单声明依赖，保持 PDO 驱动先初始化、Swoole 再接管协程驱动。PHP CLI 的扩展加载成功不能代替最终产物启动检查；三库应用验收先执行原生命令，再为 PHP 和原生模式分别启动专用数据库服务，每轮从空库验证安装与业务行为。
 

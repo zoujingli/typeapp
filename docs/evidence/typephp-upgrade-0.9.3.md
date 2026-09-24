@@ -4,7 +4,7 @@
 
 ## 实现范围
 
-复用 `TypephpCompatibility`、`PhpxThreadSource` 与现有线程 runtime 接缝，核对上游源码并更新摘要门禁，重新编译 PHPX。新版启动签名增加 `pre_shutdown`；本仓应用在 PHP 模块启动前登记为持久模块，枚举 AST 常量由生成的 MSHUTDOWN 清理，不重复调用临时模块路径的回调。线程消费者增加枚举 case 类常量与请求重建检查，生命周期细节见[已编译业务线程](compiled-business-threads.md)。
+复用 `TypephpCompatibility`、`PhpxThreadSource` 与现有线程 runtime 接缝，核对上游源码并更新摘要门禁，重新编译 PHPX。新版启动签名增加 `pre_shutdown`；本仓应用在 PHP 模块启动前登记为持久模块，枚举 AST 常量由生成的 MSHUTDOWN 清理，不重复调用临时模块路径的回调。线程消费者增加枚举 case 类常量与请求重建检查，生命周期细节见[已编译业务线程](../development/compiled-business-threads.md)。
 
 编译器显式使用 `CompilerRuntime::source()`，让增量指纹包含实际编译器源码。上游新增的匿名类 opcode／eval 路径不符合本仓全量 AOT 要求，构建入口明确拒绝，要求使用具名类；`tests/build-errors.php` 通过真实编译入口验证拒绝行为。
 
@@ -18,7 +18,7 @@
 - 完整应用编译 255 个生产源码输入、21 个生产包，共 271 个编译单元。产物 build id 为 `c2702a2aca80c8b009825167dff6fcff3feda05b363b78819067437e8685253f`，SHA-256 为 `2b31371a229712d62d097a138ced043b7f31ef6d6f9e30cace867d3a7531e22b`。
 - 同一完整产物分别通过 MySQL、PostgreSQL、SQLite 无源码身份 HTTP 验收，检查数依次为 507／504／507。macOS 内核策略拒读业务、组件、依赖与生成源码，并核对策略对子进程生效；服务退出码为零，三库测试实例正常关闭。此项使用目录运行包，证明的范围是无源码运行。
 
-这些产物仍依赖共享 PHP、PHPX 和扩展，不能作为“不释放运行库”的静态交付证据。静态方向的源码依据和实际链接阻点见[完整静态链接可行性](static-runtime-feasibility.md)。
+这些产物仍依赖共享 PHP、PHPX 和扩展，不能作为“不释放运行库”的静态交付证据。静态方向的源码依据和实际链接阻点见[完整静态链接可行性](../development/static-runtime-feasibility.md)。
 
 ## 性能对照方法
 

@@ -1,6 +1,6 @@
 # Swoole 原生能力复用标准
 
-TypeApp 以 TypePHP 全量编译、Swoole 官方通信和并发机制为基础。通信、进程、线程、协程和事件循环必须由 Swoole 承担，连接建立、TLS、读写、等待及关闭直接使用原生接口或已验证的 hook，以减少重复开发和平台适配成本。架构依据见 [TypePHP 与 Swoole](../adr/0015-typephp-and-swoole-foundation.md)及[单程序交付](../adr/0021-required-swoole-and-single-program.md)；最新实现差距见[当前实现对齐](../development/current-implementation-alignment.md#swoole-唯一底层与单程序交付)，实际验收范围按任务证据记录。
+TypeApp 以 TypePHP 全量编译、Swoole 官方通信和并发机制为基础。通信、进程、线程、协程和事件循环必须由 Swoole 承担，连接建立、TLS、读写、等待及关闭直接使用原生接口或已验证的 hook，以减少重复开发和平台适配成本。架构依据见 [编译工具与原生运行库](../adr/0015-typephp-and-swoole-foundation.md)及[单程序交付](../adr/0021-required-swoole-and-single-program.md)；最新实现差距见[实现规划](../guide/roadmap.md)，实际验收范围按任务证据记录。
 
 ## 选择顺序
 

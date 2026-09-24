@@ -33,7 +33,7 @@ macOS 最终应用使用 TypePHP 0.9.3、PHPX 2.9.2，全量编译 255 个生产
 
 ## 保留边界
 
-这些 `.so/.dll` 是共享扩展构建输入，不能转换成完整静态链接的证据。单程序加配置、启动不释放运行库的目标仍未完成；现有阻点见[完整静态链接可行性](static-runtime-feasibility.md)。macOS 15 实机、其他未列架构及本轮 Windows/Linux 全量应用验收仍需对应平台验证。
+这些 `.so/.dll` 是共享扩展构建输入，不能转换成完整静态链接的证据。单程序加配置、启动不释放运行库的目标仍未完成；现有阻点见[完整静态链接可行性](../development/static-runtime-feasibility.md)。macOS 15 实机、其他未列架构及本轮 Windows/Linux 全量应用验收仍需对应平台验证。
 
 ## 证据与资源回收
 
@@ -43,7 +43,7 @@ macOS 最终应用使用 TypePHP 0.9.3、PHPX 2.9.2，全量编译 255 个生产
 
 ## 迁入构建组件后的验证
 
-四份模块、清单及 17 份原始许可材料迁入 `plugin/type-build/resources/swoole`，22 个 Git blob 与迁移前完全一致。`BundledSwoole::select()` 改为无参数，从组件自身安装位置选择；不依赖主仓或消费应用的目录布局。真实 embed 内置、显式声明和有效环境候选继续优先，默认内置清单缺失或不匹配则明确失败。当前行为见[运行依赖](runtime-profiles.md#选择与失败语义)。
+四份模块、清单及 17 份原始许可材料迁入 `plugin/type-build/resources/swoole`，22 个 Git blob 与迁移前完全一致。`BundledSwoole::select()` 改为无参数，从组件自身安装位置选择；不依赖主仓或消费应用的目录布局。真实 embed 内置、显式声明和有效环境候选继续优先，默认内置清单缺失或不匹配则明确失败。当前行为见[运行依赖](../development/runtime-profiles.md#选择与失败语义)。
 
 组件自己的 `.gitattributes` 保留源码 LF、模块及原始许可字节；分发白名单接受该根文件和带版本标记的许可目录。`composer test:bundled-swoole-consumer` 从真实组件形成 Git 子树，启用 `core.autocrlf=true` 检出后，再通过 Composer 独立安装；固定依赖从本地读取，关闭 Packagist 和 Composer 网络。macOS 系统禁网策略下再次运行通过，覆盖含空格路径、不同工作目录、四份模块及所有许可摘要。主仓准备脚本的系统禁网选择也通过。
 

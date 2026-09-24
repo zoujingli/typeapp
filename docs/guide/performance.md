@@ -29,7 +29,7 @@ TypeApp 面向低开销、高并发的应用：把可提前完成的工作放在
 
 ## 当前性能证据
 
-TypePHP 0.9.3 / PHPX 2.9.2 升级已在 macOS ARM64 做同业务、同平台、同负载对照，覆盖短 JSON、MySQL/PostgreSQL/SQLite CRUD、真实锁等待及 1 MiB 文件流。多轮和交替顺序测量未确认持续性能退化，原始方法与结果见[工具链升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/development/typephp-upgrade-0.9.3.md)。
+TypePHP 0.9.3 / PHPX 2.9.2 升级已在 macOS ARM64 做同业务、同平台、同负载对照，覆盖短 JSON、MySQL/PostgreSQL/SQLite CRUD、真实锁等待及 1 MiB 文件流。多轮和交替顺序测量未确认持续性能退化，原始方法与结果见[工具链升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)。
 
 这组测量的请求并发为 1，操作速率包含控制器和准备成本，用于升级回归判断，不能作为最大 RPS 或高并发容量。当前尚无覆盖全部平台与业务的峰值吞吐结论，高并发容量需由应用在目标环境按真实负载验收。
 

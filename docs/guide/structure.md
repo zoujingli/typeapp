@@ -1,6 +1,6 @@
 # 应用结构
 
-TypeApp 的业务应用、Plugins 和生成代码分开维护。新业务用 `type-project` 创建，按需用 Composer 安装组件；TypePHP 负责编译生产 PHP 实现，Swoole 提供原生运行能力，详见[系统架构](architecture.md)。先按实际职责组织代码，再在构建配置中明确声明入口与生产源码。物联中心是成品案例，其目录见[物联网中心](iot-center.md)。
+TypeApp 的业务应用、Plugins 和生成代码分开维护。新业务用 `type-project` 创建，按需用 Composer 安装组件；TypePHP 编译生产 PHP 实现，原生运行库随应用交付，详见[系统架构](architecture.md)。先按实际职责组织代码，再在构建配置中明确声明入口与生产源码。物联中心是成品案例，其目录见[物联网中心](iot-center.md)。
 
 ```mermaid
 flowchart TB
