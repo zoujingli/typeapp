@@ -36,6 +36,8 @@ $report = ['status' => 'running', 'driver' => $driver, 'platform' => PHP_OS_FAMI
     'php' => PHP_VERSION, 'pdo-extension' => phpversion('pdo_' . $driver), 'artifact-sha256' => hash_file('sha256', $binary),
     'artifact-report-sha256' => hash_file('sha256', $binary . '.build.json'), 'steps' => []];
 try {
+    // 保留实际证书工具版本，区分命令不兼容与后续数据库 TLS 行为失败。
+    $report['openssl'] = trim(nativeDatabaseCommand([$openssl, 'version'], $environment, [], $base . '/openssl.log', 10));
     foreach ($commands as $index => $command) {
         nativeDatabaseCommand($command, $environment, [], $base . '/certificate-' . $index . '.log', 30);
     }

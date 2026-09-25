@@ -6,7 +6,7 @@ set -euo pipefail
   echo '此入口只接受GitHub macOS原生runner，不在本机启动或修改数据库服务。' >&2; exit 2;
 }
 task_suite="${1:-}"
-case "$task_suite" in contracts|application|deployment|rollout|recovery|http|orm|reliable|benchmark) ;; *) exit 2;; esac
+case "$task_suite" in contracts|application|deployment|rollout|recovery|http|orm|reliable|tls|benchmark) ;; *) exit 2;; esac
 task_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$task_root"
 task_work="$(mktemp -d "${RUNNER_TEMP:?}/type-native.XXXXXX")"
@@ -234,8 +234,14 @@ case "$task_suite" in
     for task_group in tasks task-http pressure; do
       php tests/native-database-failures.php build "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")" "$task_group" mysql
     done
-    php tests/native-database-tls.php mysql "$(dirname "$task_mysql")" build/tls/type-app
-    php tests/native-database-tls.php pgsql "$(dirname "$task_pgsql")" build/tls/type-app
-    php tests/native-redis-tls.php "$TYPE_REDIS_SERVER" build/tls/type-app
+    ;;
+  tls)
+    php tests/build-scenario.php --with-swoole docs/build-config/type-tls.json
     ;;
 esac
+# 定向入口和可靠性全量组执行完全相同的 TLS、证书拒绝与资源清理断言。
+if [[ "$task_suite" == reliable || "$task_suite" == tls ]]; then
+  php tests/native-database-tls.php mysql "$(dirname "$task_mysql")" build/tls/type-app
+  php tests/native-database-tls.php pgsql "$(dirname "$task_pgsql")" build/tls/type-app
+  php tests/native-redis-tls.php "$TYPE_REDIS_SERVER" build/tls/type-app
+fi

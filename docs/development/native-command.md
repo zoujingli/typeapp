@@ -19,6 +19,8 @@ Linux x64 主验收、组件批次、应用模板和运行库分发共用 `.gith
 
 macOS ARM64 的内置 Swoole 要求 PHP SDK 启用 Zend signals。CI 使用 `tools/install-locked-macos-php.sh` 从固定摘要的 PHP 源码准备 ZTS/CLI/embed，缓存按安装脚本和本机依赖身份复核；Swoole 仍直接取自构建组件，无需在每次应用构建时重编。Homebrew 的 `php-zts` 关闭该选项，不能仅凭 PHP 版本号相同直接替换。SDK 通过 Xcode Command Line Tools 提供的声明链接系统 iconv，避免在发布包中引入与系统库同名但符号不同的 GNU libiconv。启动产物时使用该次构建报告 `runtime-profile.ini` 指向的配置，避免加载开发控制器中另一份同名扩展。
 
+macOS 的 TLS 验收通过 `TYPE_OPENSSL_BINARY` 显式使用 Homebrew OpenSSL 3，准备阶段先核验签发证书所需的 `-copy_extensions` 能力；系统 LibreSSL 不支持该参数，不能仅凭 `openssl` 命令存在判断可用。测试报告记录实际工具版本，Actions 保留证书生成和 PHP/AOT 的脱敏日志，不收集私钥。手动选择 `scope=tls` 可单独编译并验证 MySQL、PostgreSQL、Redis 的 TLS、错误 CA/主机名拒绝和资源清理；它与完整可靠性组共用同一入口，使用独立并发组，不能替代全量平台验收。
+
 构建组件在 [plugin/type-build/resources/swoole](../../plugin/type-build/resources/swoole/README.md) 保存这四个平台的 Swoole 模块、固定来源、SHA-256 和第三方许可证。匹配 PHP 8.5.10 ZTS 的构建默认直接读取本地文件，不下载或重新编译 Swoole。选择顺序为真实 embed 已内置、显式 `runtime.modules`、有效的 `TYPE_SWOOLE_MODULE`、构建组件内置清单。清单缺失、没有匹配 ABI、摘要不符或源码适配已变更时明确失败；独立应用通过 Composer 安装完整的 `type-build` 后使用相同规则，其他扩展继续按 SDK 或显式候选解析。
 
 `tools/prepare-swoole-module.sh` 和 Windows SDK 准备脚本默认复用这些文件。维护者显式设置 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 才下载固定 Swoole 源码并应用当前适配；Unix 重建还需提供 `RUNNER_TEMP` 和 `SWOOLE_CONFIGURE_OPTS`。PHP SDK、PHPX 及其他依赖的准备不因此变为离线。内置共享模块是构建输入，最终程序静态链接和启动不释放运行库仍按[静态验证记录](static-runtime-feasibility.md)推进。

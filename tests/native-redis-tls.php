@@ -37,6 +37,8 @@ $report = ['status' => 'running', 'platform' => PHP_OS_FAMILY, 'architecture' =>
     'artifact-sha256' => $built['sha256'], 'build-id' => $built['build-id'],
     'build-report-sha256' => hash_file('sha256', $artifact . '.build.json'), 'steps' => [], 'owned-server-stopped' => false];
 try {
+    // 保留实际证书工具版本；证书日志不包含通过 -keyout 写入的私钥内容。
+    $report['openssl'] = trim(nativeDatabaseCommand([$openssl, 'version'], $environment, [], $base . '/openssl.log', 10));
     $commands = [
         [$openssl, 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', $base . '/ca.key', '-out', $base . '/ca.pem', '-subj', '/CN=Type-Native-Redis-CA', '-days', '2'],
         [$openssl, 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', $base . '/wrong-ca.key', '-out', $base . '/wrong-ca.pem', '-subj', '/CN=Type-Native-Wrong-CA', '-days', '2'],

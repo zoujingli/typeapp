@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      scope:
+        description: 验收范围（tls 仅三种后端的 PHP/AOT TLS 诊断）
+        type: choice
+        options: [full, tls]
+        default: full
       base_source:
         description: 用于性能比较的完整基准提交，留空时不运行性能组
         required: false
@@ -15,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-macos-${{ github.ref }}
+  group: native-macos-${{ github.ref }}-${{ inputs.scope || 'full' }}
   cancel-in-progress: true
 
 jobs:
@@ -28,7 +33,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        suite: ${{ fromJSON(inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable"]') }}
+        suite: ${{ fromJSON(inputs.scope == 'tls' && '["tls"]' || (inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable"]')) }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
       COMPOSER_NO_INTERACTION: '1'
@@ -42,6 +47,12 @@ jobs:
       - name: 安装原生构建和专用测试数据库工具
         run: |
           brew install cmake gmp mpfr pcre2 pkg-config libpq mysql@8.4 postgresql@17 redis autoconf bison re2c libxml2 openssl@3 curl sqlite libzip
+          # 系统 LibreSSL 不支持证书签发使用的 -copy_extensions；显式选用已安装的 OpenSSL。
+          task_openssl="$(brew --prefix openssl@3)/bin/openssl"
+          test -x "$task_openssl"
+          "$task_openssl" version
+          "$task_openssl" x509 -help 2>&1 | grep -F -- '-copy_extensions' >/dev/null
+          printf 'TYPE_OPENSSL_BINARY=%s\n' "$task_openssl" >> "$GITHUB_ENV"
           # PHPX 使用 PHP 扩展头文件中的 pcre2.h；路径从当前 Homebrew 解析。
           task_pcre2="$(brew --prefix pcre2)"
           brew link --force --overwrite pcre2
@@ -180,3 +191,7 @@ jobs:
             build/platform-benchmarks-*/*/*.log
             build/benchmark-pairs-*/*.log
             build/benchmark-pairs-*/comparison-*.json
+            build/native-*-tls-*/openssl.log
+            build/native-*-tls-*/certificate-*.log
+            build/native-*-tls-*/php.log
+            build/native-*-tls-*/native.log
