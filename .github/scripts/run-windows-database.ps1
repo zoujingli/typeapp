@@ -201,7 +201,14 @@ try {
             }
         }
     } else {
-        Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', '--php', $Driver, '--app') (Join-Path $taskEvidence 'development.log') 180 $taskEnvironment | Out-Null
+        $taskDevelopmentArguments = @('tests/iot-identity.php', '--php', $Driver, '--app')
+        $taskDevelopmentSeconds = 180
+        if ($DevelopmentOnly) {
+            # 仅诊断时测量完整请求耗时；默认验收预算不由此分支修改。
+            $taskDevelopmentArguments += '--diagnose-latency'
+            $taskDevelopmentSeconds = 600
+        }
+        Invoke-TaskProcess $taskPhp $taskDevelopmentArguments (Join-Path $taskEvidence 'development.log') $taskDevelopmentSeconds $taskEnvironment | Out-Null
         if (!$DevelopmentOnly) {
             Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', 'build/app/type-app.exe', $Driver, '--app') (Join-Path $taskEvidence 'native.log') 180 $taskEnvironment | Out-Null
             Invoke-TaskProcess $taskPhp @('tests/application-template.php', $Driver, '--onboarding', '--native', '--package') (Join-Path $taskEvidence 'onboarding.log') 2400 $taskEnvironment | Out-Null

@@ -1651,7 +1651,11 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         $environment['APP_PORT'] = substr(strrchr($address, ':'), 1);
         $environment['APP_ALLOWED_HOSTS'] = $address;
         $server = new Process([...$command, 'serve'], $root, $environment);
-        $client = new HttpClient('http://' . $address);
+        $diagnosticLatency = in_array('--diagnose-latency', $argv, true);
+        expect(!$diagnosticLatency || (PHP_OS_FAMILY === 'Windows' && $driver === 'pgsql' && $target === '--php'), '耗时诊断仅用于 Windows PostgreSQL 应用开发入口');
+        $report['diagnostic_latency'] = $diagnosticLatency;
+        $report['request_timeout_seconds'] = $diagnosticLatency ? 15.0 : 3.0;
+        $client = new HttpClient('http://' . $address, $report['request_timeout_seconds']);
         $deadline = microtime(true) + 15;
         do {
             expect($server->running(), '双端HTTP提前退出：' . $server->stderr());
@@ -1679,7 +1683,9 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
                 $timing = ['method' => $method, 'path' => explode('?', $path, 2)[0], 'seconds' => (hrtime(true) - $started) / 1000000000, 'status' => $status];
                 $report['last_http'] = $timing;
                 if ($timing['seconds'] >= 0.5) {
-                    $report['slow_http'] = array_slice([...($report['slow_http'] ?? []), $timing], -20);
+                    $slowRequests = [...($report['slow_http'] ?? []), $timing];
+                    usort($slowRequests, static fn (array $left, array $right): int => $right['seconds'] <=> $left['seconds']);
+                    $report['slow_http'] = array_slice($slowRequests, 0, 20);
                 }
             }
             expect($response->status === $expected, '双端状态错误：' . $path . ' expected=' . $expected . ' actual=' . $response->status);
