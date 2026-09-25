@@ -190,6 +190,16 @@ final class RuntimeProfile
                 }
             }
         }
+        // Swoole 的 PDO hook 可以单独提供驱动，也能接管已加载的原生 PDO 驱动。
+        // 若应用同时声明两者，原生驱动必须先注册常量，再由 hook 接管；这些可选依赖
+        // 不完整地出现在模块元数据中，不能把未请求的驱动强行加入运行包。
+        if (isset($pending['swoole'])) {
+            foreach (['pdo_mysql', 'pdo_pgsql', 'pdo_sqlite', 'curl'] as $dependency) {
+                if (array_key_exists($dependency, $pending)) {
+                    $pending['swoole'][] = $dependency;
+                }
+            }
+        }
         $ordered = [];
         while ($pending !== []) {
             $progress = false;

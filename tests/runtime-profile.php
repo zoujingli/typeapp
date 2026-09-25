@@ -72,6 +72,13 @@ foreach ((new ReflectionExtension('swoole'))->getDependencies() as $dependency =
 $checks[] = 'swoole-required-extension-dependencies';
 // 模块加载成功仍可能缺少延迟绑定符号；实际走连接失败路径，必须得到 PDO 异常而非崩溃。
 $pgsql = $profile->prepare($root, $base . '/pgsql-rejection', $phpHome, $phpxHome, ['swoole', 'pdo_pgsql'], $swooleRuntime);
+if (isset($pgsql['module-files']['pdo_pgsql'], $pgsql['module-files']['swoole'])) {
+    $pgsqlIni = (string) file_get_contents($pgsql['ini']);
+    expect(
+        strpos($pgsqlIni, $pgsql['module-files']['pdo_pgsql']) < strpos($pgsqlIni, $pgsql['module-files']['swoole']),
+        '已选择的原生 PDO 驱动必须先于 Swoole hook 加载'
+    );
+}
 $rejection = <<<'PHP'
 try {
     new PDO('pgsql:host=127.0.0.1;port=0;dbname=postgres;connect_timeout=1', 'probe', 'probe');
