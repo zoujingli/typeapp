@@ -80,7 +80,8 @@ final class SwooleServer implements HttpServerInterface
                     $server->handle('/', function (Request $request, Response $response): void {
                         $this->handleNative($request, $response);
                     });
-                    $timer = \Swoole\Timer::tick(20, function () use ($server, $signals): void {
+                    // tick 固定传入定时器 ID；即使未使用，也须满足 AOT 的完整回调签名。
+                    $timer = \Swoole\Timer::tick(20, function (int $timerId) use ($server, $signals): void {
                         $signals->dispatch();
                         if ($this->control->mustTerminate()) {
                             fwrite(STDERR, "HTTP worker 清理超出预算，停止接收并由监督进程回收。\n");

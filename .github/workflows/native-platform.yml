@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-platform-${{ github.ref }}
+  group: native-platform-${{ github.ref }}${{ inputs.scope == 'template' && '-template' || '' }}
   cancel-in-progress: true
 
 jobs:

@@ -72,7 +72,7 @@ php tests/native.php --chroot "$task_sandbox"
 
 在匹配的 SDK 环境中，`php tests/build-platform-native.php` 验证真实产物、运行库身份和缓存；`php tests/helpers-build.php` 全量编译 SQLite、ORM、校验与运行组件，并对照 PHP 和原生业务结果。这些入口使用自身的测试目录，不等同于完整应用或无源码部署验收。
 
-Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收流程、且同一代码的契约套件已通过时，可手动选择 `scope=native` 定向复跑；报告须同时引用契约与原生运行的源码身份，不能把跳过项记为本次通过。`scope=template` 单独执行 SQLite 模板的开发、全量 AOT 与搬迁发布，用于缩短模板故障的复现路径，不能替代完整三库验收。模板 HTTP 提前退出时保留进程退出状态及脱敏输出，Actions 同时保存模板原生产物和构建身份。显式重建 Swoole 时，准备脚本固定并核验 PHP 官方 SDK 构建工具，提供 `phpize` 配置必需的 bison、re2c 等程序；默认复用 DLL 时跳过这组工具和 Swoole 源码下载。PHPX DLL 放入编译器要求的 `PHPX_HOME/build`，并统一加载路径；工作流分别记录构建身份、四组件和完整应用的结果，保存日志、清单与实际程序产物。
+Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收流程、且同一代码的契约套件已通过时，可手动选择 `scope=native` 定向复跑；报告须同时引用契约与原生运行的源码身份，不能把跳过项记为本次通过。`scope=template` 单独执行 SQLite 模板的开发、全量 AOT 与搬迁发布，用于缩短模板故障的复现路径；它使用独立并发组，不取消完整运行，也不能替代完整三库验收。模板 HTTP 提前退出时保留进程退出状态及脱敏输出，Actions 同时保存模板原生产物和构建身份。显式重建 Swoole 时，准备脚本固定并核验 PHP 官方 SDK 构建工具，提供 `phpize` 配置必需的 bison、re2c 等程序；默认复用 DLL 时跳过这组工具和 Swoole 源码下载。PHPX DLL 放入编译器要求的 `PHPX_HOME/build`，并统一加载路径；工作流分别记录构建身份、四组件和完整应用的结果，保存日志、清单与实际程序产物。
 
 Windows 运行库核验会将运行配置明确声明的扩展文件纳入同一组 DLL 依赖解析。例如 Swoole 导入的 `php_sockets.dll` 使用已声明的 sockets 模块，不要求把扩展目录加入全局 PATH。DLL 名称按 Windows 的大小写无关规则匹配，同名不同内容仍拒绝；API-set 继续由受限系统加载器解析。每个编译工具独立核验自己的依赖，不能借用应用的模块映射。
 

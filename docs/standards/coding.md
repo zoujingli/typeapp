@@ -41,7 +41,7 @@ public function create(Connection $connection, array $values): array
 
 1. 全局只声明；业务启动放入全局 `main(): void` 或 `main(int $argc, array $argv): void`，一份应用只有一个入口。
 2. 普通 Zend-backed 类的方法可以 AOT；不把所有类改为 `#[Native]`。PSR、数组、PDO 和 Redis 互操作使用明确类型与资源所有者。
-3. 调用数量遵守签名；闭包和工厂写全参数，不用反射裁参模拟 PHP 的宽松行为。动态引用需要显式 std::ref()；编译期函数使用当前std接口，业务扩展点优先值参数与返回值。
+3. 调用数量遵守签名；闭包和工厂写全参数，不用反射裁参模拟 PHP 的宽松行为。例如 `Swoole\Timer::tick()` 的回调须声明 `int $timerId`，即使业务不使用该参数。动态引用需要显式 std::ref()；编译期函数使用当前std接口，业务扩展点优先值参数与返回值。
 4. 标量局部默认固定原生存储，按职责命名，不在字符串、对象和循环键之间复用为不兼容类型；catch、foreach同样遵守函数作用域约束。整数除法/溢出显式保持业务语义，仅在确有需要时使用varint_types或局部std::any()。
 5. 缺失字段与显式 null 分开，属性明确初始化；不依赖 Reflection lazy object 或未初始化属性内部状态。
 6. 生产不 `eval`、加载未知 PHP 文件或回退 Composer 源码加载。`config.files` 中的 PHP 是受限配置声明，允许 `env()`；`config/route.php` 是路由声明，不允许 `env()`。两者都在构建期解析后一起编译。`.env` 只在启动读取数据，不嵌入编译产物。
