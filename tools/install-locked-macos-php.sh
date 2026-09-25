@@ -11,7 +11,7 @@ task_work="${TYPE_LOCKED_PHP_WORK:-$task_root/.cache/macos-locked-php-build/$tas
 [[ "$task_prefix" == /* && "$task_work" == /* ]] || { echo 'SDK 与构建目录需要明确的绝对路径。' >&2; exit 1; }
 export MACOSX_DEPLOYMENT_TARGET=15.0
 # 每次都解析依赖前缀，避免从另一台 runner 的缓存继承已经不存在的 Cellar 路径。
-task_packages=(libxml2 openssl@3 curl sqlite libpq libzip)
+task_packages=(libxml2 openssl@3 curl sqlite libpq libzip libiconv)
 task_pkgconfig=""
 for task_package in "${task_packages[@]}"; do
   task_dependency="$(brew --prefix "$task_package")"
@@ -51,7 +51,7 @@ if [[ ! -d "$task_work/php-$task_version" ]]; then tar -xJf "$task_archive" -C "
     --with-libxml --enable-dom --enable-xml --enable-simplexml --enable-xmlreader --enable-xmlwriter \
     --enable-phar --enable-pdo --enable-mysqlnd --with-pdo-mysql=mysqlnd --with-pdo-pgsql \
     --with-pdo-sqlite --with-sqlite3 --enable-pcntl --enable-posix --enable-sockets \
-    --with-openssl --with-curl=shared --with-zlib --with-zip --with-iconv
+    --with-openssl --with-curl=shared --with-zlib --with-zip --with-iconv="$(brew --prefix libiconv)"
   make -j2
   make install
 ) >&2
@@ -62,6 +62,7 @@ task_redis_archive="$task_work/redis-6.3.0.tgz"
 if [[ ! -f "$task_redis_archive" ]]; then
   curl --fail --location --silent --show-error --retry 3 https://pecl.php.net/get/redis-6.3.0.tgz --output "$task_redis_archive"
 fi
+printf '%s  %s\n' 0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5 "$task_redis_archive" | shasum -a 256 --check >&2
 if [[ ! -d "$task_work/redis-6.3.0" ]]; then tar -xzf "$task_redis_archive" -C "$task_work"; fi
 (
   cd "$task_work/redis-6.3.0"
