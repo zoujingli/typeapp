@@ -41,7 +41,7 @@ jobs:
           fetch-depth: 0
       - name: 安装原生构建和专用测试数据库工具
         run: |
-          brew install cmake gmp mpfr pcre2 pkg-config libpq mysql@8.4 postgresql@17 redis
+          brew install cmake gmp mpfr pcre2 pkg-config libpq mysql@8.4 postgresql@17 redis autoconf bison re2c libxml2 openssl@3 curl sqlite libzip
           # PHPX 使用 PHP 扩展头文件中的 pcre2.h；路径从当前 Homebrew 解析。
           task_pcre2="$(brew --prefix pcre2)"
           brew link --force --overwrite pcre2
@@ -73,6 +73,18 @@ jobs:
           phpts: ts
           fail-fast: true
           MACOSX_DEPLOYMENT_TARGET: '15.0'
+      - name: 缓存与内置 Swoole 同配置的 PHP SDK
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            .cache/macos-locked-php
+            .cache/macos-locked-php-build
+          key: locked-macos-php-8.5.10-zts-signals-${{ hashFiles('tools/install-locked-macos-php.sh') }}
+      - name: 使用启用 Zend signals 的锁定 SDK
+        run: |
+          task_php_home="$(bash tools/install-locked-macos-php.sh)"
+          printf '%s/bin\n' "$task_php_home" >> "$GITHUB_PATH"
+          printf 'PHPRC=%s/etc\nPHP_INI_SCAN_DIR=%s/etc/php.d\n' "$task_php_home" "$task_php_home" >> "$GITHUB_ENV"
       - name: 核对内置 Swoole 与锁定 PHP
         run: |
           task_swoole_module="$(php -n tools/select-swoole-module.php)"

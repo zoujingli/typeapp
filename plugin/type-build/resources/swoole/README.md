@@ -11,6 +11,8 @@
 
 Linux 文件不适用于 Alpine/musl。macOS Intel、Windows ARM64、NTS 或其他 PHP 版本未提供预编译文件。模块存在和能够加载均不等于完整应用的平台验收。
 
+macOS ARM64 还要求配套 PHP 启用 Zend signals；关闭该选项的 Homebrew `php-zts` 不兼容。主仓 CI 通过 `tools/install-locked-macos-php.sh` 准备匹配的锁定 SDK。共享 PDO 驱动由构建组件安排在 Swoole 之前加载，先完成原生驱动注册，再启用对应 hook。
+
 ## 选择与校验
 
 运行库的选择仍由 `Type\Build\RuntimeProfile` 负责：
