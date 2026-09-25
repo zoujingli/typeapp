@@ -9,6 +9,7 @@ use Type\Queue\Message;
 use Type\Queue\Queue;
 use Type\Redis\Purpose;
 use Type\Redis\RedisConfiguration;
+use Type\Redis\RedisConnection;
 use Type\Redis\RedisManager;
 use Type\Redis\ScriptGuard;
 use Type\Runtime\ExecutionScope;
@@ -33,6 +34,21 @@ function coordinationReject(Closure $operation, string $reason): void
     expect($rejected, '租约操作未按预期拒绝：' . $reason);
 }
 
+/** 等待本轮测试键在 Redis 中实际到期；不把本机睡眠时长当作服务端租约状态。 */
+function coordinationWaitExpired(RedisConnection $redis, string $key): void
+{
+    $deadline = hrtime(true) + 5000000000;
+    do {
+        $remaining = $redis->command('PTTL', [$key]);
+        if ($remaining === -2) {
+            return;
+        }
+        expect(is_int($remaining) && $remaining >= 0, '租约测试键缺少真实到期时间');
+        usleep(10000);
+    } while (hrtime(true) < $deadline);
+    throw new RuntimeException('租约测试键未在有界等待内到期');
+}
+
 $manager = new RedisManager(['default' => new RedisConfiguration(
     getenv('TYPE_REDIS_HOST') ?: '127.0.0.1',
     (int) (getenv('TYPE_REDIS_PORT') ?: 6379)
@@ -43,17 +59,22 @@ try {
     $first = $manager->connection($scope, 'default', Purpose::SCRIPT);
     $second = $manager->connection($scope, 'default', Purpose::SCRIPT);
     $ordinary = $manager->connection($scope);
-    $oldStore = new RedisStateStore($first, $application, 'leases', 250);
-    $newStore = new RedisStateStore($second, $application, 'leases', 250);
+    $oldStore = new RedisStateStore($first, $application, 'leases', 5000);
+    $newStore = new RedisStateStore($second, $application, 'leases', 5000);
     $oldStore->acquire();
     $old = $oldStore->lease();
     $oldGeneration = $old->generation();
     expect($old instanceof RedisLease, 'Redis 存储没有提供实际租约');
-    usleep(100000);
+    $lockKey = $oldStore->identity() . ':lock';
+    // 只缩短本轮测试键，随后由真实续租接口恢复；无效续租不能靠宽松等待通过。
+    expect($ordinary->command('PEXPIRE', [$lockKey, 1000]) === 1, '无法准备续租前的实际 TTL');
     $old->renew();
-    usleep(170000);
+    $renewed = $ordinary->command('PTTL', [$lockKey]);
+    expect(is_int($renewed) && $renewed > 1000 && $renewed <= 5000, '续租没有恢复实际 Redis TTL');
     coordinationReject(static fn () => $newStore->acquire(), 'busy');
-    usleep(120000);
+    // 明确推进本轮故障夹具到过期状态；保留真实 Redis 到期与旧 token 拒绝路径。
+    expect($ordinary->command('PEXPIRE', [$lockKey, 25]) === 1, '无法准备租约到期');
+    coordinationWaitExpired($ordinary, $lockKey);
     $newStore->acquire();
     $new = $newStore->lease();
     expect((int) $new->generation() > (int) $oldGeneration, '租约替换没有单调增加代次');
@@ -90,8 +111,8 @@ try {
     $reservation->acknowledge();
     $newStore->release();
     $publisher = RedisLease::acquire($second, $application . ':publisher', 50);
-    usleep(80000);
-    $replacement = RedisLease::acquire($second, $application . ':publisher', 250);
+    coordinationWaitExpired($ordinary, $application . ':publisher:lock');
+    $replacement = RedisLease::acquire($second, $application . ':publisher', 5000);
     // 首次旧 token 操作直接进入投递保护脚本，验证真实 XADD 目标拒绝。
     coordinationReject(static fn () => $queue->publish($message, $publisher), 'lease_lost');
     expect($queue->statistics()['messages'] === 0, '已过期发布者的脚本仍加入了消息');
@@ -102,7 +123,7 @@ try {
     $ordinary->command('DEL', [$newStore->identity() . ':state']);
     coordinationReject(static fn () => $newStore->acquire(), 'store');
 
-    $fullLease = RedisLease::acquire($second, $application . ':capacity', 250);
+    $fullLease = RedisLease::acquire($second, $application . ':capacity', 5000);
     $fullQueue = new Queue($second, $application, 'capacity', 30000, 1);
     $fullQueue->publish($message, $fullLease);
     $refused = false;
@@ -118,7 +139,7 @@ try {
     }
 
     // 真实断开已持有租约的客户端；续期不能假装成功或自动重试。
-    $brokenStore = new RedisStateStore($first, $application, 'network', 250);
+    $brokenStore = new RedisStateStore($first, $application, 'network', 5000);
     $brokenStore->acquire();
     $broken = $brokenStore->lease();
     $clientId = $first->identity();
