@@ -73,6 +73,7 @@ $runtime = $base . '/runtime-data';
 expect(mkdir($runtime, 0700), '无法创建发布之外的独立运行数据根');
 $environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $runtime, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false', 'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'var/app.sqlite',
     'APP_API_TOKEN' => 'package-test-' . bin2hex(random_bytes(20)), 'TYPE_APP_RELEASE_SHA256' => $created['manifest-sha256'], 'TYPE_APP_TRACE' => '1'];
+// 与独立 ORM 消费者一致，直接交给 PHP 的数组进程接口，避免 cmd /c 再次解析路径引号。
 $command = [$package . (PHP_OS_FAMILY === 'Windows' ? '/run.cmd' : '/run')];
 $isolated = false;
 if (PHP_OS_FAMILY === 'Darwin' || (PHP_OS_FAMILY === 'Linux' && getenv('TYPE_BWRAP_BINARY') !== false)) {
@@ -81,7 +82,6 @@ if (PHP_OS_FAMILY === 'Darwin' || (PHP_OS_FAMILY === 'Linux' && getenv('TYPE_BWR
 } elseif (PHP_OS_FAMILY === 'Windows') {
     $environment['SystemRoot'] = (string) getenv('SystemRoot');
     $environment['TEMP'] = sys_get_temp_dir();
-    $command = [$environment['SystemRoot'] . '/System32/cmd.exe', '/d', '/c', $package . '/run.cmd'];
 }
 $help = (new Process([...$command, 'help'], $package, $environment))->wait(10);
 expect($help->successful() && str_contains($help->stdout, $helpMarker) && $help->stderr === '', '搬迁后原生帮助失败：' . $help->stderr);

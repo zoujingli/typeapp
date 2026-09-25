@@ -19,9 +19,7 @@ if (($argv[1] ?? '') === '--package') {
     $release = $publisher->verify($directory, $releaseHash);
     $environment = getenv();
     $environment['TYPE_APP_RELEASE_SHA256'] = $releaseHash;
-    $command = PHP_OS_FAMILY === 'Windows'
-        ? [(string) getenv('SystemRoot') . '/System32/cmd.exe', '/d', '/c', $directory . '/run.cmd', 'help']
-        : [$directory . '/run', 'help'];
+    $command = [$directory . (PHP_OS_FAMILY === 'Windows' ? '/run.cmd' : '/run'), 'help'];
     $warmups = [];
     $measurements = [];
     $expectedOutput = null;

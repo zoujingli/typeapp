@@ -73,9 +73,7 @@ $created = $publisher->create($artifact, $directory . '/release');
 $release = $publisher->verify($created['directory'], $created['manifest-sha256']);
 $environment = getenv();
 $environment['TYPE_APP_RELEASE_SHA256'] = $created['manifest-sha256'];
-$command = PHP_OS_FAMILY === 'Windows'
-    ? [getenv('SystemRoot') . '/System32/cmd.exe', '/d', '/c', $created['directory'] . '/run.cmd']
-    : [$created['directory'] . '/run'];
+$command = [$created['directory'] . (PHP_OS_FAMILY === 'Windows' ? '/run.cmd' : '/run')];
 $run = (new Process($command, $created['directory'], $environment))->wait(10);
 expect($run->successful() && $run->stdout === "compiled-resource-ok\n" && $run->stderr === '', '资源发布后原生读取失败：' . $run->stderr);
 $resourcePaths = [];

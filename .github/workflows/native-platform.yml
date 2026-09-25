@@ -50,6 +50,13 @@ jobs:
         run: |
           & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-process.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 检查 Windows 进程与平台行为
+        if: inputs.scope != 'pgsql-probe'
+        run: |
+          foreach ($arguments in @(@('tests/windows-imports.php'), @('tests/testing-portable.php'), @('tests/build-platform.php'), @('tests/helpers.php','--php'))) {
+            & "$env:PHP_HOME/php.exe" @arguments
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - name: 原生构建身份与缓存
         if: inputs.scope != 'orm' && inputs.scope != 'pgsql-probe'
         run: |
@@ -61,13 +68,6 @@ jobs:
         run: |
           & "$env:PHP_HOME/php.exe" vendor/bin/phpunit --configuration phpunit.xml --log-junit build/windows-contracts.xml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: 检查 Windows 进程与平台行为
-        if: inputs.scope != 'pgsql-probe'
-        run: |
-          foreach ($arguments in @(@('tests/windows-imports.php'), @('tests/testing-portable.php'), @('tests/build-platform.php'), @('tests/helpers.php','--php'))) {
-            & "$env:PHP_HOME/php.exe" @arguments
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
       - name: 三库独立 ORM 与 Swoole 上下文验收
         if: inputs.scope != 'pgsql-probe'
         env:

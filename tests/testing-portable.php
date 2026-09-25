@@ -7,6 +7,34 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Testing\Process;
 
+if (PHP_OS_FAMILY === 'Windows') {
+    // 覆盖发布验收的真实调用形态；完整原生产物另由 native-package.php 验证。
+    $batchDirectory = dirname(__DIR__) . '/build/process-batch-' . bin2hex(random_bytes(6));
+    $batchPackage = $batchDirectory . '/moved release';
+    expect(mkdir($batchPackage, 0700, true), '无法创建含空格的批处理验收目录');
+    try {
+        file_put_contents($batchPackage . '/arguments.php', '<?php echo json_encode([getcwd(), array_slice($argv, 1)], JSON_THROW_ON_ERROR); exit(7);');
+        file_put_contents($batchPackage . '/run.cmd', "@echo off\r\nsetlocal\r\ncd /d \"%~dp0\"\r\n\"%TYPE_TEST_PHP_BINARY%\" -n \"%~dp0arguments.php\" %*\r\nexit /b %errorlevel%\r\n");
+        $batchEnvironment = ['SystemRoot' => (string) getenv('SystemRoot'), 'TEMP' => sys_get_temp_dir(),
+            'PATH' => (string) getenv('SystemRoot') . '/System32', 'TYPE_TEST_PHP_BINARY' => PHP_BINARY];
+        $batchArguments = ['help', 'space value', '中文参数'];
+        foreach ([$batchPackage, $batchDirectory] as $batchCwd) {
+            $batchResult = (new Process([$batchPackage . '/run.cmd', ...$batchArguments], $batchCwd, $batchEnvironment))->wait(5);
+            expect(
+                $batchResult->exitCode === 7 && !$batchResult->timedOut && $batchResult->stderr === '',
+                '含空格路径的批处理入口、受限环境或退出码失败：' . $batchResult->stderr
+            );
+            expect(
+                json_decode($batchResult->stdout, true, 512, JSON_THROW_ON_ERROR) === [realpath($batchPackage), $batchArguments],
+                '批处理入口没有保留参数或没有切换到自身目录'
+            );
+        }
+        echo "Windows 含空格批处理入口、不同工作目录、原样参数与退出码通过。\n";
+    } finally {
+        removeTestDirectory($batchDirectory);
+    }
+}
+
 // 公开进程接口的同一套行为在三个 OS 执行；不伪造 PHP_OS_FAMILY。
 $command = [PHP_BINARY, '-r', 'echo $argv[1]; for ($i = 0; $i < 80; $i++) { fwrite(STDOUT, str_repeat("a", 8192)); fwrite(STDERR, str_repeat("b", 8192)); } exit(7);', '中文 空格 $(不执行) "引号"'];
 $process = new Process($command);

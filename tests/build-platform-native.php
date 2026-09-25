@@ -114,6 +114,18 @@ expect(
     $nativeStatus === 0 && $nativeOutput === "本机AOT与实际加载运行库身份通过。\n" && $nativeError === '',
     '真实原生运行或加载身份失败：' . $nativeOutput . $nativeError
 );
+if (PHP_OS_FAMILY === 'Windows') {
+    // 复用本轮小型真实 AOT，提前验证发布启动器；全量应用仍保留独立搬迁验收。
+    $package = (new Type\Build\NativePackage())->create($artifact, $consumer . '/moved release');
+    $packageEnvironment = ['SystemRoot' => (string) getenv('SystemRoot'), 'TEMP' => sys_get_temp_dir(),
+        'PATH' => (string) getenv('SystemRoot') . '/System32', 'TYPE_APP_RELEASE_SHA256' => $package['manifest-sha256']];
+    $packageResult = (new Process([$package['directory'] . '/run.cmd', 'verify-deployment'], $consumer, $packageEnvironment))->wait(15);
+    expect(
+        $packageResult->successful() && $packageResult->stdout === "deployment-ok\n" && $packageResult->stderr === '',
+        '含空格发布目录的真实原生启动与审计失败：' . $packageResult->stderr
+    );
+    echo "Windows 含空格发布目录、受限环境与真实原生审计通过。\n";
+}
 $library = $manifest['native-libraries'][0];
 $copyDirectory = $consumer . '/library-copy';
 expect(mkdir($copyDirectory, 0700), '无法创建本轮运行库身份夹具目录');

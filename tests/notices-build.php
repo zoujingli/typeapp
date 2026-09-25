@@ -84,7 +84,7 @@ try {
 }
 $environment = getenv();
 $environment['TYPE_APP_RELEASE_SHA256'] = $package['manifest-sha256'];
-$command = PHP_OS_FAMILY === 'Windows' ? [(string) getenv('SystemRoot') . '/System32/cmd.exe', '/d', '/c', $package['directory'] . '/run.cmd'] : [$package['directory'] . '/run'];
+$command = [$package['directory'] . (PHP_OS_FAMILY === 'Windows' ? '/run.cmd' : '/run')];
 $tampered = new Process([...$command, 'help'], $package['directory'], $environment);
 try {
     expect($rejected && !$tampered->wait(15)->successful(), '材料篡改没有在静态/原生启动两层拒绝');

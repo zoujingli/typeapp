@@ -42,7 +42,7 @@ try {
         (new NativePackage())->verify($extracted, $digest);
         $environment = getenv();
         $environment['TYPE_APP_RELEASE_SHA256'] = $digest;
-        $command = PHP_OS_FAMILY === 'Windows' ? [(string) getenv('SystemRoot') . '/System32/cmd.exe', '/d', '/c', $extracted . '/run.cmd', 'help'] : [$extracted . '/run', 'help'];
+        $command = [$extracted . (PHP_OS_FAMILY === 'Windows' ? '/run.cmd' : '/run'), 'help'];
         $isolated = PHP_OS_FAMILY === 'Darwin' || (PHP_OS_FAMILY === 'Linux' && getenv('TYPE_BWRAP_BINARY') !== false);
         if ($isolated) {
             $command = [...sandboxPackageCommand(dirname(__DIR__), $extracted), 'help'];
