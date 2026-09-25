@@ -73,7 +73,9 @@ function rejectedGeneration(string $root, array $environment, string $reason): v
     $process = new Process([PHP_BINARY, $root . '/bin/typeapp-prepare', '--json'], $root, $environment);
     try {
         $failure = $process->wait(5.0);
-        expect(!$failure->successful() && str_contains($failure->stderr, $reason), '无效开发输入或代次未被拒绝：' . $failure->stderr);
+        expect(!$failure->successful() && !$failure->timedOut && str_contains($failure->stderr, $reason), '无效开发输入或代次未被拒绝：'
+            . json_encode(['exit' => $failure->exitCode, 'signal' => $failure->signal, 'timeout' => $failure->timedOut,
+                'stdout' => $failure->stdout, 'stderr' => $failure->stderr], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
     } finally {
         $process->stop(0.2);
     }

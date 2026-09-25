@@ -629,6 +629,7 @@ jobs:
             build/template-deployment-*/build.log
             build/**/package.log
             build/archive-test-*/release.tar.gz
+            build/clean-package-*/failure.json
             build/native-roles-*/report.json
             build/native-roles-*/build-outbox.log
             build/native-roles-*/build-scheduler.log

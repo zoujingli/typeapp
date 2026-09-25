@@ -247,6 +247,42 @@ try {
             'release-sha256' => $digest, 'build-id' => $manifest['artifact']['build-id']]);
         $evidence['checks'][] = 'native-database-backup-and-isolated-restore';
     }
+} catch (Throwable $failure) {
+    // 在回收前保留数据库存活与网络证据；不保存含环境变量的完整 inspect。
+    $diagnostic = ['driver' => $driver, 'release-sha256' => $digest];
+    if (is_file($base . '/failure.json')) {
+        $diagnostic['application'] = json_decode(file_get_contents($base . '/failure.json'), true, 512, JSON_THROW_ON_ERROR);
+    }
+    if ($backendCreated) {
+        foreach ([
+            'backend-state' => ['docker', 'inspect', '--format', '{{json .State}}', $backend],
+            'backend-network' => ['docker', 'inspect', '--format', '{{json .NetworkSettings.Networks}}', $backend],
+            'backend-resolver' => ['docker', 'exec', $backend, 'cat', '/etc/resolv.conf'],
+            'backend-query' => [...$backendQuery, 'SELECT 1'],
+            'backend-query-by-name' => [...array_map(static fn (string $argument): string => $argument === '--host=127.0.0.1' ? '--host=database' : $argument, $backendQuery), 'SELECT 1'],
+            'backend-log' => ['docker', 'logs', '--tail', '40', $backend],
+        ] as $label => $command) {
+            $inspection = new Process($command, null, $secretEnvironment);
+            try {
+                $observed = $inspection->wait(5);
+                $diagnostic[$label] = ['exit' => $observed->exitCode, 'timeout' => $observed->timedOut,
+                    'output' => $observed->stdout . $observed->stderr];
+            } catch (Throwable $inspectionFailure) {
+                $diagnostic[$label] = ['error' => $inspectionFailure->getMessage()];
+            } finally {
+                $inspection->stop();
+            }
+        }
+    }
+    $encoded = json_encode($diagnostic, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
+    foreach ($secretEnvironment as $key => $value) {
+        if ($value !== '' && preg_match('/password|secret|token|pwd/i', $key)) {
+            $encoded = str_replace($value, '<REDACTED>', $encoded);
+        }
+    }
+    file_put_contents($base . '/failure.json', $encoded . "\n");
+    fwrite(STDERR, "干净部署失败现场：\n" . $encoded . "\n");
+    throw $failure;
 } finally {
     if ($containerCreated) {
         cleanPackageCommand(['docker', 'rm', '--force', $container]);
