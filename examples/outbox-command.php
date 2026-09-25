@@ -57,10 +57,10 @@ function outboxScenario(int $argc, array $argv): void
     }
     $driver = Drivers::create((string) ($argv[1] ?? 'sqlite'));
     $mode = (string) ($argv[2] ?? 'setup');
-    // 正向角色需要容纳 Redis/调度延迟；crash/tokens/collect 故障演练仍用短租约与短保留期。
+    // 正向领取需要容纳 I/O 与调度延迟；tokens 单独构造旧租约过期，不能让新领取也只有 100ms。
     $forward = in_array($mode, ['setup', 'relay', 'consume', 'replay', 'consume-replay'], true)
         || getenv('TYPE_OUTBOX_DEPLOYMENT_CHECK') === '1' && in_array($mode, ['setup', 'relay', 'consume-replay'], true);
-    $store = new Store('type_outbox', $forward ? 5000 : 100, $forward ? 60 : 1);
+    $store = new Store('type_outbox', $forward || $mode === 'tokens' ? 5000 : 100, $forward ? 60 : 1);
     $database = new Database($driver, 2, 0);
     $scope = new ExecutionScope();
     try {
@@ -95,10 +95,16 @@ function outboxScenario(int $argc, array $argv): void
             }
             $connection->transaction(static fn (Connection $transaction): bool => $store->enqueue($transaction, 'unconsumed', 'delivered', 1, ['value' => '保留对账']));
             $old = $store->claim($connection, 1)[0];
-            usleep(150000);
+            // 仅修改本轮专用数据库的故障夹具，按旧 token 精确构造过期，不依赖调度等待。
+            outboxExpect($connection->table('type_outbox')->where('id', '=', $old->id())->where('token', '=', $old->token())
+                ->update(['lease_until' => 0]) === 1, '无法构造旧领取过期');
+            outboxExpect(!$store->accepted($connection, $old, 'expired-receipt'), '已过期领取仍能登记发布凭据');
             $new = $store->claim($connection, 1)[0];
-            outboxExpect($old->id() === $new->id() && $old->token() !== $new->token()
-                && !$store->accepted($connection, $old, 'old-receipt') && $store->accepted($connection, $new, 'new-receipt'), '旧 relay token 仍能覆盖新领取');
+            outboxExpect($old->id() === $new->id() && $old->token() !== $new->token(), '过期重领未更换同一消息的 token');
+            // 覆盖超过旧 100ms 测试窗口的暂停；新租约仍须真实有效，不能跳过期限检查。
+            usleep(150000);
+            outboxExpect(!$store->accepted($connection, $old, 'old-receipt'), '旧 relay token 仍能覆盖新领取');
+            outboxExpect($store->accepted($connection, $new, 'new-receipt'), '新领取未能在有效租约内登记发布凭据');
             usleep(1100000);
             outboxExpect($store->collect($connection) === 0 && $store->status($connection, 'unconsumed') !== null, '没有消费凭据就删除了消息意图');
             echo "Outbox 旧 token 拒绝与未消费意图保留通过。\n";

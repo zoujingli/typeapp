@@ -48,7 +48,7 @@ Scope 关闭时先拒绝新工作并取消子任务，再用共享清理预算�
 
 `ResourceLease::hold()` 将句柄使用期与等待期分开，ORM 的查询、写入、事务以及 Redis 调用均在实际操作期间持有容量。跨协程捕获父连接会被拒绝。完成的子任务错误需要 await 观察或由 Scope 收尾报告，未观察错误数量同样受限。
 
-PHP 真实 MySQL 运行验证包括延迟 SELECT、短等待超时、父先关闭、跨协程捕获、共享子树预算、清理超时后完成及新连接恢复。HTTP 验证包括 503 返回期间池仍满、客户端断开后收尾、后续请求不串结果。对应原生入口为 `docs/build-config/type-tasks.json` 与 `docs/build-config/type-task-http.json`，最终原生验收仍待集中完成。
+PHP 真实 MySQL 运行验证包括延迟 SELECT、短等待超时、父先关闭、跨协程捕获、共享子树预算、清理超时后完成及新连接恢复。HTTP 验证包括 503 返回期间池仍满、客户端断开后收尾、后续请求不串结果。对应原生入口为 `docs/build-config/type-tasks.json` 与 `docs/build-config/type-task-http.json`，已接入 Linux x64 原生 CI 的可靠性分组；固定源码与运行结果见[四平台验收记录](../evidence/native-release-20260925.md)。这些场景不自动代表其他平台或后续提交也已通过。
 
 `php tests/tasks.php --php --scope-only` 单独验证通用当前作用域、嵌套恢复、绑定快照、原生子协程隔离及 hook 配置，不连接数据库，也不读取身份业务数据。相同场景包含在 `type-tasks.json` 的编译输入内，原生运行时使用 `php tests/tasks.php build/tasks/type-app --scope-only`；PHP 通过不代表原生或完整角色验收通过。
 
