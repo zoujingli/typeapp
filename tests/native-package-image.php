@@ -11,7 +11,16 @@ function cleanPackageCommand(array $command, float $seconds = 30, ?array $enviro
     $process = new Process($command, null, $environment, 4194304);
     try {
         $result = $process->wait($seconds);
-        expect($result->successful(), '干净部署命令失败：' . $result->stderr);
+        if (!$result->successful()) {
+            $diagnostic = $result->stdout . $result->stderr;
+            foreach ($environment ?? [] as $key => $value) {
+                if ($value !== '' && preg_match('/password|secret|token|pwd/i', $key)) {
+                    $diagnostic = str_replace($value, '<REDACTED>', $diagnostic);
+                }
+            }
+            throw new RuntimeException('干净部署命令失败：exit=' . $result->exitCode . ', timeout=' . (int) $result->timedOut
+                . ', signal=' . (string) $result->signal . "\n" . $diagnostic);
+        }
         return $result->stdout;
     } finally {
         $process->stop();

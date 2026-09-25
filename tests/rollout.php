@@ -106,7 +106,14 @@ function rolloutCall(array $command, array $arguments, array $environment, bool 
     try {
         $result = $process->wait(10);
         if ($success) {
-            expect($result->successful(), '发布演练命令失败：' . $result->stderr);
+            $diagnostic = $result->stdout . $result->stderr;
+            foreach ($environment as $key => $value) {
+                if ($value !== '' && preg_match('/password|secret|token|pwd/i', $key)) {
+                    $diagnostic = str_replace($value, '<REDACTED>', $diagnostic);
+                }
+            }
+            expect($result->successful(), '发布演练命令失败：exit=' . $result->exitCode . ', timeout=' . (int) $result->timedOut
+                . ', signal=' . (string) $result->signal . "\n" . $diagnostic);
         } return $result;
     } finally {
         $process->stop();

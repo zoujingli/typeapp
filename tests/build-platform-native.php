@@ -72,10 +72,17 @@ $command = [PHP_BINARY, $root . '/vendor/bin/type', $consumer . '/build.json'];
 file_put_contents($consumer . '/compile.log', $stdout . $stderr);
 expect($status === 0, '本机构建失败，完整日志保留：' . $consumer . '/compile.log' . "\n" . substr($stderr, -4000));
 $artifact = (new BuildPlatform())->output($consumer . '/build/native/type-app');
+$buildReport = json_decode(file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+$runtimeIni = $buildReport['runtime-profile']['ini'];
+expect(is_file($runtimeIni) && is_dir(dirname($runtimeIni) . '/php.d'), '产物自己的运行配置缺失');
+// 所有原生探针使用同一构建选出的模块；控制器和重复编译保留自己的完整 PHP 配置。
+$runtimeEnvironment = getenv();
+$runtimeEnvironment['PHPRC'] = $runtimeIni;
+$runtimeEnvironment['PHP_INI_SCAN_DIR'] = dirname($runtimeIni) . '/php.d';
 $reader = new ArtifactManifest();
 $manifest = $reader->read($artifact);
 expect(($manifest['runtime']['os'] ?? '') === PHP_OS_FAMILY, '平台构建记录了错误OS');
-$deployment = (new \Type\Testing\Process([$artifact, 'verify-deployment']))->wait(60);
+$deployment = (new Process([$artifact, 'verify-deployment'], null, $runtimeEnvironment))->wait(60);
 $deploymentPassed = $deployment->successful() && $deployment->stdout === "deployment-ok\n" && $deployment->stderr === '';
 $deploymentEvidence = ['scope' => 'deployment-audit', 'passed' => $deploymentPassed, 'artifact-sha256' => hash_file('sha256', $artifact),
     'exit-code' => $deployment->exitCode, 'timed-out' => $deployment->timedOut, 'output-exceeded' => $deployment->outputExceeded,
@@ -87,22 +94,22 @@ if (PHP_OS_FAMILY === 'Darwin') {
     $fixture = $consumer . '/digest-数据.bin';
     foreach (['', 'abc', str_repeat("\0\xff\x80hash\n", 16385)] as $payload) {
         file_put_contents($fixture, $payload);
-        expect(successful([$artifact, 'digest', $fixture]) === hash_file('sha256', $fixture) . "\n", '系统SHA-256与PHP字节摘要不一致');
+        expect(successful([$artifact, 'digest', $fixture], null, $runtimeEnvironment) === hash_file('sha256', $fixture) . "\n", '系统SHA-256与PHP字节摘要不一致');
     }
-    expect(successful([$artifact, 'digest', $consumer . '/missing']) === "\n", '读取失败未显式返回无效摘要');
-    expect(successful([$artifact, 'digest', $consumer]) === "\n", '目录不能被当成空文件校验');
-    expect(successful([$artifact, 'digest-nul', $fixture]) === "\n", 'NUL路径不能被截断后校验');
+    expect(successful([$artifact, 'digest', $consumer . '/missing'], null, $runtimeEnvironment) === "\n", '读取失败未显式返回无效摘要');
+    expect(successful([$artifact, 'digest', $consumer], null, $runtimeEnvironment) === "\n", '目录不能被当成空文件校验');
+    expect(successful([$artifact, 'digest-nul', $fixture], null, $runtimeEnvironment) === "\n", 'NUL路径不能被截断后校验');
     $fifo = $consumer . '/digest.fifo';
     expect(posix_mkfifo($fifo, 0600), '无法创建非普通文件校验夹具');
     try {
-        $fifoResult = (new \Type\Testing\Process([$artifact, 'digest', $fifo]))->wait(2.0);
+        $fifoResult = (new Process([$artifact, 'digest', $fifo], null, $runtimeEnvironment))->wait(2.0);
         expect($fifoResult->successful() && $fifoResult->stdout === "\n" && $fifoResult->stderr === '', 'FIFO摘要必须立即拒绝，不能阻塞启动');
     } finally {
         unlink($fifo);
     }
-    echo successful([PHP_BINARY, $root . '/tests/native-startup.php', $artifact]);
+    echo successful([PHP_BINARY, $root . '/tests/native-startup.php', $artifact], null, $runtimeEnvironment);
 }
-[$nativeStatus, $nativeOutput, $nativeError] = execute([$artifact]);
+[$nativeStatus, $nativeOutput, $nativeError] = execute([$artifact], null, $runtimeEnvironment);
 expect(
     $nativeStatus === 0 && $nativeOutput === "本机AOT与实际加载运行库身份通过。\n" && $nativeError === '',
     '真实原生运行或加载身份失败：' . $nativeOutput . $nativeError
@@ -114,7 +121,7 @@ $copy = $copyDirectory . '/' . basename($library['path']);
 expect(copy($library['path'], $copy), '无法复制本轮运行库身份夹具');
 try {
     if (PHP_OS_FAMILY !== 'Linux') {
-        $wrongPath = (new Process([$artifact, 'verify-library', $library['name'], $copy]))->wait(10);
+        $wrongPath = (new Process([$artifact, 'verify-library', $library['name'], $copy], null, $runtimeEnvironment))->wait(10);
         expect($wrongPath->exitCode === 23 && $wrongPath->stdout === ''
             && str_contains($wrongPath->stderr, '运行库未按声明路径实际加载'), '相同字节但未实际加载的运行库路径没有拒绝');
     }
@@ -123,7 +130,7 @@ try {
     $firstByte = fread($stream, 1);
     expect(strlen($firstByte) === 1 && fseek($stream, 0) === 0 && fwrite($stream, chr(ord($firstByte) ^ 1)) === 1, '无法修改运行库夹具字节');
     fclose($stream);
-    $wrongBytes = (new Process([$artifact, 'verify-library', $library['name'], $copy]))->wait(10);
+    $wrongBytes = (new Process([$artifact, 'verify-library', $library['name'], $copy], null, $runtimeEnvironment))->wait(10);
     expect($wrongBytes->exitCode === 23 && $wrongBytes->stdout === ''
         && str_contains($wrongBytes->stderr, '运行库身份不一致'), '等长但摘要不匹配的运行库没有拒绝');
 } finally {
@@ -145,7 +152,7 @@ if ($sdkChange) {
         foreach (['changed' => $bytes . "\n// typeapp controlled SDK content probe\n", 'restored' => $bytes] as $step => $contents) {
             expect(file_put_contents($header, $contents) === strlen($contents) && touch($header, $mtime), '无法准备保持mtime的SDK内容变化');
             successful($command, $consumer);
-            expect(successful([$artifact]) === "本机AOT与实际加载运行库身份通过。\n", 'SDK变化后的产物没有实际运行');
+            expect(successful([$artifact], null, $runtimeEnvironment) === "本机AOT与实际加载运行库身份通过。\n", 'SDK变化后的产物没有实际运行');
             $built = json_decode(file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
             $records[$step] = ['build_id' => $built['build-id'], 'artifact_sha256' => $built['sha256'], 'cache_hit' => $built['cache']['hit']];
         }

@@ -2,8 +2,12 @@
 
 declare(strict_types=1);
 
-/** 捕获两个输出流，避免子进程因管道写满而互相等待。 */
-function execute(array $command, ?string $directory = null): array
+/**
+ * 捕获两个输出流，避免子进程因管道写满而互相等待。
+ *
+ * @param array<string,string>|null $environment 显式子进程环境；null 继承控制器环境。
+ */
+function execute(array $command, ?string $directory = null, ?array $environment = null): array
 {
     $stdout = tmpfile();
     $stderr = tmpfile();
@@ -11,7 +15,7 @@ function execute(array $command, ?string $directory = null): array
         throw new RuntimeException('无法创建进程输出缓冲');
     }
     try {
-        $process = proc_open($command, [0 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r'], 1 => $stdout, 2 => $stderr], $pipes, $directory);
+        $process = proc_open($command, [0 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r'], 1 => $stdout, 2 => $stderr], $pipes, $directory, $environment);
         if (!is_resource($process)) {
             throw new RuntimeException('无法运行验证进程');
         }
@@ -138,11 +142,12 @@ function menuLeafPaths(array $menus): array
  * 执行参数数组并要求零退出码，成功时返回标准输出。
  *
  * @param list<string> $command
+ * @param array<string,string>|null $environment 显式子进程环境；null 继承控制器环境。
  * @throws RuntimeException 命令执行失败。
  */
-function successful(array $command, ?string $directory = null): string
+function successful(array $command, ?string $directory = null, ?array $environment = null): string
 {
-    [$status, $stdout, $stderr] = execute($command, $directory);
+    [$status, $stdout, $stderr] = execute($command, $directory, $environment);
     expect($status === 0, '验证进程失败：' . implode(' ', $command) . "\n" . $stdout . $stderr);
 
     return $stdout;

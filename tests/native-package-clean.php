@@ -104,7 +104,7 @@ try {
     $runtime = ['docker', 'run', '--rm', '--pull=never', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
         '--tmpfs', '/tmp:rw,nosuid,nodev,size=16m', '--mount', 'type=bind,source=' . $data . ',target=/data',
         '--env', 'APP_BASE_PATH=/data', '--env', 'APP_ENV=production', '--env', 'APP_DEBUG=false', '--env', 'APP_CACHE_ENABLED=false',
-        '--env', 'APP_ADMIN_PASSWORD', '--env', 'APP_CUSTOMER_PASSWORD',
+        '--env', 'APP_ADMIN_PASSWORD', '--env', 'APP_CUSTOMER_PASSWORD', '--env', 'TYPE_APP_TRACE=1',
         ...$databaseArguments, '--env', 'TYPE_APP_RELEASE_SHA256=' . $digest];
     $help = cleanPackageCommand([...$runtime, '--network=none', $image, 'help'], 30, $secretEnvironment);
     expect(str_contains($help, 'TypeApp 物联中心') || str_contains($help, 'Type 业务应用'), '空白环境没有运行应用帮助');
