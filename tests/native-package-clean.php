@@ -87,10 +87,11 @@ try {
             }
         } while (!$ready && microtime(true) < $deadline);
         expect($ready, '本轮独立数据库没有就绪');
+        // 连接本轮网络的明确别名，末尾点阻止解析器追加宿主机搜索域。
         array_push(
             $databaseArguments,
             '--env',
-            'DB_HOST=database',
+            'DB_HOST=database.',
             '--env',
             'DB_PORT=' . ($driver === 'mysql' ? '3306' : '5432'),
             '--env',
@@ -101,7 +102,9 @@ try {
             'DB_PASSWORD'
         );
     }
+    // 主动覆盖带搜索域的运行环境，避免只在无搜索域的开发机上通过。
     $runtime = ['docker', 'run', '--rm', '--pull=never', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
+        '--dns-search', 'typeapp-validation.invalid',
         '--tmpfs', '/tmp:rw,nosuid,nodev,size=16m', '--mount', 'type=bind,source=' . $data . ',target=/data',
         '--env', 'APP_BASE_PATH=/data', '--env', 'APP_ENV=production', '--env', 'APP_DEBUG=false', '--env', 'APP_CACHE_ENABLED=false',
         '--env', 'APP_ADMIN_PASSWORD', '--env', 'APP_CUSTOMER_PASSWORD', '--env', 'TYPE_APP_TRACE=1',
@@ -117,6 +120,9 @@ try {
         try {
             $result = $invalid->wait(20);
             expect(!$result->successful() && !$result->timedOut && !str_contains($result->stdout . $result->stderr, $wrongCredentials['DB_PASSWORD']), '数据库认证失败未拒绝或泄漏了密码');
+            if ($driver === 'mysql') {
+                expect(str_contains($result->stdout . $result->stderr, '"driver_code":1045'), 'MySQL错误口令必须到达认证阶段，不能由DNS或连接失败替代');
+            }
         } finally {
             $invalid->stop();
         }
@@ -232,6 +238,7 @@ try {
             'admin-field-whitelist', 'stale-version-conflict', 'invalid-input-rejected', 'user-disable', 'actual-backend-rows', 'sigterm-exit-zero']];
     if ($driver !== 'sqlite') {
         $evidence['checks'][] = 'private-database-network';
+        $evidence['checks'][] = 'absolute-container-dns-with-search-domain';
         $evidence['checks'][] = 'separate-http-ingress';
         $evidence['checks'][] = 'bad-credentials-rejected-without-disclosure';
     }

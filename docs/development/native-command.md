@@ -62,6 +62,10 @@ php tests/native.php --chroot "$task_sandbox"
 
 隔离执行需要 Linux root 或可用于 chroot 的非交互 sudo。该步骤仅验证命令运行，不部署服务，也不启动或替换本地前端。
 
+完整 Linux 目录包使用 `tests/native-package-clean.php` 验证只读空白镜像中的安装、迁移、HTTP 业务与正常停止；`--recover` 进一步验证备份和独立恢复。测试主动设置 `typeapp-validation.invalid` 搜索域，并用 `DB_HOST=database.` 连接隔离网络的数据库别名，以覆盖 CI 宿主机携带搜索域的情况。MySQL 错误口令必须返回认证错误码 `1045`，DNS 或连接失败不能代替认证拒绝。测试数据库使用已经存在的镜像，应用与恢复进程共用同一发布包。
+
+固定 Swoole 的 Linux DNS 路径使用 c-ares；CI 的 c-ares 1.27 会将 `ndots:0` 归一为 `1`，使短名称优先追加搜索域。在封闭网络中，这可能先触发解析失败。末尾点明确指定绝对 DNS 名称，无需修改 Swoole 或给生产主机名统一补点；依赖搜索域的应用继续按自身网络配置。部署配置说明见[首次启动](../guide/deployment.md#首次启动)。
+
 ## 组件与通信验收
 
 在匹配的 SDK 环境中，`php tests/build-platform-native.php` 验证真实产物、运行库身份和缓存；`php tests/helpers-build.php` 全量编译 SQLite、ORM、校验与运行组件，并对照 PHP 和原生业务结果。这些入口使用自身的测试目录，不等同于完整应用或无源码部署验收。
