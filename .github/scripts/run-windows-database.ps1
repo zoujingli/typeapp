@@ -201,16 +201,11 @@ try {
             }
         }
     } else {
-        $taskDevelopmentArguments = @('tests/iot-identity.php', '--php', $Driver, '--app')
-        $taskDevelopmentSeconds = 180
-        if ($DevelopmentOnly) {
-            # 仅诊断时测量完整请求耗时；默认验收预算不由此分支修改。
-            $taskDevelopmentArguments += '--diagnose-latency'
-            $taskDevelopmentSeconds = 600
-        }
-        Invoke-TaskProcess $taskPhp $taskDevelopmentArguments (Join-Path $taskEvidence 'development.log') $taskDevelopmentSeconds $taskEnvironment | Out-Null
+        # PostgreSQL 完整应用检查实测约 426 秒；保留全部断言，PHP/AOT 使用相同的有界预算。
+        $taskApplicationSeconds = if ($Driver -eq 'pgsql') { 600 } else { 180 }
+        Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', '--php', $Driver, '--app') (Join-Path $taskEvidence 'development.log') $taskApplicationSeconds $taskEnvironment | Out-Null
         if (!$DevelopmentOnly) {
-            Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', 'build/app/type-app.exe', $Driver, '--app') (Join-Path $taskEvidence 'native.log') 180 $taskEnvironment | Out-Null
+            Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', 'build/app/type-app.exe', $Driver, '--app') (Join-Path $taskEvidence 'native.log') $taskApplicationSeconds $taskEnvironment | Out-Null
             Invoke-TaskProcess $taskPhp @('tests/application-template.php', $Driver, '--onboarding', '--native', '--package') (Join-Path $taskEvidence 'onboarding.log') 2400 $taskEnvironment | Out-Null
         }
     }

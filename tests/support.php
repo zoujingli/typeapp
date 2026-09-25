@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+// 测试故障仍保留消息与调用位置；参数不能泄漏凭据或延长 PDO 生命周期，阻塞专用数据库清理。
+ini_set('zend.exception_ignore_args', '1');
+
 /**
  * 捕获两个输出流，避免子进程因管道写满而互相等待。
  *
