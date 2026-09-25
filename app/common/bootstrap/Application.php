@@ -266,6 +266,20 @@ final class Application
             fwrite(STDERR, 'TypeApp 物联中心启动或命令失败：' . $publicMessage . "\n");
             if (getenv('TYPE_APP_TRACE') === '1' && $publicMessage === 'internal_error') {
                 fwrite(STDERR, $error::class . ': ' . $message . "\n");
+                // 驱动原始消息可能包含 SQL、连接串或业务值；仅输出有限异常链中的标准错误码。
+                $cause = $error->getPrevious();
+                for ($depth = 0; $cause !== null && $depth < 8; $depth++) {
+                    if ($cause instanceof \PDOException) {
+                        $sqlstate = (string) ($cause->errorInfo[0] ?? '');
+                        fwrite(STDERR, json_encode([
+                            'exception_type' => 'PDOException',
+                            'sqlstate' => preg_match('/^[A-Z0-9]{5}$/D', $sqlstate) === 1 ? $sqlstate : null,
+                            'driver_code' => (int) ($cause->errorInfo[1] ?? 0),
+                        ], JSON_THROW_ON_ERROR) . "\n");
+                        break;
+                    }
+                    $cause = $cause->getPrevious();
+                }
             }
             if ($debug) {
                 fwrite(STDERR, json_encode([

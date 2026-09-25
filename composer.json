@@ -156,9 +156,11 @@
     "test:process-signals": "@php tests/process-signals.php",
     "typeapp:test": [
       "@typeapp:prepare",
+      "@php tests/application-diagnostics.php --php",
       "@php tests/iot-identity.php --php sqlite --app"
     ],
     "typeapp:test-native": [
+      "@php tests/application-diagnostics.php build/app/type-app",
       "@php tests/iot-identity.php build/app/type-app sqlite --app",
       "@php tests/iot-identity.php build/app/type-app mysql --app",
       "@php tests/iot-identity.php build/app/type-app pgsql --app"
