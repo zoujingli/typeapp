@@ -64,6 +64,8 @@ Windows使用`run.cmd`。将`config/env.example`复制为`.env`并填入实际�
 
 ## 验收边界
 
+已验收源码 `bf28c8b` 的 Linux x64 三库干净部署使用同一主程序、发布清单与 scratch 镜像，并完成备份恢复；macOS 三库独立模板有禁止读取源码/SDK及执行编译器的隔离，Windows 搬迁包仅证明载荷无 PHP 源码。准确产物、主应用与模板的区别见[四平台发布验收](../evidence/native-release-20260925.md)。以下入口提供不同强度的验证，不互相替代。
+
 追加`--recover`可演练停止写入后的原生数据库备份、摘要/损坏检查、全新目标恢复、迁移历史/外部配置与资源、原生读写及原数据保留。SQLite使用维护端sqlite3，MySQL/PostgreSQL使用对应测试服务器镜像内的原生客户端；应用镜像仍无PHP源码或维护工具。详见随包`OPERATIONS.md`及[部署手册](deployment-runbook.md)。这不是整个集群/PITR或所有版本升级的完成证明。
 
 `tests/native-package-clean.php <Linux发布目录> <受信清单SHA256> [sqlite|mysql|pgsql]` 使用同一原生产物生成scratch镜像，并完整检查运行文件系统、独立PID、非root、只读根和仅数据挂载。MySQL/PostgreSQL测试使用预先存在的固定镜像（可用`TYPE_TEST_MYSQL_IMAGE`/`TYPE_TEST_PGSQL_IMAGE`指定），不自动拉取；每次创建专用数据库及网络，结束后回收本轮资源，不使用现有业务库。

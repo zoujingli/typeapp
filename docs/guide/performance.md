@@ -33,6 +33,8 @@ TypePHP 0.9.3 / PHPX 2.9.2 升级已在 macOS ARM64 做同业务、同平台、�
 
 这组测量的请求并发为 1，操作速率包含控制器和准备成本，用于升级回归判断，不能作为最大 RPS 或高并发容量。当前尚无覆盖全部平台与业务的峰值吞吐结论，高并发容量需由应用在目标环境按真实负载验收。
 
+后续四平台默认 CI 已通过功能矩阵，但未运行需要显式基准提交的可选性能组。因此不由这次 CI 成功推导性能提升，实际范围见[平台与验收](platforms.md)。
+
 需要复现对照时，按[平台性能方法](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-performance.md)准备固定源码、工具链和专用测试服务。报告同时记录延迟分位数、吞吐、错误、CPU 与内存，不只展示最快一次结果。
 
 [系统架构](architecture.md) · [进程、线程与协程](runtime.md) · [平台与验收](platforms.md)

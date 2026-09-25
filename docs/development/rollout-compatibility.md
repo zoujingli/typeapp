@@ -1,6 +1,6 @@
 # 新旧版本共存与回滚窗口
 
-复用迁移、模型查询、Outbox、队列、缓存及停止协议，新增 runtime 的 ReleaseCompatibility 表达应用版本与数据库、消息、缓存协议的独立声明。MySQL、PostgreSQL 和 SQLite 的 PHP 与 Linux ARM64 双版本原生演练均通过；最终 x64 和隔离部署仍待验收。
+复用迁移、模型查询、Outbox、队列、缓存及停止协议，由 runtime 的 ReleaseCompatibility 表达应用版本与数据库、消息、缓存协议的独立声明。`bf28c8b` 的 Linux x64 共存回滚与封装回滚组、Linux ARM64 和 macOS 回滚组均通过，使用各平台自己的双版本产物执行三库路径；实际环境与身份见[发布验收](../evidence/native-release-20260925.md)。这不代表所有业务版本或全部集群升级均已验收。
 
 `ReleaseCompatibility(version, capabilities)` 与构建清单采用同样的 schema/messages/cache 分类。`assertSchema` 拒绝当前数据库协议不在应用窗口内的启动；`assertConsumer` 在改变生产者或恢复积压前核对消息版本；`acceptsCache` 表达缓存可理解范围，实际 TypedCache 仍在解码前核对格式并对不兼容内容返回未命中。它不会自行猜测数据库、队列或其他部署实例的真实状态，调用者须从可信状态或实际实例声明取得这些值。
 

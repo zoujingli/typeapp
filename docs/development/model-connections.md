@@ -20,7 +20,7 @@
 
 验收沿用现有入口：`tests/orm-core.php` 覆盖共同业务和真实锁等待，`tests/orm-context.php` 覆盖作用域与在途收尾，`tests/transactions.php`、`tests/outcomes.php` 覆盖事务。`examples/orm-suite/MutationExercise.php` 增加超过一万行的集合写入、约束失败整批回滚、版本上限、旧对象冲突、身份校验及提交后新事务场景，并验证 MySQL 非严格模式与临时非事务表拒绝、SQLite 非整数版本与触发器边界；`tests/orm-suite-consumer.php` 复用同一行为验证隔离安装、双进程竞争及原生无源码运行。SQLite/PostgreSQL 使用延迟外键验证提交失败；MySQL 不支持该机制，不据此宣称其提交后未知场景已测。PHP 成功、TypePHP 全量编译和原生产物运行分别记录。
 
-已有独立消费者通过本地 Composer path repository 复制组件；公开分发子仓精确提交消费尚需验收。会话报告中的 `physical_reuse` 当前按驱动填写，不是普通 CRUD 连续租约复用的直接测量；PostgreSQL 的同物理连接重置另有 `examples/identity-command.php` 专项。完整交付需要把实际连接身份断言纳入消费者报告，不能仅以空闲槽位或驱动名称推导通过。平台及历史证据见[三驱动独立消费矩阵](orm-consumer-matrix.md)。
+独立消费者通过本地 Composer path repository 复制组件；公共分发另外按准确拆分提交完成安装和三库原生集成，结果见[四平台发布验收](../evidence/native-release-20260925.md)。`CoreExercise::sessions()` 已记录 MySQL 的 `CONNECTION_ID()` 与 PostgreSQL 的 `pg_backend_pid()`，但它验证的是混合原生 SQL 污染后的退役，断言连续四次身份不同；`physical_reuse` 仍按驱动填写，不是纯 CRUD 跨租约复用的直接测量。PostgreSQL 同连接重置另有 `examples/identity-command.php` 专项，消费者仍需补纯 CRUD 身份断言。不能仅以空闲槽位或驱动名称推导通过，平台及历史证据见[三驱动独立消费矩阵](orm-consumer-matrix.md)。
 
 ## 框架与业务边界
 

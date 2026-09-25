@@ -14,4 +14,4 @@ MySQL 的标准 PDO 接口没有完整会话重置能力；SQLite 的任意 PRAG
 
 PHP 三库验证覆盖临时状态、时区、PRAGMA、命名读写用途、代次隔离、旧池排空与实际 fork。MySQL/PG 使用真实临时数据库用户完成密码轮换，确认旧会话可以继续、旧密码拒绝新建、新代使用新密码；PG 补充 role/schema 基线恢复。
 
-原生入口为 `docs/build-config/type-identities.json`，密码轮换验证器同样支持传入原生产物。TLS 已实现验证配置与失败关闭策略，证书联调和原生身份验收仍在待验收清单，不据此声明全部部署组合已通过。
+原生入口为 `docs/build-config/type-identities.json`，密码轮换验证器同样支持传入原生产物。`bf28c8b` 的 Linux x64 数据组已通过三库原生身份与主从用例；TLS 组另验证真实证书、连接成功及身份拒绝，macOS 也完成三后端 PHP/AOT TLS 回归，见[发布验收](../evidence/native-release-20260925.md)。这些结果不等于任意 SDK、数据库版本或部署组合均已通过。

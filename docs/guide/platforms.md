@@ -2,24 +2,26 @@
 
 Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录，实际范围见下表。各平台使用 TypePHP 编译业务与生产组件，构建选择匹配的原生运行库；编译器存在平台实现、模块可以加载和应用完整验收分别判断。
 
-本页是平台支持范围的统一入口。支持范围按操作系统、CPU 架构和实际场景判断，未列出的架构尚无已支持声明。不同平台、源码和运行库的结果分别成立，不能组合成同一版本全平台通过的声明。源码公开、PHP 测试通过、原生编译成功和完整应用可部署是不同状态。
+本页是平台支持范围的统一入口。支持范围按操作系统、CPU 架构和实际场景判断，未列出的架构尚无已支持声明。源码公开、PHP 测试通过、原生编译成功和完整应用可部署是不同状态。
 
 框架已集成 Swoole，构建组件已内置下列四平台模块。开发、构建和部署分别需要准备什么，先看[环境与依赖](environment.md)；部署机使用经过验证的完整运行包，SDK 和编译工具在构建机准备。性能目标与实测依据见[性能与调优](performance.md)。
 
 ## 当前平台状态
 
-| 平台与实际环境 | 已通过的范围 | 完整应用边界 |
+截至 2026-09-25，源码 **`bf28c8b`** 的四平台默认 GitHub Actions 矩阵全部成功，使用 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2 与内置 Swoole 6.2.1。这是已验收源码基线，不表示后续每次提交自动获得相同结论。
+
+| 平台与实际环境 | 已通过的范围 | 部署验收边界 |
 | --- | --- | --- |
-| Linux x64 | 基础命令的全量 AOT 与实际运行 | 当前 ORM、完整应用及全部通信仍需同提交验收 |
-| Linux ARM64（虚拟机及 QEMU 指令模拟） | 同提交三库独立 ORM 的 PHP、AOT 与移除源码运行，包含锁等待、断连退役与凭据代次；同一无源码产物另通过 QEMU 三库上下文、乐观锁和原子更新验收 | 完整应用、全部通信及单程序交付待完成 |
-| macOS ARM64 | 同提交三库独立 ORM、真实锁等待及主从专项；完整应用 AOT 产物的三库身份 HTTP 和无源码运行包；TCP/UDP 双线程和协程、WS/WSS 独立原生运行 | 完整协议、故障和单程序交付待完成 |
-| Windows x64 | Swoole SDK 构建与加载、PHPUnit；同提交三库独立 ORM 的 PHP、AOT 与移除源码运行，包含上下文、双进程乐观锁与原子更新；PostgreSQL 另验证物理连接复用、污染清理及故障退役 | MySQL/SQLite 物理复用及完整应用待完成 |
+| Linux x64，Ubuntu 24.04 | [19 个分组及汇总](https://github.com/zoujingli/typeapp/actions/runs/36141190608)：完整应用 AOT、三库应用、组件、TLS、恢复与回滚 | 同一程序、清单和 scratch 镜像通过三库无源码、无 SDK 部署及备份恢复 |
+| Linux ARM64，Ubuntu 24.04 原生 ARM runner | [9 个默认分组](https://github.com/zoujingli/typeapp/actions/runs/36141196518)：独立 ORM、完整应用 AOT、三库应用、恢复与回滚 | 当前结果来自原生 ARM64 runner；各组的产物与隔离范围单独记录 |
+| macOS ARM64，macOS 15 原生 runner | [8 个默认分组](https://github.com/zoujingli/typeapp/actions/runs/36141179921)：HTTP、ORM、三库完整应用 AOT、部署、恢复、回滚与 TLS | 主应用三库使用同一程序，报告 `no_source=false`；另有禁止读取源码/SDK及执行编译器的三库独立模板包验收 |
+| Windows x64，Windows 2022 原生 runner | [完整流程](https://github.com/zoujingli/typeapp/actions/runs/36141201763)：SDK、三库独立 ORM、主应用 PHP/AOT、模板与搬迁包 | 主应用三库使用同一程序，报告 `no_source=false`；搬迁包不含 PHP 源码，但未禁止读取原项目/SDK或执行编译器 |
 
-三库指 MySQL、PostgreSQL、SQLite。独立 ORM 消费者安装标准框架与所选数据库驱动，验证模型和运行时的公开契约，不导入物联中心业务。每种数据库的结果只覆盖实际执行的场景。Windows 原生部署验收包含组件消费者的实际程序和运行库，尚不包含完整应用的可搬迁发布包。Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
+三库指 MySQL、PostgreSQL、SQLite。独立 ORM 消费者验证模型与运行时的公开契约，主应用和通用模板分别验证自己的业务入口。主应用、模板和组件消费者有各自的产物，不能合并为“全部平台同一产物通过最严格无源码隔离”。Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
 
-Linux x64 基础命令结果对应源码 `fed4efae5826bdca69a613743e1c6c459addd565`；macOS ARM64、Linux ARM64、Windows x64 的三库独立 ORM 矩阵对应干净源码 `5abdb5e53ea9ca67054f69d17113b91eb3402d69`。工具链、产物身份与运行证据见 GitHub 上的[平台与工具链](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#当前结果与证据)。这些记录保留原提交归属，不表示后续每个提交都重新通过了同一矩阵。
+同一源码的 [15 组件批次](https://github.com/zoujingli/typeapp/actions/runs/36144180719)与[应用模板分发](https://github.com/zoujingli/typeapp/actions/runs/36146310707)也已成功，公开安装和三库原生集成通过。Packagist 的 16 个 `dev-main` 引用与分发提交一致，自动同步已启用；安装方式见[组件参考](components.md)。这仍是开发分支，没有稳定版本标签。
 
-消费者通过 Composer 复制安装对应提交的组件输入；远端分发子仓同步和安装另行验证。MySQL、SQLite 仍采用安全关闭，完整三库物理连接复用及全部协议入口作用域尚未收口，因此不声明 ORM 完整交付。
+完整源码、产物摘要及隔离详情见[本轮验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/native-release-20260925.md)；较早的工具链和模拟环境结果保留在[历史平台记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)。MySQL、SQLite 仍采用安全关闭重建，完整三库物理连接复用未完成。本轮未运行可选性能基准，默认矩阵通过也不代表全部协议、容量和业务故障组合验收完成。
 
 ## 通信结果如何理解
 
@@ -37,9 +39,9 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 原生构建基线为 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 另外固定版本、源码、构建开关、模块摘要和官方内置库配置；CLI 加载成功还需要对应 embed 环境验证。不能只复制一个扩展文件就认定 ABI 匹配。
 
-上述平台记录包含历史工具链结果；本次升级的 macOS ARM64 验证与性能对照见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)。Linux／Windows 尚未在新版工具链上重新验收。
+四平台默认矩阵已在上述工具链上通过。工具链升级时的 macOS 性能对照仍按自己的源码和负载成立，见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)，不能扩展为本轮四平台性能结论。
 
-构建组件现已携带四平台 Swoole 6.2.1 共享模块，具体 ABI、系统依赖和选择规则见[内置 Swoole](plugins/type-build.md#内置-swoole-与运行依赖)。模块迁入组件后，独立 Composer 安装的禁网选择、空格路径与不同工作目录验证通过；macOS ARM64 使用 TypePHP 0.9.3／PHPX 2.9.2 完成 255 个生产输入、21 个生产依赖包、271 个编译单元的全量 AOT，同一程序完成三库共 1522 项无源码身份 HTTP 检查。构建身份、程序摘要及原始证据见[迁移验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/swoole-bundle.md#迁入构建组件后的验证)。这批验证未运行 Linux/Windows 全量应用、Windows 准备脚本或 macOS 15 实机，不能把模块齐全视为四平台完整交付。
+构建组件携带四平台 Swoole 6.2.1 共享模块，具体 ABI、系统依赖和选择规则见[内置 Swoole](plugins/type-build.md#内置-swoole-与运行依赖)。独立 Composer 安装的禁网选择、空格路径与不同工作目录已验证；模块迁移时的原始结果见[迁移验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/swoole-bundle.md#迁入构建组件后的验证)。本轮进一步完成了四平台匹配 SDK 和应用回归，模块仍是动态构建输入，不等于静态链接完成。
 
 不同服务入口具有各自的执行方式，不能把某一入口的限制套用到整个框架：
 
@@ -50,7 +52,7 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 | HTTP `serveThread()` / `serveThreadOwned()` | 编译业务线程使用共享监听副本或自行监听，主控监督停止与 join | 需要匹配项目线程 ABI；两种监听方式和各平台单独验收 |
 | `WebSocket\Server::start()` | 经典 Swoole WebSocket Server | 当前 Windows 原生入口明确拒绝，协程升级尚未接入本组件 |
 
-Windows HTTP 已有实现分支，但现有 SDK、ORM 和进程工具结果不能证明新版 HTTP、控制事件排空或完整应用发布已通过；上述未验收项继续保留。主仓物联中心生产 HTTP 使用编译业务线程，通用模板使用 `serve()`，见[快速开始](quickstart.md#启动服务)和[type-core](plugins/type-core.md#启动-http-服务)。
+Windows 主应用与模板已通过本轮 HTTP、正常停止和发布包用例；控制台异常退出、全部故障组合仍按对应场景分别验收。主仓物联中心生产 HTTP 使用编译业务线程，通用模板使用 `serve()`，见[快速开始](quickstart.md#启动服务)和[type-core](plugins/type-core.md#启动-http-服务)。
 
 进程不可用时采用官方线程或协程是框架要求；HTTP 已按平台选择入口，其他角色仍需逐项接入和验证。经典 Server/Process、线程和协程的实际业务按所选构建分别核验，上游提供某项能力不能替代应用验收。
 

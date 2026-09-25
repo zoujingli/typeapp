@@ -1,5 +1,7 @@
 # 三驱动独立业务消费矩阵
 
+当前已验收基线为 `bf28c8b`，四平台默认 CI 和公共组件三库原生集成已通过，准确运行与边界见[四平台发布验收](../evidence/native-release-20260925.md)。下面的 2026-09-24 局部回归及早期模拟结果保留自己的源码、产物与隔离范围，不替代当前记录。
+
 ## 同一套业务源码
 
 `examples/orm-suite` 包含共同的模型声明、业务流程、文章观察器、迁移计划和应用入口。三个消费者只选择各自的 `DriverFactory` 文件。业务不包含私有 PDO 补丁或临时替代 ORM；字段存储的真实差异集中声明在迁移计划中：
@@ -110,13 +112,13 @@ php tests/orm-suite-consumer.php sqlite --native
 
 同一消费者还验证当前作用域恢复、可信上下文快照、子事务独立、跨协程连接拒绝、关闭作用域后的缓存连接拒绝、父取消/关闭/Deadline 传播，以及等待超时后租约继续占用至任务结束。`database-io-wait` 用两个真实连接竞争同一行：持锁期间子任务等待超时，连接与在途预算保持占用；释放锁后等待实际收尾，核对最终数据没有丢失或重复写入。超时后的任务仍报告取消，数据库写入可能已经完成，不能据此透明重试。会话报告分别记录 PostgreSQL 完整重置后的物理复用、MySQL/SQLite 的保守关闭及污染隔离；普通 CRUD 物理复用不能仅由池槽位计数证明。
 
-当前 `CoreExercise::sessions()` 的 `physical_reuse` 字段按驱动名称填写，混合原生 SQL 场景断言的是连续租约退役，并未直接测量普通 CRUD 后是否复用同一 backend。PostgreSQL 同连接重置由 `examples/identity-command.php` 专项另行断言；消费者仍需补入直接身份观测，才能让其复用报告本身成为验收证据。公开分发子仓精确提交安装也不同于上述本地 path repository 复制，完整独立消费须覆盖两者。
+`CoreExercise::sessions()` 已在 `connection_ids` 记录 MySQL/PostgreSQL 的实际服务端身份；混合原生 SQL 污染场景断言连续四次身份不同，证明的是退役。`physical_reuse` 字段仍按驱动名称填写，不能解释为纯 CRUD 后复用同一 backend 的直接测量。PostgreSQL 同连接重置由 `examples/identity-command.php` 专项另行断言；消费者仍需补纯 CRUD 跨租约身份观测。公共分发按准确拆分提交的安装与三库集成另外通过，与本地 path repository 复制分别保留证据。
 
 网络数据库会话用例通过独立控制连接终止自身的测试会话，验证归还时断连会退役、PostgreSQL 重置失败有记录，以及空闲会话失效后明确报错且不透明重试。三库均验证凭据代次轮换：活动旧租约保持原身份并能收尾，新借用使用新代次，旧代排空后不再进入空闲集合。这里验证代次与租约生命周期，真实数据库密码变更另由 `tests/identity-credentials.php` 验证。该入口还通过所选 PHP 或原生身份命令验证 PostgreSQL 配置角色、schema 和读写用途的初始化、污染与恢复，并核对归还后复用同一物理连接；测试进程只负责创建及回收专用角色和 schema。
 
 消费者启动前启用 `CoroutineRuntime::enableIo()`。MySQL 需要 mysqlnd 和网络 hook，PostgreSQL、SQLite 分别需要官方 `--enable-swoole-pgsql`、`--enable-swoole-sqlite` 构建选项；缺失时真实锁等待验收不能通过。报告的 `swoole_hook_flags` 记录实际启用值。Swoole 会在扩展初始化时注册其编入的 PDO 驱动，所以 `PDO::getAvailableDrivers()` 可能包含没有独立加载 `pdo_*` 模块的驱动；`swoole_pdo_drivers` 单独记录该来源，`runtime_extensions` 继续验证独立模块过滤，生产包清单仍只能包含所选 ORM 驱动。
 
-macOS ARM64 和 Linux ARM64 已通过三库独立消费的 PHP、AOT 与移除源码运行，包含真实数据库锁等待、关闭作用域后的缓存连接拒绝、断连退役、PostgreSQL 重置失败和凭据代次专项；Linux 结果来自 Colima ARM64 虚拟机内的专用容器。Windows x64 的 Swoole SDK 构建、扩展加载和 PHPUnit 已通过，三库分别通过独立 PHP、AOT 与移除源码运行，包含十项上下文与资源专项、双进程乐观锁和原子更新；PostgreSQL 另验证物理复用、污染清理及故障退役。工作流提供 `orm` 验收范围，复用专用数据库实例入口顺序执行三库，并保留运行包、编译清单、主场景结果及两个子进程的退出码和原始输出。分阶段证据不代表整套验收通过。主从选路另有三库 PHP/AOT 实测，不将两台具有受控数据差异的服务器称为复制集群。
+早期 `5abdb5e` 的三平台矩阵中，Linux ARM64 结果来自 Colima 专用容器，macOS 与 Windows 使用各自原生环境。后续 `bf28c8b` 已通过四平台默认矩阵，Linux ARM64 使用真实 ARM64 runner；macOS/Windows 的三库独立 ORM 各移除 101 个 PHP 文件后运行，覆盖十项上下文与资源专项、真实锁等待、双进程乐观锁和原子更新。Windows 另提供 `scope=orm`，可顺序验证三库并保留编译清单、运行包及子进程输出；定向单库成功不能冒充完整矩阵。主从选路的受控数据差异场景不称为真实复制集群。
 
 Linux ARM64 另使用 QEMU 7.2.22 user-mode 显式执行 ARM64 动态加载器及程序，完成三库无源码运行、上下文与资源专项，以及两个独立模拟进程的乐观锁竞争和原子更新。仅设置容器的 `--platform linux/arm64` 不计为 CPU 指令模拟；报告保存模拟器版本和摘要、宿主环境、程序及运行库摘要、源码提交和各场景结果。该批补测使用源码提交 `5c3e19b` 的保留产物，运行前逐文件校验且没有业务 PHP 源码，不等同于后续提交重新编译或最终同提交平台验收。
 

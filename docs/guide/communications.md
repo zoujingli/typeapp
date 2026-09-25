@@ -63,7 +63,7 @@ Swoole 持有网络句柄与调度。`type-runtime` 的 `ExecutionScope`、`Dead
 
 当前主仓的 HTTP、TCP、UDP、MQTT 与 WebSocket 生产入口均固定使用 Swoole；角色根据目标构建能力选择 Swoole Process、Thread 或 Coroutine。完整协议矩阵、三库组合、无源码部署及各平台资源回收仍需按同一产物分别验收，单个 PHP 示例不能代替完整平台结果。
 
-最新平台结果统一见[平台与验收](platforms.md#通信结果如何理解)。ARM64 的独立 HTTP AOT 与 WebSocket PHP 结果各自记录；Windows 组件 AOT 不包含通信验收，TCP/UDP/MQTT 的完整原生矩阵仍待完成。
+最新平台结果统一见[平台与验收](platforms.md#通信结果如何理解)。四平台默认矩阵已有真实 HTTP 与原生应用结果；Windows 的普通 HTTP、业务线程入口和模板分别验收，经典 WebSocket 服务端入口仍明确拒绝该平台。TCP/UDP/MQTT、WS/WSS 按协议和运行方式核对，默认矩阵不代表完整协议及全平台组合均已通过。
 
 ## 从示例到交付
 

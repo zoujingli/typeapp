@@ -1,6 +1,6 @@
 # 多实例调度协调与队列组合
 
-按当前开发顺序已完成标准 PHP 功能和真实 Redis 验证；TypePHP 集中原生验收尚未运行，实际范围须按当前产物验证。
+已完成标准 PHP 与真实 Redis 验证，`bf28c8b` 的 Linux x64 调度/消费者组和 macOS 可靠性组也通过原生协调与队列组合用例，见[发布验收](../evidence/native-release-20260925.md)。下文说明公共机制与复现入口，其他平台和故障组合仍以实际执行范围为准。
 
 ## 复用与接入
 
@@ -42,19 +42,19 @@ php tests/scheduler-consumer.php
 
 测试只清理自己随机命名空间下的 Redis 键，不对共享测试服务执行全库清空。日志不是验收结果，断言检查实际 Redis 效果、消息、执行历史和系统报告的暂停状态。
 
-## 集中原生验证接入
+## 原生验证入口
 
-本任务没有修改根 Composer/CI。主仓已有 scheduler、queue、Redis 与 runtime 依赖；合并本提交后可以追加：
+主仓已有 scheduler、queue、Redis 与 runtime 依赖，根 Composer 与 CI 使用以下入口：
 
 ```json
 {
-  "build:scheduler-coordination": "@php vendor/bin/type docs/build-config/type-scheduler-coordination.json",
+  "build:scheduler-coordination": "@php tests/build-scenario.php docs/build-config/type-scheduler-coordination.json",
   "test:scheduler-coordination": "@php tests/scheduler-coordination-consumer.php",
   "test:scheduler-coordination-native": "@php tests/scheduler-coordination-consumer.php --native"
 }
 ```
 
-`--native` 为独立消费项目安装锁定 TypePHP/PHPX 与 type-build，编译直接注册的任务及应用队列适配器，使用同一真实多进程验收驱动原生产物。还需运行无业务源码部署检查和远端 CI，按实际结果更新实现规划。
+`--native` 为独立消费项目安装锁定 TypePHP/PHPX 与 type-build，编译直接注册的任务及应用队列适配器，使用同一真实多进程验收驱动原生产物。上述远端 CI 已运行成功；独立消费者原生结果与无源码集成的隔离范围分别记录，不能把控制器仍在构建环境等同于应用依赖源码。
 
 ## 故障处理边界
 

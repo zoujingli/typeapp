@@ -1,5 +1,7 @@
 # 内置 Swoole 模块实施与验证
 
+本文保留模块首次入仓和迁移时的源码与验收身份。后续四平台匹配 SDK、完整应用 AOT 和公共分发进展见[四平台发布验收](native-release-20260925.md)，不覆盖本文当时未执行的平台项。
+
 2026-09-24，主仓首次在 `bin/swoole` 入仓四份真实预编译模块（现迁入[构建组件资源](../../plugin/type-build/resources/swoole/README.md)），合计 18,502,232 字节。固定 Swoole 6.2.1、PHP 8.5.10 ZTS 非 debug 64 位 ABI；准确来源、源码适配与文件摘要以[清单](../../plugin/type-build/resources/swoole/manifest.json)为准。
 
 ## 初次入仓时的构建行为

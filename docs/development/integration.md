@@ -12,7 +12,7 @@
 
 ## 重复执行与最终门禁
 
-远端模式 `tests/integration-consumer.php <驱动> --remote --native` 要求先取得成功分发批次，所有插件必须安装批次记录中的准确提交。当前三库证据使用本地复制包；真实公开分发消费、最终 Linux x64 CI、全部故障演练及无源码部署仍待合并验收。未完成项见[实现规划](../guide/roadmap.md)。
+远端模式 `tests/integration-consumer.php <驱动> --remote --native` 要求先取得成功分发批次，所有插件必须安装批次记录中的准确提交。`bf28c8b` 的 Linux x64 CI 与公共组件批次均已通过，三库远端集成各编译 255 个生产输入，并通过 `chroot-without-php-source` 部署，见[发布验收](../evidence/native-release-20260925.md)。三库各自构建产物，不合并为同一 ELF；长时间负载和全部故障域仍按[实现规划](../guide/roadmap.md)补齐。
 
 ## 无源码完整业务复验
 

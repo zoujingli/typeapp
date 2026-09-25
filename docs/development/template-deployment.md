@@ -2,6 +2,8 @@
 
 部署验收使用应用模板公开的 `help`、`check`、`migrate`、`serve` 和用户 HTTP API，不新增测试专用生产入口，也不删除 `BuildIdentity::verifyRuntime()`。PHP 只运行在构建机和验收控制器；应用服务本身从 `FROM scratch` 镜像启动编译后的 ELF。
 
+`bf28c8b` 的公开模板分发已通过 MySQL、PostgreSQL、SQLite 三库原生干净部署，模板拆分提交、组件批次和运行链接见[发布验收](../evidence/native-release-20260925.md)。这里的 scratch 路径是 Linux 验收；macOS/Windows 的模板搬迁用例及隔离限制在[平台页](../guide/platforms.md)分别记录。
+
 ## 复用与边界
 
 - `tests/application-template.php` 继续负责复制独立模板、显式选择数据库驱动、独立 Composer 安装、核对生产依赖和完整 TypePHP 构建。新增 `--native --build-only` 只保存“已经编译、尚未验收”的记录，不生成通过证据。

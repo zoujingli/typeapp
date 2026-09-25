@@ -30,6 +30,8 @@ TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typep
 
 构建组件包含 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 6.2.1 模块。匹配构建可直接复用；模块格式与 ABI、平台实测范围是不同的检查，见[平台与验收](docs/guide/platforms.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
 
+已验收源码 `bf28c8b` 的四平台默认原生 CI、15 组件批次与应用模板分发均已通过，16 个 Packagist `dev-main` 引用与 GitHub 一致。当前可使用开发版本和经验证的目录包；具体场景、隔离强度与未完成目标见[验收记录](docs/evidence/native-release-20260925.md)。
+
 ## 快速开始
 
 以下命令用于源码开发：准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展。完整环境分工见[环境与依赖](docs/guide/environment.md)，平台执行方式与验收范围见[平台与验收](docs/guide/platforms.md)。从 Packagist 创建独立应用，先选择数据库再安装依赖：

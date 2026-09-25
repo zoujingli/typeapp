@@ -24,7 +24,7 @@ flowchart LR
 
 ## 实现与验收范围
 
-已完成 Linux x64 基础命令、Linux ARM64 / macOS ARM64 / Windows x64 三库独立 ORM 消费者的 AOT 构建与实际运行；macOS ARM64 另有完整应用 AOT 与三库身份 HTTP 结果。各场景的源码、SDK 与产物身份独立记录，完整应用发布和单程序封装仍有待验收项，见[平台与验收](https://iots.top/#/guide/platforms)。
+Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过默认原生 CI，覆盖完整应用 AOT、三库场景、组件与模板消费。目录包已通过实际部署用例，各平台的主应用、模板及隔离范围分别记录；完整静态单程序仍未完成，见[平台与验收](https://iots.top/#/guide/platforms)。
 
 构建声明可通过 `threads` 登记已编译业务入口。构建器核对受控 Swoole/PHPX ABI 2、源码摘要与 fiber 通知配置，并在正常模块启动阶段发布应用符号；线程内协程作用域、初始化失败和清理边界见[已编译业务线程](https://github.com/zoujingli/typeapp/blob/main/docs/development/compiled-business-threads.md)，实际平台结果按该页记录。
 
@@ -48,7 +48,7 @@ prepare按完整源码、声明、生成器及锁文件内容身份复用不可�
 
 路由由生产源码上的 `#[Route]`/`#[Group]`/`#[Resource]` 或 `config/route.php` 声明。构建 JSON 只指向该 PHP 文件，不再读取 JSON 路由表；旧 `.json` 路径明确报迁移错误。`RouteCompiler::declarations()` 静态解析 `declare(strict_types=1)` 与一次 return 常量数组，不 include、不读取环境。完整契约见[HTTP 与路由](https://github.com/zoujingli/typeapp/blob/main/docs/guide/routing.md)。
 
-同一入口还提供 `type package <产物> <新发布目录> [.env.example]` 和 `type verify-package <目录> <受信清单SHA256>`；运行目录不包含本构建工具或Composer。平台布局、资源、启动校验与实际限制见[原生发布目录说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-packages.md)。当前新增平台验收未全部完成，不将接口存在视为正式发布通过。
+同一入口还提供 `type package <产物> <新发布目录> [.env.example]` 和 `type verify-package <目录> <受信清单SHA256>`；运行目录不包含本构建工具或 Composer。平台布局、资源、启动校验与实际限制见[原生发布目录说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-packages.md)。发布包验收以具体源码、平台和隔离报告为准，不能仅凭接口存在宣布完整交付。
 
 `type service <发布目录> <服务声明.json> <新服务目录> <受信清单SHA256>` 复用发布校验，生成launchd/systemd/WinSW配置与摘要记录。目标发布、数据和服务配置分离；生成器不读取.env、不安装/启用服务、不修改账号权限。Unix显式使用非root账号，Windows需提供外部受信WinSW包装器且使用LocalService。声明、运行依赖与实际验证范围见[原生服务管理](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-services.md)。
 
@@ -130,7 +130,7 @@ vendor/bin/type --inspect build/type-example
 
 ## AOT 与运行要求
 
-本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP 0.9.3、PHPX 2.9.2，PHP继续锁定8.5.10 ZTS；构建须提供匹配目标平台的完整SDK，已通过范围和完整应用限制统一见[平台与验收](https://iots.top/#/guide/platforms)。Windows x64 已完成匹配 Swoole 模块的构建与加载、三库独立 ORM 的 PHP/AOT 与无源码运行；部署审计和缓存另有已记录结果，编译线程接入及完整应用发布仍待验收。生产运行库由实际产物清单确定，不把编译SDK、源码或构建秘密复制进运行镜像。
+本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP 0.9.3、PHPX 2.9.2 和 PHP 8.5.10 ZTS；构建须提供匹配目标平台的完整 SDK。Windows x64 已完成 SDK 准备、三库独立 ORM、完整应用 PHP/AOT、模板及搬迁包回归；各平台的隔离强度与未完成项统一见[平台与验收](https://iots.top/#/guide/platforms)。生产运行库由实际产物清单确定，不把编译 SDK、源码或构建秘密复制进运行镜像。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。标量存储、引用及std编译期接口按新版规则实现，带上下文的闭包必须完整声明参数；PHP开发对照只使用具有真实等价行为的能力。
 

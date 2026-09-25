@@ -4,7 +4,7 @@
 
 三个分发入口共用原生 CI 门禁：源码必须对应主仓 `main` 的固定 SHA，`native-command.yml` 在同一次执行轮次中整体成功，所有任务已完成且成功，并包含 `native-complete` 汇总。自动 push 与手动 `suite=all` 均可提供证据；`[skip ci]` 提交需手动运行完整验收。汇总仅在完整矩阵成功后通过，`isolated-build` 单项重跑、跳过或失败任务、其他仓库/分支/提交，以及不完整的任务列表均不构成分发资格。
 
-每个矩阵任务只拿一个子仓的专用写入 deploy key。通过 GitHub API 核对准确仓库名、public 可见性和未归档状态；目标不符或无法确认时停止分发。Actions、PHP、Composer 和源提交固定，PR 没有分发入口。包中的允许内容为 composer.json、README、LICENSE、NOTICE、src/bin/stubs/resources；未映射依赖、认证文件及额外根内容均拒绝。
+每个矩阵任务只拿一个子仓的专用写入 deploy key。通过 GitHub API 核对准确仓库名、public 可见性和未归档状态；目标不符或无法确认时停止分发。Actions、PHP、Composer 和源提交固定，PR 没有分发入口。包中的允许内容为 composer.json、README、LICENSE、NOTICE、`.gitattributes`、src/bin/stubs/resources；未映射依赖、认证文件及额外根内容均拒绝。构建组件的 Git 属性保护模块与许可原文的字节，分发后还需回读校验。
 
 单组件入口 `tools/distribute-plugin.php` 与批次计划共用包检查：从指定提交核对 Composer 声明、普通文件类型、允许路径、第一方依赖及拆分树。每个组件必须包含 `README.md`、`LICENSE`、`NOTICE`；README 和 NOTICE 不能为空，LICENSE 的 Git 对象须与同一提交的主仓完整 Apache-2.0 许可文本一致。工作区补写文件不能修复固定提交的缺项；这些检查必须在向分发仓库写入前完成。
 
@@ -27,6 +27,8 @@
 公开组件通过 HTTPS 获取，Composer 消费不需要 SSH 密钥。每个分发仓库只配置专用写入 key；模板工作流使用 `tools/configure-distribution-writer.php` 加载模板写入 key，并在退出时用 `tools/cleanup-distribution-writer.php` 清理。凭据只用于发布写入，不传入公开组件的安装过程。
 
 ## 验证
+
+已验收基线 `bf28c8b` 的组件批次、模板和公共索引核验通过，固定批次与实际运行见[发布验收记录](../evidence/native-release-20260925.md)。`already-current` 表示远端已匹配该拆分内容，不表示本次新增了提交。后续即使只修改组件 README，也会形成新的分发输入，须重新按该提交执行门禁和批次，不沿用旧源码的报告。
 
 `composer test:distribution-batch` 使用真实本地裸 Git 仓库和多进程，验证首次分发、重复执行、报告身份错配拒绝、部分失败补齐、不可移动标签、相同标签竞争、开发分支前进后旧标签重跑、过期批次、子仓偏离和私有内容隔离。每次在 `build/` 创建独立目录，成功或异常退出时等待本轮子进程并回收目录，清理不跟随符号链接。
 

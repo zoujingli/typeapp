@@ -1,6 +1,6 @@
 # 环境与依赖
 
-运行 TypeApp 应用不需要在部署机安装 PHP、Swoole、Composer 或编译工具。原生运行库由构建流程选择、校验并随应用交付；部署者准备匹配的操作系统、配置与应用实际使用的业务服务。
+部署经过验证的完整 TypeApp 运行包时，不需要另行安装 PHP、Swoole、Composer 或编译工具。原生运行库由构建流程选择、校验并随包交付；部署者准备匹配的操作系统与系统库基线、配置及应用实际使用的业务服务。
 
 交付约定为一个主程序加外置配置，当前打包仍是需要整体部署的目录包。文件形态与静态链接进度统一见[构建与部署](deployment.md#当前构建状态)。
 
@@ -25,7 +25,7 @@
 | 内置模块 | 构建匹配条件 |
 | --- | --- |
 | Linux x64 / ARM64 | PHP 8.5.10 ZTS、非 debug、64 位；Debian 12 / glibc 2.36 构建基线，不适用于 Alpine/musl |
-| macOS ARM64 | 同一 PHP ABI；部署目标 15.0，当前运行验证为 macOS 27，15 实机待验收 |
+| macOS ARM64 | 同一 PHP ABI；部署目标 15.0，已在 macOS 15 原生 ARM64 runner 通过默认矩阵 |
 | Windows x64 | 同一 PHP ABI；PHP 官方 VS17 ZTS SDK |
 
 默认构建自动选择当前平台模块，校验摘要、ABI 与源码适配，再通过真实 embed 探针验证加载。只收集选中的模块及其实际依赖，应用不必声明整目录资源。已有 embed 内置扩展或显式模块配置仍有更高优先级，见[选择与失败处理](plugins/type-build.md#选择与失败处理)。
@@ -34,7 +34,7 @@ PHP 版本号和 ZTS 一致仍不足以保证二进制兼容：SDK 的编译选�
 
 这里的内置模块是构建输入，目前为共享库。Composer 安装不会修改本机 PHP CLI 的 ini，开发入口仍须加载匹配扩展。模块选择可以禁网执行，首次安装依赖和 SDK 准备仍有各自的网络要求。
 
-独立分发以实际安装提交为准。旧版本没有 `resources/swoole/manifest.json` 时，应升级到包含该资源的分发版本；主仓具备资源不代表远端子仓已经同步。维护者的源码重建和覆盖入口见[type-build](plugins/type-build.md#内置-swoole-与运行依赖)。
+当前公共 `type-build` 开发分支已分发这些资源，并核对模块、许可及 Git 属性的字节一致性。旧锁文件指向不含 `resources/swoole/manifest.json` 的版本时，须受控更新后重新构建；日常构建仍以应用锁定提交为准。维护者的源码重建和覆盖入口见[type-build](plugins/type-build.md#内置-swoole-与运行依赖)。
 
 ## 部署者需要管理什么
 

@@ -1,6 +1,6 @@
 # 文档站维护
 
-站点入口为 `index.html`，使用 Docsify 5.0.0 在浏览器中渲染 Markdown，无 Node/npm 构建步骤。页面标题为「TypeApp - PHP 原生应用框架」；iots.top 的备案网站名称「物联开源分享」保留在页脚，连同 Apache-2.0、NOTICE、许可证说明，以及粤 ICP 和粤公网安备备案信息展示。
+站点入口为 `index.html`，使用 Docsify 5.0.0 在浏览器中渲染 Markdown，无 Node/npm 构建步骤。首页标题为「TypeApp - PHP 原生应用框架 - 物联开源分享」；内页切换时仍保留备案网站名称「物联开源分享」作为标题后缀。页脚同时展示网站名称、Apache-2.0、NOTICE、许可证说明，以及粤 ICP 和粤公网安备备案信息。
 
 粤ICP备16006642号链接到工信部备案查询网站；粤公网安备44200102446399号与左侧公安备案图标共同链接到 `https://beian.mps.gov.cn/#/query/webSearch?code=44200102446399`。两类备案链接均使用 `target="_blank"` 和 `rel="noopener noreferrer"`。公安备案图标使用所提供 PNG 原图的 Base64 数据，等比例显示为 18×20，不发起独立图片请求。
 

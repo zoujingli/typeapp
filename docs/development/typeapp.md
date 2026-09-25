@@ -86,6 +86,6 @@ php tests/iot-identity-databases.php build/app/type-app <MySQL工具根> <Postgr
 
 独立候选验证使用 `composer test:broker-candidate` / `composer test:broker-candidate-native`，分别安装 Broker 管理宿主与物联组合，核对标准 MQTT 到业务持久回执的接收链；该入口的结果按实际运行状态记录。
 
-全量 AOT 包含框架、业务、生成代码及全部生产 PHP 依赖；唯一例外是固定 Swoole 官方内置库沿用官方加载，版本和内容进入产物身份。当前仅 macOS ARM64 先验，Linux和Windows的最终同候选验证仍未完成。
+全量 AOT 包含框架、业务、生成代码及全部生产 PHP 依赖；唯一例外是固定 Swoole 官方内置库沿用官方加载，版本和内容进入产物身份。四平台默认矩阵已在 `bf28c8b` 基线上通过完整应用 AOT 与各自三库场景，主应用、模板和无源码隔离范围见[平台与验收](../guide/platforms.md)。完整设备链路、全部业务故障及静态单程序仍需独立验收。
 
-`type-project` 的后续生成以本业务、前端及配置为单一来源；完整同源创建和真实子仓消费仍需验收，旧独立极简模板不能冒充当前完整项目。组件依然只分发 `plugin/type-*` 子树，应用与私有配置不会进入组件子仓。
+`type-project` 是通用独立应用模板，已完成公开子仓消费和三库原生部署，不默认携带物联业务。物联成品的同源创建仍需从本业务、前端及配置单独实现和验收，不能用通用模板代替。组件只分发 `plugin/type-*` 子树，应用与私有配置不会进入组件子仓。

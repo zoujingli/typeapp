@@ -110,7 +110,7 @@ vendor/bin/type --inspect build/type-example
 
 `type-build` 的 Composer 分发内容包含 Swoole 6.2.1 四平台共享模块、清单和原始许可证。主仓位置是 `plugin/type-build/resources/swoole/`，独立应用通常安装在 `vendor/zoujingli/type-build/resources/swoole/`；构建组件按自身安装位置查找，不依赖应用根目录或当前工作目录。应用无需复制主仓目录，也无需增加 `resources` 声明；根目录 `build/` 继续只保存不入仓的生成产物。
 
-独立应用以实际安装提交为准：安装包含上述资源的组件版本，并提交应用的 `composer.lock`。主仓已有实现与远端子仓已分发分别核对，旧分发版本缺少清单时不能直接使用该默认能力。
+公共 `type-build` 开发分支已包含上述资源，并完成独立安装与字节核对。应用提交 `composer.lock` 固定实际版本；旧锁文件指向不含清单的分发版本时，须先受控更新再使用默认内置模块。
 
 预编译模块固定使用 **PHP 8.5.10、ZTS、非 debug、64 位 ABI**。当前主仓工具链为 TypePHP 0.9.3、PHPX 2.9.2，准确版本以应用的工具链锁和 Composer 锁文件为准。
 
@@ -118,7 +118,7 @@ vendor/bin/type --inspect build/type-example
 | --- | --- |
 | `linux-x64/php-8.5.10-zts/swoole.so` | Linux x86-64，Debian 12 / glibc 2.36 构建基线 |
 | `linux-arm64/php-8.5.10-zts/swoole.so` | Linux ARM64，Debian 12 / glibc 2.36 构建基线 |
-| `macos-arm64/php-8.5.10-zts/swoole.so` | macOS ARM64，部署目标 15.0；实际运行验证为 macOS 27，15 实机待验收 |
+| `macos-arm64/php-8.5.10-zts/swoole.so` | macOS ARM64，部署目标 15.0；已通过 macOS 15 原生 ARM64 默认矩阵 |
 | `windows-x64/php-8.5.10-zts/php_swoole.dll` | Windows x64，PHP 官方 VS17 ZTS ABI |
 
 Linux 模块不适用于 Alpine/musl；NTS、其他 PHP 版本、macOS Intel 和 Windows ARM64 未提供内置文件。模块包含项目的编译线程、HTTP、Socket 与 TLS 适配，普通官方 Thread 可用不代表满足项目的编译入口 ABI。
@@ -233,7 +233,7 @@ php vendor/bin/type archive build/release build/type-example.tar.gz "$TYPE_RELEA
 
 运行包包含匹配 PHPX/libphp 和实际原生扩展，不包含 Composer、编译 SDK 或业务 PHP 回退入口。生产资源与开发工具分开，平台可用性以该版本实际验收为准。
 
-已验证的构建与运行场景包括 Linux x64 基础命令，以及 Linux ARM64、macOS ARM64、Windows x64 三库独立 ORM 消费者的 PHP、AOT 和无源码运行；macOS ARM64 另有完整应用 AOT 和三库身份 HTTP 结果。Windows x64 已完成匹配 Swoole 模块的构建与加载，运行库部署审计与缓存也有已记录结果。各场景的提交、SDK 与完整应用限制见[平台与验收](../platforms.md)；目录包与归档不等于单程序封装完成。
+四平台默认原生 CI、公共组件与模板分发已在同一源码基线上通过，覆盖完整应用 AOT、三库场景及运行包回归。Linux x64 的 scratch 部署、macOS 的独立模板隔离与 Windows 的搬迁包分别记录，不能合并隔离结论。准确提交、SDK 与限制见[平台与验收](../platforms.md)；目录包与归档不等于静态单程序完成。
 
 ## 常见问题
 

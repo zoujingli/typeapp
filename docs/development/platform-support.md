@@ -8,9 +8,13 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 面向使用者的状态统一维护在[平台与验收](../guide/platforms.md)。该页进入 Docsify 公开站点；本文保留执行入口和可复核的产物身份。
 
-当前构建基线已升级为 TypePHP 0.9.3／PHPX 2.9.2，PHP 保持 8.5.10 ZTS。本次 macOS ARM64 原生验证和同源码性能对照见[升级验收](../evidence/typephp-upgrade-0.9.3.md)；下表保留历史版本的实际结果，不能据此宣布新版 Linux／Windows 验收通过。
+2026-09-25，固定源码 `bf28c8bd276f7d0f25535e82ec3ca4a59c4f241a` 使用 TypePHP 0.9.3／PHPX 2.9.2、PHP 8.5.10 ZTS、内置 Swoole 6.2.1 完成四平台默认矩阵。Linux x64 的 19 个分组及汇总、Linux ARM64 的 9 个分组、macOS ARM64 的 8 个分组和 Windows x64 完整流程均成功。原生 runner、Actions 链接、应用/模板隔离区别、发布与产物摘要见[四平台发布验收](../evidence/native-release-20260925.md)。本轮未运行可选性能基准，也不声明完整静态单程序已完成。
 
-四平台 Swoole 6.2.1 模块已迁入构建组件，随 Composer 独立安装后默认复用。迁移后的 macOS 全量 AOT、同一程序三库无源码 HTTP、独立消费及未运行的平台项单独记录在[迁移验收](../evidence/swoole-bundle.md#迁入构建组件后的验证)，不覆盖下表的历史身份。
+四平台 Swoole 模块随 Composer 构建组件分发，匹配 SDK 后默认复用。macOS 当前矩阵在原生 macOS 15 runner 运行，Linux ARM64 在原生 ARM64 runner 运行，Windows 已完成 SDK 准备、完整应用 AOT 和模板搬迁。每种产物按报告解释，不能把主应用 `no_source=false` 的检查与独立模板隔离结果混为一项。
+
+## 历史结果
+
+以下记录保留原源码、工具链和产物。TypePHP 升级对照见[升级验收](../evidence/typephp-upgrade-0.9.3.md)；模块首次迁移的独立消费与 macOS 回归见[迁移验收](../evidence/swoole-bundle.md#迁入构建组件后的验证)。其中的待验收项描述当时状态，当前进展以上节为准。
 
 | 平台 | 已保存结果与身份 | 范围 |
 | --- | --- | --- |
@@ -29,10 +33,10 @@ Windows ORM 验收由原生数据库装置另外创建两个独立端口和数�
 
 ## 继续验收的前置条件
 
-- Windows：当前 SDK 准备入口默认复用 `plugin/type-build/resources/swoole` 中匹配 PHP 8.5.10 ZTS x64/embed 的 DLL；仅在 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 时下载固定 Swoole 源码及专用 phpize 工具。历史源码构建与加载已有结果，本次迁移后未重跑 Windows 准备脚本或完整应用；每次仍须核对扩展依赖、SDK 布局、模块版本和官方内置库。应用 PHP 装置先探测子进程已有扩展，避免重复加载；模块可通过 `TYPE_SWOOLE_MODULE` 显式定位。
+- Windows：SDK 准备入口默认复用 `plugin/type-build/resources/swoole` 中匹配 PHP 8.5.10 ZTS x64/embed 的 DLL；仅在 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 时下载固定 Swoole 源码及专用 phpize 工具。本轮默认入口与完整应用已通过；每次更换输入仍须核对扩展依赖、SDK 布局、模块版本和官方内置库。应用 PHP 装置先探测子进程已有扩展，避免重复加载；模块可通过 `TYPE_SWOOLE_MODULE` 显式定位。
 - 已编译线程：`NativeBuilder` 要求已适配并重编译的 PHPX、Swoole `startNative`/`NATIVE_ENTRY_ABI=2` 与 fiber 通知配置；官方 Swoole 6.2.2 的普通 Thread 不提供这些项目标识。具体接入见[已编译业务线程](compiled-business-threads.md)。
 - macOS 扩展构建：设置与所选 PHP SDK 相符的 `MACOSX_DEPLOYMENT_TARGET`，通过 `pkg-config` 定位匹配的 OpenSSL。实际模块须使用两级符号绑定，TLS 符号明确链接到所选 OpenSSL；不能依赖平面命名空间从已加载的系统库中猜测同名实现。用真实 TCP/TLS 与 WSS 行为验证链接结果。
-- 完整应用：满足 SDK 前置后重新执行应用、五种通信、三库、发布搬迁与无源码部署。Windows 组件审计成功不能替代 `NativePackage` 的完整应用发布验收。
+- 完整应用：SDK 或生产输入变化后重新执行受影响的应用、通信、三库、发布搬迁与无源码部署。现有 Windows 搬迁包验收未禁止读取外部源码/SDK；更强隔离及全部协议组合仍需补充，不能由组件审计代替。
 
 ## 验收条件
 

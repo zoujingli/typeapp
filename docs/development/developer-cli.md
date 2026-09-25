@@ -65,7 +65,7 @@ entry/test路径必须属于项目。dev只执行明确的开发入口，test只
 
 验收控制器仅把组件源映射为本地独立副本，Composer 不执行脚本或插件；业务配置与驱动选择由公开创建命令完成。这个本地接入测试不能当作远端模板/组件分发通过。macOS 隔离负向探针检查源码、Composer、SDK读取和PHP/编译器执行被禁止；Linux/Windows未建立同样隔离证据时报告为未隔离，不冒充干净部署通过。
 
-运行原生入口前，仍需配置匹配的 PHP_HOME/PHPX_HOME 和真实工具链；测试不会自动安装或更改宿主 SDK。`tests/application-template.php <driver> --onboarding --native --package` 可选择三库，各驱动分别构建并发布。发布验收接收所选驱动，MySQL/PostgreSQL使用显式专用连接且创建/清理另一随机新库，不复用先前业务状态或切换到SQLite。缺失外部连接不能以默认配置猜测。独立干净机器和最终三平台CI仍须按各自范围验收。
+运行原生入口前，仍需配置匹配的 PHP_HOME/PHPX_HOME 和真实工具链；测试不会自动安装或更改宿主 SDK。`tests/application-template.php <driver> --onboarding --native --package` 可选择三库，各驱动分别构建并发布。发布验收接收所选驱动，MySQL/PostgreSQL使用显式专用连接且创建/清理另一随机新库，不复用先前业务状态或切换到SQLite。缺失外部连接不能以默认配置猜测。四平台默认 CI 与公共模板验收已有结果，具体源码、应用类型与隔离范围见[平台与验收](../guide/platforms.md)，不外推为任意干净机器均已通过。
 
 ## macOS本机原生三库接入
 

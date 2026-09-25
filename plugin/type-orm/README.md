@@ -2,7 +2,7 @@
 
 提供独立于 HTTP 核心的驱动协议、受管连接、参数化查询、模型/关系、事务、迁移与 Outbox。数据库差异由所选驱动及明确的查询方言处理，不提供隐藏的写入重试或跨系统事务保证。
 
-历史源码 `5abdb5e53ea9ca67054f69d17113b91eb3402d69` 在 Linux ARM64、macOS ARM64、Windows x64 完成三库独立消费者的 PHP、AOT 和无源码运行，三库分别为 MySQL、PostgreSQL、SQLite。该记录使用本地 Composer 包复制安装，不等于当前公开子仓已完成独立消费验收；Linux x64 的基础命令结果也不代替 ORM 验收。当前目标覆盖四个平台，具体身份、场景与剩余限制见[平台与验收](https://iots.top/#/guide/platforms)。
+四平台默认原生 CI 已在同一源码基线上通过，覆盖 MySQL、PostgreSQL、SQLite 的组件与应用场景；公共组件批次另通过准确分发提交的安装、全量 AOT 和三库无源码集成。独立 ORM 消费者验证上下文、真实锁等待、取消、连接所有权、会话退役和并发写入。具体身份与范围见[平台与验收](https://iots.top/#/guide/platforms)；模型聚合、批量新增和 MySQL/SQLite 物理复用等缺口仍按下文保留。
 
 业务实体 CRUD 使用无连接参数的 Model。启动时由 `Db::configure()` 装配数据库管理器，模型在当前 Swoole 执行作用域中按需借用连接；默认读从写主，`master()` 指定主读，事务内固定同一主库，事务外写后不自动粘主。具有租户字段的模型从应用已验证并绑定的上下文自动隔离，缺失身份拒绝执行。PostgreSQL 已实现完整会话重置后的 PDO 复用；MySQL、SQLite 的物理复用及完整原生平台验收仍有缺口，当前能力和限制见开发主仓的[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)。
 
