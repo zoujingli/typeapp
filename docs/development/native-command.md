@@ -15,7 +15,7 @@ Linux/macOS 需要对应平台的 PHP embed SDK、C++17 编译器、CMake、GMP 
 
 GitHub Actions 分别提供 Linux x64、Linux ARM64、macOS ARM64 和 Windows x64 验收入口。工作流存在不代表该平台完整通过；PHP 行为、组件 AOT、完整应用、实际通信、无源码部署和性能分别记录结果。Linux 容器或虚拟机验证还须记录实际架构与是否使用模拟器，本机其他项目的工具链镜像不是本项目公开分发依赖。
 
-macOS ARM64 的内置 Swoole 要求 PHP SDK 启用 Zend signals。CI 使用 `tools/install-locked-macos-php.sh` 从固定摘要的 PHP 源码准备 ZTS/CLI/embed，缓存按安装脚本和本机依赖身份复核；Swoole 仍直接取自构建组件，无需在每次应用构建时重编。Homebrew 的 `php-zts` 关闭该选项，不能仅凭 PHP 版本号相同直接替换。启动产物时使用该次构建报告 `runtime-profile.ini` 指向的配置，避免加载开发控制器中另一份同名扩展。
+macOS ARM64 的内置 Swoole 要求 PHP SDK 启用 Zend signals。CI 使用 `tools/install-locked-macos-php.sh` 从固定摘要的 PHP 源码准备 ZTS/CLI/embed，缓存按安装脚本和本机依赖身份复核；Swoole 仍直接取自构建组件，无需在每次应用构建时重编。Homebrew 的 `php-zts` 关闭该选项，不能仅凭 PHP 版本号相同直接替换。SDK 通过 Xcode Command Line Tools 提供的声明链接系统 iconv，避免在发布包中引入与系统库同名但符号不同的 GNU libiconv。启动产物时使用该次构建报告 `runtime-profile.ini` 指向的配置，避免加载开发控制器中另一份同名扩展。
 
 构建组件在 [plugin/type-build/resources/swoole](../../plugin/type-build/resources/swoole/README.md) 保存这四个平台的 Swoole 模块、固定来源、SHA-256 和第三方许可证。匹配 PHP 8.5.10 ZTS 的构建默认直接读取本地文件，不下载或重新编译 Swoole。选择顺序为真实 embed 已内置、显式 `runtime.modules`、有效的 `TYPE_SWOOLE_MODULE`、构建组件内置清单。清单缺失、没有匹配 ABI、摘要不符或源码适配已变更时明确失败；独立应用通过 Composer 安装完整的 `type-build` 后使用相同规则，其他扩展继续按 SDK 或显式候选解析。
 

@@ -41,7 +41,7 @@ jobs:
           fetch-depth: 0
       - name: 安装原生构建和专用测试数据库工具
         run: |
-          brew install cmake gmp mpfr pcre2 pkg-config libpq mysql@8.4 postgresql@17 redis autoconf bison re2c libxml2 openssl@3 curl sqlite libzip libiconv
+          brew install cmake gmp mpfr pcre2 pkg-config libpq mysql@8.4 postgresql@17 redis autoconf bison re2c libxml2 openssl@3 curl sqlite libzip
           # PHPX 使用 PHP 扩展头文件中的 pcre2.h；路径从当前 Homebrew 解析。
           task_pcre2="$(brew --prefix pcre2)"
           brew link --force --overwrite pcre2
