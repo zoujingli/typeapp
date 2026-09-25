@@ -21,8 +21,12 @@ function identityCommand(array $command, array $environment): array
     }
 }
 
-/** 真实HTTP请求等待安装行锁后竞争；只用于本轮隔离数据库。 */
-function identityCompete(PDO $inspection, string $driver, string $address, array $requests, ?Closure $beforeRelease = null): array
+/**
+ * 真实HTTP请求等待安装行锁后竞争；只用于本轮隔离数据库。
+ * @param ?Closure(list<array{method: string, path: string, status: int, error: ?string}>): void $observe 仅接收状态与稳定错误码，不复制凭据或响应正文。
+ * @return list<int> 按发送顺序返回状态码。
+ */
+function identityCompete(PDO $inspection, string $driver, string $address, array $requests, ?Closure $beforeRelease = null, ?Closure $observe = null): array
 {
     $sockets = [];
     if ($driver === 'sqlite') {
@@ -58,10 +62,37 @@ function identityCompete(PDO $inspection, string $driver, string $address, array
         }
         $locked = false;
         $statuses = [];
-        foreach ($sockets as $socket) {
+        $observations = [];
+        foreach ($sockets as $index => $socket) {
             $response = stream_get_contents($socket);
             expect(preg_match('/^HTTP\/1\.1 (\d{3})/', $response, $matched) === 1, '并发授权响应无效');
             $statuses[] = (int) $matched[1];
+            $parts = explode("\r\n\r\n", $response, 2);
+            $responseBody = $parts[1] ?? '';
+            if (preg_match('/\r\nTransfer-Encoding:\s*chunked\r?$/im', $parts[0]) === 1) {
+                $decoded = '';
+                while ($responseBody !== '') {
+                    $line = strpos($responseBody, "\r\n");
+                    expect($line !== false && preg_match('/^[a-fA-F0-9]{1,8}$/D', substr($responseBody, 0, $line)) === 1, '并发响应分块长度无效');
+                    $size = (int) hexdec(substr($responseBody, 0, $line));
+                    $responseBody = substr($responseBody, $line + 2);
+                    if ($size === 0) {
+                        expect($responseBody === "\r\n", '并发响应结束分块无效');
+                        break;
+                    }
+                    expect(strlen($responseBody) >= $size + 2 && substr($responseBody, $size, 2) === "\r\n", '并发响应分块不完整');
+                    $decoded .= substr($responseBody, 0, $size);
+                    $responseBody = substr($responseBody, $size + 2);
+                }
+                $responseBody = $decoded;
+            }
+            $payload = json_decode($responseBody, true);
+            $error = $payload['error'] ?? null;
+            $observations[] = ['method' => $requests[$index][0], 'path' => explode('?', $requests[$index][1], 2)[0],
+                'status' => (int) $matched[1], 'error' => is_string($error) && preg_match('/^[a-z_]{1,80}$/D', $error) === 1 ? $error : null];
+        }
+        if ($observe !== null) {
+            $observe($observations);
         }
         return $statuses;
     } finally {
@@ -650,13 +681,21 @@ function identityRoleCases(callable $request, PDO $inspection, string $driver, s
     $owner = $call('GET', '/customer/members?search=same-login')['items'][0];
     $peer = $call('POST', '/customer/members', ['login' => 'role-highest-peer', 'new_customer' => true, 'account_name' => '另一最高管理员', 'password' => $password, 'name' => '另一最高管理员', 'roles' => [$binding($highest)]]);
     $peerToken = $login('role-highest-peer');
+    $highestResponses = [];
     $highestRace = identityCompete($inspection, $driver, $address, [
         ['PUT', '/customer/members/roles', $customer, ['members' => [$binding($owner)], 'roles' => []], $headers],
         ['DELETE', '/customer/members/' . $peer['id'], $peerToken, ['version' => 2], $headers],
-    ]);
+    ], null, static function (array $responses) use (&$highestResponses): void {
+        $highestResponses = $responses;
+    });
     $sorted = $highestRace;
     sort($sorted);
-    expect($sorted === [200, 409], '并发解绑和删除突破最后最高管理员保护');
+    $remainingQuery = $inspection->prepare('SELECT COUNT(DISTINCT m.id) FROM customer_members m JOIN customer_users u ON u.id = m.user_id JOIN customer_member_roles b ON b.member_id = m.id AND b.tenant_id = m.tenant_id JOIN customer_roles r ON r.id = b.role_id AND r.scope_id = m.tenant_id WHERE m.tenant_id = ? AND m.enabled = 1 AND m.recovery_verified = 1 AND u.enabled = 1 AND u.recovery_verified = 1 AND r.enabled = 1 AND r.protected = 1 AND r.recovery_verified = 1');
+    $remainingQuery->execute([$tenant]);
+    $remainingHighest = (int) $remainingQuery->fetchColumn();
+    $remainingQuery->closeCursor();
+    expect($sorted === [200, 409] && $remainingHighest === 1, '并发解绑和删除的最高管理员保护结果错误：' . json_encode(['responses' => $highestResponses, 'remaining_highest' => $remainingHighest], JSON_THROW_ON_ERROR));
+    expect(in_array('last_tenant_admin', array_column($highestResponses, 'error'), true), '并发拒绝未命中最后最高管理员保护：' . json_encode($highestResponses, JSON_THROW_ON_ERROR));
     $audit = $inspection->prepare("SELECT tenant_id, actor_id FROM customer_audit WHERE action = 'customer.roles.create' AND subject_id = ?");
     $audit->execute([$first['id']]);
     $event = $audit->fetch(PDO::FETCH_ASSOC);
@@ -664,7 +703,7 @@ function identityRoleCases(callable $request, PDO $inspection, string $driver, s
     foreach ($tenants as $scope) {
         $request('POST', '/admin/tenants/' . $scope . '/status', $admin, [], ['version' => 1, 'enabled' => false], 200);
     }
-    return ['version_statuses' => $versionRace, 'delete_status_statuses' => $deleteRace, 'highest_statuses' => $highestRace, 'current_scope_union_and_revocation' => true, 'indirect_escalation_denied' => true, 'deletion_failure_rolled_back' => true];
+    return ['version_statuses' => $versionRace, 'delete_status_statuses' => $deleteRace, 'highest_statuses' => $highestRace, 'highest_responses' => $highestResponses, 'remaining_highest' => $remainingHighest, 'current_scope_union_and_revocation' => true, 'indirect_escalation_denied' => true, 'deletion_failure_rolled_back' => true];
 }
 
 /** 真实租户成员边界、批量授权、原子创建和并发保护；PDO仅用于故障注入及事实核对。 */

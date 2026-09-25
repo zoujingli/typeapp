@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 验收范围（pgsql-app 仅应用开发诊断；template 仅模板；native 复用契约）
+        description: 验收范围（sqlite-app/pgsql-app 仅应用开发诊断；template 仅模板；native 复用契约）
         type: choice
-        options: [full, native, orm, template, pgsql-probe, pgsql-app]
+        options: [full, native, orm, template, pgsql-probe, pgsql-app, sqlite-app]
         default: full
       orm_driver:
         description: 仅 scope=orm 生效；单库结果不代表三库验收
@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-platform-${{ github.ref }}${{ contains(fromJSON('["template","pgsql-app"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
+  group: native-platform-${{ github.ref }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -51,25 +51,25 @@ jobs:
           & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-process.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 检查 Windows 进程与平台行为
-        if: inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app'
+        if: inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: |
           foreach ($arguments in @(@('tests/windows-imports.php'), @('tests/testing-portable.php'), @('tests/build-platform.php'), @('tests/helpers.php','--php'))) {
             & "$env:PHP_HOME/php.exe" @arguments
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - name: 原生构建身份与缓存
-        if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app'
+        if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: |
           # 直接从控制器 SDK 环境启动，先确认产物使用自己的配置；不依赖 ORM 步骤留下的状态。
           & "$env:PHP_HOME/php.exe" tests/build-platform-native.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 检查完整公开契约
-        if: github.event_name != 'workflow_dispatch' || (inputs.scope != 'native' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app')
+        if: github.event_name != 'workflow_dispatch' || (inputs.scope != 'native' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app')
         run: |
           & "$env:PHP_HOME/php.exe" vendor/bin/phpunit --configuration phpunit.xml --log-junit build/windows-contracts.xml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 三库独立 ORM 与 Swoole 上下文验收
-        if: inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app'
+        if: inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         env:
           TYPE_ORM_DRIVER: ${{ inputs.scope == 'orm' && inputs.orm_driver || 'all' }}
         run: |
@@ -102,12 +102,12 @@ jobs:
         if: inputs.scope == 'pgsql-probe'
         run: ./.github/scripts/run-windows-database.ps1 -Driver pgsql -OrmOnly -ProbeOnly
       - name: 四组件原生编译与 SQLite 行为
-        if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app'
+        if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: |
           & "$env:PHP_HOME/php.exe" tests/helpers-build.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 标准应用编译、SQLite与可搬迁发布
-        if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app'
+        if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: |
           & "$env:PHP_HOME/php.exe" bin/typeapp-prepare
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -123,10 +123,10 @@ jobs:
           & "$env:PHP_HOME/php.exe" tests/application-template.php sqlite --onboarding --native --package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 原生MySQL开发生产与完整模板接入
-        if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app'
+        if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: ./.github/scripts/run-windows-database.ps1 -Driver mysql
       - name: 原生PostgreSQL开发生产与完整模板接入
-        if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app'
+        if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: ./.github/scripts/run-windows-database.ps1 -Driver pgsql
       - name: 独立模板原生诊断
         if: inputs.scope == 'template'
@@ -134,6 +134,15 @@ jobs:
           $env:TYPE_COMPOSER_PHAR="$env:PHP_HOME/composer.phar"
           & "$env:PHP_HOME/php.exe" tests/application-template.php sqlite --onboarding --native --package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: SQLite 应用开发诊断
+        if: inputs.scope == 'sqlite-app'
+        run: |
+          & "$env:PHP_HOME/php.exe" bin/typeapp-prepare
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($attempt in 1..5) {
+            & "$env:PHP_HOME/php.exe" tests/iot-identity.php --php sqlite --app
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - name: PostgreSQL 应用开发诊断
         if: inputs.scope == 'pgsql-app'
         run: |
