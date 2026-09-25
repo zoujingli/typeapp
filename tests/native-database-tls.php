@@ -59,7 +59,11 @@ try {
         $options[\Pdo\Mysql::ATTR_SSL_CA] = $base . '/ca.pem';
         $options[\Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = false;
     } else {
-        $dsn .= ';sslmode=require';
+        // libpq 将连接地址与证书主机名分开：固定本轮 IPv4，避免 localhost. 解析到未监听的 ::1。
+        // PHP/AOT 子进程沿用同一 hostaddr，verify-full 仍必须拒绝原始错误主机名。
+        $dsn .= ';sslmode=require;hostaddr=127.0.0.1';
+        $environment['PGHOSTADDR'] = '127.0.0.1';
+        $report['connection-address'] = '127.0.0.1';
     }
     $probe = new PDO($dsn, $driver === 'mysql' ? 'root' : 'type_app', $password, $options);
     $data = $probe->query($driver === 'mysql' ? 'SELECT @@datadir' : 'SHOW data_directory')->fetchColumn();

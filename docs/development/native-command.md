@@ -21,6 +21,8 @@ macOS ARM64 的内置 Swoole 要求 PHP SDK 启用 Zend signals。CI 使用 `too
 
 macOS 的 TLS 验收通过 `TYPE_OPENSSL_BINARY` 显式使用 Homebrew OpenSSL 3，准备阶段先核验签发证书所需的 `-copy_extensions` 能力；系统 LibreSSL 不支持该参数，不能仅凭 `openssl` 命令存在判断可用。测试报告记录实际工具版本，Actions 保留证书生成和 PHP/AOT 的脱敏日志，不收集私钥。手动选择 `scope=tls` 可单独编译并验证 MySQL、PostgreSQL、Redis 的 TLS、错误 CA/主机名拒绝和资源清理；它与完整可靠性组共用同一入口，使用独立并发组，不能替代全量平台验收。
 
+PostgreSQL 的本机 TLS 夹具通过 libpq `hostaddr`/`PGHOSTADDR` 固定连接本轮 IPv4 数据库，证书身份仍按 `host` 和 `verify-full` 校验。这样错误主机名测试不会因 `localhost.` 被解析为未监听的 IPv6 地址而变成连接拒绝；检查先证明该名称到达同一数据目录，再执行 PHP/AOT 的 TLS 拒绝断言。此地址设置仅属于独立测试进程。
+
 构建组件在 [plugin/type-build/resources/swoole](../../plugin/type-build/resources/swoole/README.md) 保存这四个平台的 Swoole 模块、固定来源、SHA-256 和第三方许可证。匹配 PHP 8.5.10 ZTS 的构建默认直接读取本地文件，不下载或重新编译 Swoole。选择顺序为真实 embed 已内置、显式 `runtime.modules`、有效的 `TYPE_SWOOLE_MODULE`、构建组件内置清单。清单缺失、没有匹配 ABI、摘要不符或源码适配已变更时明确失败；独立应用通过 Composer 安装完整的 `type-build` 后使用相同规则，其他扩展继续按 SDK 或显式候选解析。
 
 `tools/prepare-swoole-module.sh` 和 Windows SDK 准备脚本默认复用这些文件。维护者显式设置 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 才下载固定 Swoole 源码并应用当前适配；Unix 重建还需提供 `RUNNER_TEMP` 和 `SWOOLE_CONFIGURE_OPTS`。PHP SDK、PHPX 及其他依赖的准备不因此变为离线。内置共享模块是构建输入，最终程序静态链接和启动不释放运行库仍按[静态验证记录](static-runtime-feasibility.md)推进。
