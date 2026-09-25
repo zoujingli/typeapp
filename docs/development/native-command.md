@@ -74,6 +74,8 @@ php tests/native.php --chroot "$task_sandbox"
 
 Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收流程、且同一代码的契约套件已通过时，可手动选择 `scope=native` 定向复跑；报告须同时引用契约与原生运行的源码身份，不能把跳过项记为本次通过。`scope=template` 单独执行 SQLite 模板的开发、全量 AOT 与搬迁发布，用于缩短模板故障的复现路径；它使用独立并发组，不取消完整运行，也不能替代完整三库验收。模板 HTTP 提前退出时保留进程退出状态及脱敏输出，Actions 同时保存模板原生产物和构建身份。显式重建 Swoole 时，准备脚本固定并核验 PHP 官方 SDK 构建工具，提供 `phpize` 配置必需的 bison、re2c 等程序；默认复用 DLL 时跳过这组工具和 Swoole 源码下载。PHPX DLL 放入编译器要求的 `PHPX_HOME/build`，并统一加载路径；工作流分别记录构建身份、四组件和完整应用的结果，保存日志、清单与实际程序产物。
 
+`scope=pgsql-app` 在独立并发组中只运行 PostgreSQL 应用开发入口，用于定位真实 HTTP 故障，不代表 AOT 或完整平台验收。应用测试保存最近请求与慢请求的耗时；失败时额外记录本轮 PostgreSQL 会话的等待状态和阻塞进程，省略 SQL、请求体和令牌。数据库清理失败时仍保留原请求故障报告，Actions 同时上传脱敏 HTTP 日志。
+
 Windows 运行库核验会将运行配置明确声明的扩展文件纳入同一组 DLL 依赖解析。例如 Swoole 导入的 `php_sockets.dll` 使用已声明的 sockets 模块，不要求把扩展目录加入全局 PATH。DLL 名称按 Windows 的大小写无关规则匹配，同名不同内容仍拒绝；API-set 继续由受限系统加载器解析。每个编译工具独立核验自己的依赖，不能借用应用的模块映射。
 
 锁定 TypePHP 的 Windows 链接清单还包含 mpdecimal 的 C 与 C++ 运行库。它们在编译前与 PHP、PHPX 一起进入身份、许可材料及发布清单；仅扫描 PHPX 的依赖不能覆盖应用直接使用的十进制运算。ORM 原生验收会对照最终 PE 导入表检查运行库清单，再执行独立发布包，避免开发环境的 PATH 掩盖漏包。

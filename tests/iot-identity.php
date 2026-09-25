@@ -1605,6 +1605,9 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         $report['retired_commands'] = ['migrate run', 'iot:user', 'iot:support-clean'];
         $dsn = $driver === 'sqlite' ? 'sqlite:' . $base . '/identity.sqlite' : $driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $environment['DB_DATABASE'];
         $inspection = new PDO($dsn, $environment['DB_USERNAME'] ?? null, $environment['DB_PASSWORD'] ?? null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        if ($driver === 'pgsql') {
+            $report['inspection_pid'] = (int) $inspection->query('SELECT pg_backend_pid()')->fetchColumn();
+        }
         $inspection->exec('CREATE TABLE app_test_existing (value INTEGER NOT NULL)');
         $inspection->exec('INSERT INTO app_test_existing (value) VALUES (73)');
         $existing = new Process($installCommand, $root, $environment + $credentials);
@@ -1663,10 +1666,22 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         } while (!$ready && microtime(true) < $deadline);
         expect($ready, '双端HTTP未就绪');
         $checks = 0;
-        $request = static function (string $method, string $path, string $token, array $headers, ?array $data, int $expected) use ($client, &$checks, &$server): array {
+        $request = static function (string $method, string $path, string $token, array $headers, ?array $data, int $expected) use ($client, &$checks, &$server, &$report): array {
             // 连续请求及时排空双输出；日志仍由 Process 保留，不能让管道背压阻塞服务。
             expect($server->running(), '双端HTTP提前退出：' . $server->stderr());
-            $response = $client->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+            $started = hrtime(true);
+            $status = null;
+            try {
+                $response = $client->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+                $status = $response->status;
+            } finally {
+                // 只记录路径和耗时，不记录请求体、查询参数、令牌或账号凭据。
+                $timing = ['method' => $method, 'path' => explode('?', $path, 2)[0], 'seconds' => (hrtime(true) - $started) / 1000000000, 'status' => $status];
+                $report['last_http'] = $timing;
+                if ($timing['seconds'] >= 0.5) {
+                    $report['slow_http'] = array_slice([...($report['slow_http'] ?? []), $timing], -20);
+                }
+            }
             expect($response->status === $expected, '双端状态错误：' . $path . ' expected=' . $expected . ' actual=' . $response->status);
             expect(!str_contains($response->body, 'password_hash'), '双端响应包含凭据散列');
             foreach (['password', 'current_password', 'owner_password'] as $secretField) {
@@ -1922,6 +1937,23 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         expect(!str_contains($server->stdout() . $server->stderr(), $password), '双端日志包含人员口令');
         $report['password_response_log_checks'] = true;
         $report['status'] = 'passed';
+    } catch (Throwable $failure) {
+        $report['failure'] = ['type' => $failure::class, 'message' => str_replace(array_values($credentials), '<REDACTED>', $failure->getMessage())];
+        $report['http_checks'] = $checks ?? 0;
+        if ($driver === 'pgsql' && $ownedDatabase !== null) {
+            try {
+                // 独立连接观察本轮数据库；不保存 SQL 或其他数据库的会话材料。
+                $observer = new PDO('pgsql:host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $sharedDatabase, $environment['DB_USERNAME'], $environment['DB_PASSWORD'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+                $activity = $observer->prepare('SELECT pid, state, wait_event_type, wait_event, pg_blocking_pids(pid)::text AS blockers, EXTRACT(EPOCH FROM clock_timestamp() - query_start)::float AS query_seconds FROM pg_stat_activity WHERE datname = ? ORDER BY pid');
+                $activity->execute([$ownedDatabase]);
+                $report['database_waits'] = $activity->fetchAll(PDO::FETCH_ASSOC);
+                $activity = null;
+                $observer = null;
+            } catch (Throwable $observationFailure) {
+                $report['observation_failure'] = str_replace(array_values($credentials), '<REDACTED>', $observationFailure->getMessage());
+            }
+        }
+        throw $failure;
     } finally {
         if ($report['status'] !== 'passed') {
             $report['status'] = 'failed';
@@ -1942,8 +1974,17 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
                 $environment['DB_PASSWORD'],
                 [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
             );
-            $cleanup->exec('DROP DATABASE IF EXISTS ' . $ownedDatabase);
-            $cleanup = null;
+            try {
+                $cleanup->exec('DROP DATABASE IF EXISTS ' . $ownedDatabase);
+            } catch (Throwable $cleanupFailure) {
+                $report['status'] = 'failed';
+                $report['database_cleanup_failure'] = str_replace(array_values($credentials), '<REDACTED>', $cleanupFailure->getMessage());
+                // 清理失败仍保留原请求故障、等待状态与 HTTP 退出信息。
+                file_put_contents($base . '/verification.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
+                throw $cleanupFailure;
+            } finally {
+                $cleanup = null;
+            }
         }
         file_put_contents($base . '/verification.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
         expect($server === null || ($stopped->successful() && !$server->running()), '双端服务没有正常排空退出');
