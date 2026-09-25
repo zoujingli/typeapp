@@ -108,6 +108,12 @@ jobs:
       - name: 构建并核对原生 SDK
         run: bash tools/prepare-toolchain.sh
 
+      - name: 准备与验证实际 embed 运行配置
+        run: bash .github/scripts/prepare-linux-runtime.sh
+
+      - name: 为公开消费启用受控 Swoole 与 CLI 依赖
+        run: bash .github/scripts/prepare-linux-swoole.sh
+
       - name: 分发运行库并回读固定提交
         run: php tools/distribute-plugin.php "$SOURCE_SHA" type-runtime
 

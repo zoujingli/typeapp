@@ -140,6 +140,8 @@ jobs:
       - run: bash tools/prepare-toolchain.sh
       - name: 准备与验证实际 embed 运行配置
         run: bash .github/scripts/prepare-linux-runtime.sh
+      - name: 为公开消费启用受控 Swoole 与 CLI 依赖
+        run: bash .github/scripts/prepare-linux-swoole.sh
       - name: 从全部公开子仓安装并编译公共组合
         run: php tests/batch-consumer.php build/distribution/batch-result.json --native
       - name: 从同批公开插件完成三库原生业务集成

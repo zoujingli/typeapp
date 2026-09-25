@@ -116,6 +116,8 @@ jobs:
       - run: bash tools/prepare-toolchain.sh
       - name: 准备与验证实际 embed 运行配置
         run: bash .github/scripts/prepare-linux-runtime.sh
+      - name: 为公开消费启用受控 Swoole 与 CLI 依赖
+        run: bash .github/scripts/prepare-linux-swoole.sh
       - name: 分发并重新获取固定模板内容
         shell: bash
         run: |
