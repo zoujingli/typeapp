@@ -67,12 +67,15 @@ function concurrentGenerations(string $root, array $environment, ?array $expecte
     }
 }
 
-/** 公开准备入口必须失败，不返回旧代次；异常时同样收回准确子进程。 */
-function rejectedGeneration(string $root, array $environment, string $reason): void
+/**
+ * 公开准备入口必须明确拒绝输入，不将超时当作拒绝；异常时收回准确子进程。
+ * @param float $seconds 有索引时只校验完整性；索引缺失时须包含完整生成的等待预算。
+ */
+function rejectedGeneration(string $root, array $environment, string $reason, float $seconds = 5.0): void
 {
     $process = new Process([PHP_BINARY, $root . '/bin/typeapp-prepare', '--json'], $root, $environment);
     try {
-        $failure = $process->wait(5.0);
+        $failure = $process->wait($seconds);
         expect(!$failure->successful() && !$failure->timedOut && str_contains($failure->stderr, $reason), '无效开发输入或代次未被拒绝：'
             . json_encode(['exit' => $failure->exitCode, 'signal' => $failure->signal, 'timeout' => $failure->timedOut,
                 'stdout' => $failure->stdout, 'stderr' => $failure->stderr], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
@@ -196,7 +199,10 @@ PHP);
     file_put_contents($first['directory'] . '/config.php', '<?php /* broken generation */');
     rejectedGeneration($work, $environment, '损坏');
     unlink($reference);
-    rejectedGeneration($work, $environment, '损坏');
+    // 缺少输入索引时要重新生成以计算代次身份；沿用完整准备的15秒预算，再验证已有文件。
+    rejectedGeneration($work, $environment, '损坏', 15.0);
+    expect(file_get_contents($first['directory'] . '/config.php') === '<?php /* broken generation */'
+        && !file_exists($reference), '拒绝损坏代次时不得覆盖文件或发布输入索引');
     file_put_contents($first['directory'] . '/config.php', $generatedConfig);
     expect(preparedGeneration($work, $environment) === $first, '完整旧代次没有恢复输入索引');
     echo "开发代次首次并发发布、两段复用、源码/声明/生成器更新、环境隔离和损坏拒绝通过。\n";
