@@ -18,9 +18,9 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 验收范围（tls 仅三种后端的 PHP/AOT TLS 诊断）
+        description: 验收范围（tls 为 TLS 诊断，pressure 为十轮 PHP/AOT 背压诊断）
         type: choice
-        options: [full, tls]
+        options: [full, tls, pressure]
         default: full
       base_source:
         description: 用于性能比较的完整基准提交，留空时不运行性能组
@@ -44,7 +44,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        suite: ${{ fromJSON(inputs.scope == 'tls' && '["tls"]' || (inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable"]')) }}
+        suite: ${{ fromJSON(inputs.scope == 'tls' && '["tls"]' || inputs.scope == 'pressure' && '["pressure"]' || (inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable"]')) }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
@@ -210,6 +210,7 @@ jobs:
             build/**/*.build.json
             build/**/profile.json
             build/**/compile.log
+            build/native-database-*/*/*.log
             build/packaged-rollout-build-*/preparation.json
             build/packaged-rollout-build-*/old.log
             build/packaged-rollout-build-*/new.log

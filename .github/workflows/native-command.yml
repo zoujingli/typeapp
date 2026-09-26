@@ -595,6 +595,7 @@ jobs:
             build/release-candidate/attachments/*
             build/**/*.build.json
             build/**/verification.json
+            build/native-database-*/*/*.log
             build/packaged-rollout-build-*/preparation.json
             build/packaged-rollout-build-*/old.log
             build/packaged-rollout-build-*/new.log

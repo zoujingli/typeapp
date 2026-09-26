@@ -6,7 +6,7 @@ set -euo pipefail
   echo '此入口只接受GitHub macOS原生runner，不在本机启动或修改数据库服务。' >&2; exit 2;
 }
 task_suite="${1:-}"
-case "$task_suite" in contracts|application|deployment|rollout|recovery|http|orm|reliable|tls|benchmark) ;; *) exit 2;; esac
+case "$task_suite" in contracts|application|deployment|rollout|recovery|http|orm|reliable|tls|pressure|benchmark) ;; *) exit 2;; esac
 task_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$task_root"
 task_work="$(mktemp -d "${RUNNER_TEMP:?}/type-native.XXXXXX")"
@@ -241,6 +241,14 @@ case "$task_suite" in
     done
     for task_group in tasks task-http pressure; do
       php tests/native-database-failures.php build "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")" "$task_group" mysql
+    done
+    ;;
+  pressure)
+    php tests/build-scenario.php --with-swoole docs/build-config/type-backpressure-http.json
+    # 重复原有公共 HTTP 断言；每轮独立数据库，保留每次脱敏日志，不重试失败轮次。
+    for task_round in {1..10}; do
+      printf '背压定向验收：第 %s/10 轮\n' "$task_round"
+      php tests/native-database-failures.php build "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")" pressure mysql
     done
     ;;
   tls)
