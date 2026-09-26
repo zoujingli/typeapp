@@ -17,7 +17,8 @@ final class GitHub
     public function find(string $repository, string $version): ?array
     {
         $this->scope($repository, $version);
-        $pages = json_decode(Process::output(['gh', 'api', 'repos/' . $repository . '/releases?per_page=100', '--paginate', '--slurp'], $this->root), true, 128, JSON_THROW_ON_ERROR);
+        $pages = json_decode(Process::output(['gh', 'api', 'repos/' . $repository . '/releases?per_page=100',
+            '--header', 'Cache-Control: no-cache', '--paginate', '--slurp'], $this->root), true, 128, JSON_THROW_ON_ERROR);
         foreach ($pages as $page) {
             foreach ($page as $release) {
                 if ($release['tag_name'] === $version) {
@@ -117,13 +118,13 @@ final class GitHub
     }
 
     /**
-     * 写入成功后有界等待列表可见，最多五次读取、十五秒退避；不重复执行写入。
+     * 写入成功后最多七次读取、六十三秒退避，覆盖实测六十秒缓存窗口；不重复写入。
      * API错误直接传播，超出预算仍失败并保留草稿供原候选重试。
      * @return array<string,mixed>|null 可回读的Release；公开操作还须观察到draft=false。
      */
     private function afterWrite(string $repository, string $version, bool $published): ?array
     {
-        for ($attempt = 0; $attempt < 5; $attempt++) {
+        for ($attempt = 0; $attempt < 7; $attempt++) {
             if ($attempt > 0) {
                 sleep(1 << ($attempt - 1));
             }

@@ -173,6 +173,7 @@ $args = array_slice($argv, 1);
 $repo = '';
 foreach ($args as $i => $value) { if ($value === '--repo') { $repo = $args[$i + 1]; } }
 if ($args[0] === 'api') {
+    if (!in_array('Cache-Control: no-cache', $args, true)) { fwrite(STDERR, '发布列表必须请求重新验证缓存'); exit(5); }
     preg_match('~repos/([^/]+/[^/]+)/releases~', $args[1], $match);
     $repo = $match[1];
 }
