@@ -1,8 +1,9 @@
-param([Parameter(Mandatory)][ValidateSet('mysql', 'pgsql')][string]$Driver, [switch]$OrmOnly, [switch]$ProbeOnly, [switch]$DevelopmentOnly)
+param([Parameter(Mandatory)][ValidateSet('mysql', 'pgsql')][string]$Driver, [switch]$OrmOnly, [switch]$ProbeOnly, [switch]$DevelopmentOnly, [switch]$CandidateProbe)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if ($ProbeOnly -and (!$OrmOnly -or $Driver -ne 'pgsql')) { throw '原生接缝诊断仅用于 PostgreSQL ORM。' }
 if ($DevelopmentOnly -and ($OrmOnly -or $ProbeOnly)) { throw '应用开发诊断不能与 ORM 接缝诊断混用。' }
+if ($CandidateProbe -and ($Driver -ne 'pgsql' -or $OrmOnly -or $ProbeOnly -or $DevelopmentOnly)) { throw '候选安装诊断仅接受独立 PostgreSQL 范围。' }
 # 不接管镜像预装服务，不使用Docker/WSL；只在可丢弃的原生runner工作。
 if (!$IsWindows -or $env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows') {
     throw '此入口只接受GitHub Windows原生runner。'
@@ -155,7 +156,9 @@ try {
     $taskProbe = '$d=getenv("TYPE_DB_PROBE_DRIVER");$p="TYPE_".strtoupper($d)."_";$dsn=($d==="mysql"?"mysql:":"pgsql:")."host=".getenv($p."HOST").";port=".getenv($p."PORT").";dbname=".getenv($p."DATABASE");$until=microtime(true)+60;do{try{$c=new PDO($dsn,getenv($p."USER"),getenv($p."PASSWORD"));if((int)$c->query("SELECT 1")->fetchColumn()===1){exit(0);}}catch(Throwable){}usleep(100000);}while(microtime(true)<$until);exit(1);'
     Invoke-TaskProcess $taskPhp @('-r', $taskProbe) (Join-Path $taskEvidence 'ready.log') 90 $taskEnvironment | Out-Null
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
-    if ($OrmOnly) {
+    if ($CandidateProbe) {
+        Invoke-TaskProcess $taskPhp @('.github/scripts/probe-windows-candidate.php') (Join-Path $taskEvidence 'candidate-probe.log') 360 $taskEnvironment | Out-Null
+    } elseif ($OrmOnly) {
         if ($Driver -eq 'pgsql') {
             $taskProbeFailed = $false
             foreach ($taskProbeMode in @('sync', 'hook', 'runtime')) {
@@ -253,7 +256,7 @@ try {
         [IO.File]::WriteAllText((Join-Path $taskEvidence 'server.log'), $taskServerLog, [Text.UTF8Encoding]::new($false))
     }
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
-    $taskRecord = @{ platform='Windows'; driver=$Driver; version=$taskSource.version; archive_sha256=$taskSource.sha256; scope=$(if ($DevelopmentOnly) { 'application PHP development only; not AOT acceptance' } elseif ($ProbeOnly) { 'PDO/Swoole PostgreSQL probe only; not ORM acceptance' } elseif ($OrmOnly) { 'isolated ORM Composer consumption, PHP/AOT, source removal and distinct read/write endpoints' } else { 'native dedicated database process, development/AOT and isolated template package' }); passed=($taskPassed -and $taskCleanupPassed); owned_process_cleanup=$taskCleanupPassed; installed_service=$false }
+    $taskRecord = @{ platform='Windows'; driver=$Driver; version=$taskSource.version; archive_sha256=$taskSource.sha256; scope=$(if ($CandidateProbe) { 'original candidate installation diagnosis only; not release acceptance' } elseif ($DevelopmentOnly) { 'application PHP development only; not AOT acceptance' } elseif ($ProbeOnly) { 'PDO/Swoole PostgreSQL probe only; not ORM acceptance' } elseif ($OrmOnly) { 'isolated ORM Composer consumption, PHP/AOT, source removal and distinct read/write endpoints' } else { 'native dedicated database process, development/AOT and isolated template package' }); passed=($taskPassed -and $taskCleanupPassed); owned_process_cleanup=$taskCleanupPassed; installed_service=$false }
     $taskRecord | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
     if (!$taskCleanupPassed) { throw '本轮数据库未正常清理，不能记作通过。' }
     # 日志与摘要已经保全；只删除本轮创建且所有进程已正常退出的私有目录。
