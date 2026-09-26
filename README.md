@@ -30,11 +30,11 @@ TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typep
 
 构建组件包含 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 6.2.1 模块。匹配构建可直接复用；模块格式与 ABI、平台实测范围是不同的检查，见[平台与验收](docs/guide/platforms.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
 
-已验收源码 `bf28c8b` 的四平台默认原生 CI、15 组件批次与应用模板分发均已通过，16 个 Packagist `dev-main` 引用与 GitHub 一致。当前可使用开发版本和经验证的目录包；具体场景、隔离强度与未完成目标见[验收记录](docs/evidence/native-release-20260925.md)。
+[v1.0.0-rc.7](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.7) 已公开，固定源码 `a5ff7ad`。四平台完整原生验收、15 个组件与应用模板的同版本分发及 Packagist 消费均通过；17 个 Release、16 个子仓 tag、16 个 Packagist 版本和四个平台下载归档已逐项回读。这是候选版本，尚无稳定版；具体范围及限制见[验收记录](docs/evidence/rc-release-20260926.md)。
 
 ## 快速开始
 
-以下命令用于跟进模板和组件子仓 `main` 的源码开发：准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展。需要复现已发布批次时，使用[Composer 按版本安装](docs/guide/releases.md#composer-按版本安装)。完整环境分工见[环境与依赖](docs/guide/environment.md)，平台执行方式与验收范围见[平台与验收](docs/guide/platforms.md)。从 Packagist 创建独立应用，先选择数据库再安装依赖：
+新应用建议先按[版本安装示例](docs/guide/releases.md#composer-按版本安装)固定到 `1.0.0-rc.7`。以下命令用于跟进模板和组件子仓 `main` 的源码开发：准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展。完整环境分工见[环境与依赖](docs/guide/environment.md)，平台执行方式与验收范围见[平台与验收](docs/guide/platforms.md)。从 Packagist 创建独立应用，先选择数据库再安装依赖：
 
 ```bash
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main

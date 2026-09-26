@@ -1,6 +1,6 @@
 # 快速开始
 
-用 `type-project` 创建 TypeApp 应用，再按需用 Composer 安装 Plugins（`type-xxxx` 组件）。生产 PHP 实现通过[TypePHP 全量编译](typephp.md)形成原生应用，运行库由构建统一管理。组件源码位于 `plugin/type-*`；尚未发布稳定版本标签。物联中心是成品案例，安装与业务契约见[物联网中心](iot-center.md)。
+用 `type-project` 创建 TypeApp 应用，再按需用 Composer 安装 Plugins（`type-xxxx` 组件）。生产 PHP 实现通过[TypePHP 全量编译](typephp.md)形成原生应用，运行库由构建统一管理。组件源码位于 `plugin/type-*`；当前已公开 `1.0.0-rc.7` 候选版本，尚无稳定版。物联中心是成品案例，安装与业务契约见[物联网中心](iot-center.md)。
 
 本文带你从源码开始开发；如果只负责运行成品，请直接看[部署环境](environment.md#部署者需要管理什么)与[首次启动](deployment.md#首次启动)。
 
@@ -33,7 +33,7 @@ Windows x64 的匹配 Swoole SDK、三库独立 ORM、主应用和模板已有�
 
 ## 创建业务应用
 
-通过 Composer 从 Packagist 创建应用。需要固定已发布批次时，先按[版本安装示例](releases.md#composer-按版本安装)同时固定模板和组件，再继续下文的开发、构建步骤。以下命令用于跟进模板和组件子仓的 `main` 开发分支，先选择驱动，再安装依赖：
+通过 Composer 从 Packagist 创建应用。新应用建议先按[版本安装示例](releases.md#composer-按版本安装)将模板和组件同时固定到 `1.0.0-rc.7`，再继续下文的开发、构建步骤。以下命令用于跟进模板和组件子仓的 `main` 开发分支，先选择驱动，再安装依赖：
 
 ```bash
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main

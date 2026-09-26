@@ -39,7 +39,7 @@
 
 从 `type-project` 创建应用，用 Composer 安装所需的框架组件，再编译和验证自己的业务。先阅读[环境与依赖](guide/environment.md)区分开发机、构建机与部署机；[基础能力](guide/capabilities.md)帮助确定应用需要哪些组件。物联中心展示设备接入与多租户业务的组合方式。
 
-运行物联中心可使用对应平台的[版本运行包](guide/releases.md)：前端编入主程序，首次安装同时准备账号和页面，后续显式更新托管静态文件。部署和修复步骤见[前端安装与更新](guide/deployment.md#前端安装与更新)。
+物联中心已提供 `v1.0.0-rc.7` 四平台[版本运行包](guide/releases.md)：前端编入主程序，首次安装同时准备账号和页面，后续显式更新托管静态文件。这是候选版本，部署和修复步骤见[前端安装与更新](guide/deployment.md#前端安装与更新)。
 
 <div class="doc-paths">
   <a class="start-guide" href="#/guide/quickstart">

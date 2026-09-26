@@ -34,7 +34,7 @@ PHP 版本号和 ZTS 一致仍不足以保证二进制兼容：SDK 的编译选�
 
 这里的内置模块是构建输入，目前为共享库。Composer 安装不会修改本机 PHP CLI 的 ini，开发入口仍须加载匹配扩展。模块选择可以禁网执行，首次安装依赖和 SDK 准备仍有各自的网络要求。
 
-当前公共 `type-build` 开发分支已分发这些资源，并核对模块、许可及 Git 属性的字节一致性。旧锁文件指向不含 `resources/swoole/manifest.json` 的版本时，须受控更新后重新构建；日常构建仍以应用锁定提交为准。维护者的源码重建和覆盖入口见[type-build](plugins/type-build.md#内置-swoole-与运行依赖)。
+已公开的 `type-build:1.0.0-rc.7` 包含这些资源，分发已核对模块、许可及 Git 属性的字节一致性。旧锁文件指向不含 `resources/swoole/manifest.json` 的版本时，须受控更新后重新构建；日常构建仍以应用锁定提交为准。维护者的源码重建和覆盖入口见[type-build](plugins/type-build.md#内置-swoole-与运行依赖)。
 
 ## 部署者需要管理什么
 

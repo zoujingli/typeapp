@@ -2,7 +2,7 @@
 
 版本由主仓的不可变 tag 驱动：`vX.Y.Z` 是正式版本，`vX.Y.Z-rc.N` 是候选版本。一次发布关联同一主仓提交、15 个组件、应用模板、四个平台运行包及各自的验收记录。RC 标记为预发布，不成为稳定最新版。
 
-首次公开 RC 正准备以 `v1.0.0-rc.7` 重新验收，尚未公开 Release。RC6 已通过四平台完整矩阵并分发十五组件 tag，但公开安装后的 Cron 编译适配受 Packagist 元数据去除换行影响而失败；修正将其拆为单行替换，生成源码保持相同。此前候选保留原标签、草稿和执行记录，具体见[首次 RC 验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。以下命令须在对应版本公开后使用。只有[主仓 Release](https://github.com/zoujingli/typeapp/releases)公开后，才表示该批次的四平台构建、分发和公开消费均已通过。
+当前公开候选为 [v1.0.0-rc.7](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.7)，固定源码 `a5ff7ad`。四平台完整原生验收、组件与模板分发、默认 Packagist 独立消费和公开下载回读均已通过，共核对 17 个 Release、16 个子仓 tag、16 个 Packagist 版本及四份归档。RC 尚非稳定版，实际平台范围见[平台与验收](platforms.md)，原始身份和此前候选记录见[首次 RC 验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
 ## 一次 tag 如何形成版本
 
@@ -36,7 +36,7 @@ flowchart TB
 
 同一 Release 提供 `SHA256SUMS` 和 `release-manifest.json`。前者用于核对下载字节，后者记录源码、版本、候选运行轮次、平台及同一产物的三库验收。摘要应从受信发布渠道取得。
 
-下面以 Linux x64 为例，发布公开后在一个新目录中下载和解压：
+下面以 Linux x64 为例，在一个新目录中下载和解压：
 
 ```bash
 set -eu
@@ -61,7 +61,7 @@ cd typeapp-iot
 
 ## Composer 按版本安装
 
-组件与通用模板不包含物联中心前端。发布公开且 Packagist 已列出该版本后，可从默认公共索引安装 RC。下面以 SQLite 独立应用为例：
+组件与通用模板不包含物联中心前端。`1.0.0-rc.7` 已由默认 Packagist 索引，可按明确版本安装。下面以 SQLite 独立应用为例：
 
 ```bash
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.7
