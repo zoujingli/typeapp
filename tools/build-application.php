@@ -27,7 +27,8 @@ try {
         }
         $settings['version'] = substr($version, 1);
     }
-    $work = $root . '/build/application-inputs-' . bin2hex(random_bytes(6));
+    // 构建配置路径参与缓存身份；相同配置复用路径，不因随机临时目录强制全量重编译。
+    $work = $root . '/build/application-inputs-' . hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR));
     // 与docs/build-config相同深度，project-root仍指向主仓。
     Process::report($work . '/type-app.json', $settings);
     echo Process::output([PHP_BINARY, $root . '/vendor/bin/type', $work . '/type-app.json'], $root) . "\n";

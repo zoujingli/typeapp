@@ -1,1 +1,2 @@
 *.php text eol=lf
+web/pnpm-lock.yaml text eol=lf
