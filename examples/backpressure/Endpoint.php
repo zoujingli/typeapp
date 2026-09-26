@@ -46,8 +46,7 @@ final class Endpoint implements RequestHandlerInterface
             $this->control->stop();
             $data = $this->control->statistics();
         } elseif ($path === '/hold') {
-            \Swoole\Coroutine::sleep(0.25);
-            $scope->assertActive();
+            $this->hold($scope, $path);
             $data = ['done' => true];
         } elseif ($path === '/leak') {
             $databases = $this->databases;
@@ -64,14 +63,33 @@ final class Endpoint implements RequestHandlerInterface
             $data = ['pid' => getmypid()];
         } else {
             $connection = $this->databases->connect($scope, $path === '/alternate' ? 'alternate' : 'default');
-            file_put_contents((string) getenv('TYPE_BACKPRESSURE_TRACE'), $path . "\n", FILE_APPEND | LOCK_EX);
             if ($path === '/slow' || $path === '/alternate') {
-                // Swoole 6.2 没有 MySQL PDO 钩子，查询里的 SLEEP 会占住唯一 worker。
-                // 租约在协程休眠期间保持，后续借用才能撞上共享额度。
-                \Swoole\Coroutine::sleep(0.25);
+                // 保持真实租约，测试核对拒绝后才释放，不依赖客户端发送速度。
+                $this->hold($scope, $path);
+            }
+            if ($path === '/deadline') {
+                $scope->deadline()->shorten(0.5);
             }
             $data = $connection->query('SELECT SLEEP(' . ($path === '/deadline' ? '0.8' : '0') . ') AS waited')[0];
         }
         return $factory->createResponse()->withHeader('Content-Type', 'application/json')->withBody($factory->createStream(json_encode($data, JSON_THROW_ON_ERROR)));
+    }
+
+    /** 仅供本场景的跨进程测试同步；Swoole 协程让出等待，作用域截止保证失败时不会无限占用。 */
+    private function hold(ExecutionScope $scope, string $path): void
+    {
+        $gate = (string) getenv('TYPE_BACKPRESSURE_GATE');
+        if ($gate === '') {
+            throw new \RuntimeException('背压场景缺少释放标记');
+        }
+        file_put_contents((string) getenv('TYPE_BACKPRESSURE_TRACE'), $path . "\n", FILE_APPEND | LOCK_EX);
+        while (true) {
+            $scope->assertActive();
+            clearstatcache(true, $gate);
+            if (!is_file($gate)) {
+                return;
+            }
+            \Swoole\Coroutine::sleep(0.005);
+        }
     }
 }

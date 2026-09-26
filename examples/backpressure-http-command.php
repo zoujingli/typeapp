@@ -28,9 +28,10 @@ function main(int $argc, array $argv): void
         (string) (getenv('TYPE_MYSQL_PASSWORD') ?: '')
     );
     $budget = new DeploymentBudget(60, 3, 1, 6, 12); // 每进程至多 2 条，含全部身份和轮换代次。
-    // 等待时间为 0：额度用尽时立即拒绝。默认 1 秒会盖过 0.25 秒的租约占用，第三条连接会在释放后成功。
+    // 等待时间为 0：额度用尽时立即拒绝，不等待夹具释放租约。
     $databases = new DatabaseManager(['default' => $driver, 'alternate' => $driver], 4, 0, $budget, 64, 0.0);
-    $control = new HttpControl(4, 128, 0.5, 1.0, 0.02, 2, true);
+    // 夹具同步有独立的 5 秒上限；/deadline 单独缩短为 0.5 秒，继续验证慢 SQL 截止。
+    $control = new HttpControl(4, 128, 5.0, 1.0, 0.02, 2, true);
     $factory = new Factory();
     $router = new Router($factory, $factory);
     foreach (['state', 'slow', 'alternate', 'quick', 'hold', 'deadline', 'leak', 'stop'] as $path) {

@@ -13,13 +13,15 @@ $port = (int) substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
 fclose($socket);
 $trace = tempnam(sys_get_temp_dir(), 'type_pressure_trace_');
 $logs = tempnam(sys_get_temp_dir(), 'type_pressure_log_');
+$gate = tempnam(sys_get_temp_dir(), 'type_pressure_gate_');
 $output = tmpfile();
 $environment = getenv();
 $environment['TYPE_HTTP_PORT'] = (string) $port;
 $environment['TYPE_BACKPRESSURE_TRACE'] = $trace;
 $environment['TYPE_BACKPRESSURE_LOG'] = $logs;
+$environment['TYPE_BACKPRESSURE_GATE'] = $gate;
 $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => $output, 2 => $output], $pipes, $root, $environment);
-/** 在 3 秒轮询预算内等待慢 SQL 轨迹达到指定行数，确认请求已进入在途状态。 */
+/** 在 3 秒预算内等待夹具登记指定数量的在途请求；释放动作仍由测试显式控制。 */
 function pressureWait(string $trace, int $lines): void
 {
     $deadline = microtime(true) + 3;
@@ -28,7 +30,7 @@ function pressureWait(string $trace, int $lines): void
             return;
         } usleep(1000);
     } while (microtime(true) < $deadline);
-    throw new RuntimeException('慢 SQL 没有进入在途状态');
+    throw new RuntimeException('背压请求没有进入在途状态');
 }
 try {
     $ready = false;
@@ -51,18 +53,36 @@ try {
     pressureWait($trace, 2);
     [$status, $body] = httpRequest($port, 'GET', '/quick');
     expect($status === 503 && str_contains($body, 'resource_capacity_exceeded'), '跨身份连接绕过共享容量：' . $body);
+    expect(unlink($gate), '无法释放连接预算夹具');
     expect(receiveHttp($one)[0] === 200 && receiveHttp($two)[0] === 200, '正常慢 SQL 被提前释放');
     for ($round = 0; $round < 8; $round++) {
+        expect(file_put_contents($gate, '') === 0, '无法建立请求容量夹具');
+        $entered = count(file($trace, FILE_IGNORE_NEW_LINES));
         $connections = [];
-        for ($i = 0; $i < 48; $i++) {
+        for ($i = 0; $i < 4; $i++) {
             $connections[] = sendHttp($port, 'GET', '/hold');
+        }
+        pressureWait($trace, $entered + 4);
+        $overflow = [];
+        for ($i = 0; $i < 44; $i++) {
+            $overflow[] = sendHttp($port, 'GET', '/hold');
+            // 第一轮故意跨过旧夹具的 250ms 占用窗口，容量断言不依赖发送速度。
+            if ($round === 0) {
+                usleep(10000);
+            }
+        }
+        $rejected = 0;
+        foreach ($overflow as $connection) {
+            [$status, $body] = receiveHttp($connection);
+            expect($status === 503, '在途请求占满时仍接收新请求：' . $body);
+            $rejected++;
         }
         [$status, $body] = httpRequest($port, 'GET', '/readyz');
         expect($status === 503 && $body === '{"ready":false}', '超载时就绪仍为真');
         [$status, $body] = httpRequest($port, 'GET', '/livez');
         expect($status === 200 && $body === '{"live":true}', '存活探针被入口额度耗尽');
+        expect(unlink($gate), '无法释放请求容量夹具');
         $success = 0;
-        $rejected = 0;
         foreach ($connections as $connection) {
             [$status] = receiveHttp($connection);
             if ($status === 200) {
@@ -71,7 +91,7 @@ try {
                 $rejected++;
             }
         }
-        expect($success === 4 && $rejected === 44, '在途请求没有按固定容量拒绝');
+        expect($success === 4 && $rejected === 44, '在途请求没有按固定容量拒绝：' . $success . '/' . $rejected);
     }
     [$status, $body] = httpRequest($port, 'GET', '/state');
     $state = json_decode($body, true);
@@ -81,7 +101,7 @@ try {
     );
     expect($state['memory'] - $baseline['memory'] < 16777216 && $state['deployment']['maximum_application_connections'] + $state['deployment']['administration_reserve'] <= 60, '稳态内存或部署总连接预算无界');
     [$status] = httpRequest($port, 'GET', '/deadline');
-    expect($status === 504, '原截止预算没有在延迟操作完成后生效');
+    expect($status === 504, '慢 SQL 截止预算没有在延迟操作完成后生效');
     [$status] = httpRequest($port, 'GET', '/quick');
     expect($status === 200, '慢依赖恢复后服务未恢复');
     [$status, $body] = httpRequest($port, 'GET', '/leak');
@@ -107,14 +127,17 @@ try {
         }
     } while (microtime(true) < $deadline);
     expect($restarted, '清理超限的 worker 没有被监督器终止并替换');
+    expect(file_put_contents($gate, '') === 0, '无法建立排空夹具');
+    $entered = count(file($trace, FILE_IGNORE_NEW_LINES));
     $hold = sendHttp($port, 'GET', '/hold');
-    usleep(10000);
+    pressureWait($trace, $entered + 1);
     [$status, $body] = httpRequest($port, 'GET', '/stop');
     expect($status === 200 && !json_decode($body, true)['ready'], '主动排空没有先撤销就绪');
     [$status] = httpRequest($port, 'GET', '/readyz');
     expect($status === 503, '排空时仍报告就绪');
     [$status] = httpRequest($port, 'GET', '/quick');
     expect($status === 503, '排空时仍接收新业务请求');
+    expect(unlink($gate), '无法释放排空夹具');
     expect(receiveHttp($hold)[0] === 200, '排空中断了预算内的在途请求');
     $deadline = microtime(true) + 5;
     do {
@@ -148,4 +171,7 @@ try {
     }
     unlink($trace);
     unlink($logs);
+    if (is_file($gate)) {
+        unlink($gate);
+    }
 }
