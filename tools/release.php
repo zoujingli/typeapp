@@ -159,6 +159,10 @@ try {
                 $install = $name === 'type-project'
                     ? 'composer create-project ' . $item['package'] . ' my-app ' . substr($version, 1) . ' --no-install'
                     : 'composer require ' . (in_array($name, ['type-build', 'type-testing'], true) ? '--dev ' : '') . $item['package'] . ':' . substr($version, 1);
+                if ($plan['prerelease'] && $name !== 'type-project') {
+                    // 传递依赖的RC版本也受根项目稳定性约束，直接指定组件RC仍需允许其依赖。
+                    $install = "composer config minimum-stability RC\ncomposer config prefer-stable true\n" . $install;
+                }
                 $body = $item['description'] . "\n\n```sh\n" . $install . "\n```\n\n主仓版本：https://github.com/zoujingli/typeapp/releases/tag/" . $version
                     . "\n\n主仓提交：" . $source . "\n组件提交：" . $item['split'] . "\n\n组件用于开发和TypePHP构建，运行应用不需要Composer。\n";
                 $api->draft($item['repository'], $version, $item['split'], $body);
