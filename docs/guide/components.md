@@ -49,12 +49,12 @@ flowchart TB
   Build --> Package[目标平台运行包]
 ```
 
-以下以 `1.0.0-rc.5` 候选批次为例，在已有 Composer 应用中安装 SQLite ORM。执行前先在[版本发布](releases.md)核对该版本的公开状态；RC 不代表稳定版本：
+以下以 `1.0.0-rc.7` 候选批次为例，在已有 Composer 应用中安装 SQLite ORM。执行前先在[版本发布](releases.md)核对该版本的公开状态；RC 不代表稳定版本：
 
 ```bash
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm-sqlite:1.0.0-rc.5
+composer require zoujingli/type-orm-sqlite:1.0.0-rc.7
 ```
 
 提交应用的 `composer.lock`，让构建固定到实际安装的版本和提交。版本 tag 不会移动各子仓的 `main`；`dev-main` 表示各子仓最近一次分支同步，不能当作本批次版本的别名。
@@ -74,7 +74,7 @@ composer require zoujingli/type-orm-sqlite:1.0.0-rc.5
 构建与测试工具通常安装为开发依赖：
 
 ```bash
-composer require --dev zoujingli/type-build:1.0.0-rc.5 zoujingli/type-testing:1.0.0-rc.5
+composer require --dev zoujingli/type-build:1.0.0-rc.7 zoujingli/type-testing:1.0.0-rc.7
 ```
 
 需要跟进组件开发分支时，在独立开发项目中使用：

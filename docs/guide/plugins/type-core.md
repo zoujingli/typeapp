@@ -32,10 +32,10 @@ TypePHP 将应用、核心组件、生产依赖及生成声明编译为原生程
 ```bash
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-core:1.0.0-rc.5
+composer require zoujingli/type-core:1.0.0-rc.7
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.5`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+以上固定该组件的候选版本 `1.0.0-rc.7`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 

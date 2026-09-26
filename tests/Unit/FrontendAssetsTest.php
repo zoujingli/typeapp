@@ -212,7 +212,7 @@ PHP);
     public function testReadOnlyInstallationFailsWithoutChangingTheOldPage(): void
     {
         if (PHP_OS_FAMILY === 'Windows' || (function_exists('posix_geteuid') && posix_geteuid() === 0)) {
-            self::markTestSkipped('此权限场景需要非root POSIX账户，Windows由平台部署验收覆盖');
+            self::markTestSkipped('此权限场景需要非root POSIX账户，不验证Windows ACL');
         }
         $this->assets(['index.html' => 'first'])->install();
         chmod($this->root . '/var/web-install', 0500);

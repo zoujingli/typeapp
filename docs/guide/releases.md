@@ -2,7 +2,7 @@
 
 版本由主仓的不可变 tag 驱动：`vX.Y.Z` 是正式版本，`vX.Y.Z-rc.N` 是候选版本。一次发布关联同一主仓提交、15 个组件、应用模板、四个平台运行包及各自的验收记录。RC 标记为预发布，不成为稳定最新版。
 
-首次公开 RC 正准备以 `v1.0.0-rc.5` 重新验收，尚未公开 Release。RC4 已通过四平台完整矩阵并保存原候选，但发布检查误用了缓存十二小时的 Packagist 包详情 API；修正改用 Composer v2 静态索引。此前候选保留原标签、草稿和执行记录，具体见[首次 RC 验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。以下命令须在对应版本公开后使用。只有[主仓 Release](https://github.com/zoujingli/typeapp/releases)公开后，才表示该批次的四平台构建、分发和公开消费均已通过。
+首次公开 RC 正准备以 `v1.0.0-rc.7` 重新验收，尚未公开 Release。RC6 已通过四平台完整矩阵并分发十五组件 tag，但公开安装后的 Cron 编译适配受 Packagist 元数据去除换行影响而失败；修正将其拆为单行替换，生成源码保持相同。此前候选保留原标签、草稿和执行记录，具体见[首次 RC 验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。以下命令须在对应版本公开后使用。只有[主仓 Release](https://github.com/zoujingli/typeapp/releases)公开后，才表示该批次的四平台构建、分发和公开消费均已通过。
 
 ## 一次 tag 如何形成版本
 
@@ -29,10 +29,10 @@ flowchart TB
 
 | 目标 | 附件名 |
 | --- | --- |
-| Linux x64 | `typeapp-iot-1.0.0-rc.5-linux-x64.tar.gz` |
-| Linux ARM64 | `typeapp-iot-1.0.0-rc.5-linux-arm64.tar.gz` |
-| macOS ARM64 | `typeapp-iot-1.0.0-rc.5-macos-arm64.tar.gz` |
-| Windows x64 | `typeapp-iot-1.0.0-rc.5-windows-x64.zip` |
+| Linux x64 | `typeapp-iot-1.0.0-rc.7-linux-x64.tar.gz` |
+| Linux ARM64 | `typeapp-iot-1.0.0-rc.7-linux-arm64.tar.gz` |
+| macOS ARM64 | `typeapp-iot-1.0.0-rc.7-macos-arm64.tar.gz` |
+| Windows x64 | `typeapp-iot-1.0.0-rc.7-windows-x64.zip` |
 
 同一 Release 提供 `SHA256SUMS` 和 `release-manifest.json`。前者用于核对下载字节，后者记录源码、版本、候选运行轮次、平台及同一产物的三库验收。摘要应从受信发布渠道取得。
 
@@ -40,7 +40,7 @@ flowchart TB
 
 ```bash
 set -eu
-release_version=1.0.0-rc.5
+release_version=1.0.0-rc.7
 release_base="https://github.com/zoujingli/typeapp/releases/download/v${release_version}"
 release_archive="typeapp-iot-${release_version}-linux-x64.tar.gz"
 curl --fail --location --output "$release_archive" "$release_base/$release_archive"
@@ -64,21 +64,21 @@ cd typeapp-iot
 组件与通用模板不包含物联中心前端。发布公开且 Packagist 已列出该版本后，可从默认公共索引安装 RC。下面以 SQLite 独立应用为例：
 
 ```bash
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.5
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.7
 cd my-app
 php configure.php sqlite
 composer config minimum-stability RC
 composer config prefer-stable true
 composer require --no-update \
-  zoujingli/type-core:1.0.0-rc.5 \
-  zoujingli/type-orm:1.0.0-rc.5 \
-  zoujingli/type-orm-sqlite:1.0.0-rc.5 \
-  zoujingli/type-runtime:1.0.0-rc.5 \
-  zoujingli/type-log:1.0.0-rc.5 \
-  zoujingli/type-validate:1.0.0-rc.5
+  zoujingli/type-core:1.0.0-rc.7 \
+  zoujingli/type-orm:1.0.0-rc.7 \
+  zoujingli/type-orm-sqlite:1.0.0-rc.7 \
+  zoujingli/type-runtime:1.0.0-rc.7 \
+  zoujingli/type-log:1.0.0-rc.7 \
+  zoujingli/type-validate:1.0.0-rc.7
 composer require --dev --no-update \
-  zoujingli/type-build:1.0.0-rc.5 \
-  zoujingli/type-testing:1.0.0-rc.5
+  zoujingli/type-build:1.0.0-rc.7 \
+  zoujingli/type-testing:1.0.0-rc.7
 composer install --no-plugins --no-scripts
 php dev.php check
 ```
@@ -110,7 +110,7 @@ git push origin "$release_tag"
 需要补齐既有候选时，使用原版本重试，不创建或移动标签：
 
 ```bash
-gh workflow run release.yml --ref v1.0.0-rc.5 -f version=v1.0.0-rc.5
+gh workflow run release.yml --ref v1.0.0-rc.7 -f version=v1.0.0-rc.7
 ```
 
 候选尚未封存时，重新执行完整工作流；不要把不同运行轮次的零散平台结果拼为一次验收。候选草稿已存在时，工作流复用原运行的验收和已保存附件；附件上传不完整时从原 Actions artifact 恢复。原证据过期或同名附件摘要不同会停止，不能靠重编译冒充原候选。
