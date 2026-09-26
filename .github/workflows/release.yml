@@ -21,6 +21,10 @@ concurrency:
 jobs:
   resolve:
     runs-on: ubuntu-24.04
+    permissions:
+      # 候选草稿仅向有仓库写权限的调用者列出，重试预检必须能识别已封存版本。
+      contents: write
+      actions: read
     outputs:
       source: ${{ steps.resolve.outputs.source }}
       version: ${{ steps.resolve.outputs.version }}
