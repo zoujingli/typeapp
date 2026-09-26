@@ -21,9 +21,10 @@
     "zoujingli/type-validate": "~1.0.0@dev"
   },
   "require-dev": {
-    "swoole/ide-helper": ">=6.2.2",
+    "composer/metadata-minifier": "^1.0",
     "friendsofphp/php-cs-fixer": "3.95.25",
     "phpunit/phpunit": "13.3.3",
+    "swoole/ide-helper": ">=6.2.2",
     "zoujingli/type-build": "~1.0.0@dev",
     "zoujingli/type-testing": "~1.0.0@dev"
   },
