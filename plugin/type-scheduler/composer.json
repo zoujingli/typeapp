@@ -35,8 +35,13 @@
               "reason": "避免 TypePHP 将同一字符串参数重新推断为整数；保留 Cron 原判断语义。",
               "replacements": [
                 {
-                  "from": "        $value = (int) $value;\n\n        return \\in_array($value, $this->fullRange, true);",
-                  "to": "        $integerValue = (int) $value;\n\n        return \\in_array($integerValue, $this->fullRange, true);",
+                  "from": "$value = (int) $value;",
+                  "to": "$integerValue = (int) $value;",
+                  "count": 1
+                },
+                {
+                  "from": "return \\in_array($value, $this->fullRange, true);",
+                  "to": "return \\in_array($integerValue, $this->fullRange, true);",
                   "count": 1
                 }
               ]

@@ -74,6 +74,8 @@ function main(int $argc, array $argv): void
 
 Cron 已验证 `dragonmantank/cron-expression` **3.6.0**，时钟采用 PSR-20 `ClockInterface` **1.0.0**。Composer 接受兼容补丁版本，应用通过 lock 文件锁定；两个生产依赖的 TypePHP 源码适配严格绑定上述已验证版本，升级后须更新适配并重新验收。包按既定依赖方向依赖 runtime 与 Redis，本地文件调度不连接 Redis；多实例使用下文 Redis 存储，不隐式拉入 queue、core 或 ORM。
 
+适配声明使用单行替换，保持通过 Packagist 安装后的匹配文本一致；构建仍检查原文件摘要和精确替换次数，原 Composer 源码不被修改。匹配失败须核对组件版本和锁文件，不能跳过校验继续编译。
+
 ## 时间与身份
 
 - Cron 默认 UTC，不受 PHP 默认时区影响；显式时区使用 IANA 名称。解析库在时区偏移恒定区间中计算当地日期，再转换成真实 UTC 秒。
