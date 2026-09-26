@@ -95,8 +95,12 @@ final class FrontendAssetsTest extends TestCase
         self::assertSame('<html>test</html>', (string) $response->getBody());
         self::assertSame('no-cache', $response->getHeaderLine('Cache-Control'));
         self::assertSame(304, $pages->respond($get->withHeader('If-None-Match', $response->getHeaderLine('ETag')), $messages)->getStatusCode());
-        self::assertSame(200, $pages->respond($get->withMethod('HEAD'), $messages)->getStatusCode());
-        self::assertSame('', (string) $pages->respond($get->withMethod('HEAD'), $messages)->getBody());
+        $head = $pages->respond($get->withMethod('HEAD'), $messages);
+        self::assertSame(200, $head->getStatusCode());
+        // 发送层根据流大小生成HEAD长度并抑制正文，页面必须保留GET表示的元数据。
+        self::assertSame($response->getBody()->getSize(), $head->getBody()->getSize());
+        self::assertSame($response->getHeaderLine('Content-Length'), $head->getHeaderLine('Content-Length'));
+        $head->getBody()->close();
         self::assertSame(405, $pages->respond($get->withMethod('POST'), $messages)->getStatusCode());
         foreach (['/secret.txt', '/admin/users', '/public/site', '/assets/missing.js', '/%2e%2e/config'] as $path) {
             self::assertNull($pages->respond($messages->createServerRequest('GET', 'http://localhost' . $path), $messages));

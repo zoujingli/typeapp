@@ -53,9 +53,10 @@ final class FrontendPages
             'txt', 'md' => 'text/plain; charset=utf-8',
             default => 'application/octet-stream',
         };
+        // HEAD沿用文件流的长度；ResponseEmitter负责省略正文并关闭流，不读取文件内容。
         return $messages->createResponse(200)->withHeader('Content-Type', $mime)
             ->withHeader('X-Content-Type-Options', 'nosniff')->withHeader('ETag', $etag)
             ->withHeader('Cache-Control', $cache)->withHeader('Content-Length', (string) $entry['bytes'])
-            ->withBody($request->getMethod() === 'HEAD' ? $messages->createStream('') : $messages->createStreamFromFile($this->assets->file($path)));
+            ->withBody($messages->createStreamFromFile($this->assets->file($path)));
     }
 }

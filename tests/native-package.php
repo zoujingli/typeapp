@@ -179,6 +179,9 @@ try {
             expect($page->status === 200 && hash('sha256', $page->body) === $webFiles['web/index.html']['sha256'], '登录页面与内嵌入口不同');
             $head = $client->request('HEAD', '/');
             expect($head->status === 200 && $head->body === '', 'HEAD页面响应携带了正文');
+            expect($head->header('Content-Length') === [(string) $webFiles['web/index.html']['bytes']]
+                && $head->header('Content-Type') === $page->header('Content-Type')
+                && $head->header('ETag') === $page->header('ETag'), 'HEAD页面元数据与GET不一致');
             $cached = $client->request('GET', '/', ['If-None-Match' => '"' . $webFiles['web/index.html']['sha256'] . '"']);
             expect($cached->status === 304 && $cached->body === '', '页面缓存协商失败');
             expect($client->request('POST', '/')->status === 405 && $client->request('GET', '/missing-api')->status === 404, '页面接管了不允许的方法或未知API');
@@ -186,6 +189,10 @@ try {
                 if (str_ends_with($path, '.js')) {
                     $asset = $client->request('GET', '/' . substr($path, 4));
                     expect($asset->status === 200 && hash('sha256', $asset->body) === $file['sha256'], '静态脚本服务字节不同');
+                    $assetHead = $client->request('HEAD', '/' . substr($path, 4));
+                    expect($assetHead->status === 200 && $assetHead->body === ''
+                        && $assetHead->header('Content-Length') === [(string) $file['bytes']]
+                        && $assetHead->header('Cache-Control') === $asset->header('Cache-Control'), 'HEAD静态资源长度或缓存策略与GET不一致');
                     break;
                 }
             }
