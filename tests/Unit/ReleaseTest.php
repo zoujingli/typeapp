@@ -45,6 +45,36 @@ final class ReleaseTest extends TestCase
         Plan::dependencies($package, 'v2.0.0', ['zoujingli/type-core']);
     }
 
+    /** 前端身份必须来自实际锁文件，缺失不能被编码成false后继续校验通过。 */
+    public function testFrontendIdentityRequiresTheOriginalDependencyLock(): void
+    {
+        $project = dirname(__DIR__, 2);
+        $root = $project . '/build/frontend-identity-' . bin2hex(random_bytes(6));
+        mkdir($root . '/tools/distribution', 0700, true);
+        mkdir($root . '/vendor', 0700);
+        mkdir($root . '/web/dist', 0700, true);
+        try {
+            copy($project . '/tools/frontend-resources.php', $root . '/tools/frontend-resources.php');
+            copy($project . '/tools/distribution/Process.php', $root . '/tools/distribution/Process.php');
+            file_put_contents($root . '/vendor/autoload.php', '<?php require ' . var_export($project . '/vendor/autoload.php', true) . ';');
+            foreach (['index.html', 'LICENSE', 'NOTICE', 'UPSTREAM.md'] as $name) {
+                file_put_contents($root . '/web/dist/' . $name, 'fixture');
+            }
+            $command = [PHP_BINARY, $root . '/tools/frontend-resources.php'];
+            [$code, , $error] = \TypeApp\Distribution\Process::run([...$command, 'record', 'manifest.json'], $root);
+            self::assertSame(1, $code);
+            self::assertStringContainsString('依赖锁文件', $error);
+            self::assertFileDoesNotExist($root . '/manifest.json');
+            file_put_contents($root . '/web/pnpm-lock.yaml', 'frozen dependencies');
+            self::assertSame(0, \TypeApp\Distribution\Process::run([...$command, 'record', 'manifest.json'], $root)[0]);
+            self::assertSame(0, \TypeApp\Distribution\Process::run([...$command, 'verify', 'manifest.json'], $root)[0]);
+            file_put_contents($root . '/web/pnpm-lock.yaml', 'changed dependencies');
+            self::assertSame(1, \TypeApp\Distribution\Process::run([...$command, 'verify', 'manifest.json'], $root)[0]);
+        } finally {
+            \removeTestDirectory($root);
+        }
+    }
+
     public static function evidenceCases(): iterable
     {
         foreach (['native', 'consumption'] as $kind) {

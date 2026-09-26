@@ -24,8 +24,16 @@ try {
             throw new RuntimeException('前端缺少入口或许可材料：' . $required);
         }
     }
+    $lock = $root . '/web/pnpm-lock.yaml';
+    if (!is_file($lock) || !is_readable($lock) || is_link($lock)) {
+        throw new RuntimeException('前端资源身份需要可读的普通依赖锁文件');
+    }
+    $lockDigest = hash_file('sha256', $lock);
+    if (!is_string($lockDigest) || !preg_match('/^[a-f0-9]{64}$/D', $lockDigest)) {
+        throw new RuntimeException('无法读取前端依赖锁文件摘要');
+    }
     $record = ['protocol' => 1, 'source' => Process::output(['git', 'rev-parse', 'HEAD'], $root),
-        'lock-sha256' => hash_file('sha256', $root . '/web/pnpm-lock.yaml'), 'files' => $files];
+        'lock-sha256' => $lockDigest, 'files' => $files];
     if ($operation === 'record') {
         Process::report($path, $record);
     } else {

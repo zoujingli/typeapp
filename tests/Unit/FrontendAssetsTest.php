@@ -115,7 +115,16 @@ final class FrontendAssetsTest extends TestCase
             self::markTestSkipped('当前测试账户不能创建符号链接');
         }
         $this->expectException(RuntimeException::class);
-        $assets->install(true);
+        try {
+            $assets->install(true);
+        } finally {
+            // Windows目录符号链接须用rmdir删除链接本身，目标仍由tearDown回收。
+            if (PHP_OS_FAMILY === 'Windows') {
+                rmdir($this->root . '/public');
+            } else {
+                unlink($this->root . '/public');
+            }
+        }
     }
 
     /** 目录收集拒绝秘密、路径跳转及大小写冲突；摘要随实际资源变动。 */
