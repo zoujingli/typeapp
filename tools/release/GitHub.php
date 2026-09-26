@@ -56,7 +56,7 @@ final class GitHub
         } finally {
             unlink($file);
         }
-        return $this->find($repository, $version) ?? throw new \RuntimeException('创建Release后无法回读');
+        return $this->afterWrite($repository, $version, false) ?? throw new \RuntimeException('创建Release后无法回读');
     }
 
     /** 只下载已看到的明确附件名；不接受目录跳转或通配符。 */
@@ -109,11 +109,30 @@ final class GitHub
             Process::output(['gh', 'release', 'edit', $version, '--repo', $repository, '--draft=false',
                 str_contains($version, '-rc.') ? '--latest=false' : '--latest=true'], $this->root);
         }
-        $actual = $this->find($repository, $version);
+        $actual = $this->afterWrite($repository, $version, true);
         if ($actual === null || $actual['draft'] || $actual['prerelease'] !== str_contains($version, '-rc.')) {
             throw new \RuntimeException('Release公开状态回读不一致：' . $repository);
         }
         return ['repository' => $repository, 'version' => $version, 'id' => $actual['id'], 'url' => $actual['html_url'], 'prerelease' => $actual['prerelease'], 'status' => 'published'];
+    }
+
+    /**
+     * 写入成功后有界等待列表可见，最多五次读取、十五秒退避；不重复执行写入。
+     * API错误直接传播，超出预算仍失败并保留草稿供原候选重试。
+     * @return array<string,mixed>|null 可回读的Release；公开操作还须观察到draft=false。
+     */
+    private function afterWrite(string $repository, string $version, bool $published): ?array
+    {
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            if ($attempt > 0) {
+                sleep(1 << ($attempt - 1));
+            }
+            $release = $this->find($repository, $version);
+            if ($release !== null && (!$published || !$release['draft'])) {
+                return $release;
+            }
+        }
+        return null;
     }
 
     /** 目标由固定映射限定，调用方不能把发布令牌用于其他仓库。 */

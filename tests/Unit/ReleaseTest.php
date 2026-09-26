@@ -178,12 +178,26 @@ if ($args[0] === 'api') {
 }
 $key = $state . '/' . str_replace('/', '-', $repo);
 $release = is_file($key . '.json') ? json_decode(file_get_contents($key . '.json'), true) : null;
-if ($args[0] === 'api') { echo json_encode([$release === null ? [] : [$release]]); exit; }
+if ($args[0] === 'api') {
+    // GitHub写入成功后，列表可能暂时仍是旧视图；只延迟一次真实命令边界。
+    if (is_file($key . '-stale.json')) {
+        echo file_get_contents($key . '-stale.json');
+        unlink($key . '-stale.json');
+        $count = is_file($state . '/stale-read-count') ? (int) file_get_contents($state . '/stale-read-count') : 0;
+        file_put_contents($state . '/stale-read-count', (string) ($count + 1));
+        exit;
+    }
+    echo json_encode([$release === null ? [] : [$release]]); exit;
+}
 if (is_file($state . '/fail') && $repo === 'zoujingli/type-core') { fwrite(STDERR, '预期的单项发布失败'); exit(1); }
 if ($args[1] === 'create') {
     $target = $args[array_search('--target', $args) + 1];
     $body = file_get_contents($args[array_search('--notes-file', $args) + 1]);
     $release = ['id' => 1, 'tag_name' => $args[2], 'target_commitish' => $target, 'body' => $body, 'draft' => true, 'prerelease' => true, 'assets' => [], 'html_url' => 'https://github.com/' . $repo . '/releases/tag/' . $args[2]];
+    if (is_file($state . '/delay-create')) {
+        file_put_contents($key . '-stale.json', '[[]]');
+        unlink($state . '/delay-create');
+    }
 } elseif ($args[1] === 'upload') {
     $file = $args[3]; $name = basename($file);
     copy($file, $key . '-' . $name);
@@ -194,6 +208,10 @@ if ($args[1] === 'create') {
     copy($key . '-' . $name, $directory . '/' . $name);
 } elseif ($args[1] === 'edit') {
     if (!in_array('--latest=false', $args, true)) { exit(2); }
+    if (is_file($state . '/delay-publish')) {
+        file_put_contents($key . '-stale.json', json_encode([[$release]]));
+        unlink($state . '/delay-publish');
+    }
     $release['draft'] = false;
 } else { exit(3); }
 file_put_contents($key . '.json', json_encode($release));
@@ -202,8 +220,11 @@ PHP);
             $api = new GitHub($root);
             $source = str_repeat('a', 40);
             $version = 'v1.0.0-rc.1';
+            file_put_contents($root . '/remote/delay-create', 'once');
+            file_put_contents($root . '/remote/delay-publish', 'once');
             $api->draft('zoujingli/type-runtime', $version, $source, '运行时');
             $first = $api->publish('zoujingli/type-runtime', $version);
+            self::assertSame('2', file_get_contents($root . '/remote/stale-read-count'));
             file_put_contents($root . '/remote/fail', 'fail');
             try {
                 $api->draft('zoujingli/type-core', $version, $source, '核心');
