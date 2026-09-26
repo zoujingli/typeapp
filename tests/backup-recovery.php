@@ -220,6 +220,7 @@ function cleanPackageRecovery(array $context): array
                 $argument = 'type=bind,source=' . $restoreData . ',target=/data';
             }
         } unset($argument);
+        cleanPackageCommand([...$restoreRuntime, '--network', $databaseNetwork, $context['image'], 'web:install'], 30, $context['environment']);
         $history = cleanPackageCommand([...$restoreRuntime, '--network', $databaseNetwork, $context['image'], 'migrate', 'history'], 30, $context['environment']);
         expect(hash('sha256', $history) === $record['migration-history-sha256'], '恢复遗漏或改动迁移历史');
         cleanPackageCommand([...$restoreRuntime, '--network', $databaseNetwork, $context['image'], 'migrate', 'status'], 30, $context['environment']);

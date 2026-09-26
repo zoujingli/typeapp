@@ -83,7 +83,7 @@ foreach ($release['files'] as $name => $file) {
     }
 }
 $buildManifest = (new Type\Build\ArtifactManifest())->read($artifact);
-expect(($buildManifest['generator-protocols']['identity'] ?? null) === 4, '原生材料契约需要身份生成协议4');
+expect(($buildManifest['generator-protocols']['identity'] ?? null) === 5, '原生材料契约需要身份生成协议5');
 expect(!isset($release['files']['NOTICE']) && !is_file($created['directory'] . '/NOTICE'), '无NOTICE的应用被附加其他项目的NOTICE');
 if ($licenseOnly) {
     expect(isset($release['files']['LICENSE']) && file_get_contents($created['directory'] . '/LICENSE') === file_get_contents($directory . '/LICENSE'), '外部应用许可未按构建原文保留');

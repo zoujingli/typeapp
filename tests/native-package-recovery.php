@@ -384,6 +384,8 @@ try {
     }
     $verified = null;
     $restoredCommand = sandboxPackageCommand($root, $package, [$restored]);
+    // 页面可由同一原生产物重建，恢复数据后不能再次初始化数据库。
+    nativeRecoveryRun([...$restoredCommand, 'web:install'], $restoreEnvironment);
     $restoredHistory = nativeRecoveryRun([...$restoredCommand, 'migrate', 'history'], $restoreEnvironment);
     expect(hash('sha256', $restoredHistory) === $snapshot['migration-history-sha256'], '恢复遗漏或改动迁移历史');
     nativeRecoveryRun([...$restoredCommand, 'migrate', 'status'], $restoreEnvironment);

@@ -57,6 +57,7 @@ final class ArtifactManifest
         $format = BuildPlatform::format($artifact, true);
         if ($format === 'Mach-O') {
             $manifest = $this->readMachO($artifact);
+            $this->verifyEmbeddedResources($manifest);
             if ($expectedBuildId !== null && $manifest['build-id'] !== $expectedBuildId) {
                 throw new RuntimeException('产物不是要求的构建身份');
             }
@@ -92,6 +93,7 @@ final class ArtifactManifest
             if (($manifest['binary-format'] ?? 'ELF') !== $format) {
                 throw new RuntimeException('二进制格式与产物清单不一致');
             }
+            $this->verifyEmbeddedResources($manifest);
             rewind($handle);
             $hash = hash_init('sha256');
             hash_update_stream($hash, $handle, $manifest['elf-bytes']);
@@ -108,6 +110,21 @@ final class ArtifactManifest
         } finally {
             fclose($handle);
         }
+    }
+
+    /** 构建身份协议5明确区分内嵌资源；旧产物按其原有身份校验。 */
+    private function verifyEmbeddedResources(array $manifest): void
+    {
+        if (!array_key_exists('embedded-resources', $manifest)) {
+            if (($manifest['generator-protocols']['embedded-resources'] ?? 0) >= 1) {
+                throw new RuntimeException('产物缺少内嵌资源清单');
+            }
+            return;
+        }
+        if (!is_array($manifest['embedded-resources'])) {
+            throw new RuntimeException('内嵌资源清单无效');
+        }
+        (new EmbeddedResourceCompiler())->validate($manifest['embedded-resources']);
     }
 
     /** 在部署环境对照已安装文件，调用方提供实际加载路径；不执行待检查 ELF。 */

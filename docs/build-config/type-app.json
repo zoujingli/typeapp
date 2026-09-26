@@ -5,6 +5,7 @@
   "entry": "app/main.php",
   "development": {"entry": "bin/typeapp", "prepare": "bin/typeapp-prepare", "output": "build/app/development", "check": ["check"], "watch": ["plugin"]},
   "sources": ["app"],
+  "embedded-resources": [{"source": "web/dist", "target": "web"}],
   "threads": {"http": "app\\common\\bootstrap\\Application::httpThread"},
   "runtime": {
     "Linux": {"extensions": ["pcntl", "swoole"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]},

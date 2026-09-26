@@ -10,7 +10,7 @@ use RuntimeException;
 final class BuildIdentity
 {
     public const PROTOCOL = 1;
-    public const GENERATORS = ['application' => 1, 'models' => 2, 'routing' => 1, 'queue' => 1, 'identity' => 4, 'source-adaptations' => 1,
+    public const GENERATORS = ['application' => 1, 'models' => 2, 'routing' => 1, 'queue' => 1, 'identity' => 5, 'embedded-resources' => 1, 'source-adaptations' => 1,
         'configuration' => 1, 'operations' => 1];
 
     /**

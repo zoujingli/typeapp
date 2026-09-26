@@ -116,6 +116,7 @@ final class Application
                 echo "备份保留：iot:backup register <私有归档目录> <备份ID> <PG17工具根>；clean <私有归档目录> <PG17工具根> [批次1至100]；status <私有归档目录>；pin|unpin <私有归档目录> <备份ID> <保护ID>。\n";
                 echo "恢复核对：iot:recovery 与独立 broker:recovery <snapshot|status|begin|isolate|review|restore>；snapshot输出敏感身份摘要，begin需恢复ID、操作人和已完成隔离的依据，review需恢复ID、私有清单、已核对SHA256和偏移量。旧备份恢复后须核对证书与调试授权再开放。\n";
                 echo "默认使用 SQLite；空库执行 app:install 后 serve，生产默认使用 Swoole 线程与协程。客户端 /，管理端 /admin；业务接口按固定账号域和租户权限开放。\n";
+                echo "前端安装：web:install [--force] [--dry-run]。首次app:install同时安装页面；强制更新只处理内置页面文件，不修改数据库、上传或配置。页面入口 /#/login 和 /#/admin/login。\n";
 
                 return 0;
             }
@@ -163,6 +164,16 @@ final class Application
                 $debug = Settings::debug($settings, $development);
                 return self::standalone($settings, $basePath, $command, array_slice($arguments, 2), $development);
             }
+            if ($command === 'web:install') {
+                $options = array_slice($arguments, 2);
+                if (array_diff($options, ['--force', '--dry-run']) !== [] || count($options) !== count(array_unique($options))) {
+                    throw new InvalidArgumentException('用法：web:install [--force] [--dry-run]');
+                }
+                $basePath = Settings::basePath($arguments[0] ?? '', $development);
+                $assets = \app\common\service\FrontendAssets::application($basePath, $development);
+                echo json_encode($assets->install(in_array('--force', $options, true), in_array('--dry-run', $options, true)), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
+                return 0;
+            }
             if ($command === 'app:install') {
                 $basePath = Settings::basePath($arguments[0] ?? '', $development);
                 $settings = Settings::load($basePath);
@@ -173,8 +184,25 @@ final class Application
                 }
                 IdentityService::validateAccount($arguments[2], $arguments[3], $adminPassword);
                 IdentityService::validateAccount($arguments[4], $arguments[5], $customerPassword);
-                DatabaseFactory::prepareMigration($settings, $basePath);
-                echo json_encode(['data' => Schema::install(DatabaseFactory::create($settings, $basePath), array_slice($arguments, 2), $adminPassword, $customerPassword)], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
+                $assets = \app\common\service\FrontendAssets::application($basePath, $development);
+                $databaseInstalled = false;
+                try {
+                    try {
+                        $assets->prepare();
+                        DatabaseFactory::prepareMigration($settings, $basePath);
+                        $result = Schema::install(DatabaseFactory::create($settings, $basePath), array_slice($arguments, 2), $adminPassword, $customerPassword);
+                        $databaseInstalled = true;
+                        $frontend = $assets->commit();
+                    } finally {
+                        $assets->close();
+                    }
+                    echo json_encode(['data' => $result, 'frontend' => $frontend], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
+                } catch (\Throwable $installError) {
+                    if ($databaseInstalled) {
+                        throw new InvalidArgumentException('数据库初始化已完成，前端安装失败；请运行web:install --force修复，不要重新初始化数据库', 0, $installError);
+                    }
+                    throw $installError;
+                }
                 return 0;
             }
             if (!in_array($command, ['check', 'serve', 'migrate', 'iot:recovery', 'app:audit-clean', 'iot:command-clean', 'iot:history-clean', 'iot:aggregate', 'iot:aggregate-clean', 'iot:alarm', 'iot:notices', 'iot:notices-clean', 'iot:mqtt', 'iot:mqtt-install', 'iot:mqtt-statistics', 'iot:mqtt-nodes', 'iot:mqtt-fence', 'iot:mqtt-fence-result', 'iot:mqtt-store', 'iot:mqtt-access', 'iot:ingest', 'iot:ingest-store', 'iot:device', 'iot:exports', 'iot:exports-work', 'iot:exports-clean'], true)) {
@@ -249,7 +277,7 @@ final class Application
             return 0;
         } catch (Throwable $error) {
             $message = $error->getMessage();
-            $publicMessage = $error instanceof InvalidArgumentException || str_starts_with($message, 'dotenv ')
+            $publicMessage = $error instanceof InvalidArgumentException || $error instanceof \app\common\service\FrontendException || str_starts_with($message, 'dotenv ')
                 || (in_array($command, ['iot:wal', 'iot:backup', 'iot:recovery', 'broker:recovery'], true) && preg_match('/^recovery_[a-z_]+$/D', $message) === 1)
                 || $message === 'recovery_isolated'
                 ? $message : 'internal_error';
@@ -724,11 +752,18 @@ final class Application
             ),
         ]);
 
+        $pages = $broker ? null : new \app\common\service\FrontendPages(\app\common\service\FrontendAssets::application($basePath, $development));
         return new Pipeline([
             static fn (): RequestLog => new RequestLog($settings->text('app.name')),
             static fn (): ApiErrors => new ApiErrors($messages, $debug, dirname(__DIR__, 3)),
             static fn (): RequestPolicy => $policy,
-        ], new \Type\Core\Http\ActionHandler(static function (\Psr\Http\Message\ServerRequestInterface $request) use ($broker, $router, $messages): \Psr\Http\Message\ResponseInterface {
+        ], new \Type\Core\Http\ActionHandler(static function (\Psr\Http\Message\ServerRequestInterface $request) use ($broker, $router, $messages, $pages): \Psr\Http\Message\ResponseInterface {
+            if ($pages !== null) {
+                $response = $pages->respond($request, $messages);
+                if ($response !== null) {
+                    return $response;
+                }
+            }
             if ($broker !== str_starts_with($request->getUri()->getPath(), '/broker/')) {
                 return $messages->createResponse(404)->withHeader('Content-Type', 'application/json')->withBody($messages->createStream('{"error":"not_found"}'));
             }

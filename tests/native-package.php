@@ -23,10 +23,17 @@ expect(in_array($driver, ['sqlite', 'mysql', 'pgsql'], true), '发布验收需�
 $base = $root . '/build/package-test-' . bin2hex(random_bytes(6));
 expect(mkdir($base, 0700), '无法创建本轮发布测试目录');
 $publisher = new NativePackage();
-$created = json_decode(successful([PHP_BINARY, $project . '/vendor/bin/type',
-    'package', $artifact, $base . '/release', $project . '/.env.example'], $project), true, 512, JSON_THROW_ON_ERROR);
-$package = $base . '/moved release';
-expect(rename($created['directory'], $package), '无法搬迁实际发布目录');
+$candidatePackage = getenv('TYPE_RELEASE_PACKAGE');
+if (is_string($candidatePackage) && $candidatePackage !== '') {
+    $package = realpath($candidatePackage);
+    expect(is_string($package) && str_starts_with($package, $root . '/build/'), '候选发布包必须属于本轮构建目录');
+    $created = ['directory' => $package, 'manifest-sha256' => (string) getenv('TYPE_RELEASE_PACKAGE_SHA256')];
+} else {
+    $created = json_decode(successful([PHP_BINARY, $project . '/vendor/bin/type',
+        'package', $artifact, $base . '/release', $project . '/.env.example'], $project), true, 512, JSON_THROW_ON_ERROR);
+    $package = $base . '/moved release';
+    expect(rename($created['directory'], $package), '无法搬迁实际发布目录');
+}
 $release = $publisher->verify($package, $created['manifest-sha256']);
 expect(isset($release['files']['OPERATIONS.md']) && file_get_contents($package . '/OPERATIONS.md') === file_get_contents($root . '/plugin/type-build/docs/operations.md'), '发布未包含同一份完整操作手册');
 // 第一方材料属于当前被发布的应用；独立模板与开发主仓有各自的 NOTICE。
@@ -124,6 +131,20 @@ try {
         'APP_ADMIN_PASSWORD' => $password, 'APP_CUSTOMER_PASSWORD' => $password . '-customer',
     ]))->wait(20);
     expect($installed->successful(), '源码不可访问时应用初始化失败：' . $installed->stderr);
+    if ($project === $root) {
+        $webFiles = $release['embedded-resources'] ?? [];
+        expect(isset($webFiles['web/index.html'], $webFiles['web/LICENSE']), '物联中心产物没有内嵌完整前端');
+        foreach ($webFiles as $path => $file) {
+            expect(str_starts_with($path, 'web/') && hash_file('sha256', $runtime . '/public/' . substr($path, 4)) === $file['sha256'], '前端安装字节与归档身份不同');
+        }
+        mkdir($runtime . '/public/uploads');
+        file_put_contents($runtime . '/public/uploads/retained.txt', 'upload');
+        foreach ([['web:install'], ['web:install', '--dry-run'], ['web:install', '--force']] as $arguments) {
+            $web = (new Process([...$command, ...$arguments], $base, $environment))->wait(30);
+            expect($web->successful(), '部署前端重复安装失败：' . $web->stderr);
+        }
+        expect(file_get_contents($runtime . '/public/uploads/retained.txt') === 'upload', '更新删除了上传文件');
+    }
 
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($listener), '无法选择部署验收端口');
@@ -154,6 +175,26 @@ try {
             expect($client->request('GET', '/', $headers)->json()['message'] === getenv('TYPE_TEMPLATE_EXPECTED_MESSAGE'), '无源码部署没有运行创建后修改的业务');
         }
         if ($project === $root) {
+            $page = $client->request('GET', '/');
+            expect($page->status === 200 && hash('sha256', $page->body) === $webFiles['web/index.html']['sha256'], '登录页面与内嵌入口不同');
+            $head = $client->request('HEAD', '/');
+            expect($head->status === 200 && $head->body === '', 'HEAD页面响应携带了正文');
+            $cached = $client->request('GET', '/', ['If-None-Match' => '"' . $webFiles['web/index.html']['sha256'] . '"']);
+            expect($cached->status === 304 && $cached->body === '', '页面缓存协商失败');
+            expect($client->request('POST', '/')->status === 405 && $client->request('GET', '/missing-api')->status === 404, '页面接管了不允许的方法或未知API');
+            foreach ($webFiles as $path => $file) {
+                if (str_ends_with($path, '.js')) {
+                    $asset = $client->request('GET', '/' . substr($path, 4));
+                    expect($asset->status === 200 && hash('sha256', $asset->body) === $file['sha256'], '静态脚本服务字节不同');
+                    break;
+                }
+            }
+            expect($client->request('GET', '/uploads/retained.txt')->status === 404, '静态入口公开了非托管文件');
+            expect($client->request('GET', '/public/site')->json()['data']['name'] === 'TypeApp', '部署缺少默认站点信息');
+            $customer = $client->request('POST', '/customer/auth/login', ['Content-Type' => 'application/json'], json_encode([
+                'login' => 'package-customer', 'password' => $password . '-customer',
+            ], JSON_THROW_ON_ERROR));
+            expect($customer->status === 200 && isset($customer->json()['data']['accessToken']), '部署客户登录失败');
             expect($client->request('GET', '/admin/users')->status === 401, '部署丢失授权');
             $login = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
                 'login' => 'package-admin', 'password' => $password,
@@ -171,6 +212,22 @@ try {
                 'version' => 1, 'login' => 'package-user', 'name' => '资料', 'password' => $password,
             ], JSON_THROW_ON_ERROR));
             expect($invalid->status === 422, '部署绕过了人员资料字段白名单');
+            $updated = $client->request('PATCH', '/admin/users/' . $saved['id'], $headers, json_encode([
+                'version' => $saved['version'], 'login' => 'package-user', 'name' => '发布更新用户',
+            ], JSON_THROW_ON_ERROR));
+            expect($updated->status === 200 && $updated->json()['data']['name'] === '发布更新用户', '部署人员更新失败');
+            $role = $client->request('POST', '/admin/roles', $headers, '{"name":"发布验收角色","permissions":[]}');
+            expect($role->status === 200, '部署角色创建失败');
+            $roleId = $role->json()['data']['id'];
+            expect($client->request('GET', '/admin/roles/' . $roleId, $headers)->status === 200, '部署角色读取失败');
+            $roleUpdated = $client->request('PATCH', '/admin/roles/' . $roleId, $headers, json_encode([
+                'version' => $role->json()['data']['version'], 'name' => '发布更新角色',
+            ], JSON_THROW_ON_ERROR));
+            expect($roleUpdated->status === 200 && $roleUpdated->json()['data']['name'] === '发布更新角色', '部署角色更新失败');
+            $deleted = $client->request('DELETE', '/admin/roles/' . $roleId, $headers, json_encode([
+                'version' => $roleUpdated->json()['data']['version'],
+            ], JSON_THROW_ON_ERROR));
+            expect($deleted->status === 200 && $client->request('GET', '/admin/roles/' . $roleId, $headers)->status === 404, '部署角色删除闭环失败');
         } else {
             expect($client->request('GET', '/users')->status === 401, '部署丢失授权');
             $user = $client->request('POST', '/users', $headers, '{"name":"包验收用户","age":21}');
@@ -254,6 +311,10 @@ $record = ['os' => PHP_OS_FAMILY, 'driver' => $driver, 'artifact-sha256' => $rel
     'checks' => ['no-source-payload', 'no-overwrite', 'secret-rejection', 'help', 'external-trusted-digest-rejection', 'deployment-audit', 'application-initialization', 'http-auth-crud-query-validation', 'graceful-stop', 'same-size-tamper-rejection', 'executable-permissions', 'application-original-materials', 'application-material-identity-rejection', 'third-party-materials-preserved']];
 if ($driver !== 'sqlite') {
     $record['checks'][] = 'dedicated-database-created-and-removed';
+}
+if ($project === $root) {
+    $record['checks'] = [...$record['checks'], 'embedded-frontend-all-file-digests', 'web-install-repeat-dry-run-force',
+        'uploads-preserved-not-public', 'static-get-head-cache', 'admin-customer-login', 'default-site-information', 'role-crud'];
 }
 file_put_contents($base . '/verification.json', json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
 if (in_array('--archive', $argv, true)) {

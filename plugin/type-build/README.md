@@ -52,7 +52,15 @@ prepare按完整源码、声明、生成器及锁文件内容身份复用不可�
 
 `type service <发布目录> <服务声明.json> <新服务目录> <受信清单SHA256>` 复用发布校验，生成launchd/systemd/WinSW配置与摘要记录。目标发布、数据和服务配置分离；生成器不读取.env、不安装/启用服务、不修改账号权限。Unix显式使用非root账号，Windows需提供外部受信WinSW包装器且使用LocalService。声明、运行依赖与实际验证范围见[原生服务管理](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-services.md)。
 
+## 内嵌资源
+
+应用构建配置可增加 `"embedded-resources": [{"source": "web/dist", "target": "web"}]`。来源相对项目根，目标是程序内路径前缀；构建器按路径排序并校验普通文件、大小与 SHA-256，拒绝链接、越界、秘密、源码和跨平台路径冲突。预算为 1000 文件、64 MiB。资源生成 C++ 常量随全量 AOT 链接，内容参与身份与缓存失效；原有 `resources` 保持外置资源契约。
+
+生成接口 `Type\Generated\EmbeddedResources::manifest()` 返回清单，`read(string $path, int $offset, int $length)` 读取原文字节，每次至多 65536 字节。组件只提供只读资源访问，安装由应用显式调用；普通启动不释放资源。物联中心前端不进入组件包或通用模板。
+
 ## 安装与版本
+
+组件版本随主仓不可变 tag 分发；RC 与正式版的默认 Packagist 安装方式见[版本发布与安装](https://iots.top/#/guide/releases)。下面保留开发分支示例。
 
 本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 

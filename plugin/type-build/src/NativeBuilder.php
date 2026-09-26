@@ -182,6 +182,19 @@ final class NativeBuilder
 
         $this->directory(dirname($output));
         $this->directory($buildDirectory);
+        $embeddedCompiler = new EmbeddedResourceCompiler();
+        $embeddedFiles = $embeddedCompiler->collect($root, $settings['embedded-resources'] ?? []);
+        $embeddedManifest = $embeddedCompiler->manifest($embeddedFiles);
+        foreach ($embeddedFiles as $target => $embeddedFile) {
+            if (isset($resources[$target])) {
+                throw new RuntimeException('内嵌与外置资源目标冲突：' . $target);
+            }
+        }
+        foreach ($embeddedCompiler->sources($embeddedFiles) as $filename => $contents) {
+            $embeddedSource = $buildDirectory . '/' . $filename;
+            $this->writeText($embeddedSource, $contents);
+            $sources[] = $embeddedSource;
+        }
         if ($platform->family() !== 'Linux') {
             foreach ((new NativeLibraryProbe())->sources() as $filename => $contents) {
                 $probeFile = $buildDirectory . '/' . $filename;
@@ -485,6 +498,7 @@ final class NativeBuilder
             }
         }
         $groups = ['sources' => $sourceInputs, 'original-sources' => array_merge($adaptation['originals'], $modelGeneration['originals']), 'headers' => $headers, 'native-inputs' => $extraInputs, 'resources' => array_column($resources, 'source'),
+            'embedded-resources' => array_column($embeddedFiles, 'source'),
             'locks' => [$root . '/composer.lock', $root . '/toolchain.lock.json'], 'declarations' => $declarations, 'tooling' => $toolRoots,
             'composer-runtime' => [$vendorDirectory . '/composer', $vendorDirectory . '/autoload.php', $binDirectory], 'native' => $native['files']];
         $version = $settings['version'] ?? '0.0.0-dev';
@@ -496,7 +510,7 @@ final class NativeBuilder
         unset($nativeFacts['files']);
         $facts = ['name' => $name, 'version' => $version, 'workspace' => $root, 'settings-sha256' => BuildIdentity::digest($settings),
             'composer-sha256' => BuildIdentity::digest($composer), 'production-packages' => $included, 'native' => $nativeFacts,
-            'compiler' => $compilerOptions, 'capabilities' => $capabilities, 'resource-generation' => $resourceIdentity];
+            'compiler' => $compilerOptions, 'capabilities' => $capabilities, 'resource-generation' => $resourceIdentity, 'embedded-resources' => $embeddedManifest];
         $identity = $identityBuilder->create($groups, $facts);
         if ($stage !== null) {
             $auditPaths = $applicationAuditInputs;
@@ -507,6 +521,7 @@ final class NativeBuilder
         }
         $manifest = ['build-id' => $identity['id'], 'application' => $name, 'version' => $version, 'runtime' => $native['runtime'],
             'production-packages' => $included,
+            'embedded-resources' => $embeddedManifest,
             'dependency-notices' => $notices['summary'],
             'extension-modules' => $native['extension-modules'],
             'source-adaptations' => $adaptation['mapping'],
@@ -535,7 +550,7 @@ final class NativeBuilder
             $identity,
             $manifest,
             $output,
-            function (string $candidate) use ($identity, $groups, $facts, $sources, $identityBuilder, $compiler, $projectFile, $buildDirectory, $compilerOptions, $root, $environment, $compilerEnvironment, $threadCompilerArguments): void {
+            function (string $candidate) use ($identity, $groups, $facts, $sources, $identityBuilder, $compiler, $projectFile, $buildDirectory, $compilerOptions, $root, $environment, $compilerEnvironment, $threadCompilerArguments, $settings): void {
                 // 工作目录必须短。声明头位于该目录的 include/ 下，文件名还带源码相对路径。
                 // Windows 可用路径上限是 259 个字符；把完整构建身份放进目录后，MSVC 打不开生成头。
                 $work = $buildDirectory . '/attempts/' . bin2hex(random_bytes(4));
@@ -549,16 +564,18 @@ final class NativeBuilder
                 }
                 echo $environment->run($command, $root, $compilerEnvironment, 1800);
                 $groups['sources'] = $identityBuilder->sources($sources);
+                $groups['embedded-resources'] = array_column((new EmbeddedResourceCompiler())->collect($root, $settings['embedded-resources'] ?? []), 'source');
                 if ($identityBuilder->create($groups, $facts)['id'] !== $identity['id']) {
                     throw new RuntimeException('构建过程中输入发生变化，拒绝发布或缓存该产物');
                 }
             },
-            function () use ($identityBuilder, $groups, $facts, $sources, $identity, $buildDirectory, $noticePackages, $native, $noticeDeclaration, $notices): void {
+            function () use ($identityBuilder, $groups, $facts, $sources, $identity, $buildDirectory, $noticePackages, $native, $noticeDeclaration, $notices, $root, $settings): void {
                 $currentNotices = (new DependencyNotices())->collect($buildDirectory . '/dependency-notices-check', $noticePackages, $native['native-libraries'], $noticeDeclaration);
                 if ($currentNotices['summary']['index-sha256'] !== $notices['summary']['index-sha256']) {
                     throw new RuntimeException('恢复产物前依赖材料已增加、删除或改变');
                 }
                 $groups['sources'] = $identityBuilder->sources($sources);
+                $groups['embedded-resources'] = array_column((new EmbeddedResourceCompiler())->collect($root, $settings['embedded-resources'] ?? []), 'source');
                 if ($identityBuilder->create($groups, $facts)['id'] !== $identity['id']) {
                     throw new RuntimeException('恢复产物前输入已经变化');
                 }
