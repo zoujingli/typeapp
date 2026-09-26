@@ -17,7 +17,7 @@ guide/           面向使用者的公开指南及插件页
 LICENSE NOTICE   第一方许可证和第三方归属说明
 ```
 
-`docs/adr`、`docs/agents`、`docs/build-config`、`docs/deployment`、`docs/development`、`docs/research` 和 `docs/standards` 默认不发布。不要通过隐藏侧栏或手工复制把内部材料放入公开目录；要公开的新内容必须先放入 `docs/guide/`，并同时更新侧栏、首页卡片和交叉链接。
+`docs/adr`、`docs/agents`、`docs/build-config`、`docs/deployment`、`docs/development`、`docs/evidence`、`docs/research` 和 `docs/standards` 默认不发布。不要通过隐藏侧栏或手工复制把内部材料放入公开目录；要公开的新内容必须先放入 `docs/guide/`，并同时更新侧栏、首页卡片和交叉链接。
 
 公开指南引用未导出的源码或版本化验收说明时，使用明确的 GitHub 链接；站内相对链接仅指向导出文件。例如 [Swoole 模块使用说明](plugins/type-build.md#内置-swoole-与运行依赖)位于公开组件页，模块二进制与维护记录继续归属源码仓库，不复制进 Docsify 站点。
 

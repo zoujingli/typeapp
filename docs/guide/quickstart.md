@@ -33,7 +33,7 @@ Windows x64 的匹配 Swoole SDK、三库独立 ORM、主应用和模板已有�
 
 ## 创建业务应用
 
-通过 Composer 从 Packagist 创建应用。需要固定已发布批次时，先按[版本安装示例](releases.md#composer-按版本安装)同时固定模板和组件，再继续下文的开发、构建步骤。以下命令用于跟进 `main` 开发分支，先选择驱动，再安装依赖：
+通过 Composer 从 Packagist 创建应用。需要固定已发布批次时，先按[版本安装示例](releases.md#composer-按版本安装)同时固定模板和组件，再继续下文的开发、构建步骤。以下命令用于跟进模板和组件子仓的 `main` 开发分支，先选择驱动，再安装依赖：
 
 ```bash
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main

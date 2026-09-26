@@ -28,15 +28,15 @@ flowchart TB
 组件源码按 Apache-2.0 提供，位于 `plugin/type-mqtt/`。尚未发布稳定版本标签。独立消费者应核对真实安装副本并提交 `composer.lock`。`type-orm`、`type-runtime` 由 Composer 从 Packagist 自动解析；启用 PostgreSQL 持久后端时应用另行安装 `type-orm-pgsql`，见[组件安装](../components.md)。
 
 ```sh
-composer config minimum-stability dev
+composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-mqtt:dev-main
+composer require zoujingli/type-mqtt:1.0.0-rc.5
 ```
 
-以上从 Packagist 安装开发分支，传递依赖由 Composer 自动解析。需要固定已发布批次时，按[版本安装说明](../releases.md#composer-按版本安装)选择明确的组件版本和依赖稳定性，并提交应用的 `composer.lock`。源码与包说明见 [type-mqtt 仓库](https://github.com/zoujingli/type-mqtt)。启用 PostgreSQL 持久后端时，在上述基础上添加对应版本的驱动；开发分支命令为：
+以上固定该组件的候选版本 `1.0.0-rc.5`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。传递依赖由 Composer 自动解析，提交应用的 `composer.lock` 固定实际版本。源码与包说明见 [type-mqtt 仓库](https://github.com/zoujingli/type-mqtt)。启用 PostgreSQL 持久后端时，在上述基础上添加同版本驱动：
 
 ```sh
-composer require zoujingli/type-orm-pgsql:dev-main
+composer require zoujingli/type-orm-pgsql:1.0.0-rc.5
 ```
 
 PHP 要求 `>=8.4 <8.6`，依赖 OpenSSL、PCRE、JSON 及上述组件；持久后端需要 PDO PostgreSQL。通信、进程、线程、协程与事件循环统一使用 Swoole `>=6.2 <7` 的官方能力，允许固定官方内置 PHP 库按官方机制加载。Broker 服务端由 Swoole Server 承担，客户端统一使用 Swoole Coroutine Socket，非协程调用沿现有 CoroutineRuntime 使用官方 Scheduler，持久 worker 使用 Swoole PROC hook 管理的进程管道。原生运行仍需对应扩展，不回退执行业务 PHP 源码。

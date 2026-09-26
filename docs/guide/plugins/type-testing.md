@@ -28,12 +28,12 @@ flowchart TB
 在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
 ```bash
-composer config minimum-stability dev
+composer config minimum-stability RC
 composer config prefer-stable true
-composer require --dev zoujingli/type-testing:dev-main
+composer require --dev zoujingli/type-testing:1.0.0-rc.5
 ```
 
-以上安装 `dev-main` 开发分支。需要固定已发布批次时，按[版本安装说明](../releases.md#composer-按版本安装)选择明确的组件版本和依赖稳定性。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。公共安装约定见[组件总览](../components.md#安装组件)。
+以上固定该组件的候选版本 `1.0.0-rc.5`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 

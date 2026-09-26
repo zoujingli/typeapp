@@ -49,15 +49,15 @@ flowchart TB
   Build --> Package[目标平台运行包]
 ```
 
-例如在已有 Composer 应用中安装 SQLite ORM：
+以下以 `1.0.0-rc.5` 候选批次为例，在已有 Composer 应用中安装 SQLite ORM。执行前先在[版本发布](releases.md)核对该版本的公开状态；RC 不代表稳定版本：
 
 ```bash
-composer config minimum-stability dev
+composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm-sqlite:dev-main
+composer require zoujingli/type-orm-sqlite:1.0.0-rc.5
 ```
 
-`dev-main` 的分支别名为 `1.0.x-dev`，组件间使用 `~1.0.0@dev` 约束。这些是开发版本，不代表稳定标签。提交应用的 `composer.lock`，让构建固定到实际安装的提交。
+提交应用的 `composer.lock`，让构建固定到实际安装的版本和提交。版本 tag 不会移动各子仓的 `main`；`dev-main` 表示各子仓最近一次分支同步，不能当作本批次版本的别名。
 
 版本批次使用同一 tag 发布组件与模板，并从默认 Packagist 核对版本及拆分提交。需要固定 RC 或正式版本时，按[Composer 按版本安装](releases.md#composer-按版本安装)设置明确约束；是否已经可用以公开 Release 和 Packagist 实际版本为准。物联中心运行包与 Composer 源码组件各有用途，不需要在部署机再次安装组件。
 
@@ -74,8 +74,18 @@ composer require zoujingli/type-orm-sqlite:dev-main
 构建与测试工具通常安装为开发依赖：
 
 ```bash
-composer require --dev zoujingli/type-build:dev-main zoujingli/type-testing:dev-main
+composer require --dev zoujingli/type-build:1.0.0-rc.5 zoujingli/type-testing:1.0.0-rc.5
 ```
+
+需要跟进组件开发分支时，在独立开发项目中使用：
+
+```bash
+composer config minimum-stability dev
+composer config prefer-stable true
+composer require zoujingli/type-orm-sqlite:dev-main
+```
+
+`dev-main` 的分支别名为 `1.0.x-dev`，组件间使用 `~1.0.0@dev` 约束。这些是开发版本；不要在需要复现 RC 的应用中随意混用分支约束。
 
 从旧版 VCS 配置迁移时，删除应用根 `composer.json` 中指向这些公共组件的 `repositories` 项，再执行一次受控的 `composer update 'zoujingli/type-*' --with-all-dependencies` 并审阅锁文件。保留应用自己的私有仓库配置。日常部署使用 `composer install` 复现锁定版本，不在部署时自动更新依赖。
 

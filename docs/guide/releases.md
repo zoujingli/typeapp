@@ -2,7 +2,7 @@
 
 版本由主仓的不可变 tag 驱动：`vX.Y.Z` 是正式版本，`vX.Y.Z-rc.N` 是候选版本。一次发布关联同一主仓提交、15 个组件、应用模板、四个平台运行包及各自的验收记录。RC 标记为预发布，不成为稳定最新版。
 
-首次公开 RC 尚未完成：`v1.0.0-rc.3` 在 Windows 最终候选的 PostgreSQL 安装验收中断，原标签和失败证据保留，未公开 Release。以下版本号用于说明命令形式，须在正式公开后替换为实际可下载版本。只有[主仓 Release](https://github.com/zoujingli/typeapp/releases)公开后，才表示这一批次的四平台构建、分发和公开消费均已通过。源码提交、构建成功和候选草稿分别有自己的状态，不能代替最终发布结果。
+首次公开 RC 正准备以 `v1.0.0-rc.5` 重新验收，尚未公开 Release。RC4 已通过四平台完整矩阵并保存原候选，但发布检查误用了缓存十二小时的 Packagist 包详情 API；修正改用 Composer v2 静态索引。此前候选保留原标签、草稿和执行记录，具体见[首次 RC 验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。以下命令须在对应版本公开后使用。只有[主仓 Release](https://github.com/zoujingli/typeapp/releases)公开后，才表示该批次的四平台构建、分发和公开消费均已通过。
 
 ## 一次 tag 如何形成版本
 
@@ -29,10 +29,10 @@ flowchart TB
 
 | 目标 | 附件名 |
 | --- | --- |
-| Linux x64 | `typeapp-iot-1.0.0-rc.3-linux-x64.tar.gz` |
-| Linux ARM64 | `typeapp-iot-1.0.0-rc.3-linux-arm64.tar.gz` |
-| macOS ARM64 | `typeapp-iot-1.0.0-rc.3-macos-arm64.tar.gz` |
-| Windows x64 | `typeapp-iot-1.0.0-rc.3-windows-x64.zip` |
+| Linux x64 | `typeapp-iot-1.0.0-rc.5-linux-x64.tar.gz` |
+| Linux ARM64 | `typeapp-iot-1.0.0-rc.5-linux-arm64.tar.gz` |
+| macOS ARM64 | `typeapp-iot-1.0.0-rc.5-macos-arm64.tar.gz` |
+| Windows x64 | `typeapp-iot-1.0.0-rc.5-windows-x64.zip` |
 
 同一 Release 提供 `SHA256SUMS` 和 `release-manifest.json`。前者用于核对下载字节，后者记录源码、版本、候选运行轮次、平台及同一产物的三库验收。摘要应从受信发布渠道取得。
 
@@ -40,7 +40,7 @@ flowchart TB
 
 ```bash
 set -eu
-release_version=1.0.0-rc.3
+release_version=1.0.0-rc.5
 release_base="https://github.com/zoujingli/typeapp/releases/download/v${release_version}"
 release_archive="typeapp-iot-${release_version}-linux-x64.tar.gz"
 curl --fail --location --output "$release_archive" "$release_base/$release_archive"
@@ -64,21 +64,21 @@ cd typeapp-iot
 组件与通用模板不包含物联中心前端。发布公开且 Packagist 已列出该版本后，可从默认公共索引安装 RC。下面以 SQLite 独立应用为例：
 
 ```bash
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.3
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.5
 cd my-app
 php configure.php sqlite
 composer config minimum-stability RC
 composer config prefer-stable true
 composer require --no-update \
-  zoujingli/type-core:1.0.0-rc.3 \
-  zoujingli/type-orm:1.0.0-rc.3 \
-  zoujingli/type-orm-sqlite:1.0.0-rc.3 \
-  zoujingli/type-runtime:1.0.0-rc.3 \
-  zoujingli/type-log:1.0.0-rc.3 \
-  zoujingli/type-validate:1.0.0-rc.3
+  zoujingli/type-core:1.0.0-rc.5 \
+  zoujingli/type-orm:1.0.0-rc.5 \
+  zoujingli/type-orm-sqlite:1.0.0-rc.5 \
+  zoujingli/type-runtime:1.0.0-rc.5 \
+  zoujingli/type-log:1.0.0-rc.5 \
+  zoujingli/type-validate:1.0.0-rc.5
 composer require --dev --no-update \
-  zoujingli/type-build:1.0.0-rc.3 \
-  zoujingli/type-testing:1.0.0-rc.3
+  zoujingli/type-build:1.0.0-rc.5 \
+  zoujingli/type-testing:1.0.0-rc.5
 composer install --no-plugins --no-scripts
 php dev.php check
 ```
@@ -110,12 +110,16 @@ git push origin "$release_tag"
 需要补齐既有候选时，使用原版本重试，不创建或移动标签：
 
 ```bash
-gh workflow run release.yml --ref v1.0.0-rc.3 -f version=v1.0.0-rc.3
+gh workflow run release.yml --ref v1.0.0-rc.5 -f version=v1.0.0-rc.5
 ```
 
 候选尚未封存时，重新执行完整工作流；不要把不同运行轮次的零散平台结果拼为一次验收。候选草稿已存在时，工作流复用原运行的验收和已保存附件；附件上传不完整时从原 Actions artifact 恢复。原证据过期或同名附件摘要不同会停止，不能靠重编译冒充原候选。
 
-子仓 Git 写入使用各仓独立 deploy key。跨仓 Release 使用主仓 Actions secret `TYPE_RELEASE_TOKEN`，凭据为仅授权映射中 16 个子仓 **Contents: Read and write** 的 fine-grained PAT；主仓 Release 使用自身 `GITHUB_TOKEN`。未配置该 secret 时在构建前明确失败。Packagist 沿用各子仓 webhook，并有界等待索引，不跳过公开安装验证。
+工作流代码同样固定在所选 tag，后续 `main` 上的修复不会自动注入旧版本。当前 `main` 的发布工具对创建和公开后的列表回读增加了有界重试；超过预算仍保留失败与已有草稿，可按上述命令继续原候选。
+
+子仓 Git 写入使用各仓独立 deploy key。跨仓 Release 使用主仓 Actions secret `TYPE_RELEASE_TOKEN`，凭据为仅授权映射中 16 个子仓 **Contents: Read and write** 的 fine-grained PAT；主仓 Release 使用自身 `GITHUB_TOKEN`。未配置该 secret 时在构建前明确失败。Packagist 沿用各子仓 webhook，有界等待 Composer v2 静态索引中的版本与提交，再执行公开安装验证。包详情 API 存在长时间缓存，不用它判断新版本是否可安装。
+
+版本模式只创建固定的子仓 tag，不移动各子仓的 `main`。`dev-main` 由独立的分支分发维护，不一定与最新版本 tag 指向同一提交。需要复现本批次时安装明确版本并提交锁文件，不用 `dev-main` 代替该版本。
 
 跨仓发布不具有原子性。失败时已成功的标签和 Release 保留，回执写入 `release-receipts-<轮次>`；用同一 tag 重试后补齐。全部 16 个子仓公开并回读通过，主仓才公开。标签或附件内容冲突需要核对原因和新版本计划，不能强制覆盖。
 

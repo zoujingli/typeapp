@@ -13,7 +13,7 @@ flowchart LR
 
 ## 1. 创建并检查应用
 
-下面使用 `main` 开发分支。在准备存放项目的目录执行；需要复现已发布批次时，先完成[按版本创建与安装](releases.md#composer-按版本安装)，再从本教程的配置与迁移步骤继续，不重复创建项目：
+下面使用模板和组件子仓的 `main` 开发分支。在准备存放项目的目录执行；需要复现已发布批次时，先完成[按版本创建与安装](releases.md#composer-按版本安装)，再从本教程的配置与迁移步骤继续，不重复创建项目：
 
 ```bash
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main

@@ -34,7 +34,7 @@ TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typep
 
 ## 快速开始
 
-以下命令用于跟进 `main` 的源码开发：准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展。需要复现已发布批次时，使用[Composer 按版本安装](docs/guide/releases.md#composer-按版本安装)。完整环境分工见[环境与依赖](docs/guide/environment.md)，平台执行方式与验收范围见[平台与验收](docs/guide/platforms.md)。从 Packagist 创建独立应用，先选择数据库再安装依赖：
+以下命令用于跟进模板和组件子仓 `main` 的源码开发：准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展。需要复现已发布批次时，使用[Composer 按版本安装](docs/guide/releases.md#composer-按版本安装)。完整环境分工见[环境与依赖](docs/guide/environment.md)，平台执行方式与验收范围见[平台与验收](docs/guide/platforms.md)。从 Packagist 创建独立应用，先选择数据库再安装依赖：
 
 ```bash
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main

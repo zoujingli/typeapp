@@ -8,24 +8,24 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 ## 当前平台状态
 
-新版本发布会重新运行四平台完整验收，并对最终下载归档解包执行三库、页面安装和真实 API 检查。下表保留已完成的历史基线；新增前端内嵌和自动 Release 的结果以对应版本的 `release-manifest.json` 为准，不能从旧基线推导。触发与发布门禁见[版本发布](releases.md)。
+新版本发布会重新运行四平台完整验收，并对最终下载归档解包执行三库、页面安装和真实 API 检查。下表记录 RC4 已通过的原生范围；跨仓分发与公开 Release 是后续独立门禁，见[版本发布](releases.md)。
 
-截至 2026-09-25，源码 **`bf28c8b`** 的四平台默认 GitHub Actions 矩阵全部成功，使用 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2 与内置 Swoole 6.2.1。这是已验收源码基线，不表示后续每次提交自动获得相同结论。
+截至 2026-09-26，`v1.0.0-rc.4` 对应源码 **`fedc731`** 的[四平台完整原生矩阵](https://github.com/zoujingli/typeapp/actions/runs/36236424786)及汇总门禁全部成功，使用 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2 与内置 Swoole 6.2.1。每个平台的最终归档另用同一程序完成三库部署检查；该结果不表示后续提交自动获得相同结论。
 
 | 平台与实际环境 | 已通过的范围 | 部署验收边界 |
 | --- | --- | --- |
-| Linux x64，Ubuntu 24.04 | [19 个分组及汇总](https://github.com/zoujingli/typeapp/actions/runs/36141190608)：完整应用 AOT、三库应用、组件、TLS、恢复与回滚 | 同一程序、清单和 scratch 镜像通过三库无源码、无 SDK 部署及备份恢复 |
-| Linux ARM64，Ubuntu 24.04 原生 ARM runner | [9 个默认分组](https://github.com/zoujingli/typeapp/actions/runs/36141196518)：独立 ORM、完整应用 AOT、三库应用、恢复与回滚 | 当前结果来自原生 ARM64 runner；各组的产物与隔离范围单独记录 |
-| macOS ARM64，macOS 15 原生 runner | [8 个默认分组](https://github.com/zoujingli/typeapp/actions/runs/36141179921)：HTTP、ORM、三库完整应用 AOT、部署、恢复、回滚与 TLS | 主应用三库使用同一程序，报告 `no_source=false`；另有禁止读取源码/SDK及执行编译器的三库独立模板包验收 |
-| Windows x64，Windows 2022 原生 runner | [完整流程](https://github.com/zoujingli/typeapp/actions/runs/36141201763)：SDK、三库独立 ORM、主应用 PHP/AOT、模板与搬迁包 | 主应用三库使用同一程序，报告 `no_source=false`；搬迁包不含 PHP 源码，但未禁止读取原项目/SDK或执行编译器 |
+| Linux x64，Ubuntu 24.04 | 19 个分组及汇总：完整应用 AOT、三库应用、组件、TLS、恢复与回滚 | 最终归档三库部署禁止读取源码、SDK、Composer 及执行 PHP/编译器；另有 scratch 镜像与备份恢复验收 |
+| Linux ARM64，Ubuntu 24.04 原生 ARM runner | 9 个分组及汇总：独立 ORM、完整应用 AOT、三库应用、恢复与回滚 | 最终归档三库部署禁止读取源码、SDK、Composer 及执行 PHP/编译器 |
+| macOS ARM64，macOS 15 原生 runner | 8 个分组及汇总：HTTP、ORM、三库完整应用 AOT、部署、恢复、回滚与 TLS | 最终归档三库部署禁止读取源码、SDK、Composer 及执行 PHP/编译器；系统缓存审计限制见下文 |
+| Windows x64，Windows 2022 原生 runner | 完整流程：SDK、三库独立 ORM、主应用 PHP/AOT、模板与搬迁包 | 最终 ZIP 不含 PHP 源码、Composer 或 SDK，三库部署通过；未强制禁止访问构建机原项目/SDK 或执行编译器 |
 
-三库指 MySQL、PostgreSQL、SQLite。独立 ORM 消费者验证模型与运行时的公开契约，主应用和通用模板分别验证自己的业务入口。主应用、模板和组件消费者有各自的产物，不能合并为“全部平台同一产物通过最严格无源码隔离”。Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
+三库指 MySQL、PostgreSQL、SQLite。四份最终归档的十二份报告均覆盖运行库审计、83 个内嵌前端文件的安装与摘要、GET/HEAD 和缓存、平台及客户登录、站点默认值、角色 CRUD 和正常停止。独立 ORM、主应用和通用模板分别验证自己的入口与产物，不能合并为“全部平台同一产物通过最严格无源码隔离”。Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
 
 macOS 发布包的 `verify-runtime` 目前核对构建机整套 dyld 系统缓存。macOS 15 候选包在 macOS 27 / ARM64 上的补验中，普通安装、服务和页面可运行，但完整部署审计因缓存摘要不同而拒绝。这不构成 macOS 27 支持；系统更新也可能触发同类限制。当前验收范围以实际构建和运行基线为准，详情见[RC 验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
-同一源码的 [15 组件批次](https://github.com/zoujingli/typeapp/actions/runs/36144180719)与[应用模板分发](https://github.com/zoujingli/typeapp/actions/runs/36146310707)也已成功，公开安装和三库原生集成通过。Packagist 的 16 个 `dev-main` 引用与分发提交一致，自动同步已启用；安装方式见[组件参考](components.md)。这仍是开发分支，没有稳定版本标签。
+此前 `bf28c8b` 的 [15 组件批次](https://github.com/zoujingli/typeapp/actions/runs/36144180719)与[应用模板分发](https://github.com/zoujingli/typeapp/actions/runs/36146310707)已完成公开安装和三库原生集成。Packagist 的 16 个 `dev-main` 引用与该分发提交一致，自动同步已启用。版本 tag 分发不移动子仓 `main`；安装方式见[组件参考](components.md)。
 
-完整源码、产物摘要及隔离详情见[本轮验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/native-release-20260925.md)；较早的工具链和模拟环境结果保留在[历史平台记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)。MySQL、SQLite 仍采用安全关闭重建，完整三库物理连接复用未完成。本轮未运行可选性能基准，默认矩阵通过也不代表全部协议、容量和业务故障组合验收完成。
+完整源码、归档摘要及隔离详情见[RC 验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)；[开发分支基线](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/native-release-20260925.md)及[更早的平台记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)保留原身份。MySQL、SQLite 仍采用安全关闭重建，完整三库物理连接复用未完成。本轮未运行可选性能基准，默认矩阵通过也不代表全部协议、容量和业务故障组合验收完成。
 
 ## 通信结果如何理解
 
