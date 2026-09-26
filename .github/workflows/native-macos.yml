@@ -1,6 +1,17 @@
 name: macOS ARM64 原生验收
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      frontend_artifact:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
   push:
     branches: [main]
   pull_request:
@@ -36,12 +47,14 @@ jobs:
         suite: ${{ fromJSON(inputs.scope == 'tls' && '["tls"]' || (inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable"]')) }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
+      TYPE_RELEASE_VERSION: ${{ inputs.version }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
       HOMEBREW_NO_AUTO_UPDATE: '1'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
           fetch-depth: 0
       - name: 安装原生构建和专用测试数据库工具
@@ -166,10 +179,22 @@ jobs:
           [[ "$(PHPRC="$task_runtime_ini" PHP_INI_SCAN_DIR="$task_control/php.d" "$task_runtime_probe")" == '1 1 1 1' ]]
           printf 'TYPE_CURL_MODULE=%s\nPHP_HOME=%s\nPHPX_HOME=%s\nTYPE_NATIVE_PHP_INI=%s\nPHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' \
             "$task_curl_module" "$PHP_HOME" "$PHPX_HOME" "$task_runtime_ini" "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
+      - name: 准备并核对内嵌管理前端
+        uses: ./.github/actions/prepare-frontend
+        with:
+          artifact: ${{ inputs.frontend_artifact }}
       - name: 运行真实原生验收
         env:
           TYPE_MACOS_SUITE: ${{ matrix.suite }}
         run: bash .github/scripts/run-macos-native.sh "$TYPE_MACOS_SUITE"
+      - name: 保存最终发布候选
+        if: inputs.version != '' && matrix.suite == 'deployment'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-candidate-macos-arm64-${{ github.run_attempt }}
+          path: build/release-candidate/attachments/*
+          if-no-files-found: error
+          retention-days: 90
       - name: 保存构建与验证结果
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -195,3 +220,13 @@ jobs:
             build/native-*-tls-*/certificate-*.log
             build/native-*-tls-*/php.log
             build/native-*-tls-*/native.log
+
+  macos-complete:
+    name: macos-complete
+    needs: native
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          MATRIX_RESULT: ${{ needs.native.result }}
+        run: test "$MATRIX_RESULT" = success

@@ -16,6 +16,20 @@ final class Batch
         if (!preg_match('/^[a-f0-9]{40}$/D', $source)) {
             throw new \InvalidArgumentException('原生验收需要固定完整 SHA');
         }
+        $releaseRun = getenv('TYPE_RELEASE_EVIDENCE_RUN');
+        if ($releaseRun !== false && $releaseRun !== '') {
+            $attempt = getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT');
+            $version = getenv('TYPE_RELEASE_VERSION');
+            if (!ctype_digit($releaseRun) || (int) $releaseRun < 1 || !is_string($attempt) || !ctype_digit($attempt) || (int) $attempt < 1
+                || !is_string($version) || !preg_match('/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-rc\.[1-9][0-9]*)?$/D', $version)) {
+                throw new \RuntimeException('发布验收需要准确运行、轮次和版本');
+            }
+            $endpoint = 'repos/zoujingli/typeapp/actions/runs/' . $releaseRun . '/attempts/' . $attempt;
+            $run = json_decode(Process::output(['gh', 'api', $endpoint], $root), true, 512, JSON_THROW_ON_ERROR);
+            $jobs = json_decode(Process::output(['gh', 'api', $endpoint . '/jobs?per_page=100'], $root), true, 512, JSON_THROW_ON_ERROR);
+            self::verifyReleaseEvidence($run, $jobs, $source, $version, (int) $releaseRun, (int) $attempt);
+            return 'https://github.com/zoujingli/typeapp/actions/runs/' . $releaseRun . '/attempts/' . $attempt;
+        }
         $runs = json_decode(Process::output(['gh', 'api', 'repos/zoujingli/typeapp/actions/workflows/native-command.yml/runs?head_sha=' . $source . '&status=success&per_page=100'], $root), true, 512, JSON_THROW_ON_ERROR);
         foreach ($runs['workflow_runs'] ?? [] as $run) {
             if (($run['head_sha'] ?? '') !== $source || ($run['status'] ?? '') !== 'completed'
@@ -39,6 +53,46 @@ final class Batch
             }
         }
         throw new \RuntimeException('固定提交尚无完整成功的主分支原生 CI');
+    }
+
+    /** 发布链允许分发任务继续运行，但固定轮次的四平台完整验收必须已全部成功。 */
+    public static function verifyReleaseEvidence(array $run, array $jobs, string $source, string $version, int $id, int $attempt): void
+    {
+        if (($run['id'] ?? null) !== $id || ($run['run_attempt'] ?? null) !== $attempt
+            || ($run['head_sha'] ?? '') !== $source || ($run['head_branch'] ?? '') !== $version
+            || ($run['head_repository']['full_name'] ?? '') !== 'zoujingli/typeapp'
+            || ($run['path'] ?? '') !== '.github/workflows/release.yml'
+            || !in_array($run['event'] ?? '', ['push', 'workflow_dispatch'], true)
+            || !is_array($jobs['jobs'] ?? null) || ($jobs['total_count'] ?? 0) !== count($jobs['jobs'])) {
+            throw new \RuntimeException('发布原生验收的源码、标签、工作流或执行轮次不一致');
+        }
+        $required = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete',
+            'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows'];
+        foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers',
+            'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services'] as $suite) {
+            $required[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
+        }
+        foreach (['contracts', 'application', 'deployment', 'rollout', 'recovery', 'http', 'orm', 'reliable'] as $suite) {
+            $required[] = 'macos-arm64 / macOS ARM64 · ' . $suite;
+        }
+        foreach (['contracts', 'orm', 'database', 'http', 'redis', 'tasks', 'application', 'recovery', 'rollout'] as $suite) {
+            $required[] = 'linux-arm64 / Linux ARM64 · ' . $suite;
+        }
+        $seen = [];
+        foreach ($jobs['jobs'] as $job) {
+            $name = $job['name'] ?? '';
+            if (!in_array($name, $required, true)) {
+                continue;
+            }
+            if (isset($seen[$name]) || ($job['head_sha'] ?? '') !== $source || ($job['status'] ?? '') !== 'completed'
+                || ($job['conclusion'] ?? '') !== 'success') {
+                throw new \RuntimeException('发布原生验收任务未成功或重复：' . $name);
+            }
+            $seen[$name] = true;
+        }
+        if (array_diff($required, array_keys($seen)) !== []) {
+            throw new \RuntimeException('发布缺少完整四平台原生验收任务');
+        }
     }
 
     /** 从固定提交核对全部组件，计划身份不受工作区补写内容影响。 */

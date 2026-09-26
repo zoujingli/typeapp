@@ -15,8 +15,12 @@ try {
     $root = dirname(__DIR__);
     $source = $argv[1] ?? '';
     $batchFile = $argv[2] ?? '';
-    if (count($argv) !== 3 || !preg_match('/^[a-f0-9]{40}$/D', $source)) {
-        throw new InvalidArgumentException('用法：php tools/distribute-template.php <固定 SHA> <已完成插件批次报告>');
+    $mode = $argv[3] ?? 'branch';
+    $version = $argv[4] ?? '';
+    if (!in_array(count($argv), [3, 5], true) || !preg_match('/^[a-f0-9]{40}$/D', $source)
+        || !in_array($mode, ['branch', 'tag'], true)
+        || ($mode === 'branch' ? $version !== '' : !preg_match('/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-rc\.[1-9][0-9]*)?$/D', $version))) {
+        throw new InvalidArgumentException('用法：php tools/distribute-template.php <固定 SHA> <已完成插件批次报告> [branch|tag <版本>]');
     }
     $report = ['source' => $source, 'status' => 'running', 'stage' => 'preparation', 'checkout-verified' => false];
     Process::report($reportFile, $report);
@@ -27,6 +31,9 @@ try {
     $batch = json_decode(file_get_contents($batchFile), true, 512, JSON_THROW_ON_ERROR);
     $packages = json_decode(Process::output(['git', 'show', $source . ':.github/distribution.json'], $root), true, 512, JSON_THROW_ON_ERROR);
     Batch::verifyReport($root, $source, $batch, $packages);
+    if ($batch['mode'] !== $mode || $batch['version'] !== $version) {
+        throw new RuntimeException('模板模式及版本必须与组件批次一致');
+    }
     $report['native-ci'] = Batch::nativeEvidence($root, $source);
     $mapping = json_decode(file_get_contents($root . '/.github/template-distribution.json'), true, 512, JSON_THROW_ON_ERROR);
     if (($mapping['protocol'] ?? 0) !== 1 || ($mapping['source-repository'] ?? '') !== 'zoujingli/typeapp'
@@ -61,7 +68,7 @@ try {
     if (Process::output(['git', 'rev-parse', $split . '^{tree}'], $root) !== $tree) {
         throw new RuntimeException('模板拆分内容不一致');
     }
-    $plan = ['id' => hash('sha256', $source . ':' . $tree), 'source' => $source, 'mode' => 'branch', 'version' => '',
+    $plan = ['id' => hash('sha256', $source . ':' . $tree . ':' . $mode . ':' . $version), 'source' => $source, 'mode' => $mode, 'version' => $version,
         'items' => ['type-project' => ['package' => 'zoujingli/type-project', 'repository' => 'zoujingli/type-project', 'branch' => 'main', 'split' => $split]]];
     $report['stage'] = 'publish';
     Process::report($reportFile, $report);

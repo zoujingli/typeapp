@@ -23,7 +23,9 @@ foreach ($mapping['packages'] as $name => $package) {
     expect(is_array($item) && ($item['repository'] ?? '') === $package['repository'] && preg_match('/^[a-f0-9]{40}$/D', $item['split'] ?? ''), '缺少准确分发提交：' . $name);
     $version = $report['mode'] === 'tag' ? $report['version'] : 'dev-main#' . $item['split'];
     $composer[in_array($name, ['type-build', 'type-testing'], true) ? 'require-dev' : 'require'][$package['composer-name']] = $version;
-    $composer['repositories'][] = ['type' => 'git', 'url' => 'https://github.com/' . $package['repository'] . '.git'];
+    if ($report['mode'] !== 'tag') {
+        $composer['repositories'][] = ['type' => 'git', 'url' => 'https://github.com/' . $package['repository'] . '.git'];
+    }
 }
 $composer['require-dev']['swoole/typephp'] = '0.9.3';
 $composer['require-dev']['swoole/phpx'] = '2.9.2';
@@ -46,6 +48,7 @@ foreach (array_merge($lock['packages'], $lock['packages-dev']) as $package) {
     $name = substr($package['name'], strlen('zoujingli/'));
     $expected = $report['items'][$name];
     expect($package['source']['reference'] === $expected['split'], '实际安装提交与批次不同：' . $name);
+    expect($report['mode'] !== 'tag' || ltrim($package['version'], 'v') === ltrim($report['version'], 'v'), '实际版本与批次不同：' . $name);
     expect($package['source']['type'] === 'git' && !is_link($consumer . '/vendor/' . $package['name']), '实际消费混入 path 或符号链接');
     $actual[$name] = $package['source']['reference'];
 }

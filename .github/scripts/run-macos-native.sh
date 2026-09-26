@@ -107,6 +107,7 @@ case "$task_suite" in
     composer check
     composer cs-check
     composer test:unit
+    composer test:embedded-resources
     composer test:testing-portable
     composer test:configuration
     composer test:helpers
@@ -139,6 +140,13 @@ case "$task_suite" in
     /bin/launchctl print "gui/$(id -u)" >/dev/null
     composer test:service-launchd
     php tests/application-template.php sqlite --onboarding --native --package
+    if [[ -n "${TYPE_RELEASE_VERSION:-}" ]]; then
+      php tests/release-candidate.php prepare
+      for task_driver in mysql pgsql sqlite; do
+        php tests/release-candidate.php test "$task_driver" "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")"
+      done
+      php tests/release-candidate.php finish
+    fi
     ;;
   rollout)
     php tests/native-rollout-redis-test.php "$TYPE_REDIS_SERVER"

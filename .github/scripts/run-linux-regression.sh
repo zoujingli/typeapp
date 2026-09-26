@@ -31,6 +31,7 @@ case "$task_suite" in
     "$task_composer" check
     "$task_composer" cs-check
     "$task_composer" test:unit
+    "$task_composer" test:embedded-resources
     "$task_composer" test:testing-portable
     "$task_composer" test:configuration
     "$task_composer" test:helpers
@@ -74,6 +75,13 @@ case "$task_suite" in
   application)
     if [[ "$task_build" == build ]]; then php tests/build-native-application.php; fi
     php tests/native-database-application.php build/app/type-app "${TYPE_MYSQL_TOOLS:?}" "${TYPE_PGSQL_TOOLS:?}"
+    if [[ -n "${TYPE_RELEASE_VERSION:-}" ]]; then
+      php tests/release-candidate.php prepare
+      for task_driver in mysql pgsql sqlite; do
+        php tests/release-candidate.php test "$task_driver" "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS"
+      done
+      php tests/release-candidate.php finish
+    fi
     ;;
   recovery)
     if [[ "$task_build" == build ]]; then php tests/build-native-application.php; fi

@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 require __DIR__ . '/support.php';
+require dirname(__DIR__) . '/tools/distribution/Process.php';
+require dirname(__DIR__) . '/tools/distribution/Batch.php';
 
 /**
  * 运行独立消费者并要求成功，从其 verification.json 读取本轮业务报告。
@@ -29,15 +31,18 @@ mkdir($consumer, 0700, true);
 $mapping = json_decode(file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
 $batch = $remote ? json_decode(file_get_contents($root . '/build/distribution/batch-result.json'), true, 512, JSON_THROW_ON_ERROR) : null;
 if ($remote) {
-    expect($batch['complete'] === true, '完整消费必须使用已完成的真实批次');
+    \TypeApp\Distribution\Batch::verifyReport($root, \TypeApp\Distribution\Process::output(['git', 'rev-parse', 'HEAD'], $root), $batch, $mapping);
 }
 $composer = ['name' => 'type-tests/full-integration', 'type' => 'project', 'license' => 'Apache-2.0', 'require' => [], 'require-dev' => [], 'repositories' => [],
     'autoload' => ['classmap' => ['examples/integration', 'examples/model/Drivers.php', 'examples/orm-suite/Schema.php', 'examples/outbox/Adapters.php', 'examples/coordination/QueueDispatchTask.php']],
     'minimum-stability' => 'dev', 'prefer-stable' => true, 'config' => ['allow-plugins' => false]];
 foreach ($mapping['packages'] as $name => $package) {
-    $composer[in_array($name, ['type-build', 'type-testing'], true) ? 'require-dev' : 'require'][$package['composer-name']] = $remote ? 'dev-main#' . $batch['items'][$name]['split'] : '~1.0.0@dev';
-    $composer['repositories'][] = $remote ? ['type' => 'git', 'url' => 'https://github.com/' . $package['repository'] . '.git']
-        : ['type' => 'path', 'url' => $root . '/' . $package['prefix'], 'options' => ['symlink' => false, 'versions' => [$package['composer-name'] => '1.0.x-dev']]];
+    $composer[in_array($name, ['type-build', 'type-testing'], true) ? 'require-dev' : 'require'][$package['composer-name']]
+        = $remote ? ($batch['mode'] === 'tag' ? $batch['version'] : 'dev-main#' . $batch['items'][$name]['split']) : '~1.0.0@dev';
+    if (!$remote || $batch['mode'] !== 'tag') {
+        $composer['repositories'][] = $remote ? ['type' => 'git', 'url' => 'https://github.com/' . $package['repository'] . '.git']
+            : ['type' => 'path', 'url' => $root . '/' . $package['prefix'], 'options' => ['symlink' => false, 'versions' => [$package['composer-name'] => '1.0.x-dev']]];
+    }
 }
 $composer['require-dev']['swoole/typephp'] = '0.9.3';
 $composer['require-dev']['swoole/phpx'] = '2.9.2';
@@ -70,6 +75,7 @@ foreach (array_merge($lock['packages'], $lock['packages-dev']) as $package) {
     $packages[$name] = $package['version'];
     if ($remote) {
         expect($package['source']['reference'] === $batch['items'][$name]['split'], '完整应用消费了批次外的插件提交');
+        expect($batch['mode'] !== 'tag' || ltrim($package['version'], 'v') === ltrim($batch['version'], 'v'), '完整应用没有安装要求的组件版本');
     }
     expect(!is_link($consumer . '/vendor/' . $package['name']), '完整消费不能借用主仓符号链接');
 }

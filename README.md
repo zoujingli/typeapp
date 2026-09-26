@@ -51,6 +51,8 @@ php dev.php check
 
 运行本仓库附带的成品案例物联中心，见[物联网中心](docs/guide/iot-center.md)。
 
+物联中心前端随 TypePHP 构建编入主程序，首次 `app:install` 安装到 `public/`，升级可用 `web:install --dry-run --force` 预览后再执行 `web:install --force`。普通启动不释放资源，运行端无需 Node.js 或前端开发服务器。推送版本 tag 的四平台构建、同版本组件分发、Packagist 核验与 Release 顺序见[版本发布与安装](docs/guide/releases.md)。
+
 ## 仓库结构
 
 ```text

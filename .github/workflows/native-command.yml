@@ -1,6 +1,17 @@
 name: 原生命令验证
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      frontend_artifact:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
   push:
     branches: [main]
   pull_request:
@@ -65,6 +76,7 @@ jobs:
           --health-timeout=5s
           --health-retries=20
     env:
+      TYPE_RELEASE_VERSION: ${{ inputs.version }}
       COMPOSER_NO_INTERACTION: '1'
       TYPE_REDIS_HOST: 127.0.0.1
       TYPE_MYSQL_HOST: 127.0.0.1
@@ -80,6 +92,8 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
 
       - name: 校验 Pull Request 的 DCO 签署
         if: github.event_name == 'pull_request'
@@ -159,12 +173,17 @@ jobs:
       - name: 复用仓库内置的受控 Swoole
         run: bash .github/scripts/prepare-linux-swoole.sh
 
+      - name: 准备并核对内嵌管理前端
+        uses: ./.github/actions/prepare-frontend
+        with:
+          artifact: ${{ inputs.frontend_artifact }}
       - name: 检查源码与公开 PHP 行为
         if: matrix.suite == 'foundation'
         run: |
           composer check
           composer cs-check
           composer test:unit
+          composer test:embedded-resources
           composer test:configuration
           composer test:source-rewrites
           composer test:distribution-batch
@@ -519,7 +538,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install --yes sqlite3
+          sudo apt-get install --yes sqlite3 bubblewrap util-linux
           composer typeapp:build
           php tests/native-package.php build/app/type-app --archive
           composer test:service-definition
@@ -530,6 +549,13 @@ jobs:
           for task_driver in mysql pgsql sqlite; do
             php tests/native-package-clean.php build/ci-linux-release "$task_release_sha" "$task_driver" --recover
           done
+          if [[ -n "$TYPE_RELEASE_VERSION" ]]; then
+            TYPE_BWRAP_BINARY="$(command -v bwrap)"
+            export TYPE_BWRAP_BINARY
+            php tests/release-candidate.php prepare
+            for task_driver in mysql pgsql sqlite; do php tests/release-candidate.php test "$task_driver"; done
+            php tests/release-candidate.php finish
+          fi
 
       - name: 验证三库无源码双版本升级与回滚
         if: matrix.suite == 'packaged-rollout'
@@ -546,6 +572,15 @@ jobs:
       - name: 验证原生systemd服务完整生命周期
         if: matrix.suite == 'services'
         run: bash .github/scripts/run-linux-service.sh
+
+      - name: 保存最终发布候选
+        if: inputs.version != '' && matrix.suite == 'delivery'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-candidate-linux-x64-${{ github.run_attempt }}
+          path: build/release-candidate/attachments/*
+          if-no-files-found: error
+          retention-days: 90
 
       - name: 保存构建身份与原生产物
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -587,7 +622,7 @@ jobs:
   native-complete:
     name: native-complete
     needs: native-command
-    if: always() && (github.event_name != 'workflow_dispatch' || inputs.suite == 'all')
+    if: always() && (inputs.source_sha != '' || github.event_name != 'workflow_dispatch' || inputs.suite == 'all')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

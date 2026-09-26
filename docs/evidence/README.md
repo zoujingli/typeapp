@@ -4,6 +4,7 @@
 
 | 记录 | 原始范围 |
 | --- | --- |
+| [前端内嵌与版本发布本机验收](frontend-release-20260926.md) | 内嵌资源、页面安装更新、macOS ARM64 同一归档三库无源码与恢复、发布契约；首次 RC 另行验收 |
 | [四平台原生 CI 与开发分支发布](native-release-20260925.md) | 同一 bf28c8b 源码的四平台默认矩阵、目录包隔离边界、组件与模板发布及 Packagist 同步 |
 | [TypePHP 0.9.3 升级](typephp-upgrade-0.9.3.md) | macOS ARM64 编译线程、全量应用、三库无源码运行与性能对照 |
 | [内置模块与组件迁移](swoole-bundle.md) | 四平台文件身份、独立组件选择及 macOS ARM64 原生回归 |

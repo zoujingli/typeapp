@@ -207,6 +207,9 @@ try {
         if (!$DevelopmentOnly) {
             Invoke-TaskProcess $taskPhp @('tests/iot-identity.php', 'build/app/type-app.exe', $Driver, '--app') (Join-Path $taskEvidence 'native.log') $taskApplicationSeconds $taskEnvironment | Out-Null
             Invoke-TaskProcess $taskPhp @('tests/application-template.php', $Driver, '--onboarding', '--native', '--package') (Join-Path $taskEvidence 'onboarding.log') 2400 $taskEnvironment | Out-Null
+            if ($env:TYPE_RELEASE_VERSION) {
+                Invoke-TaskProcess $taskPhp @('tests/release-candidate.php', 'test', $Driver) (Join-Path $taskEvidence 'release-candidate.log') 900 $taskEnvironment | Out-Null
+            }
         }
     }
     $taskPassed = $true

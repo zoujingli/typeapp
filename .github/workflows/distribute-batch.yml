@@ -1,6 +1,23 @@
 name: 公开插件批次分发
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      mode:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      evidence_run:
+        required: true
+        type: string
+      evidence_attempt:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       source_sha:
@@ -30,10 +47,13 @@ env:
   SOURCE_SHA: ${{ inputs.source_sha }}
   BATCH_MODE: ${{ inputs.mode }}
   BATCH_VERSION: ${{ inputs.version }}
+  TYPE_RELEASE_VERSION: ${{ inputs.evidence_run != '' && inputs.version || '' }}
+  TYPE_RELEASE_EVIDENCE_RUN: ${{ inputs.evidence_run }}
+  TYPE_RELEASE_EVIDENCE_ATTEMPT: ${{ inputs.evidence_attempt }}
 
 jobs:
   plan:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (inputs.evidence_run != '' && github.ref == format('refs/tags/{0}', inputs.version))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -61,6 +81,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: type-batch-plan
+          overwrite: true
           path: build/distribution/batch-plan.json
           if-no-files-found: error
           retention-days: 90
@@ -142,6 +163,9 @@ jobs:
         run: bash .github/scripts/prepare-linux-runtime.sh
       - name: 为公开消费启用受控 Swoole 与 CLI 依赖
         run: bash .github/scripts/prepare-linux-swoole.sh
+      - name: 等待本批15组件的Packagist索引
+        if: inputs.mode == 'tag'
+        run: php tools/wait-packagist.php build/distribution/batch-result.json
       - name: 从全部公开子仓安装并编译公共组合
         run: php tests/batch-consumer.php build/distribution/batch-result.json --native
       - name: 从同批公开插件完成三库原生业务集成
@@ -162,6 +186,7 @@ jobs:
         if: always()
         with:
           name: type-batch-consumption
+          overwrite: true
           path: |
             build/batch-consumer-*/verification.json
             build/batch-consumer-*/composer.lock
@@ -214,6 +239,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: type-batch-item-${{ matrix.name }}
+          overwrite: true
           path: build/distribution/items/${{ matrix.name }}.json
           if-no-files-found: warn
           retention-days: 90
@@ -253,6 +279,7 @@ jobs:
         if: always()
         with:
           name: type-batch-result
+          overwrite: true
           path: build/distribution/batch-result.json
           if-no-files-found: error
           retention-days: 90

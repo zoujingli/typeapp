@@ -118,7 +118,7 @@ final class DistributionReportTest extends TestCase
             $environment = \testCommandEnvironment($directory . '/bin', $environment);
             $environment['COMPOSER_BINARY'] = $directory . '/bin/composer';
             $command = $entry === 'template'
-                ? [PHP_BINARY, $checkout . '/tools/distribute-template.php', $source, $reportPath]
+                ? [PHP_BINARY, $checkout . '/tools/distribute-template.php', $source, $reportPath, $tag ? 'tag' : 'branch', $tag ? 'v1.0.0' : '']
                 : [PHP_BINARY, $checkout . '/tests/batch-consumer.php', $reportPath];
             $process = new Process($command, $checkout, $environment);
             try {

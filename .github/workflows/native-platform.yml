@@ -1,6 +1,17 @@
 name: Windows x64 原生验收
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      frontend_artifact:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       scope:
@@ -29,6 +40,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 120
     env:
+      TYPE_RELEASE_VERSION: ${{ inputs.version }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
     defaults:
@@ -37,7 +49,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
+          fetch-depth: 0
       - name: 准备已核验的 Windows x64 ZTS SDK
         run: ./.github/scripts/prepare-windows-native.ps1
       - name: 安装锁定开发与生产依赖
@@ -46,6 +60,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" validate --strict
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 准备并核对内嵌管理前端
+        uses: ./.github/actions/prepare-frontend
+        with:
+          artifact: ${{ inputs.frontend_artifact }}
       - name: 定位受限 Windows 构建子进程
         run: |
           & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-process.php
@@ -106,6 +124,8 @@ jobs:
         run: |
           & "$env:PHP_HOME/php.exe" tests/helpers-build.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:PHP_HOME/php.exe" tests/embedded-resources.php
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 标准应用编译、SQLite与可搬迁发布
         if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: |
@@ -113,7 +133,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" tests/iot-identity.php --php sqlite --app
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & "$env:PHP_HOME/php.exe" vendor/bin/type docs/build-config/type-app.json
+          & "$env:PHP_HOME/php.exe" tools/build-application.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" tests/iot-identity.php build/app/type-app.exe sqlite --app
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -122,12 +142,32 @@ jobs:
           $env:TYPE_COMPOSER_PHAR="$env:PHP_HOME/composer.phar"
           & "$env:PHP_HOME/php.exe" tests/application-template.php sqlite --onboarding --native --package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 准备最终发布候选并验证SQLite部署
+        if: inputs.version != ''
+        run: |
+          & "$env:PHP_HOME/php.exe" tests/release-candidate.php prepare
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:PHP_HOME/php.exe" tests/release-candidate.php test sqlite
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 原生MySQL开发生产与完整模板接入
         if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: ./.github/scripts/run-windows-database.ps1 -Driver mysql
       - name: 原生PostgreSQL开发生产与完整模板接入
         if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: ./.github/scripts/run-windows-database.ps1 -Driver pgsql
+      - name: 封存已通过三库的同一候选
+        if: inputs.version != ''
+        run: |
+          & "$env:PHP_HOME/php.exe" tests/release-candidate.php finish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 保存最终发布候选
+        if: inputs.version != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-candidate-windows-x64-${{ github.run_attempt }}
+          path: build/release-candidate/attachments/*
+          if-no-files-found: error
+          retention-days: 90
       - name: 独立模板原生诊断
         if: inputs.scope == 'template'
         run: |

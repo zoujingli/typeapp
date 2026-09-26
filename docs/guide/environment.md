@@ -11,7 +11,7 @@
 | 阶段 | 需要准备 | 由项目或构建处理 |
 | --- | --- | --- |
 | 源码开发 | PHP CLI、Composer、匹配的 Swoole 与所选数据库的 PDO 扩展；测试所需业务服务 | Composer 安装组件，开发入口生成配置、路由和模型代码 |
-| 原生构建 | 目标平台编译工具、PHP ZTS/embed SDK、PHPX、实际扩展与锁定依赖 | TypePHP 全量编译，`type-build` 复用内置 Swoole、校验真实 embed 环境并收集实际运行依赖 |
+| 原生构建 | 目标平台编译工具、PHP ZTS/embed SDK、PHPX、实际扩展与锁定依赖；物联中心另需 Node.js/pnpm 构建页面 | TypePHP 全量编译，`type-build` 复用内置 Swoole、链接前端资源、校验真实 embed 环境并收集实际运行依赖 |
 | 生产部署 | 匹配的操作系统与架构、完整运行包、外置配置、数据目录及所用业务服务 | 从运行包加载已编译应用与随包原生库；无需部署业务 PHP 源码、Composer、TypePHP 或编译 SDK |
 
 开发 PHP 的版本范围是 `>=8.4 <8.6`，Swoole 范围是 `>=6.2 <7`；这不代表任意组合都能使用内置模块。当前原生构建锁定 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2，准确输入取自项目的 `toolchain.lock.json` 与 `composer.lock`。
@@ -43,6 +43,7 @@ PHP 版本号和 ZTS 一致仍不足以保证二进制兼容：SDK 的编译选�
 | 项目 | 何时需要 | 部署责任 |
 | --- | --- | --- |
 | 外置配置 | 所有应用 | 设置监听地址、身份凭据、Host/代理和数据路径；升级保留配置 |
+| `public/` 页面 | 物联中心 | 由 `app:install` 从程序写出；升级显式执行 `web:install --force`，普通启动只校验，不释放资源 |
 | SQLite | 选择 SQLite 驱动 | 提供可写数据目录和备份；无需单独数据库服务 |
 | MySQL / PostgreSQL | 选择对应驱动 | 提供数据库服务、账号、迁移及所需 TLS；客户端能力随构建处理，服务和数据独立管理 |
 | Redis | 安装并启用依赖它的能力 | 为缓存、队列、调度或业务角色提供相应服务与命名空间；普通 HTTP + SQLite 应用不必引入 |

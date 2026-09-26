@@ -42,18 +42,33 @@ if ($remote) {
         && ($templateReport['checkout-verified'] ?? null) === true, '模板分发与克隆验证尚未全部通过');
     $templateTree = GitProcess::output(['git', 'rev-parse', $source . ':templates/type-project'], $root);
     $templateSplit = GitProcess::output(['git', 'subtree', 'split', '--prefix=templates/type-project', '--ignore-joins', $source], $root);
-    foreach (['source' => $source, 'framework-batch' => $batch['id'], 'batch' => hash('sha256', $source . ':' . $templateTree),
-        'package' => 'zoujingli/type-project', 'repository' => 'zoujingli/type-project', 'mode' => 'branch', 'version' => '',
-        'reference' => 'refs/heads/main', 'tree' => $templateTree, 'split' => $templateSplit] as $field => $expectedValue) {
+    foreach (['source' => $source, 'framework-batch' => $batch['id'], 'batch' => hash('sha256', $source . ':' . $templateTree . ':' . $batch['mode'] . ':' . $batch['version']),
+        'package' => 'zoujingli/type-project', 'repository' => 'zoujingli/type-project', 'mode' => $batch['mode'], 'version' => $batch['version'],
+        'reference' => $batch['mode'] === 'tag' ? 'refs/tags/' . $batch['version'] : 'refs/heads/main', 'tree' => $templateTree, 'split' => $templateSplit] as $field => $expectedValue) {
         expect(($templateReport[$field] ?? null) === $expectedValue, '模板报告与固定批次不一致：' . $field);
     }
-    expect(
-        realpath(GitProcess::output(['git', 'rev-parse', '--show-toplevel'], $template)) === realpath($template)
+    if (getenv('TYPE_TEMPLATE_PACKAGIST') === '1') {
+        expect($batch['mode'] === 'tag', 'Packagist模板验收要求准确版本tag');
+        $expectedFiles = [];
+        foreach (explode("\n", GitProcess::output(['git', 'ls-tree', '-r', $source . ':templates/type-project'], $root)) as $entry) {
+            [$metadata, $relative] = explode("\t", $entry, 2);
+            $blob = explode(' ', $metadata)[2];
+            expect(is_file($template . '/' . $relative) && !is_link($template . '/' . $relative)
+                && GitProcess::output(['git', 'hash-object', '--no-filters', $template . '/' . $relative], $root) === $blob, 'Packagist模板文件与版本树不一致：' . $relative);
+            $expectedFiles[] = $relative;
+        }
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($template, FilesystemIterator::SKIP_DOTS)) as $entry) {
+            expect(!$entry->isLink() && in_array(str_replace('\\', '/', substr($entry->getPathname(), strlen($template) + 1)), $expectedFiles, true), 'Packagist模板包含版本外文件');
+        }
+    } else {
+        expect(
+            realpath(GitProcess::output(['git', 'rev-parse', '--show-toplevel'], $template)) === realpath($template)
         && GitProcess::output(['git', 'rev-parse', 'HEAD'], $template) === $templateSplit
         && GitProcess::output(['git', 'rev-parse', 'HEAD^{tree}'], $template) === $templateTree
         && GitProcess::output(['git', 'status', '--porcelain', '--untracked-files=all', '--ignored'], $template) === '',
-        '模板检出必须与已验证提交一致且没有额外或修改的文件'
-    );
+            '模板检出必须与已验证提交一致且没有额外或修改的文件'
+        );
+    }
 }
 if ($onboarding) {
     // 用户入口负责驱动选择；验收控制器不再执行模板配置脚本或补业务配置。
@@ -137,6 +152,7 @@ foreach (['mysql', 'pgsql', 'sqlite'] as $name) {
 foreach (array_merge($installed['packages'], $installed['packages-dev']) as $package) {
     if ($remote && str_starts_with($package['name'], 'zoujingli/type-')) {
         expect($package['source']['reference'] === $expected[substr($package['name'], 10)], '模板安装提交与分发批次不同');
+        expect($batch['mode'] !== 'tag' || ltrim($package['version'], 'v') === ltrim($batch['version'], 'v'), '模板没有安装要求的组件版本');
     }
 }
 $marker = 'onboarding-' . bin2hex(random_bytes(8));

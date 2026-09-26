@@ -36,6 +36,8 @@
 flowchart TB
   Source["业务源码 + 组件锁定版本"] --> Generate["生成路由、配置、模型与输入清单"]
   SDK["匹配平台的工具链与原生库"] --> Compile
+  Web["物联中心：冻结前端依赖、检查并构建 dist"] --> Embedded["资源清单与 C++ 常量"]
+  Embedded --> Compile
   Generate --> Compile["TypePHP 全量 AOT 编译与依赖校验"]
   Compile --> Package["当前：携带原生库的目录包"]
   Package --> Verify["同一产物的业务与无源码验收"]
@@ -81,6 +83,8 @@ composer build
 
 构建将框架、业务、生成配置/路由/模型/操作组合类及实际生产依赖一起交给 TypePHP。新增路由、声明或生产代码都需要重新构建。100% 指完整生产实现的编译覆盖，不等于全部平台已验证。
 
+物联中心的 `composer typeapp:build` 先冻结安装前端依赖，执行类型检查与构建，再校验入口、许可及资源摘要，最后全量 AOT。`web/dist` 以 `web/` 前缀编入程序；Node.js 与 pnpm 只用于构建。版本发布中前端只构建一次，四个平台消费同一份已校验资源，流程见[版本发布与安装](releases.md)。独立模板与组件不携带这份业务前端。
+
 ## 创建当前目录包
 
 物联中心成品案例提供以下入口，目标目录必须尚不存在：
@@ -120,11 +124,58 @@ build/release/run help
 
 完成初始化后执行 `./run serve` 启动 HTTP；后台角色按应用装配独立运行。数据库、日志、上传与秘密配置放在部署环境维护的数据位置。
 
+物联中心首次安装示例（在已配置的空库和应用数据根执行）：
+
+```sh
+APP_ADMIN_PASSWORD='至少12字节的管理密码' \
+APP_CUSTOMER_PASSWORD='至少12字节的客户密码' \
+./run app:install platform-admin '平台管理员' customer-admin '客户管理员' '初始租户'
+./run serve
+```
+
+安装完成后访问客户登录页 `/#/login` 或平台登录页 `/#/admin/login`。页面与 API 由同一 Swoole HTTP 入口提供，继续执行 Host 和路径校验。部署端不需要另外启动前端开发服务器。
+
 数据库主机名按部署网络的 DNS 规则解析。若容器网络已注册明确别名 `database`，可设置 `DB_HOST=database.`，末尾点表示不追加 DNS 搜索域；依赖搜索域补全的服务名则保留原有配置。框架不会自动改写主机名。当前 Linux 验收所用的 c-ares 1.27 在带搜索域的封闭网络中可能使短名称连接失败，因此无源码部署验收显式覆盖带搜索域的环境，并使用绝对 DNS 名称连接本轮数据库。
 
 物联中心命令因数据库连接或初始化失败返回 `internal_error` 时，可在受控排障进程中设置 `TYPE_APP_TRACE=1` 后重试。诊断会追加底层 PDO 的 `sqlstate` 和 `driver_code`，用于区分认证、连接与数据库文件错误；不展开 PDO 原始消息、SQL 或连接参数。排障完成后移除该环境变量，HTTP 错误响应仍遵守公开错误契约。
 
 对外提供服务时配置对应的系统服务或监督进程，保留正常排空和资源回收时间，并设置停止的总截止。TLS 可在前置反向代理终止，只信任真实受控代理。
+
+## 前端安装与更新
+
+物联中心把已构建页面编入程序，**只在显式安装时写出静态文件，普通启动不释放资源**。目标固定为应用根的 `public/`，可通过既有 `APP_BASE_PATH` 选择持久运行根，切换当前工作目录不改变目标。`var/web-install/` 保存私有清单、互斥锁和恢复记录，不作为静态目录公开。
+
+| 命令 | 行为 |
+| --- | --- |
+| `./run app:install …` | 校验并暂存页面，初始化空库与双端账号，再提交页面安装 |
+| `./run web:install` | 只安装页面；相同内容重复执行成功，不同内容拒绝覆盖 |
+| `./run web:install --dry-run` | 输出 `actions.add/replace/delete` 和 `conflicts`，不写目录、锁或文件 |
+| `./run web:install --dry-run --force` | 预览强制更新的新增、替换与删除 |
+| `./run web:install --force` | 更新内置路径，清理旧清单中的过期资源，保留上传等非托管内容 |
+
+Windows 将 `./run` 换为 `run.cmd`。升级先停止旧 HTTP 服务、核对新运行包和数据库兼容，再预览、更新页面并启动新程序；避免升级期间旧页面与新 API 混用。
+
+```mermaid
+sequenceDiagram
+  participant Operator as 安装者
+  participant App as 原生应用
+  participant Stage as 私有暂存与恢复记录
+  participant DB as 空数据库
+  participant Public as public
+  Operator->>App: app:install 账号参数
+  App->>Stage: 取得互斥锁，恢复中断，分块暂存并验摘要
+  App->>DB: 初始化账号、租户与站点默认值
+  DB-->>App: 初始化成功
+  App->>Stage: 持久化替换与旧文件恢复记录
+  App->>Public: 同文件系统逐项替换
+  App->>Stage: 提交安装清单，清理暂存并释放锁
+  App-->>Operator: 数据库和页面均完成
+  Note over App,DB: 数据库与文件系统没有跨资源原子事务
+```
+
+写入前保全旧文件，不先清空 `public/`。中断后下一次安装持锁恢复；发现恢复记录之外的文件变动会停止并保留现场。若数据库已完成而页面失败，命令明确报告部分完成，执行 `web:install --force` 修复，不重复初始化数据库。只读目录需在安装阶段由部署者提供正确写权限，服务启动不会自动改权或修复页面。
+
+静态服务仅允许程序清单登记的文件，支持 GET/HEAD、MIME、ETag 和缓存：入口页要求重新校验，`assets/` 使用长缓存。Hash 路由由浏览器处理，API 和未知路径不会回退成首页；`public/uploads` 中的非托管文件也不会因此自动公开。缺少页面或版本不匹配时，启动提示安装修复命令。
 
 ## 物联网角色部署
 

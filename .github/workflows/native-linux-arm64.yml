@@ -1,6 +1,17 @@
 name: Linux ARM64 原生全业务回归
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      frontend_artifact:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       base_source:
@@ -13,6 +24,7 @@ permissions:
 
 jobs:
   native-regression:
+    name: Linux ARM64 · ${{ matrix.suite }}
     if: github.repository == 'zoujingli/typeapp'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
@@ -22,11 +34,13 @@ jobs:
         suite: ${{ fromJSON(inputs.base_source != '' && '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","benchmark"]' || '["contracts","orm","database","http","redis","tasks","application","recovery","rollout"]') }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
+      TYPE_RELEASE_VERSION: ${{ inputs.version }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
           fetch-depth: 0
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
@@ -135,12 +149,24 @@ jobs:
         run: |
           bash tools/prepare-toolchain.sh
           bash .github/scripts/prepare-linux-runtime.sh
+      - name: 准备并核对内嵌管理前端
+        uses: ./.github/actions/prepare-frontend
+        with:
+          artifact: ${{ inputs.frontend_artifact }}
       - name: 执行本机原生业务与故障矩阵
         shell: bash
         run: |
           mkdir -p build
           set -o pipefail
           bash .github/scripts/run-linux-regression.sh "${{ matrix.suite }}" | tee "build/linux-${{ matrix.suite }}-ci.log"
+      - name: 保存最终发布候选
+        if: inputs.version != '' && matrix.suite == 'application'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-candidate-linux-arm64-${{ github.run_attempt }}
+          path: build/release-candidate/attachments/*
+          if-no-files-found: error
+          retention-days: 90
       - name: 保存原始构建与行为证据
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -166,3 +192,13 @@ jobs:
             build/benchmark-pairs-*/*.log
             build/benchmark-pairs-*/comparison-*.json
             build/linux-benchmark-ci-*/*.log
+
+  linux-arm64-complete:
+    name: linux-arm64-complete
+    needs: native-regression
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          MATRIX_RESULT: ${{ needs.native-regression.result }}
+        run: test "$MATRIX_RESULT" = success

@@ -26,6 +26,18 @@ flowchart LR
 
 单程序静态链接是后续交付门槛；本图如实展示当前目录包链路。运行配置在启动时从外部读取，真实 `.env` 不进入编译输入或发布归档。
 
+## 内嵌静态资源
+
+构建配置可显式声明项目根内的资源目录与目标前缀：
+
+```json
+{"embedded-resources": [{"source": "web/dist", "target": "web"}]}
+```
+
+构建器排序收集普通文件，记录相对路径、大小和 SHA-256，拒绝越界、符号链接、秘密文件、PHP 源码及大小写冲突；每次构建最多 1000 个文件、总计 64 MiB。资源生成 C++ 常量数据并链接进 ELF、Mach-O 或 PE，内容变化使构建缓存失效。已有 `resources` 仍表示随产物管理的外置资源，两者不会互相替代。
+
+生成的 `Type\Generated\EmbeddedResources::manifest()` 返回资源清单，`read(string $path, int $offset, int $length)` 按块读取，单次最多 65536 字节。应用负责决定何时安装及如何服务资源；组件不会在普通启动时自动解包。物联中心采用[显式安装流程](../deployment.md#前端安装与更新)，通用模板不默认携带页面。
+
 ## 安装与依赖
 
 使用 `require-dev` 安装。PHP 范围为 `>=8.4 <8.6`；原生构建还需要项目锁定的 ZTS PHP、PHPX 与 TypePHP SDK。以应用 lock 和工具链声明为准，不能仅凭 PHP CLI 可以运行就认定 embed 环境完整。

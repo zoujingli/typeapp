@@ -1,0 +1,243 @@
+name: 版本构建与自动发布
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 已存在的vX.Y.Z或vX.Y.Z-rc.N；工作流ref也须选择该tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: typeapp-version-release
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      source: ${{ steps.resolve.outputs.source }}
+      version: ${{ steps.resolve.outputs.version }}
+      resume: ${{ steps.resolve.outputs.resume }}
+      sealed: ${{ steps.resolve.outputs.sealed }}
+      candidate_run: ${{ steps.resolve.outputs.candidate_run }}
+      candidate_attempt: ${{ steps.resolve.outputs.candidate_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.5.10'
+          tools: composer:2.10.3
+          coverage: none
+      - run: composer install --no-scripts --no-plugins --prefer-dist --no-interaction --no-progress --ignore-platform-req=ext-swoole
+      - name: 核对版本、固定SHA、依赖与候选重试身份
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version || github.ref_name }}
+          RELEASE_TOKEN_CONFIGURED: ${{ secrets.TYPE_RELEASE_TOKEN != '' }}
+        run: |
+          if [[ "$RELEASE_TOKEN_CONFIGURED" != true ]]; then
+            echo '缺少TYPE_RELEASE_TOKEN；请配置仅16个分发子仓Contents写权限的fine-grained PAT。' >&2
+            exit 1
+          fi
+          php tools/release.php resolve "$VERSION"
+
+  frontend:
+    needs: resolve
+    if: needs.resolve.outputs.resume == 'false'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.resolve.outputs.source }}
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.5.10'
+          tools: composer:2.10.3
+          coverage: none
+      - run: composer install --no-scripts --no-plugins --prefer-dist --no-interaction --no-progress --ignore-platform-req=ext-swoole
+      - uses: ./.github/actions/prepare-frontend
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-frontend-${{ github.run_attempt }}
+          path: |
+            web/dist/**
+            build/frontend/manifest.json
+          if-no-files-found: error
+          retention-days: 90
+
+  linux-x64:
+    needs: [resolve, frontend]
+    if: needs.resolve.outputs.resume == 'false'
+    uses: ./.github/workflows/native-command.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      frontend_artifact: release-frontend-${{ github.run_attempt }}
+      version: ${{ needs.resolve.outputs.version }}
+
+  linux-arm64:
+    needs: [resolve, frontend]
+    if: needs.resolve.outputs.resume == 'false'
+    uses: ./.github/workflows/native-linux-arm64.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      frontend_artifact: release-frontend-${{ github.run_attempt }}
+      version: ${{ needs.resolve.outputs.version }}
+
+  macos-arm64:
+    needs: [resolve, frontend]
+    if: needs.resolve.outputs.resume == 'false'
+    uses: ./.github/workflows/native-macos.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      frontend_artifact: release-frontend-${{ github.run_attempt }}
+      version: ${{ needs.resolve.outputs.version }}
+
+  windows-x64:
+    needs: [resolve, frontend]
+    if: needs.resolve.outputs.resume == 'false'
+    uses: ./.github/workflows/native-platform.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      frontend_artifact: release-frontend-${{ github.run_attempt }}
+      version: ${{ needs.resolve.outputs.version }}
+
+  release-native-complete:
+    needs: [resolve, linux-x64, linux-arm64, macos-arm64, windows-x64]
+    if: always() && needs.resolve.outputs.resume == 'false'
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"
+
+  candidate:
+    needs: [resolve, release-native-complete]
+    if: always() && needs.resolve.result == 'success' && (needs.resolve.outputs.resume == 'true' || needs.release-native-complete.result == 'success')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TYPE_RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+      TYPE_RELEASE_EVIDENCE_RUN: ${{ needs.resolve.outputs.candidate_run }}
+      TYPE_RELEASE_EVIDENCE_ATTEMPT: ${{ needs.resolve.outputs.candidate_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.resolve.outputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.5.10'
+          tools: composer:2.10.3
+          coverage: none
+      - run: composer install --no-scripts --no-plugins --prefer-dist --no-interaction --no-progress --ignore-platform-req=ext-swoole
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: needs.resolve.outputs.sealed != 'true'
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.resolve.outputs.candidate_run }}
+          pattern: release-candidate-*-${{ needs.resolve.outputs.candidate_attempt }}
+          merge-multiple: true
+          path: build/release/assets
+      - if: needs.resolve.outputs.sealed == 'true'
+        run: php tools/release.php restore "$TYPE_RELEASE_VERSION"
+      - name: 保存候选草稿、附件及公开摘要
+        run: php tools/release.php candidate "$TYPE_RELEASE_VERSION"
+
+  distribute:
+    needs: [resolve, candidate]
+    if: always() && needs.resolve.result == 'success' && needs.candidate.result == 'success'
+    uses: ./.github/workflows/distribute-batch.yml
+    secrets: inherit
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      mode: tag
+      version: ${{ needs.resolve.outputs.version }}
+      evidence_run: ${{ needs.resolve.outputs.candidate_run }}
+      evidence_attempt: ${{ needs.resolve.outputs.candidate_attempt }}
+
+  template:
+    needs: [resolve, distribute]
+    if: always() && needs.resolve.result == 'success' && needs.distribute.result == 'success'
+    uses: ./.github/workflows/distribute-template.yml
+    secrets: inherit
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      batch_run: ${{ github.run_id }}
+      mode: tag
+      version: ${{ needs.resolve.outputs.version }}
+      evidence_run: ${{ needs.resolve.outputs.candidate_run }}
+      evidence_attempt: ${{ needs.resolve.outputs.candidate_attempt }}
+
+  publish:
+    needs: [resolve, template]
+    if: always() && needs.resolve.result == 'success' && needs.template.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TYPE_RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+      TYPE_RELEASE_EVIDENCE_RUN: ${{ needs.resolve.outputs.candidate_run }}
+      TYPE_RELEASE_EVIDENCE_ATTEMPT: ${{ needs.resolve.outputs.candidate_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.resolve.outputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.5.10'
+          tools: composer:2.10.3
+          coverage: none
+      - run: composer install --no-scripts --no-plugins --prefer-dist --no-interaction --no-progress --ignore-platform-req=ext-swoole
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: type-batch-result
+          path: build/distribution
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: type-project-distribution
+          path: build/release/template-evidence
+      - run: cp build/release/template-evidence/distribution/template.json build/distribution/template.json
+      - name: 再核对16个Packagist版本及封存附件
+        run: |
+          php tools/release.php packagist "$TYPE_RELEASE_VERSION"
+          php tools/release.php restore "$TYPE_RELEASE_VERSION"
+          php tools/release.php verify-consumption "$TYPE_RELEASE_VERSION"
+      - name: 公开16个子仓Release
+        env:
+          GH_TOKEN: ${{ secrets.TYPE_RELEASE_TOKEN }}
+        run: php tools/release.php children "$TYPE_RELEASE_VERSION"
+      - name: 最后公开主仓Release
+        run: php tools/release.php publish "$TYPE_RELEASE_VERSION"
+      - name: 保留逐项公开回执
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-receipts-${{ github.run_attempt }}
+          path: |
+            build/release/plan.json
+            build/release/packagist.json
+            build/release/consumption.json
+            build/release/children.json
+            build/release/published.json
+          retention-days: 90

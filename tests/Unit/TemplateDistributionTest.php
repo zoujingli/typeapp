@@ -264,7 +264,9 @@ PHP);
     /** 执行实际发布 CLI，所有 Git 远端在该子进程内改写为本轮本地裸仓。 */
     private function publish(string $directory, string $source, array $environment): \Type\Testing\ProcessResult
     {
-        $process = new Process([PHP_BINARY, $directory . '/tools/distribute-template.php', $source, $directory . '/build/distribution/batch-result.json'], $directory, $environment);
+        $batchFile = $directory . '/build/distribution/batch-result.json';
+        $batch = json_decode((string) file_get_contents($batchFile), true, 512, JSON_THROW_ON_ERROR);
+        $process = new Process([PHP_BINARY, $directory . '/tools/distribute-template.php', $source, $batchFile, $batch['mode'], $batch['version']], $directory, $environment);
         try {
             $result = $process->wait(30);
             self::assertFalse($result->timedOut);

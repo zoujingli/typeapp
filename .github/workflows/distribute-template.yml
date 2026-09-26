@@ -1,12 +1,41 @@
 name: 公开应用模板分发与验收
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      batch_run:
+        required: true
+        type: string
+      mode:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      evidence_run:
+        required: true
+        type: string
+      evidence_attempt:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       source_sha:
         description: 已通过完整原生验证的源码 SHA
         required: true
         type: string
+      mode:
+        description: 与组件批次一致的分发方式
+        type: choice
+        options: [branch, tag]
+        default: branch
+      version:
+        description: 标签模式填写同批版本，分支模式留空
+        type: string
+        default: ''
       batch_run:
         description: 同一源码成功完成的公开插件批次运行 ID
         required: true
@@ -22,7 +51,7 @@ concurrency:
 
 jobs:
   template:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (inputs.evidence_run != '' && github.ref == format('refs/tags/{0}', inputs.version))
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     services:
@@ -49,8 +78,14 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       SOURCE_SHA: ${{ inputs.source_sha }}
       BATCH_RUN: ${{ inputs.batch_run }}
+      BATCH_MODE: ${{ inputs.mode }}
+      BATCH_VERSION: ${{ inputs.version }}
+      TYPE_RELEASE_VERSION: ${{ inputs.evidence_run != '' && inputs.version || '' }}
+      TYPE_RELEASE_EVIDENCE_RUN: ${{ inputs.evidence_run }}
+      TYPE_RELEASE_EVIDENCE_ATTEMPT: ${{ inputs.evidence_attempt }}
     steps:
       - name: 验证固定输入与成功的分发工作流
+        if: inputs.evidence_run == ''
         shell: bash
         run: |
           [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
@@ -121,8 +156,14 @@ jobs:
       - name: 分发并重新获取固定模板内容
         shell: bash
         run: |
-          task_template="$(php tools/distribute-template.php "$SOURCE_SHA" build/distribution/batch-result.json)"
+          task_template="$(php tools/distribute-template.php "$SOURCE_SHA" build/distribution/batch-result.json "$BATCH_MODE" "$BATCH_VERSION")"
           echo "TYPE_TEMPLATE_SOURCE=$task_template" >> "$GITHUB_ENV"
+      - name: 核对全部Packagist版本并获取真实模板包
+        if: inputs.mode == 'tag'
+        run: |
+          php tools/wait-packagist.php build/distribution/batch-result.json build/distribution/template.json
+          task_template="$(php tools/prepare-packagist-template.php "$BATCH_VERSION")"
+          printf 'TYPE_TEMPLATE_SOURCE=%s\nTYPE_TEMPLATE_PACKAGIST=1\n' "$task_template" >> "$GITHUB_ENV"
       - name: 从真实模板与公开插件安装并编译用户应用
         env:
           TYPE_MYSQL_HOST: 127.0.0.1
@@ -139,6 +180,7 @@ jobs:
         if: always()
         with:
           name: type-project-distribution
+          overwrite: true
           path: |
             build/distribution/template.json
             build/template-*/verification.json

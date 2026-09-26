@@ -59,6 +59,8 @@ composer require zoujingli/type-orm-sqlite:dev-main
 
 `dev-main` 的分支别名为 `1.0.x-dev`，组件间使用 `~1.0.0@dev` 约束。这些是开发版本，不代表稳定标签。提交应用的 `composer.lock`，让构建固定到实际安装的提交。
 
+版本批次使用同一 tag 发布组件与模板，并从默认 Packagist 核对版本及拆分提交。需要固定 RC 或正式版本时，按[Composer 按版本安装](releases.md#composer-按版本安装)设置明确约束；是否已经可用以公开 Release 和 Packagist 实际版本为准。物联中心运行包与 Composer 源码组件各有用途，不需要在部署机再次安装组件。
+
 | 选择的组件 | Composer 自动解析的第一方依赖 |
 | --- | --- |
 | `type-runtime` | 无 |

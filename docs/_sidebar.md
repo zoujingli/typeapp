@@ -52,5 +52,6 @@
   - [type-testing · 测试](/guide/plugins/type-testing.md)
 - 交付应用
   - [构建与部署](/guide/deployment.md)
+  - [版本发布与安装](/guide/releases.md)
   - [文档站发布](/guide/documentation.md)
   - [许可证与归属](/guide/licensing.md)

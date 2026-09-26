@@ -34,7 +34,7 @@ flowchart LR
 | TypeApp 能力 | 本案例用法 |
 | --- | --- |
 | Swoole | 通信与基础并发的必需底层；人员生产 HTTP API 已走原生线程与协程，Broker 尚需收敛内部通信路径 |
-| TypePHP | `app/`、组件与生产依赖全量编译；Web 单独构建静态资源 |
+| TypePHP | `app/`、组件与生产依赖全量编译；前端先构建为静态资源，再作为原生常量链接进程序 |
 | `type-core` / `type-runtime` | HTTP PSR 链、命令入口、作用域与资源预算 |
 | `type-orm` 与驱动 | 管理 API 可用 MySQL、PostgreSQL、SQLite；设备持久接收只用 PostgreSQL |
 | `type-mqtt` | 独立 Broker 进程，不由 `serve` 内嵌 |
@@ -126,6 +126,7 @@ git clone https://github.com/zoujingli/typeapp.git
 cd typeapp
 composer install --no-scripts --no-plugins
 cp -n .env.example .env
+composer web:build
 composer typeapp:prepare
 ```
 
@@ -140,7 +141,7 @@ APP_CUSTOMER_PASSWORD='至少12字节的客户密码' \
 php bin/typeapp app:install platform-admin '平台管理员' customer-admin '客户管理员' '初始租户'
 ```
 
-`app:install` 只接受空数据库；管理口令和客户口令由受控进程环境提供，长度为 12–72 字节，不写入 `.env`、命令参数或日志。安装会建立平台角色目录、客户初始租户和两套独立会话域；后续账号、角色和成员由各自端的 RBAC 接口管理。
+`app:install` 只接受空数据库；管理口令和客户口令由受控进程环境提供，长度为 12–72 字节，不写入 `.env`、命令参数或日志。安装先暂存并验证页面，再建立平台角色目录、客户初始租户和两套独立会话域，最后安装页面到应用根的 `public/`。数据库成功但页面失败时单独报告，通过 `web:install --force` 修复；后续账号、角色和成员由各自端的 RBAC 接口管理。
 
 平台人员通过 `/admin/auth/login` 登录，管理平台人员、客户账号、租户、设备资产、站点展示设置和运行配置；客户人员通过 `/customer/auth/login` 登录，选择自己所属的租户后管理成员、角色和物联业务数据。两套令牌、密码、会话和权限完全隔离，API 每次请求重新验证当前角色和租户关系。
 
@@ -214,6 +215,8 @@ RBAC 的权限节点和菜单是代码中的固定目录，由 `app\common\servi
 菜单按功能分组，不把所有页面平铺到一级。`web/` 使用锁定的 Vue Vben Admin 5.6.0 `BasicLayout`、菜单、主题和偏好机制；业务表格与表单主要直接使用 Ant Design Vue，仍有 `CrudSearchField`、`CrudTableActions`、`AppDrawer` 等应用封装。当前是已接入 Vben 布局的业务应用，尚未完全达到项目规定的原生表单、表格、抽屉及用户入口复用标准。菜单分组与路由层级也需继续对齐，才能保持完整的分组面包屑和详情父级关系。
 
 ## 启动管理端
+
+使用原生运行包时，首次 `app:install` 已从程序内安装管理端；直接启动 `./run serve`，访问 `/#/login` 或 `/#/admin/login`。升级使用 `./run web:install --dry-run --force` 预览，再执行 `./run web:install --force`。命令不会重置账号、站点设置或上传文件；完整步骤和恢复规则见[前端安装与更新](deployment.md#前端安装与更新)。
 
 前端开发和构建使用 Node.js 20.19 以上和 `pnpm@10.28.2`，它们不是原生后端的运行依赖。以下命令从仓库根执行：
 

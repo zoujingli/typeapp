@@ -1,0 +1,34 @@
+name: 固定物联中心前端
+description: 构建或获取同一份管理前端，并验证来源、锁文件和全部资源摘要
+inputs:
+  artifact:
+    description: 本次发布前端artifact名；为空时本任务执行冻结构建
+    default: ''
+runs:
+  using: composite
+  steps:
+    - if: inputs.artifact == ''
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: '22.21.1'
+    - if: inputs.artifact == ''
+      uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      with:
+        version: 10.28.2
+        run_install: false
+    - if: inputs.artifact == ''
+      shell: bash
+      run: |
+        pnpm --dir web install --frozen-lockfile
+        pnpm --dir web typecheck
+        pnpm --dir web build
+        php tools/frontend-resources.php record build/frontend/manifest.json
+    - if: inputs.artifact != ''
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: ${{ inputs.artifact }}
+        path: .
+    - shell: bash
+      run: |
+        php tools/frontend-resources.php verify build/frontend/manifest.json
+        printf 'TYPE_FRONTEND_MANIFEST=%s/build/frontend/manifest.json\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"

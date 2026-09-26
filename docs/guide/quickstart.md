@@ -46,6 +46,8 @@ php dev.php check
 
 `dev-main` 是当前开发分支，不代表稳定版本。模板和组件已登记 Packagist，传递依赖由 Composer 自动解析，无需配置各个 Git 仓库。创建后提交应用的 `composer.lock`，固定实际源码版本。
 
+需要固定版本时，参照[版本安装示例](releases.md#composer-按版本安装)选择已经公开的 tag；RC 使用明确的候选版本约束。下文继续展示开发分支流程。
+
 如果已经安装 type-build，并已下载 type-project 模板，也可创建不存在的新目录：
 
 ```bash
