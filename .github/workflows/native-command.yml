@@ -590,6 +590,9 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           path: |
+            build/release-candidate/*.log
+            build/release-candidate/*.json
+            build/release-candidate/attachments/*
             build/**/*.build.json
             build/**/verification.json
             build/packaged-rollout-build-*/preparation.json

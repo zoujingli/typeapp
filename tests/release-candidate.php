@@ -68,7 +68,12 @@ if ($operation === 'prepare') {
         }
         $result = (new Process([PHP_BINARY, $root . '/tests/native-package.php', $artifact], $root, $environment))->wait(600);
         file_put_contents($work . '/' . $driver . '.log', $result->stdout . $result->stderr);
-        expect($result->successful(), '最终归档的三库部署验收失败，见build/release-candidate/' . $driver . '.log');
+        // PHP致命错误可能写入stdout；失败时同时保留退出状态和内层原因。
+        $status = ['exit-code' => $result->exitCode, 'timed-out' => $result->timedOut,
+            'output-exceeded' => $result->outputExceeded, 'signal' => $result->signal];
+        Reports::report($work . '/' . $driver . '-process.json', $status);
+        expect($result->successful(), '最终归档的三库部署验收失败 ' . json_encode($status, JSON_THROW_ON_ERROR)
+            . '，见build/release-candidate/' . $driver . ".log：\n" . $result->stdout . $result->stderr);
     } finally {
         try {
             $database?->close();

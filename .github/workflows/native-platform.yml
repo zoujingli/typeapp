@@ -24,6 +24,10 @@ on:
         type: choice
         options: [all, sqlite, mysql, pgsql]
         default: all
+      candidate_version:
+        description: 可选vX.Y.Z或vX.Y.Z-rc.N；仅full范围验证最终候选，不分发或公开
+        type: string
+        default: ''
   push:
     branches: [main]
 
@@ -40,13 +44,21 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 120
     env:
-      TYPE_RELEASE_VERSION: ${{ inputs.version }}
+      TYPE_RELEASE_VERSION: ${{ inputs.version || inputs.candidate_version }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
     defaults:
       run:
         shell: pwsh
     steps:
+      - name: 核对手动候选验收范围
+        if: github.event_name == 'workflow_dispatch' && inputs.candidate_version != ''
+        env:
+          CANDIDATE_SCOPE: ${{ inputs.scope }}
+        run: |
+          if ($env:CANDIDATE_SCOPE -ne 'full' -or $env:TYPE_RELEASE_VERSION -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-rc\.[1-9][0-9]*)?\z') {
+            throw '候选验收需要完整full范围和有效版本。'
+          }
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.source_sha || github.sha }}
@@ -143,7 +155,7 @@ jobs:
           & "$env:PHP_HOME/php.exe" tests/application-template.php sqlite --onboarding --native --package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 准备最终发布候选并验证SQLite部署
-        if: inputs.version != ''
+        if: env.TYPE_RELEASE_VERSION != ''
         run: |
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php prepare
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -156,12 +168,12 @@ jobs:
         if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: ./.github/scripts/run-windows-database.ps1 -Driver pgsql
       - name: 封存已通过三库的同一候选
-        if: inputs.version != ''
+        if: env.TYPE_RELEASE_VERSION != ''
         run: |
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php finish
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 保存最终发布候选
-        if: inputs.version != ''
+        if: env.TYPE_RELEASE_VERSION != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-candidate-windows-x64-${{ github.run_attempt }}
@@ -197,6 +209,9 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
           path: |
+            build/release-candidate/*.log
+            build/release-candidate/*.json
+            build/release-candidate/attachments/*
             build/windows-contracts.xml
             build/**/verification.json
             build/**/compile.log

@@ -21,6 +21,27 @@ require_once dirname(__DIR__, 2) . '/tools/release/GitHub.php';
 /** 发布资格测试使用完整任务证据；Release外部边界使用保存真实文件的命令哨兵。 */
 final class ReleaseTest extends TestCase
 {
+    /** @return iterable<string, array{string, string, bool}> 真实路径与其允许的构建目录。 */
+    public static function candidatePaths(): iterable
+    {
+        yield 'windows-realpath' => ['C:\\workspace\\app\\build\\unpacked release', 'C:\\workspace\\app/build', true];
+        yield 'windows-forward' => ['C:/workspace/app/build/unpacked release', 'C:/workspace/app/build', true];
+        yield 'windows-sibling' => ['C:\\workspace\\app\\build-other\\release', 'C:\\workspace\\app/build', false];
+        yield 'windows-outside' => ['C:\\workspace\\other\\release', 'C:\\workspace\\app/build', false];
+        yield 'windows-unc' => ['\\\\server\\share\\app\\build\\release', '\\\\server\\share\\app/build', true];
+        yield 'unix-realpath' => ['/workspace/app/build/unpacked release', '/workspace/app/build', true];
+        yield 'unix-sibling' => ['/workspace/app/build-other/release', '/workspace/app/build', false];
+        yield 'unix-backslash-is-a-filename' => ['/workspace/app/build\\release', '/workspace/app/build', false];
+        yield 'root-is-not-a-candidate' => ['/workspace/app/build', '/workspace/app/build', false];
+    }
+
+    /** 验收入口按realpath得到的原生分隔符判定边界，Windows候选也必须能进入真实部署验证。 */
+    #[DataProvider('candidatePaths')]
+    public function testCandidatePathsAcceptNativeSeparatorsWithoutEscapingTheBuildDirectory(string $path, string $directory, bool $expected): void
+    {
+        self::assertSame($expected, \testPathIsWithin($path, $directory));
+    }
+
     public static function invalidVersions(): iterable
     {
         foreach (['1.0.0', 'v01.0.0', 'v1.0', 'v1.0.0-beta.1', 'v1.0.0-rc.0', 'v1.0.0-rc.01', "v1.0.0\n", 'main', 'v1.0.0+local'] as $version) {

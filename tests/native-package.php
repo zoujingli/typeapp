@@ -26,7 +26,7 @@ $publisher = new NativePackage();
 $candidatePackage = getenv('TYPE_RELEASE_PACKAGE');
 if (is_string($candidatePackage) && $candidatePackage !== '') {
     $package = realpath($candidatePackage);
-    expect(is_string($package) && str_starts_with($package, $root . '/build/'), '候选发布包必须属于本轮构建目录');
+    expect(is_string($package) && testPathIsWithin($package, $root . '/build'), '候选发布包必须属于本轮构建目录');
     $created = ['directory' => $package, 'manifest-sha256' => (string) getenv('TYPE_RELEASE_PACKAGE_SHA256')];
 } else {
     $created = json_decode(successful([PHP_BINARY, $project . '/vendor/bin/type',

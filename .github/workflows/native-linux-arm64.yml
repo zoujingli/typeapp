@@ -175,6 +175,9 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
           path: |
+            build/release-candidate/*.log
+            build/release-candidate/*.json
+            build/release-candidate/attachments/*
             build/linux-*-ci.log
             build/**/*.build.json
             build/**/verification.json

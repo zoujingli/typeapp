@@ -203,6 +203,9 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: |
+            build/release-candidate/*.log
+            build/release-candidate/*.json
+            build/release-candidate/attachments/*
             build/**/verification.json
             build/**/*.build.json
             build/**/profile.json

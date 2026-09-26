@@ -110,6 +110,17 @@ function testGitFileUrl(string $path): string
     return 'file://' . (preg_match('/^[A-Za-z]:\//D', $path) === 1 ? '/' : '') . $path;
 }
 
+/** 路径须先经realpath解析；只接受指定目录中的后代，不接受目录自身或同名前缀的兄弟目录。 */
+function testPathIsWithin(string $path, string $directory): bool
+{
+    // 仅规范化盘符或UNC路径；Unix文件名中的反斜杠不能误当作目录边界。
+    if (preg_match('/^[A-Za-z]:/', $directory) === 1 || str_starts_with($directory, '\\\\')) {
+        $path = str_replace('\\', '/', $path);
+        $directory = str_replace('\\', '/', $directory);
+    }
+    return str_starts_with($path, rtrim($directory, '/') . '/');
+}
+
 /** @param list<array<string, mixed>> $menus @return list<string> */
 function menuPaths(array $menus): array
 {
