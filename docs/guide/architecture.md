@@ -133,6 +133,11 @@ sequenceDiagram
 下面以一次 HTTP 请求说明应用与组件的分工；WebSocket 按消息处理，TCP 与 UDP 按各自的数据语义处理，其生命周期见[基础通信](communications.md#共用的资源与运行约定)。
 
 ```mermaid
+---
+config:
+  sequence:
+    width: 135
+---
 sequenceDiagram
   autonumber
   actor Client as 调用方
@@ -140,11 +145,11 @@ sequenceDiagram
   participant App as 应用处理链
   participant Data as 模型与数据库
 
-  Client->>Entry: 请求（内置运行库接收）
+  Client->>Entry: 请求<br/>内置运行库接收
   Entry->>App: PSR-7 请求 / 执行作用域
-  App->>App: 校验、授权、控制器与业务服务
+  App->>App: 校验、授权<br/>控制器与业务服务
   App->>Data: 当前作用域内查询或事务
-  Note over App,Data: I/O 等待可让出执行；连接不跨作用域共享
+  Note over App,Data: I/O 等待可让出执行<br/>连接不跨作用域共享
   Data-->>App: 结果或明确错误
   App-->>Entry: PSR-7 响应
   Entry-->>Client: 状态、头与正文

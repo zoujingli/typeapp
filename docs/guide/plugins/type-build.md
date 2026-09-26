@@ -11,17 +11,18 @@
 `type-build` 负责确认“这次编译用了什么”，TypePHP 负责把完整生产实现编译为原生代码。构建工具还要确认真实 embed 能加载需要的原生库，再把选中的运行依赖纳入产物身份；这些步骤不能用开发 PHP 的扩展列表替代。
 
 ```mermaid
-flowchart LR
-    App[应用源码与声明] --> Audit[审计完整生产输入]
-    Lock[Composer 与工具链锁] --> Audit
-    Audit --> Generate[生成配置 · 模型 · 路由 · 任务]
+flowchart TB
+    App[应用、组件与生产依赖] --> Audit[审计源码与锁定身份]
+    Audit --> Generate[生成配置、路由、模型与任务]
     Generate --> Compile[TypePHP 全量 AOT]
-    SDK[目标平台 SDK] --> Probe[真实 embed 探针]
-    Swoole[组件内置 Swoole 模块] --> Probe
+    SDK[匹配 SDK 与内置原生库] --> Probe[embed 加载校验]
     Probe --> Compile
+    Assets[声明的内嵌资源] --> Resource[生成资源常量与摘要]
+    Resource --> Compile
     Compile --> Artifact[原生产物与身份清单]
     Artifact --> Package[当前 NativePackage 目录包]
     Package --> Verify[校验后运行与无源码验收]
+    style Compile fill:#147d64,color:#fff,stroke:#147d64
 ```
 
 单程序静态链接是后续交付门槛；本图如实展示当前目录包链路。运行配置在启动时从外部读取，真实 `.env` 不进入编译输入或发布归档。
@@ -50,7 +51,7 @@ composer config prefer-stable true
 composer require --dev zoujingli/type-build:dev-main
 ```
 
-Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+以上安装 `dev-main` 开发分支。需要固定已发布批次时，按[版本安装说明](../releases.md#composer-按版本安装)选择明确的组件版本和依赖稳定性。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 

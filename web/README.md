@@ -23,6 +23,8 @@ IOT_API_ORIGIN=http://127.0.0.1:8080 pnpm dev
 
 开发服务器绑定 `127.0.0.1:5173`，把 `/public`、`/admin`、`/customer`、`/broker` 代理到指定的隔离后端；`IOT_API_ORIGIN` 只用于开发服务器，不打入浏览器。生产构建生成忽略入仓的 `web/dist`，并原样携带 `LICENSE`、`NOTICE` 与 `UPSTREAM.md`，不会自动部署或替换本地站点。生产页面与 API 使用同源入口。
 
+主仓 `composer typeapp:build` 会冻结安装前端依赖、执行类型检查与构建，再把 `dist` 作为资源编入 TypePHP 生成的程序。原生部署首次执行 `app:install` 时安装到应用根的 `public/`；后续用 `web:install --dry-run --force` 预览，再用 `web:install --force` 更新。普通启动不写出资源，部署端无需 Node.js 或 pnpm。当前交付仍是携带原生运行库的目录归档，安装和修复步骤见[构建与部署](../docs/guide/deployment.md#前端安装与更新)。
+
 后端先用 `app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>` 初始化空库；密码只由 `APP_ADMIN_PASSWORD`、`APP_CUSTOMER_PASSWORD` 的受控进程环境提供。没有共享默认密码，已有库不会清空或升级。具体命令、原生构建及运行边界见[标准物联应用说明](../docs/development/typeapp.md)。
 
 ## 当前入口

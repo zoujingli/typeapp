@@ -66,6 +66,8 @@ composer require zoujingli/type-orm-sqlite:dev-main
 
 每包将 `dev-main` 别名映射到 `1.0.x-dev`，组件间使用 `~1.0.0@dev` 约束；这不是稳定 `1.0.0` 标签。消费应用提交 `composer.lock`，使部署锁定真实分发提交，不在构建时任意更新依赖。根锁文件里选择的包来源决定当前消费的版本，新主仓修改只有完成对应分发才会出现在子仓；GitHub 目录中的新 README 不证明它已经发布。
 
+上面的入口用于跟进开发分支。按已发布版本创建应用时，使用[版本安装示例](../guide/releases.md#composer-按版本安装)，同时固定模板和需要的第一方组件；RC 需要在消费应用允许相应依赖稳定性。主仓版本 tag 的四平台验收、同版本拆分和 17 个 Release 由统一[发布工作流](distribution-batches.md#版本-tag-自动发布)衔接，不能用单个组件的 `dev-main` 更新冒充整个版本批次。
+
 应用的 `require` 仅包含实际生产组件，`type-build` 与 `type-testing` 通常放 `require-dev`。主仓则用 `repositories.type=path` 加载 `plugin/*`，方便跨组件同步开发；这不要求独立应用再复制或挂载主仓插件目录。
 
 ## 生产源码与生成结果
@@ -94,7 +96,7 @@ sequenceDiagram
   participant Repo as 组件 GitHub 子仓
   participant Index as Packagist
   participant App as 消费应用
-  Main->>Repo: 固定提交拆分，非强制推送 main
+  Main->>Repo: 固定提交拆分，推送 main 或不可变 tag
   Repo->>Index: push webhook
   Index->>Repo: 读取 composer.json 与 Git 引用
   App->>Index: composer require / update
@@ -103,6 +105,8 @@ sequenceDiagram
 ```
 
 维护者在每个 Packagist 包页检查自动更新状态，并核对 GitHub webhook 的最近投递结果；不把 webhook URL、认证参数或令牌写入公开报告。索引延迟时比较子仓 HEAD 与 Packagist `dev-main` 的 `source.reference`，一致后再运行不含 VCS 配置的独立安装验证。Webhook 只负责索引已发布的子仓，不会替主仓执行源码分发。
+
+版本发布则核对本批次 tag 的 `source.reference` 与拆分 SHA，并安装该准确版本。组件及模板的独立消费都从默认 Packagist 获取，不配置本地 path/VCS 来源；通过索引检查之后仍须完成实际安装和三库原生消费。
 
 源码基线按明确授权发布到开发分支，完整原生验收与稳定版本门槛仍独立执行；不为获得 Composer 可安装状态创建未经验证的稳定标签。
 

@@ -29,11 +29,11 @@ composer --version
 
 `type-build` 已携带匹配 PHP 8.5.10 ZTS 的四平台 Swoole 6.2.1 模块，原生构建默认校验并复用；安装组件不会自动为开发 CLI 修改 ini。平台限制、覆盖顺序及其余依赖见[内置 Swoole 与运行依赖](plugins/type-build.md#内置-swoole-与运行依赖)。
 
-Windows x64 已有匹配 Swoole SDK、三库独立 ORM 和进程工具的历史验收记录。模板 HTTP 在 Windows 使用协程服务与 ProcessSignals 控制桥，缺少可用控制台或桥接能力时明确失败；最新 HTTP 与全量应用验收仍须单独完成，不能由 ORM 结果推导。
+Windows x64 的匹配 Swoole SDK、三库独立 ORM、主应用和模板已有原生验收记录，准确版本与隔离范围见[平台支持表](platforms.md#当前平台状态)。模板 HTTP 使用协程服务与 ProcessSignals 控制桥，缺少可用控制台或桥接能力时明确失败；自己的应用仍需在目标环境验收。
 
 ## 创建业务应用
 
-推荐通过 Composer 从 Packagist 创建应用。先选择驱动，再安装依赖：
+通过 Composer 从 Packagist 创建应用。需要固定已发布批次时，先按[版本安装示例](releases.md#composer-按版本安装)同时固定模板和组件，再继续下文的开发、构建步骤。以下命令用于跟进 `main` 开发分支，先选择驱动，再安装依赖：
 
 ```bash
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main
@@ -45,8 +45,6 @@ php dev.php check
 ```
 
 `dev-main` 是当前开发分支，不代表稳定版本。模板和组件已登记 Packagist，传递依赖由 Composer 自动解析，无需配置各个 Git 仓库。创建后提交应用的 `composer.lock`，固定实际源码版本。
-
-需要固定版本时，参照[版本安装示例](releases.md#composer-按版本安装)选择已经公开的 tag；RC 使用明确的候选版本约束。下文继续展示开发分支流程。
 
 如果已经安装 type-build，并已下载 type-project 模板，也可创建不存在的新目录：
 

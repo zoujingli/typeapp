@@ -11,7 +11,7 @@
 MQTT 是设备与服务交换消息的协议组件。应用定义身份、Topic 权限和载荷规则，Broker 维护协议交换，Swoole 作为内置运行库提供连接与协程能力。消息进入业务后，仍由业务服务决定校验、存储和回执。
 
 ```mermaid
-flowchart LR
+flowchart TB
   Device[设备 / 标准客户端] -->|TCP / TLS / WS / WSS| Broker[type-mqtt Broker]
   Broker --> Auth[应用认证与 Topic 权限]
   Broker --> Consumer[业务消费者]
@@ -33,7 +33,7 @@ composer config prefer-stable true
 composer require zoujingli/type-mqtt:dev-main
 ```
 
-通过 Packagist 安装，传递依赖由 Composer 自动解析；版本策略见[组件安装](../components.md#安装组件)。`dev-main` 表示开发版本，不是稳定标签。源码与包说明见 [type-mqtt 仓库](https://github.com/zoujingli/type-mqtt)。启用 PostgreSQL 持久后端时，在上述基础上添加：
+以上从 Packagist 安装开发分支，传递依赖由 Composer 自动解析。需要固定已发布批次时，按[版本安装说明](../releases.md#composer-按版本安装)选择明确的组件版本和依赖稳定性，并提交应用的 `composer.lock`。源码与包说明见 [type-mqtt 仓库](https://github.com/zoujingli/type-mqtt)。启用 PostgreSQL 持久后端时，在上述基础上添加对应版本的驱动；开发分支命令为：
 
 ```sh
 composer require zoujingli/type-orm-pgsql:dev-main
@@ -167,6 +167,11 @@ $broker->serve('127.0.0.1', 8883);
 可靠模式至少包含两段独立确认。发布者收到 PUBACK，说明 Broker 对该协议交换给出了成功确认；消费应用何时落库、是否向设备返回业务结果，仍由消费方的处理流程决定。
 
 ```mermaid
+---
+config:
+  sequence:
+    width: 115
+---
 sequenceDiagram
   participant Device as 发布者
   participant Broker as Broker
@@ -175,13 +180,13 @@ sequenceDiagram
   participant Business as 业务数据库
   Device->>Broker: QoS 1 PUBLISH
   Broker->>Store: 持久请求
-  Store-->>Broker: committed 且工作释放
+  Store-->>Broker: committed<br/>且工作释放
   Broker-->>Device: PUBACK
   Broker->>Client: QoS 1 PUBLISH
-  Client->>Business: 按业务消息身份幂等提交
+  Client->>Business: 按业务消息身份<br/>幂等提交
   Business-->>Client: 确认提交
   Client->>Broker: acknowledge(receipt)
-  Note over Client,Device: 业务回执需应用另行定义 Topic 与消息协议
+  Note over Client,Device: 业务回执由应用另行定义<br/>包含 Topic 与消息协议
 ```
 
 如果业务提交结果未知，不要因为方法抛异常就发布“未处理”或自动生成新业务 ID。先对账；只有确认业务效果已完成时，再确认该次接收凭据。`receipt` 是当前网络交付的不透明凭据，业务幂等键应来自经过认证和校验的应用消息，不能把 receipt 当成跨重连身份。

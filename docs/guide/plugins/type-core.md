@@ -35,7 +35,7 @@ composer config prefer-stable true
 composer require zoujingli/type-core:dev-main
 ```
 
-Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+以上安装 `dev-main` 开发分支。需要固定已发布批次时，按[版本安装说明](../releases.md#composer-按版本安装)选择明确的组件版本和依赖稳定性。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -191,6 +191,11 @@ curl -i --max-time 5 http://127.0.0.1:9501/missing
 一个需要租户隔离的业务请求可以依下图装配。策略必须由应用显式登记；安装组件不会自动替业务选择 Host、令牌校验器或租户权限。
 
 ```mermaid
+---
+config:
+  sequence:
+    width: 115
+---
 sequenceDiagram
     participant Host as HTTP 宿主
     participant Policy as RequestPolicy
@@ -199,14 +204,14 @@ sequenceDiagram
     participant App as 控制器与服务
     Host->>Host: 准入并建立请求作用域
     Host->>Policy: 原始请求
-    Policy->>Policy: Host、代理、路径和查询校验
+    Policy->>Policy: Host 与代理校验<br/>路径与查询校验
     Policy->>Auth: 规范请求
     Auth->>Auth: 验证令牌和业务授权
     Auth->>Tenant: 可信 Identity
-    Tenant->>Tenant: 固定租户映射和访问检查
+    Tenant->>Tenant: 固定租户映射<br/>检查访问资格
     Tenant->>App: 已校验请求属性
     App-->>Host: PSR 响应
-    Host->>Host: 发送、关闭流与作用域、归还请求额度
+    Host->>Host: 发送并关闭流<br/>关闭作用域，归还额度
 ```
 
 认证失败返回 401，已认证但未授权返回 403；输入策略异常通过 HTTP 边界转为相应错误。`Identity` 和 `Tenant` 是可信处理步骤的结果，业务仍需核对具体资源的访问权。停止服务时先撤销准入，等待发送和资源清理结束后才能归还请求额度。

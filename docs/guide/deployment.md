@@ -122,6 +122,8 @@ build/release/run help
 
 `verify-runtime` 检查运行身份与实际依赖，不替代业务验收。服务运行前，按应用自己的入口初始化或迁移：通用模板使用 `./run migrate run`；物联中心只允许在空库中使用 `./run app:install`，参数与受控口令环境见[初始化人员账号](iot-center.md#准备后端与人员账号)。物联中心不能用 `migrate run` 代替安装，也不自动清理已有数据库。
 
+macOS 的完整部署审计还要求系统 dyld 共享缓存与构建记录一致。系统更新后可能出现摘要不匹配；普通命令能够运行不代表该审计通过。遇到此类错误，应使用在目标系统基线上重新构建并验收的版本，保留原失败记录；当前跨系统更新的限制见[环境检查](environment.md#检查与定位)。
+
 完成初始化后执行 `./run serve` 启动 HTTP；后台角色按应用装配独立运行。数据库、日志、上传与秘密配置放在部署环境维护的数据位置。
 
 物联中心首次安装示例（在已配置的空库和应用数据根执行）：
@@ -159,18 +161,17 @@ Windows 将 `./run` 换为 `run.cmd`。升级先停止旧 HTTP 服务、核对�
 sequenceDiagram
   participant Operator as 安装者
   participant App as 原生应用
-  participant Stage as 私有暂存与恢复记录
   participant DB as 空数据库
   participant Public as public
   Operator->>App: app:install 账号参数
-  App->>Stage: 取得互斥锁，恢复中断，分块暂存并验摘要
-  App->>DB: 初始化账号、租户与站点默认值
+  App->>App: 持锁恢复中断<br/>暂存并复核摘要
+  App->>DB: 初始化账号、租户<br/>与站点默认值
   DB-->>App: 初始化成功
-  App->>Stage: 持久化替换与旧文件恢复记录
-  App->>Public: 同文件系统逐项替换
-  App->>Stage: 提交安装清单，清理暂存并释放锁
+  App->>App: 写入恢复记录
+  App->>Public: 同文件系统替换托管文件
+  App->>App: 提交清单<br/>清理暂存并解锁
   App-->>Operator: 数据库和页面均完成
-  Note over App,DB: 数据库与文件系统没有跨资源原子事务
+  Note over DB,Public: 数据库与文件系统<br/>没有跨资源原子事务
 ```
 
 写入前保全旧文件，不先清空 `public/`。中断后下一次安装持锁恢复；发现恢复记录之外的文件变动会停止并保留现场。若数据库已完成而页面失败，命令明确报告部分完成，执行 `web:install --force` 修复，不重复初始化数据库。只读目录需在安装阶段由部署者提供正确写权限，服务启动不会自动改权或修复页面。

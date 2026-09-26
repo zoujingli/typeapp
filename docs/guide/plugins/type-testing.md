@@ -9,7 +9,7 @@
 每个测试先描述一个外部可见结果，再选择观察入口。组件行为直接调用安装后的公共接口，命令检查完整退出状态，HTTP 检查真实响应。所有测试专属进程、端口、数据库和临时文件都有明确的创建者与清理责任。
 
 ```mermaid
-flowchart LR
+flowchart TB
     Arrange[准备独立输入与测试资源] --> Invoke[调用公共接口 · 命令 · HTTP]
     Invoke --> Assert[严格断言返回与失败语义]
     Assert --> Result[Suite 汇总结果和退出码]
@@ -33,7 +33,7 @@ composer config prefer-stable true
 composer require --dev zoujingli/type-testing:dev-main
 ```
 
-Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+以上安装 `dev-main` 开发分支。需要固定已发布批次时，按[版本安装说明](../releases.md#composer-按版本安装)选择明确的组件版本和依赖稳定性。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 

@@ -61,4 +61,8 @@
 
 RC 补验另存同一保留目录下的 `rc-preflight.tar.gz`，SHA-256 为 `257049967c309bb5a3f05f656c68524de5838f5c1a0162d497cb044ff3e51716`，27 个原始文件已逐项回读。配置原件与缓存修正补丁保存在 `rc-preflight-inputs.tar.gz`，SHA-256 为 `6a9cc01644a5c26b177bf6e4b67b4cfc6ab2d2fa7a73e84d04b0448e3507fb4e`，3 个原件逐项回读一致；不覆盖初轮开发产物证据。
 
+缓存命中补验的主程序和构建身份另存 `cache-artifact.tar.gz`，SHA-256 为 `52c7c20dba1cb57b47dd4cc57e668e89df3255b1706ba47d081260c70de8c19c`，2 个原件已逐项回读；它们保留补验时的原始身份，不作为公开 RC 附件。
+
+三库部署原始输出和临时数据库服务日志补存 `local-database-logs.tar.gz`，SHA-256 为 `1b3c76212f054484a27122de215dc3c78f1053628639759354abe7db6efa6937`。13 个原件逐项回读，并核对三库日志与原验收报告摘要一致后，回收对应测试数据库目录；原最终归档仍由 `local-acceptance.tar.gz` 保留。
+
 需要复核时，先校验归档摘要，再解压到新建的专用目录，按归档内 `evidence-files.json` 核对原相对路径及逐文件摘要。该归档不公开分发，保留至首次 RC 证据完成审核；共享 SDK 和日常业务数据不属于本任务清理范围。

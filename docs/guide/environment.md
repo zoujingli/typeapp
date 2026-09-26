@@ -65,4 +65,6 @@ php vendor/bin/type doctor type-app.json build
 
 部署后在发布目录执行 `./run verify-runtime`，Windows 使用 `run.cmd verify-runtime`。检查失败时先核对平台、组件版本和完整包内容；原生加载检查与真实业务验收分别进行。SDK 与扩展错误在构建阶段处理，数据库地址、权限、证书和数据目录问题按部署配置处理。
 
+macOS 当前还会核对构建时记录的系统 dyld 共享缓存摘要。更换 macOS 版本或系统更新可能使该检查失败，即使程序能够启动，也不能视为完整部署审计通过。已在 macOS 15 构建的候选包上复现跨系统版本拒绝；应在匹配的系统基线上构建和验收，不能通过跳过校验声明其他 macOS 版本已支持。各平台的实际范围见[平台与验收](platforms.md#当前平台状态)。
+
 [开始开发](quickstart.md) · [构建与部署](deployment.md) · [性能与调优](performance.md)

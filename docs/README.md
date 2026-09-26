@@ -55,6 +55,8 @@
 
 ## 创建第一个应用
 
+下面跟进 `main` 开发分支；需要复现已发布批次时，先按[版本安装教程](guide/releases.md#composer-按版本安装)固定模板和组件，再继续应用开发。
+
 ```bash
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main
 cd my-app

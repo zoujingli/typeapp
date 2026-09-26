@@ -13,7 +13,7 @@ flowchart LR
 
 ## 1. 创建并检查应用
 
-在准备存放项目的目录执行：
+下面使用 `main` 开发分支。在准备存放项目的目录执行；需要复现已发布批次时，先完成[按版本创建与安装](releases.md#composer-按版本安装)，再从本教程的配置与迁移步骤继续，不重复创建项目：
 
 ```bash
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main
@@ -66,19 +66,32 @@ curl --fail-with-body http://127.0.0.1:9501/readyz
 
 这两个地址是部署探针，不证明数据库已经迁移。用户接口使用 Bearer 令牌；模板展示的是一个受信任应用身份，完整登录、人员账号和权限模型需要由具体业务实现。
 
+请求先经过 HTTP 认证与输入校验，再由生成的 `UserOperations` 调用业务服务。下面拆成入口与事务两个视角，展示同一次成功写入：
+
 ```mermaid
 sequenceDiagram
   participant Client as 调用者
   participant HTTP as HTTP 与认证
   participant Controller as UserController
-  participant Operations as 生成的 UserOperations
+  participant Operations as UserOperations
+  Client->>HTTP: Bearer 令牌 + JSON
+  HTTP->>Controller: 已认证的请求
+  Controller->>Controller: 校验来源<br/>类型与字段
+  Controller->>Operations: 已校验业务参数
+  Operations->>Operations: 执行业务事务<br/>详见下图
+  Operations-->>Controller: 已确认的业务结果
+  Controller-->>Client: 状态码与 JSON
+  HTTP->>HTTP: 请求结束<br/>回收作用域资源
+```
+
+`UserOperations` 管理声明的事务，`UserService` 通过 `User` 模型完成读写；数据库确认提交后才返回成功结果。
+
+```mermaid
+sequenceDiagram
+  participant Operations as UserOperations
   participant Service as UserService
   participant Model as User 模型
   participant DB as 数据库
-  Client->>HTTP: Bearer 令牌 + JSON
-  HTTP->>Controller: 已认证的请求
-  Controller->>Controller: 校验来源、类型和字段
-  Controller->>Operations: 已校验业务参数
   Operations->>DB: 开始事务
   Operations->>Service: 执行业务方法
   Service->>Model: 模型查询与写入
@@ -87,9 +100,7 @@ sequenceDiagram
   Model-->>Service: 模型状态
   Service-->>Operations: 业务投影
   Operations->>DB: 提交事务
-  Operations-->>Controller: 已确认的业务结果
-  Controller-->>Client: 状态码与 JSON
-  HTTP->>HTTP: 请求结束，回收作用域资源
+  DB-->>Operations: 提交已确认
 ```
 
 ## 4. 创建与读取用户

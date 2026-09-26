@@ -124,7 +124,7 @@
       depth: 3,
       maxAge: 3600000,
       // 集中更新文档时递增版本，避免读者继续使用旧章节索引。
-      namespace: 'typeapp-guide-v34-' + window.location.pathname,
+      namespace: 'typeapp-guide-v35-' + window.location.pathname,
     },
     plugins: [function (hook) {
       let disposePreview = function () {};

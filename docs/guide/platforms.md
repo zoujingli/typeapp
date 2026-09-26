@@ -21,6 +21,8 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 三库指 MySQL、PostgreSQL、SQLite。独立 ORM 消费者验证模型与运行时的公开契约，主应用和通用模板分别验证自己的业务入口。主应用、模板和组件消费者有各自的产物，不能合并为“全部平台同一产物通过最严格无源码隔离”。Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
 
+macOS 发布包的 `verify-runtime` 目前核对构建机整套 dyld 系统缓存。macOS 15 候选包在 macOS 27 / ARM64 上的补验中，普通安装、服务和页面可运行，但完整部署审计因缓存摘要不同而拒绝。这不构成 macOS 27 支持；系统更新也可能触发同类限制。当前验收范围以实际构建和运行基线为准，详情见[RC 验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
+
 同一源码的 [15 组件批次](https://github.com/zoujingli/typeapp/actions/runs/36144180719)与[应用模板分发](https://github.com/zoujingli/typeapp/actions/runs/36146310707)也已成功，公开安装和三库原生集成通过。Packagist 的 16 个 `dev-main` 引用与分发提交一致，自动同步已启用；安装方式见[组件参考](components.md)。这仍是开发分支，没有稳定版本标签。
 
 完整源码、产物摘要及隔离详情见[本轮验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/native-release-20260925.md)；较早的工具链和模拟环境结果保留在[历史平台记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)。MySQL、SQLite 仍采用安全关闭重建，完整三库物理连接复用未完成。本轮未运行可选性能基准，默认矩阵通过也不代表全部协议、容量和业务故障组合验收完成。

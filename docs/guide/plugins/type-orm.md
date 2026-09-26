@@ -38,7 +38,7 @@ composer config prefer-stable true
 composer require zoujingli/type-orm:dev-main
 ```
 
-Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+以上安装 `dev-main` 开发分支。需要固定已发布批次时，按[版本安装说明](../releases.md#composer-按版本安装)选择明确的组件版本和依赖稳定性。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。公共安装约定见[组件总览](../components.md#安装组件)。
 
 <a id="models-relations-output"></a>
 
@@ -276,17 +276,17 @@ sequenceDiagram
     participant Effect as 提交后操作
     Service->>Tx: transaction(业务闭包)
     Tx->>DB: BEGIN 或 SAVEPOINT
-    Service->>DB: 通过同一作用域执行模型读写
+    Service->>DB: 通过同一作用域<br/>执行模型读写
     alt 业务异常
         Tx->>DB: ROLLBACK 或回滚保存点
-        Tx-->>Service: 原错误，参与模型失效
+        Tx-->>Service: 原错误<br/>参与模型失效
     else 最外层提交已确认
         Tx->>DB: COMMIT
         DB-->>Tx: 确认
         Tx->>Effect: afterCommit 回调
         Effect-->>Service: 成功或 AfterCommitException
     else 提交无法确认
-        Tx-->>Service: UNKNOWN，结束原作用域并按操作 ID 对账
+        Tx-->>Service: UNKNOWN<br/>结束原作用域<br/>按操作 ID 对账
     end
 ```
 

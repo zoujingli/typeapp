@@ -7,21 +7,26 @@
 先用下方 PING 确认端点，再练习带 TTL 的读写与 pipeline，最后按需要接入 WATCH 或 Lua。Redis 服务是外部数据服务；phpredis 和 Swoole 属于应用的原生运行依赖，构建与部署责任见[环境说明](../environment.md)。
 
 ```mermaid
+---
+config:
+  sequence:
+    width: 115
+---
 sequenceDiagram
     participant Work as 请求或任务
     participant Manager as RedisManager
     participant Pool as 用途资源池
     participant Client as phpredis 会话
     participant Server as Redis 服务
-    Work->>Manager: connection(scope, name, purpose)
-    Manager->>Pool: 按用途借出独占租约
+    Work->>Manager: connection(scope,<br/>name, purpose)
+    Manager->>Pool: 按用途借出<br/>独占租约
     Pool-->>Work: RedisConnection
     Work->>Client: 已校验命令与参数
-    Client->>Server: 原生 Redis 协议
+    Client->>Server: 原生 Redis<br/>协议
     Server-->>Client: 响应或错误
     Client-->>Work: 值或带 outcome 的异常
     Work->>Pool: finally 关闭作用域
-    Pool->>Client: 恢复基线或关闭会话
+    Pool->>Client: 恢复基线<br/>或关闭会话
 ```
 
 ## 安装与依赖
@@ -36,7 +41,7 @@ composer config prefer-stable true
 composer require zoujingli/type-redis:dev-main
 ```
 
-Composer 从 Packagist 自动解析组件及其传递依赖，无需额外配置 VCS 仓库。提交应用的 `composer.lock`；`dev-main` 是开发版本，不能等同稳定发布。公共安装约定见[组件总览](../components.md#安装组件)。
+以上安装 `dev-main` 开发分支。需要固定已发布批次时，按[版本安装说明](../releases.md#composer-按版本安装)选择明确的组件版本和依赖稳定性。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。公共安装约定见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
