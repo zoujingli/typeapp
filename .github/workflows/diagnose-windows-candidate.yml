@@ -65,5 +65,7 @@ jobs:
           if-no-files-found: error
           path: |
             build/windows-candidate-probe/*.json
+            build/windows-candidate-probe/*.log
+            build/package-test-*/verification.json
             build/windows-database-*/*.log
             build/windows-database-*/verification.json

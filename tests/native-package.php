@@ -127,10 +127,16 @@ try {
     $initialization = $project === $root
         ? [...$command, 'app:install', 'package-admin', '发布管理员', 'package-customer', '发布客户', '发布租户']
         : [...$command, 'migrate', 'run'];
+    $initializationStarted = microtime(true);
     $installed = (new Process($initialization, $package, $environment + [
         'APP_ADMIN_PASSWORD' => $password, 'APP_CUSTOMER_PASSWORD' => $password . '-customer',
-    ]))->wait(20);
-    expect($installed->successful(), '源码不可访问时应用初始化失败：' . $installed->stderr);
+    ]))->wait(30);
+    // Windows PostgreSQL 原候选空库安装实测约22秒；沿用应用测试的30秒预算，超时仍失败。
+    $initializationStatus = ['budget-seconds' => 30, 'elapsed-seconds' => round(microtime(true) - $initializationStarted, 3),
+        'exit-code' => $installed->exitCode, 'timed-out' => $installed->timedOut,
+        'output-exceeded' => $installed->outputExceeded, 'signal' => $installed->signal];
+    expect($installed->successful(), '源码不可访问时应用初始化失败 ' . json_encode($initializationStatus, JSON_THROW_ON_ERROR)
+        . "：\n" . $installed->stdout . $installed->stderr);
     if ($project === $root) {
         $webFiles = $release['embedded-resources'] ?? [];
         expect(isset($webFiles['web/index.html'], $webFiles['web/LICENSE']), '物联中心产物没有内嵌完整前端');
@@ -312,6 +318,7 @@ if (PHP_OS_FAMILY !== 'Windows') {
 }
 
 $record = ['os' => PHP_OS_FAMILY, 'driver' => $driver, 'artifact-sha256' => $release['artifact']['sha256'], 'release-sha256' => $created['manifest-sha256'],
+    'initialization' => $initializationStatus,
     'package' => $package, 'project' => $project, 'relocated' => true, 'source-and-sdk-read-denied' => $isolated, 'scope' => '当前应用' . $driver . '原生发布闭环，不代表其他平台已验收',
     'business-message' => getenv('TYPE_TEMPLATE_EXPECTED_MESSAGE') ?: null,
     'composer-read-and-php-compiler-exec-denied' => $isolated,

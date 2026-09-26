@@ -79,8 +79,20 @@ try {
             file_put_contents($work . '/measurement.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n");
         }
     }
+    expect($report['attempts'][1]['successful'] && $report['attempts'][2]['successful'], '原候选在较长预算内仍未完成安装，见诊断报告');
+    // 测量后仍用原 ZIP 和现行完整部署断言验证修复，诊断成功不代替版本工作流门禁。
+    $replayEnvironment = getenv();
+    $replayEnvironment['TYPE_RELEASE_PACKAGE'] = $package;
+    $replayEnvironment['TYPE_RELEASE_PACKAGE_SHA256'] = $record['manifest-sha256'];
+    $replayEnvironment['TYPE_PACKAGE_DRIVER'] = 'pgsql';
+    $replayArtifact = $root . '/build/original-windows-evidence/app/type-app.exe';
+    expect(hash_file('sha256', $replayArtifact) === $record['artifact-sha256'], '完整回归的原程序字节不同');
+    $replay = (new Process([PHP_BINARY, $root . '/tests/native-package.php', $replayArtifact], $root, $replayEnvironment))->wait(600);
+    file_put_contents($work . '/replay.log', $replay->stdout . $replay->stderr);
+    file_put_contents($work . '/replay.json', json_encode(['archive-sha256' => $record['sha256'], 'artifact-sha256' => $record['artifact-sha256'],
+        'exit-code' => $replay->exitCode, 'timed-out' => $replay->timedOut, 'output-exceeded' => $replay->outputExceeded, 'signal' => $replay->signal], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n");
+    expect($replay->successful(), '原候选完整部署回归失败，见replay.log：' . $replay->stdout . $replay->stderr);
 } finally {
     $admin = null;
     removeTestDirectory($package);
 }
-expect($report['attempts'][1]['successful'] && $report['attempts'][2]['successful'], '原候选在较长预算内仍未完成安装，见诊断报告');

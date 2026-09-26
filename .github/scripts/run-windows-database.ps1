@@ -157,7 +157,7 @@ try {
     Invoke-TaskProcess $taskPhp @('-r', $taskProbe) (Join-Path $taskEvidence 'ready.log') 90 $taskEnvironment | Out-Null
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
     if ($CandidateProbe) {
-        Invoke-TaskProcess $taskPhp @('.github/scripts/probe-windows-candidate.php') (Join-Path $taskEvidence 'candidate-probe.log') 360 $taskEnvironment | Out-Null
+        Invoke-TaskProcess $taskPhp @('.github/scripts/probe-windows-candidate.php') (Join-Path $taskEvidence 'candidate-probe.log') 900 $taskEnvironment | Out-Null
     } elseif ($OrmOnly) {
         if ($Driver -eq 'pgsql') {
             $taskProbeFailed = $false
