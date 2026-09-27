@@ -1,6 +1,6 @@
 # 部署与恢复操作手册
 
-完整操作手册由构建组件维护，参见[首次部署、升级、备份与回滚](../../plugin/type-build/docs/operations.md)。`type package`会把同一份内容复制为发布根的`OPERATIONS.md`并纳入完整性清单，维护端离线也可阅读，不依赖开发主仓目录。
+本页维护历史目录包的恢复演练。完整手册由构建组件维护，参见[首次部署、升级、备份与回滚](../../plugin/type-build/docs/operations.md)。`type package-directory` 将其复制为发布根的 `OPERATIONS.md` 并纳入完整性清单；新单程序的入口与边界见[构建与部署](../guide/deployment.md)。
 
 三库演练入口为 `tests/native-package-clean.php <Linux发布目录> <受信清单SHA256> <sqlite|mysql|pgsql> --recover`。测试只创建专用资源，不可拿测试器直接操作业务数据库。
 
@@ -22,7 +22,7 @@ macOS入口为`tests/native-package-recovery.php <macOS发布目录> <受信清�
 composer test:native-database-recovery -- "$TYPE_RELEASE_PREPARATION" "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS"
 ```
 
-从项目根执行；三个环境变量分别指向已保存的发布准备JSON、MySQL工具根和PostgreSQL工具根，相对路径以当前项目根为基准。`preparation.json`是`type package`返回的JSON，包含发布目录和`manifest-sha256`；入口先验证发布包，再创建任何测试数据。MySQL根目录须有`bin/mysqld`、`mysql`和`mysqldump`；PostgreSQL根目录须有`bin/postgres`、`initdb`、`pg_dump`和`pg_restore`。仅接受非root macOS与实际Mach-O工具，不下载/安装软件、不调用Docker、Homebrew服务或launchd，也不连接已有数据库。
+从项目根执行；三个环境变量分别指向已保存的发布准备JSON、MySQL工具根和PostgreSQL工具根，相对路径以当前项目根为基准。`preparation.json`是历史目录入口 `type package-directory` 返回的JSON，包含发布目录和`manifest-sha256`；入口先验证发布包，再创建任何测试数据。MySQL根目录须有`bin/mysqld`、`mysql`和`mysqldump`；PostgreSQL根目录须有`bin/postgres`、`initdb`、`pg_dump`和`pg_restore`。仅接受非root macOS与实际Mach-O工具，不下载/安装软件、不调用Docker、Homebrew服务或launchd，也不连接已有数据库。
 
 控制端PHP必须加载所选PDO驱动；缺少时在创建服务器前明确失败。`PHPRC`和`PHP_INI_SCAN_DIR`会传给恢复子进程，须指向同一匹配SDK的配置；给最外层PHP单独追加`-d extension=...`不会自动配置子进程。按末尾单个驱动并行运行时，每个控制器都有独立目录、端口和服务器，不能复用正在运行的测试实例。
 

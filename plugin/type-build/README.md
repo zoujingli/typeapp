@@ -4,7 +4,7 @@ TypeApp 的开发与构建组件：生成配置、路由和模型，审计完整
 
 **已内置四平台 Swoole 模块。** 安装包含 `resources/swoole/` 的组件版本后，匹配构建默认校验并复用，无需另行下载、编译 Swoole。应用无需声明整目录资源，只收集当前平台选中的模块与实际依赖；ABI、许可证及覆盖方式见[资源说明](resources/swoole/README.md)。
 
-最终交付目标为一个主程序文件加外置配置，非系统原生库完整静态链接、启动不释放运行库。当前 `package` 仍生成目录包，`archive` 生成归档，部署须保留完整包。使用入口见[构建指南](https://iots.top/#/guide/plugins/type-build)，开发、构建和部署的分工见[环境与依赖](https://iots.top/#/guide/environment)。
+`package` 只输出一个可执行文件，要求非系统运行库静态链接、资源与许可材料内嵌，启动不释放运行库。构建时通过 `TYPE_STATIC_RUNTIME` 指定已校验的目标 SDK；缺少静态能力不能通过交付门禁。macOS ARM64 已有应用验收结果，其他平台仍需补齐。使用入口与公开 RC7 的历史目录包边界见[构建指南](https://iots.top/#/guide/deployment)。
 
 ## 阅读与操作路径
 
@@ -17,7 +17,7 @@ flowchart LR
     Runtime[SDK 与匹配运行库] --> Probe[真实 embed 验证]
     Probe --> AOT
     AOT --> Identity[原生产物与内容身份]
-    Identity --> Package[当前目录包及校验]
+    Identity --> Package[静态单程序输出及校验]
 ```
 
 开发生成成功、原生编译成功、无源码运行通过是不同结果。构建失败时保留本次诊断，不能用仍存在的旧产物代替本次验收；生成目录可以重建，应用锁文件、源码和真实验收身份需要保留。
@@ -48,7 +48,7 @@ prepare按完整源码、声明、生成器及锁文件内容身份复用不可�
 
 路由由生产源码上的 `#[Route]`/`#[Group]`/`#[Resource]` 或 `config/route.php` 声明。构建 JSON 只指向该 PHP 文件，不再读取 JSON 路由表；旧 `.json` 路径明确报迁移错误。`RouteCompiler::declarations()` 静态解析 `declare(strict_types=1)` 与一次 return 常量数组，不 include、不读取环境。完整契约见[HTTP 与路由](https://github.com/zoujingli/typeapp/blob/main/docs/guide/routing.md)。
 
-同一入口还提供 `type package <产物> <新发布目录> [.env.example]` 和 `type verify-package <目录> <受信清单SHA256>`；运行目录不包含本构建工具或 Composer。平台布局、资源、启动校验与实际限制见[原生发布目录说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-packages.md)。发布包验收以具体源码、平台和隔离报告为准，不能仅凭接口存在宣布完整交付。
+`type package <静态产物> <新程序文件>` 原样输出可执行文件；`type verify-package <程序文件> <受信SHA256>` 离线核对字节、身份和系统加载项。配置由部署者单独维护，程序不依赖构建工具、SDK 或 Composer。`package-directory` 和 `archive` 仅维护旧共享库目录包，不能作为新的单程序发布证据。
 
 `type service <发布目录> <服务声明.json> <新服务目录> <受信清单SHA256>` 复用发布校验，生成launchd/systemd/WinSW配置与摘要记录。目标发布、数据和服务配置分离；生成器不读取.env、不安装/启用服务、不修改账号权限。Unix显式使用非root账号，Windows需提供外部受信WinSW包装器且使用LocalService。声明、运行依赖与实际验证范围见[原生服务管理](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-services.md)。
 
@@ -92,7 +92,7 @@ composer require --dev zoujingli/type-build:dev-main
 
 ## 最小构建入口
 
-`type package`还会将组件内的完整操作手册复制为`OPERATIONS.md`，按同一发布清单校验并进入归档。手册覆盖首次部署、维护窗口、三库备份/恢复与不可自动回滚情况；应用运行端不需要Composer或编译工具。来源见[操作手册](docs/operations.md)。
+历史 `package-directory` 会随目录附带 `OPERATIONS.md`。单程序不额外生成手册文件，三库备份和恢复仍按[操作手册](docs/operations.md)处理；手册中的目录包启动脚本只适用于旧布局。
 
 发布根的 `LICENSE`、`NOTICE` 取自当前应用在构建时记录的原文，实际存在才复制；组件与第三方材料分别保留在依赖资源索引中，不用构建组件的许可替代应用许可。材料缺失继续由 `notices.require-complete` 和构建报告的覆盖状态处理，不强制外部应用采用 Apache-2.0 或提供 NOTICE。身份生成协议 4 支持这一行为；协议 3 的旧产物若同时含两份应用材料仍可打包，否则需要重新构建。
 

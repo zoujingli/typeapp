@@ -10,6 +10,13 @@ use TypeApp\Distribution\Process;
 // 正式前端只构建一次，各平台验证同一清单后全量AOT；版本只写临时配置。
 try {
     $root = dirname(__DIR__);
+    if ($argc > 2 || ($argc === 2 && $argv[1] !== '--shared-development')) {
+        throw new InvalidArgumentException('用法：php tools/build-application.php [--shared-development]');
+    }
+    // 正常交付必须静态构建；共享库只用于既有开发与回归场景，不能进入发布候选。
+    if (($argv[1] ?? '') !== '--shared-development' && Type\Build\StaticRuntimeSdk::selected() === null) {
+        throw new RuntimeException('单程序构建需要目标平台的 TYPE_STATIC_RUNTIME 清单；不会回退为目录包。制备与验收范围见 docs/guide/deployment.md。');
+    }
     $frontend = getenv('TYPE_FRONTEND_MANIFEST');
     if ($frontend === false || $frontend === '') {
         $phar = getenv('TYPE_COMPOSER_PHAR');

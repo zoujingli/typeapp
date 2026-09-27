@@ -1,16 +1,18 @@
 # 原生发布目录与搬迁验证
 
+本文维护历史共享库目录包的验证方式。主仓新 `package` 只输出静态单程序，命令及平台范围见[构建与部署](../guide/deployment.md)；本页目录布局不能当作单程序交付。
+
 Linux发布分析的`readelf`从当前PHP安装的`bin`及既有受限系统PATH查找，不再写死`/usr/bin/readelf`；私有工具依赖可位于该PHP前缀的`lib`。不会继承任意业务PATH或把分析工具复制进发布目录。`composer test:package-toolchain -- /标准应用原生产物`验证实际打包、清空SDK环境后的启动和无构建工具载荷。
 
 ## 构建端
 
 ```sh
-php vendor/bin/type package build/app/type-app build/release .env.example
+php vendor/bin/type package-directory build/app/type-app build/release .env.example
 php vendor/bin/type verify-package build/release <受信发布记录中的release.json的SHA-256>
 php vendor/bin/type archive build/release build/release.tar.gz <同一受信清单SHA-256>
 ```
 
-标准应用提供 `composer typeapp:package`，模板提供 `composer package`。目标已存在时拒绝覆盖；升级使用新的版本目录，不能删除旧目录来掩盖迁移/回滚缺口。打包要求同平台、身份生成协议 3 或更新的真实产物；协议 3 的产物必须已有应用 LICENSE 与 NOTICE，缺任一项时需要按协议 4 重新构建。Windows 入口允许省略构建器添加的 `.exe` 后缀。
+主仓的标准应用与模板 Composer 打包入口已改为单程序；旧目录回归需显式使用上述 `package-directory`。目标已存在时拒绝覆盖；升级使用新目录，不能删除旧目录来掩盖迁移/回滚缺口。旧打包要求同平台、身份生成协议 3 或更新的真实产物；协议 3 必须已有应用 LICENSE 与 NOTICE。Windows 输入允许省略 `.exe` 后缀。
 
 gzip归档先流式核对展开字节数及SHA-256与磁盘tar完全一致，再逐文件核对tar载荷与发布清单，避免`phar://`重新读取gzip时将完整归档留在内存。`tests/package-archive.php`通过公开`type archive`在128 MiB限制下创建两种格式，再使用Phar解包ZIP、原生`tar`解包tar.gz并验证实际原生启动；验收控制端需要可用的`tar`命令。
 

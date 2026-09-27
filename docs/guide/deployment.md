@@ -6,7 +6,7 @@
 
 ## 单程序交付约定
 
-**交付约定：一个主程序文件 + 外置配置文件，启动不释放运行库。** 每个目标平台分别构建自己的程序，外置 `.env` 保存部署配置。PHPX、libphp、Swoole 及其他非系统原生依赖在构建期静态链接进程序；允许使用目标操作系统自带的库。部署人员无需手动安装、拆分或配置这些运行库。该要求尚在[静态链接可行性验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/static-runtime-feasibility.md)阶段。
+**交付约定：一个主程序文件，配置由部署环境维护，启动不释放运行库。** 每个平台分别构建自己的程序，配置可由环境变量或外置 `.env` 提供。PHP、PHPX、Swoole 及其他非系统原生依赖在构建期静态链接；允许使用操作系统自带的库。Swoole 是程序内部的通信与并发运行库，无需人工安装或启动独立 Swoole 服务。
 
 | 项目 | 交付和维护方式 |
 | --- | --- |
@@ -19,16 +19,16 @@
 
 ## 当前构建状态
 
-**当前 `type package` 生成目录包，`archive` 生成归档，尚未生成上述静态单程序。** 目录包已经收集应用和实际运行依赖，部署时需保留完整布局；不能只复制其中的主程序。
+主仓的 `type package` 现在只交付一个可执行文件，仍有外置运行库、资源或缺少许可材料时明确拒绝。macOS ARM64 已有完整应用静态构建和同一程序三库隔离运行结果；本机候选依赖的最低系统版本为 macOS 26。Linux x64、Linux ARM64、Windows x64 的静态 SDK 与同一产物验收尚未完成，不能据此声明四平台单程序已发布。
 
-| 已有实现 | 完成单程序还需要 |
+| 已实现路径 | 验收与边界 |
 | --- | --- |
-| 生产输入审计、全量 AOT、原生依赖收集 | PHP、PHPX、Swoole、实际扩展及非系统库形成完整静态链接闭包 |
-| 四平台预编译 Swoole 共享模块 | 匹配的静态目标文件或归档，并解决 PHP PDO 与 Swoole 驱动符号冲突 |
-| 随包资源、许可证、运行配置及启动脚本 | 资源和许可材料可由程序读取，直接入口不依赖外部启动脚本或内部 ini 文件 |
-| 目录包校验、搬迁、备份与恢复入口 | 同一产物在干净机器、只读安装目录及含空格路径中启动，证明无源码、无 SDK、无外部非系统库且不释放运行库 |
+| 静态 SDK、目标头文件和归档摘要校验 | macOS 源码制备入口已接入；共享模块不能作为静态输入 |
+| 全量 AOT、内置 PHP 配置、静态运行身份 | 普通入口和线程应用分别验收；不读部署机 PHP 配置 |
+| 页面和许可原文内嵌 | 页面显式安装；`licenses` 直接读取许可材料，不释放运行库 |
+| 单文件输出、搬迁、只读目录、无源码隔离 | macOS 三库已有行为结果；其他平台必须分别补齐 |
 
-现有 `.so`／`.dll` 是可复用的构建输入，不能直接充当静态归档。`bin/`、`lib/` 或压缩包的存在也不能作为单文件完成证据。以下命令描述当前可用流程。
+公开的 `v1.0.0-rc.7` 仍是历史目录归档，须完整解压运行；其旧附件和验收身份保持不变。新候选门禁只接受单程序和三库回执，任一平台未完成就阻止主仓 Release 公开。详细证据见[静态构建验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/static-runtime-feasibility.md)。
 
 ## 构建与交付流程
 
@@ -39,19 +39,21 @@ flowchart TB
   Web["物联中心：冻结前端依赖、检查并构建 dist"] --> Embedded["资源清单与 C++ 常量"]
   Embedded --> Compile
   Generate --> Compile["TypePHP 全量 AOT 编译与依赖校验"]
-  Compile --> Package["当前：携带原生库的目录包"]
+  Compile --> Package["静态链接 → 一个可执行文件"]
   Package --> Verify["同一产物的业务与无源码验收"]
-  Verify --> Deploy["部署程序包 + 外置配置"]
+  Verify --> Deploy["复制程序 · 配置环境变量或 .env"]
   Deploy --> Data["保留持久数据、日志与备份"]
 ```
 
-构建端使用 Composer 与 TypePHP；部署端使用已验证产物。包内只收集目标平台实际需要的依赖，不复制全部平台模块。
+构建端使用 Composer 与 TypePHP；部署端只使用目标平台已验证的程序。源码、编译器、SDK、Node.js 和 Composer 留在构建端。
 
 ## 检查构建环境
 
 工具链版本以当前项目的 `toolchain.lock.json` 为准，生产依赖以 `composer.lock` 为准。准备与目标 OS、架构一致的 SDK 和扩展，再检查构建环境。
 
-构建组件已内置四个平台的 [Swoole 共享模块](plugins/type-build.md#内置-swoole-与运行依赖)，安装包含这些资源的版本后，构建默认校验并复用，无需另行下载、编译 Swoole。它们固定匹配 PHP 8.5.10 ZTS、非 debug、64 位 ABI；只收集所选模块与实际依赖，不要求应用声明整目录资源。PHP SDK、PHPX 和其他原生依赖在构建机准备。
+单程序构建通过 `TYPE_STATIC_RUNTIME` 选择目标 SDK 清单，并校验 PHP ABI、目标头文件、归档、源码适配与许可材料。构建组件内的四平台 [Swoole 共享模块](plugins/type-build.md#内置-swoole-与运行依赖)仅继续用于共享库开发及历史回归，不能放进程序冒充静态链接。构建宿主 PHP 与目标静态 PHP 分开校验。
+
+macOS ARM64 制备入口为 `tools/prepare-static-macos.sh <新的绝对工作目录> <PostgreSQL17.11静态SDK根目录>`。它使用固定 PHP、PHPX、Redis 和 Swoole 源码，保留三库与协程 hook。`TYPE_STATIC_MINIMUM_MACOS` 默认 `15.0`，所有依赖归档也必须支持该版本；本机已有归档要求 26.0，不能把输出标为 macOS 15 可用。SDK 仅供构建，不随程序部署。
 
 独立应用根执行：
 
@@ -71,6 +73,7 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一已验收源码基线�
 物联中心成品案例在本仓库根执行：
 
 ```bash
+: "${TYPE_STATIC_RUNTIME:?先设置本平台已校验的静态SDK清单路径}"
 composer typeapp:build
 build/app/type-app check
 ```
@@ -85,54 +88,45 @@ composer build
 
 物联中心的 `composer typeapp:build` 先冻结安装前端依赖，执行类型检查与构建，再校验入口、许可及资源摘要，最后全量 AOT。`web/dist` 以 `web/` 前缀编入程序；Node.js 与 pnpm 只用于构建。版本发布中前端只构建一次，四个平台消费同一份已校验资源，流程见[版本发布与安装](releases.md)。独立模板与组件不携带这份业务前端。
 
-## 创建当前目录包
+## 输出一个程序文件
 
-物联中心成品案例提供以下入口，目标目录必须尚不存在：
+物联中心提供以下入口，目标文件必须尚不存在。打包不重新编译，输出字节与已验收程序一致：
 
 ```bash
 composer typeapp:package
-build/release/run verify-runtime
-build/release/run help
+build/typeapp-iot verify-runtime
+build/typeapp-iot help
+build/typeapp-iot licenses
 ```
 
-独立模板用 `composer package`。Windows 使用对应发布目录中的 `run.cmd`。
+独立模板用 `composer package`，输出 `build/type-project-release`。Windows 文件保留 `.exe` 后缀，但当前静态 SDK 尚未完成，命令不能用共享 DLL 产物通过验收。
 
-运行包包含原生应用、资源、所需运行库、身份清单、配置示例及操作手册。PHPX、libphp、Swoole、PDO 等实际非系统依赖由构建收集并随包管理，部署时保留完整布局并执行校验，不需要另装开发 PHP 环境。外部数据库和 Redis 服务仍由部署环境提供。
+部署只复制程序文件；外置配置与业务数据另行维护。校验摘要由交付渠道提供，`type verify-package <程序文件> <受信SHA256>` 用于构建端离线校验。程序内的 `licenses` 命令输出材料索引，`licenses notices/texts/…` 读取其中登记的原文。许可证声明完整不替代分发方履行相应源码或重链接材料义务。
 
-| 文件或目录 | 用途 |
-| --- | --- |
-| `release.json` | 目标、构建身份、依赖与文件摘要 |
-| `run` / `run.cmd` | 对应平台启动入口 |
-| `bin/`、`lib/`、`runtime/` | 应用、实际运行库与受控配置 |
-| `config/env.example` | 无秘密的环境示例 |
-| `DEPLOY.md`、`OPERATIONS.md` | 发布目录说明与部署、备份、恢复手册 |
-| `LICENSE`、`NOTICE`（应用存在时） | 与构建身份绑定的应用原始许可与归属材料 |
-| `NOTICES.md` 与程序资源中的材料索引 | 实际依赖的来源、版本、摘要和许可原文 |
-
-应用许可材料在构建时收集，打包时从已校验的产物资源导出，不依赖应用源码仍然存在。修改材料后需要重新构建；打包不会借用构建组件的许可证补空缺。
+`package-directory` 和 `archive` 保留给历史共享库产物的回归及维护。这些产物需要完整目录，不能只复制 `bin/app`；不进入新的单程序发布候选。主仓 `tools/build-application.php --shared-development` 显式选择旧开发构建，默认生产构建缺少静态 SDK 时直接失败。
 
 ## 首次启动
 
-将完整运行包放到匹配 OS/架构的服务器，设置应用数据根、数据库、令牌和 Host/代理配置，然后在发布目录执行；Windows 使用对应的 `run.cmd`：
+将已验收的单程序放到匹配 OS/架构和最低系统版本的服务器，下文将程序命名为 `app`。设置应用数据根、数据库、令牌和 Host/代理配置，再执行：
 
 ```bash
-./run verify-runtime
-./run help
+./app verify-runtime
+./app help
 ```
 
-`verify-runtime` 检查运行身份与实际依赖，不替代业务验收。服务运行前，按应用自己的入口初始化或迁移：通用模板使用 `./run migrate run`；物联中心只允许在空库中使用 `./run app:install`，参数与受控口令环境见[初始化人员账号](iot-center.md#准备后端与人员账号)。物联中心不能用 `migrate run` 代替安装，也不自动清理已有数据库。
+`verify-runtime` 检查运行身份与实际依赖，不替代业务验收。服务运行前，按应用自己的入口初始化或迁移：通用模板使用 `./app migrate run`；物联中心只允许在空库中使用 `./app app:install`，参数与受控口令环境见[初始化人员账号](iot-center.md#准备后端与人员账号)。物联中心不能用 `migrate run` 代替安装，也不自动清理已有数据库。
 
-macOS 的完整部署审计还要求系统 dyld 共享缓存与构建记录一致。系统更新后可能出现摘要不匹配；普通命令能够运行不代表该审计通过。遇到此类错误，应使用在目标系统基线上重新构建并验收的版本，保留原失败记录；当前跨系统更新的限制见[环境检查](environment.md#检查与定位)。
+静态程序核对内置扩展、实际加载映像与资源摘要，只允许目标系统库。历史目录包的 macOS 审计另外绑定 dyld 共享缓存；该旧限制及排障方式见[环境检查](environment.md#检查与定位)。
 
-完成初始化后执行 `./run serve` 启动 HTTP；后台角色按应用装配独立运行。数据库、日志、上传与秘密配置放在部署环境维护的数据位置。
+完成初始化后执行 `./app serve` 启动 HTTP；后台角色按应用装配独立运行。数据库、日志、上传与秘密配置放在部署环境维护的数据位置。
 
 物联中心首次安装示例（在已配置的空库和应用数据根执行）：
 
 ```sh
 APP_ADMIN_PASSWORD='至少12字节的管理密码' \
 APP_CUSTOMER_PASSWORD='至少12字节的客户密码' \
-./run app:install platform-admin '平台管理员' customer-admin '客户管理员' '初始租户'
-./run serve
+./app app:install platform-admin '平台管理员' customer-admin '客户管理员' '初始租户'
+./app serve
 ```
 
 安装完成后访问客户登录页 `/#/login` 或平台登录页 `/#/admin/login`。页面与 API 由同一 Swoole HTTP 入口提供，继续执行 Host 和路径校验。部署端不需要另外启动前端开发服务器。
@@ -149,24 +143,24 @@ APP_CUSTOMER_PASSWORD='至少12字节的客户密码' \
 
 | 命令 | 行为 |
 | --- | --- |
-| `./run app:install …` | 校验并暂存页面，初始化空库与双端账号，再提交页面安装 |
-| `./run web:install` | 只安装页面；相同内容重复执行成功，不同内容拒绝覆盖 |
-| `./run web:install --dry-run` | 输出 `actions.add/replace/delete` 和 `conflicts`，不写目录、锁或文件 |
-| `./run web:install --dry-run --force` | 预览强制更新的新增、替换与删除 |
-| `./run web:install --force` | 更新内置路径，清理旧清单中的过期资源，保留上传等非托管内容 |
+| `./app app:install …` | 校验并暂存页面，初始化空库与双端账号，再提交页面安装 |
+| `./app web:install` | 只安装页面；相同内容重复执行成功，不同内容拒绝覆盖 |
+| `./app web:install --dry-run` | 输出 `actions.add/replace/delete` 和 `conflicts`，不写目录、锁或文件 |
+| `./app web:install --dry-run --force` | 预览强制更新的新增、替换与删除 |
+| `./app web:install --force` | 更新内置路径，清理旧清单中的过期资源，保留上传等非托管内容 |
 
-Windows 将 `./run` 换为 `run.cmd`。升级先停止旧 HTTP 服务、核对新运行包和数据库兼容，再预览、更新页面并启动新程序；避免升级期间旧页面与新 API 混用。
+历史 RC7 目录包将 `./app` 换为 `./run`，Windows 旧包使用 `run.cmd`；不要混用两种产物布局。升级先停止旧 HTTP 服务、核对新运行包和数据库兼容，再预览、更新页面并启动新程序；避免升级期间旧页面与新 API 混用。
 
 在新运行包目录中执行页面更新，沿用原应用根与外置配置：
 
 ```bash
 set -eu
-./run verify-runtime
-./run web:install --dry-run
+./app verify-runtime
+./app web:install --dry-run
 # 核对变更路径后，预览并执行强制更新。
-./run web:install --dry-run --force
-./run web:install --force
-./run serve
+./app web:install --dry-run --force
+./app web:install --force
+./app serve
 ```
 
 安装命令输出 JSON。`actions.add`、`actions.replace`、`actions.delete` 分别列出新增、替换和删除的托管路径；`generation` 标识程序内的这一组资源。未加 `--force` 的预览通过 `conflicts` 列出已有但内容不同的文件，**预览成功不表示没有冲突，也不表示已经安装**。实际安装成功才返回 `ready: true`；相同内容再次安装时，三类变更列表为空。
@@ -215,11 +209,11 @@ Broker 接入、持久工作和设备授权均使用 Swoole 官方 Process、Thr
 
 升级生成新的发布目录，保留旧版本及明确的备份。先核对版本、依赖、数据库兼容和迁移计划，再切换服务；切回旧二进制不会自动回滚数据库。
 
-运行包内的 `OPERATIONS.md` 是该产物随附的操作手册，涵盖首次部署、升级、三库备份与恢复，以及不能自动回滚的情况。恢复演练使用新目标并保留原数据，按实际数据库语义验证。
+[运维手册](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/docs/operations.md)涵盖三库备份、恢复和不能自动回滚的情况；其中目录包启动与监督脚本仅适用于旧交付布局。恢复演练使用新目标并保留原数据，按实际数据库语义验证。
 
 物联网恢复另使用 `iot:recovery snapshot/status/begin/isolate/review/restore`，先隔离旧系统，再依据受信的当前授权快照核对恢复后的身份。恢复门限制新角色启动，不会代替维护人员停止旧进程。管理端仅显示相关状态，不提供绕过核对的一键恢复；旧身份、设备归属和未完成指令不能随数据库回滚自动重新授权。
 
-发布文件摘要需从受信渠道取得。`type verify-package` 接收受信的 `release.json` SHA-256；程序和同一不受信来源的摘要不能互相证明来源可信。
+发布文件摘要需从受信渠道取得。`type verify-package` 对单程序接收程序 SHA-256，对历史目录包接收 `release.json` SHA-256；程序和同一不受信来源的摘要不能互相证明来源可信。
 
 ## 验收自己的应用
 

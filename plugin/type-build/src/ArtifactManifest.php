@@ -191,6 +191,9 @@ final class ArtifactManifest
      */
     public function accessor(array $manifest): string
     {
+        if (($manifest['runtime-linkage'] ?? null) === 'static') {
+            return (new StaticRuntimeIdentity())->accessor($manifest);
+        }
         if (($manifest['runtime']['os'] ?? 'Linux') !== 'Linux') {
             return $this->portableAccessor($manifest);
         }

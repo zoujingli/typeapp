@@ -4,7 +4,7 @@
 
 在开发和构建环境中生成配置、路由、模型、任务与操作包装，审计全部生产源码，调用锁定的 TypePHP 编译，并形成可校验的原生产物与运行包。
 
-组件已内置四平台 Swoole 模块，匹配构建无需另行下载、编译 Swoole，并自动收集选中模块与实际运行依赖。部署者使用完整运行包，无需安装本构建工具；按阶段的要求见[环境与依赖](../environment.md)。最终目标是一个主程序加外置配置、启动不释放运行库，当前仍提供目录包。
+单程序构建使用经过校验的静态 SDK，将 PHP、PHPX、Swoole 与非系统库链接进同一个文件；配置独立维护，普通启动不释放运行库。组件保留的四平台 Swoole 共享模块用于开发及历史目录包回归。静态交付的实际平台范围见[构建与部署](../deployment.md#当前构建状态)，部署者无需安装本构建工具。
 
 ## 构建链路与职责
 
@@ -20,12 +20,12 @@ flowchart TB
     Assets[声明的内嵌资源] --> Resource[生成资源常量与摘要]
     Resource --> Compile
     Compile --> Artifact[原生产物与身份清单]
-    Artifact --> Package[当前 NativePackage 目录包]
+    Artifact --> Package[SingleProgram 单文件输出]
     Package --> Verify[校验后运行与无源码验收]
     style Compile fill:#147d64,color:#fff,stroke:#147d64
 ```
 
-单程序静态链接是后续交付门槛；本图如实展示当前目录包链路。运行配置在启动时从外部读取，真实 `.env` 不进入编译输入或发布归档。
+构建通过 `TYPE_STATIC_RUNTIME` 选择目标 SDK，真实 embed 缺少内置扩展时立即拒绝，不回退加载 `.so`。未选择静态 SDK 的底层开发构建仍可供旧场景测试，但不能通过 `package`。运行配置在启动时从外部读取，真实 `.env` 不进入编译输入。
 
 ## 内嵌静态资源
 
@@ -229,20 +229,19 @@ sequenceDiagram
 
 ## 产物、运行包与服务配置
 
-`type package <产物> <新目录> [.env.example]` 生成运行目录，包含依赖清单、资源与操作手册。`type verify-package <目录> <受信清单SHA256>` 校验运行包；可信摘要应来自已验证的交付渠道。
+`type package <静态产物> <新程序文件>` 原样交付一个文件。`type verify-package <程序文件> <受信SHA256>` 离线校验程序字节、身份、内嵌许可索引与系统加载项；可信摘要应来自已验证的交付渠道。
 
-发布根的 `LICENSE`、`NOTICE` 只复制构建身份已记录的应用原文；应用未提供的材料不会以框架许可补位，外部应用也不必采用 Apache-2.0。组件和第三方依赖的原始文本继续按各自归属保存在资源索引中。是否要求材料齐全由构建配置 `notices.require-complete` 决定；缺失项仍会记录在构建报告。新产物使用身份生成协议 4；协议 3 的旧产物只有同时含应用 LICENSE、NOTICE 时可以继续打包，否则需要重新构建。
+应用的 `LICENSE`、`NOTICE` 和实际依赖原文在构建时内嵌，应用未提供的材料不会用框架许可补位。单程序交付必须具有完整的已声明依赖许可材料，不接受仅记录缺失项的产物。物联中心通过 `licenses` 命令读取索引及登记原文；独立应用可使用生成的 `EmbeddedResources` 接口提供自己的读取入口。
 
-例如最小示例在构建成功后运行 `php vendor/bin/type package build/type-example build/release`，目标目录必须尚不存在。命令返回的发布清单摘要应通过受信交付记录保存。校验或归档时，在应用根将 `TYPE_RELEASE_SHA256` 设置为该受信 SHA-256，然后执行：
+例如最小示例完成静态构建后运行 `php vendor/bin/type package build/type-example build/example-release`，目标文件必须尚不存在。命令返回程序 SHA-256，通过受信交付记录保存后执行：
 
 ```bash
-php vendor/bin/type verify-package build/release "$TYPE_RELEASE_SHA256"
-php vendor/bin/type archive build/release build/type-example.tar.gz "$TYPE_RELEASE_SHA256"
+php vendor/bin/type verify-package build/example-release "$TYPE_RELEASE_SHA256"
 ```
 
-归档目标同样必须尚不存在，支持 `.zip` 与 `.tar.gz`；归档前会校验运行包。收到产物后，不能仅在同一不受信目录重新计算摘要便认定来源可信。Windows 的可执行文件路径与归档格式按实际平台选择。
+收到产物后，不能仅在同一不受信目录重新计算摘要便认定来源可信。Windows 单程序须使用 `.exe`，其静态 SDK 与平台验收仍待完成。
 
-`type service <发布目录> <服务声明.json> <新服务目录> <受信清单SHA256>` 生成 launchd、systemd 或 WinSW 配置，不自动安装服务或修改权限。部署使用独立的数据和环境文件路径，不能将真实 `.env` 纳入构建。
+历史目录包使用 `package-directory`、`archive` 与 `type service <发布目录> <服务声明.json> <新服务目录> <受信清单SHA256>`。服务配置生成器目前依赖旧目录布局，尚未适配单程序；不要把程序文件作为目录传入。部署仍使用独立数据和环境文件路径，不将真实 `.env` 纳入构建。
 
 运行包包含匹配 PHPX/libphp 和实际原生扩展，不包含 Composer、编译 SDK 或业务 PHP 回退入口。生产资源与开发工具分开，平台可用性以该版本实际验收为准。
 

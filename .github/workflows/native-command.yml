@@ -526,7 +526,7 @@ jobs:
           composer test:operations
           composer build:operations
           composer test:operations-native
-          composer typeapp:build
+          composer typeapp:build -- --shared-development
           composer typeapp:test-native
           php tests/iot-identity.php build/app/type-app sqlite --app
           for task_driver in mysql pgsql sqlite; do
@@ -539,10 +539,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes sqlite3 bubblewrap util-linux
-          composer typeapp:build
+          composer typeapp:build -- --shared-development
           php tests/native-package.php build/app/type-app --archive
           composer test:service-definition
-          php vendor/bin/type package build/app/type-app build/ci-linux-release .env.example > build/ci-linux-release.json
+          php vendor/bin/type package-directory build/app/type-app build/ci-linux-release .env.example > build/ci-linux-release.json
           # 保留PHP变量，不让shell展开。
           # shellcheck disable=SC2016
           task_release_sha="$(php -r '$r=json_decode(file_get_contents("build/ci-linux-release.json"),true,512,JSON_THROW_ON_ERROR);echo $r["manifest-sha256"];')"

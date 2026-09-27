@@ -137,7 +137,7 @@ final class DependencyNotices
         if (($declaration['require-complete'] ?? false) && $missing !== []) {
             throw new RuntimeException('依赖材料未完整：' . implode(', ', array_keys($missing)));
         }
-        $document = ['protocol' => 1, 'scope' => '应用、实际Composer生产依赖及动态运行库清单；不自动发现静态内嵌子依赖或作法律结论',
+        $document = ['protocol' => 1, 'scope' => '应用、实际Composer生产依赖及显式登记的原生归档或共享库；不自动发现未声明的内嵌子依赖或作法律结论',
             'material-coverage' => $missing === [] ? 'complete' : 'incomplete', 'legal-review' => 'not-assessed',
             'distribution-authorization' => 'not-assessed', 'components' => $components, 'missing' => $missing];
         $json = json_encode(BuildIdentity::canonical($document), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";

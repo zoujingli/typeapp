@@ -86,7 +86,7 @@ case "$task_suite" in
   recovery)
     if [[ "$task_build" == build ]]; then php tests/build-native-application.php; fi
     task_work="$(mktemp -d "$task_root/build/linux-recovery-ci-XXXXXXXX")"
-    php vendor/bin/type package build/app/type-app "$task_work/release" .env.example >"$task_work/preparation.json"
+    php vendor/bin/type package-directory build/app/type-app "$task_work/release" .env.example >"$task_work/preparation.json"
     php tests/native-database-recovery.php "$task_work/preparation.json" "${TYPE_MYSQL_TOOLS:?}" "${TYPE_PGSQL_TOOLS:?}"
     ;;
   rollout)

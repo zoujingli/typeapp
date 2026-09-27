@@ -145,7 +145,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" tests/iot-identity.php --php sqlite --app
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & "$env:PHP_HOME/php.exe" tools/build-application.php
+          & "$env:PHP_HOME/php.exe" tools/build-application.php --shared-development
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" tests/iot-identity.php build/app/type-app.exe sqlite --app
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

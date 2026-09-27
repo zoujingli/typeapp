@@ -134,7 +134,7 @@ case "$task_suite" in
     for task_driver in mysql pgsql sqlite; do php tests/application-template.php "$task_driver" --onboarding --native --package; done
     ;;
   deployment)
-    composer typeapp:build
+    composer typeapp:build -- --shared-development
     php tests/native-package.php build/app/type-app --archive
     composer test:service-definition
     /bin/launchctl print "gui/$(id -u)" >/dev/null
@@ -158,9 +158,9 @@ case "$task_suite" in
     ;;
   recovery)
     export PATH="$task_mysql:$task_pgsql:$PATH"
-    composer typeapp:build
+    composer typeapp:build -- --shared-development
     task_release="$(mktemp -d "$task_root/build/macos-recovery-ci-XXXXXX")"
-    php vendor/bin/type package build/app/type-app "$task_release/release" .env.example > "$task_release/preparation.json"
+    php vendor/bin/type package-directory build/app/type-app "$task_release/release" .env.example > "$task_release/preparation.json"
     # 保留PHP变量，不让shell展开。
     # shellcheck disable=SC2016
     task_digest="$(php -r '$r=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);echo $r["manifest-sha256"];' "$task_release/preparation.json")"

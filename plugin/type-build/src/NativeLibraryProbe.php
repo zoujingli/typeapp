@@ -20,12 +20,18 @@ function type_app_native_loaded_images(): array {}
 
 /** @internal macOS完整文件SHA-256；不可用、非普通文件或读取失败返回空字符串。 */
 function type_app_native_file_sha256(string $path): string {}
+
+/** @internal 返回承载当前 AOT 与 PHP 核心的同一主程序；存在共享扩展或核心来自其他映像时返回空串。 */
+function type_app_native_embedded_core(): string {}
 PHP,
             'native-libraries.cc' => <<<'CPP'
 #include <phpx.h>
 #include <string>
 #include <cstdio>
 #include <cstring>
+#if !defined(_WIN32)
+#include <dlfcn.h>
+#endif
 #if defined(_WIN32)
 #include <windows.h>
 #include <tlhelp32.h>
@@ -36,6 +42,8 @@ PHP,
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#elif defined(__linux__)
+#include <link.h>
 #endif
 
 // 固定ABI：只报告本进程已经加载的映像，不扫描进程外目录或加载未知DLL。
@@ -85,8 +93,33 @@ php::Array php_type_app_native_loaded_images() {
         const std::string value = std::string(path) + "\n" + uuid;
         images.append(php::String(value.c_str(), value.size()));
     }
+#elif defined(__linux__)
+    dl_iterate_phdr([](dl_phdr_info *entry, size_t, void *data) -> int {
+        if (entry->dlpi_name && *entry->dlpi_name) {
+            static_cast<php::Array *>(data)->append(php::String(entry->dlpi_name));
+        }
+        return 0;
+    }, &images);
 #endif
     return images;
+}
+
+// 以加载地址确认 PHP 与 AOT 共属一个映像；内置扩展不能持有动态模块句柄。
+php::String php_type_app_native_embedded_core() {
+    void *entry;
+    ZEND_HASH_FOREACH_PTR(&module_registry, entry) {
+        const auto module = static_cast<zend_module_entry *>(entry);
+        if (module->handle != nullptr) { return php::String(""); }
+    } ZEND_HASH_FOREACH_END();
+#if !defined(_WIN32)
+    Dl_info core{}, application{};
+    if (!dladdr(reinterpret_cast<void *>(zend_get_constant_str), &core)
+        || !dladdr(reinterpret_cast<void *>(php_type_app_native_embedded_core), &application)
+        || core.dli_fbase != application.dli_fbase || !core.dli_fname) { return php::String(""); }
+    return php::String(core.dli_fname);
+#else
+    return php::String("");
+#endif
 }
 
 // 仍逐字节校验整份文件；不以路径、mtime、UUID或已验证缓存替代SHA-256。

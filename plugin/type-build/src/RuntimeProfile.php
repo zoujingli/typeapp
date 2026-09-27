@@ -23,7 +23,7 @@ final class RuntimeProfile
      * @return array{extensions:array<string,string|false>, functions:list<string>, 'module-files':array<string,string>, 'module-sha256':array<string,string>, files:list<string>, ini:string, probe:string}
      * @throws RuntimeException 声明/摘要无效，真实embed缺扩展/函数、ABI不符或产生启动警告。
      */
-    public function prepare(string $root, string $directory, string $phpHome, string $phpxHome, array $requirements, array $platforms = []): array
+    public function prepare(string $root, string $directory, string $phpHome, string $phpxHome, array $requirements, array $platforms = [], ?StaticRuntimeSdk $static = null): array
     {
         $root = BuildPlatform::resolve($root);
         if ($phpHome === '' || $phpxHome === '') {
@@ -81,18 +81,24 @@ final class RuntimeProfile
             throw new RuntimeException('原生探针INI扫描目录必须为空');
         }
         $environment = (new BuildPlatform())->environment($phpHome, $phpxHome);
+        if ($static !== null) {
+            $environment = array_replace($environment, $static->buildEnvironment());
+        }
         $source = __DIR__ . '/Native/embed-probe.c';
         $probe = (new BuildPlatform())->output($directory . '/embed-probe');
-        $extensionDirectory = $this->compile($source, $probe, $directory, $phpHome, $environment);
+        $extensionDirectory = $this->compile($source, $probe, $directory, $phpHome, $environment, $static);
         $baseIni = $directory . '/base.ini';
         $this->write($baseIni, (new RuntimeIni())->generate([]));
-        $base = $this->probe($probe, $baseIni, $scan, $directory, $environment, $functions);
+        $base = $this->probe($probe, $baseIni, $scan, $directory, $environment, $functions, $static);
         $modules = [];
         $hashes = [];
         $bundledFiles = [];
         foreach ($required as $name) {
             if (array_key_exists($name, $base['extensions'])) {
                 continue;
+            }
+            if ($static !== null) {
+                throw new RuntimeException('静态运行 SDK 未内置所需扩展，不能加载外置模块：' . $name);
             }
             if (isset($fallbacks[$name])) {
                 $input = $fallbacks[$name]['file'];
@@ -139,7 +145,7 @@ final class RuntimeProfile
         ksort($hashes);
         $ini = $directory . '/native.ini';
         $this->write($ini, (new RuntimeIni())->generate($modules));
-        $actual = $this->probe($probe, $ini, $scan, $directory, $environment, $functions);
+        $actual = $this->probe($probe, $ini, $scan, $directory, $environment, $functions, $static);
         $versions = [];
         foreach ($required as $name) {
             if (!array_key_exists($name, $actual['extensions'])) {
@@ -235,7 +241,7 @@ final class RuntimeProfile
         return $result;
     }
 
-    private function compile(string $source, string $probe, string $directory, string $phpHome, array $environment): string
+    private function compile(string $source, string $probe, string $directory, string $phpHome, array $environment, ?StaticRuntimeSdk $static): string
     {
         if (PHP_OS_FAMILY === 'Windows') {
             $include = $phpHome . '/SDK/include';
@@ -252,17 +258,26 @@ final class RuntimeProfile
         if (trim($this->runner->run([$config, '--version'], $directory, $environment)) !== PHP_VERSION) {
             throw new RuntimeException('运行探针SDK版本与构建PHP不一致');
         }
-        $include = trim($this->runner->run([$config, '--include-dir'], $directory, $environment));
+        $include = $static?->includeDirectory() ?? trim($this->runner->run([$config, '--include-dir'], $directory, $environment));
         $flags = [];
         foreach (['', '/main', '/Zend', '/TSRM'] as $part) {
             $flags[] = '-I' . $include . $part;
+        }
+        if ($static !== null) {
+            $compiler = PHP_OS_FAMILY === 'Darwin' ? '/usr/bin/clang' : 'gcc';
+            $object = $directory . '/embed-probe.o';
+            $this->runner->run([$compiler, '-std=c11', '-D_POSIX_C_SOURCE=200809L', ...$flags,
+                '-c', $source, '-o', $object], $directory, $environment, 120);
+            $this->runner->run([$compiler, $object, ...$static->linkFlags(), '-o', $probe], $directory, $environment, 120);
+            $static->verifyArtifact($probe, $this->runner, $environment);
+            return '';
         }
         $this->runner->run([PHP_OS_FAMILY === 'Darwin' ? '/usr/bin/clang' : 'gcc', '-std=c11', '-D_POSIX_C_SOURCE=200809L', ...$flags,
             $source, '-L' . $phpHome . '/lib', '-Wl,-rpath,' . $phpHome . '/lib', '-lphp', ...(PHP_OS_FAMILY === 'Linux' ? ['-ldl'] : []), '-o', $probe], $directory, $environment, 120);
         return trim($this->runner->run([$config, '--extension-dir'], $directory, $environment));
     }
 
-    private function probe(string $probe, string $ini, string $scan, string $directory, array $environment, array $functions): array
+    private function probe(string $probe, string $ini, string $scan, string $directory, array $environment, array $functions, ?StaticRuntimeSdk $static): array
     {
         $output = $this->runner->run([$probe, $ini, $scan, ...$functions], $directory, $environment, 30, null, true);
         try {
@@ -280,7 +295,9 @@ final class RuntimeProfile
         if (!is_string($observedLibrary) || $observedLibrary === '') {
             throw new RuntimeException('无法识别实际embed加载的核心库');
         }
-        $expectedLibraries = array_map([BuildPlatform::class, 'resolve'], (new BuildPlatform())->runtimeLibraries($environment['PHP_HOME'], $environment['PHPX_HOME']));
+        $expectedLibraries = $static === null
+            ? array_map([BuildPlatform::class, 'resolve'], (new BuildPlatform())->runtimeLibraries($environment['PHP_HOME'], $environment['PHPX_HOME']))
+            : [BuildPlatform::resolve($probe)];
         $observed = BuildPlatform::resolve($observedLibrary);
         $matches = false;
         foreach ($expectedLibraries as $expected) {

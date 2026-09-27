@@ -10,13 +10,15 @@ use Type\Build\BuildPlatform;
  *
  * @param list<string> $dataDirectories 由调用者新建的build下专用运行数据目录。
  * @param string|null $processInfo Linux长运行应用使用本轮新文件接收实际进程身份，供准确停止。
+ * @param string $entry run为目录包入口，app为单程序；不接受任意命令或相对跳转。
  * @return list<string> 调用者追加业务参数并负责运行进程的停止。
  * @throws RuntimeException 平台、路径或真实隔离探针不满足要求。
  */
-function sandboxPackageCommand(string $root, string $package, array $dataDirectories = [], ?string $processInfo = null): array
+function sandboxPackageCommand(string $root, string $package, array $dataDirectories = [], ?string $processInfo = null, string $entry = 'run'): array
 {
+    expect(in_array($entry, ['run', 'app'], true), '隔离入口必须为目录包启动器或单程序');
     if (PHP_OS_FAMILY === 'Linux') {
-        return linuxPackageCommand($root, $package, $dataDirectories, $processInfo);
+        return linuxPackageCommand($root, $package, $dataDirectories, $processInfo, $entry);
     }
     expect(PHP_OS_FAMILY === 'Darwin', '发布sandbox检查仅用于macOS');
     $root = realpath($root);
@@ -48,7 +50,7 @@ function sandboxPackageCommand(string $root, string $package, array $dataDirecto
         . '(require-not (subpath ' . $quote($package) . '))))';
     $prefix = ['/usr/bin/sandbox-exec', '-p', $profile];
     // 先证明同一策略可读发布文件，避免策略语法错误使所有负向探针假通过。
-    $allowed = (new Process([...$prefix, '/bin/dd', 'if=' . $package . '/release.json', 'of=/dev/null', 'bs=1', 'count=1']))->wait(3);
+    $allowed = (new Process([...$prefix, '/bin/dd', 'if=' . $package . ($entry === 'app' ? '/app' : '/release.json'), 'of=/dev/null', 'bs=1', 'count=1']))->wait(3);
     expect($allowed->successful(), '隔离策略未允许读取受信发布文件');
     $sdk = $sdkRoot . '/lib/libphp.dylib';
     foreach ([$root . '/app/main.php', $root . '/vendor/autoload.php', $sdk] as $source) {
@@ -62,7 +64,7 @@ function sandboxPackageCommand(string $root, string $package, array $dataDirecto
         $denied = (new Process([...$prefix, ...$tool]))->wait(3);
         expect(!$denied->successful() && !$denied->timedOut, '隔离环境仍可执行PHP/编译器：' . implode(' ', $tool));
     }
-    return [...$prefix, $package . '/run'];
+    return [...$prefix, $package . '/' . $entry];
 }
 
 /**
@@ -71,8 +73,9 @@ function sandboxPackageCommand(string $root, string $package, array $dataDirecto
  * @param list<string> $dataDirectories 调用方持有的独立运行数据目录。
  * @return list<string> 根namespace设置器在任何应用执行前切回原UID/GID并清空能力。
  */
-function linuxPackageCommand(string $root, string $package, array $dataDirectories, ?string $processInfo = null): array
+function linuxPackageCommand(string $root, string $package, array $dataDirectories, ?string $processInfo = null, string $entry = 'run'): array
 {
+    expect(in_array($entry, ['run', 'app'], true), 'Linux隔离入口无效');
     expect(PHP_OS_FAMILY === 'Linux' && posix_geteuid() > 0, 'Linux隔离应用必须使用非root测试账号');
     $root = realpath($root);
     $package = realpath($package);
@@ -144,13 +147,13 @@ function linuxPackageCommand(string $root, string $package, array $dataDirectori
         '--ambient-caps=-all',
         '--no-new-privs'
     );
-    $probe = (new Process([...$prefix, '/bin/sh', '-c', 'test -r "$1/release.json" && test ! -e "$2/app/main.php" && test ! -e "$2/vendor/autoload.php" && test ! -e "$3" && ! command -v php && ! command -v gcc && ! command -v g++ && id -u && cat /proc/self/status', 'probe', $package, $root, PHP_BINARY]))->wait(10);
+    $probe = (new Process([...$prefix, '/bin/sh', '-c', 'test -r "$1/$4" && test ! -e "$2/app/main.php" && test ! -e "$2/vendor/autoload.php" && test ! -e "$3" && ! command -v php && ! command -v gcc && ! command -v g++ && id -u && cat /proc/self/status', 'probe', $package, $root, PHP_BINARY, $entry === 'app' ? 'app' : 'release.json']))->wait(10);
     expect($probe->successful() && str_starts_with($probe->stdout, (string) posix_geteuid() . "\n"), 'Linux隔离未正确开放发布或阻断源码/工具：' . $probe->stderr . $probe->stdout);
     foreach (['CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'] as $capability) {
         expect(preg_match('/^' . $capability . ':\s+0+$/m', $probe->stdout) === 1, '隔离应用仍持有Linux能力');
     }
     expect(preg_match('/^NoNewPrivs:\s+1$/m', $probe->stdout) === 1, '隔离应用没有禁用提权');
-    $run = ['/bin/sh', '-c', 'cd "$1" && shift && exec "$@"', 'run', $package, $package . '/run'];
+    $run = ['/bin/sh', '-c', 'cd "$1" && shift && exec "$@"', 'run', $package, $package . '/' . $entry];
     if ($processInfo !== null) {
         expect((new BuildPlatform())->absolute($processInfo) && BuildPlatform::contains($root . '/build', $processInfo)
             && is_dir(dirname($processInfo)) && !file_exists($processInfo) && !is_link($processInfo), '进程记录必须使用本轮build下新文件');
@@ -164,8 +167,9 @@ function linuxPackageCommand(string $root, string $package, array $dataDirectori
 }
 
 /** 向已核验的Linux隔离应用发SIGTERM，再等待设置器返回真实退出码；超时仍计为失败。 */
-function stopPackageProcess(Process $process, string $package, ?string $processInfo = null, float $seconds = 5.0): \Type\Testing\ProcessResult
+function stopPackageProcess(Process $process, string $package, ?string $processInfo = null, float $seconds = 5.0, string $program = 'bin/app'): \Type\Testing\ProcessResult
 {
+    expect(in_array($program, ['app', 'bin/app'], true), '隔离进程的程序身份无效');
     if (PHP_OS_FAMILY !== 'Linux' || $processInfo === null || !$process->running()) {
         return $process->stop($seconds);
     }
@@ -176,7 +180,7 @@ function stopPackageProcess(Process $process, string $package, ?string $processI
     $status = file_get_contents('/proc/' . $pid . '/status');
     $command = explode("\0", file_get_contents('/proc/' . $pid . '/cmdline'));
     expect(preg_match('/^Uid:\s+([0-9]+)/m', $status, $matches) === 1 && (int) $matches[1] === posix_geteuid()
-        && in_array(realpath($package) . '/bin/app', $command, true), '不能向身份不符的进程发送停止信号');
+        && in_array(realpath($package) . '/' . $program, $command, true), '不能向身份不符的进程发送停止信号');
     expect(posix_kill($pid, SIGTERM), '无法停止本轮原生应用');
     return $process->wait($seconds);
 }

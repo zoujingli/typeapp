@@ -22,6 +22,9 @@ END_EXTERN_C()
 #include <string>
 
 extern "C" void type_app_compiled_process_main(int, char **);
+#ifdef TYPE_APP_STATIC_RUNTIME
+extern "C" const char *type_app_static_runtime_ini();
+#endif
 #if !defined(PHP_WIN32)
 extern "C" char **save_ps_args(int, char **);
 #endif
@@ -75,7 +78,7 @@ std::string resolve_executable(const char *program) {
     return {};
 }
 
-// PHP resolves extension_dir from the current directory, so direct binaries must establish the package root first.
+// 目录包需要先确定相对扩展位置；静态程序始终以可执行文件所在目录为根。
 bool prepare_working_directory(char **argv) {
     std::string executable = resolve_executable(argv ? argv[0] : nullptr);
     if (executable.empty()) { return true; }
@@ -84,11 +87,13 @@ bool prepare_working_directory(char **argv) {
     std::string directory = executable.substr(0, separator);
     const std::string binary_directory = directory;
     bool packaged = false;
+#ifndef TYPE_APP_STATIC_RUNTIME
     size_t parent_separator = directory.find_last_of("/\\");
     if (parent_separator != std::string::npos && directory.substr(parent_separator + 1) == "bin") {
         packaged = true;
         directory.resize(parent_separator);
     }
+#endif
 #ifdef PHP_WIN32
     if (_chdir(directory.c_str()) != 0) { return false; }
     if (packaged && std::getenv("TYPE_APP_RUNTIME_ROOT") == nullptr) {
@@ -157,7 +162,14 @@ bool startup_embed(int argc, char **argv) {
     _setmode(_fileno(stderr), _O_BINARY);
 #endif
     static const char defaults[] = "html_errors=0\nimplicit_flush=1\noutput_buffering=0\nmax_execution_time=0\nmax_input_time=-1\n";
+#ifdef TYPE_APP_STATIC_RUNTIME
+    // SDK 与产物共用内置配置，外部 PHP INI、扫描目录和扩展不能注入生产进程。
+    php_embed_module.ini_entries = type_app_static_runtime_ini();
+    php_embed_module.php_ini_ignore = 1;
+    php_embed_module.php_ini_ignore_cwd = 1;
+#else
     php_embed_module.ini_entries = defaults;
+#endif
     php_embed_module.executable_location = argv ? argv[0] : nullptr;
     const auto module_result = php_module_startup(&php_embed_module, application_module);
     module_started = php_get_module_initialized();

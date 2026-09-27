@@ -28,7 +28,7 @@
     "watch": ["Composer\\Config::disableProcessTimeout", "@php vendor/bin/type watch type-app.json"],
     "serve": ["Composer\\Config::disableProcessTimeout", "@php dev.php serve"],
     "build": "@php vendor/bin/type type-app.json",
-    "package": "@php vendor/bin/type package build/type-project build/release .env.example",
+    "package": "@php vendor/bin/type package build/type-project build/type-project-release",
     "test": "@php tests/smoke.php"
   },
   "extra": {

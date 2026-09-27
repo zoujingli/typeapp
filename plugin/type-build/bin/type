@@ -16,8 +16,9 @@ Type 开发与构建工具（生产运行使用发布目录的run/run.cmd）
   type watch <构建配置.json> [应用参数...]
   type test <构建配置.json> [测试参数...]
   type build <构建配置.json>
-  type package <原生产物> <新发布目录> [.env.example]
-  type verify-package <发布目录> <受信清单SHA256>
+  type package <静态原生产物> <新程序文件>
+  type package-directory <历史共享库产物> <新发布目录> [.env.example]
+  type verify-package <程序文件|历史发布目录> <受信SHA256>
   type archive <发布目录> <新归档.zip或.tar.gz> <受信清单SHA256>
   type service <发布目录> <服务声明.json> <新服务目录> <受信清单SHA256>
 
@@ -79,12 +80,33 @@ try {
         echo json_encode((new Type\Build\PackageArchive())->create($argv[2], $argv[3], $argv[4]), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
         exit(0);
     }
-    if (in_array($argv[1] ?? '', ['package', '--package'], true) && in_array(count($argv), [4, 5], true)) {
-        echo json_encode((new Type\Build\NativePackage())->create($argv[2], $argv[3], $argv[4] ?? null), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+    if (in_array($argv[1] ?? '', ['package', '--package', 'package-directory'], true) && in_array(count($argv), [4, 5], true)) {
+        $input = $argv[2];
+        if (PHP_OS_FAMILY === 'Windows' && !is_file($input)) {
+            $input = (new Type\Build\BuildPlatform())->output($input);
+        }
+        $artifact = Type\Build\BuildPlatform::resolve($input);
+        if ($argv[1] !== 'package-directory') {
+            if (count($argv) !== 4) {
+                throw new InvalidArgumentException('单程序只输出程序文件，外置配置由部署者单独维护');
+            }
+            $packaged = (new Type\Build\SingleProgram())->create($artifact, (new Type\Build\BuildPlatform())->output($argv[3]));
+        } else {
+            $identity = (new Type\Build\ArtifactManifest())->read($artifact);
+            if (($identity['runtime-linkage'] ?? null) === 'static') {
+                throw new InvalidArgumentException('静态产物直接用 package 输出一个程序文件');
+            }
+            $packaged = (new Type\Build\NativePackage())->create($artifact, $argv[3], $argv[4] ?? null);
+        }
+        echo json_encode($packaged, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
         exit(0);
     }
     if (in_array($argv[1] ?? '', ['verify-package', '--verify-package'], true) && count($argv) === 4) {
-        (new Type\Build\NativePackage())->verify($argv[2], $argv[3]);
+        if (is_file($argv[2])) {
+            (new Type\Build\SingleProgram())->verify(Type\Build\BuildPlatform::resolve($argv[2]), $argv[3]);
+        } else {
+            (new Type\Build\NativePackage())->verify($argv[2], $argv[3]);
+        }
         echo '发布清单、原生产物、运行库和资源字节校验通过。' . PHP_EOL;
         exit(0);
     }

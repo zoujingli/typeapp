@@ -30,6 +30,41 @@ final class RuntimeIni
         return $ini;
     }
 
+    /** 将与探针相同的安全配置链接进程序；普通启动不创建 php.ini 或扫描外部配置。 */
+    public function nativeSource(): string
+    {
+        $ini = $this->generate([]) . "html_errors=0\nimplicit_flush=1\noutput_buffering=0\nmax_execution_time=0\nmax_input_time=-1\n";
+        $source = <<<'CPP'
+#include <phpx.h>
+BEGIN_EXTERN_C()
+#include <sapi/embed/php_embed.h>
+END_EXTERN_C()
+
+extern "C" const char *type_app_static_runtime_ini() { return TYPE_INI_LITERAL; }
+
+namespace {
+int (*original_startup)(sapi_module_struct *) = nullptr;
+
+// 普通 PHPX 入口沿用 php_embed_init；在其设置默认值之后、解析任何 INI 之前注入配置。
+// 线程入口直接调用 php_module_startup，使用同一 type_app_static_runtime_ini 数据。
+int static_startup(sapi_module_struct *module) {
+    module->ini_entries = type_app_static_runtime_ini();
+    module->php_ini_ignore = 1;
+    module->php_ini_ignore_cwd = 1;
+    return original_startup(module);
+}
+
+struct InstallStaticIni {
+    InstallStaticIni() {
+        original_startup = php_embed_module.startup;
+        php_embed_module.startup = static_startup;
+    }
+} install_static_ini;
+}
+CPP;
+        return str_replace('TYPE_INI_LITERAL', json_encode($ini, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), $source);
+    }
+
     private function quote(string $value): string
     {
         if (preg_match('/[\x00-\x1f\x7f]/', $value) || str_contains($value, '${')) {

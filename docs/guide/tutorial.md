@@ -190,6 +190,6 @@ build/release/run help
 
 TypePHP 编译业务、Plugins、生成代码及实际生产 PHP 依赖；`type-build` 选择并校验内置 Swoole 和其他实际原生依赖。部署者无需再安装 PHP CLI、Composer、Swoole 开发环境或编译 SDK，数据库服务和业务配置仍按所选能力准备。
 
-当前 `composer package` 生成需要整体部署的目录包，不能只复制其中的主程序。最终单程序加配置、启动不释放运行库的交付目标及尚未完成的静态链接工作，统一见[构建与部署](deployment.md)。
+本教程固定安装的 RC7 使用上述目录包命令，不能只复制其中的主程序。主仓新构建代码的 `package` 已改为静态单文件输出，须先准备已验证的静态 SDK；不要将不同版本的命令与产物布局混用。新入口及平台范围见[构建与部署](deployment.md)。
 
 继续学习：[配置](configuration.md) · [路由与中间件](routing.md) · [组件教程](components.md) · [TypePHP 全量编译](typephp.md)。

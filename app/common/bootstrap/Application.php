@@ -99,6 +99,10 @@ final class Application
             if (class_exists(\Type\Generated\BuildIdentity::class, false)) {
                 \Type\Generated\BuildIdentity::verifyRuntime();
             }
+            if ($command === 'licenses') {
+                Licenses::run($arguments);
+                return 0;
+            }
             CoroutineRuntime::enableIo();
             if ($command === 'help' || $command === '--help') {
                 if (count($arguments) > 2) {
@@ -106,6 +110,7 @@ final class Application
                 }
                 echo "TypeApp 物联中心：help、check、verify-runtime、serve、app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>、migrate <status|history|recover>。初始化口令由 APP_ADMIN_PASSWORD、APP_CUSTOMER_PASSWORD 的受控进程环境提供。\n";
                 echo "运行配置：config:check [--connect] [--remember]；config:restore 恢复最后通过连接检查的文件，成功退出4表示仍须运维重启。\n";
+                echo "内嵌许可：licenses 查看索引，licenses <notices/资源路径> 查看对应原文。\n";
                 echo "审计保留：app:audit-clean <admin|customer> [batch]，单批最多1000条，清理满180天事件并保留恢复与撤销依据。\n";
                 echo "历史业务维护角色：iot:command-clean、iot:history-clean、iot:aggregate、iot:aggregate-clean、iot:alarm、iot:mqtt-install、iot:mqtt-statistics、iot:mqtt、iot:ingest、iot:device、iot:exports、iot:exports-work、iot:exports-clean；尚未转换的业务不向新应用公开。\n";
                 echo "独立 Broker：broker:install、broker:migrate <status|history|recover>、broker:user <login> <name>、broker:serve、broker:run、broker:store-install；初始化密码由 BROKER_ADMIN_PASSWORD 提供。升级后启动会核对兼容代次，不能用更旧二进制维持新的占用与吊销语义。\n";

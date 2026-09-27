@@ -13,6 +13,46 @@ use TypePhp\Translator;
 final class TypephpCompatibility extends Translator
 {
     private bool $propertyCompatibilityVerified = false;
+    private ?StaticRuntimeSdk $staticRuntimeSdk = null;
+
+    /** 静态构建直接绑定归档，不让编译器按 -l 名称优先选中 SDK 或 Homebrew 的共享库。 */
+    protected function getLinkCommandOptions(): \TypePhp\Build\LinkOptions
+    {
+        $options = parent::getLinkCommandOptions();
+        $static = $this->staticRuntime();
+        if ($static === null) {
+            return $options;
+        }
+        $values = $options->toArray();
+        $values['libraries'] = [];
+        $values['library_paths'] = [];
+        $values['rpath'] = [];
+        $values['post_ldflags'] = implode(' ', array_map('escapeshellarg', $static->linkFlags()));
+        return new \TypePhp\Build\LinkOptions($values);
+    }
+
+    /** 内部 INI 和直接启动策略只作用于明确选择了静态 SDK 的产物。 */
+    protected function getCommonCompileCommandOptions(): \TypePhp\Build\CompileOptions
+    {
+        $options = parent::getCommonCompileCommandOptions();
+        $static = $this->staticRuntime();
+        if ($static !== null) {
+            $values = $options->toArray();
+            $values['user_defines'][] = 'TYPE_APP_STATIC_RUNTIME=1';
+            $hostHeaders = rtrim((string) getenv('PHP_HOME'), '/') . '/include/php';
+            $values['include_paths'] = array_map(static fn (string $path): string =>
+                $path === $hostHeaders || str_starts_with($path, $hostHeaders . '/')
+                    ? $static->includeDirectory() . substr($path, strlen($hostHeaders)) : $path, $values['include_paths']);
+            return new \TypePhp\Build\CompileOptions($values);
+        }
+        return $options;
+    }
+
+    private function staticRuntime(): ?StaticRuntimeSdk
+    {
+        // 一个编译进程只读入一次 SDK；构建结束仍由 NativeBuilder 重核全部输入。
+        return $this->staticRuntimeSdk ??= StaticRuntimeSdk::selected();
+    }
 
     private const REFERENCES = [
         'swoole/typephp' => '8b33cad5c4f9cd2be2980425f522496e9ba0bfce',

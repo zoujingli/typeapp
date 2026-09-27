@@ -14,7 +14,7 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过�
 | 原生构建 | `toolchain.lock.json` 对应的目标平台 SDK、PHPX 和实际扩展；内置模块固定匹配 PHP 8.5.10 ZTS ABI |
 | 部署运行 | 匹配平台的完整运行包、外置配置及持久数据；MySQL/PostgreSQL 按需提供外部服务，SQLite 无需单独服务 |
 
-部署端无需业务 PHP 源码、Composer、TypePHP 或编译 SDK。**最终目标是一个主程序文件加外置配置，启动不释放运行库；当前 `composer package` 仍生成携带原生依赖的目录包，须整体部署。** 详细准备见[环境与依赖](https://iots.top/#/guide/environment)，效率机制与测量见[性能与调优](https://iots.top/#/guide/performance)。
+部署端无需业务 PHP 源码、Composer、TypePHP 或编译 SDK。**`composer package` 要求静态产物，只输出一个程序文件，配置独立维护，启动不释放运行库。** 构建前通过 `TYPE_STATIC_RUNTIME` 选择目标 SDK；其他平台与模板自身仍需完成对应验收，不能沿用历史目录包结果宣称完成。详细范围见[构建与部署](https://iots.top/#/guide/deployment)。
 
 ## 创建与驱动选择
 
@@ -142,15 +142,16 @@ PATCH 区分缺失字段与明确 null，email 可以清空；过期 version 或
 现有 `toolchain.lock.json` 记录 PHP8.5.10 ZTS、TypePHP0.9.3、PHPX2.9.2 基线；实际产物按当前原生平台构建。SDK 由构建环境准备后执行：
 
 ```sh
+: "${TYPE_STATIC_RUNTIME:?先设置目标平台的静态SDK清单}"
 composer build
 composer package
-build/release/run verify-runtime
-build/release/run help
+build/type-project-release verify-runtime
+build/type-project-release help
 ```
 
-生产源码、配置/模型/路由/事务生成结果及生产 Composer 依赖整体编译。失败直接中止，生产不使用 dev.php、prepare.php、Composer PHP 自动加载或业务源码回退。当前目录包包含二进制、生成资源和实际原生运行库，PHPX、libphp、Swoole 与所选 PDO 等依赖由构建收集，部署时保留完整布局并校验；外置配置、业务服务与数据由部署环境管理。
+生产源码、配置/模型/路由/事务生成结果及生产 Composer 依赖整体编译。失败直接中止，生产不使用 dev.php、prepare.php、Composer PHP 自动加载或业务源码回退。静态交付要求实际原生库和许可材料内置；仍有外置依赖时 `package` 拒绝，不能把构建成功当作单程序完成。
 
-Windows使用发布目录的`run.cmd`。为独立数据根设置APP_BASE_PATH和配置后，显式执行`migrate run`、检查历史，再启动serve或对应系统服务。发布根的OPERATIONS.md包含首次部署、版本切换、三库备份/恢复和不能自动回滚的情况；不要把切回旧二进制当作数据库回滚。升级生成新发布目录，不覆盖旧版本；恢复默认指向新目标并保留原数据。
+静态程序直接执行 `migrate run`、检查历史后再执行 `serve`，使用 `APP_BASE_PATH` 设置独立数据根。历史 Windows 目录包才使用 `run.cmd`；旧目录包的服务配置生成器尚未适配单程序。升级保留旧程序与持久数据，切回旧二进制不等于数据库回滚，恢复应指向新目标并保留原数据。
 
 当前默认平台矩阵与公共模板分发已有成功结果，具体提交、SDK 前提及包的隔离范围统一见[平台与验收](https://iots.top/#/guide/platforms)。修改业务或升级依赖后，应重新验证模板应用的 HTTP、停止与发布搬迁；Docker/WSL 的 Linux 结果不代替 Windows/macOS 原生结果，目录包也不等于静态单程序。
 

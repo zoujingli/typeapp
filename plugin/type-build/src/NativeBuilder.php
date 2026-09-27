@@ -178,6 +178,7 @@ final class NativeBuilder
             throw new RuntimeException('线程应用需要已适配并重新编译的 PHPX 线程 SDK');
         }
         $platform = new BuildPlatform();
+        $static = StaticRuntimeSdk::selected();
         $libraries = $platform->runtimeLibraries($phpHome, $phpxHome);
 
         $this->directory(dirname($output));
@@ -195,12 +196,17 @@ final class NativeBuilder
             $this->writeText($embeddedSource, $contents);
             $sources[] = $embeddedSource;
         }
-        if ($platform->family() !== 'Linux') {
+        if ($platform->family() !== 'Linux' || $static !== null) {
             foreach ((new NativeLibraryProbe())->sources() as $filename => $contents) {
                 $probeFile = $buildDirectory . '/' . $filename;
                 $this->writeText($probeFile, $contents);
                 $sources[] = $probeFile;
             }
+        }
+        if ($static !== null) {
+            $iniSource = $buildDirectory . '/static-runtime-ini.cc';
+            $this->writeText($iniSource, (new RuntimeIni())->nativeSource());
+            $sources[] = $iniSource;
         }
         $adaptation = (new SourceRewriter())->apply($sources, $sourceSets, $buildDirectory . '/adapted-sources');
         $sources = $adaptation['sources'];
@@ -351,7 +357,8 @@ final class NativeBuilder
             $phpHome,
             $phpxHome,
             array_values(array_unique($extensions)),
-            $runtimeDeclaration
+            $runtimeDeclaration,
+            $static
         );
         if (array_key_exists('threads', $settings)) {
             // 线程入口在 MINIT 注册应用；仅依赖 Swoole 会将其提前到动态 PDO 驱动之前。
@@ -359,10 +366,33 @@ final class NativeBuilder
             $project['extension-dependencies'] = array_keys($profile['extensions']);
         }
         $this->writeJson($projectFile, $project);
-        $native = $environment->fingerprint($phpHome, $phpxHome, array_values(array_unique($extensions)), $profile['module-files']);
+        $compilerProfile = $static === null ? $profile : (new RuntimeProfile($environment))->prepare(
+            $root,
+            $buildDirectory . '/compiler-profile',
+            $phpHome,
+            $phpxHome,
+            array_values(array_unique($extensions)),
+            $runtimeDeclaration
+        );
+        $native = $environment->fingerprint($phpHome, $phpxHome, array_values(array_unique($extensions)), $compilerProfile['module-files']);
         $native['runtime']['extensions'] = $profile['extensions'];
         $native['runtime']['functions'] = $profile['functions'];
-        $native['files'] = array_values(array_unique(array_merge($native['files'], $profile['files'])));
+        $native['files'] = array_values(array_unique(array_merge($native['files'], $profile['files'], $compilerProfile['files'])));
+        $noticeLibraries = $native['native-libraries'];
+        if ($static !== null) {
+            // 宿主 SDK 只用于编译器执行与头文件身份；部署 ABI 由静态目标探针证明。
+            $native['static-runtime'] = $static->identity();
+            $native['files'] = array_merge($native['files'], $static->files());
+            $native['native-libraries'] = [];
+            $native['extension-modules'] = [];
+            $native['system-images'] = [];
+            $native['system-cache-files'] = [];
+            $native['system-cache-policy'] = 'operating-system';
+            $native['delay-imports'] = [];
+            $noticeLibraries = array_map(static fn (string $file): array => [
+                'name' => basename($file), 'path' => $file, 'sha256' => hash_file('sha256', $file),
+            ], $static->archives());
+        }
         $libraryHashes = array_column($native['native-libraries'], 'sha256', 'path');
         if (PHP_OS_FAMILY === 'Windows') {
             $libraryHashes = array_change_key_case($libraryHashes, CASE_LOWER);
@@ -377,12 +407,35 @@ final class NativeBuilder
         if (!is_array($noticeDeclaration)) {
             throw new RuntimeException('notices必须是声明对象');
         }
-        $notices = (new DependencyNotices())->collect($buildDirectory . '/dependency-notices', $noticePackages, $native['native-libraries'], $noticeDeclaration);
+        if ($static !== null) {
+            $declaredNative = $noticeDeclaration['native'][PHP_OS_FAMILY] ?? [];
+            if (!is_array($declaredNative)) {
+                throw new RuntimeException('notices.native 必须按平台声明材料');
+            }
+            $noticeDeclaration['native'][PHP_OS_FAMILY] = array_replace($static->notices(), $declaredNative);
+        }
+        $notices = (new DependencyNotices())->collect($buildDirectory . '/dependency-notices', $noticePackages, $noticeLibraries, $noticeDeclaration);
         foreach ($notices['resources'] as $resource) {
             if (isset($resources[$resource['target']])) {
                 throw new RuntimeException('依赖材料与资源目标冲突：' . $resource['target']);
             }
             $resources[$resource['target']] = $resource;
+        }
+        $embeddedAuxiliaryFiles = [];
+        if ($static !== null) {
+            foreach ($resources as $target => $resource) {
+                if (isset($embeddedFiles[$target])) {
+                    throw new RuntimeException('静态程序内嵌资源目标冲突：' . $target);
+                }
+                $embeddedFiles[$target] = ['source' => $resource['source'], 'bytes' => filesize($resource['source']), 'sha256' => $resource['sha256']];
+                $embeddedAuxiliaryFiles[] = $resource['source'];
+            }
+            ksort($embeddedFiles);
+            $embeddedManifest = $embeddedCompiler->manifest($embeddedFiles);
+            foreach ($embeddedCompiler->sources($embeddedFiles) as $filename => $contents) {
+                $this->writeText($buildDirectory . '/' . $filename, $contents);
+            }
+            $resources = [];
         }
         // 材料与其他资源共用内容分代和原文摘要；失败构建不覆盖旧代次。
         ksort($resources);
@@ -414,6 +467,10 @@ final class NativeBuilder
         }
         unset($resource);
         $compilerEnvironment = $native['build-environment'] ?? $environment->environment($phpHome, $phpxHome);
+        if ($static !== null) {
+            $compilerEnvironment = array_replace($compilerEnvironment, $static->buildEnvironment());
+            $compilerEnvironment['TYPE_STATIC_RUNTIME'] = $static->manifestPath();
+        }
         // 原生编译器子进程使用独立的受控 PHP 配置。BuildPlatform 会主动过滤
         // 外部环境，避免认证和业务变量泄漏；这里仅接入调用方明确提供的
         // PHPRC 与 PHP_INI_SCAN_DIR，确保 PHP-Parser、TypePHP 和线程编译器
@@ -442,11 +499,11 @@ final class NativeBuilder
         }
         $threadCompilerArguments = [];
         if (array_key_exists('threads', $settings)) {
-            $threadCompilerArguments = ['-c', $profile['ini'], '-d', 'memory_limit=1G'];
-            $compilerEnvironment['PHP_INI_SCAN_DIR'] = dirname($profile['ini']) . '/php.d';
+            $threadCompilerArguments = ['-c', $compilerProfile['ini'], '-d', 'memory_limit=1G'];
+            $compilerEnvironment['PHP_INI_SCAN_DIR'] = dirname($compilerProfile['ini']) . '/php.d';
             // -c 会替换 PHPRC。运行探针只装嵌入所需扩展，共享 tokenizer 不会
             // 跟着进去；TypePHP 解析源码仍需要 token_get_all。内置词法模块无需追加。
-            if (!$this->runtimeProvidesTokenizer($profile['ini'], $environment, $root, $compilerEnvironment)) {
+            if (!$this->runtimeProvidesTokenizer($compilerProfile['ini'], $environment, $root, $compilerEnvironment)) {
                 $tokenizer = self::tokenizerLoadArguments(false, self::loadedTokenizerModule());
                 array_splice($threadCompilerArguments, 2, 0, $tokenizer);
                 $loaded = trim($environment->run(
@@ -536,6 +593,10 @@ final class NativeBuilder
             $manifest['system-cache-policy'] = $native['system-cache-policy'];
             $manifest['delay-imports'] = $native['delay-imports'];
         }
+        if ($static !== null) {
+            $manifest['runtime-linkage'] = 'static';
+            $manifest['static-runtime'] = $static->identity();
+        }
         $identityFile = $buildDirectory . '/generated-build-identity.php';
         $this->writeText($identityFile, (new ArtifactManifest())->accessor($manifest));
         $project['sources'][] = $identityFile;
@@ -550,7 +611,7 @@ final class NativeBuilder
             $identity,
             $manifest,
             $output,
-            function (string $candidate) use ($identity, $groups, $facts, $sources, $identityBuilder, $compiler, $projectFile, $buildDirectory, $compilerOptions, $root, $environment, $compilerEnvironment, $threadCompilerArguments, $settings): void {
+            function (string $candidate) use ($identity, $groups, $facts, $sources, $identityBuilder, $compiler, $projectFile, $buildDirectory, $compilerOptions, $root, $environment, $compilerEnvironment, $threadCompilerArguments, $settings, $static, $embeddedAuxiliaryFiles): void {
                 // 工作目录必须短。声明头位于该目录的 include/ 下，文件名还带源码相对路径。
                 // Windows 可用路径上限是 259 个字符；把完整构建身份放进目录后，MSVC 打不开生成头。
                 $work = $buildDirectory . '/attempts/' . bin2hex(random_bytes(4));
@@ -563,19 +624,22 @@ final class NativeBuilder
                     $command[] = '--force';
                 }
                 echo $environment->run($command, $root, $compilerEnvironment, 1800);
+                if ($static !== null) {
+                    $static->verifyArtifact($candidate, $environment, $compilerEnvironment);
+                }
                 $groups['sources'] = $identityBuilder->sources($sources);
-                $groups['embedded-resources'] = array_column((new EmbeddedResourceCompiler())->collect($root, $settings['embedded-resources'] ?? []), 'source');
+                $groups['embedded-resources'] = [...array_column((new EmbeddedResourceCompiler())->collect($root, $settings['embedded-resources'] ?? []), 'source'), ...$embeddedAuxiliaryFiles];
                 if ($identityBuilder->create($groups, $facts)['id'] !== $identity['id']) {
                     throw new RuntimeException('构建过程中输入发生变化，拒绝发布或缓存该产物');
                 }
             },
-            function () use ($identityBuilder, $groups, $facts, $sources, $identity, $buildDirectory, $noticePackages, $native, $noticeDeclaration, $notices, $root, $settings): void {
-                $currentNotices = (new DependencyNotices())->collect($buildDirectory . '/dependency-notices-check', $noticePackages, $native['native-libraries'], $noticeDeclaration);
+            function () use ($identityBuilder, $groups, $facts, $sources, $identity, $buildDirectory, $noticePackages, $noticeLibraries, $noticeDeclaration, $notices, $root, $settings, $embeddedAuxiliaryFiles): void {
+                $currentNotices = (new DependencyNotices())->collect($buildDirectory . '/dependency-notices-check', $noticePackages, $noticeLibraries, $noticeDeclaration);
                 if ($currentNotices['summary']['index-sha256'] !== $notices['summary']['index-sha256']) {
                     throw new RuntimeException('恢复产物前依赖材料已增加、删除或改变');
                 }
                 $groups['sources'] = $identityBuilder->sources($sources);
-                $groups['embedded-resources'] = array_column((new EmbeddedResourceCompiler())->collect($root, $settings['embedded-resources'] ?? []), 'source');
+                $groups['embedded-resources'] = [...array_column((new EmbeddedResourceCompiler())->collect($root, $settings['embedded-resources'] ?? []), 'source'), ...$embeddedAuxiliaryFiles];
                 if ($identityBuilder->create($groups, $facts)['id'] !== $identity['id']) {
                     throw new RuntimeException('恢复产物前输入已经变化');
                 }
