@@ -9,6 +9,7 @@ require __DIR__ . '/release/Plan.php';
 require __DIR__ . '/release/GitHub.php';
 require __DIR__ . '/release/Packagist.php';
 require __DIR__ . '/release/Evidence.php';
+require __DIR__ . '/release/Candidate.php';
 
 use TypeApp\Distribution\Batch;
 use TypeApp\Distribution\Process;
@@ -16,6 +17,7 @@ use TypeApp\Release\GitHub;
 use TypeApp\Release\Packagist;
 use TypeApp\Release\Plan;
 use TypeApp\Release\Evidence;
+use TypeApp\Release\Candidate;
 
 /** 输出固定Actions参数；不接收自由格式换行或脚本。 */
 function releaseOutput(string $key, string $value): void
@@ -74,7 +76,7 @@ try {
         }
         foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
             $record = $manifest['platforms'][$platform] ?? throw new RuntimeException('既有候选缺少平台');
-            $archive = $api->download('zoujingli/typeapp', $version, $record['archive'], $assets);
+            $archive = $api->download('zoujingli/typeapp', $version, Candidate::sealedFilename($record), $assets);
             if (hash_file('sha256', $archive) !== $record['sha256'] || filesize($archive) !== $record['bytes']) {
                 throw new RuntimeException('回读候选附件与封存摘要不同：' . $platform);
             }
@@ -82,7 +84,7 @@ try {
         }
         $sums = '';
         foreach ($manifest['platforms'] as $record) {
-            $sums .= $record['sha256'] . '  ' . $record['archive'] . "\n";
+            $sums .= $record['sha256'] . '  ' . Candidate::sealedFilename($record) . "\n";
         }
         $sums .= hash_file('sha256', $file) . "  release-manifest.json\n";
         $checksums = $api->download('zoujingli/typeapp', $version, 'SHA256SUMS', $assets);
@@ -94,26 +96,13 @@ try {
         $run = (string) getenv('TYPE_RELEASE_EVIDENCE_RUN');
         $attempt = (string) getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT');
         $assets = $work . '/assets';
-        $manifest = ['protocol' => 1, 'source' => $source, 'version' => $version, 'candidate-run' => $run, 'candidate-attempt' => $attempt,
-            'delivery' => 'native-directory-archive', 'native-libraries-statically-linked' => false, 'platforms' => []];
+        $manifest = ['protocol' => 2, 'source' => $source, 'version' => $version, 'candidate-run' => $run, 'candidate-attempt' => $attempt,
+            'delivery' => 'single-executable', 'native-libraries-statically-linked' => true, 'platforms' => []];
         $sums = '';
         $frontend = null;
         foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
             $record = json_decode((string) file_get_contents($assets . '/' . $platform . '.json'), true, 64, JSON_THROW_ON_ERROR);
-            $name = 'typeapp-iot-' . substr($version, 1) . '-' . $platform . ($platform === 'windows-x64' ? '.zip' : '.tar.gz');
-            if (($record['status'] ?? '') !== 'passed' || ($record['source'] ?? '') !== $source || ($record['version'] ?? '') !== $version
-                || ($record['platform'] ?? '') !== $platform || ($record['archive'] ?? '') !== $name
-                || hash_file('sha256', $assets . '/' . $name) !== $record['sha256'] || filesize($assets . '/' . $name) !== $record['bytes']) {
-                throw new RuntimeException('候选附件与验收身份不一致：' . $platform);
-            }
-            foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
-                $test = $record['acceptance'][$driver] ?? [];
-                if (($test['status'] ?? '') !== 'passed' || ($test['frontend-source-removed'] ?? false) !== true
-                    || ($test['archive-sha256'] ?? '') !== $record['sha256']
-                    || ($test['artifact-sha256'] ?? '') !== $record['artifact-sha256']) {
-                    throw new RuntimeException('候选缺少同一产物三库验收：' . $platform . '/' . $driver);
-                }
-            }
+            $name = Candidate::verify($record, $assets, $source, $version, $platform);
             $frontend ??= $record['frontend-manifest-sha256'];
             if ($frontend !== $record['frontend-manifest-sha256']) {
                 throw new RuntimeException('四平台前端不是同一冻结构建');
@@ -124,12 +113,12 @@ try {
         Process::report($assets . '/release-manifest.json', $manifest);
         $sums .= hash_file('sha256', $assets . '/release-manifest.json') . "  release-manifest.json\n";
         file_put_contents($assets . '/SHA256SUMS', $sums);
-        $body = "TypeApp 物联中心 {$version}\n\nTypePHP全量编译；Swoole为随包交付的内置原生运行库。当前附件为原生目录归档，完整静态单程序目标尚未完成。\n\n"
-            . "解压对应平台附件，按DEPLOY.md配置后执行app:install；页面从程序安装到public。后续使用web:install --force更新托管页面，普通启动不释放资源。MySQL/PostgreSQL由外部服务提供，SQLite使用本地数据文件。\n\n"
+        $body = "TypeApp 物联中心 {$version}\n\n每个平台附件是一个可执行程序。TypePHP全量编译应用；PHP、PHPX、Swoole与非系统运行库静态链接，普通启动不释放运行库。\n\n"
+            . "下载对应平台的程序，Unix系统赋予执行权限，准备外置配置后执行app:install；页面从程序安装到public。后续使用web:install --force更新托管页面。MySQL/PostgreSQL由外部服务提供，SQLite使用本地数据文件。许可证由licenses命令读取。安装说明：https://iots.top/#/guide/deployment\n\n"
             . "源码：{$source}。下载后先核对SHA256SUMS，四平台与三库验收身份见release-manifest.json。\n\n"
             . "<!-- typeapp-candidate source={$source} run={$run} attempt={$attempt} -->\n";
         $api->draft('zoujingli/typeapp', $version, $source, $body);
-        foreach ([...array_column($manifest['platforms'], 'archive'), 'SHA256SUMS', 'release-manifest.json'] as $name) {
+        foreach ([...array_map([Candidate::class, 'sealedFilename'], $manifest['platforms']), 'SHA256SUMS', 'release-manifest.json'] as $name) {
             $api->asset('zoujingli/typeapp', $version, $assets . '/' . $name);
         }
     } elseif ($operation === 'packagist') {
@@ -190,7 +179,7 @@ try {
         }
         // 公开前再次回读全部附件；candidate使用最初封存的artifact，禁止重新构建替换。
         $manifest = json_decode((string) file_get_contents($work . '/assets/release-manifest.json'), true, 64, JSON_THROW_ON_ERROR);
-        foreach ([...array_column($manifest['platforms'], 'archive'), 'SHA256SUMS', 'release-manifest.json'] as $name) {
+        foreach ([...array_map([Candidate::class, 'sealedFilename'], $manifest['platforms']), 'SHA256SUMS', 'release-manifest.json'] as $name) {
             $api->asset('zoujingli/typeapp', $version, $work . '/assets/' . $name);
         }
         Process::report($work . '/published.json', $api->publish('zoujingli/typeapp', $version) + ['source' => $source, 'children' => $receipt['items']]);

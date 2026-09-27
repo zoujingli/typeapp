@@ -5,15 +5,17 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 require dirname(__DIR__) . '/tools/distribution/Process.php';
+require dirname(__DIR__) . '/tools/release/Plan.php';
+require dirname(__DIR__) . '/tools/release/Candidate.php';
 
 use Type\Build\ArtifactManifest;
 use Type\Build\BuildPlatform;
-use Type\Build\NativePackage;
-use Type\Build\PackageArchive;
+use Type\Build\SingleProgram;
 use Type\Testing\Process;
 use TypeApp\Distribution\Process as Reports;
+use TypeApp\Release\Candidate;
 
-// 先生成最终归档，再对解包后的同一载荷执行三库行为；finish不重新编译或归档。
+// 先保存最终可执行文件，再以该附件的同一字节执行三库行为；finish 不重新编译。
 $root = dirname(__DIR__);
 $operation = $argv[1] ?? '';
 $version = getenv('TYPE_RELEASE_VERSION') ?: '';
@@ -32,28 +34,22 @@ if ($operation === 'prepare') {
     mkdir($work . '/attachments', 0700);
     $identity = (new ArtifactManifest())->read($artifact);
     expect($identity['version'] === substr($version, 1) && isset($identity['embedded-resources']['web/index.html']), '候选版本或内嵌前端缺失');
-    $created = (new NativePackage())->create($artifact, $work . '/package', $root . '/.env.example');
-    $filename = 'typeapp-iot-' . substr($version, 1) . '-' . $platform . (PHP_OS_FAMILY === 'Windows' ? '.zip' : '.tar.gz');
-    $archive = (new PackageArchive())->create($created['directory'], $work . '/attachments/' . $filename, $created['manifest-sha256']);
-    mkdir($work . '/unpacked release', 0700);
-    if (PHP_OS_FAMILY === 'Windows') {
-        (new PharData($archive['file']))->extractTo($work . '/unpacked release');
-    } else {
-        successful(['tar', '-xzf', $archive['file'], '-C', $work . '/unpacked release'], $root);
-    }
-    (new NativePackage())->verify($work . '/unpacked release', $created['manifest-sha256']);
-    Reports::report($stateFile, ['protocol' => 1, 'source' => Reports::output(['git', 'rev-parse', 'HEAD'], $root),
-        'version' => $version, 'platform' => $platform, 'archive' => $filename, 'sha256' => $archive['sha256'], 'bytes' => $archive['bytes'],
-        'manifest-sha256' => $created['manifest-sha256'], 'build-id' => $created['build-id'],
+    $filename = Candidate::filename($version, $platform);
+    $created = (new SingleProgram())->create($artifact, $work . '/attachments/' . $filename);
+    Reports::report($stateFile, ['protocol' => 2, 'source' => Reports::output(['git', 'rev-parse', 'HEAD'], $root),
+        'delivery' => 'single-executable', 'version' => $version, 'platform' => $platform,
+        'file' => $filename, 'sha256' => $created['sha256'], 'bytes' => $created['bytes'], 'build-id' => $created['build-id'],
+        'system-libraries' => $created['system-libraries'],
         'artifact-sha256' => hash_file('sha256', $artifact), 'embedded-resources' => $identity['embedded-resources'],
         'frontend-manifest-sha256' => hash_file('sha256', (string) getenv('TYPE_FRONTEND_MANIFEST'))]);
 } elseif ($operation === 'test') {
     $driver = $argv[2] ?? '';
     expect(in_array($driver, ['mysql', 'pgsql', 'sqlite'], true), '候选测试需要明确数据库');
     $record = json_decode((string) file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
+    expect(($record['protocol'] ?? null) === 2 && $record['file'] === Candidate::filename($version, $platform), '不能把历史目录包作为单程序候选');
+    $candidate = $work . '/attachments/' . $record['file'];
+    (new SingleProgram())->verify($candidate, $record['sha256']);
     $environment = getenv();
-    $environment['TYPE_RELEASE_PACKAGE'] = $work . '/unpacked release';
-    $environment['TYPE_RELEASE_PACKAGE_SHA256'] = $record['manifest-sha256'];
     $environment['TYPE_PACKAGE_DRIVER'] = $driver;
     $database = null;
     $dist = $root . '/web/dist';
@@ -66,13 +62,13 @@ if ($operation === 'prepare') {
             $database = new NativeDatabase($work . '/database-' . $driver, $driver, $tools);
             $environment = array_replace($environment, $database->environment());
         }
-        $result = (new Process([PHP_BINARY, $root . '/tests/native-package.php', $artifact], $root, $environment))->wait(600);
+        $result = (new Process([PHP_BINARY, $root . '/tests/native-single-program.php', $candidate], $root, $environment))->wait(600);
         file_put_contents($work . '/' . $driver . '.log', $result->stdout . $result->stderr);
         // PHP致命错误可能写入stdout；失败时同时保留退出状态和内层原因。
         $status = ['exit-code' => $result->exitCode, 'timed-out' => $result->timedOut,
             'output-exceeded' => $result->outputExceeded, 'signal' => $result->signal];
         Reports::report($work . '/' . $driver . '-process.json', $status);
-        expect($result->successful(), '最终归档的三库部署验收失败 ' . json_encode($status, JSON_THROW_ON_ERROR)
+        expect($result->successful(), '最终单程序的三库部署验收失败 ' . json_encode($status, JSON_THROW_ON_ERROR)
             . '，见build/release-candidate/' . $driver . ".log：\n" . $result->stdout . $result->stderr);
     } finally {
         try {
@@ -81,20 +77,19 @@ if ($operation === 'prepare') {
             expect(!file_exists($dist) && rename($hiddenDist, $dist), '无法恢复本轮前端构建资源');
         }
     }
-    Reports::report($work . '/' . $driver . '.json', ['status' => 'passed', 'driver' => $driver, 'archive-sha256' => $record['sha256'],
-        'artifact-sha256' => $record['artifact-sha256'], 'frontend-source-removed' => true,
+    expect(hash_file('sha256', $candidate) === $record['sha256'], '三库验收期间候选字节改变');
+    Reports::report($work . '/' . $driver . '.json', ['status' => 'passed', 'driver' => $driver,
+        'artifact-sha256' => $record['sha256'], 'frontend-source-removed' => true, 'single-executable-only' => true,
         'log-sha256' => hash_file('sha256', $work . '/' . $driver . '.log')]);
 } elseif ($operation === 'finish') {
     $record = json_decode((string) file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
     foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
         $check = json_decode((string) file_get_contents($work . '/' . $driver . '.json'), true, 32, JSON_THROW_ON_ERROR);
-        expect($check['status'] === 'passed' && $check['driver'] === $driver && $check['archive-sha256'] === $record['sha256']
-            && $check['artifact-sha256'] === $record['artifact-sha256'], '三库没有验收同一最终候选');
         $record['acceptance'][$driver] = $check;
     }
-    expect(hash_file('sha256', $work . '/attachments/' . $record['archive']) === $record['sha256'], '验收后归档改变');
-    (new NativePackage())->verify($work . '/unpacked release', $record['manifest-sha256']);
     $record['status'] = 'passed';
+    Candidate::verify($record, $work . '/attachments', Reports::output(['git', 'rev-parse', 'HEAD'], $root), $version, $platform);
+    (new SingleProgram())->verify($work . '/attachments/' . $record['file'], $record['sha256']);
     Reports::report($work . '/attachments/' . $platform . '.json', $record);
 } else {
     throw new InvalidArgumentException('用法：php tests/release-candidate.php <prepare|test 驱动 [MySQL目录 PostgreSQL目录]|finish>');

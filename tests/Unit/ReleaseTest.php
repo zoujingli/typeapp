@@ -10,6 +10,7 @@ use TypeApp\Distribution\Batch;
 use TypeApp\Release\Evidence;
 use TypeApp\Release\GitHub;
 use TypeApp\Release\Plan;
+use TypeApp\Release\Candidate;
 
 require_once dirname(__DIR__) . '/support.php';
 require_once dirname(__DIR__, 2) . '/tools/distribution/Process.php';
@@ -17,10 +18,67 @@ require_once dirname(__DIR__, 2) . '/tools/distribution/Batch.php';
 require_once dirname(__DIR__, 2) . '/tools/release/Plan.php';
 require_once dirname(__DIR__, 2) . '/tools/release/Evidence.php';
 require_once dirname(__DIR__, 2) . '/tools/release/GitHub.php';
+require_once dirname(__DIR__, 2) . '/tools/release/Candidate.php';
 
 /** 发布资格测试使用完整任务证据；Release外部边界使用保存真实文件的命令哨兵。 */
 final class ReleaseTest extends TestCase
 {
+    /** 文件形态与三库回执缺一不可；旧归档即使已有成功记录，也不能重新标成单程序。 */
+    public function testSingleProgramCandidateRequiresTheSameDownloadedBytesAndEveryDatabase(): void
+    {
+        $root = dirname(__DIR__, 2) . '/build/single-candidate-' . bin2hex(random_bytes(6));
+        mkdir($root, 0700);
+        $version = 'v1.0.0-rc.8';
+        $source = str_repeat('a', 40);
+        $name = Candidate::filename($version, 'macos-arm64');
+        file_put_contents($root . '/' . $name, 'already tested program bytes');
+        $sha = hash_file('sha256', $root . '/' . $name);
+        $record = ['protocol' => 2, 'delivery' => 'single-executable', 'status' => 'passed', 'source' => $source,
+            'version' => $version, 'platform' => 'macos-arm64', 'file' => $name, 'sha256' => $sha,
+            'bytes' => filesize($root . '/' . $name), 'artifact-sha256' => $sha, 'build-id' => str_repeat('b', 64),
+            'frontend-manifest-sha256' => str_repeat('f', 64), 'acceptance' => []];
+        foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
+            $record['acceptance'][$driver] = ['status' => 'passed', 'driver' => $driver, 'frontend-source-removed' => true,
+                'single-executable-only' => true, 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('c', 64)];
+        }
+        try {
+            self::assertSame($name, Candidate::verify($record, $root, $source, $version, 'macos-arm64'));
+            self::assertSame($name, Candidate::sealedFilename($record));
+            self::assertSame('typeapp-iot-1.0.0-rc.8-windows-x64.exe', Candidate::filename($version, 'windows-x64'));
+            $broken = [];
+            $broken[] = array_replace($record, ['protocol' => 1, 'delivery' => 'native-directory-archive']);
+            $broken[] = array_replace($record, ['source' => str_repeat('b', 40)]);
+            $broken[] = array_replace($record, ['artifact-sha256' => str_repeat('0', 64)]);
+            $broken[] = array_replace($record, ['file' => $name . '.tar.gz']);
+            $broken[] = array_replace($record, ['frontend-manifest-sha256' => null]);
+            $broken[] = array_replace($record, ['build-id' => '']);
+            foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
+                $missing = $record;
+                unset($missing['acceptance'][$driver]);
+                $broken[] = $missing;
+                $different = $record;
+                $different['acceptance'][$driver]['artifact-sha256'] = str_repeat('1', 64);
+                $broken[] = $different;
+            }
+            foreach ($broken as $candidate) {
+                $error = null;
+                try {
+                    Candidate::verify($candidate, $root, $source, $version, 'macos-arm64');
+                } catch (\RuntimeException $failure) {
+                    $error = $failure;
+                }
+                self::assertNotNull($error);
+            }
+            $old = ['protocol' => 1, 'archive' => 'typeapp-iot-1.0.0-rc.7-macos-arm64.tar.gz'];
+            self::assertSame($old['archive'], Candidate::sealedFilename($old));
+            file_put_contents($root . '/' . $name, 'a rebuilt replacement');
+            $this->expectException(\RuntimeException::class);
+            Candidate::verify($record, $root, $source, $version, 'macos-arm64');
+        } finally {
+            \removeTestDirectory($root);
+        }
+    }
+
     /** @return iterable<string, array{string, string, bool}> 真实路径与其允许的构建目录。 */
     public static function candidatePaths(): iterable
     {

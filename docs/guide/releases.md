@@ -4,6 +4,8 @@
 
 当前公开候选为 [v1.0.0-rc.7](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.7)，固定源码 `a5ff7ad`。四平台完整原生验收、组件与模板分发、默认 Packagist 独立消费和公开下载回读均已通过，共核对 17 个 Release、16 个子仓 tag、16 个 Packagist 版本及四份归档。RC 尚非稳定版，实际平台范围见[平台与验收](platforms.md)，原始身份和此前候选记录见[首次 RC 验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
+主仓新的发布门禁只接受**每个平台一个可执行文件**，不再以目录归档作为新候选。当前 macOS ARM64 已有本机静态应用验收，其他平台静态 SDK 与单程序验收未完成，因此尚不能发布新的四平台单程序版本。以下 RC7 下载示例保留其真实布局，不代表新产物形态。
+
 ## 一次 tag 如何形成版本
 
 ```mermaid
@@ -11,7 +13,7 @@ flowchart TB
   Tag["版本 tag → 固定完整提交"] --> Gate["main 历史、依赖约束、标签冲突检查"]
   Gate --> Web["冻结安装 → 类型检查 → 构建一份前端"]
   Web --> AOT["四平台 TypePHP 全量 AOT · 内嵌同一份资源"]
-  AOT --> Verify["生成最终归档 → 解包 → 三库与页面验收"]
+  AOT --> Verify["保存最终可执行文件 → 只复制该文件 → 三库与页面验收"]
   Verify --> Draft["保存主仓候选草稿、附件和摘要"]
   Draft --> Split["15 组件 + 模板 · 同版本 tag"]
   Split --> Index["GitHub webhook → Packagist 索引"]
@@ -21,9 +23,11 @@ flowchart TB
   style AOT fill:#147d64,color:#fff,stroke:#147d64
 ```
 
-四个平台分别编译、验收。任何一个平台失败都会阻止主仓版本公开。验收使用最终归档重新解包后的程序，上传前核对程序和归档摘要；不会用验收后重新编译的文件替换候选附件。
+四个平台分别编译、验收。任何一个平台失败都会阻止主仓版本公开。新候选验收直接使用待上传程序的同一字节，移走构建端前端资源后验证安装、登录和 CRUD；程序 SHA-256 必须与三库回执一致，不能重新编译后替换附件。旧版本恢复仍按原归档身份读取，不改写旧标签或附件。
 
-## 下载物联中心
+新候选附件名为 `typeapp-iot-<版本>-<平台>-<架构>`，Windows 追加 `.exe`，Unix 不加 `.tar.gz`。`SHA256SUMS` 和 `release-manifest.json` 是下载核验材料，不是运行依赖。下载后在 Unix 赋予执行权限，按[单程序部署](deployment.md)直接运行；运行库不会释放到磁盘，页面只在显式安装时写入 `public`。
+
+## 下载当前公开 RC7
 
 选择与操作系统、CPU 和系统库基线匹配的附件，具体要求见[平台与验收](platforms.md)。文件名中的版本不带前缀 `v`：
 
