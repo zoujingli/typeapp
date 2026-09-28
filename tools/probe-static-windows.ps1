@@ -85,7 +85,15 @@ foreach ($taskName in $taskHeaders.Keys | Sort-Object) {
     $taskText = [IO.File]::ReadAllText($taskFile)
     $taskPattern = '(?m)(#[\t ]*define[\t ]+' + $taskHeaders[$taskName][0] + '[\t ]+)__declspec\(dll(?:export|import)\)'
     if ([regex]::Matches($taskText, $taskPattern).Count -ne 2) { throw ('静态 API 适配位置不唯一：' + $taskName) }
-    [IO.File]::WriteAllText($taskFile, [regex]::Replace($taskText, $taskPattern, '$1'), $taskUtf8)
+    $taskStaticText = [regex]::Replace($taskText, $taskPattern, '$1')
+    if ($taskName -eq 'Zend/zend_config.w32.h') {
+        # ZEND_DLIMPORT 只用于 zend_stream.c 的 isatty 声明；/MT 的 CRT
+        # 已声明静态版本，继续使用 dllimport 会产生 C2375 链接方式冲突。
+        $taskImportPattern = '(?m)(#define[\t ]+ZEND_DLIMPORT[\t ]+)__declspec\(dllimport\)'
+        if ([regex]::Matches($taskStaticText, $taskImportPattern).Count -ne 1) { throw 'CRT 导入声明位置不唯一。' }
+        $taskStaticText = [regex]::Replace($taskStaticText, $taskImportPattern, '$1')
+    }
+    [IO.File]::WriteAllText($taskFile, $taskStaticText, $taskUtf8)
     $taskAdaptations += @{ file=$taskName; before=$taskBefore; after=(Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash.ToLowerInvariant() }
 }
 $taskConfig = Join-Path $taskSource 'win32/build/confutils.js'
