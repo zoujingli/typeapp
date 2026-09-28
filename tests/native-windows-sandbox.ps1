@@ -3,6 +3,8 @@
     [Parameter(Mandatory = $true)][string]$Specification
 )
 $ErrorActionPreference = 'Stop'
+# 普通子进程可能继承 PowerShell 7 的模块搜索路径；ACL 必须使用当前系统解释器的模块。
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
 # ACL 只涉及本轮唯一 SID；原控制器与其他账号的权限保持原样。
 # 本脚本保留 UTF-8 BOM，兼容系统 PowerShell 5.1；JSON 也明确按 UTF-8 读取。
 $taskSpec = Get-Content -LiteralPath $Specification -Raw -Encoding utf8 | ConvertFrom-Json
