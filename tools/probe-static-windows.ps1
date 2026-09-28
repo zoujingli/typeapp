@@ -111,6 +111,8 @@ $taskAdaptations += @{ file='win32/build/confutils.js'; before=$taskBefore; afte
 # 同一个静态映像共用 Zend 的 TLS 缓存；移除 embed 原为独立 DLL 定义的副本。
 # /Zc:inline 不再受 dllexport 强制保留定义，公共随机数种子函数须有独立符号。
 $taskSourceEdits = @{
+    # /MT 已将 CRT 链接到程序；只有 /MD 定义 _DLL，才存在可比较版本的外部 CRT 映像。
+    'win32/winutil.c' = @('23a30e669025edfb337a48afeac8a0652c7f2d808c8d9702054338744d04c88e', "#if PHP_LINKER_MAJOR == 14`n`t/* Extend for other CRT if needed. */", "#if PHP_LINKER_MAJOR == 14 && defined(_DLL)`n`t/* Extend for other CRT if needed. */", 1)
     'sapi/embed/php_embed.c' = @('e92e1804ef203b5c857fb2e92b149f9f32a52c0ca7c52e6d5a6bd21a26bf64d5', 'ZEND_TSRMLS_CACHE_DEFINE()', '/* Static embed shares the Zend core TLS cache. */', 1)
     'ext/random/engine_xoshiro256starstar.c' = @('228bfbf756931b9ca646543a37e5e13ed0b80e11399676efd3a81ce3d0d63a6d', 'PHPAPI inline void', 'PHPAPI void', 2)
     'ext/random/engine_mt19937.c' = @('e789018f1e172ec356910fb66d9d50f13b780e05920e12d510395beaf96196ac', 'PHPAPI inline void', 'PHPAPI void', 1)
@@ -167,8 +169,8 @@ if ($taskRuntime) {
     if ($LASTEXITCODE -ne 0) { throw '完整扩展的固定源码适配失败。' }
     $taskConfigure += @("--with-php-build=$taskDeps", '--enable-filter', '--enable-tokenizer', '--enable-ctype', '--enable-session',
         '--enable-mbstring', '--disable-mbregex', '--with-libxml', '--enable-dom', '--enable-xml', '--enable-simplexml',
-        '--enable-xmlreader', '--enable-xmlwriter', '--enable-phar', '--enable-pdo', '--enable-mysqlnd', '--with-pdo-mysql',
-        '--with-pdo-pgsql', '--with-pdo-sqlite', '--with-sqlite3', '--enable-sockets', '--with-openssl', '--with-curl',
+        '--enable-xmlreader', '--enable-xmlwriter', '--enable-phar', '--enable-pdo', '--with-mysqlnd', '--enable-mysqlnd', '--with-pdo-mysql',
+        '--with-pdo-pgsql', '--with-pdo-sqlite', '--with-sqlite3', '--enable-sockets', '--with-openssl=yes', '--with-curl',
         '--enable-zlib', '--with-iconv', '--enable-redis', '--enable-swoole', '--enable-swoole-thread', '--enable-php-sockets',
         '--enable-cares', '--enable-swoole-pgsql', '--enable-swoole-sqlite', '--enable-swoole-curl')
     [IO.File]::WriteAllText((Join-Path $taskSource 'typeapp-dependencies.rsp'), ($taskLibraries -join "`r`n") +
