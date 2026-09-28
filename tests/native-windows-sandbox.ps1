@@ -31,7 +31,13 @@ if ($Operation -eq 'restore') {
         $taskActualDescriptor = [Security.AccessControl.RawSecurityDescriptor]::new($taskRestored)
         # Set-Acl 会设置 AI 标记，并可重排全部为继承允许项的 DACL；逐条权限与数量不变。
         # 含拒绝、显式或特殊 ACE 时顺序仍有意义，继续严格比较。
-        if ((Get-TypeAppComparableDacl $taskActualDescriptor) -cne (Get-TypeAppComparableDacl $taskExpectedDescriptor)) {
+        try {
+            $taskActualKey = Get-TypeAppComparableDacl $taskActualDescriptor
+            $taskExpectedKey = Get-TypeAppComparableDacl $taskExpectedDescriptor
+        } catch {
+            throw ('ACL comparison failed: ' + $_.Exception.Message + "`n" + $_.ScriptStackTrace)
+        }
+        if ($taskActualKey -cne $taskExpectedKey) {
             $taskMismatches += @{path=$taskEntry.path; expected=$taskEntry.sddl; actual=$taskRestored}
         }
     }
