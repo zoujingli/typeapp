@@ -16,6 +16,12 @@ spec.loader.exec_module(materials)
 class RebuildMaterialsTest(unittest.TestCase):
     """以实际归档读取验证来源、篡改与路径边界，不依赖远端服务。"""
 
+    @classmethod
+    def setUpClass(cls):
+        """全新检出尚无生成目录，测试自行准备父目录，不依赖先运行应用构建。"""
+        cls.task_root = Path(__file__).resolve().parents[1] / "build"
+        cls.task_root.mkdir(exist_ok=True)
+
     def test_vcpkg_github_source_reference(self):
         """Zstd 的真实 SPDX 使用 git+https 引用；恢复带摘要的源码归档，不执行 Git 地址。"""
         self.assertEqual(materials.vcpkg_source_url("git+https://github.com/facebook/zstd@v1.5.7"),
@@ -29,7 +35,7 @@ class RebuildMaterialsTest(unittest.TestCase):
 
     def test_roundtrip_and_corruption(self):
         """保留真实字节；错误源码身份和篡改记录均不得通过。"""
-        with tempfile.TemporaryDirectory(prefix="rebuild-test-", dir=Path(__file__).resolve().parents[1] / "build") as task:
+        with tempfile.TemporaryDirectory(prefix="rebuild-test-", dir=self.task_root) as task:
             root = Path(task)
             source = root / "中文 source.txt"
             source.write_bytes(b"original source\r\n")
@@ -53,7 +59,7 @@ class RebuildMaterialsTest(unittest.TestCase):
 
     def test_paths_duplicates_missing_and_links(self):
         """收集阶段即拒绝越界、重复、缺失目录与文件系统链接。"""
-        with tempfile.TemporaryDirectory(prefix="rebuild-test-", dir=Path(__file__).resolve().parents[1] / "build") as task:
+        with tempfile.TemporaryDirectory(prefix="rebuild-test-", dir=self.task_root) as task:
             root = Path(task)
             source = root / "source.txt"
             source.write_text("original")

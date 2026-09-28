@@ -55,6 +55,12 @@ PHP、PHPX、Swoole 和非系统依赖采用已登记的静态归档。MySQL、P
 
 原始证据与回归身份保全于 `.cache/retained-evidence/static-ci-20260928/windows-materials-36410921009/`，包含失败运行附件、原 EXE、三库报告、同批依赖归档、修复前后日志及材料成员清单。SDK 继续引用此前 `windows-sdk-36398798810/` 的原归档，不复制或改写其身份。
 
+### RC8 发布前置检查
+
+`v1.0.0-rc.8` 标签固定在 `c7a788ed0ed670e58f864120853f2591efce2cc0`。[正式发布运行 36414110386](https://github.com/zoujingli/typeapp/actions/runs/36414110386) 在 `resolve` 的材料测试阶段失败：全新检出中没有 `build/`，两个归档测试创建临时目录时抛出 `FileNotFoundError`。四平台构建、子仓分发和 Release 均未执行，该标签不代表已公开可用版本。
+
+在含中文、空格路径的隔离目录复制原测试与采集器，从不同工作目录执行，已重现相同错误。测试入口改为自行创建生成目录后，三个回归全部通过且临时文件全部回收。RC8 标签保留原身份，修复使用新版本继续发布，不移动既有标签。失败日志和干净目录修复前后结果保全于 `.cache/retained-evidence/static-ci-20260928/rc8-release-36414110386/`。
+
 ## Windows x64，静态运行库阶段
 
 [运行 36387006296](https://github.com/zoujingli/typeapp/actions/runs/36387006296) 已完成第三方依赖的真实链接、PE 导入审计和独立运行。该运行源码为 `64203e2`，固定 vcpkg 提交为 `07f4812200df3d3c931c0c8a6081d3b21fe2bf9f`，使用 `x64-typeapp-static` 和静态 CRT；17 个包生成的 22 份归档逐项回读摘要一致。后续新增的 libiconv 不在这份历史结果中。
