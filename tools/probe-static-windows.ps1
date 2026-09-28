@@ -257,5 +257,5 @@ if ($WithPhpx) {
     if ($LASTEXITCODE -ne 0) { throw 'PHPX 固定源码适配失败。' }
     & (Join-Path $PSScriptRoot 'static-windows/build-phpx.ps1') -PhpSource $taskSource -PhpxSource $taskPhpx `
         -PhpArchive (Join-Path (Split-Path $taskProgram -Parent) 'typeapp-static.lib') `
-        -DependenciesDirectory $DependenciesDirectory -Directory (Join-Path $taskWork 'phpx-static')
+        -DependenciesDirectory $DependenciesDirectory -HostPhp $taskHostPhp -Directory (Join-Path $taskWork 'phpx-static')
 }

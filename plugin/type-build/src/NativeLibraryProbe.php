@@ -23,6 +23,9 @@ function type_app_native_file_sha256(string $path): string {}
 
 /** @internal 返回承载当前 AOT 与 PHP 核心的同一主程序；存在共享扩展或核心来自其他映像时返回空串。 */
 function type_app_native_embedded_core(): string {}
+
+/** @internal 从 Windows 系统 API 取得系统库目录，不信任部署环境中的 SystemRoot。 */
+function type_app_native_system_directory(): string {}
 PHP,
             'native-libraries.cc' => <<<'CPP'
 #include <phpx.h>
@@ -45,6 +48,30 @@ PHP,
 #elif defined(__linux__)
 #include <link.h>
 #endif
+
+#if defined(_WIN32)
+// Windows 路径保持 UTF-8；拒绝截断或非法宽字符，不回退到当前代码页。
+static php::String type_app_windows_path(const wchar_t *path, int length) {
+    const int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, path, length, nullptr, 0, nullptr, nullptr);
+    if (bytes < 1) { return php::String(""); }
+    std::string value(static_cast<size_t>(bytes), '\0');
+    if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, path, length, value.data(), bytes, nullptr, nullptr)) {
+        return php::String("");
+    }
+    return php::String(value.data(), value.size());
+}
+#endif
+
+php::String php_type_app_native_system_directory() {
+#if defined(_WIN32)
+    wchar_t path[32768];
+    const UINT length = GetSystemDirectoryW(path, 32768);
+    if (length == 0 || length >= 32768) { return php::String(""); }
+    return type_app_windows_path(path, static_cast<int>(length));
+#else
+    return php::String("");
+#endif
+}
 
 // 固定ABI：只报告本进程已经加载的映像，不扫描进程外目录或加载未知DLL。
 php::Array php_type_app_native_loaded_images() {
@@ -118,7 +145,15 @@ php::String php_type_app_native_embedded_core() {
         || core.dli_fbase != application.dli_fbase || !core.dli_fname) { return php::String(""); }
     return php::String(core.dli_fname);
 #else
-    return php::String("");
+    HMODULE core = nullptr, application = nullptr;
+    const DWORD flags = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
+    if (!GetModuleHandleExW(flags, reinterpret_cast<LPCWSTR>(zend_get_constant_str), &core)
+        || !GetModuleHandleExW(flags, reinterpret_cast<LPCWSTR>(php_type_app_native_embedded_core), &application)
+        || core != application || application != GetModuleHandleW(nullptr)) { return php::String(""); }
+    wchar_t path[32768];
+    const DWORD length = GetModuleFileNameW(application, path, 32768);
+    if (length == 0 || length >= 32768) { return php::String(""); }
+    return type_app_windows_path(path, static_cast<int>(length));
 #endif
 }
 

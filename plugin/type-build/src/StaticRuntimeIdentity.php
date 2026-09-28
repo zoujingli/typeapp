@@ -43,10 +43,17 @@ final class BuildIdentity
         if ($executable === '') { throw new \RuntimeException('无法定位静态主程序'); }
         $images = \type_app_native_loaded_images();
         if ($images === []) { throw new \RuntimeException('无法读取系统加载项'); }
+        $systemDirectory = '';
+        if (PHP_OS_FAMILY === 'Windows') {
+            $systemDirectory = strtolower(str_replace('\\', '/', \type_app_native_system_directory()));
+            if ($systemDirectory === '') { throw new \RuntimeException('无法确认 Windows 系统库目录'); }
+            $systemDirectory = rtrim($systemDirectory, '/') . '/';
+        }
         foreach ($images as $image) {
             $parts = explode("\n", $image, 2);
             $path = $parts[0];
             if ($path === $program || (string) realpath($path) === $executable) { continue; }
+            if (PHP_OS_FAMILY === 'Windows' && str_starts_with(strtolower(str_replace('\\', '/', $path)), $systemDirectory)) { continue; }
             if (PHP_OS_FAMILY === 'Darwin' && (str_starts_with($path, '/usr/lib/') || str_starts_with($path, '/System/Library/'))) { continue; }
             if (PHP_OS_FAMILY === 'Linux' && ($path === 'linux-vdso.so.1'
                 || (preg_match('~^/(?:usr/)?lib(?:64)?/(?:[A-Za-z0-9_-]+/)?(?:libc\.so\.6|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0|libresolv\.so\.2|libgcc_s\.so\.1|libstdc\+\+\.so\.6|ld-linux[^/]+\.so\.[0-9]+)$~D', $path) === 1))) { continue; }

@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory = $true)][string]$PhpxSource,
     [Parameter(Mandatory = $true)][string]$PhpArchive,
     [Parameter(Mandatory = $true)][string]$DependenciesDirectory,
+    [Parameter(Mandatory = $true)][string]$HostPhp,
     [Parameter(Mandatory = $true)][string]$Directory
 )
 $ErrorActionPreference = 'Stop'
@@ -12,6 +13,12 @@ if ($env:OS -ne 'Windows_NT' -or ![IO.Path]::IsPathFullyQualified($Directory) -o
 }
 $taskEvidence = Join-Path $Directory 'evidence'
 New-Item -ItemType Directory -Path $taskEvidence -Force | Out-Null
+$taskRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+# 直接编译构建组件生成的加载器实现，避免独立探针与应用审计各用一套逻辑。
+& $HostPhp -n -r 'require $argv[1]."/plugin/type-build/src/NativeLibraryProbe.php";file_put_contents($argv[2],(new Type\Build\NativeLibraryProbe())->sources()["native-libraries.cc"]);' `
+    $taskRoot (Join-Path $Directory 'native-libraries.cc')
+if ($LASTEXITCODE -ne 0) { throw '原生加载器审计源码生成失败。' }
+Copy-Item -LiteralPath (Join-Path $Directory 'native-libraries.cc') -Destination (Join-Path $taskEvidence 'native-libraries.cc')
 $taskDecimal = Join-Path $PhpxSource 'thirdparty/mpdecimal'
 foreach ($taskPart in @('libmpdec', 'libmpdec++')) {
     $taskPartDirectory = Join-Path $taskDecimal $taskPart
@@ -46,7 +53,7 @@ $taskProgram = Join-Path $Directory 'phpx-probe.exe'
     /D PHP_WIN32=1 /D ZEND_WIN32=1 /D ZTS=1 /D ZEND_DEBUG=0 /D ZEND_ENABLE_STATIC_TSRMLS_CACHE=1 /D ENABLE_INTSAFE_SIGNED_FUNCTIONS `
     "/I$PhpSource" "/I$PhpSource/main" "/I$PhpSource/Zend" "/I$PhpSource/TSRM" "/I$PhpSource/ext" `
     "/I$PhpxSource/include" "/I$PhpxSource/thirdparty/wren-gc/include" "/I$DependenciesDirectory/include" `
-    "/I$taskDecimal/libmpdec" "/I$taskDecimal/libmpdec++" (Join-Path $PSScriptRoot 'phpx-probe.cpp') `
+    "/I$taskDecimal/libmpdec" "/I$taskDecimal/libmpdec++" "/I$Directory" (Join-Path $PSScriptRoot 'phpx-probe.cpp') `
     "/Fo$Directory/phpx-probe.obj" "/Fe$taskProgram" /link @taskLibraries `
     kernel32.lib user32.lib advapi32.lib shell32.lib ws2_32.lib ole32.lib oleaut32.lib dnsapi.lib psapi.lib bcrypt.lib `
     pathcch.lib iphlpapi.lib crypt32.lib normaliz.lib secur32.lib wldap32.lib winmm.lib synchronization.lib `
