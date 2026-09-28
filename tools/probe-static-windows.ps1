@@ -11,10 +11,18 @@ $taskEvidence = Join-Path $taskWork 'evidence'
 New-Item -ItemType Directory -Path $taskEvidence | Out-Null
 $taskUtf8 = [Text.UTF8Encoding]::new($false)
 
+function Write-StaticStage {
+    param([string]$Stage)
+    $taskMessage = [DateTime]::UtcNow.ToString('o') + ' ' + $Stage
+    $taskMessage | Add-Content -LiteralPath (Join-Path $taskEvidence 'stages.log') -Encoding utf8
+    Write-Host $taskMessage
+}
+Write-StaticStage 'msvc: locating compiler'
 $taskVswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
 $taskVs = & $taskVswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if ($LASTEXITCODE -ne 0 -or !$taskVs) { throw '无法定位 MSVC x64。' }
 $taskSetup = 'call "' + $taskVs + '\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul && set'
+Write-StaticStage 'msvc: importing compiler environment'
 $taskVariables = & $env:ComSpec /d /s /c $taskSetup
 if ($LASTEXITCODE -ne 0) { throw 'MSVC 环境初始化失败。' }
 foreach ($taskLine in $taskVariables) {
@@ -22,16 +30,20 @@ foreach ($taskLine in $taskVariables) {
         [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
     }
 }
+Write-StaticStage 'msvc: ready'
 
 function Get-StaticSource {
     param([string]$Url, [string]$Digest, [string]$Name)
     $taskArchive = Join-Path $taskWork $Name
-    & (Join-Path $env:SystemRoot 'System32/curl.exe') -fsSL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 240 -o $taskArchive $Url
+    Write-StaticStage ('download: ' + $Name)
+    & (Join-Path $env:SystemRoot 'System32/curl.exe') -fsSL --retry 2 --retry-all-errors --retry-max-time 300 --connect-timeout 20 --max-time 120 -o $taskArchive $Url
     if ($LASTEXITCODE -ne 0 -or (Get-FileHash -LiteralPath $taskArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Digest) {
         throw ('源码下载或摘要核对失败：' + $Name)
     }
+    Write-StaticStage ('extract: ' + $Name + ' (' + (Get-Item -LiteralPath $taskArchive).Length + ' bytes)')
     & (Join-Path $env:SystemRoot 'System32/tar.exe') -xf $taskArchive -C $taskWork
     if ($LASTEXITCODE -ne 0) { throw ('源码解包失败：' + $Name) }
+    Write-StaticStage ('source ready: ' + $Name)
 }
 Get-StaticSource 'https://www.php.net/distributions/php-8.5.10.tar.xz' '6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957' 'php.tar.xz'
 Get-StaticSource 'https://codeload.github.com/php/php-sdk-binary-tools/zip/1142e4abaf90ceb6cc25d983797b25cc948669cf' '083324ab6ad0f5b8727539d717600ab0f29a2fe84bd147095cf0b115a63a45c4' 'tools.zip'
@@ -73,11 +85,14 @@ if ([regex]::Matches($taskText, [regex]::Escape($taskCrt)).Count -ne 1) { throw 
 [IO.File]::WriteAllText($taskConfig, $taskText.Replace($taskCrt, 'ADD_FLAG("CFLAGS", "/MT");'), $taskUtf8)
 $taskAdaptations += @{ file='win32/build/confutils.js'; before=$taskBefore; after=(Get-FileHash -LiteralPath $taskConfig -Algorithm SHA256).Hash.ToLowerInvariant() }
 $taskAdaptations | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'adaptations.json') -Encoding utf8
+Write-StaticStage 'source adaptations: verified'
 
 Push-Location $taskSource
 try {
+    Write-StaticStage 'buildconf: start'
     & .\buildconf.bat 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'buildconf.log')
     if ($LASTEXITCODE -ne 0) { throw 'PHP buildconf 失败。' }
+    Write-StaticStage 'configure: start'
     & .\configure.bat --disable-all --disable-cli --disable-cgi --disable-phpdbg --enable-embed --enable-zts --with-mp=2 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
     if ($LASTEXITCODE -ne 0) { throw 'PHP 静态核心配置失败。' }
     Copy-Item -LiteralPath 'Makefile' -Destination (Join-Path $taskEvidence 'Makefile.original')
@@ -91,9 +106,11 @@ typeapp-static-core: generated_files $(PHP_GLOBAL_OBJS) $(STATIC_EXT_OBJS) $(EMB
 '@
     [IO.File]::AppendAllText((Join-Path $taskSource 'Makefile'), $taskTarget + "`r`n", $taskUtf8)
     Copy-Item -LiteralPath (Join-Path $taskRoot 'plugin/type-build/src/Native/embed-probe.c') -Destination 'typeapp-embed-probe.c'
+    Write-StaticStage 'nmake: static core and embed probe'
     & nmake /nologo typeapp-static-core 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'build.log')
     if ($LASTEXITCODE -ne 0) { throw 'PHP 静态核心构建或真实 embed 链接失败。' }
 } finally { Pop-Location }
+Write-StaticStage 'PE audit: start'
 
 $taskPrograms = @(Get-ChildItem -LiteralPath $taskSource -Filter typeapp-embed-probe.exe -File -Recurse)
 if ($taskPrograms.Count -ne 1) { throw '没有生成唯一静态 embed 探针。' }
@@ -110,6 +127,7 @@ Copy-Item -LiteralPath $taskProgram -Destination (Join-Path $taskDeploy 'probe.e
 [IO.File]::WriteAllText((Join-Path $taskDeploy 'php.ini'), "display_errors=1`n", $taskUtf8)
 New-Item -ItemType Directory -Path (Join-Path $taskDeploy 'empty') | Out-Null
 $taskOldPath = $env:PATH
+Write-StaticStage 'standalone embed: start'
 try {
     $env:PATH = (Join-Path $env:SystemRoot 'System32')
     $taskOutput = & (Join-Path $taskDeploy 'probe.exe') (Join-Path $taskDeploy 'php.ini') (Join-Path $taskDeploy 'empty')

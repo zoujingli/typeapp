@@ -26,6 +26,7 @@ jobs:
         with:
           persist-credentials: false
       - name: 构建静态 PHP 核心并审计独立 embed
+        timeout-minutes: 12
         shell: pwsh
         run: ./tools/probe-static-windows.ps1 -Directory "$env:GITHUB_WORKSPACE/build/static-windows-core"
       - name: 保存实际编译、导入与运行结果
