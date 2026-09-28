@@ -11,8 +11,8 @@
 | 阶段 | 需要准备 | 由项目或构建处理 |
 | --- | --- | --- |
 | 源码开发 | PHP CLI、Composer、匹配的 Swoole 与所选数据库的 PDO 扩展；测试所需业务服务 | Composer 安装组件，开发入口生成配置、路由和模型代码 |
-| 原生构建 | 目标平台编译工具、PHP ZTS/embed SDK、PHPX、实际扩展与锁定依赖；物联中心另需 Node.js/pnpm 构建页面 | TypePHP 全量编译，`type-build` 复用内置 Swoole、链接前端资源、校验真实 embed 环境并收集实际运行依赖 |
-| 生产部署 | 匹配的操作系统与架构、完整运行包、外置配置、数据目录及所用业务服务 | 从运行包加载已编译应用与随包原生库；无需部署业务 PHP 源码、Composer、TypePHP 或编译 SDK |
+| 原生构建 | 目标平台编译工具、PHP ZTS/embed 静态 SDK、PHPX、实际扩展与锁定依赖；物联中心另需 Node.js/pnpm 构建页面 | TypePHP 全量编译，`type-build` 校验真实 embed 环境，将运行库静态链接并内嵌前端资源 |
+| 生产部署 | 匹配的操作系统与架构、已验收的程序、外置配置、数据目录及所用业务服务 | 执行已编译应用；无需安装 PHP、Swoole、Composer、TypePHP 或编译 SDK。历史 RC7 仍须完整目录 |
 
 开发 PHP 的版本范围是 `>=8.4 <8.6`，Swoole 范围是 `>=6.2 <7`；这不代表任意组合都能使用内置模块。当前原生构建锁定 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2，准确输入取自项目的 `toolchain.lock.json` 与 `composer.lock`。
 
@@ -28,7 +28,7 @@
 | macOS ARM64 | 同一 PHP ABI；部署目标 15.0，已在 macOS 15 原生 ARM64 runner 通过默认矩阵 |
 | Windows x64 | 同一 PHP ABI；PHP 官方 VS17 ZTS SDK |
 
-默认构建自动选择当前平台模块，校验摘要、ABI 与源码适配，再通过真实 embed 探针验证加载。只收集选中的模块及其实际依赖，应用不必声明整目录资源。已有 embed 内置扩展或显式模块配置仍有更高优先级，见[选择与失败处理](plugins/type-build.md#选择与失败处理)。
+共享库开发构建自动选择当前平台模块，校验摘要、ABI 与源码适配，再通过真实 embed 探针验证加载。只收集选中的模块及其实际依赖，应用不必声明整目录资源。已有 embed 内置扩展或显式模块配置仍有更高优先级，见[选择与失败处理](plugins/type-build.md#选择与失败处理)。生产单程序使用静态 SDK 中的 Swoole，不加载这些共享模块。
 
 PHP 版本号和 ZTS 一致仍不足以保证二进制兼容：SDK 的编译选项、导出符号和系统基线也必须匹配。例如加载时报 `zend_signal_globals_offset` 符号缺失，说明 PHP 与模块的 Zend 信号构建配置不同；应使用配套 SDK，或通过组件提供的显式源码重建入口生成匹配模块。不能跳过真实加载检查继续构建。
 
@@ -38,7 +38,7 @@ PHP 版本号和 ZTS 一致仍不足以保证二进制兼容：SDK 的编译选�
 
 ## 部署者需要管理什么
 
-部署重点是业务配置与持久数据。PHPX、libphp、Swoole 和实际原生扩展由构建流程收集进运行包，部署者整体交付和校验该包，无需逐项安装一套 PHP 开发环境。当前不能只取出 `bin/` 中的程序运行，也不能混用其他平台或版本的库。
+部署重点是业务配置与持久数据。静态单程序将 PHPX、libphp、Swoole 和实际原生扩展链接进程序，部署者核对程序摘要并提供外置配置。公开 RC7 使用旧目录包，仍需保留完整目录，不能只取出 `bin/` 中的程序运行。两种形态都要求匹配目标平台与系统基线。
 
 | 项目 | 何时需要 | 部署责任 |
 | --- | --- | --- |
@@ -63,8 +63,8 @@ php vendor/bin/type doctor type-app.json development
 php vendor/bin/type doctor type-app.json build
 ```
 
-部署后在发布目录执行 `./run verify-runtime`，Windows 使用 `run.cmd verify-runtime`。检查失败时先核对平台、组件版本和完整包内容；原生加载检查与真实业务验收分别进行。SDK 与扩展错误在构建阶段处理，数据库地址、权限、证书和数据目录问题按部署配置处理。
+静态单程序在部署目录执行 `./app verify-runtime`，Windows 使用 `app.exe verify-runtime`；命令中的名称以实际程序为准。历史 RC7 目录包执行 `./run verify-runtime`，Windows 使用 `run.cmd verify-runtime`。检查失败时先核对平台、版本和交付文件摘要；原生加载检查与真实业务验收分别进行。SDK 与扩展错误在构建阶段处理，数据库地址、权限、证书和数据目录问题按部署配置处理。
 
-macOS 当前还会核对构建时记录的系统 dyld 共享缓存摘要。更换 macOS 版本或系统更新可能使该检查失败，即使程序能够启动，也不能视为完整部署审计通过。已在 macOS 15 构建的候选包上复现跨系统版本拒绝；应在匹配的系统基线上构建和验收，不能通过跳过校验声明其他 macOS 版本已支持。各平台的实际范围见[平台与验收](platforms.md#当前平台状态)。
+macOS 历史共享库目录包还会核对构建时记录的系统 dyld 共享缓存摘要。更换 macOS 版本或系统更新可能使旧包检查失败，即使能够启动，也不能视为完整部署审计通过。静态单程序按最低系统版本与实际加载映像核验，只允许系统原生库；两种审计结果分别记录，不能通过跳过检查扩大支持范围。各平台的实际范围见[平台与验收](platforms.md#当前平台状态)。
 
 [开始开发](quickstart.md) · [构建与部署](deployment.md) · [性能与调优](performance.md)
