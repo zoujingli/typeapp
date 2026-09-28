@@ -12,6 +12,8 @@ use Type\Build\ArtifactManifest;
 use Type\Testing\Process;
 
 $root = dirname(__DIR__);
+$project = realpath(getenv('TYPE_PACKAGE_PROJECT') ?: $root);
+expect(is_string($project) && is_file($project . '/.env.example'), '需要被验收应用的配置示例');
 expect($argc === 2 && in_array(PHP_OS_FAMILY, ['Darwin', 'Linux', 'Windows'], true), '用法：PHP tests/native-single-program.php <完整静态应用>');
 expect(PHP_OS_FAMILY !== 'Linux' || getenv('TYPE_BWRAP_BINARY') !== false, 'Linux 单程序验收必须提供原生隔离工具');
 $artifact = realpath($argv[1]);
@@ -27,11 +29,11 @@ $package = $base . '/program only/bin';
 $runtime = $base . '/runtime data';
 $filename = PHP_OS_FAMILY === 'Windows' ? 'app.exe' : 'app';
 expect(mkdir($package, 0700, true) && mkdir($runtime, 0700), '无法创建单程序隔离目录');
-$created = json_decode(successful([PHP_BINARY, $root . '/vendor/bin/type', 'package', $artifact, $package . '/' . $filename], $root), true, 32, JSON_THROW_ON_ERROR);
+$created = json_decode(successful([PHP_BINARY, $project . '/vendor/bin/type', 'package', $artifact, $package . '/' . $filename], $project), true, 32, JSON_THROW_ON_ERROR);
 expect(($created['delivery'] ?? '') === 'single-executable' && $created['sha256'] === hash_file('sha256', $artifact), '交付入口没有保留同一可执行文件');
-$again = (new Process([PHP_BINARY, $root . '/vendor/bin/type', 'package', $artifact, $package . '/' . $filename]))->wait(30);
+$again = (new Process([PHP_BINARY, $project . '/vendor/bin/type', 'package', $artifact, $package . '/' . $filename], $project))->wait(30);
 expect($again->exitCode === 1 && !$again->timedOut && hash_file('sha256', $package . '/' . $filename) === $created['sha256'], '单程序交付覆盖了既有目标');
-successful([PHP_BINARY, $root . '/vendor/bin/type', 'verify-package', $package . '/' . $filename, $created['sha256']], $root);
+successful([PHP_BINARY, $project . '/vendor/bin/type', 'verify-package', $package . '/' . $filename, $created['sha256']], $project);
 if (PHP_OS_FAMILY !== 'Windows') {
     expect(chmod($package . '/' . $filename, 0555) && chmod($package, 0555), '无法准备只读程序目录');
 }
@@ -78,7 +80,7 @@ try {
     $rejected = (new Process([...$command, 'licenses', 'web/index.html'], $runtime, $cleanEnvironment))->wait(30);
     expect($rejected->exitCode === 1 && !$rejected->timedOut, '许可证入口接受了未登记的许可路径');
 
-    $initialization = verifyNativeApplicationDeployment($root, $package, $runtime, $command, $environment, $driver, $identity['embedded-resources'], true, true);
+    $initialization = verifyNativeApplicationDeployment($project, $package, $runtime, $command, $environment, $driver, $identity['embedded-resources'], true, true);
     expect(scandir($package) === ['.', '..', $filename], '业务运行向只读程序目录释放了文件');
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($runtime, FilesystemIterator::SKIP_DOTS)) as $file) {
         expect(!preg_match('/\.(?:so|dylib|dll)$/iD', $file->getFilename()), '运行目录出现释放的原生运行库');
@@ -87,9 +89,11 @@ try {
         'artifact-sha256' => hash_file('sha256', $package . '/' . $filename), 'build-id' => $identity['build-id'], 'initialization' => $initialization,
         'source-and-sdk-read-denied' => true, 'ordinary-start-writes-no-files' => true, 'external-ini-ignored' => true,
         'single-executable-only' => true, 'readonly-program-directory' => true, 'different-cwd' => true,
-        'license-documents-verified' => count($documents), 'checks' => ['single-program-export', 'export-no-overwrite', 'embedded-resources-audit', 'app-install',
+        'license-documents-verified' => count($documents), 'application' => $project === $root ? 'iot-center' : 'independent-template',
+        'checks' => $project === $root ? ['single-program-export', 'export-no-overwrite', 'embedded-resources-audit', 'app-install',
             'web-install-repeat-dry-run-force', 'web-digests', 'uploads-preserved', 'http-get-head-cache',
-            'admin-customer-login', 'site-defaults', 'role-crud', 'graceful-stop']];
+            'admin-customer-login', 'site-defaults', 'role-crud', 'graceful-stop']
+            : ['single-program-export', 'export-no-overwrite', 'migrations', 'modified-business', 'authentication', 'users-create-read-sort', 'input-validation', 'graceful-stop']];
     file_put_contents($base . '/verification.json', json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
     $passed = true;
 } finally {

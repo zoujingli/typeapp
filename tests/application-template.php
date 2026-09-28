@@ -288,7 +288,11 @@ try {
         $packageEnvironment['TYPE_PACKAGE_PROJECT'] = $consumer;
         $packageEnvironment['TYPE_PACKAGE_DRIVER'] = $driver;
         $packageEnvironment['TYPE_TEMPLATE_EXPECTED_MESSAGE'] = $marker;
-        $packaging = new Process([PHP_BINARY, $root . '/tests/native-package.php', $environment['TYPE_APP_BINARY'], '--archive'], $root, $packageEnvironment, 2097152);
+        $single = ($manifest['runtime-linkage'] ?? null) === 'static';
+        $packageCommand = $single
+            ? [PHP_BINARY, $root . '/tests/native-single-program.php', $environment['TYPE_APP_BINARY']]
+            : [PHP_BINARY, $root . '/tests/native-package.php', $environment['TYPE_APP_BINARY'], '--archive'];
+        $packaging = new Process($packageCommand, $root, $packageEnvironment, 2097152);
         try {
             $packaged = $packaging->wait(180);
             $secrets = array_values(array_filter([$packageEnvironment['TYPE_MYSQL_PASSWORD'] ?? '', $packageEnvironment['TYPE_PGSQL_PASSWORD'] ?? ''], static fn (string $secret): bool => $secret !== ''));

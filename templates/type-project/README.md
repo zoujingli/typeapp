@@ -147,11 +147,12 @@ composer build
 composer package
 build/type-project-release verify-runtime
 build/type-project-release help
+build/type-project-release licenses
 ```
 
 生产源码、配置/模型/路由/事务生成结果及生产 Composer 依赖整体编译。失败直接中止，生产不使用 dev.php、prepare.php、Composer PHP 自动加载或业务源码回退。静态交付要求实际原生库和许可材料内置；仍有外置依赖时 `package` 拒绝，不能把构建成功当作单程序完成。
 
-静态程序直接执行 `migrate run`、检查历史后再执行 `serve`，使用 `APP_BASE_PATH` 设置独立数据根。历史 Windows 目录包才使用 `run.cmd`；旧目录包的服务配置生成器尚未适配单程序。升级保留旧程序与持久数据，切回旧二进制不等于数据库回滚，恢复应指向新目标并保留原数据。
+静态程序直接执行 `migrate run`、检查历史后再执行 `serve`，使用 `APP_BASE_PATH` 设置独立数据根。`licenses` 读取程序内的许可索引，追加索引列出的 `notices/…` 路径可查看原文，不写出运行库。服务配置生成器接受单程序及其 SHA-256；生成配置不等于安装或启动服务。历史 Windows 目录包才使用 `run.cmd`。升级保留旧程序与持久数据，切回旧二进制不等于数据库回滚，恢复应指向新目标并保留原数据。
 
 当前默认平台矩阵与公共模板分发已有成功结果，具体提交、SDK 前提及包的隔离范围统一见[平台与验收](https://iots.top/#/guide/platforms)。修改业务或升级依赖后，应重新验证模板应用的 HTTP、停止与发布搬迁；Docker/WSL 的 Linux 结果不代替 Windows/macOS 原生结果，目录包也不等于静态单程序。
 

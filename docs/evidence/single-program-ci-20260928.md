@@ -41,7 +41,7 @@ PHP、PHPX、Swoole 和非系统依赖采用已登记的静态归档。MySQL、P
 
 ## 发布边界
 
-Windows 的静态 PHP 核心及第三方依赖探针已经分别通过，完整扩展与 PHPX 尚在验证，尚未形成 Windows 完整应用候选。最终发布必须以最终同一源码重新完成四平台验收，不能用本记录跳过剩余门禁。RC7 的历史目录包和此前本机结果保持原身份。
+Windows 的完整 PHP/Swoole 静态运行库探针已经通过，PHPX 与 SDK 导出尚在验证，尚未形成 Windows 完整应用候选。最终发布必须以最终同一源码重新完成四平台验收，不能用本记录跳过剩余门禁。RC7 的历史目录包和此前本机结果保持原身份。
 
 ## Windows x64，静态运行库阶段
 
@@ -91,3 +91,13 @@ Windows 的静态 PHP 核心及第三方依赖探针已经分别通过，完整�
 附件 `release-candidate-macos-arm64-1` 和 `macos-arm64-single-program` 已保全至 `.cache/retained-evidence/static-ci-20260928/macos-36383075960/`。31 个文件共 153,766,889 字节回读一致；相同内容使用硬链接保留原路径，实际唯一内容为 84,329,219 字节，原下载目录已回收。`retention.json` 登记全部原路径及摘要。
 
 先前 PostgreSQL 配置找不到 keg-only OpenSSL 的失败日志仍单独保留；本轮通过显式传递 OpenSSL 头文件和库搜索目录完成重跑。此前最低系统为 26 的本机产物不被改写为此 macOS 15 候选。
+
+## 独立模板，macOS ARM64 本机 SQLite
+
+本轮从模板独立安装组件、修改业务并全量编译 183 个生产源码文件，通过 `tests/application-template.php sqlite --onboarding --native --package`。源码基于 `32884ce788279a30634e0e50d5d005b5867acb30` 加本轮模板许可与单程序验收变更；准确补丁与新增源码摘要保留于归档清单。本机 SDK 的最低系统为 26.0，此结果不替代 macOS 15 CI 或其他数据库与平台。
+
+程序为 39,763,976 字节，SHA-256 为 `ff7d23fbd74b97476ff7eeff85f6aa22bd56eb64cfe0a12eadbbdad676e99a8d`，构建 ID 为 `2a718de2e2b1b404d6672cc9024fc1ba8192bd67b2024d71242c53a6c1fded70`。独立消费覆盖迁移、鉴权、CRUD、分页、排序、过滤、PATCH、软删除、过期版本拒绝与正常停止；模板不携带物联中心页面。
+
+同一文件通过无源码部署：含空格的只读程序目录、不同工作目录、拒绝读取源码和 SDK、恶意外部 PHP INI 无效、普通启动不释放文件。`licenses` 在程序内读取 44 份许可原文并逐项核对摘要。安装后的组件 CLI 负责导出、拒绝覆盖和校验程序；业务 HTTP 确认执行了创建项目后修改的实现。
+
+程序、构建身份、锁文件、原始日志与两次同程序部署报告已回读保全于 `.cache/retained-evidence/static-ci-20260928/template-macos-sqlite/`。`retention.json` 记录原相对路径、来源与恢复方法。静态许可文本齐全不代替分发所需的源码或重链接材料，模板结果也不计入物联中心四平台候选。

@@ -64,11 +64,16 @@ final class Application
             if (class_exists(\Type\Generated\BuildIdentity::class, false)) {
                 \Type\Generated\BuildIdentity::verifyRuntime();
             }
+            if ($command === 'licenses') {
+                Licenses::run($arguments);
+                return;
+            }
             if ($command === 'help' || $command === '--help') {
                 if (count($arguments) > 2) {
                     throw new InvalidArgumentException('help 不接受额外参数');
                 }
                 echo "Type 业务应用：help、check、verify-runtime、serve、migrate <run|status|history|recover>。\n";
+                echo "内嵌许可：licenses 查看索引，licenses <notices/资源路径> 查看对应原文。\n";
                 echo "驱动由安装前 configure.php 选择；先显式 migrate run，再设置 APP_API_TOKEN 并 serve。\n";
 
                 return;
