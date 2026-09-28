@@ -5,6 +5,7 @@
 $ErrorActionPreference = 'Stop'
 # 普通子进程可能继承 PowerShell 7 的模块搜索路径；ACL 必须使用当前系统解释器的模块。
 Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
+. (Join-Path $PSScriptRoot 'windows-acl-comparison.ps1')
 # ACL 只涉及本轮唯一 SID；原控制器与其他账号的权限保持原样。
 # 本脚本保留 UTF-8 BOM，兼容系统 PowerShell 5.1；JSON 也明确按 UTF-8 读取。
 $taskSpec = Get-Content -LiteralPath $Specification -Raw -Encoding utf8 | ConvertFrom-Json
@@ -28,14 +29,9 @@ if ($Operation -eq 'restore') {
         $taskRestored = (Get-Acl -LiteralPath $taskEntry.path).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
         $taskExpectedDescriptor = [Security.AccessControl.RawSecurityDescriptor]::new($taskEntry.sddl)
         $taskActualDescriptor = [Security.AccessControl.RawSecurityDescriptor]::new($taskRestored)
-        # Set-Acl 会设置“已经处理自动继承”的 AI 状态位，即使原 DACL 未设置它。
-        # 仅忽略此处理标记；P/AR、全部 ACE 权限、顺序及继承范围仍逐字比较。
-        foreach ($taskDescriptor in @($taskExpectedDescriptor, $taskActualDescriptor)) {
-            $taskFlags = [int]$taskDescriptor.ControlFlags -band (-bnot [int][Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited)
-            $taskDescriptor.SetFlags([Security.AccessControl.ControlFlags]$taskFlags)
-        }
-        if ($taskActualDescriptor.GetSddlForm([Security.AccessControl.AccessControlSections]::Access) -cne
-            $taskExpectedDescriptor.GetSddlForm([Security.AccessControl.AccessControlSections]::Access)) {
+        # Set-Acl 会设置 AI 标记，并可重排全部为继承允许项的 DACL；逐条权限与数量不变。
+        # 含拒绝、显式或特殊 ACE 时顺序仍有意义，继续严格比较。
+        if ((Get-TypeAppComparableDacl $taskActualDescriptor) -cne (Get-TypeAppComparableDacl $taskExpectedDescriptor)) {
             $taskMismatches += @{path=$taskEntry.path; expected=$taskEntry.sddl; actual=$taskRestored}
         }
     }
