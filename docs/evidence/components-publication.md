@@ -65,7 +65,7 @@ Packagist 网站的 package JSON 在发布后短时间仍返回旧缓存，本�
 - 小消费者首次构建期间发生构建工具 README 修改，输入身份检查正确拒绝；稳定输入下的新消费者通过，原失败日志保留。
 - 本机文档部署隔离脚本因缺少 Linux `flock` 跳过；静态导出、站点边界及线上内容另有验证，不将跳过记为通过。
 - 同源码的 [macOS CI 36028577573](https://github.com/zoujingli/typeapp/actions/runs/36028577573) 在 Swoole 加载阶段失败：所用 PHP SDK 缺少 `zend_signal_globals_offset`。这属于构建配置兼容问题，尚未修复，不能用本机结果替代；Linux 与 Windows 本次完整 CI 在取证时仍运行中。
-- GitHub 没有开放 PR；ORM 全量原生最终验收和物理 PDO 安全复用两项 Issue 保留开放，未因文档或源码发布而关闭。
+- GitHub 当时没有开放 PR；ORM 全量原生最终验收和物理 PDO 安全复用两项 Issue 在取证时仍开放。后续验收完成后，已分别关闭 [#14](https://github.com/zoujingli/typeapp/issues/14) 与 [#5](https://github.com/zoujingli/typeapp/issues/5)。
 
 ## 归档与恢复
 
