@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$Directory,
     [string]$DependenciesDirectory = '',
-    [string]$DependencyVerification = ''
+    [string]$DependencyVerification = '',
+    [switch]$WithPhpx
 )
 $ErrorActionPreference = 'Stop'
 # 分别验证静态 PHP 核心或完整扩展组合；本入口不生成应用候选，也不修改共享 SDK。
@@ -136,6 +137,7 @@ $taskConfigure = @('--disable-all', '--disable-cli', '--disable-cgi', '--disable
 $taskExtraLibraries = ''
 $taskRuntime = $DependenciesDirectory -ne ''
 if ($taskRuntime -ne ($DependencyVerification -ne '')) { throw '静态依赖和其真实验证报告必须同时提供。' }
+if ($WithPhpx -and !$taskRuntime) { throw 'PHPX 探针必须先启用并验证完整静态扩展。' }
 if ($taskRuntime) {
     $taskDependencyReport = Get-Content -Raw -LiteralPath $DependencyVerification | ConvertFrom-Json
     if (!$taskDependencyReport.passed -or $taskDependencyReport.triplet -ne 'x64-typeapp-static' -or
@@ -246,3 +248,14 @@ if ($taskRuntime) {
     artifact_sha256=(Get-FileHash -LiteralPath $taskProgram -Algorithm SHA256).Hash.ToLowerInvariant(); system_libraries=$taskDlls;
     extensions=$taskProfile.extensions } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
 Write-Host 'Windows 静态 embed 探针通过；范围以 verification.json 为准，尚不代表 PHPX 或应用验收。'
+if ($WithPhpx) {
+    Write-StaticStage 'PHPX static: start'
+    Get-StaticSource 'https://codeload.github.com/swoole/phpx/tar.gz/0dfa613d2057dcd4aa319ec9b6816f68df2403e4' '591a8d2116568f42ba969f58a0c72a26d47fccca4d0debdf5f7bd0a2480df4b3' 'phpx.tar.gz'
+    $taskPhpx = Join-Path $taskWork 'phpx-0dfa613d2057dcd4aa319ec9b6816f68df2403e4'
+    & $taskHostPhp -n -r 'require $argv[1]."/plugin/type-build/src/PhpxThreadSource.php";echo json_encode((new Type\Build\PhpxThreadSource())->apply($argv[2]),JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);' $taskRoot $taskPhpx |
+        Set-Content -LiteralPath (Join-Path $taskEvidence 'phpx-adaptations.json') -Encoding utf8
+    if ($LASTEXITCODE -ne 0) { throw 'PHPX 固定源码适配失败。' }
+    & (Join-Path $PSScriptRoot 'static-windows/build-phpx.ps1') -PhpSource $taskSource -PhpxSource $taskPhpx `
+        -PhpArchive (Join-Path (Split-Path $taskProgram -Parent) 'typeapp-static.lib') `
+        -DependenciesDirectory $DependenciesDirectory -Directory (Join-Path $taskWork 'phpx-static')
+}
