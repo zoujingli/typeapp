@@ -41,6 +41,22 @@ static bool readable(const wchar_t *path) {
 static int probe(int argc, wchar_t **argv) {
     // 真实原文件由 PHP 控制端先确认可读，拒绝必须来自访问检查，不接受缺失路径假通过。
     if (argc < 7 || !readable(argv[2])) { return failure("positive read"); }
+    // PHP realpath 会逐层查询目录元数据；能打开目标文件不等于数据路径可解析。
+    std::wstring directory = argv[3];
+    for (wchar_t &character : directory) { if (character == L'/') { character = L'\\'; } }
+    while (directory.size() > 3) {
+        WIN32_FIND_DATAW metadata{};
+        HANDLE found = FindFirstFileExW(directory.c_str(), FindExInfoBasic, &metadata, FindExSearchNameMatch, nullptr, 0);
+        if (found == INVALID_HANDLE_VALUE) {
+            DWORD error = GetLastError();
+            std::fwprintf(stderr, L"sandbox directory metadata unavailable: %ls (%lu)\n", directory.c_str(), error);
+            return 125;
+        }
+        FindClose(found);
+        const size_t separator = directory.find_last_of(L'\\');
+        if (separator == std::wstring::npos) { return 1; }
+        directory.resize(separator);
+    }
     const std::wstring writable = std::wstring(argv[3]) + L"/sandbox-write-probe";
     HANDLE file = CreateFileW(writable.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) { return failure("data write"); }
