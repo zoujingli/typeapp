@@ -241,7 +241,7 @@ php vendor/bin/type verify-package build/example-release "$TYPE_RELEASE_SHA256"
 
 收到产物后，不能仅在同一不受信目录重新计算摘要便认定来源可信。Windows 单程序须使用 `.exe`，其静态 SDK 与平台验收仍待完成。
 
-历史目录包使用 `package-directory`、`archive` 与 `type service <发布目录> <服务声明.json> <新服务目录> <受信清单SHA256>`。服务配置生成器目前依赖旧目录布局，尚未适配单程序；不要把程序文件作为目录传入。部署仍使用独立数据和环境文件路径，不将真实 `.env` 纳入构建。
+服务配置使用 `type service <程序文件> <服务声明.json> <新服务目录> <受信程序SHA256>`，直接启动经过校验的单程序。生成器也接受历史发布目录及其清单摘要；`package-directory`和`archive`用于该历史交付。生成配置不代表安装或系统服务验收通过，详见[原生服务管理](../../development/native-services.md)。运行数据与程序目录分离，不将真实 `.env` 纳入构建。
 
 运行包包含匹配 PHPX/libphp 和实际原生扩展，不包含 Composer、编译 SDK 或业务 PHP 回退入口。生产资源与开发工具分开，平台可用性以该版本实际验收为准。
 

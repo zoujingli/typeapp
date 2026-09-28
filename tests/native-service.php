@@ -6,18 +6,32 @@ require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Build\BuildPlatform;
+use Type\Build\ArtifactManifest;
 use Type\Build\NativePackage;
+use Type\Build\SingleProgram;
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
 expect(PHP_OS_FAMILY === 'Darwin', '该入口只验证macOS launchd，其他管理器必须执行对应原生验收');
 $root = BuildPlatform::resolve(dirname(__DIR__));
-expect(in_array($argc, [1, 2, 4], true), '用法：PHP tests/native-service.php [原生产物 [已验证发布目录 受信SHA256]]');
+expect(in_array($argc, [1, 2, 4], true), '用法：PHP tests/native-service.php [原生产物 [已验证程序或发布目录 受信SHA256]]');
 $artifact = realpath($argv[1] ?? $root . '/build/app/type-app');
 expect(is_string($artifact), '需要真实原生产物');
 $base = $root . '/build/service-native-' . bin2hex(random_bytes(6));
 expect(mkdir($base, 0700), '无法创建本轮服务验收目录');
-if ($argc === 4) {
+$single = ((new ArtifactManifest())->read($artifact)['runtime-linkage'] ?? '') === 'static';
+if ($single) {
+    if ($argc === 4) {
+        $entry = BuildPlatform::resolve($argv[2]);
+        $release = (new SingleProgram())->verify($entry, $argv[3]);
+        expect($release['sha256'] === hash_file('sha256', $artifact), '服务程序与指定产物身份不一致');
+    } else {
+        expect(mkdir($base . '/program only', 0700), '无法创建单程序目录');
+        $release = (new SingleProgram())->create($artifact, $base . '/program only/app');
+        $entry = $release['path'];
+    }
+    $package = ['directory' => dirname($entry), 'manifest-sha256' => $release['sha256']];
+} elseif ($argc === 4) {
     $releaseDirectory = BuildPlatform::resolve($argv[2]);
     $release = (new NativePackage())->verify($releaseDirectory, $argv[3]);
     expect($release['artifact']['sha256'] === hash_file('sha256', $artifact), '服务发布与指定产物身份不一致');
@@ -25,6 +39,8 @@ if ($argc === 4) {
 } else {
     $package = (new NativePackage())->create($artifact, $base . '/native release', $root . '/.env.example');
 }
+$entry = $single ? $entry : $package['directory'] . '/run';
+$expectedProgram = $single ? $entry : $package['directory'] . '/bin/app';
 $runtime = $base . '/private data';
 expect(mkdir($runtime, 0700), '无法创建独立运行数据根');
 $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
@@ -40,9 +56,9 @@ chmod($runtime . '/.env', 0600);
 $password = bin2hex(random_bytes(16));
 $environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $runtime, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'TYPE_APP_RELEASE_SHA256' => $package['manifest-sha256'],
     'APP_ADMIN_PASSWORD' => $password, 'APP_CUSTOMER_PASSWORD' => $password . '-customer'];
-$migration = new Process([$package['directory'] . '/run', 'app:install', 'launchd-admin', '服务管理员', 'launchd-customer', '服务客户', '服务租户'], $package['directory'], $environment);
+$migration = new Process([$entry, 'app:install', 'launchd-admin', '服务管理员', 'launchd-customer', '服务客户', '服务租户'], $package['directory'], $environment);
 try {
-    $migrated = $migration->wait(15);
+    $migrated = $migration->wait(30);
     expect($migrated->successful(), '服务前显式迁移失败：' . $migrated->stderr);
 } finally {
     $migration->stop();
@@ -51,7 +67,7 @@ $name = 'typeappservice' . bin2hex(random_bytes(6));
 $target = 'gui/' . posix_geteuid() . '/' . $name;
 $settings = ['name' => $name, 'runtime-directory' => $runtime, 'user' => posix_getpwuid(posix_geteuid())['name'], 'restart-seconds' => 1, 'stop-seconds' => 10];
 file_put_contents($base . '/service-spec.json', json_encode($settings, JSON_THROW_ON_ERROR));
-$service = json_decode(successful([PHP_BINARY, $root . '/vendor/bin/type', 'service', $package['directory'], $base . '/service-spec.json', $base . '/definition', $package['manifest-sha256']]), true, 512, JSON_THROW_ON_ERROR);
+$service = json_decode(successful([PHP_BINARY, $root . '/vendor/bin/type', 'service', $single ? $entry : $package['directory'], $base . '/service-spec.json', $base . '/definition', $package['manifest-sha256']]), true, 512, JSON_THROW_ON_ERROR);
 foreach (['service.json', basename($service['descriptor']), 'SERVICE.md'] as $file) {
     expect(!str_contains(file_get_contents($service['directory'] . '/' . $file), $token), '服务描述泄漏了运行秘密');
 }
@@ -101,6 +117,14 @@ function readyService(string $target, HttpClient $client, int $previous = 0): in
 }
 
 expect(serviceControl(['print', $target])['code'] !== 0, '不能接管已经存在的launchd作业');
+// 部分 macOS 的 launchd 创建重定向日志时未沿用作业 Umask，安装步骤先独占创建私有文件。
+foreach (['stdout', 'stderr'] as $stream) {
+    $log = $runtime . '/' . $name . '.' . $stream . '.log';
+    $handle = fopen($log, 'xb');
+    expect(is_resource($handle), '不能覆盖已有服务日志');
+    fclose($handle);
+    expect(chmod($log, 0600), '无法设置服务日志私有权限');
+}
 $loaded = false;
 $client = new HttpClient('http://' . $address, 1);
 try {
@@ -109,7 +133,7 @@ try {
     $loaded = true;
     $pid = readyService($target, $client);
     $command = trim(successful(['/bin/ps', '-p', (string) $pid, '-o', 'comm=']));
-    expect($command === $package['directory'] . '/bin/app', 'launchd主进程不是发布包中的原生应用：' . $command);
+    expect($command === $expectedProgram, 'launchd主进程不是指定原生应用：' . $command);
     expect((int) trim(successful(['/bin/ps', '-p', (string) $pid, '-o', 'uid='])) === posix_geteuid() && posix_geteuid() !== 0, 'launchd应用没有以预期非root账号运行');
     expect($client->request('GET', '/admin/users')->status === 401, '服务入口丢失授权');
     $login = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
@@ -145,9 +169,15 @@ try {
         expect(is_file($log) && (fileperms($log) & 0077) === 0, '服务日志没有采用私有权限');
         expect(!str_contains(file_get_contents($log), $token), '服务日志泄漏运行令牌');
     }
-    (new NativePackage())->verify($package['directory'], $package['manifest-sha256']);
+    if ($single) {
+        (new SingleProgram())->verify($entry, $package['manifest-sha256']);
+        expect(scandir($package['directory']) === ['.', '..', basename($entry)], '服务运行向单程序目录释放了文件');
+    } else {
+        (new NativePackage())->verify($package['directory'], $package['manifest-sha256']);
+    }
     $record = ['platform' => PHP_OS_FAMILY, 'manager' => 'launchd', 'release-sha256' => $package['manifest-sha256'],
         'service-sha256' => $service['manifest-sha256'], 'artifact-sha256' => hash_file('sha256', $artifact),
+        'delivery' => $single ? 'single-executable' : 'directory',
         'pid' => $pid, 'replacement-pid' => $replacement, 'port' => (int) $port,
         'checks' => ['public-cli', 'real-native-process', 'private-external-config', 'production-debug-override', 'health-auth-crud', 'crash-restart', 'data-survives', 'sigterm-exit-zero', 'no-success-restart', 'private-logs', 'release-unchanged']];
 } finally {

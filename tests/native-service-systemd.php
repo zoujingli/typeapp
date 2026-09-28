@@ -28,7 +28,10 @@ expect(hash_file('sha256', $descriptor) === $record['files'][$record['descriptor
 $release = $record['release-directory'];
 $runtime = $record['runtime-directory'];
 expect(is_dir($runtime) && !file_exists($runtime . '/.env') && !file_exists($runtime . '/var/app.sqlite'), '只能使用本轮空白运行根');
-expect(hash_file('sha256', $release . '/release.json') === $record['release-sha256'], '运行发布包不匹配服务身份');
+$single = ($record['delivery'] ?? '') === 'single-executable';
+$entry = $single ? $record['program'] : $release . '/run';
+$expectedProgram = $single ? $entry : $release . '/bin/app';
+expect(hash_file('sha256', $single ? $entry : $release . '/release.json') === $record['release-sha256'], '运行程序或发布包不匹配服务身份');
 
 /**
  * 通过指定前缀执行 systemd 控制命令，预算为 20 秒，退出路径均回收子进程。
@@ -100,7 +103,7 @@ try {
     $password = bin2hex(random_bytes(16));
     $migration = systemdRemote(['env', 'APP_BASE_PATH=' . $runtime, 'APP_ENV=production', 'APP_DEBUG=false', 'TYPE_APP_RELEASE_SHA256=' . $record['release-sha256'],
         'APP_ADMIN_PASSWORD=' . $password, 'APP_CUSTOMER_PASSWORD=' . $password . '-customer',
-        $release . '/run', 'app:install', 'service-admin', '服务管理员', 'service-customer', '服务客户', '服务租户'], $prefix);
+        $entry, 'app:install', 'service-admin', '服务管理员', 'service-customer', '服务客户', '服务租户'], $prefix);
     expect($migration['code'] === 0, 'Linux发布包显式迁移失败：' . $migration['stderr']);
     // 旧版systemd-analyze会绑定/替换用户管理器socket（上游#36540）。解析器只能接触本轮私有运行目录。
     $controlRuntime = systemdRemote(['printenv', 'XDG_RUNTIME_DIR'], $prefix);
@@ -135,7 +138,7 @@ try {
     $client = new HttpClient('http://' . $address, 1);
     $pid = systemdReady($unit, $client, $prefix);
     $command = systemdRemote(['cat', '/proc/' . $pid . '/cmdline'], $prefix);
-    expect($command['code'] === 0 && in_array($release . '/bin/app', explode("\0", $command['stdout']), true), 'systemd未运行发布包中的原生应用');
+    expect($command['code'] === 0 && in_array($expectedProgram, explode("\0", $command['stdout']), true), 'systemd未运行指定的原生应用');
     $identity = systemdRemote(['cat', '/proc/' . $pid . '/status'], $prefix);
     $expectedUser = systemdRemote(['id', '-u', $record['user']], $prefix);
     expect($expectedUser['code'] === 0 && preg_match('/^Uid:\s+([0-9]+)/m', $identity['stdout'], $userMatch) === 1
@@ -165,6 +168,7 @@ try {
     $journal = systemdRemote(['journalctl', '--user', '--unit=' . $unit, '--no-pager', '--lines=100'], $prefix);
     expect($journal['code'] === 0 && !str_contains($journal['stdout'], $token), '系统日志不可读取或泄漏令牌');
     $verified = ['platform' => 'Linux', 'manager' => 'systemd', 'service-sha256' => $digest, 'release-sha256' => $record['release-sha256'],
+        'delivery' => $single ? 'single-executable' : 'directory', 'artifact-sha256' => hash_file('sha256', $expectedProgram),
         'build-id' => $record['build-id'], 'pid' => $pid, 'replacement-pid' => $replacement, 'port' => (int) $port, 'restart-count' => $restarts,
         'checks' => ['native-loader-and-app', 'systemd-verify', 'analyzer-runtime-isolated', 'unprivileged-user', 'private-external-config', 'production-debug-override', 'health-auth-crud', 'crash-restart', 'persistent-data', 'normal-stop', 'journal-redaction']];
 } finally {
@@ -178,6 +182,9 @@ try {
     unlink($runtime . '/.env');
 }
 expect(!file_exists($release . '/var/app.sqlite'), '系统服务把数据库写回发布目录');
+if ($single) {
+    expect(hash_file('sha256', $entry) === $record['release-sha256'] && scandir($release) === ['.', '..', basename($entry)], '服务修改了程序或释放了额外文件');
+}
 $closedListener = stream_socket_server('tcp://' . $address, $errno, $error);
 expect(is_resource($closedListener), 'systemd停止后端口仍被占用');
 fclose($closedListener);

@@ -142,6 +142,10 @@ jobs:
             php tests/release-candidate.php test "$task_driver" "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS"
           done
           php tests/release-candidate.php finish
+      - name: 同一单程序的 systemd 生命周期
+        env:
+          TYPE_SERVICE_ARTIFACT: ${{ github.workspace }}/build/app/type-app
+        run: bash .github/scripts/run-linux-service.sh
       - name: 保存最终单程序候选
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -165,3 +169,5 @@ jobs:
             build/release-candidate/*.json
             build/release-candidate/*.log
             build/single program-*/verification.json
+            build/service-linux-ci-*/verification.json
+            build/service-linux-ci-*/preparation.json

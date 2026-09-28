@@ -286,6 +286,7 @@ final class ServiceDefinition
             $domain = $scope === 'user' ? 'gui/<UID>' : 'system';
             return $text . '使用声明的launchd域：`launchctl bootstrap ' . $domain . ' <配置绝对路径>`，`launchctl print ' . $domain . '/' . $name
                 . '`，停止并卸载用 `launchctl bootout ' . $domain . '/' . $name . "`。不自动安装登录项。系统LaunchDaemon由管理员核对非root账号、所有权、目录权限和服务策略后安装。\n\n"
+                . '首次 bootstrap 前，由声明的运行账号在数据根创建 `' . $name . '.stdout.log` 和 `' . $name . '.stderr.log`，权限设为0600，数据根设为0700；已有日志保留内容并核对所有者及权限。部分系统创建重定向日志时不采用作业Umask，不能仅靠plist保证私有权限。生成器不创建运行文件。' . "\n\n"
                 . "异常退出按ThrottleInterval重启；正常退出不重启。bootout发SIGTERM，超过ExitTimeOut会强杀，不能把强杀当作正常排空。日志在数据根，另行配置保留/轮转策略；配置不包含后台自更新或自动迁移。\n";
         }
         if ($manager === 'systemd') {

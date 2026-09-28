@@ -226,6 +226,7 @@ jobs:
             php tests/release-candidate.php test "$task_driver" "$(brew --prefix mysql@8.4)" "$(brew --prefix postgresql@17)"
           done
           php tests/release-candidate.php finish
+          php tests/native-service.php build/app/type-app
       - name: 保存最终发布候选
         if: (inputs.version != '' && matrix.suite == 'deployment') || matrix.suite == 'single-program'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

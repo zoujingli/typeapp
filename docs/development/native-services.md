@@ -32,7 +32,7 @@ php vendor/bin/type service /已验证主程序 service-spec.json /新的服务�
 
 ## macOS：launchd
 
-生成`<name>.plist`。`ProgramArguments`保留参数数组，直接启动主程序，历史目录包使用`run`；日志写入数据根，umask为0077。异常退出按节流间隔重启，正常退出不重启；系统发出SIGTERM后留出退出预算。[Apple服务说明](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html)
+生成`<name>.plist`。`ProgramArguments`保留参数数组，直接启动主程序，历史目录包使用`run`；作业umask为0077。首次加载前，由声明的运行账号在0700数据根中创建0600的`<name>.stdout.log`和`<name>.stderr.log`；已有日志保留内容并核对所有者及权限。本机实际验证发现launchd可能以0644创建重定向日志，不能仅靠plist中的Umask保证私有权限。异常退出按节流间隔重启，正常退出不重启；系统发出SIGTERM后留出退出预算。[Apple服务说明](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html)
 
 user作用域使用声明用户的`gui/<UID>`域：
 
@@ -94,6 +94,8 @@ Windows普通控制台exe不能直接冒充Windows Service。生成器要求额�
 
 ## 验证边界
 
-`tests/service-definition.php <原生产物>` 按实际交付形态验证单程序或目录包，覆盖摘要、含空格路径、参数、输出格式、拒绝覆盖和 CLI 一致性。单程序配置生成与系统服务实际启停是两项独立验收；下面的服务生命周期入口当前仍验证历史目录包。
+`tests/service-definition.php <原生产物>` 按实际交付形态验证单程序或目录包，覆盖摘要、含空格路径、参数、输出格式、拒绝覆盖和 CLI 一致性。单程序配置生成与系统服务实际启停是两项独立验收。
 
-`tests/native-service.php`可接受`原生产物 已验证发布目录 受信SHA256`，直接验证接入时完成搬迁、归档的同一发布，不另建版本。入口先核对发布清单及二进制身份，再通过`TYPE_TEMPLATE_EXPECTED_MESSAGE`核对实际业务修改，最后确认两个服务PID消失、监听端口释放和作业卸载。省略后两项时保留原标准应用打包流程；不接受身份不符的发布。
+`tests/native-service.php`接受`原生产物 [已验证程序或发布目录 受信SHA256]`，按实际交付形态启动同一字节的程序。单程序已在本机通过launchd的鉴权、CRUD、崩溃恢复、持久数据、正常零状态退出、私有日志和卸载清理，准确产物见[本轮记录](../evidence/single-program-ci-20260928.md)。该结果没有重新编译旧候选，也不代替其他系统的验收。
+
+Linux准备入口接受`TYPE_SERVICE_ARTIFACT`复用已编译程序，随后由`tests/native-service-systemd.php`完成同一服务行为验证。Linux双架构与macOS静态候选CI已接入这些入口，远端结果按各轮记录；Windows的WinSW生命周期仍须单独验证。
