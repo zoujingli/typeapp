@@ -34,10 +34,29 @@ $taskSpec = Join-Path $taskWork 'specification.json'
     @{path=$taskData; access='modify'}
 )} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $taskSpec -Encoding utf8
 $taskPowershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+# 通过普通子进程继承环境，与 PHP proc_open 一致；pwsh 的原生命令调用会改写旧版 PSModulePath。
+function Invoke-TaskSystemPowerShell([string[]]$TaskArguments) {
+    $taskStart = [Diagnostics.ProcessStartInfo]::new()
+    $taskStart.FileName = $taskPowershell
+    $taskStart.UseShellExecute = $false
+    foreach ($taskArgument in $TaskArguments) { $taskStart.ArgumentList.Add($taskArgument) }
+    $taskProcess = [Diagnostics.Process]::Start($taskStart)
+    try {
+        if (!$taskProcess.WaitForExit(120000)) {
+            $taskProcess.Kill($true)
+            $taskProcess.WaitForExit()
+            throw '系统 PowerShell 隔离操作超时。'
+        }
+        return $taskProcess.ExitCode
+    } finally {
+        $taskProcess.Dispose()
+    }
+}
 try {
     # 与 PHP 应用验收使用同一系统解释器，不能用 pwsh 绕过 5.1 的编码边界。
-    & $taskPowershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'native-windows-sandbox.ps1') prepare $taskSpec
-    if ($LASTEXITCODE -ne 0) { throw '系统 PowerShell 隔离准备失败。' }
+    $taskExit = Invoke-TaskSystemPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+        (Join-Path $PSScriptRoot 'native-windows-sandbox.ps1'), 'prepare', $taskSpec)
+    if ($taskExit -ne 0) { throw '系统 PowerShell 隔离准备失败。' }
     # 父进程仍可读相同文件，排除改坏全局权限或以缺失文件制造假拒绝。
     foreach ($taskFile in @((Join-Path $taskRoot 'app/main.php'), $taskCompiler)) {
         $taskStream = [IO.File]::OpenRead($taskFile)
@@ -47,9 +66,10 @@ try {
         (Join-Path $taskRoot 'app/main.php') $taskCompiler
     if ($LASTEXITCODE -ne 0) { throw '受限令牌未同时满足读取、写入与拒绝探针。' }
 } finally {
-    & $taskPowershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'native-windows-sandbox.ps1') restore $taskSpec
-    if ($LASTEXITCODE -ne 0) { throw '系统 PowerShell 隔离恢复失败。' }
+    $taskExit = Invoke-TaskSystemPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+        (Join-Path $PSScriptRoot 'native-windows-sandbox.ps1'), 'restore', $taskSpec)
+    if ($taskExit -ne 0) { throw '系统 PowerShell 隔离恢复失败。' }
 }
 @{passed=$true; runner_sha256=(Get-FileHash -LiteralPath $taskRunner -Algorithm SHA256).Hash.ToLowerInvariant();
-    checks=@('source-read-denied','compiler-read-denied','program-readable','program-readonly','data-writable','controller-unaffected','powershell-5.1','unicode-paths','acl-restored')} |
+    checks=@('source-read-denied','compiler-read-denied','program-readable','program-readonly','data-writable','controller-unaffected','powershell-5.1','inherited-module-environment','unicode-paths','acl-restored')} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskWork 'verification.json') -Encoding utf8
