@@ -118,6 +118,8 @@ Linux 制备入口已接入固定 PHP、PHPX、Swoole、Redis、libpq、curl 与
 
 ## 原生 CI 结果（2026-09-28）
 
+Windows 完整 SDK 导出通过后，可运行 `static-windows-application.yml`，将 `sdk_run` 指向本仓成功的静态运行库实验编号。该入口复用原归档，核对目标头文件、源码适配和许可身份，再执行真实 embed、全量应用 AOT 与 SQLite 业务；分别记录 SDK 和应用源码提交，仅作构建诊断，不生成发布候选，也不替代三库无源码部署和最终同源码四平台验收。
+
 后续 Linux 双架构原生 runner 均通过完整应用静态 AOT、同一文件三库隔离部署；macOS ARM64 也已在 macOS 15 runner 完成相同验收，所有非系统归档及最终 Mach-O 的最低版本均为 15.0。候选摘要、源码提交、数据库回执与保全位置见[本轮 CI 证据](../evidence/single-program-ci-20260928.md)。该结果独立于上文最低系统 26 的本机实验。
 
 Windows 首次静态 PHP 核心实验在源码适配报告生成前超时，没有编译成功证据；后续诊断增加阶段记录及单步等待上限。第三方静态依赖已通过固定 vcpkg 的全部库构建，首次调用探针因 Windows `min/max` 宏破坏 GMP 的 C++ 接口而编译失败。最小复现确认该冲突后，探针在引入 Windows 头前声明 `NOMINMAX`，继续重跑真实链接、系统导入审计及独立运行。依赖编译完成不等于 PHP/Swoole/完整应用已通过，Windows 全应用和最终同源码四平台发布仍未完成。

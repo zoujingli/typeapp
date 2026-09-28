@@ -1,0 +1,86 @@
+name: Windows 静态应用诊断
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk_run:
+        description: 已成功导出 static-windows-sdk 的实验运行编号；仅诊断，不发布
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: static-windows-application-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  application:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      COMPOSER_NO_INTERACTION: '1'
+      COMPOSER_PROCESS_TIMEOUT: '1800'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 核对目标 SDK 的成功运行身份
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SDK_RUN: ${{ inputs.sdk_run }}
+        run: |
+          if ($env:SDK_RUN -cnotmatch '^[1-9][0-9]*$') { throw 'SDK 运行编号无效。' }
+          $taskRun = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SDK_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $taskRun.path -ne '.github/workflows/static-windows.yml' -or
+              $taskRun.conclusion -ne 'success' -or $taskRun.head_repository.full_name -ne $env:GITHUB_REPOSITORY) {
+            throw 'SDK 必须来自本仓已成功的静态运行库实验。'
+          }
+          New-Item -ItemType Directory -Path build/static-windows-application-evidence -Force | Out-Null
+          @{sdk_run=$taskRun.id; sdk_source=$taskRun.head_sha; application_source=$env:GITHUB_SHA; scope='diagnostic only'} |
+            ConvertTo-Json | Set-Content build/static-windows-application-evidence/inputs.json -Encoding utf8
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: static-windows-sdk
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.sdk_run }}
+          path: build/static-windows-sdk
+      - name: 准备构建宿主
+        run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 安装锁定源码与核对静态 SDK 契约
+        run: |
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:PHP_HOME/php.exe" vendor/bin/phpunit --filter 'WindowsStaticBackendTest|StaticRuntimeSdkTest'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $taskManifest = Join-Path $env:GITHUB_WORKSPACE 'build/static-windows-sdk/manifest.json'
+          & "$env:PHP_HOME/php.exe" tests/static-runtime-sdk.php $taskManifest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('TYPE_STATIC_RUNTIME=' + $taskManifest) -Encoding utf8
+      - name: 构建并校验内嵌前端
+        uses: ./.github/actions/prepare-frontend
+      - name: 全量编译静态应用并验证 SQLite 业务
+        run: |
+          & "$env:PHP_HOME/php.exe" tools/build-application.php 2>&1 |
+            Tee-Object build/static-windows-application-evidence/application.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:PHP_HOME/php.exe" tests/iot-identity.php build/app/type-app.exe sqlite --app
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 保存构建与业务诊断证据
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: static-windows-application-evidence
+          retention-days: 14
+          path: |
+            build/static-windows-application-evidence/*
+            build/static-sdk-probe-*/verification.json
+            build/app/type-app.exe
+            build/app/type-app.exe.build.json
+            build/app/compiler/compile.log
+            build/iot-identity-*/*.log
