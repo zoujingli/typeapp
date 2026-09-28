@@ -9,12 +9,20 @@ $taskSpec = Get-Content -LiteralPath $Specification -Raw -Encoding utf8 | Conver
 $taskLedger = $Specification + '.acl.json'
 if ($Operation -eq 'restore') {
     if (!(Test-Path -LiteralPath $taskLedger)) { return }
-    $taskEntries = @(Get-Content -LiteralPath $taskLedger -Raw -Encoding utf8 | ConvertFrom-Json)
+    # PowerShell 5.1 将 JSON 数组作为一个管道对象输出；额外 @() 会产生嵌套数组。
+    $taskEntries = Get-Content -LiteralPath $taskLedger -Raw -Encoding utf8 | ConvertFrom-Json
     [array]::Reverse($taskEntries)
     foreach ($taskEntry in $taskEntries) {
+        if ($taskEntry.path -isnot [string] -or $taskEntry.sddl -isnot [string]) {
+            throw 'ACL 恢复记录必须为路径与 SDDL 字符串。'
+        }
         $taskAcl = Get-Acl -LiteralPath $taskEntry.path
         $taskAcl.SetSecurityDescriptorSddlForm($taskEntry.sddl, [Security.AccessControl.AccessControlSections]::Access)
         Set-Acl -LiteralPath $taskEntry.path -AclObject $taskAcl
+    }
+    foreach ($taskEntry in $taskEntries) {
+        $taskRestored = (Get-Acl -LiteralPath $taskEntry.path).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
+        if ($taskRestored -cne $taskEntry.sddl) { throw '原始 ACL 回读不一致，保留恢复记录。' }
     }
     Remove-Item -LiteralPath $taskLedger
     return
