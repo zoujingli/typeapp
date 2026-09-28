@@ -10,7 +10,7 @@ function Get-TypeAppComparableDacl([Security.AccessControl.RawSecurityDescriptor
     foreach ($taskAce in $taskAcl) {
         # Deny, explicit, object-specific and callback ACEs retain their exact original order.
         if ($taskAce.AceType -ne [Security.AccessControl.AceType]::AccessAllowed -or
-            !($taskAce.AceFlags -band [Security.AccessControl.AceFlags]::Inherited)) {
+            !([int]$taskAce.AceFlags -band [int][Security.AccessControl.AceFlags]::Inherited)) {
             return $Descriptor.GetSddlForm([Security.AccessControl.AccessControlSections]::Access)
         }
         $taskBytes = New-Object byte[] $taskAce.BinaryLength
