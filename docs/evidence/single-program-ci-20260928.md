@@ -83,6 +83,10 @@ Windows 的完整 PHP/Swoole、PHPX 静态探针与 SDK 导出已经通过，完
 
 [运行 36405276056](https://github.com/zoujingli/typeapp/actions/runs/36405276056) 在 `7166501` 上通过上述恢复回归。系统 PowerShell 5.1、中文与空格路径、源码/编译器拒绝读取、程序只读、数据可写、控制端不受影响及原 ACL 恢复均通过；成功后恢复账本已删除。原始报告和失败差异保全于 `.cache/retained-evidence/static-ci-20260928/windows-sandbox/`，成功证据 ZIP 的 SHA-256 为 `5fa47929569eb12889679a4a8111274d221fefa581ecd102a34ecb0e06de2a28`。这项结果仅证明隔离设施，应用仍须完成同一 EXE 的三库验收。
 
+[运行 36405920804](https://github.com/zoujingli/typeapp/actions/runs/36405920804) 在同一源码 `7166501` 上完成全量 AOT 和 EXE 封存，但 SQLite 隔离准备因 `Microsoft.PowerShell.Security` 模块加载失败而停止，尚未执行应用。原 EXE 为 53,638,175 字节，SHA-256 为 `7a05e96ec93969970ca58dfa2a385160179ce35d740a78655d2a69f91eb280f5`，构建 ID 为 `60b2d7874a36e7f570d81fe4d9f3c36751621058ed5f2e3b8b3261fd0e30bb1b`。原始附件、日志、清单与全部成员回读结果已保全于 `.cache/retained-evidence/static-ci-20260928/windows-candidate-36405920804/`；此原文件供后续诊断复用，不改变源码身份。
+
+此前 pwsh 直接调用系统解释器会处理旧版模块搜索路径，未覆盖 PHP 普通子进程的环境继承。[最小复现 36408993531](https://github.com/zoujingli/typeapp/actions/runs/36408993531) 在 `a7d0a9e` 上通过普通子进程稳定触发相同加载失败；仅将权限模块固定为当前系统解释器自带路径后，[回归 36409239233](https://github.com/zoujingli/typeapp/actions/runs/36409239233) 在 `e6855b4` 上通过全部权限与恢复检查。成功 ZIP 摘要为 `c4c0e4bd57cb979f8aac0e46e31589f42559c67e5918144686ad525af1399e27`，失败和成功证据均回读保全于 `.cache/retained-evidence/static-ci-20260928/windows-module/`。这证明模块定位修复，不代替原 EXE 的三库业务复验。
+
 ## macOS ARM64，最低系统 15
 
 [运行 36383075960](https://github.com/zoujingli/typeapp/actions/runs/36383075960) 已成功，源码提交为 `2fd944fc55d40aee108432b03ec708ad9e07c9d0`。候选与原始证据均已下载回读；三库报告及日志摘要绑定同一个文件。
@@ -121,6 +125,8 @@ Windows 的完整 PHP/Swoole、PHPX 静态探针与 SDK 导出已经通过，完
 首次测试仅日志权限失败，作业已卸载；独立最小探针确认本机launchd对整数63与字符串0077均创建0644日志，预先创建0600日志则保持原权限。验收和安装说明据此补齐首次加载前的私有日志准备，不改全局launchd设置。第二轮完整通过；原始失败、探针及成功报告保全于 `.cache/retained-evidence/static-ci-20260928/macos-service/`。此次复验不改变旧程序的源码身份；Linux与Windows系统服务不引用此结果作为通过依据。
 
 ## 静态分发的源码与重建材料
+
+[macOS 运行 36403881240](https://github.com/zoujingli/typeapp/actions/runs/36403881240) 在 `06a06d6` 上完成 SDK、全量 AOT、同一程序三库隔离、重建材料和 launchd 生命周期验收，整次运行成功。程序为 69,408,888 字节，SHA-256 为 `29547c5b32c79f391cd3df008300ac17c2cc9d43a8d725ae1af7e294d19a5e25`；三个数据库及服务报告均绑定此摘要。launchd 覆盖私有配置与日志、认证和业务写入、崩溃恢复、数据保留、SIGTERM 零状态退出、不重启、程序目录不变及清理。重建附件为 84,712,215 字节，SHA-256 为 `8c1ed689a1691b377c39fdc665b506f3c34b1be2f79c3782e7aa70209fc38a4f`，本地已逐项回读 6,486 个成员；原始 ZIP、日志、身份与回读报告保全于 `.cache/retained-evidence/static-ci-20260928/macos-36403881240/`。这份预检证据保留其准确源码，最终发布仍须统一四平台源码。
 
 新增生成器的本机 macOS 材料封存与完整回读已通过，共 6486 个成员，原始字节总计 190,129,210。测试 ZIP 为 84,466,794 字节，SHA-256 为 `b5fba458f22e2d4e347f6cdbf4d558ede9a17a84be3715c51c7925a79e82833e`。该测试使用既有 macOS 26 SDK 与源码 `62b72da`，只证明材料收集和校验，不是四平台发布候选或重编译后的应用验收。
 
