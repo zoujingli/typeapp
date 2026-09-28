@@ -24,11 +24,14 @@ $taskData = Join-Path $taskWork '数据 runtime data'
 New-Item -ItemType Directory -Path $taskProgram, $taskData | Out-Null
 Copy-Item -LiteralPath $taskRunner -Destination (Join-Path $taskProgram 'app.exe')
 $taskCompiler = (Get-Command cl.exe -ErrorAction Stop).Source
+$taskNode = (Get-Command node.exe -ErrorAction Stop).Source
+$taskBlocked = @((Join-Path $taskRoot 'app/main.php'), $taskCompiler, $taskNode)
 $taskSid = 'S-1-5-21-' + ((1..3 | ForEach-Object { Get-Random -Minimum 100000000 -Maximum 2000000000 }) -join '-') + '-12345'
 $taskSpec = Join-Path $taskWork 'specification.json'
 @{sid=$taskSid; changes=@(
     @{path=$taskRoot; access='deny-read'},
     @{path=(Split-Path $taskCompiler -Parent); access='deny-read'},
+    @{path=(Split-Path $taskNode -Parent); access='deny-read'},
     @{path=$taskProgram; access='read'},
     @{path=$taskRunner; access='read'},
     @{path=$taskData; access='modify'}
@@ -53,17 +56,25 @@ function Invoke-TaskSystemPowerShell([string[]]$TaskArguments) {
     }
 }
 try {
+    $taskOriginal = @($taskBlocked | ForEach-Object {
+        @{path=$_; sddl=(Get-Acl -LiteralPath $_).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)}
+    })
     # 与 PHP 应用验收使用同一系统解释器，不能用 pwsh 绕过 5.1 的编码边界。
     $taskExit = Invoke-TaskSystemPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
         (Join-Path $PSScriptRoot 'native-windows-sandbox.ps1'), 'prepare', $taskSpec)
     if ($taskExit -ne 0) { throw '系统 PowerShell 隔离准备失败。' }
+    $taskRestricted = @($taskBlocked | ForEach-Object {
+        @{path=$_; sddl=(Get-Acl -LiteralPath $_).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)}
+    })
+    @{sid=$taskSid; original=$taskOriginal; restricted=$taskRestricted} | ConvertTo-Json -Depth 5 |
+        Set-Content -LiteralPath (Join-Path $taskWork 'probe-inputs.json') -Encoding utf8
     # 父进程仍可读相同文件，排除改坏全局权限或以缺失文件制造假拒绝。
-    foreach ($taskFile in @((Join-Path $taskRoot 'app/main.php'), $taskCompiler)) {
+    foreach ($taskFile in $taskBlocked) {
         $taskStream = [IO.File]::OpenRead($taskFile)
         $taskStream.Dispose()
     }
     & $taskRunner $taskSid $taskRunner --probe (Join-Path $taskProgram 'app.exe') $taskData $taskProgram `
-        (Join-Path $taskRoot 'app/main.php') $taskCompiler
+        @taskBlocked
     if ($LASTEXITCODE -ne 0) { throw '受限令牌未同时满足读取、写入与拒绝探针。' }
 } finally {
     $taskExit = Invoke-TaskSystemPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
@@ -71,5 +82,5 @@ try {
     if ($taskExit -ne 0) { throw '系统 PowerShell 隔离恢复失败。' }
 }
 @{passed=$true; runner_sha256=(Get-FileHash -LiteralPath $taskRunner -Algorithm SHA256).Hash.ToLowerInvariant();
-    checks=@('source-read-denied','compiler-read-denied','source-execute-denied','directory-metadata-readable','program-readable','program-readonly','data-writable','controller-unaffected','powershell-5.1','inherited-module-environment','unicode-paths','acl-restored')} |
+    checks=@('source-read-denied','compiler-read-denied','node-read-denied','source-execute-denied','directory-metadata-readable','program-readable','program-readonly','data-writable','controller-unaffected','powershell-5.1','inherited-module-environment','unicode-paths','acl-restored')} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskWork 'verification.json') -Encoding utf8
