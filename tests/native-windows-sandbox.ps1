@@ -1,14 +1,15 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][ValidateSet('prepare', 'restore')][string]$Operation,
     [Parameter(Mandatory = $true)][string]$Specification
 )
 $ErrorActionPreference = 'Stop'
 # ACL 只涉及本轮唯一 SID；原控制器与其他账号的权限保持原样。
-$taskSpec = Get-Content -LiteralPath $Specification -Raw | ConvertFrom-Json
+# 本脚本保留 UTF-8 BOM，兼容系统 PowerShell 5.1；JSON 也明确按 UTF-8 读取。
+$taskSpec = Get-Content -LiteralPath $Specification -Raw -Encoding utf8 | ConvertFrom-Json
 $taskLedger = $Specification + '.acl.json'
 if ($Operation -eq 'restore') {
     if (!(Test-Path -LiteralPath $taskLedger)) { return }
-    $taskEntries = @(Get-Content -LiteralPath $taskLedger -Raw | ConvertFrom-Json)
+    $taskEntries = @(Get-Content -LiteralPath $taskLedger -Raw -Encoding utf8 | ConvertFrom-Json)
     [array]::Reverse($taskEntries)
     foreach ($taskEntry in $taskEntries) {
         $taskAcl = Get-Acl -LiteralPath $taskEntry.path

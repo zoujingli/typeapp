@@ -75,6 +75,8 @@ Windows 的完整 PHP/Swoole、PHPX 静态探针与 SDK 导出已经通过，完
 
 [运行 36398798810](https://github.com/zoujingli/typeapp/actions/runs/36398798810) 在 `45975cf` 上通过完整 PHP/Swoole 静态探针、PHPX 数值与请求生命周期探针、系统加载映像核验，并成功导出包含 28 份静态归档的 SDK。PHP embed 的 SHA-256 为 `ce1d02c9881942ae56555522daca4e41ff7de43ffeede0cf0090417fb6063b66`，PHPX 探针为 `6c1db84b3cad7052b113c14f5c7f5c3e269fdf20f5006205cf57a526c107dab8`。运行库证据附件已下载回读，ZIP 摘要为 `e32676e7783efee2db2adfc37ad164946d944c9f8771ac7e5cbe567d63c7494a`；两个原始报告分别标明其探针范围，不能代替完整应用验收。
 
+同次运行的完整应用 AOT 和单程序封存成功，SQLite 部署在执行应用前失败：系统 PowerShell 5.1 将无 BOM 的 UTF-8 ACL 脚本按旧编码读取，触发语法错误。原独立探针使用 pwsh，未覆盖这个解释器差异。后续为脚本保留 UTF-8 BOM、显式读取 UTF-8 JSON，并让独立探针调用与应用测试相同的系统解释器，覆盖中文和空格目录；三库部署必须重新执行。SDK ZIP 摘要为 `6d8e1d3a708c4cdb4ba97c7057977104655179c7ea5f67a1df5f71d35f141f85`，清单摘要为 `5c16c9f372b246a9d48eebb8e3e5cfcafe02a9c231b78f80235c63d490a50070`；28 份归档及 3060 个头文件已逐项回读一致。
+
 ## macOS ARM64，最低系统 15
 
 [运行 36383075960](https://github.com/zoujingli/typeapp/actions/runs/36383075960) 已成功，源码提交为 `2fd944fc55d40aee108432b03ec708ad9e07c9d0`。候选与原始证据均已下载回读；三库报告及日志摘要绑定同一个文件。
