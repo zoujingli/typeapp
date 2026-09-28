@@ -13,6 +13,11 @@ on:
         required: false
         default: ''
         type: string
+      program_run:
+        description: 可选，复验本仓候选运行保存的原 EXE；须同时指定 sdk_run，仅诊断不生成发布候选
+        required: false
+        default: ''
+        type: string
   workflow_call:
     inputs:
       source_sha:
@@ -66,6 +71,23 @@ jobs:
             throw '候选版本必须为明确 SemVer。'
           }
           New-Item -ItemType Directory -Path build/static-windows-application-evidence | Out-Null
+      - name: 核对原程序诊断来源
+        if: inputs.program_run != ''
+        env:
+          PROGRAM_RUN: ${{ inputs.program_run }}
+          SDK_RUN: ${{ inputs.sdk_run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:PROGRAM_RUN -cnotmatch '^[1-9][0-9]*$' -or $env:SDK_RUN -cnotmatch '^[1-9][0-9]*$') {
+            throw '原程序诊断须提供准确的程序和 SDK 运行编号。'
+          }
+          $taskRun = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:PROGRAM_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $taskRun.head_repository.full_name -ne $env:GITHUB_REPOSITORY -or
+              $taskRun.path -cne '.github/workflows/static-windows-candidate.yml' -or $taskRun.status -cne 'completed') {
+            throw '只接受本仓已结束的静态候选运行。'
+          }
+          @{program_run=$taskRun.id; program_source=$taskRun.head_sha; test_source=$env:GITHUB_SHA; scope='diagnostic only'} |
+            ConvertTo-Json | Set-Content build/static-windows-application-evidence/program-inputs.json -Encoding utf8
       - name: 核对诊断复用来源
         if: inputs.sdk_run != ''
         env:
@@ -114,11 +136,43 @@ jobs:
         with:
           artifact: ${{ inputs.frontend_artifact }}
       - name: 全量 AOT 并封存最终 EXE
+        if: inputs.program_run == ''
         run: |
           & "$env:PHP_HOME/php.exe" tools/build-application.php 2>&1 |
             Tee-Object build/static-windows-application-evidence/application.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php prepare
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 下载原程序及封存身份
+        if: inputs.program_run != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: static-windows-application-evidence
+          path: build/original-windows-program
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.program_run }}
+      - name: 核对并恢复原字节用于部署诊断
+        if: inputs.program_run != ''
+        run: |
+          $taskOriginal = 'build/original-windows-program'
+          $taskRecord = Get-Content "$taskOriginal/release-candidate/preparation.json" -Raw | ConvertFrom-Json
+          $taskInputs = Get-Content build/static-windows-application-evidence/program-inputs.json -Raw | ConvertFrom-Json
+          $taskName = 'typeapp-iot-' + $env:TYPE_RELEASE_VERSION.Substring(1) + '-windows-x64.exe'
+          if ($taskRecord.protocol -ne 2 -or $taskRecord.delivery -cne 'single-executable' -or
+              $taskRecord.source -cne $taskInputs.program_source -or $taskRecord.version -cne $env:TYPE_RELEASE_VERSION -or
+              $taskRecord.platform -cne 'windows-x64' -or $taskRecord.file -cne $taskName -or
+              $taskRecord.sha256 -cnotmatch '^[a-f0-9]{64}$' -or
+              $taskRecord.sha256 -cne (Get-FileHash "$taskOriginal/app/type-app.exe" -Algorithm SHA256).Hash.ToLowerInvariant() -or
+              $taskRecord.bytes -ne (Get-Item "$taskOriginal/app/type-app.exe").Length -or
+              $taskRecord.'sdk-manifest-sha256' -cne (Get-FileHash $env:TYPE_STATIC_RUNTIME -Algorithm SHA256).Hash.ToLowerInvariant()) {
+            throw '原程序、源码、版本或 SDK 与封存身份不一致。'
+          }
+          New-Item -ItemType Directory -Path build/app, build/release-candidate/attachments | Out-Null
+          Copy-Item "$taskOriginal/app/type-app.exe" build/app/type-app.exe
+          Copy-Item "$taskOriginal/app/type-app.exe.build.json" build/app/type-app.exe.build.json
+          Copy-Item "$taskOriginal/release-candidate/preparation.json" build/release-candidate/preparation.json
+          Copy-Item "$taskOriginal/app/type-app.exe" (Join-Path 'build/release-candidate/attachments' $taskName)
+          & "$env:PHP_HOME/php.exe" vendor/bin/type verify-package (Join-Path 'build/release-candidate/attachments' $taskName) $taskRecord.sha256
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 同一 EXE 的 SQLite 无源码部署
         run: |
@@ -129,6 +183,7 @@ jobs:
       - name: 同一 EXE 的 PostgreSQL 无源码部署
         run: ./.github/scripts/run-windows-database.ps1 -Driver pgsql -SingleProgram
       - name: 读取本轮依赖来源材料
+        if: inputs.program_run == ''
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: static-windows-dependencies
@@ -136,16 +191,19 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.sdk_run || github.run_id }}
       - name: 封存对应源码与重建材料
+        if: inputs.program_run == ''
         env:
           TYPE_REBUILD_DEPENDENCIES: ${{ github.workspace }}/build/static-windows-dependency-inputs/x64-typeapp-static
         run: |
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php materials
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 核对三库结果与待发布文件身份
+        if: inputs.program_run == ''
         run: |
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php finish
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 保存最终单程序候选
+        if: inputs.program_run == ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-candidate-windows-x64-${{ github.run_attempt }}
