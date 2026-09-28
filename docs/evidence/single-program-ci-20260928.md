@@ -41,4 +41,25 @@ PHP、PHPX、Swoole 和非系统依赖采用已登记的静态归档。MySQL、P
 
 ## 发布边界
 
-本记录形成时，macOS 15 的候选仍在运行，Windows 仍在验证静态 PHP 核心及第三方依赖，尚未形成 Windows 完整应用候选。最终发布必须以最终同一源码重新完成四平台验收，不能用本记录跳过剩余门禁。RC7 的历史目录包和此前本机结果保持原身份。
+Windows 仍在验证静态 PHP 核心及第三方依赖，尚未形成 Windows 完整应用候选。最终发布必须以最终同一源码重新完成四平台验收，不能用本记录跳过剩余门禁。RC7 的历史目录包和此前本机结果保持原身份。
+
+## macOS ARM64，最低系统 15
+
+[运行 36383075960](https://github.com/zoujingli/typeapp/actions/runs/36383075960) 已成功，源码提交为 `2fd944fc55d40aee108432b03ec708ad9e07c9d0`。候选与原始证据均已下载回读；三库报告及日志摘要绑定同一个文件。
+
+| 字段 | 实际值 |
+| --- | --- |
+| 环境 | GitHub Actions macOS 15 ARM64 原生 runner |
+| 文件 | `typeapp-iot-1.0.0-rc.8-macos-arm64`，单个 Mach-O ARM64 可执行文件 |
+| 字节数 | 69,408,472 |
+| SHA-256 | `c129ff59722c707bae0979015db02e37145ae336115ad67a687dd7916c967980` |
+| 构建 ID | `fea1104527bc3662e6fbefb4449f44cdf77ef0add096cd751fbc62576e3dad4a` |
+| 最低系统 | 所有非系统静态归档及最终程序均声明 macOS 15.0；最终链接 SDK 为 15.5 |
+
+最终加载项仅来自 `/usr/lib/` 和系统框架：resolver、libSystem、XML、zlib、curl、iconv、CoreFoundation、Security、libc++。PHP、PHPX、Swoole、OpenSSL、数据库客户端及其他非系统运行库静态链接；不携带 Homebrew 动态库。
+
+同一程序在 MySQL、PostgreSQL、SQLite 下通过完整安装与页面/API 业务闭环，空库初始化分别为 1.749、1.057、0.916 秒，均正常退出。源码/SDK 隔离、只读程序目录、不同工作目录、普通启动不释放文件、恶意外部 PHP INI 无效及 54 份内嵌许可原文均已验证。
+
+附件 `release-candidate-macos-arm64-1` 和 `macos-arm64-single-program` 已保全至 `.cache/retained-evidence/static-ci-20260928/macos-36383075960/`。31 个文件共 153,766,889 字节回读一致；相同内容使用硬链接保留原路径，实际唯一内容为 84,329,219 字节，原下载目录已回收。`retention.json` 登记全部原路径及摘要。
+
+先前 PostgreSQL 配置找不到 keg-only OpenSSL 的失败日志仍单独保留；本轮通过显式传递 OpenSSL 头文件和库搜索目录完成重跑。此前最低系统为 26 的本机产物不被改写为此 macOS 15 候选。

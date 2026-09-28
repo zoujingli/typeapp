@@ -19,7 +19,7 @@
 
 ## 当前构建状态
 
-主仓的 `type package` 现在只交付一个可执行文件，仍有外置运行库、资源或缺少许可材料时明确拒绝。Linux x64、ARM64 已在 Ubuntu 24.04 原生 CI 通过完整应用静态构建与同一程序三库隔离验收，见[本轮证据](../evidence/single-program-ci-20260928.md)。macOS ARM64 本机候选也已通过，但最低系统版本为 26；macOS 15 与 Windows x64 的静态应用验收仍待完成，四平台单程序尚未发布。
+主仓的 `type package` 现在只交付一个可执行文件，仍有外置运行库、资源或缺少许可材料时明确拒绝。Linux x64、ARM64 在 Ubuntu 24.04，macOS ARM64 在 macOS 15 原生 CI 已通过完整应用静态构建与同一程序三库隔离验收，见[本轮证据](../evidence/single-program-ci-20260928.md)。Windows x64 的完整静态应用仍待完成，四平台单程序尚未发布。
 
 | 已实现路径 | 验收与边界 |
 | --- | --- |

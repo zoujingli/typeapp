@@ -4,7 +4,7 @@
 
 当前公开候选为 [v1.0.0-rc.7](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.7)，固定源码 `a5ff7ad`。四平台完整原生验收、组件与模板分发、默认 Packagist 独立消费和公开下载回读均已通过，共核对 17 个 Release、16 个子仓 tag、16 个 Packagist 版本及四份归档。RC 尚非稳定版，实际平台范围见[平台与验收](platforms.md)，原始身份和此前候选记录见[首次 RC 验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
-主仓新的发布门禁只接受**每个平台一个可执行文件**，不再以目录归档作为新候选。Linux x64、ARM64 已通过 Ubuntu 24.04 原生 CI 的静态应用及同一程序三库验收，见[本轮证据](../evidence/single-program-ci-20260928.md)。macOS ARM64 本机产物最低要求系统 26，不能代替 macOS 15 验收；macOS 15 与 Windows x64 的静态应用验收仍待完成，因此尚不能发布新的四平台单程序版本。以下 RC7 下载示例保留其真实布局，不代表新产物形态。
+主仓新的发布门禁只接受**每个平台一个可执行文件**，不再以目录归档作为新候选。Linux x64、ARM64 已通过 Ubuntu 24.04 原生 CI，macOS ARM64 已通过 macOS 15 原生 CI，均完成静态应用及同一程序三库验收，见[本轮证据](../evidence/single-program-ci-20260928.md)。Windows x64 的完整静态应用仍待完成，因此尚不能发布新的四平台单程序版本。以下 RC7 下载示例保留其真实布局，不代表新产物形态。
 
 ## 一次 tag 如何形成版本
 
