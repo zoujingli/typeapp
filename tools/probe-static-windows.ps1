@@ -1,0 +1,126 @@
+param([Parameter(Mandatory = $true)][string]$Directory)
+$ErrorActionPreference = 'Stop'
+# 先验证真正的静态 PHP 核心；本入口不生成应用候选，也不修改共享 SDK。
+if ($env:OS -ne 'Windows_NT' -or ![IO.Path]::IsPathFullyQualified($Directory) -or (Test-Path -LiteralPath $Directory)) {
+    throw '需要 Windows x64 和尚不存在的绝对工作目录。'
+}
+$taskRoot = Split-Path $PSScriptRoot -Parent
+$taskWork = [IO.Path]::GetFullPath($Directory)
+New-Item -ItemType Directory -Path $taskWork | Out-Null
+$taskEvidence = Join-Path $taskWork 'evidence'
+New-Item -ItemType Directory -Path $taskEvidence | Out-Null
+$taskUtf8 = [Text.UTF8Encoding]::new($false)
+
+$taskVswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+$taskVs = & $taskVswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if ($LASTEXITCODE -ne 0 -or !$taskVs) { throw '无法定位 MSVC x64。' }
+$taskSetup = 'call "' + $taskVs + '\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul && set'
+$taskVariables = & $env:ComSpec /d /s /c $taskSetup
+if ($LASTEXITCODE -ne 0) { throw 'MSVC 环境初始化失败。' }
+foreach ($taskLine in $taskVariables) {
+    if ($taskLine -match '^([^=]+)=(.*)$' -and $matches[1] -in @('PATH', 'VCToolsInstallDir', 'WindowsSdkDir', 'WindowsSDKVersion', 'INCLUDE', 'LIB', 'LIBPATH')) {
+        [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
+    }
+}
+
+function Get-StaticSource {
+    param([string]$Url, [string]$Digest, [string]$Name)
+    $taskArchive = Join-Path $taskWork $Name
+    & (Join-Path $env:SystemRoot 'System32/curl.exe') -fsSL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 240 -o $taskArchive $Url
+    if ($LASTEXITCODE -ne 0 -or (Get-FileHash -LiteralPath $taskArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Digest) {
+        throw ('源码下载或摘要核对失败：' + $Name)
+    }
+    & (Join-Path $env:SystemRoot 'System32/tar.exe') -xf $taskArchive -C $taskWork
+    if ($LASTEXITCODE -ne 0) { throw ('源码解包失败：' + $Name) }
+}
+Get-StaticSource 'https://www.php.net/distributions/php-8.5.10.tar.xz' '6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957' 'php.tar.xz'
+Get-StaticSource 'https://codeload.github.com/php/php-sdk-binary-tools/zip/1142e4abaf90ceb6cc25d983797b25cc948669cf' '083324ab6ad0f5b8727539d717600ab0f29a2fe84bd147095cf0b115a63a45c4' 'tools.zip'
+$taskSource = Join-Path $taskWork 'php-8.5.10'
+$taskTools = Join-Path $taskWork 'php-sdk-binary-tools-1142e4abaf90ceb6cc25d983797b25cc948669cf'
+$env:PATH = (Join-Path $taskTools 'bin') + ';' + (Join-Path $taskTools 'msys2/usr/bin') + ';' + $env:PATH
+
+# 官方 Windows 头文件将消费者声明为 DLL import。只改 PHP 自有 API 的声明，
+# 不改变 Windows 系统 API；整棵源码仅用于本轮静态构建，逐文件记录前后身份。
+$taskHeaders = @{
+    'main/php.h' = @('PHPAPI', '1bd30980a442f3324c23d94950b26f66d83964b57c7b994e78203c3ffead1321')
+    'main/SAPI.h' = @('SAPI_API', 'f57e9cae13c623d3114dcb8f9e4686015f68ddafab1c9a79143b4852c8a3a64f')
+    'Zend/zend_config.w32.h' = @('ZEND_API', 'f1600b247b563bb6961e5a1f6ddf6ce30df902a76529a5484fd7afda13133911')
+    'Zend/zend_virtual_cwd.h' = @('CWD_API', 'd6ecfad3c94d9386c2783306ecfe628ee3ad9324c4bc689f4fe5933800bd7764')
+    'TSRM/TSRM.h' = @('TSRM_API', 'f5eaac861d68fa3e8b8b465a77412e78c05e12c6ec69619b06c0ce5f598cb588')
+    'win32/codepage.h' = @('PW32CP', 'db777f09bd5e225ffd92547251453f1c2306e17a8cb626d56ea5ab6560d64476')
+    'win32/ipc.h' = @('PHP_WIN32_IPC_API', '8601fc21c1df87c2a93a8765d480f38051bff161690328dff38cd22232eba716')
+    'win32/ioutil.h' = @('PW32IO', 'dc67706a27fd688a3467af2939c806dc114e31ab951e2cfb4cfa456d899045e5')
+    'win32/console.h' = @('PHP_WINUTIL_API', 'a7bbe88f14f371a3afe288d26f9785d5255716c4891466b548b1a4c11fa21b14')
+    'win32/winutil.h' = @('PHP_WINUTIL_API', 'cfd4631d5c8755db592a2df7f60578bb27b44b4c59c828c0a942d17d3818e17d')
+}
+$taskAdaptations = @()
+foreach ($taskName in $taskHeaders.Keys | Sort-Object) {
+    $taskFile = Join-Path $taskSource $taskName
+    $taskBefore = (Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($taskBefore -ne $taskHeaders[$taskName][1]) { throw ('PHP 头文件原文不符：' + $taskName) }
+    $taskText = [IO.File]::ReadAllText($taskFile)
+    $taskPattern = '(?m)(#[\t ]*define[\t ]+' + $taskHeaders[$taskName][0] + '[\t ]+)__declspec\(dll(?:export|import)\)'
+    if ([regex]::Matches($taskText, $taskPattern).Count -ne 2) { throw ('静态 API 适配位置不唯一：' + $taskName) }
+    [IO.File]::WriteAllText($taskFile, [regex]::Replace($taskText, $taskPattern, '$1'), $taskUtf8)
+    $taskAdaptations += @{ file=$taskName; before=$taskBefore; after=(Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash.ToLowerInvariant() }
+}
+$taskConfig = Join-Path $taskSource 'win32/build/confutils.js'
+$taskBefore = (Get-FileHash -LiteralPath $taskConfig -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($taskBefore -ne 'e1a67dd1b662e2be95e46b67269b276f99663f1cafa35fef17d1dc2f9deaad91') { throw 'PHP 构建配置原文不符。' }
+$taskText = [IO.File]::ReadAllText($taskConfig)
+$taskCrt = 'ADD_FLAG("CFLAGS", "/MD");'
+if ([regex]::Matches($taskText, [regex]::Escape($taskCrt)).Count -ne 1) { throw 'CRT 选择位置不唯一。' }
+[IO.File]::WriteAllText($taskConfig, $taskText.Replace($taskCrt, 'ADD_FLAG("CFLAGS", "/MT");'), $taskUtf8)
+$taskAdaptations += @{ file='win32/build/confutils.js'; before=$taskBefore; after=(Get-FileHash -LiteralPath $taskConfig -Algorithm SHA256).Hash.ToLowerInvariant() }
+$taskAdaptations | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'adaptations.json') -Encoding utf8
+
+Push-Location $taskSource
+try {
+    & .\buildconf.bat 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'buildconf.log')
+    if ($LASTEXITCODE -ne 0) { throw 'PHP buildconf 失败。' }
+    & .\configure.bat --disable-all --disable-cli --disable-cgi --disable-phpdbg --enable-embed --enable-zts --with-mp=2 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
+    if ($LASTEXITCODE -ne 0) { throw 'PHP 静态核心配置失败。' }
+    Copy-Item -LiteralPath 'Makefile' -Destination (Join-Path $taskEvidence 'Makefile.original')
+    # 复用官方已生成的完整对象清单，直接归档；不链接 PHP DLL 或加入其导入库。
+    $taskTarget = @'
+
+typeapp-static-core: generated_files $(PHP_GLOBAL_OBJS) $(STATIC_EXT_OBJS) $(EMBED_GLOBAL_OBJS) $(ASM_OBJS)
+	$(MAKE_LIB) /nologo /out:$(BUILD_DIR)\typeapp-static.lib $(PHP_GLOBAL_OBJS_RESP) $(STATIC_EXT_OBJS_RESP) $(EMBED_GLOBAL_OBJS_RESP) $(ASM_OBJS)
+	$(CC) $(CFLAGS) $(BASE_INCLUDES) /I . /I main /I Zend /I TSRM /I ext /I sapi/embed /D ZEND_ENABLE_STATIC_TSRMLS_CACHE=1 /c typeapp-embed-probe.c /Fo$(BUILD_DIR)\typeapp-embed-probe.obj
+	"$(LINK)" /nologo /INCREMENTAL:NO /out:$(BUILD_DIR)\typeapp-embed-probe.exe $(BUILD_DIR)\typeapp-embed-probe.obj $(BUILD_DIR)\typeapp-static.lib $(STATIC_EXT_LIBS) $(LIBS) $(LDFLAGS) $(STATIC_EXT_LDFLAGS)
+'@
+    [IO.File]::AppendAllText((Join-Path $taskSource 'Makefile'), $taskTarget + "`r`n", $taskUtf8)
+    Copy-Item -LiteralPath (Join-Path $taskRoot 'plugin/type-build/src/Native/embed-probe.c') -Destination 'typeapp-embed-probe.c'
+    & nmake /nologo typeapp-static-core 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'build.log')
+    if ($LASTEXITCODE -ne 0) { throw 'PHP 静态核心构建或真实 embed 链接失败。' }
+} finally { Pop-Location }
+
+$taskPrograms = @(Get-ChildItem -LiteralPath $taskSource -Filter typeapp-embed-probe.exe -File -Recurse)
+if ($taskPrograms.Count -ne 1) { throw '没有生成唯一静态 embed 探针。' }
+$taskProgram = $taskPrograms[0].FullName
+$taskImports = & dumpbin.exe /nologo /dependents $taskProgram
+if ($LASTEXITCODE -ne 0) { throw 'PE 导入审计失败。' }
+$taskImports | Set-Content -LiteralPath (Join-Path $taskEvidence 'imports.txt') -Encoding utf8
+$taskDlls = @([regex]::Matches(($taskImports -join "`n"), '(?im)^\s+([A-Za-z0-9_.-]+\.dll)\s*$') | ForEach-Object { $_.Groups[1].Value.ToLowerInvariant() })
+$taskAllowed = @('kernel32.dll', 'advapi32.dll', 'ws2_32.dll', 'user32.dll', 'shell32.dll', 'ole32.dll', 'oleaut32.dll', 'uuid.dll', 'shlwapi.dll', 'dnsapi.dll', 'iphlpapi.dll', 'bcrypt.dll', 'normaliz.dll', 'crypt32.dll', 'psapi.dll')
+if (!$taskDlls.Count -or @($taskDlls | Where-Object { $_ -notin $taskAllowed }).Count) { throw '静态核心仍导入非系统 DLL，详见 imports.txt。' }
+$taskDeploy = Join-Path $taskWork 'program only'
+New-Item -ItemType Directory -Path $taskDeploy | Out-Null
+Copy-Item -LiteralPath $taskProgram -Destination (Join-Path $taskDeploy 'probe.exe')
+[IO.File]::WriteAllText((Join-Path $taskDeploy 'php.ini'), "display_errors=1`n", $taskUtf8)
+New-Item -ItemType Directory -Path (Join-Path $taskDeploy 'empty') | Out-Null
+$taskOldPath = $env:PATH
+try {
+    $env:PATH = (Join-Path $env:SystemRoot 'System32')
+    $taskOutput = & (Join-Path $taskDeploy 'probe.exe') (Join-Path $taskDeploy 'php.ini') (Join-Path $taskDeploy 'empty')
+    if ($LASTEXITCODE -ne 0) { throw '静态核心在无 SDK PATH 环境不能启动。' }
+} finally { $env:PATH = $taskOldPath }
+$taskProfile = ($taskOutput -join "`n") | ConvertFrom-Json
+if ($taskProfile.php -ne '8.5.10' -or !$taskProfile.zts -or $taskProfile.sapi -ne 'embed' -or
+    ![string]::Equals([IO.Path]::GetFullPath($taskProfile.'core-library'), (Join-Path $taskDeploy 'probe.exe'), [StringComparison]::OrdinalIgnoreCase)) {
+    throw '实际 PHP 核心未位于静态主程序内。'
+}
+@{ passed=$true; scope='PHP core embed only; no application or Swoole acceptance'; php=$taskProfile.php; zts=$taskProfile.zts;
+    artifact_sha256=(Get-FileHash -LiteralPath $taskProgram -Algorithm SHA256).Hash.ToLowerInvariant(); system_libraries=$taskDlls;
+    extensions=$taskProfile.extensions } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
+Write-Host 'Windows 静态 PHP 核心 embed 探针通过；尚须继续扩展、PHPX 与应用验收。'

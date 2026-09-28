@@ -1,0 +1,31 @@
+name: Windows 静态核心探针
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  core:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 构建静态 PHP 核心并审计独立 embed
+        shell: pwsh
+        run: ./tools/probe-static-windows.ps1 -Directory "$env:GITHUB_WORKSPACE/build/static-windows-core"
+      - name: 保存实际编译、导入与运行结果
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: static-windows-core-evidence
+          retention-days: 14
+          if-no-files-found: error
+          path: build/static-windows-core/evidence/*
