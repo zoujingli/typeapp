@@ -50,7 +50,7 @@ prepare按完整源码、声明、生成器及锁文件内容身份复用不可�
 
 `type package <静态产物> <新程序文件>` 原样输出可执行文件；`type verify-package <程序文件> <受信SHA256>` 离线核对字节、身份和系统加载项。配置由部署者单独维护，程序不依赖构建工具、SDK 或 Composer。`package-directory` 和 `archive` 仅维护旧共享库目录包，不能作为新的单程序发布证据。
 
-`type service <发布目录> <服务声明.json> <新服务目录> <受信清单SHA256>` 复用发布校验，生成launchd/systemd/WinSW配置与摘要记录。目标发布、数据和服务配置分离；生成器不读取.env、不安装/启用服务、不修改账号权限。Unix显式使用非root账号，Windows需提供外部受信WinSW包装器且使用LocalService。声明、运行依赖与实际验证范围见[原生服务管理](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-services.md)。
+`type service <主程序或发布目录> <服务声明.json> <新服务目录> <受信SHA256>` 校验单程序文件或历史目录包，生成launchd/systemd/WinSW配置与摘要记录。单程序服务直接启动该文件；目标发布、数据和服务配置分离。生成器不读取.env、不安装/启用服务、不修改账号权限。Unix显式使用非root账号，Windows注册系统服务需另行提供受信WinSW包装器且使用LocalService。声明、运行依赖与实际验证范围见[原生服务管理](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-services.md)。
 
 ## 内嵌资源
 

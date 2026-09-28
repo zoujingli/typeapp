@@ -6,11 +6,12 @@ namespace Type\Build;
 
 use RuntimeException;
 
-/** 从受信发布包生成系统服务配置；不安装服务、不读部署秘密、不修改运行数据。 */
+/** 从受信单程序或历史目录包生成系统服务配置；不安装服务或修改运行数据。 */
 final class ServiceDefinition
 {
     /**
-     * 路径指向目标机器的最终部署位置，生成机器不必存在这些目标路径。
+     * 输入可以是单程序文件或历史目录包；release-directory 始终表示最终部署目录。
+     * 单程序保留输入文件名，生成机器不必存在目标机器上的部署路径。
      *
      * @param array{name:string, 'runtime-directory':string, user?:string, scope?:string, 'release-directory'?:string, arguments?:list<string>, 'stop-seconds'?:int, 'restart-seconds'?:int, 'windows-wrapper'?:array{path:string, sha256:string}} $settings 只接受公开部署参数；秘密由运行根的.env提供。
      * @return array{directory:string, manager:string, descriptor:string, 'manifest-sha256':string}
@@ -19,7 +20,18 @@ final class ServiceDefinition
     public function create(string $releaseDirectory, string $destination, string $releaseSha256, array $settings): array
     {
         $releaseDirectory = BuildPlatform::resolve($releaseDirectory);
-        $release = (new NativePackage())->verify($releaseDirectory, $releaseSha256);
+        $single = is_file($releaseDirectory);
+        $entry = '';
+        if ($single) {
+            (new SingleProgram())->verify($releaseDirectory, $releaseSha256);
+            $release = (new ArtifactManifest())->read($releaseDirectory, null, $releaseSha256);
+            $buildId = $release['build-id'];
+            $entry = basename($releaseDirectory);
+            $releaseDirectory = dirname($releaseDirectory);
+        } else {
+            $release = (new NativePackage())->verify($releaseDirectory, $releaseSha256);
+            $buildId = $release['artifact']['build-id'];
+        }
         $family = $release['runtime']['os'];
         $platform = new BuildPlatform($family);
         if (array_diff(array_keys($settings), ['name', 'runtime-directory', 'user', 'scope', 'release-directory', 'arguments', 'stop-seconds', 'restart-seconds', 'windows-wrapper']) !== []) {
@@ -30,6 +42,7 @@ final class ServiceDefinition
             throw new RuntimeException('跨平台服务名称必须以字母开头且只包含字母数字，最多64字符');
         }
         $target = $this->path($settings['release-directory'] ?? $releaseDirectory, $platform);
+        $program = $this->path($target . '/' . ($single ? $entry : ($family === 'Windows' ? 'bin/app.exe' : 'run')), $platform);
         $runtime = $this->path($settings['runtime-directory'] ?? null, $platform);
         if ($this->overlaps($target, $runtime, $family)) {
             throw new RuntimeException('运行数据根与不可变发布目录必须分离');
@@ -71,11 +84,11 @@ final class ServiceDefinition
         if ($family === 'Darwin') {
             $manager = 'launchd';
             $filename = $name . '.plist';
-            $contents = $this->launchd($name, $target, $runtime, $user, $arguments, $environment, $stop, $restart);
+            $contents = $this->launchd($name, $target, $program, $runtime, $user, $arguments, $environment, $stop, $restart);
         } elseif ($family === 'Linux') {
             $manager = 'systemd';
             $filename = $name . '.service';
-            $contents = $this->systemd($name, $target, $user, $arguments, $environment, $stop, $restart, $scope);
+            $contents = $this->systemd($name, $target, $program, $user, $arguments, $environment, $stop, $restart, $scope);
         } else {
             $wrapper = $settings['windows-wrapper'] ?? null;
             if (!is_array($wrapper) || array_keys($wrapper) === [] || array_diff(array_keys($wrapper), ['path', 'sha256']) !== []
@@ -90,12 +103,15 @@ final class ServiceDefinition
                 throw new RuntimeException('Windows服务包装器格式或受信摘要不一致');
             }
             $system = $this->path((string) getenv('SystemRoot'), $platform);
-            $environment += ['TYPE_APP_RUNTIME_ROOT' => $target, 'PHPRC' => $target . '/runtime/php.ini',
-                'PHP_INI_SCAN_DIR' => $target . '/runtime/empty', 'PHP_HOME' => '', 'PHPX_HOME' => '',
-                'PATH' => $target . '/bin;' . $system . '/System32'];
+            $environment += ['PHP_HOME' => '', 'PHPX_HOME' => '', 'PATH' => $system . '/System32'];
+            if (!$single) {
+                $environment += ['TYPE_APP_RUNTIME_ROOT' => $target, 'PHPRC' => $target . '/runtime/php.ini',
+                    'PHP_INI_SCAN_DIR' => $target . '/runtime/empty'];
+                $environment['PATH'] = $target . '/bin;' . $environment['PATH'];
+            }
             $manager = 'winsw-2.12.0';
             $filename = $name . '.xml';
-            $contents = $this->windows($name, $target, $runtime, $arguments, $environment, $stop, $restart);
+            $contents = $this->windows($name, $target, $program, $runtime, $arguments, $environment, $stop, $restart);
         }
         $parent = BuildPlatform::resolve(dirname($destination));
         $leaf = basename($destination);
@@ -116,7 +132,7 @@ final class ServiceDefinition
         }
         try {
             $platform->privateCache($stage, true);
-            $files = [$filename => $contents, 'SERVICE.md' => $this->instructions($manager, $name, $target, $runtime, $releaseSha256, $scope)];
+            $files = [$filename => $contents, 'SERVICE.md' => $this->instructions($manager, $name, $target, $runtime, $releaseSha256, $scope, $single)];
             $hashes = [];
             foreach ($files as $file => $content) {
                 if (file_put_contents($stage . '/' . $file, $content, LOCK_EX) !== strlen($content)) {
@@ -134,7 +150,8 @@ final class ServiceDefinition
             }
             $record = ['protocol' => 1, 'manager' => $manager, 'platform' => $family, 'scope' => $scope, 'name' => $name,
                 'release-directory' => $target, 'runtime-directory' => $runtime, 'release-sha256' => $releaseSha256,
-                'build-id' => $release['artifact']['build-id'], 'user' => $family === 'Windows' ? 'NT AUTHORITY\\LocalService' : $user,
+                'delivery' => $single ? 'single-executable' : 'directory', 'program' => $program,
+                'build-id' => $buildId, 'user' => $family === 'Windows' ? 'NT AUTHORITY\\LocalService' : $user,
                 'descriptor' => $filename, 'files' => $hashes, 'installed' => false, 'runtime-verified' => false];
             $json = json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
             if (file_put_contents($stage . '/service.json', $json, LOCK_EX) !== strlen($json)) {
@@ -187,7 +204,7 @@ final class ServiceDefinition
         return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
     }
 
-    private function launchd(string $name, string $release, string $runtime, string $user, array $arguments, array $environment, int $stop, int $restart): string
+    private function launchd(string $name, string $release, string $program, string $runtime, string $user, array $arguments, array $environment, int $stop, int $restart): string
     {
         $xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n";
         foreach (['Label' => $name, 'UserName' => $user, 'WorkingDirectory' => $release,
@@ -195,7 +212,7 @@ final class ServiceDefinition
             $xml .= '<key>' . $key . '</key><string>' . $this->xml($value) . "</string>\n";
         }
         $xml .= "<key>ProgramArguments</key><array>\n";
-        foreach ([$release . '/run', ...$arguments] as $argument) {
+        foreach ([$program, ...$arguments] as $argument) {
             $xml .= '<string>' . $this->xml($argument) . "</string>\n";
         }
         $xml .= "</array><key>EnvironmentVariables</key><dict>\n";
@@ -213,9 +230,9 @@ final class ServiceDefinition
         return '"' . $value . '"';
     }
 
-    private function systemd(string $name, string $release, string $user, array $arguments, array $environment, int $stop, int $restart, string $scope): string
+    private function systemd(string $name, string $release, string $program, string $user, array $arguments, array $environment, int $stop, int $restart, string $scope): string
     {
-        $command = array_map(fn (string $argument): string => $this->systemdQuote($argument), [$release . '/run', ...$arguments]);
+        $command = array_map(fn (string $argument): string => $this->systemdQuote($argument), [$program, ...$arguments]);
         $unit = "[Unit]\nDescription=Type native application " . $name . "\nConditionUser=" . ($scope === 'user' ? $user : 'root')
             . "\nStartLimitIntervalSec=300\nStartLimitBurst=5\n\n[Service]\nType=exec" . ($scope === 'system' ? "\nUser=" . $user : '')
             // WorkingDirectory是原始路径字段，不采用ExecStart/Environment的词法去引号规则。
@@ -229,7 +246,7 @@ final class ServiceDefinition
     }
 
     /** WinSW直接创建应用进程；不通过cmd运行，以保持控制台停止事件的归属。 */
-    private function windows(string $name, string $release, string $runtime, array $arguments, array $environment, int $stop, int $restart): string
+    private function windows(string $name, string $release, string $program, string $runtime, array $arguments, array $environment, int $stop, int $restart): string
     {
         $encoded = [];
         foreach ($arguments as $argument) {
@@ -248,7 +265,7 @@ final class ServiceDefinition
             $encoded[] = $quoted . str_repeat('\\', $slashes * 2) . '"';
         }
         $xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<service>\n";
-        foreach (['id' => $name, 'name' => $name, 'executable' => $release . '/bin/app.exe', 'arguments' => implode(' ', $encoded),
+        foreach (['id' => $name, 'name' => $name, 'executable' => $program, 'arguments' => implode(' ', $encoded),
             'workingdirectory' => $release, 'logpath' => $runtime, 'stoptimeout' => $stop . 'sec', 'startmode' => 'Manual'] as $key => $value) {
             $xml .= '<' . $key . '>' . $this->xml($value) . '</' . $key . ">\n";
         }
@@ -260,11 +277,11 @@ final class ServiceDefinition
             . "<serviceaccount><domain>NT AUTHORITY</domain><user>LocalService</user></serviceaccount>\n<log mode=\"roll\"/></service>\n";
     }
 
-    private function instructions(string $manager, string $name, string $release, string $runtime, string $digest, string $scope): string
+    private function instructions(string $manager, string $name, string $release, string $runtime, string $digest, string $scope, bool $single): string
     {
-        $text = "# 原生服务配置\n\n生成不等于安装或运行通过。本目录不包含PHP工具；release.json受信摘要为 `" . $digest . "`。\n\n"
+        $text = "# 原生服务配置\n\n生成不等于安装或运行通过。本目录不包含PHP工具；" . ($single ? '主程序文件' : 'release.json') . '受信摘要为 `' . $digest . "`。\n\n"
             . '发布最终位置：`' . $release . '`。数据/配置最终位置：`' . $runtime . "`。路径改变后重新生成配置，不复用错误路径。\n\n"
-            . "先为显式运行账号准备私有数据目录/.env和只读发布权限；外部.env不复制到发布或服务包。用发布启动器显式执行verify-runtime及迁移，再启动服务。服务状态不是业务就绪；标准应用另检查/healthz和/readyz。\n\n";
+            . "先为显式运行账号准备私有数据目录/.env和只读发布权限；外部.env不复制到发布或服务包。用主程序或对应发布入口显式执行verify-runtime及迁移，再启动服务。服务状态不是业务就绪；标准应用另检查/healthz和/readyz。\n\n";
         if ($manager === 'launchd') {
             $domain = $scope === 'user' ? 'gui/<UID>' : 'system';
             return $text . '使用声明的launchd域：`launchctl bootstrap ' . $domain . ' <配置绝对路径>`，`launchctl print ' . $domain . '/' . $name

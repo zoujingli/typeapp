@@ -1,12 +1,12 @@
 # 原生服务管理
 
-服务配置由 `type-build` 的 `ServiceDefinition` 生成，应用继续使用已有原生发布包和同一业务入口，不依赖生产机器上的 PHP CLI、Composer 或编译工具。生成配置不代表安装或运行通过。
+服务配置由构建端 `type-build` 的 `ServiceDefinition` 生成，直接启动已校验的单程序文件，也兼容历史目录包。不依赖生产机器上的 PHP CLI、Composer 或编译工具。生成配置不代表安装或运行通过。
 
 ```sh
-php vendor/bin/type service /已验证发布目录 service-spec.json /新的服务配置目录 受信发布清单SHA256
+php vendor/bin/type service /已验证主程序 service-spec.json /新的服务配置目录 受信主程序SHA256
 ```
 
-该命令先完整校验发布包，再原子生成系统描述文件、`service.json` 摘要记录和 `SERVICE.md`。不覆盖旧配置，不读 `.env`，不安装或启用服务，不创建系统账号或修改权限。三个目标位置必须分离：不可变发布、运行数据、服务配置。Unix默认user作用域，Windows固定system；用户按所选作用域执行后续安装操作。
+该命令先核对程序摘要、编译身份和系统加载项，再原子生成系统描述文件、`service.json` 摘要记录和 `SERVICE.md`。历史目录包输入使用其 `release.json` 摘要。不覆盖旧配置，不读 `.env`，不安装或启用服务，不创建系统账号或修改权限。三个目标位置必须分离：不可变程序目录、运行数据、服务配置。Unix默认user作用域，Windows固定system；用户按所选作用域执行后续安装操作。
 
 ## 声明与依赖
 
@@ -24,7 +24,7 @@ php vendor/bin/type service /已验证发布目录 service-spec.json /新的服�
 ```
 
 - 名称仅接受字母开头的字母数字，最多64字符，兼容三个管理器的这套命名约定。
-- `release-directory` 可省略，此时取被校验发布包的实际路径。这里及 `runtime-directory` 指目标机器的最终绝对路径，生成机器不必存在这些目标位置；生成后改变部署路径需重新生成配置。
+- `release-directory` 可省略，单程序取其父目录，历史目录包取其根目录。单程序保留输入文件名；这里及 `runtime-directory` 指目标机器的最终绝对路径，生成机器不必存在这些目标位置。生成后改变部署路径或程序文件名需重新生成配置。
 - Unix显式选择非root账号。推荐专用、无Docker/管理权限的运行账号，不把“非root”误认为没有其他委托权限。运行根需私有且可写，发布目录只授予运行账号读取/执行权限；祖先目录需可遍历。
 - 参数是公开启动参数，不用于传递秘密；最多32项、每项512字节。未知字段、控制字符、路径跳转、作用域错误和发布摘要错误会被拒绝。Windows路径/参数不接受`%VAR%`插值；systemd参数关闭环境替换，`%`按其原生规则转义。路径末尾空白及Linux末尾反斜线明确拒绝。
 - 停止预算1–300秒、重启间隔1–3600秒。管理器超过停止预算会强杀；这不是正常排空证明。应用自身的停止协议仍需实测。
@@ -32,7 +32,7 @@ php vendor/bin/type service /已验证发布目录 service-spec.json /新的服�
 
 ## macOS：launchd
 
-生成`<name>.plist`。`ProgramArguments`保留参数数组，启动已校验的`run`；日志写入数据根，umask为0077。异常退出按节流间隔重启，正常退出不重启；系统发出SIGTERM后留出退出预算。[Apple服务说明](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html)
+生成`<name>.plist`。`ProgramArguments`保留参数数组，直接启动主程序，历史目录包使用`run`；日志写入数据根，umask为0077。异常退出按节流间隔重启，正常退出不重启；系统发出SIGTERM后留出退出预算。[Apple服务说明](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html)
 
 user作用域使用声明用户的`gui/<UID>`域：
 
@@ -93,5 +93,7 @@ Windows普通控制台exe不能直接冒充Windows Service。生成器要求额�
 升级生成新的发布与服务目录，不覆盖旧版本；备份数据和秘密配置与归档不可变程序是不同动作。服务停止后才切换到新定义，并确认旧进程已退出。数据库变更可否向后兼容必须独立核对；切回旧服务描述不等于数据库回滚。本节不是完整数据库升级/备份/回滚验收，相关门禁仍保留。
 
 ## 验证边界
+
+`tests/service-definition.php <原生产物>` 按实际交付形态验证单程序或目录包，覆盖摘要、含空格路径、参数、输出格式、拒绝覆盖和 CLI 一致性。单程序配置生成与系统服务实际启停是两项独立验收；下面的服务生命周期入口当前仍验证历史目录包。
 
 `tests/native-service.php`可接受`原生产物 已验证发布目录 受信SHA256`，直接验证接入时完成搬迁、归档的同一发布，不另建版本。入口先核对发布清单及二进制身份，再通过`TYPE_TEMPLATE_EXPECTED_MESSAGE`核对实际业务修改，最后确认两个服务PID消失、监听端口释放和作业卸载。省略后两项时保留原标准应用打包流程；不接受身份不符的发布。
