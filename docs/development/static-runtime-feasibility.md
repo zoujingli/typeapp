@@ -118,7 +118,7 @@ Linux 制备入口已接入固定 PHP、PHPX、Swoole、Redis、libpq、curl 与
 
 ## 原生 CI 结果（2026-09-28）
 
-Windows 完整 SDK 导出通过后，可运行 `static-windows-application.yml`，将 `sdk_run` 指向本仓成功的静态运行库实验编号。该入口复用原归档，核对目标头文件、源码适配和许可身份，再执行真实 embed、全量应用 AOT 与 SQLite 业务；分别记录 SDK 和应用源码提交，仅作构建诊断，不生成发布候选，也不替代三库无源码部署和最终同源码四平台验收。
+Windows 完整 SDK 导出通过后，可运行 `static-windows-application.yml`，将 `sdk_run` 指向本仓成功的静态运行库实验编号。该入口复用原归档，核对目标头文件、源码适配和许可身份，再执行真实 embed、全量应用 AOT、SQLite 业务及单程序隔离部署；分别记录 SDK 和应用源码提交，仅作构建诊断，不生成发布候选，也不替代三库无源码部署和最终同源码四平台验收。
 
 后续 Linux 双架构原生 runner 均通过完整应用静态 AOT、同一文件三库隔离部署；macOS ARM64 也已在 macOS 15 runner 完成相同验收，所有非系统归档及最终 Mach-O 的最低版本均为 15.0。候选摘要、源码提交、数据库回执与保全位置见[本轮 CI 证据](../evidence/single-program-ci-20260928.md)。该结果独立于上文最低系统 26 的本机实验。
 

@@ -71,6 +71,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" tests/iot-identity.php build/app/type-app.exe sqlite --app
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:TYPE_PACKAGE_DRIVER='sqlite'
+          & "$env:PHP_HOME/php.exe" tests/native-single-program.php build/app/type-app.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 保存构建与业务诊断证据
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -84,3 +87,4 @@ jobs:
             build/app/type-app.exe.build.json
             build/app/compiler/compile.log
             build/iot-identity-*/*.log
+            build/single program-*/verification.json
