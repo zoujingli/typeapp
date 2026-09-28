@@ -71,6 +71,6 @@ Windows 主应用与模板已通过本轮 HTTP、正常停止和发布包用例�
 3. 在无业务源码、无 Composer 和无编译 SDK 的目标环境验证启动、迁移、运行库校验、搬迁、升级和恢复。
 4. 完成一个程序文件加外置配置的交付，非系统原生库静态链接、启动不释放运行库，并验证干净环境、权限及数据保留。
 
-主仓 `package` 只接受静态单程序；`package-directory` 与 `archive` 维护旧目录包。Linux x64、ARM64 已在 Ubuntu 24.04 原生 CI，macOS ARM64 已在 macOS 15 原生 CI 完成完整静态应用与同一程序三库隔离部署，见[本轮单程序记录](../evidence/single-program-ci-20260928.md)。这些候选与本页历史共享库验收分别保留；Windows 完整静态应用仍在验证。新版本须以同一最终源码通过四平台单程序门禁后才能发布。容量与性能仍需同平台、同负载和可复现基线。
+主仓 `package` 只接受静态单程序；`package-directory` 与 `archive` 维护旧目录包。Linux x64、ARM64 在 Ubuntu 24.04，macOS ARM64 在 macOS 15，Windows x64 在 Windows 2022 原生 CI 均已有完整静态程序与同一文件三库隔离运行结果，见[本轮单程序记录](../evidence/single-program-ci-20260928.md)。这些预检与本页历史共享库验收分别保留；新版本仍须以同一最终源码通过四平台单程序和重建材料门禁后才能发布。容量与性能仍需同平台、同负载和可复现基线。
 
 [系统架构](architecture.md) · [构建与部署](deployment.md) · [实现规划](roadmap.md)

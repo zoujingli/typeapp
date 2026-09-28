@@ -43,7 +43,7 @@ PHP、PHPX、Swoole 和非系统依赖采用已登记的静态归档。MySQL、P
 
 ## 发布边界
 
-Windows 的完整 PHP/Swoole、PHPX 静态探针与 SDK 导出已经通过，完整应用候选仍在验证。最终发布必须以最终同一源码重新完成四平台验收，不能用本记录跳过剩余门禁。RC7 的历史目录包和此前本机结果保持原身份。
+四平台已有完整静态程序的三库隔离运行证据；Windows 原程序与修复后的隔离脚本分别记录身份，重建附件集成仍在验证。最终发布必须以最终同一源码重新完成四平台验收，不能用本记录跳过剩余门禁。RC7 的历史目录包和此前本机结果保持原身份。
 
 ## Windows x64，静态运行库阶段
 
@@ -88,6 +88,8 @@ Windows 的完整 PHP/Swoole、PHPX 静态探针与 SDK 导出已经通过，完
 此前 pwsh 直接调用系统解释器会处理旧版模块搜索路径，未覆盖 PHP 普通子进程的环境继承。[最小复现 36408993531](https://github.com/zoujingli/typeapp/actions/runs/36408993531) 在 `a7d0a9e` 上通过普通子进程稳定触发相同加载失败；仅将权限模块固定为当前系统解释器自带路径后，[回归 36409239233](https://github.com/zoujingli/typeapp/actions/runs/36409239233) 在 `e6855b4` 上通过全部权限与恢复检查。成功 ZIP 摘要为 `c4c0e4bd57cb979f8aac0e46e31589f42559c67e5918144686ad525af1399e27`，失败和成功证据均回读保全于 `.cache/retained-evidence/static-ci-20260928/windows-module/`。这证明模块定位修复，不代替原 EXE 的三库业务复验。
 
 [原程序复验 36409443356](https://github.com/zoujingli/typeapp/actions/runs/36409443356) 使用 `bb5adb0` 的测试脚本，保持原 EXE 摘要不变；通过独立启动、外部 INI 拒绝与内嵌许可读取，安装因数据目录无法解析而失败。最小探针 [36410082319](https://github.com/zoujingli/typeapp/actions/runs/36410082319) 复现 `FindFirstFileExW` 查询数据目录时返回拒绝访问：旧规则阻断了父目录查询，而 PHP `realpath` 必须逐层读取目录元数据。后续仅向源码和工具文件传播内容读取、执行拒绝，保留目录元数据查询；[回归 36410335126](https://github.com/zoujingli/typeapp/actions/runs/36410335126) 在 `5fe9457` 上同时通过目录解析、源码内容/执行拒绝、只读程序、可写数据、中文路径和 ACL 恢复。成功 ZIP 摘要为 `b1d4d96d991f74d1bf6724cb69675102e131bccd7f944c1722056811756a7e0b`，原始报告保全于 `.cache/retained-evidence/static-ci-20260928/windows-directory-metadata/`；应用安装与三库仍须复验。
+
+原 EXE 的后续 [三库复验 36410391326](https://github.com/zoujingli/typeapp/actions/runs/36410391326) 已全部成功：程序源码仍为 `7166501`，测试源码为 `5fe9457`，程序 SHA-256 始终为 `7a05e96ec93969970ca58dfa2a385160179ce35d740a78655d2a69f91eb280f5`。SQLite、MySQL、PostgreSQL 初始化分别为 0.658、2.343、21.798 秒，均在 30 秒预算内。三库均通过源码/SDK 内容不可读、只读程序目录、不同工作目录、外部 INI 无效、启动不释放文件、57 份许可原文核对、前端安装/预演/强制更新、上传保留、页面缓存、双端登录、站点默认值、角色 CRUD 和正常停止。33 份原始报告与日志已回读保全于 `.cache/retained-evidence/static-ci-20260928/windows-replay-36410391326/`；重复程序不另保存，引用原候选保全位置。该诊断不生成可发布候选，最终构建与重建附件须重新完成。
 
 ## macOS ARM64，最低系统 15
 

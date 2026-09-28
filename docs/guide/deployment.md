@@ -19,14 +19,14 @@
 
 ## 当前构建状态
 
-主仓的 `type package` 现在只交付一个可执行文件，仍有外置运行库、资源或缺少许可材料时明确拒绝。Linux x64、ARM64 在 Ubuntu 24.04，macOS ARM64 在 macOS 15 原生 CI 已通过完整应用静态构建与同一程序三库隔离验收，见[本轮证据](../evidence/single-program-ci-20260928.md)。Windows x64 已完成完整静态 SDK 和应用 AOT，三库隔离运行仍在验证；四平台单程序尚未发布。
+主仓的 `type package` 现在只交付一个可执行文件，仍有外置运行库、资源或缺少许可材料时明确拒绝。Linux x64、ARM64 在 Ubuntu 24.04，macOS ARM64 在 macOS 15，Windows x64 在 Windows 2022 原生 CI 均已有完整静态程序与同一文件三库隔离运行结果，见[本轮证据](../evidence/single-program-ci-20260928.md)。这些预检分别记录源码与测试身份；统一源码的发布矩阵及 Windows 重建附件集成仍须完成，四平台单程序尚未发布。
 
 | 已实现路径 | 验收与边界 |
 | --- | --- |
 | 静态 SDK、目标头文件和归档摘要校验 | Linux/macOS/Windows 制备入口已接入；Windows 完整 SDK 探针已通过，应用验收仍单独进行；共享模块不能作为静态输入 |
 | 全量 AOT、内置 PHP 配置、静态运行身份 | 普通入口和线程应用分别验收；不读部署机 PHP 配置 |
 | 页面和许可原文内嵌 | 页面显式安装；`licenses` 直接读取许可材料，不释放运行库 |
-| 单文件输出、搬迁、只读目录、无源码隔离 | macOS ARM64、Linux x64/ARM64 三库已有行为结果；Windows 单独验收 |
+| 单文件输出、搬迁、只读目录、无源码隔离 | 四平台分别已有同一程序的三库行为结果；最终发布统一源码与本轮候选 |
 
 公开的 `v1.0.0-rc.7` 仍是历史目录归档，须完整解压运行；其旧附件和验收身份保持不变。新候选门禁只接受单程序和三库回执，任一平台未完成就阻止主仓 Release 公开。详细证据见[静态构建验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/static-runtime-feasibility.md)。
 
