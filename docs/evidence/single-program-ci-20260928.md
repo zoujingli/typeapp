@@ -87,6 +87,8 @@ Windows 的完整 PHP/Swoole、PHPX 静态探针与 SDK 导出已经通过，完
 
 此前 pwsh 直接调用系统解释器会处理旧版模块搜索路径，未覆盖 PHP 普通子进程的环境继承。[最小复现 36408993531](https://github.com/zoujingli/typeapp/actions/runs/36408993531) 在 `a7d0a9e` 上通过普通子进程稳定触发相同加载失败；仅将权限模块固定为当前系统解释器自带路径后，[回归 36409239233](https://github.com/zoujingli/typeapp/actions/runs/36409239233) 在 `e6855b4` 上通过全部权限与恢复检查。成功 ZIP 摘要为 `c4c0e4bd57cb979f8aac0e46e31589f42559c67e5918144686ad525af1399e27`，失败和成功证据均回读保全于 `.cache/retained-evidence/static-ci-20260928/windows-module/`。这证明模块定位修复，不代替原 EXE 的三库业务复验。
 
+[原程序复验 36409443356](https://github.com/zoujingli/typeapp/actions/runs/36409443356) 使用 `bb5adb0` 的测试脚本，保持原 EXE 摘要不变；通过独立启动、外部 INI 拒绝与内嵌许可读取，安装因数据目录无法解析而失败。最小探针 [36410082319](https://github.com/zoujingli/typeapp/actions/runs/36410082319) 复现 `FindFirstFileExW` 查询数据目录时返回拒绝访问：旧规则阻断了父目录查询，而 PHP `realpath` 必须逐层读取目录元数据。后续仅向源码和工具文件传播内容读取、执行拒绝，保留目录元数据查询；[回归 36410335126](https://github.com/zoujingli/typeapp/actions/runs/36410335126) 在 `5fe9457` 上同时通过目录解析、源码内容/执行拒绝、只读程序、可写数据、中文路径和 ACL 恢复。成功 ZIP 摘要为 `b1d4d96d991f74d1bf6724cb69675102e131bccd7f944c1722056811756a7e0b`，原始报告保全于 `.cache/retained-evidence/static-ci-20260928/windows-directory-metadata/`；应用安装与三库仍须复验。
+
 ## macOS ARM64，最低系统 15
 
 [运行 36383075960](https://github.com/zoujingli/typeapp/actions/runs/36383075960) 已成功，源码提交为 `2fd944fc55d40aee108432b03ec708ad9e07c9d0`。候选与原始证据均已下载回读；三库报告及日志摘要绑定同一个文件。
@@ -133,3 +135,14 @@ Windows 的完整 PHP/Swoole、PHPX 静态探针与 SDK 导出已经通过，完
 Windows 材料采集另用已保全的实际 SDK 与 vcpkg 输入核对 GMP 6.3.0#5、MPFR 4.2.2#1、libiconv 1.19 的归档身份，下载原始源码并校验 SPDX 的 SHA-512，通过固定 vcpkg 源码与 PHP/libmbfl 材料封存、成员回读；测试 ZIP 摘要为 `6ddae2f92b13da8707105d2ee4c31260942bec8ef546bb69c645749a7153934e`。这项在本机进行的材料核对不替代 Windows 原生运行。Linux 发行版源码采集及最终四平台发布附件仍须由各自候选执行。
 
 离线回归拒绝错误来源、成员篡改、额外文件、越界路径、重复文件、缺失目录和符号链接。候选门禁同时要求应用源码、SDK 清单与重建附件的身份一致，草稿封存、回读、摘要清单与幂等发布均包含该附件；部署仍仅使用主程序和外置配置。
+
+## Linux 双架构的完整服务与重建材料复验
+
+[运行 36406813793](https://github.com/zoujingli/typeapp/actions/runs/36406813793) 在 `0961cf9` 上全部成功。两个架构分别从最终单程序完成 MySQL、PostgreSQL、SQLite 隔离部署，随后用同一程序验证 systemd 的私有配置、认证与 CRUD、崩溃恢复、数据保留、正常停止、日志脱敏，以及进程、端口、服务单元和秘密清理。
+
+| 平台 | 程序字节数 | 程序 SHA-256 | 重建材料 SHA-256 |
+| --- | --- | --- | --- |
+| Linux x64 | 148,731,220 | `18ebdaf8391771736b7029108d02d6c605f295f7b0c8e7193a2efe19cce0d46e` | `ef58962f532a5bf5d1973370c25a03c50f751f6e693e3fdb80a7097bb3d54ca3` |
+| Linux ARM64 | 138,655,588 | `8799e6e0940c84d2139f75bf0f8127f1181fc68783564b906059151c944cac3c` | `8444f4ec728fe151b10a8bcad8905badf30c2f1968ac66ab7deb7e36a7e957bc` |
+
+两份程序、三库原始日志、服务回执及重建材料均已本地回读，重建归档逐成员核对。原始候选 ZIP、证据 ZIP、日志、GitHub 身份与回读记录保全于 `.cache/retained-evidence/static-ci-20260928/linux-36406813793/`。这次结果确认 systemd 清理变量修复；最终发布仍需与其他平台固定同一源码，不能将上述预检直接当作 RC 发布矩阵。
