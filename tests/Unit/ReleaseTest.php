@@ -161,6 +161,9 @@ final class ReleaseTest extends TestCase
                 yield $kind . '-' . $change => [$kind, $change];
             }
         }
+        foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
+            yield 'missing-static-' . $platform => ['native', 'missing-static-' . $platform];
+        }
     }
 
     /** 正在执行的发布流程只接受已完成且完整的前置任务，失败任务不能被汇总掩盖。 */
@@ -173,6 +176,8 @@ final class ReleaseTest extends TestCase
         $names = ['distribute / plan', 'distribute / collect', 'distribute / consume', 'template / template'];
         if ($kind === 'native') {
             $names = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete', 'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows'];
+            $names = [...$names, 'linux-static / 静态单程序 · linux-x64', 'linux-static / 静态单程序 · linux-arm64',
+                'macos-static / macOS ARM64 · single-program'];
             foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers', 'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services'] as $suite) {
                 $names[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
             }
@@ -184,6 +189,12 @@ final class ReleaseTest extends TestCase
             }
         }
         $jobs = ['total_count' => count($names), 'jobs' => array_map(static fn (string $name): array => ['name' => $name, 'head_sha' => $source, 'status' => 'completed', 'conclusion' => 'success'], $names)];
+        if (str_starts_with($change, 'missing-static-')) {
+            $platform = substr($change, strlen('missing-static-'));
+            $missing = $platform === 'macos-arm64' ? 'macos-static / macOS ARM64 · single-program' : 'linux-static / 静态单程序 · ' . $platform;
+            $jobs['jobs'] = array_values(array_filter($jobs['jobs'], static fn (array $job): bool => $job['name'] !== $missing));
+            $jobs['total_count']--;
+        }
         switch ($change) {
             case 'sha': $run['head_sha'] = str_repeat('b', 40);
                 break;

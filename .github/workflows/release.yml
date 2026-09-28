@@ -88,7 +88,7 @@ jobs:
     with:
       source_sha: ${{ needs.resolve.outputs.source }}
       frontend_artifact: release-frontend-${{ github.run_attempt }}
-      version: ${{ needs.resolve.outputs.version }}
+      version: ''
 
   linux-arm64:
     needs: [resolve, frontend]
@@ -97,7 +97,7 @@ jobs:
     with:
       source_sha: ${{ needs.resolve.outputs.source }}
       frontend_artifact: release-frontend-${{ github.run_attempt }}
-      version: ${{ needs.resolve.outputs.version }}
+      version: ''
 
   macos-arm64:
     needs: [resolve, frontend]
@@ -106,7 +106,26 @@ jobs:
     with:
       source_sha: ${{ needs.resolve.outputs.source }}
       frontend_artifact: release-frontend-${{ github.run_attempt }}
+      version: ''
+
+  linux-static:
+    needs: [resolve, frontend]
+    if: needs.resolve.outputs.resume == 'false'
+    uses: ./.github/workflows/static-linux.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      frontend_artifact: release-frontend-${{ github.run_attempt }}
       version: ${{ needs.resolve.outputs.version }}
+
+  macos-static:
+    needs: [resolve, frontend]
+    if: needs.resolve.outputs.resume == 'false'
+    uses: ./.github/workflows/native-macos.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      frontend_artifact: release-frontend-${{ github.run_attempt }}
+      version: ${{ needs.resolve.outputs.version }}
+      scope: single-program
 
   windows-x64:
     needs: [resolve, frontend]
@@ -118,7 +137,7 @@ jobs:
       version: ${{ needs.resolve.outputs.version }}
 
   release-native-complete:
-    needs: [resolve, linux-x64, linux-arm64, macos-arm64, windows-x64]
+    needs: [resolve, linux-x64, linux-arm64, macos-arm64, windows-x64, linux-static, macos-static]
     if: always() && needs.resolve.outputs.resume == 'false'
     runs-on: ubuntu-24.04
     steps:

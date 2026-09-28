@@ -67,7 +67,9 @@ final class Batch
             throw new \RuntimeException('发布原生验收的源码、标签、工作流或执行轮次不一致');
         }
         $required = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete',
-            'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows'];
+            'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows',
+            'linux-static / 静态单程序 · linux-x64', 'linux-static / 静态单程序 · linux-arm64',
+            'macos-static / macOS ARM64 · single-program'];
         foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers',
             'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services'] as $suite) {
             $required[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
