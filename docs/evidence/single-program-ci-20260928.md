@@ -67,6 +67,8 @@ Windows 的静态 PHP 核心及第三方依赖探针已经分别通过，完整�
 
 [Windows 隔离探针 36394884670](https://github.com/zoujingli/typeapp/actions/runs/36394884670) 在 `952c74c5777dbf56b4c36f42c1c0a4ab8bcf2cf3` 上通过原生受限令牌检查：同一策略允许读取程序、写入独立数据，拒绝程序目录写入及源码/编译器读取，控制端仍可读原文件，完成后恢复原 ACL。本轮尚未运行应用程序，不能代替完整三库部署；应用接入后还会实际阻断宿主 PHP、Composer、目标 SDK 和构建端 Node。
 
+[运行 36394648959](https://github.com/zoujingli/typeapp/actions/runs/36394648959) 在 `84be866700033e9c785cc16d05c0534d85b5a347` 上通过静态链接、系统导入审计及独立 embed 启动，实际加载了 Swoole 6.2.1、Redis 6.3.0 和三库 PDO 驱动。该运行仍失败：Windows 配置忽略了 Unix 风格的 DOM、XML、SimpleXML 参数，运行时完整性检查准确拒绝漏编。后续改用固定 PHP 源码声明的 `--with-dom`、`--with-xml`、`--with-simplexml`，并在编译前检查无效参数与全部必需扩展的静态配置；真实启动检查继续保留。PHPX 尚未执行，本结果不是完整 SDK 或应用验收。
+
 ## macOS ARM64，最低系统 15
 
 [运行 36383075960](https://github.com/zoujingli/typeapp/actions/runs/36383075960) 已成功，源码提交为 `2fd944fc55d40aee108432b03ec708ad9e07c9d0`。候选与原始证据均已下载回读；三库报告及日志摘要绑定同一个文件。

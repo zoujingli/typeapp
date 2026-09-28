@@ -136,6 +136,9 @@ Write-StaticStage 'source adaptations: verified'
 $taskConfigure = @('--disable-all', '--disable-cli', '--disable-cgi', '--disable-phpdbg', '--enable-embed', '--enable-zts', '--with-mp=2')
 $taskExtraLibraries = ''
 $taskRuntime = $DependenciesDirectory -ne ''
+$taskRequiredExtensions = @('filter', 'tokenizer', 'ctype', 'session', 'mbstring', 'libxml', 'dom', 'xml', 'SimpleXML',
+    'xmlreader', 'xmlwriter', 'Phar', 'PDO', 'mysqlnd', 'pdo_mysql', 'pdo_pgsql', 'pdo_sqlite', 'sqlite3', 'sockets',
+    'openssl', 'curl', 'zlib', 'iconv', 'redis', 'swoole')
 if ($taskRuntime -ne ($DependencyVerification -ne '')) { throw '静态依赖和其真实验证报告必须同时提供。' }
 if ($WithPhpx -and !$taskRuntime) { throw 'PHPX 探针必须先启用并验证完整静态扩展。' }
 if ($taskRuntime) {
@@ -170,7 +173,7 @@ if ($taskRuntime) {
     & $taskHostPhp -n (Join-Path $PSScriptRoot 'static-windows/prepare-extensions.php') $taskSource (Join-Path $taskEvidence 'extension-adaptations.json')
     if ($LASTEXITCODE -ne 0) { throw '完整扩展的固定源码适配失败。' }
     $taskConfigure += @("--with-php-build=$taskDeps", '--enable-filter', '--enable-tokenizer', '--enable-ctype', '--enable-session',
-        '--enable-mbstring', '--disable-mbregex', '--with-libxml', '--enable-dom', '--enable-xml', '--enable-simplexml',
+        '--enable-mbstring', '--disable-mbregex', '--with-libxml', '--with-dom', '--with-xml', '--with-simplexml',
         '--enable-xmlreader', '--enable-xmlwriter', '--enable-phar', '--enable-pdo', '--with-mysqlnd', '--enable-mysqlnd', '--with-pdo-mysql',
         '--with-pdo-pgsql', '--with-pdo-sqlite', '--with-sqlite3', '--enable-sockets', '--with-openssl=yes', '--with-curl',
         '--enable-zlib', '--with-iconv', '--enable-redis', '--enable-swoole', '--enable-swoole-thread', '--enable-php-sockets',
@@ -190,6 +193,19 @@ try {
     Write-StaticStage 'configure: start'
     & .\configure.bat @taskConfigure 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
     if ($LASTEXITCODE -ne 0) { throw 'PHP 静态核心配置失败。' }
+    # Windows configure 对未知参数只打印警告且返回成功，必须在耗时编译前拒绝。
+    $taskConfigured = Get-Content -Raw -LiteralPath (Join-Path $taskEvidence 'configure.log')
+    if ($taskConfigured -match 'arguments are invalid, and therefore ignored') {
+        throw 'PHP 配置包含被忽略的无效参数，详见 configure.log。'
+    }
+    if ($taskRuntime) {
+        foreach ($taskExtension in $taskRequiredExtensions) {
+            $taskExtensionPattern = '(?im)^\s*\|\s*' + [regex]::Escape($taskExtension) + '\s*\|\s*static\s*\|\s*$'
+            if (![regex]::IsMatch($taskConfigured, $taskExtensionPattern)) {
+                throw ('PHP 配置未静态启用必需扩展：' + $taskExtension)
+            }
+        }
+    }
     Copy-Item -LiteralPath 'Makefile' -Destination (Join-Path $taskEvidence 'Makefile.original')
     # 复用官方已生成的完整对象清单，直接归档；不链接 PHP DLL 或加入其导入库。
     $taskTarget = @'
@@ -239,9 +255,7 @@ if ($taskProfile.php -ne '8.5.10' -or !$taskProfile.zts -or $taskProfile.sapi -n
     throw '实际 PHP 核心未位于静态主程序内。'
 }
 if ($taskRuntime) {
-    foreach ($taskExtension in @('filter', 'tokenizer', 'ctype', 'session', 'mbstring', 'libxml', 'dom', 'xml', 'SimpleXML',
-        'xmlreader', 'xmlwriter', 'Phar', 'PDO', 'mysqlnd', 'pdo_mysql', 'pdo_pgsql', 'pdo_sqlite', 'sqlite3', 'sockets',
-        'openssl', 'curl', 'zlib', 'iconv', 'redis', 'swoole')) {
+    foreach ($taskExtension in $taskRequiredExtensions) {
         if ($null -eq $taskProfile.extensions.$taskExtension) { throw ('静态核心缺少必需扩展：' + $taskExtension) }
     }
 }
