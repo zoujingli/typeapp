@@ -10,7 +10,7 @@ use RuntimeException;
 final class SwooleWindowsSource
 {
     /**
-     * 补齐上游构建清单、依赖发现与 IOCP 名称限定，不改变协程或数据库实现。
+     * 补齐上游构建清单、依赖发现、IOCP 名称限定和 Windows 套接字类型。
      * 上游修复对应缺口且 Windows 原生回归通过后撤除。
      *
      * @return array<string,array{before:string,after:string}>
@@ -21,6 +21,7 @@ final class SwooleWindowsSource
         $hashes = [
             'config.w32' => '02a801b07d5bb38edea0f88465271454f54d4625d6e71e0c15db3935bef789ac',
             'src/coroutine/iocp.cc' => 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990',
+            'src/network/dns.cc' => 'c52deca9b1f24f8921ce24669e276818d2c06072b7998f50758d55b0345e5835',
         ];
         $sources = [];
         foreach ($hashes as $file => $digest) {
@@ -54,6 +55,27 @@ final class SwooleWindowsSource
             'int retval = WSAPoll(fds, nfds, 0);',
             'int retval = ::WSAPoll(fds, nfds, 0);'
         );
+        // c-ares 的回调在 Windows 使用 UINT_PTR；Swoole 的 Socket 也使用 swSocketFd。
+        // 回调和索引均保留官方 ares_socket_t，不能为通过编译而截断 64 位句柄。
+        $sources['src/network/dns.cc'] = $this->replace(
+            $sources['src/network/dns.cc'],
+            'std::unordered_map<int, network::Socket *> sockets;',
+            'std::unordered_map<ares_socket_t, network::Socket *> sockets;'
+        );
+        $sources['src/network/dns.cc'] = $this->replace(
+            $sources['src/network/dns.cc'],
+            'ctx.ares_opts.sock_state_cb = [](void *arg, int fd, int readable, int writable) {',
+            'ctx.ares_opts.sock_state_cb = [](void *arg, ares_socket_t fd, int readable, int writable) {'
+        );
+        foreach ([
+            '"[sock_state_cb], fd=%d, readable=%d, writable=%d", fd, readable, writable' => '"[sock_state_cb], fd=%llu, readable=%d, writable=%d", static_cast<unsigned long long>(fd), readable, writable',
+            '"error events, fd=%d", fd' => '"error events, fd=%llu", static_cast<unsigned long long>(fd)',
+            '"[del event], fd=%d", fd' => '"[del event], fd=%llu", static_cast<unsigned long long>(fd)',
+            '"[set event] fd=%d, events=%d", fd, events' => '"[set event] fd=%llu, events=%d", static_cast<unsigned long long>(fd), events',
+            '"[add event] fd=%d, events=%d", fd, events' => '"[add event] fd=%llu, events=%d", static_cast<unsigned long long>(fd), events',
+        ] as $before => $after) {
+            $sources['src/network/dns.cc'] = $this->replace($sources['src/network/dns.cc'], $before, $after);
+        }
         $report = [];
         foreach ($sources as $file => $source) {
             if (file_put_contents($directory . '/' . $file, $source) !== strlen($source)) {
