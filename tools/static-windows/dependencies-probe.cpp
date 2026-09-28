@@ -1,4 +1,6 @@
 // 实际引用每组依赖的公开接口，供 PE 导入审计确认链接器没有选择导入库。
+// c-ares 引入 Windows 头；禁用其 min/max 宏，保持 GMP 的 numeric_limits 接口。
+#define NOMINMAX
 #define CURL_STATICLIB
 #define CARES_STATICLIB
 #define NGHTTP2_STATICLIB

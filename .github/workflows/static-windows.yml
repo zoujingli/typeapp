@@ -42,13 +42,29 @@ jobs:
     if: inputs.scope == 'dependencies'
     runs-on: windows-2022
     timeout-minutes: 90
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.cache/static-windows-vcpkg
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: 恢复固定静态依赖的编译缓存
+        id: dependency-cache
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: .cache/static-windows-vcpkg
+          key: static-windows-vcpkg-${{ hashFiles('tools/static-windows/vcpkg.json', 'tools/static-windows/x64-typeapp-static.cmake') }}-v1
       - name: 制备静态第三方库并运行 PE 探针
         shell: pwsh
-        run: ./tools/prepare-static-windows-dependencies.ps1 -Directory "$env:GITHUB_WORKSPACE/build/static-windows-dependencies"
+        run: |
+          New-Item -ItemType Directory -Path $env:VCPKG_DEFAULT_BINARY_CACHE -Force | Out-Null
+          ./tools/prepare-static-windows-dependencies.ps1 -Directory "$env:GITHUB_WORKSPACE/build/static-windows-dependencies"
+      - name: 保存已编译归档以便探针修复后复用
+        if: always() && steps.dependency-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: .cache/static-windows-vcpkg
+          key: static-windows-vcpkg-${{ hashFiles('tools/static-windows/vcpkg.json', 'tools/static-windows/x64-typeapp-static.cmake') }}-v1
       - name: 保存原始构建与真实运行结果
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
