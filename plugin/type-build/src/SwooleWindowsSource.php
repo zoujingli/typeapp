@@ -22,6 +22,7 @@ final class SwooleWindowsSource
             'config.w32' => '02a801b07d5bb38edea0f88465271454f54d4625d6e71e0c15db3935bef789ac',
             'src/coroutine/iocp.cc' => 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990',
             'src/network/dns.cc' => 'c52deca9b1f24f8921ce24669e276818d2c06072b7998f50758d55b0345e5835',
+            'php_swoole.h' => '66305cdd37bcaf35ee17e7d24ed12b6be4d18a4ad34d0a7dc883954344009e28',
         ];
         $sources = [];
         foreach ($hashes as $file => $digest) {
@@ -44,6 +45,12 @@ final class SwooleWindowsSource
         foreach ($replacements as $before => $after) {
             $sources['config.w32'] = $this->replace($sources['config.w32'], $before, $after);
         }
+        // PHP 的内置模块清单是 C 翻译单元；MSVC 会修饰未声明 C 链接的 C++ 全局变量。
+        $sources['php_swoole.h'] = $this->replace(
+            $sources['php_swoole.h'],
+            'extern zend_module_entry swoole_module_entry;',
+            "#ifdef __cplusplus\nextern \"C\" {\n#endif\nextern zend_module_entry swoole_module_entry;\n#ifdef __cplusplus\n}\n#endif"
+        );
         $sources['src/coroutine/iocp.cc'] = $this->replace(
             $sources['src/coroutine/iocp.cc'],
             '#include "win32/ioutil.h"',
