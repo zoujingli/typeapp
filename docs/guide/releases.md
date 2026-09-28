@@ -4,7 +4,7 @@
 
 当前公开候选为 [v1.0.0-rc.7](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.7)，固定源码 `a5ff7ad`。四平台完整原生验收、组件与模板分发、默认 Packagist 独立消费和公开下载回读均已通过，共核对 17 个 Release、16 个子仓 tag、16 个 Packagist 版本及四份归档。RC 尚非稳定版，实际平台范围见[平台与验收](platforms.md)，原始身份和此前候选记录见[首次 RC 验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
-主仓新的发布门禁只接受**每个平台一个可执行文件**，不再以目录归档作为新候选。四平台分别已有完整静态程序及同一文件三库隔离验收结果，见[本轮证据](../evidence/single-program-ci-20260928.md)。统一源码的四平台发布矩阵及 Windows 重建附件集成仍须完成，新的单程序版本尚未公开。以下 RC7 下载示例保留其真实布局，不代表新产物形态。
+主仓新的发布门禁只接受**每个平台一个可执行文件**，不再以目录归档作为新候选。四平台分别已有完整静态程序及同一文件三库隔离验收结果，见[本轮证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/single-program-ci-20260928.md)。统一源码的四平台发布矩阵及 Windows 重建附件集成仍须完成，新的单程序版本尚未公开。以下 RC7 下载示例保留其真实布局，不代表新产物形态。
 
 ## 一次 tag 如何形成版本
 

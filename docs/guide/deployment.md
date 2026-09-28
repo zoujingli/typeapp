@@ -19,7 +19,7 @@
 
 ## 当前构建状态
 
-主仓的 `type package` 现在只交付一个可执行文件，仍有外置运行库、资源或缺少许可材料时明确拒绝。Linux x64、ARM64 在 Ubuntu 24.04，macOS ARM64 在 macOS 15，Windows x64 在 Windows 2022 原生 CI 均已有完整静态程序与同一文件三库隔离运行结果，见[本轮证据](../evidence/single-program-ci-20260928.md)。这些预检分别记录源码与测试身份；统一源码的发布矩阵及 Windows 重建附件集成仍须完成，四平台单程序尚未发布。
+主仓的 `type package` 现在只交付一个可执行文件，仍有外置运行库、资源或缺少许可材料时明确拒绝。Linux x64、ARM64 在 Ubuntu 24.04，macOS ARM64 在 macOS 15，Windows x64 在 Windows 2022 原生 CI 均已有完整静态程序与同一文件三库隔离运行结果，见[本轮证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/single-program-ci-20260928.md)。这些预检分别记录源码与测试身份；统一源码的发布矩阵及 Windows 重建附件集成仍须完成，四平台单程序尚未发布。
 
 | 已实现路径 | 验收与边界 |
 | --- | --- |

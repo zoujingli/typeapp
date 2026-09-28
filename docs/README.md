@@ -27,7 +27,7 @@
   </div>
 </section>
 
-> **交付约定：一个主程序文件，配置独立维护，启动不释放运行库。** 主仓已接入静态构建与单文件输出，macOS ARM64 已有完整应用三库隔离运行结果；其他平台尚需验收，公开 RC7 仍是历史目录归档。使用前按[构建与部署](guide/deployment.md)核对版本与平台。
+> **交付约定：一个主程序文件，配置独立维护，启动不释放运行库。** Linux x64 / ARM64、macOS ARM64、Windows x64 已分别通过完整静态程序的三库隔离预检；统一源码的发布门禁仍须完成，公开 RC7 仍是历史目录归档。使用前按[构建与部署](guide/deployment.md)核对版本与平台。
 
 <div class="feature-grid">
   <div><span class="feature-number">01 / DEVELOP</span><h2>按业务组合</h2><p>路由、模型、通信与任务，<br>通过组件形成应用。</p></div>

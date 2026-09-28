@@ -172,7 +172,7 @@ sequenceDiagram
 
 所选清单和模块进入构建身份，应用产物只收集当前平台选中的模块及实际依赖，不会携带全部四平台模块。再分发须保留适用的原始许可证，见[许可证与归属](../licensing.md#第三方边界)。源码、摘要、依赖和维护者的 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 重建入口见[资源说明](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。
 
-这些 `.so/.dll` 是共享扩展构建输入。**完整静态链接、单程序加配置、启动不释放运行库仍未完成**，当前目录包与最终交付要求见[构建与部署](../deployment.md#单程序交付约定)。
+这些 `.so/.dll` 是共享扩展构建输入，不能用于静态链接。单程序构建使用静态 SDK 中的归档；四平台已分别通过完整静态程序的三库隔离预检，统一源码的发布门禁仍须完成。实际可下载版本与产物形态见[构建与部署](../deployment.md#单程序交付约定)。
 
 ## 开发与编译入口
 
@@ -239,9 +239,9 @@ sequenceDiagram
 php vendor/bin/type verify-package build/example-release "$TYPE_RELEASE_SHA256"
 ```
 
-收到产物后，不能仅在同一不受信目录重新计算摘要便认定来源可信。Windows 单程序须使用 `.exe`，其静态 SDK 与平台验收仍待完成。
+收到产物后，不能仅在同一不受信目录重新计算摘要便认定来源可信。Windows 单程序须使用 `.exe`；其静态 SDK 与同一程序三库隔离预检已通过，实际发布版本和支持范围以[平台与验收](../platforms.md)为准。
 
-服务配置使用 `type service <程序文件> <服务声明.json> <新服务目录> <受信程序SHA256>`，直接启动经过校验的单程序。生成器也接受历史发布目录及其清单摘要；`package-directory`和`archive`用于该历史交付。生成配置不代表安装或系统服务验收通过，详见[原生服务管理](../../development/native-services.md)。运行数据与程序目录分离，不将真实 `.env` 纳入构建。
+服务配置使用 `type service <程序文件> <服务声明.json> <新服务目录> <受信程序SHA256>`，直接启动经过校验的单程序。生成器也接受历史发布目录及其清单摘要；`package-directory`和`archive`用于该历史交付。生成配置不代表安装或系统服务验收通过，详见[原生服务管理](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-services.md)。运行数据与程序目录分离，不将真实 `.env` 纳入构建。
 
 运行包包含匹配 PHPX/libphp 和实际原生扩展，不包含 Composer、编译 SDK 或业务 PHP 回退入口。生产资源与开发工具分开，平台可用性以该版本实际验收为准。
 

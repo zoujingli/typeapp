@@ -45,6 +45,16 @@ PHP、PHPX、Swoole 和非系统依赖采用已登记的静态归档。MySQL、P
 
 四平台已有完整静态程序的三库隔离运行证据；Windows 原程序与修复后的隔离脚本分别记录身份，重建附件集成仍在验证。最终发布必须以最终同一源码重新完成四平台验收，不能用本记录跳过剩余门禁。RC7 的历史目录包和此前本机结果保持原身份。
 
+### Windows 完整重编译与材料采集修复
+
+[运行 36410921009](https://github.com/zoujingli/typeapp/actions/runs/36410921009) 在源码 `a0aeeefecd61eff2df75ec661dd53f72bb85127e` 重新完成全量 AOT，同一 EXE 的 SQLite、MySQL、PostgreSQL 隔离部署均通过。程序为 53,638,175 字节，SHA-256 为 `9d417c3f17164ae8d5cf19f11478f26ae83dcc5ed0a2f293c841dfd6a33d5374`，构建 ID 为 `9c060ce75aae74c32c7d2488bceeceded5bc6f3d3b1136d34d1b76eaab44f4f3`。原 EXE、三库回执和原始日志均已下载并回读摘要。
+
+这次运行仍为**失败**：重建附件的许可检查发现 `zstd.lib` 使用 BSD/GPL 双许可证，而源码采集清单遗漏了 Zstd。用原 SDK 重现该错误后，补齐采集项，又在同批 SPDX 中复现 `git+https://github.com/facebook/zstd@v1.5.7` 未被识别的问题。修复提交 `95b1caf` 将该引用恢复为 GitHub 源码归档，继续逐字节核对 SPDX 的 SHA-512，并保留固定 vcpkg 源码、配方和许可原文；未知来源仍拒绝。
+
+修复后的材料采集在本机读取原 Windows SDK 与同批 vcpkg 依赖完成，9,128 个归档成员全部回读通过，三个离线回归通过。Zstd 源码 SHA-512 与原配方一致，为 `26e441267305f6e58080460f96ab98645219a90d290a533410b1b0b1d2f870721c95f8384e342ee647c5e968385a5b7e30c2d04340c37f59b3e6d86762c3260c`。这是材料采集诊断，使用工作区修复脚本，内部主仓归档仍对应 `74f464f`；不能作为 Windows 原生运行或正式候选成功记录。正式发布仍须在同一最终源码的 Windows runner 完成全部步骤。
+
+原始证据与回归身份保全于 `.cache/retained-evidence/static-ci-20260928/windows-materials-36410921009/`，包含失败运行附件、原 EXE、三库报告、同批依赖归档、修复前后日志及材料成员清单。SDK 继续引用此前 `windows-sdk-36398798810/` 的原归档，不复制或改写其身份。
+
 ## Windows x64，静态运行库阶段
 
 [运行 36387006296](https://github.com/zoujingli/typeapp/actions/runs/36387006296) 已完成第三方依赖的真实链接、PE 导入审计和独立运行。该运行源码为 `64203e2`，固定 vcpkg 提交为 `07f4812200df3d3c931c0c8a6081d3b21fe2bf9f`，使用 `x64-typeapp-static` 和静态 CRT；17 个包生成的 22 份归档逐项回读摘要一致。后续新增的 libiconv 不在这份历史结果中。
