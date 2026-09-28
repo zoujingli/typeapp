@@ -69,7 +69,7 @@ final class Batch
         $required = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete',
             'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows',
             'linux-static / 静态单程序 · linux-x64', 'linux-static / 静态单程序 · linux-arm64',
-            'macos-static / macOS ARM64 · single-program'];
+            'macos-static / macOS ARM64 · single-program', 'windows-static / Windows x64 单程序三库'];
         foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers',
             'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services'] as $suite) {
             $required[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;

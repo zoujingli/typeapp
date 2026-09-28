@@ -25,7 +25,7 @@ flowchart TB
 
 四个平台分别编译、验收。任何一个平台失败都会阻止主仓版本公开。新候选验收直接使用待上传程序的同一字节，移走构建端前端资源后验证安装、登录和 CRUD；程序 SHA-256 必须与三库回执一致，不能重新编译后替换附件。旧版本恢复仍按原归档身份读取，不改写旧标签或附件。
 
-发布链保留各平台完整业务回归，并单独核验最终静态候选。Linux 两种架构调用 `static-linux.yml`，macOS 调用 `native-macos.yml` 的 `single-program` 范围；它们使用同一固定提交及前端清单。分发门禁同时检查这些任务的成功状态、源码和执行轮次，只有旧共享库回归成功不能继续发布。Windows 静态核心探针不计入应用候选，完整静态应用路径完成前，发布仍会被阻止。
+发布链保留各平台完整业务回归，并单独核验最终静态候选。Linux 两种架构调用 `static-linux.yml`，macOS 调用 `native-macos.yml` 的 `single-program` 范围，Windows 调用 `static-windows-candidate.yml`；它们使用同一固定提交及前端清单。Windows 先构建并验证静态 SDK，再全量编译 EXE，以该文件完成三库无源码部署。分发门禁同时检查这些任务的成功状态、源码和执行轮次，只有旧共享库回归或静态核心探针成功不能继续发布。Windows 新入口尚待实际应用验收，失败仍会阻止发布。
 
 新候选附件名为 `typeapp-iot-<版本>-<平台>-<架构>`，Windows 追加 `.exe`，Unix 不加 `.tar.gz`。`SHA256SUMS` 和 `release-manifest.json` 是下载核验材料，不是运行依赖。下载后在 Unix 赋予执行权限，按[单程序部署](deployment.md)直接运行；运行库不会释放到磁盘，页面只在显式安装时写入 `public`。
 

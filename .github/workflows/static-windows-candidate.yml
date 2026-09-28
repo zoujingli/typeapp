@@ -1,0 +1,120 @@
+name: Windows 静态单程序验收
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 候选版本，仅验证不创建标签或发布
+        required: true
+        default: v1.0.0-rc.8
+        type: string
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      frontend_artifact:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-windows-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sdk:
+    uses: ./.github/workflows/static-windows.yml
+    with:
+      source_sha: ${{ inputs.source_sha || github.sha }}
+      scope: phpx
+
+  application:
+    needs: sdk
+    name: Windows x64 单程序三库
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      COMPOSER_NO_INTERACTION: '1'
+      COMPOSER_PROCESS_TIMEOUT: '1800'
+      TYPE_RELEASE_VERSION: ${{ inputs.version }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: 核对候选版本
+        run: |
+          if ($env:TYPE_RELEASE_VERSION -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$') {
+            throw '候选版本必须为明确 SemVer。'
+          }
+          New-Item -ItemType Directory -Path build/static-windows-application-evidence | Out-Null
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: static-windows-sdk
+          path: build/static-windows-sdk
+      - name: 准备锁定构建宿主
+        run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 安装锁定源码并核对静态 SDK
+        run: |
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $taskManifest = Join-Path $env:GITHUB_WORKSPACE 'build/static-windows-sdk/manifest.json'
+          & "$env:PHP_HOME/php.exe" tests/static-runtime-sdk.php $taskManifest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('TYPE_STATIC_RUNTIME=' + $taskManifest) -Encoding utf8
+      - name: 准备同一版本的内嵌前端
+        uses: ./.github/actions/prepare-frontend
+        with:
+          artifact: ${{ inputs.frontend_artifact }}
+      - name: 全量 AOT 并封存最终 EXE
+        run: |
+          & "$env:PHP_HOME/php.exe" tools/build-application.php 2>&1 |
+            Tee-Object build/static-windows-application-evidence/application.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:PHP_HOME/php.exe" tests/release-candidate.php prepare
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 同一 EXE 的 SQLite 无源码部署
+        run: |
+          & "$env:PHP_HOME/php.exe" tests/release-candidate.php test sqlite
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 同一 EXE 的 MySQL 无源码部署
+        run: ./.github/scripts/run-windows-database.ps1 -Driver mysql -SingleProgram
+      - name: 同一 EXE 的 PostgreSQL 无源码部署
+        run: ./.github/scripts/run-windows-database.ps1 -Driver pgsql -SingleProgram
+      - name: 核对三库结果与待发布文件身份
+        run: |
+          & "$env:PHP_HOME/php.exe" tests/release-candidate.php finish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 保存最终单程序候选
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-candidate-windows-x64-${{ github.run_attempt }}
+          path: build/release-candidate/attachments/*
+          if-no-files-found: error
+          retention-days: 90
+      - name: 保存构建与部署证据
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: static-windows-application-evidence
+          retention-days: 14
+          path: |
+            build/static-windows-application-evidence/*
+            build/static-windows-sdk/manifest.json
+            build/static-sdk-probe-*/verification.json
+            build/app/*.build.json
+            build/app/compiler/compile.log
+            build/release-candidate/*.json
+            build/release-candidate/*.log
+            build/single program-*/verification.json
+            build/windows-database-*/*

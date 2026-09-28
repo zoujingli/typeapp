@@ -92,7 +92,9 @@ Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收�
 
 `scope=sqlite-app` 在独立并发组中连续执行五轮 SQLite 应用开发验收，每轮使用新建数据库；任一失败立即停止并保留报告。最高管理员并发保护同时核对两个 HTTP 状态、稳定拒绝原因和数据库中的有效管理员数量，诊断不保存凭据或响应正文。该入口用于复现并发故障，不能替代全量 AOT 与三库发布验收。
 
-Windows 的 `native-platform.yml` 保留共享库完整回归；当前不能用它生成新的单程序候选，填写 `candidate_version` 也不会绕过静态交付门禁。`static-windows.yml` 分别通过 `scope=core` 和 `scope=dependencies` 验证 PHP 静态核心与第三方静态依赖，后者的固定输入在 `tools/static-windows/`。两项实验都不创建 tag、分发子仓或公开 Release；PHPX、Swoole、完整应用及其隔离三库验收仍须继续接入。各入口保留原始编译和运行结果，失败不能计为支持该平台。
+Windows 的 `native-platform.yml` 保留共享库完整回归，不生成新的单程序候选。`static-windows.yml` 的 `scope=core`、`dependencies`、`runtime`、`phpx` 分别验证核心、第三方库、完整扩展和 PHPX；`sandbox` 独立验证 Windows 受限令牌。`static-windows-application.yml` 可复用成功 SDK 运行执行应用诊断，记录 SDK 与应用的各自源码，不能作为发布证据。
+
+正式候选入口为 `static-windows-candidate.yml`：填写 `version` 后，按同一源码调用静态 SDK 工作流，准备宿主并全量编译，再由 `tests/release-candidate.php` 封存 EXE。SQLite 直接验收，MySQL/PostgreSQL 复用 `run-windows-database.ps1 -SingleProgram` 创建并回收专用实例；三库均对同一文件执行源码/SDK 隔离、前端安装和页面/API 检查。只有全部通过才上传候选。手动运行不创建 tag、分发子仓或公开 Release；入口已接入发布链，Windows 完整应用实际结果仍以[本轮证据](../evidence/single-program-ci-20260928.md)为准。
 
 应用测试保存最近请求与最慢 20 条请求的耗时；失败时额外记录本轮 PostgreSQL 会话的等待状态和阻塞进程，省略 SQL、请求体和令牌。测试公共入口关闭异常参数捕获，避免凭据进入调用栈或异常继续持有 PDO 连接而阻塞数据库清理。数据库清理失败时仍保留原请求故障报告，Actions 同时上传脱敏 HTTP 日志。
 

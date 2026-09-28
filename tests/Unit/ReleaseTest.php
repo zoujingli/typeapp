@@ -161,7 +161,7 @@ final class ReleaseTest extends TestCase
                 yield $kind . '-' . $change => [$kind, $change];
             }
         }
-        foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
+        foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
             yield 'missing-static-' . $platform => ['native', 'missing-static-' . $platform];
         }
     }
@@ -177,7 +177,7 @@ final class ReleaseTest extends TestCase
         if ($kind === 'native') {
             $names = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete', 'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows'];
             $names = [...$names, 'linux-static / 静态单程序 · linux-x64', 'linux-static / 静态单程序 · linux-arm64',
-                'macos-static / macOS ARM64 · single-program'];
+                'macos-static / macOS ARM64 · single-program', 'windows-static / Windows x64 单程序三库'];
             foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers', 'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services'] as $suite) {
                 $names[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
             }
@@ -191,7 +191,11 @@ final class ReleaseTest extends TestCase
         $jobs = ['total_count' => count($names), 'jobs' => array_map(static fn (string $name): array => ['name' => $name, 'head_sha' => $source, 'status' => 'completed', 'conclusion' => 'success'], $names)];
         if (str_starts_with($change, 'missing-static-')) {
             $platform = substr($change, strlen('missing-static-'));
-            $missing = $platform === 'macos-arm64' ? 'macos-static / macOS ARM64 · single-program' : 'linux-static / 静态单程序 · ' . $platform;
+            $missing = match ($platform) {
+                'macos-arm64' => 'macos-static / macOS ARM64 · single-program',
+                'windows-x64' => 'windows-static / Windows x64 单程序三库',
+                default => 'linux-static / 静态单程序 · ' . $platform,
+            };
             $jobs['jobs'] = array_values(array_filter($jobs['jobs'], static fn (array $job): bool => $job['name'] !== $missing));
             $jobs['total_count']--;
         }

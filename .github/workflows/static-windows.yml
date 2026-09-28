@@ -1,6 +1,14 @@
 name: Windows 静态运行库实验
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      scope:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       scope:
@@ -24,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - name: 验证受限令牌与程序只读边界
         shell: pwsh
@@ -43,6 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - name: 构建静态 PHP 核心并审计独立 embed
         timeout-minutes: 12
@@ -66,6 +76,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - name: 恢复固定静态依赖的编译缓存
         id: dependency-cache
@@ -112,6 +123,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:

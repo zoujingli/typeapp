@@ -134,10 +134,19 @@ jobs:
     with:
       source_sha: ${{ needs.resolve.outputs.source }}
       frontend_artifact: release-frontend-${{ github.run_attempt }}
+      version: ''
+
+  windows-static:
+    needs: [resolve, frontend]
+    if: needs.resolve.outputs.resume == 'false'
+    uses: ./.github/workflows/static-windows-candidate.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      frontend_artifact: release-frontend-${{ github.run_attempt }}
       version: ${{ needs.resolve.outputs.version }}
 
   release-native-complete:
-    needs: [resolve, linux-x64, linux-arm64, macos-arm64, windows-x64, linux-static, macos-static]
+    needs: [resolve, linux-x64, linux-arm64, macos-arm64, windows-x64, linux-static, macos-static, windows-static]
     if: always() && needs.resolve.outputs.resume == 'false'
     runs-on: ubuntu-24.04
     steps:
