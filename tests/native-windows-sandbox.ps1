@@ -21,9 +21,18 @@ if ($Operation -eq 'restore') {
         $taskAcl.SetSecurityDescriptorSddlForm($taskEntry.sddl, [Security.AccessControl.AccessControlSections]::Access)
         Set-Acl -LiteralPath $taskEntry.path -AclObject $taskAcl
     }
+    $taskMismatches = @()
     foreach ($taskEntry in $taskEntries) {
         $taskRestored = (Get-Acl -LiteralPath $taskEntry.path).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
-        if ($taskRestored -cne $taskEntry.sddl) { throw '原始 ACL 回读不一致，保留恢复记录。' }
+        if ($taskRestored -cne $taskEntry.sddl) {
+            $taskMismatches += @{path=$taskEntry.path; expected=$taskEntry.sddl; actual=$taskRestored}
+        }
+    }
+    if ($taskMismatches.Count -gt 0) {
+        # 保留每个真实差异，区分继承标记变化和权限残留，不能用首项失败掩盖后代状态。
+        ConvertTo-Json -InputObject $taskMismatches -Depth 5 |
+            Set-Content -LiteralPath ($Specification + '.restore.json') -Encoding utf8
+        throw '原始 ACL 回读不一致，保留恢复记录与逐项差异。'
     }
     Remove-Item -LiteralPath $taskLedger
     return
