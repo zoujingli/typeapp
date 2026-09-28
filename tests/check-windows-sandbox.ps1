@@ -28,14 +28,19 @@ $taskNode = (Get-Command node.exe -ErrorAction Stop).Source
 $taskBlocked = @((Join-Path $taskRoot 'app/main.php'), $taskCompiler, $taskNode)
 $taskSid = 'S-1-5-21-' + ((1..3 | ForEach-Object { Get-Random -Minimum 100000000 -Maximum 2000000000 }) -join '-') + '-12345'
 $taskSpec = Join-Path $taskWork 'specification.json'
-@{sid=$taskSid; changes=@(
+$taskChanges = @(
     @{path=$taskRoot; access='deny-read'},
     @{path=(Split-Path $taskCompiler -Parent); access='deny-read'},
-    @{path=(Split-Path $taskNode -Parent); access='deny-read'},
+    @{path=(Split-Path $taskNode -Parent); access='deny-read'}
+)
+# 与完整部署隔离相同：文件的显式允许不能覆盖继承的拒绝。
+$taskChanges += @($taskBlocked | ForEach-Object { @{path=$_; access='deny-read'} })
+$taskChanges += @(
     @{path=$taskProgram; access='read'},
     @{path=$taskRunner; access='read'},
     @{path=$taskData; access='modify'}
-)} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $taskSpec -Encoding utf8
+)
+@{sid=$taskSid; changes=$taskChanges} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $taskSpec -Encoding utf8
 $taskPowershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 # 通过普通子进程继承环境，与 PHP proc_open 一致；pwsh 的原生命令调用会改写旧版 PSModulePath。
 function Invoke-TaskSystemPowerShell([string[]]$TaskArguments) {

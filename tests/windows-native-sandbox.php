@@ -60,6 +60,10 @@ final class WindowsNativeSandbox
         foreach (array_unique($directories) as $directory) {
             $changes[] = ['path' => $directory, 'access' => 'deny-read'];
         }
+        // 预装工具可能有显式允许 ACE，优先于目录继承的拒绝；关键原文件也须显式拒绝。
+        foreach (array_unique($blocked) as $file) {
+            $changes[] = ['path' => $file, 'access' => 'deny-read'];
+        }
         $changes[] = ['path' => $package, 'access' => 'read'];
         $changes[] = ['path' => $runner, 'access' => 'read'];
         $changes[] = ['path' => $runtime, 'access' => 'modify'];
