@@ -41,7 +41,23 @@ PHP、PHPX、Swoole 和非系统依赖采用已登记的静态归档。MySQL、P
 
 ## 发布边界
 
-Windows 仍在验证静态 PHP 核心及第三方依赖，尚未形成 Windows 完整应用候选。最终发布必须以最终同一源码重新完成四平台验收，不能用本记录跳过剩余门禁。RC7 的历史目录包和此前本机结果保持原身份。
+Windows 的静态 PHP 核心及第三方依赖探针已经分别通过，完整扩展与 PHPX 尚在验证，尚未形成 Windows 完整应用候选。最终发布必须以最终同一源码重新完成四平台验收，不能用本记录跳过剩余门禁。RC7 的历史目录包和此前本机结果保持原身份。
+
+## Windows x64，静态运行库阶段
+
+[运行 36387006296](https://github.com/zoujingli/typeapp/actions/runs/36387006296) 已完成第三方依赖的真实链接、PE 导入审计和独立运行。该运行源码为 `64203e2`，固定 vcpkg 提交为 `07f4812200df3d3c931c0c8a6081d3b21fe2bf9f`，使用 `x64-typeapp-static` 和静态 CRT；17 个包生成的 22 份归档逐项回读摘要一致。后续新增的 libiconv 不在这份历史结果中。
+
+探针 SHA-256 为 `30c26671f40553164ba99d8e5254df45468ce9544aace48a56dfb64712d0d3f9`，实际调用了加密、压缩、数据库、XML 和数值计算依赖的公开接口。导入项只有 `crypt32`、`bcrypt`、`ws2_32`、`advapi32`、`iphlpapi`、`secur32`、`kernel32`、`user32` 系统 DLL。仅保留系统 PATH 的独立程序目录可以正常运行；这不代表 PHP、PHPX、Swoole 或应用已经验收。
+
+[运行 36387786915](https://github.com/zoujingli/typeapp/actions/runs/36387786915) 在源码 `eae67954df4eedaa4fbde9b97b48d7e5be9f0357` 上完成了 PHP 8.5.10 ZTS 核心静态归档及 embed 程序链接。该运行**失败**：PE 审计未识别 Windows 自带的 `api-ms-win-core-path-l1-1-0.dll`，因此没有执行后续独立启动，不能计为运行通过。线程缓存重复符号和公共随机数种子函数缺失已不再出现；系统 API 契约名称已加入后续探针的精确清单，仍拒绝非系统 DLL。
+
+上述日志、原始附件及依赖归档已保全于 `.cache/retained-evidence/static-ci-20260928/windows-stages/`。`retention.json` 记录原相对路径、用途和回读摘要。完整扩展、PHPX、全量应用 AOT 与三库单程序部署须继续逐项验证，不能以归档构建成功替代。
+
+[运行 36389336409](https://github.com/zoujingli/typeapp/actions/runs/36389336409) 在源码 `1f78f10e932cb40aa9584ffdfd9af12b742a371a` 上通过了 PHP 核心完整探针：生成静态核心、链接 embed、检查 PE 导入、在只含程序和测试配置的目录中使用系统 PATH 启动，确认 PHP 核心地址属于主程序本身。程序为 7,825,408 字节，SHA-256 为 `638fb4cf7349d1a8d1f0c3dc1857a02b03e8fd9bbb6624c05ed14352b277c1ca`。原始程序、报告和日志回读一致，保全于 `.cache/retained-evidence/static-ci-20260928/windows-core-36389336409/`。
+
+该成功修复了两项不同问题：系统 API-set 识别遗漏，以及静态 CRT 启动时仍查找 `vcruntime140.dll`。固定源码适配仅在动态 CRT 的 `_DLL` 条件成立时保留外部 CRT 版本检查；静态目标仍通过真实 PE 审计拒绝外置非系统库。此核心只包含 PHP 默认扩展，不包含 Swoole、三库驱动或 PHPX，不能作为 Windows 应用交付。
+
+[运行 36388669418](https://github.com/zoujingli/typeapp/actions/runs/36388669418) 的依赖任务在源码 `e6050d211836c4ea2d51be012886c2d4ff31b7b6` 上加入了 libiconv，24 份归档的实际链接及独立启动通过，探针 SHA-256 为 `8478ec03cd482bd457c5081b3c4f508c56ddb74511b65fd67f8f55dca5dc1c9f`。该运行的完整扩展任务因 MySQL 配置开关失败，整次运行仍为失败；后续任务修正了 Windows PHP 的 `--with-mysqlnd`，并用 `--with-openssl=yes` 明确请求静态扩展。
 
 ## macOS ARM64，最低系统 15
 
