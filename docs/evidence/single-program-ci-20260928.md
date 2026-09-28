@@ -63,6 +63,8 @@ Windows 的静态 PHP 核心及第三方依赖探针已经分别通过，完整�
 
 [36391395572](https://github.com/zoujingli/typeapp/actions/runs/36391395572) 在源码 `cc0c24dede711adc9a1790ac283363bf962b208c` 上完成全部扩展的对象编译和静态归档，最终 embed 链接只剩 `swoole_module_entry` 未解析。Windows ABI 最小复现显示，C++ 声明会生成带修饰的全局符号，PHP 的 C 模块清单引用未修饰名称；后续修复为模块入口声明 C 链接。该运行未完成链接、独立启动或 PHPX 验证，不能记为完整运行库通过。
 
+[运行 36392962515](https://github.com/zoujingli/typeapp/actions/runs/36392962515) 在 `70ccb474d936ff4ec57f03a0911187c5afb5d1d9` 上完成 PHP、Swoole 及完整扩展的静态链接。PE 导入仅有 13 个系统项；审计因名单漏列 `synchronization.lib` 对应的 `api-ms-win-core-synch-l1-2-0.dll` 而停止。独立启动和 PHPX 阶段未执行，后续只补入该准确系统名称。原始导入表、程序和日志保留于本轮运行附件，不把链接成功记为应用验收。
+
 ## macOS ARM64，最低系统 15
 
 [运行 36383075960](https://github.com/zoujingli/typeapp/actions/runs/36383075960) 已成功，源码提交为 `2fd944fc55d40aee108432b03ec708ad9e07c9d0`。候选与原始证据均已下载回读；三库报告及日志摘要绑定同一个文件。

@@ -216,8 +216,9 @@ $taskImports = & dumpbin.exe /nologo /dependents $taskProgram
 if ($LASTEXITCODE -ne 0) { throw 'PE 导入审计失败。' }
 $taskImports | Set-Content -LiteralPath (Join-Path $taskEvidence 'imports.txt') -Encoding utf8
 $taskDlls = @([regex]::Matches(($taskImports -join "`n"), '(?im)^\s+([A-Za-z0-9_.-]+\.dll)\s*$') | ForEach-Object { $_.Groups[1].Value.ToLowerInvariant() })
-# Pathcch.lib 实际导入 Windows 的 API-set 路径契约；只接受已经核实的系统名称。
-$taskAllowed = @('kernel32.dll', 'advapi32.dll', 'ws2_32.dll', 'user32.dll', 'shell32.dll', 'ole32.dll', 'oleaut32.dll', 'uuid.dll', 'shlwapi.dll', 'dnsapi.dll', 'iphlpapi.dll', 'bcrypt.dll', 'normaliz.dll', 'crypt32.dll', 'psapi.dll', 'secur32.dll', 'api-ms-win-core-path-l1-1-0.dll')
+# Pathcch.lib 与 synchronization.lib 分别导入 Windows 的路径和同步 API-set 契约。
+# 完整 Swoole 的 WaitOnAddress/WakeByAddress 使用后者；它不是随应用附带的 DLL。
+$taskAllowed = @('kernel32.dll', 'advapi32.dll', 'ws2_32.dll', 'user32.dll', 'shell32.dll', 'ole32.dll', 'oleaut32.dll', 'uuid.dll', 'shlwapi.dll', 'dnsapi.dll', 'iphlpapi.dll', 'bcrypt.dll', 'normaliz.dll', 'crypt32.dll', 'psapi.dll', 'secur32.dll', 'api-ms-win-core-path-l1-1-0.dll', 'api-ms-win-core-synch-l1-2-0.dll')
 if (!$taskDlls.Count -or @($taskDlls | Where-Object { $_ -notin $taskAllowed }).Count) { throw '静态核心仍导入非系统 DLL，详见 imports.txt。' }
 $taskDeploy = Join-Path $taskWork 'program only'
 New-Item -ItemType Directory -Path $taskDeploy | Out-Null
