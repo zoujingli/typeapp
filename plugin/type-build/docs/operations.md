@@ -2,7 +2,7 @@
 
 本手册沿用现有原生发布包、外部配置、迁移器、服务管理与`ReleaseCompatibility`。维护端可以安装数据库客户端或构建工具，应用运行端仍不需要PHP CLI、Composer、业务源码或编译器。以下步骤不授权修改现有生产数据，也不会由框架自动执行。
 
-Swoole 能力已由框架集成，匹配的内置模块及实际原生依赖在构建时校验并收集，部署者无需另建 PHP 开发环境。当前交付仍为目录包，须保留程序、运行库及清单的完整布局；“一个主程序文件加外置配置、启动不释放运行库”的完整静态目标尚未完成。外部数据库、Redis、证书与持久数据按业务需要管理，见[环境与依赖](https://iots.top/#/guide/environment)。
+单程序构建将 Swoole 及其他非系统原生运行库静态链接进主程序，启动不释放运行库。部署使用目标平台的程序和外置配置，无需另行安装 PHP、Swoole 或构建工具；页面只在显式安装时生成。外部数据库、Redis、证书与持久数据按业务需要管理，已发布版本和实际平台范围见[环境与依赖](https://iots.top/#/guide/environment)。历史目录包仍须保留原完整布局。
 
 当前主仓构建基线为 PHP `8.5.10 ZTS`、TypePHP `0.9.3`、PHPX `2.9.2`；本手册不扩大平台支持范围。升级后的实际验收范围见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)，Linux、Windows 及其他架构必须使用各自匹配的 SDK 和原生产物重新验证，不能沿用旧版验收结论。
 
@@ -12,29 +12,31 @@ Swoole 能力已由框架集成，匹配的内置模块及实际原生依赖在�
 
 发布程序放到新的版本目录，数据、日志、上传资源和秘密配置放在独立运行根。不要覆盖正在使用的版本，不把`.env`或数据库加入发布归档。先核对对应平台真实验收范围、原生库/扩展要求、服务账号权限与依赖材料缺失项。[发布布局](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-packages.md)、[服务管理](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-services.md)、[依赖材料](https://github.com/zoujingli/typeapp/blob/main/docs/development/dependency-notices.md)
 
-运行端显式固定`TYPE_APP_RELEASE_SHA256`，使用发布目录的`run`或Windows的`run.cmd`：
+部署前将程序 SHA-256 与受信发布记录比较，再直接执行主程序。以下用 `app` 表示已下载程序，Windows 对应 `app.exe`；程序可以保留原附件名：
 
 ```sh
-./run help
-./run verify-runtime
+./app help
+./app verify-runtime
 ```
 
 完整审计成功后再访问数据库。`check`是配置/装配检查，不等于数据库可用；管理器active也不等于业务就绪。
 
+维护历史目录包时，沿用其 `run` 或 `run.cmd`，并以 `TYPE_APP_RELEASE_SHA256` 固定该包的受信清单摘要。该启动器与单程序的校验对象不同，不能混用摘要或只取出旧包的 `bin/app`。
+
 ## 2. 首次部署
 
-物联中心的页面已经编入程序。空库初始化使用 `run app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>`，初始口令从 `APP_ADMIN_PASSWORD`、`APP_CUSTOMER_PASSWORD` 受控环境读取；它会先暂存页面，再初始化数据库，最后写入应用根的 `public/`。普通启动不释放资源。数据库成功但页面失败时运行 `run web:install --force` 修复，不能重新初始化数据库。下面的 `migrate run` 仅适用于开放该命令的通用应用。
+物联中心的页面已经编入程序。空库初始化使用 `./app app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>`，初始口令从 `APP_ADMIN_PASSWORD`、`APP_CUSTOMER_PASSWORD` 受控环境读取；它会先暂存页面，再初始化数据库，最后写入应用根的 `public/`。普通启动不释放资源。数据库成功但页面失败时运行 `./app web:install --force` 修复，不能重新初始化数据库。下面的 `migrate run` 仅适用于开放该命令的通用应用。
 
 1. 为所选驱动准备独立数据库及受限业务账号。SQLite准备私有、可写的数据父目录；其他驱动由数据库管理员创建库和账号。
 2. 在外部运行根配置`.env`或受控进程环境，设置`APP_BASE_PATH`、数据库连接、监听/Host白名单和令牌。生产保持`APP_ENV=production`、`APP_DEBUG=false`；密钥不写入构建或发布物。
-3. 执行`run migrate status`和`run migrate history`了解现状；首次SQLite文件尚未初始化时，status失败是明确状态，不应通过serve暗建数据库。
-4. 由一个明确的迁移操作者执行`run migrate run`。迁移器的锁和checksum是必要约束，但不代替部署协调。
+3. 执行`./app migrate status`和`./app migrate history`了解现状；首次SQLite文件尚未初始化时，status失败是明确状态，不应通过serve暗建数据库。
+4. 由一个明确的迁移操作者执行`./app migrate run`。迁移器的锁和checksum是必要约束，但不代替部署协调。
 5. 再次检查迁移状态/历史，启动指定作用域的服务，验证`/healthz`、`/readyz`及鉴权和实际业务读写。检查退出码、日志及数据目录权限。
 6. 记录验收结果后才接入流量；不要只凭进程存在或一次200响应宣布部署完成。
 
 ## 3. 升级前的一致性准备
 
-物联中心在停止旧HTTP服务、准备好新版本目录后，使用新程序执行 `run web:install --dry-run --force` 预览，再执行 `run web:install --force` 更新页面。应用根通过 `APP_BASE_PATH` 固定，页面、上传和安装状态随持久运行根保留。更新只处理新旧托管清单路径，保留上传与其他非托管文件；安装锁、摘要和恢复记录位于 `var/web-install/`，不要在未完成安装时手动删除这些恢复材料。
+物联中心在停止旧HTTP服务、准备好新版本目录后，使用新程序执行 `./app web:install --dry-run --force` 预览，再执行 `./app web:install --force` 更新页面。应用根通过 `APP_BASE_PATH` 固定，页面、上传和安装状态随持久运行根保留。更新只处理新旧托管清单路径，保留上传与其他非托管文件；安装锁、摘要和恢复记录位于 `var/web-install/`，不要在未完成安装时手动删除这些恢复材料。
 
 先列出所有写入者：HTTP实例、队列worker、调度器、批处理、数据库事件及外部集成。确认发布范围、迁移负责人、维护窗口、回滚条件和可接受的数据恢复点/恢复时间。
 
@@ -100,7 +102,7 @@ pg_restore --dbname=application_db --exit-on-error --single-transaction /secure/
 
 SQLite恢复到新的数据库路径，再检查完整性。配置和文件也恢复到新的数据根，不覆盖原根。随后使用受信原生产物连接恢复目标，核对迁移历史、重复迁移、鉴权/读写和实际业务状态，再正常停止。
 
-物联中心恢复到新应用根后，先用同一受信程序执行 `run web:install` 重建页面，再启动 HTTP 服务；已有不同版本页面时先预览，再显式 `--force` 更新。数据库已经恢复，不能再次执行 `app:install`。内嵌页面可重建，上传和其他业务文件仍须单独备份与恢复。
+物联中心恢复到新应用根后，先用同一受信程序执行 `./app web:install` 重建页面，再启动 HTTP 服务；已有不同版本页面时先预览，再显式 `--force` 更新。数据库已经恢复，不能再次执行 `app:install`。内嵌页面可重建，上传和其他业务文件仍须单独备份与恢复。
 
 必须明确恢复点之后的写入如何处理：逻辑备份不会凭空包含后续数据。保留原目标以便核对和补偿；是否切换、丢弃或合并后续写入属于明确的业务决策，不由工具自动决定。本演练是快照恢复，不声称实现PITR。
 
@@ -120,6 +122,10 @@ MySQL DDL可能部分提交。只有核对实际状态并完成所需补偿后�
 新版本应放在新目录，预先校验运行库、材料状态和配置。兼容迁移后按消费者/生产者依赖顺序切流；不可兼容变化使用明确维护窗口。切换服务定义前确认旧进程已排空，切换后验证健康、授权、读写与错误路径。保持旧版本和恢复点直到回滚窗口正式关闭。
 
 ## 7. 当前可重复验收与范围
+
+单程序入口为 `tests/native-single-program.php <完整静态应用>`，按 `TYPE_PACKAGE_DRIVER` 选择数据库，分别校验文件身份、运行库、无源码隔离、前端安装、真实 API 与正常停止；受控数据库和平台隔离工具由原生 CI 准备。具体命令见[原生验收](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-command.md)。
+
+以下保留历史目录包的备份恢复入口；它不能代替单程序验收：
 
 ```sh
 php tests/native-package-clean.php <Linux发布目录> <受信清单SHA256> sqlite --recover

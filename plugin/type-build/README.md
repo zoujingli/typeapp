@@ -2,13 +2,13 @@
 
 TypeApp 的开发与构建组件：生成配置、路由和模型，审计完整生产源码，调用 TypePHP 全量编译，并收集原生依赖形成可校验的运行包。构建工具留在开发环境，部署端无需 Composer、TypePHP 或编译 SDK。
 
-**已内置四平台 Swoole 模块。** 安装包含 `resources/swoole/` 的组件版本后，匹配构建默认校验并复用，无需另行下载、编译 Swoole。应用无需声明整目录资源，只收集当前平台选中的模块与实际依赖；ABI、许可证及覆盖方式见[资源说明](resources/swoole/README.md)。
+**已内置四平台 Swoole 共享模块。** 安装包含 `resources/swoole/` 的组件版本后，共享库开发构建默认校验并复用匹配模块，无需另行下载。静态单程序使用目标 SDK 中的静态归档；两种输入不能互换。ABI、许可证及覆盖方式见[资源说明](resources/swoole/README.md)。
 
-`package` 只输出一个可执行文件，要求非系统运行库静态链接、资源与许可材料内嵌，启动不释放运行库。构建时通过 `TYPE_STATIC_RUNTIME` 指定已校验的目标 SDK；缺少静态能力不能通过交付门禁。macOS ARM64、Linux ARM64 已有应用三库验收结果，其余目标及最低系统兼容仍分别验证。使用入口与公开 RC7 的历史目录包边界见[构建指南](https://iots.top/#/guide/deployment)。
+`package` 只输出一个可执行文件，要求非系统运行库静态链接、资源与许可材料内嵌，启动不释放运行库。构建时通过 `TYPE_STATIC_RUNTIME` 指定已校验的目标 SDK；缺少静态能力不能通过交付门禁。使用入口、已发布版本和目标系统要求见[构建指南](https://iots.top/#/guide/deployment)。
 
 ## 阅读与操作路径
 
-首次使用先准备应用声明和匹配 SDK，再依次运行 `doctor`、`prepare`、原生构建与 `--inspect`。下面的[最小构建入口](#最小构建入口)给出完整源码与配置；[构建教程](https://iots.top/#/guide/plugins/type-build)补充各步骤的预期结果、内置模块选择、目录打包与校验命令。
+首次使用先准备应用声明和匹配 SDK，再依次运行 `doctor`、`prepare`、原生构建与 `--inspect`。下面的[最小构建入口](#最小构建入口)给出完整源码与配置；[构建教程](https://iots.top/#/guide/plugins/type-build)补充各步骤的预期结果、静态 SDK 选择、单程序输出与校验命令。
 
 ```mermaid
 flowchart LR
@@ -24,7 +24,7 @@ flowchart LR
 
 ## 实现与验收范围
 
-Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过默认原生 CI，覆盖完整应用 AOT、三库场景、组件与模板消费。目录包已通过实际部署用例，各平台的主应用、模板及隔离范围分别记录；完整静态单程序仍未完成，见[平台与验收](https://iots.top/#/guide/platforms)。
+构建与发布按 Linux x64 / ARM64、macOS ARM64、Windows x64 分别验收，覆盖完整应用 AOT、三库场景、组件与模板消费。主应用、独立模板、单程序和历史目录包分别记录身份；实际已发布版本、系统基线及隔离范围见[平台与验收](https://iots.top/#/guide/platforms)。
 
 构建声明可通过 `threads` 登记已编译业务入口。构建器核对受控 Swoole/PHPX ABI 2、源码摘要与 fiber 通知配置，并在正常模块启动阶段发布应用符号；线程内协程作用域、初始化失败和清理边界见[已编译业务线程](https://github.com/zoujingli/typeapp/blob/main/docs/development/compiled-business-threads.md)，实际平台结果按该页记录。
 
