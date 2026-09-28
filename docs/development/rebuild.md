@@ -8,7 +8,7 @@
 - `typeapp.tar`：该提交的完整主仓，包含应用、组件、前端源码、锁文件、源码适配和构建脚本。
 - `vendor/`：实际安装的第三方生产组件、TypePHP 与 PHPX。第一方组件源码保留在主仓的 `plugin/`。
 - `sdk/`：本次链接的静态归档、公开头文件、许可材料与输入清单。SDK 只供构建，不复制到部署环境。
-- `native-sources/`：PHP 原始源码（含 LGPL 的 libmbfl）、GMP、MPFR，以及 Windows 使用的 GNU libiconv 对应源码。
+- `native-sources/`：PHP 原始源码（含 LGPL 的 libmbfl）、GMP、MPFR，以及 Windows 使用的 GNU libiconv、Zstd 对应源码。Zstd 保留 BSD/GPL 双许可证原文，同时提供已链接版本的源码。
 - `recipes/`：macOS 实际安装的 Homebrew 配方和收据，或 Windows 固定 vcpkg 源码与 SPDX；Linux 源码目录包含发行版 `.dsc`、上游源码和发行版补丁。
 
 先按 Release 的 `SHA256SUMS` 校验整个附件，再按 `manifest.json` 核对文件。旧版本材料不能与新程序混用；重新构建或修改后的程序有自己的摘要，不能继续引用原候选的验收结论。生成器先回读全部成员，候选门禁再核对来源提交、SDK 和附件摘要；离线回归入口是 `python3 tests/rebuild-materials.py`。

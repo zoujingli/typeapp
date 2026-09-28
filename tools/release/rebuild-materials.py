@@ -106,6 +106,16 @@ def verify(path, expected):
     return manifest
 
 
+def vcpkg_source_url(location):
+    """恢复 vcpkg GitHub 源码引用的归档 URL；下载后仍须核对 SPDX 原始摘要。"""
+    github = re.fullmatch(r"git\+https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)@([A-Za-z0-9_.-]+)", location)
+    if github:
+        return "https://github.com/" + github[1] + "/" + github[2] + "/archive/" + github[3] + ".tar.gz"
+    if location.startswith(("http://", "https://")):
+        return location.replace("http://", "https://", 1)
+    raise ValueError("不支持的 vcpkg 源码地址，需审核对应采集规则")
+
+
 def library_sources(bundle, project, sdk, metadata, temporary, dependencies):
     """收集 LGPL 对应源码及实际构建配方；其余库保留可重链接 SDK 和原许可。"""
     sources = {}
@@ -159,7 +169,8 @@ def library_sources(bundle, project, sdk, metadata, temporary, dependencies):
         archive = temporary / "vcpkg.tar.gz"
         download("https://codeload.github.com/microsoft/vcpkg/tar.gz/" + reference, archive)
         bundle.add(archive, "rebuild/recipes/vcpkg.tar.gz")
-        for name, library in (("gmp", "gmp.lib"), ("mpfr", "mpfr.lib"), ("libiconv", "iconv.lib")):
+        # Zstd 保留双许可证原文，并一并提供对应源码，不通过忽略 GPL 字样绕过材料检查。
+        for name, library in (("gmp", "gmp.lib"), ("mpfr", "mpfr.lib"), ("libiconv", "iconv.lib"), ("zstd", "zstd.lib")):
             spdx_path = dependencies / "share" / name / "vcpkg.spdx.json"
             spdx = json.loads(spdx_path.read_text(encoding="utf-8-sig"))
             package = spdx["packages"][0]
@@ -167,12 +178,12 @@ def library_sources(bundle, project, sdk, metadata, temporary, dependencies):
                 raise ValueError("vcpkg 源码版本不一致：" + name)
             if digest(dependencies / "lib" / library) != next(item["sha256"] for item in metadata["archives"] if item["file"] == "lib/" + library):
                 raise ValueError("vcpkg 来源归档与本轮 SDK 不一致：" + name)
-            resources = [item for item in spdx["packages"] if item.get("downloadLocation", "").startswith(("http://", "https://")) and item.get("checksums")]
+            resources = [item for item in spdx["packages"] if item.get("checksums")]
             if not resources:
                 raise ValueError("缺少 vcpkg 原始源码下载身份：" + name)
             for number, item in enumerate(resources):
                 checksum = next(value for value in item["checksums"] if value["algorithm"] in ("SHA512", "SHA256"))
-                url = item["downloadLocation"].replace("http://", "https://", 1)
+                url = vcpkg_source_url(item.get("downloadLocation", ""))
                 source = temporary / (name + "-" + str(number) + "-" + url.rsplit("/", 1)[-1])
                 download(url, source, checksum["checksumValue"], checksum["algorithm"].lower())
                 bundle.add(source, "rebuild/native-sources/" + source.name)
@@ -195,7 +206,7 @@ def create(project, sdk, output, version, platform, dependencies=None):
         raise ValueError("重建材料平台或 PHP ABI 与 SDK 不一致")
     for name, notice in metadata["notices"].items():
         license_text = json.dumps(notice["license"])
-        if "GPL" in license_text and notice["component"] not in ("gmp", "mpfr", "libiconv", "libgmp-dev", "libmpfr-dev"):
+        if "GPL" in license_text and notice["component"] not in ("gmp", "mpfr", "libiconv", "zstd", "libgmp-dev", "libmpfr-dev"):
             raise ValueError("需要先增加对应原生库的源码采集规则：" + name)
     identity = {"protocol": 1, "source": source, "version": version, "platform": platform,
                 "sdk-manifest-sha256": digest(metadata_path)}

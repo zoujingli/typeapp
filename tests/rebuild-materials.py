@@ -16,6 +16,17 @@ spec.loader.exec_module(materials)
 class RebuildMaterialsTest(unittest.TestCase):
     """以实际归档读取验证来源、篡改与路径边界，不依赖远端服务。"""
 
+    def test_vcpkg_github_source_reference(self):
+        """Zstd 的真实 SPDX 使用 git+https 引用；恢复带摘要的源码归档，不执行 Git 地址。"""
+        self.assertEqual(materials.vcpkg_source_url("git+https://github.com/facebook/zstd@v1.5.7"),
+                         "https://github.com/facebook/zstd/archive/v1.5.7.tar.gz")
+        self.assertEqual(materials.vcpkg_source_url("http://www.mpfr.org/mpfr-4.2.2/mpfr-4.2.2.tar.xz"),
+                         "https://www.mpfr.org/mpfr-4.2.2/mpfr-4.2.2.tar.xz")
+        for location in ("git+https://github.com/facebook/zstd", "git+https://github.com/facebook/zstd@../../secret",
+                         "git+https://unreviewed.example/repository@v1", "file:///local/source", "NONE"):
+            with self.assertRaises(ValueError):
+                materials.vcpkg_source_url(location)
+
     def test_roundtrip_and_corruption(self):
         """保留真实字节；错误源码身份和篡改记录均不得通过。"""
         with tempfile.TemporaryDirectory(prefix="rebuild-test-", dir=Path(__file__).resolve().parents[1] / "build") as task:
