@@ -22,6 +22,8 @@ PHP、PHPX、Swoole 和非系统依赖采用已登记的静态归档。MySQL、P
 
 原始附件为 `release-candidate-linux-x64-1` 与 `static-linux-x64-evidence`。本地保全于 `.cache/retained-evidence/static-ci-20260928/linux-36382136464/`，包含程序、SDK 清单、源码适配、应用构建身份、三库报告及构建日志。重建文件不能替换这份候选的验收身份。
 
+[运行 36403879176](https://github.com/zoujingli/typeapp/actions/runs/36403879176) 的 x64 后续候选在 `06a06d6` 上通过完整静态应用、同一文件三库隔离，以及发行版对应源码与重建材料的采集和回读。回执中的程序摘要为 `e228f7e2c20fc73d81f8661dd7f2393e805a59121facd6da061161e6a4407728`，重建材料摘要为 `a3dbdf4032fdb7ae0978e8b52e944e06ddaecc886b8e69d2c6198ec6aa645ce7`。任务仍失败：systemd 测试已完成启动、业务、崩溃恢复与正常停止，最后的程序摘要检查因清理循环覆盖路径变量而抛出 `TypeError`。没有生成完整服务通过回执，也没有上传最终候选，不能计为服务验收成功；原程序与材料未被旧失败上传规则保留，不能宣称本地回读过它们。原始证据 ZIP 已回读，摘要为 `26b136c5fc4ed81b81521aa294c7a2416d602934c8880025f7b1e7128c2e8d7a`。后续隔离清理变量，并保存失败时的原程序，重新执行服务验收。
+
 ## Linux ARM64
 
 同一运行的 ARM64 原生任务也已成功，源码提交同为 `5e59b712d36c6c3d75085e151a56198f9ea24925`。附件 `release-candidate-linux-arm64-1` 与 `static-linux-arm64-evidence` 已保全至同一缓存目录；回读程序及三库日志摘要均一致。
@@ -78,6 +80,8 @@ Windows 的完整 PHP/Swoole、PHPX 静态探针与 SDK 导出已经通过，完
 同次运行的完整应用 AOT 和单程序封存成功，SQLite 部署在执行应用前失败：系统 PowerShell 5.1 将无 BOM 的 UTF-8 ACL 脚本按旧编码读取，触发语法错误。原独立探针使用 pwsh，未覆盖这个解释器差异。后续为脚本保留 UTF-8 BOM、显式读取 UTF-8 JSON，并让独立探针调用与应用测试相同的系统解释器，覆盖中文和空格目录；三库部署必须重新执行。SDK ZIP 摘要为 `6d8e1d3a708c4cdb4ba97c7057977104655179c7ea5f67a1df5f71d35f141f85`，清单摘要为 `5c16c9f372b246a9d48eebb8e3e5cfcafe02a9c231b78f80235c63d490a50070`；28 份归档及 3060 个头文件已逐项回读一致。
 
 后续独立探针已通过受限令牌的真实读写检查，但暴露了恢复路径的问题：PowerShell 5.1 的 JSON 数组不能再套管道数组；全部原始 ACL 须在任何父目录变更之前保存。[运行 36404795327](https://github.com/zoujingli/typeapp/actions/runs/36404795327) 的逐项差异进一步确认，所有 ACE 权限均已恢复，剩余差别仅为系统设置了 `SE_DACL_AUTO_INHERITED` 状态位。后续校验只排除此处理标记，继续严格比较权限、顺序、继承范围及其他控制标记；只有恢复成功才写通过回执。该失败探针不是应用运行或三库验收结果。
+
+[运行 36405276056](https://github.com/zoujingli/typeapp/actions/runs/36405276056) 在 `7166501` 上通过上述恢复回归。系统 PowerShell 5.1、中文与空格路径、源码/编译器拒绝读取、程序只读、数据可写、控制端不受影响及原 ACL 恢复均通过；成功后恢复账本已删除。原始报告和失败差异保全于 `.cache/retained-evidence/static-ci-20260928/windows-sandbox/`，成功证据 ZIP 的 SHA-256 为 `5fa47929569eb12889679a4a8111274d221fefa581ecd102a34ecb0e06de2a28`。这项结果仅证明隔离设施，应用仍须完成同一 EXE 的三库验收。
 
 ## macOS ARM64，最低系统 15
 

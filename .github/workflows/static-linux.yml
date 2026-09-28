@@ -174,3 +174,11 @@ jobs:
             build/single program-*/verification.json
             build/service-linux-ci-*/verification.json
             build/service-linux-ci-*/preparation.json
+      - name: 保存失败时的原始程序
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: static-${{ matrix.platform }}-failed-program
+          retention-days: 14
+          path: build/app/type-app
+          if-no-files-found: warn

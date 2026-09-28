@@ -120,11 +120,11 @@ try {
         $socketAfter = systemdRemote(['stat', '-c', '%i', $controlSocket], $prefix);
         expect($socketAfter['code'] === 0 && $socketAfter['stdout'] === $socketBefore['stdout'], '解析器改动了原用户管理器socket');
     } finally {
-        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($analysisRuntime, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
-            if ($entry->isDir() && !$entry->isLink()) {
-                rmdir($entry->getPathname());
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($analysisRuntime, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $analysisEntry) {
+            if ($analysisEntry->isDir() && !$analysisEntry->isLink()) {
+                rmdir($analysisEntry->getPathname());
             } else {
-                unlink($entry->getPathname());
+                unlink($analysisEntry->getPathname());
             }
         }
         rmdir($analysisRuntime);
