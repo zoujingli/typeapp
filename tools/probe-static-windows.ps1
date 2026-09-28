@@ -183,7 +183,7 @@ if ($taskRuntime) {
 Push-Location $taskSource
 $taskOriginalCompilerOptions = $env:_CL_
 try {
-    if ($taskRuntime) { $env:_CL_ = ($taskOriginalCompilerOptions + ' /std:c++20 /D CURL_STATICLIB /D CARES_STATICLIB /D NGHTTP2_STATICLIB /D NGHTTP2_NO_SSIZE_T /D LIBXML_STATIC /D LIBICONV_STATIC').Trim() }
+    if ($taskRuntime) { $env:_CL_ = ($taskOriginalCompilerOptions + ' /std:c++20 /D CURL_STATICLIB /D CARES_STATICLIB /D NGHTTP2_STATICLIB /D LIBXML_STATIC /D LIBICONV_STATIC').Trim() }
     Write-StaticStage 'buildconf: start'
     & .\buildconf.bat 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'buildconf.log')
     if ($LASTEXITCODE -ne 0) { throw 'PHP buildconf 失败。' }
