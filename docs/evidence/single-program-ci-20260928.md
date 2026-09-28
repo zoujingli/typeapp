@@ -71,6 +71,8 @@ Windows 的完整 PHP/Swoole 静态运行库探针已经通过，PHPX 与 SDK �
 
 [运行 36396102521](https://github.com/zoujingli/typeapp/actions/runs/36396102521) 在 `498a405378bf6c494541e93604af923a1e17b9f7` 上通过完整静态运行库探针，包括先前漏编的 DOM、XML、SimpleXML。PHPX 的两个 mpdecimal 静态归档已生成，但 CMake 配置将 Windows 反斜杠路径重新解析为转义而失败；尚未构建 PHPX 或导出 SDK。后续只规范化 CMake 输入路径，保留含空格目录，不改变源码或依赖范围。
 
+[运行 36397197563](https://github.com/zoujingli/typeapp/actions/runs/36397197563) 在 `32884ce788279a30634e0e50d5d005b5867acb30` 上通过 PHPX CMake 配置，完整运行库再次通过；PHPX 编译因 `_wchmod` 声明缺失而失败。头文件预处理确认 libmpdec 的内部 `io.h` 遮蔽了 Windows CRT 同名头。后续构建只向 PHPX 和探针公开 `mpdecimal.h`，与上游 Windows SDK 的头文件边界一致；最终 SDK 已仅导出公开头。该失败发生在应用编译之前，不计为 Windows 单程序验收。
+
 ## macOS ARM64，最低系统 15
 
 [运行 36383075960](https://github.com/zoujingli/typeapp/actions/runs/36383075960) 已成功，源码提交为 `2fd944fc55d40aee108432b03ec708ad9e07c9d0`。候选与原始证据均已下载回读；三库报告及日志摘要绑定同一个文件。

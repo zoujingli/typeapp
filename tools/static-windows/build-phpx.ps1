@@ -53,7 +53,7 @@ $taskProgram = Join-Path $Directory 'phpx-probe.exe'
     /D PHP_WIN32=1 /D ZEND_WIN32=1 /D ZTS=1 /D ZEND_DEBUG=0 /D ZEND_ENABLE_STATIC_TSRMLS_CACHE=1 /D ENABLE_INTSAFE_SIGNED_FUNCTIONS `
     "/I$PhpSource" "/I$PhpSource/main" "/I$PhpSource/Zend" "/I$PhpSource/TSRM" "/I$PhpSource/ext" `
     "/I$PhpxSource/include" "/I$PhpxSource/thirdparty/wren-gc/include" "/I$DependenciesDirectory/include" `
-    "/I$taskDecimal/libmpdec" "/I$taskDecimal/libmpdec++" "/I$Directory" (Join-Path $PSScriptRoot 'phpx-probe.cpp') `
+    "/I$taskBuild/mpdecimal-include" "/I$taskDecimal/libmpdec++" "/I$Directory" (Join-Path $PSScriptRoot 'phpx-probe.cpp') `
     "/Fo$Directory/phpx-probe.obj" "/Fe$taskProgram" /link @taskLibraries `
     kernel32.lib user32.lib advapi32.lib shell32.lib ws2_32.lib ole32.lib oleaut32.lib dnsapi.lib psapi.lib bcrypt.lib `
     pathcch.lib iphlpapi.lib crypt32.lib normaliz.lib secur32.lib wldap32.lib winmm.lib synchronization.lib `

@@ -15,6 +15,13 @@ foreach(input PHPX_ROOT PHP_SOURCE DEPENDENCY_ROOT)
     endif()
 endforeach()
 
+# 仅公开 mpdecimal.h；源码目录中的 io.h 会遮蔽 Windows CRT 的 <io.h>。
+# 上游 Windows 构建同样从 SDK 读取该公开头，不把 libmpdec 内部目录加入搜索路径。
+set(MPDECIMAL_PUBLIC_INCLUDE "${CMAKE_BINARY_DIR}/mpdecimal-include")
+file(MAKE_DIRECTORY "${MPDECIMAL_PUBLIC_INCLUDE}")
+configure_file("${PHPX_ROOT}/thirdparty/mpdecimal/libmpdec/mpdecimal.h"
+    "${MPDECIMAL_PUBLIC_INCLUDE}/mpdecimal.h" COPYONLY)
+
 file(GLOB PHPX_CORE_SOURCES "${PHPX_ROOT}/src/core/*.cc")
 file(GLOB PHPX_STD_SOURCES "${PHPX_ROOT}/src/std/*.cc")
 file(GLOB PHPX_TYPEPHP_SOURCES "${PHPX_ROOT}/src/typephp/*.cc")
@@ -36,6 +43,6 @@ target_include_directories(phpx PRIVATE
     "${PHPX_ROOT}/include" "${PHPX_ROOT}/src/misc"
     "${PHP_SOURCE}" "${PHP_SOURCE}/main" "${PHP_SOURCE}/Zend"
     "${PHP_SOURCE}/TSRM" "${PHP_SOURCE}/ext" "${PHP_SOURCE}/ext/date/lib"
-    "${PHPX_ROOT}/thirdparty/mpdecimal/libmpdec"
+    "${MPDECIMAL_PUBLIC_INCLUDE}"
     "${PHPX_ROOT}/thirdparty/mpdecimal/libmpdec++"
     "${PHPX_ROOT}/thirdparty/wren-gc/include" "${DEPENDENCY_ROOT}/include")
