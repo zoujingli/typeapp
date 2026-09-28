@@ -11,7 +11,8 @@ if ($Operation -eq 'restore') {
     if (!(Test-Path -LiteralPath $taskLedger)) { return }
     # PowerShell 5.1 将 JSON 数组作为一个管道对象输出；额外 @() 会产生嵌套数组。
     $taskEntries = Get-Content -LiteralPath $taskLedger -Raw -Encoding utf8 | ConvertFrom-Json
-    [array]::Reverse($taskEntries)
+    # 先恢复祖先，再恢复后代的完整快照，避免后续继承传播覆盖已恢复的子目录。
+    $taskEntries = @($taskEntries | Sort-Object { $_.path.Length })
     foreach ($taskEntry in $taskEntries) {
         if ($taskEntry.path -isnot [string] -or $taskEntry.sddl -isnot [string]) {
             throw 'ACL 恢复记录必须为路径与 SDDL 字符串。'
@@ -37,8 +38,12 @@ foreach ($taskChange in $taskSpec.changes) {
     }
     $taskAcl = Get-Acl -LiteralPath $taskPath
     $taskEntries += @{path=$taskPath; sddl=$taskAcl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)}
-    # 先保存恢复信息，再写 ACL；异常或中断后的控制端仍可恢复。
-    ConvertTo-Json -InputObject $taskEntries -Depth 5 | Set-Content -LiteralPath $taskLedger -Encoding utf8
+}
+# 修改任意祖先前先保存全部原始 ACL，防止快照包含本轮已继承的限制 SID。
+ConvertTo-Json -InputObject $taskEntries -Depth 5 | Set-Content -LiteralPath $taskLedger -Encoding utf8
+foreach ($taskChange in $taskSpec.changes) {
+    $taskPath = [IO.Path]::GetFullPath($taskChange.path)
+    $taskAcl = Get-Acl -LiteralPath $taskPath
     $taskInheritance = if ((Get-Item -LiteralPath $taskPath).PSIsContainer) {
         [Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'
     } else { [Security.AccessControl.InheritanceFlags]::None }
