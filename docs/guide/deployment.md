@@ -19,14 +19,14 @@
 
 ## 当前构建状态
 
-主仓的 `type package` 现在只交付一个可执行文件，仍有外置运行库、资源或缺少许可材料时明确拒绝。macOS ARM64 已有完整应用静态构建和同一程序三库隔离运行结果；本机候选依赖的最低系统版本为 macOS 26。Linux x64、Linux ARM64、Windows x64 的静态 SDK 与同一产物验收尚未完成，不能据此声明四平台单程序已发布。
+主仓的 `type package` 现在只交付一个可执行文件，仍有外置运行库、资源或缺少许可材料时明确拒绝。macOS ARM64 和 Linux ARM64 已有完整应用静态构建、同一程序三库隔离运行结果；macOS 本机候选依赖的最低系统版本为 26。Linux x64、macOS 15 与 Windows x64 的静态应用验收仍待完成，四平台单程序尚未发布。
 
 | 已实现路径 | 验收与边界 |
 | --- | --- |
-| 静态 SDK、目标头文件和归档摘要校验 | macOS 源码制备入口已接入；共享模块不能作为静态输入 |
+| 静态 SDK、目标头文件和归档摘要校验 | Linux/macOS 源码制备入口已接入；共享模块不能作为静态输入 |
 | 全量 AOT、内置 PHP 配置、静态运行身份 | 普通入口和线程应用分别验收；不读部署机 PHP 配置 |
 | 页面和许可原文内嵌 | 页面显式安装；`licenses` 直接读取许可材料，不释放运行库 |
-| 单文件输出、搬迁、只读目录、无源码隔离 | macOS 三库已有行为结果；其他平台必须分别补齐 |
+| 单文件输出、搬迁、只读目录、无源码隔离 | macOS ARM64、Linux ARM64 三库已有行为结果；其余目标分别验收 |
 
 公开的 `v1.0.0-rc.7` 仍是历史目录归档，须完整解压运行；其旧附件和验收身份保持不变。新候选门禁只接受单程序和三库回执，任一平台未完成就阻止主仓 Release 公开。详细证据见[静态构建验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/static-runtime-feasibility.md)。
 
@@ -53,7 +53,14 @@ flowchart TB
 
 单程序构建通过 `TYPE_STATIC_RUNTIME` 选择目标 SDK 清单，并校验 PHP ABI、目标头文件、归档、源码适配与许可材料。构建组件内的四平台 [Swoole 共享模块](plugins/type-build.md#内置-swoole-与运行依赖)仅继续用于共享库开发及历史回归，不能放进程序冒充静态链接。构建宿主 PHP 与目标静态 PHP 分开校验。
 
-macOS ARM64 制备入口为 `tools/prepare-static-macos.sh <新的绝对工作目录> <PostgreSQL17.11静态SDK根目录>`。它使用固定 PHP、PHPX、Redis 和 Swoole 源码，保留三库与协程 hook。`TYPE_STATIC_MINIMUM_MACOS` 默认 `15.0`，所有依赖归档也必须支持该版本；本机已有归档要求 26.0，不能把输出标为 macOS 15 可用。SDK 仅供构建，不随程序部署。
+构建维护者可使用以下静态 SDK 制备入口；工作目录须为尚不存在的绝对路径，宿主 `PHP_HOME` 使用锁定的 PHP 8.5.10 ZTS。SDK 仅供构建，不随程序部署。
+
+| 目标 | 制备入口与依赖选择 |
+| --- | --- |
+| Linux x64 / ARM64，Ubuntu 24.04 | `tools/prepare-static-linux.sh <新工作目录>`；固定源码制备 PHP、PHPX、Redis、Swoole、libpq、curl 与 c-ares，其他依赖取发行版的准确静态归档，逐项记录实际版本和许可材料 |
+| macOS ARM64 | `tools/prepare-static-macos.sh <新工作目录> [PostgreSQL17.11静态SDK根目录]`；省略第二参数时从固定源码构建 libpq，提供时核对既有归档。其余非系统依赖使用已校验的 Homebrew 静态库 |
+
+两个入口保留三库与协程 hook，并拒绝摘要或 ABI 不符的输入。macOS 的 `TYPE_STATIC_MINIMUM_MACOS` 默认 `15.0`，所有依赖归档也必须支持该版本；本机已有归档要求 26.0，不能把输出标为 macOS 15 可用。制备成功后仍须完成真实 embed、全量 AOT 和同一程序的部署验收，具体入口见[原生验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-command.md)。
 
 独立应用根执行：
 

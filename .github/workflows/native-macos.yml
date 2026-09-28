@@ -18,10 +18,14 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 验收范围（tls 为 TLS 诊断，pressure 为十轮 PHP/AOT 背压诊断）
+        description: 验收范围（single-program 为静态单程序三库候选，tls/pressure 为诊断）
         type: choice
-        options: [full, tls, pressure]
+        options: [full, single-program, tls, pressure]
         default: full
+      candidate_version:
+        description: single-program 必填；只验收候选，不创建标签或发布
+        type: string
+        default: ''
       base_source:
         description: 用于性能比较的完整基准提交，留空时不运行性能组
         required: false
@@ -44,14 +48,25 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        suite: ${{ fromJSON(inputs.scope == 'tls' && '["tls"]' || inputs.scope == 'pressure' && '["pressure"]' || (inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable"]')) }}
+        suite: ${{ fromJSON(inputs.scope == 'single-program' && '["single-program"]' || inputs.scope == 'tls' && '["tls"]' || inputs.scope == 'pressure' && '["pressure"]' || (inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable"]')) }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
-      TYPE_RELEASE_VERSION: ${{ inputs.version }}
+      TYPE_RELEASE_VERSION: ${{ inputs.version || inputs.candidate_version }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
       HOMEBREW_NO_AUTO_UPDATE: '1'
     steps:
+      - name: 核对手动单程序候选参数
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CANDIDATE_SCOPE: ${{ inputs.scope }}
+        run: |
+          if [[ "$CANDIDATE_SCOPE" == single-program ]]; then
+            [[ "$TYPE_RELEASE_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
+          elif [[ -n "$TYPE_RELEASE_VERSION" ]]; then
+            echo 'candidate_version 仅用于 single-program 范围。' >&2
+            exit 1
+          fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.source_sha || github.sha }}
@@ -184,11 +199,31 @@ jobs:
         with:
           artifact: ${{ inputs.frontend_artifact }}
       - name: 运行真实原生验收
+        if: matrix.suite != 'single-program'
         env:
           TYPE_MACOS_SUITE: ${{ matrix.suite }}
         run: bash .github/scripts/run-macos-native.sh "$TYPE_MACOS_SUITE"
+      - name: 静态 SDK 与同一单程序三库验收
+        if: matrix.suite == 'single-program'
+        run: |
+          set -euo pipefail
+          brew install c-ares brotli flex
+          task_bison="$(brew --prefix bison)"
+          task_flex="$(brew --prefix flex)"
+          export PATH="$task_bison/bin:$task_flex/bin:$PATH"
+          export TYPE_STATIC_MINIMUM_MACOS=15.0
+          mkdir -p build/static-macos-evidence
+          export TYPE_STATIC_RUNTIME
+          TYPE_STATIC_RUNTIME="$(bash tools/prepare-static-macos.sh "$GITHUB_WORKSPACE/build/static-macos-sdk" 2>build/static-macos-evidence/sdk.log)"
+          php tests/static-runtime-sdk.php "$TYPE_STATIC_RUNTIME" | tee build/static-macos-evidence/embed.log
+          php tools/build-application.php >build/static-macos-evidence/application.log 2>&1
+          php tests/release-candidate.php prepare
+          for task_driver in mysql pgsql sqlite; do
+            php tests/release-candidate.php test "$task_driver" "$(brew --prefix mysql@8.4)" "$(brew --prefix postgresql@17)"
+          done
+          php tests/release-candidate.php finish
       - name: 保存最终发布候选
-        if: inputs.version != '' && matrix.suite == 'deployment'
+        if: (inputs.version != '' && matrix.suite == 'deployment') || matrix.suite == 'single-program'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-candidate-macos-arm64-${{ github.run_attempt }}
@@ -203,6 +238,9 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: |
+            build/static-macos-evidence/*
+            build/static-macos-sdk/sdk/manifest.json
+            build/static-macos-sdk/adaptations.json
             build/release-candidate/*.log
             build/release-candidate/*.json
             build/release-candidate/attachments/*

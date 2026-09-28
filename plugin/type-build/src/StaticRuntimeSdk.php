@@ -211,7 +211,8 @@ final class StaticRuntimeSdk
         $output = $runner->run(['readelf', '-d', $artifact], dirname($artifact), $environment);
         preg_match_all('/\(NEEDED\).*\[([^\]]+)\]/', $output, $matches);
         foreach ($matches[1] as $library) {
-            if (preg_match('/^(?:libc\.so\.6|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0|libresolv\.so\.2|libgcc_s\.so\.1|libstdc\+\+\.so\.6)$/D', $library) !== 1) {
+            // glibc 的 TLS 符号可能使系统加载器同时出现在 DT_NEEDED；仅接受两种已支持架构的准确名称。
+            if (preg_match('/^(?:libc\.so\.6|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0|libresolv\.so\.2|libgcc_s\.so\.1|libstdc\+\+\.so\.6|ld-linux-aarch64\.so\.1|ld-linux-x86-64\.so\.2)$/D', $library) !== 1) {
                 throw new RuntimeException('单程序仍依赖非系统运行库：' . $library);
             }
         }

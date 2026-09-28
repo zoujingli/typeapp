@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # 重新编译 PHP 内置模块与 PHPX；动态宿主仅运行 TypePHP，不进入部署程序。
 set -euo pipefail
-trap 'task_status=$?; echo "静态 SDK 制备在第 ${LINENO} 行失败（退出码 ${task_status}），保留本轮目录供诊断。" >&2' ERR
+trap 'echo "静态 SDK 制备在第 ${LINENO} 行失败（退出码 $?），保留本轮目录供诊断。" >&2' ERR
 
 task_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${PHP_HOME:?需要锁定的构建宿主 PHP SDK}"
 [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || { echo '此制备入口只适用于 macOS ARM64。' >&2; exit 1; }
-[[ $# == 2 && "$1" == /* && "$2" == /* ]] || { echo '用法：prepare-static-macos.sh <新的工作目录> <PostgreSQL静态SDK根目录>' >&2; exit 1; }
+[[ ( $# == 1 || $# == 2 ) && "$1" == /* && "${2:-/}" == /* ]] || { echo '用法：prepare-static-macos.sh <新的工作目录> [PostgreSQL静态SDK根目录]' >&2; exit 1; }
 task_work="$1"
-task_pgsql="$2"
+task_pgsql="${2:-$task_work/dependencies}"
 [[ ! -e "$task_work" && ! -L "$task_work" ]] || { echo '工作目录必须尚不存在，不能覆盖已有SDK。' >&2; exit 1; }
-for task_name in libpq.a libpgcommon_shlib.a libpgport_shlib.a; do
-    [[ -f "$task_pgsql/lib/$task_name" ]] || { echo "缺少 PostgreSQL 静态归档：$task_name" >&2; exit 1; }
-done
-[[ "$("$task_pgsql/bin/pg_config" --version)" == 'PostgreSQL 17.11' ]] || { echo '需要固定 PostgreSQL 17.11。' >&2; exit 1; }
+if [[ $# == 2 ]]; then
+    for task_name in libpq.a libpgcommon_shlib.a libpgport_shlib.a; do
+        [[ -f "$task_pgsql/lib/$task_name" ]] || { echo "缺少 PostgreSQL 静态归档：$task_name" >&2; exit 1; }
+    done
+    [[ "$("$task_pgsql/bin/pg_config" --version)" == 'PostgreSQL 17.11' ]] || { echo '需要固定 PostgreSQL 17.11。' >&2; exit 1; }
+fi
 mkdir -p "$task_work/src" "$task_work/downloads"
 task_work="$(cd "$task_work" && pwd)"
 task_sdk="$task_work/sdk"
@@ -39,6 +41,7 @@ mv "$task_work/src/redis-6.3.0" "$task_source/ext/redis"
 mv "$task_work/src/swoole-src-0f3bee2f0ed8704ce33a336e7feabb0115411dd7" "$task_source/ext/swoole"
 # Composer 锁定的原始 PHPX 复制到任务内适配；不改共享 vendor 或宿主 SDK。
 cp -R "$task_root/vendor/swoole/phpx" "$task_work/src/phpx"
+# shellcheck disable=SC2016
 "$task_php" -n -r '
 require $argv[1] . "/vendor/autoload.php";
 if (Composer\InstalledVersions::getReference("swoole/phpx") !== "0dfa613d2057dcd4aa319ec9b6816f68df2403e4") {
@@ -64,6 +67,20 @@ for task_formula in openssl@3 sqlite c-ares brotli; do
     task_pkgconfig="$task_pkgconfig:$task_prefix/lib/pkgconfig"
 done
 export PKG_CONFIG_PATH="$task_pkgconfig"
+# CI 不复用开发机已有的 PostgreSQL 归档；在声明的最低系统版本上构建同一源码。
+if [[ $# == 1 ]]; then
+    source_archive "${TYPE_STATIC_PGSQL_ARCHIVE:-}" postgresql-17.11.tar.bz2 https://ftp.postgresql.org/pub/source/v17.11/postgresql-17.11.tar.bz2 dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979
+    (
+        cd "$task_work/src/postgresql-17.11"
+        ./configure --prefix="$task_pgsql" --without-readline --without-icu --without-zlib --without-gssapi --without-ldap --with-ssl=openssl --with-pic
+        make -C src/interfaces/libpq -j2
+        make -C src/interfaces/libpq install
+        make -C src/bin/pg_config -j2
+        make -C src/bin/pg_config install
+        make -C src/include install
+        cp src/common/libpgcommon_shlib.a src/port/libpgport_shlib.a "$task_pgsql/lib/"
+    ) >&2
+fi
 (
     cd "$task_source"
     ./buildconf --force

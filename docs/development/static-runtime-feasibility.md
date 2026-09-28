@@ -106,6 +106,12 @@ macOS ARM64 的完整物联中心已完成静态 AOT。首个应用候选为 57,
 
 新 `package` 输出已验收程序的相同字节，拒绝共享库产物；主应用默认生产构建要求静态 SDK。新 Release 候选只接受四个平台的单程序三库回执。Linux 与 Windows 静态 SDK、各自原生行为、模板静态部署、单程序服务配置，以及静态分发所需的完整重链接材料仍需完成。RC7 公开附件仍为历史目录归档，本轮没有用新产物覆盖它。
 
+## 2026-09-28 Linux ARM64 验证
+
+Linux 制备入口已接入固定 PHP、PHPX、Swoole、Redis、libpq、curl 与 c-ares，发行版依赖逐项使用准确静态归档并登记版本及许可。Swoole 和 curl 通过官方 nghttp2 选项共用静态实现，避免重复符号。真实 embed 探针确认所需扩展全部内置；完整物联中心 276 个单元 AOT 成功，同一 ELF 在移走构建端前端后通过三库隔离部署，程序 SHA-256 为 `32cb84262c938810042d3cb904a5e03233add1b51c3c43b82573dfec2c008895`。
+
+原始失败、源码边界、64 份内嵌许可和完整行为结果见[Linux 单程序记录](../evidence/single-program-linux-20260928.md)。本次不把本机 ARM64 容器结果扩展为 Linux x64、macOS 15 或 Windows 成功；新的原生 runner 与静态核心实验继续产生独立证据。
+
 ## 一手来源
 
 - [S1] TypePHP 0.9.3：[NativeBuildConfigurationTrait](https://github.com/swoole/typephp/blob/8b33cad5c4f9cd2be2980425f522496e9ba0bfce/src/Build/NativeBuildConfigurationTrait.php)、[NativeCommandOptionsTrait](https://github.com/swoole/typephp/blob/8b33cad5c4f9cd2be2980425f522496e9ba0bfce/src/Build/NativeCommandOptionsTrait.php)。升级前[同名构建实现](https://github.com/swoole/typephp/blob/f127dadf5dc6e554ff5182fd35a6c499fea47242/src/Build/NativeBuildConfigurationTrait.php)已有 Linux musl `--full-static`。

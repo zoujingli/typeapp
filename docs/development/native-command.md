@@ -41,6 +41,12 @@ composer check
 
 ## Linux 原生验证
 
+单程序静态路径使用 `static-linux.yml`，在 Ubuntu 24.04 的 x64 与 ARM64 原生 runner 上分别制备静态 SDK。管理前端只构建一次，两种架构验证同一资源清单后全量 AOT；最终程序经 `tests/release-candidate.php` 完成 MySQL、PostgreSQL、SQLite 隔离部署并封存。手动输入候选版本只用于验收，不创建 tag 或 Release。
+
+本机已有匹配宿主 SDK 时，先运行 `tools/prepare-static-linux.sh <尚不存在的绝对工作目录>`，将输出清单路径设置为 `TYPE_STATIC_RUNTIME`，再运行 `php tests/static-runtime-sdk.php "$TYPE_STATIC_RUNTIME"`。探针初始化真正的目标 embed，要求扩展全部内置且 ELF 只加载系统库；宿主 PHP 加载成功不能替代该检查。源码缓存可通过 `TYPE_STATIC_PHP_ARCHIVE`、`TYPE_STATIC_REDIS_ARCHIVE`、`TYPE_STATIC_SWOOLE_ARCHIVE`、`TYPE_STATIC_PGSQL_ARCHIVE`、`TYPE_STATIC_CURL_ARCHIVE`、`TYPE_STATIC_CARES_ARCHIVE` 显式提供，仍核对固定摘要。
+
+macOS 对应手动入口为 `native-macos.yml` 的 `scope=single-program`，须同时填写合法 `candidate_version`。它在 macOS 15 制备独立静态 SDK、执行真实 embed 并验收同一程序的三库部署，结果单独记录；其他 scope 的共享库回归不能替代它。Windows 当前的 `static-windows.yml` 仅验证静态 PHP 核心，尚不是应用候选入口。
+
 在已经安装对应 PHP SDK 和原生依赖的 Linux 环境运行：
 
 ```bash

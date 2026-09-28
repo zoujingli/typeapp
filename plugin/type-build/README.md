@@ -4,7 +4,7 @@ TypeApp 的开发与构建组件：生成配置、路由和模型，审计完整
 
 **已内置四平台 Swoole 模块。** 安装包含 `resources/swoole/` 的组件版本后，匹配构建默认校验并复用，无需另行下载、编译 Swoole。应用无需声明整目录资源，只收集当前平台选中的模块与实际依赖；ABI、许可证及覆盖方式见[资源说明](resources/swoole/README.md)。
 
-`package` 只输出一个可执行文件，要求非系统运行库静态链接、资源与许可材料内嵌，启动不释放运行库。构建时通过 `TYPE_STATIC_RUNTIME` 指定已校验的目标 SDK；缺少静态能力不能通过交付门禁。macOS ARM64 已有应用验收结果，其他平台仍需补齐。使用入口与公开 RC7 的历史目录包边界见[构建指南](https://iots.top/#/guide/deployment)。
+`package` 只输出一个可执行文件，要求非系统运行库静态链接、资源与许可材料内嵌，启动不释放运行库。构建时通过 `TYPE_STATIC_RUNTIME` 指定已校验的目标 SDK；缺少静态能力不能通过交付门禁。macOS ARM64、Linux ARM64 已有应用三库验收结果，其余目标及最低系统兼容仍分别验证。使用入口与公开 RC7 的历史目录包边界见[构建指南](https://iots.top/#/guide/deployment)。
 
 ## 阅读与操作路径
 

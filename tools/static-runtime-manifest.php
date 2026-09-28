@@ -11,9 +11,11 @@ use Type\Build\DependencyNotices;
 use Type\Build\StaticRuntimeSdk;
 use Type\Testing\Process;
 
-// 本脚本属于 macOS SDK 制备入口：登记本轮构建的归档、目标头文件和许可原文。
+// Unix SDK 制备入口：登记本轮构建的归档、目标头文件和许可原文。
 // 不能用清单生成或归档后缀代替最终应用的静态加载及业务验收。
-if ($argc !== 3 || PHP_OS_FAMILY !== 'Darwin' || php_uname('m') !== 'arm64' || PHP_VERSION !== '8.5.10' || !PHP_ZTS) {
+if ($argc !== 3 || !in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true) || PHP_VERSION !== '8.5.10' || !PHP_ZTS
+    || (PHP_OS_FAMILY === 'Darwin' && php_uname('m') !== 'arm64')
+    || (PHP_OS_FAMILY === 'Linux' && !in_array(php_uname('m'), ['x86_64', 'aarch64'], true))) {
     throw new InvalidArgumentException('用法：锁定 PHP 8.5.10 ZTS static-runtime-manifest.php <制备工作目录> <PostgreSQL静态SDK根目录>');
 }
 $root = dirname(__DIR__);
@@ -87,14 +89,15 @@ foreach (['LICENSE', 'thirdparty/mpdecimal/COPYRIGHT.txt', 'thirdparty/wren-gc/L
 $notices['libphpx.a'] = ['component' => 'PHPX、mpdecimal、wren-gc', 'version' => 'PHPX 2.9.2',
     'license' => ['Apache-2.0', 'BSD-2-Clause', 'MIT'], 'files' => $documents];
 
-foreach ([
+$formulas = [
     'gmp' => [['libgmpxx.a', 'libgmp.a'], 'LGPL-3.0-or-later OR GPL-2.0-or-later', ['COPYING', 'COPYING.LESSERv3']],
     'mpfr' => [['libmpfr.a'], 'LGPL-3.0-or-later', ['COPYING', 'COPYING.LESSER']],
     'openssl@3' => [['libssl.a', 'libcrypto.a'], 'Apache-2.0', ['LICENSE.txt']],
     'c-ares' => [['libcares.a'], 'MIT', ['LICENSE.md']],
     'brotli' => [['libbrotlienc.a', 'libbrotlidec.a', 'libbrotlicommon.a'], 'MIT', ['LICENSE']],
     'sqlite' => [['libsqlite3.a'], 'public-domain', []],
-] as $formula => [$names, $license, $files]) {
+];
+foreach (PHP_OS_FAMILY === 'Darwin' ? $formulas : [] as $formula => [$names, $license, $files]) {
     $resolved = (new Process(['brew', '--prefix', $formula]))->wait(10);
     if (!$resolved->successful()) {
         throw new RuntimeException('无法定位静态依赖：' . $formula);
@@ -106,24 +109,75 @@ foreach ([
         $documents[] = staticSdkDocument($sdk, $prefix . '/' . $name, $formula . '/' . $name);
     }
     if ($formula === 'sqlite') {
-        // 该原文明确标注 3.53.3，禁止用于其他 SQLite 版本。
-        if (basename($prefix) !== '3.53.3') {
-            throw new RuntimeException('SQLite 静态依赖升级后需重新核对许可原文');
+        // SQLite 随实际 SDK 安装的公开头文件包含原始 public-domain 声明。
+        // 保留整份原文及摘要，不能给新归档沿用旧版本 NOTICE。
+        $sqliteHeader = (string) file_get_contents($prefix . '/include/sqlite3.h');
+        if (!str_contains(substr($sqliteHeader, 0, 2048), 'disclaims copyright to this source code')
+            || !str_contains($sqliteHeader, '#define SQLITE_VERSION        "' . preg_replace('/_\d+$/', '', basename($prefix)) . '"')) {
+            throw new RuntimeException('SQLite SDK 版本或许可原文需要重新核对');
         }
-        $documents[] = staticSdkDocument($sdk, $materials . '/sqlite/NOTICE.txt', 'sqlite/NOTICE.txt');
+        $documents[] = staticSdkDocument($sdk, $prefix . '/include/sqlite3.h', 'sqlite/sqlite3.h');
     }
     foreach ($names as $name) {
         $archives[] = staticSdkArchive($sdk, $prefix . '/lib/' . $name);
         $notices[$name] = ['component' => $formula, 'version' => basename($prefix), 'license' => $license, 'files' => $documents];
     }
 }
+if (PHP_OS_FAMILY === 'Linux') {
+    $machine = (new Process(['gcc', '-print-multiarch']))->wait(10);
+    $triplet = trim($machine->stdout);
+    if (!$machine->successful() || !in_array($triplet, ['x86_64-linux-gnu', 'aarch64-linux-gnu'], true)) {
+        throw new RuntimeException('无法定位 Linux 原生归档目录');
+    }
+    // 使用准确归档，不传 -l 名称；Debian/Ubuntu 的实际包版本与许可原文随输入登记。
+    $packages = [
+        'libgmp-dev' => [['libgmpxx.a', 'libgmp.a'], 'LGPL-3.0-or-later OR GPL-2.0-or-later'],
+        'libmpfr-dev' => [['libmpfr.a'], 'LGPL-3.0-or-later'],
+        'libssl-dev' => [['libssl.a', 'libcrypto.a'], 'Apache-2.0'],
+        'libbrotli-dev' => [['libbrotlienc.a', 'libbrotlidec.a', 'libbrotlicommon.a'], 'MIT'],
+        'libsqlite3-dev' => [['libsqlite3.a'], 'public-domain'],
+        'libxml2-dev' => [['libxml2.a'], 'MIT'],
+        'libicu-dev' => [['libicuuc.a', 'libicudata.a'], 'MIT'],
+        'liblzma-dev' => [['liblzma.a'], 'public-domain'],
+        'zlib1g-dev' => [['libz.a'], 'Zlib'],
+        'libnghttp2-dev' => [['libnghttp2.a'], 'MIT'],
+    ];
+    $common = [];
+    foreach (['Apache-2.0', 'GPL-2', 'GPL-3', 'LGPL-2', 'LGPL-2.1', 'LGPL-3'] as $name) {
+        $common[] = staticSdkDocument($sdk, '/usr/share/common-licenses/' . $name, 'debian/common/' . $name);
+    }
+    foreach ($packages as $package => [$names, $license]) {
+        $query = (new Process(['dpkg-query', '-W', '-f=${Version}', $package]))->wait(10);
+        if (!$query->successful() || trim($query->stdout) === '') {
+            throw new RuntimeException('缺少 Linux 静态依赖包：' . $package);
+        }
+        $version = trim($query->stdout);
+        // 发行版文档目录可能是同源码包的符号链接；先解析真实普通文件再作字节校验。
+        $copyright = realpath('/usr/share/doc/' . $package . '/copyright');
+        if ($copyright === false) {
+            throw new RuntimeException('缺少 Linux 静态依赖许可：' . $package);
+        }
+        $document = staticSdkDocument($sdk, $copyright, 'debian/' . $package . '/copyright');
+        $dependencies[$package] = ['version' => $version, 'copyright-sha256' => $document['sha256']];
+        foreach ($names as $name) {
+            $archives[] = staticSdkArchive($sdk, '/usr/lib/' . $triplet . '/' . $name);
+            $notices[$name] = ['component' => $package, 'version' => $version, 'license' => $license, 'files' => [$document, ...$common]];
+        }
+    }
+    $archives[] = staticSdkArchive($sdk, $pgsql . '/lib/libcurl.a');
+    $notices['libcurl.a'] = ['component' => 'curl', 'version' => '8.22.0', 'license' => 'curl',
+        'files' => [staticSdkDocument($sdk, $work . '/src/curl-8.22.0/COPYING', 'curl/COPYING')]];
+    $archives[] = staticSdkArchive($sdk, $pgsql . '/lib/libcares.a');
+    $notices['libcares.a'] = ['component' => 'c-ares', 'version' => '1.34.8', 'license' => 'MIT',
+        'files' => [staticSdkDocument($sdk, $work . '/src/c-ares-1.34.8/LICENSE.md', 'c-ares/LICENSE.md')]];
+}
 foreach (['libpq.a', 'libpgcommon_shlib.a', 'libpgport_shlib.a'] as $name) {
     $archives[] = staticSdkArchive($sdk, $pgsql . '/lib/' . $name);
     $notices[$name] = ['component' => 'PostgreSQL client', 'version' => '17.11', 'license' => 'PostgreSQL',
-        'files' => [staticSdkDocument($sdk, $materials . '/postgresql/COPYRIGHT', 'postgresql/COPYRIGHT')]];
+        'files' => [staticSdkDocument($sdk, PHP_OS_FAMILY === 'Linux' ? $work . '/src/postgresql-17.11/COPYRIGHT' : $materials . '/postgresql/COPYRIGHT', 'postgresql/COPYRIGHT')]];
 }
 $archiveTargets = [];
-foreach ($archives as $archive) {
+foreach (PHP_OS_FAMILY === 'Darwin' ? $archives : [] as $archive) {
     // PHP 归档包含数千个对象；逐对象加载命令约数 MiB，仍保留明确输出上限。
     $load = (new Process(['/usr/bin/otool', '-l', $sdk . '/' . $archive['file']], null, null, 16777216))->wait(30);
     if (!$load->successful() || preg_match_all('/^\s+minos (\d+\.\d+(?:\.\d+)?)$/m', $load->stdout, $targets) === 0) {
@@ -154,10 +208,18 @@ $manifest = ['protocol' => 1, 'php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'de
         'swoole' => ['reference' => '0f3bee2f0ed8704ce33a336e7feabb0115411dd7', 'archive-sha256' => 'b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea'],
         'phpx' => ['reference' => InstalledVersions::getReference('swoole/phpx')],
     ], 'dependency-inputs' => $dependencies,
-    'preparation' => ['script-sha256' => hash_file('sha256', __DIR__ . '/prepare-static-macos.sh'), 'manifest-script-sha256' => hash_file('sha256', __FILE__),
+    'preparation' => ['script-sha256' => hash_file('sha256', __DIR__ . (PHP_OS_FAMILY === 'Darwin' ? '/prepare-static-macos.sh' : '/prepare-static-linux.sh')), 'manifest-script-sha256' => hash_file('sha256', __FILE__),
         'php-header-patch-sha256' => hash_file('sha256', __DIR__ . '/php-hash-cxx.patch'), 'minimum-macos' => $minimum,
         'archive-minimum-macos' => $archiveTargets],
 ];
+if (PHP_OS_FAMILY === 'Linux') {
+    unset($manifest['preparation']['minimum-macos'], $manifest['preparation']['archive-minimum-macos']);
+    $manifest['sources']['curl'] = ['version' => '8.22.0', 'archive-sha256' => 'f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7'];
+    $manifest['sources']['c-ares'] = ['version' => '1.34.8', 'archive-sha256' => 'c222b6d681096f9444d2c4863d2c1174019e27cacca0a4a5c114d36dd7d7bf78'];
+}
+if (is_dir($work . '/src/postgresql-17.11')) {
+    $manifest['sources']['postgresql'] = ['version' => '17.11', 'archive-sha256' => 'dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979'];
+}
 foreach (['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource', 'SwooleStaticSource', 'PhpxThreadSource'] as $patch) {
     $manifest['patches'][$patch] = hash_file('sha256', $root . '/plugin/type-build/src/' . $patch . '.php');
 }
@@ -165,5 +227,5 @@ $path = $sdk . '/manifest.json';
 file_put_contents($path, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
 $validated = new StaticRuntimeSdk($path);
 $libraries = array_map(static fn (string $file): array => ['name' => basename($file), 'path' => $file, 'sha256' => hash_file('sha256', $file)], $validated->archives());
-(new DependencyNotices())->collect($work . '/notice-verification', [], $libraries, ['native' => ['Darwin' => $validated->notices()], 'require-complete' => true]);
+(new DependencyNotices())->collect($work . '/notice-verification', [], $libraries, ['native' => [PHP_OS_FAMILY => $validated->notices()], 'require-complete' => true]);
 echo '静态 SDK 输入和许可材料已登记；需继续完成真实应用验收。' . PHP_EOL;
