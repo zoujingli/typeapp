@@ -4,6 +4,8 @@
 #define CURL_STATICLIB
 #define CARES_STATICLIB
 #define NGHTTP2_STATICLIB
+// MSVC 不提供 POSIX ssize_t；使用上游开关隐藏已弃用接口，保留 nghttp2_ssize 接口。
+#define NGHTTP2_NO_SSIZE_T
 #define LIBXML_STATIC
 #include <ares.h>
 #include <brotli/decode.h>
