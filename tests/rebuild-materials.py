@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""重建材料的离线完整性回归；真实平台来源采集由候选验收运行。"""
+
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+import zipfile
+
+spec = importlib.util.spec_from_file_location("rebuild_materials", Path(__file__).resolve().parents[1] / "tools/release/rebuild-materials.py")
+materials = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(materials)
+
+
+class RebuildMaterialsTest(unittest.TestCase):
+    """以实际归档读取验证来源、篡改与路径边界，不依赖远端服务。"""
+
+    def test_roundtrip_and_corruption(self):
+        """保留真实字节；错误源码身份和篡改记录均不得通过。"""
+        with tempfile.TemporaryDirectory(prefix="rebuild-test-", dir=Path(__file__).resolve().parents[1] / "build") as task:
+            root = Path(task)
+            source = root / "中文 source.txt"
+            source.write_bytes(b"original source\r\n")
+            output = root / "materials.zip"
+            identity = {"source": "a" * 40, "sdk-manifest-sha256": "b" * 64}
+            with zipfile.ZipFile(output, "w") as archive:
+                bundle = materials.Bundle(archive)
+                bundle.add(source, "rebuild/source.txt")
+                record = {**identity, "files": bundle.files}
+                archive.writestr("rebuild/manifest.json", json.dumps(record))
+            self.assertEqual(materials.verify(output, identity)["files"], record["files"])
+            with self.assertRaises(ValueError):
+                materials.verify(output, {**identity, "source": "c" * 40})
+            for content, name in ((b"changed", "rebuild/source.txt"), (b"extra", "rebuild/unlisted.txt")):
+                broken = root / "broken.zip"
+                with zipfile.ZipFile(broken, "w") as archive:
+                    archive.writestr("rebuild/manifest.json", json.dumps(record))
+                    archive.writestr(name, content)
+                with self.assertRaises(ValueError):
+                    materials.verify(broken, identity)
+
+    def test_paths_duplicates_missing_and_links(self):
+        """收集阶段即拒绝越界、重复、缺失目录与文件系统链接。"""
+        with tempfile.TemporaryDirectory(prefix="rebuild-test-", dir=Path(__file__).resolve().parents[1] / "build") as task:
+            root = Path(task)
+            source = root / "source.txt"
+            source.write_text("original")
+            with zipfile.ZipFile(root / "materials.zip", "w") as archive:
+                bundle = materials.Bundle(archive)
+                for name in ("/absolute", "../outside", "a/../outside", "C:/outside", "a\\outside", "a//empty"):
+                    with self.assertRaises(ValueError):
+                        bundle.add(source, name)
+                bundle.add(source, "rebuild/source.txt")
+                with self.assertRaises(ValueError):
+                    bundle.add(source, "rebuild/source.txt")
+                with self.assertRaises(ValueError):
+                    bundle.tree(root / "missing", "rebuild/missing")
+                link = root / "link.txt"
+                try:
+                    link.symlink_to(source)
+                except OSError:
+                    return  # Windows 未开启开发模式时，其他断言仍已执行。
+                with self.assertRaises(ValueError):
+                    bundle.add(link, "rebuild/link.txt")
+
+
+if __name__ == "__main__":
+    unittest.main()

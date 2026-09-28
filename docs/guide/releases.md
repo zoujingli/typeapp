@@ -29,6 +29,8 @@ flowchart TB
 
 新候选附件名为 `typeapp-iot-<版本>-<平台>-<架构>`，Windows 追加 `.exe`，Unix 不加 `.tar.gz`。`SHA256SUMS` 和 `release-manifest.json` 是下载核验材料，不是运行依赖。下载后在 Unix 赋予执行权限，按[单程序部署](deployment.md)直接运行；运行库不会释放到磁盘，页面只在显式安装时写入 `public`。
 
+每个平台另提供 `typeapp-rebuild-<版本>-<平台>-<架构>.zip`，供维护者取得对应应用源码、实际静态 SDK、LGPL 库源码与重建配方；部署者无需下载或解压它。该附件与程序一起封存、校验和重试，来源或摘要不匹配时阻止发布。维护方法见[静态程序重新构建](https://github.com/zoujingli/typeapp/blob/main/docs/development/rebuild.md)。
+
 ## 下载当前公开 RC7
 
 选择与操作系统、CPU 和系统库基线匹配的附件，具体要求见[平台与验收](platforms.md)。文件名中的版本不带前缀 `v`：

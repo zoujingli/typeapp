@@ -43,6 +43,8 @@ jobs:
           tools: composer:2.10.3
           coverage: none
       - run: composer install --no-scripts --no-plugins --prefer-dist --no-interaction --no-progress --ignore-platform-req=ext-swoole
+      - name: 核对重建材料完整性契约
+        run: python3 tests/rebuild-materials.py
       - name: 核对版本、固定SHA、依赖与候选重试身份
         id: resolve
         env:

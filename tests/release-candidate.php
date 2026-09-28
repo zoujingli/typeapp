@@ -40,6 +40,7 @@ if ($operation === 'prepare') {
         'delivery' => 'single-executable', 'version' => $version, 'platform' => $platform,
         'file' => $filename, 'sha256' => $created['sha256'], 'bytes' => $created['bytes'], 'build-id' => $created['build-id'],
         'system-libraries' => $created['system-libraries'],
+        'sdk-manifest-sha256' => hash_file('sha256', (string) getenv('TYPE_STATIC_RUNTIME')),
         'artifact-sha256' => hash_file('sha256', $artifact), 'embedded-resources' => $identity['embedded-resources'],
         'frontend-manifest-sha256' => hash_file('sha256', (string) getenv('TYPE_FRONTEND_MANIFEST'))]);
 } elseif ($operation === 'test') {
@@ -81,6 +82,22 @@ if ($operation === 'prepare') {
     Reports::report($work . '/' . $driver . '.json', ['status' => 'passed', 'driver' => $driver,
         'artifact-sha256' => $record['sha256'], 'frontend-source-removed' => true, 'single-executable-only' => true,
         'log-sha256' => hash_file('sha256', $work . '/' . $driver . '.log')]);
+} elseif ($operation === 'materials') {
+    $record = json_decode((string) file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
+    $sdk = (string) getenv('TYPE_STATIC_RUNTIME');
+    expect(hash_file('sha256', $sdk) === $record['sdk-manifest-sha256'], '重建材料必须来自候选构建使用的同一 SDK');
+    $name = 'typeapp-rebuild-' . substr($version, 1) . '-' . $platform . '.zip';
+    $command = [PHP_OS_FAMILY === 'Windows' ? 'python' : 'python3', $root . '/tools/release/rebuild-materials.py',
+        '--sdk', dirname($sdk), '--output', $work . '/attachments/' . $name, '--version', $version, '--platform', $platform];
+    if (PHP_OS_FAMILY === 'Windows') {
+        $command[] = '--dependencies';
+        $command[] = (string) getenv('TYPE_REBUILD_DEPENDENCIES');
+    }
+    $result = (new Process($command, $root))->wait(900);
+    file_put_contents($work . '/materials.log', $result->stdout . $result->stderr);
+    expect($result->successful(), '重建材料封存失败：' . $result->stdout . $result->stderr);
+    $record['rebuild'] = json_decode((string) file_get_contents($work . '/attachments/' . substr($name, 0, -4) . '.json'), true, 64, JSON_THROW_ON_ERROR);
+    Reports::report($stateFile, $record);
 } elseif ($operation === 'finish') {
     $record = json_decode((string) file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
     foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
@@ -92,6 +109,6 @@ if ($operation === 'prepare') {
     (new SingleProgram())->verify($work . '/attachments/' . $record['file'], $record['sha256']);
     Reports::report($work . '/attachments/' . $platform . '.json', $record);
 } else {
-    throw new InvalidArgumentException('用法：php tests/release-candidate.php <prepare|test 驱动 [MySQL目录 PostgreSQL目录]|finish>');
+    throw new InvalidArgumentException('用法：php tests/release-candidate.php <prepare|test 驱动 [MySQL目录 PostgreSQL目录]|materials|finish>');
 }
 echo '发布候选' . $operation . '通过：' . $platform . "\n";

@@ -93,6 +93,8 @@ jobs:
           [[ "$TYPE_RELEASE_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
           mkdir -p build/static-linux-evidence
           # 宿主缓存命中也须安装开发依赖；静态归档不属于 PHP SDK 缓存。
+          # 重建材料必须保留与已安装静态库同版本的发行版源码及补丁。
+          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
           sudo apt-get update
           sudo apt-get install --yes build-essential cmake pkg-config autoconf bison re2c flex libgmp-dev libmpfr-dev libbrotli-dev libicu-dev liblzma-dev libnghttp2-dev libc-ares-dev libxml2-dev libssl-dev libcurl4-openssl-dev libsqlite3-dev libpq-dev libonig-dev libzip-dev zlib1g-dev bubblewrap mysql-server mysql-client postgresql
           task_host="$(bash tools/install-locked-linux-php.sh 2>build/static-linux-evidence/host.log)"
@@ -141,6 +143,7 @@ jobs:
           for task_driver in mysql pgsql sqlite; do
             php tests/release-candidate.php test "$task_driver" "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS"
           done
+          php tests/release-candidate.php materials
           php tests/release-candidate.php finish
       - name: 同一单程序的 systemd 生命周期
         env:

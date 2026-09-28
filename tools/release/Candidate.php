@@ -48,7 +48,33 @@ final class Candidate
                 throw new \RuntimeException('候选缺少同一单程序三库验收：' . $platform . '/' . $driver);
             }
         }
+        $rebuild = $record['rebuild'] ?? [];
+        $material = 'typeapp-rebuild-' . substr($version, 1) . '-' . $platform . '.zip';
+        if (($rebuild['protocol'] ?? null) !== 1 || ($rebuild['source'] ?? '') !== $source
+            || ($rebuild['version'] ?? '') !== $version || ($rebuild['platform'] ?? '') !== $platform
+            || ($rebuild['file'] ?? '') !== $material || !is_file($assets . '/' . $material) || is_link($assets . '/' . $material)
+            || ($rebuild['sha256'] ?? '') !== hash_file('sha256', $assets . '/' . $material)
+            || ($rebuild['bytes'] ?? null) !== filesize($assets . '/' . $material)
+            || preg_match('/^[a-f0-9]{64}$/D', $record['sdk-manifest-sha256'] ?? '') !== 1
+            || ($rebuild['sdk-manifest-sha256'] ?? '') !== $record['sdk-manifest-sha256']) {
+            throw new \RuntimeException('候选缺少与源码及 SDK 对应的重建材料：' . $platform);
+        }
         return $name;
+    }
+
+    /** @return list<array{file: string, sha256: string, bytes: int}> 已封存附件；旧版本保持原有清单。 */
+    public static function attachments(array $record): array
+    {
+        $files = [['file' => self::sealedFilename($record), 'sha256' => $record['sha256'], 'bytes' => $record['bytes']]];
+        if (isset($record['rebuild'])) {
+            $item = $record['rebuild'];
+            if (preg_match('/^typeapp-rebuild-[a-zA-Z0-9.-]+\.zip$/D', $item['file'] ?? '') !== 1
+                || preg_match('/^[a-f0-9]{64}$/D', $item['sha256'] ?? '') !== 1 || !is_int($item['bytes'] ?? null) || $item['bytes'] <= 0) {
+                throw new \RuntimeException('已封存重建材料身份无效');
+            }
+            $files[] = ['file' => $item['file'], 'sha256' => $item['sha256'], 'bytes' => $item['bytes']];
+        }
+        return $files;
     }
 
     /** 原样恢复已封存的旧版本；兼容读取不能赋予旧目录包单程序身份。 */

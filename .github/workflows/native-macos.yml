@@ -225,6 +225,7 @@ jobs:
           for task_driver in mysql pgsql sqlite; do
             php tests/release-candidate.php test "$task_driver" "$(brew --prefix mysql@8.4)" "$(brew --prefix postgresql@17)"
           done
+          php tests/release-candidate.php materials
           php tests/release-candidate.php finish
           php tests/native-service.php build/app/type-app
       - name: 保存最终发布候选

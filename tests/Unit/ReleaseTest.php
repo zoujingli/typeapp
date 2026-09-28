@@ -41,6 +41,12 @@ final class ReleaseTest extends TestCase
             $record['acceptance'][$driver] = ['status' => 'passed', 'driver' => $driver, 'frontend-source-removed' => true,
                 'single-executable-only' => true, 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('c', 64)];
         }
+        $material = 'typeapp-rebuild-1.0.0-rc.8-macos-arm64.zip';
+        file_put_contents($root . '/' . $material, 'already verified corresponding materials');
+        $record['sdk-manifest-sha256'] = str_repeat('d', 64);
+        $record['rebuild'] = ['protocol' => 1, 'source' => $source, 'version' => $version, 'platform' => 'macos-arm64',
+            'file' => $material, 'sha256' => hash_file('sha256', $root . '/' . $material), 'bytes' => filesize($root . '/' . $material),
+            'sdk-manifest-sha256' => $record['sdk-manifest-sha256']];
         try {
             self::assertSame($name, Candidate::verify($record, $root, $source, $version, 'macos-arm64'));
             self::assertSame($name, Candidate::sealedFilename($record));
@@ -52,6 +58,13 @@ final class ReleaseTest extends TestCase
             $broken[] = array_replace($record, ['file' => $name . '.tar.gz']);
             $broken[] = array_replace($record, ['frontend-manifest-sha256' => null]);
             $broken[] = array_replace($record, ['build-id' => '']);
+            $broken[] = array_replace($record, ['rebuild' => []]);
+            foreach (['source', 'sha256', 'sdk-manifest-sha256', 'file'] as $key) {
+                $missing = $record;
+                $missing['rebuild'][$key] = 'invalid';
+                $broken[] = $missing;
+            }
+            self::assertCount(2, Candidate::attachments($record));
             foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
                 $missing = $record;
                 unset($missing['acceptance'][$driver]);
