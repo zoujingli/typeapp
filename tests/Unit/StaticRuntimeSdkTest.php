@@ -15,7 +15,8 @@ final class StaticRuntimeSdkTest extends TestCase
 {
     public function testSdkSelectionRejectsDriftAndNeverFallsBackToDynamicLibraries(): void
     {
-        $root = dirname(__DIR__, 2);
+        // SDK公开路径统一使用斜线；Windows的__DIR__仍返回反斜线，夹具须按同一契约比较。
+        $root = PHP_OS_FAMILY === 'Windows' ? str_replace('\\', '/', dirname(__DIR__, 2)) : dirname(__DIR__, 2);
         $work = $root . '/build/static sdk-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($work . '/lib', 0700, true));
         $archiveName = PHP_OS_FAMILY === 'Windows' ? 'runtime.lib' : 'runtime.a';
