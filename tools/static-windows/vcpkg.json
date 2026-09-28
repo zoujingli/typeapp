@@ -1,0 +1,19 @@
+{
+  "name": "typeapp-static-runtime-dependencies",
+  "version-string": "1",
+  "builtin-baseline": "07f4812200df3d3c931c0c8a6081d3b21fe2bf9f",
+  "dependencies": [
+    "brotli",
+    "c-ares",
+    { "name": "curl", "default-features": false, "features": ["brotli", "c-ares", "http2", "non-http", "openssl"] },
+    "gmp",
+    { "name": "libpq", "default-features": false, "features": ["openssl"] },
+    { "name": "libxml2", "default-features": false },
+    "mpfr",
+    "nghttp2",
+    "openssl",
+    "sqlite3",
+    "zlib",
+    "zstd"
+  ]
+}

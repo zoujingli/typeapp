@@ -45,7 +45,7 @@ composer check
 
 本机已有匹配宿主 SDK 时，先运行 `tools/prepare-static-linux.sh <尚不存在的绝对工作目录>`，将输出清单路径设置为 `TYPE_STATIC_RUNTIME`，再运行 `php tests/static-runtime-sdk.php "$TYPE_STATIC_RUNTIME"`。探针初始化真正的目标 embed，要求扩展全部内置且 ELF 只加载系统库；宿主 PHP 加载成功不能替代该检查。源码缓存可通过 `TYPE_STATIC_PHP_ARCHIVE`、`TYPE_STATIC_REDIS_ARCHIVE`、`TYPE_STATIC_SWOOLE_ARCHIVE`、`TYPE_STATIC_PGSQL_ARCHIVE`、`TYPE_STATIC_CURL_ARCHIVE`、`TYPE_STATIC_CARES_ARCHIVE` 显式提供，仍核对固定摘要。
 
-macOS 对应手动入口为 `native-macos.yml` 的 `scope=single-program`，须同时填写合法 `candidate_version`；可复用调用传入同一 scope 和 `version`。它在 macOS 15 制备独立静态 SDK、执行真实 embed 并验收同一程序的三库部署，结果单独记录；其他 scope 的共享库回归不能替代它。PostgreSQL 客户端配置显式使用所选 OpenSSL 的头文件和库目录；失败时保存配置日志，不能依赖构建机的隐式搜索路径。Windows 当前的 `static-windows.yml` 仅验证静态 PHP 核心，尚不是应用候选入口。
+macOS 对应手动入口为 `native-macos.yml` 的 `scope=single-program`，须同时填写合法 `candidate_version`；可复用调用传入同一 scope 和 `version`。它在 macOS 15 制备独立静态 SDK、执行真实 embed 并验收同一程序的三库部署，结果单独记录；其他 scope 的共享库回归不能替代它。PostgreSQL 客户端配置显式使用所选 OpenSSL 的头文件和库目录；失败时保存配置日志，不能依赖构建机的隐式搜索路径。Windows 当前的 `static-windows.yml` 分别验证静态 PHP 核心与第三方依赖，尚不是应用候选入口。
 
 在已经安装对应 PHP SDK 和原生依赖的 Linux 环境运行：
 
@@ -92,7 +92,7 @@ Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收�
 
 `scope=sqlite-app` 在独立并发组中连续执行五轮 SQLite 应用开发验收，每轮使用新建数据库；任一失败立即停止并保留报告。最高管理员并发保护同时核对两个 HTTP 状态、稳定拒绝原因和数据库中的有效管理员数量，诊断不保存凭据或响应正文。该入口用于复现并发故障，不能替代全量 AOT 与三库发布验收。
 
-Windows 手动验收可在 `scope=full` 时填写 `candidate_version`（如 `v1.0.0-rc.2`），验证正式发布专用的最终归档路径：写入版本、生成归档，再对同一份解包内容执行三库部署。该入口不创建 tag、不分发子仓，也不公开 Release；结果不能代替版本工作流的完整门禁。四平台无论成功或失败均保留候选准备记录、子进程状态、三库日志和已生成的归档，便于复现首次失败。
+Windows 的 `native-platform.yml` 保留共享库完整回归；当前不能用它生成新的单程序候选，填写 `candidate_version` 也不会绕过静态交付门禁。`static-windows.yml` 分别通过 `scope=core` 和 `scope=dependencies` 验证 PHP 静态核心与第三方静态依赖，后者的固定输入在 `tools/static-windows/`。两项实验都不创建 tag、分发子仓或公开 Release；PHPX、Swoole、完整应用及其隔离三库验收仍须继续接入。各入口保留原始编译和运行结果，失败不能计为支持该平台。
 
 应用测试保存最近请求与最慢 20 条请求的耗时；失败时额外记录本轮 PostgreSQL 会话的等待状态和阻塞进程，省略 SQL、请求体和令牌。测试公共入口关闭异常参数捕获，避免凭据进入调用栈或异常继续持有 PDO 连接而阻塞数据库清理。数据库清理失败时仍保留原请求故障报告，Actions 同时上传脱敏 HTTP 日志。
 

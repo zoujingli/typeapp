@@ -65,6 +65,8 @@ PHPX 2.9.2 的普通 Windows 构建仍查找 PHP 导入库，并要求 mpdecimal
 
 后续最小实验入口为 `static-windows.yml`，手动运行 `tools/probe-static-windows.ps1`：以固定 PHP 8.5.10 源码和官方构建工具生成核心、内置扩展与 embed 的对象清单，直接归档并链接探针，不使用 `php8ts.lib` 导入库。实验只对已核对原文的 PHP 自有 API 声明消除 DLL 导入导出标记，核心与入口统一使用静态 CRT；保留前后摘要、完整构建日志、PE 导入表和实际 embed 身份。它先证明 PHP 核心能否独立启动，尚不包含 PHPX、Swoole 或完整应用，不能作为 Windows 单程序候选或四平台发布凭据。
 
+同一工作流的 `scope=dependencies` 单独制备第三方静态依赖，使用 `tools/static-windows/vcpkg.json` 固定的官方 vcpkg 提交和 `x64-typeapp-static` 配置；目标库与 CRT 均选择静态链接。真实 C++ 探针调用密码库、数值库、数据库客户端、压缩、XML 和网络库，核对 PE 导入项后在只保留系统 PATH 的独立目录运行。成功后保留归档、头文件、许可材料及逐库摘要，供完整 Windows SDK 后续复用。这项实验不包含 PHP、Swoole 或应用业务，也不替代最终应用的隔离和三库验收。
+
 ## 构建输入与验收方向
 
 项目内可以保存目标平台的原生构建输入，但静态链接需要真正的 `.a`／`.lib`／`.o`／`.obj`；`.lib` 须区分静态归档与 DLL 导入库。`.so`／`.dll` 可以继续用于构建期反射和 ABI 探针，不作为“不释放”产物的运行依赖。目录布局可以按操作系统、架构和 PHP ABI 隔离；来源、许可证、开关、版本和 SHA-256 应进入构建身份。[S1][S6][S9]

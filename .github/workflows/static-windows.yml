@@ -1,17 +1,24 @@
-name: Windows 静态核心探针
+name: Windows 静态运行库实验
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: 核心与第三方依赖分别验证，不生成应用候选
+        type: choice
+        options: [core, dependencies]
+        default: core
 
 permissions:
   contents: read
 
 concurrency:
-  group: static-windows-${{ github.ref }}
+  group: static-windows-${{ github.ref }}-${{ inputs.scope || 'core' }}
   cancel-in-progress: false
 
 jobs:
   core:
+    if: inputs.scope != 'dependencies'
     runs-on: windows-2022
     timeout-minutes: 40
     steps:
@@ -29,3 +36,33 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: build/static-windows-core/evidence/*
+
+  dependencies:
+    if: inputs.scope == 'dependencies'
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 制备静态第三方库并运行 PE 探针
+        shell: pwsh
+        run: ./tools/prepare-static-windows-dependencies.ps1 -Directory "$env:GITHUB_WORKSPACE/build/static-windows-dependencies"
+      - name: 保存原始构建与真实运行结果
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: static-windows-dependencies-evidence
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            build/static-windows-dependencies/evidence/*
+            build/static-windows-dependencies/vcpkg/buildtrees/**/*.log
+            build/static-windows-dependencies/installed/vcpkg/status
+      - name: 保存本轮依赖供后续完整 SDK 构建复用
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: static-windows-dependencies
+          retention-days: 14
+          if-no-files-found: error
+          path: build/static-windows-dependencies/installed/**
