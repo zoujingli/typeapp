@@ -8,6 +8,11 @@ on:
         required: true
         default: v1.0.0-rc.8
         type: string
+      sdk_run:
+        description: 可选，只读复用已通过探针的本仓SDK运行编号；应用仍重新全量编译验收
+        required: false
+        default: ''
+        type: string
   workflow_call:
     inputs:
       source_sha:
@@ -22,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: static-windows-candidate-${{ github.ref }}
@@ -29,6 +35,7 @@ concurrency:
 
 jobs:
   sdk:
+    if: inputs.sdk_run == ''
     uses: ./.github/workflows/static-windows.yml
     with:
       source_sha: ${{ inputs.source_sha || github.sha }}
@@ -36,6 +43,7 @@ jobs:
 
   application:
     needs: sdk
+    if: ${{ !cancelled() && (needs.sdk.result == 'success' || (needs.sdk.result == 'skipped' && inputs.sdk_run != '')) }}
     name: Windows x64 单程序三库
     runs-on: windows-2022
     timeout-minutes: 120
@@ -58,10 +66,26 @@ jobs:
             throw '候选版本必须为明确 SemVer。'
           }
           New-Item -ItemType Directory -Path build/static-windows-application-evidence | Out-Null
+      - name: 核对诊断复用来源
+        if: inputs.sdk_run != ''
+        env:
+          SDK_RUN: ${{ inputs.sdk_run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:SDK_RUN -cnotmatch '^[1-9][0-9]*$') { throw 'SDK 运行编号无效。' }
+          $taskRun = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SDK_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $taskRun.head_repository.full_name -ne $env:GITHUB_REPOSITORY -or
+              $taskRun.path -cnotin @('.github/workflows/static-windows.yml', '.github/workflows/static-windows-candidate.yml')) {
+            throw '只能复用本仓静态 SDK 制备入口的产物。'
+          }
+          @{sdk_run=$taskRun.id; sdk_source=$taskRun.head_sha; application_source=$env:GITHUB_SHA; scope='diagnostic only'} |
+            ConvertTo-Json | Set-Content build/static-windows-application-evidence/inputs.json -Encoding utf8
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: static-windows-sdk
           path: build/static-windows-sdk
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.sdk_run || github.run_id }}
       - name: 准备锁定构建宿主
         run: ./.github/scripts/prepare-windows-native.ps1
       - name: 安装锁定源码并核对静态 SDK
@@ -71,6 +95,19 @@ jobs:
           $taskManifest = Join-Path $env:GITHUB_WORKSPACE 'build/static-windows-sdk/manifest.json'
           & "$env:PHP_HOME/php.exe" tests/static-runtime-sdk.php $taskManifest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # 复用也核对制备脚本；SDK 的 ABI、归档、头文件及源码适配由上方真实探针验证。
+          $taskSdk = Get-Content -LiteralPath $taskManifest -Raw | ConvertFrom-Json
+          if (@($taskSdk.preparation.scripts.PSObject.Properties).Count -ne 5 -or
+              $taskSdk.preparation.'dependency-manifest-sha256' -cne (Get-FileHash tools/static-windows/vcpkg.json -Algorithm SHA256).Hash.ToLowerInvariant() -or
+              $taskSdk.preparation.'dependency-triplet-sha256' -cne (Get-FileHash tools/static-windows/x64-typeapp-static.cmake -Algorithm SHA256).Hash.ToLowerInvariant()) {
+            throw '静态 SDK 制备身份不完整或依赖声明已变化。'
+          }
+          foreach ($taskScript in $taskSdk.preparation.scripts.PSObject.Properties) {
+            if ($taskScript.Name -cnotmatch '^tools/(probe-static-windows\.ps1|static-windows/(build-phpx\.ps1|phpx/CMakeLists\.txt|prepare-extensions\.php|export-sdk\.php))$' -or
+                (Get-FileHash -LiteralPath (Join-Path $env:GITHUB_WORKSPACE $taskScript.Name) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $taskScript.Value) {
+              throw '静态 SDK 制备脚本已变化，必须重新构建SDK。'
+            }
+          }
           Add-Content -LiteralPath $env:GITHUB_ENV -Value ('TYPE_STATIC_RUNTIME=' + $taskManifest) -Encoding utf8
       - name: 准备同一版本的内嵌前端
         uses: ./.github/actions/prepare-frontend

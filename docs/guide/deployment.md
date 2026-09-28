@@ -23,7 +23,7 @@
 
 | 已实现路径 | 验收与边界 |
 | --- | --- |
-| 静态 SDK、目标头文件和归档摘要校验 | Linux/macOS 源码制备入口已接入；共享模块不能作为静态输入 |
+| 静态 SDK、目标头文件和归档摘要校验 | Linux/macOS/Windows 制备入口已接入；Windows 完整 SDK 探针已通过，应用验收仍单独进行；共享模块不能作为静态输入 |
 | 全量 AOT、内置 PHP 配置、静态运行身份 | 普通入口和线程应用分别验收；不读部署机 PHP 配置 |
 | 页面和许可原文内嵌 | 页面显式安装；`licenses` 直接读取许可材料，不释放运行库 |
 | 单文件输出、搬迁、只读目录、无源码隔离 | macOS ARM64、Linux ARM64 三库已有行为结果；其余目标分别验收 |
@@ -106,7 +106,7 @@ build/typeapp-iot help
 build/typeapp-iot licenses
 ```
 
-独立模板用 `composer package`，输出 `build/type-project-release`。Windows 文件保留 `.exe` 后缀，但当前静态 SDK 尚未完成，命令不能用共享 DLL 产物通过验收。
+独立模板用 `composer package`，输出 `build/type-project-release`。Windows 文件保留 `.exe` 后缀，必须使用已校验的静态 SDK；共享 DLL 产物不能通过单程序验收。模板与物联中心分别记录实际平台和数据库结果。
 
 部署只复制程序文件；外置配置与业务数据另行维护。校验摘要由交付渠道提供，`type verify-package <程序文件> <受信SHA256>` 用于构建端离线校验。程序内的 `licenses` 命令输出材料索引，`licenses notices/texts/…` 读取其中登记的原文。许可证声明完整不替代分发方履行相应源码或重链接材料义务。
 

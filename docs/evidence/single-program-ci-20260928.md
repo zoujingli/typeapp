@@ -41,7 +41,7 @@ PHP、PHPX、Swoole 和非系统依赖采用已登记的静态归档。MySQL、P
 
 ## 发布边界
 
-Windows 的完整 PHP/Swoole 静态运行库探针已经通过，PHPX 与 SDK 导出尚在验证，尚未形成 Windows 完整应用候选。最终发布必须以最终同一源码重新完成四平台验收，不能用本记录跳过剩余门禁。RC7 的历史目录包和此前本机结果保持原身份。
+Windows 的完整 PHP/Swoole、PHPX 静态探针与 SDK 导出已经通过，完整应用候选仍在验证。最终发布必须以最终同一源码重新完成四平台验收，不能用本记录跳过剩余门禁。RC7 的历史目录包和此前本机结果保持原身份。
 
 ## Windows x64，静态运行库阶段
 
@@ -72,6 +72,8 @@ Windows 的完整 PHP/Swoole 静态运行库探针已经通过，PHPX 与 SDK �
 [运行 36396102521](https://github.com/zoujingli/typeapp/actions/runs/36396102521) 在 `498a405378bf6c494541e93604af923a1e17b9f7` 上通过完整静态运行库探针，包括先前漏编的 DOM、XML、SimpleXML。PHPX 的两个 mpdecimal 静态归档已生成，但 CMake 配置将 Windows 反斜杠路径重新解析为转义而失败；尚未构建 PHPX 或导出 SDK。后续只规范化 CMake 输入路径，保留含空格目录，不改变源码或依赖范围。
 
 [运行 36397197563](https://github.com/zoujingli/typeapp/actions/runs/36397197563) 在 `32884ce788279a30634e0e50d5d005b5867acb30` 上通过 PHPX CMake 配置，完整运行库再次通过；PHPX 编译因 `_wchmod` 声明缺失而失败。头文件预处理确认 libmpdec 的内部 `io.h` 遮蔽了 Windows CRT 同名头。后续构建只向 PHPX 和探针公开 `mpdecimal.h`，与上游 Windows SDK 的头文件边界一致；最终 SDK 已仅导出公开头。该失败发生在应用编译之前，不计为 Windows 单程序验收。
+
+[运行 36398798810](https://github.com/zoujingli/typeapp/actions/runs/36398798810) 在 `45975cf` 上通过完整 PHP/Swoole 静态探针、PHPX 数值与请求生命周期探针、系统加载映像核验，并成功导出包含 28 份静态归档的 SDK。PHP embed 的 SHA-256 为 `ce1d02c9881942ae56555522daca4e41ff7de43ffeede0cf0090417fb6063b66`，PHPX 探针为 `6c1db84b3cad7052b113c14f5c7f5c3e269fdf20f5006205cf57a526c107dab8`。运行库证据附件已下载回读，ZIP 摘要为 `e32676e7783efee2db2adfc37ad164946d944c9f8771ac7e5cbe567d63c7494a`；两个原始报告分别标明其探针范围，不能代替完整应用验收。
 
 ## macOS ARM64，最低系统 15
 
