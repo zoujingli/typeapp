@@ -104,6 +104,25 @@ $taskCrt = 'ADD_FLAG("CFLAGS", "/MD");'
 if ([regex]::Matches($taskText, [regex]::Escape($taskCrt)).Count -ne 1) { throw 'CRT 选择位置不唯一。' }
 [IO.File]::WriteAllText($taskConfig, $taskText.Replace($taskCrt, 'ADD_FLAG("CFLAGS", "/MT");'), $taskUtf8)
 $taskAdaptations += @{ file='win32/build/confutils.js'; before=$taskBefore; after=(Get-FileHash -LiteralPath $taskConfig -Algorithm SHA256).Hash.ToLowerInvariant() }
+# 同一个静态映像共用 Zend 的 TLS 缓存；移除 embed 原为独立 DLL 定义的副本。
+# /Zc:inline 不再受 dllexport 强制保留定义，公共随机数种子函数须有独立符号。
+$taskSourceEdits = @{
+    'sapi/embed/php_embed.c' = @('e92e1804ef203b5c857fb2e92b149f9f32a52c0ca7c52e6d5a6bd21a26bf64d5', 'ZEND_TSRMLS_CACHE_DEFINE()', '/* Static embed shares the Zend core TLS cache. */', 1)
+    'ext/random/engine_xoshiro256starstar.c' = @('228bfbf756931b9ca646543a37e5e13ed0b80e11399676efd3a81ce3d0d63a6d', 'PHPAPI inline void', 'PHPAPI void', 2)
+    'ext/random/engine_mt19937.c' = @('e789018f1e172ec356910fb66d9d50f13b780e05920e12d510395beaf96196ac', 'PHPAPI inline void', 'PHPAPI void', 1)
+    'ext/random/engine_pcgoneseq128xslrr64.c' = @('e513cf2b33de520db95402a55d52a733aa90ff2f52cfcc8af00e3d8c2da649c2', 'PHPAPI inline void', 'PHPAPI void', 1)
+}
+foreach ($taskName in $taskSourceEdits.Keys | Sort-Object) {
+    $taskFile = Join-Path $taskSource $taskName
+    $taskEdit = $taskSourceEdits[$taskName]
+    $taskBefore = (Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash.ToLowerInvariant()
+    $taskText = [IO.File]::ReadAllText($taskFile)
+    if ($taskBefore -ne $taskEdit[0] -or [regex]::Matches($taskText, [regex]::Escape($taskEdit[1])).Count -ne $taskEdit[3]) {
+        throw ('PHP 静态符号适配原文不符：' + $taskName)
+    }
+    [IO.File]::WriteAllText($taskFile, $taskText.Replace($taskEdit[1], $taskEdit[2]), $taskUtf8)
+    $taskAdaptations += @{file=$taskName; before=$taskBefore; after=(Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash.ToLowerInvariant()}
+}
 $taskAdaptations | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'adaptations.json') -Encoding utf8
 Write-StaticStage 'source adaptations: verified'
 
