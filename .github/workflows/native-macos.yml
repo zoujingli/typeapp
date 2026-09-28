@@ -12,6 +12,10 @@ on:
       version:
         required: true
         type: string
+      scope:
+        description: full 为完整业务回归，single-program 为最终静态候选
+        default: full
+        type: string
   push:
     branches: [main]
   pull_request:
@@ -241,6 +245,8 @@ jobs:
             build/static-macos-evidence/*
             build/static-macos-sdk/sdk/manifest.json
             build/static-macos-sdk/adaptations.json
+            build/static-macos-sdk/src/postgresql-17.11/config.log
+            build/static-macos-sdk/src/php-8.5.10/config.log
             build/release-candidate/*.log
             build/release-candidate/*.json
             build/release-candidate/attachments/*

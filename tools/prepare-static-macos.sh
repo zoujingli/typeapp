@@ -72,7 +72,9 @@ if [[ $# == 1 ]]; then
     source_archive "${TYPE_STATIC_PGSQL_ARCHIVE:-}" postgresql-17.11.tar.bz2 https://ftp.postgresql.org/pub/source/v17.11/postgresql-17.11.tar.bz2 dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979
     (
         cd "$task_work/src/postgresql-17.11"
-        ./configure --prefix="$task_pgsql" --without-readline --without-icu --without-zlib --without-gssapi --without-ldap --with-ssl=openssl --with-pic
+        # PostgreSQL 17 的 OpenSSL 检查不读取 pkg-config；keg-only 安装必须显式传入头文件和链接目录。
+        ./configure --prefix="$task_pgsql" --without-readline --without-icu --without-zlib --without-gssapi --without-ldap --with-ssl=openssl \
+            "CPPFLAGS=-I$task_openssl/include" "LDFLAGS=-L$task_openssl/lib"
         make -C src/interfaces/libpq -j2
         make -C src/interfaces/libpq install
         make -C src/bin/pg_config -j2
