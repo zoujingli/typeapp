@@ -16,6 +16,10 @@ function reliabilityRun(array $command, string $root, array $environment, string
     try {
         $result = $process->wait($timeout);
         file_put_contents($log, $result->stdout . $result->stderr);
+        if (!$result->successful()) {
+            // 子进程只运行受控故障夹具；同步输出失败上下文，避免CI仅留下未上传的日志路径。
+            fwrite(STDERR, $result->stdout . $result->stderr);
+        }
         expect($result->successful(), '可靠性验证失败，见 ' . substr($log, strlen($root) + 1));
         return $result->stdout;
     } finally {

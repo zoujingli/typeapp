@@ -47,6 +47,8 @@ composer check
 
 macOS 对应手动入口为 `native-macos.yml` 的 `scope=single-program`，须同时填写合法 `candidate_version`；可复用调用传入同一 scope 和 `version`。它在 macOS 15 制备独立静态 SDK、执行真实 embed 并验收同一程序的三库部署，结果单独记录；其他 scope 的共享库回归不能替代它。PostgreSQL 客户端配置显式使用所选 OpenSSL 的头文件和库目录；失败时保存配置日志，不能依赖构建机的隐式搜索路径。
 
+Linux ARM64 的 `native-linux-arm64.yml` 可手动选择 `suite=reliability`，仅复现独立消费者的 Redis 崩溃恢复、容量故障与任务停止。失败的子进程输出同步到 CI，并上传 `build/native-task-reliability-*/consumer.log` 和 PHP/原生场景日志。此诊断不生成 `linux-arm64-complete`；版本发布仍固定执行全部分组。
+
 Windows 的 `static-windows-candidate.yml` 依次执行静态 SDK 制备、完整应用 AOT 和同一 EXE 的三库隔离部署。`static-windows.yml` 的 `scope=phpx` 负责完整运行库与 PHPX 探针及 SDK 导出；核心或依赖探针不能替代应用验收。手动诊断可填写 `sdk_run` 复用本仓已导出的 SDK，仍重新核对实际 embed、归档、源码适配、制备脚本和依赖声明摘要，再全量编译应用；输入变化即拒绝复用。正式发布的可复用调用不开放该选项，必须执行本轮 SDK 制备。复用分支的实际执行结果另行记录。
 
 只调整部署验收脚本时，可再填写 `program_run`，从已结束的本仓候选运行取回原 EXE 和封存回执，核对版本、原源码、文件摘要及同一 SDK 后重跑三库。诊断记录分别保存原程序源码与当前测试源码，不重新编译，也不生成可发布候选或替换原构建证据。正式发布仍须从固定源码完成本轮完整构建与验收。

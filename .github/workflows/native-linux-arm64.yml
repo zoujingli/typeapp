@@ -14,6 +14,12 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      suite:
+        description: 完整矩阵或独立任务可靠性诊断；诊断不产生完整验收汇总
+        required: true
+        default: all
+        type: choice
+        options: [all, reliability]
       base_source:
         description: 用于性能比较的完整基准提交，留空时不运行性能组
         required: false
@@ -31,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(inputs.base_source != '' && '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","benchmark"]' || '["contracts","orm","database","http","redis","tasks","application","recovery","rollout"]') }}
+        suite: ${{ fromJSON(inputs.suite == 'reliability' && '["reliability"]' || inputs.base_source != '' && '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","benchmark"]' || '["contracts","orm","database","http","redis","tasks","application","recovery","rollout"]') }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
@@ -158,7 +164,11 @@ jobs:
         run: |
           mkdir -p build
           set -o pipefail
-          bash .github/scripts/run-linux-regression.sh "${{ matrix.suite }}" | tee "build/linux-${{ matrix.suite }}-ci.log"
+          if [[ '${{ matrix.suite }}' == reliability ]]; then
+            php tests/native-task-reliability.php "$TYPE_REDIS_SERVER" 2>&1 | tee build/linux-reliability-ci.log
+          else
+            bash .github/scripts/run-linux-regression.sh "${{ matrix.suite }}" | tee "build/linux-${{ matrix.suite }}-ci.log"
+          fi
       - name: 保存最终发布候选
         if: inputs.version != '' && matrix.suite == 'application'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -188,6 +198,8 @@ jobs:
             build/packaged-rollout-*/scenario.log
             build/linux-recovery-ci-*/preparation.json
             build/native-linux-*/*.log
+            build/native-task-reliability-*/consumer.log
+            build/native-task-reliability-*/*/*.log
             build/native-database-*/*/*.log
             build/native-*-tls-*/*.log
             build/platform-benchmarks-*/preparation.json
@@ -199,7 +211,7 @@ jobs:
   linux-arm64-complete:
     name: linux-arm64-complete
     needs: native-regression
-    if: always()
+    if: always() && (inputs.source_sha != '' || inputs.suite != 'reliability')
     runs-on: ubuntu-24.04
     steps:
       - env:
