@@ -30,8 +30,8 @@ static BOOL WINAPI control(DWORD event) {
     return event == CTRL_BREAK_EVENT || event == CTRL_C_EVENT;
 }
 
-static bool readable(const wchar_t *path) {
-    HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+static bool readable(const wchar_t *path, DWORD access = GENERIC_READ) {
+    HANDLE file = CreateFileW(path, access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                               nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) { return false; }
     CloseHandle(file);
@@ -67,7 +67,10 @@ static int probe(int argc, wchar_t **argv) {
     if (file != INVALID_HANDLE_VALUE) { CloseHandle(file); DeleteFileW(forbidden.c_str()); return 1; }
     if (GetLastError() != ERROR_ACCESS_DENIED) { return failure("readonly directory"); }
     for (int index = 5; index < argc; ++index) {
-        if (readable(argv[index]) || GetLastError() != ERROR_ACCESS_DENIED) { return failure("source denial"); }
+        // 单独申请内容权限，不能仅以元数据读取失败冒充源码隔离。
+        for (DWORD access : {FILE_READ_DATA, FILE_EXECUTE}) {
+            if (readable(argv[index], access) || GetLastError() != ERROR_ACCESS_DENIED) { return failure("source denial"); }
+        }
     }
     std::puts("restricted source and SDK reads denied; program readable; data writable; program directory readonly");
     return 0;

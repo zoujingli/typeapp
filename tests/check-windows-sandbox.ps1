@@ -71,5 +71,5 @@ try {
     if ($taskExit -ne 0) { throw '系统 PowerShell 隔离恢复失败。' }
 }
 @{passed=$true; runner_sha256=(Get-FileHash -LiteralPath $taskRunner -Algorithm SHA256).Hash.ToLowerInvariant();
-    checks=@('source-read-denied','compiler-read-denied','program-readable','program-readonly','data-writable','controller-unaffected','powershell-5.1','inherited-module-environment','unicode-paths','acl-restored')} |
+    checks=@('source-read-denied','compiler-read-denied','source-execute-denied','directory-metadata-readable','program-readable','program-readonly','data-writable','controller-unaffected','powershell-5.1','inherited-module-environment','unicode-paths','acl-restored')} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskWork 'verification.json') -Encoding utf8

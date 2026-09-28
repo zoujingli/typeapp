@@ -67,8 +67,15 @@ foreach ($taskChange in $taskSpec.changes) {
     $taskInheritance = if ((Get-Item -LiteralPath $taskPath).PSIsContainer) {
         [Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'
     } else { [Security.AccessControl.InheritanceFlags]::None }
+    $taskPropagation = [Security.AccessControl.PropagationFlags]::None
     if ($taskChange.access -eq 'deny-read') {
-        $taskRights = [Security.AccessControl.FileSystemRights]::ReadAndExecute
+        # 禁止源码/工具文件的内容读取与执行；保留目录元数据供 PHP realpath 逐层解析。
+        # 仅向文件传播拒绝，不能因父目录 ListDirectory 被拒绝而使已授权的数据目录失效。
+        $taskRights = [Security.AccessControl.FileSystemRights]'ReadData,ExecuteFile'
+        if ((Get-Item -LiteralPath $taskPath).PSIsContainer) {
+            $taskInheritance = [Security.AccessControl.InheritanceFlags]::ObjectInherit
+            $taskPropagation = [Security.AccessControl.PropagationFlags]::InheritOnly
+        }
         $taskType = [Security.AccessControl.AccessControlType]::Deny
     } elseif ($taskChange.access -eq 'modify') {
         $taskRights = [Security.AccessControl.FileSystemRights]::Modify
@@ -81,6 +88,6 @@ foreach ($taskChange in $taskSpec.changes) {
             $taskInheritance, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Deny))
     } else { throw '隔离 ACL 类型无效。' }
     $taskAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($taskSid, $taskRights,
-        $taskInheritance, [Security.AccessControl.PropagationFlags]::None, $taskType))
+        $taskInheritance, $taskPropagation, $taskType))
     Set-Acl -LiteralPath $taskPath -AclObject $taskAcl
 }
