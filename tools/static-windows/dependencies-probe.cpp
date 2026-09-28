@@ -7,10 +7,12 @@
 // MSVC 不提供 POSIX ssize_t；使用上游开关隐藏已弃用接口，保留 nghttp2_ssize 接口。
 #define NGHTTP2_NO_SSIZE_T
 #define LIBXML_STATIC
+#define LIBICONV_STATIC
 #include <ares.h>
 #include <brotli/decode.h>
 #include <curl/curl.h>
 #include <gmpxx.h>
+#include <iconv.h>
 #include <libpq-fe.h>
 #include <libxml/parser.h>
 #include <mpfr.h>
@@ -22,6 +24,9 @@
 #include <cstdio>
 
 int main() {
+    iconv_t conversion = iconv_open("UTF-8", "UTF-8");
+    if (conversion == reinterpret_cast<iconv_t>(-1)) { return 9; }
+    if (iconv_close(conversion) != 0) { return 10; }
     mpz_class number("12345678901234567890");
     mpz_class squared = number * number;
     if (squared.get_str() != "152415787532388367501905199875019052100") { return 1; }

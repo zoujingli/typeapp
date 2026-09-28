@@ -115,50 +115,9 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
     $taskPatch = 'foreach(["SwooleThreadSource","SwooleHttpSource","SwooleSocketSource"] as $name){require $argv[1]."/plugin/type-build/src/".$name.".php";$class="Type\\Build\\".$name;$patch=new $class();$report[$name]=$patch->apply($argv[2]);} $report["tls"]=(new Type\Build\SwooleSocketSource())->applyTls($argv[2]);echo json_encode($report,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);'
     & (Join-Path $sdk 'php.exe') -n -r $taskPatch $taskRoot $taskSwoole | Set-Content -LiteralPath (Join-Path $taskEvidence 'swoole-source.json') -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw '固定 Swoole 源码适配核验失败。' }
-    # 固定版本未声明 PHP_PGSQL_DIR；独立 phpize 构建使用已有 --with-php-build 依赖目录。
-    # 上游配置能独立发现 libpq 后撤除此适配，不能因此关闭 PostgreSQL hook。
-    $taskConfig = Join-Path $taskSwoole 'config.w32'
-    $taskConfigBefore = '02a801b07d5bb38edea0f88465271454f54d4625d6e71e0c15db3935bef789ac'
-    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() -ne $taskConfigBefore) { throw 'Swoole Windows 配置原文不符。' }
-    $taskConfigText = [IO.File]::ReadAllText($taskConfig)
-    $taskLibraryProbe = 'CHECK_LIB("libpq.lib", "swoole", PHP_PGSQL_DIR)'
-    $taskHeaderProbe = 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PGSQL_DIR)'
-    $taskSqliteProbe = 'CHECK_LIB("sqlite3.lib", "swoole", null)'
-    $taskZstdProbe = 'CHECK_LIB("libzstd.lib", "swoole", null)'
-    $taskPgsqlSources = 'swoole_source_files += PHP_THIRDPARTY_DIR + "\\pdo_pgsql\\pgsql_driver.c ";'
-    $taskSqliteSources = 'swoole_source_files += "thirdparty\\pdo_sqlite\\sqlite_driver.c ";'
-    foreach ($taskProbe in @($taskLibraryProbe, $taskHeaderProbe, $taskSqliteProbe, $taskZstdProbe, $taskPgsqlSources, $taskSqliteSources)) {
-        if ([regex]::Matches($taskConfigText, [regex]::Escape($taskProbe)).Count -ne 1) { throw 'Swoole Windows 配置适配位置不唯一。' }
-    }
-    $taskConfigText = $taskConfigText.Replace($taskLibraryProbe, 'CHECK_LIB("libpq.lib", "swoole", null)')
-    $taskConfigText = $taskConfigText.Replace($taskHeaderProbe, 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PHP_BUILD + "\\include\\libpq")')
-    $taskConfigText = $taskConfigText.Replace($taskSqliteProbe, 'CHECK_LIB("libsqlite3.lib;sqlite3.lib", "swoole", null)')
-    $taskConfigText = $taskConfigText.Replace($taskZstdProbe, 'CHECK_LIB("libzstd_a.lib;libzstd.lib", "swoole", null)')
-    # 官方 hook 实现必须与 PDO 适配一起编译；只补构建清单，不替换数据库等待机制。
-    $taskConfigText = $taskConfigText.Replace($taskPgsqlSources, ('swoole_source_files += "ext-src\\swoole_pgsql.cc ";' + "`n`t`t" + $taskPgsqlSources))
-    $taskConfigText = $taskConfigText.Replace($taskSqliteSources, ('swoole_source_files += "ext-src\\swoole_sqlite.cc ";' + "`n`t`t" + $taskSqliteSources))
-    [IO.File]::WriteAllText($taskConfig, $taskConfigText, [Text.UTF8Encoding]::new($false))
-    @{ file='config.w32'; before=$taskConfigBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskConfig).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-config-source.json') -Encoding utf8
-    # IOCP 直接引用 PHP 文件辅助头，需要先加载其使用的 Zend 内联定义。
-    # 上游补齐包含顺序并通过 Windows 编译后撤除此头文件适配。
-    $taskIocp = Join-Path $taskSwoole 'src/coroutine/iocp.cc'
-    $taskIocpBefore = 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990'
-    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $taskIocp).Hash.ToLowerInvariant() -ne $taskIocpBefore) { throw 'Swoole IOCP 原文不符。' }
-    $taskIocpText = [IO.File]::ReadAllText($taskIocp)
-    $taskIocpInclude = '#include "win32/ioutil.h"'
-    if ([regex]::Matches($taskIocpText, [regex]::Escape($taskIocpInclude)).Count -ne 1) { throw 'Swoole IOCP 头文件适配位置不唯一。' }
-    $taskIocpReplacement = @'
-#include "Zend/zend_portability.h"
-#include "win32/ioutil.h"
-'@
-    $taskIocpText = $taskIocpText.Replace($taskIocpInclude, $taskIocpReplacement)
-    # poll 宏同时改名成员方法；未限定的 WSAPoll 会递归调用自身并耗尽协程栈。
-    # 只限定到 WinSock 全局函数；上游消除名称遮蔽且 PostgreSQL hook 回归通过后撤除。
-    $taskIocpPoll = 'int retval = WSAPoll(fds, nfds, 0);'
-    if ([regex]::Matches($taskIocpText, [regex]::Escape($taskIocpPoll)).Count -ne 1) { throw 'Swoole IOCP 轮询适配位置不唯一。' }
-    $taskIocpText = $taskIocpText.Replace($taskIocpPoll, 'int retval = ::WSAPoll(fds, nfds, 0);')
-    [IO.File]::WriteAllText($taskIocp, $taskIocpText, [Text.UTF8Encoding]::new($false))
-    @{ file='src/coroutine/iocp.cc'; before=$taskIocpBefore; after=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskIocp).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-iocp-source.json') -Encoding utf8
+    # 与静态 SDK 共用固定的官方构建与 IOCP 适配，避免两套实现漂移。
+    & (Join-Path $sdk 'php.exe') -n -r 'require $argv[1]."/plugin/type-build/src/SwooleWindowsSource.php";echo json_encode((new Type\Build\SwooleWindowsSource())->apply($argv[2]),JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);' $taskRoot $taskSwoole | Set-Content -LiteralPath (Join-Path $taskEvidence 'windows-source.json') -Encoding utf8
+    if ($LASTEXITCODE -ne 0) { throw 'Swoole Windows 固定源码适配失败。' }
     Push-Location $taskSwoole
     try {
         & (Join-Path $taskDevel 'phpize.bat') 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'phpize.log')

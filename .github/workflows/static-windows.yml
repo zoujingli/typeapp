@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 核心与第三方依赖分别验证，不生成应用候选
+        description: 验证核心、依赖或完整扩展 embed；均不生成应用候选
         type: choice
-        options: [core, dependencies]
+        options: [core, dependencies, runtime]
         default: core
 
 permissions:
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   core:
-    if: inputs.scope != 'dependencies'
+    if: inputs.scope == 'core'
     runs-on: windows-2022
     timeout-minutes: 40
     steps:
@@ -39,7 +39,7 @@ jobs:
           path: build/static-windows-core/evidence/*
 
   dependencies:
-    if: inputs.scope == 'dependencies'
+    if: inputs.scope != 'core'
     runs-on: windows-2022
     timeout-minutes: 90
     env:
@@ -54,6 +54,7 @@ jobs:
         with:
           path: .cache/static-windows-vcpkg
           key: static-windows-vcpkg-${{ hashFiles('tools/static-windows/vcpkg.json', 'tools/static-windows/x64-typeapp-static.cmake') }}-v1
+          restore-keys: static-windows-vcpkg-
       - name: 制备静态第三方库并运行 PE 探针
         shell: pwsh
         run: |
@@ -83,3 +84,36 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: build/static-windows-dependencies/installed/**
+
+  runtime:
+    if: inputs.scope == 'runtime'
+    needs: dependencies
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: static-windows-dependencies
+          path: build/runtime-dependencies
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: static-windows-dependencies-evidence
+          path: build/runtime-dependency-evidence
+      - name: 构建 PHP 与完整静态扩展并验证独立 embed
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          ./tools/probe-static-windows.ps1 -Directory "$env:GITHUB_WORKSPACE/build/static-windows-runtime" `
+            -DependenciesDirectory "$env:GITHUB_WORKSPACE/build/runtime-dependencies/x64-typeapp-static" `
+            -DependencyVerification "$env:GITHUB_WORKSPACE/build/runtime-dependency-evidence/evidence/verification.json"
+      - name: 保存扩展的构建、导入和启动原始证据
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: static-windows-runtime-evidence
+          retention-days: 14
+          if-no-files-found: error
+          path: build/static-windows-runtime/evidence/*

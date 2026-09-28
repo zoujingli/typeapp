@@ -1,6 +1,10 @@
-param([Parameter(Mandatory = $true)][string]$Directory)
+param(
+    [Parameter(Mandatory = $true)][string]$Directory,
+    [string]$DependenciesDirectory = '',
+    [string]$DependencyVerification = ''
+)
 $ErrorActionPreference = 'Stop'
-# 先验证真正的静态 PHP 核心；本入口不生成应用候选，也不修改共享 SDK。
+# 分别验证静态 PHP 核心或完整扩展组合；本入口不生成应用候选，也不修改共享 SDK。
 if ($env:OS -ne 'Windows_NT' -or ![IO.Path]::IsPathFullyQualified($Directory) -or (Test-Path -LiteralPath $Directory)) {
     throw '需要 Windows x64 和尚不存在的绝对工作目录。'
 }
@@ -47,7 +51,7 @@ function Get-StaticSource {
     & $taskSevenZip x -y -bd -bsp0 "-o$taskWork" $taskArchive 2>&1 |
         Tee-Object -FilePath (Join-Path $taskEvidence ($Name + '.extract.log'))
     if ($LASTEXITCODE -ne 0) { throw ('源码归档解码失败：' + $Name) }
-    if ($Name.EndsWith('.tar.xz', [StringComparison]::Ordinal)) {
+    if ($Name.EndsWith('.tar.xz', [StringComparison]::Ordinal) -or $Name.EndsWith('.tar.gz', [StringComparison]::Ordinal)) {
         $taskTarArchive = $taskArchive.Substring(0, $taskArchive.Length - 3)
         Write-StaticStage ('extract tar: ' + [IO.Path]::GetFileName($taskTarArchive))
         & $taskSevenZip x -y -bd -bsp0 "-o$taskWork" $taskTarArchive 2>&1 |
@@ -126,13 +130,61 @@ foreach ($taskName in $taskSourceEdits.Keys | Sort-Object) {
 $taskAdaptations | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'adaptations.json') -Encoding utf8
 Write-StaticStage 'source adaptations: verified'
 
+$taskConfigure = @('--disable-all', '--disable-cli', '--disable-cgi', '--disable-phpdbg', '--enable-embed', '--enable-zts', '--with-mp=2')
+$taskExtraLibraries = ''
+$taskRuntime = $DependenciesDirectory -ne ''
+if ($taskRuntime -ne ($DependencyVerification -ne '')) { throw '静态依赖和其真实验证报告必须同时提供。' }
+if ($taskRuntime) {
+    $taskDependencyReport = Get-Content -Raw -LiteralPath $DependencyVerification | ConvertFrom-Json
+    if (!$taskDependencyReport.passed -or $taskDependencyReport.triplet -ne 'x64-typeapp-static' -or
+        $taskDependencyReport.manifest_sha256 -ne (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'static-windows/vcpkg.json') -Algorithm SHA256).Hash.ToLowerInvariant() -or
+        $taskDependencyReport.triplet_sha256 -ne (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'static-windows/x64-typeapp-static.cmake') -Algorithm SHA256).Hash.ToLowerInvariant()) {
+        throw '第三方静态依赖尚未通过当前配置的真实验证。'
+    }
+    $taskLibraries = @()
+    foreach ($taskLibrary in $taskDependencyReport.libraries) {
+        if ($taskLibrary.file -cnotmatch '^[A-Za-z0-9_+.-]+\.lib$' -or $taskLibrary.sha256 -cnotmatch '^[a-f0-9]{64}$') { throw '归档声明无效。' }
+        $taskFile = Join-Path $DependenciesDirectory ('lib/' + $taskLibrary.file)
+        if ((Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash.ToLowerInvariant() -ne $taskLibrary.sha256) { throw '第三方静态依赖字节发生变化。' }
+        $taskLibraries += '"' + [IO.Path]::GetFullPath($taskFile) + '"'
+    }
+    if (!$taskLibraries.Count -or @(Get-ChildItem -LiteralPath $DependenciesDirectory -Filter '*.dll' -File -Recurse).Count) { throw '依赖为空或仍含 DLL。' }
+    # 官方 Windows PHP 配置使用自己的库文件名；任务内别名保持原始归档字节。
+    $taskDeps = Join-Path $taskWork 'dependencies'
+    Copy-Item -LiteralPath $DependenciesDirectory -Destination $taskDeps -Recurse
+    foreach ($taskAlias in @(@('pq.lib', 'libpq.lib'), @('zs.lib', 'zlib_a.lib'), @('sqlite3.lib', 'libsqlite3_a.lib'),
+        @('libxml2.lib', 'libxml2_a.lib'), @('iconv.lib', 'libiconv_a.lib'), @('zstd.lib', 'libzstd.lib'))) {
+        Copy-Item -LiteralPath (Join-Path $taskDeps ('lib/' + $taskAlias[0])) -Destination (Join-Path $taskDeps ('lib/' + $taskAlias[1]))
+    }
+    Get-StaticSource 'https://pecl.php.net/get/redis-6.3.0.tgz' '0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5' 'redis.tar.gz'
+    Get-StaticSource 'https://codeload.github.com/swoole/swoole-src/tar.gz/0f3bee2f0ed8704ce33a336e7feabb0115411dd7' 'b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea' 'swoole.tar.gz'
+    Move-Item -LiteralPath (Join-Path $taskWork 'redis-6.3.0') -Destination (Join-Path $taskSource 'ext/redis')
+    Move-Item -LiteralPath (Join-Path $taskWork 'swoole-src-0f3bee2f0ed8704ce33a336e7feabb0115411dd7') -Destination (Join-Path $taskSource 'ext/swoole')
+    # 该发行包只提供执行源码适配的构建宿主，绝不加入链接输入或交付文件。
+    Get-StaticSource 'https://github.com/swoole/typephp/releases/download/v0.9.0/tpc_v0.9.0_windows_x64.zip' '187c2ca1644b37163d5f67725a29752f91da9e058583a8d3e471a71703570ff6' 'host.zip'
+    $taskHostPhp = Join-Path $taskWork 'tpc_v0.9.0_windows_x64/php.exe'
+    & $taskHostPhp -n (Join-Path $PSScriptRoot 'static-windows/prepare-extensions.php') $taskSource (Join-Path $taskEvidence 'extension-adaptations.json')
+    if ($LASTEXITCODE -ne 0) { throw '完整扩展的固定源码适配失败。' }
+    $taskConfigure += @("--with-php-build=$taskDeps", '--enable-filter', '--enable-tokenizer', '--enable-ctype', '--enable-session',
+        '--enable-mbstring', '--disable-mbregex', '--with-libxml', '--enable-dom', '--enable-xml', '--enable-simplexml',
+        '--enable-xmlreader', '--enable-xmlwriter', '--enable-phar', '--enable-pdo', '--enable-mysqlnd', '--with-pdo-mysql',
+        '--with-pdo-pgsql', '--with-pdo-sqlite', '--with-sqlite3', '--enable-sockets', '--with-openssl', '--with-curl',
+        '--enable-zlib', '--with-iconv', '--enable-redis', '--enable-swoole', '--enable-swoole-thread', '--enable-php-sockets',
+        '--enable-cares', '--enable-swoole-pgsql', '--enable-swoole-sqlite', '--enable-swoole-curl')
+    [IO.File]::WriteAllText((Join-Path $taskSource 'typeapp-dependencies.rsp'), ($taskLibraries -join "`r`n") +
+        "`r`ncrypt32.lib bcrypt.lib ws2_32.lib advapi32.lib user32.lib normaliz.lib iphlpapi.lib secur32.lib wldap32.lib shell32.lib ole32.lib`r`n", $taskUtf8)
+    $taskExtraLibraries = '@typeapp-dependencies.rsp'
+}
+
 Push-Location $taskSource
+$taskOriginalCompilerOptions = $env:_CL_
 try {
+    if ($taskRuntime) { $env:_CL_ = ($taskOriginalCompilerOptions + ' /std:c++20 /D CURL_STATICLIB /D CARES_STATICLIB /D NGHTTP2_STATICLIB /D NGHTTP2_NO_SSIZE_T /D LIBXML_STATIC /D LIBICONV_STATIC').Trim() }
     Write-StaticStage 'buildconf: start'
     & .\buildconf.bat 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'buildconf.log')
     if ($LASTEXITCODE -ne 0) { throw 'PHP buildconf 失败。' }
     Write-StaticStage 'configure: start'
-    & .\configure.bat --disable-all --disable-cli --disable-cgi --disable-phpdbg --enable-embed --enable-zts --with-mp=2 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
+    & .\configure.bat @taskConfigure 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
     if ($LASTEXITCODE -ne 0) { throw 'PHP 静态核心配置失败。' }
     Copy-Item -LiteralPath 'Makefile' -Destination (Join-Path $taskEvidence 'Makefile.original')
     # 复用官方已生成的完整对象清单，直接归档；不链接 PHP DLL 或加入其导入库。
@@ -141,24 +193,27 @@ try {
 typeapp-static-core: generated_files $(PHP_GLOBAL_OBJS) $(STATIC_EXT_OBJS) $(EMBED_GLOBAL_OBJS) $(ASM_OBJS)
 	$(MAKE_LIB) /nologo /out:$(BUILD_DIR)\typeapp-static.lib $(PHP_GLOBAL_OBJS_RESP) $(STATIC_EXT_OBJS_RESP) $(EMBED_GLOBAL_OBJS_RESP) $(ASM_OBJS)
 	$(CC) $(CFLAGS) $(BASE_INCLUDES) /I . /I main /I Zend /I TSRM /I ext /I sapi/embed /D ZEND_ENABLE_STATIC_TSRMLS_CACHE=1 /c typeapp-embed-probe.c /Fo$(BUILD_DIR)\typeapp-embed-probe.obj
-	"$(LINK)" /nologo /INCREMENTAL:NO /out:$(BUILD_DIR)\typeapp-embed-probe.exe $(BUILD_DIR)\typeapp-embed-probe.obj $(BUILD_DIR)\typeapp-static.lib $(STATIC_EXT_LIBS) $(LIBS) $(LDFLAGS) $(STATIC_EXT_LDFLAGS)
+	"$(LINK)" /nologo /INCREMENTAL:NO /out:$(BUILD_DIR)\typeapp-embed-probe.exe $(BUILD_DIR)\typeapp-embed-probe.obj $(BUILD_DIR)\typeapp-static.lib $(STATIC_EXT_LIBS) $(LIBS) $(LDFLAGS) $(STATIC_EXT_LDFLAGS) TYPEAPP_EXTRA_LIBRARIES
 '@
+    $taskTarget = $taskTarget.Replace('TYPEAPP_EXTRA_LIBRARIES', $taskExtraLibraries)
     [IO.File]::AppendAllText((Join-Path $taskSource 'Makefile'), $taskTarget + "`r`n", $taskUtf8)
     Copy-Item -LiteralPath (Join-Path $taskRoot 'plugin/type-build/src/Native/embed-probe.c') -Destination 'typeapp-embed-probe.c'
     Write-StaticStage 'nmake: static core and embed probe'
     & nmake /nologo typeapp-static-core 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'build.log')
     if ($LASTEXITCODE -ne 0) { throw 'PHP 静态核心构建或真实 embed 链接失败。' }
-} finally { Pop-Location }
+} finally { $env:_CL_ = $taskOriginalCompilerOptions; Pop-Location }
 Write-StaticStage 'PE audit: start'
 
 $taskPrograms = @(Get-ChildItem -LiteralPath $taskSource -Filter typeapp-embed-probe.exe -File -Recurse)
 if ($taskPrograms.Count -ne 1) { throw '没有生成唯一静态 embed 探针。' }
 $taskProgram = $taskPrograms[0].FullName
+Copy-Item -LiteralPath $taskProgram -Destination (Join-Path $taskEvidence 'embed-probe.exe')
 $taskImports = & dumpbin.exe /nologo /dependents $taskProgram
 if ($LASTEXITCODE -ne 0) { throw 'PE 导入审计失败。' }
 $taskImports | Set-Content -LiteralPath (Join-Path $taskEvidence 'imports.txt') -Encoding utf8
 $taskDlls = @([regex]::Matches(($taskImports -join "`n"), '(?im)^\s+([A-Za-z0-9_.-]+\.dll)\s*$') | ForEach-Object { $_.Groups[1].Value.ToLowerInvariant() })
-$taskAllowed = @('kernel32.dll', 'advapi32.dll', 'ws2_32.dll', 'user32.dll', 'shell32.dll', 'ole32.dll', 'oleaut32.dll', 'uuid.dll', 'shlwapi.dll', 'dnsapi.dll', 'iphlpapi.dll', 'bcrypt.dll', 'normaliz.dll', 'crypt32.dll', 'psapi.dll')
+# Pathcch.lib 实际导入 Windows 的 API-set 路径契约；只接受已经核实的系统名称。
+$taskAllowed = @('kernel32.dll', 'advapi32.dll', 'ws2_32.dll', 'user32.dll', 'shell32.dll', 'ole32.dll', 'oleaut32.dll', 'uuid.dll', 'shlwapi.dll', 'dnsapi.dll', 'iphlpapi.dll', 'bcrypt.dll', 'normaliz.dll', 'crypt32.dll', 'psapi.dll', 'secur32.dll', 'api-ms-win-core-path-l1-1-0.dll')
 if (!$taskDlls.Count -or @($taskDlls | Where-Object { $_ -notin $taskAllowed }).Count) { throw '静态核心仍导入非系统 DLL，详见 imports.txt。' }
 $taskDeploy = Join-Path $taskWork 'program only'
 New-Item -ItemType Directory -Path $taskDeploy | Out-Null
@@ -173,11 +228,19 @@ try {
     if ($LASTEXITCODE -ne 0) { throw '静态核心在无 SDK PATH 环境不能启动。' }
 } finally { $env:PATH = $taskOldPath }
 $taskProfile = ($taskOutput -join "`n") | ConvertFrom-Json
+$taskOutput | Set-Content -LiteralPath (Join-Path $taskEvidence 'runtime.json') -Encoding utf8
 if ($taskProfile.php -ne '8.5.10' -or !$taskProfile.zts -or $taskProfile.sapi -ne 'embed' -or
     ![string]::Equals([IO.Path]::GetFullPath($taskProfile.'core-library'), (Join-Path $taskDeploy 'probe.exe'), [StringComparison]::OrdinalIgnoreCase)) {
     throw '实际 PHP 核心未位于静态主程序内。'
 }
-@{ passed=$true; scope='PHP core embed only; no application or Swoole acceptance'; php=$taskProfile.php; zts=$taskProfile.zts;
+if ($taskRuntime) {
+    foreach ($taskExtension in @('filter', 'tokenizer', 'ctype', 'session', 'mbstring', 'libxml', 'dom', 'xml', 'SimpleXML',
+        'xmlreader', 'xmlwriter', 'Phar', 'PDO', 'mysqlnd', 'pdo_mysql', 'pdo_pgsql', 'pdo_sqlite', 'sqlite3', 'sockets',
+        'openssl', 'curl', 'zlib', 'iconv', 'redis', 'swoole')) {
+        if ($null -eq $taskProfile.extensions.$taskExtension) { throw ('静态核心缺少必需扩展：' + $taskExtension) }
+    }
+}
+@{ passed=$true; scope=$(if ($taskRuntime) { 'PHP and extensions embed only; no PHPX or application acceptance' } else { 'PHP core embed only; no application or Swoole acceptance' }); php=$taskProfile.php; zts=$taskProfile.zts;
     artifact_sha256=(Get-FileHash -LiteralPath $taskProgram -Algorithm SHA256).Hash.ToLowerInvariant(); system_libraries=$taskDlls;
     extensions=$taskProfile.extensions } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
-Write-Host 'Windows 静态 PHP 核心 embed 探针通过；尚须继续扩展、PHPX 与应用验收。'
+Write-Host 'Windows 静态 embed 探针通过；范围以 verification.json 为准，尚不代表 PHPX 或应用验收。'

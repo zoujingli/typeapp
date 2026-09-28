@@ -67,6 +67,8 @@ try {
 } finally { $env:PATH = $taskOldPath }
 $taskIdentity = @($taskLibraries | ForEach-Object { @{file=[IO.Path]::GetFileName($_); sha256=(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()} })
 @{passed=$true; scope='third-party dependencies only'; source=$taskReference; triplet='x64-typeapp-static'; libraries=$taskIdentity;
+    manifest_sha256=(Get-FileHash -LiteralPath (Join-Path $taskInput 'vcpkg.json') -Algorithm SHA256).Hash.ToLowerInvariant();
+    triplet_sha256=(Get-FileHash -LiteralPath (Join-Path $taskInput 'x64-typeapp-static.cmake') -Algorithm SHA256).Hash.ToLowerInvariant();
     program_sha256=(Get-FileHash -LiteralPath $taskProgram -Algorithm SHA256).Hash.ToLowerInvariant(); system_libraries=$taskDlls} |
     ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
 Write-Host 'Windows 第三方静态依赖已完成真实链接与独立运行，尚不代表 PHP/Swoole/应用验收。'

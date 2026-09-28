@@ -7,6 +7,7 @@
     "c-ares",
     { "name": "curl", "default-features": false, "features": ["brotli", "c-ares", "http2", "non-http", "openssl"] },
     "gmp",
+    "libiconv",
     { "name": "libpq", "default-features": false, "features": ["openssl"] },
     { "name": "libxml2", "default-features": false },
     "mpfr",
