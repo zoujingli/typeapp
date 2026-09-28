@@ -77,6 +77,8 @@ Windows 的完整 PHP/Swoole、PHPX 静态探针与 SDK 导出已经通过，完
 
 同次运行的完整应用 AOT 和单程序封存成功，SQLite 部署在执行应用前失败：系统 PowerShell 5.1 将无 BOM 的 UTF-8 ACL 脚本按旧编码读取，触发语法错误。原独立探针使用 pwsh，未覆盖这个解释器差异。后续为脚本保留 UTF-8 BOM、显式读取 UTF-8 JSON，并让独立探针调用与应用测试相同的系统解释器，覆盖中文和空格目录；三库部署必须重新执行。SDK ZIP 摘要为 `6d8e1d3a708c4cdb4ba97c7057977104655179c7ea5f67a1df5f71d35f141f85`，清单摘要为 `5c16c9f372b246a9d48eebb8e3e5cfcafe02a9c231b78f80235c63d490a50070`；28 份归档及 3060 个头文件已逐项回读一致。
 
+后续独立探针已通过受限令牌的真实读写检查，但暴露了恢复路径的问题：PowerShell 5.1 的 JSON 数组不能再套管道数组；全部原始 ACL 须在任何父目录变更之前保存。[运行 36404795327](https://github.com/zoujingli/typeapp/actions/runs/36404795327) 的逐项差异进一步确认，所有 ACE 权限均已恢复，剩余差别仅为系统设置了 `SE_DACL_AUTO_INHERITED` 状态位。后续校验只排除此处理标记，继续严格比较权限、顺序、继承范围及其他控制标记；只有恢复成功才写通过回执。该失败探针不是应用运行或三库验收结果。
+
 ## macOS ARM64，最低系统 15
 
 [运行 36383075960](https://github.com/zoujingli/typeapp/actions/runs/36383075960) 已成功，源码提交为 `2fd944fc55d40aee108432b03ec708ad9e07c9d0`。候选与原始证据均已下载回读；三库报告及日志摘要绑定同一个文件。

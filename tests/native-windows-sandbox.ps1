@@ -24,7 +24,16 @@ if ($Operation -eq 'restore') {
     $taskMismatches = @()
     foreach ($taskEntry in $taskEntries) {
         $taskRestored = (Get-Acl -LiteralPath $taskEntry.path).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
-        if ($taskRestored -cne $taskEntry.sddl) {
+        $taskExpectedDescriptor = [Security.AccessControl.RawSecurityDescriptor]::new($taskEntry.sddl)
+        $taskActualDescriptor = [Security.AccessControl.RawSecurityDescriptor]::new($taskRestored)
+        # Set-Acl 会设置“已经处理自动继承”的 AI 状态位，即使原 DACL 未设置它。
+        # 仅忽略此处理标记；P/AR、全部 ACE 权限、顺序及继承范围仍逐字比较。
+        foreach ($taskDescriptor in @($taskExpectedDescriptor, $taskActualDescriptor)) {
+            $taskFlags = [int]$taskDescriptor.ControlFlags -band (-bnot [int][Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited)
+            $taskDescriptor.SetFlags([Security.AccessControl.ControlFlags]$taskFlags)
+        }
+        if ($taskActualDescriptor.GetSddlForm([Security.AccessControl.AccessControlSections]::Access) -cne
+            $taskExpectedDescriptor.GetSddlForm([Security.AccessControl.AccessControlSections]::Access)) {
             $taskMismatches += @{path=$taskEntry.path; expected=$taskEntry.sddl; actual=$taskRestored}
         }
     }

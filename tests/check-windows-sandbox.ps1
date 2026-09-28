@@ -46,10 +46,10 @@ try {
     & $taskRunner $taskSid $taskRunner --probe (Join-Path $taskProgram 'app.exe') $taskData $taskProgram `
         (Join-Path $taskRoot 'app/main.php') $taskCompiler
     if ($LASTEXITCODE -ne 0) { throw '受限令牌未同时满足读取、写入与拒绝探针。' }
-    @{passed=$true; runner_sha256=(Get-FileHash -LiteralPath $taskRunner -Algorithm SHA256).Hash.ToLowerInvariant();
-        checks=@('source-read-denied','compiler-read-denied','program-readable','program-readonly','data-writable','controller-unaffected','powershell-5.1','unicode-paths')} |
-        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskWork 'verification.json') -Encoding utf8
 } finally {
     & $taskPowershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'native-windows-sandbox.ps1') restore $taskSpec
     if ($LASTEXITCODE -ne 0) { throw '系统 PowerShell 隔离恢复失败。' }
 }
+@{passed=$true; runner_sha256=(Get-FileHash -LiteralPath $taskRunner -Algorithm SHA256).Hash.ToLowerInvariant();
+    checks=@('source-read-denied','compiler-read-denied','program-readable','program-readonly','data-writable','controller-unaffected','powershell-5.1','unicode-paths','acl-restored')} |
+    ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskWork 'verification.json') -Encoding utf8
