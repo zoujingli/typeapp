@@ -69,7 +69,13 @@ static int probe(int argc, wchar_t **argv) {
     for (int index = 5; index < argc; ++index) {
         // 单独申请内容权限，不能仅以元数据读取失败冒充源码隔离。
         for (DWORD access : {FILE_READ_DATA, FILE_EXECUTE}) {
-            if (readable(argv[index], access) || GetLastError() != ERROR_ACCESS_DENIED) { return failure("source denial"); }
+            const bool opened = readable(argv[index], access);
+            const DWORD error = opened ? ERROR_SUCCESS : GetLastError();
+            if (opened || error != ERROR_ACCESS_DENIED) {
+                std::fwprintf(stderr, L"sandbox source denial failed: %ls (access=%lu, opened=%d, error=%lu)\n",
+                              argv[index], access, opened ? 1 : 0, error);
+                return 125;
+            }
         }
     }
     std::puts("restricted source and SDK reads denied; program readable; data writable; program directory readonly");

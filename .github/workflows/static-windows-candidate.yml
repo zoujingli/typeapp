@@ -83,8 +83,21 @@ jobs:
           }
           $taskRun = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:PROGRAM_RUN" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $taskRun.head_repository.full_name -ne $env:GITHUB_REPOSITORY -or
-              $taskRun.path -cne '.github/workflows/static-windows-candidate.yml' -or $taskRun.status -cne 'completed') {
-            throw '只接受本仓已结束的静态候选运行。'
+              $taskRun.path -cnotin @('.github/workflows/static-windows-candidate.yml', '.github/workflows/release.yml')) {
+            throw '只接受本仓静态候选或正式发布入口的原程序。'
+          }
+          if ($taskRun.path -ceq '.github/workflows/release.yml') {
+            # 发布的其他平台可能仍在运行，只复验已结束并保存原程序的 Windows 任务。
+            $taskPages = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:PROGRAM_RUN/jobs?per_page=100" --paginate --slurp | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw '无法核对原程序任务。' }
+            $taskJobs = @($taskPages.jobs | Where-Object { $_.name -ceq 'windows-static / Windows x64 单程序三库' })
+            if ($taskJobs.Count -ne 1 -or $taskJobs[0].status -cne 'completed' -or
+                @($taskJobs[0].steps | Where-Object { $_.name -ceq '全量 AOT 并封存最终 EXE' -and $_.conclusion -ceq 'success' }).Count -ne 1 -or
+                @($taskJobs[0].steps | Where-Object { $_.name -ceq '保存构建与部署证据' -and $_.conclusion -ceq 'success' }).Count -ne 1) {
+              throw '发布中的 Windows 原程序尚未编译封存或任务未结束。'
+            }
+          } elseif ($taskRun.status -cne 'completed') {
+            throw '原候选诊断运行尚未结束。'
           }
           @{program_run=$taskRun.id; program_source=$taskRun.head_sha; test_source=$env:GITHUB_SHA; scope='diagnostic only'} |
             ConvertTo-Json | Set-Content build/static-windows-application-evidence/program-inputs.json -Encoding utf8
@@ -97,8 +110,16 @@ jobs:
           if ($env:SDK_RUN -cnotmatch '^[1-9][0-9]*$') { throw 'SDK 运行编号无效。' }
           $taskRun = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SDK_RUN" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $taskRun.head_repository.full_name -ne $env:GITHUB_REPOSITORY -or
-              $taskRun.path -cnotin @('.github/workflows/static-windows.yml', '.github/workflows/static-windows-candidate.yml')) {
+              $taskRun.path -cnotin @('.github/workflows/static-windows.yml', '.github/workflows/static-windows-candidate.yml', '.github/workflows/release.yml')) {
             throw '只能复用本仓静态 SDK 制备入口的产物。'
+          }
+          if ($taskRun.path -ceq '.github/workflows/release.yml') {
+            $taskPages = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SDK_RUN/jobs?per_page=100" --paginate --slurp | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw '无法核对原 SDK 任务。' }
+            $taskJobs = @($taskPages.jobs | Where-Object { $_.name -ceq 'windows-static / sdk / runtime' })
+            if ($taskJobs.Count -ne 1 -or $taskJobs[0].status -cne 'completed' -or $taskJobs[0].conclusion -cne 'success') {
+              throw '发布运行中的完整静态 SDK 尚未成功。'
+            }
           }
           @{sdk_run=$taskRun.id; sdk_source=$taskRun.head_sha; application_source=$env:GITHUB_SHA; scope='diagnostic only'} |
             ConvertTo-Json | Set-Content build/static-windows-application-evidence/inputs.json -Encoding utf8
