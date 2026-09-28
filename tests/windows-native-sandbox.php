@@ -50,9 +50,12 @@ final class WindowsNativeSandbox
         }
         $node = (new Process([(string) getenv('SystemRoot') . '/System32/where.exe', 'node.exe'], $root))->wait(10);
         if ($node->successful()) {
-            $nodePath = BuildPlatform::resolve(trim(explode("\n", $node->stdout)[0]));
-            $directories[] = dirname($nodePath);
-            $blocked[] = $nodePath;
+            // setup-node 可将另一版本放到 PATH 首位，系统预装版本仍须隔离。
+            foreach (explode("\n", trim($node->stdout)) as $nodeEntry) {
+                $nodePath = BuildPlatform::resolve(trim($nodeEntry));
+                $directories[] = dirname($nodePath);
+                $blocked[] = $nodePath;
+            }
         }
         $sid = 'S-1-5-21-' . random_int(100000000, 2000000000) . '-' . random_int(100000000, 2000000000)
             . '-' . random_int(100000000, 2000000000) . '-12345';
