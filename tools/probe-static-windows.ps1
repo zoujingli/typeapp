@@ -41,8 +41,20 @@ function Get-StaticSource {
         throw ('源码下载或摘要核对失败：' + $Name)
     }
     Write-StaticStage ('extract: ' + $Name + ' (' + (Get-Item -LiteralPath $taskArchive).Length + ' bytes)')
-    & (Join-Path $env:SystemRoot 'System32/tar.exe') -xf $taskArchive -C $taskWork
-    if ($LASTEXITCODE -ne 0) { throw ('源码解包失败：' + $Name) }
+    # Windows 内置 tar 在固定 PHP XZ 源码上持续停顿；分开解码和展开，
+    # 保留两个阶段的退出码与日志，不更换源码归档或跳过摘要核对。
+    $taskSevenZip = (Get-Command '7z.exe' -ErrorAction Stop).Source
+    & $taskSevenZip x -y -bd -bsp0 "-o$taskWork" $taskArchive 2>&1 |
+        Tee-Object -FilePath (Join-Path $taskEvidence ($Name + '.extract.log'))
+    if ($LASTEXITCODE -ne 0) { throw ('源码归档解码失败：' + $Name) }
+    if ($Name.EndsWith('.tar.xz', [StringComparison]::Ordinal)) {
+        $taskTarArchive = $taskArchive.Substring(0, $taskArchive.Length - 3)
+        Write-StaticStage ('extract tar: ' + [IO.Path]::GetFileName($taskTarArchive))
+        & $taskSevenZip x -y -bd -bsp0 "-o$taskWork" $taskTarArchive 2>&1 |
+            Tee-Object -FilePath (Join-Path $taskEvidence ($Name + '.tar.extract.log'))
+        if ($LASTEXITCODE -ne 0) { throw ('源码 TAR 展开失败：' + $Name) }
+        Remove-Item -LiteralPath $taskTarArchive
+    }
     Write-StaticStage ('source ready: ' + $Name)
 }
 Get-StaticSource 'https://www.php.net/distributions/php-8.5.10.tar.xz' '6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957' 'php.tar.xz'
