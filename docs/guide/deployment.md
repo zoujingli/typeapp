@@ -19,16 +19,16 @@
 
 ## 当前构建状态
 
-主仓的 `type package` 现在只交付一个可执行文件，仍有外置运行库、资源或缺少许可材料时明确拒绝。Linux x64、ARM64 在 Ubuntu 24.04，macOS ARM64 在 macOS 15，Windows x64 在 Windows 2022 原生 CI 均已有完整静态程序与同一文件三库隔离运行结果，见[本轮证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/single-program-ci-20260928.md)。这些预检分别记录源码与测试身份；统一源码的发布矩阵及 Windows 重建附件集成仍须完成，四平台单程序尚未发布。
+`v1.0.0-rc.10` 已提供四平台单程序。固定源码 `359627e` 在 Linux x64、ARM64 的 Ubuntu 24.04，macOS ARM64 的 macOS 15，以及 Windows x64 的 Windows 2022 原生 CI 完成完整回归和同一程序的三库隔离部署，见[本轮证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/single-program-ci-20260928.md)。`type package` 只输出一个可执行文件，仍有外置运行库、资源或缺少许可材料时明确拒绝。
 
 | 已实现路径 | 验收与边界 |
 | --- | --- |
-| 静态 SDK、目标头文件和归档摘要校验 | Linux/macOS/Windows 制备入口已接入；Windows 完整 SDK 探针已通过，应用验收仍单独进行；共享模块不能作为静态输入 |
+| 静态 SDK、目标头文件和归档摘要校验 | 四平台 SDK 探针与应用验收均通过；共享模块不能作为静态输入 |
 | 全量 AOT、内置 PHP 配置、静态运行身份 | 普通入口和线程应用分别验收；不读部署机 PHP 配置 |
 | 页面和许可原文内嵌 | 页面显式安装；`licenses` 直接读取许可材料，不释放运行库 |
-| 单文件输出、搬迁、只读目录、无源码隔离 | 四平台分别已有同一程序的三库行为结果；最终发布统一源码与本轮候选 |
+| 单文件输出、搬迁、只读目录、无源码隔离 | 四平台各用最终待发布程序完成三库行为检查，公开下载摘要与候选一致 |
 
-公开的 `v1.0.0-rc.7` 仍是历史目录归档，须完整解压运行；其旧附件和验收身份保持不变。新候选门禁只接受单程序和三库回执，任一平台未完成就阻止主仓 Release 公开。详细证据见[静态构建验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/static-runtime-feasibility.md)。
+旧 `v1.0.0-rc.7` 是历史目录归档，须完整解压运行；其附件和验收身份保持不变。当前发布门禁只接受单程序和三库回执，任一平台未完成就阻止主仓 Release 公开。每个平台另附静态 SDK、源码和重建配方 ZIP，供维护和许可履约使用，无需部署，见[版本下载](releases.md#下载当前公开-rc)。
 
 ## 构建与交付流程
 
@@ -59,8 +59,9 @@ flowchart TB
 | --- | --- |
 | Linux x64 / ARM64，Ubuntu 24.04 | `tools/prepare-static-linux.sh <新工作目录>`；固定源码制备 PHP、PHPX、Redis、Swoole、libpq、curl 与 c-ares，其他依赖取发行版的准确静态归档，逐项记录实际版本和许可材料 |
 | macOS ARM64 | `tools/prepare-static-macos.sh <新工作目录> [PostgreSQL17.11静态SDK根目录]`；省略第二参数时从固定源码构建 libpq，提供时核对既有归档。其余非系统依赖使用已校验的 Homebrew 静态库 |
+| Windows x64，Windows 2022 / MSVC | `tools/prepare-static-windows-dependencies.ps1` 固定第三方静态依赖，`tools/probe-static-windows.ps1 -WithPhpx` 构建 PHP、扩展和 PHPX；参数与制备顺序以 `static-windows.yml` 的 `scope=phpx` 为准 |
 
-两个入口保留三库与协程 hook，并拒绝摘要或 ABI 不符的输入。macOS 的 `TYPE_STATIC_MINIMUM_MACOS` 默认 `15.0`，所有依赖归档也必须支持该版本；本机已有归档要求 26.0，不能把输出标为 macOS 15 可用。制备成功后仍须完成真实 embed、全量 AOT 和同一程序的部署验收，具体入口见[原生验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-command.md)。
+这些入口保留三库与协程 hook，并拒绝摘要或 ABI 不符的输入。macOS 的 `TYPE_STATIC_MINIMUM_MACOS` 默认 `15.0`，所有依赖归档也必须支持该版本；依赖若要求更高系统版本，不能把输出标为 macOS 15 可用。制备成功后仍须完成真实 embed、全量 AOT 和同一程序的部署验收，具体入口见[原生验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-command.md)。
 
 独立应用根执行：
 
@@ -71,7 +72,7 @@ php vendor/bin/type doctor type-app.json build
 
 本仓库使用 `docs/build-config/type-app.json` 作为构建配置。doctor 检查所选范围的前置条件，不连接业务服务；检测通过不等于应用已编译或运行验收通过。
 
-Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一已验收源码基线上通过默认原生 CI，包括完整应用 AOT 与各自的三库场景。Linux x64 另有同一运行包的三库 scratch 无源码、无 SDK 部署；macOS 与 Windows 的主应用、独立模板和搬迁包隔离范围不同，详见[平台支持表](platforms.md#当前平台状态)。应用仍须在自己的目标环境验证运行库、数据库和停止语义，Docker 或 WSL 的 Linux 结果不替代 Windows/macOS 原生结果。
+四平台最终静态程序均在禁止读取构建源码、SDK 和执行开发工具的环境下完成三库部署；Linux 使用 bubblewrap，macOS 使用系统沙箱，Windows 使用受限令牌和访问控制。主应用、独立组件和模板各有验收入口，详见[平台支持表](platforms.md#当前平台状态)。自己的应用仍须在目标环境验证数据库、角色和停止语义；Docker 或 WSL 的 Linux 结果不替代 Windows/macOS 原生结果。
 
 构建维护者为目标平台准备匹配的 SDK 与扩展，并以同一产物完成应用、通信、数据库和无源码部署验收。部署者使用对应平台经过验证的包，具体范围见[平台与验收](platforms.md)。
 
@@ -114,7 +115,22 @@ build/typeapp-iot licenses
 
 ## 首次启动
 
-将已验收的单程序放到匹配 OS/架构和最低系统版本的服务器，下文将程序命名为 `app`。设置应用数据根、数据库、令牌和 Host/代理配置，再执行：
+将已验收的单程序放到匹配 OS/架构和最低系统版本的服务器，下文将程序命名为 `app`。默认应用根是程序所在目录；需要分离数据时，在进程环境中指定已存在的绝对目录 `APP_BASE_PATH`。程序从应用根读取 `.env`，不依赖调用者的工作目录。
+
+物联中心使用 SQLite 起步时，在应用根新建 `.env`，填写以下配置即可，不需要下载源码中的配置文件：
+
+```dotenv
+APP_ENV=production
+APP_DEBUG=false
+APP_LISTEN=127.0.0.1
+APP_PORT=9501
+APP_ALLOWED_HOSTS=127.0.0.1:9501,localhost:9501
+DB_DRIVER=sqlite
+DB_SQLITE_FILE=var/typeapp.sqlite
+APP_CACHE_ENABLED=false
+```
+
+这份示例仅监听本机。对外提供服务时填写实际监听地址、端口与允许的 Host；使用 MySQL/PostgreSQL、可信代理或其他业务角色时，按[配置说明](configuration.md)补齐所需参数。已有配置应保留并核对，不能用示例覆盖。随后执行：
 
 ```bash
 ./app verify-runtime

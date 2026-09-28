@@ -13,13 +13,9 @@ flowchart LR
 
 ## 1. 创建并检查应用
 
-下面使用模板和组件子仓的 `main` 开发分支。在准备存放项目的目录执行；需要复现已发布批次时，先完成[按版本创建与安装](releases.md#composer-按版本安装)，再从本教程的配置与迁移步骤继续，不重复创建项目：
+本教程使用 `1.0.0-rc.10` 的模板和组件。先完成[按版本创建与安装](releases.md#composer-按版本安装)，创建使用 SQLite 的 `my-app`，再在该应用根目录执行下面的配置与检查，不重复创建项目：
 
 ```bash
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main
-cd my-app
-php configure.php sqlite
-composer install --no-plugins --no-scripts
 cp .env.example .env
 php dev.php help
 php dev.php check
@@ -27,7 +23,7 @@ php dev.php check
 
 `--no-install` 让你先选择数据库再安装依赖。`configure.php` 只允许在没有 `vendor/` 和 `composer.lock` 时运行；它调整驱动依赖与数据库工厂。改用 MySQL 或 PostgreSQL 时分别选择 `mysql`、`pgsql`，再按驱动指南准备专用数据库及账号。
 
-`help` 列出实际命令，`check` 检查应用装配；它们不连接业务数据库。开发入口生成配置、路由、模型和操作包装后执行应用。生成目录可以重建，业务代码修改在 `app/` 中完成。提交应用的 `composer.lock`，固定本次安装的开发分支提交。
+`help` 列出实际命令，`check` 检查应用装配；它们不连接业务数据库。开发入口生成配置、路由、模型和操作包装后执行应用。生成目录可以重建，业务代码修改在 `app/` 中完成。提交应用的 `composer.lock`，固定本次安装版本及来源提交。
 
 ## 2. 初始化数据结构
 
@@ -178,18 +174,19 @@ unset APP_API_TOKEN tutorial_pid tutorial_user_id tutorial_version
 
 确认进程退出与端口释放后，可删除本次练习响应文件和日志。不要把迁移回滚或删除数据库当作日常停止步骤。
 
-准备好匹配的构建 SDK 后，在应用根执行：
+准备好匹配目标平台的静态 SDK 后，在应用根执行：
 
 ```bash
+: "${TYPE_STATIC_RUNTIME:?先设置本平台已校验的静态SDK清单路径}"
 php vendor/bin/type doctor type-app.json build
 composer build
 composer package
-build/release/run verify-runtime
-build/release/run help
+build/type-project-release verify-runtime
+build/type-project-release help
 ```
 
 TypePHP 编译业务、Plugins、生成代码及实际生产 PHP 依赖；`type-build` 选择并校验内置 Swoole 和其他实际原生依赖。部署者无需再安装 PHP CLI、Composer、Swoole 开发环境或编译 SDK，数据库服务和业务配置仍按所选能力准备。
 
-本教程固定安装的 RC7 使用上述目录包命令，不能只复制其中的主程序。主仓新构建代码的 `package` 已改为静态单文件输出，须先准备已验证的静态 SDK；不要将不同版本的命令与产物布局混用。新入口及平台范围见[构建与部署](deployment.md)。
+本教程的 RC10 模板将程序输出为 `build/type-project-release`，Windows 使用 `.exe` 后缀。部署只复制该程序，并在应用目录提供配置和所需数据路径；构建 SDK 留在构建机。继续执行程序自己的迁移和启动命令，具体入口及平台范围见[构建与部署](deployment.md)。
 
 继续学习：[配置](configuration.md) · [路由与中间件](routing.md) · [组件教程](components.md) · [TypePHP 全量编译](typephp.md)。

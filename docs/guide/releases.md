@@ -2,9 +2,9 @@
 
 版本由主仓的不可变 tag 驱动：`vX.Y.Z` 是正式版本，`vX.Y.Z-rc.N` 是候选版本。一次发布关联同一主仓提交、15 个组件、应用模板、四个平台运行包及各自的验收记录。RC 标记为预发布，不成为稳定最新版。
 
-当前公开候选为 [v1.0.0-rc.7](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.7)，固定源码 `a5ff7ad`。四平台完整原生验收、组件与模板分发、默认 Packagist 独立消费和公开下载回读均已通过，共核对 17 个 Release、16 个子仓 tag、16 个 Packagist 版本及四份归档。RC 尚非稳定版，实际平台范围见[平台与验收](platforms.md)，原始身份和此前候选记录见[首次 RC 验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
+当前公开候选为 [v1.0.0-rc.10](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.10)，固定源码 `359627e`。四平台完整原生回归、静态单程序三库隔离部署、组件与模板分发、默认 Packagist 独立消费和公开下载回读均已通过，共核对 17 个 Release、16 个子仓 tag、16 个 Packagist 版本、四个程序及四份重建材料。RC 尚非稳定版，实际平台范围见[平台与验收](platforms.md)，原始身份见[本轮验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/single-program-ci-20260928.md)。
 
-主仓新的发布门禁只接受**每个平台一个可执行文件**，不再以目录归档作为新候选。四平台分别已有完整静态程序及同一文件三库隔离验收结果，见[本轮证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/single-program-ci-20260928.md)。统一源码的四平台发布矩阵及 Windows 重建附件集成仍须完成，新的单程序版本尚未公开。以下 RC7 下载示例保留其真实布局，不代表新产物形态。
+每个平台下载一个可执行文件，外置配置独立维护。PHP、PHPX、Swoole 等非系统原生库已静态链接，普通启动不释放运行库。历史 RC7 的目录归档与旧标签保持原样，其使用方式和验收身份保留在[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
 ## 一次 tag 如何形成版本
 
@@ -31,62 +31,62 @@ flowchart TB
 
 每个平台另提供 `typeapp-rebuild-<版本>-<平台>-<架构>.zip`，供维护者取得对应应用源码、实际静态 SDK、LGPL 库源码与重建配方；部署者无需下载或解压它。该附件与程序一起封存、校验和重试，来源或摘要不匹配时阻止发布。维护方法见[静态程序重新构建](https://github.com/zoujingli/typeapp/blob/main/docs/development/rebuild.md)。
 
-## 下载当前公开 RC7
+## 下载当前公开 RC
 
 选择与操作系统、CPU 和系统库基线匹配的附件，具体要求见[平台与验收](platforms.md)。文件名中的版本不带前缀 `v`：
 
 | 目标 | 附件名 |
 | --- | --- |
-| Linux x64 | `typeapp-iot-1.0.0-rc.7-linux-x64.tar.gz` |
-| Linux ARM64 | `typeapp-iot-1.0.0-rc.7-linux-arm64.tar.gz` |
-| macOS ARM64 | `typeapp-iot-1.0.0-rc.7-macos-arm64.tar.gz` |
-| Windows x64 | `typeapp-iot-1.0.0-rc.7-windows-x64.zip` |
+| Linux x64 | `typeapp-iot-1.0.0-rc.10-linux-x64` |
+| Linux ARM64 | `typeapp-iot-1.0.0-rc.10-linux-arm64` |
+| macOS ARM64 | `typeapp-iot-1.0.0-rc.10-macos-arm64` |
+| Windows x64 | `typeapp-iot-1.0.0-rc.10-windows-x64.exe` |
 
 同一 Release 提供 `SHA256SUMS` 和 `release-manifest.json`。前者用于核对下载字节，后者记录源码、版本、候选运行轮次、平台及同一产物的三库验收。摘要应从受信发布渠道取得。
 
-下面以 Linux x64 为例，在一个新目录中下载和解压：
+下面以 Linux x64 为例，在一个新目录中下载、校验并运行：
 
 ```bash
 set -eu
-release_version=1.0.0-rc.7
+release_version=1.0.0-rc.10
 release_base="https://github.com/zoujingli/typeapp/releases/download/v${release_version}"
-release_archive="typeapp-iot-${release_version}-linux-x64.tar.gz"
-curl --fail --location --output "$release_archive" "$release_base/$release_archive"
+release_program="typeapp-iot-${release_version}-linux-x64"
+curl --fail --location --output "$release_program" "$release_base/$release_program"
 curl --fail --location --output SHA256SUMS "$release_base/SHA256SUMS"
 curl --fail --location --output release-manifest.json "$release_base/release-manifest.json"
 sha256sum --check --ignore-missing SHA256SUMS
-mkdir typeapp-iot
-tar -xzf "$release_archive" -C typeapp-iot
-cd typeapp-iot
-./run verify-runtime
+chmod +x "$release_program"
+mv "$release_program" app
+./app verify-runtime
+./app licenses
 ```
 
-校验失败就停止，不继续解压和启动。Linux ARM64 换用对应归档；macOS 使用 `shasum -a 256 文件名` 对照 `SHA256SUMS`，Windows 使用 PowerShell 的 `Get-FileHash -Algorithm SHA256 文件名`，再解压 ZIP 并执行 `run.cmd verify-runtime`。系统基线仍须匹配，尤其注意[macOS 部署审计限制](environment.md#检查与定位)。
+校验失败就停止。Linux ARM64 换用对应程序；macOS 使用 `shasum -a 256 文件名` 对照 `SHA256SUMS`，再赋予执行权限；Windows 使用 PowerShell 的 `Get-FileHash -Algorithm SHA256 文件名`，校验后可改名为 `app.exe`，执行 `.\app.exe verify-runtime`。程序名称可变，应用根和持久数据路径按[配置规则](configuration.md)确定。
 
-当前附件是**包含原生运行库的目录归档**，解压后须保留完整目录。前端内容已编入主程序，安装命令将页面写到应用根下的 `public/`；运行端无需 Node.js、pnpm、Composer 或业务 PHP 源码，也无需另行部署 Swoole 服务。所选 MySQL/PostgreSQL、Redis 等业务服务仍需准备，SQLite 使用本地数据文件。完整静态“一个主程序 + 配置”尚未完成，见[构建与部署](deployment.md)。
+运行端只需匹配平台的主程序和配置，无需 PHP、Swoole、Node.js、Composer 或编译 SDK。前端内容已编入程序，显式安装命令在应用根生成 `public/`；数据库文件、上传和日志由应用按需创建。操作系统基线仍须匹配，所选 MySQL/PostgreSQL、Redis 等外部业务服务仍需准备，SQLite 使用本地文件。运行要求见[环境与依赖](environment.md)。
 
-核对下载、解压和运行库后，按[首次启动](deployment.md#首次启动)完成账号、数据库与页面安装。后续替换程序版本时，使用 `web:install --dry-run --force` 查看页面变化，再执行 `web:install --force`，不要重新执行空库初始化。
+核对下载摘要和运行身份后，按[首次启动](deployment.md#首次启动)完成账号、数据库与页面安装。后续替换程序版本时，使用 `web:install --dry-run --force` 查看页面变化，再执行 `web:install --force`，不要重新执行空库初始化。
 
 ## Composer 按版本安装
 
-组件与通用模板不包含物联中心前端。`1.0.0-rc.7` 已由默认 Packagist 索引，可按明确版本安装。下面以 SQLite 独立应用为例：
+组件与通用模板不包含物联中心前端。`1.0.0-rc.10` 已由默认 Packagist 索引，可按明确版本安装。下面以 SQLite 独立应用为例：
 
 ```bash
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.7
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.10
 cd my-app
 php configure.php sqlite
 composer config minimum-stability RC
 composer config prefer-stable true
 composer require --no-update \
-  zoujingli/type-core:1.0.0-rc.7 \
-  zoujingli/type-orm:1.0.0-rc.7 \
-  zoujingli/type-orm-sqlite:1.0.0-rc.7 \
-  zoujingli/type-runtime:1.0.0-rc.7 \
-  zoujingli/type-log:1.0.0-rc.7 \
-  zoujingli/type-validate:1.0.0-rc.7
+  zoujingli/type-core:1.0.0-rc.10 \
+  zoujingli/type-orm:1.0.0-rc.10 \
+  zoujingli/type-orm-sqlite:1.0.0-rc.10 \
+  zoujingli/type-runtime:1.0.0-rc.10 \
+  zoujingli/type-log:1.0.0-rc.10 \
+  zoujingli/type-validate:1.0.0-rc.10
 composer require --dev --no-update \
-  zoujingli/type-build:1.0.0-rc.7 \
-  zoujingli/type-testing:1.0.0-rc.7
+  zoujingli/type-build:1.0.0-rc.10 \
+  zoujingli/type-testing:1.0.0-rc.10
 composer install --no-plugins --no-scripts
 php dev.php check
 ```
@@ -100,7 +100,7 @@ composer show 'zoujingli/type-*'
 composer show zoujingli/type-build --format=json
 ```
 
-第一条列出已安装的组件版本；第二条的 `source.reference` 是对应子仓的拆分提交，不是主仓 SHA。发布流程会核对这两种身份的对应关系。提交生成的 `composer.lock`，日常构建用 `composer install` 复现实际版本；升级依赖时再受控更新。开发分支用法继续见[快速开始](quickstart.md)。
+第一条列出已安装的组件版本；第二条的 `source.reference` 是对应子仓的拆分提交，不是主仓 SHA。发布流程会核对这两种身份的对应关系。提交生成的 `composer.lock`，日常构建用 `composer install` 复现实际版本；升级依赖时再受控更新。接着按[快速开始](quickstart.md#启动服务)启动服务，或进入[应用开发实战](tutorial.md)。
 
 ## 维护者触发与重试
 
@@ -118,7 +118,7 @@ git push origin "$release_tag"
 需要补齐既有候选时，使用原版本重试，不创建或移动标签：
 
 ```bash
-gh workflow run release.yml --ref v1.0.0-rc.7 -f version=v1.0.0-rc.7
+gh workflow run release.yml --ref v1.0.0-rc.10 -f version=v1.0.0-rc.10
 ```
 
 候选尚未封存时，重新执行完整工作流；不要把不同运行轮次的零散平台结果拼为一次验收。候选草稿已存在时，工作流复用原运行的验收和已保存附件；附件上传不完整时从原 Actions artifact 恢复。原证据过期或同名附件摘要不同会停止，不能靠重编译冒充原候选。

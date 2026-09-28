@@ -6,24 +6,36 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过�
 
 ## 环境与交付
 
-框架已集成 Swoole 的网络与并发能力，路由、配置和模型在构建期生成，生产代码经 TypePHP 全量编译。`type-build` 已提供四平台预编译 Swoole 模块；安装包含这些资源的组件版本后，匹配构建默认复用，无需另行下载、编译 Swoole。
+框架已集成 Swoole 的网络与并发能力，路由、配置和模型在构建期生成，生产代码经 TypePHP 全量编译。单程序构建使用经过校验的静态 SDK；`type-build` 另附四平台预编译 Swoole 共享模块，供开发及历史目录包回归使用。
 
 | 阶段 | 准备内容 |
 | --- | --- |
 | 源码开发 | PHP CLI `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 驱动；组件安装不会自动修改 CLI 的 ini |
-| 原生构建 | `toolchain.lock.json` 对应的目标平台 SDK、PHPX 和实际扩展；内置模块固定匹配 PHP 8.5.10 ZTS ABI |
-| 部署运行 | 匹配平台的完整运行包、外置配置及持久数据；MySQL/PostgreSQL 按需提供外部服务，SQLite 无需单独服务 |
+| 原生构建 | `toolchain.lock.json` 对应的目标平台静态 SDK，包含 PHPX 和实际原生扩展 |
+| 部署运行 | 匹配平台的单个程序、外置配置及持久数据；MySQL/PostgreSQL 按需提供外部服务，SQLite 无需单独服务 |
 
-部署端无需业务 PHP 源码、Composer、TypePHP 或编译 SDK。**`composer package` 要求静态产物，只输出一个程序文件，配置独立维护，启动不释放运行库。** 构建前通过 `TYPE_STATIC_RUNTIME` 选择目标 SDK；其他平台与模板自身仍需完成对应验收，不能沿用历史目录包结果宣称完成。详细范围见[构建与部署](https://iots.top/#/guide/deployment)。
+部署端无需业务 PHP 源码、PHP、Swoole、Composer、TypePHP 或编译 SDK。**`composer package` 要求静态产物，只输出一个程序文件，配置独立维护，启动不释放运行库。** 构建前通过 `TYPE_STATIC_RUNTIME` 选择目标 SDK；模板自身与物联中心分别验收，自己的业务也须完成目标平台测试。详细范围见[构建与部署](https://iots.top/#/guide/deployment)。
 
 ## 创建与驱动选择
 
-从 Packagist 创建独立应用，先选择 MySQL、PostgreSQL 或 SQLite，再安装依赖：
+从 Packagist 创建独立应用，先选择数据库，再将模板和第一方组件固定到同一批次。以下示例使用 SQLite 和候选版本 `1.0.0-rc.10`：
 
 ```sh
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.10
 cd my-app
 php configure.php sqlite
+composer config minimum-stability RC
+composer config prefer-stable true
+composer require --no-update \
+  zoujingli/type-core:1.0.0-rc.10 \
+  zoujingli/type-orm:1.0.0-rc.10 \
+  zoujingli/type-orm-sqlite:1.0.0-rc.10 \
+  zoujingli/type-runtime:1.0.0-rc.10 \
+  zoujingli/type-log:1.0.0-rc.10 \
+  zoujingli/type-validate:1.0.0-rc.10
+composer require --dev --no-update \
+  zoujingli/type-build:1.0.0-rc.10 \
+  zoujingli/type-testing:1.0.0-rc.10
 composer install --no-plugins --no-scripts
 php dev.php help
 php dev.php check
@@ -31,7 +43,7 @@ php dev.php check
 
 `--no-install` 让驱动选择发生在依赖安装之前。`configure.php <mysql|pgsql|sqlite>` 只在没有 `vendor/` 和 `composer.lock` 时运行：它将所选工厂放到 `app/common/database/DatabaseFactory.php`，同时调整 Composer 的单一驱动依赖；`scaffold/` 中的其他候选不进入应用生产源码。该步骤不修改业务配置，也不通过安装钩子执行。已有应用应在代码审查下调整驱动和迁移，不能用脚本覆盖业务。
 
-模板只安装选定的 `type-orm-*`，共同依赖 core、ORM、runtime、validate、log；构建和测试组件留在 `require-dev`。Composer 从 Packagist 解析传递依赖，无需配置各个 Git 仓库。`dev-main` 是开发分支，组件的 `1.0.x-dev` 别名和 `~1.0.0@dev` 约束也不代表稳定标签。安装后提交应用的 `composer.lock`，固定实际组件提交。
+改用 MySQL 或 PostgreSQL 时，将 `configure.php` 参数换为 `mysql` 或 `pgsql`，并把版本约束中的 `type-orm-sqlite` 换为对应驱动。模板只安装选定的 `type-orm-*`，共同依赖 core、ORM、runtime、validate、log；构建和测试组件留在 `require-dev`。Composer 从 Packagist 解析其余依赖，无需配置各个 Git 仓库。RC 尚非稳定版；`dev-main` 跟进开发分支，不一定与本批次 tag 相同。安装后提交应用的 `composer.lock`，固定实际组件版本与来源。
 
 接着按[第一个应用教程](https://iots.top/#/guide/tutorial)完成迁移、配置令牌、真实 HTTP 操作与原生构建。
 
@@ -97,7 +109,7 @@ type-app.json
 
 可以复制 `.env.example` 为应用根的 `.env` 并填写实际值，也可完全由进程环境注入。读取优先级为：进程环境、外部 dotenv、编译过的默认值。合法空串不等于缺失；dotenv 是数据，不执行命令或插值，不写回全局环境。密码、令牌、认证文件和实际 .env 不入 Git 或编译产物。
 
-`APP_BASE_PATH` 可由进程环境指定为已存在的绝对目录；未指定时用工作目录。开发入口先切到本项目根。SQLite 默认 `var/app.sqlite` 相对这个运行根解释，部署建议明确指向数据卷的绝对文件路径。驱动是安装/构建时已选定的源码，环境不能切换成没有安装的另一个驱动。
+`APP_BASE_PATH` 可由进程环境指定为已存在的绝对目录；当前 RC 单程序入口先定位可执行文件，默认使用程序所在目录，开发入口使用本项目根。SQLite 默认 `var/app.sqlite` 相对这个应用根解释，部署时可通过 `APP_BASE_PATH` 将持久数据与程序分离。驱动是安装/构建时已选定的源码，环境不能切换成没有安装的另一个驱动。
 
 每次 `php dev.php ...` 启动都会调用开发生成流程，不必手工清缓存。配置、模型、路由、事务包装生成到 `build/development/<内容摘要>/` 的同一不可变代次；输入前后复核、生成锁和完整目录发布防止进程混用半套代码。身份不包含时间、绝对项目根或秘密环境值，相同内容只复用通过摘要检查的代次，失败不加载旧代码。`composer prepare` 和 `php prepare.php [--json]` 仍可显式执行。
 

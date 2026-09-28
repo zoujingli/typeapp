@@ -65,12 +65,12 @@ prepare按完整源码、声明、生成器及锁文件内容身份复用不可�
 本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
-composer config minimum-stability dev
+composer config minimum-stability RC
 composer config prefer-stable true
-composer require --dev zoujingli/type-build:dev-main
+composer require --dev zoujingli/type-build:1.0.0-rc.10
 ```
 
-`dev-main` 的分支别名为 `1.0.x-dev`；本仓组件间使用 `~1.0.0@dev` 约束。开发分支不等于已发布稳定 1.0 版本。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+以上安装固定候选版本 `1.0.0-rc.10`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
 支持协议 1 的 `extra.type.sources`，没有协议的第三方包可通过应用 imports 提供精确版本的适配。构建器检查自动加载入口、源码、排除原因与资源；不支持的生产包会明确失败。根应用的PSR-4、PSR-0、classmap和files生产入口同样与最终编译清单交叉核对，遗漏时在编译前明确拒绝并保护旧产物；测试消费者须声明自己的应用输入，不能借用主仓Composer映射却漏掉主仓业务。应用入口必须是TypePHP支持的声明式源码，产物只能写入应用自己的build目录。编译失败不会用旧二进制冒充本次成功结果。
 

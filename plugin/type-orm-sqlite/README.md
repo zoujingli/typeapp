@@ -9,12 +9,12 @@ SQLite 驱动支持本地文件和普通 `:memory:`，每连接显式设置外�
 本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
-composer config minimum-stability dev
+composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm-sqlite:dev-main
+composer require zoujingli/type-orm-sqlite:1.0.0-rc.10
 ```
 
-`dev-main` 的分支别名为 `1.0.x-dev`；本仓组件间使用 `~1.0.0@dev` 约束。开发分支不等于已发布稳定 1.0 版本。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+以上安装固定候选版本 `1.0.0-rc.10`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
 普通内存库每条连接独立，不能把多连接池当作共享内存数据库；需要持续使用同一内存库时应选择单连接，并理解归还后销毁连接会同时销毁库。文件库使用绝对路径及已存在的本地目录，不承诺在共享网络文件系统上运行 WAL。
 

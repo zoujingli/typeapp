@@ -10,13 +10,13 @@ flowchart TB
   Prepare --> TypePHP["TypePHP · 全量 AOT 编译为 C++"]
   TypePHP --> Native["目标平台编译与链接"]
   Libraries["原生运行库 · PHPX、libphp、Swoole 与实际扩展"] --> Native
-  Native --> App["TypeApp 应用产物"]
+  Native --> App["TypeApp 主程序 · 配置独立维护"]
   style TypePHP fill:#147d64,color:#ffffff,stroke:#147d64,stroke-width:2px
 ```
 
 `type-build` 负责组织构建输入和验证环境，TypePHP 负责语言编译。路由、配置、模型和声明操作在构建期生成显式代码，随后与业务一起编译。这样可以提前完成源码加载、声明发现和装配工作，让运行入口直接进入应用逻辑。
 
-PHPX、libphp 和 Swoole 等原生库提供执行支持或扩展能力，本身不作为 PHP 源码交给 TypePHP 编译。原生编译与完整静态链接是两个条件；当前产物的文件布局见[构建与部署](deployment.md#当前构建状态)。
+PHPX、libphp 和 Swoole 等原生库提供执行支持或扩展能力，本身不作为 PHP 源码交给 TypePHP 编译。当前单程序构建将这些非系统库静态链接到主程序，普通启动不释放运行库；操作系统基线与实际平台范围见[构建与部署](deployment.md#当前构建状态)。
 
 ## 全量编译的范围
 
@@ -39,6 +39,7 @@ PHPX、libphp 和 Swoole 等原生库提供执行支持或扩展能力，本身�
 独立应用在项目根执行：
 
 ```bash
+: "${TYPE_STATIC_RUNTIME:?先设置本平台已校验的静态SDK清单路径}"
 php vendor/bin/type doctor type-app.json build
 composer build
 ```

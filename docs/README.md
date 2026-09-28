@@ -27,7 +27,7 @@
   </div>
 </section>
 
-> **交付约定：一个主程序文件，配置独立维护，启动不释放运行库。** Linux x64 / ARM64、macOS ARM64、Windows x64 已分别通过完整静态程序的三库隔离预检；统一源码的发布门禁仍须完成，公开 RC7 仍是历史目录归档。使用前按[构建与部署](guide/deployment.md)核对版本与平台。
+> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 当前 RC 提供 Linux x64 / ARM64、macOS ARM64、Windows x64 的静态程序，部署端无需安装 PHP、Swoole、Composer 或 Node.js。使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
 
 <div class="feature-grid">
   <div><span class="feature-number">01 / DEVELOP</span><h2>按业务组合</h2><p>路由、模型、通信与任务，<br>通过组件形成应用。</p></div>
@@ -39,7 +39,7 @@
 
 从 `type-project` 创建应用，用 Composer 安装所需的框架组件，再编译和验证自己的业务。先阅读[环境与依赖](guide/environment.md)区分开发机、构建机与部署机；[基础能力](guide/capabilities.md)帮助确定应用需要哪些组件。物联中心展示设备接入与多租户业务的组合方式。
 
-物联中心已提供 `v1.0.0-rc.7` 四平台[版本运行包](guide/releases.md)：前端编入主程序，首次安装同时准备账号和页面，后续显式更新托管静态文件。这是候选版本，部署和修复步骤见[前端安装与更新](guide/deployment.md#前端安装与更新)。
+物联中心已提供 `v1.0.0-rc.10` 四平台[单程序下载](guide/releases.md)：前端编入主程序，首次安装同时准备账号和页面，后续显式更新托管静态文件。这是候选版本，部署和修复步骤见[前端安装与更新](guide/deployment.md#前端安装与更新)。
 
 <div class="doc-paths">
   <a class="start-guide" href="#/guide/quickstart">
@@ -55,18 +55,14 @@
 
 ## 创建第一个应用
 
-下面跟进模板和组件子仓的 `main` 开发分支；需要复现已发布批次时，先按[版本安装教程](guide/releases.md#composer-按版本安装)固定模板和组件，再继续应用开发。
+按[版本安装教程](guide/releases.md#composer-按版本安装)从 Packagist 创建 `my-app`，选择数据库，并将模板和组件固定到 `1.0.0-rc.10`。完成安装后，在应用根目录检查实际入口：
 
 ```bash
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main
-cd my-app
-php configure.php sqlite
-composer install --no-plugins --no-scripts
 php dev.php help
 php dev.php check
 ```
 
-先选择数据库，再安装依赖；`dev-main` 是开发分支，不代表稳定版本。提交应用的 `composer.lock`，固定实际安装版本。[第一个应用教程](guide/tutorial.md)带你完成迁移、HTTP 增删改查和原生构建；已有本地模板或需要 Git 检出的用户，可使用[快速开始](guide/quickstart.md)中的 `type create` 或 clone 入口。
+提交应用的 `composer.lock`，固定实际安装版本；RC 仍是候选版。[第一个应用教程](guide/tutorial.md)带你完成迁移、HTTP 增删改查和原生构建；已有本地模板或需要 Git 检出的用户，可使用[快速开始](guide/quickstart.md)中的 `type create` 或 tag 克隆入口。开发分支 `dev-main` 不一定与当前 RC 相同。
 
 <div class="guide-grid">
   <a class="guide-card" href="#/guide/typephp"><span class="guide-index">AOT <span aria-hidden="true">↗</span></span><strong>TypePHP 全量编译</strong><span>从 PHP 生产实现到原生程序，理解编译流程、覆盖范围与验证边界。</span><span class="guide-meta">TYPEPHP</span></a>
@@ -108,6 +104,6 @@ TypePHP 和 Composer 位于构建侧；生产运行执行已编译的业务与�
 
 源码入口：[TypeApp 主仓](https://github.com/zoujingli/typeapp)、[15 个 Plugins](guide/components.md#组件一览)与 [type-project 应用模板](https://github.com/zoujingli/type-project)。第一方内容统一采用 Apache-2.0，独立仓库附 LICENSE 与 NOTICE。
 
-应用模板和框架组件通过 Packagist 分发，Composer 自动解析传递依赖，无需逐一配置 Git 仓库。公开分发子仓保留源码、许可证与变更记录；当前使用开发版本，稳定交付范围以各平台实际验收为准。
+应用模板和框架组件通过 Packagist 分发，Composer 自动解析传递依赖，无需逐一配置 Git 仓库。公开分发子仓保留源码、许可证与变更记录；可固定安装已发布的 RC，也可跟进开发分支，二者均不代表稳定版。交付范围以各平台实际验收为准。
 
 Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过默认原生 CI，组件与模板的公开分发及三库原生集成也已通过。各平台的场景和部署隔离范围不同，准确基线与限制见[平台与验收](guide/platforms.md)。全量编译指生产实现进入 TypePHP 的覆盖门槛，不等于测试覆盖率或所有 PHP 包兼容。

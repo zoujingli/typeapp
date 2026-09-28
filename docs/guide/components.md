@@ -37,9 +37,9 @@ flowchart LR
 
 组件源码统一在 [TypeApp 主仓](https://github.com/zoujingli/typeapp)的 `plugin/type-*` 维护，再分发到各自的 `zoujingli/type-xxxx` 仓库。第一方内容采用 Apache-2.0，各仓库携带 LICENSE 与 NOTICE；[type-project](https://github.com/zoujingli/type-project) 提供独立应用模板。
 
-15 个组件与应用模板均通过 [Packagist](https://packagist.org/packages/zoujingli/) 提供公共索引。Composer 默认使用该索引，应用只声明自己需要的组件，传递依赖自动解析；无需 SSH 密钥或逐个配置 Git 仓库。当前已公开 `1.0.0-rc.7` 候选版本，同时保留 `dev-main` 开发分支，尚无稳定版本。
+15 个组件与应用模板均通过 [Packagist](https://packagist.org/packages/zoujingli/) 提供公共索引。Composer 默认使用该索引，应用只声明自己需要的组件，传递依赖自动解析；无需 SSH 密钥或逐个配置 Git 仓库。当前已公开 `1.0.0-rc.10` 候选版本，同时保留 `dev-main` 开发分支，尚无稳定版本。
 
-`1.0.0-rc.7` 的组件和模板发布批次已通过公开安装、全量 AOT 与三库原生集成，Packagist 引用和 GitHub 拆分提交一致。维护者通过主仓的固定提交分发，子仓 push webhook 通知 Packagist 更新；使用者仍以应用锁文件决定安装版本。准确已验收基线见[平台与验收](platforms.md)，开发分支更新不自动替换已有应用的依赖。
+`1.0.0-rc.10` 的组件和模板发布批次已通过公开安装、全量 AOT 与三库原生集成，Packagist 引用和 GitHub 拆分提交一致。维护者通过主仓的固定提交分发，子仓 push webhook 通知 Packagist 更新；使用者仍以应用锁文件决定安装版本。准确已验收基线见[平台与验收](platforms.md)，开发分支更新不自动替换已有应用的依赖。
 
 ```mermaid
 flowchart TB
@@ -49,12 +49,12 @@ flowchart TB
   Build --> Package[目标平台运行包]
 ```
 
-以下从已公开的 `1.0.0-rc.7` 候选批次安装 SQLite ORM。RC 不代表稳定版本，升级前按[版本发布](releases.md)核对批次和平台范围：
+以下从已公开的 `1.0.0-rc.10` 候选批次安装 SQLite ORM。RC 不代表稳定版本，升级前按[版本发布](releases.md)核对批次和平台范围：
 
 ```bash
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm-sqlite:1.0.0-rc.7
+composer require zoujingli/type-orm-sqlite:1.0.0-rc.10
 ```
 
 提交应用的 `composer.lock`，让构建固定到实际安装的版本和提交。版本 tag 不会移动各子仓的 `main`；`dev-main` 表示各子仓最近一次分支同步，不能当作本批次版本的别名。
@@ -74,7 +74,7 @@ composer require zoujingli/type-orm-sqlite:1.0.0-rc.7
 构建与测试工具通常安装为开发依赖：
 
 ```bash
-composer require --dev zoujingli/type-build:1.0.0-rc.7 zoujingli/type-testing:1.0.0-rc.7
+composer require --dev zoujingli/type-build:1.0.0-rc.10 zoujingli/type-testing:1.0.0-rc.10
 ```
 
 需要跟进组件开发分支时，在独立开发项目中使用：

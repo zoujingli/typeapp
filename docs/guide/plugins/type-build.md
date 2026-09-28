@@ -48,10 +48,10 @@ flowchart TB
 ```bash
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require --dev zoujingli/type-build:1.0.0-rc.7
+composer require --dev zoujingli/type-build:1.0.0-rc.10
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.7`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+以上固定该组件的候选版本 `1.0.0-rc.10`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -172,7 +172,7 @@ sequenceDiagram
 
 所选清单和模块进入构建身份，应用产物只收集当前平台选中的模块及实际依赖，不会携带全部四平台模块。再分发须保留适用的原始许可证，见[许可证与归属](../licensing.md#第三方边界)。源码、摘要、依赖和维护者的 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 重建入口见[资源说明](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。
 
-这些 `.so/.dll` 是共享扩展构建输入，不能用于静态链接。单程序构建使用静态 SDK 中的归档；四平台已分别通过完整静态程序的三库隔离预检，统一源码的发布门禁仍须完成。实际可下载版本与产物形态见[构建与部署](../deployment.md#单程序交付约定)。
+这些 `.so/.dll` 是共享扩展构建输入，不能用于静态链接。单程序构建使用静态 SDK 中的归档；RC10 已通过四平台同一源码发布门禁，各平台最终程序均完成三库隔离部署。实际可下载版本与产物形态见[构建与部署](../deployment.md#单程序交付约定)。
 
 ## 开发与编译入口
 
@@ -245,7 +245,7 @@ php vendor/bin/type verify-package build/example-release "$TYPE_RELEASE_SHA256"
 
 运行包包含匹配 PHPX/libphp 和实际原生扩展，不包含 Composer、编译 SDK 或业务 PHP 回退入口。生产资源与开发工具分开，平台可用性以该版本实际验收为准。
 
-四平台默认原生 CI、公共组件与模板分发已在同一源码基线上通过，覆盖完整应用 AOT、三库场景及运行包回归。Linux x64 的 scratch 部署、macOS 的独立模板隔离与 Windows 的搬迁包分别记录，不能合并隔离结论。准确提交、SDK 与限制见[平台与验收](../platforms.md)；目录包与归档不等于静态单程序完成。
+RC10 在同一源码基线上通过四平台默认原生 CI、最终静态程序三库隔离、公共组件与模板分发。各平台最终程序禁止读取构建源码与 SDK、执行开发工具；公开下载摘要与候选一致。独立组件与模板仍记录各自入口和产物。准确提交、SDK 与限制见[平台与验收](../platforms.md)；历史目录包维护入口不进入新的单程序候选。
 
 ## 常见问题
 

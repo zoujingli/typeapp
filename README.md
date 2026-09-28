@@ -4,7 +4,7 @@ TypeApp 是面向原生交付的 PHP 应用框架。用 PHP 编写业务，按�
 
 框架提供通信、数据、任务与资源管理能力。Swoole 作为内置原生运行库提供网络与并发支持，由构建流程管理并随应用交付，无需在部署端单独安装。TypePHP 和 Composer 用于构建，业务请求不依赖它们。
 
-**交付约定是一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** Linux x64 / ARM64、macOS ARM64、Windows x64 已分别通过完整静态程序的三库隔离预检；统一源码的发布门禁仍须完成，公开 RC7 仍为历史目录归档。具体命令与版本边界见[构建与部署](docs/guide/deployment.md)，环境分工见[环境与依赖](docs/guide/environment.md)。
+**交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** 当前 RC 提供 Linux x64 / ARM64、macOS ARM64、Windows x64 的静态程序；PHP、PHPX、Swoole 等非系统运行库已链接进程序。下载方式见[版本安装](docs/guide/releases.md)，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
 
 文档站：[iots.top](https://iots.top)。新业务从 `type-project` 创建；主仓附带的物联中心展示框架如何组成业务产品。
 
@@ -28,26 +28,22 @@ flowchart TB
 
 TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typephp.md)。生产代码的全量编译门槛不等于全部平台和协议已验收。当前锁定 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2；工具链与生产依赖分别由 `toolchain.lock.json` 和 `composer.lock` 记录。
 
-构建组件包含 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 6.2.1 模块。匹配构建可直接复用；模块格式与 ABI、平台实测范围是不同的检查，见[平台与验收](docs/guide/platforms.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
+构建组件另附 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 6.2.1 共享模块，用于开发及历史目录包回归；当前单程序使用静态 SDK。模块 ABI 与平台实测范围分别核对，见[平台与验收](docs/guide/platforms.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
 
-[v1.0.0-rc.7](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.7) 已公开，固定源码 `a5ff7ad`。四平台完整原生验收、15 个组件与应用模板的同版本分发及 Packagist 消费均通过；17 个 Release、16 个子仓 tag、16 个 Packagist 版本和四个平台下载归档已逐项回读。这是候选版本，尚无稳定版；具体范围及限制见[验收记录](docs/evidence/rc-release-20260926.md)。
+[v1.0.0-rc.10](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.10) 已公开，固定源码 `359627e`。四平台完整原生回归、同一程序的三库隔离部署、15 个组件与应用模板的同版本分发及 Packagist 消费均通过；17 个 Release、16 个子仓 tag、16 个 Packagist 版本和公开附件已逐项回读。这是候选版本，尚无稳定版；具体范围及限制见[验收记录](docs/evidence/single-program-ci-20260928.md)。
 
 ## 快速开始
 
-新应用建议先按[版本安装示例](docs/guide/releases.md#composer-按版本安装)固定到 `1.0.0-rc.7`。以下命令用于跟进模板和组件子仓 `main` 的源码开发：准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展。完整环境分工见[环境与依赖](docs/guide/environment.md)，平台执行方式与验收范围见[平台与验收](docs/guide/platforms.md)。从 Packagist 创建独立应用，先选择数据库再安装依赖：
+开发机准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展，具体分工见[环境与依赖](docs/guide/environment.md)。先按[版本安装示例](docs/guide/releases.md#composer-按版本安装)从 Packagist 创建 `my-app`，选择数据库，将模板与组件固定到 `1.0.0-rc.10`，然后在应用根目录执行：
 
 ```bash
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app dev-main
-cd my-app
-php configure.php sqlite
-composer install --no-plugins --no-scripts
 php dev.php help
 php dev.php check
 ```
 
-`dev-main` 是开发分支，不代表稳定版本；安装后提交应用的 `composer.lock`，固定实际依赖版本。`--no-install` 保留驱动选择窗口，`configure.php` 必须在首次安装前运行。接着按[第一个应用教程](docs/guide/tutorial.md)完成迁移、令牌配置和真实 HTTP 操作，再按需安装[框架组件](docs/guide/components.md)。生产构建在应用根执行 `composer build`。
+安装后提交应用的 `composer.lock`，固定实际依赖版本。接着按[第一个应用教程](docs/guide/tutorial.md)完成迁移、令牌配置和真实 HTTP 操作，再按需安装[框架组件](docs/guide/components.md)。生产构建还须准备目标平台的静态 SDK，按[构建与部署](docs/guide/deployment.md)执行 `composer build`。
 
-也可先 `git clone https://github.com/zoujingli/type-project.git my-app`，再从上面的 `cd my-app` 继续。已有本地模板与 `type-build` 时，可用 `php /构建工具项目/vendor/bin/type create /本地模板目录 /新项目目录 sqlite` 创建应用；该入口已经选择驱动，无需再运行 `configure.php`。详细用法见[快速开始](docs/guide/quickstart.md)。
+本地模板与 Git tag 创建方式见[快速开始](docs/guide/quickstart.md)。`dev-main` 跟进子仓开发分支，不一定与当前 RC 相同；按版本安装才能复现本批次。
 
 运行本仓库附带的成品案例物联中心，见[物联网中心](docs/guide/iot-center.md)。
 

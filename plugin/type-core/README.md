@@ -14,7 +14,7 @@ flowchart LR
     Core -.通信与协程.-> Native[内置 Swoole 运行库]
 ```
 
-TypePHP 将以上生产实现整体编译；原生运行库由构建和发布链管理。当前目录包与最终静态单程序目标分别见[构建与部署](https://iots.top/#/guide/deployment)，安装组件不自动替业务建立认证或公开接口。
+TypePHP 将以上生产实现整体编译；非系统原生运行库由构建校验并静态链接进程序。部署方式与实际验收范围见[构建与部署](https://iots.top/#/guide/deployment)，安装组件不自动替业务建立认证或公开接口。
 
 本组件在 macOS ARM64 已有应用身份 HTTP、TCP/UDP 双线程与协程、WS/WSS 的原生运行结果。HTTP `serve()` 已分别接入 Unix worker 和 Windows 协程宿主；实现分支、其他平台的命令或 ORM 结果均不代替核心通信验收，各协议与完整应用限制见[平台与验收](https://iots.top/#/guide/platforms)。
 
@@ -34,12 +34,12 @@ TypePHP 将以上生产实现整体编译；原生运行库由构建和发布链
 本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
-composer config minimum-stability dev
+composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-core:dev-main
+composer require zoujingli/type-core:1.0.0-rc.10
 ```
 
-`dev-main` 的分支别名为 `1.0.x-dev`；本仓组件间使用 `~1.0.0@dev` 约束。开发分支不等于已发布稳定 1.0 版本。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+以上安装固定候选版本 `1.0.0-rc.10`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
 - `Configuration` 保存不可变的字符串快照，环境变量在应用启动时读取，合法空字符串和 `0` 不被默认值覆盖。
 - `Command::run` 接收配置快照与命令参数，返回进程退出码；业务失败可抛异常。

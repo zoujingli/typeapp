@@ -119,7 +119,7 @@ docs/build-config/type-app.json  本案例构建配置
 
 ## 准备后端与人员账号
 
-以下步骤用于源码开发：准备 PHP CLI `>=8.4 <8.6`、Composer、匹配的 Swoole 与所选数据库的 PDO 扩展。框架已接入 Swoole，原生构建默认复用构建组件内置的匹配模块；生产部署使用完整运行包，无需安装 Composer 或编译 SDK，分工见[环境与依赖](environment.md)。在仓库根安装依赖并准备空数据库：
+以下步骤用于源码开发：准备 PHP CLI `>=8.4 <8.6`、Composer、匹配的 Swoole 与所选数据库的 PDO 扩展。共享库开发可复用构建组件内置模块，生产构建使用静态 SDK。只负责部署时，按[版本安装](releases.md)下载一个主程序并提供配置，无需安装 PHP、Swoole、Composer 或编译 SDK。环境分工见[环境与依赖](environment.md)。在仓库根安装依赖并准备空数据库：
 
 ```bash
 git clone https://github.com/zoujingli/typeapp.git

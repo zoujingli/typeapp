@@ -4,7 +4,7 @@
 
 提供受管数据库连接、不可变 Query、生成模型、关系、分页、事务、迁移和事务 Outbox。ORM 不选择数据库；安装一个驱动后使用同一公开入口，并保留数据库本身的能力差异。
 
-历史源码 `5abdb5e53ea9ca67054f69d17113b91eb3402d69` 在 Linux ARM64、macOS ARM64、Windows x64 完成三库独立 ORM 的 PHP、AOT 和无源码运行；三库指 MySQL、PostgreSQL、SQLite。该记录使用本地 Composer 包复制安装，当前四平台与公开分发消费仍需分别验收，见[平台支持表](../platforms.md#当前平台状态)。
+当前 RC 已通过四平台默认原生矩阵，覆盖 MySQL、PostgreSQL、SQLite 的 ORM 与应用场景；公开组件批次另完成准确版本和拆分提交的安装、全量 AOT 与三库集成。独立 ORM、主应用及静态单程序各有自己的验收身份，实际范围见[平台支持表](../platforms.md#当前平台状态)。模型能力和物理连接复用的剩余边界仍按下文说明。
 
 业务 CRUD 使用[Model 与关系](#models-relations-output)，查询和保存无需传入 `Connection`。框架从当前 Swoole 作用域选择端点并管理租约；静态 `search()`、自动租户隔离、默认读从写主及 `master()` 的配置和完整示例见[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)。下面的显式连接和表查询用于基础设施与受控聚合。物理 PDO 复用和完整原生平台验收仍以实际验证结果为准。
 
@@ -26,7 +26,7 @@ flowchart TB
 
 需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7`、PDO 与 `type-runtime`；实际访问数据另装 MySQL、PostgreSQL 或 SQLite 驱动。Swoole 提供协程执行与等待，`type-runtime` 在原生上下文、Channel 和 Timer 上管理作用域、取消和截止，ORM 管理连接租约与会话恢复。PDO 及所选 PDO 驱动负责数据库协议和 SQL 语义。
 
-上述扩展在开发与构建环境准备，原生构建默认复用匹配的内置 Swoole 并收集实际依赖。部署时使用完整运行包，另提供所选数据库服务或 SQLite 数据目录，见[环境与依赖](../environment.md)。
+上述扩展在开发与构建环境准备，生产单程序从匹配的静态 SDK 链接 Swoole 和所选数据库客户端。部署时只需程序、外置配置，以及所选数据库服务或 SQLite 数据目录，见[环境与依赖](../environment.md)。
 
 协程数据库等待需要对应的官方构建能力：MySQL 使用 mysqlnd 与网络 hook，PostgreSQL、SQLite 分别需要 Swoole 的 `--enable-swoole-pgsql`、`--enable-swoole-sqlite`。应用启动时调用 `CoroutineRuntime::enableIo()`，为已加载的 PDO 扩展启用可用 hook；生成的命令入口与 HTTP 宿主已接入。自定义入口在启动业务线程及协程前配置，`CoroutineRuntime::run()` 保留既定 hook，不在任务中改写进程配置。当前缺失的 PDO hook 会被跳过，所选驱动的启动拒绝尚需补齐；扩展版本满足要求或启动成功都不能证明 PDO 等待已经协程化，见[协程并发的成立条件](../database.md#协程并发的成立条件)。
 
@@ -35,10 +35,10 @@ flowchart TB
 ```bash
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm:1.0.0-rc.7
+composer require zoujingli/type-orm:1.0.0-rc.10
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.7`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+以上固定该组件的候选版本 `1.0.0-rc.10`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
 
 <a id="models-relations-output"></a>
 

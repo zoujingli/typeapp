@@ -7,12 +7,12 @@
 本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
 
 ```sh
-composer config minimum-stability dev
+composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-redis:dev-main
+composer require zoujingli/type-redis:1.0.0-rc.10
 ```
 
-`dev-main` 的分支别名为 `1.0.x-dev`；本仓组件间使用 `~1.0.0@dev` 约束。开发分支不等于已发布稳定 1.0 版本。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+以上安装固定候选版本 `1.0.0-rc.10`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
 ```php
 <?php

@@ -4,28 +4,28 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 本页是平台支持范围的统一入口。支持范围按操作系统、CPU 架构和实际场景判断，未列出的架构尚无已支持声明。源码公开、PHP 测试通过、原生编译成功和完整应用可部署是不同状态。
 
-框架已集成 Swoole，构建组件已内置下列四平台模块。开发、构建和部署分别需要准备什么，先看[环境与依赖](environment.md)；部署机使用经过验证的完整运行包，SDK 和编译工具在构建机准备。性能目标与实测依据见[性能与调优](performance.md)。
+框架已集成 Swoole，生产单程序将其与其他非系统原生库一起静态链接。开发、构建和部署分别需要准备什么，先看[环境与依赖](environment.md)；SDK 和编译工具留在构建机。性能目标与实测依据见[性能与调优](performance.md)。
 
 ## 当前平台状态
 
-每个版本重新执行四平台完整验收，并对最终下载归档解包执行三库、页面安装和真实 API 检查。下表记录已公开 `v1.0.0-rc.7` 的实际原生范围；跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
+每个版本重新执行四平台完整验收，并将最终待上传的单个程序复制到隔离环境，执行三库、页面安装和真实 API 检查。下表记录已公开 `v1.0.0-rc.10` 的实际原生范围；跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
 
-`v1.0.0-rc.7` 对应源码 **`a5ff7ad`** 的[完整版本工作流](https://github.com/zoujingli/typeapp/actions/runs/36265325112)通过四平台原生矩阵与发布门禁，使用 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2 与内置 Swoole 6.2.1。每个平台用自己的最终归档完成三库部署检查，公开下载字节与原候选一致；后续提交仍需自己的验收。
+`v1.0.0-rc.10` 对应源码 **`359627e`** 的[完整版本工作流](https://github.com/zoujingli/typeapp/actions/runs/36423368197)通过四平台原生矩阵与静态发布门禁，使用 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2 与内置 Swoole 6.2.1。每个平台用自己的最终程序完成三库部署检查，公开下载字节与候选一致；后续提交仍需自己的验收。
 
 | 平台与实际环境 | 已通过的范围 | 部署验收边界 |
 | --- | --- | --- |
-| Linux x64，Ubuntu 24.04 | 19 个分组及汇总：完整应用 AOT、三库应用、组件、TLS、恢复与回滚 | 最终归档三库部署禁止读取源码、SDK、Composer 及执行 PHP/编译器；另有 scratch 镜像与备份恢复验收 |
-| Linux ARM64，Ubuntu 24.04 原生 ARM runner | 9 个分组及汇总：独立 ORM、完整应用 AOT、三库应用、恢复与回滚 | 最终归档三库部署禁止读取源码、SDK、Composer 及执行 PHP/编译器 |
-| macOS ARM64，macOS 15 原生 runner | 8 个分组及汇总：HTTP、ORM、三库完整应用 AOT、部署、恢复、回滚与 TLS | 最终归档三库部署禁止读取源码、SDK、Composer 及执行 PHP/编译器；系统缓存审计限制见下文 |
-| Windows x64，Windows 2022 原生 runner | 完整流程：SDK、三库独立 ORM、主应用 PHP/AOT、模板与搬迁包 | 最终 ZIP 不含 PHP 源码、Composer 或 SDK，三库部署通过；未强制禁止访问构建机原项目/SDK 或执行编译器 |
+| Linux x64，Ubuntu 24.04 | 完整默认矩阵：应用 AOT、三库应用、组件、TLS、恢复与回滚；另验静态 SDK 和单程序 | bubblewrap 禁止读取源码、SDK、Composer 及执行开发工具；最终 ELF 的同一字节完成三库部署 |
+| Linux ARM64，Ubuntu 24.04 原生 ARM runner | 独立 ORM、完整应用 AOT、三库应用、任务、恢复与回滚；另验静态 SDK 和单程序 | bubblewrap 隔离；最终 ARM64 ELF 的同一字节完成三库部署 |
+| macOS ARM64，macOS 15 原生 runner | HTTP、ORM、三库完整应用 AOT、部署、恢复、回滚与 TLS；另验静态单程序 | 系统沙箱禁止读取源码、SDK 和执行开发工具；最终 Mach-O 的同一字节完成三库部署 |
+| Windows x64，Windows 2022 原生 runner | SDK、三库独立 ORM、主应用 PHP/AOT、模板与搬迁；另验静态 SDK 和单程序 | 受限令牌与 ACL 禁止读取源码、SDK 及执行 PHP、MSVC、Node；最终 EXE 的同一字节完成三库部署，并核对权限恢复 |
 
-三库指 MySQL、PostgreSQL、SQLite。四份最终归档的十二份报告均覆盖运行库审计、83 个内嵌前端文件的安装与摘要、GET/HEAD 和缓存、平台及客户登录、站点默认值、角色 CRUD 和正常停止。独立 ORM、主应用和通用模板分别验证自己的入口与产物，不能合并为“全部平台同一产物通过最严格无源码隔离”。Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
+三库指 MySQL、PostgreSQL、SQLite。四个最终程序的十二份报告均覆盖运行库审计、内嵌前端文件安装与摘要、GET/HEAD 和缓存、平台及客户登录、站点默认值、角色 CRUD 和正常停止。普通启动不写出运行库，页面通过显式安装命令生成。独立 ORM 和通用模板仍分别验证自己的入口与产物；Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
 
-macOS 发布包的 `verify-runtime` 目前核对构建机整套 dyld 系统缓存。macOS 15 候选包在 macOS 27 / ARM64 上的补验中，普通安装、服务和页面可运行，但完整部署审计因缓存摘要不同而拒绝。这不构成 macOS 27 支持；系统更新也可能触发同类限制。当前验收范围以实际构建和运行基线为准，详情见[RC 验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
+上述系统版本是实际构建与运行基线，不等于已测试所有更高或更低版本。Linux 程序仍依赖目标系统的 glibc，不适用于 Alpine/musl；开发用共享 Swoole 模块的 Debian 12 基线不能套用于这些 Ubuntu 24.04 静态程序。macOS 程序按最低系统版本与实际加载映像核验，只允许系统库；历史 RC7 目录包的 dyld 缓存摘要限制保留在[旧版验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
 此前 `bf28c8b` 的 [15 组件批次](https://github.com/zoujingli/typeapp/actions/runs/36144180719)与[应用模板分发](https://github.com/zoujingli/typeapp/actions/runs/36146310707)已完成公开安装和三库原生集成。Packagist 的 16 个 `dev-main` 引用与该分发提交一致，自动同步已启用。版本 tag 分发不移动子仓 `main`；安装方式见[组件参考](components.md)。
 
-完整源码、归档摘要及隔离详情见[RC 验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)；[开发分支基线](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/native-release-20260925.md)及[更早的平台记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)保留原身份。MySQL、SQLite 仍采用安全关闭重建，完整三库物理连接复用未完成。本轮未运行可选性能基准，默认矩阵通过也不代表全部协议、容量和业务故障组合验收完成。
+完整源码、程序摘要、重建材料与隔离详情见[单程序验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/single-program-ci-20260928.md)；[开发分支基线](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/native-release-20260925.md)及[更早的平台记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)保留原身份。MySQL、SQLite 仍采用安全关闭重建，完整三库物理连接复用未完成。本轮未运行可选性能基准，默认矩阵通过也不代表全部协议、容量和业务故障组合验收完成。
 
 ## 通信结果如何理解
 
@@ -45,7 +45,7 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 四平台默认矩阵已在上述工具链上通过。工具链升级时的 macOS 性能对照仍按自己的源码和负载成立，见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)，不能扩展为本轮四平台性能结论。
 
-构建组件携带四平台 Swoole 6.2.1 共享模块，具体 ABI、系统依赖和选择规则见[内置 Swoole](plugins/type-build.md#内置-swoole-与运行依赖)。独立 Composer 安装的禁网选择、空格路径与不同工作目录已验证；模块迁移时的原始结果见[迁移验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/swoole-bundle.md#迁入构建组件后的验证)。本轮进一步完成了四平台匹配 SDK 和应用回归，模块仍是动态构建输入，不等于静态链接完成。
+构建组件另外携带四平台 Swoole 6.2.1 共享模块，供开发及历史共享库回归使用；具体 ABI、系统依赖和选择规则见[内置 Swoole](plugins/type-build.md#内置-swoole-与运行依赖)。独立 Composer 安装的禁网选择、空格路径与不同工作目录已验证，原始结果见[迁移验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/swoole-bundle.md#迁入构建组件后的验证)。生产单程序使用静态 SDK 中的归档，不将这些 `.so` / `.dll` 嵌入后释放。
 
 不同服务入口具有各自的执行方式，不能把某一入口的限制套用到整个框架：
 
@@ -71,6 +71,6 @@ Windows 主应用与模板已通过本轮 HTTP、正常停止和发布包用例�
 3. 在无业务源码、无 Composer 和无编译 SDK 的目标环境验证启动、迁移、运行库校验、搬迁、升级和恢复。
 4. 完成一个程序文件加外置配置的交付，非系统原生库静态链接、启动不释放运行库，并验证干净环境、权限及数据保留。
 
-主仓 `package` 只接受静态单程序；`package-directory` 与 `archive` 维护旧目录包。Linux x64、ARM64 在 Ubuntu 24.04，macOS ARM64 在 macOS 15，Windows x64 在 Windows 2022 原生 CI 均已有完整静态程序与同一文件三库隔离运行结果，见[本轮单程序记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/single-program-ci-20260928.md)。这些预检与本页历史共享库验收分别保留；新版本仍须以同一最终源码通过四平台单程序和重建材料门禁后才能发布。容量与性能仍需同平台、同负载和可复现基线。
+当前 RC10 已完成四平台单程序发布及本页列出的三库隔离范围；`package-directory` 与 `archive` 仅维护旧目录包。其余协议、全部角色、容量与性能继续按场景验收，不能由单程序发布成功推导出全部框架能力完成。后续版本仍须以同一源码重新通过完整门禁。
 
 [系统架构](architecture.md) · [构建与部署](deployment.md) · [实现规划](roadmap.md)
