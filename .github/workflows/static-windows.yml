@@ -6,7 +6,7 @@ on:
       scope:
         description: 验证核心、依赖、扩展或 PHPX 静态嵌入；均不生成应用候选
         type: choice
-        options: [core, dependencies, runtime, phpx]
+        options: [core, dependencies, runtime, phpx, sandbox]
         default: core
 
 permissions:
@@ -17,6 +17,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  sandbox:
+    if: inputs.scope == 'sandbox'
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 验证受限令牌与程序只读边界
+        shell: pwsh
+        run: ./tests/check-windows-sandbox.ps1 -Directory "$env:GITHUB_WORKSPACE/build/windows-sandbox-check"
+      - name: 保存原生隔离探针
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: static-windows-sandbox-evidence
+          retention-days: 14
+          path: build/windows-sandbox-check/*.json
+
   core:
     if: inputs.scope == 'core'
     runs-on: windows-2022
@@ -39,7 +58,7 @@ jobs:
           path: build/static-windows-core/evidence/*
 
   dependencies:
-    if: inputs.scope != 'core'
+    if: contains(fromJSON('["dependencies","runtime","phpx"]'), inputs.scope)
     runs-on: windows-2022
     timeout-minutes: 90
     env:
