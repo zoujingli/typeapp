@@ -69,6 +69,8 @@ Windows 的静态 PHP 核心及第三方依赖探针已经分别通过，完整�
 
 [运行 36394648959](https://github.com/zoujingli/typeapp/actions/runs/36394648959) 在 `84be866700033e9c785cc16d05c0534d85b5a347` 上通过静态链接、系统导入审计及独立 embed 启动，实际加载了 Swoole 6.2.1、Redis 6.3.0 和三库 PDO 驱动。该运行仍失败：Windows 配置忽略了 Unix 风格的 DOM、XML、SimpleXML 参数，运行时完整性检查准确拒绝漏编。后续改用固定 PHP 源码声明的 `--with-dom`、`--with-xml`、`--with-simplexml`，并在编译前检查无效参数与全部必需扩展的静态配置；真实启动检查继续保留。PHPX 尚未执行，本结果不是完整 SDK 或应用验收。
 
+[运行 36396102521](https://github.com/zoujingli/typeapp/actions/runs/36396102521) 在 `498a405378bf6c494541e93604af923a1e17b9f7` 上通过完整静态运行库探针，包括先前漏编的 DOM、XML、SimpleXML。PHPX 的两个 mpdecimal 静态归档已生成，但 CMake 配置将 Windows 反斜杠路径重新解析为转义而失败；尚未构建 PHPX 或导出 SDK。后续只规范化 CMake 输入路径，保留含空格目录，不改变源码或依赖范围。
+
 ## macOS ARM64，最低系统 15
 
 [运行 36383075960](https://github.com/zoujingli/typeapp/actions/runs/36383075960) 已成功，源码提交为 `2fd944fc55d40aee108432b03ec708ad9e07c9d0`。候选与原始证据均已下载回读；三库报告及日志摘要绑定同一个文件。
