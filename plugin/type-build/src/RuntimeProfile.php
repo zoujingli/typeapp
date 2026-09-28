@@ -244,12 +244,23 @@ final class RuntimeProfile
     private function compile(string $source, string $probe, string $directory, string $phpHome, array $environment, ?StaticRuntimeSdk $static): string
     {
         if (PHP_OS_FAMILY === 'Windows') {
-            $include = $phpHome . '/SDK/include';
-            $libraries = (new \TypePhp\Platform\Windows())->detectPhpLibs($phpHome);
+            $include = $static?->includeDirectory() ?? $phpHome . '/SDK/include';
             $flags = [];
             foreach (['', '/main', '/Zend', '/TSRM', '/win32'] as $part) {
                 $flags[] = '/I' . $include . $part;
             }
+            if ($static !== null) {
+                foreach ($static->windowsIncludeDirectories() as $extraInclude) {
+                    $flags[] = '/I' . $extraInclude;
+                }
+                $this->runner->run(['cl.exe', '/nologo', '/MT', '/std:c11', '/DWIN32', '/DPHP_WIN32', '/DZEND_WIN32', '/DZTS',
+                    '/DZEND_ENABLE_STATIC_TSRMLS_CACHE=1', '/DENABLE_INTSAFE_SIGNED_FUNCTIONS', ...$flags, $source,
+                    '/Fo' . $directory . '/embed-probe.obj', '/Fe' . $probe, '/link', '/INCREMENTAL:NO', '/Brepro',
+                    '/NODEFAULTLIB:MSVCRT', ...$static->linkFlags()], $directory, $environment, 120);
+                $static->verifyArtifact($probe, $this->runner, $environment);
+                return '';
+            }
+            $libraries = (new \TypePhp\Platform\Windows())->detectPhpLibs($phpHome);
             $this->runner->run(['cl.exe', '/nologo', '/MD', '/std:c11', '/DWIN32', '/DPHP_WIN32', '/DZEND_WIN32', '/DZTS',
                 ...$flags, $source, '/Fo' . $directory . '/embed-probe.obj', '/Fe' . $probe, '/link', '/INCREMENTAL:NO', '/Brepro', $libraries['embed'], $libraries['core']], $directory, $environment, 120);
             return $phpHome . '/ext';

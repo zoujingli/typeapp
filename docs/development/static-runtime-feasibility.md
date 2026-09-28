@@ -67,6 +67,8 @@ PHPX 2.9.2 的普通 Windows 构建仍查找 PHP 导入库，并要求 mpdecimal
 
 同一工作流的 `scope=dependencies` 单独制备第三方静态依赖，使用 `tools/static-windows/vcpkg.json` 固定的官方 vcpkg 提交和 `x64-typeapp-static` 配置；目标库与 CRT 均选择静态链接。真实 C++ 探针调用密码库、数值库、数据库客户端、压缩、XML 和网络库，核对 PE 导入项后在只保留系统 PATH 的独立目录运行。成功后保留归档、头文件、许可材料及逐库摘要，供完整 Windows SDK 后续复用。这项实验不包含 PHP、Swoole 或应用业务，也不替代最终应用的隔离和三库验收。
 
+`scope=phpx` 先执行完整扩展的静态 embed 验证，再编译固定 PHPX SAPI 源码和 mpdecimal，验证值操作、请求生命周期及主程序映像身份。全部探针通过后才导出 `static-windows-sdk`，包括实际链接的归档、目标头文件、源码适配身份和原始许可材料。构建组件通过 `TYPE_STATIC_RUNTIME` 选择该清单，Windows 编译使用静态 CRT 和明确的归档路径；SDK 导出和命令契约检查仍不等于完整应用 AOT 或部署验收通过。
+
 ## 构建输入与验收方向
 
 项目内可以保存目标平台的原生构建输入，但静态链接需要真正的 `.a`／`.lib`／`.o`／`.obj`；`.lib` 须区分静态归档与 DLL 导入库。`.so`／`.dll` 可以继续用于构建期反射和 ABI 探针，不作为“不释放”产物的运行依赖。目录布局可以按操作系统、架构和 PHP ABI 隔离；来源、许可证、开关、版本和 SHA-256 应进入构建身份。[S1][S6][S9]

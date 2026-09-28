@@ -6,7 +6,7 @@ namespace Type\Build;
 
 use TypePhp\Platform\Windows;
 
-/** 锁定Windows实现的发行布局适配：保留上游检查，核验实际SDK顶层运行DLL。 */
+/** 锁定 Windows SDK 布局；静态目标验证归档，开发动态目标保留上游 DLL 检查。 */
 final class WindowsSdkPlatform extends Windows
 {
     /**
@@ -15,6 +15,12 @@ final class WindowsSdkPlatform extends Windows
      */
     public function getBuildLibraryWarnings(string $phpDir, string $phpxDir, string $buildMode, bool $checkPhpxRuntime = true): array
     {
+        if (StaticRuntimeSdk::selected() !== null) {
+            if ($buildMode !== 'bin') {
+                return [['error' => 'Windows 静态 SDK 只用于完整主程序', 'info' => '扩展或共享库继续使用对应动态 SDK']];
+            }
+            return [];
+        }
         $messages = parent::getBuildLibraryWarnings($phpDir, $phpxDir, $buildMode, false);
         if ($checkPhpxRuntime) {
             try {

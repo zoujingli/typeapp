@@ -9,7 +9,7 @@ use Type\Build\BuildEnvironment;
 use Type\Build\RuntimeProfile;
 use Type\Build\StaticRuntimeSdk;
 
-// 使用真实 embed 的模块表和 ELF/Mach-O 加载项核对 SDK；不借用宿主 CLI 扩展推断目标能力。
+// 使用真实 embed 的模块表和 ELF/Mach-O/PE 加载项核对 SDK；不借用宿主 CLI 扩展推断目标能力。
 $root = dirname(__DIR__);
 expect($argc === 2, '用法：php tests/static-runtime-sdk.php <静态SDK清单>');
 $sdk = new StaticRuntimeSdk($argv[1]);
@@ -20,8 +20,8 @@ $profile = (new RuntimeProfile())->prepare(
     $work . '/runtime',
     getenv('PHP_HOME') ?: '',
     getenv('PHPX_HOME') ?: '',
-    ['ctype', 'curl', 'dom', 'filter', 'iconv', 'mbstring', 'openssl', 'pcntl', 'pdo', 'pdo_mysql', 'pdo_pgsql',
-        'pdo_sqlite', 'redis', 'session', 'sockets', 'swoole', 'tokenizer'],
+    ['ctype', 'curl', 'dom', 'filter', 'iconv', 'mbstring', 'openssl', 'pdo', 'pdo_mysql', 'pdo_pgsql',
+        'pdo_sqlite', 'redis', 'session', 'sockets', 'swoole', 'tokenizer', ...(PHP_OS_FAMILY === 'Windows' ? [] : ['pcntl'])],
     [],
     $sdk
 );

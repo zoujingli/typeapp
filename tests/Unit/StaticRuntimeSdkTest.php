@@ -15,20 +15,18 @@ final class StaticRuntimeSdkTest extends TestCase
 {
     public function testSdkSelectionRejectsDriftAndNeverFallsBackToDynamicLibraries(): void
     {
-        if (PHP_OS_FAMILY === 'Windows') {
-            self::markTestSkipped('Windows 静态核心尚无通过验收的 SDK，当前入口明确拒绝。');
-        }
         $root = dirname(__DIR__, 2);
         $work = $root . '/build/static sdk-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($work . '/lib', 0700, true));
-        $archive = $work . '/lib/runtime.a';
+        $archiveName = PHP_OS_FAMILY === 'Windows' ? 'runtime.lib' : 'runtime.a';
+        $archive = $work . '/lib/' . $archiveName;
         // 空 ar 归档仅验证清单协议，不能作为可运行 SDK 或原生成功证据。
         file_put_contents($archive, "!<arch>\n");
         $data = ['protocol' => 1, 'os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS,
             'debug' => (bool) PHP_DEBUG, 'integer-size' => PHP_INT_SIZE, 'headers' => [],
-            'archives' => [['file' => 'lib/runtime.a', 'sha256' => hash_file('sha256', $archive)]], 'patches' => []];
+            'archives' => [['file' => 'lib/' . $archiveName, 'sha256' => hash_file('sha256', $archive)]], 'patches' => []];
         $headers = [];
-        foreach (['main/php.h', 'main/php_config.h', 'Zend/zend.h', 'TSRM/TSRM.h'] as $name) {
+        foreach (['main/php.h', PHP_OS_FAMILY === 'Windows' ? 'main/config.w32.h' : 'main/php_config.h', 'Zend/zend.h', 'TSRM/TSRM.h'] as $name) {
             $path = $work . '/include/php/' . $name;
             if (!is_dir(dirname($path))) {
                 self::assertTrue(mkdir(dirname($path), 0700, true));
@@ -37,7 +35,7 @@ final class StaticRuntimeSdkTest extends TestCase
             $headers[] = $path;
             $data['headers'][] = ['file' => 'include/php/' . $name, 'sha256' => hash_file('sha256', $path)];
         }
-        foreach (['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource', 'SwooleStaticSource', 'PhpxThreadSource'] as $patch) {
+        foreach (['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource', 'SwooleStaticSource', 'PhpxThreadSource', 'SwooleWindowsSource'] as $patch) {
             $data['patches'][$patch] = hash_file('sha256', $root . '/plugin/type-build/src/' . $patch . '.php');
         }
         $manifest = $work . '/manifest.json';
@@ -58,23 +56,23 @@ final class StaticRuntimeSdkTest extends TestCase
             self::assertTrue(mkdir($work . '/licenses', 0700));
             $license = $work . '/licenses/LICENSE';
             file_put_contents($license, "original notice\n");
-            $data['notices'] = ['runtime.a' => ['component' => 'test-runtime', 'version' => '1.0.0', 'license' => 'MIT',
+            $data['notices'] = [$archiveName => ['component' => 'test-runtime', 'version' => '1.0.0', 'license' => 'MIT',
                 'files' => [['file' => 'licenses/LICENSE', 'sha256' => hash_file('sha256', $license)]]]];
             file_put_contents($manifest, json_encode($data, JSON_THROW_ON_ERROR));
             $sdk = new StaticRuntimeSdk($manifest);
             self::assertSame([$manifest, $archive, ...$headers, $license], $sdk->files());
-            self::assertSame(hash_file('sha256', $archive), $sdk->notices()['runtime.a']['binary-sha256']);
-            self::assertSame($license, $sdk->notices()['runtime.a']['files'][0]['file']);
+            self::assertSame(hash_file('sha256', $archive), $sdk->notices()[$archiveName]['binary-sha256']);
+            self::assertSame($license, $sdk->notices()[$archiveName]['files'][0]['file']);
             foreach (['licenses/../lib/runtime.a', '/licenses/LICENSE', 'outside/LICENSE'] as $path) {
                 $invalid = $data;
-                $invalid['notices']['runtime.a']['files'][0]['file'] = $path;
+                $invalid['notices'][$archiveName]['files'][0]['file'] = $path;
                 $this->reject($manifest, $invalid, '许可路径');
             }
             file_put_contents($license, 'changed');
             $this->reject($manifest, $data, '许可原文');
             file_put_contents($license, "original notice\n");
             $invalid = $data;
-            $invalid['notices']['unknown.a'] = $invalid['notices']['runtime.a'];
+            $invalid['notices']['unknown.a'] = $invalid['notices'][$archiveName];
             $this->reject($manifest, $invalid, '未知归档');
             foreach (['php', 'architecture', 'os', 'debug', 'integer-size'] as $field) {
                 $invalid = $data;

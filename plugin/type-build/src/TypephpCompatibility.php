@@ -27,7 +27,13 @@ final class TypephpCompatibility extends Translator
         $values['libraries'] = [];
         $values['library_paths'] = [];
         $values['rpath'] = [];
-        $values['post_ldflags'] = implode(' ', array_map('escapeshellarg', $static->linkFlags()));
+        if (PHP_OS_FAMILY === 'Windows') {
+            // MSVC 后端不消费 Unix 的 post_ldflags；使用其完整路径库参数入口。
+            $values['libraries'] = $static->linkFlags();
+            $values['post_ldflags'] = '';
+        } else {
+            $values['post_ldflags'] = implode(' ', array_map('escapeshellarg', $static->linkFlags()));
+        }
         return new \TypePhp\Build\LinkOptions($values);
     }
 
@@ -39,10 +45,22 @@ final class TypephpCompatibility extends Translator
         if ($static !== null) {
             $values = $options->toArray();
             $values['user_defines'][] = 'TYPE_APP_STATIC_RUNTIME=1';
-            $hostHeaders = rtrim((string) getenv('PHP_HOME'), '/') . '/include/php';
-            $values['include_paths'] = array_map(static fn (string $path): string =>
-                $path === $hostHeaders || str_starts_with($path, $hostHeaders . '/')
-                    ? $static->includeDirectory() . substr($path, strlen($hostHeaders)) : $path, $values['include_paths']);
+            $hostHeaders = rtrim(BuildPlatform::path((string) getenv('PHP_HOME')), '/') . (PHP_OS_FAMILY === 'Windows' ? '/SDK/include' : '/include/php');
+            $hostPhpx = rtrim(BuildPlatform::path($this->getPhpxDir()), '/');
+            $includes = [];
+            foreach ($values['include_paths'] as $path) {
+                $path = BuildPlatform::path($path);
+                if (PHP_OS_FAMILY === 'Windows' && ($path === $hostPhpx || str_starts_with($path, $hostPhpx . '/'))) {
+                    continue;
+                }
+                $includes[] = $path === $hostHeaders || str_starts_with($path, $hostHeaders . '/')
+                    ? $static->includeDirectory() . substr($path, strlen($hostHeaders)) : $path;
+            }
+            if (PHP_OS_FAMILY === 'Windows') {
+                array_push($includes, ...$static->windowsIncludeDirectories());
+                array_push($values['user_defines'], 'ZEND_ENABLE_STATIC_TSRMLS_CACHE=1', 'NOMINMAX');
+            }
+            $values['include_paths'] = $includes;
             return new \TypePhp\Build\CompileOptions($values);
         }
         return $options;
@@ -52,6 +70,19 @@ final class TypephpCompatibility extends Translator
     {
         // 一个编译进程只读入一次 SDK；构建结束仍由 NativeBuilder 重核全部输入。
         return $this->staticRuntimeSdk ??= StaticRuntimeSdk::selected();
+    }
+
+    /** 静态 Windows 构建保留 TypePHP 的翻译、并行编译与链接流程，只替换 CRT 选择。 */
+    protected function getCompilerBackend(): \TypePhp\Backend\CompilerBackend
+    {
+        $backend = parent::getCompilerBackend();
+        if (PHP_OS_FAMILY === 'Windows' && $this->staticRuntime() !== null && !$backend instanceof WindowsStaticBackend) {
+            if (!$backend instanceof \TypePhp\Backend\Msvc) {
+                throw new RuntimeException('Windows 静态 SDK 需要 MSVC 后端');
+            }
+            $this->compilerBackend = new WindowsStaticBackend($backend->getPlatform(), $backend->getCompilerCommand(), $backend->getLinkerCommand());
+        }
+        return $this->compilerBackend;
     }
 
     private const REFERENCES = [
@@ -103,8 +134,8 @@ final class TypephpCompatibility extends Translator
 
     protected function getPlatform(): \TypePhp\Platform\PlatformBase
     {
-        if ($this->platform === null && PHP_OS_FAMILY === 'Windows') {
-            $this->platform = new WindowsSdkPlatform();
+        if (PHP_OS_FAMILY === 'Windows' && !$this->platform instanceof WindowsSdkPlatform) {
+            $this->platform = new WindowsSdkPlatform(isZts: (bool) PHP_ZTS);
         }
         return parent::getPlatform();
     }

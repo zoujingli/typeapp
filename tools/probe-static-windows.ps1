@@ -258,4 +258,6 @@ if ($WithPhpx) {
     & (Join-Path $PSScriptRoot 'static-windows/build-phpx.ps1') -PhpSource $taskSource -PhpxSource $taskPhpx `
         -PhpArchive (Join-Path (Split-Path $taskProgram -Parent) 'typeapp-static.lib') `
         -DependenciesDirectory $DependenciesDirectory -HostPhp $taskHostPhp -Directory (Join-Path $taskWork 'phpx-static')
+    & $taskHostPhp -n (Join-Path $PSScriptRoot 'static-windows/export-sdk.php') $taskWork $DependenciesDirectory $DependencyVerification
+    if ($LASTEXITCODE -ne 0) { throw 'Windows 静态 SDK 导出失败。' }
 }

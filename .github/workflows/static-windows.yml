@@ -122,3 +122,11 @@ jobs:
           path: |
             build/static-windows-runtime/evidence/*
             build/static-windows-runtime/phpx-static/evidence/*
+      - name: 保存通过探针的目标归档、头文件和许可材料
+        if: inputs.scope == 'phpx'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: static-windows-sdk
+          retention-days: 14
+          if-no-files-found: error
+          path: build/static-windows-runtime/sdk/**

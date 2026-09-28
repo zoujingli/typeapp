@@ -59,6 +59,10 @@ Windows 的静态 PHP 核心及第三方依赖探针已经分别通过，完整�
 
 [运行 36388669418](https://github.com/zoujingli/typeapp/actions/runs/36388669418) 的依赖任务在源码 `e6050d211836c4ea2d51be012886c2d4ff31b7b6` 上加入了 libiconv，24 份归档的实际链接及独立启动通过，探针 SHA-256 为 `8478ec03cd482bd457c5081b3c4f508c56ddb74511b65fd67f8f55dca5dc1c9f`。该运行的完整扩展任务因 MySQL 配置开关失败，整次运行仍为失败；后续任务修正了 Windows PHP 的 `--with-mysqlnd`，并用 `--with-openssl=yes` 明确请求静态扩展。
 
+完整扩展的后续构建仍记录为失败：[36389332950](https://github.com/zoujingli/typeapp/actions/runs/36389332950) 因全局 `NGHTTP2_NO_SSIZE_T` 隐藏了 Swoole 使用的兼容接口；[36390523167](https://github.com/zoujingli/typeapp/actions/runs/36390523167) 推进到 c-ares 回调，发现 Windows 的 `ares_socket_t` 与上游 `int` 签名不一致。后续适配让回调及索引保留完整套接字宽度，未禁用 DNS 协程能力。
+
+[36391395572](https://github.com/zoujingli/typeapp/actions/runs/36391395572) 在源码 `cc0c24dede711adc9a1790ac283363bf962b208c` 上完成全部扩展的对象编译和静态归档，最终 embed 链接只剩 `swoole_module_entry` 未解析。Windows ABI 最小复现显示，C++ 声明会生成带修饰的全局符号，PHP 的 C 模块清单引用未修饰名称；后续修复为模块入口声明 C 链接。该运行未完成链接、独立启动或 PHPX 验证，不能记为完整运行库通过。
+
 ## macOS ARM64，最低系统 15
 
 [运行 36383075960](https://github.com/zoujingli/typeapp/actions/runs/36383075960) 已成功，源码提交为 `2fd944fc55d40aee108432b03ec708ad9e07c9d0`。候选与原始证据均已下载回读；三库报告及日志摘要绑定同一个文件。

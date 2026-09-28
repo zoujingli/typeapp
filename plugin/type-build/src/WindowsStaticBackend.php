@@ -1,0 +1,39 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Type\Build;
+
+use RuntimeException;
+use TypePhp\Backend\Msvc;
+
+/** 锁定 TypePHP MSVC 后端的静态 CRT 适配，编译与链接仍复用上游命令生成器。 */
+final class WindowsStaticBackend extends Msvc
+{
+    /** C++、预编译头和应用入口使用相同 CRT；上游命令变化时明确停止适配。 */
+    public function buildCompileOptions(array $config = []): string
+    {
+        $flags = parent::buildCompileOptions($config);
+        if (substr_count($flags, ' /MD') !== 1) {
+            throw new RuntimeException('TypePHP MSVC CRT 参数需要重新核对');
+        }
+        return str_replace(' /MD', ' /MT', $flags);
+    }
+
+    /** 原生 C 桥接同样使用静态 CRT，避免与 C++ 目标产生运行库冲突。 */
+    public function buildCCompileCommand(string $sourceFile, string $outputFile, array $options = []): string
+    {
+        $options['cflags'] = trim(($options['cflags'] ?? '') . ' /MT');
+        return parent::buildCCompileCommand($sourceFile, $outputFile, $options);
+    }
+
+    /** 静态目标允许 LIBCMT，同时禁止默认选择动态 CRT 的导入库。 */
+    public function buildLinkOptions(array $config = []): string
+    {
+        $flags = parent::buildLinkOptions($config);
+        if (substr_count($flags, ' /NODEFAULTLIB:LIBCMT') !== 1) {
+            throw new RuntimeException('TypePHP MSVC 链接运行库规则需要重新核对');
+        }
+        return str_replace(' /NODEFAULTLIB:LIBCMT', ' /NODEFAULTLIB:MSVCRT', $flags);
+    }
+}

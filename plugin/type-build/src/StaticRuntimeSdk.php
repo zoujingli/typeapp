@@ -28,12 +28,16 @@ final class StaticRuntimeSdk
         if (!is_array($data) || ($data['protocol'] ?? null) !== 1 || ($data['php'] ?? null) !== PHP_VERSION
             || ($data['zts'] ?? null) !== (bool) PHP_ZTS || ($data['os'] ?? null) !== PHP_OS_FAMILY
             || ($data['debug'] ?? null) !== (bool) PHP_DEBUG || ($data['integer-size'] ?? null) !== PHP_INT_SIZE
-            || ($data['architecture'] ?? null) !== php_uname('m') || PHP_OS_FAMILY === 'Windows'
+            || ($data['architecture'] ?? null) !== php_uname('m')
             || !is_array($data['archives'] ?? null) || !array_is_list($data['archives']) || $data['archives'] === []
             || count($data['archives']) > 128) {
             throw new RuntimeException('静态运行 SDK 的协议、平台或 PHP ABI 不一致');
         }
-        foreach (['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource', 'SwooleStaticSource', 'PhpxThreadSource'] as $patch) {
+        $patches = ['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource', 'SwooleStaticSource', 'PhpxThreadSource'];
+        if (PHP_OS_FAMILY === 'Windows') {
+            $patches[] = 'SwooleWindowsSource';
+        }
+        foreach ($patches as $patch) {
             if (($data['patches'][$patch] ?? null) !== hash_file('sha256', __DIR__ . '/' . $patch . '.php')) {
                 throw new RuntimeException('静态运行 SDK 的源码适配已过期：' . $patch);
             }
@@ -43,7 +47,7 @@ final class StaticRuntimeSdk
         }
         foreach ($data['headers'] as $header) {
             if (!is_array($header) || !is_string($header['file'] ?? null)
-                || preg_match('~^include/php/[a-zA-Z0-9_+./-]+\.h$~D', $header['file']) !== 1
+                || preg_match('~^include/(?:php|phpx|dependencies)/[a-zA-Z0-9_+./-]+\.(?:h|hh|hpp|inl|inc)$~D', $header['file']) !== 1
                 || in_array('..', explode('/', $header['file']), true)
                 || !is_string($header['sha256'] ?? null) || preg_match('/^[a-f0-9]{64}$/D', $header['sha256']) !== 1
                 || isset($this->headers[$header['file']])) {
@@ -56,14 +60,16 @@ final class StaticRuntimeSdk
             }
             $this->headers[$header['file']] = $path;
         }
-        foreach (['main/php.h', 'main/php_config.h', 'Zend/zend.h', 'TSRM/TSRM.h'] as $header) {
+        $configuration = PHP_OS_FAMILY === 'Windows' ? 'main/config.w32.h' : 'main/php_config.h';
+        foreach (['main/php.h', $configuration, 'Zend/zend.h', 'TSRM/TSRM.h'] as $header) {
             if (!isset($this->headers['include/php/' . $header])) {
                 throw new RuntimeException('静态运行 SDK 缺少目标核心头文件：' . $header);
             }
         }
+        $archivePattern = PHP_OS_FAMILY === 'Windows' ? '~^lib/[a-zA-Z0-9][a-zA-Z0-9._+-]*\.lib$~D' : '~^lib/[a-zA-Z0-9][a-zA-Z0-9._+-]*\.a$~D';
         foreach ($data['archives'] as $archive) {
             if (!is_array($archive) || !is_string($archive['file'] ?? null)
-                || preg_match('~^lib/[a-zA-Z0-9][a-zA-Z0-9._+-]*\.a$~D', $archive['file']) !== 1
+                || preg_match($archivePattern, $archive['file']) !== 1
                 || !is_string($archive['sha256'] ?? null) || preg_match('/^[a-f0-9]{64}$/D', $archive['sha256']) !== 1) {
                 throw new RuntimeException('静态运行 SDK 归档声明无效');
             }
@@ -125,6 +131,11 @@ final class StaticRuntimeSdk
     /** @return list<string> 只允许操作系统提供的链接项；第三方依赖必须列入归档。 */
     public function systemFlags(): array
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            return ['kernel32.lib', 'user32.lib', 'advapi32.lib', 'shell32.lib', 'ws2_32.lib', 'ole32.lib', 'oleaut32.lib',
+                'dnsapi.lib', 'psapi.lib', 'bcrypt.lib', 'pathcch.lib', 'iphlpapi.lib', 'crypt32.lib', 'normaliz.lib',
+                'secur32.lib', 'wldap32.lib', 'winmm.lib', 'synchronization.lib'];
+        }
         return PHP_OS_FAMILY === 'Darwin'
             ? ['-lresolv', '-lpthread', '-lxml2', '-lz', '-lcurl', '-liconv', '-framework', 'CoreFoundation', '-framework', 'Security', '-lc++']
             : ['-ldl', '-lpthread', '-lm', '-lresolv', '-lstdc++'];
@@ -144,6 +155,13 @@ final class StaticRuntimeSdk
     public function includeDirectory(): string
     {
         return dirname($this->manifest) . '/include/php';
+    }
+
+    /** Windows 的 PHPX 与数值依赖使用目标 SDK 头文件，避免误用宿主动态 CRT 版本。 */
+    public function windowsIncludeDirectories(): array
+    {
+        $root = dirname($this->manifest) . '/include';
+        return [$root . '/phpx', $root . '/phpx/misc', $root . '/dependencies', $root . '/dependencies/libxml2'];
     }
 
     /** 只传递 SDK 明确声明的目标系统版本，不能继承构建机的默认部署版本。 */
@@ -190,6 +208,18 @@ final class StaticRuntimeSdk
     public static function verifyArtifact(string $artifact, BuildEnvironment $runner, array $environment): array
     {
         (new BuildPlatform())->assertArtifact($artifact);
+        if (PHP_OS_FAMILY === 'Windows') {
+            $output = $runner->run(['dumpbin.exe', '/nologo', '/dependents', $artifact], dirname($artifact), $environment);
+            preg_match_all('/^\s+([A-Za-z0-9_.-]+\.dll)\s*$/mi', $output, $matches);
+            $libraries = array_values(array_unique(array_map('strtolower', $matches[1])));
+            $allowed = ['kernel32.dll', 'user32.dll', 'advapi32.dll', 'shell32.dll', 'ws2_32.dll', 'ole32.dll', 'oleaut32.dll',
+                'shlwapi.dll', 'dnsapi.dll', 'psapi.dll', 'bcrypt.dll', 'iphlpapi.dll', 'crypt32.dll', 'normaliz.dll',
+                'secur32.dll', 'wldap32.dll', 'winmm.dll', 'api-ms-win-core-path-l1-1-0.dll', 'api-ms-win-core-synch-l1-2-0.dll'];
+            if ($libraries === [] || array_diff($libraries, $allowed) !== []) {
+                throw new RuntimeException('单程序仍依赖非系统 DLL 或无法确认 PE 加载项');
+            }
+            return $libraries;
+        }
         if (!in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true)) {
             throw new RuntimeException('此平台的单程序加载审计尚未实现');
         }
