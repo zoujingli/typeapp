@@ -30,16 +30,23 @@ $target = $argv[1] ?? '--php';
 $driver = $argv[2] ?? 'sqlite';
 expect(in_array($driver, ['sqlite', 'mysql', 'pgsql'], true), '授权验收需要明确的受支持驱动');
 if ($target === '--php') {
-    $swoole = getenv('TYPE_SWOOLE_MODULE');
-    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
-    expect(is_file($swoole), 'PHP 授权验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
-    $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
+    $runtimeOptions = [];
+    if (!extension_loaded('swoole')) {
+        $swoole = getenv('TYPE_SWOOLE_MODULE');
+        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+        expect(is_file($swoole), 'PHP 授权验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
+        $runtimeOptions = ['-d', 'extension=' . $swoole];
+    }
+    $command = [PHP_BINARY, ...$runtimeOptions, $root . '/bin/typeapp'];
 } else {
     $command = nativeCommand($target);
 }
 $base = $root . '/build/broker-access-' . bin2hex(random_bytes(6));
 expect(mkdir($base, 0700, true), '无法创建授权测试目录');
 $noSource = in_array('--no-source', $argv, true);
+$tls = in_array('--tls', $argv, true);
+$certificateFile = $tls ? $base . '/server.pem' : '';
+$keyFile = $tls ? $base . '/server.key' : '';
 $browserDist = '';
 foreach ($argv as $argument) {
     if (str_starts_with($argument, '--browser-dist=')) {
@@ -81,7 +88,7 @@ if ($driver !== 'sqlite') {
 }
 $checks = 0;
 $report = ['status' => 'running', 'scope' => 'broker-access', 'native' => $target !== '--php', 'driver' => $driver,
-    'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'no_source' => $noSource];
+    'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'no_source' => $noSource, 'tls' => $tls];
 $server = null;
 $node = null;
 $mqttOld = null;
@@ -94,6 +101,16 @@ $rolled = [];
 $databaseAdmin = null;
 $ownedDatabases = [];
 try {
+    if ($tls) {
+        $certificateConfiguration = $base . '/certificate.cnf';
+        file_put_contents($certificateConfiguration, "[req]\ndistinguished_name=dn\nx509_extensions=server\n[dn]\n[server]\nsubjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\nextendedKeyUsage=serverAuth\n");
+        $certificateOptions = ['config' => $certificateConfiguration, 'private_key_bits' => 2048, 'digest_alg' => 'sha256'];
+        $key = openssl_pkey_new($certificateOptions);
+        $certificateRequest = openssl_csr_new(['commonName' => '127.0.0.1'], $key, $certificateOptions);
+        $certificate = openssl_csr_sign($certificateRequest, null, $key, 1, $certificateOptions);
+        expect($certificate !== false && openssl_x509_export_to_file($certificate, $certificateFile)
+            && openssl_pkey_export_to_file($key, $keyFile) && chmod($keyFile, 0600), '无法创建本轮 MQTT TLS 证书');
+    }
     if ($driver !== 'sqlite') {
         // Broker 与物联中心分别执行空库安装，不能共享业务表或污染调用方的控制库。
         $databaseAdmin = new PDO(
@@ -164,7 +181,8 @@ try {
     $nodeEnvironment = $environment + [
         'BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => $mqttPassword,
         'BROKER_TOPIC_PREFIX' => 'broker-access/', 'BROKER_NODE_ID' => 'access-node',
-        'BROKER_PLAINTEXT' => 'true',
+        'BROKER_PLAINTEXT' => $tls ? 'false' : 'true',
+        'BROKER_CERTIFICATE' => $certificateFile, 'BROKER_PRIVATE_KEY' => $keyFile,
         'BROKER_PORT' => substr(strrchr($addresses[1], ':'), 1),
     ];
     $node = new Process([...$command, 'broker:run'], $root, $nodeEnvironment);
@@ -186,7 +204,7 @@ try {
     $request('POST', '/broker/access/principals/' . $principal['id'], $token, [
         'name' => $principal['name'], 'enabled' => 1, 'expected_version' => 0, 'grants' => $principal['grants'],
     ], 409);
-    $mqttOld = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'access-old', 'broker-client', $mqttPassword, sessionExpiry: 0, allowPlaintext: true);
+    $mqttOld = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'access-old', 'broker-client', $mqttPassword, caFile: $certificateFile, sessionExpiry: 0, allowPlaintext: !$tls);
     expect(!$mqttOld->connect(true), '旧连接不应报告会话恢复');
     expect($mqttOld->subscribe('broker-access/one', 0) === 0, '引导前缀应授予QoS0订阅');
     $connections = ['items' => []];
@@ -232,12 +250,12 @@ try {
         }
     } while (microtime(true) < $deadline);
     expect($disconnected, '健康节点未在5秒内停止旧连接收发并断开');
-    $mqttNew = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'access-new', 'broker-client', $rotated, sessionExpiry: 0, allowPlaintext: true);
+    $mqttNew = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'access-new', 'broker-client', $rotated, caFile: $certificateFile, sessionExpiry: 0, allowPlaintext: !$tls);
     expect(!$mqttNew->connect(true), '新代次连接失败');
     expect($mqttNew->subscribe('broker-access/allowed', 0) === 0, '新凭据应获得收紧后的前缀订阅');
     $oldRejected = false;
     try {
-        $stale = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'access-stale', 'broker-client', $mqttPassword, sessionExpiry: 0, allowPlaintext: true);
+        $stale = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'access-stale', 'broker-client', $mqttPassword, caFile: $certificateFile, sessionExpiry: 0, allowPlaintext: !$tls);
         $stale->connect(true);
     } catch (ProtocolError) {
         $oldRejected = true;
@@ -377,6 +395,9 @@ try {
         }
     }
     $databaseAdmin = null;
+    if ($tls && is_file($keyFile)) {
+        $report['cleanup']['tls_key'] = unlink($keyFile);
+    }
     if (in_array(false, $report['cleanup'] ?? [], true)) {
         $report['status'] = 'failed';
     }

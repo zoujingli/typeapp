@@ -39,7 +39,9 @@ composer require zoujingli/type-mqtt:1.0.0-rc.10
 composer require zoujingli/type-orm-pgsql:1.0.0-rc.10
 ```
 
-PHP 要求 `>=8.4 <8.6`，依赖 OpenSSL、PCRE、JSON 及上述组件；持久后端需要 PDO PostgreSQL。通信、进程、线程、协程与事件循环统一使用 Swoole `>=6.2 <7` 的官方能力，允许固定官方内置 PHP 库按官方机制加载。Broker 服务端由 Swoole Server 承担，客户端统一使用 Swoole Coroutine Socket，非协程调用沿现有 CoroutineRuntime 使用官方 Scheduler，持久 worker 使用 Swoole PROC hook 管理的进程管道。原生运行仍需对应扩展，不回退执行业务 PHP 源码。
+PHP 要求 `>=8.4 <8.6`，依赖 OpenSSL、PCRE、JSON 及上述组件；持久后端需要 PDO PostgreSQL。通信、进程、线程、协程与事件循环统一使用 Swoole `>=6.2 <7` 的官方能力，允许固定官方内置 PHP 库按官方机制加载。Broker 优先使用经典 Server，不可用时由 Coroutine Socket 提供 TCP/TLS；客户端统一使用 Coroutine Socket，非协程调用沿现有 CoroutineRuntime 使用官方 Scheduler，持久 worker 使用 Swoole PROC hook 管理的进程管道。原生运行仍需对应扩展，不回退执行业务 PHP 源码。
+
+协程 Broker 共用原协议、授权和额度控制，可用 `serve($host, $port, coroutine: true)` 显式选择。MQTT over WebSocket、客户端证书身份与服务端 SNI 目前需要经典 Server；协程入口在监听前以 `feature_unavailable` 拒绝这些配置。TLS 证书验证及账号授权继续生效，平台结果见[平台与验收](../platforms.md)。
 
 ## 最小离线示例：连接字段与消息编码
 
@@ -123,7 +125,7 @@ $broker->serve('127.0.0.1', 8883);
 | 无持久 worker | QoS 0 路由；不声称提供持久会话或可靠离线交付 |
 | 显式同步持久后端 | QoS 1/2 双向交付、保留、会话恢复、遗嘱及延迟遗嘱、共享订阅和跨节点路由 |
 | 完整入站报文 | 最大 1 MiB；默认握手 10 秒、半包 15 秒，Keep Alive 使用实际完整控制报文刷新；Swoole 入口关闭 Nagle |
-| Swoole Server 连接预算 | 上限 10100；示例默认设备 10000、服务 100，仍受物理额度限制 |
+| 原生监听共享连接预算 | 上限 10100；示例默认设备 10000、服务 100，仍受物理额度限制 |
 
 这些额度是拒绝和资源约束，不是万台在线验收结果。每连接最多 100 个订阅，重复订阅替换选项；分类必须由已认证身份确定，不能相信客户端自行申报。TLS/认证/订阅/报文或存储失败不伪造成功确认。
 

@@ -90,6 +90,8 @@ php tests/native.php --chroot "$task_sandbox"
 
 在匹配的 SDK 环境中，`php tests/build-platform-native.php` 验证真实产物、运行库身份和缓存；`php tests/helpers-build.php` 全量编译 SQLite、ORM、校验与运行组件，并对照 PHP 和原生业务结果。这些入口使用自身的测试目录，不等同于完整应用或无源码部署验收。
 
+`php tests/mqtt-consumer.php --broker-coroutine` 在独立 Composer 消费者中强制验证官方协程监听；追加 `--native` 验证完整组件 AOT 与适用平台的无源码运行。它复用 TCP/TLS、MQTT.js 双版本、授权拒绝和半包用例，另检查活跃连接停止、端口释放及不支持配置的启动拒绝。该通用消费者包含 PostgreSQL 持久实现，使用匹配的完整组件 SDK；物联中心的 profile 程序由 `tests/release-candidate.php` 另以对应数据库执行真实 TLS 授权、凭据轮换和业务回归。
+
 Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收流程、且同一代码的契约套件已通过时，可手动选择 `scope=native` 定向复跑；报告须同时引用契约与原生运行的源码身份，不能把跳过项记为本次通过。`scope=template` 单独执行 SQLite 模板的开发、全量 AOT 与搬迁发布，用于缩短模板故障的复现路径；它使用独立并发组，不取消完整运行，也不能替代完整三库验收。模板 HTTP 提前退出时保留进程退出状态及脱敏输出，Actions 同时保存模板原生产物和构建身份。显式重建 Swoole 时，准备脚本固定并核验 PHP 官方 SDK 构建工具，提供 `phpize` 配置必需的 bison、re2c 等程序；默认复用 DLL 时跳过这组工具和 Swoole 源码下载。PHPX DLL 放入编译器要求的 `PHPX_HOME/build`，并统一加载路径；工作流分别记录构建身份、四组件和完整应用的结果，保存日志、清单与实际程序产物。
 
 `scope=pgsql-app` 在独立并发组中只运行 PostgreSQL 应用开发入口，用于定位真实 HTTP 故障，不代表 AOT 或完整平台验收。它与完整 Windows PostgreSQL 验收使用相同预算：单次 HTTP 等待 15 秒，每套应用 PHP/AOT 检查各 600 秒。此前真实对照完成 506 项 HTTP 检查，最慢请求约 4.67 秒，整套检查约 426 秒；原 3 秒请求预算和 180 秒进程预算不足。该预算仅用于功能验收，不代表生产性能指标；全部业务、并发、回滚与清理断言保持执行。

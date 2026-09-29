@@ -97,7 +97,7 @@ if ($operation === 'prepare') {
             $features = $record['features'];
             $checks = [];
             if (in_array('mqtt', $features, true)) {
-                $checks['mqtt'] = ['tests/broker-access.php', $candidate, $driver];
+                $checks['mqtt'] = ['tests/broker-access.php', $candidate, $driver, '--tls'];
             }
             foreach (['alerts' => '--alarms', 'exports' => '--exports'] as $feature => $flag) {
                 if (in_array($feature, $features, true)) {

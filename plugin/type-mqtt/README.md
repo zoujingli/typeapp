@@ -2,7 +2,9 @@
 
 可独立安装和独立进程运行的 TypeApp MQTT 服务端组件。提供 MQTT 3.1.1/5.0 的 TCP/TLS 连接、认证、CONNECT/CONNACK、PING、DISCONNECT、客户端标识接管、精确及通配订阅/取消、MQTT 5 订阅选项与标识、二进制 QoS 0 路由，以及明确配置 PostgreSQL 同步持久存储后的 QoS 1/2 双向交付、保留消息、持久会话、遗嘱与延迟遗嘱、MQTT 5 共享订阅、重启恢复及跨节点接管与路由。
 
-通信与基础并发统一使用 Swoole 官方能力；服务端监听由 Swoole Server 管理，客户端统一使用 Swoole Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行，持久 worker 使用 Swoole PROC hook 管理的进程管道。当前 Broker 使用经典 Swoole Server，持久 worker 使用受控命令进程；进程能力不可用时所需的角色适配与隔离、停止验收尚不能由接口存在推定完成。
+通信与基础并发统一使用 Swoole 官方能力。Broker 在经典 Server 可用时沿用该入口，否则自动使用 Coroutine Socket 接收 TCP/TLS；两者共用 MQTT 协议、授权、持久操作和资源预算。客户端统一使用 Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行，持久 worker 使用 Swoole PROC hook 管理的进程管道。各平台及持久角色的实际验收分别记录。
+
+协程监听支持服务端 TLS 证书与账号认证；当前锁定 Socket 未暴露客户端证书身份和服务端 SNI 配置，MQTT over WebSocket 也尚未接入该入口。因此这些配置需要经典 Server，强制使用协程时在监听前返回 `feature_unavailable`，不降低认证要求。可通过 `serve($host, $port, coroutine: true)` 在具有经典 Server 的平台显式验证协程入口。
 
 ## 安装与版本
 
@@ -288,9 +290,9 @@ QoS 1 已分配副本断线后等待原 Session 恢复，Session 终止时才可
 
 `Broker` 第六参数 `classify` 为可选 `Closure(ConnectPacket): string`，在认证成功后调用，返回 `device` 或 `application`；省略时全部按设备处理。消费者必须依据受信认证身份分类，客户端标识前缀、User Property 或客户端自称服务都不授予较大额度。示例以已通过独立服务密码认证的用户名分类；分类不扩大 Topic 授权。`session_open.capacity_class` 保存分类，旧调用者缺省 `device`；已有会话恢复时分类不一致拒绝 `0x87`，显式 Clean Start 才按新分类建立新会话。升级前先通过 `--install-store` 添加该字段，历史会话按设备处理。
 
-`BrokerOptions` 的分类额度上限为10000设备和100服务。物理上限为 10100；所有监听与收发均由 Swoole Server 承担。注入分类器时实际服务额度取配置值与“物理上限减一”的较小者，设备额度取配置值与剩余物理名额的较小者；示例当前配置默认10000设备加100服务。没有分类器时不预留无法认证的服务名额。分类时先预留名额，再处理接管及持久会话；同 Client ID 的替换不重复占分类名额。未认证握手及待登记关闭仍共用物理预算和独立截止，握手洪泛不享有身份分类保证。
+`BrokerOptions` 的分类额度上限为10000设备和100服务。物理上限为 10100；所有监听与收发均由官方 Server 或 Coroutine Socket 承担。注入分类器时实际服务额度取配置值与“物理上限减一”的较小者，设备额度取配置值与剩余物理名额的较小者；示例当前配置默认10000设备加100服务。没有分类器时不预留无法认证的服务名额。分类时先预留名额，再处理接管及持久会话；同 Client ID 的替换不重复占分类名额。未认证握手及待登记关闭仍共用物理预算和独立截止，握手洪泛不享有身份分类保证。
 
-Swoole Server 复用 TCP/TLS、WebSocket 升级、协议状态机、认证及持久工作入口；Swoole 事件循环负责监听、收发、定时与关闭，应用只维护 MQTT 报文状态、授权、持久提交和资源预算。所有网络连接都由原生 Swoole 生命周期持有，发送缓冲和半包期限由组件按 MQTT 语义管理。
+经典 Server 负责 TCP/TLS 与 WebSocket，协程 Socket 负责其支持的 TCP/TLS 接入；两者复用组件的协议状态机、认证及持久工作入口。Swoole 事件循环负责监听、收发、定时与关闭，应用只维护 MQTT 报文状态、授权、持久提交和资源预算。所有网络连接都由原生 Swoole 生命周期持有，发送缓冲和半包期限由组件按 MQTT 语义管理。
 
 应用须在自己的构建配置 `runtime.Linux.extensions`（macOS验证对应 `runtime.Darwin.extensions`）加入 `swoole`，由现有构建器核验真实 embed 扩展、SDK模块和摘要。操作系统文件描述符、TLS内存及全部设备持久会话仍需按部署资源核算，放宽可配置连接数不等于达到业务负载和恢复指标。
 

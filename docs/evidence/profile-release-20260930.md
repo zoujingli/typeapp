@@ -88,4 +88,24 @@ RC11 的 macOS ARM64 SQLite 候选已通过完整静态程序验收，原文件�
 
 Linux SQLite 定向运行 [36628322727](https://github.com/zoujingli/typeapp/actions/runs/36628322727) 的 x64 原程序已通过无源码部署及 MQTT、告警、导出、调度；程序 SHA-256 为 `f019f1563b98810abaf6d831a2ddcfbe784d3cd2206b1039baeba68c858e80ef`。systemd 控制脚本随后误用数据库夹具 PATH 中的系统 PHP，加载 ZTS 扩展产生 ABI 警告并污染摘要输出。脚本改为明确调用 `PHP_HOME/bin/php`，不改变部署程序或服务配置，后续仍须完成真实 systemd 复验。
 
+Linux ARM64 的同次定向运行也已完成部署及四项业务检查，随后在相同的 systemd 控制脚本失败；两平台的服务复验均不能以业务成功替代。
+
+Windows 原 EXE 的定向诊断 [36630937370](https://github.com/zoujingli/typeapp/actions/runs/36630937370) 没有重新编译，复用 [36627922661](https://github.com/zoujingli/typeapp/actions/runs/36627922661) 保存的 50,758,048 字节程序，SHA-256 为 `7a2492dd71e4627ca4f7f7cca65d764dc46754fbd6b2c21831817fa4b13ab895`。失败原因是 Broker 无条件使用当前 Windows 运行库未提供的 `SWOOLE_BASE`，并非裁剪掉数据库或 TLS。原 EXE 已通过严格无源码部署，但不能计为 MQTT 或 Redis 业务通过。
+
+修复在 Broker 既有所有者中补充官方 Coroutine Socket 接入；协议、授权、持久操作、全局事件门和额度继续复用。经典 Server 不可用时自动选择，显式协程入口只支持 TCP/TLS；MQTT WebSocket、客户端证书身份及 SNI 在监听前明确拒绝。Windows 新程序和完整矩阵仍须实测。
+
+本机最小对比确认：经典与协程入口均在约 15.04 秒拒绝半包 CONNECT，原用例的 12 秒等待早于配置的 15 秒，现按真实配置保留 18 秒测试预算。活跃读取时从信号回调同步关闭监听会形成嵌套恢复等待，改用官方 `Event::defer` 后正常退出；接纳循环的临时 Socket 引用也在进入下一轮等待前释放，避免 TLS 关闭延迟到下个连接。原始拒绝、停止和文件描述符记录保留在 `build/profile-release-validation/mqtt-probe/`。
+
+随后完整组件 AOT 暴露两项仅看 PHP 结果无法确认的问题。正常退出的生成代码复用了提前返回分支中初始化的 `finally` 临时值，导致读取登记未清除；收尾现归入独立方法，每次读取当前连接代次。接入循环的编译临时引用还会延长 Socket 生命周期，标准客户端在 DISCONNECT 后一直等待，下一次接入才解除；接纳处理现独立于下一次 `accept` 等待。原失败程序、生成代码摘要与客户端事件对照分别记录，不修改历史身份。
+
+修复后的独立组件程序 SHA-256 为 `f6bf94d085605a20e86f5132d0983c5e7268f5a0c3e2fea11483455075be20bf`，构建 ID 为 `680e5d5d6f311a50d015d4f3bfb08cb0acf4efbd35accd5a2f4adbef520546eb`。同一程序通过源码及生成实现禁读的 TCP/TLS 验收：各包含 45 项 CONNECT 字段、182 项线协议、72 项消息、14 项文本、14 项别名检查，以及 MQTT.js 的双版本四组合交互、TLS 1.2/1.3、活跃连接停止、端口重绑定和三个不支持配置的明确拒绝。共享组件 SDK 的选定动态模块只在测试准备时搬迁并核对摘要，不属于最终静态 Release 的部署方式。该结果不代替 Windows 或完整应用的验收。
+
+本轮完整单元套件通过 182 项测试、3431 个断言；基础检查覆盖 819 个文件，文档检查核对 1771 处引用、204 条路由、317 个命令和 250 个 Composer 脚本。源码收尾方法的后续调整另经完整组件 AOT、行为与格式检查。
+
+经典 Server 的 SQLite 应用授权控制回归通过 54 项 HTTP 检查及真实 TLS 连接、凭据轮换和旧凭据拒绝，测试进程和临时私钥均已回收。控制端已加载 Swoole 时不再重复声明扩展，避免启动警告混入命令 JSON。该 PHP 回归与上面的组件原生证据分别记录。
+
+MQTT 诊断与组件验收资料封存为 `.cache/profile-release-evidence-20260930/mqtt-coroutine-validation.tar.gz`，SHA-256 为 `0cd33f11c44f3bbe1d075e9cfd8ca2575683845e04f71e72b669dc91086d196b`。原程序、构建报告、所需源码、失败生成片段和原始日志均已逐文件回读校验；可重建的重复安装及编译中间文件不长期保留。确认相关进程退出后回收 11 个独立消费者目录，释放 1,183,568,140 逻辑字节，累计回收 5,938,242,448 逻辑字节。
+
+配置修复阶段的原始资料已封存为 `.cache/profile-release-evidence-20260930/settings-validation.tar.gz`，SHA-256 为 `e07e4b039e077aa88513a43ce4b15def59eeaec3af669f8fa8886cfe490433b6`。逐文件回读并确认所属进程退出、端口释放后，回收 19 个测试目录共 1,534,859,562 逻辑字节；本任务累计回收 4,754,674,308 逻辑字节。共享 SDK 和后续所需程序仍保留。
+
 四平台 × 三数据库的 12 个最终候选、Windows 专用 Redis 测试实例、16 个分发子仓与 Packagist 消费，以及公开下载摘要仍须由新 RC 的真实 Actions 运行完成。发布门禁要求全部组合成功；任何失败都阻止主仓 Release 公开。当前记录不宣称这些远端验收已经完成。

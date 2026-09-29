@@ -800,7 +800,8 @@ function mqttWireCases(int $port, ?string $certificate): int
         stream_set_timeout($slow, 18);
         $idle = mqttSocket($port);
         mqttWrite($idle, "\x10");
-        stream_set_timeout($idle, 12);
+        // 已收到半包，沿用示例的 15 秒 partialPacketSeconds，而不是空连接的 10 秒握手预算。
+        stream_set_timeout($idle, 18);
         $healthy = mqttSocket($port);
         mqttWrite($healthy, mqttConnect(5, 'other-client'));
         mqttAck($healthy, 5);
@@ -1011,6 +1012,8 @@ if (in_array('--read-only', $argv, true)) {
 
 $root = dirname(__DIR__);
 $native = in_array('--native', $argv, true);
+$brokerCoroutine = in_array('--broker-coroutine', $argv, true);
+expect(!$brokerCoroutine || array_diff(array_slice($argv, 1), ['--native', '--broker-coroutine']) === [], '协程 Broker 专项使用独立监听夹具，不能组合其他场景');
 $commitLifecycleOnly = in_array('--commit-lifecycle-only', $argv, true);
 expect(!$commitLifecycleOnly || array_diff(array_slice($argv, 1), ['--native', '--commit-lifecycle-only']) === [], '持久生命周期专项不能与其他场景组合');
 $connectFieldsOnly = in_array('--connect-fields-only', $argv, true);
@@ -1044,6 +1047,14 @@ file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_PRET
 file_put_contents($consumer . '/package.json', json_encode(['name' => 'type-mqtt-client-test', 'private' => true,
     'dependencies' => ['mqtt' => '5.15.0']], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 copy($root . '/examples/mqtt/main.php', $consumer . '/app/main.php');
+if ($brokerCoroutine) {
+    $source = file_get_contents($consumer . '/app/main.php');
+    $source = str_replace("\$arguments->integer('port', 8883, 1, 65535));", "\$arguments->integer('port', 8883, 1, 65535), true);", $source, $replacements);
+    expect($replacements === 1, '协程 Broker 夹具必须只替换监听选择');
+    // 无效 CA 的主动 TLS 拒绝会产生 Swoole 警告，原始日志单独保留，不混入停止统计 JSON。
+    $source = str_replace('    $arguments = new Arguments(', "    swoole_async_set(['log_file' => getcwd() . '/swoole.log']);\n    \$arguments = new Arguments(", $source);
+    file_put_contents($consumer . '/app/main.php', $source);
+}
 if ($scopes) {
     file_put_contents($consumer . '/app/main.php', mqttScopeApplication(file_get_contents($consumer . '/app/main.php')));
 }
@@ -1110,7 +1121,17 @@ if ($native) {
         expect(mkdir($runtime, 0700), '无法创建无源码运行目录');
         copy($consumer . '/build/mqtt/type-app', $runtime . '/type-app');
         chmod($runtime . '/type-app', 0700);
-        copy($report['runtime-profile']['ini'], $runtime . '/php.ini');
+        $ini = file_get_contents($report['runtime-profile']['ini']);
+        // 共享 SDK 的扩展可能位于被禁止读取的 Composer 目录；只搬迁已选中的原生模块，保留源码禁读边界。
+        $ini = preg_replace_callback('/^extension="([^"]+)"$/m', static function (array $match) use ($runtime): string {
+            $module = $match[1];
+            expect(is_file($module), '无源码验收缺少已选中的原生模块');
+            $digest = hash_file('sha256', $module);
+            $target = $runtime . '/' . $digest . '-' . basename($module);
+            expect(copy($module, $target) && hash_equals($digest, hash_file('sha256', $target)), '搬迁后的原生模块摘要不一致');
+            return 'extension="' . $target . '"';
+        }, $ini);
+        expect(is_string($ini) && file_put_contents($runtime . '/php.ini', $ini) !== false, '无法写入无源码运行配置');
         $policy = ['sandbox-exec', '-f', $root . '/tests/fixtures/mqtt-no-source.sb'];
         $roles = ['ROOT_APP' => $root . '/app', 'ROOT_PLUGIN' => $root . '/plugin', 'ROOT_EXAMPLE' => $root . '/examples',
             'ROOT_VENDOR' => $root . '/vendor', 'APP' => $consumer . '/app', 'VENDOR' => $consumer . '/vendor',
@@ -1173,7 +1194,7 @@ foreach ($commitLifecycleOnly || in_array('--qos1-only', $argv, true) || in_arra
         $ready = false;
         $until = microtime(true) + 10;
         do {
-            expect($process->running(), 'MQTT 进程提前退出：' . $process->stderr());
+            expect($process->running(), 'MQTT 进程提前退出：' . $process->stdout() . $process->stderr());
             try {
                 $probe = mqttSocket($port, $certificate);
                 mqttWrite($probe, mqttConnect(5, 'ready'));
@@ -1184,7 +1205,7 @@ foreach ($commitLifecycleOnly || in_array('--qos1-only', $argv, true) || in_arra
                 usleep(10000);
             }
         } while (!$ready && microtime(true) < $until);
-        expect($ready, 'MQTT 未通过真实 CONNECT 就绪检查：' . $process->stderr());
+        expect($ready, 'MQTT 未通过真实 CONNECT 就绪检查：' . $process->stdout() . $process->stderr());
         $scopeCases = $scopes ? mqttScopeCases($port, $certificate) : 0;
         $connectFieldCaseCount = mqttConnectFieldCases($port, $certificate);
         $caseCount = $connectFieldsOnly ? 0 : mqttWireCases($port, $certificate);
@@ -1193,7 +1214,14 @@ foreach ($commitLifecycleOnly || in_array('--qos1-only', $argv, true) || in_arra
         $aliasCaseCount = $connectFieldsOnly ? 0 : mqttAliasCases($port, $certificate);
         $subscriptionCaseCount = in_array('--subscriptions', $argv, true) ? mqttDelayedAccessCases($port, $certificate) + mqttSubscriptionCases($port, $certificate) : 0;
         if (!$connectFieldsOnly) {
-            echo successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, $certificate ?? 'plain'], $consumer);
+            $standard = new Process(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, $certificate ?? 'plain'], $consumer);
+            try {
+                $standardResult = $standard->wait(90);
+                expect($standardResult->successful(), 'MQTT.js 互操作失败或超时：' . $standardResult->stdout . $standardResult->stderr);
+                echo $standardResult->stdout;
+            } finally {
+                $standard->stop();
+            }
         }
         if ($tls) {
             $wrongPeer = @stream_socket_client(
@@ -1224,12 +1252,15 @@ foreach ($commitLifecycleOnly || in_array('--qos1-only', $argv, true) || in_arra
         mqttWrite($held, "\x30\x7f\0\x10partial");
         $result = $process->stop(3);
         fclose($held);
-        expect($result->successful() && $result->stderr === '', 'MQTT 停止或资源清理失败：' . $result->stderr);
+        expect($result->successful() && $result->stderr === '', 'MQTT 停止或资源清理失败：exit=' . $result->exitCode . ' timeout=' . (int) $result->timedOut . ' ' . $result->stdout . $result->stderr);
         $statistics = json_decode(trim($result->stdout), true, 512, JSON_THROW_ON_ERROR);
         expect($statistics['connections'] === 0 && $statistics['stopping'] && $statistics['closed'] === $statistics['accepted'], 'MQTT 连接资源没有完整回收');
         expect($statistics['subscriptions'] === 0 && $statistics['bufferedBytes'] === 0, 'MQTT 订阅或半包/发送缓冲没有完整回收');
-        expect(!$scopes || ($statistics['observationFailures'] === 0 && $statistics['readyEvents'] === 0
-            && $statistics['pendingEventBytes'] === 0 && $statistics['callbackFailures'] === 0), '作用域、观察或事件清理失败');
+        expect($statistics['observationFailures'] === 0 && $statistics['readyEvents'] === 0
+            && $statistics['eventTimers'] === 0 && $statistics['pendingEventBytes'] === 0 && $statistics['callbackFailures'] === 0, '作用域、观察或事件清理失败');
+        $released = stream_socket_server('tcp://127.0.0.1:' . $port, $errno, $error);
+        expect(is_resource($released), 'MQTT 停止后监听端口没有释放');
+        fclose($released);
         expect($connectFieldsOnly || ($statistics['delivered'] > 0 && $statistics['dropped'] > 0), '消息测试未覆盖交付及丢弃');
         $verified[$tls ? 'tls' : 'tcp'] = ['connect-field-cases' => $connectFieldCaseCount, 'wire-cases' => $caseCount,
             'message-cases' => $connectFieldsOnly ? 0 : $messageCaseCount + 1, 'text-cases' => $textCaseCount, 'alias-cases' => $aliasCaseCount, 'subscription-cases' => $subscriptionCaseCount,
@@ -1238,6 +1269,24 @@ foreach ($commitLifecycleOnly || in_array('--qos1-only', $argv, true) || in_arra
     } finally {
         $stopped = $process->stop();
         file_put_contents($consumer . '/' . ($tls ? 'tls' : 'tcp') . '-broker.log', $stopped->stdout . $stopped->stderr);
+    }
+}
+if (in_array('--broker-coroutine', $argv, true)) {
+    $unavailable = [
+        'websocket' => [['--plaintext', '--ws-port=18884'], ['MQTT_CERTIFICATE' => '', 'MQTT_PRIVATE_KEY' => '']],
+        'client-certificate' => [['--mtls-port=18884'], ['MQTT_CLIENT_CA' => $consumer . '/certificate.pem']],
+        'sni' => [[], ['MQTT_SNI_HOST' => 'example.test', 'MQTT_SNI_CERTIFICATE' => $consumer . '/certificate.pem', 'MQTT_SNI_PRIVATE_KEY' => $consumer . '/private.pem']],
+    ];
+    foreach ($unavailable as $feature => [$arguments, $overrides]) {
+        $probe = new Process([...$command, '--port=18883', ...$arguments], $consumer, array_replace($environment, $overrides));
+        try {
+            $rejected = $probe->wait(5);
+            expect(!$rejected->successful() && !$rejected->timedOut
+                && str_contains($rejected->stdout . $rejected->stderr, 'MQTT 协程监听支持 TCP/TLS；WebSocket、客户端证书身份与 SNI 需要经典 Server'), '协程监听没有在启动前明确拒绝：' . $feature);
+            $verified['unavailable'][] = $feature;
+        } finally {
+            $probe->stop();
+        }
     }
 }
 if ($commitLifecycleOnly || in_array('--qos1', $argv, true) || in_array('--qos1-only', $argv, true) || in_array('--qos2', $argv, true) || in_array('--retained', $argv, true)) {
@@ -1309,7 +1358,7 @@ if ($conformance) {
 if ($scopes) {
     $verified['scope-lifecycle'] = mqttScopeLifecycleCases($consumer, $command, $environment);
 }
-$evidence = ['mode' => $native ? 'aot' : 'php', 'transport' => 'swoole', 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
+$evidence = ['mode' => $native ? 'aot' : 'php', 'transport' => 'swoole', 'broker-coroutine' => in_array('--broker-coroutine', $argv, true), 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
     'read-cases' => $readCaseCount,
     'no-source-runtime' => $native && PHP_OS_FAMILY === 'Darwin' ? 'kernel-denied-production-and-generated-source' : 'not-verified',
     'checks' => $verified, 'build' => $native ? array_intersect_key($report, array_flip(['build-id', 'sha256', 'typephp', 'typephp-reference', 'phpx', 'phpx-reference', 'production-packages'])) : null];

@@ -9,7 +9,7 @@ use Type\Runtime\Deadline;
 /** @internal 一条 Swoole 连接的所有者；明文/TLS/WebSocket、帧缓冲和发送预算均随连接回收。 */
 final class Connection
 {
-    /** 连接表键：Swoole Server fd；内部发布者没有网络连接，编号为0。 */
+    /** 连接表键：Swoole Server 或 Coroutine Socket fd；内部发布者编号为0。 */
     public readonly int $id;
     public string $input = '';
     public string $output = '';
@@ -98,8 +98,8 @@ final class Connection
     public string $retainedFilter = '';
 
     /**
-     * @param int|null $socket Swoole Server 连接 fd；内部发布者可为空。
-     * @param string $transport `tcp`/`websocket` 为 Swoole Server 监听，`internal` 表示无网络的内部发布者。
+     * @param int|\Swoole\Coroutine\Socket|null $socket 原生连接或其 fd；内部发布者可为空。
+     * @param string $transport `tcp`/`websocket` 为原生监听，`internal` 表示无网络的内部发布者。
      */
     public function __construct(
         public mixed $socket,
@@ -117,10 +117,11 @@ final class Connection
             }
             $this->id = 0;
         } else {
-            if (!is_int($socket) || $socket < 1) {
+            $identifier = $socket instanceof \Swoole\Coroutine\Socket ? $socket->fd : $socket;
+            if (!is_int($identifier) || $identifier < 1 || ($socket instanceof \Swoole\Coroutine\Socket && $transport !== 'tcp')) {
                 throw new \InvalidArgumentException('MQTT 原生连接需要有效 fd');
             }
-            $this->id = $socket;
+            $this->id = $identifier;
         }
         $this->handshake = new Deadline($handshakeSeconds);
         $this->connect = new ConnectPacket();
@@ -131,7 +132,9 @@ final class Connection
     /** 网络仍可读写时为真；关闭后 socket 置空，不把已回收 fd 当作活连接。 */
     public function alive(): bool
     {
-        return $this->transport !== 'internal' && is_int($this->socket) && $this->socket > 0 && $this->native !== null;
+        return $this->socket instanceof \Swoole\Coroutine\Socket
+            ? !$this->socket->isClosed()
+            : $this->transport !== 'internal' && is_int($this->socket) && $this->socket > 0 && $this->native !== null;
     }
 
     /** 观察与统计使用的传输名称；WebSocket 的 TLS 记为 wss。 */
@@ -276,6 +279,11 @@ final class Connection
         if ($this->endedAt === 0.0) {
             $this->endedAt = microtime(true);
         }
+        if ($this->socket instanceof \Swoole\Coroutine\Socket) {
+            $socket = $this->socket;
+            $this->socket = null;
+            $socket->close();
+        }
         if ($this->transport !== 'internal' && is_int($this->socket) && $this->native !== null) {
             $fd = $this->socket;
             $native = $this->native;
@@ -322,9 +330,13 @@ final class Connection
         $this->closing = true;
     }
 
-    /** 把有界输出交给原生发送缓冲；成功视为整段已入队，失败由调用方关闭。 */
+    /** 返回原生实际接纳的字节数；协程 Socket 允许短写，失败由调用方关闭。 */
     private function flushNative(string $chunk): int|false
     {
+        if ($this->socket instanceof \Swoole\Coroutine\Socket) {
+            // 原生协程处理可写等待；短写只消耗已发送前缀，共用现有总发送截止。
+            return $this->socket->send($chunk, max(0.001, $this->flush?->remaining() ?? 1.0));
+        }
         if ($this->native === null || !is_int($this->socket)) {
             return false;
         }

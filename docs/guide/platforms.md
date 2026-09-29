@@ -33,7 +33,7 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 - HTTP：验证请求响应、路由、TLS、停止和资源回收。
 - WebSocket：验证 HTTP 共用服务与端口、握手、分片、控制帧、WSS、作用域和取消。
-- TCP、UDP、MQTT：分别验证字节流、数据报、会话、QoS、保活、重连、持久确认和故障收尾。
+- TCP、UDP、MQTT：分别验证字节流、数据报、会话、QoS、保活、重连、持久确认和故障收尾。MQTT Broker 在经典 Server 不可用时接入官方 Coroutine Socket，支持 TCP/TLS 与账号授权；MQTT over WebSocket、客户端证书身份和服务端 SNI 仍需要经典 Server，配置不满足时明确拒绝。此边界不影响独立 HTTP/WebSocket 组件的协程入口。
 
 每次更换 Swoole、PHPX、libphp 或目标架构都须重新生成并验证完整产物。HTTP 与 WebSocket 的共用监听方式见[WebSocket 教程](communications/websocket.md#http-与-websocket-共用服务)。
 

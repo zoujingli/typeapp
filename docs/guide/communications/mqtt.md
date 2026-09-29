@@ -49,7 +49,7 @@ sequenceDiagram
 | --- | --- | --- |
 | `certificate` / `privateKey` / `privateKeyPassphrase` | 空字符串 | TLS 证书链、私钥与可选口令；生产显式配置 |
 | `allowPlaintext` | `false` | 明文仅用于显式本机调试 |
-| `maximumConnections` | 256 个 | Swoole Server 的连接上限，物理上限为 10100，不代表已验收的在线容量 |
+| `maximumConnections` | 256 个 | 所有原生接入共享的连接预算，物理上限为 10100，不代表已验收的在线容量 |
 | `maximumPacketBytes` | 1048576 字节 | 完整 MQTT 报文上限，范围 128–1048576 |
 | `handshakeSeconds` | 10.0 秒 | 握手等待，范围 `(0, 60]` |
 | `partialPacketSeconds` | 15.0 秒 | 半包等待，范围 `(0, 60]` |
@@ -61,7 +61,9 @@ sequenceDiagram
 | `handleSignals` | `true` | 由 Broker 处理停止信号；嵌入时需宿主接管停止 |
 | `workerCommand` | 空数组 | 通过 Swoole PROC hook 管理的进程管道启动持久 worker；为空时只开放 QoS 0 |
 
-Broker 的 TCP、TLS、mTLS 与 WebSocket 监听均由同一个 Swoole Server 生命周期管理；WebSocket 监听启用时，HTTP 升级和 MQTT 帧共用该服务。持久 worker 使用 Swoole PROC hook 管理的进程管道，客户端统一使用 Swoole Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行。
+经典 Swoole Server 可用时，Broker 的 TCP、TLS、mTLS 与 WebSocket 监听共用其生命周期；WebSocket 监听启用时，HTTP 升级和 MQTT 帧共用该服务。经典 Server 不可用的平台自动采用官方 Coroutine Socket 提供 TCP/TLS，两者共用协议、授权和资源预算。协程入口尚不支持 MQTT over WebSocket、客户端证书身份及服务端 SNI，配置这些能力时返回 `feature_unavailable`；不会静默改用明文或跳过身份验证。
+
+持久 worker 使用 Swoole PROC hook 管理的进程管道，客户端统一使用 Swoole Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行。具体平台与产物结果见[平台与验收](../platforms.md)。
 
 `wsPort`、`wssPort`、`mtlsPort` 不能与主端口重复；同一进程不能同时开启明文 WS 与 WSS，WSS/mTLS 不能混用明文调试配置。证书生命周期、持久资源与集群参数集中在[组件参考](../plugins/type-mqtt.md)，无需把它们复制成另一套配置体系。
 
