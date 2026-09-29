@@ -1,10 +1,10 @@
 # 版本发布与安装
 
-版本由主仓的不可变 tag 驱动：`vX.Y.Z` 是正式版本，`vX.Y.Z-rc.N` 是候选版本。一次发布关联同一主仓提交、15 个组件、应用模板、四个平台运行包及各自的验收记录。RC 标记为预发布，不成为稳定最新版。
+版本由主仓的不可变 tag 驱动：`vX.Y.Z` 是正式版本，`vX.Y.Z-rc.N` 是候选版本。一次发布关联同一主仓提交、组件、应用模板和四个平台的数据库 profile 矩阵。RC 标记为预发布，不成为稳定最新版。
 
-当前公开候选为 [v1.0.0-rc.10](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.10)，固定源码 `359627e`。四平台完整原生回归、静态单程序三库隔离部署、组件与模板分发、默认 Packagist 独立消费和公开下载回读均已通过，共核对 17 个 Release、16 个子仓 tag、16 个 Packagist 版本、四个程序及四份重建材料。RC 尚非稳定版，实际平台范围见[平台与验收](platforms.md)，原始身份见[本轮验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/single-program-ci-20260928.md)。
+历史候选 [v1.0.0-rc.10](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.10) 的目录与验收记录保持不变。当前 `main` 已将后续发布定义为四个平台 × `sqlite`、`mysql`、`pgsql` 三个 profile；新的 RC 必须重新完成这 12 个单文件程序的验收后才会公开。实际已发布版本以 GitHub Release 页面为准。
 
-每个平台下载一个可执行文件，外置配置独立维护。PHP、PHPX、Swoole 等非系统原生库已静态链接，普通启动不释放运行库。历史 RC7 的目录归档与旧标签保持原样，其使用方式和验收身份保留在[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
+每个“平台 × profile”下载一个可执行文件，外置配置独立维护。PHP、PHPX、Swoole 等非系统原生库已静态链接，普通启动不释放运行库。历史 RC7 的目录归档与旧标签保持原样，其使用方式和验收身份保留在[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
 ## 一次 tag 如何形成版本
 
@@ -12,9 +12,9 @@
 flowchart TB
   Tag["版本 tag → 固定完整提交"] --> Gate["main 历史、依赖约束、标签冲突检查"]
   Gate --> Web["冻结安装 → 类型检查 → 构建一份前端"]
-  Web --> AOT["四平台 TypePHP 全量 AOT · 内嵌同一份资源"]
-  AOT --> Verify["保存最终可执行文件 → 只复制该文件 → 三库与页面验收"]
-  Verify --> Draft["保存主仓候选草稿、附件和摘要"]
+  Web --> AOT["四平台 × 三数据库 profile · TypePHP 全量 AOT"]
+  AOT --> Verify["strip 后封存 → 单文件隔离部署 → 数据库、MQTT、Redis 业务验收"]
+  Verify --> Draft["保存 12 个候选、体积清单和摘要"]
   Draft --> Split["15 组件 + 模板 · 同版本 tag"]
   Split --> Index["GitHub webhook → Packagist 索引"]
   Index --> Consume["默认 Packagist 独立安装 · 版本、提交及三库消费"]
@@ -23,34 +23,38 @@ flowchart TB
   style AOT fill:#147d64,color:#fff,stroke:#147d64
 ```
 
-四个平台分别编译、验收。任何一个平台失败都会阻止主仓版本公开。新候选验收直接使用待上传程序的同一字节，移走构建端前端资源后验证安装、登录和 CRUD；程序 SHA-256 必须与三库回执一致，不能重新编译后替换附件。旧版本恢复仍按原归档身份读取，不改写旧标签或附件。
+四个平台和三个 profile 分别编译、验收。每个候选只对其对应数据库执行初始化、迁移和 CRUD；任何一个组合失败都会阻止主仓版本公开。新候选验收直接使用待上传程序的同一字节，移走构建端前端资源后验证安装、登录和 CRUD；程序 SHA-256 必须与该 profile 回执一致，不能重新编译后替换附件。旧版本恢复仍按原归档身份读取，不改写旧标签或附件。
 
-发布链保留各平台完整业务回归，并单独核验最终静态候选。Linux 两种架构调用 `static-linux.yml`，macOS 调用 `native-macos.yml` 的 `single-program` 范围，Windows 调用 `static-windows-candidate.yml`；它们使用同一固定提交及前端清单。Windows 先构建并验证静态 SDK，再全量编译 EXE，以该文件完成三库无源码部署。分发门禁同时检查这些任务的成功状态、源码和执行轮次，只有旧共享库回归或静态核心探针成功不能继续发布。任一候选或重建材料失败均阻止发布。
+每个最终候选另执行真实 MQTT 授权、告警通知、Redis 队列导出及维护调度，逐项记录同一程序摘要和日志摘要；业务扩展回归与无源码隔离部署分别留证。Windows 的 Redis 测试服务来自固定摘要的 Cygwin 构建，仅用于 Actions 专用实例，不安装为系统服务、不进入部署程序，也不构成 Redis 官方原生 Windows 支持声明。设备持久 MQTT 的 PostgreSQL 同步语义仍按既有完整业务门禁验证，普通 MQTT 授权测试不替代该语义。
 
-新候选附件名为 `typeapp-iot-<版本>-<平台>-<架构>`，Windows 追加 `.exe`，Unix 不加 `.tar.gz`。`SHA256SUMS` 和 `release-manifest.json` 是下载核验材料，不是运行依赖。下载后在 Unix 赋予执行权限，按[单程序部署](deployment.md)直接运行；运行库不会释放到磁盘，页面只在显式安装时写入 `public`。
+发布链保留各平台完整业务回归，并单独核验最终静态候选。Linux 两种架构调用 `static-linux.yml`，macOS 调用 `native-macos.yml` 的 `single-program` 范围，Windows 调用 `static-windows-candidate.yml`；它们使用同一固定提交及前端清单。每个平台/profile 先构建并验证对应静态 SDK，再全量编译程序，以该文件完成对应数据库的无源码部署。分发门禁同时检查这些任务的成功状态、源码和执行轮次，只有旧共享库回归或静态核心探针成功不能继续发布。任一候选或重建材料失败均阻止发布。
 
-每个平台另提供 `typeapp-rebuild-<版本>-<平台>-<架构>.zip`，供维护者取得对应应用源码、实际静态 SDK、LGPL 库源码与重建配方；部署者无需下载或解压它。该附件与程序一起封存、校验和重试，来源或摘要不匹配时阻止发布。维护方法见[静态程序重新构建](https://github.com/zoujingli/typeapp/blob/main/docs/development/rebuild.md)。
+新候选附件名为 `typeapp-iot-<版本>-<平台>-<profile>`，Windows 追加 `.exe`，Unix 不加 `.tar.gz`。每个下载项就是一个主程序；同一平台不能在运行时切换数据库，必须选择对应 profile。`SHA256SUMS` 和 `release-manifest.json` 是下载核验材料，不是运行依赖。下载后在 Unix 赋予执行权限，按[单程序部署](deployment.md)直接运行；运行库不会释放到磁盘，页面只在显式安装时写入 `public`。
 
-## 下载当前公开 RC
+重建 SDK、源码和许可证履约材料仍会生成并验收，但只作为 Actions Artifact 保存，并在 `release-manifest.json` 中记录身份和摘要；它们不进入公开部署下载列表，也不是部署依赖。清单保存 Artifact ID、名称、摘要、运行轮次及过期时间；维护者需在保留期内将需要长期提供的材料转存到独立维护附件。维护方法见[静态程序重新构建](https://github.com/zoujingli/typeapp/blob/main/docs/development/rebuild.md)。
 
-选择与操作系统、CPU 和系统库基线匹配的附件，具体要求见[平台与验收](platforms.md)。文件名中的版本不带前缀 `v`：
+## 下载程序
+
+当前公开 RC10 的文件名没有 profile 后缀，例如 `typeapp-iot-1.0.0-rc.10-linux-x64`。以下矩阵及命令适用于完成新矩阵验收后发布的版本，请先在 Release 页面确认附件名，不能对 RC10 套用新命名。
+
+选择与操作系统、CPU、系统库基线和数据库匹配的附件，具体要求见[平台与验收](platforms.md)。文件名中的版本不带前缀 `v`：
 
 | 目标 | 附件名 |
 | --- | --- |
-| Linux x64 | `typeapp-iot-1.0.0-rc.10-linux-x64` |
-| Linux ARM64 | `typeapp-iot-1.0.0-rc.10-linux-arm64` |
-| macOS ARM64 | `typeapp-iot-1.0.0-rc.10-macos-arm64` |
-| Windows x64 | `typeapp-iot-1.0.0-rc.10-windows-x64.exe` |
+| Linux x64 | `typeapp-iot-<版本>-linux-x64-<profile>` |
+| Linux ARM64 | `typeapp-iot-<版本>-linux-arm64-<profile>` |
+| macOS ARM64 | `typeapp-iot-<版本>-macos-arm64-<profile>` |
+| Windows x64 | `typeapp-iot-<版本>-windows-x64-<profile>.exe` |
 
-同一 Release 提供 `SHA256SUMS` 和 `release-manifest.json`。前者用于核对下载字节，后者记录源码、版本、候选运行轮次、平台及同一产物的三库验收。摘要应从受信发布渠道取得。
+同一 Release 提供 `SHA256SUMS` 和 `release-manifest.json`。前者用于核对下载字节，后者记录源码、版本、候选运行轮次、平台/profile、对应数据库验收、扩展/归档/系统库闭包和体积统计。摘要应从受信发布渠道取得。
 
 下面以 Linux x64 为例，在一个新目录中下载、校验并运行：
 
 ```bash
 set -eu
-release_version=1.0.0-rc.10
+release_version="${TYPEAPP_RELEASE_VERSION:?请填入已公开且包含 profile 附件的版本}"
 release_base="https://github.com/zoujingli/typeapp/releases/download/v${release_version}"
-release_program="typeapp-iot-${release_version}-linux-x64"
+release_program="typeapp-iot-${release_version}-linux-x64-sqlite"
 curl --fail --location --output "$release_program" "$release_base/$release_program"
 curl --fail --location --output SHA256SUMS "$release_base/SHA256SUMS"
 curl --fail --location --output release-manifest.json "$release_base/release-manifest.json"
@@ -65,7 +69,7 @@ mv "$release_program" app
 
 运行端只需匹配平台的主程序和配置，无需 PHP、Swoole、Node.js、Composer 或编译 SDK。前端内容已编入程序，显式安装命令在应用根生成 `public/`；数据库文件、上传和日志由应用按需创建。操作系统基线仍须匹配，所选 MySQL/PostgreSQL、Redis 等外部业务服务仍需准备，SQLite 使用本地文件。运行要求见[环境与依赖](environment.md)。
 
-核对下载摘要和运行身份后，按[首次启动](deployment.md#首次启动)完成账号、数据库与页面安装。后续替换程序版本时，使用 `web:install --dry-run --force` 查看页面变化，再执行 `web:install --force`，不要重新执行空库初始化。
+核对下载摘要和运行身份后，按[首次启动](deployment.md#首次启动)完成账号、数据库与页面安装。若配置中的 `DB_DRIVER` 与程序 profile 不一致，程序会返回 `runtime_profile_database_mismatch` 并拒绝启动。后续替换程序版本时，使用 `web:install --dry-run --force` 查看页面变化，再执行 `web:install --force`，不要重新执行空库初始化。
 
 ## Composer 按版本安装
 

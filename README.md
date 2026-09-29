@@ -4,7 +4,7 @@ TypeApp 是面向原生交付的 PHP 应用框架。用 PHP 编写业务，按�
 
 框架提供通信、数据、任务与资源管理能力。Swoole 作为内置原生运行库提供网络与并发支持，由构建流程管理并随应用交付，无需在部署端单独安装。TypePHP 和 Composer 用于构建，业务请求不依赖它们。
 
-**交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** 当前 RC 提供 Linux x64 / ARM64、macOS ARM64、Windows x64 的静态程序；PHP、PHPX、Swoole 等非系统运行库已链接进程序。下载方式见[版本安装](docs/guide/releases.md)，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
+**交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** 后续 RC 按 Linux x64 / ARM64、macOS ARM64、Windows x64 × `sqlite`、`mysql`、`pgsql` 提供 12 个静态单程序；每个程序只包含对应 profile 的数据库驱动和已启用能力。当前 `main` 的新矩阵尚未形成公开版本，实际下载以[版本安装](docs/guide/releases.md)为准，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
 
 文档站：[iots.top](https://iots.top)。新业务从 `type-project` 创建；主仓附带的物联中心展示框架如何组成业务产品。
 
@@ -30,7 +30,7 @@ TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typep
 
 构建组件另附 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 6.2.1 共享模块，用于开发及历史目录包回归；当前单程序使用静态 SDK。模块 ABI 与平台实测范围分别核对，见[平台与验收](docs/guide/platforms.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
 
-[v1.0.0-rc.10](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.10) 已公开，固定源码 `359627e`。四平台完整原生回归、同一程序的三库隔离部署、15 个组件与应用模板的同版本分发及 Packagist 消费均通过；17 个 Release、16 个子仓 tag、16 个 Packagist 版本和公开附件已逐项回读。这是候选版本，尚无稳定版；具体范围及限制见[验收记录](docs/evidence/single-program-ci-20260928.md)。
+[v1.0.0-rc.10](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.10) 是当前公开的历史候选，固定源码 `359627e`；其验收身份和附件保持不变。当前 `main` 已实现按数据库 profile 裁剪依赖的发布流程，但新的四平台 × 三 profile（12 个单文件程序）尚未重新完成矩阵验收和发布，不能把 RC10 的证据当作新矩阵的证据。具体范围及限制见[验收记录](docs/evidence/single-program-ci-20260928.md)。
 
 ## 快速开始
 

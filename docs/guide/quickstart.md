@@ -1,6 +1,6 @@
 # 快速开始
 
-用 `type-project` 创建 TypeApp 应用，再按需用 Composer 安装 Plugins（`type-xxxx` 组件）。生产 PHP 实现通过[TypePHP 全量编译](typephp.md)形成原生应用，运行库由构建统一管理。组件源码位于 `plugin/type-*`；当前已公开 `1.0.0-rc.10` 候选版本，尚无稳定版。物联中心是成品案例，安装与业务契约见[物联网中心](iot-center.md)。
+用 `type-project` 创建 TypeApp 应用，再按需用 Composer 安装 Plugins（`type-xxxx` 组件）。生产 PHP 实现通过[TypePHP 全量编译](typephp.md)形成原生应用，运行库由构建统一管理。组件源码位于 `plugin/type-*`；版本号以[GitHub Release](https://github.com/zoujingli/typeapp/releases)为准，`v1.0.0-rc.10` 仅是历史候选示例。物联中心是成品案例，安装与业务契约见[物联网中心](iot-center.md)。
 
 本文带你从源码开始开发；如果只负责运行成品，请直接看[部署环境](environment.md#部署者需要管理什么)与[首次启动](deployment.md#首次启动)。
 
@@ -16,7 +16,7 @@ flowchart TB
 
 **已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台通过的命令、ORM 和应用场景不同，选定环境前先核对[平台支持表](platforms.md#当前平台状态)。
 
-以下是开发机要求，完整分工见[环境与依赖](environment.md)：PHP CLI `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选数据库的 PDO 扩展。SQLite 需要 `pdo_sqlite`，无需单独数据库服务；MySQL、PostgreSQL 分别需要 `pdo_mysql`、`pdo_pgsql` 及可连接的数据库服务。HTTP 按平台选择 Swoole worker 或协程服务，并要求可用的停止控制，见[type-core](plugins/type-core.md#启动-http-服务)。
+以下是开发机要求，完整分工见[环境与依赖](environment.md)：PHP CLI `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选数据库的 PDO 扩展。SQLite 需要 `pdo_sqlite`，无需单独数据库服务；MySQL、PostgreSQL 分别需要 `pdo_mysql`、`pdo_pgsql` 及可连接的数据库服务。HTTP 按平台选择 Swoole worker 或协程服务，并要求可用的停止控制，见[type-core](plugins/type-core.md#启动-http-服务)。下载单文件 Release 时不安装这些构建工具，运行端只准备对应数据库和配置。
 
 ```bash
 php -v
@@ -33,7 +33,7 @@ Windows x64 的匹配 Swoole SDK、三库独立 ORM、主应用和模板已有�
 
 ## 创建业务应用
 
-通过 Composer 从 Packagist 创建应用。本例使用 SQLite，将模板和实际第一方组件一起固定到 `1.0.0-rc.10`，先选择驱动，再安装依赖：
+通过 Composer 从 Packagist 创建应用。本例使用 SQLite，将模板和实际第一方组件一起固定到同一公开版本；下面的 `1.0.0-rc.10` 只用于复现历史候选，开始新项目时替换为 Release 页面列出的版本，先选择驱动，再安装依赖：
 
 ```bash
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.10

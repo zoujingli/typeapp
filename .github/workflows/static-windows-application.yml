@@ -21,6 +21,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 90
     env:
+      TYPEAPP_BUILD_PROFILE: sqlite
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
     defaults:
@@ -46,7 +47,7 @@ jobs:
             ConvertTo-Json | Set-Content build/static-windows-application-evidence/inputs.json -Encoding utf8
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: static-windows-sdk
+          name: static-windows-sdk-sqlite
           github-token: ${{ github.token }}
           run-id: ${{ inputs.sdk_run }}
           path: build/static-windows-sdk

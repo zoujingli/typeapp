@@ -114,20 +114,30 @@ jobs:
     needs: [resolve, frontend]
     if: needs.resolve.outputs.resume == 'false'
     uses: ./.github/workflows/static-linux.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [sqlite, mysql, pgsql]
     with:
       source_sha: ${{ needs.resolve.outputs.source }}
       frontend_artifact: release-frontend-${{ github.run_attempt }}
       version: ${{ needs.resolve.outputs.version }}
+      profile: ${{ matrix.profile }}
 
   macos-static:
     needs: [resolve, frontend]
     if: needs.resolve.outputs.resume == 'false'
     uses: ./.github/workflows/native-macos.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [sqlite, mysql, pgsql]
     with:
       source_sha: ${{ needs.resolve.outputs.source }}
       frontend_artifact: release-frontend-${{ github.run_attempt }}
       version: ${{ needs.resolve.outputs.version }}
       scope: single-program
+      profile: ${{ matrix.profile }}
 
   windows-x64:
     needs: [resolve, frontend]
@@ -142,10 +152,15 @@ jobs:
     needs: [resolve, frontend]
     if: needs.resolve.outputs.resume == 'false'
     uses: ./.github/workflows/static-windows-candidate.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [sqlite, mysql, pgsql]
     with:
       source_sha: ${{ needs.resolve.outputs.source }}
       frontend_artifact: release-frontend-${{ github.run_attempt }}
       version: ${{ needs.resolve.outputs.version }}
+      profile: ${{ matrix.profile }}
 
   release-native-complete:
     needs: [resolve, linux-x64, linux-arm64, macos-arm64, windows-x64, linux-static, macos-static, windows-static]
@@ -186,11 +201,29 @@ jobs:
         with:
           github-token: ${{ github.token }}
           run-id: ${{ needs.resolve.outputs.candidate_run }}
-          pattern: release-candidate-*-${{ needs.resolve.outputs.candidate_attempt }}
+          pattern: release-candidate-static-*-${{ needs.resolve.outputs.candidate_attempt }}
           merge-multiple: true
           path: build/release/assets
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: needs.resolve.outputs.sealed == 'true'
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.resolve.outputs.candidate_run }}
+          pattern: release-candidate-static-*-${{ needs.resolve.outputs.candidate_attempt }}
+          merge-multiple: true
+          path: build/release/rebuild-materials
       - if: needs.resolve.outputs.sealed == 'true'
         run: php tools/release.php restore "$TYPE_RELEASE_VERSION"
+      - name: 恢复候选对应的重建材料
+        if: needs.resolve.outputs.sealed == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p build/release/assets
+          mapfile -t materials < <(find build/release/rebuild-materials -type f -name 'typeapp-rebuild-*.zip' -print)
+          test "${#materials[@]}" -eq 12
+          for material in "${materials[@]}"; do
+            cp -- "$material" build/release/assets/
+          done
       - name: 保存候选草稿、附件及公开摘要
         run: php tools/release.php candidate "$TYPE_RELEASE_VERSION"
 

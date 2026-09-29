@@ -4,6 +4,7 @@
 
 | 记录 | 原始范围 |
 | --- | --- |
+| [数据库 profile 与发布体积](profile-release-20260930.md) | 按能力裁剪依赖、macOS ARM64 SQLite 同一程序业务回归；新的十二组合发布另行记录 |
 | [单程序本机验收](single-program-20260927.md) | macOS ARM64 静态 SDK、完整物联中心 AOT、同一文件三库隔离运行；其他平台与公开发布尚未完成 |
 | [RC 自动发布验收](rc-release-20260926.md) | `rc.1` 的 Windows 候选失败与修复身份；后续 RC 按独立运行记录 |
 | [前端内嵌与版本发布本机验收](frontend-release-20260926.md) | 内嵌资源、页面安装更新、macOS ARM64 同一归档三库无源码与恢复、发布契约；首次 RC 另行验收 |

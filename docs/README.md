@@ -27,7 +27,7 @@
   </div>
 </section>
 
-> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 当前 RC 提供 Linux x64 / ARM64、macOS ARM64、Windows x64 的静态程序，部署端无需安装 PHP、Swoole、Composer 或 Node.js。使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
+> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 后续 RC 按四个平台 × 三个数据库 profile 提供 12 个静态单程序，每个下载项仍只有一个主程序。当前 `main` 的新矩阵尚未形成公开版本，部署端无需安装 PHP、Swoole、Composer 或 Node.js；使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
 
 <div class="feature-grid">
   <div><span class="feature-number">01 / DEVELOP</span><h2>按业务组合</h2><p>路由、模型、通信与任务，<br>通过组件形成应用。</p></div>

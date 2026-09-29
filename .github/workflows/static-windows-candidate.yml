@@ -8,6 +8,12 @@ on:
         required: true
         default: v1.0.0-rc.8
         type: string
+      profile:
+        description: 数据库 profile
+        required: false
+        default: sqlite
+        type: choice
+        options: [sqlite, mysql, pgsql]
       sdk_run:
         description: 可选，只读复用已通过探针的本仓SDK运行编号；应用仍重新全量编译验收
         required: false
@@ -29,13 +35,16 @@ on:
       version:
         required: true
         type: string
+      profile:
+        required: true
+        type: string
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: static-windows-candidate-${{ github.ref }}
+  group: static-windows-candidate-${{ github.ref }}-${{ inputs.profile || 'sqlite' }}
   cancel-in-progress: false
 
 jobs:
@@ -45,17 +54,19 @@ jobs:
     with:
       source_sha: ${{ inputs.source_sha || github.sha }}
       scope: phpx
+      profile: ${{ inputs.profile || 'sqlite' }}
 
   application:
     needs: sdk
     if: ${{ !cancelled() && (needs.sdk.result == 'success' || (needs.sdk.result == 'skipped' && inputs.sdk_run != '')) }}
-    name: Windows x64 单程序三库
+    name: ${{ inputs.profile || 'sqlite' }} · Windows x64 单程序
     runs-on: windows-2022
     timeout-minutes: 120
     env:
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
+      TYPEAPP_BUILD_PROFILE: ${{ inputs.profile || 'sqlite' }}
     defaults:
       run:
         shell: pwsh
@@ -90,7 +101,7 @@ jobs:
             # 发布的其他平台可能仍在运行，只复验已结束并保存原程序的 Windows 任务。
             $taskPages = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:PROGRAM_RUN/jobs?per_page=100" --paginate --slurp | ConvertFrom-Json
             if ($LASTEXITCODE -ne 0) { throw '无法核对原程序任务。' }
-            $taskJobs = @($taskPages.jobs | Where-Object { $_.name -ceq 'windows-static / Windows x64 单程序三库' })
+            $taskJobs = @($taskPages.jobs | Where-Object { $_.name -ceq "windows-static ($env:TYPEAPP_BUILD_PROFILE) / $env:TYPEAPP_BUILD_PROFILE · Windows x64 单程序" })
             if ($taskJobs.Count -ne 1 -or $taskJobs[0].status -cne 'completed' -or
                 @($taskJobs[0].steps | Where-Object { $_.name -ceq '全量 AOT 并封存最终 EXE' -and $_.conclusion -ceq 'success' }).Count -ne 1 -or
                 @($taskJobs[0].steps | Where-Object { $_.name -ceq '保存构建与部署证据' -and $_.conclusion -ceq 'success' }).Count -ne 1) {
@@ -116,7 +127,7 @@ jobs:
           if ($taskRun.path -ceq '.github/workflows/release.yml') {
             $taskPages = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SDK_RUN/jobs?per_page=100" --paginate --slurp | ConvertFrom-Json
             if ($LASTEXITCODE -ne 0) { throw '无法核对原 SDK 任务。' }
-            $taskJobs = @($taskPages.jobs | Where-Object { $_.name -ceq 'windows-static / sdk / runtime' })
+            $taskJobs = @($taskPages.jobs | Where-Object { $_.name -ceq "windows-static ($env:TYPEAPP_BUILD_PROFILE) / sdk / runtime" })
             if ($taskJobs.Count -ne 1 -or $taskJobs[0].status -cne 'completed' -or $taskJobs[0].conclusion -cne 'success') {
               throw '发布运行中的完整静态 SDK 尚未成功。'
             }
@@ -125,7 +136,7 @@ jobs:
             ConvertTo-Json | Set-Content build/static-windows-application-evidence/inputs.json -Encoding utf8
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: static-windows-sdk
+          name: static-windows-sdk-${{ inputs.profile || 'sqlite' }}
           path: build/static-windows-sdk
           github-token: ${{ github.token }}
           run-id: ${{ inputs.sdk_run || github.run_id }}
@@ -168,7 +179,7 @@ jobs:
         if: inputs.program_run != ''
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: static-windows-application-evidence
+          name: static-windows-application-evidence-${{ inputs.profile || 'sqlite' }}
           path: build/original-windows-program
           github-token: ${{ github.token }}
           run-id: ${{ inputs.program_run }}
@@ -178,10 +189,10 @@ jobs:
           $taskOriginal = 'build/original-windows-program'
           $taskRecord = Get-Content "$taskOriginal/release-candidate/preparation.json" -Raw | ConvertFrom-Json
           $taskInputs = Get-Content build/static-windows-application-evidence/program-inputs.json -Raw | ConvertFrom-Json
-          $taskName = 'typeapp-iot-' + $env:TYPE_RELEASE_VERSION.Substring(1) + '-windows-x64.exe'
+          $taskName = 'typeapp-iot-' + $env:TYPE_RELEASE_VERSION.Substring(1) + '-windows-x64-' + $env:TYPEAPP_BUILD_PROFILE + '.exe'
           if ($taskRecord.protocol -ne 2 -or $taskRecord.delivery -cne 'single-executable' -or
               $taskRecord.source -cne $taskInputs.program_source -or $taskRecord.version -cne $env:TYPE_RELEASE_VERSION -or
-              $taskRecord.platform -cne 'windows-x64' -or $taskRecord.file -cne $taskName -or
+              $taskRecord.platform -cne 'windows-x64' -or $taskRecord.profile -cne $env:TYPEAPP_BUILD_PROFILE -or $taskRecord.file -cne $taskName -or
               $taskRecord.sha256 -cnotmatch '^[a-f0-9]{64}$' -or
               $taskRecord.sha256 -cne (Get-FileHash "$taskOriginal/app/type-app.exe" -Algorithm SHA256).Hash.ToLowerInvariant() -or
               $taskRecord.bytes -ne (Get-Item "$taskOriginal/app/type-app.exe").Length -or
@@ -195,19 +206,21 @@ jobs:
           Copy-Item "$taskOriginal/app/type-app.exe" (Join-Path 'build/release-candidate/attachments' $taskName)
           & "$env:PHP_HOME/php.exe" vendor/bin/type verify-package (Join-Path 'build/release-candidate/attachments' $taskName) $taskRecord.sha256
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: 同一 EXE 的 SQLite 无源码部署
+      - name: 准备专用 Redis 业务验收服务
+        run: ./.github/scripts/prepare-windows-test-redis.ps1
+      - name: 同一 EXE 的 SQLite 无源码部署与业务闭环
+        if: env.TYPEAPP_BUILD_PROFILE == 'sqlite'
         run: |
-          & "$env:PHP_HOME/php.exe" tests/release-candidate.php test sqlite
+          & "$env:PHP_HOME/php.exe" tests/release-candidate.php test $env:TYPEAPP_BUILD_PROFILE
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: 同一 EXE 的 MySQL 无源码部署
-        run: ./.github/scripts/run-windows-database.ps1 -Driver mysql -SingleProgram
-      - name: 同一 EXE 的 PostgreSQL 无源码部署
-        run: ./.github/scripts/run-windows-database.ps1 -Driver pgsql -SingleProgram
+      - name: 同一 EXE 的外部数据库无源码部署
+        if: env.TYPEAPP_BUILD_PROFILE != 'sqlite'
+        run: ./.github/scripts/run-windows-database.ps1 -Driver $env:TYPEAPP_BUILD_PROFILE -SingleProgram
       - name: 读取本轮依赖来源材料
         if: inputs.program_run == ''
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: static-windows-dependencies
+          name: static-windows-dependencies-${{ inputs.profile || 'sqlite' }}
           path: build/static-windows-dependency-inputs
           github-token: ${{ github.token }}
           run-id: ${{ inputs.sdk_run || github.run_id }}
@@ -218,7 +231,7 @@ jobs:
         run: |
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php materials
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: 核对三库结果与待发布文件身份
+      - name: 核对所选数据库结果与待发布文件身份
         if: inputs.program_run == ''
         run: |
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php finish
@@ -227,7 +240,7 @@ jobs:
         if: inputs.program_run == ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: release-candidate-windows-x64-${{ github.run_attempt }}
+          name: release-candidate-static-windows-x64-${{ inputs.profile || 'sqlite' }}-${{ github.run_attempt }}
           path: build/release-candidate/attachments/*
           if-no-files-found: error
           retention-days: 90
@@ -235,7 +248,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-application-evidence
+          name: static-windows-application-evidence-${{ inputs.profile || 'sqlite' }}
           retention-days: 14
           path: |
             build/static-windows-application-evidence/*
@@ -247,4 +260,7 @@ jobs:
             build/release-candidate/*.json
             build/release-candidate/*.log
             build/single program-*/verification.json
+            build/iot-identity-*/verification.json
+            build/broker-access-*/verification.json
+            build/windows-test-redis/source.json
             build/windows-database-*/*

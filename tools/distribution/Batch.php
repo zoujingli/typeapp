@@ -26,7 +26,8 @@ final class Batch
             }
             $endpoint = 'repos/zoujingli/typeapp/actions/runs/' . $releaseRun . '/attempts/' . $attempt;
             $run = json_decode(Process::output(['gh', 'api', $endpoint], $root), true, 512, JSON_THROW_ON_ERROR);
-            $jobs = json_decode(Process::output(['gh', 'api', $endpoint . '/jobs?per_page=100'], $root), true, 512, JSON_THROW_ON_ERROR);
+            $pages = json_decode(Process::output(['gh', 'api', $endpoint . '/jobs?per_page=100', '--paginate', '--slurp'], $root), true, 512, JSON_THROW_ON_ERROR);
+            $jobs = ['total_count' => $pages[0]['total_count'], 'jobs' => array_merge(...array_column($pages, 'jobs'))];
             self::verifyReleaseEvidence($run, $jobs, $source, $version, (int) $releaseRun, (int) $attempt);
             return 'https://github.com/zoujingli/typeapp/actions/runs/' . $releaseRun . '/attempts/' . $attempt;
         }
@@ -67,15 +68,13 @@ final class Batch
             throw new \RuntimeException('发布原生验收的源码、标签、工作流或执行轮次不一致');
         }
         $required = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete',
-            'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows',
-            'linux-static / 静态单程序 · linux-x64', 'linux-static / 静态单程序 · linux-arm64',
-            'macos-static / macOS ARM64 · single-program', 'windows-static / Windows x64 单程序三库'];
+            'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows'];
         foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers',
             'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services'] as $suite) {
             $required[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
         }
         foreach (['contracts', 'application', 'deployment', 'rollout', 'recovery', 'http', 'orm', 'reliable'] as $suite) {
-            $required[] = 'macos-arm64 / macOS ARM64 · ' . $suite;
+            $required[] = 'macos-arm64 / all · macOS ARM64 · ' . $suite;
         }
         foreach (['contracts', 'orm', 'database', 'http', 'redis', 'tasks', 'application', 'recovery', 'rollout'] as $suite) {
             $required[] = 'linux-arm64 / Linux ARM64 · ' . $suite;
@@ -94,6 +93,31 @@ final class Batch
         }
         if (array_diff($required, array_keys($seen)) !== []) {
             throw new \RuntimeException('发布缺少完整四平台原生验收任务');
+        }
+
+        // 静态候选由可复用工作流的矩阵任务生成。profile 需要出现在任务名中，
+        // 否则 API 回执无法证明 12 个程序分别使用了对应数据库 SDK。
+        $staticJobs = [
+            'linux-x64' => '静态单程序 · linux-x64',
+            'linux-arm64' => '静态单程序 · linux-arm64',
+            'macos-arm64' => 'macOS ARM64 · single-program',
+            'windows-x64' => 'Windows x64 单程序',
+        ];
+        foreach ($staticJobs as $platform => $label) {
+            foreach (['sqlite', 'mysql', 'pgsql'] as $profile) {
+                $matches = array_values(array_filter($jobs['jobs'], static function (array $job) use ($profile, $label): bool {
+                    $name = (string) ($job['name'] ?? '');
+                    return str_contains($name, $profile . ' · ' . $label);
+                }));
+                if (count($matches) !== 1) {
+                    throw new \RuntimeException('发布缺少唯一的静态 profile 验收任务：' . $platform . '/' . $profile);
+                }
+                $job = $matches[0];
+                if (($job['head_sha'] ?? '') !== $source || ($job['status'] ?? '') !== 'completed'
+                    || ($job['conclusion'] ?? '') !== 'success') {
+                    throw new \RuntimeException('静态 profile 验收任务未成功：' . $platform . '/' . $profile);
+                }
+            }
         }
     }
 

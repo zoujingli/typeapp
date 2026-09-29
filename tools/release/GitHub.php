@@ -29,6 +29,68 @@ final class GitHub
         return null;
     }
 
+    /** 选取更早且最近发布的 profile 版本；至多检查 100 个发布，首批明确记录无基线。 */
+    public function sizeBaseline(string $version): ?array
+    {
+        $this->scope('zoujingli/typeapp', $version);
+        $releases = json_decode(Process::output(['gh', 'api', 'repos/zoujingli/typeapp/releases?per_page=100'], $this->root), true, 128, JSON_THROW_ON_ERROR);
+        $directory = $this->root . '/build/release-baseline-' . bin2hex(random_bytes(6));
+        try {
+            foreach ($releases as $release) {
+                if ($release['draft'] || !version_compare(ltrim($release['tag_name'], 'v'), ltrim($version, 'v'), '<')) {
+                    continue;
+                }
+                if (!in_array('release-manifest.json', array_column($release['assets'], 'name'), true)) {
+                    continue;
+                }
+                $path = $this->download('zoujingli/typeapp', $release['tag_name'], 'release-manifest.json', $directory);
+                $manifest = json_decode((string) file_get_contents($path), true, 128, JSON_THROW_ON_ERROR);
+                $sha = hash_file('sha256', $path);
+                unlink($path);
+                if (($manifest['protocol'] ?? null) === 3) {
+                    if (($manifest['version'] ?? null) !== $release['tag_name']) {
+                        throw new \RuntimeException('体积基线附件与 Release 版本不一致');
+                    }
+                    return ['manifest' => $manifest, 'sha256' => $sha, 'release-id' => $release['id']];
+                }
+            }
+            if (count($releases) === 100) {
+                throw new \RuntimeException('体积基线搜索超出 100 个发布预算');
+            }
+            return null;
+        } finally {
+            if (is_file($directory . '/release-manifest.json')) {
+                unlink($directory . '/release-manifest.json');
+            }
+            if (is_dir($directory)) {
+                rmdir($directory);
+            }
+        }
+    }
+
+    /** 固定运行轮次的候选 Artifact 既包含程序也包含重建 ZIP，公开清单保存可回查身份。 */
+    public function candidateArtifacts(string $run, string $attempt, string $source): array
+    {
+        if (preg_match('/^[1-9][0-9]*$/D', $run) !== 1 || preg_match('/^[1-9][0-9]*$/D', $attempt) !== 1) {
+            throw new \RuntimeException('候选 Artifact 运行身份无效');
+        }
+        $pages = json_decode(Process::output(['gh', 'api', 'repos/zoujingli/typeapp/actions/runs/' . $run . '/artifacts?per_page=100', '--paginate', '--slurp'], $this->root), true, 128, JSON_THROW_ON_ERROR);
+        $artifacts = array_merge(...array_column($pages, 'artifacts'));
+        $result = [];
+        foreach (Candidate::matrix() as $key) {
+            $name = 'release-candidate-static-' . $key . '-' . $attempt;
+            $matches = array_values(array_filter($artifacts, static fn (array $item): bool => $item['name'] === $name));
+            if (count($matches) !== 1 || $matches[0]['expired'] || ($matches[0]['workflow_run']['head_sha'] ?? '') !== $source
+                || preg_match('/^sha256:[a-f0-9]{64}$/D', $matches[0]['digest'] ?? '') !== 1) {
+                throw new \RuntimeException('重建材料 Artifact 缺失、过期或身份不符：' . $key);
+            }
+            $item = $matches[0];
+            $result[$key] = ['id' => $item['id'], 'name' => $name, 'sha256' => substr($item['digest'], 7),
+                'bytes' => $item['size_in_bytes'], 'expires-at' => $item['expires_at'], 'run' => $run, 'attempt' => $attempt];
+        }
+        return $result;
+    }
+
     /** 保存可恢复草稿；既有Release的标签、源码、预发布状态与说明均须一致。 */
     public function draft(string $repository, string $version, string $source, string $body): array
     {

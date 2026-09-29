@@ -8,6 +8,12 @@ on:
         required: true
         default: v1.0.0-rc.8
         type: string
+      profile:
+        description: 数据库 profile
+        required: true
+        default: sqlite
+        type: choice
+        options: [sqlite, mysql, pgsql]
   workflow_call:
     inputs:
       source_sha:
@@ -19,12 +25,15 @@ on:
       version:
         required: true
         type: string
+      profile:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: static-linux-${{ github.ref }}
+  group: static-linux-${{ github.ref }}-${{ inputs.profile || 'sqlite' }}
   cancel-in-progress: false
 
 jobs:
@@ -55,7 +64,7 @@ jobs:
   static:
     needs: frontend
     if: ${{ !cancelled() && (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') }}
-    name: 静态单程序 · ${{ matrix.platform }}
+    name: ${{ inputs.profile || 'sqlite' }} · 静态单程序 · ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
@@ -68,6 +77,7 @@ jobs:
             runner: ubuntu-24.04-arm
     env:
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
+      TYPEAPP_BUILD_PROFILE: ${{ inputs.profile || 'sqlite' }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
     steps:
@@ -96,12 +106,12 @@ jobs:
           # 重建材料必须保留与已安装静态库同版本的发行版源码及补丁。
           sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
           sudo apt-get update
-          sudo apt-get install --yes build-essential cmake pkg-config autoconf bison re2c flex libgmp-dev libmpfr-dev libbrotli-dev libicu-dev liblzma-dev libnghttp2-dev libc-ares-dev libxml2-dev libssl-dev libcurl4-openssl-dev libsqlite3-dev libpq-dev libonig-dev libzip-dev zlib1g-dev bubblewrap mysql-server mysql-client postgresql
+          sudo apt-get install --yes build-essential cmake pkg-config autoconf bison re2c flex libgmp-dev libmpfr-dev libbrotli-dev libicu-dev libnghttp2-dev libc-ares-dev libssl-dev libcurl4-openssl-dev libsqlite3-dev libpq-dev libonig-dev libzip-dev zlib1g-dev bubblewrap mysql-server mysql-client postgresql redis-server
           task_host="$(bash tools/install-locked-linux-php.sh 2>build/static-linux-evidence/host.log)"
           printf '%s/bin\n' "$task_host" >> "$GITHUB_PATH"
           printf 'PHP_HOME=%s\n' "$task_host" >> "$GITHUB_ENV"
-          sudo systemctl stop mysql postgresql
-          for task_service in mysql postgresql; do
+          sudo systemctl stop mysql postgresql redis-server
+          for task_service in mysql postgresql redis-server; do
             if systemctl is-active --quiet "$task_service"; then exit 1; fi
           done
           task_mysql="$GITHUB_WORKSPACE/build/static-linux-mysql"
@@ -111,6 +121,7 @@ jobs:
           ln -s /usr/share "$task_mysql/share"
           printf 'TYPE_MYSQL_TOOLS=%s\nTYPE_PGSQL_TOOLS=%s\nTYPE_BWRAP_BINARY=%s\n' \
             "$task_mysql" "$(dirname "$(pg_config --bindir)")" "$(command -v bwrap)" >> "$GITHUB_ENV"
+          printf 'TYPE_REDIS_SERVER=%s\n' "$(command -v redis-server)" >> "$GITHUB_ENV"
       - name: 安装锁定源码并准备构建宿主
         run: |
           set -euo pipefail
@@ -128,31 +139,32 @@ jobs:
       - name: 制备静态目标 SDK 并执行真实 embed 探针
         run: |
           set -euo pipefail
-          task_manifest="$(bash tools/prepare-static-linux.sh "$GITHUB_WORKSPACE/build/static-linux-sdk" 2>build/static-linux-evidence/sdk.log)"
+          task_manifest="$(bash tools/prepare-static-linux.sh "$GITHUB_WORKSPACE/build/static-linux-sdk" "$TYPEAPP_BUILD_PROFILE" 2>build/static-linux-evidence/sdk.log)"
           php tests/static-runtime-sdk.php "$task_manifest" | tee build/static-linux-evidence/embed.log
           printf 'TYPE_STATIC_RUNTIME=%s\n' "$task_manifest" >> "$GITHUB_ENV"
       - name: 准备并核对内嵌管理前端
         uses: ./.github/actions/prepare-frontend
         with:
           artifact: ${{ inputs.frontend_artifact || format('static-linux-frontend-{0}', github.run_attempt) }}
-      - name: 完整应用 AOT 与同一单程序三库验收
+      - name: 完整应用 AOT 与所选数据库单程序验收
         run: |
           set -euo pipefail
           php tools/build-application.php >build/static-linux-evidence/application.log 2>&1
           php tests/release-candidate.php prepare
-          for task_driver in mysql pgsql sqlite; do
-            php tests/release-candidate.php test "$task_driver" "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS"
-          done
+          php tests/release-candidate.php test "$TYPEAPP_BUILD_PROFILE" "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS"
           php tests/release-candidate.php materials
-          php tests/release-candidate.php finish
       - name: 同一单程序的 systemd 生命周期
         env:
           TYPE_SERVICE_ARTIFACT: ${{ github.workspace }}/build/app/type-app
-        run: bash .github/scripts/run-linux-service.sh
+        run: |
+          php tests/release-candidate.php service "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS"
+          php tests/release-candidate.php finish
       - name: 保存最终单程序候选
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: release-candidate-${{ matrix.platform }}-${{ github.run_attempt }}
+          # 发布候选只下载这一类静态 profile artifact；前置的常规原生验收
+          # 仍可能上传同名旧协议材料，不能让发布候选的通配符误把它们混入。
+          name: release-candidate-static-${{ matrix.platform }}-${{ inputs.profile || 'sqlite' }}-${{ github.run_attempt }}
           path: build/release-candidate/attachments/*
           if-no-files-found: error
           retention-days: 90
@@ -160,7 +172,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-${{ matrix.platform }}-evidence
+          name: static-${{ matrix.platform }}-${{ inputs.profile || 'sqlite' }}-evidence
           retention-days: 14
           path: |
             build/static-linux-evidence/*
@@ -172,13 +184,15 @@ jobs:
             build/release-candidate/*.json
             build/release-candidate/*.log
             build/single program-*/verification.json
+            build/iot-identity-*/verification.json
+            build/broker-access-*/verification.json
             build/service-linux-ci-*/verification.json
             build/service-linux-ci-*/preparation.json
       - name: 保存失败时的原始程序
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-${{ matrix.platform }}-failed-program
+          name: static-${{ matrix.platform }}-${{ inputs.profile || 'sqlite' }}-failed-program
           retention-days: 14
           path: build/app/type-app
           if-no-files-found: warn

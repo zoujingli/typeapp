@@ -13,7 +13,7 @@ flowchart LR
 
 ## 1. 创建并检查应用
 
-本教程使用 `1.0.0-rc.10` 的模板和组件。先完成[按版本创建与安装](releases.md#composer-按版本安装)，创建使用 SQLite 的 `my-app`，再在该应用根目录执行下面的配置与检查，不重复创建项目：
+本教程的命令以 `1.0.0-rc.10` 作为历史示例。开始新项目时，先把它替换为 GitHub Release 页面列出的同一版本，再完成[按版本创建与安装](releases.md#composer-按版本安装)，创建使用 SQLite 的 `my-app`，并在该应用根目录执行下面的配置与检查，不重复创建项目：
 
 ```bash
 cp .env.example .env

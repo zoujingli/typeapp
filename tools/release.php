@@ -10,6 +10,7 @@ require __DIR__ . '/release/GitHub.php';
 require __DIR__ . '/release/Packagist.php';
 require __DIR__ . '/release/Evidence.php';
 require __DIR__ . '/release/Candidate.php';
+require __DIR__ . '/release/SizeGate.php';
 
 use TypeApp\Distribution\Batch;
 use TypeApp\Distribution\Process;
@@ -74,19 +75,26 @@ try {
             || ($manifest['candidate-attempt'] ?? '') !== getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT')) {
             throw new RuntimeException('既有候选身份不属于本次重试');
         }
-        foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
-            $record = $manifest['platforms'][$platform] ?? throw new RuntimeException('既有候选缺少平台');
-            foreach (Candidate::attachments($record) as $attachment) {
+        $records = $manifest['programs'] ?? $manifest['platforms'] ?? [];
+        if (($manifest['protocol'] ?? null) === 3) {
+            if (($manifest['delivery'] ?? '') !== 'single-executable' || ($manifest['profiles'] ?? []) !== Candidate::PROFILES
+                || !is_array($records)) {
+                throw new RuntimeException('已封存候选缺少完整四平台×三 profile 矩阵');
+            }
+            Candidate::assertMatrix($records);
+        }
+        foreach ($records as $key => $record) {
+            foreach (Candidate::attachments($record, false) as $attachment) {
                 $archive = $api->download('zoujingli/typeapp', $version, $attachment['file'], $assets);
                 if (hash_file('sha256', $archive) !== $attachment['sha256'] || filesize($archive) !== $attachment['bytes']) {
-                    throw new RuntimeException('回读候选附件与封存摘要不同：' . $platform);
+                    throw new RuntimeException('回读候选附件与封存摘要不同：' . $key);
                 }
             }
-            Process::report($assets . '/' . $platform . '.json', $record);
+            Process::report($assets . '/' . $key . '.json', $record);
         }
         $sums = '';
-        foreach ($manifest['platforms'] as $record) {
-            foreach (Candidate::attachments($record) as $attachment) {
+        foreach ($records as $record) {
+            foreach (Candidate::attachments($record, false) as $attachment) {
                 $sums .= $attachment['sha256'] . '  ' . $attachment['file'] . "\n";
             }
         }
@@ -100,32 +108,60 @@ try {
         $run = (string) getenv('TYPE_RELEASE_EVIDENCE_RUN');
         $attempt = (string) getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT');
         $assets = $work . '/assets';
-        $manifest = ['protocol' => 2, 'source' => $source, 'version' => $version, 'candidate-run' => $run, 'candidate-attempt' => $attempt,
-            'delivery' => 'single-executable', 'native-libraries-statically-linked' => true, 'platforms' => []];
+        $sealedFile = $assets . '/release-manifest.json';
+        $sealed = is_file($sealedFile) ? json_decode((string) file_get_contents($sealedFile), true, 128, JSON_THROW_ON_ERROR) : null;
+        $manifest = ['protocol' => 3, 'source' => $source, 'version' => $version, 'candidate-run' => $run, 'candidate-attempt' => $attempt,
+            'delivery' => 'single-executable', 'native-libraries-statically-linked' => true, 'profiles' => Candidate::PROFILES, 'programs' => []];
         $sums = '';
         $frontend = null;
-        foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
-            $record = json_decode((string) file_get_contents($assets . '/' . $platform . '.json'), true, 64, JSON_THROW_ON_ERROR);
-            $name = Candidate::verify($record, $assets, $source, $version, $platform);
-            $frontend ??= $record['frontend-manifest-sha256'];
-            if ($frontend !== $record['frontend-manifest-sha256']) {
-                throw new RuntimeException('四平台前端不是同一冻结构建');
+        foreach (Candidate::PLATFORMS as $platform) {
+            foreach (Candidate::PROFILES as $profile) {
+                $key = $platform . '-' . $profile;
+                $recordFile = $assets . '/' . $key . '.json';
+                if (!is_file($recordFile) || is_link($recordFile)) {
+                    throw new RuntimeException('缺少 profile 候选回执：' . $key);
+                }
+                $record = json_decode((string) file_get_contents($recordFile), true, 64, JSON_THROW_ON_ERROR);
+                Candidate::verify($record, $assets, $source, $version, $platform, $profile);
+                $frontend ??= $record['frontend-manifest-sha256'];
+                if ($frontend !== $record['frontend-manifest-sha256']) {
+                    throw new RuntimeException('12个 profile 前端不是同一冻结构建');
+                }
+                $manifest['programs'][$key] = $record;
+                foreach (Candidate::attachments($record, false) as $attachment) {
+                    $sums .= $attachment['sha256'] . '  ' . $attachment['file'] . "\n";
+                }
             }
-            $manifest['platforms'][$platform] = $record;
-            foreach (Candidate::attachments($record) as $attachment) {
-                $sums .= $attachment['sha256'] . '  ' . $attachment['file'] . "\n";
+        }
+        Candidate::assertMatrix($manifest['programs']);
+        if ($sealed !== null) {
+            if (($sealed['source'] ?? null) !== $source || ($sealed['version'] ?? null) !== $version
+                || ($sealed['candidate-run'] ?? null) !== $run || ($sealed['candidate-attempt'] ?? null) !== $attempt
+                || ($sealed['programs'] ?? null) !== $manifest['programs'] || !isset($sealed['size-gate'])) {
+                throw new RuntimeException('恢复的候选与原始封存清单不一致');
             }
+            $manifest = $sealed;
+        } else {
+            $artifacts = $api->candidateArtifacts($run, $attempt, $source);
+            foreach ($artifacts as $key => $artifact) {
+                $manifest['programs'][$key]['rebuild']['artifact'] = $artifact;
+            }
+            $baseline = $api->sizeBaseline($version);
+            $policy = json_decode((string) file_get_contents($root . '/.github/release-size-policy.json'), true, 64, JSON_THROW_ON_ERROR);
+            $manifest['size-gate'] = \TypeApp\Release\SizeGate::verify($manifest['programs'], $baseline['manifest'] ?? null, $policy, $version);
+            $manifest['size-gate']['baseline-manifest-sha256'] = $baseline['sha256'] ?? null;
+            $manifest['size-gate']['baseline-release-id'] = $baseline['release-id'] ?? null;
         }
         Process::report($assets . '/release-manifest.json', $manifest);
         $sums .= hash_file('sha256', $assets . '/release-manifest.json') . "  release-manifest.json\n";
         file_put_contents($assets . '/SHA256SUMS', $sums);
         $body = "TypeApp 物联中心 {$version}\n\n每个平台部署只需一个可执行程序及外置配置。TypePHP全量编译应用；PHP、PHPX、Swoole与非系统运行库静态链接，普通启动不释放运行库。\n\n"
-            . "下载对应平台的程序，Unix系统赋予执行权限，准备外置配置后执行app:install；页面从程序安装到public。后续使用web:install --force更新托管页面。MySQL/PostgreSQL由外部服务提供，SQLite使用本地数据文件。许可证由licenses命令读取。安装说明：https://iots.top/#/guide/deployment\n\n"
-            . "源码：{$source}。下载后先核对SHA256SUMS，四平台与三库验收身份见release-manifest.json。\n\n"
-            . "typeapp-rebuild 附件提供对应源码、静态 SDK 与重建配方，仅供维护或修改运行库，不是部署依赖；解压后阅读rebuild/README.md。\n\n"
+            . "下载对应平台和数据库 profile 的程序，Unix系统赋予执行权限，准备外置配置后执行app:install；页面从程序安装到public。后续使用web:install --force更新托管页面。MySQL/PostgreSQL由外部服务提供，SQLite使用本地数据文件。默认告警、导出、队列和调度保留外部 Redis；DB_DRIVER 不匹配时程序拒绝启动。设备 MQTT 持久接入要求 pgsql profile 和相应同步后端。许可证由licenses命令读取。安装说明：https://iots.top/#/guide/deployment\n\n"
+            . "源码：{$source}。下载后先核对SHA256SUMS，四平台×三数据库 profile 的验收身份见release-manifest.json。\n\n"
+            . "重建 SDK、源码和许可证材料保存在 Actions Artifact，不属于部署下载项；部署只需对应 profile 的一个程序和外置配置。\n\n"
             . "<!-- typeapp-candidate source={$source} run={$run} attempt={$attempt} -->\n";
         $api->draft('zoujingli/typeapp', $version, $source, $body);
-        foreach ([...array_column(array_merge(...array_map([Candidate::class, 'attachments'], array_values($manifest['platforms']))), 'file'), 'SHA256SUMS', 'release-manifest.json'] as $name) {
+        foreach ([...array_column(array_merge(...array_map(static fn (array $record): array => Candidate::attachments($record, false), array_values($manifest['programs']))), 'file'), 'SHA256SUMS', 'release-manifest.json'] as $name) {
             $api->asset('zoujingli/typeapp', $version, $assets . '/' . $name);
         }
     } elseif ($operation === 'packagist') {
@@ -186,8 +222,17 @@ try {
         }
         // 公开前再次回读全部附件；candidate使用最初封存的artifact，禁止重新构建替换。
         $manifest = json_decode((string) file_get_contents($work . '/assets/release-manifest.json'), true, 64, JSON_THROW_ON_ERROR);
-        foreach ([...array_column(array_merge(...array_map([Candidate::class, 'attachments'], array_values($manifest['platforms']))), 'file'), 'SHA256SUMS', 'release-manifest.json'] as $name) {
+        $records = $manifest['programs'] ?? $manifest['platforms'] ?? [];
+        foreach ([...array_column(array_merge(...array_map(static fn (array $record): array => Candidate::attachments($record, false), array_values($records))), 'file'), 'SHA256SUMS', 'release-manifest.json'] as $name) {
             $api->asset('zoujingli/typeapp', $version, $work . '/assets/' . $name);
+        }
+        $release = $api->find('zoujingli/typeapp', $version) ?? throw new RuntimeException('缺少候选 Release');
+        $expected = [...array_column($records, 'file'), 'SHA256SUMS', 'release-manifest.json'];
+        $actual = array_column($release['assets'], 'name');
+        sort($expected);
+        sort($actual);
+        if ($actual !== $expected) {
+            throw new RuntimeException('公开 Release 只能包含 12 个主程序、SHA256SUMS 和 release-manifest.json');
         }
         Process::report($work . '/published.json', $api->publish('zoujingli/typeapp', $version) + ['source' => $source, 'children' => $receipt['items']]);
     } else {

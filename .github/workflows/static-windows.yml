@@ -9,6 +9,9 @@ on:
       scope:
         required: true
         type: string
+      profile:
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       scope:
@@ -16,12 +19,17 @@ on:
         type: choice
         options: [core, dependencies, runtime, phpx, sandbox]
         default: core
+      profile:
+        description: 数据库 profile
+        type: choice
+        options: [sqlite, mysql, pgsql, all]
+        default: all
 
 permissions:
   contents: read
 
 concurrency:
-  group: static-windows-${{ github.ref }}-${{ inputs.scope || 'core' }}
+  group: static-windows-${{ github.ref }}-${{ inputs.scope || 'core' }}-${{ inputs.profile || 'all' }}
   cancel-in-progress: false
 
 jobs:
@@ -41,7 +49,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-sandbox-evidence
+          name: static-windows-sandbox-evidence-${{ inputs.profile || 'all' }}
           retention-days: 14
           path: build/windows-sandbox-check/*.json
 
@@ -57,12 +65,12 @@ jobs:
       - name: 构建静态 PHP 核心并审计独立 embed
         timeout-minutes: 12
         shell: pwsh
-        run: ./tools/probe-static-windows.ps1 -Directory "$env:GITHUB_WORKSPACE/build/static-windows-core"
+        run: ./tools/probe-static-windows.ps1 -Directory "$env:GITHUB_WORKSPACE/build/static-windows-core" -Profile "${{ inputs.profile || 'all' }}"
       - name: 保存实际编译、导入与运行结果
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-core-evidence
+          name: static-windows-core-evidence-${{ inputs.profile || 'all' }}
           retention-days: 14
           if-no-files-found: error
           path: build/static-windows-core/evidence/*
@@ -100,7 +108,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-dependencies-evidence
+          name: static-windows-dependencies-evidence-${{ inputs.profile || 'all' }}
           retention-days: 14
           if-no-files-found: error
           path: |
@@ -110,7 +118,7 @@ jobs:
       - name: 保存本轮依赖供后续完整 SDK 构建复用
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-dependencies
+          name: static-windows-dependencies-${{ inputs.profile || 'all' }}
           retention-days: 14
           if-no-files-found: error
           path: build/static-windows-dependencies/installed/**
@@ -127,11 +135,11 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: static-windows-dependencies
+          name: static-windows-dependencies-${{ inputs.profile || 'all' }}
           path: build/runtime-dependencies
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: static-windows-dependencies-evidence
+          name: static-windows-dependencies-evidence-${{ inputs.profile || 'all' }}
           path: build/runtime-dependency-evidence
       - name: 构建 PHP 与完整静态扩展并验证独立 embed
         timeout-minutes: 35
@@ -142,12 +150,12 @@ jobs:
           ./tools/probe-static-windows.ps1 -Directory "$env:GITHUB_WORKSPACE/build/static-windows-runtime" `
             -DependenciesDirectory "$env:GITHUB_WORKSPACE/build/runtime-dependencies/x64-typeapp-static" `
             -DependencyVerification "$env:GITHUB_WORKSPACE/build/runtime-dependency-evidence/evidence/verification.json" `
-            -WithPhpx:($env:TYPE_STATIC_PHPX_PROBE -eq '1')
+            -WithPhpx:($env:TYPE_STATIC_PHPX_PROBE -eq '1') -Profile "${{ inputs.profile || 'all' }}"
       - name: 保存扩展的构建、导入和启动原始证据
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-runtime-evidence
+          name: static-windows-runtime-evidence-${{ inputs.profile || 'all' }}
           retention-days: 14
           if-no-files-found: error
           path: |
@@ -157,7 +165,7 @@ jobs:
         if: inputs.scope == 'phpx'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-sdk
+          name: static-windows-sdk-${{ inputs.profile || 'all' }}
           retention-days: 14
           if-no-files-found: error
           path: build/static-windows-runtime/sdk/**

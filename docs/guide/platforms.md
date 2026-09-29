@@ -8,7 +8,7 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 ## 当前平台状态
 
-每个版本重新执行四平台完整验收，并将最终待上传的单个程序复制到隔离环境，执行三库、页面安装和真实 API 检查。下表记录已公开 `v1.0.0-rc.10` 的实际原生范围；跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
+每个版本重新执行四平台完整验收，并将最终待上传的单个程序复制到隔离环境，执行对应 profile 的数据库、页面安装和真实 API 检查。下表记录已公开 `v1.0.0-rc.10` 的历史原生范围；当前 `main` 新增的四平台 × 三 profile 矩阵尚未形成新的公开版本，跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
 
 `v1.0.0-rc.10` 对应源码 **`359627e`** 的[完整版本工作流](https://github.com/zoujingli/typeapp/actions/runs/36423368197)通过四平台原生矩阵与静态发布门禁，使用 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2 与内置 Swoole 6.2.1。每个平台用自己的最终程序完成三库部署检查，公开下载字节与候选一致；后续提交仍需自己的验收。
 
@@ -19,7 +19,7 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 | macOS ARM64，macOS 15 原生 runner | HTTP、ORM、三库完整应用 AOT、部署、恢复、回滚与 TLS；另验静态单程序 | 系统沙箱禁止读取源码、SDK 和执行开发工具；最终 Mach-O 的同一字节完成三库部署 |
 | Windows x64，Windows 2022 原生 runner | SDK、三库独立 ORM、主应用 PHP/AOT、模板与搬迁；另验静态 SDK 和单程序 | 受限令牌与 ACL 禁止读取源码、SDK 及执行 PHP、MSVC、Node；最终 EXE 的同一字节完成三库部署，并核对权限恢复 |
 
-三库指 MySQL、PostgreSQL、SQLite。四个最终程序的十二份报告均覆盖运行库审计、内嵌前端文件安装与摘要、GET/HEAD 和缓存、平台及客户登录、站点默认值、角色 CRUD 和正常停止。普通启动不写出运行库，页面通过显式安装命令生成。独立 ORM 和通用模板仍分别验证自己的入口与产物；Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
+三库指 MySQL、PostgreSQL、SQLite。历史 RC10 的程序报告覆盖运行库审计、内嵌前端文件安装与摘要、GET/HEAD 和缓存、平台及客户登录、站点默认值、角色 CRUD 和正常停止；这些报告不替代当前 12 个 profile 程序的重新验收。普通启动不写出运行库，页面通过显式安装命令生成。独立 ORM 和通用模板仍分别验证自己的入口与产物；Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
 
 上述系统版本是实际构建与运行基线，不等于已测试所有更高或更低版本。Linux 程序仍依赖目标系统的 glibc，不适用于 Alpine/musl；开发用共享 Swoole 模块的 Debian 12 基线不能套用于这些 Ubuntu 24.04 静态程序。macOS 程序按最低系统版本与实际加载映像核验，只允许系统库；历史 RC7 目录包的 dyld 缓存摘要限制保留在[旧版验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 

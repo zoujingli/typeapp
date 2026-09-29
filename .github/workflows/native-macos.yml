@@ -16,13 +16,18 @@ on:
         description: full 为完整业务回归，single-program 为最终静态候选
         default: full
         type: string
+      profile:
+        description: 单程序数据库 profile
+        required: false
+        default: all
+        type: string
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
       scope:
-        description: 验收范围（single-program 为静态单程序三库候选，tls/pressure 为诊断）
+        description: 验收范围（single-program 为所选 profile 的静态候选，tls/pressure 为诊断）
         type: choice
         options: [full, single-program, tls, pressure]
         default: full
@@ -34,18 +39,24 @@ on:
         description: 用于性能比较的完整基准提交，留空时不运行性能组
         required: false
         type: string
+      profile:
+        description: 单程序数据库 profile
+        required: false
+        default: sqlite
+        type: choice
+        options: [sqlite, mysql, pgsql]
 
 permissions:
   contents: read
 
 concurrency:
-  group: native-macos-${{ github.ref }}-${{ inputs.scope || 'full' }}
+  group: native-macos-${{ github.ref }}-${{ inputs.scope || 'full' }}-${{ inputs.profile || 'all' }}
   cancel-in-progress: true
 
 jobs:
   native:
     if: github.repository == 'zoujingli/typeapp'
-    name: macOS ARM64 · ${{ matrix.suite }}
+    name: ${{ inputs.scope == 'single-program' && inputs.profile || 'all' }} · macOS ARM64 · ${{ matrix.suite }}
     runs-on: macos-15
     timeout-minutes: 120
     strategy:
@@ -56,6 +67,7 @@ jobs:
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
       TYPE_RELEASE_VERSION: ${{ inputs.version || inputs.candidate_version }}
+      TYPEAPP_BUILD_PROFILE: ${{ inputs.scope == 'single-program' && inputs.profile || '' }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
       HOMEBREW_NO_AUTO_UPDATE: '1'
@@ -207,7 +219,7 @@ jobs:
         env:
           TYPE_MACOS_SUITE: ${{ matrix.suite }}
         run: bash .github/scripts/run-macos-native.sh "$TYPE_MACOS_SUITE"
-      - name: 静态 SDK 与同一单程序三库验收
+      - name: 静态 SDK 与所选数据库单程序验收
         if: matrix.suite == 'single-program'
         run: |
           set -euo pipefail
@@ -218,21 +230,19 @@ jobs:
           export TYPE_STATIC_MINIMUM_MACOS=15.0
           mkdir -p build/static-macos-evidence
           export TYPE_STATIC_RUNTIME
-          TYPE_STATIC_RUNTIME="$(bash tools/prepare-static-macos.sh "$GITHUB_WORKSPACE/build/static-macos-sdk" 2>build/static-macos-evidence/sdk.log)"
+          TYPE_STATIC_RUNTIME="$(bash tools/prepare-static-macos.sh "$GITHUB_WORKSPACE/build/static-macos-sdk" "$TYPEAPP_BUILD_PROFILE" 2>build/static-macos-evidence/sdk.log)"
           php tests/static-runtime-sdk.php "$TYPE_STATIC_RUNTIME" | tee build/static-macos-evidence/embed.log
           php tools/build-application.php >build/static-macos-evidence/application.log 2>&1
           php tests/release-candidate.php prepare
-          for task_driver in mysql pgsql sqlite; do
-            php tests/release-candidate.php test "$task_driver" "$(brew --prefix mysql@8.4)" "$(brew --prefix postgresql@17)"
-          done
+          TYPE_REDIS_SERVER="$(command -v redis-server)" php tests/release-candidate.php test "$TYPEAPP_BUILD_PROFILE" "$(brew --prefix mysql@8.4)" "$(brew --prefix postgresql@17)"
           php tests/release-candidate.php materials
+          php tests/release-candidate.php service "$(brew --prefix mysql@8.4)" "$(brew --prefix postgresql@17)"
           php tests/release-candidate.php finish
-          php tests/native-service.php build/app/type-app
       - name: 保存最终发布候选
-        if: (inputs.version != '' && matrix.suite == 'deployment') || matrix.suite == 'single-program'
+        if: matrix.suite == 'single-program'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: release-candidate-macos-arm64-${{ github.run_attempt }}
+          name: release-candidate-static-macos-arm64-${{ inputs.profile || 'sqlite' }}-${{ github.run_attempt }}
           path: build/release-candidate/attachments/*
           if-no-files-found: error
           retention-days: 90
@@ -240,7 +250,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: macos-arm64-${{ matrix.suite }}
+          name: macos-arm64-${{ inputs.scope == 'single-program' && inputs.profile || 'all' }}-${{ matrix.suite }}
           retention-days: 14
           if-no-files-found: error
           path: |

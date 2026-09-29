@@ -92,6 +92,86 @@ final class ReleaseTest extends TestCase
         }
     }
 
+    /** 新发布必须完整覆盖 12 个单文件组合；公开附件不应带重建 SDK。 */
+    public function testProfileMatrixAndPublicAttachmentsAreExplicitlyBounded(): void
+    {
+        $root = dirname(__DIR__, 2) . '/build/profile-candidate-' . bin2hex(random_bytes(6));
+        mkdir($root, 0700);
+        try {
+            self::assertCount(12, Candidate::matrix());
+            $records = [];
+            foreach (Candidate::matrix() as $key) {
+                $records[$key] = ['profile' => substr($key, strrpos($key, '-') + 1)];
+            }
+            Candidate::assertMatrix($records);
+            $missing = $records;
+            unset($missing['linux-x64-sqlite']);
+            $this->expectException(\RuntimeException::class);
+            Candidate::assertMatrix($missing);
+        } finally {
+            \removeTestDirectory($root);
+        }
+    }
+
+    /** profile 候选必须提供与数据库一致的闭包和实际依赖列表。 */
+    public function testProfileCandidateRejectsMissingOrMismatchedDependencyFacts(): void
+    {
+        $root = dirname(__DIR__, 2) . '/build/profile-candidate-' . bin2hex(random_bytes(6));
+        mkdir($root, 0700);
+        $version = 'v1.0.0-rc.8';
+        $source = str_repeat('a', 40);
+        $profile = 'mysql';
+        $name = Candidate::filename($version, 'linux-x64', $profile);
+        file_put_contents($root . '/' . $name, 'profile program bytes');
+        $sha = hash_file('sha256', $root . '/' . $name);
+        $material = 'typeapp-rebuild-1.0.0-rc.8-linux-x64-mysql.zip';
+        file_put_contents($root . '/' . $material, 'rebuild material');
+        $record = [
+            'protocol' => 2, 'delivery' => 'single-executable', 'status' => 'passed', 'source' => $source,
+            'version' => $version, 'platform' => 'linux-x64', 'profile' => $profile, 'database' => $profile,
+            'profile-facts' => ['name' => $profile, 'database' => $profile, 'features' => ['alerts', 'redis'], 'rejected-capabilities' => \Type\Build\BuildProfile::rejectedCapabilities(['database' => 'mysql', 'features' => ['alerts', 'redis']])],
+            'features' => ['alerts', 'redis'],
+            'runtime-extensions' => ['pdo_mysql', 'redis'], 'static-archives' => ['libphp.a', 'libmysql.a'],
+            'system-libraries' => ['libc.so.6'], 'file' => $name, 'sha256' => $sha, 'bytes' => filesize($root . '/' . $name),
+            'artifact-sha256' => $sha, 'build-id' => str_repeat('b', 64), 'frontend-manifest-sha256' => str_repeat('f', 64),
+            'size-breakdown' => ['protocol' => 1, 'total' => strlen('profile program bytes'), 'code' => 1, 'data' => 20, 'symbols' => 0,
+                'frontend' => 20, 'native' => 300, 'stripped' => true],
+            'service' => ['status' => 'passed', 'driver' => $profile, 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('c', 64)],
+            'sdk-manifest-sha256' => str_repeat('d', 64), 'acceptance' => [
+                $profile => ['status' => 'passed', 'driver' => $profile, 'frontend-source-removed' => true, 'runtime-profile-enforced' => true,
+                    'single-executable-only' => true, 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('c', 64),
+                    'business' => ['alerts' => ['status' => 'passed', 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('e', 64)]]],
+            ],
+            'rebuild' => ['protocol' => 1, 'source' => $source, 'version' => $version, 'platform' => 'linux-x64',
+                'file' => $material, 'sha256' => hash_file('sha256', $root . '/' . $material), 'bytes' => filesize($root . '/' . $material),
+                'sdk-manifest-sha256' => str_repeat('d', 64)],
+        ];
+        try {
+            self::assertSame($name, Candidate::verify($record, $root, $source, $version, 'linux-x64', $profile));
+            self::assertCount(1, Candidate::attachments($record, false));
+            self::assertSame($name, Candidate::attachments($record, false)[0]['file']);
+            foreach ([
+                ['profile-facts' => null],
+                ['database' => 'pgsql'],
+                ['runtime-extensions' => ['pdo_pgsql', 'redis']],
+                ['static-archives' => []],
+                ['system-libraries' => []],
+                ['acceptance' => [$profile => array_replace($record['acceptance'][$profile], ['business' => []])]],
+                ['acceptance' => [$profile => array_replace($record['acceptance'][$profile], ['business' => ['alerts' => ['status' => 'passed', 'artifact-sha256' => str_repeat('f', 64), 'log-sha256' => str_repeat('e', 64)]]])]],
+            ] as $change) {
+                $broken = array_replace($record, $change);
+                try {
+                    Candidate::verify($broken, $root, $source, $version, 'linux-x64', $profile);
+                    self::fail('无效 profile 依赖闭包未被拒绝');
+                } catch (\RuntimeException) {
+                    self::assertTrue(true);
+                }
+            }
+        } finally {
+            \removeTestDirectory($root);
+        }
+    }
+
     /** @return iterable<string, array{string, string, bool}> 真实路径与其允许的构建目录。 */
     public static function candidatePaths(): iterable
     {
@@ -189,13 +269,15 @@ final class ReleaseTest extends TestCase
         $names = ['distribute / plan', 'distribute / collect', 'distribute / consume', 'template / template'];
         if ($kind === 'native') {
             $names = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete', 'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows'];
-            $names = [...$names, 'linux-static / 静态单程序 · linux-x64', 'linux-static / 静态单程序 · linux-arm64',
-                'macos-static / macOS ARM64 · single-program', 'windows-static / Windows x64 单程序三库'];
+            foreach (['sqlite', 'mysql', 'pgsql'] as $profile) {
+                $names = [...$names, $profile . ' · 静态单程序 · linux-x64', $profile . ' · 静态单程序 · linux-arm64',
+                    $profile . ' · macOS ARM64 · single-program', $profile . ' · Windows x64 单程序'];
+            }
             foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers', 'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services'] as $suite) {
                 $names[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
             }
             foreach (['contracts', 'application', 'deployment', 'rollout', 'recovery', 'http', 'orm', 'reliable'] as $suite) {
-                $names[] = 'macos-arm64 / macOS ARM64 · ' . $suite;
+                $names[] = 'macos-arm64 / all · macOS ARM64 · ' . $suite;
             }
             foreach (['contracts', 'orm', 'database', 'http', 'redis', 'tasks', 'application', 'recovery', 'rollout'] as $suite) {
                 $names[] = 'linux-arm64 / Linux ARM64 · ' . $suite;
@@ -205,9 +287,9 @@ final class ReleaseTest extends TestCase
         if (str_starts_with($change, 'missing-static-')) {
             $platform = substr($change, strlen('missing-static-'));
             $missing = match ($platform) {
-                'macos-arm64' => 'macos-static / macOS ARM64 · single-program',
-                'windows-x64' => 'windows-static / Windows x64 单程序三库',
-                default => 'linux-static / 静态单程序 · ' . $platform,
+                'macos-arm64' => 'sqlite · macOS ARM64 · single-program',
+                'windows-x64' => 'sqlite · Windows x64 单程序',
+                default => 'sqlite · 静态单程序 · ' . $platform,
             };
             $jobs['jobs'] = array_values(array_filter($jobs['jobs'], static fn (array $job): bool => $job['name'] !== $missing));
             $jobs['total_count']--;

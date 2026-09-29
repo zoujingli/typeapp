@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require __DIR__ . '/support.php';
+require __DIR__ . '/service-database.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Build\BuildPlatform;
@@ -50,7 +51,7 @@ fclose($listener);
 $port = substr(strrchr($address, ':'), 1);
 $token = 'native-service-test-' . bin2hex(random_bytes(20));
 $configuration = "APP_ENV=production\nAPP_DEBUG=true\nAPP_LISTEN=127.0.0.1\nAPP_PORT=" . $port . "\nAPP_ALLOWED_HOSTS=" . $address
-    . "\nAPP_CACHE_ENABLED=false\nDB_DRIVER=sqlite\nDB_SQLITE_FILE=var/app.sqlite\nAPP_API_TOKEN=" . $token . "\n";
+    . "\nAPP_CACHE_ENABLED=false\n" . serviceDatabaseConfiguration() . 'APP_API_TOKEN=' . $token . "\n";
 file_put_contents($runtime . '/.env', $configuration);
 chmod($runtime . '/.env', 0600);
 $password = bin2hex(random_bytes(16));

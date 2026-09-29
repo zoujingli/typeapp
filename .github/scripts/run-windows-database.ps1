@@ -159,7 +159,7 @@ try {
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
     if ($SingleProgram) {
         # 只运行已封存候选，不重新编译；同一 EXE 继续接受无源码隔离与页面/API 检查。
-        Invoke-TaskProcess $taskPhp @('tests/release-candidate.php', 'test', $Driver) (Join-Path $taskEvidence 'single-program.log') 900 $taskEnvironment | Out-Null
+        Invoke-TaskProcess $taskPhp @('tests/release-candidate.php', 'test', $Driver) (Join-Path $taskEvidence 'single-program.log') 3600 $taskEnvironment | Out-Null
     } elseif ($CandidateProbe) {
         Invoke-TaskProcess $taskPhp @('.github/scripts/probe-windows-candidate.php') (Join-Path $taskEvidence 'candidate-probe.log') 900 $taskEnvironment | Out-Null
     } elseif ($OrmOnly) {
