@@ -142,11 +142,6 @@ jobs:
           run-id: ${{ inputs.sdk_run || github.run_id }}
       - name: 准备锁定构建宿主
         run: ./.github/scripts/prepare-windows-native.ps1
-      - name: 诊断原程序导出文件锁与摘要读取
-        if: inputs.program_run != ''
-        run: |
-          & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-export-file.php
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 安装锁定源码并核对静态 SDK
         run: |
           & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress

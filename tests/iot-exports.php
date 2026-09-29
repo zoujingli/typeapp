@@ -104,6 +104,17 @@ function iotExportChecks(Closure $request, array $tokens, string $tenantA, strin
         $csv = $download($created['id']);
         expect($complete['status'] === 'succeeded' && $complete['completed_rows'] === 205 && $csv->status === 200
             && strlen($csv->body) === $complete['file_bytes'] && !str_contains($csv->body, 'uncommitted-tail'), '队列重启与新进程应从确认偏移恢复，不能保留未提交尾部');
+        // 同字节数的损坏仍须由最终摘要拒绝，不能仅凭长度或任务终态提供下载。
+        $corrupted = $csv->body;
+        $corrupted[3] = $corrupted[3] === 'x' ? 'y' : 'x';
+        try {
+            expect(file_put_contents($file, $corrupted) === strlen($csv->body), '无法准备等长损坏文件');
+            $request('GET', $jobsPath . '/' . $created['id'] . '/download', $admin, $tenantA, null, 409, 'export_file_unavailable');
+        } finally {
+            expect(file_put_contents($file, $csv->body) === strlen($csv->body), '无法恢复本轮原始 CSV');
+        }
+        expect($download($created['id'])->body === $csv->body, '恢复原始字节后摘要下载校验仍失败');
+        $checks[] = 'completed-file-digest-rejects-same-length-corruption';
         $stream = fopen('php://temp', 'w+b');
         fwrite($stream, substr($csv->body, 3));
         rewind($stream);

@@ -106,6 +106,24 @@ Windows 原 EXE 的定向诊断 [36630937370](https://github.com/zoujingli/typea
 
 MQTT 诊断与组件验收资料封存为 `.cache/profile-release-evidence-20260930/mqtt-coroutine-validation.tar.gz`，SHA-256 为 `0cd33f11c44f3bbe1d075e9cfd8ca2575683845e04f71e72b669dc91086d196b`。原程序、构建报告、所需源码、失败生成片段和原始日志均已逐文件回读校验；可重建的重复安装及编译中间文件不长期保留。确认相关进程退出后回收 11 个独立消费者目录，释放 1,183,568,140 逻辑字节，累计回收 5,938,242,448 逻辑字节。
 
+提交 `f54c7743ac8d31b6c64082ea7b0c31db864cbea3` 的完整物联中心再次全量编译 281 个单元。本机 SQLite 静态程序为 48,097,560 字节，SHA-256 为 `b848b61699100937fe50d00b8976745d35b599fe7dee03cc410d31eef20bea2f`，构建 ID 为 `16706f3fb43547b6abb733fa88e45529b17f689c04d566831f722fee1d9d4c95`。同一程序通过严格单文件无源码部署、53 项 MQTT TLS 授权 HTTP 检查、755 项告警通知检查、743 项导出检查、510 项调度及管理检查，并通过真实 launchd 启停、崩溃恢复和外部数据保留。测试 Redis 均为专用实例，回收后日常实例保持原状。该程序仍使用本机 macOS 26 SDK，不替代 CI 的 macOS 15 基线。
+
+这轮完整应用证据封存为 `.cache/profile-release-evidence-20260930/mqtt-application-validation.tar.gz`，SHA-256 为 `f6996bb171a69355c2a47313f5b073d6ab1842b8991ed60a00191b8071dd325d`。逐文件回读后回收 8 个测试目录及本轮可重建中间文件，释放 673,096,410 逻辑字节，累计回收 6,611,338,858 逻辑字节。最终程序和对应报告继续保留。
+
+RC11 已确定不能通过发布门禁，停止其剩余重复验收任务后，原运行终态为 cancelled；此前成功和失败的任务结果均保留，标签未移动、主仓 Release 未公开。
+
+Windows 定向运行 [36637152747](https://github.com/zoujingli/typeapp/actions/runs/36637152747) 复用已验证 SDK，重新全量编译上述修复源码。最终 EXE 为 50,811,808 字节，SHA-256 为 `0762343509449915a156ed206ecc91a30f81469a6f92cc250a6642a6488df86e`。同一文件通过严格无源码部署、54 项 MQTT TLS 授权 HTTP 检查和 755 项告警检查；导出初始 100 行分块成功，Redis 重启后恢复执行并计算最终 CSV 摘要时出现非 JSON 命令输出，运行最终失败，调度与材料封存未执行。原 EXE、构建身份及报告保存于 `build/profile-release-validation/rc12/windows-mqtt-evidence/`，不能将其诊断运行等同于 RC12 正式发布。
+
+原 EXE 复验 [36640003777](https://github.com/zoujingli/typeapp/actions/runs/36640003777) 通过部署与 MQTT 后，被测试入口对旧构建 INI 路径的要求阻止；这一结果未到达导出故障点。测试入口现读取程序封存清单和真实摘要，静态程序直接执行，共享库程序继续使用自己的运行配置。未改写原 EXE 或构建报告。命令输出异常另保留非 JSON 诊断和摘要，去掉 JSON 凭据正文及环境秘密。
+
+本机上述 SQLite 静态程序在编译目录已移除后，以新入口通过 744 项导出 HTTP 检查，涵盖分块、队列重启、内容摘要、撤权和清理。原报告 `build/iot-identity-6f52ff86dd9d/verification.json` 与资料已逐文件回读封存到 `.cache/profile-release-evidence-20260930/exports-relocation-validation.tar.gz`，SHA-256 为 `4a201c538522a4d93efb48e1f3f40521784a354ead912e143d43d429c6c9836a`。确认 HTTP、测试 Redis 退出及端口释放后，回收 298,338,001 逻辑字节，本任务累计回收 6,909,676,859 逻辑字节。
+
 配置修复阶段的原始资料已封存为 `.cache/profile-release-evidence-20260930/settings-validation.tar.gz`，SHA-256 为 `e07e4b039e077aa88513a43ce4b15def59eeaec3af669f8fa8886cfe490433b6`。逐文件回读并确认所属进程退出、端口释放后，回收 19 个测试目录共 1,534,859,562 逻辑字节；本任务累计回收 4,754,674,308 逻辑字节。共享 SDK 和后续所需程序仍保留。
+
+Windows 原程序复验 [36640808535](https://github.com/zoujingli/typeapp/actions/runs/36640808535) 明确捕获 `hash_file()` 的 `errno=13 Permission denied`。最小对照 [36641734334](https://github.com/zoujingli/typeapp/actions/runs/36641734334) 在普通文件模式下确认：9216 字节文件在加锁前及解锁后可读，独占锁内另开句柄被拒绝，原持锁句柄完整读取且摘要一致。独立启用 FILE hook 的实验出现不同读锁语义，不能作为生产修复依据；当前 `CoroutineRuntime::enableIo()` 未启用该 hook。
+
+导出完成阶段改用原持锁句柄计算 SHA-256，并校验读取长度等于已经落盘的字节数。独占锁、`fflush`/`fsync`、数据库提交顺序与任务截止继续生效。真实 PHP 控制回归通过 745 项 HTTP 检查，包含 Redis 重启后分块恢复，以及同字节数 CSV 损坏被拒绝、恢复原字节后可下载；原生程序须重新全量编译并验收，不能沿用旧 EXE 的身份。最小诊断代码与报告保存在 `build/profile-release-validation/rc12/`，临时诊断步骤从工作流移除。
+
+本机修复版本完成 281 个编译单元，SQLite 程序为 48,097,544 字节，SHA-256 为 `dc27c2687a89122b0c37f49e4b88827e6a278f4fade6b342ab4e51091feb31cd`，构建 ID 为 `0c572165234403ba4a0441f650973b14a25b6944a16f7204103ac856f72d3411`。同一文件通过严格单程序部署及 749 项导出 HTTP 检查，原报告为 `build/single program-73558d40c1d3/verification.json` 与 `build/iot-identity-e7083cf53529/verification.json`。此处证明 macOS 本机行为，Windows 的原故障仍以新 EXE 的实际复验为准。
 
 四平台 × 三数据库的 12 个最终候选、Windows 专用 Redis 测试实例、16 个分发子仓与 Packagist 消费，以及公开下载摘要仍须由新 RC 的真实 Actions 运行完成。发布门禁要求全部组合成功；任何失败都阻止主仓 Release 公开。当前记录不宣称这些远端验收已经完成。

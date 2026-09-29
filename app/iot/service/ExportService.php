@@ -321,8 +321,18 @@ final class ExportService
                     }
                     $context->assertActive();
                     $done = $completed === (int) $row['total_rows'];
+                    $fileHash = '';
+                    if ($done) {
+                        // Windows 独占锁禁止其他句柄读取；沿用持锁句柄，摘要与已落盘字节在同一锁内确认。
+                        $hash = hash_init('sha256');
+                        if (fseek($file, 0) !== 0 || hash_update_stream($hash, $file, $bytes) !== $bytes) {
+                            throw new RuntimeException('export_storage_unavailable');
+                        }
+                        $fileHash = hash_final($hash);
+                        $context->assertActive();
+                    }
                     $changes = ['status' => $done ? 'succeeded' : 'running', 'completed_rows' => $completed, 'file_bytes' => $bytes,
-                        'step' => $payload['step'] + 1, 'updated_at' => time(), 'file_hash' => $done ? hash_file('sha256', $this->path($id)) : ''];
+                        'step' => $payload['step'] + 1, 'updated_at' => time(), 'file_hash' => $fileHash];
                     if ($done) {
                         $changes['expires_at'] = time() + 86400;
                     }
