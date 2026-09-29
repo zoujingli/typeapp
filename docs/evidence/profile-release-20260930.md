@@ -52,6 +52,14 @@ PHP/Swoole 的实际 make 命令追加 `-O2 -g0 -ffunction-sections -fdata-secti
 
 Docsify 发布页已用本地浏览器核对标题、下载表格和 Mermaid 流程图；备案名称“物联开源分享”保留。检查后关闭任务预览标签与临时监听服务，没有替换本机业务站点。
 
+服务生命周期原始报告另封存为 `.cache/profile-release-evidence-20260930/service-final.tar.gz`，SHA-256 为 `4c7cf05ebf2feb56bb18e98662411902314e8621d19cf4eb9086a4e9adc6236f`。确认所属进程退出、端口释放并回读归档后，回收服务测试目录和两个最终程序的可重建编译中间目录，释放 1,611,387,363 逻辑字节；累计回收 2,891,548,136 逻辑字节。最终程序及原始构建报告仍保留。
+
+## RC11 首轮门禁
+
+标签 `v1.0.0-rc.11` 固定在 `65c5149a6ea6090f74439844eff9783706dcb0ab`，原发布运行 [36621347358](https://github.com/zoujingli/typeapp/actions/runs/36621347358) 的 Windows 契约测试发现用例间 profile 环境泄漏：设置 `mysql` 后仅用变量名调用 `putenv()` 清理，下一用例仍读取到 `mysql`，报“未知构建 profile”。该主仓 Release 未公开，原标签不移动。
+
+测试改为每个用例先隔离 profile、结束后恢复原值，并断言环境清理结果；Windows 使用 CRT 支持的空值删除形式。带外部 `TYPEAPP_BUILD_PROFILE=mysql` 的本机定向执行通过 13 个测试、84 个断言。Windows 实际复核及其余原生任务结果继续单独记录，不将本机修复结果视为远端通过。
+
 ## 尚待实际发布验证
 
 四平台 × 三数据库的 12 个最终候选、Windows 专用 Redis 测试实例、16 个分发子仓与 Packagist 消费，以及公开下载摘要仍须由新 RC 的真实 Actions 运行完成。发布门禁要求全部组合成功；任何失败都阻止主仓 Release 公开。当前记录不宣称这些远端验收已经完成。

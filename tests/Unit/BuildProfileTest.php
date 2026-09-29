@@ -11,6 +11,16 @@ use RuntimeException;
 
 final class BuildProfileTest extends TestCase
 {
+    private string|false $originalProfile;
+
+    /** 每个用例显式隔离构建选择，不能继承运行 PHPUnit 的发布 profile。 */
+    protected function setUp(): void
+    {
+        $this->originalProfile = getenv('TYPEAPP_BUILD_PROFILE');
+        self::assertTrue(putenv('TYPEAPP_BUILD_PROFILE='));
+        self::assertContains(getenv('TYPEAPP_BUILD_PROFILE'), [false, '']);
+    }
+
     #[\PHPUnit\Framework\Attributes\DataProvider('invalidProfiles')]
     public function testRejectsInvalidConfiguration(array $settings): void
     {
@@ -44,7 +54,12 @@ final class BuildProfileTest extends TestCase
 
     protected function tearDown(): void
     {
-        putenv('TYPEAPP_BUILD_PROFILE');
+        // Swoole 的线程安全 putenv 钩子使用 CRT；Windows 删除变量须传入空值，
+        // 仅传名称可能保留前一用例的值。空值与未设置在构建选择中语义相同。
+        $setting = $this->originalProfile === false && PHP_OS_FAMILY !== 'Windows'
+            ? 'TYPEAPP_BUILD_PROFILE' : 'TYPEAPP_BUILD_PROFILE=' . ($this->originalProfile ?: '');
+        self::assertTrue(putenv($setting));
+        self::assertSame($this->originalProfile ?: '', getenv('TYPEAPP_BUILD_PROFILE') ?: '');
     }
 
     public function testResolvesDatabaseAndImplicitRedisClosure(): void
