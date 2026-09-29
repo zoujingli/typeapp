@@ -146,6 +146,63 @@ final class BuildProfileTest extends TestCase
         self::assertSame('feature_unavailable', json_decode((string) $response->getBody(), true, 32, JSON_THROW_ON_ERROR)['error']);
     }
 
+    /** 进程提供数据库配置时，保存无关字段仍校验实际 profile；不能把缺省 SQLite 当作待运行驱动。 */
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\DataProvider('externalDatabaseProfiles')]
+    public function testConfigurationUpdateUsesEffectiveProfileAndProtectsProcessOverrides(string $driver): void
+    {
+        require dirname(__DIR__) . '/fixtures/build-profile/identity.php';
+        \Type\Generated\BuildIdentity::$profile = ['name' => $driver, 'database' => $driver, 'features' => ['web']];
+        $root = dirname(__DIR__, 2);
+        $directory = $root . '/build/profile-settings-' . bin2hex(random_bytes(6));
+        mkdir($directory, 0700);
+        $configuration = json_decode(file_get_contents($root . '/docs/build-config/type-app.json'), true, 64, JSON_THROW_ON_ERROR);
+        $generated = (new \Type\Build\ConfigCompiler())->generate($root, $configuration['config']);
+        file_put_contents($directory . '/ProjectConfig.php', $generated['code']);
+        require $directory . '/ProjectConfig.php';
+        $original = ['DB_DRIVER' => getenv('DB_DRIVER'), 'APP_NAME' => getenv('APP_NAME')];
+        putenv('DB_DRIVER=' . $driver);
+        putenv(PHP_OS_FAMILY === 'Windows' ? 'APP_NAME=' : 'APP_NAME');
+        try {
+            file_put_contents($directory . '/.env', '');
+            $view = \app\common\bootstrap\Settings::configurationView($directory);
+            $saved = \app\common\bootstrap\Settings::configurationUpdate($directory, $view['version'], ['APP_NAME' => 'profile-settings']);
+            self::assertTrue($saved['restart_required']);
+            self::assertSame($driver, \app\common\bootstrap\Settings::load($directory)->text('database.driver'));
+            self::assertStringNotContainsString('DB_DRIVER', file_get_contents($directory . '/.env'));
+            try {
+                \app\common\bootstrap\Settings::configurationUpdate($directory, $saved['version'], ['DB_DRIVER' => 'sqlite']);
+                self::fail('管理端覆盖了进程只读字段');
+            } catch (\InvalidArgumentException $error) {
+                self::assertSame('configuration_field_read_only', $error->getMessage());
+            }
+            putenv(PHP_OS_FAMILY === 'Windows' ? 'DB_DRIVER=' : 'DB_DRIVER');
+            // Windows 空值删除与 Unix unset 采用各自平台语义；原生任务也运行本用例。
+            $before = file_get_contents($directory . '/.env');
+            try {
+                \app\common\bootstrap\Settings::configurationUpdate($directory, $saved['version'], ['DB_DRIVER' => 'sqlite']);
+                self::fail('保存了与程序不匹配的数据库');
+            } catch (\app\common\bootstrap\RuntimeCapabilityException $error) {
+                self::assertSame('runtime_profile_database_mismatch', $error->errorCode());
+            }
+            self::assertSame($before, file_get_contents($directory . '/.env'));
+        } finally {
+            foreach ($original as $key => $value) {
+                putenv($value === false && PHP_OS_FAMILY !== 'Windows' ? $key : $key . '=' . ($value ?: ''));
+            }
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
+                $entry->isDir() && !$entry->isLink() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+            }
+            rmdir($directory);
+        }
+    }
+
+    /** @return list<array{string}> 两种外部数据库必须维持相同的配置覆盖语义。 */
+    public static function externalDatabaseProfiles(): array
+    {
+        return [['mysql'], ['pgsql']];
+    }
+
     public function testSdkProfileResolutionSupportsSpacesAndDifferentWorkingDirectories(): void
     {
         $root = dirname(__DIR__, 2);

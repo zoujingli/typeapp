@@ -1725,7 +1725,9 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
                     $report['slow_http'] = array_slice($slowRequests, 0, 20);
                 }
             }
-            expect($response->status === $expected, '双端状态错误：' . $path . ' expected=' . $expected . ' actual=' . $response->status);
+            $responseError = $response->json()['error'] ?? '';
+            $safeError = is_string($responseError) && preg_match('/^([a-z0-9_]{1,100})(?::|$)/D', $responseError, $errorParts) === 1 ? $errorParts[1] : '';
+            expect($response->status === $expected, '双端状态错误：' . $path . ' expected=' . $expected . ' actual=' . $response->status . ' error=' . $safeError);
             expect(!str_contains($response->body, 'password_hash'), '双端响应包含凭据散列');
             foreach (['password', 'current_password', 'owner_password'] as $secretField) {
                 if (isset($data[$secretField]) && $data[$secretField] !== '') {

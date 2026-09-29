@@ -74,6 +74,16 @@ Windows SQLite/PostgreSQL 的 AOT 链接完成后被 PE 体积门禁拒绝。原
 
 RC11 的 macOS ARM64 SQLite 候选已通过完整静态程序验收，原文件为 47,745,960 字节，SHA-256 `2226942fad846eb0a9ceaca884f4d9dacb02b7e79090496c13f37b3710240013`。相较 RC10 同平台 69,408,888 字节减少约 31.2%；实际 PDO 为 SQLite，保留默认 Redis 闭环，无 MySQL/PostgreSQL 驱动和 XML/ICU 归档。它仍属于 RC11 候选证据，不能替代下一标签的验收。
 
+## 候选复验发现的配置边界
+
+修复提交 `33cd3d0ab8e81591b05877144852a927529184fb` 的 Windows 运行 [36627912097](https://github.com/zoujingli/typeapp/actions/runs/36627912097) 已通过真实 MSVC 前置回归：108,032 字节的发布程序可执行且通过 PE 检查，使用 `/DEBUG:FULL` 的调试程序被拒绝。该普通运行随后主动取消，避免与完整静态候选重复编译；其前置成功不等于整个运行成功。
+
+同一 RC11 macOS MySQL 原程序通过修复后的 Broker 授权回归后，管理端保存配置返回 422。独立配置回归确认：原实现忽略进程环境，只校验 `.env`，因此将进程提供的 MySQL/PostgreSQL 错当成缺省 SQLite。现分别校验文件声明类型和实际生效配置，沿用启动优先级；进程覆盖字段仍只读，数据库不匹配仍在写文件前拒绝，HTTP 保留稳定能力错误码。
+
+定向单元测试通过 15 项、104 个断言，包含 MySQL 与 PostgreSQL 的进程覆盖保存、只读拒绝、错误 profile 拒绝和失败不改文件。两库真实 PHP 控制回归均通过告警、导出、调度的 755/749/510 项 HTTP 检查，所属服务器退出及测试库清理均通过。此处 PHP 结果只证明配置与业务行为，不能代替外部数据库 profile 的原生验收。
+
+配置修复后的本机 SQLite 程序全量编译 281 个生产单元，最终 48,029,208 字节，SHA-256 为 `f8cfcec436fc6e51fd130a5aa615e6acc1e66baa13445a97e23bdae15db6175e`，构建 ID 为 `3200ec4a295d084423ce8c97826dbf845784dda66291294783574f574eee10e1`。同一文件通过单程序隔离部署与管理 API 的 510 项 HTTP 检查，覆盖配置保存、站点信息、账号权限和正常停止；原报告分别为 `build/single program-43d07417dc49/verification.json` 与 `build/iot-identity-08f6b8a7229a/verification.json`。本机结果仍受 macOS 26 SDK 基线限制，下一 RC 须验证四平台及三个数据库 profile。
+
 ## 尚待实际发布验证
 
 四平台 × 三数据库的 12 个最终候选、Windows 专用 Redis 测试实例、16 个分发子仓与 Packagist 消费，以及公开下载摘要仍须由新 RC 的真实 Actions 运行完成。发布门禁要求全部组合成功；任何失败都阻止主仓 Release 公开。当前记录不宣称这些远端验收已经完成。

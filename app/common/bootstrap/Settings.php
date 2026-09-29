@@ -261,7 +261,10 @@ final class Settings
             }
             $updated = self::replaceEnvironmentValues($contents, $changes);
             $fileEnvironment = Environment::parse($updated, false);
-            self::validateRuntimeConfiguration(ProjectConfig::load($fileEnvironment), $basePath);
+            // 文件自身仍须符合声明类型；运行能力按启动时相同的进程覆盖优先级校验。
+            // 否则进程提供 DB_DRIVER=mysql/pgsql 时，保存无关字段会误用缺省 SQLite。
+            ProjectConfig::load($fileEnvironment);
+            self::validateRuntimeConfiguration(ProjectConfig::load(Environment::parse($updated)), $basePath);
             self::configurationReplace($path, $updated, false);
             return ['version' => hash('sha256', $updated), 'restart_required' => true, 'changed' => array_keys($changes), 'status' => 'saved_restart_required'];
         } finally {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\admin\controller;
 
 use app\common\bootstrap\Settings;
+use app\common\bootstrap\RuntimeCapabilityException;
 use app\common\service\AuditLog;
 use app\common\service\RoleService;
 use app\common\service\SiteSettings;
@@ -155,6 +156,9 @@ final class AdminController
                 ], 'admin');
                 return $result;
             }, 'admin', 'platform');
+        } catch (RuntimeCapabilityException $error) {
+            // 交由统一 HTTP 边界输出稳定能力错误码，不将 CLI 诊断说明作为接口错误码。
+            throw $error;
         } catch (InvalidArgumentException $error) {
             throw new HttpError(422, $error->getMessage());
         } catch (RuntimeException $error) {
