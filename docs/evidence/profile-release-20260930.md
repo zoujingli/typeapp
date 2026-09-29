@@ -86,4 +86,6 @@ RC11 的 macOS ARM64 SQLite 候选已通过完整静态程序验收，原文件�
 
 ## 尚待实际发布验证
 
+Linux SQLite 定向运行 [36628322727](https://github.com/zoujingli/typeapp/actions/runs/36628322727) 的 x64 原程序已通过无源码部署及 MQTT、告警、导出、调度；程序 SHA-256 为 `f019f1563b98810abaf6d831a2ddcfbe784d3cd2206b1039baeba68c858e80ef`。systemd 控制脚本随后误用数据库夹具 PATH 中的系统 PHP，加载 ZTS 扩展产生 ABI 警告并污染摘要输出。脚本改为明确调用 `PHP_HOME/bin/php`，不改变部署程序或服务配置，后续仍须完成真实 systemd 复验。
+
 四平台 × 三数据库的 12 个最终候选、Windows 专用 Redis 测试实例、16 个分发子仓与 Packagist 消费，以及公开下载摘要仍须由新 RC 的真实 Actions 运行完成。发布门禁要求全部组合成功；任何失败都阻止主仓 Release 公开。当前记录不宣称这些远端验收已经完成。

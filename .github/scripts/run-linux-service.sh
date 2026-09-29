@@ -9,6 +9,9 @@ set -euo pipefail
 task_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 [[ "$task_root" == "${GITHUB_WORKSPACE:?}" ]]
 cd "$task_root"
+# 数据库夹具提供受限 PATH；控制端始终使用与 PHPRC 匹配的锁定 ZTS 宿主。
+task_php="${PHP_HOME:?}/bin/php"
+[[ -x "$task_php" ]] || { echo '缺少锁定的 PHP 构建宿主。' >&2; exit 2; }
 task_uid="$(id -u)"
 task_user="$(id -un)"
 [[ "$task_uid" != 0 ]] || { echo '服务验收必须由非root运行账号执行。' >&2; exit 2; }
@@ -24,8 +27,8 @@ test -S "$XDG_RUNTIME_DIR/systemd/private"
 umask 077
 mkdir -p "$task_root/build"
 task_work="$(mktemp -d "$task_root/build/service-linux-ci-XXXXXX")"
-php tests/systemd-prepare.php "$task_work" "$task_user"
+"$task_php" tests/systemd-prepare.php "$task_work" "$task_user"
 # PHP变量由PHP解释，不能由shell展开。
 # shellcheck disable=SC2016
-task_digest="$(php -r '$r=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);echo $r["service-sha256"];' "$task_work/preparation.json")"
-php tests/native-service-systemd.php "$task_work/definition/service.json" "$task_digest"
+task_digest="$("$task_php" -r '$r=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);echo $r["service-sha256"];' "$task_work/preparation.json")"
+"$task_php" tests/native-service-systemd.php "$task_work/definition/service.json" "$task_digest"
