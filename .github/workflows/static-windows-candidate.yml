@@ -212,11 +212,15 @@ jobs:
         run: ./.github/scripts/prepare-windows-test-redis.ps1
       - name: 同一 EXE 的 SQLite 无源码部署与业务闭环
         if: env.TYPEAPP_BUILD_PROFILE == 'sqlite'
+        env:
+          TYPE_APP_TRACE: ${{ inputs.program_run != '' && '1' || '0' }}
         run: |
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php test $env:TYPEAPP_BUILD_PROFILE
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 同一 EXE 的外部数据库无源码部署
         if: env.TYPEAPP_BUILD_PROFILE != 'sqlite'
+        env:
+          TYPE_APP_TRACE: ${{ inputs.program_run != '' && '1' || '0' }}
         run: ./.github/scripts/run-windows-database.ps1 -Driver $env:TYPEAPP_BUILD_PROFILE -SingleProgram
       - name: 读取本轮依赖来源材料
         if: inputs.program_run == ''
