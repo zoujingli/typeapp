@@ -58,7 +58,15 @@ Docsify 发布页已用本地浏览器核对标题、下载表格和 Mermaid 流
 
 标签 `v1.0.0-rc.11` 固定在 `65c5149a6ea6090f74439844eff9783706dcb0ab`，原发布运行 [36621347358](https://github.com/zoujingli/typeapp/actions/runs/36621347358) 的 Windows 契约测试发现用例间 profile 环境泄漏：设置 `mysql` 后仅用变量名调用 `putenv()` 清理，下一用例仍读取到 `mysql`，报“未知构建 profile”。该主仓 Release 未公开，原标签不移动。
 
-测试改为每个用例先隔离 profile、结束后恢复原值，并断言环境清理结果；Windows 使用 CRT 支持的空值删除形式。带外部 `TYPEAPP_BUILD_PROFILE=mysql` 的本机定向执行通过 13 个测试、84 个断言。Windows 实际复核及其余原生任务结果继续单独记录，不将本机修复结果视为远端通过。
+测试改为每个用例先隔离 profile、结束后恢复原值，并断言环境清理结果；Windows 使用 CRT 支持的空值删除形式。带外部 `TYPEAPP_BUILD_PROFILE=mysql` 的本机定向执行通过 13 个测试、84 个断言。修复提交 `bbec8deea3429ce94bc68300c83cc58ca5030967` 的 Windows 运行 [36624117644](https://github.com/zoujingli/typeapp/actions/runs/36624117644) 已通过“检查完整公开契约”步骤；该步骤结果不代替后续新 RC 的完整平台门禁。
+
+Linux x64 与 macOS ARM64 的 PostgreSQL 候选通过单程序隔离部署后，在 MQTT 授权扩展回归中触发 `TYPE_MIGRATION_NOT_EMPTY`。最小复现确认：同一授权脚本先安装独立 Broker，再将物联中心安装到同一服务器数据库；SQLite 原来使用两个不同文件。脚本现为 Broker 和物联中心分别创建专用库，关闭进程后逐项删除并核对结果。真实 PostgreSQL/MySQL 的 PHP 控制回归分别通过 53/54 项 HTTP 检查，两个数据库均确认清理；此结果不替代修复后的原生候选复跑。
+
+Linux SQLite 候选通过隔离部署及 MQTT 后，告警回归误启动 Ubuntu 的 `redis-check-rdb`。发行版 `redis-server` 链接到同一个按 `argv[0]` 区分用途的程序，测试夹具解析实际路径后改变了用途。静态发布工作流复用既有 ARM64 准备方式，将相同字节复制为任务目录下的 `redis-server`，保持服务器名称；工作流语法检查通过，实际业务仍须在下一批候选执行。
+
+RC11 的 Linux x64 PostgreSQL 原候选为 56,839,923 字节，SHA-256 为 `3ca918c7ba69247fcda8fb379be23b4d7bf18ef2d03712d392bd9ddec6746f21`；原报告确认 strip 已执行、符号统计为零、扩展只保留所选 PDO 和默认 Redis。与 RC10 同平台 148,731,221 字节相比约减少 61.8%，但 RC11 业务验收未完成，不能将该文件作为已发布结果。原日志、SDK/程序身份和隔离部署回执保留在 `build/profile-release-validation/rc11/`。
+
+本机 Broker 故障复现和两库修复结果已封存为 `.cache/profile-release-evidence-20260930/rc11-broker-probes.tar.gz`，SHA-256 为 `08fcb8e4293676d271d433057ae7945ff72a4f126f305017af11742866053630`。回读全部文件并核对所属数据库 PID 退出、端口关闭后，回收 8 个测试目录共 328,266,610 逻辑字节；本任务累计回收 3,219,814,746 逻辑字节。此后修改不改变 RC11 的源码、原程序或标签身份。
 
 ## 尚待实际发布验证
 

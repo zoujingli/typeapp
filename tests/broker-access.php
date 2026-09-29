@@ -91,7 +91,24 @@ $browser = null;
 $secrets = [];
 $revision = [];
 $rolled = [];
+$databaseAdmin = null;
+$ownedDatabases = [];
 try {
+    if ($driver !== 'sqlite') {
+        // Broker 与物联中心分别执行空库安装，不能共享业务表或污染调用方的控制库。
+        $databaseAdmin = new PDO(
+            $driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $environment['DB_DATABASE'],
+            $environment['DB_USERNAME'],
+            $environment['DB_PASSWORD'],
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        );
+        foreach (['broker', 'application'] as $databaseRole) {
+            $databaseName = 'type_broker_access_' . bin2hex(random_bytes(6));
+            $databaseAdmin->exec('CREATE DATABASE ' . $databaseName);
+            $ownedDatabases[$databaseRole] = $databaseName;
+        }
+        $environment['DB_DATABASE'] = $ownedDatabases['broker'];
+    }
     $install = new Process([...$command, 'broker:install'], $root, $environment);
     try {
         expect($install->wait(30)->successful(), '独立授权库安装失败：' . $install->stdout() . $install->stderr());
@@ -261,6 +278,9 @@ try {
     $appEnvironment = $environment;
     $appEnvironment['APP_BASE_PATH'] = $appBase;
     $appEnvironment['DB_SQLITE_FILE'] = 'app.sqlite';
+    if ($driver !== 'sqlite') {
+        $appEnvironment['DB_DATABASE'] = $ownedDatabases['application'];
+    }
     $appEnvironment['APP_PORT'] = substr(strrchr($addresses[2], ':'), 1);
     $appEnvironment['APP_ALLOWED_HOSTS'] = $addresses[2];
     unset($appEnvironment['BROKER_CLIENT_USERNAME'], $appEnvironment['BROKER_CLIENT_PASSWORD'], $appEnvironment['BROKER_TOPIC_PREFIX'], $appEnvironment['BROKER_NODE_ID'], $appEnvironment['BROKER_PLAINTEXT'], $appEnvironment['BROKER_PORT']);
@@ -346,6 +366,19 @@ try {
             $report['cleanup'][$role] = false;
             $report['cleanup_errors'][] = $role . ':' . $failure->getMessage();
         }
+    }
+    foreach ($ownedDatabases as $databaseRole => $databaseName) {
+        try {
+            $databaseAdmin->exec('DROP DATABASE ' . $databaseName);
+            $report['cleanup']['database_' . $databaseRole] = true;
+        } catch (Throwable $failure) {
+            $report['cleanup']['database_' . $databaseRole] = false;
+            $report['cleanup_errors'][] = 'database_' . $databaseRole . ':' . $failure->getMessage();
+        }
+    }
+    $databaseAdmin = null;
+    if (in_array(false, $report['cleanup'] ?? [], true)) {
+        $report['status'] = 'failed';
     }
     if (($report['status'] ?? '') !== 'passed') {
         $report['status'] = 'failed';

@@ -121,7 +121,12 @@ jobs:
           ln -s /usr/share "$task_mysql/share"
           printf 'TYPE_MYSQL_TOOLS=%s\nTYPE_PGSQL_TOOLS=%s\nTYPE_BWRAP_BINARY=%s\n' \
             "$task_mysql" "$(dirname "$(pg_config --bindir)")" "$(command -v bwrap)" >> "$GITHUB_ENV"
-          printf 'TYPE_REDIS_SERVER=%s\n' "$(command -v redis-server)" >> "$GITHUB_ENV"
+          task_redis="$GITHUB_WORKSPACE/build/static-linux-redis/redis-server"
+          mkdir -p "$(dirname "$task_redis")"
+          # Debian 的 redis-server 链接到多调用文件；保持 argv[0] 的服务器名称。
+          # 与常规 ARM64 原生验收使用同一准备方式，避免 realpath 选择 RDB 检查器。
+          cp -L "$(command -v redis-server)" "$task_redis"
+          printf 'TYPE_REDIS_SERVER=%s\n' "$task_redis" >> "$GITHUB_ENV"
       - name: 安装锁定源码并准备构建宿主
         run: |
           set -euo pipefail
