@@ -65,7 +65,12 @@ final class Settings
      */
     public static function load(string $basePath): Repository
     {
-        return ProjectConfig::load(Environment::load($basePath . '/.env'));
+        $settings = ProjectConfig::load(Environment::load($basePath . '/.env'));
+        if ($settings->boolean('cache.enabled')) {
+            RuntimeCapabilities::requireFeature('cache');
+            RuntimeCapabilities::requireFeature('redis');
+        }
+        return $settings;
     }
 
     /** 共用 HTTP 启动和离线检查的连接预算；构造时不借用连接、不初始化数据库。 */
@@ -89,10 +94,12 @@ final class Settings
         );
     }
 
-    /** 三个既有 Redis 用途共用原生连接配置，CA 相对软件目录；不连接网络。 */
+    /** Redis 用途共用原生连接配置，CA 相对软件目录；不连接网络。 */
     public static function redis(Repository $settings, string $basePath, string $purpose): RedisConfiguration
     {
-        if (!in_array($purpose, ['cache', 'exports', 'notices'], true)) {
+        RuntimeCapabilities::requireFeature('redis');
+        RuntimeCapabilities::requireFeature($purpose === 'notices' ? 'alerts' : $purpose);
+        if (!in_array($purpose, ['cache', 'exports', 'notices', 'scheduler'], true)) {
             throw new InvalidArgumentException('Redis 配置用途无效');
         }
         $prefix = $purpose === 'cache' ? 'cache.redis.' : 'app.' . $purpose . '.redis_';
@@ -144,6 +151,13 @@ final class Settings
             'DB_POOL_WAITERS' => ['path' => 'database.pool.waiters', 'label' => '连接等待数', 'group' => '数据库', 'type' => 'integer', 'editable' => true, 'secret' => false],
             'DB_POOL_WAIT_MS' => ['path' => 'database.pool.wait_ms', 'label' => '连接等待超时（毫秒）', 'group' => '数据库', 'type' => 'integer', 'editable' => true, 'secret' => false],
             'APP_CACHE_ENABLED' => ['path' => 'cache.enabled', 'label' => '应用缓存', 'group' => '缓存', 'type' => 'boolean', 'editable' => true, 'secret' => false],
+            'APP_SCHEDULER_NAMESPACE' => ['path' => 'app.scheduler.namespace', 'label' => '调度命名空间', 'group' => '调度', 'type' => 'string', 'editable' => true, 'secret' => false],
+            'APP_SCHEDULER_REDIS_HOST' => ['path' => 'app.scheduler.redis_host', 'label' => '调度 Redis 地址', 'group' => '调度', 'type' => 'string', 'editable' => true, 'secret' => false],
+            'APP_SCHEDULER_REDIS_PORT' => ['path' => 'app.scheduler.redis_port', 'label' => '调度 Redis 端口', 'group' => '调度', 'type' => 'integer', 'editable' => true, 'secret' => false],
+            'APP_SCHEDULER_REDIS_USERNAME' => ['path' => 'app.scheduler.redis_username', 'label' => '调度 Redis 账号', 'group' => '调度', 'type' => 'string', 'editable' => true, 'secret' => false],
+            'APP_SCHEDULER_REDIS_PASSWORD' => ['path' => 'app.scheduler.redis_password', 'label' => '调度 Redis 密码', 'group' => '调度', 'type' => 'string', 'editable' => false, 'secret' => true],
+            'APP_SCHEDULER_REDIS_TLS' => ['path' => 'app.scheduler.redis_tls', 'label' => '调度 Redis TLS', 'group' => '调度', 'type' => 'boolean', 'editable' => true, 'secret' => false],
+            'APP_SCHEDULER_REDIS_CA' => ['path' => 'app.scheduler.redis_ca', 'label' => '调度 Redis CA 文件', 'group' => '调度', 'type' => 'string', 'editable' => true, 'secret' => false],
             'REDIS_HOST' => ['path' => 'cache.redis.host', 'label' => 'Redis 地址', 'group' => '缓存', 'type' => 'string', 'editable' => true, 'secret' => false],
             'REDIS_PORT' => ['path' => 'cache.redis.port', 'label' => 'Redis 端口', 'group' => '缓存', 'type' => 'integer', 'editable' => true, 'secret' => false],
             'REDIS_DATABASE' => ['path' => 'cache.redis.database', 'label' => 'Redis 数据库', 'group' => '缓存', 'type' => 'integer', 'editable' => true, 'secret' => false],
@@ -319,8 +333,10 @@ final class Settings
         }
         DatabaseFactory::validate($settings, $basePath);
         self::integer($settings, 'app.http.port', 1, 65535);
-        foreach (['cache', 'exports', 'notices'] as $purpose) {
-            self::redis($settings, $basePath, $purpose);
+        foreach (['cache', 'exports', 'notices', 'scheduler'] as $purpose) {
+            if (self::redisEnabled($settings, $purpose)) {
+                self::redis($settings, $basePath, $purpose);
+            }
         }
     }
 
@@ -393,8 +409,10 @@ final class Settings
             }
             DatabaseFactory::validate($settings, $basePath);
             self::integer($settings, 'app.http.port', 1, 65535);
-            foreach (['cache', 'exports', 'notices'] as $purpose) {
-                self::redis($settings, $basePath, $purpose);
+            foreach (['cache', 'exports', 'notices', 'scheduler'] as $purpose) {
+                if (self::redisEnabled($settings, $purpose)) {
+                    self::redis($settings, $basePath, $purpose);
+                }
             }
             $result['dependencies'] = 'not_checked';
             if ($remember || in_array('--connect', $arguments, true)) {
@@ -426,6 +444,13 @@ final class Settings
         }
     }
 
+    /** 配置检查只探测启用的用途，显式开启被裁剪的缓存仍会被 redis() 拒绝。 */
+    private static function redisEnabled(Repository $settings, string $purpose): bool
+    {
+        return $purpose === 'cache' ? $settings->boolean('cache.enabled')
+            : RuntimeCapabilities::hasFeature($purpose === 'notices' ? 'alerts' : $purpose);
+    }
+
     /** @return array<string, string> 每个真实依赖独立返回结果；不输出驱动异常、DSN或凭据。 */
     private static function checkDependencies(Repository $settings, string $basePath): array
     {
@@ -442,9 +467,9 @@ final class Settings
         } catch (Throwable) {
             $results['database'] = 'failed';
         }
-        foreach (['cache', 'exports', 'notices'] as $purpose) {
-            if ($purpose === 'cache' && !$settings->boolean('cache.enabled')) {
-                $results['redis_cache'] = 'disabled';
+        foreach (['cache', 'exports', 'notices', 'scheduler'] as $purpose) {
+            if (!self::redisEnabled($settings, $purpose)) {
+                $results['redis_' . $purpose] = 'disabled';
                 continue;
             }
             try {

@@ -19,7 +19,7 @@ final class StaticRuntimeSdk
     /**
      * @throws RuntimeException SDK 清单、ABI、源码适配或归档字节不符。
      */
-    public function __construct(string $manifest)
+    public function __construct(string $manifest, ?string $expectedProfile = null)
     {
         BuildLock::path($manifest);
         $this->manifest = BuildPlatform::resolve($manifest);
@@ -32,6 +32,9 @@ final class StaticRuntimeSdk
             || !is_array($data['archives'] ?? null) || !array_is_list($data['archives']) || $data['archives'] === []
             || count($data['archives']) > 128) {
             throw new RuntimeException('静态运行 SDK 的协议、平台或 PHP ABI 不一致');
+        }
+        if ($expectedProfile !== null && (($data['profile'] ?? null) !== $expectedProfile)) {
+            throw new RuntimeException('静态运行 SDK 与构建 profile 不一致：' . $expectedProfile);
         }
         $patches = ['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource', 'SwooleStaticSource', 'PhpxThreadSource'];
         if (PHP_OS_FAMILY === 'Windows') {
@@ -116,10 +119,10 @@ final class StaticRuntimeSdk
     }
 
     /** 未指定静态 SDK 时保留现有开发构建；指定后任何验证失败都不能回退到共享库。 */
-    public static function selected(): ?self
+    public static function selected(?string $profile = null): ?self
     {
         $manifest = getenv('TYPE_STATIC_RUNTIME');
-        return is_string($manifest) && $manifest !== '' ? new self($manifest) : null;
+        return is_string($manifest) && $manifest !== '' ? new self($manifest, $profile) : null;
     }
 
     /** @return list<string> 按已验证顺序传给链接器的准确归档路径。 */
@@ -137,7 +140,7 @@ final class StaticRuntimeSdk
                 'secur32.lib', 'wldap32.lib', 'winmm.lib', 'synchronization.lib'];
         }
         return PHP_OS_FAMILY === 'Darwin'
-            ? ['-lresolv', '-lpthread', '-lxml2', '-lz', '-lcurl', '-liconv', '-framework', 'CoreFoundation', '-framework', 'Security', '-lc++']
+            ? ['-lresolv', '-lpthread', '-lz', '-lcurl', '-liconv', '-framework', 'CoreFoundation', '-framework', 'Security', '-lc++']
             : ['-ldl', '-lpthread', '-lm', '-lresolv', '-lstdc++'];
     }
 
@@ -146,7 +149,9 @@ final class StaticRuntimeSdk
     {
         $archives = $this->archives();
         if (PHP_OS_FAMILY === 'Linux') {
-            $archives = ['-Wl,--start-group', ...$archives, '-Wl,--end-group'];
+            $archives = ['-Wl,--gc-sections', '-Wl,--start-group', ...$archives, '-Wl,--end-group'];
+        } elseif (PHP_OS_FAMILY === 'Darwin') {
+            $archives = ['-Wl,-dead_strip', ...$archives];
         }
         return [...$archives, ...$this->systemFlags()];
     }
@@ -161,7 +166,7 @@ final class StaticRuntimeSdk
     public function windowsIncludeDirectories(): array
     {
         $root = dirname($this->manifest) . '/include';
-        return [$root . '/phpx', $root . '/phpx/misc', $root . '/dependencies', $root . '/dependencies/libxml2'];
+        return [$root . '/phpx', $root . '/phpx/misc', $root . '/dependencies'];
     }
 
     /** 只传递 SDK 明确声明的目标系统版本，不能继承构建机的默认部署版本。 */

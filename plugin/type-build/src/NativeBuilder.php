@@ -178,7 +178,20 @@ final class NativeBuilder
             throw new RuntimeException('线程应用需要已适配并重新编译的 PHPX 线程 SDK');
         }
         $platform = new BuildPlatform();
-        $static = StaticRuntimeSdk::selected();
+        $profileDeclaration = BuildProfile::resolve($settings);
+        $buildProfile = BuildProfile::selected($profileDeclaration);
+        $static = StaticRuntimeSdk::selected($buildProfile['name'] ?? null);
+        if ($static !== null && $buildProfile === null && $profileDeclaration['profiles'] !== []) {
+            throw new RuntimeException('静态构建必须明确选择 TYPEAPP_BUILD_PROFILE');
+        }
+        if ($static !== null && $buildProfile !== null) {
+            $sdkFeatures = $static->identity()['features'] ?? null;
+            if (!is_array($sdkFeatures) || array_values(array_filter($sdkFeatures, 'is_string')) !== $sdkFeatures
+                    || array_values(array_unique($sdkFeatures)) !== $sdkFeatures
+                    || $sdkFeatures !== $buildProfile['features']) {
+                throw new RuntimeException('静态运行 SDK 的功能闭包与构建 profile 不一致');
+            }
+        }
         $libraries = $platform->runtimeLibraries($phpHome, $phpxHome);
 
         $this->directory(dirname($output));
@@ -340,6 +353,10 @@ final class NativeBuilder
                 }
             }
         }
+        // 编译器仍须反射完整生产源码使用的扩展类型；只裁剪目标 embed。
+        // 例如关闭 Redis 的程序仍编译队列组件，宿主不能同时卸掉 Redis 类型元数据。
+        $compilerExtensions = array_values(array_unique($extensions));
+        $extensions = BuildProfile::runtimeExtensions($extensions, $buildProfile);
         $environment = new BuildEnvironment();
         $runtimeDeclaration = $settings['runtime'] ?? [];
         if (!is_array($runtimeDeclaration)) {
@@ -360,7 +377,10 @@ final class NativeBuilder
             $runtimeDeclaration,
             $static
         );
-        if (array_key_exists('threads', $settings)) {
+        if ($static !== null && $buildProfile !== null) {
+            BuildProfile::assertExtensions(array_keys($profile['extensions']), $buildProfile);
+        }
+        if ($static !== null || array_key_exists('threads', $settings)) {
             // 线程入口在 MINIT 注册应用；仅依赖 Swoole 会将其提前到动态 PDO 驱动之前。
             // 沿用已验证的运行扩展清单，让 PDO 先完成注册，再由 Swoole 接管协程驱动。
             $project['extension-dependencies'] = array_keys($profile['extensions']);
@@ -371,10 +391,10 @@ final class NativeBuilder
             $buildDirectory . '/compiler-profile',
             $phpHome,
             $phpxHome,
-            array_values(array_unique($extensions)),
+            $compilerExtensions,
             $runtimeDeclaration
         );
-        $native = $environment->fingerprint($phpHome, $phpxHome, array_values(array_unique($extensions)), $compilerProfile['module-files']);
+        $native = $environment->fingerprint($phpHome, $phpxHome, $static === null ? array_values(array_unique($extensions)) : $compilerExtensions, $compilerProfile['module-files']);
         $native['runtime']['extensions'] = $profile['extensions'];
         $native['runtime']['functions'] = $profile['functions'];
         $native['files'] = array_values(array_unique(array_merge($native['files'], $profile['files'], $compilerProfile['files'])));
@@ -471,6 +491,9 @@ final class NativeBuilder
             $compilerEnvironment = array_replace($compilerEnvironment, $static->buildEnvironment());
             $compilerEnvironment['TYPE_STATIC_RUNTIME'] = $static->manifestPath();
         }
+        if ($buildProfile !== null) {
+            $compilerEnvironment['TYPEAPP_BUILD_PROFILE'] = $buildProfile['name'];
+        }
         // 原生编译器子进程使用独立的受控 PHP 配置。BuildPlatform 会主动过滤
         // 外部环境，避免认证和业务变量泄漏；这里仅接入调用方明确提供的
         // PHPRC 与 PHP_INI_SCAN_DIR，确保 PHP-Parser、TypePHP 和线程编译器
@@ -565,9 +588,15 @@ final class NativeBuilder
         $capabilities = (new BuildCapabilities())->collect($settings, $selected);
         $nativeFacts = $native;
         unset($nativeFacts['files']);
+        $profileFacts = (new BuildCapabilities())->runtime($buildProfile, array_keys($profile['extensions']), $static)
+            + ['profiles' => $profileDeclaration['profiles']];
         $facts = ['name' => $name, 'version' => $version, 'workspace' => $root, 'settings-sha256' => BuildIdentity::digest($settings),
             'composer-sha256' => BuildIdentity::digest($composer), 'production-packages' => $included, 'native' => $nativeFacts,
-            'compiler' => $compilerOptions, 'capabilities' => $capabilities, 'resource-generation' => $resourceIdentity, 'embedded-resources' => $embeddedManifest];
+            'compiler' => $compilerOptions, 'capabilities' => $capabilities, 'profile' => $profileFacts,
+            'runtime-extensions' => array_keys($profile['extensions']), 'static-archives' => $static === null ? [] : array_map('basename', $static->archives()),
+            'system-link-flags' => $static === null ? $libraries : $static->systemFlags(),
+            'artifact-stripping' => $static === null ? null : ($platform->family() === 'Linux' ? 'elf-strip-debug-symbols-v1' : ($platform->family() === 'Darwin' ? 'strip-x-v1' : 'msvc-release-no-pdb-v1')),
+            'resource-generation' => $resourceIdentity, 'embedded-resources' => $embeddedManifest];
         $identity = $identityBuilder->create($groups, $facts);
         if ($stage !== null) {
             $auditPaths = $applicationAuditInputs;
@@ -577,6 +606,13 @@ final class NativeBuilder
             return (new BuildWorkspace())->create($root, $stage, $identity['description']['inputs'], array_values(array_unique($auditPaths))) + ['build-id' => $identity['id']];
         }
         $manifest = ['build-id' => $identity['id'], 'application' => $name, 'version' => $version, 'runtime' => $native['runtime'],
+            'profile' => $profileFacts,
+            'database' => $buildProfile['database'] ?? null,
+            'features' => $buildProfile['features'] ?? [],
+            'rejected-capabilities' => $profileFacts['rejected-capabilities'],
+            'runtime-extensions' => array_keys($profile['extensions']),
+            'static-archives' => $static === null ? [] : array_map('basename', $static->archives()),
+            'system-link-flags' => $static === null ? $libraries : $static->systemFlags(),
             'production-packages' => $included,
             'embedded-resources' => $embeddedManifest,
             'dependency-notices' => $notices['summary'],
@@ -643,15 +679,40 @@ final class NativeBuilder
                 if ($identityBuilder->create($groups, $facts)['id'] !== $identity['id']) {
                     throw new RuntimeException('恢复产物前输入已经变化');
                 }
+            },
+            function (string $candidate) use ($environment, $compilerEnvironment, $root, $static, $embeddedManifest): array {
+                if ($static === null) {
+                    return [];
+                }
+                $platform = PHP_OS_FAMILY;
+                if ($platform === 'Linux') {
+                    $environment->run(['strip', '--strip-debug', '--strip-unneeded', $candidate], $root, $compilerEnvironment, 120);
+                } elseif ($platform === 'Darwin') {
+                    $environment->run(['/usr/bin/strip', '-x', $candidate], $root, $compilerEnvironment, 120);
+                }
+                if ($static !== null) {
+                    $static->verifyArtifact($candidate, $environment, $compilerEnvironment);
+                }
+                // MSVC release 链接已通过 /DEBUG:NONE 与 /INCREMENTAL:NO 禁止 PDB；
+                // 这里不对 PE 做实验性重写，避免破坏产物身份或导入表。
+                ArtifactSize::measure($candidate, $embeddedManifest, $static?->archives() ?? []);
+                return [];
             }
         );
 
+        $artifactManifest = (new ArtifactManifest())->read($output, $identity['id']);
         $report = [
             'output' => $output,
             'build-id' => $identity['id'],
             'identity' => $identity,
+            'profile' => $profileFacts,
+            'runtime-extensions' => array_keys($profile['extensions']),
+            'rejected-capabilities' => $profileFacts['rejected-capabilities'],
+            'static-archives' => $static === null ? [] : array_map('basename', $static->archives()),
+            'system-libraries' => $static === null ? $libraries : $static->verifyArtifact($output, $environment, $compilerEnvironment),
             'cache' => $cache,
-            'manifest' => (new ArtifactManifest())->read($output, $identity['id']),
+            'manifest' => $artifactManifest,
+            'size-breakdown' => $static === null ? null : ArtifactSize::measure($output, $embeddedManifest, $static?->archives() ?? []),
             'sha256' => hash_file('sha256', $output),
             'composer-lock-sha256' => hash_file('sha256', $root . '/composer.lock'),
             'toolchain-lock-sha256' => hash_file('sha256', $root . '/toolchain.lock.json'),

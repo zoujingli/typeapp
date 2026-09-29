@@ -8,6 +8,10 @@
 
 ## 1. 固定部署对象
 
+采用 profile 矩阵的版本须同时匹配平台、CPU 和数据库：`sqlite`、`mysql` 或 `pgsql`。每个下载项仍是一个主程序文件。`DB_DRIVER` 与程序不符时返回 `runtime_profile_database_mismatch`；更换数据库需要选择对应程序并按业务流程迁移数据，不是修改一个环境变量即可完成。关闭的能力返回 `feature_unavailable`。
+
+物联中心默认保留告警通知、导出、队列和调度，这些功能使用外部 Redis；MySQL/PostgreSQL 也由外部服务提供。部署机不需要 PHP、Swoole、Composer、Node 或编译器。持久设备 MQTT 与 HA 当前要求 PostgreSQL；其他 profile 不承诺此角色。前端已内嵌，安装后生成的 `public/` 与业务数据一起管理。重建材料从发布清单记录的 Actions Artifact 获取并按需要在到期前归档，它们不参与程序启动。
+
 记录应用版本、目标OS/CPU、构建身份、程序和发布清单SHA256、配置版本以及实际数据库/消息/缓存协议。清单摘要应来自独立受信渠道，不用同一不受信任下载中的两个文件互相证明来源。
 
 发布程序放到新的版本目录，数据、日志、上传资源和秘密配置放在独立运行根。不要覆盖正在使用的版本，不把`.env`或数据库加入发布归档。先核对对应平台真实验收范围、原生库/扩展要求、服务账号权限与依赖材料缺失项。[发布布局](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-packages.md)、[服务管理](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-services.md)、[依赖材料](https://github.com/zoujingli/typeapp/blob/main/docs/development/dependency-notices.md)

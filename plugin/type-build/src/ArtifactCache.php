@@ -28,8 +28,9 @@ final class ArtifactCache
     /**
      * @param Closure(string): void $compile 接收临时候选产物路径。
      * @param (Closure(): void)|null $validateInputs 发布候选产物前零参数复核输入。
+     * @param (Closure(string): (array<string,mixed>|void))|null $finalize 在封存身份前处理最终可执行文件，例如移除调试信息并返回清单片段。
      */
-    public function materialize(array $identity, array $manifest, string $output, Closure $compile, ?Closure $validateInputs = null): array
+    public function materialize(array $identity, array $manifest, string $output, Closure $compile, ?Closure $validateInputs = null, ?Closure $finalize = null): array
     {
         BuildIdentity::assertValid($identity);
         BuildLock::path($output);
@@ -37,7 +38,7 @@ final class ArtifactCache
             throw new RuntimeException('缓存身份与产物清单不一致');
         }
         $id = $identity['id'];
-        return BuildLock::run($this->directory . '/' . $id . '.lock', function () use ($identity, $manifest, $output, $compile, $validateInputs, $id): array {
+        return BuildLock::run($this->directory . '/' . $id . '.lock', function () use ($identity, $manifest, $output, $compile, $validateInputs, $finalize, $id): array {
             $entry = $this->directory . '/' . $id;
             $started = hrtime(true);
             $reason = 'absent';
@@ -64,6 +65,12 @@ final class ArtifactCache
                     $compile($compiled);
                     if ($compiled !== $temporary . '/artifact' && !rename($compiled, $temporary . '/artifact')) {
                         throw new RuntimeException('无法归档带平台后缀的候选产物');
+                    }
+                    if ($finalize !== null) {
+                        $updates = $finalize($temporary . '/artifact');
+                        if (is_array($updates)) {
+                            $manifest = array_replace($manifest, $updates);
+                        }
                     }
                     $sealed = (new ArtifactManifest())->seal($temporary . '/artifact', $manifest);
                     $record = ['cache-protocol' => 1, 'identity' => $identity, 'artifact-sha256' => hash_file('sha256', $temporary . '/artifact'),

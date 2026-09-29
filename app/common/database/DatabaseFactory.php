@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\common\database;
 
 use app\common\bootstrap\Settings;
+use app\common\bootstrap\RuntimeCapabilities;
 use InvalidArgumentException;
 use Type\Core\Config\Repository;
 use Type\Orm\DatabaseException;
@@ -27,6 +28,7 @@ final class DatabaseFactory
         if (!in_array($driver, ['mysql', 'pgsql', 'sqlite'], true)) {
             throw new InvalidArgumentException('DB_DRIVER 只接受 mysql、pgsql 或 sqlite');
         }
+        RuntimeCapabilities::assertDatabase($driver);
 
         return $driver;
     }

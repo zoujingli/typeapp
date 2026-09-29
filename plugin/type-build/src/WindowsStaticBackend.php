@@ -27,13 +27,14 @@ final class WindowsStaticBackend extends Msvc
         return parent::buildCCompileCommand($sourceFile, $outputFile, $options);
     }
 
-    /** 静态目标允许 LIBCMT，同时禁止默认选择动态 CRT 的导入库。 */
+    /** 静态目标使用 LIBCMT；发布链接清除未使用代码并禁用增量链接和 PDB。 */
     public function buildLinkOptions(array $config = []): string
     {
         $flags = parent::buildLinkOptions($config);
         if (substr_count($flags, ' /NODEFAULTLIB:LIBCMT') !== 1) {
             throw new RuntimeException('TypePHP MSVC 链接运行库规则需要重新核对');
         }
-        return str_replace(' /NODEFAULTLIB:LIBCMT', ' /NODEFAULTLIB:MSVCRT', $flags);
+        $flags = str_replace(' /NODEFAULTLIB:LIBCMT', ' /NODEFAULTLIB:MSVCRT', $flags);
+        return empty($config['debug']) ? $flags . ' /DEBUG:NONE /INCREMENTAL:NO /OPT:REF /OPT:ICF' : $flags;
     }
 }

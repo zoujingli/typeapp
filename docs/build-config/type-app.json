@@ -6,6 +6,11 @@
   "development": {"entry": "bin/typeapp", "prepare": "bin/typeapp-prepare", "output": "build/app/development", "check": ["check"], "watch": ["plugin"]},
   "sources": ["app"],
   "embedded-resources": [{"source": "web/dist", "target": "web"}],
+  "build-profiles": {
+    "sqlite": {"database": "sqlite", "features": ["web", "mqtt", "iot", "alerts", "exports", "queue", "scheduler"]},
+    "mysql": {"database": "mysql", "features": ["web", "mqtt", "iot", "alerts", "exports", "queue", "scheduler"]},
+    "pgsql": {"database": "pgsql", "features": ["web", "mqtt", "iot", "alerts", "exports", "queue", "scheduler"]}
+  },
   "threads": {"http": "app\\common\\bootstrap\\Application::httpThread"},
   "runtime": {
     "Linux": {"extensions": ["pcntl", "swoole"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]},

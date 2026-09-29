@@ -39,6 +39,28 @@ flowchart TB
 
 生成的 `Type\Generated\EmbeddedResources::manifest()` 返回资源清单，`read(string $path, int $offset, int $length)` 按块读取，单次最多 65536 字节。应用负责决定何时安装及如何服务资源；组件不会在普通启动时自动解包。物联中心采用[显式安装流程](../deployment.md#前端安装与更新)，通用模板不默认携带页面。
 
+## 数据库 profile 与依赖裁剪
+
+应用在 `type-app.json` 中声明 `build-profiles`，构建时通过 `TYPEAPP_BUILD_PROFILE` 或配置项 `build-profile` 选择一个 profile，例如 `TYPEAPP_BUILD_PROFILE=sqlite`。构建器把 profile、数据库、功能闭包、扩展、静态归档写入编译身份，并在链接后报告最终系统库：
+
+```json
+{
+  "build-profiles": {
+    "sqlite": {"database": "sqlite", "features": ["web", "mqtt", "iot", "alerts", "exports", "queue", "scheduler"]},
+    "mysql": {"database": "mysql", "features": ["web", "mqtt", "iot", "alerts", "exports", "queue", "scheduler"]},
+    "pgsql": {"database": "pgsql", "features": ["web", "mqtt", "iot", "alerts", "exports", "queue", "scheduler"]}
+  }
+}
+```
+
+每个程序只链接自己的 pdo_* 驱动；`alerts`、`exports` 会闭包启用 `queue`，`queue` 和 `scheduler` 会闭包启用 `redis`。因此物联中心默认 profile 会包含 phpredis；自定义 profile 关闭这些能力时，清单会记录 `rejected-capabilities`，运行到关闭能力会返回 `feature_unavailable`。未知 profile、数据库配置不匹配或关闭能力都会在构建/启动边界返回稳定错误。四平台 × 三 profile 的新矩阵必须分别验收，不能用历史 RC 的三库报告替代。
+
+候选清单中的 `size-breakdown` 读取最终封存文件的真实区段：`total` 与下载字节数一致，`code` 是可执行区段，`data` 是其余字节，`frontend` 是内嵌 `web/` 原文字节，`native` 是静态归档输入大小。后两者不能与 code/data 重复相加。Linux 不保留调试或非必要符号区段，Windows 不保留 PDB 调试目录，macOS 执行 `strip -x` 后保留必需外部符号。体积增长门禁及测量边界见[构建身份](https://github.com/zoujingli/typeapp/blob/main/docs/development/build-identity.md)。
+
+静态 SDK 按发布参数编译，并关闭未使用的 PHP JIT；PHP 8.5 自带的 OPcache 核心仍可能出现在扩展表中。程序启动配置已固定关闭 OPcache，应用和组件继续由 TypePHP 全量 AOT。源码裁剪、TLS 关闭或 PHP 源码回退都不能用来通过体积门禁。
+
+`cache` 是可选的通用 Redis 缓存，显式声明后才加入其能力；默认队列等功能虽已依赖 Redis，也不会自动开启缓存。内置 SDK 制备脚本当前支持三种数据库名称和 `all` 开发入口；自定义应用可通过 `TYPEAPP_BUILD_CONFIGURATION` 指定含同名 profile 的配置。额外 DOM/XML/intl/zip 能力需要另行准备并验证匹配的静态 SDK，内置制备脚本会明确拒绝，不会静默忽略声明。
+
 ## 安装与依赖
 
 使用 `require-dev` 安装。PHP 范围为 `>=8.4 <8.6`；原生构建还需要项目锁定的 ZTS PHP、PHPX 与 TypePHP SDK。以应用 lock 和工具链声明为准，不能仅凭 PHP CLI 可以运行就认定 embed 环境完整。
@@ -172,7 +194,7 @@ sequenceDiagram
 
 所选清单和模块进入构建身份，应用产物只收集当前平台选中的模块及实际依赖，不会携带全部四平台模块。再分发须保留适用的原始许可证，见[许可证与归属](../licensing.md#第三方边界)。源码、摘要、依赖和维护者的 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 重建入口见[资源说明](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。
 
-这些 `.so/.dll` 是共享扩展构建输入，不能用于静态链接。单程序构建使用静态 SDK 中的归档；RC10 已通过四平台同一源码发布门禁，各平台最终程序均完成三库隔离部署。实际可下载版本与产物形态见[构建与部署](../deployment.md#单程序交付约定)。
+这些 `.so/.dll` 是共享扩展构建输入，不能用于静态链接。单程序构建使用按 profile 生成并校验的静态 SDK 归档；历史 RC10 的四平台验收记录不替代当前 12 个 profile 程序的重新验收。实际可下载版本与产物形态见[构建与部署](../deployment.md#单程序交付约定)。
 
 ## 开发与编译入口
 

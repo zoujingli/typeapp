@@ -9,7 +9,6 @@
     "gmp",
     "libiconv",
     { "name": "libpq", "default-features": false, "features": ["openssl"] },
-    { "name": "libxml2", "default-features": false },
     "mpfr",
     "nghttp2",
     "openssl",

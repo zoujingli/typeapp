@@ -69,7 +69,8 @@ final class TypephpCompatibility extends Translator
     private function staticRuntime(): ?StaticRuntimeSdk
     {
         // 一个编译进程只读入一次 SDK；构建结束仍由 NativeBuilder 重核全部输入。
-        return $this->staticRuntimeSdk ??= StaticRuntimeSdk::selected();
+        $profile = getenv('TYPEAPP_BUILD_PROFILE');
+        return $this->staticRuntimeSdk ??= StaticRuntimeSdk::selected(is_string($profile) && $profile !== '' ? $profile : null);
     }
 
     /** 静态 Windows 构建保留 TypePHP 的翻译、并行编译与链接流程，只替换 CRT 选择。 */
@@ -412,6 +413,15 @@ final class TypephpCompatibility extends Translator
     /** 在上游格式化前按已登记符号调整生成存储；不修改已安装编译器源码。 */
     public function writeFile(string $file, string $content, bool $force = false): void
     {
+        if ($this->staticRuntime() !== null && basename($file) === 'extension-' . $this->targetName . '.cc') {
+            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== 'a314805dc63c9469cf3151b726088e47b3464afe3a87a9967fee17068e1830a4') {
+                throw new RuntimeException('静态 profile 模块依赖适配需要重新核对 TypePHP 原文');
+            }
+            // 上游根据所有已编译类推断依赖，包括未选中驱动中的 Pdo\\Mysql
+            // 和关闭能力中的 Redis。仅这些受 profile 门禁保护的可选驱动允许
+            // 省略启动依赖；其他未知扩展仍失败，不能掩盖真实依赖遗漏。
+            $content = BuildProfile::targetModuleDependencies($content, $this->extensionDependencies);
+        }
         if ($this->threaded()) {
             if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== 'a314805dc63c9469cf3151b726088e47b3464afe3a87a9967fee17068e1830a4') {
                 throw new RuntimeException('线程生成适配需要重新核对 TypePHP 原文');

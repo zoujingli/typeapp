@@ -62,6 +62,28 @@ try {
     expect($result->successful() && $result->stderr === '', '外部 PHP INI 影响了静态程序：' . $result->stdout . $result->stderr);
     unlink($runtime . '/php.ini');
 
+    if (($identity['profile']['name'] ?? null) !== null) {
+        expect($identity['profile']['database'] === $driver, '候选 profile 与被验收数据库不一致');
+        foreach (array_diff(['sqlite', 'mysql', 'pgsql'], [$driver]) as $disabled) {
+            foreach (['check', 'migrate'] as $operation) {
+                $arguments = $operation === 'migrate' ? ['migrate', 'status'] : ['check'];
+                $refused = (new Process([...$command, ...$arguments], $runtime, array_replace($environment, ['DB_DRIVER' => $disabled])))->wait(30);
+                expect($refused->exitCode === 1 && !$refused->timedOut
+                    && str_contains($refused->stdout . $refused->stderr, 'runtime_profile_database_mismatch'), '未选数据库未在连接前明确拒绝');
+            }
+        }
+        if ($driver !== 'sqlite') {
+            $refused = (new Process([...$command, 'iot:device', 'state'], $runtime, $environment))->wait(30);
+            expect($refused->exitCode === 1 && !$refused->timedOut
+                && str_contains($refused->stdout . $refused->stderr, 'runtime_profile_database_mismatch'), '非 SQLite 程序未在设备缓冲连接前明确拒绝');
+        }
+        if (!in_array('cache', $identity['profile']['features'], true) || !in_array('redis', $identity['profile']['features'], true)) {
+            $refused = (new Process([...$command, 'check'], $runtime, array_replace($environment, ['APP_CACHE_ENABLED' => 'true'])))->wait(30);
+            expect($refused->exitCode === 1 && !$refused->timedOut
+                && str_contains($refused->stdout . $refused->stderr, 'feature_unavailable'), '关闭的缓存能力未明确拒绝');
+        }
+    }
+
     $index = (new Process([...$command, 'licenses'], $runtime, $cleanEnvironment))->wait(30);
     expect($index->successful(), '无法直接读取内嵌许可证索引');
     $notices = json_decode($index->stdout, true, 128, JSON_THROW_ON_ERROR);
@@ -81,6 +103,15 @@ try {
     expect($rejected->exitCode === 1 && !$rejected->timedOut, '许可证入口接受了未登记的许可路径');
 
     $initialization = verifyNativeApplicationDeployment($project, $package, $runtime, $command, $environment, $driver, $identity['embedded-resources'], true, true);
+    if ($project === $root && ($identity['profile']['name'] ?? null) !== null) {
+        foreach (['alerts' => ['iot:notices', '1'], 'exports' => ['iot:exports', '1'], 'scheduler' => ['app:schedule', 'history']] as $feature => $arguments) {
+            if (!in_array($feature, $identity['profile']['features'], true)) {
+                $refused = (new Process([...$command, ...$arguments], $runtime, $environment))->wait(30);
+                expect($refused->exitCode === 1 && !$refused->timedOut
+                    && str_contains($refused->stdout . $refused->stderr, 'feature_unavailable'), '关闭的业务角色未明确拒绝：' . $feature);
+            }
+        }
+    }
     expect(scandir($package) === ['.', '..', $filename], '业务运行向只读程序目录释放了文件');
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($runtime, FilesystemIterator::SKIP_DOTS)) as $file) {
         expect(!preg_match('/\.(?:so|dylib|dll)$/iD', $file->getFilename()), '运行目录出现释放的原生运行库');
@@ -88,6 +119,7 @@ try {
     $record = ['platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'driver' => $driver,
         'artifact-sha256' => hash_file('sha256', $package . '/' . $filename), 'build-id' => $identity['build-id'], 'initialization' => $initialization,
         'source-and-sdk-read-denied' => true, 'ordinary-start-writes-no-files' => true, 'external-ini-ignored' => true,
+        'runtime-profile-enforced' => ($identity['profile']['name'] ?? null) !== null,
         'single-executable-only' => true, 'readonly-program-directory' => true, 'different-cwd' => true,
         'license-documents-verified' => count($documents), 'application' => $project === $root ? 'iot-center' : 'independent-template',
         'checks' => $project === $root ? ['single-program-export', 'export-no-overwrite', 'embedded-resources-audit', 'app-install',

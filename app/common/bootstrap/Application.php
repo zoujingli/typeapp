@@ -112,6 +112,7 @@ final class Application
                 echo "运行配置：config:check [--connect] [--remember]；config:restore 恢复最后通过连接检查的文件，成功退出4表示仍须运维重启。\n";
                 echo "内嵌许可：licenses 查看索引，licenses <notices/资源路径> 查看对应原文。\n";
                 echo "审计保留：app:audit-clean <admin|customer> [batch]，单批最多1000条，清理满180天事件并保留恢复与撤销依据。\n";
+                echo "应用维护调度：app:schedule once|history|work <次数> <间隔毫秒>；固定任务与执行历史通过 Redis 协调。\n";
                 echo "历史业务维护角色：iot:command-clean、iot:history-clean、iot:aggregate、iot:aggregate-clean、iot:alarm、iot:mqtt-install、iot:mqtt-statistics、iot:mqtt、iot:ingest、iot:device、iot:exports、iot:exports-work、iot:exports-clean；尚未转换的业务不向新应用公开。\n";
                 echo "独立 Broker：broker:install、broker:migrate <status|history|recover>、broker:user <login> <name>、broker:serve、broker:run、broker:store-install；初始化密码由 BROKER_ADMIN_PASSWORD 提供。升级后启动会核对兼容代次，不能用更旧二进制维持新的占用与吊销语义。\n";
                 echo "独立持久恢复：broker:nodes；broker:node-fence <node-id> <node-run> <observation-run> <actor> <proof-ref> [operation-id]，只登记已经完成的基础设施硬隔离；broker:node-fence-result <operation-id> 仅对账；broker:audit-clean [batch] 清理满180天审计。\n";
@@ -120,7 +121,7 @@ final class Application
                 echo "WAL维护：iot:wal <archive|restore|verify> <私有归档目录> <源文件|WAL名称> [WAL名称|新目标文件]。\n";
                 echo "备份保留：iot:backup register <私有归档目录> <备份ID> <PG17工具根>；clean <私有归档目录> <PG17工具根> [批次1至100]；status <私有归档目录>；pin|unpin <私有归档目录> <备份ID> <保护ID>。\n";
                 echo "恢复核对：iot:recovery 与独立 broker:recovery <snapshot|status|begin|isolate|review|restore>；snapshot输出敏感身份摘要，begin需恢复ID、操作人和已完成隔离的依据，review需恢复ID、私有清单、已核对SHA256和偏移量。旧备份恢复后须核对证书与调试授权再开放。\n";
-                echo "默认使用 SQLite；空库执行 app:install 后 serve，生产默认使用 Swoole 线程与协程。客户端 /，管理端 /admin；业务接口按固定账号域和租户权限开放。\n";
+                echo "DB_DRIVER 必须与程序的数据库 profile 一致；空库执行 app:install 后 serve，生产默认使用 Swoole 线程与协程。客户端 /，管理端 /admin；业务接口按固定账号域和租户权限开放。\n";
                 echo "前端安装：web:install [--force] [--dry-run]。首次app:install同时安装页面；强制更新只处理内置页面文件，不修改数据库、上传或配置。页面入口 /#/login 和 /#/admin/login。\n";
 
                 return 0;
@@ -164,10 +165,21 @@ final class Application
                 return (int) $result['exit'];
             }
             if (str_starts_with($command, 'broker:')) {
+                RuntimeCapabilities::requireFeature('mqtt');
                 $basePath = Settings::basePath($arguments[0] ?? '', $development);
                 $settings = Settings::load($basePath);
                 $debug = Settings::debug($settings, $development);
                 return self::standalone($settings, $basePath, $command, array_slice($arguments, 2), $development);
+            }
+            if ($command === 'app:schedule') {
+                RuntimeCapabilities::requireFeature('scheduler');
+                $basePath = Settings::basePath($arguments[0] ?? '', $development);
+                $settings = Settings::load($basePath);
+                $options = array_slice($arguments, 2);
+                if ($options !== [] && $options !== ['help']) {
+                    self::recovery($settings, $basePath, ['gate']);
+                }
+                return ApplicationScheduler::run($settings, $basePath, $options);
             }
             if ($command === 'web:install') {
                 $options = array_slice($arguments, 2);
@@ -223,6 +235,7 @@ final class Application
             $environment = Settings::environment($settings, $development);
             $debug = Settings::debug($settings, $development);
             if ($command === 'iot:recovery') {
+                RuntimeCapabilities::requireFeature('iot');
                 self::recovery($settings, $basePath, array_slice($arguments, 2));
                 return 0;
             }
@@ -256,10 +269,14 @@ final class Application
                 return self::migrate($settings, $basePath, array_slice($arguments, 2));
             }
             if (in_array($command, ['app:audit-clean', 'iot:command-clean'], true)) {
+                if ($command === 'iot:command-clean') {
+                    RuntimeCapabilities::requireFeature('iot');
+                }
                 self::pruneRecords($settings, $basePath, array_slice($arguments, 2), $command);
                 return 0;
             }
             if ($command === 'iot:history-clean') {
+                RuntimeCapabilities::requireFeature('iot');
                 self::pruneHistory($settings, $basePath, array_slice($arguments, 2));
                 return 0;
             }
@@ -272,6 +289,7 @@ final class Application
                 return 0;
             }
             if ($command === 'iot:aggregate' || $command === 'iot:aggregate-clean') {
+                RuntimeCapabilities::requireFeature('iot');
                 self::aggregate($settings, $basePath, $command === 'iot:aggregate-clean', array_slice($arguments, 2));
                 return 0;
             }
@@ -402,6 +420,7 @@ final class Application
     /** 相对私有文件目录以APP_BASE_PATH为基准，HTTP和后台角色采用同一启动配置。 */
     private static function exportService(Repository $settings, string $basePath): ExportService
     {
+        RuntimeCapabilities::requireFeature('exports');
         $directory = $settings->text('app.exports.directory');
         return new ExportService(Settings::absolutePath($directory) ? $directory : $basePath . '/' . $directory);
     }
@@ -409,6 +428,7 @@ final class Application
     /** 有界后台角色复用Outbox、队列和Worker；只有工作角色连接Redis，清理可在队列故障时独立执行。 */
     private static function exports(Repository $settings, string $basePath, string $command, array $arguments): void
     {
+        RuntimeCapabilities::requireFeature('exports');
         \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $command, $arguments): void {
             $limit = filter_var($arguments[0] ?? '100', FILTER_VALIDATE_INT);
             if (count($arguments) > 1 || $limit === false || $limit < 1 || $limit > ($command === 'iot:exports-clean' ? 100 : ($command === 'iot:exports-work' ? 3600 : 10000))) {
@@ -465,6 +485,9 @@ final class Application
     /** 设备本地SQLite缓存与平台数据库装配独立；网络发送复用标准客户端及受管信号。 */
     private static function device(Repository $settings, string $basePath, array $arguments): void
     {
+        RuntimeCapabilities::requireFeature('iot');
+        // 设备缓冲始终是本地 SQLite；平台数据库裁剪后不能隐式调用缺失驱动。
+        RuntimeCapabilities::assertDatabase('sqlite');
         if (count($arguments) !== 1 || !in_array($arguments[0], ['state', 'enqueue', 'send', 'listen', 'transfer'], true)) {
             throw new InvalidArgumentException('iot:device需要state、enqueue、send、listen或transfer；enqueue和transfer从标准输入读取JSON');
         }
@@ -554,6 +577,7 @@ final class Application
      */
     private static function mqtt(Repository $settings, string $basePath, string $role, array $arguments): void
     {
+        RuntimeCapabilities::requireFeature('mqtt');
         if (DatabaseFactory::name($settings) !== 'pgsql') {
             throw new InvalidArgumentException('设备MQTT接入需要PostgreSQL同步持久后端');
         }
@@ -743,7 +767,10 @@ final class Application
             ProductController::class => static fn (): ProductController => new ProductController($database, $messages, new ProductService()),
             DeviceController::class => static fn (): DeviceController => new DeviceController($database, $messages, new DeviceService()),
             TransferController::class => static fn (): TransferController => new TransferController($database, $messages),
-            AlarmController::class => static fn (): AlarmController => new AlarmController($database, $messages),
+            AlarmController::class => static function () use ($database, $messages): AlarmController {
+                RuntimeCapabilities::requireFeature('alerts');
+                return new AlarmController($database, $messages);
+            },
             ExportController::class => static fn (): ExportController => new ExportController($database, $messages, self::exportService($settings, $basePath)),
         ], [
             'admin.auth' => static fn (): IotAuthentication => new IotAuthentication($adminIdentities, $messages),
@@ -821,6 +848,7 @@ final class Application
     /** 告警角色有界处理独立待办，命令结束时释放受管资源。 */
     private static function alarm(Repository $settings, string $basePath, array $arguments): void
     {
+        RuntimeCapabilities::requireFeature('alerts');
         \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): void {
             if (count($arguments) > 1 || (isset($arguments[0]) && (!preg_match('/^[1-9][0-9]{0,2}$/D', $arguments[0]) || (int) $arguments[0] > 100))) {
                 throw new InvalidArgumentException('iot:alarm 只接受一个1至100的可选批次');
@@ -843,6 +871,7 @@ final class Application
     /** 通知角色执行有界恢复、relay及worker；清理和HTTP不依赖Redis可用。 */
     private static function notices(Repository $settings, string $basePath, bool $cleanup, array $arguments): void
     {
+        RuntimeCapabilities::requireFeature('alerts');
         \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $cleanup, $arguments): void {
             $batch = filter_var($arguments[0] ?? '100', FILTER_VALIDATE_INT);
             if (count($arguments) > 1 || $batch === false || $batch < 1 || $batch > 100) {
@@ -1443,6 +1472,9 @@ final class Application
     /** 运行已选择的服务器，并在正常退出或异常后关闭；不会自动迁移或生成生产源码。 */
     public static function serve(Repository $settings, string $basePath, bool $development = false, bool $broker = false): void
     {
+        if (!$broker) {
+            RuntimeCapabilities::requireFeature('web');
+        }
         if (!$broker && !$development) {
             CoroutineRuntime::enableIo();
             $listen = $settings->text('app.http.listen');

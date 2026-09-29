@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 // 仅导出本轮已实际链接并独立运行的归档；不把构建宿主 DLL 混入目标 SDK。
-if ($argc !== 4 || PHP_OS_FAMILY !== 'Windows' || PHP_VERSION !== '8.5.10' || !PHP_ZTS) {
-    throw new InvalidArgumentException('需要 Windows PHP 8.5.10 ZTS、运行库工作目录、依赖目录和依赖验证报告');
+if (($argc !== 4 && $argc !== 5) || PHP_OS_FAMILY !== 'Windows' || PHP_VERSION !== '8.5.10' || !PHP_ZTS) {
+    throw new InvalidArgumentException('需要 Windows PHP 8.5.10 ZTS、运行库工作目录、依赖目录、依赖验证报告和可选 profile');
 }
 $root = dirname(__DIR__, 2);
 $work = str_replace('\\', '/', (string) realpath($argv[1]));
@@ -18,6 +18,20 @@ if ($work === '' || $dependencies === '' || file_exists($sdk) || is_link($sdk)) 
 $runtime = json_decode((string) file_get_contents($work . '/evidence/verification.json'), true, 64, JSON_THROW_ON_ERROR);
 $values = json_decode((string) file_get_contents($work . '/phpx-static/evidence/verification.json'), true, 64, JSON_THROW_ON_ERROR);
 $dependencyReport = json_decode((string) file_get_contents($argv[3]), true, 64, JSON_THROW_ON_ERROR);
+$profile = $argv[4] ?? 'all';
+if (!in_array($profile, ['sqlite', 'mysql', 'pgsql', 'all'], true)) {
+    throw new InvalidArgumentException('Windows 静态 SDK profile 无效：' . $profile);
+}
+require_once $root . '/plugin/type-build/src/BuildProfile.php';
+$configuration = getenv('TYPEAPP_BUILD_CONFIGURATION') ?: $root . '/docs/build-config/type-app.json';
+$profiles = \Type\Build\BuildProfile::resolve(json_decode((string) file_get_contents($configuration), true, 64, JSON_THROW_ON_ERROR));
+$features = $profile === 'all' ? array_values(array_unique(array_merge(...array_column($profiles['profiles'], 'features'))))
+    : ($profiles['profiles'][$profile]['features'] ?? throw new RuntimeException('未知 SDK profile'));
+sort($features);
+if (($runtime['profile'] ?? null) !== $profile || ($values['profile'] ?? null) !== $profile || ($runtime['features'] ?? null) !== $features) {
+    throw new RuntimeException('探针 profile 或功能闭包与导出身份不一致');
+}
+$redisEnabled = in_array('redis', $features, true);
 if (($runtime['passed'] ?? false) !== true || ($values['passed'] ?? false) !== true
     || ($dependencyReport['passed'] ?? false) !== true || $runtime['php'] !== PHP_VERSION || $runtime['zts'] !== true
     || $dependencyReport['triplet'] !== 'x64-typeapp-static') {
@@ -67,6 +81,12 @@ foreach ($dependencyReport['libraries'] as $library) {
     if (preg_match('/^[a-zA-Z0-9_+.-]+\.lib$/D', $library['file']) !== 1 || isset($locations[$library['file']])) {
         throw new RuntimeException('静态依赖归档名称无效或重复');
     }
+    if (($profile !== 'pgsql' && $profile !== 'all') && preg_match('/(?i)(?:^|[-_])(?:lib)?pq(?:[-_.]|$)|pgcommon|pgport/', $library['file'])) {
+        continue;
+    }
+    if (($profile !== 'sqlite' && $profile !== 'all') && preg_match('/(?i)sqlite3/', $library['file'])) {
+        continue;
+    }
     $locations[$library['file']] = $dependencies . '/lib/' . $library['file'];
 }
 $verified = array_column($values['archives'], 'sha256', 'file');
@@ -94,14 +114,16 @@ foreach (['LICENSE', 'TSRM/LICENSE', 'Zend/LICENSE', 'Zend/asm/LICENSE', 'ext/da
     'ext/lexbor/LICENSE', 'ext/uri/uriparser/COPYING.BSD-3-Clause', 'ext/pcre/pcre2lib/pcre2.h'] as $name) {
     $documents[] = exportSdkFile($php . '/' . $name, $sdk, 'licenses/php/' . $name);
 }
-$documents[] = exportSdkFile($php . '/ext/redis/LICENSE', $sdk, 'licenses/phpredis/LICENSE');
+if ($redisEnabled) {
+    $documents[] = exportSdkFile($php . '/ext/redis/LICENSE', $sdk, 'licenses/phpredis/LICENSE');
+}
 foreach (['LICENSE', 'thirdparty/nlohmann/LICENSE.MIT', 'thirdparty/php/LICENSE', 'thirdparty/php/ssh2/LICENSE',
     'thirdparty/hiredis/COPYING', 'thirdparty/boost/asm/LICENSE', 'thirdparty/nghttp2/COPYING',
     'thirdparty/nghttp2/LICENSE', 'thirdparty/llhttp/LICENSE-MIT', 'thirdparty/llhttp/LICENSE'] as $name) {
     $documents[] = exportSdkFile($php . '/ext/swoole/' . $name, $sdk, 'licenses/swoole/' . $name);
 }
-$notices = ['typeapp-static.lib' => ['component' => 'PHP、Swoole、phpredis 及随附代码',
-    'version' => 'PHP 8.5.10; Swoole 6.2.1; phpredis 6.3.0',
+$notices = ['typeapp-static.lib' => ['component' => $redisEnabled ? 'PHP、Swoole、phpredis 及随附代码' : 'PHP、Swoole 及随附代码',
+    'version' => $redisEnabled ? 'PHP 8.5.10; Swoole 6.2.1; phpredis 6.3.0' : 'PHP 8.5.10; Swoole 6.2.1',
     'license' => ['PHP-3.01', 'BSD-3-Clause', 'BSD-2-Clause', 'MIT', 'Apache-2.0', 'BSL-1.0'], 'files' => $documents]];
 $phpxLicense = exportSdkFile($phpx . '/LICENSE', $sdk, 'licenses/phpx/LICENSE');
 $gcLicense = exportSdkFile($phpx . '/thirdparty/wren-gc/LICENSE', $sdk, 'licenses/phpx/wren-gc/LICENSE');
@@ -137,7 +159,10 @@ foreach (glob(dirname($dependencies) . '/vcpkg/info/*_x64-typeapp-static.list') 
     }
     $document = exportSdkFile($dependencies . '/share/' . $package . '/copyright', $sdk, 'licenses/vcpkg/' . $package . '/copyright');
     foreach ($owned as $name) {
-        if (!isset($locations[$name]) || isset($notices[$name])) {
+        if (!isset($locations[$name])) {
+            continue;
+        }
+        if (isset($notices[$name])) {
             throw new RuntimeException('依赖许可引用了未知归档或归属重复：' . $name);
         }
         $notices[$name] = ['component' => $package, 'version' => $metadata['versionInfo'], 'license' => $license, 'files' => [$document]];
@@ -146,7 +171,7 @@ foreach (glob(dirname($dependencies) . '/vcpkg/info/*_x64-typeapp-static.list') 
 if (array_diff_key($locations, $notices) !== []) {
     throw new RuntimeException('静态运行库尚有缺少许可材料的归档');
 }
-$manifest = ['protocol' => 1, 'php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'debug' => (bool) PHP_DEBUG,
+$manifest = ['protocol' => 1, 'profile' => $profile, 'features' => $features, 'php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'debug' => (bool) PHP_DEBUG,
     'integer-size' => PHP_INT_SIZE, 'os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
     'archives' => $archives, 'headers' => $headers, 'notices' => $notices, 'patches' => [],
     'preparation' => ['compiler' => 'MSVC x64', 'crt' => 'static', 'dependency-source' => $dependencyReport['source'],
@@ -159,7 +184,7 @@ foreach (['tools/probe-static-windows.ps1', 'tools/static-windows/build-phpx.ps1
     'tools/static-windows/phpx/CMakeLists.txt', 'tools/static-windows/prepare-extensions.php', 'tools/static-windows/export-sdk.php'] as $script) {
     $manifest['preparation']['scripts'][$script] = hash_file('sha256', $root . '/' . $script);
 }
-foreach (['php.tar.xz', 'swoole.tar.gz', 'redis.tar.gz', 'phpx.tar.gz'] as $source) {
+foreach (array_values(array_filter(['php.tar.xz', 'swoole.tar.gz', $redisEnabled ? 'redis.tar.gz' : null, 'phpx.tar.gz'])) as $source) {
     $manifest['sources'][$source] = ['sha256' => hash_file('sha256', $work . '/' . $source)];
 }
 foreach (['adaptations.json', 'extension-adaptations.json', 'phpx-adaptations.json'] as $report) {

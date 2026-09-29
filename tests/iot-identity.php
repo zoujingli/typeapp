@@ -1953,6 +1953,10 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
             }
             $report['devices'] = ['checks' => $deviceEvidence['checks'], 'restart_persisted' => true];
         }
+        if (in_array('--scheduler', $argv, true)) {
+            require __DIR__ . '/iot-scheduler.php';
+            $report['scheduler'] = iotSchedulerChecks($inspection, $command, $environment, $base);
+        }
         $inspection->exec('UPDATE customer_members SET enabled = 0');
         $request('GET', '/customer/profile', $customerToken, $tenantHeaders, null, 403);
         $inspection->exec('UPDATE customer_members SET enabled = 1');

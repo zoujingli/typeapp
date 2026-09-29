@@ -6,7 +6,6 @@
 #define NGHTTP2_STATICLIB
 // MSVC 不提供 POSIX ssize_t；使用上游开关隐藏已弃用接口，保留 nghttp2_ssize 接口。
 #define NGHTTP2_NO_SSIZE_T
-#define LIBXML_STATIC
 #define LIBICONV_STATIC
 #include <ares.h>
 #include <brotli/decode.h>
@@ -14,7 +13,6 @@
 #include <gmpxx.h>
 #include <iconv.h>
 #include <libpq-fe.h>
-#include <libxml/parser.h>
 #include <mpfr.h>
 #include <nghttp2/nghttp2.h>
 #include <openssl/ssl.h>
@@ -47,11 +45,6 @@ int main() {
     if (status != SQLITE_OK) { return 5; }
     if (ares_library_init(ARES_LIB_INIT_ALL) != ARES_SUCCESS) { return 6; }
     ares_library_cleanup();
-    xmlInitParser();
-    xmlDocPtr document = xmlReadMemory("<probe/>", 8, "probe.xml", nullptr, XML_PARSE_NONET);
-    if (document == nullptr) { xmlCleanupParser(); return 7; }
-    xmlFreeDoc(document);
-    xmlCleanupParser();
     if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) { return 8; }
     std::printf("curl=%s\npgsql=%d\nsqlite=%s\nzlib=%s\nzstd=%u\nbrotli=%u\nnghttp2=%s\n",
         curl_version(), PQlibVersion(), sqlite3_libversion(), zlibVersion(), ZSTD_versionNumber(),

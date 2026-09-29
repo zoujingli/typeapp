@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Directory,
     [string]$DependenciesDirectory = '',
     [string]$DependencyVerification = '',
-    [switch]$WithPhpx
+    [switch]$WithPhpx,
+    [ValidateSet('sqlite', 'mysql', 'pgsql', 'all')][string]$Profile = 'all'
 )
 $ErrorActionPreference = 'Stop'
 # 分别验证静态 PHP 核心或完整扩展组合；本入口不生成应用候选，也不修改共享 SDK。
@@ -10,6 +11,8 @@ if ($env:OS -ne 'Windows_NT' -or ![IO.Path]::IsPathFullyQualified($Directory) -o
     throw '需要 Windows x64 和尚不存在的绝对工作目录。'
 }
 $taskRoot = Split-Path $PSScriptRoot -Parent
+$taskFeatures = ''
+$taskRedisEnabled = $false
 $taskWork = [IO.Path]::GetFullPath($Directory)
 New-Item -ItemType Directory -Path $taskWork | Out-Null
 $taskEvidence = Join-Path $taskWork 'evidence'
@@ -133,15 +136,38 @@ foreach ($taskName in $taskSourceEdits.Keys | Sort-Object) {
 $taskAdaptations | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'adaptations.json') -Encoding utf8
 Write-StaticStage 'source adaptations: verified'
 
-$taskConfigure = @('--disable-all', '--disable-cli', '--disable-cgi', '--disable-phpdbg', '--enable-embed', '--enable-zts', '--with-mp=2')
+# RuntimeIni 固定关闭 OPcache；仅保留 PHP 8.5 必需核心，不编入未使用的 JIT。
+$taskConfigure = @('--disable-all', '--disable-cli', '--disable-cgi', '--disable-phpdbg', '--disable-opcache-jit', '--enable-embed', '--enable-zts', '--with-mp=2')
 $taskExtraLibraries = ''
 $taskRuntime = $DependenciesDirectory -ne ''
-$taskRequiredExtensions = @('filter', 'tokenizer', 'ctype', 'session', 'mbstring', 'libxml', 'dom', 'xml', 'SimpleXML',
-    'xmlreader', 'xmlwriter', 'Phar', 'PDO', 'mysqlnd', 'pdo_mysql', 'pdo_pgsql', 'pdo_sqlite', 'sqlite3', 'sockets',
-    'openssl', 'curl', 'zlib', 'iconv', 'redis', 'swoole')
+$taskRequiredExtensions = @('filter', 'tokenizer', 'ctype', 'session', 'mbstring', 'PDO', 'sockets', 'openssl', 'curl', 'zlib', 'iconv', 'swoole')
+$taskDatabaseFlags = @()
+$taskSwooleDatabaseFlags = @()
+if ($Profile -in @('mysql', 'all')) {
+    $taskDatabaseFlags += @('--with-mysqlnd', '--enable-mysqlnd', '--with-pdo-mysql')
+    $taskRequiredExtensions += @('mysqlnd', 'pdo_mysql')
+}
+if ($Profile -in @('pgsql', 'all')) {
+    $taskDatabaseFlags += '--with-pdo-pgsql'
+    $taskSwooleDatabaseFlags += '--enable-swoole-pgsql'
+    $taskRequiredExtensions += 'pdo_pgsql'
+}
+if ($Profile -in @('sqlite', 'all')) {
+    $taskDatabaseFlags += @('--with-pdo-sqlite', '--with-sqlite3')
+    $taskSwooleDatabaseFlags += '--enable-swoole-sqlite'
+    $taskRequiredExtensions += @('pdo_sqlite', 'sqlite3')
+}
 if ($taskRuntime -ne ($DependencyVerification -ne '')) { throw '静态依赖和其真实验证报告必须同时提供。' }
 if ($WithPhpx -and !$taskRuntime) { throw 'PHPX 探针必须先启用并验证完整静态扩展。' }
 if ($taskRuntime) {
+    # 仅作为制备控制器，不加入目标链接输入。先解析应用能力，再决定扩展源码。
+    Get-StaticSource 'https://github.com/swoole/typephp/releases/download/v0.9.0/tpc_v0.9.0_windows_x64.zip' '187c2ca1644b37163d5f67725a29752f91da9e058583a8d3e471a71703570ff6' 'host.zip'
+    $taskHostPhp = Join-Path $taskWork 'tpc_v0.9.0_windows_x64/php.exe'
+    $taskFeatures = & $taskHostPhp -n (Join-Path $PSScriptRoot 'build-profile.php') $Profile
+    if ($LASTEXITCODE -ne 0) { throw '应用 profile 闭包解析失败。' }
+    $env:TYPEAPP_BUILD_FEATURES = $taskFeatures
+    $taskRedisEnabled = (',' + $taskFeatures + ',').Contains(',redis,')
+    if ($taskRedisEnabled) { $taskRequiredExtensions += 'redis' }
     $taskDependencyReport = Get-Content -Raw -LiteralPath $DependencyVerification | ConvertFrom-Json
     if (!$taskDependencyReport.passed -or $taskDependencyReport.triplet -ne 'x64-typeapp-static' -or
         $taskDependencyReport.manifest_sha256 -ne (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'static-windows/vcpkg.json') -Algorithm SHA256).Hash.ToLowerInvariant() -or
@@ -151,6 +177,8 @@ if ($taskRuntime) {
     $taskLibraries = @()
     foreach ($taskLibrary in $taskDependencyReport.libraries) {
         if ($taskLibrary.file -cnotmatch '^[A-Za-z0-9_+.-]+\.lib$' -or $taskLibrary.sha256 -cnotmatch '^[a-f0-9]{64}$') { throw '归档声明无效。' }
+        if (($Profile -ne 'pgsql' -and $Profile -ne 'all') -and $taskLibrary.file -match '(?i)(?:^|[-_])(?:lib)?pq(?:[-_.]|$)|pgcommon|pgport') { continue }
+        if (($Profile -ne 'sqlite' -and $Profile -ne 'all') -and $taskLibrary.file -match '(?i)sqlite3') { continue }
         $taskFile = Join-Path $DependenciesDirectory ('lib/' + $taskLibrary.file)
         if ((Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash.ToLowerInvariant() -ne $taskLibrary.sha256) { throw '第三方静态依赖字节发生变化。' }
         $taskLibraries += '"' + [IO.Path]::GetFullPath($taskFile) + '"'
@@ -160,24 +188,20 @@ if ($taskRuntime) {
     $taskDeps = Join-Path $taskWork 'dependencies'
     Copy-Item -LiteralPath $DependenciesDirectory -Destination $taskDeps -Recurse
     foreach ($taskAlias in @(@('pq.lib', 'libpq.lib'), @('zs.lib', 'zlib_a.lib'), @('sqlite3.lib', 'libsqlite3_a.lib'),
-        @('libxml2.lib', 'libxml2_a.lib'), @('iconv.lib', 'libiconv_a.lib'), @('zstd.lib', 'libzstd.lib'))) {
+        @('iconv.lib', 'libiconv_a.lib'), @('zstd.lib', 'libzstd.lib'))) {
         Copy-Item -LiteralPath (Join-Path $taskDeps ('lib/' + $taskAlias[0])) -Destination (Join-Path $taskDeps ('lib/' + $taskAlias[1]))
     }
-    Get-StaticSource 'https://pecl.php.net/get/redis-6.3.0.tgz' '0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5' 'redis.tar.gz'
+    if ($taskRedisEnabled) { Get-StaticSource 'https://pecl.php.net/get/redis-6.3.0.tgz' '0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5' 'redis.tar.gz' }
     Get-StaticSource 'https://codeload.github.com/swoole/swoole-src/tar.gz/0f3bee2f0ed8704ce33a336e7feabb0115411dd7' 'b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea' 'swoole.tar.gz'
-    Move-Item -LiteralPath (Join-Path $taskWork 'redis-6.3.0') -Destination (Join-Path $taskSource 'ext/redis')
+    if ($taskRedisEnabled) { Move-Item -LiteralPath (Join-Path $taskWork 'redis-6.3.0') -Destination (Join-Path $taskSource 'ext/redis') }
     Move-Item -LiteralPath (Join-Path $taskWork 'swoole-src-0f3bee2f0ed8704ce33a336e7feabb0115411dd7') -Destination (Join-Path $taskSource 'ext/swoole')
-    # 该发行包只提供执行源码适配的构建宿主，绝不加入链接输入或交付文件。
-    Get-StaticSource 'https://github.com/swoole/typephp/releases/download/v0.9.0/tpc_v0.9.0_windows_x64.zip' '187c2ca1644b37163d5f67725a29752f91da9e058583a8d3e471a71703570ff6' 'host.zip'
-    $taskHostPhp = Join-Path $taskWork 'tpc_v0.9.0_windows_x64/php.exe'
     & $taskHostPhp -n (Join-Path $PSScriptRoot 'static-windows/prepare-extensions.php') $taskSource (Join-Path $taskEvidence 'extension-adaptations.json')
     if ($LASTEXITCODE -ne 0) { throw '完整扩展的固定源码适配失败。' }
+    $taskRedisFlags = if ($taskRedisEnabled) { @('--enable-redis') } else { @() }
     $taskConfigure += @("--with-php-build=$taskDeps", '--enable-filter', '--enable-tokenizer', '--enable-ctype', '--enable-session',
-        '--enable-mbstring', '--disable-mbregex', '--with-libxml', '--with-dom', '--with-xml', '--with-simplexml',
-        '--enable-xmlreader', '--enable-xmlwriter', '--enable-phar', '--enable-pdo', '--with-mysqlnd', '--enable-mysqlnd', '--with-pdo-mysql',
-        '--with-pdo-pgsql', '--with-pdo-sqlite', '--with-sqlite3', '--enable-sockets', '--with-openssl=yes', '--with-curl',
-        '--enable-zlib', '--with-iconv', '--enable-redis', '--enable-swoole', '--enable-swoole-thread', '--enable-php-sockets',
-        '--enable-cares', '--enable-swoole-pgsql', '--enable-swoole-sqlite', '--enable-swoole-curl')
+        '--enable-mbstring', '--disable-mbregex', '--enable-pdo') + $taskDatabaseFlags + @(
+        '--enable-sockets', '--with-openssl=yes', '--with-curl', '--enable-zlib', '--with-iconv') + $taskRedisFlags + @(
+        '--enable-swoole', '--enable-swoole-thread', '--enable-php-sockets', '--enable-cares') + $taskSwooleDatabaseFlags + @('--enable-swoole-curl')
     [IO.File]::WriteAllText((Join-Path $taskSource 'typeapp-dependencies.rsp'), ($taskLibraries -join "`r`n") +
         "`r`ncrypt32.lib bcrypt.lib ws2_32.lib advapi32.lib user32.lib normaliz.lib iphlpapi.lib secur32.lib wldap32.lib shell32.lib ole32.lib`r`n", $taskUtf8)
     $taskExtraLibraries = '@typeapp-dependencies.rsp'
@@ -186,7 +210,7 @@ if ($taskRuntime) {
 Push-Location $taskSource
 $taskOriginalCompilerOptions = $env:_CL_
 try {
-    if ($taskRuntime) { $env:_CL_ = ($taskOriginalCompilerOptions + ' /std:c++20 /D CURL_STATICLIB /D CARES_STATICLIB /D NGHTTP2_STATICLIB /D LIBXML_STATIC /D LIBICONV_STATIC').Trim() }
+    if ($taskRuntime) { $env:_CL_ = ($taskOriginalCompilerOptions + ' /std:c++20 /D CURL_STATICLIB /D CARES_STATICLIB /D NGHTTP2_STATICLIB /D LIBICONV_STATIC').Trim() }
     Write-StaticStage 'buildconf: start'
     & .\buildconf.bat 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'buildconf.log')
     if ($LASTEXITCODE -ne 0) { throw 'PHP buildconf 失败。' }
@@ -259,7 +283,7 @@ if ($taskRuntime) {
         if ($null -eq $taskProfile.extensions.$taskExtension) { throw ('静态核心缺少必需扩展：' + $taskExtension) }
     }
 }
-@{ passed=$true; scope=$(if ($taskRuntime) { 'PHP and extensions embed only; no PHPX or application acceptance' } else { 'PHP core embed only; no application or Swoole acceptance' }); php=$taskProfile.php; zts=$taskProfile.zts;
+@{ passed=$true; profile=$Profile; features=($taskFeatures -split ','); scope=$(if ($taskRuntime) { 'PHP and extensions embed only; no PHPX or application acceptance' } else { 'PHP core embed only; no application or Swoole acceptance' }); php=$taskProfile.php; zts=$taskProfile.zts;
     artifact_sha256=(Get-FileHash -LiteralPath $taskProgram -Algorithm SHA256).Hash.ToLowerInvariant(); system_libraries=$taskDlls;
     extensions=$taskProfile.extensions } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
 Write-Host 'Windows 静态 embed 探针通过；范围以 verification.json 为准，尚不代表 PHPX 或应用验收。'
@@ -272,7 +296,7 @@ if ($WithPhpx) {
     if ($LASTEXITCODE -ne 0) { throw 'PHPX 固定源码适配失败。' }
     & (Join-Path $PSScriptRoot 'static-windows/build-phpx.ps1') -PhpSource $taskSource -PhpxSource $taskPhpx `
         -PhpArchive (Join-Path (Split-Path $taskProgram -Parent) 'typeapp-static.lib') `
-        -DependenciesDirectory $DependenciesDirectory -HostPhp $taskHostPhp -Directory (Join-Path $taskWork 'phpx-static')
-    & $taskHostPhp -n (Join-Path $PSScriptRoot 'static-windows/export-sdk.php') $taskWork $DependenciesDirectory $DependencyVerification
+        -DependenciesDirectory $DependenciesDirectory -HostPhp $taskHostPhp -Directory (Join-Path $taskWork 'phpx-static') -Profile $Profile
+    & $taskHostPhp -n (Join-Path $PSScriptRoot 'static-windows/export-sdk.php') $taskWork $DependenciesDirectory $DependencyVerification $Profile
     if ($LASTEXITCODE -ne 0) { throw 'Windows 静态 SDK 导出失败。' }
 }

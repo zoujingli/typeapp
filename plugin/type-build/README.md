@@ -6,6 +6,10 @@ TypeApp 的开发与构建组件：生成配置、路由和模型，审计完整
 
 `package` 只输出一个可执行文件，要求非系统运行库静态链接、资源与许可材料内嵌，启动不释放运行库。构建时通过 `TYPE_STATIC_RUNTIME` 指定已校验的目标 SDK；缺少静态能力不能通过交付门禁。使用入口、已发布版本和目标系统要求见[构建指南](https://iots.top/#/guide/deployment)。
 
+应用可在 `type-app.json` 用 `build-profiles` 声明数据库与功能，通过 `TYPEAPP_BUILD_PROFILE=sqlite` 或 `build-profile` 选择。每个静态程序只保留所选 PDO 驱动；应用与生产 Composer 包仍全量编译。SDK 的 profile、功能闭包与真实 embed 扩展表必须一致，否则停止构建。物联中心的默认 `sqlite`、`mysql`、`pgsql` 均保留告警、导出、队列与调度，因此仍包含 Redis；通用缓存需显式声明 `cache`。程序在连接前拒绝不匹配的 `DB_DRIVER`，不能在运行时换库。
+
+发布链接裁剪未使用代码，封存身份前清理调试符号，再以最终字节计算摘要和体积。四平台 × 三数据库的下一批发布须逐项验收；公开下载只保留十二个主程序、摘要及发布清单，重建 SDK 与源码履约材料由 Actions Artifact 单独保存，不是部署依赖。最新已公开版本及新矩阵的验收状态见[发布说明](https://iots.top/#/guide/releases)。
+
 ## 阅读与操作路径
 
 首次使用先准备应用声明和匹配 SDK，再依次运行 `doctor`、`prepare`、原生构建与 `--inspect`。下面的[最小构建入口](#最小构建入口)给出完整源码与配置；[构建教程](https://iots.top/#/guide/plugins/type-build)补充各步骤的预期结果、静态 SDK 选择、单程序输出与校验命令。

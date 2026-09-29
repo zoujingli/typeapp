@@ -58,7 +58,10 @@ final class RuntimeProfile
         if (in_array('swoole', $requested, true)) {
             $requested[] = 'curl';
         }
-        $required = $this->dependencies($requested);
+        // 宿主 Swoole 可能启用了全部数据库桥接，其 ReflectionExtension 依赖
+        // 不能用于裁剪后的目标 SDK。静态 embed 在模块启动时验证自身依赖表，
+        // 下方真实探针同时拒绝缺失扩展、启动警告及 ABI 不符。
+        $required = $static === null ? $this->dependencies($requested) : array_values(array_unique($requested));
         BuildLock::path($directory);
         $leaf = basename($directory);
         $directory = BuildPlatform::resolve(dirname($directory)) . '/' . $leaf;
@@ -152,6 +155,12 @@ final class RuntimeProfile
                 throw new RuntimeException('模块加载后真实embed仍缺少扩展：' . $name);
             }
             $versions[$name] = $actual['extensions'][$name];
+        }
+        if ($static !== null) {
+            // 静态模块无法在运行时卸载。记录真实完整模块表，以便发现误编进来的
+            // 数据库或开发扩展；仅记录 requested 会掩盖 SDK 的多余依赖。
+            $versions = $actual['extensions'];
+            ksort($versions);
         }
         foreach ($functions as $function) {
             if (($actual['functions'][$function] ?? false) !== true) {

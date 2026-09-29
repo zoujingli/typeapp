@@ -2,7 +2,17 @@
 
 部署已验证的 TypeApp 单程序时，不需要另行安装 PHP、Swoole、Composer、Node.js 或编译工具。非系统原生运行库由构建流程校验并静态链接进程序；部署者准备匹配的操作系统与系统库基线、配置及应用实际使用的业务服务。
 
-当前 RC10 提供四平台单程序，配置可由环境变量或外置 `.env` 提供。普通启动不释放运行库；物联中心的页面由显式安装命令写入 `public/`。文件形态、系统基线和已验收范围见[构建与部署](deployment.md#当前构建状态)。
+历史 RC10 提供四平台单程序，配置可由环境变量或外置 `.env` 提供；其验收身份不代表当前 `main` 的新构建。当前 `main` 的发布定义为四平台 × `sqlite`、`mysql`、`pgsql` 三个 profile，共 12 个单文件程序，待新的 RC 完成矩阵验收后才会公开。普通启动不释放运行库；物联中心的页面由显式安装命令写入 `public/`。文件形态、系统基线和边界见[构建与部署](deployment.md#当前构建状态)。
+
+## 数据库 profile
+
+每个生产程序在编译时固定一个数据库 profile，运行时不能切换。`sqlite` 使用本地文件；`mysql` 和 `pgsql` 连接外部数据库服务。配置中的 `DB_DRIVER` 与程序不一致时返回 `runtime_profile_database_mismatch` 并拒绝继续；关闭的可选能力返回 `feature_unavailable`。Redis 只在队列、调度、告警或导出等启用能力的 profile 中进入依赖闭包，Redis 服务始终由部署环境提供。
+
+物联中心默认三个 profile 都保留告警、导出、队列与调度，因此仍需为这些角色准备 Redis。数据库 profile 只裁剪原生依赖，不扩大既有业务语义：HTTP 管理、告警和导出支持三库；设备 MQTT 的可靠持久接入仍要求 PostgreSQL 同步后端，应选择 `pgsql`。`sqlite`、`mysql` 不承诺同等持久 MQTT 或集群恢复能力。
+
+设备模拟器 `iot:device` 的本地离线缓冲使用 SQLite，设备端应选择 `sqlite` 程序；它可连接使用 `pgsql` 的平台 MQTT 入口。`mysql`、`pgsql` 程序调用这个设备端角色时会在创建缓冲前返回 `runtime_profile_database_mismatch`，不会另行加载 SQLite 扩展。
+
+Redis 地址分别使用 `IOT_EXPORT_REDIS_*`、`IOT_NOTICES_REDIS_*` 和 `APP_SCHEDULER_REDIS_*`，命名空间在同一部署内保持稳定。维护调度通过显式 `app:schedule` 命令执行，不会随 HTTP 启动自动清理数据。通用缓存默认关闭，只有构建 profile 包含 `cache` 且运行配置开启时才使用 `REDIS_*`。
 
 ## 按使用阶段准备环境
 

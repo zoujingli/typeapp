@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory = $true)][string]$PhpArchive,
     [Parameter(Mandatory = $true)][string]$DependenciesDirectory,
     [Parameter(Mandatory = $true)][string]$HostPhp,
-    [Parameter(Mandatory = $true)][string]$Directory
+    [Parameter(Mandatory = $true)][string]$Directory,
+    [ValidateSet('sqlite', 'mysql', 'pgsql', 'all')][string]$Profile = 'all'
 )
 $ErrorActionPreference = 'Stop'
 # 调用方先核对固定源码、适配和依赖身份。本入口只构建 PHPX，不生成应用候选。
@@ -46,8 +47,11 @@ if ($LASTEXITCODE -ne 0) { throw 'PHPX 完整 SAPI 静态编译失败。' }
 $taskPhpxArchive = Join-Path $taskBuild 'lib/Release/phpx.lib'
 $taskMpdecArchive = Join-Path $taskDecimal 'libmpdec/libmpdec-4.0.1.lib'
 $taskMpdecxxArchive = Join-Path $taskDecimal 'libmpdec++/libmpdec++-4.0.1.lib'
-$taskLibraries = @($taskPhpxArchive, $PhpArchive, $taskMpdecxxArchive, $taskMpdecArchive) +
-    @(Get-ChildItem -LiteralPath (Join-Path $DependenciesDirectory 'lib') -Filter '*.lib' -File | Sort-Object Name | ForEach-Object { $_.FullName })
+$taskDependencyLibraries = @(Get-ChildItem -LiteralPath (Join-Path $DependenciesDirectory 'lib') -Filter '*.lib' -File | Sort-Object Name | Where-Object {
+    ($Profile -in @('pgsql', 'all') -or $_.Name -notmatch '(?i)(?:^|[-_])(?:lib)?pq(?:[-_.]|$)|pgcommon|pgport') -and
+    ($Profile -in @('sqlite', 'all') -or $_.Name -notmatch '(?i)sqlite3')
+} | ForEach-Object { $_.FullName })
+$taskLibraries = @($taskPhpxArchive, $PhpArchive, $taskMpdecxxArchive, $taskMpdecArchive) + $taskDependencyLibraries
 $taskProgram = Join-Path $Directory 'phpx-probe.exe'
 & cl.exe /nologo /MT /EHsc /O2 /std:c++20 /utf-8 /Zc:__cplusplus /Zc:preprocessor /D NOMINMAX `
     /D PHP_WIN32=1 /D ZEND_WIN32=1 /D ZTS=1 /D ZEND_DEBUG=0 /D ZEND_ENABLE_STATIC_TSRMLS_CACHE=1 /D ENABLE_INTSAFE_SIGNED_FUNCTIONS `
@@ -56,7 +60,7 @@ $taskProgram = Join-Path $Directory 'phpx-probe.exe'
     "/I$taskBuild/mpdecimal-include" "/I$taskDecimal/libmpdec++" "/I$Directory" (Join-Path $PSScriptRoot 'phpx-probe.cpp') `
     "/Fo$Directory/phpx-probe.obj" "/Fe$taskProgram" /link @taskLibraries `
     kernel32.lib user32.lib advapi32.lib shell32.lib ws2_32.lib ole32.lib oleaut32.lib dnsapi.lib psapi.lib bcrypt.lib `
-    pathcch.lib iphlpapi.lib crypt32.lib normaliz.lib secur32.lib wldap32.lib winmm.lib synchronization.lib `
+    pathcch.lib iphlpapi.lib crypt32.lib normaliz.lib secur32.lib wldap32.lib winmm.lib synchronization.lib /DEBUG:NONE /INCREMENTAL:NO /OPT:REF /OPT:ICF `
     2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'link.log')
 if ($LASTEXITCODE -ne 0) { throw 'PHPX 与静态 PHP 的真实链接失败。' }
 $taskImports = & dumpbin.exe /nologo /dependents $taskProgram
@@ -81,6 +85,6 @@ try {
 Copy-Item -LiteralPath $taskProgram -Destination (Join-Path $taskEvidence 'phpx-probe.exe')
 @{passed=$true; scope='PHPX static probe only; no application acceptance';
     program_sha256=(Get-FileHash -LiteralPath $taskProgram -Algorithm SHA256).Hash.ToLowerInvariant();
-    system_libraries=$taskDlls; archives=@($taskLibraries | ForEach-Object {
+    profile=$Profile; system_libraries=$taskDlls; archives=@($taskLibraries | ForEach-Object {
         @{file=[IO.Path]::GetFileName($_); sha256=(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()}
     })} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8

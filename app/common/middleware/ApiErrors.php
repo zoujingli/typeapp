@@ -49,6 +49,8 @@ final class ApiErrors implements MiddlewareInterface
         }
         try {
             return $handler->handle($request->withAttribute('app.request_id', $requestId));
+        } catch (\app\common\bootstrap\RuntimeCapabilityException $capabilityError) {
+            return $this->response(503, ['error' => $capabilityError->errorCode()], $requestId);
         } catch (HttpError $httpError) {
             return $this->response($httpError->status(), ['error' => $httpError->errorCode()], $requestId);
         } catch (TaskException $taskError) {

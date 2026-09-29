@@ -34,6 +34,12 @@
 
 `compiler` 只接受 0–3 的优化级别、布尔 debug 和 1–64 的并发数，不允许注入任意编译器或链接器命令。debug 的实际优化行为遵从固定 TypePHP 版本。默认版本是 `0.0.0-dev`。能力可以由应用或包的 `extra.type.capabilities` 声明，冲突版本拒绝；生成任务注册中的实际消息类型/版本也会合并记录。schema/cache 兼容版本是维护者声明，不会据此推断数据库已经迁移或自动修改数据库。
 
+静态候选的 `size-breakdown` 由最终封存的可执行文件生成，`total` 与下载程序字节数一致（包括身份清单或 Mach-O 签名）。`code` 来自 ELF/Mach-O/PE 的可执行区段，`data` 是其余文件字节，包括文件头、常量、许可和身份信息，满足 `code + data = total`。`frontend` 是 `web/` 内嵌原文字节之和；`native` 是参与链接的静态归档输入大小，两者是审计子项，不能再与 code/data 相加。清理后 Linux/Windows 的非必要符号为零；macOS 仍可保留动态链接需要的外部符号和 Apple 链接器标记，`symbols` 记录实际符号表及字符串表大小。调试区段、未清理的本地符号或 PE 调试目录会阻止封存。
+
+编译前身份记录 `profile`、真实 embed 扩展、静态归档和 `system-link-flags`；最终构建报告及发布清单的 `system-libraries` 才是 `readelf`、`otool` 或 `dumpbin` 实测的动态加载项。生成的 PHP 身份不伪装成链接后的测量结果。profile、SDK 内容和 strip 策略均影响缓存键，strip 完成后才封存原生字节摘要。
+
+发布门禁从更早的公开 profile Release 读取基线，按同平台、同 profile 比较最终字节。增长超过 5% 时，必须在 `.github/release-size-policy.json` 的 `explanations[版本][平台-profile]` 写明具体依赖或功能变化；没有说明就失败。首次 profile 发布记录空基线，不把历史全驱动程序当成同 profile。基线版本、提交、清单摘要和比较结果随候选封存，恢复重试沿用原候选。
+
 ## 缓存与发布
 
 默认缓存位于 `build/cache/artifacts/<构建身份>`，只支持当前构建用户拥有、其他用户不可写的本地目录。相同输出的构建先互斥；相同缓存键也有独立锁，默认等待最多 30 秒。缓存记录和完整 ELF 同时准备后以目录重命名提交，其他构建不会看到半成品。

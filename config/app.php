@@ -26,6 +26,15 @@ return [
         'standby' => env('BROKER_STANDBY_NAMES', ''),
         'probe_token' => env('BROKER_PROBE_TOKEN', ''),
     ],
+    'scheduler' => [
+        'namespace' => env('APP_SCHEDULER_NAMESPACE', 'typeapp-iot'),
+        'redis_host' => env('APP_SCHEDULER_REDIS_HOST', '127.0.0.1'),
+        'redis_port' => env('APP_SCHEDULER_REDIS_PORT', 6379),
+        'redis_username' => env('APP_SCHEDULER_REDIS_USERNAME', ''),
+        'redis_password' => env('APP_SCHEDULER_REDIS_PASSWORD', ''),
+        'redis_tls' => env('APP_SCHEDULER_REDIS_TLS', false),
+        'redis_ca' => env('APP_SCHEDULER_REDIS_CA', ''),
+    ],
     'exports' => [
         'directory' => env('IOT_EXPORT_DIRECTORY', 'storage/exports'),
         'namespace' => env('IOT_EXPORT_NAMESPACE', 'typeapp-iot'),

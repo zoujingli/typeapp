@@ -45,7 +45,7 @@ if (!$taskLibraries.Count -or @(Get-ChildItem -LiteralPath $taskPrefix -Filter '
     throw '目标依赖为空或仍携带非系统 DLL。'
 }
 $taskProgram = Join-Path $taskWork 'dependencies-probe.exe'
-& cl.exe /nologo /MT /EHsc /O2 /std:c++17 "/I$taskPrefix/include" "/I$taskPrefix/include/libxml2" "/I$taskPrefix/include/postgresql" `
+& cl.exe /nologo /MT /EHsc /O2 /std:c++17 "/I$taskPrefix/include" "/I$taskPrefix/include/postgresql" `
     (Join-Path $taskInput 'dependencies-probe.cpp') "/Fo$taskWork/dependencies-probe.obj" "/Fe$taskProgram" /link @taskLibraries `
     crypt32.lib bcrypt.lib ws2_32.lib advapi32.lib user32.lib normaliz.lib iphlpapi.lib secur32.lib wldap32.lib shell32.lib ole32.lib `
     2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'link.log')

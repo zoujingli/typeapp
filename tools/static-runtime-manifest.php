@@ -13,18 +13,29 @@ use Type\Testing\Process;
 
 // Unix SDK 制备入口：登记本轮构建的归档、目标头文件和许可原文。
 // 不能用清单生成或归档后缀代替最终应用的静态加载及业务验收。
-if ($argc !== 3 || !in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true) || PHP_VERSION !== '8.5.10' || !PHP_ZTS
+if (($argc !== 3 && $argc !== 4) || !in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true) || PHP_VERSION !== '8.5.10' || !PHP_ZTS
     || (PHP_OS_FAMILY === 'Darwin' && php_uname('m') !== 'arm64')
     || (PHP_OS_FAMILY === 'Linux' && !in_array(php_uname('m'), ['x86_64', 'aarch64'], true))) {
-    throw new InvalidArgumentException('用法：锁定 PHP 8.5.10 ZTS static-runtime-manifest.php <制备工作目录> <PostgreSQL静态SDK根目录>');
+    throw new InvalidArgumentException('用法：锁定 PHP 8.5.10 ZTS static-runtime-manifest.php <制备工作目录> <PostgreSQL静态SDK根目录> [sqlite|mysql|pgsql|all]');
 }
 $root = dirname(__DIR__);
 $work = BuildPlatform::resolve($argv[1]);
 $pgsql = BuildPlatform::resolve($argv[2]);
+$profile = $argv[3] ?? 'all';
+if (!in_array($profile, ['sqlite', 'mysql', 'pgsql', 'all'], true)) {
+    throw new InvalidArgumentException('静态 SDK profile 无效：' . $profile);
+}
+$featureResult = (new Process([PHP_BINARY, $root . '/tools/build-profile.php', $profile]))->wait(10);
+if (!$featureResult->successful()) {
+    throw new RuntimeException('无法核对 SDK 功能闭包：' . $featureResult->stderr);
+}
+$features = explode(',', trim($featureResult->stdout));
+$redisEnabled = in_array('redis', $features, true);
+$intlEnabled = in_array('intl', $features, true);
 $sdk = $work . '/sdk';
 $php = $work . '/src/php-8.5.10';
 $phpx = $work . '/src/phpx';
-$materials = $root . '/plugin/type-build/resources/swoole/licenses';
+$materials = $root . '/plugin/type-build/resources/swoole/LICENSES';
 $notices = [];
 $dependencies = [];
 $archives = [];
@@ -61,6 +72,12 @@ function staticSdkArchive(string $sdk, string $source): array
     if (realpath($source) !== realpath($destination) && !copy($source, $destination)) {
         throw new RuntimeException('静态归档复制失败');
     }
+    // 仅清理任务 SDK 副本中的调试信息，保留重链接必需的全局符号。
+    $strip = PHP_OS_FAMILY === 'Darwin' ? ['/usr/bin/strip', '-S', $destination] : ['strip', '--strip-debug', $destination];
+    $result = (new Process($strip))->wait(120);
+    if (!$result->successful()) {
+        throw new RuntimeException('静态归档调试信息清理失败：' . $result->stderr);
+    }
     return ['file' => 'lib/' . basename($source), 'sha256' => hash_file('sha256', $destination)];
 }
 
@@ -73,14 +90,16 @@ foreach (['LICENSE', 'TSRM/LICENSE', 'Zend/LICENSE', 'Zend/asm/LICENSE', 'ext/da
     'ext/lexbor/LICENSE', 'ext/uri/uriparser/COPYING.BSD-3-Clause', 'ext/pcre/pcre2lib/pcre2.h'] as $name) {
     $documents[] = staticSdkDocument($sdk, $php . '/' . $name, 'php/' . $name);
 }
-$documents[] = staticSdkDocument($sdk, $php . '/ext/redis/LICENSE', 'phpredis/LICENSE');
+if ($redisEnabled) {
+    $documents[] = staticSdkDocument($sdk, $php . '/ext/redis/LICENSE', 'phpredis/LICENSE');
+}
 foreach (['LICENSE', 'thirdparty/nlohmann/LICENSE.MIT', 'thirdparty/php/LICENSE', 'thirdparty/php/ssh2/LICENSE',
     'thirdparty/hiredis/COPYING', 'thirdparty/boost/asm/LICENSE', 'thirdparty/nghttp2/COPYING',
     'thirdparty/nghttp2/LICENSE', 'thirdparty/llhttp/LICENSE-MIT', 'thirdparty/llhttp/LICENSE'] as $name) {
     $documents[] = staticSdkDocument($sdk, $php . '/ext/swoole/' . $name, 'swoole/' . $name);
 }
-$notices['libphp.a'] = ['component' => 'PHP、Swoole、phpredis 及随附代码',
-    'version' => 'PHP 8.5.10; Swoole 6.2.1; phpredis 6.3.0',
+$notices['libphp.a'] = ['component' => $redisEnabled ? 'PHP、Swoole、phpredis 及随附代码' : 'PHP、Swoole 及随附代码',
+    'version' => $redisEnabled ? 'PHP 8.5.10; Swoole 6.2.1; phpredis 6.3.0' : 'PHP 8.5.10; Swoole 6.2.1',
     'license' => ['PHP-3.01', 'BSD-3-Clause', 'BSD-2-Clause', 'MIT', 'Apache-2.0', 'BSL-1.0'], 'files' => $documents];
 $documents = [];
 foreach (['LICENSE', 'thirdparty/mpdecimal/COPYRIGHT.txt', 'thirdparty/wren-gc/LICENSE'] as $name) {
@@ -97,6 +116,9 @@ $formulas = [
     'brotli' => [['libbrotlienc.a', 'libbrotlidec.a', 'libbrotlicommon.a'], 'MIT', ['LICENSE']],
     'sqlite' => [['libsqlite3.a'], 'public-domain', []],
 ];
+if ($profile !== 'all' && $profile !== 'sqlite') {
+    unset($formulas['sqlite']);
+}
 foreach (PHP_OS_FAMILY === 'Darwin' ? $formulas : [] as $formula => [$names, $license, $files]) {
     $resolved = (new Process(['brew', '--prefix', $formula]))->wait(10);
     if (!$resolved->successful()) {
@@ -136,12 +158,15 @@ if (PHP_OS_FAMILY === 'Linux') {
         'libssl-dev' => [['libssl.a', 'libcrypto.a'], 'Apache-2.0'],
         'libbrotli-dev' => [['libbrotlienc.a', 'libbrotlidec.a', 'libbrotlicommon.a'], 'MIT'],
         'libsqlite3-dev' => [['libsqlite3.a'], 'public-domain'],
-        'libxml2-dev' => [['libxml2.a'], 'MIT'],
-        'libicu-dev' => [['libicuuc.a', 'libicudata.a'], 'MIT'],
-        'liblzma-dev' => [['liblzma.a'], 'public-domain'],
         'zlib1g-dev' => [['libz.a'], 'Zlib'],
         'libnghttp2-dev' => [['libnghttp2.a'], 'MIT'],
     ];
+    if ($intlEnabled) {
+        $packages['libicu-dev'] = [['libicuuc.a', 'libicudata.a'], 'MIT'];
+    }
+    if ($profile !== 'all' && $profile !== 'sqlite') {
+        unset($packages['libsqlite3-dev']);
+    }
     $common = [];
     foreach (['Apache-2.0', 'GPL-2', 'GPL-3', 'LGPL-2', 'LGPL-2.1', 'LGPL-3'] as $name) {
         $common[] = staticSdkDocument($sdk, '/usr/share/common-licenses/' . $name, 'debian/common/' . $name);
@@ -171,10 +196,12 @@ if (PHP_OS_FAMILY === 'Linux') {
     $notices['libcares.a'] = ['component' => 'c-ares', 'version' => '1.34.8', 'license' => 'MIT',
         'files' => [staticSdkDocument($sdk, $work . '/src/c-ares-1.34.8/LICENSE.md', 'c-ares/LICENSE.md')]];
 }
-foreach (['libpq.a', 'libpgcommon_shlib.a', 'libpgport_shlib.a'] as $name) {
-    $archives[] = staticSdkArchive($sdk, $pgsql . '/lib/' . $name);
-    $notices[$name] = ['component' => 'PostgreSQL client', 'version' => '17.11', 'license' => 'PostgreSQL',
-        'files' => [staticSdkDocument($sdk, PHP_OS_FAMILY === 'Linux' ? $work . '/src/postgresql-17.11/COPYRIGHT' : $materials . '/postgresql/COPYRIGHT', 'postgresql/COPYRIGHT')]];
+if ($profile === 'all' || $profile === 'pgsql') {
+    foreach (['libpq.a', 'libpgcommon_shlib.a', 'libpgport_shlib.a'] as $name) {
+        $archives[] = staticSdkArchive($sdk, $pgsql . '/lib/' . $name);
+        $notices[$name] = ['component' => 'PostgreSQL client', 'version' => '17.11', 'license' => 'PostgreSQL',
+            'files' => [staticSdkDocument($sdk, PHP_OS_FAMILY === 'Linux' ? $work . '/src/postgresql-17.11/COPYRIGHT' : $materials . '/postgresql/COPYRIGHT', 'postgresql/COPYRIGHT')]];
+    }
 }
 $archiveTargets = [];
 foreach (PHP_OS_FAMILY === 'Darwin' ? $archives : [] as $archive) {
@@ -199,15 +226,14 @@ foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sdk . '/i
     }
 }
 ksort($headers);
-$manifest = ['protocol' => 1, 'php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'debug' => (bool) PHP_DEBUG,
+$manifest = ['protocol' => 1, 'profile' => $profile, 'php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'debug' => (bool) PHP_DEBUG,
     'integer-size' => PHP_INT_SIZE, 'os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
     'archives' => $archives, 'headers' => array_values($headers), 'notices' => $notices, 'patches' => [],
     'sources' => [
         'php' => ['version' => '8.5.10', 'archive-sha256' => '6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957'],
-        'redis' => ['version' => '6.3.0', 'archive-sha256' => '0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5'],
         'swoole' => ['reference' => '0f3bee2f0ed8704ce33a336e7feabb0115411dd7', 'archive-sha256' => 'b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea'],
         'phpx' => ['reference' => InstalledVersions::getReference('swoole/phpx')],
-    ], 'dependency-inputs' => $dependencies,
+    ], 'dependency-inputs' => $dependencies, 'features' => $features,
     'preparation' => ['script-sha256' => hash_file('sha256', __DIR__ . (PHP_OS_FAMILY === 'Darwin' ? '/prepare-static-macos.sh' : '/prepare-static-linux.sh')), 'manifest-script-sha256' => hash_file('sha256', __FILE__),
         'php-header-patch-sha256' => hash_file('sha256', __DIR__ . '/php-hash-cxx.patch'), 'minimum-macos' => $minimum,
         'archive-minimum-macos' => $archiveTargets],
@@ -216,6 +242,9 @@ if (PHP_OS_FAMILY === 'Linux') {
     unset($manifest['preparation']['minimum-macos'], $manifest['preparation']['archive-minimum-macos']);
     $manifest['sources']['curl'] = ['version' => '8.22.0', 'archive-sha256' => 'f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7'];
     $manifest['sources']['c-ares'] = ['version' => '1.34.8', 'archive-sha256' => 'c222b6d681096f9444d2c4863d2c1174019e27cacca0a4a5c114d36dd7d7bf78'];
+}
+if ($redisEnabled) {
+    $manifest['sources']['redis'] = ['version' => '6.3.0', 'archive-sha256' => '0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5'];
 }
 if (is_dir($work . '/src/postgresql-17.11')) {
     $manifest['sources']['postgresql'] = ['version' => '17.11', 'archive-sha256' => 'dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979'];

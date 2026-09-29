@@ -39,6 +39,18 @@ composer require zoujingli/type-scheduler:1.0.0-rc.10
 
 ## 最小使用示例
 
+物联中心在当前源码中提供 `app:schedule`，复用本组件执行固定的维护任务。完成安装并设置 `APP_SCHEDULER_REDIS_*` 后，用对应数据库 profile 的程序执行：
+
+```bash
+./app app:schedule once
+./app app:schedule history
+./app app:schedule work 60 1000
+```
+
+两个已编译任务每分钟分别清理管理端、客户端满 180 天的审计，每次每端至多 100 条；历史返回实际删除数量及是否还有积压。普通 `serve` 不自动启动调度。`work` 的次数和间隔明确有界，可由服务管理器监督；不接受 shell 命令或源码路径。不同部署使用不同 `APP_SCHEDULER_NAMESPACE`，同一部署的多个调度角色保持相同命名空间以共享游标。
+
+调度 Redis 需要持久化和 `noeviction`，可以与同策略的可靠队列共用服务，但不能放在可淘汰的缓存实例。Redis 游标与数据库事务不是跨资源原子提交；中断任务按组件规则记为待核对，清理本身可幂等重跑。关闭 `scheduler` 或 `redis` 的 profile 会明确返回 `feature_unavailable`。这个入口随新的 profile 候选验收，不能套用到历史 RC10。
+
 此例在 Asia/Shanghai 每天 09:00 触发报表任务，单次运行只执行一次 tick。先准备安全的本地状态目录，再按[运行声明式示例](../components.md#运行声明式示例)使用带参数启动器。
 
 ```php

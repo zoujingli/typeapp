@@ -10,6 +10,22 @@ use RuntimeException;
 final class BuildCapabilities
 {
     /**
+     * 运行能力与消息/schema 协议分开记录；扩展来自真实 embed，系统链接参数来自受审计 SDK。
+     * 最终动态加载项只能在链接完成后由构建报告及发布清单补充，不能在生成源码时猜测。
+     * @param array<string,mixed>|null $profile
+     * @param list<string> $extensions
+     * @return array<string,mixed>
+     */
+    public function runtime(?array $profile, array $extensions, ?StaticRuntimeSdk $sdk): array
+    {
+        return ['name' => $profile['name'] ?? null, 'database' => $profile['database'] ?? null,
+            'features' => $profile['features'] ?? [], 'extensions' => $extensions,
+            'static-archives' => $sdk === null ? [] : array_map('basename', $sdk->archives()),
+            'system-link-flags' => $sdk?->systemFlags() ?? [],
+            'rejected-capabilities' => BuildProfile::rejectedCapabilities($profile)];
+    }
+
+    /**
      * 校验并合并数据库、消息和缓存版本集合，相同名称的冲突声明直接失败。
      * @param array<string, mixed> $settings 应用构建配置。
      * @param array<string, array<string, mixed>> $packages 已选中的生产包元数据。

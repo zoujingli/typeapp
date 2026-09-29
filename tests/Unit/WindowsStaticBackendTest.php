@@ -25,6 +25,10 @@ final class WindowsStaticBackendTest extends TestCase
         self::assertStringNotContainsString(' /MD', $native);
         self::assertStringContainsString('/NODEFAULTLIB:MSVCRT', $backend->buildLinkOptions());
         self::assertStringNotContainsString('/NODEFAULTLIB:LIBCMT', $backend->buildLinkOptions());
+        foreach (['/DEBUG:NONE', '/INCREMENTAL:NO', '/OPT:REF', '/OPT:ICF'] as $flag) {
+            self::assertStringContainsString($flag, $backend->buildLinkOptions());
+        }
+        self::assertStringNotContainsString('/DEBUG:NONE', $backend->buildLinkOptions(['debug' => true]));
     }
 
     public function testExplicitDynamicCrtDoesNotSilentlyChangeTheStaticTarget(): void
