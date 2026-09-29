@@ -14,8 +14,21 @@ function identityCommand(array $command, array $environment): array
     $process = new Process($command, dirname(__DIR__), $environment);
     try {
         $result = $process->wait(30);
-        expect($result->successful(), '人员命令失败：' . $result->stderr);
-        return json_decode($result->stdout, true, 512, JSON_THROW_ON_ERROR);
+        try {
+            expect($result->successful(), '人员命令失败');
+            return json_decode($result->stdout, true, 512, JSON_THROW_ON_ERROR);
+        } catch (Throwable $failure) {
+            // 原生告警可能进入 stdout；保留非 JSON 诊断，不能只留下解析器的 Syntax error。
+            // 人员命令可能返回一次性凭据，故整段 JSON 正文不进入失败日志。
+            $diagnostic = preg_replace('/\{.*\}/s', '<JSON omitted>', $result->stdout . $result->stderr) ?? '';
+            foreach ($environment as $key => $value) {
+                if (preg_match('/PASSWORD|TOKEN|SECRET|CREDENTIAL/i', $key) && is_string($value) && $value !== '') {
+                    $diagnostic = str_replace($value, '<REDACTED>', $diagnostic);
+                }
+            }
+            throw new RuntimeException('人员命令结果无效：exit=' . $result->exitCode . ', stdout-bytes=' . strlen($result->stdout)
+                . ', stdout-sha256=' . hash('sha256', $result->stdout) . "\n" . substr($diagnostic, 0, 8192), 0, $failure);
+        }
     } finally {
         $process->stop();
     }
