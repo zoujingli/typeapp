@@ -113,7 +113,7 @@ composer require zoujingli/type-mqtt:1.0.0-rc.10
 | `--install-store` | 监听前显式建立组件表和索引，仍经过有截止的 worker 与同步证明；运行时不自动迁移。 |
 | `--terminate-session`、`--actor` | 明确终止 Client ID 对应会话并记录管理员身份；仅用于受控管理命令，不向设备暴露。 |
 | `--store-statistics` | 通过有界 worker 读取同一事务快照的分类用量及额度；失败或未知仍返回 `CommitResult`，不能把空值当零积压。 |
-| `MQTT_MAX_CONNECTIONS`、`MQTT_MAX_DEVICE_CONNECTIONS`、`MQTT_MAX_SERVICE_CONNECTIONS` | Swoole Server 配置下示例默认及上限 10100。分类额度默认 10000 设备及 100 服务，实际受物理预算限制，规则见下文。 |
+| `MQTT_MAX_CONNECTIONS`、`MQTT_MAX_DEVICE_CONNECTIONS`、`MQTT_MAX_SERVICE_CONNECTIONS` | Broker 示例默认及上限 10100，Server 与协程 Socket 入口共用接纳预算。分类额度默认 10000 设备及 100 服务，实际受物理预算限制，规则见下文。 |
 | `MQTT_MAX_SESSIONS` | 存储会话总额，默认20000，包含当前在线零期限会话记录及应用会话，可调低。 |
 | `MQTT_DEVICE_MAX_MESSAGES`、`MQTT_DEVICE_MAX_BYTES` | 单设备会话默认10000条/16 MiB，可调低。 |
 | `MQTT_APPLICATION_MAX_MESSAGES`、`MQTT_APPLICATION_MAX_BYTES` | 单应用消费会话默认1000000条/2 GiB，可调低。 |

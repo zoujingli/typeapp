@@ -340,7 +340,7 @@ sequenceDiagram
 | `serve` | 人员与租户 HTTP API；先通过 `app:install` 完成空库安装 |
 | `app:schedule once/history/work` | 当前源码的维护调度入口；用持久 Redis 协调两端审计清理及执行历史，普通启动不自动运行；[配置与例子](plugins/type-scheduler.md#最小使用示例) |
 | `iot:mqtt-install` | 显式安装 MQTT 持久表，并取得同步提交证明 |
-| `iot:mqtt` | 独立 Broker；使用 Swoole Server 与 Process/Thread/Coroutine 角色能力；准备真实 TLS、PostgreSQL 同步主备、唯一节点身份和 worker 命令 |
+| `iot:mqtt` | 独立 Broker；按运行库能力使用 Swoole Server 或 Coroutine Socket，角色沿用 Process/Thread/Coroutine。启用持久消息须准备 PostgreSQL 同步主备、唯一节点身份和 worker 命令；TLS 与传输边界见 [MQTT 说明](plugins/type-mqtt.md) |
 | `iot:ingest` | 独立数据接收；准备单独服务凭据与 TLS CA |
 | `iot:aggregate`、`iot:alarm`、`iot:notices` | 分别执行统计、告警和通知的有界批次；由部署调度重复运行 |
 | `iot:exports`、`iot:exports-work` | 分别按步数或有界时间执行导出后台任务，需专用 Redis 和私有目录 |
