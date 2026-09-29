@@ -202,8 +202,12 @@ if ($taskRuntime) {
     Move-Item -LiteralPath (Join-Path $taskWork 'swoole-src-0f3bee2f0ed8704ce33a336e7feabb0115411dd7') -Destination (Join-Path $taskSource 'ext/swoole')
     & $taskHostPhp -n (Join-Path $PSScriptRoot 'static-windows/prepare-extensions.php') $taskSource (Join-Path $taskEvidence 'extension-adaptations.json')
     if ($LASTEXITCODE -ne 0) { throw '完整扩展的固定源码适配失败。' }
-    $taskRedisFlags = if ($taskRedisEnabled) { @('--enable-redis') } else { @() }
-    if ($taskRedisEnabled -and $Profile -ne 'all') { $taskRedisFlags += '--disable-redis-session' }
+    $taskRedisFlags = @()
+    if ($taskRedisEnabled) {
+        # 单项条件表达式会被 PowerShell 解包成字符串，显式数组保证后续开关仍是独立参数。
+        $taskRedisFlags += '--enable-redis'
+        if ($Profile -ne 'all') { $taskRedisFlags += '--disable-redis-session' }
+    }
     $taskConfigure += @("--with-php-build=$taskDeps", '--enable-filter', '--enable-ctype',
         '--enable-mbstring', '--disable-mbregex', '--enable-pdo') + $taskDatabaseFlags + @(
         '--enable-sockets', '--with-openssl=yes', '--with-curl', '--enable-zlib', '--with-iconv') + $taskRedisFlags + @(
