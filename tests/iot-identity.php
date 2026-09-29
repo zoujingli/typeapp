@@ -1543,11 +1543,17 @@ if ($target === '--php') {
     $target = realpath($target);
     expect($target !== false && is_file($target . '.build.json'), '原生身份验收需要原生产物与构建元数据');
     $built = json_decode((string) file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
-    $profileIni = $built['runtime-profile']['ini'] ?? '';
-    expect(is_string($profileIni) && is_file($profileIni), '原生身份验收需要产物运行配置');
-    // 使用该产物自己的运行配置，避免 CI 共用 ORM 探针缺 openssl 等依赖导致 artifact 无法加载。
-    putenv('TYPE_NATIVE_PHP_INI=' . $profileIni);
-    $command = nativeCommand($target);
+    $identity = (new Type\Build\ArtifactManifest())->read($target, null, $built['sha256']);
+    if (($identity['runtime-linkage'] ?? null) === 'static') {
+        // 单程序已固定内嵌 INI；搬迁原 EXE 复验无需恢复构建机的临时配置目录。
+        $command = [$target];
+    } else {
+        $profileIni = $built['runtime-profile']['ini'] ?? '';
+        expect(is_string($profileIni) && is_file($profileIni), '原生身份验收需要产物运行配置');
+        // 共享库构建使用自己的配置，避免误用缺少 openssl 等扩展的 ORM 探针配置。
+        putenv('TYPE_NATIVE_PHP_INI=' . $profileIni);
+        $command = nativeCommand($target);
+    }
 }
 $workerCommand = $command;
 $base = $root . '/build/iot-identity-' . bin2hex(random_bytes(6));
