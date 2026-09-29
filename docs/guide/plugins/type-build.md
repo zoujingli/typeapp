@@ -59,6 +59,8 @@ flowchart TB
 
 静态 SDK 按发布参数编译，并关闭未使用的 PHP JIT；PHP 8.5 自带的 OPcache 核心仍可能出现在扩展表中。程序启动配置已固定关闭 OPcache，应用和组件继续由 TypePHP 全量 AOT。源码裁剪、TLS 关闭或 PHP 源码回退都不能用来通过体积门禁。
 
+物联中心的 profile 不包含独立 `sqlite3`、`mysqli`、`pgsql` 扩展，也不包含 PHP `session` 和 `tokenizer`。数据库由所选 PDO 驱动访问，账号会话持久化在业务数据库，源码解析在构建机完成；SQLite profile 仍链接 PDO 与 Swoole 协程桥接所需的 SQLite 原生库。`all` 开发 SDK 保留历史扩展，不能作为这些 profile 的发布 SDK 使用。
+
 `cache` 是可选的通用 Redis 缓存，显式声明后才加入其能力；默认队列等功能虽已依赖 Redis，也不会自动开启缓存。内置 SDK 制备脚本当前支持三种数据库名称和 `all` 开发入口；自定义应用可通过 `TYPEAPP_BUILD_CONFIGURATION` 指定含同名 profile 的配置。额外 DOM/XML/intl/zip 能力需要另行准备并验证匹配的静态 SDK，内置制备脚本会明确拒绝，不会静默忽略声明。
 
 ## 安装与依赖

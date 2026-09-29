@@ -140,7 +140,7 @@ Write-StaticStage 'source adaptations: verified'
 $taskConfigure = @('--disable-all', '--disable-cli', '--disable-cgi', '--disable-phpdbg', '--disable-opcache-jit', '--enable-embed', '--enable-zts', '--with-mp=2')
 $taskExtraLibraries = ''
 $taskRuntime = $DependenciesDirectory -ne ''
-$taskRequiredExtensions = @('filter', 'tokenizer', 'ctype', 'session', 'mbstring', 'PDO', 'sockets', 'openssl', 'curl', 'zlib', 'iconv', 'swoole')
+$taskRequiredExtensions = @('filter', 'ctype', 'mbstring', 'PDO', 'sockets', 'openssl', 'curl', 'zlib', 'iconv', 'swoole')
 $taskDatabaseFlags = @()
 $taskSwooleDatabaseFlags = @()
 if ($Profile -in @('mysql', 'all')) {
@@ -153,9 +153,14 @@ if ($Profile -in @('pgsql', 'all')) {
     $taskRequiredExtensions += 'pdo_pgsql'
 }
 if ($Profile -in @('sqlite', 'all')) {
-    $taskDatabaseFlags += @('--with-pdo-sqlite', '--with-sqlite3')
+    $taskDatabaseFlags += '--with-pdo-sqlite'
     $taskSwooleDatabaseFlags += '--enable-swoole-sqlite'
-    $taskRequiredExtensions += @('pdo_sqlite', 'sqlite3')
+    $taskRequiredExtensions += 'pdo_sqlite'
+}
+if ($Profile -eq 'all') {
+    # 历史全量 SDK 与裁剪的应用 profile 分开核验。
+    $taskDatabaseFlags += @('--with-sqlite3', '--enable-session', '--enable-tokenizer')
+    $taskRequiredExtensions += @('sqlite3', 'session', 'tokenizer')
 }
 if ($taskRuntime -ne ($DependencyVerification -ne '')) { throw '静态依赖和其真实验证报告必须同时提供。' }
 if ($WithPhpx -and !$taskRuntime) { throw 'PHPX 探针必须先启用并验证完整静态扩展。' }
@@ -198,7 +203,8 @@ if ($taskRuntime) {
     & $taskHostPhp -n (Join-Path $PSScriptRoot 'static-windows/prepare-extensions.php') $taskSource (Join-Path $taskEvidence 'extension-adaptations.json')
     if ($LASTEXITCODE -ne 0) { throw '完整扩展的固定源码适配失败。' }
     $taskRedisFlags = if ($taskRedisEnabled) { @('--enable-redis') } else { @() }
-    $taskConfigure += @("--with-php-build=$taskDeps", '--enable-filter', '--enable-tokenizer', '--enable-ctype', '--enable-session',
+    if ($taskRedisEnabled -and $Profile -ne 'all') { $taskRedisFlags += '--disable-redis-session' }
+    $taskConfigure += @("--with-php-build=$taskDeps", '--enable-filter', '--enable-ctype',
         '--enable-mbstring', '--disable-mbregex', '--enable-pdo') + $taskDatabaseFlags + @(
         '--enable-sockets', '--with-openssl=yes', '--with-curl', '--enable-zlib', '--with-iconv') + $taskRedisFlags + @(
         '--enable-swoole', '--enable-swoole-thread', '--enable-php-sockets', '--enable-cares') + $taskSwooleDatabaseFlags + @('--enable-swoole-curl')

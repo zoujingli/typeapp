@@ -126,4 +126,18 @@ Windows 原程序复验 [36640808535](https://github.com/zoujingli/typeapp/actio
 
 本机修复版本完成 281 个编译单元，SQLite 程序为 48,097,544 字节，SHA-256 为 `dc27c2687a89122b0c37f49e4b88827e6a278f4fade6b342ab4e51091feb31cd`，构建 ID 为 `0c572165234403ba4a0441f650973b14a25b6944a16f7204103ac856f72d3411`。同一文件通过严格单程序部署及 749 项导出 HTTP 检查，原报告为 `build/single program-73558d40c1d3/verification.json` 与 `build/iot-identity-e7083cf53529/verification.json`。此处证明 macOS 本机行为，Windows 的原故障仍以新 EXE 的实际复验为准。
 
+修复后的完整单元套件通过 182 项测试、3431 个断言，基础检查覆盖 819 个文件，文档检查通过。原程序、构建身份、PHP/原生回归报告及文件锁对照封存为 `.cache/profile-release-evidence-20260930/export-lock-validation.tar.gz`，SHA-256 为 `da64ddb5eb926a0f279d46aa0bfb5b4f779fce274eab82a4db0f7dd99e48504d`。逐文件回读通过，确认测试 Redis 退出和端口释放后回收 900,025,607 逻辑字节；累计回收 7,809,702,466 逻辑字节。对应程序和共享 SDK 仍保留供后续核验。
+
+## 发布前复核基础扩展
+
+复核生产调用者、固定 Swoole 的 PDO 配置及 phpredis 源码后，进一步去除 profile SDK 中未使用的独立 `sqlite3`、PHP `session` 和 `tokenizer` 扩展，并关闭 phpredis 的 PHP 会话适配。账号会话仍由业务数据库持久化，所选 PDO 与 SQLite 原生库保留；默认 Redis 队列、通知、导出和调度不变。历史 `all` SDK 保留原接口，实际 embed 检查会拒绝将其作为裁剪后的 profile SDK。
+
+本机重新制备 SDK 后，真实 embed 扩展表确认三项扩展已移除，运行库加载仅包含系统库。SDK 首次封存因本机 GMP 归档要求 macOS 26 而拒绝声明 macOS 15；随后按实际 macOS 26 基线登记完整输入。这里不将本机结果计作 CI 的 macOS 15 兼容验收。SDK 准备期间的配置对照已回读封存到 `.cache/profile-release-evidence-20260930/extra-trim-sdk-inputs.tar.gz`，SHA-256 为 `5448c6cbd999d9bed20b396d2f4c85b0120b58856ac1b300c898e3f692d7d9c9`，回收已停止的中间目录 199,351,138 逻辑字节。
+
+完整物联中心重新编译 281 个单元，程序为 47,963,128 字节，SHA-256 为 `75c3fef8585af9c9747260557bf6469784d27ae5891f159c7dfe12b9edad248c`，构建 ID 为 `337b49892f25035209d6f08c7cabbaad3a2424b8c962edd8ac4c7e8862648535`。与同机刚完成导出修复的程序相比再减少 134,416 字节；内嵌前端仍为 2,805,419 原文字节。
+
+同一程序通过严格隔离部署、53 项 MQTT TLS 授权 HTTP 检查、752 项告警检查、745 项导出检查及 506 项调度/管理检查。完整单元套件通过 182 项测试、3436 个断言，基础检查覆盖 819 个文件，文档与分发边界检查通过。Windows 原故障与新的完整 SDK 矩阵仍分别由后续运行核验。
+
+本机原始程序、完整身份、SDK 清单及各项报告已逐文件回读封存到 `.cache/profile-release-evidence-20260930/extra-trim-validation.tar.gz`，SHA-256 为 `d741b2dd3b501b2bb0e0fd1923563d69cd8756d2e57b6a592c32b6a497b4a7cb`。确认所属进程退出后回收 6 个测试目录和可重建编译中间文件，共 636,048,538 逻辑字节；本任务累计回收 8,645,102,142 逻辑字节。程序和当前 SDK 继续保留，日常 Redis 实例未被替换或停止。
+
 四平台 × 三数据库的 12 个最终候选、Windows 专用 Redis 测试实例、16 个分发子仓与 Packagist 消费，以及公开下载摘要仍须由新 RC 的真实 Actions 运行完成。发布门禁要求全部组合成功；任何失败都阻止主仓 Release 公开。当前记录不宣称这些远端验收已经完成。

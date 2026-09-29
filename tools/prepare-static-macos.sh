@@ -115,17 +115,22 @@ fi
     task_db_flags=()
     if [[ "$task_profile" == all || "$task_profile" == mysql ]]; then task_db_flags+=(--enable-mysqlnd --with-pdo-mysql=mysqlnd); fi
     if [[ "$task_profile" == all || "$task_profile" == pgsql ]]; then task_db_flags+=(--with-pdo-pgsql --enable-swoole-pgsql); fi
-    if [[ "$task_profile" == all || "$task_profile" == sqlite ]]; then task_db_flags+=(--with-pdo-sqlite --with-sqlite3 --enable-swoole-sqlite); fi
+    if [[ "$task_profile" == all || "$task_profile" == sqlite ]]; then task_db_flags+=(--with-pdo-sqlite --enable-swoole-sqlite); fi
     # 系统 Bash 3 在 set -u 下拒绝展开空数组，必需的 Swoole 开关始终存在。
     task_feature_flags=(--enable-swoole --enable-swoole-thread --enable-cares)
-    if [[ "$task_redis_enabled" == 1 ]]; then task_feature_flags+=(--enable-redis); fi
+    # 全量 SDK 保留历史接口；应用 profile 只需要 PDO、数据库会话及编译期解析。
+    if [[ "$task_profile" == all ]]; then task_feature_flags+=(--with-sqlite3 --enable-session --enable-tokenizer); fi
+    if [[ "$task_redis_enabled" == 1 ]]; then
+        task_feature_flags+=(--enable-redis)
+        if [[ "$task_profile" != all ]]; then task_feature_flags+=(--disable-redis-session); fi
+    fi
     # RuntimeIni 固定关闭 OPcache；AOT 程序不需要另带 PHP JIT 编译器。
     CFLAGS="${CFLAGS:-} -O2 -g0 -ffunction-sections -fdata-sections" \
     CXXFLAGS="${CXXFLAGS:-} -O2 -g0 -ffunction-sections -fdata-sections" \
     LDFLAGS="${LDFLAGS:-} -Wl,-dead_strip" \
     ./configure --prefix="$task_sdk" --disable-all --disable-cli --disable-cgi --disable-phpdbg --disable-opcache-jit \
         --enable-embed=static --enable-zts --enable-zend-signals \
-        --enable-filter --enable-tokenizer --enable-ctype --enable-mbstring --disable-mbregex --enable-session \
+        --enable-filter --enable-ctype --enable-mbstring --disable-mbregex \
         --enable-pdo "${task_db_flags[@]}" --enable-pcntl --enable-posix --enable-sockets \
         --with-openssl --with-curl --with-zlib --with-iconv="$task_os_sdk/usr" \
         "${task_feature_flags[@]}" \

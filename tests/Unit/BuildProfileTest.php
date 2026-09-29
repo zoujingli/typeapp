@@ -42,7 +42,9 @@ final class BuildProfileTest extends TestCase
     {
         $profile = ['name' => 'small', 'database' => 'sqlite', 'features' => ['web']];
         BuildProfile::assertExtensions(['pdo', 'pdo_sqlite', 'swoole'], $profile);
-        foreach ([['pdo_mysql'], ['pdo_sqlite', 'redis'], ['pdo_sqlite', 'phar'], ['pdo_sqlite', 'pdo_mysql']] as $extensions) {
+        foreach ([['pdo_mysql'], ['pdo_sqlite', 'redis'], ['pdo_sqlite', 'phar'], ['pdo_sqlite', 'pdo_mysql'],
+            ['pdo_sqlite', 'sqlite3'], ['pdo_sqlite', 'session'], ['pdo_sqlite', 'tokenizer'],
+            ['pdo_sqlite', 'mysqli'], ['pdo_sqlite', 'pgsql']] as $extensions) {
             try {
                 BuildProfile::assertExtensions($extensions, $profile);
                 self::fail('Invalid extension set accepted');

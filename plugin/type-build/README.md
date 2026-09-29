@@ -8,6 +8,8 @@ TypeApp 的开发与构建组件：生成配置、路由和模型，审计完整
 
 应用可在 `type-app.json` 用 `build-profiles` 声明数据库与功能，通过 `TYPEAPP_BUILD_PROFILE=sqlite` 或 `build-profile` 选择。每个静态程序只保留所选 PDO 驱动；应用与生产 Composer 包仍全量编译。SDK 的 profile、功能闭包与真实 embed 扩展表必须一致，否则停止构建。物联中心的默认 `sqlite`、`mysql`、`pgsql` 均保留告警、导出、队列与调度，因此仍包含 Redis；通用缓存需显式声明 `cache`。程序在连接前拒绝不匹配的 `DB_DRIVER`，不能在运行时换库。
 
+profile 程序不携带独立的 `sqlite3`、`mysqli`、`pgsql` 扩展，也不携带 PHP `session`、`tokenizer`；物联中心使用 PDO、数据库会话及构建期源码解析。对应数据库的原生库仍随 PDO/Swoole 依赖保留，真实 embed 扩展表会拒绝未裁剪的 SDK。`all` 开发 SDK 与发布 profile 分开核验。
+
 发布链接裁剪未使用代码，封存身份前清理调试符号，再以最终字节计算摘要和体积。四平台 × 三数据库的下一批发布须逐项验收；公开下载只保留十二个主程序、摘要及发布清单，重建 SDK 与源码履约材料由 Actions Artifact 单独保存，不是部署依赖。最新已公开版本及新矩阵的验收状态见[发布说明](https://iots.top/#/guide/releases)。
 
 ## 阅读与操作路径

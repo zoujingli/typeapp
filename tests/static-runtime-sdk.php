@@ -24,6 +24,9 @@ $databaseExtensions = match ($sdkProfile) {
 $sdkFeatures = $sdk->identity()['features'] ?? [];
 expect(is_array($sdkFeatures) && array_filter($sdkFeatures, 'is_string') === $sdkFeatures, '静态 SDK 功能清单无效');
 $optionalExtensions = in_array('redis', $sdkFeatures, true) ? ['redis'] : [];
+if ($sdkProfile === 'all') {
+    array_push($optionalExtensions, 'session', 'tokenizer');
+}
 $work = $root . '/build/static-sdk-probe-' . bin2hex(random_bytes(6));
 expect(mkdir($work, 0700, true), '无法创建 SDK 探针目录');
 $profile = (new RuntimeProfile())->prepare(
@@ -32,7 +35,7 @@ $profile = (new RuntimeProfile())->prepare(
     getenv('PHP_HOME') ?: '',
     getenv('PHPX_HOME') ?: '',
     ['ctype', 'curl', 'filter', 'iconv', 'mbstring', 'openssl', 'pdo', ...$databaseExtensions,
-        ...$optionalExtensions, 'session', 'sockets', 'swoole', 'tokenizer', ...(PHP_OS_FAMILY === 'Windows' ? [] : ['pcntl'])],
+        ...$optionalExtensions, 'sockets', 'swoole', ...(PHP_OS_FAMILY === 'Windows' ? [] : ['pcntl'])],
     [],
     $sdk
 );

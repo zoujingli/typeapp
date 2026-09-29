@@ -56,8 +56,9 @@ final class BuildProfile
             || in_array('redis', $extensions, true) !== in_array('redis', $profile['features'], true)) {
             throw new RuntimeException('真实扩展集合与 profile 数据库或 Redis 能力不一致');
         }
-        foreach (['phar', 'xdebug', 'pcov', 'dom', 'xml', 'intl', 'zip'] as $extension) {
-            if (in_array($extension, $extensions, true) && (in_array($extension, ['phar', 'xdebug', 'pcov'], true) || !in_array($extension, $profile['features'], true))) {
+        $excluded = ['phar', 'xdebug', 'pcov', 'sqlite3', 'mysqli', 'pgsql', 'session', 'tokenizer'];
+        foreach ([...$excluded, 'dom', 'xml', 'intl', 'zip'] as $extension) {
+            if (in_array($extension, $extensions, true) && (in_array($extension, $excluded, true) || !in_array($extension, $profile['features'], true))) {
                 throw new RuntimeException('静态 SDK 包含未声明的生产扩展：' . $extension);
             }
         }
