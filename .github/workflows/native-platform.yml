@@ -83,7 +83,7 @@ jobs:
       - name: 检查 Windows 进程与平台行为
         if: inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: |
-          foreach ($arguments in @(@('tests/windows-imports.php'), @('tests/testing-portable.php'), @('tests/build-platform.php'), @('tests/helpers.php','--php'))) {
+          foreach ($arguments in @(@('tests/windows-imports.php'), @('tests/windows-artifact-size.php'), @('tests/testing-portable.php'), @('tests/build-platform.php'), @('tests/helpers.php','--php'))) {
             & "$env:PHP_HOME/php.exe" @arguments
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }

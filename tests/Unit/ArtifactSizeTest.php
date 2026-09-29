@@ -9,6 +9,40 @@ use Type\Build\ArtifactSize;
 
 final class ArtifactSizeTest extends TestCase
 {
+    /** MSVC 发布链接的 POGO 区段布局不是 PDB；只接受完整且有界的该类元数据。 */
+    public function testPeReleaseLayoutMetadataAndDebugRejection(): void
+    {
+        $path = tempnam(dirname(__DIR__, 2) . '/build', 'pe-pogo-');
+        $dos = substr_replace(str_pad('MZ', 64, "\0"), pack('V', 64), 60, 4);
+        $coff = "PE\0\0" . pack('vvVVVvv', 0x8664, 1, 0, 0, 0, 168, 0);
+        $optional = substr_replace(pack('v', 0x20b) . str_repeat("\0", 166), pack('VV', 4112, 28), 160, 8);
+        $payload = pack('VVV', 0, 4096, 16) . str_pad('.text', 8, "\0");
+        $section = str_pad('.text', 8, "\0") . pack('VVVVVVvvV', 64, 4096, 64, 296, 0, 0, 0, 0, 0x60000020);
+        $directory = pack('VVvvVVVV', 0, 0, 0, 0, 13, 20, 4140, 340);
+        $prefix = $dos . $coff . $optional . $section . str_repeat('x', 16);
+        try {
+            file_put_contents($path, $prefix . $directory . $payload);
+            self::assertSame(0, ArtifactSize::measure($path, [], [])['symbols']);
+            foreach ([
+                [$directory, substr_replace($payload, 'RSDS', 0, 4)],
+                [substr_replace($directory, pack('V', 2), 12, 4), $payload],
+                [substr_replace($directory, pack('V', 99), 12, 4), $payload],
+                [substr_replace($directory, pack('V', 9999), 24, 4), $payload],
+                [$directory, substr_replace($payload, 'file.pdb', 12, 8)],
+            ] as [$entry, $body]) {
+                file_put_contents($path, $prefix . $entry . $body);
+                try {
+                    ArtifactSize::measure($path, [], []);
+                    self::fail('调试信息或损坏的布局记录被接受');
+                } catch (\RuntimeException $error) {
+                    self::assertStringContainsString('PE', $error->getMessage());
+                }
+            }
+        } finally {
+            @unlink($path);
+        }
+    }
+
     /** PE32+ 的代码区计量来自区段表；即使程序仍可加载，也拒绝链接器残留的 PDB 目录。 */
     public function testPeCodeSectionAndPdbRejection(): void
     {

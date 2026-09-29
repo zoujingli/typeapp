@@ -161,14 +161,48 @@ final class ArtifactSize
                 $pe = $read($offset, 24);
                 $optional = $read($offset + 24, $u16($pe, 20));
                 if (strlen($optional) < 168 || substr($pe, 0, 4) !== "PE\0\0" || $u16($optional, 0) !== 0x20b
-                    || $u32($pe, 12) !== 0 || $u32($pe, 16) !== 0
-                    || $u32($optional, 160) !== 0 || $u32($optional, 164) !== 0) {
-                    throw new RuntimeException('PE 仍含调试目录、PDB 引用或非必要符号');
+                    || $u32($pe, 12) !== 0 || $u32($pe, 16) !== 0) {
+                    throw new RuntimeException('PE 头无效或仍含非必要符号');
                 }
+                $sections = [];
                 for ($index = 0; $index < $u16($pe, 6); $index++) {
                     $section = $read($offset + 24 + strlen($optional) + $index * 40, 40);
+                    $name = rtrim(substr($section, 0, 8), "\0");
+                    if (str_starts_with($name, '.debug') || str_starts_with($name, '.zdebug')) {
+                        throw new RuntimeException('PE 仍含调试区段：' . $name);
+                    }
+                    $sections[] = $section;
                     if (($u32($section, 36) & 0x20) !== 0) {
                         $code += $u32($section, 16);
+                    }
+                }
+                $metadataRva = $u32($optional, 160);
+                $metadataSize = $u32($optional, 164);
+                if ($metadataRva !== 0 || $metadataSize !== 0) {
+                    // IMAGE_DEBUG_DIRECTORY 也承载 MSVC 的 POGO 区段布局；该记录
+                    // 不含源码符号或 PDB。其他类型仍拒绝，不能只凭 /DEBUG:NONE 放行。
+                    if ($metadataRva === 0 || $metadataSize === 0 || $metadataSize % 28 !== 0 || $metadataSize > 448) {
+                        throw new RuntimeException('PE 调试/PDB 目录无效');
+                    }
+                    $map = static function (int $rva, int $size) use ($sections, $u32): int {
+                        foreach ($sections as $section) {
+                            $start = $u32($section, 12);
+                            if ($rva >= $start && $rva - $start + $size <= $u32($section, 16)) {
+                                return $u32($section, 20) + $rva - $start;
+                            }
+                        }
+                        throw new RuntimeException('PE 调试/PDB 数据越过文件区段');
+                    };
+                    $metadata = $read($map($metadataRva, $metadataSize), $metadataSize);
+                    for ($entry = 0; $entry < $metadataSize; $entry += 28) {
+                        $type = $u32($metadata, $entry + 12);
+                        $size = $u32($metadata, $entry + 16);
+                        $rva = $u32($metadata, $entry + 20);
+                        $pointer = $u32($metadata, $entry + 24);
+                        if ($type !== 13 || $size < 4 || $map($rva, $size) !== $pointer) {
+                            throw new RuntimeException('PE 仍含 PDB、未知或损坏的调试记录，类型：' . $type);
+                        }
+                        self::verifyPeLayout($read($pointer, $size));
                     }
                 }
             } else {
@@ -180,6 +214,31 @@ final class ArtifactSize
             return ['code' => $code, 'symbols' => $symbols];
         } finally {
             fclose($handle);
+        }
+    }
+
+    /** 只接受 MSVC POGO 的签名与有界区段贡献列表，不接受源码路径、PDB 或任意载荷。 */
+    private static function verifyPeLayout(string $payload): void
+    {
+        if (!in_array(substr($payload, 0, 4), ["\0\0\0\0", 'LTCG'], true)) {
+            throw new RuntimeException('PE POGO 签名无效');
+        }
+        $offset = 4;
+        $size = strlen($payload);
+        while ($offset < $size) {
+            if ($offset + 8 >= $size) {
+                throw new RuntimeException('PE POGO 区段布局记录不完整');
+            }
+            $end = strpos($payload, "\0", $offset + 8);
+            if ($end === false || $end - $offset - 8 > 128
+                || preg_match('/^\.[a-zA-Z0-9_.$-]+$/D', substr($payload, $offset + 8, $end - $offset - 8)) !== 1) {
+                throw new RuntimeException('PE POGO 区段布局记录无效');
+            }
+            $next = ($end + 4) & ~3;
+            if ($next > $size || substr($payload, $end, $next - $end) !== str_repeat("\0", $next - $end)) {
+                throw new RuntimeException('PE POGO 对齐数据无效');
+            }
+            $offset = $next;
         }
     }
 }

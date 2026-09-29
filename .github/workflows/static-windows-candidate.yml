@@ -146,6 +146,8 @@ jobs:
         run: |
           & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:PHP_HOME/php.exe" tests/windows-artifact-size.php
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $taskManifest = Join-Path $env:GITHUB_WORKSPACE 'build/static-windows-sdk/manifest.json'
           & "$env:PHP_HOME/php.exe" tests/static-runtime-sdk.php $taskManifest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
