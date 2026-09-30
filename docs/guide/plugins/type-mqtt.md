@@ -30,13 +30,13 @@ flowchart TB
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-mqtt:1.0.0-rc.10
+composer require zoujingli/type-mqtt:1.0.0-rc.13
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.10`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。传递依赖由 Composer 自动解析，提交应用的 `composer.lock` 固定实际版本。源码与包说明见 [type-mqtt 仓库](https://github.com/zoujingli/type-mqtt)。启用 PostgreSQL 持久后端时，在上述基础上添加同版本驱动：
+以上固定该组件的候选版本 `1.0.0-rc.13`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。传递依赖由 Composer 自动解析，提交应用的 `composer.lock` 固定实际版本。源码与包说明见 [type-mqtt 仓库](https://github.com/zoujingli/type-mqtt)。启用 PostgreSQL 持久后端时，在上述基础上添加同版本驱动：
 
 ```sh
-composer require zoujingli/type-orm-pgsql:1.0.0-rc.10
+composer require zoujingli/type-orm-pgsql:1.0.0-rc.13
 ```
 
 PHP 要求 `>=8.4 <8.6`，依赖 OpenSSL、PCRE、JSON 及上述组件；持久后端需要 PDO PostgreSQL。通信、进程、线程、协程与事件循环统一使用 Swoole `>=6.2 <7` 的官方能力，允许固定官方内置 PHP 库按官方机制加载。Broker 优先使用经典 Server，不可用时由 Coroutine Socket 提供 TCP/TLS；客户端统一使用 Coroutine Socket，非协程调用沿现有 CoroutineRuntime 使用官方 Scheduler，持久 worker 使用 Swoole PROC hook 管理的进程管道。原生运行仍需对应扩展，不回退执行业务 PHP 源码。

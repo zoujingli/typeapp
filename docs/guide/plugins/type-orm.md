@@ -4,7 +4,7 @@
 
 提供受管数据库连接、不可变 Query、生成模型、关系、分页、事务、迁移和事务 Outbox。ORM 不选择数据库；安装一个驱动后使用同一公开入口，并保留数据库本身的能力差异。
 
-历史 RC10 已通过四平台默认原生矩阵，覆盖 MySQL、PostgreSQL、SQLite 的 ORM 与应用场景；公开组件批次另完成准确版本和拆分提交的安装、全量 AOT 与三库集成。当前 `main` 的 profile 裁剪矩阵尚未重新公开，独立 ORM、主应用及静态单程序各有自己的验收身份，实际范围见[平台支持表](../platforms.md#当前平台状态)。模型能力和物理连接复用的剩余边界仍按下文说明。
+`v1.0.0-rc.13` 已通过四平台默认原生矩阵，覆盖 MySQL、PostgreSQL、SQLite 的 ORM 与应用场景；公开组件批次另完成准确版本和拆分提交的安装、全量 AOT 与三库集成。12 个静态 profile 程序分别完成所选数据库的隔离部署。独立 ORM、主应用及静态单程序各有自己的验收身份，实际范围见[平台支持表](../platforms.md#当前平台状态)。模型能力和物理连接复用的剩余边界仍按下文说明。
 
 业务 CRUD 使用[Model 与关系](#models-relations-output)，查询和保存无需传入 `Connection`。框架从当前 Swoole 作用域选择端点并管理租约；静态 `search()`、自动租户隔离、默认读从写主及 `master()` 的配置和完整示例见[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)。下面的显式连接和表查询用于基础设施与受控聚合。物理 PDO 复用和完整原生平台验收仍以实际验证结果为准。
 
@@ -35,10 +35,10 @@ flowchart TB
 ```bash
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm:1.0.0-rc.10
+composer require zoujingli/type-orm:1.0.0-rc.13
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.10`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+以上固定该组件的候选版本 `1.0.0-rc.13`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
 
 <a id="models-relations-output"></a>
 

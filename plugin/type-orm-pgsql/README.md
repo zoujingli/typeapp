@@ -11,10 +11,10 @@ PostgreSQL 驱动复用 type-orm 的 Connection、事务和作用域池，独立
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm-pgsql:1.0.0-rc.10
+composer require zoujingli/type-orm-pgsql:1.0.0-rc.13
 ```
 
-以上安装固定候选版本 `1.0.0-rc.10`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+以上安装固定候选版本 `1.0.0-rc.13`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
 连接采用原生预处理、异常模式及明确的连接超时。主键通过 PostgreSQL 的 RETURNING 语义取得，不假设 MySQL 的自增或 DDL 行为。原生执行仍保留参数绑定、错误信息边界和失效租约检查。
 

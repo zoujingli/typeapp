@@ -8,24 +8,24 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 ## 当前平台状态
 
-每个版本重新执行四平台完整验收，并将最终待上传的单个程序复制到隔离环境，执行对应 profile 的数据库、页面安装和真实 API 检查。下表记录已公开 `v1.0.0-rc.10` 的历史原生范围；当前 `main` 新增的四平台 × 三 profile 矩阵尚未形成新的公开版本，跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
+每个版本重新执行四平台完整验收，并将最终待上传的单个程序复制到隔离环境，执行对应 profile 的数据库、页面安装和真实 API 检查。下表记录已公开 `v1.0.0-rc.13` 的范围；四个平台分别提供 `sqlite`、`mysql`、`pgsql` 程序，部署时只选择一个。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
 
-`v1.0.0-rc.10` 对应源码 **`359627e`** 的[完整版本工作流](https://github.com/zoujingli/typeapp/actions/runs/36423368197)通过四平台原生矩阵与静态发布门禁，使用 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2 与内置 Swoole 6.2.1。每个平台用自己的最终程序完成三库部署检查，公开下载字节与候选一致；后续提交仍需自己的验收。
+`v1.0.0-rc.13` 对应源码 **`aa95924`** 的[完整版本工作流](https://github.com/zoujingli/typeapp/actions/runs/36665412680)通过四平台原生矩阵与 12 个静态 profile 发布门禁，使用 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2 与内置 Swoole 6.2.1。各程序分别完成对应数据库的部署检查，公开下载字节与候选一致；后续提交仍需自己的验收。
 
 | 平台与实际环境 | 已通过的范围 | 部署验收边界 |
 | --- | --- | --- |
-| Linux x64，Ubuntu 24.04 | 完整默认矩阵：应用 AOT、三库应用、组件、TLS、恢复与回滚；另验静态 SDK 和单程序 | bubblewrap 禁止读取源码、SDK、Composer 及执行开发工具；最终 ELF 的同一字节完成三库部署 |
-| Linux ARM64，Ubuntu 24.04 原生 ARM runner | 独立 ORM、完整应用 AOT、三库应用、任务、恢复与回滚；另验静态 SDK 和单程序 | bubblewrap 隔离；最终 ARM64 ELF 的同一字节完成三库部署 |
-| macOS ARM64，macOS 15 原生 runner | HTTP、ORM、三库完整应用 AOT、部署、恢复、回滚与 TLS；另验静态单程序 | 系统沙箱禁止读取源码、SDK 和执行开发工具；最终 Mach-O 的同一字节完成三库部署 |
-| Windows x64，Windows 2022 原生 runner | SDK、三库独立 ORM、主应用 PHP/AOT、模板与搬迁；另验静态 SDK 和单程序 | 受限令牌与 ACL 禁止读取源码、SDK 及执行 PHP、MSVC、Node；最终 EXE 的同一字节完成三库部署，并核对权限恢复 |
+| Linux x64，Ubuntu 24.04 | 完整默认矩阵：应用 AOT、三库应用、组件、TLS、恢复与回滚；另验静态 SDK 和单程序 | bubblewrap 禁止读取源码、SDK、Composer 及执行开发工具；三个 profile 的最终 ELF 分别完成对应数据库部署 |
+| Linux ARM64，Ubuntu 24.04 原生 ARM runner | 独立 ORM、完整应用 AOT、三库应用、任务、恢复与回滚；另验静态 SDK 和单程序 | bubblewrap 隔离；三个 profile 的最终 ARM64 ELF 分别完成对应数据库部署 |
+| macOS ARM64，macOS 15 原生 runner | HTTP、ORM、三库完整应用 AOT、部署、恢复、回滚与 TLS；另验静态单程序 | 系统沙箱禁止读取源码、SDK 和执行开发工具；三个 profile 的最终 Mach-O 分别完成对应数据库部署 |
+| Windows x64，Windows 2022 原生 runner | SDK、三库独立 ORM、主应用 PHP/AOT、模板与搬迁；另验静态 SDK 和单程序 | 受限令牌与 ACL 禁止读取源码、SDK 及执行 PHP、MSVC、Node；三个 profile 的最终 EXE 分别完成对应数据库部署，并核对权限恢复 |
 
-三库指 MySQL、PostgreSQL、SQLite。历史 RC10 的程序报告覆盖运行库审计、内嵌前端文件安装与摘要、GET/HEAD 和缓存、平台及客户登录、站点默认值、角色 CRUD 和正常停止；这些报告不替代当前 12 个 profile 程序的重新验收。普通启动不写出运行库，页面通过显式安装命令生成。独立 ORM 和通用模板仍分别验证自己的入口与产物；Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
+三库指 MySQL、PostgreSQL、SQLite。RC13 的 12 个程序分别覆盖运行库审计、数据库 profile 不匹配拒绝、内嵌前端安装与摘要、GET/HEAD 和缓存、平台及客户登录、站点默认值、角色 CRUD 和正常停止，并完成 MQTT TLS 授权、告警通知、导出及调度回归。普通启动不写出运行库，页面通过显式安装命令生成。独立 ORM 和通用模板仍分别验证自己的入口与产物；Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
 
 上述系统版本是实际构建与运行基线，不等于已测试所有更高或更低版本。Linux 程序仍依赖目标系统的 glibc，不适用于 Alpine/musl；开发用共享 Swoole 模块的 Debian 12 基线不能套用于这些 Ubuntu 24.04 静态程序。macOS 程序按最低系统版本与实际加载映像核验，只允许系统库；历史 RC7 目录包的 dyld 缓存摘要限制保留在[旧版验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
-此前 `bf28c8b` 的 [15 组件批次](https://github.com/zoujingli/typeapp/actions/runs/36144180719)与[应用模板分发](https://github.com/zoujingli/typeapp/actions/runs/36146310707)已完成公开安装和三库原生集成。Packagist 的 16 个 `dev-main` 引用与该分发提交一致，自动同步已启用。版本 tag 分发不移动子仓 `main`；安装方式见[组件参考](components.md)。
+本批 15 个组件与应用模板均已发布 `v1.0.0-rc.13` tag 和 GitHub Release，16 个 Packagist 版本与各自拆分提交一致。版本 tag 分发不移动子仓 `main`；`dev-main` 是独立更新的开发分支，不能用它替代固定版本。安装方式见[组件参考](components.md)。
 
-完整源码、程序摘要、重建材料与隔离详情见[单程序验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/single-program-ci-20260928.md)；[开发分支基线](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/native-release-20260925.md)及[更早的平台记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)保留原身份。MySQL、SQLite 仍采用安全关闭重建，完整三库物理连接复用未完成。本轮未运行可选性能基准，默认矩阵通过也不代表全部协议、容量和业务故障组合验收完成。
+完整源码、程序摘要、重建材料与隔离详情见[profile 发布验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/profile-release-20260930.md)；[开发分支基线](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/native-release-20260925.md)及[更早的平台记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)保留原身份。MySQL、SQLite 仍采用安全关闭重建，完整三库物理连接复用未完成。本轮未运行可选性能基准，默认矩阵通过也不代表全部协议、容量和业务故障组合验收完成。
 
 ## 通信结果如何理解
 
@@ -71,6 +71,6 @@ Windows 主应用与模板已通过本轮 HTTP、正常停止和发布包用例�
 3. 在无业务源码、无 Composer 和无编译 SDK 的目标环境验证启动、迁移、运行库校验、搬迁、升级和恢复。
 4. 完成一个程序文件加外置配置的交付，非系统原生库静态链接、启动不释放运行库，并验证干净环境、权限及数据保留。
 
-当前 RC10 已完成四平台单程序发布及本页列出的三库隔离范围；`package-directory` 与 `archive` 仅维护旧目录包。其余协议、全部角色、容量与性能继续按场景验收，不能由单程序发布成功推导出全部框架能力完成。后续版本仍须以同一源码重新通过完整门禁。
+当前 RC13 已完成四平台 × 三数据库 profile 单程序发布及本页列出的隔离范围；`package-directory` 与 `archive` 仅维护旧目录包。其余协议、全部角色、容量与性能继续按场景验收，不能由单程序发布成功推导出全部框架能力完成。后续版本仍须以同一源码重新通过完整门禁。
 
 [系统架构](architecture.md) · [构建与部署](deployment.md) · [实现规划](roadmap.md)

@@ -18,24 +18,24 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过�
 
 ## 创建与驱动选择
 
-从 Packagist 创建独立应用，先选择数据库，再将模板和第一方组件固定到同一批次。以下示例使用 SQLite 和候选版本 `1.0.0-rc.10`：
+从 Packagist 创建独立应用，先选择数据库，再将模板和第一方组件固定到同一批次。以下示例使用 SQLite 和候选版本 `1.0.0-rc.13`：
 
 ```sh
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.10
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.13
 cd my-app
 php configure.php sqlite
 composer config minimum-stability RC
 composer config prefer-stable true
 composer require --no-update \
-  zoujingli/type-core:1.0.0-rc.10 \
-  zoujingli/type-orm:1.0.0-rc.10 \
-  zoujingli/type-orm-sqlite:1.0.0-rc.10 \
-  zoujingli/type-runtime:1.0.0-rc.10 \
-  zoujingli/type-log:1.0.0-rc.10 \
-  zoujingli/type-validate:1.0.0-rc.10
+  zoujingli/type-core:1.0.0-rc.13 \
+  zoujingli/type-orm:1.0.0-rc.13 \
+  zoujingli/type-orm-sqlite:1.0.0-rc.13 \
+  zoujingli/type-runtime:1.0.0-rc.13 \
+  zoujingli/type-log:1.0.0-rc.13 \
+  zoujingli/type-validate:1.0.0-rc.13
 composer require --dev --no-update \
-  zoujingli/type-build:1.0.0-rc.10 \
-  zoujingli/type-testing:1.0.0-rc.10
+  zoujingli/type-build:1.0.0-rc.13 \
+  zoujingli/type-testing:1.0.0-rc.13
 composer install --no-plugins --no-scripts
 php dev.php help
 php dev.php check

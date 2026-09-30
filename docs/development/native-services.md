@@ -96,6 +96,6 @@ Windows普通控制台exe不能直接冒充Windows Service。生成器要求额�
 
 `tests/service-definition.php <原生产物>` 按实际交付形态验证单程序或目录包，覆盖摘要、含空格路径、参数、输出格式、拒绝覆盖和 CLI 一致性。单程序配置生成与系统服务实际启停是两项独立验收。
 
-`tests/native-service.php`接受`原生产物 [已验证程序或发布目录 受信SHA256]`，按实际交付形态启动同一字节的程序。RC10 的两个 Linux 最终程序已通过 systemd，macOS 最终程序已通过 launchd 的业务、崩溃恢复、持久数据、正常停止与清理检查，准确程序和原始报告见[本轮记录](../evidence/single-program-ci-20260928.md)。Windows 此轮没有系统服务生命周期报告；生成 WinSW 配置不代表该平台服务验收通过。
+`tests/native-service.php`接受`原生产物 [已验证程序或发布目录 受信SHA256]`，按实际交付形态启动同一字节的程序。RC13 的两个 Linux 平台分别以三个 profile 最终程序通过 systemd，macOS 的三个 profile 最终程序通过 launchd 的业务、崩溃恢复、持久数据、正常停止与清理检查，准确程序和原始报告见[本轮记录](../evidence/profile-release-20260930.md)。Windows 此轮没有系统服务生命周期报告；生成 WinSW 配置不代表该平台服务验收通过。
 
 Linux准备入口接受`TYPE_SERVICE_ARTIFACT`复用已编译程序，随后由`tests/native-service-systemd.php`完成同一服务行为验证。Linux双架构与macOS静态候选CI已接入这些入口，远端结果按各轮记录；Windows的WinSW生命周期仍须单独验证。

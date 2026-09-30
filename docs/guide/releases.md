@@ -2,7 +2,7 @@
 
 版本由主仓的不可变 tag 驱动：`vX.Y.Z` 是正式版本，`vX.Y.Z-rc.N` 是候选版本。一次发布关联同一主仓提交、组件、应用模板和四个平台的数据库 profile 矩阵。RC 标记为预发布，不成为稳定最新版。
 
-历史候选 [v1.0.0-rc.10](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.10) 的目录与验收记录保持不变。当前 `main` 已将后续发布定义为四个平台 × `sqlite`、`mysql`、`pgsql` 三个 profile；新的 RC 必须重新完成这 12 个单文件程序的验收后才会公开。实际已发布版本以 GitHub Release 页面为准。
+当前候选 [v1.0.0-rc.13](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.13) 已完成四平台 × `sqlite`、`mysql`、`pgsql` 三个 profile 的发布验收，共提供 12 个单文件程序。组件和模板也已按同版本分发到 Packagist；固定源码与原生验证见[验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/profile-release-20260930.md)。历史候选保留原标签、附件和验收身份。
 
 每个“平台 × profile”下载一个可执行文件，外置配置独立维护。PHP、PHPX、Swoole 等非系统原生库已静态链接，普通启动不释放运行库。历史 RC7 的目录归档与旧标签保持原样，其使用方式和验收身份保留在[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
@@ -35,7 +35,7 @@ flowchart TB
 
 ## 下载程序
 
-当前公开 RC10 的文件名没有 profile 后缀，例如 `typeapp-iot-1.0.0-rc.10-linux-x64`。以下矩阵及命令适用于完成新矩阵验收后发布的版本，请先在 Release 页面确认附件名，不能对 RC10 套用新命名。
+`v1.0.0-rc.13` 的附件名包含数据库 profile。每次部署只下载匹配平台和数据库的一个程序；其余 11 个程序是其他环境的选择项。历史 RC10 没有 profile 后缀，其原附件名称不变。
 
 选择与操作系统、CPU、系统库基线和数据库匹配的附件，具体要求见[平台与验收](platforms.md)。文件名中的版本不带前缀 `v`：
 
@@ -46,13 +46,15 @@ flowchart TB
 | macOS ARM64 | `typeapp-iot-<版本>-macos-arm64-<profile>` |
 | Windows x64 | `typeapp-iot-<版本>-windows-x64-<profile>.exe` |
 
+GitHub 自动生成的 `Source code` 归档是源码下载入口，部署时无需下载。
+
 同一 Release 提供 `SHA256SUMS` 和 `release-manifest.json`。前者用于核对下载字节，后者记录源码、版本、候选运行轮次、平台/profile、对应数据库验收、扩展/归档/系统库闭包和体积统计。摘要应从受信发布渠道取得。
 
 下面以 Linux x64 为例，在一个新目录中下载、校验并运行：
 
 ```bash
 set -eu
-release_version="${TYPEAPP_RELEASE_VERSION:?请填入已公开且包含 profile 附件的版本}"
+release_version="${TYPEAPP_RELEASE_VERSION:-1.0.0-rc.13}"
 release_base="https://github.com/zoujingli/typeapp/releases/download/v${release_version}"
 release_program="typeapp-iot-${release_version}-linux-x64-sqlite"
 curl --fail --location --output "$release_program" "$release_base/$release_program"
@@ -71,26 +73,39 @@ mv "$release_program" app
 
 核对下载摘要和运行身份后，按[首次启动](deployment.md#首次启动)完成账号、数据库与页面安装。若配置中的 `DB_DRIVER` 与程序 profile 不一致，程序会返回 `runtime_profile_database_mismatch` 并拒绝启动。后续替换程序版本时，使用 `web:install --dry-run --force` 查看页面变化，再执行 `web:install --force`，不要重新执行空库初始化。
 
+## 程序体积与依赖
+
+下表是 `v1.0.0-rc.13` 公开程序的实际大小，单位为 MiB（1 MiB = 1048576 字节）。各 profile 都保留 HTTP、MQTT、告警、导出、队列与调度，只链接对应数据库驱动；前端已包含在程序中。
+
+| 平台 | SQLite | MySQL | PostgreSQL |
+| --- | ---: | ---: | ---: |
+| Linux x64 | 56.26 | 54.09 | 54.18 |
+| Linux ARM64 | 47.91 | 47.72 | 47.77 |
+| macOS ARM64 | 45.47 | 43.90 | 44.03 |
+| Windows x64 | 48.32 | 47.44 | 47.60 |
+
+发布程序已经清理调试信息并裁剪未使用代码。PHP/PHPX、Swoole、TLS、所选 PDO 和前端仍是实际功能的一部分；数据库服务与 Redis 服务在程序外运行。重建 SDK、源码及许可履约材料单独存放，不需要随部署下载。体积清单区分代码、数据、符号、前端与链接前归档输入，归档大小不能作为程序内部占用再次相加。
+
 ## Composer 按版本安装
 
-组件与通用模板不包含物联中心前端。`1.0.0-rc.10` 已由默认 Packagist 索引，可按明确版本安装。下面以 SQLite 独立应用为例：
+组件与通用模板不包含物联中心前端。`1.0.0-rc.13` 已由默认 Packagist 索引，可按明确版本安装。下面以 SQLite 独立应用为例：
 
 ```bash
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.10
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.13
 cd my-app
 php configure.php sqlite
 composer config minimum-stability RC
 composer config prefer-stable true
 composer require --no-update \
-  zoujingli/type-core:1.0.0-rc.10 \
-  zoujingli/type-orm:1.0.0-rc.10 \
-  zoujingli/type-orm-sqlite:1.0.0-rc.10 \
-  zoujingli/type-runtime:1.0.0-rc.10 \
-  zoujingli/type-log:1.0.0-rc.10 \
-  zoujingli/type-validate:1.0.0-rc.10
+  zoujingli/type-core:1.0.0-rc.13 \
+  zoujingli/type-orm:1.0.0-rc.13 \
+  zoujingli/type-orm-sqlite:1.0.0-rc.13 \
+  zoujingli/type-runtime:1.0.0-rc.13 \
+  zoujingli/type-log:1.0.0-rc.13 \
+  zoujingli/type-validate:1.0.0-rc.13
 composer require --dev --no-update \
-  zoujingli/type-build:1.0.0-rc.10 \
-  zoujingli/type-testing:1.0.0-rc.10
+  zoujingli/type-build:1.0.0-rc.13 \
+  zoujingli/type-testing:1.0.0-rc.13
 composer install --no-plugins --no-scripts
 php dev.php check
 ```
@@ -122,7 +137,7 @@ git push origin "$release_tag"
 需要补齐既有候选时，使用原版本重试，不创建或移动标签：
 
 ```bash
-gh workflow run release.yml --ref v1.0.0-rc.10 -f version=v1.0.0-rc.10
+gh workflow run release.yml --ref v1.0.0-rc.13 -f version=v1.0.0-rc.13
 ```
 
 候选尚未封存时，重新执行完整工作流；不要把不同运行轮次的零散平台结果拼为一次验收。候选草稿已存在时，工作流复用原运行的验收和已保存附件；附件上传不完整时从原 Actions artifact 恢复。原证据过期或同名附件摘要不同会停止，不能靠重编译冒充原候选。

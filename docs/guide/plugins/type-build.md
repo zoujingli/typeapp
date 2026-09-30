@@ -41,6 +41,19 @@ flowchart TB
 
 ## 数据库 profile 与依赖裁剪
 
+```mermaid
+flowchart TB
+  Profile["应用声明：数据库与功能"] --> Closure["计算依赖闭包"]
+  Closure --> Driver["只选择一个 PDO 驱动"]
+  Closure --> Optional["按需选择 Redis 等扩展"]
+  Base["Swoole、PDO、TLS 等基础库"] --> Link
+  Driver --> Link["TypePHP 全量 AOT · 静态链接"]
+  Optional --> Link
+  Link --> Seal["清理符号 → 封存能力、摘要与体积"]
+  Seal --> Program["一个主程序 + 外置配置"]
+  Program --> Verify["启动前核对数据库与功能边界"]
+```
+
 应用在 `type-app.json` 中声明 `build-profiles`，构建时通过 `TYPEAPP_BUILD_PROFILE` 或配置项 `build-profile` 选择一个 profile，例如 `TYPEAPP_BUILD_PROFILE=sqlite`。构建器把 profile、数据库、功能闭包、扩展、静态归档写入编译身份，并在链接后报告最终系统库：
 
 ```json
@@ -53,7 +66,7 @@ flowchart TB
 }
 ```
 
-每个程序只链接自己的 pdo_* 驱动；`alerts`、`exports` 会闭包启用 `queue`，`queue` 和 `scheduler` 会闭包启用 `redis`。因此物联中心默认 profile 会包含 phpredis；自定义 profile 关闭这些能力时，清单会记录 `rejected-capabilities`，运行到关闭能力会返回 `feature_unavailable`。未知 profile、数据库配置不匹配或关闭能力都会在构建/启动边界返回稳定错误。四平台 × 三 profile 的新矩阵必须分别验收，不能用历史 RC 的三库报告替代。
+每个程序只链接自己的 pdo_* 驱动；`alerts`、`exports` 会闭包启用 `queue`，`queue` 和 `scheduler` 会闭包启用 `redis`。因此物联中心默认 profile 会包含 phpredis；自定义 profile 关闭这些能力时，清单会记录 `rejected-capabilities`，运行到关闭能力会返回 `feature_unavailable`。未知 profile、数据库配置不匹配或关闭能力都会在构建/启动边界返回稳定错误。v1.0.0-rc.13 已逐项完成四平台 × 三 profile 验收；后续源码仍须重新核对同一程序的行为。
 
 候选清单中的 `size-breakdown` 读取最终封存文件的真实区段：`total` 与下载字节数一致，`code` 是可执行区段，`data` 是其余字节，`frontend` 是内嵌 `web/` 原文字节，`native` 是静态归档输入大小。后两者不能与 code/data 重复相加。Linux 不保留调试或非必要符号区段，Windows 不保留 PDB 调试目录，macOS 执行 `strip -x` 后保留必需外部符号。体积增长门禁及测量边界见[构建身份](https://github.com/zoujingli/typeapp/blob/main/docs/development/build-identity.md)。
 
@@ -72,10 +85,10 @@ flowchart TB
 ```bash
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require --dev zoujingli/type-build:1.0.0-rc.10
+composer require --dev zoujingli/type-build:1.0.0-rc.13
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.10`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+以上固定该组件的候选版本 `1.0.0-rc.13`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
 
 ## 最小使用示例
 
@@ -196,7 +209,7 @@ sequenceDiagram
 
 所选清单和模块进入构建身份，应用产物只收集当前平台选中的模块及实际依赖，不会携带全部四平台模块。再分发须保留适用的原始许可证，见[许可证与归属](../licensing.md#第三方边界)。源码、摘要、依赖和维护者的 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 重建入口见[资源说明](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。
 
-这些 `.so/.dll` 是共享扩展构建输入，不能用于静态链接。单程序构建使用按 profile 生成并校验的静态 SDK 归档；历史 RC10 的四平台验收记录不替代当前 12 个 profile 程序的重新验收。实际可下载版本与产物形态见[构建与部署](../deployment.md#单程序交付约定)。
+这些 `.so/.dll` 是共享扩展构建输入，不能用于静态链接。单程序构建使用按 profile 生成并校验的静态 SDK 归档；v1.0.0-rc.13 的 12 个 profile 程序已分别完成同一产物验收。实际可下载版本与产物形态见[构建与部署](../deployment.md#单程序交付约定)。
 
 ## 开发与编译入口
 
@@ -269,7 +282,7 @@ php vendor/bin/type verify-package build/example-release "$TYPE_RELEASE_SHA256"
 
 运行包包含匹配 PHPX/libphp 和实际原生扩展，不包含 Composer、编译 SDK 或业务 PHP 回退入口。生产资源与开发工具分开，平台可用性以该版本实际验收为准。
 
-RC10 在同一源码基线上通过四平台默认原生 CI、最终静态程序三库隔离、公共组件与模板分发。各平台最终程序禁止读取构建源码与 SDK、执行开发工具；公开下载摘要与候选一致。独立组件与模板仍记录各自入口和产物。准确提交、SDK 与限制见[平台与验收](../platforms.md)；历史目录包维护入口不进入新的单程序候选。
+RC13 在同一源码基线上通过四平台默认原生 CI、12 个数据库 profile 静态程序隔离部署、公共组件与模板分发。各平台最终程序禁止读取构建源码与 SDK、执行开发工具；公开下载摘要与候选一致。独立组件与模板仍记录各自入口和产物。准确提交、SDK 与限制见[平台与验收](../platforms.md)；历史目录包维护入口不进入新的单程序候选。
 
 ## 常见问题
 

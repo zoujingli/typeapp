@@ -13,10 +13,10 @@
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm:1.0.0-rc.10
+composer require zoujingli/type-orm:1.0.0-rc.13
 ```
 
-以上安装固定候选版本 `1.0.0-rc.10`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。运行时通过 `type-runtime` 传递硬依赖 `ext-swoole >=6.2 <7`，PDO 和所选 PDO 驱动仍是数据库访问的直接依赖。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+以上安装固定候选版本 `1.0.0-rc.13`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。运行时通过 `type-runtime` 传递硬依赖 `ext-swoole >=6.2 <7`，PDO 和所选 PDO 驱动仍是数据库访问的直接依赖。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
 Database 通过 type-runtime 的有界池按作用域借还会话。Connection 不返回底层 PDO，支持 query、execute、lastInsertId 和固定连接的事务闭包；关闭租约或作用域后不能继续使用。归还先处理流和事务，只有驱动确认完整重置后才能保留物理连接。PostgreSQL 使用 `DISCARD ALL` 后恢复配置基线；MySQL 和 SQLite 当前归还即关闭，下一次借用重建。
 

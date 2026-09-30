@@ -1,6 +1,6 @@
 # 数据库 profile 与发布体积验收
 
-本次实现基于 `ba18cd7753740712dcfcb03a167d417d71f4b42f` 后的主仓修改。历史 RC10 的标签、附件与验收记录不变；以下本机结果不能替代新 RC 的四平台十二组合发布验收。
+本次实现基于 `ba18cd7753740712dcfcb03a167d417d71f4b42f` 后的主仓修改。历史 RC10 的标签、附件与验收记录不变；以下本机结果不能替代新 RC 的四平台十二组合发布验收。本页按阶段保留原始结果，最新公开状态见[RC13 正式发布与公开回读](#rc13-正式发布与公开回读)。
 
 ## 本机静态程序
 
@@ -199,3 +199,52 @@ RC12 原发布运行现已结束：全部组件验收通过，静态单程序组
 HTTP 预检修复后的本机程序再次全量编译 280 个单元，SHA-256 为 `71d0ed11c67f938ed33b5bc9923cb6505948a467ee76f1ddfbfff5e50ce1f256`，构建 ID 为 `688efcda5db38e14dbec444d91e517a0d20163ed0b56a86c8df4451d6abc4abb`。同一文件在生产源码禁读条件下通过 PostgreSQL/MySQL/SQLite 的 750/751/744 项完整导出 HTTP 检查；清理命令分别耗时 0.2011/0.1913/0.1623 秒，都只删除选定的 1000 行，HTTP 与专用数据库正常退出。报告分别为 `build/iot-identity-9e8d67389f98/verification.json`、`build/iot-identity-2dd7b53d52ae/verification.json`、`build/iot-identity-8c3e70dea928/verification.json`。本机程序使用共享 embed，仅作为完整应用原生行为回归，不替代新 RC 的静态单程序矩阵。
 
 本轮基础检查覆盖 821 个文件，单元套件通过 182 项测试、3436 个断言，格式与文档检查通过。两个原生程序、可搬迁运行库、成功及失败报告、最小对照和源码差异已逐文件回读封存为 `.cache/profile-release-evidence-20260930/export-cleanup-validation.tar.gz`，SHA-256 为 `059b2025897b3b60792d817adc9e704388bd1ad3d308e12f6b3a3640d7888b1b`。归档为 70,936,207 字节，回收已退出的隔离实例、测试目录和编译中间文件共 4,227,375,353 逻辑字节；累计回收 17,687,277,950 逻辑字节。原失败报告保持原状态，日常 Redis 未改动。
+
+## RC13 正式发布与公开回读
+
+标签 `v1.0.0-rc.13` 固定源码 `aa95924a871f7f07c891cd38015d7182a8f7e616`，完整发布运行 [36665412680](https://github.com/zoujingli/typeapp/actions/runs/36665412680) 成功。四平台默认原生矩阵、12 个静态数据库 profile、15 个组件和应用模板完成本批次验收；16 个子仓 tag、16 个 Packagist 版本和 17 个公开 Release 均已回读核对。之前失败或取消的运行保持原状态与身份。
+
+各 profile 使用自己的最终程序完成对应数据库的初始化、迁移、CRUD、错误数据库配置拒绝、前端安装和 API，以及 MQTT TLS 授权、告警通知、导出和调度回归。严格部署检查禁止读取业务源码与 SDK、执行 PHP/Composer/Node；普通启动不释放原生运行库。这里只声明已执行的发布范围，不扩展为全部协议、容量和性能场景通过。
+
+| 平台/profile | 主程序字节 | SHA-256 |
+| --- | ---: | --- |
+| `linux-arm64-mysql` | 50,033,652 | `1da3e485a21bb8a089778bea9700e7adb5b54931ca085336f39355a019f503a0` |
+| `linux-arm64-pgsql` | 50,093,813 | `3f2e48f72e8502a8c45d86cb28b498eff9965d03604fd0d72dad8ff622bd4d1c` |
+| `linux-arm64-sqlite` | 50,241,779 | `adc8bb05bec3e100cb9c9ee35b13a749adc8851cf17f77cb998e48acf6fc2e37` |
+| `linux-x64-mysql` | 56,720,548 | `151761b44dee478019ba8be58f34b2196f81564b631ecccc245ff8b10826bb16` |
+| `linux-x64-pgsql` | 56,813,229 | `c09b31e56bab841ebcc669a49d798eb03b74aa5e0a17e8cca51bf1490295dddf` |
+| `linux-x64-sqlite` | 58,996,307 | `faffd5577fb7eb84aafd517f40fc59592c786a5d4a984aa2ea744471e9dd8967` |
+| `macos-arm64-mysql` | 46,029,288 | `b6f7be0f158a29af3de4cd1730098884c08e1737b84bc53796df641edb112d13` |
+| `macos-arm64-pgsql` | 46,170,936 | `e04154ee664b024f49655ab9f8601c8622d6ffce0e65ca9712c6965d96ff2ea6` |
+| `macos-arm64-sqlite` | 47,680,168 | `aef6ca5c62ebfb1a1805cea2f56a7034dbcf83916ebea272edc2b8c1c4ff2b1d` |
+| `windows-x64-mysql` | 49,741,644 | `30901cf3cb9ef5554f212130c2e133d4638c2a2f5f9fcadd643d3f0811eb0696` |
+| `windows-x64-pgsql` | 49,912,054 | `dcb04f6c9437c4ee3532244472fd06a531aae7d99775f0e5d48fcb633ea145c1` |
+| `windows-x64-sqlite` | 50,671,397 | `eedd2e08a89e4aaa3ce417c679d44b7fef7d6edf839fd0b20f82eb343571e882` |
+
+公开下载仅有上述 12 个主程序、`SHA256SUMS` 和 `release-manifest.json`，没有 `typeapp-rebuild-*` 附件。每次部署只选择对应平台与数据库的一个程序。逐项从公开下载入口读取后，文件大小及 SHA-256 与 GitHub digest、候选和发布清单一致；校验后回收下载副本。
+
+发布清单 SHA-256 为 `a1deb78ae0e6cd8e5f03807e5afb737c885f63c8c99e7fbec73d1625b08933b6`，摘要文件 SHA-256 为 `6e3f27b91a0c49b5c19fa39f90fcc77ed93ceb815f96e08f081b97dc8d7d23d6`。12 份重建材料保存在本轮 Actions Artifact，清单记录其编号、名称、字节数和摘要；回读时逐项确认属于同一源码与运行，尚未过期。Artifact 有保留期限，重建材料不属于部署依赖。
+
+程序已清理调试区段和非必要符号，manifest 记录实际扩展、静态归档、系统库及体积构成。内嵌前端保留，默认 profile 继续包含 Redis 告警、导出、队列和调度。代码与数据是文件统计；前端和符号属于其中，链接前静态归档是输入大小，不能再次相加。后续同平台/profile 超过 5% 的增长必须提供依赖或功能变化说明。
+
+公开验证时间为 `2026-09-30T07:12:10.496169+00:00`。原始回读报告保存在 `build/profile-release-validation/rc13/public/public-verification.json` 与 `build/profile-release-validation/rc13/public/packagist-verification.json`，分发、消费和逐仓发布回执保存在 `build/profile-release-validation/rc13/receipts/`；资源归档与回收另行记录。
+
+另独立回读 12 组静态程序的原始 JSON 与日志，交叉核对构建身份、源码清单、SDK 摘要、实际扩展、静态归档、系统库与候选一致。部署报告中的源码和 SDK 拒绝访问、普通启动不写文件、外部 PHP 配置忽略、错误 profile 拒绝、只读目录及不同工作目录检查均通过；各业务报告的执行状态与发布门禁一致。交叉审计结果保存在 `build/profile-release-validation/rc13/native-report-audit.json`，原始报告按清理账本归档。
+
+公开组件消费原始报告另经独立回读：15 个包的准确版本与拆分提交、三库消费者的锁文件和构建身份逐项一致。三个独立消费者均按各自的 258 份源码清单完成全量编译，并在无 PHP 源码的 chroot 内通过真实 HTTP、精确值、模型关系、事务、缓存、Outbox、队列、幂等、调度与日志集成。这些共享运行库消费者与上表的 12 个静态应用分别记录，不混用产物身份；审计结果为 `build/profile-release-validation/rc13/public-component-audit.json`。
+
+模板原始报告也已回读，三库应用的公开组件拆分提交与构建身份一致，离线命令、重复迁移、认证、CRUD、分页、软删除、版本冲突和正常停止均通过；容器、专用数据库与卷按报告完成清理。模板的独立审计结果为 `build/profile-release-validation/rc13/public-template-audit.json`。
+
+本次正式 Windows PostgreSQL 程序为 49,912,054 字节，SHA-256 为 `dcb04f6c9437c4ee3532244472fd06a531aae7d99775f0e5d48fcb633ea145c1`。同一文件分别通过 32 项 MQTT、751 项告警、746 项导出及 507 项调度/管理 HTTP 检查；MQTT 节点约 2.1576 秒正常退出，千行快照清理约 1.3832 秒完成，保持原 5 秒和 30 秒预算。这些业务扩展报告的 `no_source=false`，严格单文件隔离由独立部署步骤证明，不能将两组记录混用。
+
+发布前的 Windows PostgreSQL 定向运行 [36662082959](https://github.com/zoujingli/typeapp/actions/runs/36662082959) 已成功：重新全量编译 280 个单元，EXE 为 49,915,638 字节，SHA-256 为 `0a29e09a4f9d9d44fe7665c7272f2ebef017744cd16148a9f938e390f2794332`。同一文件通过严格无源码部署、32 项 MQTT 授权、756 项告警、746 项导出和 511 项调度/管理 HTTP 检查；千行快照清理约 1.3053 秒，节点约 3.5334 秒正常退出，仍遵守原 30 秒和 5 秒预算。这是先行诊断候选，与正式发布重新构建的程序分别记录。
+
+已归档的五份旧本机程序和报告再次回读一致后，回收重复副本及可重建中间文件 535,541,749 逻辑字节。RC11、RC12 已结束运行及修复候选的原始资料另封存为 `.cache/profile-release-evidence-20260930/historical-candidate-diagnostics.tar.gz`，SHA-256 为 `798e15476d718f8a3fddae7444e6986201538189a6a0916fae56de798f92b12d`。该归档为 411,980,807 字节，回收下载副本 831,687,724 逻辑字节；已在其他归档中的相同文件只保存恢复索引。全部文件逐项回读核对，旁侧 JSON 的 `stored-in` 对应恢复归档，原失败记录没有改写。至此累计回收 19,054,507,423 逻辑字节，任务 SDK 的最终回收另记。
+
+## 文档核验与任务收尾
+
+README、Docsify、15 个组件说明和模板安装示例已按 RC13 的实际公开状态同步。文档一致性检查通过，核对 1775 处引用、204 条路由、317 个命令和 250 个 Composer 脚本；Docsify 分发边界检查与差异空白检查通过。任务专用本地预览确认发布流程图、12 个程序的体积表及 profile 依赖图正常渲染，页面标题保留“物联开源分享”。预览标签和进程已关闭，端口已释放；此检查不代表线上文档站已经部署。
+
+最终证据归档为 `.cache/profile-release-evidence-20260930/final-task-resources.tar.gz`，100,543,906 字节，SHA-256 为 `79d441e99840975b0223e614e1a0ebafbc596ebe3dc063c7d3b3a414055b9413`。归档保留原始消费和平台报告、任务 SDK 的构建配置与清单、程序及缓存身份，按摘要复用已有证据；逐文件回读一致后，回收四份任务专用 SDK、十份任务缓存、重复程序和原始下载副本，共 1,994,938,780 逻辑字节。累计回收 21,049,446,203 逻辑字节，此值不是文件系统实际可用空间的净增量。
+
+详细清理账本为 `build/profile-release-validation/rc13/final-cleanup.json` 与归档旁的 `final-task-resources.tar.json`。按每个文件的 `stored-in` 和 `stored-path` 可恢复原始证据；SDK 的中间源码和目标文件按保留的清单及仓库配方重建。共享 SDK、无关缓存、日常 Redis、公开发布回执和小型审计报告保留。RC13 标签和已验收附件不因本次文档提交而改变。
