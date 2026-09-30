@@ -276,7 +276,21 @@ try {
     $mqttNew = null;
     // 保留真实退出状态，区分业务排空失败、控制事件终止和测试端强制回收。
     $nodeStopStarted = hrtime(true);
-    $nodeStop = $node->stop(5);
+    if (PHP_OS_FAMILY === 'Windows' && getenv('TYPE_APP_TRACE') === '1' && $driver === 'pgsql') {
+        // [DEBUG-node-stop] 原 EXE 诊断：只观察本轮数据库的等待，不保存 SQL 或凭据。
+        $report['node_stop_control_delivered'] = sapi_windows_generate_ctrl_event(PHP_WINDOWS_EVENT_CTRL_BREAK, $node->pid());
+        $nodeStopDeadline = microtime(true) + 5.0;
+        $report['node_stop_database'] = [];
+        do {
+            $nodeStopQuery = $databaseAdmin->prepare('SELECT pid, state, wait_event_type, wait_event, pg_blocking_pids(pid)::text AS blockers, EXTRACT(EPOCH FROM clock_timestamp() - query_start) AS query_seconds FROM pg_stat_activity WHERE datname = ?');
+            $nodeStopQuery->execute([$ownedDatabases['broker']]);
+            $report['node_stop_database'][] = ['seconds' => (hrtime(true) - $nodeStopStarted) / 1000000000, 'sessions' => $nodeStopQuery->fetchAll(PDO::FETCH_ASSOC)];
+            usleep(250000);
+        } while ($node->running() && microtime(true) < $nodeStopDeadline);
+        $nodeStop = $node->wait(0);
+    } else {
+        $nodeStop = $node->stop(5);
+    }
     $report['node_stop'] = [
         'seconds' => (hrtime(true) - $nodeStopStarted) / 1000000000,
         'budget_seconds' => 5.0,

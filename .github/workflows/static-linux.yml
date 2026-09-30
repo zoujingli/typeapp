@@ -191,6 +191,7 @@ jobs:
             build/single program-*/verification.json
             build/iot-identity-*/verification.json
             build/broker-access-*/verification.json
+            build/broker-access-*/node-stop.log
             build/service-linux-ci-*/verification.json
             build/service-linux-ci-*/preparation.json
       - name: 保存失败时的原始程序
