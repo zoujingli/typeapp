@@ -53,13 +53,19 @@ final class PdoProgressProbe
 function main(int $argc, array $argv): void
 {
     $driver = (string) getenv('TYPE_DB_PROBE_DRIVER');
-    if ($argc !== 2 || !in_array($driver, ['mysql', 'pgsql'], true) || !in_array($argv[1], ['main', 'thread'], true)) {
+    if ($argc !== 2 || !in_array($driver, ['mysql', 'pgsql'], true) || !in_array($argv[1], ['main', 'thread', 'preflight-thread'], true)) {
         throw new RuntimeException('pdo_progress_arguments');
     }
     CoroutineRuntime::enableIo();
     if ($argv[1] === 'main') {
         PdoProgressProbe::run($driver);
         return;
+    }
+    if ($argv[1] === 'preflight-thread') {
+        // 应用先在主线程完成恢复检查并销毁 Scheduler，再启动长期业务线程。
+        CoroutineRuntime::run(static function (): void {
+        });
+        CoroutineRuntime::enableIo();
     }
     $thread = CoroutineRuntime::startThread('pdo', $driver);
     if (!$thread->joinWithin(10000) || $thread->getExitStatus() !== 0) {

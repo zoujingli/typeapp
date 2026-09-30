@@ -167,3 +167,9 @@ Windows PostgreSQL 的最小停止对照 [36653826674](https://github.com/zoujin
 官方 `Pdo\Pgsql::ATTR_DISABLE_PREPARES` 对照 [36655832891](https://github.com/zoujingli/typeapp/actions/runs/36655832891) 在同一连接上分别执行 20 次命名和未命名参数查询。运行组件 hook 下，查询及释放的合计中位数由 46.8855 毫秒降至 15.6271 毫秒；同步对照由 0.2368 毫秒降至 0.1019 毫秒。采用 `PQexecParams` 的路径保留原生参数绑定及事务，不使用 SQL 字符串模拟参数；锁定 PHP 与 Swoole 源码均支持该路径。此结果不等于应用吞吐或完整 MQTT 已通过。
 
 ORM 据此启用该官方配置，新增真实 `pg_prepared_statements` 回归，修改前失败、修改后通过完整独立 PHP 消费。macOS 原生消费者全量编译 93 个单元，程序 SHA-256 为 `0088f45bf80e807f7c51519910c060d6b4dd86db76dfbee49501d4a816b4e913`，构建 ID 为 `64d167837dd1e2ef3ba1bc3ad46a249ac38fee7d683cb75871578de93f201fd0`，移除 103 个业务及依赖 PHP 文件后通过相同 ORM 套件、双进程更新竞争、事务、真实行锁等待和会话重置。该消费者使用共享运行库，是组件行为证据，不作为单文件发布候选。报告为 `build/orm-suite-pgsql-da9531d5b5/verification.json`；本轮 PostgreSQL 专用实例已正常关闭。
+
+上述 PostgreSQL 参数绑定验证已逐文件回读封存为 `.cache/profile-release-evidence-20260930/pgsql-parameter-validation.tar.gz`，SHA-256 为 `db5efcecdf61b2e624867a530733102889fb90bd892263e3a4f6edb2b0376b59`。归档为 17,408,369 字节，回收对应已停止实例和独立消费者共 338,451,021 逻辑字节；累计回收 12,317,374,565 逻辑字节。原报告从归档恢复，不改写原身份。
+
+Windows 独立 PDO 消费者在运行 [36656249048](https://github.com/zoujingli/typeapp/actions/runs/36656249048) 中完成静态编译，程序 SHA-256 为 `5f5b95dcacbe994e9d6949b238a9bcac1fd8f354e5cf59701449a9b193ef9880`。同一文件的主线程与业务线程各执行一次 `SELECT SLEEP(0.5)`，耗时约 0.5036/0.4913 秒，10 毫秒定时器分别推进 32/31 次。随后原 RC12 应用仍在 6 秒导出等待后报告 `thread_progress_timeout`；探针通过不能替代应用验收。证据保存于 `build/profile-release-validation/rc12/windows-pdo-progress-retry-evidence/`。下一对照增加应用实际使用的“主线程先完成一次 Scheduler，再启动业务线程”顺序，检查启动期 hook 生命周期。
+
+MySQL 的 6 秒数据库等待已转为正式导出回归，等待后必须继续通过 HTTP 读取完整任务并完成原有导出检查。macOS PHP 开发路径通过 751 项 HTTP 检查，报告为 `build/iot-identity-48525df95b24/verification.json`；该结果不作为 Windows 原生故障已修复的证据。

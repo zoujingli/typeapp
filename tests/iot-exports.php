@@ -78,18 +78,19 @@ function iotExportChecks(Closure $request, array $tokens, string $tenantA, strin
             $rejected = $client->request('GET', $jobsPath, ['Authorization' => 'Bearer ' . $admin, 'X-Tenant-Id' => $tenantA, $header => 'foreign']);
             expect($rejected->status === 403 && $rejected->json()['error'] === 'identity_context_invalid', '导出不接受伪造身份来源头');
         }
-        if (PHP_OS_FAMILY === 'Windows' && getenv('TYPE_APP_TRACE') === '1' && $database->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
-            // [DEBUG-mysql-yield] 单条数据库等待超过监督预算，区分 I/O hook 与大结果同步处理。
+        if ($database->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
+            // 等待超过线程进度预算时，数据库 I/O 仍须让出协程，HTTP 角色应继续存活。
             $database->exec('CREATE TRIGGER type_test_export_wait BEFORE INSERT ON iot_exports FOR EACH ROW DO SLEEP(6)');
             try {
-                $delayed = $request('POST', $createPath, $admin, $tenantA, $input, 202, '', 30.0)['data'];
+                $created = $request('POST', $createPath, $admin, $tenantA, array_replace($input, ['id' => bin2hex(random_bytes(16))]), 202, '', 30.0)['data'];
             } finally {
                 $database->exec('DROP TRIGGER type_test_export_wait');
             }
-            expect($job($delayed['id'])['total_rows'] === 205, '等待完成后 HTTP 线程未继续提供服务');
-            throw new RuntimeException('diagnostic_mysql_delay_completed：仅验证原程序数据库等待，不计作业务通过');
+            expect($job($created['id'])['total_rows'] === 205, '等待完成后 HTTP 线程未继续提供服务');
+            $checks[] = 'database-wait-keeps-http-progress';
+        } else {
+            $created = $create();
         }
-        $created = $create();
         $retry = $create(['id' => $created['id']]);
         expect($retry === $created, '同一请求重试必须返回原任务和快照');
         $request('POST', $createPath, $admin, $tenantA, array_replace($input, ['id' => $created['id'], 'timezone' => 'UTC']), 409, 'export_identity_conflict');

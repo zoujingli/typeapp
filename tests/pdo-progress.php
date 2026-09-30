@@ -49,7 +49,7 @@ file_put_contents($work . '/install.log', $runner->run([PHP_BINARY, $composerBin
 file_put_contents($work . '/build.log', $runner->run([PHP_BINARY, $work . '/vendor/bin/type', $work . '/type-app.json'], $work, $environment, 900));
 $binary = (new BuildPlatform())->output($work . '/build/native/type-app');
 $report = ['driver' => $driver, 'sha256' => hash_file('sha256', $binary), 'scope' => 'pdo-progress-diagnostic', 'runs' => []];
-foreach (['main', 'thread'] as $mode) {
+foreach (['main', 'thread', 'preflight-thread'] as $mode) {
     $process = new Process([$binary, $mode], $work);
     try {
         $result = $process->wait(20);
