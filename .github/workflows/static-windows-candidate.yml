@@ -273,3 +273,8 @@ jobs:
             build/broker-access-*/*-cleanup.log
             build/windows-test-redis/source.json
             build/windows-database-*/*
+            build/pdo-progress-*/*.json
+            build/pdo-progress-*/*.log
+            build/pdo-progress-*/build/native/type-app.exe
+            build/pdo-progress-*/build/native/*.build.json
+            build/pdo-progress-*/build/native/compiler/compile.log

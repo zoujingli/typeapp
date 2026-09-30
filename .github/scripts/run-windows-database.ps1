@@ -158,6 +158,10 @@ try {
     Invoke-TaskProcess $taskPhp @('-r', $taskProbe) (Join-Path $taskEvidence 'ready.log') 90 $taskEnvironment | Out-Null
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
     if ($SingleProgram) {
+        if ($env:TYPE_APP_TRACE -eq '1') {
+            # 独立重编译最小消费者用于诊断 hook；不冒充原候选的同文件验收。
+            Invoke-TaskProcess $taskPhp @('tests/pdo-progress.php') (Join-Path $taskEvidence 'pdo-progress.log') 1200 $taskEnvironment | Out-Null
+        }
         # 只运行已封存候选，不重新编译；同一 EXE 继续接受无源码隔离与页面/API 检查。
         Invoke-TaskProcess $taskPhp @('tests/release-candidate.php', 'test', $Driver) (Join-Path $taskEvidence 'single-program.log') 3600 $taskEnvironment | Out-Null
     } elseif ($CandidateProbe) {
