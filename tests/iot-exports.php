@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
-/** 真实HTTP创建、Redis后台命令和文件下载验证；PDO只准备边界/故障装置，不代替导出执行。 */
+/**
+ * 真实HTTP创建、Redis后台命令和文件下载验证；PDO只准备边界/故障装置，不代替导出执行。
+ * @param Closure(string, string, string, ?string, ?array, int, string=, ?float=): array $request 末项只覆盖当前请求的秒数预算。
+ */
 function iotExportChecks(Closure $request, array $tokens, string $tenantA, string $tenantB, PDO $database, array $command, array $environment, string $base, Type\Testing\HttpClient $client, array $fixture): array
 {
     $redis = new NativeRolloutRedis($base . '/redis', (string) getenv('TYPE_REDIS_SERVER'));
@@ -416,7 +419,8 @@ function iotExportChecks(Closure $request, array $tokens, string $tenantA, strin
         $limitInput = $filters + ['id' => bin2hex(random_bytes(16))];
         $request('POST', $limitPath, $admin, $tenantA, $limitInput, 422, 'export_limit_exceeded');
         $database->prepare('DELETE FROM iot_ingestion_facts WHERE message_id = ?')->execute([hash('sha256', $limitDevice['id'] . ':100000')]);
-        $maximum = $request('POST', $limitPath, $admin, $tenantA, $limitInput, 202)['data'];
+        // 十万行快照验证容量与事务语义，沿用应用30秒请求预算；其他请求保持原预算。
+        $maximum = $request('POST', $limitPath, $admin, $tenantA, $limitInput, 202, '', 30.0)['data'];
         expect($maximum['total_rows'] === 100000, '恰好100000行的合法小记录应允许创建');
         $request('POST', $jobsPath . '/' . $maximum['id'] . '/cancel', $admin, $tenantA, [], 200);
         $beforeCleanup = (int) $database->query("SELECT COUNT(*) FROM iot_export_rows WHERE export_id = '" . $maximum['id'] . "'")->fetchColumn();

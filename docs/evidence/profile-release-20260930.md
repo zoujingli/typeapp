@@ -142,4 +142,18 @@ Windows 原程序复验 [36640808535](https://github.com/zoujingli/typeapp/actio
 
 Windows 定向运行 [36643523483](https://github.com/zoujingli/typeapp/actions/runs/36643523483) 全部成功。它使用提交 `cc365fc6b6dac809081f49e7e67be184dd61ae0b` 重新编译完整应用，复用此前验证的静态 SDK；最终 EXE 为 50,812,320 字节，SHA-256 为 `2df85e6fd1011353e271ef02687c1c17759712356a48b6164c474751efd648b5`。同一文件通过严格无源码部署、54 项 MQTT TLS 授权检查、755 项告警检查、748 项导出检查和 510 项调度/管理检查，随后完成重建材料验收与封存。导出锁内摘要读取的原故障不再出现。原报告及程序保存于 `build/profile-release-validation/rc12/windows-export-fixed-evidence/`；此运行早于额外三项扩展裁剪，不能代替新 SDK 的正式矩阵。
 
-四平台 × 三数据库的 12 个最终候选、Windows 专用 Redis 测试实例、16 个分发子仓与 Packagist 消费，以及公开下载摘要仍须由新 RC 的真实 Actions 运行完成。发布门禁要求全部组合成功；任何失败都阻止主仓 Release 公开。当前记录不宣称这些远端验收已经完成。
+Windows 的五轮原始诊断与修复证据已封存为 `.cache/profile-release-evidence-20260930/windows-export-lock-validation.tar.gz`，SHA-256 为 `b3e934e70b8e96f5ac0c6aeeaa4697d1dac4c35dbf41e7b8c2abd59e8da8eb7e`。归档包含上述原目录、程序、构建报告、日志及最小探针；逐文件回读并按各自报告核对 EXE 摘要后，回收下载副本 290,571,196 逻辑字节。累计回收 8,935,673,338 逻辑字节，历史程序身份保持不变，原目录现从该归档恢复。
+
+四平台 × 三数据库的 12 个最终候选、Windows 专用 Redis 测试实例、16 个分发子仓与 Packagist 消费，以及公开下载摘要仍须由新 RC 的真实 Actions 运行完成。`v1.0.0-rc.12` 固定提交 `2dac4969237e8aff1ddcdcd2f7fa6125b674f651`，正式运行是 [36646304824](https://github.com/zoujingli/typeapp/actions/runs/36646304824)，与前述同名诊断参数的运行分别记录。发布门禁要求全部组合成功；任何失败都阻止主仓 Release 公开。当前记录不宣称这些远端验收已经完成。
+
+## RC12 容量请求与节点退出诊断
+
+RC12 的 macOS PostgreSQL 候选在创建合法十万行快照时被测试客户端的 3 秒预算中断，实际等待 3.0035 秒；当时 PostgreSQL 查询仍在执行，没有锁阻塞者。程序为 46,154,408 字节，SHA-256 为 `260be31e954432cbaaeb2c0c3dba5053ceddac50a10c4682a5b849f433e274cf`。原字节在本机完整导出复验通过 750 项 HTTP 检查，快照创建约 0.8954 秒；此结果不替代 CI 验收。
+
+为区分测试截止与业务失败，在隔离 PostgreSQL 中仅对最大快照写入添加一次 3.2 秒语句级延迟。原测试稳定在 3.0003 秒失败；同一程序、相同装置下，仅为该请求使用生产既定的 30 秒预算后，快照在 4.2535 秒返回 202，746 项 HTTP 检查和资源清理通过。移除延迟装置后的正常回归通过 750 项检查，快照约 0.9917 秒。保留十万行完整计数、超量拒绝、事务、后续有界清理和其他请求的原预算；没有修改生产代码或性能承诺。
+
+上述原始报告分别为 `build/iot-identity-f3e013edf8f2/`、`build/iot-identity-99c6ff75ebe7/`、`build/iot-identity-03236b114d4f/` 和 `build/iot-identity-9fdf42fe37b8/`。新增节点退出观测在本机 SQLite 原生 TLS 授权回归通过 53 项 HTTP 检查，节点约 0.0104 秒正常退出；其报告为 `build/broker-access-96e6c91c73bd/`。格式、819 文件基础检查和文档检查通过。
+
+报告、最小延迟装置和数据库关闭记录已逐文件回读封存到 `.cache/profile-release-evidence-20260930/snapshot-budget-validation.tar.gz`，SHA-256 为 `9ec2b2b3bc3b708b0d33bf042a5a8988e24efd78a9c12fbab9ae016d58a9ce42`。回收已停止的隔离数据库及测试目录共 2,976,495,054 逻辑字节；累计回收 11,912,168,392 逻辑字节。原候选文件继续保留，日常 Redis 不受影响。
+
+Windows PostgreSQL 原候选已通过编译与严格无源码部署，但 MQTT 授权节点停止断言失败。原 EXE 为 49,910,006 字节，SHA-256 为 `58077f13675bc3d408ee107e839eeee61d6b2d53b4831f23b9718fc207bebf04`，下载后已回读核对。原报告未保存退出码，因此增加脱敏日志及退出状态，再以原 EXE 运行 [36650422087](https://github.com/zoujingli/typeapp/actions/runs/36650422087) 诊断；未取得完整结果前不认定原因或通过。以上故障均阻止 RC12 公开，成功组合不能替代失败组合。

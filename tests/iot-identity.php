@@ -1726,17 +1726,19 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         } while (!$ready && microtime(true) < $deadline);
         expect($ready, '双端HTTP未就绪');
         $checks = 0;
-        $request = static function (string $method, string $path, string $token, array $headers, ?array $data, int $expected) use ($client, &$checks, &$server, &$report): array {
+        $request = static function (string $method, string $path, string $token, array $headers, ?array $data, int $expected, string $expectedCode = '', ?float $seconds = null) use ($client, $address, &$checks, &$server, &$report): array {
             // 连续请求及时排空双输出；日志仍由 Process 保留，不能让管道背压阻塞服务。
             expect($server->running(), '双端HTTP提前退出：' . $server->stderr());
+            $requestClient = $seconds === null ? $client : new HttpClient('http://' . $address, $seconds);
             $started = hrtime(true);
             $status = null;
             try {
-                $response = $client->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+                $response = $requestClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
                 $status = $response->status;
             } finally {
                 // 只记录路径和耗时，不记录请求体、查询参数、令牌或账号凭据。
-                $timing = ['method' => $method, 'path' => explode('?', $path, 2)[0], 'seconds' => (hrtime(true) - $started) / 1000000000, 'status' => $status];
+                $timing = ['method' => $method, 'path' => explode('?', $path, 2)[0], 'seconds' => (hrtime(true) - $started) / 1000000000,
+                    'budget_seconds' => $seconds ?? $report['request_timeout_seconds'], 'status' => $status];
                 $report['last_http'] = $timing;
                 if ($timing['seconds'] >= 0.5) {
                     $slowRequests = [...($report['slow_http'] ?? []), $timing];
@@ -1747,6 +1749,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
             $responseError = $response->json()['error'] ?? '';
             $safeError = is_string($responseError) && preg_match('/^([a-z0-9_]{1,100})(?::|$)/D', $responseError, $errorParts) === 1 ? $errorParts[1] : '';
             expect($response->status === $expected, '双端状态错误：' . $path . ' expected=' . $expected . ' actual=' . $response->status . ' error=' . $safeError);
+            expect($expectedCode === '' || $responseError === $expectedCode, '双端错误码不符：' . $path . ' actual=' . $safeError);
             expect(!str_contains($response->body, 'password_hash'), '双端响应包含凭据散列');
             foreach (['password', 'current_password', 'owner_password'] as $secretField) {
                 if (isset($data[$secretField]) && $data[$secretField] !== '') {
@@ -1891,10 +1894,8 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         }
         if (in_array('--devices', $argv, true)) {
             require __DIR__ . '/iot-devices.php';
-            $deviceRequest = static function (string $method, string $url, string $token, ?string $tenant, ?array $data, int $status, string $code = '') use ($request): array {
-                $response = $request($method, $url, $token, $tenant === null ? [] : ['X-Tenant-Id' => $tenant], $data, $status);
-                expect($code === '' || ($response['error'] ?? '') === $code, '设备错误码不符：' . $url . ' actual=' . ($response['error'] ?? ''));
-                return $response;
+            $deviceRequest = static function (string $method, string $url, string $token, ?string $tenant, ?array $data, int $status, string $code = '', ?float $seconds = null) use ($request): array {
+                return $request($method, $url, $token, $tenant === null ? [] : ['X-Tenant-Id' => $tenant], $data, $status, $code, $seconds);
             };
             $deviceEvidence = iotDeviceChecks($request, $inspection, $driver, $address, $adminToken, $password);
             if (in_array('--broker-resources', $argv, true)) {
