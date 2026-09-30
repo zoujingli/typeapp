@@ -383,11 +383,13 @@ final class ExportService
                 if ((int) $row['expires_at'] <= time()) {
                     $query->update(['status' => 'expired']);
                 }
-                $snapshots = $transaction->table('iot_export_rows')->where('export_id', '=', $candidate['id'])->orderBy('source_id')->limit(1000)->get();
-                foreach ($snapshots as $snapshot) {
-                    $transaction->table('iot_export_rows')->where('export_id', '=', $candidate['id'])->where('source_id', '=', $snapshot['source_id'])->delete();
+                $snapshots = $transaction->table('iot_export_rows')->select(['source_id'])->where('export_id', '=', $candidate['id'])->orderBy('source_id')->limit(1000)->get();
+                $deletedRows = 0;
+                // 只删除行锁内选定的快照；每次最多501个参数，避免逐行往返与较低的SQLite参数上限。
+                foreach (array_chunk(array_column($snapshots, 'source_id'), 500) as $sourceIds) {
+                    $deletedRows += $transaction->table('iot_export_rows')->where('export_id', '=', $candidate['id'])->whereIn('source_id', $sourceIds)->delete();
                 }
-                return count($snapshots);
+                return $deletedRows;
             }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
             if ($deleted < 0) {
                 continue;

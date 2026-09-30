@@ -11,6 +11,7 @@ use Type\Testing\Process;
 /** 通过已公开的命令与真实 HTTP 验证租户授权；每轮只修改独立测试数据库。 */
 function identityCommand(array $command, array $environment): array
 {
+    $started = hrtime(true);
     $process = new Process($command, dirname(__DIR__), $environment);
     try {
         $result = $process->wait(30);
@@ -26,7 +27,9 @@ function identityCommand(array $command, array $environment): array
                     $diagnostic = str_replace($value, '<REDACTED>', $diagnostic);
                 }
             }
-            throw new RuntimeException('人员命令结果无效：exit=' . $result->exitCode . ', stdout-bytes=' . strlen($result->stdout)
+            throw new RuntimeException('人员命令结果无效：exit=' . $result->exitCode . ', timed-out=' . (int) $result->timedOut
+                . ', output-exceeded=' . (int) $result->outputExceeded . ', signal=' . ($result->signal ?? 'none')
+                . ', seconds=' . ((hrtime(true) - $started) / 1e9) . ', budget-seconds=30, stdout-bytes=' . strlen($result->stdout)
                 . ', stdout-sha256=' . hash('sha256', $result->stdout) . "\n" . substr($diagnostic, 0, 8192), 0, $failure);
         }
     } finally {

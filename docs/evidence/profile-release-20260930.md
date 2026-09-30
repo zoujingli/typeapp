@@ -177,3 +177,25 @@ MySQL 的 6 秒数据库等待已转为正式导出回归，等待后必须继�
 本机进一步对照复现了启动顺序的影响：业务线程中同一 `SELECT SLEEP(0.5)` 直接运行时定时器推进 50 次；主线程先完成一次 Scheduler、再调用 `enableIo()` 启动线程时，定时器推进 0 次。锁定 Swoole 的 `PHPCoroutine::deactivate()` 撤销实际 hook，而 `getHookFlags()` 仍返回配置值；原 `enableIo()` 的提前返回跳过了重新安装。修复限定在无其他业务线程的主线程，通过官方 `enableCoroutine()` 重新应用原配置和必要能力；已有业务线程时不修改进程级 hook，不调整监督期限或原生 SDK。
 
 修复后 PHP 对照两项均推进 50 次。独立消费者全量 AOT 后的程序 SHA-256 为 `d89e40a88ab128626127c3572a5b8d0ca9130d412cf934ca01656e0a37ca6867`，构建 ID 为 `389d308989064fe388cf9337d2a7c8a6e01adec8cdfd662fac74e5143127cad2`。使用编译器生成并核验的运行配置，主线程、直接业务线程和先检查再启动业务线程三项均推进 50 次，耗时约 0.5023–0.5056 秒；报告为 `build/profile-release-validation/pdo-preflight-18561005a21b/verification.json`。初次错误使用宿主配置时因未启用 fiber mock 而拒绝业务线程，原失败日志单独保留；程序字节未变。这是 macOS 共享 embed 组件证据，Windows 静态应用尚须独立复验。
+
+上述本机对照、原生程序和 MySQL 导出回归资料已逐文件回读封存为 `.cache/profile-release-evidence-20260930/pdo-startup-validation.tar.gz`，SHA-256 为 `15047185ade900b12e523d902d08ba43887ce507de5a16289098f72bdbe74aa4`。归档为 15,574,920 字节，回收已退出的测试资源和独立消费者共 1,142,528,032 逻辑字节，累计回收 13,459,902,597 逻辑字节。修复版本的基础检查覆盖 821 个文件，182 项单元测试和 3436 个断言通过；格式与文档检查通过。
+
+Windows 静态对照 [36658109790](https://github.com/zoujingli/typeapp/actions/runs/36658109790) 同样复现启动顺序故障：程序 SHA-256 为 `38d317b9176322974b83f5b1c8e07334de51834b625a84b742b01cd8636eda93`，主线程和直接业务线程各推进 31 次定时器，先完成 Scheduler 再启动业务线程时推进 0 次，查询耗时均约 0.49 秒。回归明确以 `preflight-thread` 进度断言失败；此运行没有继续原应用验收。原报告保存于 `build/profile-release-validation/rc12/windows-pdo-preflight-evidence/`，修复后的完整应用另行编译验证。
+
+Windows PostgreSQL 参数绑定优化后的完整程序在 [36656859826](https://github.com/zoujingli/typeapp/actions/runs/36656859826) 中通过严格无源码部署、MQTT TLS 授权及 755 项告警通知 HTTP 检查。程序 SHA-256 为 `2a12cdd03f772950f411175940fe1cd528d5a3f769c4ff99309184541de90314`；MQTT 节点在 2.1272 秒正常退出，满足原 5 秒预算。导出随后在 736 项 HTTP 检查后的大快照清理命令失败，退出码为 `-1073741510`、标准输出为空；原报告没有单独保存超时状态，因此不只凭该退出码断定原因。命令诊断现补充实际耗时、超时、信号及输出超限，既定 30 秒预算不变。
+
+原清理实现对每任务选定的 1000 条快照逐行执行 DELETE。专用 PostgreSQL 装置在每条 DELETE 语句加入 32 毫秒等待，复现约 33.5550 秒、1000 次往返；改为任务行锁内分批删除后，同样数据和等待约为 0.0738 秒、2 次往返。两次都只删除目标任务的 1000 条，保留其余 50 条及另一个任务相同 source_id 的 1050 条。最初对照因测试脚本持有 PDOStatement 而未正常停止数据库，失败清理记录保留；释放该引用后复跑正常退出，报告为 `build/profile-release-validation/export-cleanup-3573241dc081/verification.json` 与 `database.json`。该延迟装置只证明往返次数对清理的影响，不作为 Windows 最终程序已通过的证据。
+
+RC12 原发布运行现已结束：全部组件验收通过，静态单程序组合为 9 项通过、3 项失败，发布总门禁失败，主仓 Release 未公开。后续修复与验证分别记录，不将新结果写回原标签。
+
+批量清理修复的完整 PHP 导出回归通过 SQLite/MySQL/PostgreSQL 的 748/751/750 项 HTTP 检查，覆盖原有权限、取消、恢复、Redis 队列和十万行快照。对应清理命令耗时为 0.1926/0.2219/0.1848 秒，均从 100000 行清理到 99000 行，沿用 30 秒预算。报告分别为 `build/iot-identity-44c6ba0560c4/verification.json`、`build/iot-identity-03e9462577df/verification.json`、`build/iot-identity-e88ae88b0575/verification.json`；各轮 HTTP 进程与专用数据库正常关闭。编译产物的结果另行记录。
+
+修复清理后的本机共享 embed 应用全量编译 280 个单元，程序 SHA-256 为 `127139a1e50a2e8973063445cde7490f175976f0678fe2cf180fb455f8628dd4`。同一程序在生产源码禁读条件下通过 SQLite/MySQL 的 745/751 项导出 HTTP 检查，但 PostgreSQL 在线程启动预检时失败，尚未处理业务请求；日志为 `API must be called in the coroutine`。实际调用是 `Application::handler()` 在协程外借用预检连接，不能将该结果记为三库通过。
+
+使用真实 PostgreSQL 和相同线程/hook 配置的最小对照中，协程外连接以 255 退出，放入官方 Scheduler 的连接返回查询值 73 并正常退出，排除源码隔离导致的依赖读取失败。报告为 `build/profile-release-validation/pgsql-thread-entry-34379c07ab50/verification.json`。HTTP 存储预检据此通过现有 `CoroutineRuntime::run()` 进入协程，在回调内创建并关闭专用连接和作用域；不修改原生 SDK 或业务请求的资源归属。调整后应用另行编译验收。
+
+启动 hook 修复提交 `8a3348dff6a68b4aa53785b5287a3533b309f25e` 的 Windows MySQL 完整候选 [36658923399](https://github.com/zoujingli/typeapp/actions/runs/36658923399) 已通过。最终 EXE 的 SHA-256 为 `ee11d269c684c9b57f3a416b849c2d765a6911f0e6ea83d0e8f5d2b3b694f804`；同一文件通过严格无源码部署、55 项 MQTT 授权、755 项告警通知、751 项导出和 510 项调度/管理 HTTP 检查。导出包含真实 6 秒数据库等待后的继续服务断言，原 `thread_progress_timeout` 不再出现。回读报告保留在 `build/profile-release-validation/rc12/windows-mysql-hook-fixed-evidence/`；该定向候选不是新发布版本，后续源码仍须进入完整发布矩阵。
+
+HTTP 预检修复后的本机程序再次全量编译 280 个单元，SHA-256 为 `71d0ed11c67f938ed33b5bc9923cb6505948a467ee76f1ddfbfff5e50ce1f256`，构建 ID 为 `688efcda5db38e14dbec444d91e517a0d20163ed0b56a86c8df4451d6abc4abb`。同一文件在生产源码禁读条件下通过 PostgreSQL/MySQL/SQLite 的 750/751/744 项完整导出 HTTP 检查；清理命令分别耗时 0.2011/0.1913/0.1623 秒，都只删除选定的 1000 行，HTTP 与专用数据库正常退出。报告分别为 `build/iot-identity-9e8d67389f98/verification.json`、`build/iot-identity-2dd7b53d52ae/verification.json`、`build/iot-identity-8c3e70dea928/verification.json`。本机程序使用共享 embed，仅作为完整应用原生行为回归，不替代新 RC 的静态单程序矩阵。
+
+本轮基础检查覆盖 821 个文件，单元套件通过 182 项测试、3436 个断言，格式与文档检查通过。两个原生程序、可搬迁运行库、成功及失败报告、最小对照和源码差异已逐文件回读封存为 `.cache/profile-release-evidence-20260930/export-cleanup-validation.tar.gz`，SHA-256 为 `059b2025897b3b60792d817adc9e704388bd1ad3d308e12f6b3a3640d7888b1b`。归档为 70,936,207 字节，回收已退出的隔离实例、测试目录和编译中间文件共 4,227,375,353 逻辑字节；累计回收 17,687,277,950 逻辑字节。原失败报告保持原状态，日常 Redis 未改动。

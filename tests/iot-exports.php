@@ -436,7 +436,9 @@ function iotExportChecks(Closure $request, array $tokens, string $tenantA, strin
         expect($maximum['total_rows'] === 100000, '恰好100000行的合法小记录应允许创建');
         $request('POST', $jobsPath . '/' . $maximum['id'] . '/cancel', $admin, $tenantA, [], 200);
         $beforeCleanup = (int) $database->query("SELECT COUNT(*) FROM iot_export_rows WHERE export_id = '" . $maximum['id'] . "'")->fetchColumn();
+        $cleanupStarted = hrtime(true);
         identityCommand([...$command, 'iot:exports-clean', '100'], $workerEnvironment);
+        $cleanupSeconds = (hrtime(true) - $cleanupStarted) / 1e9;
         $afterCleanup = (int) $database->query("SELECT COUNT(*) FROM iot_export_rows WHERE export_id = '" . $maximum['id'] . "'")->fetchColumn();
         expect($beforeCleanup - $afterCleanup === 1000, '大快照的清理应有界且留下可恢复剩余事实');
         $database->prepare('UPDATE iot_ingestion_facts SET values_json = ? WHERE device_id = ?')->execute(['{"a":' . str_repeat(' ', 512) . '1}', $limitDevice['id']]);
@@ -449,7 +451,9 @@ function iotExportChecks(Closure $request, array $tokens, string $tenantA, strin
         }
         $request('POST', $createPath, $admin, $tenantA, array_replace($filters, ['id' => bin2hex(random_bytes(16))]), 429, 'export_capacity_exceeded');
         $checks[] = 'bounded-retained-task-capacity';
-        return ['checks' => $checks, 'redis' => $redis->evidence(), 'example_task' => $created['id'], 'rows' => 205, 'csv_sha256' => hash('sha256', $csv->body)];
+        return ['checks' => $checks, 'redis' => $redis->evidence(), 'example_task' => $created['id'], 'rows' => 205,
+            'bounded_cleanup' => ['seconds' => $cleanupSeconds, 'budget_seconds' => 30, 'before' => $beforeCleanup, 'after' => $afterCleanup],
+            'csv_sha256' => hash('sha256', $csv->body)];
     } finally {
         $redis->close();
     }
