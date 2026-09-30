@@ -21,22 +21,25 @@ function pgsqlProbeConnection(): void
     );
     pgsqlProbeStep('connected');
     // [DEBUG-pgsql-latency] 只输出阶段耗时，不记录 SQL 参数、端点或凭据。
-    $samples = [];
-    for ($index = 0; $index < 20; $index++) {
-        $started = hrtime(true);
-        $point = $pdo->prepare('SELECT CAST(? AS INTEGER)');
-        $prepared = hrtime(true);
-        $point->execute([7]);
-        if ($point->fetchColumn() !== 7) {
-            throw new RuntimeException('PostgreSQL 点查询结果不符');
+    foreach ([false, true] as $disablePrepares) {
+        $pdo->setAttribute(\Pdo\Pgsql::ATTR_DISABLE_PREPARES, $disablePrepares);
+        $samples = [];
+        for ($index = 0; $index < 20; $index++) {
+            $started = hrtime(true);
+            $point = $pdo->prepare('SELECT CAST(? AS INTEGER)');
+            $prepared = hrtime(true);
+            $point->execute([7]);
+            if ($point->fetchColumn() !== 7) {
+                throw new RuntimeException('PostgreSQL 点查询结果不符');
+            }
+            $executed = hrtime(true);
+            $point->closeCursor();
+            unset($point);
+            $samples[] = ['prepare_ms' => ($prepared - $started) / 1000000,
+                'execute_ms' => ($executed - $prepared) / 1000000, 'close_ms' => (hrtime(true) - $executed) / 1000000];
         }
-        $executed = hrtime(true);
-        $point->closeCursor();
-        unset($point);
-        $samples[] = ['prepare_ms' => ($prepared - $started) / 1000000,
-            'execute_ms' => ($executed - $prepared) / 1000000, 'close_ms' => (hrtime(true) - $executed) / 1000000];
+        echo '[DEBUG-pgsql-latency] ', json_encode(['disable_prepares' => $disablePrepares, 'samples' => $samples], JSON_THROW_ON_ERROR), PHP_EOL;
     }
-    echo '[DEBUG-pgsql-latency] ', json_encode($samples, JSON_THROW_ON_ERROR), PHP_EOL;
     $pdo->exec("SET TIME ZONE 'UTC'");
     $pdo->beginTransaction();
     pgsqlProbeStep('prepare');
