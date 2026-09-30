@@ -36,7 +36,12 @@ expect(copy($root . '/toolchain.lock.json', $work . '/toolchain.lock.json')
     && copy(__DIR__ . '/fixtures/compiled-pdo-progress.php', $work . '/app/main.php'), '无法复制锁与完整消费者');
 $runner = new BuildEnvironment();
 $environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME'));
+$environment['PHPRC'] = php_ini_loaded_file() ?: '';
+$environment['PHP_INI_SCAN_DIR'] = (string) (getenv('PHP_INI_SCAN_DIR') ?: '');
 $environment['TYPE_STATIC_RUNTIME'] = (string) getenv('TYPE_STATIC_RUNTIME');
+expect(mkdir($work . '/composer-home', 0700), '无法创建独立 Composer 配置目录');
+$environment['COMPOSER_HOME'] = $work . '/composer-home';
+$environment['COMPOSER_CACHE_DIR'] = $root . '/.cache/composer';
 $composerBinary = (string) (getenv('TYPE_COMPOSER_PHAR') ?: getenv('COMPOSER_BINARY'));
 expect(is_file($composerBinary) && is_file($environment['TYPE_STATIC_RUNTIME']), '需要明确 Composer 和静态 SDK');
 file_put_contents($work . '/install.log', $runner->run([PHP_BINARY, $composerBinary, 'install', '--no-interaction',
