@@ -715,11 +715,12 @@ final class Application
     }
 
     /**
-     * 构建与服务器实现无关的 PSR-15 业务处理链；构造驱动但不借用真实数据库连接。
+     * 在协程内完成存储预检，再构建与服务器实现无关的 PSR-15 业务处理链。
      *
      * 每次实际请求必须由服务器创建执行作用域，响应结束后收回所有请求租约。
      *
      * @throws InvalidArgumentException 模式、令牌、Host、预算或 SQLite 初始化条件无效。
+     * @throws \RuntimeException 存储不兼容、恢复门禁未就绪或预检失败。
      */
     public static function handler(Repository $settings, string $basePath, bool $development = false, bool $broker = false): RequestHandlerInterface
     {
@@ -736,16 +737,19 @@ final class Application
         }
         $policy = new RequestPolicy($hosts, Settings::list($settings->text('app.http.trusted_proxies')));
         DatabaseFactory::requireExisting($settings, $basePath);
-        $compat = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
-        $compatScope = new ExecutionScope(new Deadline(2.0));
-        try {
-            $connection = $compat->connect($compatScope);
-            CompatService::assertRuntime($connection);
-            \app\iot\service\RecoveryService::ready($connection, $broker ? 'broker' : 'app');
-        } finally {
-            $compatScope->close();
-            $compat->close();
-        }
+        // PDO hook 已在主线程安装；业务线程的启动预检也须在协程内创建和释放连接。
+        CoroutineRuntime::run(static function () use ($settings, $basePath, $broker): void {
+            $compat = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
+            $compatScope = new ExecutionScope(new Deadline(2.0));
+            try {
+                $connection = $compat->connect($compatScope);
+                CompatService::assertRuntime($connection);
+                \app\iot\service\RecoveryService::ready($connection, $broker ? 'broker' : 'app');
+            } finally {
+                $compatScope->close();
+                $compat->close();
+            }
+        });
         $database = Settings::database($settings, $basePath);
         \Type\Orm\Db::configure($database);
         $messages = new Factory();

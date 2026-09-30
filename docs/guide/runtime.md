@@ -56,6 +56,8 @@ TypeApp 把“当前工作是谁、还能运行多久、如何停止”放在显
 
 启动检查使用的 Scheduler 退出后，Swoole 会撤销实际 I/O hook，但保留 hook 配置值。框架在主线程启动业务线程前重新应用配置，保证数据库等待仍能让出协程；业务线程运行期间不修改这些进程级配置。
 
+安装 hook 并不自动把调用者变为协程。物联中心 HTTP 线程在开始监听前，使用同一协程入口完成存储兼容与恢复检查，并在退出检查前释放连接和作用域；请求阶段另按各自作用域借用连接。
+
 构造参数 `context` 只用于关联；消息携带的 `tenant_id` 不自动授予租户访问资格。应用完成认证和授权后，显式提供 `bindings` 字符串值；组件通过 `binding($name)` 读取。框架拥有快照、执行者和资源边界，应用拥有身份与业务规则。HTTP、WebSocket 公开回调、MQTT Broker 事件、生成 CLI、队列、调度和受管子任务已接入当前作用域；自定义 Socket 消息在其装配入口显式绑定，实际用法与验证范围见[当前作用域](https://github.com/zoujingli/typeapp/blob/main/docs/development/managed-tasks.md#当前作用域与应用绑定)。
 
 ### 上下文怎样随协程传递
