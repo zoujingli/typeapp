@@ -265,6 +265,12 @@ final class CoreExercise
         $connection = null;
         try {
             $connection = $database->connect($scope);
+            if ($name === 'pgsql') {
+                self::check(
+                    (int) $connection->query('SELECT count(*) AS active FROM pg_prepared_statements')[0]['active'] === 0,
+                    '单次参数查询不应创建需要单独释放的服务端命名语句'
+                );
+            }
             $connection->execute('CREATE TABLE type_session_probe (id INTEGER PRIMARY KEY, value INTEGER NOT NULL)');
             if ($name === 'pgsql') {
                 $connection->execute("CREATE FUNCTION type_session_dirty() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN PERFORM set_config(''TimeZone'', ''Asia/Shanghai'', false); PERFORM pg_advisory_lock(962091); RETURN NEW; END'");

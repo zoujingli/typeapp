@@ -80,6 +80,7 @@ final class PgsqlDriver implements Driver
 
     /**
      * 创建新 PDO 并确认驱动要求的会话基线；失败向上抛出，不回退到其他数据库。
+     * 单次 ORM 查询沿用原生参数绑定，避免创建和关闭服务端命名语句的额外往返。
      *
      * @return PDO 由调用者或受管 PdoSession 拥有的真实连接。
      * @throws DatabaseException 扩展、连接或会话初始化不满足约定。
@@ -97,7 +98,8 @@ final class PgsqlDriver implements Driver
                 $this->dsn,
                 $this->username,
                 $this->password,
-                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_STRINGIFY_FETCHES => false, PDO::ATTR_EMULATE_PREPARES => false]
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_STRINGIFY_FETCHES => false,
+                    PDO::ATTR_EMULATE_PREPARES => false, \Pdo\Pgsql::ATTR_DISABLE_PREPARES => true]
             );
             $this->initialize($pdo);
             return $pdo;

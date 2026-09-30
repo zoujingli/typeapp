@@ -197,30 +197,6 @@ try {
         usleep(100000);
     } while (microtime(true) < $deadline);
     expect(($nodes['total'] ?? 0) === 1, '授权节点未上报');
-    if (PHP_OS_FAMILY === 'Windows' && getenv('TYPE_APP_TRACE') === '1' && $driver === 'pgsql') {
-        $nodeStopStarted = hrtime(true);
-        $report['scope'] = 'broker-stop-diagnostic';
-        // [DEBUG-node-stop] 原 EXE 诊断：只观察本轮数据库的等待，不保存 SQL 或凭据。
-        $report['node_stop_control_delivered'] = sapi_windows_generate_ctrl_event(PHP_WINDOWS_EVENT_CTRL_BREAK, $node->pid());
-        // 延长观测窗口不放宽5秒断言；用于区分慢收尾与永不退出。
-        $nodeStopDeadline = microtime(true) + 30.0;
-        $report['node_stop_observation_seconds'] = 30.0;
-        $report['node_stop_database'] = [];
-        do {
-            $nodeStopQuery = $databaseAdmin->prepare("SELECT pid, state, wait_event_type, wait_event, pg_blocking_pids(pid)::text AS blockers, EXTRACT(EPOCH FROM clock_timestamp() - query_start) AS query_seconds, CASE WHEN query ILIKE '%broker_resource%' THEN 'resources' WHEN query ILIKE '%broker_debug%' THEN 'debug' WHEN query ILIKE '%broker_nodes%' THEN 'nodes' WHEN query ILIKE '%broker_access%' THEN 'access' WHEN query ILIKE '%broker_runtime%' THEN 'runtime' WHEN query ILIKE '%broker_quota%' THEN 'quota' WHEN query ILIKE 'DISCARD%' THEN 'reset' WHEN query ILIKE 'COMMIT%' THEN 'commit' WHEN query ILIKE 'ROLLBACK%' THEN 'rollback' WHEN query ILIKE 'BEGIN%' THEN 'begin' ELSE 'other' END AS query_family FROM pg_stat_activity WHERE datname = ?");
-            $nodeStopQuery->execute([$ownedDatabases['broker']]);
-            $report['node_stop_database'][] = ['seconds' => (hrtime(true) - $nodeStopStarted) / 1000000000, 'sessions' => $nodeStopQuery->fetchAll(PDO::FETCH_ASSOC)];
-            usleep(250000);
-        } while ($node->running() && microtime(true) < $nodeStopDeadline);
-        $nodeStop = $node->wait(0);
-        $report['node_stop'] = [
-            'seconds' => (hrtime(true) - $nodeStopStarted) / 1000000000,
-            'exit_code' => $nodeStop->exitCode, 'timed_out' => $nodeStop->timedOut,
-            'output_exceeded' => $nodeStop->outputExceeded, 'signal' => $nodeStop->signal,
-        ];
-        file_put_contents($base . '/node-stop.log', str_replace($secrets, '<REDACTED>', $nodeStop->stdout . $nodeStop->stderr));
-        throw new RuntimeException('diagnostic_stop_probe_completed：仅记录原程序停止，不计作业务通过');
-    }
     $listed = $request('GET', '/broker/access/principals', $token, null, 200);
     expect($listed['current_version'] === 1 && count($listed['items']) === 1 && $listed['items'][0]['login'] === 'broker-client'
         && ($listed['publish_paused'] ?? true) === false, '引导主体未写入已生效版本1');

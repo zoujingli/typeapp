@@ -157,3 +157,13 @@ RC12 的 macOS PostgreSQL 候选在创建合法十万行快照时被测试客户
 报告、最小延迟装置和数据库关闭记录已逐文件回读封存到 `.cache/profile-release-evidence-20260930/snapshot-budget-validation.tar.gz`，SHA-256 为 `9ec2b2b3bc3b708b0d33bf042a5a8988e24efd78a9c12fbab9ae016d58a9ce42`。回收已停止的隔离数据库及测试目录共 2,976,495,054 逻辑字节；累计回收 11,912,168,392 逻辑字节。原候选文件继续保留，日常 Redis 不受影响。
 
 Windows PostgreSQL 原候选已通过编译与严格无源码部署，但 MQTT 授权节点停止断言失败。原 EXE 为 49,910,006 字节，SHA-256 为 `58077f13675bc3d408ee107e839eeee61d6b2d53b4831f23b9718fc207bebf04`，下载后已回读核对。原报告未保存退出码，因此增加脱敏日志及退出状态，再以原 EXE 运行 [36650422087](https://github.com/zoujingli/typeapp/actions/runs/36650422087) 诊断；未取得完整结果前不认定原因或通过。以上故障均阻止 RC12 公开，成功组合不能替代失败组合。
+
+Windows MySQL 原候选为 49,739,596 字节，SHA-256 为 `b3bec7e405630c8961e7f4b5c48ca2b6bf95d2a5438d0b7b7bfc9b46a8121db4`。运行 [36654596688](https://github.com/zoujingli/typeapp/actions/runs/36654596688) 只对本轮测试库的导出插入增加 6 秒服务器等待，使用同一 EXE 和 205 行数据。POST 在约 6.0418 秒返回 202，随后 GET 连接被拒绝，HTTP 角色退出码为 1，日志为 `thread_progress_timeout`。该结果排除了“只有十万行结果处理才触发”的解释，数据库等待期间的协程进度仍须修复。延迟触发器在清理时删除；没有放宽生产线程的进度预算。原日志保留在 `build/profile-release-validation/rc12/windows-mysql-wait-evidence/`。
+
+Windows PostgreSQL 的最小停止对照 [36653826674](https://github.com/zoujingli/typeapp/actions/runs/36653826674) 在节点就绪后立即发送 CTRL_BREAK，同一原 EXE 在约 3.5955 秒正常退出，退出码为 0；数据库采样未发现锁阻塞者。该诊断主动终止后续测试，不能计为完整 MQTT 业务通过，完整业务后的等待和停止问题仍未关闭。报告保留在 `build/profile-release-validation/rc12/windows-pgsql-minimal-stop-evidence/`。
+
+独立接缝测量 [36654843594](https://github.com/zoujingli/typeapp/actions/runs/36654843594) 使用锁定的 Windows 宿主 PHP/Swoole，分别执行 20 次同步、仅 PostgreSQL hook 和运行组件 hook 的参数点查询。同步执行及释放通常低于 1 毫秒；两种 hook 模式执行通常约 31 毫秒，释放语句约 16 毫秒。此证据属于宿主接缝，不能冒充静态程序的结果。原日志保留在 `build/profile-release-validation/rc12/windows-pgsql-latency-evidence/`，后续比较官方原生参数绑定模式，保持真实查询及事务语义。
+
+官方 `Pdo\Pgsql::ATTR_DISABLE_PREPARES` 对照 [36655832891](https://github.com/zoujingli/typeapp/actions/runs/36655832891) 在同一连接上分别执行 20 次命名和未命名参数查询。运行组件 hook 下，查询及释放的合计中位数由 46.8855 毫秒降至 15.6271 毫秒；同步对照由 0.2368 毫秒降至 0.1019 毫秒。采用 `PQexecParams` 的路径保留原生参数绑定及事务，不使用 SQL 字符串模拟参数；锁定 PHP 与 Swoole 源码均支持该路径。此结果不等于应用吞吐或完整 MQTT 已通过。
+
+ORM 据此启用该官方配置，新增真实 `pg_prepared_statements` 回归，修改前失败、修改后通过完整独立 PHP 消费。macOS 原生消费者全量编译 93 个单元，程序 SHA-256 为 `0088f45bf80e807f7c51519910c060d6b4dd86db76dfbee49501d4a816b4e913`，构建 ID 为 `64d167837dd1e2ef3ba1bc3ad46a249ac38fee7d683cb75871578de93f201fd0`，移除 103 个业务及依赖 PHP 文件后通过相同 ORM 套件、双进程更新竞争、事务、真实行锁等待和会话重置。该消费者使用共享运行库，是组件行为证据，不作为单文件发布候选。报告为 `build/orm-suite-pgsql-da9531d5b5/verification.json`；本轮 PostgreSQL 专用实例已正常关闭。
