@@ -274,7 +274,19 @@ try {
     expect($audit['items'] !== [] && $audit['items'][0]['details']['reason'] === 'access_published', '授权发布必须留下脱敏审计');
     $mqttNew->stop();
     $mqttNew = null;
-    expect($node->stop(5)->successful(), '授权节点未正常排空');
+    // 保留真实退出状态，区分业务排空失败、控制事件终止和测试端强制回收。
+    $nodeStopStarted = hrtime(true);
+    $nodeStop = $node->stop(5);
+    $report['node_stop'] = [
+        'seconds' => (hrtime(true) - $nodeStopStarted) / 1000000000,
+        'budget_seconds' => 5.0,
+        'exit_code' => $nodeStop->exitCode,
+        'timed_out' => $nodeStop->timedOut,
+        'output_exceeded' => $nodeStop->outputExceeded,
+        'signal' => $nodeStop->signal,
+    ];
+    file_put_contents($base . '/node-stop.log', str_replace($secrets, '<REDACTED>', $nodeStop->stdout . $nodeStop->stderr));
+    expect($nodeStop->successful(), '授权节点未正常排空，见node-stop.log与verification.json');
     $node = null;
     $expanded = $request('POST', '/broker/access/principals', $token, [
         'name' => '第二主体', 'login' => 'broker-second', 'password' => bin2hex(random_bytes(16)),
