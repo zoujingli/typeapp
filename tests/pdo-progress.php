@@ -9,7 +9,7 @@ use Type\Build\BuildEnvironment;
 use Type\Build\BuildPlatform;
 use Type\Testing\Process;
 
-// 诊断范围明确独立于应用候选；复用真实静态 SDK，生成新的消费者身份。
+// 消费者身份独立于应用候选；静态 SDK 与本机共享 embed 的结果分别记录。
 $root = dirname(__DIR__);
 $driver = (string) getenv('TYPE_DB_PROBE_DRIVER');
 expect(in_array($driver, ['mysql', 'pgsql'], true), '需要明确数据库驱动');
@@ -43,14 +43,22 @@ expect(mkdir($work . '/composer-home', 0700), '无法创建独立 Composer 配�
 $environment['COMPOSER_HOME'] = $work . '/composer-home';
 $environment['COMPOSER_CACHE_DIR'] = $root . '/.cache/composer';
 $composerBinary = (string) (getenv('TYPE_COMPOSER_PHAR') ?: getenv('COMPOSER_BINARY'));
-expect(is_file($composerBinary) && is_file($environment['TYPE_STATIC_RUNTIME']), '需要明确 Composer 和静态 SDK');
+expect(is_file($composerBinary), '需要明确 Composer');
+expect($environment['TYPE_STATIC_RUNTIME'] === '' || is_file($environment['TYPE_STATIC_RUNTIME']), '显式静态 SDK 不存在');
 file_put_contents($work . '/install.log', $runner->run([PHP_BINARY, $composerBinary, 'install', '--no-interaction',
     '--no-scripts', '--no-plugins', '--no-progress'], $work, $environment, 300));
 file_put_contents($work . '/build.log', $runner->run([PHP_BINARY, $work . '/vendor/bin/type', $work . '/type-app.json'], $work, $environment, 900));
 $binary = (new BuildPlatform())->output($work . '/build/native/type-app');
-$report = ['driver' => $driver, 'sha256' => hash_file('sha256', $binary), 'scope' => 'pdo-progress-diagnostic', 'runs' => []];
+$report = ['driver' => $driver, 'sha256' => hash_file('sha256', $binary), 'scope' => 'pdo-progress-regression',
+    'runtime' => $environment['TYPE_STATIC_RUNTIME'] === '' ? 'shared' : 'static', 'runs' => []];
+$runtimeEnvironment = getenv();
+if ($environment['TYPE_STATIC_RUNTIME'] === '') {
+    // 使用编译器实际核验的模块和线程配置，不能拿宿主 PHP 配置代替 embed。
+    $runtimeEnvironment['PHPRC'] = $work . '/build/native/compiler/runtime-profile/native.ini';
+    $runtimeEnvironment['PHP_INI_SCAN_DIR'] = $work . '/build/native/compiler/runtime-profile/php.d';
+}
 foreach (['main', 'thread', 'preflight-thread'] as $mode) {
-    $process = new Process([$binary, $mode], $work);
+    $process = new Process([$binary, $mode], $work, $runtimeEnvironment);
     try {
         $result = $process->wait(20);
         file_put_contents($work . '/' . $mode . '.log', $result->stdout . $result->stderr);
@@ -64,4 +72,4 @@ foreach (['main', 'thread', 'preflight-thread'] as $mode) {
 foreach ($report['runs'] as $mode => $run) {
     expect($run['pulses'] >= 3, '数据库等待没有推进同线程事件循环：' . $mode);
 }
-echo "PDO 主线程与业务线程等待进度通过。\n";
+echo "PDO 主线程、业务线程及启动检查后的等待进度通过。\n";

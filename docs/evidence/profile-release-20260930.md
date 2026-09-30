@@ -173,3 +173,7 @@ ORM 据此启用该官方配置，新增真实 `pg_prepared_statements` 回归�
 Windows 独立 PDO 消费者在运行 [36656249048](https://github.com/zoujingli/typeapp/actions/runs/36656249048) 中完成静态编译，程序 SHA-256 为 `5f5b95dcacbe994e9d6949b238a9bcac1fd8f354e5cf59701449a9b193ef9880`。同一文件的主线程与业务线程各执行一次 `SELECT SLEEP(0.5)`，耗时约 0.5036/0.4913 秒，10 毫秒定时器分别推进 32/31 次。随后原 RC12 应用仍在 6 秒导出等待后报告 `thread_progress_timeout`；探针通过不能替代应用验收。证据保存于 `build/profile-release-validation/rc12/windows-pdo-progress-retry-evidence/`。下一对照增加应用实际使用的“主线程先完成一次 Scheduler，再启动业务线程”顺序，检查启动期 hook 生命周期。
 
 MySQL 的 6 秒数据库等待已转为正式导出回归，等待后必须继续通过 HTTP 读取完整任务并完成原有导出检查。macOS PHP 开发路径通过 751 项 HTTP 检查，报告为 `build/iot-identity-48525df95b24/verification.json`；该结果不作为 Windows 原生故障已修复的证据。
+
+本机进一步对照复现了启动顺序的影响：业务线程中同一 `SELECT SLEEP(0.5)` 直接运行时定时器推进 50 次；主线程先完成一次 Scheduler、再调用 `enableIo()` 启动线程时，定时器推进 0 次。锁定 Swoole 的 `PHPCoroutine::deactivate()` 撤销实际 hook，而 `getHookFlags()` 仍返回配置值；原 `enableIo()` 的提前返回跳过了重新安装。修复限定在无其他业务线程的主线程，通过官方 `enableCoroutine()` 重新应用原配置和必要能力；已有业务线程时不修改进程级 hook，不调整监督期限或原生 SDK。
+
+修复后 PHP 对照两项均推进 50 次。独立消费者全量 AOT 后的程序 SHA-256 为 `d89e40a88ab128626127c3572a5b8d0ca9130d412cf934ca01656e0a37ca6867`，构建 ID 为 `389d308989064fe388cf9337d2a7c8a6e01adec8cdfd662fac74e5143127cad2`。使用编译器生成并核验的运行配置，主线程、直接业务线程和先检查再启动业务线程三项均推进 50 次，耗时约 0.5023–0.5056 秒；报告为 `build/profile-release-validation/pdo-preflight-18561005a21b/verification.json`。初次错误使用宿主配置时因未启用 fiber mock 而拒绝业务线程，原失败日志单独保留；程序字节未变。这是 macOS 共享 embed 组件证据，Windows 静态应用尚须独立复验。

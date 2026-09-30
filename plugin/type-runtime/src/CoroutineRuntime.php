@@ -109,6 +109,7 @@ final class CoroutineRuntime
      * 在主线程启动期补齐网络、等待、独立命令进程及已编译的 PDO 钩子；保留已有配置，可重复调用。
      *
      * 子线程直接使用启动前安装的原生 hook，不重复修改进程配置。
+     * 主线程独占运行时时重新应用配置：Scheduler 退出会撤销实际 hook，但保留 getHookFlags 的配置值。
      * 文件 hook 的完整有界接入仍在独立验收，不作为普通线程和网络的启动前置。
      * @throws TaskException 扩展不符合要求，或运行期间试图改变进程级钩子。
      */
@@ -126,14 +127,12 @@ final class CoroutineRuntime
             }
         }
         $current = \Swoole\Runtime::getHookFlags();
-        if (($current & $required) === $required) {
+        if (class_exists(\Swoole\Thread::class, false)
+            && (!\Swoole\Thread::getInfo()['is_main_thread'] || \Swoole\Thread::activeCount() > 1)) {
+            if (($current & $required) !== $required) {
+                throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
+            }
             return;
-        }
-        if (class_exists(\Swoole\Thread::class, false) && !\Swoole\Thread::getInfo()['is_main_thread']) {
-            throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
-        }
-        if (class_exists(\Swoole\Thread::class, false) && \Swoole\Thread::activeCount() > 1) {
-            throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
         }
         if (!\Swoole\Runtime::enableCoroutine($current | $required)) {
             throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
