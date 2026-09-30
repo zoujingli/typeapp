@@ -407,8 +407,15 @@ try {
     }
     foreach (['browser' => $browser, 'node' => $node, 'app' => $appServer, 'http' => $server] as $role => $process) {
         try {
-            $process?->stop(5.0);
+            $cleanupResult = $process?->stop(5.0);
             $report['cleanup'][$role] = $process === null || !$process->running();
+            if ($cleanupResult !== null) {
+                $report['cleanup_processes'][$role] = ['exit_code' => $cleanupResult->exitCode,
+                    'timed_out' => $cleanupResult->timedOut, 'output_exceeded' => $cleanupResult->outputExceeded,
+                    'signal' => $cleanupResult->signal];
+                // 早于正常停止断言的失败也保留角色日志，不记录测试凭据。
+                file_put_contents($base . '/' . $role . '-cleanup.log', str_replace($secrets, '<REDACTED>', $cleanupResult->stdout . $cleanupResult->stderr));
+            }
         } catch (Throwable $failure) {
             $report['cleanup'][$role] = false;
             $report['cleanup_errors'][] = $role . ':' . $failure->getMessage();
