@@ -279,10 +279,12 @@ try {
     if (PHP_OS_FAMILY === 'Windows' && getenv('TYPE_APP_TRACE') === '1' && $driver === 'pgsql') {
         // [DEBUG-node-stop] 原 EXE 诊断：只观察本轮数据库的等待，不保存 SQL 或凭据。
         $report['node_stop_control_delivered'] = sapi_windows_generate_ctrl_event(PHP_WINDOWS_EVENT_CTRL_BREAK, $node->pid());
-        $nodeStopDeadline = microtime(true) + 5.0;
+        // 延长观测窗口不放宽5秒断言；用于区分慢收尾与永不退出。
+        $nodeStopDeadline = microtime(true) + 30.0;
+        $report['node_stop_observation_seconds'] = 30.0;
         $report['node_stop_database'] = [];
         do {
-            $nodeStopQuery = $databaseAdmin->prepare('SELECT pid, state, wait_event_type, wait_event, pg_blocking_pids(pid)::text AS blockers, EXTRACT(EPOCH FROM clock_timestamp() - query_start) AS query_seconds FROM pg_stat_activity WHERE datname = ?');
+            $nodeStopQuery = $databaseAdmin->prepare("SELECT pid, state, wait_event_type, wait_event, pg_blocking_pids(pid)::text AS blockers, EXTRACT(EPOCH FROM clock_timestamp() - query_start) AS query_seconds, CASE WHEN query ILIKE '%broker_resource%' THEN 'resources' WHEN query ILIKE '%broker_debug%' THEN 'debug' WHEN query ILIKE '%broker_nodes%' THEN 'nodes' WHEN query ILIKE '%broker_access%' THEN 'access' WHEN query ILIKE '%broker_runtime%' THEN 'runtime' WHEN query ILIKE '%broker_quota%' THEN 'quota' WHEN query ILIKE 'DISCARD%' THEN 'reset' WHEN query ILIKE 'COMMIT%' THEN 'commit' WHEN query ILIKE 'ROLLBACK%' THEN 'rollback' WHEN query ILIKE 'BEGIN%' THEN 'begin' ELSE 'other' END AS query_family FROM pg_stat_activity WHERE datname = ?");
             $nodeStopQuery->execute([$ownedDatabases['broker']]);
             $report['node_stop_database'][] = ['seconds' => (hrtime(true) - $nodeStopStarted) / 1000000000, 'sessions' => $nodeStopQuery->fetchAll(PDO::FETCH_ASSOC)];
             usleep(250000);
@@ -300,6 +302,7 @@ try {
         'signal' => $nodeStop->signal,
     ];
     file_put_contents($base . '/node-stop.log', str_replace($secrets, '<REDACTED>', $nodeStop->stdout . $nodeStop->stderr));
+    expect(!isset($report['node_stop_observation_seconds']) || $report['node_stop']['seconds'] <= 5.0, '诊断记录超出5秒排空预算，不能计为通过');
     expect($nodeStop->successful(), '授权节点未正常排空，见node-stop.log与verification.json');
     $node = null;
     $expanded = $request('POST', '/broker/access/principals', $token, [
