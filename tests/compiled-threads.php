@@ -546,15 +546,30 @@ function sampleThreadResources(int $pid, string $directory, string $phase): arra
             && $observedPid && $descriptors !== [], 'macOS RSS、线程或数字 FD 观察不完整');
         $sample = ['method' => 'ps-and-lsof', 'handles' => count($descriptors), 'threads' => $threadCount, 'rss-bytes' => (int) trim($rssText) * 1024];
     } elseif (PHP_OS_FAMILY === 'Windows') {
-        $script = '$ErrorActionPreference="Stop"; $observedProcess=[System.Diagnostics.Process]::GetProcessById(' . $pid . '); '
-            . 'try {$observedProcess.Refresh(); @{pid=$observedProcess.Id; handles=$observedProcess.HandleCount; '
-            . 'threads=$observedProcess.Threads.Count; rss=$observedProcess.WorkingSet64} | ConvertTo-Json -Compress} '
-            . 'finally {$observedProcess.Dispose()}';
+        // Windows 的线程句柄在 join 后由 CRT 和 PHP 对象分别收尾；单次
+        // Refresh 可能正好落在两个清理阶段之间。短窗口重复读取同一进程，
+        // 以窗口最大值作为该检查点的保守资源上界，避免把观察者时序误报为泄漏。
+        $script = '$ErrorActionPreference="Stop"; $observations=@(); '
+            . 'for ($index=0; $index -lt 5; $index++) {'
+            . '$observedProcess=[System.Diagnostics.Process]::GetProcessById(' . $pid . '); '
+            . 'try {$observedProcess.Refresh(); $observations += @{pid=$observedProcess.Id; handles=$observedProcess.HandleCount; '
+            . 'threads=$observedProcess.Threads.Count; rss=$observedProcess.WorkingSet64}} '
+            . 'finally {$observedProcess.Dispose()} '
+            . 'if ($index -lt 4) { Start-Sleep -Milliseconds 25 } }; '
+            . '@{observations=$observations} | ConvertTo-Json -Compress';
         $raw = threadResourceCommand(['powershell.exe', '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', $script], $directory, $prefix . '-process');
         $windows = json_decode(trim($raw), true, 512, JSON_THROW_ON_ERROR);
-        expect(($windows['pid'] ?? null) === $pid && is_int($windows['handles'] ?? null)
-            && is_int($windows['threads'] ?? null) && is_int($windows['rss'] ?? null), 'Windows 进程资源观察不完整');
-        $sample = ['method' => 'powershell-process', 'handles' => $windows['handles'], 'threads' => $windows['threads'], 'rss-bytes' => $windows['rss']];
+        $observations = $windows['observations'] ?? null;
+        expect(is_array($observations) && count($observations) === 5, 'Windows 进程资源观察窗口不完整');
+        foreach ($observations as $observation) {
+            expect(is_array($observation) && ($observation['pid'] ?? null) === $pid
+                && is_int($observation['handles'] ?? null) && is_int($observation['threads'] ?? null)
+                && is_int($observation['rss'] ?? null), 'Windows 进程资源观察不完整');
+        }
+        $sample = ['method' => 'powershell-process-window',
+            'handles' => max(array_column($observations, 'handles')),
+            'threads' => max(array_column($observations, 'threads')),
+            'rss-bytes' => max(array_column($observations, 'rss')), 'observations' => $observations];
     } else {
         throw new RuntimeException('当前平台没有线程资源观察实现');
     }
