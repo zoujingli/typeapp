@@ -342,48 +342,48 @@ final class ThreadCoroutineRight
 /** 外部作用域必须拒绝私有方法/属性以及 readonly 和 private(set) 写入。 */
 function threadScopeDenied(object $target): void
 {
-    $denied = 0;
+    $denied = [];
     $method = 'nested';
     try {
         $target->$method(1);
     } catch (Error $privateMethodFailure) {
-        ++$denied;
+        $denied[] = 'private-method';
     }
     $property = 'secret';
     try {
         $unused = $target->$property;
     } catch (Error $privatePropertyFailure) {
-        ++$denied;
+        $denied[] = 'private-property';
     }
     try {
         $nullsafe = $target?->$property;
     } catch (Error $nullsafePropertyFailure) {
-        ++$denied;
+        $denied[] = 'nullsafe-private-property';
     }
     try {
         $target->items[] = 'forbidden';
     } catch (Error $privateAppendFailure) {
-        ++$denied;
+        $denied[] = 'private-append';
     }
     $items = 'items';
     try {
         $target->$items[0] = 'forbidden';
     } catch (Error $privateArrayWriteFailure) {
-        ++$denied;
+        $denied[] = 'private-array-write';
     }
     $readonly = 'identity';
     try {
         $target->$readonly = 'forbidden';
     } catch (Error $readonlyFailure) {
-        ++$denied;
+        $denied[] = 'readonly-write';
     }
     $privateSet = 'owned';
     try {
         $target->$privateSet = 'forbidden';
     } catch (Error $privateSetFailure) {
-        ++$denied;
+        $denied[] = 'private-set-write';
     }
-    ThreadProbe::check($denied === 7, '外部作用域拒绝数量不符：' . (string) $denied);
+    ThreadProbe::check(count($denied) === 7, '外部作用域拒绝项不符：' . implode(',', $denied));
 }
 
 /** 请求析构异常用公开 __destruct 行为观察，marker 记录调用次数。 */
