@@ -426,10 +426,12 @@ function httpThreadInputs(int $port): int
     return $checks;
 }
 
-/** 在 5 秒轮询预算内等待线程阶段写入非空哨兵文件，提前退出或超时均失败。 */
+/** 在 30 秒轮询预算内等待线程阶段写入非空哨兵文件，提前退出或超时均失败。 */
 function httpThreadWait(Process $process, string $file): void
 {
-    $deadline = microtime(true) + 5;
+    // Windows 的完整 AOT 线程契约会先执行多轮原生析构和句柄检查，
+    // 再创建 HTTP 监听；该预算仍然有界，但不能沿用 Linux 的 5 秒启动假设。
+    $deadline = microtime(true) + 30;
     do {
         clearstatcache(true, $file);
         if (is_file($file) && filesize($file) > 0) {

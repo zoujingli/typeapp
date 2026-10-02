@@ -14,7 +14,7 @@
 
 TypePHP 0.9 将声明拆分为多个 `*_decl.h`。写文件适配现在只把线程辅助代码注入运行时公共声明头，按当前头文件是否包含符号决定是否跳过；实际存在的变量仍必须唯一替换为线程局部存储。PHPX runtime 通过真实路径匹配后替换为 `plugin/type-build/src/Native/thread-runtime.cc`，避免同名或缓存路径误替换。
 
-0.9.3 的 `CompilerRuntime` 显式标记为源码入口，确保增量生成指纹包含实际编译器源码。新版 runtime 启动函数增加 `pre_shutdown` 参数；本仓应用在 `php_module_startup` 前注册为持久模块，由生成的 MSHUTDOWN 回收枚举 AST 常量，不重复调用上游临时模块路径的清理回调。现有线程消费者同时检查枚举 case 类常量、继承和多次请求重建。
+0.9.4 的 `CompilerRuntime` 显式标记为源码入口，确保增量生成指纹包含实际编译器源码。新版 runtime 启动函数增加 `pre_shutdown` 参数；本仓应用在 `php_module_startup` 前注册为持久模块，由生成的 MSHUTDOWN 回收枚举 AST 常量，不重复调用上游临时模块路径的清理回调。现有线程消费者同时检查枚举 case 类常量、继承和多次请求重建。
 
 ## 运行时基础能力
 
