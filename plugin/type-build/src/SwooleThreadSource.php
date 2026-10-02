@@ -178,9 +178,22 @@ static PHP_METHOD(swoole_thread, joinWithin) {
     if (!pt->thread->joinable()) {
         RETURN_FALSE;
     }
+#ifdef _WIN32
+    // MSVC 的 set_value_at_thread_exit() 可能在线程局部析构前通知 future；
+    // 句柄只有在线程真正终止（包括 TLS 析构）后才会变为有信号状态。
+    const auto wait_result = WaitForSingleObject(pt->thread->get_id(), static_cast<DWORD>(milliseconds));
+    if (wait_result == WAIT_TIMEOUT) {
+        RETURN_FALSE;
+    }
+    if (wait_result != WAIT_OBJECT_0) {
+        zend_throw_exception(swoole_exception_ce, "native thread completion wait failed", SW_ERROR_SYSTEM_CALL_FAIL);
+        RETURN_THROWS();
+    }
+#else
     if (pt->typeapp_completion.wait_for(std::chrono::milliseconds(milliseconds)) != std::future_status::ready) {
         RETURN_FALSE;
     }
+#endif
     RETURN_BOOL(pt->join());
 }
 
