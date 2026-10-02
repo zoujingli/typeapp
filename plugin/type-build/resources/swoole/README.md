@@ -42,7 +42,7 @@ Linux 两种架构使用官方 `php:8.5.10-zts-bookworm` 镜像构建，启用�
 
 macOS 模块将 libpq（含配套的 libpgcommon_shlib、libpgport_shlib）、SQLite、OpenSSL、c-ares、Brotli 的静态归档链接进扩展，并隐藏这些库的符号，避免与 PHP 已加载的同名库混用。扩展保留 PHP API 的动态绑定以及系统库依赖；没有开发电脑的依赖路径，不需要伴随 dylib。静态子依赖及其来源记录在清单中。
 
-四个平台的模块均来自 [重建 run 37010216619](https://github.com/zoujingli/typeapp/actions/runs/37010216619)，源码为 `a7b8a531951a56247fb49388df673d078d525386`。四个原生 runner 的构建、加载、协程 SQLite 和 PostgreSQL 连接拒绝检查通过；清单保存各 Artifact 身份和摘要。Windows 另保留 config.w32、IOCP、DNS 和 PHP 头文件的受控适配。这些模块检查不替代十二组合静态程序验收，进展见[新版升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。
+四个平台的模块均来自 [重建 run 37075789749](https://github.com/zoujingli/typeapp/actions/runs/37075789749)，源码为当前主仓提交 `f6c092f436f2a341bb6d588d333d761c2ab64732`。四个原生 runner 的构建、加载、协程 SQLite 和 PostgreSQL 连接拒绝检查通过；清单保存各 Artifact 身份和摘要。Windows 另保留 config.w32、IOCP、DNS 和 PHP 头文件的受控适配。这些模块检查不替代十二组合静态程序验收，进展见[新版升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。
 
 Swoole 和其所含第三方材料保留 [LICENSES](LICENSES) 中的原始许可证，第一方适配按仓库 Apache-2.0 提供。分发这些二进制时应随附该目录；其中也保存 macOS 静态子依赖以及 Windows 静态链接的 zlib 1.3.2、Zstandard 1.5.7 的许可。zlib 许可取自[固定版本](https://github.com/madler/zlib/blob/v1.3.2/LICENSE)，Zstandard 按[该版本的 BSD 许可](https://github.com/facebook/zstd/blob/v1.5.7/LICENSE)分发。
 

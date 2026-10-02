@@ -18,7 +18,7 @@
   },
   "native-entry-abi": 2,
   "patches": {
-    "SwooleThreadSource": "ecda69b9e5bcb8f09369a861519659de54b64d26ed6a8b336fcfbae2cdcb5fc9",
+    "SwooleThreadSource": "19aa756186d688201a441cf430857db9d841a53f4a85730bd39f8905c4517a79",
     "SwooleHttpSource": "458d6cd1b8dadc3b0ed88b6ec6b51ac68dc7d1d5c2ae7002f0c00efac8bb9725",
     "SwooleSocketSource": "43bcc11f06b0ef0e344d69e0e44ca3b1c2be46150bbea128daf492c819df0d60",
     "SwooleWindowsSource": "c76742a84a5d530037623a02ebf3381790a102c448d00e0d78e3f0c421bc0ea8"
@@ -27,7 +27,7 @@
     "SwooleThreadSource": {
       "ext-src/swoole_thread.cc": {
         "before": "0e4d38111d510e113e2356190ed1efc6e3864de4d58a193485dc155616844108",
-        "after": "fc2032bafdca5d38c1b3009eddf998a82ac34f2d53dcb8965a4f8effbd2c92ce"
+        "after": "1787cc33e63a29de87a3b0b2094ebec736aab712bebe4fa0d52da408c62190fe"
       },
       "ext-src/php_swoole_thread.h": {
         "before": "002c8cd826170c254a8aa2c974982b94aee26dc7bd56f6278aff58b1835355fa",
@@ -84,7 +84,7 @@
   "modules": {
     "Darwin-arm64-8.5.10-zts": {
       "file": "macos-arm64/php-8.5.10-zts/swoole.so",
-      "sha256": "50138f4a646b4b044ca5728992e4b792b5fb63e8d6bbfa4df848ea8f75525625",
+      "sha256": "a1389c3b451e309158152a1f8f82019e35b462c1f73c365f7cf0f7e6c41e82a2",
       "bytes": 9350528,
       "verification": {
         "status": "passed",
@@ -97,16 +97,16 @@
         "native_entry_abi": 2,
         "coroutine_and_sqlite": true,
         "pgsql_connection_failure": true,
-        "sha256": "50138f4a646b4b044ca5728992e4b792b5fb63e8d6bbfa4df848ea8f75525625",
+        "sha256": "a1389c3b451e309158152a1f8f82019e35b462c1f73c365f7cf0f7e6c41e82a2",
         "bytes": 9350528
       },
       "build": {
-        "source-commit": "a7b8a531951a56247fb49388df673d078d525386",
-        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37010216619",
+        "source-commit": "f6c092f436f2a341bb6d588d333d761c2ab64732",
+        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37075789749",
         "workflow-conclusion": "success",
         "artifact": "swoole-macos-arm64",
-        "artifact-id": 11227835394,
-        "artifact-sha256": "sha256:9405739c95ed7bb993e06d5cb0825e43703e1a61310a42db5bca3da45d7c2762",
+        "artifact-id": 11257001358,
+        "artifact-sha256": "sha256:af184631f90a11f55b848adb0f3609738307d8450d329e65958859401a57ad3b",
         "verification-scope": "module-load-coroutine-sqlite-pgsql-refusal",
         "deployment-target": "15.0",
         "runner": "macos-15-arm64",
@@ -129,9 +129,9 @@
           "libc++"
         ],
         "static-archives-sha256": {
-          "libpq.a": "4e638c59b2714da7812d2950df288797a9619d4fd90ce305ec0b68892ba97d00",
-          "libpgcommon_shlib.a": "ec75e418bb0c3b49c48a7562c875447fa06fb552fffcf6a6597b8e5301645c52",
-          "libpgport_shlib.a": "fead62d7e56d85835eb786688d4fc851695759da4e17fd94e3916159f828db8c",
+          "libpq.a": "90641fa93fe84f454e7b5feae72305059d1372af267a755c6a39d722068ddaa0",
+          "libpgcommon_shlib.a": "9672d47b8b669452d7f45da75002557709e3e2706bfd4967366c88592668b4ec",
+          "libpgport_shlib.a": "390a979cd5b2e2eca0b22fc2514632ba3eba2d6c2018341e454ac1006f350c03",
           "libssl.a": "eaf963fdbd83356365fb4de2dc2eeb586d31948638fc2adf57a3234556d052bf",
           "libcrypto.a": "6e6288edfc69717ab49b490ffc9584fe8f539175ec674ef86c00e1a694f9910f",
           "libsqlite3.a": "068dccd21bcd2675e265b3526cd460e49235ccbcb46e708c074767562ac8b685",
@@ -163,15 +163,15 @@
     },
     "Linux-arm64-8.5.10-zts": {
       "file": "linux-arm64/php-8.5.10-zts/swoole.so",
-      "sha256": "d34f58d9b28981b40a75e357424a6148e6e4a857833cf20ecfec2262a49fa141",
+      "sha256": "d78a1507c65a4070faeedbf369a3830a352244d2daaca7cde0e0af7f7585b823",
       "bytes": 3439800,
       "build": {
-        "source-commit": "a7b8a531951a56247fb49388df673d078d525386",
-        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37010216619",
+        "source-commit": "f6c092f436f2a341bb6d588d333d761c2ab64732",
+        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37075789749",
         "workflow-conclusion": "success",
         "artifact": "swoole-linux-arm64",
-        "artifact-id": 11228090068,
-        "artifact-sha256": "sha256:94e257f9e34e4742a3fc235038444aa6c0ffa152f46a67c2aeae834496ef2195",
+        "artifact-id": 11256736708,
+        "artifact-sha256": "sha256:b04a218bfc72cbb4e839671eb49ffa0cbbe73de9fbee0db3850a3b3a46d5b92a",
         "verification-scope": "module-load-coroutine-sqlite-pgsql-refusal",
         "image": "php:8.5.10-zts-bookworm",
         "manifest-digest": "sha256:6d417535666c59c08d2e448faaa3571ec0762da197c503df31ee23c73a3c27a3",
@@ -242,21 +242,21 @@
         "native_entry_abi": 2,
         "coroutine_and_sqlite": true,
         "pgsql_connection_failure": true,
-        "sha256": "d34f58d9b28981b40a75e357424a6148e6e4a857833cf20ecfec2262a49fa141",
+        "sha256": "d78a1507c65a4070faeedbf369a3830a352244d2daaca7cde0e0af7f7585b823",
         "bytes": 3439800
       }
     },
     "Linux-x64-8.5.10-zts": {
       "file": "linux-x64/php-8.5.10-zts/swoole.so",
-      "sha256": "12ad5e4994b0075602c1635d641516aaea53f184d427cd8a687e70e93d1ccf9a",
+      "sha256": "83a6af66a7588233ae8539fb060ec6afdb92cd1e8b93c4eb99f6b40a4bf62ee5",
       "bytes": 3590464,
       "build": {
-        "source-commit": "a7b8a531951a56247fb49388df673d078d525386",
-        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37010216619",
+        "source-commit": "f6c092f436f2a341bb6d588d333d761c2ab64732",
+        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37075789749",
         "workflow-conclusion": "success",
         "artifact": "swoole-linux-x64",
-        "artifact-id": 11227482978,
-        "artifact-sha256": "sha256:00e5695c48f3ca150a2c805c2b76aec014854a51504032b3782e5ff5d6cad7ae",
+        "artifact-id": 11256621733,
+        "artifact-sha256": "sha256:50e832f6758fbd524ac5073a56d37e056b57b2f0e353b49623419376c112e5a4",
         "verification-scope": "module-load-coroutine-sqlite-pgsql-refusal",
         "image": "php:8.5.10-zts-bookworm",
         "manifest-digest": "sha256:6d417535666c59c08d2e448faaa3571ec0762da197c503df31ee23c73a3c27a3",
@@ -327,21 +327,21 @@
         "native_entry_abi": 2,
         "coroutine_and_sqlite": true,
         "pgsql_connection_failure": true,
-        "sha256": "12ad5e4994b0075602c1635d641516aaea53f184d427cd8a687e70e93d1ccf9a",
+        "sha256": "83a6af66a7588233ae8539fb060ec6afdb92cd1e8b93c4eb99f6b40a4bf62ee5",
         "bytes": 3590464
       }
     },
     "Windows-x64-8.5.10-zts": {
       "file": "windows-x64/php-8.5.10-zts/php_swoole.dll",
-      "sha256": "d26a063660cc0e69427e4bcd9872b2dfe937bc5ed3c66e453ebd79de7ac596e7",
-      "bytes": 2416640,
+      "sha256": "f5d7b69e573b508c2d92e17384f9b1457ca0e50b7e404e8f3d96cd616fa78fa6",
+      "bytes": 2415616,
       "build": {
-        "source-commit": "a7b8a531951a56247fb49388df673d078d525386",
-        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37010216619",
+        "source-commit": "f6c092f436f2a341bb6d588d333d761c2ab64732",
+        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37075789749",
         "workflow-conclusion": "success",
         "artifact": "swoole-windows-x64",
-        "artifact-id": 11227806169,
-        "artifact-sha256": "sha256:ea18e00ef71ef2352b4b759ac824746931ed53bc5d2d2b24b65e41b43255b0f1",
+        "artifact-id": 11256971455,
+        "artifact-sha256": "sha256:e2681402ad0864ca7707602dbd2baa538381bf09d533aeeff8baca46d26d52d5",
         "verification-scope": "module-load-coroutine-sqlite-pgsql-refusal",
         "compiler": "MSVC VS17 x64 C++20",
         "configure": [
@@ -397,8 +397,8 @@
         "native_entry_abi": 2,
         "coroutine_and_sqlite": true,
         "pgsql_connection_failure": true,
-        "sha256": "d26a063660cc0e69427e4bcd9872b2dfe937bc5ed3c66e453ebd79de7ac596e7",
-        "bytes": 2416640
+        "sha256": "f5d7b69e573b508c2d92e17384f9b1457ca0e50b7e404e8f3d96cd616fa78fa6",
+        "bytes": 2415616
       }
     }
   },

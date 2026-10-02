@@ -5,6 +5,14 @@ if (Test-Path -LiteralPath $Directory) { throw 'SDK destination already exists; 
 $parent = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
 if (![IO.Path]::GetFullPath($Directory).StartsWith($parent, [StringComparison]::OrdinalIgnoreCase)) { throw 'SDK must remain in this runner temporary directory.' }
 New-Item -ItemType Directory -Path $Directory | Out-Null
+$taskRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$lockPath = Join-Path $taskRoot 'composer.lock'
+if (!(Test-Path -LiteralPath $lockPath)) { throw 'composer.lock is required to prepare the locked Windows toolchain.' }
+$lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
+$typePhpPackage = @($lock.'packages-dev' | Where-Object { $_.name -eq 'swoole/typephp' }) | Select-Object -First 1
+if (!$typePhpPackage -or $typePhpPackage.version -ne 'v0.9.4' -or $typePhpPackage.dist.reference -ne '874b82e96a2383712e8faf8177c6c715587e3546') {
+    throw 'composer.lock must select TypePHP 0.9.4 at the fixed source commit.'
+}
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $visualStudio = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -38,8 +46,10 @@ function Get-VerifiedDownload {
     throw $lastError
 }
 
-$archive = Join-Path $Directory 'typephp.zip'
-# 仅复用该发行包的 PHP 8.5.10 ZTS SDK；编译器来自 Composer，PHPX 在下方按当前锁定源码重建。
+# 上游 0.9.4 没有发布 PHP 8.5.10 的 Windows SDK 包；此处只把 0.9.0
+# 发行包当作已核验的 PHP 8.5.10 ZTS SDK 载体。编译器身份由上面的
+# composer.lock 校验决定，PHPX 和 Swoole 随当前固定源码在本任务内重建。
+$archive = Join-Path $Directory 'php-8.5.10-sdk-carrier.zip'
 Get-VerifiedDownload 'https://github.com/swoole/typephp/releases/download/v0.9.0/tpc_v0.9.0_windows_x64.zip' $archive
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne '187c2ca1644b37163d5f67725a29752f91da9e058583a8d3e471a71703570ff6') { throw 'TypePHP SDK checksum mismatch.' }
 Expand-Archive -LiteralPath $archive -DestinationPath $Directory
@@ -62,7 +72,6 @@ Copy-Item -LiteralPath (Join-Path $redis 'php_redis.dll') -Destination (Join-Pat
 
 # 默认复用 type-build 组件的固定模块；维护者显式重建时使用官方 Windows/phpize 入口。
 # PHP SDK、PHPX 与其他原生依赖仍独立准备。
-$taskRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $taskTar = Join-Path $env:SystemRoot 'System32/tar.exe'
 if (!(Test-Path -LiteralPath $taskTar)) { throw 'Windows 系统 tar 不存在。' }
 $taskEvidence = Join-Path $taskRoot ('build/windows-runtime-' + [Guid]::NewGuid().ToString('N'))
