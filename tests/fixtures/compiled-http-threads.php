@@ -385,8 +385,16 @@ function httpThreadJoinContracts(string $directory): int
         }
         foreach ([0, 10] as $wait) {
             $started = hrtime(true);
-            if ($thread->joinWithin($wait) || !$thread->joinable() || hrtime(true) - $started > 500000000) {
-                throw new RuntimeException('join released ownership or ignored the completion wait');
+            $joined = $thread->joinWithin($wait);
+            $joinable = $thread->joinable();
+            $elapsed = hrtime(true) - $started;
+            if ($joined || !$joinable || $elapsed > 500000000) {
+                throw new RuntimeException('join released ownership or ignored the completion wait'
+                    . ': wait=' . $wait . ', joined=' . ($joined ? '1' : '0')
+                    . ', joinable=' . ($joinable ? '1' : '0')
+                    . ', elapsed_ns=' . $elapsed
+                    . ', gate_entered=' . (is_file($directory . '/gate-entered') ? '1' : '0')
+                    . ', gate_release=' . (is_file($directory . '/gate-release') ? '1' : '0'));
             }
             $checks++;
         }
