@@ -444,13 +444,14 @@ final class TypephpCompatibility extends Translator
 static inline void type_app_check_property_read(const php::Var &object, const php::Var &property,
                                                 zend_class_entry *scope, php::AttrMode mode) {
     if (scope || mode == php::AttrMode::Isset || !object.isObject()) { return; }
-    auto *info = zend_get_property_info(object.ce(), property.str(), true);
+    auto property_name = property.toString();
+    auto *info = zend_get_property_info(object.ce(), property_name.str(), true);
     if (!info || info == ZEND_WRONG_PROPERTY_INFO) { return; }
     if (info->flags & ZEND_ACC_PRIVATE) {
-        php::throwError("Cannot access private property %s::$%s", ZSTR_VAL(info->ce->name), property.str());
+        php::throwError("Cannot access private property %s::$%s", ZSTR_VAL(info->ce->name), property_name.str());
     }
     if (info->flags & ZEND_ACC_PROTECTED) {
-        php::throwError("Cannot access protected property %s::$%s", ZSTR_VAL(info->ce->name), property.str());
+        php::throwError("Cannot access protected property %s::$%s", ZSTR_VAL(info->ce->name), property_name.str());
     }
 }
 
