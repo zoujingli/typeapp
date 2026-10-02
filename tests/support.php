@@ -34,7 +34,7 @@ function localComposerRepository(string $root): array
             $versions[$package['name']] = $package['version'];
         }
     }
-    return ['type' => 'path', 'url' => $root . '/vendor/*', 'options' => ['symlink' => false, 'versions' => $versions]];
+    return ['type' => 'path', 'url' => $root . '/vendor/*/*', 'options' => ['symlink' => false, 'versions' => $versions]];
 }
 
 /**
