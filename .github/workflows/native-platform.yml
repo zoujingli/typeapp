@@ -47,6 +47,7 @@ jobs:
       TYPE_RELEASE_VERSION: ${{ inputs.version || inputs.candidate_version }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
+      COMPOSER_CACHE_DIR: ${{ github.workspace }}/.cache/composer
     defaults:
       run:
         shell: pwsh
@@ -79,6 +80,12 @@ jobs:
       - name: 定位受限 Windows 构建子进程
         run: |
           & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-process.php
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 新版工具链线程与 IOCP 协议原生回归
+        if: inputs.scope == '' || inputs.scope == 'full' || inputs.scope == 'native'
+        run: |
+          $env:COMPOSER_BINARY="$env:PHP_HOME/composer.phar"
+          & "$env:PHP_HOME/php.exe" tests/toolchain-native.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 检查 Windows 进程与平台行为
         if: inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
@@ -214,6 +221,13 @@ jobs:
             build/release-candidate/attachments/*
             build/windows-contracts.xml
             build/**/verification.json
+            build/toolchain-regressions-*/**/*.log
+            build/toolchain-regressions-*/**/*evidence.json
+            build/toolchain-regressions-*/**/execution.json
+            build/toolchain-regressions-*/**/resources.json
+            build/toolchain-regressions-*/**/resource-*
+            build/toolchain-regressions-*/**/exit.json
+            build/toolchain-regressions-*/**/stdout.json
             build/**/compile.log
             build/orm-suite-*/*.log
             build/orm-suite-*/behavior.json

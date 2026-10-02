@@ -9,13 +9,13 @@ task_suite="${1:-}"
 task_build="${2:-build}"
 [[ "$task_build" == build || "$task_build" == reuse ]] || exit 2
 case "$task_suite" in
-  contracts|orm|benchmark) task_scenes=();;
+  contracts|orm|benchmark|toolchain) task_scenes=();;
   database) task_scenes=(query pagination models exact-fields relations pivots lifecycle optimistic identities read-write transactions outcomes operations cache-consistency outbox tenant-http migrations migrations-core);;
   http) task_scenes=(http-message http validation routing routing-http routing-attributes trust-http file-http log log-behavior log-failures log-http);;
   redis) task_scenes=(redis cache psr-cache queue queue-leases queue-retries);;
   tasks) task_scenes=(tasks task-http backpressure-http tls);;
   application|recovery|rollout) task_scenes=();;
-  *) echo '用法：run-linux-regression.sh <contracts|orm|database|http|redis|tasks|application|recovery|rollout|benchmark> [build|reuse]' >&2; exit 2;;
+  *) echo '用法：run-linux-regression.sh <contracts|orm|database|http|redis|tasks|application|recovery|rollout|benchmark|toolchain> [build|reuse]' >&2; exit 2;;
 esac
 mkdir -p "$task_root/build"
 if [[ "$task_build" == build ]]; then
@@ -26,6 +26,9 @@ if [[ "$task_build" == build ]]; then
   done
 fi
 case "$task_suite" in
+  toolchain)
+    php tests/toolchain-native.php
+    ;;
   contracts)
     task_composer="${COMPOSER_BINARY:-$(command -v composer)}"
     "$task_composer" check

@@ -29,7 +29,7 @@ on:
       scope:
         description: 验收范围（single-program 为静态候选，benchmark 需提供基准提交）
         type: choice
-        options: [full, single-program, tls, pressure, benchmark]
+        options: [full, single-program, tls, pressure, benchmark, toolchain]
         default: full
       candidate_version:
         description: single-program 必填；只验收候选，不创建标签或发布
@@ -63,13 +63,14 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        suite: ${{ fromJSON(inputs.scope == 'single-program' && '["single-program"]' || inputs.scope == 'tls' && '["tls"]' || inputs.scope == 'pressure' && '["pressure"]' || inputs.scope == 'benchmark' && '["benchmark"]' || (inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable"]')) }}
+        suite: ${{ fromJSON(inputs.scope == 'single-program' && '["single-program"]' || inputs.scope == 'tls' && '["tls"]' || inputs.scope == 'pressure' && '["pressure"]' || inputs.scope == 'benchmark' && '["benchmark"]' || inputs.scope == 'toolchain' && '["toolchain"]' || (inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","toolchain","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable","toolchain"]')) }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
       TYPE_RELEASE_VERSION: ${{ inputs.version || inputs.candidate_version }}
       TYPEAPP_BUILD_PROFILE: ${{ inputs.scope == 'single-program' && inputs.profile || '' }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
+      COMPOSER_CACHE_DIR: ${{ github.workspace }}/.cache/composer
       HOMEBREW_NO_AUTO_UPDATE: '1'
     steps:
       - name: 核对手动单程序候选参数
@@ -263,6 +264,14 @@ jobs:
             build/release-candidate/*.json
             build/release-candidate/attachments/*
             build/**/verification.json
+            build/toolchain-regressions-*/**/*.log
+            build/toolchain-regressions-*/**/*evidence.json
+            build/toolchain-regressions-*/**/execution.json
+            build/toolchain-regressions-*/**/resources.json
+            build/toolchain-regressions-*/**/resource-*
+            build/toolchain-regressions-*/**/exit.json
+            build/toolchain-regressions-*/**/stdout.json
+            build/toolchain-regressions-*/**/type-app
             build/**/*.build.json
             build/**/profile.json
             build/**/compile.log

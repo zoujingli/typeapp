@@ -48,11 +48,13 @@ Linux 基础组覆盖真实 watch，app 组覆盖三库空目录接入、修改�
 
 性能组仅在手动调度提供完整 `base_source` 时纳入矩阵，缺少基准时不运行性能比较，也不计为已验证。macOS 与 Linux ARM64 入口允许主仓公开后执行，实际运行仍按事件与会话授权控制。
 
-macOS 的 `scope=full` 默认运行 contracts、application、deployment、rollout、recovery、http、orm、reliable 八组；`scope=tls` 只运行 MySQL、PostgreSQL、Redis 的 PHP/AOT TLS，用于定位证书与连接问题，不替代 full。TLS 夹具使用明确的 OpenSSL 3；PostgreSQL 测试用 `hostaddr` 固定监听地址，保留 `verify-full` 的证书主机名校验。本轮定向与随后完整八组都已通过，未提供 `base_source`，没有性能组结果。
+macOS 的 `scope=full` 默认运行 contracts、application、deployment、rollout、recovery、http、orm、reliable、toolchain 九组；`scope=tls` 只运行 MySQL、PostgreSQL、Redis 的 PHP/AOT TLS，用于定位证书与连接问题，不替代 full。TLS 夹具使用明确的 OpenSSL 3；PostgreSQL 测试用 `hostaddr` 固定监听地址，保留 `verify-full` 的证书主机名校验。升级前的八组通过记录仍属于原工具链；新版结果见[升级证据](../evidence/typephp-upgrade-0.9.4.md)。
+
+四平台完整工作流均执行 `tests/toolchain-native.php`，顺序运行线程启停、声明初始化失败、协程资源隔离、HTTP/上传/WebSocket 解码和 TCP/UDP 独立消费者。TCP 包含真实连接重置、半关闭、超时及错误传播，Windows 也执行同一业务断言。测试使用当前固定工具链全量 AOT，各场景保留原产物、资源观察和双流日志；独立消费者使用本轮根安装填充的 Composer 缓存并禁用二次网络下载，避免 codeload 部分响应伪装成协议回归；任一失败阻止完整验收。Linux/macOS 可用 `toolchain` 范围单独诊断，单项结果不能代替完整发布门禁。文件 I/O 候选继续使用独立专项入口，默认发布不启用候选补丁。
 
 ## Linux x64 分组
 
-`native-command.yml` 的完整矩阵对同一提交运行十九个独立 Linux x64 分组：基础构建、HTTP、驱动、查询迁移、模型、事务数据、缓存、队列、调度、独立消费者、可靠性、共存回滚、组件集成、TLS、隔离构建、标准应用、交付归档、封装回滚和系统服务。每组使用锁定 PHP/TypePHP/PHPX，最多十六组并行；各组的 runner、数据库和 Redis 相互独立。一组失败仍保留其他分组的诊断结果，整个工作流不能成功。runner 使用 Ubuntu 24.04，以满足已声明的 SQLite JSON 查询最低 3.38 要求；手动选择隔离构建时只运行对应分组。
+`native-command.yml` 的完整矩阵对同一提交运行二十个独立 Linux x64 分组：基础构建、HTTP、驱动、查询迁移、模型、事务数据、缓存、队列、调度、独立消费者、可靠性、共存回滚、组件集成、TLS、隔离构建、标准应用、交付归档、封装回滚、系统服务和工具链原生回归。每组使用锁定 PHP/TypePHP/PHPX，最多十六组并行；各组的 runner、数据库和 Redis 相互独立。一组失败仍保留其他分组的诊断结果，整个工作流不能成功。runner 使用 Ubuntu 24.04，以满足已声明的 SQLite JSON 查询最低 3.38 要求；手动选择隔离构建或工具链诊断时只运行对应分组。
 
 可靠性场景覆盖真实 AOF 重启、存储满载、进程停止和恢复；回滚组生成两个版本的 ELF，再对三个数据库运行共存与回滚路径。组件集成组按 `.github/distribution.json` 独立安装全部组件，构建工具和测试组件归开发依赖，生产组件全部进入编译清单；不以固定组件数量代替完整集合校验。各组分别上传 ELF、构建身份与验证报告。组件批次及模板分发接受准确主仓 SHA 的成功 `push` 或完整手动 `suite=all` 运行，核对同一执行轮次全部任务和 `native-complete`；单项、跳过或失败不算通过，详见[分发门禁](distribution-batches.md)。旧的单 runtime 工作流另有限制，不能据此绕过当前批次门禁。
 

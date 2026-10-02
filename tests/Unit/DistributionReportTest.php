@@ -52,9 +52,11 @@ final class DistributionReportTest extends TestCase
                 \writeTestPhpCommand($directory . '/bin/' . $tool, 'fwrite(STDERR, "下游外部操作哨兵\n"); exit(99);');
             }
             file_put_contents($directory . '/.gitignore', "/build/\n");
-            $toolchain = (string) file_get_contents($root . '/toolchain.lock.json');
+            // 预期取提交中的 LF 原文；工作区另写 CRLF，模拟 Windows 检出但不改变消费身份。
+            $toolchain = str_replace("\r\n", "\n", (string) file_get_contents($root . '/toolchain.lock.json'));
+            $workingToolchain = str_replace("\n", "\r\n", $toolchain);
             $example = "<?php\nfunction main(): void {}\n";
-            file_put_contents($directory . '/toolchain.lock.json', $toolchain);
+            file_put_contents($directory . '/toolchain.lock.json', $workingToolchain);
             file_put_contents($directory . '/examples/native-command.php', $example);
             file_put_contents($directory . '/LICENSE', file_get_contents($root . '/LICENSE'));
             foreach (['LICENSE', 'NOTICE', 'README.md'] as $file) {
@@ -64,7 +66,7 @@ final class DistributionReportTest extends TestCase
             file_put_contents($directory . '/plugin/type-runtime/composer.json', json_encode([
                 'name' => 'zoujingli/type-runtime', 'type' => 'library', 'license' => 'Apache-2.0',
             ], JSON_THROW_ON_ERROR));
-            foreach ([['git', 'init', '-b', 'main'], ['git', 'config', 'user.name', '报告验收'],
+            foreach ([['git', 'init', '-b', 'main'], ['git', 'config', 'core.autocrlf', 'true'], ['git', 'config', 'user.name', '报告验收'],
                 ['git', 'config', 'user.email', 'test@type-app.invalid'], ['git', 'add', '.'],
                 ['git', '-c', 'commit.gpgsign=false', 'commit', '-m', 'test: 固定下游批次']] as $command) {
                 \successful($command, $directory);
@@ -139,7 +141,10 @@ final class DistributionReportTest extends TestCase
                     self::assertSame(['zoujingli/type-runtime' => $tag ? 'v1.0.0' : 'dev-main#' . $plan['items']['type-runtime']['split']], $composer['require']);
                     self::assertFileExists($consumer . '/main.php');
                     self::assertSame($example, file_get_contents($consumer . '/main.php'));
-                    self::assertSame($toolchain, file_get_contents($consumer . '/toolchain.lock.json'));
+                    // Windows 的 Git/PHP 可能把工作区文本写成 CRLF；批次身份比较规范化换行，
+                    // 仍比较完整锁文件内容，避免把检出格式当成工具链篡改。
+                    $consumedToolchain = str_replace(["\r\n", "\r"], "\n", (string) file_get_contents($consumer . '/toolchain.lock.json'));
+                    self::assertSame($toolchain, $consumedToolchain);
                 }
             } else {
                 self::assertStringContainsString('批次', $output);

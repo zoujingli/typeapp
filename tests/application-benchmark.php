@@ -174,7 +174,9 @@ try {
             }
             $migration = new Process([$artifact, 'app:install', 'platform-admin', '平台管理员', 'customer-admin', '客户管理员', '基准租户'], $root, $environment);
             try {
-                expect($migration->wait(30)->successful(), '基准应用安装失败');
+                $migrationResult = $migration->wait(30);
+                expect($migrationResult->successful(), '基准应用安装失败：exit=' . $migrationResult->exitCode
+                    . '; stdout=' . trim($migrationResult->stdout) . '; stderr=' . trim($migrationResult->stderr));
             } finally {
                 $migration->stop();
             }

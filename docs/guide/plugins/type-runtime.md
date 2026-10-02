@@ -117,7 +117,7 @@ try {
 
 独立入口使用 `CoroutineRuntime::run(Closure(): mixed)` 进入官方 Swoole Scheduler，在回调内创建资源。已有协程时直接执行，保留原 hook 配置并传回结果或异常。生成的 CLI 装配先进入协程再创建命令依赖；HTTP 请求、WebSocket 公开回调、队列 Job 和调度 Task 各自绑定本次作用域，退出时恢复原绑定并清理。Worker、Scheduler 及其连接必须在同一协程内装配；直接使用 Socket 或其他自定义协议入口时，调用方负责在消息边界创建并绑定作用域。完整示例与验证方法见[当前作用域](https://github.com/zoujingli/typeapp/blob/main/docs/development/managed-tasks.md#当前作用域与应用绑定)。
 
-`CoroutineRuntime::enableIo()` 是启动配置入口，在主线程补齐网络、等待及已加载 PDO 扩展对应的官方 hook，并保留已有 flags。生成 CLI 和 HTTP 宿主在运行前调用；自定义数据库任务入口应在 `run()` 前调用。业务线程复用启动前安装的 hook，只有无需修改配置时才允许重复调用。PostgreSQL、SQLite 的 hook 还需要相应 Swoole 编译选项，具体要求见 [ORM 安装与依赖](type-orm.md#安装与依赖)。
+`CoroutineRuntime::enableIo()` 是启动配置入口，在主线程补齐网络、等待及已加载 PDO 扩展对应的官方 hook，并保留已有 flags。生成 CLI 和 HTTP 宿主在运行前调用；自定义数据库任务入口应在 `run()` 前调用。`startThread()` 只在进程内第一次创建业务线程前安装 hook，并以进程内门控复用已经安装的配置；业务线程及后续线程不会重复改写进程级 hook。新版 Swoole 在线程 `join()` 返回后可能短暂保留清理状态，主线程仍独占时运行时会进行有限重试；如果已有业务线程且所需 hook 未在启动前安装，稳定返回 `swoole_hook_startup_required`，调用方应在创建首个业务线程前配置。PostgreSQL、SQLite 的 hook 还需要相应 Swoole 编译选项，具体要求见 [ORM 安装与依赖](type-orm.md#安装与依赖)。
 
 `spawn()` 在当前线程内创建 Swoole 协程，并为子协程建立新的作用域和执行者：字符串上下文按快照复制，`Deadline`、取消信号和 `TaskBudget` 继续共享，父作用域登记的连接和租约不自动转移。父作用域缩短截止或取消后，子协程只能在合作式检查和可让出的原生操作处停止；`await()` 超时不会提前释放仍在途的资源。
 

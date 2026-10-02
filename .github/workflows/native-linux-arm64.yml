@@ -19,7 +19,7 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, reliability]
+        options: [all, reliability, toolchain]
       base_source:
         description: 用于性能比较的完整基准提交，留空时不运行性能组
         required: false
@@ -37,12 +37,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(inputs.suite == 'reliability' && '["reliability"]' || inputs.base_source != '' && '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","benchmark"]' || '["contracts","orm","database","http","redis","tasks","application","recovery","rollout"]') }}
+        suite: ${{ fromJSON(inputs.suite == 'reliability' && '["reliability"]' || inputs.suite == 'toolchain' && '["toolchain"]' || inputs.base_source != '' && '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain","benchmark"]' || '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain"]') }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
+      COMPOSER_CACHE_DIR: ${{ github.workspace }}/.cache/composer
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -191,6 +192,14 @@ jobs:
             build/linux-*-ci.log
             build/**/*.build.json
             build/**/verification.json
+            build/toolchain-regressions-*/**/*.log
+            build/toolchain-regressions-*/**/*evidence.json
+            build/toolchain-regressions-*/**/execution.json
+            build/toolchain-regressions-*/**/resources.json
+            build/toolchain-regressions-*/**/resource-*
+            build/toolchain-regressions-*/**/exit.json
+            build/toolchain-regressions-*/**/stdout.json
+            build/toolchain-regressions-*/**/type-app
             build/**/profile.json
             build/**/compile.log
             build/packaged-rollout-build-*/preparation.json
@@ -211,7 +220,7 @@ jobs:
   linux-arm64-complete:
     name: linux-arm64-complete
     needs: native-regression
-    if: always() && (inputs.source_sha != '' || inputs.suite != 'reliability')
+    if: always() && (inputs.source_sha != '' || inputs.suite == 'all')
     runs-on: ubuntu-24.04
     steps:
       - env:

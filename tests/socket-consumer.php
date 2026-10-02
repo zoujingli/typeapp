@@ -23,6 +23,7 @@ $environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv
 $environment['PHPRC'] = php_ini_loaded_file() ?: '';
 $environment['PHP_INI_SCAN_DIR'] = (string) (getenv('PHP_INI_SCAN_DIR') ?: '');
 $environment['COMPOSER_CACHE_DIR'] = (string) (getenv('COMPOSER_CACHE_DIR') ?: $root . '/.cache/composer');
+$environment['COMPOSER_DISABLE_NETWORK'] = (string) (getenv('COMPOSER_DISABLE_NETWORK') ?: '0');
 if (!$verify) {
     expect(!file_exists($work) && mkdir($work . '/app', 0700, true), '需要尚不存在的独立消费者目录');
     $composer = [

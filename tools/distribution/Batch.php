@@ -70,13 +70,13 @@ final class Batch
         $required = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete',
             'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows'];
         foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers',
-            'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services'] as $suite) {
+            'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services', 'toolchain'] as $suite) {
             $required[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
         }
-        foreach (['contracts', 'application', 'deployment', 'rollout', 'recovery', 'http', 'orm', 'reliable'] as $suite) {
+        foreach (['contracts', 'application', 'deployment', 'rollout', 'recovery', 'http', 'orm', 'reliable', 'toolchain'] as $suite) {
             $required[] = 'macos-arm64 / all · macOS ARM64 · ' . $suite;
         }
-        foreach (['contracts', 'orm', 'database', 'http', 'redis', 'tasks', 'application', 'recovery', 'rollout'] as $suite) {
+        foreach (['contracts', 'orm', 'database', 'http', 'redis', 'tasks', 'application', 'recovery', 'rollout', 'toolchain'] as $suite) {
             $required[] = 'linux-arm64 / Linux ARM64 · ' . $suite;
         }
         $seen = [];

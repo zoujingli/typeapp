@@ -135,6 +135,9 @@ final class TcpSocket implements ManagedResource
             } elseif ($this->options['open_ssl'] && !$this->socket->sslHandshake()) {
                 $this->fail('tcp_tls_handshake_failed');
             }
+            // macOS 可能在 connect() 后自动调大 TCP 缓冲；连接和 TLS 完成后重新应用
+            // 声明的边界，使统计值和资源契约对应实际继续使用的 Socket。
+            $this->buffers(true);
             $this->expired = $this->expired || $deadline->expired();
             $this->checkCompletion();
             $local = $this->socket->getsockname();
@@ -400,7 +403,7 @@ final class TcpSocket implements ManagedResource
         throw new TaskException($reason, 'TCP 原生操作失败：' . $reason . '，errno=' . $code);
     }
 
-    private function buffers(): void
+    private function buffers(bool $retryAfterAutotune = false): void
     {
         $bytes = $this->options['socket_buffer_size'];
         if (!$this->socket->setOption(SOL_SOCKET, SO_RCVBUF, $bytes) || !$this->socket->setOption(SOL_SOCKET, SO_SNDBUF, $bytes)) {
@@ -408,9 +411,19 @@ final class TcpSocket implements ManagedResource
         }
         $this->receiveBufferBytes = (int) $this->socket->getOption(SOL_SOCKET, SO_RCVBUF);
         $this->sendBufferBytes = (int) $this->socket->getOption(SOL_SOCKET, SO_SNDBUF);
+        // macOS 可能在连接事件之后异步恢复自动调优；让出一次协程后重新应用声明值。
+        if ($retryAfterAutotune && ($this->receiveBufferBytes > 2 * $bytes || $this->sendBufferBytes > 2 * $bytes)) {
+            Coroutine::sleep(0.001);
+            if (!$this->socket->setOption(SOL_SOCKET, SO_RCVBUF, $bytes) || !$this->socket->setOption(SOL_SOCKET, SO_SNDBUF, $bytes)) {
+                $this->fail('tcp_option_failed');
+            }
+            $this->receiveBufferBytes = (int) $this->socket->getOption(SOL_SOCKET, SO_RCVBUF);
+            $this->sendBufferBytes = (int) $this->socket->getOption(SOL_SOCKET, SO_SNDBUF);
+        }
         if ($this->receiveBufferBytes < 1 || $this->sendBufferBytes < 1
             || $this->receiveBufferBytes > 2 * $bytes || $this->sendBufferBytes > 2 * $bytes) {
-            throw new TaskException('tcp_buffer_limit', 'TCP 原生缓冲超过预留上限');
+            throw new TaskException('tcp_buffer_limit', 'TCP 原生缓冲超过预留上限：requested=' . $bytes
+                . ', receive=' . $this->receiveBufferBytes . ', send=' . $this->sendBufferBytes);
         }
     }
 

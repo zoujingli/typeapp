@@ -6,9 +6,13 @@ set -euo pipefail
   echo '此入口只接受GitHub macOS原生runner，不在本机启动或修改数据库服务。' >&2; exit 2;
 }
 task_suite="${1:-}"
-case "$task_suite" in contracts|application|deployment|rollout|recovery|http|orm|reliable|tls|pressure|benchmark) ;; *) exit 2;; esac
+case "$task_suite" in contracts|application|deployment|rollout|recovery|http|orm|reliable|tls|pressure|benchmark|toolchain) ;; *) exit 2;; esac
 task_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$task_root"
+if [[ "$task_suite" == toolchain ]]; then
+  php tests/toolchain-native.php
+  exit 0
+fi
 task_work="$(mktemp -d "${RUNNER_TEMP:?}/type-native.XXXXXX")"
 chmod 0700 "$task_work"
 task_mysql="$(brew --prefix mysql@8.4)/bin"

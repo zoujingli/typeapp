@@ -257,6 +257,9 @@ final class ReleaseTest extends TestCase
         foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
             yield 'missing-static-' . $platform => ['native', 'missing-static-' . $platform];
         }
+        foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
+            yield 'missing-toolchain-' . $platform => ['native', 'missing-toolchain-' . $platform];
+        }
     }
 
     /** 正在执行的发布流程只接受已完成且完整的前置任务，失败任务不能被汇总掩盖。 */
@@ -273,17 +276,26 @@ final class ReleaseTest extends TestCase
                 $names = [...$names, $profile . ' · 静态单程序 · linux-x64', $profile . ' · 静态单程序 · linux-arm64',
                     $profile . ' · macOS ARM64 · single-program', $profile . ' · Windows x64 单程序'];
             }
-            foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers', 'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services'] as $suite) {
+            foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers', 'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services', 'toolchain'] as $suite) {
                 $names[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
             }
-            foreach (['contracts', 'application', 'deployment', 'rollout', 'recovery', 'http', 'orm', 'reliable'] as $suite) {
+            foreach (['contracts', 'application', 'deployment', 'rollout', 'recovery', 'http', 'orm', 'reliable', 'toolchain'] as $suite) {
                 $names[] = 'macos-arm64 / all · macOS ARM64 · ' . $suite;
             }
-            foreach (['contracts', 'orm', 'database', 'http', 'redis', 'tasks', 'application', 'recovery', 'rollout'] as $suite) {
+            foreach (['contracts', 'orm', 'database', 'http', 'redis', 'tasks', 'application', 'recovery', 'rollout', 'toolchain'] as $suite) {
                 $names[] = 'linux-arm64 / Linux ARM64 · ' . $suite;
             }
         }
         $jobs = ['total_count' => count($names), 'jobs' => array_map(static fn (string $name): array => ['name' => $name, 'head_sha' => $source, 'status' => 'completed', 'conclusion' => 'success'], $names)];
+        if (str_starts_with($change, 'missing-toolchain-')) {
+            $missing = match (substr($change, strlen('missing-toolchain-'))) {
+                'macos-arm64' => 'macos-arm64 / all · macOS ARM64 · toolchain',
+                'linux-arm64' => 'linux-arm64 / Linux ARM64 · toolchain',
+                default => 'linux-x64 / Linux x64 原生验收 · toolchain',
+            };
+            $jobs['jobs'] = array_values(array_filter($jobs['jobs'], static fn (array $job): bool => $job['name'] !== $missing));
+            $jobs['total_count']--;
+        }
         if (str_starts_with($change, 'missing-static-')) {
             $platform = substr($change, strlen('missing-static-'));
             $missing = match ($platform) {

@@ -186,7 +186,7 @@ function successful(array $command, ?string $directory = null, ?array $environme
  */
 function controlledRuntimeEnvironment(array $environment): array
 {
-    foreach (['TYPE_SWOOLE_MODULE', 'TYPE_CURL_MODULE', 'TYPE_NATIVE_PHP_INI'] as $key) {
+    foreach (['TYPE_SWOOLE_MODULE', 'TYPE_CURL_MODULE', 'TYPE_NATIVE_PHP_INI', 'COMPOSER_CACHE_DIR', 'COMPOSER_DISABLE_NETWORK'] as $key) {
         $value = getenv($key);
         if (is_string($value) && $value !== '') {
             $environment[$key] = $value;

@@ -12,6 +12,8 @@ use Throwable;
 /** 沿用 Swoole 的协程、线程和启动期 hook，衔接已编译业务入口。 */
 final class CoroutineRuntime
 {
+    private static bool $ioEnabled = false;
+
     /**
      * 已在协程时直接调用，否则由官方 Scheduler 运行；保留启动期 hook 配置。
      *
@@ -84,7 +86,9 @@ final class CoroutineRuntime
         if (strlen($message) > 1048576) {
             throw new TaskException('compiled_thread_payload_limit', '业务线程启动数据不能超过 1 MiB');
         }
-        self::enableIo();
+        if (!self::$ioEnabled) {
+            self::enableIo();
+        }
         if ($control !== null) {
             return \Swoole\Thread::startNative('type_app_compiled_thread_run', $message, $socket, $control);
         }
@@ -132,10 +136,20 @@ final class CoroutineRuntime
             if (($current & $required) !== $required) {
                 throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
             }
+            self::$ioEnabled = true;
             return;
         }
-        if (!\Swoole\Runtime::enableCoroutine($current | $required)) {
-            throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
+        // 新版 Swoole 的原生线程 join 返回与其清理完成之间可能有极短窗口；
+        // 主线程仍独占时只重试有限次数，避免把可恢复的启动竞态报告成配置错误。
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            if (@\Swoole\Runtime::enableCoroutine($current | $required)) {
+                self::$ioEnabled = true;
+                return;
+            }
+            if ($attempt < 2) {
+                usleep(1000);
+            }
         }
+        throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
     }
 }

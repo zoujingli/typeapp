@@ -248,9 +248,19 @@ for ($round = 0; $round < 3; $round++) {
             } elseif ($mode === 'stall') {
                 httpThreadWait($server, $directory . '/block-entered');
                 httpThreadWait($server, $directory . '/probe-progress-1');
-                $progress = (int) file_get_contents($directory . '/probe-progress-1');
-                usleep(70000);
-                expect((int) file_get_contents($directory . '/probe-progress-1') > $progress, '另一业务线程没有在真实阻塞期间前进');
+                $progressFile = $directory . '/probe-progress-1';
+                $progress = (int) file_get_contents($progressFile);
+                $advanced = false;
+                $deadline = microtime(true) + 1.0;
+                do {
+                    clearstatcache(true, $progressFile);
+                    if ((int) file_get_contents($progressFile) > $progress) {
+                        $advanced = true;
+                        break;
+                    }
+                    usleep(10000);
+                } while (microtime(true) < $deadline);
+                expect($advanced, '另一业务线程没有在真实阻塞期间前进');
             }
             $result = $server->wait(3.0);
             $elapsed = (hrtime(true) - $started) / 1000000000.0;

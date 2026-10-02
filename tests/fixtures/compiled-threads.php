@@ -679,6 +679,10 @@ function main(int $argc, array $argv): void
     threadMainCheck($rejected === 2, '未拒绝未知入口或超预算消息');
     threadResourceCheckpoint($directory, 'cold');
     $b = CoroutineRuntime::startThread('probe', json_encode([$directory, 'b', 1], JSON_THROW_ON_ERROR));
+    // 新版 Swoole 的 startNative 返回后，子线程可能仍处于原生初始化阶段。
+    // 先确认第一个线程已发布入口状态，再创建第二个线程，避免把启动竞态误报为
+    // 协程或线程状态隔离失败；两线程随后仍会在同一协程序列中交错运行。
+    ThreadProbe::waitFor($directory . '/b.ready');
     $a = CoroutineRuntime::startThread('probe', json_encode([$directory, 'a', 2], JSON_THROW_ON_ERROR));
     ThreadProbe::check($a->join() && $a->getExitStatus() === 7, '非零角色返回或 join 失败');
     unset($a);
