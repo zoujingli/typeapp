@@ -10,7 +10,7 @@ $composer = ['name' => 'type-tests/testing-consumer', 'type' => 'project', 'lice
     'require' => ['zoujingli/type-testing' => '~1.0.0@dev'], 'repositories' => [], 'minimum-stability' => 'dev',
     # 独立消费只验证插件闭包；锁定 PHP 尚未挂上受控 Swoole 时，用平台声明放行 ext-swoole。
     'config' => ['allow-plugins' => false, 'platform' => [
-        'ext-swoole' => '6.2.1', 'ext-redis' => false, 'ext-pdo_mysql' => false, 'ext-pdo_pgsql' => false, 'ext-pdo_sqlite' => false,
+        'ext-swoole' => testSwooleVersion(), 'ext-redis' => false, 'ext-pdo_mysql' => false, 'ext-pdo_pgsql' => false, 'ext-pdo_sqlite' => false,
     ]]];
 foreach (['type-testing', 'type-runtime'] as $name) {
     $composer['repositories'][] = ['type' => 'path', 'url' => $root . '/plugin/' . $name, 'options' => ['symlink' => false, 'versions' => ['zoujingli/' . $name => '1.0.x-dev']]];

@@ -16,6 +16,21 @@ function testToolchainVersion(string $component): string
     return $lock[$component]['version'];
 }
 
+/** 独立消费者使用构建组件清单中的 Swoole 运行时版本，避免验证入口继续固定历史版本。 */
+function testSwooleVersion(): string
+{
+    static $version = null;
+    if ($version === null) {
+        $manifest = dirname(__DIR__) . '/plugin/type-build/resources/swoole/manifest.json';
+        $data = json_decode((string) file_get_contents($manifest), true, 32, JSON_THROW_ON_ERROR);
+        if (!is_string($data['swoole'] ?? null) || $data['swoole'] === '') {
+            throw new RuntimeException('测试需要有效的内置 Swoole 版本');
+        }
+        $version = $data['swoole'];
+    }
+    return $version;
+}
+
 /**
  * 为禁网独立消费者提供主仓已经核验的 Composer 包缓存。
  *

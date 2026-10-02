@@ -452,7 +452,9 @@ static inline void type_app_check_property_read(const php::Var &object, const ph
         info = zend_get_property_info(object.ce(), property_name.str(), true);
     }
     if (!info || info == ZEND_WRONG_PROPERTY_INFO) {
-        ZEND_HASH_FOREACH_PTR(&object.ce()->properties_info, auto *candidate) {
+        void *entry;
+        ZEND_HASH_FOREACH_PTR(&object.ce()->properties_info, entry) {
+            auto *candidate = static_cast<zend_property_info *>(entry);
             if (candidate && std::strcmp(zend_get_unmangled_property_name(candidate->name), property_name.data()) == 0) {
                 info = candidate;
                 break;
