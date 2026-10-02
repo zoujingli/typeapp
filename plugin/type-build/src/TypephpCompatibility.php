@@ -319,8 +319,8 @@ final class TypephpCompatibility extends Translator
         }
         for ($index = $start; $index < count($this->context->beforeStmtLines); ++$index) {
             $this->context->beforeStmtLines[$index] = preg_replace_callback(
-                '/^([ \t]*[A-Za-z0-9_]+ = )([A-Za-z0-9_]+\.attr\(.*\));$/m',
-                fn (array $parts): string => $parts[1] . $this->threadPropertyRead($parts[2]) . ';',
+                '/^([ \t]*[A-Za-z0-9_]+ = )([A-Za-z0-9_]+\.attr\(.*\));(\r?)$/m',
+                fn (array $parts): string => $parts[1] . $this->threadPropertyRead($parts[2]) . ';' . $parts[3],
                 $this->context->beforeStmtLines[$index]
             ) ?? throw new RuntimeException('nullsafe 属性生成结果无法适配');
         }
