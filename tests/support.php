@@ -19,22 +19,32 @@ function testToolchainVersion(string $component): string
 /**
  * 为禁网独立消费者提供主仓已经核验的 Composer 包缓存。
  *
- * 路径仓库关闭符号链接，版本取自主仓锁文件；消费者仍会复制安装到自己的
- * vendor，不会把主仓路径或工作区软链接带入编译输入。CI 先完成主仓安装，
- * 因此该入口不需要依赖 runner 是否缓存 Packagist 元数据。
+ * 包元数据取自主仓锁文件，只将下载来源改为本地镜像并关闭符号链接。
+ * 保留 source.reference，避免 path 仓库重新生成参考值破坏工具链身份校验。
+ * 第一方组件仍由调用者显式提供；消费者复制安装后独立编译。
  *
- * @return array{type: string, url: string, options: array{symlink: bool, versions: array<string, string>}}
+ * @return list<array{type: string, package: array<string, mixed>}> Composer package 仓库列表。
  */
-function localComposerRepository(string $root): array
+function localComposerRepositories(string $root): array
 {
     $lock = json_decode((string) file_get_contents($root . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
-    $versions = [];
+    $installed = require $root . '/vendor/composer/installed.php';
+    $packages = [];
     foreach (array_merge($lock['packages'] ?? [], $lock['packages-dev'] ?? []) as $package) {
-        if (is_array($package) && is_string($package['name'] ?? null) && is_string($package['version'] ?? null)) {
-            $versions[$package['name']] = $package['version'];
+        if (($package['dist']['type'] ?? '') === 'path') {
+            continue;
         }
+        $name = $package['name'];
+        $reference = $package['source']['reference'] ?? $package['dist']['reference'] ?? null;
+        $path = $root . '/vendor/' . $name;
+        expect(is_file($path . '/composer.json') && !is_link($path), '离线包镜像缺失或不是独立目录：' . $name);
+        expect(($installed['versions'][$name]['reference'] ?? null) === $reference
+            && ($installed['versions'][$name]['pretty_version'] ?? null) === $package['version'], '离线包镜像身份与锁文件不符：' . $name);
+        $package['dist'] = ['type' => 'path', 'url' => $path, 'reference' => $reference];
+        $package['transport-options'] = ['symlink' => false, 'relative' => false];
+        $packages[] = ['type' => 'package', 'package' => $package];
     }
-    return ['type' => 'path', 'url' => $root . '/vendor/*/*', 'options' => ['symlink' => false, 'versions' => $versions]];
+    return $packages;
 }
 
 /**
