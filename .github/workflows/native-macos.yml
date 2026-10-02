@@ -265,6 +265,7 @@ jobs:
             build/release-candidate/attachments/*
             build/**/verification.json
             build/toolchain-regressions-*/**/*.log
+            build/toolchain-regressions-*/**/*.failure
             build/toolchain-regressions-*/**/*evidence.json
             build/toolchain-regressions-*/**/execution.json
             build/toolchain-regressions-*/**/resources.json
