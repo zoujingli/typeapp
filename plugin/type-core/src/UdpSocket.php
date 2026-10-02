@@ -115,6 +115,12 @@ final class UdpSocket implements ManagedResource
             if (!$this->socket->bind($this->address, $this->port)) {
                 $this->fail('udp_bind_failed');
             }
+            // Swoole 的字符串 bind 为兼容监听服务会自动启用 SO_REUSEADDR；
+            // UDP 端点属于单一业务所有者，成功绑定后关闭复用，避免 Linux
+            // 允许第二个端点占用同一地址而破坏 udp_bind_failed 契约。
+            if (!$this->socket->setOption(SOL_SOCKET, SO_REUSEADDR, 0)) {
+                $this->fail('udp_option_failed');
+            }
             $local = $this->socket->getsockname();
             if (!is_array($local) || !isset($local['address'], $local['port'])) {
                 $this->fail('udp_address_failed');
