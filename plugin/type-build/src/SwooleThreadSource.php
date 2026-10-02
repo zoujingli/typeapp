@@ -9,7 +9,7 @@ use RuntimeException;
 /** 为固定上游补充编译线程入口、退出通知与进程级中断钩子；线程创建、请求及回收仍由 Swoole 承担。 */
 final class SwooleThreadSource
 {
-    public const REFERENCE = '0f3bee2f0ed8704ce33a336e7feabb0115411dd7';
+    public const REFERENCE = '4aff74a9ac086458d1c5251e71ac6e080f68b390';
 
     /**
      * 只修改显式提供的隔离源码副本；原文摘要或替换次数不匹配时拒绝。
@@ -20,12 +20,12 @@ final class SwooleThreadSource
     public function apply(string $directory): array
     {
         $hashes = [
-            'ext-src/swoole_thread.cc' => '962f0a3fa23700c512d5833dc48dbd3d180a246f8419c54219b5dd95094aa6a8',
+            'ext-src/swoole_thread.cc' => '0e4d38111d510e113e2356190ed1efc6e3864de4d58a193485dc155616844108',
             'ext-src/php_swoole_thread.h' => '002c8cd826170c254a8aa2c974982b94aee26dc7bd56f6278aff58b1835355fa',
-            'ext-src/stubs/php_swoole_thread.stub.php' => '3099a42713d5822dc2ce7ff4a1f12de47ca0f374f37aa212ebfae135a2db4c18',
-            'ext-src/swoole_coroutine.cc' => '46346877709b3ef3981802abd07022cf81d2f7d606ad56d86b855d2c822f8831',
-            'ext-src/php_swoole.cc' => '2700bba0b0e823e59482f5d812aaaf9b94302908923d7bf787deac3d68ace29c',
-            'ext-src/php_swoole_private.h' => 'c310a42529fa90eabad77edd55c6e3bd903e36cd7caad98f25c2b6fd18a67d07',
+            'ext-src/stubs/php_swoole_thread.stub.php' => 'ead2f3aa059ec4c10dd759e0e7e813f07f8c50a6d450dc54f0b123aff89cd360',
+            'ext-src/swoole_coroutine.cc' => '6adf21c286abbb9ef07f6d95e2aa34cb8fa88846e8e3d7e6c3086c6e9d7ea8ef',
+            'ext-src/php_swoole.cc' => '01f70bf8923ba2bbf5d8f4e7f2e2ce4bbb0bebb8a7b5e3549ff9a686ecc459b1',
+            'ext-src/php_swoole_private.h' => 'e2bcfccb1f54666182ca922e23323fdd6302be6305e36b8249d2d472a357cd97',
         ];
         $contents = [];
         foreach ($hashes as $file => $hash) {
@@ -50,14 +50,6 @@ CPP);
             '    std::shared_ptr<Thread> thread;',
             "    std::shared_ptr<Thread> thread;\n    std::shared_future<void> typeapp_completion;"
         );
-        $source = $this->replace($source, 'static thread_local JMP_BUF *thread_bailout = nullptr;', <<<'CPP'
-static thread_local JMP_BUF *thread_bailout = nullptr;
-static thread_local bool native_stdio_owned = false;
-
-bool php_swoole_thread_owns_stdio() {
-    return native_stdio_owned;
-}
-CPP);
         $source = $this->replace(
             $source,
             '    zend_declare_class_constant_string(swoole_thread_ce, ZEND_STRL("API_NAME"), tsrm_api_name());',
@@ -209,10 +201,8 @@ CPP);
             argv->del_ref();
             argv = nullptr;
         }
-        // embed 的 php:// 标准流是当前请求拥有的 dup 副本，必须随请求关闭。
-        // 其他 SAPI 和脚本线程仍保留上游保护进程标准流的契约。
-        native_stdio_owned = native_entry && strcmp(sapi_module.name, "embed") == 0;
-        thread_register_stdio_file_handles(!native_stdio_owned);
+        // 固定上游在 request shutdown 后回收标准流副本，AOT 与脚本线程共用同一所有者。
+        thread_register_stdio_file_handles(true);
         if (native_entry) {
             auto function = static_cast<zend_function *>(zend_hash_find_ptr(EG(function_table), file));
             zval result;
@@ -249,8 +239,7 @@ CPP);
         $contents['ext-src/php_swoole_thread.h'] = $this->replace(
             $contents['ext-src/php_swoole_thread.h'],
             'void php_swoole_thread_start(std::shared_ptr<swoole::Thread> thread, zend_string *file, ZendArray *argv);',
-            "bool php_swoole_thread_owns_stdio();\n"
-            . 'void php_swoole_thread_start(std::shared_ptr<swoole::Thread> thread, zend_string *file, ZendArray *argv, bool native_entry = false);'
+            'void php_swoole_thread_start(std::shared_ptr<swoole::Thread> thread, zend_string *file, ZendArray *argv, bool native_entry = false);'
         );
         $contents['ext-src/stubs/php_swoole_thread.stub.php'] = $this->replace(
             $contents['ext-src/stubs/php_swoole_thread.stub.php'],
@@ -274,17 +263,6 @@ CPP);
             '    php_swoole_runtime_mshutdown();',
             "    php_swoole_coroutine_mshutdown();\n    php_swoole_runtime_mshutdown();"
         );
-        $contents['ext-src/php_swoole.cc'] = $this->replace($contents['ext-src/php_swoole.cc'], <<<'CPP'
-    auto php_swoole_set_stdio_no_close = [](const char *name, size_t name_len) {
-CPP, <<<'CPP'
-    auto php_swoole_set_stdio_no_close = [](const char *name, size_t name_len) {
-#ifdef SW_THREAD
-        // 原生 embed 线程的标准流只拥有自身副本，RSHUTDOWN 不再禁止关闭。
-        if (php_swoole_thread_owns_stdio()) {
-            return;
-        }
-#endif
-CPP);
         $report = [];
         foreach ($contents as $file => $content) {
             if (file_put_contents($directory . '/' . $file, $content) !== strlen($content)) {

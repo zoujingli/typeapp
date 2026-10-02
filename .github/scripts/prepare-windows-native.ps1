@@ -105,10 +105,10 @@ foreach ($taskDependency in $taskDependencies.Keys) {
     Get-VerifiedArchive ('https://downloads.php.net/~windows/php-sdk/deps/vs17/x64/' + $taskDependency) $taskDependencies[$taskDependency] $taskZip
     Expand-Archive -LiteralPath $taskZip -DestinationPath $taskDeps -Force
 }
-$taskSwooleReference = '0f3bee2f0ed8704ce33a336e7feabb0115411dd7'
+$taskSwooleReference = '4aff74a9ac086458d1c5251e71ac6e080f68b390'
 if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
     $taskSwooleArchive = Join-Path $Directory 'swoole.tar.gz'
-    Get-VerifiedArchive ('https://codeload.github.com/swoole/swoole-src/tar.gz/' + $taskSwooleReference) 'b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea' $taskSwooleArchive
+    Get-VerifiedArchive ('https://codeload.github.com/swoole/swoole-src/tar.gz/' + $taskSwooleReference) '63598eba7d2a36d8820b1501854161e5c326ab30a32a419e3aa0e4d5154936cd' $taskSwooleArchive
     & $taskTar -xzf $taskSwooleArchive -C $Directory
     if ($LASTEXITCODE -ne 0) { throw 'Swoole 源码解包失败。' }
     $taskSwoole = Join-Path $Directory ('swoole-src-' + $taskSwooleReference)
@@ -156,10 +156,10 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
 Get-ChildItem -LiteralPath (Join-Path $taskDeps 'bin') -Filter '*.dll' -File | Copy-Item -Destination $sdk -Force
 
 $taskPhpxArchive = Join-Path $Directory 'phpx.tar.gz'
-Get-VerifiedArchive 'https://codeload.github.com/swoole/phpx/tar.gz/0dfa613d2057dcd4aa319ec9b6816f68df2403e4' '591a8d2116568f42ba969f58a0c72a26d47fccca4d0debdf5f7bd0a2480df4b3' $taskPhpxArchive
+Get-VerifiedArchive 'https://codeload.github.com/swoole/phpx/tar.gz/a0138bbdd6cbfda62225adc56c558d0742114c8a' 'bae0d807610ddaade17b741e11c9397fd3e92f6bf7766cc61ca857fb53c5e0dd' $taskPhpxArchive
 & $taskTar -xzf $taskPhpxArchive -C $Directory
 if ($LASTEXITCODE -ne 0) { throw 'PHPX 源码解包失败。' }
-$taskPhpx = Join-Path $Directory 'phpx-0dfa613d2057dcd4aa319ec9b6816f68df2403e4'
+$taskPhpx = Join-Path $Directory 'phpx-a0138bbdd6cbfda62225adc56c558d0742114c8a'
 & (Join-Path $sdk 'php.exe') -n -r 'require $argv[1]."/plugin/type-build/src/PhpxThreadSource.php";echo json_encode((new Type\Build\PhpxThreadSource())->apply($argv[2]),JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);' $taskRoot $taskPhpx | Set-Content -LiteralPath (Join-Path $taskEvidence 'phpx-source.json') -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw 'PHPX 固定源码适配失败。' }
 $env:PHP_HOME = $sdk
@@ -205,4 +205,4 @@ Add-Content -LiteralPath $env:GITHUB_PATH -Value $phpxBuild -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw 'The real Windows PHP runtime did not match the SDK contract.' }
 & (Join-Path $sdk 'php.exe') -r 'if(!method_exists(Swoole\Thread::class,"startNative") || Swoole\Thread::NATIVE_ENTRY_ABI!==2 || !defined("SWOOLE_HOOK_PDO_PGSQL") || !defined("SWOOLE_HOOK_PDO_SQLITE")){exit(1);}'
 if ($LASTEXITCODE -ne 0) { throw 'Swoole 原生线程 ABI 或 PDO hook 不完整。' }
-@{ platform='Windows'; architecture='x64'; php='8.5.10'; sdk_tools_source=$taskToolsReference; sdk_tools_sha256=$taskToolsDigest; swoole_source=$taskSwooleReference; swoole_sha256=(Get-FileHash -LiteralPath (Join-Path $sdk 'ext/php_swoole.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); phpx_source='0dfa613d2057dcd4aa319ec9b6816f68df2403e4'; phpx_sha256=(Get-FileHash -LiteralPath (Join-Path $phpxBuild 'phpx.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); dependencies=$taskDependencies; passed=$true } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
+@{ platform='Windows'; architecture='x64'; php='8.5.10'; sdk_tools_source=$taskToolsReference; sdk_tools_sha256=$taskToolsDigest; swoole_source=$taskSwooleReference; swoole_sha256=(Get-FileHash -LiteralPath (Join-Path $sdk 'ext/php_swoole.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); phpx_source='a0138bbdd6cbfda62225adc56c558d0742114c8a'; phpx_sha256=(Get-FileHash -LiteralPath (Join-Path $phpxBuild 'phpx.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); dependencies=$taskDependencies; passed=$true } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8

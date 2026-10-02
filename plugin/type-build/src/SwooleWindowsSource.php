@@ -19,9 +19,9 @@ final class SwooleWindowsSource
     public function apply(string $directory): array
     {
         $hashes = [
-            'config.w32' => '02a801b07d5bb38edea0f88465271454f54d4625d6e71e0c15db3935bef789ac',
+            'config.w32' => 'a8c2ead0b6d0bee99011b57a18f25503dcf7f714be636f75e1886b077099619f',
             'src/coroutine/iocp.cc' => 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990',
-            'src/network/dns.cc' => 'c52deca9b1f24f8921ce24669e276818d2c06072b7998f50758d55b0345e5835',
+            'src/network/dns.cc' => '1528f5e6e65569f0497695340c9e762527e83eb554acb3f9bd062d903fe530e1',
             'php_swoole.h' => '66305cdd37bcaf35ee17e7d24ed12b6be4d18a4ad34d0a7dc883954344009e28',
         ];
         $sources = [];

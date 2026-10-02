@@ -1,8 +1,8 @@
 {
   "php": "8.5.10",
   "zts": true,
-  "typephp": {"version": "0.9.3", "reference": "8b33cad5c4f9cd2be2980425f522496e9ba0bfce"},
-  "phpx": {"version": "2.9.2", "reference": "0dfa613d2057dcd4aa319ec9b6816f68df2403e4"},
+  "typephp": {"version": "0.9.4", "reference": "874b82e96a2383712e8faf8177c6c715587e3546"},
+  "phpx": {"version": "2.9.3", "reference": "a0138bbdd6cbfda62225adc56c558d0742114c8a"},
   "platform": "linux",
   "primary-architecture": "x86_64"
 }

@@ -4,13 +4,13 @@
 
 ## 锁定身份
 
-- TypePHP：`v0.9.3`，提交 `8b33cad5c4f9cd2be2980425f522496e9ba0bfce`
-- PHPX：`v2.9.2`，提交 `0dfa613d2057dcd4aa319ec9b6816f68df2403e4`
+- TypePHP：`v0.9.4`，提交 `874b82e96a2383712e8faf8177c6c715587e3546`
+- PHPX：`v2.9.3`，提交 `a0138bbdd6cbfda62225adc56c558d0742114c8a`
 - PHP：`8.5.10 ZTS`（目标平台 SDK 必须与实际 PHP、架构和线程模式一致）
 
 准确依赖以根 `composer.lock` 和 `toolchain.lock.json` 为准；模板也必须携带相同的工具链身份。
 
-TypePHP 0.9.3 的匿名类会回退到嵌入 opcode 或 `eval`，本仓构建入口明确拒绝该路径；生产实现使用具名类。静态 PHP embed 构建与源码是否全量 AOT 是两项独立检查，不能以嵌入业务字节码替代编译。
+TypePHP 0.9.4 的匿名类会回退到嵌入 opcode 或 `eval`，本仓构建入口明确拒绝该路径；生产实现使用具名类。静态 PHP embed 构建与源码是否全量 AOT 是两项独立检查，不能以嵌入业务字节码替代编译。Nano 的能力边界不覆盖当前应用的 Swoole、数据库及任务系统，本次不采用。
 
 ## 语言规则
 
@@ -24,9 +24,11 @@ TypePHP 使用严格编译边界：推断的标量局部变量使用固定原生
 
 PHPX 的调试实现在 `src/core/debug.cc`，并提供异常/转换策略头文件。TypeApp 仍只在独立、固定的 PHPX 源码副本上应用线程与协程隔离、finalizer bailout 和可写字符串副本适配；共享 `vendor` 或 SDK 不直接改写。适配原文摘要和唯一替换由 `Type\Build\PhpxThreadSource` 门禁，完成后必须重新编译整份 PHPX。
 
+2.9.3 将 `Args::toArray()` 和 `Args::get()` 的实现移入 `src/core/base.cc`；版本升级须按实际源码审查迁移摘要，不能据此删除仍需要的语义适配。Windows 的 C 与 C++ 编译统一使用静态 CRT，并通过 TypePHP 的 `section_gc` 接口控制发布代码裁剪。当前候选与历史验收分开记录，见[本次升级证据](../evidence/typephp-upgrade-0.9.4.md)。
+
 TypePHP 编译器的属性访问边界仍由 `Type\Build\TypephpCompatibility` 承接，适配只接受锁定版本的源码摘要。上游已实现的能力优先直接复用，新的版本升级若使适配不再必要，应先用等价回归用例证明后删除门禁和补丁。
 
 ## 一手依据
 
-- [TypePHP v0.9.3](https://github.com/swoole/typephp/tree/v0.9.3)
-- [PHPX v2.9.2](https://github.com/swoole/phpx/tree/v2.9.2)
+- [TypePHP v0.9.4](https://github.com/swoole/typephp/tree/v0.9.4)
+- [PHPX v2.9.3](https://github.com/swoole/phpx/tree/v2.9.3)

@@ -16,12 +16,15 @@ $work = BuildPlatform::path($argv[1] ?? '');
 $verify = ($argv[2] ?? '') === '--verify';
 expect($argc === ($verify ? 3 : 2) && BuildPlatform::contains($root . '/build', $work) && !str_contains($work, '..'), '需要 build 下独立消费者目录及可选 --verify');
 $runner = new BuildEnvironment();
-$environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME'));
+$environment = controlledRuntimeEnvironment($runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME')));
+// 独立消费者沿用当前控制器，不修改共享 SDK 的默认 ini。
+$environment['PHPRC'] = php_ini_loaded_file() ?: '';
+$environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
 if (!$verify) {
     expect(!file_exists($work) && mkdir($work . '/app', 0700, true), '需要尚不存在的消费者目录');
     $composer = ['name' => 'type-tests/http-threads', 'type' => 'project', 'license' => 'Apache-2.0',
         'require' => ['zoujingli/type-core' => '~1.0.0@dev'],
-        'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.3', 'swoole/phpx' => '2.9.2'],
+        'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => testToolchainVersion('typephp'), 'swoole/phpx' => testToolchainVersion('phpx')],
         'repositories' => [], 'autoload' => ['classmap' => ['app']], 'minimum-stability' => 'dev', 'prefer-stable' => true,
         'config' => ['allow-plugins' => false]];
     $projectPath = str_repeat('../', substr_count(substr($work, strlen($root) + 1), '/') + 1);

@@ -1,0 +1,122 @@
+name: 重建固定 Swoole 共享模块
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rebuild-swoole-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            architecture: x64
+          - runner: ubuntu-24.04-arm
+            architecture: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 在固定 Debian 12 ZTS 容器原生构建
+        run: |
+          mkdir -p build
+          docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            -e PHP_HOME=/usr/local \
+            php:8.5.10-zts-bookworm@sha256:6d417535666c59c08d2e448faaa3571ec0762da197c503df31ee23c73a3c27a3 \
+            bash -euo pipefail -c '
+              apt-get update
+              apt-get install --yes libpq-dev libsqlite3-dev libc-ares-dev libcurl4-openssl-dev libssl-dev libbrotli-dev pkg-config
+              docker-php-ext-install -j2 sockets pdo_pgsql pdo_mysql
+              bash tools/rebuild-bundled-swoole.sh /workspace/build/bundled-swoole-candidate
+            '
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: swoole-linux-${{ matrix.architecture }}
+          path: |
+            build/bundled-swoole-candidate/output/**
+            build/bundled-swoole-candidate/build.log
+          if-no-files-found: error
+          retention-days: 30
+
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 安装构建工具与静态子依赖
+        run: brew install autoconf bison re2c cmake gmp mpfr pcre2 pkg-config libpq libxml2 openssl@3 curl sqlite libzip c-ares brotli
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: |
+            .cache/macos-locked-php
+            .cache/macos-locked-php-build
+          key: locked-macos-php-8.5.10-zts-signals-${{ hashFiles('tools/install-locked-macos-php.sh') }}
+      - name: 固定 PHP ABI 并隐藏链接原生子依赖
+        run: |
+          task_bison="$(brew --prefix bison)"
+          export PATH="$task_bison/bin:$PATH"
+          export PHP_HOME
+          PHP_HOME="$(bash tools/install-locked-macos-php.sh)"
+          bash tools/rebuild-bundled-swoole.sh "$GITHUB_WORKSPACE/build/bundled-swoole-candidate"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: swoole-macos-arm64
+          path: |
+            build/bundled-swoole-candidate/output/**
+            build/bundled-swoole-candidate/build.log
+            build/bundled-swoole-candidate/postgresql.log
+          if-no-files-found: error
+          retention-days: 30
+
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      TYPE_SWOOLE_BUILD_FROM_SOURCE: '1'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 以官方 VS17 ZTS SDK 从源码重建
+        run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 校验实际模块并保存来源和依赖
+        run: |
+          $output = Join-Path $env:GITHUB_WORKSPACE 'build/bundled-swoole-candidate/output'
+          New-Item -ItemType Directory -Path $output | Out-Null
+          $module = Join-Path $output 'php_swoole.dll'
+          Copy-Item -LiteralPath (Join-Path $env:PHP_HOME 'ext/php_swoole.dll') -Destination $module
+          & "$env:PHP_HOME/php.exe" tools/verify-swoole-module.php $module | Set-Content -LiteralPath (Join-Path $output 'verification.json') -Encoding utf8NoBOM
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $evidence = @(Get-ChildItem -LiteralPath build -Filter 'windows-runtime-*' -Directory)
+          if ($evidence.Count -ne 1) { throw '必须只有本轮构建证据。' }
+          foreach ($name in @('swoole-source.json', 'windows-source.json', 'verification.json')) {
+            Copy-Item -LiteralPath (Join-Path $evidence[0].FullName $name) -Destination (Join-Path $output ('sdk-' + $name))
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: swoole-windows-x64
+          path: |
+            build/bundled-swoole-candidate/output/**
+            build/windows-runtime-*/*.json
+            build/windows-runtime-*/*.log
+          if-no-files-found: error
+          retention-days: 30

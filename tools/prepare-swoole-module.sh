@@ -14,11 +14,11 @@ if [[ "${TYPE_SWOOLE_BUILD_FROM_SOURCE:-0}" != 1 ]]; then
 fi
 : "${RUNNER_TEMP:?需要 runner 临时目录}"
 : "${SWOOLE_CONFIGURE_OPTS:?需要 Swoole 配置选项}"
-# 与 setup-php 的 swoole-6.2.1 及本仓 Swoole*Source 固定原文对齐；受控构建再启用 pgsql/sqlite 钩子与 startNative。
-task_reference='0f3bee2f0ed8704ce33a336e7feabb0115411dd7'
+# 固定 6.3 开发线的受审提交，运行时报告 6.3.0RC1；不得用浮动分支或发行名称代替源码身份。
+task_reference='4aff74a9ac086458d1c5251e71ac6e080f68b390'
 task_archive="$RUNNER_TEMP/swoole-src.tar.gz"
 task_source="$RUNNER_TEMP/swoole-src-$task_reference"
-task_digest='b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea'
+task_digest='63598eba7d2a36d8820b1501854161e5c326ab30a32a419e3aa0e4d5154936cd'
 task_module="$task_root/.cache/native-modules/swoole.so"
 
 curl --fail --location --silent --show-error \

@@ -87,8 +87,8 @@ final class TypephpCompatibility extends Translator
     }
 
     private const REFERENCES = [
-        'swoole/typephp' => '8b33cad5c4f9cd2be2980425f522496e9ba0bfce',
-        'swoole/phpx' => '0dfa613d2057dcd4aa319ec9b6816f68df2403e4',
+        'swoole/typephp' => '874b82e96a2383712e8faf8177c6c715587e3546',
+        'swoole/phpx' => 'a0138bbdd6cbfda62225adc56c558d0742114c8a',
     ];
 
     /**
@@ -117,9 +117,9 @@ final class TypephpCompatibility extends Translator
     protected function buildFuncCallConfig(): array
     {
         $configuration = parent::buildFuncCallConfig();
-        // PHPX 2.9.2 的快速路径调用对象钩子后仍未检查 EG(exception)。标准 php::call 已检查
+        // PHPX 2.9.3 的快速路径调用对象钩子后仍未检查 EG(exception)。标准 php::call 已检查
         // 并传播同一异常，也正确清理序列化资源。普通函数和 universal methods 共用此映射。
-        // 上游依据：swoole/phpx@0dfa613d 的 include/std/json.h 与 include/std/misc.h。
+        // 上游依据：swoole/phpx@a0138bbd 的 include/std/json.h 与 include/std/misc.h。
         unset($configuration['json_encode'], $configuration['serialize'], $configuration['unserialize']);
         return $configuration;
     }
@@ -356,7 +356,7 @@ final class TypephpCompatibility extends Translator
             return $result;
         }
         $base = InstalledVersions::getInstallPath('swoole/typephp') . '/src/CompilerBase.php';
-        if (hash_file('sha256', $base) !== 'e94fa76f21fa99871f2a1c8aa5aefd3a47ff68a8f742dfa3be70d935a67c03b8') {
+        if (hash_file('sha256', $base) !== '8767d9599d1d2ab7ed7ae218fe33df90524f2f961cf76c5355574cc01cb310c3') {
             throw new RuntimeException('回调适配需要重新核对 TypePHP 描述表');
         }
         // 读取构建器的固定静态表，不在生产反射业务签名或猜测 callable 参数。
@@ -414,7 +414,7 @@ final class TypephpCompatibility extends Translator
     public function writeFile(string $file, string $content, bool $force = false): void
     {
         if ($this->staticRuntime() !== null && basename($file) === 'extension-' . $this->targetName . '.cc') {
-            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== 'a314805dc63c9469cf3151b726088e47b3464afe3a87a9967fee17068e1830a4') {
+            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c') {
                 throw new RuntimeException('静态 profile 模块依赖适配需要重新核对 TypePHP 原文');
             }
             // 上游根据所有已编译类推断依赖，包括未选中驱动中的 Pdo\\Mysql
@@ -423,7 +423,7 @@ final class TypephpCompatibility extends Translator
             $content = BuildProfile::targetModuleDependencies($content, $this->extensionDependencies);
         }
         if ($this->threaded()) {
-            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== 'a314805dc63c9469cf3151b726088e47b3464afe3a87a9967fee17068e1830a4') {
+            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c') {
                 throw new RuntimeException('线程生成适配需要重新核对 TypePHP 原文');
             }
             $extension = basename($file) === 'extension-' . $this->targetName . '.cc';

@@ -51,18 +51,18 @@ source_archive "${TYPE_STATIC_PHP_ARCHIVE:-}" php-8.5.10.tar.xz https://www.php.
 if [[ "$task_redis_enabled" == 1 ]]; then
     source_archive "${TYPE_STATIC_REDIS_ARCHIVE:-}" redis-6.3.0.tgz https://pecl.php.net/get/redis-6.3.0.tgz 0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5
 fi
-source_archive "${TYPE_STATIC_SWOOLE_ARCHIVE:-}" swoole.tar.gz https://codeload.github.com/swoole/swoole-src/tar.gz/0f3bee2f0ed8704ce33a336e7feabb0115411dd7 b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea
+source_archive "${TYPE_STATIC_SWOOLE_ARCHIVE:-}" swoole.tar.gz https://codeload.github.com/swoole/swoole-src/tar.gz/4aff74a9ac086458d1c5251e71ac6e080f68b390 63598eba7d2a36d8820b1501854161e5c326ab30a32a419e3aa0e4d5154936cd
 task_source="$task_work/src/php-8.5.10"
 if [[ "$task_redis_enabled" == 1 ]]; then
     mv "$task_work/src/redis-6.3.0" "$task_source/ext/redis"
 fi
-mv "$task_work/src/swoole-src-0f3bee2f0ed8704ce33a336e7feabb0115411dd7" "$task_source/ext/swoole"
+mv "$task_work/src/swoole-src-4aff74a9ac086458d1c5251e71ac6e080f68b390" "$task_source/ext/swoole"
 # Composer 锁定的原始 PHPX 复制到任务内适配；不改共享 vendor 或宿主 SDK。
 cp -R "$task_root/vendor/swoole/phpx" "$task_work/src/phpx"
 # shellcheck disable=SC2016
 "$task_php" -n -r '
 require $argv[1] . "/vendor/autoload.php";
-if (Composer\InstalledVersions::getReference("swoole/phpx") !== "0dfa613d2057dcd4aa319ec9b6816f68df2403e4") {
+if (Composer\InstalledVersions::getReference("swoole/phpx") !== "a0138bbdd6cbfda62225adc56c558d0742114c8a") {
     throw new RuntimeException("PHPX 来源与锁定版本不符");
 }
 $report = [];

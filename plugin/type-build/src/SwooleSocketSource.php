@@ -9,7 +9,7 @@ use RuntimeException;
 /** 按实际协议分别修正固定 Socket 的空 UDP 来源与 TLS IP 身份校验，不接管原生机制。 */
 final class SwooleSocketSource
 {
-    public const REFERENCE = '0f3bee2f0ed8704ce33a336e7feabb0115411dd7';
+    public const REFERENCE = '4aff74a9ac086458d1c5251e71ac6e080f68b390';
 
     /**
      * 仅适配隔离的上游原文；上游零长度报文也写回地址后撤除此补丁。
@@ -21,7 +21,7 @@ final class SwooleSocketSource
     {
         $file = 'ext-src/swoole_socket_coro.cc';
         $path = $directory . '/' . $file;
-        $before = '0bf446e5d66184507c13e664c165eb9d83e296a105cf5a1e80cf8b994c1a8b4c';
+        $before = 'fe2af0dac225938381d968d5bd226077fb5c05c7a062df4db3d9728eedf57fc2';
         if (!is_file($path) || is_link($path) || hash_file('sha256', $path) !== $before) {
             throw new RuntimeException('Swoole Socket 适配需要固定原文：' . $file);
         }
@@ -72,7 +72,7 @@ CPP;
     {
         $file = 'src/network/socket.cc';
         $path = $directory . '/' . $file;
-        $before = 'e6919bae549f08932e6922c118b830d1f9fe6e5318efb874a7909ccd2a3814bd';
+        $before = '6f423e3a194f74dc76f3226851a1e67020aaede793bfebdee53a305a9624a3ee';
         if (!is_file($path) || is_link($path) || hash_file('sha256', $path) !== $before) {
             throw new RuntimeException('Swoole TLS 适配需要固定原文：' . $file);
         }

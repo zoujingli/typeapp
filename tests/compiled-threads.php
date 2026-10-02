@@ -40,7 +40,7 @@ $settings = [
 $composer = [
     'name' => 'type-tests/compiled-threads', 'type' => 'project', 'license' => 'Apache-2.0',
     'require' => ['zoujingli/type-runtime' => '~1.0.0@dev'],
-    'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.3', 'swoole/phpx' => '2.9.2'],
+    'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => testToolchainVersion('typephp'), 'swoole/phpx' => testToolchainVersion('phpx')],
     'repositories' => [
         ['type' => 'path', 'url' => $root . '/plugin/type-runtime', 'options' => ['symlink' => false, 'versions' => ['zoujingli/type-runtime' => '1.0.x-dev']]],
         ['type' => 'path', 'url' => $root . '/plugin/type-build', 'options' => ['symlink' => false, 'versions' => ['zoujingli/type-build' => '1.0.x-dev']]],
@@ -73,7 +73,10 @@ if ($initializationFailure) {
 }
 expect(copy($root . '/toolchain.lock.json', $work . '/toolchain.lock.json'), '无法复制工具链约束');
 $runner = new BuildEnvironment();
-$environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME'));
+$environment = controlledRuntimeEnvironment($runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME')));
+// 独立安装和编译使用本轮控制器的配置，不要求修改共享 SDK 的默认 ini。
+$environment['PHPRC'] = php_ini_loaded_file() ?: '';
+$environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
 $composerBinary = getenv('COMPOSER_BINARY');
 expect(PHP_OS_FAMILY !== 'Windows' || (is_string($composerBinary) && is_file($composerBinary)), 'Windows 需要显式 COMPOSER_BINARY 指向 Composer PHP 脚本');
 $composerBinary = $composerBinary ?: trim(successful(['which', 'composer']));

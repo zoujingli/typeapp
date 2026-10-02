@@ -5,6 +5,17 @@ declare(strict_types=1);
 // 测试故障仍保留消息与调用位置；参数不能泄漏凭据或延长 PDO 生命周期，阻塞专用数据库清理。
 ini_set('zend.exception_ignore_args', '1');
 
+/** 独立消费者使用主仓受审工具链版本；精确源码提交另由构建入口校验。 */
+function testToolchainVersion(string $component): string
+{
+    static $lock = null;
+    $lock ??= json_decode(file_get_contents(dirname(__DIR__) . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
+    if (!in_array($component, ['typephp', 'phpx'], true) || !is_string($lock[$component]['version'] ?? null)) {
+        throw new RuntimeException('测试需要有效的工具链组件版本：' . $component);
+    }
+    return $lock[$component]['version'];
+}
+
 /**
  * 捕获两个输出流，避免子进程因管道写满而互相等待。
  *

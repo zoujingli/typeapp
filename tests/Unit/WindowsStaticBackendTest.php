@@ -21,12 +21,20 @@ final class WindowsStaticBackendTest extends TestCase
         self::assertStringContainsString('/std:c++20', $cpp);
         self::assertStringContainsString('/DZTS', $cpp);
         $native = $backend->buildNativeCompileCommand('bridge.c', 'bridge.obj', ['cflags' => '/std:c11'], 'c');
-        self::assertStringContainsString('/std:c11 /MT', $native);
+        self::assertStringContainsString('/std:c11', $native);
+        self::assertStringContainsString(' /MT', $native);
         self::assertStringNotContainsString(' /MD', $native);
+        foreach ([$cpp, $native] as $command) {
+            foreach (['/Gy', '/Gw', '/Zc:inline'] as $flag) {
+                self::assertStringContainsString($flag, $command);
+            }
+            self::assertSame(1, substr_count($command, ' /MT'));
+        }
         self::assertStringContainsString('/NODEFAULTLIB:MSVCRT', $backend->buildLinkOptions());
         self::assertStringNotContainsString('/NODEFAULTLIB:LIBCMT', $backend->buildLinkOptions());
         foreach (['/DEBUG:NONE', '/INCREMENTAL:NO', '/OPT:REF', '/OPT:ICF'] as $flag) {
             self::assertStringContainsString($flag, $backend->buildLinkOptions());
+            self::assertSame(1, substr_count($backend->buildLinkOptions(), $flag));
         }
         self::assertStringNotContainsString('/DEBUG:NONE', $backend->buildLinkOptions(['debug' => true]));
     }
@@ -36,5 +44,12 @@ final class WindowsStaticBackendTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('CRT 参数');
         (new WindowsStaticBackend(new Windows()))->buildCompileOptions(['cxxflags' => '/MD']);
+    }
+
+    public function testCBridgeRejectsConflictingCrt(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('CRT 参数');
+        (new WindowsStaticBackend(new Windows()))->buildCCompileCommand('bridge.c', 'bridge.obj', ['cflags' => '/MT']);
     }
 }

@@ -17,7 +17,7 @@ $work = $root . '/build/pdo-progress-' . $driver . '-' . bin2hex(random_bytes(5)
 expect(mkdir($work . '/app', 0700, true), '无法创建 PDO 进度消费者');
 $composer = ['name' => 'type-tests/pdo-progress', 'type' => 'project', 'license' => 'Apache-2.0',
     'require' => ['zoujingli/type-runtime' => '~1.0.0@dev'],
-    'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => '0.9.3', 'swoole/phpx' => '2.9.2'],
+    'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => testToolchainVersion('typephp'), 'swoole/phpx' => testToolchainVersion('phpx')],
     'repositories' => [], 'autoload' => ['classmap' => ['app']], 'minimum-stability' => 'dev', 'prefer-stable' => true,
     'config' => ['allow-plugins' => false]];
 foreach (['type-runtime', 'type-build'] as $package) {

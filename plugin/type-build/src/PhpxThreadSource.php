@@ -6,12 +6,12 @@ namespace Type\Build;
 
 use RuntimeException;
 
-/** 隔离 PHPX 2.9.2 的线程及协程执行状态，保留请求级原生对象根链。 */
+/** 隔离 PHPX 2.9.3 的线程及协程执行状态，保留请求级原生对象根链。 */
 final class PhpxThreadSource
 {
-    /** 适配后的源码摘要；apply() 内部仍严格校验固定 2.9.2 原文摘要。 */
+    /** 适配后的源码摘要；apply() 内部仍严格校验固定 2.9.3 原文摘要。 */
     public const HEADER_SHA256 = '3408f394e49587d4e6393b491dcfa2503010fa5f74269c474684560190254218';
-    public const SOURCE_SHA256 = 'ec340def9aa5c08d30a446f78633892862642a66ab03a91ba94f05a2f2314a50';
+    public const SOURCE_SHA256 = '476449006d3dd3d05cf3e9be56915be71023bc4477d2b9e1d27b54beccf7b53a';
     public const DEBUG_SHA256 = '1098c689db6deb8b87937f4d57160369da289ecb1dd643c22da97fc5eda614c2';
     public const NATIVE_GC_SHA256 = '22702f78430fa59f4367d24dfae881e2c12f42d171e55b55847843d5d04c42aa';
     public const STRING_SHA256 = 'df26c5aad50de70d684c67db25c80a5e993fda8089e5d3c15b964621788a4bc5';
@@ -25,7 +25,7 @@ final class PhpxThreadSource
     {
         $hashes = [
             'include/phpx.h' => '3a29ec6614b891417152a541442b3bcf24cb64ed599e135f10af24c6265c80eb',
-            'src/core/base.cc' => '8a042a3cbf6540af6103eac22b529c971ac7868892a5b3b2de3b9d4b05079240',
+            'src/core/base.cc' => '69093807978f3647c3b48bd7eb11fa5dfb8ef6d9aba73efe9c00cd12bf773358',
             'src/core/debug.cc' => '50cf6c0b1a50ab58fa360e4edcab6bf3958cd908cc195f3516252d3c300e3d46',
             'src/core/native_gc.cc' => 'a1a40dd926fbcfef9cbc18456a29dd092ca24c4501d275eea9403ca2204c5680',
             'src/core/string.cc' => '3ef612e78db649ea488e606b8b9067b0ef65f6c817c3e3c6a6404eaf990387a2',

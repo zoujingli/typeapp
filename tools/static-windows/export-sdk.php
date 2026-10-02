@@ -11,7 +11,7 @@ $work = str_replace('\\', '/', (string) realpath($argv[1]));
 $dependencies = str_replace('\\', '/', (string) realpath($argv[2]));
 $sdk = $work . '/sdk';
 $php = $work . '/php-8.5.10';
-$phpx = $work . '/phpx-0dfa613d2057dcd4aa319ec9b6816f68df2403e4';
+$phpx = $work . '/phpx-a0138bbdd6cbfda62225adc56c558d0742114c8a';
 if ($work === '' || $dependencies === '' || file_exists($sdk) || is_link($sdk)) {
     throw new RuntimeException('SDK 导出需要有效的任务输入和未使用的目标目录');
 }
@@ -123,12 +123,12 @@ foreach (['LICENSE', 'thirdparty/nlohmann/LICENSE.MIT', 'thirdparty/php/LICENSE'
     $documents[] = exportSdkFile($php . '/ext/swoole/' . $name, $sdk, 'licenses/swoole/' . $name);
 }
 $notices = ['typeapp-static.lib' => ['component' => $redisEnabled ? 'PHP、Swoole、phpredis 及随附代码' : 'PHP、Swoole 及随附代码',
-    'version' => $redisEnabled ? 'PHP 8.5.10; Swoole 6.2.1; phpredis 6.3.0' : 'PHP 8.5.10; Swoole 6.2.1',
+    'version' => $redisEnabled ? 'PHP 8.5.10; Swoole 6.3.0RC1; phpredis 6.3.0' : 'PHP 8.5.10; Swoole 6.3.0RC1',
     'license' => ['PHP-3.01', 'BSD-3-Clause', 'BSD-2-Clause', 'MIT', 'Apache-2.0', 'BSL-1.0'], 'files' => $documents]];
 $phpxLicense = exportSdkFile($phpx . '/LICENSE', $sdk, 'licenses/phpx/LICENSE');
 $gcLicense = exportSdkFile($phpx . '/thirdparty/wren-gc/LICENSE', $sdk, 'licenses/phpx/wren-gc/LICENSE');
 $decimalLicense = exportSdkFile($phpx . '/thirdparty/mpdecimal/COPYRIGHT.txt', $sdk, 'licenses/phpx/mpdecimal/COPYRIGHT.txt');
-$notices['phpx.lib'] = ['component' => 'PHPX、wren-gc', 'version' => 'PHPX 2.9.2',
+$notices['phpx.lib'] = ['component' => 'PHPX、wren-gc', 'version' => 'PHPX 2.9.3',
     'license' => ['Apache-2.0', 'MIT'], 'files' => [$phpxLicense, $gcLicense]];
 foreach (['libmpdec-4.0.1.lib', 'libmpdec++-4.0.1.lib'] as $name) {
     $notices[$name] = ['component' => 'mpdecimal', 'version' => '4.0.1', 'license' => 'BSD-2-Clause', 'files' => [$decimalLicense]];

@@ -197,9 +197,9 @@ if ($taskRuntime) {
         Copy-Item -LiteralPath (Join-Path $taskDeps ('lib/' + $taskAlias[0])) -Destination (Join-Path $taskDeps ('lib/' + $taskAlias[1]))
     }
     if ($taskRedisEnabled) { Get-StaticSource 'https://pecl.php.net/get/redis-6.3.0.tgz' '0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5' 'redis.tar.gz' }
-    Get-StaticSource 'https://codeload.github.com/swoole/swoole-src/tar.gz/0f3bee2f0ed8704ce33a336e7feabb0115411dd7' 'b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea' 'swoole.tar.gz'
+    Get-StaticSource 'https://codeload.github.com/swoole/swoole-src/tar.gz/4aff74a9ac086458d1c5251e71ac6e080f68b390' '63598eba7d2a36d8820b1501854161e5c326ab30a32a419e3aa0e4d5154936cd' 'swoole.tar.gz'
     if ($taskRedisEnabled) { Move-Item -LiteralPath (Join-Path $taskWork 'redis-6.3.0') -Destination (Join-Path $taskSource 'ext/redis') }
-    Move-Item -LiteralPath (Join-Path $taskWork 'swoole-src-0f3bee2f0ed8704ce33a336e7feabb0115411dd7') -Destination (Join-Path $taskSource 'ext/swoole')
+    Move-Item -LiteralPath (Join-Path $taskWork 'swoole-src-4aff74a9ac086458d1c5251e71ac6e080f68b390') -Destination (Join-Path $taskSource 'ext/swoole')
     & $taskHostPhp -n (Join-Path $PSScriptRoot 'static-windows/prepare-extensions.php') $taskSource (Join-Path $taskEvidence 'extension-adaptations.json')
     if ($LASTEXITCODE -ne 0) { throw '完整扩展的固定源码适配失败。' }
     $taskRedisFlags = @()
@@ -299,8 +299,8 @@ if ($taskRuntime) {
 Write-Host 'Windows 静态 embed 探针通过；范围以 verification.json 为准，尚不代表 PHPX 或应用验收。'
 if ($WithPhpx) {
     Write-StaticStage 'PHPX static: start'
-    Get-StaticSource 'https://codeload.github.com/swoole/phpx/tar.gz/0dfa613d2057dcd4aa319ec9b6816f68df2403e4' '591a8d2116568f42ba969f58a0c72a26d47fccca4d0debdf5f7bd0a2480df4b3' 'phpx.tar.gz'
-    $taskPhpx = Join-Path $taskWork 'phpx-0dfa613d2057dcd4aa319ec9b6816f68df2403e4'
+    Get-StaticSource 'https://codeload.github.com/swoole/phpx/tar.gz/a0138bbdd6cbfda62225adc56c558d0742114c8a' '591a8d2116568f42ba969f58a0c72a26d47fccca4d0debdf5f7bd0a2480df4b3' 'phpx.tar.gz'
+    $taskPhpx = Join-Path $taskWork 'phpx-a0138bbdd6cbfda62225adc56c558d0742114c8a'
     & $taskHostPhp -n -r 'require $argv[1]."/plugin/type-build/src/PhpxThreadSource.php";echo json_encode((new Type\Build\PhpxThreadSource())->apply($argv[2]),JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);' $taskRoot $taskPhpx |
         Set-Content -LiteralPath (Join-Path $taskEvidence 'phpx-adaptations.json') -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw 'PHPX 固定源码适配失败。' }

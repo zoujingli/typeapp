@@ -14,8 +14,8 @@
   "require-dev": {
     "zoujingli/type-build": "~1.0.0@dev",
     "zoujingli/type-testing": "~1.0.0@dev",
-    "swoole/typephp": "0.9.3",
-    "swoole/phpx": "2.9.2"
+    "swoole/typephp": "0.9.4",
+    "swoole/phpx": "2.9.3"
   },
   "autoload": {"psr-4": {"app\\": "app/"}},
   "minimum-stability": "dev",

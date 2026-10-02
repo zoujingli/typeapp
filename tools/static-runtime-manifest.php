@@ -99,13 +99,13 @@ foreach (['LICENSE', 'thirdparty/nlohmann/LICENSE.MIT', 'thirdparty/php/LICENSE'
     $documents[] = staticSdkDocument($sdk, $php . '/ext/swoole/' . $name, 'swoole/' . $name);
 }
 $notices['libphp.a'] = ['component' => $redisEnabled ? 'PHP、Swoole、phpredis 及随附代码' : 'PHP、Swoole 及随附代码',
-    'version' => $redisEnabled ? 'PHP 8.5.10; Swoole 6.2.1; phpredis 6.3.0' : 'PHP 8.5.10; Swoole 6.2.1',
+    'version' => $redisEnabled ? 'PHP 8.5.10; Swoole 6.3.0RC1; phpredis 6.3.0' : 'PHP 8.5.10; Swoole 6.3.0RC1',
     'license' => ['PHP-3.01', 'BSD-3-Clause', 'BSD-2-Clause', 'MIT', 'Apache-2.0', 'BSL-1.0'], 'files' => $documents];
 $documents = [];
 foreach (['LICENSE', 'thirdparty/mpdecimal/COPYRIGHT.txt', 'thirdparty/wren-gc/LICENSE'] as $name) {
     $documents[] = staticSdkDocument($sdk, $phpx . '/' . $name, 'phpx/' . $name);
 }
-$notices['libphpx.a'] = ['component' => 'PHPX、mpdecimal、wren-gc', 'version' => 'PHPX 2.9.2',
+$notices['libphpx.a'] = ['component' => 'PHPX、mpdecimal、wren-gc', 'version' => 'PHPX 2.9.3',
     'license' => ['Apache-2.0', 'BSD-2-Clause', 'MIT'], 'files' => $documents];
 
 $formulas = [
@@ -231,7 +231,7 @@ $manifest = ['protocol' => 1, 'profile' => $profile, 'php' => PHP_VERSION, 'zts'
     'archives' => $archives, 'headers' => array_values($headers), 'notices' => $notices, 'patches' => [],
     'sources' => [
         'php' => ['version' => '8.5.10', 'archive-sha256' => '6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957'],
-        'swoole' => ['reference' => '0f3bee2f0ed8704ce33a336e7feabb0115411dd7', 'archive-sha256' => 'b830fc102797143dd94a7603400a203e0d2228bd222c71a12c27d6fe62dac3ea'],
+        'swoole' => ['reference' => '4aff74a9ac086458d1c5251e71ac6e080f68b390', 'archive-sha256' => '63598eba7d2a36d8820b1501854161e5c326ab30a32a419e3aa0e4d5154936cd'],
         'phpx' => ['reference' => InstalledVersions::getReference('swoole/phpx')],
     ], 'dependency-inputs' => $dependencies, 'features' => $features,
     'preparation' => ['script-sha256' => hash_file('sha256', __DIR__ . (PHP_OS_FAMILY === 'Darwin' ? '/prepare-static-macos.sh' : '/prepare-static-linux.sh')), 'manifest-script-sha256' => hash_file('sha256', __FILE__),

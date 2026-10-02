@@ -4589,16 +4589,16 @@
         },
         {
             "name": "swoole/phpx",
-            "version": "v2.9.2",
+            "version": "v2.9.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/swoole/phpx.git",
-                "reference": "0dfa613d2057dcd4aa319ec9b6816f68df2403e4"
+                "reference": "a0138bbdd6cbfda62225adc56c558d0742114c8a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/swoole/phpx/zipball/0dfa613d2057dcd4aa319ec9b6816f68df2403e4",
-                "reference": "0dfa613d2057dcd4aa319ec9b6816f68df2403e4",
+                "url": "https://api.github.com/repos/swoole/phpx/zipball/a0138bbdd6cbfda62225adc56c558d0742114c8a",
+                "reference": "a0138bbdd6cbfda62225adc56c558d0742114c8a",
                 "shasum": ""
             },
             "require": {
@@ -4625,7 +4625,6 @@
                         "src/core/base.cc",
                         "src/core/big_float_nano.cc",
                         "src/core/big_int_nano.cc",
-                        "src/core/class.cc",
                         "src/core/closure.cc",
                         "src/core/decimal_nano.cc",
                         "src/core/debug.cc",
@@ -4681,7 +4680,7 @@
                             "requires": [
                                 "standard.core"
                             ],
-                            "extension": "standard"
+                            "extension": "hash"
                         },
                         "standard.math": {
                             "sources": [
@@ -4749,22 +4748,22 @@
             ],
             "support": {
                 "issues": "https://github.com/swoole/phpx/issues",
-                "source": "https://github.com/swoole/phpx/tree/v2.9.2"
+                "source": "https://github.com/swoole/phpx/tree/v2.9.3"
             },
-            "time": "2026-09-24T04:15:55+00:00"
+            "time": "2026-09-29T10:12:16+00:00"
         },
         {
             "name": "swoole/typephp",
-            "version": "v0.9.3",
+            "version": "v0.9.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/swoole/typephp.git",
-                "reference": "8b33cad5c4f9cd2be2980425f522496e9ba0bfce"
+                "reference": "874b82e96a2383712e8faf8177c6c715587e3546"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/swoole/typephp/zipball/8b33cad5c4f9cd2be2980425f522496e9ba0bfce",
-                "reference": "8b33cad5c4f9cd2be2980425f522496e9ba0bfce",
+                "url": "https://api.github.com/repos/swoole/typephp/zipball/874b82e96a2383712e8faf8177c6c715587e3546",
+                "reference": "874b82e96a2383712e8faf8177c6c715587e3546",
                 "shasum": ""
             },
             "require": {
@@ -4774,7 +4773,7 @@
                 "marcj/topsort": "^2.0",
                 "nikic/php-parser": "^5.6",
                 "php": ">=8.4 <8.6",
-                "swoole/phpx": "~2.9.2",
+                "swoole/phpx": "~2.9.3",
                 "symfony/var-dumper": "^8.0",
                 "symfony/yaml": "^8.0"
             },
@@ -4782,7 +4781,7 @@
                 "friendsofphp/php-cs-fixer": "^3.40",
                 "phpstan/phpstan": "^2.2",
                 "phpunit/phpunit": "^10.4",
-                "swoole/php-nano": "^1.0.0"
+                "swoole/php-nano": "^1.1"
             },
             "bin": [
                 "bin/tpc",
@@ -4808,9 +4807,9 @@
             "description": "TypePHP native AOT compiler",
             "support": {
                 "issues": "https://github.com/swoole/typephp/issues",
-                "source": "https://github.com/swoole/typephp/tree/v0.9.3"
+                "source": "https://github.com/swoole/typephp/tree/v0.9.4"
             },
-            "time": "2026-09-24T07:23:16+00:00"
+            "time": "2026-09-30T04:56:36+00:00"
         },
         {
             "name": "symfony/console",
@@ -6545,7 +6544,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-build",
-                "reference": "2e159488fe14bc95ef1874de06a52b28944d704a"
+                "reference": "7f6c343e3cf8a77359cd26f3738f61659c3fa83d"
             },
             "require": {
                 "composer-runtime-api": "^2.2",
@@ -6553,8 +6552,8 @@
                 "nikic/php-parser": "^5.8",
                 "php": ">=8.4 <8.6",
                 "phpstan/phpdoc-parser": "^2.3.5",
-                "swoole/phpx": "~2.9.2",
-                "swoole/typephp": "~0.9.3",
+                "swoole/phpx": "2.9.3",
+                "swoole/typephp": "0.9.4",
                 "zoujingli/type-runtime": "~1.0.0@dev"
             },
             "bin": [

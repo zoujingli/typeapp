@@ -22,8 +22,8 @@ $composer = [
     'require' => ['zoujingli/type-runtime' => '~1.0.0@dev'],
     'require-dev' => [
         'zoujingli/type-build' => '~1.0.0@dev',
-        'swoole/typephp' => '0.9.3',
-        'swoole/phpx' => '2.9.2',
+        'swoole/typephp' => testToolchainVersion('typephp'),
+        'swoole/phpx' => testToolchainVersion('phpx'),
     ],
     'repositories' => [
         ['type' => 'path', 'url' => $root . '/plugin/type-runtime', 'options' => ['symlink' => false, 'versions' => ['zoujingli/type-runtime' => '1.0.x-dev']]],

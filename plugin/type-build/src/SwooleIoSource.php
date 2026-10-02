@@ -15,14 +15,14 @@ final class SwooleIoSource
         'include/swoole_coroutine.h' => '0d9af2316a4d0e890fc988b6d802be81beec357561d72649c33aeb152d4f0984',
         'include/swoole_file_hook.h' => '844629a99d602a81e9309f2d46949fd05c45aa9c6e5df7402e626a43056cc6b7',
         'include/swoole_file.h' => 'e77236625a852f63a69d9d35473e57cef1b92c3087ba6678e750f4ef327f910c',
-        'src/os/file.cc' => '29916a57cd02884791c3489044c06703affcc9fd5dd576e1db52c73a3ea353ef',
-        'src/os/async_thread.cc' => '3433f3d0bacce41d8545f085d094487f7bd65eb87eeab1be524aec86ffb50802',
+        'src/os/file.cc' => '8f3bf564cdc4b59047df710e887e7a0ce240ab644a42376b3926899d25ae3aa2',
+        'src/os/async_thread.cc' => 'b40566b7ffd3981bbbf6bbde4be0ca0fc9183c64cde3c62c07824861832b94f0',
         'src/coroutine/system.cc' => '28bad08b4a036801e791559e9f41ea14389c16bc3bac94c20479742bd85497f7',
         'src/coroutine/hook.cc' => '16f01983bba935c1bd8507c09f02e9ebfa8bc78d55c455083a2a7ad21f7443e4',
         'ext-src/swoole_async_coro.cc' => '131a926cfe297855c7789d74b3780b040379bcebba1ab2ce435e3b969c236680',
-        'ext-src/swoole_coroutine.cc' => '46346877709b3ef3981802abd07022cf81d2f7d606ad56d86b855d2c822f8831',
+        'ext-src/swoole_coroutine.cc' => '6adf21c286abbb9ef07f6d95e2aa34cb8fa88846e8e3d7e6c3086c6e9d7ea8ef',
         'ext-src/stubs/php_swoole_coroutine.stub.php' => '7778b464fecf3398bbc89293dd3c27d498e62dabcbe93fc02b031f79cb54c9e6',
-        'ext-src/swoole_runtime.cc' => '4ee479068044a31153464d6d64dbd9c5968e854c7e82436bf6f828016216c215',
+        'ext-src/swoole_runtime.cc' => '7cea7579b9790b0b680e1baef9460e73238fc4432fc5137a9c090cb978d25331',
         'thirdparty/php/streams/plain_wrapper.c' => '10cf429262cdfda51e139761755eefed25b344df60fcf435f0f3e0c0f14b79b5',
     ];
 
@@ -377,6 +377,8 @@ CPP);
         _event_copy->task_id = current_task_id++;
         _event_copy->timestamp = microtime();
         _event_copy->pipe_socket = SwooleTG.async_threads->write_socket;
+        // Schedule after the push so the queued task is counted; a task that arrives while every
+        // worker is blocked would otherwise never trigger pool growth.
         queue_.push(_event_copy);
         schedule();
         lock.unlock();
