@@ -438,9 +438,26 @@ final class TypephpCompatibility extends Translator
 
 #include <optional>
 
+// PHPX 在 Windows 的线程外部调用帧上可能让 nullsafe 动态读取绕过 Zend
+// 的可见性分支；显式作用域仍交给 PHPX。只补无作用域的读/更新，isset/empty
+// 继续使用 PHP 的“不可见即不存在”语义。
+static inline void type_app_check_property_read(const php::Var &object, const php::Var &property,
+                                                zend_class_entry *scope, php::AttrMode mode) {
+    if (scope || mode == php::AttrMode::Isset || !object.isObject()) { return; }
+    auto *info = zend_get_property_info(object.ce(), property.str(), true);
+    if (!info || info == ZEND_WRONG_PROPERTY_INFO) { return; }
+    if (info->flags & ZEND_ACC_PRIVATE) {
+        php::throwError("Cannot access private property %s::$%s", ZSTR_VAL(info->ce->name), property.str());
+    }
+    if (info->flags & ZEND_ACC_PROTECTED) {
+        php::throwError("Cannot access protected property %s::$%s", ZSTR_VAL(info->ce->name), property.str());
+    }
+}
+
 // 全局 AOT 函数没有 Zend 调用帧；用无类权限的内部边界隔离调用者，保留 Zend 异常传播。
 static inline php::Var type_app_read_property(const php::Var &object, const php::Var &property,
                                               zend_class_entry *scope, php::AttrMode mode) {
+    type_app_check_property_read(object, property, scope, mode);
     auto previous_frame = EG(current_execute_data);
     auto previous_scope = EG(fake_scope);
     zend_function boundary{};
