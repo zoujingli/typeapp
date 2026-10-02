@@ -41,11 +41,11 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 开发环境需要 PHP `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选 PDO 驱动；原生构建还需要匹配目标 OS/架构的 PHP ZTS/embed SDK、PHPX 和编译工具。Linux/macOS 使用对应原生工具链，Windows x64 使用匹配的 ZTS SDK 与 MSVC；准备入口见 GitHub 上的[原生命令与 SDK](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-command.md)。
 
-原生构建基线为 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 另外固定版本、源码、构建开关、模块摘要和官方内置库配置；CLI 加载成功还需要对应 embed 环境验证。不能只复制一个扩展文件就认定 ABI 匹配。
+当前源码的原生构建基线为 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 固定为 `4aff74a` 开发快照，运行时报告 `6.3.0RC1`，不是正式 6.3.0；源码、构建开关、模块摘要和官方内置库配置分别记录。CLI 加载成功还需要对应 embed 环境验证，不能只复制一个扩展文件就认定 ABI 匹配。
 
-四平台默认矩阵已在上述工具链上通过。工具链升级时的 macOS 性能对照仍按自己的源码和负载成立，见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)，不能扩展为本轮四平台性能结论。
+上表记录 RC13 原工具链的已发布结果；0.9.4 升级的模块重建、十二组合程序及性能对照单独记录在[本次升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。历史 macOS 性能对照按自己的源码和负载成立，不能扩展为新版或其他平台的性能结论。
 
-构建组件另外携带四平台 Swoole 6.2.1 共享模块，供开发及历史共享库回归使用；具体 ABI、系统依赖和选择规则见[内置 Swoole](plugins/type-build.md#内置-swoole-与运行依赖)。独立 Composer 安装的禁网选择、空格路径与不同工作目录已验证，原始结果见[迁移验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/swoole-bundle.md#迁入构建组件后的验证)。生产单程序使用静态 SDK 中的归档，不将这些 `.so` / `.dll` 嵌入后释放。
+构建组件另外携带四平台 Swoole 共享模块，供开发及共享库回归使用；具体 ABI、系统依赖和选择规则见[内置 Swoole](plugins/type-build.md#内置-swoole-与运行依赖)。新版模块已在四个平台重建并完成加载与 PDO hook 检查；独立消费及完整应用结果以升级记录为准。生产单程序使用静态 SDK 中的归档，不将这些 `.so` / `.dll` 嵌入后释放。
 
 不同服务入口具有各自的执行方式，不能把某一入口的限制套用到整个框架：
 

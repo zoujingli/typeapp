@@ -62,6 +62,7 @@ if ($files) {
     $composer['repositories'][] = ['type' => 'path', 'url' => $root . '/plugin/type-core',
         'options' => ['symlink' => false, 'versions' => ['zoujingli/type-core' => '1.0.x-dev']]];
 }
+$settings['runtime'][PHP_OS_FAMILY]['modules']['swoole'] = independentSwooleModule($work);
 foreach (['composer.json' => $composer, 'type-app.json' => $settings] as $file => $value) {
     file_put_contents($work . '/' . $file, json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
 }

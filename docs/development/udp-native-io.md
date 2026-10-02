@@ -22,7 +22,7 @@ UDP 客户端与服务端使用统一公共契约。各目标平台须分别验�
 
 ## 空报文原生修复
 
-固定上游为 Swoole `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`（版本字符串 6.2.1）。`ext-src/swoole_socket_coro.cc` 原文 SHA-256 为 `0bf446e5d66184507c13e664c165eb9d83e296a105cf5a1e80cf8b994c1a8b4c`。同进程中使用独立的 ext-sockets 原生发送入口复现：IPv4、IPv6 的非空报文正确，空报文返回空串但地址引用仍保留调用前的哨兵。
+最初诊断固定在 Swoole `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`（6.2.1），当时 `ext-src/swoole_socket_coro.cc` 原文 SHA-256 为 `0bf446e5d66184507c13e664c165eb9d83e296a105cf5a1e80cf8b994c1a8b4c`：同进程中使用独立的 ext-sockets 发送入口复现，IPv4、IPv6 的非空报文正确，空报文返回空串但地址引用仍保留调用前的哨兵。当前适配已迁至固定开发快照 `4aff74a9ac086458d1c5251e71ac6e080f68b390`；新摘要由适配器核验，新版本验收见[升级记录](../evidence/typephp-upgrade-0.9.4.md)，不改写原诊断身份。
 
 `getpeername()` 查询的是已连接对端，不能取得未连接 UDP 空报文来源。sockets hook 最终仍调用上述 Socket 方法。协程 Client 的 socket 懒创建且没有直接绑定入口，sendto 又拒绝空载荷；stream UDP hook 在固定源码中还有 IPv6/Windows 路径缺口，不能用假发送、解释库或同步路径绕过。
 

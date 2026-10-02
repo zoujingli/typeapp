@@ -52,7 +52,7 @@ final class DistributionReportTest extends TestCase
                 \writeTestPhpCommand($directory . '/bin/' . $tool, 'fwrite(STDERR, "下游外部操作哨兵\n"); exit(99);');
             }
             file_put_contents($directory . '/.gitignore', "/build/\n");
-            $toolchain = "{\"fixture\":\"fixed-toolchain\"}\n";
+            $toolchain = (string) file_get_contents($root . '/toolchain.lock.json');
             $example = "<?php\nfunction main(): void {}\n";
             file_put_contents($directory . '/toolchain.lock.json', $toolchain);
             file_put_contents($directory . '/examples/native-command.php', $example);

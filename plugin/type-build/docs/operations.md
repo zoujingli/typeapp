@@ -4,7 +4,7 @@
 
 单程序构建将 Swoole 及其他非系统原生运行库静态链接进主程序，启动不释放运行库。部署使用目标平台的程序和外置配置，无需另行安装 PHP、Swoole 或构建工具；页面只在显式安装时生成。外部数据库、Redis、证书与持久数据按业务需要管理，已发布版本和实际平台范围见[环境与依赖](https://iots.top/#/guide/environment)。历史目录包仍须保留原完整布局。
 
-当前主仓构建基线为 PHP `8.5.10 ZTS`、TypePHP `0.9.3`、PHPX `2.9.2`；本手册不扩大平台支持范围。升级后的实际验收范围见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)，Linux、Windows 及其他架构必须使用各自匹配的 SDK 和原生产物重新验证，不能沿用旧版验收结论。
+当前主仓源码构建基线为 PHP `8.5.10 ZTS`、TypePHP `0.9.4`、PHPX `2.9.3`，Swoole 固定为提交 `4aff74a` 的 6.3 开发快照（版本字符串 `6.3.0RC1`）；本手册不扩大平台支持范围。实际验收范围见[升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，每个平台和数据库 profile 必须使用各自匹配的 SDK 和最终程序验证，不能沿用 RC13 的身份或结论。
 
 ## 1. 固定部署对象
 

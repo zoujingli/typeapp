@@ -12,7 +12,7 @@
 | `receive()`、`send()`、`shutdownWrite()` | `recv()`、`sendAll()`、原生读写期限与 `shutdown(SHUT_WR)`。 | 片段上限，一读一写准入，EOF 与未知部分写入语义；业务自行限制总消息大小。 |
 | `stop()`、`awaitClosed()` | `Coroutine::cancel()`、Socket 析构、`Event::defer()`、原生 Channel 通知。 | 取消重入保护；原生 FD 关闭后归还额度；等待超时不提前释放。 |
 
-固定上游为 `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`，版本字符串 6.2.1。其 `src/coroutine/socket.cc` 的 `accept()` 只创建接入 Socket、继承 TLS 上下文，不执行握手，因此无需修改原生接入循环。客户端 `connect()` 已串联解析、连接与握手，应用只加一次总截止 Timer；分段握手不能延长总预算。SSL 握手的 PHP 方法不保证同步 `errCode`，失败仍按连接或握手阶段报告，超时和取消由当前执行状态区别。
+最初审查固定在 `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`（6.2.1）；当前固定开发快照为 `4aff74a9ac086458d1c5251e71ac6e080f68b390`，验收范围见[升级记录](../evidence/typephp-upgrade-0.9.4.md)。`src/coroutine/socket.cc` 的 `accept()` 只创建接入 Socket、继承 TLS 上下文，不执行握手，因此无需修改原生接入循环。客户端 `connect()` 已串联解析、连接与握手，应用只加一次总截止 Timer；分段握手不能延长总预算。SSL 握手的 PHP 方法不保证同步 `errCode`，失败仍按连接或握手阶段报告，超时和取消由当前执行状态区别。
 
 沿用已经核验的六文件线程入口适配及内嵌库关闭修复；TCP 不依赖 UDP 空报文修正或文件 I/O 候选补丁。macOS TLS 链接要求沿用[已有修正](mqtt-native-client.md#macos-原生-tls-链接)。IP 证书身份有下面的单方法原生修正，不改调度、握手或协议处理。
 

@@ -27,7 +27,7 @@ composer --version
 
 原生编译还需要与目标平台匹配的 SDK，版本取自 `toolchain.lock.json`，详见[构建与部署](deployment.md)。
 
-`type-build` 已携带匹配 PHP 8.5.10 ZTS 的四平台 Swoole 6.2.1 共享模块，供开发及历史目录包回归使用；安装组件不会自动为开发 CLI 修改 ini。当前单程序构建使用静态 SDK，平台限制与选择规则见[内置 Swoole 与运行依赖](plugins/type-build.md#内置-swoole-与运行依赖)。
+`type-build` 携带匹配 PHP 8.5.10 ZTS 的四平台 Swoole 共享模块，供开发及共享库回归使用；安装组件不会自动为开发 CLI 修改 ini。当前源码采用固定的 6.3 开发快照，已发布版本以各自清单为准。单程序构建使用静态 SDK，平台限制与选择规则见[内置 Swoole 与运行依赖](plugins/type-build.md#内置-swoole-与运行依赖)。
 
 Windows x64 的匹配 Swoole SDK、三库独立 ORM、主应用和模板已有原生验收记录，准确版本与隔离范围见[平台支持表](platforms.md#当前平台状态)。模板 HTTP 使用协程服务与 ProcessSignals 控制桥，缺少可用控制台或桥接能力时明确失败；自己的应用仍需在目标环境验收。
 

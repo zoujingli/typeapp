@@ -13,7 +13,7 @@
 | PSR 请求 | `SwooleServer` 原有转换、错误、发送、`HttpControl` 与 `ExecutionScope`。 | 原私有响应方法成为内部 `handleNative()`，经典和协程 HTTP 共用一份实现；每次响应完成前清理请求，不依赖 keep-alive 连接协程退出。 |
 | HTTP 连接额度 | 原生 `zclients` 连接表、Coroutine Channel 与 Socket 的 Event defer 关闭。 | 显式连接上限在 accept 前挂起；登记包含 TLS 握手，FD 关闭完成后再删除表项。没有另建连接表、调度器或扫描回收器。 |
 
-固定上游为 Swoole 6.2.1 / `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`。macOS 诊断中两个 `reuse_port=true` 的原生服务均绑定成功，但三轮每轮 100 个请求全部进入后绑定线程；调换顺序仍跟随后绑定者，不能作为当前单端口分配方案。改用同一原生监听的线程副本后，共享唤醒存在 EAGAIN 竞争；上游 HTTP accept 循环把它当作失败退出，候选将其并入既有重试分支。TCP 共享监听和纯原生 HTTP 诊断分别保留，不充当 AOT 或 PSR 验收。
+最初诊断固定在 Swoole 6.2.1 / `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`：macOS 上两个 `reuse_port=true` 的原生服务均绑定成功，但三轮每轮 100 个请求全部进入后绑定线程，调换顺序仍跟随后绑定者。改用同一原生监听的线程副本后，共享唤醒存在 EAGAIN 竞争；适配将其并入既有重试分支。当前适配已迁至 `4aff74a9ac086458d1c5251e71ac6e080f68b390` 开发快照，实际新验收见[升级记录](../evidence/typephp-upgrade-0.9.4.md)。原始 TCP 共享监听和纯原生 HTTP 诊断保留原身份，不充当新版本 AOT 或 PSR 验收。
 
 原生 [Socket 传递](https://github.com/swoole/swoole-src/blob/0f3bee2f0ed8704ce33a336e7feabb0115411dd7/ext-src/swoole_thread.cc)及 [HTTP 接收和关闭](https://github.com/swoole/swoole-src/blob/0f3bee2f0ed8704ce33a336e7feabb0115411dd7/ext-src/swoole_http_server_coro.cc)仍由上游维护。Windows 的描述符复制存在不代表多 IOCP 共享监听已经成立；该组合等待真实目标验收，不能提前写成支持或不支持。
 

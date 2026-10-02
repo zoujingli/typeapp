@@ -23,6 +23,9 @@ if (!in_array($profile, ['sqlite', 'mysql', 'pgsql', 'all'], true)) {
     throw new InvalidArgumentException('Windows 静态 SDK profile 无效：' . $profile);
 }
 require_once $root . '/plugin/type-build/src/BuildProfile.php';
+foreach (['BuildPlatform', 'BuildLock', 'StaticRuntimeSdk'] as $class) {
+    require $root . '/plugin/type-build/src/' . $class . '.php';
+}
 $configuration = getenv('TYPEAPP_BUILD_CONFIGURATION') ?: $root . '/docs/build-config/type-app.json';
 $profiles = \Type\Build\BuildProfile::resolve(json_decode((string) file_get_contents($configuration), true, 64, JSON_THROW_ON_ERROR));
 $features = $profile === 'all' ? array_values(array_unique(array_merge(...array_column($profiles['profiles'], 'features'))))
@@ -177,6 +180,10 @@ $manifest = ['protocol' => 1, 'profile' => $profile, 'features' => $features, 'p
     'preparation' => ['compiler' => 'MSVC x64', 'crt' => 'static', 'dependency-source' => $dependencyReport['source'],
         'dependency-manifest-sha256' => $dependencyReport['manifest_sha256'], 'dependency-triplet-sha256' => $dependencyReport['triplet_sha256'],
         'runtime-probe-sha256' => $runtime['artifact_sha256'], 'phpx-probe-sha256' => $values['program_sha256']]];
+$manifest['sources']['swoole'] = Type\Build\StaticRuntimeSdk::swooleSource();
+if (($runtime['extensions']['swoole'] ?? null) !== $manifest['sources']['swoole']['runtime-version']) {
+    throw new RuntimeException('静态探针的 Swoole 版本与固定源码不一致');
+}
 foreach (['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource', 'SwooleStaticSource', 'SwooleWindowsSource', 'PhpxThreadSource'] as $patch) {
     $manifest['patches'][$patch] = hash_file('sha256', $root . '/plugin/type-build/src/' . $patch . '.php');
 }
@@ -193,9 +200,6 @@ foreach (['adaptations.json', 'extension-adaptations.json', 'phpx-adaptations.js
 $encoded = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
 if (file_put_contents($sdk . '/manifest.json', $encoded) !== strlen($encoded)) {
     throw new RuntimeException('无法完整写入静态 SDK 身份');
-}
-foreach (['BuildPlatform', 'BuildLock', 'StaticRuntimeSdk'] as $class) {
-    require $root . '/plugin/type-build/src/' . $class . '.php';
 }
 new Type\Build\StaticRuntimeSdk($sdk . '/manifest.json');
 echo 'Windows 静态 SDK 已导出；应用 AOT 与部署尚须独立验收。' . PHP_EOL;

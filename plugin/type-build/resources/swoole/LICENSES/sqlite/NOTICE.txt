@@ -1,5 +1,5 @@
-SQLite 3.53.3
-Source: https://www.sqlite.org/2026/sqlite-autoconf-3530300.tar.gz
+SQLite 3.53.4
+Source: https://www.sqlite.org/2026/sqlite-autoconf-3530400.tar.gz
 The following notice is reproduced from the upstream sqlite3.h header:
 
 ** 2001-09-15

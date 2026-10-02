@@ -25,7 +25,8 @@ final class StaticRuntimeSdkTest extends TestCase
         file_put_contents($archive, "!<arch>\n");
         $data = ['protocol' => 1, 'os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS,
             'debug' => (bool) PHP_DEBUG, 'integer-size' => PHP_INT_SIZE, 'headers' => [],
-            'archives' => [['file' => 'lib/' . $archiveName, 'sha256' => hash_file('sha256', $archive)]], 'patches' => []];
+            'archives' => [['file' => 'lib/' . $archiveName, 'sha256' => hash_file('sha256', $archive)]], 'patches' => [],
+            'sources' => ['swoole' => StaticRuntimeSdk::swooleSource()]];
         $headers = [];
         foreach (['main/php.h', PHP_OS_FAMILY === 'Windows' ? 'main/config.w32.h' : 'main/php_config.h', 'Zend/zend.h', 'TSRM/TSRM.h'] as $name) {
             $path = $work . '/include/php/' . $name;
@@ -48,6 +49,14 @@ final class StaticRuntimeSdkTest extends TestCase
             self::assertSame([$archive], $sdk->archives());
             self::assertSame([$manifest, $archive, ...$headers], $sdk->files());
             self::assertSame($work . '/include/php', $sdk->includeDirectory());
+            foreach (['runtime-version' => '6.2.1', 'reference' => str_repeat('0', 40), 'archive-sha256' => str_repeat('0', 64), 'channel' => 'stable'] as $field => $value) {
+                $invalid = $data;
+                $invalid['sources']['swoole'][$field] = $value;
+                $this->reject($manifest, $invalid, '源码或运行版本已过期');
+            }
+            $invalid = $data;
+            unset($invalid['sources']);
+            $this->reject($manifest, $invalid, '源码或运行版本已过期');
             $invalid = $data;
             $invalid['headers'][0]['sha256'] = str_repeat('0', 64);
             $this->reject($manifest, $invalid, '目标头文件');

@@ -195,6 +195,22 @@ function controlledRuntimeEnvironment(array $environment): array
     return $environment;
 }
 
+/**
+ * 将已选共享运行库复制到独立消费者的运行目录，移走或禁读源码时仍能按原摘要加载。
+ *
+ * @return array{file:string,sha256:string} 相对消费者根的显式模块声明。
+ */
+function independentSwooleModule(string $work): array
+{
+    $override = getenv('TYPE_SWOOLE_MODULE');
+    $source = is_string($override) && is_file($override) ? $override : (new \Type\Build\BundledSwoole())->select()['file'];
+    $relative = 'runtime/' . (PHP_OS_FAMILY === 'Windows' ? 'php_swoole.dll' : 'swoole.so');
+    $sha256 = hash_file('sha256', $source);
+    expect(mkdir($work . '/runtime', 0700) && copy($source, $work . '/' . $relative)
+        && hash_file('sha256', $work . '/' . $relative) === $sha256, '无法保留独立消费者的原运行库字节');
+    return ['file' => $relative, 'sha256' => $sha256];
+}
+
 /** @return array<int,array{parent: int, state: string}> 保留僵尸状态；可按PPID筛选，观察失败不能等同于进程归零。 */
 function unixProcessStates(?int $parent = null): array
 {

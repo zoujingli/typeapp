@@ -59,7 +59,7 @@ final class BundledSwooleTest extends TestCase
         $manifest['modules'] = [$target => ['file' => $relative, 'sha256' => hash('sha256', 'controlled-module')]];
         try {
             self::assertTrue(mkdir($work . '/src', 0700));
-            foreach (['BundledSwoole', 'SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource'] as $class) {
+            foreach (['BundledSwoole', 'SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource', 'SwooleWindowsSource'] as $class) {
                 self::assertTrue(copy($root . '/plugin/type-build/src/' . $class . '.php', $work . '/src/' . $class . '.php'));
             }
             $this->assertRejected($work, '缺少内置 Swoole 清单');
@@ -79,10 +79,16 @@ final class BundledSwooleTest extends TestCase
             $invalid['modules'] = [];
             file_put_contents($directory . '/manifest.json', json_encode($invalid, JSON_THROW_ON_ERROR));
             $this->assertRejected($work, 'PHP ABI');
-            $invalid = $manifest;
-            $invalid['patches']['SwooleThreadSource'] = str_repeat('0', 64);
-            file_put_contents($directory . '/manifest.json', json_encode($invalid, JSON_THROW_ON_ERROR));
-            $this->assertRejected($work, '源码适配不一致');
+            $patches = ['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource'];
+            if (PHP_OS_FAMILY === 'Windows') {
+                $patches[] = 'SwooleWindowsSource';
+            }
+            foreach ($patches as $patch) {
+                $invalid = $manifest;
+                $invalid['patches'][$patch] = str_repeat('0', 64);
+                file_put_contents($directory . '/manifest.json', json_encode($invalid, JSON_THROW_ON_ERROR));
+                $this->assertRejected($work, '源码适配不一致');
+            }
             $invalid = $manifest;
             $invalid['modules'][$target]['file'] = '../outside.so';
             file_put_contents($directory . '/manifest.json', json_encode($invalid, JSON_THROW_ON_ERROR));

@@ -24,6 +24,7 @@ final class TypephpCompatibility extends Translator
             return $options;
         }
         $values = $options->toArray();
+        $values['section_gc'] = empty($values['debug']);
         $values['libraries'] = [];
         $values['library_paths'] = [];
         $values['rpath'] = [];
@@ -44,6 +45,8 @@ final class TypephpCompatibility extends Translator
         $static = $this->staticRuntime();
         if ($static !== null) {
             $values = $options->toArray();
+            // 使用上游统一参数为 C/C++ 生成可裁剪分节；Unix 链接标志仍由 SDK 提供。
+            $values['section_gc'] = empty($values['debug']);
             $values['user_defines'][] = 'TYPE_APP_STATIC_RUNTIME=1';
             $hostHeaders = rtrim(BuildPlatform::path((string) getenv('PHP_HOME')), '/') . (PHP_OS_FAMILY === 'Windows' ? '/SDK/include' : '/include/php');
             $hostPhpx = rtrim(BuildPlatform::path($this->getPhpxDir()), '/');

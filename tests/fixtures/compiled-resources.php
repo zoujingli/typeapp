@@ -64,6 +64,7 @@ final class GatedSqliteResource implements ReusableResource
 {
     private ?PDO $pdo;
     public ?Channel $closeGate = null;
+    public ?Channel $closingStarted = null;
     public int $closeFailures = 0;
     public bool $resetFailure = false;
 
@@ -88,6 +89,9 @@ final class GatedSqliteResource implements ReusableResource
     public function close(): void
     {
         if ($this->closeGate !== null) {
+            if ($this->closingStarted !== null) {
+                $this->closingStarted->push(true);
+            }
             PoolProbe::check($this->closeGate->pop(2) === true, '关闭门闩超时');
             $this->closeGate = null;
         }
@@ -333,7 +337,9 @@ final class PoolProbe
     {
         $resource = new GatedSqliteResource($file);
         $resource->closeGate = new Channel(1);
+        $resource->closingStarted = new Channel(1);
         $closeGate = $resource->closeGate;
+        $closingStarted = $resource->closingStarted;
         $operationGate = new Channel(1);
         $pool = new ResourcePool(static fn (): ReusableResource => $resource, 1, 0, $budget, 2, 0.5);
         $nextPool = new ResourcePool(static fn (): ReusableResource => new GatedSqliteResource($file), 1, 0, $budget, 2, 0.5);
@@ -359,6 +365,8 @@ final class PoolProbe
             });
             self::check($nextPool->statistics()['waiters'] === 1, '未完成操作的额度被新池复用');
             $operationGate->push(true);
+            // PDO hook 会在查询中让出；必须观察真正进入 close，不能假设 push 后查询已完成。
+            self::check($closingStarted->pop(2) === true, '物理关闭未进入观察阶段');
             self::check($pool->statistics()['closing'] === 1 && $pool->statistics()['created'] === 1
                 && $budget->statistics()['allocated'] === 1 && !$running->finished(), '操作退出被当作物理关闭完成');
             self::$observations['closing'] = $pool->statistics();
@@ -514,7 +522,9 @@ function main(int $argc, array $argv): void
         }
         $hooks = Swoole\Runtime::getHookFlags();
         CoroutineRuntime::enableIo();
-        PoolProbe::check($hooks === (SWOOLE_HOOK_TCP | SWOOLE_HOOK_UDP | SWOOLE_HOOK_SLEEP | SWOOLE_HOOK_STREAM_FUNCTION)
+        $required = SWOOLE_HOOK_TCP | SWOOLE_HOOK_UDP | SWOOLE_HOOK_SSL | SWOOLE_HOOK_TLS | SWOOLE_HOOK_PROC
+            | SWOOLE_HOOK_SLEEP | SWOOLE_HOOK_STREAM_FUNCTION | SWOOLE_HOOK_PDO_SQLITE;
+        PoolProbe::check(($hooks & $required) === $required
             && Swoole\Runtime::getHookFlags() === $hooks, '启动线程未补齐原生 hook 或重复配置改变已有值');
         PoolProbe::waitFile($directory . '/left.ready');
         PoolProbe::waitFile($directory . '/right.ready');

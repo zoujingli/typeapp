@@ -231,7 +231,7 @@ $manifest = ['protocol' => 1, 'profile' => $profile, 'php' => PHP_VERSION, 'zts'
     'archives' => $archives, 'headers' => array_values($headers), 'notices' => $notices, 'patches' => [],
     'sources' => [
         'php' => ['version' => '8.5.10', 'archive-sha256' => '6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957'],
-        'swoole' => ['reference' => '4aff74a9ac086458d1c5251e71ac6e080f68b390', 'archive-sha256' => '63598eba7d2a36d8820b1501854161e5c326ab30a32a419e3aa0e4d5154936cd'],
+        'swoole' => StaticRuntimeSdk::swooleSource(),
         'phpx' => ['reference' => InstalledVersions::getReference('swoole/phpx')],
     ], 'dependency-inputs' => $dependencies, 'features' => $features,
     'preparation' => ['script-sha256' => hash_file('sha256', __DIR__ . (PHP_OS_FAMILY === 'Darwin' ? '/prepare-static-macos.sh' : '/prepare-static-linux.sh')), 'manifest-script-sha256' => hash_file('sha256', __FILE__),

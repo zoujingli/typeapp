@@ -14,6 +14,8 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 四平台 Swoole 模块随 Composer 构建组件分发，匹配 SDK 后默认复用。macOS 当前矩阵在原生 macOS 15 runner 运行，Linux ARM64 在原生 ARM64 runner 运行，Windows 已完成 SDK 准备、完整应用 AOT 和模板搬迁。每种产物按报告解释，不能把主应用 `no_source=false` 的检查与独立模板隔离结果混为一项。
 
+当前源码正在升级至 TypePHP 0.9.4／PHPX 2.9.3 与固定 Swoole 6.3 开发快照。四平台共享模块已重建，其加载检查与完整静态程序验收分别记录在[新版升级证据](../evidence/typephp-upgrade-0.9.4.md)，不改写上述 RC13 的原始身份。
+
 ## 历史结果
 
 以下记录保留原源码、工具链和产物。TypePHP 升级对照见[升级验收](../evidence/typephp-upgrade-0.9.3.md)；模块首次迁移的独立消费与 macOS 回归见[迁移验收](../evidence/swoole-bundle.md#迁入构建组件后的验证)。其中的待验收项描述当时状态，当前进展以上节为准。

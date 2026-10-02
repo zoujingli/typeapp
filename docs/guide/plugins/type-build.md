@@ -158,11 +158,11 @@ vendor/bin/type --inspect build/type-example
 
 ## 内置 Swoole 与运行依赖
 
-`type-build` 的 Composer 分发内容包含 Swoole 6.2.1 四平台共享模块、清单和原始许可证。主仓位置是 `plugin/type-build/resources/swoole/`，独立应用通常安装在 `vendor/zoujingli/type-build/resources/swoole/`；构建组件按自身安装位置查找，不依赖应用根目录或当前工作目录。应用无需复制主仓目录，也无需增加 `resources` 声明；根目录 `build/` 继续只保存不入仓的生成产物。
+`type-build` 的 Composer 分发内容包含四平台 Swoole 共享模块、清单和原始许可证。当前源码固定 6.3 开发快照 `4aff74a`（运行时字符串 `6.3.0RC1`），不标为正式 6.3.0。主仓位置是 `plugin/type-build/resources/swoole/`，独立应用通常安装在 `vendor/zoujingli/type-build/resources/swoole/`；构建组件按自身安装位置查找，不依赖应用根目录或当前工作目录。应用无需复制主仓目录，也无需增加 `resources` 声明；根目录 `build/` 继续只保存不入仓的生成产物。
 
 公共 `type-build` 开发分支已包含上述资源，并完成独立安装与字节核对。应用提交 `composer.lock` 固定实际版本；旧锁文件指向不含清单的分发版本时，须先受控更新再使用默认内置模块。
 
-预编译模块固定使用 **PHP 8.5.10、ZTS、非 debug、64 位 ABI**。当前主仓工具链为 TypePHP 0.9.3、PHPX 2.9.2，准确版本以应用的工具链锁和 Composer 锁文件为准。
+预编译模块固定使用 **PHP 8.5.10、ZTS、非 debug、64 位 ABI**。当前主仓源码工具链为 TypePHP 0.9.4、PHPX 2.9.3，准确版本以应用的工具链锁和 Composer 锁文件为准。源码升级进度与已公开 Release 分开记录，见[本次升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。
 
 | 资源子目录 | 平台与限制 |
 | --- | --- |

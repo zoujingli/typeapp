@@ -36,6 +36,11 @@ final class StaticRuntimeSdk
         if ($expectedProfile !== null && (($data['profile'] ?? null) !== $expectedProfile)) {
             throw new RuntimeException('静态运行 SDK 与构建 profile 不一致：' . $expectedProfile);
         }
+        foreach (self::swooleSource() as $field => $value) {
+            if (($data['sources']['swoole'][$field] ?? null) !== $value) {
+                throw new RuntimeException('静态运行 SDK 的 Swoole 源码或运行版本已过期：' . $field);
+            }
+        }
         $patches = ['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource', 'SwooleStaticSource', 'PhpxThreadSource'];
         if (PHP_OS_FAMILY === 'Windows') {
             $patches[] = 'SwooleWindowsSource';
@@ -116,6 +121,19 @@ final class StaticRuntimeSdk
             $this->notices[$name] = $notice;
         }
         $this->identity = $data;
+    }
+
+    /**
+     * 静态 SDK 与组件模块采用同一受审源码，版本字符串不能代替固定提交。
+     * @return array{runtime-version: string, reference: string, archive-sha256: string, channel: string}
+     * @internal 供 SDK 制备与身份门禁共用，不选择或加载共享模块。
+     */
+    public static function swooleSource(): array
+    {
+        $bundle = json_decode((string) file_get_contents(dirname(__DIR__) . '/resources/swoole/manifest.json'), true, 64, JSON_THROW_ON_ERROR);
+        $source = $bundle['source'];
+        return ['runtime-version' => $bundle['swoole'], 'reference' => $source['reference'],
+            'archive-sha256' => $source['archive-sha256'], 'channel' => $source['channel']];
     }
 
     /** 未指定静态 SDK 时保留现有开发构建；指定后任何验证失败都不能回退到共享库。 */

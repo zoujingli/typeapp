@@ -27,12 +27,19 @@ foreach ($mapping['packages'] as $name => $package) {
         $composer['repositories'][] = ['type' => 'git', 'url' => 'https://github.com/' . $package['repository'] . '.git'];
     }
 }
-$composer['require-dev']['swoole/typephp'] = testToolchainVersion('typephp');
-$composer['require-dev']['swoole/phpx'] = testToolchainVersion('phpx');
+// 分发消费固定到批次源码；本地未提交的工具链调整不得改变该批次的约束。
+$toolchainContent = GitProcess::output(['git', 'show', $source . ':toolchain.lock.json'], $root) . "\n";
+$toolchain = json_decode($toolchainContent, true, 512, JSON_THROW_ON_ERROR);
+foreach (['typephp', 'phpx'] as $component) {
+    $version = $toolchain[$component]['version'] ?? null;
+    expect(is_string($version) && preg_match('/^\d+\.\d+\.\d+$/D', $version), '固定批次工具链版本无效：' . $component);
+    $composer['require-dev']['swoole/' . $component] = $version;
+}
 $consumer = $root . '/build/batch-consumer-' . bin2hex(random_bytes(6));
 expect(mkdir($consumer, 0700, true), '无法创建独立批次消费项目');
 file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
-foreach (['examples/native-command.php' => 'main.php', 'toolchain.lock.json' => 'toolchain.lock.json'] as $input => $target) {
+expect(file_put_contents($consumer . '/toolchain.lock.json', $toolchainContent) === strlen($toolchainContent), '无法保存固定批次工具链');
+foreach (['examples/native-command.php' => 'main.php'] as $input => $target) {
     $content = successful(['git', 'show', $source . ':' . $input], $root);
     expect(file_put_contents($consumer . '/' . $target, $content) === strlen($content), '无法保存固定批次输入：' . $input);
 }

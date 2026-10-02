@@ -26,9 +26,9 @@ flowchart TB
 | 运行服务 | 复用内置运行库的网络与协程能力，以作用域、截止和预算控制资源 |
 | 发布维护 | 记录产物身份和摘要，分开管理程序、配置与持久数据 |
 
-TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typephp.md)。生产代码的全量编译门槛不等于全部平台和协议已验收。当前锁定 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2；工具链与生产依赖分别由 `toolchain.lock.json` 和 `composer.lock` 记录。
+TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typephp.md)。生产代码的全量编译门槛不等于全部平台和协议已验收。当前源码锁定 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3；工具链与生产依赖分别由 `toolchain.lock.json` 和 `composer.lock` 记录。新版的实际验收进度见[升级记录](docs/evidence/typephp-upgrade-0.9.4.md)，已发布 RC13 的身份保持不变。
 
-构建组件另附 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 6.2.1 共享模块，用于开发及历史目录包回归；当前单程序使用静态 SDK。模块 ABI 与平台实测范围分别核对，见[平台与验收](docs/guide/platforms.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
+构建组件另附 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 共享模块，用于开发及共享库回归；生产单程序使用静态 SDK。当前固定 6.3 开发快照 `4aff74a`，运行时版本字符串为 `6.3.0RC1`，不是正式 6.3.0。模块 ABI 与平台实测范围分别核对，见[平台与验收](docs/guide/platforms.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
 
 [v1.0.0-rc.13](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.13) 已完成四平台 × 三数据库 profile 的单程序验收、15 个组件与模板的同版本分发及公开消费，固定源码 `aa95924`。12 个主程序和公开下载摘要已逐项核对，重建 SDK 与源码材料单独保存在 Actions Artifact。RC 尚非稳定版，具体范围及限制见[验收记录](docs/evidence/profile-release-20260930.md)。
 

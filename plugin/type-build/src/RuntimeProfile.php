@@ -159,6 +159,9 @@ final class RuntimeProfile
         if ($static !== null) {
             // 静态模块无法在运行时卸载。记录真实完整模块表，以便发现误编进来的
             // 数据库或开发扩展；仅记录 requested 会掩盖 SDK 的多余依赖。
+            if (($actual['extensions']['swoole'] ?? null) !== $static->identity()['sources']['swoole']['runtime-version']) {
+                throw new RuntimeException('静态运行 SDK 的实际 Swoole 版本与源码身份不一致');
+            }
             $versions = $actual['extensions'];
             ksort($versions);
         }

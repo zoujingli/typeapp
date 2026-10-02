@@ -25,7 +25,11 @@ final class BundledSwoole
         if (!is_array($data) || ($data['schema'] ?? null) !== 1 || !is_array($data['modules'] ?? null)) {
             throw new RuntimeException('内置 Swoole 清单格式无效');
         }
-        foreach (['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource'] as $patch) {
+        $patches = ['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource'];
+        if (PHP_OS_FAMILY === 'Windows') {
+            $patches[] = 'SwooleWindowsSource';
+        }
+        foreach ($patches as $patch) {
             $expected = $data['patches'][$patch] ?? null;
             if (!is_string($expected) || !hash_equals($expected, (string) hash_file('sha256', __DIR__ . '/' . $patch . '.php'))) {
                 throw new RuntimeException('内置 Swoole 与当前源码适配不一致，请重新构建模块：' . $patch);

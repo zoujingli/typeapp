@@ -44,7 +44,7 @@ php vendor/bin/type doctor type-app.json build
 composer build
 ```
 
-当前主仓锁定 TypePHP 0.9.3、PHPX 2.9.2 和 PHP 8.5.10 ZTS，准确版本以项目锁文件为准。语言约束与适配依据见[TypePHP 语法基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)，上游编译器见[TypePHP](https://github.com/swoole/typephp)。
+当前主仓源码锁定 TypePHP 0.9.4、PHPX 2.9.3 和 PHP 8.5.10 ZTS，准确版本以项目锁文件为准。语言约束与适配依据见[TypePHP 语法基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)，上游编译器见[TypePHP](https://github.com/swoole/typephp)。新版 Nano 不覆盖当前 Swoole、数据库与任务系统，本项目继续全量 AOT，不引入业务源码或 opcode 回退；各平台结果见[升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。
 
 ## 编译之后还要验证什么
 
