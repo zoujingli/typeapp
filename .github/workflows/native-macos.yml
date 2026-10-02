@@ -27,9 +27,9 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 验收范围（single-program 为所选 profile 的静态候选，tls/pressure 为诊断）
+        description: 验收范围（single-program 为静态候选，benchmark 需提供基准提交）
         type: choice
-        options: [full, single-program, tls, pressure]
+        options: [full, single-program, tls, pressure, benchmark]
         default: full
       candidate_version:
         description: single-program 必填；只验收候选，不创建标签或发布
@@ -63,7 +63,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        suite: ${{ fromJSON(inputs.scope == 'single-program' && '["single-program"]' || inputs.scope == 'tls' && '["tls"]' || inputs.scope == 'pressure' && '["pressure"]' || (inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable"]')) }}
+        suite: ${{ fromJSON(inputs.scope == 'single-program' && '["single-program"]' || inputs.scope == 'tls' && '["tls"]' || inputs.scope == 'pressure' && '["pressure"]' || inputs.scope == 'benchmark' && '["benchmark"]' || (inputs.base_source != '' && '["contracts","application","deployment","rollout","recovery","http","orm","reliable","benchmark"]' || '["contracts","application","deployment","rollout","recovery","http","orm","reliable"]')) }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
       TYPE_RELEASE_VERSION: ${{ inputs.version || inputs.candidate_version }}

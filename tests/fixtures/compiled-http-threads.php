@@ -259,7 +259,7 @@ function main(int $argc, array $argv): void
         return;
     }
     $joinChecks = httpThreadJoinContracts($directory);
-    $contracts = httpThreadContracts();
+    $contracts = httpThreadContracts($directory);
     $listener = new Socket(AF_INET, SOCK_STREAM, 0);
     if (!$listener->bind('127.0.0.1', 0) || !$listener->listen(128)) {
         throw new RuntimeException('listener startup failed');
@@ -409,8 +409,10 @@ function httpThreadJoinContracts(string $directory): int
 }
 
 /** 实际扩展入口验证拒绝、借用引用和原两参数兼容，不使用反射或替代对象。 */
-function httpThreadContracts(): int
+function httpThreadContracts(string $directory): int
 {
+    // 上传故障会由原生 logger 输出预期警告，单独保留日志供诊断，不混入结果 JSON。
+    swoole_async_set(['log_file' => $directory . '/native-protocol.log']);
     if (!defined('Swoole\\Coroutine\\Http\\Server::TYPEAPP_LISTENER_ABI')
         || Server::TYPEAPP_LISTENER_ABI !== 1
         || !defined('Swoole\\Coroutine\\Http\\Server::TYPEAPP_CONNECTION_LIMIT_ABI')
@@ -420,6 +422,56 @@ function httpThreadContracts(): int
         throw new RuntimeException('HTTP listener candidate unavailable');
     }
     $checks = 0;
+    // 在 AOT 调用边界核对上游 Upgrade 长度修复，避免 16 位截断接受超量值。
+    foreach ([65535, 65536, 131072] as $length) {
+        $upgrade = str_repeat('x', $length - 11) . ', websocket';
+        $wire = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: " . $upgrade . "\r\nConnection: Upgrade\r\n\r\n";
+        $parsedRequest = Swoole\Http\Request::create();
+        $parsedBytes = $parsedRequest->parse($wire);
+        if ($length < 65536) {
+            if ($parsedBytes !== strlen($wire) || !$parsedRequest->isCompleted() || $parsedRequest->header['upgrade'] !== $upgrade) {
+                throw new RuntimeException('valid Upgrade header rejected');
+            }
+        } elseif ($parsedBytes >= strlen($wire) || $parsedRequest->isCompleted()) {
+            throw new RuntimeException('oversized Upgrade header accepted');
+        }
+        $checks++;
+    }
+    $splitRequest = Swoole\Http\Request::create();
+    $firstHeader = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: " . str_repeat('x', 40960);
+    $lastHeader = str_repeat('x', 40960) . ", websocket\r\nConnection: Upgrade\r\n\r\n";
+    if ($splitRequest->parse($firstHeader) !== strlen($firstHeader)
+        || $splitRequest->parse($lastHeader) >= strlen($lastHeader) || $splitRequest->isCompleted()) {
+        throw new RuntimeException('fragmented oversized Upgrade header accepted');
+    }
+    $checks++;
+    // 上游解码修复必须在 AOT 的扩展调用中保持输入字节、失败返回和无符号关闭码。
+    $packedFrame = Swoole\WebSocket\Frame::pack('masked-payload', WEBSOCKET_OPCODE_TEXT, SWOOLE_WEBSOCKET_FLAG_FIN | SWOOLE_WEBSOCKET_FLAG_MASK);
+    $originalFrame = bin2hex($packedFrame);
+    $decodedFrame = Swoole\WebSocket\Frame::unpack($packedFrame);
+    if ($decodedFrame === false || $decodedFrame->data !== 'masked-payload' || !$decodedFrame->finish
+        || $decodedFrame->opcode !== WEBSOCKET_OPCODE_TEXT || bin2hex($packedFrame) !== $originalFrame) {
+        throw new RuntimeException('WebSocket decoder changed input or payload');
+    }
+    $checks++;
+    if (Swoole\WebSocket\Frame::unpack("\x81") !== false || swoole_last_error() !== SWOOLE_ERROR_PROTOCOL_ERROR) {
+        throw new RuntimeException('incomplete WebSocket frame not rejected');
+    }
+    $checks++;
+    $closeFrame = Swoole\WebSocket\Frame::unpack("\x88\x02\x80\x00");
+    if ($closeFrame === false || $closeFrame->code !== 32768) {
+        throw new RuntimeException('WebSocket close code lost unsigned value');
+    }
+    $checks++;
+    $uploadBody = "--typeapp-upload\r\nContent-Disposition: form-data; name=\"file\"; filename=\"test.txt\"\r\nContent-Type: text/plain\r\n\r\ntest\r\n--typeapp-upload--\r\n";
+    $uploadWire = "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Type: multipart/form-data; boundary=typeapp-upload\r\nContent-Length: " . strlen($uploadBody) . "\r\n\r\n" . $uploadBody;
+    $uploadRequest = Swoole\Http\Request::create(['upload_tmp_dir' => $directory . '/missing-upload-directory']);
+    if (@$uploadRequest->parse($uploadWire) !== strlen($uploadWire) || !$uploadRequest->isCompleted()
+        || $uploadRequest->files['file']['error'] !== UPLOAD_ERR_NO_TMP_DIR || $uploadRequest->files['file']['tmp_name'] !== ''
+        || $uploadRequest->files['file']['size'] !== 0) {
+        throw new RuntimeException('upload failure lost explicit error or temporary file ownership');
+    }
+    $checks++;
     foreach ([null, 0, 1, '', []] as $invalidInput) {
         $invalidServer = new Server('127.0.0.1', 0, false, false);
         $invalidServer->set(['typeapp_http1_input' => $invalidInput]);

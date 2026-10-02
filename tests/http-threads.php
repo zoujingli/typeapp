@@ -36,6 +36,7 @@ if (!$verify) {
         'output' => (new BuildPlatform())->output('build/native/type-app'), 'build-directory' => 'build/native/compiler',
         'threads' => ['http' => 'HttpThreadProbe::run'], 'runtime' => [PHP_OS_FAMILY => ['extensions' => ['swoole']]],
         'compiler' => ['debug' => true, 'jobs' => 2]];
+    $configuration['runtime'][PHP_OS_FAMILY]['modules']['swoole'] = independentSwooleModule($work);
     foreach (['composer.json' => $composer, 'type-app.json' => $configuration] as $name => $value) {
         file_put_contents($work . '/' . $name, json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
     }
@@ -189,7 +190,7 @@ for ($round = 0; $round < 3; $round++) {
         $result = $server->wait(3.0);
         expect($result->successful() && $result->stderr === '', 'HTTP 线程没有正常退出');
         $final = json_decode(trim($result->stdout), true, flags: JSON_THROW_ON_ERROR);
-        expect($final['exits'] === [0, 0, 0] && $final['active_threads'] === 1 && $final['contracts'] === 26
+        expect($final['exits'] === [0, 0, 0] && $final['active_threads'] === 1 && $final['contracts'] === 34
             && $final['join_checks'] === 6, '线程没有完整 join 或原生契约不符');
         $statistics = [];
         foreach (['1-1', '2-1', '1-2'] as $worker) {
@@ -381,6 +382,33 @@ function httpThreadInputs(int $port): int
             expect($status === $expected && ($status !== 200 || $data['identity'] === $token), 'keep-alive 授权或身份串用');
             $checks++;
         }
+    } finally {
+        fclose($socket);
+    }
+    $socket = stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 2);
+    expect(is_resource($socket), '无法建立分块请求连接');
+    stream_set_timeout($socket, 2);
+    try {
+        // 正文包含貌似终止块的字节，长度行分两次发送，尾随请求必须保持独立。
+        $payload = str_repeat('A', 506);
+        $parts = ["POST /post HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\r\n5\r\n0\r\n\r\n",
+            "\r\n1f", "a\r\n" . $payload . "\r\n0\r\nX-Trailer: yes\r\n\r\nGET /normal HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"];
+        foreach ($parts as $index => $part) {
+            expect(fwrite($socket, $part) === strlen($part), '分块报文没有完整写入');
+            if ($index < 2) {
+                $readable = [$socket];
+                $writable = null;
+                $exceptional = null;
+                expect(stream_select($readable, $writable, $exceptional, 0, 20000) === 0, '分块请求尚未完成就返回响应');
+            }
+        }
+        [$status, $body] = httpThreadRead($socket);
+        $data = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+        expect($status === 200 && $data['path'] === '/post' && $data['body'] === "0\r\n\r\n" . $payload, '分块正文边界或内容不符');
+        [$status, $body] = httpThreadRead($socket);
+        $data = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+        expect($status === 200 && $data['path'] === '/normal' && $data['body'] === '', '管线请求被分块正文吞并');
+        $checks += 2;
     } finally {
         fclose($socket);
     }

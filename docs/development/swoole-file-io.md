@@ -4,6 +4,8 @@
 
 文件候选仅由显式 `SwooleIoSource::apply($directory)` 入口准备：先核验文件原文 SHA-256，再组合 `SwooleThreadSource` 的线程适配与文件精确替换。默认 `SwooleThreadSource::apply()` 只准备六个线程相关源文件，不依赖文件候选。两者都接受固定的原始源码副本，不能在已经打过补丁的目录上重复应用。`SwooleIoSource` 仍是未放行的构建候选；继续审查其监督、回收和计量补丁，不能由独立消费者通过推定每个分支都已验证。
 
+当前候选源码已迁至固定开发快照 `4aff74a9ac086458d1c5251e71ac6e080f68b390`。2026-10-02 的 macOS 全量 AOT 专项中，大文件、metadata、上传、缓冲和共享容量通过，未 join 退出场景尚未满足既有退出契约；新结果与历史证据分别保留，见[升级记录](../evidence/typephp-upgrade-0.9.4.md)。默认发布不加载该文件候选。
+
 ## 入口与配置
 
 `CoroutineRuntime::startThread()` 在启动业务线程前调用 `enableIo()`；Swoole HTTP 入口也调用同一方法。通用入口只加入 TCP、SLEEP、STREAM_FUNCTION 并保留既有 mask，不要求文件私有 ABI。文件消费者在主线程显式加入原生 `SWOOLE_HOOK_FILE`，子线程直接复用已安装的 hook，不重复调用 `enableIo()`。只有进入协程的适用操作才会让出，同步入口不会自动创建协程。

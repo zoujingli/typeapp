@@ -84,6 +84,20 @@ try {
         file_put_contents($phpx . '/CMakeLists.txt', $cmake);
         $environment['PHP_HOME'] = $phpHome;
         $environment['PHPX_HOME'] = $phpx;
+        // 每个版本使用自己的受审适配，不能拿新版补丁或模块冒充 RC 基线。
+        nativeDatabaseCommand([PHP_BINARY, '-n', '-r',
+            'require $argv[1]; echo json_encode((new Type\\Build\\PhpxThreadSource())->apply($argv[2]), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);',
+            $project . '/plugin/type-build/src/PhpxThreadSource.php', $phpx], $environment, [], $work . '/phpx-adaptations.json', 30);
+        $swoole = json_decode(successful([PHP_BINARY, '-n', '-r',
+            'require $argv[1]; echo json_encode((new Type\\Build\\BundledSwoole())->select(), JSON_THROW_ON_ERROR);',
+            $project . '/plugin/type-build/src/BundledSwoole.php'], $project, $environment), true, 32, JSON_THROW_ON_ERROR);
+        $bundle = json_decode(file_get_contents($swoole['manifest']), true, 32, JSON_THROW_ON_ERROR);
+        // 前端仅构建一次；两个程序嵌入相同真实资源，避免资产差异混入工具链对照。
+        $resources = (new \Type\Build\EmbeddedResourceCompiler())->collect($root, [['source' => 'web/dist', 'target' => 'web']]);
+        foreach ($resources as $path => $resource) {
+            scenarioCopy($resource['source'], $project . '/web/dist/' . substr($path, 4));
+        }
+        $frontend = (new \Type\Build\EmbeddedResourceCompiler())->manifest($resources);
         echo $variant . "：在同一PHP SDK构建独立PHPX。\n";
         nativeDatabaseCommand(['cmake', '-S', $phpx, '-B', $phpx . '/build', '-DCMAKE_BUILD_TYPE=Release',
             '-DBUILD_TESTS=OFF', '-DBUILD_EXT=OFF', '-Dphp_dir=' . $phpHome], $environment, [], $work . '/cmake.log', 120);
@@ -96,6 +110,8 @@ try {
         );
         $environment = array_replace($environment, (new BuildPlatform())->environment($phpHome, $phpx));
         $entry = ['source_archive_sha256' => hash_file('sha256', $work . '/source.tar'),
+            'swoole' => ['reference' => $bundle['source']['reference'], 'version' => $bundle['swoole'], 'sha256' => $swoole['sha256']],
+            'frontend' => $frontend, 'phpx_adaptations_sha256' => hash_file('sha256', $work . '/phpx-adaptations.json'),
             'phpx_cmake_adaptation' => ['original_sha256' => $cmakeSha256, 'result_sha256' => hash('sha256', $cmake),
                 'replacements' => 1, 'reason' => '仅排除基准程序bench.c，不能因父目录包含bench而漏编整个mpdecimal实现。'], 'roles' => []];
         foreach (['project' => 'type-app.json'] as $role => $configuration) {
@@ -107,19 +123,15 @@ try {
             }
             $config = json_decode(file_get_contents($sourceConfiguration), true, 512, JSON_THROW_ON_ERROR);
             $config['runtime'][PHP_OS_FAMILY]['extensions'] = array_values(array_unique([...($config['runtime'][PHP_OS_FAMILY]['extensions'] ?? []), 'swoole']));
-            $module = getenv('TYPE_SWOOLE_MODULE');
-            if ($module !== false) {
-                $module = BuildPlatform::resolve($module);
-                $modules = $directory . '/benchmark-runtime';
-                expect(is_file($module) && mkdir($modules, 0700) && copy($module, $modules . '/swoole.so'), '无法固定显式Swoole运行模块');
-                $config['runtime'][PHP_OS_FAMILY]['modules']['swoole'] = [
-                    'file' => 'benchmark-runtime/swoole.so', 'sha256' => hash_file('sha256', $modules . '/swoole.so'),
-                ];
-            }
+            $modules = $directory . '/benchmark-runtime';
+            expect(mkdir($modules, 0700) && copy($swoole['file'], $modules . '/swoole.so')
+                && hash_file('sha256', $modules . '/swoole.so') === $swoole['sha256'], '无法固定本版本 Swoole 运行模块');
+            $config['runtime'][PHP_OS_FAMILY]['modules']['swoole'] = ['file' => 'benchmark-runtime/swoole.so', 'sha256' => $swoole['sha256']];
             $config['output'] = 'build/benchmark/type-app';
             $config['build-directory'] = 'build/benchmark/compiler';
             file_put_contents($directory . '/docs/build-config/benchmark.json', json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
             echo $variant . '/' . $role . "：全量编译公共负载。\n";
+            $buildStarted = hrtime(true);
             nativeDatabaseCommand(
                 [PHP_BINARY, $directory . '/vendor/bin/type', $directory . '/docs/build-config/benchmark.json'],
                 $environment,
@@ -131,6 +143,7 @@ try {
             $build = json_decode(file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
             expect(hash_file('sha256', $artifact) === $build['sha256'], '基准产物与构建记录不符');
             $entry['roles'][$role] = ['artifact' => substr($artifact, strlen($root) + 1), 'sha256' => $build['sha256'],
+                'build_seconds' => (hrtime(true) - $buildStarted) / 1e9, 'bytes' => filesize($artifact),
                 'build_id' => $build['build-id'], 'report_sha256' => hash_file('sha256', $artifact . '.build.json'),
                 'typephp' => $build['typephp'], 'phpx' => $build['phpx'], 'production_packages' => $build['production-packages']];
         }
