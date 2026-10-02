@@ -13,6 +13,15 @@ use Throwable;
 final class CoroutineRuntime
 {
     /**
+     * 当前主线程是否已经为一组原生业务线程完成过启动前 hook 安装。
+     *
+     * Swoole 的运行时 hook 属于进程级 PHP handler，只能在主线程且没有
+     * 子线程时修改。这个状态只抑制同一组线程的重复配置；每次公开
+     * enableIo() 仍会复核能力，Scheduler 结束后也会清掉它以便重新安装。
+     */
+    private static bool $threadIoPrepared = false;
+
+    /**
      * 已在协程时直接调用，否则由官方 Scheduler 运行；保留启动期 hook 配置。
      *
      * 必须在回调内创建作用域和连接，不能将外层执行者持有的资源带入新协程。
@@ -30,14 +39,22 @@ final class CoroutineRuntime
         $scheduler->set(['hook_flags' => \Swoole\Runtime::getHookFlags()]);
         $result = null;
         $failure = null;
-        if ($scheduler->add(static function () use ($operation, &$result, &$failure): void {
-            try {
-                $result = $operation();
-            } catch (Throwable $error) {
-                $failure = $error;
+        try {
+            if ($scheduler->add(static function () use ($operation, &$result, &$failure): void {
+                try {
+                    $result = $operation();
+                } catch (Throwable $error) {
+                    $failure = $error;
+                }
+            }) === false || !$scheduler->start()) {
+                throw new TaskException('coroutine_start_failed', '无法启动 Swoole 协程入口');
             }
-        }) === false || !$scheduler->start()) {
-            throw new TaskException('coroutine_start_failed', '无法启动 Swoole 协程入口');
+        } finally {
+            // Scheduler 的 reactor 退出时会撤销实际 handler；下一组原生
+            // 线程必须回到主线程重新安装，不能只相信 getHookFlags()。
+            if (self::isMainThreadOnly()) {
+                self::$threadIoPrepared = false;
+            }
         }
         if ($failure !== null) {
             throw $failure;
@@ -84,10 +101,9 @@ final class CoroutineRuntime
         if (strlen($message) > 1048576) {
             throw new TaskException('compiled_thread_payload_limit', '业务线程启动数据不能超过 1 MiB');
         }
-        // 每次创建原生线程都重新核对进程级 hook。新版 Swoole 在线程创建、join
-        // 和清理之间可能暂时改变实际 hook 状态；只缓存“曾经启用”会让后续线程
-        // 跳过必要的验证，最终在 Socket/PDO 操作处得到模糊的失败。
-        self::enableIo();
+        // 运行时 hook 只能在第一个业务线程创建前安装。新版 Swoole 在已有
+        // 子线程时会拒绝重复 enableCoroutine()；后续线程只复核已安装的能力。
+        self::prepareThreadIo();
         if ($control !== null) {
             return \Swoole\Thread::startNative('type_app_compiled_thread_run', $message, $socket, $control);
         }
@@ -119,16 +135,7 @@ final class CoroutineRuntime
     public static function enableIo(): void
     {
         self::assertAvailable();
-        $required = SWOOLE_HOOK_TCP | SWOOLE_HOOK_SSL | SWOOLE_HOOK_TLS | SWOOLE_HOOK_PROC
-            | SWOOLE_HOOK_SLEEP | SWOOLE_HOOK_STREAM_FUNCTION;
-        if (defined('SWOOLE_HOOK_UNIX')) {
-            $required |= (int) constant('SWOOLE_HOOK_UNIX');
-        }
-        foreach (['pdo_mysql' => 'SWOOLE_HOOK_PDO_MYSQL', 'pdo_pgsql' => 'SWOOLE_HOOK_PDO_PGSQL', 'pdo_sqlite' => 'SWOOLE_HOOK_PDO_SQLITE'] as $extension => $hook) {
-            if (extension_loaded($extension) && defined($hook)) {
-                $required |= (int) constant($hook);
-            }
-        }
+        $required = self::requiredHookFlags();
         $current = \Swoole\Runtime::getHookFlags();
         if (class_exists(\Swoole\Thread::class, false)
             && (!\Swoole\Thread::getInfo()['is_main_thread'] || \Swoole\Thread::activeCount() > 1)) {
@@ -148,5 +155,56 @@ final class CoroutineRuntime
             }
         }
         throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
+    }
+
+    /**
+     * 为当前线程组安装一次进程级 hook，并在后续创建前只校验能力。
+     *
+     * 不能通过 activeCount() 预测即将创建的线程：新线程注册存在时序窗口，
+     * 这正是新版 Swoole 拒绝重复 enableCoroutine() 的触发条件。状态只在本
+     * 进程主线程中使用；缺失 hook 仍交给 enableIo() 返回稳定错误码。
+     */
+    private static function prepareThreadIo(): void
+    {
+        if (self::$threadIoPrepared) {
+            self::assertRequiredHooks();
+            return;
+        }
+        self::enableIo();
+        if (self::isMainThreadOnly()) {
+            self::$threadIoPrepared = true;
+        }
+    }
+
+    /** 读取公开入口所需的 hook，避免在线程创建后再次调用原生配置接口。 */
+    private static function assertRequiredHooks(): void
+    {
+        $required = self::requiredHookFlags();
+        if ((\Swoole\Runtime::getHookFlags() & $required) !== $required) {
+            throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
+        }
+    }
+
+    /** 计算当前扩展组合真正需要的网络、进程和 PDO hook。 */
+    private static function requiredHookFlags(): int
+    {
+        $required = SWOOLE_HOOK_TCP | SWOOLE_HOOK_SSL | SWOOLE_HOOK_TLS | SWOOLE_HOOK_PROC
+            | SWOOLE_HOOK_SLEEP | SWOOLE_HOOK_STREAM_FUNCTION;
+        if (defined('SWOOLE_HOOK_UNIX')) {
+            $required |= (int) constant('SWOOLE_HOOK_UNIX');
+        }
+        foreach (['pdo_mysql' => 'SWOOLE_HOOK_PDO_MYSQL', 'pdo_pgsql' => 'SWOOLE_HOOK_PDO_PGSQL', 'pdo_sqlite' => 'SWOOLE_HOOK_PDO_SQLITE'] as $extension => $hook) {
+            if (extension_loaded($extension) && defined($hook)) {
+                $required |= (int) constant($hook);
+            }
+        }
+        return $required;
+    }
+
+    /** 当前 PHP 执行单元是否是唯一的主线程。 */
+    private static function isMainThreadOnly(): bool
+    {
+        return !class_exists(\Swoole\Thread::class, false)
+            || (\Swoole\Thread::getInfo()['is_main_thread'] && \Swoole\Thread::activeCount() === 1);
     }
 }
