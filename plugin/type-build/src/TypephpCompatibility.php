@@ -437,6 +437,7 @@ final class TypephpCompatibility extends Translator
                 $content .= <<<'CPP'
 
 #include <optional>
+#include <cstring>
 
 // PHPX 在 Windows 的线程外部调用帧上可能让 nullsafe 动态读取绕过 Zend
 // 的可见性分支；显式作用域仍交给 PHPX。只补无作用域的读/更新，isset/empty
@@ -449,6 +450,14 @@ static inline void type_app_check_property_read(const php::Var &object, const ph
         zend_hash_find_ptr(&object.ce()->properties_info, property_name.str()));
     if (!info) {
         info = zend_get_property_info(object.ce(), property_name.str(), true);
+    }
+    if (!info || info == ZEND_WRONG_PROPERTY_INFO) {
+        ZEND_HASH_FOREACH_PTR(&object.ce()->properties_info, auto *candidate) {
+            if (candidate && std::strcmp(zend_get_unmangled_property_name(candidate->name), property_name.data()) == 0) {
+                info = candidate;
+                break;
+            }
+        } ZEND_HASH_FOREACH_END();
     }
     if (!info || info == ZEND_WRONG_PROPERTY_INFO) { return; }
     if (info->flags & ZEND_ACC_PRIVATE) {
