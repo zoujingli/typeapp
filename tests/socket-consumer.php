@@ -37,6 +37,7 @@ if (!$verify) {
         $composer['repositories'][] = ['type' => 'path', 'url' => $root . '/plugin/' . $package,
             'options' => ['symlink' => false, 'versions' => ['zoujingli/' . $package => '1.0.x-dev']]];
     }
+    $composer['repositories'][] = localComposerRepository($root);
     $configuration = ['name' => $protocol . '-consumer', 'entry' => 'app/main.php', 'sources' => ['app'],
         'output' => (new BuildPlatform())->output('build/native/type-app'), 'build-directory' => 'build/native/compiler',
         'threads' => [$protocol => ucfirst($protocol) . 'Probe::run'], 'runtime' => [PHP_OS_FAMILY => ['extensions' => ['sockets', 'swoole']]],

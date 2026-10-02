@@ -17,6 +17,27 @@ function testToolchainVersion(string $component): string
 }
 
 /**
+ * 为禁网独立消费者提供主仓已经核验的 Composer 包缓存。
+ *
+ * 路径仓库关闭符号链接，版本取自主仓锁文件；消费者仍会复制安装到自己的
+ * vendor，不会把主仓路径或工作区软链接带入编译输入。CI 先完成主仓安装，
+ * 因此该入口不需要依赖 runner 是否缓存 Packagist 元数据。
+ *
+ * @return array{type: string, url: string, options: array{symlink: bool, versions: array<string, string>}}
+ */
+function localComposerRepository(string $root): array
+{
+    $lock = json_decode((string) file_get_contents($root . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
+    $versions = [];
+    foreach (array_merge($lock['packages'] ?? [], $lock['packages-dev'] ?? []) as $package) {
+        if (is_array($package) && is_string($package['name'] ?? null) && is_string($package['version'] ?? null)) {
+            $versions[$package['name']] = $package['version'];
+        }
+    }
+    return ['type' => 'path', 'url' => $root . '/vendor/*', 'options' => ['symlink' => false, 'versions' => $versions]];
+}
+
+/**
  * 捕获两个输出流，避免子进程因管道写满而互相等待。
  *
  * @param array<string,string>|null $environment 显式子进程环境；null 继承控制器环境。
