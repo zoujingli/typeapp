@@ -130,6 +130,10 @@ jobs:
         run: |
           & "$env:PHP_HOME/php.exe" tests/swoole-tls.php (Join-Path $env:GITHUB_WORKSPACE 'build/bundled-swoole-candidate/output/tls')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 验证 curl 线程归属与超时恢复
+        run: |
+          & "$env:PHP_HOME/php.exe" tests/swoole-curl.php (Join-Path $env:GITHUB_WORKSPACE 'build/bundled-swoole-candidate/output/curl')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

@@ -17,6 +17,7 @@ putenv('COMPOSER_CACHE_DIR=' . ((string) getenv('COMPOSER_CACHE_DIR') ?: $root .
 putenv('COMPOSER_DISABLE_NETWORK=1');
 $cases = [
     'dns-reuse' => ['swoole-dns-reuse.php'],
+    'curl' => ['swoole-curl.php'],
     'threads' => ['compiled-threads.php'],
     'initialization' => ['compiled-threads.php', '--initialization-failure'],
     'resources' => ['compiled-threads.php', '--resources'],
