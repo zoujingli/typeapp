@@ -21,7 +21,7 @@
     "SwooleThreadSource": "19aa756186d688201a441cf430857db9d841a53f4a85730bd39f8905c4517a79",
     "SwooleHttpSource": "458d6cd1b8dadc3b0ed88b6ec6b51ac68dc7d1d5c2ae7002f0c00efac8bb9725",
     "SwooleSocketSource": "43bcc11f06b0ef0e344d69e0e44ca3b1c2be46150bbea128daf492c819df0d60",
-    "SwooleWindowsSource": "c76742a84a5d530037623a02ebf3381790a102c448d00e0d78e3f0c421bc0ea8"
+    "SwooleWindowsSource": "44a6e39812a29d3ddb353fa972299138b7342f9d35c079c5f81380890e059d89"
   },
   "adapted-sources": {
     "SwooleThreadSource": {
@@ -333,15 +333,15 @@
     },
     "Windows-x64-8.5.10-zts": {
       "file": "windows-x64/php-8.5.10-zts/php_swoole.dll",
-      "sha256": "f5d7b69e573b508c2d92e17384f9b1457ca0e50b7e404e8f3d96cd616fa78fa6",
-      "bytes": 2415616,
+      "sha256": "c8a046a9b93297198eab0166fca8118d9111f9015563d76f83c5a9987a1f42fd",
+      "bytes": 2416128,
       "build": {
-        "source-commit": "f6c092f436f2a341bb6d588d333d761c2ab64732",
-        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37075789749",
+        "source-commit": "5b3fe64ae2e879d108b346b4716f852901898d59",
+        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37115394185",
         "workflow-conclusion": "success",
         "artifact": "swoole-windows-x64",
-        "artifact-id": 11256971455,
-        "artifact-sha256": "sha256:e2681402ad0864ca7707602dbd2baa538381bf09d533aeeff8baca46d26d52d5",
+        "artifact-id": 11270798483,
+        "artifact-sha256": "sha256:7a3f5aa421835b639ef8e73c170c496f682566e962e128fea67213c20c71bc15",
         "verification-scope": "module-load-coroutine-sqlite-pgsql-refusal",
         "compiler": "MSVC VS17 x64 C++20",
         "configure": [
@@ -371,6 +371,16 @@
             "after": "6825089f1bd97ccc77cbf9b29f05debef0bd822c8c2556ec6b7b70cfb9f1c81f"
           },
           {
+            "file": "src/network/address.cc",
+            "before": "e0b57b87c89b3b3689e9ec2c5fe01dcda006655f4edc21100199ba056deda352",
+            "after": "73f27f514d7abd1ea01e779df95c56fcf0f1ad1593ee4effcaba137e61efbe03"
+          },
+          {
+            "file": "src/coroutine/socket.cc",
+            "before": "ce7e1d08943d29262d77079c7d8b23977bd4f2d04d8f3d3bd3179b15ffb340fc",
+            "after": "aef6bee0b04a8894324e441cf03caa8a333e75adb4250111c5e0ab095ef9f565"
+          },
+          {
             "file": "php_swoole.h",
             "before": "66305cdd37bcaf35ee17e7d24ed12b6be4d18a4ad34d0a7dc883954344009e28",
             "after": "a30aca71f1ce1f587753791c41ec83693f3a539603b0d3aca7dd39c64c8b5b9d"
@@ -397,8 +407,8 @@
         "native_entry_abi": 2,
         "coroutine_and_sqlite": true,
         "pgsql_connection_failure": true,
-        "sha256": "f5d7b69e573b508c2d92e17384f9b1457ca0e50b7e404e8f3d96cd616fa78fa6",
-        "bytes": 2415616
+        "sha256": "c8a046a9b93297198eab0166fca8118d9111f9015563d76f83c5a9987a1f42fd",
+        "bytes": 2416128
       }
     }
   },
