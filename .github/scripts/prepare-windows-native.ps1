@@ -1,5 +1,6 @@
-param([string]$Directory = (Join-Path $env:RUNNER_TEMP 'typephp-native-sdk'))
+param([string]$Directory = (Join-Path $env:RUNNER_TEMP 'typephp-native-sdk'), [switch]$TraceLog)
 $ErrorActionPreference = 'Stop'
+if ($TraceLog -and $env:TYPE_SWOOLE_BUILD_FROM_SOURCE -ne '1') { throw 'IOCP trace requires an explicit isolated Swoole source build.' }
 if ($env:OS -ne 'Windows_NT' -or !$env:RUNNER_TEMP) { throw 'This preparation requires a Windows runner.' }
 if (Test-Path -LiteralPath $Directory) { throw 'SDK destination already exists; do not overwrite another installation.' }
 $parent = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
@@ -131,7 +132,9 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
     try {
         & (Join-Path $taskDevel 'phpize.bat') 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'phpize.log')
         if ($LASTEXITCODE -ne 0) { throw 'Swoole phpize 失败。' }
-        & .\configure.bat '--enable-swoole=shared' '--enable-swoole-thread' '--enable-mysqlnd' '--enable-php-sockets' '--enable-swoole-pgsql' '--enable-swoole-sqlite' "--with-php-build=$taskDeps" '--with-mp=2' 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
+        $taskTraceOptions = @()
+        if ($TraceLog) { $taskTraceOptions += '--enable-trace-log' }
+        & .\configure.bat '--enable-swoole=shared' '--enable-swoole-thread' '--enable-mysqlnd' '--enable-php-sockets' '--enable-swoole-pgsql' '--enable-swoole-sqlite' "--with-php-build=$taskDeps" '--with-mp=2' @taskTraceOptions 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
         if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath 'Makefile')) { throw 'Swoole Windows 配置失败。' }
         $taskFeatures = [IO.File]::ReadAllText((Join-Path $taskDevel 'include/main/config.pickle.h'))
         foreach ($taskFeature in @('SW_USE_MYSQLND', 'SW_USE_PGSQL', 'SW_USE_SQLITE')) {
