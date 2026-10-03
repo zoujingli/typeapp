@@ -100,6 +100,12 @@ IPv6/独占绑定适配后的 Windows 静态 SDK 已按 `3c583020f5fb5813256feaa
 
 [TLS 模块重建 37119324620](https://github.com/zoujingli/typeapp/actions/runs/37119324620)，源码 `ca6eac1d13b5c808893b978321ac11c06933f2bb`，使用同一个探针通过主线程及两次重建线程的六个 TLS 场景：无前置超时及超时后均读到两次空字符串 EOF，错误码为 0，线程与协程正常退出。DNS、模块加载、SQLite 和 PostgreSQL 拒绝探针也通过。新 DLL 为 2,567,168 字节、SHA-256 `33de10a64d6191c01da0c855be1d6698eda09b6744748c584f3d3bb80c291397`；IOCP Socket 适配后摘要为 `ca34170efb2b6aa4e161ab76f32ca0ff4364b1872bba160f602ed0b938756a22`，与本地固定源码适配结果一致。Artifact `11271819553` 的摘要为 `573c070c7a7e4895504be3cb05a80e41a10aaaf50fec708e3ffb9ef713cb82fe`，原始许可字节不变。模块已导入，真实 RST 拒绝、完整 TCP 与三套静态 SDK 另行复验，尚不能据此宣布完整 Windows 通过。
 
+同适配的三个 Windows 静态 SDK 已重建通过：[SQLite 37119655745](https://github.com/zoujingli/typeapp/actions/runs/37119655745)、[MySQL 37119657684](https://github.com/zoujingli/typeapp/actions/runs/37119657684)、[PostgreSQL 37119659932](https://github.com/zoujingli/typeapp/actions/runs/37119659932)。回读 PHP/embed 和 PHPX 探针，三个 SDK 各自只注册对应 PDO 驱动，运行时版本与系统动态库匹配；SDK Artifact 分别为 `11272722691`、`11273201854`、`11272124784`。这只证明重建与探针结果，应用静态程序须另行验收。
+
+源码 `010da9d9492c9360399050e0c7a90a2f04a00a62` 的 [通信复验 37119866075](https://github.com/zoujingli/typeapp/actions/runs/37119866075) 中，UDP 与扩展后的 TLS 探针通过。探针新增握手后的真实 TCP RST，主线程及两次重建线程均保持错误返回和非零 errno，没有将复位误判为空串 EOF。完整 TCP 消费者仍在首轮双线程的 40 秒预算内未返回，控制端终止后记录 `exit=-1073741510`、`timed_out=true`，没有异常报告，不能把终止状态当作原生崩溃或通过。原程序保存在 Artifact `11272977668`（摘要 `26ea0bbb97d93cf2f1bcf7ef1fea414b9ec6ac57b17ad3235ab42c4868614470`）；新增场景边界检查点继续定位，原超时与断言不变。
+
+同源码新增的 TLS RST 场景已在本机 macOS 完成完整 TCP AOT：六个生产包、91 份源码，源码目录由系统沙箱拒绝，连续两轮双线程及主线程协程全部通过，工作线程每轮 414 项、主线程 413 项断言，线程退出零且协程清空。程序 SHA-256 为 `8017ecd3f6fcae0314791eeed47f9675e42c187d61fe0e93f492e28dd3cc7063`，构建身份为 `139349c8a7c9fcd27b0990b80f3661dd07e98fbda4d09e99d863add5ea21bb94`。这不能代替 Windows 的未通过场景。
+
 ### 静态程序预验收
 
 以下运行采用源码 `11a73078df41a9f8116384705251d37603f24666`，用于验证新版工具链与静态依赖。它们不是最终 RC14 标签的候选附件，后续发布仍须从最终固定源码重新构建并验收同一程序。
@@ -110,7 +116,7 @@ IPv6/独占绑定适配后的 Windows 静态 SDK 已按 `3c583020f5fb5813256feaa
 | macOS ARM64 | [37110399992](https://github.com/zoujingli/typeapp/actions/runs/37110399992)，通过 | [37110400955](https://github.com/zoujingli/typeapp/actions/runs/37110400955)，通过 | [37110402374](https://github.com/zoujingli/typeapp/actions/runs/37110402374)，第 2 次执行通过；首次程序验收通过后因重建材料的 GNU 下载超时失败，保留原结果 |
 | Windows x64 | [37110714410](https://github.com/zoujingli/typeapp/actions/runs/37110714410)，通过 | [37110715499](https://github.com/zoujingli/typeapp/actions/runs/37110715499)，通过 | [37110716660](https://github.com/zoujingli/typeapp/actions/runs/37110716660)，通过 |
 
-Linux x64 的完整原生功能运行 [37110360053](https://github.com/zoujingli/typeapp/actions/runs/37110360053) 同样通过二十组及汇总门禁。Linux ARM64 的 [37110376883](https://github.com/zoujingli/typeapp/actions/runs/37110376883) 十组功能通过，但附加性能任务在旧程序安装阶段失败，故整个工作流仍记为失败；使用各自产物 INI 的性能复验另行记录，不改写原结果。macOS 的完整原生功能运行仍在执行，不能用上表单程序结果替代全部组件回归。
+Linux x64 的完整原生功能运行 [37110360053](https://github.com/zoujingli/typeapp/actions/runs/37110360053) 同样通过二十组及汇总门禁。Linux ARM64 的 [37110376883](https://github.com/zoujingli/typeapp/actions/runs/37110376883) 十组功能通过，但附加性能任务在旧程序安装阶段失败，故整个工作流仍记为失败；使用各自产物 INI 的性能复验另行记录，不改写原结果。[macOS 完整原生功能运行 37110360051](https://github.com/zoujingli/typeapp/actions/runs/37110360051) 已完成九组及汇总门禁，全部成功；工具链证据保存在 Artifact `11272424364`（摘要 `0cb541a44c7d2a29f8e72bffff2c873b9acd573ea5818d99611c46b691057ccc`）。这些均保持原源码 `11a73078df41a9f8116384705251d37603f24666` 的身份，不冒充后续 Windows 修复后的完整通过。
 
 回读上述十二个程序的构建及同产物业务报告，全部记录移除前端源码、仅单个可执行文件、profile 拒绝，以及同一摘要上的 MQTT、告警、导出和调度通过。相较 RC13 同平台同 profile 程序，体积增长为 0.00007%～0.21934%，均低于 5% 门槛。这里比较的是最终可执行字节数，不是输入静态归档的累计大小；macOS 保留运行所需符号，不能将其符号表等同于 DWARF 调试信息。
 
@@ -128,6 +134,14 @@ Linux x64 的完整原生功能运行 [37110360053](https://github.com/zoujingli
 | Windows x64 SQLite | 50,721,279 | `5c40b6f250f3acb94e5f35b2d16848a438f4ad0de9edf802795223bf7e2f5b80` |
 | Windows x64 MySQL | 49,794,598 | `74cb09a6f0a72114707a547e6c191d05e1f0b70e78196b9685a82fbf06a1bfef` |
 | Windows x64 PostgreSQL | 49,965,520 | `8517becbdf62cee94d5bfb86e812e7023c5177128e408fe27e8d5fa8ab610df1` |
+
+Windows 后续使用源码 `53193c921efe0f35d1d24dd600b1cbb8fdce2b73` 及 IPv6/独占绑定适配重建三种单程序，[SQLite 37117989474](https://github.com/zoujingli/typeapp/actions/runs/37117989474)、[MySQL 37117991539](https://github.com/zoujingli/typeapp/actions/runs/37117991539)、[PostgreSQL 37117994094](https://github.com/zoujingli/typeapp/actions/runs/37117994094) 均通过。逐份回读程序摘要、安装、只读程序目录、源码/SDK 禁读、普通启动无写入和同摘要业务报告；此批尚未包含 TLS EOF 修复，不替代修复后的程序验收。
+
+| Windows profile | 字节数 | 程序 SHA-256 |
+| --- | ---: | --- |
+| SQLite | 50,730,852 | `9b2ad6604b4b0b1aa605d04959b4384390af6e22d093ec95abe5d4688ba77bc0` |
+| MySQL | 49,800,587 | `4d975f29da60d3f53b700df18a80772732a8efe0edca352ba34dcd9dd10fc44b` |
+| PostgreSQL | 49,975,605 | `47d5adb50294dcfd855ea1230220a2a4e61d1e650e5587565c1daba114f3daea` |
 
 ### 性能测量的运行环境
 
