@@ -330,7 +330,8 @@ for ($round = 0; $round < 3; $round++) {
 file_put_contents($work . '/http-thread-evidence.json', json_encode(['build-id' => $report['build-id'], 'sha256' => $report['sha256'],
     'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'source-denied' => $policy !== [], 'runs' => $runs,
     'supervision' => $supervision], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n");
-echo "无源码双线程 HTTP、逐请求清理、请求额度、退役和重建通过。\n";
+echo $isWindows ? "无源码 Windows 自绑定 HTTP、逐请求清理、请求额度和端口释放通过。\n"
+    : "无源码双线程 HTTP、逐请求清理、请求额度、退役和重建通过。\n";
 echo "生产监督的正常停止、信号、部分启动、异常退出与原生阻塞回收通过。\n";
 
 /** 保持满额连接证明两个监听副本实际接收，不依赖内核对短连接的公平调度。 */
