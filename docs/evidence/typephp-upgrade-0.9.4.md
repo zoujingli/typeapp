@@ -96,7 +96,9 @@ IPv6/独占绑定适配后的 Windows 静态 SDK 已按 `3c583020f5fb5813256feaa
 
 将复现缩为 `tests/swoole-tls.php` 的真实 Swoole Socket 与独立 Node TLS 对端：[37118983742](https://github.com/zoujingli/typeapp/actions/runs/37118983742)，源码 `0127b13961d9ee080037dbccba22d2f3ce381927`，主线程和两次重建工作线程均完成握手与二进制回声，但写半关闭后两次读取均返回 `false`、错误码 0；移除前置超时仍失败。原始逐步报告保存在 Artifact `11273130289`（摘要 `8b87617546133d133b819fe365862ec34aefb8a0a8e626fab1661eeba417f130`），相同探针在 macOS 通过。
 
-固定上游 `src/coroutine/iocp_socket.cc` 原文摘要为 `f38615b8c967e70429ba29ff317c98f62126f709e73fd575c5e0c6cae22114bf`。其 `ssl_recv()` 对非正返回统一进入 BIO 错误分支，正常的 `SSL_ERROR_ZERO_RETURN` 也转成失败；候选适配仅在读取后立即确认这个 OpenSSL 状态时返回零，继续保留超时、复位和协议错误。调用者仍为 `TcpSocket::receive()` 的原生接口，无可替代此分支的公开配置，不在 PHP 层将 `false/errno=0` 猜成 EOF。适配归入 `SwooleWindowsSource`，旧 Windows 模块与 SDK 身份应被拒绝，必须重新构建；上游提供等价 EOF 语义且原生回归通过后撤除。当前为待 Windows 重建验收的修复，不能据此宣布完整 TCP 通过。
+固定上游 `src/coroutine/iocp_socket.cc` 原文摘要为 `f38615b8c967e70429ba29ff317c98f62126f709e73fd575c5e0c6cae22114bf`。其 `ssl_recv()` 对非正返回统一进入 BIO 错误分支，正常的 `SSL_ERROR_ZERO_RETURN` 也转成失败；适配仅在读取后立即确认这个 OpenSSL 状态时返回零，其他状态继续交给原错误处理。调用者仍为 `TcpSocket::receive()` 的原生接口，无可替代此分支的公开配置，不在 PHP 层将 `false/errno=0` 猜成 EOF。适配归入 `SwooleWindowsSource`，旧 Windows 模块与 SDK 身份应被拒绝，必须重新构建；上游提供等价 EOF 语义且原生回归通过后撤除。
+
+[TLS 模块重建 37119324620](https://github.com/zoujingli/typeapp/actions/runs/37119324620)，源码 `ca6eac1d13b5c808893b978321ac11c06933f2bb`，使用同一个探针通过主线程及两次重建线程的六个 TLS 场景：无前置超时及超时后均读到两次空字符串 EOF，错误码为 0，线程与协程正常退出。DNS、模块加载、SQLite 和 PostgreSQL 拒绝探针也通过。新 DLL 为 2,567,168 字节、SHA-256 `33de10a64d6191c01da0c855be1d6698eda09b6744748c584f3d3bb80c291397`；IOCP Socket 适配后摘要为 `ca34170efb2b6aa4e161ab76f32ca0ff4364b1872bba160f602ed0b938756a22`，与本地固定源码适配结果一致。Artifact `11271819553` 的摘要为 `573c070c7a7e4895504be3cb05a80e41a10aaaf50fec708e3ffb9ef713cb82fe`，原始许可字节不变。模块已导入，真实 RST 拒绝、完整 TCP 与三套静态 SDK 另行复验，尚不能据此宣布完整 Windows 通过。
 
 ### 静态程序预验收
 

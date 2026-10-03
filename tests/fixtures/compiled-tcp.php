@@ -196,14 +196,22 @@ final class TcpProbe
         });
         self::rejected(static fn (): mixed => $stopped->start(1), 'tcp_stopped');
         self::closed($stopped);
-        $reset = TcpSocket::client($budget, '127.0.0.1', $peers['reset']['port']);
-        try {
-            $reset->start();
-            $reset->send('reset');
-            self::rejected(static fn (): string => $reset->receive(), 'tcp_receive_failed');
-        } finally {
-            $reset->stop();
-            self::closed($reset);
+        foreach ([false, true] as $tls) {
+            $reset = TcpSocket::client(
+                $budget,
+                '127.0.0.1',
+                $peers[$tls ? 'tlsReset' : 'reset']['port'],
+                1024,
+                $tls ? ['open_ssl' => true, 'ssl_cafile' => $peers['certificate']] : []
+            );
+            try {
+                $reset->start();
+                $reset->send('reset');
+                self::rejected(static fn (): string => $reset->receive(), 'tcp_receive_failed');
+            } finally {
+                $reset->stop();
+                self::closed($reset);
+            }
         }
     }
 

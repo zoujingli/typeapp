@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * 直接观察 Swoole TLS 的超时、写半关闭与读 EOF；完整 AOT 仍由 TCP 消费者验收。
  *
- * @param array{tls:array{port:int},certificate:string} $peers 独立 Node TLS 对端。
+ * @param array{tls:array{port:int},tlsReset:array{port:int},certificate:string} $peers 独立 Node TLS 对端。
  * @return array{passed:bool,cases:array,coroutines:int}
  */
 function probeSwooleTls(array $peers): array
@@ -13,7 +13,7 @@ function probeSwooleTls(array $peers): array
     Swoole\Coroutine::set(['hook_flags' => 0]);
     $cases = [];
     Swoole\Coroutine::create(static function () use ($peers, &$cases): void {
-        foreach ([false, true] as $withTimeout) {
+        foreach (['direct', 'after-timeout', 'abrupt-close'] as $mode) {
             $events = [];
             $passed = false;
             $socket = new Swoole\Coroutine\Socket(AF_INET, SOCK_STREAM, 0);
@@ -28,15 +28,21 @@ function probeSwooleTls(array $peers): array
             try {
                 if (!$record('protocol', $socket->setProtocol(['open_ssl' => true, 'ssl_verify_peer' => true,
                     'ssl_cafile' => $peers['certificate'], 'ssl_host_name' => 'localhost']))
-                    || !$record('connect', $socket->connect('localhost', $peers['tls']['port'], 1.0))) {
+                    || !$record('connect', $socket->connect('localhost', $peers[$mode === 'abrupt-close' ? 'tlsReset' : 'tls']['port'], 1.0))) {
                     throw new RuntimeException('TLS 连接失败');
                 }
                 $payload = "\x00\xff\x80\r\n";
-                if ($record('send', $socket->sendAll($payload, 1.0)) !== strlen($payload)
-                    || $record('echo', $socket->recvAll(strlen($payload), 1.0)) !== $payload) {
+                if ($record('send', $socket->sendAll($payload, 1.0)) !== strlen($payload)) {
+                    throw new RuntimeException('TLS 发送失败');
+                }
+                if ($mode === 'abrupt-close') {
+                    $passed = $record('abrupt-close', $socket->recv(1024, 1.0)) === false && $socket->errCode !== 0;
+                    continue;
+                }
+                if ($record('echo', $socket->recvAll(strlen($payload), 1.0)) !== $payload) {
                     throw new RuntimeException('TLS 回声失败');
                 }
-                if ($withTimeout && ($record('timeout', $socket->recv(1024, 0.02)) !== false || $socket->errCode === 0)) {
+                if ($mode === 'after-timeout' && ($record('timeout', $socket->recv(1024, 0.02)) !== false || $socket->errCode === 0)) {
                     throw new RuntimeException('TLS 等待没有按约定超时');
                 }
                 if (!$record('shutdown-write', $socket->shutdown(SHUT_WR))) {
@@ -49,13 +55,13 @@ function probeSwooleTls(array $peers): array
                 $events[] = ['failure' => get_class($error) . ': ' . $error->getMessage()];
             } finally {
                 $record('close', $socket->close());
-                $cases[$withTimeout ? 'after-timeout' : 'direct'] = ['passed' => $passed, 'events' => $events];
+                $cases[$mode] = ['passed' => $passed, 'events' => $events];
             }
         }
     });
     Swoole\Event::wait();
     $coroutines = Swoole\Coroutine::stats()['coroutine_num'];
-    return ['passed' => $cases['direct']['passed'] && $cases['after-timeout']['passed'] && $coroutines === 0,
+    return ['passed' => $cases['direct']['passed'] && $cases['after-timeout']['passed'] && $cases['abrupt-close']['passed'] && $coroutines === 0,
         'cases' => $cases, 'coroutines' => $coroutines];
 }
 

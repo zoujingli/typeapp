@@ -92,6 +92,21 @@ if (dnsOnly) {
     const secure = tls.createServer({ cert, key, minVersion: 'TLSv1.2', allowHalfOpen: true }, echo);
     secure.on('tlsClientError', () => {});
     await listen('tls', '127.0.0.1', secure);
+    // 握手后对原始 TCP 连接发送 RST，避免把 TLS 正常关闭误当成复位夹具。
+    const secureTransports = new Map();
+    const secureReset = tls.createServer({ cert, key, minVersion: 'TLSv1.2' }, socket => {
+        track(socket);
+        const transport = secureTransports.get(socket.remotePort);
+        if (!transport) throw new Error('missing TLS test transport');
+        socket.once('data', () => transport.resetAndDestroy());
+    });
+    secureReset.on('connection', socket => {
+        const port = socket.remotePort;
+        secureTransports.set(port, socket);
+        socket.once('close', () => secureTransports.delete(port));
+    });
+    secureReset.on('tlsClientError', () => {});
+    await listen('tlsReset', '127.0.0.1', secureReset);
     const secure6 = tls.createServer({ cert, key, minVersion: 'TLSv1.2', allowHalfOpen: true }, echo);
     secure6.on('tlsClientError', () => {});
     await listen('tls6', '::1', secure6);
