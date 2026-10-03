@@ -181,9 +181,11 @@ Windows 后续使用源码 `53193c921efe0f35d1d24dd600b1cbb8fdce2b73` 及 IPv6/�
 
 [Windows AOT 对照 37125507154](https://github.com/zoujingli/typeapp/actions/runs/37125507154)，源码 `35f2372f3f97f90bd8ceae2edb1f52e7d55ddabb`，最小服务端通过双线程两轮及主线程协程，分别每线程 24 项、主线程 23 项断言。六个生产包及 91 项源码完整编译；程序摘要为 `bdd2172df9f4b44735c8bae0de3d7f7eeaaae48b07171539e27568a153087b01`，构建身份 `e98e7e6e25a0898733a919d449bddc500eec1bb712c1d2211822103d78942bda`。随后同一程序的完整套件失败：一线程记录背压期间的并行任务未完成，另一线程到达监听退役阶段，关闭端口后在 0.2 秒内收到 `tcp_timeout`，而断言要求 `tcp_connect_failed`。最终由 40 秒外层截止终止，不是原生崩溃。Artifact `11275710867` 的摘要为 `367856108b74a01614016f91752ae88a4b49f8fc84ad0fb961a99077934b48fc`；最小通过与完整失败均保留，后续分别测量拒绝时间和隔离背压场景。
 
-### 性能测量的运行环境
-
 [Windows 原生拒绝对照 37126584031](https://github.com/zoujingli/typeapp/actions/runs/37126584031)，源码 `843f7db06fc45bbc586a05ad217c9e664c8052bd`，直接使用 Swoole Socket 连接已关闭的监听端口：0.2 秒预算实际约 0.222 秒返回 `false`、errno 10060；五秒预算实际约 2.054 秒返回 `false`、errno 107。额度及协程归零，Artifact `11275741975` 摘要为 `c5aa70a658e1c93ea8d96e2fb98a48cfe52dca4aa9011593bbd9f130c2cd26ab`。这证明原 0.2 秒断言早于该平台原生失败完成；完整夹具改用公开入口既有的五秒默认预算，继续要求明确 `tcp_connect_failed`，不接受超时，也不修改生产超时。
+
+[UDP 延迟发送复验 37126419401](https://github.com/zoujingli/typeapp/actions/runs/37126419401)，源码 `13972b766647fca95876b697d49651c79398af70`，在 Windows x64 使用 120 毫秒对端延迟通过全部 UDP 场景：两轮双线程各 377 项、主线程 376 项断言，协程清空，六个生产包和 91 项源码全量 AOT。程序摘要 `5b4e98e2960ab71f7b1b9c618b0288e999ab8e0fdb7d62a2a5db55f022ed117a`，构建身份 `f0b69a4d01c19ef4dd10259be3b20da02291aab82572d797a53569df2674e59a`；Artifact `11274942367` 摘要 `2aebfecf18b01d5d403208cd052fc5f5b00d8a0e9c16524fc8a212956893a458` 已回读核对。该消费者在 Windows 的源码禁读仍为 `not-verified`。同轮 TCP 两个线程均到达监听退役后触发原 0.2 秒拒绝断言，整体运行仍失败；Artifact `11275273189` 摘要 `184942ed46cd8ba15a40c096e7abe82d0997da857c43c1e30bca73138b69b28d` 保留原程序和失败报告。
+
+### 性能测量的运行环境
 
 macOS 的新旧程序分别从 RC13 源码与 `4631be08002695625477229d2552e10b7834a242` 完整编译，使用相同 PHP SDK 和 83 个相同前端资源。首轮测量在旧程序安装阶段被 `运行扩展身份不一致：swoole` 拒绝：成对控制器错误地继承了当前新版模块的 INI。仅改为该旧程序构建报告中的运行 INI 后，同一程序完成空库与前端安装。成对测量入口现逐版本定位和记录已探测 INI，失败轮次保留，不计入吞吐或延迟结果；原始基准程序未因这个控制器修复重新编译。
 
@@ -201,9 +203,13 @@ macOS 的新旧程序分别从 RC13 源码与 `4631be08002695625477229d2552e10b7
 
 逆序运行的旧/新程序 SHA-256 分别为 `a8d3f02c500f9b35ee13410facc96653a476ff7a4694aadd76c7ee74f7d5f842`、`db62f6df01623c85adabaf857580b8805334a989a52a52d9c4e5a9edf1bc84c9`，共享 embed 程序大小分别为 29,051,681 / 29,118,286 字节，编译耗时为 1,016.919 / 990.875 秒；前端文件清单完全相同。准备、原始样本和比较保存在 Artifact `11272128682`（摘要 `aba5c8c9be66c60984b97018cb0ce8a50355f6706b5a5d690df06a16dc18205d`），本地回读位置为 `build/toolchain-upgrade-followup.lVbKwh/linux-arm64-benchmark-reverse/`。该轮重建了程序，仅作为固定源码的顺序复验；不能推断发布静态程序的极限吞吐。
 
-本次升级尚未完成 Linux x64 与 Windows 的同条件性能对照，也未完成非 macOS 平台的文件流对照。各平台功能验收与程序体积核验不能替代这些测量。
+本次升级尚未完成 Windows 的同条件性能对照，也未完成非 macOS 平台的文件流对照。各平台功能验收与程序体积核验不能替代这些测量。
 
 [Linux x64 首轮 37123039925](https://github.com/zoujingli/typeapp/actions/runs/37123039925) 固定 RC13 与 `010da9d9492c9360399050e0c7a90a2f04a00a62`，实际旧版在先。两版 SQLite/MySQL 各三次测量完成；RC13 的 PostgreSQL 前两次完成，第三次在服务启动时返回 `swoole_hook_startup_required`，尚未执行新版 PostgreSQL，故整轮失败，不能用于完整三库性能结论。Artifact `11273584344`（摘要 `93d3e88468c626eb2b3b30689d6ee6591fa9d4681f200e43399a7839a12c5bed`）已回读保存。逆序复验保持两个源码提交不变，不修改 RC13 的实现以消除基线故障。
+
+[Linux x64 逆序复验 37124844478](https://github.com/zoujingli/typeapp/actions/runs/37124844478) 使用工作流源码 `1c733ae9fb62f7902597184d523582d014f81c77`，两版业务源码仍固定为前述提交。新版在先的三库、两版、各三次测量全部完成；逐份回读六份原始报告，其摘要和成对报告内嵌结果一致，比较器返回 `no-consistent-latency-regression-detected`。九组负载均未触发区间分离条件；吞吐中位数变化约 -0.77%～+2.15%，采样 RSS 中位数变化 +0.03%～+3.06%。这是一轮完整三库测量，不能与前轮未完成的 PostgreSQL 合称两轮通过，也不证明性能等价或改善。
+
+本轮旧/新共享 embed 程序分别为 36,807,050 / 36,879,694 字节，编译耗时 668.449 / 633.174 秒；SHA-256 分别为 `1eacacd0375130bb8dd93bc2f06218c5d5e220928a1f6a24435174f26b902a9c`、`dba14c96dbcd066dcc7298d1ab077728985f5da126a6a518938b95dac4b62427`。它们是本轮重建的基准程序，不冒充首轮字节或最终静态发布附件。准备、样本和比较报告保存在 Artifact `11275602989`（摘要 `d60ef8b36d2d2501a73d758cef9274d179ef2648a481db279b62f761bad3095b`），本地回读位置为 `build/toolchain-upgrade-followup.lVbKwh/linux-x64-benchmark-reverse/`。
 
 待平台任务完成后，必须追加每个平台的最终程序身份、12 个 profile 的摘要、实际未执行范围和公开下载回读；性能与体积对照没有原始报告时保持未验证。
 
