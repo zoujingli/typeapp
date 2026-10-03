@@ -1,6 +1,6 @@
 # TypePHP 0.9.4 与 Swoole 开发快照升级
 
-本记录从 2026-10-02 开始，目标版本为 `v1.0.0-rc.14`。RC13 的源码、产物与结论保持原身份；本次候选必须完成自己的四平台 × 三数据库静态程序验收，不能沿用旧版通过状态。四平台共享模块已重建并导入，当前继续处理 Windows HTTP 原生回归并验收完整应用和静态 SDK，尚未公开 RC14。下面按准确源码记录每轮结果，不把排队或局部成功当作完整通过。
+本记录从 2026-10-02 开始，目标版本为 `v1.0.0-rc.14`。RC13 的源码、产物与结论保持原身份；本次候选必须完成自己的四平台 × 三数据库静态程序验收，不能沿用旧版通过状态。四平台共享模块已重建并导入，Windows HTTP 退出故障已完成定向复验，当前继续定位 TCP 连接失败并汇合完整应用和静态 SDK 验收，尚未公开 RC14。下面按准确源码记录每轮结果，不把排队或局部成功当作完整通过。
 
 ## 固定输入
 
@@ -68,9 +68,50 @@ macOS 的早期轮次存在 Homebrew tap 网络失败和后续推送取消，尚
 
 [Windows 完整回归 37110360061](https://github.com/zoujingli/typeapp/actions/runs/37110360061)，源码 `11a73078df41a9f8116384705251d37603f24666`，再次通过线程重建、初始化失败、协程资源隔离和三轮 HTTP；正常停止、部分启动、业务阻塞的监督检查也已执行。该轮在最终 TLS 析构阻塞的 `exit-gate` 模式超时（`exit=255`、`timed_out=true`、双流为空），未通过完整门禁。原程序及报告保留在 Artifact `11269503645`。Windows 原生终止入口改用 `TerminateProcess`，避免 `_Exit` 进入 DLL 退出清理；相同析构故障与全部监督模式仍须在修复后的程序重验，不放宽原三秒上限。
 
+修复后的 [Windows HTTP 定向回归 37112209968](https://github.com/zoujingli/typeapp/actions/runs/37112209968)，源码 `fe3c22f79fdaabc607012cd13b72d4fda1623906`，已完成三轮 HTTP 与全部生产监督模式。三次 `exit-gate` 均实际进入阻塞析构，健康线程已停止、故障门未释放，进程分别在 1.064、1.048、1.175 秒以 75 退出，未超时。证据保留在 Artifact `11270275821`，消费者 SHA-256 为 `57e737a3fddf3001d5416d61b5a3dd7002e784a6c06ca2d85089fa04cbf6583e`。这证明该退出故障已被定向回归覆盖；带官方 IOCP trace 的诊断模块仍不作为分发模块，也不代替完整 Windows 门禁。
+
+同源码的 [Windows 完整回归 37112211610](https://github.com/zoujingli/typeapp/actions/runs/37112211610) 使用组件分发模块，通过线程、初始化、资源和 HTTP 后，在 TCP 消费者失败。两个业务线程均返回 `tcp_connect_failed`、`errno=1214`，进程退出 255，未超时；原程序和失败报告保存在 Artifact `11270572147`。随后仅在夹具中增加当前 host、TLS 和场景检查点，并启用分别运行 TCP/UDP 的 `scope=socket-probe`；诊断不跳过域名、IPv6、TLS 或错误收尾，也不作为完整验收通过。
+
+### 静态程序预验收
+
+以下运行采用源码 `11a73078df41a9f8116384705251d37603f24666`，用于验证新版工具链与静态依赖。它们不是最终 RC14 标签的候选附件，后续发布仍须从最终固定源码重新构建并验收同一程序。
+
+| 平台 | SQLite | MySQL | PostgreSQL |
+| --- | --- | --- | --- |
+| Linux x64 / ARM64 | [37110396184](https://github.com/zoujingli/typeapp/actions/runs/37110396184)，均通过 | [37110398545](https://github.com/zoujingli/typeapp/actions/runs/37110398545)，均通过 | [37110400048](https://github.com/zoujingli/typeapp/actions/runs/37110400048)，均通过 |
+| macOS ARM64 | [37110399992](https://github.com/zoujingli/typeapp/actions/runs/37110399992)，通过 | [37110400955](https://github.com/zoujingli/typeapp/actions/runs/37110400955)，通过 | [37110402374](https://github.com/zoujingli/typeapp/actions/runs/37110402374)，第 2 次执行通过；首次程序验收通过后因重建材料的 GNU 下载超时失败，保留原结果 |
+| Windows x64 | [37110714410](https://github.com/zoujingli/typeapp/actions/runs/37110714410)，通过 | [37110715499](https://github.com/zoujingli/typeapp/actions/runs/37110715499)，通过 | [37110716660](https://github.com/zoujingli/typeapp/actions/runs/37110716660)，通过 |
+
+Linux x64 的完整原生功能运行 [37110360053](https://github.com/zoujingli/typeapp/actions/runs/37110360053) 同样通过二十组及汇总门禁。Linux ARM64 的 [37110376883](https://github.com/zoujingli/typeapp/actions/runs/37110376883) 十组功能通过，但附加性能任务在旧程序安装阶段失败，故整个工作流仍记为失败；使用各自产物 INI 的性能复验另行记录，不改写原结果。macOS 的完整原生功能运行仍在执行，不能用上表单程序结果替代全部组件回归。
+
+回读上述十二个程序的构建及同产物业务报告，全部记录移除前端源码、仅单个可执行文件、profile 拒绝，以及同一摘要上的 MQTT、告警、导出和调度通过。相较 RC13 同平台同 profile 程序，体积增长为 0.00007%～0.21934%，均低于 5% 门槛。这里比较的是最终可执行字节数，不是输入静态归档的累计大小；macOS 保留运行所需符号，不能将其符号表等同于 DWARF 调试信息。
+
+| 平台与 profile | 字节数 | 程序 SHA-256 |
+| --- | ---: | --- |
+| Linux x64 SQLite | 59,000,598 | `113beaf42c878f655e5f6199ed5c8cf8cd175fec0f263e02957b7d4315efe465` |
+| Linux x64 MySQL | 56,724,839 | `dd4271b8d023ffc21addb12b4bf569aff0519f67794cd231a880ee597a5fbde1` |
+| Linux x64 PostgreSQL | 56,821,616 | `2892edbf6b42e488adf922b260f15187b69bd2a12b7c6a220d9e0c7fe5159ec0` |
+| Linux ARM64 SQLite | 50,307,350 | `f4d545c8966c41897840b18fa8bf46a1a821528793e77fdfb729e2c357207ad0` |
+| Linux ARM64 MySQL | 50,033,687 | `0d80165529c6e78112891ed08a31d35d0bca7a7029e4ace6f046bccf44fb81bb` |
+| Linux ARM64 PostgreSQL | 50,159,384 | `83c83e048960f95bc7a32068d974208b9dc4f212952d5b5087942e2283f6dd46` |
+| macOS ARM64 SQLite | 47,748,056 | `505e81db1f323c70f9466849788b2cb052a5ad2b1db3af6f989ada46a3390731` |
+| macOS ARM64 MySQL | 46,130,248 | `a82fca33ec20be6759d8654b793af1d5f877459460b80bae7f9547a112de6cdf` |
+| macOS ARM64 PostgreSQL | 46,238,856 | `7cc471171c163eec5bae351ad7f09f21b807cb780a976602c211a6a5d593466d` |
+| Windows x64 SQLite | 50,721,279 | `5c40b6f250f3acb94e5f35b2d16848a438f4ad0de9edf802795223bf7e2f5b80` |
+| Windows x64 MySQL | 49,794,598 | `74cb09a6f0a72114707a547e6c191d05e1f0b70e78196b9685a82fbf06a1bfef` |
+| Windows x64 PostgreSQL | 49,965,520 | `8517becbdf62cee94d5bfb86e812e7023c5177128e408fe27e8d5fa8ab610df1` |
+
 ### 性能测量的运行环境
 
 macOS 的新旧程序分别从 RC13 源码与 `4631be08002695625477229d2552e10b7834a242` 完整编译，使用相同 PHP SDK 和 83 个相同前端资源。首轮测量在旧程序安装阶段被 `运行扩展身份不一致：swoole` 拒绝：成对控制器错误地继承了当前新版模块的 INI。仅改为该旧程序构建报告中的运行 INI 后，同一程序完成空库与前端安装。成对测量入口现逐版本定位和记录已探测 INI，失败轮次保留，不计入吞吐或延迟结果；原始基准程序未因这个控制器修复重新编译。
+
+随后完成旧版在先、新版在先两轮测量；每个顺序分别执行三库、两个版本、三次独立重复，负载和程序保持相同。旧版在先的 SQLite/MySQL CRUD 吞吐中位数分别变化 -1.12%/-0.87%，触发复验；新版在先时分别为 -0.14%/+0.32%，未再次触发。逆序的 SQLite/PostgreSQL 慢依赖负载出现单轮信号，对应首轮未触发。两轮没有同一负载重复触发，但这不证明性能等价或改善；保留全部单轮信号，不以较好的一轮替换原结果。
+
+原始成对报告为 `build/benchmark-pairs-7c8afe62a9de/verification.json` 与 `build/benchmark-pairs-a4ffe8a3bf9f/verification.json`，比较结果分别为同目录的 `comparison-935c77356901.json` 和 `comparison-a0de776d9769.json`。报告包含每个样本的吞吐、p50/p95/p99、CPU 与采样 RSS；两轮各负载的 RSS 中位数变化约 -0.03% 至 +1.18%。共享 embed 基准的编译耗时为旧版 322.909 秒、新版 328.581 秒，程序分别为 32,014,952 和 32,067,528 字节；这些数值不能代替发布静态程序体积，也不能推断其他平台性能。
+
+文件流对照复用 `examples/file-http-command.php` 与 `examples/files`，以相同源码分别编译两版独立消费者。每轮预热 10 次，再下载 100 次 1 MiB 文件，逐次校验状态、长度和摘要；每种顺序执行三组新旧配对。首轮吞吐中位数为旧版 396.12、新版 392.36 次/秒（-0.95%），逆序复验为 392.48、395.30 次/秒（+0.72%），没有重复出现下降。首轮 p50/p95/p99 为旧版 0.723/1.031/1.114、新版 0.727/1.046/1.106 毫秒；逆序为旧版 0.722/1.072/1.155、新版 0.730/1.044/1.103 毫秒。两轮 CPU 中位数均为 0.07 秒，RSS 中位数变化分别为 +0.47% 和 +0.26%，全部服务正常停止。
+
+文件消费者的旧/新编译耗时分别为 136.448/129.356 秒，程序分别为 3,278,456/3,314,424 字节。准备身份、原始样本和两轮比较位于 `build/toolchain-upgrade-followup.lVbKwh/file-benchmark-*.json`；旧/新程序 SHA-256 分别为 `5ab734e8c3e9d059ecab6deffe745f9f661a4cd7d330cc9573a55895a1346d9d`、`73b73f54b201fc6c8a41196ecbaa1093e310e1d4bb2a05d928c568607c230196`。该顺序负载未确认持续回退，也不支持宣传吞吐改善或推广到其他平台、并发量。
 
 待平台任务完成后，必须追加每个平台的最终程序身份、12 个 profile 的摘要、实际未执行范围和公开下载回读；性能与体积对照没有原始报告时保持未验证。
 
@@ -82,6 +123,6 @@ macOS 的新旧程序分别从 RC13 源码与 `4631be08002695625477229d2552e10b7
 - [Linux x64 原生回归运行 37058951633](https://github.com/zoujingli/typeapp/actions/runs/37058951633) 中，`threads`、`initialization`、`resources`、`http`、`tcp` 通过，`udp` 在两个业务线程中退出码为 1，因而整组未通过；失败批次的工具链 Artifact 保留在 [type-app-linux-x64-toolchain](https://github.com/zoujingli/typeapp/actions/runs/37058951633/artifacts/11250585207)。本次修复会重新核对每次原生线程创建时的 hook 状态，并上传线程内部 `.failure` 证据。TCP 组包含 macOS 连接后的内核缓冲自动调优修复；线程组覆盖新版 Swoole 的 `join()` 清理窗口，运行时只在主线程独占时有限重试，并在业务线程已经存在时返回稳定错误码。
 - 早期失败记录仍保留在同一构建批次目录及原生日志中，包含 macOS TCP 缓冲误报、HTTP hook 重复安装失败和线程已创建后的 hook 重试失败；这些记录用于追溯修复，不能并入最终通过结论。
 - 文件 I/O 候选已重新适配、编译并全量 AOT；大文件、metadata、锁、上传、缓冲和跨线程容量通过。强制停止场景当前得到退出码 75，而原专项契约要求 200，尚未完成全部专项验收，默认模块未启用此候选。
-- 十二组合静态 SDK、完整应用、相同负载性能对照和 RC14 公开发布仍需后续验收。性能比较使用各版本自己的 PHPX 适配和 Swoole 模块，前端资源保持相同；共享 embed 负载对照与最终静态程序体积分别记录。
+- 十二组合静态程序已完成上表所列源码的预验收；最终标签的全量编译、完整组件回归及 RC14 公开发布仍须完成。性能比较使用各版本自己的 PHPX 适配和 Swoole 模块，前端资源保持相同；共享 embed 负载对照与最终静态程序体积分别记录。
 
 发布仍为对应平台与数据库 profile 的一个程序加外置配置，原生运行库启动不释放。数据库与按功能需要的 Redis 是外部服务；管理前端在显式安装命令中释放到 `public`。单文件边界不因本次工具链升级改变。

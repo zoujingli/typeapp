@@ -12,7 +12,9 @@ php tests/benchmark-pairs.php "$TYPE_PAIR_ROOT/old" "$TYPE_PAIR_ROOT/new" "$TYPE
 php tests/benchmark-compare.php "$TYPE_MEASUREMENT/verification.json"
 ```
 
-准备器从每个输入状态导出源码和锁文件，独立构建 PHPX、核对受控 CMake 适配与产物摘要。CI 的性能入口要求显式提供 `TYPE_BASE_SOURCE`；基准提交不内置在脚本中。
+准备器从每个输入状态导出源码和锁文件，独立构建 PHPX、核对受控 CMake 适配与产物摘要。运行时使用对应产物构建报告中的 INI 和模块，不能继承另一版本的控制器配置；测量报告记录运行 INI 的摘要。CI 的性能入口要求显式提供 `TYPE_BASE_SOURCE`；基准提交不内置在脚本中。
+
+首次按默认旧版在先的顺序测量；出现回退信号时，在成对测量命令的四个目录参数后追加 `new-first`，交换执行顺序并复验。两个顺序的原始报告均须保留；不能只保留较好的一轮或把不同顺序当成不同业务负载。
 
 ## 方法与边界
 
