@@ -19,11 +19,11 @@
 
 ## 当前构建状态
 
-`v1.0.0-rc.13` 已按四个平台 × `sqlite`、`mysql`、`pgsql` 三个 profile 发布，共 12 个单文件程序。每个程序只包含对应数据库驱动和已启用功能；`DB_DRIVER` 不匹配时在启动或迁移前返回 `runtime_profile_database_mismatch`。每次部署选择一个匹配程序，不能在同一程序中切换数据库。
+RC13 已按四个平台 × `sqlite`、`mysql`、`pgsql` 三个 profile 发布，共 12 个单文件程序；RC14 仍在按新版工具链执行同一门禁。每个程序只包含对应数据库驱动和已启用功能；`DB_DRIVER` 不匹配时在启动或迁移前返回 `runtime_profile_database_mismatch`。每次部署选择一个匹配程序，不能在同一程序中切换数据库。
 
 | 已实现路径 | 验收与边界 |
 | --- | --- |
-| 静态 SDK、目标头文件和归档摘要校验 | RC13 的 12 个 profile 已完成 SDK 探针与应用验收；历史共享模块不能作为静态输入 |
+| 静态 SDK、目标头文件和归档摘要校验 | RC13 的 12 个 profile 已完成 SDK 探针与应用验收；RC14 的新版 SDK 正在独立验收，历史共享模块不能作为静态输入 |
 | 全量 AOT、内置 PHP 配置、静态运行身份 | 普通入口和线程应用分别验收；不读部署机 PHP 配置 |
 | 页面和许可原文内嵌 | 页面显式安装；`licenses` 直接读取许可材料，不释放运行库 |
 | 单文件输出、搬迁、只读目录、无源码隔离 | 每个平台/profile 都必须用最终待发布程序完成对应数据库行为检查；公开下载摘要须与候选一致 |
@@ -72,7 +72,7 @@ php vendor/bin/type doctor type-app.json build
 
 本仓库使用 `docs/build-config/type-app.json` 作为构建配置。doctor 检查所选范围的前置条件，不连接业务服务；检测通过不等于应用已编译或运行验收通过。
 
-RC13 的四平台 × 三 profile 已各自完成对应数据库的隔离部署。Linux 使用 bubblewrap，macOS 使用系统沙箱，Windows 使用受限令牌和访问控制，禁止读取构建源码、SDK 和执行开发工具。主应用、独立组件和模板各有验收入口，详见[平台支持表](platforms.md#当前平台状态)。自己的应用仍须在目标环境验证数据库、角色和停止语义；Docker 或 WSL 的 Linux 结果不替代 Windows/macOS 原生结果。
+RC13 的四平台 × 三 profile 已各自完成对应数据库的隔离部署；RC14 的同一范围必须使用新版最终程序重跑。Linux 使用 bubblewrap，macOS 使用系统沙箱，Windows 使用受限令牌和访问控制，禁止读取构建源码、SDK 和执行开发工具。主应用、独立组件和模板各有验收入口，详见[平台支持表](platforms.md#当前平台状态)。自己的应用仍须在目标环境验证数据库、角色和停止语义；Docker 或 WSL 的 Linux 结果不替代 Windows/macOS 原生结果。
 
 构建维护者为目标平台准备匹配的 SDK 与扩展，并以同一产物完成应用、通信、数据库和无源码部署验收。部署者使用对应平台经过验证的包，具体范围见[平台与验收](platforms.md)。
 

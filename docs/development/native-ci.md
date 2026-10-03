@@ -2,7 +2,7 @@
 
 工作流存在、静态检查通过与对应runner实际执行通过是三种不同状态。各平台证据独立，不以本机或其他架构结果替代最终同提交验收。
 
-`v1.0.0-rc.13` 的固定源码 `aa95924` 已通过四平台默认完整矩阵、12 个数据库 profile 的最终静态单程序隔离部署、组件与模板分发及公开消费；运行链接和同一产物身份见[正式发布证据](../evidence/profile-release-20260930.md)。此前 RC10 的[三库单程序记录](../evidence/single-program-ci-20260928.md)与 2026-09-25 的[共享库基线](../evidence/native-release-20260925.md)保留原身份。下文描述如何重现，不表示后续提交已经重验。
+RC13 的固定源码、四平台矩阵、12 个程序及公开消费继续按[正式发布证据](../evidence/profile-release-20260930.md)保留；它不能为新版工具链背书。RC14 使用当前主仓提交 `d646837d445adb5543a5c71ae45b2a616f62a21b`，新版任务运行 ID 见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)。截至记录更新时 Linux x64、Windows x64 和 macOS ARM64 任务仍在执行，下面的命令和工作流说明是可复现入口，不表示新版已经通过。
 
 开发和功能提交直接在`main`进行。原有Linux x64、Windows和macOS原生工作流的push触发范围均为`main`，不再使用临时验证分支；新增Linux ARM64入口只接受`workflow_dispatch`。远端推送和手动调度沿用会话授权。
 

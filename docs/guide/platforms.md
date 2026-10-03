@@ -8,9 +8,9 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 ## 当前平台状态
 
-每个版本重新执行四平台完整验收，并将最终待上传的单个程序复制到隔离环境，执行对应 profile 的数据库、页面安装和真实 API 检查。下表记录已公开 `v1.0.0-rc.13` 的范围；四个平台分别提供 `sqlite`、`mysql`、`pgsql` 程序，部署时只选择一个。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
+每个版本重新执行四平台完整验收，并将最终待上传的单个程序复制到隔离环境，执行对应 profile 的数据库、页面安装和真实 API 检查。本轮目标候选为 `v1.0.0-rc.14`；它在四个平台分别提供 `sqlite`、`mysql`、`pgsql` 程序，只有对应 Actions 运行全部成功并完成公开回读后才算已发布。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
 
-`v1.0.0-rc.13` 对应源码 **`aa95924`** 的[完整版本工作流](https://github.com/zoujingli/typeapp/actions/runs/36665412680)通过四平台原生矩阵与 12 个静态 profile 发布门禁，使用 PHP 8.5.10 ZTS、TypePHP 0.9.3、PHPX 2.9.2 与内置 Swoole 6.2.1。各程序分别完成对应数据库的部署检查，公开下载字节与候选一致；后续提交仍需自己的验收。
+RC14 的验收使用当前主仓提交 **`d646837d445adb5543a5c71ae45b2a616f62a21b`**，工具链为 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及提交 `4aff74a9`、运行时字符串 `6.3.0RC1` 的 Swoole 开发快照。Linux x64、Windows x64、macOS ARM64 的运行 ID 分别为 `37076682879`、`37076682889`、`37076682999`；截至本页更新时仍在执行，不能把 RC13 的结果借记为 RC14 的通过。完成后应把同一运行轮次、12 个程序摘要和公开下载回读补入[升级证据](../evidence/typephp-upgrade-0.9.4.md)。
 
 | 平台与实际环境 | 已通过的范围 | 部署验收边界 |
 | --- | --- | --- |
@@ -19,11 +19,11 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 | macOS ARM64，macOS 15 原生 runner | HTTP、ORM、三库完整应用 AOT、部署、恢复、回滚与 TLS；另验静态单程序 | 系统沙箱禁止读取源码、SDK 和执行开发工具；三个 profile 的最终 Mach-O 分别完成对应数据库部署 |
 | Windows x64，Windows 2022 原生 runner | SDK、三库独立 ORM、主应用 PHP/AOT、模板与搬迁；另验静态 SDK 和单程序 | 受限令牌与 ACL 禁止读取源码、SDK 及执行 PHP、MSVC、Node；三个 profile 的最终 EXE 分别完成对应数据库部署，并核对权限恢复 |
 
-三库指 MySQL、PostgreSQL、SQLite。RC13 的 12 个程序分别覆盖运行库审计、数据库 profile 不匹配拒绝、内嵌前端安装与摘要、GET/HEAD 和缓存、平台及客户登录、站点默认值、角色 CRUD 和正常停止，并完成 MQTT TLS 授权、告警通知、导出及调度回归。普通启动不写出运行库，页面通过显式安装命令生成。独立 ORM 和通用模板仍分别验证自己的入口与产物；Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
+三库指 MySQL、PostgreSQL、SQLite。RC13 的 12 个程序已分别覆盖运行库审计、数据库 profile 不匹配拒绝、内嵌前端安装与摘要、GET/HEAD 和缓存、平台及客户登录、站点默认值、角色 CRUD 和正常停止，并完成 MQTT TLS 授权、告警通知、导出及调度回归。RC14 必须用新版最终程序重新执行这些范围。普通启动不写出运行库，页面通过显式安装命令生成。独立 ORM 和通用模板仍分别验证自己的入口与产物；Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
 
 上述系统版本是实际构建与运行基线，不等于已测试所有更高或更低版本。Linux 程序仍依赖目标系统的 glibc，不适用于 Alpine/musl；开发用共享 Swoole 模块的 Debian 12 基线不能套用于这些 Ubuntu 24.04 静态程序。macOS 程序按最低系统版本与实际加载映像核验，只允许系统库；历史 RC7 目录包的 dyld 缓存摘要限制保留在[旧版验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
-本批 15 个组件与应用模板均已发布 `v1.0.0-rc.13` tag 和 GitHub Release，16 个 Packagist 版本与各自拆分提交一致。版本 tag 分发不移动子仓 `main`；`dev-main` 是独立更新的开发分支，不能用它替代固定版本。安装方式见[组件参考](components.md)。
+RC13 的 15 个组件与应用模板已发布对应 tag、GitHub Release 和 Packagist 版本；RC14 的子仓 tag、Packagist 索引与 Release 必须在新版主仓验收通过后按同一批次执行。版本 tag 分发不移动子仓 `main`；`dev-main` 是独立更新的开发分支，不能用它替代固定版本。安装方式见[组件参考](components.md)。
 
 完整源码、程序摘要、重建材料与隔离详情见[profile 发布验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/profile-release-20260930.md)；[开发分支基线](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/native-release-20260925.md)及[更早的平台记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)保留原身份。MySQL、SQLite 仍采用安全关闭重建，完整三库物理连接复用未完成。本轮未运行可选性能基准，默认矩阵通过也不代表全部协议、容量和业务故障组合验收完成。
 
@@ -71,6 +71,6 @@ Windows 主应用与模板已通过本轮 HTTP、正常停止和发布包用例�
 3. 在无业务源码、无 Composer 和无编译 SDK 的目标环境验证启动、迁移、运行库校验、搬迁、升级和恢复。
 4. 完成一个程序文件加外置配置的交付，非系统原生库静态链接、启动不释放运行库，并验证干净环境、权限及数据保留。
 
-当前 RC13 已完成四平台 × 三数据库 profile 单程序发布及本页列出的隔离范围；`package-directory` 与 `archive` 仅维护旧目录包。其余协议、全部角色、容量与性能继续按场景验收，不能由单程序发布成功推导出全部框架能力完成。后续版本仍须以同一源码重新通过完整门禁。
+RC13 已完成四平台 × 三数据库 profile 单程序发布及本页列出的隔离范围；RC14 尚在新版工具链验收，`package-directory` 与 `archive` 仅维护旧目录包。其余协议、全部角色、容量与性能继续按场景验收，不能由单程序发布成功推导出全部框架能力完成。后续版本仍须以同一源码重新通过完整门禁。
 
 [系统架构](architecture.md) · [构建与部署](deployment.md) · [实现规划](roadmap.md)

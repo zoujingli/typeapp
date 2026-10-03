@@ -9,10 +9,10 @@
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-queue:1.0.0-rc.13
+composer require zoujingli/type-queue:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.13`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
 应用构建配置 `queue` 声明注册类与 type/version/handler 列表，JobCompiler 生成固定 Registry。重复类型版本在生成时失败。应用显式提供处理器构造工厂，Worker 每次执行创建新 Job、JobContext 和 ExecutionScope。
 

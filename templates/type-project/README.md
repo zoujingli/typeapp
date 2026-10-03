@@ -2,7 +2,7 @@
 
 这是独立业务项目的起点，包名为 `zoujingli/type-project`。TypeApp 是面向原生交付的 PHP 应用框架，以 TypePHP 全量编译生产实现。Plugins 由 Composer 安装，生产组件与业务一起编译；Swoole 作为内置原生运行库随应用交付。主仓中的物联中心是成品案例，不随本模板分发。用本模板创建自己的应用，再按需安装 `type-xxxx` 组件，即可开发其他业务系统。框架组件在公开开发主仓维护，消费应用通过 Packagist 安装对应公开分发包；模板不包含主仓 path repository、分发凭据、缓存/Redis 依赖或全部组件源码。
 
-Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过默认原生 CI，组件与模板开发分支分发也已通过。模板 HTTP 使用 Unix 单 worker 或 Windows 协程入口，已有真实 HTTP、正常停止及原生发布包回归；各平台的模板、主应用和隔离范围见[平台支持表](https://iots.top/#/guide/platforms?id=当前平台状态)。
+RC13 的源码基线曾通过 Linux x64 / ARM64、macOS ARM64、Windows x64 的默认原生 CI，模板也完成过 HTTP、正常停止和原生发布包回归。RC14 已升级 TypePHP 0.9.4、PHPX 2.9.3 及固定的 Swoole 开发快照，必须重新完成相同范围；当前进度与实际边界见[平台支持表](https://iots.top/#/guide/platforms?id=当前平台状态)。
 
 ## 环境与交付
 
@@ -18,24 +18,24 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过�
 
 ## 创建与驱动选择
 
-从 Packagist 创建独立应用，先选择数据库，再将模板和第一方组件固定到同一批次。以下示例使用 SQLite 和候选版本 `1.0.0-rc.13`：
+从 Packagist 创建独立应用，先选择数据库，再将模板和第一方组件固定到同一批次。以下示例使用 SQLite 和候选版本 `1.0.0-rc.14`；执行前先确认该候选已在 Packagist 和 GitHub Release 公开：
 
 ```sh
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.13
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.14
 cd my-app
 php configure.php sqlite
 composer config minimum-stability RC
 composer config prefer-stable true
 composer require --no-update \
-  zoujingli/type-core:1.0.0-rc.13 \
-  zoujingli/type-orm:1.0.0-rc.13 \
-  zoujingli/type-orm-sqlite:1.0.0-rc.13 \
-  zoujingli/type-runtime:1.0.0-rc.13 \
-  zoujingli/type-log:1.0.0-rc.13 \
-  zoujingli/type-validate:1.0.0-rc.13
+  zoujingli/type-core:1.0.0-rc.14 \
+  zoujingli/type-orm:1.0.0-rc.14 \
+  zoujingli/type-orm-sqlite:1.0.0-rc.14 \
+  zoujingli/type-runtime:1.0.0-rc.14 \
+  zoujingli/type-log:1.0.0-rc.14 \
+  zoujingli/type-validate:1.0.0-rc.14
 composer require --dev --no-update \
-  zoujingli/type-build:1.0.0-rc.13 \
-  zoujingli/type-testing:1.0.0-rc.13
+  zoujingli/type-build:1.0.0-rc.14 \
+  zoujingli/type-testing:1.0.0-rc.14
 composer install --no-plugins --no-scripts
 php dev.php help
 php dev.php check

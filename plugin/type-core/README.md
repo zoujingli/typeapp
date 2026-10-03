@@ -36,10 +36,10 @@ TypePHP 将以上生产实现整体编译；非系统原生运行库由构建校
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-core:1.0.0-rc.13
+composer require zoujingli/type-core:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.13`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
 - `Configuration` 保存不可变的字符串快照，环境变量在应用启动时读取，合法空字符串和 `0` 不被默认值覆盖。
 - `Command::run` 接收配置快照与命令参数，返回进程退出码；业务失败可抛异常。

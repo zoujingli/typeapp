@@ -31,20 +31,30 @@ Swoole 候选在 `v6.3.0-rc1` 之后包含 42 个提交，属于开发快照。�
 
 ## 四平台模块身份
 
-[重建运行 37010216619](https://github.com/zoujingli/typeapp/actions/runs/37010216619) 固定源码为 `a7b8a531951a56247fb49388df673d078d525386`。四个平台均实际加载 PHP 8.5.10 ZTS 模块，核对原生线程 ABI 2、协程 SQLite CRUD 和 PostgreSQL 连接拒绝路径；该范围不代替完整应用静态验收。
+[重建运行 37075789749](https://github.com/zoujingli/typeapp/actions/runs/37075789749) 以主仓提交 `f6c092f436f2a341bb6d588d333d761c2ab64732` 构建并核验四个平台模块。四个平台均实际加载 PHP 8.5.10 ZTS 模块，核对原生线程 ABI 2、协程 SQLite CRUD 和 PostgreSQL 连接拒绝路径；该范围不代替完整应用静态验收。随后模块和清单以 `d646837d445adb5543a5c71ae45b2a616f62a21b` 写回组件。
 
 | 平台 | 模块字节数 | SHA-256 |
 | --- | ---: | --- |
-| Linux x64 | 3,590,464 | `12ad5e4994b0075602c1635d641516aaea53f184d427cd8a687e70e93d1ccf9a` |
-| Linux ARM64 | 3,439,800 | `d34f58d9b28981b40a75e357424a6148e6e4a857833cf20ecfec2262a49fa141` |
-| macOS ARM64 | 9,350,528 | `50138f4a646b4b044ca5728992e4b792b5fb63e8d6bbfa4df848ea8f75525625` |
-| Windows x64 | 2,416,640 | `d26a063660cc0e69427e4bcd9872b2dfe937bc5ed3c66e453ebd79de7ac596e7` |
+| Linux x64 | 3,590,464 | `83a6af66a7588233ae8539fb060ec6afdb92cd1e8b93c4eb99f6b40a4bf62ee5` |
+| Linux ARM64 | 3,439,800 | `d78a1507c65a4070faeedbf369a3830a352244d2daaca7cde0e0af7f7585b823` |
+| macOS ARM64 | 9,350,528 | `a1389c3b451e309158152a1f8f82019e35b462c1f73c365f7cf0f7e6c41e82a2` |
+| Windows x64 | 2,415,616 | `f5d7b69e573b508c2d92e17384f9b1457ca0e50b7e404e8f3d96cd616fa78fa6` |
 
-组件清单保留本次 Artifact ID、摘要、编译依赖和补丁前后摘要。macOS 的 SQLite 为本轮构建实际使用的 3.53.4，原始许可头文件随组件保留。独立分发检查剔除了误收的 Finder 元数据，并再次通过离线 Composer、含空格目录、不同工作目录、子树拆分、自动换行检出及所有模块和许可摘要核验。
+本轮 Artifact ID 依次为 Linux x64 `11256621733`、Linux ARM64 `11256736708`、macOS ARM64 `11257001358`、Windows x64 `11256971455`；组件清单同时保留 Artifact 压缩包摘要、编译依赖和补丁前后摘要。macOS 的 SQLite 为本轮构建实际使用的 3.53.4，原始许可头文件随组件保留。独立分发检查剔除了误收的 Finder 元数据，并再次通过离线 Composer、含空格目录、不同工作目录、子树拆分、自动换行检出及所有模块和许可摘要核验。
 
-静态 SDK 的 Swoole 来源由同一组件清单提供，分别记录源码提交、归档摘要、运行时版本和开发渠道；实际 embed 探针必须返回相同运行版本。旧来源、过期补丁和错误 ABI 均拒绝。Windows PHPX 原始归档重新下载核验为 `bae0d807610ddaade17b741e11c9397fd3e92f6bf7766cc61ca857fb53c5e0dd`，已修正准备脚本残留的旧摘要。
+静态 SDK 的 Swoole 来源由同一组件清单提供，分别记录源码提交、归档摘要、运行时版本和开发渠道；实际 embed 探针必须返回相同运行版本。旧来源、过期补丁和错误 ABI 均拒绝。Windows PHPX 原始归档重新下载核验为 `bae0d807610ddaade17b741e11c9397fd3e92f6bf7766cc61ca857fb53c5e0dd`。上游 TypePHP 0.9.4 没有 PHP 8.5.10 的 Windows SDK 载体，准备脚本只复用已核验的 `tpc_v0.9.0_windows_x64` PHP 8.5.10 ZTS 发行包；脚本现在先强制核对 `composer.lock` 中 TypePHP 0.9.4 的固定提交，再在任务目录重建 PHPX 与 Swoole，因此不能把 SDK 载体版本当作编译器版本。
 
 ## 已执行与待完成
+
+### RC14 原生门禁运行轮次
+
+RC14 当前固定主仓提交为 `d646837d445adb5543a5c71ae45b2a616f62a21b`。新版工具链的三组平台任务已经由该提交触发：Linux x64 `37076682879`、Windows x64 `37076682889`、macOS ARM64 `37076682999`。截至本记录更新时，三组任务尚未全部结束，以下状态只记录已观察到的过程，不把 `in_progress` 或 `queued` 当作通过：
+
+- Linux x64：基础、缓存、隔离构建、数据、TLS、可靠性、队列、回滚和调度分组已返回成功；模型、HTTP、交付、工具链、驱动、应用、集成、查询、服务和消费者等分组仍在执行。
+- Windows x64：新版线程与 IOCP 原生回归仍在执行。旧轮次 `37069259282` 的失败原因是 `tests/http-threads.php` 的 `listener.json` 启动哨兵预算只有 5 秒；本轮已将预算提高到 30 秒，并保留阶段契约，不能把旧轮次失败改写成新版结果。
+- macOS ARM64：任务已排队或在 contracts、application、deployment 分组中执行，其余分组等待 runner；尚无完整结论。
+
+待平台任务完成后，必须追加每个平台的最终程序身份、12 个 profile 的摘要、实际未执行范围和公开下载回读；性能与体积对照没有原始报告时保持未验证。
 
 - 本机 macOS ARM64 已编译新 Swoole 共享模块与 PHPX，真实 PHP 8.5.10 ZTS 加载、协程 SQLite 和 PostgreSQL 连接拒绝路径通过。该本机模块链接开发依赖，不能作为可移植分发模块。
 - 独立线程消费者已全量 AOT；移走源码后连续三轮验证双线程、存活线程隔离、非零返回、exit、八次重建与标准流输出，资源报告记录句柄、线程及 RSS。

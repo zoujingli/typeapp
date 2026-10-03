@@ -2,7 +2,7 @@
 
 版本由主仓的不可变 tag 驱动：`vX.Y.Z` 是正式版本，`vX.Y.Z-rc.N` 是候选版本。一次发布关联同一主仓提交、组件、应用模板和四个平台的数据库 profile 矩阵。RC 标记为预发布，不成为稳定最新版。
 
-当前候选 [v1.0.0-rc.13](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.13) 已完成四平台 × `sqlite`、`mysql`、`pgsql` 三个 profile 的发布验收，共提供 12 个单文件程序。组件和模板也已按同版本分发到 Packagist；固定源码与原生验证见[验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/profile-release-20260930.md)。历史候选保留原标签、附件和验收身份。
+当前候选 `v1.0.0-rc.14` 正在执行四平台 × `sqlite`、`mysql`、`pgsql` 三个 profile 的发布验收。12 个单文件程序、组件模板分发和 Packagist 消费只有在同一运行轮次全部通过后才公开；固定源码、工具链与原生验证见[升级验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。RC13 的标签、附件和验收身份保持不变。
 
 每个“平台 × profile”下载一个可执行文件，外置配置独立维护。PHP、PHPX、Swoole 等非系统原生库已静态链接，普通启动不释放运行库。历史 RC7 的目录归档与旧标签保持原样，其使用方式和验收身份保留在[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
@@ -35,7 +35,7 @@ flowchart TB
 
 ## 下载程序
 
-`v1.0.0-rc.13` 的附件名包含数据库 profile。每次部署只下载匹配平台和数据库的一个程序；其余 11 个程序是其他环境的选择项。历史 RC10 没有 profile 后缀，其原附件名称不变。
+发布后，`v1.0.0-rc.14` 的附件名包含数据库 profile。每次部署只下载匹配平台和数据库的一个程序；其余 11 个程序是其他环境的选择项。当前候选尚未产生公开附件；历史 RC10 与 RC13 的附件名称和摘要不变。
 
 选择与操作系统、CPU、系统库基线和数据库匹配的附件，具体要求见[平台与验收](platforms.md)。文件名中的版本不带前缀 `v`：
 
@@ -54,7 +54,7 @@ GitHub 自动生成的 `Source code` 归档是源码下载入口，部署时无�
 
 ```bash
 set -eu
-release_version="${TYPEAPP_RELEASE_VERSION:-1.0.0-rc.13}"
+release_version="${TYPEAPP_RELEASE_VERSION:-1.0.0-rc.14}"
 release_base="https://github.com/zoujingli/typeapp/releases/download/v${release_version}"
 release_program="typeapp-iot-${release_version}-linux-x64-sqlite"
 curl --fail --location --output "$release_program" "$release_base/$release_program"
@@ -75,7 +75,7 @@ mv "$release_program" app
 
 ## 程序体积与依赖
 
-下表是 `v1.0.0-rc.13` 公开程序的实际大小，单位为 MiB（1 MiB = 1048576 字节）。各 profile 都保留 HTTP、MQTT、告警、导出、队列与调度，只链接对应数据库驱动；前端已包含在程序中。
+下表是候选构建记录的程序大小，单位为 MiB（1 MiB = 1048576 字节），不是公开下载承诺。各 profile 都保留 HTTP、MQTT、告警、导出、队列与调度，只链接对应数据库驱动；前端已包含在程序中。公开版本的最终体积以发布清单为准，若与 RC13 有变化，需结合工具链和依赖闭包说明。
 
 | 平台 | SQLite | MySQL | PostgreSQL |
 | --- | ---: | ---: | ---: |
@@ -88,24 +88,24 @@ mv "$release_program" app
 
 ## Composer 按版本安装
 
-组件与通用模板不包含物联中心前端。`1.0.0-rc.13` 已由默认 Packagist 索引，可按明确版本安装。下面以 SQLite 独立应用为例：
+组件与通用模板不包含物联中心前端。`1.0.0-rc.14` 在发布工作流完成并由 Packagist 索引后，才可按明确版本安装。下面以 SQLite 独立应用为例：
 
 ```bash
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.13
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.14
 cd my-app
 php configure.php sqlite
 composer config minimum-stability RC
 composer config prefer-stable true
 composer require --no-update \
-  zoujingli/type-core:1.0.0-rc.13 \
-  zoujingli/type-orm:1.0.0-rc.13 \
-  zoujingli/type-orm-sqlite:1.0.0-rc.13 \
-  zoujingli/type-runtime:1.0.0-rc.13 \
-  zoujingli/type-log:1.0.0-rc.13 \
-  zoujingli/type-validate:1.0.0-rc.13
+  zoujingli/type-core:1.0.0-rc.14 \
+  zoujingli/type-orm:1.0.0-rc.14 \
+  zoujingli/type-orm-sqlite:1.0.0-rc.14 \
+  zoujingli/type-runtime:1.0.0-rc.14 \
+  zoujingli/type-log:1.0.0-rc.14 \
+  zoujingli/type-validate:1.0.0-rc.14
 composer require --dev --no-update \
-  zoujingli/type-build:1.0.0-rc.13 \
-  zoujingli/type-testing:1.0.0-rc.13
+  zoujingli/type-build:1.0.0-rc.14 \
+  zoujingli/type-testing:1.0.0-rc.14
 composer install --no-plugins --no-scripts
 php dev.php check
 ```
@@ -137,7 +137,7 @@ git push origin "$release_tag"
 需要补齐既有候选时，使用原版本重试，不创建或移动标签：
 
 ```bash
-gh workflow run release.yml --ref v1.0.0-rc.13 -f version=v1.0.0-rc.13
+gh workflow run release.yml --ref v1.0.0-rc.14 -f version=v1.0.0-rc.14
 ```
 
 候选尚未封存时，重新执行完整工作流；不要把不同运行轮次的零散平台结果拼为一次验收。候选草稿已存在时，工作流复用原运行的验收和已保存附件；附件上传不完整时从原 Actions artifact 恢复。原证据过期或同名附件摘要不同会停止，不能靠重编译冒充原候选。

@@ -8,13 +8,13 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 面向使用者的状态统一维护在[平台与验收](../guide/platforms.md)。该页进入 Docsify 公开站点；本文保留执行入口和可复核的产物身份。
 
-`v1.0.0-rc.13` 的固定源码 `aa95924` 已通过四平台完整默认矩阵，12 个数据库 profile 程序分别完成对应数据库隔离部署、同版本组件与模板消费、公开发布及附件回读。工具链为 TypePHP 0.9.3／PHPX 2.9.2、PHP 8.5.10 ZTS、Swoole 6.2.1；系统基线和具体边界见[平台与验收](../guide/platforms.md)，程序、SDK 与重建材料身份见[profile 发布证据](../evidence/profile-release-20260930.md)。本轮未运行可选性能对照。
+RC13 的固定源码、12 个程序和公开发布身份继续保存在[profile 发布证据](../evidence/profile-release-20260930.md)，不作为新版工具链的通过依据。RC14 当前使用主仓提交 `d646837d445adb5543a5c71ae45b2a616f62a21b`、PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及 `4aff74a9`（运行时字符串 `6.3.0RC1`）的 Swoole 开发快照。四平台运行 ID 和待完成范围见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)；在全部任务结束、候选摘要封存和公开下载回读前，不能称为 RC14 已发布。本轮性能对照尚未形成可公开结论。
 
 此前 2026-09-25 的 `bf28c8bd276f7d0f25535e82ec3ca4a59c4f241a` 四平台默认矩阵保留在[历史验收](../evidence/native-release-20260925.md)。该轮采用共享库构建，其发布目录与隔离范围不改写为本次静态单程序结果。
 
 四平台 Swoole 模块随 Composer 构建组件分发，匹配 SDK 后默认复用。macOS 当前矩阵在原生 macOS 15 runner 运行，Linux ARM64 在原生 ARM64 runner 运行，Windows 已完成 SDK 准备、完整应用 AOT 和模板搬迁。每种产物按报告解释，不能把主应用 `no_source=false` 的检查与独立模板隔离结果混为一项。
 
-当前源码正在升级至 TypePHP 0.9.4／PHPX 2.9.3 与固定 Swoole 6.3 开发快照。四平台共享模块已重建，其加载检查与完整静态程序验收分别记录在[新版升级证据](../evidence/typephp-upgrade-0.9.4.md)，不改写上述 RC13 的原始身份。
+四平台共享模块已经按新版工具链重建，其加载检查和完整静态程序验收分别记录在[新版升级证据](../evidence/typephp-upgrade-0.9.4.md)。这些模块可作为构建期输入；在新版完整门禁结束前，不改写 RC13 的原始身份，也不把单项模块加载结果扩展为整个平台通过。
 
 ## 历史结果
 
@@ -37,7 +37,7 @@ Windows ORM 验收由原生数据库装置另外创建两个独立端口和数�
 
 ## 继续验收的前置条件
 
-- Windows：SDK 准备入口默认复用 `plugin/type-build/resources/swoole` 中匹配 PHP 8.5.10 ZTS x64/embed 的 DLL；仅在 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 时下载固定 Swoole 源码及专用 phpize 工具。本轮默认入口与完整应用已通过；每次更换输入仍须核对扩展依赖、SDK 布局、模块版本和官方内置库。应用 PHP 装置先探测子进程已有扩展，避免重复加载；模块可通过 `TYPE_SWOOLE_MODULE` 显式定位。
+- Windows：SDK 准备入口默认复用 `plugin/type-build/resources/swoole` 中匹配 PHP 8.5.10 ZTS x64/embed 的 DLL；仅在 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 时下载固定 Swoole 源码及专用 phpize 工具。本轮仍须等待 RC14 完整运行结果；每次更换输入仍须核对扩展依赖、SDK 布局、模块版本和官方内置库。应用 PHP 装置先探测子进程已有扩展，避免重复加载；模块可通过 `TYPE_SWOOLE_MODULE` 显式定位。
 - 已编译线程：`NativeBuilder` 要求已适配并重编译的 PHPX、Swoole `startNative`/`NATIVE_ENTRY_ABI=2` 与 fiber 通知配置；官方 Swoole 6.2.2 的普通 Thread 不提供这些项目标识。具体接入见[已编译业务线程](compiled-business-threads.md)。
 - macOS 扩展构建：设置与所选 PHP SDK 相符的 `MACOSX_DEPLOYMENT_TARGET`，通过 `pkg-config` 定位匹配的 OpenSSL。实际模块须使用两级符号绑定，TLS 符号明确链接到所选 OpenSSL；不能依赖平面命名空间从已加载的系统库中猜测同名实现。用真实 TCP/TLS 与 WSS 行为验证链接结果。
 - 完整应用：SDK 或生产输入变化后重新执行受影响的应用、通信、三库、发布搬迁与无源码部署。历史 Windows 目录搬迁测试未禁止读取外部源码/SDK；RC13 的三个数据库 profile EXE 分别用受限令牌和 ACL 完成对应数据库隔离，核对源码、SDK 和开发工具拒绝访问及权限恢复。全部协议组合仍按各自场景验收。

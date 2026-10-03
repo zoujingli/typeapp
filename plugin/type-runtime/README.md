@@ -23,7 +23,7 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过�
 
 显式完成等待候选直接使用句柄上的 `joinWithin(0..60000)`，额外检查 TypeApp 私有 `Thread::TYPEAPP_JOIN_ABI=1`。超时仍持有线程和资源，不可提前释放额度；非零等待阻塞 OS 线程，仅用于独立主控。它不替代任务停止、排空或永久阻塞后的进程故障处理，旧 `join()` 调用不依赖此候选。
 
-`startThread($entry, $payload, $socket)` 可选传入一个原生协程 Socket，复用 Swoole 自有的描述符复制；子线程从 `Thread::getArguments()[1]` 取得自己的对象。该入口额外要求 TypeApp 私有 `Thread::TYPEAPP_SOCKET_ARGUMENT_ABI=1`，缺失时抛出 `compiled_thread_socket_unavailable`，未传 Socket 的原两参数入口不依赖此能力。调用者负责原对象、各副本及 join，不能共享 PDO 或业务对象；当前用途与候选边界见[HTTP 线程接入](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-native-threads.md)。
+`startThread($entry, $payload, $socket)` 可选传入一个原生协程 Socket，复用 Swoole 自有的描述符复制；子线程从 `Thread::getArguments()[1]` 取得自己的对象。该入口额外要求 TypeApp 私有 `Thread::TYPEAPP_SOCKET_ARGUMENT_ABI=1`，缺失时抛出 `compiled_thread_socket_unavailable`，未传 Socket 的原两参数入口不依赖此能力。调用原生复制前会使用官方 `Socket::isClosed()` 检查所有权边界；已关闭 Socket 直接抛出 `Swoole\Exception`，不会创建线程，无法检查状态时抛出 `compiled_thread_socket_unavailable`。调用者负责原对象、各副本及 join，不能共享 PDO 或业务对象；当前用途与候选边界见[HTTP 线程接入](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-native-threads.md)。
 
 第四参数可传 `Swoole\Thread\Map`，需要 TypeApp 私有 `TYPEAPP_CONTROL_ARGUMENT_ABI=1`。控制 Map 复用上游原生 ThreadResource，固定在 `getArguments()[2]`；没有 Socket 时下标 1 为 null，未传 Map 时保持旧参数形状。各线程重新取得自己的 Zend 对象，共享的是原生控制数据；不传容器、PDO 或业务对象。
 
@@ -62,10 +62,10 @@ TypeApp 应用的通信与基础并发必须使用 Swoole；线程与协程入�
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-runtime:1.0.0-rc.13
+composer require zoujingli/type-runtime:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.13`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
 支持带值选项的空格和等号两种形式，以及不带值的开关。选项名由调用者声明；业务输出与退出码由应用入口决定。
 
