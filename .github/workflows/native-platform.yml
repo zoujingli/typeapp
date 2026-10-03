@@ -277,6 +277,11 @@ jobs:
         run: |
           & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 快速核对指定 DNS 与线程重建
+        if: matrix.protocol == 'tcp'
+        run: |
+          & "$env:PHP_HOME/php.exe" tests/swoole-dns.php (Join-Path $env:GITHUB_WORKSPACE 'build/toolchain-regressions-socket-probe/dns')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 运行独立通信消费者
         env:
           SOCKET_PROTOCOL: ${{ matrix.protocol }}
@@ -298,6 +303,7 @@ jobs:
             build/toolchain-regressions-socket-probe/**/execution.json
             build/toolchain-regressions-socket-probe/**/verification.json
             build/toolchain-regressions-socket-probe/**/peer.json
+            build/toolchain-regressions-socket-probe/**/dns.json
             build/toolchain-regressions-socket-probe/**/peers.json
             build/toolchain-regressions-socket-probe/**/certificate.pem
             build/toolchain-regressions-socket-probe/**/type-app.exe*
