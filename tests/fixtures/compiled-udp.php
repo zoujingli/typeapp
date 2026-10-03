@@ -154,10 +154,12 @@ final class UdpProbe
             self::check($request['data'] === 'server-request' && $request['port'] === $port, '服务端未接收独立来源');
             $socket->sendTo($request['address'], $request['port'], $request['data']);
             self::check($socket->receive()['data'] === 'server-request', '服务端回包失败');
+            $socket->sendTo($host, $port, '@burst:' . $control->localAddress()['port']);
+            // 等待独立对端真实发送完毕；不能以短休眠推断 CI 中的 Node 已被调度。
+            $sent = $control->receive(1);
+            self::check($sent['data'] === 'burst-sent:256' && $sent['port'] === $port, '独立对端未确认突发发送完成');
             $control->stop();
             self::settleCloses();
-            $socket->sendTo($host, $port, '@burst');
-            Coroutine::sleep(0.04);
             $seen = [];
             while (true) {
                 try {

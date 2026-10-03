@@ -292,6 +292,7 @@ jobs:
           SOCKET_PROTOCOL: ${{ matrix.protocol }}
           TCP_HANDSHAKE_ONLY: ${{ inputs.scope == 'tcp-handshake' }}
           TCP_WITH_ECHO: ${{ inputs.tcp_with_echo }}
+          TYPE_TEST_UDP_BURST_DELAY_MS: ${{ matrix.protocol == 'udp' && '120' || '0' }}
         run: |
           $env:COMPOSER_BINARY="$env:PHP_HOME/composer.phar"
           $env:COMPOSER_DISABLE_NETWORK='1'

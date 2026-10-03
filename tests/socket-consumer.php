@@ -165,6 +165,8 @@ try {
 }
 file_put_contents($run . '/verification.json', json_encode(['build-id' => $report['build-id'], 'sha256' => $report['sha256'],
     'scope' => $serverOnly ? 'server-only' : ($handshakeEcho ? 'handshake-echo' : ($handshake ? 'handshake-only' : 'full')),
+    'peer_sha256' => hash_file('sha256', __DIR__ . '/fixtures/' . $protocol . '-peer.mjs'),
+    'peer_burst_delay_ms' => $protocol === 'udp' ? (int) (getenv('TYPE_TEST_UDP_BURST_DELAY_MS') ?: 0) : null,
     'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'source_count' => count($report['sources']), 'packages' => $packages,
     'no_source' => PHP_OS_FAMILY === 'Darwin' ? 'kernel-denied' : 'not-verified', 'runs' => $results], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 echo strtoupper($protocol) . ($serverOnly ? ' 服务端定向 AOT 验证通过：' : ($handshake ? ' 慢握手定向 AOT 验证通过：' : ' 六个生产包全量 AOT、双线程重建、主线程协程和独立对端验收通过：')) . $run . "\n";

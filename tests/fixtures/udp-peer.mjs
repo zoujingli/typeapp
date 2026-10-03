@@ -3,6 +3,8 @@ import { writeFileSync } from 'node:fs';
 
 // 独立标准 UDP 对端：不加载任何 TypeApp 生产实现。
 const ready = process.argv[2];
+const burstDelay = Number(process.env.TYPE_TEST_UDP_BURST_DELAY_MS ?? '0');
+if (!Number.isInteger(burstDelay) || burstDelay < 0 || burstDelay > 1000) throw new Error('invalid burst test delay');
 const sockets = [];
 const addresses = {};
 let messages = 0;
@@ -20,13 +22,25 @@ for (const [kind, host] of [['udp4', '127.0.0.1'], ['udp6', '::1']]) {
         if (command === '@oversize') {
             send(socket, Buffer.alloc(1025, 120), peer);
             send(socket, Buffer.from('after-oversize'), peer);
-        } else if (command === '@burst') {
+        } else if (command.startsWith('@burst:')) {
             // 有界突发；OS 可以丢 UDP，测试从实际收到的完整报文计数，不推定可靠交付。
-            for (let i = 0; i < 256; i++) {
-                const packet = Buffer.alloc(1024, 98);
-                packet.writeUInt32BE(i);
-                send(socket, packet, peer);
-            }
+            const controlPort = Number(command.slice(7));
+            if (!Number.isInteger(controlPort) || controlPort < 1 || controlPort > 65535) throw new Error('invalid burst control port');
+            setTimeout(() => {
+                let pending = 256;
+                for (let i = 0; i < 256; i++) {
+                    const packet = Buffer.alloc(1024, 98);
+                    packet.writeUInt32BE(i);
+                    socket.send(packet, peer.port, peer.address, error => {
+                        if (closed) return;
+                        if (error) throw error;
+                        if (--pending === 0) {
+                            // 独立控制端点不会被突发数据填满；确认发送完成后才开始排空被测端点。
+                            send(socket, Buffer.from('burst-sent:256'), { address: peer.address, port: controlPort });
+                        }
+                    });
+                }
+            }, burstDelay);
         } else if (command.startsWith('@server:')) {
             send(socket, Buffer.from('server-request'), { address: peer.address, port: Number(command.slice(8)) });
         } else {

@@ -124,6 +124,10 @@ IPv6/独占绑定适配后的 Windows 静态 SDK 已按 `3c583020f5fb5813256feaa
 
 [独占监听复验 37124385204](https://github.com/zoujingli/typeapp/actions/runs/37124385204)，源码 `1c733ae9fb62f7902597184d523582d014f81c77`，已通过 IPv4/IPv6 的最小重复监听拒绝与清理，原生 TLS 探针也通过。完整 TCP AOT 仍在 40 秒外层截止被终止：一线程进入服务端场景，记录子任务清理超时，另一线程最后位于回声关闭后；不能把最小修复通过写成完整通信通过。原程序和检查点保存在 Artifact `11274204892`，归档摘要 `5fe76cbe79d32c67c279937a12a3f4f75677867bd3442bcab83054f7289b3692`。本轮 UDP 也失败，另存其原始报告，尚未确认原因。
 
+UDP 失败进一步收窄为突发测试的对端同步：原夹具发送控制消息后固定等待 40 毫秒，再以接收超时结束统计；Windows 的 IPv6 本轮收到零条。让本机独立 Node 对端延后 120 毫秒发送，同一旧 AOT 程序的两个线程均可复现“突发没有收到有界完整报文”，记录在 `build/toolchain-upgrade-followup.lVbKwh/udp-exclusive-runtime/run-f5ecfda26f/0-thread/execution.json`。夹具现通过独立控制端点确认全部 256 次发送回调完成，再排空被测端点；仍允许内核丢包，逐条核对长度、内容和唯一编号，生产收发期限不变。
+
+修正后的六个生产包、91 项源码在 macOS ARM64 全量 AOT，同一程序分别在延迟 120 毫秒及无延迟条件下完成两轮双线程和主线程协程，每个工作线程 365 项、主线程 364 项断言，源码禁读通过。程序 SHA-256 为 `48c3706a87537297af7a09f4ab64dc54f5b023c0d084c8027b21cfa285f0639d`，构建身份 `de64f5adc7b8f607735e2b6b4e3018f491a561b83b7babfefaeb205bbfd433f6`。报告分别为 `udp-burst-ready-macos/run-157ae4ff2e/verification.json` 和 `udp-burst-ready-macos/run-eee39f0a61/verification.json`，均在上述任务目录内；报告摘要分别为 `9fdf5492c5ac5f43e335b7c9891e5685584f3c784931ecd4454ad58ae5916168`、`ff814aa7a9d4740dbae08255d318616a15cb47381742bc21ad524af52f28a50c`。Windows 须在相同修正后另行复验，不能沿用本机结论。
+
 ### 静态程序预验收
 
 以下运行采用源码 `11a73078df41a9f8116384705251d37603f24666`，用于验证新版工具链与静态依赖。它们不是最终 RC14 标签的候选附件，后续发布仍须从最终固定源码重新构建并验收同一程序。
