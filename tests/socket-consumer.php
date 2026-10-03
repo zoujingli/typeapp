@@ -84,6 +84,11 @@ chmod((new BuildPlatform())->output($run . '/type-app'), 0700);
 expect(copy($report['runtime-profile']['ini'], $run . '/php.ini'), '无法复制原生运行配置');
 $environment['PHPRC'] = $run . '/php.ini';
 $environment['PHP_INI_SCAN_DIR'] = $run . '/php.d';
+$iocpTrace = $protocol === 'tcp' && PHP_OS_FAMILY === 'Windows' && getenv('TYPEAPP_IOCP_TRACE') === '1';
+if ($iocpTrace) {
+    // 构建环境有意不继承宿主变量；只将显式诊断标志交给本次被测程序。
+    $environment['TYPEAPP_IOCP_TRACE'] = '1';
+}
 $policy = [];
 if (PHP_OS_FAMILY === 'Darwin') {
     $policy = ['sandbox-exec', '-f', __DIR__ . '/fixtures/mqtt-no-source.sb'];
@@ -165,6 +170,7 @@ try {
     }
 }
 file_put_contents($run . '/verification.json', json_encode(['build-id' => $report['build-id'], 'sha256' => $report['sha256'],
+    'iocp_trace' => $iocpTrace,
     'scope' => $backpressureOnly ? 'backpressure-only' : ($serverOnly ? 'server-only' : ($handshakeEcho ? 'handshake-echo' : ($handshake ? 'handshake-only' : 'full'))),
     'peer_sha256' => hash_file('sha256', __DIR__ . '/fixtures/' . $protocol . '-peer.mjs'),
     'peer_burst_delay_ms' => $protocol === 'udp' ? (int) (getenv('TYPE_TEST_UDP_BURST_DELAY_MS') ?: 0) : null,
