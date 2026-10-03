@@ -195,6 +195,10 @@ Windows 后续使用源码 `53193c921efe0f35d1d24dd600b1cbb8fdce2b73` 及 IPv6/�
 
 固定上游的 `Iocp::associate_socket()` 将 Reactor 与 curl 借入的句柄放入 `associated_sockets`，而缓存只在 `Iocp::close()` 清除。c-ares 自行关闭 Socket，并在事件删除时把包装对象的 FD 置为无效，不经过该关闭入口；Windows 复用数值句柄后会命中过期缓存，跳过 `CreateIoCompletionPort()`。候选修复只调整借入句柄的关联入口，每次由 Windows 核对真实关联；自有 Socket 的缓存、取消等待及完成回收继续采用原实现。原文件 `include/swoole_iocp.h` 摘要为 `5c7a094064a71b43c6698dff60a6d9054c79bfe271fd429928b5e4b6fb3f6f41`，适配后为 `1d2aa2dea8211dda70d003cf1f1c51af1caa36cd62ca9cd3424d724f5fbfdeed`。Windows API 的关联生命周期见 [CreateIoCompletionPort](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-createiocompletionport)。
 
+[模块重建及原复现回归 37128837651](https://github.com/zoujingli/typeapp/actions/runs/37128837651)，源码 `eaf1a3da2cc191f39dd3885b23e3e9c1298e941f`，两组各 16 次原生请求全部通过，协程归零；DNS 组反复复用数值句柄 716 和 724，未再挂起。指定 DNS、线程重建、TLS EOF/重置及十组超时、取消、收尾探针也通过。新 DLL 为 2,567,168 字节，SHA-256 `dea622d3e2b86d834c8843f339b8db5b126fc54be0dbc6182c2082e607aa8b0c`；Artifact `11276211906` 的归档摘要为 `5e52d17d34b2042fe48064bfa86a7cfa4b266bb5933513845aff5c57352fc8fb`。回读 ZIP、模块、源码适配、依赖与许可证摘要后导入；其他平台模块保持原身份。完整 TCP、HTTP/curl 和三个 Windows 静态 SDK 仍须使用此适配复验，不能由最小场景推断通过。
+
+此前的 [官方 IOCP trace 37128088888](https://github.com/zoujingli/typeapp/actions/runs/37128088888) 在完整 TCP 双线程场景仍于 40 秒截止终止，两个线程最后均为 228 项断言、`echo-closed`；日志显示慢握手取消后继续等待完成通知。它使用隔离 trace DLL `ddb3fd4934c34e084fcf4650dee2645e99a217f1a30971ecd5b944e4f2c6d0f0`，原程序摘要 `45033b86e460cb131011ef5620f9de105bd4177743b33bb19bc482d239aedcad`。Artifact `11275991967`（摘要 `c15bd8fef7e09b5737d94c5bf068bced6a782f429d2d411f8903920c158ecc18`）保留原字节和日志，不计为默认模块的通过证据。
+
 失败 Artifact `11274919315` 的摘要为 `9b9b6fdd0f312488afd3f676d013929b7d8622dbaf2b4ffb4db95891966a4d28`，已回读保存在 `build/toolchain-upgrade-followup.lVbKwh/dns-reuse-windows-red/`。新模块尚须通过此最小对照、完整 TCP 及 HTTP/curl 回归；原静态 SDK 因 Windows 适配摘要变化必须重建，不能只更新清单冒充已验证模块。固定上游等价修复并通过原始回归后撤除本项适配。
 
 ### 性能测量的运行环境
