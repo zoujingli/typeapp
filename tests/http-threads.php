@@ -25,7 +25,6 @@ $runEnvironment = $environment;
 if ($isWindows) {
     // Windows 的生产入口由业务线程自行绑定 IOCP 监听；共享 Socket 副本是 Unix 专用接缝。
     $runEnvironment['TYPEAPP_HTTP_OWNED'] = '1';
-    $runEnvironment['TYPEAPP_HTTP_TRACE'] = '1';
     $runEnvironment['TYPEAPP_IOCP_TRACE'] = '1';
 }
 if (!$verify) {

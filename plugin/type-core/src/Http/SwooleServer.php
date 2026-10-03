@@ -268,7 +268,7 @@ final class SwooleServer implements HttpServerInterface
     /**
      * 在编译业务线程内自行绑定监听；用于 Windows 等尚未验收共享监听副本的平台。
      *
-     * 控制 Map 与收尾约定同 serveThread；不要求 TYPEAPP_LISTENER_ABI。
+     * 控制 Map、连接额度、输入校验与收尾约定同 serveThread；不要求共享监听 ABI。
      * @throws TaskException 缺少编译线程能力、监听失败或请求无法完整收尾。
      */
     public function serveThreadOwned(string $host, int $port, \Swoole\Thread\Map $state): void
@@ -284,13 +284,14 @@ final class SwooleServer implements HttpServerInterface
         $this->threadStarted = true;
         try {
             $this->traceHttp('owned-entry cid=' . \Swoole\Coroutine::getCid());
+            foreach (['TYPEAPP_CONNECTION_LIMIT_ABI', 'TYPEAPP_HTTP1_INPUT_ABI'] as $abi) {
+                if (!defined('Swoole\\Coroutine\\Http\\Server::' . $abi) || constant('Swoole\\Coroutine\\Http\\Server::' . $abi) !== 1) {
+                    throw new TaskException('http_thread_unavailable', 'HTTP 线程入口需要连接额度与原始输入能力');
+                }
+            }
             \Swoole\Coroutine::set(['max_coroutine' => $this->control->maximumConnections
                 + $this->control->maximumRequests * $this->control->maximumChildren + 2]);
-            // IOCP 的 reactor 必须先由 Scheduler 建立，再创建协程 HTTP
-            // Server。尤其是 Windows 原生线程，若在 Scheduler 外构造监听器，
-            // bind/listen 虽然成功，start() 却无法把 AcceptEx 接入当前 reactor。
-            // 让构造、配置、handler 注册和 start() 处在同一个协程入口中，
-            // 与公开 serve() 路径保持相同的初始化顺序。
+            // 监听器的创建、配置、handler 注册和 start() 使用同一个协程生命周期。
             $server = null;
             $run = function () use (&$server, $host, $port, $state): void {
                 try {
@@ -312,6 +313,7 @@ final class SwooleServer implements HttpServerInterface
                         'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
                         'http_compression' => false, 'package_max_length' => $this->limits->bytes,
                         'socket_timeout' => $this->control->requestSeconds,
+                        'typeapp_http1_input' => true, 'typeapp_max_connections' => $this->control->maximumConnections,
                     ]);
                     $server->handle('/', function (Request $request, Response $response): void {
                         $this->traceHttp('owned-handler path=' . (string) ($request->server['request_uri'] ?? ''));
@@ -364,8 +366,7 @@ final class SwooleServer implements HttpServerInterface
                 }
             };
             if (PHP_OS_FAMILY === 'Windows') {
-                // Windows IOCP 在原生线程中使用 Scheduler 驱动协程 HTTP；直接
-                // create + Event::wait 会让监听协程先于 IOCP 事件循环挂起。
+                // Windows 与公开 serve() 入口统一使用官方 Scheduler。
                 \Type\Runtime\CoroutineRuntime::run($run);
             } else {
                 $created = \Swoole\Coroutine::create($run);
