@@ -24,6 +24,15 @@ on:
         description: 用于性能比较的完整基准提交，留空时不运行性能组
         required: false
         type: string
+      new_source:
+        description: 可选的新版本完整提交；用于同一源码对的独立性能复验，默认当前提交
+        required: false
+        type: string
+      benchmark_order:
+        description: 性能测量顺序；逆序用于复核单轮回退信号
+        type: choice
+        options: [old-first, new-first]
+        default: old-first
 
 permissions:
   contents: read
@@ -40,6 +49,8 @@ jobs:
         suite: ${{ fromJSON(inputs.suite == 'reliability' && '["reliability"]' || inputs.suite == 'toolchain' && '["toolchain"]' || inputs.suite == 'benchmark' && '["benchmark"]' || inputs.base_source != '' && '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain","benchmark"]' || '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain"]') }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
+      TYPE_NEW_SOURCE: ${{ inputs.new_source }}
+      TYPE_BENCHMARK_ORDER: ${{ inputs.benchmark_order || 'old-first' }}
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'

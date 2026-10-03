@@ -16,6 +16,8 @@ php tests/benchmark-compare.php "$TYPE_MEASUREMENT/verification.json"
 
 首次按默认旧版在先的顺序测量；出现回退信号时，在成对测量命令的四个目录参数后追加 `new-first`，交换执行顺序并复验。两个顺序的原始报告均须保留；不能只保留较好的一轮或把不同顺序当成不同业务负载。
 
+Linux ARM64 的 Actions 手动入口使用 `suite=benchmark`、`base_source` 和 `new_source` 固定同一对完整提交，`benchmark_order=new-first` 执行逆序复验。`new_source` 留空时使用本次工作流源码。独立运行会重新构建并记录新的程序摘要；不同运行器或不同原生字节的结果不能伪称为同一程序复测，仍须核对平台、依赖、功能和负载是否可比。
+
 ## 方法与边界
 
 比较器核对报告完整性、内容摘要、平台、预热次数、样本和并发。测量记录吞吐、p50/p95/p99、CPU/RSS，CRUD 按逻辑操作计数，RSS 为受测进程及后代的采样总和。区间重叠不能证明性能等价，持续退化信号需要独立复验和定位。

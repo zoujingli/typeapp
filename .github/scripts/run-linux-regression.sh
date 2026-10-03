@@ -99,6 +99,8 @@ case "$task_suite" in
     ;;
   benchmark)
     task_work="$(mktemp -d "$task_root/build/linux-benchmark-ci-XXXXXXXX")"
+    task_order="${TYPE_BENCHMARK_ORDER:-old-first}"
+    [[ "$task_order" == old-first || "$task_order" == new-first ]] || exit 2
     if [[ "$task_build" == build ]]; then
       task_source="${TYPE_NEW_SOURCE:-$(git -C "${TYPE_BENCHMARK_SOURCE_REPOSITORY:-$task_root}" rev-parse HEAD)}"
       php tests/prepare-platform-benchmarks.php "${TYPE_BASE_SOURCE:?请指定用于比较的完整基准提交}" "$task_source" \
@@ -109,7 +111,7 @@ case "$task_suite" in
       task_pair="${TYPE_PAIR_ROOT:?复用测量需要已准备的旧版及新版目录根}"
     fi
     [[ -n "$task_pair" && -f "$task_pair/preparation.json" ]]
-    php tests/benchmark-pairs.php "$task_pair/old" "$task_pair/new" "${TYPE_MYSQL_TOOLS:?}" "${TYPE_PGSQL_TOOLS:?}" | tee "$task_work/measure.log"
+    php tests/benchmark-pairs.php "$task_pair/old" "$task_pair/new" "${TYPE_MYSQL_TOOLS:?}" "${TYPE_PGSQL_TOOLS:?}" "$task_order" | tee "$task_work/measure.log"
     task_measurement="$(sed -n 's/^成对正式测量完成：\(build\/benchmark-pairs-[a-f0-9]*\/verification.json\)$/\1/p' "$task_work/measure.log")"
     [[ -n "$task_measurement" && -f "$task_measurement" ]]
     php tests/benchmark-compare.php "$task_measurement" | tee "$task_work/compare.log"
