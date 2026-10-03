@@ -14,7 +14,8 @@ $protocol = $protocol ?? 'tcp';
 expect(in_array($protocol, ['tcp', 'udp'], true), '不支持的通信消费者');
 $work = BuildPlatform::path($argv[1] ?? '');
 $verify = ($argv[2] ?? '') === '--verify';
-expect($argc === ($verify ? 3 : 2), '用法：php tests/' . $protocol . '-consumer.php <build 下独立消费者绝对目录> [--verify]');
+$handshake = $protocol === 'tcp' && ($argv[2] ?? '') === '--handshake-only';
+expect($argc === ($verify || $handshake ? 3 : 2), '用法：php tests/' . $protocol . '-consumer.php <build 下独立消费者绝对目录> [--verify|--handshake-only]');
 expect(BuildPlatform::contains($root . '/build', $work) && !str_contains($work, '..'), '消费者必须在主仓 build 内');
 $artifact = (new BuildPlatform())->output($work . '/build/native/type-app');
 $runner = new BuildEnvironment();
@@ -117,7 +118,7 @@ try {
     foreach (['thread', 'thread', 'coroutine'] as $index => $mode) {
         $observation = $run . '/' . $index . '-' . $mode;
         expect(mkdir($observation, 0700), '无法准备原始证据目录');
-        $application = new Process([...$command, $run . '/peers.json', $mode, $observation], $run, $environment);
+        $application = new Process([...$command, $run . '/peers.json', $mode, $observation, $handshake ? 'handshake' : 'full'], $run, $environment);
         $execution = $application->wait(40);
         $failures = [];
         foreach (glob($observation . '/*.failure') ?: [] as $failure) {
@@ -136,7 +137,7 @@ try {
         $workers = [];
         foreach ($mode === 'thread' ? ['left', 'right'] : ['main'] as $role) {
             $worker = json_decode((string) file_get_contents($observation . '/' . $role . '.json'), true, 512, JSON_THROW_ON_ERROR);
-            expect($worker['checks'] >= 75 && $worker['coroutines'] === 0 && $worker['process'] === $result['process'], '通信场景不足或协程残留');
+            expect($worker['checks'] >= ($handshake ? 12 : 75) && $worker['coroutines'] === 0 && $worker['process'] === $result['process'], '通信场景不足或协程残留');
             expect(($worker['native_id'] !== $result['main_thread']) === ($mode === 'thread'), '业务线程身份不符');
             $workers[$role] = $worker;
         }
@@ -160,6 +161,7 @@ try {
     }
 }
 file_put_contents($run . '/verification.json', json_encode(['build-id' => $report['build-id'], 'sha256' => $report['sha256'],
+    'scope' => $handshake ? 'handshake-only' : 'full',
     'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'source_count' => count($report['sources']), 'packages' => $packages,
     'no_source' => PHP_OS_FAMILY === 'Darwin' ? 'kernel-denied' : 'not-verified', 'runs' => $results], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
-echo strtoupper($protocol) . ' 六个生产包全量 AOT、双线程重建、主线程协程和独立对端验收通过：' . $run . "\n";
+echo strtoupper($protocol) . ($handshake ? ' 慢握手定向 AOT 验证通过：' : ' 六个生产包全量 AOT、双线程重建、主线程协程和独立对端验收通过：') . $run . "\n";

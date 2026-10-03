@@ -71,6 +71,10 @@ final class TcpProbe
             $outside->stop();
             Coroutine::create(static function () use ($input): void {
                 try {
+                    if ($input['scenario'] === 'handshake') {
+                        self::handshake($input['peers']);
+                        return;
+                    }
                     self::check(defined('SWOOLE_LIBRARY') && class_exists('Swoole\\ConnectionPool', false), '首次协程缺少 Swoole 官方内置库');
                     $plan = new DeploymentBudget(24, 1, 1, 1, 0, 2);
                     self::check($plan->statistics()['per_thread'] === 6, '线程预算被复制');
@@ -137,6 +141,28 @@ final class TcpProbe
         }
     }
 
+    /** 原生编译诊断只保留慢 TLS 握手、截止及清理，完整通信套件仍独立执行。 */
+    private static function handshake(array $peers): void
+    {
+        $budget = new ResourceBudget(1);
+        foreach (['timeout', 'stop'] as $mode) {
+            self::$observations['phase'] = 'handshake-' . $mode;
+            $socket = TcpSocket::client($budget, '127.0.0.1', $peers['idle']['port'], 1024, ['open_ssl' => true]);
+            if ($mode === 'stop') {
+                Swoole\Timer::after(20, static function () use ($socket): void {
+                    self::checkpoint('stop-timer');
+                    $socket->stop();
+                    self::checkpoint('stop-timer-return');
+                });
+            }
+            self::checkpoint('handshake-start');
+            self::rejected(static fn (): mixed => $socket->start(0.15), $mode === 'stop' ? 'tcp_stopped' : 'tcp_timeout');
+            self::checkpoint('handshake-return');
+            self::closed($socket);
+            self::check($budget->statistics()['allocated'] === 0, '慢握手退出仍占有额度');
+        }
+    }
+
     private static function echo(string $host, int $port, array $options, ResourceBudget $budget): void
     {
         self::$observations['phase'] = 'echo';
@@ -176,7 +202,9 @@ final class TcpProbe
         } finally {
             self::checkpoint('echo-close');
             $scope->close();
+            self::checkpoint('echo-scope-closed');
             self::closed($socket);
+            self::checkpoint('echo-closed');
         }
     }
 
@@ -212,6 +240,7 @@ final class TcpProbe
         $began = hrtime(true);
         self::checkpoint('slow-handshake');
         self::rejected(static fn (): mixed => $slow->start(0.15), 'tcp_timeout');
+        self::checkpoint('slow-handshake-return');
         self::check($progress->pop(1) === true, '慢握手阻塞独立连接');
         self::closed($slow);
         self::$observations['slow_client_handshake_seconds'] = (hrtime(true) - $began) / 1000000000.0;
@@ -469,7 +498,9 @@ final class TcpProbe
 
     private static function closed(TcpSocket $socket): void
     {
+        self::checkpoint('await-closed');
         $socket->awaitClosed(1);
+        self::checkpoint('await-closed-return');
         self::check($socket->statistics()['state'] === 'closed' && !$socket->statistics()['allocated'], '原生关闭未完成');
         $socket->stop();
         self::rejected(static fn (): mixed => $socket->start(), 'tcp_stopped');
@@ -495,7 +526,7 @@ function main(int $argc, array $argv): void
         $threads = [];
         foreach (['left', 'right'] as $role) {
             $threads[] = CoroutineRuntime::startThread('tcp', json_encode(['mode' => $mode, 'peers' => $input,
-                'owner' => $owner, 'output' => $root . '/' . $role . '.json'], JSON_THROW_ON_ERROR));
+                'owner' => $owner, 'output' => $root . '/' . $role . '.json', 'scenario' => $argv[4] ?? 'full'], JSON_THROW_ON_ERROR));
         }
         foreach ($threads as $thread) {
             TcpProbe::check($thread->join(), '工作线程未 join');
@@ -503,7 +534,7 @@ function main(int $argc, array $argv): void
         }
     } else {
         $exits[] = TcpProbe::run(json_encode(['mode' => $mode, 'peers' => $input, 'owner' => $owner,
-            'output' => $root . '/main.json'], JSON_THROW_ON_ERROR));
+            'output' => $root . '/main.json', 'scenario' => $argv[4] ?? 'full'], JSON_THROW_ON_ERROR));
     }
     echo json_encode(['process' => getmypid(), 'main_thread' => $main, 'active_threads' => Swoole\Thread::activeCount(),
         'exits' => $exits], JSON_THROW_ON_ERROR) . "\n";
