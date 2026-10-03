@@ -537,7 +537,9 @@ final class TcpProbe
         $replacement->stop();
         self::closed($replacement);
         $refused = TcpSocket::client($budget, '127.0.0.1', $port);
-        self::rejected(static fn (): mixed => $refused->start(0.2), 'tcp_connect_failed');
+        // Windows ConnectEx 在关闭端口上约两秒才返回拒绝；沿用公开入口的默认预算。
+        // 仍要求明确连接失败，超时不算关闭监听的拒绝证据。
+        self::rejected(static fn (): mixed => $refused->start(), 'tcp_connect_failed');
         self::closed($refused);
         self::check($budget->statistics()['allocated'] === 0, '线程退役/监听重用未归还全部额度');
     }
