@@ -90,6 +90,17 @@ final class CoroutineRuntime
             || constant('Swoole\\Thread::TYPEAPP_SOCKET_ARGUMENT_ABI') !== 1)) {
             throw new TaskException('compiled_thread_socket_unavailable', '业务线程套接字传递需要对应的受控 Swoole 能力');
         }
+        if ($socket !== null) {
+            // 新版 Swoole 在关闭套接字后仍可能把参数列表交给原生线程；
+            // 线程入口才发现多余参数时，错误既晚又无法保持调用方的异常语义。
+            // 官方 isClosed() 是跨平台的所有权边界检查，必须在复制描述符前完成。
+            if (!method_exists($socket, 'isClosed')) {
+                throw new TaskException('compiled_thread_socket_unavailable', '业务线程套接字传递需要可检查的 Swoole 套接字能力');
+            }
+            if ($socket->isClosed()) {
+                throw new \Swoole\Exception('cannot pass a closed socket to a native thread');
+            }
+        }
         if ($control !== null && (!defined('Swoole\\Thread::TYPEAPP_CONTROL_ARGUMENT_ABI')
             || constant('Swoole\\Thread::TYPEAPP_CONTROL_ARGUMENT_ABI') !== 1)) {
             throw new TaskException('compiled_thread_control_unavailable', '业务线程控制状态需要原生 Map 传递能力');
