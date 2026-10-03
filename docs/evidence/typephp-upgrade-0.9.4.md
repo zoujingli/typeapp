@@ -80,6 +80,14 @@ macOS 的早期轮次存在 Homebrew tap 网络失败和后续推送取消，尚
 
 macOS UDP 复验先暴露独立消费者的运行目录问题：默认模块仍在受禁读的 Composer `vendor` 中，加载被沙箱拒绝。消费者现复用 `independentSwooleModule()` 将同字节模块放入独立运行目录，保持源码禁读范围。随后六个生产包、91 个源码单元全量 AOT 通过，双线程重建两轮及主线程协程均完成 IPv4/IPv6、重复绑定拒绝与资源归还；程序 SHA-256 为 `43fe4dad52ac68473964c48ddc47fef5d79fe2b5533e90e56908d2abf9b51aff`，报告位于 `build/toolchain-upgrade-followup.lVbKwh/udp-exclusive-runtime/run-8e80492992/verification.json`。首轮加载失败另行保留，不能据此推断 Windows 通信结果。
 
+[Windows 通信复验 37116138110](https://github.com/zoujingli/typeapp/actions/runs/37116138110) 使用源码 `3c583020f5fb5813256feaa8eabd469fab3775e8`。UDP 全部通过：两轮双线程各完成 375 项断言，主线程协程完成 374 项，退出均为零且协程清空；六个生产包、91 项源码全量 AOT，程序 SHA-256 为 `8ad36c8a8ac7c8e048305be952c9646410874b1590ab782312d2bf80b2280510`，Artifact `11271511889`。该独立消费者在 Windows 的源码禁读字段仍为 `not-verified`，不能据此声称完成无源码隔离。
+
+同轮 TCP 已通过非 TLS 的 IPv4、IPv6 与 localhost 回声，两个线程各完成 87 项断言后在 `tcp.typeapp.test` 返回 DNS 错误 711；进程退出 255、没有超时，尚未进入 TLS。Artifact `11272275702` 保留原程序与失败点。新增的最小 DNS 探针在 [37117228380](https://github.com/zoujingli/typeapp/actions/runs/37117228380)、源码 `2d4f1300743a912f12a90a32ed74e2c4b955bf09` 中复现主线程和两次工作线程重建均返回 711，独立 DNS 对端没有收到查询。固定 Swoole 在未启用 c-ares 时走系统解析器，原 Windows 共享模块的配置确实缺少 `--enable-cares`；静态 SDK 已启用，不能把共享模块的失败泛化为静态程序已经失败。
+
+共享模块构建现加入固定 c-ares 1.34.8（源码 `c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab`，归档 SHA-256 `c9ea1b3029b23b04376c229bd519489cee180874ec48cd863a5dcba628c0fe03`），使用与共享 PHP 一致的 `/MD` CRT，并静态链接到 Swoole DLL。生产静态 SDK 继续 `/MT`。原始许可证与组件保留材料的 SHA-256 均为 `460f5e768fda3752ca2169a95df062578a10fb126bfd65f3b9b1a1bed2f84807`。构建同时检查 `SW_USE_CARES`、实际静态库摘要及 DLL 导入表；模块重建和完整 TCP/TLS 结果需另行记录。
+
+IPv6/独占绑定适配后的 Windows 静态 SDK 已按 `3c583020f5fb5813256feaa8eabd469fab3775e8` 分别重建：[SQLite 37116141545](https://github.com/zoujingli/typeapp/actions/runs/37116141545)、[MySQL 37116144369](https://github.com/zoujingli/typeapp/actions/runs/37116144369)、[PostgreSQL 37116146811](https://github.com/zoujingli/typeapp/actions/runs/37116146811) 均成功。回读三份原生探针报告，实际数据库扩展各自仅包含所选驱动，PHP 8.5.10 ZTS、Swoole `6.3.0RC1` 与系统库清单均匹配；探针范围为 PHP 和扩展 embed，不能替代下文应用程序验收。SDK Artifact 依次为 `11272016209`、`11271896210`、`11270749874`。
+
 ### 静态程序预验收
 
 以下运行采用源码 `11a73078df41a9f8116384705251d37603f24666`，用于验证新版工具链与静态依赖。它们不是最终 RC14 标签的候选附件，后续发布仍须从最终固定源码重新构建并验收同一程序。
@@ -120,6 +128,10 @@ macOS 的新旧程序分别从 RC13 源码与 `4631be08002695625477229d2552e10b7
 文件流对照复用 `examples/file-http-command.php` 与 `examples/files`，以相同源码分别编译两版独立消费者。每轮预热 10 次，再下载 100 次 1 MiB 文件，逐次校验状态、长度和摘要；每种顺序执行三组新旧配对。首轮吞吐中位数为旧版 396.12、新版 392.36 次/秒（-0.95%），逆序复验为 392.48、395.30 次/秒（+0.72%），没有重复出现下降。首轮 p50/p95/p99 为旧版 0.723/1.031/1.114、新版 0.727/1.046/1.106 毫秒；逆序为旧版 0.722/1.072/1.155、新版 0.730/1.044/1.103 毫秒。两轮 CPU 中位数均为 0.07 秒，RSS 中位数变化分别为 +0.47% 和 +0.26%，全部服务正常停止。
 
 文件消费者的旧/新编译耗时分别为 136.448/129.356 秒，程序分别为 3,278,456/3,314,424 字节。准备身份、原始样本和两轮比较位于 `build/toolchain-upgrade-followup.lVbKwh/file-benchmark-*.json`；旧/新程序 SHA-256 分别为 `5ab734e8c3e9d059ecab6deffe745f9f661a4cd7d330cc9573a55895a1346d9d`、`73b73f54b201fc6c8a41196ecbaa1093e310e1d4bb2a05d928c568607c230196`。该顺序负载未确认持续回退，也不支持宣传吞吐改善或推广到其他平台、并发量。
+
+[Linux ARM64 首轮完整测量 37112212467](https://github.com/zoujingli/typeapp/actions/runs/37112212467) 比较 RC13 与 `fe3c22f79fdaabc607012cd13b72d4fda1623906`，三库均完成三次重复；比较器返回 `regression-signal-needs-repeat`，整个运行记为失败。PostgreSQL 短 JSON 吞吐中位数变化 -6.42%、p50/p95 分别 +7.15%/+5.95%；SQLite 慢依赖、PostgreSQL CRUD 和慢依赖也触发复验信号。原始测量与比较保存在 Artifact `11270479905`。逆序复验继续固定这两个源码提交；新的运行会重新编译，须分别记录程序摘要，不能称为同一原生字节的复测。
+
+本次升级尚未完成 Linux x64 与 Windows 的同条件性能对照，也未完成非 macOS 平台的文件流对照。各平台功能验收与程序体积核验不能替代这些测量。
 
 待平台任务完成后，必须追加每个平台的最终程序身份、12 个 profile 的摘要、实际未执行范围和公开下载回读；性能与体积对照没有原始报告时保持未验证。
 

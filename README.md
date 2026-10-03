@@ -4,7 +4,7 @@ TypeApp 是面向原生交付的 PHP 应用框架。用 PHP 编写业务，按�
 
 框架提供通信、数据、任务与资源管理能力。Swoole 作为内置原生运行库提供网络与并发支持，由构建流程管理并随应用交付，无需在部署端单独安装。TypePHP 和 Composer 用于构建，业务请求不依赖它们。
 
-**交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** `v1.0.0-rc.14` 按 Linux x64 / ARM64、macOS ARM64、Windows x64 × `sqlite`、`mysql`、`pgsql` 提供 12 个静态单程序；每个程序只包含对应 profile 的数据库驱动和已启用能力。按平台与数据库选择一个下载项；安装方法见[版本安装](docs/guide/releases.md)，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
+**交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** 已公开的 RC13 按 Linux x64 / ARM64、macOS ARM64、Windows x64 × `sqlite`、`mysql`、`pgsql` 提供 12 个静态单程序；每个程序只包含对应 profile 的数据库驱动和已启用能力。RC14 正在用新版工具链重新验收。按平台与数据库选择一个下载项；安装方法见[版本安装](docs/guide/releases.md)，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
 
 文档站：[iots.top](https://iots.top)。新业务从 `type-project` 创建；主仓附带的物联中心展示框架如何组成业务产品。
 
@@ -34,7 +34,7 @@ TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typep
 
 ## 快速开始
 
-开发机准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展，具体分工见[环境与依赖](docs/guide/environment.md)。先按[版本安装示例](docs/guide/releases.md#composer-按版本安装)从 Packagist 创建 `my-app`，选择数据库，将模板与组件固定到 `1.0.0-rc.14`，然后在应用根目录执行：
+开发机准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展，具体分工见[环境与依赖](docs/guide/environment.md)。RC14 公开并由 Packagist 索引后，按[版本安装示例](docs/guide/releases.md#composer-按版本安装)创建 `my-app`，选择数据库，将模板与组件固定到 `1.0.0-rc.14`，然后在应用根目录执行：
 
 ```bash
 php dev.php help

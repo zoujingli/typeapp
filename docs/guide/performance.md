@@ -29,11 +29,11 @@ TypeApp 面向低开销、高并发的应用：把可提前完成的工作放在
 
 ## 当前性能证据
 
-历史 TypePHP 0.9.3 / PHPX 2.9.2 升级在 macOS ARM64 做过同业务、同平台、同负载对照，覆盖短 JSON、MySQL/PostgreSQL/SQLite CRUD、真实锁等待及 1 MiB 文件流。多轮和交替顺序测量未确认持续性能退化，原始方法与结果见[历史升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)。当前 0.9.4 / 2.9.3 与 Swoole 开发快照以 RC13 作为历史基线，RC14 的同条件对照仍待四平台任务完成后补入[本次升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)；版本更新本身不代表吞吐提升或程序缩小。
+历史 TypePHP 0.9.3 / PHPX 2.9.2 升级在 macOS ARM64 做过同业务、同平台、同负载对照，覆盖短 JSON、MySQL/PostgreSQL/SQLite CRUD、真实锁等待及 1 MiB 文件流。多轮和交替顺序测量未确认持续性能退化，原始方法与结果见[历史升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)。当前 0.9.4 / 2.9.3 与 Swoole 开发快照以 RC13 作为历史基线：macOS 已完成应用与文件流的两种顺序测量，未在相同负载重复确认回退；Linux ARM64 首轮出现回退信号，正在逆序复验。Linux x64、Windows 的同条件对照尚未完成，准确身份与结果见[本次升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。版本更新本身不代表吞吐提升或程序缩小。
 
 这组测量的请求并发为 1，操作速率包含控制器和准备成本，用于升级回归判断，不能作为最大 RPS 或高并发容量。当前尚无覆盖全部平台与业务的峰值吞吐结论，高并发容量需由应用在目标环境按真实负载验收。
 
-后续四平台默认 CI 已通过功能矩阵，但未运行需要显式基准提交的可选性能组。因此不由这次 CI 成功推导性能提升，实际范围见[平台与验收](platforms.md)。
+RC13 的四平台默认 CI 已通过功能矩阵；RC14 正在独立验收。默认功能组与需要显式基准提交的性能组分别记录，不能由功能 CI 成功推导性能提升，实际范围见[平台与验收](platforms.md)。
 
 需要复现对照时，按[平台性能方法](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-performance.md)准备固定源码、工具链和专用测试服务。报告同时记录延迟分位数、吞吐、错误、CPU 与内存，不只展示最快一次结果。
 

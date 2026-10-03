@@ -27,7 +27,7 @@
   </div>
 </section>
 
-> **交付一个主程序文件，配置独立维护，启动不释放运行库。** `v1.0.0-rc.14` 按四个平台 × 三个数据库 profile 提供 12 个静态单程序，每个下载项仍只有一个主程序。按平台与数据库选择一个下载项。部署端无需安装 PHP、Swoole、Composer 或 Node.js；使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
+> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 已公开的 RC13 按四个平台 × 三个数据库 profile 提供 12 个静态单程序，每个下载项仍只有一个主程序；RC14 正在用新版工具链重新验收。按平台与数据库选择一个下载项。部署端无需安装 PHP、Swoole、Composer 或 Node.js；使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
 
 <div class="feature-grid">
   <div><span class="feature-number">01 / DEVELOP</span><h2>按业务组合</h2><p>路由、模型、通信与任务，<br>通过组件形成应用。</p></div>
@@ -55,7 +55,7 @@
 
 ## 创建第一个应用
 
-按[版本安装教程](guide/releases.md#composer-按版本安装)从 Packagist 创建 `my-app`，选择数据库，并将模板和组件固定到 `1.0.0-rc.14`。完成安装后，在应用根目录检查实际入口：
+RC14 公开并由 Packagist 索引后，按[版本安装教程](guide/releases.md#composer-按版本安装)创建 `my-app`，选择数据库，并将模板和组件固定到 `1.0.0-rc.14`。完成安装后，在应用根目录检查实际入口：
 
 ```bash
 php dev.php help
