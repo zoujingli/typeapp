@@ -120,7 +120,7 @@ IPv6/独占绑定适配后的 Windows 静态 SDK 已按 `3c583020f5fb5813256feaa
 
 [并行握手与监听对照 37123480987](https://github.com/zoujingli/typeapp/actions/runs/37123480987)，源码 `29e7c97f17a6e075c6f7c08a953c40d2bcdb5079`，通过只恢复并行回声的 AOT 场景，程序摘要 `1f054c404f65994e1e6e8c77ecad34a0aab4894be90edb7e28dc9f99d52a5ebf`，构建身份 `41a7de583595654241d8ad7a2aa75469a4b1b4f19a752935ce621651be88a78c`。随后 `tests/tcp-binding.php` 独立复现重复监听未被拒绝：IPv4、IPv6 的第二个同端口监听均为 `accepted`；显式清理后额度与协程均为零，进程正常返回测试失败。这条最小路径不含 TLS、DNS、并行回声或 AOT；原生程序与报告保存在 Artifact `11273479089`（摘要 `5a5f8e3fd578a7ff9d0c3bc94097665100574b51c7bc37ddaaf00f9200b49d81`）。
 
-候选修正仅调整 `TcpSocket` 监听前的官方选项：Windows 从 `SO_REUSEADDR` 改为 `SO_EXCLUSIVEADDRUSE`，Unix 沿用既有选项。复用 UDP 已有的固定 Swoole 绑定适配，不修改原生调度或追加 ABI；重复监听仍须返回 `tcp_listen_failed`。最小回归及完整 AOT 尚须在修改后重新验证，不能将 PHP 复现结果当作修复通过。
+候选修正仅调整 `TcpSocket` 监听前的官方选项：Windows 从 `SO_REUSEADDR` 改为 `SO_EXCLUSIVEADDRUSE`，Unix 沿用既有选项。复用 UDP 已有的固定 Swoole 绑定适配，不修改原生调度或追加 ABI；重复监听仍须返回 `tcp_listen_failed`。该阶段尚待最小回归及完整 AOT，后续结果分别记录如下。
 
 [独占监听复验 37124385204](https://github.com/zoujingli/typeapp/actions/runs/37124385204)，源码 `1c733ae9fb62f7902597184d523582d014f81c77`，已通过 IPv4/IPv6 的最小重复监听拒绝与清理，原生 TLS 探针也通过。完整 TCP AOT 仍在 40 秒外层截止被终止：一线程进入服务端场景，记录子任务清理超时，另一线程最后位于回声关闭后；不能把最小修复通过写成完整通信通过。原程序和检查点保存在 Artifact `11274204892`，归档摘要 `5fe76cbe79d32c67c279937a12a3f4f75677867bd3442bcab83054f7289b3692`。本轮 UDP 也失败，另存其原始报告，尚未确认原因。
 
@@ -174,6 +174,12 @@ Windows 后续使用源码 `53193c921efe0f35d1d24dd600b1cbb8fdce2b73` 及 IPv6/�
 | PostgreSQL | 49,976,813 | `47de7c581a66df1eaf5253323a95513193c8095f084903ed605fd90e85b2a9cb` | `11274500314` |
 
 三份应用证据 Artifact 摘要分别为 `bdc5ffd816bf8552b4d6eddbfcf7df10e076948326a383ca4f4e9dfefa72cf1e`、`5b18aac791f32fa3d437609eca0a89480c5133ba0bd2575a9e8b297b86b45c02`、`f86b07bb03d94887ebde89b3dd9683261cec7b1a4f5b24be212381600f86433f`，本地保留于 `build/toolchain-upgrade-followup.lVbKwh/windows-tls-programs/`。下载中断后的重试仅恢复同一 Artifact 并回读摘要，没有重新编译或覆盖原始验收身份。
+
+### 服务端最小对照与剩余 TCP 故障
+
+[Windows PHP 服务端对照 37125205272](https://github.com/zoujingli/typeapp/actions/runs/37125205272) 在主线程和单工作线程均完成 4096 字节回声、作用域任务等待和额度归还，Artifact `11274825570` 的摘要为 `74fe1a983b6b5e338db86b8630bbf31f6a6b0b4665856ae22cf5d077bd5709b4`。该 PHP 路径使用默认 65536 字节片段，不能视为与双线程、1024 字节片段的 AOT 完全等价。
+
+[Windows AOT 对照 37125507154](https://github.com/zoujingli/typeapp/actions/runs/37125507154)，源码 `35f2372f3f97f90bd8ceae2edb1f52e7d55ddabb`，最小服务端通过双线程两轮及主线程协程，分别每线程 24 项、主线程 23 项断言。六个生产包及 91 项源码完整编译；程序摘要为 `bdd2172df9f4b44735c8bae0de3d7f7eeaaae48b07171539e27568a153087b01`，构建身份 `e98e7e6e25a0898733a919d449bddc500eec1bb712c1d2211822103d78942bda`。随后同一程序的完整套件失败：一线程记录背压期间的并行任务未完成，另一线程到达监听退役阶段，关闭端口后在 0.2 秒内收到 `tcp_timeout`，而断言要求 `tcp_connect_failed`。最终由 40 秒外层截止终止，不是原生崩溃。Artifact `11275710867` 的摘要为 `367856108b74a01614016f91752ae88a4b49f8fc84ad0fb961a99077934b48fc`；最小通过与完整失败均保留，后续分别测量拒绝时间和隔离背压场景。
 
 ### 性能测量的运行环境
 

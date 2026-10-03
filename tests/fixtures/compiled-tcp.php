@@ -79,6 +79,10 @@ final class TcpProbe
                         self::server($input['peers'], new ResourceBudget(4), '127.0.0.1', false, false);
                         return;
                     }
+                    if ($input['scenario'] === 'backpressure') {
+                        self::backpressure($input['peers'], new ResourceBudget(4));
+                        return;
+                    }
                     self::check(defined('SWOOLE_LIBRARY') && class_exists('Swoole\\ConnectionPool', false), '首次协程缺少 Swoole 官方内置库');
                     $plan = new DeploymentBudget(24, 1, 1, 1, 0, 2);
                     self::check($plan->statistics()['per_thread'] === 6, '线程预算被复制');
@@ -364,7 +368,11 @@ final class TcpProbe
             throw new RuntimeException('独立慢对端未产生背压');
         } catch (TaskException $error) {
             self::check(in_array($error->errorCode(), ['tcp_timeout', 'tcp_partial_write'], true), '背压错误原因不符');
-            self::check($done->pop(1) === true, '背压期间独立连接或重复写检查失败');
+            $parallel = $done->pop(1);
+            self::$observations['backpressure_parallel'] = ['channel_error' => $done->errCode,
+                'result' => $parallel instanceof Throwable ? get_class($parallel) . ': ' . $parallel->getMessage() : $parallel,
+                'coroutines' => Coroutine::stats()['coroutine_num']];
+            self::check($parallel === true, '背压期间独立连接或重复写检查失败');
             self::$observations['backpressure'] = ['completed_bytes' => $written, 'reason' => $error->errorCode(),
                 'seconds' => (hrtime(true) - $began) / 1000000000.0, 'stats' => $socket->statistics()];
         } finally {

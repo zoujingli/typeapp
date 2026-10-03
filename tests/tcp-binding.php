@@ -49,9 +49,31 @@ Swoole\Coroutine::create(static function () use (&$results): void {
     }
 });
 Swoole\Event::wait();
+// 对照短截止与原生拒绝完成时间；采样不修改生产连接预算，也不把超时当成拒绝通过。
+$refusal = [];
+Swoole\Coroutine::create(static function () use (&$refusal): void {
+    $budget = new ResourceBudget(1);
+    $listener = TcpSocket::listener($budget, '127.0.0.1');
+    $listener->start();
+    $port = $listener->addresses()['local']['port'];
+    $listener->stop();
+    $listener->awaitClosed(1);
+    foreach ([0.2, 5.0] as $timeout) {
+        $socket = new Swoole\Coroutine\Socket(AF_INET, SOCK_STREAM, 0);
+        $began = hrtime(true);
+        try {
+            $connected = $socket->connect('127.0.0.1', $port, $timeout);
+            $refusal[] = ['timeout' => $timeout, 'connected' => $connected, 'errno' => $socket->errCode,
+                'seconds' => (hrtime(true) - $began) / 1e9];
+        } finally {
+            $socket->close();
+        }
+    }
+});
+Swoole\Event::wait();
 $coroutines = Swoole\Coroutine::stats()['coroutine_num'];
 $passed = count($results) === 2 && !in_array(false, array_column($results, 'passed'), true) && $coroutines === 0;
 file_put_contents($directory . '/verification.json', json_encode(['passed' => $passed, 'platform' => PHP_OS_FAMILY,
-    'swoole' => phpversion('swoole'), 'coroutines' => $coroutines, 'results' => $results], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    'swoole' => phpversion('swoole'), 'coroutines' => $coroutines, 'results' => $results, 'refusal' => $refusal], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 expect($passed, '重复 TCP 监听必须拒绝且归还额度；见 ' . $directory . '/verification.json');
 echo "TCP IPv4/IPv6 重复监听拒绝与清理验证通过。\n";

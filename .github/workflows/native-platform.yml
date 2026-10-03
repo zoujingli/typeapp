@@ -298,7 +298,7 @@ jobs:
           $env:COMPOSER_DISABLE_NETWORK='1'
           $taskConsumer = Join-Path $env:GITHUB_WORKSPACE "build/toolchain-regressions-socket-probe/$env:SOCKET_PROTOCOL"
           $taskArguments = @("tests/$env:SOCKET_PROTOCOL-consumer.php", $taskConsumer)
-          if ($env:SOCKET_PROTOCOL -eq 'tcp' -and $env:TCP_HANDSHAKE_ONLY -ne 'true') { $taskArguments += '--server-only' }
+          if ($env:SOCKET_PROTOCOL -eq 'tcp' -and $env:TCP_HANDSHAKE_ONLY -ne 'true') { $taskArguments += '--backpressure-only' }
           if ($env:TCP_HANDSHAKE_ONLY -eq 'true') { $taskArguments += '--handshake-only' }
           if ($env:TCP_HANDSHAKE_ONLY -eq 'true' -and $env:TCP_WITH_ECHO -eq 'true') { $taskArguments += '--with-echo' }
           & "$env:PHP_HOME/php.exe" @taskArguments
