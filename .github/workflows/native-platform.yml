@@ -328,6 +328,11 @@ jobs:
         run: |
           & "$env:PHP_HOME/php.exe" tests/tcp-binding.php (Join-Path $env:GITHUB_WORKSPACE 'build/toolchain-regressions-socket-probe/binding')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 对照 DNS 后原生 Socket 句柄复用
+        if: always() && matrix.protocol == 'tcp'
+        run: |
+          & "$env:PHP_HOME/php.exe" tests/swoole-dns-reuse.php (Join-Path $env:GITHUB_WORKSPACE 'build/toolchain-regressions-socket-probe/dns-reuse')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 保存原程序、对端和失败检查点
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -338,6 +343,7 @@ jobs:
             build/toolchain-regressions-socket-probe/**/*.log
             build/toolchain-regressions-socket-probe/**/*.failure
             build/toolchain-regressions-socket-probe/**/execution.json
+            build/toolchain-regressions-socket-probe/**/*.checkpoint.json
             build/toolchain-regressions-socket-probe/**/verification.json
             build/toolchain-regressions-socket-probe/**/peer.json
             build/toolchain-regressions-socket-probe/**/dns.json

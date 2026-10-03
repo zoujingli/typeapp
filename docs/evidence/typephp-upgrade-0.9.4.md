@@ -185,6 +185,10 @@ Windows 后续使用源码 `53193c921efe0f35d1d24dd600b1cbb8fdce2b73` 及 IPv6/�
 
 [UDP 延迟发送复验 37126419401](https://github.com/zoujingli/typeapp/actions/runs/37126419401)，源码 `13972b766647fca95876b697d49651c79398af70`，在 Windows x64 使用 120 毫秒对端延迟通过全部 UDP 场景：两轮双线程各 377 项、主线程 376 项断言，协程清空，六个生产包和 91 项源码全量 AOT。程序摘要 `5b4e98e2960ab71f7b1b9c618b0288e999ab8e0fdb7d62a2a5db55f022ed117a`，构建身份 `f0b69a4d01c19ef4dd10259be3b20da02291aab82572d797a53569df2674e59a`；Artifact `11274942367` 摘要 `2aebfecf18b01d5d403208cd052fc5f5b00d8a0e9c16524fc8a212956893a458` 已回读核对。该消费者在 Windows 的源码禁读仍为 `not-verified`。同轮 TCP 两个线程均到达监听退役后触发原 0.2 秒拒绝断言，整体运行仍失败；Artifact `11275273189` 摘要 `184942ed46cd8ba15a40c096e7abe82d0997da857c43c1e30bca73138b69b28d` 保留原程序和失败报告。
 
+[Windows 背压与完整套件对照 37126934735](https://github.com/zoujingli/typeapp/actions/runs/37126934735)，源码 `608601f7a786f7d6ddb4c95fee3c91b4290d5557`，独立背压场景完成双线程两轮及主线程验收。随后对同一程序执行完整 TCP 套件，两个线程均停在慢 TLS 握手与并行回声的组合：最后检查点为 `echo-closed`、228 项断言，尚未记录慢握手完成耗时，也未进入背压场景。没有线程异常文件，40 秒后由控制器终止，不能归为原生崩溃或背压断言失败。
+
+该程序 SHA-256 为 `c4f162e0131b266c69715474ec582adcae47471b233da18ec1093f28a8504e6f`，构建身份 `2d0cbde44be36babf56fe7992f6df55ffc8b602b745125698ae9703a73748bee`；Artifact `11274693109` 摘要 `1ea884bebe179a11dd2b5abf36abf4306ddd7ebaf8c9b3df50a5d98b10969d67` 已回读核对。本地保留在 `build/toolchain-upgrade-followup.lVbKwh/tcp-backpressure-windows/`。后续隔离 trace 构建只用于区分 IOCP 取消、完成通知及线程收尾，不替代默认模块的完整验收。
+
 ### 性能测量的运行环境
 
 macOS 的新旧程序分别从 RC13 源码与 `4631be08002695625477229d2552e10b7834a242` 完整编译，使用相同 PHP SDK 和 83 个相同前端资源。首轮测量在旧程序安装阶段被 `运行扩展身份不一致：swoole` 拒绝：成对控制器错误地继承了当前新版模块的 INI。仅改为该旧程序构建报告中的运行 INI 后，同一程序完成空库与前端安装。成对测量入口现逐版本定位和记录已探测 INI，失败轮次保留，不计入吞吐或延迟结果；原始基准程序未因这个控制器修复重新编译。
