@@ -593,24 +593,20 @@ function httpThreadContracts(string $directory): int
     }
     unset($datagram);
     $held = new Socket(AF_INET, SOCK_STREAM, 0);
-    // Windows 在 SO_REUSEADDR 下允许再次 bind；先启用独占选项，下面的
-    // 所有权断言才观察监听是否仍被借用，而不是观察平台套接字选项差异。
-    if (defined('SO_EXCLUSIVEADDRUSE')
-        && !$held->setOption(SOL_SOCKET, (int) constant('SO_EXCLUSIVEADDRUSE'), 1)) {
-        throw new RuntimeException('无法设置独占监听选项');
-    }
     if (!$held->bind('127.0.0.1', 0)) {
         throw new RuntimeException('held listener bind failed');
     }
     $port = $held->getsockname()['port'];
     $borrower = Server::fromSocket($held);
     unset($held);
-    $conflict = new Socket(AF_INET, SOCK_STREAM, 0);
-    if (@$conflict->bind('127.0.0.1', $port)) {
+    // Windows 的 SO_REUSEADDR 允许另一个套接字再次 bind；用真实连接观察
+    // 借用期间监听仍由 Server 持有，避免为测试改变官方 fromSocket 的选项。
+    $borrowedProbe = new Socket(AF_INET, SOCK_STREAM, 0);
+    if (!$borrowedProbe->connect('127.0.0.1', $port, 0.5)) {
         throw new RuntimeException('borrowed listener was released early');
     }
-    $conflict->close();
-    unset($conflict, $borrower);
+    $borrowedProbe->close();
+    unset($borrowedProbe, $borrower);
     Swoole\Event::wait();
     $released = new Socket(AF_INET, SOCK_STREAM, 0);
     if (!$released->bind('127.0.0.1', $port)) {
