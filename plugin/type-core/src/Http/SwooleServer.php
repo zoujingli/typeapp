@@ -283,6 +283,7 @@ final class SwooleServer implements HttpServerInterface
         }
         $this->threadStarted = true;
         try {
+            $this->traceHttp('owned-entry cid=' . \Swoole\Coroutine::getCid());
             \Swoole\Coroutine::set(['max_coroutine' => $this->control->maximumConnections
                 + $this->control->maximumRequests * $this->control->maximumChildren + 2]);
             // IOCP 的 reactor 必须先由 Scheduler 建立，再创建协程 HTTP
@@ -293,13 +294,16 @@ final class SwooleServer implements HttpServerInterface
             $server = null;
             $run = function () use (&$server, $host, $port, $state): void {
                 try {
+                    $this->traceHttp('owned-run-enter cid=' . \Swoole\Coroutine::getCid());
                     $server = new \Swoole\Coroutine\Http\Server($host, $port);
+                    $this->traceHttp('owned-server-created fd=' . (string) $server->fd . ' port=' . (string) $server->port);
                     $server->set([
                         'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
                         'http_compression' => false, 'package_max_length' => $this->limits->bytes,
                         'socket_timeout' => $this->control->requestSeconds,
                     ]);
                     $server->handle('/', function (Request $request, Response $response): void {
+                        $this->traceHttp('owned-handler path=' . (string) ($request->server['request_uri'] ?? ''));
                         $this->handleNative($request, $response);
                     });
                     if ($state['stop'] === true) {
@@ -333,10 +337,13 @@ final class SwooleServer implements HttpServerInterface
                     $this->watchdog = $timer;
                     $state['pulse'] = hrtime(true);
                     $state['ready'] = true;
+                    $this->traceHttp('owned-start-enter');
                     if (!$server->start()) {
                         throw new TaskException('http_thread_start_failed', 'HTTP 线程监听启动失败：' . $server->errCode . ' ' . $server->errMsg);
                     }
+                    $this->traceHttp('owned-start-return');
                 } catch (Throwable $error) {
+                    $this->traceHttp('owned-run-error ' . $error::class . ': ' . $error->getMessage());
                     $this->threadFailure = $error;
                     $state['failed'] = true;
                 } finally {
@@ -356,6 +363,7 @@ final class SwooleServer implements HttpServerInterface
                 }
                 \Swoole\Event::wait();
             }
+            $this->traceHttp('owned-run-complete');
             if ($this->threadFailure !== null) {
                 throw $this->threadFailure;
             }
@@ -403,6 +411,7 @@ final class SwooleServer implements HttpServerInterface
      */
     public function handleNative(Request $raw, Response $output): void
     {
+        $this->traceHttp('handle-enter ' . (string) ($raw->server['request_uri'] ?? ''));
         if (isset($raw->header['upgrade'])) {
             // HttpServerInterface 没有升级后的会话所有者，探针也不能绕过协议拒绝。
             $output->header('Connection', 'close');
@@ -482,6 +491,14 @@ final class SwooleServer implements HttpServerInterface
                 }
             }
             $this->control->finish($scope, $cleanupFailed);
+        }
+    }
+
+    /** 仅供 Windows 原生回归定位 IOCP 生命周期；生产环境默认不写日志。 */
+    private function traceHttp(string $message): void
+    {
+        if (getenv('TYPEAPP_HTTP_TRACE') === '1') {
+            fwrite(STDERR, 'typeapp-http: ' . $message . "\n");
         }
     }
 
