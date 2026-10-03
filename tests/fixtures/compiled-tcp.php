@@ -567,6 +567,11 @@ function main(int $argc, array $argv): void
     $root = $argv[3];
     // 固定上游 c-ares 支持此标准设置；只改变本测试进程，不修改系统 DNS 或主机网络。
     Coroutine::set(['dns_server' => '127.0.0.1:' . $input['dns']['port'], 'log_file' => $root . '/native.log']);
+    if (PHP_OS_FAMILY === 'Windows' && getenv('TYPEAPP_IOCP_TRACE') === '1') {
+        // 仅显式诊断的隔离模块启用官方事件/Socket/协程/Timer 跟踪；生产与默认测试不启用。
+        Coroutine::set(['log_level' => SWOOLE_LOG_TRACE,
+            'trace_flags' => SWOOLE_TRACE_EVENT | SWOOLE_TRACE_SOCKET | SWOOLE_TRACE_COROUTINE | SWOOLE_TRACE_TIMER]);
+    }
     $owner = base64_encode(serialize(new ExecutionOwner(false)));
     $main = Swoole\Thread::getNativeId();
     $exits = [];

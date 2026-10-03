@@ -17,7 +17,7 @@ on:
       scope:
         description: 验收范围（http-probe 仅 IOCP、socket-probe 仅 TCP/UDP、tls-probe 仅 PHP 探针、tcp-handshake 仅握手 AOT；sqlite-app/pgsql-app 仅应用诊断；template 仅模板）
         type: choice
-        options: [full, native, orm, template, pgsql-probe, pgsql-app, sqlite-app, http-probe, socket-probe, tls-probe, tcp-handshake]
+        options: [full, native, orm, template, pgsql-probe, pgsql-app, sqlite-app, http-probe, socket-probe, tls-probe, tcp-handshake, tcp-trace]
         default: full
       orm_driver:
         description: 仅 scope=orm 生效；单库结果不代表三库验收
@@ -39,12 +39,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-platform-${{ github.ref }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app","http-probe","socket-probe","tls-probe","tcp-handshake"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
+  group: native-platform-${{ github.ref }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app","http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
   cancel-in-progress: true
 
 jobs:
   windows:
-    if: github.repository == 'zoujingli/typeapp' && !contains(fromJSON('["http-probe","socket-probe","tls-probe","tcp-handshake"]'), inputs.scope)
+    if: github.repository == 'zoujingli/typeapp' && !contains(fromJSON('["http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace"]'), inputs.scope)
     runs-on: windows-2022
     timeout-minutes: 120
     env:
@@ -257,7 +257,7 @@ jobs:
             build/template-*/build/compiler/compile.log
 
   socket-probe:
-    if: github.repository == 'zoujingli/typeapp' && github.event_name == 'workflow_dispatch' && contains(fromJSON('["socket-probe","tls-probe","tcp-handshake"]'), inputs.scope) && inputs.candidate_version == ''
+    if: github.repository == 'zoujingli/typeapp' && github.event_name == 'workflow_dispatch' && contains(fromJSON('["socket-probe","tls-probe","tcp-handshake","tcp-trace"]'), inputs.scope) && inputs.candidate_version == ''
     name: socket-probe · ${{ matrix.protocol }}
     runs-on: windows-2022
     timeout-minutes: 30
@@ -276,7 +276,13 @@ jobs:
         with:
           persist-credentials: false
       - name: 准备已核验的 Windows x64 ZTS SDK
+        if: inputs.scope != 'tcp-trace'
         run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 为 TCP 诊断重建官方 IOCP trace 模块
+        if: inputs.scope == 'tcp-trace'
+        env:
+          TYPE_SWOOLE_BUILD_FROM_SOURCE: '1'
+        run: ./.github/scripts/prepare-windows-native.ps1 -TraceLog
       - name: 安装锁定工具链
         run: |
           & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
@@ -292,18 +298,23 @@ jobs:
           SOCKET_PROTOCOL: ${{ matrix.protocol }}
           TCP_HANDSHAKE_ONLY: ${{ inputs.scope == 'tcp-handshake' }}
           TCP_WITH_ECHO: ${{ inputs.tcp_with_echo }}
+          TCP_TRACE: ${{ inputs.scope == 'tcp-trace' }}
           TYPE_TEST_UDP_BURST_DELAY_MS: ${{ matrix.protocol == 'udp' && '120' || '0' }}
         run: |
           $env:COMPOSER_BINARY="$env:PHP_HOME/composer.phar"
           $env:COMPOSER_DISABLE_NETWORK='1'
           $taskConsumer = Join-Path $env:GITHUB_WORKSPACE "build/toolchain-regressions-socket-probe/$env:SOCKET_PROTOCOL"
           $taskArguments = @("tests/$env:SOCKET_PROTOCOL-consumer.php", $taskConsumer)
-          if ($env:SOCKET_PROTOCOL -eq 'tcp' -and $env:TCP_HANDSHAKE_ONLY -ne 'true') { $taskArguments += '--backpressure-only' }
+          if ($env:TCP_TRACE -eq 'true') {
+            $env:TYPE_SWOOLE_MODULE="$env:PHP_HOME/ext/php_swoole.dll"
+            $env:TYPEAPP_IOCP_TRACE='1'
+          }
+          if ($env:SOCKET_PROTOCOL -eq 'tcp' -and $env:TCP_HANDSHAKE_ONLY -ne 'true' -and $env:TCP_TRACE -ne 'true') { $taskArguments += '--backpressure-only' }
           if ($env:TCP_HANDSHAKE_ONLY -eq 'true') { $taskArguments += '--handshake-only' }
           if ($env:TCP_HANDSHAKE_ONLY -eq 'true' -and $env:TCP_WITH_ECHO -eq 'true') { $taskArguments += '--with-echo' }
           & "$env:PHP_HOME/php.exe" @taskArguments
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ($env:SOCKET_PROTOCOL -eq 'tcp' -and $env:TCP_HANDSHAKE_ONLY -ne 'true') {
+          if ($env:SOCKET_PROTOCOL -eq 'tcp' -and $env:TCP_HANDSHAKE_ONLY -ne 'true' -and $env:TCP_TRACE -ne 'true') {
             & "$env:PHP_HOME/php.exe" "tests/tcp-consumer.php" $taskConsumer --verify
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -333,6 +344,7 @@ jobs:
             build/toolchain-regressions-socket-probe/**/peers.json
             build/toolchain-regressions-socket-probe/**/certificate.pem
             build/toolchain-regressions-socket-probe/**/type-app.exe*
+            build/toolchain-regressions-socket-probe/**/runtime/php_swoole.dll
             build/windows-runtime-*/*.log
             build/windows-runtime-*/*.json
 

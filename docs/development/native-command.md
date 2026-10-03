@@ -106,6 +106,8 @@ TLS 慢握手探针分别在主线程和工作线程使用原生读写期限、�
 
 服务端收尾诊断复用 `tests/tcp-consumer.php` 的 `--server-only`，只运行 IPv4 普通 TCP 的接入、独立客户端回声和资源回收，报告标为 `server-only`。`--backpressure-only` 单独验证慢对端背压期间的并行回声和资源回收，保存并行任务的原始错误。`socket-probe` 的 TCP 组先执行背压最小场景，再通过 `--verify` 对同一原生程序执行完整套件；任一失败都使任务失败。`tests/swoole-tls.php` 同时保存服务端路径的 PHP 主线程与工作线程对照；`tests/tcp-binding.php` 对照关闭监听后原生连接的短截止及拒绝耗时。这些定向结果不替代完整编译验收。
 
+`scope=tcp-trace` 在隔离目录重建带官方 trace 的 Swoole 模块，完整运行 TCP 消费者，记录 IOCP 事件、Socket、协程及 Timer；原程序、实际 DLL、模块身份和日志一并保存。这个诊断有独立并发组，不替换组件内置模块或静态 SDK，也不计入默认发布验收。修复后仍须使用默认模块、关闭跟踪重新完成原始套件。
+
 最终 Windows ZIP 的安装中断可通过 `diagnose-windows-candidate.yml` 手动诊断：指定原发布运行 ID、完整源码 SHA 和 ZIP 摘要，下载该运行保存的 `windows-native-evidence`，核对身份后直接运行原程序。入口复用专用 PostgreSQL 准备与清理，分别以 20 秒和两次 90 秒预算初始化独立空库，记录内层退出、超时、实际耗时、数据库等待类型及前端逐文件摘要；随后执行当前完整 PostgreSQL 发布包回归。不保存 SQL 或凭据，不重新编译，也不能替代完整发布验收。
 
 `scope=sqlite-app` 在独立并发组中连续执行五轮 SQLite 应用开发验收，每轮使用新建数据库；任一失败立即停止并保留报告。最高管理员并发保护同时核对两个 HTTP 状态、稳定拒绝原因和数据库中的有效管理员数量，诊断不保存凭据或响应正文。该入口用于复现并发故障，不能替代全量 AOT 与三库发布验收。
