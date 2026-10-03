@@ -122,6 +122,8 @@ IPv6/独占绑定适配后的 Windows 静态 SDK 已按 `3c583020f5fb5813256feaa
 
 候选修正仅调整 `TcpSocket` 监听前的官方选项：Windows 从 `SO_REUSEADDR` 改为 `SO_EXCLUSIVEADDRUSE`，Unix 沿用既有选项。复用 UDP 已有的固定 Swoole 绑定适配，不修改原生调度或追加 ABI；重复监听仍须返回 `tcp_listen_failed`。最小回归及完整 AOT 尚须在修改后重新验证，不能将 PHP 复现结果当作修复通过。
 
+[独占监听复验 37124385204](https://github.com/zoujingli/typeapp/actions/runs/37124385204)，源码 `1c733ae9fb62f7902597184d523582d014f81c77`，已通过 IPv4/IPv6 的最小重复监听拒绝与清理，原生 TLS 探针也通过。完整 TCP AOT 仍在 40 秒外层截止被终止：一线程进入服务端场景，记录子任务清理超时，另一线程最后位于回声关闭后；不能把最小修复通过写成完整通信通过。原程序和检查点保存在 Artifact `11274204892`，归档摘要 `5fe76cbe79d32c67c279937a12a3f4f75677867bd3442bcab83054f7289b3692`。本轮 UDP 也失败，另存其原始报告，尚未确认原因。
+
 ### 静态程序预验收
 
 以下运行采用源码 `11a73078df41a9f8116384705251d37603f24666`，用于验证新版工具链与静态依赖。它们不是最终 RC14 标签的候选附件，后续发布仍须从最终固定源码重新构建并验收同一程序。
@@ -188,6 +190,8 @@ macOS 的新旧程序分别从 RC13 源码与 `4631be08002695625477229d2552e10b7
 逆序运行的旧/新程序 SHA-256 分别为 `a8d3f02c500f9b35ee13410facc96653a476ff7a4694aadd76c7ee74f7d5f842`、`db62f6df01623c85adabaf857580b8805334a989a52a52d9c4e5a9edf1bc84c9`，共享 embed 程序大小分别为 29,051,681 / 29,118,286 字节，编译耗时为 1,016.919 / 990.875 秒；前端文件清单完全相同。准备、原始样本和比较保存在 Artifact `11272128682`（摘要 `aba5c8c9be66c60984b97018cb0ce8a50355f6706b5a5d690df06a16dc18205d`），本地回读位置为 `build/toolchain-upgrade-followup.lVbKwh/linux-arm64-benchmark-reverse/`。该轮重建了程序，仅作为固定源码的顺序复验；不能推断发布静态程序的极限吞吐。
 
 本次升级尚未完成 Linux x64 与 Windows 的同条件性能对照，也未完成非 macOS 平台的文件流对照。各平台功能验收与程序体积核验不能替代这些测量。
+
+[Linux x64 首轮 37123039925](https://github.com/zoujingli/typeapp/actions/runs/37123039925) 固定 RC13 与 `010da9d9492c9360399050e0c7a90a2f04a00a62`，实际旧版在先。两版 SQLite/MySQL 各三次测量完成；RC13 的 PostgreSQL 前两次完成，第三次在服务启动时返回 `swoole_hook_startup_required`，尚未执行新版 PostgreSQL，故整轮失败，不能用于完整三库性能结论。Artifact `11273584344`（摘要 `93d3e88468c626eb2b3b30689d6ee6591fa9d4681f200e43399a7839a12c5bed`）已回读保存。逆序复验保持两个源码提交不变，不修改 RC13 的实现以消除基线故障。
 
 待平台任务完成后，必须追加每个平台的最终程序身份、12 个 profile 的摘要、实际未执行范围和公开下载回读；性能与体积对照没有原始报告时保持未验证。
 

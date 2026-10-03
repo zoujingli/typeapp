@@ -16,8 +16,9 @@ $work = BuildPlatform::path($argv[1] ?? '');
 $verify = ($argv[2] ?? '') === '--verify';
 $handshake = $protocol === 'tcp' && ($argv[2] ?? '') === '--handshake-only';
 $handshakeEcho = $handshake && ($argv[3] ?? '') === '--with-echo';
-expect($argc === ($handshakeEcho ? 4 : ($verify || $handshake ? 3 : 2)), '用法：php tests/' . $protocol . '-consumer.php <build 下独立消费者绝对目录> [--verify|--handshake-only [--with-echo]]');
-$scenario = $handshakeEcho ? 'handshake-echo' : ($handshake ? 'handshake' : 'full');
+$serverOnly = $protocol === 'tcp' && ($argv[2] ?? '') === '--server-only';
+expect($argc === ($handshakeEcho ? 4 : ($verify || $handshake || $serverOnly ? 3 : 2)), '用法：php tests/' . $protocol . '-consumer.php <build 下独立消费者绝对目录> [--verify|--server-only|--handshake-only [--with-echo]]');
+$scenario = $serverOnly ? 'server' : ($handshakeEcho ? 'handshake-echo' : ($handshake ? 'handshake' : 'full'));
 expect(BuildPlatform::contains($root . '/build', $work) && !str_contains($work, '..'), '消费者必须在主仓 build 内');
 $artifact = (new BuildPlatform())->output($work . '/build/native/type-app');
 $runner = new BuildEnvironment();
@@ -139,7 +140,7 @@ try {
         $workers = [];
         foreach ($mode === 'thread' ? ['left', 'right'] : ['main'] as $role) {
             $worker = json_decode((string) file_get_contents($observation . '/' . $role . '.json'), true, 512, JSON_THROW_ON_ERROR);
-            expect($worker['checks'] >= ($handshake ? 12 : 75) && $worker['coroutines'] === 0 && $worker['process'] === $result['process'], '通信场景不足或协程残留');
+            expect($worker['checks'] >= ($serverOnly ? 12 : ($handshake ? 12 : 75)) && $worker['coroutines'] === 0 && $worker['process'] === $result['process'], '通信场景不足或协程残留');
             expect(($worker['native_id'] !== $result['main_thread']) === ($mode === 'thread'), '业务线程身份不符');
             $workers[$role] = $worker;
         }
@@ -163,7 +164,7 @@ try {
     }
 }
 file_put_contents($run . '/verification.json', json_encode(['build-id' => $report['build-id'], 'sha256' => $report['sha256'],
-    'scope' => $handshakeEcho ? 'handshake-echo' : ($handshake ? 'handshake-only' : 'full'),
+    'scope' => $serverOnly ? 'server-only' : ($handshakeEcho ? 'handshake-echo' : ($handshake ? 'handshake-only' : 'full')),
     'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'source_count' => count($report['sources']), 'packages' => $packages,
     'no_source' => PHP_OS_FAMILY === 'Darwin' ? 'kernel-denied' : 'not-verified', 'runs' => $results], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
-echo strtoupper($protocol) . ($handshake ? ' 慢握手定向 AOT 验证通过：' : ' 六个生产包全量 AOT、双线程重建、主线程协程和独立对端验收通过：') . $run . "\n";
+echo strtoupper($protocol) . ($serverOnly ? ' 服务端定向 AOT 验证通过：' : ($handshake ? ' 慢握手定向 AOT 验证通过：' : ' 六个生产包全量 AOT、双线程重建、主线程协程和独立对端验收通过：')) . $run . "\n";

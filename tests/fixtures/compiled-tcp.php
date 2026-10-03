@@ -75,6 +75,10 @@ final class TcpProbe
                         self::handshake($input['peers'], $input['scenario'] === 'handshake-echo');
                         return;
                     }
+                    if ($input['scenario'] === 'server') {
+                        self::server($input['peers'], new ResourceBudget(4), '127.0.0.1', false, false);
+                        return;
+                    }
                     self::check(defined('SWOOLE_LIBRARY') && class_exists('Swoole\\ConnectionPool', false), '首次协程缺少 Swoole 官方内置库');
                     $plan = new DeploymentBudget(24, 1, 1, 1, 0, 2);
                     self::check($plan->statistics()['per_thread'] === 6, '线程预算被复制');
@@ -440,27 +444,41 @@ final class TcpProbe
                     }
                 });
             }
+            self::checkpoint('[DEBUG-tcp-server] accept');
             $connection = $listener->accept();
+            self::checkpoint('[DEBUG-tcp-server] accepted');
             self::check($connection->statistics()['allocated'], '接入未提前预留额度');
             $task = $scope->spawn(static function (ExecutionScope $childScope) use ($connection): void {
+                self::checkpoint('[DEBUG-tcp-server] child-start');
                 $childScope->open($connection);
+                self::checkpoint('[DEBUG-tcp-server] child-active');
                 $total = 0;
                 while (($part = $connection->receive()) !== '') {
+                    self::$observations['server_received'] = $total + strlen($part);
+                    self::checkpoint('[DEBUG-tcp-server] child-received');
                     self::check(strlen($part) <= 1024, '服务端接收片段超限');
                     $total += strlen($part);
                     self::check($total <= 4096, '测试请求总长越界');
                     $connection->send($part);
+                    self::checkpoint('[DEBUG-tcp-server] child-sent');
                 }
                 self::check($total === 4096, '独立客户端数据没有收全');
                 $connection->shutdownWrite();
+                self::checkpoint('[DEBUG-tcp-server] child-return');
             });
+            self::checkpoint('[DEBUG-tcp-server] acknowledgement');
             $acknowledgement = json_decode($control->receive(), true, 512, JSON_THROW_ON_ERROR);
+            self::checkpoint('[DEBUG-tcp-server] acknowledged');
             self::check($acknowledgement === ['ok' => true, 'bytes' => 4096], '独立标准客户端未验证服务端回声');
             if ($slow) {
                 self::check($pending->statistics()['state'] === 'starting', '慢握手阻塞了后续独立 TLS 连接');
                 self::check($slowDone->pop(1) === true, '服务端慢握手没有按期退出');
                 self::$observations['slow_server_handshake_fast_peer_completed'] = true;
             }
+        } catch (Throwable $error) {
+            self::$observations['server_error'] = get_class($error) . ': ' . $error->getMessage();
+            self::checkpoint('[DEBUG-tcp-server] error');
+            throw $error;
         } finally {
             $scope->close();
             // 控制连接可能尚未进入作用域；停止未启动对象，保留前面的原始失败。
