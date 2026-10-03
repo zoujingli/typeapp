@@ -227,7 +227,9 @@ final class SwooleServer implements HttpServerInterface
                     $this->watchdog = $timer;
                     $state['pulse'] = hrtime(true);
                     $state['ready'] = true;
-                    $server->start();
+                    if (!$server->start()) {
+                        throw new TaskException('http_thread_start_failed', 'HTTP 线程监听启动失败：' . $server->errCode . ' ' . $server->errMsg);
+                    }
                 } catch (Throwable $error) {
                     $this->threadFailure = $error;
                     $state['failed'] = true;
@@ -325,7 +327,9 @@ final class SwooleServer implements HttpServerInterface
                     $this->watchdog = $timer;
                     $state['pulse'] = hrtime(true);
                     $state['ready'] = true;
-                    $server->start();
+                    if (!$server->start()) {
+                        throw new TaskException('http_thread_start_failed', 'HTTP 线程监听启动失败：' . $server->errCode . ' ' . $server->errMsg);
+                    }
                 } catch (Throwable $error) {
                     $this->threadFailure = $error;
                     $state['failed'] = true;
