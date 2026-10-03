@@ -20,6 +20,12 @@ $environment = controlledRuntimeEnvironment($runner->environment((string) getenv
 // 独立消费者沿用当前控制器，不修改共享 SDK 的默认 ini。
 $environment['PHPRC'] = php_ini_loaded_file() ?: '';
 $environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
+$isWindows = PHP_OS_FAMILY === 'Windows';
+$runEnvironment = $environment;
+if ($isWindows) {
+    // Windows 的生产入口由业务线程自行绑定 IOCP 监听；共享 Socket 副本是 Unix 专用接缝。
+    $runEnvironment['TYPEAPP_HTTP_OWNED'] = '1';
+}
 if (!$verify) {
     expect(!file_exists($work) && mkdir($work . '/app', 0700, true), '需要尚不存在的消费者目录');
     $composer = ['name' => 'type-tests/http-threads', 'type' => 'project', 'license' => 'Apache-2.0',
@@ -84,10 +90,11 @@ $runs = [];
 for ($round = 0; $round < 3; $round++) {
     $directory = $work . '/run-' . bin2hex(random_bytes(5));
     expect(mkdir($directory, 0700), '无法准备独立运行目录');
-    $server = new Process([...$policy, $binary, $directory], $work, $environment);
+    $server = new Process([...$policy, $binary, $directory], $work, $runEnvironment);
     $connections = [];
     try {
-        foreach (['listener.json', 'ready-1-1.json', 'ready-2-1.json'] as $ready) {
+        $readyFiles = $isWindows ? ['listener.json', 'ready-1-1.json'] : ['listener.json', 'ready-1-1.json', 'ready-2-1.json'];
+        foreach ($readyFiles as $ready) {
             httpThreadWait($server, $directory . '/' . $ready);
         }
         $port = json_decode(file_get_contents($directory . '/listener.json'), true, flags: JSON_THROW_ON_ERROR)['port'];
@@ -118,7 +125,8 @@ for ($round = 0; $round < 3; $round++) {
         $idle = [];
         $idleByWorker = [1 => 0, 2 => 0];
         try {
-            for ($index = 0; $index < 16; $index++) {
+            $connectionCount = $isWindows ? 8 : 16;
+            for ($index = 0; $index < $connectionCount; $index++) {
                 $socket = stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 2);
                 expect(is_resource($socket), '无法建立连接预算观察者');
                 stream_set_timeout($socket, 2);
@@ -128,8 +136,8 @@ for ($round = 0; $round < 3; $round++) {
                 expect($status === 200, '已分配连接没有进入 PSR 链');
                 $idleByWorker[json_decode($body, true, flags: JSON_THROW_ON_ERROR)['worker']]++;
             }
-            expect($idleByWorker === [1 => 8, 2 => 8], '每线程连接份额没有限制总额');
-            foreach ([$idle[0], $idle[15]] as $socket) {
+            expect($idleByWorker === ($isWindows ? [1 => 8, 2 => 0] : [1 => 8, 2 => 8]), '每线程连接份额没有限制总额');
+            foreach ([$idle[0], $idle[count($idle) - 1]] as $socket) {
                 fwrite($socket, "GET /child HTTP/1.1\r\nHost: localhost\r\n\r\n");
                 expect(httpThreadRead($socket)[0] === 200, '空闲连接占用了受管子任务预留');
             }
@@ -173,28 +181,40 @@ for ($round = 0; $round < 3; $round++) {
             $status === 200 ? $accepted++ : $rejected++;
         }
         expect($accepted > 0 && $rejected > 0, '请求额度没有真实拒绝');
-        file_put_contents($directory . '/retire', 'retire');
-        httpThreadWait($server, $directory . '/retired');
-        for ($request = 0; $request < 30; $request++) {
-            expect($client->request('GET', '/normal')->json()['worker'] === 2, '退役副本影响了存活监听');
-        }
-        file_put_contents($directory . '/replace', 'replace');
-        httpThreadWait($server, $directory . '/ready-1-2.json');
         $replacement = [1 => 0, 2 => 0];
-        for ($request = 0; $request < 100; $request++) {
-            $data = $client->request('GET', '/normal')->json();
-            expect($data['generation'] === ($data['worker'] === 1 ? 2 : 1), '旧代请求状态串入重建线程');
-            $replacement[$data['worker']]++;
+        $replacementConnections = [];
+        if ($isWindows) {
+            // Windows 当前按生产约定只有一个自绑定业务线程；仍验证停止前请求可继续完成。
+            for ($request = 0; $request < 30; $request++) {
+                $data = $client->request('GET', '/normal')->json();
+                expect($data['worker'] === 1 && $data['generation'] === 1, 'Windows 自绑定线程状态不符');
+                $replacement[$data['worker']]++;
+            }
+        } else {
+            file_put_contents($directory . '/retire', 'retire');
+            httpThreadWait($server, $directory . '/retired');
+            for ($request = 0; $request < 30; $request++) {
+                expect($client->request('GET', '/normal')->json()['worker'] === 2, '退役副本影响了存活监听');
+            }
+            file_put_contents($directory . '/replace', 'replace');
+            httpThreadWait($server, $directory . '/ready-1-2.json');
+            for ($request = 0; $request < 100; $request++) {
+                $data = $client->request('GET', '/normal')->json();
+                expect($data['generation'] === ($data['worker'] === 1 ? 2 : 1), '旧代请求状态串入重建线程');
+                $replacement[$data['worker']]++;
+            }
+            $replacementConnections = httpThreadObserveWorkers($port, [1 => 2, 2 => 1]);
         }
-        $replacementConnections = httpThreadObserveWorkers($port, [1 => 2, 2 => 1]);
         file_put_contents($directory . '/stop', 'stop');
         $result = $server->wait(3.0);
         expect($result->successful() && $result->stderr === '', 'HTTP 线程没有正常退出');
         $final = json_decode(trim($result->stdout), true, flags: JSON_THROW_ON_ERROR);
-        expect($final['exits'] === [0, 0, 0] && $final['active_threads'] === 1 && $final['contracts'] === 34
+        $expectedExits = $isWindows ? [0] : [0, 0, 0];
+        expect($final['exits'] === $expectedExits && $final['active_threads'] === 1 && $final['contracts'] === 34
             && $final['join_checks'] === 6, '线程没有完整 join 或原生契约不符');
         $statistics = [];
-        foreach (['1-1', '2-1', '1-2'] as $worker) {
+        $stoppedWorkers = $isWindows ? ['1-1'] : ['1-1', '2-1', '1-2'];
+        foreach ($stoppedWorkers as $worker) {
             $state = json_decode(file_get_contents($directory . '/stopped-' . $worker . '.json'), true, flags: JSON_THROW_ON_ERROR);
             expect($state['in_flight'] === 0 && $state['peak_in_flight'] <= 2 && $state['cleanup_failures'] === 0, '请求额度或清理不守恒');
             $statistics[$worker] = $state;
@@ -225,12 +245,13 @@ for ($round = 0; $round < 3; $round++) {
         $directory = $work . '/supervised-' . $mode . '-' . bin2hex(random_bytes(5));
         expect(mkdir($directory, 0700), '无法准备监督验收目录');
         $started = hrtime(true);
-        $server = new Process([...$policy, $binary, $directory, $mode], $work, $environment);
+        $server = new Process([...$policy, $binary, $directory, $mode], $work, $runEnvironment);
         $pending = null;
         $port = null;
         try {
             if (str_starts_with($mode, 'supervised-')) {
-                foreach (['listener.json', 'ready-1-1.json', 'ready-2-1.json'] as $ready) {
+                $readyFiles = $isWindows ? ['listener.json', 'ready-1-1.json'] : ['listener.json', 'ready-1-1.json', 'ready-2-1.json'];
+                foreach ($readyFiles as $ready) {
                     httpThreadWait($server, $directory . '/' . $ready);
                 }
                 $port = json_decode(file_get_contents($directory . '/listener.json'), true, flags: JSON_THROW_ON_ERROR)['port'];
@@ -276,8 +297,9 @@ for ($round = 0; $round < 3; $round++) {
             } else {
                 expect($result->successful(), '可回收线程组没有正常结束');
                 $final = json_decode(trim($result->stdout), true, flags: JSON_THROW_ON_ERROR);
+                $expectedJoined = $mode === 'partial' ? 1 : (($isWindows && $mode === 'supervised-http') ? 1 : 2);
                 expect($final['active_threads'] === 1 && $final['signals_restored'] && $final['statistics'] === ['state' => 'stopped', 'owned' => 0, 'ready' => 0,
-                    'joined' => $mode === 'partial' ? 1 : 2], '监督没有保留并完整回收全部已启动句柄');
+                    'joined' => $expectedJoined], '监督没有保留并完整回收全部已启动句柄');
                 if ($mode === 'partial' || $mode === 'exit') {
                     expect($final['error'] === ($mode === 'partial' ? 'invalid_startup_json' : 'thread_exit_unexpected')
                         && is_file($directory . '/probe-stopped-1'), '部分启动或异常退出没有停止其余线程');

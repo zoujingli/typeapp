@@ -140,8 +140,8 @@ final class HttpThreadProbe
         }
         $arguments = Thread::getArguments();
         $listener = $arguments[1] ?? null;
-        if (!$listener instanceof Socket) {
-            throw new RuntimeException('native socket argument missing');
+        if ($listener !== null && !$listener instanceof Socket) {
+            throw new RuntimeException('native socket argument shape mismatch');
         }
         $directory = (string) $data['directory'];
         $worker = (int) $data['worker'];
@@ -179,7 +179,10 @@ final class HttpThreadProbe
             $entry->add('GET', $path, static fn (): HttpThreadHandler => $handler);
         }
         $entry->add('POST', '/post', static fn (): HttpThreadHandler => $handler);
-        $port = $listener->getsockname()['port'];
+        $port = $listener instanceof Socket ? $listener->getsockname()['port'] : (int) ($data['port'] ?? 0);
+        if ($port < 1 || $port > 65535) {
+            throw new RuntimeException('owned listener port missing');
+        }
         $pipeline = new Pipeline([static fn (): RequestPolicy => new RequestPolicy(['localhost', '127.0.0.1:' . $port])], $entry);
         $adapter = new SwooleServer(
             $pipeline,
@@ -189,7 +192,13 @@ final class HttpThreadProbe
             new RequestLimits(bytes: 8192, fields: 3, fileBytes: 8192, fieldBytes: 8192),
             $control
         );
-        $adapter->serveThread($listener, $state);
+        if ($listener instanceof Socket) {
+            $adapter->serveThread($listener, $state);
+        } elseif (PHP_OS_FAMILY === 'Windows' && isset($data['listen']) && is_string($data['listen'])) {
+            $adapter->serveThreadOwned($data['listen'], $port, $state);
+        } else {
+            throw new RuntimeException('native socket argument missing');
+        }
         $statistics = $control->statistics();
         if ($statistics['in_flight'] !== 0 || $statistics['quarantined'] !== 0 || $statistics['cleanup_failures'] !== 0) {
             throw new RuntimeException('request cleanup incomplete');
@@ -240,15 +249,17 @@ final class HttpThreadProbe
     }
 }
 
-function httpThreadStart(string $directory, int $worker, int $generation, Socket $listener): Thread
+function httpThreadStart(string $directory, int $worker, int $generation, ?Socket $listener, ?string $listen = null, ?int $port = null): Thread
 {
     // 退役代 join 后才补位，最多同时两线程；请求总额 4、已接入连接总额 16。
     $connections = new DeploymentBudget(16, 1, 0, 1, 0, 2);
-    return CoroutineRuntime::startThread('http', json_encode(
-        ['directory' => $directory, 'worker' => $worker, 'generation' => $generation,
-            'request_limit' => intdiv(4, 2), 'connection_limit' => $connections->statistics()['per_thread']],
-        JSON_THROW_ON_ERROR
-    ), $listener);
+    $payload = ['directory' => $directory, 'worker' => $worker, 'generation' => $generation,
+        'request_limit' => intdiv(4, 2), 'connection_limit' => $connections->statistics()['per_thread']];
+    if ($listener === null) {
+        $payload['listen'] = $listen ?? '127.0.0.1';
+        $payload['port'] = $port ?? 0;
+    }
+    return CoroutineRuntime::startThread('http', json_encode($payload, JSON_THROW_ON_ERROR), $listener);
 }
 
 function main(int $argc, array $argv): void
@@ -256,6 +267,10 @@ function main(int $argc, array $argv): void
     $directory = $argv[1];
     if (($argv[2] ?? '') !== '') {
         httpThreadSupervised($directory, $argv[2]);
+        return;
+    }
+    if (getenv('TYPEAPP_HTTP_OWNED') === '1') {
+        mainOwned($directory);
         return;
     }
     $joinChecks = httpThreadJoinContracts($directory);
@@ -306,6 +321,39 @@ function main(int $argc, array $argv): void
         'contracts' => $contracts, 'join_checks' => $joinChecks], JSON_THROW_ON_ERROR), "\n";
 }
 
+/** Windows 生产入口：每个角色在线程内自绑定监听，不把 Unix 共享监听接缝冒充 IOCP 能力。 */
+function mainOwned(string $directory): void
+{
+    $joinChecks = httpThreadJoinContracts($directory);
+    $contracts = httpThreadContracts($directory);
+    $reserved = new Socket(AF_INET, SOCK_STREAM, 0);
+    if (!$reserved->bind('127.0.0.1', 0) || !$reserved->listen(128)) {
+        throw new RuntimeException('owned listener startup failed');
+    }
+    $port = $reserved->getsockname()['port'];
+    $reserved->close();
+    unset($reserved);
+    Swoole\Event::wait();
+    $thread = null;
+    $exit = null;
+    try {
+        $thread = httpThreadStart($directory, 1, 1, null, '127.0.0.1', $port);
+        file_put_contents($directory . '/listener.json', json_encode(['port' => $port, 'process' => getmypid()], JSON_THROW_ON_ERROR));
+        $deadline = microtime(true) + 15.0;
+        while (!is_file($directory . '/stop') && microtime(true) < $deadline) {
+            usleep(10000);
+        }
+    } finally {
+        file_put_contents($directory . '/stop-1', 'stop');
+        if ($thread !== null) {
+            $thread->join();
+            $exit = $thread->getExitStatus();
+        }
+    }
+    echo json_encode(['exits' => [$exit], 'active_threads' => Thread::activeCount(), 'port' => $port,
+        'contracts' => $contracts, 'join_checks' => $joinChecks], JSON_THROW_ON_ERROR), "\n";
+}
+
 /** 同一安装后应用入口验证生产监督；文件仅连接独立验收驱动。 */
 function httpThreadSupervised(string $directory, string $mode): void
 {
@@ -314,7 +362,21 @@ function httpThreadSupervised(string $directory, string $mode): void
     $supervisor = new ThreadSupervisor(2, 0.5, 0.25, 0.5);
     $listener = null;
     $payloads = [];
-    if ($mode === 'supervised-http' || $mode === 'supervised-signal') {
+    $ownedHttp = PHP_OS_FAMILY === 'Windows' && in_array($mode, ['supervised-http', 'supervised-signal'], true);
+    if ($ownedHttp) {
+        // Windows 通过线程内自绑定监听复用生产入口；共享 Socket 副本仅适用于 Unix。
+        $reserved = new Socket(AF_INET, SOCK_STREAM, 0);
+        if (!$reserved->bind('127.0.0.1', 0) || !$reserved->listen(128)) {
+            throw new RuntimeException('supervised owned listener startup failed');
+        }
+        $port = $reserved->getsockname()['port'];
+        $reserved->close();
+        unset($reserved);
+        $payloads[] = json_encode(['directory' => $directory, 'worker' => 1, 'generation' => 1,
+            'request_limit' => 2, 'connection_limit' => 8, 'listen' => '127.0.0.1', 'port' => $port], JSON_THROW_ON_ERROR);
+        file_put_contents($directory . '/listener.json', json_encode(['port' => $port, 'process' => getmypid()], JSON_THROW_ON_ERROR));
+        $supervisor = new ThreadSupervisor(1, 0.5, 0.25, 0.5);
+    } elseif ($mode === 'supervised-http' || $mode === 'supervised-signal') {
         $listener = new Socket(AF_INET, SOCK_STREAM, 0);
         if (!$listener->bind('127.0.0.1', 0) || !$listener->listen(128)) {
             throw new RuntimeException('supervised listener startup failed');
