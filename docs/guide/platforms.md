@@ -10,7 +10,9 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 每个版本重新执行四平台完整验收，并将最终待上传的单个程序复制到隔离环境，执行对应 profile 的数据库、页面安装和真实 API 检查。本轮目标候选为 `v1.0.0-rc.14`；它在四个平台分别提供 `sqlite`、`mysql`、`pgsql` 程序，只有对应 Actions 运行全部成功并完成公开回读后才算已发布。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
 
-RC14 的验收使用当前主仓提交 **`d646837d445adb5543a5c71ae45b2a616f62a21b`**，工具链为 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及提交 `4aff74a9`、运行时字符串 `6.3.0RC1` 的 Swoole 开发快照。Linux x64、Windows x64、macOS ARM64 的运行 ID 分别为 `37076682879`、`37076682889`、`37076682999`；截至本页更新时仍在执行，不能把 RC13 的结果借记为 RC14 的通过。完成后应把同一运行轮次、12 个程序摘要和公开下载回读补入[升级证据](../evidence/typephp-upgrade-0.9.4.md)。
+RC14 使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及提交 `4aff74a9`、运行时字符串 `6.3.0RC1` 的 Swoole 开发快照。新版共享模块已完成四平台重建，完整应用与十二个静态程序仍在验收。准确源码、各轮结果及最终程序摘要统一维护在[升级证据](../evidence/typephp-upgrade-0.9.4.md)，不将旧提交或其他平台结果计为当前候选通过。
+
+下表记录 RC13 的已发布基线。RC14 必须以自己的同一源码完成完整工作流和最终程序回归。
 
 | 平台与实际环境 | 已通过的范围 | 部署验收边界 |
 | --- | --- | --- |
@@ -53,10 +55,10 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 | --- | --- | --- |
 | HTTP `serve()`，Unix | 经典 Swoole 单 worker，在协程中处理请求 | 停止沿用原生 worker 生命周期 |
 | HTTP `serve()`，Windows | Swoole 协程 HTTP，`ProcessSignals` 接入控制台停止事件 | CLI 使用 PHP 控制台处理器；embed 需要编译的控制事件桥与可用控制台 |
-| HTTP `serveThread()` / `serveThreadOwned()` | 编译业务线程使用共享监听副本或自行监听，主控监督停止与 join | 需要匹配项目线程 ABI；两种监听方式和各平台单独验收 |
+| HTTP `serveThread()` / `serveThreadOwned()` | Unix 编译业务线程使用共享监听副本；Windows 在线程内自绑定监听，主控监督停止与 join | 需要匹配项目线程 ABI；两种监听方式和各平台单独验收 |
 | `WebSocket\Server::start()` | 经典 Swoole WebSocket Server | 当前 Windows 原生入口明确拒绝，协程升级尚未接入本组件 |
 
-Windows 主应用与模板已通过本轮 HTTP、正常停止和发布包用例；控制台异常退出、全部故障组合仍按对应场景分别验收。主仓物联中心生产 HTTP 使用编译业务线程，通用模板使用 `serve()`，见[快速开始](quickstart.md#启动服务)和[type-core](plugins/type-core.md#启动-http-服务)。
+Windows 主应用与模板在 RC13 已通过 HTTP、正常停止和发布包用例；RC14 正在新版运行库上重新验收。控制台异常退出与其他故障组合按对应场景分别记录。主仓物联中心生产 HTTP 使用编译业务线程，通用模板使用 `serve()`，见[快速开始](quickstart.md#启动服务)和[type-core](plugins/type-core.md#启动-http-服务)。
 
 进程不可用时采用官方线程或协程是框架要求；HTTP 已按平台选择入口，其他角色仍需逐项接入和验证。经典 Server/Process、线程和协程的实际业务按所选构建分别核验，上游提供某项能力不能替代应用验收。
 

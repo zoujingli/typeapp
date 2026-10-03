@@ -2,7 +2,7 @@
 
 工作流存在、静态检查通过与对应runner实际执行通过是三种不同状态。各平台证据独立，不以本机或其他架构结果替代最终同提交验收。
 
-RC13 的固定源码、四平台矩阵、12 个程序及公开消费继续按[正式发布证据](../evidence/profile-release-20260930.md)保留；它不能为新版工具链背书。RC14 使用当前主仓提交 `d646837d445adb5543a5c71ae45b2a616f62a21b`，新版任务运行 ID 见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)。截至记录更新时 Linux x64、Windows x64 和 macOS ARM64 任务仍在执行，下面的命令和工作流说明是可复现入口，不表示新版已经通过。
+RC13 的固定源码、四平台矩阵、12 个程序及公开消费继续按[正式发布证据](../evidence/profile-release-20260930.md)保留。TypePHP 0.9.4、PHPX 2.9.3 与 Swoole 开发快照的 RC14 验收进行中；准确源码、运行轮次、失败诊断与完成范围集中记录在[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)。下面说明可复现入口，不将历史通过结果计为新版通过。
 
 开发和功能提交直接在`main`进行。原有Linux x64、Windows和macOS原生工作流的push触发范围均为`main`，不再使用临时验证分支；新增Linux ARM64入口只接受`workflow_dispatch`。远端推送和手动调度沿用会话授权。
 
@@ -13,6 +13,12 @@ HTTP 组复用协议、消息、显式及 Attribute 路由、校验、日志的 
 Linux ARM64的`run-linux-regression.sh`只接受非root Linux账号及显式原生工具位置；各控制器建立新的私有数据目录和回环端口，恢复使用本机维护工具与bubblewrap受限视图，不以Docker代替平台验收。该脚本的`reuse`仅跳过已有场景或标准应用的构建；rollout及独立消费者仍建立自己的完整输入和产物，不能将其当作整组无构建开关。
 
 Windows数据库来源固定于`.github/windows-databases.json`：MySQL 8.4.11和PostgreSQL 17.11的官方x64便携包，下载后校验SHA256，运行前再核对实际版本。不使用镜像预装的不同版本或既有数据目录；版本来源见[MySQL官方发布页](https://dev.mysql.com/downloads/mysql/8.4.html)、[EDB官方二进制页](https://www.enterprisedb.com/download-postgresql-binaries)，镜像预装范围见[GitHub Windows 2022说明](https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md)。
+
+新版 Swoole 在 Windows 的 HTTP 线程回归使用线程内自绑定监听（`serveThreadOwned()`），避免跨线程借用监听句柄；Unix 继续使用主控创建的共享监听副本（`serveThread()`）。两者都由主控负责停止、回收和 join，不能把 Windows 的自绑定实现描述成 Unix 的共享监听。
+
+临时端口探针调用 Swoole Socket 的 `close()` 后，必须让所属事件循环完成延迟回收，再把端口交给业务线程；仅释放 PHP 对象不能证明原生监听句柄已关闭。两个 HTTP 线程入口都校验连接额度与原始输入 ABI，并通过真实请求验证重复头、协议版本、满额拒绝及释放后的恢复。
+
+Windows 的 `scope=http-probe` 只运行 HTTP 线程独立 AOT 消费者。它显式从固定源码重建带官方 trace 的 Swoole 模块，由测试夹具把 IOCP 记录写到本轮目录，并保存原程序、构建身份与失败日志。该诊断使用独立并发组，不替换组件内置模块，也不计入发布验收；普通工作流和生产 HTTP 入口不启用这些诊断选项。
 
 `.github/scripts/run-windows-database.ps1`只允许GitHub Windows runner，在新的RUNNER_TEMP目录设置当前账号私有ACL，使用回环端口及随机测试凭据，独立启动mysqld或pg_ctl管理的新集群；不安装Windows Service、不启动/修改预装数据库服务。通过真实PHP连接确认就绪，再复用三库物联中心标准项目和模板的开发/AOT/发布测试；退出时仅停止本轮实例、删除本轮临时凭据并记录结果。模板安装可显式传入`TYPE_COMPOSER_PHAR`，确保用锁定PHP执行Composer而非依赖系统批处理包装器。
 

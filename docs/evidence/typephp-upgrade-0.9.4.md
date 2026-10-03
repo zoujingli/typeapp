@@ -1,6 +1,6 @@
 # TypePHP 0.9.4 与 Swoole 开发快照升级
 
-本记录从 2026-10-02 开始，目标版本为 `v1.0.0-rc.14`。RC13 的源码、产物与结论保持原身份；本次候选必须完成自己的四平台 × 三数据库静态程序验收，不能沿用旧版通过状态。四平台共享模块已重建并导入，当前继续静态 SDK 与完整应用验收，尚未公开 RC14。
+本记录从 2026-10-02 开始，目标版本为 `v1.0.0-rc.14`。RC13 的源码、产物与结论保持原身份；本次候选必须完成自己的四平台 × 三数据库静态程序验收，不能沿用旧版通过状态。四平台共享模块已重建并导入，当前继续处理 Windows HTTP 原生回归并验收完整应用和静态 SDK，尚未公开 RC14。下面按准确源码记录每轮结果，不把排队或局部成功当作完整通过。
 
 ## 固定输入
 
@@ -31,7 +31,7 @@ Swoole 候选在 `v6.3.0-rc1` 之后包含 42 个提交，属于开发快照。�
 
 ## 四平台模块身份
 
-[重建运行 37075789749](https://github.com/zoujingli/typeapp/actions/runs/37075789749) 以主仓提交 `f6c092f436f2a341bb6d588d333d761c2ab64732` 构建并核验四个平台模块。四个平台均实际加载 PHP 8.5.10 ZTS 模块，核对原生线程 ABI 2、协程 SQLite CRUD 和 PostgreSQL 连接拒绝路径；该范围不代替完整应用静态验收。随后模块和清单以 `d646837d445adb5543a5c71ae45b2a616f62a21b` 写回组件。
+[重建运行 37075789749](https://github.com/zoujingli/typeapp/actions/runs/37075789749) 以主仓提交 `f6c092f436f2a341bb6d588d333d761c2ab64732` 构建并核验四个平台模块。四个平台均实际加载 PHP 8.5.10 ZTS 模块，核对原生线程 ABI 2、协程 SQLite CRUD 和 PostgreSQL 连接拒绝路径；该范围不代替完整应用静态验收。随后模块和清单以 `d646837d445adb5543a5c71ae45b2a616f62a21b` 写回组件。这是模块重建批次的历史身份；模块内容未因后续测试和 HTTP 入口修复而改变，该批次只证明所列模块范围。
 
 | 平台 | 模块字节数 | SHA-256 |
 | --- | ---: | --- |
@@ -48,11 +48,23 @@ Swoole 候选在 `v6.3.0-rc1` 之后包含 42 个提交，属于开发快照。�
 
 ### RC14 原生门禁运行轮次
 
-RC14 当前固定主仓提交为 `d646837d445adb5543a5c71ae45b2a616f62a21b`。新版工具链的三组平台任务已经由该提交触发：Linux x64 `37076682879`、Windows x64 `37076682889`、macOS ARM64 `37076682999`。截至本记录更新时，三组任务尚未全部结束，以下状态只记录已观察到的过程，不把 `in_progress` 或 `queued` 当作通过：
+截至 2026-10-03，以下轮次已有明确结论。它们采用新版工具链，但源码不同，不能合并成同一提交的四平台通过：
 
-- Linux x64：基础、缓存、隔离构建、数据、TLS、可靠性、队列、回滚和调度分组已返回成功；模型、HTTP、交付、工具链、驱动、应用、集成、查询、服务和消费者等分组仍在执行。
-- Windows x64：新版线程与 IOCP 原生回归仍在执行。旧轮次 `37069259282` 的失败原因是 `tests/http-threads.php` 的 `listener.json` 启动哨兵预算只有 5 秒；本轮已将预算提高到 30 秒，并保留阶段契约，不能把旧轮次失败改写成新版结果。
-- macOS ARM64：任务已排队或在 contracts、application、deployment 分组中执行，其余分组等待 runner；尚无完整结论。
+| 平台及运行 | 固定源码 | 实际结论 |
+| --- | --- | --- |
+| [Linux x64 37104164091](https://github.com/zoujingli/typeapp/actions/runs/37104164091) | `0c9b59cc0999406a923acf9fd01a50a56093ca80` | 二十组与 `native-complete` 成功；不包括后续 Windows HTTP 修复 |
+| [Linux ARM64 37103146289](https://github.com/zoujingli/typeapp/actions/runs/37103146289) | `442a244a06bb138d1bba130a54336e124927dab7` | 完整默认工作流成功；仍须按最终候选源码重验 |
+| [Windows x64 37108670317](https://github.com/zoujingli/typeapp/actions/runs/37108670317) | `2dfabab4e7f24f82247bb1999ad4317f28e1c343` | 线程、初始化失败与资源隔离通过，HTTP 消费者失败；完整工作流失败 |
+| [Windows IOCP 诊断 37108902165](https://github.com/zoujingli/typeapp/actions/runs/37108902165) | `62bb2f1222c10739c8142e77204a5044e96758c2` | 官方 trace 记录 ACCEPT 提交后未完成，首个 HTTP 请求超时；保留原程序与日志 |
+
+macOS 的早期轮次存在 Homebrew tap 网络失败和后续推送取消，尚无最终候选完整通过结论。基础设施失败与代码行为失败分别记录。Windows 修复后的专用 HTTP 诊断为 [37109594948](https://github.com/zoujingli/typeapp/actions/runs/37109594948)，源码 `be5a0f7f3bcac945aa6b305d03d29a89f027094a`；本段不预先计为通过。
+
+### Windows 回归诊断与修复
+
+- 资源观察器：`37107861848` 的 PowerShell 子进程在原 3 秒预算内未完成，原报告为 `timedOut=true`、`exitCode=255`、双流为空。Windows 冷启动预算改为 15 秒，Unix 保持 3 秒；外层线程测试仍保留总截止和检查点。随后 `37108670317` 的三轮线程及资源观察通过。主程序被清理时的 `-1073741510` 不冒称为原生崩溃。
+- 临时端口监听：固定 Swoole 的 `Socket::free()` 在存在 reactor 时延迟释放原生句柄。macOS 最小复现中，`close()` 和 `unset()` 后仍能连接，执行所属 `Swoole\\Event::wait()` 后连接被拒绝。HTTP 夹具的两处临时监听现在先完成延迟回收，再启动自绑定业务线程；Windows 是否解决原故障由上述专用消费者判定。
+- 入口契约：`serveThreadOwned()` 补齐与 `serveThread()` 一致的连接额度和原始 HTTP 输入 ABI 校验，传入 `typeapp_max_connections`、`typeapp_http1_input`。使用现有重复头、HTTP 版本、满额拒绝和恢复断言验证，不修改业务错误码或放宽容量。
+- 诊断隔离：生产服务器删除临时阶段日志与 trace 环境变量处理。`scope=http-probe` 的官方 IOCP trace 仅由独立测试夹具显式启用，其源码重建模块不替换组件分发模块；诊断结果不代替完整 Windows 门禁。
 
 待平台任务完成后，必须追加每个平台的最终程序身份、12 个 profile 的摘要、实际未执行范围和公开下载回读；性能与体积对照没有原始报告时保持未验证。
 

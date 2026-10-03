@@ -144,6 +144,11 @@ final class HttpThreadProbe
             throw new RuntimeException('native socket argument shape mismatch');
         }
         $directory = (string) $data['directory'];
+        if (PHP_OS_FAMILY === 'Windows' && getenv('TYPEAPP_IOCP_TRACE') === '1') {
+            // 仅诊断任务重建带 trace 的模块；日志归属当前测试，不改变生产服务器配置。
+            Coroutine::set(['log_level' => SWOOLE_LOG_TRACE, 'trace_flags' => SWOOLE_TRACE_ALL,
+                'log_file' => $directory . '/iocp.log']);
+        }
         $worker = (int) $data['worker'];
         $generation = (int) $data['generation'];
         $control = new HttpControl((int) $data['request_limit'], (int) $data['connection_limit'], 2.0, 1.0, 0.5, 2);

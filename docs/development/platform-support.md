@@ -8,11 +8,11 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 面向使用者的状态统一维护在[平台与验收](../guide/platforms.md)。该页进入 Docsify 公开站点；本文保留执行入口和可复核的产物身份。
 
-RC13 的固定源码、12 个程序和公开发布身份继续保存在[profile 发布证据](../evidence/profile-release-20260930.md)，不作为新版工具链的通过依据。RC14 当前使用主仓提交 `d646837d445adb5543a5c71ae45b2a616f62a21b`、PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及 `4aff74a9`（运行时字符串 `6.3.0RC1`）的 Swoole 开发快照。四平台运行 ID 和待完成范围见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)；在全部任务结束、候选摘要封存和公开下载回读前，不能称为 RC14 已发布。本轮性能对照尚未形成可公开结论。
+RC13 的固定源码、12 个程序和公开发布身份保存在[profile 发布证据](../evidence/profile-release-20260930.md)。RC14 候选使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及 `4aff74a9`（运行时字符串 `6.3.0RC1`）的 Swoole 开发快照。各平台的准确源码、运行轮次与待完成范围统一见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)。完整门禁、候选摘要封存和公开下载回读尚未全部完成，RC14 尚未发布；性能对照也尚无最终结论。
 
 此前 2026-09-25 的 `bf28c8bd276f7d0f25535e82ec3ca4a59c4f241a` 四平台默认矩阵保留在[历史验收](../evidence/native-release-20260925.md)。该轮采用共享库构建，其发布目录与隔离范围不改写为本次静态单程序结果。
 
-四平台 Swoole 模块随 Composer 构建组件分发，匹配 SDK 后默认复用。macOS 当前矩阵在原生 macOS 15 runner 运行，Linux ARM64 在原生 ARM64 runner 运行，Windows 已完成 SDK 准备、完整应用 AOT 和模板搬迁。每种产物按报告解释，不能把主应用 `no_source=false` 的检查与独立模板隔离结果混为一项。
+四平台 Swoole 模块随 Composer 构建组件分发，匹配 SDK 后默认复用。macOS 矩阵在原生 macOS 15 runner 运行，Linux ARM64 在原生 ARM64 runner 运行；Windows 的 SDK、完整应用 AOT 和模板搬迁历史结果保留原版本身份。每种产物按报告解释，不能把主应用 `no_source=false` 的检查与独立模板隔离结果混为一项。新版 Windows HTTP 线程回归在线程内自绑定监听，Unix 回归继续使用共享监听副本；停止、回收和 join 的公共契约不变。
 
 四平台共享模块已经按新版工具链重建，其加载检查和完整静态程序验收分别记录在[新版升级证据](../evidence/typephp-upgrade-0.9.4.md)。这些模块可作为构建期输入；在新版完整门禁结束前，不改写 RC13 的原始身份，也不把单项模块加载结果扩展为整个平台通过。
 

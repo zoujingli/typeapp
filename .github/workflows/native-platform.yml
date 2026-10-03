@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 验收范围（sqlite-app/pgsql-app 仅应用开发诊断；template 仅模板；native 复用契约）
+        description: 验收范围（http-probe 仅 IOCP 诊断；sqlite-app/pgsql-app 仅应用诊断；template 仅模板）
         type: choice
         options: [full, native, orm, template, pgsql-probe, pgsql-app, sqlite-app, http-probe]
         default: full
@@ -276,6 +276,7 @@ jobs:
           $env:COMPOSER_BINARY="$env:PHP_HOME/composer.phar"
           $env:COMPOSER_DISABLE_NETWORK='1'
           $env:TYPE_SWOOLE_MODULE="$env:PHP_HOME/ext/php_swoole.dll"
+          $env:TYPEAPP_IOCP_TRACE='1'
           $taskConsumer = Join-Path $env:GITHUB_WORKSPACE 'build/toolchain-regressions-http-probe'
           & "$env:PHP_HOME/php.exe" tests/http-threads.php $taskConsumer
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
