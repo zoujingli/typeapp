@@ -72,6 +72,10 @@ macOS 的早期轮次存在 Homebrew tap 网络失败和后续推送取消，尚
 
 同源码的 [Windows 完整回归 37112211610](https://github.com/zoujingli/typeapp/actions/runs/37112211610) 使用组件分发模块，通过线程、初始化、资源和 HTTP 后，在 TCP 消费者失败。两个业务线程均返回 `tcp_connect_failed`、`errno=1214`，进程退出 255，未超时；原程序和失败报告保存在 Artifact `11270572147`。随后仅在夹具中增加当前 host、TLS 和场景检查点，并启用分别运行 TCP/UDP 的 `scope=socket-probe`；诊断不跳过域名、IPv6、TLS 或错误收尾，也不作为完整验收通过。
 
+[通信定向回归 37114447340](https://github.com/zoujingli/typeapp/actions/runs/37114447340)，源码 `4831d134dec3246edbc96970e77a16f7229f5588`，进一步定位：TCP 两个线程完成 39 项断言后均在 `::1` 的非 TLS 回声连接返回 1214；UDP 两个线程均未拒绝重复绑定。原产物分别保存在 Artifact `11270313238`、`11270519532`。固定上游的 `Address::assign()` 没有初始化 IPv6 flowinfo/scope_id；Windows 适配现清零地址存储，待相同原生场景复验。UDP 使用 [Winsock 独占地址选项](https://learn.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse)：仅关闭本端 `SO_REUSEADDR` 不能阻止另一端抢占，因此框架在 bind 前设置 `SO_EXCLUSIVEADDRUSE`，固定 Swoole 适配保留调用者的独占设置。未请求独占的 Socket 沿用上游复用语义；错误码、端点归属和额度归还断言保持不变。
+
+这两处原生适配归入 `SwooleWindowsSource`，绑定原文摘要与唯一替换；共享模块、静态 SDK 均需重建，旧 Windows 模块在适配身份变化后必须拒绝。上游初始化地址存储并尊重独占选项、且相同 IPv4/IPv6、TLS、双线程及收尾回归通过后撤除对应适配。此次修改的通信结果仍待验收，不能据源码审查宣布修复完成。
+
 ### 静态程序预验收
 
 以下运行采用源码 `11a73078df41a9f8116384705251d37603f24666`，用于验证新版工具链与静态依赖。它们不是最终 RC14 标签的候选附件，后续发布仍须从最终固定源码重新构建并验收同一程序。

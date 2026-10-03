@@ -86,13 +86,17 @@ final class UdpProbe
                 'observations' => self::$observations], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
             return 0;
         } catch (Throwable $error) {
-            file_put_contents($input['output'] . '.failure', get_class($error) . ': ' . $error->getMessage() . "\n" . $error->getTraceAsString());
+            file_put_contents($input['output'] . '.failure', get_class($error) . ': ' . $error->getMessage() . "\n"
+                . json_encode(['checks' => self::$checks, 'observations' => self::$observations], JSON_THROW_ON_ERROR) . "\n"
+                . $error->getTraceAsString());
             return 1;
         }
     }
 
     private static function packets(string $host, int $port, ResourceBudget $budget): void
     {
+        self::$observations['phase'] = 'packets';
+        self::$observations['host'] = $host;
         $scope = new ExecutionScope();
         $socket = new UdpSocket($budget, $host, 0, 1024, ['write_timeout' => 0.125]);
         try {
@@ -126,6 +130,7 @@ final class UdpProbe
             });
             self::check($foreign->pop(1) === true, '跨协程误用未拒绝');
             $conflict = new UdpSocket($budget, $host, $local['port']);
+            self::$observations['phase'] = 'bind-conflict';
             self::rejected(static fn (): mixed => $conflict->start(), 'udp_bind_failed');
             $conflict->stop();
             self::settleCloses();

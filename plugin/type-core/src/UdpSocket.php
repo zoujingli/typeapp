@@ -96,6 +96,11 @@ final class UdpSocket implements ManagedResource
         $this->allocated = true;
         try {
             $this->socket = new Socket($this->ipv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
+            // Windows 即使本端关闭 SO_REUSEADDR，也允许另一端主动复用；必须在 bind 前声明独占。
+            if (PHP_OS_FAMILY === 'Windows'
+                && !$this->socket->setOption(SOL_SOCKET, (int) constant('SO_EXCLUSIVEADDRUSE'), 1)) {
+                $this->fail('udp_option_failed');
+            }
             $timeoutMicros = max(1, (int) ceil($this->writeTimeout * 1000000.0));
             if (!$this->socket->setOption(SOL_SOCKET, SO_RCVBUF, $this->socketBufferBytes)
                 || !$this->socket->setOption(SOL_SOCKET, SO_SNDBUF, $this->socketBufferBytes)
@@ -116,8 +121,8 @@ final class UdpSocket implements ManagedResource
                 $this->fail('udp_bind_failed');
             }
             // Swoole 的字符串 bind 为兼容监听服务会自动启用 SO_REUSEADDR；
-            // UDP 端点属于单一业务所有者，成功绑定后关闭复用，避免 Linux
-            // 允许第二个端点占用同一地址而破坏 udp_bind_failed 契约。
+            // UDP 端点属于单一业务所有者，Unix 在成功绑定后关闭复用；
+            // Windows 由上面的独占选项和固定 Swoole 适配保持同一契约。
             if (!$this->socket->setOption(SOL_SOCKET, SO_REUSEADDR, 0)) {
                 $this->fail('udp_option_failed');
             }

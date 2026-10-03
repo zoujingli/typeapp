@@ -10,7 +10,7 @@ use RuntimeException;
 final class SwooleWindowsSource
 {
     /**
-     * 补齐上游构建清单、依赖发现、IOCP 名称限定和 Windows 套接字类型。
+     * 补齐上游构建清单、依赖发现、IOCP 名称限定、地址初始化和独占绑定。
      * 上游修复对应缺口且 Windows 原生回归通过后撤除。
      *
      * @return array<string,array{before:string,after:string}>
@@ -22,6 +22,8 @@ final class SwooleWindowsSource
             'config.w32' => 'a8c2ead0b6d0bee99011b57a18f25503dcf7f714be636f75e1886b077099619f',
             'src/coroutine/iocp.cc' => 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990',
             'src/network/dns.cc' => '1528f5e6e65569f0497695340c9e762527e83eb554acb3f9bd062d903fe530e1',
+            'src/network/address.cc' => 'e0b57b87c89b3b3689e9ec2c5fe01dcda006655f4edc21100199ba056deda352',
+            'src/coroutine/socket.cc' => 'ce7e1d08943d29262d77079c7d8b23977bd4f2d04d8f3d3bd3179b15ffb340fc',
             'php_swoole.h' => '66305cdd37bcaf35ee17e7d24ed12b6be4d18a4ad34d0a7dc883954344009e28',
         ];
         $sources = [];
@@ -83,6 +85,26 @@ final class SwooleWindowsSource
         ] as $before => $after) {
             $sources['src/network/dns.cc'] = $this->replace($sources['src/network/dns.cc'], $before, $after);
         }
+        // Address 是未初始化的聚合对象；IPv6 的 flowinfo/scope_id 不能把栈字节交给 ConnectEx。
+        $sources['src/network/address.cc'] = $this->replace(
+            $sources['src/network/address.cc'],
+            "bool Address::assign(SocketType _type, const std::string &_host, int _port, bool _resolve_name) {\n    type = _type;",
+            "bool Address::assign(SocketType _type, const std::string &_host, int _port, bool _resolve_name) {\n    memset(&addr, 0, sizeof(addr));\n    type = _type;"
+        );
+        // Winsock 的 SO_REUSEADDR 可以抢占他人端口；必须保留调用者在 bind 前设置的独占选项。
+        // 未请求独占的 Socket 继续使用上游的地址复用语义，不改变 TCP 服务的既有配置。
+        $sources['src/coroutine/socket.cc'] = $this->replace(
+            $sources['src/coroutine/socket.cc'],
+            '    if (socket->set_reuse_addr() < 0) {',
+            <<<'CPP'
+    int exclusive = 0;
+    if (socket->get_option(SOL_SOCKET, SO_EXCLUSIVEADDRUSE, &exclusive) < 0) {
+        set_err();
+        return false;
+    }
+    if (!exclusive && socket->set_reuse_addr() < 0) {
+CPP
+        );
         $report = [];
         foreach ($sources as $file => $source) {
             if (file_put_contents($directory . '/' . $file, $source) !== strlen($source)) {

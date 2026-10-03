@@ -2,6 +2,12 @@ name: 重建固定 Swoole 共享模块
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: 重建全部模块或仅 Windows 平台适配；单平台运行不代表四平台验收
+        type: choice
+        options: [all, windows]
+        default: all
 
 permissions:
   contents: read
@@ -12,6 +18,7 @@ concurrency:
 
 jobs:
   linux:
+    if: inputs.platform != 'windows'
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +56,7 @@ jobs:
           retention-days: 30
 
   macos:
+    if: inputs.platform != 'windows'
     runs-on: macos-15
     timeout-minutes: 90
     env:
