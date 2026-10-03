@@ -140,6 +140,8 @@ WSS 通过 `open_ssl=true` 以及成对的 `ssl_cert_file`/`ssl_key_file` 启用
 
 监听调用 `accept($seconds)` 前预留连接额度，返回尚未 `start()` 的接入连接。同线程子任务可将其登记到自己的作用域，TLS 握手随后在该连接协程完成，监听可继续接入。交接失败必须停止该连接；同线程监听、等待接入的槽及已接入连接共享同一部署分额，不跨线程传递 PHP/TLS 对象。
 
+同一地址与端口不允许重复监听，冲突时 `start()` 返回 `tcp_listen_failed` 并回收失败实例。Windows 使用原生独占地址选项；无需业务代码按平台设置端口复用。
+
 `receive($seconds)` 返回至多一个配置片段的字节，空字符串仅表示 EOF。`send($data, $seconds)` 使用原生 `sendAll()`，超限在提交前拒绝；短写、超时或取消会停止连接，远端结果可能部分到达，不能自动重发。相同线程内允许一读一写并行，重复同方向操作明确拒绝。`shutdownWrite()` 保留读方向；业务协议自行限制总消息大小，不把一次读取视为一条消息。
 
 TLS 通过 `open_ssl=true` 启用，沿用 `ssl_cert_file/ssl_key_file/ssl_cafile/ssl_host_name/ssl_verify_peer/ssl_protocols`，客户端默认验证证书链和主机名，仅允许 TLS 1.2/1.3。监听需要证书与私钥。`socket_buffer_size` 为 65536–1048576 字节，`backlog` 为 1–4096；它们不替代连接预算。网络等待、DNS、TLS、部分发送、取消和原生 FD 关闭均复用 Swoole，不另建 I/O 循环。

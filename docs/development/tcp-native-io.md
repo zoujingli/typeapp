@@ -16,6 +16,8 @@
 
 沿用已经核验的六文件线程入口适配及内嵌库关闭修复；TCP 不依赖 UDP 空报文修正或文件 I/O 候选补丁。macOS TLS 链接要求沿用[已有修正](mqtt-native-client.md#macos-原生-tls-链接)。IP 证书身份有下面的单方法原生修正，不改调度、握手或协议处理。
 
+监听地址沿用单一所有者契约。Unix 保留 `SO_REUSEADDR`，不启用多监听端口复用；Windows 的同名选项允许抢占已监听端口，改用 `SO_EXCLUSIVEADDRUSE`，复用 UDP 已有的绑定前配置和固定 Swoole 适配。`tests/tcp-binding.php` 是独立的 PHP 重复监听与清理回归，完整 AOT 继续由 TCP 消费者验证 IPv4、IPv6、TLS、取消和端口退役重用；阶段结果见[升级记录](../evidence/typephp-upgrade-0.9.4.md#windows-tcp-挂起的对照)。
+
 ## 数字 IP 的 TLS 校验修正
 
 固定 `src/network/socket.cc` 的 SHA-256 为 `e6919bae549f08932e6922c118b830d1f9fe6e5318efb874a7909ccd2a3814bd`。原 `Socket::ssl_check_host()` 无论输入是域名还是数字 IP，都调用 `X509_check_host()`。同一份含 `DNS:localhost,IP:127.0.0.1,IP:::1` 的证书，独立 Node TLS 对端下的原生最小复现得到：localhost 成功、127.0.0.1 失败、错误域名失败。该缺陷阻止普通 IP SAN 证书的合法连接。

@@ -118,6 +118,10 @@ IPv6/独占绑定适配后的 Windows 静态 SDK 已按 `3c583020f5fb5813256feaa
 
 同源码的 [完整通信对照 37122750438](https://github.com/zoujingli/typeapp/actions/runs/37122750438) 中，UDP 通过，TCP 仍失败。增加关闭前后检查点后，本轮两个线程都越过慢握手、取消和背压，进入服务端场景；报告保留 `tcp_not_stopped`，最终仍由 40 秒外层截止终止。该异常来自清理尚未进入作用域的控制连接，可能覆盖更早的失败，因此不能沿用“慢握手卡住”作为本轮结论。Artifact `11274501585`（摘要 `be6ceeae8660c45557ead9de9fcd56eeac6d2136bf80060f81f843367d79779c`）保留原程序和两个线程的失败。后续先修正测试清理并独立验证重复监听；此前未返回的原记录继续保留。
 
+[并行握手与监听对照 37123480987](https://github.com/zoujingli/typeapp/actions/runs/37123480987)，源码 `29e7c97f17a6e075c6f7c08a953c40d2bcdb5079`，通过只恢复并行回声的 AOT 场景，程序摘要 `1f054c404f65994e1e6e8c77ecad34a0aab4894be90edb7e28dc9f99d52a5ebf`，构建身份 `41a7de583595654241d8ad7a2aa75469a4b1b4f19a752935ce621651be88a78c`。随后 `tests/tcp-binding.php` 独立复现重复监听未被拒绝：IPv4、IPv6 的第二个同端口监听均为 `accepted`；显式清理后额度与协程均为零，进程正常返回测试失败。这条最小路径不含 TLS、DNS、并行回声或 AOT；原生程序与报告保存在 Artifact `11273479089`（摘要 `5a5f8e3fd578a7ff9d0c3bc94097665100574b51c7bc37ddaaf00f9200b49d81`）。
+
+候选修正仅调整 `TcpSocket` 监听前的官方选项：Windows 从 `SO_REUSEADDR` 改为 `SO_EXCLUSIVEADDRUSE`，Unix 沿用既有选项。复用 UDP 已有的固定 Swoole 绑定适配，不修改原生调度或追加 ABI；重复监听仍须返回 `tcp_listen_failed`。最小回归及完整 AOT 尚须在修改后重新验证，不能将 PHP 复现结果当作修复通过。
+
 ### 静态程序预验收
 
 以下运行采用源码 `11a73078df41a9f8116384705251d37603f24666`，用于验证新版工具链与静态依赖。它们不是最终 RC14 标签的候选附件，后续发布仍须从最终固定源码重新构建并验收同一程序。

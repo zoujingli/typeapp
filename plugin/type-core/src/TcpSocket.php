@@ -67,6 +67,7 @@ final class TcpSocket implements ManagedResource
 
     /**
      * 创建尚未绑定的监听；只接受数字 IP，端口 0 由系统分配，IPv6 不隐式接收 IPv4。
+     * 同一地址与端口不允许重复监听；Windows 使用原生独占选项保持此契约。
      * 监听、等待接入的预留槽及全部连接共用注入的线程部署分额；backlog 仅限制内核等待队列。
      *
      * @param array{backlog?: int, socket_buffer_size?: int, open_ssl?: bool, ssl_cert_file?: string,
@@ -120,7 +121,9 @@ final class TcpSocket implements ManagedResource
                 $this->fail('tcp_tls_configuration_failed');
             }
             if ($this->kind === 'listener') {
-                if (!$this->socket->setOption(SOL_SOCKET, SO_REUSEADDR, 1)
+                // Winsock 的地址复用允许第二个监听抢占端口；沿用 UDP 的原生独占设置。
+                $bindOption = PHP_OS_FAMILY === 'Windows' ? (int) constant('SO_EXCLUSIVEADDRUSE') : SO_REUSEADDR;
+                if (!$this->socket->setOption(SOL_SOCKET, $bindOption, 1)
                     || (str_contains($this->host, ':') && !$this->socket->setOption(IPPROTO_IPV6, IPV6_V6ONLY, 1))) {
                     $this->fail('tcp_option_failed');
                 }
