@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * 快速定位原生模块的 DNS 配置与线程归属；完整 AOT 仍由 tcp-consumer 验收。
  *
- * @return array{address:string,error:int,coroutines:int}
+ * @return array{address:string|false,error:int,coroutines:int}
  */
 function probeSwooleDns(string $server): array
 {

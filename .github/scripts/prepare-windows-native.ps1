@@ -116,7 +116,33 @@ foreach ($taskDependency in $taskDependencies.Keys) {
     Expand-Archive -LiteralPath $taskZip -DestinationPath $taskDeps -Force
 }
 $taskSwooleReference = '4aff74a9ac086458d1c5251e71ac6e080f68b390'
+$taskSourceDependencies = @{}
 if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
+    # 官方 DNS 配置只有 c-ares 路径会使用。与静态 SDK 固定相同版本；此开发模块
+    # 链接官方共享 PHP 的 /MD CRT，生产静态 SDK 仍由其独立入口使用 /MT。
+    $taskCaresReference = 'c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab'
+    $taskCaresDigest = 'c9ea1b3029b23b04376c229bd519489cee180874ec48cd863a5dcba628c0fe03'
+    $taskCaresLicenseDigest = '460f5e768fda3752ca2169a95df062578a10fb126bfd65f3b9b1a1bed2f84807'
+    $taskCaresArchive = Join-Path $Directory 'c-ares.tar.gz'
+    Get-VerifiedArchive ('https://codeload.github.com/c-ares/c-ares/tar.gz/' + $taskCaresReference) $taskCaresDigest $taskCaresArchive
+    & $taskTar -xzf $taskCaresArchive -C $Directory
+    if ($LASTEXITCODE -ne 0) { throw 'c-ares 固定源码解包失败。' }
+    $taskCares = Join-Path $Directory ('c-ares-' + $taskCaresReference)
+    foreach ($taskLicense in @((Join-Path $taskCares 'LICENSE.md'), (Join-Path $taskRoot 'plugin/type-build/resources/swoole/LICENSES/c-ares/LICENSE.md'))) {
+        if ((Get-FileHash -LiteralPath $taskLicense -Algorithm SHA256).Hash.ToLowerInvariant() -ne $taskCaresLicenseDigest) { throw 'c-ares 原始许可证与分发材料不符。' }
+    }
+    $taskCaresBuild = Join-Path $taskCares 'build'
+    & cmake -S $taskCares -B $taskCaresBuild -G 'Visual Studio 17 2022' -A x64 '-DCARES_STATIC=ON' '-DCARES_SHARED=OFF' '-DCARES_BUILD_TESTS=OFF' '-DCARES_BUILD_TOOLS=OFF' '-DCARES_MSVC_STATIC_RUNTIME=OFF' '-DCMAKE_POLICY_DEFAULT_CMP0091=NEW' '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL' '-DCMAKE_INSTALL_LIBDIR=lib' "-DCMAKE_INSTALL_PREFIX=$taskDeps" 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'cares-configure.log')
+    if ($LASTEXITCODE -ne 0) { throw 'c-ares Windows 配置失败。' }
+    & cmake --build $taskCaresBuild --config Release --parallel 2 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'cares-build.log')
+    if ($LASTEXITCODE -ne 0) { throw 'c-ares Windows 编译失败。' }
+    & cmake --install $taskCaresBuild --config Release 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'cares-install.log')
+    if ($LASTEXITCODE -ne 0) { throw 'c-ares Windows 安装失败。' }
+    $taskCaresLibrary = Join-Path $taskDeps 'lib/cares.lib'
+    $taskCaresDirectives = (& dumpbin /nologo /directives $taskCaresLibrary 2>&1 | Out-String)
+    $taskCaresDirectives | Set-Content -LiteralPath (Join-Path $taskEvidence 'cares-directives.log') -Encoding utf8
+    if ($LASTEXITCODE -ne 0 -or $taskCaresDirectives -notmatch '(?i)DEFAULTLIB:"?MSVCRT\b' -or $taskCaresDirectives -match '(?i)DEFAULTLIB:"?LIBCMT') { throw 'c-ares 必须使用共享 PHP 对应的发布 CRT。' }
+    $taskSourceDependencies['c-ares'] = @{ version='1.34.8'; reference=$taskCaresReference; 'archive-sha256'=$taskCaresDigest; 'license-sha256'=$taskCaresLicenseDigest; 'library-sha256'=(Get-FileHash -LiteralPath $taskCaresLibrary -Algorithm SHA256).Hash.ToLowerInvariant(); linkage='static'; crt='MD' }
     $taskSwooleArchive = Join-Path $Directory 'swoole.tar.gz'
     Get-VerifiedArchive ('https://codeload.github.com/swoole/swoole-src/tar.gz/' + $taskSwooleReference) '63598eba7d2a36d8820b1501854161e5c326ab30a32a419e3aa0e4d5154936cd' $taskSwooleArchive
     & $taskTar -xzf $taskSwooleArchive -C $Directory
@@ -134,16 +160,16 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
         if ($LASTEXITCODE -ne 0) { throw 'Swoole phpize 失败。' }
         $taskTraceOptions = @()
         if ($TraceLog) { $taskTraceOptions += '--enable-trace-log' }
-        & .\configure.bat '--enable-swoole=shared' '--enable-swoole-thread' '--enable-mysqlnd' '--enable-php-sockets' '--enable-swoole-pgsql' '--enable-swoole-sqlite' "--with-php-build=$taskDeps" '--with-mp=2' @taskTraceOptions 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
+        & .\configure.bat '--enable-swoole=shared' '--enable-swoole-thread' '--enable-cares' '--enable-mysqlnd' '--enable-php-sockets' '--enable-swoole-pgsql' '--enable-swoole-sqlite' "--with-php-build=$taskDeps" '--with-mp=2' @taskTraceOptions 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
         if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath 'Makefile')) { throw 'Swoole Windows 配置失败。' }
         $taskFeatures = [IO.File]::ReadAllText((Join-Path $taskDevel 'include/main/config.pickle.h'))
-        foreach ($taskFeature in @('SW_USE_MYSQLND', 'SW_USE_PGSQL', 'SW_USE_SQLITE')) {
-            if ($taskFeatures -notmatch ('(?m)^#define\s+' + $taskFeature + '\s+1\b')) { throw ('Swoole 缺少必需 PDO hook：' + $taskFeature) }
+        foreach ($taskFeature in @('SW_USE_CARES', 'SW_USE_MYSQLND', 'SW_USE_PGSQL', 'SW_USE_SQLITE')) {
+            if ($taskFeatures -notmatch ('(?m)^#define\s+' + $taskFeature + '\s+1\b')) { throw ('Swoole 缺少必需原生能力：' + $taskFeature) }
         }
         # PHP 8.5 的官方 Swoole 关闭回调使用指定初始化；MSVC 需要显式 C++20。
         $taskCompilerOptions = $env:_CL_
         try {
-            $env:_CL_ = ($taskCompilerOptions + ' /std:c++20').Trim()
+            $env:_CL_ = ($taskCompilerOptions + ' /std:c++20 /D CARES_STATICLIB').Trim()
             & nmake /nologo 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'swoole-build.log')
             if ($LASTEXITCODE -ne 0) { throw 'Swoole Windows 编译失败。' }
         } finally { $env:_CL_ = $taskCompilerOptions }
@@ -151,6 +177,9 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
     $taskModules = @(Get-ChildItem -LiteralPath $taskSwoole -Filter php_swoole.dll -File -Recurse)
     if ($taskModules.Count -ne 1) { throw 'Swoole 构建没有产生唯一扩展。' }
     Copy-Item -LiteralPath $taskModules[0].FullName -Destination (Join-Path $sdk 'ext/php_swoole.dll')
+    $taskSwooleImports = (& dumpbin /nologo /dependents $taskModules[0].FullName 2>&1 | Out-String)
+    $taskSwooleImports | Set-Content -LiteralPath (Join-Path $taskEvidence 'swoole-imports.log') -Encoding utf8
+    if ($LASTEXITCODE -ne 0 -or $taskSwooleImports -match '(?i)\b(?:lib)?cares\.dll\b') { throw '共享 Swoole 的 c-ares 必须静态链接。' }
     $taskSwooleSymbols = [IO.Path]::ChangeExtension($taskModules[0].FullName, '.pdb')
     if (Test-Path -LiteralPath $taskSwooleSymbols) {
         Copy-Item -LiteralPath $taskSwooleSymbols -Destination (Join-Path $sdk 'ext/php_swoole.pdb')
@@ -160,6 +189,7 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
     if ($LASTEXITCODE -ne 0 -or !$taskBundledSwoole -or !(Test-Path -LiteralPath $taskBundledSwoole -PathType Leaf)) { throw '项目内置 Swoole 校验失败。' }
     Copy-Item -LiteralPath $taskBundledSwoole -Destination (Join-Path $sdk 'ext/php_swoole.dll')
     Copy-Item -LiteralPath (Join-Path $taskRoot 'plugin/type-build/resources/swoole/manifest.json') -Destination (Join-Path $taskEvidence 'swoole-bundle.json')
+    $taskSourceDependencies = (Get-Content -LiteralPath (Join-Path $taskEvidence 'swoole-bundle.json') -Raw | ConvertFrom-Json).modules.'Windows-x64-8.5.10-zts'.build.'source-dependencies'
     $taskToolsReference = $null
     $taskToolsDigest = $null
     Write-Host '已复用项目内置 Swoole，无需下载或编译 Swoole 源码。'
@@ -217,4 +247,4 @@ Add-Content -LiteralPath $env:GITHUB_PATH -Value $phpxBuild -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw 'The real Windows PHP runtime did not match the SDK contract.' }
 & (Join-Path $sdk 'php.exe') -r 'if(!method_exists(Swoole\Thread::class,"startNative") || Swoole\Thread::NATIVE_ENTRY_ABI!==2 || !defined("SWOOLE_HOOK_PDO_PGSQL") || !defined("SWOOLE_HOOK_PDO_SQLITE")){exit(1);}'
 if ($LASTEXITCODE -ne 0) { throw 'Swoole 原生线程 ABI 或 PDO hook 不完整。' }
-@{ platform='Windows'; architecture='x64'; php='8.5.10'; sdk_tools_source=$taskToolsReference; sdk_tools_sha256=$taskToolsDigest; swoole_source=$taskSwooleReference; swoole_sha256=(Get-FileHash -LiteralPath (Join-Path $sdk 'ext/php_swoole.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); phpx_source='a0138bbdd6cbfda62225adc56c558d0742114c8a'; phpx_sha256=(Get-FileHash -LiteralPath (Join-Path $phpxBuild 'phpx.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); dependencies=$taskDependencies; passed=$true } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
+@{ platform='Windows'; architecture='x64'; php='8.5.10'; sdk_tools_source=$taskToolsReference; sdk_tools_sha256=$taskToolsDigest; swoole_source=$taskSwooleReference; swoole_sha256=(Get-FileHash -LiteralPath (Join-Path $sdk 'ext/php_swoole.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); phpx_source='a0138bbdd6cbfda62225adc56c558d0742114c8a'; phpx_sha256=(Get-FileHash -LiteralPath (Join-Path $phpxBuild 'phpx.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); dependencies=$taskDependencies; source_dependencies=$taskSourceDependencies; passed=$true } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
