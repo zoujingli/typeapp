@@ -106,6 +106,8 @@ $taskDependencies = @{
     'brotli-1.2.0-vs17-x64.zip' = '61aec2187d4317826b374f4f2d8ef4b652edb46ae9d5b68820a840c94427644e'
     'libzstd-1.5.7-vs17-x64.zip' = '59dbce5548104788ccfc5040bb7140916454fd0138d306705bd9b3d67741dc4a'
     'nghttp2-1.70.0-vs17-x64.zip' = '51e21698b80f4e1a151508656f6ca7caf13adfef65dfefbc160645cf9c1129f1'
+    'libcurl-8.22.0-3-vs17-x64.zip' = '4499604d8daf51c70f86cd06255df091f8350bfadd8c5a11fb5bfaca26ed0ad8'
+    'libssh2-1.11.1-10-vs17-x64.zip' = '8976f728b0e1c8ea704fa61973b57077d3d760afc82ebfbdfcccf745b7802100'
     'libpq-16.15-vs17-x64.zip' = 'f5fa47ebb2cf650428870e24ab2b8a7ce9663a782ddb9d790dfb432fd22e4728'
     'sqlite3-3.53.4-vs17-x64.zip' = 'abb5e36fc76803b4df9a63ab56b931f37058d62c9e6303172015ff4f101ef4cd'
 }
@@ -118,6 +120,17 @@ foreach ($taskDependency in $taskDependencies.Keys) {
 $taskSwooleReference = '4aff74a9ac086458d1c5251e71ac6e080f68b390'
 $taskSourceDependencies = @{}
 if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
+    # PHP curl 扩展已加载并不代表 Swoole 编入原生 curl。使用官方 /MD 静态库，
+    # 校验许可证及 CRT，再由 configure 的 SW_USE_CURL 门禁和真实协程回归确认。
+    foreach ($taskLicenseName in @('libcurl', 'libssh2')) {
+        $taskDependencyLicense = Join-Path $taskDeps ('share/licenses/' + $taskLicenseName + '/COPYING')
+        $taskBundledLicense = Join-Path $taskRoot ('plugin/type-build/resources/swoole/LICENSES/' + $taskLicenseName + '/COPYING')
+        if ((Get-FileHash -LiteralPath $taskDependencyLicense -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $taskBundledLicense -Algorithm SHA256).Hash) { throw ('Windows curl 依赖原始许可不符：' + $taskLicenseName) }
+    }
+    $taskCurlLibrary = Join-Path $taskDeps 'lib/libcurl_a.lib'
+    $taskCurlDirectives = (& dumpbin /nologo /directives $taskCurlLibrary 2>&1 | Out-String)
+    $taskCurlDirectives | Set-Content -LiteralPath (Join-Path $taskEvidence 'curl-directives.log') -Encoding utf8
+    if ($LASTEXITCODE -ne 0 -or $taskCurlDirectives -notmatch '(?i)DEFAULTLIB:"?MSVCRT\b' -or $taskCurlDirectives -match '(?i)DEFAULTLIB:"?LIBCMT') { throw 'libcurl 必须使用共享 PHP 对应的发布 CRT。' }
     # 官方 DNS 配置只有 c-ares 路径会使用。与静态 SDK 固定相同版本；此开发模块
     # 链接官方共享 PHP 的 /MD CRT，生产静态 SDK 仍由其独立入口使用 /MT。
     $taskCaresReference = 'c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab'
@@ -160,10 +173,10 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
         if ($LASTEXITCODE -ne 0) { throw 'Swoole phpize 失败。' }
         $taskTraceOptions = @()
         if ($TraceLog) { $taskTraceOptions += '--enable-trace-log' }
-        & .\configure.bat '--enable-swoole=shared' '--enable-swoole-thread' '--enable-cares' '--enable-mysqlnd' '--enable-php-sockets' '--enable-swoole-pgsql' '--enable-swoole-sqlite' "--with-php-build=$taskDeps" '--with-mp=2' @taskTraceOptions 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
+        & .\configure.bat '--enable-swoole=shared' '--enable-swoole-thread' '--enable-cares' '--enable-swoole-curl' '--enable-mysqlnd' '--enable-php-sockets' '--enable-swoole-pgsql' '--enable-swoole-sqlite' "--with-php-build=$taskDeps" '--with-mp=2' @taskTraceOptions 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'configure.log')
         if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath 'Makefile')) { throw 'Swoole Windows 配置失败。' }
         $taskFeatures = [IO.File]::ReadAllText((Join-Path $taskDevel 'include/main/config.pickle.h'))
-        foreach ($taskFeature in @('SW_USE_CARES', 'SW_USE_MYSQLND', 'SW_USE_PGSQL', 'SW_USE_SQLITE')) {
+        foreach ($taskFeature in @('SW_USE_CARES', 'SW_USE_CURL', 'SW_USE_MYSQLND', 'SW_USE_PGSQL', 'SW_USE_SQLITE')) {
             if ($taskFeatures -notmatch ('(?m)^#define\s+' + $taskFeature + '\s+1\b')) { throw ('Swoole 缺少必需原生能力：' + $taskFeature) }
         }
         # PHP 8.5 的官方 Swoole 关闭回调使用指定初始化；MSVC 需要显式 C++20。

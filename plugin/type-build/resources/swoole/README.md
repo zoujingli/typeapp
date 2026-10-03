@@ -34,6 +34,8 @@ bash tools/prepare-swoole-module.sh
 
 Windows 的 SDK 准备入口为 `.github/scripts/prepare-windows-native.ps1`，默认将校验后的本地 DLL 放入 SDK 的 `ext` 目录，跳过 Swoole 源码和 phpize 工具下载。
 
+当前 Windows 共享模块的原生 curl 尚待重建验收：源码准备入口已增加 `--enable-swoole-curl`，固定官方 libcurl 8.22.0 与 libssh2 1.11.1 的归档并校验原始许可及 CRT。仅加载 PHP curl 扩展或读取 hook 标志不能证明协程等待生效；重建门禁验证双线程请求归属、等待期间事件循环运行及超时后的句柄复用。生产静态 SDK 已启用该开关，其验收身份单独记录。
+
 ## 来源与依赖
 
 全部模块基于官方 [swoole-src](https://github.com/swoole/swoole-src/tree/4aff74a9ac086458d1c5251e71ac6e080f68b390) 固定提交。固定归档摘要、模块摘要、补丁身份、构建参数和来源记录在清单中。它们包含 TypeApp 的原生线程入口 ABI 2、HTTP、Socket 与 TLS 适配，不是未经修改的上游发行文件。上游已承担线程标准流回收，项目不再重复实现该生命周期。
