@@ -15,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 验收范围（http-probe 仅 IOCP、socket-probe 仅 TCP/UDP；sqlite-app/pgsql-app 仅应用诊断；template 仅模板）
+        description: 验收范围（http-probe 仅 IOCP、socket-probe 仅 TCP/UDP、tls-probe 仅原生 TLS；sqlite-app/pgsql-app 仅应用诊断；template 仅模板）
         type: choice
-        options: [full, native, orm, template, pgsql-probe, pgsql-app, sqlite-app, http-probe, socket-probe]
+        options: [full, native, orm, template, pgsql-probe, pgsql-app, sqlite-app, http-probe, socket-probe, tls-probe]
         default: full
       orm_driver:
         description: 仅 scope=orm 生效；单库结果不代表三库验收
@@ -35,12 +35,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-platform-${{ github.ref }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app","http-probe","socket-probe"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
+  group: native-platform-${{ github.ref }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app","http-probe","socket-probe","tls-probe"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
   cancel-in-progress: true
 
 jobs:
   windows:
-    if: github.repository == 'zoujingli/typeapp' && !contains(fromJSON('["http-probe","socket-probe"]'), inputs.scope)
+    if: github.repository == 'zoujingli/typeapp' && !contains(fromJSON('["http-probe","socket-probe","tls-probe"]'), inputs.scope)
     runs-on: windows-2022
     timeout-minutes: 120
     env:
@@ -253,14 +253,14 @@ jobs:
             build/template-*/build/compiler/compile.log
 
   socket-probe:
-    if: github.repository == 'zoujingli/typeapp' && github.event_name == 'workflow_dispatch' && inputs.scope == 'socket-probe' && inputs.candidate_version == ''
+    if: github.repository == 'zoujingli/typeapp' && github.event_name == 'workflow_dispatch' && contains(fromJSON('["socket-probe","tls-probe"]'), inputs.scope) && inputs.candidate_version == ''
     name: socket-probe · ${{ matrix.protocol }}
     runs-on: windows-2022
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        protocol: [tcp, udp]
+        protocol: ${{ fromJSON(inputs.scope == 'tls-probe' && '["tcp"]' || '["tcp","udp"]') }}
     defaults:
       run:
         shell: pwsh
@@ -283,6 +283,7 @@ jobs:
           & "$env:PHP_HOME/php.exe" tests/swoole-dns.php (Join-Path $env:GITHUB_WORKSPACE 'build/toolchain-regressions-socket-probe/dns')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 运行独立通信消费者
+        if: inputs.scope != 'tls-probe'
         env:
           SOCKET_PROTOCOL: ${{ matrix.protocol }}
         run: |
@@ -290,6 +291,11 @@ jobs:
           $env:COMPOSER_DISABLE_NETWORK='1'
           $taskConsumer = Join-Path $env:GITHUB_WORKSPACE "build/toolchain-regressions-socket-probe/$env:SOCKET_PROTOCOL"
           & "$env:PHP_HOME/php.exe" "tests/$env:SOCKET_PROTOCOL-consumer.php" $taskConsumer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 核对原生 TLS 半关闭与超时恢复
+        if: always() && matrix.protocol == 'tcp'
+        run: |
+          & "$env:PHP_HOME/php.exe" tests/swoole-tls.php (Join-Path $env:GITHUB_WORKSPACE 'build/toolchain-regressions-socket-probe/tls')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 保存原程序、对端和失败检查点
         if: always()
