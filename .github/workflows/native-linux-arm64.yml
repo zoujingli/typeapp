@@ -15,11 +15,11 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: 完整矩阵或独立诊断；benchmark 需提供基准提交，独立范围不产生完整验收汇总
+        description: 完整矩阵或独立诊断；benchmark/benchmark-x64 需提供基准提交，独立范围不产生完整验收汇总
         required: true
         default: all
         type: choice
-        options: [all, reliability, toolchain, benchmark]
+        options: [all, reliability, toolchain, benchmark, benchmark-x64]
       base_source:
         description: 用于性能比较的完整基准提交，留空时不运行性能组
         required: false
@@ -39,14 +39,14 @@ permissions:
 
 jobs:
   native-regression:
-    name: Linux ARM64 · ${{ matrix.suite }}
+    name: Linux ${{ inputs.suite == 'benchmark-x64' && 'x64' || 'ARM64' }} · ${{ matrix.suite }}
     if: github.repository == 'zoujingli/typeapp'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ${{ inputs.suite == 'benchmark-x64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(inputs.suite == 'reliability' && '["reliability"]' || inputs.suite == 'toolchain' && '["toolchain"]' || inputs.suite == 'benchmark' && '["benchmark"]' || inputs.base_source != '' && '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain","benchmark"]' || '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain"]') }}
+        suite: ${{ fromJSON(inputs.suite == 'reliability' && '["reliability"]' || inputs.suite == 'toolchain' && '["toolchain"]' || contains(fromJSON('["benchmark","benchmark-x64"]'), inputs.suite) && '["benchmark"]' || inputs.base_source != '' && '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain","benchmark"]' || '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain"]') }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
       TYPE_NEW_SOURCE: ${{ inputs.new_source }}
@@ -97,7 +97,7 @@ jobs:
       - name: 安装原生工具并定位独立测试实例入口
         shell: bash
         run: |
-          test "$(uname -m)" = aarch64
+          test "$(uname -m)" = '${{ inputs.suite == 'benchmark-x64' && 'x86_64' || 'aarch64' }}'
           sudo apt-get update
           sudo apt-get install --yes build-essential cmake libgmp-dev libmpfr-dev pkg-config libc-ares-dev libpq-dev libsqlite3-dev libcurl4-openssl-dev bubblewrap util-linux mysql-server mysql-client postgresql redis-server sqlite3
           pkg-config --modversion libcares
@@ -193,7 +193,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: linux-arm64-${{ matrix.suite }}
+          name: linux-${{ inputs.suite == 'benchmark-x64' && 'x64' || 'arm64' }}-${{ matrix.suite }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
