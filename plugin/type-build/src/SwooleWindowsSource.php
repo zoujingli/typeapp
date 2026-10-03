@@ -10,7 +10,7 @@ use RuntimeException;
 final class SwooleWindowsSource
 {
     /**
-     * 补齐上游构建清单、依赖发现、IOCP 名称限定、地址初始化和独占绑定。
+     * 补齐上游构建、IOCP 名称限定、TLS 正常 EOF、地址初始化和独占绑定。
      * 上游修复对应缺口且 Windows 原生回归通过后撤除。
      *
      * @return array<string,array{before:string,after:string}>
@@ -21,6 +21,7 @@ final class SwooleWindowsSource
         $hashes = [
             'config.w32' => 'a8c2ead0b6d0bee99011b57a18f25503dcf7f714be636f75e1886b077099619f',
             'src/coroutine/iocp.cc' => 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990',
+            'src/coroutine/iocp_socket.cc' => 'f38615b8c967e70429ba29ff317c98f62126f709e73fd575c5e0c6cae22114bf',
             'src/network/dns.cc' => '1528f5e6e65569f0497695340c9e762527e83eb554acb3f9bd062d903fe530e1',
             'src/network/address.cc' => 'e0b57b87c89b3b3689e9ec2c5fe01dcda006655f4edc21100199ba056deda352',
             'src/coroutine/socket.cc' => 'ce7e1d08943d29262d77079c7d8b23977bd4f2d04d8f3d3bd3179b15ffb340fc',
@@ -63,6 +64,18 @@ final class SwooleWindowsSource
             $sources['src/coroutine/iocp.cc'],
             'int retval = WSAPoll(fds, nfds, 0);',
             'int retval = ::WSAPoll(fds, nfds, 0);'
+        );
+        // IOCP 的通用 BIO 错误路径把 TLS close_notify 当作失败且可能丢失 errno。
+        // 读取只在 OpenSSL 明确报告正常关闭时返回 EOF，不能把协议错误或超时改为空串。
+        $sources['src/coroutine/iocp_socket.cc'] = $this->replace(
+            $sources['src/coroutine/iocp_socket.cc'],
+            '        int n = SSL_read(socket->ssl, _buf, static_cast<int>(_n));',
+            <<<'CPP'
+        int n = SSL_read(socket->ssl, _buf, static_cast<int>(_n));
+        if (n <= 0 && SSL_get_error(socket->ssl, n) == SSL_ERROR_ZERO_RETURN) {
+            return 0;
+        }
+CPP
         );
         // c-ares 的回调在 Windows 使用 UINT_PTR；Swoole 的 Socket 也使用 swSocketFd。
         // 回调和索引均保留官方 ares_socket_t，不能为通过编译而截断 64 位句柄。

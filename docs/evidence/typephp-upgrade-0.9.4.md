@@ -90,6 +90,14 @@ macOS UDP 复验先暴露独立消费者的运行目录问题：默认模块仍�
 
 IPv6/独占绑定适配后的 Windows 静态 SDK 已按 `3c583020f5fb5813256feaa8eabd469fab3775e8` 分别重建：[SQLite 37116141545](https://github.com/zoujingli/typeapp/actions/runs/37116141545)、[MySQL 37116144369](https://github.com/zoujingli/typeapp/actions/runs/37116144369)、[PostgreSQL 37116146811](https://github.com/zoujingli/typeapp/actions/runs/37116146811) 均成功。回读三份原生探针报告，实际数据库扩展各自仅包含所选驱动，PHP 8.5.10 ZTS、Swoole `6.3.0RC1` 与系统库清单均匹配；探针范围为 PHP 和扩展 embed，不能替代下文应用程序验收。SDK Artifact 依次为 `11272016209`、`11271896210`、`11270749874`。
 
+### Windows TLS EOF 定位
+
+源码 `53193c921efe0f35d1d24dd600b1cbb8fdce2b73` 的 [TCP/UDP 回归 37117985063](https://github.com/zoujingli/typeapp/actions/runs/37117985063) 中，UDP 通过，TCP 两个业务线程各完成 130 项断言后在首个 TLS 回声场景返回 `tcp_receive_failed`、`errno=0`。同源码的 [完整回归 37117987099](https://github.com/zoujingli/typeapp/actions/runs/37117987099) 通过线程、初始化、资源、HTTP 和全部退出监督模式后，也在 TCP 失败；两次失败均保留，未通过项继续阻止 RC14 发布。
+
+将复现缩为 `tests/swoole-tls.php` 的真实 Swoole Socket 与独立 Node TLS 对端：[37118983742](https://github.com/zoujingli/typeapp/actions/runs/37118983742)，源码 `0127b13961d9ee080037dbccba22d2f3ce381927`，主线程和两次重建工作线程均完成握手与二进制回声，但写半关闭后两次读取均返回 `false`、错误码 0；移除前置超时仍失败。原始逐步报告保存在 Artifact `11273130289`（摘要 `8b87617546133d133b819fe365862ec34aefb8a0a8e626fab1661eeba417f130`），相同探针在 macOS 通过。
+
+固定上游 `src/coroutine/iocp_socket.cc` 原文摘要为 `f38615b8c967e70429ba29ff317c98f62126f709e73fd575c5e0c6cae22114bf`。其 `ssl_recv()` 对非正返回统一进入 BIO 错误分支，正常的 `SSL_ERROR_ZERO_RETURN` 也转成失败；候选适配仅在读取后立即确认这个 OpenSSL 状态时返回零，继续保留超时、复位和协议错误。调用者仍为 `TcpSocket::receive()` 的原生接口，无可替代此分支的公开配置，不在 PHP 层将 `false/errno=0` 猜成 EOF。适配归入 `SwooleWindowsSource`，旧 Windows 模块与 SDK 身份应被拒绝，必须重新构建；上游提供等价 EOF 语义且原生回归通过后撤除。当前为待 Windows 重建验收的修复，不能据此宣布完整 TCP 通过。
+
 ### 静态程序预验收
 
 以下运行采用源码 `11a73078df41a9f8116384705251d37603f24666`，用于验证新版工具链与静态依赖。它们不是最终 RC14 标签的候选附件，后续发布仍须从最终固定源码重新构建并验收同一程序。
