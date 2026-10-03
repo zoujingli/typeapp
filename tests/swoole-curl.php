@@ -27,8 +27,11 @@ function probeSwooleCurl(int $port, string $owner): array
                         CURLOPT_FORBID_REUSE => true, CURLOPT_HTTPHEADER => ['X-Probe-Owner: ' . $token],
                     ]), '无法创建 curl 请求');
                     try {
-                        expect(curl_exec($handle) === $token && curl_errno($handle) === 0
-                            && curl_getinfo($handle, CURLINFO_RESPONSE_CODE) === 200, 'curl 线程/协程响应串扰或请求失败');
+                        $response = curl_exec($handle);
+                        expect($response === $token && curl_errno($handle) === 0
+                            && curl_getinfo($handle, CURLINFO_RESPONSE_CODE) === 200, 'curl 线程/协程响应串扰或请求失败：'
+                            . json_encode(['owner' => $token, 'response' => $response, 'errno' => curl_errno($handle),
+                                'error' => curl_error($handle), 'status' => curl_getinfo($handle, CURLINFO_RESPONSE_CODE)], JSON_THROW_ON_ERROR));
                         $completed++;
                     } finally {
                         // PHP 8 的句柄由对象析构关闭；不使用已弃用且不负责释放的 curl_close。
@@ -75,10 +78,15 @@ if (is_array($arguments)) {
 }
 
 // 原生线程 join 的异常亦由外层进程截止捕获；失败不遗留没有监督者的线程。
-if (($argv[1] ?? '') === '--probe') {
+if (in_array($argv[1] ?? '', ['--probe', '--main-probe'], true)) {
     $directory = $argv[2];
     $peer = json_decode((string) file_get_contents($directory . '/peer.json'), true, 512, JSON_THROW_ON_ERROR);
     expect(Swoole\Runtime::enableCoroutine(SWOOLE_HOOK_NATIVE_CURL), '无法在启动线程前安装 curl hook');
+    if ($argv[1] === '--main-probe') {
+        $main = probeSwooleCurl($peer['port'], 'standalone-main');
+        file_put_contents($directory . '/standalone-main.json', json_encode($main, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+        exit($main['passed'] ? 0 : 1);
+    }
     $results = [];
     foreach (['first', 'restart'] as $round) {
         $threads = [];
@@ -90,7 +98,10 @@ if (($argv[1] ?? '') === '--probe') {
             $thread->join();
             $result = json_decode((string) file_get_contents($directory . '/' . $owner . '.json'), true, 512, JSON_THROW_ON_ERROR);
             $results[$owner] = ['exit' => $thread->getExitStatus(), 'result' => $result];
-            expect($thread->getExitStatus() === 0 && $result['passed'], 'curl 线程请求或重建失败：' . $owner);
+        }
+        // 无论哪一个工作线程失败，都先回收本轮全部线程，避免关闭过程掩盖原始错误。
+        foreach ($threads as $owner => $thread) {
+            expect($results[$owner]['exit'] === 0 && $results[$owner]['result']['passed'], 'curl 线程请求或重建失败：' . $owner);
         }
     }
     $results['main'] = probeSwooleCurl($peer['port'], 'main');
@@ -116,11 +127,14 @@ try {
         usleep(10000);
     }
     expect(is_file($directory . '/peer.json'), 'curl 独立对端未就绪：' . $peer->stderr());
-    $application = new Process([PHP_BINARY, __FILE__, '--probe', $directory], $directory);
-    $execution = $application->wait(20);
-    file_put_contents($directory . '/execution.json', json_encode(['exit' => $execution->exitCode,
-        'timed_out' => $execution->timedOut, 'stdout' => $execution->stdout, 'stderr' => $execution->stderr], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
-    expect($execution->successful(), '原生 curl 线程回归失败，见 ' . $directory . '/execution.json');
+    // 独立主线程对照采用另一进程；Event::wait 的退出会恢复进程级 hook，不能污染线程启动条件。
+    foreach (['--main-probe' => 'standalone-execution.json', '--probe' => 'execution.json'] as $mode => $evidence) {
+        $application = new Process([PHP_BINARY, __FILE__, $mode, $directory], $directory);
+        $execution = $application->wait(20);
+        file_put_contents($directory . '/' . $evidence, json_encode(['exit' => $execution->exitCode,
+            'timed_out' => $execution->timedOut, 'stdout' => $execution->stdout, 'stderr' => $execution->stderr], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+        expect($execution->successful(), '原生 curl 回归失败，见 ' . $directory . '/' . $evidence);
+    }
     file_put_contents($directory . '/verification.json', json_encode(['passed' => true, 'platform' => PHP_OS_FAMILY,
         'swoole' => phpversion('swoole'), 'curl' => curl_version()['version'],
         'results' => json_decode((string) file_get_contents($directory . '/results.json'), true, 512, JSON_THROW_ON_ERROR)], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
