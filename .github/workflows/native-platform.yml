@@ -289,6 +289,9 @@ jobs:
           path: |
             build/toolchain-regressions-http-probe/**/*.log
             build/toolchain-regressions-http-probe/**/exit.json
+            build/toolchain-regressions-http-probe/**/supervisor-*.json
+            build/toolchain-regressions-http-probe/**/stopped-*.json
+            build/toolchain-regressions-http-probe/http-thread-evidence.json
             build/toolchain-regressions-http-probe/build/native/type-app.exe*
             build/windows-runtime-*/*.log
             build/windows-runtime-*/*.json

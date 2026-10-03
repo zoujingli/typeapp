@@ -311,7 +311,7 @@ for ($round = 0; $round < 3; $round++) {
                     expect($final['error'] === ($mode === 'partial' ? 'invalid_startup_json' : 'thread_exit_unexpected')
                         && is_file($directory . '/probe-stopped-1'), '部分启动或异常退出没有停止其余线程');
                 } else {
-                    expect($final['exits'] === [0, 0], '正常停止出现线程失败');
+                    expect($final['exits'] === array_fill(0, $expectedJoined, 0), '正常停止出现线程失败');
                     $stopping = json_decode(file_get_contents($directory . '/supervisor-stopping.json'), true, flags: JSON_THROW_ON_ERROR);
                     expect($stopping['ready'] === 0, '停止没有撤销组就绪');
                 }

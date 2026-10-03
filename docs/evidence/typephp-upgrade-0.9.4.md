@@ -57,12 +57,12 @@ Swoole 候选在 `v6.3.0-rc1` 之后包含 42 个提交，属于开发快照。�
 | [Windows x64 37108670317](https://github.com/zoujingli/typeapp/actions/runs/37108670317) | `2dfabab4e7f24f82247bb1999ad4317f28e1c343` | 线程、初始化失败与资源隔离通过，HTTP 消费者失败；完整工作流失败 |
 | [Windows IOCP 诊断 37108902165](https://github.com/zoujingli/typeapp/actions/runs/37108902165) | `62bb2f1222c10739c8142e77204a5044e96758c2` | 官方 trace 记录 ACCEPT 提交后未完成，首个 HTTP 请求超时；保留原程序与日志 |
 
-macOS 的早期轮次存在 Homebrew tap 网络失败和后续推送取消，尚无最终候选完整通过结论。基础设施失败与代码行为失败分别记录。Windows 修复后的专用 HTTP 诊断为 [37109594948](https://github.com/zoujingli/typeapp/actions/runs/37109594948)，源码 `be5a0f7f3bcac945aa6b305d03d29a89f027094a`；本段不预先计为通过。
+macOS 的早期轮次存在 Homebrew tap 网络失败和后续推送取消，尚无最终候选完整通过结论。基础设施失败与代码行为失败分别记录。Windows 修复后的专用 HTTP 诊断 [37109594948](https://github.com/zoujingli/typeapp/actions/runs/37109594948)，源码 `be5a0f7f3bcac945aa6b305d03d29a89f027094a`，已完成三轮 HTTP 输入、容量、清理与端口释放；随后在监督正常停止的测试断言失败：Windows 只有一个自绑定线程且返回 `[0]`，旧断言仍固定要求两个线程的 `[0, 0]`。现按本轮实际应 join 的线程数量逐个核对零退出码，继续完整回归，不把这轮诊断记为全部通过。
 
 ### Windows 回归诊断与修复
 
 - 资源观察器：`37107861848` 的 PowerShell 子进程在原 3 秒预算内未完成，原报告为 `timedOut=true`、`exitCode=255`、双流为空。Windows 冷启动预算改为 15 秒，Unix 保持 3 秒；外层线程测试仍保留总截止和检查点。随后 `37108670317` 的三轮线程及资源观察通过。主程序被清理时的 `-1073741510` 不冒称为原生崩溃。
-- 临时端口监听：固定 Swoole 的 `Socket::free()` 在存在 reactor 时延迟释放原生句柄。macOS 最小复现中，`close()` 和 `unset()` 后仍能连接，执行所属 `Swoole\\Event::wait()` 后连接被拒绝。HTTP 夹具的两处临时监听现在先完成延迟回收，再启动自绑定业务线程；Windows 是否解决原故障由上述专用消费者判定。
+- 临时端口监听：固定 Swoole 的 `Socket::free()` 在存在 reactor 时延迟释放原生句柄。macOS 最小复现中，`close()` 和 `unset()` 后仍能连接，执行所属 `Swoole\Event::wait()` 后连接被拒绝。HTTP 夹具的两处临时监听先完成延迟回收，再启动自绑定业务线程；Windows 随后完成三轮 HTTP 请求，原 ACCEPT 等待故障不再出现。
 - 入口契约：`serveThreadOwned()` 补齐与 `serveThread()` 一致的连接额度和原始 HTTP 输入 ABI 校验，传入 `typeapp_max_connections`、`typeapp_http1_input`。使用现有重复头、HTTP 版本、满额拒绝和恢复断言验证，不修改业务错误码或放宽容量。
 - 诊断隔离：生产服务器删除临时阶段日志与 trace 环境变量处理。`scope=http-probe` 的官方 IOCP trace 仅由独立测试夹具显式启用，其源码重建模块不替换组件分发模块；诊断结果不代替完整 Windows 门禁。
 
