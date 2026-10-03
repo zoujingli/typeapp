@@ -333,7 +333,6 @@ function mainOwned(string $directory): void
     $port = $reserved->getsockname()['port'];
     $reserved->close();
     unset($reserved);
-    Swoole\Event::wait();
     $thread = null;
     $exit = null;
     try {
