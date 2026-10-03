@@ -78,6 +78,8 @@ macOS 的早期轮次存在 Homebrew tap 网络失败和后续推送取消，尚
 
 [Windows 模块重建 37115394185](https://github.com/zoujingli/typeapp/actions/runs/37115394185) 已按 `5b3fe64ae2e879d108b346b4716f852901898d59` 完成。新 DLL 为 2,416,128 字节、SHA-256 `c8a046a9b93297198eab0166fca8118d9111f9015563d76f83c5a9987a1f42fd`，Artifact `11270798483`；六个适配文件的前后摘要与本地固定源码复核一致，依赖和许可证未变化。此模块替代前文初始批次的 Windows DLL，仅完成加载、协程 SQLite 与 PostgreSQL 连接拒绝检查，后续通信及静态程序结果另行记录。
 
+macOS UDP 复验先暴露独立消费者的运行目录问题：默认模块仍在受禁读的 Composer `vendor` 中，加载被沙箱拒绝。消费者现复用 `independentSwooleModule()` 将同字节模块放入独立运行目录，保持源码禁读范围。随后六个生产包、91 个源码单元全量 AOT 通过，双线程重建两轮及主线程协程均完成 IPv4/IPv6、重复绑定拒绝与资源归还；程序 SHA-256 为 `43fe4dad52ac68473964c48ddc47fef5d79fe2b5533e90e56908d2abf9b51aff`，报告位于 `build/toolchain-upgrade-followup.lVbKwh/udp-exclusive-runtime/run-8e80492992/verification.json`。首轮加载失败另行保留，不能据此推断 Windows 通信结果。
+
 ### 静态程序预验收
 
 以下运行采用源码 `11a73078df41a9f8116384705251d37603f24666`，用于验证新版工具链与静态依赖。它们不是最终 RC14 标签的候选附件，后续发布仍须从最终固定源码重新构建并验收同一程序。

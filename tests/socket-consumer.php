@@ -42,17 +42,8 @@ if (!$verify) {
         'output' => (new BuildPlatform())->output('build/native/type-app'), 'build-directory' => 'build/native/compiler',
         'threads' => [$protocol => ucfirst($protocol) . 'Probe::run'], 'runtime' => [PHP_OS_FAMILY => ['extensions' => ['sockets', 'swoole']]],
         'compiler' => ['debug' => true, 'jobs' => 2]];
-    $swooleModule = getenv('TYPE_SWOOLE_MODULE');
-    if (is_string($swooleModule) && $swooleModule !== '') {
-        $swooleModule = BuildPlatform::resolve($swooleModule);
-        expect(is_file($swooleModule), '指定的 Swoole 模块不存在');
-        expect(mkdir($work . '/modules', 0700), '无法创建独立模块目录');
-        $moduleName = PHP_OS_FAMILY === 'Windows' ? 'php_swoole.dll' : 'swoole.so';
-        expect(copy($swooleModule, $work . '/modules/' . $moduleName), '无法保全指定的 Swoole 模块');
-        $configuration['runtime'][PHP_OS_FAMILY]['modules']['swoole'] = [
-            'file' => 'modules/' . $moduleName, 'sha256' => hash_file('sha256', $swooleModule),
-        ];
-    }
+    // 内置模块同样复制到独立运行目录；无源码策略会拒绝整个 Composer vendor。
+    $configuration['runtime'][PHP_OS_FAMILY]['modules']['swoole'] = independentSwooleModule($work);
     foreach (['composer.json' => $composer, 'type-app.json' => $configuration] as $file => $data) {
         file_put_contents($work . '/' . $file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     }
