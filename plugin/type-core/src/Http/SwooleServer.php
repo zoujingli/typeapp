@@ -294,7 +294,7 @@ final class SwooleServer implements HttpServerInterface
             $server->handle('/', function (Request $request, Response $response): void {
                 $this->handleNative($request, $response);
             });
-            $created = \Swoole\Coroutine::create(function () use ($server, $state): void {
+            $run = function () use ($server, $state): void {
                 try {
                     if ($state['stop'] === true) {
                         $this->control->stop();
@@ -338,11 +338,18 @@ final class SwooleServer implements HttpServerInterface
                     $this->control->stop();
                     $this->clearThreadTimer();
                 }
-            });
-            if ($created === false) {
-                throw new TaskException('http_thread_start_failed', '无法启动 HTTP 监听协程');
+            };
+            if (PHP_OS_FAMILY === 'Windows') {
+                // Windows IOCP 在原生线程中使用 Scheduler 驱动协程 HTTP；直接
+                // create + Event::wait 会让监听协程先于 IOCP 事件循环挂起。
+                \Type\Runtime\CoroutineRuntime::run($run);
+            } else {
+                $created = \Swoole\Coroutine::create($run);
+                if ($created === false) {
+                    throw new TaskException('http_thread_start_failed', '无法启动 HTTP 监听协程');
+                }
+                \Swoole\Event::wait();
             }
-            \Swoole\Event::wait();
             if ($this->threadFailure !== null) {
                 throw $this->threadFailure;
             }
