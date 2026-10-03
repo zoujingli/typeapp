@@ -34,7 +34,7 @@ bash tools/prepare-swoole-module.sh
 
 Windows 的 SDK 准备入口为 `.github/scripts/prepare-windows-native.ps1`，默认将校验后的本地 DLL 放入 SDK 的 `ext` 目录，跳过 Swoole 源码和 phpize 工具下载。
 
-当前 Windows 共享模块的原生 curl 尚待重建验收：源码准备入口已增加 `--enable-swoole-curl`，固定官方 libcurl 8.22.0 与 libssh2 1.11.1 的归档并校验原始许可及 CRT。仅加载 PHP curl 扩展或读取 hook 标志不能证明协程等待生效；重建门禁验证双线程请求归属、等待期间事件循环运行及超时后的句柄复用。生产静态 SDK 已启用该开关，其验收身份单独记录。
+Windows 共享模块已启用 `--enable-swoole-curl`，构建输入固定官方 libcurl 8.22.0 与 libssh2 1.11.1 的归档并校验原始许可及 CRT。重建门禁实际验证独立主线程、两轮双工作线程及最后主线程的请求归属、等待期间事件循环运行、长连接复用、`curl_reset()` 和超时恢复；每个角色完成 36 次成功响应。PHP curl 扩展另报告其自身版本，不能将该字符串或 hook 标志当作 Swoole 原生 curl 的构建身份。生产静态 SDK 的构建及完整应用验收单独记录。
 
 ## 来源与依赖
 
@@ -44,7 +44,7 @@ Linux 两种架构使用官方 `php:8.5.10-zts-bookworm` 镜像构建，启用�
 
 macOS 模块将 libpq（含配套的 libpgcommon_shlib、libpgport_shlib）、SQLite、OpenSSL、c-ares、Brotli 的静态归档链接进扩展，并隐藏这些库的符号，避免与 PHP 已加载的同名库混用。扩展保留 PHP API 的动态绑定以及系统库依赖；没有开发电脑的依赖路径，不需要伴随 dylib。静态子依赖及其来源记录在清单中。
 
-Unix 三个平台的模块来自 [重建 run 37075789749](https://github.com/zoujingli/typeapp/actions/runs/37075789749)，主仓源码为 `f6c092f436f2a341bb6d588d333d761c2ab64732`。Windows 模块来自 [run 37128837651](https://github.com/zoujingli/typeapp/actions/runs/37128837651)、源码 `eaf1a3da2cc191f39dd3885b23e3e9c1298e941f`，保留 IPv6 地址初始化与独占绑定适配、TLS 正常 EOF 修复，并修正外部库关闭及复用 Socket 后的 IOCP 关联缓存。模块静态链接固定 c-ares 1.34.8，使指定 DNS 配置在主线程和重建的工作线程生效。共享模块使用与开发 PHP 一致的 `/MD` CRT，生产静态 SDK 独立使用 `/MT`；不增加 c-ares DLL 部署文件。
+Unix 三个平台的模块来自 [重建 run 37075789749](https://github.com/zoujingli/typeapp/actions/runs/37075789749)，主仓源码为 `f6c092f436f2a341bb6d588d333d761c2ab64732`。Windows 模块来自 [run 37134319268](https://github.com/zoujingli/typeapp/actions/runs/37134319268)、源码 `5c409678213ebd12da3c3d80de4213f1896da7a3`，保留 IPv6 地址初始化与独占绑定适配、TLS 正常 EOF 修复；IOCP 关联缓存由 c-ares 和 libcurl 的真实关闭生命周期回收，使存活连接可重复登记事件、关闭后的数值句柄可安全复用。模块静态链接固定 c-ares 1.34.8，使指定 DNS 配置在主线程和重建的工作线程生效。共享模块使用与开发 PHP 一致的 `/MD` CRT，生产静态 SDK 独立使用 `/MT`；开发 SDK 的配套 DLL 不属于生产单程序的部署文件。
 
 各模块的加载、协程 SQLite 和 PostgreSQL 连接拒绝检查通过，Windows 另通过主线程及两次重建工作线程的指定 DNS、TLS 写半关闭、读取超时恢复及连接重置检查，以及各 16 次的原生 UDP / DNS 后 UDP 对照；清单保存各 Artifact、依赖和适配摘要。Windows 还包含 config.w32、IOCP、DNS 和 PHP 头文件的受控适配。这些模块检查不替代完整通信及十二组合静态程序验收，进展见[新版升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。
 

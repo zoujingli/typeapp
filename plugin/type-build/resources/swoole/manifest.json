@@ -21,7 +21,7 @@
     "SwooleThreadSource": "19aa756186d688201a441cf430857db9d841a53f4a85730bd39f8905c4517a79",
     "SwooleHttpSource": "458d6cd1b8dadc3b0ed88b6ec6b51ac68dc7d1d5c2ae7002f0c00efac8bb9725",
     "SwooleSocketSource": "43bcc11f06b0ef0e344d69e0e44ca3b1c2be46150bbea128daf492c819df0d60",
-    "SwooleWindowsSource": "a3eb51bb43b5a9845916da359b485af3fd4b1124b0508c7ab6466a0c858cecea"
+    "SwooleWindowsSource": "c613d035fc5f4eedeeb8b755be5510f71ce1faabfb5e6024004e4bfdfcf70c48"
   },
   "adapted-sources": {
     "SwooleThreadSource": {
@@ -333,16 +333,16 @@
     },
     "Windows-x64-8.5.10-zts": {
       "file": "windows-x64/php-8.5.10-zts/php_swoole.dll",
-      "sha256": "dea622d3e2b86d834c8843f339b8db5b126fc54be0dbc6182c2082e607aa8b0c",
-      "bytes": 2567168,
+      "sha256": "c0f4ee13c7c6bb59fa724cd0596f0c2f15273185e830a4dc7bbeda42f1cfce20",
+      "bytes": 3471360,
       "build": {
-        "source-commit": "eaf1a3da2cc191f39dd3885b23e3e9c1298e941f",
-        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37128837651",
+        "source-commit": "5c409678213ebd12da3c3d80de4213f1896da7a3",
+        "workflow-run": "https://github.com/zoujingli/typeapp/actions/runs/37134319268",
         "workflow-conclusion": "success",
         "artifact": "swoole-windows-x64",
-        "artifact-id": 11276211906,
-        "artifact-sha256": "sha256:5e52d17d34b2042fe48064bfa86a7cfa4b266bb5933513845aff5c57352fc8fb",
-        "verification-scope": "module-load-coroutine-sqlite-pgsql-refusal-thread-dns-handle-reuse-tls-eof",
+        "artifact-id": 11278136059,
+        "artifact-sha256": "sha256:fbfb252131f26d56a4a236c3e12ac12487c21ae010e50211b75257dc59d28b1d",
+        "verification-scope": "module-load-coroutine-sqlite-pgsql-refusal-thread-dns-handle-reuse-tls-eof-curl-reuse-reset-timeout",
         "compiler": "MSVC VS17 x64 C++20",
         "configure": [
           "--enable-swoole=shared",
@@ -353,7 +353,8 @@
           "--enable-swoole-pgsql",
           "--enable-swoole-sqlite",
           "--with-php-build=<dependencies>",
-          "--with-mp=2"
+          "--with-mp=2",
+          "--enable-swoole-curl"
         ],
         "additional-adaptations": [
           {
@@ -362,9 +363,14 @@
             "after": "50385879de530384852a37f879916ad66965f849802970fee30479f786cf1251"
           },
           {
+            "file": "ext-src/swoole_curl.cc",
+            "before": "78b8c7581a36371266c8aefb200403851261520aead58e9ca8dc628a6637d840",
+            "after": "fe3a8fb9cbcd8a6c6a6856c68c648ab0ab7ecf0e846d70f84143d69148ad62e5"
+          },
+          {
             "file": "include/swoole_iocp.h",
             "before": "5c7a094064a71b43c6698dff60a6d9054c79bfe271fd429928b5e4b6fb3f6f41",
-            "after": "1d2aa2dea8211dda70d003cf1f1c51af1caa36cd62ca9cd3424d724f5fbfdeed"
+            "after": "3ef840c7bf50508b8d9b04af2e100b4a0d1227a35ab8f5d858ba9d50982dc427"
           },
           {
             "file": "src/coroutine/iocp.cc",
@@ -379,7 +385,7 @@
           {
             "file": "src/network/dns.cc",
             "before": "1528f5e6e65569f0497695340c9e762527e83eb554acb3f9bd062d903fe530e1",
-            "after": "6825089f1bd97ccc77cbf9b29f05debef0bd822c8c2556ec6b7b70cfb9f1c81f"
+            "after": "aaaff7610598397b166be0a75875121ae3db0f0678613dc0b9004f4cdaf922f8"
           },
           {
             "file": "src/network/address.cc",
@@ -398,23 +404,25 @@
           }
         ],
         "dependencies": {
+          "brotli-1.2.0-vs17-x64.zip": "61aec2187d4317826b374f4f2d8ef4b652edb46ae9d5b68820a840c94427644e",
+          "sqlite3-3.53.4-vs17-x64.zip": "abb5e36fc76803b4df9a63ab56b931f37058d62c9e6303172015ff4f101ef4cd",
+          "libssh2-1.11.1-10-vs17-x64.zip": "8976f728b0e1c8ea704fa61973b57077d3d760afc82ebfbdfcccf745b7802100",
+          "zlib-1.3.2-vs17-x64.zip": "3038dbd503d494718898a150f93d79627df442c344d1d6e77ec413cdeec7999e",
           "openssl-3.5.7-vs17-x64.zip": "bc86233e1f0826b0e0c8b745ed5221a781a1d403c6f69bb8fbe086e07dd3979e",
           "libpq-16.15-vs17-x64.zip": "f5fa47ebb2cf650428870e24ab2b8a7ce9663a782ddb9d790dfb432fd22e4728",
-          "sqlite3-3.53.4-vs17-x64.zip": "abb5e36fc76803b4df9a63ab56b931f37058d62c9e6303172015ff4f101ef4cd",
+          "libzstd-1.5.7-vs17-x64.zip": "59dbce5548104788ccfc5040bb7140916454fd0138d306705bd9b3d67741dc4a",
           "nghttp2-1.70.0-vs17-x64.zip": "51e21698b80f4e1a151508656f6ca7caf13adfef65dfefbc160645cf9c1129f1",
-          "zlib-1.3.2-vs17-x64.zip": "3038dbd503d494718898a150f93d79627df442c344d1d6e77ec413cdeec7999e",
-          "brotli-1.2.0-vs17-x64.zip": "61aec2187d4317826b374f4f2d8ef4b652edb46ae9d5b68820a840c94427644e",
-          "libzstd-1.5.7-vs17-x64.zip": "59dbce5548104788ccfc5040bb7140916454fd0138d306705bd9b3d67741dc4a"
+          "libcurl-8.22.0-3-vs17-x64.zip": "4499604d8daf51c70f86cd06255df091f8350bfadd8c5a11fb5bfaca26ed0ad8"
         },
         "source-dependencies": {
           "c-ares": {
-            "archive-sha256": "c9ea1b3029b23b04376c229bd519489cee180874ec48cd863a5dcba628c0fe03",
-            "license-sha256": "460f5e768fda3752ca2169a95df062578a10fb126bfd65f3b9b1a1bed2f84807",
-            "crt": "MD",
-            "library-sha256": "8e6c088d434e5a3a37c19c60fce3291bfe07bc409169756961fcb0928b0c3217",
             "version": "1.34.8",
-            "linkage": "static",
-            "reference": "c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab"
+            "library-sha256": "6d54f1af5d89163de3619b9951742685224f5de01a821a3d6df1db8bc3cdf14c",
+            "reference": "c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab",
+            "archive-sha256": "c9ea1b3029b23b04376c229bd519489cee180874ec48cd863a5dcba628c0fe03",
+            "crt": "MD",
+            "license-sha256": "460f5e768fda3752ca2169a95df062578a10fb126bfd65f3b9b1a1bed2f84807",
+            "linkage": "static"
           }
         },
         "dns-verification": {
@@ -450,7 +458,7 @@
         "tls-verification": {
           "passed": true,
           "evidence": "output/tls/verification.json",
-          "sha256": "695d3c284862b759ca8a703c19e3ef946782c0a53a9f268acd6fe54962081ce8",
+          "sha256": "75bfff9d70ff8ef585ebdfec0b36425b0cd6f9bafe6080d33f54524879a48d4c",
           "roles": [
             "main",
             "first",
@@ -477,12 +485,29 @@
         "dns-handle-reuse-verification": {
           "passed": true,
           "evidence": "output/dns-reuse/verification.json",
-          "sha256": "2ef46174a71689595b745cf39df3039c4e96a8fbb459c6553a14477a62cf2294",
+          "sha256": "06bf45a10c3a5f3962b642d82810e0434a04c511072bd706f442ed86e6081368",
           "modes": [
             "control",
             "dns"
           ],
           "rounds-per-mode": 16
+        },
+        "curl-verification": {
+          "passed": true,
+          "evidence": "output/curl/verification.json",
+          "sha256": "d00227eb0f6726a388c372d7d2fb5e220764e04b5fb26a551120615a1abf7361",
+          "reported-php-curl": "8.21.0",
+          "roles": [
+            "standalone",
+            "first-left",
+            "first-right",
+            "restart-left",
+            "restart-right",
+            "main"
+          ],
+          "responses-per-role": 36,
+          "trace": false,
+          "keep-alive-and-reset": true
         }
       },
       "verification": {
@@ -496,8 +521,8 @@
         "native_entry_abi": 2,
         "coroutine_and_sqlite": true,
         "pgsql_connection_failure": true,
-        "sha256": "dea622d3e2b86d834c8843f339b8db5b126fc54be0dbc6182c2082e607aa8b0c",
-        "bytes": 2567168
+        "sha256": "c0f4ee13c7c6bb59fa724cd0596f0c2f15273185e830a4dc7bbeda42f1cfce20",
+        "bytes": 3471360
       }
     }
   },
