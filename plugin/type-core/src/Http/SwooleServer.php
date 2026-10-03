@@ -294,6 +294,17 @@ final class SwooleServer implements HttpServerInterface
             $server = null;
             $run = function () use (&$server, $host, $port, $state): void {
                 try {
+                    if (getenv('TYPEAPP_IOCP_TRACE') === '1') {
+                        // 仅供 Windows 原生线程回归定位；将 Swoole 的 IOCP、协程和 HTTP
+                        // 阶段写入现有 stderr 证据，生产环境不启用。
+                        \Swoole\Coroutine::set([
+                            'log_level' => SWOOLE_LOG_TRACE,
+                            'trace_flags' => SWOOLE_TRACE_ALL,
+                            // Windows runner 上默认日志目标不一定映射到捕获的 stderr；
+                            // 写入消费者工作目录，Actions 证据 glob 会一并保存。
+                            'log_file' => getcwd() . DIRECTORY_SEPARATOR . 'iocp.log',
+                        ]);
+                    }
                     $this->traceHttp('owned-run-enter cid=' . \Swoole\Coroutine::getCid());
                     $server = new \Swoole\Coroutine\Http\Server($host, $port);
                     $this->traceHttp('owned-server-created fd=' . (string) $server->fd . ' port=' . (string) $server->port);
