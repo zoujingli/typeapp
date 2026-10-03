@@ -285,17 +285,23 @@ final class SwooleServer implements HttpServerInterface
         try {
             \Swoole\Coroutine::set(['max_coroutine' => $this->control->maximumConnections
                 + $this->control->maximumRequests * $this->control->maximumChildren + 2]);
-            $server = new \Swoole\Coroutine\Http\Server($host, $port);
-            $server->set([
-                'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
-                'http_compression' => false, 'package_max_length' => $this->limits->bytes,
-                'socket_timeout' => $this->control->requestSeconds,
-            ]);
-            $server->handle('/', function (Request $request, Response $response): void {
-                $this->handleNative($request, $response);
-            });
-            $run = function () use ($server, $state): void {
+            // IOCP 的 reactor 必须先由 Scheduler 建立，再创建协程 HTTP
+            // Server。尤其是 Windows 原生线程，若在 Scheduler 外构造监听器，
+            // bind/listen 虽然成功，start() 却无法把 AcceptEx 接入当前 reactor。
+            // 让构造、配置、handler 注册和 start() 处在同一个协程入口中，
+            // 与公开 serve() 路径保持相同的初始化顺序。
+            $server = null;
+            $run = function () use (&$server, $host, $port, $state): void {
                 try {
+                    $server = new \Swoole\Coroutine\Http\Server($host, $port);
+                    $server->set([
+                        'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
+                        'http_compression' => false, 'package_max_length' => $this->limits->bytes,
+                        'socket_timeout' => $this->control->requestSeconds,
+                    ]);
+                    $server->handle('/', function (Request $request, Response $response): void {
+                        $this->handleNative($request, $response);
+                    });
                     if ($state['stop'] === true) {
                         $this->control->stop();
                         return;
@@ -352,6 +358,9 @@ final class SwooleServer implements HttpServerInterface
             }
             if ($this->threadFailure !== null) {
                 throw $this->threadFailure;
+            }
+            if (!$server instanceof \Swoole\Coroutine\Http\Server) {
+                throw new TaskException('http_thread_start_failed', 'HTTP 线程没有创建监听器');
             }
             $statistics = $this->control->statistics();
             if (($server->errCode !== 0 && $server->errCode !== SOCKET_ECANCELED) || $statistics['in_flight'] !== 0
