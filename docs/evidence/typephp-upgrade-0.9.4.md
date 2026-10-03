@@ -133,6 +133,10 @@ macOS 的新旧程序分别从 RC13 源码与 `4631be08002695625477229d2552e10b7
 
 [Linux ARM64 首轮完整测量 37112212467](https://github.com/zoujingli/typeapp/actions/runs/37112212467) 比较 RC13 与 `fe3c22f79fdaabc607012cd13b72d4fda1623906`，三库均完成三次重复；比较器返回 `regression-signal-needs-repeat`，整个运行记为失败。PostgreSQL 短 JSON 吞吐中位数变化 -6.42%、p50/p95 分别 +7.15%/+5.95%；SQLite 慢依赖、PostgreSQL CRUD 和慢依赖也触发复验信号。原始测量与比较保存在 Artifact `11270479905`。逆序复验继续固定这两个源码提交；新的运行会重新编译，须分别记录程序摘要，不能称为同一原生字节的复测。
 
+[Linux ARM64 逆序复验 37115494900](https://github.com/zoujingli/typeapp/actions/runs/37115494900) 使用工作流源码 `7909ee115cc20de33b8bfbf9de0c54ec0f4bcb75`，新旧应用仍固定为前述两个提交，实际按新版在先执行。三库各三次重复全部完成，六份内嵌测量与原始报告摘要一致；比较器返回 `no-consistent-latency-regression-detected`，该轮工作流成功。首轮信号对应负载的吞吐中位数变化为：PostgreSQL 短 JSON +1.54%、CRUD +0.07%、慢依赖 -0.84%，SQLite 慢依赖 -0.83%；本轮均未触发区间分离条件。单项中位数仍可下降，不能把结果写成性能等价或提升，也不覆盖首轮失败。采样 RSS 中位数变化 +0.28%～+0.72%；SQLite 慢依赖 CPU 中位数由 1 秒变为 2 秒，原始区间为旧版 `[1, 1]`、新版 `[1, 2]`，首轮同负载为旧版 `[1, 2]`、新版 `[1, 2]`，保留采样粒度和波动边界。
+
+逆序运行的旧/新程序 SHA-256 分别为 `a8d3f02c500f9b35ee13410facc96653a476ff7a4694aadd76c7ee74f7d5f842`、`db62f6df01623c85adabaf857580b8805334a989a52a52d9c4e5a9edf1bc84c9`，共享 embed 程序大小分别为 29,051,681 / 29,118,286 字节，编译耗时为 1,016.919 / 990.875 秒；前端文件清单完全相同。准备、原始样本和比较保存在 Artifact `11272128682`（摘要 `aba5c8c9be66c60984b97018cb0ce8a50355f6706b5a5d690df06a16dc18205d`），本地回读位置为 `build/toolchain-upgrade-followup.lVbKwh/linux-arm64-benchmark-reverse/`。该轮重建了程序，仅作为固定源码的顺序复验；不能推断发布静态程序的极限吞吐。
+
 本次升级尚未完成 Linux x64 与 Windows 的同条件性能对照，也未完成非 macOS 平台的文件流对照。各平台功能验收与程序体积核验不能替代这些测量。
 
 待平台任务完成后，必须追加每个平台的最终程序身份、12 个 profile 的摘要、实际未执行范围和公开下载回读；性能与体积对照没有原始报告时保持未验证。
