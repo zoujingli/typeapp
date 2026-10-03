@@ -74,6 +74,10 @@ expect(copy($report['runtime-profile']['ini'], $work . '/run.ini'), '无法保�
 expect(is_dir($work . '/php.d') || mkdir($work . '/php.d', 0700), '无法准备空扫描目录');
 $environment['PHPRC'] = $work . '/run.ini';
 $environment['PHP_INI_SCAN_DIR'] = $work . '/php.d';
+// 编译器使用的 CLI INI 不包含发布运行所需的受控 fiber mock；服务进程必须加载
+// 同一消费者生成并已按摘要核验的运行 INI，不能继续复用安装阶段的环境副本。
+$runEnvironment['PHPRC'] = $environment['PHPRC'];
+$runEnvironment['PHP_INI_SCAN_DIR'] = $environment['PHP_INI_SCAN_DIR'];
 $policy = [];
 if (PHP_OS_FAMILY === 'Darwin') {
     $policy = ['sandbox-exec', '-f', __DIR__ . '/fixtures/mqtt-no-source.sb'];
