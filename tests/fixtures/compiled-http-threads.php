@@ -601,8 +601,8 @@ function httpThreadContracts(string $directory): int
     unset($held);
     // Windows 的 SO_REUSEADDR 允许另一个套接字再次 bind；用真实连接观察
     // 借用期间监听仍由 Server 持有，避免为测试改变官方 fromSocket 的选项。
-    $borrowedProbeResult = new Swoole\Coroutine\Channel(1);
-    Coroutine::create(static function () use ($port, $borrowedProbeResult): void {
+    $borrowedProbeConnected = false;
+    Coroutine::create(static function () use ($port, &$borrowedProbeConnected): void {
         $borrowedProbe = new Socket(AF_INET, SOCK_STREAM, 0);
         $connected = false;
         try {
@@ -611,13 +611,12 @@ function httpThreadContracts(string $directory): int
         } finally {
             $borrowedProbe->close();
         }
-        $borrowedProbeResult->push($connected);
+        $borrowedProbeConnected = $connected;
     });
     Swoole\Event::wait();
-    if ($borrowedProbeResult->pop() !== true) {
+    if ($borrowedProbeConnected !== true) {
         throw new RuntimeException('borrowed listener was released early');
     }
-    unset($borrowedProbeResult);
     unset($borrower);
     Swoole\Event::wait();
     $released = new Socket(AF_INET, SOCK_STREAM, 0);
