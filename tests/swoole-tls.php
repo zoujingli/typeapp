@@ -116,10 +116,64 @@ function probeSwooleTlsDeadline(array $peers, bool $cancel, string $path): array
     return ['passed' => $passed && $coroutines === 0, 'events' => $events, 'coroutines' => $coroutines];
 }
 
+/**
+ * 在相同对端复核框架启动截止和停止；与原生探针分开记录，不将 PHP 结果当作 AOT 验收。
+ *
+ * @param array{idle:array{port:int}} $peers 独立 Node 对端。
+ * @return array{passed:bool,events:array,coroutines:int}
+ */
+function probeFrameworkTlsDeadline(array $peers, bool $cancel, string $path): array
+{
+    $events = [];
+    $passed = false;
+    $record = static function (array $event) use ($path, &$events): void {
+        $events[] = $event;
+        file_put_contents($path . '.checkpoint.json', json_encode($events, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    };
+    Swoole\Coroutine::create(static function () use ($peers, $cancel, $record, &$passed): void {
+        $budget = new Type\Runtime\ResourceBudget(1);
+        $socket = Type\Core\TcpSocket::client($budget, '127.0.0.1', $peers['idle']['port'], 1024, ['open_ssl' => true]);
+        $timer = false;
+        if ($cancel) {
+            $timer = Swoole\Timer::after(20, static function () use ($socket, $record): void {
+                $record(['operation' => 'stop']);
+                $socket->stop();
+                $record(['operation' => 'stop-return']);
+            });
+        }
+        $began = hrtime(true);
+        try {
+            $record(['operation' => 'start', 'cancel' => $cancel]);
+            $socket->start(0.15);
+            $record(['operation' => 'unexpected-start-success']);
+        } catch (Type\Runtime\TaskException $error) {
+            $seconds = (hrtime(true) - $began) / 1e9;
+            $record(['operation' => 'rejected', 'reason' => $error->errorCode(), 'seconds' => $seconds]);
+            $passed = $error->errorCode() === ($cancel ? 'tcp_stopped' : 'tcp_timeout') && $seconds < 0.5;
+        } finally {
+            if ($timer !== false && Swoole\Timer::exists($timer)) {
+                Swoole\Timer::clear($timer);
+            }
+            $record(['operation' => 'cleanup']);
+            $socket->stop();
+            $socket->awaitClosed(1);
+            $record(['operation' => 'closed', 'statistics' => $socket->statistics()]);
+            $passed = $passed && $budget->statistics()['allocated'] === 0;
+        }
+    });
+    Swoole\Event::wait();
+    $coroutines = Swoole\Coroutine::stats()['coroutine_num'];
+    return ['passed' => $passed && $coroutines === 0, 'events' => $events, 'coroutines' => $coroutines];
+}
+
 $arguments = Swoole\Thread::getArguments();
 if (is_array($arguments)) {
-    if ($arguments[0] === 'deadline') {
-        $result = probeSwooleTlsDeadline(json_decode($arguments[1], true, 512, JSON_THROW_ON_ERROR), $arguments[2], $arguments[3]);
+    if (in_array($arguments[0], ['deadline', 'framework'], true)) {
+        require dirname(__DIR__) . '/vendor/autoload.php';
+        require dirname(__DIR__) . '/vendor/swoole/typephp/src/polyfills.php';
+        $peers = json_decode($arguments[1], true, 512, JSON_THROW_ON_ERROR);
+        $result = $arguments[0] === 'framework' ? probeFrameworkTlsDeadline($peers, $arguments[2], $arguments[3])
+            : probeSwooleTlsDeadline($peers, $arguments[2], $arguments[3]);
         file_put_contents($arguments[3], json_encode($result, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
         exit($result['passed'] ? 0 : 1);
     }
@@ -138,12 +192,20 @@ use Type\Testing\Process;
 if (($argv[1] ?? '') === '--deadline') {
     expect($argc === 6, 'TLS 截止子进程参数无效');
     $peers = (string) file_get_contents($argv[4]);
+    $framework = str_starts_with($argv[2], 'framework-');
+    $cancel = str_ends_with($argv[2], 'cancel');
+    if ($framework) {
+        require dirname(__DIR__) . '/vendor/swoole/typephp/src/polyfills.php';
+        Type\Runtime\CoroutineRuntime::enableIo();
+    }
     if ($argv[3] === 'thread') {
-        $thread = new Swoole\Thread(__FILE__, 'deadline', $peers, $argv[2] === 'cancel', $argv[5]);
+        $thread = new Swoole\Thread(__FILE__, $framework ? 'framework' : 'deadline', $peers, $cancel, $argv[5]);
         $thread->join();
         exit($thread->getExitStatus());
     }
-    $result = probeSwooleTlsDeadline(json_decode($peers, true, 512, JSON_THROW_ON_ERROR), $argv[2] === 'cancel', $argv[5]);
+    $decodedPeers = json_decode($peers, true, 512, JSON_THROW_ON_ERROR);
+    $result = $framework ? probeFrameworkTlsDeadline($decodedPeers, $cancel, $argv[5])
+        : probeSwooleTlsDeadline($decodedPeers, $cancel, $argv[5]);
     file_put_contents($argv[5], json_encode($result, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
     exit($result['passed'] ? 0 : 1);
 }
@@ -182,7 +244,7 @@ try {
     $passed = $results['first']['exit'] === 0 && $results['restart']['exit'] === 0 && $results['main']['passed'];
     $deadlines = [];
     foreach (['main', 'thread'] as $role) {
-        foreach (['timeout', 'cancel'] as $mode) {
+        foreach (['timeout', 'cancel', 'framework-timeout', 'framework-cancel'] as $mode) {
             $path = $directory . '/' . $role . '-' . $mode . '.json';
             $process = new Process([PHP_BINARY, __FILE__, '--deadline', $mode, $role, $directory . '/peers.json', $path], $directory);
             try {
