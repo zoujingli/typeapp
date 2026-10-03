@@ -15,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 验收范围（http-probe 仅 IOCP 诊断；sqlite-app/pgsql-app 仅应用诊断；template 仅模板）
+        description: 验收范围（http-probe 仅 IOCP、socket-probe 仅 TCP/UDP；sqlite-app/pgsql-app 仅应用诊断；template 仅模板）
         type: choice
-        options: [full, native, orm, template, pgsql-probe, pgsql-app, sqlite-app, http-probe]
+        options: [full, native, orm, template, pgsql-probe, pgsql-app, sqlite-app, http-probe, socket-probe]
         default: full
       orm_driver:
         description: 仅 scope=orm 生效；单库结果不代表三库验收
@@ -35,12 +35,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-platform-${{ github.ref }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app","http-probe"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
+  group: native-platform-${{ github.ref }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app","http-probe","socket-probe"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
   cancel-in-progress: true
 
 jobs:
   windows:
-    if: github.repository == 'zoujingli/typeapp' && inputs.scope != 'http-probe'
+    if: github.repository == 'zoujingli/typeapp' && !contains(fromJSON('["http-probe","socket-probe"]'), inputs.scope)
     runs-on: windows-2022
     timeout-minutes: 120
     env:
@@ -251,6 +251,58 @@ jobs:
             build/template-*/build/type-project.exe.resources/**
             build/template-*/build/compiler/runtime-profile/**
             build/template-*/build/compiler/compile.log
+
+  socket-probe:
+    if: github.repository == 'zoujingli/typeapp' && github.event_name == 'workflow_dispatch' && inputs.scope == 'socket-probe' && inputs.candidate_version == ''
+    name: socket-probe · ${{ matrix.protocol }}
+    runs-on: windows-2022
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        protocol: [tcp, udp]
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      COMPOSER_NO_INTERACTION: '1'
+      COMPOSER_CACHE_DIR: ${{ github.workspace }}/.cache/composer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 准备已核验的 Windows x64 ZTS SDK
+        run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 安装锁定工具链
+        run: |
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 运行独立通信消费者
+        env:
+          SOCKET_PROTOCOL: ${{ matrix.protocol }}
+        run: |
+          $env:COMPOSER_BINARY="$env:PHP_HOME/composer.phar"
+          $env:COMPOSER_DISABLE_NETWORK='1'
+          $taskConsumer = Join-Path $env:GITHUB_WORKSPACE "build/toolchain-regressions-socket-probe/$env:SOCKET_PROTOCOL"
+          & "$env:PHP_HOME/php.exe" "tests/$env:SOCKET_PROTOCOL-consumer.php" $taskConsumer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 保存原程序、对端和失败检查点
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-socket-probe-${{ matrix.protocol }}
+          retention-days: 7
+          path: |
+            build/toolchain-regressions-socket-probe/**/*.log
+            build/toolchain-regressions-socket-probe/**/*.failure
+            build/toolchain-regressions-socket-probe/**/execution.json
+            build/toolchain-regressions-socket-probe/**/verification.json
+            build/toolchain-regressions-socket-probe/**/peer.json
+            build/toolchain-regressions-socket-probe/**/peers.json
+            build/toolchain-regressions-socket-probe/**/certificate.pem
+            build/toolchain-regressions-socket-probe/**/type-app.exe*
+            build/windows-runtime-*/*.log
+            build/windows-runtime-*/*.json
 
   http-probe:
     if: github.repository == 'zoujingli/typeapp' && github.event_name == 'workflow_dispatch' && inputs.scope == 'http-probe' && inputs.candidate_version == ''

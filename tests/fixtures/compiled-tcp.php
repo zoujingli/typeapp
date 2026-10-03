@@ -79,15 +79,21 @@ final class TcpProbe
                     self::echo('localhost', $peers['tls']['port'], ['open_ssl' => true, 'ssl_cafile' => $peers['certificate']], $budget);
                     self::echo('127.0.0.1', $peers['tls']['port'], ['open_ssl' => true, 'ssl_cafile' => $peers['certificate']], $budget);
                     self::echo('::1', $peers['tls6']['port'], ['open_ssl' => true, 'ssl_cafile' => $peers['certificate']], $budget);
+                    self::$observations['phase'] = 'failures';
                     self::failures($peers, $budget);
+                    self::$observations['phase'] = 'duplex';
                     self::duplex($peers, $budget);
+                    self::$observations['phase'] = 'stop-duplex';
                     self::stopDuplex($peers, $budget);
+                    self::$observations['phase'] = 'backpressure';
                     self::backpressure($peers, $budget);
+                    self::$observations['phase'] = 'server';
                     self::server($peers, $budget, '127.0.0.1', false, false);
                     self::server($peers, $budget, '::1', false, false);
                     self::server($peers, $budget, '127.0.0.1', true, false);
                     self::server($peers, $budget, '::1', true, false);
                     self::server($peers, $budget, '127.0.0.1', true, true);
+                    self::$observations['phase'] = 'retirement';
                     self::retirement($peers, $budget);
                     self::check($budget->statistics()['allocated'] === 0, '套件退出仍占有连接额度');
                 } catch (Throwable $error) {
@@ -104,13 +110,19 @@ final class TcpProbe
                 'observations' => self::$observations], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
             return 0;
         } catch (Throwable $error) {
-            file_put_contents($input['output'] . '.failure', get_class($error) . ': ' . $error->getMessage() . "\n" . $error->getTraceAsString());
+            // AOT 调用栈可能停在业务入口；保留当前真实场景与已完成断言，区分 DNS、TLS 和 IOCP 故障。
+            file_put_contents($input['output'] . '.failure', get_class($error) . ': ' . $error->getMessage() . "\n"
+                . json_encode(['checks' => self::$checks, 'observations' => self::$observations], JSON_THROW_ON_ERROR) . "\n"
+                . $error->getTraceAsString());
             return 1;
         }
     }
 
     private static function echo(string $host, int $port, array $options, ResourceBudget $budget): void
     {
+        self::$observations['phase'] = 'echo';
+        self::$observations['host'] = $host;
+        self::$observations['tls'] = $options['open_ssl'] ?? false;
         $scope = new ExecutionScope();
         $socket = TcpSocket::client($budget, $host, $port, 1024, $options);
         try {

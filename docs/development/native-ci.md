@@ -20,6 +20,8 @@ Windows数据库来源固定于`.github/windows-databases.json`：MySQL 8.4.11�
 
 Windows 的 `scope=http-probe` 只运行 HTTP 线程独立 AOT 消费者。它显式从固定源码重建带官方 trace 的 Swoole 模块，由测试夹具把 IOCP 记录写到本轮目录，并保存原程序、构建身份与失败日志。该诊断使用独立并发组，不替换组件内置模块，也不计入发布验收；普通工作流和生产 HTTP 入口不启用这些诊断选项。
 
+`scope=socket-probe` 分别执行 TCP、UDP 的独立 AOT 消费者，复用内置模块与锁定 SDK。它保存原程序、对端地址和失败检查点，便于定位 IPv4/IPv6、测试 DNS、TLS、关闭与取消场景；使用独立并发组，不产生完整平台通过结论。测试证书只用于本轮环回对端，私钥在清理阶段删除。
+
 `.github/scripts/run-windows-database.ps1`只允许GitHub Windows runner，在新的RUNNER_TEMP目录设置当前账号私有ACL，使用回环端口及随机测试凭据，独立启动mysqld或pg_ctl管理的新集群；不安装Windows Service、不启动/修改预装数据库服务。通过真实PHP连接确认就绪，再复用三库物联中心标准项目和模板的开发/AOT/发布测试；退出时仅停止本轮实例、删除本轮临时凭据并记录结果。模板安装可显式传入`TYPE_COMPOSER_PHAR`，确保用锁定PHP执行Composer而非依赖系统批处理包装器。
 
 Windows 的 `pg_ctl start` 会把标准句柄继承给常驻 CMD/PostgreSQL 进程，因此启动输出沿用 CI 控制台，服务日志写入专属文件并在停止后脱敏保存。启动是否成功由 `pg_ctl` 的有界等待和退出码、真实 PDO 就绪检查共同确认，不以常驻后代关闭输出管道作为启动条件；其他短生命周期命令继续完整收集输出并检查管道关闭。该行为依据固定版本的 [PostgreSQL 启动实现](https://github.com/postgres/postgres/blob/REL_17_11/src/bin/pg_ctl/pg_ctl.c)，不改变数据库协议或后台服务管理方式。
