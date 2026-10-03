@@ -333,6 +333,9 @@ function mainOwned(string $directory): void
     $port = $reserved->getsockname()['port'];
     $reserved->close();
     unset($reserved);
+    // Socket::close() 只安排延迟释放。先完成主线程 reactor 的 FD 回收，
+    // 否则 Windows 可将连接交给仍在内核监听的临时句柄，业务线程收不到请求。
+    Swoole\Event::wait();
     $thread = null;
     $exit = null;
     try {
@@ -371,6 +374,7 @@ function httpThreadSupervised(string $directory, string $mode): void
         $port = $reserved->getsockname()['port'];
         $reserved->close();
         unset($reserved);
+        Swoole\Event::wait();
         $payloads[] = json_encode(['directory' => $directory, 'worker' => 1, 'generation' => 1,
             'request_limit' => 2, 'connection_limit' => 8, 'listen' => '127.0.0.1', 'port' => $port], JSON_THROW_ON_ERROR);
         file_put_contents($directory . '/listener.json', json_encode(['port' => $port, 'process' => getmypid()], JSON_THROW_ON_ERROR));
