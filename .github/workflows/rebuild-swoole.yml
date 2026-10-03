@@ -8,6 +8,10 @@ on:
         type: choice
         options: [all, windows]
         default: all
+      curl_trace:
+        description: 仅在 curl 回归中开启上游 IOCP 诊断；通过后仍须无诊断复验
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -131,6 +135,8 @@ jobs:
           & "$env:PHP_HOME/php.exe" tests/swoole-tls.php (Join-Path $env:GITHUB_WORKSPACE 'build/bundled-swoole-candidate/output/tls')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 验证 curl 线程归属与超时恢复
+        env:
+          SWOOLE_CURL_IOCP_DEBUG: ${{ inputs.curl_trace && '1' || '0' }}
         run: |
           & "$env:PHP_HOME/php.exe" tests/swoole-curl.php (Join-Path $env:GITHUB_WORKSPACE 'build/bundled-swoole-candidate/output/curl')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
