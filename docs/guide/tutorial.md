@@ -13,7 +13,7 @@ flowchart LR
 
 ## 1. 创建并检查应用
 
-本教程以目标候选 `1.0.0-rc.14` 为例。先完成[按版本创建与安装](releases.md#composer-按版本安装)，确认该候选已在 Packagist 公开后创建使用 SQLite 的 `my-app`，并在该应用根目录执行下面的配置与检查，不重复创建项目：
+本教程以已公开的候选版本 `1.0.0-rc.14` 为例。先完成[按版本创建与安装](releases.md#composer-按版本安装)，创建使用 SQLite 的 `my-app`，并在该应用根目录执行下面的配置与检查，不重复创建项目：
 
 ```bash
 cp .env.example .env
@@ -187,6 +187,6 @@ build/type-project-release help
 
 TypePHP 编译业务、Plugins、生成代码及实际生产 PHP 依赖；`type-build` 选择并校验内置 Swoole 和其他实际原生依赖。部署者无需再安装 PHP CLI、Composer、Swoole 开发环境或编译 SDK，数据库服务和业务配置仍按所选能力准备。
 
-本教程的 RC14 模板将程序输出为 `build/type-project-release`，Windows 使用 `.exe` 后缀。部署只复制该程序，并在应用目录提供配置和所需数据路径；构建 SDK 留在构建机。候选尚未公开时使用当前已发布版本或 `dev-main` 进行开发，不能把未发布的版本约束当作可安装事实。继续执行程序自己的迁移和启动命令，具体入口及平台范围见[构建与部署](deployment.md)。
+本教程的 RC14 模板将程序输出为 `build/type-project-release`，Windows 使用 `.exe` 后缀。部署只复制该程序，并在应用目录提供配置和所需数据路径；构建 SDK 留在构建机。`dev-main` 是独立更新的开发分支，不等于本教程固定的 RC 版本。继续执行程序自己的迁移和启动命令，具体入口及平台范围见[构建与部署](deployment.md)。
 
 继续学习：[配置](configuration.md) · [路由与中间件](routing.md) · [组件教程](components.md) · [TypePHP 全量编译](typephp.md)。

@@ -2,7 +2,7 @@
 
 这是独立业务项目的起点，包名为 `zoujingli/type-project`。TypeApp 是面向原生交付的 PHP 应用框架，以 TypePHP 全量编译生产实现。Plugins 由 Composer 安装，生产组件与业务一起编译；Swoole 作为内置原生运行库随应用交付。主仓中的物联中心是成品案例，不随本模板分发。用本模板创建自己的应用，再按需安装 `type-xxxx` 组件，即可开发其他业务系统。框架组件在公开开发主仓维护，消费应用通过 Packagist 安装对应公开分发包；模板不包含主仓 path repository、分发凭据、缓存/Redis 依赖或全部组件源码。
 
-RC13 的源码基线曾通过 Linux x64 / ARM64、macOS ARM64、Windows x64 的默认原生 CI，模板也完成过 HTTP、正常停止和原生发布包回归。RC14 已升级 TypePHP 0.9.4、PHPX 2.9.3 及固定的 Swoole 开发快照，必须重新完成相同范围；当前进度与实际边界见[平台支持表](https://iots.top/#/guide/platforms?id=当前平台状态)。
+模板与物联中心分别验收。版本发布会核对公开安装的模板与组件提交，再执行全量 AOT、三库应用、HTTP、正常停止和原生部署回归。当前工具链采用 TypePHP 0.9.4、PHPX 2.9.3 及固定的 Swoole 开发快照；已发布版本、各平台结果与实际边界见[平台支持表](https://iots.top/#/guide/platforms?id=当前平台状态)。
 
 ## 环境与交付
 

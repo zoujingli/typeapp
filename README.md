@@ -4,7 +4,7 @@ TypeApp 是面向原生交付的 PHP 应用框架。用 PHP 编写业务，按�
 
 框架提供通信、数据、任务与资源管理能力。Swoole 作为内置原生运行库提供网络与并发支持，由构建流程管理并随应用交付，无需在部署端单独安装。TypePHP 和 Composer 用于构建，业务请求不依赖它们。
 
-**交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** 已公开的 RC13 按 Linux x64 / ARM64、macOS ARM64、Windows x64 × `sqlite`、`mysql`、`pgsql` 提供 12 个静态单程序；每个程序只包含对应 profile 的数据库驱动和已启用能力。RC14 正在用新版工具链重新验收。按平台与数据库选择一个下载项；安装方法见[版本安装](docs/guide/releases.md)，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
+**交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** 已公开的 [RC14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14) 按 Linux x64 / ARM64、macOS ARM64、Windows x64 × `sqlite`、`mysql`、`pgsql` 提供 12 个静态单程序；每个程序只包含对应 profile 的数据库驱动和已启用能力。按平台与数据库选择一个下载项；安装方法见[版本安装](docs/guide/releases.md)，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
 
 文档站：[iots.top](https://iots.top)。新业务从 `type-project` 创建；主仓附带的物联中心展示框架如何组成业务产品。
 
@@ -26,15 +26,15 @@ flowchart TB
 | 运行服务 | 复用内置运行库的网络与协程能力，以作用域、截止和预算控制资源 |
 | 发布维护 | 记录产物身份和摘要，分开管理程序、配置与持久数据 |
 
-TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typephp.md)。生产代码的全量编译门槛不等于全部平台和协议已验收。当前源码锁定 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3；工具链与生产依赖分别由 `toolchain.lock.json` 和 `composer.lock` 记录。新版的实际验收进度见[升级记录](docs/evidence/typephp-upgrade-0.9.4.md)，RC13 仅作为历史对照保留。
+TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typephp.md)。生产代码的全量编译门槛不等于全部平台和协议已验收。当前源码锁定 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3；工具链与生产依赖分别由 `toolchain.lock.json` 和 `composer.lock` 记录。新版的实际验收结果见[升级记录](docs/evidence/typephp-upgrade-0.9.4.md)，RC13 仅作为历史对照保留。
 
 构建组件另附 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 共享模块，用于开发及共享库回归；生产单程序使用静态 SDK。当前固定 6.3 开发快照 `4aff74a`，运行时版本字符串为 `6.3.0RC1`，不是正式 6.3.0。模块 ABI 与平台实测范围分别核对，见[平台与验收](docs/guide/platforms.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
 
-`v1.0.0-rc.14` 是当前升级候选。tag 固定源码后，发布工作流统一执行四平台完整回归及十二个单程序验收，全部门禁和公开消费通过后才公开 Release；当前验收进度、运行 ID 与未执行范围以[升级验收记录](docs/evidence/typephp-upgrade-0.9.4.md)为准。RC13 的程序、标签与证据继续按原身份保留，不能用新版源码或工具链改写历史结论。
+`v1.0.0-rc.14` 已通过新版工具链的四平台完整回归、十二个单程序验收及公开消费，并完成主仓、15 个组件和应用模板的 Release。16 个 Packagist 版本及公开下载摘要已回读核对。准确源码、运行 ID 与未测范围见[升级验收记录](docs/evidence/typephp-upgrade-0.9.4.md)。RC 仍是预发布版本；RC13 的标签与原始证据保留作为历史对照。
 
 ## 快速开始
 
-开发机准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展，具体分工见[环境与依赖](docs/guide/environment.md)。RC14 公开并由 Packagist 索引后，按[版本安装示例](docs/guide/releases.md#composer-按版本安装)创建 `my-app`，选择数据库，将模板与组件固定到 `1.0.0-rc.14`，然后在应用根目录执行：
+开发机准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展，具体分工见[环境与依赖](docs/guide/environment.md)。按[版本安装示例](docs/guide/releases.md#composer-按版本安装)创建 `my-app`，选择数据库，将模板与组件固定到 `1.0.0-rc.14`，然后在应用根目录执行：
 
 ```bash
 php dev.php help

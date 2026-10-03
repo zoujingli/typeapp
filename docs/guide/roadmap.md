@@ -2,11 +2,11 @@
 
 现有能力的需求与入口见[基础能力与验收](capabilities.md)，技术边界见[系统架构](architecture.md)。本文只维护尚未闭合的交付要求；有历史产物记录的结果不自动适用于当前源码与工具链。
 
-RC13 已完成四平台默认原生 CI、12 个数据库 profile 的静态单程序隔离部署、15 个组件与应用模板的同版本分发和公开消费；其固定源码和范围见[历史平台证据](../evidence/profile-release-20260930.md)。RC14 使用新版 TypePHP/PHPX 与 Swoole 开发快照，仍在按自己的运行轮次验收，不能把历史结果转写为新版结论。
+RC14 已完成新版 TypePHP/PHPX 与 Swoole 开发快照的四平台默认原生 CI、12 个数据库 profile 静态单程序隔离部署、15 个组件与应用模板的同版本分发、公开消费和下载核验；固定源码与实际范围见[升级验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。RC13 的原始身份继续保留在[历史平台证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/profile-release-20260930.md)。
 
 ## 标准框架
 
-[版本发布](releases.md)和[前端内嵌安装](deployment.md#前端安装与更新)的发布闭环已经由 RC13 建立；RC14 需在新版四平台门禁、组件消费和公开回读完成后重新执行。重建材料单独保存在 Actions Artifact，公开下载只包含主程序、摘要和发布清单。此前失败或取消的候选保留原身份；发布成功不代表全部协议或业务场景已经完成。
+[版本发布](releases.md)和[前端内嵌安装](deployment.md#前端安装与更新)的发布闭环已在 RC14 新版四平台门禁、组件消费和公开回读中重新完成。重建材料单独保存在 Actions Artifact，公开下载只包含主程序、摘要和发布清单。此前失败或取消的候选保留原身份；发布成功不代表全部协议或业务场景已经完成。
 
 框架任务只交付可独立消费的通用机制。应用负责认证、授权和业务状态，业务接入按下节单独验收；框架组件不依赖物联中心的账号、成员、角色或设备模型。
 
@@ -18,7 +18,7 @@ RC13 已完成四平台默认原生 CI、12 个数据库 profile 的静态单程
 | Model 上下文自动租户隔离 | 已按编译期字段映射约束查询、持久化及关系中间表；独立消费者覆盖缺失、冲突、OR、部分投影及上下文切换拒绝，公共组件三库集成已通过 | 继续完成协议入口与业务接入；应用独立验证业务认证，规则见[自动租户隔离](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md#自动租户隔离) |
 | Swoole 通信与并发验收 | 代码已统一由 Swoole 承担 Broker、客户端、持久工作、设备授权和 CRL HTTPS；仍需按产物完成协议与平台组合验收 | 验证 TLS、QoS、保活、重连、取消、资源释放、持久确认和 CRL 更新，并记录同一产物证据 |
 | 按平台能力选择执行方式 | 入口根据 Swoole 构建能力选择 Process、Thread 或 Coroutine；各角色仍需逐平台验证隔离、容量与停止 | 按官方能力运行对应角色，记录状态隔离、容量、停止和资源回收证据 |
-| 编译线程与角色生命周期 | RC13 的 TypePHP 0.9.3／PHPX 2.9.2 结果保留为历史基线；当前源码升级至 0.9.4／2.9.3，固定 Swoole 6.3 开发快照，原生线程仍依赖受控 ABI | 新版先完成[独立升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)；按服务入口核对共享监听、角色停止、取消及异常回收组合 |
+| 编译线程与角色生命周期 | RC13 的 TypePHP 0.9.3／PHPX 2.9.2 结果保留为历史基线；当前源码升级至 0.9.4／2.9.3，固定 Swoole 6.3 开发快照，原生线程仍依赖受控 ABI | 新版默认回归已完成，见[独立升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)；继续按服务入口补齐共享监听、角色停止、取消及异常回收组合 |
 | MQTT 协议与高可用验收 | 已有协议、互操作、持久恢复与容量测试入口，完整规范义务和故障域验收未闭合 | 对 MQTT 3.1.1/5.0 逐条建立断言与当前产物运行结果，覆盖传输、集群、目标规模与故障恢复 |
 | 平台验收扩展 | 四平台默认矩阵、静态程序三库隔离及公共组件集成已通过，协议与故障域覆盖仍有差异 | 补齐五种通信的目标平台组合、系统服务及性能/容量对照；新增能力继续关联准确源码与产物 |
 

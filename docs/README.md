@@ -27,7 +27,7 @@
   </div>
 </section>
 
-> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 已公开的 RC13 按四个平台 × 三个数据库 profile 提供 12 个静态单程序，每个下载项仍只有一个主程序；RC14 正在用新版工具链重新验收。按平台与数据库选择一个下载项。部署端无需安装 PHP、Swoole、Composer 或 Node.js；使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
+> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 已公开的 RC14 按四个平台 × 三个数据库 profile 提供 12 个静态单程序，每次部署选择一个匹配的下载项。部署端无需安装 PHP、Swoole、Composer 或 Node.js；使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
 
 <div class="feature-grid">
   <div><span class="feature-number">01 / DEVELOP</span><h2>按业务组合</h2><p>路由、模型、通信与任务，<br>通过组件形成应用。</p></div>
@@ -39,7 +39,7 @@
 
 从 `type-project` 创建应用，用 Composer 安装所需的框架组件，再编译和验证自己的业务。先阅读[环境与依赖](guide/environment.md)区分开发机、构建机与部署机；[基础能力](guide/capabilities.md)帮助确定应用需要哪些组件。物联中心展示设备接入与多租户业务的组合方式。
 
-物联中心的 `v1.0.0-rc.14` 正在进行四平台、三数据库 profile 验收；公开下载须等同一轮候选完成封存和发布。前端编入主程序，首次安装同时准备账号和页面，后续显式更新托管静态文件。候选版本的部署和修复步骤见[前端安装与更新](guide/deployment.md#前端安装与更新)。
+物联中心的 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14) 已完成四平台、三数据库 profile 验收及公开下载核验。前端编入主程序，首次安装同时准备账号和页面，后续显式更新托管静态文件。安装步骤见[版本下载](guide/releases.md)，页面更新与修复见[前端安装与更新](guide/deployment.md#前端安装与更新)。
 
 <div class="doc-paths">
   <a class="start-guide" href="#/guide/quickstart">
@@ -55,7 +55,7 @@
 
 ## 创建第一个应用
 
-RC14 公开并由 Packagist 索引后，按[版本安装教程](guide/releases.md#composer-按版本安装)创建 `my-app`，选择数据库，并将模板和组件固定到 `1.0.0-rc.14`。完成安装后，在应用根目录检查实际入口：
+按[版本安装教程](guide/releases.md#composer-按版本安装)创建 `my-app`，选择数据库，并将模板和组件固定到 `1.0.0-rc.14`。完成安装后，在应用根目录检查实际入口：
 
 ```bash
 php dev.php help

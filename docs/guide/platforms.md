@@ -8,11 +8,11 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 ## 当前平台状态
 
-每个版本重新执行四平台完整验收，并将最终待上传的单个程序复制到隔离环境，执行对应 profile 的数据库、页面安装和真实 API 检查。本轮目标候选为 `v1.0.0-rc.14`；它在四个平台分别提供 `sqlite`、`mysql`、`pgsql` 程序，只有对应 Actions 运行全部成功并完成公开回读后才算已发布。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
+当前公开版本为 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14)。同一源码已完成四平台完整验收，四个平台各提供 `sqlite`、`mysql`、`pgsql` 程序；12 个最终程序均完成对应数据库的隔离部署和公开下载摘要核验。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
 
-RC14 使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及提交 `4aff74a9`、运行时字符串 `6.3.0RC1` 的 Swoole 开发快照。新版共享模块已完成四平台重建，完整应用与十二个静态程序仍在验收。准确源码、各轮结果及最终程序摘要统一维护在[升级证据](../evidence/typephp-upgrade-0.9.4.md)，不将旧提交或其他平台结果计为当前候选通过。
+RC14 使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及提交 `4aff74a9`、运行时字符串 `6.3.0RC1` 的 Swoole 开发快照。新版共享模块已完成四平台重建，完整应用与十二个静态程序均已通过本批发布门禁。准确源码、各轮结果及最终程序摘要统一维护在[升级证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，不将旧提交或其他平台结果计为当前候选通过。
 
-下表记录 RC13 的已发布基线。RC14 必须以自己的同一源码完成完整工作流和最终程序回归。
+下表记录 RC14 的已发布范围，源码为 `683f6d4d30e1e99b6a93f6a6fb45625fbd87138a`，正式发布运行是 [37138941959](https://github.com/zoujingli/typeapp/actions/runs/37138941959)。
 
 | 平台与实际环境 | 已通过的范围 | 部署验收边界 |
 | --- | --- | --- |
@@ -21,13 +21,13 @@ RC14 使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及提交 `4aff74a9
 | macOS ARM64，macOS 15 原生 runner | HTTP、ORM、三库完整应用 AOT、部署、恢复、回滚与 TLS；另验静态单程序 | 系统沙箱禁止读取源码、SDK 和执行开发工具；三个 profile 的最终 Mach-O 分别完成对应数据库部署 |
 | Windows x64，Windows 2022 原生 runner | SDK、三库独立 ORM、主应用 PHP/AOT、模板与搬迁；另验静态 SDK 和单程序 | 受限令牌与 ACL 禁止读取源码、SDK 及执行 PHP、MSVC、Node；三个 profile 的最终 EXE 分别完成对应数据库部署，并核对权限恢复 |
 
-三库指 MySQL、PostgreSQL、SQLite。RC13 的 12 个程序已分别覆盖运行库审计、数据库 profile 不匹配拒绝、内嵌前端安装与摘要、GET/HEAD 和缓存、平台及客户登录、站点默认值、角色 CRUD 和正常停止，并完成 MQTT TLS 授权、告警通知、导出及调度回归。RC14 必须用新版最终程序重新执行这些范围。普通启动不写出运行库，页面通过显式安装命令生成。独立 ORM 和通用模板仍分别验证自己的入口与产物；Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
+三库指 MySQL、PostgreSQL、SQLite。RC14 的 12 个程序已分别覆盖运行库审计、数据库 profile 不匹配拒绝、内嵌前端安装与摘要、GET/HEAD 和缓存、平台及客户登录、站点默认值、角色 CRUD 和正常停止，并完成 MQTT TLS 授权、告警通知、导出及调度回归。额外业务回归与单程序隔离部署分别记录，不能将两者的隔离条件混为一项。普通启动不写出运行库，页面通过显式安装命令生成。独立 ORM 和通用模板仍分别验证自己的入口与产物；Docker、WSL 中的 Linux 结果不计为 Windows 或 macOS 原生结果。
 
 上述系统版本是实际构建与运行基线，不等于已测试所有更高或更低版本。Linux 程序仍依赖目标系统的 glibc，不适用于 Alpine/musl；开发用共享 Swoole 模块的 Debian 12 基线不能套用于这些 Ubuntu 24.04 静态程序。macOS 程序按最低系统版本与实际加载映像核验，只允许系统库；历史 RC7 目录包的 dyld 缓存摘要限制保留在[旧版验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
-RC13 的 15 个组件与应用模板已发布对应 tag、GitHub Release 和 Packagist 版本；RC14 的子仓 tag、Packagist 索引与 Release 必须在新版主仓验收通过后按同一批次执行。版本 tag 分发不移动子仓 `main`；`dev-main` 是独立更新的开发分支，不能用它替代固定版本。安装方式见[组件参考](components.md)。
+RC14 的 15 个组件与应用模板已发布同版本 tag、GitHub Release 和 Packagist 版本，版本与拆分提交均已独立回读核对。版本 tag 分发不移动子仓 `main`；`dev-main` 是独立更新的开发分支，不能用它替代固定版本。安装方式见[组件参考](components.md)。
 
-完整源码、程序摘要、重建材料与隔离详情见[profile 发布验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/profile-release-20260930.md)；[开发分支基线](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/native-release-20260925.md)及[更早的平台记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)保留原身份。MySQL、SQLite 仍采用安全关闭重建，完整三库物理连接复用未完成。本轮未运行可选性能基准，默认矩阵通过也不代表全部协议、容量和业务故障组合验收完成。
+完整源码、程序摘要、重建材料与隔离详情见[RC14 升级验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)；[RC13 profile 发布证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/profile-release-20260930.md)、[开发分支基线](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/native-release-20260925.md)及[更早的平台记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)保留原身份。MySQL、SQLite 仍采用安全关闭重建，完整三库物理连接复用未完成。升级过程中的性能对照按各自源码和负载独立记录；Windows 同条件性能及非 macOS 文件流对照尚未完成。默认矩阵通过不代表全部协议、容量和业务故障组合验收完成。
 
 ## 通信结果如何理解
 
@@ -45,7 +45,7 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 当前源码的原生构建基线为 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 固定为 `4aff74a` 开发快照，运行时报告 `6.3.0RC1`，不是正式 6.3.0；源码、构建开关、模块摘要和官方内置库配置分别记录。CLI 加载成功还需要对应 embed 环境验证，不能只复制一个扩展文件就认定 ABI 匹配。
 
-上表记录 RC13 原工具链的已发布结果；0.9.4 升级的模块重建、十二组合程序及性能对照单独记录在[本次升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。历史 macOS 性能对照按自己的源码和负载成立，不能扩展为新版或其他平台的性能结论。
+上表记录 RC14 的功能验收结果；模块重建、十二组合程序及性能对照的准确身份见[本次升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。新旧版本性能比较仅按实际测量的平台、源码和负载成立，不能扩展为所有平台的性能结论。
 
 构建组件另外携带四平台 Swoole 共享模块，供开发及共享库回归使用；具体 ABI、系统依赖和选择规则见[内置 Swoole](plugins/type-build.md#内置-swoole-与运行依赖)。新版模块已在四个平台重建并完成加载与 PDO hook 检查；独立消费及完整应用结果以升级记录为准。生产单程序使用静态 SDK 中的归档，不将这些 `.so` / `.dll` 嵌入后释放。
 
@@ -58,7 +58,7 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 | HTTP `serveThread()` / `serveThreadOwned()` | Unix 编译业务线程使用共享监听副本；Windows 在线程内自绑定监听，主控监督停止与 join | 需要匹配项目线程 ABI；两种监听方式和各平台单独验收 |
 | `WebSocket\Server::start()` | 经典 Swoole WebSocket Server | 当前 Windows 原生入口明确拒绝，协程升级尚未接入本组件 |
 
-Windows 主应用与模板在 RC13 已通过 HTTP、正常停止和发布包用例；RC14 正在新版运行库上重新验收。控制台异常退出与其他故障组合按对应场景分别记录。主仓物联中心生产 HTTP 使用编译业务线程，通用模板使用 `serve()`，见[快速开始](quickstart.md#启动服务)和[type-core](plugins/type-core.md#启动-http-服务)。
+Windows 主应用与模板在 RC14 已通过新版运行库的 HTTP、正常停止和部署用例。控制台异常退出与其他故障组合按对应场景分别记录。主仓物联中心生产 HTTP 使用编译业务线程，通用模板使用 `serve()`，见[快速开始](quickstart.md#启动服务)和[type-core](plugins/type-core.md#启动-http-服务)。
 
 进程不可用时采用官方线程或协程是框架要求；HTTP 已按平台选择入口，其他角色仍需逐项接入和验证。经典 Server/Process、线程和协程的实际业务按所选构建分别核验，上游提供某项能力不能替代应用验收。
 
@@ -73,6 +73,6 @@ Windows 主应用与模板在 RC13 已通过 HTTP、正常停止和发布包用�
 3. 在无业务源码、无 Composer 和无编译 SDK 的目标环境验证启动、迁移、运行库校验、搬迁、升级和恢复。
 4. 完成一个程序文件加外置配置的交付，非系统原生库静态链接、启动不释放运行库，并验证干净环境、权限及数据保留。
 
-RC13 已完成四平台 × 三数据库 profile 单程序发布及本页列出的隔离范围；RC14 尚在新版工具链验收，`package-directory` 与 `archive` 仅维护旧目录包。其余协议、全部角色、容量与性能继续按场景验收，不能由单程序发布成功推导出全部框架能力完成。后续版本仍须以同一源码重新通过完整门禁。
+RC14 已完成四平台 × 三数据库 profile 单程序发布及本页列出的隔离范围；`package-directory` 与 `archive` 仅维护旧目录包。其余协议、全部角色、容量与性能继续按场景验收，不能由单程序发布成功推导出全部框架能力完成。后续版本仍须以同一源码重新通过完整门禁。
 
 [系统架构](architecture.md) · [构建与部署](deployment.md) · [实现规划](roadmap.md)

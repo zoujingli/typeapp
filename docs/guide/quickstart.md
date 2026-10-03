@@ -1,6 +1,6 @@
 # 快速开始
 
-用 `type-project` 创建 TypeApp 应用，再按需用 Composer 安装 Plugins（`type-xxxx` 组件）。生产 PHP 实现通过[TypePHP 全量编译](typephp.md)形成原生应用，运行库由构建统一管理。组件源码位于 `plugin/type-*`；版本号以[GitHub Release](https://github.com/zoujingli/typeapp/releases)为准，本页示例目标为 `v1.0.0-rc.14`，执行前请核对该候选是否已经公开。物联中心是成品案例，安装与业务契约见[物联网中心](iot-center.md)。
+用 `type-project` 创建 TypeApp 应用，再按需用 Composer 安装 Plugins（`type-xxxx` 组件）。生产 PHP 实现通过[TypePHP 全量编译](typephp.md)形成原生应用，运行库由构建统一管理。组件源码位于 `plugin/type-*`；版本号以[GitHub Release](https://github.com/zoujingli/typeapp/releases)为准，本页示例固定到已公开的 `v1.0.0-rc.14` 预发布版本。物联中心是成品案例，安装与业务契约见[物联网中心](iot-center.md)。
 
 本文带你从源码开始开发；如果只负责运行成品，请直接看[部署环境](environment.md#部署者需要管理什么)与[首次启动](deployment.md#首次启动)。
 
@@ -33,7 +33,7 @@ Windows x64 的匹配 Swoole SDK、三库独立 ORM、主应用和模板已有�
 
 ## 创建业务应用
 
-通过 Composer 从 Packagist 创建应用。本例使用 SQLite，将模板和实际第一方组件一起固定到公开后的 `1.0.0-rc.14` 候选版本。执行前先核对 Release 和 Packagist 范围；候选尚未公开时不要执行这组约束。升级时统一更新版本和锁文件。先选择驱动，再安装依赖：
+通过 Composer 从 Packagist 创建应用。本例使用 SQLite，将模板和实际第一方组件一起固定到已公开的 `1.0.0-rc.14` 候选版本。升级时统一更新版本和锁文件。先选择驱动，再安装依赖：
 
 ```bash
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.14

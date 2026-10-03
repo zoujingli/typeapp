@@ -66,7 +66,7 @@ flowchart TB
 }
 ```
 
-每个程序只链接自己的 pdo_* 驱动；`alerts`、`exports` 会闭包启用 `queue`，`queue` 和 `scheduler` 会闭包启用 `redis`。因此物联中心默认 profile 会包含 phpredis；自定义 profile 关闭这些能力时，清单会记录 `rejected-capabilities`，运行到关闭能力会返回 `feature_unavailable`。未知 profile、数据库配置不匹配或关闭能力都会在构建/启动边界返回稳定错误。RC14 正在用新版工具链逐项执行四平台 × 三 profile 验收；在同一轮次全部完成前，不能把候选写成已通过。
+每个程序只链接自己的 pdo_* 驱动；`alerts`、`exports` 会闭包启用 `queue`，`queue` 和 `scheduler` 会闭包启用 `redis`。因此物联中心默认 profile 会包含 phpredis；自定义 profile 关闭这些能力时，清单会记录 `rejected-capabilities`，运行到关闭能力会返回 `feature_unavailable`。未知 profile、数据库配置不匹配或关闭能力都会在构建/启动边界返回稳定错误。发布门禁逐项验证四平台 × 三 profile，实际版本与结果见[平台与验收](../platforms.md)。
 
 候选清单中的 `size-breakdown` 读取最终封存文件的真实区段：`total` 与下载字节数一致，`code` 是可执行区段，`data` 是其余字节，`frontend` 是内嵌 `web/` 原文字节，`native` 是静态归档输入大小。后两者不能与 code/data 重复相加。Linux 不保留调试或非必要符号区段，Windows 不保留 PDB 调试目录，macOS 执行 `strip -x` 后保留必需外部符号。体积增长门禁及测量边界见[构建身份](https://github.com/zoujingli/typeapp/blob/main/docs/development/build-identity.md)。
 
@@ -209,7 +209,7 @@ sequenceDiagram
 
 所选清单和模块进入构建身份，应用产物只收集当前平台选中的模块及实际依赖，不会携带全部四平台模块。再分发须保留适用的原始许可证，见[许可证与归属](../licensing.md#第三方边界)。源码、摘要、依赖和维护者的 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 重建入口见[资源说明](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。
 
-这些 `.so/.dll` 是共享扩展构建输入，不能用于静态链接。单程序构建使用按 profile 生成并校验的静态 SDK 归档；RC14 的 12 个 profile 程序仍需使用新版工具链逐项完成同一产物验收。实际可下载版本与产物形态见[构建与部署](../deployment.md#单程序交付约定)。
+这些 `.so/.dll` 是共享扩展构建输入，不能用于静态链接。单程序构建使用按 profile 生成并校验的静态 SDK 归档；每次发布都以最终程序完成对应数据库及部署验收。实际可下载版本与产物形态见[构建与部署](../deployment.md#单程序交付约定)。
 
 ## 开发与编译入口
 
@@ -282,7 +282,7 @@ php vendor/bin/type verify-package build/example-release "$TYPE_RELEASE_SHA256"
 
 运行包包含匹配 PHPX/libphp 和实际原生扩展，不包含 Composer、编译 SDK 或业务 PHP 回退入口。生产资源与开发工具分开，平台可用性以该版本实际验收为准。
 
-RC14 正在同一源码基线上执行四平台默认原生 CI、12 个数据库 profile 静态程序隔离部署、公共组件与模板分发。各平台最终程序禁止读取构建源码与 SDK、执行开发工具；公开下载摘要必须与候选一致。独立组件与模板仍记录各自入口和产物。准确提交、SDK 与限制见[平台与验收](../platforms.md)；历史目录包维护入口不进入新的单程序候选。
+发布工作流在同一源码基线上执行四平台默认原生 CI、12 个数据库 profile 静态程序隔离部署、公共组件与模板分发。各平台最终程序在隔离验收中禁止读取构建源码与 SDK、执行开发工具；公开下载摘要必须与候选一致。独立组件与模板记录各自入口和产物。已发布版本、准确提交、SDK 与限制见[平台与验收](../platforms.md)；历史目录包维护入口不进入新的单程序候选。
 
 ## 常见问题
 

@@ -37,9 +37,9 @@ flowchart LR
 
 组件源码统一在 [TypeApp 主仓](https://github.com/zoujingli/typeapp)的 `plugin/type-*` 维护，再分发到各自的 `zoujingli/type-xxxx` 仓库。第一方内容采用 Apache-2.0，各仓库携带 LICENSE 与 NOTICE；[type-project](https://github.com/zoujingli/type-project) 提供独立应用模板。
 
-15 个组件与应用模板均通过 [Packagist](https://packagist.org/packages/zoujingli/) 提供公共索引。Composer 默认使用该索引，应用只声明自己需要的组件，传递依赖自动解析；无需 SSH 密钥或逐个配置 Git 仓库。当前目标候选批次为 `1.0.0-rc.14`，同时保留 `dev-main` 开发分支；候选公开前不能假定 Packagist 已有该版本，尚无稳定版本。
+15 个组件与应用模板均通过 [Packagist](https://packagist.org/packages/zoujingli/) 提供公共索引。Composer 默认使用该索引，应用只声明自己需要的组件，传递依赖自动解析；无需 SSH 密钥或逐个配置 Git 仓库。当前公开候选批次为 `1.0.0-rc.14`，16 个包的版本与来源提交均已核对；同时保留 `dev-main` 开发分支，尚无稳定版本。
 
-`1.0.0-rc.14` 的组件和模板批次会在四平台门禁通过后进行公开安装、全量 AOT 与三库原生消费核验。维护者通过主仓固定提交分发，子仓 push webhook 通知 Packagist 更新；在候选公开前使用 RC13 或源码开发分支，不能提前假定 Packagist 已有 RC14。准确验收基线见[平台与验收](platforms.md)，开发分支更新不自动替换已有应用的依赖。
+`1.0.0-rc.14` 的组件和模板批次已完成公开安装、全量 AOT 与三库原生消费核验。维护者通过主仓固定提交分发，子仓 push webhook 通知 Packagist 更新；消费者从默认索引安装并核对本批拆分提交。准确验收基线见[平台与验收](platforms.md)，开发分支更新不自动替换已有应用的依赖。
 
 ```mermaid
 flowchart TB
@@ -49,7 +49,7 @@ flowchart TB
   Build --> Package[目标平台运行包]
 ```
 
-以下从发布后公开的 `1.0.0-rc.14` 候选批次安装 SQLite ORM。RC 不代表稳定版本，执行前按[版本发布](releases.md)核对 Packagist 实际索引、批次和平台范围：
+以下从已公开的 `1.0.0-rc.14` 候选批次安装 SQLite ORM。RC 不代表稳定版本，执行前按[版本发布](releases.md)核对 Packagist 实际索引、批次和平台范围：
 
 ```bash
 composer config minimum-stability RC
