@@ -1,6 +1,6 @@
 # TypePHP 0.9.4 与 Swoole 开发快照升级
 
-本记录从 2026-10-02 开始，目标版本为 `v1.0.0-rc.14`。RC13 的源码、产物与结论保持原身份；本次候选必须完成自己的四平台 × 三数据库静态程序验收，不能沿用旧版通过状态。四平台共享模块已重建并导入，Windows HTTP 退出、IPv6 与 TLS EOF 故障已完成定向复验，当前继续定位完整 TCP AOT 套件的挂起，尚未公开 RC14。下面按准确源码记录每轮结果，不把排队或局部成功当作完整通过。
+本记录从 2026-10-02 开始，目标版本为 `v1.0.0-rc.14`。RC13 的源码、产物与结论保持原身份；本次候选必须完成自己的四平台 × 三数据库静态程序验收，不能沿用旧版通过状态。四平台共享模块已重建并导入，Windows HTTP 退出、IPv6、TLS EOF 与 IOCP 句柄复用修复已通过定向回归，完整 TCP/UDP AOT 对照通过。当前正在处理新增原生 curl 验收，RC14 尚未公开。下面按准确源码记录每轮结果，不把排队或局部成功当作完整通过。
 
 ## 固定输入
 
@@ -199,7 +199,27 @@ Windows 后续使用源码 `53193c921efe0f35d1d24dd600b1cbb8fdce2b73` 及 IPv6/�
 
 此前的 [官方 IOCP trace 37128088888](https://github.com/zoujingli/typeapp/actions/runs/37128088888) 在完整 TCP 双线程场景仍于 40 秒截止终止，两个线程最后均为 228 项断言、`echo-closed`；日志显示慢握手取消后继续等待完成通知。它使用隔离 trace DLL `ddb3fd4934c34e084fcf4650dee2645e99a217f1a30971ecd5b944e4f2c6d0f0`，原程序摘要 `45033b86e460cb131011ef5620f9de105bd4177743b33bb19bc482d239aedcad`。Artifact `11275991967`（摘要 `c15bd8fef7e09b5737d94c5bf068bced6a782f429d2d411f8903920c158ecc18`）保留原字节和日志，不计为默认模块的通过证据。
 
-失败 Artifact `11274919315` 的摘要为 `9b9b6fdd0f312488afd3f676d013929b7d8622dbaf2b4ffb4db95891966a4d28`，已回读保存在 `build/toolchain-upgrade-followup.lVbKwh/dns-reuse-windows-red/`。新模块尚须通过此最小对照、完整 TCP 及 HTTP/curl 回归；原静态 SDK 因 Windows 适配摘要变化必须重建，不能只更新清单冒充已验证模块。固定上游等价修复并通过原始回归后撤除本项适配。
+失败 Artifact `11274919315` 的摘要为 `9b9b6fdd0f312488afd3f676d013929b7d8622dbaf2b4ffb4db95891966a4d28`，已回读保存在 `build/toolchain-upgrade-followup.lVbKwh/dns-reuse-windows-red/`。上面的重建运行已通过原最小对照；后续完整 TCP/UDP 与静态 SDK 结果分别记录如下。原静态 SDK 因 Windows 适配摘要变化不能继续冒充新输入，固定上游等价修复并通过原始回归后撤除本项适配。
+
+### IOCP 修复后的完整通信与 SDK
+
+[Windows 完整 TCP/UDP 对照 37129534352](https://github.com/zoujingli/typeapp/actions/runs/37129534352) 使用源码 `dded0dbe9a80e48451930dd02e80839d74ec9f63`、默认模块且 `iocp_trace=false`。TCP 最小背压与同一 EXE 的完整套件均通过，两轮双工作线程各 414 项断言，主线程协程也通过，涵盖慢 TLS 与并行回声、背压、IPv4/IPv6 服务端和关闭后拒绝。TCP 程序 SHA-256 为 `abbba99f4f080f9e4c4f19a8aa5b5d8d5d545b8be24c5d5fe551d9c33f593138`，构建身份为 `66434b20d65c64e2a9d2ea196fa56799b6cdd45ee8826f74b24f3c54786687e2`。
+
+TCP Artifact `11276845882` 的摘要为 `95583914090ca91d9fa447d2a3452c76b702da2dcef8f94c5792f015fd1a4051`；UDP Artifact `11276581467` 的摘要为 `17ed777e7241b2e7dd68e2403997658e9645221264dcbf6b1062b0807aad1528`，均回读核验。UDP 程序 SHA-256 为 `f07feaa90d4449c94b2269dec87210bc9106d3a374c8517ccb7b040f77bb5ce0`，构建身份为 `de910122f5313d4bef677bea9c7332658b4cefd66eb7ad540866ed24b01c7412`；独立对端延后 120 毫秒发送仍通过。两套消费者均全量编译六个生产包、91 份源码，但 Windows 的源码禁读字段仍为 `not-verified`，不将其写成无源码隔离通过。
+
+同源码的 Windows 静态 SDK 在 [SQLite 37129541240](https://github.com/zoujingli/typeapp/actions/runs/37129541240)、[MySQL 37129543409](https://github.com/zoujingli/typeapp/actions/runs/37129543409)、[PostgreSQL 37129546583](https://github.com/zoujingli/typeapp/actions/runs/37129546583) 重建成功，SDK Artifact 分别为 `11276586230`、`11276193252`、`11276223238`。这只记录 SDK 重建，不替代同输入的最终应用验收。
+
+### Windows 原生 curl 构建能力
+
+[原共享模块的 curl 对照 37130108803](https://github.com/zoujingli/typeapp/actions/runs/37130108803) 使用源码 `e6959a6`。两个线程均完成 16 次快速请求，但慢响应期间 Swoole 计时器没有执行，未通过协程让出断言。固定上游只在 `SW_USE_CURL` 下接管原生函数；Windows 共享模块缺少 `--enable-swoole-curl`，而静态 SDK 已启用该开关。读取 hook 标志不能证明原生实现已编入。原报告 Artifact `11275829554` 的摘要为 `9fa82b14a9fbe93a071b4e791f255efb025d080977f7d36d644e60882a4a5661`。
+
+构建入口随后固定官方 libcurl 8.22.0 与 libssh2 1.11.1，校验原始许可和共享 PHP 对应的 `/MD` CRT，并要求配置实际产生 `SW_USE_CURL`。[重建 37131456197](https://github.com/zoujingli/typeapp/actions/runs/37131456197) 使用源码 `b538d3e0ae9877959b905e462b3bd34abf2f5835`，DLL 编译、DNS 与 TLS 通过，但 curl 首个请求失败；该模块没有导入默认清单。原始模块和报告保存在 Artifact `11276578568`，摘要 `9482670dac7337153aaef81db9af7a08a5aa3906c6d997def517e939f18e7874`。后续加入独立主线程对照和准确 curl 错误，线程失败后先回收本轮全部线程再报告；仍保留真实让出、超时及恢复断言。
+
+### 清除诊断写盘后的 macOS TCP 复验
+
+移除 TCP/TLS 的逐步同步检查点写盘后，同一完整 TCP 程序在第二轮接入时被 `tcp_buffer_limit` 拒绝：声明 65536 字节，实际接收缓冲为 326848 字节。独立 Swoole Socket 的 500 次对照有 25 次读到相同越界值；Python 原生 Socket 对照也复现，排除了 TypePHP 或框架独有行为。框架最小路径在第 46 次失败，复用既有连接后有界重设机制覆盖已接入连接后，连续 500 次通过；没有放宽缓冲上限或启动截止。
+
+完整消费者新增独立客户端连续 128 次接入、立即发送与半关闭，逐次核对缓冲、4096 字节回声和额度回收。macOS 的六个生产包、91 份源码全量 AOT 后，同一程序在源码禁读条件下通过两轮双线程及主线程协程。程序 SHA-256 为 `d58c5f058dc829c5ee5663df4171a6ce4d9159d7d1487f13acd590f1ff55965c`，构建身份为 `66f5dab4b565c84c4b0761fc5957472cb58fe0ef0bffd18500f366d7246db32f`；原报告为 `build/toolchain-upgrade-followup.lVbKwh/tcp-buffers-macos/run-0e44d60f08/verification.json`。其他平台须在相同修改后复验，原 Windows 结果保持之前的源码身份。
 
 ### 性能测量的运行环境
 

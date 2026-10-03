@@ -133,13 +133,9 @@ try {
         foreach (glob($observation . '/*.failure') ?: [] as $failure) {
             $failures[basename($failure)] = (string) file_get_contents($failure);
         }
-        $checkpoints = [];
-        foreach (glob($observation . '/*.checkpoint.json') ?: [] as $checkpoint) {
-            $checkpoints[basename($checkpoint)] = (string) file_get_contents($checkpoint);
-        }
         file_put_contents($observation . '/execution.json', json_encode(['exit' => $execution->exitCode, 'signal' => $execution->signal,
             'stdout' => $execution->stdout, 'stderr' => $execution->stderr, 'failures' => $failures,
-            'checkpoints' => $checkpoints, 'timed_out' => $execution->timedOut], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+            'timed_out' => $execution->timedOut], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
         expect($execution->successful() && $execution->stderr === '' && $failures === [], '原生通信验收失败，见 ' . $observation);
         $result = json_decode(trim($execution->stdout), true, 512, JSON_THROW_ON_ERROR);
         expect($result['active_threads'] === 1 && $result['exits'] === ($mode === 'thread' ? [0, 0] : [0]), '线程或退出码不符');

@@ -117,6 +117,11 @@ if (dnsOnly) {
     }));
 
     const verifyServer = (command, control) => {
+        const repetitions = command.repeat ?? 1;
+        if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 512 || (command.slow && repetitions !== 1)) {
+            throw new Error('invalid repetition count');
+        }
+        let completed = 0;
         const payload = Buffer.alloc(4096);
         for (let i = 0; i < payload.length; i++) payload[i] = i % 256;
         let slow = null;
@@ -138,8 +143,12 @@ if (dnsOnly) {
             client.once('end', () => {
                 const ok = received.equals(payload);
                 if (ok) observations.verified++;
-                control.end(JSON.stringify({ ok, bytes: received.length }) + '\n');
                 client.destroy();
+                if (ok && ++completed < repetitions) {
+                    launch();
+                    return;
+                }
+                control.end(JSON.stringify({ ok, bytes: received.length, ...(repetitions > 1 ? { completed } : {}) }) + '\n');
                 if (slow) setTimeout(() => slow.destroy(), 250);
             });
             client.once('error', error => control.end(JSON.stringify({ ok: false, reason: error.code }) + '\n'));

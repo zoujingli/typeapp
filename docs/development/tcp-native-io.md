@@ -53,7 +53,7 @@ $listener = TcpSocket::listener($budget, '127.0.0.1', 9443, 65536, [
 ## 配置与预算
 
 - `maxChunkBytes` 范围为 1–1048576，默认 65536；每连接最多一个接收片段和一个待发片段，应用排队字节为零。业务累计多个片段时须另行限制总消息大小。
-- `socket_buffer_size` 沿用原生名称，范围 65536–1048576。通过 `SO_RCVBUF/SO_SNDBUF` 设置并回读；连接和 TLS 完成后会再次应用设置，兼容 macOS 在 `connect()` 后的内核自动调优。最终原生报告仍不得超过预留的两倍，兼容 Linux 双倍报告惯例；TLS/内核元数据另有成本，不能把片段字节数宣传为整个进程的 RSS 硬上限。
+- `socket_buffer_size` 沿用原生名称，范围 65536–1048576。通过 `SO_RCVBUF/SO_SNDBUF` 设置并回读；连接和 TLS 完成后会再次应用设置。macOS 在 `connect()` 完成或已接入连接收到数据时可能调整内核缓冲，发现超限时在启动截止内让出一次协程并重设；再次超限仍拒绝启动。最终原生报告仍不得超过预留的两倍，兼容 Linux 双倍报告惯例；TLS/内核元数据另有成本，不能把片段字节数宣传为整个进程的 RSS 硬上限。
 - `backlog` 为原生监听等待队列参数，范围 1–4096，默认 128；它不是应用连接额度。监听占一份额度，每个等待中的 accept 在接入前再预留一份；接入后的连接继承该额度，不重复计数、不再排应用队列。
 - 所有等待显式为 `(0,60]` 秒，Socket 读写期限直接通过对应方法参数传入；Socket `setProtocol()` 不处理 `read_timeout/write_timeout`，不把 Client 专属设置误传给它。
 - TLS 保留 `open_ssl`、`ssl_cert_file`、`ssl_key_file`、`ssl_cafile`、`ssl_host_name`、`ssl_verify_peer`、`ssl_protocols` 名称。客户端强制链和主机名校验，默认 TLS 1.2/1.3，不接受自签名绕过。监听可启用客户端证书校验，具体证书身份与授权仍属于业务。

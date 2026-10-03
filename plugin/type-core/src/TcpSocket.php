@@ -116,7 +116,9 @@ final class TcpSocket implements ManagedResource
             if ($this->socket === null) {
                 $this->socket = new Socket(str_contains($this->host, ':') ? AF_INET6 : AF_INET, SOCK_STREAM, 0);
             }
-            $this->buffers();
+            // 已接入的连接可能在 start 前收到对端数据，macOS 也会在此阶段调整缓冲。
+            // 与 connect 后的复核共用一次有界重设；失败仍拒绝启动，不放宽预留上限。
+            $this->buffers($this->kind === 'accepted');
             if ($this->kind !== 'accepted' && $this->options['open_ssl'] && !$this->socket->setProtocol($this->options)) {
                 $this->fail('tcp_tls_configuration_failed');
             }

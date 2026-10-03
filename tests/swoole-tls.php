@@ -71,14 +71,13 @@ function probeSwooleTls(array $peers): array
  * @param array{idle:array{port:int}} $peers 独立 Node 对端。
  * @return array{passed:bool,events:array,coroutines:int}
  */
-function probeSwooleTlsDeadline(array $peers, bool $cancel, string $path): array
+function probeSwooleTlsDeadline(array $peers, bool $cancel): array
 {
     Swoole\Coroutine::set(['hook_flags' => 0]);
     $events = [];
     $passed = false;
-    $record = static function (array $event) use ($path, &$events): void {
+    $record = static function (array $event) use (&$events): void {
         $events[] = $event;
-        file_put_contents($path . '.checkpoint.json', json_encode($events, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
     };
     Swoole\Coroutine::create(static function () use ($peers, $cancel, $record, &$passed): void {
         $socket = new Swoole\Coroutine\Socket(AF_INET, SOCK_STREAM, 0);
@@ -122,13 +121,12 @@ function probeSwooleTlsDeadline(array $peers, bool $cancel, string $path): array
  * @param array{idle:array{port:int}} $peers 独立 Node 对端。
  * @return array{passed:bool,events:array,coroutines:int}
  */
-function probeFrameworkTlsDeadline(array $peers, bool $cancel, string $path): array
+function probeFrameworkTlsDeadline(array $peers, bool $cancel): array
 {
     $events = [];
     $passed = false;
-    $record = static function (array $event) use ($path, &$events): void {
+    $record = static function (array $event) use (&$events): void {
         $events[] = $event;
-        file_put_contents($path . '.checkpoint.json', json_encode($events, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
     };
     Swoole\Coroutine::create(static function () use ($peers, $cancel, $record, &$passed): void {
         $budget = new Type\Runtime\ResourceBudget(1);
@@ -171,13 +169,12 @@ function probeFrameworkTlsDeadline(array $peers, bool $cancel, string $path): ar
  * @param array{control:array{port:int}} $peers 独立标准客户端控制入口。
  * @return array{passed:bool,events:array,coroutines:int}
  */
-function probeFrameworkTcpServer(array $peers, string $path): array
+function probeFrameworkTcpServer(array $peers): array
 {
     $events = [];
     $passed = false;
-    $record = static function (array $event) use (&$events, $path): void {
+    $record = static function (array $event) use (&$events): void {
         $events[] = $event;
-        file_put_contents($path . '.checkpoint.json', json_encode(['probe' => '[DEBUG-tcp-server]', 'events' => $events], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
     };
     Swoole\Coroutine::create(static function () use ($peers, &$passed, $record): void {
         $budget = new Type\Runtime\ResourceBudget(3);
@@ -253,9 +250,9 @@ if (is_array($arguments)) {
         require dirname(__DIR__) . '/vendor/autoload.php';
         require dirname(__DIR__) . '/vendor/swoole/typephp/src/polyfills.php';
         $peers = json_decode($arguments[1], true, 512, JSON_THROW_ON_ERROR);
-        $result = $arguments[0] === 'server' ? probeFrameworkTcpServer($peers, $arguments[3])
-            : ($arguments[0] === 'framework' ? probeFrameworkTlsDeadline($peers, $arguments[2], $arguments[3])
-                : probeSwooleTlsDeadline($peers, $arguments[2], $arguments[3]));
+        $result = $arguments[0] === 'server' ? probeFrameworkTcpServer($peers)
+            : ($arguments[0] === 'framework' ? probeFrameworkTlsDeadline($peers, $arguments[2])
+                : probeSwooleTlsDeadline($peers, $arguments[2]));
         file_put_contents($arguments[3], json_encode($result, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
         exit($result['passed'] ? 0 : 1);
     }
@@ -287,9 +284,9 @@ if (($argv[1] ?? '') === '--deadline') {
         exit($thread->getExitStatus());
     }
     $decodedPeers = json_decode($peers, true, 512, JSON_THROW_ON_ERROR);
-    $result = $server ? probeFrameworkTcpServer($decodedPeers, $argv[5])
-        : ($framework ? probeFrameworkTlsDeadline($decodedPeers, $cancel, $argv[5])
-            : probeSwooleTlsDeadline($decodedPeers, $cancel, $argv[5]));
+    $result = $server ? probeFrameworkTcpServer($decodedPeers)
+        : ($framework ? probeFrameworkTlsDeadline($decodedPeers, $cancel)
+            : probeSwooleTlsDeadline($decodedPeers, $cancel));
     file_put_contents($argv[5], json_encode($result, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
     exit($result['passed'] ? 0 : 1);
 }
@@ -335,8 +332,7 @@ try {
                 $execution = $process->wait($mode === 'framework-server' ? 8 : 3);
                 $deadlines[$role . '-' . $mode] = ['exit' => $execution->exitCode, 'timed_out' => $execution->timedOut,
                     'stdout' => $execution->stdout, 'stderr' => $execution->stderr,
-                    'result' => is_file($path) ? json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR) : null,
-                    'checkpoint' => is_file($path . '.checkpoint.json') ? json_decode((string) file_get_contents($path . '.checkpoint.json'), true, 512, JSON_THROW_ON_ERROR) : null];
+                    'result' => is_file($path) ? json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR) : null];
                 $passed = $passed && $execution->successful() && ($deadlines[$role . '-' . $mode]['result']['passed'] ?? false);
             } finally {
                 $process->stop();
