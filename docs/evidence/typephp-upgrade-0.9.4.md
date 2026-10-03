@@ -1,6 +1,6 @@
 # TypePHP 0.9.4 与 Swoole 开发快照升级
 
-本记录从 2026-10-02 开始，目标版本为 `v1.0.0-rc.14`。RC13 的源码、产物与结论保持原身份；本次候选必须完成自己的四平台 × 三数据库静态程序验收，不能沿用旧版通过状态。四平台共享模块已重建并导入，Windows HTTP 退出故障已完成定向复验，当前继续定位 TCP 连接失败并汇合完整应用和静态 SDK 验收，尚未公开 RC14。下面按准确源码记录每轮结果，不把排队或局部成功当作完整通过。
+本记录从 2026-10-02 开始，目标版本为 `v1.0.0-rc.14`。RC13 的源码、产物与结论保持原身份；本次候选必须完成自己的四平台 × 三数据库静态程序验收，不能沿用旧版通过状态。四平台共享模块已重建并导入，Windows HTTP 退出、IPv6 与 TLS EOF 故障已完成定向复验，当前继续定位完整 TCP AOT 套件的挂起，尚未公开 RC14。下面按准确源码记录每轮结果，不把排队或局部成功当作完整通过。
 
 ## 固定输入
 
@@ -106,6 +106,14 @@ IPv6/独占绑定适配后的 Windows 静态 SDK 已按 `3c583020f5fb5813256feaa
 
 同源码新增的 TLS RST 场景已在本机 macOS 完成完整 TCP AOT：六个生产包、91 份源码，源码目录由系统沙箱拒绝，连续两轮双线程及主线程协程全部通过，工作线程每轮 414 项、主线程 413 项断言，线程退出零且协程清空。程序 SHA-256 为 `8017ecd3f6fcae0314791eeed47f9675e42c187d61fe0e93f492e28dd3cc7063`，构建身份为 `139349c8a7c9fcd27b0990b80f3661dd07e98fbda4d09e99d863add5ea21bb94`。这不能代替 Windows 的未通过场景。
 
+### Windows TCP 挂起的对照
+
+[完整 Windows 运行 37119914590](https://github.com/zoujingli/typeapp/actions/runs/37119914590) 使用同一 `010da9d` 源码，通过线程、初始化、资源、HTTP 与退出监督后，同样在 TCP 的 40 秒预算内未返回。原程序保存在 Artifact `11273033868`（摘要 `59036b4ee6e9e6d00fdd2e35ef6b170e7351b48286c432c746aca84f1fb40d93`）。随后 [37120824423](https://github.com/zoujingli/typeapp/actions/runs/37120824423)，源码 `75ea8206f77ced4f36ce90a4374641be3c547745`，增加场景检查点，两个业务线程均完成 226 项断言，最后记录为并行普通回声的 `echo-close`。该场景与慢 TLS 握手同时执行；这个检查点尚不能区分关闭未返回或另一协程的握手截止失效。UDP 与基础 TLS 探针通过，完整 TCP 仍失败；Artifact `11273510901` 的摘要为 `868b336dbc7fb2daacd7a87714fb9f75c04229ffe74018a521bb8312c5bade32`。
+
+独立 PHP 探针将慢握手与此前的 DNS、证书拒绝和并行回声隔离。原生接口的 [37121683446](https://github.com/zoujingli/typeapp/actions/runs/37121683446)，源码 `70d03d2f749c514d6ae18740db46bff385551a58`，通过主线程和工作线程的读写截止及协程取消。框架接口的 [37122053033](https://github.com/zoujingli/typeapp/actions/runs/37122053033)，源码 `a5fea1b04e2e8eed8e219eb66cf84b6e68b4aa7e`，进一步通过 `TcpSocket::start(0.15)` 与定时 `stop()`：自然截止约 0.166/0.161 秒返回 `tcp_timeout`，停止约 0.026/0.037 秒返回 `tcp_stopped`，额度归还、协程清空。原始报告保存在 Artifact `11273686411`（摘要 `019c34c094d8a658f28fee29e689c33129b6bfc67c464bbd804c406e47b217b4`）。这些是 PHP 调用路径的结果，不能替代 AOT。
+
+只保留上述握手生命周期的消费者已在 macOS 全量 AOT 并通过两轮双线程及主线程协程；本机在 `a5fea1b` 上加入夹具修改后执行，修改随后以 `37970d20e481b87edf5ca462233a47e39335829e` 提交。程序摘要 `344f59028f9e35405ffcd9227a67da84a9b26952c6cfde88a7f346a8258c4244`，构建身份 `7c73d56a43d9986b695f4eebdb63f827eeb426868fe5755fd23e23f00fde3d77`。报告明确为 `handshake-only`，完整套件原有断言与预算保持不变。
+
 ### 静态程序预验收
 
 以下运行采用源码 `11a73078df41a9f8116384705251d37603f24666`，用于验证新版工具链与静态依赖。它们不是最终 RC14 标签的候选附件，后续发布仍须从最终固定源码重新构建并验收同一程序。
@@ -142,6 +150,16 @@ Windows 后续使用源码 `53193c921efe0f35d1d24dd600b1cbb8fdce2b73` 及 IPv6/�
 | SQLite | 50,730,852 | `9b2ad6604b4b0b1aa605d04959b4384390af6e22d093ec95abe5d4688ba77bc0` |
 | MySQL | 49,800,587 | `4d975f29da60d3f53b700df18a80772732a8efe0edca352ba34dcd9dd10fc44b` |
 | PostgreSQL | 49,975,605 | `47d5adb50294dcfd855ea1230220a2a4e61d1e650e5587565c1daba114f3daea` |
+
+包含 TLS EOF 修复的源码 `010da9d9492c9360399050e0c7a90a2f04a00a62` 使用上述新 SDK，再次完成 [SQLite 37120210968](https://github.com/zoujingli/typeapp/actions/runs/37120210968)、[MySQL 37120213209](https://github.com/zoujingli/typeapp/actions/runs/37120213209)、[PostgreSQL 37120217423](https://github.com/zoujingli/typeapp/actions/runs/37120217423) 的全量 AOT 和同程序部署。回读三份 EXE、构建报告、单程序报告及业务报告，摘要一致；源码与 SDK 禁读、只读程序目录、不同工作目录、普通启动无文件写入、profile 拒绝、前端安装及摘要、登录与 CRUD、MQTT、告警、导出、调度和正常停止均通过。它们不覆盖完整 TCP 套件的未通过项，也不是最终标签附件。
+
+| Windows profile | 字节数 | 程序 SHA-256 | 应用证据 Artifact |
+| --- | ---: | --- | --- |
+| SQLite | 50,733,084 | `ea3dafa7d3dd1fae0d0a265a225e591817b59961c8a6f17a105032ff0242bcd1` | `11273104522` |
+| MySQL | 49,805,891 | `5c8cc4d4d778d011c70990b26e31120876ddc35a99e8f48a1fcba457ebfae530` | `11273069374` |
+| PostgreSQL | 49,976,813 | `47de7c581a66df1eaf5253323a95513193c8095f084903ed605fd90e85b2a9cb` | `11274500314` |
+
+三份应用证据 Artifact 摘要分别为 `bdc5ffd816bf8552b4d6eddbfcf7df10e076948326a383ca4f4e9dfefa72cf1e`、`5b18aac791f32fa3d437609eca0a89480c5133ba0bd2575a9e8b297b86b45c02`、`f86b07bb03d94887ebde89b3dd9683261cec7b1a4f5b24be212381600f86433f`，本地保留于 `build/toolchain-upgrade-followup.lVbKwh/windows-tls-programs/`。下载中断后的重试仅恢复同一 Artifact 并回读摘要，没有重新编译或覆盖原始验收身份。
 
 ### 性能测量的运行环境
 
