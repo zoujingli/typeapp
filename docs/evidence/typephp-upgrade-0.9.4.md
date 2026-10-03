@@ -86,6 +86,8 @@ macOS UDP 复验先暴露独立消费者的运行目录问题：默认模块仍�
 
 共享模块构建现加入固定 c-ares 1.34.8（源码 `c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab`，归档 SHA-256 `c9ea1b3029b23b04376c229bd519489cee180874ec48cd863a5dcba628c0fe03`），使用与共享 PHP 一致的 `/MD` CRT，并静态链接到 Swoole DLL。生产静态 SDK 继续 `/MT`。原始许可证与组件保留材料的 SHA-256 均为 `460f5e768fda3752ca2169a95df062578a10fb126bfd65f3b9b1a1bed2f84807`。构建同时检查 `SW_USE_CARES`、实际静态库摘要及 DLL 导入表；模块重建和完整 TCP/TLS 结果需另行记录。
 
+[c-ares 模块重建 37117428360](https://github.com/zoujingli/typeapp/actions/runs/37117428360) 已按 `fe0a3cd034b08e1923fcb7912203a6261e5836c0` 通过。新 DLL 为 2,567,168 字节、SHA-256 `841e4a30bd63634159aee09bcab79542e0846a0730c87b5f6132388a1d5fffa7`，Artifact `11272206764`、归档摘要 `97768d74a6650184ef6d3acec43ae6f2c924bb575616ae0b95c775628a62d2fc`。同一个最小探针在主线程和两次重建的工作线程均返回 `127.0.0.1`、错误码 0，DNS 对端收到三次查询，线程退出为零且协程清空；DLL 导入表没有外置 c-ares，实际静态库摘要为 `d105c510fcb2e59b58c04376344f1e8ff86555bafec46f83d19023e582fedbec`。这确认构建开关缺失是该解析故障的原因，新模块替代前述 Windows DLL；完整 TCP/TLS 与应用回归另行验收。
+
 IPv6/独占绑定适配后的 Windows 静态 SDK 已按 `3c583020f5fb5813256feaa8eabd469fab3775e8` 分别重建：[SQLite 37116141545](https://github.com/zoujingli/typeapp/actions/runs/37116141545)、[MySQL 37116144369](https://github.com/zoujingli/typeapp/actions/runs/37116144369)、[PostgreSQL 37116146811](https://github.com/zoujingli/typeapp/actions/runs/37116146811) 均成功。回读三份原生探针报告，实际数据库扩展各自仅包含所选驱动，PHP 8.5.10 ZTS、Swoole `6.3.0RC1` 与系统库清单均匹配；探针范围为 PHP 和扩展 embed，不能替代下文应用程序验收。SDK Artifact 依次为 `11272016209`、`11271896210`、`11270749874`。
 
 ### 静态程序预验收
