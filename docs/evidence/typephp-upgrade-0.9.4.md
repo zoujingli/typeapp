@@ -1,6 +1,6 @@
 # TypePHP 0.9.4 与 Swoole 开发快照升级
 
-本记录从 2026-10-02 开始，目标版本为 `v1.0.0-rc.14`。RC13 的源码、产物与结论保持原身份；本次候选必须完成自己的四平台 × 三数据库静态程序验收，不能沿用旧版通过状态。四平台共享模块已重建并导入，Windows HTTP 退出、IPv6、TLS EOF 与 IOCP 句柄复用修复已通过定向回归，完整 TCP/UDP AOT 对照通过。新增原生 curl 的连接生命周期修复已通过模块回归并导入，正在重建对应静态 SDK；最终源码的完整验收与 RC14 公开发布尚未完成。下面按准确源码记录每轮结果，不把排队或局部成功当作完整通过。
+本记录从 2026-10-02 开始，目标版本为 `v1.0.0-rc.14`。RC13 的源码、产物与结论保持原身份；本次候选必须完成自己的四平台 × 三数据库静态程序验收，不能沿用旧版通过状态。四平台共享模块已重建并导入，Windows HTTP 退出、IPv6、TLS EOF 与 IOCP 句柄复用修复已通过定向回归，完整 TCP/UDP AOT 对照通过。新增原生 curl 的连接生命周期修复已通过模块、三个静态 SDK 及同源码的三个单文件应用预验收；最终发布轮次的完整验收与 RC14 公开发布尚未完成。下面按准确源码记录每轮结果，不把排队或局部成功当作完整通过。
 
 ## 固定输入
 
@@ -209,6 +209,8 @@ TCP Artifact `11276845882` 的摘要为 `95583914090ca91d9fa447d2a3452c76b702da2
 
 同源码的 Windows 静态 SDK 在 [SQLite 37129541240](https://github.com/zoujingli/typeapp/actions/runs/37129541240)、[MySQL 37129543409](https://github.com/zoujingli/typeapp/actions/runs/37129543409)、[PostgreSQL 37129546583](https://github.com/zoujingli/typeapp/actions/runs/37129546583) 重建成功，SDK Artifact 分别为 `11276586230`、`11276193252`、`11276223238`。这只记录 SDK 重建，不替代同输入的最终应用验收。
 
+该源码的 [Windows 完整回归 37129537131](https://github.com/zoujingli/typeapp/actions/runs/37129537131) 已通过工具链、公开契约、三库 ORM、应用与独立模板。Artifact `11278896674` 的归档摘要为 `792ab24f85d436a1f1bb33133bf593a66ad2d0d5916bba7456cd264067be782f`，已回读校验并保留 251 份原始 JSON。该轮不含后续增强 curl 与 128 次接入回归，完整通过结论仅属于 `dded0dbe9a80e48451930dd02e80839d74ec9f63`。
+
 ### Windows 原生 curl 构建能力
 
 [原共享模块的 curl 对照 37130108803](https://github.com/zoujingli/typeapp/actions/runs/37130108803) 使用源码 `e6959a6`。两个线程均完成 16 次快速请求，但慢响应期间 Swoole 计时器没有执行，未通过协程让出断言。固定上游只在 `SW_USE_CURL` 下接管原生函数；Windows 共享模块缺少 `--enable-swoole-curl`，而静态 SDK 已启用该开关。读取 hook 标志不能证明原生实现已编入。原报告 Artifact `11275829554` 的摘要为 `9fa82b14a9fbe93a071b4e791f255efb025d080977f7d36d644e60882a4a5661`。
@@ -228,6 +230,30 @@ TCP Artifact `11276845882` 的摘要为 `95583914090ca91d9fa447d2a3452c76b702da2
 移除 TCP/TLS 的逐步同步检查点写盘后，同一完整 TCP 程序在第二轮接入时被 `tcp_buffer_limit` 拒绝：声明 65536 字节，实际接收缓冲为 326848 字节。独立 Swoole Socket 的 500 次对照有 25 次读到相同越界值；Python 原生 Socket 对照也复现，排除了 TypePHP 或框架独有行为。框架最小路径在第 46 次失败，复用既有连接后有界重设机制覆盖已接入连接后，连续 500 次通过；没有放宽缓冲上限或启动截止。
 
 完整消费者新增独立客户端连续 128 次接入、立即发送与半关闭，逐次核对缓冲、4096 字节回声和额度回收。macOS 的六个生产包、91 份源码全量 AOT 后，同一程序在源码禁读条件下通过两轮双线程及主线程协程。程序 SHA-256 为 `d58c5f058dc829c5ee5663df4171a6ce4d9159d7d1487f13acd590f1ff55965c`，构建身份为 `66f5dab4b565c84c4b0761fc5957472cb58fe0ef0bffd18500f366d7246db32f`；原报告为 `build/toolchain-upgrade-followup.lVbKwh/tcp-buffers-macos/run-0e44d60f08/verification.json`。其他平台须在相同修改后复验，原 Windows 结果保持之前的源码身份。
+
+### 最终适配的 SDK 与应用预验收
+
+源码 `5c409678213ebd12da3c3d80de4213f1896da7a3` 的三个 Windows 静态 SDK 均完成重建。逐份回读 embed 与 PHPX 探针，PHP 8.5.10 ZTS、Swoole `6.3.0RC1`、当前 PDO 驱动、源码适配与系统 DLL 清单一致；静态 CRT 没有引入 VCRUNTIME/MSVCP 部署依赖。共享模块使用 PHP 共享 SDK 的 `/MD`，生产静态 SDK 使用 `/MT`，两者分别核对。
+
+| Profile | SDK 运行 / Artifact | 探针证据 Artifact | 探针归档 SHA-256 |
+| --- | --- | --- | --- |
+| SQLite | [37134852423](https://github.com/zoujingli/typeapp/actions/runs/37134852423) / `11278507237` | `11278567104` | `5c287a74b57ecc38fe792856335df16578c9de7b2e1fdabbbfd43b5ca7053970` |
+| MySQL | [37134855760](https://github.com/zoujingli/typeapp/actions/runs/37134855760) / `11278427393` | `11278911220` | `7f07983acce04adae02d77f1b6900d47d077c48f03ca127c70a49d26bca51d0a` |
+| PostgreSQL | [37134858797](https://github.com/zoujingli/typeapp/actions/runs/37134858797) / `11277768012` | `11277852607` | `9631cbb66c39cfca4c62922f8ac42bf5bd5374ba396fbf84ba98eec94a777b80` |
+
+导入新共享模块后的源码 `51dc8870335c1ec1b5d53aaef8d7cf2c9e9280ee` 使用上述 SDK，完成三个单文件应用的全量 AOT。回读每个 EXE、构建报告、隔离部署和业务报告，程序摘要及构建身份一致。单程序隔离覆盖源码/SDK 禁读、只读程序目录、不同工作目录、外部 INI 不影响运行、普通启动不写文件和数据库 profile 拒绝；安装覆盖前端逐文件摘要、重复/强制/dry-run、上传保留、HTTP GET/HEAD/缓存、双端登录、站点默认值、角色 CRUD 和正常停止。首次安装分别耗时 0.798、2.092、8.518 秒，均在既定 30 秒预算内。
+
+| Windows profile | 运行 / 应用证据 Artifact | 程序字节数 | 程序 SHA-256 |
+| --- | --- | ---: | --- |
+| SQLite | [37135763505](https://github.com/zoujingli/typeapp/actions/runs/37135763505) / `11277849828` | 50,736,511 | `78e89787e93c51cc5152a6293215e4408dc768133868246162a1924cd61738d3` |
+| MySQL | [37135611741](https://github.com/zoujingli/typeapp/actions/runs/37135611741) / `11279085613` | 49,806,246 | `59d5ac2a1fc289329ad9ed7d4f0952845f9deb646ebb743e9514e8b8a1a564f9` |
+| PostgreSQL | [37135614717](https://github.com/zoujingli/typeapp/actions/runs/37135614717) / `11279555880` | 49,981,264 | `9dc0881c981c2b5ade7c3946c3161aed4bffda2c1efd90db95c2fc64aea1f12f` |
+
+三份应用证据归档摘要依次为 `c39d0f1c721f6809c2c9a886cf262070e333864884769ec25e12b8850cb12ae6`、`1251231df24bd5558984bdf67d1947c43e3a3309800b023714726845e0e15842`、`257e20f093220ea49a0b0c0f6cd2b6b9c0999aa422961a53458ef1a73a63e8be`。同一程序的额外 MQTT、告警、队列导出和调度回归均通过，并核对正常停止及测试数据库清理；这些额外业务报告记录 `no_source=false`，不与独立部署报告的源码禁读范围混用。该批是预验收，正式标签附件仍由发布工作流从固定源码构建和验收。
+
+同源码的 [Windows 通信复验 37135195092](https://github.com/zoujingli/typeapp/actions/runs/37135195092) 使用默认模块且关闭 IOCP trace。TCP 两轮双线程各完成 1,572 项、主线程 1,571 项断言，包括每个角色连续 128 次接入；UDP 对应为 377/376 项。六个角色的增强 curl 各完成 36 次成功响应，全部协程归零、线程退出零。TCP/UDP Artifact 分别为 `11278168576` / `11278107238`，归档摘要分别为 `ecad82444b977dc2ff3a16e78d123baec98ca342f36f2df6d8567ad9c4936a8e` / `077003223d23721a5f44aef479dff8d4a69ceae3b9ef9726d79e08f98fddc014`。这组独立通信消费者的源码禁读仍为 `not-verified`，不扩大其隔离结论。
+
+Unix 的八组工具链回归也已通过：[Linux x64 37133508000](https://github.com/zoujingli/typeapp/actions/runs/37133508000)、[Linux ARM64 37133509043](https://github.com/zoujingli/typeapp/actions/runs/37133509043)、[macOS ARM64 37133510343](https://github.com/zoujingli/typeapp/actions/runs/37133510343)。它们固定源码 `3178f58af676b349b0dcbc9c9b2aabe223f61f59`，覆盖 DNS、curl、线程、初始化、资源、HTTP、TCP 和 UDP，含 TCP 128 次接入；curl 仍是此前 18 次成功响应的范围。Artifact 依次为 `11277693963`、`11277584450`、`11278077128`，归档摘要依次为 `985b4b1212278aa5ad9d0ecb712d8005ed94e6ee83c73e66c6f00a632187dfef`、`de558f127dc339744ac2b57234b47004758508494a5d2e34822f2552efa1ce71`、`ea12fc91152bdb02dc8d6f8c0e78e0f26ca8ebb86d05eecee812f5d9d898eb59`。这些局部工具链运行不产生完整平台门禁，不能与其他源码拼成最终四平台通过。
 
 ### 性能测量的运行环境
 
@@ -261,10 +287,14 @@ macOS 的新旧程序分别从 RC13 源码与 `4631be08002695625477229d2552e10b7
 - 独立线程消费者已全量 AOT；移走源码后连续三轮验证双线程、存活线程隔离、非零返回、exit、八次重建与标准流输出，资源报告记录句柄、线程及 RSS。
 - 同一资源消费者完成三轮双线程 SQLite、预算、协程排队与清理。测试改为等待实际进入关闭路径，避免将 Channel 入队误当作 SQLite hook 已完成让出；生产所有权断言未放宽。
 - HTTP 消费者完成无源码双线程、输入校验、分块正文包含结束标记、分块长度跨包、trailer 与流水线后续请求，以及超长 Upgrade 头检查。新增 WebSocket 输入保留、不完整帧拒绝、无符号关闭码与上传临时目录失效检查，共 34 项原生契约；完整消费者和生产监督均通过三轮。预期上传警告保存在独立原生日志，结果 JSON 保持明确。默认运行模块复制到消费者的独立运行目录，源码禁读范围保持原样。
-- 当前本机格式检查 803 个文件、基础检查 824 个文件、文档与分发入口检查通过；单元测试 187 个、15,353 个断言通过。批次消费的工具版本改为读取固定提交的锁文件，已覆盖工作区存在未提交版本变更的情形。
+- 本机格式检查 803 个文件通过；原生 curl 生命周期修复后的基础检查覆盖 829 个文件，文档与分发入口检查通过，单元测试 187 个、15,355 个断言通过。批次消费的工具版本改为读取固定提交的锁文件，已覆盖工作区存在未提交版本变更的情形。
 - [Linux x64 原生回归运行 37058951633](https://github.com/zoujingli/typeapp/actions/runs/37058951633) 中，`threads`、`initialization`、`resources`、`http`、`tcp` 通过，`udp` 在两个业务线程中退出码为 1，因而整组未通过；失败批次的工具链 Artifact 保留在 [type-app-linux-x64-toolchain](https://github.com/zoujingli/typeapp/actions/runs/37058951633/artifacts/11250585207)。本次修复会重新核对每次原生线程创建时的 hook 状态，并上传线程内部 `.failure` 证据。TCP 组包含 macOS 连接后的内核缓冲自动调优修复；线程组覆盖新版 Swoole 的 `join()` 清理窗口，运行时只在主线程独占时有限重试，并在业务线程已经存在时返回稳定错误码。
 - 早期失败记录仍保留在同一构建批次目录及原生日志中，包含 macOS TCP 缓冲误报、HTTP hook 重复安装失败和线程已创建后的 hook 重试失败；这些记录用于追溯修复，不能并入最终通过结论。
 - 文件 I/O 候选已重新适配、编译并全量 AOT；大文件、metadata、锁、上传、缓冲和跨线程容量通过。强制停止场景当前得到退出码 75，而原专项契约要求 200，尚未完成全部专项验收，默认模块未启用此候选。
 - 十二组合静态程序已完成上表所列源码的预验收；最终标签的全量编译、完整组件回归及 RC14 公开发布仍须完成。性能比较使用各版本自己的 PHPX 适配和 Swoole 模块，前端资源保持相同；共享 embed 负载对照与最终静态程序体积分别记录。
 
 发布仍为对应平台与数据库 profile 的一个程序加外置配置，原生运行库启动不释放。数据库与按功能需要的 Redis 是外部服务；管理前端在显式安装命令中释放到 `public`。单文件边界不因本次工具链升级改变。
+
+## 证据保全与资源回收
+
+2026-10-04 的阶段回收将已完成轮次的 38 份原始 Artifact 归档保存到 `.cache/retained-evidence/toolchain-rc14-46cj2sds/`。逐一核对 ZIP CRC、文件集合及 3,454 份文件的大小和 SHA-256 后，移除相同的解压副本，释放 1,479,790,344 字节的文件内容；保留的原始归档共 438,419,360 字节。该目录的 `manifest.json` 记录每个原路径、归档摘要、逐文件摘要及恢复方法，可解压回原项目相对目录。正在验收的输入、当前 SDK、失败诊断与本机业务服务未纳入本阶段清理；发布后继续收尾。

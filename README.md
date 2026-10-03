@@ -30,7 +30,7 @@ TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typep
 
 构建组件另附 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 共享模块，用于开发及共享库回归；生产单程序使用静态 SDK。当前固定 6.3 开发快照 `4aff74a`，运行时版本字符串为 `6.3.0RC1`，不是正式 6.3.0。模块 ABI 与平台实测范围分别核对，见[平台与验收](docs/guide/platforms.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
 
-`v1.0.0-rc.14` 是当前升级候选，四平台任务完成后才会进入发布工作流；当前验收进度、运行 ID 与未执行范围以[升级验收记录](docs/evidence/typephp-upgrade-0.9.4.md)为准。RC13 的程序、标签与证据继续按原身份保留，不能用新版源码或工具链改写历史结论。
+`v1.0.0-rc.14` 是当前升级候选。tag 固定源码后，发布工作流统一执行四平台完整回归及十二个单程序验收，全部门禁和公开消费通过后才公开 Release；当前验收进度、运行 ID 与未执行范围以[升级验收记录](docs/evidence/typephp-upgrade-0.9.4.md)为准。RC13 的程序、标签与证据继续按原身份保留，不能用新版源码或工具链改写历史结论。
 
 ## 快速开始
 
