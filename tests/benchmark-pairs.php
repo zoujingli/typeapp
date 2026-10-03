@@ -8,28 +8,37 @@ use Type\Build\BuildPlatform;
 use Type\Testing\Process;
 
 $root = realpath(dirname(__DIR__));
-expect($argc === 5 && in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true), '用法：PHP tests/benchmark-pairs.php <旧版准备根> <新版准备根> <MySQL工具根> <PostgreSQL工具根>');
+$order = $argv[5] ?? 'old-first';
+expect(in_array($argc, [5, 6], true) && in_array($order, ['old-first', 'new-first'], true)
+    && in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true), '用法：PHP tests/benchmark-pairs.php <旧版准备根> <新版准备根> <MySQL工具根> <PostgreSQL工具根> [old-first|new-first]');
 $old = realpath($argv[1]);
 $new = realpath($argv[2]);
 $mysql = realpath($argv[3]);
 $pgsql = realpath($argv[4]);
 expect(is_string($old) && is_string($new) && is_string($mysql) && is_string($pgsql) && $old !== $new, '需要不同版本的已准备目录及真实数据库工具');
+$runtimeConfigurations = [];
 foreach ([$old, $new] as $directory) {
     $artifact = $directory . '/project/build/benchmark/type-app';
     (new BuildPlatform())->assertArtifact($artifact);
     $build = json_decode(file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     expect(hash_file('sha256', $artifact) === $build['sha256'], '成对测量产物摘要不符');
+    $ini = realpath($build['runtime-profile']['ini'] ?? '');
+    expect(is_string($ini) && is_file($ini) && BuildPlatform::contains($directory, $ini), '基准运行配置必须属于对应版本的已探测产物');
+    $runtimeConfigurations[$directory] = $ini;
 }
 $base = $root . '/build/benchmark-pairs-' . bin2hex(random_bytes(6));
 expect(mkdir($base, 0700), '无法创建成对测量目录');
-$record = ['status' => 'running', 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
+$record = ['status' => 'running', 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'order' => $order,
     'controller_sha256' => hash_file('sha256', $root . '/tests/application-benchmark.php'), 'runs' => []];
 try {
     foreach (['sqlite', 'mysql', 'pgsql'] as $driver) {
-        foreach (['old' => $old, 'new' => $new] as $version => $directory) {
+        // 复测可交换执行顺序，区分工具链变化与持续负载造成的环境漂移。
+        $versions = $order === 'new-first' ? ['new' => $new, 'old' => $old] : ['old' => $old, 'new' => $new];
+        foreach ($versions as $version => $directory) {
             $phpx = is_dir($directory . '/phpx') ? $directory . '/phpx' : realpath(getenv('PHPX_HOME'));
             $environment = (new BuildPlatform())->environment(realpath(getenv('PHP_HOME')), $phpx);
-            $environment['PHPRC'] = realpath(getenv('PHPRC'));
+            // 控制器可能加载新版 Swoole；被测程序必须使用自身已探测的模块及配置。
+            $environment['PHPRC'] = $runtimeConfigurations[$directory];
             $environment['PHP_INI_SCAN_DIR'] = $base;
             $command = [PHP_BINARY, $root . '/tests/application-benchmark.php',
                 '--binary', $directory . '/project/build/benchmark/type-app',
@@ -52,6 +61,7 @@ try {
             $measurement = json_decode(file_get_contents($root . '/' . $report), true, 512, JSON_THROW_ON_ERROR);
             expect($measurement['status'] === 'passed' && $measurement['transport'] === 'swoole' && $measurement['driver'] === $driver, '测量身份不符');
             $record['runs'][] = ['version' => $version, 'transport' => 'swoole', 'driver' => $driver,
+                'runtime_ini_sha256' => hash_file('sha256', $runtimeConfigurations[$directory]),
                 'report' => $report, 'sha256' => hash_file('sha256', $root . '/' . $report), 'measurement' => $measurement];
             file_put_contents($base . '/verification.json', json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n");
         }

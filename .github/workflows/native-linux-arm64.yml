@@ -15,11 +15,11 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: 完整矩阵或独立任务可靠性诊断；诊断不产生完整验收汇总
+        description: 完整矩阵或独立诊断；benchmark 需提供基准提交，独立范围不产生完整验收汇总
         required: true
         default: all
         type: choice
-        options: [all, reliability, toolchain]
+        options: [all, reliability, toolchain, benchmark]
       base_source:
         description: 用于性能比较的完整基准提交，留空时不运行性能组
         required: false
@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(inputs.suite == 'reliability' && '["reliability"]' || inputs.suite == 'toolchain' && '["toolchain"]' || inputs.base_source != '' && '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain","benchmark"]' || '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain"]') }}
+        suite: ${{ fromJSON(inputs.suite == 'reliability' && '["reliability"]' || inputs.suite == 'toolchain' && '["toolchain"]' || inputs.suite == 'benchmark' && '["benchmark"]' || inputs.base_source != '' && '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain","benchmark"]' || '["contracts","orm","database","http","redis","tasks","application","recovery","rollout","toolchain"]') }}
     env:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
