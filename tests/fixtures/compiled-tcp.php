@@ -419,8 +419,12 @@ final class TcpProbe
             $scope->open($listener);
             $port = $listener->addresses()['local']['port'];
             $conflict = TcpSocket::listener($budget, $host, $port);
-            self::rejected(static fn (): mixed => $conflict->start(), 'tcp_listen_failed');
-            self::closed($conflict);
+            try {
+                self::rejected(static fn (): mixed => $conflict->start(), 'tcp_listen_failed');
+            } finally {
+                $conflict->stop();
+                self::closed($conflict);
+            }
             $scope->open($control);
             $control->send(json_encode(['host' => $host, 'port' => $port, 'tls' => $tls, 'slow' => $slow], JSON_THROW_ON_ERROR) . "\n");
             if ($slow) {
