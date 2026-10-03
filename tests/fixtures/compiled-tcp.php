@@ -19,6 +19,14 @@ final class TcpProbe
     private static int $checks = 0;
     private static ?Throwable $failure = null;
     private static array $observations = [];
+    private static string $checkpoint = '';
+
+    /** 超时终止不经过 catch；仅在场景边界保存已完成断言及当前操作。 */
+    private static function checkpoint(string $operation): void
+    {
+        file_put_contents(self::$checkpoint, json_encode(['operation' => $operation, 'checks' => self::$checks,
+            'observations' => self::$observations], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    }
 
     public static function check(bool $condition, string $message): void
     {
@@ -49,6 +57,8 @@ final class TcpProbe
     public static function run(string $payload): int
     {
         $input = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+        self::$checkpoint = $input['output'] . '.checkpoint.json';
+        self::checkpoint('entry');
         try {
             self::check(defined('SWOOLE_LIBRARY'), '工作线程未加载 Swoole 官方内置库');
             $foreign = unserialize(base64_decode($input['owner']), ['allowed_classes' => [ExecutionOwner::class]]);
@@ -80,12 +90,16 @@ final class TcpProbe
                     self::echo('127.0.0.1', $peers['tls']['port'], ['open_ssl' => true, 'ssl_cafile' => $peers['certificate']], $budget);
                     self::echo('::1', $peers['tls6']['port'], ['open_ssl' => true, 'ssl_cafile' => $peers['certificate']], $budget);
                     self::$observations['phase'] = 'failures';
+                    self::checkpoint('failures');
                     self::failures($peers, $budget);
                     self::$observations['phase'] = 'duplex';
+                    self::checkpoint('duplex');
                     self::duplex($peers, $budget);
                     self::$observations['phase'] = 'stop-duplex';
+                    self::checkpoint('stop-duplex');
                     self::stopDuplex($peers, $budget);
                     self::$observations['phase'] = 'backpressure';
+                    self::checkpoint('backpressure');
                     self::backpressure($peers, $budget);
                     self::$observations['phase'] = 'server';
                     self::server($peers, $budget, '127.0.0.1', false, false);
@@ -94,13 +108,18 @@ final class TcpProbe
                     self::server($peers, $budget, '::1', true, false);
                     self::server($peers, $budget, '127.0.0.1', true, true);
                     self::$observations['phase'] = 'retirement';
+                    self::checkpoint('retirement');
                     self::retirement($peers, $budget);
                     self::check($budget->statistics()['allocated'] === 0, '套件退出仍占有连接额度');
                 } catch (Throwable $error) {
                     self::$failure = $error;
+                    self::$observations['failure'] = get_class($error) . ': ' . $error->getMessage();
                 }
+                self::checkpoint('coroutine-return');
             });
+            self::checkpoint('event-wait');
             Swoole\Event::wait();
+            self::checkpoint('event-return');
             self::check(defined('SWOOLE_LIBRARY'), '协程退出时丢失 Swoole 官方内置库');
             if (self::$failure !== null) {
                 throw self::$failure;
@@ -123,6 +142,7 @@ final class TcpProbe
         self::$observations['phase'] = 'echo';
         self::$observations['host'] = $host;
         self::$observations['tls'] = $options['open_ssl'] ?? false;
+        self::checkpoint('echo-connect');
         $scope = new ExecutionScope();
         $socket = TcpSocket::client($budget, $host, $port, 1024, $options);
         try {
@@ -145,6 +165,7 @@ final class TcpProbe
             self::rejected(static fn (): string => $socket->receive(0), 'tcp_invalid_timeout');
             self::rejected(static fn (): string => $socket->receive(0.02), 'tcp_timeout');
             self::rejected(static fn (): string => serialize($socket), 'resource_transfer_forbidden');
+            self::checkpoint('echo-shutdown');
             $socket->shutdownWrite();
             $socket->shutdownWrite();
             self::rejected(static fn (): int => $socket->send('x'), 'tcp_write_closed');
@@ -153,6 +174,7 @@ final class TcpProbe
             self::check($stats['read_closed'] && $stats['write_closed'] && $stats['queued_bytes'] === 0, '半关闭状态或队列错误');
             self::check($stats['received_bytes'] === 1030 && $stats['sent_bytes'] === 1030, '字节计数错误');
         } finally {
+            self::checkpoint('echo-close');
             $scope->close();
             self::closed($socket);
         }
@@ -164,11 +186,13 @@ final class TcpProbe
             ['open_ssl' => true, 'ssl_cafile' => $peers['certificate'], 'ssl_host_name' => '127.0.0.2'],
             ['open_ssl' => true, 'ssl_cafile' => $peers['certificate'], 'ssl_host_name' => '::2'],
             ['open_ssl' => true]] as $options) {
+            self::checkpoint('reject-certificate-' . ($options['ssl_host_name'] ?? 'untrusted'));
             $client = TcpSocket::client($budget, '127.0.0.1', $peers['tls']['port'], 1024, $options);
             self::rejected(static fn (): mixed => $client->start(0.5), 'tcp_connect_failed');
             self::closed($client);
         }
         foreach (['nxdomain' => 'tcp_connect_failed', 'slow' => 'tcp_timeout', 'late' => 'tcp_timeout'] as $name => $reason) {
+            self::checkpoint('reject-dns-' . $name);
             $dns = TcpSocket::client($budget, $name . '.typeapp.test', $peers['echo4']['port']);
             $began = hrtime(true);
             self::rejected(static fn (): mixed => $dns->start(0.05), $reason);
@@ -186,17 +210,22 @@ final class TcpProbe
             }
         });
         $began = hrtime(true);
+        self::checkpoint('slow-handshake');
         self::rejected(static fn (): mixed => $slow->start(0.15), 'tcp_timeout');
         self::check($progress->pop(1) === true, '慢握手阻塞独立连接');
         self::closed($slow);
         self::$observations['slow_client_handshake_seconds'] = (hrtime(true) - $began) / 1000000000.0;
         $stopped = TcpSocket::client($budget, '127.0.0.1', $peers['idle']['port'], 1024, ['open_ssl' => true]);
         Swoole\Timer::after(20, static function () use ($stopped): void {
+            self::checkpoint('stop-handshake-timer');
             $stopped->stop();
+            self::checkpoint('stop-handshake-timer-return');
         });
+        self::checkpoint('stop-handshake');
         self::rejected(static fn (): mixed => $stopped->start(1), 'tcp_stopped');
         self::closed($stopped);
         foreach ([false, true] as $tls) {
+            self::checkpoint($tls ? 'reject-tls-reset' : 'reject-tcp-reset');
             $reset = TcpSocket::client(
                 $budget,
                 '127.0.0.1',
@@ -334,6 +363,10 @@ final class TcpProbe
 
     private static function server(array $peers, ResourceBudget $budget, string $host, bool $tls, bool $slow): void
     {
+        self::$observations['phase'] = 'server';
+        self::$observations['host'] = $host;
+        self::$observations['tls'] = $tls;
+        self::checkpoint($slow ? 'server-slow' : 'server');
         $scope = new ExecutionScope();
         $options = $tls ? ['open_ssl' => true, 'ssl_cert_file' => $peers['certificate'], 'ssl_key_file' => $peers['key']] : [];
         $listener = TcpSocket::listener($budget, $host, 0, 1024, $options);
