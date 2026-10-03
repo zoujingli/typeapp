@@ -124,6 +124,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" tests/swoole-dns.php (Join-Path $env:GITHUB_WORKSPACE 'build/bundled-swoole-candidate/output/dns')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:PHP_HOME/php.exe" tests/swoole-dns-reuse.php (Join-Path $env:GITHUB_WORKSPACE 'build/bundled-swoole-candidate/output/dns-reuse')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 验证原生 TLS 半关闭与超时恢复
         run: |
           & "$env:PHP_HOME/php.exe" tests/swoole-tls.php (Join-Path $env:GITHUB_WORKSPACE 'build/bundled-swoole-candidate/output/tls')

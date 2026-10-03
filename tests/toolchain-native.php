@@ -16,6 +16,7 @@ expect(mkdir($work, 0700, true), '无法创建工具链原生回归目录');
 putenv('COMPOSER_CACHE_DIR=' . ((string) getenv('COMPOSER_CACHE_DIR') ?: $root . '/.cache/composer'));
 putenv('COMPOSER_DISABLE_NETWORK=1');
 $cases = [
+    'dns-reuse' => ['swoole-dns-reuse.php'],
     'threads' => ['compiled-threads.php'],
     'initialization' => ['compiled-threads.php', '--initialization-failure'],
     'resources' => ['compiled-threads.php', '--resources'],

@@ -10,7 +10,7 @@ use RuntimeException;
 final class SwooleWindowsSource
 {
     /**
-     * 补齐上游构建、IOCP 名称限定、TLS 正常 EOF、地址初始化和独占绑定。
+     * 补齐上游构建、IOCP 外部句柄关联、名称限定、TLS 正常 EOF、地址初始化和独占绑定。
      * 上游修复对应缺口且 Windows 原生回归通过后撤除。
      *
      * @return array<string,array{before:string,after:string}>
@@ -20,6 +20,7 @@ final class SwooleWindowsSource
     {
         $hashes = [
             'config.w32' => 'a8c2ead0b6d0bee99011b57a18f25503dcf7f714be636f75e1886b077099619f',
+            'include/swoole_iocp.h' => '5c7a094064a71b43c6698dff60a6d9054c79bfe271fd429928b5e4b6fb3f6f41',
             'src/coroutine/iocp.cc' => 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990',
             'src/coroutine/iocp_socket.cc' => 'f38615b8c967e70429ba29ff317c98f62126f709e73fd575c5e0c6cae22114bf',
             'src/network/dns.cc' => '1528f5e6e65569f0497695340c9e762527e83eb554acb3f9bd062d903fe530e1',
@@ -64,6 +65,19 @@ final class SwooleWindowsSource
             $sources['src/coroutine/iocp.cc'],
             'int retval = WSAPoll(fds, nfds, 0);',
             'int retval = ::WSAPoll(fds, nfds, 0);'
+        );
+        // Reactor/curl 接入的 Socket 可由 c-ares/libcurl 自行关闭，不会经过 Iocp::close。
+        // 不能把它们的数值句柄放进只由 Iocp::close 清除的缓存；每次登记交由 Windows
+        // 核对真实句柄与端口关联。Swoole 自有 Socket 的内部 associate(fd) 缓存保持原样。
+        $sources['include/swoole_iocp.h'] = $this->replace(
+            $sources['include/swoole_iocp.h'],
+            "    bool associate_socket(swSocketFd fd) {\n        return associate(fd);\n    }",
+            <<<'CPP'
+    bool associate_socket(swSocketFd fd) {
+        // External owners can close and reuse this numeric handle without Iocp::close().
+        return associate(reinterpret_cast<HANDLE>(fd), static_cast<ULONG_PTR>(fd));
+    }
+CPP
         );
         // IOCP 的通用 BIO 错误路径把 TLS close_notify 当作失败且可能丢失 errno。
         // 读取只在 OpenSSL 明确报告正常关闭时返回 EOF，不能把协议错误或超时改为空串。

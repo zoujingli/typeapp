@@ -189,6 +189,14 @@ Windows 后续使用源码 `53193c921efe0f35d1d24dd600b1cbb8fdce2b73` 及 IPv6/�
 
 该程序 SHA-256 为 `c4f162e0131b266c69715474ec582adcae47471b233da18ec1093f28a8504e6f`，构建身份 `2d0cbde44be36babf56fe7992f6df55ffc8b602b745125698ae9703a73748bee`；Artifact `11274693109` 摘要 `1ea884bebe179a11dd2b5abf36abf4306ddd7ebaf8c9b3df50a5d98b10969d67` 已回读核对。本地保留在 `build/toolchain-upgrade-followup.lVbKwh/tcp-backpressure-windows/`。后续隔离 trace 构建只用于区分 IOCP 取消、完成通知及线程收尾，不替代默认模块的完整验收。
 
+### DNS 后 IOCP 句柄复用的最小复现
+
+[原生对照 37128447975](https://github.com/zoujingli/typeapp/actions/runs/37128447975)，源码 `64fdddd`，使用原内置 Windows 模块 `33de10a64d6191c01da0c855be1d6698eda09b6744748c584f3d3bb80c291397`。不执行 DNS 的 16 次 UDP 请求全部通过，协程归零；加入 `Swoole\Coroutine\System::gethostbyname()` 后，第一轮停在 Socket 716 的 `sendto()`，12 秒后由控制器终止。独立 DNS 对端共收到 18 次查询，说明 DNS 和后续 UDP 请求均已发送；缺少的是被测进程的完成通知。该测试直接调用原生扩展，不经过 TypePHP 或框架 Socket 类。macOS 使用同一测试，两组各 16 次通过。
+
+固定上游的 `Iocp::associate_socket()` 将 Reactor 与 curl 借入的句柄放入 `associated_sockets`，而缓存只在 `Iocp::close()` 清除。c-ares 自行关闭 Socket，并在事件删除时把包装对象的 FD 置为无效，不经过该关闭入口；Windows 复用数值句柄后会命中过期缓存，跳过 `CreateIoCompletionPort()`。候选修复只调整借入句柄的关联入口，每次由 Windows 核对真实关联；自有 Socket 的缓存、取消等待及完成回收继续采用原实现。原文件 `include/swoole_iocp.h` 摘要为 `5c7a094064a71b43c6698dff60a6d9054c79bfe271fd429928b5e4b6fb3f6f41`，适配后为 `1d2aa2dea8211dda70d003cf1f1c51af1caa36cd62ca9cd3424d724f5fbfdeed`。Windows API 的关联生命周期见 [CreateIoCompletionPort](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-createiocompletionport)。
+
+失败 Artifact `11274919315` 的摘要为 `9b9b6fdd0f312488afd3f676d013929b7d8622dbaf2b4ffb4db95891966a4d28`，已回读保存在 `build/toolchain-upgrade-followup.lVbKwh/dns-reuse-windows-red/`。新模块尚须通过此最小对照、完整 TCP 及 HTTP/curl 回归；原静态 SDK 因 Windows 适配摘要变化必须重建，不能只更新清单冒充已验证模块。固定上游等价修复并通过原始回归后撤除本项适配。
+
 ### 性能测量的运行环境
 
 macOS 的新旧程序分别从 RC13 源码与 `4631be08002695625477229d2552e10b7834a242` 完整编译，使用相同 PHP SDK 和 83 个相同前端资源。首轮测量在旧程序安装阶段被 `运行扩展身份不一致：swoole` 拒绝：成对控制器错误地继承了当前新版模块的 INI。仅改为该旧程序构建报告中的运行 INI 后，同一程序完成空库与前端安装。成对测量入口现逐版本定位和记录已探测 INI，失败轮次保留，不计入吞吐或延迟结果；原始基准程序未因这个控制器修复重新编译。
