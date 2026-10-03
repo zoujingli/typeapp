@@ -38,6 +38,29 @@ function probeSwooleCurl(int $port, string $owner): array
                         unset($handle);
                     }
                 }
+                // 事件关注撤销不等于连接关闭；同一 TCP 连接必须可继续收发，再重置句柄。
+                $handle = curl_init('http://127.0.0.1:' . $port . '/keep-alive');
+                expect($handle instanceof CurlHandle && curl_setopt_array($handle, [
+                    CURLOPT_RETURNTRANSFER => true, CURLOPT_PROXY => '', CURLOPT_TIMEOUT_MS => 2000,
+                ]), '无法创建 curl 长连接');
+                try {
+                    for ($round = 0; $round < 8; $round++) {
+                        $token = $owner . ':' . $worker . ':keep:' . $round;
+                        expect(curl_setopt($handle, CURLOPT_HTTPHEADER, ['X-Probe-Owner: ' . $token]), '无法设置 curl 长连接标识');
+                        expect(curl_exec($handle) === $token && curl_errno($handle) === 0
+                            && curl_getinfo($handle, CURLINFO_NUM_CONNECTS) === ($round === 0 ? 1 : 0), 'curl 长连接响应或真实连接复用失败');
+                        $completed++;
+                    }
+                    curl_reset($handle);
+                    $token = $owner . ':' . $worker . ':reset';
+                    expect(curl_setopt_array($handle, [CURLOPT_URL => 'http://127.0.0.1:' . $port . '/ok',
+                        CURLOPT_RETURNTRANSFER => true, CURLOPT_PROXY => '', CURLOPT_TIMEOUT_MS => 2000,
+                        CURLOPT_HTTPHEADER => ['X-Probe-Owner: ' . $token]]), '无法重设 curl 请求');
+                    expect(curl_exec($handle) === $token && curl_errno($handle) === 0, 'curl 重置后不能继续请求');
+                    $completed++;
+                } finally {
+                    unset($handle);
+                }
                 $token = $owner . ':' . $worker . ':recovered';
                 $handle = curl_init('http://127.0.0.1:' . $port . '/slow');
                 expect($handle instanceof CurlHandle && curl_setopt_array($handle, [
@@ -65,7 +88,7 @@ function probeSwooleCurl(int $port, string $owner): array
     }
     Swoole\Event::wait();
     $coroutines = Swoole\Coroutine::stats()['coroutine_num'];
-    return ['passed' => $completed === 18 && $failures === [] && $coroutines === 0,
+    return ['passed' => $completed === 36 && $failures === [] && $coroutines === 0,
         'completed' => $completed, 'failures' => $failures, 'coroutines' => $coroutines];
 }
 

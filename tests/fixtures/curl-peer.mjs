@@ -7,7 +7,8 @@ const server = http.createServer((request, response) => {
     const body = String(request.headers['x-probe-owner'] ?? '');
     const send = () => {
         if (response.destroyed) return;
-        response.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(body), 'Connection': 'close' });
+        response.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(body),
+            'Connection': request.url === '/keep-alive' ? 'keep-alive' : 'close' });
         response.end(body);
     };
     if (request.url === '/slow') {

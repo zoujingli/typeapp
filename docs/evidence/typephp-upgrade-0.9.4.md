@@ -215,6 +215,12 @@ TCP Artifact `11276845882` 的摘要为 `95583914090ca91d9fa447d2a3452c76b702da2
 
 构建入口随后固定官方 libcurl 8.22.0 与 libssh2 1.11.1，校验原始许可和共享 PHP 对应的 `/MD` CRT，并要求配置实际产生 `SW_USE_CURL`。[重建 37131456197](https://github.com/zoujingli/typeapp/actions/runs/37131456197) 使用源码 `b538d3e0ae9877959b905e462b3bd34abf2f5835`，DLL 编译、DNS 与 TLS 通过，但 curl 首个请求失败；该模块没有导入默认清单。原始模块和报告保存在 Artifact `11276578568`，摘要 `9482670dac7337153aaef81db9af7a08a5aa3906c6d997def517e939f18e7874`。后续加入独立主线程对照和准确 curl 错误，线程失败后先回收本轮全部线程再报告；仍保留真实让出、超时及恢复断言。
 
+[独立主线程对照 37132307555](https://github.com/zoujingli/typeapp/actions/runs/37132307555) 使用源码 `4f8817164304f982e7d61b33c2f43636c6b109bb`，两个协程的首个请求均在约 2017 毫秒返回 curl 错误 28，HTTP 状态为 0、未收到正文。该结果排除故障仅发生在线程之间的判断；不能据此确定是连接建立还是事件通知故障。Artifact `11277487587` 的摘要为 `cc0e12f1d8a2ae6caa886679b3895a55fc1ba4bdca97d24ef703ec2362a122a3`，已下载、核验并保留原始报告。失败模块仍未导入；重建入口可显式设置 `curl_trace=true`，仅在该回归中开启上游 `SWOOLE_CURL_IOCP_DEBUG`，正式验收仍须关闭诊断。
+
+[IOCP 定向诊断 37133199027](https://github.com/zoujingli/typeapp/actions/runs/37133199027) 使用源码 `3178f58af676b349b0dcbc9c9b2aabe223f61f59`。两个请求的初次关联、写事件提交和完成均成功，随后从写事件切换为读事件时再次关联同一 socket 失败，最终由 curl 的两秒截止返回错误 28。Artifact `11277663371` 的摘要为 `a705059555bf319509e3e7fe2d4605717bcfccad5a3b54bafc96bba2fdffd92b`。此前绕过全局关联缓存的修复解决了 DNS 关闭后的句柄复用，却没有覆盖同一存活连接的重复事件登记；该历史通过范围保持原样，不能推广到 curl。
+
+后续适配恢复上游关联缓存，并由真实 socket 关闭生命周期清除记录：固定 c-ares 1.34.8 在 `ares_close_connection` 的全零状态通知中清除外部关联；libcurl 使用原生关闭回调复用 `Iocp::close()`，句柄重置后重新安装回调。`CURL_POLL_REMOVE` 只表示撤销事件关注，不能作为连接关闭依据。新增长连接及句柄重置回归已在 macOS 通过，Windows 模块、静态 SDK 及完整应用须重新验收，成功前不更新默认模块摘要。
+
 ### 清除诊断写盘后的 macOS TCP 复验
 
 移除 TCP/TLS 的逐步同步检查点写盘后，同一完整 TCP 程序在第二轮接入时被 `tcp_buffer_limit` 拒绝：声明 65536 字节，实际接收缓冲为 326848 字节。独立 Swoole Socket 的 500 次对照有 25 次读到相同越界值；Python 原生 Socket 对照也复现，排除了 TypePHP 或框架独有行为。框架最小路径在第 46 次失败，复用既有连接后有界重设机制覆盖已接入连接后，连续 500 次通过；没有放宽缓冲上限或启动截止。

@@ -20,6 +20,7 @@ final class SwooleWindowsSource
     {
         $hashes = [
             'config.w32' => 'a8c2ead0b6d0bee99011b57a18f25503dcf7f714be636f75e1886b077099619f',
+            'ext-src/swoole_curl.cc' => '78b8c7581a36371266c8aefb200403851261520aead58e9ca8dc628a6637d840',
             'include/swoole_iocp.h' => '5c7a094064a71b43c6698dff60a6d9054c79bfe271fd429928b5e4b6fb3f6f41',
             'src/coroutine/iocp.cc' => 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990',
             'src/coroutine/iocp_socket.cc' => 'f38615b8c967e70429ba29ff317c98f62126f709e73fd575c5e0c6cae22114bf',
@@ -66,17 +67,57 @@ final class SwooleWindowsSource
             'int retval = WSAPoll(fds, nfds, 0);',
             'int retval = ::WSAPoll(fds, nfds, 0);'
         );
-        // Reactor/curl 接入的 Socket 可由 c-ares/libcurl 自行关闭，不会经过 Iocp::close。
-        // 不能把它们的数值句柄放进只由 Iocp::close 清除的缓存；每次登记交由 Windows
-        // 核对真实句柄与端口关联。Swoole 自有 Socket 的内部 associate(fd) 缓存保持原样。
+        // Windows 拒绝重复关联同一存活 Socket，必须保留关联缓存。外部所有者关闭时
+        // 同步清除记录，避免后续 Socket 复用数值句柄却没有关联到当前 IOCP。
         $sources['include/swoole_iocp.h'] = $this->replace(
             $sources['include/swoole_iocp.h'],
             "    bool associate_socket(swSocketFd fd) {\n        return associate(fd);\n    }",
             <<<'CPP'
     bool associate_socket(swSocketFd fd) {
-        // External owners can close and reuse this numeric handle without Iocp::close().
-        return associate(reinterpret_cast<HANDLE>(fd), static_cast<ULONG_PTR>(fd));
+        return associate(fd);
     }
+
+    // The external owner must call this immediately before closing its socket.
+    void forget_socket(swSocketFd fd) {
+        associated_sockets.erase(fd);
+    }
+CPP
+        );
+        // libcurl 的关闭回调跟随真实连接，不能用 CURL_POLL_REMOVE 代替关闭；后者
+        // 也发生在仍可复用的连接上。无捕获回调不持有已销毁的 easy/multi 指针。
+        $sources['ext-src/swoole_curl.cc'] = $this->replace(
+            $sources['ext-src/swoole_curl.cc'],
+            'Handle *create_handle(CURL *cp) {',
+            <<<'CPP'
+#ifdef SW_CURL_USE_IOCP
+static int close_socket(void *, curl_socket_t fd) {
+    return Iocp::close(fd);
+}
+#endif
+
+Handle *create_handle(CURL *cp) {
+CPP
+        );
+        $sources['ext-src/swoole_curl.cc'] = $this->replace(
+            $sources['ext-src/swoole_curl.cc'],
+            "    auto *handle = new Handle(cp);\n    curl_easy_setopt(cp, CURLOPT_PRIVATE, handle);",
+            <<<'CPP'
+    auto *handle = new Handle(cp);
+    curl_easy_setopt(cp, CURLOPT_PRIVATE, handle);
+#ifdef SW_CURL_USE_IOCP
+    curl_easy_setopt(cp, CURLOPT_CLOSESOCKETFUNCTION, close_socket);
+#endif
+CPP
+        );
+        $sources['ext-src/swoole_curl.cc'] = $this->replace(
+            $sources['ext-src/swoole_curl.cc'],
+            "    curl_easy_reset(cp);\n    curl_easy_setopt(cp, CURLOPT_PRIVATE, handle);",
+            <<<'CPP'
+    curl_easy_reset(cp);
+    curl_easy_setopt(cp, CURLOPT_PRIVATE, handle);
+#ifdef SW_CURL_USE_IOCP
+    curl_easy_setopt(cp, CURLOPT_CLOSESOCKETFUNCTION, swoole::curl::close_socket);
+#endif
 CPP
         );
         // IOCP 的通用 BIO 错误路径把 TLS close_notify 当作失败且可能丢失 errno。
@@ -112,6 +153,26 @@ CPP
         ] as $before => $after) {
             $sources['src/network/dns.cc'] = $this->replace($sources['src/network/dns.cc'], $before, $after);
         }
+        // 固定 c-ares 的全零状态通知发生在 ares_close_connection 的真实关闭前；
+        // 仅清除关联记录，取消完成通知仍由现有 Reactor/IOCP 生命周期负责。
+        $sources['src/network/dns.cc'] = $this->replace(
+            $sources['src/network/dns.cc'],
+            '#include "swoole_coroutine_socket.h"',
+            "#include \"swoole_coroutine_socket.h\"\n#ifdef SW_USE_IOCP\n#include \"swoole_iocp.h\"\n#endif"
+        );
+        $sources['src/network/dns.cc'] = $this->replace(
+            $sources['src/network/dns.cc'],
+            "                swoole_event_del(_socket);\n                _socket->fd = SW_BAD_SOCKET;",
+            <<<'CPP'
+                swoole_event_del(_socket);
+#ifdef SW_USE_IOCP
+                if (SwooleTG.iocp) {
+                    SwooleTG.iocp->forget_socket(fd);
+                }
+#endif
+                _socket->fd = SW_BAD_SOCKET;
+CPP
+        );
         // Address 是未初始化的聚合对象；IPv6 的 flowinfo/scope_id 不能把栈字节交给 ConnectEx。
         $sources['src/network/address.cc'] = $this->replace(
             $sources['src/network/address.cc'],
