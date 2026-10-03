@@ -562,11 +562,19 @@ function httpThreadContracts(string $directory): int
     } catch (ValueError) {
         $checks++;
     }
+    // `Server::fromSocket()` temporarily borrows its listener.  Keep the
+    // borrowed object out of this ownership check: a failed `close()` on a
+    // referenced listener would test the borrowed-server contract instead of
+    // the closed-socket guard in CoroutineRuntime.
+    $closed = new Socket(AF_INET, SOCK_STREAM, 0);
+    expect($closed->close() && $closed->isClosed(), '独立套接字没有进入关闭状态');
     try {
-        CoroutineRuntime::startThread('http', 'socket-less', $socket);
+        CoroutineRuntime::startThread('http', 'socket-less', $closed);
         throw new RuntimeException('closed socket copied');
     } catch (Swoole\Exception) {
         $checks++;
+    } finally {
+        unset($closed);
     }
     unset($socket);
     $datagram = new Socket(AF_INET, SOCK_DGRAM, 0);
