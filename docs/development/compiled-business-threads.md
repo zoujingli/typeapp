@@ -76,7 +76,7 @@ $status = $thread->getExitStatus();
 
 固定上游 `ArrayItem::fetch()` 缺少 `IS_NULL` 分支，`ZendArray::to_array()` 的未初始化局部值沿用了前一项。独立原生脚本线程诊断传入 `['marker', null, Map]`，实际类型为 `string/string/Map`；同一诊断在补齐 `RETVAL_NULL()` 后为 `string/null/Map`。此最小修正归入原六文件线程适配，不改线程参数序列化、共享或回收机制；上游修复 null 还原后撤除该分支补丁。脚本诊断仅证明原生缺口，编译入口另由无源码消费者验证。
 
-监督使用既有停止信号入口、原生 Timer 和 `joinWithin(0)`，拥有启动/进度/停止期限、全部线程句柄以及不可回收时的进程级 `_Exit(75)`，不创建线程池、自动重启器或独立原生扫描线程。部分启动失败也先停止并回收已启动线程，再抛出原错误。每线程只用 Map 的 `stop/ready/pulse/failed` 四个固定标量键；异步 I/O 的真实完成与资源责任仍由原调用者持有。完整 HTTP 契约见[生产线程生命周期](http-native-threads.md#生产线程生命周期)。
+监督使用既有停止信号入口、原生 Timer 和 `joinWithin(0)`，拥有启动/进度/停止期限、全部线程句柄以及不可回收时的进程终止入口，退出码为 `75`。Unix 使用 `_Exit`，Windows 使用 `TerminateProcess`；不创建线程池、自动重启器或独立原生扫描线程。部分启动失败也先停止并回收已启动线程，再抛出原错误。每线程只用 Map 的 `stop/ready/pulse/failed` 四个固定标量键；异步 I/O 的真实完成与资源责任仍由原调用者持有。完整 HTTP 契约见[生产线程生命周期](http-native-threads.md#生产线程生命周期)。
 
 ## 受控工具链
 

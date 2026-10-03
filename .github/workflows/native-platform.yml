@@ -228,6 +228,8 @@ jobs:
             build/toolchain-regressions-*/**/resources.json
             build/toolchain-regressions-*/**/resource-*
             build/toolchain-regressions-*/**/exit.json
+            build/toolchain-regressions-*/**/supervisor-*.json
+            build/toolchain-regressions-*/**/stopped-*.json
             build/toolchain-regressions-*/**/stdout.json
             build/**/compile.log
             build/orm-suite-*/*.log

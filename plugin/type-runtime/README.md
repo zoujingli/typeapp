@@ -27,7 +27,7 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过�
 
 第四参数可传 `Swoole\Thread\Map`，需要 TypeApp 私有 `TYPEAPP_CONTROL_ARGUMENT_ABI=1`。控制 Map 复用上游原生 ThreadResource，固定在 `getArguments()[2]`；没有 Socket 时下标 1 为 null，未传 Map 时保持旧参数形状。各线程重新取得自己的 Zend 对象，共享的是原生控制数据；不传容器、PDO 或业务对象。
 
-`ThreadSupervisor($maximumThreads, $startupSeconds=10, $progressSeconds=5, $stopSeconds=10)` 以一次 `run($entry, $payloads, $listener=null)` 拥有有限线程组。它要求编译 embed 主线程、原生控制/完成能力及独占事件循环；复用 `ProcessSignals` 和原生 Timer 接收停止与探测完成。`stop()` 幂等撤销组就绪并请求停止，真实 join 后才归还线程额度，`statistics()` 只报告状态、持有、就绪和已 join 数。启动失败或线程异常先收尾其余线程再报告；无法在停止期限内回收时以 `_Exit(75)` 结束角色进程，不 detach 或自动重启。
+`ThreadSupervisor($maximumThreads, $startupSeconds=10, $progressSeconds=5, $stopSeconds=10)` 以一次 `run($entry, $payloads, $listener=null)` 拥有有限线程组。它要求编译 embed 主线程、原生控制/完成能力及独占事件循环；复用 `ProcessSignals` 和原生 Timer 接收停止与探测完成。`stop()` 幂等撤销组就绪并请求停止，真实 join 后才归还线程额度，`statistics()` 只报告状态、持有、就绪和已 join 数。启动失败或线程异常先收尾其余线程再报告；无法在停止期限内回收时以退出码 `75` 原生终止角色进程，不 detach 或自动重启。Unix 使用 `_Exit`，Windows 使用 `TerminateProcess`，避免 DLL 退出清理再次等待阻塞的线程析构。
 
 `ProcessSignals` 独占本进程停止通知，不决定业务排空。Unix 使用 PCNTL 的 SIGINT/SIGTERM；Windows CLI 使用 PHP 控制台处理器，embed 使用编译的控制事件桥并由宿主调用 `dispatch()`。Windows 需要可用控制台，只承接 CTRL_C/CTRL_BREAK；关闭窗口、注销和强制终止不保证清理。宿主必须在结束时 `close()`，不能与已持有信号的 HTTP 入口或线程监督器重复注册。
 

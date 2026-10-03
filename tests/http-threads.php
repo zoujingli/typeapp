@@ -330,7 +330,10 @@ for ($round = 0; $round < 3; $round++) {
             file_put_contents($directory . '/stdout.log', $stopped->stdout);
             file_put_contents($directory . '/stderr.log', $stopped->stderr);
             file_put_contents($directory . '/exit.json', json_encode(['exit' => $stopped->exitCode, 'signal' => $stopped->signal,
-                'timed_out' => $stopped->timedOut], JSON_THROW_ON_ERROR));
+                'timed_out' => $stopped->timedOut, 'mode' => $mode, 'round' => $round,
+                'seconds' => (hrtime(true) - $started) / 1000000000.0,
+                'gate_entered' => is_file($directory . '/gate-entered'), 'gate_released' => is_file($directory . '/gate-release'),
+                'healthy_stopped' => is_file($directory . '/probe-stopped-1')], JSON_THROW_ON_ERROR));
         }
     }
 }

@@ -19,6 +19,11 @@ BOOL WINAPI type_control_handler(DWORD event) {
 
 // 独立主控在无法安全回收业务线程时结束本角色进程，跳过可能再次阻塞的析构。
 void php_type_runtime_native_control_fail_stop() {
+#if defined(_WIN32)
+    // Windows CRT 的 _Exit 仍可能进入 ExitProcess 的 DLL 退出通知，等待
+    // 已卡在 TLS 析构中的线程。停止预算耗尽后直接结束本进程，跳过 loader lock。
+    TerminateProcess(GetCurrentProcess(), 75);
+#endif
     std::_Exit(75);
 }
 
