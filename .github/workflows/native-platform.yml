@@ -292,7 +292,7 @@ jobs:
           $taskConsumer = Join-Path $env:GITHUB_WORKSPACE "build/toolchain-regressions-socket-probe/$env:SOCKET_PROTOCOL"
           & "$env:PHP_HOME/php.exe" "tests/$env:SOCKET_PROTOCOL-consumer.php" $taskConsumer
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: 核对原生 TLS 半关闭与超时恢复
+      - name: 核对原生 TLS 半关闭与握手截止
         if: always() && matrix.protocol == 'tcp'
         run: |
           & "$env:PHP_HOME/php.exe" tests/swoole-tls.php (Join-Path $env:GITHUB_WORKSPACE 'build/toolchain-regressions-socket-probe/tls')

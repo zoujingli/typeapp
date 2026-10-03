@@ -65,8 +65,64 @@ function probeSwooleTls(array $peers): array
         'cases' => $cases, 'coroutines' => $coroutines];
 }
 
+/**
+ * 对不发送 TLS 数据的真实 TCP 对端验证握手截止；父进程另设硬截止防止诊断自身挂起。
+ *
+ * @param array{idle:array{port:int}} $peers 独立 Node 对端。
+ * @return array{passed:bool,events:array,coroutines:int}
+ */
+function probeSwooleTlsDeadline(array $peers, bool $cancel, string $path): array
+{
+    Swoole\Coroutine::set(['hook_flags' => 0]);
+    $events = [];
+    $passed = false;
+    $record = static function (array $event) use ($path, &$events): void {
+        $events[] = $event;
+        file_put_contents($path . '.checkpoint.json', json_encode($events, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    };
+    Swoole\Coroutine::create(static function () use ($peers, $cancel, $record, &$passed): void {
+        $socket = new Swoole\Coroutine\Socket(AF_INET, SOCK_STREAM, 0);
+        // connect 的单次参数只设置 TCP 连接期限；TLS 的 BIO 读写使用自己的原生期限。
+        $protocol = $socket->setProtocol(['open_ssl' => true, 'ssl_verify_peer' => true, 'ssl_host_name' => 'localhost']);
+        $read = $socket->setOption(SOL_SOCKET, SO_RCVTIMEO, ['sec' => 0, 'usec' => 150000]);
+        $write = $socket->setOption(SOL_SOCKET, SO_SNDTIMEO, ['sec' => 0, 'usec' => 150000]);
+        $record(['operation' => 'configuration', 'protocol' => $protocol, 'read_timeout' => $read, 'write_timeout' => $write]);
+        $timer = false;
+        if ($cancel) {
+            $cid = Swoole\Coroutine::getCid();
+            $timer = Swoole\Timer::after(20, static function () use ($cid, $record): void {
+                $record(['operation' => 'cancel']);
+                $record(['operation' => 'cancel-return', 'value' => Swoole\Coroutine::cancel($cid)]);
+            });
+        }
+        try {
+            $record(['operation' => 'connect', 'cancel' => $cancel]);
+            $began = hrtime(true);
+            $value = $socket->connect('127.0.0.1', $peers['idle']['port'], 0.15);
+            $seconds = (hrtime(true) - $began) / 1e9;
+            $record(['operation' => 'connect-return', 'value' => $value, 'error' => $socket->errCode,
+                'message' => $socket->errMsg, 'seconds' => $seconds]);
+            $passed = $protocol && $read && $write && $value === false
+                && $socket->errCode === ($cancel ? SOCKET_ECANCELED : SOCKET_ETIMEDOUT) && $seconds < 0.5;
+        } finally {
+            if ($timer !== false && Swoole\Timer::exists($timer)) {
+                Swoole\Timer::clear($timer);
+            }
+            $record(['operation' => 'close', 'value' => $socket->close()]);
+        }
+    });
+    Swoole\Event::wait();
+    $coroutines = Swoole\Coroutine::stats()['coroutine_num'];
+    return ['passed' => $passed && $coroutines === 0, 'events' => $events, 'coroutines' => $coroutines];
+}
+
 $arguments = Swoole\Thread::getArguments();
 if (is_array($arguments)) {
+    if ($arguments[0] === 'deadline') {
+        $result = probeSwooleTlsDeadline(json_decode($arguments[1], true, 512, JSON_THROW_ON_ERROR), $arguments[2], $arguments[3]);
+        file_put_contents($arguments[3], json_encode($result, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+        exit($result['passed'] ? 0 : 1);
+    }
     [$peers, $path] = $arguments;
     $result = probeSwooleTls(json_decode($peers, true, 512, JSON_THROW_ON_ERROR));
     file_put_contents($path, json_encode($result, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
@@ -78,6 +134,19 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Build\BuildPlatform;
 use Type\Testing\Process;
+
+if (($argv[1] ?? '') === '--deadline') {
+    expect($argc === 6, 'TLS 截止子进程参数无效');
+    $peers = (string) file_get_contents($argv[4]);
+    if ($argv[3] === 'thread') {
+        $thread = new Swoole\Thread(__FILE__, 'deadline', $peers, $argv[2] === 'cancel', $argv[5]);
+        $thread->join();
+        exit($thread->getExitStatus());
+    }
+    $result = probeSwooleTlsDeadline(json_decode($peers, true, 512, JSON_THROW_ON_ERROR), $argv[2] === 'cancel', $argv[5]);
+    file_put_contents($argv[5], json_encode($result, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    exit($result['passed'] ? 0 : 1);
+}
 
 $root = BuildPlatform::resolve(dirname(__DIR__));
 $directory = BuildPlatform::path($argv[1] ?? '');
@@ -111,10 +180,27 @@ try {
     }
     $results['main'] = probeSwooleTls($peers);
     $passed = $results['first']['exit'] === 0 && $results['restart']['exit'] === 0 && $results['main']['passed'];
+    $deadlines = [];
+    foreach (['main', 'thread'] as $role) {
+        foreach (['timeout', 'cancel'] as $mode) {
+            $path = $directory . '/' . $role . '-' . $mode . '.json';
+            $process = new Process([PHP_BINARY, __FILE__, '--deadline', $mode, $role, $directory . '/peers.json', $path], $directory);
+            try {
+                $execution = $process->wait(3);
+                $deadlines[$role . '-' . $mode] = ['exit' => $execution->exitCode, 'timed_out' => $execution->timedOut,
+                    'stdout' => $execution->stdout, 'stderr' => $execution->stderr,
+                    'result' => is_file($path) ? json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR) : null,
+                    'checkpoint' => is_file($path . '.checkpoint.json') ? json_decode((string) file_get_contents($path . '.checkpoint.json'), true, 512, JSON_THROW_ON_ERROR) : null];
+                $passed = $passed && $execution->successful() && ($deadlines[$role . '-' . $mode]['result']['passed'] ?? false);
+            } finally {
+                $process->stop();
+            }
+        }
+    }
     file_put_contents($directory . '/verification.json', json_encode(['passed' => $passed, 'swoole' => phpversion('swoole'),
-        'results' => $results], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
-    expect($passed, 'TLS 写半关闭后必须读到稳定 EOF；见 ' . $directory . '/verification.json');
-    echo "原生 TLS 半关闭、超时恢复与线程重建验证通过。\n";
+        'results' => $results, 'deadlines' => $deadlines], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    expect($passed, 'TLS EOF、错误与握手截止必须保持明确语义；见 ' . $directory . '/verification.json');
+    echo "原生 TLS 半关闭、错误、握手截止与线程重建验证通过。\n";
 } finally {
     $peer?->stop();
     if (is_file($directory . '/key.pem')) {

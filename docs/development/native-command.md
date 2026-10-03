@@ -96,7 +96,9 @@ Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收�
 
 `scope=pgsql-app` 在独立并发组中只运行 PostgreSQL 应用开发入口，用于定位真实 HTTP 故障，不代表 AOT 或完整平台验收。它与完整 Windows PostgreSQL 验收使用相同预算：单次 HTTP 等待 15 秒，每套应用 PHP/AOT 检查各 600 秒。此前真实对照完成 506 项 HTTP 检查，最慢请求约 4.67 秒，整套检查约 426 秒；原 3 秒请求预算和 180 秒进程预算不足。该预算仅用于功能验收，不代表生产性能指标；全部业务、并发、回滚与清理断言保持执行。
 
-`scope=socket-probe` 分别编译并运行独立 TCP/UDP 消费者，覆盖 IPv4/IPv6、指定 DNS、TLS、线程重建和错误收尾。`scope=tls-probe` 只用 `tests/swoole-tls.php` 直接调用 Swoole Socket，对照有无前置读取超时的写半关闭与 EOF；主线程和两次重建工作线程分别保存每步返回类型、长度、摘要和错误码。这个快速诊断不编译应用，不能替代完整 TCP AOT。两个入口均保留原生模块来源及失败报告，使用独立并发组，不取消完整平台验收。
+`scope=socket-probe` 分别编译并运行独立 TCP/UDP 消费者，覆盖 IPv4/IPv6、指定 DNS、TLS、线程重建和错误收尾。TCP 在场景边界保存检查点，超时终止时将最后操作和已完成断言收进 `execution.json`；超时不能当作预期拒绝。`scope=tls-probe` 只用 `tests/swoole-tls.php` 直接调用 Swoole Socket，对照有无前置读取超时的写半关闭与 EOF，并验证握手后的真实 TCP RST 保持错误语义；主线程和两次重建工作线程分别保存每步返回类型、长度、摘要和错误码。这个快速诊断不编译应用，不能替代完整 TCP AOT。两个入口均保留原生模块来源及失败报告，使用独立并发组，不取消完整平台验收。
+
+TLS 慢握手探针分别在主线程和工作线程使用原生读写期限、主动协程取消；独立父进程的三秒截止只负责保全挂起证据，成功仍要求原生调用在半秒内返回明确错误并完成关闭。Socket 的 `connect()` 超时参数只约束 TCP 连接阶段，TLS 读写期限通过 `setOption()` 的 `SO_RCVTIMEO` / `SO_SNDTIMEO` 设置；框架 `TcpSocket::start()` 继续负责 DNS、连接与握手的合计截止。
 
 最终 Windows ZIP 的安装中断可通过 `diagnose-windows-candidate.yml` 手动诊断：指定原发布运行 ID、完整源码 SHA 和 ZIP 摘要，下载该运行保存的 `windows-native-evidence`，核对身份后直接运行原程序。入口复用专用 PostgreSQL 准备与清理，分别以 20 秒和两次 90 秒预算初始化独立空库，记录内层退出、超时、实际耗时、数据库等待类型及前端逐文件摘要；随后执行当前完整 PostgreSQL 发布包回归。不保存 SQL 或凭据，不重新编译，也不能替代完整发布验收。
 
