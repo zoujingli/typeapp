@@ -492,7 +492,10 @@ function threadResourceCommand(array $command, string $directory, string $name):
 {
     $process = new \Type\Testing\Process($command, $directory, null, 65536);
     try {
-        $result = $process->wait(3);
+        // Windows PowerShell 首次启动可能需要数秒；三秒会把正常的资源
+        // 观察误判为超时并发送 CTRL_BREAK（退出码 0xC000013A）。资源
+        // 观察仍受有界预算约束，但给冷启动留出与其它原生探针一致的窗口。
+        $result = $process->wait(PHP_OS_FAMILY === 'Windows' ? 15 : 3);
     } finally {
         $process->stop();
     }
