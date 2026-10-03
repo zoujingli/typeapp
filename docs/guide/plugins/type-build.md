@@ -168,7 +168,7 @@ vendor/bin/type --inspect build/type-example
 | --- | --- |
 | `linux-x64/php-8.5.10-zts/swoole.so` | Linux x86-64，Debian 12 / glibc 2.36 构建基线 |
 | `linux-arm64/php-8.5.10-zts/swoole.so` | Linux ARM64，Debian 12 / glibc 2.36 构建基线 |
-| `macos-arm64/php-8.5.10-zts/swoole.so` | macOS ARM64，部署目标 15.0；已通过 macOS 15 原生 ARM64 默认矩阵 |
+| `macos-arm64/php-8.5.10-zts/swoole.so` | macOS ARM64，部署目标 15.0；新版模块加载与 PDO hook 已验收，完整应用范围见升级记录 |
 | `windows-x64/php-8.5.10-zts/php_swoole.dll` | Windows x64，PHP 官方 VS17 ZTS ABI |
 
 Linux 模块不适用于 Alpine/musl；NTS、其他 PHP 版本、macOS Intel 和 Windows ARM64 未提供内置文件。模块包含项目的编译线程、HTTP、Socket 与 TLS 适配，普通官方 Thread 可用不代表满足项目的编译入口 ABI。
@@ -276,7 +276,7 @@ sequenceDiagram
 php vendor/bin/type verify-package build/example-release "$TYPE_RELEASE_SHA256"
 ```
 
-收到产物后，不能仅在同一不受信目录重新计算摘要便认定来源可信。Windows 单程序须使用 `.exe`；其静态 SDK 与同一程序三库隔离预检已通过，实际发布版本和支持范围以[平台与验收](../platforms.md)为准。
+收到产物后，不能仅在同一不受信目录重新计算摘要便认定来源可信。Windows 单程序须使用 `.exe`；静态 SDK、隔离部署和数据库行为按三个独立 profile 分别验收，实际发布版本和支持范围以[平台与验收](../platforms.md)为准。
 
 服务配置使用 `type service <程序文件> <服务声明.json> <新服务目录> <受信程序SHA256>`，直接启动经过校验的单程序。生成器也接受历史发布目录及其清单摘要；`package-directory`和`archive`用于该历史交付。生成配置不代表安装或系统服务验收通过，详见[原生服务管理](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-services.md)。运行数据与程序目录分离，不将真实 `.env` 纳入构建。
 
