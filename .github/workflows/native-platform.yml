@@ -24,6 +24,10 @@ on:
         type: choice
         options: [all, sqlite, mysql, pgsql]
         default: all
+      tcp_with_echo:
+        description: 仅 scope=tcp-handshake 生效；恢复并行普通回声以缩小完整套件挂起
+        type: boolean
+        default: false
       candidate_version:
         description: 可选vX.Y.Z或vX.Y.Z-rc.N；仅full范围验证最终候选，不分发或公开
         type: string
@@ -287,18 +291,25 @@ jobs:
         env:
           SOCKET_PROTOCOL: ${{ matrix.protocol }}
           TCP_HANDSHAKE_ONLY: ${{ inputs.scope == 'tcp-handshake' }}
+          TCP_WITH_ECHO: ${{ inputs.tcp_with_echo }}
         run: |
           $env:COMPOSER_BINARY="$env:PHP_HOME/composer.phar"
           $env:COMPOSER_DISABLE_NETWORK='1'
           $taskConsumer = Join-Path $env:GITHUB_WORKSPACE "build/toolchain-regressions-socket-probe/$env:SOCKET_PROTOCOL"
           $taskArguments = @("tests/$env:SOCKET_PROTOCOL-consumer.php", $taskConsumer)
           if ($env:TCP_HANDSHAKE_ONLY -eq 'true') { $taskArguments += '--handshake-only' }
+          if ($env:TCP_HANDSHAKE_ONLY -eq 'true' -and $env:TCP_WITH_ECHO -eq 'true') { $taskArguments += '--with-echo' }
           & "$env:PHP_HOME/php.exe" @taskArguments
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 核对原生 TLS 半关闭与握手截止
         if: always() && matrix.protocol == 'tcp'
         run: |
           & "$env:PHP_HOME/php.exe" tests/swoole-tls.php (Join-Path $env:GITHUB_WORKSPACE 'build/toolchain-regressions-socket-probe/tls')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 核对重复 TCP 监听与清理
+        if: always() && matrix.protocol == 'tcp'
+        run: |
+          & "$env:PHP_HOME/php.exe" tests/tcp-binding.php (Join-Path $env:GITHUB_WORKSPACE 'build/toolchain-regressions-socket-probe/binding')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 保存原程序、对端和失败检查点
         if: always()

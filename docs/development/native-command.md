@@ -102,7 +102,7 @@ Windows 工作流默认执行完整检查。仅调整 SDK 准备或原生验收�
 
 TLS 慢握手探针分别在主线程和工作线程使用原生读写期限、主动协程取消；独立父进程的三秒截止只负责保全挂起证据，成功仍要求原生调用在半秒内返回明确错误并完成关闭。Socket 的 `connect()` 超时参数只约束 TCP 连接阶段，TLS 读写期限通过 `setOption()` 的 `SO_RCVTIMEO` / `SO_SNDTIMEO` 设置；框架 `TcpSocket::start()` 继续负责 DNS、连接与握手的合计截止。
 
-`scope=tcp-handshake` 将同一独立 TCP 消费者全量 AOT，只运行慢握手截止、停止及额度回收，分别覆盖双线程重建与主线程协程。报告明确标为 `handshake-only`，用于与 PHP/原生探针对照，不替代 `socket-probe` 或完整平台门禁。完整 TCP 套件保持原有场景与断言。
+`scope=tcp-handshake` 将同一独立 TCP 消费者全量 AOT，只运行慢握手截止、停止及额度回收，分别覆盖双线程重建与主线程协程。报告明确标为 `handshake-only`；设置 `tcp_with_echo=true` 后只恢复并行普通回声，报告标为 `handshake-echo`，用于逐项缩小完整套件挂起。两者用于与 PHP/原生探针对照，不替代 `socket-probe` 或完整平台门禁。完整 TCP 套件保持原有场景与断言。
 
 最终 Windows ZIP 的安装中断可通过 `diagnose-windows-candidate.yml` 手动诊断：指定原发布运行 ID、完整源码 SHA 和 ZIP 摘要，下载该运行保存的 `windows-native-evidence`，核对身份后直接运行原程序。入口复用专用 PostgreSQL 准备与清理，分别以 20 秒和两次 90 秒预算初始化独立空库，记录内层退出、超时、实际耗时、数据库等待类型及前端逐文件摘要；随后执行当前完整 PostgreSQL 发布包回归。不保存 SQL 或凭据，不重新编译，也不能替代完整发布验收。
 

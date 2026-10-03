@@ -71,8 +71,8 @@ final class TcpProbe
             $outside->stop();
             Coroutine::create(static function () use ($input): void {
                 try {
-                    if ($input['scenario'] === 'handshake') {
-                        self::handshake($input['peers']);
+                    if (in_array($input['scenario'], ['handshake', 'handshake-echo'], true)) {
+                        self::handshake($input['peers'], $input['scenario'] === 'handshake-echo');
                         return;
                     }
                     self::check(defined('SWOOLE_LIBRARY') && class_exists('Swoole\\ConnectionPool', false), '首次协程缺少 Swoole 官方内置库');
@@ -142,12 +142,23 @@ final class TcpProbe
     }
 
     /** 原生编译诊断只保留慢 TLS 握手、截止及清理，完整通信套件仍独立执行。 */
-    private static function handshake(array $peers): void
+    private static function handshake(array $peers, bool $withEcho): void
     {
-        $budget = new ResourceBudget(1);
+        $budget = new ResourceBudget($withEcho ? 2 : 1);
         foreach (['timeout', 'stop'] as $mode) {
             self::$observations['phase'] = 'handshake-' . $mode;
             $socket = TcpSocket::client($budget, '127.0.0.1', $peers['idle']['port'], 1024, ['open_ssl' => true]);
+            $progress = new Channel(1);
+            if ($withEcho) {
+                Coroutine::create(static function () use ($peers, $budget, $progress): void {
+                    try {
+                        self::echo('127.0.0.1', $peers['echo4']['port'], [], $budget);
+                        $progress->push(true);
+                    } catch (Throwable $error) {
+                        $progress->push($error);
+                    }
+                });
+            }
             if ($mode === 'stop') {
                 Swoole\Timer::after(20, static function () use ($socket): void {
                     self::checkpoint('stop-timer');
@@ -158,6 +169,9 @@ final class TcpProbe
             self::checkpoint('handshake-start');
             self::rejected(static fn (): mixed => $socket->start(0.15), $mode === 'stop' ? 'tcp_stopped' : 'tcp_timeout');
             self::checkpoint('handshake-return');
+            if ($withEcho) {
+                self::check($progress->pop(1) === true, '慢握手阻塞独立连接');
+            }
             self::closed($socket);
             self::check($budget->statistics()['allocated'] === 0, '慢握手退出仍占有额度');
         }
@@ -445,6 +459,8 @@ final class TcpProbe
             }
         } finally {
             $scope->close();
+            // 控制连接可能尚未进入作用域；停止未启动对象，保留前面的原始失败。
+            $control->stop();
             self::closed($listener);
             self::closed($control);
         }
