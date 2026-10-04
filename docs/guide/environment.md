@@ -12,7 +12,7 @@
 
 设备模拟器 `iot:device` 的本地离线缓冲使用 SQLite，设备端应选择 `sqlite` 程序；它可连接使用 `pgsql` 的平台 MQTT 入口。`mysql`、`pgsql` 程序调用这个设备端角色时会在创建缓冲前返回 `runtime_profile_database_mismatch`，不会另行加载 SQLite 扩展。
 
-Redis 地址分别使用 `IOT_EXPORT_REDIS_*`、`IOT_NOTICES_REDIS_*` 和 `APP_SCHEDULER_REDIS_*`，命名空间在同一部署内保持稳定。维护调度通过显式 `app:schedule` 命令执行，不会随 HTTP 启动自动清理数据。通用缓存默认关闭，只有构建 profile 包含 `cache` 且运行配置开启时才使用 `REDIS_*`。
+Redis 地址分别使用 `IOT_EXPORT_REDIS_*`、`IOT_NOTICES_REDIS_*` 和 `APP_SCHEDULER_REDIS_*`，命名空间在同一部署内保持稳定。维护调度通过显式 `app:schedule` 命令执行，不会随 HTTP 启动自动清理数据。通用缓存默认关闭；`REDIS_*` 为显式缓存消费者保留，物联中心当前尚未据此装配业务查询缓存。独立应用需要同时具备 `cache` 构建能力与实际调用者，配置开关本身不会产生缓存效果，见[数据库与缓存](configuration.md#数据库与缓存)。
 
 ## 按使用阶段准备环境
 

@@ -90,7 +90,7 @@ Windows、Linux、macOS 都采用 Swoole 官方能力。执行方式根据目标
 | 进程不可用，线程能力可用 | 使用 Swoole Thread 承载角色，在线程内运行协程；线程构建需要 PHP ZTS |
 | 线程不可用或角色无需独立线程 | 在当前执行单元内运行 Swoole 协程，复用官方网络与等待机制 |
 
-经典 Server 不可用时，HTTP 与 WebSocket 使用官方协程 HTTP Server、升级及帧能力，TCP 与 UDP 使用协程 Socket；共用 HTTP/WS 服务和端口的能力不依赖进程模型。进程、线程、协程的隔离程度和停止方式不同，选择执行方式时保留明确的状态归属、资源额度和退出责任。
+当前 HTTP 入口在经典 Server 不可用的平台使用官方协程 HTTP Server，TCP 与 UDP 使用协程 Socket。WebSocket 服务端仍依赖经典 Server；Windows 上明确返回 `websocket_unsupported_platform`，尚未接入协程 HTTP 的升级会话管理。HTTP 可运行不代表共端口 WebSocket 已可用，具体边界见[平台与验收](platforms.md)。进程、线程、协程的隔离程度和停止方式不同，选择执行方式时保留明确的状态归属、资源额度和退出责任。
 
 “最新 Swoole”指跟进官方能力，并在每次构建中锁定具体版本或源码提交、构建开关及摘要。官方 Windows 原生支持已经存在；其经典 Server/Process 与协程/线程的能力范围不同，稳定发行与主线新增能力也需分别核对，见[官方 Windows 支持矩阵](https://github.com/swoole/swoole-src/blob/8340c534526d26bf1efa20c11e1e6ed0a78eb524/docs/windows-native-support.md)。
 
@@ -127,6 +127,8 @@ sequenceDiagram
 ```
 
 若截止时工作仍未结束，保持占用与失败状态，由对应监督边界处理；不能提前报告停止成功。
+
+上图是各角色应遵守的运行契约。当前组件已经提供作用域、停止和预算机制，应用接入仍需收口：配置预检尚未覆盖全部启动约束，维护调度未挂接停止信号，部署连接预算尚未统一覆盖后台角色。HTTP 的 `/readyz` 当前只表示宿主接单状态和请求额度，不代表数据库或 Redis 持续健康。实际差距与完成条件见[启动与运行收口](roadmap.md#启动与运行收口)。
 
 ## HTTP 请求示例
 
