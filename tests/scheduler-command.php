@@ -8,6 +8,8 @@ $native = ($argv[2] ?? '') === '--native';
 $command = $native ? nativeCommand($argv[1]) : [PHP_BINARY, $argv[1]];
 $directory = sys_get_temp_dir() . '/type_scheduler_command_' . bin2hex(random_bytes(8));
 expect(mkdir($directory, 0700), '无法建立调度命令状态目录');
+$directory = realpath($directory);
+expect(is_string($directory), '无法解析调度命令状态目录');
 putenv('TYPE_SCHEDULER_STATE=' . $directory . '/state.json');
 putenv('TYPE_SCHEDULER_NOW=2026-09-09T12:00:00Z');
 putenv('TYPE_SCHEDULER_SCENARIO=normal');

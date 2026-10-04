@@ -15,16 +15,13 @@ final class FileStateStore implements StateStore
     private ?ExecutionOwner $owner = null;
 
     /**
-     * 登记已存在本地目录中的状态文件；当前路径语义要求 / 开头的绝对路径。
+     * 登记已存在本地目录中的普通文件；Windows 使用完整盘符路径，拒绝 UNC 与链接。
      *
      * @throws RuntimeException 路径、父目录或空字节不符合要求。
      */
     public function __construct(string $filename)
     {
-        if (!str_starts_with($filename, '/') || !is_dir(dirname($filename)) || str_contains($filename, "\0")) {
-            throw new RuntimeException('TYPE_SCHEDULER_STORE：状态文件需要存在的本地目录与绝对路径');
-        }
-        $this->filename = $filename;
+        $this->filename = self::path($filename);
     }
 
     /**
@@ -37,13 +34,20 @@ final class FileStateStore implements StateStore
         if ($this->lock !== null) {
             throw new RuntimeException('TYPE_SCHEDULER_BUSY：状态存储已被当前执行占用');
         }
-        $lock = fopen($this->filename . '.lock', 'c+b');
+        $path = self::path($this->filename . '.lock');
+        $lock = fopen($path, 'c+b');
         if ($lock === false) {
             throw new RuntimeException('TYPE_SCHEDULER_STORE：无法打开状态锁');
         }
-        if (!flock($lock, LOCK_EX | LOCK_NB)) {
+        try {
+            \Type\Runtime\LocalFile::assertOpened($path, $lock);
+            if (!flock($lock, LOCK_EX | LOCK_NB)) {
+                throw new RuntimeException('TYPE_SCHEDULER_BUSY：已有本地调度进程执行');
+            }
+            \Type\Runtime\LocalFile::assertOpened($path, $lock);
+        } catch (\Throwable $error) {
             fclose($lock);
-            throw new RuntimeException('TYPE_SCHEDULER_BUSY：已有本地调度进程执行');
+            throw $error;
         }
         $this->owner = new ExecutionOwner();
         $this->lock = $lock;
@@ -57,6 +61,7 @@ final class FileStateStore implements StateStore
     public function load(): array
     {
         $this->assertOwner();
+        self::path($this->filename);
         if (!is_file($this->filename)) {
             return ['protocol' => 1, 'cursors' => [], 'records' => []];
         }
@@ -76,6 +81,7 @@ final class FileStateStore implements StateStore
     public function save(array $state): void
     {
         $this->assertOwner();
+        self::path($this->filename);
         $json = StateCodec::encode($state);
         $temporary = tempnam(dirname($this->filename), '.type-scheduler-');
         if ($temporary === false) {
@@ -89,6 +95,7 @@ final class FileStateStore implements StateStore
             }
             fclose($stream);
             $stream = null;
+            self::path($this->filename);
             if (!rename($temporary, $this->filename)) {
                 throw new RuntimeException('TYPE_SCHEDULER_STORE：无法原子替换状态文件');
             }
@@ -113,6 +120,16 @@ final class FileStateStore implements StateStore
         fclose($this->lock);
         $this->lock = null;
         $this->owner = null;
+    }
+
+    /** 将共用文件校验转成既有存储错误，保持调用方的恢复分支。 */
+    private static function path(string $filename): string
+    {
+        try {
+            return \Type\Runtime\LocalFile::path($filename);
+        } catch (\InvalidArgumentException $error) {
+            throw new RuntimeException('TYPE_SCHEDULER_STORE：状态文件需要受信任本地目录与普通文件路径', 0, $error);
+        }
     }
 
     private function assertOwner(): void

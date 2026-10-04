@@ -176,7 +176,7 @@ echo json_encode($definition->due(300, 300), JSON_THROW_ON_ERROR) . "\n";
 
 FileStateStore 使用同机本地文件与稳定 .lock，写临时文件后同步并原子替换。目录由部署方准备；损坏直接报错，不重置游标。状态文件不应放 NFS 或作为多主机共享锁。结果最多 64 KiB、历史最多 10000 条、状态文件上限 16 MiB。
 
-当前 FileStateStore 以 `/` 前缀校验绝对路径，以上文件示例适用于 Unix 风格路径；不能将 Windows 盘符路径视为已经支持。多主机协调使用 RedisStateStore，并按实际平台验证运行依赖。
+当前 `main` 的 FileStateStore 已接入共用本地文件校验，接受 Unix 绝对路径与 Windows 完整盘符路径，拒绝 UNC、设备路径、越界分量、链接及特殊文件。路径失败保持 `TYPE_SCHEDULER_STORE`，不自动改建目录或清空状态；父目录须由受信任账户管理。RC14 仍使用旧路径校验；Windows 真实文件、锁与原子替换尚需专项验收。多主机协调使用 RedisStateStore。
 
 新执行者把遗留 running 标为 interrupted，保留身份供对账，该次不会自动重试。任务失败也不自动重试；有重试需要时显式投递[队列](type-queue.md)，仍以业务稳定 ID 幂等。
 

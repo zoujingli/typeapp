@@ -143,6 +143,8 @@ flowchart LR
 
 ## 接口与源码组织
 
+当前 `main` 的 `FileStateStore` 使用受信任本地目录，支持 Unix 绝对路径及 Windows 完整盘符路径（含空格），不依赖工作目录；拒绝 UNC、设备路径、符号链接和越界分量，路径错误仍为 `TYPE_SCHEDULER_STORE`。固定 `.lock` 文件拥有执行权，状态写入同目录临时文件后同步并原子替换，失败保留旧状态。该调整尚未包含 RC14，路径声明支持不等于各平台锁、只读目录及替换故障均已通过验收。
+
 `Schedule/CronSchedule/IntervalSchedule/Definition/SystemClock` 负责时间声明与时钟；`Scheduler/Task/TaskContext/SchedulerConsole` 负责执行入口；`StateStore/FileStateStore/RedisStateStore/StateCodec` 负责持久状态；`ExecutionLease/RedisLease/ScopedLease/LeasedStateStore` 负责当前持有者权限。角色在同一语境内，保持现有公共 FQCN，不为每个类建立一层目录。
 
 示例要求由使用者提前准备安全的本地状态目录，只执行一次 tick，通常不在当前秒的 09:00 窗口时返回空列表；这不是执行失败。每个任务独立 Scope 负责资源清理，`Scheduler::stop()` 只控制就绪和后续执行，不拥有调用者另行创建的 RedisManager。使用 RedisStateStore 时在调度角色结束后继续关闭外层 Redis Scope 与管理器。

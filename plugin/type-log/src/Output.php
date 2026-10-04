@@ -55,15 +55,12 @@ final class Output
     /**
      * 建立本地文件追加输出；父目录由应用准备，实际打开时拒绝符号链接和非普通文件。
      *
-     * @param string $path 以 / 开头的本地绝对路径，不接受 URL 包装器。
+     * @param string $path 本地绝对路径；Windows 使用完整盘符路径，不接受 URL/UNC/设备路径。
      * @throws InvalidArgumentException 路径或容量参数无效。
      */
     public static function file(string $path, int $maxRecords = 1024, int $maxBytes = 1048576, int $maxRecordBytes = 4096): Output
     {
-        if (!str_starts_with($path, '/') || str_contains($path, "\0") || str_contains($path, '://')) {
-            throw new InvalidArgumentException('日志文件需要显式本地绝对路径');
-        }
-        return new Output($path, $maxRecords, $maxBytes, $maxRecordBytes);
+        return new Output(\Type\Runtime\LocalFile::path($path, false), $maxRecords, $maxBytes, $maxRecordBytes);
     }
 
     /** 接管非阻塞写模式；closeStream=false 时停止后恢复调用者原有的阻塞模式。 */
@@ -244,16 +241,15 @@ final class Output
         }
         try {
             if ($this->destination !== 'php://stdout') {
-                $stat = @lstat($this->destination);
-                if ($stat !== false && ($stat['mode'] & 0170000) !== 0100000) {
-                    $this->fail();
-                    return false;
-                }
+                \Type\Runtime\LocalFile::path($this->destination);
             }
             $this->stream = @fopen($this->destination, 'ab');
             if (!is_resource($this->stream)) {
                 $this->fail();
                 return false;
+            }
+            if ($this->destination !== 'php://stdout') {
+                \Type\Runtime\LocalFile::assertOpened($this->destination, $this->stream);
             }
             $this->prepareStream();
             return true;

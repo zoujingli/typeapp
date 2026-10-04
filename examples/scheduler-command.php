@@ -43,7 +43,16 @@ function schedulerScenario(int $argc, array $argv): int
     $scenario = getenv('TYPE_SCHEDULER_SCENARIO') ?: 'normal';
     $fixed = getenv('TYPE_SCHEDULER_NOW') ?: '';
     $clock = $fixed === '' ? new SystemClock() : new ControlledClock($fixed);
-    $store = new FileStateStore(getenv('TYPE_SCHEDULER_STATE') ?: sys_get_temp_dir() . '/type-app-scheduler.json');
+    $filename = (string) (getenv('TYPE_SCHEDULER_STATE') ?: '');
+    if ($filename === '') {
+        // 系统临时目录在 macOS 可含系统链接；只解析这个默认目录，显式状态路径仍严格校验。
+        $temporary = realpath(sys_get_temp_dir());
+        if ($temporary === false) {
+            throw new RuntimeException('TYPE_SCHEDULER_STORE：系统临时目录不存在');
+        }
+        $filename = $temporary . '/type-app-scheduler.json';
+    }
+    $store = new FileStateStore($filename);
     $factory = static fn (TaskContext $context): Task => match ($scenario) {
         'interrupted' => new InterruptedTask(),
         'cleanup-failure' => new CleanupFailureTask(),
