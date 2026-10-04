@@ -142,6 +142,8 @@ sequenceDiagram
 
 `Query` 支持列比较、EXISTS、IN 子查询、标量和派生表子查询、子查询联表、DISTINCT、UNION/UNION ALL。子查询只能使用同一连接，组合时不执行 SQL。任意联表或分组投影使用行数据 `Query`；`ModelQuery` 保持每行对应一个模型。原子 `increment/decrement` 执行条件写入保护，模型版本列同时推进，但不触发逐模型事件。
 
+模型 integer 算术在 SQLite 中额外检查现值及整数上下界，拒绝溢出后升为 REAL；MySQL 无符号整型列也必须保持 PHP 整数值域。失败回滚整条集合写入及版本，null 保留 SQL 语义。底层 Query 没有模型字段声明，不自动取得这项类型保护。
+
 普通分页对复杂结果按实际行数计算总数，并要求 `uniqueOrderBy` 声明唯一排序键；单表自动补主键排序。`simplePaginate` 返回无总数的 `SimplePage`，通过多取一行判断下一页。游标分页仍限制单表及唯一排序。
 
 `toSql()` 与 `bindings()` 只预览目标 SQL 和绑定。`Connection::listen($scope, ...)` 返回由作用域管理的有界 `QueryLog`；默认仅记录 SQL 摘要、参数数量、连接身份、操作、耗时、成败及事务状态。SQL 原文和值需显式开启；监听异常单独计数，不改变提交事实。停止或关闭作用域后解除注册，记录仍可读取。

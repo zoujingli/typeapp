@@ -806,7 +806,8 @@ final class ModelQuery
         $this->definition->assertArithmeticStorage($this->connection, $field);
         $version = $this->definition->versionField();
         $versionColumn = $version === null ? null : $this->definition->field($version)->column();
-        return $this->mutate($query, static fn (Query $target): int => $target->adjust($mapping->column(), $amount, $decrement, $versionColumn));
+        $integer = $mapping->typeName() === 'integer';
+        return $this->mutate($query, static fn (Query $target): int => $target->adjust($mapping->column(), $amount, $decrement, $versionColumn, $integer));
     }
 
     /**

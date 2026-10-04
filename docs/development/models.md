@@ -80,6 +80,8 @@ $maximum = $visible->max('age');
 
 integer 聚合要求实际整型列；映射到文本、小数或浮点列时报 `integer_arithmetic_unsupported`，避免字典序比较和隐式转换。bigint/decimal 必须使用满足精度声明的真实数值列才能统计。SQLite 精确数值 TEXT 列以及其他数据库的数值文本列报 `exact_arithmetic_unsupported`；模型读取这些字段仍可无损进行。相同存储规则也用于 `increment/decrement` 与关系 `withSum`。LIMIT、分组和行锁不参与标量聚合，另建统计查询。
 
+模型 integer 的 `increment/decrement` 还在赋值表达式中检查 SQLite 的整数类型及上下界，并约束 MySQL 无符号整型列不得超出 PHP 有符号整数范围；PostgreSQL 的整型溢出由数据库拒绝。这样避免 SQL 成功写入模型无法水合的值。null 沿用 SQL 的 null 语义；遇到非法整数或溢出时，整条集合写入及版本推进回滚，不通过追加 WHERE 跳过失败行。底层表 Query 没有模型字段声明，其通用数值语义不因此改变。
+
 批量新增用 `Model::query()->insertMany($rows)`，每行都是以模型属性名为键的字段数组。空列表返回 0；非空列表只执行一条 INSERT，返回数据库影响数量。字段修改器、严格类型、赋值白名单、必填与实际存储校验都在写入前执行，不水合结果或猜测自动主键。
 
 整批必须具有相同字段集合，键顺序可不同；可空字段需要显式 null 时应在每行一致提供。可信租户自动补入，显式提供时必须与上下文一致；声明的版本从 1 开始，软删除状态为 null，调用者不能覆盖生命周期字段。新增不接受 where、排序、投影、关系、LIMIT 等读取状态，避免丢弃调用者条件。需要逐模型事件、生成主键或领域级联时，在 `Db::transaction()` 中逐条 `create()`。

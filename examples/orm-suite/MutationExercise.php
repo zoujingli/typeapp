@@ -49,6 +49,7 @@ final class MutationExercise
             self::unversionedArithmetic($connection);
             self::insertAndAggregate($connection, $current);
             self::integerStorage($connection);
+            self::integerArithmetic($connection);
             $base = MutationRecord::query();
             self::storageEdges($connection, $base);
             $offset = $base->orderBy('id')->limit(3, 1);
@@ -129,6 +130,121 @@ final class MutationExercise
                 self::check($untouched->id === 10002 && $untouched->version === 1 && $untouched->value === 0, '集合写入越过租户范围');
             }, ['tenant_id' => 'tenant-b']);
         }, ['tenant_id' => 'tenant-a']);
+    }
+
+    /**
+     * 验证整数模型的实际上下界、NULL 与全批回滚；同一入口供三库 PHP 和全量 AOT 消费。
+     *
+     * @param Connection $connection 专属测试数据库的当前作用域写连接，不连接用户数据。
+     */
+    public static function integerArithmetic(Connection $connection): void
+    {
+        foreach ([false, true] as $versioned) {
+            $table = $versioned ? 'type_suite_versioned_integer_bounds' : 'type_suite_integer_bounds';
+            $connection->execute('CREATE TABLE ' . $table . ' (id INTEGER PRIMARY KEY, stored_value BIGINT NULL, version BIGINT NOT NULL DEFAULT 1)'
+                . ($connection->driverName() === 'mysql' ? ' ENGINE=InnoDB' : ''));
+            $fields = ['id' => new ModelField('id', 'integer'), 'value' => new ModelField('stored_value', 'integer', true)];
+            if ($versioned) {
+                $fields['version'] = new ModelField('version', 'integer', false, false, true, false);
+            }
+            $definition = new ModelDefinition($table, 'id', $fields, false, null, $versioned ? 'version' : null);
+            $query = new ModelQuery($definition, static fn (array $row): MappingProbe => new MappingProbe($definition, $row));
+            $query->insertMany([['id' => 1, 'value' => 10], ['id' => 2, 'value' => PHP_INT_MAX], ['id' => 3, 'value' => null]]);
+            $initial = $connection->table($table)->orderBy('id')->get();
+            self::check(self::reject(static fn (): int => $query->allowAll()->increment('value'))
+                && $connection->table($table)->orderBy('id')->get() === $initial
+                && $query->findOrFail(2)->get('value') === PHP_INT_MAX, '整数上溢没有拒绝整批、回滚版本或保持可水合');
+
+            $connection->table($table)->where('id', '=', 2)->update(['stored_value' => PHP_INT_MIN]);
+            $minimum = $connection->table($table)->orderBy('id')->get();
+            self::check(self::reject(static fn (): int => $query->allowAll()->decrement('value'))
+                && $connection->table($table)->orderBy('id')->get() === $minimum
+                && $query->findOrFail(2)->get('value') === PHP_INT_MIN, '整数下溢改变了业务值、版本或其他匹配行');
+            self::check($query->where('id', '=', 2)->increment('value', PHP_INT_MAX) === 1
+                && $query->findOrFail(2)->get('value') === -1
+                && $query->where('id', '=', 2)->decrement('value', PHP_INT_MAX) === 1
+                && $query->findOrFail(2)->get('value') === PHP_INT_MIN, '最大合法增量发生浮点转换或被错误拒绝');
+            $query->where('id', '=', 3)->increment('value', PHP_INT_MAX);
+            $query->where('id', '=', 3)->decrement('value', PHP_INT_MAX);
+            self::check($query->findOrFail(3)->get('value') === null
+                && (int) $connection->table($table)->where('id', '=', 3)->value('version') === ($versioned ? 3 : 1), 'NULL 算术改变空值或版本语义');
+
+            $connection->table($table)->where('id', '=', 2)->update(['stored_value' => PHP_INT_MAX]);
+            $beforeTransaction = $connection->table($table)->orderBy('id')->get();
+            self::check(self::reject(static fn (): mixed => Db::transaction(static function () use ($query, $connection, $table, $beforeTransaction): void {
+                self::check(self::reject(static fn (): int => $query->allowAll()->increment('value'))
+                    && $connection->transactionDepth() === 1
+                    && $connection->table($table)->orderBy('id')->get() === $beforeTransaction, '整数失败未保留外层事务或留下部分更新');
+                self::check($query->where('id', '=', 1)->increment('value') === 1 && $query->findOrFail(1)->get('value') === 11, '整数失败回滚保存点后不能继续合法写入');
+                throw new RuntimeException('rollback');
+            }), 'rollback') && $connection->table($table)->orderBy('id')->get() === $beforeTransaction, '整数算术逃逸外层回滚');
+
+            if ($connection->driverName() === 'sqlite') {
+                foreach ([1.5, 'invalid'] as $invalid) {
+                    $connection->table($table)->where('id', '=', 2)->update(['stored_value' => $invalid]);
+                    $beforeInvalid = $connection->table($table)->orderBy('id')->get();
+                    self::check(self::reject(static fn (): int => $query->allowAll()->increment('value'))
+                        && self::reject(static fn (): int => $query->allowAll()->decrement('value'))
+                        && $connection->table($table)->orderBy('id')->get() === $beforeInvalid, 'SQLite 历史非整数行被静默转换或造成部分写入');
+                }
+                // 通用表查询没有整数模型契约，继续保留 SQLite 对普通数值表达式的原有语义。
+                $connection->table($table)->where('id', '=', 2)->update(['stored_value' => 1.5]);
+                self::check($connection->table($table)->where('id', '=', 2)->increment('stored_value') === 1
+                    && (float) $connection->table($table)->where('id', '=', 2)->value('stored_value') === 2.5, '模型守卫错误改变通用 Query 的数值运算');
+            }
+        }
+        if ($connection->driverName() === 'mysql') {
+            self::unsignedIntegerArithmetic($connection);
+        }
+    }
+
+    /** MySQL 无符号列也遵守 integer 模型的 PHP 值域，不能成功写入后才在水合时报错。 */
+    private static function unsignedIntegerArithmetic(Connection $connection): void
+    {
+        foreach ([false, true] as $versioned) {
+            $table = $versioned ? 'type_suite_versioned_unsigned_bounds' : 'type_suite_unsigned_bounds';
+            $connection->execute('CREATE TABLE ' . $table . ' (id INTEGER PRIMARY KEY, stored_value BIGINT UNSIGNED NULL, version BIGINT NOT NULL DEFAULT 1) ENGINE=InnoDB');
+            $fields = ['id' => new ModelField('id', 'integer'), 'value' => new ModelField('stored_value', 'integer', true)];
+            if ($versioned) {
+                $fields['version'] = new ModelField('version', 'integer', false, false, true, false);
+            }
+            $definition = new ModelDefinition($table, 'id', $fields, false, null, $versioned ? 'version' : null);
+            $query = new ModelQuery($definition, static fn (array $row): MappingProbe => new MappingProbe($definition, $row));
+            $query->insertMany([['id' => 1, 'value' => 10], ['id' => 2, 'value' => PHP_INT_MAX], ['id' => 3, 'value' => null]]);
+            $initial = $connection->table($table)->orderBy('id')->get();
+            self::check(self::reject(static fn (): int => $query->allowAll()->increment('value'))
+                && $connection->table($table)->orderBy('id')->get() === $initial
+                && $query->findOrFail(2)->get('value') === PHP_INT_MAX, 'MySQL 无符号列允许 integer 模型上溢或留下部分写入');
+            self::check($query->where('id', '=', 2)->decrement('value') === 1
+                && $query->findOrFail(2)->get('value') === PHP_INT_MAX - 1
+                && $query->where('id', '=', 2)->increment('value') === 1
+                && $query->findOrFail(2)->get('value') === PHP_INT_MAX, 'MySQL 无符号列的合法边界运算被错误拒绝');
+            $connection->table($table)->where('id', '=', 1)->update(['stored_value' => 0]);
+            self::check($query->where('id', '=', 1)->increment('value', PHP_INT_MAX) === 1
+                && $query->findOrFail(1)->get('value') === PHP_INT_MAX
+                && $query->where('id', '=', 1)->decrement('value', PHP_INT_MAX) === 1
+                && $query->findOrFail(1)->get('value') === 0, 'MySQL 无符号列的最大合法增量改变精度');
+            $beforeUnderflow = $connection->table($table)->orderBy('id')->get();
+            self::check(self::reject(static fn (): int => $query->allowAll()->decrement('value'))
+                && $connection->table($table)->orderBy('id')->get() === $beforeUnderflow, 'MySQL 无符号列下溢未保留真实约束或整批回滚');
+            $query->where('id', '=', 3)->increment('value', PHP_INT_MAX);
+            $query->where('id', '=', 3)->decrement('value', PHP_INT_MAX);
+            self::check($query->findOrFail(3)->get('value') === null
+                && (int) $connection->table($table)->where('id', '=', 3)->value('version') === ($versioned ? 3 : 1), 'MySQL 无符号列 NULL 算术改变空值或版本语义');
+
+            // 历史超界值即使递减后能回到 PHP int 范围，也不能通过模型运算隐式修复。
+            foreach (['9223372036854775808', '18446744073709551615'] as $invalid) {
+                $connection->table($table)->where('id', '=', 2)->update(['stored_value' => $invalid]);
+                $beforeInvalid = $connection->table($table)->orderBy('id')->get();
+                self::check(self::reject(static fn (): int => $query->where('id', '>=', 2)->increment('value'))
+                    && self::reject(static fn (): int => $query->where('id', '>=', 2)->decrement('value'))
+                    && $connection->table($table)->orderBy('id')->get() === $beforeInvalid, 'MySQL 无符号历史超界值被模型运算静默转换');
+            }
+            // 通用 Query 保留数据库本身的无符号算术范围，不套用模型的 PHP int 值域。
+            $connection->table($table)->where('id', '=', 2)->update(['stored_value' => PHP_INT_MAX]);
+            self::check($connection->table($table)->where('id', '=', 2)->increment('stored_value') === 1
+                && (string) $connection->table($table)->where('id', '=', 2)->value('stored_value') === '9223372036854775808', 'integer 模型守卫错误收窄通用 MySQL Query');
+        }
     }
 
     /** 一份字段声明验证批量创建、SQL 空值、精确聚合和租户/软删除范围，不用数组结果替代模型行为。 */

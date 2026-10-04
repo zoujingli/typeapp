@@ -280,6 +280,8 @@ $bindings = $query->bindings();
 
 `exists` 判断匹配行是否存在，`value` 返回首行单列或 null，`pluck` 提取值列表，指定键列时拒绝重复键。`firstOrFail/findOrFail` 在缺失时抛出 `not_found`。聚合和集合查询从已投影的结果列提取值。`increment/decrement` 使用单条 UPDATE，返回数据库影响行数；无显式有效条件时拒绝，模型版本同步递增。精确数值文本列只能无损读写，数据库算术要求真实数值列。
 
+模型整数算术会拒绝 SQLite 的越界或非整数现值，也防止 MySQL 无符号列存入超出 PHP 整数范围的值。任一目标行失败都回滚本条写入与版本，null 保持 null；不会静默跳过失败行或拆批提交。
+
 `toSql()` 和 `bindings()` 不执行目标 SQL，也不触发模型元数据读取。绑定预览返回原始值，应用应自行控制其输出。监听则默认脱敏：
 
 ```php

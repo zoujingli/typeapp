@@ -896,8 +896,11 @@ final class Query
         return $this->adjust($column, $amount, true);
     }
 
-    /** @internal 模型原子写入同时递增已验证的非空整数版本列，须由事务包裹。 */
-    public function adjust(string $column, int $amount, bool $decrement, ?string $version = null): int
+    /**
+     * @internal 模型写入须由事务包裹；integer 保留模型整数值域，不改变底层表查询的通用数值语义。
+     * @throws DatabaseException 约束或整数值域失败，不把失败行过滤为部分成功。
+     */
+    public function adjust(string $column, int $amount, bool $decrement, ?string $version = null, bool $integer = false): int
     {
         $this->writeShape(true);
         $this->requireWriteIntent();
@@ -905,14 +908,29 @@ final class Query
             throw new DatabaseException('原子增减的数量必须为正整数');
         }
         $quoted = $this->dialect->identifier($column, false, false);
-        $assignment = $quoted . ' = ' . $quoted . ($decrement ? ' - ?' : ' + ?');
+        $expression = $quoted . ($decrement ? ' - ?' : ' + ?');
+        if ($integer && $this->connection->driverName() === 'sqlite') {
+            // SQLite 整数溢出会成功转成 REAL；赋值时拒绝，保留 NULL 并由原事务回滚整条写入。
+            $boundary = $decrement ? PHP_INT_MIN + $amount : PHP_INT_MAX - $amount;
+            $expression = 'CASE WHEN ' . $quoted . ' IS NULL THEN NULL WHEN typeof(' . $quoted . ") = 'integer' AND "
+                . $quoted . ($decrement ? ' >= ' : ' <= ') . $boundary . ' THEN ' . $expression
+                . ' ELSE abs(-9223372036854775807 - 1) END';
+        } elseif ($integer && $this->connection->driverName() === 'mysql') {
+            // BIGINT UNSIGNED 的合法列值也可能超出 PHP int；现值与结果都须可被 integer 模型无损水合。
+            $lower = $decrement ? PHP_INT_MIN + $amount : PHP_INT_MIN;
+            $upper = $decrement ? PHP_INT_MAX : PHP_INT_MAX - $amount;
+            $failure = 'CAST(9223372036854775807 AS SIGNED) + CAST(' . $quoted . ' - ' . $quoted . ' + 1 AS SIGNED)';
+            $expression = 'CASE WHEN ' . $quoted . ' IS NULL THEN NULL WHEN ' . $quoted . ' >= ' . $lower
+                . ' AND ' . $quoted . ' <= ' . $upper . ' THEN ' . $expression . ' ELSE ' . $failure . ' END';
+        }
+        $assignment = $quoted . ' = ' . $expression;
         if ($version !== null) {
             if ($version === $column) {
                 throw new DatabaseException('原子增减目标不能同时作为版本列');
             }
             $assignment .= ', ' . $this->versionAssignment($version);
         }
-        $prefix = $version !== null && $this->connection->driverName() === 'sqlite' ? 'UPDATE OR ABORT ' : 'UPDATE ';
+        $prefix = ($version !== null || $integer) && $this->connection->driverName() === 'sqlite' ? 'UPDATE OR ABORT ' : 'UPDATE ';
         return $this->connection->execute($prefix . $this->table . ' SET ' . $assignment
             . $this->whereSql($this->conditions), array_merge([$amount], $this->conditions->parameters()));
     }
