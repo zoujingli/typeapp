@@ -47,7 +47,7 @@ TypeApp 应用的通信与基础并发必须使用 Swoole；线程与协程入�
 
 独立命令可用 `CoroutineRuntime::run(Closure(): mixed)` 进入官方 Swoole Scheduler，并在回调内创建作用域和资源；已有协程时直接执行，不另建执行者，不改变启动时的 hook flags。不要把在外部协程创建的连接带入回调。HTTP、WebSocket、MQTT Broker 事件、持久 worker、生成 CLI、队列、调度及受管子任务已接入；自定义 Socket 消息由应用入口显式绑定。各角色和平台的实际验证范围见[受管任务](https://github.com/zoujingli/typeapp/blob/main/docs/development/managed-tasks.md)。
 
-`CoroutineRuntime::enableIo()` 在启动期补齐官方网络、等待、PDO 和 `SWOOLE_HOOK_PROC`，保留已有配置。主线程完成短期 Scheduler 后，实际 hook 可能已被撤销；启动业务线程前会重新应用配置，不能仅凭 `getHookFlags()` 判断已安装。业务线程存活期间不修改进程级 hook。独立命令进程使用参数数组及 Swoole 接管的 `proc_open` 管道，启动、状态、终止和回收在协程中完成；不在协程中调用会在 fork 后执行 PHP 回调的 `Swoole\Process::start()`。
+`CoroutineRuntime::enableIo()` 在启动期补齐官方网络、等待、PDO 和 `SWOOLE_HOOK_PROC`，保留已有配置。主线程完成短期 Scheduler 后，实际 hook 可能已被撤销；启动业务线程前会重新应用配置，不能仅凭 `getHookFlags()` 判断已安装。生成的线程入口校验启动消息，再将主线程已验证的 flags 同步到线程本地选项；线程内的 PDO 与 Scheduler 因而读取同一配置。业务线程存活期间不修改进程级 hook。`type-build` 与 `type-runtime` 的线程消息协议必须一致，混用旧组件会在构建时明确拒绝。独立命令进程使用参数数组及 Swoole 接管的 `proc_open` 管道，启动、状态、终止和回收在协程中完成；不在协程中调用会在 fork 后执行 PHP 回调的 `Swoole\Process::start()`。
 
 `ExecutionScope::spawn()` 只在当前 Swoole 线程内创建协程。子协程取得新的 `ExecutionOwner` 和独立作用域，复制父上下文快照，共享只能缩短的截止时间、父子取消信号及 `TaskBudget`；父取消、关闭或 Deadline 到期会唤醒子协程，子协程完成真实收尾后解除父子监听。父作用域中的连接和租约不转移，子协程必须重新借用。资源归属由进程、原生线程、请求代次、协程 ID 和 Fiber 身份校验，跨边界误用会抛出执行者错误。
 

@@ -82,7 +82,7 @@ use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
 
 CoroutineRuntime::enableIo();
-Coroutine::run(static function (): void {
+CoroutineRuntime::run(static function (): void {
     $scope = new ExecutionScope(
         new Deadline(2.0),
         ['request_id' => 'req-42', 'tenant_id' => 'tenant-a'],

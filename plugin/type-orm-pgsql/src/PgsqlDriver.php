@@ -8,6 +8,7 @@ use PDO;
 use PDOException;
 use Type\Orm\DatabaseException;
 use Type\Orm\Driver;
+use Type\Runtime\CoroutineRuntime;
 
 /** PostgreSQL 驱动配置与会话初始化；连接生命周期交由 ORM 资源池管理。 */
 final class PgsqlDriver implements Driver
@@ -84,12 +85,14 @@ final class PgsqlDriver implements Driver
      *
      * @return PDO 由调用者或受管 PdoSession 拥有的真实连接。
      * @throws DatabaseException 扩展、连接或会话初始化不满足约定。
+     * @throws \Type\Runtime\TaskException 协程连接缺少已编译或启动期启用的 PDO hook。
      */
     public function connect(): PDO
     {
         if (!extension_loaded('pdo_pgsql')) {
             throw new DatabaseException('缺少已选择的 pdo_pgsql 扩展');
         }
+        CoroutineRuntime::assertPdoHooks('pgsql');
         try {
             if ($this->caFile !== null && hash_file('sha256', $this->caFile) !== $this->identity['ca-sha256']) {
                 throw new DatabaseException('PostgreSQL TLS 配置已变化，需要新连接身份');

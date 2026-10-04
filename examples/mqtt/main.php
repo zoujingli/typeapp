@@ -131,6 +131,7 @@ function mqttBudget(string $name, int $default): int
 /** 使用 --plaintext 显式启动回环调试；省略时证书和私钥均须从启动环境提供。 */
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::enableIo();
     $arguments = new Arguments(
         $argv,
         ['host', 'port', 'ws-port', 'wss-port', 'mtls-port', 'allowed-origins', 'terminate-session', 'actor', 'node-id', 'fence-node', 'node-run-id', 'proof-ref'],

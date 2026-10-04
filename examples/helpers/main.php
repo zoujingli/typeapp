@@ -325,6 +325,7 @@ function helpersDefaults(): void
 /** 显式入口只使用测试自建输入，不读取隐式全局请求。 */
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::enableIo();
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
         helpersDefaults();
         $rules = ['age' => Field::integer()->required(), 'active' => Field::boolean()->required(), 'note' => Field::text()->nullable(), 'missing' => Field::text()];

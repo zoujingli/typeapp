@@ -33,6 +33,7 @@ function relationExpect(bool $condition, string $message): void
  */
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::enableIo();
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
         $database = new DatabaseManager(['default' => Drivers::create((string) ($argv[1] ?? 'sqlite'))], 1, 0);
         Db::configure($database);

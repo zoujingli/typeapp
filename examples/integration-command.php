@@ -25,6 +25,7 @@ use TypeApp\ModelExample\Drivers;
  */
 function main(int $argc, array $argv): void
 {
+    CoroutineRuntime::enableIo();
     if (($argv[1] ?? '') === 'serve') {
         integrationScenario($argc, $argv);
         return;

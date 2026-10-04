@@ -34,9 +34,7 @@ final class ThreadCompiler
             . "function type_app_compiled_thread_has_entry(string \$entry): bool\n{\n    return " . implode(' || ', $checks) . ";\n}\n\n"
             . "/** @internal Swoole 在新线程中调用此已编译函数；返回角色退出码。 */\n"
             . "function type_app_compiled_thread_run(string \$message): int\n{\n"
-            . "    \$data = json_decode(\$message, true, 4, JSON_THROW_ON_ERROR);\n"
-            . "    if (!is_array(\$data) || count(\$data) !== 2 || !is_string(\$data[0] ?? null) || !is_string(\$data[1] ?? null)) {\n"
-            . "        throw new \\InvalidArgumentException('编译线程消息格式无效');\n    }\n"
+            . "    \$data = \\Type\\Runtime\\CoroutineRuntime::enterThread(\$message);\n"
             . "    \$entry = \$data[0];\n    \$payload = \$data[1];\n"
             . implode("\n", $calls) . "\n    throw new \\InvalidArgumentException('编译线程入口未登记');\n}\n";
     }

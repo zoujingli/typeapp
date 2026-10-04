@@ -253,6 +253,11 @@ final class NativeBuilder
             if (!is_array($settings['threads']) || !isset($included['zoujingli/type-runtime'])) {
                 throw new RuntimeException('线程入口需要 threads 声明并安装 type-runtime');
             }
+            if (!defined('Type\\Runtime\\CoroutineRuntime::THREAD_ENTRY_PROTOCOL')
+                || constant('Type\\Runtime\\CoroutineRuntime::THREAD_ENTRY_PROTOCOL') !== BuildIdentity::GENERATORS['threads']
+                || !method_exists(\Type\Runtime\CoroutineRuntime::class, 'enterThread')) {
+                throw new RuntimeException('type-build 与 type-runtime 的线程消息协议不匹配；请安装同批次兼容组件后重新构建');
+            }
             $threadFile = $buildDirectory . '/generated-thread-entries.php';
             $this->writeText($threadFile, (new ThreadCompiler())->generate($settings['threads']));
             $sources[] = $threadFile;

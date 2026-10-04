@@ -36,6 +36,7 @@ function outcomeExpect(bool $condition, string $message): void
  */
 function main(int $argc, array $argv): void
 {
+    CoroutineRuntime::enableIo();
     CoroutineRuntime::run(static function () use ($argc, $argv): void {
         runOutcome($argc, $argv);
     });

@@ -146,8 +146,11 @@ final class PoolProbe
         $file = $directory . '/' . $role . '.sqlite';
         try {
             $hooks = Swoole\Runtime::getHookFlags();
-            self::rejected(static fn (): mixed => CoroutineRuntime::enableIo(), 'swoole_hook_startup_required');
-            self::check(Swoole\Runtime::getHookFlags() === $hooks, '子线程拒绝配置时改变了原生选项');
+            $startup = json_decode(Swoole\Thread::getArguments()[0], true, 4, JSON_THROW_ON_ERROR);
+            self::check($hooks === $startup[2] && ($hooks & SWOOLE_HOOK_PDO_SQLITE) !== 0, '子线程没有继承已验证的原生 hook 快照');
+            CoroutineRuntime::enableIo();
+            self::check(Swoole\Runtime::getHookFlags() === $hooks, '子线程只读复核改变了原生选项');
+            self::rejected(static fn (): array => CoroutineRuntime::enterThread('["probe","replaced",0]'), 'compiled_thread_message_invalid');
             $foreign = unserialize(base64_decode($input['owner']), ['allowed_classes' => [ExecutionOwner::class]]);
             self::check($foreign instanceof ExecutionOwner, '跨线程归属观察数据无效');
             self::rejected(static fn (): mixed => $foreign->assertCurrent(), '线程请求');
@@ -166,12 +169,14 @@ final class PoolProbe
             $other->close();
             self::rejected(static fn (): string => serialize($connection), 'resource_transfer_forbidden');
             self::check($budget->poolBudget()->statistics()['allocated'] === 1, '同步拒绝错误归还额度');
-            file_put_contents($directory . '/' . $role . '.ready', json_encode(['allocated' => 1], JSON_THROW_ON_ERROR));
+            file_put_contents($directory . '/' . $role . '.ready', json_encode(['allocated' => 1, 'hooks' => $hooks], JSON_THROW_ON_ERROR));
             self::waitFile($directory . '/go');
             $scope->close();
             $database->close();
             Coroutine::create(static function () use ($file, $budget): void {
                 try {
+                    self::rejected(static fn (): array => CoroutineRuntime::enterThread(Swoole\Thread::getArguments()[0]), 'compiled_thread_message_invalid');
+                    CoroutineRuntime::assertPdoHooks('sqlite');
                     $sleepCompleted = new Channel(1);
                     Coroutine::create(static function () use ($sleepCompleted): void {
                         usleep(30000);
@@ -197,7 +202,7 @@ final class PoolProbe
             self::check($budget->poolBudget()->statistics()['allocated'] === 0 && $budget->poolBudget()->statistics()['waiters'] === 0, '线程退出前预算或等待登记未清空');
             file_put_contents($directory . '/' . $role . '.json', json_encode(['checks' => self::$checks,
                 'native_id' => Swoole\Thread::getNativeId(), 'process' => getmypid(), 'allocated' => $budget->poolBudget()->statistics()['allocated'],
-                'remaining_coroutines' => Coroutine::stats()['coroutine_num'], 'observations' => self::$observations], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+                'hooks' => $hooks, 'remaining_coroutines' => Coroutine::stats()['coroutine_num'], 'observations' => self::$observations], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
             return 0;
         } catch (Throwable $error) {
             file_put_contents($directory . '/' . $role . '.failure', get_class($error) . ': ' . $error->getMessage() . "\n" . $error->getTraceAsString());
@@ -514,6 +519,7 @@ function main(int $argc, array $argv): void
     $directory = $argv[1];
     CoroutineRuntime::assertAvailable();
     PoolProbe::check(Swoole\Runtime::enableCoroutine(SWOOLE_HOOK_UDP), '无法准备已有原生 hook');
+    PoolProbe::rejected(static fn (): array => CoroutineRuntime::enterThread('["probe","",0]'), 'compiled_thread_message_invalid');
     $owner = base64_encode(serialize(new ExecutionOwner(false)));
     $threads = [];
     try {
@@ -531,6 +537,7 @@ function main(int $argc, array $argv): void
         $left = json_decode((string) file_get_contents($directory . '/left.ready'), true, 512, JSON_THROW_ON_ERROR);
         $right = json_decode((string) file_get_contents($directory . '/right.ready'), true, 512, JSON_THROW_ON_ERROR);
         PoolProbe::check($left['allocated'] + $right['allocated'] === 2, '两个存活线程的实际占用超出进程额度');
+        PoolProbe::check($left['hooks'] === $hooks && $right['hooks'] === $hooks, '线程本地 hook 配置与主线程已验证快照不一致');
     } finally {
         file_put_contents($directory . '/go', 'go');
         $exits = [];

@@ -50,6 +50,7 @@ final class Application
      */
     public static function run(int $release, array $arguments): void
     {
+        \Type\Runtime\CoroutineRuntime::enableIo();
         if (($arguments[1] ?? '') === 'serve') {
             self::execute($release, $arguments);
             return;

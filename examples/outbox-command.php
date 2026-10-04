@@ -39,6 +39,7 @@ function outboxExpect(bool $condition, string $message): void
  */
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::enableIo();
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
         outboxScenario($argc, $argv);
     });

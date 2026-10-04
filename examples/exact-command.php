@@ -28,6 +28,7 @@ function exactExpect(bool $condition, string $message): void
  */
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::enableIo();
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
         $driver = (string) ($argv[1] ?? 'sqlite');
         $database = new DatabaseManager(['default' => Drivers::create($driver)], 1, 0);

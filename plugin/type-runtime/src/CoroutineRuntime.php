@@ -12,6 +12,9 @@ use Throwable;
 /** 沿用 Swoole 的协程、线程和启动期 hook，衔接已编译业务入口。 */
 final class CoroutineRuntime
 {
+    /** @internal 必须与构建器的线程消息协议一致；2 表示携带已验证的 hook 快照。 */
+    public const THREAD_ENTRY_PROTOCOL = 2;
+
     /**
      * 当前主线程是否已经为一组原生业务线程完成过启动前 hook 安装。
      *
@@ -108,19 +111,55 @@ final class CoroutineRuntime
         if (strlen($payload) > 1048576) {
             throw new TaskException('compiled_thread_payload_limit', '业务线程启动数据不能超过 1 MiB');
         }
-        $message = json_encode([$entry, $payload], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
-        if (strlen($message) > 1048576) {
-            throw new TaskException('compiled_thread_payload_limit', '业务线程启动数据不能超过 1 MiB');
-        }
         // 运行时 hook 只能在第一个业务线程创建前安装。新版 Swoole 在已有
         // 子线程时会拒绝重复 enableCoroutine()；后续线程只复核已安装的能力。
         self::prepareThreadIo();
+        $message = json_encode([$entry, $payload, \Swoole\Runtime::getHookFlags()], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        if (strlen($message) > 1048576) {
+            throw new TaskException('compiled_thread_payload_limit', '业务线程启动数据不能超过 1 MiB');
+        }
         if ($control !== null) {
             return \Swoole\Thread::startNative('type_app_compiled_thread_run', $message, $socket, $control);
         }
         return $socket === null
             ? \Swoole\Thread::startNative('type_app_compiled_thread_run', $message)
             : \Swoole\Thread::startNative('type_app_compiled_thread_run', $message, $socket);
+    }
+
+    /**
+     * 校验原生启动消息，在业务协程创建前继承已经安装的 hook 配置。
+     *
+     * @internal 仅供生成的线程入口调用；flags 来自主线程启动前验证的快照。
+     * Swoole 的 handler 在进程内共享，getHookFlags() 却读取线程本地选项；新线程
+     * 只通过 Coroutine::set() 同步选项，不重复安装或改变进程级 handler。
+     * @return array{0: string, 1: string} 登记入口与业务启动数据。
+     * @throws TaskException 消息缺失、被替换、缺少启动期 hook，或调用时机不符。
+     * @throws \JsonException 原生启动消息不是有效 JSON。
+     */
+    public static function enterThread(string $message): array
+    {
+        self::assertAvailable();
+        if (!class_exists(\Swoole\Thread::class, false) || \Swoole\Thread::getInfo()['is_main_thread']
+            || Coroutine::getCid() >= 0 || strlen($message) > 1048576) {
+            throw new TaskException('compiled_thread_message_invalid', '编译线程消息只能由新线程的受控入口接收');
+        }
+        $arguments = \Swoole\Thread::getArguments();
+        if (!is_array($arguments) || !is_string($arguments[0] ?? null) || $arguments[0] !== $message) {
+            throw new TaskException('compiled_thread_message_invalid', '编译线程消息与原生启动参数不一致');
+        }
+        $data = json_decode($message, true, 4, JSON_THROW_ON_ERROR);
+        if (!is_array($data) || !array_is_list($data) || count($data) !== 3
+            || !is_string($data[0]) || !is_string($data[1]) || !is_int($data[2]) || $data[2] < 0) {
+            throw new TaskException('compiled_thread_message_invalid', '编译线程消息缺少有效的入口、数据或 hook 快照');
+        }
+        $flags = $data[2];
+        $required = self::requiredHookFlags();
+        if (($flags & $required) !== $required) {
+            throw new TaskException('swoole_hook_startup_required', '编译线程未收到完整的启动期 I/O hook 配置');
+        }
+        Coroutine::set(['hook_flags' => $flags]);
+        self::assertRequiredHooks();
+        return [$data[0], $data[1]];
     }
 
     /** 调用协程 API 前检查扩展版本；官方内置库沿用 Swoole 的请求初始化加载。 */
@@ -169,6 +208,45 @@ final class CoroutineRuntime
     }
 
     /**
+     * 在建立协程 PDO 连接前检查所选驱动，保持同步维护命令的原有行为。
+     *
+     * @internal 由 PDO 驱动在创建物理连接前调用；只读取能力，不在请求中修改进程级 hook。
+     * MySQL 通过 mysqlnd 使用网络 hook，PostgreSQL 与 SQLite 使用各自编译进 Swoole 的 PDO hook。
+     * @throws TaskException 所选驱动缺少协程能力，或对应 hook 尚未在启动期启用。
+     */
+    public static function assertPdoHooks(string $driver): void
+    {
+        if (!extension_loaded('swoole') || Coroutine::getCid() < 0) {
+            return;
+        }
+        self::assertAvailable();
+        $required = 0;
+        if ($driver === 'mysql') {
+            // 此 PDO 常量只在 PDO_USE_MYSQLND 构建时声明；另一个扩展加载 mysqlnd 不足以证明 PDO 的客户端类型。
+            if (!extension_loaded('mysqlnd') || !defined('Pdo\\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')) {
+                throw new TaskException('swoole_pdo_hook_unavailable', 'MySQL 协程连接需要 mysqlnd；当前构建不能安全执行协程 PDO');
+            }
+            $required = SWOOLE_HOOK_TCP | SWOOLE_HOOK_SSL | SWOOLE_HOOK_TLS;
+            if (defined('SWOOLE_HOOK_UNIX')) {
+                $required |= (int) constant('SWOOLE_HOOK_UNIX');
+            }
+        } else {
+            $hook = match ($driver) {
+                'pgsql' => 'SWOOLE_HOOK_PDO_PGSQL',
+                'sqlite' => 'SWOOLE_HOOK_PDO_SQLITE',
+                default => '',
+            };
+            if ($hook === '' || !defined($hook)) {
+                throw new TaskException('swoole_pdo_hook_unavailable', '所选数据库 ' . $driver . ' 缺少已编译的 Swoole PDO 协程能力');
+            }
+            $required = (int) constant($hook);
+        }
+        if ((\Swoole\Runtime::getHookFlags() & $required) !== $required) {
+            throw new TaskException('swoole_hook_startup_required', '所选数据库 ' . $driver . ' 的 I/O 钩子必须在启动协程或业务线程前启用');
+        }
+    }
+
+    /**
      * 为当前线程组安装一次进程级 hook，并在后续创建前只校验能力。
      *
      * 不能通过 activeCount() 预测即将创建的线程：新线程注册存在时序窗口，
@@ -204,7 +282,8 @@ final class CoroutineRuntime
         if (defined('SWOOLE_HOOK_UNIX')) {
             $required |= (int) constant('SWOOLE_HOOK_UNIX');
         }
-        foreach (['pdo_mysql' => 'SWOOLE_HOOK_PDO_MYSQL', 'pdo_pgsql' => 'SWOOLE_HOOK_PDO_PGSQL', 'pdo_sqlite' => 'SWOOLE_HOOK_PDO_SQLITE'] as $extension => $hook) {
+        // mysqlnd 复用上面的网络 hook，Swoole 没有独立的 PDO MySQL hook。
+        foreach (['pdo_pgsql' => 'SWOOLE_HOOK_PDO_PGSQL', 'pdo_sqlite' => 'SWOOLE_HOOK_PDO_SQLITE'] as $extension => $hook) {
             if (extension_loaded($extension) && defined($hook)) {
                 $required |= (int) constant($hook);
             }

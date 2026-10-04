@@ -46,6 +46,7 @@ function modelRejects(Closure $operation, string $expectedCode): void
  */
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::enableIo();
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
         $driverName = (string) ($argv[1] ?? 'sqlite');
         $database = new DatabaseManager(['default' => Drivers::create($driverName), 'archive' => Drivers::create($driverName)], 1, 0);

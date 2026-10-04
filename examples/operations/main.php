@@ -53,6 +53,7 @@ function operationsUnknown(UserOperations $operations, TypedCache $cache): void
  */
 function main(int $argc, array $argv): void
 {
+    \Type\Runtime\CoroutineRuntime::enableIo();
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
         $database = new DatabaseManager(['default' => Drivers::create((string) ($argv[1] ?? 'sqlite'))]);
         $redisManager = new RedisManager(['default' => new RedisConfiguration(

@@ -797,6 +797,7 @@ function commandCases(Connection $connection, Identity $identity, string $tenant
 
 function main(int $argc, array $argv): void
 {
+    CoroutineRuntime::enableIo();
     CoroutineRuntime::run(static function () use ($argv): void {
     $name = $argv[1];
     $environment = getenv();

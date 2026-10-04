@@ -56,6 +56,8 @@ $status = $thread->getExitStatus();
 
 返回 Swoole 原有的线程句柄。所有者必须在主请求关闭前显式 `join()`，随后读取 `0–255` 的角色退出码；字符串参数复制到线程自己的请求。当前启动信封采用 JSON，字符串须为有效 UTF-8，编码后上限为 1 MiB。未知入口和超预算分别返回 `compiled_thread_unknown`、`compiled_thread_payload_limit`；缺少编译入口或受控线程模块返回 `compiled_thread_unavailable`。编码失败保留 `JsonException`。
 
+线程消息协议为 `2`，生成器与 `CoroutineRuntime::THREAD_ENTRY_PROTOCOL` 必须一致；构建器在生成入口前拒绝不兼容组件。信封包含入口、业务数据及主线程安装并验证的 hook flags，仍由 `startThread()` 统一形成，业务接口不增加参数。生成入口调用内部 `enterThread()`，检查消息与原生参数一致、字段完整、当前处于新线程且尚未进入协程；缺失或被替换的消息返回 `compiled_thread_message_invalid`，缺必需 flags 返回 `swoole_hook_startup_required`。该协议同时参与生成器和构建内容身份，旧生成入口不能作为新构建缓存复用。
+
 扩展未加载或版本不符时，保留 `swoole_required`、`swoole_incompatible` 错误边界；`compiled_thread_unavailable` 用于仍缺少线程接入能力的情况。构建默认开启官方内置库；显式关闭库的调用者只能使用仍可用的原生接口。
 
 线程应用的 `exit()` 结束当前请求，由 Swoole 或主 embed 边界回收。普通角色建议返回退出码。`join()` 沿用 Swoole 的等待语义；本入口尚未提供任务排空截止、取消传播或强制终止协议，不能把线程句柄当作这些能力的完成证明。
@@ -136,4 +138,4 @@ php tests/compiled-threads.php "$PWD/$task_dir/consumer" --resources
 
 按 [Swoole 复用标准](../standards/swoole-reuse.md)移除 `ManagedTask` 收尾时的 1ms 轮询。`ExecutionScope` 仅在延期收尾时创建原生 Channel，最后一个后代的完成回调关闭通道；父任务保持占额直到整棵子树退出。清理超时、原生取消、先完成再等待、重复观察错误和重复关闭均通过实际编译消费者验证。三次同功能 PHP 辅助对照中，三层任务等待时的额外定时器由 2 个降为 0 个，释放前额度均为 3，释放后均归零；这不是端到端吞吐或延迟结论。
 
-通用线程启动已与未完成的文件候选分开：默认源码准备仅涉及原有六个线程文件，普通线程不要求文件私有 ABI。主线程统一安装 hook，保留用户已有 UDP 等标志，子线程直接复用；禁止的配置变更在原生调用前拒绝。原生运行发现子线程局部选项不能代表进程已安装 hook，现通过实际 `usleep()` 让出验证复用效果，没有为此新增 C++ 配置补丁。文件候选改由显式入口组合准备，产出的十五个原生文件与原候选逐字节一致；内部监督等机制仍待收缩。
+通用线程启动已与未完成的文件候选分开：默认源码准备仅涉及原有六个线程文件，普通线程不要求文件私有 ABI。主线程统一安装 hook，保留用户已有 UDP 等标志；子线程通过官方 `Coroutine::set()` 同步已验证快照，只更新线程本地选项，继续复用进程 handler。固定上游的 `getHookFlags()` 读取线程本地配置，新线程初始值为零，因此不能直接将零配置交给 Scheduler 或据此拒绝已启用的 PDO。真实 SQLite、`usleep()` 让出和消息拒绝共同验证这一衔接，没有为此新增 C++ 配置补丁。文件候选改由显式入口组合准备，产出的十五个原生文件与原候选逐字节一致；内部监督等机制仍待收缩。

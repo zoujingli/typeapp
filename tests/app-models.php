@@ -24,6 +24,7 @@ $generated = $work . '/models.php';
 try {
     file_put_contents($generated, (new ModelCompiler())->compile([$root . '/app'])['code']);
     require $generated;
+    CoroutineRuntime::enableIo();
     CoroutineRuntime::run(static function () use ($work): void {
         $database = new DatabaseManager(['default' => new SqliteDriver($work . '/models.sqlite')], 1, 0);
         Db::configure($database);
