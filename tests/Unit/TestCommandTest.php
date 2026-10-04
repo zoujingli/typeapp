@@ -12,6 +12,55 @@ require_once dirname(__DIR__) . '/support.php';
 /** 覆盖测试命令哨兵的跨平台参数、输出和退出码契约，避免 shell 改写参数。 */
 final class TestCommandTest extends TestCase
 {
+    /** 独立验收控制器只复制格式校验类，不能隐式依赖主仓 Composer 自动加载。 */
+    public function testStandaloneNativeVerifierRunsWithoutVendor(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $directory = $root . '/build/standalone verifier-' . bin2hex(random_bytes(6));
+        self::assertTrue(mkdir($directory, 0700));
+        try {
+            self::assertTrue(mkdir($directory . '/tests', 0700));
+            self::assertTrue(mkdir($directory . '/plugin/type-build/src', 0700, true));
+            foreach (['tests/support.php', 'plugin/type-build/src/BuildPlatform.php'] as $file) {
+                self::assertTrue(copy($root . '/' . $file, $directory . '/' . $file));
+            }
+            self::assertDirectoryDoesNotExist($directory . '/vendor');
+            $controller = <<<'PHP'
+require $argv[1];
+$loadedBefore = class_exists(\Type\Build\BuildPlatform::class, false);
+$command = nativeCommand($argv[2]);
+echo json_encode([
+    'loaded_before' => $loadedBefore,
+    'loaded_after' => class_exists(\Type\Build\BuildPlatform::class, false),
+    'result' => execute([...$command, ...array_slice($argv, 3)]),
+], JSON_THROW_ON_ERROR);
+PHP;
+            // PHP 在本用例中只是跨平台原生命令哨兵，不代表应用的无 PHP 部署验收。
+            $environment = getenv();
+            unset($environment['TYPE_NATIVE_PHP_INI']);
+            $process = new Process(
+                [PHP_BINARY, '-n', '-r', $controller, $directory . '/tests/support.php',
+                PHP_BINARY, '-n', '-r', 'echo "standalone-verifier\\n";'],
+                $directory,
+                $environment
+            );
+            try {
+                $result = $process->wait(10);
+                self::assertTrue($result->successful(), $result->stdout . $result->stderr);
+                self::assertSame('', $result->stderr);
+                $report = json_decode($result->stdout, true, 512, JSON_THROW_ON_ERROR);
+                self::assertFalse($report['loaded_before']);
+                self::assertTrue($report['loaded_after']);
+                self::assertSame([0, "standalone-verifier\n", ''], $report['result']);
+                self::assertDirectoryDoesNotExist($directory . '/vendor');
+            } finally {
+                $process->stop();
+            }
+        } finally {
+            \removeTestDirectory($directory);
+        }
+    }
+
     /** 失效专项必须在读取原生产物或启动服务前失败，不能只执行基础场景后返回成功。 */
     public function testIdentitySuiteRejectsRetiredAndMixedScenariosBeforeSetup(): void
     {
