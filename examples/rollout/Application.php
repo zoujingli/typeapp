@@ -50,11 +50,14 @@ final class Application
      */
     public static function run(int $release, array $arguments): void
     {
-        \Type\Runtime\CoroutineRuntime::enableIo();
         if (($arguments[1] ?? '') === 'serve') {
+            // Schema::current() 在 execute() 中需要先完成一次同步数据库读取。
+            // HTTP 服务器随后会在真正启动前安装 I/O hook；serve 路径不应
+            // 在主线程的非协程 PDO 阶段提前启用 PostgreSQL/SQLite hook。
             self::execute($release, $arguments);
             return;
         }
+        \Type\Runtime\CoroutineRuntime::enableIo();
         \Type\Runtime\CoroutineRuntime::run(static function () use ($release, $arguments): void {
             self::execute($release, $arguments);
         });

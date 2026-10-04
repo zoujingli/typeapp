@@ -141,7 +141,11 @@ function rolloutHttp(array $command, array $environment): array
     $client = new HttpClient('http://' . $address, 1);
     $deadline = microtime(true) + (isset($command['command']) ? 15 : 5);
     do {
-        expect($process->running(), '发布演练 HTTP 提前退出：' . $process->stderr());
+        if (!$process->running()) {
+            $result = $process->wait(0);
+            throw new RuntimeException('发布演练 HTTP 提前退出：exit=' . $result->exitCode . ', signal=' . (string) $result->signal
+                . "\n" . $result->stdout . $result->stderr);
+        }
         try {
             if ($client->request('GET', '/readyz')->status === 200) {
                 return [$process, $client];

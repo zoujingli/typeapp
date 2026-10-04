@@ -161,7 +161,9 @@ final class SwooleServer implements HttpServerInterface
         $server->on('request', function (Request $request, Response $response): void {
             $this->handleNative($request, $response);
         });
-        $server->start();
+        if (!$server->start()) {
+            throw new RuntimeException('HTTP 监听启动失败：' . $server->errCode . ' ' . $server->errMsg);
+        }
     }
 
     /**
