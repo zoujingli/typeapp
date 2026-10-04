@@ -97,7 +97,9 @@ final class SwooleServer implements HttpServerInterface
                     }
                     $this->watchdog = $timer;
                     try {
-                        $server->start();
+                        if (!$server->start()) {
+                            throw new RuntimeException('HTTP 监听启动失败：' . $server->errCode . ' ' . $server->errMsg);
+                        }
                     } finally {
                         $this->clearThreadTimer();
                         $shutdown = $this->onWorkerStop;
@@ -162,7 +164,11 @@ final class SwooleServer implements HttpServerInterface
             $this->handleNative($request, $response);
         });
         if (!$server->start()) {
-            throw new RuntimeException('HTTP 监听启动失败：' . $server->errCode . ' ' . $server->errMsg);
+            $errorCode = $server->getLastError();
+            $errorMessage = function_exists('swoole_strerror')
+                ? swoole_strerror($errorCode, SWOOLE_STRERROR_SWOOLE)
+                : (string) $errorCode;
+            throw new RuntimeException('HTTP 监听启动失败：' . $errorCode . ' ' . $errorMessage);
         }
     }
 
