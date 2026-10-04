@@ -68,9 +68,6 @@ final class Application
                 Licenses::run($arguments);
                 return;
             }
-            // 所有生产入口在创建迁移协程、业务线程或 HTTP 服务前安装官方 I/O hook。
-            // 这一步必须发生在 migrate 前，否则 PDO 协程等待会稳定拒绝启动。
-            CoroutineRuntime::enableIo();
             if ($command === 'help' || $command === '--help') {
                 if (count($arguments) > 2) {
                     throw new InvalidArgumentException('help 不接受额外参数');
@@ -214,6 +211,9 @@ final class Application
             }
         }
         $driver = DatabaseFactory::create($settings, $basePath);
+        // 迁移在下方 Scheduler 中创建 PDO；先安装官方 I/O hook，
+        // 同时保持 help/check 这类离线命令不依赖运行时协程能力。
+        CoroutineRuntime::enableIo();
 
         return CoroutineRuntime::run(static function () use ($driver, $arguments): int {
             return (new MigrationConsole(new Migrator($driver), Schema::migrations($driver->name())))->run($arguments);
