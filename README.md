@@ -47,7 +47,7 @@ php dev.php check
 
 运行本仓库附带的成品案例物联中心，见[物联网中心](docs/guide/iot-center.md)。
 
-当前 `main` 补齐了配置与角色预检、生产错误关联、业务就绪探针、维护调度停止及 `app:upgrade` 升级入口，尚未发布到 RC14。使用这些新入口须从对应源码构建；操作顺序与实际平台验收范围见[构建与部署](docs/guide/deployment.md)和[实现规划](docs/guide/roadmap.md#启动与运行收口)。
+当前 `main` 补齐了配置与角色预检、生产错误关联、业务就绪探针、维护调度停止及 `app:upgrade` 升级入口；这些修改未包含在已发布的 RC14 中。使用新入口须从对应源码构建；操作顺序与实际平台验收范围见[构建与部署](docs/guide/deployment.md)和[实现规划](docs/guide/roadmap.md#启动与运行收口)。
 
 物联中心前端随 TypePHP 构建编入主程序，首次 `app:install` 安装到 `public/`，升级可用 `web:install --dry-run --force` 预览后再执行 `web:install --force`。普通启动不释放资源，运行端无需 Node.js 或前端开发服务器。推送版本 tag 的四平台构建、同版本组件分发、Packagist 核验与 Release 顺序见[版本发布与安装](docs/guide/releases.md)。
 

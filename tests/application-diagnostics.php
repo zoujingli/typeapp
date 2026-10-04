@@ -48,8 +48,6 @@ try {
     }
     echo "应用数据库失败拒绝执行、显式错误码诊断与秘密隔离通过。\n";
 } finally {
-    if (is_file($environment['DB_SQLITE_FILE'])) {
-        unlink($environment['DB_SQLITE_FILE']);
-    }
-    rmdir($base);
+    // 安装会准备前端互斥锁；数据库失败也须回收本轮完整运行根，清理失败不能仅产生警告。
+    removeTestDirectory($base);
 }

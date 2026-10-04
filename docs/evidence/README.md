@@ -4,6 +4,8 @@
 
 | 记录 | 原始范围 |
 | --- | --- |
+| [过期代码与文档清理](stale-cleanup-20261004.md) | 不可达测试与失效参数清理、文档门禁收紧、Docsify 导出、macOS ARM64 全量 AOT 及双端身份/独立 Broker 三库无源码复验 |
+| [配置与运行闭环修复](system-architecture-fixes-20261004.md) | 架构审查 A1—A8 的修复、macOS ARM64 全量应用 AOT、三库无源码与真实 RC13 数据升级；未重新执行四平台静态发布矩阵 |
 | [系统架构、配置与运行过程审查](system-architecture-audit-20261004.md) | 15 组件及应用调用者的配置、生命周期、资源、升级与发布审查；隔离探针复现、整改顺序与未验证边界 |
 | [官方架构对照基线](system-architecture-hyperf-baseline.md) | 固定 Hyperf 源码及通用运行契约的一手资料；内部研究，不是 TypeApp 功能验收 |
 | [数据库 profile 与发布体积](profile-release-20260930.md) | 按能力裁剪依赖、macOS ARM64 SQLite 同一程序业务回归；新的十二组合发布另行记录 |
@@ -12,7 +14,7 @@
 | [前端内嵌与版本发布本机验收](frontend-release-20260926.md) | 内嵌资源、页面安装更新、macOS ARM64 同一归档三库无源码与恢复、发布契约；首次 RC 另行验收 |
 | [四平台原生 CI 与开发分支发布](native-release-20260925.md) | 同一 bf28c8b 源码的四平台默认矩阵、目录包隔离边界、组件与模板发布及 Packagist 同步 |
 | [TypePHP 0.9.3 升级](typephp-upgrade-0.9.3.md) | macOS ARM64 编译线程、全量应用、三库无源码运行与性能对照 |
-| [TypePHP 0.9.4 与 Swoole 开发快照升级](typephp-upgrade-0.9.4.md) | TypePHP 0.9.4、PHPX 2.9.3、固定 Swoole 开发快照的新版兼容审查与当前四平台验收进度 |
+| [TypePHP 0.9.4 与 Swoole 开发快照升级](typephp-upgrade-0.9.4.md) | TypePHP 0.9.4、PHPX 2.9.3、固定 Swoole 开发快照的兼容审查、RC14 四平台/十二 profile 发布与公开回读；保留各失败候选与性能对照边界 |
 | [内置模块与组件迁移](swoole-bundle.md) | 四平台文件身份、独立组件选择及 macOS ARM64 原生回归 |
 | [组件文档与公共 Composer 发布](components-publication.md) | 16 包公共索引与自动同步、15 组件实际安装、模板业务、Docsify 及许可打包回归 |
 | [物联中心功能、界面与初始化](iot-center-audit.md) | 站点整页保存修复、默认值、双端页面与三库原生身份；保留 Vben 及完整业务缺口 |

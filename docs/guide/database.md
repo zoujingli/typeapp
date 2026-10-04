@@ -97,7 +97,7 @@ Swoole 在可让出的数据库等待期间调度其他协程；ORM 负责把连
 | PostgreSQL | `type-orm-pgsql` | PDO 驱动、数据库、账号及 schema 权限 |
 | SQLite | `type-orm-sqlite` | PDO 驱动、可写的数据目录与持久化文件 |
 
-物联中心成品案例通过 `DB_DRIVER` 选择已安装的驱动，独立模板在首次安装前选择一个驱动。切换数据库不会迁移原数据，也不会删除旧数据库。
+物联中心的发布程序按数据库 profile 分开构建，`DB_DRIVER` 必须与下载程序一致，否则返回 `runtime_profile_database_mismatch`。开发环境可在已安装驱动间选择，独立模板在首次安装前确定驱动。更换程序或配置不会迁移原数据，也不会删除旧数据库。
 
 ## 显式迁移
 
@@ -109,6 +109,19 @@ composer typeapp:migrate -- history
 ```
 
 物联中心的 `migrate` 提供 `status`、`history` 和经核对后的 `recover`，不提供独立建表的 `run`。通用应用模板使用 `php dev.php migrate run` 初始化自身模型所需的表，并提供 `status`、`history` 查询；模板不包含物联中心的身份安装流程。框架迁移按版本和校验和执行，已完成版本重复运行保持幂等。
+
+已有物联中心数据使用 `app:upgrade`，不重新执行空库安装。该入口属于当前 `main`，未包含在已发布的 RC14 中；须先构建含此功能的新程序，按[升级与恢复](deployment.md#升级与恢复)检查安装谱系、停写、备份及摘要，再执行升级。迁移中断先核对历史与真实数据库状态，页面通过 `web:install --force` 单独更新。
+
+```mermaid
+flowchart LR
+  Empty["空数据库"] --> Install["app:install · 初始化身份与表"]
+  Existing["已有安装"] --> Check["app:upgrade --check"]
+  Check --> Backup["停写 · 备份 · 核对摘要"]
+  Backup --> Upgrade["app:upgrade --offline …"]
+  Upgrade --> Web["web:install --force · 更新页面"]
+```
+
+数据库迁移和页面安装分别记录结果；页面更新失败按安装命令恢复，不重复初始化数据库。迁移和升级命令不自动停止其他实例。
 
 迁移具有校验和和历史记录。MySQL DDL 不等同于事务性 DDL：失败后先检查数据库实际状态与迁移历史，再决定恢复或重试，不能假定自动回滚。PostgreSQL、SQLite 也要按各自的事务、锁与文件语义验证。
 

@@ -27,8 +27,7 @@ $commands = in_array('--commands', $argv, true);
 $modelSwitches = in_array('--models', $argv, true);
 $transfers = in_array('--transfers', $argv, true);
 $notices = in_array('--notices', $argv, true);
-$support = in_array('--support', $argv, true);
-expect(!$support, '旧支持装置须在对应任务迁移后启用，不能沿用旧身份通过验收');
+expect(!in_array('--support', $argv, true), '旧支持授权已移除；当前模拟登录使用双端身份浏览器验收');
 $noticeRedis = null;
 expect($port > 1024 && $port < 65536, '端口范围无效');
 $base = $root . '/build/iot-history-browser-' . bin2hex(random_bytes(6));
@@ -277,9 +276,6 @@ try {
         }
     }
     $metadata = ['pid' => getmypid(), 'base' => $base, 'tenant' => $tenant, 'other' => $other, 'device' => $device['id'], 'empty' => $empty['id'], 'member' => $member['id'], 'member_version' => $member['version'], 'port' => $port];
-    if ($support) {
-        $metadata['support'] = ['login' => 'websupport', 'member_role' => 'admin'];
-    }
     if ($alarms) {
         $metadata['alarms'] = ['rule' => $rule['id']];
     }

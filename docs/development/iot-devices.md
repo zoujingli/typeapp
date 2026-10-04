@@ -56,8 +56,9 @@ connection: {
 
 HTTP与预注册支持真实MySQL、PostgreSQL、SQLite；设备持久MQTT接入按ADR0010仅使用PostgreSQL同步后端。配置沿用 `DB_*`，新增项见 `.env.example` 的 `IOT_MQTT_*`。生产选择锁定AOT产物，`IOT_MQTT_COMMAND` 为同一应用入口的JSON参数数组；相对命令按启动工作目录解析，证书及私钥相对 `APP_BASE_PATH`。示例开发入口可配置为 `["php","bin/typeapp"]`，原生部署使用自己的二进制或打包启动器。不得把PHP开发入口配置为生产回退。
 
+先在空库完成 `app:install`，参数与受控口令环境见[应用初始化](typeapp.md#准备与初始化)。已有安装按应用升级流程维护，不能重复安装或使用已关闭的 `migrate run`。PostgreSQL 同步后端、TLS 和服务凭据准备后，再执行：
+
 ```sh
-php bin/typeapp migrate run
 php bin/typeapp iot:mqtt-install
 php bin/typeapp iot:mqtt
 ```

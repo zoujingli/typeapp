@@ -176,16 +176,13 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
         expect(chmod($directory . '/private.pem', 0600), '恢复测试TLS私钥未限制权限');
     }
     $http = new Type\Testing\HttpClient('http://127.0.0.1:' . $environment['APP_PORT']);
-    $request = static function (string $method, string $path, string $token, string $tenant, ?array $data, int $status = 200, string $support = '') use ($http, &$report): array {
+    $request = static function (string $method, string $path, string $token, string $tenant, ?array $data, int $status = 200) use ($http, &$report): array {
         $headers = ['Content-Type' => 'application/json'];
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
         if ($tenant !== '') {
             $headers['X-Tenant-Id'] = $tenant;
-        }
-        if ($support !== '') {
-            $headers['X-Support-Id'] = $support;
         }
         $response = $http->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '恢复事实管理入口失败：' . $method . ' ' . $path . ' ' . $response->status . ' ' . $response->body);

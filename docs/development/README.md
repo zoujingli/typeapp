@@ -83,6 +83,7 @@
 - [数据库与 Redis 的 TLS 验证](tls-verification.md)
 - [嵌套事务与模型失效](transactions.md)
 - [标准物联应用](typeapp.md)
+- [验收入口与旧夹具迁移边界](test-entrypoints.md)
 - [有界原生 UDP 接入](udp-native-io.md)
 - [有界 WebSocket 会话](websocket.md)
 

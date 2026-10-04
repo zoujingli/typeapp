@@ -11,8 +11,8 @@ use Type\Build\BuildPlatform;
 $root = dirname(__DIR__);
 expect(
     $argc >= 4 && $argc <= 20
-    && array_diff(array_slice($argv, 4), ['--app', '--broker', '--no-source', '--audit', '--broker-audit', '--broker-resources', '--products', '--devices', '--business', '--history', '--aggregate', '--alarms', '--exports', '--export-transfers-only', '--io-export-baseline', '--lifecycle', '--operations']) === [],
-    '用法：php tests/iot-identity-databases.php <原生产物或--php> <MySQL工具根> <PostgreSQL工具根> [--app|--broker] [--no-source] [--audit] [--broker-audit] [--broker-resources] [--products] [--devices] [--business] [--history] [--aggregate] [--alarms] [--exports [--export-transfers-only|--io-export-baseline]] [--lifecycle] [--operations]'
+    && array_diff(array_slice($argv, 4), ['--app', '--broker', '--no-source', '--audit', '--broker-resources', '--products', '--devices', '--business', '--history', '--aggregate', '--alarms', '--exports', '--export-transfers-only', '--io-export-baseline', '--lifecycle', '--operations']) === [],
+    '用法：php tests/iot-identity-databases.php <原生产物或--php> <MySQL工具根> <PostgreSQL工具根> [--app|--broker] [--no-source] [--audit] [--broker-resources] [--products] [--devices] [--business] [--history] [--aggregate] [--alarms] [--exports [--export-transfers-only|--io-export-baseline]] [--lifecycle] [--operations]'
 );
 expect(!in_array('--export-transfers-only', $argv, true) || in_array('--exports', $argv, true), '转移导出专项需要--exports');
 $ioExportBaseline = in_array('--io-export-baseline', $argv, true);

@@ -32,6 +32,8 @@ composer typeapp -- app:install platform-admin 平台管理员 customer-admin �
 
 `app:install` 是唯一全新安装入口。`migrate status|history` 读取记录，`migrate recover` 仅供操作者核对异常迁移状态，不能创建安装身份或替代初始化；`migrate run` 不开放。发现已有对象返回 `TYPE_MIGRATION_NOT_EMPTY`，不修改已有数据。
 
+已有安装通过 `app:upgrade --check` 检查计划，显式停写并核对备份后使用 `app:upgrade --offline --backup <文件> --sha256 <摘要>`。升级保留当前安装身份、账号和业务数据，只接受当前安装谱系；它不自动停止集群，也不证明备份可恢复。该入口及下述统一预检、部署预算、就绪检查属于 RC14 之后的 `main`，实际验证见[运行闭环修复](../evidence/system-architecture-fixes-20261004.md)。
+
 ## 配置与运行
 
 `config.files` 中的 PHP 只包含受限数组及 `env` 声明，构建时生成并编译，生产不解释 PHP 配置。`config/route.php` 是路由声明，不允许 `env()`。`.env` 是启动数据，优先级为：进程环境 > 软件运行根 `.env` > 声明默认值；不读取实际部署密钥生成源码。运行根依次取进程显式 `APP_BASE_PATH`、发布启动器提供的 `TYPE_APP_RUNTIME_ROOT`、原生软件所在目录；开发 `bin/typeapp` 使用项目根。根必须为已经存在的绝对目录；软件绝对/相对路径或 PATH 启动均按实际入口定位，切换工作目录不改变配置目标。数据库 CA、SQLite、导出和通知 Redis CA 的相对路径均基于该根。
@@ -49,7 +51,7 @@ composer typeapp -- app:install platform-admin 平台管理员 customer-admin �
 
 `config:check` 只读，报告已编译声明的键、类型、文件是否声明、实际来源、文件 SHA256 版本和结构错误，不输出任何配置值。进程覆盖键显示只读及 `process_environment_requires_operator_restart`；运维须修改进程环境并重启。未声明的文件键单独列出，不成为运行代码或可管理字段。检查也验证被覆盖文件值的声明类型，防止恢复副本藏有无效类型。普通检查不连接数据库、不初始化 SQLite、不创建恢复文件。
 
-`--connect` 在当前环境下用真实驱动执行 `SELECT 1`，并检查导出、通知及已启用缓存的 Redis 连接、认证和 PING；各结果独立返回且不泄漏驱动异常。它不迁移模式、不改变安装身份，也不表示所有业务角色已就绪。`--remember` 隐含此检查，全部通过且文件版本未变化才更新 `runtime/config/last-valid.json`；纯检查、失联或错误文件不会覆盖有效副本。副本保存原始文件内容、校验和、检查时间及进程覆盖键名，**不会把进程环境中的值写入文件**；连通结果只对检查时的有效配置成立，不承诺后续环境或依赖不变。
+`--connect` 在当前环境下用真实驱动执行 `SELECT 1`，并按构建能力检查导出、通知和调度的 Redis 连接、认证及 PING；未启用的用途返回 `disabled`，各结果独立返回且不泄漏驱动异常。物联中心没有通用业务缓存消费者，旧 `APP_CACHE_ENABLED=true` 在预检时返回 `feature_unavailable`。检查不迁移模式、不改变安装身份，也不表示所有业务角色已就绪。`--remember` 隐含连接检查，全部通过且文件版本未变化才更新 `runtime/config/last-valid.json`；纯检查、失联或错误文件不会覆盖有效副本。副本保存原始文件内容、校验和、检查时间及进程覆盖键名，**不会把进程环境中的值写入文件**；连通结果只对检查时的有效配置成立，不承诺后续环境或依赖不变。
 
 `config:restore` 不连接数据库或 Redis，即使当前 `.env` 损坏、数据库失联或进程覆盖存在类型错误，也可把受控副本原子恢复到原位置。当前环境覆盖继续生效，输出显示其来源及结构是否有效；`loaded_version` 为 null，成功状态为 `restored_restart_required`，由运维重启并核对实际健康。它不启动或重启服务，不将文件成功等同于进程已恢复。
 
@@ -62,9 +64,9 @@ composer typeapp:build
 build/app/type-app serve
 ```
 
-原生构建配置为 `docs/build-config/type-app.json`，产物为 `build/app/type-app`。默认生产 HTTP 使用 Swoole 的线程与协程，`APP_DATABASE_THREADS` 默认2；主线程启用 hook 并建立监听，每个编译业务线程建立自身配置和数据库资源，复用既有 `ThreadSupervisor`、`SwooleServer::serveThread` 和资源预算。没有另建线程池或事件循环，子线程不重复更改进程级 hook。
+原生构建配置为 `docs/build-config/type-app.json`，产物为 `build/app/type-app`。生产 HTTP 使用 Swoole 的线程与协程，`APP_HTTP_THREADS` 指定 HTTP 执行线程数，默认 2；Windows 当前使用单执行者。`APP_DATABASE_THREADS` 单独声明每进程最多同时占用数据库连接的线程数，不能当作 HTTP 启动数量。主线程启用 hook 并建立监听，每个编译业务线程建立自身配置和数据库资源，复用既有 `ThreadSupervisor`、`SwooleServer::serveThread` 和部署分额，子线程不重复更改进程级 hook。实际角色与滚动重叠须纳入[部署预算](../guide/configuration.md#部署连接预算)。
 
-HTTP 传输固定复用 Swoole 线程与协程入口，不提供并行的同步传输实现。独立 Broker 仍使用 `broker:install`、`broker:user`、`broker:serve`，见[Broker说明](broker-management.md)。原设备和恢复维护命令保留到相应任务转换，不能直接作用于新身份模式并声称业务完成。
+HTTP 传输固定复用 Swoole 线程与协程入口。独立 Broker 使用 `broker:install`、`broker:user`、`broker:serve`，见[Broker说明](broker-management.md)。设备、告警、导出、调度和独立恢复按当前业务装置分别验收；旧组合参数与负载夹具的边界见[验收入口与迁移边界](test-entrypoints.md)，不能从角色存在推断整条业务路径已经验证。
 
 平台 `/admin/customers` 复用账号目录和授权事务，提供列表/详情、创建、资料更新、启停、密码重置及会话撤销。各写入按独立固定节点检查，修改使用预期 `version`；启用租户必须始终保有有效最高管理员，平台停用客户同样遵守。客户本人通过 `PATCH /customer/account` 修改 `login/name`，通过 `POST /customer/account/password` 改密；两者均需要 `version/current_password`，目标来自真实客户会话，不依赖租户角色或接受客户端账号标识。改密、全局停用及会话撤销删除对应客户全部旧会话；资料变更不隐含这些敏感动作。操作与审计同事务，平台操作记录在平台审计并保留客户目标域。
 
@@ -80,12 +82,12 @@ HTTP 传输固定复用 Swoole 线程与协程入口，不提供并行的同步�
 php tests/iot-identity-databases.php build/app/type-app <MySQL工具根> <PostgreSQL工具根> --app
 ```
 
-原生环境需提供匹配的 `PHP_HOME`、`PHPX_HOME`；包装入口从构建报告取得原生配置。macOS 可追加 `--no-source`，以系统策略拒绝业务、组件、vendor、配置与编译器源码读取；这项运行包仍不是最终单软件文件。浏览器从 `tests/iot-identity.php <产物> sqlite --app --browser-dist=<隔离构建目录>` 运行，使用同一真实后端。
+开发 embed 验收需提供匹配的 `PHP_HOME`、`PHPX_HOME`；包装入口从构建报告取得原生配置。macOS 可追加 `--no-source`，以系统策略拒绝业务、组件、vendor、配置与编译器源码读取。共享库开发产物与静态发布程序分别记录，开发验收不代替发布门禁。浏览器从 `tests/iot-identity.php <产物> sqlite --app --browser-dist=<隔离构建目录>` 运行，使用同一真实后端。
 
 应用组合测试从主仓 `app/`、配置和前端构建物联中心，通过 `composer test:app-candidate` / `composer test:app-candidate-native` 检查全新安装、身份边界、业务目录和独立 Broker。该测试不代替单程序封装、独立分发及全平台完整验收。
 
 独立候选验证使用 `composer test:broker-candidate` / `composer test:broker-candidate-native`，分别安装 Broker 管理宿主与物联组合，核对标准 MQTT 到业务持久回执的接收链；该入口的结果按实际运行状态记录。
 
-全量 AOT 包含框架、业务、生成代码及全部生产 PHP 依赖；唯一例外是固定 Swoole 官方内置库沿用官方加载，版本和内容进入产物身份。四平台默认矩阵已在 `bf28c8b` 基线上通过完整应用 AOT 与各自三库场景，主应用、模板和无源码隔离范围见[平台与验收](../guide/platforms.md)。完整设备链路、全部业务故障及静态单程序仍需独立验收。
+全量 AOT 包含框架、业务、生成代码及全部生产 PHP 依赖；唯一例外是固定 Swoole 官方内置库沿用官方加载，版本和内容进入产物身份。公开 RC14 已完成四平台默认原生 CI 和 12 个数据库 profile 静态单程序的隔离部署，准确身份见[升级验收](../evidence/typephp-upgrade-0.9.4.md)。`main` 后续修改按自己的源码、产物和平台重新验收，不能继承历史通过结论；完整设备链路、全部业务故障及目标容量仍有专项边界，见[平台与验收](../guide/platforms.md)。
 
 `type-project` 是通用独立应用模板，已完成公开子仓消费和三库原生部署，不默认携带物联业务。物联成品的同源创建仍需从本业务、前端及配置单独实现和验收，不能用通用模板代替。组件只分发 `plugin/type-*` 子树，应用与私有配置不会进入组件子仓。

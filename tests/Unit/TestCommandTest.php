@@ -12,6 +12,32 @@ require_once dirname(__DIR__) . '/support.php';
 /** 覆盖测试命令哨兵的跨平台参数、输出和退出码契约，避免 shell 改写参数。 */
 final class TestCommandTest extends TestCase
 {
+    /** 失效专项必须在读取原生产物或启动服务前失败，不能只执行基础场景后返回成功。 */
+    public function testIdentitySuiteRejectsRetiredAndMixedScenariosBeforeSetup(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $cases = [
+            ['iot-identity.php', ['sqlite', '--app', '--load-baseline'], '验收选项已退出或尚未接入当前身份'],
+            ['iot-identity.php', ['sqlite', '--broker', '--support'], '验收选项已退出或尚未接入当前身份'],
+            ['iot-identity.php', ['sqlite', '--devices', '--recovery'], '验收选项已退出或尚未接入当前身份'],
+            ['iot-identity.php', ['sqlite', '--app', '--broker'], '身份验收不能混用'],
+            ['iot-identity.php', ['sqlite', '--app', '--broker-observability'], 'Broker 专项需要 --broker'],
+            ['iot-identity-databases.php', ['missing-mysql-tools', 'missing-pgsql-tools', '--app', '--broker-audit'], '用法：'],
+        ];
+        foreach ($cases as [$script, $arguments, $reason]) {
+            $process = new Process([PHP_BINARY, $root . '/tests/' . $script, 'missing-test-artifact', ...$arguments], $root);
+            try {
+                $result = $process->wait(10);
+                self::assertFalse($result->successful());
+                self::assertStringContainsString($reason, $result->stdout . $result->stderr);
+                self::assertStringNotContainsString('原生身份验收需要原生产物', $result->stdout . $result->stderr);
+                self::assertStringNotContainsString('身份验证产物不存在', $result->stdout . $result->stderr);
+            } finally {
+                $process->stop();
+            }
+        }
+    }
+
     /** 异常仍可报告原故障，但不能持有已释放的数据库连接或输出凭据参数。 */
     public function testFailureTraceDoesNotRetainTestConnectionOrCredentials(): void
     {
