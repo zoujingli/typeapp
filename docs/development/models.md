@@ -59,15 +59,38 @@ MySQL 连接初始化 UTC 和严格模式，PostgreSQL 初始化 UTC 与 ISO Dat
 
 `ModelQuery::scope()` 和实例 `search()` 组合不可变查询。搜索器必须来自显式映射，未知搜索键被拒绝；静态 `Model::search()` 创建显式输入的筛选助手，在 `query()` 或 `paginatePage()` 时以 `unknown_search_field` 拒绝未声明的输入键，两者职责不同。`first()` 保留已有 offset；单表别名支持普通、无总数及游标分页，排序仍须满足真实主键和字段约束。
 
-模型查询的批量新增和 upsert 尚未提供；表 Query 的同名能力不自动带入模型约束。
+模型查询支持下述聚合与批量新增；模型级 upsert 尚未提供，表 Query 的冲突写入不自动带入模型约束。聚合、`insertMany` 与 PDO hook 前置检查属于当前 `main`，尚未包含 RC14。
 
 `ModelBehavior` 是不可变声明：修改器在类型规范化前处理输入，获取器只处理读取和输出；持久化及关系匹配使用原始存储值，展示获取器不能改变写入身份。修改器、获取器各接收一个值。属性赋值、`set` 和批量 `fill` 均遵守赋值白名单；持久化主键和生命周期字段受保护。
+
+## 模型统计与批量新增
+
+```php
+$visible = User::query()->where('active', '=', true);
+$count = $visible->count();
+$totalAge = $visible->sum('age');
+$average = $visible->avg('age');
+$minimum = $visible->min('age');
+$maximum = $visible->max('age');
+```
+
+聚合使用模型属性名并沿用租户、软删除及读路由；`master()` 或同库事务保持主读。每次调用执行一条聚合 SQL，数值及时间字段另作实际存储类型校验，不水合模型、不预加载关系。它不是多个统计值的快照接口；需要一致快照时显式使用相应隔离级别的事务。
+
+`sum/avg` 仅支持 integer、bigint、decimal；`min/max` 还支持 string 和 datetime。JSON、布尔等未定义排序语义的字段明确拒绝。四种字段聚合在空集或目标字段全部为 null 时返回 null；业务要将无数据当作零时显式使用 `?? 0`。`count()` 统计匹配行，空集为 0，与某字段是否为 null 无关。SUM/AVG 保留数据库标量类型，不套用单值的 precision/scale，也不强制转浮点。MIN/MAX 按字段类型回读，datetime 为 UTC 的不可变日期。展示获取器不参与数据库统计。
+
+integer 聚合要求实际整型列；映射到文本、小数或浮点列时报 `integer_arithmetic_unsupported`，避免字典序比较和隐式转换。bigint/decimal 必须使用满足精度声明的真实数值列才能统计。SQLite 精确数值 TEXT 列以及其他数据库的数值文本列报 `exact_arithmetic_unsupported`；模型读取这些字段仍可无损进行。相同存储规则也用于 `increment/decrement` 与关系 `withSum`。LIMIT、分组和行锁不参与标量聚合，另建统计查询。
+
+批量新增用 `Model::query()->insertMany($rows)`，每行都是以模型属性名为键的字段数组。空列表返回 0；非空列表只执行一条 INSERT，返回数据库影响数量。字段修改器、严格类型、赋值白名单、必填与实际存储校验都在写入前执行，不水合结果或猜测自动主键。
+
+整批必须具有相同字段集合，键顺序可不同；可空字段需要显式 null 时应在每行一致提供。可信租户自动补入，显式提供时必须与上下文一致；声明的版本从 1 开始，软删除状态为 null，调用者不能覆盖生命周期字段。新增不接受 where、排序、投影、关系、LIMIT 等读取状态，避免丢弃调用者条件。需要逐模型事件、生成主键或领域级联时，在 `Db::transaction()` 中逐条 `create()`。
+
+写入复用集合操作的事务/保存点及原子存储检查，包含 SQLite 触发器 `RAISE(FAIL)` 的整批回滚。失败不会保留前面已插入的行；已有外层事务只回滚本次保存点。数据库参数上限和约束错误明确失败，不添加 `maxRows`、静默截断或自动拆成多次提交。提交结果未知仍须按业务标识对账。
 
 ## 模型集合写入
 
 ```php
-$affected = Article::query()->where('status', '=', 'draft')->update(['status' => 'archived']);
-$deleted = Article::query()->where('status', '=', 'archived')->delete();
+$affected = User::query()->where('age', '<', 18)->update(['active' => false]);
+$deleted = User::query()->where('active', '=', false)->delete();
 ```
 
 两者自动选择主库，保留可信租户和软删除范围，以单条写入 SQL 处理集合，返回数据库报告的影响数量。没有额外的 `maxRows` 限制，不把目标行全部载入内存，也不在应用侧隐式分批。没有业务条件时须显式调用 `allowAll()`，自动租户或软删除条件不能代替调用者的全量写入意图。

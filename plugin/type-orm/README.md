@@ -2,7 +2,7 @@
 
 提供独立于 HTTP 核心的驱动协议、受管连接、参数化查询、模型/关系、事务、迁移与 Outbox。数据库差异由所选驱动及明确的查询方言处理，不提供隐藏的写入重试或跨系统事务保证。
 
-四平台默认原生 CI 已在同一源码基线上通过，覆盖 MySQL、PostgreSQL、SQLite 的组件与应用场景；公共组件批次另通过准确分发提交的安装、全量 AOT 和三库无源码集成。独立 ORM 消费者验证上下文、真实锁等待、取消、连接所有权、会话退役和并发写入。具体身份与范围见[平台与验收](https://iots.top/#/guide/platforms)；模型聚合、批量新增和 MySQL/SQLite 物理复用等缺口仍按下文保留。
+RC14 的四平台默认原生 CI 已在同一源码基线上通过，覆盖 MySQL、PostgreSQL、SQLite 的组件与应用场景；公共组件批次另通过准确分发提交的安装、全量 AOT 和三库无源码集成。独立 ORM 消费者验证上下文、真实锁等待、取消、连接所有权、会话退役和并发写入。具体身份与范围见[平台与验收](https://iots.top/#/guide/platforms)。当前 `main` 新增的模型聚合、批量新增与 PDO hook 前置检查尚未包含 RC14；MySQL/SQLite 物理复用等边界继续保留。
 
 业务实体 CRUD 使用无连接参数的 Model。启动时由 `Db::configure()` 装配数据库管理器，模型在当前 Swoole 执行作用域中按需借用连接；默认读从写主，`master()` 指定主读，事务内固定同一主库，事务外写后不自动粘主。具有租户字段的模型从应用已验证并绑定的上下文自动隔离，缺失身份拒绝执行。PostgreSQL 已实现完整会话重置后的 PDO 复用；MySQL、SQLite 的物理复用及完整原生平台验收仍有缺口，当前能力和限制见开发主仓的[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)。
 
@@ -34,9 +34,9 @@ Database 通过 type-runtime 的有界池按作用域借还会话。Connection �
 
 `Connection::table()` 提供不可变 Query，支持条件、Join、聚合、JSON 标量、批量写入和明确的三库能力差异。`Model`、`ModelQuery` 与生成映射提供受控访问、变更追踪、部分字段保存和安全输出；详细用法见开发主仓 `docs/development/models.md`。本包第一方源码按 Apache-2.0 提供；具体仓库可见性和分发批次由维护者管理。
 
-模型 CRUD、事务结果与作用域收尾的完整路径见[数据库与模型](https://iots.top/#/guide/database)。`ModelQuery::update/delete` 以单条写入 SQL 保留字段、租户、软删除及版本约束，没有额外行数上限；集合操作不触发逐模型观察器，已有对象需重新读取。没有业务条件时须显式 `allowAll()`。模型级 `insertMany/upsert` 尚未提供。具体约束及验收边界见[模型集合写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#模型集合写入)。
+模型 CRUD、事务结果与作用域收尾的完整路径见[数据库与模型](https://iots.top/#/guide/database)。`ModelQuery::update/delete` 以单条写入 SQL 保留字段、租户、软删除及版本约束，没有额外行数上限；集合操作不触发逐模型观察器，已有对象需重新读取。没有业务条件时须显式 `allowAll()`。`insertMany` 逐行校验字段并补入可信租户及初始版本、软删除状态，执行一条 INSERT，返回影响数量；不猜测主键、不触发逐模型事件，失败回滚整批。模型级 upsert 尚未提供。具体约束及验收边界见[模型集合写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#模型集合写入)。
 
-模型自身的 SUM、AVG、MIN、MAX 聚合及并发查找或创建入口也尚未提供；重新加载可在当前作用域显式读主库取得新对象，时间字段可由观察器处理。完整[能力边界](https://iots.top/#/guide/database?id=常用能力边界)区分已有模型能力、底层 SQL 与待补接口。协程运行还依赖所选 PDO 的官方 hook；当前缺 hook 的启动拒绝仍需补齐，不能以扩展加载成功替代真实等待验收。
+`ModelQuery::sum/avg/min/max` 在模型可见范围内统计，保留读路由、字段映射及数据库数值精度；空集或全 null 返回 null，数值文本列的精确算术明确拒绝。并发查找或创建入口仍未提供；重新加载可在当前作用域显式读主库取得新对象，时间字段可由观察器处理。完整[能力边界](https://iots.top/#/guide/database?id=常用能力边界)区分已有模型能力、底层 SQL 与待补接口。协程中创建 PDO 前检查所选驱动：缺官方构建能力报 `swoole_pdo_hook_unavailable`，未启用 hook 报 `swoole_hook_startup_required`；同步工具保持原有行为。
 
 ## 迁移
 

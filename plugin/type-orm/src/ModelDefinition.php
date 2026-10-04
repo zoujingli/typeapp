@@ -233,11 +233,15 @@ final class ModelDefinition
         }
     }
 
-    /** 精确数值的数据库运算要求真实数值列，文本仅用于无损读写。 */
+    /**
+     * 整数运算要求真实整型列；精确数值运算要求真实数值列，文本仅用于无损读写。
+     *
+     * @throws ModelException integer_arithmetic_unsupported 或 exact_arithmetic_unsupported 表示物理存储会改变数值语义。
+     */
     public function assertArithmeticStorage(Connection $connection, string $name): void
     {
         $field = $this->field($name);
-        if (!in_array($field->typeName(), ['bigint', 'decimal'], true)) {
+        if (!in_array($field->typeName(), ['integer', 'bigint', 'decimal'], true)) {
             return;
         }
         $this->assertStorage($connection, [$name]);
@@ -245,10 +249,20 @@ final class ModelDefinition
             if (strtolower($column['name']) !== strtolower($field->column())) {
                 continue;
             }
+            if ($field->typeName() === 'integer') {
+                // SQLite 的文本和 REAL 也能隐式参与算术；明确整型声明才能支持整数模型运算。
+                if (preg_match('/^(?:tinyint|smallint|mediumint|int|integer|bigint|int2|int8)(?:\([0-9]+\))?(?: unsigned)?(?: zerofill)?$/iD', trim($column['type'])) === 1) {
+                    return;
+                }
+                break;
+            }
             if ($connection->driverName() !== 'sqlite'
                 && preg_match('/^(?:numeric|decimal|tinyint|smallint|mediumint|int|integer|bigint)(?:\b|\()/i', $column['type'])) {
                 return;
             }
+        }
+        if ($field->typeName() === 'integer') {
+            throw new ModelException('integer_arithmetic_unsupported', '整数模型的数据库端运算要求真实整型列，不能隐式转换文本、小数或浮点列：' . $field->column());
         }
         throw new ModelException('exact_arithmetic_unsupported', '精确数值文本列不支持数据库端算术，请使用真实数值列');
     }

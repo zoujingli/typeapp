@@ -10,20 +10,23 @@ ORM 使用 PDO 访问数据库协议，Swoole 提供协程上下文、等待、C
 
 当前已具备从模型声明、数据读写到事务与资源收尾的主路径，常用接口仍有待补项。下表区分模型能力与底层表查询；已有 SQL 接口不代表它自动执行模型字段、租户、软删除、版本或事件规则。
 
+本页的 `ModelQuery::sum/avg/min/max`、`insertMany` 和所选 PDO hook 前置检查属于当前 `main`，尚未包含在已发布的 RC14 中。开发应用使用含这些改动的组件源码并重新构建，版本安装仍按[发布说明](releases.md)核对。
+
 | 需求 | 当前能力 | 使用边界 |
 | --- | --- | --- |
 | 单条 CRUD 与字段状态 | `create/find/save/delete`、脏字段、部分加载、严格赋值和显式输出 | 失败或回滚后的失效对象重新查询 |
 | 查询、分页与遍历 | 条件组合、`exists/value/pluck/count`、三种分页及 `chunk` | 模型无逐行 `stream`；`chunk` 提供有界遍历，不用于活动事务 |
-| 模型聚合 | 计数已有，模型自身的 SUM、AVG、MIN、MAX 尚未提供 | 关系 `withSum` 与底层 `Query::aggregate` 不等于模型聚合 |
+| 模型聚合 | `count/sum/avg/min/max`，保留字段映射、租户、软删除和读路由 | 空集计数为 0，其他为 null；精确文本列拒绝数据库数值聚合，不强制转浮点 |
 | 集合修改与删除 | `update/delete/increment/decrement` 已有 | 单条写入，不设额外匹配行数上限；不触发逐模型事件 |
-| 批量新增与冲突写入 | 底层 Query 已有；模型级 `insertMany/upsert` 尚未提供 | 不直接绕过模型约束；逐条 `create` 加事务与批量 SQL 的成本、返回和事件语义不同 |
+| 批量新增 | `ModelQuery::insertMany` 校验整批字段并执行单条 INSERT | 返回影响数量，不触发逐模型事件、不返回猜测主键；约束失败回滚整批 |
+| 批量冲突写入 | 底层 Query 已有；模型级 `upsert` 尚未提供 | MySQL 任意唯一键冲突与另两库的指定冲突目标不同，不能绕过租户、软删除及版本规则 |
 | 并发查找或创建 | 尚无模型专用入口 | `first` 后 `create` 存在竞争窗口；需要数据库唯一约束和明确冲突处理 |
 | 关系 | 四类关系、嵌套预加载、补加载、关系条件和计数/求和；多对多 `attach/detach/sync` | 关系读取不隐式发 SQL；没有专用多态、穿透关系或关系创建助手 |
 | 软删除与生命周期 | 实例恢复/物理删除、获取器/修改器和显式观察器 | 没有集合恢复/强制删除、自动时间字段声明或 `fresh/refresh` 专用接口；重新读主库取得新对象 |
 | 事务、路由与租户 | 同库事务、保存点、提交后回调、乐观锁、主从与可信上下文范围 | 子任务独立事务；未知提交需要对账，不能自动重试 |
 | 迁移与外部效果 | 版本化 SQL 迁移、历史校验/恢复与事务 Outbox | 应用实现投递与目标幂等；没有迁移 `down` 或通用 Schema DSL |
 
-模型聚合和批量冲突写入是优先补齐的基础能力；便捷方法按实际调用需求增加。隐式懒加载、动态扫描和共享活动模型不属于当前执行方式。具体交付顺序见 [ORM 补齐顺序](roadmap.md#orm-补齐顺序)，真实三库与编译范围见[独立消费矩阵](https://github.com/zoujingli/typeapp/blob/main/docs/development/orm-consumer-matrix.md)。
+批量冲突写入与会话复用继续按 [ORM 补齐顺序](roadmap.md#orm-补齐顺序)推进；便捷方法按实际调用需求增加。隐式懒加载、动态扫描和共享活动模型不属于当前执行方式。真实三库与编译范围见[独立消费矩阵](https://github.com/zoujingli/typeapp/blob/main/docs/development/orm-consumer-matrix.md)。
 
 ## 一次模型操作怎样完成
 
@@ -56,12 +59,13 @@ sequenceDiagram
 | 新增、查找 | `create/find/query/search` | 严格赋值、租户范围、未命中和输出字段 |
 | 修改、删除、恢复 | 实例 `save/delete/restore/forceDelete` | 影响记录、软删除、版本冲突及对象是否仍有效 |
 | 列表与关系 | `get/paginate/with/load/loadMissing` | 有界结果、稳定排序、匹配模型与数据源；关系不隐式懒加载 |
+| 统计与导入 | `sum/avg/min/max/insertMany` | 统计遵守可见范围；导入逐行校验后整批写入，事件与返回语义区别于逐条创建 |
 | 集合算术 | `ModelQuery::increment/decrement` | 返回影响数量，推进版本；已加载对象需要重新查询 |
 | 集合更新、删除 | `ModelQuery::update/delete` | 模型字段、租户及软删除约束，整条写入原子性；不触发逐模型事件 |
 | 多步写入 | `Db::transaction/afterCommit` | 同库提交、回滚、未知结果和提交后失败分别处理 |
 | 外部投递 | 事务 Outbox 与应用 Publisher | 写入意图、实际投递、目标幂等和后续对账 |
 
-模型集合写入在主库执行单条写入 SQL，不额外限制匹配行数，也不要求业务拆批。没有业务条件时须显式 `allowAll()`，它仍保留租户及软删除范围。模型级 `insertMany/upsert` 尚未提供；底层表 Query 的同名能力不自动获得模型约束。
+模型集合写入在主库执行单条写入 SQL，不额外限制匹配行数，也不要求业务拆批。更新或删除没有业务条件时须显式 `allowAll()`，它仍保留租户及软删除范围。新增使用无读取条件的 `Model::query()->insertMany($rows)`；框架自动补入可信租户及声明的初始版本、软删除状态。底层表 Query 不自动获得这些模型约束。
 
 ```mermaid
 flowchart TB
@@ -81,13 +85,15 @@ Swoole 在可让出的数据库等待期间调度其他协程；ORM 负责把连
 
 | 环节 | 当前行为 | 尚需闭合的条件 |
 | --- | --- | --- |
-| 数据库 I/O | `enableIo()` 启用已有的官方 hook；MySQL 依赖 mysqlnd 与网络 hook，PostgreSQL/SQLite 需要相应构建能力 | 缺所选 PDO hook 时目前仍可能接受启动；还需按实际选用驱动明确拒绝，不能只检查扩展版本 |
+| 数据库 I/O | 启动时 `enableIo()` 配置官方 hook；协程中创建物理连接前检查所选驱动的构建能力与已启用标志 | MySQL 要求 PDO 使用 mysqlnd 与网络 hook；PostgreSQL/SQLite 要求对应官方 PDO hook，扩展版本不能替代能力检查 |
 | 借用与隔离 | 同一作用域按需复用租约；子任务独立连接，事务绑定同一主库 | 自定义协议入口同样必须绑定并关闭作用域 |
 | 容量与取消 | 有界排队、截止及取消；超时后仍持有在途连接额度，直到真实退出 | 实际数据库调用未退出时不能强称已取消或回滚，不能透明重试写入 |
 | 会话归还 | 清理事务和游标；PostgreSQL 重置后可物理复用，MySQL/SQLite 关闭重建 | 后两者的完整会话重置与跨租约物理复用尚未实现 |
 | 验收 | 已有真实锁等待、隔离、断连退役和独立消费者；四平台默认矩阵与公共组件三库集成通过 | 纯 CRUD 复用仍需独立身份断言；当前已验收源码及实际范围见[平台与验收](platforms.md)，不等于完整 ORM 能力已交付 |
 
 开发和构建环境需匹配 PDO 驱动与 Swoole 构建能力；生产单程序已静态链接所需非系统运行库，用户无需另行安装或启动 Swoole。数据库服务、配置和数据的维护要求见[环境与依赖](environment.md)和[构建与部署](deployment.md)。
+
+缺少所选驱动的编译能力报 `swoole_pdo_hook_unavailable`，已有能力但未在启动期启用报 `swoole_hook_startup_required`。检查不在业务协程里修改全局 hook，也不因未使用的数据库驱动阻止连接。协程外的同步迁移和工具仍可使用 PDO；是否真正让出等待由真实锁等待验收确认。
 
 ## 选择数据库
 

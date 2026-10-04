@@ -53,6 +53,14 @@ function readWriteExpect(bool $condition, string $message): void
     }
 }
 
+/** 四种模型聚合均在执行时选路；使用主从已知不同的子记录主键验证实际数据来源。 */
+function readWriteAggregateExpect(\Type\Orm\ModelQuery $query, int $expected): void
+{
+    $children = $query->where('parent_id', '=', 1);
+    readWriteExpect((string) $children->sum('id') === (string) $expected && (float) $children->avg('id') === (float) $expected
+        && $children->min('id') === $expected && $children->max('id') === $expected, '模型聚合没有使用当前读写路由');
+}
+
 /**
  * 验证模型执行时选路、事务固定与写后不粘主，读写端点由测试配置指定。
  *
@@ -75,16 +83,27 @@ function main(int $argc, array $argv): void
                 readWriteExpect($manager->statistics()['active'] === [], '构造查询提前借用数据库');
                 $expected = $driver === 'sqlite' ? '主库已有' : '副本旧值';
                 readWriteExpect($base->findOrFail(1)->getValue() === $expected, '普通读取没有使用配置端点');
+                readWriteAggregateExpect($base, $driver === 'sqlite' ? 10 : 11);
+                readWriteAggregateExpect($base->master(), 10);
                 readWriteExpect($base->master()->with('children')->withCount('children')->findOrFail(1)->related('children')[0]->getValue() === '主库子', 'master 或关系没有沿用主库');
                 $beforeTransaction = ReadWriteProbe::query();
                 Db::transaction(static function () use ($beforeTransaction, $driver): void {
                     readWriteExpect($beforeTransaction->findOrFail(1)->getValue() === '主库已有', '事务前构造查询没有在执行时选主');
+                    readWriteAggregateExpect($beforeTransaction, 10);
                     if ($driver !== 'sqlite') {
                         readWriteExpect($beforeTransaction->lockForUpdate()->findOrFail(1)->getValue() === '主库已有', '行锁没有使用主库');
                     }
                     (new ReadWriteProbe(['id' => 2, 'value' => '本次写入', 'parent_id' => 0]))->save();
                 });
                 readWriteExpect($base->findOrFail(1)->getValue() === $expected && $base->master()->findOrFail(2)->getValue() === '本次写入', '事务后普通读取错误粘主或提交没有持久化');
+                readWriteExpect($base->insertMany([['id' => 20, 'value' => '批量写主', 'parent_id' => 0],
+                    ['parent_id' => 0, 'value' => '同批写主', 'id' => 21]]) === 2
+                    && $base->master()->findOrFail(20)->getValue() === '批量写主', '模型批量新增未自动使用主库');
+                readWriteAggregateExpect($base, $driver === 'sqlite' ? 10 : 11);
+                if ($driver !== 'sqlite') {
+                    readWriteExpect($base->find(20) === null && $base->find(21) === null, '模型批量新增写入副本或导致后续读取粘主');
+                }
+                readWriteExpect($base->whereIn('id', [20, 21])->delete() === 2, '模型批量路由夹具没有按主库条件清理');
                 if ($driver !== 'sqlite') {
                     readWriteExpect($base->find(2) === null && $base->with('children')->findOrFail(1)->related('children')[0]->getValue() === '副本子', '副本延迟或普通关系选路错误');
                     $fromReader = $base->findOrFail(1);

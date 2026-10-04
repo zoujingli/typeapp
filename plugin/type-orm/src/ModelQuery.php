@@ -810,6 +810,103 @@ final class ModelQuery
     }
 
     /**
+     * 校验完整批次后执行一条 INSERT；自动写入租户及生命周期初值，不水合模型或触发逐模型事件。
+     *
+     * @param list<array<string, mixed>> $rows 使用模型属性名，每行须提供相同字段集合。
+     * @return int 数据库报告的新增行数；空列表返回零，不推测自动主键。
+     * @throws ModelException 字段、租户、必填、批次形状或实际存储不符合模型声明。
+     * @throws DatabaseException 查询含筛选等非插入状态，或数据库约束失败；整条写入由事务或保存点保护。
+     */
+    public function insertMany(array $rows): int
+    {
+        if ($this->query === null) {
+            return $this->materialize(true)->insertMany($rows);
+        }
+        $this->assertExecution();
+        if ($this->explicitSelection || $this->relations !== [] || $this->computations !== [] || $this->trashed !== 'without') {
+            throw new ModelException('invalid_insert_query', '批量新增不接受投影、预加载、关系计算或软删除查询模式');
+        }
+        $query = $this->query->select(['*']);
+        // 空批次仍复用底层的完整插入形态校验，不执行 SQL，也不静默丢弃原查询状态。
+        $query->insertMany([]);
+        if (!array_is_list($rows)) {
+            throw new ModelException('invalid_insert_rows', '批量新增必须传入关联行列表');
+        }
+        if ($rows === []) {
+            return 0;
+        }
+        $encoded = [];
+        $fields = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                throw new ModelException('invalid_insert_rows', '批量新增的每项必须是字段映射');
+            }
+            $values = $this->insertValues($row);
+            $names = array_keys($values);
+            sort($names);
+            if ($encoded !== [] && $names !== $fields) {
+                throw new ModelException('inconsistent_insert_fields', '批量新增每行必须包含相同字段，缺省值与 null 不能混用');
+            }
+            $fields = $names;
+            $stored = [];
+            foreach ($values as $name => $value) {
+                $mapping = $this->definition->field($name);
+                $stored[$mapping->column()] = $mapping->encode($value);
+            }
+            if ($stored === []) {
+                throw new ModelException('empty_insert', '新增模型至少需要一个显式字段');
+            }
+            $encoded[] = $stored;
+        }
+        $this->definition->assertStorage($this->connection, $fields);
+        return $this->mutate($query, static fn (Query $target): int => $target->insertMany($encoded));
+    }
+
+    /** 先转换普通输入，再补受管字段；修改器不得改变可信租户或生命周期初值。 */
+    private function insertValues(array $row): array
+    {
+        $tenant = $this->definition->tenantField();
+        $identity = $this->definition->tenantIdentity($this->execution);
+        $version = $this->definition->versionField();
+        $deleted = $this->definition->softDeleteField();
+        $values = [];
+        foreach ($row as $name => $value) {
+            if (!is_string($name)) {
+                throw new ModelException('unknown_field', '模型字段名必须为字符串');
+            }
+            $mapping = $this->definition->field($name);
+            if ($name === $tenant) {
+                if ($mapping->normalize($value) !== $identity) {
+                    throw new ModelException('tenant_scope_conflict', '批量新增不能改变租户归属');
+                }
+                continue;
+            }
+            if (!$mapping->fillable() || $name === $version || $name === $deleted) {
+                throw new ModelException('field_not_fillable', '批量新增不能设置受保护字段：' . $name);
+            }
+            $values[$name] = $mapping->normalize($this->behavior === null ? $value : $this->behavior->write($name, $value));
+        }
+        if ($tenant !== null) {
+            $values[$tenant] = $identity;
+        }
+        if ($version !== null) {
+            $values[$version] = 1;
+        }
+        if ($deleted !== null) {
+            $values[$deleted] = null;
+        }
+        foreach ($this->definition->names() as $required) {
+            if ($required === $this->definition->key() && $this->definition->generatedKey()) {
+                continue;
+            }
+            if ($this->definition->field($required)->required() && !array_key_exists($required, $values)) {
+                throw new ModelException('required_field', '新增模型缺少必需字段：' . $required);
+            }
+        }
+        return $values;
+    }
+
+    /**
      * 单条 SQL 集合更新；字段修改器对每份输入执行一次，不触发逐模型事件或刷新已有对象。
      * @param array<string, mixed> $values 普通可赋值字段。
      * @throws ModelException 字段或物理存储声明不符合模型约束。
@@ -924,6 +1021,74 @@ final class ModelQuery
             return $this->materialize()->count();
         }
         return (int) $this->visibleQuery()->aggregate('COUNT');
+    }
+
+    /**
+     * 对当前可见行求和，不水合模型或加载关系；空集与全 null 返回 null。
+     *
+     * @return int|float|string|null 保留数据库返回的数值，不按单字段精度截断总和。
+     * @throws ModelException 属性不是数值或真实存储不能安全执行精确数值运算。
+     * @throws DatabaseException 查询含 LIMIT、行锁等非标量聚合形态，或数据库运算失败。
+     */
+    public function sum(string $field): mixed
+    {
+        return $this->scalarAggregate('SUM', $field);
+    }
+
+    /**
+     * 对当前可见行求平均；空集与全 null 返回 null，额外小数位由实际数据库决定。
+     *
+     * @return int|float|string|null 不将精确十进制强制转换为浮点数。
+     * @throws ModelException 属性或精确数值存储不允许数据库端运算。
+     * @throws DatabaseException 查询形态不允许标量聚合，或数据库运算失败。
+     */
+    public function avg(string $field): mixed
+    {
+        return $this->scalarAggregate('AVG', $field);
+    }
+
+    /**
+     * 返回可见行中的最小字段值；空集与全 null 返回 null，文本比较沿用数据库排序规则。
+     *
+     * @return int|string|DateTimeImmutable|null 按模型字段类型回读，时间保持 UTC 微秒。
+     * @throws ModelException 属性不可比较，或精确数值文本存储会改变数值排序。
+     * @throws DatabaseException 查询形态不允许标量聚合，或数据库运算失败。
+     */
+    public function min(string $field): mixed
+    {
+        return $this->scalarAggregate('MIN', $field);
+    }
+
+    /**
+     * 返回可见行中的最大字段值；类型、空值和真实存储约束与 min() 一致。
+     *
+     * @return int|string|DateTimeImmutable|null
+     * @throws ModelException 属性或真实存储不允许比较。
+     * @throws DatabaseException 查询形态不允许标量聚合，或数据库运算失败。
+     */
+    public function max(string $field): mixed
+    {
+        return $this->scalarAggregate('MAX', $field);
+    }
+
+    /** 聚合结果不会经过展示获取器；SUM/AVG 的精度范围独立于每个被聚合字段。 */
+    private function scalarAggregate(string $function, string $field): mixed
+    {
+        $mapping = $this->definition->field($field);
+        $arithmetic = $function === 'SUM' || $function === 'AVG';
+        $allowed = $arithmetic ? ['integer', 'bigint', 'decimal'] : ['integer', 'bigint', 'decimal', 'string', 'datetime'];
+        if (!in_array($mapping->typeName(), $allowed, true)) {
+            throw new ModelException('invalid_aggregate_field', '该聚合不接受此模型字段类型：' . $field);
+        }
+        if ($this->query === null) {
+            return $this->materialize()->scalarAggregate($function, $field);
+        }
+        $this->assertExecution();
+        $this->definition->assertStorage($this->connection, [$field]);
+        // 数值文本的 MIN/MAX 是字典序，不能伪装成精确数值比较。
+        $this->definition->assertArithmeticStorage($this->connection, $field);
+        $value = $this->visibleQuery()->aggregate($function, $this->column($field));
+        return $value === null || $arithmetic ? $value : $mapping->normalize($value, true);
     }
 
     /** 返回同时包含软删除与未删除行的新查询；模型须声明软删除。 */

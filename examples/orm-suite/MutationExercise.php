@@ -47,6 +47,8 @@ final class MutationExercise
         }
         $scope->run(static function (ExecutionScope $current) use ($connection): void {
             self::unversionedArithmetic($connection);
+            self::insertAndAggregate($connection, $current);
+            self::integerStorage($connection);
             $base = MutationRecord::query();
             self::storageEdges($connection, $base);
             $offset = $base->orderBy('id')->limit(3, 1);
@@ -127,6 +129,199 @@ final class MutationExercise
                 self::check($untouched->id === 10002 && $untouched->version === 1 && $untouched->value === 0, '集合写入越过租户范围');
             }, ['tenant_id' => 'tenant-b']);
         }, ['tenant_id' => 'tenant-a']);
+    }
+
+    /** 一份字段声明验证批量创建、SQL 空值、精确聚合和租户/软删除范围，不用数组结果替代模型行为。 */
+    private static function insertAndAggregate(Connection $connection, ExecutionScope $scope): void
+    {
+        $date = match ($connection->driverName()) {
+            'mysql' => 'DATETIME(6)', 'pgsql' => 'TIMESTAMP(6)', default => 'TEXT'
+        };
+        $money = $connection->driverName() === 'sqlite' ? 'TEXT' : 'DECIMAL(30, 2)';
+        $large = $connection->driverName() === 'sqlite' ? 'TEXT' : 'DECIMAL(30, 0)';
+        $connection->execute('CREATE TABLE type_suite_bulk (id INTEGER PRIMARY KEY, tenant_id VARCHAR(50) NOT NULL, '
+            . 'stored_label VARCHAR(100) NOT NULL, quantity INTEGER NULL, amount ' . $money . ' NULL, large ' . $large . ' NULL, '
+            . 'occurred_at ' . $date . ' NULL, deleted_at ' . $date . ' NULL, version BIGINT NOT NULL, optional_note VARCHAR(100) NULL, CHECK (quantity >= 0))'
+            . ($connection->driverName() === 'mysql' ? ' ENGINE=InnoDB' : ''));
+        $definition = new ModelDefinition('type_suite_bulk', 'id', [
+            'id' => new ModelField('id', 'integer'), 'tenant_id' => new ModelField('tenant_id'),
+            'title' => new ModelField('stored_label'), 'quantity' => new ModelField('quantity', 'integer', true),
+            'amount' => new ModelField('amount', 'decimal', true, true, true, true, 4, 2),
+            'large' => new ModelField('large', 'bigint', true, true, true, true, 30, 0),
+            'occurred_at' => new ModelField('occurred_at', 'datetime', true),
+            'deleted_at' => new ModelField('deleted_at', 'datetime', true, false, true, false),
+            'version' => new ModelField('version', 'integer', false, false, true, false),
+            'optional' => new ModelField('optional_note', 'string', true, true, true, false),
+        ], false, 'deleted_at', 'version');
+        $query = new ModelQuery($definition, static fn (array $row): MappingProbe => new MappingProbe($definition, $row));
+        $row = ['id' => 1, 'title' => ' alpha ', 'quantity' => 2, 'amount' => '99.99', 'large' => '9007199254740993',
+            'occurred_at' => new \DateTimeImmutable('2026-10-04T08:30:01.123456+08:00')];
+        $second = array_replace($row, ['id' => 2, 'tenant_id' => 'tenant-a', 'title' => 'beta', 'quantity' => 4, 'amount' => '99.98', 'large' => '9007199254740995',
+            'occurred_at' => '2026-10-04T00:30:02.123456Z']);
+        $third = array_replace($row, ['id' => 3, 'title' => 'gamma', 'quantity' => null, 'amount' => null, 'large' => null, 'occurred_at' => null]);
+        $observer = new ArticleObserver();
+        $behavior = (new ModelBehavior())->observe($observer)->setter('title', static fn (mixed $value): mixed => trim((string) $value))
+            ->setter('tenant_id', static fn (mixed $value): mixed => 'tenant-b');
+        $log = $connection->listen($scope, null, 50, 65536, true);
+        try {
+            self::check($query->withBehavior($behavior)->insertMany([$row, array_reverse($second, true), $third]) === 3 && $observer->events() === [], '批量新增行数、字段次序、修改器或事件语义错误');
+        } finally {
+            $log->stop();
+        }
+        $inserts = 0;
+        foreach ($log->records() as $record) {
+            if (str_starts_with(strtoupper($record['sql'] ?? ''), 'INSERT INTO ')) {
+                $inserts++;
+            }
+        }
+        self::check($inserts === 1 && $query->insertMany([]) === 0, '批量新增被拆为多条 INSERT 或空批次行为错误');
+        $model = $query->findOrFail(1);
+        self::check($model->get('title') === 'alpha' && $model->get('tenant_id') === 'tenant-a' && $model->get('version') === 1
+            && $model->get('deleted_at') === null && $model->get('optional') === null
+            && $model->get('occurred_at')->format('Y-m-d H:i:s.u') === '2026-10-04 00:30:01.123456', '批量创建没有保持映射、租户、生命周期或 UTC 时间');
+        self::check((string) $query->sum('quantity') === '6' && (float) $query->avg('quantity') === 3.0
+            && $query->min('quantity') === 2 && $query->max('quantity') === 4 && $query->min('title') === 'alpha'
+            && $query->max('occurred_at')->format('Y-m-d H:i:s.u') === '2026-10-04 00:30:02.123456', '模型聚合的字段类型或 null 排除错误');
+        foreach ([$query->where('id', '=', 3), $query->where('id', '=', -1)] as $empty) {
+            self::check($empty->sum('quantity') === null && $empty->avg('quantity') === null
+                && $empty->min('quantity') === null && $empty->max('quantity') === null, '空集或全 null 的聚合被改成零');
+        }
+        self::check(self::reject(static fn (): mixed => $query->sum('title'), 'invalid_aggregate_field')
+            && self::reject(static fn (): mixed => $query->avg('missing'), 'unknown_field')
+            && self::reject(static fn (): mixed => $query->limit(1)->sum('quantity')), '非法聚合字段或分页状态没有拒绝');
+        if ($connection->driverName() === 'sqlite') {
+            self::check(self::reject(static fn (): mixed => $query->sum('amount'), 'exact_arithmetic_unsupported')
+                && self::reject(static fn (): mixed => $query->avg('amount'), 'exact_arithmetic_unsupported')
+                && self::reject(static fn (): mixed => $query->min('large'), 'exact_arithmetic_unsupported')
+                && self::reject(static fn (): mixed => $query->max('amount'), 'exact_arithmetic_unsupported'), 'SQLite 精确文本聚合未拒绝');
+        } else {
+            self::check((string) $query->sum('amount') === '199.97' && $query->min('amount') === '99.98'
+                && preg_match('/^99\.9850*$/D', (string) $query->avg('amount')) === 1
+                && (string) $query->sum('large') === '18014398509481988' && $query->max('large') === '9007199254740995', '聚合总精度被单字段精度截断或经过浮点数');
+        }
+        self::insertRejections($connection, $query, $row);
+        $scope->run(static function (ExecutionScope $current) use ($definition, $query, $row): void {
+            self::check(self::reject(static fn (): mixed => $query->sum('quantity'), 'tenant_context_changed')
+                && self::reject(static fn (): int => $query->insertMany([]), 'tenant_context_changed'), '现有查询越过变更后的租户绑定');
+            $other = new ModelQuery($definition, static fn (array $record): MappingProbe => new MappingProbe($definition, $record));
+            self::check($other->insertMany([array_replace($row, ['id' => 9, 'quantity' => 100])]) === 1
+                && (string) $other->sum('quantity') === '100', '另一租户不能独立创建或聚合');
+        }, ['tenant_id' => 'tenant-b']);
+        self::check((string) $query->sum('quantity') === '6', '聚合越过租户范围');
+        self::check($query->where('id', '=', 1)->delete() === 1 && (string) $query->sum('quantity') === '4'
+            && (string) $query->onlyTrashed()->sum('quantity') === '2' && (string) $query->withTrashed()->sum('quantity') === '6', '聚合没有遵守软删除范围');
+        self::generatedInsert();
+    }
+
+    /** 模型整数映射不能把文本的字典序或数据库隐式转换当作数值语义。 */
+    private static function integerStorage(Connection $connection): void
+    {
+        $shortType = $connection->driverName() === 'sqlite' ? 'INT2' : 'SMALLINT';
+        $longType = $connection->driverName() === 'sqlite' ? 'INT8' : 'BIGINT';
+        $connection->execute('CREATE TABLE type_suite_integer_storage (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL, '
+            . 'text_value VARCHAR(30) NOT NULL, real_value REAL NOT NULL, decimal_value DECIMAL(12, 2) NOT NULL, '
+            . 'int_value INTEGER NOT NULL, big_value BIGINT NOT NULL, short_value ' . $shortType . ' NOT NULL, long_value ' . $longType . ' NOT NULL)'
+            . ($connection->driverName() === 'mysql' ? ' ENGINE=InnoDB' : ''));
+        $connection->table('type_suite_integer_storage')->insertMany([
+            ['id' => 1, 'parent_id' => 1, 'text_value' => '2', 'real_value' => 2.5, 'decimal_value' => '2.50', 'int_value' => 2, 'big_value' => 2, 'short_value' => 2, 'long_value' => 2],
+            ['id' => 2, 'parent_id' => 1, 'text_value' => '10', 'real_value' => 10.5, 'decimal_value' => '10.50', 'int_value' => 10, 'big_value' => 10, 'short_value' => 10, 'long_value' => 10],
+        ]);
+        self::check($connection->table('type_suite_integer_storage')->aggregate('MIN', 'text_value') === '10', '夹具没有建立文本字典序与数值次序差异');
+        $fields = [];
+        foreach (['id', 'parent_id', 'text_value', 'real_value', 'decimal_value', 'int_value', 'big_value', 'short_value', 'long_value'] as $field) {
+            $fields[$field] = new ModelField($field, 'integer');
+        }
+        $definition = new ModelDefinition('type_suite_integer_storage', 'id', $fields, false);
+        $query = new ModelQuery($definition, static fn (array $row): MappingProbe => new MappingProbe($definition, $row));
+        foreach (['text_value', 'real_value', 'decimal_value'] as $unsafe) {
+            self::check(self::reject(static fn (): mixed => $query->sum($unsafe), 'integer_arithmetic_unsupported')
+                && self::reject(static fn (): mixed => $query->avg($unsafe), 'integer_arithmetic_unsupported')
+                && self::reject(static fn (): mixed => $query->min($unsafe), 'integer_arithmetic_unsupported')
+                && self::reject(static fn (): mixed => $query->max($unsafe), 'integer_arithmetic_unsupported')
+                && self::reject(static fn (): int => $query->where('id', '=', 1)->increment($unsafe), 'integer_arithmetic_unsupported')
+                && self::reject(static fn (): int => $query->where('id', '=', 1)->decrement($unsafe), 'integer_arithmetic_unsupported'), '整数模型运算接受了非整型物理列');
+        }
+        foreach (['int_value', 'big_value', 'short_value', 'long_value'] as $safe) {
+            self::check(
+                (string) $query->sum($safe) === '12' && (float) $query->avg($safe) === 6.0
+                && $query->min($safe) === 2 && $query->max($safe) === 10
+                && $query->where('id', '=', 1)->increment($safe) === 1 && $query->where('id', '=', 1)->decrement($safe) === 1,
+                '真实整型列声明被错误拒绝或整数运算失真'
+            );
+        }
+        $relation = new \Type\Orm\RelationDefinition('HasMany', static function (Connection $database, string $alias) use ($definition): ModelQuery {
+            return (new ModelQuery($definition, static fn (array $row): MappingProbe => new MappingProbe($definition, $row), $alias))->onConnection($database);
+        }, 'id', 'parent_id');
+        $parent = new ModelDefinition('type_suite_integer_storage', 'id', ['id' => new ModelField('id', 'integer')], false, null, null, ['children' => $relation]);
+        $parents = new ModelQuery($parent, static fn (array $row): MappingProbe => new MappingProbe($parent, $row));
+        self::check(self::reject(static fn (): array => $parents->withSum('children', 'text_value')->get(), 'integer_arithmetic_unsupported')
+            && (string) $parents->withSum('children', 'int_value')->findOrFail(1)->computed('children_int_value_sum') === '12', '关系求和未复用整数真实存储校验');
+        self::check($connection->table('type_suite_integer_storage')->orderBy('id')->pluck('text_value') === ['2', '10'], '被拒绝的整数算术修改了原文本值');
+    }
+
+    /** 批次校验和 SQL 末行错误必须保留完整原始状态，保存点失败不能污染外层事务。 */
+    private static function insertRejections(Connection $connection, ModelQuery $query, array $row): void
+    {
+        foreach (['version' => 9, 'deleted_at' => null] as $protected => $value) {
+            self::check(self::reject(static fn (): int => $query->insertMany([array_replace($row, ['id' => 10, $protected => $value])]), 'field_not_fillable'), '批量新增允许覆盖生命周期初值');
+        }
+        self::check(self::reject(static fn (): int => $query->insertMany([array_replace($row, ['tenant_id' => 'tenant-b'])]), 'tenant_scope_conflict')
+            && self::reject(static fn (): int => $query->insertMany([array_replace($row, ['unknown' => true])]), 'unknown_field')
+            && self::reject(static fn (): int => $query->insertMany([['id' => 10]]), 'required_field')
+            && self::reject(static fn (): int => $query->insertMany([$row, array_replace($row, ['id' => 11, 'quantity' => '4'])]), 'invalid_field_type')
+            && self::reject(static fn (): int => $query->insertMany([array_replace($row, ['id' => 10]), array_replace($row, ['id' => 11, 'optional' => null])]), 'inconsistent_insert_fields')
+            && self::reject(static fn (): int => $query->insertMany(['record' => $row]), 'invalid_insert_rows'), '批量输入、字段集合或租户校验缺失');
+        self::check(self::reject(static fn (): int => $query->where('id', '=', 10)->insertMany([]))
+            && self::reject(static fn (): int => $query->orderBy('id')->insertMany([]))
+            && self::reject(static fn (): int => $query->limit(1)->insertMany([]))
+            && self::reject(static fn (): int => $query->select(['title'])->insertMany([]), 'invalid_insert_query')
+            && self::reject(static fn (): int => $query->withTrashed()->insertMany([]), 'invalid_insert_query'), '空批次静默丢弃非插入查询状态');
+        $good = array_replace($row, ['id' => 10]);
+        $bad = array_replace($row, ['id' => 11, 'quantity' => -1]);
+        self::check(self::reject(static fn (): int => $query->insertMany([$good, $row])) && $query->find(10) === null
+            && $query->findOrFail(1)->get('title') === 'alpha', '末行唯一键冲突没有回滚新增或修改了已有行');
+        self::check(self::reject(static fn (): int => $query->insertMany([$good, $bad])) && $query->find(10) === null, '末行约束失败没有回滚整批新增');
+        if ($connection->driverName() === 'sqlite') {
+            $connection->execute("CREATE TRIGGER type_bulk_fail BEFORE INSERT ON type_suite_bulk WHEN NEW.id = 11 BEGIN SELECT RAISE(FAIL, 'later row'); END");
+            try {
+                self::check(self::reject(static fn (): int => $query->insertMany([$good, array_replace($row, ['id' => 11])]))
+                    && $query->find(10) === null, 'SQLite 触发器失败留下部分新增');
+            } finally {
+                $connection->execute('DROP TRIGGER type_bulk_fail');
+            }
+        }
+        if ($connection->driverName() === 'mysql') {
+            $mode = (string) $connection->query('SELECT @@SESSION.sql_mode AS modes')[0]['modes'];
+            $connection->execute("SET SESSION sql_mode = ''");
+            try {
+                self::check(self::reject(static fn (): int => $query->insertMany([$good]), 'unsafe_batch_storage'), '非严格 MySQL 会话允许模型批量新增');
+            } finally {
+                $connection->execute('SET SESSION sql_mode = ?', [$mode]);
+            }
+        }
+        self::check(self::reject(static fn (): mixed => Db::transaction(static function () use ($query, $good, $bad, $connection): void {
+            self::check(self::reject(static fn (): int => $query->insertMany([$good, $bad])) && $connection->transactionDepth() === 1
+                && $query->find(10) === null, '批量新增失败破坏外层事务或留下部分结果');
+            self::check($query->insertMany([$good]) === 1, '保存点失败后无法继续新增');
+            throw new RuntimeException('rollback');
+        }), 'rollback') && $query->find(10) === null && $query->count() === 3, '保存点后不能继续写入、外层回滚未覆盖新增或校验写入了部分批次');
+    }
+
+    /** 生成模型批量写入后正常水合，覆盖自动主键、JSON、精确字段及 DateTime 的开发/AOT 路径。 */
+    private static function generatedInsert(): void
+    {
+        $values = ['name' => '批量模型水合', 'active' => true, 'external_id' => '123456789012345678901234567890',
+            'credit' => '12345678901234567890.12', 'profile' => ['enabled' => true, 'value' => 3],
+            'joined_at' => new \DateTimeImmutable('2026-10-04T08:30:01.123456+08:00'), 'secret' => 'bulk-only'];
+        self::check(User::query()->insertMany([$values]) === 1, '生成模型批量新增失败');
+        $user = User::query()->where('name', '=', '批量模型水合')->firstOrFail();
+        self::check($user->id > 0 && $user->external_id === $values['external_id'] && $user->credit === $values['credit']
+            && $user->profile['enabled'] === true && $user->profile['value'] === 3
+            && $user->joined_at->format('Y-m-d H:i:s.u') === '2026-10-04 00:30:01.123456', '批量新增后的生成属性或精确类型水合错误');
+        self::check(self::reject(static fn (): int => User::query()->insertMany([array_replace($values, ['id' => 9999])]), 'field_not_fillable'), '批量新增绕过自动主键保护');
+        self::check(self::reject(static fn (): mixed => User::query()->min('profile'), 'invalid_aggregate_field')
+            && self::reject(static fn (): mixed => User::query()->max('active'), 'invalid_aggregate_field'), 'JSON 或布尔字段被当作可排序模型值');
+        self::check($user->delete(), '批量生成模型未能按模型生命周期删除');
     }
 
     /** 无版本模型的整条算术写入覆盖约束、触发器、保存点和万行成功路径。 */
@@ -299,7 +494,7 @@ final class MutationExercise
         } catch (DatabaseException) {
             return $code === '';
         } catch (RuntimeException $error) {
-            return $code === '' && $error->getMessage() === 'rollback';
+            return ($code === '' || $code === 'rollback') && $error->getMessage() === 'rollback';
         }
         return false;
     }

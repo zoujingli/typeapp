@@ -16,7 +16,7 @@
 | 单表别名分页 | 普通、无总数、游标分页均校验真实主键和排序列 | 别名支持不放宽 Join、聚合或写入形态限制 |
 | 集合写入及算术 | 单条写入 SQL 保留业务条件、租户与软删除范围，版本在数据库内检查并推进 | 任一版本非法、耗尽或约束失败导致本次写入回滚；提交未知则对账 |
 
-`ModelQuery` 提供 `update(array $values)`、`delete()` 与 `increment/decrement`。集合更新执行字段白名单、修改器、类型及编码检查；集合删除按模型声明软删除或物理删除。无业务条件时必须显式 `allowAll()`，它仍保留租户及软删除范围。集合写入没有额外行数上限，不预读全部目标，也不隐式拆批；字段与事件语义见[模型集合写入](models.md#模型集合写入)。模型级 `insertMany/upsert` 尚未提供。
+`ModelQuery` 提供 `update(array $values)`、`delete()` 与 `increment/decrement`。集合更新执行字段白名单、修改器、类型及编码检查；集合删除按模型声明软删除或物理删除。无业务条件时必须显式 `allowAll()`，它仍保留租户及软删除范围。集合写入没有额外行数上限，不预读全部目标，也不隐式拆批；字段与事件语义见[模型集合写入](models.md#模型集合写入)。当前 `main` 另提供 `insertMany` 与 `sum/avg/min/max`，尚未包含 RC14，完整契约见[模型统计与批量新增](models.md#模型统计与批量新增)。模型级 upsert 仍未提供。
 
 验收沿用现有入口：`tests/orm-core.php` 覆盖共同业务和真实锁等待，`tests/orm-context.php` 覆盖作用域与在途收尾，`tests/transactions.php`、`tests/outcomes.php` 覆盖事务。`examples/orm-suite/MutationExercise.php` 增加超过一万行的集合写入、约束失败整批回滚、版本上限、旧对象冲突、身份校验及提交后新事务场景，并验证 MySQL 非严格模式与临时非事务表拒绝、SQLite 非整数版本与触发器边界；`tests/orm-suite-consumer.php` 复用同一行为验证隔离安装、双进程竞争及原生无源码运行。SQLite/PostgreSQL 使用延迟外键验证提交失败；MySQL 不支持该机制，不据此宣称其提交后未知场景已测。PHP 成功、TypePHP 全量编译和原生产物运行分别记录。
 

@@ -28,7 +28,9 @@ flowchart TB
 
 上述扩展在开发与构建环境准备，生产单程序从匹配的静态 SDK 链接 Swoole 和所选数据库客户端。部署时只需程序、外置配置，以及所选数据库服务或 SQLite 数据目录，见[环境与依赖](../environment.md)。
 
-协程数据库等待需要对应的官方构建能力：MySQL 使用 mysqlnd 与网络 hook，PostgreSQL、SQLite 分别需要 Swoole 的 `--enable-swoole-pgsql`、`--enable-swoole-sqlite`。应用启动时调用 `CoroutineRuntime::enableIo()`，为已加载的 PDO 扩展启用可用 hook；生成的命令入口与 HTTP 宿主已接入。自定义入口在启动业务线程及协程前配置，`CoroutineRuntime::run()` 保留既定 hook，不在任务中改写进程配置。当前缺失的 PDO hook 会被跳过，所选驱动的启动拒绝尚需补齐；扩展版本满足要求或启动成功都不能证明 PDO 等待已经协程化，见[协程并发的成立条件](../database.md#协程并发的成立条件)。
+协程数据库等待需要对应的官方构建能力：MySQL 使用 mysqlnd 与网络 hook，PostgreSQL、SQLite 分别需要 Swoole 的 `--enable-swoole-pgsql`、`--enable-swoole-sqlite`。应用启动时调用 `CoroutineRuntime::enableIo()`，为已加载的 PDO 扩展启用可用 hook；生成的命令入口与 HTTP 宿主已接入。自定义入口在启动业务线程及协程前配置，`CoroutineRuntime::run()` 保留既定 hook，不在任务中改写进程配置。当前 `main` 在协程创建物理 PDO 前检查所选驱动：缺构建能力报 `swoole_pdo_hook_unavailable`，未启用所需 hook 报 `swoole_hook_startup_required`。同步工具不要求协程 hook，未使用的驱动不阻止连接；真实等待验收见[协程并发的成立条件](../database.md#协程并发的成立条件)。
+
+标准应用入口负责启动期配置和受控业务线程的配置继承，普通业务只调用模型或 `Db`，无需自行启用 hook、创建连接或归还租约。
 
 在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
@@ -46,7 +48,7 @@ composer require zoujingli/type-orm:1.0.0-rc.14
 
 模型映射由[构建工具](type-build.md)生成，完整应用组织见[数据库与模型](../database.md)。`ModelQuery` 的 `find/first` 返回模型或 null，`get` 返回模型列表。
 
-模型自身目前只有计数聚合，批量新增及冲突写入尚未提供；底层 Query 的同名 SQL 能力不自动获得模型约束。支持范围、已有替代路径及待补入口见[常用能力边界](../database.md#常用能力边界)。
+当前 `main` 已补充模型 `sum/avg/min/max`、`insertMany` 与所选 PDO hook 前置检查，尚未包含在 RC14 中。模型级冲突写入仍未提供；底层 Query 的 SQL 能力不自动获得模型约束。支持范围与待补入口见[常用能力边界](../database.md#常用能力边界)。
 
 例如在独立应用的生产源码中声明：
 
@@ -106,6 +108,8 @@ if ($partial !== null) {
 | `delete/restore/forceDelete` | 软删除、恢复、物理删除，取决于模型声明 |
 | `scope/search` | 组合不可变查询；搜索器只能来自显式映射 |
 | `ModelQuery::update/delete` | 单条集合写入，保留租户、软删除和版本约束；没有额外行数限制，不触发逐模型事件 |
+| `ModelQuery::sum/avg/min/max` | 在模型可见范围内统计，使用字段映射与实际列类型，不水合模型 |
+| `ModelQuery::insertMany` | 校验整批输入后执行一条 INSERT，返回影响数量，不触发逐模型事件 |
 
 集合更新只接受普通可赋值字段，`withBehavior()` 的修改器在类型规范化前处理每个输入值。无业务条件时须显式 `allowAll()`，它仍限定当前租户和软删除范围。软删除不重复处理已删除行；已有模型需重新查询。MySQL 使用实际 InnoDB 表和严格 SQL 模式，版本列使用非空整数类型；版本耗尽及数据库约束失败回滚整条写入。提交未知仍须对账。完整语义见[模型集合写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#模型集合写入)。
 
@@ -124,6 +128,68 @@ if ($partial !== null) {
 已有模型列表使用 `User::query()->with('articles.tags')->load($models)` 补加载；`loadMissing($models)` 复用已经加载的结果，深层路径继续补齐缺失关系。父记录、子模型与 pivot 共享显式读取预算。模型查询始终返回模型；任意联表投影和分组数据使用 `Query`。
 
 `decimal/bigint` 使用精确字符串，拒绝有损浮点输入；`datetime` 使用带时区日期并统一 UTC。SQLite 的精确字段使用满足声明的 TEXT 列，不能让数值亲和转换损失精度。
+
+## 日常业务写法
+
+以下继续使用上面已声明、迁移并绑定作用域的 `DocsExample\User`。创建后需要立即确认主库内容时，使用 `master()`；同库事务内自动保持主读。
+
+```php
+use DocsExample\User;
+use Type\Orm\Db;
+
+// 单条创建与修改：只传业务字段，持久化状态由模型管理。
+$user = User::create(['name' => '林晓', 'age' => 20]);
+$user->age = 21;
+$user->save();
+
+// 列表：输入白名单、排序和输出投影分别明确。
+$models = User::search(['name' => '林晓'])->equal('name')->query()
+    ->where('age', '>=', 18)->orderBy('id')->limit(20)->get();
+$rows = array_map(static fn (User $item): array => $item->project(['id', 'name', 'age']), $models);
+
+// 多步业务变更：闭包无需接收或向模型传递连接。
+Db::transaction(static function () use ($user): void {
+    $fresh = User::query()->findOrFail($user->id);
+    $fresh->name = '林晓明';
+    $fresh->save();
+});
+```
+
+事务失败后，参与事务的对象按回滚规则失效，需要重新查询；外部消息等不可回滚副作用通过 `afterCommit` 或事务 Outbox 处理。批量字段输入使用显式数组，不把整份请求直接赋给模型。
+
+统计复用同一模型范围，字段名写 PHP 属性名。每次调用执行一条聚合 SQL，数值及时间字段另作实际存储类型校验。SUM/AVG/MIN/MAX 在空集或目标字段全部为 null 时返回 null；`count()` 统计匹配行，空集为 0，与某字段是否为 null 无关。
+
+```php
+$adults = User::query()->master()->where('age', '>=', 18);
+$count = $adults->count();
+$averageAge = $adults->avg('age');
+$youngestAge = $adults->min('age');
+$oldestAge = $adults->max('age');
+```
+
+SUM/AVG 保留数据库返回的数值类型，不强制转浮点或套用单条字段精度；需要零值时由业务显式 `?? 0`。MIN/MAX 按映射回读，时间字段返回 UTC 不可变日期。integer 要求实际整型列，bigint/decimal 要求满足精度声明的数值列；拒绝文本隐式转换，避免金额失真或按字符串排序。完整类型和错误语义见[模型统计与批量新增](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#模型统计与批量新增)。
+
+不需要逐条事件和生成主键的导入可以一次提交整批：
+
+```php
+$inserted = User::query()->insertMany([
+    ['name' => '陈晨', 'age' => 28],
+    ['name' => '周宁', 'age' => 32],
+]);
+```
+
+两行使用相同字段集合，键顺序不影响写入。每行执行字段修改器、类型和必填校验；有租户声明时从可信上下文补入身份，有版本和软删除声明时自动初始化。空列表返回 0，成功返回影响行数；不水合模型、不触发逐模型事件。任一行校验或数据库约束失败时整批不保留，未知提交需对账。框架不添加行数上限或暗中拆批；数据库参数上限仍会明确报错。需要逐条事件或新对象时，在事务中逐条调用 `create()`。
+
+```mermaid
+flowchart LR
+    A[导入字段列表] --> B[逐行类型与赋值校验]
+    B --> C[补入租户及初始状态]
+    C --> D[主库事务或保存点]
+    D --> E[单条 INSERT]
+    E -->|确认成功| F[影响行数]
+    E -->|语句失败| G[整批回滚]
+    D -->|提交无法确认| H[按业务标识对账]
+```
 
 ## 底层连接与查询示例
 
