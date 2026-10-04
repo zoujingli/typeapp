@@ -769,10 +769,10 @@ final class Application
             DebugController::class => static fn (): DebugController => new DebugController($database, $brokerIdentities, $messages),
             CompatController::class => static fn (): CompatController => new CompatController($database, $brokerIdentities, $messages),
             RecoveryController::class => static fn (): RecoveryController => new RecoveryController($database, $brokerIdentities, $messages),
-            AuthController::class => static fn (): AuthController => new AuthController($database, $messages),
+            AuthController::class => static fn (): AuthController => new AuthController($messages),
             ObservationController::class => static fn (): ObservationController => new ObservationController($database, $messages, $settings->text('app.mqtt.command')),
-            AdminController::class => static fn (): AdminController => new AdminController($database, $messages, $basePath),
-            ProductController::class => static fn (): ProductController => new ProductController($database, $messages, new ProductService()),
+            AdminController::class => static fn (): AdminController => new AdminController($messages, $basePath),
+            ProductController::class => static fn (): ProductController => new ProductController($messages, new ProductService()),
             DeviceController::class => static fn (): DeviceController => new DeviceController($database, $messages, new DeviceService()),
             TransferController::class => static fn (): TransferController => new TransferController($database, $messages),
             AlarmController::class => static function () use ($database, $messages): AlarmController {

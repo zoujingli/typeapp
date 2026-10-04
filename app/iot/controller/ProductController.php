@@ -13,9 +13,6 @@ use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
-use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
-use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
 use Type\Validate\Input;
 
@@ -24,7 +21,7 @@ use Type\Validate\Input;
 final class ProductController
 {
     /** 复用请求资源和产品服务，不在构造时连接数据库。 */
-    public function __construct(private DatabaseManager $database, private Factory $messages, private ProductService $products)
+    public function __construct(private Factory $messages, private ProductService $products)
     {
     }
 
@@ -34,7 +31,7 @@ final class ProductController
     {
         $tenantId = $this->tenant($request);
         $query = $this->query($request, ['name' => Field::text()->length(0, 100)]);
-        return $this->response(200, $this->products->products($this->connection($request), $this->identity($request), $tenantId, $query['page'], $query['per_page'], $query['name'] ?? ''));
+        return $this->response(200, $this->products->products($this->identity($request), $tenantId, $query['page'], $query['per_page'], $query['name'] ?? ''));
     }
 
     /** 获授权人员在当前租户创建产品，模型通过独立版本入口建立。 */
@@ -43,7 +40,7 @@ final class ProductController
     {
         $tenantId = $this->tenant($request);
         $data = $this->payload($request, ['name' => Field::text()->required()->trim()->length(1, 100), 'description' => Field::text()->length(0, 1000)]);
-        return $this->response(201, ['data' => $this->products->create($this->connection($request), $this->identity($request), $tenantId, $data['name'], $data['description'] ?? '')]);
+        return $this->response(201, ['data' => $this->products->create($this->identity($request), $tenantId, $data['name'], $data['description'] ?? '')]);
     }
 
     /** 产品查询与资料修改均用路由租户约束实体，删除不会绕过已发布历史。 */
@@ -52,17 +49,16 @@ final class ProductController
     {
         $tenantId = $this->tenant($request);
         $parameters = $request->getAttribute('type.route.params', []);
-        $connection = $this->connection($request);
         $identity = $this->identity($request);
         if ($request->getMethod() === 'GET') {
-            return $this->response(200, ['data' => $this->products->product($connection, $identity, $tenantId, $parameters['product'])]);
+            return $this->response(200, ['data' => $this->products->product($identity, $tenantId, $parameters['product'])]);
         }
         $fields = ['version' => Field::integer()->required()->range(1, 2147483646)];
         if ($request->getMethod() === 'PATCH') {
             $fields += ['name' => Field::text()->required()->trim()->length(1, 100), 'description' => Field::text()->required()->length(0, 1000)];
         }
         $data = $this->payload($request, $fields);
-        return $this->response(200, ['data' => $this->products->change($connection, $identity, $tenantId, $parameters['product'], $data['version'], $request->getMethod() === 'DELETE' ? null : $data)]);
+        return $this->response(200, ['data' => $this->products->change($identity, $tenantId, $parameters['product'], $data['version'], $request->getMethod() === 'DELETE' ? null : $data)]);
     }
 
     /** 版本列表保留各自定义；新增总是创建新的永久编号。 */
@@ -71,14 +67,13 @@ final class ProductController
     {
         $tenantId = $this->tenant($request);
         $parameters = $request->getAttribute('type.route.params', []);
-        $connection = $this->connection($request);
         $identity = $this->identity($request);
         if ($request->getMethod() === 'GET') {
             $query = $this->query($request, []);
-            return $this->response(200, $this->products->models($connection, $identity, $tenantId, $parameters['product'], $query['page'], $query['per_page']));
+            return $this->response(200, $this->products->models($identity, $tenantId, $parameters['product'], $query['page'], $query['per_page']));
         }
         $data = $this->payload($request, ['definition' => (new Field('object'))->required()]);
-        return $this->response(201, ['data' => $this->products->createModel($connection, $identity, $tenantId, $parameters['product'], $data['definition'])]);
+        return $this->response(201, ['data' => $this->products->createModel($identity, $tenantId, $parameters['product'], $data['definition'])]);
     }
 
     /** 草稿按乐观锁编辑，已发布版本不可通过任何编辑或删除路径修改。 */
@@ -87,18 +82,17 @@ final class ProductController
     {
         $tenantId = $this->tenant($request);
         $parameters = $request->getAttribute('type.route.params', []);
-        $connection = $this->connection($request);
         $identity = $this->identity($request);
         $number = (int) $parameters['model'];
         if ($request->getMethod() === 'GET') {
-            return $this->response(200, ['data' => $this->products->model($connection, $identity, $tenantId, $parameters['product'], $number)]);
+            return $this->response(200, ['data' => $this->products->model($identity, $tenantId, $parameters['product'], $number)]);
         }
         $fields = ['version' => Field::integer()->required()->range(1, 2147483646)];
         if ($request->getMethod() === 'PATCH') {
             $fields['definition'] = (new Field('object'))->required();
         }
         $data = $this->payload($request, $fields);
-        return $this->response(200, ['data' => $this->products->changeModel($connection, $identity, $tenantId, $parameters['product'], $number, $data['version'], $request->getMethod() === 'DELETE' ? 'delete' : 'edit', $data['definition'] ?? null)]);
+        return $this->response(200, ['data' => $this->products->changeModel($identity, $tenantId, $parameters['product'], $number, $data['version'], $request->getMethod() === 'DELETE' ? 'delete' : 'edit', $data['definition'] ?? null)]);
     }
 
     /** 发布冻结该版本内容；重复或过时页面不能再次改写发布时间。 */
@@ -108,7 +102,7 @@ final class ProductController
         $tenantId = $this->tenant($request);
         $parameters = $request->getAttribute('type.route.params', []);
         $data = $this->payload($request, ['version' => Field::integer()->required()->range(1, 2147483646)]);
-        return $this->response(200, ['data' => $this->products->changeModel($this->connection($request), $this->identity($request), $tenantId, $parameters['product'], (int) $parameters['model'], $data['version'], 'publish')]);
+        return $this->response(200, ['data' => $this->products->changeModel($this->identity($request), $tenantId, $parameters['product'], (int) $parameters['model'], $data['version'], 'publish')]);
     }
 
     /** 已发布模型调试只验证参数，不代表平台接收或设备执行。 */
@@ -118,7 +112,7 @@ final class ProductController
         $tenantId = $this->tenant($request);
         $parameters = $request->getAttribute('type.route.params', []);
         $data = $this->payload($request, ['kind' => Field::text()->required()->oneOf(['properties', 'event', 'command']), 'identifier' => Field::text()->length(1, 64), 'values' => (new Field('object'))->required()]);
-        return $this->response(200, ['data' => $this->products->validate($this->connection($request), $this->identity($request), $tenantId, $parameters['product'], (int) $parameters['model'], $data['kind'], $data['identifier'] ?? '', $data['values'])]);
+        return $this->response(200, ['data' => $this->products->validate($this->identity($request), $tenantId, $parameters['product'], (int) $parameters['model'], $data['kind'], $data['identifier'] ?? '', $data['values'])]);
     }
 
     /** 只接受一个明确租户头，路由与头必须相同；不将输入映射为资源池名称。 */
@@ -171,15 +165,6 @@ final class ProductController
             throw new HttpError(401, 'unauthenticated');
         }
         return $identity;
-    }
-
-    private function connection(ServerRequestInterface $request): Connection
-    {
-        $scope = $request->getAttribute('type.scope');
-        if (!$scope instanceof ExecutionScope) {
-            throw new \RuntimeException('物联网控制器需要受管请求作用域');
-        }
-        return \Type\Orm\Db::connection('default', true);
     }
 
     private function response(int $status, array $data): ResponseInterface

@@ -1,14 +1,16 @@
 # 产品与不可变物模型
 
-## 新应用客户权限（）
+## 客户权限与数据边界
 
 产品与物模型入口为 `/customer/tenants/{tenant}/products`，继续要求 `X-Tenant-Id` 与路由租户完全一致。`customer.products.read` 允许查询、精确版本与模型值校验；`customer.products.manage` 允许产品和草稿维护及发布。固定菜单仅随查询节点展示，维护节点不由菜单或角色名称推断。新初始化复用原产品表声明，不创建旧人员或支持身份表。
 
 `ProductService` 保留产品、草稿、发布、版本分页与 `publishedModel()` 契约，改用客户当前成员角色及可信会话事实；授权写入与账号/角色/模拟来源撤销共用 `RoleService::authorized()` 的现有安装行锁，在取得锁后重验准确会话与来源。产品编辑不再推进租户资料版本。成功变更及真实来源审计同事务写入 `customer_audit`，审计失败整体回滚；跨租户资源统一返回不存在，无成员或缺节点返回拒绝。
 
+产品资料通过 `app\iot\model\Product` 查询与保存，服务的人工作业接口不接收连接；授权后绑定的租户范围由模型自动约束。产品表单同值保存仍推进资料版本，完全没有脏字段时使用 `touch()`。物模型表的真实主键是 `(tenant_id, product_id, model_version)`，当前单主键 Model 不代替这一复合身份，版本快照与永久编号分配仍在原授权事务中使用受控表操作。内部 `next_model_version` 不出现在产品响应中，分配物模型编号不推进产品资料版本。
+
 前端复用产品表格、抽屉及模型编辑器，查询结果更新当前权限和菜单；切换身份或租户取消旧请求，撤权清除旧产品、模型和操作。未知查询字段（包括不支持的游标）明确拒绝，列表使用有界页码；接口没有隐式跨租户批量选择。业务载荷中的租户字段不能覆盖路由归属。
 
-`tests/iot-identity.php <产物或--php> <驱动> --products` 已切到新安装/双端认证装置，复用 `tests/iot-products.php` 的原模型行为场景；三库使用 `tests/iot-identity-databases.php <产物> <MySQL工具根> <PostgreSQL工具根> --products`。适用时加 `--no-source`，浏览器沿新应用装置的 `--browser-dist=<隔离产物>`。旧设备、接收、HA及分发组合尚待各票迁移，组合不匹配会明确失败，不能跳过旧场景后冒称通过。设备模型切换与历史解释仍由原业务所有者负责， 的设备回执及完整验收责任保留。
+`tests/iot-identity.php <产物或--php> <驱动> --products` 使用安装与双端认证装置，执行 `tests/iot-products.php` 的产品及物模型行为场景；三库使用 `tests/iot-identity-databases.php <产物> <MySQL工具根> <PostgreSQL工具根> --products`。适用时加 `--no-source`，浏览器装置使用 `--browser-dist=<隔离产物>`。产品回归不代替设备模型切换、真实消息接收、故障恢复及分发验收；各专项分别记录实际结果。
 
 ## HTTP 契约
 
@@ -33,7 +35,7 @@
 
 ## 设备确认切换版本
 
-模型切换复用 /  的设备确认流程。`POST /customer/tenants/{tenant}/devices/{device}/model-switches` 接受 `{switch_id,model_version,version,retry?}`，返回202和切换事实；`switch_id`为调用者生成的32位小写hex，`version`为准确设备版本，`retry`默认false。独立权限 `customer.devices.model-switch` 允许发起；已启用、有效凭据且无待执行撤权的设备可离线受理，同一设备只允许一个待确认切换。同ID确认须保持设备、准确会话及模拟来源、原请求版本和目标不变，重复HTTP请求返回原事实。普通平台资产身份不能绕过客户授权。
+模型切换由 `DeviceService` 管理平台意图，`DeviceBuffer` 保存设备确认状态。`POST /customer/tenants/{tenant}/devices/{device}/model-switches` 接受 `{switch_id,model_version,version,retry?}`，返回202和切换事实；`switch_id`为调用者生成的32位小写hex，`version`为准确设备版本，`retry`默认false。独立权限 `customer.devices.model-switch` 允许发起；已启用、有效凭据且无待执行撤权的设备可离线受理，同一设备只允许一个待确认切换。同ID确认须保持设备、准确会话及模拟来源、原请求版本和目标不变，重复HTTP请求返回原事实。普通平台资产身份不能绕过客户授权。
 
 目标须为同产品已发布且非当前版本。受理后绑定不变，详情`model_switch`显示原意图；暂停新控制和旧指令重投，同归属的已有指令结果查询仍可继续。设备明确支持并持久切换后，平台收到合法回执才原子更新`model_version`、`model_start_sequence`并清除待确认标识。拒绝仅结束该请求、保留原绑定；已发布定义始终不改写。停用、退役、待撤权或无有效凭据时不会继续切换，也不会把此前可能已在设备生效的意图假装取消。
 
@@ -86,4 +88,4 @@ php tests/iot-identity-databases.php build/app/type-app <MySQL工具根> <Postgr
 php tests/iot-identity-databases.php build/app/type-app <MySQL工具根> <PostgreSQL工具根> --products --no-source
 ```
 
-用例涵盖真实持久化、权限撤销、跨租户ID与列表、草稿乐观冲突、发布后所有修改入口、旧版本单位及值校验、空定义发布、版本删除不复用、事件/指令参数、重复JSON键、64项属性和16 KiB边界、分页、脱敏审计，以及停止后重新启动应用仍可读取同一历史定义。三库清理记录数据库进程正常退出；无源码模式搬迁产物并以系统策略禁止读取应用、组件、依赖、配置和生成源码。
+用例涵盖真实持久化、权限撤销、跨租户ID与列表、草稿乐观冲突、发布后所有修改入口、旧版本单位及值校验、空定义发布、版本删除不复用、事件/指令参数、重复JSON键、64项属性和16 KiB边界、分页、脱敏审计，以及停止后重新启动应用仍可读取同一历史定义。Model 接入回归还检查产品同值保存消耗版本、物模型编号分配不改变产品投影，以及真实审计写入失败后产品新增、编辑和模型发布整体回滚。三库清理记录数据库进程正常退出；无源码模式搬迁产物并以系统策略禁止读取应用、组件、依赖、配置和生成源码。

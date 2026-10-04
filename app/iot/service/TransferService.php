@@ -112,12 +112,12 @@ final class TransferService
                     throw new HttpError(422, 'transfer_model_invalid');
                 }
                 if ($copyName !== '') {
-                    $product = $products->create($transaction, $current, $tenantId, trim($copyName), '');
+                    $product = $products->create($current, $tenantId, trim($copyName), '');
                     if ($product['name'] === '') {
                         throw new HttpError(422, 'transfer_model_invalid');
                     }
-                    $model = $products->createModel($transaction, $current, $tenantId, $product['id'], json_decode($record['source_definition'], true, 32, JSON_THROW_ON_ERROR));
-                    $target = $products->changeModel($transaction, $current, $tenantId, $product['id'], (int) $model['model_version'], 1, 'publish');
+                    $model = $products->createModel($current, $tenantId, $product['id'], json_decode($record['source_definition'], true, 32, JSON_THROW_ON_ERROR));
+                    $target = $products->changeModel($current, $tenantId, $product['id'], (int) $model['model_version'], 1, 'publish');
                 } else {
                     $target = ProductService::publishedModel($transaction, $tenantId, $productId, $version);
                 }

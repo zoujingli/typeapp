@@ -110,7 +110,7 @@ function modelSwitchCases(Connection $connection, Identity $identity, string $te
     $tenants = new TenantService();
     $products = new ProductService();
     $devices = new DeviceService();
-    $product = $products->create($connection, $identity, $tenantId, '切换结构产品', '原版本不可改写');
+    $product = $products->create($identity, $tenantId, '切换结构产品', '原版本不可改写');
     $definition = ['properties' => [['identifier' => 'temperature', 'name' => '温度', 'type' => 'number', 'required' => true, 'unit' => '°C', 'min' => -40, 'max' => 300],
         ['identifier' => 'mode', 'name' => '模式', 'type' => 'enum', 'required' => false, 'values' => ['auto', 'manual']]], 'events' => [],
         'commands' => [['identifier' => 'switch', 'name' => '开关', 'parameters' => []]]];
@@ -123,8 +123,8 @@ function modelSwitchCases(Connection $connection, Identity $identity, string $te
     expect(!ModelDefinition::structurallyEqual($definition, $fahrenheit) && !ModelDefinition::structurallyEqual($definition, $enumeration), '单位或类型变化被当成同一结构');
     $models = [];
     foreach ([$definition, $fahrenheit, $enumeration] as $index => $modelDefinition) {
-        $products->createModel($connection, $identity, $tenantId, $product['id'], $modelDefinition);
-        $models[$index + 1] = $products->changeModel($connection, $identity, $tenantId, $product['id'], $index + 1, 1, 'publish');
+        $products->createModel($identity, $tenantId, $product['id'], $modelDefinition);
+        $models[$index + 1] = $products->changeModel($identity, $tenantId, $product['id'], $index + 1, 1, 'publish');
     }
     $registered = $devices->register($connection, $identity, $tenantId, $product['id'], 1, '持久切换设备');
     $device = $registered['device']; $id = $device['id']; $topic = $registered['credential']['topics']['publish'];
@@ -307,10 +307,10 @@ function transferCases(Connection $connection, Identity $sourceIdentity, Identit
     try { fixtureDecision($connection, $targetIdentity, $targetTenant, $transferId, ['action' => 'accept', 'decision_id' => $decision['decision_id'], 'copy_name' => '冲突复制']); throw new RuntimeException('重复决策换成接受'); }
     catch (HttpError $denied) { expect($denied->errorCode() === 'transfer_decision_conflict', '相反审批未保持原事实'); }
     $transferId = bin2hex(random_bytes(16)); $invitation = $request($transferId);
-    $different = $products->create($connection, $targetIdentity, $targetTenant, '同名不同单位', '');
+    $different = $products->create($targetIdentity, $targetTenant, '同名不同单位', '');
     $wrongDefinition = $invitation['source_definition']; $wrongDefinition['properties'][0]['unit'] = '°F';
-    $products->createModel($connection, $targetIdentity, $targetTenant, $different['id'], $wrongDefinition);
-    $products->changeModel($connection, $targetIdentity, $targetTenant, $different['id'], 1, 1, 'publish');
+    $products->createModel($targetIdentity, $targetTenant, $different['id'], $wrongDefinition);
+    $products->changeModel($targetIdentity, $targetTenant, $different['id'], 1, 1, 'publish');
     try { fixtureDecision($connection, $targetIdentity, $targetTenant, $transferId, ['action' => 'accept', 'decision_id' => bin2hex(random_bytes(16)), 'target_product_id' => $different['id'], 'target_model_version' => 1]); throw new RuntimeException('同版本号替代结构校验'); }
     catch (HttpError $denied) { expect($denied->errorCode() === 'transfer_model_mismatch' && $read($transferId)['status'] === 'requested', '不匹配审批没有完整回滚'); }
     $command = fixtureCommand($connection, $sourceIdentity, $sourceTenant, $deviceId, 'switch', (object) ['on' => true]);
@@ -323,8 +323,8 @@ function transferCases(Connection $connection, Identity $sourceIdentity, Identit
     $accepted = fixtureDecision($connection, $targetIdentity, $targetTenant, $transferId, $decision);
     expect($accepted['status'] === 'frozen' && !$accepted['ready_for_switch'] && in_array('commands_unresolved', $accepted['pending_reasons'], true), '未知指令没有阻止正常切换');
     $copied = fixtureDecision($connection, $targetIdentity, $targetTenant, $transferId, $decision);
-    expect($accepted['target_product_id'] === $copied['target_product_id'] && $products->products($connection, $targetIdentity, $targetTenant, 1, 20, '')['total'] === 2, '重复接受复制了第二个产品');
-    expect($products->model($connection, $targetIdentity, $targetTenant, $accepted['target_product_id'], 1)['structure_hash'] === $invitation['structure_hash'], '复制结构不同或仍引用源产品');
+    expect($accepted['target_product_id'] === $copied['target_product_id'] && $products->products($targetIdentity, $targetTenant, 1, 20, '')['total'] === 2, '重复接受复制了第二个产品');
+    expect($products->model($targetIdentity, $targetTenant, $accepted['target_product_id'], 1)['structure_hash'] === $invitation['structure_hash'], '复制结构不同或仍引用源产品');
     try { fixtureCommand($connection, $sourceIdentity, $sourceTenant, $deviceId, 'switch', (object) ['on' => true]); throw new RuntimeException('冻结后受理新动作'); }
     catch (HttpError $denied) { expect($denied->errorCode() === 'transfer_control_frozen', '冻结动作拒绝错误'); }
     expect(fixtureCommand($connection, $sourceIdentity, $sourceTenant, $deviceId, 'switch', (object) ['on' => true], $command['id'])['id'] === $command['id'], '冻结使原受理结果不可查询');
@@ -825,15 +825,15 @@ function main(int $argc, array $argv): void
         $tenant = ['id' => $installation['tenant_id']];
         $tenantB = fixtureTenant($connection, $platform, '另一租户', 'owner');
         $products = new ProductService();
-        $product = $products->create($connection, $identity, $tenant['id'], '采集器', '');
+        $product = $products->create($identity, $tenant['id'], '采集器', '');
         $definition = ['properties' => [
             ['identifier' => 'temperature', 'name' => '温度', 'type' => 'number', 'required' => true, 'unit' => '°C'],
             ['identifier' => 'relay', 'name' => '继电器', 'type' => 'boolean', 'required' => false],
             ['identifier' => 'note', 'name' => '说明', 'type' => 'string', 'required' => false, 'max_length' => 4096],
         ], 'events' => [['identifier' => 'fault', 'name' => '故障', 'parameters' => [['identifier' => 'code', 'name' => '故障码', 'type' => 'integer', 'required' => true]]]],
             'commands' => [['identifier' => 'switch', 'name' => '切换开关', 'parameters' => [['identifier' => 'on', 'name' => '开关状态', 'type' => 'boolean', 'required' => true]]]]];
-        $products->createModel($connection, $identity, $tenant['id'], $product['id'], $definition);
-        $products->changeModel($connection, $identity, $tenant['id'], $product['id'], 1, 1, 'publish');
+        $products->createModel($identity, $tenant['id'], $product['id'], $definition);
+        $products->changeModel($identity, $tenant['id'], $product['id'], 1, 1, 'publish');
         $registered = (new DeviceService())->register($connection, $identity, $tenant['id'], $product['id'], 1, '测试设备');
         $device = $registered['device'];
         $topic = $registered['credential']['topics']['publish'];
@@ -960,8 +960,8 @@ function main(int $argc, array $argv): void
         }
         krsort($ties, SORT_STRING);
         expect($current()['last_receipt']['sequence'] === array_values($ties)[0], '同秒首次接收按稳定消息标识排序');
-        $products->createModel($connection, $identity, $tenant['id'], $product['id'], $definition);
-        $products->changeModel($connection, $identity, $tenant['id'], $product['id'], 2, 1, 'publish');
+        $products->createModel($identity, $tenant['id'], $product['id'], $definition);
+        $products->changeModel($identity, $tenant['id'], $product['id'], 2, 1, 'publish');
         $connection->table('iot_devices')->where('id', '=', $device['id'])->update(['model_version' => 2]);
         expect($current()['fields'] === [] && $current()['last_receipt']['sequence'] === array_values($ties)[0], '模型改变清空旧模型当前值，但保留本归属阶段接收结果');
         $connection->table('iot_devices')->where('id', '=', $device['id'])->update(['model_version' => 1, 'ownership_id' => str_repeat('b', 32)]);

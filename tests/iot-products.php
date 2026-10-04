@@ -100,6 +100,7 @@ function iotProductChecks(Closure $appRequest, PDO $inspection, string $driver, 
     expect($request('GET', $models, $readonly, $tenantA, null, 200)['total'] === 0, '非法定义不能留存草稿或消耗版本号');
     $draft = $request('POST', $models, $admin, $tenantA, ['definition' => $definition], 201)['data'];
     expect($draft['model_version'] === 1 && $draft['version'] === 1 && $draft['status'] === 'draft' && $draft['published_at'] === null, '草稿状态或永久编号错误');
+    expect($request('GET', $resource, $admin, $tenantA, null, 200)['data'] === $edited, '物模型编号分配不得推进产品资料版本或泄漏内部计数器');
     $model = $models . '/1';
     $request('GET', $other . '/' . $product['id'] . '/models/1', $admin, $tenantB, null, 404, 'model_not_found');
     $request('POST', $model . '/validate', $admin, $tenantA, ['kind' => 'properties', 'values' => ['temperature' => 25]], 409, 'model_not_published');
@@ -158,7 +159,10 @@ function iotProductChecks(Closure $appRequest, PDO $inspection, string $driver, 
     }
     $boundedModel = $request('POST', $products . '/' . $disposable['id'] . '/models', $admin, $tenantA, ['definition' => $largeDefinition], 201)['data'];
     expect(count($boundedModel['definition']['properties']) === 64, '合法64项属性不得被旧100字段传输预算拒绝');
-    $request('DELETE', $products . '/' . $disposable['id'], $admin, $tenantA, ['version' => 1], 200);
+    $unchangedProduct = $request('PATCH', $products . '/' . $disposable['id'], $admin, $tenantA, ['version' => 1, 'name' => $disposable['name'], 'description' => $disposable['description']], 200)['data'];
+    expect($unchangedProduct['version'] === 2, '同值产品保存仍须推进表单版本');
+    $request('DELETE', $products . '/' . $disposable['id'], $admin, $tenantA, ['version' => 1], 409, 'stale_version');
+    $request('DELETE', $products . '/' . $disposable['id'], $admin, $tenantA, ['version' => 2], 200);
     $request('GET', $products . '/' . $disposable['id'] . '/models/1', $admin, $tenantA, null, 404, 'model_not_found');
     for ($index = 0; $index < 20; $index++) {
         $request('POST', $products, $admin, $tenantA, ['name' => '分页产品-' . $index], 201);
@@ -185,17 +189,21 @@ function iotProductChecks(Closure $appRequest, PDO $inspection, string $driver, 
     expect($large->status === 413, '模型入口必须在16KiB边界拒绝超限');
     // 只注入隔离测试库审计故障，查询和断言仍通过公开HTTP观察草稿与版本。
     if ($driver === 'pgsql') {
-        $inspection->exec("CREATE FUNCTION product_test_failure() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN IF NEW.action = ''model.publish'' THEN RAISE EXCEPTION ''controlled product audit failure''; END IF; RETURN NEW; END'");
+        $inspection->exec("CREATE FUNCTION product_test_failure() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN IF NEW.action IN (''model.publish'', ''product.changed'', ''product.created'') THEN RAISE EXCEPTION ''controlled product audit failure''; END IF; RETURN NEW; END'");
         $inspection->exec('CREATE TRIGGER product_test_failure BEFORE INSERT ON customer_audit FOR EACH ROW EXECUTE FUNCTION product_test_failure()');
     } elseif ($driver === 'mysql') {
-        $inspection->exec("CREATE TRIGGER product_test_failure BEFORE INSERT ON customer_audit FOR EACH ROW BEGIN IF NEW.action = 'model.publish' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'controlled product audit failure'; END IF; END");
+        $inspection->exec("CREATE TRIGGER product_test_failure BEFORE INSERT ON customer_audit FOR EACH ROW BEGIN IF NEW.action IN ('model.publish', 'product.changed', 'product.created') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'controlled product audit failure'; END IF; END");
     } else {
-        $inspection->exec("CREATE TRIGGER product_test_failure BEFORE INSERT ON customer_audit WHEN NEW.action = 'model.publish' BEGIN SELECT RAISE(ABORT, 'controlled product audit failure'); END");
+        $inspection->exec("CREATE TRIGGER product_test_failure BEFORE INSERT ON customer_audit WHEN NEW.action IN ('model.publish', 'product.changed', 'product.created') BEGIN SELECT RAISE(ABORT, 'controlled product audit failure'); END");
     }
     $before = $request('GET', $models . '/4', $admin, $tenantA, null, 200)['data'];
     try {
         $request('POST', $models . '/4/publish', $admin, $tenantA, ['version' => 1], 500);
         expect($request('GET', $models . '/4', $admin, $tenantA, null, 200)['data'] === $before, '审计失败留下半发布版本');
+        $request('PATCH', $resource, $admin, $tenantA, ['version' => 2, 'name' => '不应提交', 'description' => '审计故障'], 500);
+        expect($request('GET', $resource, $admin, $tenantA, null, 200)['data'] === $edited, '审计失败未回滚产品内容和版本');
+        $request('POST', $products, $admin, $tenantA, ['name' => '不应创建'], 500);
+        expect($request('GET', $products, $admin, $tenantA, null, 200)['total'] === 21, '审计失败留下新建产品');
     } finally {
         $inspection->exec('DROP TRIGGER product_test_failure' . ($driver === 'pgsql' ? ' ON customer_audit' : ''));
         if ($driver === 'pgsql') {
@@ -249,5 +257,5 @@ function iotProductChecks(Closure $appRequest, PDO $inspection, string $driver, 
     $request('GET', $products, $readonly, $tenantA, null, 403, 'permission_denied');
     expect(!in_array('/products', menuPaths($call('GET', '/customer/auth/me', $readonly, null, 200, $headers)['menus']), true), '撤回查询节点后仍可见产品菜单');
     $call('PUT', '/customer/roles/' . $role['id'] . '/permissions', $admin, ['version' => 3, 'permissions' => ['identity.read', 'customer.products.read']], 200, $headers);
-    return ['path' => $model, 'tenant' => $tenantA, 'token' => $readonly, 'published' => $published, 'concurrent_publish_edit' => $race, 'source_logout_write' => $sourceRace, 'revoked_queued_write' => $queuedWrite, 'audit_rollback' => true, 'actor_preserved' => true];
+    return ['path' => $model, 'tenant' => $tenantA, 'token' => $readonly, 'published' => $published, 'concurrent_publish_edit' => $race, 'source_logout_write' => $sourceRace, 'revoked_queued_write' => $queuedWrite, 'audit_rollback' => true, 'actor_preserved' => true, 'unchanged_save_versioned' => true, 'independent_model_number' => true, 'product_audit_rollback' => true];
 }

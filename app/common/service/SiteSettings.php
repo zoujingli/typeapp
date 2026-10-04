@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace app\common\service;
 
+use app\common\model\SiteSetting;
 use Type\Core\Http\HttpError;
-use Type\Orm\Connection;
+use Type\Orm\Db;
+use Type\Orm\Model;
 
 /**
  * 物联中心站点设置的唯一持久所有者。
@@ -41,16 +43,16 @@ final class SiteSettings
         ];
     }
 
-    /** @return array<string, mixed> */
-    public static function publicView(Connection $connection): array
+    /** @return array<string, mixed> 从主库读取公开投影，使保存后的登录页立即采用当前设置。 */
+    public static function publicView(): array
     {
-        return self::view(self::row($connection, false), false);
+        return self::view(self::row(), false);
     }
 
     /** @return array<string, mixed> 管理端投影包含并发版本和更新时间，但不暴露单例主键。 */
-    public static function adminView(Connection $connection): array
+    public static function adminView(): array
     {
-        return self::view(self::row($connection, false), true);
+        return self::view(self::row(), true);
     }
 
     /**
@@ -58,36 +60,41 @@ final class SiteSettings
      *
      * @param array<string, mixed> $changes 只接受固定字段，不接受任意主题或脚本内容。
      * @return array<string, mixed> 更新后的管理端投影和实际变化键。
+     * @throws \LogicException 调用方未建立授权事务。
+     * @throws HttpError 输入非法、尚未完成安装或读取的版本已过期。
      */
-    public static function update(Connection $connection, int $version, array $changes): array
+    public static function update(int $version, array $changes): array
     {
         if ($version < 1 || $changes === []) {
             throw new HttpError(422, 'site_settings_input_invalid');
         }
         $normalized = self::normalize($changes);
-        $query = $connection->table('app_site_settings')->where('id', '=', 1);
-        $row = $connection->driverName() === 'sqlite' ? $query->first() : $query->lockForUpdate()->first();
-        if ($row === null) {
+        $connection = Db::connection('default', true);
+        if ($connection->transactionDepth() < 1) {
+            throw new \LogicException('site_settings_requires_transaction');
+        }
+        $query = SiteSetting::query()->master()->where('id', '=', 1);
+        $model = ($connection->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
+        if ($model === null) {
             throw new HttpError(503, 'installation_incomplete');
         }
-        if ((int) $row['version'] !== $version) {
+        if ($model->get('version') !== $version) {
             throw new HttpError(409, 'stale_version');
         }
-        $now = time();
-        $values = $normalized + ['version' => $version + 1, 'updated_at' => $now];
-        $query->update($values);
-        return self::view(array_replace($row, $values), true) + ['changed' => array_keys($normalized)];
+        $model->fill($normalized + ['updated_at' => time()]);
+        // 相同设置在同一秒内再次保存也推进版本，保持表单保存和审计的一次性版本契约。
+        $model->dirty() === [] ? $model->touch() : $model->save();
+        return self::view($model, true) + ['changed' => array_keys($normalized)];
     }
 
-    /** @return array<string, mixed> */
-    private static function row(Connection $connection, bool $lock): array
+    /** 站点是全局业务单例；没有对应记录时不以默认值掩盖未完成的安装。 */
+    private static function row(): Model
     {
-        $query = $connection->table('app_site_settings')->where('id', '=', 1);
-        $row = $lock && $connection->driverName() !== 'sqlite' ? $query->lockForUpdate()->first() : $query->first();
-        if ($row === null) {
+        $model = SiteSetting::query()->master()->find(1);
+        if ($model === null) {
             throw new HttpError(503, 'installation_incomplete');
         }
-        return $row;
+        return $model;
     }
 
     /** @param array<string, mixed> $changes @return array<string, mixed> */
@@ -170,32 +177,32 @@ final class SiteSettings
         return in_array($scheme, ['http', 'https'], true) && (string) parse_url($value, PHP_URL_HOST) !== '';
     }
 
-    /** @param array<string, mixed> $row @return array<string, mixed> */
-    private static function view(array $row, bool $admin): array
+    /** @return array<string, mixed> 只输出固定业务字段，不把完整模型或持久化身份暴露给客户端。 */
+    private static function view(Model $model, bool $admin): array
     {
         $result = [
-            'name' => (string) $row['name'],
-            'official_url' => (string) $row['official_url'],
-            'description' => (string) $row['description'],
-            'logo_url' => (string) $row['logo_url'],
-            'timezone' => (string) $row['timezone'],
+            'name' => (string) $model->get('name'),
+            'official_url' => (string) $model->get('official_url'),
+            'description' => (string) $model->get('description'),
+            'logo_url' => (string) $model->get('logo_url'),
+            'timezone' => (string) $model->get('timezone'),
             'theme' => [
-                'mode' => (string) $row['theme_mode'],
-                'colorPrimary' => (string) $row['theme_color'],
-                'radius' => (string) $row['theme_radius'],
+                'mode' => (string) $model->get('theme_mode'),
+                'colorPrimary' => (string) $model->get('theme_color'),
+                'radius' => (string) $model->get('theme_radius'),
             ],
             'preferences' => [
-                'layout' => (string) $row['layout_mode'],
-                'sidebar' => ['collapsed' => (bool) $row['sidebar_collapsed']],
-                'navigation' => ['styleType' => (string) $row['navigation_style'], 'split' => (bool) $row['navigation_split']],
-                'breadcrumb' => ['enable' => (bool) $row['breadcrumb_enable'], 'showIcon' => (bool) $row['breadcrumb_show_icon'], 'styleType' => (string) $row['breadcrumb_style']],
-                'tabbar' => ['enable' => (bool) $row['tabbar_enable'], 'styleType' => (string) $row['tabbar_style']],
-                'footer' => ['enable' => (bool) $row['footer_enable'], 'fixed' => (bool) $row['footer_fixed']],
+                'layout' => (string) $model->get('layout_mode'),
+                'sidebar' => ['collapsed' => (bool) $model->get('sidebar_collapsed')],
+                'navigation' => ['styleType' => (string) $model->get('navigation_style'), 'split' => (bool) $model->get('navigation_split')],
+                'breadcrumb' => ['enable' => (bool) $model->get('breadcrumb_enable'), 'showIcon' => (bool) $model->get('breadcrumb_show_icon'), 'styleType' => (string) $model->get('breadcrumb_style')],
+                'tabbar' => ['enable' => (bool) $model->get('tabbar_enable'), 'styleType' => (string) $model->get('tabbar_style')],
+                'footer' => ['enable' => (bool) $model->get('footer_enable'), 'fixed' => (bool) $model->get('footer_fixed')],
             ],
         ];
         if ($admin) {
-            $result['version'] = (int) $row['version'];
-            $result['updated_at'] = (int) $row['updated_at'];
+            $result['version'] = (int) $model->get('version');
+            $result['updated_at'] = (int) $model->get('updated_at');
         }
         return $result;
     }

@@ -16,7 +16,6 @@ use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
 use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
 use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
 use Type\Validate\Input;
@@ -25,8 +24,8 @@ use Type\Validate\Schema;
 /** 双端固定认证入口；账号域由编译路由决定，身份只来自各域的会话认证。 */
 final class AuthController
 {
-    /** 只保存受管连接入口，不在路由构造时建立数据库连接。 */
-    public function __construct(private DatabaseManager $database, private Factory $messages)
+    /** 只保存响应工厂；身份与站点模型复用当前请求的受管数据库作用域。 */
+    public function __construct(private Factory $messages)
     {
     }
 
@@ -54,7 +53,9 @@ final class AuthController
     #[Route('/public/site', name: 'public.site')]
     public function publicSite(ServerRequestInterface $request): ResponseInterface
     {
-        return $this->response(SiteSettings::publicView($this->connection($request)));
+        // 保留安装代次检查；模型读取站点信息不代替整个应用的安装就绪门。
+        $this->connection($request);
+        return $this->response(SiteSettings::publicView());
     }
 
     /** 每次读取当前角色及菜单；客户只选择本人有效成员所在租户。 */

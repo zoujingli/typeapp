@@ -1618,7 +1618,37 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         $siteDetails = $inspection->query("SELECT details FROM admin_audit WHERE action = 'admin.site.update'")->fetchAll(PDO::FETCH_COLUMN);
         $fullSiteAudit = array_values(array_filter($siteDetails, static fn (string $value): bool => (json_decode($value, true, 32, JSON_THROW_ON_ERROR)['version'] ?? 0) === $fullSite['version']));
         expect(count($fullSiteAudit) === 1 && json_decode($fullSiteAudit[0], true, 32, JSON_THROW_ON_ERROR)['changed_fields'] === implode(',', array_keys($siteFields)), '全字段保存的审计清单被截断或遗漏');
-        $report['site_settings'] = ['defaults' => true, 'full_form_saved' => true, 'complete_field_audit' => true, 'stale_version_rejected' => true];
+        // 同值保存也消费表单版本；模型 no-op 不能使旧页面重新取得写入资格。
+        $unchangedSite = $request('PUT', '/admin/site', $adminToken, [], ['version' => $fullSite['version'], 'changes' => $siteFields], 200)['data'];
+        expect($unchangedSite['version'] === $fullSite['version'] + 1, '同值站点保存未推进版本');
+        $request('PUT', '/admin/site', $adminToken, [], ['version' => $fullSite['version'], 'changes' => $siteFields], 409, 'stale_version');
+        $siteBeforeFailure = $request('GET', '/admin/site', $adminToken, [], null, 200)['data'];
+        if ($driver === 'pgsql') {
+            $inspection->exec("CREATE FUNCTION site_test_failure() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN IF NEW.action = ''admin.site.update'' THEN RAISE EXCEPTION ''controlled site audit failure''; END IF; RETURN NEW; END'");
+            $inspection->exec('CREATE TRIGGER site_test_failure BEFORE INSERT ON admin_audit FOR EACH ROW EXECUTE FUNCTION site_test_failure()');
+        } elseif ($driver === 'mysql') {
+            $inspection->exec("CREATE TRIGGER site_test_failure BEFORE INSERT ON admin_audit FOR EACH ROW BEGIN IF NEW.action = 'admin.site.update' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'controlled site audit failure'; END IF; END");
+        } else {
+            $inspection->exec("CREATE TRIGGER site_test_failure BEFORE INSERT ON admin_audit WHEN NEW.action = 'admin.site.update' BEGIN SELECT RAISE(ABORT, 'controlled site audit failure'); END");
+        }
+        try {
+            $request('PUT', '/admin/site', $adminToken, [], ['version' => $unchangedSite['version'], 'changes' => ['name' => '应回滚的站点']], 500);
+            expect($request('GET', '/admin/site', $adminToken, [], null, 200)['data'] === $siteBeforeFailure, '审计失败未回滚站点内容和版本');
+        } finally {
+            $inspection->exec('DROP TRIGGER site_test_failure' . ($driver === 'pgsql' ? ' ON admin_audit' : ''));
+            if ($driver === 'pgsql') {
+                $inspection->exec('DROP FUNCTION site_test_failure()');
+            }
+        }
+        // 公共站点改用 Model 后仍需遵守安装就绪门，而非只检查设置行存在。
+        $inspection->exec('UPDATE app_installation SET schema_version = 2 WHERE id = 1');
+        try {
+            $request('GET', '/public/site', '', [], null, 503, 'installation_incomplete');
+        } finally {
+            $inspection->exec('UPDATE app_installation SET schema_version = 1 WHERE id = 1');
+        }
+        $report['site_settings'] = ['defaults' => true, 'full_form_saved' => true, 'complete_field_audit' => true,
+            'stale_version_rejected' => true, 'unchanged_save_versioned' => true, 'audit_rollback' => true, 'installation_gate' => true];
         $configurationView = $request('GET', '/admin/configuration', $adminToken, [], null, 200)['data'];
         $configurationFields = [];
         foreach ($configurationView['fields'] as $configurationField) {

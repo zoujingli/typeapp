@@ -298,7 +298,8 @@ function iotDeviceBusinessChecks(Closure $request, array $tokens, string $tenant
     $request('GET', $other . '/' . $switchDevice['id'] . '/model-switches', $admin, $tenantB, null, 404, 'device_not_found');
     $target = iotTransferHttpChecks($request, $tokens, $tenantA, $registration, $database, $environment);
     return ['target' => $target, 'checks' => ['independent-current-command-and-query-permissions', 'empty-stale-realtime-and-stage-isolation',
-        'model-switch-version-idempotency-and-no-offline-confirmation', 'transfer-approval-cancel-and-isolated-activation']];
+        'model-switch-version-idempotency-and-no-offline-confirmation', 'transfer-approval-cancel-and-isolated-activation',
+        'transfer-copy-outer-audit-rollback-and-idempotent-retry']];
 }
 
 /** HTTP三库验证双方独立管理员和冻结事实；离线装置不能替代设备确认及网络排空验收。 */
@@ -368,6 +369,50 @@ function iotTransferHttpChecks(Closure $request, array $tokens, string $source, 
     expect($request('GET', $targetRecord, $tokens['outsider'], $target, null, 200)['data']['status'] === 'requested', '撤权后的审批改变未决邀请');
     expect($request('GET', $targetPath . '/products', $tokens['outsider'], $target, null, 200)['total'] === 0, '撤权后的审批复制了产品');
     $request('POST', '/customer/roles/' . $role['id'] . '/status', $tokens['outsider'], $target, ['version' => 3, 'enabled' => true], 200);
+    // 产品和物模型的嵌套保存点成功后，目标方外层审计失败仍须撤销整次审批及源方审计。
+    $copyState = static function () use ($database, $target, $device, $intent): array {
+        $state = [];
+        foreach ([
+            'products' => ['SELECT * FROM iot_products WHERE tenant_id = ? ORDER BY id', [$target]],
+            'models' => ['SELECT * FROM iot_models WHERE tenant_id = ? ORDER BY product_id, model_version', [$target]],
+            'transfer' => ['SELECT * FROM iot_transfers WHERE id = ?', [$intent['transfer_id']]],
+            'device' => ['SELECT * FROM iot_devices WHERE id = ?', [$device['id']]],
+            'audits' => ["SELECT * FROM customer_audit WHERE result = 'success' AND ((tenant_id = ? AND action IN ('product.created', 'model.created', 'model.publish')) OR (subject_id = ? AND action = 'transfer.frozen')) ORDER BY id", [$target, $intent['transfer_id']]],
+        ] as $name => [$sql, $parameters]) {
+            $query = $database->prepare($sql);
+            $query->execute($parameters);
+            $state[$name] = $query->fetchAll(PDO::FETCH_ASSOC);
+            $query->closeCursor();
+        }
+        return $state;
+    };
+    $beforeCopy = $copyState();
+    expect($beforeCopy['products'] === [] && $beforeCopy['models'] === [] && $beforeCopy['audits'] === [], '复制回滚测试目标存在此前的产品、物模型或成功审计');
+    $failureCondition = "NEW.action = 'transfer.frozen' AND NEW.subject_id = " . $database->quote($intent['transfer_id'])
+        . ' AND NEW.tenant_id = ' . $database->quote($target);
+    if ($driver === 'pgsql') {
+        $body = 'BEGIN IF ' . $failureCondition . " THEN RAISE EXCEPTION 'controlled transfer copy audit failure'; END IF; RETURN NEW; END";
+        $database->exec('CREATE FUNCTION transfer_copy_test_failure() RETURNS trigger LANGUAGE plpgsql AS ' . $database->quote($body));
+        $database->exec('CREATE TRIGGER transfer_copy_test_failure BEFORE INSERT ON customer_audit FOR EACH ROW EXECUTE FUNCTION transfer_copy_test_failure()');
+    } elseif ($driver === 'mysql') {
+        $database->exec('CREATE TRIGGER transfer_copy_test_failure BEFORE INSERT ON customer_audit FOR EACH ROW BEGIN IF '
+            . $failureCondition . " THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'controlled transfer copy audit failure'; END IF; END");
+    } else {
+        $database->exec('CREATE TRIGGER transfer_copy_test_failure BEFORE INSERT ON customer_audit WHEN '
+            . $failureCondition . " BEGIN SELECT RAISE(ABORT, 'controlled transfer copy audit failure'); END");
+    }
+    try {
+        $request('POST', $targetRecord, $tokens['outsider'], $target, $decision, 500);
+        expect($copyState() === $beforeCopy, '外层审计失败未完整回滚复制产品、物模型、内层审计、转移决策或设备版本');
+        expect($request('GET', $targetRecord, $tokens['outsider'], $target, null, 200)['data']['status'] === 'requested', '外层审计失败后邀请没有保持待审批');
+        expect($request('GET', $targetPath . '/products', $tokens['outsider'], $target, null, 200)['total'] === 0, '外层审计失败后公开接口残留复制产品');
+        expect($version() === (int) $record['device_version'], '外层审计失败推进了设备版本');
+    } finally {
+        $database->exec('DROP TRIGGER transfer_copy_test_failure' . ($driver === 'pgsql' ? ' ON customer_audit' : ''));
+        if ($driver === 'pgsql') {
+            $database->exec('DROP FUNCTION transfer_copy_test_failure()');
+        }
+    }
     $competed = identityCompete($database, $driver, $address, [
         ['POST', $targetRecord, $tokens['outsider'], $decision, ['X-Tenant-Id' => $target]],
         ['POST', $targetRecord, $tokens['outsider'], $decision, ['X-Tenant-Id' => $target]],
@@ -377,6 +422,15 @@ function iotTransferHttpChecks(Closure $request, array $tokens, string $source, 
     expect($frozen['status'] === 'frozen' && !$frozen['ready_for_switch'] && in_array('device_confirmation_required', $frozen['pending_reasons'], true), '离线审批伪造设备确认');
     expect($request('POST', $targetRecord, $tokens['outsider'], $target, $decision, 202)['data']['target_product_id'] === $frozen['target_product_id'], '重复接受又复制产品');
     expect($request('GET', $targetPath . '/products', $tokens['outsider'], $target, null, 200)['total'] === 1, '目标复制模型数量不幂等');
+    $afterCopy = $copyState();
+    expect(count($afterCopy['products']) === 1 && count($afterCopy['models']) === 1
+        && $afterCopy['models'][0]['product_id'] === $frozen['target_product_id']
+        && (int) $afterCopy['models'][0]['model_version'] === 1 && (int) $afterCopy['models'][0]['version'] === 2
+        && $afterCopy['models'][0]['status'] === 'published', '故障恢复与并发重试没有收敛到一个已发布物模型');
+    $copyAudits = array_count_values(array_column($afterCopy['audits'], 'action'));
+    ksort($copyAudits);
+    expect($copyAudits === ['model.created' => 1, 'model.publish' => 1, 'product.created' => 1, 'transfer.frozen' => 2], '复制重试重复写入产品、物模型或双方审批成功审计');
+    expect($version() === (int) $record['device_version'] + 1, '成功审批的重复重试推进了额外设备版本');
     $request(
         'POST',
         $sourcePath . '/devices/' . $device['id'] . '/commands',

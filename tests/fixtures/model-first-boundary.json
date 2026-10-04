@@ -1,0 +1,182 @@
+{
+    "files": [
+        "app/common/service/IdentityService.php",
+        "app/common/service/RoleService.php",
+        "app/iot/service/TenantService.php",
+        "app/common/service/SiteSettings.php",
+        "app/iot/service/ProductService.php",
+        "app/common/controller/AuthController.php",
+        "app/admin/controller/AdminController.php",
+        "app/iot/controller/ProductController.php"
+    ],
+    "exceptions": [
+        {
+            "owner": "app\\common\\service\\IdentityService::changeSelf",
+            "method": "table",
+            "argument": "'app_installation'",
+            "reason": "安装身份行承载全局授权互斥，不是普通业务实体。"
+        },
+        {
+            "owner": "app\\common\\service\\IdentityService::logout",
+            "method": "table",
+            "argument": "'app_installation'",
+            "reason": "安装身份行承载全局授权互斥，不是普通业务实体。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::initializeScope",
+            "method": "table",
+            "argument": "$realm . '_role_permissions'",
+            "reason": "角色权限是固定目录中的受控值集合，由授权服务统一管理。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::permissions",
+            "method": "query",
+            "argument": "SELECT DISTINCT p.permission FROM admin_user_roles b JOIN admin_roles r ON r.id = b.role_id JOIN admin_role_permissions p ON p.role_id = r.id WHERE b.user_id = ? AND r.scope_id = 'platform' AND r.enabled = 1 AND r.recovery_verified = 1 ORDER BY p.permission",
+            "reason": "经授权的跨模型只读投影，SQL 固定且参数绑定。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::permissions",
+            "method": "query",
+            "argument": "SELECT DISTINCT p.permission FROM customer_members m JOIN iot_tenants t ON t.id = m.tenant_id JOIN customer_member_roles b ON b.member_id = m.id AND b.tenant_id = m.tenant_id JOIN customer_roles r ON r.id = b.role_id AND r.scope_id = m.tenant_id JOIN customer_role_permissions p ON p.role_id = r.id WHERE m.user_id = ? AND m.tenant_id = ? AND m.enabled = 1 AND m.recovery_verified = 1 AND t.enabled = 1 AND r.enabled = 1 AND r.recovery_verified = 1 ORDER BY p.permission",
+            "reason": "经授权的跨模型只读投影，SQL 固定且参数绑定。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::directory",
+            "method": "table",
+            "argument": "$realm . '_role_permissions'",
+            "reason": "角色权限是固定目录中的受控值集合，由授权服务统一管理。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::change",
+            "method": "query",
+            "argument": "SELECT m.tenant_id FROM customer_members m JOIN iot_tenants t ON t.id = m.tenant_id WHERE m.user_id = ? AND t.enabled = 1",
+            "reason": "经授权的跨模型只读投影，SQL 固定且参数绑定。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::lockAuthorization",
+            "method": "table",
+            "argument": "'app_installation'",
+            "reason": "安装身份行承载全局授权互斥，不是普通业务实体。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::requireHighest",
+            "method": "query",
+            "argument": "SELECT r.id FROM admin_users u JOIN admin_user_roles b ON b.user_id = u.id JOIN admin_roles r ON r.id = b.role_id WHERE u.enabled = 1 AND u.recovery_verified = 1 AND r.scope_id = 'platform' AND r.protected = 1 AND r.enabled = 1 AND r.recovery_verified = 1 LIMIT 1",
+            "reason": "经授权的跨模型只读投影，SQL 固定且参数绑定。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::requireHighest",
+            "method": "query",
+            "argument": "SELECT r.id FROM customer_members m JOIN customer_users u ON u.id = m.user_id JOIN customer_member_roles b ON b.member_id = m.id AND b.tenant_id = m.tenant_id JOIN customer_roles r ON r.id = b.role_id AND r.scope_id = m.tenant_id WHERE m.tenant_id = ? AND m.enabled = 1 AND m.recovery_verified = 1 AND u.enabled = 1 AND u.recovery_verified = 1 AND r.enabled = 1 AND r.protected = 1 AND r.recovery_verified = 1 LIMIT 1",
+            "reason": "经授权的跨模型只读投影，SQL 固定且参数绑定。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::requireHighest",
+            "method": "table",
+            "argument": "$realm . '_role_permissions'",
+            "reason": "角色权限是固定目录中的受控值集合，由授权服务统一管理。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::protectSubject",
+            "method": "query",
+            "argument": "SELECT DISTINCT p.permission FROM admin_user_roles b JOIN admin_role_permissions p ON p.role_id = b.role_id WHERE b.user_id = ?",
+            "reason": "经授权的跨模型只读投影，SQL 固定且参数绑定。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::protectSubject",
+            "method": "query",
+            "argument": "SELECT DISTINCT p.permission FROM customer_member_roles b JOIN customer_role_permissions p ON p.role_id = b.role_id WHERE b.member_id = ? AND b.tenant_id = ?",
+            "reason": "经授权的跨模型只读投影，SQL 固定且参数绑定。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::role",
+            "method": "table",
+            "argument": "$realm . '_role_permissions'",
+            "reason": "角色权限是固定目录中的受控值集合，由授权服务统一管理。"
+        },
+        {
+            "owner": "app\\common\\service\\RoleService::changeRole",
+            "method": "table",
+            "argument": "$realm . '_role_permissions'",
+            "reason": "角色权限是固定目录中的受控值集合，由授权服务统一管理。"
+        },
+        {
+            "owner": "app\\iot\\service\\TenantService::tenants",
+            "method": "query",
+            "argument": "SELECT DISTINCT u.id, m.id AS member_id, m.version AS member_version, u.login, u.name FROM customer_members m JOIN customer_users u ON u.id = m.user_id JOIN customer_member_roles b ON b.member_id = m.id AND b.tenant_id = m.tenant_id JOIN customer_roles r ON r.id = b.role_id AND r.scope_id = m.tenant_id WHERE m.tenant_id = ? AND m.enabled = 1 AND m.recovery_verified = 1 AND u.enabled = 1 AND u.recovery_verified = 1 AND r.enabled = 1 AND r.protected = 1 AND r.recovery_verified = 1 ORDER BY u.id LIMIT 100",
+            "reason": "经授权的跨模型只读投影，SQL 固定且参数绑定。"
+        },
+        {
+            "owner": "app\\iot\\service\\TenantService::availableTenants",
+            "method": "table",
+            "argument": "'iot_tenants'",
+            "reason": "认证账号建立租户上下文之前，只读查询其有效成员所属租户。"
+        },
+        {
+            "owner": "app\\iot\\service\\ProductService::change",
+            "method": "table",
+            "argument": "'iot_models'",
+            "reason": "在产品删除事务内清理未发布物模型版本；真实身份是三列复合主键。"
+        },
+        {
+            "owner": "app\\iot\\service\\ProductService::models",
+            "method": "table",
+            "argument": "'iot_models'",
+            "reason": "物模型版本按租户、产品和版本三列身份读取，当前 Model 不表达复合主键。"
+        },
+        {
+            "owner": "app\\iot\\service\\ProductService::createModel",
+            "method": "table",
+            "argument": "'iot_products'",
+            "reason": "同一授权事务内只分配 next_model_version，不改变产品公开 version。"
+        },
+        {
+            "owner": "app\\iot\\service\\ProductService::createModel",
+            "method": "table",
+            "argument": "'iot_models'",
+            "reason": "分配永久版本后写入三列复合键物模型快照。"
+        },
+        {
+            "owner": "app\\iot\\service\\ProductService::changeModel",
+            "method": "table",
+            "argument": "'iot_models'",
+            "reason": "对已限定租户、产品和版本的单一快照编辑、发布或删除。"
+        },
+        {
+            "owner": "app\\iot\\service\\ProductService::findModel",
+            "method": "table",
+            "argument": "'iot_models'",
+            "reason": "按真实三列复合键读取不可变物模型快照。"
+        },
+        {
+            "owner": "app\\iot\\service\\ProductService::failure",
+            "method": "table",
+            "argument": "'customer_members'",
+            "reason": "尚未授权时不建立可信租户上下文，仅确认拒绝审计的成员归属。"
+        },
+        {
+            "owner": "app\\iot\\service\\ProductService::publishedModel",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "接收、告警和转移在原有基础设施事务连接中读取已发布复合键快照，不另取租约。"
+        },
+        {
+            "owner": "app\\common\\controller\\AuthController::me",
+            "method": "query",
+            "argument": "SELECT t.id, t.name, t.version FROM iot_tenants t JOIN customer_members m ON m.tenant_id = t.id WHERE m.user_id = ? AND m.enabled = 1 AND m.recovery_verified = 1 AND t.enabled = 1 ORDER BY t.id LIMIT 100",
+            "reason": "本人跨租户目录或选中租户资格投影，绑定已认证客户身份，不提前授予租户上下文。"
+        },
+        {
+            "owner": "app\\common\\controller\\AuthController::me",
+            "method": "query",
+            "argument": "SELECT t.id, t.name, t.version FROM iot_tenants t JOIN customer_members m ON m.tenant_id = t.id WHERE t.id = ? AND m.user_id = ? AND m.enabled = 1 AND m.recovery_verified = 1 AND t.enabled = 1",
+            "reason": "本人跨租户目录或选中租户资格投影，绑定已认证客户身份，不提前授予租户上下文。"
+        },
+        {
+            "owner": "app\\common\\controller\\AuthController::connection",
+            "method": "table",
+            "argument": "'app_installation'",
+            "reason": "访问页面和业务前核对安装身份，缺失时明确拒绝。"
+        }
+    ]
+}

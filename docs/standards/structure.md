@@ -7,11 +7,13 @@ app/
   common/                     多模块共享的应用能力
     bootstrap/                配置、模式、HTTP及命令装配
     database/                 驱动选择与示例迁移
+    model/                    账号、租户、角色与站点设置实体
     middleware/               应用日志与错误响应
   admin/                      平台管理端控制器与服务
   broker/                     Broker 管理与节点控制器
   iot/
     controller/               物联网 HTTP 输入与响应
+    model/                    已接入 ORM 的产品等业务实体
     middleware/               人员与租户鉴权
     service/                  设备业务、接收、控制、转移与恢复
     database/                 物联网业务迁移
@@ -34,7 +36,7 @@ build/                        生成源码、平台产物、报告与开发数�
 | --- | --- | --- |
 | controller | 请求输入、授权信息、调用服务、返回响应 | `AdminController` |
 | service | 业务规则、业务状态和事务/缓存声明 | `DeviceService` |
-| model | 字段状态、查询入口、持久化与业务投影 | `ModelDefinition` |
+| model | 字段状态、查询入口、持久化与业务投影 | `Product`、`SiteSetting` |
 | middleware | 请求级策略、关联日志和统一错误响应 | `RequestLog` |
 | bootstrap | 启动环境、组件组合与角色选择 | `Settings` |
 

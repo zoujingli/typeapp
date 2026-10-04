@@ -7,42 +7,48 @@ namespace app\iot\service;
 use app\common\service\AuditLog;
 use app\common\service\IdentityService;
 use app\common\service\RoleService;
+use app\iot\model\Product;
 use Closure;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Orm\Connection;
+use Type\Orm\Db;
+use Type\Orm\ModelException;
+use Type\Orm\ModelQuery;
 use Type\Orm\Query;
+use Type\Runtime\ExecutionScope;
 use Type\Validate\ValidationException;
 
 /** 产品与模型版本的持久所有者；模型编号永不复用，发布后所有写路径拒绝变更。 */
 final class ProductService
 {
     /** @return array<string, mixed> 当前租户有界产品列表及本次权限。 */
-    public function products(Connection $connection, Identity $identity, string $tenantId, int $page, int $perPage, string $name): array
+    public function products(Identity $identity, string $tenantId, int $page, int $perPage, string $name): array
     {
-        return $this->run($connection, $identity, $tenantId, 'product.listed', $tenantId, false, function (Connection $transaction, array $context) use ($tenantId, $page, $perPage, $name): array {
-            $rows = $transaction->table('iot_products')->where('tenant_id', '=', $tenantId)->select(['id', 'tenant_id', 'name', 'description', 'version', 'created_at', 'updated_at']);
+        return $this->run($identity, $tenantId, 'product.listed', $tenantId, false, function (array $context) use ($page, $perPage, $name): array {
+            $rows = Product::query()->master();
             if ($name !== '') {
                 $rows = $rows->where('name', 'LIKE', '%' . $name . '%');
             }
-            return $this->page($rows->orderBy('created_at', 'DESC')->orderBy('id'), $page, $perPage) + ['context' => $context];
+            return $this->productPage($rows->orderBy('created_at', 'DESC')->orderBy('id'), $page, $perPage) + ['context' => $context];
         });
     }
 
     /** @return array<string, mixed> 新产品；名称不是可跨租户引用的标识。 */
-    public function create(Connection $connection, Identity $identity, string $tenantId, string $name, string $description): array
+    public function create(Identity $identity, string $tenantId, string $name, string $description): array
     {
-        return $this->run($connection, $identity, $tenantId, 'product.created', $tenantId, true, static function (Connection $transaction, array $context) use ($tenantId, $name, $description): array {
-            $product = ['id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenantId, 'name' => $name, 'description' => $description, 'version' => 1, 'created_at' => time(), 'updated_at' => time()];
-            $transaction->table('iot_products')->insert($product + ['next_model_version' => 1]);
-            return $product;
+        return $this->run($identity, $tenantId, 'product.created', $tenantId, true, static function (array $context) use ($name, $description): array {
+            $product = Product::create(['id' => bin2hex(random_bytes(16)), 'name' => $name, 'description' => $description,
+                'created_at' => time(), 'updated_at' => time()]);
+            return $product->project(['id', 'tenant_id', 'name', 'description', 'version', 'created_at', 'updated_at']);
         });
     }
 
     /** @return array<string, mixed> 不存在与其他租户资源统一返回product_not_found。 */
-    public function product(Connection $connection, Identity $identity, string $tenantId, string $productId): array
+    public function product(Identity $identity, string $tenantId, string $productId): array
     {
-        return $this->run($connection, $identity, $tenantId, 'product.viewed', $productId, false, fn (Connection $transaction, array $context): array => $this->findProduct($transaction, $tenantId, $productId));
+        return $this->run($identity, $tenantId, 'product.viewed', $productId, false, fn (array $context): array => $this->findProduct($productId)
+            ->project(['id', 'tenant_id', 'name', 'description', 'version', 'created_at', 'updated_at']));
     }
 
     /**
@@ -51,31 +57,37 @@ final class ProductService
      * @return array<string, mixed> 更新后的产品或删除结果。
      * @throws HttpError 权限不足、旧版本或发布历史阻止删除。
      */
-    public function change(Connection $connection, Identity $identity, string $tenantId, string $productId, int $version, ?array $data): array
+    public function change(Identity $identity, string $tenantId, string $productId, int $version, ?array $data): array
     {
-        return $this->run($connection, $identity, $tenantId, $data === null ? 'product.deleted' : 'product.changed', $productId, true, function (Connection $transaction, array $context) use ($tenantId, $productId, $version, $data): array {
-            $product = $this->findProduct($transaction, $tenantId, $productId);
-            $this->version($product, $version);
-            $query = $transaction->table('iot_products')->where('tenant_id', '=', $tenantId)->where('id', '=', $productId);
+        return $this->run($identity, $tenantId, $data === null ? 'product.deleted' : 'product.changed', $productId, true, function (array $context) use ($tenantId, $productId, $version, $data): array {
+            $product = $this->findProduct($productId);
+            $this->version($product->getVersion(), $version);
             if ($data === null) {
+                // 物模型使用复合主键，删除草稿保留同一授权事务中的精确三字段边界。
+                $transaction = Db::connection('default', true);
                 $models = $transaction->table('iot_models')->where('tenant_id', '=', $tenantId)->where('product_id', '=', $productId);
                 if ($models->where('status', '=', 'published')->first() !== null) {
                     throw new HttpError(409, 'published_model_retained');
                 }
                 $models->delete();
-                $query->delete();
+                $product->delete();
                 return ['deleted' => true];
             }
-            $query->update(['name' => $data['name'], 'description' => $data['description'], 'version' => $version + 1, 'updated_at' => time()]);
-            return $this->findProduct($transaction, $tenantId, $productId);
+            $product->setName($data['name']);
+            $product->setDescription($data['description']);
+            $product->setUpdatedAt(time());
+            // 相同资料也消耗本次表单版本，保持重复提交与旧页面的既有冲突语义。
+            $product->dirty() === [] ? $product->touch() : $product->save();
+            return $product->project(['id', 'tenant_id', 'name', 'description', 'version', 'created_at', 'updated_at']);
         });
     }
 
     /** @return array<string, mixed> 精确版本列表，包括各自完整定义，不合并最新草稿。 */
-    public function models(Connection $connection, Identity $identity, string $tenantId, string $productId, int $page, int $perPage): array
+    public function models(Identity $identity, string $tenantId, string $productId, int $page, int $perPage): array
     {
-        return $this->run($connection, $identity, $tenantId, 'model.listed', $productId, false, function (Connection $transaction, array $context) use ($tenantId, $productId, $page, $perPage): array {
-            $this->findProduct($transaction, $tenantId, $productId);
+        return $this->run($identity, $tenantId, 'model.listed', $productId, false, function (array $context) use ($tenantId, $productId, $page, $perPage): array {
+            $this->findProduct($productId);
+            $transaction = Db::connection('default', true);
             $result = $this->page($transaction->table('iot_models')->where('tenant_id', '=', $tenantId)->where('product_id', '=', $productId)->orderBy('model_version', 'DESC'), $page, $perPage);
             $items = [];
             foreach ($result['items'] as $row) {
@@ -91,18 +103,18 @@ final class ProductService
      * @return array<string, mixed> 新草稿。
      * @throws ValidationException 定义非法。
      */
-    public function createModel(Connection $connection, Identity $identity, string $tenantId, string $productId, mixed $definition): array
+    public function createModel(Identity $identity, string $tenantId, string $productId, mixed $definition): array
     {
-        return $this->run($connection, $identity, $tenantId, 'model.created', $productId, true, function (Connection $transaction, array $context) use ($tenantId, $productId, $definition): array {
-            $this->findProduct($transaction, $tenantId, $productId);
+        return $this->run($identity, $tenantId, 'model.created', $productId, true, function (array $context) use ($tenantId, $productId, $definition): array {
+            $product = $this->findProduct($productId);
             $normalized = ModelDefinition::normalize($definition);
-            $query = $transaction->table('iot_products')->where('tenant_id', '=', $tenantId)->where('id', '=', $productId);
-            $row = $query->first();
-            $number = (int) $row['next_model_version'];
+            $number = $product->getNextModelVersion();
             if ($number >= 2147483646) {
                 throw new HttpError(409, 'model_version_exhausted');
             }
-            $query->update(['next_model_version' => $number + 1]);
+            // 永久编号与产品资料版本不同；在原授权锁内分配，不能隐式推进产品 version。
+            $transaction = Db::connection('default', true);
+            $transaction->table('iot_products')->where('tenant_id', '=', $tenantId)->where('id', '=', $productId)->update(['next_model_version' => $number + 1]);
             $model = ['tenant_id' => $tenantId, 'product_id' => $productId, 'model_version' => $number, 'version' => 1, 'status' => 'draft',
                 'definition' => json_encode($normalized, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), 'created_at' => time(), 'published_at' => null];
             $transaction->table('iot_models')->insert($model);
@@ -111,9 +123,9 @@ final class ProductService
     }
 
     /** @return array<string, mixed> 指定版本；不能回退到最新或跨租户查找。 */
-    public function model(Connection $connection, Identity $identity, string $tenantId, string $productId, int $number): array
+    public function model(Identity $identity, string $tenantId, string $productId, int $number): array
     {
-        return $this->run($connection, $identity, $tenantId, 'model.viewed', $productId, false, static fn (Connection $transaction, array $context): array => self::findModel($transaction, $tenantId, $productId, $number));
+        return $this->run($identity, $tenantId, 'model.viewed', $productId, false, static fn (array $context): array => self::findModel(Db::connection('default', true), $tenantId, $productId, $number));
     }
 
     /**
@@ -123,17 +135,18 @@ final class ProductService
      * @throws HttpError 已发布、旧草稿版本、不存在或空发布。
      * @throws ValidationException 新定义非法。
      */
-    public function changeModel(Connection $connection, Identity $identity, string $tenantId, string $productId, int $number, int $version, string $operation, mixed $definition = null): array
+    public function changeModel(Identity $identity, string $tenantId, string $productId, int $number, int $version, string $operation, mixed $definition = null): array
     {
         if (!in_array($operation, ['edit', 'delete', 'publish'], true)) {
             throw new HttpError(422, 'invalid_model_operation');
         }
-        return $this->run($connection, $identity, $tenantId, 'model.' . $operation, $productId, true, function (Connection $transaction, array $context) use ($tenantId, $productId, $number, $version, $operation, $definition): array {
+        return $this->run($identity, $tenantId, 'model.' . $operation, $productId, true, function (array $context) use ($tenantId, $productId, $number, $version, $operation, $definition): array {
+            $transaction = Db::connection('default', true);
             $model = self::findModel($transaction, $tenantId, $productId, $number);
             if ($model['status'] === 'published') {
                 throw new HttpError(409, 'model_immutable');
             }
-            $this->version($model, $version);
+            $this->version((int) $model['version'], $version);
             $query = $transaction->table('iot_models')->where('tenant_id', '=', $tenantId)->where('product_id', '=', $productId)->where('model_version', '=', $number);
             if ($operation === 'delete') {
                 $query->delete();
@@ -154,6 +167,7 @@ final class ProductService
 
     /**
      * 供设备注册、接收及控制入口在自身授权与事务内调用；只返回精确已发布版本。
+     * @internal 复合主键快照沿用调用者连接，不建立新的租户授权或事务。
      * @return array<string, mixed> 含完整冻结定义的版本事实。
      * @throws HttpError 模型不存在或未发布；绝不查找其他租户或最新草稿。
      */
@@ -167,10 +181,10 @@ final class ProductService
     }
 
     /** @return array{valid: bool, model_version: int} 模型调试公开入口；不发送指令或写入遥测。 */
-    public function validate(Connection $connection, Identity $identity, string $tenantId, string $productId, int $number, string $kind, string $identifier, mixed $values): array
+    public function validate(Identity $identity, string $tenantId, string $productId, int $number, string $kind, string $identifier, mixed $values): array
     {
-        return $this->run($connection, $identity, $tenantId, 'model.validated', $productId, false, static function (Connection $transaction, array $context) use ($tenantId, $productId, $number, $kind, $identifier, $values): array {
-            $model = self::publishedModel($transaction, $tenantId, $productId, $number);
+        return $this->run($identity, $tenantId, 'model.validated', $productId, false, static function (array $context) use ($tenantId, $productId, $number, $kind, $identifier, $values): array {
+            $model = self::publishedModel(Db::connection('default', true), $tenantId, $productId, $number);
             ModelDefinition::validateValues($model['definition'], $kind, $identifier, $values);
             return ['valid' => true, 'model_version' => $number];
         });
@@ -178,10 +192,11 @@ final class ProductService
 
     /**
      * 复用双端授权写事务，产品与版本保留既有业务规则；不推进租户资料版本。
-     * @param Closure(Connection, array<string, mixed>): array<string, mixed> $operation 已授权的同连接业务操作。
+     * @param Closure(array<string, mixed>): array<string, mixed> $operation 已授权且绑定可信租户的业务操作。
      */
-    private function run(Connection $connection, Identity $identity, string $tenantId, string $action, string $subjectId, bool $write, Closure $operation): array
+    private function run(Identity $identity, string $tenantId, string $action, string $subjectId, bool $write, Closure $operation): array
     {
+        $connection = Db::connection('default', true);
         try {
             if (!$write) {
                 $current = (new IdentityService('customer'))->refresh($identity);
@@ -192,12 +207,15 @@ final class ProductService
                 if (!in_array('customer.products.read', $permissions, true)) {
                     throw new HttpError(403, 'permission_denied');
                 }
-                return $operation($connection, ['permissions' => $permissions, 'menus' => RoleService::menus('customer', $permissions), 'identity' => IdentityService::context($current, $tenantId)]);
+                return ExecutionScope::current()->run(
+                    static fn (ExecutionScope $scope): array => $operation(['permissions' => $permissions, 'menus' => RoleService::menus('customer', $permissions), 'identity' => IdentityService::context($current, $tenantId)]),
+                    ['tenant_id' => $tenantId]
+                );
             }
             return RoleService::authorized($identity, null, 'customer.products.manage', static function (Identity $current, array $permissions) use ($tenantId, $action, $subjectId, $operation): array {
-                $transaction = \Type\Orm\Db::connection('default', true);
+                $transaction = Db::connection('default', true);
                 $context = ['permissions' => $permissions, 'menus' => RoleService::menus('customer', $permissions), 'identity' => IdentityService::context($current, $tenantId)];
-                $result = $operation($transaction, $context);
+                $result = $operation($context);
                 AuditLog::append($transaction, $tenantId, $current, $action, $result['id'] ?? $subjectId, 'success', ['context' => 'product-model', 'version' => $result['model_version'] ?? ($result['version'] ?? 0)], 'customer');
                 return $result;
             }, 'customer', $tenantId);
@@ -207,18 +225,25 @@ final class ProductService
         } catch (ValidationException $invalid) {
             $this->failure($connection, $identity, $tenantId, $action, $subjectId, 'failed', $invalid->errorCode());
             throw $invalid;
+        } catch (ModelException $conflict) {
+            if ($conflict->errorCode() !== 'optimistic_conflict') {
+                throw $conflict;
+            }
+            $this->failure($connection, $identity, $tenantId, $action, $subjectId, 'failed', 'stale_version');
+            throw new HttpError(409, 'stale_version');
         }
     }
 
     private function failure(Connection $connection, Identity $identity, string $tenantId, string $action, string $subjectId, string $result, string $reason): void
     {
+        // 授权失败不能授予请求租户上下文；只查询成员归属以决定拒绝审计的关联范围。
         $member = $connection->table('customer_members')->where('tenant_id', '=', $tenantId)->where('user_id', '=', $identity->subject())->first();
         AuditLog::append($connection, $member === null ? null : $tenantId, $identity, $action, $subjectId, $result, ['context' => 'product-model', 'reason' => $reason], 'customer');
     }
 
-    private function findProduct(Connection $connection, string $tenantId, string $productId): array
+    private function findProduct(string $productId): Product
     {
-        $product = $connection->table('iot_products')->where('tenant_id', '=', $tenantId)->where('id', '=', $productId)->select(['id', 'tenant_id', 'name', 'description', 'version', 'created_at', 'updated_at'])->first();
+        $product = Product::query()->master()->find($productId);
         if ($product === null) {
             throw new HttpError(404, 'product_not_found');
         }
@@ -227,6 +252,7 @@ final class ProductService
 
     private static function findModel(Connection $connection, string $tenantId, string $productId, int $number): array
     {
+        // 版本表以租户、产品、编号组成复合主键，不能用单一属性模拟模型身份。
         $model = $connection->table('iot_models')->where('tenant_id', '=', $tenantId)->where('product_id', '=', $productId)->where('model_version', '=', $number)->first();
         if ($model === null) {
             throw new HttpError(404, 'model_not_found');
@@ -241,9 +267,9 @@ final class ProductService
         return $model;
     }
 
-    private function version(array $row, int $version): void
+    private function version(int $current, int $version): void
     {
-        if ($version < 1 || $version >= 2147483646 || (int) $row['version'] !== $version) {
+        if ($version < 1 || $version >= 2147483646 || $current !== $version) {
             throw new HttpError(409, 'stale_version');
         }
     }
@@ -255,5 +281,19 @@ final class ProductService
             throw new HttpError(422, 'invalid_pagination');
         }
         return ['items' => $rows->limit($perPage, ($page - 1) * $perPage)->get(), 'total' => (int) $rows->aggregate('COUNT'), 'page' => $page, 'per_page' => $perPage];
+    }
+
+    /** 产品分页只公开资料字段，不暴露永久编号分配器。 */
+    private function productPage(ModelQuery $rows, int $page, int $perPage): array
+    {
+        if ($page < 1 || $page > 100000 || $perPage < 1 || $perPage > 100) {
+            throw new HttpError(422, 'invalid_pagination');
+        }
+        $result = $rows->paginate($page, $perPage);
+        $items = [];
+        foreach ($result->items() as $product) {
+            $items[] = $product->project(['id', 'tenant_id', 'name', 'description', 'version', 'created_at', 'updated_at']);
+        }
+        return ['items' => $items, 'total' => $result->total(), 'page' => $result->number(), 'per_page' => $result->perPage()];
     }
 }

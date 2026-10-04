@@ -20,9 +20,6 @@ use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
-use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
-use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
 use Type\Validate\Input;
 use Type\Validate\Schema;
@@ -31,8 +28,8 @@ use Type\Validate\Schema;
 #[Group(prefix: '/admin', namePrefix: 'admin.', middleware: ['admin.auth'])]
 final class AdminController
 {
-    /** 复用现有数据库管理器、响应工厂和启动根，构造不建立连接。 */
-    public function __construct(private DatabaseManager $database, private Factory $messages, private string $basePath)
+    /** 只保存响应工厂和启动根；业务模型在受管请求作用域中自动取得连接。 */
+    public function __construct(private Factory $messages, private string $basePath)
     {
     }
 
@@ -92,9 +89,8 @@ final class AdminController
     public function site(ServerRequestInterface $request): ResponseInterface
     {
         $identity = $this->identity($request);
-        $connection = $this->connection($request);
         $context = RoleService::readContext($identity, 'admin', '', 'site.read');
-        return $this->response(SiteSettings::adminView($connection) + ['permissions' => $context['permissions'], 'catalog' => RoleService::catalog('admin'), 'menus' => RoleService::menus('admin', $context['permissions'])]);
+        return $this->response(SiteSettings::adminView() + ['permissions' => $context['permissions'], 'catalog' => RoleService::catalog('admin'), 'menus' => RoleService::menus('admin', $context['permissions'])]);
     }
 
     /** 站点设置采用固定字段、版本号和授权事务，失败时不覆盖上一份品牌配置。 */
@@ -118,7 +114,7 @@ final class AdminController
         $token = substr($request->getHeaderLine('Authorization'), 7);
         $result = RoleService::authorized($identity, $token, 'admin.site.manage', function (Identity $current, array $permissions) use ($body, $changes): array {
             $transaction = \Type\Orm\Db::connection('default', true);
-            $result = SiteSettings::update($transaction, (int) $body['version'], $changes);
+            $result = SiteSettings::update((int) $body['version'], $changes);
             AuditLog::append($transaction, null, $current, 'admin.site.update', 'site_settings', 'success', [
                 'changed_fields' => implode(',', $result['changed']), 'version' => $result['version'],
             ], 'admin');
@@ -255,15 +251,6 @@ final class AdminController
             throw new HttpError(401, 'unauthenticated');
         }
         return $identity;
-    }
-
-    private function connection(ServerRequestInterface $request): Connection
-    {
-        $scope = $request->getAttribute('type.scope');
-        if (!$scope instanceof ExecutionScope) {
-            throw new \RuntimeException('平台管理接口需要受管请求作用域');
-        }
-        return \Type\Orm\Db::connection('default', true);
     }
 
     private function response(array $data): ResponseInterface

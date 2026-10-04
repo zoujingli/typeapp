@@ -20,6 +20,8 @@
 
 接受时选择 `target_product_id/target_model_version` 对应的目标已发布模型，或者以最多100字符的 `copy_name` 在同一审批事务内复制源定义并发布为目标自有产品版本。结构校验包含类型、单位、范围、枚举等，不能以同名产品或版本号代替。
 
+复制路径复用 `ProductService` 的 Model 入口、当前可信租户范围和原主库事务；内部保存点成功不代表审批已经提交。后续任一方审批审计失败时，复制的产品、物模型、内层成功审计、转移决定及设备版本一并回滚；恢复后以相同 `decision_id` 和内容重试，只保留一次审批结果。
+
 申请ID固定源设备、双方租户、原设备版本及真实操作者；决策ID固定操作者与完整内容。普通和模拟来源不能相互复用，响应丢失后以原ID、原内容确认受理，不重复复制产品。相反或不同决策返回409；接受后不能用拒绝或取消解冻。拒绝或取消未决邀请释放设备当前转移标识并递增设备版本。详情提供 `device_version`；没有设备查看权限时可显式输入已获知的准确版本。
 
 各动作只要求对应转移节点，`customer.transfers.read` 独立提供邀请查询。源方不能代目标审批，平台资产身份不继承租户业务权限，模拟会话只采用目标客户当前权限。复制产品及发布模型还须取得对应产品和模型权限；选择已存在的目标版本则不隐含复制授权。邀请不开放目标对源设备、凭据、指令载荷或历史的查询权限。
@@ -48,7 +50,7 @@
 
 全新应用通过 `app:install` 建立审批与观察表，设备继续由自己的SQLite模式保存持久冻结；不提供旧业务数据迁移。双方审批及首次设备冻结分别记录脱敏审计。源历史、凭据和产品关联不提前变更，复制只产生目标自己的模型。
 
-## 正式归属切换（）
+## 正式归属切换
 
 `frozen → isolating → activating → completed` 分别表示冻结待处理、旧授权隔离中、新归属已激活但设备待确认、设备已确认完成。目标管理员首次推进在双方租户/设备锁内重核最新排空、指令对账、已发布目标结构和60秒内设备确认；任何缺失返回 `transfer_prerequisites_pending`，不会撤销凭据。相同 `switch_id` 继续原阶段，不重新创建归属；不同ID拒绝。
 
@@ -76,7 +78,7 @@
 php tests/iot-ingestion.php all
 php tests/iot-ingestion.php all --native
 php vendor/bin/type docs/build-config/type-app.json
-php tests/iot-identity-databases.php build/app/type-app "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS" --no-source --products --devices
+php tests/iot-identity-databases.php build/app/type-app "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS" --no-source --products --devices --business
 php tests/iot-device-mqtt.php build/app/type-app --no-source --ingestion --transfers-only
 php tests/iot-device-mqtt.php build/app/type-app --no-source --ingestion --transfers-only --transfer-switch --transfer-faults
 php tests/iot-identity-databases.php build/app/type-app "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS" --no-source --products --devices --exports --export-transfers-only
@@ -84,3 +86,5 @@ export TYPE_NATIVE_PHP_INI="$PWD/build/app/compiler/runtime-profile/native.ini"
 php tests/iot-history-browser-fixture.php build/app/type-app 18131 --transfers
 node tests/iot-transfers-browser.mjs build/<本轮装置>/fixture.json http://127.0.0.1:15131
 ```
+
+`--business` 执行转移审批与 HTTP 业务回归；仅指定 `--devices` 不包含这组场景。复制回滚用例在真实三库中阻断目标租户的审批成功审计，核对完整持久状态未改变，再恢复并发与重复审批，检查产品、物模型、双方审计和设备版本只提交一次。这组 HTTP 观察不代替真实设备确认及 TLS 隔离专项；PHP、原生程序和平台矩阵是否通过，以各次保全报告为准。
