@@ -27,7 +27,7 @@ composer prepare
 
 复用 ModelCompiler、RouteCompiler、Schema/Input、MigrationConsole、Authentication/RequestPolicy、HttpControl 和 DatabaseManager。prepare.php 只为标准 PHP 开发生成模型与路由；原生构建使用同一 JSON 声明自行生成，生产入口是 app/main.php，不包含 Composer/PHP 文件回退。
 
-运行角色为help/check/serve/migrate。帮助不要求有效业务配置，检查只读取启动配置而不连接数据库；迁移不要求鉴权令牌或Redis；HTTP在启动时冻结配置，在业务执行作用域内惰性借用连接。接口覆盖用户CRUD、分页、软删除、版本冲突、PATCH缺失/null区别、Host信任与Bearer应用身份。模板中是服务身份示例，不冒充完整用户登录产品。
+运行角色为help/check/serve/migrate。模板入口在读取命令后统一调用 `CoroutineRuntime::enableIo()`，再进入迁移 Scheduler、HTTP 服务或业务线程；自定义生产入口也必须在创建首个协程/线程前完成这一步。帮助不要求有效业务配置，检查只读取启动配置而不连接数据库；迁移不要求鉴权令牌或 Redis；HTTP 在启动时冻结配置，在业务执行作用域内惰性借用连接。接口覆盖用户 CRUD、分页、软删除、版本冲突、PATCH 缺失/null 区别、Host 信任与 Bearer 应用身份。模板中是服务身份示例，不冒充完整用户登录产品。
 
 `tests/application-template.php mysql|pgsql|sqlite` 为各自创建独立消费者，通过 Composer 复制安装选定插件，禁用未选驱动的 Composer 平台依赖，然后以实际专用数据库运行同一命令与 HTTP 验收。源模板使用公开 HTTPS Git 地址；测试消费者的临时 path 替换用于本地主仓联调与独立 AOT，不当作已完成真实分发消费的证据。
 

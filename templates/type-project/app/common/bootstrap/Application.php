@@ -68,6 +68,9 @@ final class Application
                 Licenses::run($arguments);
                 return;
             }
+            // 所有生产入口在创建迁移协程、业务线程或 HTTP 服务前安装官方 I/O hook。
+            // 这一步必须发生在 migrate 前，否则 PDO 协程等待会稳定拒绝启动。
+            CoroutineRuntime::enableIo();
             if ($command === 'help' || $command === '--help') {
                 if (count($arguments) > 2) {
                     throw new InvalidArgumentException('help 不接受额外参数');
