@@ -187,6 +187,16 @@ final class CoroutineRuntime
         self::assertAvailable();
         $required = self::requiredHookFlags();
         $current = \Swoole\Runtime::getHookFlags();
+        // 原生编译入口可能由 PHPX 在已经创建的协程中调用。此时
+        // enableCoroutine() 只能影响进程级默认值，当前协程仍会保留创建
+        // 时的 hook 快照；后续 PDO 连接就会误报启动期 hook 缺失。沿用
+        // Swoole 官方的 Coroutine::set() 只更新当前协程选项，不重复安装
+        // 进程级 handler，也不会改变已存在的其他协程。
+        if (Coroutine::getCid() >= 0) {
+            Coroutine::set(['hook_flags' => $current | $required]);
+            self::assertRequiredHooks();
+            return;
+        }
         if (class_exists(\Swoole\Thread::class, false)
             && (!\Swoole\Thread::getInfo()['is_main_thread'] || \Swoole\Thread::activeCount() > 1)) {
             if (($current & $required) !== $required) {

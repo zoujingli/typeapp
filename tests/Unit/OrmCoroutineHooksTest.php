@@ -105,6 +105,27 @@ final class OrmCoroutineHooksTest extends TestCase
         });
     }
 
+    /** PHPX 已在协程中进入应用时，启动门仍须同步当前协程的 hook 快照。 */
+    public function testStartupSynchronizesHooksForAnAlreadyRunningCoroutine(): void
+    {
+        $observed = null;
+        $scheduler = new \Swoole\Coroutine\Scheduler();
+        $scheduler->set(['hook_flags' => 0]);
+        self::assertNotSame(false, $scheduler->add(static function () use (&$observed): void {
+            self::assertGreaterThanOrEqual(0, \Swoole\Coroutine::getCid());
+            CoroutineRuntime::enableIo();
+            $observed = \Swoole\Runtime::getHookFlags();
+            self::assertNotSame(0, $observed);
+            if (extension_loaded('pdo_mysql') && extension_loaded('mysqlnd')
+                && defined('Pdo\\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')) {
+                CoroutineRuntime::assertPdoHooks('mysql');
+            }
+        }));
+        self::assertTrue($scheduler->start());
+        self::assertIsInt($observed);
+        self::assertNotSame(0, $observed);
+    }
+
     /** 原生线程只同步本地选项；缺失、替换或运行中的启动消息不能改变 hook 配置。 */
     public function testNativeThreadInheritsOnlyItsValidatedStartupMessage(): void
     {

@@ -26,9 +26,15 @@ Windows 原生契约运行发现 `Output::stream()` 对 `tmpfile()` 创建的普
 | --- | --- |
 | `composer cs-check` | 815 个文件，0 个待修复 |
 | `composer check` | PHP 语法与公共接口 836 个文件、分发拒绝 3 项、文档一致性 1853 处引用/204 条路由/318 个命令/250 个 Composer 脚本通过；Docsify 发布边界通过 |
-| `composer test:unit` | 207 tests / 15484 assertions，通过 |
+| `composer test:unit` | 208 tests / 15446 assertions，通过 |
 | 定向依赖、发布、日志与命令契约 | 64 tests / 12614 assertions，通过 |
 | Composer 离线求解 | rc.14 拒绝，rc.15、`1.0.x-dev` 与 `dev-main` 接受，`1.1.0` 拒绝；锁文件可离线安装 |
 | 差异与语法 | `git diff --check`、修改文件 PHP lint、Composer JSON 校验通过 |
+
+## 编译入口协程 hook 回归
+
+推送后的 Linux 原生验收暴露了一个只在 PHPX 已经创建协程的编译入口出现的边界：主线程的进程级 hook 已安装，但当前协程仍保留创建时的空快照，模板迁移和发布演练因此拒绝 MySQL 连接。该失败证据已在任务临时目录保全，不把失败运行计作通过。
+
+`CoroutineRuntime::enableIo()` 现在在已有协程中使用官方 `Coroutine::set()` 同步当前协程的 hook 快照，不重复修改共享 handler；普通主线程和业务线程路径保持原有安装边界。新增 `OrmCoroutineHooksTest::testStartupSynchronizesHooksForAnAlreadyRunningCoroutine()` 覆盖该入口，完整单元套件复跑为 208 tests / 15446 assertions，通过。该修复仍需下一轮 Linux、Windows、macOS 原生工作流使用同一提交重新验收；此前失败产物身份不被覆盖。
 
 本轮没有重新执行完整四平台 AOT 或数据库矩阵；已有同一生产源码的原生证据继续保留原身份。Windows 修复需要下一次 Windows 原生工作流重新验证，普通文件修复通过前不把先前失败运行标为平台全量通过。
