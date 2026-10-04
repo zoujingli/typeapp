@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Core\WebSocket;
 
-use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 use Swoole\Http\Request as HttpRequest;
 use Swoole\Http\Response as HttpResponse;

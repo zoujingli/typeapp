@@ -8,9 +8,6 @@ require __DIR__ . '/native-package-sandbox.php';
 require __DIR__ . '/native-application-deployment.php';
 
 use Type\Build\NativePackage;
-use Type\Orm\Mysql\MysqlDriver;
-use Type\Orm\Pgsql\PgsqlDriver;
-use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
 $root = dirname(__DIR__);

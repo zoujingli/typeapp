@@ -21,7 +21,6 @@ use Type\Core\Http\Identity;
 use Type\Orm\Connection;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
-use Type\Orm\Migration\Migrator;
 use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Orm\Sqlite\SqliteDriver;

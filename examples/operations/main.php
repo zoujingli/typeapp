@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
-use Type\Orm\Connection;
 use Type\Orm\AfterCommitException;
 use Type\Orm\TransactionException;
 use Type\Orm\TransactionOutcome;

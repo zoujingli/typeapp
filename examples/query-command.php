@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Type\Orm\Connection;
 use Type\Orm\Conditions;
 use Type\Orm\Database;
 use Type\Orm\Driver;

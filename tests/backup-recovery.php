@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Type\Testing\HttpClient;
-use Type\Testing\Process;
 
 require_once __DIR__ . '/recovery-files.php';
 

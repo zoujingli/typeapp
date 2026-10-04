@@ -8,8 +8,6 @@ require $consumer . '/vendor/autoload.php';
 $command = ($argv[2] ?? '') === '--native' ? nativeCommand($consumer . '/build/type-app') : [PHP_BINARY, $consumer . '/run.php'];
 
 use Type\Redis\RedisConfiguration;
-use Type\Queue\Queue;
-use Type\Redis\Purpose;
 use Type\Redis\RedisManager;
 use Type\Runtime\ExecutionScope;
 use Type\Scheduler\Definition;

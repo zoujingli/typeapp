@@ -9,7 +9,6 @@ use Type\Validate\Data;
 use Type\Validate\Field;
 use Type\Validate\Input;
 use Type\Validate\Schema;
-use Type\Validate\ValidationException;
 
 $root = dirname(__DIR__);
 if (isset($argv[1])) {

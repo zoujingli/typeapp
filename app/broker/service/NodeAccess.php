@@ -238,7 +238,7 @@ final class NodeAccess implements IdentityAccessPolicy, CertificateAccessPolicy,
         }
     }
 
-    /** 兼容旧观察接口；完整连接事实由扩展接口登记。 */
+    /** 实现基础观察契约；Broker 对本策略调用 connectedResource，完整连接事实只登记一次。 */
     public function connected(string $clientId, string $username, string $ownerId, int $observedAt): void
     {
     }

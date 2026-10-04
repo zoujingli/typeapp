@@ -9,8 +9,6 @@ use app\common\service\IdentityService;
 use app\common\service\RoleService;
 use app\common\service\SiteSettings;
 use Type\Core\Http\HttpError;
-use Type\Orm\Connection;
-use Type\Orm\Database;
 use Type\Orm\Driver;
 use Type\Orm\Migration\Migration;
 use Type\Orm\Migration\Migrator;

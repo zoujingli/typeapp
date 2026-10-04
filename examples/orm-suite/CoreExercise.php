@@ -12,7 +12,6 @@ use Swoole\Coroutine\Channel;
 use Type\Orm\Connection;
 use Type\Orm\Database;
 use Type\Orm\DatabaseManager;
-use Type\Orm\DatabaseException;
 use Type\Orm\Driver;
 use Type\Orm\Db;
 use Type\Orm\ModelConditions;

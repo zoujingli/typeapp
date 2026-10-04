@@ -13,7 +13,6 @@ use Type\Core\Http\SwooleServer;
 use Type\Core\Http\HttpServerInterface;
 use Type\Orm\Connection;
 use Type\Orm\Database;
-use Type\Orm\Driver;
 use Type\Orm\Migration\Migrator;
 use Type\Orm\Outbox\Relay;
 use Type\Orm\Outbox\Store;

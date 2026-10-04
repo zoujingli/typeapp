@@ -49,7 +49,6 @@ use Throwable;
 use Type\Core\Config\Repository;
 use Type\Core\Http\Authentication;
 use Type\Core\Http\CanonicalRequest;
-use Type\Core\Http\HttpControl;
 use Type\Core\Http\HttpServerInterface;
 use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
@@ -114,7 +113,7 @@ final class Application
                 echo "内嵌许可：licenses 查看索引，licenses <notices/资源路径> 查看对应原文。\n";
                 echo "审计保留：app:audit-clean <admin|customer> [batch]，单批最多1000条，清理满180天事件并保留恢复与撤销依据。\n";
                 echo "应用维护调度：app:schedule once|history|work <次数> <间隔毫秒>；固定任务与执行历史通过 Redis 协调。\n";
-                echo "历史业务维护角色：iot:command-clean、iot:history-clean、iot:aggregate、iot:aggregate-clean、iot:alarm、iot:mqtt-install、iot:mqtt-statistics、iot:mqtt、iot:ingest、iot:device、iot:exports、iot:exports-work、iot:exports-clean；尚未转换的业务不向新应用公开。\n";
+                echo "物联业务角色：iot:command-clean、iot:history-clean、iot:aggregate、iot:aggregate-clean、iot:alarm、iot:mqtt-install、iot:mqtt-statistics、iot:mqtt、iot:ingest、iot:device、iot:exports、iot:exports-work、iot:exports-clean；持久 MQTT 接收需要 PostgreSQL 同步后端。\n";
                 echo "独立 Broker：broker:install、broker:migrate <status|history|recover>、broker:user <login> <name>、broker:serve、broker:run、broker:store-install；初始化密码由 BROKER_ADMIN_PASSWORD 提供。升级后启动会核对兼容代次，不能用更旧二进制维持新的占用与吊销语义。\n";
                 echo "独立持久恢复：broker:nodes；broker:node-fence <node-id> <node-run> <observation-run> <actor> <proof-ref> [operation-id]，只登记已经完成的基础设施硬隔离；broker:node-fence-result <operation-id> 仅对账；broker:audit-clean [batch] 清理满180天审计。\n";
                 echo "站内通知：iot:notices [batch]、iot:notices-clean [batch]；默认100、最多100。\n";
