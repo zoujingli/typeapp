@@ -188,12 +188,16 @@ final class CoroutineRuntime
         $required = self::requiredHookFlags();
         $current = \Swoole\Runtime::getHookFlags();
         // 原生编译入口可能由 PHPX 在已经创建的协程中调用。此时
-        // enableCoroutine() 只能影响进程级默认值，当前协程仍会保留创建
-        // 时的 hook 快照；后续 PDO 连接就会误报启动期 hook 缺失。沿用
-        // Swoole 官方的 Coroutine::set() 只更新当前协程选项，不重复安装
-        // 进程级 handler，也不会改变已存在的其他协程。
+        // enableCoroutine() 负责确保进程级 handler 已安装，但当前协程仍
+        // 可能保留创建时的 hook 快照；后续 PDO 连接就会误报启动期 hook
+        // 缺失。先沿用原有安装动作，再用官方 Coroutine::set() 同步当前
+        // 协程选项；其他已经运行的协程不会被改写。
         if (Coroutine::getCid() >= 0) {
-            Coroutine::set(['hook_flags' => $current | $required]);
+            $flags = $current | $required;
+            if (!@\Swoole\Runtime::enableCoroutine($flags)) {
+                throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
+            }
+            Coroutine::set(['hook_flags' => $flags]);
             self::assertRequiredHooks();
             return;
         }

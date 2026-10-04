@@ -54,7 +54,7 @@ TypeApp 把“当前工作是谁、还能运行多久、如何停止”放在显
 
 `$scope->run($operation, $bindings)` 把作用域绑定到当前 Swoole 协程，组件通过 `ExecutionScope::current()` 取得并校验它；嵌套调用结束或异常时恢复外层，创建者负责关闭。`CoroutineRuntime::run()` 供独立入口进入官方 Scheduler，在回调内创建作用域和连接；已有协程时直接执行并保留启动期 hook 配置。
 
-启动检查使用的 Scheduler 退出后，Swoole 会撤销实际 I/O hook，但保留 hook 配置值。框架在主线程启动业务线程前重新应用配置，保证数据库等待仍能让出协程；如果 PHPX 已在协程中进入编译入口，`enableIo()` 会用 `Coroutine::set()` 同步该协程的本地 hook 快照，不重复修改进程级 handler。业务线程运行期间不修改这些进程级配置。
+启动检查使用的 Scheduler 退出后，Swoole 会撤销实际 I/O hook，但保留 hook 配置值。框架在主线程启动业务线程前重新应用配置，保证数据库等待仍能让出协程；如果 PHPX 已在协程中进入编译入口，`enableIo()` 会先确保进程级 handler 已安装，再用 `Coroutine::set()` 同步该协程的本地 hook 快照。业务线程运行期间不修改这些进程级配置。
 
 安装 hook 并不自动把调用者变为协程。物联中心 HTTP 线程在开始监听前，使用同一协程入口完成存储兼容与恢复检查，并在退出检查前释放连接和作用域；请求阶段另按各自作用域借用连接。
 
