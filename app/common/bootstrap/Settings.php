@@ -11,8 +11,13 @@ use RuntimeException;
 use Throwable;
 use Type\Core\Config\Environment;
 use Type\Core\Config\Repository;
+use Type\Core\Http\RequestLimits;
+use Type\Core\Http\RequestPolicy;
+use Type\Core\Http\HttpControl;
 use Type\Orm\DatabaseManager;
 use Type\Redis\RedisConfiguration;
+use Type\Redis\RedisManager;
+use Type\Redis\Purpose;
 use Type\Runtime\DeploymentBudget;
 
 /**
@@ -63,20 +68,32 @@ final class Settings
      *
      * @throws InvalidArgumentException 环境数据或配置类型不符合声明。
      */
-    public static function load(string $basePath): Repository
+    public static function load(string $basePath, string $role = 'database'): Repository
     {
         $settings = ProjectConfig::load(Environment::load($basePath . '/.env'));
-        if ($settings->boolean('cache.enabled')) {
-            RuntimeCapabilities::requireFeature('cache');
-            RuntimeCapabilities::requireFeature('redis');
-        }
+        self::validateRuntimeConfiguration($settings, $basePath, $role);
         return $settings;
     }
 
     /** 共用 HTTP 启动和离线检查的连接预算；构造时不借用连接、不初始化数据库。 */
-    public static function database(Repository $settings, string $basePath): DatabaseManager
+    public static function database(Repository $settings, string $basePath, ?int $capacity = null): DatabaseManager
     {
-        $budget = new DeploymentBudget(
+        $budget = self::databaseBudget($settings);
+        $maximum = $capacity ?? self::integer($settings, 'database.pool.capacity', 1, 1024);
+        return new DatabaseManager(
+            ['default' => DatabaseFactory::create($settings, $basePath)],
+            $maximum,
+            min($maximum, self::integer($settings, 'database.pool.idle', 0, 1024)),
+            $budget,
+            self::integer($settings, 'database.pool.waiters', 0, 65536),
+            self::integer($settings, 'database.pool.wait_ms', 0, 60000) / 1000.0
+        );
+    }
+
+    /** 离线检查与运行装配使用相同公式，不创建池或数据库文件。 */
+    public static function databaseBudget(Repository $settings): DeploymentBudget
+    {
+        return new DeploymentBudget(
             self::integer($settings, 'database.budget.server', 2, 1000000),
             self::integer($settings, 'database.budget.replicas', 1, 10000),
             self::integer($settings, 'database.budget.surge', 0, 10000),
@@ -84,13 +101,72 @@ final class Settings
             self::integer($settings, 'database.budget.reserve', 0, 100000),
             self::integer($settings, 'database.budget.threads', 1, 256)
         );
-        return new DatabaseManager(
-            ['default' => DatabaseFactory::create($settings, $basePath)],
-            4,
-            0,
-            $budget,
-            self::integer($settings, 'database.pool.waiters', 0, 65536),
-            self::integer($settings, 'database.pool.wait_ms', 0, 60000) / 1000.0
+    }
+
+    /** Host 与可信代理在保存、预检和 HTTP 装配时使用同一规范化规则。 */
+    public static function requestPolicy(Repository $settings): RequestPolicy
+    {
+        $port = self::integer($settings, 'app.http.port', 1, 65535);
+        $hosts = self::list($settings->text('app.http.allowed_hosts'));
+        return new RequestPolicy(
+            $hosts === [] ? ['127.0.0.1:' . $port, 'localhost:' . $port] : $hosts,
+            self::list($settings->text('app.http.trusted_proxies'))
+        );
+    }
+
+    /** 上传目录由部署者准备；预检只核对原生入口要求的文件系统预算。 */
+    public static function requestLimits(Repository $settings): RequestLimits
+    {
+        $temporary = $settings->text('app.http.upload_temp');
+        return new RequestLimits(1048576, 2048, 16, 8, 1048576, 65536, $temporary === '' ? null : $temporary);
+    }
+
+    /** HTTP 执行线程与数据库额度分离；旧代线程仍需计入部署预算。 */
+    public static function httpThreads(Repository $settings): int
+    {
+        $threads = self::integer($settings, 'app.http.threads', 1, 256);
+        if ($threads > self::integer($settings, 'database.budget.threads', 1, 256)) {
+            throw new InvalidArgumentException('HTTP 线程数超过部署连接预算的线程数');
+        }
+        return PHP_OS_FAMILY === 'Windows' ? 1 : $threads;
+    }
+
+    /** 按应用配置建立宿主额度；跨字段约束由实际 HTTP 控制器校验。 */
+    public static function httpControl(Repository $settings, ?\Closure $readiness = null): HttpControl
+    {
+        return new HttpControl(
+            self::integer($settings, 'app.http.requests', 1, 10000),
+            self::integer($settings, 'app.http.connections', 1, 100000),
+            self::integer($settings, 'app.http.request_ms', 1, 3600000) / 1000.0,
+            self::integer($settings, 'app.http.drain_ms', 1, 60000) / 1000.0,
+            self::integer($settings, 'app.http.cleanup_ms', 0, 60000) / 1000.0,
+            16,
+            true,
+            $readiness
+        );
+    }
+
+    /** 所有 Redis 用途按同一部署角色上限分配，端点共用时也不会复制整份额度。 */
+    public static function redisBudget(Repository $settings): DeploymentBudget
+    {
+        return new DeploymentBudget(
+            self::integer($settings, 'database.redis_budget.server', 2, 1000000),
+            self::integer($settings, 'database.budget.replicas', 1, 10000),
+            self::integer($settings, 'database.budget.surge', 0, 10000),
+            self::integer($settings, 'database.budget.processes', 1, 10000),
+            self::integer($settings, 'database.redis_budget.reserve', 0, 100000),
+            self::integer($settings, 'database.budget.threads', 1, 256)
+        );
+    }
+
+    /** 每个角色持有一个管理器，内部所有用途池共用本执行者的部署额度。 */
+    public static function redisManager(Repository $settings, string $basePath, string $purpose): RedisManager
+    {
+        $capacity = self::integer($settings, 'database.redis_budget.capacity', 1, 1024);
+        return new RedisManager(
+            [$purpose => self::redis($settings, $basePath, $purpose)],
+            [Purpose::COMMAND => $capacity, Purpose::SCRIPT => $capacity],
+            self::redisBudget($settings)
         );
     }
 
@@ -99,17 +175,17 @@ final class Settings
     {
         RuntimeCapabilities::requireFeature('redis');
         RuntimeCapabilities::requireFeature($purpose === 'notices' ? 'alerts' : $purpose);
-        if (!in_array($purpose, ['cache', 'exports', 'notices', 'scheduler'], true)) {
+        if (!in_array($purpose, ['exports', 'notices', 'scheduler'], true)) {
             throw new InvalidArgumentException('Redis 配置用途无效');
         }
-        $prefix = $purpose === 'cache' ? 'cache.redis.' : 'app.' . $purpose . '.redis_';
+        $prefix = 'app.' . $purpose . '.redis_';
         $password = $settings->text($prefix . 'password');
         $username = $settings->text($prefix . 'username');
-        $ca = $settings->text($prefix . ($purpose === 'cache' ? 'tls_ca' : 'ca'));
+        $ca = $settings->text($prefix . 'ca');
         return new RedisConfiguration(
             $settings->text($prefix . 'host'),
             self::integer($settings, $prefix . 'port', 1, 65535),
-            $purpose === 'cache' ? self::integer($settings, 'cache.redis.database', 0, 1024) : 0,
+            0,
             $password === '' ? null : $password,
             $username === '' ? null : $username,
             1.0,
@@ -135,6 +211,12 @@ final class Settings
             'APP_ALLOWED_HOSTS' => ['path' => 'app.http.allowed_hosts', 'label' => '允许的 Host', 'group' => 'HTTP', 'type' => 'string', 'editable' => true, 'secret' => false],
             'APP_TRUSTED_PROXIES' => ['path' => 'app.http.trusted_proxies', 'label' => '可信代理', 'group' => 'HTTP', 'type' => 'string', 'editable' => true, 'secret' => false],
             'APP_UPLOAD_TEMP' => ['path' => 'app.http.upload_temp', 'label' => '上传临时目录', 'group' => 'HTTP', 'type' => 'string', 'editable' => true, 'secret' => false],
+            'APP_HTTP_THREADS' => ['path' => 'app.http.threads', 'label' => 'HTTP 线程数（Windows 当前使用 1）', 'group' => 'HTTP', 'type' => 'integer', 'editable' => true, 'secret' => false],
+            'APP_HTTP_MAX_REQUESTS' => ['path' => 'app.http.requests', 'label' => '每线程请求上限', 'group' => 'HTTP', 'type' => 'integer', 'editable' => true, 'secret' => false],
+            'APP_HTTP_MAX_CONNECTIONS' => ['path' => 'app.http.connections', 'label' => '每线程连接上限', 'group' => 'HTTP', 'type' => 'integer', 'editable' => true, 'secret' => false],
+            'APP_HTTP_REQUEST_MS' => ['path' => 'app.http.request_ms', 'label' => '请求期限（毫秒）', 'group' => 'HTTP', 'type' => 'integer', 'editable' => true, 'secret' => false],
+            'APP_HTTP_DRAIN_MS' => ['path' => 'app.http.drain_ms', 'label' => '排空期限（毫秒）', 'group' => 'HTTP', 'type' => 'integer', 'editable' => true, 'secret' => false],
+            'APP_HTTP_CLEANUP_MS' => ['path' => 'app.http.cleanup_ms', 'label' => '清理期限（毫秒）', 'group' => 'HTTP', 'type' => 'integer', 'editable' => true, 'secret' => false],
             'DB_DRIVER' => ['path' => 'database.driver', 'label' => '数据库驱动', 'group' => '数据库', 'type' => 'enum', 'editable' => true, 'secret' => false, 'options' => ['sqlite', 'mysql', 'pgsql']],
             'DB_HOST' => ['path' => 'database.host', 'label' => '数据库地址', 'group' => '数据库', 'type' => 'string', 'editable' => true, 'secret' => false],
             'DB_PORT' => ['path' => 'database.port', 'label' => '数据库端口', 'group' => '数据库', 'type' => 'integer', 'editable' => true, 'secret' => false],
@@ -149,8 +231,13 @@ final class Settings
             'APP_DATABASE_PROCESSES' => ['path' => 'database.budget.processes', 'label' => '数据库进程数', 'group' => '数据库', 'type' => 'integer', 'editable' => true, 'secret' => false],
             'APP_DATABASE_THREADS' => ['path' => 'database.budget.threads', 'label' => '数据库线程数', 'group' => '数据库', 'type' => 'integer', 'editable' => true, 'secret' => false],
             'DB_POOL_WAITERS' => ['path' => 'database.pool.waiters', 'label' => '连接等待数', 'group' => '数据库', 'type' => 'integer', 'editable' => true, 'secret' => false],
+            'DB_POOL_CAPACITY' => ['path' => 'database.pool.capacity', 'label' => '每池连接上限', 'group' => '数据库', 'type' => 'integer', 'editable' => true, 'secret' => false],
+            'DB_POOL_IDLE' => ['path' => 'database.pool.idle', 'label' => '每池空闲保留上限', 'group' => '数据库', 'type' => 'integer', 'editable' => true, 'secret' => false],
+            'REDIS_SERVER_BUDGET' => ['path' => 'database.redis_budget.server', 'label' => 'Redis 总连接预算', 'group' => '部署容量', 'type' => 'integer', 'editable' => true, 'secret' => false],
+            'REDIS_ADMIN_RESERVE' => ['path' => 'database.redis_budget.reserve', 'label' => 'Redis 管理预留', 'group' => '部署容量', 'type' => 'integer', 'editable' => true, 'secret' => false],
+            'REDIS_POOL_CAPACITY' => ['path' => 'database.redis_budget.capacity', 'label' => 'Redis 用途池上限', 'group' => '部署容量', 'type' => 'integer', 'editable' => true, 'secret' => false],
             'DB_POOL_WAIT_MS' => ['path' => 'database.pool.wait_ms', 'label' => '连接等待超时（毫秒）', 'group' => '数据库', 'type' => 'integer', 'editable' => true, 'secret' => false],
-            'APP_CACHE_ENABLED' => ['path' => 'cache.enabled', 'label' => '应用缓存', 'group' => '缓存', 'type' => 'boolean', 'editable' => true, 'secret' => false],
+            'APP_CACHE_ENABLED' => ['path' => 'cache.enabled', 'label' => '旧缓存开关（须关闭）', 'group' => '兼容检查', 'type' => 'boolean', 'editable' => false, 'secret' => false],
             'APP_SCHEDULER_NAMESPACE' => ['path' => 'app.scheduler.namespace', 'label' => '调度命名空间', 'group' => '调度', 'type' => 'string', 'editable' => true, 'secret' => false],
             'APP_SCHEDULER_REDIS_HOST' => ['path' => 'app.scheduler.redis_host', 'label' => '调度 Redis 地址', 'group' => '调度', 'type' => 'string', 'editable' => true, 'secret' => false],
             'APP_SCHEDULER_REDIS_PORT' => ['path' => 'app.scheduler.redis_port', 'label' => '调度 Redis 端口', 'group' => '调度', 'type' => 'integer', 'editable' => true, 'secret' => false],
@@ -158,12 +245,6 @@ final class Settings
             'APP_SCHEDULER_REDIS_PASSWORD' => ['path' => 'app.scheduler.redis_password', 'label' => '调度 Redis 密码', 'group' => '调度', 'type' => 'string', 'editable' => false, 'secret' => true],
             'APP_SCHEDULER_REDIS_TLS' => ['path' => 'app.scheduler.redis_tls', 'label' => '调度 Redis TLS', 'group' => '调度', 'type' => 'boolean', 'editable' => true, 'secret' => false],
             'APP_SCHEDULER_REDIS_CA' => ['path' => 'app.scheduler.redis_ca', 'label' => '调度 Redis CA 文件', 'group' => '调度', 'type' => 'string', 'editable' => true, 'secret' => false],
-            'REDIS_HOST' => ['path' => 'cache.redis.host', 'label' => 'Redis 地址', 'group' => '缓存', 'type' => 'string', 'editable' => true, 'secret' => false],
-            'REDIS_PORT' => ['path' => 'cache.redis.port', 'label' => 'Redis 端口', 'group' => '缓存', 'type' => 'integer', 'editable' => true, 'secret' => false],
-            'REDIS_DATABASE' => ['path' => 'cache.redis.database', 'label' => 'Redis 数据库', 'group' => '缓存', 'type' => 'integer', 'editable' => true, 'secret' => false],
-            'REDIS_USERNAME' => ['path' => 'cache.redis.username', 'label' => 'Redis 账号', 'group' => '缓存', 'type' => 'string', 'editable' => true, 'secret' => false],
-            'REDIS_TLS' => ['path' => 'cache.redis.tls', 'label' => 'Redis TLS', 'group' => '缓存', 'type' => 'boolean', 'editable' => true, 'secret' => false],
-            'REDIS_TLS_CA' => ['path' => 'cache.redis.tls_ca', 'label' => 'Redis CA 文件', 'group' => '缓存', 'type' => 'string', 'editable' => true, 'secret' => false],
             'BROKER_LISTEN' => ['path' => 'app.broker.listen', 'label' => 'Broker 监听地址', 'group' => 'Broker', 'type' => 'string', 'editable' => true, 'secret' => false],
             'BROKER_PORT' => ['path' => 'app.broker.port', 'label' => 'Broker 端口', 'group' => 'Broker', 'type' => 'integer', 'editable' => true, 'secret' => false],
             'BROKER_NODE_ID' => ['path' => 'app.broker.node_id', 'label' => 'Broker 节点 ID', 'group' => 'Broker', 'type' => 'string', 'editable' => true, 'secret' => false],
@@ -323,10 +404,19 @@ final class Settings
         return $updated;
     }
 
-    /** 校验配置结构和驱动范围，但不连接数据库或 Redis。 */
-    private static function validateRuntimeConfiguration(Repository $settings, string $basePath): void
+    /**
+     * 配置管理检查 all，运行角色检查自身需求；不连接服务、不建库、不启动角色。
+     * @param string $role all、http、database、scheduler、exports 或 notices。
+     */
+    public static function validateRuntimeConfiguration(Repository $settings, string $basePath, string $role = 'all'): void
     {
+        if (!in_array($role, ['all', 'http', 'database', 'scheduler', 'exports', 'notices'], true)) {
+            throw new InvalidArgumentException('configuration_role_invalid');
+        }
         self::environment($settings, false);
+        if ($settings->boolean('cache.enabled')) {
+            throw new RuntimeCapabilityException('feature_unavailable', '物联中心尚未接入通用业务缓存，请移除 APP_CACHE_ENABLED=true');
+        }
         foreach ([
             ['database.budget.server', 2, 1000000], ['database.budget.replicas', 1, 10000], ['database.budget.surge', 0, 10000],
             ['database.budget.processes', 1, 10000], ['database.budget.reserve', 0, 100000], ['database.budget.threads', 1, 256],
@@ -334,10 +424,22 @@ final class Settings
         ] as [$key, $minimum, $maximum]) {
             self::integer($settings, $key, $minimum, $maximum);
         }
+        self::databaseBudget($settings);
+        $capacity = self::integer($settings, 'database.pool.capacity', 1, 1024);
+        if (self::integer($settings, 'database.pool.idle', 0, 1024) > $capacity) {
+            throw new InvalidArgumentException('数据库空闲连接数不能超过池容量');
+        }
         DatabaseFactory::validate($settings, $basePath);
-        self::integer($settings, 'app.http.port', 1, 65535);
-        foreach (['cache', 'exports', 'notices', 'scheduler'] as $purpose) {
-            if (self::redisEnabled($settings, $purpose)) {
+        if ($role === 'all' || $role === 'http') {
+            self::httpThreads($settings);
+            self::httpControl($settings);
+            self::requestPolicy($settings);
+            self::requestLimits($settings);
+        }
+        foreach (['exports', 'notices', 'scheduler'] as $purpose) {
+            if (($role === 'all' && self::redisEnabled($settings, $purpose)) || $role === $purpose) {
+                self::redisBudget($settings);
+                self::integer($settings, 'database.redis_budget.capacity', 1, 1024);
                 self::redis($settings, $basePath, $purpose);
             }
         }
@@ -397,26 +499,9 @@ final class Settings
             $result += $environment->describe();
             // 单独检查被进程覆盖的文件值，防止恢复副本藏有错误类型；不执行文件内容。
             ProjectConfig::load(Environment::parse($contents, false));
-            self::environment($settings, false);
-            foreach ([
-                ['database.budget.server', 2, 1000000],
-                ['database.budget.replicas', 1, 10000],
-                ['database.budget.surge', 0, 10000],
-                ['database.budget.processes', 1, 10000],
-                ['database.budget.reserve', 0, 100000],
-                ['database.budget.threads', 1, 256],
-                ['database.pool.waiters', 0, 65536],
-                ['database.pool.wait_ms', 0, 60000],
-            ] as [$key, $minimum, $maximum]) {
-                self::integer($settings, $key, $minimum, $maximum);
-            }
-            DatabaseFactory::validate($settings, $basePath);
-            self::integer($settings, 'app.http.port', 1, 65535);
-            foreach (['cache', 'exports', 'notices', 'scheduler'] as $purpose) {
-                if (self::redisEnabled($settings, $purpose)) {
-                    self::redis($settings, $basePath, $purpose);
-                }
-            }
+            self::validateRuntimeConfiguration($settings, $basePath);
+            $result['budgets'] = ['database' => self::databaseBudget($settings)->statistics(),
+                'redis' => RuntimeCapabilities::hasFeature('redis') ? self::redisBudget($settings)->statistics() : null];
             $result['dependencies'] = 'not_checked';
             if ($remember || in_array('--connect', $arguments, true)) {
                 $dependencies = self::checkDependencies($settings, $basePath);
@@ -447,11 +532,10 @@ final class Settings
         }
     }
 
-    /** 配置检查只探测启用的用途，显式开启被裁剪的缓存仍会被 redis() 拒绝。 */
+    /** 配置检查只探测构建产物声明的真实业务用途。 */
     private static function redisEnabled(Repository $settings, string $purpose): bool
     {
-        return $purpose === 'cache' ? $settings->boolean('cache.enabled')
-            : RuntimeCapabilities::hasFeature($purpose === 'notices' ? 'alerts' : $purpose);
+        return RuntimeCapabilities::hasFeature($purpose === 'notices' ? 'alerts' : $purpose);
     }
 
     /** @return array<string, string> 每个真实依赖独立返回结果；不输出驱动异常、DSN或凭据。 */
@@ -460,17 +544,26 @@ final class Settings
         $results = [];
         try {
             DatabaseFactory::requireExisting($settings, $basePath);
-            $connection = DatabaseFactory::create($settings, $basePath)->connect();
-            $statement = $connection->query('SELECT 1');
-            if ($statement === false || (int) $statement->fetchColumn() !== 1) {
-                throw new RuntimeException('dependency_failed');
-            }
-            $statement->closeCursor();
+            \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath): void {
+                $manager = self::database($settings, $basePath, 1);
+                $scope = new \Type\Runtime\ExecutionScope(new \Type\Runtime\Deadline(2.0));
+                try {
+                    if ((int) ($manager->connect($scope)->query('SELECT 1 AS value')[0]['value'] ?? 0) !== 1) {
+                        throw new RuntimeException('dependency_failed');
+                    }
+                } finally {
+                    try {
+                        $scope->close();
+                    } finally {
+                        $manager->close();
+                    }
+                }
+            });
             $results['database'] = 'ok';
         } catch (Throwable) {
             $results['database'] = 'failed';
         }
-        foreach (['cache', 'exports', 'notices', 'scheduler'] as $purpose) {
+        foreach (['exports', 'notices', 'scheduler'] as $purpose) {
             if (!self::redisEnabled($settings, $purpose)) {
                 $results['redis_' . $purpose] = 'disabled';
                 continue;

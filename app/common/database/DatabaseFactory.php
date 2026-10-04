@@ -97,7 +97,7 @@ final class DatabaseFactory
     }
 
     /**
-     * 仅精确的 migrate run 命令调用；按需创建私有 SQLite 数据目录，不删除已有数据。
+     * 仅显式初始化入口调用；按需创建私有 SQLite 数据目录，不删除已有数据。
      *
      * @throws InvalidArgumentException 本地数据库路径无效或目录无法创建。
      */
@@ -115,12 +115,12 @@ final class DatabaseFactory
     /**
      * 非初始化命令拒绝 SQLite 隐式建库；存在文件不等于迁移版本已全部就绪。
      *
-     * @throws InvalidArgumentException SQLite 文件不存在，需先显式运行 migrate run。
+     * @throws InvalidArgumentException SQLite 文件不存在，需先显式运行 app:install。
      */
     public static function requireExisting(Repository $configuration, string $basePath): void
     {
         if (self::name($configuration) === 'sqlite' && !is_file(self::sqliteFile($configuration, $basePath))) {
-            throw new InvalidArgumentException('SQLite 示例库尚未初始化，请先运行 migrate run');
+            throw new InvalidArgumentException('SQLite 数据库尚未初始化，请先运行 app:install；独立 Broker 使用 broker:install');
         }
     }
 

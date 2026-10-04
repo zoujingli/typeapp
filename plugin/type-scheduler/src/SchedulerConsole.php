@@ -50,6 +50,9 @@ final class SchedulerConsole
             }
             $status = 0;
             for ($tick = 0; $tick < $ticks; $tick++) {
+                if (!$this->scheduler->ready()) {
+                    break;
+                }
                 $records = $this->scheduler->tick();
                 foreach ($records as $record) {
                     if ($record['state'] !== 'succeeded') {
@@ -61,7 +64,15 @@ final class SchedulerConsole
                     break;
                 }
                 if ($tick + 1 < $ticks) {
-                    usleep($milliseconds * 1000);
+                    // 使用原生 hook 等待；至多 50ms 复核停止状态，不把 60s 间隔变成停机延迟。
+                    $until = hrtime(true) + $milliseconds * 1000000;
+                    while ($this->scheduler->ready()) {
+                        $remaining = $until - hrtime(true);
+                        if ($remaining <= 0) {
+                            break;
+                        }
+                        usleep((int) min(50000, max(1, intdiv($remaining, 1000))));
+                    }
                 }
             }
 

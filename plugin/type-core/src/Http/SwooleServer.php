@@ -36,6 +36,7 @@ final class SwooleServer implements HttpServerInterface
 
     /**
      * @param Closure():void|null $onWorkerStop Unix worker 停止、Windows 协程 HTTP 退出或编译线程请求完整收尾时的清理；硬终止无法保证回调。
+     * @param ?RequestPolicy $probePolicy 探针使用的 Host/代理策略；未传时由部署网络限制访问。
      */
     public function __construct(
         RequestHandlerInterface $handler,
@@ -44,7 +45,8 @@ final class SwooleServer implements HttpServerInterface
         StreamFactoryInterface $streams,
         ?RequestLimits $limits = null,
         ?HttpControl $control = null,
-        ?Closure $onWorkerStop = null
+        ?Closure $onWorkerStop = null,
+        private readonly ?RequestPolicy $probePolicy = null
     ) {
         $this->handler = $handler;
         $this->requests = $requests;
@@ -411,11 +413,33 @@ final class SwooleServer implements HttpServerInterface
             $output->close();
             return;
         }
-        $probe = $this->control->probe((string) ($raw->server['request_uri'] ?? '/'));
-        if ($probe !== null && strtoupper((string) ($raw->server['request_method'] ?? 'GET')) === 'GET') {
-            $output->status($probe['status']);
-            $output->header('Content-Type', 'application/json');
-            $output->end(json_encode($probe['body'], JSON_THROW_ON_ERROR));
+        $path = (string) ($raw->server['request_uri'] ?? '/');
+        if ($this->control->probes && in_array($path, ['/livez', '/readyz'], true)
+            && strtoupper((string) ($raw->server['request_method'] ?? 'GET')) === 'GET') {
+            // 探针保留独立请求额度，但应用可指定与业务相同的 Host/代理校验。
+            try {
+                $host = $raw->header['host'] ?? '';
+                $request = $this->requests->createServerRequest('GET', 'http://' . $host . $path, $raw->server ?? []);
+                foreach ($raw->header ?? [] as $name => $value) {
+                    $request = $request->withHeader((string) $name, $value);
+                }
+                $request = $request->withAttribute('type.raw-target', $path . (isset($raw->server['query_string']) ? '?' . $raw->server['query_string'] : ''));
+                $handler = new ActionHandler(function (\Psr\Http\Message\ServerRequestInterface $checked) use ($path): ResponseInterface {
+                    $probe = $this->control->probe($path);
+                    return $this->responses->createResponse($probe['status'])->withHeader('Content-Type', 'application/json')
+                        ->withHeader('Cache-Control', 'no-store')->withBody($this->streams->createStream(json_encode($probe['body'], JSON_THROW_ON_ERROR)));
+                });
+                $response = $this->probePolicy === null ? $handler->handle($request) : $this->probePolicy->process($request, $handler);
+            } catch (HttpError $error) {
+                $response = $this->error($error->status(), $error->errorCode());
+            } catch (\Throwable) {
+                $response = $this->error(400, 'bad_request');
+            }
+            try {
+                (new ResponseEmitter())->emit($response, $output, false);
+            } finally {
+                $response->getBody()->close();
+            }
             return;
         }
         $scope = $this->control->begin();

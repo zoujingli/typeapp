@@ -128,7 +128,6 @@ APP_PORT=9501
 APP_ALLOWED_HOSTS=127.0.0.1:9501,localhost:9501
 DB_DRIVER=sqlite
 DB_SQLITE_FILE=var/typeapp.sqlite
-APP_CACHE_ENABLED=false
 ```
 
 这份示例仅监听本机。对外提供服务时填写实际监听地址、端口与允许的 Host；使用 MySQL/PostgreSQL、可信代理或其他业务角色时，按[配置说明](configuration.md)补齐所需参数。已有配置应保留并核对，不能用示例覆盖。随后执行：
@@ -231,15 +230,72 @@ Broker 接入、持久工作和设备授权均使用 Swoole 官方 Process、Thr
 
 ## 升级与恢复
 
+本节的 `app:upgrade` 及下方增强的就绪、诊断行为属于当前 `main`，尚未包含在公开 RC14 中；使用前确认程序来自包含这些接口的源码构建。
+
 升级生成新的发布目录，保留旧版本及明确的备份。先核对版本、依赖、数据库兼容和迁移计划，再切换服务；切回旧二进制不会自动回滚数据库。
 
-物联中心当前的 `app:install` 只初始化空库，`migrate` 提供状态、历史和恢复核对，明确拒绝 `migrate run`。已有业务库的增量升级入口仍在[启动与运行收口](roadmap.md#启动与运行收口)中维护。程序和页面更新不执行数据库升级；新版本要求更改数据结构时，须先完成该版本的数据迁移与恢复验收，不能重新安装覆盖旧库。通用模板的迁移命令与物联中心入口分别使用。
+物联中心用 `app:install` 初始化空库，用 `app:upgrade` 检查和升级已安装数据库。后者复用迁移锁，核对安装身份、迁移摘要、二进制兼容和恢复门；不重建初始账号。当前只接受已有安装谱系及已知 `101_app_broker_operation_recovery` 增量，未知旧模式或被修改的迁移明确拒绝，不承诺任意历史版本直升。
+
+```bash
+# 新程序使用既有 APP_BASE_PATH 和 .env，先只读核对计划
+./type-app app:upgrade --check
+./type-app migrate status
+# 停止全部写入角色，在隔离库验证备份可恢复，核对文件摘要后执行
+: "${BACKUP_SHA256:?先设置已核对备份文件的 SHA-256 摘要}"
+./type-app app:upgrade --offline --backup backups/before-upgrade --sha256 "$BACKUP_SHA256"
+./type-app web:install --dry-run --force
+./type-app web:install --force
+./type-app config:check --connect
+# 由原有监督器重启所需角色，HTTP 就绪及业务检查通过后恢复流量
+./type-app serve
+```
+
+`--offline` 是操作人已停止全部写入角色的明确确认，程序不会替你停止其他机器或进程。备份路径相对应用根，必须是非空本地普通文件，摘要只证明文件字节一致，不能证明备份可恢复。升级后保留原备份、程序及回执；重复执行已完成迁移不会重复业务写入。数据库、页面和流量切换不是跨资源原子事务。
+
+遇到 `upgrade_recovery_required`，先读取 `migrate history` 并核对数据库实际状态，再使用 `migrate recover <版本> <retry|applied> <核对说明>`；MySQL 的部分 DDL 不会自动回滚，不能未经核对直接重试。`migrate run` 继续拒绝绕过应用升级门。通用模板的迁移命令与物联中心分别使用。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant O as 运维与监督器
+  participant A as 新程序
+  participant D as 业务数据库
+  participant P as public
+  O->>A: app:upgrade --check
+  A->>D: 读取迁移、安装身份、兼容与恢复状态
+  A-->>O: 可执行计划或明确拒绝
+  O->>O: 停止写入角色，备份并验证恢复
+  O->>A: app:upgrade --offline --backup ... --sha256 ...
+  A->>A: 核对备份字节
+  A->>D: 取得迁移锁，再次核对并应用已知增量
+  D-->>A: 迁移完成与业务状态
+  A-->>O: 升级回执与重启要求
+  O->>A: web:install --force
+  A->>P: 校验、暂存、更新托管页面
+  O->>A: 重启角色并检查 readyz 与业务
+```
 
 [运维手册](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/docs/operations.md)涵盖三库备份、恢复和不能自动回滚的情况；其中目录包启动与监督脚本仅适用于旧交付布局。恢复演练使用新目标并保留原数据，按实际数据库语义验证。
 
 物联网恢复另使用 `iot:recovery snapshot/status/begin/isolate/review/restore`，先隔离旧系统，再依据受信的当前授权快照核对恢复后的身份。恢复门限制新角色启动，不会代替维护人员停止旧进程。管理端仅显示相关状态，不提供绕过核对的一键恢复；旧身份、设备归属和未完成指令不能随数据库回滚自动重新授权。
 
 发布文件摘要需从受信渠道取得。`type verify-package` 对单程序接收程序 SHA-256，对历史目录包接收 `release.json` SHA-256；程序和同一不受信来源的摘要不能互相证明来源可信。
+
+## 运行探针与诊断
+
+同一个主程序可分别启动 HTTP、MQTT、通知、导出和维护调度等角色，每个角色使用自己的进程/线程及连接份额。由系统监督器管理所需角色；单文件交付不意味着所有角色自动启动。配置和份额计算见[部署连接预算](configuration.md#部署连接预算)。
+
+| HTTP 入口 | 行为与使用方式 |
+| --- | --- |
+| `GET /livez` | 宿主存活返回 200，不查询数据库；供进程存活检查使用 |
+| `GET /readyz` | 接单额度、迁移状态/摘要、安装身份、兼容代次与恢复门全部可用返回 200，否则 503；供流量切换使用 |
+| 业务 API | 仍执行自己的授权、事务和恢复校验，探针通过不授予业务权限 |
+
+两种探针都检查 Host/可信代理，响应不缓存。每个 HTTP 执行者最多每两秒刷新一次依赖状态，单次作用域预算为一秒；并发检查期间最多采用五秒内的已完成结果，过期撤销就绪。故障撤销就绪，依赖恢复后可重新就绪，不把数据库故障转成反复重启进程。HTTP 不探测只被后台角色使用的 Redis；后台角色应按自身退出、任务和存储状态监控。
+
+生产内部 500 返回稳定错误码和服务端生成的 `X-Request-Id`。受控日志记录同一请求 ID、构建身份、异常类型及代码位置，不记录原始异常消息、SQL、参数或凭据；开发调试仅增加有限代码栈。请求完成记录含耗时、状态码和结果类别，可按请求 ID 关联原因。
+
+`app:schedule work <次数> <间隔毫秒>` 的最大轮询间隔为 60000 毫秒，停止通知不会等待整段间隔。收到停止通知后不接新计划，在途任务按有限排空预算收尾并持久记录结果；失锁或中断保留待核对状态，不把未知副作用写成“未执行”。本轮实际平台验收范围见[实现规划](roadmap.md#启动与运行收口)。
 
 ## 验收自己的应用
 

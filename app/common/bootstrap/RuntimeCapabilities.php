@@ -13,6 +13,19 @@ use InvalidArgumentException;
  */
 final class RuntimeCapabilities
 {
+    /** 日志使用编译身份；源码开发没有封存产物，明确标为 development。 */
+    public static function buildId(): string
+    {
+        if (class_exists('Type\\Generated\\BuildIdentity') && method_exists('Type\\Generated\\BuildIdentity', 'info')) {
+            $identity = \Type\Generated\BuildIdentity::info();
+            $id = $identity['build-id'] ?? null;
+            if (is_string($id) && preg_match('/^[a-f0-9]{64}$/D', $id) === 1) {
+                return $id;
+            }
+        }
+        return 'development';
+    }
+
     /** @return array{name:?string,database:?string,features:list<string>,verified:bool} */
     public static function profile(): array
     {

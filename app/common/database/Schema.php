@@ -80,16 +80,16 @@ final class Schema
      * @param list<string> $accounts 管理登录名、姓名、客户登录名、姓名、租户名。
      * @return array<string, mixed> 无凭据的安装回执；失败后的非空库必须人工核对。
      */
-    public static function install(Driver $driver, array $accounts, string $adminPassword, string $customerPassword): array
+    public static function install(Driver $driver, array $accounts, string $adminPassword, string $customerPassword, ?\Type\Runtime\DeploymentBudget $budget = null): array
     {
-        return \Type\Runtime\CoroutineRuntime::run(static function () use ($driver, $accounts, $adminPassword, $customerPassword): array {
+        return \Type\Runtime\CoroutineRuntime::run(static function () use ($driver, $accounts, $adminPassword, $customerPassword, $budget): array {
             if (count($accounts) !== 5 || trim($accounts[4]) === '' || strlen($accounts[4]) > 100) {
                 throw new HttpError(422, 'installation_input_invalid');
             }
             IdentityService::validateAccount($accounts[0], $accounts[1], $adminPassword);
             IdentityService::validateAccount($accounts[2], $accounts[3], $customerPassword);
-            (new Migrator($driver))->run(self::migrations($driver->name()), true);
-            $database = new \Type\Orm\DatabaseManager(['default' => $driver], 1, 0);
+            (new Migrator($driver, budget: $budget))->run(self::migrations($driver->name()), true);
+            $database = new \Type\Orm\DatabaseManager(['default' => $driver], 1, 0, $budget);
             \Type\Orm\Db::configure($database);
             $scope = new ExecutionScope();
             try {

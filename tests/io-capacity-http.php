@@ -42,7 +42,8 @@ if (!$verify) {
     }
     expect(copy($root . '/toolchain.lock.json', $work . '/toolchain.lock.json')
         && copy(__DIR__ . '/fixtures/io-capacity-http.php', $work . '/app/main.php')
-        && copy($root . '/app/common/middleware/ApiErrors.php', $work . '/app/ApiErrors.php'), '无法复制完整消费者输入');
+        && copy($root . '/app/common/middleware/ApiErrors.php', $work . '/app/ApiErrors.php')
+        && copy($root . '/app/common/bootstrap/RuntimeCapabilities.php', $work . '/app/RuntimeCapabilities.php'), '无法复制完整消费者输入');
     $composerBinary = (string) (getenv('COMPOSER_BINARY') ?: trim(successful(['which', 'composer'])));
     expect(is_file($composerBinary), '需要真实的 Composer 脚本');
     file_put_contents($work . '/install.log', $runner->run([PHP_BINARY, $composerBinary, 'install', '--no-interaction',

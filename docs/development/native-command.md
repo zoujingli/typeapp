@@ -90,6 +90,10 @@ php tests/native.php --chroot "$task_sandbox"
 
 ## 组件与通信验收
 
+启动与运行修复可用 `php tests/application-runtime.php <完整应用产物> <MySQL工具根> <PostgreSQL工具根> <redis-server> [已发布旧版目录]` 验证。该入口在 `build/` 新建含空格的专用应用目录与三库/Redis 实例，从不同工作目录调用同一程序，验证配置拒绝、真实备份与重复升级、迁移恢复、生产 500 关联、依赖故障下的就绪以及调度停止/失锁。可选旧版目录须包含公开 `release-manifest.json` 和当前平台三个 profile 的程序，先逐项核对摘要，再由旧程序安装、新程序升级及更新页面；未提供时由当前程序安装。结束后关闭专用进程，报告和日志留在输出目录供归档；不访问本机业务数据。当前入口使用 Unix 停止信号，覆盖 Linux/macOS，不能作为 Windows 控制事件验收。
+
+补充 `php tests/iot-identity-databases.php <同一产物> <MySQL工具根> <PostgreSQL工具根> --app --no-source` 验证三库完整身份业务及无源码运行。开发 embed 允许同产物验三库；静态 Release 每个程序只有一个数据库 profile，必须继续走各平台对应的发布候选验收。当前修复的准确结果见[运行修复证据](../evidence/system-architecture-fixes-20261004.md)。
+
 在匹配的 SDK 环境中，`php tests/build-platform-native.php` 验证真实产物、运行库身份和缓存；`php tests/helpers-build.php` 全量编译 SQLite、ORM、校验与运行组件，并对照 PHP 和原生业务结果。这些入口使用自身的测试目录，不等同于完整应用或无源码部署验收。
 
 `php tests/mqtt-consumer.php --broker-coroutine` 在独立 Composer 消费者中强制验证官方协程监听；追加 `--native` 验证完整组件 AOT 与适用平台的无源码运行。它复用 TCP/TLS、MQTT.js 双版本、授权拒绝和半包用例，另检查活跃连接停止、端口释放及不支持配置的启动拒绝。该通用消费者包含 PostgreSQL 持久实现，使用匹配的完整组件 SDK；物联中心的 profile 程序由 `tests/release-candidate.php` 另以对应数据库执行真实 TLS 授权、凭据轮换和业务回归。

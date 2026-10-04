@@ -44,6 +44,8 @@ Database 通过 type-runtime 的有界池按作用域借还会话。Connection �
 
 全新应用可以调用 `Migrator::run($migrations, true)`：在同一迁移锁内检查空数据库（PostgreSQL 为当前 schema），在创建任何迁移记录前以 `TYPE_MIGRATION_NOT_EMPTY` 拒绝已有对象。默认第二个参数为 `false`，既有版本化迁移行为不变；空库建表失败同样保留真实记录，不自动清库或重试 MySQL DDL。
 
+当前 `main` 的应用升级可通过 `run($migrations, false, $before, $after)` 接入业务前后置校验。两个回调均为 `Closure(Connection, array): void`，在同一迁移锁内使用当前专属连接与迁移状态；`before` 在写入迁移控制表之前执行，`after` 在全部迁移完成后执行。回调不能另借迁移连接；后置校验失败不撤销已经提交的 DDL，须保留失败回执并显式核对。构造 `Migrator` 时可通过 `budget` 注入同一连接域的 `DeploymentBudget`，将迁移连接计入部署分额。这些新增参数尚未包含 RC14。
+
 ## 声明式使用示例
 
 下面的业务函数假定应用已声明 `app\model\User` 模型、完成迁移，并在启动期装配 `Db`。HTTP 请求或任务入口绑定执行作用域后调用，业务无需传入连接。完整可运行入口见应用模板及各驱动组件。

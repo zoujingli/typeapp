@@ -110,6 +110,7 @@ final class Application
                 }
                 echo "TypeApp 物联中心：help、check、verify-runtime、serve、app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>、migrate <status|history|recover>。初始化口令由 APP_ADMIN_PASSWORD、APP_CUSTOMER_PASSWORD 的受控进程环境提供。\n";
                 echo "运行配置：config:check [--connect] [--remember]；config:restore 恢复最后通过连接检查的文件，成功退出4表示仍须运维重启。\n";
+                echo "已有应用升级：app:upgrade --check；停写并核对备份后 app:upgrade --offline --backup <备份文件> --sha256 <SHA256>；页面另用 web:install --force。\n";
                 echo "内嵌许可：licenses 查看索引，licenses <notices/资源路径> 查看对应原文。\n";
                 echo "审计保留：app:audit-clean <admin|customer> [batch]，单批最多1000条，清理满180天事件并保留恢复与撤销依据。\n";
                 echo "应用维护调度：app:schedule once|history|work <次数> <间隔毫秒>；固定任务与执行历史通过 Redis 协调。\n";
@@ -191,6 +192,12 @@ final class Application
                 echo json_encode($assets->install(in_array('--force', $options, true), in_array('--dry-run', $options, true)), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
                 return 0;
             }
+            if ($command === 'app:upgrade') {
+                $basePath = Settings::basePath($arguments[0] ?? '', $development);
+                $settings = Settings::load($basePath);
+                echo json_encode(ApplicationUpgrade::run($settings, $basePath, array_slice($arguments, 2)), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
+                return 0;
+            }
             if ($command === 'app:install') {
                 $basePath = Settings::basePath($arguments[0] ?? '', $development);
                 $settings = Settings::load($basePath);
@@ -207,7 +214,7 @@ final class Application
                     try {
                         $assets->prepare();
                         DatabaseFactory::prepareMigration($settings, $basePath);
-                        $result = Schema::install(DatabaseFactory::create($settings, $basePath), array_slice($arguments, 2), $adminPassword, $customerPassword);
+                        $result = Schema::install(DatabaseFactory::create($settings, $basePath), array_slice($arguments, 2), $adminPassword, $customerPassword, Settings::databaseBudget($settings));
                         $databaseInstalled = true;
                         $frontend = $assets->commit();
                     } finally {
@@ -362,7 +369,7 @@ final class Application
         }
         DatabaseFactory::requireExisting($settings, $basePath);
         CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments, $host, $operation): void {
-            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
+            $database = Settings::database($settings, $basePath, 1);
             \Type\Orm\Db::configure($database);
             $scope = new ExecutionScope();
             try {
@@ -429,13 +436,14 @@ final class Application
     private static function exports(Repository $settings, string $basePath, string $command, array $arguments): void
     {
         RuntimeCapabilities::requireFeature('exports');
+        Settings::validateRuntimeConfiguration($settings, $basePath, $command === 'iot:exports-clean' ? 'database' : 'exports');
         \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $command, $arguments): void {
             $limit = filter_var($arguments[0] ?? '100', FILTER_VALIDATE_INT);
             if (count($arguments) > 1 || $limit === false || $limit < 1 || $limit > ($command === 'iot:exports-clean' ? 100 : ($command === 'iot:exports-work' ? 3600 : 10000))) {
                 throw new InvalidArgumentException('导出参数需为有界批次，work参数为1至3600秒');
             }
             DatabaseFactory::requireExisting($settings, $basePath);
-            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 2, 0);
+            $database = Settings::database($settings, $basePath, 2);
             \Type\Orm\Db::configure($database);
             $scope = new ExecutionScope();
             $exports = self::exportService($settings, $basePath);
@@ -447,7 +455,7 @@ final class Application
                         echo json_encode(['data' => $exports->clean(\Type\Orm\Db::connection('default', true), $limit)], JSON_THROW_ON_ERROR) . "\n";
                         return;
                     }
-                    $redis = new \Type\Redis\RedisManager(['exports' => Settings::redis($settings, $basePath, 'exports')]);
+                    $redis = Settings::redisManager($settings, $basePath, 'exports');
                     $queue = new \Type\Queue\Queue($redis->connection($scope, 'exports', \Type\Redis\Purpose::SCRIPT), $settings->text('app.exports.namespace'), 'exports', 60000, 2000);
                     $registry = new \Type\Queue\Registry();
                     $registry->register('iot.export', 1, static fn (\Type\Queue\JobContext $context): ExportJob => new ExportJob($exports));
@@ -610,7 +618,7 @@ final class Application
             throw new InvalidArgumentException('设备MQTT角色不接受额外参数');
         }
         if ($role === 'iot:mqtt-access') {
-            DeviceAccess::work(new DatabaseManager(['default' => $driver], 1, 0), $settings->text('app.ingestion.credential_id'), $settings->text('app.ingestion.secret_hash'));
+            DeviceAccess::work(Settings::database($settings, $basePath, 1), $settings->text('app.ingestion.credential_id'), $settings->text('app.ingestion.secret_hash'));
             return;
         }
         $command = json_decode($settings->text('app.mqtt.command'), true, 8, JSON_THROW_ON_ERROR);
@@ -719,27 +727,24 @@ final class Application
      *
      * 每次实际请求必须由服务器创建执行作用域，响应结束后收回所有请求租约。
      *
+     * @param ?DatabaseManager $database 宿主可注入供请求与就绪共用的管理器，宿主退出时负责关闭。
      * @throws InvalidArgumentException 模式、令牌、Host、预算或 SQLite 初始化条件无效。
      * @throws \RuntimeException 存储不兼容、恢复门禁未就绪或预检失败。
      */
-    public static function handler(Repository $settings, string $basePath, bool $development = false, bool $broker = false): RequestHandlerInterface
+    public static function handler(Repository $settings, string $basePath, bool $development = false, bool $broker = false, ?DatabaseManager $database = null): RequestHandlerInterface
     {
+        Settings::validateRuntimeConfiguration($settings, $basePath, 'http');
         $environment = Settings::environment($settings, $development);
         $debug = Settings::debug($settings, $development);
         $probeToken = $settings->text('app.broker.probe_token');
         if ($probeToken !== '' && (strlen($probeToken) < 32 || strlen($probeToken) > 256 || preg_match('/^[A-Za-z0-9._~+\/-]+=*$/D', $probeToken) !== 1)) {
             throw new InvalidArgumentException('BROKER_PROBE_TOKEN必须为32至256字符的独立Bearer令牌');
         }
-        $port = Settings::integer($settings, 'app.http.port', 1, 65535);
-        $hosts = Settings::list($settings->text('app.http.allowed_hosts'));
-        if ($hosts === []) {
-            $hosts = ['127.0.0.1:' . $port, 'localhost:' . $port];
-        }
-        $policy = new RequestPolicy($hosts, Settings::list($settings->text('app.http.trusted_proxies')));
+        $policy = Settings::requestPolicy($settings);
         DatabaseFactory::requireExisting($settings, $basePath);
         // PDO hook 已在主线程安装；业务线程的启动预检也须在协程内创建和释放连接。
         CoroutineRuntime::run(static function () use ($settings, $basePath, $broker): void {
-            $compat = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
+            $compat = Settings::database($settings, $basePath, 1);
             $compatScope = new ExecutionScope(new Deadline(2.0));
             try {
                 $connection = $compat->connect($compatScope);
@@ -750,7 +755,7 @@ final class Application
                 $compat->close();
             }
         });
-        $database = Settings::database($settings, $basePath);
+        $database ??= Settings::database($settings, $basePath);
         \Type\Orm\Db::configure($database);
         $messages = new Factory();
         $router = new Router($messages, $messages);
@@ -830,7 +835,7 @@ final class Application
         }
         DatabaseFactory::requireExisting($settings, $basePath);
         CoroutineRuntime::run(static function () use ($settings, $basePath, $kind, $batch, $realm): void {
-            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
+            $database = Settings::database($settings, $basePath);
             \Type\Orm\Db::configure($database);
             $scope = new ExecutionScope();
             try {
@@ -858,7 +863,7 @@ final class Application
                 throw new InvalidArgumentException('iot:alarm 只接受一个1至100的可选批次');
             }
             DatabaseFactory::requireExisting($settings, $basePath);
-            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
+            $database = Settings::database($settings, $basePath);
             \Type\Orm\Db::configure($database);
             $scope = new ExecutionScope();
             try {
@@ -876,13 +881,14 @@ final class Application
     private static function notices(Repository $settings, string $basePath, bool $cleanup, array $arguments): void
     {
         RuntimeCapabilities::requireFeature('alerts');
+        Settings::validateRuntimeConfiguration($settings, $basePath, $cleanup ? 'database' : 'notices');
         \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $cleanup, $arguments): void {
             $batch = filter_var($arguments[0] ?? '100', FILTER_VALIDATE_INT);
             if (count($arguments) > 1 || $batch === false || $batch < 1 || $batch > 100) {
                 throw new InvalidArgumentException('通知角色只接受1至100的可选批次');
             }
             DatabaseFactory::requireExisting($settings, $basePath);
-            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 2, 0);
+            $database = Settings::database($settings, $basePath, 2);
             \Type\Orm\Db::configure($database);
             $scope = new ExecutionScope();
             $redis = null;
@@ -896,7 +902,7 @@ final class Application
                     $recoveryConnection = \Type\Orm\Db::connection('default', true);
                     $recovery = \app\iot\service\NoticeService::recover($recoveryConnection, $batch);
                     $recoveryConnection->close();
-                    $redis = new \Type\Redis\RedisManager(['notices' => Settings::redis($settings, $basePath, 'notices')]);
+                    $redis = Settings::redisManager($settings, $basePath, 'notices');
                     $queue = new \Type\Queue\Queue($redis->connection($scope, 'notices', \Type\Redis\Purpose::SCRIPT), $settings->text('app.notices.namespace'), 'notices', 60000, 10000);
                     $collected = $queue->collect($batch);
                     $service = new \app\iot\service\NoticeService($queue);
@@ -944,7 +950,7 @@ final class Application
         $batch = isset($arguments[0]) ? (int) $arguments[0] : $maximum;
         DatabaseFactory::requireExisting($settings, $basePath);
         CoroutineRuntime::run(static function () use ($settings, $basePath, $cleanup, $batch): void {
-            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
+            $database = Settings::database($settings, $basePath);
             \Type\Orm\Db::configure($database);
             $scope = new ExecutionScope();
             try {
@@ -971,7 +977,7 @@ final class Application
         }
         DatabaseFactory::requireExisting($settings, $basePath);
         CoroutineRuntime::run(static function () use ($settings, $basePath, $batch, $arguments): void {
-            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
+            $database = Settings::database($settings, $basePath);
             \Type\Orm\Db::configure($database);
             $scope = new ExecutionScope();
             try {
@@ -998,14 +1004,14 @@ final class Application
             throw new InvalidArgumentException('迁移命令参数无效，请使用 migrate help');
         }
         if ($arguments === ['run']) {
-            throw new InvalidArgumentException('新应用请使用 app:install 初始化空库；不通过迁移入口升级旧模式');
+            throw new InvalidArgumentException('新应用请使用 app:install 初始化空库；已有应用使用 app:upgrade --check 核对受支持的升级路径');
         }
         DatabaseFactory::requireExisting($settings, $basePath);
 
         return CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): int {
             $driver = DatabaseFactory::create($settings, $basePath);
 
-            return (new MigrationConsole(new Migrator($driver), Schema::migrations($driver->name())))->run($arguments);
+            return (new MigrationConsole(new Migrator($driver, budget: Settings::databaseBudget($settings)), Schema::migrations($driver->name())))->run($arguments);
         });
     }
 
@@ -1031,14 +1037,14 @@ final class Application
         if ($command === 'broker:install') {
             DatabaseFactory::prepareMigration($settings, $basePath);
             $driver = DatabaseFactory::create($settings, $basePath);
-            $result = CoroutineRuntime::run(static function () use ($driver): int {
-                return (new MigrationConsole(new Migrator($driver), \app\broker\database\Schema::migrations($driver->name())))->run(['run']);
+            $result = CoroutineRuntime::run(static function () use ($driver, $settings): int {
+                return (new MigrationConsole(new Migrator($driver, budget: Settings::databaseBudget($settings)), \app\broker\database\Schema::migrations($driver->name())))->run(['run']);
             });
             if ($result !== 0) {
                 return $result;
             }
-            return CoroutineRuntime::run(static function () use ($driver): int {
-                $database = new DatabaseManager(['default' => $driver], 1, 0);
+            return CoroutineRuntime::run(static function () use ($settings, $basePath): int {
+                $database = Settings::database($settings, $basePath, 1);
                 $scope = new ExecutionScope();
                 try {
                     CompatService::recordUpgrade($database->connect($scope));
@@ -1053,7 +1059,7 @@ final class Application
         if ($command === 'broker:migrate') {
             return CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): int {
                 $driver = DatabaseFactory::create($settings, $basePath);
-                return (new MigrationConsole(new Migrator($driver), \app\broker\database\Schema::migrations($driver->name())))->run($arguments);
+                return (new MigrationConsole(new Migrator($driver, budget: Settings::databaseBudget($settings)), \app\broker\database\Schema::migrations($driver->name())))->run($arguments);
             });
         }
         if ($command === 'broker:recovery') {
@@ -1098,7 +1104,7 @@ final class Application
                 throw new \RuntimeException('broker_store_install_unconfirmed');
             }
             return CoroutineRuntime::run(static function () use ($settings, $basePath): int {
-                $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
+                $database = Settings::database($settings, $basePath, 1);
                 $scope = new ExecutionScope();
                 try {
                     CompatService::recordStore($database->connect($scope));
@@ -1120,7 +1126,7 @@ final class Application
                 if (!is_string($password)) {
                     throw new InvalidArgumentException('请通过 BROKER_ADMIN_PASSWORD 提供独立管理员初始化密码');
                 }
-                $manager = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
+                $manager = Settings::database($settings, $basePath, 1);
                 \Type\Orm\Db::configure($manager);
                 $work = new ExecutionScope();
                 try {
@@ -1135,7 +1141,7 @@ final class Application
                 }
             });
         }
-        $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
+        $database = Settings::database($settings, $basePath, 1);
         $scope = new ExecutionScope();
         try {
             $host = $settings->text('app.broker.listen');
@@ -1301,7 +1307,7 @@ final class Application
             throw new InvalidArgumentException('节点运行、操作人或已完成隔离的依据标识无效');
         }
         $requestId = bin2hex(random_bytes(16));
-        $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)], 1, 0);
+        $database = Settings::database($settings, $basePath, 1);
         $scope = new ExecutionScope();
         $connection = null;
         $operation = null;
@@ -1449,9 +1455,7 @@ final class Application
     /** 返回服务器可复用的有界输入声明，不打开临时文件或创建目录。 */
     public static function requestLimits(Repository $settings): RequestLimits
     {
-        $temporary = $settings->text('app.http.upload_temp');
-
-        return new RequestLimits(1048576, 2048, 16, 8, 1048576, 65536, $temporary === '' ? null : $temporary);
+        return Settings::requestLimits($settings);
     }
 
     /**
@@ -1461,7 +1465,9 @@ final class Application
      */
     public static function server(Repository $settings, string $basePath, bool $development = false, bool $broker = false): HttpServerInterface
     {
-        $handler = self::handler($settings, $basePath, $development, $broker);
+        $database = Settings::database($settings, $basePath);
+        $handler = self::handler($settings, $basePath, $development, $broker, $database);
+        $readiness = new HttpReadiness($database, $broker);
         $messages = new Factory();
         return new SwooleServer(
             $handler,
@@ -1469,13 +1475,18 @@ final class Application
             $messages,
             $messages,
             self::requestLimits($settings),
-            new HttpControl(probes: true)
+            Settings::httpControl($settings, static fn (): bool => $readiness->ready()),
+            static function () use ($database): void {
+                $database->close();
+            },
+            Settings::requestPolicy($settings)
         );
     }
 
     /** 运行已选择的服务器，并在正常退出或异常后关闭；不会自动迁移或生成生产源码。 */
     public static function serve(Repository $settings, string $basePath, bool $development = false, bool $broker = false): void
     {
+        Settings::validateRuntimeConfiguration($settings, $basePath, 'http');
         if (!$broker) {
             RuntimeCapabilities::requireFeature('web');
         }
@@ -1489,7 +1500,7 @@ final class Application
                 (new \Type\Runtime\ThreadSupervisor(1))->run('http', [$payload], null);
                 return;
             }
-            $count = Settings::integer($settings, 'database.budget.threads', 1, 256);
+            $count = Settings::httpThreads($settings);
             $listener = new \Swoole\Coroutine\Socket(AF_INET, SOCK_STREAM, 0);
             try {
                 if (!$listener->bind($listen, $port) || !$listener->listen(128)) {

@@ -109,6 +109,12 @@ return [
         'namespace' => env('IOT_NOTICES_NAMESPACE', 'typeapp-iot'),
     ],
     'http' => [
+        'threads' => env('APP_HTTP_THREADS', 2),
+        'requests' => env('APP_HTTP_MAX_REQUESTS', 64),
+        'connections' => env('APP_HTTP_MAX_CONNECTIONS', 256),
+        'request_ms' => env('APP_HTTP_REQUEST_MS', 30000),
+        'drain_ms' => env('APP_HTTP_DRAIN_MS', 5000),
+        'cleanup_ms' => env('APP_HTTP_CLEANUP_MS', 1000),
         'listen' => env('APP_LISTEN', '127.0.0.1'),
         'port' => env('APP_PORT', 9501),
         'allowed_hosts' => env('APP_ALLOWED_HOSTS', ''),

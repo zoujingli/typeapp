@@ -118,6 +118,8 @@ Redis 状态与代次不设置 TTL。检测到仍有代次但状态缺失时停�
 
 `SchedulerConsole` 提供 `once`、`history` 和 `work <次数> <间隔毫秒>`；后者是有界轮询，可由进程管理器重复启动，也可由应用在退出条件内循环调用 `tick()`。`help` 不打开状态文件或任何外部连接。失败或恢复出的中断返回 70，本地执行冲突返回 75。
 
+`work` 的间隔最多 60000 毫秒，等待期间每次至多 50 毫秒复核停止状态，轮次开始前也会检查；宿主须装配自己的停止信号并调用 `Scheduler::stop()`。组件不会自动取得全进程信号所有权。物联中心的 `app:schedule` 已接入 `ProcessSignals`，在任务 I/O 和空闲等待期间都分发停止通知。
+
 开发主仓 `examples/scheduler-command.php` 展示直接编译注册的任务与可控时钟，`docs/build-config/type-scheduler.json` 为集中原生构建准备入口。任务与状态路径可以由应用自行绑定，无须安装 core。
 
 ## 总触发限额与停止

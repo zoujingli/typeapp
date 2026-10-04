@@ -2,16 +2,8 @@
 
 declare(strict_types=1);
 
-// 默认不开启通用缓存，不初始化 Redis；开启后使用应用名、环境与格式的隔离命名空间。
+// 仅识别旧部署的开关并明确拒绝 true；物联中心没有通用业务缓存消费者。
+// 通知、导出与调度的 Redis 配置分别位于 app 对应用途，不受此键控制。
 return [
     'enabled' => env('APP_CACHE_ENABLED', false),
-    'redis' => [
-        'host' => env('REDIS_HOST', '127.0.0.1'),
-        'port' => env('REDIS_PORT', 6379),
-        'database' => env('REDIS_DATABASE', 0),
-        'username' => env('REDIS_USERNAME', ''),
-        'password' => env('REDIS_PASSWORD', ''),
-        'tls' => env('REDIS_TLS', false),
-        'tls_ca' => env('REDIS_TLS_CA', ''),
-    ],
 ];

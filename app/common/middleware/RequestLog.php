@@ -36,13 +36,17 @@ final class RequestLog implements MiddlewareInterface
         if (!$scope instanceof ExecutionScope) {
             throw new \RuntimeException('请求日志需要受管请求作用域');
         }
-        $logs = new LogManager($this->application, ['app' => new Channel(Output::stdout(128, 65536, 2048))], 0.05);
+        $logs = new LogManager(\app\common\bootstrap\RuntimeCapabilities::buildId(), ['app' => new Channel(Output::stdout(128, 65536, 8192))], 0.05);
         $scope->open($logs);
         $requestId = bin2hex(random_bytes(16));
-        $logger = $logs->logger($scope, ['request_id' => $requestId]);
+        $logger = $logs->logger($scope, ['request_id' => $requestId, 'application' => $this->application]);
+        $started = hrtime(true);
         try {
             $response = $handler->handle($request->withAttribute('app.request_id', $requestId)->withAttribute('app.logger', $logger));
-            $logger->info('HTTP 请求完成', ['method' => $request->getMethod(), 'status' => $response->getStatusCode()]);
+            $status = $response->getStatusCode();
+            $logger->info('HTTP 请求完成', ['method' => $request->getMethod(), 'status' => $status,
+                'duration_ms' => (hrtime(true) - $started) / 1000000.0,
+                'result' => $status >= 500 ? 'server_error' : ($status >= 400 ? 'rejected' : 'completed')]);
 
             return $response->withHeader('X-Request-Id', $requestId);
         } catch (\Throwable $error) {

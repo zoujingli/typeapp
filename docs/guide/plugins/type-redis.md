@@ -88,6 +88,8 @@ function main(): void
 
 `RedisManager` 接收连接名称到 `RedisConfiguration` 的映射；名称如 default、cache、reliable。实际连接在工作进程第一次借用时创建。
 
+当前 `main` 可通过第三参数注入 `Type\Runtime\DeploymentBudget`，让同一执行线程的命名连接和用途池共用部署分额；多个管理器必须显式传同一个预算对象。每个池的独立容量仍生效，所有者结束时关闭管理器，真实连接关闭后才释放额度。该新增参数尚未包含 RC14，计算和部署责任见[部署连接预算](../configuration.md#部署连接预算)；它不会自动限制集群实例数。
+
 | `RedisConfiguration` 参数 | 默认值 | 单位/限制 |
 | --- | --- | --- |
 | `host / port` | 127.0.0.1 / 6379 | host 不含协议，port 为 1–65535 |

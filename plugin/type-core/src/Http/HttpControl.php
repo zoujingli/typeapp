@@ -20,6 +20,7 @@ final class HttpControl
     private int $peak = 0;
     /**
      * 为一个 HTTP 宿主设定请求、连接和子任务上限；所有时间预算均以秒表示。
+     * @param ?\Closure():bool $readiness 应用提供的有界依赖状态；仅 /readyz 调用，异常视为未就绪。
      * @throws \InvalidArgumentException 并发上限或业务、排空、清理预算不一致。
      */
     public function __construct(
@@ -30,6 +31,7 @@ final class HttpControl
         public readonly float $cleanupSeconds = 1.0,
         public readonly int $maximumChildren = 16,
         public readonly bool $probes = false,
+        private readonly ?\Closure $readiness = null,
     ) {
         if ($maximumRequests < 1 || $maximumRequests > 10000 || $maximumConnections < $maximumRequests || $maximumConnections > 100000
             || !is_finite($requestSeconds) || $requestSeconds <= 0 || $requestSeconds > 3600
@@ -95,8 +97,18 @@ final class HttpControl
         if (!$this->probes || !in_array($path, ['/readyz', '/livez'], true)) {
             return null;
         }
-        return ['status' => $path === '/livez' || $this->ready() ? 200 : 503,
-            'body' => $path === '/livez' ? ['live' => true] : ['ready' => $this->ready()]];
+        if ($path === '/livez') {
+            return ['status' => 200, 'body' => ['live' => true]];
+        }
+        $ready = $this->ready();
+        if ($ready && $this->readiness !== null) {
+            try {
+                $ready = ($this->readiness)();
+            } catch (\Throwable) {
+                $ready = false;
+            }
+        }
+        return ['status' => $ready ? 200 : 503, 'body' => ['ready' => $ready]];
     }
     /** 检查隔离清理或排空超期是否需要宿主终止；此方法本身不杀进程。 */
     public function mustTerminate(): bool

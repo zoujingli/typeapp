@@ -7,11 +7,11 @@ namespace app\common\bootstrap;
 use app\common\database\DatabaseFactory;
 use app\common\service\AuditRetentionTask;
 use Type\Core\Config\Repository;
-use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
 use Type\Redis\Purpose;
-use Type\Redis\RedisManager;
 use Type\Runtime\CoroutineRuntime;
+use Type\Runtime\Cancellation;
+use Type\Runtime\ProcessSignals;
 use Type\Runtime\ExecutionScope;
 use Type\Scheduler\Definition;
 use Type\Scheduler\IntervalSchedule;
@@ -37,37 +37,63 @@ final class ApplicationScheduler
             echo "app:schedule once|history|work <次数> <间隔毫秒>；每分钟有界清理管理端和客户端满180天的审计。\n";
             return 0;
         }
+        Settings::validateRuntimeConfiguration($settings, $basePath, 'scheduler');
         DatabaseFactory::requireExisting($settings, $basePath);
-        return (int) CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): int {
-            $database = new DatabaseManager(['default' => DatabaseFactory::create($settings, $basePath)]);
-            Db::configure($database);
-            $redis = new RedisManager(['scheduler' => Settings::redis($settings, $basePath, 'scheduler')]);
-            $scope = new ExecutionScope();
-            try {
-                return (int) $scope->run(static function (ExecutionScope $current) use ($settings, $redis, $arguments): int {
-                    $store = new RedisStateStore($redis->connection($current, 'scheduler', Purpose::SCRIPT), $settings->text('app.scheduler.namespace'), 'maintenance', 60000);
-                    $definitions = [
-                        new Definition('audit.admin', new IntervalSchedule(60), static fn (TaskContext $context): Task => new AuditRetentionTask('admin')),
-                        new Definition('audit.customer', new IntervalSchedule(60), static fn (TaskContext $context): Task => new AuditRetentionTask('customer')),
-                    ];
-                    $scheduler = new Scheduler(new SystemClock(), $store, $definitions, 1000, 2, 20000);
-                    try {
-                        return (new SchedulerConsole($scheduler))->run($arguments);
-                    } finally {
-                        $scheduler->stop();
-                    }
-                });
-            } finally {
+        $signals = new ProcessSignals();
+        $stopping = new Cancellation();
+        // Windows embed 控制事件桥在协程外登记，通知只改变停止意图。
+        $signals->attach(static function () use ($stopping): void {
+            $stopping->cancel();
+        });
+        try {
+            return (int) CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments, $signals, $stopping): int {
+                $database = Settings::database($settings, $basePath);
+                Db::configure($database);
+                $redis = Settings::redisManager($settings, $basePath, 'scheduler');
+                $scope = new ExecutionScope();
                 try {
-                    $scope->close();
+                    return (int) $scope->run(static function (ExecutionScope $current) use ($settings, $redis, $arguments, $signals, $stopping): int {
+                        $store = new RedisStateStore($redis->connection($current, 'scheduler', Purpose::SCRIPT), $settings->text('app.scheduler.namespace'), 'maintenance', 60000);
+                        $definitions = [
+                            new Definition('audit.admin', new IntervalSchedule(60), static fn (TaskContext $context): Task => new AuditRetentionTask('admin')),
+                            new Definition('audit.customer', new IntervalSchedule(60), static fn (TaskContext $context): Task => new AuditRetentionTask('customer')),
+                        ];
+                        $scheduler = new Scheduler(new SystemClock(), $store, $definitions, 1000, 2, 20000);
+                        $subscription = $stopping->subscribe(static function () use ($scheduler): void {
+                            $scheduler->stop();
+                        });
+                        // 同一原生事件循环在任务 I/O 和空闲等待期间分发 Windows 控制事件。
+                        $timer = \Swoole\Timer::tick(50, static function (int $timerId) use ($signals): void {
+                            $signals->dispatch();
+                        });
+                        try {
+                            if ($timer === false) {
+                                throw new \RuntimeException('scheduler_signal_timer_unavailable');
+                            }
+                            $signals->dispatch();
+                            return (new SchedulerConsole($scheduler))->run($arguments);
+                        } finally {
+                            if ($timer !== false) {
+                                \Swoole\Timer::clear($timer);
+                            }
+                            $stopping->unsubscribe($subscription);
+                            $scheduler->stop();
+                        }
+                    });
                 } finally {
                     try {
-                        $redis->close();
+                        $scope->close();
                     } finally {
-                        $database->close();
+                        try {
+                            $redis->close();
+                        } finally {
+                            $database->close();
+                        }
                     }
                 }
-            }
-        });
+            });
+        } finally {
+            $signals->close();
+        }
     }
 }

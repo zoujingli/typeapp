@@ -7,6 +7,8 @@ namespace Type\Redis;
 use InvalidArgumentException;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\ResourcePool;
+use Type\Runtime\DeploymentBudget;
+use Type\Runtime\ExecutionOwner;
 
 /** 按端点与用途复用运行时资源池；各次业务借用由 ExecutionScope 独立拥有。 */
 final class RedisManager
@@ -14,7 +16,8 @@ final class RedisManager
     private array $configurations = [];
     private array $capacities;
     private array $pools = [];
-    private ?int $processId = null;
+    private ?ExecutionOwner $owner = null;
+    private ?DeploymentBudget $budget;
     private bool $closed = false;
 
     /**
@@ -22,8 +25,9 @@ final class RedisManager
      *
      * @param array<string, RedisConfiguration> $configurations 1 至 64 个命名端点。
      * @param array<string, int> $capacities 以 Purpose 常量为键，各容量为 1 至 1024。
+     * @param ?DeploymentBudget $budget 同一连接域各用途及管理器共用的部署预算；不跨线程传对象。
      */
-    public function __construct(array $configurations, array $capacities = [])
+    public function __construct(array $configurations, array $capacities = [], ?DeploymentBudget $budget = null)
     {
         if ($configurations === [] || count($configurations) > 64) {
             throw new InvalidArgumentException('Redis 必须声明 1 至 64 个命名连接');
@@ -42,6 +46,7 @@ final class RedisManager
             $defaults[$purpose] = $capacity;
         }
         $this->capacities = $defaults;
+        $this->budget = $budget;
     }
 
     /** 协程借用默认有界等待，传入 0 可显式即时拒绝；不改变各用途的独立容量。 */
@@ -59,7 +64,8 @@ final class RedisManager
             $this->pools[$key] = new ResourcePool(
                 static fn (): RedisSession => new RedisSession($configuration),
                 $capacity,
-                $purpose === Purpose::COMMAND ? min(2, $capacity) : 0
+                $purpose === Purpose::COMMAND ? min(2, $capacity) : 0,
+                $this->budget?->poolBudget()
             );
         }
         return new RedisConnection($this->pools[$key]->borrow($scope, $waitSeconds), $purpose);
@@ -72,7 +78,7 @@ final class RedisManager
      */
     public function statistics(): array
     {
-        if ($this->processId !== null) {
+        if ($this->owner !== null) {
             $this->assertProcess();
         }
         $statistics = [];
@@ -85,7 +91,7 @@ final class RedisManager
     /** 拒绝后续借用并关闭本管理器创建的池；应由工作进程所有者调用。 */
     public function close(): void
     {
-        if ($this->processId !== null) {
+        if ($this->owner !== null) {
             $this->assertProcess();
         }
         $this->closed = true;
@@ -96,11 +102,7 @@ final class RedisManager
 
     private function assertProcess(): void
     {
-        if ($this->processId === null) {
-            $this->processId = (int) getmypid();
-        }
-        if ($this->processId !== (int) getmypid()) {
-            throw new RedisException('wrong_process', 'NOT_STARTED', 'Redis 连接池只能在创建它的工作进程内使用');
-        }
+        $this->owner ??= new ExecutionOwner(false);
+        $this->owner->assertCurrent();
     }
 }

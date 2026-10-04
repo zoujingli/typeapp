@@ -59,7 +59,7 @@ sequenceDiagram
 
 `RequestLimits` 还限制字段、嵌套、上传数与单文件大小；`RequestPolicy` 校验 Host 与可信代理，`Authentication` 执行身份与权限检查，详见[type-core](../plugins/type-core.md)。正文限制还要与代理、Swoole 接收层和上传临时目录配合。上表是框架公开配置，不是任意 `Swoole\Server::set()` 参数透传。
 
-`/livez` 表示入口存活，`/readyz` 表示允许接收请求，不证明数据库迁移和业务依赖已就绪。作用域期限不能强制打断任意阻塞扩展，数据库和外部请求仍需驱动超时。
+`/livez` 表示入口存活。`/readyz` 默认表示允许接收请求；应用可向 `HttpControl` 传入 `readiness: Closure(): bool`，补充有界依赖状态，异常按未就绪处理。物联中心已接入数据库迁移、兼容、安装与恢复检查，见[运行探针](../deployment.md#运行探针与诊断)。`SwooleServer` 的 `probePolicy` 可指定与业务相同的 Host/代理策略；未传时由部署网络限制探针访问。作用域期限不能强制打断任意阻塞扩展，数据库和外部请求仍需驱动超时。
 
 ## 完整实例：状态 API
 

@@ -84,18 +84,19 @@ final class ApiErrors implements MiddlewareInterface
     /** 不字符串化异常或记录消息、参数；调试日志只选取代码位置、函数名与异常类型。 */
     private function failure(Throwable $error, ServerRequestInterface $request, string $requestId): ResponseInterface
     {
+        $filename = str_replace('\\', '/', $error->getFile());
+        $base = rtrim(str_replace('\\', '/', $this->basePath), '/');
+        $location = $base !== '' && str_starts_with($filename, $base . '/')
+            ? substr($filename, strlen($base) + 1) : basename($filename);
+        $details = [
+            'error' => 'internal_error',
+            'request_id' => $requestId,
+            'exception_type' => get_class($error),
+            'file' => $location === '' ? '[native]' : $location,
+            'line' => max(0, $error->getLine()),
+            'build_id' => \app\common\bootstrap\RuntimeCapabilities::buildId(),
+        ];
         if ($this->debug) {
-            $filename = str_replace('\\', '/', $error->getFile());
-            $base = rtrim(str_replace('\\', '/', $this->basePath), '/');
-            $location = $base !== '' && str_starts_with($filename, $base . '/')
-                ? substr($filename, strlen($base) + 1) : basename($filename);
-            $details = [
-                'error' => 'internal_error',
-                'request_id' => $requestId,
-                'exception_type' => get_class($error),
-                'file' => $location === '' ? '[native]' : $location,
-                'line' => max(0, $error->getLine()),
-            ];
             $frames = [];
             foreach ($error->getTrace() as $frame) {
                 if (count($frames) >= 12) {
@@ -117,11 +118,17 @@ final class ApiErrors implements MiddlewareInterface
                 ];
             }
             $details['frames'] = $frames;
-            $logger = $request->getAttribute('app.logger');
-            if ($logger instanceof Logger) {
-                $logger->error('开发请求失败', $details);
-            } else {
-                fwrite(STDERR, json_encode($details, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n");
+        }
+        $logger = $request->getAttribute('app.logger');
+        if ($logger instanceof Logger) {
+            $logger->error('HTTP 内部错误', $details);
+        } else {
+            $output = \Type\Log\Output::stream(STDERR, 1, 8192, 8192);
+            try {
+                $output->enqueue(json_encode($details, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n");
+                $output->stop(0.05);
+            } finally {
+                $output->stop(0.0);
             }
         }
 

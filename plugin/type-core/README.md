@@ -104,6 +104,8 @@ function main(): void
 
 文件所有者已取得一致快照时可用 `Environment::parse($contents)` 复用同一有界dotenv解析；第二参数false仅检查文件自身，不更改全局环境。调用编译配置的 `get()` 后，`describe()` 返回所消费声明的类型、来源、文件是否声明、进程覆盖只读原因及未声明键，不返回值或默认值。文件路径、私有副本、并发锁、原子保存及实际依赖验证由应用配置所有者承担，组件不引入进程管理或业务配置仓库。
 
+当前 `main` 的 `HttpControl(..., probes: true, readiness: $check)` 可接收零参数布尔回调，将应用的有界依赖状态合并到 `/readyz`，异常按未就绪处理。`/livez` 不调用该回调；停止接单或额度耗尽时也不额外探测依赖。`SwooleServer(..., probePolicy: $policy)` 将同一 `RequestPolicy` 用于探针的 Host/代理和路径校验，探针响应禁止缓存。组件不自动选择业务依赖或探测频率，应用应避免每次探针无限排队或连接服务。这两个新增参数尚未包含 RC14。
+
 ## AOT 与运行要求
 
 Composer 安装核心必须满足 `ext-swoole >=6.2 <7`，Swoole 是通信和基础并发的硬依赖。HTTP、WebSocket、TCP、UDP 网络入口复用 Swoole 原生能力；允许固定官方内置 PHP 库。各协议按目标平台实际构建能力选择 Server、协程 Server 或 Socket，分别完成原生验收。AOT 仍需匹配的 PHPX/libphp 与实际使用的原生扩展，PSR 接口及整个核心源码一起编译。

@@ -10,6 +10,7 @@ use Type\Orm\Connection;
 use Type\Orm\Database;
 use Type\Orm\Driver;
 use Type\Runtime\ExecutionScope;
+use Type\Runtime\DeploymentBudget;
 
 /** 独立数据库角色：锁、迁移与记录始终使用同一条专属连接。 */
 final class Migrator
@@ -18,7 +19,7 @@ final class Migrator
     private string $table;
 
     /** 声明迁移专属驱动及记录表名；每次操作建立独立短生命周期连接。 */
-    public function __construct(Driver $driver, string $table = 'type_migrations')
+    public function __construct(Driver $driver, string $table = 'type_migrations', private ?DeploymentBudget $budget = null)
     {
         if (!in_array($driver->name(), ['mysql', 'pgsql', 'sqlite'], true) || !preg_match('/^[a-z][a-z0-9_]{0,47}$/D', $table)) {
             throw new MigrationException('TYPE_MIGRATION_INVALID：迁移驱动或记录表名无效');
@@ -46,13 +47,15 @@ final class Migrator
      * 在同一迁移锁内执行计划；fresh 只允许空数据库/当前 PostgreSQL schema。
      * 已有对象在建立迁移记录前拒绝，不覆盖、升级或清空已有数据。
      * @param list<Migration> $migrations 完整迁移计划。
+     * @param ?Closure(Connection, array):void $before 持锁且写入前核对应用前置条件；不能在回调中另借迁移连接。
+     * @param ?Closure(Connection, array):void $after 全部迁移成功后、同一锁内验证和记录应用版本。失败须显式重试，不自动撤销已提交 DDL。
      */
-    public function run(array $migrations, bool $fresh = false): array
+    public function run(array $migrations, bool $fresh = false, ?Closure $before = null, ?Closure $after = null): array
     {
         $plan = $this->plan($migrations);
 
-        return $this->connection(function (Connection $connection) use ($plan, $fresh): array {
-            return $this->locked($connection, function () use ($connection, $plan, $fresh): array {
+        return $this->connection(function (Connection $connection) use ($plan, $fresh, $before, $after): array {
+            return $this->locked($connection, function () use ($connection, $plan, $fresh, $before, $after): array {
                 if ($fresh) {
                     $objects = match ($this->driver->name()) {
                         'mysql' => $connection->query('SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()'),
@@ -63,13 +66,16 @@ final class Migrator
                         throw new MigrationException('TYPE_MIGRATION_NOT_EMPTY：全新初始化只允许空数据库，不修改已有模式或数据');
                     }
                 }
-                $this->initialize($connection);
                 $states = $this->snapshot($connection, $plan);
+                if ($before !== null) {
+                    $before($connection, $states);
+                }
                 foreach ($states as $state) {
                     if ($state['state'] === 'running' || $state['state'] === 'failed') {
                         throw new MigrationException('TYPE_MIGRATION_RECOVERY_REQUIRED：迁移 ' . $state['version'] . ' 需要显式恢复');
                     }
                 }
+                $this->initialize($connection);
                 foreach ($plan as $index => $migration) {
                     if ($states[$index]['state'] === 'applied') {
                         continue;
@@ -77,7 +83,11 @@ final class Migrator
                     $this->apply($connection, $migration, (int) $states[$index]['attempts']);
                 }
 
-                return $this->snapshot($connection, $plan);
+                $finished = $this->snapshot($connection, $plan);
+                if ($after !== null) {
+                    $after($connection, $finished);
+                }
+                return $finished;
             });
         });
     }
@@ -172,7 +182,7 @@ final class Migrator
     private function connection(Closure $operation): mixed
     {
         $scope = new ExecutionScope();
-        $database = new Database($this->driver, 1, 0);
+        $database = new Database($this->driver, 1, 0, $this->budget);
         try {
             return $operation($database->connect($scope));
         } finally {
