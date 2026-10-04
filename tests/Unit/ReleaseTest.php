@@ -217,6 +217,28 @@ final class ReleaseTest extends TestCase
         Plan::dependencies($package, 'v2.0.0', ['zoujingli/type-core']);
     }
 
+    /** 实际驱动的直接 Runtime 依赖参与发布门禁，旧批次不能覆盖源码声明的能力下界。 */
+    public function testPdoDriverReleaseRejectsRuntimeBeforeHookContract(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $mapping = json_decode((string) file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
+        $packages = array_column($mapping['packages'], 'composer-name');
+        foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
+            $package = json_decode((string) file_get_contents($root . '/plugin/type-orm-' . $driver . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+            self::assertArrayHasKey('zoujingli/type-runtime', $package['require']);
+            foreach (['v1.0.0-rc.15', 'v1.0.0-rc.16', 'v1.0.0', 'v1.0.1'] as $version) {
+                Plan::dependencies($package, $version, $packages);
+            }
+            try {
+                Plan::dependencies($package, 'v1.0.0-rc.14', $packages);
+                self::fail('新驱动允许没有 PDO hook 检查接口的旧 Runtime 批次');
+            } catch (\RuntimeException $error) {
+                self::assertStringContainsString('zoujingli/type-runtime', $error->getMessage());
+                self::assertStringContainsString($package['require']['zoujingli/type-runtime'], $error->getMessage());
+            }
+        }
+    }
+
     /** 前端身份必须来自实际锁文件，缺失不能被编码成false后继续校验通过。 */
     public function testFrontendIdentityRequiresTheOriginalDependencyLock(): void
     {

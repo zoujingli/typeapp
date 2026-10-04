@@ -705,7 +705,8 @@
             "require": {
                 "ext-pdo_mysql": "*",
                 "php": ">=8.4 <8.6",
-                "zoujingli/type-orm": "~1.0.0@dev"
+                "zoujingli/type-orm": "~1.0.0@dev",
+                "zoujingli/type-runtime": ">=1.0.0-rc.15 <1.1.0@dev"
             },
             "type": "library",
             "extra": {
@@ -744,7 +745,8 @@
             "require": {
                 "ext-pdo_pgsql": "*",
                 "php": ">=8.4 <8.6",
-                "zoujingli/type-orm": "~1.0.0@dev"
+                "zoujingli/type-orm": "~1.0.0@dev",
+                "zoujingli/type-runtime": ">=1.0.0-rc.15 <1.1.0@dev"
             },
             "type": "library",
             "extra": {
@@ -783,7 +785,8 @@
             "require": {
                 "ext-pdo_sqlite": "*",
                 "php": ">=8.4 <8.6",
-                "zoujingli/type-orm": "~1.0.0@dev"
+                "zoujingli/type-orm": "~1.0.0@dev",
+                "zoujingli/type-runtime": ">=1.0.0-rc.15 <1.1.0@dev"
             },
             "type": "library",
             "extra": {

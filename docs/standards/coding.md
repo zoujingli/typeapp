@@ -6,6 +6,8 @@
 
 PHP 文件使用无 BOM 的 UTF-8、LF、四空格缩进和 `declare(strict_types=1);`。类名采用 PascalCase，方法和属性采用 camelCase，常量采用 UPPER_SNAKE_CASE；命名空间与 PSR-4 路径的大小写一致。应用职责目录可以使用 `controller`、`model`、`service`，对应命名空间也保持小写；组件现有公开命名空间保留兼容。
 
+Model 的持久化字段声明可沿用数据库列的 snake_case 名称，以保持现有字段映射、赋值键与投影协议；普通对象属性和方法仍使用 camelCase。需要不同属性名时用 `Column(name: '数据库列名')` 显式映射，不因格式整理改写已有字段契约。模型声明由构建期生成器转换为受管属性，缺失与 null 由模型状态区分，不为满足普通属性初始化要求补入虚假的字段默认值。
+
 格式基线为 PHP CS Fixer 的 PSR-12 规则和仓库显式安全规则。`composer cs-check` 只检查，`composer cs-fix` 只做已声明的非 risky 格式修正。配置排除 vendor、build、运行数据；不启用类型迁移、隐式裁参、语义重写或自动替换事务逻辑的规则。格式化后仍需语法、公共行为和相关 AOT 验收。
 
 ## PHPDoc

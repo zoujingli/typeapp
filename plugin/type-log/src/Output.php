@@ -8,7 +8,7 @@ use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
-/** 非阻塞流、有界内存和有限排空；输出失败通过计数呈现，不递归写错误日志。 */
+/** 普通文件及非阻塞流的有界日志缓冲；输出失败通过计数呈现，不递归写错误日志。 */
 final class Output
 {
     private mixed $stream = null;
@@ -63,7 +63,7 @@ final class Output
         return new Output(\Type\Runtime\LocalFile::path($path, false), $maxRecords, $maxBytes, $maxRecordBytes);
     }
 
-    /** 接管非阻塞写模式；closeStream=false 时停止后恢复调用者原有的阻塞模式。 */
+    /** 普通文件直接写入；其他流接管非阻塞模式，借用流停止后恢复被修改的模式。 */
     public static function stream(
         mixed $stream,
         int $maxRecords = 1024,
@@ -266,9 +266,17 @@ final class Output
             || !in_array($metadata['stream_type'], ['STDIO', 'tcp_socket', 'unix_socket', 'generic_socket'], true)) {
             throw new InvalidArgumentException('日志只接受可写本地文件、标准输出或原生 socket 流');
         }
-        $this->wasBlocking = (bool) ($metadata['blocked'] ?? true);
-        if (!stream_set_blocking($this->stream, false)) {
-            throw new InvalidArgumentException('日志输出不能设置非阻塞模式');
+        $stat = fstat($this->stream);
+        // 普通磁盘文件不具备非阻塞等待语义，Windows PHP 也不支持切换其模式。
+        // 仅按已打开句柄识别普通文件；管道、设备和 socket 仍须支持非阻塞。
+        $regularFile = $metadata['stream_type'] === 'STDIO' && is_array($stat)
+            && (((int) $stat['mode'] & 0170000) === 0100000);
+        if (!$regularFile) {
+            $wasBlocking = (bool) ($metadata['blocked'] ?? true);
+            if (!stream_set_blocking($this->stream, false)) {
+                throw new InvalidArgumentException('日志输出不能设置非阻塞模式');
+            }
+            $this->wasBlocking = $wasBlocking;
         }
         stream_set_write_buffer($this->stream, 0);
     }

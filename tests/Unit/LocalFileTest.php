@@ -52,6 +52,8 @@ final class LocalFileTest extends TestCase
         $output = Output::file($this->directory . '/app.log');
         self::assertTrue($output->enqueue("test\n"));
         $output->stop();
+        self::assertSame(1, $output->stats()['written']);
+        self::assertFalse($output->stats()['failed']);
         self::assertSame("test\n", file_get_contents($this->directory . '/app.log'));
         foreach (['relative.log', 'file://' . $path, $this->directory . '/../escaped', "invalid\0path", '//server/share/file'] as $invalid) {
             try {
@@ -77,6 +79,30 @@ final class LocalFileTest extends TestCase
             self::assertSame($original, file_get_contents($path));
             $this->expectException(\InvalidArgumentException::class);
             LocalFile::path($this->directory . '/link');
+        }
+    }
+
+    /** 外借普通文件无需切换阻塞模式；重复排空保持顺序，停止不关闭调用者句柄。 */
+    public function testBorrowedRegularFileKeepsCallerModeAndOwnership(): void
+    {
+        $stream = tmpfile();
+        self::assertIsResource($stream);
+        try {
+            $before = stream_get_meta_data($stream);
+            $output = Output::stream($stream);
+            self::assertTrue($output->enqueue("first\n"));
+            self::assertTrue($output->drain());
+            self::assertTrue($output->enqueue("second\n"));
+            $output->stop();
+            self::assertSame(2, $output->stats()['written']);
+            self::assertFalse($output->stats()['failed']);
+            self::assertIsResource($stream);
+            self::assertSame($before['blocked'] ?? null, stream_get_meta_data($stream)['blocked'] ?? null);
+            rewind($stream);
+            self::assertSame("first\nsecond\n", stream_get_contents($stream));
+            self::assertSame(6, fwrite($stream, "third\n"));
+        } finally {
+            fclose($stream);
         }
     }
 }
