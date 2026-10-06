@@ -70,7 +70,19 @@ PHPUnit 的候选准备回归使用临时 Git 仓库，覆盖公开模板、未�
 
 候选准入使用 `TYPE_TUTORIAL_CANDIDATE_REPORT`，默认为 `build/release/tutorial-candidate/verification.json`；公开准入使用 `TYPE_TUTORIAL_PUBLIC_REPORT`，默认为 `build/release/tutorial-public/verification.json`。`release.yml` 先通过 `tutorial-delivery.yml` 构建固定候选十二项；恢复发布时回读已登记候选原 run/attempt，不能混用重新执行的单项。模板和组件公开后，再执行准确 tag 的默认 Packagist 十二项，当前轮次全部通过后才发布最终附件。候选门禁不依赖尚未发生的公开消费，测试入口本身不发布版本。
 
-在确定新版本号之前，可直接手动运行 `tutorial-delivery.yml`，只提供 `main` 已包含的完整 `source_sha`。入口校验固定提交及祖先关系，复用同一十二项候选矩阵，权限只有读取；内部 `v0.0.0` 仅供构建步骤记录占位元数据，不创建 tag、草稿或 Release，也不代表已选定下一版本。手动入口不能选择公开模式。
+在确定新版本号之前，可直接手动运行 `tutorial-delivery.yml`，提供 `main` 已包含的完整 `source_sha`。`platform` 和 `profile` 默认都是 `all`，执行四平台、三个数据库的完整候选矩阵。`platform` 可选 `linux-x64`、`linux-arm64`、`macos-arm64`、`windows-x64`；`profile` 可选 `sqlite`、`mysql`、`pgsql`，用于定位失败组合，仍复用原有静态构建、同产物部署和证据保全入口。
+
+例如，只重验 Windows SQLite 教程：
+
+```bash
+gh workflow run tutorial-delivery.yml --ref main \
+  -f source_sha=main已包含的完整40位源码SHA \
+  -f platform=windows-x64 -f profile=sqlite
+```
+
+定向任务成功只代表选定组合通过。工作流汇总会明确标注“定向教程结果（非发布验收）”，未选择的任务须为 skipped，所选任务必须成功；它不生成 `tutorial-delivery-matrix`，不能拼接其他 run 或 attempt 作为发布完整矩阵。`release.yml` 通过 `workflow_call` 调用时不提供筛选参数，始终执行完整十二项，候选和公开消费的原有发布门禁保持不变。
+
+手动入口校验固定提交及祖先关系，权限只有读取；内部 `v0.0.0` 仅供构建步骤记录占位元数据，不创建 tag、草稿或 Release，也不代表已选定下一版本。手动入口不能选择公开模式。
 
 当前 RC14 默认 Packagist 三库入口基线已经通过，但不证明新教程接口。新教程的四平台十二项 AOT 同产物矩阵和新批次默认 Packagist 消费仍需真实执行；强制中断后的全过程资源回收也尚未完成专项验证，不能据已有 PHP 或门禁单元测试记为完成。
 

@@ -36,6 +36,10 @@ on:
       profile:
         required: true
         type: string
+      platform:
+        description: Linux 平台；省略时同时验收 x64 和 ARM64
+        default: all
+        type: string
       base_source:
         default: ''
         type: string
@@ -93,16 +97,12 @@ jobs:
     needs: frontend
     if: ${{ !cancelled() && (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') }}
     name: ${{ inputs.profile || 'sqlite' }} · ${{ inputs.tutorial_mode != '' && '教程单程序' || '静态单程序' }} · ${{ matrix.platform }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.platform == 'linux-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: linux-x64
-            runner: ubuntu-24.04
-          - platform: linux-arm64
-            runner: ubuntu-24.04-arm
+        platform: ${{ fromJSON(inputs.platform == 'linux-x64' && '["linux-x64"]' || inputs.platform == 'linux-arm64' && '["linux-arm64"]' || '["linux-x64","linux-arm64"]') }}
     env:
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
       TYPEAPP_BUILD_PROFILE: ${{ inputs.profile || 'sqlite' }}
@@ -114,6 +114,11 @@ jobs:
       TYPE_TUTORIAL_REFERENCE: ${{ inputs.tutorial_reference }}
       TYPEAPP_BUILD_CONFIGURATION: ${{ inputs.tutorial_mode != '' && format('{0}/examples/catalog/build-profiles.json', github.workspace) || '' }}
     steps:
+      - name: 核对 Linux 平台选择
+        env:
+          PLATFORM: ${{ inputs.platform || 'all' }}
+        run: |
+          case "$PLATFORM" in all|linux-x64|linux-arm64) ;; *) exit 1 ;; esac
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ inputs.source_sha || github.sha }}
