@@ -251,6 +251,10 @@ final class NativeBuilder
         foreach ($compiledDeclarations as $sourcePath) {
             $entries = is_dir($sourcePath) ? (new \TypePhp\Build\FileScanner($sourcePath))->scan() : [$sourcePath];
             foreach ($entries as $sourceFile) {
+                // 声明生成会把目录展开为文件，展开后的输入也必须遵守编译器分类。
+                if (!\TypePhp\Build\FileScanner::isPhpFile($sourceFile) && !\TypePhp\Build\FileScanner::isNativeSourceFile($sourceFile)) {
+                    continue;
+                }
                 $resolvedSource = BuildPlatform::resolve($sourceFile);
                 $compilerSources[$resolvedSource] = $resolvedSource;
             }
