@@ -7,7 +7,7 @@ use Type\Build\NativeBuilder;
 
 if (count($argv) === 2 && in_array($argv[1], ['help', '--help'], true)) {
     echo <<<'HELP'
-Type 开发与构建工具（生产运行使用发布目录的run/run.cmd）
+TypeApp 开发与构建工具（生产运行使用单个主程序，配置独立维护）
 
   type create <已授权本地模板目录> <新项目目录> [sqlite|mysql|pgsql]
   type doctor <构建配置.json> [development|build]
@@ -33,9 +33,13 @@ try {
     require dirname(__DIR__) . '/src/bootstrap.php';
     if (($argv[1] ?? '') === 'service' && count($argv) === 6) {
         $specification = Type\Build\BuildPlatform::resolve($argv[3]);
-        if (!is_file($specification) || filesize($specification) > 65536) { throw new RuntimeException('服务声明须为不超过64KiB的本地JSON文件'); }
+        if (!is_file($specification) || filesize($specification) > 65536) {
+            throw new RuntimeException('服务声明须为不超过64KiB的本地JSON文件');
+        }
         $settings = json_decode(file_get_contents($specification), true, 32, JSON_THROW_ON_ERROR);
-        if (!is_array($settings) || array_is_list($settings)) { throw new RuntimeException('服务声明必须是JSON对象'); }
+        if (!is_array($settings) || array_is_list($settings)) {
+            throw new RuntimeException('服务声明必须是JSON对象');
+        }
         echo json_encode((new Type\Build\ServiceDefinition())->create($argv[2], $argv[4], $argv[5], $settings), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
         exit(0);
     }
@@ -49,7 +53,9 @@ try {
     }
     if (($argv[1] ?? '') === 'doctor' && in_array(count($argv), [3, 4], true)) {
         $scope = $argv[3] ?? 'development';
-        if (!in_array($scope, ['development', 'build'], true)) { throw new InvalidArgumentException('doctor范围只接受development或build'); }
+        if (!in_array($scope, ['development', 'build'], true)) {
+            throw new InvalidArgumentException('doctor范围只接受development或build');
+        }
         $diagnosis = (new Type\Build\EnvironmentDoctor())->inspect($argv[2]);
         $diagnosis['requested-scope'] = $scope;
         echo json_encode($diagnosis, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
@@ -62,11 +68,19 @@ try {
     if (in_array($argv[1] ?? '', ['dev', 'test'], true) && count($argv) >= 3) {
         $project = (new Type\Build\BuildProject())->read($argv[2]);
         $selection = $argv[1] === 'dev' ? [$project['settings']['development']['entry'] ?? null] : ($project['settings']['development']['test'] ?? []);
-        if (!is_array($selection) || !array_is_list($selection) || $selection === []) { throw new RuntimeException('请显式声明development.entry或development.test'); }
-        foreach ($selection as $argument) { if (!is_string($argument) || $argument === '' || str_contains($argument, "\0")) { throw new RuntimeException('开发/测试入口参数无效'); } }
+        if (!is_array($selection) || !array_is_list($selection) || $selection === []) {
+            throw new RuntimeException('请显式声明development.entry或development.test');
+        }
+        foreach ($selection as $argument) {
+            if (!is_string($argument) || $argument === '' || str_contains($argument, "\0")) {
+                throw new RuntimeException('开发/测试入口参数无效');
+            }
+        }
         $entry = $selection[0];
         $file = Type\Build\BuildPlatform::resolve($project['root'] . '/' . $entry);
-        if (!Type\Build\BuildPlatform::contains($project['root'], $file) || !is_file($file)) { throw new RuntimeException('开发入口超出项目'); }
+        if (!Type\Build\BuildPlatform::contains($project['root'], $file) || !is_file($file)) {
+            throw new RuntimeException('开发入口超出项目');
+        }
         $argv = [$file, ...array_slice($selection, 1), ...array_slice($argv, 3)];
         $argc = count($argv);
         $_SERVER['argv'] = $argv;
@@ -131,7 +145,9 @@ try {
         echo '隔离依赖安装完成，未执行 Composer 脚本或插件。' . PHP_EOL;
         exit(0);
     }
-    if (($argv[1] ?? '') === 'build' && count($argv) === 3) { $argv = [$argv[0], $argv[2]]; }
+    if (($argv[1] ?? '') === 'build' && count($argv) === 3) {
+        $argv = [$argv[0], $argv[2]];
+    }
     if (count($argv) !== 2) {
         throw new InvalidArgumentException('用法：type <应用构建配置.json>');
     }

@@ -79,13 +79,28 @@ php configure.php sqlite
 
 ## 启动服务
 
-HTTP 传输固定复用 Swoole。通用模板在 Unix 使用 worker，在 Windows 使用协程 HTTP 与停止控制桥；主仓物联中心的生产 HTTP 使用业务线程内协程。监听配置与双端示例见 [HTTP 通信](communications/http.md)，其他协议见[通信导读](communications.md)。独立应用开发入口：
+在刚创建的应用根目录，将 `.env.example` 复制为 `.env`；已有配置保留。模板要求使用者提供至少 32 字符的 `APP_API_TOKEN`，可先生成随机值：
+
+```bash
+php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'
+```
+
+把生成值填入 `.env` 的 `APP_API_TOKEN`，不要提交秘密配置。SQLite 使用模板默认的 `var/app.sqlite`；若选择 MySQL/PostgreSQL，先准备专用数据库和账号，再填写相应 `DB_*` 配置。接着显式初始化并检查迁移：
+
+```bash
+php dev.php migrate run
+php dev.php migrate status
+```
+
+只有 `migrate run` 会准备 SQLite 父目录并初始化数据库，`serve` 不隐式建库。迁移成功后启动独立应用：
 
 ```bash
 php dev.php serve
 ```
 
-默认监听见该应用配置。独立部署探针为 `/livez`、`/readyz`，不表示数据库已迁移。
+模板默认监听 `127.0.0.1:9501`，端口被占用时修改本应用配置。独立部署探针为 `/livez`、`/readyz`，不表示数据库已迁移；业务接口需携带 Bearer 令牌，完整请求与停止步骤见[应用开发实战](tutorial.md)。
+
+HTTP 传输固定复用 Swoole。通用模板在 Unix 使用 worker，在 Windows 使用协程 HTTP 与停止控制桥；主仓物联中心的生产 HTTP 使用业务线程内协程。监听配置与双端示例见 [HTTP 通信](communications/http.md)，其他协议见[通信导读](communications.md)。
 
 ## 构建与发布
 
