@@ -353,6 +353,15 @@ final class Reliability
             self::expect($visible['name'] === '已确认商品' && $this->products->loads() === 6, 'catalog_transaction_used_cache');
             self::expect($after->transactions === [], 'catalog_after_commit_too_early');
         }, 'catalog');
+        if ($sync->transactions !== [true] || $after->transactions !== [false]) {
+            // 只区分监听未执行、次数异常和事务时机；不记录事件、商品或缓存内容。
+            fwrite(STDERR, 'catalog-cache-phase ' . json_encode([
+                'sync_count' => count($sync->transactions), 'sync_expected' => $sync->transactions === [true],
+                'sync_first_active' => ($sync->transactions[0] ?? null) === true,
+                'after_count' => count($after->transactions), 'after_expected' => $after->transactions === [false],
+                'after_first_active' => ($after->transactions[0] ?? null) === true,
+            ], JSON_THROW_ON_ERROR) . "\n");
+        }
         self::expect($sync->transactions === [true] && $after->transactions === [false], 'catalog_event_phase');
         self::expect($this->products->cached($cache, 'catalog-a', $id)['name'] === '已确认商品' && $this->products->loads() === 7, 'catalog_commit_not_evicted');
         return ['product' => $id, 'loads' => 7, 'null_cached' => true, 'failure_cached' => false,

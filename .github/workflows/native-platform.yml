@@ -260,6 +260,15 @@ jobs:
             build/toolchain-regressions-*/**/supervisor-*.json
             build/toolchain-regressions-*/**/stopped-*.json
             build/toolchain-regressions-*/**/stdout.json
+            build/toolchain-regressions-*/threads/build/native/compiler/project.yml
+            build/toolchain-regressions-*/threads/build/native/compiler/generated-build-identity.php
+            build/toolchain-regressions-*/threads/build/native/compiler/runtime-profile/*.json
+            build/toolchain-regressions-*/threads/build/native/compiler/runtime-profile/*.ini
+            build/toolchain-regressions-*/threads/build/native/compiler/attempts/**/*.cc
+            build/toolchain-regressions-*/threads/build/native/compiler/attempts/**/*.h
+            build/toolchain-regressions-*/threads/build/native/compiler/attempts/**/*.typephp-cache
+            build/toolchain-regressions-*/threads/build/native/compiler/attempts/**/build-state.json
+            build/toolchain-regressions-*/threads/build/native/compiler/attempts/**/*.rsp
             build/**/compile.log
             build/orm-suite-*/*.log
             build/orm-suite-*/behavior.json
