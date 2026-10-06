@@ -43,8 +43,8 @@ final class CommandAssembly
                 throw new RuntimeException('配置必须声明合法环境变量与字符串默认值：' . (string) $key);
             }
         }
-        [$classes, $interfaces] = $this->symbols($sources);
         [$services, $commands, $bindings, $bindingReport] = $this->declarations($application, $enabled, $modules);
+        [$classes, $interfaces] = $this->symbols($sources, $this->factoryBodies($services));
         if ($commands === [] && ($routing['routes'] ?? []) === [] && ($application['events'] ?? []) === []
             && ($application['jobs'] ?? []) === [] && ($application['schedules'] ?? []) === []) {
             throw new RuntimeException('启用模块没有可执行命令');
@@ -689,7 +689,40 @@ final class CommandAssembly
         return in_array(strtolower(ltrim($type, '?')), ['array', 'bool', 'callable', 'false', 'float', 'int', 'iterable', 'mixed', 'never', 'null', 'object', 'resource', 'string', 'true', 'void'], true);
     }
 
-    private function symbols(array $sources): array
+    /**
+     * 具名工厂的安全扫描需要保留对应方法体；其他方法只参与签名和继承校验。
+     * 先从声明收集目标，避免为整个生产源码保留表达式树。
+     *
+     * @return array<string, array<string, true>>
+     */
+    private function factoryBodies(array $services): array
+    {
+        $result = [];
+        foreach ($services as $service) {
+            $factory = $service['factory'] ?? null;
+            if (!is_array($factory) || !is_string($factory['method'] ?? null)) {
+                continue;
+            }
+            $class = $factory['class'] ?? null;
+            if ($class === null && is_string($factory['service'] ?? null)) {
+                $class = $services[$factory['service']]['class'] ?? null;
+            }
+            if (!is_string($class) || $class === '') {
+                continue;
+            }
+            $separator = strrpos($class, '\\');
+            $short = strtolower($separator === false ? $class : substr($class, $separator + 1));
+            $result[$short][strtolower($factory['method'])] = true;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, array<string, true>> $factoryBodies
+     * @return array{0: array<string, array<string, mixed>>, 1: array<string, list<string>>}
+     */
+    private function symbols(array $sources, array $factoryBodies = []): array
     {
         $files = [];
         foreach ($sources as $source) {
@@ -711,9 +744,18 @@ final class CommandAssembly
         $classes = [];
         $interfaces = [];
         foreach (array_keys($files) as $file) {
-            $traverser = new NodeTraverser(new NameResolver());
             try {
-                $nodes = $traverser->traverse($parser->parse(file_get_contents($file)) ?? []);
+                // 只为具名工厂保留方法体；其余类成员在名称解析前裁剪，降低
+                // 生产源码大文件在并行开发准备中的瞬时 AST 峰值。
+                $nodes = $parser->parse(file_get_contents($file)) ?? [];
+                foreach ($finder->findInstanceOf($nodes, Node\Stmt\ClassLike::class) as $classNode) {
+                    if ($classNode instanceof Node\Stmt\Trait_) {
+                        continue;
+                    }
+                    $short = strtolower($classNode->name?->toString() ?? '');
+                    $this->compactClass($classNode, $factoryBodies[$short] ?? []);
+                }
+                $nodes = (new NodeTraverser(new NameResolver()))->traverse($nodes);
             } catch (\PhpParser\Error $error) {
                 throw new RuntimeException('源码声明解析失败：' . $file . '，' . $error->getMessage(), 0, $error);
             }
@@ -732,9 +774,22 @@ final class CommandAssembly
                     $interfaces[$name] = array_map(static fn (Node\Name $name): string => strtolower($name->toString()), $node->extends);
                 }
             }
+            unset($nodes);
         }
 
         return [$classes, $interfaces];
+    }
+
+    /** @param array<string, true> $keepMethods */
+    private function compactClass(Node\Stmt\ClassLike $node, array $keepMethods): void
+    {
+        foreach ($node->stmts as $statement) {
+            if (!$statement instanceof Node\Stmt\ClassMethod || isset($keepMethods[strtolower($statement->name->toString())])) {
+                continue;
+            }
+            $statement->stmts = null;
+        }
+        $node->stmts = array_values(array_filter($node->stmts, static fn (Node\Stmt $statement): bool => $statement instanceof Node\Stmt\ClassMethod));
     }
 
     private function constructor(string $class, array $classes, array $seen = []): ?Node\Stmt\ClassMethod

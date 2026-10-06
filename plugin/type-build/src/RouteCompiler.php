@@ -68,6 +68,9 @@ final class RouteCompiler
             }
         }
         $this->conflicts($routes);
+        // 生成契约已经完整落在 $routes；释放源码符号和筛选表后再渲染并校验
+        // 大段生成 PHP，避免把路由 AST 与其他生成器的峰值叠加。
+        unset($classes, $files, $selected, $context);
         $code = $this->render($class, $routes);
         try {
             (new ParserFactory())->createForNewestSupportedVersion()->parse($code);
@@ -577,11 +580,18 @@ final class RouteCompiler
         $classes = [];
         foreach (array_keys($files) as $file) {
             try {
-                $nodes = (new NodeTraverser(new NameResolver()))->traverse($parser->parse(file_get_contents($file)) ?? []);
+                // 先从原始树找出类声明并删除方法体，再运行名称解析。名称解析器
+                // 不需要业务表达式；提前裁剪可避免在全量生产源码上同时保留两棵 AST。
+                $nodes = $parser->parse(file_get_contents($file)) ?? [];
+                $classNodes = $finder->find($nodes, static fn (Node $node): bool => $node instanceof Node\Stmt\Class_ || $node instanceof Node\Stmt\Interface_);
+                foreach ($classNodes as $classNode) {
+                    $this->compactClass($classNode);
+                }
+                $nodes = (new NodeTraverser(new NameResolver()))->traverse($nodes);
             } catch (\PhpParser\Error $error) {
                 throw new RuntimeException('路由源码解析失败：' . $file . '，' . $error->getMessage(), 0, $error);
             }
-            foreach ($finder->find($nodes, static fn (Node $node): bool => $node instanceof Node\Stmt\Class_ || $node instanceof Node\Stmt\Interface_) as $node) {
+            foreach ($classNodes as $node) {
                 if ($node->name === null) {
                     continue;
                 }
@@ -591,8 +601,26 @@ final class RouteCompiler
                 }
                 $classes[strtolower($name)] = ['name' => $name, 'node' => $node, 'file' => $file];
             }
+            unset($nodes);
         }
         return [$classes, $files];
+    }
+
+    /**
+     * 删除路由验证永远不会读取的类成员和方法体，同时保留继承、接口、Attribute
+     * 以及参数和返回类型节点，确保所有现有契约检查仍使用同一 AST 语义。
+     */
+    private function compactClass(Node\Stmt\ClassLike $node): void
+    {
+        $methods = [];
+        foreach ($node->stmts as $statement) {
+            if (!$statement instanceof Node\Stmt\ClassMethod) {
+                continue;
+            }
+            $statement->stmts = null;
+            $methods[] = $statement;
+        }
+        $node->stmts = $methods;
     }
 
     /**
