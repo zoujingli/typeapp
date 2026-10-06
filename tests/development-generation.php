@@ -7,10 +7,19 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Testing\Process;
 
+/**
+ * 通过既有构建器选择入口加载本轮隔离副本，保留公开准备命令的全部行为。
+ * @return list<string> 直接传给子进程的参数，不经 shell 拼接。
+ */
+function generationCommand(string $root): array
+{
+    return [PHP_BINARY, '-d', 'auto_prepend_file=' . $root . '/tooling/select.php', $root . '/bin/typeapp-prepare', '--json'];
+}
+
 /** 通过公开准备命令取得代次；只为本轮 fixture 使用主仓已安装的构建依赖。 */
 function preparedGeneration(string $root, array $environment): array
 {
-    $process = new Process([PHP_BINARY, $root . '/bin/typeapp-prepare', '--json'], $root, $environment);
+    $process = new Process(generationCommand($root), $root, $environment);
     try {
         $result = $process->wait(15);
         expect($result->successful(), '独立开发准备失败：' . $result->stderr);
@@ -32,7 +41,7 @@ function concurrentGenerations(string $root, array $environment, ?array $expecte
     $started = microtime(true);
     try {
         for ($slot = 0; $slot < 8; $slot++) {
-            $processes[$slot] = new Process([PHP_BINARY, $root . '/bin/typeapp-prepare', '--json'], $root, $environment);
+            $processes[$slot] = new Process(generationCommand($root), $root, $environment);
         }
         do {
             foreach ($processes as $slot => $process) {
@@ -51,7 +60,7 @@ function concurrentGenerations(string $root, array $environment, ?array $expecte
                     $completed[$slot] = microtime(true) - $started;
                     unset($processes[$slot]);
                 } else {
-                    $processes[$slot] = new Process([PHP_BINARY, $root . '/bin/typeapp-prepare', '--json'], $root, $environment);
+                    $processes[$slot] = new Process(generationCommand($root), $root, $environment);
                 }
             }
             expect(microtime(true) - $started < 30.0, '开发worker准备链超出三十秒预算：' . json_encode($steps, JSON_THROW_ON_ERROR));
@@ -73,7 +82,7 @@ function concurrentGenerations(string $root, array $environment, ?array $expecte
  */
 function rejectedGeneration(string $root, array $environment, string $reason, float $seconds = 5.0): void
 {
-    $process = new Process([PHP_BINARY, $root . '/bin/typeapp-prepare', '--json'], $root, $environment);
+    $process = new Process(generationCommand($root), $root, $environment);
     try {
         $failure = $process->wait($seconds);
         expect(!$failure->successful() && !$failure->timedOut && str_contains($failure->stderr, $reason), '无效开发输入或代次未被拒绝：'
@@ -117,19 +126,16 @@ try {
     foreach (glob($root . '/plugin/type-build/src/*.php') as $toolFile) {
         expect(copy($toolFile, $work . '/tooling/src/' . basename($toolFile)), '复制本轮生成器失败');
     }
-    // 只覆盖本轮生成器副本以检查其内容变化；其余依赖使用主仓已安装版本。
+    // 准备入口不执行应用自动加载器；其受限构建加载器使用显式选择的生成器副本。
+    file_put_contents($work . '/tooling/select.php', <<<'PHP'
+<?php
+declare(strict_types=1);
+
+$GLOBALS['__type_build_source_directory'] = __DIR__;
+PHP);
     file_put_contents($work . '/vendor/autoload.php', <<<'PHP'
 <?php
-$loader = require dirname(__DIR__, 3) . '/vendor/autoload.php';
-spl_autoload_register(static function (string $class): void {
-    if (str_starts_with($class, 'Type\\Build\\')) {
-        $file = dirname(__DIR__) . '/tooling/src/' . substr($class, strlen('Type\\Build\\')) . '.php';
-        if (is_file($file)) {
-            require $file;
-        }
-    }
-}, true, true);
-return $loader;
+return require dirname(__DIR__, 3) . '/vendor/autoload.php';
 PHP);
     $environment = getenv();
     $secret = 'generation-secret-' . bin2hex(random_bytes(12));
@@ -170,12 +176,17 @@ PHP);
     rejectedGeneration($work, $environment, 'Syntax error');
     file_put_contents($source, $originalSource);
 
-    foreach ([$work . '/config/route.php', $work . '/tooling/src/ModelCompiler.php'] as $changing) {
+    foreach (['project/config/route.php' => $work . '/config/route.php', 'tooling/ModelCompiler.php' => $work . '/tooling/src/ModelCompiler.php'] as $input => $changing) {
         $originalInput = file_get_contents($changing);
         $inputTime = filemtime($changing);
         file_put_contents($changing, $originalInput . "\n");
         touch($changing, $inputTime);
-        expect(preparedGeneration($work, $environment)['generation'] !== $first['generation'], '声明或生成器内容变化未进入代次身份');
+        $next = preparedGeneration($work, $environment);
+        $nextManifest = json_decode(file_get_contents($next['directory'] . '/manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+        expect(
+            $next['generation'] !== $first['generation'] && ($nextManifest['inputs'][$input] ?? null) === hash_file('sha256', $changing),
+            '声明或生成器内容变化未进入代次身份：' . $input
+        );
         file_put_contents($changing, $originalInput);
         expect(preparedGeneration($work, $environment) === $first, '声明或生成器恢复后没有复用原代次');
     }
