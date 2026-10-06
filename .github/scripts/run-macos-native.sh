@@ -121,15 +121,15 @@ case "$task_suite" in
     composer test:operations-native
     composer test:process-signals
     composer test:development-watch
-    php tests/development-generation.php
     php tests/developer-commands.php
     composer test:build-platform-native
     composer test:build-source-collection
     composer test:imports
-    composer check:assembly
+    composer test:framework
     composer build:commands
     composer test:commands
     composer test:assembly-consumer
+    composer test:framework-native
     ;;
   application)
     composer typeapp:prepare

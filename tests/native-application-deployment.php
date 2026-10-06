@@ -44,6 +44,67 @@ function verifyNativeApplicationDeployment(string $project, string $package, str
             $environment['DB_USERNAME'] = $settings['USER'];
             $environment['DB_PASSWORD'] = $settings['PASSWORD'];
         }
+        if ($project !== $root && getenv('TYPE_PACKAGE_TUTORIAL') === '1') {
+            expect($single && $isolated && is_file($project . '/tests/tutorial.php'), '教程部署必须使用同一公开断言和隔离单程序');
+            $controllerEnvironment = array_replace(getenv(), $environment, [
+                'TYPE_APP_TEST_DIRECTORY' => $project,
+                'TYPE_APP_COMMAND' => json_encode($command, JSON_THROW_ON_ERROR),
+                'PATH' => getenv('PATH') ?: '',
+            ]);
+            unset($controllerEnvironment['TYPE_APP_STOP_COMMAND'], $controllerEnvironment['TYPE_APP_OBSERVE_COMMAND']);
+            $processInfo = PHP_OS_FAMILY === 'Linux' ? $base . '/tutorial-{{test}}-process.json' : null;
+            $controllerEnvironment['TYPE_APP_SERVER_COMMAND'] = json_encode($processInfo === null ? $command
+                : sandboxPackageCommand($root, $package, [$runtime], $processInfo, 'app'), JSON_THROW_ON_ERROR);
+            if ($processInfo !== null) {
+                // PHP只在隔离外的验收控制端发送信号，真实业务仍由隔离单程序执行。
+                $controllerEnvironment['TYPE_APP_STOP_COMMAND'] = json_encode([PHP_BINARY, '-r',
+                    'require $argv[1]."/tests/support.php"; require $argv[1]."/tests/native-package-sandbox.php"; signalPackageProcess($argv[2], $argv[3], "app");',
+                    $root, $package, $processInfo], JSON_THROW_ON_ERROR);
+            }
+            $started = microtime(true);
+            $controller = new Process([PHP_BINARY, $project . '/tests/tutorial.php'], $runtime, $controllerEnvironment, 4194304);
+            try {
+                $result = $controller->wait(120);
+                $secrets = array_values(array_filter([$environment['DB_PASSWORD'] ?? '', $environment['APP_API_TOKEN'] ?? ''], static fn (string $value): bool => $value !== ''));
+                $identities = [];
+                if ($processInfo !== null) {
+                    foreach (['smoke', 'catalog'] as $test) {
+                        $identity = str_replace('{{test}}', $test, $processInfo);
+                        if (is_file($identity) && !is_link($identity)) {
+                            $identities[$test] = ['file' => basename($identity), 'sha256' => hash_file('sha256', $identity),
+                                'content' => file_get_contents($identity)];
+                        }
+                    }
+                }
+                file_put_contents($base . '/tutorial.log', str_replace($secrets, '<REDACTED>', $result->stdout . $result->stderr)
+                    . ($identities === [] ? '' : 'server-identities ' . json_encode($identities, JSON_THROW_ON_ERROR) . "\n"));
+                expect($result->successful(), '隔离教程公开行为失败，见：' . $base . '/tutorial.log');
+                preg_match_all('/^server-stop (.+)$/m', $result->stdout, $matches);
+                $stops = [];
+                foreach ($matches[1] as $receipt) {
+                    $stop = json_decode($receipt, true, 32, JSON_THROW_ON_ERROR);
+                    $test = $stop['test'] ?? '';
+                    expect(in_array($test, ['smoke', 'catalog'], true) && !isset($stops[$test]), '教程停止回执重复或身份不符');
+                    expect($stop['exit-code'] === 0 && $stop['signal'] === null && $stop['timed-out'] === false
+                        && $stop['output-exceeded'] === false, '教程服务未正常停止');
+                    unset($stop['stdout'], $stop['stderr']);
+                    if ($processInfo !== null) {
+                        $identity = str_replace('{{test}}', $test, $processInfo);
+                        expect(is_file($identity) && !is_link($identity), '教程缺少真实服务身份回执');
+                        $stop['process-identity'] = json_decode(file_get_contents($identity), true, 32, JSON_THROW_ON_ERROR);
+                        $stop['process-identity-sha256'] = hash_file('sha256', $identity);
+                    }
+                    $stops[$test] = $stop;
+                }
+                expect(isset($stops['smoke'], $stops['catalog']) && count($stops) === 2, '教程必须保留两次服务正常停止回执');
+                return ['budget-seconds' => 120, 'elapsed-seconds' => round(microtime(true) - $started, 3),
+                    'exit-code' => $result->exitCode, 'timed-out' => $result->timedOut, 'signal' => $result->signal,
+                    'tutorial-public-assertions' => true, 'server-stops' => $stops,
+                    'log-sha256' => hash_file('sha256', $base . '/tutorial.log')];
+            } finally {
+                $controller->stop();
+            }
+        }
         $password = bin2hex(random_bytes(16));
         $initialization = $project === $root
             ? [...$command, 'app:install', 'package-admin', '发布管理员', 'package-customer', '发布客户', '发布租户']

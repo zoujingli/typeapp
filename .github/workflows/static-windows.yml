@@ -12,6 +12,9 @@ on:
       profile:
         required: false
         type: string
+      tutorial_mode:
+        default: ''
+        type: string
   workflow_dispatch:
     inputs:
       scope:
@@ -28,8 +31,11 @@ on:
 permissions:
   contents: read
 
+env:
+  TYPEAPP_BUILD_CONFIGURATION: ${{ inputs.tutorial_mode != '' && format('{0}/examples/catalog/build-profiles.json', github.workspace) || '' }}
+
 concurrency:
-  group: static-windows-${{ github.ref }}-${{ inputs.scope || 'core' }}-${{ inputs.profile || 'all' }}
+  group: static-windows-${{ github.ref }}-${{ inputs.source_sha || github.sha }}-${{ inputs.scope || 'core' }}-${{ inputs.profile || 'all' }}-${{ inputs.tutorial_mode || 'iot' }}
   cancel-in-progress: false
 
 jobs:
@@ -49,7 +55,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-sandbox-evidence-${{ inputs.profile || 'all' }}
+          name: static-windows-sandbox-evidence-${{ inputs.profile || 'all' }}${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           retention-days: 14
           path: build/windows-sandbox-check/*.json
 
@@ -70,7 +76,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-core-evidence-${{ inputs.profile || 'all' }}
+          name: static-windows-core-evidence-${{ inputs.profile || 'all' }}${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           retention-days: 14
           if-no-files-found: error
           path: build/static-windows-core/evidence/*
@@ -86,6 +92,18 @@ jobs:
         with:
           ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
+          fetch-depth: 0
+      - name: 核对手动调用的固定 main 源码
+        if: github.event_name == 'workflow_dispatch' && inputs.source_sha != ''
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          printf 'source=%s\n' "$SOURCE_SHA"
       - name: 恢复固定静态依赖的编译缓存
         id: dependency-cache
         uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
@@ -108,7 +126,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-dependencies-evidence-${{ inputs.profile || 'all' }}
+          name: static-windows-dependencies-evidence-${{ inputs.profile || 'all' }}${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           retention-days: 14
           if-no-files-found: error
           path: |
@@ -118,7 +136,7 @@ jobs:
       - name: 保存本轮依赖供后续完整 SDK 构建复用
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-dependencies-${{ inputs.profile || 'all' }}
+          name: static-windows-dependencies-${{ inputs.profile || 'all' }}${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           retention-days: 14
           if-no-files-found: error
           path: build/static-windows-dependencies/installed/**
@@ -135,11 +153,11 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: static-windows-dependencies-${{ inputs.profile || 'all' }}
+          name: static-windows-dependencies-${{ inputs.profile || 'all' }}${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           path: build/runtime-dependencies
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: static-windows-dependencies-evidence-${{ inputs.profile || 'all' }}
+          name: static-windows-dependencies-evidence-${{ inputs.profile || 'all' }}${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           path: build/runtime-dependency-evidence
       - name: 构建 PHP 与完整静态扩展并验证独立 embed
         timeout-minutes: 35
@@ -155,7 +173,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-runtime-evidence-${{ inputs.profile || 'all' }}
+          name: static-windows-runtime-evidence-${{ inputs.profile || 'all' }}${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           retention-days: 14
           if-no-files-found: error
           path: |
@@ -165,7 +183,7 @@ jobs:
         if: inputs.scope == 'phpx'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-sdk-${{ inputs.profile || 'all' }}
+          name: static-windows-sdk-${{ inputs.profile || 'all' }}${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           retention-days: 14
           if-no-files-found: error
           path: build/static-windows-runtime/sdk/**

@@ -1,0 +1,118 @@
+name: 教程四平台单程序交付
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: main 已包含的完整源码 SHA，仅验收候选，不创建标签或发布
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      mode:
+        required: true
+        type: string
+      reference:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      source: ${{ steps.identity.outputs.source }}
+      version: ${{ steps.identity.outputs.version }}
+      mode: ${{ steps.identity.outputs.mode }}
+      reference: ${{ steps.identity.outputs.reference }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: identity
+        env:
+          SOURCE: ${{ inputs.source_sha }}
+          MODE: ${{ inputs.mode || 'candidate' }}
+          VERSION: ${{ inputs.version || 'v0.0.0' }}
+          REFERENCE: ${{ inputs.mode == '' && inputs.source_sha || inputs.reference }}
+          DISPATCH_ONLY: ${{ inputs.mode == '' }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$DISPATCH_ONLY" == false || "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE^{commit}")" == "$SOURCE" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE" origin/main || exit 1
+          [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]] || exit 1
+          if [[ "$MODE" == candidate ]]; then
+            [[ "$REFERENCE" == "$SOURCE" ]] || exit 1
+          else
+            [[ "$MODE" == public && "$DISPATCH_ONLY" == false && "$REFERENCE" == "$VERSION" ]] || exit 1
+            [[ "$(git rev-parse --verify "refs/tags/$VERSION^{commit}")" == "$SOURCE" ]] || exit 1
+          fi
+          printf 'source=%s\nversion=%s\nmode=%s\nreference=%s\n' "$SOURCE" "$VERSION" "$MODE" "$REFERENCE" >> "$GITHUB_OUTPUT"
+
+  linux:
+    needs: resolve
+    uses: ./.github/workflows/static-linux.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [sqlite, mysql, pgsql]
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      frontend_artifact: ''
+      version: ${{ needs.resolve.outputs.version }}
+      profile: ${{ matrix.profile }}
+      tutorial_mode: ${{ needs.resolve.outputs.mode }}
+      tutorial_reference: ${{ needs.resolve.outputs.reference }}
+
+  macos:
+    needs: resolve
+    uses: ./.github/workflows/native-macos.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [sqlite, mysql, pgsql]
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      frontend_artifact: ''
+      version: ${{ needs.resolve.outputs.version }}
+      scope: single-program
+      profile: ${{ matrix.profile }}
+      tutorial_mode: ${{ needs.resolve.outputs.mode }}
+      tutorial_reference: ${{ needs.resolve.outputs.reference }}
+
+  windows:
+    needs: resolve
+    uses: ./.github/workflows/static-windows-candidate.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [sqlite, mysql, pgsql]
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      frontend_artifact: ''
+      version: ${{ needs.resolve.outputs.version }}
+      profile: ${{ matrix.profile }}
+      tutorial_mode: ${{ needs.resolve.outputs.mode }}
+      tutorial_reference: ${{ needs.resolve.outputs.reference }}
+
+  complete:
+    needs: [resolve, linux, macos, windows]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"

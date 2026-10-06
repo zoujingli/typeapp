@@ -172,9 +172,19 @@ jobs:
         run: |
           jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"
 
+  tutorial-candidate:
+    needs: resolve
+    if: needs.resolve.outputs.resume == 'false'
+    uses: ./.github/workflows/tutorial-delivery.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      version: ${{ needs.resolve.outputs.version }}
+      mode: candidate
+      reference: ${{ needs.resolve.outputs.source }}
+
   candidate:
-    needs: [resolve, release-native-complete]
-    if: always() && needs.resolve.result == 'success' && (needs.resolve.outputs.resume == 'true' || needs.release-native-complete.result == 'success')
+    needs: [resolve, release-native-complete, tutorial-candidate]
+    if: always() && needs.resolve.result == 'success' && (needs.resolve.outputs.resume == 'true' || (needs.release-native-complete.result == 'success' && needs.tutorial-candidate.result == 'success'))
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -224,7 +234,21 @@ jobs:
           for material in "${materials[@]}"; do
             cp -- "$material" build/release/assets/
           done
+      - name: 读取原候选轮次的十二份教程原始证据
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.resolve.outputs.candidate_run }}
+          pattern: tutorial-candidate-*-${{ needs.resolve.outputs.candidate_attempt }}
+          merge-multiple: false
+          path: build/release/tutorial-candidate/inputs
+      - name: 回读原候选同源码同轮次教程矩阵
+        env:
+          TYPE_TUTORIAL_SOURCE: ${{ needs.resolve.outputs.source }}
+        run: php tools/collect-tutorial.php candidate "$TYPE_TUTORIAL_SOURCE" build/release/tutorial-candidate "$TYPE_RELEASE_EVIDENCE_RUN" "$TYPE_RELEASE_EVIDENCE_ATTEMPT"
       - name: 保存候选草稿、附件及公开摘要
+        env:
+          TYPE_TUTORIAL_CANDIDATE_REPORT: ${{ github.workspace }}/build/release/tutorial-candidate/verification.json
         run: php tools/release.php candidate "$TYPE_RELEASE_VERSION"
 
   distribute:
@@ -252,9 +276,19 @@ jobs:
       evidence_run: ${{ needs.resolve.outputs.candidate_run }}
       evidence_attempt: ${{ needs.resolve.outputs.candidate_attempt }}
 
-  publish:
+  tutorial-public:
     needs: [resolve, template]
     if: always() && needs.resolve.result == 'success' && needs.template.result == 'success'
+    uses: ./.github/workflows/tutorial-delivery.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source }}
+      version: ${{ needs.resolve.outputs.version }}
+      mode: public
+      reference: ${{ needs.resolve.outputs.version }}
+
+  publish:
+    needs: [resolve, template, tutorial-public]
+    if: always() && needs.resolve.result == 'success' && needs.template.result == 'success' && needs.tutorial-public.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -285,6 +319,16 @@ jobs:
           name: type-project-distribution
           path: build/release/template-evidence
       - run: cp build/release/template-evidence/distribution/template.json build/distribution/template.json
+      - name: 读取本轮准确公开版本教程原始证据
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: tutorial-public-*-${{ github.run_attempt }}
+          merge-multiple: false
+          path: build/release/tutorial-public/inputs
+      - name: 回读公开版本同源码同轮次教程矩阵
+        env:
+          TYPE_TUTORIAL_SOURCE: ${{ needs.resolve.outputs.source }}
+        run: php tools/collect-tutorial.php public "$TYPE_TUTORIAL_SOURCE" build/release/tutorial-public "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$TYPE_RELEASE_VERSION"
       - name: 再核对16个Packagist版本及封存附件
         run: |
           php tools/release.php packagist "$TYPE_RELEASE_VERSION"
@@ -307,4 +351,5 @@ jobs:
             build/release/consumption.json
             build/release/children.json
             build/release/published.json
+            build/release/tutorial-public/verification.json
           retention-days: 90

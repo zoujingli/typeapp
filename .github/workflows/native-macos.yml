@@ -21,11 +21,24 @@ on:
         required: false
         default: all
         type: string
+      base_source:
+        default: ''
+        type: string
+      tutorial_mode:
+        default: ''
+        type: string
+      tutorial_reference:
+        default: ''
+        type: string
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: main 历史中的完整源码 SHA；留空使用本次事件提交
+        required: false
+        type: string
       scope:
         description: 验收范围（single-program 为静态候选，benchmark 需提供基准提交）
         type: choice
@@ -50,13 +63,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-macos-${{ github.ref }}-${{ inputs.scope || 'full' }}-${{ inputs.profile || 'all' }}
+  group: native-macos-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || inputs.source_sha || github.sha }}-${{ inputs.scope || 'full' }}-${{ inputs.scope == 'single-program' && inputs.profile || 'all' }}-${{ inputs.tutorial_mode || 'iot' }}-${{ inputs.base_source }}
   cancel-in-progress: true
 
 jobs:
   native:
     if: github.repository == 'zoujingli/typeapp'
-    name: ${{ inputs.scope == 'single-program' && inputs.profile || 'all' }} · macOS ARM64 · ${{ matrix.suite }}
+    name: ${{ inputs.scope == 'single-program' && inputs.profile || 'all' }} · macOS ARM64 · ${{ inputs.tutorial_mode != '' && format('tutorial-{0}', inputs.tutorial_mode) || matrix.suite }}
     runs-on: macos-15
     timeout-minutes: 120
     strategy:
@@ -68,10 +81,14 @@ jobs:
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
       TYPE_RELEASE_VERSION: ${{ inputs.version || inputs.candidate_version }}
       TYPEAPP_BUILD_PROFILE: ${{ inputs.scope == 'single-program' && inputs.profile || '' }}
+      TYPE_BENCHMARK_BUILD_TIMING: ${{ inputs.scope == 'single-program' && inputs.base_source != '' && inputs.tutorial_mode == '' && '1' || '0' }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
       COMPOSER_CACHE_DIR: ${{ github.workspace }}/.cache/composer
       HOMEBREW_NO_AUTO_UPDATE: '1'
+      TYPE_TUTORIAL_MODE: ${{ inputs.tutorial_mode }}
+      TYPE_TUTORIAL_REFERENCE: ${{ inputs.tutorial_reference }}
+      TYPEAPP_BUILD_CONFIGURATION: ${{ inputs.tutorial_mode != '' && format('{0}/examples/catalog/build-profiles.json', github.workspace) || '' }}
     steps:
       - name: 核对手动单程序候选参数
         if: github.event_name == 'workflow_dispatch'
@@ -89,6 +106,16 @@ jobs:
           ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
           fetch-depth: 0
+      - name: 核对手动入口的固定 main 源码
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          printf 'source=%s\n' "$SOURCE_SHA"
       - name: 安装原生构建和专用测试数据库工具
         run: |
           brew install cmake gmp mpfr pcre2 pkg-config libpq mysql@8.4 postgresql@17 redis autoconf bison re2c libxml2 openssl@3 curl sqlite libzip
@@ -212,6 +239,7 @@ jobs:
           printf 'TYPE_CURL_MODULE=%s\nPHP_HOME=%s\nPHPX_HOME=%s\nTYPE_NATIVE_PHP_INI=%s\nPHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' \
             "$task_curl_module" "$PHP_HOME" "$PHPX_HOME" "$task_runtime_ini" "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
       - name: 准备并核对内嵌管理前端
+        if: inputs.tutorial_mode == ''
         uses: ./.github/actions/prepare-frontend
         with:
           artifact: ${{ inputs.frontend_artifact }}
@@ -233,6 +261,8 @@ jobs:
           export TYPE_STATIC_RUNTIME
           TYPE_STATIC_RUNTIME="$(bash tools/prepare-static-macos.sh "$GITHUB_WORKSPACE/build/static-macos-sdk" "$TYPEAPP_BUILD_PROFILE" 2>build/static-macos-evidence/sdk.log)"
           php tests/static-runtime-sdk.php "$TYPE_STATIC_RUNTIME" | tee build/static-macos-evidence/embed.log
+          printf 'TYPE_STATIC_RUNTIME=%s\n' "$TYPE_STATIC_RUNTIME" >> "$GITHUB_ENV"
+          if [[ -n "$TYPE_TUTORIAL_MODE" ]]; then exit 0; fi
           php tools/build-application.php >build/static-macos-evidence/application.log 2>&1
           php tests/release-candidate.php prepare
           TYPE_REDIS_SERVER="$(command -v redis-server)" php tests/release-candidate.php test "$TYPEAPP_BUILD_PROFILE" "$(brew --prefix mysql@8.4)" "$(brew --prefix postgresql@17)"
@@ -240,22 +270,85 @@ jobs:
           php tests/release-candidate.php service "$(brew --prefix mysql@8.4)" "$(brew --prefix postgresql@17)"
           php tests/release-candidate.php finish
       - name: 保存最终发布候选
-        if: matrix.suite == 'single-program'
+        if: matrix.suite == 'single-program' && inputs.tutorial_mode == ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-candidate-static-macos-arm64-${{ inputs.profile || 'sqlite' }}-${{ github.run_attempt }}
           path: build/release-candidate/attachments/*
           if-no-files-found: error
           retention-days: 90
+      - name: 同 SDK 旧端与原静态候选的真实性能对照
+        if: matrix.suite == 'single-program' && inputs.base_source != '' && inputs.tutorial_mode == ''
+        run: |
+          set -euo pipefail
+          export TYPE_MYSQL_TOOLS TYPE_PGSQL_TOOLS
+          TYPE_MYSQL_TOOLS="$(brew --prefix mysql@8.4)"
+          TYPE_PGSQL_TOOLS="$(brew --prefix postgresql@17)"
+          php tests/prepare-platform-benchmarks.php "$TYPE_BASE_SOURCE" "$(git rev-parse HEAD)" "$(command -v composer)" \
+            --static-profile "$TYPEAPP_BUILD_PROFILE" | tee build/static-macos-evidence/benchmark-prepare.log
+          task_pair="$(sed -n 's/^平台新旧基准准备完成：\(.*\)\/preparation.json$/\1/p' build/static-macos-evidence/benchmark-prepare.log)"
+          test -n "$task_pair"
+          php tests/benchmark-pairs.php "$task_pair/old" "$task_pair/new" --static-profile "$TYPEAPP_BUILD_PROFILE" \
+            | tee build/static-macos-evidence/benchmark-pairs.log
+          task_measure="$(sed -n 's/^成对正式测量完成：//p' build/static-macos-evidence/benchmark-pairs.log)"
+          test -n "$task_measure"
+          if php tests/benchmark-compare.php "$task_measure" | tee build/static-macos-evidence/benchmark-compare.log; then
+            exit 0
+          else
+            task_comparison=$?
+          fi
+          if [[ "$task_comparison" != 2 ]]; then exit "$task_comparison"; fi
+          printf '正序出现回退信号；复用同一对程序交换顺序复测。\n' | tee build/static-macos-evidence/benchmark-status.log
+          php tests/benchmark-pairs.php "$task_pair/old" "$task_pair/new" --static-profile "$TYPEAPP_BUILD_PROFILE" --order new-first \
+            | tee build/static-macos-evidence/benchmark-pairs-reverse.log
+          task_measure="$(sed -n 's/^成对正式测量完成：//p' build/static-macos-evidence/benchmark-pairs-reverse.log)"
+          test -n "$task_measure"
+          php tests/benchmark-compare.php "$task_measure" | tee build/static-macos-evidence/benchmark-compare-reverse.log
+          printf '逆序未复现回退信号；两轮原始报告均保留，不据此宣称性能改善。\n' | tee -a build/static-macos-evidence/benchmark-status.log
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        if: inputs.tutorial_mode != ''
+        with:
+          node-version: '22.21.1'
+      - name: 同一固定教程的独立编译与无源码部署
+        if: inputs.tutorial_mode != ''
+        run: |
+          set -euo pipefail
+          export TYPE_MYSQL_TOOLS TYPE_PGSQL_TOOLS TYPE_REDIS_SERVER NODE_BINARY OPENSSL_BINARY
+          TYPE_MYSQL_TOOLS="$(brew --prefix mysql@8.4)"
+          TYPE_PGSQL_TOOLS="$(brew --prefix postgresql@17)"
+          TYPE_REDIS_SERVER="$(command -v redis-server)"
+          NODE_BINARY="$(command -v node)"
+          OPENSSL_BINARY="$TYPE_OPENSSL_BINARY"
+          php tests/tutorial-delivery.php "$TYPE_TUTORIAL_MODE" "$TYPE_TUTORIAL_REFERENCE" \
+            "--profile=$TYPEAPP_BUILD_PROFILE" "--runtime=$TYPE_STATIC_RUNTIME" "--output=$GITHUB_WORKSPACE/build/tutorial-delivery"
+      - name: 保存教程同轮原始产物与证据
+        if: inputs.tutorial_mode != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tutorial-${{ inputs.tutorial_mode }}-macos-arm64-${{ inputs.profile }}-${{ github.run_attempt }}
+          path: build/tutorial-delivery/**
+          if-no-files-found: error
+          retention-days: 90
       - name: 保存构建与验证结果
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: macos-arm64-${{ inputs.scope == 'single-program' && inputs.profile || 'all' }}-${{ matrix.suite }}
+          name: macos-arm64-${{ inputs.scope == 'single-program' && inputs.profile || 'all' }}-${{ matrix.suite }}${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           retention-days: 14
           if-no-files-found: error
           path: |
             build/static-macos-evidence/*
+            build/static-benchmark-build.json
+            build/pb-*/preparation.json
+            build/pb-*/*/*.log
+            build/pb-*/*/*.json
+            build/pb-*/*/project/build/b/*.build.json
+            build/pb-*/*/project/build/b/type-app
+            build/pb-*/*/project/build/b/c/compile.log
+            build/benchmark-pairs-*/*
+            build/application-benchmark-*/**/*.json
+            build/application-benchmark-*/**/*.log
+            build/tutorial-delivery/**
             build/static-macos-sdk/sdk/manifest.json
             build/static-macos-sdk/adaptations.json
             build/static-macos-sdk/src/postgresql-17.11/config.log

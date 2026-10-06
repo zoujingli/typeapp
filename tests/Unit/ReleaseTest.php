@@ -217,6 +217,78 @@ final class ReleaseTest extends TestCase
         Plan::dependencies($package, 'v2.0.0', ['zoujingli/type-core']);
     }
 
+    /** 版本准备写入正常模板源码，固定传递依赖且不改历史标签或消费者约束。 */
+    public function testTemplateVersionPreparationIsCompleteIdempotentAndBeforeTag(): void
+    {
+        $project = dirname(__DIR__, 2);
+        $directory = $project . '/build/template version-' . bin2hex(random_bytes(6));
+        self::assertTrue(mkdir($directory . '/templates/type-project', 0700, true));
+        self::assertTrue(mkdir($directory . '/.github', 0700));
+        try {
+            $mapping = json_decode((string) file_get_contents($project . '/.github/distribution.json'), true, 64, JSON_THROW_ON_ERROR);
+            copy($project . '/.github/distribution.json', $directory . '/.github/distribution.json');
+            foreach ($mapping['packages'] as $definition) {
+                mkdir($directory . '/' . $definition['prefix'], 0700, true);
+                copy($project . '/' . $definition['prefix'] . '/composer.json', $directory . '/' . $definition['prefix'] . '/composer.json');
+            }
+            $file = $directory . '/templates/type-project/composer.json';
+            $template = json_decode((string) file_get_contents($project . '/templates/type-project/composer.json'), true, 64, JSON_THROW_ON_ERROR);
+            unset($template['require']['zoujingli/type-runtime'], $template['require']['zoujingli/type-orm']);
+            file_put_contents($file, json_encode($template, JSON_THROW_ON_ERROR));
+            \successful(['git', 'init', '-b', 'main'], $directory);
+            \successful(['git', '-c', 'user.name=模板测试', '-c', 'user.email=test@type-app.invalid', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'test: 版本准备夹具'], $directory);
+            $original = hash_file('sha256', $file);
+            try {
+                Plan::prepareTemplate($directory, 'v1.0.0-rc.14');
+                self::fail('旧批次不满足驱动约束却被准备');
+            } catch (\RuntimeException $error) {
+                self::assertStringContainsString('同版本不满足组件依赖', $error->getMessage());
+            }
+            self::assertSame($original, hash_file('sha256', $file));
+            $result = Plan::prepareTemplate($directory, 'v1.0.0-rc.99');
+            self::assertTrue($result['changed']);
+            $prepared = json_decode((string) file_get_contents($file), true, 64, JSON_THROW_ON_ERROR);
+            self::assertSame('RC', $prepared['minimum-stability']);
+            self::assertTrue($prepared['prefer-stable']);
+            foreach (['core', 'orm', 'orm-sqlite', 'runtime', 'validate', 'log'] as $component) {
+                self::assertSame('1.0.0-rc.99', $prepared['require']['zoujingli/type-' . $component]);
+            }
+            foreach (['build', 'testing'] as $component) {
+                self::assertSame('1.0.0-rc.99', $prepared['require-dev']['zoujingli/type-' . $component]);
+            }
+            self::assertArrayNotHasKey('zoujingli/type-runtime', $prepared['require-dev']);
+            self::assertSame($template['require-dev']['swoole/typephp'], $prepared['require-dev']['swoole/typephp']);
+            self::assertSame($template['extra'], $prepared['extra']);
+            $repeated = Plan::prepareTemplate($directory, 'v1.0.0-rc.99');
+            self::assertFalse($repeated['changed']);
+            self::assertSame($result['sha256'], $repeated['sha256']);
+            \successful(['git', 'tag', 'v1.0.0-rc.99'], $directory);
+            try {
+                Plan::prepareTemplate($directory, 'v1.0.0-rc.99');
+                self::fail('已有标签仍允许重新准备');
+            } catch (\RuntimeException $error) {
+                self::assertStringContainsString('标签已存在', $error->getMessage());
+            }
+            self::assertSame($result['sha256'], hash_file('sha256', $file));
+            Plan::prepareTemplate($directory, 'v1.0.0');
+            $stable = json_decode((string) file_get_contents($file), true, 64, JSON_THROW_ON_ERROR);
+            self::assertSame('stable', $stable['minimum-stability']);
+            self::assertSame('1.0.0', $stable['require']['zoujingli/type-runtime']);
+            $stable['repositories'] = [['type' => 'path', 'url' => '../../plugin/*']];
+            file_put_contents($file, json_encode($stable, JSON_THROW_ON_ERROR));
+            $invalidSource = hash_file('sha256', $file);
+            try {
+                Plan::prepareTemplate($directory, 'v1.0.0');
+                self::fail('版本模板携带来源覆盖仍被准备');
+            } catch (\RuntimeException $error) {
+                self::assertStringContainsString('默认 Packagist', $error->getMessage());
+            }
+            self::assertSame($invalidSource, hash_file('sha256', $file));
+        } finally {
+            \removeTestDirectory($directory);
+        }
+    }
+
     /** 实际驱动的直接 Runtime 依赖参与发布门禁，旧批次不能覆盖源码声明的能力下界。 */
     public function testPdoDriverReleaseRejectsRuntimeBeforeHookContract(): void
     {
@@ -279,6 +351,8 @@ final class ReleaseTest extends TestCase
         foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
             yield 'missing-static-' . $platform => ['native', 'missing-static-' . $platform];
         }
+        yield 'native-with-tutorials' => ['native', 'with-tutorials'];
+        yield 'tutorial-cannot-replace-static' => ['native', 'tutorial-only'];
         foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
             yield 'missing-toolchain-' . $platform => ['native', 'missing-toolchain-' . $platform];
         }
@@ -306,6 +380,21 @@ final class ReleaseTest extends TestCase
             }
             foreach (['contracts', 'orm', 'database', 'http', 'redis', 'tasks', 'application', 'recovery', 'rollout', 'toolchain'] as $suite) {
                 $names[] = 'linux-arm64 / Linux ARM64 · ' . $suite;
+            }
+        }
+        if (in_array($change, ['with-tutorials', 'tutorial-only'], true)) {
+            foreach (['candidate', 'public'] as $mode) {
+                foreach (['sqlite', 'mysql', 'pgsql'] as $profile) {
+                    $names = [...$names,
+                        'tutorial-' . $mode . ' / ' . $profile . ' · 教程单程序 · linux-x64',
+                        'tutorial-' . $mode . ' / ' . $profile . ' · 教程单程序 · linux-arm64',
+                        'tutorial-' . $mode . ' / ' . $profile . ' · macOS ARM64 · tutorial-' . $mode,
+                        'tutorial-' . $mode . ' / ' . $profile . ' · Windows x64 教程单程序',
+                    ];
+                }
+            }
+            if ($change === 'tutorial-only') {
+                $names = array_values(array_filter($names, static fn (string $name): bool => $name !== 'sqlite · 静态单程序 · linux-x64'));
             }
         }
         $jobs = ['total_count' => count($names), 'jobs' => array_map(static fn (string $name): array => ['name' => $name, 'head_sha' => $source, 'status' => 'completed', 'conclusion' => 'success'], $names)];
@@ -348,7 +437,8 @@ final class ReleaseTest extends TestCase
             case 'pagination': $jobs['total_count']++;
                 break;
         }
-        if ($change !== 'valid') {
+        $valid = in_array($change, ['valid', 'with-tutorials'], true);
+        if (!$valid) {
             $this->expectException(\RuntimeException::class);
         }
         if ($kind === 'native') {
@@ -356,7 +446,63 @@ final class ReleaseTest extends TestCase
         } else {
             Evidence::verifyConsumptionJobs($run, $jobs, $source, 'v1.0.0-rc.1', 123, 2);
         }
-        self::assertSame('valid', $change);
+        self::assertTrue($valid);
+    }
+
+    /** 超过一页的消费任务仍可通过；丢页、重复任务和读取中变化不能获得发布资格。 */
+    public function testConsumptionReadsEveryPageFromTheSameAttempt(): void
+    {
+        $root = dirname(__DIR__, 2) . '/build/release-jobs-' . bin2hex(random_bytes(6));
+        mkdir($root . '/commands', 0700, true);
+        $originalPath = getenv('PATH');
+        $source = str_repeat('a', 40);
+        $run = ['id' => 123, 'run_attempt' => 2, 'head_sha' => $source, 'head_branch' => 'v1.0.0-rc.1',
+            'head_repository' => ['full_name' => 'zoujingli/typeapp'], 'path' => '.github/workflows/release.yml', 'event' => 'push'];
+        $jobs = [];
+        for ($index = 0; $index < 101; $index++) {
+            $jobs[] = ['id' => $index + 1, 'name' => 'matrix-' . $index, 'head_sha' => $source, 'status' => 'completed', 'conclusion' => 'success'];
+        }
+        foreach (['distribute / plan', 'distribute / collect', 'distribute / consume', 'template / template'] as $index => $name) {
+            $jobs[] = ['id' => 102 + $index, 'name' => $name, 'head_sha' => $source, 'status' => 'completed', 'conclusion' => 'success'];
+        }
+        $pages = [['total_count' => 105, 'jobs' => array_slice($jobs, 0, 100)], ['total_count' => 105, 'jobs' => array_slice($jobs, 100)]];
+        try {
+            \writeTestPhpCommand($root . '/commands/gh', <<<'PHP'
+if (array_slice($argv, 1) !== ['api', 'repos/zoujingli/typeapp/actions/runs/123/attempts/2/jobs?per_page=100', '--paginate', '--slurp']) {
+    fwrite(STDERR, '必须读取固定轮次的全部任务页');
+    exit(91);
+}
+echo file_get_contents(getcwd() . '/jobs.json');
+PHP);
+            putenv('PATH=' . $root . '/commands' . PATH_SEPARATOR . $originalPath);
+            file_put_contents($root . '/jobs.json', json_encode($pages, JSON_THROW_ON_ERROR));
+            $result = Batch::actionsJobs($root, 123, 2);
+            self::assertCount(105, $result['jobs']);
+            Evidence::verifyConsumptionJobs($run, $result, $source, 'v1.0.0-rc.1', 123, 2);
+            $broken = [[], [$pages[0]]];
+            $changed = $pages;
+            $changed[1]['total_count']++;
+            $broken[] = $changed;
+            $duplicate = $pages;
+            $duplicate[1]['jobs'][0] = $pages[0]['jobs'][0];
+            $broken[] = $duplicate;
+            $missingIdentity = $pages;
+            unset($missingIdentity[1]['jobs'][0]['id']);
+            $broken[] = $missingIdentity;
+            foreach ($broken as $fixture) {
+                file_put_contents($root . '/jobs.json', json_encode($fixture, JSON_THROW_ON_ERROR));
+                $failure = null;
+                try {
+                    Batch::actionsJobs($root, 123, 2);
+                } catch (\RuntimeException $error) {
+                    $failure = $error;
+                }
+                self::assertNotNull($failure);
+            }
+        } finally {
+            putenv($originalPath === false ? 'PATH' : 'PATH=' . $originalPath);
+            \removeTestDirectory($root);
+        }
     }
 
     /** 中途失败后保留成功项；同名附件同摘要可重复执行，改变字节必须拒绝。 */

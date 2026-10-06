@@ -41,15 +41,15 @@ case "$task_suite" in
     "$task_composer" test:helpers-native
     "$task_composer" test:process-signals
     "$task_composer" test:development-watch
-    php tests/development-generation.php
     php tests/developer-commands.php
     "$task_composer" test:build-platform-native
     "$task_composer" test:build-source-collection
     "$task_composer" test:imports
-    "$task_composer" check:assembly
+    "$task_composer" test:framework
     "$task_composer" build:commands
     "$task_composer" test:commands
     "$task_composer" test:assembly-consumer
+    "$task_composer" test:framework-native
     ;;
   orm)
     php tests/native-database-orm.php "${TYPE_MYSQL_TOOLS:?}" "${TYPE_PGSQL_TOOLS:?}" "${COMPOSER_BINARY:-$(command -v composer)}"

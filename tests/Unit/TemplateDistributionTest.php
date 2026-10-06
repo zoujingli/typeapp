@@ -25,6 +25,7 @@ final class TemplateDistributionTest extends TestCase
         yield 'clone-failed' => ['clone-failed'];
         yield 'publish-failed' => ['publish-failed'];
         yield 'invalid-batch' => ['invalid-batch'];
+        yield 'unprepared-tag' => ['unprepared-tag'];
         foreach (['dispatch', 'partial-suite', 'failed-job', 'skipped-summary', 'wrong-sha', 'wrong-repository',
             'wrong-branch', 'wrong-workflow', 'pull-request', 'incomplete-jobs'] as $case) {
             yield $case => [$case];
@@ -38,7 +39,7 @@ final class TemplateDistributionTest extends TestCase
         $directory = dirname(__DIR__, 2) . '/build/template-distribution-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($directory, 0700));
         try {
-            [$source, $environment, $batch] = $this->prepare($directory, false);
+            [$source, $environment, $batch] = $this->prepare($directory, $case === 'unprepared-tag', $case === 'unprepared-tag');
             $environment['TYPE_TEST_NATIVE_CASE'] = $case;
             $expectedSuccess = in_array($case, ['success', 'dispatch'], true);
             if ($case === 'clone-failed') {
@@ -80,7 +81,12 @@ final class TemplateDistributionTest extends TestCase
                     self::assertSame('publish', $report['stage']);
                 } else {
                     self::assertSame('preparation', $report['stage']);
-                    self::assertStringContainsString($case === 'invalid-batch' ? '批次' : '原生 CI', $report['error']);
+                    $reason = match ($case) {
+                        'invalid-batch', 'unprepared-tag' => '批次',
+                        'incomplete-jobs' => 'Actions任务分页不完整',
+                        default => '原生 CI',
+                    };
+                    self::assertStringContainsString($reason, $report['error']);
                     self::assertSame('', trim(\successful(['git', '--git-dir=' . $directory . '/build/template.git', 'for-each-ref', 'refs/heads/'], $directory)));
                 }
             }
@@ -148,8 +154,10 @@ final class TemplateDistributionTest extends TestCase
                 $composer = json_decode((string) file_get_contents($consumers[0] . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
                 foreach ($batch['items'] as $name => $item) {
                     $scope = in_array($name, ['type-build', 'type-testing'], true) ? 'require-dev' : 'require';
-                    self::assertSame($case === 'tag' ? 'v1.0.0' : 'dev-main#' . $item['split'], $composer[$scope][$item['package']]);
+                    self::assertSame($case === 'tag' ? '1.0.0' : '1.0.x-dev', $composer[$scope][$item['package']]);
                 }
+                self::assertArrayNotHasKey('platform', $composer['config'] ?? []);
+                self::assertSame($case === 'tag' ? 'stable' : 'dev', $composer['minimum-stability']);
             } else {
                 self::assertMatchesRegularExpression('/批次|模板/u', $output);
                 self::assertStringNotContainsString('模板安装哨兵', $output);
@@ -161,15 +169,15 @@ final class TemplateDistributionTest extends TestCase
     }
 
     /** @return array{string, array<string, string>, array<string, mixed>} 固定源码、隔离命令环境及真实组件回执。 */
-    private function prepare(string $directory, bool $tag): array
+    private function prepare(string $directory, bool $tag, bool $unprepared = false): array
     {
         $root = dirname(__DIR__, 2);
-        foreach (['.github', 'tools/distribution', 'tests', 'bin', 'vendor', 'build/distribution',
+        foreach (['.github', 'tools/distribution', 'tools/release', 'tests', 'bin', 'vendor', 'build/distribution',
             'templates/type-project/app/common/database', 'templates/type-project/scaffold'] as $path) {
             self::assertTrue(mkdir($directory . '/' . $path, 0700, true));
         }
         foreach (['tools/distribute-template.php', 'tools/distribution/Process.php', 'tools/distribution/Batch.php',
-            'tools/distribution/Publisher.php', 'tests/application-template.php', 'tests/support.php',
+            'tools/distribution/Publisher.php', 'tools/release/Plan.php', 'tools/release/TutorialEvidence.php', 'tests/application-template.php', 'tests/support.php',
             '.github/template-distribution.json', 'templates/type-project/configure.php', 'LICENSE'] as $file) {
             self::assertTrue(copy($root . '/' . $file, $directory . '/' . $file));
         }
@@ -179,7 +187,8 @@ final class TemplateDistributionTest extends TestCase
         $mapping = json_decode((string) file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
         $mapping['packages'] = array_intersect_key($mapping['packages'], array_flip(['type-runtime', 'type-orm-sqlite', 'type-build', 'type-testing']));
         file_put_contents($directory . '/.github/distribution.json', json_encode($mapping, JSON_THROW_ON_ERROR));
-        $composer = ['name' => 'zoujingli/type-project', 'type' => 'project', 'license' => 'Apache-2.0', 'require' => [], 'require-dev' => [], 'repositories' => []];
+        $composer = ['name' => 'zoujingli/type-project', 'type' => 'project', 'license' => 'Apache-2.0', 'require' => [], 'require-dev' => [],
+            'repositories' => [], 'minimum-stability' => $tag ? 'stable' : 'dev', 'prefer-stable' => true];
         foreach ($mapping['packages'] as $name => $package) {
             self::assertTrue(mkdir($directory . '/plugin/' . $name . '/src', 0700, true));
             foreach (['LICENSE', 'NOTICE', 'README.md'] as $file) {
@@ -189,8 +198,7 @@ final class TemplateDistributionTest extends TestCase
             file_put_contents($directory . '/plugin/' . $name . '/composer.json', json_encode([
                 'name' => $package['composer-name'], 'type' => 'library', 'license' => 'Apache-2.0',
             ], JSON_THROW_ON_ERROR));
-            $composer[in_array($name, ['type-build', 'type-testing'], true) ? 'require-dev' : 'require'][$package['composer-name']] = '~1.0.0@dev';
-            $composer['repositories'][] = ['type' => 'git', 'url' => 'https://github.com/' . $package['repository'] . '.git'];
+            $composer[in_array($name, ['type-build', 'type-testing'], true) ? 'require-dev' : 'require'][$package['composer-name']] = $tag && !$unprepared ? '1.0.0' : '1.0.x-dev';
         }
         $template = $directory . '/templates/type-project';
         foreach (['LICENSE', 'NOTICE', 'README.md'] as $file) {
@@ -213,13 +221,14 @@ if ($path === 'repos/zoujingli/typeapp/actions/workflows/native-command.yml/runs
         'head_branch' => $case === 'wrong-branch' ? 'feature' : 'main',
         'head_repository' => ['full_name' => $case === 'wrong-repository' ? 'other/typeapp' : 'zoujingli/typeapp']]]]);
 } elseif ($path === 'repos/zoujingli/typeapp/actions/runs/123/attempts/2/jobs?per_page=100') {
-    $jobs = [['name' => 'Linux x64 原生验收 · foundation', 'head_sha' => $source, 'status' => 'completed',
+    if (!in_array('--paginate', $argv, true) || !in_array('--slurp', $argv, true)) { exit(98); }
+    $jobs = [['id' => 10, 'name' => 'Linux x64 原生验收 · foundation', 'head_sha' => $source, 'status' => 'completed',
         'conclusion' => $case === 'failed-job' ? 'failure' : 'success']];
     if ($case !== 'partial-suite') {
-        $jobs[] = ['name' => 'native-complete', 'head_sha' => $source, 'status' => 'completed',
+        $jobs[] = ['id' => 11, 'name' => 'native-complete', 'head_sha' => $source, 'status' => 'completed',
             'conclusion' => $case === 'skipped-summary' ? 'skipped' : 'success'];
     }
-    echo json_encode(['total_count' => count($jobs) + ($case === 'incomplete-jobs' ? 1 : 0), 'jobs' => $jobs]);
+    echo json_encode([['total_count' => count($jobs) + ($case === 'incomplete-jobs' ? 1 : 0), 'jobs' => $jobs]]);
 } elseif ($path === 'repos/zoujingli/type-project') {
     echo json_encode(['full_name' => 'zoujingli/type-project', 'private' => false, 'visibility' => 'public', 'archived' => false]);
 } else {

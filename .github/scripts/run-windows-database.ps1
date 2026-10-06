@@ -1,6 +1,13 @@
-param([Parameter(Mandatory)][ValidateSet('mysql', 'pgsql')][string]$Driver, [switch]$OrmOnly, [switch]$ProbeOnly, [switch]$DevelopmentOnly, [switch]$CandidateProbe, [switch]$SingleProgram)
+param([Parameter(Mandatory)][ValidateSet('mysql', 'pgsql')][string]$Driver, [switch]$OrmOnly, [switch]$ProbeOnly, [switch]$DevelopmentOnly, [switch]$CandidateProbe, [switch]$SingleProgram, [switch]$Tutorial,
+    [switch]$Benchmark, [string]$BenchmarkOldRoot, [string]$BenchmarkNewRoot, [ValidateSet('mysql', 'pgsql')][string]$BenchmarkProfile,
+    [ValidateSet('old-first', 'new-first')][string]$BenchmarkOrder = 'old-first')
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($Benchmark -and ($Tutorial -or $SingleProgram -or $OrmOnly -or $ProbeOnly -or $DevelopmentOnly -or $CandidateProbe)) { throw '性能测量必须独立持有自己的数据库实例。' }
+if ($Benchmark -and (!$BenchmarkOldRoot -or !$BenchmarkNewRoot -or $BenchmarkProfile -cne $Driver)) { throw '性能测量需要同 profile 的两个固定程序准备根。' }
+if (!$Benchmark -and ($BenchmarkOldRoot -or $BenchmarkNewRoot -or $BenchmarkProfile -or $PSBoundParameters.ContainsKey('BenchmarkOrder'))) { throw '性能参数只能用于 Benchmark 模式。' }
+if ($Tutorial -and ($SingleProgram -or $OrmOnly -or $ProbeOnly -or $DevelopmentOnly -or $CandidateProbe)) { throw '教程必须独立使用自己的固定源码和封存程序。' }
+if ($Tutorial -and ($env:TYPE_TUTORIAL_MODE -cnotin @('candidate', 'public') -or !$env:TYPE_TUTORIAL_REFERENCE -or !$env:TYPE_STATIC_RUNTIME)) { throw '教程需要明确来源模式、固定引用及匹配的静态SDK。' }
 if ($SingleProgram -and ($OrmOnly -or $ProbeOnly -or $DevelopmentOnly -or $CandidateProbe)) { throw '单程序候选必须使用独立完整部署验收范围。' }
 if ($ProbeOnly -and (!$OrmOnly -or $Driver -ne 'pgsql')) { throw '原生接缝诊断仅用于 PostgreSQL ORM。' }
 if ($DevelopmentOnly -and ($OrmOnly -or $ProbeOnly)) { throw '应用开发诊断不能与 ORM 接缝诊断混用。' }
@@ -157,7 +164,17 @@ try {
     $taskProbe = '$d=getenv("TYPE_DB_PROBE_DRIVER");$p="TYPE_".strtoupper($d)."_";$dsn=($d==="mysql"?"mysql:":"pgsql:")."host=".getenv($p."HOST").";port=".getenv($p."PORT").";dbname=".getenv($p."DATABASE");$until=microtime(true)+60;do{try{$c=new PDO($dsn,getenv($p."USER"),getenv($p."PASSWORD"));if((int)$c->query("SELECT 1")->fetchColumn()===1){exit(0);}}catch(Throwable){}usleep(100000);}while(microtime(true)<$until);exit(1);'
     Invoke-TaskProcess $taskPhp @('-r', $taskProbe) (Join-Path $taskEvidence 'ready.log') 90 $taskEnvironment | Out-Null
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
-    if ($SingleProgram) {
+    if ($Benchmark) {
+        # 每轮空数据库由控制端创建并在 finally 删除；整个私有实例仍由本脚本正常停止。
+        $taskEnvironment['TYPE_BENCHMARK_EXTERNAL_DATABASE'] = '1'
+        $taskBenchmarkOutput = Invoke-TaskProcess $taskPhp @('tests/benchmark-pairs.php', $BenchmarkOldRoot, $BenchmarkNewRoot,
+            '--static-profile', $BenchmarkProfile, '--order', $BenchmarkOrder) (Join-Path $taskEvidence 'benchmark.log') 3600 $taskEnvironment
+        Write-Output $taskBenchmarkOutput
+    } elseif ($Tutorial) {
+        Invoke-TaskProcess $taskPhp @('tests/tutorial-delivery.php', $env:TYPE_TUTORIAL_MODE, $env:TYPE_TUTORIAL_REFERENCE,
+            ('--profile=' + $Driver), ('--runtime=' + $env:TYPE_STATIC_RUNTIME), ('--output=' + $taskRoot + '/build/tutorial-delivery')) `
+            (Join-Path $taskEvidence 'tutorial.log') 5400 $taskEnvironment | Out-Null
+    } elseif ($SingleProgram) {
         if ($env:TYPE_APP_TRACE -eq '1') {
             # 独立重编译最小消费者用于诊断 hook；不冒充原候选的同文件验收。
             Invoke-TaskProcess $taskPhp @('tests/pdo-progress.php') (Join-Path $taskEvidence 'pdo-progress.log') 1200 $taskEnvironment | Out-Null
@@ -264,7 +281,7 @@ try {
         [IO.File]::WriteAllText((Join-Path $taskEvidence 'server.log'), $taskServerLog, [Text.UTF8Encoding]::new($false))
     }
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }
-    $taskRecord = @{ platform='Windows'; driver=$Driver; version=$taskSource.version; archive_sha256=$taskSource.sha256; scope=$(if ($SingleProgram) { 'sealed single executable, source and SDK isolation, frontend and API acceptance' } elseif ($CandidateProbe) { 'original candidate installation diagnosis only; not release acceptance' } elseif ($DevelopmentOnly) { 'application PHP development only; not AOT acceptance' } elseif ($ProbeOnly) { 'PDO/Swoole PostgreSQL probe only; not ORM acceptance' } elseif ($OrmOnly) { 'isolated ORM Composer consumption, PHP/AOT, source removal and distinct read/write endpoints' } else { 'native dedicated database process, development/AOT and isolated template package' }); passed=($taskPassed -and $taskCleanupPassed); owned_process_cleanup=$taskCleanupPassed; installed_service=$false }
+    $taskRecord = @{ platform='Windows'; driver=$Driver; version=$taskSource.version; archive_sha256=$taskSource.sha256; scope=$(if ($Benchmark) { 'same-profile sealed program paired performance, round-local databases on this owned instance' } elseif ($Tutorial) { 'fixed tutorial profile, complete AOT and same sealed program public assertions in source and SDK isolation' } elseif ($SingleProgram) { 'sealed single executable, source and SDK isolation, frontend and API acceptance' } elseif ($CandidateProbe) { 'original candidate installation diagnosis only; not release acceptance' } elseif ($DevelopmentOnly) { 'application PHP development only; not AOT acceptance' } elseif ($ProbeOnly) { 'PDO/Swoole PostgreSQL probe only; not ORM acceptance' } elseif ($OrmOnly) { 'isolated ORM Composer consumption, PHP/AOT, source removal and distinct read/write endpoints' } else { 'native dedicated database process, development/AOT and isolated template package' }); passed=($taskPassed -and $taskCleanupPassed); owned_process_cleanup=$taskCleanupPassed; installed_service=$false }
     $taskRecord | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
     if (!$taskCleanupPassed) { throw '本轮数据库未正常清理，不能记作通过。' }
     # 日志与摘要已经保全；只删除本轮创建且所有进程已正常退出的私有目录。

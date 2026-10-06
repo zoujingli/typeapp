@@ -10,10 +10,11 @@ final class Process
     /**
      * 等待命令结束并回收临时输出文件；非零退出由调用方决定是否重试。
      * @param list<string> $command 完整可执行文件与参数。
-     * @return array{int, string, string} 退出码、去首尾空白的 stdout 与 stderr。
+     * @param bool $trim 是否去掉 stdout 首尾空白；字节摘要必须传 false。
+     * @return array{int, string, string} 退出码、stdout 与去首尾空白的 stderr。
      * @throws \RuntimeException 无法创建输出文件或启动子进程。
      */
-    public static function run(array $command, string $directory): array
+    public static function run(array $command, string $directory, bool $trim = true): array
     {
         $output = tmpfile();
         $errors = tmpfile();
@@ -28,7 +29,8 @@ final class Process
             $status = proc_close($process);
             rewind($output);
             rewind($errors);
-            return [$status, trim(stream_get_contents($output)), trim(stream_get_contents($errors))];
+            $bytes = stream_get_contents($output);
+            return [$status, $trim ? trim($bytes) : $bytes, trim(stream_get_contents($errors))];
         } finally {
             fclose($output);
             fclose($errors);

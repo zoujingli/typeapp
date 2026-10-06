@@ -7,9 +7,24 @@ namespace TypeApp\Release;
 use TypeApp\Distribution\Batch;
 use TypeApp\Distribution\Process;
 
+require_once __DIR__ . '/TutorialEvidence.php';
+
 /** 发布资格来自固定轮次的真实任务和逐包回执，不能由单个完成标志替代。 */
 final class Evidence
 {
+    /** 候选准入只要求固定开发快照的既有验收，不等待发布完成产生循环依赖。 */
+    public static function tutorialCandidate(string $root, array $plan): void
+    {
+        TutorialEvidence::matrix(
+            getenv('TYPE_TUTORIAL_CANDIDATE_REPORT') ?: $root . '/build/release/tutorial-candidate/verification.json',
+            $plan['source'],
+            'fixed-candidate',
+            null,
+            $plan['items'],
+            (string) getenv('TYPE_RELEASE_EVIDENCE_RUN'),
+            (string) getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT')
+        );
+    }
     /** @throws \RuntimeException 本轮消费任务缺失、失败或身份不一致。 */
     public static function consumption(string $root, array $plan): void
     {
@@ -21,7 +36,7 @@ final class Evidence
         }
         $endpoint = 'repos/zoujingli/typeapp/actions/runs/' . $id . '/attempts/' . $attempt;
         $run = json_decode(Process::output(['gh', 'api', $endpoint], $root), true, 64, JSON_THROW_ON_ERROR);
-        $jobs = json_decode(Process::output(['gh', 'api', $endpoint . '/jobs?per_page=100'], $root), true, 64, JSON_THROW_ON_ERROR);
+        $jobs = Batch::actionsJobs($root, (int) $id, (int) $attempt);
         self::verifyConsumptionJobs($run, $jobs, $plan['source'], $plan['version'], (int) $id, (int) $attempt);
         self::reports($root, $plan);
     }
@@ -80,6 +95,15 @@ final class Evidence
                 throw new \RuntimeException('Packagist回执与发布计划不一致：' . $name);
             }
         }
+        TutorialEvidence::matrix(
+            getenv('TYPE_TUTORIAL_PUBLIC_REPORT') ?: $root . '/build/release/tutorial-public/verification.json',
+            $source,
+            'packagist-tag',
+            $version,
+            $plan['items'],
+            (string) getenv('GITHUB_RUN_ID'),
+            (string) getenv('GITHUB_RUN_ATTEMPT')
+        );
     }
 
     /** @return array<string,mixed> 非空JSON对象，缺失报告不能按成功处理。 */

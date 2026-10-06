@@ -7,6 +7,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 require dirname(__DIR__) . '/tools/distribution/Process.php';
 require dirname(__DIR__) . '/tools/distribution/Batch.php';
 require __DIR__ . '/native-database.php';
+require __DIR__ . '/fixed-snapshot.php';
 
 use Type\Build\ArtifactManifest;
 use Type\Build\BuildPlatform;
@@ -16,31 +17,8 @@ use TypeApp\Distribution\Process as GitProcess;
 /** 只导出已经核对的本地Git对象，不执行push或联系远端仓库。 */
 function candidateArchive(string $root, string $split, string $directory): array
 {
-    expect(preg_match('/^[a-f0-9]{40}$/D', $split) === 1 && !file_exists($directory), '候选快照须有固定Git身份及新目录');
-    $expected = [];
-    $tree = successful(['git', 'ls-tree', '-r', '-z', $split], $root);
-    foreach (explode("\0", rtrim($tree, "\0")) as $entry) {
-        expect(preg_match('/^100(?:644|755) blob ([a-f0-9]{40})\t(.+)$/sD', $entry, $match) === 1, 'Git 快照只允许普通文件');
-        $expected[$match[2]] = $match[1];
-    }
-    ksort($expected);
-    expect(mkdir($directory, 0700), '无法建立候选包目录');
-    $tar = $directory . '.tar';
-    // 归档字节必须对应 Git 对象，不能受宿主默认换行配置影响。
-    GitProcess::output(['git', '-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'archive', '--format=tar', '--output=' . $tar, $split], $root);
-    expect((new PharData($tar))->extractTo($directory), '无法解包候选Git内容');
-    $files = [];
-    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS)) as $file) {
-        expect($file->isFile() && !$file->isLink(), '候选只允许普通文件');
-        $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($file->getPathname(), strlen($directory) + 1));
-        $content = file_get_contents($file->getPathname());
-        expect(is_string($content) && isset($expected[$relative]), 'Git 快照文件集合不一致：' . $relative);
-        expect(hash('sha1', 'blob ' . strlen($content) . "\0" . $content) === $expected[$relative], 'Git 快照字节不一致：' . $relative);
-        $files[$relative] = hash('sha256', $content);
-    }
-    ksort($files);
-    expect(array_keys($files) === array_keys($expected), 'Git 快照文件集合不一致');
-    return ['split' => $split, 'archive_sha256' => hash_file('sha256', $tar), 'files' => $files];
+    $snapshot = fixedSnapshot($root, $split, $directory);
+    return ['split' => $snapshot['split'], 'archive_sha256' => $snapshot['archive-sha256'], 'files' => $snapshot['files']];
 }
 
 /**

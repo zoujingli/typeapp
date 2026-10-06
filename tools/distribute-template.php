@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
+require dirname(__DIR__) . '/vendor/autoload.php';
 require __DIR__ . '/distribution/Process.php';
 require __DIR__ . '/distribution/Batch.php';
 require __DIR__ . '/distribution/Publisher.php';
+require __DIR__ . '/release/Plan.php';
 use TypeApp\Distribution\Batch;
 use TypeApp\Distribution\Process;
 use TypeApp\Distribution\Publisher;
+use TypeApp\Release\Plan;
 
 $report = null;
 $reportFile = dirname(__DIR__) . '/build/distribution/template.json';
@@ -50,6 +53,17 @@ try {
     foreach ($composer['repositories'] ?? [] as $repository) {
         if ($repository['type'] !== 'git' || !preg_match('~^https://github\.com/zoujingli/type-[a-z0-9-]+\.git$~D', $repository['url'])) {
             throw new RuntimeException('模板携带本地或未允许的依赖地址');
+        }
+    }
+    if ($mode === 'tag') {
+        $components = [];
+        foreach ($packages['packages'] as $component) {
+            $components[$component['composer-name']] = json_decode(Process::output([
+                'git', 'show', $source . ':' . $component['prefix'] . '/composer.json',
+            ], $root), true, 64, JSON_THROW_ON_ERROR);
+        }
+        if (Plan::templateDependencies($composer, $version, $components) != $composer) {
+            throw new RuntimeException('模板未在 tag 前固定完整组件批次，拒绝发布不可变标签');
         }
     }
     $files = explode("\n", Process::output(['git', 'ls-tree', '-r', '--name-only', $source . ':templates/type-project'], $root));

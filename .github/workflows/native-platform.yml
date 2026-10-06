@@ -14,6 +14,10 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: main 历史中的完整源码 SHA；留空使用本次事件提交
+        required: false
+        type: string
       scope:
         description: 验收范围（http-probe 仅 IOCP、socket-probe 仅 TCP/UDP、tls-probe 仅 PHP 探针、tcp-handshake 仅握手 AOT；sqlite-app/pgsql-app 仅应用诊断；template 仅模板）
         type: choice
@@ -39,7 +43,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-platform-${{ github.ref }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app","http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
+  group: native-platform-${{ github.ref }}-${{ inputs.source_sha || github.sha }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app","http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -69,6 +73,17 @@ jobs:
           ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
           fetch-depth: 0
+      - name: 核对手动入口的固定 main 源码
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          printf 'source=%s\n' "$SOURCE_SHA"
       - name: 准备已核验的 Windows x64 ZTS SDK
         run: ./.github/scripts/prepare-windows-native.ps1
       - name: 安装锁定开发与生产依赖
@@ -104,9 +119,15 @@ jobs:
           # 直接从控制器 SDK 环境启动，先确认产物使用自己的配置；不依赖 ORM 步骤留下的状态。
           & "$env:PHP_HOME/php.exe" tests/build-platform-native.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 准备框架闭环专用 Redis 工具
+        if: github.event_name != 'workflow_dispatch' || (inputs.scope != 'native' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app')
+        run: ./.github/scripts/prepare-windows-test-redis.ps1
       - name: 检查完整公开契约
         if: github.event_name != 'workflow_dispatch' || (inputs.scope != 'native' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app')
         run: |
+          $env:TYPE_COMPOSER_PHAR="$env:PHP_HOME/composer.phar"
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" test:framework
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" vendor/bin/phpunit --configuration phpunit.xml --log-junit build/windows-contracts.xml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 三库独立 ORM 与 Swoole 上下文验收
@@ -145,6 +166,9 @@ jobs:
       - name: 四组件原生编译与 SQLite 行为
         if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: |
+          $env:TYPE_COMPOSER_PHAR="$env:PHP_HOME/composer.phar"
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" test:framework-native
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" tests/helpers-build.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" tests/embedded-resources.php
@@ -274,7 +298,20 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
+          fetch-depth: 0
+      - name: 核对手动入口的固定 main 源码
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          printf 'source=%s\n' "$SOURCE_SHA"
       - name: 准备已核验的 Windows x64 ZTS SDK
         if: inputs.scope != 'tcp-trace'
         run: ./.github/scripts/prepare-windows-native.ps1
@@ -374,7 +411,20 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
+          fetch-depth: 0
+      - name: 核对手动入口的固定 main 源码
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          printf 'source=%s\n' "$SOURCE_SHA"
       - name: 重建带官方 IOCP trace 的隔离模块
         run: ./.github/scripts/prepare-windows-native.ps1 -TraceLog
       - name: 安装锁定工具链

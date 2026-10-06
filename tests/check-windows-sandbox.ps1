@@ -26,7 +26,12 @@ New-Item -ItemType Directory -Path $taskProgram, $taskData | Out-Null
 Copy-Item -LiteralPath $taskRunner -Destination (Join-Path $taskProgram 'app.exe')
 $taskCompiler = (Get-Command cl.exe -ErrorAction Stop).Source
 $taskNode = (Get-Command node.exe -ErrorAction Stop).Source
-$taskBlocked = @((Join-Path $taskRoot 'app/main.php'), $taskCompiler, $taskNode)
+$taskBlocked = @((Join-Path $taskRoot 'app/common/bootstrap/Application.php'), $taskCompiler, $taskNode)
+foreach ($taskFile in $taskBlocked) {
+    if (!(Test-Path -LiteralPath $taskFile -PathType Leaf)) { throw '隔离探针原文件不存在。' }
+    $taskStream = [IO.File]::OpenRead($taskFile)
+    $taskStream.Dispose()
+}
 $taskSid = 'S-1-5-21-' + ((1..3 | ForEach-Object { Get-Random -Minimum 100000000 -Maximum 2000000000 }) -join '-') + '-12345'
 $taskSpec = Join-Path $taskWork 'specification.json'
 $taskChanges = @(

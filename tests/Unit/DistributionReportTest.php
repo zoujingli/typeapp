@@ -38,13 +38,14 @@ final class DistributionReportTest extends TestCase
         $directory = $root . '/build/distribution-report-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($directory, 0700));
         try {
-            foreach (['plugin/type-runtime/src', '.github', 'tools/distribution', 'tests', 'examples', 'bin', 'build'] as $path) {
+            foreach (['plugin/type-runtime/src', '.github', 'tools/distribution', 'tools/release', 'tests', 'examples', 'bin', 'build', 'vendor'] as $path) {
                 self::assertTrue(mkdir($directory . '/' . $path, 0700, true));
             }
             foreach (['tools/distribute-template.php', 'tools/distribution/Process.php', 'tools/distribution/Batch.php',
-                'tools/distribution/Publisher.php', 'tests/batch-consumer.php', 'tests/support.php'] as $file) {
+                'tools/distribution/Publisher.php', 'tools/release/Plan.php', 'tools/release/TutorialEvidence.php', 'tests/batch-consumer.php', 'tests/support.php'] as $file) {
                 self::assertTrue(copy($root . '/' . $file, $directory . '/' . $file));
             }
+            file_put_contents($directory . '/vendor/autoload.php', '<?php require ' . var_export($root . '/vendor/autoload.php', true) . ';');
             $mapping = json_decode((string) file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
             $mapping['packages'] = ['type-runtime' => $mapping['packages']['type-runtime']];
             file_put_contents($directory . '/.github/distribution.json', json_encode($mapping, JSON_THROW_ON_ERROR));

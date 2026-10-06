@@ -3,10 +3,14 @@ name: Linux 静态单程序验收
 on:
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: main 历史中的完整源码 SHA；留空使用本次事件提交
+        required: false
+        type: string
       version:
         description: 候选版本，仅验证不创建标签或发布
         required: true
-        default: v1.0.0-rc.8
+        default: v0.0.0
         type: string
       profile:
         description: 数据库 profile
@@ -14,6 +18,10 @@ on:
         default: sqlite
         type: choice
         options: [sqlite, mysql, pgsql]
+      base_source:
+        description: 可选，同 SDK 框架性能对照的完整基准提交；只测量本轮原静态候选
+        required: false
+        type: string
   workflow_call:
     inputs:
       source_sha:
@@ -28,23 +36,43 @@ on:
       profile:
         required: true
         type: string
+      base_source:
+        default: ''
+        type: string
+      tutorial_mode:
+        default: ''
+        type: string
+      tutorial_reference:
+        default: ''
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: static-linux-${{ github.ref }}-${{ inputs.profile || 'sqlite' }}
+  group: static-linux-${{ github.ref }}-${{ inputs.source_sha || github.sha }}-${{ inputs.profile || 'sqlite' }}-${{ inputs.tutorial_mode || 'iot' }}
   cancel-in-progress: false
 
 jobs:
   frontend:
-    if: inputs.frontend_artifact == ''
+    if: inputs.frontend_artifact == '' && inputs.tutorial_mode == ''
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
+          fetch-depth: 0
+      - name: 核对手动入口的固定 main 源码
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          printf 'source=%s\n' "$SOURCE_SHA"
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
         with:
           php-version: '8.5.10'
@@ -64,7 +92,7 @@ jobs:
   static:
     needs: frontend
     if: ${{ !cancelled() && (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') }}
-    name: ${{ inputs.profile || 'sqlite' }} · 静态单程序 · ${{ matrix.platform }}
+    name: ${{ inputs.profile || 'sqlite' }} · ${{ inputs.tutorial_mode != '' && '教程单程序' || '静态单程序' }} · ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
@@ -78,14 +106,29 @@ jobs:
     env:
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
       TYPEAPP_BUILD_PROFILE: ${{ inputs.profile || 'sqlite' }}
+      TYPE_BASE_SOURCE: ${{ inputs.base_source }}
+      TYPE_BENCHMARK_BUILD_TIMING: ${{ inputs.base_source != '' && inputs.tutorial_mode == '' && '1' || '0' }}
       COMPOSER_NO_INTERACTION: '1'
       COMPOSER_PROCESS_TIMEOUT: '1800'
+      TYPE_TUTORIAL_MODE: ${{ inputs.tutorial_mode }}
+      TYPE_TUTORIAL_REFERENCE: ${{ inputs.tutorial_reference }}
+      TYPEAPP_BUILD_CONFIGURATION: ${{ inputs.tutorial_mode != '' && format('{0}/examples/catalog/build-profiles.json', github.workspace) || '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ inputs.source_sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: 核对手动入口的固定 main 源码
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          printf 'source=%s\n' "$SOURCE_SHA"
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
         with:
           php-version: '8.5.10'
@@ -148,10 +191,12 @@ jobs:
           php tests/static-runtime-sdk.php "$task_manifest" | tee build/static-linux-evidence/embed.log
           printf 'TYPE_STATIC_RUNTIME=%s\n' "$task_manifest" >> "$GITHUB_ENV"
       - name: 准备并核对内嵌管理前端
+        if: inputs.tutorial_mode == ''
         uses: ./.github/actions/prepare-frontend
         with:
           artifact: ${{ inputs.frontend_artifact || format('static-linux-frontend-{0}', github.run_attempt) }}
       - name: 完整应用 AOT 与所选数据库单程序验收
+        if: inputs.tutorial_mode == ''
         run: |
           set -euo pipefail
           php tools/build-application.php >build/static-linux-evidence/application.log 2>&1
@@ -159,12 +204,14 @@ jobs:
           php tests/release-candidate.php test "$TYPEAPP_BUILD_PROFILE" "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS"
           php tests/release-candidate.php materials
       - name: 同一单程序的 systemd 生命周期
+        if: inputs.tutorial_mode == ''
         env:
           TYPE_SERVICE_ARTIFACT: ${{ github.workspace }}/build/app/type-app
         run: |
           php tests/release-candidate.php service "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS"
           php tests/release-candidate.php finish
       - name: 保存最终单程序候选
+        if: inputs.tutorial_mode == ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           # 发布候选只下载这一类静态 profile artifact；前置的常规原生验收
@@ -173,14 +220,72 @@ jobs:
           path: build/release-candidate/attachments/*
           if-no-files-found: error
           retention-days: 90
+      - name: 同 SDK 旧端与原静态候选的真实性能对照
+        if: inputs.base_source != '' && inputs.tutorial_mode == ''
+        run: |
+          set -euo pipefail
+          php tests/prepare-platform-benchmarks.php "$TYPE_BASE_SOURCE" "$(git rev-parse HEAD)" "$(command -v composer)" \
+            --static-profile "$TYPEAPP_BUILD_PROFILE" | tee build/static-linux-evidence/benchmark-prepare.log
+          task_pair="$(sed -n 's/^平台新旧基准准备完成：\(.*\)\/preparation.json$/\1/p' build/static-linux-evidence/benchmark-prepare.log)"
+          test -n "$task_pair"
+          php tests/benchmark-pairs.php "$task_pair/old" "$task_pair/new" --static-profile "$TYPEAPP_BUILD_PROFILE" \
+            | tee build/static-linux-evidence/benchmark-pairs.log
+          task_measure="$(sed -n 's/^成对正式测量完成：//p' build/static-linux-evidence/benchmark-pairs.log)"
+          test -n "$task_measure"
+          if php tests/benchmark-compare.php "$task_measure" | tee build/static-linux-evidence/benchmark-compare.log; then
+            exit 0
+          else
+            task_comparison=$?
+          fi
+          if [[ "$task_comparison" != 2 ]]; then exit "$task_comparison"; fi
+          printf '正序出现回退信号；复用同一对程序交换顺序复测。\n' | tee build/static-linux-evidence/benchmark-status.log
+          php tests/benchmark-pairs.php "$task_pair/old" "$task_pair/new" --static-profile "$TYPEAPP_BUILD_PROFILE" --order new-first \
+            | tee build/static-linux-evidence/benchmark-pairs-reverse.log
+          task_measure="$(sed -n 's/^成对正式测量完成：//p' build/static-linux-evidence/benchmark-pairs-reverse.log)"
+          test -n "$task_measure"
+          php tests/benchmark-compare.php "$task_measure" | tee build/static-linux-evidence/benchmark-compare-reverse.log
+          printf '逆序未复现回退信号；两轮原始报告均保留，不据此宣称性能改善。\n' | tee -a build/static-linux-evidence/benchmark-status.log
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        if: inputs.tutorial_mode != ''
+        with:
+          node-version: '22.21.1'
+      - name: 同一固定教程的独立编译与无源码部署
+        if: inputs.tutorial_mode != ''
+        run: |
+          set -euo pipefail
+          export NODE_BINARY OPENSSL_BINARY
+          NODE_BINARY="$(command -v node)"
+          OPENSSL_BINARY="$(command -v openssl)"
+          php tests/tutorial-delivery.php "$TYPE_TUTORIAL_MODE" "$TYPE_TUTORIAL_REFERENCE" \
+            "--profile=$TYPEAPP_BUILD_PROFILE" "--runtime=$TYPE_STATIC_RUNTIME" "--output=$GITHUB_WORKSPACE/build/tutorial-delivery"
+      - name: 保存教程同轮原始产物与证据
+        if: inputs.tutorial_mode != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tutorial-${{ inputs.tutorial_mode }}-${{ matrix.platform }}-${{ inputs.profile }}-${{ github.run_attempt }}
+          path: build/tutorial-delivery/**
+          if-no-files-found: error
+          retention-days: 90
       - name: 保存构建与验收证据
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-${{ matrix.platform }}-${{ inputs.profile || 'sqlite' }}-evidence
+          name: static-${{ matrix.platform }}-${{ inputs.profile || 'sqlite' }}-evidence${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           retention-days: 14
           path: |
             build/static-linux-evidence/*
+            build/static-benchmark-build.json
+            build/pb-*/preparation.json
+            build/pb-*/*/*.log
+            build/pb-*/*/*.json
+            build/pb-*/*/project/build/b/*.build.json
+            build/pb-*/*/project/build/b/type-app
+            build/pb-*/*/project/build/b/c/compile.log
+            build/benchmark-pairs-*/*
+            build/application-benchmark-*/**/*.json
+            build/application-benchmark-*/**/*.log
+            build/release-candidate/attachments/*.json
+            build/tutorial-delivery/**
             build/static-linux-sdk/sdk/manifest.json
             build/static-linux-sdk/adaptations.json
             build/static-sdk-probe-*/verification.json
@@ -197,7 +302,7 @@ jobs:
             build/service-linux-ci-*/verification.json
             build/service-linux-ci-*/preparation.json
       - name: 保存失败时的原始程序
-        if: failure()
+        if: failure() && inputs.tutorial_mode == ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: static-${{ matrix.platform }}-${{ inputs.profile || 'sqlite' }}-failed-program

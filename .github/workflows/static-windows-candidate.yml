@@ -3,10 +3,14 @@ name: Windows 静态单程序验收
 on:
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: main 历史中的完整源码 SHA；留空使用本次事件提交
+        required: false
+        type: string
       version:
         description: 候选版本，仅验证不创建标签或发布
         required: true
-        default: v1.0.0-rc.8
+        default: v0.0.0
         type: string
       profile:
         description: 数据库 profile
@@ -14,6 +18,10 @@ on:
         default: sqlite
         type: choice
         options: [sqlite, mysql, pgsql]
+      base_source:
+        description: 可选，同 SDK 框架性能对照的完整基准提交；只测量本轮原 EXE
+        required: false
+        type: string
       sdk_run:
         description: 可选，只读复用已通过探针的本仓SDK运行编号；应用仍重新全量编译验收
         required: false
@@ -38,13 +46,22 @@ on:
       profile:
         required: true
         type: string
+      base_source:
+        default: ''
+        type: string
+      tutorial_mode:
+        default: ''
+        type: string
+      tutorial_reference:
+        default: ''
+        type: string
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: static-windows-candidate-${{ github.ref }}-${{ inputs.profile || 'sqlite' }}
+  group: static-windows-candidate-${{ github.ref }}-${{ inputs.source_sha || github.sha }}-${{ inputs.profile || 'sqlite' }}-${{ inputs.tutorial_mode || 'iot' }}
   cancel-in-progress: false
 
 jobs:
@@ -55,11 +72,12 @@ jobs:
       source_sha: ${{ inputs.source_sha || github.sha }}
       scope: phpx
       profile: ${{ inputs.profile || 'sqlite' }}
+      tutorial_mode: ${{ inputs.tutorial_mode }}
 
   application:
     needs: sdk
     if: ${{ !cancelled() && (needs.sdk.result == 'success' || (needs.sdk.result == 'skipped' && inputs.sdk_run != '')) }}
-    name: ${{ inputs.profile || 'sqlite' }} · Windows x64 单程序
+    name: ${{ inputs.profile || 'sqlite' }} · Windows x64 ${{ inputs.tutorial_mode != '' && '教程单程序' || '单程序' }}
     runs-on: windows-2022
     timeout-minutes: 120
     env:
@@ -67,6 +85,11 @@ jobs:
       COMPOSER_PROCESS_TIMEOUT: '1800'
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
       TYPEAPP_BUILD_PROFILE: ${{ inputs.profile || 'sqlite' }}
+      TYPE_BASE_SOURCE: ${{ inputs.base_source }}
+      TYPE_BENCHMARK_BUILD_TIMING: ${{ inputs.base_source != '' && inputs.tutorial_mode == '' && inputs.program_run == '' && '1' || '0' }}
+      TYPE_TUTORIAL_MODE: ${{ inputs.tutorial_mode }}
+      TYPE_TUTORIAL_REFERENCE: ${{ inputs.tutorial_reference }}
+      TYPEAPP_BUILD_CONFIGURATION: ${{ inputs.tutorial_mode != '' && format('{0}/examples/catalog/build-profiles.json', github.workspace) || '' }}
     defaults:
       run:
         shell: pwsh
@@ -76,6 +99,17 @@ jobs:
           ref: ${{ inputs.source_sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: 核对手动入口的固定 main 源码
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          printf 'source=%s\n' "$SOURCE_SHA"
       - name: 核对候选版本
         run: |
           if ($env:TYPE_RELEASE_VERSION -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$') {
@@ -136,7 +170,7 @@ jobs:
             ConvertTo-Json | Set-Content build/static-windows-application-evidence/inputs.json -Encoding utf8
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: static-windows-sdk-${{ inputs.profile || 'sqlite' }}
+          name: static-windows-sdk-${{ inputs.profile || 'sqlite' }}${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           path: build/static-windows-sdk
           github-token: ${{ github.token }}
           run-id: ${{ inputs.sdk_run || github.run_id }}
@@ -166,11 +200,12 @@ jobs:
           }
           Add-Content -LiteralPath $env:GITHUB_ENV -Value ('TYPE_STATIC_RUNTIME=' + $taskManifest) -Encoding utf8
       - name: 准备同一版本的内嵌前端
+        if: inputs.tutorial_mode == ''
         uses: ./.github/actions/prepare-frontend
         with:
           artifact: ${{ inputs.frontend_artifact }}
       - name: 全量 AOT 并封存最终 EXE
-        if: inputs.program_run == ''
+        if: inputs.program_run == '' && inputs.tutorial_mode == ''
         run: |
           & "$env:PHP_HOME/php.exe" tools/build-application.php 2>&1 |
             Tee-Object build/static-windows-application-evidence/application.log
@@ -211,19 +246,19 @@ jobs:
       - name: 准备专用 Redis 业务验收服务
         run: ./.github/scripts/prepare-windows-test-redis.ps1
       - name: 同一 EXE 的 SQLite 无源码部署与业务闭环
-        if: env.TYPEAPP_BUILD_PROFILE == 'sqlite'
+        if: env.TYPEAPP_BUILD_PROFILE == 'sqlite' && inputs.tutorial_mode == ''
         env:
           TYPE_APP_TRACE: ${{ inputs.program_run != '' && '1' || '0' }}
         run: |
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php test $env:TYPEAPP_BUILD_PROFILE
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 同一 EXE 的外部数据库无源码部署
-        if: env.TYPEAPP_BUILD_PROFILE != 'sqlite'
+        if: env.TYPEAPP_BUILD_PROFILE != 'sqlite' && inputs.tutorial_mode == ''
         env:
           TYPE_APP_TRACE: ${{ inputs.program_run != '' && '1' || '0' }}
         run: ./.github/scripts/run-windows-database.ps1 -Driver $env:TYPEAPP_BUILD_PROFILE -SingleProgram
       - name: 读取本轮依赖来源材料
-        if: inputs.program_run == ''
+        if: inputs.program_run == '' && inputs.tutorial_mode == ''
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: static-windows-dependencies-${{ inputs.profile || 'sqlite' }}
@@ -231,33 +266,117 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.sdk_run || github.run_id }}
       - name: 封存对应源码与重建材料
-        if: inputs.program_run == ''
+        if: inputs.program_run == '' && inputs.tutorial_mode == ''
         env:
           TYPE_REBUILD_DEPENDENCIES: ${{ github.workspace }}/build/static-windows-dependency-inputs/x64-typeapp-static
         run: |
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php materials
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 核对所选数据库结果与待发布文件身份
-        if: inputs.program_run == ''
+        if: inputs.program_run == '' && inputs.tutorial_mode == ''
         run: |
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php finish
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 保存最终单程序候选
-        if: inputs.program_run == ''
+        if: inputs.program_run == '' && inputs.tutorial_mode == ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-candidate-static-windows-x64-${{ inputs.profile || 'sqlite' }}-${{ github.run_attempt }}
           path: build/release-candidate/attachments/*
           if-no-files-found: error
           retention-days: 90
+      - name: 同 SDK 旧端与原 EXE 的真实性能对照
+        if: inputs.base_source != '' && inputs.program_run == '' && inputs.tutorial_mode == ''
+        run: |
+          $taskSource = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:PHP_HOME/php.exe" tests/prepare-platform-benchmarks.php $env:TYPE_BASE_SOURCE $taskSource "$env:PHP_HOME/composer.phar" `
+            --static-profile $env:TYPEAPP_BUILD_PROFILE | Tee-Object build/static-windows-application-evidence/benchmark-prepare.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $taskLine = @(Get-Content build/static-windows-application-evidence/benchmark-prepare.log | Where-Object { $_ -match '^平台新旧基准准备完成：build/pb-[a-f0-9]{12}/preparation.json$' })
+          if ($taskLine.Count -ne 1) { throw '缺少唯一的静态性能准备回执。' }
+          $taskPair = $taskLine[0].Substring('平台新旧基准准备完成：'.Length).Replace('/preparation.json', '')
+          if ($env:TYPEAPP_BUILD_PROFILE -eq 'sqlite') {
+            & "$env:PHP_HOME/php.exe" tests/benchmark-pairs.php "$taskPair/old" "$taskPair/new" --static-profile sqlite `
+              | Tee-Object build/static-windows-application-evidence/benchmark-pairs.log
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            ./.github/scripts/run-windows-database.ps1 -Driver $env:TYPEAPP_BUILD_PROFILE -Benchmark `
+              -BenchmarkOldRoot "$taskPair/old" -BenchmarkNewRoot "$taskPair/new" -BenchmarkProfile $env:TYPEAPP_BUILD_PROFILE `
+              | Tee-Object build/static-windows-application-evidence/benchmark-pairs.log
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $taskMeasurement = @(Get-Content build/static-windows-application-evidence/benchmark-pairs.log | Where-Object { $_ -match '^成对正式测量完成：build/benchmark-pairs-[a-f0-9]{12}/verification.json$' })
+          if ($taskMeasurement.Count -ne 1) { throw '缺少唯一的静态性能测量回执。' }
+          & "$env:PHP_HOME/php.exe" tests/benchmark-compare.php $taskMeasurement[0].Substring('成对正式测量完成：'.Length) `
+            | Tee-Object build/static-windows-application-evidence/benchmark-compare.log
+          $taskComparison = $LASTEXITCODE
+          if ($taskComparison -eq 0) { exit 0 }
+          if ($taskComparison -ne 2) { exit $taskComparison }
+          '正序出现回退信号；复用同一对程序交换顺序复测。' | Tee-Object build/static-windows-application-evidence/benchmark-status.log
+          if ($env:TYPEAPP_BUILD_PROFILE -eq 'sqlite') {
+            & "$env:PHP_HOME/php.exe" tests/benchmark-pairs.php "$taskPair/old" "$taskPair/new" --static-profile sqlite --order new-first `
+              | Tee-Object build/static-windows-application-evidence/benchmark-pairs-reverse.log
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            ./.github/scripts/run-windows-database.ps1 -Driver $env:TYPEAPP_BUILD_PROFILE -Benchmark `
+              -BenchmarkOldRoot "$taskPair/old" -BenchmarkNewRoot "$taskPair/new" -BenchmarkProfile $env:TYPEAPP_BUILD_PROFILE -BenchmarkOrder new-first `
+              | Tee-Object build/static-windows-application-evidence/benchmark-pairs-reverse.log
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $taskMeasurement = @(Get-Content build/static-windows-application-evidence/benchmark-pairs-reverse.log | Where-Object { $_ -match '^成对正式测量完成：build/benchmark-pairs-[a-f0-9]{12}/verification.json$' })
+          if ($taskMeasurement.Count -ne 1) { throw '缺少唯一的逆序静态性能测量回执。' }
+          & "$env:PHP_HOME/php.exe" tests/benchmark-compare.php $taskMeasurement[0].Substring('成对正式测量完成：'.Length) `
+            | Tee-Object build/static-windows-application-evidence/benchmark-compare-reverse.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          '逆序未复现回退信号；两轮原始报告均保留，不据此宣称性能改善。' | Tee-Object -Append build/static-windows-application-evidence/benchmark-status.log
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        if: inputs.tutorial_mode != ''
+        with:
+          node-version: '22.21.1'
+      - name: 教程控制端显式工具
+        if: inputs.tutorial_mode != ''
+        run: |
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('NODE_BINARY=' + (Get-Command node.exe).Source) -Encoding utf8
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('OPENSSL_BINARY=' + (Get-Command openssl.exe).Source) -Encoding utf8
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('TYPE_COMPOSER_PHAR=' + (Join-Path $env:PHP_HOME 'composer.phar')) -Encoding utf8
+      - name: SQLite 教程独立编译与无源码部署
+        if: inputs.tutorial_mode != '' && inputs.profile == 'sqlite'
+        run: |
+          & "$env:PHP_HOME/php.exe" tests/tutorial-delivery.php $env:TYPE_TUTORIAL_MODE $env:TYPE_TUTORIAL_REFERENCE `
+            "--profile=$env:TYPEAPP_BUILD_PROFILE" "--runtime=$env:TYPE_STATIC_RUNTIME" "--output=$env:GITHUB_WORKSPACE/build/tutorial-delivery"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 外部数据库教程独立编译与无源码部署
+        if: inputs.tutorial_mode != '' && inputs.profile != 'sqlite'
+        run: ./.github/scripts/run-windows-database.ps1 -Driver $env:TYPEAPP_BUILD_PROFILE -Tutorial
+      - name: 保存教程同轮原始产物与证据
+        if: inputs.tutorial_mode != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tutorial-${{ inputs.tutorial_mode }}-windows-x64-${{ inputs.profile }}-${{ github.run_attempt }}
+          path: build/tutorial-delivery/**
+          if-no-files-found: error
+          retention-days: 90
       - name: 保存构建与部署证据
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: static-windows-application-evidence-${{ inputs.profile || 'sqlite' }}
+          name: static-windows-application-evidence-${{ inputs.profile || 'sqlite' }}${{ inputs.tutorial_mode != '' && format('-tutorial-{0}-{1}', inputs.tutorial_mode, github.run_attempt) || '' }}
           retention-days: 14
           path: |
             build/static-windows-application-evidence/*
+            build/static-benchmark-build.json
+            build/pb-*/preparation.json
+            build/pb-*/*/*.log
+            build/pb-*/*/*.json
+            build/pb-*/*/project/build/b/*.build.json
+            build/pb-*/*/project/build/b/type-app.exe
+            build/pb-*/*/project/build/b/c/compile.log
+            build/benchmark-pairs-*/*
+            build/application-benchmark-*/**/*.json
+            build/application-benchmark-*/**/*.log
+            build/release-candidate/attachments/*.json
+            build/tutorial-delivery/**
             build/static-windows-sdk/manifest.json
             build/static-sdk-probe-*/verification.json
             build/app/*.build.json

@@ -14,6 +14,10 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: main 历史中的完整源码 SHA；留空使用本次事件提交
+        required: false
+        type: string
       suite:
         description: 完整矩阵或独立诊断；benchmark/benchmark-x64 需提供基准提交，独立范围不产生完整验收汇总
         required: true
@@ -61,6 +65,16 @@ jobs:
           ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
           fetch-depth: 0
+      - name: 核对手动入口的固定 main 源码
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          printf 'source=%s\n' "$SOURCE_SHA"
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
         with:
           php-version: '8.5.10'
@@ -232,7 +246,7 @@ jobs:
   linux-arm64-complete:
     name: linux-arm64-complete
     needs: native-regression
-    if: always() && (inputs.source_sha != '' || inputs.suite == 'all')
+    if: always() && (inputs.suite == '' || inputs.suite == 'all')
     runs-on: ubuntu-24.04
     steps:
       - env:

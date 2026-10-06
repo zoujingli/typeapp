@@ -26,8 +26,7 @@ final class Batch
             }
             $endpoint = 'repos/zoujingli/typeapp/actions/runs/' . $releaseRun . '/attempts/' . $attempt;
             $run = json_decode(Process::output(['gh', 'api', $endpoint], $root), true, 512, JSON_THROW_ON_ERROR);
-            $pages = json_decode(Process::output(['gh', 'api', $endpoint . '/jobs?per_page=100', '--paginate', '--slurp'], $root), true, 512, JSON_THROW_ON_ERROR);
-            $jobs = ['total_count' => $pages[0]['total_count'], 'jobs' => array_merge(...array_column($pages, 'jobs'))];
+            $jobs = self::actionsJobs($root, (int) $releaseRun, (int) $attempt);
             self::verifyReleaseEvidence($run, $jobs, $source, $version, (int) $releaseRun, (int) $attempt);
             return 'https://github.com/zoujingli/typeapp/actions/runs/' . $releaseRun . '/attempts/' . $attempt;
         }
@@ -40,7 +39,7 @@ final class Batch
                 || !is_int($run['id'] ?? null) || $run['id'] < 1 || !is_int($run['run_attempt'] ?? null) || $run['run_attempt'] < 1) {
                 continue;
             }
-            $jobs = json_decode(Process::output(['gh', 'api', 'repos/zoujingli/typeapp/actions/runs/' . $run['id'] . '/attempts/' . $run['run_attempt'] . '/jobs?per_page=100'], $root), true, 512, JSON_THROW_ON_ERROR);
+            $jobs = self::actionsJobs($root, $run['id'], $run['run_attempt']);
             $complete = false;
             $successful = is_array($jobs['jobs'] ?? null) && ($jobs['total_count'] ?? 0) === count($jobs['jobs']) && $jobs['total_count'] > 0;
             foreach ($jobs['jobs'] ?? [] as $job) {
@@ -54,6 +53,45 @@ final class Batch
             }
         }
         throw new \RuntimeException('固定提交尚无完整成功的主分支原生 CI');
+    }
+
+    /**
+     * 读取固定轮次的全部任务；发布矩阵超过一页时仍核对完整数量与唯一任务身份。
+     *
+     * @return array{total_count:int, jobs:list<array<string,mixed>>}
+     * @throws \RuntimeException 分页缺失、数量变化或重复任务可能混入其他读取结果。
+     */
+    public static function actionsJobs(string $root, int $run, int $attempt): array
+    {
+        if ($run < 1 || $attempt < 1) {
+            throw new \InvalidArgumentException('任务列表需要准确运行及轮次');
+        }
+        $endpoint = 'repos/zoujingli/typeapp/actions/runs/' . $run . '/attempts/' . $attempt . '/jobs?per_page=100';
+        $pages = json_decode(Process::output(['gh', 'api', $endpoint, '--paginate', '--slurp'], $root), true, 512, JSON_THROW_ON_ERROR);
+        if (!is_array($pages) || !array_is_list($pages) || $pages === []
+            || !is_int($pages[0]['total_count'] ?? null) || $pages[0]['total_count'] < 1) {
+            throw new \RuntimeException('Actions任务分页缺少完整数量');
+        }
+        $total = $pages[0]['total_count'];
+        $jobs = [];
+        $seen = [];
+        foreach ($pages as $page) {
+            if (($page['total_count'] ?? null) !== $total || !is_array($page['jobs'] ?? null) || !array_is_list($page['jobs'])) {
+                throw new \RuntimeException('Actions任务分页数量或结构不一致');
+            }
+            foreach ($page['jobs'] as $job) {
+                $id = $job['id'] ?? null;
+                if (!is_int($id) || $id < 1 || isset($seen[$id])) {
+                    throw new \RuntimeException('Actions任务分页身份缺失或重复');
+                }
+                $seen[$id] = true;
+                $jobs[] = $job;
+            }
+        }
+        if (count($jobs) !== $total) {
+            throw new \RuntimeException('Actions任务分页不完整');
+        }
+        return ['total_count' => $total, 'jobs' => $jobs];
     }
 
     /** 发布链允许分发任务继续运行，但固定轮次的四平台完整验收必须已全部成功。 */

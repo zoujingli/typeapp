@@ -35,6 +35,8 @@ function sandboxPackageCommand(string $root, string $package, array $dataDirecto
         $readExceptions .= '(require-not (subpath ' . $quote($resolved) . '))';
     }
     $sdkRoot = getenv('PHP_HOME') ?: dirname(PHP_BINARY, 2);
+    $nodeLookup = (new Process(['/usr/bin/which', 'node']))->wait(3);
+    $node = $nodeLookup->successful() ? realpath(trim($nodeLookup->stdout)) : false;
     $account = posix_getpwuid(posix_geteuid());
     expect(is_array($account) && isset($account['dir']), '无法识别测试账号的工具目录');
     $dependencyFilters = '';
@@ -46,21 +48,27 @@ function sandboxPackageCommand(string $root, string $package, array $dataDirecto
         // 发布目录可能位于开发工具父目录内，例外仍只限已校验的包和显式数据目录。
         . '(deny file-read-data (require-all (require-any ' . $dependencyFilters . ')' . $readExceptions . '))'
         . '(deny process-exec (require-all (subpath ' . $quote($root) . ') (require-not (subpath ' . $quote($package) . '))))'
-        . '(deny process-exec (require-all (require-any ' . $dependencyFilters . '(literal ' . $quote(PHP_BINARY) . ') (literal "/usr/bin/clang") (literal "/usr/bin/clang++"))'
+        . '(deny process-exec (require-all (require-any ' . $dependencyFilters . '(literal ' . $quote(PHP_BINARY) . ') (literal "/usr/bin/clang") (literal "/usr/bin/clang++")'
+        . ($node === false ? '' : '(literal ' . $quote($node) . ')') . ')'
         . '(require-not (subpath ' . $quote($package) . '))))';
     $prefix = ['/usr/bin/sandbox-exec', '-p', $profile];
     // 先证明同一策略可读发布文件，避免策略语法错误使所有负向探针假通过。
     $allowed = (new Process([...$prefix, '/bin/dd', 'if=' . $package . ($entry === 'app' ? '/app' : '/release.json'), 'of=/dev/null', 'bs=1', 'count=1']))->wait(3);
     expect($allowed->successful(), '隔离策略未允许读取受信发布文件');
     $sdk = $sdkRoot . '/lib/libphp.dylib';
-    foreach ([$root . '/app/main.php', $root . '/vendor/autoload.php', $sdk] as $source) {
+    foreach ([$root . '/app/common/bootstrap/Application.php', $root . '/vendor/autoload.php', $sdk] as $source) {
         expect(is_file($source) && is_readable($source), '隔离负向探针的原文件不存在或控制端不可读');
         $denied = (new Process([...$prefix, '/bin/dd', 'if=' . $source, 'of=/dev/null', 'bs=1', 'count=1']))->wait(3);
         expect($denied->exitCode === 1 && !$denied->timedOut, '隔离未阻断源码/Composer/SDK读取');
     }
     $compiler = (new Process(['/usr/bin/clang', '--version']))->wait(3);
     expect($compiler->successful(), '控制端编译器不可用，不能证明执行被隔离拒绝');
-    foreach ([[PHP_BINARY, '-v'], ['/usr/bin/clang', '--version']] as $tool) {
+    $tools = [[PHP_BINARY, '-v'], ['/usr/bin/clang', '--version']];
+    if ($node !== false) {
+        expect((new Process([$node, '--version']))->wait(3)->successful(), '控制端Node不可执行，不能证明隔离拒绝');
+        $tools[] = [$node, '--version'];
+    }
+    foreach ($tools as $tool) {
         $denied = (new Process([...$prefix, ...$tool]))->wait(3);
         expect(!$denied->successful() && !$denied->timedOut, '隔离环境仍可执行PHP/编译器：' . implode(' ', $tool));
     }
@@ -88,7 +96,7 @@ function linuxPackageCommand(string $root, string $package, array $dataDirectori
         'TYPE_MODEL_DRIVER', 'TYPE_ROLLOUT_APP', 'TYPE_SQLITE_FILE', 'TYPE_REDIS_HOST', 'TYPE_REDIS_PORT', 'TYPE_ROLLOUT_CACHE_HOST', 'TYPE_ROLLOUT_CACHE_PORT',
         'TYPE_MYSQL_HOST', 'TYPE_MYSQL_PORT', 'TYPE_MYSQL_DATABASE', 'TYPE_MYSQL_USER', 'TYPE_MYSQL_PASSWORD',
         'TYPE_PGSQL_HOST', 'TYPE_PGSQL_PORT', 'TYPE_PGSQL_DATABASE', 'TYPE_PGSQL_USER', 'TYPE_PGSQL_PASSWORD',
-        'TYPE_HTTP_LISTEN', 'TYPE_HTTP_PORT'];
+        'TYPE_HTTP_LISTEN', 'TYPE_HTTP_PORT', 'CATALOG_NAMESPACE', 'CATALOG_CURSOR', 'CATALOG_CLOCK', 'CATALOG_HTTPS_URL', 'CATALOG_HTTPS_CA'];
     $prefix = ['sudo', '-n', '--preserve-env=' . implode(',', $preserved)];
     $privilege = $prefix;
     $prefix = [...$prefix, $bwrap, '--die-with-parent', '--new-session', '--unshare-pid', '--unshare-ipc', '--unshare-uts',
@@ -147,7 +155,8 @@ function linuxPackageCommand(string $root, string $package, array $dataDirectori
         '--ambient-caps=-all',
         '--no-new-privs'
     );
-    $probe = (new Process([...$prefix, '/bin/sh', '-c', 'test -r "$1/$4" && test ! -e "$2/app/main.php" && test ! -e "$2/vendor/autoload.php" && test ! -e "$3" && ! command -v php && ! command -v gcc && ! command -v g++ && id -u && cat /proc/self/status', 'probe', $package, $root, PHP_BINARY, $entry === 'app' ? 'app' : 'release.json']))->wait(10);
+    expect(is_file($root . '/app/common/bootstrap/Application.php') && is_readable($root . '/app/common/bootstrap/Application.php'), '隔离源码探针的原文件必须存在且控制端可读');
+    $probe = (new Process([...$prefix, '/bin/sh', '-c', 'test -r "$1/$4" && test ! -e "$2/app/common/bootstrap/Application.php" && test ! -e "$2/vendor/autoload.php" && test ! -e "$3" && ! command -v php && ! command -v node && ! command -v gcc && ! command -v g++ && id -u && cat /proc/self/status', 'probe', $package, $root, PHP_BINARY, $entry === 'app' ? 'app' : 'release.json']))->wait(10);
     expect($probe->successful() && str_starts_with($probe->stdout, (string) posix_geteuid() . "\n"), 'Linux隔离未正确开放发布或阻断源码/工具：' . $probe->stderr . $probe->stdout);
     foreach (['CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'] as $capability) {
         expect(preg_match('/^' . $capability . ':\s+0+$/m', $probe->stdout) === 1, '隔离应用仍持有Linux能力');
@@ -173,6 +182,14 @@ function stopPackageProcess(Process $process, string $package, ?string $processI
     if (PHP_OS_FAMILY !== 'Linux' || $processInfo === null || !$process->running()) {
         return $process->stop($seconds);
     }
+    signalPackageProcess($package, $processInfo, $program);
+    return $process->wait($seconds);
+}
+
+/** 控制端只向身份匹配的真实Linux应用发信号；调用者仍须核验包装进程退出结果。 */
+function signalPackageProcess(string $package, string $processInfo, string $program = 'bin/app'): void
+{
+    expect(PHP_OS_FAMILY === 'Linux' && in_array($program, ['app', 'bin/app'], true), '隔离进程的程序身份无效');
     expect(is_file($processInfo) && !is_link($processInfo), '隔离设置器没有提供进程身份');
     $information = json_decode(file_get_contents($processInfo), true, 32, JSON_THROW_ON_ERROR);
     $pid = $information['child-pid'] ?? null;
@@ -182,5 +199,4 @@ function stopPackageProcess(Process $process, string $package, ?string $processI
     expect(preg_match('/^Uid:\s+([0-9]+)/m', $status, $matches) === 1 && (int) $matches[1] === posix_geteuid()
         && in_array(realpath($package) . '/' . $program, $command, true), '不能向身份不符的进程发送停止信号');
     expect(posix_kill($pid, SIGTERM), '无法停止本轮原生应用');
-    return $process->wait($seconds);
 }

@@ -2,6 +2,10 @@
 
 ## 版本 tag 自动发布
 
+新版本先在 `main` 执行 `php tools/release.php prepare <版本tag>`。版本参数是模板批次的唯一输入；该命令计算所选驱动及第一方生产、开发依赖的完整闭包，将准确版本和 `minimum-stability` 写入模板 `composer.json`，第三方工具链约束保持原值。它不创建提交、tag 或 Release。重复准备同版本不改字节，已有本地 tag、缺失组件或不兼容约束会拒绝；远端标签冲突仍由发布计划核对。
+
+检查生成差异并完成验证后，将模板声明作为正常源码签署提交，再创建新 tag。发布计划和模板分发都从该 tag 的真实文件验证版本闭包；不会在拆分时修改内容，也不会在消费者中重写依赖。三个驱动选择入口继承同一版本策略，模板 subtree 仍逐字节一致。当前开发模板使用显式 `1.0.x-dev` 闭包；新批次尚未公开前，开发 path 安装只记录为候选验证，不算 Packagist 通过。历史 RC14 的手工固定步骤继续见发布版安装说明，不改写历史模板。
+
 版本发布由 `release.yml` 调用四个平台验收、批次分发与模板分发工作流。tag 模式固定同一版本与完整 SHA，模板也接收 `mode/version`；公开消费从默认 Packagist 安装并核对版本和拆分 SHA，不再固定 `dev-main`。完整链路、受限 `TYPE_RELEASE_TOKEN`、候选附件和重试约定见[版本发布与安装](../guide/releases.md)。
 
 发布执行的门禁绑定原候选 `run/attempt`、`release.yml`、tag 和源码，逐一检查四平台全部验收任务及汇总；此时允许下游发布仍在执行，不等待当前流程整体结束。公开前另检查当前执行轮次的组件与模板消费任务、完整回执及16个Packagist引用。候选附件不覆盖；可重建的分发报告在同一run重跑时允许替换，记录仍需逐项通过固定身份检查。
@@ -51,6 +55,24 @@ PHPUnit 下游回归从真实本地裸 Git 仓库的发布回执生成报告，�
 所有候选归档在导出前读取 Git 文件清单，仅接受普通文件；解包后逐项核对文件集合及 Git blob 字节身份，验证后才记录 SHA-256。`export-ignore` 删除文件或 `export-subst` 改写内容导致快照偏离时立即失败；组件、模板和完整应用均使用这项检查。
 
 PHPUnit 的候选准备回归使用临时 Git 仓库，覆盖公开模板、未提交输入隔离、导出属性造成的快照偏离及准备失败报告；它在安装前结束，不作为独立安装或 AOT 通过的依据。包材料回归分别经过单组件命令和批次入口，验证材料缺失、不完整、未允许文件及未映射依赖的拒绝行为，全部使用本地资源并在结束时回收。
+
+### 教程的固定候选与公开消费
+
+`composer test:tutorial-delivery -- candidate 完整SHA --runtime-map=静态SDK映射.json` 从该提交逐字节导出组件、模板与 `examples/catalog`，依次独立安装并构建 SQLite、MySQL、PostgreSQL 教程。映射文件是 `sqlite`、`mysql`、`pgsql` 到各自静态 SDK 清单路径的 JSON 对象。模板原约束原样保留；候选仅增加指向已核对快照的 path 仓库，不将工作区内容或不同版本混入消费者。
+
+教程的唯一 profile 声明为 `examples/catalog/build-profiles.json`。构建静态 SDK 时将 `TYPEAPP_BUILD_CONFIGURATION` 指向该文件，并用 `TYPEAPP_BUILD_PROFILE` 选择数据库；教程安装也读取同一声明，SDK 和应用都包含教程实际使用的缓存、队列、调度与 Redis。CI 单项使用 `--profile=sqlite --runtime=匹配SDK清单 --output=新报告目录`；其 `tutorial-profile-delivery` 报告只证明当前平台的一个数据库，不能单独通过发布门禁。
+
+每个 profile 的封存程序经现有单程序交付入口搬入含空格只读目录，在不同工作目录运行同一套 `tests/tutorial.php` 公开断言。程序不能读取源码、Composer 或 SDK，不能执行 PHP、Node 与编译器；测试控制端负责数据库、Redis 及 HTTPS 对端。报告保存程序、安装锁、编译清单、嵌入身份、教程源码摘要、原始断言日志和部署结果，并要求消费者及本轮拥有的数据库临时数据已回收。外部数据库工具可用 `TYPE_MYSQL_TOOLS`、`TYPE_PGSQL_TOOLS` 指向本机原生工具目录；`TYPE_REDIS_SERVER` 可启动并回收本轮专用 Redis，也可由 `TYPE_REDIS_HOST`、`TYPE_REDIS_PORT` 连接测试服务。控制端的 Node/OpenSSL 可通过 `NODE_BINARY`、`OPENSSL_BINARY` 显式指定。
+
+`composer test:tutorial-delivery -- baseline v1.0.0-rc.14` 只核对准确既有批次的默认 Packagist 安装与模板入口，报告类型为 `published-template-baseline`，不能证明新教程能力。新批次实际公开后运行 `composer test:tutorial-delivery -- public 准确tag --runtime-map=静态SDK映射.json`，回读远端 tag、默认索引、原样下载的模板及所有实际安装版本；该入口不会创建或发布版本。`--php` 仅用于先验证教程 PHP 行为，其 `tutorial-php` 报告也不能通过单程序准入。
+
+`composer check:tutorial-evidence -- candidate 完整SHA 报告路径` 或 `public 完整SHA 报告路径 准确tag` 只读复核本机三数据库的 `tutorial-delivery` 报告。正式准入要求 Linux x64、Linux ARM64、macOS ARM64、Windows x64 各三个数据库，共十二份原始报告，且固定源码、来源渠道、run 与 attempt 完全一致。每项 artifact 命名为 `tutorial-candidate|public-平台-profile-attempt`，下载到汇总目录的 `inputs/` 后，运行 `php tools/collect-tutorial.php candidate|public 完整SHA 汇总目录 run attempt [公开tag]` 生成 `tutorial-delivery-matrix`；汇总失败会将旧成功报告作废。缺少任何平台、数据库、原始文件、摘要、完整生产依赖、静态库或隔离检查均拒绝。
+
+候选准入使用 `TYPE_TUTORIAL_CANDIDATE_REPORT`，默认为 `build/release/tutorial-candidate/verification.json`；公开准入使用 `TYPE_TUTORIAL_PUBLIC_REPORT`，默认为 `build/release/tutorial-public/verification.json`。`release.yml` 先通过 `tutorial-delivery.yml` 构建固定候选十二项；恢复发布时回读已登记候选原 run/attempt，不能混用重新执行的单项。模板和组件公开后，再执行准确 tag 的默认 Packagist 十二项，当前轮次全部通过后才发布最终附件。候选门禁不依赖尚未发生的公开消费，测试入口本身不发布版本。
+
+在确定新版本号之前，可直接手动运行 `tutorial-delivery.yml`，只提供 `main` 已包含的完整 `source_sha`。入口校验固定提交及祖先关系，复用同一十二项候选矩阵，权限只有读取；内部 `v0.0.0` 仅供构建步骤记录占位元数据，不创建 tag、草稿或 Release，也不代表已选定下一版本。手动入口不能选择公开模式。
+
+当前 RC14 默认 Packagist 三库入口基线已经通过，但不证明新教程接口。新教程的四平台十二项 AOT 同产物矩阵和新批次默认 Packagist 消费仍需真实执行；强制中断后的全过程资源回收也尚未完成专项验证，不能据已有 PHP 或门禁单元测试记为完成。
 
 ### IoT完整应用的本机候选
 

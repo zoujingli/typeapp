@@ -38,7 +38,28 @@ try {
     $work = $root . '/build/application-inputs-' . hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR));
     // 与docs/build-config相同深度，project-root仍指向主仓。
     Process::report($work . '/type-app.json', $settings);
+    $started = hrtime(true);
     echo Process::output([PHP_BINARY, $root . '/vendor/bin/type', $work . '/type-app.json'], $root) . "\n";
+    $seconds = (hrtime(true) - $started) / 1e9;
+    // 仅由原候选性能验收请求记录；计时绑定这次真实编译，不为补证据重新编译产物。
+    if (getenv('TYPE_BENCHMARK_BUILD_TIMING') === '1') {
+        $runtime = Type\Build\StaticRuntimeSdk::selected(getenv('TYPEAPP_BUILD_PROFILE') ?: null);
+        $artifact = (new Type\Build\BuildPlatform())->output($root . '/' . $settings['output']);
+        $report = json_decode((string) file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+        if ($runtime === null || ($report['cache']['hit'] ?? true) !== false || ($report['sha256'] ?? '') !== hash_file('sha256', $artifact)
+            || ($report['manifest']['runtime-linkage'] ?? '') !== 'static') {
+            throw new RuntimeException('原候选编译计时需要本轮真实静态编译；缓存命中不能作为冷编译结果');
+        }
+        Process::report($root . '/build/static-benchmark-build.json', [
+            'protocol' => 1, 'source' => Process::output(['git', 'rev-parse', 'HEAD'], $root),
+            'profile' => getenv('TYPEAPP_BUILD_PROFILE'), 'sha256' => $report['sha256'], 'build_id' => $report['build-id'],
+            'build_seconds' => $seconds, 'timing_scope' => 'vendor/bin/type process; frontend and SDK preparation excluded',
+            'php_memory_limit' => ini_get('memory_limit'),
+            'controller_ini_sha256' => php_ini_loaded_file() === false ? null : hash_file('sha256', php_ini_loaded_file()),
+            'report_sha256' => hash_file('sha256', $artifact . '.build.json'),
+            'sdk_manifest_sha256' => hash_file('sha256', $runtime->manifestPath()),
+        ]);
+    }
 } catch (Throwable $error) {
     fwrite(STDERR, $error->getMessage() . "\n");
     exit(1);

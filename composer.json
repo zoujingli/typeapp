@@ -69,6 +69,8 @@
     "cs-check": "@php vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no --sequential",
     "cs-fix": "@php vendor/bin/php-cs-fixer fix --using-cache=no --sequential",
     "test:unit": "@php vendor/bin/phpunit --configuration phpunit.xml",
+    "test:tutorial-delivery": ["Composer\\Config::disableProcessTimeout", "@php tests/tutorial-delivery.php"],
+    "check:tutorial-evidence": "@php tools/verify-tutorial.php",
     "test:configuration-root": "@php tests/configuration-root.php",
     "typeapp": "@php bin/typeapp",
     "typeapp:prepare": "@php bin/typeapp-prepare",

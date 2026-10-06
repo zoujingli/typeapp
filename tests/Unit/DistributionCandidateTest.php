@@ -33,7 +33,7 @@ final class DistributionCandidateTest extends TestCase
             foreach (['tests', 'tools/distribution', '.github', 'plugin/type-runtime/src', 'templates/type-project', 'examples', 'vendor', 'build'] as $path) {
                 self::assertTrue(mkdir($directory . '/' . $path, 0700, true));
             }
-            foreach (['tests/distribution-candidate.php', 'tests/support.php', 'tests/native-database.php',
+            foreach (['tests/distribution-candidate.php', 'tests/fixed-snapshot.php', 'tests/support.php', 'tests/native-database.php',
                 'tools/distribution/Process.php', 'tools/distribution/Batch.php'] as $file) {
                 self::assertTrue(copy($root . '/' . $file, $directory . '/' . $file));
             }

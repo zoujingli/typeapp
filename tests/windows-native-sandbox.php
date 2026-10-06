@@ -40,7 +40,7 @@ final class WindowsNativeSandbox
         $compiler = BuildPlatform::resolve(trim(explode("\n", $found)[0]));
         $host = BuildPlatform::resolve((string) getenv('PHP_HOME'));
         $phpx = BuildPlatform::resolve((string) getenv('PHPX_HOME'));
-        $blocked = [$root . '/app/main.php', $root . '/vendor/autoload.php', $host . '/php.exe', $host . '/php8ts.dll', $compiler];
+        $blocked = [$root . '/app/common/bootstrap/Application.php', $root . '/vendor/autoload.php', $host . '/php.exe', $host . '/php8ts.dll', $compiler];
         $directories = [$root, $host, $phpx, dirname($compiler)];
         $staticManifest = getenv('TYPE_STATIC_RUNTIME');
         if (is_string($staticManifest) && $staticManifest !== '') {

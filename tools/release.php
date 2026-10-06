@@ -37,6 +37,13 @@ try {
     $operation = $argv[1] ?? '';
     $version = $argv[2] ?? '';
     Plan::version($version);
+    if ($operation === 'prepare') {
+        if (count($argv) !== 3) {
+            throw new InvalidArgumentException('用法：php tools/release.php prepare <尚未创建的版本tag>');
+        }
+        echo json_encode(Plan::prepareTemplate($root, $version), JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
+        exit(0);
+    }
     $api = new GitHub($root);
     $plan = Plan::create($root, $version);
     $source = $plan['source'];
@@ -104,6 +111,7 @@ try {
             throw new RuntimeException('候选SHA256SUMS与原始附件不一致');
         }
     } elseif ($operation === 'candidate') {
+        Evidence::tutorialCandidate($root, $plan);
         Batch::nativeEvidence($root, $source);
         $run = (string) getenv('TYPE_RELEASE_EVIDENCE_RUN');
         $attempt = (string) getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT');
@@ -236,7 +244,7 @@ try {
         }
         Process::report($work . '/published.json', $api->publish('zoujingli/typeapp', $version) + ['source' => $source, 'children' => $receipt['items']]);
     } else {
-        throw new InvalidArgumentException('用法：php tools/release.php <resolve|restore|candidate|packagist|verify-consumption|children|publish> <版本tag>');
+        throw new InvalidArgumentException('用法：php tools/release.php <prepare|resolve|restore|candidate|packagist|verify-consumption|children|publish> <版本tag>');
     }
     echo '版本发布步骤完成：' . $operation . "\n";
 } catch (Throwable $error) {

@@ -17,6 +17,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: main 历史中的完整源码 SHA；留空使用本次事件提交
+        required: false
+        type: string
       suite:
         description: 完整回归或只复验隔离构建
         type: choice
@@ -27,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-command-${{ github.ref }}
+  group: native-command-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || inputs.source_sha || github.sha }}-${{ inputs.suite || 'all' }}
   cancel-in-progress: true
 
 jobs:
@@ -95,6 +99,17 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
+
+      - name: 核对手动入口的固定 main 源码
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          printf 'source=%s\n' "$SOURCE_SHA"
 
       - name: 校验 Pull Request 的 DCO 签署
         if: github.event_name == 'pull_request'
@@ -195,7 +210,7 @@ jobs:
           composer test:testing
           composer test:testing-portable
           composer test:testing-consumer
-          composer check:assembly
+          composer test:framework
           composer test:validate
           composer test:read-write
           composer test:routing
@@ -299,6 +314,7 @@ jobs:
           composer build:commands
           composer test:commands
           composer test:assembly-consumer
+          composer test:framework-native
 
       - name: 验证原生调度与中断恢复
         if: matrix.suite == 'scheduler'
@@ -639,7 +655,7 @@ jobs:
   native-complete:
     name: native-complete
     needs: native-command
-    if: always() && (inputs.source_sha != '' || github.event_name != 'workflow_dispatch' || inputs.suite == 'all')
+    if: always() && (inputs.suite == '' || inputs.suite == 'all')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
