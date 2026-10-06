@@ -46,6 +46,10 @@ macOS 模块将 libpq（含配套的 libpgcommon_shlib、libpgport_shlib）、SQ
 
 Unix 三个平台的模块来自 [重建 run 37075789749](https://github.com/zoujingli/typeapp/actions/runs/37075789749)，主仓源码为 `f6c092f436f2a341bb6d588d333d761c2ab64732`。Windows 模块来自 [run 37134319268](https://github.com/zoujingli/typeapp/actions/runs/37134319268)、源码 `5c409678213ebd12da3c3d80de4213f1896da7a3`，保留 IPv6 地址初始化与独占绑定适配、TLS 正常 EOF 修复；IOCP 关联缓存由 c-ares 和 libcurl 的真实关闭生命周期回收，使存活连接可重复登记事件、关闭后的数值句柄可安全复用。模块静态链接固定 c-ares 1.34.8，使指定 DNS 配置在主线程和重建的工作线程生效。共享模块使用与开发 PHP 一致的 `/MD` CRT，生产静态 SDK 独立使用 `/MT`；开发 SDK 的配套 DLL 不属于生产单程序的部署文件。
 
+### Windows 编码修复候选
+
+RC14 的 Windows DLL 仍使用上表 `37134319268` 的构建身份。后续诊断发现，加载该 DLL 后，Windows 的窄字节 `putenv()` 会把 UTF-8 环境值按 ANSI 路径写坏；故障发生在 `putenv()` 返回前，不是终端显示问题。`c4a2254` 已在固定 Swoole 源码上增加 `php_win32_cp_any_to_w()` 与 `SetEnvironmentVariableW()` 适配，继续使用 Swoole 的 ZTS 环境锁，并扩展主进程、子进程及两轮工作线程探针。重建和探针运行 [37503916541](https://github.com/zoujingli/typeapp/actions/runs/37503916541) 完成前，组件不能把旧 DLL 当作已修复版本；新 DLL 的字节摘要、构建身份和清单必须来自同一成功 Artifact。
+
 各模块的加载、协程 SQLite 和 PostgreSQL 连接拒绝检查通过，Windows 另通过主线程及两次重建工作线程的指定 DNS、TLS 写半关闭、读取超时恢复及连接重置检查，以及各 16 次的原生 UDP / DNS 后 UDP 对照；清单保存各 Artifact、依赖和适配摘要。Windows 还包含 config.w32、IOCP、DNS 和 PHP 头文件的受控适配。这些模块检查不替代完整通信及十二组合静态程序验收，进展见[新版升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。
 
 Swoole 和其所含第三方材料保留 [LICENSES](LICENSES) 中的原始许可证，第一方适配按仓库 Apache-2.0 提供。分发这些二进制时应随附该目录；其中也保存 macOS 静态子依赖以及 Windows 静态链接的 c-ares 1.34.8、zlib 1.3.2、Zstandard 1.5.7 的许可。zlib 许可取自[固定版本](https://github.com/madler/zlib/blob/v1.3.2/LICENSE)，Zstandard 按[该版本的 BSD 许可](https://github.com/facebook/zstd/blob/v1.5.7/LICENSE)分发。

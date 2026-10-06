@@ -10,6 +10,8 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 RC13 的固定源码、12 个程序和公开发布身份保存在[profile 发布证据](../evidence/profile-release-20260930.md)。RC14 已使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及 `4aff74a9`（运行时字符串 `6.3.0RC1`）的 Swoole 开发快照完成正式发布门禁、十二程序、组件模板公开消费和下载回读。各平台的准确源码、运行轮次、失败诊断与性能限制统一见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)；功能通过不构成性能提升结论。
 
+RC14 之后的 `main` 仍处于修复候选阶段。Windows 旧 DLL 已确认存在 Swoole `putenv()` 中文环境编码故障；提交 `c4a2254` 已改用 PHP 宽字符环境 API，并扩展线程继承探针，运行 [37503916541](https://github.com/zoujingli/typeapp/actions/runs/37503916541) 负责重新构建和验证。新模块完成实际回读前，Windows 平台继续按 RC14 的历史身份描述，不能把候选修复写成当前发布能力。ORM 的 Windows 事务帧写回修复同样等待匹配原生消费者复验。
+
 此前 2026-09-25 的 `bf28c8bd276f7d0f25535e82ec3ca4a59c4f241a` 四平台默认矩阵保留在[历史验收](../evidence/native-release-20260925.md)。该轮采用共享库构建，其发布目录与隔离范围不改写为本次静态单程序结果。
 
 四平台 Swoole 模块随 Composer 构建组件分发，匹配 SDK 后默认复用。macOS 矩阵在原生 macOS 15 runner 运行，Linux ARM64 在原生 ARM64 runner 运行；Windows 的 SDK、完整应用 AOT 和模板搬迁历史结果保留原版本身份。每种产物按报告解释，不能把主应用 `no_source=false` 的检查与独立模板隔离结果混为一项。新版 Windows HTTP 线程回归在线程内自绑定监听，Unix 回归继续使用共享监听副本；停止、回收和 join 的公共契约不变。
