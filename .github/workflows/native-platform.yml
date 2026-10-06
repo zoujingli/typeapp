@@ -19,9 +19,9 @@ on:
         required: false
         type: string
       scope:
-        description: 验收范围（http-probe 仅 IOCP、socket-probe 仅 TCP/UDP、tls-probe 仅 PHP 探针、tcp-handshake 仅握手 AOT；sqlite-app/pgsql-app 仅应用诊断；template 仅模板）
+        description: 验收范围（environment-probe 仅环境变量；http-probe 仅 IOCP、socket-probe 仅 TCP/UDP、tls-probe 仅 PHP 探针、tcp-handshake 仅握手 AOT；sqlite-app/pgsql-app 仅应用诊断；template 仅模板）
         type: choice
-        options: [full, native, orm, template, pgsql-probe, pgsql-app, sqlite-app, http-probe, socket-probe, tls-probe, tcp-handshake, tcp-trace]
+        options: [full, native, orm, template, pgsql-probe, pgsql-app, sqlite-app, http-probe, socket-probe, tls-probe, tcp-handshake, tcp-trace, environment-probe]
         default: full
       orm_driver:
         description: 仅 scope=orm 生效；单库结果不代表三库验收
@@ -43,12 +43,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-platform-${{ github.ref }}-${{ inputs.source_sha || github.sha }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app","http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
+  group: native-platform-${{ github.ref }}-${{ inputs.source_sha || github.sha }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app","http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace","environment-probe"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
   cancel-in-progress: true
 
 jobs:
   windows:
-    if: github.repository == 'zoujingli/typeapp' && !contains(fromJSON('["http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace"]'), inputs.scope)
+    if: github.repository == 'zoujingli/typeapp' && !contains(fromJSON('["http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace","environment-probe"]'), inputs.scope)
     runs-on: windows-2022
     timeout-minutes: 120
     env:
@@ -465,3 +465,120 @@ jobs:
             build/toolchain-regressions-http-probe/build/native/type-app.exe*
             build/windows-runtime-*/*.log
             build/windows-runtime-*/*.json
+  environment-probe:
+    if: github.repository == 'zoujingli/typeapp' && github.event_name == 'workflow_dispatch' && inputs.scope == 'environment-probe' && inputs.candidate_version == ''
+    name: Windows 环境变量专项
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: 核对固定 main 源码
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$(git rev-parse --verify "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] || exit 1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+      - name: 准备已核验的 Windows x64 ZTS SDK
+        run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 核对 PHP 与 Swoole 环境读写和继承
+        timeout-minutes: 2
+        run: |
+          $Probe = Join-Path $env:GITHUB_WORKSPACE '.github/scripts/probe-windows-process.php'
+          $OutputDirectory = Join-Path $env:GITHUB_WORKSPACE 'build/windows-environment-probe'
+          $ErrorActionPreference = 'Stop'
+          if ($env:OS -ne 'Windows_NT') { throw 'This probe requires Windows.' }
+          $taskPhp = Join-Path $env:PHP_HOME 'php.exe'
+          $taskExtensionDirectory = Join-Path $env:PHP_HOME 'ext'
+          $taskDependencies = @('-n', '-d', "extension_dir=$taskExtensionDirectory", '-d', 'extension=php_curl.dll', '-d', 'extension=php_sockets.dll')
+          $taskWithSwoole = @($taskDependencies) + @('-d', 'extension=php_swoole.dll')
+          $taskCases = @(
+              @{ name = 'prepared-ini'; options = @() },
+              @{ name = 'bare'; options = @('-n') },
+              @{ name = 'dependencies'; options = $taskDependencies },
+              @{ name = 'dependencies-swoole'; options = $taskWithSwoole },
+              @{ name = 'prepared-ini-explicit-utf8'; options = @('-d', 'internal_encoding=UTF-8') }
+          )
+          if (Test-Path -LiteralPath $OutputDirectory) { throw 'Probe output directory already exists.' }
+          [IO.Directory]::CreateDirectory($OutputDirectory) | Out-Null
+          $taskUtf8 = New-Object System.Text.UTF8Encoding($false)
+          $taskResults = @()
+          $taskReports = @{}
+          foreach ($taskCase in $taskCases) {
+              $taskOptions = @($taskCase.options)
+              $taskChildOptions = ConvertTo-Json -InputObject $taskOptions -Compress
+              $taskStart = [Diagnostics.ProcessStartInfo]::new()
+              $taskStart.FileName = $taskPhp
+              $taskStart.UseShellExecute = $false
+              $taskStart.RedirectStandardOutput = $true
+              $taskStart.RedirectStandardError = $true
+              foreach ($taskArgument in @($taskOptions) + @($Probe, '--environment-only', $taskCase.name, $taskChildOptions)) {
+                  $taskStart.ArgumentList.Add([string]$taskArgument)
+              }
+              $taskProcess = [Diagnostics.Process]::new()
+              $taskProcess.StartInfo = $taskStart
+              $taskStarted = [DateTime]::UtcNow
+              if (!$taskProcess.Start()) { throw 'Could not start PHP probe.' }
+              $taskStdout = $taskProcess.StandardOutput.ReadToEndAsync()
+              $taskStderr = $taskProcess.StandardError.ReadToEndAsync()
+              $taskCompleted = $taskProcess.WaitForExit(15000)
+              if (!$taskCompleted) {
+                  $taskProcess.Kill($true)
+                  $taskProcess.WaitForExit()
+              }
+              $taskOutput = $taskStdout.GetAwaiter().GetResult()
+              $taskError = $taskStderr.GetAwaiter().GetResult()
+              [IO.File]::WriteAllText((Join-Path $OutputDirectory ($taskCase.name + '.jsonl')), $taskOutput, $taskUtf8)
+              [IO.File]::WriteAllText((Join-Path $OutputDirectory ($taskCase.name + '.stderr.log')), $taskError, $taskUtf8)
+              $taskValidReport = $false
+              $taskReportedPassed = $false
+              $taskParseError = $null
+              try {
+                  $taskReport = $taskOutput | ConvertFrom-Json
+                  $taskValidReport = $taskReport.role -ceq 'parent' -and $taskReport.label -ceq $taskCase.name -and $taskReport.metadata.platform -ceq 'Windows' -and $taskReport.metadata.zts -eq $true
+                  $taskReportedPassed = $taskReport.passed -eq $true
+                  if ($taskValidReport) { $taskReports[$taskCase.name] = $taskReport }
+              } catch {
+                  $taskParseError = $_.Exception.Message
+              }
+              $taskResult = [ordered]@{ case = $taskCase.name; completed = $taskCompleted; exit = $taskProcess.ExitCode; seconds = ([DateTime]::UtcNow - $taskStarted).TotalSeconds; valid_report = $taskValidReport; reported_passed = $taskReportedPassed; stderr_empty = [string]::IsNullOrWhiteSpace($taskError); parse_error = $taskParseError }
+              $taskResults += $taskResult
+              $taskResult | ConvertTo-Json -Compress | Write-Output
+              $taskProcess.Dispose()
+          }
+          $taskComparable = $false
+          if ($taskReports.ContainsKey('dependencies') -and $taskReports.ContainsKey('dependencies-swoole')) {
+              $taskWithout = $taskReports['dependencies'].metadata
+              $taskWith = $taskReports['dependencies-swoole'].metadata
+              $taskWithoutExtensions = ConvertTo-Json -InputObject @($taskWithout.extensions | Where-Object { $_ -cne 'swoole' } | Sort-Object -CaseSensitive) -Compress
+              $taskWithExtensions = ConvertTo-Json -InputObject @($taskWith.extensions | Where-Object { $_ -cne 'swoole' } | Sort-Object -CaseSensitive) -Compress
+              $taskComparable = $taskWithout.'php-binary-sha256' -cmatch '^[a-f0-9]{64}$' -and $taskWithout.'php8ts-sha256' -cmatch '^[a-f0-9]{64}$' -and $taskWithout.'php-binary-sha256' -ceq $taskWith.'php-binary-sha256' -and $taskWithout.'php8ts-sha256' -ceq $taskWith.'php8ts-sha256' -and $taskWithoutExtensions -ceq $taskWithExtensions -and $taskWithout.extensions -cnotcontains 'swoole' -and $taskWith.extensions -ccontains 'swoole'
+          }
+          $taskIdentity = [ordered]@{ schema = 1; cases = $taskResults; dependencies_differ_only_by_swoole = $taskComparable; files = @() }
+          foreach ($taskFile in @($Probe, $taskPhp, (Join-Path $env:PHP_HOME 'php8ts.dll'), (Join-Path $taskExtensionDirectory 'php_swoole.dll'))) {
+              if (Test-Path -LiteralPath $taskFile -PathType Leaf) {
+                  $taskIdentity.files += @{ path = $taskFile; sha256 = (Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash.ToLowerInvariant() }
+              }
+          }
+          [IO.File]::WriteAllText((Join-Path $OutputDirectory 'summary.json'), ($taskIdentity | ConvertTo-Json -Depth 6), $taskUtf8)
+          if (!$taskComparable -or @($taskResults | Where-Object { !$_.completed -or $_.exit -ne 0 -or !$_.valid_report -or !$_.reported_passed -or !$_.stderr_empty }).Count -gt 0) { exit 1 }
+      - name: 保存五组原始字节与工具身份
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-environment-probe
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            build/windows-environment-probe/*
+            build/windows-runtime-*/*.json
+            build/windows-runtime-*/*.log
