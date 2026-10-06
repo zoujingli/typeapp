@@ -13,6 +13,8 @@ use Type\Core\Http\SwooleServer;
 use Type\Core\Http\HttpServerInterface;
 use Type\Orm\Connection;
 use Type\Orm\Database;
+use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
 use Type\Orm\Migration\Migrator;
 use Type\Orm\Outbox\Relay;
 use Type\Orm\Outbox\Store;
@@ -139,7 +141,8 @@ final class Application
                 return;
             }
             $scope = new ExecutionScope();
-            $database = new Database($driver, 2, 0);
+            $databaseManager = new DatabaseManager(['default' => $driver, 'outbox' => $driver], 2, 0);
+            Db::configure($databaseManager);
             $manager = self::redis();
             $store = new Store();
             try {
@@ -150,7 +153,7 @@ final class Application
                     if ($id === '' || $name === '') {
                         throw new \InvalidArgumentException('写入需要稳定操作 ID 与用户名');
                     }
-                    $connection = $database->connect($scope);
+                    $connection = $databaseManager->connect($scope);
                     $connection->transaction(static function (Connection $transaction) use ($store, $id, $name, $release, $schema): void {
                         $values = $schema === 3 ? ['nickname' => $name] : ['name' => $name];
                         if ($release === 2 && $schema === 2) {
@@ -170,19 +173,19 @@ final class Application
                     if (!is_int($delayMilliseconds)) {
                         throw new \InvalidArgumentException('发布演练延迟必须为整数毫秒');
                     }
-                    self::output(['published' => (new Relay($database, $store, new Publisher($queue, $delayMilliseconds)))->runOnce()]);
+                    self::output(['published' => (new Relay($databaseManager, $store, new Publisher($queue, $delayMilliseconds)))->runOnce()]);
                 } elseif ($mode === 'unknown') {
                     $queue->publish(new Message('unknown-future', 'user.changed', 3, []));
                     self::output(['published' => true]);
                 } elseif ($mode === 'stats') {
-                    $connection = $database->connect($scope);
+                    $connection = $databaseManager->connect($scope);
                     self::output(['queue' => $queue->statistics(), 'effects' => $connection->table('type_outbox_effects')->orderBy('id')->get(),
                         'quarantine' => $queue->quarantined(), 'queue_identity' => $queue->identity(),
                         'cache_identity' => (new NamespaceStore($manager->connection($scope, 'cache', Purpose::SCRIPT), (string) getenv('TYPE_ROLLOUT_APP'), 'test', 'users'))->identity()]);
                 } elseif ($mode === 'worker') {
                     $registry = new Registry();
                     foreach ($compatibility->metadata()['capabilities']['messages']['user.changed'] as $version) {
-                        $registry->register('user.changed', $version, static fn (JobContext $context): Delivered => new Delivered($driver, $store));
+                        $registry->register('user.changed', $version, static fn (JobContext $context): Delivered => new Delivered($store));
                     }
                     $worker = new Worker($queue, $registry, 'release-' . $release . '-' . getmypid());
                     $signals = new ProcessSignals();
@@ -210,7 +213,7 @@ final class Application
                 }
             } finally {
                 $scope->close();
-                $database->close();
+                $databaseManager->close();
                 $manager->close();
             }
         } catch (\Throwable $error) {

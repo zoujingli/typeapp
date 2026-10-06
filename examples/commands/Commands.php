@@ -46,7 +46,7 @@ final class GreetCommand implements Command
      */
     public function run(Configuration $configuration, array $arguments): int
     {
-        echo $this->greeting->message() . PHP_EOL;
+        echo $this->greeting->message() . "\n";
 
         return ($arguments[0] ?? '') === 'status-23' ? 23 : 0;
     }
@@ -85,7 +85,7 @@ final class ExampleResource implements ManagedResource
     /** 输出开启标记并按开关注入启动失败。 */
     public function start(): void
     {
-        echo '开启：' . $this->name . PHP_EOL;
+        echo '开启：' . $this->name . "\n";
         if ($this->failStart) {
             throw new RuntimeException('启动失败：' . $this->name);
         }
@@ -94,7 +94,7 @@ final class ExampleResource implements ManagedResource
     /** 输出关闭标记并按开关注入停止失败。 */
     public function stop(): void
     {
-        echo '关闭：' . $this->name . PHP_EOL;
+        echo '关闭：' . $this->name . "\n";
         if ($this->failStop) {
             throw new RuntimeException('停止失败：' . $this->name);
         }
@@ -117,7 +117,7 @@ final class ExampleListener implements Listener
     /** 输出事件身份并按开关抛错，供入口验证监听失败策略。 */
     public function handle(string $event, Configuration $configuration): void
     {
-        echo '事件：' . $this->name . ':' . $event . PHP_EOL;
+        echo '事件：' . $this->name . ':' . $event . "\n";
         if ($this->fail) {
             throw new RuntimeException('监听失败：' . $this->name);
         }
@@ -179,7 +179,7 @@ final class IdentityCommand implements Command
      */
     public function run(Configuration $configuration, array $arguments): int
     {
-        echo $this->singleton->value() . ':' . $this->execution->value() . PHP_EOL;
+        echo $this->singleton->value() . ':' . $this->execution->value() . "\n";
 
         return 0;
     }
@@ -215,7 +215,7 @@ final class SnapshotCommand implements Command
     {
         $before = $configuration->text('name');
         putenv('TYPE_APP_NAME=后来的环境值');
-        echo $before . ':' . $configuration->text('name') . PHP_EOL;
+        echo $before . ':' . $configuration->text('name') . "\n";
 
         return 0;
     }

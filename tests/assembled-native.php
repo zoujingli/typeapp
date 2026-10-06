@@ -30,7 +30,10 @@ try {
     ];
     foreach ($cases as [$arguments, $expectedStatus, $expectedOutput, $expectedError]) {
         [$status, $stdout, $stderr] = execute([...$command, ...$arguments]);
-        expect($status === $expectedStatus && $stdout === $expectedOutput, '装配命令行为不符：' . implode(' ', $arguments) . "\n" . $stdout . $stderr);
+        expect($status === $expectedStatus && $stdout === $expectedOutput, '装配命令行为不符：' . implode(' ', $arguments)
+            . "\n退出状态：" . $status . '，预期：' . $expectedStatus
+            . "\n标准输出十六进制：" . bin2hex($stdout) . "\n预期输出十六进制：" . bin2hex($expectedOutput)
+            . "\n" . $stdout . $stderr);
         expect($expectedError === '' ? $stderr === '' : str_contains($stderr, $expectedError), '装配命令错误语义不符：' . $stderr);
     }
     [$status, $stdout, $stderr] = execute([...$command, 'help']);

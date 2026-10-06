@@ -3,7 +3,7 @@
   "name": "type-rollout-new",
   "version": "1.1.0",
   "entry": "examples/rollout-new-command.php",
-  "sources": ["examples/rollout", "examples/model/Drivers.php", "examples/outbox/Adapters.php"],
+  "sources": ["examples/rollout", "examples/model/Drivers.php", "examples/outbox/Adapters.php", "examples/outbox/Models.php"],
   "runtime": {
     "Linux": {"extensions": ["pcntl"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]},
     "Darwin": {"extensions": ["pcntl"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]}

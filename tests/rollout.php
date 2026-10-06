@@ -29,14 +29,6 @@ $commands = [];
 $overrides = getenv('TYPE_ROLLOUT_COMMANDS');
 $externalCommands = $overrides === false ? null : json_decode($overrides, true, 32, JSON_THROW_ON_ERROR);
 expect($externalCommands === null || ($native && is_array($externalCommands) && isset($externalCommands['old'], $externalCommands['new'])), '原生发布命令覆盖必须同时指定新旧版本');
-foreach (['old', 'new'] as $version) {
-    $loader = 'require ' . var_export($root . '/vendor/autoload.php', true) . ';';
-    foreach ($sourceFiles as $file) {
-        $loader .= 'require ' . var_export($root . '/' . $file, true) . ';';
-    }
-    $loader .= 'require ' . var_export($root . '/examples/rollout-' . $version . '-command.php', true) . ';main($argc,$argv);';
-    $commands[$version] = $externalCommands[$version] ?? ($native ? nativeCommand($root . '/build/rollout-' . $version . '/type-app') : [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $loader]);
-}
 $environment = getenv();
 $delayInput = getenv('TYPE_ROLLOUT_DELAY_MS');
 $delayMilliseconds = filter_var($delayInput === false ? '5000' : $delayInput, FILTER_VALIDATE_INT);
@@ -55,6 +47,22 @@ if (getenv('TYPE_ROLLOUT_DATA_PARENT') !== false) {
 $directory = $dataParent . '/rollout-check-' . $driver . '-' . bin2hex(random_bytes(6));
 mkdir($directory, 0700, true);
 $environment['TYPE_ROLLOUT_DATA_DIRECTORY'] = $directory;
+if (!$native) {
+    // PHP 辅助路径也使用生成模型；原生路径由完整构建配置收集相同生产模型。
+    $models = (new Type\Build\ModelCompiler())->compile([$root . '/examples/outbox/Models.php']);
+    file_put_contents($directory . '/models.php', $models['code']);
+}
+foreach (['old', 'new'] as $version) {
+    $loader = 'require ' . var_export($root . '/vendor/autoload.php', true) . ';';
+    if (!$native) {
+        $loader .= 'require ' . var_export($directory . '/models.php', true) . ';';
+    }
+    foreach ($sourceFiles as $file) {
+        $loader .= 'require ' . var_export($root . '/' . $file, true) . ';';
+    }
+    $loader .= 'require ' . var_export($root . '/examples/rollout-' . $version . '-command.php', true) . ';main($argc,$argv);';
+    $commands[$version] = $externalCommands[$version] ?? ($native ? nativeCommand($root . '/build/rollout-' . $version . '/type-app') : [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', $loader]);
+}
 $admin = null;
 $createdDatabase = false;
 $database = 'type_rollout_' . bin2hex(random_bytes(6));
@@ -232,7 +240,10 @@ try {
     expect($oldStopped->signal !== 9 && str_contains($oldStopped->stdout, '"ready":false'), '旧消费者没有先撤销就绪再排空');
     $stats = json_decode(rolloutCall($new, ['stats'], $environment)->stdout, true, 512, JSON_THROW_ON_ERROR);
     $consumerSwitchMilliseconds = (int) ((microtime(true) - $relayStarted) * 1000);
-    expect($stats['queue']['delayed'] === 1, '旧延迟消息没有保留到消费者切换');
+    expect($stats['queue']['delayed'] === 1, '旧延迟消息没有保留到消费者切换：' . json_encode([
+        'delay-ms' => $delayMilliseconds, 'relay-start-to-consumer-switch-ms' => $consumerSwitchMilliseconds,
+        'queue' => $stats['queue'], 'effect-ids' => array_column($stats['effects'], 'id'),
+    ], JSON_THROW_ON_ERROR));
     [$newHttp, $newClient] = rolloutHttp($new, $environment);
     $children[] = $newHttp;
     expect(!$newClient->request('GET', '/user')->json()['cache_hit'], '新格式错误接受旧缓存');

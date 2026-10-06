@@ -122,9 +122,11 @@ final class Scenario
                 $before = $cache->remember($key, static fn (): array => Reader::article($articleId));
                 self::check($cache->get($key)->hit() && $before['views'] === 0 && $before['author']['credit'] === '12345678901234567890.12'
                     && !array_key_exists('secret', $before['author']) && count($before['tags']) === 1, '关系 DTO、精确值或受控缓存没有贯通');
+                // 发布阶段不持有业务查询租约；后续数据库操作按需重新领取。
+                $connection->close();
                 $queueConnection = $redis->connection($scope, 'queue', Purpose::SCRIPT);
                 $queue = new Queue($queueConnection, $application, 'integration');
-                $relay = new Relay($manager, $outbox, new QueuePublisher($queue));
+                $relay = new Relay($manager, $outbox, new QueuePublisher($queue, $manager));
                 self::check($relay->runOnce() === 1, 'Outbox 没有投递文章任务');
                 $registry = new Registry();
                 $registry->register('article.published', 1, static fn (JobContext $context): ArticleJob => new ArticleJob($outbox, $redis, $application));
@@ -133,13 +135,16 @@ final class Scenario
                 self::check($worker->runOnce(), '文章任务没有执行');
                 $updated = $cache->remember($key, static fn (): array => Reader::article($articleId));
                 self::check($updated['views'] === 1, '消费模型效果后仍返回旧缓存');
+                $connection = Db::connection('default', true);
                 $outbox->replay($connection, 'integration-published', '验证同一文章消息重复投递的幂等效果');
+                $connection->close();
                 self::check($relay->runOnce() === 1 && $worker->runOnce() && Article::query()->find($articleId)->getViews() === 1, '重复消息产生了第二次模型效果');
                 $scheduler = new Scheduler(new SystemClock(), new RedisStateStore($queueConnection, $application, 'articles'), [
                     new Definition('article.audit', new CronSchedule('* * * * *'), static fn (TaskContext $context): QueueDispatchTask => new QueueDispatchTask($queue, 'article.audit', 1, ['article_id' => $articleId])),
                 ]);
                 self::check(count($scheduler->tick()) === 1 && $scheduler->tick() === [] && $worker->runOnce(), '调度到队列再到模型的路径不完整或重复');
                 $audited = $cache->remember($key, static fn (): array => Reader::article($articleId));
+                $connection = Db::connection('default', true);
                 self::check($audited['status'] === 'audited' && (int) $connection->table('integration_audits')->aggregate('COUNT') === 1, '审查状态或任务幂等记录不正确');
                 $psr = new SimpleCache(new NamespaceStore($redis->connection($scope, 'cache', Purpose::SCRIPT), $application, 'integration', 'psr'), new SignedSerializer((string) getenv('TYPE_INTEGRATION_HMAC'), [\stdClass::class]), 30);
                 $object = new \stdClass();
