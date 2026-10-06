@@ -10,7 +10,7 @@ use RuntimeException;
 final class SwooleWindowsSource
 {
     /**
-     * 补齐上游构建、IOCP 外部句柄关联、名称限定、TLS 正常 EOF、地址初始化和独占绑定。
+     * 补齐上游构建、IOCP 句柄、TLS 正常 EOF、地址绑定及 ZTS 环境变量编码。
      * 上游修复对应缺口且 Windows 原生回归通过后撤除。
      *
      * @return array<string,array{before:string,after:string}>
@@ -21,6 +21,7 @@ final class SwooleWindowsSource
         $hashes = [
             'config.w32' => 'a8c2ead0b6d0bee99011b57a18f25503dcf7f714be636f75e1886b077099619f',
             'ext-src/swoole_curl.cc' => '78b8c7581a36371266c8aefb200403851261520aead58e9ca8dc628a6637d840',
+            'ext-src/swoole_runtime.cc' => '7cea7579b9790b0b680e1baef9460e73238fc4432fc5137a9c090cb978d25331',
             'include/swoole_iocp.h' => '5c7a094064a71b43c6698dff60a6d9054c79bfe271fd429928b5e4b6fb3f6f41',
             'src/coroutine/iocp.cc' => 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990',
             'src/coroutine/iocp_socket.cc' => 'f38615b8c967e70429ba29ff317c98f62126f709e73fd575c5e0c6cae22114bf',
@@ -50,6 +51,35 @@ final class SwooleWindowsSource
         foreach ($replacements as $before => $after) {
             $sources['config.w32'] = $this->replace($sources['config.w32'], $before, $after);
         }
+        // Windows C putenv 按 ANSI 解释字节，而 PHP ZTS 的 getenv 从宽字符环境读取。
+        // 复用 PHP 的当前代码页转换与宽字符写入，保留 Swoole 的环境锁及进程级持有；
+        // 不恢复会在请求结束时还原环境的 PHP 处理器，也不更新 ZTS 不使用的 CRT 环境。
+        $sources['ext-src/swoole_runtime.cc'] = $this->replace(
+            $sources['ext-src/swoole_runtime.cc'],
+            '#include "swoole_util.h"',
+            "#include \"swoole_util.h\"\n#ifdef PHP_WIN32\n#include \"win32/codepage.h\"\n#endif"
+        );
+        $sources['ext-src/swoole_runtime.cc'] = $this->replace(
+            $sources['ext-src/swoole_runtime.cc'],
+            "#ifdef HAVE_UNSETENV\n    if (!p) { /* no '=' means we want to unset it */",
+            <<<'CPP'
+#ifdef PHP_WIN32
+    wchar_t *wide_key = php_win32_cp_any_to_w(key.c_str());
+    wchar_t *wide_value = p ? php_win32_cp_any_to_w(p + 1) : nullptr;
+    if (!wide_key || (p && !wide_value)) {
+        free(wide_key);
+        free(wide_value);
+        tsrm_env_unlock();
+        RETURN_FALSE;
+    }
+    result = SetEnvironmentVariableW(wide_key, wide_value) != 0;
+    free(wide_key);
+    free(wide_value);
+    if (result) {
+#elif defined(HAVE_UNSETENV)
+    if (!p) { /* no '=' means we want to unset it */
+CPP
+        );
         // PHP 的内置模块清单是 C 翻译单元；MSVC 会修饰未声明 C 链接的 C++ 全局变量。
         $sources['php_swoole.h'] = $this->replace(
             $sources['php_swoole.h'],

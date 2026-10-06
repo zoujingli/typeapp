@@ -122,6 +122,12 @@ jobs:
           foreach ($name in @('swoole-source.json', 'windows-source.json', 'verification.json')) {
             Copy-Item -LiteralPath (Join-Path $evidence[0].FullName $name) -Destination (Join-Path $output ('sdk-' + $name))
           }
+      - name: 验证中文环境继承与工作线程重建
+        timeout-minutes: 2
+        run: |
+          $output = Join-Path $env:GITHUB_WORKSPACE 'build/bundled-swoole-candidate/output/environment.json'
+          & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-process.php --environment-only prepared-ini '[]' | Set-Content -LiteralPath $output -Encoding utf8NoBOM
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 验证 c-ares 指定 DNS 与线程重建
         run: |
           & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress

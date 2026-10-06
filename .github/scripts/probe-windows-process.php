@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 // -n 对照必须先分派，避免 Composer 及额外扩展影响单变量实验。
-if (in_array($argv[1] ?? '', ['--environment-only', '--environment-child'], true)) {
+$environmentWorker = class_exists('Swoole\\Thread', false) ? Swoole\Thread::getArguments() : null;
+if (in_array($argv[1] ?? '', ['--environment-only', '--environment-child'], true)
+    || (is_array($environmentWorker) && ($environmentWorker[0] ?? '') === 'typeapp-environment-probe')) {
     ini_set('zend.exception_ignore_args', '1');
     /**
      * 仅诊断 TYPE_APP_NAME；不加载框架，不打印完整进程环境。
@@ -95,6 +97,13 @@ if (in_array($argv[1] ?? '', ['--environment-only', '--environment-child'], true
         ];
     }
 
+    if (is_array($environmentWorker) && ($environmentWorker[0] ?? '') === 'typeapp-environment-probe') {
+        [, $expected, $replacement] = $environmentWorker;
+        $before = getenv('TYPE_APP_NAME');
+        $written = putenv('TYPE_APP_NAME=' . $replacement);
+        exit($before === $expected && $written && getenv('TYPE_APP_NAME') === $replacement ? 0 : 1);
+    }
+
     $mode = $argv[1] === '--environment-child' ? 'child' : 'parent';
     $input = '运行配置';
     $expectedHex = 'e8bf90e8a18ce9858de7bdae';
@@ -167,6 +176,19 @@ if (in_array($argv[1] ?? '', ['--environment-only', '--environment-child'], true
             $report['wide-child'] = ['exit' => $status, 'utf8-hex' => $stdout, 'stderr-hex' => bin2hex($stderr)];
             $report['after-wide-child'] = environmentProbeSample();
         }
+        // 工作线程退出后进程环境仍须有效；第二轮重建必须读到第一轮的写入。
+        $report['threads'] = [];
+        if ($report['metadata']['swoole-thread-class']) {
+            $threadPrevious = $input;
+            foreach (['线程配置一', '线程配置二'] as $threadValue) {
+                $thread = new Swoole\Thread(__FILE__, 'typeapp-environment-probe', $threadPrevious, $threadValue);
+                $thread->join();
+                $report['threads'][] = ['exit' => $thread->getExitStatus(), 'expected-hex' => bin2hex($threadValue),
+                    'after-exit' => environmentProbeSample(), 'active' => Swoole\Thread::activeCount()];
+                $threadPrevious = $threadValue;
+                unset($thread);
+            }
+        }
         $report['zero-return'] = putenv('TYPE_APP_NAME=0');
         $report['after-zero'] = environmentProbeSample();
         $report['delete-return'] = putenv('TYPE_APP_NAME');
@@ -198,6 +220,10 @@ if (in_array($argv[1] ?? '', ['--environment-only', '--environment-child'], true
         && $report['after-delete']['normal-hex'] === null;
     if (isset($report['wide-child'])) {
         $report['passed'] = $report['passed'] && $report['wide-child']['exit'] === 0 && $report['wide-child']['utf8-hex'] === $expectedHex;
+    }
+    foreach ($report['threads'] as $threadReport) {
+        $report['passed'] = $report['passed'] && $threadReport['exit'] === 0 && $threadReport['active'] === 1
+            && $threadReport['after-exit']['normal-hex'] === $threadReport['expected-hex'];
     }
     echo json_encode($report, JSON_THROW_ON_ERROR), "\n";
     exit($report['passed'] ? 0 : 1);

@@ -21,7 +21,7 @@
     "SwooleThreadSource": "19aa756186d688201a441cf430857db9d841a53f4a85730bd39f8905c4517a79",
     "SwooleHttpSource": "458d6cd1b8dadc3b0ed88b6ec6b51ac68dc7d1d5c2ae7002f0c00efac8bb9725",
     "SwooleSocketSource": "43bcc11f06b0ef0e344d69e0e44ca3b1c2be46150bbea128daf492c819df0d60",
-    "SwooleWindowsSource": "c613d035fc5f4eedeeb8b755be5510f71ce1faabfb5e6024004e4bfdfcf70c48"
+    "SwooleWindowsSource": "13026fb3ffb9b30728ffc59db1ce7116237ad34196c766fe89a7af584a1cf07f"
   },
   "adapted-sources": {
     "SwooleThreadSource": {
