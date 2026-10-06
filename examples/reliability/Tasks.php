@@ -31,6 +31,10 @@ final class DurableJob implements Job
      */
     public function handle(JobContext $context, array $payload): void
     {
+        if ($this->mode === 'recover-stop-paused' && $context->message()->id() === 'stop-one' && $context->reservation()->attempt() === 1) {
+            // 首次领取后暂停超过300ms租期，下一执行者必须重领同一消息而非继续使用旧token。
+            usleep(400000);
+        }
         $context->reservation()->effect("return redis.call('SET',KEYS[1],'yes')", [$this->key . ':started']);
         $duration = $this->mode === 'grace' ? 0.15 : ($this->mode === 'slow' ? 2.0 : ($this->mode === 'uncooperative' ? 5.0 : 0.0));
         $until = microtime(true) + $duration;
@@ -46,6 +50,10 @@ final class DurableJob implements Job
 if redis.call('HSETNX',KEYS[1],ARGV[1],'done')==1 then redis.call('INCR',KEYS[2]) end
 return 1
 LUA, [$this->key . ':done', $this->key . ':count'], [$context->message()->id()]);
+        if ($this->mode === 'recover-stop-unavailable' && $context->message()->id() === 'stop-one') {
+            // 效果已发生但每次确认前都失租，耗尽次数后只能隔离，不能被恢复入口报成完成。
+            usleep(400000);
+        }
     }
 }
 

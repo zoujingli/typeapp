@@ -8,6 +8,7 @@ use Type\Log\Output;
 use Type\Queue\JobContext;
 use Type\Queue\Message;
 use Type\Queue\Queue;
+use Type\Queue\QueueException;
 use Type\Queue\Registry;
 use Type\Queue\RetryPolicy;
 use Type\Queue\Worker;
@@ -52,6 +53,47 @@ function reliabilityPort(string $name): int
         throw new InvalidArgumentException($name . '必须是有效端口');
     }
     return (int) $value;
+}
+
+/**
+ * 在演练的五秒预算内接任已收尾的失租执行者，仍由公开租约协议决定何时重领。
+ *
+ * @return array{completed: int, lease_losses: int, message_age_ms: int} 已确认投递数、失租次数及所处理消息的最大年龄。
+ * @throws QueueException 非失租错误不重试；未知写入结果不能当作租约到期。
+ * @throws RuntimeException 旧执行者未收尾、仍有隔离消息或恢复超出预算。
+ */
+function reliabilityRecover(Queue $queue, Registry $registry, Worker $worker): array
+{
+    $completed = 0;
+    $leaseLosses = 0;
+    $messageAge = 0;
+    $until = microtime(true) + 5.0;
+    do {
+        try {
+            $previousCompleted = $worker->statistics()['completed'];
+            if ($worker->runOnce()) {
+                $workerState = $worker->statistics();
+                $completed += $workerState['completed'] - $previousCompleted;
+                $messageAge = max($messageAge, $workerState['message_age_ms']);
+            }
+        } catch (QueueException $error) {
+            if ($error->errorCode() !== 'lease_lost') {
+                throw $error;
+            }
+            $workerState = $worker->statistics();
+            reliabilityExpect(!$worker->ready() && $workerState['in_flight'] === 0, '失租执行者尚未停止或收尾，不能接任');
+            $leaseLosses++;
+            $worker = new Worker($queue, $registry, 'recover-' . getmypid() . '-' . $leaseLosses, new RetryPolicy(5, 10, 10, 3000));
+        }
+        $queueState = $queue->statistics();
+        if ($queueState['backlog'] === 0) {
+            reliabilityExpect($queueState['quarantined'] === 0, '任务恢复后仍有隔离消息');
+            reliabilityExpect(microtime(true) <= $until, '任务恢复超过五秒预算');
+            return ['completed' => $completed, 'lease_losses' => $leaseLosses, 'message_age_ms' => $messageAge];
+        }
+        usleep(10000);
+    } while (microtime(true) < $until);
+    throw new RuntimeException('任务恢复超过五秒预算，仍有未完成消息');
 }
 
 /** 同一编译入口的本地调度场景，不为停止验收建立无关的外部连接。 */
@@ -155,18 +197,10 @@ function taskReliabilityScenario(int $argc, array $argv): void
                 'Redis 重启丢失了消息、租约或延迟状态'
             );
             reliabilityExpect($queue->statistics()['oldest_stream_age_ms'] > 0 && $queue->statistics()['backlog'] === 3, '重启后积压或消息年龄缺失');
-            // 原生重启可能早于300ms租约到期；轮询公开worker入口，不能提前窃取仍有效的租约。
-            $recovered = 0;
-            $until = microtime(true) + 5.0;
-            do {
-                $recovered += $worker->run(10);
-                if ($queue->statistics()['backlog'] === 0) {
-                    break;
-                }
-                usleep(10000);
-            } while (microtime(true) < $until);
-            reliabilityExpect($recovered === 3 && $ordinary->command('GET', [$application . ':count']) === '3', '重启后不能恢复并完成原消息');
-            reliabilityExpect($worker->statistics()['message_age_ms'] > 0 && $queue->statistics()['backlog'] === 0, '执行年龄或积压指标错误');
+            // 重启早于租约到期或新执行者再次失租时，均遵守相同的有界接任协议。
+            $recovered = reliabilityRecover($queue, $registry, $worker);
+            reliabilityExpect($recovered['completed'] === 3 && $ordinary->command('GET', [$application . ':count']) === '3', '重启后不能恢复并完成原消息');
+            reliabilityExpect($recovered['message_age_ms'] > 0 && $queue->statistics()['backlog'] === 0, '执行年龄或积压指标错误');
             $previous = $scheduler->history();
             reliabilityExpect(count($previous) === 2, '调度执行历史没有持久化');
             $nextOccurrences = $scheduler->tick();
@@ -276,10 +310,14 @@ function taskReliabilityScenario(int $argc, array $argv): void
             $queue->publish(new Message('stop-two', 'durable', 1, []));
             return;
         }
-        if ($mode === 'recover-stop') {
-            usleep(400000);
-            $worker->run(10);
+        if (in_array($mode, ['recover-stop', 'recover-stop-paused', 'recover-stop-unavailable'], true)) {
+            $recovered = reliabilityRecover($queue, $registry, $worker);
             reliabilityExpect($queue->statistics()['backlog'] === 0 && $ordinary->command('GET', [$application . ':count']) === '2', '停止后恢复丢失或重复业务效果');
+            if ($mode === 'recover-stop-paused') {
+                reliabilityExpect($recovered['completed'] === 2 && $recovered['lease_losses'] >= 1, '暂停演练没有覆盖失租接任或投递完成次数不符');
+                echo json_encode($recovered, JSON_THROW_ON_ERROR) . PHP_EOL;
+                return;
+            }
             echo "停止后的未确认与重试任务恢复通过。\n";
             return;
         }

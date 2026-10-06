@@ -131,6 +131,20 @@ if (in_array('--scheduler-stop-only', $argv, true)) {
             }
             echo successful([...$command, 'recover-stop']);
         }
+        $application = 'type-recovery-paused-' . bin2hex(random_bytes(5));
+        putenv('TYPE_RELIABILITY_APP=' . $application);
+        successful([...$command, 'prepare-stop']);
+        $recovery = json_decode(successful([...$command, 'recover-stop-paused']), true, 512, JSON_THROW_ON_ERROR);
+        expect($recovery['completed'] === 2 && $recovery['lease_losses'] >= 1, '领取后暂停没有验证真实失租和有界接任');
+        expect($admin->get($application . ':count') === '2', '失租接任重复或丢失业务效果');
+        echo "领取后暂停恢复通过：旧执行者失租停止，新执行者重领后各完成一次效果。\n";
+        $application = 'type-recovery-unavailable-' . bin2hex(random_bytes(5));
+        putenv('TYPE_RELIABILITY_APP=' . $application);
+        successful([...$command, 'prepare-stop']);
+        [$status, $stdout, $stderr] = execute([...$command, 'recover-stop-unavailable']);
+        expect($status !== 0 && str_contains($stdout . $stderr, '任务恢复后仍有隔离消息'), '持续失租后将隔离或未确认消息报成恢复完成');
+        expect($admin->get($application . ':count') === '2', '持续失租演练没有覆盖已发生的幂等效果');
+        echo "持续失租拒绝通过：效果已发生仍须完成确认，耗尽后隔离不能报成成功。\n";
         $file = sys_get_temp_dir() . '/type-stop-scheduler-' . bin2hex(random_bytes(6)) . '.json';
         $clock = new /** 为任务排空测试固定调度时刻，避免等待真实分钟边界。 */ class () implements ClockInterface {
             /** 返回 Unix 第 600 秒的不可变时间，确定触发本轮调度任务。 */
