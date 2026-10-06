@@ -2,6 +2,36 @@
   'use strict';
 
   const siteTitle = 'TypeApp - PHP 原生应用框架 - 物联开源分享';
+  // 通道身份由导出器生成；直接预览源码时只显示未导出状态，不冒充发布版。
+  const channel = window.TYPEAPP_DOCS;
+  const channelBar = document.querySelector('.docs-channel');
+  const fallback = new URL(window.location.href).searchParams.get('docs-fallback') === '1';
+
+  /** 保留目标通道已有章节；缺页时明确回到首页，不生成指向不存在页面的路由。 */
+  function syncChannel() {
+    if (!channelBar) return;
+    channelBar.hidden = false;
+    channelBar.querySelector('.docs-channel-label').textContent = channel ? channel.label : '本地源码';
+    channelBar.querySelector('.docs-channel-version').textContent = channel ? channel.version : '请先导出';
+    const switcher = channelBar.querySelector('.docs-channel-switch');
+    switcher.hidden = !channel;
+    if (!channel) return;
+    const target = new URL(channel.peerBase, window.location.href.split('#')[0].split('?')[0]);
+    const hash = window.location.hash || '#/';
+    const path = hash.slice(1).split('?')[0].replace(/\.md$/, '') || '/';
+    const exists = channel.peerPages.indexOf(path === '/README' ? '/' : path) !== -1;
+    target.hash = exists ? hash : '#/';
+    if (!exists) target.searchParams.set('docs-fallback', '1');
+    switcher.href = target.href;
+    switcher.textContent = channel.channel === 'release' ? '查看开发版 →' : '查看发布版 →';
+    switcher.title = exists ? '保留当前章节切换文档通道' : '目标通道没有本页，切换后返回首页';
+    const notice = channelBar.querySelector('.docs-channel-notice');
+    const showFallback = fallback && path === '/';
+    notice.hidden = !showFallback;
+    notice.textContent = showFallback ? '目标通道暂无原章节，已返回首页。' : '';
+  }
+  syncChannel();
+  window.addEventListener('hashchange', syncChannel);
 
   /** 挂载首页演示并返回释放函数；动画只演示编译步骤，不执行示例或构建命令。 */
   function mountCodePreview() {
@@ -123,8 +153,8 @@
       noData: '没有找到结果，请换一个关键词。',
       depth: 3,
       maxAge: 3600000,
-      // 集中更新文档时递增版本，避免读者继续使用旧章节索引。
-      namespace: 'typeapp-guide-v39-' + window.location.pathname,
+      // 索引按通道、完整内容摘要和部署子路径隔离；更新任意公开输入即失效。
+      namespace: 'typeapp-docs-' + (channel ? channel.channel + '-' + channel.contentIdentity : 'unexported') + '-' + window.location.pathname,
     },
     plugins: [function (hook) {
       let disposePreview = function () {};
@@ -311,6 +341,8 @@
         const content = document.querySelector('.content');
         const footer = document.querySelector('.site-footer');
         if (content && footer) content.appendChild(footer);
+        if (content && channelBar && content.firstElementChild !== channelBar) content.prepend(channelBar);
+        syncChannel();
 
         const sidebar = document.querySelector('.sidebar');
         const brand = document.querySelector('.app-name');

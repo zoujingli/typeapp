@@ -82,25 +82,43 @@ if ! cmp -s -- "$installed" "$archived"; then
     fail '已安装的文档发布 runner 与当前提交中的 tools/deploy-docs-site.sh 不一致，请先更新已安装 runner 后再同步'
 fi
 [[ -z $(find "$work/source/docs" -type l -print -quit) ]] || fail '文档源包含符号链接'
-output=$(bash "$work/source/docs/build-site.sh")
+# 固定产品 tag 单独获取，不用 --force 移动已有标签。文档修正提交可独立于当前分支。
+release_version='' documentation_commit=''
+while IFS='=' read -r key value; do
+    case "$key" in version) release_version=$value ;; documentation) documentation_commit=$value ;; esac
+done < "$work/source/docs/site-release"
+[[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ && "$documentation_commit" =~ ^[0-9a-f]{40}$ ]] || fail '发布文档来源无效'
+git -C "$repo" fetch --no-tags origin "refs/tags/v$release_version:refs/tags/v$release_version"
+if ! git -C "$repo" cat-file -e "$documentation_commit^{commit}" 2>/dev/null; then
+    git -C "$repo" fetch --no-tags origin "$documentation_commit"
+fi
+output=$(bash "$work/source/docs/build-site.sh" --repository "$repo" --source "$commit")
 [[ "$output" == "$work/source/build/docs-site."* && -d "$output" && ! -L "$output" ]] || fail '导出目录无效'
 [[ $(realpath -e -- "$output") == "$output" ]] || fail '导出目录包含间接路径'
 
 # 独立检查发布边界，防止导出脚本将来变更时意外发布研发资料或可执行文件。
-for required in index.html README.md _sidebar.md _navbar.md _404.md .nojekyll assets guide LICENSE NOTICE; do
-    [[ -e "$output/$required" ]] || fail "缺少站点文件：$required"
+[[ -d "$output/next" && -s "$output/site-manifest.json" ]] || fail '缺少开发通道或站点身份'
+for channel in "$output" "$output/next"; do
+    for required in index.html README.md _sidebar.md _navbar.md _404.md .nojekyll assets guide LICENSE NOTICE channel.js; do
+        [[ -e "$channel/$required" ]] || fail "缺少站点文件：$required"
+    done
+    for required in index.html README.md _sidebar.md _navbar.md _404.md channel.js LICENSE NOTICE; do
+        [[ -s "$channel/$required" ]] || fail "站点文件为空：$required"
+    done
+    [[ -d "$channel/assets" && -d "$channel/guide" ]] || fail '资源和指南必须是目录'
 done
-for required in index.html README.md _sidebar.md _navbar.md _404.md; do
-    [[ -s "$output/$required" ]] || fail "站点文件为空：$required"
-done
-[[ -d "$output/assets" && -d "$output/guide" ]] || fail '资源和指南必须是目录'
+manifest=$(cat "$output/site-manifest.json")
+[[ "$manifest" == *"\"sourceCommit\":\"$commit\",\"sourceState\":\"commit\""* ]] || fail '站点源码身份不匹配'
 while IFS= read -r -d '' entry; do
     relative=${entry#"$output/"}
     [[ ! -L "$entry" && ( -f "$entry" || -d "$entry" ) ]] || fail "拒绝非普通文件：$relative"
+    if [[ "$relative" == next ]]; then [[ -d "$entry" ]] || fail '开发通道必须是目录'; continue; fi
+    if [[ "$relative" == site-manifest.json ]]; then [[ -f "$entry" ]] || fail '站点身份必须是文件'; continue; fi
+    relative=${relative#next/}
     case "$relative" in
-        index.html|README.md|_sidebar.md|_navbar.md|_404.md|.nojekyll|LICENSE|NOTICE) [[ -f "$entry" ]] || fail "必须是文件：$relative" ;;
+        index.html|README.md|_sidebar.md|_navbar.md|_404.md|.nojekyll|LICENSE|NOTICE|channel.js) [[ -f "$entry" ]] || fail "必须是文件：$relative" ;;
         assets|guide|assets/*|guide/*)
-            [[ "$relative" != */.* ]] || fail "拒绝隐藏内容：$relative"
+            [[ "$relative" != */.* && "$relative" =~ ^[a-zA-Z0-9_./-]+$ ]] || fail "拒绝隐藏或无效路径：$relative"
             if [[ -f "$entry" ]]; then
                 case "$relative" in
                     *.md|*.js|*.css|*.svg|*.png|*.jpg|*.jpeg|*.webp|*.ico|*.woff|*.woff2|*.txt|*/LICENSE|*/LICENSE.*|*/NOTICE) ;;

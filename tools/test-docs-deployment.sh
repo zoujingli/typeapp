@@ -11,7 +11,19 @@ for dependency in git flock timeout realpath tar find sort cmp; do
 done
 mkdir -p "$project_root/build"
 test_root=$(mktemp -d "$project_root/build/docs-deployment.XXXXXXXX")
-trap 'result=$?; printf "隔离验证目录：%s（退出码 %s）\n" "$test_root" "$result"' EXIT
+cleanup() {
+    result=$?
+    if [[ -f "$test_root/public site/current/site-manifest.json" ]]; then
+        cp "$test_root/public site/current/site-manifest.json" "$test_root/site-manifest.json"
+    fi
+    if [[ -f "$test_root/source repo/docs/site-release" ]]; then
+        cp "$test_root/source repo/docs/site-release" "$test_root/source-descriptor"
+    fi
+    printf '{"exit":%s,"scope":"isolated-docs-deployment","temporaryResourcesRemoved":true}\n' "$result" > "$test_root/verification.json"
+    rm -rf -- "$test_root/origin.git" "$test_root/source repo" "$test_root/private checkout" "$test_root/public site" "$test_root/root-only"
+    printf '隔离验证证据：%s（退出码 %s；测试仓库和发布目录已清理）\n' "$test_root" "$result"
+}
+trap cleanup EXIT
 # 本轮隔离目录在项目 build/ 下；容器 bind mount 时宿主 UID 可能与容器用户不一致。
 # 只用本轮临时 gitconfig，不改用户全局配置。
 printf '[safe]\n\tdirectory = *\n' > "$test_root/gitconfig"
@@ -30,10 +42,20 @@ cp -R "$project_root/docs/." "$source_repo/docs/"
 cp "$project_root/LICENSE" "$source_repo/LICENSE"
 cp "$project_root/NOTICE" "$source_repo/NOTICE"
 cp "$runner" "$source_repo/tools/deploy-docs-site.sh"
+printf '\n## 通道发布验收哨兵\n\n只存在于固定发布文档。\n' >> "$source_repo/docs/README.md"
 git -C "$source_repo" add docs LICENSE NOTICE tools/deploy-docs-site.sh
 git -C "$source_repo" commit -qm 'fixture'
+product_commit=$(git -C "$source_repo" rev-parse HEAD)
+git -C "$source_repo" tag v0.0.1-rc.1
+printf 'version=0.0.1-rc.1\nproduct=%s\ndocumentation=%s\nbatch=0.0.1-rc.1\n' "$product_commit" "$product_commit" > "$source_repo/docs/site-release"
+sed 's/通道发布验收哨兵/通道开发验收哨兵/' "$source_repo/docs/README.md" > "$test_root/next-readme.md"
+mv "$test_root/next-readme.md" "$source_repo/docs/README.md"
+printf '# 开发通道专属页\n\n本页用于真实切换回退验收。\n' > "$source_repo/docs/guide/channel-fixture.md"
+git -C "$source_repo" add docs
+git -C "$source_repo" commit -qm 'development-channel'
 git -C "$source_repo" remote add origin "$origin"
 git -C "$source_repo" push -qu origin main
+git -C "$source_repo" push -q origin v0.0.1-rc.1
 git clone -q --branch main "$origin" "$checkout"
 deploy() { bash "$runner" --repo "$checkout" --publish-root "$publish" --branch main; }
 commit() { git -C "$source_repo" add docs; git -C "$source_repo" commit -qm "$1"; git -C "$source_repo" push -q origin main; }
@@ -44,6 +66,10 @@ expect_failure() {
 deploy >"$test_root/first.log" 2>&1
 [[ -s "$publish/current/index.html" && -s "$publish/current/README.md" ]]
 [[ -s "$publish/current/LICENSE" && -s "$publish/current/NOTICE" ]]
+[[ -s "$publish/current/next/index.html" && -s "$publish/current/site-manifest.json" ]]
+grep -q 通道发布验收哨兵 "$publish/current/README.md"
+grep -q 通道开发验收哨兵 "$publish/current/next/README.md"
+[[ ! -e "$publish/current/guide/channel-fixture.md" && -f "$publish/current/next/guide/channel-fixture.md" ]]
 [[ ! -e "$publish/current/site-maintenance.md" && ! -e "$publish/current/.git" && ! -e "$publish/current/adr" ]]
 previous=$(readlink "$publish/current")
 deploy >"$test_root/unchanged.log" 2>&1
@@ -61,7 +87,8 @@ grep -q '请先更新已安装 runner' "$test_root/stale-runner.log"
 [[ $(readlink "$publish/current") == "$previous" ]]
 deploy >"$test_root/update.log" 2>&1
 [[ $(readlink "$publish/current") != "$previous" ]]
-grep -q '部署隔离测试更新' "$publish/current/README.md"
+grep -q '部署隔离测试更新' "$publish/current/next/README.md"
+if grep -q '部署隔离测试更新' "$publish/current/README.md"; then exit 1; fi
 previous=$(readlink "$publish/current")
 git -C "$checkout" remote set-url origin "$test_root/missing.git"
 expect_failure fetch-failure
@@ -75,10 +102,32 @@ ln -s ../site-maintenance.md "$source_repo/docs/guide/private.md"
 commit symlink
 expect_failure source-symlink
 git -C "$source_repo" rm -q docs/guide/private.md
+printf 'private-fixture\n' > "$source_repo/docs/assets/.env"
+commit hidden-secret
+expect_failure hidden-secret
+git -C "$source_repo" rm -q docs/assets/.env
+printf 'private-fixture\n' > "$source_repo/docs/assets/private.pem"
+commit private-key
+expect_failure private-key
+git -C "$source_repo" rm -q docs/assets/private.pem
 printf '\nprintf "private" > "$site_output/internal.md"\n' >> "$source_repo/docs/build-site.sh"
 commit unlisted-output
 expect_failure unlisted-output
 cp "$test_root/build-site.sh" "$source_repo/docs/build-site.sh"
+# 指向新接口说明的“发布文档修正”必须拒绝，原 current 保留。
+cp "$source_repo/docs/site-release" "$test_root/site-release"
+printf '\n```php\nNewProductInterface::execute();\n```\n' >> "$source_repo/docs/guide/channel-fixture.md"
+commit unsupported-release-interface
+bad_documentation=$(git -C "$source_repo" rev-parse HEAD)
+printf 'version=0.0.1-rc.1\nproduct=%s\ndocumentation=%s\nbatch=0.0.1-rc.1\n' "$product_commit" "$bad_documentation" > "$source_repo/docs/site-release"
+commit changed-release-source
+expect_failure changed-release-interface
+cp "$test_root/site-release" "$source_repo/docs/site-release"
+# 内容合法但 tag 身份不匹配同样拒绝，不移动既有 tag。
+sed "s/product=$product_commit/product=$bad_documentation/" "$test_root/site-release" > "$source_repo/docs/site-release"
+commit wrong-product
+expect_failure wrong-product
+cp "$test_root/site-release" "$source_repo/docs/site-release"
 printf '\n部署后续更新\n' >> "$source_repo/docs/README.md"
 commit recovery
 (
@@ -121,4 +170,4 @@ if [[ $(id -u) == 0 ]] && command -v runuser >/dev/null && id nobody >/dev/null 
     [[ ! -e "$publish/$certificate_release" ]]
     [[ $(find "$publish/releases" -mindepth 1 -maxdepth 1 -type d | wc -l) -eq 3 ]]
 fi
-printf 'PASS 首次发布、更新、无变化、拉取失败、导出失败、符号链接、发布白名单、过期 runner、并发跳过、恢复、三个版本保留、降权工作目录与证书副本回收\n'
+printf 'PASS 双通道身份、固定发布来源、开发更新、错误产品及新接口拒绝、秘密文件拒绝、首次发布、无变化、拉取失败、导出失败、符号链接、发布白名单、过期 runner、并发跳过、恢复、三个版本保留、降权工作目录与证书副本回收\n'
