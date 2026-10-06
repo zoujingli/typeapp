@@ -1,6 +1,6 @@
 # 统一开发入口与重载
 
-`php vendor/bin/type --help` 显示当前命令。开发工具、编译器选项和生产运行保持分开：这些命令不进入发布目录，生产使用原生产物的run/run.cmd，不回退执行PHP业务源码。
+`php vendor/bin/type --help` 显示当前命令。开发工具与编译器只用于开发和构建；生产直接执行选定平台及数据库 profile 的主程序，配合外置配置，不回退执行 PHP 业务源码。本文也记录用于构建回归的 shared embed 目录包，其启动器不属于公开单程序交付。
 
 ## 创建与准备
 
@@ -10,7 +10,7 @@ php vendor/bin/type create "$TYPE_PROJECT_TEMPLATE" "$TYPE_NEW_PROJECT" sqlite
 
 创建入口读取模板Composer中的协议1白名单，支持mysql/pgsql/sqlite，选择对应工厂与依赖，不执行模板的configure.php或其他PHP。不会复制vendor、build、缓存、秘密或未声明的主仓工具，不覆盖已有项目。远端模板获取/分发仍是独立授权步骤；当前命令不冒充远端下载器。
 
-进入创建好的项目后，按私有仓库访问授权执行Composer安装，然后：
+进入创建好的项目后，按所选公开版本安装并锁定 Composer 依赖，然后：
 
 ```sh
 php vendor/bin/type doctor type-app.json development
@@ -40,7 +40,7 @@ prepare使用共享DevelopmentBuilder生成不可变代次；主仓bin/typeapp-p
 }
 ```
 
-entry/test路径必须属于项目。dev只执行明确的开发入口，test只执行明确的测试入口；它们不是目录扫描或自动注册业务路由。标准应用的开发权限仍来自开发入口的显式参数，不能由HTTP参数打开生产调试。
+entry/test 路径必须属于项目。dev/test 在执行声明入口前，通过 `DevelopmentBuilder::loadConfiguration()` 核验并加载同一完整代次；自定义入口直接调用已加载的业务，不重复 require 原声明。直接执行 `php dev.php` 的启动器仍须自己调用该加载器，标准模板已经接入；同一进程加载同一代次保持幂等。启用 `application` 且省略 `development.entry` 时，dev 调用共同装配生成的唯一 main。路由继续来自显式声明，标准应用的开发权限来自入口参数，不能由 HTTP 输入打开生产调试。
 
 ## watch行为
 
@@ -57,7 +57,7 @@ entry/test路径必须属于项目。dev只执行明确的开发入口，test只
 
 ## 实际验收
 
-`tests/development-watch.php` 在macOS和本地Linux环境观察真实HTTP：源码版本与PID改变、保留mtime、非法源码保留旧进程、修复后重载、dotenv更新、错误不泄漏配置值、取消检查和子进程清理。`tests/project-create.php` 观察三库配置选择、白名单、不执行模板、秘密拒绝和禁止覆盖；创建出的SQLite项目另完成独立安装/业务消费。
+`tests/development-watch.php` 使用 type dev 已加载的声明观察真实 HTTP：源码版本与 PID 改变、保留 mtime、非法源码保留旧进程、修复后重载、dotenv 更新、错误不泄漏配置值、取消检查和子进程清理。各平台结果按对应源码与报告记录。`tests/project-create.php` 观察三库配置选择、白名单、不执行模板、秘密拒绝和禁止覆盖；创建出的 SQLite 项目另完成独立安装与业务消费。
 
 ## 空目录到原生发布的重复验收
 

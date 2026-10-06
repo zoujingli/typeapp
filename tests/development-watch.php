@@ -37,7 +37,8 @@ $configuration = ['name' => 'watch-test', 'entry' => 'src/main.php', 'sources' =
     'development' => ['entry' => 'dev.php', 'output' => 'build/development', 'check' => ['check'], 'watch' => ['metadata.json']]];
 file_put_contents($directory . '/metadata.json', '{}');
 file_put_contents($directory . '/type-app.json', json_encode($configuration, JSON_THROW_ON_ERROR));
-file_put_contents($directory . '/dev.php', '<?php require __DIR__."/vendor/autoload.php"; require __DIR__."/src/Business.php"; require __DIR__."/src/main.php"; main($argc,$argv);');
+// type dev 已核验并加载同一代次的声明，入口只负责调用，不能重复 require main。
+file_put_contents($directory . '/dev.php', '<?php main($argc,$argv);');
 $source = $directory . '/src/Business.php';
 $business = '<?php declare(strict_types=1); final class WatchBusiness { public static function value(): string { return "VERSION"; } }';
 file_put_contents($source, str_replace('VERSION', 'one', $business));

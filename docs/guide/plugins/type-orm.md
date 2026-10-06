@@ -74,14 +74,11 @@ final class User extends Model
 
 将该文件纳入应用 `sources`，然后 prepare/build。数据库应已有 `users` 表，并将 id 定义为该数据库真实的自动主键；模型声明不创建表。旧 `models` 构建键和模型 JSON 已移除，使用旧键会收到迁移错误。转换保留业务类名和方法，原文件及完整转换结果共同进入构建身份；不要为业务类另建生成基类。
 
-PHP 开发需要在加载业务入口前加载本次生成结果。在开发启动器已加载 Composer 后使用下列片段，生产 AOT 会自动纳入这些生成文件：
+PHP 开发通过完整代次加载模型及业务声明。标准模板与 `type dev` 已调用此入口；自定义开发启动器在业务执行前调用一次，随后直接调用已加载的业务入口，避免再次加载原模型文件。以下片段要求构建组件已经可加载；生产 AOT 自动纳入同一转换结果：
 
 ```php
-$generation = (new \Type\Build\DevelopmentBuilder())
-    ->prepareConfiguration(__DIR__ . '/type-app.json');
-foreach ($generation['files'] as $file) {
-    require $generation['directory'] . '/' . $file;
-}
+(new \Type\Build\DevelopmentBuilder())
+    ->loadConfiguration(__DIR__ . '/type-app.json');
 ```
 
 在入口已装配 `DatabaseManager` 并绑定当前执行作用域后，业务直接创建、查询并部分更新模型：

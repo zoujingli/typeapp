@@ -2,7 +2,7 @@
 
 [返回组件总览](../components.md)
 
-在开发和构建环境中生成配置、路由、模型、任务与操作包装，审计全部生产源码，调用锁定的 TypePHP 编译，并形成可校验的原生产物与运行包。
+在开发和构建环境中生成配置、路由、模型与任务装配，转换原 Service 的事务和缓存声明，审计全部生产源码，调用锁定的 TypePHP 编译，并形成可校验的原生产物与运行包。
 
 单程序构建使用经过校验的静态 SDK，将 PHP、PHPX、Swoole 与非系统库链接进同一个文件；配置独立维护，普通启动不释放运行库。组件保留的四平台 Swoole 共享模块用于开发及历史目录包回归。静态交付的实际平台范围见[构建与部署](../deployment.md#当前构建状态)，部署者无需安装本构建工具。
 
@@ -228,7 +228,7 @@ sequenceDiagram
 
 ### 接通 PHP 开发命令
 
-最小构建 JSON 只定义原生入口。要使用 `type dev`，先创建[组件示例的开发启动器](../components.md#运行声明式示例)，再将以下字段合入根 `type-app.json`：
+最小构建 JSON 只定义原生入口。当前开发通道的 `type dev` 会先核验并加载同一代次的生产声明；自定义 `dev.php` 只需调用已加载的 `main()`，不要再次 `require` 原业务文件。将以下字段合入根 `type-app.json`：
 
 ```json
 {
@@ -239,22 +239,31 @@ sequenceDiagram
 }
 ```
 
+沿用上文的无参数 main，在应用根保存 `dev.php`：
+
+```php
+<?php
+declare(strict_types=1);
+
+main();
+```
+
 这是补充字段，不是替换整个构建文件。在应用根运行 `php vendor/bin/type dev type-app.json`，最小示例应输出 `Type 应用已启动。`。命令后的参数原样交给开发启动器；带参数 main 要用 `main($argc, $argv)` 调用。
 
-使用生成声明时，由开发启动器先调用 `DevelopmentBuilder::prepareConfiguration()`，加载返回的准确代次文件，再加载业务入口，具体代码见[模型生成加载](type-orm.md#models-relations-output)。单独运行 prepare 只生成文件，不会自动为任意 dev.php 加载类。watch 自动 prepare 后重启开发入口，可通过 `development.check` 声明启动前检查参数；可参考标准模板，最小入口若没有 serve 命令，则不会因使用 watch 而成为 HTTP 服务。
+直接用 `php dev.php` 启动时，复用标准模板入口的 `DevelopmentBuilder::loadConfiguration()`，在业务执行前核验并加载完整代次；同一进程重复加载同一代次保持幂等。具体约定见[模型生成加载](type-orm.md#models-relations-output)。`prepareConfiguration()` 和 `type prepare` 只生成并返回代次，不负责加载。watch 在新进程准备、检查并重启开发入口；通过 `development.check` 声明启动前检查参数。最小入口若没有 serve 命令，不会因使用 watch 而成为 HTTP 服务。
 
 首次生成会静态解析完整生产源码。标准应用本轮在 CLI `memory_limit=256M` 下通过，128 MiB 不足；可使用 `php -d memory_limit=256M vendor/bin/type prepare type-app.json`。watch/test 的子进程也要使用相应 CLI 配置，父进程的单次 `-d` 不会自动传给子进程。此限制属于开发生成，生产运行内存按实际角色另行测量。
 
 ## 声明生成与显式调用
 
-`config`、`routing`、`queue` 和 `operations` 配置分别交给对应生成器；模型从生产 `sources` 的 PHP 类型属性与 Attribute 静态识别。生成结果必须进入编译输入，业务必须调用生成入口：
+当前开发通道由 `ApplicationGeneration` 统一配置、路由、模型、原 Service、命令与任务声明，开发加载和 AOT 消费同一完整代次。模型及 Service 的 Attribute 从生产源码静态识别，任务声明放在 `application.jobs` 和 `application.schedules`：
 
 - 路由：构建期从控制器注解或 `config/route.php` 生成 `register()`。`type-app.json` 只写 PHP 路径，旧 JSON 路由表明确报迁移错误；生产请求不扫描 Attribute。
 - 模型：保留业务类名和方法，生成字段映射、水合、查询入口与属性钩子，变更后重新 prepare/build。旧 `models` 键明确报迁移错误，原源码、转换结果和生成器身份共同使旧缓存失效。
-- 队列：按 type/version/handler 生成 Registry，工厂接收一个 `JobContext`。
-- 事务与缓存：生成组合类；原服务方法没有运行时拦截。
+- 队列与调度：将 class 或 service 纳入共同装配，每条消息和每次计划执行在新作用域内构造任务，复用既有 Worker/Scheduler 的重试、截止和停止规则。
+- 事务与缓存：构建期转换原 Service 方法，普通调用、手动构造和类内互调保持同一语义；活动事务绕过共享缓存，失效等待最外层确认提交。
 
-当前 PHP `prepare` 生成配置、模型、路由和操作包装，尚不生成 queue 注册表。PHP 开发的队列示例使用显式 `Registry::register()`；配置中的 queue 由原生 build 调用 JobCompiler 生成。不能把 prepare 成功当作生成队列类已经可用。
+`type prepare` 将上述声明生成为同一代次，PHP 开发加载与原生构建复用其中的任务工厂及注册表。独立使用队列组件时仍可显式 `Registry::register()`；采用应用装配后，不必再维护另一份手工注册。生成成功只证明声明有效，真实消息执行与原生部署仍需分别验证。
 
 配置文件与 `config/route.php` 都只解析允许的声明语法，构建时不执行任意 PHP，不读取运行秘密。完整例子见[配置](../configuration.md)、[路由](../routing.md)、[模型](../database.md)和[缓存](type-cache.md)。
 

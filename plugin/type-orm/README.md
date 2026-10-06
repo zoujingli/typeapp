@@ -114,7 +114,7 @@ final class User extends Model
 }
 ```
 
-开发启动器先通过 `DevelopmentBuilder::prepareConfiguration()` 加载本次模型生成结果，再加载业务入口；原生构建由 TypePHP 编译同一转换结果。应用启动装配 `DatabaseManager`，每个请求或任务绑定自己的 `ExecutionScope`，在作用域中调用服务函数并在 `finally` 中关闭资源。不要在模型文件顶层执行查询，也不要将活动模型和连接传给另一个协程。
+开发启动器通过 `DevelopmentBuilder::loadConfiguration()` 核验并加载完整声明代次，随后调用已加载的业务入口；标准模板与 `type dev` 已接入，不重复加载原模型文件。`prepareConfiguration()` 只准备代次，原生构建由 TypePHP 编译同一转换结果。应用启动装配 `DatabaseManager`，每个请求或任务绑定自己的 `ExecutionScope`，在作用域中调用服务函数并在 `finally` 中关闭资源。不要在模型文件顶层执行查询，也不要将活动模型和连接传给另一个协程。
 
 ```mermaid
 sequenceDiagram
