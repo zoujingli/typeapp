@@ -39,6 +39,67 @@ function modelRejects(Closure $operation, string $expectedCode): void
     throw new RuntimeException('模型没有拒绝非法操作：' . $expectedCode);
 }
 
+/** 重入构造必须由只读属性拒绝，不能先改写提升属性再在函数体抛错。 */
+function modelReadonlyRejects(Closure $operation): void
+{
+    try {
+        $operation();
+    } catch (Error $error) {
+        modelExpect(str_contains($error->getMessage(), 'readonly'), '声明重入没有因只读属性失败');
+        return;
+    }
+    throw new RuntimeException('共享模型声明允许重入构造');
+}
+
+/** 同一模型复用只读声明；实际构造、水合与后续关系操作继续使用原有策略。 */
+function modelMappingChecks(): void
+{
+    $mapping = User::mapping();
+    modelExpect($mapping === User::mapping() && $mapping !== ScopedLabel::mapping(), '模型映射未按具体模型复用');
+    $field = $mapping->field('name');
+    $relation = $mapping->relation('labels');
+    $before = clone $mapping;
+    modelReadonlyRejects(static fn () => $mapping->__construct(
+        'replaced',
+        'id',
+        ['id' => new \Type\Orm\ModelField('id', 'integer')],
+        false,
+        null,
+        null,
+        [],
+        'archive',
+        null,
+        'Replaced',
+        'created',
+        'updated'
+    ));
+    modelExpect(
+        $mapping->sameMapping($before) && $mapping->field('name') === $field && $mapping->relation('labels') === $relation,
+        '映射重入失败前改写了字段、关系或提升属性'
+    );
+    $fieldBefore = clone $field;
+    modelReadonlyRejects(static fn () => $field->__construct('replaced', 'json', true, false, false, false, 10, 0, true));
+    modelExpect($field->sameMapping($fieldBefore) && $field->normalize('保留原策略') === '保留原策略', '字段重入失败前改写了策略');
+    modelReadonlyRejects(static fn () => $relation->__construct(
+        'HasOne',
+        static fn (\Type\Orm\Connection $connection, string $alias): \Type\Orm\ModelQuery => ScopedRecord::query($alias)->onConnection($connection),
+        'age',
+        'user_id',
+        'replaced',
+        'left_id',
+        'right_id',
+        ['replaced'],
+        'replaced'
+    ));
+    modelExpect(
+        $relation->sourceKey() === 'id' && $relation->loader() instanceof \Type\Orm\ManyToMany,
+        '关系重入失败前改写了类型或关联键'
+    );
+    $draft = new User(['name' => '映射复用']);
+    $hydrated = new User(['id' => 1, 'name' => '映射复用'], true);
+    modelExpect($draft->definition() === $mapping && $hydrated->definition() === $mapping, '构造或水合重建了模型声明');
+}
+
 /**
  * 在所选驱动验证模型 CRUD、水合、部分字段与安全输出，依赖显式当前作用域。
  *
@@ -54,6 +115,7 @@ function main(int $argc, array $argv): void
         $scope = new ExecutionScope();
         try {
             $scope->run(static function (ExecutionScope $current) use ($database, $driverName): void {
+                modelMappingChecks();
                 $lazy = User::query()->where('active', '=', true);
                 modelExpect($database->statistics()['active'] === [], '构造模型查询提前借用了连接');
                 $connection = Db::connection('default', true);
@@ -92,6 +154,12 @@ function main(int $argc, array $argv): void
                 modelExpect(User::query()->find($id)->getNote() === null, 'null 没有持久化');
                 $base = User::query();
                 modelExpect($base->where('age', '=', 99)->get() === [] && $base->count() === 1, '模型共享查询被修改');
+                $aliased = User::query('left_user')->where('name', '=', '已修改');
+                $otherAlias = User::query('right_user')->where('name', '=', '不存在');
+                modelExpect(
+                    $aliased !== $otherAlias && $aliased->count() === 1 && $otherAlias->count() === 0 && $base->count() === 1,
+                    '映射缓存串用了查询别名或条件'
+                );
                 modelExpect($base->find(99999) === null && $base->where('age', '=', 99)->first() === null, '未找到语义不一致');
                 modelExpect($fresh->delete() && User::query()->find($id) === null, '模型删除失败');
                 modelRejects(static fn () => $fresh->getName(), 'model_invalid');

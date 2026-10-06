@@ -50,11 +50,13 @@ $composer = [
     'config' => ['allow-plugins' => false],
 ];
 if ($resources) {
+    $settings['sources'] = ['app/Models.php'];
     foreach (['type-orm', 'type-orm-sqlite'] as $package) {
         $composer['require']['zoujingli/' . $package] = '~1.0.0@dev';
         $composer['repositories'][] = ['type' => 'path', 'url' => $root . '/plugin/' . $package,
             'options' => ['symlink' => false, 'versions' => ['zoujingli/' . $package => '1.0.x-dev']]];
     }
+    expect(copy($root . '/examples/model/Models.php', $work . '/app/Models.php'), '无法复制真实生成模型声明');
 }
 if ($files) {
     $settings['threads']['supervised'] = 'FileProbe::supervised';
@@ -213,12 +215,14 @@ function verifyCompiledResourceThreads(string $work): void
             $execution = runThreadArtifact([$artifact, $directory], $work, $directory, $environment);
             expect($execution->successful() && $execution->stderr === '', '资源线程运行失败，见 ' . $directory . '/execution.json');
             $result = json_decode(trim($execution->stdout), true, 512, JSON_THROW_ON_ERROR);
-            expect($result['exits'] === [0, 0] && $result['active_threads'] === 1 && $result['source_free'] === true, '业务线程必须全部 join 且无源码');
+            expect($result['exits'] === [0, 0] && $result['restarts'] === [0, 0] && $result['active_threads'] === 1 && $result['source_free'] === true, '业务线程与重建线程必须全部 join 且无源码');
             $threads = [];
-            foreach (['left', 'right'] as $role) {
+            foreach (['left', 'right', 'again-0', 'again-1'] as $role) {
                 $thread = json_decode((string) file_get_contents($directory . '/' . $role . '.json'), true, 512, JSON_THROW_ON_ERROR);
                 expect($thread['checks'] >= 40 && $thread['remaining_coroutines'] === 0 && $thread['allocated'] === 0, '资源行为或收尾不完整');
                 expect($thread['native_id'] !== $result['main_thread'] && $thread['process'] === $result['process'], '必须是同一进程内的真实业务线程');
+                expect($thread['observations']['model_mapping'] === ['reused' => true, 'scopes' => 2,
+                    'tenants' => [$role . '-0', $role . '-1'], 'relations' => [1, 1]], '线程模型缓存、连接、租户或关系隔离失败');
                 $threads[] = $thread;
             }
             expect($threads[0]['native_id'] !== $threads[1]['native_id'], '两个线程身份必须不同');
@@ -231,7 +235,7 @@ function verifyCompiledResourceThreads(string $work): void
     }
     file_put_contents($work . '/resource-evidence.json', json_encode(['build-id' => $report['build-id'], 'sha256' => $report['sha256'],
         'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'source-free' => true, 'runs' => $results], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n");
-    echo "无源码资源线程验收通过：双线程、真实 SQLite、预算、协程等待与清理，重复三轮。\n";
+    echo "无源码资源线程验收通过：双线程与重建、模型声明隔离、真实 SQLite、预算、协程等待与清理，重复三轮。\n";
 }
 
 /** 从同一完整产物验证线程重建；原始报告与运行结果留给本任务统一保全回收。 */

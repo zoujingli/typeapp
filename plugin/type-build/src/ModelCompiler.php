@@ -16,6 +16,8 @@ use RuntimeException;
 /** 静态转换 PHP 类型属性模型；开发与 AOT 使用相同类名、业务方法和虚拟属性。 */
 final class ModelCompiler
 {
+    private const MAPPING_PROPERTY = '__typeMapping';
+
     /**
      * 扫描已声明的生产源码，返回完整转换文件，不加载或解释业务代码。
      * @param list<string> $sources 源码文件或目录的绝对路径。
@@ -84,6 +86,9 @@ final class ModelCompiler
                 $members = [];
                 foreach ($node->getMethods() as $method) {
                     $members[strtolower($method->name->toString())] = true;
+                }
+                foreach ($generatedClass->getProperties() as $property) {
+                    $node->stmts[] = $property;
                 }
                 foreach ($generatedClass->getMethods() as $method) {
                     if (isset($members[strtolower($method->name->toString())])) {
@@ -227,6 +232,9 @@ final class ModelCompiler
             }
             foreach ($member->props as $property) {
                 $propertyName = $property->name->toString();
+                if ($propertyName === self::MAPPING_PROPERTY) {
+                    throw new RuntimeException('模型属性与生成映射缓存冲突：' . $class . '::$' . $propertyName);
+                }
                 if (isset($properties[$propertyName])) {
                     throw new RuntimeException('模型属性重复：' . $class . '::' . $propertyName);
                 }
@@ -455,8 +463,10 @@ final class ModelCompiler
                 . ', ' . $this->renderRelations($model['relations']) . ', ' . var_export($model['database'], true) . ', ' . var_export($tenant, true)
                 . ', ' . var_export($model['class'], true) . ', ' . var_export($createdAt, true) . ', ' . var_export($updatedAt, true) . ')';
             $code .= "\nnamespace {$namespace} {\nclass {$class} extends \\Type\\Orm\\Model\n{\n";
+            $mappingProperty = self::MAPPING_PROPERTY;
+            $code .= "    /** 仅复用当前 PHP 请求中的只读声明，线程请求结束时由 Zend 释放。 */\n    private static ?\\Type\\Orm\\ModelDefinition \${$mappingProperty} = null;\n";
             $code .= "    /** @param array<string, mixed> \$values 新建字段；persisted 仅供水合工厂使用。 */\n    public function __construct(array \$values = [], bool \$persisted = false, ?\\Type\\Orm\\ModelBehavior \$behavior = null) { parent::__construct(self::mapping(), \$values, \$persisted, \$behavior); }\n";
-            $code .= "    /** 返回静态声明的字段和关系映射，不访问数据库。 */\n    public static function mapping(): \\Type\\Orm\\ModelDefinition { return {$definition}; }\n";
+            $code .= "    /** 复用只读字段和关系声明，不持有连接、查询或执行作用域。 */\n    public static function mapping(): \\Type\\Orm\\ModelDefinition { return self::\${$mappingProperty} ??= {$definition}; }\n";
             $code .= "    /** 创建当前作用域的不可变模型查询，执行时自动选择连接。 */\n    public static function query(string \$alias = ''): \\Type\\Orm\\ModelQuery\n    {\n"
                 . "        return new \\Type\\Orm\\ModelQuery(self::mapping(), static fn (array \$row): {$class} => new {$class}(\$row, true), \$alias);\n    }\n";
             $code .= "    /** 使用显式输入创建筛选助手，不读取 Request 或推断筛选字段。 */\n    public static function search(array \$input = [], string \$alias = ''): \\Type\\Orm\\Helper\\QueryHelper\n    {\n"

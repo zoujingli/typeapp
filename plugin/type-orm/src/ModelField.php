@@ -11,7 +11,7 @@ use DateTimeZone;
 use Throwable;
 
 /** 字段映射只接受明确类型；数据库解码与业务赋值使用不同规则。 */
-final class ModelField
+final readonly class ModelField
 {
     private string $column;
     private string $type;

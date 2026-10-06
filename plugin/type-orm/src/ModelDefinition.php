@@ -9,7 +9,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 
 /** 模型的静态数据库映射；负责字段、生命周期、租户和实际存储一致性。 */
-final class ModelDefinition
+final readonly class ModelDefinition
 {
     private string $table;
     private string $key;
@@ -17,6 +17,7 @@ final class ModelDefinition
     private bool $generatedKey;
     private ?string $softDelete;
     private ?string $version;
+    private ?string $tenant;
 
     /**
      * 固定字段与关系映射，并检查租户、版本、软删除和受管时间声明之间的约束。
@@ -27,7 +28,7 @@ final class ModelDefinition
      * @param ?string $createdAt 受管创建时间属性，支持非空 integer 或 datetime。
      * @param ?string $updatedAt 受管更新时间属性，不接受业务赋值。
      */
-    public function __construct(string $table, string $key, array $fields, bool $generatedKey = true, ?string $softDelete = null, ?string $version = null, private array $relations = [], private string $database = 'default', private ?string $tenant = null, private string $modelClass = '', private ?string $createdAt = null, private ?string $updatedAt = null)
+    public function __construct(string $table, string $key, array $fields, bool $generatedKey = true, ?string $softDelete = null, ?string $version = null, private array $relations = [], private string $database = 'default', ?string $tenant = null, private string $modelClass = '', private ?string $createdAt = null, private ?string $updatedAt = null)
     {
         if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/D', $table) || !isset($fields[$key])
             || preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $database) !== 1) {
@@ -47,14 +48,15 @@ final class ModelDefinition
         $this->key = $key;
         $this->fields = $checked;
         foreach ($checked as $name => $field) {
-            if ($this->tenant === null && $field->column() === 'tenant_id') {
-                $this->tenant = $name;
+            if ($tenant === null && $field->column() === 'tenant_id') {
+                $tenant = $name;
             }
         }
-        if ($this->tenant !== null && (!isset($checked[$this->tenant]) || $checked[$this->tenant]->allowsNull()
-            || !in_array($checked[$this->tenant]->typeName(), ['integer', 'string', 'bigint'], true))) {
+        if ($tenant !== null && (!isset($checked[$tenant]) || $checked[$tenant]->allowsNull()
+            || !in_array($checked[$tenant]->typeName(), ['integer', 'string', 'bigint'], true))) {
             throw new InvalidArgumentException('租户字段必须是已映射的非空字符串或整数身份');
         }
+        $this->tenant = $tenant;
         $this->generatedKey = $generatedKey;
         if ($softDelete !== null && (!isset($fields[$softDelete]) || $fields[$softDelete]->typeName() !== 'datetime'
             || !$fields[$softDelete]->allowsNull() || $fields[$softDelete]->fillable())) {

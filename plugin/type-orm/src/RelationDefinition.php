@@ -7,7 +7,7 @@ namespace Type\Orm;
 use Closure;
 
 /** 编译期关系声明的运行表示；目标查询工厂显式生成，不反射模型。 */
-final class RelationDefinition
+final readonly class RelationDefinition
 {
     /** @param Closure(Connection, string): ModelQuery $target 参数为连接和内部关联别名。 */
     public function __construct(

@@ -6,6 +6,8 @@ use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 use Type\Orm\Database;
 use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
+use Type\Orm\ModelException;
 use Type\Orm\Sqlite\SqliteDriver;
 use Type\Runtime\CapacityException;
 use Type\Runtime\CoroutineRuntime;
@@ -19,6 +21,8 @@ use Type\Runtime\ResourcePool;
 use Type\Runtime\ReusableResource;
 use Type\Runtime\TaskException;
 use Type\Runtime\WorkLifecycle;
+use TypeApp\ModelExample\ReadWriteProbe;
+use TypeApp\ModelExample\ScopedLabel;
 
 /** 真实文件句柄；失败后由同一作用域继续收尾，支持部分启动与重入观察。 */
 final class ScopeFileResource implements ManagedResource
@@ -145,6 +149,7 @@ final class PoolProbe
         $role = $input['role'];
         $file = $directory . '/' . $role . '.sqlite';
         try {
+            self::check(self::$checks === 0 && self::$observations === [] && self::$failure === null, '重建线程复用了旧请求状态');
             $hooks = Swoole\Runtime::getHookFlags();
             $startup = json_decode(Swoole\Thread::getArguments()[0], true, 4, JSON_THROW_ON_ERROR);
             self::check($hooks === $startup[2] && ($hooks & SWOOLE_HOOK_PDO_SQLITE) !== 0, '子线程没有继承已验证的原生 hook 快照');
@@ -173,7 +178,7 @@ final class PoolProbe
             self::waitFile($directory . '/go');
             $scope->close();
             $database->close();
-            Coroutine::create(static function () use ($file, $budget): void {
+            Coroutine::create(static function () use ($file, $budget, $role): void {
                 try {
                     $inheritedHooks = Swoole\Runtime::getHookFlags();
                     CoroutineRuntime::enableIo();
@@ -187,6 +192,7 @@ final class PoolProbe
                     });
                     self::check($sleepCompleted->isEmpty(), '子线程未复用主线程安装的原生 sleep hook');
                     self::check($sleepCompleted->pop(1) === true, '原生 sleep hook 未恢复');
+                    self::modelMappings($file, $role);
                     self::queue($file, $budget);
                     self::deadlines($file, $budget);
                     self::retirement($file, $budget);
@@ -210,6 +216,120 @@ final class PoolProbe
         } catch (Throwable $error) {
             file_put_contents($directory . '/' . $role . '.failure', get_class($error) . ': ' . $error->getMessage() . "\n" . $error->getTraceAsString());
             return 1;
+        }
+    }
+
+    /** PHP 与原生共用此断言；拒绝必须发生在第一个提升属性被写入前。 */
+    private static function readonlyRejected(Closure $operation, string $property): void
+    {
+        try {
+            $operation();
+        } catch (Error $error) {
+            self::check(str_contains($error->getMessage(), 'readonly') && str_contains($error->getMessage(), '::$' . $property), '只读声明没有在首次提升属性写入前拒绝重入');
+            return;
+        }
+        throw new RuntimeException('共享声明接受重入构造');
+    }
+
+    /** 缓存只保存声明；PHP 和线程入口共同验证关闭作用域后连接、租户与关系各自创建。 */
+    public static function modelMappings(string $file, string $role): void
+    {
+        $mapping = ScopedLabel::mapping();
+        self::check($mapping === ScopedLabel::mapping() && $mapping !== ReadWriteProbe::mapping(), '线程内模型映射没有分别复用');
+        $before = clone $mapping;
+        self::readonlyRejected(static fn () => $mapping->__construct(
+            'replaced',
+            'id',
+            ['id' => new \Type\Orm\ModelField('id', 'integer')],
+            false,
+            null,
+            null,
+            [],
+            'archive',
+            null,
+            'Replaced',
+            'created',
+            'updated'
+        ), 'relations');
+        self::check($mapping->sameMapping($before), '模型映射重入修改了共享声明');
+        $field = $mapping->field('workspace');
+        $fieldBefore = clone $field;
+        self::readonlyRejected(static fn () => $field->__construct('replaced', 'json', true, false, false, false, 10, 0, true), 'arrayOnly');
+        self::check($field->sameMapping($fieldBefore), '字段重入修改了共享声明');
+        $relation = ReadWriteProbe::mapping()->relation('children');
+        self::readonlyRejected(static fn () => $relation->__construct(
+            'HasOne',
+            static fn (\Type\Orm\Connection $connection, string $alias): \Type\Orm\ModelQuery => ScopedLabel::query($alias)->onConnection($connection),
+            'value',
+            'scope_id',
+            'replaced',
+            'left_id',
+            'right_id',
+            ['replaced'],
+            'replaced'
+        ), 'kind');
+        self::check($relation->sourceKey() === 'id', '关系重入修改了共享声明');
+        $manager = new DatabaseManager(['default' => new SqliteDriver($file)], 1, 0);
+        Db::configure($manager);
+        $previousQuery = null;
+        $previousConnection = null;
+        $tenants = [];
+        $relations = [];
+        try {
+            for ($index = 0; $index < 2; ++$index) {
+                $scope = new ExecutionScope();
+                $tenant = $role . '-' . $index;
+                try {
+                    $scope->run(static function (ExecutionScope $current) use ($index, $role, $tenant, $mapping, &$previousQuery, &$previousConnection, &$tenants, &$relations): void {
+                        $connection = Db::connection('default', true);
+                        self::check($connection !== $previousConnection, '新作用域复用了旧连接句柄');
+                        if ($index === 0) {
+                            $connection->raw('CREATE TABLE type_model_scoped_labels (id INTEGER PRIMARY KEY, owner_ref TEXT NOT NULL, scope_id TEXT NOT NULL, label TEXT NOT NULL)');
+                            $connection->raw('CREATE TABLE type_rw_probe (id INTEGER PRIMARY KEY, value TEXT NOT NULL, parent_id INTEGER NOT NULL)');
+                            ReadWriteProbe::create(['id' => 1, 'value' => $role, 'parent_id' => 0]);
+                            ReadWriteProbe::create(['id' => 2, 'value' => $role . '-child', 'parent_id' => 1]);
+                        } else {
+                            $rejected = false;
+                            try {
+                                $previousQuery->count();
+                            } catch (ModelException $error) {
+                                self::check($error->errorCode() === 'model_scope_mismatch', '旧查询跨作用域错误码不符');
+                                $rejected = true;
+                            }
+                            self::check($rejected, '共享映射使旧查询跨过作用域边界');
+                        }
+                        $label = ScopedLabel::create(['scope_id' => $role, 'label' => $tenant]);
+                        self::check($label->definition() === $mapping && $label->getWorkspace() === $tenant, '映射持有旧租户身份');
+                        $query = ScopedLabel::query('current_label');
+                        self::check($query->count() === 1 && $query->first()->getLabel() === $tenant
+                            && ScopedLabel::query('other_label')->where('label', '=', 'missing')->count() === 0, '查询别名、条件或租户范围串用');
+                        $parent = ReadWriteProbe::query('parent_record')->with(
+                            'children',
+                            static fn (\Type\Orm\ModelQuery $children): \Type\Orm\ModelQuery => $children->where('value', '=', $role . '-child')
+                        )->find(1);
+                        $children = $parent->related('children');
+                        self::check(
+                            count($children) === 1 && $children[0]->getValue() === $role . '-child'
+                            && ReadWriteProbe::query('empty_parent')->with(
+                                'children',
+                                static fn (\Type\Orm\ModelQuery $empty): \Type\Orm\ModelQuery => $empty->where('value', '=', 'missing')
+                            )->find(1)->related('children') === [],
+                            '映射复用污染关系连接或约束'
+                        );
+                        $tenants[] = $label->getWorkspace();
+                        $relations[] = count($children);
+                        $previousQuery = $query;
+                        $previousConnection = $connection;
+                    }, ['tenant_id' => $tenant]);
+                } finally {
+                    $scope->close();
+                }
+            }
+            self::check(ScopedLabel::mapping() === $mapping && $manager->statistics()['active']['default']['leased'] === 0
+                && $manager->statistics()['active']['default']['created'] === 0, '作用域结束后缓存或连接归还不符');
+            self::$observations['model_mapping'] = ['reused' => true, 'scopes' => 2, 'tenants' => $tenants, 'relations' => $relations];
+        } finally {
+            $manager->close();
         }
     }
 
@@ -524,6 +644,7 @@ function main(int $argc, array $argv): void
     PoolProbe::check(Swoole\Runtime::enableCoroutine(SWOOLE_HOOK_UDP), '无法准备已有原生 hook');
     PoolProbe::rejected(static fn (): array => CoroutineRuntime::enterThread('["probe","",0]'), 'compiled_thread_message_invalid');
     $owner = base64_encode(serialize(new ExecutionOwner(false)));
+    $mapping = ScopedLabel::mapping();
     $threads = [];
     try {
         foreach (['left', 'right'] as $role) {
@@ -549,6 +670,13 @@ function main(int $argc, array $argv): void
             $exits[] = $thread->getExitStatus();
         }
     }
+    $restarts = [];
+    foreach (['again-0', 'again-1'] as $role) {
+        $replacement = CoroutineRuntime::startThread('probe', json_encode(['directory' => $directory, 'role' => $role, 'owner' => $owner], JSON_THROW_ON_ERROR));
+        $replacement->join();
+        $restarts[] = $replacement->getExitStatus();
+    }
+    PoolProbe::check($mapping === ScopedLabel::mapping() && $mapping->tenantField() === 'workspace', '线程退出破坏了主线程映射');
     echo json_encode(['exits' => $exits, 'active_threads' => Swoole\Thread::activeCount(), 'main_thread' => Swoole\Thread::getNativeId(),
-        'process' => getmypid(), 'source_free' => get_included_files() === [], 'file_abi' => defined('SWOOLE_FILE_IO_ABI')], JSON_THROW_ON_ERROR), "\n";
+        'process' => getmypid(), 'source_free' => get_included_files() === [], 'file_abi' => defined('SWOOLE_FILE_IO_ABI'), 'restarts' => $restarts], JSON_THROW_ON_ERROR), "\n";
 }

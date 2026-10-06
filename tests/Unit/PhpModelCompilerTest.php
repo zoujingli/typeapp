@@ -11,6 +11,32 @@ use Type\Build\ModelCompiler;
 /** 静态声明错误在构建前拒绝；业务行为通过三库独立消费者另行验收。 */
 final class PhpModelCompilerTest extends TestCase
 {
+    /** 缓存槽属于生成器；公开字段和非公开业务状态都不能静默覆盖它。 */
+    public function testGeneratedMappingCachePropertyCannotBeDeclared(): void
+    {
+        $directory = dirname(__DIR__, 2) . '/build/model-mapping-member-' . bin2hex(random_bytes(6));
+        self::assertTrue(mkdir($directory, 0700));
+        $file = $directory . '/Record.php';
+        $prefix = '<?php declare(strict_types=1); namespace ModelMappingMember; use Type\\Orm\\Model; use Type\\Orm\\Attribute\\Table; '
+            . "#[Table('records')] final class Record extends Model { public int \$id; ";
+        try {
+            foreach (['public string $__typeMapping;', 'private static ?object $__typeMapping = null;', 'protected int $other, $__typeMapping;'] as $member) {
+                file_put_contents($file, $prefix . $member . ' }');
+                $rejected = false;
+                try {
+                    (new ModelCompiler())->compile([$file]);
+                } catch (RuntimeException $failure) {
+                    $rejected = true;
+                    self::assertStringContainsString('模型属性与生成映射缓存冲突', $failure->getMessage());
+                }
+                self::assertTrue($rejected, $member);
+            }
+        } finally {
+            unlink($file);
+            rmdir($directory);
+        }
+    }
+
     /** 编译源中的 Model 基类成员不能被业务属性遮蔽；同名数据库列使用 Column 显式映射。 */
     public function testInheritedPropertyCollisionsRequireExplicitColumnMapping(): void
     {
