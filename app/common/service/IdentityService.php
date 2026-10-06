@@ -50,7 +50,7 @@ final class IdentityService
             $id = bin2hex(random_bytes(16));
             $values = [
                 'id' => $id, 'login' => $login, 'name' => trim($name), 'password_hash' => password_hash($password, PASSWORD_BCRYPT),
-                'enabled' => true, 'failures' => 0, 'locked_until' => 0, 'recovery_verified' => true, 'created_at' => time(),
+                'enabled' => true, 'failures' => 0, 'locked_until' => 0, 'recovery_verified' => true,
             ];
             if ($this->realm === 'broker') {
                 $values['platform_admin'] = $platform;

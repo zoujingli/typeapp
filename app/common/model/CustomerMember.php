@@ -11,7 +11,7 @@ use Type\Orm\Attribute\Table;
 use Type\Orm\Model;
 
 /** 客户账号在单一租户中的成员关系；状态、版本和角色归属均在此实体。 */
-#[Table('customer_members', generatedPrimary: false, version: 'version')]
+#[Table('customer_members', generatedPrimary: false, version: 'version', createdAt: 'created_at')]
 final class CustomerMember extends Model
 {
     public string $id;

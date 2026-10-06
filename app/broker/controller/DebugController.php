@@ -16,14 +16,13 @@ use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
 use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
 use Type\Runtime\ExecutionScope;
 
 /** 登录人员签发租户或独立前缀范围内的 MQTT 调试短期凭据；平台管理端不能读取租户载荷。 */
 final class DebugController
 {
     /** 保存请求处理所需的数据库、身份服务和响应工厂；连接在请求作用域中借用。 */
-    public function __construct(private DatabaseManager $database, private IdentityService $identities, private Factory $messages)
+    public function __construct(private IdentityService $identities, private Factory $messages)
     {
     }
 

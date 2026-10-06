@@ -9,7 +9,7 @@ use Type\Orm\Attribute\Table;
 use Type\Orm\Model;
 
 /** 全局站点品牌与界面偏好；单例由迁移初始化，业务保存遵守乐观版本约束。 */
-#[Table('app_site_settings', generatedPrimary: false, version: 'version')]
+#[Table('app_site_settings', generatedPrimary: false, version: 'version', createdAt: 'created_at', updatedAt: 'updated_at')]
 final class SiteSetting extends Model
 {
     #[Column(fillable: false)]

@@ -38,8 +38,7 @@ final class ProductService
     public function create(Identity $identity, string $tenantId, string $name, string $description): array
     {
         return $this->run($identity, $tenantId, 'product.created', $tenantId, true, static function (array $context) use ($name, $description): array {
-            $product = Product::create(['id' => bin2hex(random_bytes(16)), 'name' => $name, 'description' => $description,
-                'created_at' => time(), 'updated_at' => time()]);
+            $product = Product::create(['id' => bin2hex(random_bytes(16)), 'name' => $name, 'description' => $description]);
             return $product->project(['id', 'tenant_id', 'name', 'description', 'version', 'created_at', 'updated_at']);
         });
     }
@@ -73,9 +72,12 @@ final class ProductService
                 $product->delete();
                 return ['deleted' => true];
             }
-            $product->setName($data['name']);
-            $product->setDescription($data['description']);
-            $product->setUpdatedAt(time());
+            if (array_key_exists('name', $data)) {
+                $product->setName($data['name']);
+            }
+            if (array_key_exists('description', $data)) {
+                $product->setDescription($data['description']);
+            }
             // 相同资料也消耗本次表单版本，保持重复提交与旧页面的既有冲突语义。
             $product->dirty() === [] ? $product->touch() : $product->save();
             return $product->project(['id', 'tenant_id', 'name', 'description', 'version', 'created_at', 'updated_at']);

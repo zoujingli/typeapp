@@ -34,7 +34,8 @@ if ($target !== '--php') {
 
 $config = json_decode((string) file_get_contents($root . '/docs/build-config/type-app.json'), true, 16, JSON_THROW_ON_ERROR);
 expect(
-    ($config['entry'] ?? '') === 'app/main.php'
+    !isset($config['entry'])
+    && ($config['application']['bootstrap'] ?? []) === ['class' => 'app\\common\\bootstrap\\Application', 'method' => 'bootstrap']
     && ($config['sources'] ?? []) === ['app']
     && ($config['output'] ?? '') === 'build/app/type-app'
     && !str_contains(json_encode($config, JSON_THROW_ON_ERROR), 'templates/type-project'),
@@ -56,7 +57,7 @@ $report = [
     'driver' => $driver,
     'native' => $target !== '--php',
     'no_source' => $noSource,
-    'production_source' => ['entry' => $config['entry'], 'sources' => $config['sources'], 'output' => $config['output']],
+    'production_source' => ['entry' => 'generated-main', 'bootstrap' => $config['application']['bootstrap'], 'sources' => $config['sources'], 'output' => $config['output']],
     'type_project_is_not_iot_candidate' => true,
     'historical_evidence_unchanged' => true,
     'impersonation_kept' => true,

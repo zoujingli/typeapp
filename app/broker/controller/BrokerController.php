@@ -18,7 +18,6 @@ use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
 use Type\Mqtt\PendingCommit;
 use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
 use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
 use Type\Validate\Input;
@@ -29,12 +28,13 @@ final class BrokerController
 {
     private static bool $storeQuarantined = false;
 
-    /**
-     * 请求连接仍归当前执行作用域持有；网络输入不能覆盖宿主配置。
-     * @param list<string> $worker 完整存储工作命令；空列表表示没有可靠接收路径。
-     */
-    public function __construct(private DatabaseManager $database, private IdentityService $identities, private Factory $messages, private array $worker = [])
+    /** @var list<string> 完整存储工作命令；空列表表示没有可靠接收路径。 */
+    private array $worker;
+
+    /** 网络输入不能覆盖宿主配置；请求连接归当前执行作用域持有。 */
+    public function __construct(private IdentityService $identities, private Factory $messages, \app\common\bootstrap\ApplicationContext $context)
     {
+        $this->worker = \app\common\bootstrap\ApplicationContext::brokerWorker($context->settings());
     }
 
     /** 登录失败不泄漏账号是否存在；口令与令牌不进入节点采样。 */

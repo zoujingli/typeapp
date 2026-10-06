@@ -13,10 +13,17 @@ const drawer = () => page.locator('.ant-drawer-content-wrapper:visible');
 const body = () => page.locator('.ant-drawer-body:visible');
 const screenshot = async name => { const path = `${fixture.base}/${name}.png`; await page.screenshot({ path, animations: 'disabled', mask: [page.locator('.ant-drawer-body code')] }); report.screenshots.push(path); };
 const goto = async path => { await page.evaluate(value => { location.hash = value; }, path); };
-const enter = async name => { await page.getByRole('row').filter({ hasText: name }).getByRole('button', { name: '进入租户' }).click(); await page.waitForURL('**/#/members'); };
-const login = async name => { await page.getByLabel('登录账号').fill(name); await page.getByLabel('登录密码').fill('Lifecycle-browser-password-2026'); await page.getByRole('button', { name: /^登\s*录$/ }).click(); await enter('生命周期验收组织'); await goto('/devices'); };
+const enter = async name => { await page.getByRole('row').filter({ hasText: name }).getByRole('button', { name: '进入租户' }).click(); await page.waitForURL('**/#/profile'); };
+const login = async name => { await page.getByLabel('登录账号').fill(name); await page.getByLabel('登录密码').fill('Lifecycle-browser-password-2026'); await page.getByRole('button', { name: /^登\s*录$/ }).click(); await page.waitForURL('**/#/profile'); await goto('/tenants'); await enter('生命周期验收组织'); await goto('/devices'); };
 const close = async () => { await expect(page.locator('.ant-drawer-close:visible')).toHaveCount(1); await page.locator('.ant-drawer-close:visible').click(); await expect(drawer()).toHaveCount(0); };
-const manage = async id => { await page.getByRole('row').filter({ hasText: id }).getByRole('button', { name: /^管\s*理$/ }).click(); await expect(page.getByText('管理设备授权', { exact: true })).toBeVisible(); await expect(body()).toContainText(id); await expect(page.getByRole('button', { name: '读取当前状态', exact: true })).toBeEnabled(); };
+const rowAction = async (id, action) => {
+  const row = page.getByRole('row').filter({ hasText: id });
+  await expect(row).toBeVisible();
+  const direct = row.getByRole('button', { name: action, exact: true });
+  if (await direct.count()) await direct.click();
+  else { await row.getByRole('button', { name: '更多', exact: true }).click(); await page.getByRole('menuitem', { name: action, exact: true }).click(); }
+};
+const manage = async id => { await rowAction(id, '管理'); await expect(page.getByText('管理设备授权', { exact: true })).toBeVisible(); await expect(body()).toContainText(id); await expect(page.getByRole('button', { name: '读取当前状态', exact: true })).toBeEnabled(); };
 const selectAction = async label => { await page.getByLabel('管理动作', { exact: true }).click(); await page.getByText(label, { exact: true }).last().click(); };
 const prepare = async (label, id) => { await selectAction(label); await page.getByLabel('确认设备标识', { exact: true }).fill(id); };
 const readCurrent = async () => { await page.getByRole('button', { name: '读取当前状态', exact: true }).click(); await expect(page.getByRole('button', { name: '读取当前状态', exact: true })).toBeEnabled(); };
@@ -26,18 +33,20 @@ const call = async (method, path, data, tenant = fixture.tenant) => {
   const response = await fetch(`http://127.0.0.1:${fixture.port}${path}`, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(tenant ? { 'X-Tenant-Id': tenant } : {}) }, ...(method === 'GET' ? {} : { body: JSON.stringify(data) }) });
   return { status: response.status, body: await response.json() };
 };
-const devicePath = id => `/iot/tenants/${fixture.tenant}/devices/${id}`;
+const devicePath = id => `/customer/tenants/${fixture.tenant}/devices/${id}`;
 const enforced = async id => { await expect.poll(async () => (await call('GET', devicePath(id))).body.data.authorization.status, { timeout: 30000 }).toBe('enforced'); };
 const submit = async label => { await page.getByRole('button', { name: `确认${label}`, exact: true }).click(); await expect(page.getByRole('button', { name: '读取当前状态', exact: true })).toBeEnabled(); };
 try {
   report.browser = browser.version();
   if (fixture.recovery) {
-    token = (await call('POST', '/iot/auth/login', { login: 'bob', password: fixture.password }, null)).body.data.accessToken;
+    token = (await call('POST', '/customer/auth/login', { login: 'bob', password: fixture.password }, null)).body.data.accessToken;
     await page.goto(origin);
     await page.getByLabel('登录账号').fill('bob'); await page.getByLabel('登录密码').fill(fixture.password);
     await page.getByRole('button', { name: /^登\s*录$/ }).click();
+    await page.waitForURL('**/#/profile'); await goto('/tenants');
     await page.getByRole('row').filter({ hasText: fixture.tenant }).getByRole('button', { name: '进入租户' }).click();
-    await page.waitForURL('**/#/members');
+    await page.waitForURL('**/#/profile'); await goto('/members');
+    if (!(await page.locator('html').getAttribute('class'))?.includes('dark')) await page.getByRole('button', { name: 'dark', exact: true }).click();
     const member = page.getByRole('row').filter({ hasText: fixture.member_login });
     await expect(member).toContainText('待核对或重新授权');
     await goto('/devices');
@@ -68,8 +77,9 @@ try {
     await screenshot('recovery-desktop-stable-light');
     report.cases.push('restored-member-isolation-visible', 'isolated-device-list-drawer-and-detail', 'server-refuses-isolated-management', 'stable-device-readable', 'dark-light-mobile-no-overflow');
   } else {
-  token = (await call('POST', '/iot/auth/login', { login: 'webadmin', password: 'Lifecycle-browser-password-2026' }, null)).body.data.accessToken;
+  token = (await call('POST', '/customer/auth/login', { login: 'webadmin', password: 'Lifecycle-browser-password-2026' }, null)).body.data.accessToken;
   await page.goto(origin); await login('webadmin'); await expect(page.getByText('4 台设备', { exact: false })).toBeVisible();
+  if (!(await page.locator('html').getAttribute('class'))?.includes('dark')) await page.getByRole('button', { name: 'dark', exact: true }).click();
   await manage(fixture.devices.main); await prepare('轮换凭据', '0'.repeat(32)); await submit('轮换凭据'); await expect(body().getByRole('alert')).toContainText('完全一致');
   await page.getByLabel('确认设备标识', { exact: true }).fill(fixture.devices.main); await context.setOffline(true); await submit('轮换凭据');
   await expect(body().getByRole('alert')).toContainText('网络连接失败'); await expect(body().getByRole('status')).toContainText('不会自动重试'); await expect(page.getByRole('button', { name: '确认轮换凭据', exact: true })).toBeDisabled();
@@ -89,9 +99,10 @@ try {
   await prepare('吊销凭据', fixture.devices.main); await submit('吊销凭据'); await enforced(fixture.devices.main); await readCurrent();
   await prepare('退役设备', fixture.devices.main); await submit('退役设备'); await expect(body()).toContainText('设备已永久退役'); await expect(page.getByLabel('管理动作', { exact: true })).toHaveCount(0); await expect(page.locator('.ant-drawer-footer .ant-btn-primary')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 }); await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390); await screenshot('lifecycle-mobile-retired-dark'); await close();
-  await page.getByRole('button', { name: 'light', exact: true }).click(); await page.getByRole('button', { name: '主题色', exact: true }).click(); await page.getByLabel('主题色', { exact: true }).first().click(); await page.getByText('紫罗兰', { exact: true }).last().click(); await page.getByText('4 台设备', { exact: false }).click(); await expect(page.locator('.ant-popover:visible')).toHaveCount(0);
+  await page.getByRole('button', { name: 'light', exact: true }).click(); await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
+  await page.getByTitle('偏好设置', { exact: true }).click(); await page.getByText('外观', { exact: true }).click(); await page.getByText('紫罗兰', { exact: true }).click(); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
   await manage(fixture.devices.main); await screenshot('lifecycle-mobile-retired-light-purple'); await body().evaluate(el => { el.scrollTop = el.scrollHeight; }); await expect(body().getByText('设备已永久退役，不提供恢复或硬删除。保留期内历史仍可按原权限查询。')).toBeInViewport(); await close(); await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.getByRole('row').filter({ hasText: fixture.devices.main }).getByRole('button', { name: /^历\s*史$/ }).click(); await expect(page.getByText('当前保留 1 条', { exact: false })).toBeVisible(); await goto('/devices');
+  await rowAction(fixture.devices.main, '历史'); await expect(page.getByText('当前保留 1 条', { exact: false })).toBeVisible(); await goto('/devices');
   report.cases.push('disable-revoke-enable-does-not-revive-retire-terminal-original-history-long-name-theme-mobile');
 
   await manage(fixture.devices.lost); await prepare('轮换凭据', fixture.devices.lost); let lostCalls = 0; let lostSecret = '';
@@ -109,7 +120,9 @@ try {
   await page.route(`**/devices/${fixture.devices.switch}/rotate`, async route => { switchCalls++; const response = await route.fetch(); await switchGate; try { await route.fulfill({ response }); } catch (error) { if (!/Route is already handled/.test(error.message)) throw error; } });
   await page.getByRole('button', { name: '确认轮换凭据', exact: true }).click(); await expect.poll(() => switchCalls).toBe(1); await goto('/tenants'); await enter('生命周期空组织'); releaseSwitch(); await page.unrouteAll({ behavior: 'wait' }); await goto('/devices'); await expect(page.getByText('暂无符合条件的设备', { exact: true })).toBeVisible(); await expect(page.getByText('保存设备接入凭据', { exact: true })).toHaveCount(0); await screenshot('lifecycle-empty-other-tenant');
   await page.getByRole('button', { name: '退出登录', exact: true }).click(); await login('webread'); await expect(page.getByText('4 台设备', { exact: false })).toBeVisible(); await expect(page.getByRole('button', { name: /^管\s*理$/ })).toHaveCount(0); await expect(page.getByRole('button', { name: '注册设备', exact: true })).toHaveCount(0);
-  expect((await call('DELETE', `/iot/tenants/${fixture.tenant}/members/${fixture.member}`, { version: 1 })).status).toBe(200); await page.getByRole('button', { name: /^查\s*询$/ }).click(); await page.waitForURL('**/#/tenants'); await expect(page.getByText('管理设备授权', { exact: true })).toHaveCount(0);
+  const readonlyMore = page.getByRole('row').filter({ hasText: fixture.devices.main }).getByRole('button', { name: '更多', exact: true });
+  if (await readonlyMore.count()) { await readonlyMore.click(); await expect(page.getByRole('menuitem', { name: '管理', exact: true })).toHaveCount(0); await page.keyboard.press('Escape'); }
+  expect((await call('DELETE', `/customer/members/${fixture.member}`, { version: fixture.member_version })).status).toBe(200); await page.getByRole('button', { name: /^查\s*询$/ }).click(); await page.waitForURL('**/#/tenants'); await expect(page.getByText('管理设备授权', { exact: true })).toHaveCount(0);
   report.cases.push('switch-tenant-cancels-secret-response-empty-list-readonly-no-management-real-revocation');
   }
   expect(report.errors).toEqual([]); report.status = 'passed';

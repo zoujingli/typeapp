@@ -81,8 +81,8 @@ final class SiteSettings
         if ($model->get('version') !== $version) {
             throw new HttpError(409, 'stale_version');
         }
-        $model->fill($normalized + ['updated_at' => time()]);
-        // 相同设置在同一秒内再次保存也推进版本，保持表单保存和审计的一次性版本契约。
+        $model->fill($normalized);
+        // 相同设置再次保存只推进版本；资料变化由 Model 同时维护更新时间。
         $model->dirty() === [] ? $model->touch() : $model->save();
         return self::view($model, true) + ['changed' => array_keys($normalized)];
     }

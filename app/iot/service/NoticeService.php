@@ -15,13 +15,11 @@ use Type\Orm\Db;
 use Type\Orm\Outbox\Publisher;
 use Type\Orm\Outbox\Record;
 use Type\Orm\Outbox\Store;
-use Type\Queue\Job;
-use Type\Queue\JobContext;
 use Type\Queue\Message;
 use Type\Queue\Queue;
 
 /** 告警站内通知的持久意图、租户读模型与到期生命周期；专用队列只有本消费者。 */
-final class NoticeService implements Publisher, Job
+final class NoticeService implements Publisher
 {
     private const RETENTION = 15552000;
 
@@ -49,7 +47,7 @@ final class NoticeService implements Publisher, Job
             'rule_id' => $row['rule_id'], 'rule_version' => (int) $row['rule_version'], 'name' => $definition['name'],
             'kind' => $kind, 'created_at' => time(), 'occurred_at' => (int) ($kind === 'triggered' ? $row['created_at'] : $row['ended_at']),
             'end_reason' => $kind === 'triggered' ? null : $row['end_reason']];
-        (new Store('iot_notice_outbox'))->enqueue($connection, $alarmId . '.' . $kind, 'iot.notice', 1, $payload, ['tenant_id' => $row['tenant_id']]);
+        (new Store('iot_notice_outbox'))->enqueueUsing($connection, $alarmId . '.' . $kind, 'iot.notice', 1, $payload, ['tenant_id' => $row['tenant_id']]);
         $connection->table('iot_alarms')->where('id', '=', $alarmId)->update([$marker => 1]);
     }
 
@@ -60,36 +58,6 @@ final class NoticeService implements Publisher, Job
             throw new RuntimeException('notice_message_invalid');
         }
         return $this->queue->publish(new Message($record->id(), $record->topic(), $record->version(), $record->payload(), $record->context()));
-    }
-
-    /**
-     * 读模型与消费凭据同事务，队列至少一次和旧租约重放不会产生第二条通知。
-     * 已回收意图和到期载荷只确认队列，不重建已过180天保留期的数据。
-     * @param array<string, mixed> $payload 只消费与持久Outbox完全一致的编译注册协议。
-     */
-    public function handle(JobContext $context, array $payload): void
-    {
-        $context->assertActive();
-        $connection = Db::connection('default', true);
-        $connection->transaction(static function (Connection $transaction) use ($context, $payload): void {
-            $id = $context->message()->id();
-            $query = $transaction->table('iot_notice_outbox')->where('id', '=', $id);
-            $record = ($transaction->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
-            $context->assertActive();
-            if ($record === null || $record['consumed_receipt'] !== null) {
-                return;
-            }
-            $persisted = json_decode((string) $record['payload'], true, 16, JSON_THROW_ON_ERROR);
-            if ($record['topic'] !== 'iot.notice' || (int) $record['version'] !== 1 || $persisted !== $payload) {
-                throw new RuntimeException('notice_message_invalid');
-            }
-            if ((int) $payload['created_at'] > time() - self::RETENTION) {
-                $transaction->table('iot_notifications')->insert(['id' => $id, 'tenant_id' => $payload['tenant_id'], 'alarm_id' => $payload['alarm_id'],
-                    'kind' => $payload['kind'], 'payload' => $record['payload'], 'created_at' => (int) $payload['created_at']]);
-            }
-            (new Store('iot_notice_outbox'))->consumed($transaction, $id, 'notice:' . $id);
-            $context->assertActive();
-        }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
     }
 
     /**
@@ -127,7 +95,7 @@ final class NoticeService implements Publisher, Job
             $payload = json_decode((string) $record['payload'], true, 16, JSON_THROW_ON_ERROR);
             if ((int) $payload['created_at'] <= time() - self::RETENTION) {
                 $connection->transaction(static function (Connection $transaction) use ($store, $record): void {
-                    $store->consumed($transaction, $record['id'], 'notice:expired:' . $record['id']);
+                    $store->consumedUsing($transaction, $record['id'], 'notice:expired:' . $record['id']);
                 });
             } elseif ($store->replay($connection, $record['id'], 'notice_delivery_recovery')) {
                 $replayed++;

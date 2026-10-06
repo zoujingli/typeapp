@@ -10,7 +10,7 @@ use Type\Orm\Attribute\Table;
 use Type\Orm\Model;
 
 /** 全局租户目录；租户内实体的归属由已验证执行上下文自动限定。 */
-#[Table('iot_tenants', generatedPrimary: false, version: 'version')]
+#[Table('iot_tenants', generatedPrimary: false, version: 'version', createdAt: 'created_at')]
 final class Tenant extends Model
 {
     public string $id;

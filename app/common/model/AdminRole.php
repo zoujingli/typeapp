@@ -10,7 +10,7 @@ use Type\Orm\Attribute\Table;
 use Type\Orm\Model;
 
 /** 平台角色实体；授权规则及固定权限码由应用服务维护。 */
-#[Table('admin_roles', generatedPrimary: false, version: 'version')]
+#[Table('admin_roles', generatedPrimary: false, version: 'version', createdAt: 'created_at')]
 final class AdminRole extends Model
 {
     public string $id;

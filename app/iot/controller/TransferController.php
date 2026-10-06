@@ -13,7 +13,6 @@ use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
 use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
 use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
 use Type\Validate\Input;
@@ -22,7 +21,7 @@ use Type\Validate\Input;
 final class TransferController
 {
     /** 保存受管连接与消息工厂；持久流程仍由TransferService拥有。 */
-    public function __construct(private DatabaseManager $database, private Factory $messages)
+    public function __construct(private Factory $messages)
     {
     }
 

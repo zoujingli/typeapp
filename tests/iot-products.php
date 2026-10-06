@@ -32,6 +32,19 @@ function iotProductChecks(Closure $appRequest, PDO $inspection, string $driver, 
     $path = '/customer/tenants/' . $tenantA;
     $products = $path . '/products';
     $other = '/customer/tenants/' . $tenantB . '/products';
+    // 独立产品检查 PATCH 的缺失语义，不改变主模型夹具的版本与分页计数。
+    $partial = $request('POST', $products, $admin, $tenantA, ['name' => '部分更新', 'description' => '必须保留'], 201)['data'];
+    $partialPath = $products . '/' . $partial['id'];
+    $partial = $request('PATCH', $partialPath, $admin, $tenantA, ['version' => 1, 'name' => '只改名称'], 200)['data'];
+    expect($partial['name'] === '只改名称' && $partial['description'] === '必须保留' && $partial['version'] === 2, 'PATCH 未提供的描述必须保留');
+    $partial = $request('PATCH', $partialPath, $admin, $tenantA, ['version' => 2, 'description' => '只改描述'], 200)['data'];
+    expect($partial['name'] === '只改名称' && $partial['description'] === '只改描述' && $partial['version'] === 3, 'PATCH 未提供的名称必须保留');
+    $request('PATCH', $partialPath, $admin, $tenantA, ['version' => 3, 'name' => null], 422, 'validation_failed');
+    $request('PATCH', $partialPath, $admin, $tenantA, ['version' => 3, 'description' => null], 422, 'validation_failed');
+    $request('PATCH', $partialPath, $admin, $tenantA, ['name' => '缺失版本'], 422, 'validation_failed');
+    $request('PATCH', $partialPath, $admin, $tenantA, ['version' => 3, 'tenant_id' => $tenantB], 422, 'unexpected_field');
+    expect($request('GET', $partialPath, $admin, $tenantA, null, 200)['data'] === $partial, '无效 PATCH 不能修改产品或推进版本');
+    $request('DELETE', $partialPath, $admin, $tenantA, ['version' => 3], 200);
     $request('GET', $products, '', $tenantA, null, 401);
     $request('GET', $products, $admin, null, null, 403, 'tenant_context_mismatch');
     $request('GET', $products, $admin, $tenantB, null, 403, 'tenant_context_mismatch');

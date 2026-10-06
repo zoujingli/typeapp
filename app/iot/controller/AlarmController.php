@@ -13,7 +13,6 @@ use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
 use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
 use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
 use Type\Validate\Input;
@@ -22,8 +21,9 @@ use Type\Validate\Input;
 final class AlarmController
 {
     /** 保存受管连接与消息工厂；告警及投递仍由既有服务拥有。 */
-    public function __construct(private DatabaseManager $database, private Factory $messages)
+    public function __construct(private Factory $messages)
     {
+        \app\common\bootstrap\RuntimeCapabilities::requireFeature('alerts');
     }
 
     /** 当前规则及不可变版本历史共用有界查询和即时成员权限。 */

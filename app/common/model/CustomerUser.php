@@ -10,7 +10,7 @@ use Type\Orm\Attribute\Table;
 use Type\Orm\Model;
 
 /** 客户全局账号；租户内成员资料由 CustomerMember 承载。 */
-#[Table('customer_users', generatedPrimary: false)]
+#[Table('customer_users', generatedPrimary: false, createdAt: 'created_at')]
 final class CustomerUser extends Model
 {
     public string $id;

@@ -18,7 +18,7 @@ use Type\Testing\Process;
 
 $root = dirname(__DIR__);
 expect(isset($argv[1], $argv[2]) && ctype_digit($argv[2]), '用法：php tests/iot-lifecycle-browser-fixture.php <原生产物或--php> <隔离HTTP端口>；TYPE_PGSQL_TOOLS提供原生工具');
-$command = $argv[1] === '--php' ? [PHP_BINARY, $root . '/bin/typeapp'] : nativeCommand($argv[1]);
+$command = $argv[1] === '--php' ? [PHP_BINARY, '-d', 'memory_limit=512M', $root . '/bin/typeapp'] : nativeCommand($argv[1]);
 $port = (int) $argv[2];
 expect($port > 1024 && $port < 65536, 'HTTP端口无效');
 $base = $root . '/build/iot-lifecycle-browser-' . bin2hex(random_bytes(6));
@@ -45,13 +45,14 @@ try {
         }
     }
     $environment = array_replace($environment, ['PATH' => (string) getenv('PATH'), 'APP_BASE_PATH' => $base, 'DB_DRIVER' => 'pgsql',
-        'APP_API_TOKEN' => bin2hex(random_bytes(32)), 'APP_CACHE_ENABLED' => 'false', 'APP_PORT' => (string) $port,
-        'APP_ALLOWED_HOSTS' => '127.0.0.1:' . $port, 'IOT_USER_PASSWORD' => 'Lifecycle-browser-password-2026']);
+        'APP_API_TOKEN' => bin2hex(random_bytes(32)), 'APP_CACHE_ENABLED' => 'false', 'APP_DEBUG' => 'true', 'APP_PORT' => (string) $port,
+        'APP_ALLOWED_HOSTS' => '127.0.0.1:' . $port,
+        'APP_ADMIN_PASSWORD' => 'Lifecycle-admin-password-2026', 'APP_CUSTOMER_PASSWORD' => 'Lifecycle-browser-password-2026']);
     foreach (['HOST' => 'HOST', 'PORT' => 'PORT', 'DATABASE' => 'DATABASE', 'USERNAME' => 'USER', 'PASSWORD' => 'PASSWORD'] as $destination => $source) {
         $environment['DB_' . $destination] = $environment['TYPE_PGSQL_' . $source];
     }
     $certificateConfiguration = $base . '/certificate.cnf';
-    file_put_contents($certificateConfiguration, "[req]\ndistinguished_name=dn\nx509_extensions=server\n[dn]\n[server]\nsubjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\n");
+    file_put_contents($certificateConfiguration, "[req]\ndistinguished_name=dn\nx509_extensions=server\n[dn]\n[server]\nsubjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\nextendedKeyUsage=serverAuth\n");
     $options = ['config' => $certificateConfiguration, 'private_key_bits' => 2048, 'digest_alg' => 'sha256'];
     $key = openssl_pkey_new($options);
     $csr = openssl_csr_new(['commonName' => '127.0.0.1'], $key, $options);
@@ -77,11 +78,8 @@ try {
             $process->stop();
         }
     };
-    $run(['migrate', 'run']);
+    $installed = json_decode($run(['app:install', 'lifecycle-platform', '生命周期管理人员', 'webadmin', '生命周期客户管理员', '生命周期验收组织']), true, 32, JSON_THROW_ON_ERROR)['data'];
     $run(['iot:mqtt-install']);
-    foreach (['webadmin', 'webread'] as $login) {
-        $run(['iot:user', $login, '生命周期验收-' . $login, ...($login === 'webadmin' ? ['platform'] : [])]);
-    }
     $server = new Process([...$command, 'serve'], $root, $environment);
     $client = new HttpClient('http://127.0.0.1:' . $port);
     $ready = false;
@@ -108,12 +106,22 @@ try {
         expect($response->status >= 200 && $response->status < 300, $response->body);
         return $response->json();
     };
-    $token = $call('POST', '/iot/auth/login', ['login' => 'webadmin', 'password' => $environment['IOT_USER_PASSWORD']])['data']['accessToken'];
-    $tenant = $call('POST', '/iot/tenants', ['name' => '生命周期验收组织', 'owner_login' => 'webadmin'], $token)['data']['id'];
-    $other = $call('POST', '/iot/tenants', ['name' => '生命周期空组织', 'owner_login' => 'webadmin'], $token)['data']['id'];
-    $path = '/iot/tenants/' . $tenant;
-    $member = $call('POST', $path . '/members', ['login' => 'webread', 'role' => 'readonly'], $token, $tenant)['data'];
-    $call('POST', '/iot/tenants/' . $other . '/members', ['login' => 'webread', 'role' => 'readonly'], $token, $other);
+    $platform = $call('POST', '/admin/auth/login', ['login' => 'lifecycle-platform', 'password' => $environment['APP_ADMIN_PASSWORD']])['data']['accessToken'];
+    $token = $call('POST', '/customer/auth/login', ['login' => 'webadmin', 'password' => $environment['APP_CUSTOMER_PASSWORD']])['data']['accessToken'];
+    $tenant = $installed['tenant_id'];
+    $other = $call('POST', '/admin/tenants', ['id' => bin2hex(random_bytes(16)), 'name' => '生命周期空组织', 'new_customer' => false, 'owner_login' => 'webadmin'], $platform)['data']['id'];
+    $path = '/customer/tenants/' . $tenant;
+    $members = [];
+    foreach ([$tenant, $other] as $index => $memberTenant) {
+        $role = $call('POST', '/customer/roles', ['name' => '生命周期只读', 'permissions' => ['identity.read', 'customer.devices.read']], $token, $memberTenant)['data'];
+        $role = $call('POST', '/customer/roles/' . $role['id'] . '/status', ['version' => 1, 'enabled' => true], $token, $memberTenant)['data'];
+        $values = ['login' => 'webread', 'new_customer' => $index === 0, 'name' => '生命周期只读人员', 'roles' => [['id' => $role['id'], 'version' => $role['version']]]];
+        if ($index === 0) {
+            $values += ['account_name' => '生命周期只读客户', 'password' => $environment['APP_CUSTOMER_PASSWORD']];
+        }
+        $members[] = $call('POST', '/customer/members', $values, $token, $memberTenant)['data'];
+    }
+    $member = $members[0];
     $product = $call('POST', $path . '/products', ['name' => '生命周期测试传感器'], $token, $tenant)['data'];
     $models = $path . '/products/' . $product['id'] . '/models';
     $call('POST', $models, ['definition' => ['properties' => [['identifier' => 'temperature', 'name' => '温度', 'type' => 'number', 'required' => true, 'unit' => '°C']], 'events' => [], 'commands' => []]], $token, $tenant);
@@ -136,7 +144,7 @@ try {
         $pool->close();
     }
     $metadata = ['pid' => getmypid(), 'base' => $base, 'port' => $port, 'mqtt_port' => $mqttPort, 'native' => $argv[1] !== '--php',
-        'binary_sha256' => $argv[1] === '--php' ? null : hash_file('sha256', $argv[1]), 'tenant' => $tenant, 'other' => $other, 'member' => $member['id'],
+        'binary_sha256' => $argv[1] === '--php' ? null : hash_file('sha256', $argv[1]), 'tenant' => $tenant, 'other' => $other, 'member' => $member['id'], 'member_version' => $member['version'],
         'devices' => array_map(static fn (array $device): string => $device['id'], $devices), 'broker_start_marker' => $base . '/start-broker'];
     file_put_contents($base . '/fixture.json', json_encode($metadata, JSON_THROW_ON_ERROR));
     echo json_encode($metadata, JSON_THROW_ON_ERROR), "\n";
@@ -152,6 +160,11 @@ try {
 } finally {
     $brokerResult = $broker?->stop(10);
     $serverResult = $server?->stop(10);
+    foreach (['broker' => $broker, 'http' => $server] as $role => $process) {
+        if ($process !== null) {
+            file_put_contents($base . '/' . $role . '.log', str_replace([$environment['APP_ADMIN_PASSWORD'], $environment['APP_CUSTOMER_PASSWORD']], '<REDACTED>', $process->stdout() . $process->stderr()));
+        }
+    }
     $sync?->close();
     $database->close();
     if (is_file($base . '/private.pem')) {

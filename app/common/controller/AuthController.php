@@ -30,31 +30,20 @@ final class AuthController
     }
 
     /** 口令只接受有界 JSON 字段，令牌仅在成功响应中返回。 */
-    #[Route('/admin/auth/login', methods: ['POST'], name: 'admin.login')]
-    #[Route('/customer/auth/login', methods: ['POST'], name: 'customer.login')]
-    public function login(ServerRequestInterface $request): ResponseInterface
+    #[Route('/admin/auth/login', methods: ['POST'], name: 'admin.login', middleware: ['body.json'], input: ['maxBytes' => 16384, 'maxDepth' => 12])]
+    #[Route('/customer/auth/login', methods: ['POST'], name: 'customer.login', middleware: ['body.json'], input: ['maxBytes' => 16384, 'maxDepth' => 12])]
+    public function login(\app\common\input\LoginInput $input, ServerRequestInterface $request): ResponseInterface
     {
         $realm = $this->realm($request);
-        if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
-            throw new HttpError(415, 'json_required');
-        }
-        $input = Input::json(RequestBody::read($request->getBody(), 16384), 16384, 12);
-        if (array_diff(array_keys($input->source('body')), ['login', 'password']) !== []) {
-            throw new HttpError(422, 'identity_input_invalid');
-        }
-        $data = \_vali([
-            'login' => Field::text()->required()->length(3, 100)->matches('/^[a-z0-9][a-z0-9_.@-]{2,99}$/D'),
-            'password' => Field::text()->required()->length(1, 72),
-        ], $input);
-        return $this->response((new IdentityService($realm))->login($data['login'], $data['password'], (string) $request->getAttribute('app.request_id', '')));
+        return $this->response((new IdentityService($realm))->login($input->login, $input->password, (string) $request->getAttribute('app.request_id', '')));
     }
 
     /** 登录页只读取公开品牌和主题白名单，不需要也不接受任何身份凭据。 */
     #[Route('/public/site', name: 'public.site')]
-    public function publicSite(ServerRequestInterface $request): ResponseInterface
+    public function publicSite(): ResponseInterface
     {
         // 保留安装代次检查；模型读取站点信息不代替整个应用的安装就绪门。
-        $this->connection($request);
+        $this->connection();
         return $this->response(SiteSettings::publicView());
     }
 
@@ -64,7 +53,7 @@ final class AuthController
     public function me(ServerRequestInterface $request): ResponseInterface
     {
         $realm = $this->realm($request);
-        $connection = $this->connection($request);
+        $connection = $this->connection();
         $identity = $this->identity($request);
         $tenantId = $request->getHeaderLine('X-Tenant-Id');
         $tenants = [];
@@ -127,7 +116,7 @@ final class AuthController
             'search' => Field::text()->length(0, 100)->defaultValue('')->from('query'),
             'enabled' => Field::integer()->cast()->oneOf([-1, 0, 1])->defaultValue(-1)->from('query'),
         ], $input);
-        $connection = $this->connection($request);
+        $connection = $this->connection();
         $identity = $this->identity($request);
         $parameters = $request->getAttribute('type.route.params', []);
         return $this->response(str_starts_with((string) $request->getAttribute('type.route'), 'customer.roles.')
@@ -185,7 +174,7 @@ final class AuthController
     public function profile(ServerRequestInterface $request): ResponseInterface
     {
         $realm = $this->realm($request);
-        $connection = $this->connection($request);
+        $connection = $this->connection();
         $identity = $this->identity($request);
         if (!in_array('identity.read', RoleService::permissions($identity, $realm, $request->getHeaderLine('X-Tenant-Id')), true)) {
             throw new HttpError(403, 'permission_denied');
@@ -263,9 +252,9 @@ final class AuthController
         return $identity;
     }
 
-    private function connection(ServerRequestInterface $request): Connection
+    private function connection(): Connection
     {
-        $scope = $request->getAttribute('type.scope');
+        $scope = ExecutionScope::current();
         if (!$scope instanceof ExecutionScope) {
             throw new \RuntimeException('人员接口需要受管请求作用域');
         }

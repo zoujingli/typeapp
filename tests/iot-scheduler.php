@@ -53,8 +53,27 @@ function iotSchedulerChecks(PDO $database, array $command, array $environment, s
         foreach ($second as $record) {
             expect($record['state'] === 'succeeded' && $record['result']['deleted'] === 0, '下一分钟调度改变已清理事实');
         }
+        $work = new Type\Testing\Process([...$command, 'app:schedule', 'work', '100', '60000'], dirname(__DIR__), $environment);
+        try {
+            $readyBy = microtime(true) + 10;
+            do {
+                expect($work->running(), '调度连续角色在首轮前退出：' . $work->stderr());
+                $started = str_contains($work->stdout(), "\n");
+                if (!$started) {
+                    usleep(10000);
+                }
+            } while (!$started && microtime(true) < $readyBy);
+            expect($started, '调度连续角色未完成首轮');
+            $stopStarted = hrtime(true);
+            $stopped = $work->stop(5.0);
+            $stopSeconds = (hrtime(true) - $stopStarted) / 1000000000;
+            expect($stopped->successful() && $stopSeconds < 5.0, '调度长间隔角色未在5秒内正常停止');
+        } finally {
+            $work->stop();
+        }
         return ['status' => 'passed', 'tasks' => array_column($first, 'task_id'), 'deleted' => 2,
-            'restart-persisted' => true, 'unique-occurrences' => true, 'redis' => $redis->evidence()];
+            'restart-persisted' => true, 'unique-occurrences' => true, 'stop_seconds' => $stopSeconds,
+            'stop_exit' => $stopped->exitCode, 'stop_signal' => $stopped->signal, 'redis' => $redis->evidence()];
     } finally {
         $redis->close();
     }

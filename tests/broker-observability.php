@@ -351,7 +351,7 @@ function brokerObservability(
 /** 对比数据库中的原事件与操作/隔离安全事实；时间变化属于可观察的幂等退化。 */
 function brokerFenceAuditState(PDO $inspection, string $operationId, string $realm = 'broker'): array
 {
-    expect(in_array($realm, ['broker', 'iot'], true), '隔离审计装置需要明确宿主');
+    expect(in_array($realm, ['broker', 'admin'], true), '隔离审计装置需要明确宿主审计域');
     $id = $inspection->quote($operationId);
     return ['events' => $inspection->query('SELECT * FROM ' . $realm . '_audit WHERE operation_id = ' . $id . ' ORDER BY created_at, id')->fetchAll(PDO::FETCH_ASSOC),
         'operation' => $inspection->query('SELECT * FROM ' . $realm . '_broker_operations WHERE operation_id = ' . $id)->fetch(PDO::FETCH_ASSOC),
@@ -528,7 +528,7 @@ function brokerFenceLateUnknown(PostgresSync $sync, array $command, array $argum
 /** 原命令已受理并等待真实表锁后暂停回放，令隔离写入形成未知，再恢复主备供原ID对账。 */
 function brokerFenceUnknownCommand(PostgresSync $sync, array $arguments, array $environment, string $operationId, string $realm = 'broker'): array
 {
-    expect(in_array($realm, ['broker', 'iot'], true), '隔离未知结果装置需要明确宿主');
+    expect(in_array($realm, ['broker', 'admin'], true), '隔离未知结果装置需要明确宿主审计域');
     $locker = $sync->connection();
     $inspection = $sync->connection();
     $standby = $sync->standby();
@@ -603,7 +603,7 @@ function iotFenceAuditCommands(PostgresSync $sync, array $command, array $enviro
     $nodeId = 'iot-audit-fence';
     $runId = bin2hex(random_bytes(16));
     $activeRun = '';
-    $report = ['status' => 'running', 'realm' => 'iot', 'node_preparation' => 'native-public-node-open-and-close-without-network-listener',
+    $report = ['status' => 'running', 'realm' => 'admin', 'node_preparation' => 'native-public-node-open-and-close-without-network-listener',
         'cleanup' => ['node_registration_closed' => false, 'workers_absent' => false, 'standby_replay_resumed' => false]];
     $worker = static function (array $request) use ($root, $command, $environment): array {
         $result = mqttClusterRequest($root, [...$command, 'iot:mqtt-store'], $environment, $request);
@@ -615,7 +615,7 @@ function iotFenceAuditCommands(PostgresSync $sync, array $command, array $enviro
         $install = new Process([...$command, 'iot:mqtt-install'], $root, $environment);
         try {
             $installed = $install->wait(30);
-            expect($installed->successful() && str_contains($installed->stdout, '同步提交证明'), 'IoT MQTT原生安装未取得真实同步证明');
+            expect($installed->successful() && str_contains($installed->stdout, '同步提交证明'), 'IoT MQTT原生安装未取得真实同步证明：' . $installed->stdout . $installed->stderr);
         } finally {
             $install->stop();
         }
@@ -635,7 +635,7 @@ function iotFenceAuditCommands(PostgresSync $sync, array $command, array $enviro
         $completed = identityCommand($arguments, $environment);
         expect($completed['operation_id'] === $operationId && $completed['stage'] === 'completed' && $completed['result'] === 'success'
             && $completed['fenced'] && !$completed['observation_isolated'] && !$completed['expired'], 'IoT正常隔离未完成或冒充独立宿主采样隔离');
-        $original = brokerFenceAuditState($inspection, $operationId, 'iot');
+        $original = brokerFenceAuditState($inspection, $operationId, 'admin');
         $report['completed_state'] = $original;
         $stages = array_column($original['events'], 'stage');
         sort($stages);
@@ -662,7 +662,7 @@ function iotFenceAuditCommands(PostgresSync $sync, array $command, array $enviro
             && !str_contains(json_encode($original, JSON_THROW_ON_ERROR), $proof), 'IoT原始确认依据泄露或污染独立观察身份');
         foreach ([$arguments, $resultCommand] as $retry) {
             expect(
-                identityCommand($retry, $environment) === $completed && brokerFenceAuditState($inspection, $operationId, 'iot') === $original,
+                identityCommand($retry, $environment) === $completed && brokerFenceAuditState($inspection, $operationId, 'admin') === $original,
                 'IoT原动作重试或结果查询改变事件ID、时间或安全依据'
             );
         }
@@ -676,15 +676,15 @@ function iotFenceAuditCommands(PostgresSync $sync, array $command, array $enviro
             } finally {
                 $process->stop();
             }
-            expect(brokerFenceAuditState($inspection, $operationId, 'iot') === $original, 'IoT同ID冲突改写原审计依据');
+            expect(brokerFenceAuditState($inspection, $operationId, 'admin') === $original, 'IoT同ID冲突改写原审计依据');
         }
         $report['completed'] = ['operation_id' => $operationId, 'event_id' => $completed['event_id'], 'event_count' => 3,
             'original_events_and_timestamps_unchanged' => true, 'conflicting_fields_rejected' => 4, 'observation_run' => '', 'observation_isolated' => false];
         $unknownId = bin2hex(random_bytes(16));
         $unknownArguments = $arguments;
         $unknownArguments[count($unknownArguments) - 1] = $unknownId;
-        $report['unknown'] = brokerFenceUnknownCommand($sync, $unknownArguments, $environment, $unknownId, 'iot');
-        $unknownState = brokerFenceAuditState($inspection, $unknownId, 'iot');
+        $report['unknown'] = brokerFenceUnknownCommand($sync, $unknownArguments, $environment, $unknownId, 'admin');
+        $unknownState = brokerFenceAuditState($inspection, $unknownId, 'admin');
         $report['unknown_state'] = $unknownState;
         expect($unknownState['operation']['stage'] === 'unknown' && $unknownState['operation']['result'] === 'unknown'
             && count($unknownState['events']) === 3 && is_array($unknownState['store']), 'IoT同步未知被误判成功或没有保留可对账事实');
@@ -692,7 +692,7 @@ function iotFenceAuditCommands(PostgresSync $sync, array $command, array $enviro
         $resolved = identityCommand($unknownResult, $environment);
         expect($resolved['operation_id'] === $unknownId && $resolved['stage'] === 'completed' && $resolved['result'] === 'success'
             && $resolved['fenced'] && !$resolved['observation_isolated'], 'IoT未知原ID没有在同步恢复及原worker释放后完成');
-        $resolvedState = brokerFenceAuditState($inspection, $unknownId, 'iot');
+        $resolvedState = brokerFenceAuditState($inspection, $unknownId, 'admin');
         $report['resolved_state'] = $resolvedState;
         expect($resolvedState['operation']['stage'] === 'completed' && (int) $resolvedState['operation']['version'] === 4
             && count($resolvedState['events']) === 4 && $resolvedState['store'] === $unknownState['store'], 'IoT未知恢复重复隔离或没有保留原安全事实');
@@ -706,24 +706,24 @@ function iotFenceAuditCommands(PostgresSync $sync, array $command, array $enviro
         $newRegistry = identityCommand([...$command, 'iot:mqtt-nodes'], $environment);
         expect($newRegistry['nodes'][0]['run_id'] === $newRun && $newRegistry['nodes'][0]['state'] === 'active', 'IoT新运行未处于独立活动状态');
         foreach ([$unknownArguments, $unknownResult] as $retry) {
-            expect(identityCommand($retry, $environment) === $resolved && brokerFenceAuditState($inspection, $unknownId, 'iot') === $resolvedState
+            expect(identityCommand($retry, $environment) === $resolved && brokerFenceAuditState($inspection, $unknownId, 'admin') === $resolvedState
                 && identityCommand([...$command, 'iot:mqtt-nodes'], $environment) === $newRegistry, 'IoT旧动作重试影响新运行或刷新原事实');
         }
         // 仅将本轮四条真实事件推至保留期外；操作和持久隔离事实不直接写入。
-        $expire = $inspection->prepare('UPDATE iot_audit SET created_at = ? WHERE operation_id = ?');
+        $expire = $inspection->prepare('UPDATE admin_audit SET created_at = ? WHERE operation_id = ?');
         $expire->execute([time() - 180 * 86400 - 1, $unknownId]);
         expect($expire->rowCount() === 4, 'IoT清理夹具未准确限定四条真实阶段事件');
-        $pruned = identityCommand([...$command, 'iot:audit-clean', '2'], $environment)['data'];
-        $resumed = identityCommand([...$command, 'iot:audit-clean', '2'], $environment)['data'];
+        $pruned = identityCommand([...$command, 'app:audit-clean', 'admin', '2'], $environment)['data'];
+        $resumed = identityCommand([...$command, 'app:audit-clean', 'admin', '2'], $environment)['data'];
         expect($pruned['deleted'] === 2 && $pruned['has_more'] && $resumed['deleted'] === 2 && !$resumed['has_more'], 'IoT清理未遵守有界批次和可继续边界');
-        $retained = brokerFenceAuditState($inspection, $unknownId, 'iot');
+        $retained = brokerFenceAuditState($inspection, $unknownId, 'admin');
         expect($retained['events'] === [] && $retained['operation'] === $resolvedState['operation'] && $retained['store'] === $resolvedState['store'], 'IoT到期清理删除或改写安全依据');
         foreach ([$unknownArguments, $unknownResult] as $retry) {
             expect(identityCommand($retry, $environment) === array_replace($resolved, ['expired' => true])
-                && brokerFenceAuditState($inspection, $unknownId, 'iot') === $retained
+                && brokerFenceAuditState($inspection, $unknownId, 'admin') === $retained
                 && identityCommand([...$command, 'iot:mqtt-nodes'], $environment) === $newRegistry, 'IoT清理后重试重建旧日志、丢失原回执或影响新运行');
         }
-        expect(brokerFenceAuditState($inspection, $operationId, 'iot') === $original, 'IoT定向清理误删未到期正常操作');
+        expect(brokerFenceAuditState($inspection, $operationId, 'admin') === $original, 'IoT定向清理误删未到期正常操作');
         $report['reconciled'] = ['operation_id' => $unknownId, 'event_id' => $resolved['event_id'], 'event_count_before_cleanup' => 4,
             'store_fact_unchanged' => true, 'old_events_unchanged' => true, 'audit_events_pruned' => 4, 'expired_receipt_retained' => true,
             'new_run_unchanged' => true, 'new_generation' => 2];
@@ -1242,13 +1242,14 @@ if (realpath($argv[0] ?? '') === __FILE__) {
                 putenv($key . '=' . $value);
             }
         }
-        $fixtureMode = in_array('--iot-audit-fence', $testArguments, true) ? [] : ['--broker', '--broker-observability'];
+        $fixtureMode = in_array('--iot-audit-fence', $testArguments, true) ? ['--app'] : ['--broker', '--broker-observability'];
         $argv = [__DIR__ . '/iot-identity.php', $testArguments[1] ?? '--php', 'pgsql', ...$fixtureMode, ...array_slice($testArguments, 2)];
         require __DIR__ . '/iot-identity.php';
     } finally {
         $fixtureSync?->close();
         $fixtureDatabase?->close();
         file_put_contents($fixtureRoot . '/replication.json', json_encode($fixtureSync?->evidence(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
+        file_put_contents($fixtureRoot . '/database.json', json_encode($fixtureDatabase?->evidence(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
         unset($GLOBALS['brokerObservabilitySync'], $GLOBALS['brokerObservabilityDatabase']);
     }
 }

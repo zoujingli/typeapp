@@ -101,7 +101,7 @@ final class RoleService
         ExecutionScope::current()->run(static function (ExecutionScope $current) use ($connection, $realm, $scopeId, $subjectId, $catalog): void {
             foreach ($realm === 'admin' ? ['最高管理员'] : ['最高管理员', '操作员', '只读成员'] as $index => $name) {
                 $id = bin2hex(random_bytes(16));
-                $values = ['id' => $id, 'scope_id' => $scopeId, 'name' => $name, 'protected' => $index === 0, 'enabled' => true, 'recovery_verified' => true, 'created_at' => time()];
+                $values = ['id' => $id, 'scope_id' => $scopeId, 'name' => $name, 'protected' => $index === 0, 'enabled' => true, 'recovery_verified' => true];
                 $role = $realm === 'admin' ? new AdminRole($values) : new CustomerRole($values);
                 $role->save();
                 foreach ($catalog as $permission => $label) {
@@ -112,7 +112,7 @@ final class RoleService
                 }
                 if ($index === 0) {
                     $subject = ($realm === 'admin' ? AdminUser::query() : CustomerMember::query())->master()->findOrFail($subjectId);
-                    $subject->definition()->relation('roles')->loader()->attach($subject, $id);
+                    $subject->relation('roles')->attach($id);
                 }
             }
         }, $realm === 'customer' ? ['tenant_id' => $scopeId] : []);
@@ -496,7 +496,7 @@ final class RoleService
             if ($user->get('version') !== $binding['version']) {
                 throw new HttpError(409, 'stale_version');
             }
-            $user->definition()->relation('roles')->loader()->sync($user, array_map(static fn (array $assigned): array => ['id' => $assigned['id']], $roles));
+            $user->relation('roles')->sync(array_map(static fn (array $assigned): array => ['id' => $assigned['id']], $roles));
             if ($realm === 'admin') {
                 $user->set('version', $binding['version'] + 1);
                 $user->save();
@@ -554,7 +554,7 @@ final class RoleService
         }
         if (in_array($operation, ['create', 'copy'], true)) {
             $id = bin2hex(random_bytes(16));
-            $values = ['id' => $id, 'scope_id' => $scopeId, 'name' => trim($data['name']), 'enabled' => false, 'protected' => false, 'recovery_verified' => true, 'created_at' => time()];
+            $values = ['id' => $id, 'scope_id' => $scopeId, 'name' => trim($data['name']), 'enabled' => false, 'protected' => false, 'recovery_verified' => true];
             $model = $realm === 'admin' ? new AdminRole($values) : new CustomerRole($values);
             $model->save();
             $role = self::publicValues($model);
@@ -570,7 +570,7 @@ final class RoleService
                 do {
                     $models = $subjects->orderBy('id')->limit(100)->get();
                     foreach ($models as $subject) {
-                        $subject->definition()->relation('roles')->loader()->detach($subject, $id);
+                        $subject->relation('roles')->detach($id);
                         if ($realm === 'admin') {
                             $subject->set('version', $subject->get('version') + 1);
                             $subject->save();

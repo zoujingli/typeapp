@@ -213,7 +213,7 @@ final class ExportService
             $query = $transaction->table('iot_exports')->where('id', '=', $id);
             $row = ($transaction->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
             if ($row === null || !in_array($row['status'], ['queued', 'running'], true) || (int) $row['step'] !== $payload['step']) {
-                (new Store('iot_export_outbox'))->consumed($transaction, $context->message()->id(), 'export-terminal-or-superseded');
+                (new Store('iot_export_outbox'))->consumed($context->message()->id(), 'export-terminal-or-superseded');
                 return 'skip';
             }
             if (!self::sourceAuthorized($transaction, $row)) {
@@ -242,16 +242,16 @@ final class ExportService
             $row = ($transaction->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
             $store = new Store('iot_export_outbox');
             if ($row === null || !in_array($row['status'], ['queued', 'running'], true)) {
-                $store->consumed($transaction, $context->message()->id(), 'export-terminal');
+                $store->consumed($context->message()->id(), 'export-terminal');
                 return $row === null || $row['status'] !== 'succeeded';
             }
             if ((int) $row['step'] !== $payload['step']) {
-                $store->consumed($transaction, $context->message()->id(), 'export-superseded');
+                $store->consumed($context->message()->id(), 'export-superseded');
                 return false;
             }
             if ((int) $row['expires_at'] <= time()) {
                 $query->update(['status' => 'expired', 'updated_at' => time()]);
-                $store->consumed($transaction, $context->message()->id(), 'export-expired');
+                $store->consumed($context->message()->id(), 'export-expired');
                 return true;
             }
             if (!self::sourceAuthorized($transaction, $row)) {
@@ -260,7 +260,7 @@ final class ExportService
             }
             // 只绑定刚刚重验的服务端来源；消息关联值不参与授权，异常也恢复外层绑定。
             return $context->scope()->run(function (ExecutionScope $scope) use ($store, $transaction, $context, $payload, $id, $row, $query): bool {
-                if (!$store->consumed($transaction, $context->message()->id(), 'export-step:' . $payload['step'])) {
+                if (!$store->consumed($context->message()->id(), 'export-step:' . $payload['step'])) {
                     return false;
                 }
                 // 业务行锁内先验证终态再创建文件，取消/清理之后的旧任务不会重新留下空文件。
@@ -419,7 +419,7 @@ final class ExportService
                 return false;
             }
             $query->update(['status' => 'failed', 'error_code' => $code, 'updated_at' => time()]);
-            (new Store('iot_export_outbox'))->consumed($transaction, $context->message()->id(), 'export-storage-failed');
+            (new Store('iot_export_outbox'))->consumed($context->message()->id(), 'export-storage-failed');
             return true;
         }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
         if ($failed) {
@@ -518,14 +518,14 @@ final class ExportService
     private static function revoked(Connection $connection, array $row, JobContext $context): void
     {
         $connection->table('iot_exports')->where('id', '=', $row['id'])->update(['status' => 'failed', 'error_code' => 'export_permission_revoked', 'updated_at' => time()]);
-        (new Store('iot_export_outbox'))->consumed($connection, $context->message()->id(), 'export-permission-revoked');
+        (new Store('iot_export_outbox'))->consumed($context->message()->id(), 'export-permission-revoked');
         $source = json_decode($row['source_context'], true, 8, JSON_THROW_ON_ERROR);
         AuditLog::append($connection, $row['tenant_id'], new Identity($row['actor_id'], ['realm:customer'], $source), 'export.stopped', $row['id'], 'denied', ['reason' => 'export_permission_revoked'], 'customer');
     }
 
     private static function intent(Connection $connection, string $id, int $step): void
     {
-        (new Store('iot_export_outbox'))->enqueue($connection, $id . ':' . $step, 'iot.export', 1, ['id' => $id, 'step' => $step]);
+        (new Store('iot_export_outbox'))->enqueue($id . ':' . $step, 'iot.export', 1, ['id' => $id, 'step' => $step]);
     }
 
     private static function record(Connection $connection, string $tenantId, string $id, bool $lock = false): array

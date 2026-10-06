@@ -1322,12 +1322,12 @@ expect(
 // 在创建目录、启动数据库或准备原生运行环境前拒绝失效组合，不能跳过专项后报告成功。
 expect(
     array_intersect($argv, ['--broker-audit', '--ha', '--recovery', '--support', '--support-mqtt', '--capacity', '--cluster',
-        '--iot-audit-fence', '--load-baseline', '--load-history', '--load-mqtt', '--load-phases']) === [],
+        '--load-baseline', '--load-history', '--load-mqtt', '--load-phases']) === [],
     '验收选项已退出或尚未接入当前身份；入口与迁移边界见 docs/development/test-entrypoints.md'
 );
 expect(
     !in_array('--broker', $argv, true) || array_intersect($argv, ['--app', '--products', '--devices', '--business', '--history',
-        '--aggregate', '--lifecycle', '--alarms', '--exports', '--audit', '--operations', '--broker-resources', '--scheduler', '--device-mqtt']) === [],
+        '--aggregate', '--lifecycle', '--alarms', '--exports', '--audit', '--operations', '--broker-resources', '--scheduler', '--device-mqtt', '--iot-audit-fence']) === [],
     '身份验收不能混用物联应用与独立 Broker 场景'
 );
 expect(
@@ -1383,7 +1383,7 @@ if ($noSource) {
         'COMPILER' => dirname($built['runtime-profile']['ini'], 2), 'COMPOSER' => $sourceRoot . '/composer.json'] as $role => $path) {
         array_push($policy, '-D', $role . '=' . $path);
     }
-    $probeFiles = [$sourceRoot . '/app/main.php', $sourceRoot . '/plugin/type-core/src/Application.php', $sourceRoot . '/vendor/autoload.php', $sourceRoot . '/config/app.php'];
+    $probeFiles = [$sourceRoot . '/app/common/bootstrap/Application.php', $sourceRoot . '/plugin/type-core/src/Application.php', $sourceRoot . '/vendor/autoload.php', $sourceRoot . '/config/app.php'];
     foreach ($probeFiles as $probeFile) {
         expect(is_file($probeFile) && is_readable($probeFile), '拒读探针必须指向真实可读的编译输入');
     }
@@ -1417,8 +1417,11 @@ $environment['APP_API_TOKEN'] = bin2hex(random_bytes(32));
 $environment['APP_CACHE_ENABLED'] = 'false';
 $environment['APP_DEBUG'] = 'true';
 if (in_array('--operations', $argv, true) || in_array('--broker-resources', $argv, true)
-    || in_array('--device-mqtt', $argv, true)) {
+    || in_array('--device-mqtt', $argv, true) || in_array('--iot-audit-fence', $argv, true)) {
     $environment['IOT_MQTT_COMMAND'] = json_encode($workerCommand, JSON_THROW_ON_ERROR);
+}
+if (in_array('--iot-audit-fence', $argv, true)) {
+    $environment['IOT_MQTT_STANDBY'] = 'broker_observe_sync';
 }
 if (in_array('--operations', $argv, true)) {
     require_once __DIR__ . '/iot-operations.php';
@@ -1430,7 +1433,13 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
     expect(in_array('--devices', $argv, true) || array_intersect($argv, ['--lifecycle', '--device-mqtt', '--lifecycle-mqtt']) === [], '生命周期与MQTT需要新设备装置');
     $ownedDatabase = null;
     $sharedDatabase = $environment['DB_DATABASE'] ?? '';
-    if ($driver !== 'sqlite') {
+    if (in_array('--iot-audit-fence', $argv, true)) {
+        expect(
+            $driver === 'pgsql' && isset($GLOBALS['brokerObservabilitySync']) && $GLOBALS['brokerObservabilitySync'] instanceof PostgresSync,
+            '节点隔离审计须由 broker-observability.php 持有本轮专属 PostgreSQL 主备'
+        );
+    }
+    if ($driver !== 'sqlite' && !in_array('--iot-audit-fence', $argv, true)) {
         $ownedDatabase = 'type_app_id_' . bin2hex(random_bytes(4));
         $admin = new PDO(
             $driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $sharedDatabase,
@@ -1583,6 +1592,11 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         }
         $request('POST', '/admin/auth/login', '', [], ['login' => 'same-login', 'password' => $password . '-customer'], 401);
         $request('POST', '/customer/auth/login', '', [], ['login' => 'same-login', 'password' => $password], 401);
+        foreach (['/admin/auth/login', '/customer/auth/login'] as $loginPath) {
+            $request('POST', $loginPath, '', ['Content-Type' => 'application/problem+json'], [], 415, 'json_required');
+            $request('POST', $loginPath, '', [], null, 400, 'invalid_json');
+            $request('POST', $loginPath, '', [], ['login' => 'same-login', 'password' => $password, 'realm' => 'admin'], 422, 'identity_input_invalid');
+        }
         $adminToken = $request('POST', '/admin/auth/login', '', [], ['login' => 'same-login', 'password' => $password], 200)['data']['accessToken'];
         $customerToken = $request('POST', '/customer/auth/login', '', [], ['login' => 'same-login', 'password' => $password . '-customer'], 200)['data']['accessToken'];
         $tenantHeaders = ['X-Tenant-Id' => $installed['tenant_id']];
@@ -1590,6 +1604,9 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         $customerCurrent = $request('GET', '/customer/auth/me', $customerToken, [], null, 200)['data'];
         expect(in_array('/admin/profile', menuPaths($adminCurrent['menus']), true) && in_array('/profile', menuPaths($customerCurrent['menus']), true) && $customerCurrent['tenant_id'] === $installed['tenant_id'], '双端菜单或当前租户错误');
         $publicSite = $request('GET', '/public/site', '', [], null, 200)['data'];
+        foreach ([[], ['version' => '1', 'changes' => ['name' => '拒绝']], ['version' => 1, 'changes' => null], ['version' => 1, 'changes' => [], 'database' => 'other']] as $invalidSite) {
+            $request('PUT', '/admin/site', $adminToken, [], $invalidSite, 422, 'site_settings_input_invalid');
+        }
         expect($publicSite['name'] === 'TypeApp' && $publicSite['official_url'] === 'https://iots.top'
             && $publicSite['description'] === '物联中心管理平台' && $publicSite['theme']['mode'] === 'light'
             && $publicSite['preferences']['layout'] === 'sidebar-nav' && $publicSite['preferences']['breadcrumb']['enable'] === true, '默认站点配置未公开');
@@ -1814,6 +1831,9 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
             require __DIR__ . '/iot-scheduler.php';
             $report['scheduler'] = iotSchedulerChecks($inspection, $command, $environment, $base);
         }
+        if (in_array('--iot-audit-fence', $argv, true)) {
+            $report['iot_fence_audit'] = iotFenceAuditCommands($GLOBALS['brokerObservabilitySync'], $command, $environment, $base);
+        }
         $inspection->exec('UPDATE customer_members SET enabled = 0');
         $request('GET', '/customer/profile', $customerToken, $tenantHeaders, null, 403);
         $inspection->exec('UPDATE customer_members SET enabled = 1');
@@ -1895,6 +1915,9 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         expect($server === null || ($stopped->successful() && !$server->running()), '双端服务没有正常排空退出');
     }
     echo '双端身份 HTTP 通过：' . $base . "/verification.json\n";
+    if (in_array('--iot-audit-fence', $argv, true)) {
+        return;
+    }
     exit(0);
 }
 if (in_array('--broker', $argv, true)) {

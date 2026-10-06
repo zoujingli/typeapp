@@ -11,7 +11,7 @@ use Type\Orm\Attribute\Table;
 use Type\Orm\Model;
 
 /** 平台管理账号；凭据和登录状态属于账号实体本身。 */
-#[Table('admin_users', generatedPrimary: false)]
+#[Table('admin_users', generatedPrimary: false, createdAt: 'created_at')]
 final class AdminUser extends Model
 {
     public string $id;

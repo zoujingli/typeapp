@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace app\common\bootstrap;
 
 use app\common\database\DatabaseFactory;
-use app\common\service\AuditRetentionTask;
 use Type\Core\Config\Repository;
 use Type\Orm\Db;
 use Type\Redis\Purpose;
@@ -13,14 +12,10 @@ use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\Cancellation;
 use Type\Runtime\ProcessSignals;
 use Type\Runtime\ExecutionScope;
-use Type\Scheduler\Definition;
-use Type\Scheduler\IntervalSchedule;
 use Type\Scheduler\RedisStateStore;
 use Type\Scheduler\Scheduler;
 use Type\Scheduler\SchedulerConsole;
 use Type\Scheduler\SystemClock;
-use Type\Scheduler\Task;
-use Type\Scheduler\TaskContext;
 
 /** 物联中心固定维护任务的装配入口；复用组件调度与 Swoole 协程，不执行外部脚本。 */
 final class ApplicationScheduler
@@ -52,12 +47,10 @@ final class ApplicationScheduler
                 $redis = Settings::redisManager($settings, $basePath, 'scheduler');
                 $scope = new ExecutionScope();
                 try {
-                    return (int) $scope->run(static function (ExecutionScope $current) use ($settings, $redis, $arguments, $signals, $stopping): int {
+                    return (int) $scope->run(static function (ExecutionScope $current) use ($settings, $basePath, $redis, $arguments, $signals, $stopping): int {
                         $store = new RedisStateStore($redis->connection($current, 'scheduler', Purpose::SCRIPT), $settings->text('app.scheduler.namespace'), 'maintenance', 60000);
-                        $definitions = [
-                            new Definition('audit.admin', new IntervalSchedule(60), static fn (TaskContext $context): Task => new AuditRetentionTask('admin')),
-                            new Definition('audit.customer', new IntervalSchedule(60), static fn (TaskContext $context): Task => new AuditRetentionTask('customer')),
-                        ];
+                        $application = new \Type\Generated\CommandApplication(ApplicationContext::configuration($basePath, '', false, $settings));
+                        $definitions = $application->schedules();
                         $scheduler = new Scheduler(new SystemClock(), $store, $definitions, 1000, 2, 20000);
                         $subscription = $stopping->subscribe(static function () use ($scheduler): void {
                             $scheduler->stop();

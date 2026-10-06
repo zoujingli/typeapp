@@ -17,7 +17,6 @@ use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
 use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
 use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
 use Type\Validate\Input;
@@ -26,7 +25,7 @@ use Type\Validate\Input;
 final class DeviceController
 {
     /** 复用请求资源、消息工厂与设备持久所有者，构造不连接数据库。 */
-    public function __construct(private DatabaseManager $database, private Factory $messages, private DeviceService $devices)
+    public function __construct(private Factory $messages, private DeviceService $devices)
     {
     }
 

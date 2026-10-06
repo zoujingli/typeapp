@@ -10,7 +10,7 @@ use Type\Orm\Attribute\Table;
 use Type\Orm\Model;
 
 /** 租户角色的 scope_id 明确映射为租户字段，平台角色不使用此规则。 */
-#[Table('customer_roles', generatedPrimary: false, version: 'version', tenant: 'scope_id')]
+#[Table('customer_roles', generatedPrimary: false, version: 'version', tenant: 'scope_id', createdAt: 'created_at')]
 final class CustomerRole extends Model
 {
     public string $id;

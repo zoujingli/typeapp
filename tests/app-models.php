@@ -34,7 +34,7 @@ try {
                 $connection = Db::connection('default', true);
                 $connection->raw('CREATE TABLE iot_tenants (id VARCHAR(32) PRIMARY KEY, name VARCHAR(100) NOT NULL, enabled INTEGER NOT NULL, version INTEGER NOT NULL, created_at INTEGER NOT NULL)');
                 $connection->raw('CREATE TABLE customer_members (id VARCHAR(32) PRIMARY KEY, tenant_id VARCHAR(32) NOT NULL, user_id VARCHAR(32) NOT NULL, name VARCHAR(100) NOT NULL, enabled INTEGER NOT NULL, recovery_verified INTEGER NOT NULL, version INTEGER NOT NULL, created_at INTEGER NOT NULL)');
-                $tenant = Tenant::create(['id' => 'tenant-a', 'name' => '租户甲', 'enabled' => true, 'created_at' => time()]);
+                $tenant = Tenant::create(['id' => 'tenant-a', 'name' => '租户甲', 'enabled' => true]);
                 expect($tenant instanceof Tenant && $tenant->isPersisted(), '静态 create 没有返回已持久化租户');
                 expect(Tenant::find('tenant-a') instanceof Tenant && Tenant::find('missing') === null, '静态 find 的水合或缺失语义错误');
                 try {
@@ -46,7 +46,7 @@ try {
                 $current->run(static function (ExecutionScope $bound): void {
                     $member = new CustomerMember([
                         'id' => 'member-a', 'user_id' => 'user-a', 'name' => '成员甲',
-                        'enabled' => true, 'recovery_verified' => true, 'created_at' => time(),
+                        'enabled' => true, 'recovery_verified' => true,
                     ]);
                     expect($member->save() === 'created' && $member->getTenantId() === 'tenant-a', '成员归属没有自动填充');
                     $helper = CustomerMember::search(['enabled' => true, 'keyword' => '甲']);
@@ -100,14 +100,14 @@ try {
                     expect(Db::connection('default', true) === $transaction, '持久回调与 Model 使用了不同租约');
                     expect(ExecutionScope::current()->binding('tenant_id') === null, '持久消息未经认证即授予租户身份');
                     return Db::transaction(static function (): array {
-                        $tenant = new Tenant(['id' => 'committed', 'name' => '同步持久', 'enabled' => true, 'created_at' => time()]);
+                        $tenant = new Tenant(['id' => 'committed', 'name' => '同步持久', 'enabled' => true]);
                         $tenant->save();
                         return $tenant->toArray();
                     });
                 });
                 expect($committed->state === 'committed' && $committed->released && $committed->value['id'] === 'committed', 'Model 写入未取得同步持久证明或未释放');
                 $rejected = $store->transaction(str_repeat('b', 32), static function (Type\Orm\Connection $transaction): array {
-                    $tenant = new Tenant(['id' => 'rollback', 'name' => '须回滚', 'enabled' => true, 'created_at' => time()]);
+                    $tenant = new Tenant(['id' => 'rollback', 'name' => '须回滚', 'enabled' => true]);
                     $tenant->save();
                     throw new Type\Mqtt\ProtocolError(0x87);
                 });

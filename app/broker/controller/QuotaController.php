@@ -16,7 +16,6 @@ use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
 use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
 use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
 use Type\Validate\Input;
@@ -24,11 +23,13 @@ use Type\Validate\Input;
 /** 连接、会话与消息额度的版本化发布；保存成功不等于集群生效，降配额不删除已确认积压。 */
 final class QuotaController
 {
-    /**
-     * @param list<string> $worker 当前宿主持久存储命令；空列表时预览只含实时连接用量。
-     */
-    public function __construct(private DatabaseManager $database, private IdentityService $identities, private Factory $messages, private array $worker = [])
+    /** @var list<string> 当前宿主持久存储命令；空列表时预览只含实时连接用量。 */
+    private array $worker;
+
+    /** 复用固定身份域和启动配置，不在构造时建立连接。 */
+    public function __construct(private IdentityService $identities, private Factory $messages, \app\common\bootstrap\ApplicationContext $context)
     {
+        $this->worker = \app\common\bootstrap\ApplicationContext::quotaWorker($context->settings());
     }
 
     /**

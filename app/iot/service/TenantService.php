@@ -120,12 +120,12 @@ final class TenantService
                 }
                 $owner = $account->project(['id', 'name']);
             }
-            $tenant = new Tenant(['id' => $id, 'name' => trim($data['name']), 'enabled' => true, 'created_at' => time()]);
+            $tenant = new Tenant(['id' => $id, 'name' => trim($data['name']), 'enabled' => true]);
             $tenant->save();
             $memberId = bin2hex(random_bytes(16));
             $member = new CustomerMember([
                 'id' => $memberId, 'tenant_id' => $id, 'user_id' => $owner['id'], 'name' => $owner['name'],
-                'enabled' => true, 'recovery_verified' => true, 'created_at' => time(),
+                'enabled' => true, 'recovery_verified' => true,
             ]);
             $member->save();
             RoleService::initializeScope('customer', $id, $memberId);
@@ -183,7 +183,6 @@ final class TenantService
         if ($highest === null || !$highest->getEnabled() || !$highest->getRecoveryVerified()) {
             throw new HttpError(409, 'tenant_admin_role_unavailable');
         }
-        $now = time();
         if ($action === 'admin.tenants.administrators.remove') {
             $memberQuery = CustomerMember::query()->master()->where('id', '=', $data['member_id']);
             $member = ($connection->driverName() === 'sqlite' ? $memberQuery : $memberQuery->lockForUpdate())->first();
@@ -193,7 +192,7 @@ final class TenantService
             if ($member->getVersion() !== $data['member_version']) {
                 throw new HttpError(409, 'stale_version');
             }
-            if (!$member->definition()->relation('roles')->loader()->detach($member, $highest->getId())) {
+            if (!$member->relation('roles')->detach($highest->getId())) {
                 throw new HttpError(409, 'administrator_not_found');
             }
             $member->touch();
@@ -232,7 +231,7 @@ final class TenantService
                 }
             }
         } else {
-            $member = new CustomerMember(['id' => bin2hex(random_bytes(16)), 'user_id' => $user['id'], 'name' => $user['name'], 'enabled' => true, 'recovery_verified' => true, 'created_at' => $now]);
+            $member = new CustomerMember(['id' => bin2hex(random_bytes(16)), 'user_id' => $user['id'], 'name' => $user['name'], 'enabled' => true, 'recovery_verified' => true]);
             $member->save();
         }
         $replacement = null;
@@ -248,11 +247,11 @@ final class TenantService
             if ($replacement->getVersion() !== $data['replace_member_version']) {
                 throw new HttpError(409, 'stale_version');
             }
-            if (!$replacement->definition()->relation('roles')->loader()->detach($replacement, $highest->getId())) {
+            if (!$replacement->relation('roles')->detach($highest->getId())) {
                 throw new HttpError(409, 'administrator_not_found');
             }
         }
-        $member->definition()->relation('roles')->loader()->attach($member, $highest->getId());
+        $member->relation('roles')->attach($highest->getId());
         $member->touch();
         $memberVersion = $member->getVersion();
         if ($replacement !== null) {
@@ -335,7 +334,7 @@ final class TenantService
             $id = bin2hex(random_bytes(16));
             $member = new CustomerMember([
                 'id' => $id, 'tenant_id' => $tenantId, 'user_id' => $user['id'], 'name' => trim($data['name']),
-                'enabled' => true, 'recovery_verified' => true, 'created_at' => time(),
+                'enabled' => true, 'recovery_verified' => true,
             ]);
             $member->save();
         } else {
@@ -349,7 +348,7 @@ final class TenantService
             }
             if ($action === 'customer.members.delete') {
                 $user = ['id' => $member->getUserId()];
-                $member->definition()->relation('roles')->loader()->sync($member, []);
+                $member->relation('roles')->sync([]);
                 $member->delete();
             } else {
                 if ($action === 'customer.members.update') {

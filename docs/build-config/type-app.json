@@ -2,25 +2,1008 @@
   "project-root": "../..",
   "name": "typeapp",
   "version": "1.0.0-dev",
-  "entry": "app/main.php",
-  "development": {"entry": "bin/typeapp", "prepare": "bin/typeapp-prepare", "output": "build/app/development", "check": ["check"], "watch": ["plugin"]},
-  "sources": ["app"],
-  "embedded-resources": [{"source": "web/dist", "target": "web"}],
-  "build-profiles": {
-    "sqlite": {"database": "sqlite", "features": ["web", "mqtt", "iot", "alerts", "exports", "queue", "scheduler"]},
-    "mysql": {"database": "mysql", "features": ["web", "mqtt", "iot", "alerts", "exports", "queue", "scheduler"]},
-    "pgsql": {"database": "pgsql", "features": ["web", "mqtt", "iot", "alerts", "exports", "queue", "scheduler"]}
+  "development": {
+    "entry": "bin/typeapp",
+    "prepare": "bin/typeapp-prepare",
+    "output": "build/app/development",
+    "check": [
+      "check"
+    ],
+    "watch": [
+      "plugin"
+    ]
   },
-  "threads": {"http": "app\\common\\bootstrap\\Application::httpThread"},
+  "sources": [
+    "app"
+  ],
+  "embedded-resources": [
+    {
+      "source": "web/dist",
+      "target": "web"
+    }
+  ],
+  "build-profiles": {
+    "sqlite": {
+      "database": "sqlite",
+      "features": [
+        "web",
+        "mqtt",
+        "iot",
+        "alerts",
+        "exports",
+        "queue",
+        "scheduler"
+      ]
+    },
+    "mysql": {
+      "database": "mysql",
+      "features": [
+        "web",
+        "mqtt",
+        "iot",
+        "alerts",
+        "exports",
+        "queue",
+        "scheduler"
+      ]
+    },
+    "pgsql": {
+      "database": "pgsql",
+      "features": [
+        "web",
+        "mqtt",
+        "iot",
+        "alerts",
+        "exports",
+        "queue",
+        "scheduler"
+      ]
+    }
+  },
+  "threads": {
+    "http": "app\\common\\bootstrap\\Application::httpThread"
+  },
   "runtime": {
-    "Linux": {"extensions": ["pcntl", "swoole"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]},
-    "Darwin": {"extensions": ["pcntl", "swoole"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]}
+    "Linux": {
+      "extensions": [
+        "pcntl",
+        "swoole"
+      ],
+      "functions": [
+        "pcntl_signal",
+        "pcntl_async_signals",
+        "pcntl_signal_get_handler"
+      ]
+    },
+    "Darwin": {
+      "extensions": [
+        "pcntl",
+        "swoole"
+      ],
+      "functions": [
+        "pcntl_signal",
+        "pcntl_async_signals",
+        "pcntl_signal_get_handler"
+      ]
+    }
   },
   "routing": "config/route.php",
   "config": {
     "class": "app\\generated\\ProjectConfig",
-    "files": ["config/app.php", "config/database.php", "config/cache.php"]
+    "files": [
+      "config/app.php",
+      "config/database.php",
+      "config/cache.php"
+    ]
   },
   "output": "build/app/type-app",
-  "build-directory": "build/app/compiler"
+  "build-directory": "build/app/compiler",
+  "application": {
+    "enabled": [
+      "zoujingli/typeapp"
+    ],
+    "bootstrap": {
+      "class": "app\\common\\bootstrap\\Application",
+      "method": "bootstrap"
+    },
+    "config": {
+      "base": {
+        "env": "TYPEAPP_BOOTSTRAP_BASE",
+        "default": ""
+      },
+      "program": {
+        "env": "TYPEAPP_BOOTSTRAP_PROGRAM",
+        "default": ""
+      },
+      "development": {
+        "env": "TYPEAPP_BOOTSTRAP_DEVELOPMENT",
+        "default": ""
+      },
+      "settings": {
+        "env": "TYPEAPP_BOOTSTRAP_SETTINGS",
+        "default": ""
+      }
+    },
+    "services": [
+      {
+        "id": "application.context",
+        "class": "app\\common\\bootstrap\\ApplicationContext",
+        "lifetime": "singleton",
+        "arguments": [
+          {
+            "config": "base"
+          },
+          {
+            "config": "program"
+          },
+          {
+            "config": "development"
+          },
+          {
+            "config": "settings"
+          }
+        ]
+      },
+      {
+        "id": "http.messages",
+        "class": "Type\\Core\\Http\\Message\\Factory",
+        "lifetime": "singleton"
+      },
+      {
+        "id": "identity.admin",
+        "class": "app\\common\\service\\IdentityService",
+        "arguments": [
+          {
+            "value": "admin"
+          }
+        ]
+      },
+      {
+        "id": "auth.admin",
+        "class": "app\\iot\\middleware\\IotAuthentication",
+        "arguments": [
+          {
+            "service": "identity.admin"
+          },
+          {
+            "service": "http.messages"
+          }
+        ]
+      },
+      {
+        "id": "identity.customer",
+        "class": "app\\common\\service\\IdentityService",
+        "arguments": [
+          {
+            "value": "customer"
+          }
+        ]
+      },
+      {
+        "id": "auth.customer",
+        "class": "app\\iot\\middleware\\IotAuthentication",
+        "arguments": [
+          {
+            "service": "identity.customer"
+          },
+          {
+            "service": "http.messages"
+          }
+        ]
+      },
+      {
+        "id": "identity.broker",
+        "class": "app\\common\\service\\IdentityService",
+        "arguments": [
+          {
+            "value": "broker"
+          }
+        ]
+      },
+      {
+        "id": "auth.broker",
+        "class": "app\\iot\\middleware\\IotAuthentication",
+        "arguments": [
+          {
+            "service": "identity.broker"
+          },
+          {
+            "service": "http.messages"
+          }
+        ]
+      },
+      {
+        "id": "auth.probe",
+        "class": "app\\common\\middleware\\ProbeAuthentication"
+      },
+      {
+        "id": "exports",
+        "class": "app\\iot\\service\\ExportService",
+        "factory": {
+          "service": "application.context",
+          "method": "exportService",
+          "class": "app\\common\\bootstrap\\ApplicationContext"
+        }
+      },
+      {
+        "id": "command.check",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "check"
+          }
+        ]
+      },
+      {
+        "id": "command.verify-runtime",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "verify-runtime"
+          }
+        ]
+      },
+      {
+        "id": "command.licenses",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "licenses"
+          }
+        ]
+      },
+      {
+        "id": "command.config:check",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "config:check"
+          }
+        ]
+      },
+      {
+        "id": "command.config:restore",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "config:restore"
+          }
+        ]
+      },
+      {
+        "id": "command.app:install",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "app:install"
+          }
+        ]
+      },
+      {
+        "id": "command.app:upgrade",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "app:upgrade"
+          }
+        ]
+      },
+      {
+        "id": "command.web:install",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "web:install"
+          }
+        ]
+      },
+      {
+        "id": "command.app:schedule",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "app:schedule"
+          }
+        ]
+      },
+      {
+        "id": "command.migrate",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "migrate"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:backup",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:backup"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:wal",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:wal"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:recovery",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:recovery"
+          }
+        ]
+      },
+      {
+        "id": "command.app:audit-clean",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "app:audit-clean"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:command-clean",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:command-clean"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:history-clean",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:history-clean"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:aggregate",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:aggregate"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:aggregate-clean",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:aggregate-clean"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:alarm",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:alarm"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:notices",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:notices"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:notices-clean",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:notices-clean"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:mqtt-install",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:mqtt-install"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:mqtt-statistics",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:mqtt-statistics"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:mqtt-nodes",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:mqtt-nodes"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:mqtt-fence",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:mqtt-fence"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:mqtt-fence-result",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:mqtt-fence-result"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:mqtt-store",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:mqtt-store"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:mqtt-access",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:mqtt-access"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:ingest",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:ingest"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:ingest-store",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:ingest-store"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:device",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:device"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:exports",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:exports"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:exports-work",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:exports-work"
+          }
+        ]
+      },
+      {
+        "id": "command.iot:exports-clean",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "iot:exports-clean"
+          }
+        ]
+      },
+      {
+        "id": "command.broker:install",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "broker:install"
+          }
+        ]
+      },
+      {
+        "id": "command.broker:migrate",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "broker:migrate"
+          }
+        ]
+      },
+      {
+        "id": "command.broker:recovery",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "broker:recovery"
+          }
+        ]
+      },
+      {
+        "id": "command.broker:user",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "broker:user"
+          }
+        ]
+      },
+      {
+        "id": "command.broker:store-install",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "broker:store-install"
+          }
+        ]
+      },
+      {
+        "id": "command.broker:store",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "broker:store"
+          }
+        ]
+      },
+      {
+        "id": "command.broker:nodes",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "broker:nodes"
+          }
+        ]
+      },
+      {
+        "id": "command.broker:node-fence",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "broker:node-fence"
+          }
+        ]
+      },
+      {
+        "id": "command.broker:node-fence-result",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "broker:node-fence-result"
+          }
+        ]
+      },
+      {
+        "id": "command.broker:audit-clean",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "broker:audit-clean"
+          }
+        ]
+      },
+      {
+        "id": "audit.admin",
+        "class": "app\\common\\service\\AuditRetentionTask",
+        "arguments": [
+          {
+            "value": "admin"
+          }
+        ]
+      },
+      {
+        "id": "audit.customer",
+        "class": "app\\common\\service\\AuditRetentionTask",
+        "arguments": [
+          {
+            "value": "customer"
+          }
+        ]
+      },
+      {
+        "id": "body.json",
+        "class": "app\\common\\middleware\\JsonBody"
+      }
+    ],
+    "bindings": [
+      {
+        "type": "app\\common\\service\\IdentityService",
+        "service": "identity.broker"
+      }
+    ],
+    "commands": [
+      {
+        "name": "app:check",
+        "service": "command.check"
+      },
+      {
+        "name": "verify-runtime",
+        "service": "command.verify-runtime"
+      },
+      {
+        "name": "licenses",
+        "service": "command.licenses"
+      },
+      {
+        "name": "config:check",
+        "service": "command.config:check"
+      },
+      {
+        "name": "config:restore",
+        "service": "command.config:restore"
+      },
+      {
+        "name": "app:install",
+        "service": "command.app:install"
+      },
+      {
+        "name": "app:upgrade",
+        "service": "command.app:upgrade"
+      },
+      {
+        "name": "web:install",
+        "service": "command.web:install"
+      },
+      {
+        "name": "app:schedule",
+        "service": "command.app:schedule"
+      },
+      {
+        "name": "migrate",
+        "service": "command.migrate"
+      },
+      {
+        "name": "iot:backup",
+        "service": "command.iot:backup"
+      },
+      {
+        "name": "iot:wal",
+        "service": "command.iot:wal"
+      },
+      {
+        "name": "iot:recovery",
+        "service": "command.iot:recovery"
+      },
+      {
+        "name": "app:audit-clean",
+        "service": "command.app:audit-clean"
+      },
+      {
+        "name": "iot:command-clean",
+        "service": "command.iot:command-clean"
+      },
+      {
+        "name": "iot:history-clean",
+        "service": "command.iot:history-clean"
+      },
+      {
+        "name": "iot:aggregate",
+        "service": "command.iot:aggregate"
+      },
+      {
+        "name": "iot:aggregate-clean",
+        "service": "command.iot:aggregate-clean"
+      },
+      {
+        "name": "iot:alarm",
+        "service": "command.iot:alarm"
+      },
+      {
+        "name": "iot:notices",
+        "service": "command.iot:notices"
+      },
+      {
+        "name": "iot:notices-clean",
+        "service": "command.iot:notices-clean"
+      },
+      {
+        "name": "iot:mqtt-install",
+        "service": "command.iot:mqtt-install"
+      },
+      {
+        "name": "iot:mqtt-statistics",
+        "service": "command.iot:mqtt-statistics"
+      },
+      {
+        "name": "iot:mqtt-nodes",
+        "service": "command.iot:mqtt-nodes"
+      },
+      {
+        "name": "iot:mqtt-fence",
+        "service": "command.iot:mqtt-fence"
+      },
+      {
+        "name": "iot:mqtt-fence-result",
+        "service": "command.iot:mqtt-fence-result"
+      },
+      {
+        "name": "iot:mqtt-store",
+        "service": "command.iot:mqtt-store"
+      },
+      {
+        "name": "iot:mqtt-access",
+        "service": "command.iot:mqtt-access"
+      },
+      {
+        "name": "iot:ingest",
+        "service": "command.iot:ingest"
+      },
+      {
+        "name": "iot:ingest-store",
+        "service": "command.iot:ingest-store"
+      },
+      {
+        "name": "iot:device",
+        "service": "command.iot:device"
+      },
+      {
+        "name": "iot:exports",
+        "service": "command.iot:exports"
+      },
+      {
+        "name": "iot:exports-work",
+        "service": "command.iot:exports-work"
+      },
+      {
+        "name": "iot:exports-clean",
+        "service": "command.iot:exports-clean"
+      },
+      {
+        "name": "broker:install",
+        "service": "command.broker:install"
+      },
+      {
+        "name": "broker:migrate",
+        "service": "command.broker:migrate"
+      },
+      {
+        "name": "broker:recovery",
+        "service": "command.broker:recovery"
+      },
+      {
+        "name": "broker:user",
+        "service": "command.broker:user"
+      },
+      {
+        "name": "broker:store-install",
+        "service": "command.broker:store-install"
+      },
+      {
+        "name": "broker:store",
+        "service": "command.broker:store"
+      },
+      {
+        "name": "broker:nodes",
+        "service": "command.broker:nodes"
+      },
+      {
+        "name": "broker:node-fence",
+        "service": "command.broker:node-fence"
+      },
+      {
+        "name": "broker:node-fence-result",
+        "service": "command.broker:node-fence-result"
+      },
+      {
+        "name": "broker:audit-clean",
+        "service": "command.broker:audit-clean"
+      }
+    ],
+    "http": {
+      "middleware": {
+        "admin.auth": "auth.admin",
+        "customer.auth": "auth.customer",
+        "broker.auth": "auth.broker",
+        "broker.probe": "auth.probe",
+        "body.json": "body.json"
+      }
+    },
+    "jobs": [
+      {
+        "type": "iot.export",
+        "version": 1,
+        "class": "app\\iot\\service\\ExportJob"
+      },
+      {
+        "type": "iot.notice",
+        "version": 1,
+        "class": "app\\iot\\service\\NoticeJob"
+      }
+    ],
+    "schedules": [
+      {
+        "id": "audit.admin",
+        "service": "audit.admin",
+        "schedule": {
+          "interval": 60
+        },
+        "misfire": "skip",
+        "grace-seconds": 59,
+        "lookback-seconds": 3600,
+        "catch-up-limit": 1
+      },
+      {
+        "id": "audit.customer",
+        "service": "audit.customer",
+        "schedule": {
+          "interval": 60
+        },
+        "misfire": "skip",
+        "grace-seconds": 59,
+        "lookback-seconds": 3600,
+        "catch-up-limit": 1
+      }
+    ]
+  }
 }

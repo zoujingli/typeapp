@@ -18,7 +18,6 @@ use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
 use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
 use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
 use Type\Validate\Input;
@@ -26,9 +25,12 @@ use Type\Validate\Input;
 /** 双端只读观察的HTTP边界；身份、租户及路由来源不能由额外请求头覆盖。 */
 final class ObservationController
 {
-    /** 注入受管数据库、响应工厂和既有持久统计命令，构造不建立连接。 */
-    public function __construct(private DatabaseManager $database, private Factory $messages, private string $mqttCommand = '[]')
+    private string $mqttCommand;
+
+    /** 响应工厂和持久统计命令来自启动配置，构造不建立连接。 */
+    public function __construct(private Factory $messages, \app\common\bootstrap\ApplicationContext $context)
     {
+        $this->mqttCommand = $context->settings()->text('app.mqtt.command');
     }
 
     /** 列表与详情共用严格筛选和准确身份；平台详情同时指定来源，防止跨表事件ID歧义。 */

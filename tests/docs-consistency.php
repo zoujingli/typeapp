@@ -249,14 +249,6 @@ foreach ($documents as $document) {
 // 不把 `'resource_scope' => 'iot:resource-a'` 这类普通字符串当成命令。
 $callPattern = '/(?:identityCommand|\$run|nativeCommand|Process)\(\s*\[[^\]]*?[\'"]((?:iot|app|broker):[a-z][a-z0-9-]*)[\'"]/';
 
-// 只容许已登记文件中的准确存量次数；任何新增旧调用都会失败，清理后也须删除对应登记。
-// 这些夹具仍待迁移，不属于当前验收通过范围，见 docs/development/test-entrypoints.md。
-$pendingCommandCallers = [
-    'tests/iot-lifecycle-browser-fixture.php' => ['iot:user' => 1],
-    'tests/broker-observability.php' => ['iot:audit-clean' => 2],
-];
-$pendingCalls = [];
-
 foreach (docsCheckFiles($root, ['tests', 'tools', 'examples'], ['php', 'sh', 'mjs']) as $source) {
     $text = (string) file_get_contents($root . '/' . $source);
     if (preg_match_all($callPattern, $text, $matches) === 0) {
@@ -267,21 +259,9 @@ foreach (docsCheckFiles($root, ['tests', 'tools', 'examples'], ['php', 'sh', 'mj
         if (isset($commands[$command])) {
             continue;
         }
-        if (isset($pendingCommandCallers[$source][$command])) {
-            $pendingCalls[$source][$command] = ($pendingCalls[$source][$command] ?? 0) + 1;
-            continue;
-        }
         $failures[] = $source . ' 调用了未注册的命令：' . $command;
     }
 }
-foreach ($pendingCommandCallers as $source => $expectedCalls) {
-    foreach ($expectedCalls as $command => $expectedCount) {
-        if (($pendingCalls[$source][$command] ?? 0) !== $expectedCount) {
-            $failures[] = $source . ' 的待迁移命令调用数量变化：' . $command . '；请核对调用并更新存量登记';
-        }
-    }
-}
-
 expect(
     $failures === [],
     sprintf(
@@ -292,10 +272,9 @@ expect(
 );
 
 printf(
-    "文档与实现一致性检查通过：核对 %d 处引用，覆盖 %d 条路由、%d 个命令、%d 个 Composer 脚本；另有 %d 个夹具中的旧命令待迁移，不计为验收通过。\n",
+    "文档与实现一致性检查通过：核对 %d 处引用，覆盖 %d 条路由、%d 个命令、%d 个 Composer 脚本。\n",
     $checked,
     count($routes),
     count($commands),
-    count($scripts),
-    count($pendingCommandCallers)
+    count($scripts)
 );

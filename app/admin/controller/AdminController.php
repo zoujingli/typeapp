@@ -28,9 +28,12 @@ use Type\Validate\Schema;
 #[Group(prefix: '/admin', namePrefix: 'admin.', middleware: ['admin.auth'])]
 final class AdminController
 {
-    /** 只保存响应工厂和启动根；业务模型在受管请求作用域中自动取得连接。 */
-    public function __construct(private Factory $messages, private string $basePath)
+    private string $basePath;
+
+    /** 只保存响应工厂和启动根；业务模型使用当前请求作用域。 */
+    public function __construct(private Factory $messages, \app\common\bootstrap\ApplicationContext $context)
     {
+        $this->basePath = $context->basePath;
     }
 
     /** 查询权限按实际目录分别检查，详情也从同一明确投影返回。 */
@@ -94,27 +97,16 @@ final class AdminController
     }
 
     /** 站点设置采用固定字段、版本号和授权事务，失败时不覆盖上一份品牌配置。 */
-    #[Route('/site', methods: ['PUT'], name: 'site.manage')]
-    public function updateSite(ServerRequestInterface $request): ResponseInterface
+    #[Route('/site', methods: ['PUT'], name: 'site.manage', middleware: ['body.json'], input: ['maxBytes' => 16384, 'maxDepth' => 8])]
+    public function updateSite(\app\common\input\SiteUpdateInput $input, ServerRequestInterface $request): ResponseInterface
     {
         $identity = $this->identity($request);
-        if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
-            throw new HttpError(415, 'json_required');
-        }
-        $input = Input::json(RequestBody::read($request->getBody(), 16384), 16384, 8);
-        $body = $input->source('body');
-        $changes = $body['changes'] ?? null;
-        if ($changes instanceof \stdClass) {
-            $changes = get_object_vars($changes);
-        }
-        if (!is_array($body) || array_diff(array_keys($body), ['version', 'changes']) !== []
-            || !is_int($body['version'] ?? null) || !is_array($changes)) {
-            throw new HttpError(422, 'site_settings_input_invalid');
-        }
+        $version = $input->version;
+        $changes = $input->changes;
         $token = substr($request->getHeaderLine('Authorization'), 7);
-        $result = RoleService::authorized($identity, $token, 'admin.site.manage', function (Identity $current, array $permissions) use ($body, $changes): array {
+        $result = RoleService::authorized($identity, $token, 'admin.site.manage', function (Identity $current, array $permissions) use ($version, $changes): array {
             $transaction = \Type\Orm\Db::connection('default', true);
-            $result = SiteSettings::update((int) $body['version'], $changes);
+            $result = SiteSettings::update($version, $changes);
             AuditLog::append($transaction, null, $current, 'admin.site.update', 'site_settings', 'success', [
                 'changed_fields' => implode(',', $result['changed']), 'version' => $result['version'],
             ], 'admin');

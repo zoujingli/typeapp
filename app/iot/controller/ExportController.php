@@ -13,7 +13,6 @@ use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
 use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
 use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
 use Type\Validate\Input;
@@ -22,7 +21,7 @@ use Type\Validate\Input;
 final class ExportController
 {
     /** 注入既有文件生命周期所有者、受管连接和消息工厂。 */
-    public function __construct(private DatabaseManager $database, private Factory $messages, private ExportService $exports)
+    public function __construct(private Factory $messages, private ExportService $exports)
     {
     }
 

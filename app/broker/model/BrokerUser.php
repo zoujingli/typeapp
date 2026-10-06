@@ -9,7 +9,7 @@ use Type\Orm\Attribute\Table;
 use Type\Orm\Model;
 
 /** Broker 运行账号；保留独立的 platform_admin 运行权限字段。 */
-#[Table('broker_users', generatedPrimary: false)]
+#[Table('broker_users', generatedPrimary: false, createdAt: 'created_at')]
 final class BrokerUser extends Model
 {
     public string $id;

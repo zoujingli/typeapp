@@ -424,8 +424,12 @@ if ($noSource) {
         'COMPILER' => dirname($built['runtime-profile']['ini'], 2), 'COMPOSER' => $root . '/composer.json'] as $role => $path) {
         array_push($policy, '-D', $role . '=' . $path);
     }
+    $blockedSources = [$root . '/app/common/bootstrap/Application.php', $root . '/plugin/type-core/src/Application.php', $root . '/vendor/autoload.php', $root . '/config/app.php'];
+    foreach ($blockedSources as $path) {
+        expect(is_file($path) && is_readable($path) && file_get_contents($path) !== false, '源码隔离探针原文件不存在或控制端不可读');
+    }
     expect(successful([...$policy, PHP_BINARY, '-n', '-r', 'foreach(array_slice($argv,1) as $path){if(@file_get_contents($path)!==false)exit(1);} echo "denied";',
-        $root . '/app/main.php', $root . '/plugin/type-core/src/Application.php', $root . '/vendor/autoload.php', $root . '/config/app.php'], $runtime) === 'denied', '源码隔离未生效');
+        ...$blockedSources], $runtime) === 'denied', '源码隔离未生效');
     $command = [...$policy, $runtime . '/run'];
 }
 $environment = array_replace(getenv(), ['APP_BASE_PATH' => $base, 'DB_DRIVER' => 'invalid-no-database-for-maintenance', 'APP_DEBUG' => 'false']);
