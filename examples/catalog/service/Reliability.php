@@ -49,7 +49,25 @@ final class Reliability
     public function execute(string $marker): array
     {
         if ($marker === 'cache') {
-            return ExecutionScope::current()->run(fn (ExecutionScope $scope): array => $this->cache(), ['tenant_id' => 'catalog-a']);
+            try {
+                return ExecutionScope::current()->run(fn (ExecutionScope $scope): array => $this->cache(), ['tenant_id' => 'catalog-a']);
+            } catch (\Throwable $cacheFailure) {
+                // 显式演练只记录位置和固定断言码；不输出底层消息、SQL、配置或业务值。
+                $cacheFailureMessage = $cacheFailure->getMessage();
+                $cacheAssertion = in_array($cacheFailureMessage, [
+                    'catalog_cache_fill', 'catalog_cache_hit', 'catalog_cache_null', 'catalog_cache_null_miss',
+                    'catalog_failure_cached', 'catalog_wrong_loader_failure', 'catalog_exception_cached',
+                    'catalog_rollback_missing', 'catalog_wrong_rollback', 'catalog_rollback_event',
+                    'catalog_rollback_evicted', 'catalog_rollback_outbox', 'catalog_transaction_used_cache',
+                    'catalog_after_commit_too_early', 'catalog_event_phase', 'catalog_commit_not_evicted',
+                    'catalog_cache_tenant_mismatch', 'catalog_loader_failed', 'catalog_change_rolled_back',
+                ], true) ? $cacheFailureMessage : 'internal_error';
+                fwrite(STDERR, 'catalog-cache-failure ' . json_encode([
+                    'exception_type' => get_class($cacheFailure), 'assertion' => $cacheAssertion,
+                    'file' => basename(str_replace('\\', '/', $cacheFailure->getFile())), 'line' => max(0, $cacheFailure->getLine()),
+                ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n");
+                throw $cacheFailure;
+            }
         }
         if ($marker === 'relay' || $marker === 'relay-fail') {
             $relay = new Relay(
