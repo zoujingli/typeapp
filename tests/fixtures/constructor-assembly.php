@@ -94,9 +94,13 @@ final class ShowCommand implements Command
     {
     }
 
+    /**
+     * 输出装配结果；固定 LF 保持 PHP 与原生入口在各平台的字节契约一致。
+     * @param list<string> $arguments 当前命令收到的显式参数。
+     */
     public function run(Configuration $configuration, array $arguments): int
     {
-        echo $this->summary->text() . PHP_EOL;
+        echo $this->summary->text() . "\n";
         return 0;
     }
 }

@@ -40,9 +40,15 @@ try {
     expect($status === 0 && str_contains($stdout, '可用命令：') && !str_contains($stdout, 'unavailable')
         && !str_contains($stdout, '开启：') && $stderr === '', '帮助启动了不需要的资源或包含禁用命令');
     putenv('TYPE_APP_NAME=运行配置');
-    expect(successful([...$command, 'snapshot']) === "运行配置:运行配置\n", '配置快照被运行中的环境修改');
+    [$snapshotStatus, $snapshot, $snapshotError] = execute([...$command, 'snapshot']);
+    expect($snapshotStatus === 0 && $snapshot === "运行配置:运行配置\n", '配置快照被运行中的环境修改：'
+        . json_encode(['exit' => $snapshotStatus, 'stdout-hex' => bin2hex($snapshot), 'stderr-hex' => bin2hex($snapshotError),
+            'expected-hex' => bin2hex("运行配置:运行配置\n"), 'parent-environment-hex' => bin2hex((string) getenv('TYPE_APP_NAME'))], JSON_THROW_ON_ERROR));
     putenv('TYPE_APP_NAME=0');
-    expect(successful([...$command, 'greet']) === "你好，0！\n", '合法的零字符串配置被默认值覆盖');
+    [$greetingStatus, $greeting, $greetingError] = execute([...$command, 'greet']);
+    expect($greetingStatus === 0 && $greeting === "你好，0！\n", '合法的零字符串配置被默认值覆盖：'
+        . json_encode(['exit' => $greetingStatus, 'stdout-hex' => bin2hex($greeting), 'stderr-hex' => bin2hex($greetingError),
+            'expected-hex' => bin2hex("你好，0！\n"), 'parent-environment-hex' => bin2hex((string) getenv('TYPE_APP_NAME'))], JSON_THROW_ON_ERROR));
 } finally {
     putenv($previous === false ? 'TYPE_APP_NAME' : 'TYPE_APP_NAME=' . $previous);
 }
