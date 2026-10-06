@@ -33,7 +33,7 @@ def command(arguments, directory, timeout=300):
 
 
 def download(url, destination, checksum=None, algorithm="sha256", mirrors=(), timeout=120):
-    """在同一总预算内尝试配方 HTTPS 来源；摘要错误立即拒绝，不能改用其他镜像掩盖。"""
+    """在同一总预算内尝试锁定的 HTTPS 来源；摘要错误立即拒绝，不能改用其他镜像掩盖。"""
     if mirrors and checksum is None:
         raise ValueError("源码镜像需要已锁定的摘要")
     if checksum is not None and (algorithm not in ("sha256", "sha512")
@@ -46,6 +46,12 @@ def download(url, destination, checksum=None, algorithm="sha256", mirrors=(), ti
         # 保留实际配方原入口；GNU 主站不可达时仍可使用配方声明的同摘要来源。
         preferred = "https://ftp.gnu.org/gnu/" + url.removeprefix("https://ftpmirror.gnu.org/").removeprefix("gnu/")
     candidates = list(dict.fromkeys([preferred, *mirrors, url]))
+    gnu = re.fullmatch(r"https://ftp\.gnu\.org/(?:pub/)?gnu/([A-Za-z0-9._+/-]+)", preferred)
+    if checksum is not None and gnu and all(part not in ("", ".", "..") for part in gnu[1].split("/")):
+        # OCF 独立托管 GNU 镜像；仅复用原 GNU 路径，字节仍以配方或 SPDX 摘要为准。
+        independent = "https://mirrors.ocf.berkeley.edu/gnu/" + gnu[1]
+        if independent not in candidates:
+            candidates.append(independent)
     if any(not candidate.startswith("https://") for candidate in candidates):
         raise ValueError("源码下载必须使用 HTTPS")
     deadline = time.monotonic() + timeout
@@ -209,14 +215,17 @@ def library_sources(bundle, project, sdk, metadata, temporary, dependencies):
             resources = [item for item in spdx["packages"] if item.get("checksums")]
             if not resources:
                 raise ValueError("缺少 vcpkg 原始源码下载身份：" + name)
+            downloads = []
             for number, item in enumerate(resources):
                 checksum = next(value for value in item["checksums"] if value["algorithm"] in ("SHA512", "SHA256"))
                 url = vcpkg_source_url(item.get("downloadLocation", ""))
                 source = temporary / (name + "-" + str(number) + "-" + url.rsplit("/", 1)[-1])
-                download(url, source, checksum["checksumValue"], checksum["algorithm"].lower())
+                downloaded_from = download(url, source, checksum["checksumValue"], checksum["algorithm"].lower())
                 bundle.add(source, "rebuild/native-sources/" + source.name)
+                downloads.append({"file": source.name, "url": url, "download-url": downloaded_from,
+                                  checksum["algorithm"].lower(): checksum["checksumValue"]})
             bundle.add(spdx_path, "rebuild/recipes/vcpkg/" + name + ".spdx.json")
-            sources[name] = {"version": package["versionInfo"], "vcpkg": reference}
+            sources[name] = {"version": package["versionInfo"], "vcpkg": reference, "archives": downloads}
     else:
         raise ValueError("未知静态 SDK 平台")
     return sources

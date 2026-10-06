@@ -78,6 +78,37 @@ class RebuildMaterialsTest(unittest.TestCase):
             self.assertEqual(command.call_count, 1)
             self.assertFalse(output.exists())
 
+    def test_gnu_origin_outage_uses_independent_verified_mirror(self):
+        """GNU 与配方来源同时连接失败后，独立镜像仍须交付配方锁定的完全相同字节。"""
+        with tempfile.TemporaryDirectory(prefix="rebuild-download-", dir=self.task_root) as task:
+            output = Path(task) / "source.tar.xz"
+            content = b"locked GNU source archive\n"
+            cases = (
+                ("gmp/gmp-6.3.0.tar.xz", "https://ftpmirror.gnu.org/gnu/", "sha256", ["https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz"]),
+                ("mpfr/mpfr-4.2.2.tar.xz", "https://ftpmirror.gnu.org/gnu/", "sha256", ["https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.xz"]),
+                ("gmp/gmp-6.3.0.tar.xz", "https://ftpmirror.gnu.org/", "sha512", []),
+            )
+            for path, origin, algorithm, mirrors in cases:
+                source = origin + path
+                independent = "https://mirrors.ocf.berkeley.edu/gnu/" + path
+                calls = []
+
+                def transfer(arguments, directory, timeout):
+                    calls.append(arguments[-1])
+                    if arguments[-1] != independent:
+                        output.write_bytes(b"partial")
+                        raise RuntimeError("curl: (28) connection timeout")
+                    self.assertFalse(output.exists())
+                    output.write_bytes(content)
+                    return ""
+
+                with self.subTest(source=source, algorithm=algorithm), patch.object(materials, "command", side_effect=transfer):
+                    selected = materials.download(source, output, hashlib.new(algorithm, content).hexdigest(), algorithm, mirrors=mirrors)
+                    self.assertEqual(selected, independent)
+                    self.assertEqual(calls, list(dict.fromkeys(["https://ftp.gnu.org/gnu/" + path, *mirrors, source, independent])))
+                    self.assertEqual(output.read_bytes(), content)
+                output.unlink(missing_ok=True)
+
     def test_download_budget_and_original_gnu_source(self):
         """失败来源共享总预算；配方原GNU入口仍可尝试，超时留下明确故障且清理残片。"""
         with tempfile.TemporaryDirectory(prefix="rebuild-download-", dir=self.task_root) as task:
@@ -87,7 +118,8 @@ class RebuildMaterialsTest(unittest.TestCase):
             with patch.object(materials, "command", side_effect=RuntimeError("curl: connection timeout")) as command:
                 with self.assertRaisesRegex(RuntimeError, "源码下载失败"):
                     materials.download(source, output, "a" * 64, mirrors=[primary])
-                self.assertEqual([call.args[0][-1] for call in command.call_args_list], [primary, source])
+                self.assertEqual([call.args[0][-1] for call in command.call_args_list],
+                                 [primary, source, "https://mirrors.ocf.berkeley.edu/gnu/mpfr/mpfr-4.2.2.tar.xz"])
             output.write_bytes(b"partial")
             with patch.object(materials.time, "monotonic", side_effect=[0, 0, 31]), \
                  patch.object(materials, "command", side_effect=subprocess.TimeoutExpired("curl", 30)) as command:
@@ -107,6 +139,12 @@ class RebuildMaterialsTest(unittest.TestCase):
                     materials.download(source, output)
                 self.assertEqual(command.call_count, 1)
                 self.assertEqual(command.call_args.args[0][-1], source)
+            unchecked_gnu = "https://ftpmirror.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz"
+            with patch.object(materials, "command", side_effect=RuntimeError("curl: unavailable")) as command:
+                with self.assertRaisesRegex(RuntimeError, "源码下载失败"):
+                    materials.download(unchecked_gnu, output)
+                self.assertEqual(command.call_count, 1)
+                self.assertEqual(command.call_args.args[0][-1], unchecked_gnu)
             for options in ({"mirrors": ["https://ftp.gnu.org/gnu/source"]},
                             {"checksum": "a" * 64, "mirrors": ["http://ftp.gnu.org/gnu/source"]},
                             {"checksum": "wrong"}, {"timeout": 0}, {"timeout": 301}):
