@@ -1,192 +1,178 @@
 # 应用开发实战
 
-本教程从独立应用模板出发，完成数据库迁移、带认证的用户接口、局部更新、冲突处理和构建。使用模板现有的真实用户模块；执行后可以沿控制器、服务与模型继续扩展业务。
+本页是**开发通道的连续目录应用教程**，从全新独立应用开始，通过 `make` 增加模板之外的商品模块。当前接口尚未包含 RC14；使用 RC14 请阅读[发布通道的教程](https://iots.top/#/guide/tutorial)，不要把本页代码混入旧组件。开发候选的源码、模板、组件和锁文件必须作为一组保存；本地 path 安装是开发消费，公开批次的原样安装另由发布门禁验证。
 
-练习使用 SQLite 和专用新目录。先按[环境与依赖](environment.md)准备 PHP CLI、Composer、Swoole 和 `pdo_sqlite`。本页 shell 与停止命令适用于 Linux/macOS；Windows 使用对应终端和已验收的控制方式，平台实现与运行证据见[平台与验收](platforms.md)。
+先准备[开发环境](environment.md)：PHP、Composer、Swoole 及所选 PDO 驱动。完整教程还使用 Redis、PHP Redis 扩展，以及测试控制端的 Node.js/OpenSSL；后台依赖与启动步骤见[可靠性续篇](catalog-reliability.md)。SQLite 使用独占可写文件；MySQL/PostgreSQL 先准备专属数据库与账号。示例 shell 适用于 Linux/macOS；Windows 使用相应终端并遵守已验收的平台能力。目录业务不依赖物联中心。
 
 ```mermaid
 flowchart LR
-  Create["创建应用与配置"] --> HTTP["迁移与 HTTP 练习"]
-  HTTP --> Verify["验证响应与清理"]
-  Verify --> Build["全量编译与部署"]
+  Source[固定开发候选] --> Create[创建新应用与选择驱动]
+  Create --> Install[按模板约束安装并保存锁]
+  Install --> Make[make 第二模块]
+  Make --> Schema[填写业务源码并冻结新迁移]
+  Schema --> HTTP[迁移和真实HTTP验证]
+  HTTP --> Build[同一应用全量AOT并重跑验证]
 ```
 
-## 1. 创建并检查应用
+## 1. 固定候选并创建
 
-本教程以已公开的候选版本 `1.0.0-rc.14` 为例。先完成[按版本创建与安装](releases.md#composer-按版本安装)，创建使用 SQLite 的 `my-app`，并在该应用根目录执行下面的配置与检查，不重复创建项目：
+从[开发文档通道](https://iots.top/next/)的 `site-manifest.json` 取得明确源码身份，在已准备开发依赖的对应主仓检出中执行。不要使用未核对的移动分支覆盖一次练习：
 
 ```bash
+# 当前目录必须是已核对源码身份的 typeapp 开发候选。
+tutorial_source=$(pwd)
+php examples/catalog/create.php '../catalog application' sqlite
+php examples/catalog/use-development-sources.php '../catalog application'
+cd '../catalog application'
+composer install --no-scripts --no-plugins
+composer check-platform-reqs
 cp .env.example .env
 php dev.php help
 php dev.php check
 ```
 
-`--no-install` 让你先选择数据库再安装依赖。`configure.php` 只允许在没有 `vendor/` 和 `composer.lock` 时运行；它调整驱动依赖与数据库工厂。改用 MySQL 或 PostgreSQL 时分别选择 `mysql`、`pgsql`，再按驱动指南准备专用数据库及账号。
+[create.php 完整源码](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/create.php)复用 `ProjectCreator`，保留所选模板的约束并以同批约束增加 `type-redis`、`type-cache`、`type-queue`、`type-scheduler`。显式 `use-development-sources.php` 才把组件来源指向当前检出的复制安装；公开批次消费不执行此步骤。使用 `mysql` 或 `pgsql` 替换创建命令最后的 `sqlite`，在安装前确定驱动，随后填写 `.env` 的数据库地址、库名和账号；不要使用 `--ignore-platform-reqs`。
 
-`help` 列出实际命令，`check` 检查应用装配；它们不连接业务数据库。开发入口生成配置、路由、模型和操作包装后执行应用。生成目录可以重建，业务代码修改在 `app/` 中完成。提交应用的 `composer.lock`，固定本次安装版本及来源提交。
+提交 `composer.json`、`composer.lock` 和后续的 `catalog-candidate.json`。候选报告记录完整教程源码摘要、实际组件版本/参考提交、锁摘要和原迁移登记器摘要。包约束不会在教程准备时被偷偷改写。帮助和检查不连接外部数据库，不要求 API 令牌有效。
 
-## 2. 初始化数据结构
+## 2. 用 make 建立第二模块
+
+应用已安装依赖后，从任意工作目录执行准备脚本，参数始终是明确的应用配置：
 
 ```bash
-php dev.php migrate run
-php dev.php migrate status
+php "$tutorial_source/examples/catalog/setup.php" "$PWD/type-app.json"
+php vendor/bin/type inspect-application type-app.json
+php vendor/bin/type inspect-application type-app.json --json
+php vendor/bin/type dev type-app.json migrate run
+php vendor/bin/type dev type-app.json migrate history
 ```
 
-迁移成功后，状态列表显示已执行的迁移。显式 `migrate run` 为 SQLite 准备父目录，再由驱动创建数据库文件；目录必须可写。`serve` 与 `migrate status` 不隐式建库。数据库文件是应用数据，不随程序重新构建覆盖。MySQL 的 DDL 有隐式提交行为，不能把失败的结构迁移当作已整体回滚；生产迁移前应备份并检查实际结构。
+[setup.php](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/setup.php)首先执行以下正式脚手架命令，然后把本教程列出的完整业务文件复制到应用中，登记中间件和后续新迁移，调用正式 `schema:prepare` 冻结三库 SQL。它是可核对的开发编辑步骤，生产程序不会加载该脚本。已有 `app/catalog` 会明确拒绝；已执行准备脚本后不要再重复运行下面的单独命令。
 
-模板中的模型位于 `app/system/model/User.php`，表映射声明如下：
-
-```php
-#[Table('users', softDelete: 'deleted_at', version: 'version')]
+```bash
+php vendor/bin/type make type-app.json module 'app\catalog\Product' \
+  --table=catalog_products --route=/products --role=users --version=002_catalog_products \
+  '--migration-registry=app\common\database\Schema'
 ```
 
-这是已有类上的声明片段。该类包含 `id`、`name`、`age`、可空的 `email`、`version` 与 `deleted_at` 类型属性；`present()` 只投影对外字段。构建器生成模型状态钩子，运行时不扫描 Attribute。完整代码可直接阅读模板中的模型文件，查询和事务用法见[数据库与模型](database.md)。
+完整源码与应用落点一一对应：
 
-## 3. 启动 HTTP 服务
+| 应用内位置 | 职责与可运行源码 |
+| --- | --- |
+| `app/catalog/model/Product.php`、`Label.php` | [可信租户、版本、自动时间与关系](https://github.com/zoujingli/typeapp/tree/main/examples/catalog/model) |
+| `app/catalog/input/ProductInput.php`、`SearchInput.php` | [JSON/query 来源、必需字段与可空备注](https://github.com/zoujingli/typeapp/tree/main/examples/catalog/input) |
+| `app/catalog/service/ProductService.php` | [原 Service 的 CRUD、搜索、关系和冲突写入](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/service/ProductService.php) |
+| `app/catalog/controller/ProductController.php` | [类型化动作、状态码与授权](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/controller/ProductController.php) |
+| `app/catalog/middleware/CatalogTenant.php` | [模板身份到固定租户的授权映射](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/middleware/CatalogTenant.php) |
+| `app/catalog/database/` | [独立 Schema 与冻结快照路径](https://github.com/zoujingli/typeapp/tree/main/examples/catalog/database) |
+| `tests/catalog.php`、`tests/tutorial.php` | [同一套 PHP/AOT 真实请求断言](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/test.php) |
 
-以下 POSIX shell 命令在同一个终端执行。临时令牌只用于这次练习，不写入仓库：
+`001_users` 的历史 SQL 不变。`002_catalog_products` 建商品与 `(tenant_id, code)` 唯一身份，`003_catalog_labels` 建标签与关系对，`004_catalog_note` 用新的 `add-column` 给已有表增加可空备注。续篇使用的新迁移 `005_catalog_delivery` 和 `006_catalog_outbox` 也一次登记。商品、关系及后台效果使用逻辑命名源 `catalog`；模板用户继续使用 `default`，教程显式将两源指向选定数据库。准备快照不连接数据库；`migrate run` 才应用冻结 SQL。每个声明和对应 `snapshots/*.json` 都应审查并提交，已发布快照不可重写。
+
+MySQL DDL 非事务，失败可部分生效，必须核对状态和真实结构再按迁移控制台显式恢复；不能直接再跑整个业务。SQLite 增列使用真实原生语义，不隐式重建表。执行过迁移的目录不要当成全新练习重复准备。
+
+## 3. 启动、认证与可信租户
 
 ```bash
 export APP_API_TOKEN="$(php -r 'echo bin2hex(random_bytes(32));')"
 mkdir -p var
-php dev.php serve >var/tutorial-http.log 2>&1 &
+php vendor/bin/type dev type-app.json serve >var/catalog-http.log 2>&1 &
 tutorial_pid=$!
-```
-
-用下面的探针确认服务已就绪，启动失败时查看 `var/tutorial-http.log`；正常启动时日志可能为空。默认地址为 `127.0.0.1:9501`；端口被占用时先修改本应用配置，不停止不属于本练习的服务。
-
-```bash
-curl --fail-with-body http://127.0.0.1:9501/livez
 curl --fail-with-body http://127.0.0.1:9501/readyz
 ```
 
-这两个地址是部署探针，不证明数据库已经迁移。用户接口使用 Bearer 令牌；模板展示的是一个受信任应用身份，完整登录、人员账号和权限模型需要由具体业务实现。
-
-请求先经过 HTTP 认证与输入校验，再由生成的 `UserOperations` 调用业务服务。下面拆成入口与事务两个视角，展示同一次成功写入：
+启动失败查看本项目 `var/catalog-http.log`，不要停止其他服务解决端口占用。模板认证认可应用 Bearer 令牌；目录中间件进一步确认身份及 `users` 角色，只允许选择 `catalog-a`。`X-Tenant` 是待授权选择值，成功后被移除，再把受信常量绑定到当前 scope。正文 `tenant_id`、`id`、版本和自动时间不会进入可写输入。生产业务应把固定映射换成自己的受信账号与授权资料，不能直接把任意头或消息追踪字段当权限。
 
 ```mermaid
 sequenceDiagram
   participant Client as 调用者
-  participant HTTP as HTTP 与认证
-  participant Controller as UserController
-  participant Operations as UserOperations
-  Client->>HTTP: Bearer 令牌 + JSON
-  HTTP->>Controller: 已认证的请求
-  Controller->>Controller: 校验来源<br/>类型与字段
-  Controller->>Operations: 已校验业务参数
-  Operations->>Operations: 执行业务事务<br/>详见下图
-  Operations-->>Controller: 已确认的业务结果
-  Controller-->>Client: 状态码与 JSON
-  HTTP->>HTTP: 请求结束<br/>回收作用域资源
+  participant HTTP as Swoole HTTP宿主
+  participant Auth as 认证与目录授权
+  participant Action as 类型化动作
+  participant Service as 原ProductService
+  participant DB as 当前scope数据库
+  Client->>HTTP: Bearer、X-Tenant、JSON
+  HTTP->>Auth: 新请求scope
+  Auth->>Auth: 检查角色和固定租户
+  Auth->>Action: 受信scope与校验输入
+  Action->>Service: 业务值
+  Service->>DB: 声明事务开始
+  Service->>DB: Model写入和显式投影
+  DB-->>Service: 提交已确认
+  Service-->>Client: 状态码与公开字段
+  HTTP->>HTTP: 关闭请求scope和借用资源
 ```
 
-`UserOperations` 管理声明的事务，`UserService` 通过 `User` 模型完成读写；数据库确认提交后才返回成功结果。
+认证失败为 401；缺失租户、选择 `catalog-b` 或访问 `/catalog-admin` 为 403。当前示例应用身份没有 `catalog.admin` 角色；提供客户端“role”字段不会改变结果。数据库租户条件是模型本身的执行边界，与 HTTP 选择授权共同生效。
 
-```mermaid
-sequenceDiagram
-  participant Operations as UserOperations
-  participant Service as UserService
-  participant Model as User 模型
-  participant DB as 数据库
-  Operations->>DB: 开始事务
-  Operations->>Service: 执行业务方法
-  Service->>Model: 模型查询与写入
-  Model->>DB: 参数化 SQL / 版本断言
-  DB-->>Model: 写入与读回结果
-  Model-->>Service: 模型状态
-  Service-->>Operations: 业务投影
-  Operations->>DB: 提交事务
-  DB-->>Operations: 提交已确认
-```
-
-## 4. 创建与读取用户
-
-创建时 `age` 必须是 JSON 整数，不能传字符串 `"28"`：
+## 4. 创建、查询与 PATCH
 
 ```bash
-curl --fail-with-body -X POST http://127.0.0.1:9501/users \
-  -H "Authorization: Bearer $APP_API_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"示例用户","age":28,"email":"reader@example.com"}' \
-  -o var/tutorial-user.json
-cat var/tutorial-user.json
+curl --fail-with-body -H "Authorization: Bearer $APP_API_TOKEN" -H 'X-Tenant: catalog-a' \
+  -H 'Content-Type: application/json' -d '{"code":"first","name":"目录商品","note":"保留备注"}' \
+  http://127.0.0.1:9501/products -o var/product.json
+catalog_id=$(php -r '$r=json_decode(file_get_contents("var/product.json"),true,512,JSON_THROW_ON_ERROR); echo $r["id"];')
+curl --fail-with-body -H "Authorization: Bearer $APP_API_TOKEN" -H 'X-Tenant: catalog-a' \
+  "http://127.0.0.1:9501/products/$catalog_id"
+curl --fail-with-body --get -H "Authorization: Bearer $APP_API_TOKEN" -H 'X-Tenant: catalog-a' \
+  --data-urlencode 'name=目录商品' http://127.0.0.1:9501/products
 ```
 
-预期 HTTP 201，响应的 `data` 包含数据库实际分配的 `id` 与 `version`。不要假设第一条记录的 ID 必定为 1；从本次响应取值：
+创建返回 201 和 `id/code/name/note/version/created_at/updated_at`，查询返回 200。自动时间由 Model 统一管理；输出不包含租户凭据或活动 Model。搜索使用声明的 `name` 搜索器和参数绑定，排序固定为 `id`，列表最多二十条。
 
 ```bash
-tutorial_user_id=$(php -r '$r=json_decode(file_get_contents("var/tutorial-user.json"),true,512,JSON_THROW_ON_ERROR); echo $r["data"]["id"];')
-tutorial_version=$(php -r '$r=json_decode(file_get_contents("var/tutorial-user.json"),true,512,JSON_THROW_ON_ERROR); echo $r["data"]["version"];')
-curl --fail-with-body "http://127.0.0.1:9501/users/$tutorial_user_id" \
-  -H "Authorization: Bearer $APP_API_TOKEN"
-curl --fail-with-body 'http://127.0.0.1:9501/users?page=1&sort=name&direction=ASC' \
-  -H "Authorization: Bearer $APP_API_TOKEN"
+curl --fail-with-body -X PATCH -H "Authorization: Bearer $APP_API_TOKEN" -H 'X-Tenant: catalog-a' \
+  -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:9501/products/$catalog_id"
+curl --fail-with-body -X PATCH -H "Authorization: Bearer $APP_API_TOKEN" -H 'X-Tenant: catalog-a' \
+  -H 'Content-Type: application/json' -d '{"note":null}' "http://127.0.0.1:9501/products/$catalog_id"
 ```
 
-单条响应使用 `data`；列表还返回 `total` 和 `page`，模板每页固定 20 条。排序字段经过白名单映射，不把客户端字符串直接拼入 SQL。查询默认排除软删除记录。
+第一个请求保留备注，第二个明确清空备注并保留名称；`{"name":null}` 返回 422。Service 检查字段存在性而非用 `??` 代替 PATCH 语义。`code` 是创建身份，更新路径不允许改变。记录不存在返回 404 `record_not_found`，事务结果 UNKNOWN 不自动重试。
 
-## 5. 局部更新与冲突
-
-以下补丁只改名称并清空邮箱，未提供的年龄保持不变：
+## 5. 关系、并发创建与批量冲突
 
 ```bash
-curl --fail-with-body -X PATCH "http://127.0.0.1:9501/users/$tutorial_user_id" \
-  -H "Authorization: Bearer $APP_API_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d "{\"name\":\"更新后的用户\",\"email\":null,\"version\":$tutorial_version}"
+curl --fail-with-body -X POST -H "Authorization: Bearer $APP_API_TOKEN" -H 'X-Tenant: catalog-a' \
+  -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:9501/products/$catalog_id/labels"
+curl --fail-with-body -X POST -H "Authorization: Bearer $APP_API_TOKEN" -H 'X-Tenant: catalog-a' \
+  -H 'Content-Type: application/json' -d '{"code":"contended","name":"竞争创建"}' http://127.0.0.1:9501/products/ensure
+curl --fail-with-body -X POST -H "Authorization: Bearer $APP_API_TOKEN" -H 'X-Tenant: catalog-a' \
+  -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:9501/products/import
 ```
 
-预期 HTTP 200，返回新的 `version`。再执行一次相同命令会使用旧版本，预期 HTTP 409；重新读取并确认业务意图后才能提交新版本，不应无条件重试覆盖他人修改。
+关系动作先预加载，再通过 `$product->relation('labels')->attach($label->id)` 写入。返回 `invalidated:true` 证明本实例旧结果失效；显式 `loadMissing` 后才输出最新标签。关系目标与中间表均限制到可信租户。
 
-`UserService` 使用 `#[Transactional]` 声明写事务，控制器调用生成的 `UserOperations` 才会执行该包装。直接 `new UserService()` 调用不自动触发事务。模型通过当前协程作用域获取连接，业务入口无需手动传递 Connection；嵌套调用仍须遵守同一连接和事务所有权。
+两个并发 `/products/ensure` 请求使用同一 code 会返回同一个数据库身份。`firstOrCreate` 依赖真实非空唯一索引，竞争只恢复已证明的目标冲突，不重跑事务外部副作用。不要把先查询再手写插入当成相同保证。
 
-## 6. 删除与失败验证
+`/products/import` 使用固定示范批次。PostgreSQL/SQLite 调用 `Product::upsert($rows, ['tenant_id','code'], ['name','note'])`，MySQL 显式调用 `upsertAnyUnique` 并审查全部可能冲突的唯一键。首次插入影响一行；重复调用推进版本，PostgreSQL/SQLite 为一，MySQL 实际更新为二。批量操作不触发逐实例事件，也不猜测生成主键；数据库不同的冲突和行数语义原样保留。
 
-```bash
-curl --fail-with-body -X DELETE "http://127.0.0.1:9501/users/$tutorial_user_id" \
-  -H "Authorization: Bearer $APP_API_TOKEN"
-curl -i "http://127.0.0.1:9501/users/$tutorial_user_id" \
-  -H "Authorization: Bearer $APP_API_TOKEN"
-```
+## 6. 运行同一验证并构建
 
-删除成功返回 `{"deleted":true}`；随后查询预期 404。模板使用软删除，数据库保留该记录，公开投影不暴露 `deleted_at`。实际业务的保留期限和物理清理需要另行定义。
-
-| 练习输入 | 预期结果 | 如何处理 |
-| --- | --- | --- |
-| 用户接口不带令牌 | 401 | 提供本应用认可的身份 |
-| `age` 为字符串或超出 0–150 | 422 | 修正字段类型或范围 |
-| 请求体不是合法 JSON | 400 | 修正编码格式 |
-| 写接口 Content-Type 不是 application/json | 415 | 使用 JSON 内容类型 |
-| PATCH 使用旧版本 | 409 | 重新读取并处理冲突 |
-| 查询已软删除的用户 | 404 | 按业务不存在处理 |
-
-错误响应和日志用于定位，不应把认证令牌记录进日志。更多输入场景见[type-validate](plugins/type-validate.md)，事务与数据一致性见[type-orm](plugins/type-orm.md)。
-
-## 7. 结束练习并构建
-
-停止本次保存的服务进程，保留数据库供继续练习：
+先按[可靠性续篇的基础设施步骤](catalog-reliability.md#1-后台角色与基础设施)启动本次专用 Redis，并在当前终端设置 `TYPE_REDIS_HOST`、`TYPE_REDIS_PORT` 和 `CATALOG_NAMESPACE`。共同入口同时验证下一章的缓存、队列、调度与 HTTPS；测试控制端需要 Node.js 和 OpenSSL。
 
 ```bash
 kill -TERM "$tutorial_pid"
 wait "$tutorial_pid"
-unset APP_API_TOKEN tutorial_pid tutorial_user_id tutorial_version
+export DB_SQLITE_FILE=var/catalog-test.sqlite
+php vendor/bin/type test type-app.json
 ```
 
-确认进程退出与端口释放后，可删除本次练习响应文件和日志。不要把迁移回滚或删除数据库当作日常停止步骤。
+上面 SQLite 命令切换到新的测试文件；每次重复测试使用另一个新文件。MySQL/PostgreSQL 则先创建专属空测试库并设置 `DB_DATABASE`。测试创建固定示范身份；不要指向生产库或已经运行过同一测试的数据。公开 `type test` 调用 `type-testing`，串联原模板、第二模块与可靠性断言，包含两进程并发创建、三类授权拒绝、输入错误、关系失效、PATCH 缺失/null、冲突行数、持久投递与正常停止。
 
-准备好匹配目标平台的静态 SDK 后，在应用根执行：
-
-```bash
-: "${TYPE_STATIC_RUNTIME:?先设置本平台已校验的静态SDK清单路径}"
-php vendor/bin/type doctor type-app.json build
-composer build
-composer package
-build/type-project-release verify-runtime
-build/type-project-release help
+```mermaid
+flowchart TB
+  Source[业务源码、Plugins、生产Composer依赖] --> Generation[同一声明生成管线]
+  Generation --> PHP[PHP开发加载本代源码]
+  Generation --> AOT[TypePHP全量编译]
+  AOT --> Program[单主程序与外置配置]
+  Program --> Swoole[内置Swoole通信与scope]
+  Swoole --> Data[所选数据库与应用数据]
+  Tests[type-testing共同业务断言] --> PHP
+  Tests --> Program
 ```
 
-TypePHP 编译业务、Plugins、生成代码及实际生产 PHP 依赖；`type-build` 选择并校验内置 Swoole 和其他实际原生依赖。部署者无需再安装 PHP CLI、Composer、Swoole 开发环境或编译 SDK，数据库服务和业务配置仍按所选能力准备。
+准备匹配目标平台的静态 SDK 后，设置 `TYPEAPP_BUILD_PROFILE=sqlite`（或安装时选择的 `mysql`/`pgsql`），执行 `php vendor/bin/type doctor type-app.json build`、`composer build`，再设置 `TYPE_APP_BINARY` 为这次实际产物的明确路径，使用新测试数据库运行 `php vendor/bin/type test type-app.json`。生产业务、Plugins 和实际生产 PHP 依赖必须全部编译；源码成功和编译成功都不能代替原生业务验收。`DB_DRIVER` 与安装驱动或编译 profile 不符时，`check`、迁移和服务入口在连接前返回 `runtime_profile_database_mismatch`。
 
-本教程的 RC14 模板将程序输出为 `build/type-project-release`，Windows 使用 `.exe` 后缀。部署只复制该程序，并在应用目录提供配置和所需数据路径；构建 SDK 留在构建机。`dev-main` 是独立更新的开发分支，不等于本教程固定的 RC 版本。继续执行程序自己的迁移和启动命令，具体入口及平台范围见[构建与部署](deployment.md)。
+当前主仓入口 `php tests/application-template.php sqlite|mysql|pgsql --tutorial --onboarding` 已在专属三库、含空格新目录和不同工作目录通过上述 PHP 断言；原生组合加 `--native` 并单独记录。本页不据此声明新公开批次或所有平台已通过。候选复用与完整发布门禁见[版本发布](releases.md)。
 
-继续学习：[配置](configuration.md) · [路由与中间件](routing.md) · [组件教程](components.md) · [TypePHP 全量编译](typephp.md)。
+结束后正常停止本次进程，移除专属数据库与临时应用；保留候选身份、冻结迁移和必要验收摘要。不要以删除生产数据作为正常停止方式。继续学习：[后台与可靠交付](catalog-reliability.md) · [业务脚手架](scaffolding.md) · [ORM 组件](plugins/type-orm.md)。

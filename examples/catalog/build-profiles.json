@@ -1,0 +1,16 @@
+{
+  "build-profiles": {
+    "sqlite": {
+      "database": "sqlite",
+      "features": ["web", "catalog", "cache", "queue", "scheduler", "redis"]
+    },
+    "mysql": {
+      "database": "mysql",
+      "features": ["web", "catalog", "cache", "queue", "scheduler", "redis"]
+    },
+    "pgsql": {
+      "database": "pgsql",
+      "features": ["web", "catalog", "cache", "queue", "scheduler", "redis"]
+    }
+  }
+}
