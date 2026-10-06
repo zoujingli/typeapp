@@ -13,12 +13,16 @@ use Type\Testing\Process;
 $root = BuildPlatform::resolve(dirname(__DIR__));
 $static = ($argv[3] ?? '') === '--static-profile';
 $profile = $static ? ($argv[4] ?? '') : null;
-$order = $static ? ($argv[6] ?? 'old-first') : ($argv[5] ?? 'old-first');
+$diagnostic = ($argv[5] ?? '') === '--diagnostic';
+$diagnosticDriver = $diagnostic ? ($argv[6] ?? '') : null;
+$order = $diagnostic ? 'ABBA+BAAB' : ($static ? ($argv[6] ?? 'old-first') : ($argv[5] ?? 'old-first'));
 expect(
-    in_array($order, ['old-first', 'new-first'], true)
-    && ($static ? (in_array($argc, [5, 7], true) && ($argc === 5 || $argv[5] === '--order') && in_array($profile, ['sqlite', 'mysql', 'pgsql'], true))
-        : (in_array($argc, [5, 6], true) && in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true))),
-    '用法：PHP tests/benchmark-pairs.php <旧版准备根> <新版准备根> <MySQL工具根> <PostgreSQL工具根> [old-first|new-first]；静态模式改用 --static-profile <数据库> [--order <顺序>]'
+    ($diagnostic ? ($argc === 7 && in_array($diagnosticDriver, ['sqlite', 'mysql', 'pgsql'], true)
+        && ($static ? $profile === $diagnosticDriver : in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true)))
+        : (in_array($order, ['old-first', 'new-first'], true)
+            && ($static ? (in_array($argc, [5, 7], true) && ($argc === 5 || $argv[5] === '--order') && in_array($profile, ['sqlite', 'mysql', 'pgsql'], true))
+                : (in_array($argc, [5, 6], true) && in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true))))),
+    '用法：PHP tests/benchmark-pairs.php <旧版准备根> <新版准备根> <MySQL工具根> <PostgreSQL工具根> [old-first|new-first]；静态模式改用 --static-profile <数据库> [--order <顺序>]；额外诊断以 --diagnostic <数据库> 替代顺序参数，执行 ABBA+BAAB，不能用于正式比较'
 );
 $old = BuildPlatform::resolve($argv[1]);
 $new = BuildPlatform::resolve($argv[2]);
@@ -88,11 +92,17 @@ $record = ['protocol' => $static ? 3 : 2, 'status' => 'running', 'platform' => P
     'preparation' => ['file' => substr($preparationFile, strlen($root) + 1), 'sha256' => hash_file('sha256', $preparationFile)],
     'source_commits' => $preparation['source_commits'],
     'controller_sha256' => hash_file('sha256', $root . '/tests/application-benchmark.php'), 'runs' => []];
+if ($diagnostic) {
+    $record['diagnostic'] = ['driver' => $diagnosticDriver, 'blocks' => ['ABBA', 'BAAB'], 'variants' => ['A' => 'old', 'B' => 'new'],
+        'pair_controller_sha256' => hash_file('sha256', __FILE__), 'cells' => []];
+}
 try {
-    foreach ($static ? [$profile] : ['sqlite', 'mysql', 'pgsql'] as $driver) {
+    foreach ($diagnostic ? [$diagnosticDriver] : ($static ? [$profile] : ['sqlite', 'mysql', 'pgsql']) as $driver) {
         // 复测可交换执行顺序，区分工具链变化与持续负载造成的环境漂移。
-        $versions = $order === 'new-first' ? ['new' => $new, 'old' => $old] : ['old' => $old, 'new' => $new];
-        foreach ($versions as $version => $directory) {
+        $versions = $diagnostic ? ['old', 'new', 'new', 'old', 'new', 'old', 'old', 'new']
+            : ($order === 'new-first' ? ['new', 'old'] : ['old', 'new']);
+        foreach ($versions as $position => $version) {
+            $directory = $version === 'old' ? $old : $new;
             if ($static) {
                 // PDO 锁持有者属于控制端，保留其真实 INI；application-benchmark 为静态程序另建干净环境。
                 $environment = getenv();
@@ -104,7 +114,10 @@ try {
             }
             $command = [PHP_BINARY, $root . '/tests/application-benchmark.php',
                 '--binary', $artifacts[$directory],
-                '--driver', $driver, '--repetitions', '3', '--iterations', '100', '--warmup', '10'];
+                '--driver', $driver, '--repetitions', $diagnostic ? '1' : '3', '--iterations', '100', '--warmup', '10'];
+            if ($diagnostic) {
+                $command[] = '--diagnostic';
+            }
             if ($static) {
                 $command = [...$command, '--static-profile', $profile];
             }
@@ -116,19 +129,44 @@ try {
                 $command = [...$command, '--database-tools', $driver === 'mysql' ? $mysql : $pgsql];
             }
             $label = $driver . '-' . $version;
-            echo '正式成对测量：' . $label . "\n";
+            if ($diagnostic) {
+                $block = $position < 4 ? 'ABBA' : 'BAAB';
+                $label = sprintf('%02d-%s-%d-%s', $position + 1, $block, $position % 4 + 1, $label);
+                $record['diagnostic']['cells'][] = ['sequence' => $position + 1, 'block' => $block, 'position' => $position % 4 + 1,
+                    'version' => $version, 'driver' => $driver, 'status' => 'running', 'started_monotonic_ns' => hrtime(true),
+                    'finished_monotonic_ns' => null, 'log' => substr($base, strlen($root) + 1) . '/' . $label . '.log'];
+            }
+            echo ($diagnostic ? '额外诊断测量：' : '正式成对测量：') . $label . "\n";
             $process = new Process($command, $root, $environment, 4194304);
             try {
                 $result = $process->wait(600);
             } finally {
                 $process->stop();
+                if ($diagnostic) {
+                    $record['diagnostic']['cells'][$position]['finished_monotonic_ns'] = hrtime(true);
+                }
             }
             file_put_contents($base . '/' . $label . '.log', $result->stdout . $result->stderr);
-            expect($result->successful(), '正式测量失败，见本轮日志：' . $label);
+            if ($diagnostic) {
+                $record['diagnostic']['cells'][$position]['status'] = $result->successful() ? 'measured' : 'failed';
+                $record['diagnostic']['cells'][$position]['exit_code'] = $result->exitCode;
+            }
+            expect($result->successful(), ($diagnostic ? '额外诊断' : '正式') . '测量失败，见本轮日志：' . $label);
             expect(preg_match('#真实应用三类负载测量完成：(build/[^\\r\\n]+)#u', $result->stdout, $matches) === 1, '缺少测量报告');
             $report = trim($matches[1]);
             $measurement = json_decode(file_get_contents($root . '/' . $report), true, 512, JSON_THROW_ON_ERROR);
-            expect($measurement['status'] === 'passed' && $measurement['transport'] === 'swoole' && $measurement['driver'] === $driver, '测量身份不符');
+            expect($measurement['status'] === ($diagnostic ? 'diagnostic-not-compared' : 'passed')
+                && $measurement['transport'] === 'swoole' && $measurement['driver'] === $driver, '测量身份不符');
+            if ($diagnostic) {
+                expect(count($measurement['repetitions']) === 1
+                    && ($measurement['diagnostic']['controller']['script_sha256'] ?? '') === $record['controller_sha256']
+                    && ($measurement['diagnostic']['program_ini_sha256'] ?? null) === ($static ? null : hash_file('sha256', $runtimeConfigurations[$directory])), '诊断控制器、运行配置或轮次不同');
+                foreach (['short-json', 'crud', 'slow-database'] as $workload) {
+                    $sample = $measurement['repetitions'][0][$workload];
+                    expect($sample['warmup'] === 10 && $sample['iterations'] === 100 && $sample['concurrency'] === 1
+                        && count($sample['diagnostic']['ordered_latencies_ms'] ?? []) === 100, '诊断缺少固定负载或顺序样本');
+                }
+            }
             expect(!$static || (($measurement['static_profile'] ?? null) === $profile
                 && ($measurement['delivery'] ?? null) === 'static-profile-benchmark'), '静态测量没有保持 profile 边界');
             expect(hash_file('sha256', $artifacts[$directory]) === $preparation['variants'][$version]['roles']['project']['sha256'], '测量改变了程序字节');
@@ -140,11 +178,11 @@ try {
         }
     }
     expect(hash_file('sha256', $preparationFile) === $record['preparation']['sha256'], '测量期间固定源码准备报告变化');
-    $record['status'] = 'measured-not-compared';
+    $record['status'] = $diagnostic ? 'diagnostic-not-compared' : 'measured-not-compared';
 } finally {
     if ($record['status'] === 'running') {
         $record['status'] = 'failed';
     }
     file_put_contents($base . '/verification.json', json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n");
 }
-echo '成对正式测量完成：' . substr($base, strlen($root) + 1) . "/verification.json\n";
+echo ($diagnostic ? '成对额外诊断完成：' : '成对正式测量完成：') . substr($base, strlen($root) + 1) . "/verification.json\n";

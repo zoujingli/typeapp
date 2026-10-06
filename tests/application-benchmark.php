@@ -91,8 +91,11 @@ function benchmarkUsage(Process $process, ?Process $sampler = null, ?string $dir
     return ['rss_bytes' => $rss, 'cpu_seconds' => $cpu, 'processes' => count($selected), 'capture_seconds' => $elapsed, 'sampling_seconds' => $elapsed];
 }
 
-/** @param Closure():float $operation 返回实际请求路径耗时，准备和采样开销另记在总窗口。 */
-function benchmarkSample(Process $server, Closure $operation, int $warmup, int $iterations, ?Process $sampler = null, ?string $directory = null): array
+/**
+ * @param Closure():float $operation 返回实际请求路径耗时，准备和采样开销另记在总窗口。
+ * @param bool $diagnostic 仅额外诊断保存正式操作的原顺序；预热仍在测量窗口之外。
+ */
+function benchmarkSample(Process $server, Closure $operation, int $warmup, int $iterations, ?Process $sampler = null, ?string $directory = null, bool $diagnostic = false): array
 {
     for ($index = 0; $index < $warmup; $index++) {
         expect($server->running(), '预热期间服务退出');
@@ -111,11 +114,13 @@ function benchmarkSample(Process $server, Closure $operation, int $warmup, int $
             $samples[] = benchmarkUsage($server, $sampler, $directory);
         }
     }
-    $elapsed = (hrtime(true) - $started) / 1e9;
+    $finished = hrtime(true);
+    $elapsed = ($finished - $started) / 1e9;
     $after = benchmarkUsage($server, $sampler, $directory);
     $samples[] = $after;
+    $ordered = $diagnostic ? $latencies : [];
     sort($latencies, SORT_NUMERIC);
-    return ['warmup' => $warmup, 'iterations' => $iterations, 'concurrency' => 1, 'wall_seconds' => $elapsed,
+    $measurement = ['warmup' => $warmup, 'iterations' => $iterations, 'concurrency' => 1, 'wall_seconds' => $elapsed,
         'operations_per_second' => $iterations / $elapsed, 'latencies_ms' => $latencies,
         'p50_ms' => $latencies[(int) ceil($iterations * 0.5) - 1], 'p95_ms' => $latencies[(int) ceil($iterations * 0.95) - 1],
         'p99_ms' => $latencies[(int) ceil($iterations * 0.99) - 1], 'cpu_seconds' => $after['cpu_seconds'] - $before['cpu_seconds'],
@@ -123,6 +128,11 @@ function benchmarkSample(Process $server, Closure $operation, int $warmup, int $
         'sampling_seconds' => array_sum(array_column($samples, 'sampling_seconds')),
         'window_sampling_seconds' => array_sum(array_column(array_slice($samples, 1, -1), 'sampling_seconds')),
         'note' => '延迟仅含请求路径；吞吐窗口包含锁准备及外部采样开销，RSS是被测进程树采样和的最大值，不是操作系统峰值。'];
+    if ($diagnostic) {
+        $measurement['diagnostic'] = ['started_monotonic_ns' => $started, 'finished_monotonic_ns' => $finished,
+            'ordered_latencies_ms' => $ordered, 'sequence_base' => 1];
+    }
+    return $measurement;
 }
 
 /** @return array{Process,HttpClient} 就绪由真实HTTP响应证明。 */
@@ -162,11 +172,16 @@ if (($argv[1] ?? '') === '--hold-lock') {
 }
 
 $root = realpath(dirname(__DIR__));
-$arguments = new Arguments($argv, ['binary', 'driver', 'database-tools', 'repetitions', 'iterations', 'warmup', 'static-profile'], ['external-database']);
+$arguments = new Arguments($argv, ['binary', 'driver', 'database-tools', 'repetitions', 'iterations', 'warmup', 'static-profile'], ['external-database', 'diagnostic']);
 $artifact = realpath($arguments->text('binary', ''));
 $staticProfile = $arguments->has('static-profile') ? $arguments->text('static-profile', '') : null;
 $driver = $arguments->text('driver', $staticProfile ?? 'sqlite');
 $external = $arguments->has('external-database');
+$diagnostic = $arguments->has('diagnostic');
+$repetitions = $arguments->integer('repetitions', $diagnostic ? 1 : 3, 1, 10);
+$iterations = $arguments->integer('iterations', $diagnostic ? 100 : 30, 1, 500);
+$warmup = $arguments->integer('warmup', $diagnostic ? 10 : 5, 0, 100);
+expect(!$diagnostic || ($repetitions === 1 && $iterations === 100 && $warmup === 10), '额外诊断固定为1轮、100次操作和10次预热，不能作为正式比较');
 expect(in_array(PHP_OS_FAMILY, ['Darwin', 'Linux', 'Windows'], true) && in_array($driver, ['mysql', 'pgsql', 'sqlite'], true), '本入口只对受支持原生目标和三库测量');
 expect($staticProfile === null || ($staticProfile === $driver && in_array($staticProfile, ['mysql', 'pgsql', 'sqlite'], true)), '静态 profile 必须与实际测量数据库一致');
 expect(!$external || ($staticProfile !== null && $driver !== 'sqlite' && !$arguments->has('database-tools')), '外部数据库仅供静态 profile 的专用服务器实例');
@@ -179,9 +194,6 @@ if ($staticProfile !== null) {
     expect(($manifest['runtime-linkage'] ?? '') === 'static' && ($manifest['profile']['database'] ?? null) === $staticProfile
         && ($manifest['native-libraries'] ?? null) === [] && ($manifest['extension-modules'] ?? null) === [], '静态测量必须使用匹配 profile 的完整单程序');
 }
-$repetitions = $arguments->integer('repetitions', 3, 1, 10);
-$iterations = $arguments->integer('iterations', 30, 1, 500);
-$warmup = $arguments->integer('warmup', 5, 0, 100);
 $tools = $driver === 'sqlite' || $external ? [] : NativeDatabase::tools($driver, $arguments->text('database-tools', ''));
 $externalSettings = [];
 if ($external) {
@@ -203,6 +215,21 @@ $report = ['status' => 'running', 'path_base' => 'project-root', 'driver' => $dr
     'sampling' => ['method' => PHP_OS_FAMILY === 'Windows' ? 'windows-cim-system-diagnostics-v1' : 'unix-ps-process-tree-v2', 'every_operations' => 10],
     'host' => ['os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'kernel' => php_uname('r'), 'controller_php' => PHP_VERSION],
     'artifact_sha256' => $artifactHash, 'repetitions' => [], 'lifecycle' => []];
+if ($diagnostic) {
+    // 只保留控制器与 INI 字节身份，配置内容和环境秘密不进入诊断。
+    $controllerIni = php_ini_loaded_file();
+    $scannedIni = [];
+    foreach (preg_split('/,\s*/', php_ini_scanned_files() ?: '', -1, PREG_SPLIT_NO_EMPTY) as $iniFile) {
+        $scannedIni[] = hash_file('sha256', trim($iniFile));
+    }
+    $programIni = $staticProfile === null ? (getenv('PHPRC') ?: null) : null;
+    expect($programIni === null || is_file($programIni), '诊断需要明确的程序 INI 文件');
+    $report['diagnostic'] = ['started_monotonic_ns' => hrtime(true), 'finished_monotonic_ns' => null,
+        'controller' => ['script_sha256' => hash_file('sha256', __FILE__), 'php_binary_sha256' => hash_file('sha256', PHP_BINARY),
+            'loaded_ini_sha256' => $controllerIni === false ? null : hash_file('sha256', $controllerIni), 'scanned_ini_sha256' => $scannedIni],
+        'program_ini_sha256' => $programIni === null ? null : hash_file('sha256', $programIni),
+        'note' => '只用于定位顺序与请求阶段差异；计时区间及三类业务断言沿用正式测量，不进入 benchmark-compare。'];
+}
 try {
     for ($round = 0; $round < $repetitions; $round++) {
         $work = $base . '/round-' . $round;
@@ -299,9 +326,11 @@ try {
                 $response = $client->request('GET', '/admin/profile', $headers);
                 expect($response->status === 200 && is_array($response->json()), '短JSON业务结果错误');
                 return (hrtime(true) - $started) / 1e6;
-            }, $warmup, $iterations, $sampler, $samplingDirectory);
+            }, $warmup, $iterations, $sampler, $samplingDirectory, $diagnostic);
             $sequence = 0;
-            $measurements['crud'] = benchmarkSample($server, static function () use ($client, $headers, &$sequence): float {
+            $crudTimings = [];
+            // 正式闭包保持原请求与变量生命周期；仅在测量窗口外选择额外诊断实现。
+            $crudOperation = static function () use ($client, $headers, &$sequence): float {
                 $started = hrtime(true);
                 $login = 'bench-' . (++$sequence);
                 $created = $client->request('POST', '/admin/users', $headers, json_encode([
@@ -315,7 +344,41 @@ try {
                 expect($updated->status === 200 && $updated->json()['data']['name'] === '基准用户-更新', '基准更新错误');
                 expect($client->request('POST', $path . '/status', $headers, json_encode(['version' => $updated->json()['data']['version'], 'enabled' => false], JSON_THROW_ON_ERROR))->status === 200, '基准停用失败');
                 return (hrtime(true) - $started) / 1e6;
-            }, $warmup, $iterations, $sampler, $samplingDirectory);
+            };
+            if ($diagnostic) {
+                $crudOperation = static function () use ($client, $headers, &$sequence, &$crudTimings): float {
+                    $started = hrtime(true);
+                    $login = 'bench-' . (++$sequence);
+                    $requestStarted = hrtime(true);
+                    $created = $client->request('POST', '/admin/users', $headers, json_encode([
+                        'login' => $login, 'name' => '基准用户', 'password' => 'Benchmark-user-password-2026',
+                    ], JSON_THROW_ON_ERROR));
+                    $createMs = (hrtime(true) - $requestStarted) / 1e6;
+                    expect($created->status === 200, '基准创建失败');
+                    $user = $created->json()['data'];
+                    $path = '/admin/users/' . $user['id'];
+                    $requestStarted = hrtime(true);
+                    $read = $client->request('GET', $path, $headers);
+                    $readMs = (hrtime(true) - $requestStarted) / 1e6;
+                    expect($read->json()['data']['items'][0]['name'] === '基准用户', '基准读取错误');
+                    $requestStarted = hrtime(true);
+                    $updated = $client->request('PATCH', $path, $headers, json_encode(['login' => $login . '-u', 'name' => '基准用户-更新', 'version' => $user['version']], JSON_THROW_ON_ERROR));
+                    $updateMs = (hrtime(true) - $requestStarted) / 1e6;
+                    expect($updated->status === 200 && $updated->json()['data']['name'] === '基准用户-更新', '基准更新错误');
+                    $requestStarted = hrtime(true);
+                    $disabled = $client->request('POST', $path . '/status', $headers, json_encode(['version' => $updated->json()['data']['version'], 'enabled' => false], JSON_THROW_ON_ERROR));
+                    $statusMs = (hrtime(true) - $requestStarted) / 1e6;
+                    expect($disabled->status === 200, '基准停用失败');
+                    $latency = (hrtime(true) - $started) / 1e6;
+                    $crudTimings[] = ['create_ms' => $createMs, 'read_ms' => $readMs, 'update_ms' => $updateMs, 'status_ms' => $statusMs];
+                    return $latency;
+                };
+            }
+            $measurements['crud'] = benchmarkSample($server, $crudOperation, $warmup, $iterations, $sampler, $samplingDirectory, $diagnostic);
+            if ($diagnostic) {
+                // 四次 HTTP 的记录与排序前操作序列逐项对应；十次预热不属于正式一百条。
+                $measurements['crud']['diagnostic']['http_operations_ms'] = array_slice($crudTimings, $warmup);
+            }
             $created = $client->request('POST', '/admin/users', $headers, json_encode([
                 'login' => 'lock-user', 'name' => '锁等待用户', 'password' => 'Benchmark-user-password-2026',
             ], JSON_THROW_ON_ERROR));
@@ -365,7 +428,7 @@ try {
                         unlink($ready);
                     }
                 }
-            }, $warmup, $iterations, $sampler, $samplingDirectory);
+            }, $warmup, $iterations, $sampler, $samplingDirectory, $diagnostic);
             $measurements['slow-database']['initial_statuses_including_warmup'] = $slowStatuses;
             $measurements['slow-database']['contention'] = '持有真实写锁50ms；SQLite允许BUSY后确认无写入并由客户端重试一次，其余驱动等待行锁。';
             $report['repetitions'][] = $measurements;
@@ -444,10 +507,13 @@ try {
         }
     }
     expect(hash_file('sha256', $artifact) === $artifactHash, '测量期间产物变化');
-    $report['status'] = 'passed';
+    $report['status'] = $diagnostic ? 'diagnostic-not-compared' : 'passed';
 } finally {
-    if ($report['status'] !== 'passed') {
+    if ($report['status'] === 'running') {
         $report['status'] = 'failed';
+    }
+    if ($diagnostic) {
+        $report['diagnostic']['finished_monotonic_ns'] = hrtime(true);
     }
     file_put_contents($base . '/verification.json', json_encode($report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n");
 }
