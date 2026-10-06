@@ -36,6 +36,8 @@ TypeApp 优先复用 PSR、Swoole 以及现有 `ExecutionScope`、`ManagedResour
 
 HTTP、WebSocket、TCP、UDP、MQTT 保留各自协议入口和失败语义，只共用生命周期、资源预算、统计和关闭约定。HTTP 与 WebSocket 共用端口时由同一个 Swoole Server 持有监听，不引入额外的统一 Transport 或 Server 管理器。
 
+下一轮已确定把手工构造收敛为构建期自动装配，并在原 Service 类型上落实事务/缓存声明；当前命令生成器与 HTTP 手工装配尚未统一。该调整保持上面的依赖与生命周期边界，新增接口及开发/发布文档分版仍待实施，见[框架开发闭环](roadmap.md#框架开发闭环)。
+
 ## 构建期与运行期
 
 ```mermaid

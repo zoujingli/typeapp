@@ -50,6 +50,8 @@ public function create(Connection $connection, array $values): array
 7. HTTP 路由来自控制器 `#[Route]`/`#[Group]`/`#[Resource]` 或 `config/route.php`，由构建生成 `register()`；缓存/事务 Attribute 通过显式生成的服务组合入口生效。直接调用原服务不自动拦截，不提供运行时 AOP。
 8. 保留受支持的零参数 `toArray()`；避免与转换关键词冲突的额外参数方法，生成器和手写源码共同接受验收。
 
+第 7 条记录当前实现。后续已按 [ADR0025](../adr/0025-service-declaration-transformation.md) 选择同一 Service 类型的构建期转换；在统一生成、调用者迁移与验收完成前，不能按新语义使用旧版组件。转换交付时同步更新这里和所有示例，不长期保留两套声明入口。
+
 组件 `extra.type` 中的源码替换声明使用单行片段；Packagist 生成索引时可能移除字符串换行，不能依赖多行文本在 Composer 元数据中原样往返。拆分替换仍须绑定原文件摘要、精确次数并验证生成源码字节和公开行为不变，不放宽构建器的完整性检查。
 
 ## 说明文字

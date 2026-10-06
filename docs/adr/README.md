@@ -1,6 +1,6 @@
 # 架构决策
 
-本目录只描述现行架构及其取舍，实施状态见[实现规划](../guide/roadmap.md)。
+本目录记录已确定的架构及其取舍；已决定但尚未实施的调整会标注当前行为与迁移边界，实施状态见[实现规划](../guide/roadmap.md)。
 
 - [聚合开发与公开组件分发](0001-development-monorepo.md)
 - [应用级整体 AOT 与编译期装配](0002-application-aot.md)
@@ -23,3 +23,5 @@
 - [Swoole 唯一底层与单程序交付](0021-required-swoole-and-single-program.md)
 - [显式装配与边界契约](0022-explicit-assembly-and-boundary-contracts.md)
 - [Model 优先的业务 CRUD 边界](0023-model-first-crud-boundary.md)
+- [构建期自动装配作为应用默认入口](0024-build-time-application-assembly.md)
+- [在原 Service 类型上落实事务与缓存声明](0025-service-declaration-transformation.md)
