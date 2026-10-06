@@ -379,6 +379,9 @@ jobs:
             build/macos-recovery-ci-*/preparation.json
             build/platform-benchmarks-*/preparation.json
             build/platform-benchmarks-*/*/*.log
+            build/platform-benchmarks-*/*/runtime-*.json
+            build/platform-benchmarks-*/*/runtime-original.ini
+            build/platform-benchmarks-*/*/runtime.tar.gz
             build/benchmark-pairs-*/*.log
             build/benchmark-pairs-*/comparison-*.json
             build/native-*-tls-*/openssl.log

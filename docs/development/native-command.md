@@ -17,6 +17,8 @@ GitHub Actions 分别提供 Linux x64、Linux ARM64、macOS ARM64 和 Windows x6
 
 工具链性能对照复用 `native-linux-arm64.yml` 中的 `suite=benchmark`（ARM64）或 `suite=benchmark-x64`（x64），只在对应原生 runner 测量。`base_source` 必须指定完整旧提交，`new_source` 可固定新提交，`benchmark_order` 选择新旧执行顺序；控制器为各版本重建自己的 PHPX、使用自己的 Swoole 模块，并嵌入同一份前端资源。报告分别记录准备身份、编译耗时、程序大小和三数据库负载，独立性能运行不产生完整平台验收汇总。跨运行重建的程序须保留各自摘要，不能称为同一字节复测。
 
+共享运行库的性能准备会用现有发布器保全原程序、实际运行库闭包及许可资源，逐文件核对压缩归档，并在含空格的新目录恢复后执行 `verify-runtime`。Actions 同时保存归档、原始 INI、构建报告和恢复回执；压缩与恢复校验不计入编译或负载耗时。恢复后使用包内的相对路径配置与启动器，原程序字节保持不变，仍要求匹配的系统与架构。这些诊断材料用于复查原性能样本，不是供用户部署的静态单程序，也不表示性能验收通过。
+
 Linux x64 主验收、组件批次、应用模板和运行库分发共用 `.github/scripts/prepare-linux-swoole.sh`，在切换到锁定 PHP 后同时核验 embed 与 CLI 的受控 Swoole。模块声明写入工作区的独立扫描目录，不写回可缓存的 SDK 前缀；公开消费前运行 Composer 平台依赖检查，确认执行安装的 PHP CLI 也已加载所需扩展。
 
 macOS ARM64 的内置 Swoole 要求 PHP SDK 启用 Zend signals。CI 使用 `tools/install-locked-macos-php.sh` 从固定摘要的 PHP 源码准备 ZTS/CLI/embed，缓存按安装脚本和本机依赖身份复核；Swoole 仍直接取自构建组件，无需在每次应用构建时重编。Homebrew 的 `php-zts` 关闭该选项，不能仅凭 PHP 版本号相同直接替换。SDK 通过 Xcode Command Line Tools 提供的声明链接系统 iconv，避免在发布包中引入与系统库同名但符号不同的 GNU libiconv。启动产物时使用该次构建报告 `runtime-profile.ini` 指向的配置，避免加载开发控制器中另一份同名扩展。

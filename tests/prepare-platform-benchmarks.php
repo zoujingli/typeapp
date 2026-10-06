@@ -9,6 +9,8 @@ use Type\Build\BuildPlatform;
 use Type\Build\BuildIdentity;
 use Type\Build\ArtifactManifest;
 use Type\Build\StaticRuntimeSdk;
+use Type\Build\NativePackage;
+use Type\Build\PackageArchive;
 
 /** 只复制构建所需PHPX源文件；旧SDK和安装目录保持原样。 */
 function benchmarkPhpxSources(string $source, string $target): void
@@ -21,6 +23,59 @@ function benchmarkPhpxSources(string $source, string $target): void
         }
         expect($file->isFile() && !$file->isLink(), 'PHPX构建输入必须是普通文件');
         scenarioCopy($file->getPathname(), $target . '/' . $relative);
+    }
+}
+
+/**
+ * 保全本次实际测量的原程序和原生闭包；不修改程序字节，也不归档编译中间文件。
+ *
+ * 归档恢复后用自己的运行库完成完整性校验。原 INI 和构建报告单独保留身份，
+ * 恢复包使用现有发布器生成的相对路径 INI；这不是静态部署或性能通过的证据。
+ *
+ * @param array<string,mixed> $build 原程序的已核验构建报告。
+ * @return array<string,mixed> 归档、原配置、构建身份和实际恢复结果。
+ */
+function benchmarkPreserveRuntime(string $root, string $work, string $artifact, array $build): array
+{
+    $package = $work . '/runtime-preservation';
+    $restored = $work . '/restored runtime';
+    $data = $work . '/runtime-check-data';
+    $record = ['protocol' => 1, 'status' => 'preserving', 'artifact_sha256' => $build['sha256'], 'build_id' => $build['build-id']];
+    try {
+        expect(hash_file('sha256', $artifact) === $build['sha256'], '保全前的基准程序已变化');
+        foreach (['runtime-original.ini' => $build['runtime-profile']['ini'], 'runtime-build.json' => $artifact . '.build.json'] as $name => $source) {
+            scenarioCopy($source, $work . '/' . $name);
+            expect(hash_file('sha256', $source) === hash_file('sha256', $work . '/' . $name), '基准原配置或构建报告复制不一致');
+            $record['original_inputs'][$name] = hash_file('sha256', $source);
+        }
+        $publisher = new NativePackage();
+        $created = $publisher->create($artifact, $package);
+        $archive = (new PackageArchive())->create($package, $work . '/runtime.tar.gz', $created['manifest-sha256']);
+        $record['archive'] = array_replace($archive, ['file' => substr($archive['file'], strlen($root) + 1)]);
+        expect(mkdir($restored, 0700) && mkdir($data, 0700), '无法创建基准恢复校验目录');
+        nativeDatabaseCommand(['tar', '-xzf', $archive['file'], '-C', $restored], ['PATH' => '/usr/bin:/bin'], [], $work . '/runtime-restore.log', 60);
+        $release = $publisher->verify($restored, $created['manifest-sha256']);
+        expect($release['artifact']['sha256'] === $build['sha256'] && $release['artifact']['build-id'] === $build['build-id'], '恢复包不属于原基准程序');
+        $output = nativeDatabaseCommand([$restored . '/run', 'verify-runtime'], [
+            'PATH' => '/usr/bin:/bin', 'TYPE_APP_RELEASE_SHA256' => $created['manifest-sha256'],
+            'APP_BASE_PATH' => $data, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false',
+            'DB_DRIVER' => 'sqlite', 'DB_SQLITE_FILE' => 'data/benchmark.sqlite',
+        ], [], $work . '/runtime-verify.log', 90);
+        expect($output === "运行环境完整性校验通过。\n" && hash_file('sha256', $artifact) === $build['sha256'], '恢复后运行库审计未通过或原程序发生变化');
+        $record['files'] = count($release['files']);
+        $record['status'] = 'restored-and-verified';
+        return $record;
+    } finally {
+        if ($record['status'] === 'preserving') {
+            $record['status'] = 'failed';
+        }
+        file_put_contents($work . '/runtime-preservation.json', json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n");
+        // 原程序、归档和失败回执保留；临时解包与重复库不进入长期证据。
+        foreach ([$package, $restored, $data] as $temporary) {
+            if (is_dir($temporary)) {
+                removeTestDirectory($temporary);
+            }
+        }
     }
 }
 
@@ -456,6 +511,8 @@ try {
                 'runtime_ini_sha256' => hash_file('sha256', $build['runtime-profile']['ini']),
                 'build_id' => $build['build-id'], 'report_sha256' => hash_file('sha256', $artifact . '.build.json'),
                 'typephp' => $build['typephp'], 'phpx' => $build['phpx'], 'production_packages' => $build['production-packages']];
+            // 编译计时已结束；恢复审计和压缩不混入编译耗时或请求测量窗口。
+            $entry['roles'][$role]['preservation'] = benchmarkPreserveRuntime($root, $work, $artifact, $build);
         }
         $record['variants'][$variant] = $entry;
     }
