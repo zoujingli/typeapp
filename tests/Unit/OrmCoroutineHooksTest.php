@@ -147,7 +147,12 @@ try {
     $data = Type\Runtime\CoroutineRuntime::enterThread($message);
     $inherited = Swoole\Runtime::getHookFlags();
     Type\Runtime\CoroutineRuntime::enableIo();
-    $value = Type\Runtime\CoroutineRuntime::run(static function () use ($message): array {
+    $value = Type\Runtime\CoroutineRuntime::run(static function () use ($message, $inherited): array {
+        // HTTP 线程内的持久 worker 会再次请求 I/O 能力；只能复核，不能重装进程 handler。
+        Type\Runtime\CoroutineRuntime::enableIo();
+        if (Swoole\Runtime::getHookFlags() !== $inherited) {
+            throw new RuntimeException('thread hook snapshot changed');
+        }
         $pdo = (new Type\Orm\Sqlite\SqliteDriver(':memory:'))->connect();
         $pdo->exec('CREATE TABLE thread_records (id INTEGER PRIMARY KEY, value TEXT NOT NULL)');
         $pdo->exec("INSERT INTO thread_records VALUES (1, 'thread sqlite')");
@@ -186,6 +191,7 @@ PHP);
                     self::assertSame($expected, $result['error']);
                     self::assertSame($result['initial'], $result['flags']);
                 } else {
+                    self::assertArrayNotHasKey('error', $result, json_encode($result, JSON_THROW_ON_ERROR));
                     self::assertSame(['probe', 'payload'], $result['entry']);
                     self::assertSame(['thread sqlite', 'compiled_thread_message_invalid'], $result['value']);
                     self::assertSame($flags, $result['inherited']);

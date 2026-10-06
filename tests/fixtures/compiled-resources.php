@@ -175,6 +175,9 @@ final class PoolProbe
             $database->close();
             Coroutine::create(static function () use ($file, $budget): void {
                 try {
+                    $inheritedHooks = Swoole\Runtime::getHookFlags();
+                    CoroutineRuntime::enableIo();
+                    self::check(Swoole\Runtime::getHookFlags() === $inheritedHooks, '线程协程重复检查改变启动 hook');
                     self::rejected(static fn (): array => CoroutineRuntime::enterThread(Swoole\Thread::getArguments()[0]), 'compiled_thread_message_invalid');
                     CoroutineRuntime::assertPdoHooks('sqlite');
                     $sleepCompleted = new Channel(1);

@@ -187,6 +187,15 @@ final class CoroutineRuntime
         self::assertAvailable();
         $required = self::requiredHookFlags();
         $current = \Swoole\Runtime::getHookFlags();
+        // 业务线程内的协程也只能复核继承配置，必须先于主线程的协程启动兼容处理。
+        // 例如 HTTP 请求中的持久 worker 会重复进入此方法，不能重装共享 handler。
+        if (class_exists(\Swoole\Thread::class, false)
+            && (!\Swoole\Thread::getInfo()['is_main_thread'] || \Swoole\Thread::activeCount() > 1)) {
+            if (($current & $required) !== $required) {
+                throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
+            }
+            return;
+        }
         // 原生编译入口可能由 PHPX 在已经创建的协程中调用。此时
         // enableCoroutine() 负责确保进程级 handler 已安装，但当前协程仍
         // 可能保留创建时的 hook 快照；后续 PDO 连接就会误报启动期 hook
@@ -199,13 +208,6 @@ final class CoroutineRuntime
             }
             Coroutine::set(['hook_flags' => $flags]);
             self::assertRequiredHooks();
-            return;
-        }
-        if (class_exists(\Swoole\Thread::class, false)
-            && (!\Swoole\Thread::getInfo()['is_main_thread'] || \Swoole\Thread::activeCount() > 1)) {
-            if (($current & $required) !== $required) {
-                throw new TaskException('swoole_hook_startup_required', 'I/O 钩子必须在主线程启动业务线程前启用');
-            }
             return;
         }
         // 新版 Swoole 的原生线程 join 返回与其清理完成之间可能有极短窗口；
