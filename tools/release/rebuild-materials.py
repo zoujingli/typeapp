@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 
 
@@ -22,27 +23,53 @@ def digest(path, algorithm="sha256"):
     return value.hexdigest()
 
 
-def command(arguments, directory):
+def command(arguments, directory, timeout=300):
     """构建命令直接传参，失败保留可定位的输出，不经过 shell。"""
     result = subprocess.run(arguments, cwd=directory, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, timeout=300, check=False)
+                            stderr=subprocess.PIPE, timeout=timeout, check=False)
     if result.returncode:
         raise RuntimeError(f"重建材料命令失败：{arguments[0]}\n{result.stderr[-4000:]}")
     return result.stdout.strip()
 
 
-def download(url, destination, checksum=None, algorithm="sha256"):
-    """只获取公开 HTTPS 原始源码；有上游摘要时必须逐字节一致。"""
-    if not url.startswith("https://"):
+def download(url, destination, checksum=None, algorithm="sha256", mirrors=(), timeout=120):
+    """在同一总预算内尝试配方 HTTPS 来源；摘要错误立即拒绝，不能改用其他镜像掩盖。"""
+    if mirrors and checksum is None:
+        raise ValueError("源码镜像需要已锁定的摘要")
+    if checksum is not None and (algorithm not in ("sha256", "sha512")
+                                or re.fullmatch(r"[a-fA-F0-9]{" + str(hashlib.new(algorithm).digest_size * 2) + "}", checksum) is None):
+        raise ValueError("源码下载摘要格式无效")
+    if not isinstance(timeout, (int, float)) or not 1 <= timeout <= 300:
+        raise ValueError("源码下载总预算必须在1到300秒之间")
+    preferred = url
+    if checksum is not None and url.startswith("https://ftpmirror.gnu.org/"):
+        # 保留实际配方原入口；GNU 主站不可达时仍可使用配方声明的同摘要来源。
+        preferred = "https://ftp.gnu.org/gnu/" + url.removeprefix("https://ftpmirror.gnu.org/").removeprefix("gnu/")
+    candidates = list(dict.fromkeys([preferred, *mirrors, url]))
+    if any(not candidate.startswith("https://") for candidate in candidates):
         raise ValueError("源码下载必须使用 HTTPS")
-    # 固定 GNU 主镜像，避免自动镜像重定向到已失效站点；摘要仍来自实际构建配方。
-    url = url.replace("https://ftpmirror.gnu.org/gnu/", "https://ftp.gnu.org/gnu/")
-    if url.startswith("https://ftpmirror.gnu.org/"):
-        url = url.replace("https://ftpmirror.gnu.org/", "https://ftp.gnu.org/gnu/", 1)
-    command(["curl.exe" if os.name == "nt" else "curl", "--fail", "--location", "--silent", "--show-error",
-             "--retry", "3", "--connect-timeout", "20", "--max-time", "60", "--output", str(destination), url], destination.parent)
-    if checksum is not None and digest(destination, algorithm) != checksum.lower():
-        raise ValueError("源码下载摘要与构建输入不符：" + destination.name)
+    deadline = time.monotonic() + timeout
+    failures = []
+    for candidate in candidates:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        # 多个来源每源最多60秒且不叠加重试；单一来源保留有界重试。
+        budget = min(60, remaining) if len(candidates) > 1 else remaining
+        try:
+            command(["curl.exe" if os.name == "nt" else "curl", "--fail", "--location", "--silent", "--show-error",
+                     "--proto", "=https", "--proto-redir", "=https", "--connect-timeout", str(min(10, budget)),
+                     "--max-time", str(min(60, budget)), "--retry", "0" if len(candidates) > 1 else "3",
+                     "--retry-max-time", str(int(budget)), "--output", str(destination), candidate], destination.parent, timeout=budget)
+        except (RuntimeError, subprocess.TimeoutExpired) as error:
+            destination.unlink(missing_ok=True)
+            failures.append(candidate + "：" + str(error))
+            continue
+        if checksum is not None and digest(destination, algorithm) != checksum.lower():
+            destination.unlink(missing_ok=True)
+            raise ValueError("源码下载摘要与构建输入不符：" + destination.name + "；来源：" + candidate)
+        return candidate
+    raise RuntimeError("源码下载失败：" + destination.name + "（总预算" + str(timeout) + "秒）\n" + "\n".join(failures))
 
 
 class Bundle:
@@ -139,15 +166,16 @@ def library_sources(bundle, project, sdk, metadata, temporary, dependencies):
             text = formula.read_text(encoding="utf-8")
             url = re.search(r'^  url "(https://[^"\n]+)"$', text, re.M)
             checksum = re.search(r'^  sha256 "([a-f0-9]{64})"$', text, re.M)
+            mirrors = re.findall(r'^  mirror "([^"\n]+)"$', text, re.M)
             # 这两个固定版本不含附加源码补丁；配方变化要求补齐采集逻辑，不能漏掉补丁。
             if not url or not checksum or re.search(r'^  (?:patch|resource|stable)\b', text, re.M):
                 raise ValueError("Homebrew 源码配方需要重新审核：" + name)
             archive = temporary / (name + ".tar.xz")
-            download(url[1], archive, checksum[1])
+            downloaded_from = download(url[1], archive, checksum[1], mirrors=mirrors)
             bundle.add(archive, "rebuild/native-sources/" + archive.name)
             bundle.add(formula, "rebuild/recipes/homebrew/" + name + ".rb")
             bundle.add(receipt, "rebuild/recipes/homebrew/" + name + "-receipt.json")
-            sources[name] = {"version": identity["version"], "url": url[1], "sha256": checksum[1]}
+            sources[name] = {"version": identity["version"], "url": url[1], "download-url": downloaded_from, "sha256": checksum[1]}
     elif family == "Linux":
         for package in ("libgmp-dev", "libmpfr-dev"):
             fields = command(["dpkg-query", "-W", "-f=${Version}\n${source:Package}\n${source:Version}", package], project).splitlines()

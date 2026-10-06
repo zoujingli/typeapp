@@ -15,6 +15,8 @@ profile 必须与程序身份一致：SQLite、MySQL、PostgreSQL 的 SDK 归档
 
 先按公开 `release-manifest.json` 中对应程序的 `rebuild` 记录核对 Artifact 身份与 ZIP 摘要，再按 ZIP 内的 `manifest.json` 核对文件。新发布的 `SHA256SUMS` 只覆盖部署下载项。旧版本材料不能与新程序混用；重新构建或修改后的程序有自己的摘要，不能继续引用原候选的验收结论。生成器先回读全部成员，候选门禁再核对来源提交、SDK 和附件摘要；离线回归入口是 `python3 tests/rebuild-materials.py`。
 
+macOS 的 GMP、MPFR 源码来自实际安装配方记录的 HTTPS 地址。主源不可达时，在有限总预算内尝试配方声明的镜像和原 GNU 入口；每个来源都必须满足同一锁定摘要。下载完成但摘要不符会立即失败，不能换源掩盖冲突。材料记录实际下载地址，原配方和安装收据一并保留。
+
 ## 重建应用与替换库
 
 1. 在匹配的 OS/架构上解开 `typeapp.tar`，按其中锁文件和[原生开发说明](native-command.md)准备构建宿主。编译器、C/C++ 工具、Python 3 和 Node.js 仅供构建。
