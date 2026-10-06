@@ -353,7 +353,15 @@ final class Connection
             $this->trackModel($model);
         }
         if ($depth > 0) {
-            array_push($this->transactions[$depth - 1]['callbacks'], ...$frame['callbacks']);
+            // Windows PHPX 生成的多级数组写入可能对中间项执行 COW 分离。
+            // 先复制父帧，再把完整帧写回，避免嵌套事务成功后回调丢失。
+            $parent = $this->transactions[$depth - 1];
+            $callbacks = $parent['callbacks'];
+            foreach ($frame['callbacks'] as $callback) {
+                $callbacks[] = $callback;
+            }
+            $parent['callbacks'] = $callbacks;
+            $this->transactions[$depth - 1] = $parent;
         } else {
             // 先固定提交事实，再运行外部效果；回调失败不会重新执行事务体。
             $this->outcome = TransactionOutcome::COMMITTED;
@@ -390,7 +398,12 @@ final class Connection
         if ($this->transactions === []) {
             throw new TransactionException(TransactionOutcome::NOT_STARTED, '提交后回调必须在活动事务中登记');
         }
-        $this->transactions[count($this->transactions) - 1]['callbacks'][] = $callback;
+        $index = count($this->transactions) - 1;
+        $frame = $this->transactions[$index];
+        $callbacks = $frame['callbacks'];
+        $callbacks[] = $callback;
+        $frame['callbacks'] = $callbacks;
+        $this->transactions[$index] = $frame;
     }
 
     private function guardTransactionSql(string $sql): void
@@ -420,8 +433,12 @@ final class Connection
         }
         $this->session();
         $index = count($this->transactions) - 1;
-        if (!in_array($model, $this->transactions[$index]['models'], true)) {
-            $this->transactions[$index]['models'][] = $model;
+        $frame = $this->transactions[$index];
+        if (!in_array($model, $frame['models'], true)) {
+            $models = $frame['models'];
+            $models[] = $model;
+            $frame['models'] = $models;
+            $this->transactions[$index] = $frame;
         }
     }
 
