@@ -196,7 +196,7 @@ try {
         }
         foreach (glob($base . '/*/consumer-path.txt') ?: [] as $receipt) {
             $path = trim(file_get_contents($receipt));
-            expect(preg_match('~^' . preg_quote($root, '~') . '/build/(?:template-|tutorial space )(?:mysql|pgsql|sqlite)-[a-f0-9]{12}$~D', $path) === 1, '消费者清理路径不属于本轮测试');
+            expect(preg_match('~^' . preg_quote($root, '~') . '/build/(?:template-(?:mysql|pgsql|sqlite)-|t )[a-f0-9]{12}$~D', $path) === 1, '消费者清理路径不属于本轮测试');
             $consumers[$path] = basename(dirname($receipt));
         }
         foreach ($consumers as $consumer => $driver) {

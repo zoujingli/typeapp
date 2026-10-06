@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Type\Build\BuildPlatform;
 use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Testing\HttpClient;
@@ -17,7 +18,8 @@ use Type\Testing\Process;
  */
 function verifyNativeApplicationDeployment(string $project, string $package, string $runtime, array $command, array $environment, string $driver, array $embeddedResources, bool $isolated, bool $single = false): array
 {
-    $root = dirname(__DIR__);
+    $root = BuildPlatform::resolve(dirname(__DIR__));
+    $project = BuildPlatform::resolve($project);
     $base = dirname($runtime);
     $admin = null;
     $databaseCreated = false;

@@ -96,6 +96,103 @@ $suite->test('持久计划游标跨进程恢复且正常停止', static function
     Assert::true($first[0]['result']['products'] > 0);
     Assert::same([], $run('schedule')['records']);
 });
+$suite->test('生成Job的异常、有限重试、显式取消与清理后确认', static function () use ($run): void {
+    foreach (['queue-invalid', 'queue-cancel', 'queue-cleanup'] as $mode) {
+        $result = $run($mode);
+        Assert::same($mode === 'queue-invalid' ? [1, 2, 3] : [1, 2], array_column($result['observations'], 'attempt'));
+        foreach ($result['observations'] as $observation) {
+            Assert::same($result['message'], $observation['message']);
+            Assert::same('app\\catalog\\job\\DeliverProduct', $observation['role']);
+            Assert::same(1, $observation['starts']);
+            Assert::same('closed', $observation['scope']);
+            Assert::true($observation['closed']);
+            Assert::same(0, $observation['before-close']['database-leases']);
+            Assert::same(1, $observation['before-close']['queue']['messages']);
+            Assert::same(1, $observation['before-close']['queue']['leased']);
+            Assert::same(0, $observation['before-close']['queue']['delayed']);
+        }
+        Assert::same('stopped', $result['stopped']['state']);
+        Assert::same(0, $result['stopped']['in_flight']);
+        Assert::same(0, $result['queue']['messages']);
+        Assert::same(0, $result['queue']['leased']);
+        Assert::same(0, $result['queue']['delayed']);
+        if ($mode === 'queue-invalid') {
+            Assert::same(3, $result['worker']['failed']);
+            Assert::same(2, $result['worker']['retried']);
+            Assert::same(1, $result['worker']['quarantined']);
+            Assert::same(0, $result['worker']['completed']);
+            Assert::same(0, $result['effects']);
+            Assert::same([['attempt' => 3, 'reason' => 'attempts_exhausted:Type\\Queue\\QueueException']], $result['quarantine']);
+        } elseif ($mode === 'queue-cancel') {
+            Assert::same(0, $result['first']['effects']);
+            Assert::same(0, $result['first']['worker']['completed']);
+            Assert::same(1, $result['first']['worker']['failed']);
+            Assert::same(1, $result['first']['worker']['retried']);
+            Assert::same(1, $result['first']['queue']['delayed']);
+            Assert::same(1, $result['worker']['completed']);
+            Assert::same(1, $result['effects']);
+            Assert::same([], $result['quarantine']);
+        } else {
+            Assert::same('cleanup_incomplete', $result['error']);
+            Assert::same('closing', $result['pending-scope']);
+            Assert::same('draining', $result['first']['worker']['state']);
+            Assert::same(1, $result['first']['worker']['in_flight']);
+            Assert::same(1, $result['first']['worker']['cleanup_failures']);
+            foreach (['completed', 'retried', 'quarantined', 'storage_failures'] as $counter) {
+                Assert::same(0, $result['first']['worker'][$counter]);
+            }
+            Assert::same(1, $result['first']['queue']['messages']);
+            Assert::same(1, $result['first']['queue']['leased']);
+            Assert::same(0, $result['first']['queue']['delayed']);
+            Assert::same('stopped', $result['after-cleanup']['state']);
+            Assert::same(0, $result['after-cleanup']['in_flight']);
+            Assert::same(2, $result['observations'][0]['stops']);
+            Assert::same(1, $result['recovery']['completed']);
+            Assert::same(1, $result['first']['effects']);
+            Assert::same(1, $result['effects']);
+        }
+    }
+});
+$suite->test('生成Task的异常、显式取消、未完收尾及持久游标', static function () use ($run, $work): void {
+    foreach (['schedule-failure', 'schedule-cancel', 'schedule-cleanup'] as $mode) {
+        $options = ['CATALOG_CURSOR' => $work . '/' . $mode . '.json'];
+        $result = $run($mode, $options);
+        Assert::same(1, count($result['records']));
+        $record = $result['records'][0];
+        Assert::same('failed', $record['state']);
+        $observation = $result['observations'][0];
+        Assert::same($record['occurrence_id'], $observation['occurrence']);
+        Assert::same('app\\catalog\\task\\CatalogTask', $observation['role']);
+        Assert::same(1, $observation['starts']);
+        Assert::same('closed', $observation['scope']);
+        Assert::true($observation['closed']);
+        Assert::same(0, $observation['before-close']['database-leases']);
+        Assert::same('running', $observation['before-close']['records'][0]['state']);
+        Assert::same(null, $observation['before-close']['records'][0]['finished_at']);
+        if ($mode === 'schedule-cleanup') {
+            Assert::same(null, $record['finished_at']);
+            Assert::true($record['result']['products'] > 0);
+            Assert::true(str_contains($record['cleanup_error']['message'], 'catalog_work_cleanup_pending'));
+            Assert::same(1, $result['before-recovery']['in_flight']);
+            Assert::same('draining', $result['before-recovery']['state']);
+            Assert::same(1, $result['before-recovery']['cleanup_failures']);
+            Assert::same(2, $observation['stops']);
+        } else {
+            Assert::same(null, $record['result']);
+            Assert::same(1800000000, $record['finished_at']);
+            Assert::same($mode === 'schedule-cancel' ? Type\Runtime\TaskException::class : Type\Orm\ModelException::class, $record['error']['type']);
+            Assert::same(null, $record['cleanup_error']);
+        }
+        Assert::same('stopped', $result['stopped']['state']);
+        Assert::same(0, $result['after-cleanup']['in_flight']);
+        Assert::same([], $run('schedule', $options)['records'], '重启后不应隐式重试同一计划');
+        $later = $run('schedule', $options + ['CATALOG_CLOCK' => '1800000060'])['records'];
+        Assert::same(1, count($later));
+        Assert::same('succeeded', $later[0]['state']);
+        Assert::true($later[0]['occurrence_id'] !== $record['occurrence_id']);
+        Assert::true($later[0]['result']['products'] > 0);
+    }
+});
 $suite->test('受管Swoole HTTPS校验、截止、取消与正文关闭', static function () use ($root, $work, $environment, $run): void {
     $certificate = $work . '/certificate.pem';
     $key = $work . '/key.pem';

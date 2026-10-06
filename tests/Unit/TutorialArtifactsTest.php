@@ -17,7 +17,7 @@ final class TutorialArtifactsTest extends TestCase
     public function testFailedConsumerPreservesBytesInputsAndInterruptedDeployment(): void
     {
         $root = $this->directory();
-        $consumer = $root . '/build/tutorial space sqlite-123456789abc';
+        $consumer = $root . '/build/t 123456789abc';
         $deployment = $root . '/build/single program-123456789abc';
         $files = ['build/type-project' => "program\0bytes", 'build/type-project.build.json' => '{"status":"failed"}',
             'build/compiler/compile.log' => 'compiler failure', 'build/compiler/project.yml' => '{"sources":[]}',

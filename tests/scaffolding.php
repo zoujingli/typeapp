@@ -27,6 +27,22 @@ try {
     successful([...$composerCommand, 'install', '--no-scripts', '--no-plugins', '--no-interaction', '--no-progress'], $work);
     $config = $work . '/type-app.json';
     $make = static fn (array $arguments): string => successful([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, ...$arguments], sys_get_temp_dir());
+    // 比对调用者可见的源码与声明；make 互斥锁允许存在，但失败不能留下半个角色。
+    $snapshot = static function () use ($work): array {
+        $files = [];
+        foreach (['composer.json', 'composer.lock', 'type-app.json'] as $file) {
+            $files[$file] = hash_file('sha256', $work . '/' . $file);
+        }
+        foreach (['app', 'config'] as $directory) {
+            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($work . '/' . $directory, FilesystemIterator::SKIP_DOTS)) as $entry) {
+                if ($entry->isFile()) {
+                    $files[substr($entry->getPathname(), strlen($work) + 1)] = hash_file('sha256', $entry->getPathname());
+                }
+            }
+        }
+        ksort($files);
+        return $files;
+    };
     $make(['module', 'app\\catalog\\Product', '--table=products', '--route=/products', '--role=users', '--version=002_products', '--migration-registry=app\\common\\database\\Schema']);
     successful([PHP_BINARY, $work . '/vendor/bin/type', 'schema:prepare', $work . '/app/catalog/database/CreateProduct.php'], sys_get_temp_dir());
     $make(['service', 'app\\work\\Marker']);
@@ -37,14 +53,37 @@ try {
     expect(in_array('marker', $inspection['assembly']['commands'], true) && count($inspection['routes']) >= 4, '生成结果未接入统一声明');
     $result = successful([PHP_BINARY, $work . '/vendor/bin/type', 'dev', $config, 'marker', 'scaffold-ok'], sys_get_temp_dir());
     expect(str_contains($result, 'scaffold-ok'), '命令没有经过标准入口执行业务服务');
+    $composerSource = file_get_contents($work . '/composer.json');
+    foreach ([
+        ['zoujingli/type-queue', ['job', 'app\\work\\MissingQueueJob', '--service=app\\work\\Marker', '--type=missing-queue', '--version=1']],
+        ['zoujingli/type-scheduler', ['task', 'app\\work\\MissingSchedulerTask', '--service=app\\work\\Marker', '--name=missing-scheduler', '--interval=60']],
+    ] as [$package, $arguments]) {
+        // 已安装或可自动加载的包不能代替应用显式声明的生产依赖。
+        $missing = json_decode($composerSource, true, 512, JSON_THROW_ON_ERROR);
+        unset($missing['require'][$package]);
+        file_put_contents($work . '/composer.json', json_encode($missing, JSON_THROW_ON_ERROR));
+        try {
+            $beforeFiles = $snapshot();
+            [$status, $stdout, $stderr] = execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, ...$arguments], sys_get_temp_dir());
+            expect($status !== 0 && str_contains($stdout . $stderr, 'make 需要显式生产依赖：' . $package), '缺少生产依赖没有明确拒绝：' . $package);
+            expect($snapshot() === $beforeFiles, '缺依赖拒绝后改变已有文件或留下角色源码');
+        } finally {
+            file_put_contents($work . '/composer.json', $composerSource);
+        }
+    }
     $before = file_get_contents($config);
+    $beforeFiles = $snapshot();
     foreach ([['model', 'app\\catalog\\model\\Product', '--table=other'], ['model', 'app\\..\\Invalid', '--table=invalid'],
         ['command', 'app\\work\\Duplicate', '--service=app\\work\\Marker', '--name=marker'],
         ['job', 'app\\work\\DuplicateJob', '--service=app\\work\\Marker', '--type=marker', '--version=1'],
+        ['task', 'app\\..\\InvalidTask', '--service=app\\work\\Marker', '--name=invalid-task', '--interval=60'],
+        ['task', 'app\\work\\InvalidTaskName', '--service=app\\work\\Marker', '--name=invalid/name', '--interval=60'],
         ['task', 'app\\work\\InvalidTask', '--service=app\\work\\Marker', '--name=invalid', '--cron=invalid', '--timezone=UTC']] as $arguments) {
         expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, ...$arguments], sys_get_temp_dir())[0] !== 0, '无效脚手架没有失败');
         expect(file_get_contents($config) === $before, '拒绝后改变原声明');
+        expect($snapshot() === $beforeFiles, '无效脚手架改变已有文件或留下角色源码');
     }
+    echo "脚手架缺少队列/调度生产依赖与错误Task名均已拒绝，已有源码和声明摘要未变化。\n";
     $environment = getenv();
     $environment['APP_API_TOKEN'] = str_repeat('a', 40);
     $environment['DB_SQLITE_FILE'] = 'data/scaffolding.sqlite';

@@ -31,7 +31,8 @@ $baseline = in_array('--published-baseline', $argv, true);
 expect(!$baseline || ($remote && !$tutorial && !$native), '历史批次基线只能验证原始公开模板PHP消费');
 expect(!$buildOnly || $native, '只构建模板模式必须同时指定 --native');
 expect(!$packageDeployment || ($onboarding && $native && !$buildOnly), '接入发布验收要求 --onboarding --native --package');
-$consumer = $root . '/build/' . ($tutorial ? 'tutorial space ' : 'template-') . $driver . '-' . bin2hex(random_bytes(6));
+// 教程仍覆盖含空格目录；短根为 MSVC 的生成类常量对象文件保留路径预算。
+$consumer = $root . '/build/' . ($tutorial ? 't ' : 'template-' . $driver . '-') . bin2hex(random_bytes(6));
 $consumerReceipt = getenv('TYPE_TEMPLATE_CONSUMER_RECEIPT');
 if ($consumerReceipt !== false) {
     expect(is_dir(dirname($consumerReceipt)) && file_put_contents($consumerReceipt, $consumer) === strlen($consumer), '无法登记待回收消费者目录');
@@ -359,9 +360,9 @@ try {
             }
         }
     }
-    if ($native) {
-        // 原生产物核对实际加载路径，不能继承构建控制器或其他产物的模块配置。
-        // 开发入口已用原 CLI 环境验证，此处只绑定本产物声明的运行配置。
+    if ($native && ($manifest['runtime-linkage'] ?? null) !== 'static') {
+        // shared embed 按产物配置加载原生模块，避免继承其他产物的模块路径。
+        // 静态程序使用内置 INI；测试控制器仍需宿主 PHP 扩展，不能套用静态程序的空模块配置。
         $runtimeIni = $buildReport['runtime-profile']['ini'] ?? null;
         expect(is_string($runtimeIni) && is_file($runtimeIni) && is_dir(dirname($runtimeIni) . '/php.d'), '模板原生产物缺少独立运行配置');
         $environment['PHPRC'] = $runtimeIni;
