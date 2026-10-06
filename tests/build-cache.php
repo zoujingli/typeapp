@@ -47,7 +47,7 @@ expect($snapshot()['id'] !== $initial['id'], '新增生产源码没有进入身�
 unlink($work . '/src/added.php');
 expect($snapshot()['id'] === $initial['id'], '回到相同输入后身份不能复现');
 $capabilities = (new Type\Build\BuildCapabilities())->collect(['capabilities' => ['schema' => ['main' => [2, 1]]],
-    'queue' => ['jobs' => [['type' => 'message', 'version' => 1], ['type' => 'message', 'version' => 2]]]], []);
+    'application' => ['jobs' => [['type' => 'message', 'version' => 1], ['type' => 'message', 'version' => 2]]]], []);
 expect($capabilities['schema']['main'] === [1, 2] && $capabilities['messages']['message'] === [1, 2], '声明与真实任务注册没有形成版本能力集合');
 $rejected = false;
 try {

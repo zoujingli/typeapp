@@ -62,7 +62,9 @@ foreach (['old' => $old, 'new' => $new] as $version => $directory) {
             && BuildIdentity::digest($manifest['static-runtime'] ?? null) === ($prepared['sdk_identity_sha256'] ?? null)
             && ($manifest['profile']['name'] ?? null) === $profile && ($manifest['profile']['database'] ?? null) === $profile
             && ($manifest['features'] ?? null) === $preparation['candidate']['record']['features']
-            && ($manifest['embedded-resources'] ?? null) === $preparation['candidate']['record']['embedded-resources']
+            && array_filter($manifest['embedded-resources'] ?? [], static fn (string $path): bool => str_starts_with($path, 'web/'), ARRAY_FILTER_USE_KEY) === $preparation['variants'][$version]['frontend']
+            && $preparation['variants'][$version]['frontend'] !== []
+            && $preparation['variants'][$version]['frontend'] === array_filter($preparation['candidate']['record']['embedded-resources'], static fn (string $path): bool => str_starts_with($path, 'web/'), ARRAY_FILTER_USE_KEY)
             && $prepared['runtime_ini_sha256'] === null, '静态基准的 SDK、功能或前端身份不符');
         if ($version === 'new') {
             expect($artifact === $root . '/build/release-candidate/attachments/' . $preparation['candidate']['record']['file']

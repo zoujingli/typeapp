@@ -616,6 +616,7 @@ jobs:
             build/release-candidate/attachments/*
             build/**/*.build.json
             build/**/verification.json
+            build/scheduler-consumer-*.verification.json
             build/toolchain-regressions-*/**/*.log
             build/toolchain-regressions-*/**/*.failure
             build/toolchain-regressions-*/**/*evidence.json

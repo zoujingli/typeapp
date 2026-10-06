@@ -56,7 +56,7 @@ Linux 基础组覆盖真实 watch，app 组覆盖三库空目录接入、修改�
 
 本地检查覆盖SDK选择、重复包装和身份篡改拒绝；独立PHPX构建与真实embed探针需要对应SDK。工作流使用actionlint、脚本语法与shellcheck检查，这些结果不能替代GitHub runner上的完整任务。PHP安装、checkout及产物上传下载Action均固定提交，升级时重新核对上游引用与实际行为；固定引用不保证账户计费或额度可用。
 
-性能组在手动调度提供完整 `base_source` 时纳入矩阵；macOS 的 `scope=benchmark` 和 Linux ARM64 的 `suite=benchmark` 可单独复验，均须提供基准提交，且不产生完整业务验收汇总。缺少基准或原始测量时不计为已验证。每个版本使用自身构建报告中的运行 INI，不能继承控制器加载的另一版 Swoole；报告记录该 INI 的摘要。`tests/benchmark-pairs.php` 默认先测旧版，复测可在四个目录参数后传入 `new-first` 交换顺序，原始轮次分别保留。macOS 与 Linux ARM64 入口允许主仓公开后执行，实际运行仍按事件与会话授权控制。
+性能组在手动调度提供完整 `base_source` 时纳入矩阵；macOS 的 `scope=benchmark` 和 Linux ARM64 的 `suite=benchmark` 可单独复验，均须提供基准提交，且不产生完整业务验收汇总。缺少基准或原始测量时不计为已验证。每个版本使用自身构建报告中的运行 INI，不能继承控制器加载的另一版 Swoole；报告记录该 INI 的摘要。CI 仅在首轮比较产生回退信号时，用同一运行器和原程序交换顺序复测一次，保留两轮结果；输入、执行或日志保存错误直接失败。手动使用 `tests/benchmark-pairs.php` 时，默认先测旧版，可在四个目录参数后传入 `new-first`。macOS 与 Linux ARM64 入口允许主仓公开后执行，实际运行仍按事件与会话授权控制。
 
 macOS 的 `scope=full` 默认运行 contracts、application、deployment、rollout、recovery、http、orm、reliable、toolchain 九组；`scope=tls` 只运行 MySQL、PostgreSQL、Redis 的 PHP/AOT TLS，用于定位证书与连接问题，不替代 full。TLS 夹具使用明确的 OpenSSL 3；PostgreSQL 测试用 `hostaddr` 固定监听地址，保留 `verify-full` 的证书主机名校验。升级前的八组通过记录仍属于原工具链；新版结果见[升级证据](../evidence/typephp-upgrade-0.9.4.md)。
 

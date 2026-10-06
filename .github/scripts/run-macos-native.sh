@@ -57,7 +57,19 @@ if [[ "$task_suite" == benchmark ]]; then
   php tests/benchmark-pairs.php "$task_pair/old" "$task_pair/new" "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")" | tee "$task_work/benchmark-measure.log"
   task_measurement="$(sed -n 's/^成对正式测量完成：\(build\/benchmark-pairs-[a-f0-9]*\/verification.json\)$/\1/p' "$task_work/benchmark-measure.log")"
   [[ -n "$task_measurement" && -f "$task_measurement" ]]
-  php tests/benchmark-compare.php "$task_measurement"
+  if php tests/benchmark-compare.php "$task_measurement" | tee "$task_work/benchmark-compare.log"; then
+    exit 0
+  else
+    task_comparison=("${PIPESTATUS[@]}")
+  fi
+  if [[ "${task_comparison[1]}" != 0 ]]; then exit "${task_comparison[1]}"; fi
+  if [[ "${task_comparison[0]}" != 2 ]]; then exit "${task_comparison[0]}"; fi
+  printf '正序出现回退信号；复用同一对程序交换顺序复测。\n' | tee "$task_work/benchmark-status.log"
+  php tests/benchmark-pairs.php "$task_pair/old" "$task_pair/new" "$(dirname "$task_mysql")" "$(dirname "$task_pgsql")" new-first | tee "$task_work/benchmark-measure-reverse.log"
+  task_measurement="$(sed -n 's/^成对正式测量完成：\(build\/benchmark-pairs-[a-f0-9]*\/verification.json\)$/\1/p' "$task_work/benchmark-measure-reverse.log")"
+  [[ -n "$task_measurement" && -f "$task_measurement" ]]
+  php tests/benchmark-compare.php "$task_measurement" | tee "$task_work/benchmark-compare-reverse.log"
+  printf '逆序未复现回退信号；两轮原始报告均保留，不据此宣称性能改善。\n' | tee -a "$task_work/benchmark-status.log"
   exit 0
 fi
 # PHP变量必须保留给PHP解释器，不能由shell展开。

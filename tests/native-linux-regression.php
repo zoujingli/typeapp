@@ -96,10 +96,13 @@ try {
         $report['runs'][] = ['test' => 'redis-security', 'mode' => 'php', 'engine' => 'none', 'status' => 'passed',
             'log' => basename($securityLog), 'log-sha256' => hash_file('sha256', $securityLog)];
         // 独立调度及队列组合消费者自己安装完整生产依赖；内部对照PHP与各自全量AOT产物。
-        foreach (['scheduler-consumer', 'scheduler-coordination-consumer'] as $consumer) {
+        foreach (['scheduler-consumer' => 'scheduler-consumer-[a-f0-9]{12}[.]verification[.]json',
+            'scheduler-coordination-consumer' => 'coordination-consumer-[a-f0-9]{12}/verification[.]json'] as $consumer => $reportPattern) {
             $log = $base . '/' . $consumer . '.log';
             $output = nativeDatabaseCommand([PHP_BINARY, $root . '/tests/' . $consumer . '.php', '--native'], $environment, [], $log, 1800);
-            expect(preg_match('#通过：(.*?/verification\\.json)\\s*$#u', $output, $matches) === 1, '调度消费者没有返回实际验收报告');
+            // 调度独立安装已回收消费者目录，报告保存在相邻文件；组合消费者仍保留目录内报告。
+            expect(preg_match('#通过：(' . preg_quote($root . '/build/', '#') . $reportPattern . ')\\s*$#u', $output, $matches) === 1
+                && is_file($matches[1]) && !is_link($matches[1]), '调度消费者没有返回本轮实际验收报告');
             $evidence = json_decode(file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
             expect($evidence['status'] === 'passed' && $evidence['native'] === true, '调度消费者没有完成PHP及原生行为');
             $report['runs'][] = ['test' => $consumer, 'mode' => 'php-and-native', 'engine' => 'none', 'status' => 'passed',

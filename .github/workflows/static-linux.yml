@@ -235,9 +235,10 @@ jobs:
           if php tests/benchmark-compare.php "$task_measure" | tee build/static-linux-evidence/benchmark-compare.log; then
             exit 0
           else
-            task_comparison=$?
+            task_comparison=("${PIPESTATUS[@]}")
           fi
-          if [[ "$task_comparison" != 2 ]]; then exit "$task_comparison"; fi
+          if [[ "${task_comparison[1]}" != 0 ]]; then exit "${task_comparison[1]}"; fi
+          if [[ "${task_comparison[0]}" != 2 ]]; then exit "${task_comparison[0]}"; fi
           printf '正序出现回退信号；复用同一对程序交换顺序复测。\n' | tee build/static-linux-evidence/benchmark-status.log
           php tests/benchmark-pairs.php "$task_pair/old" "$task_pair/new" --static-profile "$TYPEAPP_BUILD_PROFILE" --order new-first \
             | tee build/static-linux-evidence/benchmark-pairs-reverse.log

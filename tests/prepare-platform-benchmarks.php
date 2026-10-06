@@ -201,7 +201,9 @@ function prepareStaticBenchmarks(string $root, array $arguments): void
     try {
         $resources = (new \Type\Build\EmbeddedResourceCompiler())->collect($root, [['source' => 'web/dist', 'target' => 'web']]);
         $frontend = (new \Type\Build\EmbeddedResourceCompiler())->manifest($resources);
-        expect($frontend === $candidate['embedded-resources'], '静态基准前端与封存候选不同');
+        // 前端必须逐字节一致；各版本自己的依赖许可仍由完整原生清单和程序摘要绑定。
+        $candidateFrontend = array_filter($candidate['embedded-resources'], static fn (string $path): bool => str_starts_with($path, 'web/'), ARRAY_FILTER_USE_KEY);
+        expect($frontend !== [] && $frontend === $candidateFrontend, '静态基准前端与封存候选不同');
         foreach ($commits as $variant => $commit) {
             $work = $base . '/' . $variant;
             $project = $work . '/project';
@@ -289,10 +291,10 @@ PHP;
             }
             $build = json_decode((string) file_get_contents($reportFile), true, 512, JSON_THROW_ON_ERROR);
             $manifest = (new ArtifactManifest())->read($artifact);
-            expect(hash_file('sha256', $artifact) === $build['sha256'] && ($build['cache']['hit'] ?? true) === false
+            expect(hash_file('sha256', $artifact) === $build['sha256'] && $manifest === $build['manifest'] && ($build['cache']['hit'] ?? true) === false
                 && ($manifest['runtime-linkage'] ?? null) === 'static' && BuildIdentity::digest($manifest['static-runtime'] ?? null) === BuildIdentity::digest($sdk)
                 && ($manifest['profile']['name'] ?? null) === $profile && ($manifest['features'] ?? null) === $candidate['features']
-                && ($manifest['embedded-resources'] ?? null) === $frontend
+                && array_filter($manifest['embedded-resources'] ?? [], static fn (string $path): bool => str_starts_with($path, 'web/'), ARRAY_FILTER_USE_KEY) === $frontend
                 && ($build['declaration-generation'] ?? null) === $generation['identity']['declaration_generation'], '静态基准的原程序、能力、前端或生成身份不符');
             $record['variants'][$variant] = ['source_archive_sha256' => hash_file('sha256', $work . '/source.tar'),
                 'sdk_inputs' => $sdkInputs, 'sdk_check_sha256' => hash_file('sha256', $work . '/sdk-inputs.json'), 'frontend' => $frontend,
