@@ -62,9 +62,6 @@ final class ManagementCommand implements \Type\Core\Command
                 echo "运行环境完整性校验通过。\n";
                 return 0;
             }
-            if (class_exists(\Type\Generated\BuildIdentity::class, false)) {
-                \Type\Generated\BuildIdentity::verifyRuntime();
-            }
             if ($command === 'licenses') {
                 Licenses::run($arguments);
                 return 0;

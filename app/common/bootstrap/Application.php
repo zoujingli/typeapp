@@ -38,35 +38,38 @@ final class Application
     public static function run(array $arguments, bool $development = false): int
     {
         $command = $arguments[1] ?? 'help';
-        if ($command === 'help' || $command === '--help') {
-            if (count($arguments) > 2) {
-                fwrite(STDERR, "help 不接受额外参数\n");
-                return 1;
-            }
-            echo "TypeApp 物联中心：help、check、verify-runtime、serve、app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>、migrate <status|history|recover>。初始化口令由 APP_ADMIN_PASSWORD、APP_CUSTOMER_PASSWORD 的受控进程环境提供。\n";
-            echo "运行配置：config:check [--connect] [--remember]；config:restore 恢复最后通过连接检查的文件，成功退出4表示仍须运维重启。\n";
-            echo "已有应用升级：app:upgrade --check；停写并核对备份后 app:upgrade --offline --backup <备份文件> --sha256 <SHA256>；页面另用 web:install --force。\n";
-            echo "内嵌许可：licenses 查看索引，licenses <notices/资源路径> 查看对应原文。\n";
-            echo "审计保留：app:audit-clean <admin|customer> [batch]，单批最多1000条，清理满180天事件并保留恢复与撤销依据。\n";
-            echo "应用维护调度：app:schedule once|history|work <次数> <间隔毫秒>；固定任务与执行历史通过 Redis 协调。\n";
-            echo "物联业务角色：iot:command-clean、iot:history-clean、iot:aggregate、iot:aggregate-clean、iot:alarm、iot:mqtt-install、iot:mqtt-statistics、iot:mqtt、iot:ingest、iot:device、iot:exports、iot:exports-work、iot:exports-clean；持久 MQTT 接收需要 PostgreSQL 同步后端。\n";
-            echo "独立 Broker：broker:install、broker:migrate <status|history|recover>、broker:user <login> <name>、broker:serve、broker:run、broker:store-install；初始化密码由 BROKER_ADMIN_PASSWORD 提供。升级后启动会核对兼容代次，不能用更旧二进制维持新的占用与吊销语义。\n";
-            echo "独立持久恢复：broker:nodes；broker:node-fence <node-id> <node-run> <observation-run> <actor> <proof-ref> [operation-id]，只登记已经完成的基础设施硬隔离；broker:node-fence-result <operation-id> 仅对账；broker:audit-clean [batch] 清理满180天审计。\n";
-            echo "站内通知：iot:notices [batch]、iot:notices-clean [batch]；默认100、最多100。\n";
-            echo "集群管理：iot:mqtt-nodes、iot:mqtt-fence <node-id> <run-id> <actor> <proof-ref> [operation-id]；fence仅登记已完成的基础设施硬隔离；iot:mqtt-fence-result <operation-id> 仅对账。\n";
-            echo "WAL维护：iot:wal <archive|restore|verify> <私有归档目录> <源文件|WAL名称> [WAL名称|新目标文件]。\n";
-            echo "备份保留：iot:backup register <私有归档目录> <备份ID> <PG17工具根>；clean <私有归档目录> <PG17工具根> [批次1至100]；status <私有归档目录>；pin|unpin <私有归档目录> <备份ID> <保护ID>。\n";
-            echo "恢复核对：iot:recovery 与独立 broker:recovery <snapshot|status|begin|isolate|review|restore>；snapshot输出敏感身份摘要，begin需恢复ID、操作人和已完成隔离的依据，review需恢复ID、私有清单、已核对SHA256和偏移量。旧备份恢复后须核对证书与调试授权再开放。\n";
-            echo "DB_DRIVER 必须与程序的数据库 profile 一致；空库执行 app:install 后 serve，生产默认使用 Swoole 线程与协程。客户端 /，管理端 /admin；业务接口按固定账号域和租户权限开放。\n";
-            echo "前端安装：web:install [--force] [--dry-run]。首次app:install同时安装页面；强制更新只处理内置页面文件，不修改数据库、上传或配置。页面入口 /#/login 和 /#/admin/login。\n";
-
-            return 0;
-        }
-        if ($command === 'migrate' && (count($arguments) === 2 || (count($arguments) === 3 && $arguments[2] === 'help'))) {
-            echo "迁移查询：status、history；异常记录核对：recover <版本> <retry|applied> <恢复说明>。全新空库仅通过 app:install 初始化，run 不开放。\n";
-            return 0;
-        }
         try {
+            if ($command !== 'verify-runtime' && class_exists(\Type\Generated\BuildIdentity::class, false)) {
+                \Type\Generated\BuildIdentity::verifyRuntime();
+            }
+            if ($command === 'help' || $command === '--help') {
+                if (count($arguments) > 2) {
+                    fwrite(STDERR, "help 不接受额外参数\n");
+                    return 1;
+                }
+                echo "TypeApp 物联中心：help、check、verify-runtime、serve、app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>、migrate <status|history|recover>。初始化口令由 APP_ADMIN_PASSWORD、APP_CUSTOMER_PASSWORD 的受控进程环境提供。\n";
+                echo "运行配置：config:check [--connect] [--remember]；config:restore 恢复最后通过连接检查的文件，成功退出4表示仍须运维重启。\n";
+                echo "已有应用升级：app:upgrade --check；停写并核对备份后 app:upgrade --offline --backup <备份文件> --sha256 <SHA256>；页面另用 web:install --force。\n";
+                echo "内嵌许可：licenses 查看索引，licenses <notices/资源路径> 查看对应原文。\n";
+                echo "审计保留：app:audit-clean <admin|customer> [batch]，单批最多1000条，清理满180天事件并保留恢复与撤销依据。\n";
+                echo "应用维护调度：app:schedule once|history|work <次数> <间隔毫秒>；固定任务与执行历史通过 Redis 协调。\n";
+                echo "物联业务角色：iot:command-clean、iot:history-clean、iot:aggregate、iot:aggregate-clean、iot:alarm、iot:mqtt-install、iot:mqtt-statistics、iot:mqtt、iot:ingest、iot:device、iot:exports、iot:exports-work、iot:exports-clean；持久 MQTT 接收需要 PostgreSQL 同步后端。\n";
+                echo "独立 Broker：broker:install、broker:migrate <status|history|recover>、broker:user <login> <name>、broker:serve、broker:run、broker:store-install；初始化密码由 BROKER_ADMIN_PASSWORD 提供。升级后启动会核对兼容代次，不能用更旧二进制维持新的占用与吊销语义。\n";
+                echo "独立持久恢复：broker:nodes；broker:node-fence <node-id> <node-run> <observation-run> <actor> <proof-ref> [operation-id]，只登记已经完成的基础设施硬隔离；broker:node-fence-result <operation-id> 仅对账；broker:audit-clean [batch] 清理满180天审计。\n";
+                echo "站内通知：iot:notices [batch]、iot:notices-clean [batch]；默认100、最多100。\n";
+                echo "集群管理：iot:mqtt-nodes、iot:mqtt-fence <node-id> <run-id> <actor> <proof-ref> [operation-id]；fence仅登记已完成的基础设施硬隔离；iot:mqtt-fence-result <operation-id> 仅对账。\n";
+                echo "WAL维护：iot:wal <archive|restore|verify> <私有归档目录> <源文件|WAL名称> [WAL名称|新目标文件]。\n";
+                echo "备份保留：iot:backup register <私有归档目录> <备份ID> <PG17工具根>；clean <私有归档目录> <PG17工具根> [批次1至100]；status <私有归档目录>；pin|unpin <私有归档目录> <备份ID> <保护ID>。\n";
+                echo "恢复核对：iot:recovery 与独立 broker:recovery <snapshot|status|begin|isolate|review|restore>；snapshot输出敏感身份摘要，begin需恢复ID、操作人和已完成隔离的依据，review需恢复ID、私有清单、已核对SHA256和偏移量。旧备份恢复后须核对证书与调试授权再开放。\n";
+                echo "DB_DRIVER 必须与程序的数据库 profile 一致；空库执行 app:install 后 serve，生产默认使用 Swoole 线程与协程。客户端 /，管理端 /admin；业务接口按固定账号域和租户权限开放。\n";
+                echo "前端安装：web:install [--force] [--dry-run]。首次app:install同时安装页面；强制更新只处理内置页面文件，不修改数据库、上传或配置。页面入口 /#/login 和 /#/admin/login。\n";
+
+                return 0;
+            }
+            if ($command === 'migrate' && (count($arguments) === 2 || (count($arguments) === 3 && $arguments[2] === 'help'))) {
+                echo "迁移查询：status、history；异常记录核对：recover <版本> <retry|applied> <恢复说明>。全新空库仅通过 app:install 初始化，run 不开放。\n";
+                return 0;
+            }
             $basePath = Settings::basePath($arguments[0] ?? '', $development);
             $configuration = ApplicationContext::configuration($basePath, $arguments[0] ?? '', $development);
             // HTTP/MQTT 宿主拥有原生事件循环；业务 scope 在请求/消息处理内建立。

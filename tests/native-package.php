@@ -92,8 +92,15 @@ $help = (new Process([...$command, 'help'], $package, $environment))->wait(10);
 expect($help->successful() && str_contains($help->stdout, $helpMarker) && $help->stderr === '', '搬迁后原生帮助失败：' . $help->stderr);
 $untrustedEnvironment = $environment;
 $untrustedEnvironment['TYPE_APP_RELEASE_SHA256'] = str_repeat('0', 64);
-$untrusted = (new Process([...$command, 'help'], $package, $untrustedEnvironment))->wait(10);
-expect($untrusted->exitCode === 1 && !$untrusted->timedOut && !str_contains($untrusted->stdout, $helpMarker), '错误的外部受信摘要没有在原生启动时拒绝');
+foreach ([['help'], ['--help'], ['migrate', 'help']] as $startupArguments) {
+    $untrusted = (new Process([...$command, ...$startupArguments], $package, $untrustedEnvironment))->wait(10);
+    $startupStatus = json_encode(['arguments' => $startupArguments, 'exit-code' => $untrusted->exitCode,
+        'timed-out' => $untrusted->timedOut, 'output-exceeded' => $untrusted->outputExceeded, 'signal' => $untrusted->signal], JSON_THROW_ON_ERROR);
+    expect(
+        $untrusted->exitCode === 1 && !$untrusted->timedOut && !str_contains($untrusted->stdout, $helpMarker),
+        '错误的外部受信摘要没有在原生启动时拒绝 ' . $startupStatus . "：\n" . $untrusted->stdout . $untrusted->stderr
+    );
+}
 $audit = (new Process([...$command, 'verify-runtime'], $package, $environment))->wait(90);
 expect($audit->successful() && $audit->stdout === "运行环境完整性校验通过。\n", '独立运行库完整审计失败：' . $audit->stderr);
 $initializationStatus = verifyNativeApplicationDeployment($project, $package, $runtime, $command, $environment, $driver, $release['embedded-resources'] ?? [], $isolated);
