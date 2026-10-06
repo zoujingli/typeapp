@@ -9,7 +9,12 @@ use RuntimeException;
 /** 从已授权取得的标准模板创建项目；不运行模板PHP，不携带vendor、测试实验或秘密。 */
 final class ProjectCreator
 {
-    /** @return array{directory:string, driver:string, files:int, source-sha256:string} */
+    /**
+     * 按模板当前版本策略切换驱动，依赖安装由使用者在创建后显式执行。
+     *
+     * @return array{directory:string, driver:string, files:int, source-sha256:string}
+     * @throws RuntimeException 模板不完整、驱动约束不唯一、目标已存在或写入失败。
+     */
     public function create(string $template, string $destination, string $driver = 'sqlite'): array
     {
         if (!in_array($driver, ['mysql', 'pgsql', 'sqlite'], true)) {
@@ -22,6 +27,13 @@ final class ProjectCreator
             || !is_string($definition['driver-target'] ?? null) || !is_string($definition['drivers'][$driver] ?? null)) {
             throw new RuntimeException('需要支持所选驱动的协议1标准模板');
         }
+        $drivers = array_intersect_key($composer['require'] ?? [], array_flip([
+            'zoujingli/type-orm-mysql', 'zoujingli/type-orm-pgsql', 'zoujingli/type-orm-sqlite',
+        ]));
+        if (count($drivers) !== 1 || !is_string(current($drivers)) || trim(current($drivers)) === '') {
+            throw new RuntimeException('模板必须声明唯一的数据库驱动版本约束');
+        }
+        $driverConstraint = current($drivers);
         $parent = BuildPlatform::resolve(dirname($destination));
         $destination = $parent . '/' . basename($destination);
         BuildLock::path($destination);
@@ -85,14 +97,26 @@ final class ProjectCreator
             foreach (['mysql', 'pgsql', 'sqlite'] as $candidate) {
                 unset($composer['require']['zoujingli/type-orm-' . $candidate]);
             }
-            $composer['require']['zoujingli/type-orm-' . $driver] = '~1.0.0@dev';
+            $composer['require']['zoujingli/type-orm-' . $driver] = $driverConstraint;
             foreach ($composer['repositories'] ?? [] as $index => $repository) {
                 if (preg_match('~/type-orm-(mysql|pgsql|sqlite)\.git$~', $repository['url'])) {
                     $composer['repositories'][$index]['url'] = 'https://github.com/zoujingli/type-orm-' . $driver . '.git';
                 }
             }
             $slug = trim((string) preg_replace('/[^a-z0-9]+/', '-', strtolower(basename($destination))), '-');
+            $templateName = $composer['name'];
             $composer['name'] = 'app/' . ($slug === '' ? 'application' : $slug);
+            $buildSettings = json_decode((string) file_get_contents($stage . '/type-app.json'), true, 512, JSON_THROW_ON_ERROR);
+            if (isset($buildSettings['application']['enabled'])) {
+                $buildSettings['application']['enabled'] = array_map(
+                    static fn (string $name): string => $name === $templateName ? $composer['name'] : $name,
+                    $buildSettings['application']['enabled']
+                );
+                $buildJson = json_encode($buildSettings, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
+                if (file_put_contents($stage . '/type-app.json', $buildJson) !== strlen($buildJson)) {
+                    throw new RuntimeException('无法完整写入新项目应用模块身份');
+                }
+            }
             unset($composer['extra']['type-template']);
             if (($composer['extra'] ?? null) === []) {
                 unset($composer['extra']);

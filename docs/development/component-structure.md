@@ -68,6 +68,8 @@ composer require zoujingli/type-orm-sqlite:dev-main
 
 上面的入口用于跟进开发分支。按已发布版本创建应用时，使用[版本安装示例](../guide/releases.md#composer-按版本安装)，同时固定模板和需要的第一方组件；RC 需要在消费应用允许相应依赖稳定性。主仓版本 tag 的四平台验收、同版本拆分和 17 个 Release 由统一[发布工作流](distribution-batches.md#版本-tag-自动发布)衔接，不能用单个组件的 `dev-main` 更新冒充整个版本批次。
 
+当前模板源码显式声明第一方开发依赖闭包为 `1.0.x-dev`，避免开发模板优先选入不匹配的旧 RC。维护者用 `release.php prepare` 在 tag 前固定未来版本的完整闭包；配置和创建工具只切换驱动并继承版本策略。公开模板验收原样安装并核对锁文件版本、来源提交；本地 path 候选和默认 Packagist 消费分别记录。该改进尚未归入新的公开批次，RC14 按其既有安装步骤使用。
+
 应用的 `require` 仅包含实际生产组件，`type-build` 与 `type-testing` 通常放 `require-dev`。主仓则用 `repositories.type=path` 加载 `plugin/*`，方便跨组件同步开发；这不要求独立应用再复制或挂载主仓插件目录。
 
 ## 生产源码与生成结果
@@ -76,7 +78,7 @@ composer require zoujingli/type-orm-sqlite:dev-main
 
 公开回调必须完整声明实际形参：事务体接收 `Connection`，任务接收自己的上下文，规则接收字段值、分源输入和场景。不要添加反射裁参来模仿 PHP 宽松实参；不同用途的局部变量不复用为不兼容类型。新源码保持 PSR-12 风格；实际格式工具及范围以根 Composer 和格式配置为准，不能用格式整理改变公开语义。
 
-`ModelCompiler`、`RouteCompiler`、`JobCompiler`、`ConfigCompiler`、`OperationCompiler` 各自管理一种生成责任，调用方显式提供生产源码与声明。手写业务类与生成类分开：生成模型可以作为稳定字段基类，但业务子类须显式实现符合业务类型的水合，不能靠空继承假装已扩展查询。事务/缓存 Attribute 生成普通组合对象，调用者必须使用该对象；直接调用原服务不被运行时 AOP 拦截。详见[配置](configuration.md)与[操作生成](operations.md)。
+`ModelCompiler`、`RouteCompiler`、`JobCompiler`、`ConfigCompiler`、`OperationCompiler` 各自管理一种生成责任，调用方显式提供生产源码与声明。手写业务类与生成类分开：生成模型可以作为稳定字段基类，但业务子类须显式实现符合业务类型的水合，不能靠空继承假装已扩展查询。事务/缓存 Attribute 完整转换原 Service 文件并复用同名替换关系，普通调用、手动构造和类内互调执行同一声明。详见[配置](configuration.md)与[操作生成](operations.md)。
 
 ## AOT、运行库与验证
 

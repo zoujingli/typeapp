@@ -13,13 +13,15 @@ $root = BuildPlatform::resolve(dirname(__DIR__));
 $protocol = $protocol ?? 'tcp';
 expect(in_array($protocol, ['tcp', 'udp'], true), '不支持的通信消费者');
 $work = BuildPlatform::path($argv[1] ?? '');
-$verify = ($argv[2] ?? '') === '--verify';
-$handshake = $protocol === 'tcp' && ($argv[2] ?? '') === '--handshake-only';
-$handshakeEcho = $handshake && ($argv[3] ?? '') === '--with-echo';
-$serverOnly = $protocol === 'tcp' && ($argv[2] ?? '') === '--server-only';
-$backpressureOnly = $protocol === 'tcp' && ($argv[2] ?? '') === '--backpressure-only';
-expect($argc === ($handshakeEcho ? 4 : ($verify || $handshake || $serverOnly || $backpressureOnly ? 3 : 2)), '用法：php tests/' . $protocol . '-consumer.php <build 下独立消费者绝对目录> [--verify|--server-only|--backpressure-only|--handshake-only [--with-echo]]');
-$scenario = $backpressureOnly ? 'backpressure' : ($serverOnly ? 'server' : ($handshakeEcho ? 'handshake-echo' : ($handshake ? 'handshake' : 'full')));
+$verify = in_array('--verify', array_slice($argv, 2), true);
+$scenarioArguments = array_values(array_filter(array_slice($argv, 2), static fn (string $argument): bool => $argument !== '--verify'));
+$handshake = $protocol === 'tcp' && ($scenarioArguments[0] ?? '') === '--handshake-only';
+$handshakeEcho = $handshake && ($scenarioArguments[1] ?? '') === '--with-echo';
+$serverOnly = $protocol === 'tcp' && ($scenarioArguments[0] ?? '') === '--server-only';
+$backpressureOnly = $protocol === 'tcp' && ($scenarioArguments[0] ?? '') === '--backpressure-only';
+$httpOnly = $protocol === 'tcp' && ($scenarioArguments[0] ?? '') === '--http-only';
+expect($argc === 2 + (int) $verify + (int) ($handshake || $serverOnly || $backpressureOnly || $httpOnly) + (int) $handshakeEcho, '用法：php tests/' . $protocol . '-consumer.php <build 下独立消费者绝对目录> [--verify] [--http-only|--server-only|--backpressure-only|--handshake-only [--with-echo]]');
+$scenario = $httpOnly ? 'http' : ($backpressureOnly ? 'backpressure' : ($serverOnly ? 'server' : ($handshakeEcho ? 'handshake-echo' : ($handshake ? 'handshake' : 'full'))));
 expect(BuildPlatform::contains($root . '/build', $work) && !str_contains($work, '..'), '消费者必须在主仓 build 内');
 $artifact = (new BuildPlatform())->output($work . '/build/native/type-app');
 $runner = new BuildEnvironment();
@@ -167,7 +169,7 @@ try {
 }
 file_put_contents($run . '/verification.json', json_encode(['build-id' => $report['build-id'], 'sha256' => $report['sha256'],
     'iocp_trace' => $iocpTrace,
-    'scope' => $backpressureOnly ? 'backpressure-only' : ($serverOnly ? 'server-only' : ($handshakeEcho ? 'handshake-echo' : ($handshake ? 'handshake-only' : 'full'))),
+    'scope' => $scenario,
     'peer_sha256' => hash_file('sha256', __DIR__ . '/fixtures/' . $protocol . '-peer.mjs'),
     'peer_burst_delay_ms' => $protocol === 'udp' ? (int) (getenv('TYPE_TEST_UDP_BURST_DELAY_MS') ?: 0) : null,
     'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'source_count' => count($report['sources']), 'packages' => $packages,

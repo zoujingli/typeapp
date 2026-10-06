@@ -11,7 +11,7 @@
     },
     "services": [
       {"id": "greeting", "class": "TypeApp\\Example\\Greeting", "lifetime": "singleton", "arguments": [{"config": "name"}]},
-      {"id": "greet", "class": "TypeApp\\Example\\GreetCommand", "arguments": [{"service": "greeting"}]},
+      {"id": "greet", "class": "TypeApp\\Example\\GreetCommand"},
       {"id": "first", "class": "TypeApp\\Example\\ExampleResource", "arguments": [{"value": "A"}, {"value": false}, {"value": false}]},
       {"id": "second", "class": "TypeApp\\Example\\ExampleResource", "arguments": [{"value": "B"}, {"value": false}, {"value": false}]},
       {"id": "broken-start", "class": "TypeApp\\Example\\ExampleResource", "arguments": [{"value": "B"}, {"value": true}, {"value": false}]},

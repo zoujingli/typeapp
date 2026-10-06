@@ -60,6 +60,10 @@ final class TcpProbe
             $outside->stop();
             Coroutine::create(static function () use ($input): void {
                 try {
+                    if ($input['scenario'] === 'http') {
+                        self::http($input['peers']);
+                        return;
+                    }
                     if (in_array($input['scenario'], ['handshake', 'handshake-echo'], true)) {
                         self::handshake($input['peers'], $input['scenario'] === 'handshake-echo');
                         return;
@@ -90,6 +94,7 @@ final class TcpProbe
                     self::echo('localhost', $peers['tls']['port'], ['open_ssl' => true, 'ssl_cafile' => $peers['certificate']], $budget);
                     self::echo('127.0.0.1', $peers['tls']['port'], ['open_ssl' => true, 'ssl_cafile' => $peers['certificate']], $budget);
                     self::echo('::1', $peers['tls6']['port'], ['open_ssl' => true, 'ssl_cafile' => $peers['certificate']], $budget);
+                    self::http($peers);
                     self::$observations['phase'] = 'failures';
                     self::failures($peers, $budget);
                     self::$observations['phase'] = 'duplex';
@@ -129,6 +134,116 @@ final class TcpProbe
                 . json_encode(['checks' => self::$checks, 'observations' => self::$observations], JSON_THROW_ON_ERROR) . "\n"
                 . $error->getTraceAsString());
             return 1;
+        }
+    }
+
+    /** 公共 HTTP 请求在真实 Node HTTP/HTTPS 对端验证，PHP 与 AOT 复用全部断言。 */
+    private static function http(array $peers): void
+    {
+        self::$observations['phase'] = 'http';
+        $plain = 'http://127.0.0.1:' . $peers['http']['port'];
+        $secure = 'https://localhost:' . $peers['https']['port'];
+        $options = ['ssl_cafile' => $peers['certificate']];
+        $client = new \Type\Core\Http\Client();
+        self::rejected(static fn (): mixed => $client->request('GET', $plain), 'scope_missing');
+        for ($round = 0; $round < 3; $round++) {
+            $scope = new ExecutionScope();
+            $client = new \Type\Core\Http\Client();
+            try {
+                $scope->run(static function (ExecutionScope $current) use ($client, $plain, $secure, $options, $peers): void {
+                    self::$observations['http_phase'] = 'first-response';
+                    $response = $client->request('POST', $plain . '/echo?q=value', ['X-Client' => 'typeapp'], "\0body");
+                    $data = json_decode((string) $response->getBody(), true, 32, JSON_THROW_ON_ERROR);
+                    self::check($response->getStatusCode() === 200 && $data === ['method' => 'POST', 'target' => '/echo?q=value', 'body' => "\0body", 'agent' => 'typeapp'], 'HTTP 请求或响应内容不符');
+                    self::check($response->getHeader('set-cookie') === ['left=1; Path=/', 'right=2; Path=/']
+                        && $response->getHeader('x-multi') === ['first', 'second'], 'HTTP 重复响应头丢失');
+                    $response->getBody()->close();
+                    foreach (['/echo' => 200, '/missing' => 404, '/redirect' => 302] as $path => $status) {
+                        $reply = $client->request('GET', $secure . $path, tlsOptions: $options);
+                        self::check($reply->getStatusCode() === $status, 'HTTPS 状态或禁止跳转不符');
+                        $reply->getBody()->close();
+                    }
+                    self::$observations['http_phase'] = 'tls-rejection';
+                    self::rejected(static fn (): mixed => $client->request('GET', $secure), 'http_client_request_failed');
+                    self::rejected(static fn (): mixed => $client->request('GET', $secure, tlsOptions: $options + ['ssl_host_name' => 'wrong.example']), 'http_client_request_failed');
+                    foreach ([['ssl_verify_peer' => false], ['ssl_cafile' => null], ['ssl_protocols' => 0]] as $invalid) {
+                        self::rejected(static fn (): mixed => $client->request('GET', $secure, tlsOptions: $invalid), 'http_client_invalid_configuration');
+                    }
+                    self::rejected(static fn (): mixed => $client->request('GET', $plain, tlsOptions: $options), 'http_client_invalid_configuration');
+                    self::rejected(static fn (): mixed => $client->request('GET', $plain, ['X-Test' => "bad\r\nInjected: value"]), 'http_client_invalid_configuration');
+                    self::rejected(static fn (): mixed => $client->request('GET', $plain, ['Host' => 'wrong.example']), 'http_client_invalid_configuration');
+                    self::$observations['http_phase'] = 'response-budget';
+                    self::rejected(static fn (): mixed => $client->request('GET', $plain . '/large', maxResponseBytes: 128), 'http_client_response_too_large');
+                    self::rejected(static fn (): mixed => $client->request('GET', $plain . '/partial'), 'http_client_request_failed');
+                    $began = hrtime(true);
+                    self::rejected(static fn (): mixed => $client->request('GET', $plain . '/drip', timeout: 0.12), 'http_client_timeout');
+                    self::check((hrtime(true) - $began) / 1e9 < 1.0, '持续小块响应逃过总期限');
+                    $nested = new ExecutionScope();
+                    try {
+                        $nested->run(static function (ExecutionScope $inner) use ($client, $plain): void {
+                            self::rejected(static fn (): mixed => $client->request('GET', $plain), 'http_client_scope_mismatch');
+                        });
+                    } finally {
+                        $nested->close();
+                    }
+                    $child = $current->spawn(static function (ExecutionScope $childScope) use ($client, $plain): void {
+                        self::rejected(static fn (): mixed => $client->request('GET', $plain), 'http_client_scope_mismatch');
+                    });
+                    $child->await();
+                    $reply = $client->request('GET', $plain . '/echo');
+                    self::check($reply->getStatusCode() === 200, '失败后同一 scope 无法继续请求');
+                    $reply->getBody()->close();
+                });
+            } catch (Throwable $error) {
+                self::$observations['http_failure'] = get_class($error) . ': ' . $error->getMessage();
+                throw $error;
+            } finally {
+                $scope->close();
+            }
+            self::check($scope->state() === 'closed', 'HTTP 作用域没有真实关闭');
+            $scope = new ExecutionScope();
+            try {
+                $scope->run(static function (ExecutionScope $current) use ($client, $plain): void {
+                    self::rejected(static fn (): mixed => $client->request('GET', $plain), 'http_client_stopped');
+                });
+            } finally {
+                $scope->close();
+            }
+        }
+        $scope = new ExecutionScope();
+        $marker = bin2hex(random_bytes(8));
+        $ready = dirname($peers['certificate']) . '/http-slow-ready-' . $marker;
+        @unlink($ready);
+        $cancellation = $scope->cancellation();
+        $cancelResult = new Channel(1);
+        Coroutine::create(static function () use ($ready, $cancellation, $cancelResult): void {
+            $deadline = new \Type\Runtime\Deadline(2.0);
+            while (!is_file($ready) && !$deadline->expired()) {
+                clearstatcache(true, $ready);
+                Coroutine::sleep(0.001);
+            }
+            $accepted = is_file($ready);
+            $cancellation->cancel();
+            $cancelResult->push($accepted);
+        });
+        try {
+            $scope->run(static function (ExecutionScope $current) use ($plain, $marker): void {
+                self::rejected(static fn (): mixed => (new \Type\Core\Http\Client())->request('GET', $plain . '/slow?marker=' . $marker), 'cancelled');
+            });
+            self::check($cancelResult->pop(3) === true, '取消未发生在对端已接纳请求之后');
+        } finally {
+            $scope->close();
+            $cancelResult->close();
+            @unlink($ready);
+        }
+        self::check($scope->state() === 'closed', '取消后 HTTP scope 没有关闭');
+        $deadlineScope = new ExecutionScope(new \Type\Runtime\Deadline(0.05));
+        try {
+            $deadlineScope->run(static function (ExecutionScope $current) use ($plain): void {
+                self::rejected(static fn (): mixed => (new \Type\Core\Http\Client())->request('GET', $plain . '/slow', timeout: 5.0), 'deadline_exceeded');
+            });
+        } finally {
+            $deadlineScope->close();
         }
     }
 

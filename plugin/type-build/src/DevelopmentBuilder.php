@@ -13,6 +13,12 @@ use FilesystemIterator;
 /** 共享开发生成模块：源码和声明生成整代代码，不读取运行秘密或执行配置。 */
 final class DevelopmentBuilder
 {
+    /** @var list<string> 本次已审计的原始文件，仅用于当前准备调用的加载。 */
+    private array $preparedSources = [];
+
+    /** @var array<string, string> 同一 PHP 进程不能混用同一应用的不同声明代次。 */
+    private static array $loaded = [];
+
     /**
      * 按构建声明选择同一开发代次；不加载应用、不读取运行配置。
      *
@@ -35,7 +41,107 @@ final class DevelopmentBuilder
     }
 
     /**
-     * 只在开发进程生成不可变的一整套配置、模型、路由与操作包装。
+     * 在应用类加载前核验并装入完整代次；只供 PHP 开发入口使用。
+     *
+     * 已加载的原类、其他代次或重复定义不能被静默保留；生产程序不调用此加载器。
+     * @return array{generation:string, directory:string, files:list<string>, declaration-generation:string}
+     * @throws RuntimeException 原源码已提前加载、输入变化或代次完整性检查失败。
+     */
+    public function loadConfiguration(string $configuration): array
+    {
+        $project = (new BuildProject())->read($configuration);
+        $result = $this->prepareConfiguration($configuration);
+        $root = $project['root'];
+        if (isset(self::$loaded[$root])) {
+            if (self::$loaded[$root] !== $result['generation']) {
+                throw new RuntimeException('同一开发进程不能加载不同代次，请重新启动');
+            }
+            return $result;
+        }
+        $manifest = json_decode((string) file_get_contents($result['directory'] . '/manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+        $declarations = $manifest['declarations'];
+        $classes = [];
+        $loadFiles = [];
+        foreach (['classes', 'functions'] as $group) {
+            foreach ($declarations['symbols'][$group] as $key => $symbol) {
+                $file = $this->resolveReference($symbol['file'], $result['directory'], $declarations['files']);
+                $exists = $group === 'classes'
+                    ? class_exists($symbol['name'], false) || interface_exists($symbol['name'], false) || trait_exists($symbol['name'], false)
+                    : function_exists($symbol['name']);
+                if ($exists) {
+                    $reflection = $group === 'classes' ? new ReflectionClass($symbol['name']) : new \ReflectionFunction($symbol['name']);
+                    if ($reflection->getFileName() === false || BuildPlatform::path($reflection->getFileName()) !== BuildPlatform::path($file)) {
+                        throw new RuntimeException('开发声明已在准备前加载，拒绝混用原源码或其他代次：' . $symbol['name']);
+                    }
+                }
+                if ($group === 'classes') {
+                    $classes[$key] = $file;
+                } else {
+                    $loadFiles[$file] = true;
+                }
+            }
+        }
+        $autoload = static function (string $class) use ($classes): void {
+            $file = $classes[strtolower($class)] ?? null;
+            if ($file !== null) {
+                require_once $file;
+            }
+        };
+        $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+        $vendor = $composer['config']['vendor-dir'] ?? 'vendor';
+        $vendor = BuildPlatform::resolve((new BuildPlatform())->absolute($vendor) ? $vendor : $root . '/' . $vendor);
+        // 生产适配源码与业务声明共用 TypePHP 语义；PHP 开发进程加载官方配套实现。
+        require_once $vendor . '/swoole/typephp/src/polyfills.php';
+        spl_autoload_register($autoload, true, true);
+        try {
+            $composerFiles = is_file($vendor . '/composer/autoload_files.php')
+                ? require $vendor . '/composer/autoload_files.php' : [];
+            if (!is_array($composerFiles)) {
+                throw new RuntimeException('Composer files 清单损坏，拒绝加载开发代次');
+            }
+            $composerFilePaths = [];
+            foreach ($composerFiles as $id => $file) {
+                if (!is_string($id) || !is_string($file)) {
+                    throw new RuntimeException('Composer files 清单包含无效入口');
+                }
+                $composerFilePaths[BuildPlatform::resolve($file)] = $id;
+            }
+            $replaced = [];
+            foreach ($declarations['replacements'] as $original => $replacement) {
+                $replaced[$this->resolveReference($original, $result['directory'], $declarations['files'])] = true;
+            }
+            // 先安装全部类映射再加载声明文件，保证同文件多声明及跨文件父类也使用正确代次。
+            foreach ($declarations['symbols']['classes'] as $symbol) {
+                if (str_starts_with($symbol['file'], 'generated:')) {
+                    $loadFiles[$this->resolveReference($symbol['file'], $result['directory'], $declarations['files'])] = true;
+                }
+            }
+            // Composer 的 files 由 Composer 自己按唯一标识加载；提前 require 会绕过
+            // Composer 的 once 保护，尤其在开发代次保留原函数文件时会造成重复声明。
+            foreach (array_keys($loadFiles) as $file) {
+                if (isset($composerFilePaths[BuildPlatform::resolve($file)])) {
+                    if (!isset($replaced[BuildPlatform::resolve($file)])) {
+                        unset($loadFiles[$file]);
+                        continue;
+                    }
+                    $GLOBALS['__composer_autoload_files'][$composerFilePaths[BuildPlatform::resolve($file)]] = true;
+                }
+                require_once $file;
+            }
+            require_once $vendor . '/autoload.php';
+            // Composer 注册后继续让这份完整、已审计类映射优先，覆盖同文件原类的自动加载路径。
+            spl_autoload_unregister($autoload);
+            spl_autoload_register($autoload, true, true);
+            self::$loaded[$root] = $result['generation'];
+            return $result;
+        } catch (\Throwable $error) {
+            spl_autoload_unregister($autoload);
+            throw $error;
+        }
+    }
+
+    /**
+     * 只在开发进程生成不可变的完整应用声明；与原生构建共用分析和源码替换。
      *
      * 不读取 .env，不执行 config 源码；按完整输入身份复用已校验代次，不使用可变化的 current 指针。
      *
@@ -74,18 +180,13 @@ final class DevelopmentBuilder
         $production = (new SourceSet())->productionSources($root, $build);
         array_push($sources, ...$production['sources']);
         $sources = array_values(array_unique($sources));
+        $this->preparedSources = (new BuildIdentity())->sources($sources);
         $inputs = $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations']);
         if (($inputs['project/' . str_replace('\\', '/', $configuration)] ?? '') !== hash('sha256', $buildSource)) {
             throw new RuntimeException('读取开发声明期间输入发生变化，请重新启动');
         }
-        $files = ['models.php'];
-        foreach (['routing' => 'routes.php', 'config' => 'config.php', 'operations' => 'operations.php'] as $key => $name) {
-            if (isset($build[$key])) {
-                $files[] = $name;
-            }
-        }
         $reference = $directory . '/.inputs-' . hash('sha256', json_encode($inputs, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        $cached = $this->reuse($directory, $reference, $inputs, $files);
+        $cached = $this->reuse($directory, $reference, $inputs);
         if ($cached !== null) {
             if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'])) {
                 throw new RuntimeException('复用开发代次期间输入发生变化，请重新启动');
@@ -112,55 +213,44 @@ final class DevelopmentBuilder
                 throw new RuntimeException('等待开发生成期间输入发生变化，请重新启动');
             }
             // 等锁时可能已有同输入进程发布；只有真正缺少代次才解析语法和生成。
-            $cached = $this->reuse($directory, $reference, $inputs, $files);
+            $cached = $this->reuse($directory, $reference, $inputs);
             if ($cached !== null) {
                 if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'])) {
                     throw new RuntimeException('复用开发代次期间输入发生变化，请重新启动');
                 }
                 return $cached;
             }
-            $this->validateSyntax($sources);
-            $adaptation = (new SourceRewriter())->apply($sources, $production['source-sets'], $directory . '/adapted-sources');
-            $modelGeneration = (new ModelCompiler())->compile($adaptation['sources']);
-            $generated = ['models.php' => $modelGeneration['code']];
-            if (isset($build['routing'])) {
-                $routes = new RouteCompiler();
-                $generated['routes.php'] = $routes->generate($root, $routes->declarations($root, $build['routing']), $sources)['code'];
-            }
-            if (isset($build['config'])) {
-                $generated['config.php'] = (new ConfigCompiler())->generate($root, $build['config'])['code'];
-            }
-            if (isset($build['operations'])) {
-                $generated['operations.php'] = (new OperationCompiler())->generate($root, $build['operations'], $sources)['code'];
-            }
-            if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'])) {
-                throw new RuntimeException('开发生成期间源码或配置发生变化，请重新启动；没有加载旧代代码');
-            }
-            $hashes = [];
-            foreach ($generated as $name => $code) {
-                $hashes[$name] = hash('sha256', $code);
-            }
-            $manifest = ['protocol' => 1, 'inputs' => $inputs, 'files' => $hashes];
-            $encoded = json_encode($manifest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            $generation = hash('sha256', $encoded);
-            $target = $directory . '/' . $generation;
-            if (is_dir($target)) {
-                $existing = $this->verifyGeneration($directory, $generation, $inputs, $files);
-                $this->publishReference($reference, $generation);
-                return $existing;
-            }
-            if (file_exists($target) || is_link($target)) {
-                throw new RuntimeException('开发代次目标不是普通目录');
-            }
             $staging = $directory . '/.pending-' . bin2hex(random_bytes(12));
             if (!mkdir($staging, 0700)) {
                 throw new RuntimeException('无法创建本次开发生成临时目录');
             }
             try {
-                foreach ($generated + ['manifest.json' => $encoded] as $name => $code) {
-                    if (file_put_contents($staging . '/' . $name, $code, LOCK_EX) !== strlen($code)) {
-                        throw new RuntimeException('无法完整写入开发生成代码：' . $name);
-                    }
+                $result = (new ApplicationGeneration())->generate(
+                    $root,
+                    $build,
+                    $sources,
+                    $production['source-sets'],
+                    $production['modules'],
+                    $production['included'],
+                    $staging
+                );
+                if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'])) {
+                    throw new RuntimeException('开发生成期间源码或配置发生变化，请重新启动；没有加载旧代代码');
+                }
+                $manifest = ['protocol' => 2, 'inputs' => $inputs, 'declarations' => $result['metadata'], 'declaration-generation' => $result['identity']];
+                $encoded = json_encode($manifest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $generation = hash('sha256', $encoded);
+                $target = $directory . '/' . $generation;
+                if (is_dir($target)) {
+                    $existing = $this->verifyGeneration($directory, $generation, $inputs);
+                    $this->publishReference($reference, $generation);
+                    return $existing;
+                }
+                if (file_exists($target) || is_link($target)) {
+                    throw new RuntimeException('开发代次目标不是普通目录');
+                }
+                if (file_put_contents($staging . '/manifest.json', $encoded, LOCK_EX) !== strlen($encoded)) {
+                    throw new RuntimeException('无法完整写入开发生成清单');
                 }
                 if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'])) {
                     throw new RuntimeException('发布开发代次前输入发生变化，请重新启动');
@@ -170,10 +260,12 @@ final class DevelopmentBuilder
                 }
             } finally {
                 if (is_dir($staging)) {
-                    // 仅清理本次独立临时目录内的五个已知文件，不触碰其他代次或运行数据。
-                    foreach (array_merge($files, ['manifest.json']) as $name) {
-                        if (is_file($staging . '/' . $name)) {
-                            unlink($staging . '/' . $name);
+                    // 只清理本次私有暂存树，不跟随链接或触碰其他代次。
+                    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($staging, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
+                        if ($entry->isDir() && !$entry->isLink()) {
+                            rmdir($entry->getPathname());
+                        } else {
+                            unlink($entry->getPathname());
                         }
                     }
                     rmdir($staging);
@@ -181,7 +273,7 @@ final class DevelopmentBuilder
             }
 
             $this->publishReference($reference, $generation);
-            return ['generation' => $generation, 'directory' => $target, 'files' => $files];
+            return $this->verifyGeneration($directory, $generation, $inputs);
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
@@ -189,7 +281,7 @@ final class DevelopmentBuilder
     }
 
     /** 按输入摘要读取不可变索引；已存在但损坏时拒绝，不重新生成来掩盖损坏。 */
-    private function reuse(string $directory, string $reference, array $inputs, array $files): ?array
+    private function reuse(string $directory, string $reference, array $inputs): ?array
     {
         if (!file_exists($reference) && !is_link($reference)) {
             return null;
@@ -201,11 +293,11 @@ final class DevelopmentBuilder
         if (preg_match('/^[a-f0-9]{64}$/D', $generation) !== 1) {
             throw new RuntimeException('开发代次索引损坏，拒绝使用');
         }
-        return $this->verifyGeneration($directory, $generation, $inputs, $files);
+        return $this->verifyGeneration($directory, $generation, $inputs);
     }
 
     /** 输入、清单内容身份和生成文件逐项相符才可加载；索引本身不授予信任。 */
-    private function verifyGeneration(string $directory, string $generation, array $inputs, array $files): array
+    private function verifyGeneration(string $directory, string $generation, array $inputs): array
     {
         $target = $directory . '/' . $generation;
         if (!is_dir($target) || is_link($target) || !is_file($target . '/manifest.json') || is_link($target . '/manifest.json')) {
@@ -216,17 +308,60 @@ final class DevelopmentBuilder
             throw new RuntimeException('已存在的开发代次清单损坏，拒绝使用');
         }
         $manifest = json_decode($encoded, true, 512, JSON_THROW_ON_ERROR);
-        if (!is_array($manifest) || ($manifest['protocol'] ?? null) !== 1 || ($manifest['inputs'] ?? null) !== $inputs
-            || !is_array($manifest['files'] ?? null) || array_keys($manifest['files']) !== $files) {
+        $declarations = $manifest['declarations'] ?? null;
+        if (!is_array($manifest) || ($manifest['protocol'] ?? null) !== 2 || ($manifest['inputs'] ?? null) !== $inputs
+            || !is_array($declarations) || ($declarations['protocol'] ?? null) !== BuildIdentity::GENERATORS['declarations']
+            || ($declarations['generators'] ?? null) !== BuildIdentity::GENERATORS || ($declarations['platform'] ?? null) !== PHP_OS_FAMILY
+            || !is_array($declarations['files'] ?? null) || !is_array($declarations['symbols'] ?? null) || !is_array($declarations['replacements'] ?? null)) {
             throw new RuntimeException('已存在的开发代次清单损坏，拒绝使用');
         }
-        foreach ($files as $name) {
+        foreach ($declarations['files'] as $name => $hash) {
+            if (!is_string($name) || preg_match('~^(?:generated-(?:config|models|schema|thread-entries|operations|routes|jobs)\.php|assembled-application\.php|adapted-sources/[a-f0-9]{64}/[A-Za-z0-9_.-]+\.php)$~D', $name) !== 1) {
+                throw new RuntimeException('开发代次文件路径损坏，拒绝使用');
+            }
+            BuildLock::path($target . '/' . $name);
             if (!is_file($target . '/' . $name) || is_link($target . '/' . $name)
-                || hash_file('sha256', $target . '/' . $name) !== $manifest['files'][$name]) {
+                || hash_file('sha256', $target . '/' . $name) !== $hash) {
                 throw new RuntimeException('已存在的开发代次代码损坏，拒绝使用：' . $name);
             }
         }
-        return ['generation' => $generation, 'directory' => $target, 'files' => $files];
+        foreach (['classes', 'functions'] as $group) {
+            if (!is_array($declarations['symbols'][$group] ?? null)) {
+                throw new RuntimeException('开发代次符号映射损坏，拒绝使用');
+            }
+            foreach ($declarations['symbols'][$group] as $key => $symbol) {
+                if (!is_array($symbol) || !is_string($symbol['name'] ?? null) || strtolower($symbol['name']) !== $key) {
+                    throw new RuntimeException('开发代次符号映射损坏，拒绝使用');
+                }
+                $this->resolveReference($symbol['file'] ?? null, $target, $declarations['files']);
+            }
+        }
+        foreach ($declarations['replacements'] as $original => $replacement) {
+            if (!str_starts_with((string) $original, 'source:') || !is_string($replacement) || !str_starts_with($replacement, 'generated:')) {
+                throw new RuntimeException('开发代次源码替换映射损坏，拒绝使用');
+            }
+            $this->resolveReference($original, $target, $declarations['files']);
+            $this->resolveReference($replacement, $target, $declarations['files']);
+        }
+        $sourceHashes = array_map(static fn (string $source): string => hash_file('sha256', $source), $this->preparedSources);
+        if (($manifest['declaration-generation'] ?? null) !== BuildIdentity::digest(['sources' => $sourceHashes, 'generation' => $declarations])) {
+            throw new RuntimeException('开发声明身份损坏或输入变化，拒绝使用');
+        }
+        return ['generation' => $generation, 'directory' => $target, 'files' => array_keys($declarations['files']),
+            'declaration-generation' => $manifest['declaration-generation']];
+    }
+
+    /** 将清单中的逻辑文件引用恢复到本次已审计路径，不接受任意绝对路径或目录跳转。 */
+    private function resolveReference(mixed $reference, string $directory, array $files): string
+    {
+        if (is_string($reference) && preg_match('/^source:(0|[1-9][0-9]*)$/D', $reference, $match) === 1
+            && isset($this->preparedSources[(int) $match[1]])) {
+            return $this->preparedSources[(int) $match[1]];
+        }
+        if (is_string($reference) && str_starts_with($reference, 'generated:') && isset($files[substr($reference, 10)])) {
+            return $directory . '/' . substr($reference, 10);
+        }
+        throw new RuntimeException('开发代次文件引用损坏，拒绝使用');
     }
 
     /** 仅持生成锁时发布完整索引；原子替换临时文件，其他进程不读取半写记录。 */
@@ -273,24 +408,6 @@ final class DevelopmentBuilder
         return $resolved;
     }
 
-    /** 准备阶段检查业务语法，不执行业务源文件；无效修改不得替换在用进程。 */
-    private function validateSyntax(array $sources): void
-    {
-        $parser = (new \PhpParser\ParserFactory())->createForNewestSupportedVersion();
-        foreach ($sources as $source) {
-            $files = is_file($source) ? [$source] : new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS));
-            foreach ($files as $entry) {
-                $file = is_string($entry) ? $entry : $entry->getPathname();
-                if (is_file($file) && pathinfo($file, PATHINFO_EXTENSION) === 'php') {
-                    if (is_link($file)) {
-                        throw new RuntimeException('开发源码不能使用符号链接');
-                    }
-                    $parser->parse((string) file_get_contents($file));
-                }
-            }
-        }
-    }
-
     /**
      * 对源码、声明和生成器取可重现内容身份；逻辑名称不含绝对项目根或运行环境值。
      *
@@ -301,6 +418,9 @@ final class DevelopmentBuilder
     private function inputs(string $root, array $build, array $sources, string $configuration, array $entryFiles, array $dependencyDeclarations): array
     {
         $inputs = [];
+        foreach ((new SchemaCompiler())->inputs($sources) as $index => $snapshot) {
+            $inputs['schema-snapshot-' . $index] = hash_file('sha256', $snapshot);
+        }
         foreach ($dependencyDeclarations as $index => $declaration) {
             $inputs['production-declaration-' . $index] = hash_file('sha256', $declaration);
         }

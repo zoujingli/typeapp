@@ -31,10 +31,10 @@ final class Greeting
 /** 最小命令示例，输出注入依赖并支持一个显式非零退出码。 */
 final class GreetCommand implements Command
 {
-    private Greeting $greeting;
+    private GreetingMessage $greeting;
 
     /** 注入已装配的问候服务，不在运行时解析类名。 */
-    public function __construct(Greeting $greeting)
+    public function __construct(GreetingMessage $greeting)
     {
         $this->greeting = $greeting;
     }
@@ -49,6 +49,21 @@ final class GreetCommand implements Command
         echo $this->greeting->message() . PHP_EOL;
 
         return ($arguments[0] ?? '') === 'status-23' ? 23 : 0;
+    }
+}
+
+/** 由构造器自动推导的中间服务；应用只显式绑定 Greeting 的字符串配置。 */
+final class GreetingMessage
+{
+    /** 接收已有配置服务，保持直接类型依赖。 */
+    public function __construct(private Greeting $greeting)
+    {
+    }
+
+    /** 返回已配置问候。 */
+    public function message(): string
+    {
+        return $this->greeting->message();
     }
 }
 
@@ -209,6 +224,14 @@ final class SnapshotCommand implements Command
 /** 通过命令当前作用域验证取消、截止、关闭拒绝及子任务的独立绑定与预算归还。 */
 final class ScopeCommand implements Command
 {
+    private bool $constructedInScope;
+
+    /** 构造必须发生在 Application 绑定本次执行作用域之后。 */
+    public function __construct()
+    {
+        $this->constructedInScope = \Type\Runtime\ExecutionScope::current() instanceof \Type\Runtime\ExecutionScope;
+    }
+
     /**
      * 创建子作用域并取消，验证命令 Scope 保留与资源清理边界。
      *
@@ -245,11 +268,14 @@ final class ScopeCommand implements Command
         $parent = new \Type\Runtime\ExecutionScope();
         $childResult = $parent->spawn(static fn (\Type\Runtime\ExecutionScope $child): bool => \Type\Runtime\ExecutionScope::current() === $child)->await();
         $parent->close();
-        if (!$cancelled || !$closedRejected || !$deadlineRejected || $childResult !== true || \Type\Runtime\ExecutionScope::current() !== $commandScope
+        $executionFirst = $commandScope->service('scope-probe', static fn (): SequenceValue => new SequenceValue());
+        $executionSecond = $commandScope->service('scope-probe', static fn (): SequenceValue => new SequenceValue());
+        $isolated = $commandScope->spawn(static fn (\Type\Runtime\ExecutionScope $child): SequenceValue => $child->service('scope-probe', static fn (): SequenceValue => new SequenceValue()))->await();
+        if (!$this->constructedInScope || !$cancelled || !$closedRejected || !$deadlineRejected || $childResult !== true || $executionFirst !== $executionSecond || $executionFirst === $isolated || \Type\Runtime\ExecutionScope::current() !== $commandScope
             || $scope->state() !== 'closed' || $expired->state() !== 'closed' || $parent->state() !== 'closed' || $parent->activeTasks() !== 0) {
-            throw new RuntimeException('作用域状态、子任务绑定或预算未恢复');
+            throw new RuntimeException('作用域状态、服务缓存、子任务绑定或预算未恢复');
         }
-        echo "取消、截止、关闭拒绝与子任务预算恢复通过。\n";
+        echo "取消、截止、关闭拒绝、服务缓存与子任务预算恢复通过。\n";
         return 0;
     }
 }

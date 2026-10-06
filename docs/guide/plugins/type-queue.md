@@ -47,7 +47,32 @@ composer require zoujingli/type-queue:1.0.0-rc.14
 
 以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
 
-## 最小使用示例
+## 应用自动装配
+
+应用安装 `type-core`，开发依赖安装 `type-build`；队列组件本身仍不强制依赖 core。将实现 `Job::handle(JobContext $context, array $payload): void` 的业务类列入生产 sources，在 `type-app.json` 声明：
+
+```json
+{
+  "application": {
+    "enabled": ["example/app"],
+    "jobs": [{"type": "reports.daily", "version": 1, "class": "App\\Job\\DailyReport"}]
+  }
+}
+```
+
+`enabled` 使用应用实际 Composer 名称。Job 的具体类型构造参数自动推导；接口或标量歧义使用 `application.bindings`。需要资源时声明 `resources: ["database"]`，对应服务必须是 execution 生命周期的 `ManagedResource`；Job 构造前资源已在同一个消息 scope 开启。也可用 `service` 引用已有的 execution 服务，`class` 与 `service` 只能选择一个。
+
+启动角色在同一 Swoole 协程内建立 Queue 和配置快照，然后取得生成注册表：
+
+```php
+$application = new \Type\Generated\CommandApplication($configuration);
+$worker = new \Type\Queue\Worker($queue, $application->jobs(), 'reports-worker');
+$worker->run(100);
+```
+
+启动角色通过 `application.bootstrap` 接入唯一生成入口；可运行的完整示例是 `examples/queue` 与 `docs/build-config/type-queue.json`。开发 `DevelopmentBuilder` 和 AOT 使用同一声明生成过程。旧顶层 `queue`、生成 `Jobs::create($factories)` 的映射已移除；改用 `application.jobs`，无需手写 Job 构造闭包。重复 type/version、错误方法签名、缺失依赖、依赖环和 singleton 持有 execution 服务均在构建期拒绝。每次投递、重试和恢复仍由 Worker 建立新的 Scope，不将 payload/context 自动提升为可信身份。
+
+## 底层接口与角色示例
 
 以下入口在专属示例命名空间投递并消费一条任务。使用[声明式启动器](../components.md#运行声明式示例)调用 `main()`，连接配置见 [Redis](type-redis.md)。
 
@@ -235,7 +260,7 @@ foreach ($queue->quarantined(20) as $entry) {
 | 投递超时 | 结果可能未知，按 ID 对账，不能假定没有投递 |
 | 满容量 | 处理积压与过期隔离，核对消费速度，不能删除未确认消息 |
 
-原生 build 可由构建配置 queue 调用 JobCompiler 生成 Registry；当前 PHP prepare 不生成该注册表，开发时使用本页显式登记方式。类型版本和处理器全量 AOT，生产没有类扫描。主仓入口：`composer test:queue`、`composer test:queue-leases`、`composer test:queue-retries`；对应 native 验收先构建。
+PHP 开发准备与原生 build 统一消费 `application.jobs` 并生成 Registry；手工登记仅用于直接使用底层 Registry 接口。类型版本和处理器全量 AOT，生产没有类扫描。主仓入口：`composer test:queue`、`composer test:queue-leases`、`composer test:queue-retries`；对应 native 验收先构建。
 
 继续阅读：[Redis 可靠存储](type-redis.md#脚本与可靠存储)、[调度](type-scheduler.md)、[ORM Outbox](type-orm.md#迁移与-outbox)。
 

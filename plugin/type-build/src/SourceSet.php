@@ -11,7 +11,7 @@ final class SourceSet
 {
     /**
      * 开发生成同样扫描实际安装的生产依赖，不扫描 require-dev 或执行自动加载文件。
-     * @return array{sources:list<string>, source-sets:array, declarations:list<string>} 经协议核对的源码、适配与依赖声明。
+     * @return array{sources:list<string>, source-sets:array, declarations:list<string>, modules:array, included:array} 经协议核对的源码、适配、模块与依赖身份。
      */
     public function productionSources(string $root, array $build): array
     {
@@ -49,6 +49,8 @@ final class SourceSet
         }
         $sources = [];
         $sets = [];
+        $modules = [];
+        $included = [];
         foreach ($selected as $name => $package) {
             $metadata = $package['extra']['type'] ?? [];
             if ($metadata === [] && isset($imports[$name])) {
@@ -60,9 +62,11 @@ final class SourceSet
             $packageRoot = BuildPlatform::resolve($vendor . '/composer/' . $package['install-path']);
             $sets[$name] = $this->describe($packageRoot, $package, $metadata);
             array_push($sources, ...$sets[$name]['sources']);
+            $modules[$name] = $metadata['module'] ?? [];
+            $included[$name] = $package['version'];
         }
         return ['sources' => array_values(array_unique($sources)), 'source-sets' => $sets,
-            'declarations' => [$vendor . '/composer/installed.json']];
+            'declarations' => [$vendor . '/composer/installed.json'], 'modules' => $modules, 'included' => $included];
     }
 
     /**

@@ -10,9 +10,10 @@ use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\ParserFactory;
+use PhpParser\PrettyPrinter\Standard;
 use RuntimeException;
 
-/** 将显式映射服务的方法声明编为普通组合对象；不加载业务源码或增加运行时 AOP。 */
+/** 将声明方法转换到原 Service 类型；完整文件替换，不加载业务源码或增加运行时 AOP。 */
 final class OperationCompiler
 {
     private const TRANSACTIONAL = 'Type\\Orm\\Attribute\\Transactional';
@@ -20,92 +21,145 @@ final class OperationCompiler
     private const CACHE_EVICT = 'Type\\Cache\\Attribute\\CacheEvict';
 
     /**
-     * 静态读取业务声明并生成显式组合类，不执行源码或解释PHPDoc为操作属性。
+     * 静态读取业务声明并替换原方法体，保留类型、构造器和同文件的其他声明。
      *
-     * @param array{classes?: array<string, class-string>} $configuration 完整生成类名到业务类名的映射。
+     * @param array{} $configuration 旧 classes 映射已移除，声明由生产源码 Attribute 确定。
      * @param list<string> $sources 显式源码文件/目录，可为相对项目根或已选定的绝对路径。
-     * @return array{code: string, operations: list<array{wrapper: string, service: class-string, method: string, transaction: ?array<string, mixed>, cacheable: ?array<string, mixed>, evict: ?array<string, mixed>}>}
+     * @param array<string, mixed>|null $packages 已审计生产包；省略时复用 SourceSet 的安装依赖审计。
+     * @return array{code: string, originals: list<string>, operations: list<array<string, mixed>>}
      * @throws RuntimeException 输入不存在、声明或类型不支持、名称冲突或生成结果无效。
      */
-    public function generate(string $root, array $configuration, array $sources): array
+    public function generate(string $root, array $configuration, array $sources, ?array $packages = null): array
     {
         $root = realpath($root) ?: throw new RuntimeException('操作生成项目目录不存在');
-        if (array_diff(array_keys($configuration), ['classes']) !== []) {
-            throw new RuntimeException('operations 包含未知配置项');
+        if ($configuration !== []) {
+            throw new RuntimeException('operations.classes 映射已移除；请将原 Service 纳入 sources，由标准入口转换声明');
         }
-        $mapping = $configuration['classes'] ?? [];
-        if (!is_array($mapping) || ($mapping !== [] && array_is_list($mapping))) {
-            throw new RuntimeException('operations.classes 必须是生成类到业务类的显式映射');
-        }
-        $symbols = $this->symbols($root, $sources);
+        $packages ??= (new SourceSet())->productionSources($root, [])['included'];
+        $parser = (new ParserFactory())->createForNewestSupportedVersion();
+        $finder = new NodeFinder();
+        $printer = new Standard();
+        $files = array_map(static fn (string $source): string => (new BuildPlatform())->absolute($source) ? $source : $root . '/' . $source, $sources);
         $code = "<?php\n\ndeclare(strict_types=1);\n";
         $operations = [];
-        $generated = [];
-        ksort($mapping);
-        foreach ($mapping as $wrapper => $service) {
-            foreach ([$wrapper, $service] as $className) {
-                if (!is_string($className) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)+$/D', $className)) {
-                    throw new RuntimeException('操作类名必须是带命名空间的完整类名');
-                }
+        $originals = [];
+        $parents = [];
+        $transformed = [];
+        foreach ((new BuildIdentity())->sources($files) as $file) {
+            if (strtolower(pathinfo($file, PATHINFO_EXTENSION)) !== 'php') {
+                continue;
             }
-            if (isset($symbols[strtolower($wrapper)]) || isset($generated[strtolower($wrapper)])) {
-                throw new RuntimeException('生成操作类与已声明类重名：' . $wrapper);
+            $source = (string) file_get_contents($file);
+            if (str_contains($source, '@type-build-operation:v2')) {
+                throw new RuntimeException('操作源码已经转换，拒绝重复转换：' . $file);
             }
-            $generated[strtolower($wrapper)] = true;
-            $symbol = $symbols[strtolower($service)] ?? throw new RuntimeException('业务类未纳入生产源码：' . $service);
-            $class = $symbol['node'];
-            if (!$class instanceof Node\Stmt\Class_ || $class->isAbstract() || $class->extends !== null || $class->getTraitUses() !== []) {
-                throw new RuntimeException('操作业务类必须是显式方法组成的具体类，当前不支持继承或 Trait：' . $service);
-            }
-            foreach ($class->attrGroups as $group) {
-                foreach ($group->attrs as $attribute) {
-                    if ($this->recognized($attribute)) {
-                        throw new RuntimeException('操作 Attribute 只能标记公开实例方法');
+            $ast = (new NodeTraverser(new NameResolver()))->traverse($parser->parse($source) ?? []);
+            $topClasses = [];
+            foreach ($ast as $statement) {
+                foreach ($statement instanceof Node\Stmt\Namespace_ ? $statement->stmts : [$statement] as $declaration) {
+                    if ($declaration instanceof Node\Stmt\ClassLike) {
+                        $topClasses[] = $declaration;
                     }
                 }
             }
-            $finder = new NodeFinder();
-            foreach ($finder->find($class->stmts, static fn (Node $node): bool => $node instanceof Node\Param || $node instanceof Node\Stmt\Property || $node instanceof Node\Stmt\ClassConst) as $declaration) {
+            foreach ($finder->find($ast, static fn (Node $node): bool => property_exists($node, 'attrGroups')) as $declaration) {
                 foreach ($declaration->attrGroups as $group) {
                     foreach ($group->attrs as $attribute) {
-                        if ($this->recognized($attribute)) {
-                            throw new RuntimeException('操作 Attribute 不能用于字段、常量或参数');
+                        if ($this->recognized($attribute) && !$declaration instanceof Node\Stmt\ClassMethod) {
+                            throw new RuntimeException('操作 Attribute 只能标记公开实例方法：' . $file . ':' . $attribute->getStartLine());
                         }
                     }
                 }
             }
-            $parts = explode('\\', $wrapper);
-            $short = array_pop($parts);
-            $namespace = implode('\\', $parts);
-            $documentation = new OperationDocumentation($class, $symbol['doc-context']);
-            $classComment = $documentation->classComment();
-            $code .= "\nnamespace {$namespace} {\n\n" . ($classComment === null ? '' : $classComment . "\n")
-                . "final class {$short}\n{\n    private \\{$symbol['name']} \$service;\n\n"
-                . $documentation->constructorComment()
-                . "    public function __construct(\\{$symbol['name']} \$service)\n    {\n        \$this->service = \$service;\n    }\n";
-            foreach ($class->getMethods() as $method) {
-                $attributes = $this->attributes($method);
-                if (strtolower($method->name->toString()) === '__construct' || !$method->isPublic()) {
-                    if ($attributes !== []) {
-                        throw new RuntimeException('操作 Attribute 不能用于构造器或非公开方法');
-                    }
-                    continue;
+            $changed = false;
+            foreach ($finder->findInstanceOf($ast, Node\Stmt\ClassLike::class) as $class) {
+                if ($class instanceof Node\Stmt\Class_ && $class->extends !== null) {
+                    $parents[$class->namespacedName?->toString() ?? ''] = strtolower($class->extends->toString());
                 }
-                $result = $this->method($method, $attributes, $symbol['name'], $documentation->methodComment($method));
-                $code .= $result['code'];
-                $operations[] = ['wrapper' => $wrapper, 'service' => $symbol['name'], 'method' => $method->name->toString()] + $result['metadata'];
+                foreach ($class->getMethods() as $method) {
+                    $attributes = $this->attributes($method);
+                    if ($attributes === []) {
+                        continue;
+                    }
+                    $service = $class->namespacedName?->toString() ?? '';
+                    if (!$class instanceof Node\Stmt\Class_ || $class->isAbstract() || $class->extends !== null || $class->getTraitUses() !== [] || !str_contains($service, '\\') || !in_array($class, $topClasses, true)) {
+                        throw new RuntimeException('操作业务类必须是具名具体类，当前不支持继承或 Trait：' . $service);
+                    }
+                    if (!$method->isPublic()) {
+                        throw new RuntimeException('操作 Attribute 不能用于非公开方法');
+                    }
+                    if (isset($attributes[self::TRANSACTIONAL]) && !isset($packages['zoujingli/type-orm'])) {
+                        throw new RuntimeException('Transactional 声明需要安装 type-orm 生产依赖');
+                    }
+                    if ((isset($attributes[self::CACHEABLE]) || isset($attributes[self::CACHE_EVICT])) && !isset($packages['zoujingli/type-cache'])) {
+                        throw new RuntimeException('缓存声明需要安装 type-cache 生产依赖');
+                    }
+                    if ($finder->findFirst($method->stmts ?? [], static fn (Node $node): bool => $node instanceof Node\Expr\Yield_ || $node instanceof Node\Expr\YieldFrom
+                        || $node instanceof Node\Scalar\MagicConst\Function_ || $node instanceof Node\Scalar\MagicConst\Method
+                        || $node instanceof Node\Expr\FuncCall && $node->name instanceof Node\Name && in_array(strtolower($node->name->toString()), ['func_get_args', 'func_get_arg', 'func_num_args', 'get_defined_vars'], true)) !== null) {
+                        throw new RuntimeException('操作方法不支持生成器或依赖原方法执行帧的语法：' . $service . '::' . $method->name);
+                    }
+                    $implementation = '_type_operation_' . $method->name->toString();
+                    while ($class->getMethod($implementation) !== null) {
+                        $implementation .= '_';
+                    }
+                    $original = clone $method;
+                    $original->name = new Node\Identifier($implementation);
+                    $original->flags = Node\Stmt\Class_::MODIFIER_PRIVATE;
+                    $original->attrGroups = [];
+                    $original->setDocComment(new \PhpParser\Comment\Doc('/** @internal 原声明方法的业务实现；只由同类公开方法调用。 */'));
+                    $result = $this->method($method, $attributes, $service, isset($packages['zoujingli/type-orm']), $implementation);
+                    $transformed[strtolower($service)] = true;
+                    $body = $parser->parse('<?php class GeneratedOperation {' . $result['code'] . '}');
+                    $method->stmts = $body[0]->getMethods()[0]->stmts;
+                    $class->stmts[] = $original;
+                    $operations[] = ['service' => $service, 'method' => $method->name->toString(), 'line' => $method->getStartLine()] + $result['metadata'];
+                    $changed = true;
+                }
             }
-            $code .= "}\n}\n";
+            if (!$changed) {
+                continue;
+            }
+            if ($finder->findFirst($ast, static fn (Node $node): bool => $node instanceof Node\Scalar\MagicConst\Dir || $node instanceof Node\Scalar\MagicConst\File || $node instanceof Node\Scalar\MagicConst\Line) !== null) {
+                throw new RuntimeException('操作转换文件不支持依赖源码物理位置的魔术常量：' . $file);
+            }
+            $global = [];
+            foreach ($ast as $statement) {
+                if ($statement instanceof Node\Stmt\Declare_) {
+                    foreach ($statement->declares as $declare) {
+                        if ($declare->key->toString() !== 'strict_types' || $declare->value->value !== 1) {
+                            throw new RuntimeException('操作源码只接受 strict_types=1 声明');
+                        }
+                    }
+                } elseif ($statement instanceof Node\Stmt\Namespace_) {
+                    if ($global !== []) {
+                        $code .= "\nnamespace {\n" . $printer->prettyPrint($global) . "\n}\n";
+                        $global = [];
+                    }
+                    $code .= "\nnamespace " . ($statement->name?->toString() ?? '') . " {\n" . $printer->prettyPrint($statement->stmts) . "\n}\n";
+                } else {
+                    $global[] = $statement;
+                }
+            }
+            if ($global !== []) {
+                $code .= "\nnamespace {\n" . $printer->prettyPrint($global) . "\n}\n";
+            }
+            $originals[] = $file;
+        }
+        foreach ($parents as $child => $parent) {
+            if (isset($transformed[$parent])) {
+                throw new RuntimeException('声明操作服务不支持被继承：' . $child);
+            }
         }
         try {
             (new ParserFactory())->createForNewestSupportedVersion()->parse($code);
         } catch (\PhpParser\Error $error) {
             throw new RuntimeException('生成操作 PHP 无效：' . $error->getMessage(), 0, $error);
         }
-        return ['code' => $code, 'operations' => $operations];
+        return ['code' => $code, 'originals' => $originals, 'operations' => $operations];
     }
 
-    private function method(Node\Stmt\ClassMethod $method, array $attributes, string $service, ?string $doc): array
+    private function method(Node\Stmt\ClassMethod $method, array $attributes, string $service, bool $orm, string $implementation): array
     {
         $name = $method->name->toString();
         if ($method->isStatic() || $method->isAbstract() || $method->byRef || str_starts_with($name, '__')) {
@@ -138,10 +192,18 @@ final class OperationCompiler
             $prefix .= '_';
         }
         $serviceVariable = '$' . $prefix . '_service';
-        $body = "        {$serviceVariable} = \$this->service;\n";
+        $body = "        // @type-build-operation:v2\n        {$serviceVariable} = \$this;\n";
+        $call = $serviceVariable . '->' . $implementation . '(' . implode(', ', $arguments) . ')';
         $transaction = $attributes[self::TRANSACTIONAL] ?? null;
         $cacheable = $attributes[self::CACHEABLE] ?? null;
         $evict = $attributes[self::CACHE_EVICT] ?? null;
+        $database = $transaction['database'] ?? $cacheable['database'] ?? $evict['database'] ?? 'default';
+        if (!is_string($database) || preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $database) !== 1) {
+            throw new RuntimeException('操作 database 必须是逻辑数据源名称');
+        }
+        if ($transaction !== null && isset($evict['database']) && $evict['database'] !== $database) {
+            throw new RuntimeException('Transactional 与 CacheEvict 必须使用同一逻辑数据源');
+        }
         $eviction = null;
         if ($evict !== null) {
             $cacheParameter = $this->cacheParameter($evict, $parameterTypes);
@@ -163,15 +225,13 @@ final class OperationCompiler
                 throw new RuntimeException('Cacheable TTL 必须是正整数且不超过一年');
             }
             $captures = array_merge([$serviceVariable], array_values($arguments));
-            $body .= '        return $' . $cacheParameter . '->remember(' . $key . ', static function () use (' . implode(', ', $captures) . '): '
-                . $return . " {\n            return " . $serviceVariable . '->' . $name . '(' . implode(', ', $arguments) . ");\n        }, " . $ttl . ");\n";
-        } elseif ($transaction !== null) {
-            $database = $transaction['database'] ?? 'default';
-            if (!is_string($database) || preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $database) !== 1) {
-                throw new RuntimeException('Transactional.database 必须是逻辑数据源名称');
+            if ($orm) {
+                $body .= '        if (\\Type\\Orm\\Db::inTransaction(' . var_export($database, true) . ")) {\n            return " . $call . ";\n        }\n";
             }
+            $body .= '        return $' . $cacheParameter . '->remember(' . $key . ', static function () use (' . implode(', ', $captures) . '): '
+                . $return . " {\n            return " . $call . ";\n        }, " . $ttl . ");\n";
+        } elseif ($transaction !== null) {
             $captures = array_merge([$serviceVariable], array_values($arguments));
-            $call = $serviceVariable . '->' . $name . '(' . implode(', ', $arguments) . ')';
             $body .= '        ' . ($return === 'void' ? '' : 'return ') . '\\Type\\Orm\\Db::transaction(static function () use ('
                 . implode(', ', $captures) . '): ' . $return . " {\n";
             if ($eviction !== null) {
@@ -184,16 +244,21 @@ final class OperationCompiler
         } else {
             $valueVariable = '$' . $prefix . '_result';
             $body .= '        ' . ($return === 'void' ? '' : ($eviction === null ? 'return ' : $valueVariable . ' = '))
-                . $serviceVariable . '->' . $name . '(' . implode(', ', $arguments) . ");\n";
+                . $call . ";\n";
             if ($eviction !== null) {
-                $body .= '        ' . $eviction['expression'] . ";\n";
+                if ($orm) {
+                    $body .= '        if (\\Type\\Orm\\Db::inTransaction(' . var_export($database, true) . ")) {\n"
+                        . '            \\Type\\Orm\\Db::afterCommit(static function () use (' . implode(', ', array_values($arguments))
+                        . "): void {\n                " . $eviction['expression'] . ";\n            }, " . var_export($database, true) . ");\n        } else {\n            " . $eviction['expression'] . ";\n        }\n";
+                } else {
+                    $body .= '        ' . $eviction['expression'] . ";\n";
+                }
                 if ($return !== 'void') {
                     $body .= '        return ' . $valueVariable . ";\n";
                 }
             }
         }
-        $documentation = $doc === null ? '' : '    ' . str_replace("\n", "\n    ", $doc) . "\n";
-        return ['code' => "\n" . $documentation . '    public function ' . $name . '(' . implode(', ', $parameters) . '): ' . $return
+        return ['code' => "\n" . '    public function ' . $name . '(' . implode(', ', $parameters) . '): ' . $return
             . "\n    {\n" . $body . "    }\n", 'metadata' => ['transaction' => $transaction, 'cacheable' => $cacheable, 'evict' => $evict]];
     }
 
@@ -292,7 +357,7 @@ final class OperationCompiler
                 $position = 0;
                 $named = false;
                 $names = match ($name) {
-                    self::TRANSACTIONAL => ['database'], self::CACHEABLE => ['cache', 'key', 'ttlMilliseconds'], self::CACHE_EVICT => ['cache', 'key', 'all'],
+                    self::TRANSACTIONAL => ['database'], self::CACHEABLE => ['cache', 'key', 'ttlMilliseconds', 'database'], self::CACHE_EVICT => ['cache', 'key', 'all', 'database'],
                 };
                 foreach ($attribute->args as $argument) {
                     if ($argument->byRef || $argument->unpack || ($argument->name === null && $named)) {
@@ -337,80 +402,4 @@ final class OperationCompiler
         }
     }
 
-    private function symbols(string $root, array $sources): array
-    {
-        $files = [];
-        foreach ($sources as $source) {
-            if (!is_string($source)) {
-                throw new RuntimeException('操作生产源码路径无效');
-            }
-            $resolved = realpath((new BuildPlatform())->absolute($source) ? $source : $root . '/' . $source);
-            if ($resolved === false) {
-                throw new RuntimeException('操作生产源码不存在');
-            }
-            if (is_file($resolved)) {
-                if (pathinfo($resolved, PATHINFO_EXTENSION) === 'php') {
-                    $files[$resolved] = true;
-                }
-            } else {
-                foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($resolved, \FilesystemIterator::SKIP_DOTS)) as $entry) {
-                    if ($entry->isFile() && $entry->getExtension() === 'php') {
-                        $file = $entry->getRealPath();
-                        if (!is_string($file) || !BuildPlatform::contains($resolved, $file)) {
-                            throw new RuntimeException('操作源码链接越出声明目录');
-                        }
-                        $files[$file] = true;
-                    }
-                }
-            }
-        }
-        ksort($files);
-        $classes = [];
-        $parser = (new ParserFactory())->createForNewestSupportedVersion();
-        foreach (array_keys($files) as $file) {
-            try {
-                $resolver = new NameResolver();
-                $capture = new /** 构建期捕获各类声明处的名称语境，不执行业务类。 */ class ($resolver) extends \PhpParser\NodeVisitorAbstract {
-                    /** 共享同一遍历中的名称解析器，以保留 use 别名和命名空间。 */
-                    public function __construct(private NameResolver $resolver)
-                    {
-                    }
-
-                    /** 在类声明处保存名称语境快照，不替换 PHP 语法节点。 */
-                    public function enterNode(Node $node): ?Node
-                    {
-                        if ($node instanceof Node\Stmt\ClassLike) {
-                            $node->setAttribute('type-doc-context', clone $this->resolver->getNameContext());
-                        }
-                        return null;
-                    }
-                };
-                $nodes = (new NodeTraverser($resolver, $capture))->traverse($parser->parse((string) file_get_contents($file)) ?? []);
-            } catch (\PhpParser\Error $error) {
-                throw new RuntimeException('操作源码 AST 解析失败：' . $file, 0, $error);
-            }
-            $declarations = [];
-            foreach ($nodes as $node) {
-                if ($node instanceof Node\Stmt\Namespace_) {
-                    array_push($declarations, ...$node->stmts);
-                } else {
-                    $declarations[] = $node;
-                }
-            }
-            foreach ($declarations as $node) {
-                if (!$node instanceof Node\Stmt\ClassLike) {
-                    continue;
-                }
-                if ($node->name === null) {
-                    continue;
-                }
-                $name = $node->namespacedName->toString();
-                if (isset($classes[strtolower($name)])) {
-                    throw new RuntimeException('操作源码类重名：' . $name);
-                }
-                $classes[strtolower($name)] = ['name' => $name, 'node' => $node, 'doc-context' => $node->getAttribute('type-doc-context')];
-            }
-        }
-        return $classes;
-    }
 }

@@ -6,6 +6,8 @@ namespace Type\Orm\Outbox;
 
 use Type\Orm\Connection;
 use Type\Orm\DatabaseException;
+use Type\Orm\Db;
+use Type\Orm\ModelException;
 use Type\Orm\Migration\Migration;
 use Type\Orm\SqlDialect;
 
@@ -53,7 +55,17 @@ final class Store
      * @param array<array-key, mixed> $payload 仅允许有限 JSON 数据。
      * @param array<string, string> $context 显式上下文，连同载荷最多 60000 字节。
      */
-    public function enqueue(Connection $connection, string $id, string $topic, int $version, array $payload, array $context = []): bool
+    public function enqueue(string $id, string $topic, int $version, array $payload, array $context = [], string $database = 'default'): bool
+    {
+        return $this->enqueueUsing($this->transactionConnection($database), $id, $topic, $version, $payload, $context);
+    }
+
+    /**
+     * 基础设施已有显式事务连接时使用；业务优先使用 enqueue 的命名源入口。
+     * @param array<array-key, mixed> $payload 仅允许有限 JSON 数据。
+     * @param array<string, string> $context 显式追踪上下文。
+     */
+    public function enqueueUsing(Connection $connection, string $id, string $topic, int $version, array $payload, array $context = []): bool
     {
         if ($connection->transactionDepth() === 0) {
             throw new DatabaseException('Outbox 意图必须与业务写入处于同一事务');
@@ -111,7 +123,7 @@ final class Store
                     'attempts' => (int) $row['attempts'] + 1]);
                 $row['token'] = $token;
                 $row['attempts'] = (int) $row['attempts'] + 1;
-                $records[] = new Record($row);
+                $records[] = new Record($row, $transaction->identity());
             }
             return $records;
         }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
@@ -123,13 +135,22 @@ final class Store
         if ($connection->transactionDepth() !== 0 || $receipt === '' || strlen($receipt) > 2000) {
             throw new DatabaseException('Outbox 发布凭据必须独立登记且有界');
         }
+        if (!$record->belongsTo($connection->identity())) {
+            throw new DatabaseException('Outbox 发布凭据必须登记到原领取数据源');
+        }
         $now = $this->now($connection);
         return $connection->table($this->table)->where('id', '=', $record->id())->where('state', '=', 'claimed')->where('token', '=', $record->token())->where('lease_until', '>', $now)
             ->update(['state' => 'published', 'accepted_receipt' => $receipt, 'published_at' => $now, 'lease_until' => 0, 'token' => '']) === 1;
     }
 
     /** 把消费凭据与业务效果放在同一活动事务登记，已有凭据返回 false。 */
-    public function consumed(Connection $connection, string $id, string $receipt): bool
+    public function consumed(string $id, string $receipt, string $database = 'default'): bool
+    {
+        return $this->consumedUsing($this->transactionConnection($database), $id, $receipt);
+    }
+
+    /** 基础设施已有显式事务连接时登记消费凭据，与本连接的业务效果共同提交。 */
+    public function consumedUsing(Connection $connection, string $id, string $receipt): bool
     {
         if ($connection->transactionDepth() === 0 || $receipt === '' || strlen($receipt) > 2000) {
             throw new DatabaseException('消费凭据必须与业务副作用同事务登记');
@@ -179,6 +200,17 @@ final class Store
             'sqlite' => "SELECT CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) AS value",
         };
         return (int) $connection->query($sql)[0]['value'];
+    }
+    /** 先观察已有事务，拒绝时不建立会话、不另借默认来源。 */
+    private function transactionConnection(string $database): Connection
+    {
+        if (!preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $database)) {
+            throw new ModelException('database_unavailable', 'Outbox 数据源名称无效');
+        }
+        if (!Db::inTransaction($database)) {
+            throw new ModelException('outbox_transaction_required', 'Outbox 写入必须处于指定数据源的活动事务');
+        }
+        return Db::connection($database, true);
     }
     private function limit(int $limit): void
     {

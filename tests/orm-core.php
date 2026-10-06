@@ -22,7 +22,10 @@ try {
     $models = (new Type\Build\ModelCompiler())->compile([$root . '/examples/orm-suite/Models.php']);
     file_put_contents($work . '/models.php', $models['code']);
     $launch = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; require ' . var_export($work . '/models.php', true) . ';';
-    foreach (['drivers/' . $driver . '.php', 'Schema.php', 'ArticleObserver.php', 'CoreExercise.php', 'MutationExercise.php', 'Suite.php'] as $file) {
+    $schemas = (new Type\Build\SchemaCompiler())->compile([$root . '/examples/orm-suite']);
+    file_put_contents($work . '/schema.php', $schemas['code']);
+    $launch .= 'require ' . var_export($work . '/schema.php', true) . ';';
+    foreach (['drivers/' . $driver . '.php', 'Schema.php', 'SchemaExercise.php', 'ArticleObserver.php', 'CoreExercise.php', 'MutationExercise.php', 'Suite.php'] as $file) {
         $launch .= 'require ' . var_export($root . '/examples/orm-suite/' . $file, true) . ';';
     }
     $launch .= 'Type\\Runtime\\CoroutineRuntime::enableIo(); echo json_encode(TypeApp\\OrmSuite\\Suite::run(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), PHP_EOL;';

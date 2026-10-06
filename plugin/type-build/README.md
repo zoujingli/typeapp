@@ -48,9 +48,11 @@ flowchart LR
 
 开发入口统一为create、doctor、prepare、dev、watch、test、build；watch复用type-runtime的信号所有权，type-runtime也是构建工具的明确依赖。模式、生命周期与实际验收边界见[开发命令说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/developer-cli.md)。安装本包时，Composer 从 Packagist 自动解析 type-runtime 及编译工具依赖。
 
+`type create <本地模板> <新目录> <mysql|pgsql|sqlite>` 保留模板当前的组件版本和稳定性，只替换选定驱动依赖与工厂；不会执行模板 PHP 或自动安装 Composer 依赖。新目录必须不存在，路径含空格时加引号。模板版本在 tag 前准备并作为源码提交，公开消费不通过临时改约束补齐依赖；准确发布范围见[模板版本说明](https://github.com/zoujingli/typeapp/blob/main/templates/type-project/README.md#创建与驱动选择)。
+
 prepare按完整源码、声明、生成器及锁文件内容身份复用不可变代次，逐次校验清单和生成文件；缺少代次才持锁生成。并发准备不重复串行解析同一输入，损坏或准备期间变化明确拒绝；运行环境和dotenv不参与代次身份，不能以可变current指针跳过验证。
 
-模型使用直接继承 `Type\Orm\Model` 的 PHP 类型属性及 `Table/Column` Attribute，从生产源码静态转换为同名业务类。开发入口先加载本代模型，AOT 编译同一属性钩子、水合工厂和业务方法；原源码与转换结果均进入审计。`ModelCompiler::compile($sources)` 返回 `code/originals/models`，不加载业务类。模型 JSON 与 `models` 配置已移除，旧配置明确报迁移错误。声明、限制和迁移步骤见[模型说明](https://github.com/zoujingli/typeapp/blob/main/docs/guide/plugins/type-orm.md#models-relations-output)。
+模型使用直接继承 `Type\Orm\Model` 的 PHP 类型属性及 `Table/Column` Attribute，从生产源码静态转换为同名业务类。`Table` 可以声明 `createdAt`/`updatedAt`，由生成映射和 ORM 在实例、集合写入中统一维护 Unix 秒或 UTC 微秒时间；受管字段自动设为不可赋值，并参与生成身份。开发入口先加载本代模型，AOT 编译同一属性钩子、水合工厂和业务方法；原源码与转换结果均进入审计。`ModelCompiler::compile($sources)` 返回 `code/originals/models`，不加载业务类。模型 JSON 与 `models` 配置已移除，旧配置明确报迁移错误。声明、限制和迁移步骤见[模型说明](https://github.com/zoujingli/typeapp/blob/main/docs/guide/plugins/type-orm.md#models-relations-output)。
 
 路由由生产源码上的 `#[Route]`/`#[Group]`/`#[Resource]` 或 `config/route.php` 声明。构建 JSON 只指向该 PHP 文件，不再读取 JSON 路由表；旧 `.json` 路径明确报迁移错误。`RouteCompiler::declarations()` 静态解析 `declare(strict_types=1)` 与一次 return 常量数组，不 include、不读取环境。完整契约见[HTTP 与路由](https://github.com/zoujingli/typeapp/blob/main/docs/guide/routing.md)。
 
@@ -88,11 +90,11 @@ composer require --dev zoujingli/type-build:1.0.0-rc.14
 
 支持手写入口与声明式命令装配两种模式。装配模式读取生产源码 AST，验证显式依赖、接口与生命周期关系，生成直接工厂和命令入口；环境配置在应用启动时取得。禁用模块不注册命令，但其生产源码仍接受编译检查。
 
-生成代码保留固定回调协议：路由控制器与中间件工厂为零参数；动作接收一个 `ServerRequestInterface`；队列工厂接收一个 `JobContext`；模型水合工厂接收一个数据库行数组。应用提供的工厂必须完整声明这些参数，TypePHP 不隐式接受多余实参。构建期 `BuildLock` 操作为零参数，`ArtifactCache` 编译器接收候选产物路径，输入复核回调为零参数。
+生成代码保留固定回调协议：路由控制器与中间件工厂为零参数；控制器动作按路由模型接收同名 `int`/`string` 路径参数和至多一个 `ServerRequestInterface`，并返回 `array`、`void` 或 `ResponseInterface`；数组和无返回值由生成适配转换为 JSON/204，完整 PSR 响应原样保留。队列工厂接收一个 `JobContext`；模型水合工厂接收一个数据库行数组。应用提供的工厂必须完整声明这些参数，TypePHP 不隐式接受多余实参。构建期 `BuildLock` 操作为零参数，`ArtifactCache` 编译器接收候选产物路径，输入复核回调为零参数。
 
 构建器与 TypePHP 桥接使用受限的 Composer 类加载，不执行应用的 autoload.files 初始化。编译子进程不继承任意业务环境或 PHP 自动注入配置；本工具以 PHP 运行，不进入应用生产执行链。
 
-操作文档通过构建期PHPDoc语法树保留原类型语境：use别名、同命名空间类型、类常量和闭包类型在组合类中使用准确名称，说明文字、数组键和字面量不改写；模板/类型别名保持自己的作用域。phpstan/phpdoc-parser仅是构建工具依赖，不进入应用生产包，不解释PHPDoc注解为运行时操作。语法树与保留格式输出接口见[解析器说明](https://github.com/phpstan/phpdoc-parser/tree/2.3.5)。
+操作声明完整转换原 Service 文件，PHPDoc 与原 namespace、use 别名和同文件类型一并保留；不再为另一种包装类型重写文档。模板、类型别名、说明文字与字面量沿用原语境，不解释 PHPDoc 注解为运行时操作。
 
 构建身份覆盖源码、锁定依赖、生成协议、实际工具链/ABI、参数与资源，使用内容寻址的完整本机原生产物缓存。产物附带可独立读取的身份清单，并生成 `Type\Generated\BuildIdentity` 供应用查询。支持 `--inspect`、`--verify`、`--install-lock` 与 `--stage` 入口；缓存信任边界、隔离容器要求及分层验收证据见[构建身份说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/build-identity.md)。
 
@@ -138,9 +140,13 @@ vendor/bin/type --inspect build/type-example
 
 ## 接口与源码组织
 
-`NativeBuilder/SourceSet/SourceRewriter` 处理全量输入审计与适配；`CommandAssembly/ModelCompiler/RouteCompiler/JobCompiler/ConfigCompiler/OperationCompiler` 分别持有各声明的生成逻辑；`BuildIdentity/ArtifactManifest/ArtifactCache/BuildCapabilities` 管理身份、缓存与兼容；`BuildLock/BuildWorkspace/BuildEnvironment` 管理隔离目录、并发和子进程环境。`TypephpCompatibility` 仅承接锁定工具链的已记录兼容修正。
+`vendor/bin/type inspect-application type-app.json [--json]` 离线检查应用声明，报告协议 1 的配置名称、Model、路由、命令、Job、服务依赖与生命周期、覆盖来源和能力名称；不输出配置值，不执行应用构造器、工厂、监听或角色。它直接复用 `ApplicationGeneration`，生成身份与开发/AOT 声明分析一致；与 `--inspect <已有产物>` 分开，不表示原生编译或部署已经通过。可读输出与 JSON 消费同一报告，失败返回非零状态，临时生成目录在退出时回收。
 
-`project-root` 相对配置文件所在目录，其他声明相对选定的项目根；不填写时保持既有独立消费者语义。开发主仓统一将专项构建配置放在 `docs/build-config/`，独立应用仍可使用自己的根 `type-app.json`。`ConfigCompiler::generate($root, ['class' => ..., 'files' => [...]])` 返回 `class/files/code`，`configuration.files` 里的 PHP 只解析为声明，不在构建期读取秘密；`config/route.php` 不在该列表中。 `RouteCompiler::declarations($root, $routing)` 读取相对 PHP 文件，`generate($root, $configuration, $sources)` 返回 `class/routes/code`。`OperationCompiler::generate($root, ['classes' => [生成类 => 业务类]], $sources)` 返回 `code/operations`，生成组合对象而非运行时 AOP；调用者必须明确使用生成对象。事务参数、缓存键、TTL、返回和受限方法类型均在构建期检查。
+`application` 与 `routing` 组合时，`CommandAssembly` 将显式控制器和 `application.http.middleware` 具名中间件映射纳入同一服务图，生成 `CommandApplication::registerRoutes(Router $router)`。注册只保存直接工厂，请求在当前执行作用域中惰性构造。`application.bootstrap` 可声明经过签名校验的角色入口，生成 `main` 仍唯一；模板用它保留 serve/migrate/help 生命周期。接口细节与 PHP/原生验证边界见[共同装配说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/command-assembly.md)。
+
+`NativeBuilder/SourceSet/SourceRewriter` 处理全量输入审计与适配；`CommandAssembly/ModelCompiler/RouteCompiler/JobCompiler/ScheduleCompiler/ConfigCompiler/OperationCompiler` 分别持有各声明的生成逻辑；`BuildIdentity/ArtifactManifest/ArtifactCache/BuildCapabilities` 管理身份、缓存与兼容；`BuildLock/BuildWorkspace/BuildEnvironment` 管理隔离目录、并发和子进程环境。`TypephpCompatibility` 仅承接锁定工具链的已记录兼容修正。
+
+`project-root` 相对配置文件所在目录，其他声明相对选定的项目根；不填写时保持既有独立消费者语义。开发主仓统一将专项构建配置放在 `docs/build-config/`，独立应用仍可使用自己的根 `type-app.json`。`ConfigCompiler::generate($root, ['class' => ..., 'files' => [...]])` 返回 `class/files/code`，`configuration.files` 里的 PHP 只解析为声明，不在构建期读取秘密；`config/route.php` 不在该列表中。 `RouteCompiler::declarations($root, $routing)` 读取相对 PHP 文件，`generate($root, $configuration, $sources)` 返回 `class/routes/code`。`OperationCompiler::generate($root, [], $sources, $packages)` 返回 `code/originals/operations`，完整转换原 Service 文件并复用 Model 替换关系；`operations.classes` 已移除。普通调用、手动构造和类内互调统一执行声明；活动事务绕过共享缓存，失效等待同数据源最外层确认提交。事务参数、缓存键、TTL、返回和受限方法类型均在构建期检查。
 
 ## AOT 与运行要求
 
@@ -169,3 +175,11 @@ php tests/operations.php
 - [事务与缓存调用生成](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)
 - [隔离构建](https://github.com/zoujingli/typeapp/blob/main/docs/development/isolated-build.md)
 - [干净运行镜像](https://github.com/zoujingli/typeapp/blob/main/docs/development/clean-runtime.md)
+
+`application.jobs` 与 `application.schedules` 将 Job/Task 的 class 或 service 纳入同一依赖图，生成 `CommandApplication::jobs()` 和 `schedules()`。构建拒绝重复身份、缺失依赖、无效方法签名、非法计划与生命周期捕获；每条消息和 occurrence 在新作用域绑定后开启声明资源并构造任务。旧 `queue` 和额外 Jobs 工厂映射已移除。PHP 开发准备与 AOT 共用生成结果，基础设施角色仍显式配置 Queue、时钟与状态存储。
+
+## Schema 冻结迁移
+
+当前 `main` 新增 `#[Type\Orm\Attribute\Schema]` 与 `php vendor/bin/type schema:prepare <声明.php>`，尚未包含 RC14。显式准备三库 SQL、协议和摘要后，将生成类的 `migration($driver)` 加入既有迁移列表；开发及 AOT 只核验并嵌入冻结结果，不同步在线结构。支持建表、增列、表与列改名、索引调整和原生删列；SQLite 不自动重建表，MySQL 非事务 DDL 保留部分生效与显式恢复。完整声明、字段语义、审查和状态/恢复调用见[Schema 教程](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。
+
+`type make <构建配置> <module|model|input|service|controller|migration|command|job|task> <完整类名>` 生成可编辑业务源码，并复用正式路由与共同装配进行发布前检查。项目锁、拒绝覆盖、路径门禁、完整暂存及失败恢复由同一 Scaffolder 管理。模块生成原 Service、类型化输入、显式输出与新 Schema，任务生成固定身份/计划声明；完整命令、前置与恢复见[开发通道脚手架教程](https://iots.top/next/#/guide/scaffolding)，同一第二模块与 PHP/AOT 入口见[连续目录教程](https://iots.top/next/#/guide/tutorial)。

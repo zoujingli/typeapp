@@ -93,23 +93,100 @@ final class Connection
             $parameters = [$quoted];
         } else {
             $parts = explode('.', $table);
-            $sql = 'SELECT name, type, "notnull" AS not_null, pk AS primary_key FROM pragma_table_info(' . (count($parts) === 1 ? '?' : '?, ?') . ')';
-            $parameters = count($parts) === 1 ? [$table] : [$parts[1], $parts[0]];
+            $arguments = count($parts) === 1 ? '?' : '?, ?';
+            $sql = 'SELECT name, type, "notnull" AS not_null, pk AS primary_key, '
+                . 'NOT EXISTS (SELECT 1 FROM pragma_index_list(' . $arguments . ') WHERE origin = \'pk\') AS rowid_primary '
+                . 'FROM pragma_table_info(' . $arguments . ')';
+            $names = count($parts) === 1 ? [$table] : [$parts[1], $parts[0]];
+            $parameters = array_merge($names, $names);
         }
         $this->recordRead(count($parameters));
         $rows = $this->operation(static fn (PdoSession $resource): array => $resource->query($sql, $parameters), $sql, $parameters, 'metadata');
         $columns = [];
+        $sqlitePrimaryCount = 0;
+        if ($driver === 'sqlite') {
+            foreach ($rows as $row) {
+                $sqlitePrimaryCount += (int) $row['primary_key'] > 0 ? 1 : 0;
+            }
+        }
         foreach ($rows as $row) {
             $primary = $driver === 'mysql' ? $row['Key'] === 'PRI' : in_array($row['primary_key'], [true, 1, '1', 't'], true);
             $notNull = $driver === 'mysql' ? $row['Null'] === 'NO' : in_array($row['not_null'], [true, 1, '1', 't'], true);
             if ($driver === 'sqlite') {
                 $primary = (int) $row['primary_key'] > 0;
-                $notNull = $notNull || ($primary && strtoupper((string) $row['type']) === 'INTEGER');
+                $notNull = $notNull || ($sqlitePrimaryCount === 1 && $primary && (int) $row['rowid_primary'] === 1 && strtoupper((string) $row['type']) === 'INTEGER');
             }
             $columns[] = ['name' => (string) ($driver === 'mysql' ? $row['Field'] : $row['name']),
                 'type' => (string) ($driver === 'mysql' ? $row['Type'] : $row['type']), 'primary' => $primary, 'nullable' => !$notNull];
         }
         return $columns;
+    }
+
+    /**
+     * 读取实际解析到的表的唯一索引；包含不安全索引，调用者不能将其静默忽略。
+     *
+     * @return list<array{name: string, columns: list<string>, nullable: bool, partial: bool, expression: bool}>
+     */
+    public function uniqueIndexes(string $table): array
+    {
+        $driver = $this->driverName();
+        $dialect = new SqlDialect($driver, $this->serverVersion());
+        $quoted = $dialect->identifier($table);
+        $columns = $this->columns($table);
+        $nullable = [];
+        foreach ($columns as $column) {
+            $nullable[$column['name']] = $column['nullable'];
+        }
+        $parameters = [];
+        if ($driver === 'mysql') {
+            $sql = 'SHOW INDEX FROM ' . $quoted;
+        } elseif ($driver === 'pgsql') {
+            $sql = 'SELECT c.relname AS name, a.attname AS column_name, s.n AS position, '
+                . '(i.indpred IS NOT NULL) AS partial, (i.indexprs IS NOT NULL OR NOT i.indisvalid OR NOT i.indimmediate) AS expression '
+                . 'FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid '
+                . 'CROSS JOIN LATERAL generate_series(0, i.indnkeyatts - 1) AS s(n) '
+                . 'LEFT JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[s.n] '
+                . 'WHERE i.indrelid = to_regclass(?) AND i.indisunique ORDER BY c.relname, s.n';
+            $parameters = [$quoted];
+        } else {
+            $parts = explode('.', $table);
+            $sql = 'SELECT l.name, l.partial, x.name AS column_name, x.seqno AS position, x.cid '
+                . 'FROM pragma_index_list(' . (count($parts) === 1 ? '?' : '?, ?') . ') l '
+                . 'JOIN pragma_index_xinfo(l.name' . (count($parts) === 1 ? '' : ', ?') . ') x '
+                . 'WHERE l."unique" = 1 AND x."key" = 1 ORDER BY l.name, x.seqno';
+            $parameters = count($parts) === 1 ? [$table] : [$parts[1], $parts[0], $parts[0]];
+        }
+        $this->recordRead(count($parameters));
+        $rows = $this->operation(static fn (PdoSession $resource): array => $resource->query($sql, $parameters), $sql, $parameters, 'metadata');
+        $indexes = [];
+        foreach ($rows as $row) {
+            if ($driver === 'mysql' && (int) $row['Non_unique'] !== 0) {
+                continue;
+            }
+            $name = (string) ($driver === 'mysql' ? $row['Key_name'] : $row['name']);
+            $column = $driver === 'mysql' ? $row['Column_name'] : $row['column_name'];
+            $indexes[$name] ??= ['name' => $name, 'columns' => [], 'nullable' => false, 'partial' => false, 'expression' => false];
+            $index = $indexes[$name];
+            $index['columns'][] = (string) $column;
+            $index['nullable'] = $index['nullable'] || ($nullable[$column ?? ''] ?? true);
+            $index['partial'] = $index['partial'] || in_array($row['partial'] ?? false, [true, 1, '1', 't'], true);
+            $index['expression'] = $index['expression'] || $column === null
+                || ($driver === 'mysql' && $row['Sub_part'] !== null)
+                || in_array($row['expression'] ?? false, [true, 1, '1', 't'], true);
+            $indexes[$name] = $index;
+        }
+        if ($driver === 'sqlite') {
+            $primaryCount = 0;
+            foreach ($columns as $column) {
+                $primaryCount += $column['primary'] ? 1 : 0;
+            }
+            foreach ($columns as $column) {
+                if ($primaryCount === 1 && $column['primary'] && !$column['nullable'] && strtoupper($column['type']) === 'INTEGER') {
+                    $indexes['PRIMARY'] = ['name' => 'PRIMARY', 'columns' => [$column['name']], 'nullable' => false, 'partial' => false, 'expression' => false];
+                }
+            }
+        }
+        return array_values($indexes);
     }
 
     /** @internal 核验实际解析到的 MySQL 表及会话，避免非事务表留下部分集合写入。 */

@@ -34,9 +34,11 @@ Database 通过 type-runtime 的有界池按作用域借还会话。Connection �
 
 `Connection::table()` 提供不可变 Query，支持条件、Join、聚合、JSON 标量、批量写入和明确的三库能力差异。`Model`、`ModelQuery` 与生成映射提供受控访问、变更追踪、部分字段保存和安全输出；详细用法见开发主仓 `docs/development/models.md`。本包第一方源码按 Apache-2.0 提供；具体仓库可见性和分发批次由维护者管理。
 
-模型 CRUD、事务结果与作用域收尾的完整路径见[数据库与模型](https://iots.top/#/guide/database)。`ModelQuery::update/delete` 以单条写入 SQL 保留字段、租户、软删除及版本约束，没有额外行数上限；集合操作不触发逐模型观察器，已有对象需重新读取。没有业务条件时须显式 `allowAll()`。`insertMany` 逐行校验字段并补入可信租户及初始版本、软删除状态，执行一条 INSERT，返回影响数量；不猜测主键、不触发逐模型事件，失败回滚整批。模型级 upsert 尚未提供。具体约束及验收边界见[模型集合写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#模型集合写入)。
+模型 CRUD、事务结果与作用域收尾的完整路径见[数据库与模型](https://iots.top/#/guide/database)。`ModelQuery::update/delete` 以单条写入 SQL 保留字段、租户、软删除及版本约束，没有额外行数上限；集合操作不触发逐模型观察器，已有对象需重新读取。没有业务条件时须显式 `allowAll()`。`insertMany` 逐行校验字段并补入可信租户及初始版本、软删除状态，执行一条 INSERT，返回影响数量；不猜测主键、不触发逐模型事件，失败回滚整批。当前 `main` 新增 `Model::firstOrCreate`、PostgreSQL/SQLite 的 `Model::upsert` 与 MySQL 的 `Model::upsertAnyUnique`，使用真实唯一索引证明身份安全，尚未包含 RC14。具体约束及验收边界见[唯一身份与冲突写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#唯一身份与冲突写入)。
 
-`ModelQuery::sum/avg/min/max` 在模型可见范围内统计，保留读路由、字段映射及数据库数值精度；空集或全 null 返回 null，数值文本列的精确算术明确拒绝。并发查找或创建入口仍未提供；重新加载可在当前作用域显式读主库取得新对象，时间字段可由观察器处理。完整[能力边界](https://iots.top/#/guide/database?id=常用能力边界)区分已有模型能力、底层 SQL 与待补接口。协程中创建 PDO 前检查所选驱动：缺官方构建能力报 `swoole_pdo_hook_unavailable`，未启用 hook 报 `swoole_hook_startup_required`；同步工具保持原有行为。
+`ModelQuery::sum/avg/min/max` 在模型可见范围内统计，保留读路由、字段映射及数据库数值精度；空集或全 null 返回 null，数值文本列的精确算术明确拒绝。并发查找或创建使用 `firstOrCreate`，仅恢复已确认的目标唯一竞争；重新加载可在当前作用域显式读主库取得新对象。完整[能力边界](https://iots.top/#/guide/database?id=常用能力边界)区分已有模型能力、底层 SQL 与待补接口。协程中创建 PDO 前检查所选驱动：缺官方构建能力报 `swoole_pdo_hook_unavailable`，未启用 hook 报 `swoole_hook_startup_required`；同步工具保持原有行为。
+
+`Table(createdAt: 'created_at', updatedAt: 'updated_at')` 显式声明受管时间：非空 `int` 属性存 Unix 秒，`DateTimeImmutable` 属性存 UTC 微秒。创建时两者共用一次取时，实际更新只维护更新时间；`insertMany`、集合更新、算术和软删除沿用同一规则。字段不接受业务赋值，也不能兼任主键、租户、版本或软删除。无变化 `save()` 不更新时间或版本，`touch()` 仍只推进版本；业务事件时间由业务决定。此能力属于当前 `main`，未包含已发布的 RC14，升级组件及构建器后重新生成应用，详见[受管时间教程](https://iots.top/#/guide/database?id=受管创建和更新时间)。
 
 ## 迁移
 
@@ -136,9 +138,9 @@ sequenceDiagram
 
 `Database/DatabaseManager/Driver/Connection/PdoSession` 是连接公共入口与会话实现；`Query/Conditions/SqlDialect/SqlStatement` 负责查询编译；`Model/ModelQuery/ModelDefinition/ModelField` 与关系类负责水合及模型生命周期；分页/流类持有有界结果。`Migration/` 持有迁移协议，`Outbox/` 持有事务意图与 relay，`Attribute/Transactional` 是可选构建期事务声明。既有公共 FQCN 保持兼容，不为目录整齐强制改名。
 
-模型直接继承 `Type\Orm\Model`，以 PHP 类型属性和 `Table/Column` Attribute 声明字段；构建生成同名业务类的水合工厂与属性钩子，保留业务方法。业务通过 `$user->name` 读写字段，不再声明 JSON 或继承生成基类。开发入口先加载本代模型；生产编译同一转换结果。`Outbox\Store/Relay/Publisher` 将持久意图和外部投递分开，仍需稳定操作 ID 与目标端幂等，不保证跨系统事务。可选 `#[Transactional(database: 'default')]` 只有通过 type-build 的显式生成包装才执行，直接调用原方法不发生拦截；它与 `Db::transaction()` 共用当前作用域和逻辑数据源。
+模型直接继承 `Type\Orm\Model`，以 PHP 类型属性和 `Table/Column` Attribute 声明字段；构建生成同名业务类的水合工厂与属性钩子，保留业务方法。业务通过 `$user->name` 读写字段，不再声明 JSON 或继承生成基类。开发入口先加载本代模型；生产编译同一转换结果。`Outbox\Store/Relay/Publisher` 将持久意图和外部投递分开，仍需稳定操作 ID 与目标端幂等，不保证跨系统事务。业务 `Store::enqueue(..., database: 'outbox')` 与 `consumed($id, $receipt, 'outbox')` 复用当前同源事务，不传 Connection；命名 Relay 在外部投递时释放数据库租约，领取与登记使用同一来源。基础设施已有显式连接时使用 `enqueueUsing()` / `consumedUsing()`。可选 `#[Transactional(database: 'default')]` 由标准入口在加载前转换原 Service，普通调用与类内互调都执行声明；它与 `Db::transaction()` 共用当前作用域和逻辑数据源。缓存声明的事务检查只观察已有会话，不另借连接。
 
-`HasOne/HasMany/BelongsTo/BelongsToMany` Attribute 为 `with`、`whereHas/whereDoesntHave` 和 `withCount/withSum` 提供共同关系声明。关系属性只返回已加载结果；列表通过 `load/loadMissing` 显式批量补加载。统计留在数据库中执行，结果通过 `computed($alias)` 读取，通过 `project` 的第三个参数显式输出，不参与保存和变更追踪。SQLite 精确数值文本列的 `withSum` 明确拒绝，避免数值亲和转换丢失精度。
+`HasOne/HasMany/BelongsTo/BelongsToMany` Attribute 为 `with`、`whereHas/whereDoesntHave` 和 `withCount/withSum` 提供共同关系声明。关系属性只返回已加载结果；列表通过 `load/loadMissing` 显式批量补加载。多对多写入从父模型取得绑定句柄，例如 `$article->relation('tags')->attach($tagId)`、`detach($tagId)` 和 `sync($items)`；句柄固定父模型并在写入时复用作用域、租户、锁、事务与关系缓存失效检查，不执行隐式查询。统计留在数据库中执行，结果通过 `computed($alias)` 读取，通过 `project` 的第三个参数显式输出，不参与保存和变更追踪。SQLite 精确数值文本列的 `withSum` 明确拒绝，避免数值亲和转换丢失精度。
 
 `Query` 支持列比较、EXISTS、IN 子查询、标量和派生表子查询、子查询联表、DISTINCT、UNION/UNION ALL。子查询只能使用同一连接，组合时不执行 SQL。任意联表或分组投影使用行数据 `Query`；`ModelQuery` 保持每行对应一个模型。原子 `increment/decrement` 执行条件写入保护，模型版本列同时推进，但不触发逐模型事件。
 
@@ -172,5 +174,10 @@ composer test:orm-suite-native
 - [模型与关系](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md)
 - [事务结果](https://github.com/zoujingli/typeapp/blob/main/docs/development/transactions.md)
 - [事务 Outbox](https://github.com/zoujingli/typeapp/blob/main/docs/development/outbox.md)
+- [开发通道目录教程：命名源共同写入与重复消费收敛](https://iots.top/next/#/guide/catalog-reliability)
 - [数据库身份与代次](https://github.com/zoujingli/typeapp/blob/main/docs/development/database-identities.md)
 - [编译期事务包装](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)
+
+## Schema 冻结迁移
+
+当前 `main` 新增 `#[Type\Orm\Attribute\Schema]` 与 `php vendor/bin/type schema:prepare <声明.php>`，尚未包含 RC14。显式准备三库 SQL、协议和摘要后，将生成类的 `migration($driver)` 加入既有迁移列表；开发及 AOT 只核验并嵌入冻结结果，不同步在线结构。支持建表、增列、表与列改名、索引调整和原生删列；SQLite 不自动重建表，MySQL 非事务 DDL 保留部分生效与显式恢复。完整声明、字段语义、审查和状态/恢复调用见[Schema 教程](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。

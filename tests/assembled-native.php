@@ -25,7 +25,7 @@ try {
         [['listener-failure'], 70, "开启：A\n开启：B\n事件：故障:ready\n关闭：B\n关闭：A\n", '监听失败：故障'],
         [['cleanup-failure'], 70, "开启：A\n开启：B\n关闭：B\n关闭：A\n", '业务命令失败；资源清理失败：停止失败：B'],
         [['batch'], 0, "1:2\n1:3\n", ''],
-        [['scope'], 0, "开启：scope\n关闭：scope\n取消、截止、关闭拒绝与子任务预算恢复通过。\n", ''],
+        [['scope'], 0, "开启：scope\n关闭：scope\n取消、截止、关闭拒绝、服务缓存与子任务预算恢复通过。\n", ''],
         [['unavailable'], 70, '', '未知命令：unavailable'],
     ];
     foreach ($cases as [$arguments, $expectedStatus, $expectedOutput, $expectedError]) {

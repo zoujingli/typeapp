@@ -1,0 +1,80 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use {{service}};
+use {{input}};
+use Psr\Http\Message\ServerRequestInterface;
+use Type\Core\Http\Attribute\Route;
+use Type\Core\Http\HttpError;
+use Type\Core\Http\Identity;
+use Type\Orm\ModelException;
+
+/** HTTP 只接收有效输入、检查授权并返回显式投影。 */
+final class {{name}}
+{
+    /** 服务由应用共同装配，不持有请求或连接。 */
+    public function __construct(private {{serviceName}} $service)
+    {
+    }
+
+    /** @return array{data:array} 最多二十条记录。 */
+    #[Route('{{route}}', methods: ['GET'], name: '{{routeName}}.index')]
+    public function index(ServerRequestInterface $request): array
+    {
+        $this->authorize($request);
+        return ['data' => $this->service->page()];
+    }
+
+    /** @return array{id:int, name:string, version:int} 创建成功使用固定 201。 */
+    #[Route('{{route}}', methods: ['POST'], name: '{{routeName}}.create', status: 201)]
+    public function create({{inputName}} $input, ServerRequestInterface $request): array
+    {
+        $this->authorize($request);
+        return $this->service->create($input->data->toArray());
+    }
+
+    /** @return array{id:int, name:string, version:int} 路径 id 不由查询或正文覆盖。 */
+    #[Route('{{route}}/{id}', methods: ['GET'], name: '{{routeName}}.show')]
+    public function show(int $id, ServerRequestInterface $request): array
+    {
+        $this->authorize($request);
+        try {
+            return $this->service->find($id);
+        } catch (ModelException $error) {
+            if ($error->errorCode() === 'record_not_found') {
+                throw new HttpError(404, 'record_not_found');
+            }
+            throw $error;
+        }
+    }
+
+    /** @return array{id:int, name:string, version:int} 缺失字段保持原值。 */
+    #[Route('{{route}}/{id}', methods: ['PATCH'], name: '{{routeName}}.update', input: ['patch' => true])]
+    public function update(int $id, {{inputName}} $input, ServerRequestInterface $request): array
+    {
+        $this->authorize($request);
+        try {
+            return $this->service->update($id, $input->data->toArray());
+        } catch (ModelException $error) {
+            if ($error->errorCode() === 'record_not_found') {
+                throw new HttpError(404, 'record_not_found');
+            }
+            throw $error;
+        }
+    }
+
+    /** 只信任认证中间件写入的 Identity；客户端字段不授予权限。 */
+    private function authorize(ServerRequestInterface $request): void
+    {
+        $identity = $request->getAttribute('type.identity');
+        if (!$identity instanceof Identity) {
+            throw new HttpError(401, 'authentication_required');
+        }
+        if (!in_array('{{role}}', $identity->roles(), true)) {
+            throw new HttpError(403, 'forbidden');
+        }
+    }
+}

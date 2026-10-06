@@ -2,7 +2,8 @@
 
 declare(strict_types=1);
 
-use Type\Queue\JobContext;
+use Type\Core\Configuration;
+use Type\Generated\CommandApplication;
 use Type\Queue\Message;
 use Type\Queue\Queue;
 use Type\Queue\QueueException;
@@ -13,7 +14,6 @@ use Type\Redis\RedisManager;
 use Type\Runtime\ExecutionScope;
 use TypeApp\QueueExample\Increment;
 use TypeApp\QueueExample\Resource;
-use TypeApp\QueueExample\Jobs;
 
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
@@ -32,7 +32,7 @@ function queueExpect(bool $condition, string $message): void
  *
  * @param list<string> $argv 程序路径与该示例的显式参数。
  */
-function main(int $argc, array $argv): void
+function queueMain(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
         queueScenario($argc, $argv);
@@ -59,7 +59,8 @@ function queueScenario(int $argc, array $argv): void
     try {
         $redis = $manager->connection($scope, 'default', Purpose::SCRIPT);
         $queue = new Queue($redis, $prefix, 'jobs', 1000, 10);
-        $registry = Jobs::create([Increment::class => static fn (JobContext $context): Increment => new Increment($prefix)]);
+        $application = new CommandApplication(new Configuration(['prefix' => $prefix]));
+        $registry = $application->jobs();
         $worker = new Worker($queue, $registry, 'worker-' . getmypid());
         queueExpect(!$worker->runOnce(), '空队列错误领取');
         $message = new Message('stable-1', 'increment', 1, ['amount' => 2], ['request_id' => 'request-1', 'message_id' => '不能覆盖']);

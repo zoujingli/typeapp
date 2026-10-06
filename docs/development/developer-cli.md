@@ -86,3 +86,5 @@ Linux使用同一个`test:native-database-onboarding`入口及可选驱动参数
 测试通过私有空目录表达未配置的PHP扫描目录，避免`proc_open`省略空环境值后重新扫描宿主默认`conf.d`，与显式`PHPRC`重复加载扩展。调用者明确提供的非空扫描目录继续保留。
 
 MySQL、PostgreSQL和SQLite各自完成空目录创建、独立安装、修改业务、PHP/AOT对照、全量编译、搬迁和两种归档。SQLite再使用刚完成搬迁的同一模板发布生成临时systemd用户服务，验证修改后的业务、授权CRUD、崩溃恢复、数据保留、正常停止、PID与端口回收以及运行期链接卸载；三库业务验证与SQLite用户服务验证分别记录。需要当前用户已有可连接的systemd管理器，不自动启用linger或登录启动。
+
+新增业务使用 [make 脚手架](../guide/scaffolding.md)：共同完成 PSR-4 路径校验、声明装配验证与失败恢复，支持 HTTP 模块、单类、命令、Job 和 Task。

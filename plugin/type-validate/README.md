@@ -67,6 +67,8 @@ PHP 行为由 `tests/validation.php` 辅助验证；相同用例可传入编译 
 
 ## 校验路径与教程
 
+开发版新增 `ValidatedInput` 契约，尚未包含在 RC14。输入类实现静态 `schema(): Schema` 和返回自身具体类型的 `fromData(Data $data)`，动作直接接收该类型。生成适配复用分源解析、校验和工厂调用；`Schema::sources()` 只读返回来源、输入键及列表标记，不执行规则或暴露默认值。查询输入不要求正文，PATCH 保留缺失/null，重复标量头明确拒绝。完整用法见[类型化输入](https://github.com/zoujingli/typeapp/blob/main/docs/guide/routing.md#已校验输入)，原生验收范围以对应候选记录为准。
+
 ```mermaid
 flowchart LR
   Input[Input 分源解析] --> Schema[Schema / Field 规则]

@@ -16,7 +16,41 @@ composer require zoujingli/type-scheduler:1.0.0-rc.14
 
 以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
-## 注册与执行
+## 应用自动装配
+
+应用安装 `type-core`，开发依赖安装 `type-build`；scheduler 组件本身不强制依赖 core。Task 保持 `run(TaskContext $context): array`，具体类型构造依赖自动推导。接口和标量歧义使用统一 `application.bindings`，不手写任务工厂列表。
+
+```json
+{
+  "application": {
+    "enabled": ["example/app"],
+    "schedules": [{
+      "id": "reports.daily",
+      "class": "App\\Task\\DailyReport",
+      "schedule": {"cron": "0 9 * * *", "timezone": "Asia/Shanghai", "overlap": "first"},
+      "misfire": "catch-up",
+      "catch-up-limit": 2,
+      "lookback-seconds": 3600,
+      "grace-seconds": 59,
+      "revision": "v1"
+    }]
+  }
+}
+```
+
+`enabled` 使用应用实际 Composer 名称，业务 Task 列入生产 sources。固定间隔改为 `"schedule": {"interval": 60, "anchor": 0}`；也可用 `service` 引用已有 execution Task，资源使用 `resources` 引用 execution `ManagedResource` 服务。构建时校验重复 ID、方法签名、依赖图、时区、Cron、间隔和有界补跑策略，不执行业务构造器或连接外部服务。时间计划校验复用安装的上游实现并与开发进程隔离，避免提前加载待适配的 Cron 生产代码。
+
+启动角色显式持有时钟、状态存储和总执行预算：
+
+```php
+$application = new \Type\Generated\CommandApplication($configuration);
+$scheduler = new \Type\Scheduler\Scheduler($clock, $store, $application->schedules());
+$scheduler->tick();
+```
+
+角色通过 `application.bootstrap` 接入唯一生成入口；完整例子是 `examples/scheduler` 与 `docs/build-config/type-scheduler.json`。PHP 开发和 AOT 生成相同 Definition 与直接 Task 工厂。工厂在每次 occurrence 的 Scope 绑定后开启声明资源，再构造 Task 与其 execution 依赖；定时计划、游标、DST、租约和中断恢复仍由 Scheduler 现有实现负责。声明不接受 shell、PHP 路径或任意调用器。
+
+## 底层 Definition 注册与执行
 
 ```php
 <?php
@@ -173,3 +207,4 @@ composer test:scheduler-coordination-native
 - [时间、DST 与持久计划](https://github.com/zoujingli/typeapp/blob/main/docs/development/scheduler.md)
 - [多实例协调与投递](https://github.com/zoujingli/typeapp/blob/main/docs/development/scheduler-coordination.md)
 - [在途任务限时停止](https://github.com/zoujingli/typeapp/blob/main/docs/development/task-reliability.md)
+- [开发通道连续目录：生成 Task、持久游标与正常停止](https://iots.top/next/#/guide/catalog-reliability)

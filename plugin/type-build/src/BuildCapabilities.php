@@ -60,7 +60,7 @@ final class BuildCapabilities
                 }
             }
         }
-        foreach ($settings['queue']['jobs'] ?? [] as $job) {
+        foreach ($settings['application']['jobs'] ?? [] as $job) {
             $capabilities['messages'][$job['type']][] = $job['version'];
         }
         foreach ($capabilities as &$entries) {

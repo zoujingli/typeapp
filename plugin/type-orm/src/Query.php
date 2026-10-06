@@ -847,6 +847,38 @@ final class Query
         return $this->connection->execute($sql, $statement[1]);
     }
 
+    /** @internal Model 已验证完整批次、真实唯一索引与版本存储；此处只生成一条受管冲突 SQL。 */
+    public function upsertManaged(array $rows, ?array $uniqueBy, array $updateColumns, ?string $version, ?string $deleted): int
+    {
+        $this->dialect->requireCapability($uniqueBy === null ? 'upsert-any-unique' : 'upsert-conflict-target');
+        $this->writeShape(false);
+        if ($rows === []) {
+            return 0;
+        }
+        if ($uniqueBy === null && $deleted !== null) {
+            throw new ModelException('unsafe_upsert_visibility', 'MySQL 冲突写入不能原子过滤软删除记录');
+        }
+        $statement = $this->insertStatement($rows);
+        $updates = $this->writeColumns($updateColumns, $statement[2]);
+        $assignments = [];
+        foreach ($updates as $column) {
+            $assignments[] = $column . ' = ' . ($uniqueBy === null ? 'type_upsert_values.' : 'excluded.') . $column;
+        }
+        if ($version !== null) {
+            $assignments[] = $this->versionAssignment($version, true);
+        }
+        if ($uniqueBy === null) {
+            $sql = $statement[0] . ' AS type_upsert_values ON DUPLICATE KEY UPDATE ' . implode(', ', $assignments);
+        } else {
+            $target = $this->writeColumns($uniqueBy, $statement[2]);
+            $sql = $statement[0] . ' ON CONFLICT (' . implode(', ', $target) . ') DO UPDATE SET ' . implode(', ', $assignments);
+            if ($deleted !== null) {
+                $sql .= ' WHERE ' . $this->table . '.' . $this->dialect->identifier($deleted, false, false) . ' IS NULL';
+            }
+        }
+        return $this->connection->execute($sql, $statement[1]);
+    }
+
     /**
      * 执行单条集合 UPDATE；缺少有效条件须显式 allowAll，不隐式逐行加载。
      *
@@ -898,9 +930,10 @@ final class Query
 
     /**
      * @internal 模型写入须由事务包裹；integer 保留模型整数值域，不改变底层表查询的通用数值语义。
+     * @param array<string, mixed> $managed 与算术写入共用一条 SQL 的已编码受管列，不能覆盖目标或版本列。
      * @throws DatabaseException 约束或整数值域失败，不把失败行过滤为部分成功。
      */
-    public function adjust(string $column, int $amount, bool $decrement, ?string $version = null, bool $integer = false): int
+    public function adjust(string $column, int $amount, bool $decrement, ?string $version = null, bool $integer = false, array $managed = []): int
     {
         $this->writeShape(true);
         $this->requireWriteIntent();
@@ -930,15 +963,24 @@ final class Query
             }
             $assignment .= ', ' . $this->versionAssignment($version);
         }
+        $parameters = [$amount];
+        foreach ($managed as $name => $value) {
+            if (!is_string($name) || strcasecmp($name, $column) === 0 || ($version !== null && strcasecmp($name, $version) === 0)) {
+                throw new DatabaseException('受管列不能覆盖原子增减目标或版本列');
+            }
+            $assignment .= ', ' . $this->dialect->identifier($name, false, false) . ' = ?';
+            $parameters[] = $value;
+        }
         $prefix = ($version !== null || $integer) && $this->connection->driverName() === 'sqlite' ? 'UPDATE OR ABORT ' : 'UPDATE ';
         return $this->connection->execute($prefix . $this->table . ' SET ' . $assignment
-            . $this->whereSql($this->conditions), array_merge([$amount], $this->conditions->parameters()));
+            . $this->whereSql($this->conditions), array_merge($parameters, $this->conditions->parameters()));
     }
 
     /** 让数据库在同一语句中拒绝非法版本，避免 SQLite 溢出升 REAL 或竞争窗口。 */
-    private function versionAssignment(string $version): string
+    private function versionAssignment(string $version, bool $qualified = false): string
     {
-        $column = $this->dialect->identifier($version, false, false);
+        $target = $this->dialect->identifier($version, false, false);
+        $column = ($qualified ? $this->table . '.' : '') . $target;
         $valid = $column . ' >= 1 AND ' . $column . ' < ' . PHP_INT_MAX;
         if ($this->connection->driverName() === 'sqlite') {
             $valid .= ' AND typeof(' . $column . ") = 'integer'";
@@ -950,7 +992,7 @@ final class Query
             'pgsql' => '1 / (' . $column . ' - ' . $column . ')',
             'mysql' => 'CAST(9223372036854775807 AS SIGNED) + CAST(' . $column . ' - ' . $column . ' + 1 AS SIGNED)',
         };
-        return $column . ' = CASE WHEN ' . $valid . ' THEN ' . $column . ' + 1 ELSE ' . $failure . ' END';
+        return $target . ' = CASE WHEN ' . $valid . ' THEN ' . $column . ' + 1 ELSE ' . $failure . ' END';
     }
 
     /** 每行通过一个非 NULL 键匹配；单条 CASE UPDATE 不隐式逐条重试。 */

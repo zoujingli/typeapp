@@ -1,7 +1,14 @@
 {
   "name": "type-project",
   "version": "1.0.0-dev",
-  "entry": "app/main.php",
+  "application": {
+    "enabled": ["zoujingli/type-project"],
+    "bootstrap": {"class": "app\\common\\bootstrap\\Application", "method": "run"},
+    "services": [
+      {"id": "users", "class": "app\\system\\service\\UserService"},
+      {"id": "messages", "class": "Type\\Core\\Http\\Message\\Factory", "lifetime": "singleton"}
+    ]
+  },
   "development": {"entry": "dev.php", "prepare": "prepare.php", "output": "build/development", "check": ["check"], "test": ["tests/smoke.php"]},
   "sources": ["app"],
   "runtime": {
@@ -12,11 +19,6 @@
   "config": {
     "class": "app\\generated\\ProjectConfig",
     "files": ["config/app.php", "config/database.php"]
-  },
-  "operations": {
-    "classes": {
-      "app\\generated\\UserOperations": "app\\system\\service\\UserService"
-    }
   },
   "capabilities": {"schema": {"users": [1]}, "messages": {}, "cache": {}},
   "output": "build/type-project",

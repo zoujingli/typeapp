@@ -105,7 +105,10 @@ final class ProjectStructureTest extends TestCase
             self::assertSame($toolchain[$component]['version'], ltrim($development['swoole/' . $component]['version'], 'v'));
             self::assertSame($toolchain[$component]['reference'], $development['swoole/' . $component]['source']['reference']);
         }
-        self::assertSame('2.3.5', ltrim($development['phpstan/phpdoc-parser']['version'], 'v'));
+        $build = $this->json($root . '/plugin/type-build/composer.json');
+        self::assertArrayNotHasKey('phpstan/phpdoc-parser', $build['require']);
+        self::assertArrayHasKey('nikic/php-parser', $build['require']);
+        self::assertArrayHasKey('nikic/php-parser', $development);
     }
 
     /** 已迁移切片以 Model 访问实体；底层访问及基础设施签名采用可失效的精确登记。 */

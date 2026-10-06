@@ -224,6 +224,8 @@ sequenceDiagram
 
 `onWorkerStop` 是零参数资源清理回调：Unix `serve()` 在实际 worker 的同步停止阶段调用；Windows `serve()` 在协程 HTTP 事件循环退出后调用，没有另一个 worker 进程。回调应关闭该宿主持有的连接池和日志，不再启动新工作。调用者仍在自己的 `finally` 中关闭自身资源；请求 Scope 不能代替长期资源所有者，强制终止不能保证清理回调执行。
 
+需要调用外部 HTTP/HTTPS 时，开发源码提供受管 `Http\Client`，由当前 `ExecutionScope` 管理 TLS、总期限、正文预算及关闭，返回 PSR 响应。此接口不在 RC14 中；完整示例、版本边界与错误码见[HTTP 客户端](../communications/http.md#受管-http-客户端（开发源码）)。
+
 ## WebSocket
 
 `Type\Core\WebSocket\Server::create()` 创建监听，通过 `onOpen()`、`onMessage()`、`onClose()` 登记回调，再调用 `start()`。`Client::create()` 创建客户端，在已有协程中启动，使用 `send()`、`receive()` 收发消息，结束时 `stop()`。握手、帧和 TLS 复用 Swoole 原生能力。
@@ -250,7 +252,7 @@ sequenceDiagram
 
 ## 命令、事件与资源
 
-实现 `Command::run(Configuration $configuration, array $arguments): int`；由 `Application::run($command, $configuration, $arguments, $resources, $events)` 执行。资源按数组顺序启动、逆序关闭；构造函数不应打开外部连接。
+实现 `Command::run(Configuration $configuration, array $arguments): int`；由 `Application::runFactories()` 在绑定新的 `ExecutionScope` 后构造命令、资源和监听器并执行。资源按数组顺序启动、逆序关闭；构造函数不应打开外部连接。兼容的直接 `Application::run()` 仍沿用同一收尾流程，新增装配入口应使用工厂以保证对象归属当前作用域。
 
 `Events::listen($event, $listener)` 登记 `Listener`，`dispatch($event, $configuration)` 按顺序同步通知。监听器异常终止本次通知并传播。命令装配可以交给[构建工具](type-build.md)生成直接工厂，`help/check` 不应连接业务数据库。
 

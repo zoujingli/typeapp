@@ -1,0 +1,31 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Type\Validate\Data;
+use Type\Validate\Field;
+use Type\Validate\Schema;
+use Type\Validate\ValidatedInput;
+
+/** 创建与 PATCH 的已校验字段；不接收身份、租户或访问权限。 */
+final class {{name}} implements ValidatedInput
+{
+    /** 保存字段存在性；缺失和明确 null 不能互换。 */
+    public function __construct(public Data $data)
+    {
+    }
+
+    /** 字段明确来自 JSON；PATCH 策略由路由声明保持。 */
+    public static function schema(): Schema
+    {
+        return new Schema(['name' => Field::text()->required()->trim()->length(1, 100)]);
+    }
+
+    /** 从已经校验的有效字段构造，不重新读取原始请求。 */
+    public static function fromData(Data $data): {{name}}
+    {
+        return new {{name}}($data);
+    }
+}

@@ -1,8 +1,17 @@
 {
   "project-root": "../..",
   "name": "type-scheduler",
-  "entry": "examples/scheduler-command.php",
-  "sources": ["examples/scheduler"],
+  "sources": ["examples/scheduler", "examples/scheduler-command.php"],
+  "application": {
+    "enabled": ["zoujingli/typeapp"],
+    "bootstrap": {"class": "TypeApp\\SchedulerExample\\Application", "method": "run"},
+    "config": {"scenario": {"env": "TYPE_SCHEDULER_SCENARIO", "default": "normal"}},
+    "bindings": {"TypeApp\\SchedulerExample\\ScenarioTask::$scenario": {"config": "scenario"}},
+    "schedules": [
+      {"id": "summary.minute", "class": "TypeApp\\SchedulerExample\\ScenarioTask", "schedule": {"cron": "* * * * *", "timezone": "UTC"}, "misfire": "catch-up", "catch-up-limit": 2, "lookback-seconds": 120, "grace-seconds": 59, "revision": "development"},
+      {"id": "summary.interval", "class": "TypeApp\\SchedulerExample\\ScenarioTask", "schedule": {"interval": 10}, "misfire": "catch-up", "catch-up-limit": 3, "lookback-seconds": 60, "grace-seconds": 5}
+    ]
+  },
   "output": "build/scheduler/type-app",
   "build-directory": "build/scheduler/compiler"
 }

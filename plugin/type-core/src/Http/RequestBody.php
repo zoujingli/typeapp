@@ -104,7 +104,7 @@ final class RequestBody implements ManagedResource
         if (strlen($content) > $this->limits->bytes) {
             throw new HttpError(413, 'payload_too_large');
         }
-        $request = $request->withBody($this->stream($content));
+        $request = $request->withBody($this->stream($content))->withAttribute('type.request-limits', $this->limits);
         $type = $request->getHeaderLine('Content-Type');
         $media = strtolower(trim(explode(';', $type, 2)[0]));
         if ($media === 'application/json' || str_ends_with($media, '+json')) {

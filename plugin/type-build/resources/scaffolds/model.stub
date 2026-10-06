@@ -1,0 +1,23 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Type\Orm\Attribute\Table;
+use Type\Orm\Model;
+
+/** {{name}} 的持久字段；数据库连接归当前执行作用域所有。 */
+#[Table('{{table}}', version: 'version')]
+final class {{name}} extends Model
+{
+    public int $id;
+    public string $name;
+    public int $version;
+
+    /** @return array{id:int, name:string, version:int} 显式公开字段，不序列化活动模型。 */
+    public function present(): array
+    {
+        return $this->project(['id', 'name', 'version']);
+    }
+}

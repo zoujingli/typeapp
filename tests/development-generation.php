@@ -113,8 +113,9 @@ try {
     $composer['config']['vendor-dir'] = $root . '/vendor';
     file_put_contents($work . '/composer.json', json_encode($composer, JSON_THROW_ON_ERROR));
     mkdir($work . '/tooling', 0700);
+    mkdir($work . '/tooling/src', 0700);
     foreach (glob($root . '/plugin/type-build/src/*.php') as $toolFile) {
-        expect(copy($toolFile, $work . '/tooling/' . basename($toolFile)), '复制本轮生成器失败');
+        expect(copy($toolFile, $work . '/tooling/src/' . basename($toolFile)), '复制本轮生成器失败');
     }
     // 只覆盖本轮生成器副本以检查其内容变化；其余依赖使用主仓已安装版本。
     file_put_contents($work . '/vendor/autoload.php', <<<'PHP'
@@ -122,7 +123,7 @@ try {
 $loader = require dirname(__DIR__, 3) . '/vendor/autoload.php';
 spl_autoload_register(static function (string $class): void {
     if (str_starts_with($class, 'Type\\Build\\')) {
-        $file = dirname(__DIR__) . '/tooling/' . substr($class, strlen('Type\\Build\\')) . '.php';
+        $file = dirname(__DIR__) . '/tooling/src/' . substr($class, strlen('Type\\Build\\')) . '.php';
         if (is_file($file)) {
             require $file;
         }
@@ -151,8 +152,8 @@ PHP);
     $original = file_get_contents($config);
     file_put_contents($config, "<?php\ndeclare(strict_types=1);\nreturn ['name' => 'generation-changed'];\n");
     $changed = preparedGeneration($work, $environment);
-    expect($changed['generation'] !== $first['generation'] && is_file($first['directory'] . '/config.php')
-        && str_contains(file_get_contents($changed['directory'] . '/config.php'), 'generation-changed'), '配置修改没有生成新代码或覆盖了在用代次');
+    expect($changed['generation'] !== $first['generation'] && is_file($first['directory'] . '/generated-config.php')
+        && str_contains(file_get_contents($changed['directory'] . '/generated-config.php'), 'generation-changed'), '配置修改没有生成新代码或覆盖了在用代次');
     file_put_contents($config, $original);
     expect(preparedGeneration($work, $environment) === $first, '恢复源声明不能复用原本完整代次');
 
@@ -169,7 +170,7 @@ PHP);
     rejectedGeneration($work, $environment, 'Syntax error');
     file_put_contents($source, $originalSource);
 
-    foreach ([$work . '/config/route.php', $work . '/tooling/ModelCompiler.php'] as $changing) {
+    foreach ([$work . '/config/route.php', $work . '/tooling/src/ModelCompiler.php'] as $changing) {
         $originalInput = file_get_contents($changing);
         $inputTime = filemtime($changing);
         file_put_contents($changing, $originalInput . "\n");
@@ -195,15 +196,15 @@ PHP);
     file_put_contents($first['directory'] . '/manifest.json', $manifest);
 
     // 损坏只发生于本次fixture的准确代次，不能让启动器静默加载旧/部分生成文件。
-    $generatedConfig = file_get_contents($first['directory'] . '/config.php');
-    file_put_contents($first['directory'] . '/config.php', '<?php /* broken generation */');
+    $generatedConfig = file_get_contents($first['directory'] . '/generated-config.php');
+    file_put_contents($first['directory'] . '/generated-config.php', '<?php /* broken generation */');
     rejectedGeneration($work, $environment, '损坏');
     unlink($reference);
     // 缺少输入索引时要重新生成以计算代次身份；沿用完整准备的15秒预算，再验证已有文件。
     rejectedGeneration($work, $environment, '损坏', 15.0);
-    expect(file_get_contents($first['directory'] . '/config.php') === '<?php /* broken generation */'
+    expect(file_get_contents($first['directory'] . '/generated-config.php') === '<?php /* broken generation */'
         && !file_exists($reference), '拒绝损坏代次时不得覆盖文件或发布输入索引');
-    file_put_contents($first['directory'] . '/config.php', $generatedConfig);
+    file_put_contents($first['directory'] . '/generated-config.php', $generatedConfig);
     expect(preparedGeneration($work, $environment) === $first, '完整旧代次没有恢复输入索引');
     echo "开发代次首次并发发布、两段复用、源码/声明/生成器更新、环境隔离和损坏拒绝通过。\n";
     echo json_encode(['workers' => 8, 'steps' => 2, 'cold_maximum_seconds' => max($cold['seconds']),

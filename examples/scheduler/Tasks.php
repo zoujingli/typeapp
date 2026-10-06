@@ -9,6 +9,38 @@ use Psr\Clock\ClockInterface;
 use Type\Scheduler\Task;
 use Type\Scheduler\TaskContext;
 use Type\Runtime\ManagedResource;
+use Type\Runtime\ExecutionScope;
+
+/** 有界故障演练从启动配置选择，Task 及其依赖仍由生成工厂逐次构造。 */
+final class ScenarioTask implements Task
+{
+    private SummaryTask $summary;
+    private string $scenario;
+    private ExecutionScope $scope;
+
+    /** 构造时即核对当前调度执行作用域。 */
+    public function __construct(SummaryTask $summary, string $scenario)
+    {
+        $this->summary = $summary;
+        $this->scenario = $scenario;
+        $this->scope = ExecutionScope::current();
+    }
+
+    /** @return array<string, mixed> 演练结果。 */
+    public function run(TaskContext $context): array
+    {
+        if ($context->scope() !== $this->scope) {
+            throw new \RuntimeException('Task 构造作用域与执行作用域不同');
+        }
+        if ($this->scenario === 'interrupted') {
+            return (new InterruptedTask())->run($context);
+        }
+        if ($this->scenario === 'cleanup-failure') {
+            return (new CleanupFailureTask())->run($context);
+        }
+        return $this->summary->run($context);
+    }
+}
 
 /** 故障场景随消费者编译，验证清理失败停止有限补跑。 */
 final class CleanupFailureTask implements Task, ManagedResource
@@ -66,6 +98,14 @@ final class ControlledClock implements ClockInterface
 /** 返回稳定计划身份和时间的示例任务，检查当前作用域绑定。 */
 final class SummaryTask implements Task
 {
+    private ExecutionScope $scope;
+    private int $calls = 0;
+
+    /** 记录自动注入依赖的构造作用域，不跨 occurrence 共享。 */
+    public function __construct()
+    {
+        $this->scope = ExecutionScope::current();
+    }
     /**
      * 检查任务 Scope 归属并返回当前 occurrence 与计划时刻。
      *
@@ -74,7 +114,7 @@ final class SummaryTask implements Task
     public function run(TaskContext $context): array
     {
         $context->scope()->assertActive();
-        if (\Type\Runtime\ExecutionScope::current() !== $context->scope()) {
+        if (ExecutionScope::current() !== $context->scope() || $this->scope !== $context->scope() || ++$this->calls !== 1) {
             throw new \RuntimeException('调度任务未绑定自己的作用域');
         }
 

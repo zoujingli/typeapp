@@ -105,6 +105,7 @@ function verifyCurrentScopes(): void
                     $nested->close();
                 }
                 taskExpect(ExecutionScope::current() === $scope, '异常后没有恢复外层作用域');
+                taskExpect($scope->spawn(static fn (ExecutionScope $child): ?string => $child->binding('tenant_id'))->await() === null, '子任务隐式继承父租户');
                 $release = new \Swoole\Coroutine\Channel(1);
                 $child = $scope->spawn(static function (ExecutionScope $own) use ($scope, $release): string {
                     taskExpect($release->pop(1) === true, '子任务没有收到继续信号');
@@ -117,7 +118,7 @@ function verifyCurrentScopes(): void
                         taskExpect(str_contains($ownerError->getMessage(), '执行者'), '跨协程作用域错误不明确');
                     }
                     return $own->binding('tenant_id') ?? '';
-                });
+                }, ['tenant_id' => 'verified-a']);
                 $scope->run(static function (ExecutionScope $inner) use ($release, $child): void {
                     $release->push(true);
                     taskExpect($child->await() === 'verified-a', '子任务快照被父后续绑定修改');

@@ -1,5 +1,7 @@
 # type-core
 
+当前 `main` 新增的业务事件通过 `BusinessEvents` 在当前 `ExecutionScope` 内同步派发，尚未包含 RC14。应用在 `application.events` 明确声明事件类及有序监听关系，构建器沿统一服务图生成直接调用；构造器可注入 `BusinessEvents`，无需运行时注册。无监听的已声明事件无操作，监听异常中止后续执行并直接传播；它与命令生命周期 `Events/Listener` 分开。提交后语义由调用方显式登记 `Db::afterCommit()`，需要持久投递时使用 Outbox/Queue。声明及边界见[共同装配说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/command-assembly.md#同步业务事件)。
+
 ## 阅读与操作路径
 
 本组件负责应用配置、命令生命周期与基础通信。入门按[核心教程](https://iots.top/#/guide/plugins/type-core)先读取配置，再创建并直接调用 `/status` 路由，最后监听真实 HTTP；每一步都有预期响应和清理方式。需要数据库、校验或缓存时按业务职责安装相应组件。
@@ -22,7 +24,7 @@ TypePHP 将以上生产实现整体编译；非系统原生运行库由构建校
 
 | 能力 | 服务端 | 客户端 | 数据语义 |
 | --- | --- | --- | --- |
-| [HTTP](#http) | `Http\SwooleServer`；共用服务时为 `WebSocket\Server::onRequest()` | 当前尚无独立通用 HTTP 客户端封装 | 请求、响应；PSR 处理链按入口装配 |
+| [HTTP](#http) | `Http\SwooleServer`；共用服务时为 `WebSocket\Server::onRequest()` | 开发源码提供受管 `Http\Client` | 请求、响应；PSR 处理链按入口装配 |
 | [WebSocket](#websocket) | `WebSocket\Server` | `WebSocket\Client` | 持续双向消息 |
 | [TCP](#tcp) | `TcpSocket::listener()` | `TcpSocket::client()` | 有序字节流，由业务定义消息边界 |
 | [UDP](#udp) | `UdpSocket` 绑定本地端点 | 同一 `UdpSocket` 接口 | 独立数据报及来源地址 |
@@ -52,13 +54,15 @@ composer require zoujingli/type-core:1.0.0-rc.14
 
 ## HTTP
 
+开发源码的 `Http\Client::request()` 返回完整 PSR 响应，自动登记当前 `ExecutionScope`，统一 TLS 验证、总截止、正文预算和取消收尾。构造不连接，不跟随跳转或自动重试；同一实例只在所属作用域顺序使用。此新增接口不属于已发布 `1.0.0-rc.14`，公开示例与失败语义见[HTTP 客户端教程](https://iots.top/next/#/guide/communications/http)。
+
 HTTP 使用 PSR-7/15/17 接口。`Http\Message\Factory` 创建消息和流，`Http\Router` 接收静态路由或生成路由，以及每次执行的处理器与中间件工厂。HTTP 传输固定复用 `Http\SwooleServer`，网络与基础并发必须使用 Swoole 原生 Server、协程和 hook。进程不可用时按目标构建能力使用官方线程或协程，并分别记录原生验收结果。
 
 `SwooleServer::handleNative(Request, Response)` 是内部协作入口，让当前线程的原生 HTTP 回调复用上述 PSR 转换、错误映射、响应发送及逐请求清理；经典 `serve()` 同样调用它。监听方仍负责连接额度、就绪、排空和线程监督，不能只注册这个回调就视为完整线程服务。显式候选及实际验收见[HTTP 线程接入](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-native-threads.md)。
 
 显式 `SwooleServer::serveThread($listener, $state)` 在编译业务线程中复用原生协程 HTTP 的配置、监听、停止及连接回收，沿用同一 PSR 链。监听副本与事件循环由该入口拥有；`HttpControl` 接收部署入口已分配的请求/连接份额，满额连接不占用受管子任务的预留。`$state` 是 `ThreadSupervisor` 提供的原生控制 Map，主控独立负责停止期限及最终 join。正常排空后执行已有 `onWorkerStop` 同步回调；无法完整收尾则报告失败，不能提前复用资源。主仓物联中心的生产 HTTP 已使用该入口，开发 HTTP、Broker 管理 HTTP 和通用模板 HTTP 使用经典 `serve()`；各平台与输入/流边界分别验收。
 
-处理器、中间件和生成路由的控制器工厂均为零参数闭包；`ActionHandler` 的动作接收一个 `ServerRequestInterface` 并返回 `ResponseInterface`。`Authentication` 的认证器签名为 `(string $token): ?Identity`，授权器为 `(Identity $identity, CanonicalRequest $request, string $method): bool`；`TenantResolver` 的授权器为 `(Identity $identity, Tenant $tenant): bool`。TypePHP 严格检查实参数量，未使用的上下文参数仍需显式声明。
+处理器、中间件和生成路由的控制器工厂均为零参数闭包；通用 `ActionHandler` 仍接收一个 `ServerRequestInterface` 并返回 `ResponseInterface`。由 `type-build` 生成的控制器动作可以接收同名 `int`/`string` 路径参数、至多一个可选 PSR 请求，并返回 `array`、`void` 或 `ResponseInterface`；生成适配负责 JSON/204 转换。`Authentication` 的认证器签名为 `(string $token): ?Identity`，授权器为 `(Identity $identity, CanonicalRequest $request, string $method): bool`；`TenantResolver` 的授权器为 `(Identity $identity, Tenant $tenant): bool`。TypePHP 严格检查实参数量，未使用的上下文参数仍需显式声明。
 
 认证器可用 `new Identity($subject, $roles, $attributes)` 传递已验证的身份元数据，`attributes(): array` 返回值副本，供应用记录会话来源和审计。组件不解释业务字段，不从客户端自报数据构造可信来源；元数据不代替每次请求的当前授权检查，禁止存放口令和可认证令牌。
 
@@ -183,3 +187,4 @@ php tests/configuration.php
 - [嵌套配置与 dotenv](https://github.com/zoujingli/typeapp/blob/main/docs/development/configuration.md)
 - [成品案例：物联中心](https://github.com/zoujingli/typeapp/blob/main/docs/development/typeapp.md)
 - [HTTP 接入安全](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-trust.md)
+- [开发通道目录教程：共同装配、同步事件与受管 HTTPS](https://iots.top/next/#/guide/catalog-reliability)

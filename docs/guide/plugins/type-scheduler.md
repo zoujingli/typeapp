@@ -37,7 +37,41 @@ composer require zoujingli/type-scheduler:1.0.0-rc.14
 
 以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
 
-## 最小使用示例
+## 应用自动装配
+
+应用安装 `type-core`，开发依赖安装 `type-build`；scheduler 组件本身不强制依赖 core。Task 保持 `run(TaskContext $context): array`，具体类型构造依赖自动推导。接口和标量歧义使用统一 `application.bindings`，不手写任务工厂列表。
+
+```json
+{
+  "application": {
+    "enabled": ["example/app"],
+    "schedules": [{
+      "id": "reports.daily",
+      "class": "App\\Task\\DailyReport",
+      "schedule": {"cron": "0 9 * * *", "timezone": "Asia/Shanghai", "overlap": "first"},
+      "misfire": "catch-up",
+      "catch-up-limit": 2,
+      "lookback-seconds": 3600,
+      "grace-seconds": 59,
+      "revision": "v1"
+    }]
+  }
+}
+```
+
+`enabled` 使用应用实际 Composer 名称，业务 Task 列入生产 sources。固定间隔改为 `"schedule": {"interval": 60, "anchor": 0}`；也可用 `service` 引用已有 execution Task，资源使用 `resources` 引用 execution `ManagedResource` 服务。构建时校验重复 ID、方法签名、依赖图、时区、Cron、间隔和有界补跑策略，不执行业务构造器或连接外部服务。时间计划校验复用安装的上游实现并与开发进程隔离，避免提前加载待适配的 Cron 生产代码。
+
+启动角色显式持有时钟、状态存储和总执行预算：
+
+```php
+$application = new \Type\Generated\CommandApplication($configuration);
+$scheduler = new \Type\Scheduler\Scheduler($clock, $store, $application->schedules());
+$scheduler->tick();
+```
+
+角色通过 `application.bootstrap` 接入唯一生成入口；完整例子是 `examples/scheduler` 与 `docs/build-config/type-scheduler.json`。PHP 开发和 AOT 生成相同 Definition 与直接 Task 工厂。工厂在每次 occurrence 的 Scope 绑定后开启声明资源，再构造 Task 与其 execution 依赖；定时计划、游标、DST、租约和中断恢复仍由 Scheduler 现有实现负责。声明不接受 shell、PHP 路径或任意调用器。
+
+## 底层接口与角色示例
 
 物联中心在当前源码中提供 `app:schedule`，复用本组件执行固定的维护任务。完成安装并设置 `APP_SCHEDULER_REDIS_*` 后，用对应数据库 profile 的程序执行：
 

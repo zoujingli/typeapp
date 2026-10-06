@@ -16,8 +16,8 @@
       "protocol": 1,
       "sources": ["src"],
       "module": {
-        "services": [{"id": "optional", "class": "TypeApp\\Optional\\UnavailableCommand"}],
-        "commands": [{"name": "unavailable", "service": "optional"}]
+        "services": [{"id": "greeting", "class": "TypeApp\\Optional\\DefaultGreeting"}],
+        "commands": [{"name": "unavailable", "class": "TypeApp\\Optional\\UnavailableCommand"}]
       }
     }
   }

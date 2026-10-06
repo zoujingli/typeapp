@@ -1,0 +1,28 @@
+{
+    "protocol": 1,
+    "declaration": "534ae8aa31d04f1ad2143b35de8ad22bad505dcdc846e4a4e396b422df4d58ca",
+    "drivers": {
+        "mysql": {
+            "statements": [
+                "ALTER TABLE `type_suite_catalog_entries` ADD COLUMN `retry_marker` VARCHAR(255) NULL",
+                "ALTER TABLE `type_suite_catalog_entries` DROP COLUMN `missing_column`"
+            ],
+            "transactional": false
+        },
+        "pgsql": {
+            "statements": [
+                "ALTER TABLE \"type_suite_catalog_entries\" ADD COLUMN \"retry_marker\" VARCHAR(255) NULL",
+                "ALTER TABLE \"type_suite_catalog_entries\" DROP COLUMN \"missing_column\""
+            ],
+            "transactional": true
+        },
+        "sqlite": {
+            "statements": [
+                "ALTER TABLE \"type_suite_catalog_entries\" ADD COLUMN \"retry_marker\" VARCHAR(255) NULL",
+                "ALTER TABLE \"type_suite_catalog_entries\" DROP COLUMN \"missing_column\""
+            ],
+            "transactional": true
+        }
+    },
+    "sha256": "de9d6002290493dc21188045484ac2ba90210d7b5aa9d6d514d1d86f52505c6d"
+}

@@ -8,7 +8,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 $root = dirname(__DIR__);
 $source = $root . '/examples/operations/UserService.php';
 $compiler = new Type\Build\OperationCompiler();
-$result = $compiler->generate($root, ['classes' => ['TypeApp\\Operations\\UserOperations' => 'TypeApp\\Operations\\UserService']], [$source]);
+$result = $compiler->generate($root, [], [$source]);
 expect(is_array($result['operations'] ?? null), '公开生成结果缺少操作声明');
 
 /** 将非法操作声明写入本轮临时文件，验证生成器按约定拒绝，最后删除文件。 */
@@ -22,7 +22,7 @@ function rejectedOperation(string $declaration, string $message): void
         file_put_contents($phpFile, "<?php\ndeclare(strict_types=1);\nnamespace TypeApp\\InvalidOperation;\n" . $declaration);
         $failed = false;
         try {
-            (new Type\Build\OperationCompiler())->generate(dirname(__DIR__), ['classes' => ['TypeApp\\InvalidOperation\\Generated' => 'TypeApp\\InvalidOperation\\Service']], [$phpFile]);
+            (new Type\Build\OperationCompiler())->generate(dirname(__DIR__), [], [$phpFile]);
         } catch (RuntimeException) {
             $failed = true;
         }
@@ -65,8 +65,16 @@ $invalidCases = [
     ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "cache", key: "x")] #[\\Type\\Cache\\Attribute\\CacheEvict(cache: "cache", all: true)] public function run(\\Type\\Cache\\TypedCache $cache): string { return ""; } }', '缓存与清理组合'],
     ['final class Service { #[\\Type\\Cache\\Attribute\\CacheEvict(cache: "cache")] public function run(\\Type\\Cache\\TypedCache $cache): void {} }', '失效缺少key'],
     ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "cache", key: "x:{id")] public function run(\\Type\\Cache\\TypedCache $cache, int $id): string { return ""; } }', '未闭合key模板'],
+    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional] public function run(): string { return __METHOD__; } }', '原方法魔术常量不能被改名'],
+    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional] public function run(): int { return __LINE__; } }', '源码位置常量不能静默变化'],
+    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional] public function run(): \\Generator { yield 1; } }', '生成器'],
+    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional(database: "named")] #[\\Type\\Cache\\Attribute\\CacheEvict(cache: "cache", key: "x", database: "default")] public function run(\\Type\\Cache\\TypedCache $cache): void {} }', '事务与失效数据源不一致'],
 ];
 foreach ($invalidCases as [$declaration, $message]) {
+    if (!str_contains($declaration, '#[')) {
+        $declaration = str_replace('public function', '#[\\Type\\Orm\\Attribute\\Transactional] public function', $declaration);
+        $declaration = str_replace('public static function', '#[\\Type\\Orm\\Attribute\\Transactional] public static function', $declaration);
+    }
     rejectedOperation($declaration, $message);
 }
 $missingRejected = false;
@@ -90,13 +98,13 @@ try {
     $unknownRejected = true;
 }
 expect($unknownRejected, '未知生成器配置被忽略');
-expect($compiler->generate($root, ['classes' => []], [$source])['operations'] === [], '空显式映射意外生成了业务包装');
+expect($result['originals'] === [$source], '原 Service 完整文件未进入替换关系');
 expect(
-    $compiler->generate($root, ['classes' => ['TypeApp\\Operations\\UserOperations' => 'TypeApp\\Operations\\UserService']], [$source]) === $result,
+    $compiler->generate($root, [], [$source]) === $result,
     '相同声明的生成输出不确定'
 );
 $sourceCode = file_get_contents($source);
-expect(is_string($sourceCode) && str_contains($result['code'], '中文说明和默认参数在公开组合对象上保持可见。'), '生成操作没有保留方法PHPDoc');
+expect(is_string($sourceCode) && str_contains($result['code'], '中文说明和默认参数在原 Service 上保持可见。'), '生成操作没有保留方法PHPDoc');
 
 $sideEffect = tempnam(sys_get_temp_dir(), 'type_operation_side_effect_');
 expect($sideEffect !== false, '无法准备业务源码不执行验证');
@@ -104,9 +112,9 @@ $sideEffectSource = $sideEffect . '.php';
 try {
     file_put_contents($sideEffectSource, '<?php namespace TypeApp\\SideEffect; file_put_contents(' . var_export($sideEffect, true)
         . ', "executed"); final class Service { /** @Transactional */ public function run(): void {} }');
-    $withoutImplicit = $compiler->generate($root, ['classes' => ['TypeApp\\SideEffect\\Generated' => 'TypeApp\\SideEffect\\Service']], [$sideEffectSource]);
+    $withoutImplicit = $compiler->generate($root, [], [$sideEffectSource]);
     expect(file_get_contents($sideEffect) === '', '生成器执行了业务源码');
-    expect($withoutImplicit['operations'][0]['transaction'] === null, '生成器隐式解释了DocBlock注解');
+    expect($withoutImplicit['operations'] === [], '生成器隐式解释了DocBlock注解');
 } finally {
     unlink($sideEffectSource);
     unlink($sideEffect);
@@ -118,7 +126,7 @@ try {
     if (isset($argv[1]) && $argv[1] !== '--php') {
         $command = nativeCommand($argv[1]);
     } else {
-        $launcher = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; require ' . var_export($source, true)
+        $launcher = 'require ' . var_export($root . '/vendor/autoload.php', true)
             . '; require ' . var_export($root . '/examples/model/Drivers.php', true)
             . '; require ' . var_export($generated, true) . '; require ' . var_export($root . '/examples/operations/main.php', true) . '; main($argc, $argv);';
         $command = [PHP_BINARY, '-r', $launcher];

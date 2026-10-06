@@ -27,7 +27,7 @@ final class ManagedTask
      * @param Closure(ExecutionScope): mixed $operation 作用域内的任务体。
      * @param array<string, string> $context 父作用域的上下文快照，不携带父资源。
      * @param Closure(ManagedTask): void $finished 完成并清理后的通知。
-     * @param array<string, string> $bindings 创建子任务时的应用绑定值快照。
+     * @param array<string, string> $bindings 应用显式传给子任务的绑定值快照，不隐式继承父绑定。
      */
     public function __construct(Closure $operation, Deadline $deadline, array $context, int $childLimit, float $cleanupSeconds, TaskBudget $budget, Cancellation $parentCancellation, Closure $finished, array $bindings = [])
     {
@@ -54,14 +54,20 @@ final class ManagedTask
                 } catch (Throwable $error) {
                     if ($this->error === null) {
                         $this->error = $error;
+                    } else {
+                        $this->error = new \RuntimeException($this->error->getMessage() . '；' . $error->getMessage(), 0, $this->error);
                     }
                 }
                 // 清理超时不表示后代已经退出，整个子树结束前继续占用共享预算。
+                // 已知失败立即唤醒业务等待者，真实收尾仍由本协程隔离持有。
+                if ($this->error !== null && $scope->state() !== 'closed') {
+                    $this->completion->push(true);
+                }
                 $scope->awaitClosed();
                 $this->detachParentCancellation();
                 $this->finished = true;
                 $finished($this);
-                $this->completion->push(true);
+                $this->completion->close();
             }
         });
         if ($cid === false) {
@@ -87,14 +93,16 @@ final class ManagedTask
             }
             $remaining = $remaining === null ? $seconds : min($remaining, $seconds);
         }
-        if (!$this->wait($remaining)) {
+        $finished = $this->error !== null || $this->wait($remaining);
+        if ($this->error !== null) {
+            $this->observed = true;
+            throw $this->error;
+        }
+        if (!$finished) {
             $this->cancellation->cancel();
             throw new TaskException('task_timeout', '停止等待子任务，底层操作由作用域继续持有');
         }
         $this->observed = true;
-        if ($this->error !== null) {
-            throw $this->error;
-        }
         return $this->result;
     }
 

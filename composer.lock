@@ -616,13 +616,14 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-mqtt",
-                "reference": "3f408c87af3f79f157e9292abe3ec72137f9ac7e"
+                "reference": "8d64075e4dafdf56e6cc5061481d2e618ace975b"
             },
             "require": {
                 "ext-json": "*",
                 "ext-openssl": "*",
                 "ext-pcre": "*",
                 "php": ">=8.4 <8.6",
+                "zoujingli/type-core": "~1.0.0@dev",
                 "zoujingli/type-orm": "~1.0.0@dev",
                 "zoujingli/type-runtime": "~1.0.0@dev"
             },
@@ -700,7 +701,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-orm-mysql",
-                "reference": "d22c48ffaac6fcc68482b1e989b40ea9ea9df4e4"
+                "reference": "c4c9d3d31c3370e4d2c2e909e93897c5b4ecd879"
             },
             "require": {
                 "ext-pdo_mysql": "*",
@@ -740,7 +741,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-orm-pgsql",
-                "reference": "0ed1cc99cbf4333833b3dc74c99bc528dadb7481"
+                "reference": "e58ff5ec168c0c2d4c952d668b93447ac53730b9"
             },
             "require": {
                 "ext-pdo_pgsql": "*",
@@ -780,7 +781,7 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-orm-sqlite",
-                "reference": "313be66dd7c2aaced06c1a188d69560501017e6e"
+                "reference": "48ea6a8a6144ca746ecd25da27b4de8e426a4722"
             },
             "require": {
                 "ext-pdo_sqlite": "*",
@@ -2193,53 +2194,6 @@
                 "source": "https://github.com/phar-io/version/tree/3.2.1"
             },
             "time": "2022-02-21T01:04:05+00:00"
-        },
-        {
-            "name": "phpstan/phpdoc-parser",
-            "version": "2.3.5",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/phpstan/phpdoc-parser.git",
-                "reference": "148cefffaf0233e4c08cc13db8a195a56dd6dfe9"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/phpstan/phpdoc-parser/zipball/148cefffaf0233e4c08cc13db8a195a56dd6dfe9",
-                "reference": "148cefffaf0233e4c08cc13db8a195a56dd6dfe9",
-                "shasum": ""
-            },
-            "require": {
-                "php": "^7.4 || ^8.0"
-            },
-            "require-dev": {
-                "doctrine/annotations": "^2.0",
-                "nikic/php-parser": "^5.3.0",
-                "php-parallel-lint/php-parallel-lint": "^1.2",
-                "phpstan/extension-installer": "^1.0",
-                "phpstan/phpstan": "^2.0",
-                "phpstan/phpstan-phpunit": "^2.0",
-                "phpstan/phpstan-strict-rules": "^2.0",
-                "phpunit/phpunit": "^9.6",
-                "symfony/process": "^5.2"
-            },
-            "type": "library",
-            "autoload": {
-                "psr-4": {
-                    "PHPStan\\PhpDocParser\\": [
-                        "src/"
-                    ]
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "description": "PHPDoc parser with support for nullable, intersection and generic types",
-            "support": {
-                "issues": "https://github.com/phpstan/phpdoc-parser/issues",
-                "source": "https://github.com/phpstan/phpdoc-parser/tree/2.3.5"
-            },
-            "time": "2026-08-31T16:05:28+00:00"
         },
         {
             "name": "phpunit/php-code-coverage",
@@ -6547,14 +6501,13 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-build",
-                "reference": "7f6c343e3cf8a77359cd26f3738f61659c3fa83d"
+                "reference": "9ab6513b5b9886bf9988f413f6974522e0bd16d9"
             },
             "require": {
                 "composer-runtime-api": "^2.2",
                 "ext-json": "*",
                 "nikic/php-parser": "^5.8",
                 "php": ">=8.4 <8.6",
-                "phpstan/phpdoc-parser": "^2.3.5",
                 "swoole/phpx": "2.9.3",
                 "swoole/typephp": "0.9.4",
                 "zoujingli/type-runtime": "~1.0.0@dev"

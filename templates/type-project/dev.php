@@ -13,10 +13,7 @@ try {
         || ($command === 'migrate' && (count($argv) === 2 || (count($argv) === 3 && $argv[2] === 'help')));
     if (!$help) {
         require __DIR__ . '/prepare.php';
-        $generation = prepareTypeProject($root);
-        foreach ($generation['files'] as $generated) {
-            require $generation['directory'] . '/' . $generated;
-        }
+        typeProjectDevelopmentBuilder($root)->loadConfiguration($root . '/type-app.json');
     } else {
         // help 只声明角色入口，不要求 Composer、开发生成结果或有效 .env。
         require $root . '/app/common/bootstrap/Application.php';

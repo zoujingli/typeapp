@@ -1,22 +1,18 @@
-# 显式编译生成的事务与缓存操作
+# 原 Service 的事务与缓存声明
 
-本功能使用 PHP 8 Attribute 作**构建期声明**，由 `OperationCompiler` 输出普通、有完整类型的组合对象，再与业务和依赖一起 AOT。没有运行时 AOP、反射代理、继承代理、方法改写、动态加载或 `eval()`。
+本功能使用 PHP 8 Attribute 作**构建期声明**。`OperationCompiler` 在加载原类之前转换完整源码文件，保留原 Service 类名、构造器、公开签名和同文件其他声明；PHP 开发入口与 AOT 消费同一结果。事务和缓存直接组合已有 `Db`、保存点、提交后动作与 `TypedCache`，不依赖运行时反射或代理。
 
 ## 使用接口
 
-应用构建配置声明明确的生成类和业务类映射：
+将业务类纳入生产 `sources`，使用标准准备与运行入口：
 
 ```json
 {
-  "operations": {
-    "classes": {
-      "app\\generated\\UserOperations": "app\\system\\service\\UserService"
-    }
-  }
+  "sources": ["app"]
 }
 ```
 
-业务类必须已经包含在生产 `sources` 中。构建器通过 `OperationCompiler::generate(string $root, array $configuration, array $sources): array` 得到 `code` 和 `operations` 元数据；生成类也必须进入 AOT 输入。AST 使用已经锁定的 PHP-Parser 与 NameResolver，识别完整类名、命名空间导入和别名，不执行原业务文件。
+`operations.classes` 已移除，包含空映射的旧配置也明确拒绝。构建器通过 `OperationCompiler::generate($root, [], $sources, $packages)` 得到 `code`、`originals` 和 `operations` 元数据；标准入口把它合并进 Model 的文件替换关系，同文件只加载最终结果。原源码与生成内容共同参与代次身份，已提前加载原类、陈旧代次及重复转换都会拒绝。AST 使用锁定的 PHP-Parser 与 NameResolver，不执行原业务文件。缺少声明所需的生产组件时在构建期失败。
 
 ```php
 use Type\Cache\Attribute\Cacheable;
@@ -31,7 +27,7 @@ final class UserService
     public function find(TypedCache $cache, int $id): ?array
     {
         $user = User::query()->find($id);
-        return $user === null ? null : $user->project(['id', 'name']);
+        return $user === null ? null : $user->present(['id', 'name']);
     }
 
     #[Transactional]
@@ -45,14 +41,14 @@ final class UserService
 }
 ```
 
-生成类构造器接受已经创建的原业务对象；构建期 DI 或普通调用者显式使用该生成类：
+在标准入口完成准备后，直接使用原类型：
 
 ```php
-$operations = new \app\generated\UserOperations($userService);
-$operations->rename($cache, 7, '中文名称');
+$service = new \app\system\service\UserService();
+$service->rename($cache, 7, '中文名称');
 ```
 
-直接调用 `$userService->rename(...)` **不会**开启事务或清理缓存。原业务内部的 `$this->find(...)` 同样是普通调用；需要复合操作时在调用者显式组合生成对象，不隐式改变原类的自调用语义。
+普通方法调用、手动 `new` 后调用和类内 `$this->find(...)` 均执行相同声明。构造器和无声明的辅助方法保留原实现。不要绕过标准入口直接加载原文件，也不再创建另一种生成服务类型。
 
 ## 事务与失效顺序
 
@@ -62,7 +58,7 @@ $operations->rename($cache, 7, '中文名称');
 
 `CacheEvict` 与事务组合时，在事务体内调用原方法之前登记零参数 `afterCommit` 回调。业务失败时该事务帧的回调被丢弃，内层保存点成功只合并到父事务；只有最外层提交确认后才执行缓存失效。提交后清理失败沿用 `AfterCommitException`，不能把已提交业务当作回滚，也不能重试原方法。
 
-不带 `Transactional` 的 `CacheEvict` 在原方法成功返回后立即执行；失败不清理。`all: true` 仅切换传入 `TypedCache` 的命名空间代次，不能同时配置单个 key，不使用 Redis `FLUSHDB`。
+不带 `Transactional` 的 `CacheEvict` 也检查其逻辑数据源：有活动事务时登记最外层确认提交后的动作，保存点回滚及外层回滚均丢弃；无事务时在方法成功返回后立即失效。`database` 省略时沿用同方法的 `Transactional` 数据源，否则默认为 `default`；显式不一致会拒绝。`all: true` 只切换传入缓存的命名空间代次，不使用 Redis `FLUSHDB`。
 
 ## 缓存键、类型和一致性
 
@@ -74,18 +70,21 @@ key 是非空模板，使用 `{参数名}` 引用标量形参；所有业务标�
 
 `CacheEvict` 只需要选择真正影响缓存身份的标量参数；更新载荷不要求进入读取键，所以事务更新可以接受 `array $data`。`Cacheable` 不能同时标记事务或失效，也不能缓存 `void` 方法。
 
-缓存实例必须由调用者按应用、环境、租户/数据库身份和 codec 合理隔离。构建器不会从 `Connection` 或任意 service 隐藏状态推断租户；同一命名空间内复用相同模板表示开发者明确选择共享缓存。事务里手动读取缓存不是数据库快照读取；这不是强一致分布式事务，仍遵循现有缓存失效模型。
+`Cacheable(database: 'archive', ...)` 可指定逻辑数据源；默认是 `default`。活动事务内直接执行业务读取，绕过已有共享缓存且不填充新值；退出事务后恢复普通缓存行为。`Db::inTransaction()` 只观察当前作用域已有会话，不借默认库或新连接；跨库调用继续拒绝。仅安装缓存组件的消费者不生成 ORM 调用，也不要求安装 ORM。
+
+缓存实例仍须按应用、环境、租户/数据库身份和 codec 隔离。构建器不从服务隐藏状态猜测身份；直接调用底层 `TypedCache` 的手写业务仍由应用负责一致性。UNKNOWN 不发布确认提交后的失效，不自动重试；失效错误保留真实 COMMITTED 结果。这些行为不构成分布式事务。
 
 ## 明确拒绝的声明
 
 - 属性重复、参数未知或重复、解包、非静态可求值的 Attribute 参数。
 - 构造器、字段、常量、参数或非公开方法上的操作 Attribute。
 - 静态/抽象/魔术方法、引用返回、引用参数、variadic、无参数或返回类型。
-- `never`、`callable`、`iterable`、交叉类型以及组合对象中语义不同的 `self/static/parent`。
-- 未声明的业务类、条件声明类、生成类冲突，以及当前不能完整展开的继承或 Trait 服务。
+- `never`、`callable`、`iterable`、交叉类型与 `self/static/parent` 相对类型。
+- 条件声明类、继承或 Trait 服务、生成器与依赖原方法执行帧的 `func_get_args` 等调用。
+- 转换文件中的 `__DIR__`、`__FILE__`、`__LINE__`，以及声明方法中的 `__METHOD__`、`__FUNCTION__`。无法维持原位置或执行帧语义时明确拒绝，不悄悄改变结果；报告保留输入方法位置。
 - 非法逻辑数据源名、缺失或可空的 TypedCache 参数、缓存 key 遗漏参数或模板语法错误、缓存任意数组/对象入参、非法组合与 TTL。
 
-普通已支持类型的公开实例方法会保留参数名、默认常量、返回类型和 PHPDoc，并直接转发；private/protected 辅助方法留在原 service 内，不复制实现。默认值只接受可直接静态求值的常量表达式，不读取业务类常量或执行代码。DocBlock 的 `@Transactional` / `@Cacheable` 不会被隐式解释为 Attribute。
+受支持方法保留参数名、默认常量、返回类型和 PHPDoc，文件中的 namespace、use 别名和文档语境一并保留。默认值只接受可直接静态求值的常量表达式，不读取业务类常量或执行代码。DocBlock 的 `@Transactional` / `@Cacheable` 不会被隐式解释为 Attribute。
 
 
 ## 验证入口
@@ -96,4 +95,4 @@ key 是非空模板，使用 `{参数名}` 引用标量形参；所有业务标�
 php tests/operations.php build/operations/type-app
 ```
 
-测试使用公开生成结果、真实 SQLite 和专用 Redis；地址取自 TYPE_REDIS_HOST 与 TYPE_REDIS_PORT。示例位于 examples/operations，生产源码与生成入口须完整编译。
+测试使用公开生成结果、真实数据库和 Redis；地址取自 `TYPE_REDIS_HOST` 与 `TYPE_REDIS_PORT`。`tests/operations-databases.php <原生产物或--php> <MySQL工具根> <PostgreSQL工具根>` 创建独立三库并复用 COMMIT 断线代理，验证原类型、手动构造、类内互调、命名源、缓存绕过、保存点和 UNKNOWN。PHP、AOT 与各平台证据分别记录，未完成全量原生验收不代表新候选可发布。

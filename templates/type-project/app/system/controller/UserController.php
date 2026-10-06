@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace app\system\controller;
 
-use app\generated\UserOperations;
+use app\system\service\UserService;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Type\Core\Http\Attribute\Group;
@@ -17,18 +17,18 @@ use Type\Validate\Input;
 use Type\Validate\ValidationException;
 
 /**
- * system 模块的 HTTP 控制器只做输入、响应与请求资源适配，业务交给 UserOperations。
+ * system 模块的 HTTP 控制器只做输入、响应与请求资源适配，业务交给 UserService。
  *
  * 目录层数由 PSR-4 和显式 Attribute 文件声明决定，没有固定 controller 目录扫描。
  */
 #[Group(namePrefix: 'users.')]
 final class UserController
 {
-    private UserOperations $users;
+    private UserService $users;
     private Factory $messages;
 
     /** 注入生成的事务调用入口和响应工厂；连接由框架在执行时借用。 */
-    public function __construct(UserOperations $users, Factory $messages)
+    public function __construct(UserService $users, Factory $messages)
     {
         $this->users = $users;
         $this->messages = $messages;

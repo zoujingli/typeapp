@@ -8,6 +8,7 @@
     "ext-openssl": "*",
     "ext-pcre": "*",
     "ext-json": "*",
+    "zoujingli/type-core": "~1.0.0@dev",
     "zoujingli/type-orm": "~1.0.0@dev",
     "zoujingli/type-runtime": "~1.0.0@dev"
   },

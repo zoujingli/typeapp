@@ -47,6 +47,26 @@ final class Db implements ManagedResource
         self::connection($database, true)->afterCommit($operation);
     }
 
+    /**
+     * 只观察当前作用域已有会话的事务，不建立会话或借用任何数据源连接。
+     * 生成的缓存声明复用同一跨库边界；无数据库操作的缓存调用不要求配置管理器。
+     */
+    public static function inTransaction(string $database = 'default'): bool
+    {
+        $scope = ExecutionScope::current();
+        $scopes = Coroutine::getContext()[self::CONTEXT_KEY] ?? [];
+        $binding = $scopes[spl_object_id($scope)] ?? null;
+        if (!$binding instanceof self) {
+            return false;
+        }
+        foreach ($binding->sessions as $name => $session) {
+            if ($name !== $database && $session->inTransaction()) {
+                throw new ModelException('cross_database_transaction', '活动事务内不能访问另一逻辑数据源');
+            }
+        }
+        return isset($binding->sessions[$database]) && $binding->sessions[$database]->inTransaction();
+    }
+
     /** @internal Model 与生成关系在执行时选路；底层连接不得逃逸当前作用域。 */
     public static function connection(string $database = 'default', bool $master = false): Connection
     {

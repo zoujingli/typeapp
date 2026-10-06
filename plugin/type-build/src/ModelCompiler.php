@@ -30,6 +30,7 @@ final class ModelCompiler
         $originals = [];
         $models = [];
         $classes = [];
+        $classProperties = [];
         foreach ((new BuildIdentity())->sources($sources) as $file) {
             if (strtolower(pathinfo($file, PATHINFO_EXTENSION)) !== 'php') {
                 continue;
@@ -50,7 +51,15 @@ final class ModelCompiler
                 $class = isset($node->namespacedName) ? $node->namespacedName->toString() : $node->name->toString();
                 $parent = $node->extends?->toString() ?? '';
                 $classes[strtolower($class)] = strtolower($parent);
-                $table = $this->attribute($node->attrGroups, 'Table', ['name', 'primary', 'generatedPrimary', 'softDelete', 'version', 'database', 'tenant']);
+                if ($class === 'Type\\Orm\\Model' || $parent === 'Type\\Orm\\Model') {
+                    $classProperties[strtolower($class)] = [];
+                    foreach ($node->getProperties() as $declaredProperty) {
+                        foreach ($declaredProperty->props as $declaredMember) {
+                            $classProperties[strtolower($class)][] = $declaredMember->name->toString();
+                        }
+                    }
+                }
+                $table = $this->attribute($node->attrGroups, 'Table', ['name', 'primary', 'generatedPrimary', 'softDelete', 'version', 'database', 'tenant', 'createdAt', 'updatedAt']);
                 if ($table === null) {
                     foreach ($node->getProperties() as $property) {
                         foreach ($property->attrGroups as $group) {
@@ -119,6 +128,11 @@ final class ModelCompiler
         foreach ($classes as $class => $parent) {
             if (isset($models[$parent])) {
                 throw new RuntimeException('属性模型不能通过继承复用字段，请直接继承 Model：' . $class);
+            }
+            if (isset($models[$class])) {
+                foreach (array_intersect($classProperties[$class], $classProperties['type\\orm\\model'] ?? []) as $collision) {
+                    throw new RuntimeException('模型属性与 Model 基类成员冲突，请用 Column 映射数据库列：' . $models[$class]['class'] . '::$' . $collision);
+                }
             }
         }
         $this->validateRelations($models);
@@ -194,14 +208,15 @@ final class ModelCompiler
     {
         $model = ['class' => $class, 'table' => $table['name'] ?? '', 'primary' => $table['primary'] ?? 'id',
             'generated-primary' => $table['generatedPrimary'] ?? true, 'soft-delete' => $table['softDelete'] ?? null,
-            'version' => $table['version'] ?? null, 'database' => $table['database'] ?? 'default', 'tenant' => $table['tenant'] ?? null, 'fields' => [], 'relations' => []];
+            'version' => $table['version'] ?? null, 'database' => $table['database'] ?? 'default', 'tenant' => $table['tenant'] ?? null,
+            'created-at' => $table['createdAt'] ?? null, 'updated-at' => $table['updatedAt'] ?? null, 'fields' => [], 'relations' => []];
         if (!is_string($model['database']) || preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $model['database']) !== 1) {
             throw new RuntimeException('模型逻辑数据源名称无效：' . $class);
         }
         $properties = [];
         foreach ($node->stmts as $member) {
             if ($member instanceof Node\Stmt\ClassMethod
-                && in_array(strtolower($member->name->toString()), ['get', 'set', 'related', '__get', '__set'], true)) {
+                && in_array(strtolower($member->name->toString()), ['get', 'set', 'related', 'relation', '__get', '__set'], true)) {
                 throw new RuntimeException('模型不能覆盖属性状态入口，请使用 ModelBehavior：' . $class . '::' . $member->name);
             }
             if ($member instanceof Node\Stmt\TraitUse) {
@@ -258,7 +273,7 @@ final class ModelCompiler
                         $field[$key === 'name' ? 'column' : $key] = $value;
                     }
                 }
-                if ($name === $model['version'] || $name === $model['soft-delete']) {
+                if (in_array($name, [$model['version'], $model['soft-delete'], $model['created-at'], $model['updated-at']], true)) {
                     $field['fillable'] ??= false;
                     $field['required'] ??= false;
                 }
@@ -333,7 +348,7 @@ final class ModelCompiler
             }
             $known[strtolower($model['class'])] = true;
             foreach (array_keys($model) as $key) {
-                if (!in_array($key, ['class', 'table', 'primary', 'generated-primary', 'fields', 'soft-delete', 'version', 'relations', 'database', 'tenant'], true)) {
+                if (!in_array($key, ['class', 'table', 'primary', 'generated-primary', 'fields', 'soft-delete', 'version', 'relations', 'database', 'tenant', 'created-at', 'updated-at'], true)) {
                     throw new RuntimeException('未知模型配置：' . $key);
                 }
             }
@@ -343,6 +358,8 @@ final class ModelCompiler
             $fields = $model['fields'] ?? [];
             $softDelete = $model['soft-delete'] ?? null;
             $version = $model['version'] ?? null;
+            $createdAt = $model['created-at'] ?? null;
+            $updatedAt = $model['updated-at'] ?? null;
             $tenant = $model['tenant'];
             foreach ($fields as $name => $field) {
                 if ($tenant === null && ($field['column'] ?? $name) === 'tenant_id') {
@@ -366,6 +383,14 @@ final class ModelCompiler
                 || ($fields[$version]['type'] ?? '') !== 'integer' || ($fields[$version]['nullable'] ?? false) !== false
                 || ($fields[$version]['fillable'] ?? true) !== false)) {
                 throw new RuntimeException('版本声明需要不可赋值的非空整数字段');
+            }
+            foreach ([$createdAt, $updatedAt] as $timestamp) {
+                if ($timestamp !== null && (!is_string($timestamp) || !isset($fields[$timestamp])
+                    || !in_array($fields[$timestamp]['type'] ?? '', ['integer', 'datetime'], true)
+                    || ($fields[$timestamp]['nullable'] ?? false) !== false || ($fields[$timestamp]['fillable'] ?? true) !== false
+                    || in_array($timestamp, [$primary, $tenant, $softDelete, $version], true) || $createdAt === $updatedAt)) {
+                    throw new RuntimeException('受管时间必须声明独立、不可赋值的非空整数或时间字段');
+                }
             }
             $columns = [];
             $methods = [];
@@ -428,7 +453,7 @@ final class ModelCompiler
             $definition = 'new \\Type\\Orm\\ModelDefinition(' . var_export($table, true) . ', ' . var_export($primary, true)
                 . ', [' . implode(', ', $declarations) . '], ' . var_export($generated, true) . ', ' . var_export($softDelete, true) . ', ' . var_export($version, true)
                 . ', ' . $this->renderRelations($model['relations']) . ', ' . var_export($model['database'], true) . ', ' . var_export($tenant, true)
-                . ', ' . var_export($model['class'], true) . ')';
+                . ', ' . var_export($model['class'], true) . ', ' . var_export($createdAt, true) . ', ' . var_export($updatedAt, true) . ')';
             $code .= "\nnamespace {$namespace} {\nclass {$class} extends \\Type\\Orm\\Model\n{\n";
             $code .= "    /** @param array<string, mixed> \$values 新建字段；persisted 仅供水合工厂使用。 */\n    public function __construct(array \$values = [], bool \$persisted = false, ?\\Type\\Orm\\ModelBehavior \$behavior = null) { parent::__construct(self::mapping(), \$values, \$persisted, \$behavior); }\n";
             $code .= "    /** 返回静态声明的字段和关系映射，不访问数据库。 */\n    public static function mapping(): \\Type\\Orm\\ModelDefinition { return {$definition}; }\n";
@@ -440,6 +465,12 @@ final class ModelCompiler
                 . "        return self::query()->find(\$id);\n    }\n";
             $code .= "    /** 创建并保存当前模型，行为取消时明确失败。 */\n    public static function create(array \$values): {$class}\n    {\n"
                 . "        \$model = new {$class}(\$values);\n        if (\$model->save() === 'cancelled') {\n            throw new \\Type\\Orm\\ModelException('model_creation_cancelled', '模型创建被取消');\n        }\n        return \$model;\n    }\n";
+            $code .= "    /** 按真实非空唯一身份从主库获取或创建；其他约束及不可见冲突保持失败。 */\n    public static function firstOrCreate(array \$identity, array \$values = []): {$class}\n    {\n"
+                . "        return \\Type\\Orm\\ModelCreation::firstOrCreate(self::mapping(), static fn (): \\Type\\Orm\\ModelQuery => self::query(), static fn (array \$input): {$class} => self::create(\$input), \$identity, \$values);\n    }\n";
+            $code .= "    /** PostgreSQL、SQLite 的单条冲突写入；真实唯一目标使用模型字段名。 */\n    public static function upsert(array \$rows, array \$uniqueBy, array \$updateFields): int\n    {\n"
+                . "        return self::query()->upsert(\$rows, \$uniqueBy, \$updateFields);\n    }\n";
+            $code .= "    /** MySQL 任意唯一键冲突写入，保留驱动影响行数和严格安全边界。 */\n    public static function upsertAnyUnique(array \$rows, array \$updateFields): int\n    {\n"
+                . "        return self::query()->upsertAnyUnique(\$rows, \$updateFields);\n    }\n";
             $code .= $accessors . "}\n}\n";
         }
         try {

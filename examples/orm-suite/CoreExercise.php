@@ -28,6 +28,261 @@ use Type\Runtime\TaskException;
 /** 三库共用的属性、组合查询、关系计算和诊断公共行为验收。 */
 final class CoreExercise
 {
+    /** 完整批次、数据库冲突目标、受管时间版本及不可见行通过一条真实冲突 SQL 验证。 */
+    public static function upserts(): void
+    {
+        $connection = Db::connection('default', true);
+        $driver = $connection->driverName();
+        $connection->execute('CREATE TABLE type_suite_upserts (id INTEGER NOT NULL, tenant_id VARCHAR(30) NOT NULL, code VARCHAR(50) NOT NULL, title VARCHAR(50) NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, version BIGINT NOT NULL, PRIMARY KEY (tenant_id, id), UNIQUE (tenant_id, code))');
+        $connection->execute('CREATE TABLE type_suite_upsert_labels (id INTEGER PRIMARY KEY, code VARCHAR(50) NOT NULL UNIQUE, title VARCHAR(50) NOT NULL)');
+        ExecutionScope::current()->run(static function (ExecutionScope $current) use ($driver): void {
+            $connection = Db::connection('default', true);
+            $write = static fn (array $rows): int => $driver === 'mysql'
+                ? UpsertRecord::upsertAnyUnique($rows, ['title'])
+                : UpsertRecord::upsert($rows, ['tenant_id', 'code'], ['title']);
+            self::check($write([['id' => 1, 'code' => 'alpha', 'title' => '新增'], ['id' => 2, 'code' => 'beta', 'title' => '同批']]) === 2, '批量冲突新增数量错误');
+            $before = UpsertRecord::find(1);
+            self::check($before->getCreatedAt() === UpsertRecord::find(2)->getCreatedAt(), '冲突批次没有统一创建时间');
+            $writes = $connection->statistics()['write_attempts'];
+            self::check(self::reject(static fn (): int => $write([['id' => 3, 'code' => 'valid', 'title' => '合法'], ['id' => 4, 'code' => 'invalid', 'title' => 9]]), 'invalid_field_type')
+                && $connection->statistics()['write_attempts'] === $writes && UpsertRecord::find(3) === null, '批次后行非法留下前行写入');
+            self::check($write([['id' => 9, 'code' => 'alpha', 'title' => '更新']]) === ($driver === 'mysql' ? 2 : 1), '冲突更新影响行数被伪造');
+            $updated = UpsertRecord::find(1);
+            self::check($updated->getTitle() === '更新' && $updated->getVersion() === 2 && $updated->getCreatedAt() === $before->getCreatedAt()
+                && UpsertRecord::find(9) === null, '冲突写入重置主键、版本或创建时间');
+            self::check(UpsertRecord::firstOrCreate(['code' => 'alpha'])->getVersion() === 2, '唯一创建与冲突写入元数据不兼容');
+            self::check(self::reject(static fn (): int => $driver === 'mysql' ? UpsertRecord::upsertAnyUnique([['id' => 1, 'code' => 'alpha', 'title' => '拒绝']], ['version'])
+                : UpsertRecord::upsert([['id' => 1, 'code' => 'alpha', 'title' => '拒绝']], ['tenant_id', 'code'], ['version']), 'field_not_fillable'), '冲突写入允许重置版本');
+            $connection->table('type_suite_upserts')->where('tenant_id', '=', 'upsert-tenant')->where('id', '=', 1)->update(['version' => PHP_INT_MAX]);
+            $failed = false;
+            try {
+                $write([['id' => 10, 'code' => 'new-before-overflow', 'title' => '应回滚'], ['id' => 11, 'code' => 'alpha', 'title' => '溢出']]);
+            } catch (\Type\Orm\DatabaseException $error) {
+                $failed = true;
+            }
+            self::check($failed && UpsertRecord::find(10) === null && UpsertRecord::find(1)->getVersion() === PHP_INT_MAX, '冲突版本耗尽留下部分写入');
+            $connection->table('type_suite_upserts')->where('tenant_id', '=', 'upsert-tenant')->where('id', '=', 1)->update(['version' => 2]);
+        }, ['tenant_id' => 'upsert-tenant']);
+        ExecutionScope::current()->run(static function (ExecutionScope $current) use ($driver): void {
+            $row = [['id' => 1, 'code' => 'alpha', 'title' => '其他租户']];
+            $driver === 'mysql' ? UpsertRecord::upsertAnyUnique($row, ['title']) : UpsertRecord::upsert($row, ['tenant_id', 'code'], ['title']);
+            self::check(UpsertRecord::find(1)->getVersion() === 1, '冲突写入越过租户边界');
+        }, ['tenant_id' => 'other-upsert-tenant']);
+        ExecutionScope::current()->run(static function (ExecutionScope $current) use ($driver): void {
+            $rows = [['id' => 88, 'code' => 'alpha', 'alias' => 'invisible-upsert', 'optional_code' => null]];
+            if ($driver === 'mysql') {
+                self::check(self::reject(static fn (): int => UniqueRecord::upsertAnyUnique($rows, ['alias']), 'unsafe_upsert_visibility'), 'MySQL 静默写入不可见软删除目标');
+            } else {
+                self::check(UniqueRecord::upsert($rows, ['tenant_id', 'code'], ['alias']) === 0
+                    && UniqueRecord::query()->onlyTrashed()->find(1)->getAlias() === 'first', '不可见软删除冲突被覆盖或复活');
+            }
+        }, ['tenant_id' => 'unique-tenant']);
+        $plain = static fn (array $rows): int => $driver === 'mysql' ? UpsertLabel::upsertAnyUnique($rows, ['title']) : UpsertLabel::upsert($rows, ['code'], ['title']);
+        self::check($plain([['id' => 1, 'code' => 'plain', 'title' => 'first']]) === 1
+            && $plain([['id' => 2, 'code' => 'plain', 'title' => 'changed']]) === ($driver === 'mysql' ? 2 : 1)
+            && $plain([['id' => 3, 'code' => 'plain', 'title' => 'changed']]) === ($driver === 'mysql' ? 0 : 1), '新增、更新和未变化没有保留驱动真实计数');
+        $writes = $connection->statistics()['write_attempts'];
+        $duplicates = [['id' => 4, 'code' => 'same-batch', 'title' => 'first'], ['id' => 5, 'code' => 'same-batch', 'title' => 'last']];
+        if ($driver === 'pgsql') {
+            self::check(self::reject(static fn (): int => $plain($duplicates))
+                && UpsertLabel::query()->where('code', '=', 'same-batch')->count() === 0, 'PostgreSQL 同批重复冲突被拆批或留下部分写入');
+        } else {
+            $plain($duplicates);
+            self::check(UpsertLabel::find(4)->getTitle() === 'last', '数据库同批冲突顺序被改变');
+        }
+        self::check($connection->statistics()['write_attempts'] === $writes + 1, '模型冲突批次没有使用一条写入 SQL');
+        self::check(self::reject(static fn (): int => $driver === 'mysql'
+            ? UnsafeUniqueRecord::upsertAnyUnique([['id' => 1, 'code' => 'unsafe']], ['code'])
+            : UnsafeUniqueRecord::upsert([['id' => 1, 'code' => 'unsafe']], ['code'], ['id']), $driver === 'mysql' ? 'unsafe_unique_identity' : 'field_not_fillable'), '冲突写入接受不安全索引或受保护字段');
+    }
+
+    /** 真实唯一元数据、固定身份与创建保存点通过公开静态 Model 入口验证。 */
+    public static function firstOrCreate(): void
+    {
+        $connection = Db::connection('default', true);
+        $created = Tag::firstOrCreate(['label' => '获取或创建']);
+        $existing = Tag::firstOrCreate(['label' => '获取或创建']);
+        self::check($created->getId() === $existing->getId(), '获取或创建没有复用唯一身份');
+        $before = $connection->statistics();
+        self::check(self::reject(static fn (): Tag => Tag::firstOrCreate(['label' => '固定身份'], ['label' => '另一个身份']), 'identity_conflict'), '创建值覆盖唯一身份');
+        self::check($connection->statistics()['read_attempts'] === $before['read_attempts']
+            && $connection->statistics()['write_attempts'] === $before['write_attempts'], '身份输入冲突没有在 SQL 前拒绝');
+        self::check(self::reject(static fn (): User => User::firstOrCreate(['name' => '没有唯一索引']), 'unsafe_unique_identity'), '未声明真实唯一索引仍获取或创建');
+        try {
+            Details::firstOrCreate(['user_id' => 2147483647], ['bio' => '不存在父模型']);
+            throw new RuntimeException('外键失败被吞掉');
+        } catch (\Type\Orm\ConstraintException $error) {
+            self::check($error->kind() === 'foreign_key', '真实外键错误分类不正确');
+        }
+        $connection->execute('CREATE TABLE type_suite_unique_records (id INTEGER PRIMARY KEY, tenant_id VARCHAR(30) NOT NULL, code VARCHAR(50) NOT NULL, alias VARCHAR(50) NOT NULL, optional_code VARCHAR(50) NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, deleted_at VARCHAR(30) NULL, version BIGINT NOT NULL, UNIQUE (tenant_id, code), UNIQUE (tenant_id, alias), UNIQUE (tenant_id, optional_code))');
+        ExecutionScope::current()->run(static function (ExecutionScope $current): void {
+            $connection = Db::connection('default', true);
+            $record = UniqueRecord::firstOrCreate(['code' => 'alpha'], ['id' => 1, 'alias' => 'first', 'optional_code' => null]);
+            self::check($record->getVersion() === 1 && $record->getCreatedAt() === $record->getUpdatedAt(), '唯一创建没有复用受管时间和版本');
+            self::check(self::reject(static fn (): UniqueRecord => UniqueRecord::firstOrCreate(['optional_code' => 'nullable']), 'unsafe_unique_identity')
+                && self::reject(static fn (): UniqueRecord => UniqueRecord::firstOrCreate(['id' => 1]), 'unsafe_unique_identity'), '可空或跨租户唯一身份未拒绝');
+            $connection->transaction(static function (Connection $transaction): void {
+                Tag::create(['label' => '外层写入']);
+                try {
+                    UniqueRecord::firstOrCreate(['code' => 'beta'], ['id' => 2, 'alias' => 'first', 'optional_code' => null]);
+                    throw new RuntimeException('吞掉其他唯一约束');
+                } catch (\Type\Orm\ConstraintException $error) {
+                    self::check($error->kind() === 'unique', '真实唯一错误分类错误');
+                }
+                self::check(Tag::query()->where('label', '=', '外层写入')->exists(), '唯一错误破坏外层保存点');
+            });
+            $record->delete();
+            self::check(self::reject(static fn (): UniqueRecord => UniqueRecord::firstOrCreate(['code' => 'alpha'], ['id' => 3, 'alias' => 'third', 'optional_code' => null]), 'unique_conflict_not_visible'), '软删除唯一冲突被隐式返回或复活');
+            self::check(UniqueRecord::query()->onlyTrashed()->find(1) !== null, '不可见唯一冲突覆盖软删除记录');
+        }, ['tenant_id' => 'unique-tenant']);
+        Tag::query()->whereIn('label', ['获取或创建', '外层写入'])->delete();
+        $ready = new Channel(2);
+        $release = new Channel(2);
+        $tasks = [];
+        for ($index = 0; $index < 2; $index++) {
+            $tasks[] = ExecutionScope::current()->spawn(static function (ExecutionScope $child) use ($ready, $release): int {
+                $connection = Db::connection('default', true);
+                $paused = false;
+                $listener = $connection->listen($child, static function (QueryEvent $event) use (&$paused, $ready, $release): void {
+                    $data = $event->toArray();
+                    if (!$paused && str_starts_with($data['sql'], 'SELECT ') && str_contains($data['sql'], 'type_suite_tags') && $data['phase'] === 'statement') {
+                        $paused = true;
+                        $ready->push(true, 5);
+                        self::check($release->pop(5) === true, '唯一竞争释放信号超时');
+                    }
+                }, 50, 65536, true);
+                try {
+                    return Tag::firstOrCreate(['label' => '并发唯一创建'])->getId();
+                } finally {
+                    $listener->stop();
+                }
+            });
+        }
+        self::check($ready->pop(5) === true && $ready->pop(5) === true, '并发创建未同时观察不存在身份');
+        $release->push(true);
+        $release->push(true);
+        $first = $tasks[0]->await(10);
+        $second = $tasks[1]->await(10);
+        self::check($first === $second && Tag::query()->where('label', '=', '并发唯一创建')->count() === 1, '真实竞争没有返回同一获胜者');
+        Tag::query()->where('label', '=', '并发唯一创建')->delete();
+        self::uniqueMetadata();
+        self::uniqueSnapshot();
+    }
+
+    private static function uniqueMetadata(): void
+    {
+        $connection = Db::connection('default', true);
+        $connection->execute('CREATE TABLE type_suite_unsafe_unique (id INTEGER PRIMARY KEY, code VARCHAR(50) NULL UNIQUE)');
+        self::check(self::reject(static fn (): UnsafeUniqueRecord => UnsafeUniqueRecord::firstOrCreate(['code' => 'nullable'], ['id' => 1]), 'unsafe_unique_identity'), '模型非空声明掩盖实际可空唯一列');
+        $connection->execute('DROP TABLE type_suite_unsafe_unique');
+        $connection->execute('CREATE TABLE type_suite_unsafe_unique (id INTEGER PRIMARY KEY, code VARCHAR(50) NOT NULL)');
+        if ($connection->driverName() === 'mysql') {
+            $connection->execute('CREATE UNIQUE INDEX type_suite_unsafe_prefix ON type_suite_unsafe_unique (code(3))');
+        } else {
+            $connection->execute('CREATE UNIQUE INDEX type_suite_unsafe_partial ON type_suite_unsafe_unique (code) WHERE id > 1');
+            $connection->execute('CREATE UNIQUE INDEX type_suite_unsafe_expression ON type_suite_unsafe_unique (lower(code))');
+        }
+        self::check(self::reject(static fn (): UnsafeUniqueRecord => UnsafeUniqueRecord::firstOrCreate(['code' => 'unsafe'], ['id' => 2]), 'unsafe_unique_identity'), '部分、表达式或前缀索引冒充完整唯一身份');
+    }
+
+    /** 在真实可重复读快照中保留外层写入，明确报告不可见获胜者，不重跑事务体。 */
+    private static function uniqueSnapshot(): void
+    {
+        $connection = Db::connection('default', true);
+        $driver = $connection->driverName();
+        if ($driver === 'sqlite') {
+            return;
+        }
+        $original = $driver === 'mysql' ? $connection->query('SELECT @@SESSION.transaction_isolation AS level')[0]['level']
+            : $connection->query('SHOW default_transaction_isolation')[0]['default_transaction_isolation'];
+        $original = strtoupper(str_replace('-', ' ', $original));
+        self::check(in_array($original, ['READ COMMITTED', 'REPEATABLE READ', 'SERIALIZABLE', 'READ UNCOMMITTED'], true), '未知隔离级别');
+        $prefix = $driver === 'mysql' ? 'SET SESSION TRANSACTION ISOLATION LEVEL ' : 'SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL ';
+        $connection->execute($prefix . 'REPEATABLE READ');
+        $start = new Channel(1);
+        $done = new Channel(1);
+        $task = ExecutionScope::current()->spawn(static function (ExecutionScope $child) use ($start, $done): int {
+            self::check($start->pop(5) === true, '快照竞争未收到开始信号');
+            $model = Tag::create(['label' => '快照获胜者']);
+            $done->push(true);
+            return $model->getId();
+        });
+        $paused = false;
+        $listener = $connection->listen(ExecutionScope::current(), static function (QueryEvent $event) use (&$paused, $start, $done): void {
+            $data = $event->toArray();
+            if (!$paused && $data['phase'] === 'statement' && str_starts_with($data['sql'], 'SELECT ')
+                && in_array('快照获胜者', $data['parameters'], true)) {
+                $paused = true;
+                $start->push(true);
+                self::check($done->pop(5) === true, '快照竞争获胜者没有提交');
+            }
+        }, 50, 65536, true);
+        try {
+            $connection->transaction(static function (Connection $transaction): void {
+                self::check(self::reject(static fn (): Tag => Tag::firstOrCreate(['label' => '快照获胜者']), 'unique_conflict_not_visible'), '过时快照误报获胜模型或重试外层');
+                Tag::create(['label' => '快照外层保留']);
+            });
+            self::check($task->await(10) > 0 && Tag::query()->where('label', '=', '快照外层保留')->exists(), '竞争恢复破坏外层事务');
+        } finally {
+            $listener->stop();
+            $connection->execute($prefix . $original);
+        }
+        Tag::query()->whereIn('label', ['快照获胜者', '快照外层保留'])->delete();
+    }
+
+    /** 公开父模型句柄的读写分离、作用域、租户绑定、回滚失效与前置拒绝。 */
+    public static function relationHandles(ExecutionScope $scope, int $userId): void
+    {
+        $connection = Db::connection('default', true);
+        $article = Article::create(['user_id' => $userId, 'title' => '关系句柄', 'status' => 'draft', 'views' => 0]);
+        $id = $article->getId();
+        $tagId = Tag::query()->firstOrFail()->getId();
+        $before = $connection->statistics();
+        $handle = $article->relation('tags');
+        self::check(self::reject(static fn (): mixed => $article->relation('missing'), 'unknown_relation')
+            && self::reject(static fn (): mixed => $article->relation('author'), 'relation_write_unsupported')
+            && self::reject(static fn (): mixed => $article->related('tags'), 'relation_not_loaded'), '关系句柄接受未知关系、只读类型或隐式加载');
+        $new = new Article(['user_id' => $userId, 'title' => '未保存', 'status' => 'draft', 'views' => 0]);
+        self::check(self::reject(static fn (): bool => $new->relation('tags')->attach($tagId), 'not_persisted'), '未持久化父模型可以写关系');
+        $scope->run(static function (ExecutionScope $current) use ($handle, $tagId): void {
+            self::check(self::reject(static fn (): bool => $handle->attach($tagId), 'tenant_context_changed'), '全局父模型句柄跟随临时租户改变');
+        }, ['tenant_id' => 'another-tenant']);
+        $other = new ExecutionScope();
+        try {
+            $other->run(static function (ExecutionScope $current) use ($handle, $tagId): void {
+                self::check(self::reject(static fn (): bool => $handle->attach($tagId), 'model_scope_mismatch'), '关系句柄跨作用域写入');
+            });
+        } finally {
+            $other->close();
+        }
+        self::check($connection->statistics()['read_attempts'] === $before['read_attempts']
+            && $connection->statistics()['write_attempts'] === $before['write_attempts'], '关系句柄前置拒绝产生数据库操作');
+        self::check($handle->attach($tagId, ['weight' => 1]) && !$handle->attach($tagId, ['weight' => 2]), '句柄重复挂载契约改变');
+        $loaded = Article::query()->with('tags')->findOrFail($id);
+        self::check($loaded->related('tags')[0]->pivot()['weight'] == 2, '重复挂载未更新中间表');
+        self::check($loaded->relation('tags')->detach($tagId) && !$loaded->relationLoaded('tags'), '句柄解除未使预加载失效');
+        $reads = $connection->statistics()['read_attempts'];
+        self::check(self::reject(static fn (): mixed => $loaded->related('tags'), 'relation_not_loaded')
+            && $connection->statistics()['read_attempts'] === $reads, '写后读取返回旧值或隐式查询');
+        self::check($loaded->relation('tags')->sync([['id' => $tagId, 'pivot' => ['weight' => 3]]]) === ['attached' => 1, 'detached' => 0, 'updated' => 0], '句柄同步回执改变');
+        $rollback = $loaded->relation('tags');
+        try {
+            Db::transaction(static function () use ($rollback): void {
+                $rollback->sync([]);
+                throw new RuntimeException('relation_handle_rollback');
+            });
+        } catch (RuntimeException $error) {
+            self::check($error->getMessage() === 'relation_handle_rollback', '关系回滚错误丢失');
+        }
+        self::check(self::reject(static fn (): array => $rollback->sync([]), 'model_invalid'), '旧句柄绕过回滚失效');
+        $fresh = Article::query()->with('tags')->findOrFail($id);
+        self::check(count($fresh->related('tags')) === 1, '回滚没有恢复关系');
+        $deleted = $fresh->relation('tags');
+        $deleted->sync([]);
+        $fresh->forceDelete();
+        self::check(self::reject(static fn (): bool => $deleted->attach($tagId), 'model_invalid'), '删除后关系句柄仍可写入');
+    }
+
     /** 独立消费者的真实驱动与原生产物共同验证上下文和租约边界。 */
     public static function scopes(Driver $driver): array
     {
@@ -55,7 +310,7 @@ final class CoreExercise
                             return ['tenant' => $child->binding('tenant_id'), 'context' => $snapshot,
                                 'value' => (int) $connection->query('SELECT 7 AS value')[0]['value']];
                         });
-                    });
+                    }, ['tenant_id' => 'tenant-a']);
                     self::check($ready->pop(1) === true, '子任务没有建立独立连接');
                     try {
                         $current->run(static function (ExecutionScope $nested) use ($resume, $task): void {
@@ -211,7 +466,7 @@ final class CoreExercise
                 $label->save();
                 self::check($label->getWorkspace() === $tenant, '特殊租户列没有生效');
                 $parent = User::query()->find($userId);
-                self::check($parent->definition()->relation('records')->loader()->attach($parent, $record->getId()), '关联未自动填充中间表租户');
+                self::check($parent->relation('records')->attach($record->getId()), '关联未自动填充中间表租户');
                 return $record->getId();
             }, ['tenant_id' => $tenant]);
         }
@@ -225,11 +480,10 @@ final class CoreExercise
             self::check(ScopedLabel::query()->count() === 1 && ScopedLabel::query()->first()->getScopeId() === '普通范围', '特殊字段隔离错误');
             $parent = User::query()->with('records')->withCount('records')->find($userId);
             self::check(count($parent->related('records')) === 1 && $parent->computed('records_count') === 1, '全局父模型关系越界');
-            $links = $parent->definition()->relation('records')->loader();
-            self::check(!$links->detach($parent, $ids['tenant-b']), '解绑修改了其他租户');
-            self::check(self::reject(static fn (): bool => $links->attach($parent, $ids['tenant-b']), 'related_not_found'), '挂载接受了其他租户目标');
+            self::check(!$parent->relation('records')->detach($ids['tenant-b']), '解绑修改了其他租户');
+            self::check(self::reject(static fn (): bool => $parent->relation('records')->attach($ids['tenant-b']), 'related_not_found'), '挂载接受了其他租户目标');
             $parent = User::query()->find($userId);
-            self::check($links->sync($parent, []) === ['attached' => 0, 'detached' => 1, 'updated' => 0], '关系同步未限定租户');
+            self::check($parent->relation('records')->sync([]) === ['attached' => 0, 'detached' => 1, 'updated' => 0], '关系同步未限定租户');
             Db::connection('default', true)->table('type_suite_scoped_links')->insert(['user_id' => $userId, 'record_id' => $ids['tenant-a'], 'tenant_id' => 'tenant-b']);
             self::check(User::query()->with('records')->find($userId)->related('records') === []
                 && !User::query()->where('id', '=', $userId)->whereHas('records')->exists(), '中间表自身租户范围失效');

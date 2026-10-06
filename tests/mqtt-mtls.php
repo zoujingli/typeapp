@@ -11,7 +11,8 @@ use Type\Mqtt\CertificateRevocationList;
 /**
  * 专用 mTLS 入口：Swoole 校验客户端证书链，Broker 再核用途、有效期和签名 CRL。
  * 已连接会话在 CRL 更新列入、HTTPS 刷新列入、CRL 文件缺失、平台吊销名单列入、换证重叠结束或叶证书到期后断开。普通 TLS 端口仍只接受 CONNECT 凭据。
- * `--native` 另做独立消费者全量 AOT。不覆盖管理端登记、换证页面或集群 5 秒证明。
+ * `--native` 另做独立消费者全量 AOT；`--crl-only` 单独复现 PHP HTTPS 刷新闭环。
+ * 不覆盖管理端登记、换证页面或集群 5 秒证明。
  */
 
 function mqttMtlsField(string $value): string
@@ -929,7 +930,7 @@ $certs = mqttMtlsCertificates($consumer);
 expect($leafStatus !== 0, '缺少中间 CA 时叶证书仍通过根校验');
 successful(['openssl', 'verify', '-CAfile', $certs['ca'], '-untrusted', dirname($certs['server']) . '/intermediate.pem', $certs['leaf']]);
 $php = $nativeOnly ? [PHP_BINARY] : mqttMtlsPhp();
-$launcher = [...$php, '-r', 'require "vendor/autoload.php"; require "examples/mqtt/main.php"; main($argc, $argv);', '--'];
+$launcher = [...$php, '-r', 'require "vendor/autoload.php"; require "vendor/swoole/typephp/src/polyfills.php"; require "examples/mqtt/main.php"; main($argc, $argv);', '--'];
 $environment = getenv();
 expect(is_array($environment), '无法读取 MQTT mTLS 测试环境');
 $environment['MQTT_PASSWORD'] = 'mqtt-test-secret';
@@ -956,6 +957,14 @@ $environment['MQTT_CLIENT_CRL'] = $certs['crl'];
 $environment['MQTT_CLIENT_REVOKE'] = $certs['revoke'];
 $environment['MQTT_CLIENT_OVERLAP'] = $certs['overlap'];
 putenv('MQTT_PASSWORD=mqtt-test-secret');
+
+if (in_array('--crl-only', $argv, true)) {
+    expect(!$native, '--crl-only 只选择 PHP 刷新；原生模式仍运行完整消费者');
+    mqttMtlsCrlRefresh($launcher, $php, $root, $consumer, $environment, $certs);
+    removeTestDirectory($consumer);
+    echo "MQTT HTTPS CRL 刷新、超限保留旧列表及停止收尾通过。\n";
+    exit(0);
+}
 
 $verified = [];
 if (!$nativeOnly) {
@@ -1401,7 +1410,7 @@ try {
         expect(mkdir($consumer . '/app', 0700, true), '无法创建独立消费者目录');
         $toolchain = json_decode((string) file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
         $repositories = [];
-        foreach (['type-mqtt', 'type-runtime', 'type-orm', 'type-orm-pgsql', 'type-build'] as $package) {
+        foreach (['type-mqtt', 'type-core', 'type-runtime', 'type-orm', 'type-orm-pgsql', 'type-build'] as $package) {
             $repositories[] = ['type' => 'path', 'url' => '../../plugin/' . $package,
                 'options' => ['symlink' => false, 'versions' => ['zoujingli/' . $package => '1.0.x-dev']]];
         }
@@ -1416,9 +1425,8 @@ try {
         $module = (string) (getenv('TYPE_SWOOLE_MODULE') ?: ini_get('extension_dir') . '/swoole.so');
         expect(is_file($module), '原生 mTLS 编译需要匹配 SDK 的 Swoole 模块');
         expect(copy($module, $consumer . '/swoole.so'), '无法固定 Swoole 运行模块');
-        if (PHP_OS_FAMILY === 'Darwin') {
-            expect(str_contains(successful(['otool', '-L', $consumer . '/swoole.so']), 'libssl'), '原生 mTLS 需要链接 OpenSSL 的 Swoole 模块');
-        }
+        // TLS 由后续同模块的真实 mTLS、WSS 与 HTTPS 行为证明；OpenSSL 可静态链接，
+        // 不要求 otool 列出动态 libssl，避免把已内置 TLS 的模块误判为缺少能力。
         $hash = hash_file('sha256', $consumer . '/swoole.so');
         expect(is_string($hash) && $hash !== '', '无法计算 Swoole 模块摘要');
         file_put_contents($consumer . '/type-app.json', json_encode([
@@ -1437,7 +1445,8 @@ try {
         $report = json_decode((string) file_get_contents($consumer . '/build/mqtt/type-app.build.json'), true, 512, JSON_THROW_ON_ERROR);
         $production = array_keys($report['production-packages']);
         sort($production);
-        expect($production === ['zoujingli/type-mqtt', 'zoujingli/type-orm', 'zoujingli/type-orm-pgsql', 'zoujingli/type-runtime'], '独立 MQTT mTLS 编译生产依赖不完整');
+        expect($production === ['psr/http-factory', 'psr/http-message', 'psr/http-server-handler', 'psr/http-server-middleware',
+            'zoujingli/type-core', 'zoujingli/type-mqtt', 'zoujingli/type-orm', 'zoujingli/type-orm-pgsql', 'zoujingli/type-runtime'], '独立 MQTT mTLS 编译生产依赖不完整');
         foreach ($report['sources'] as $source) {
             expect(str_starts_with($source, $consumer . '/'), '独立 MQTT mTLS 仍编译主仓源码');
         }

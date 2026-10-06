@@ -186,7 +186,7 @@ SignedSerializer 保留 PHP 类型；对象必须提前加载并登记受信类�
 
 ## 编译期缓存声明
 
-`#[Cacheable]` 和 `#[CacheEvict]` 只表达构建策略，必须调用 OperationCompiler 生成的组合对象。cache 指向 TypedCache 参数，业务标量参数须进入 key 模板；直接调用原方法不会缓存或失效。
+`#[Cacheable]` 和 `#[CacheEvict]` 由标准入口在加载前转换原 Service 方法，普通调用、手动构造和类内互调遵守相同策略。cache 指向 TypedCache 参数，业务标量参数须进入 key；活动事务绕过共享缓存且不填充，失效只在对应数据源最外层确认提交后执行。只有缓存依赖的应用不需要安装 ORM。详见[操作声明](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)。
 
 与事务组合的失效发生在最外层提交确认后；失效失败按提交后错误处理，不重跑已经提交的业务。Cacheable 不与同方法事务或 CacheEvict 混用。
 

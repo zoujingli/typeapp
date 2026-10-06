@@ -8,13 +8,25 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 $root = dirname(__DIR__);
 $source = $root . '/examples/routing/Controllers.php';
 $compiler = new Type\Build\RouteCompiler();
+$validationSource = $root . '/plugin/type-validate/src';
 $configuration = $compiler->declarations($root, 'examples/routing/route.php');
-$explicit = $compiler->generate($root, $configuration, [$source]);
-expect(count($explicit['routes']) === 8, '资源路由和普通路由没有展开');
+$explicit = $compiler->generate($root, $configuration, [$source, $validationSource]);
+expect(count($explicit['routes']) === 16, '资源路由、普通路由和类型化动作没有展开');
 expect($explicit['routes'][0]['name'] === 'api.books.index' && $explicit['routes'][0]['middleware'] === ['group'], '分组名称或中间件丢失');
-$attributes = $compiler->generate($root, ['class' => $configuration['class'], 'attributes' => ['examples/routing/Controllers.php']], [$source]);
+$typed = array_column($explicit['routes'], null, 'name');
+expect($typed['api.typed.show']['action']['arguments'] === [['name' => 'id', 'type' => 'int']]
+    && $typed['api.typed.show']['action']['return'] === 'array'
+    && $typed['api.typed.show']['action']['status'] === 200, '整数类型化动作契约没有进入路由模型');
+expect(
+    $typed['api.typed.store']['action']['return'] === 'array' && $typed['api.typed.store']['action']['status'] === 201,
+    '固定 201 的业务数组动作契约错误'
+);
+expect($typed['api.typed.search']['action']['arguments'] === [['name' => 'term', 'type' => 'string']]
+    && $typed['api.typed.destroy']['action']['return'] === 'void'
+    && $typed['api.typed.destroy']['action']['status'] === 204, '字符串或 void 动作契约错误');
+$attributes = $compiler->generate($root, ['class' => $configuration['class'], 'attributes' => ['examples/routing/Controllers.php']], [$source, $validationSource]);
 expect($explicit['routes'] === $attributes['routes'], '显式和 Attribute 声明没有进入同一模型');
-$discovered = $compiler->generate($root, $compiler->declarations($root, 'examples/routing/attribute-route.php'), [$source]);
+$discovered = $compiler->generate($root, $compiler->declarations($root, 'examples/routing/attribute-route.php'), [$source, $validationSource]);
 expect($discovered['routes'] === $attributes['routes'], '生产源码中的路由注解没有自动进入同一模型');
 expect(!str_contains($explicit['code'], 'Reflection') && !str_contains($explicit['code'], 'glob('), '生成路由包含生产扫描或反射');
 expect(!class_exists(TypeApp\RoutingExample\BooksController::class, false), '构建阶段加载了应用控制器');
@@ -22,7 +34,7 @@ $invalidPrefix = $configuration;
 $invalidPrefix['routes'][0]['prefix'] = '/api?debug=true';
 $rejected = false;
 try {
-    $compiler->generate($root, $invalidPrefix, [$source]);
+    $compiler->generate($root, $invalidPrefix, [$source, $validationSource]);
 } catch (RuntimeException $error) {
     $rejected = true;
 }
@@ -31,7 +43,7 @@ $invalidResource = $configuration;
 $invalidResource['routes'][0]['routes'][0]['constraints'] = ['idx' => '[0-9]+'];
 $rejected = false;
 try {
-    $compiler->generate($root, $invalidResource, [$source]);
+    $compiler->generate($root, $invalidResource, [$source, $validationSource]);
 } catch (RuntimeException $error) {
     $rejected = true;
 }
@@ -65,11 +77,120 @@ foreach (['不存在控制器' => ['handler', ['MissingController', 'show']], '�
 foreach ($cases as $label => $candidate) {
     $rejected = false;
     try {
-        $compiler->generate($root, $candidate, [$source]);
+        $compiler->generate($root, $candidate, [$source, $validationSource]);
     } catch (RuntimeException $error) {
         $rejected = true;
     }
     expect($rejected, '构建未拒绝：' . $label);
+}
+$directory = $root . '/build/routing-build-tests';
+if (!is_dir($directory)) {
+    mkdir($directory, 0777, true);
+}
+$signatureCases = [
+    '未知路径参数' => <<<'PHP'
+<?php
+namespace TypeApp\RoutingProbe;
+final class UnknownParameter { public function handle(string $slug): array { return []; } }
+PHP,
+    '联合类型' => <<<'PHP'
+<?php
+namespace TypeApp\RoutingProbe;
+final class UnionParameter { public function handle(string|int $id): array { return []; } }
+PHP,
+    '引用参数' => <<<'PHP'
+<?php
+namespace TypeApp\RoutingProbe;
+final class ReferenceParameter { public function handle(string &$id): array { return []; } }
+PHP,
+    '可变参数' => <<<'PHP'
+<?php
+namespace TypeApp\RoutingProbe;
+final class VariadicParameter { public function handle(string ...$id): array { return []; } }
+PHP,
+    '无返回类型' => <<<'PHP'
+<?php
+namespace TypeApp\RoutingProbe;
+final class MissingReturn { public function handle(string $id) { return []; } }
+PHP,
+];
+$signatureDirectory = $directory . '/signatures';
+if (!is_dir($signatureDirectory)) {
+    mkdir($signatureDirectory, 0777, true);
+}
+foreach ($signatureCases as $label => $contents) {
+    $probe = $signatureDirectory . '/' . md5($label) . '.php';
+    file_put_contents($probe, $contents);
+    $rejected = false;
+    try {
+        $compiler->generate($root, ['class' => 'TypeApp\\Generated\\Signature' . md5($label), 'routes' => [[
+            'path' => '/probe/{id}', 'handler' => ['TypeApp\\RoutingProbe\\' . trim(strtok(substr($contents, strpos($contents, 'class ') + 6), ' '), '{'), 'handle'],
+        ]]], [$probe]);
+    } catch (RuntimeException $error) {
+        $rejected = true;
+    }
+    expect($rejected, '构建未拒绝动作签名：' . $label);
+    unlink($probe);
+}
+$statusCases = [
+    '非 2xx' => ['status' => 302],
+    'array 204' => ['status' => 204],
+    'array 205' => ['status' => 205],
+    'void 非 204' => ['handler' => ['TypeApp\\RoutingExample\\BooksController', 'typedDestroy'], 'status' => 200],
+    'Response 固定状态' => ['handler' => ['TypeApp\\RoutingExample\\BooksController', 'lookup'], 'status' => 201],
+];
+foreach ($statusCases as $label => $changes) {
+    $routeCase = ['path' => '/status/{id}', 'methods' => ['GET'], 'handler' => ['TypeApp\\RoutingExample\\BooksController', 'typedShow'],
+        'constraints' => ['id' => '[0-9]+']];
+    $candidate = ['class' => $configuration['class'], 'routes' => [array_replace($routeCase, $changes)]];
+    $rejected = false;
+    try {
+        $compiler->generate($root, $candidate, [$source, $validationSource]);
+    } catch (RuntimeException $error) {
+        $rejected = true;
+    }
+    expect($rejected, '构建未拒绝状态冲突：' . $label);
+}
+$inputRoute = ['path' => '/input', 'handler' => ['TypeApp\\RoutingExample\\BooksController', 'searchInput']];
+foreach (['未知策略' => ['unknown' => true], '正文上限零值' => ['maxBytes' => 0], '过宽深度' => ['maxDepth' => 129],
+    '错误部分更新类型' => ['patch' => 'yes'], '非法场景' => ['scenario' => ''], '非对象' => 'default'] as $label => $options) {
+    $rejected = false;
+    try {
+        $compiler->generate($root, ['class' => $configuration['class'], 'attributes' => [], 'routes' => [$inputRoute + ['input' => $options]]], [$source, $validationSource]);
+    } catch (RuntimeException $error) {
+        $rejected = true;
+    }
+    expect($rejected, '构建未拒绝输入策略：' . $label);
+}
+$missingValidate = false;
+try {
+    $compiler->generate($root, ['class' => $configuration['class'], 'attributes' => [], 'routes' => [$inputRoute]], [$source]);
+} catch (RuntimeException $error) {
+    $missingValidate = str_contains($error->getMessage(), 'type-validate');
+}
+expect($missingValidate, '类型化输入没有核对生产校验依赖');
+$inputProbe = $directory . '/input-signature.php';
+$inputSignatures = [
+    '未实现契约' => ['class Input', 'public static function fromData(Data $data): Input { return new Input(); }'],
+    '工厂返回接口' => ['class Input implements ValidatedInput', 'public static function fromData(Data $data): ValidatedInput { return new Input(); }'],
+    '工厂缺少类型' => ['class Input implements ValidatedInput', 'public static function fromData($data): Input { return new Input(); }'],
+    '工厂是实例方法' => ['class Input implements ValidatedInput', 'public function fromData(Data $data): Input { return new Input(); }'],
+];
+try {
+    foreach ($inputSignatures as $label => [$declaration, $factory]) {
+        file_put_contents($inputProbe, '<?php namespace InputProbe; use Type\\Validate\\{Data,Schema,ValidatedInput}; '
+            . $declaration . ' { public static function schema(): Schema { throw new \\RuntimeException("禁止构建执行"); } ' . $factory . ' } '
+            . 'final class Controller { public function handle(Input $input): array { return []; } }');
+        $rejected = false;
+        try {
+            $compiler->generate($root, ['class' => 'InputProbe\\Routes', 'routes' => [['path' => '/input', 'handler' => ['InputProbe\\Controller', 'handle']]]], [$inputProbe, $validationSource]);
+        } catch (RuntimeException $error) {
+            $rejected = true;
+        }
+        expect($rejected, '构建未拒绝输入签名：' . $label);
+    }
+} finally {
+    unlink($inputProbe);
 }
 $missingSource = false;
 try {
@@ -82,16 +203,12 @@ $nested = ['class' => $configuration['class'], 'routes' => [['prefix' => '/tenan
     ['prefix' => '/v1', 'name-prefix' => 'v1.', 'middleware' => ['inner'], 'routes' => [['resource' => '/books', 'name' => 'books',
         'controller' => TypeApp\RoutingExample\BooksController::class, 'only' => ['show'], 'constraints' => ['id' => '[0-9]+']]]],
 ]]]];
-$nestedRoutes = $compiler->generate($root, $nested, [$source])['routes'];
+$nestedRoutes = $compiler->generate($root, $nested, [$source, $validationSource])['routes'];
 expect(count($nestedRoutes) === 1 && $nestedRoutes[0]['path'] === '/tenants/{tenant}/v1/books/{id}'
     && $nestedRoutes[0]['name'] === 'tenant.v1.books.show' && $nestedRoutes[0]['middleware'] === ['outer', 'inner'], '嵌套分组或资源 only 错误');
 $definition = new Type\Core\Http\RouteDefinition($nestedRoutes[0]['methods'], $nestedRoutes[0]['path'], $nestedRoutes[0]['segments'], $nestedRoutes[0]['name']);
 expect($definition->url(['tenant' => 'acme', 'id' => 42]) === '/tenants/acme/v1/books/42'
     && $definition->match('/tenants/23/v1/books/42') === null, '分组参数约束没有进入同一运行模型');
-$directory = $root . '/build/routing-build-tests';
-if (!is_dir($directory)) {
-    mkdir($directory, 0777, true);
-}
 $fixture = tempnam($directory, 'attribute_');
 expect($fixture !== false, '无法准备静态解析验证');
 try {

@@ -161,7 +161,7 @@ final class Application
                         } else {
                             $transaction->table('rollout_users')->where('id', '=', 'user')->update($values);
                         }
-                        $store->enqueue($transaction, $id, 'user.changed', $release, ['value' => $name]);
+                        $store->enqueueUsing($transaction, $id, 'user.changed', $release, ['value' => $name]);
                     });
                     self::cache($manager, $scope, $release)->delete('user');
                     self::output(['committed' => true, 'message_version' => $release]);

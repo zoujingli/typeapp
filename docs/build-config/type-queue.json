@@ -1,9 +1,15 @@
 {
   "project-root": "../..",
   "name": "type-queue",
-  "entry": "examples/queue-command.php",
-  "sources": ["examples/queue"],
-  "queue": {"class": "TypeApp\\QueueExample\\Jobs", "jobs": [{"type": "increment", "version": 1, "handler": "TypeApp\\QueueExample\\Increment"}]},
+  "sources": ["examples/queue", "examples/queue-command.php"],
+  "application": {
+    "enabled": ["zoujingli/typeapp"],
+    "bootstrap": {"class": "TypeApp\\QueueExample\\Application", "method": "run"},
+    "config": {"prefix": {"env": "TYPE_QUEUE_PREFIX", "default": "example"}},
+    "bindings": {"TypeApp\\QueueExample\\Increment::$prefix": {"config": "prefix"}},
+    "services": [{"id": "job-resource", "class": "TypeApp\\QueueExample\\Resource"}],
+    "jobs": [{"type": "increment", "version": 1, "class": "TypeApp\\QueueExample\\Increment", "resources": ["job-resource"]}]
+  },
   "output": "build/queue/type-app",
   "build-directory": "build/queue/compiler"
 }

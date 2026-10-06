@@ -1,0 +1,13 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Type\Orm\Attribute\Schema;
+
+/** 新版本声明；编辑后显式 schema:prepare 冻结三库计划，禁止修改已应用历史。 */
+#[Schema(version: '{{version}}', description: '{{description}}', snapshot: 'snapshots/{{version}}.json', operations: {{operations}})]
+final class {{name}}
+{
+}

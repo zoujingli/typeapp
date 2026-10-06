@@ -70,6 +70,20 @@ abstract class Model implements JsonSerializable
         return $this->definition;
     }
 
+    /**
+     * 取得绑定本实例的关系写入句柄。
+     *
+     * 句柄不执行隐式查询；attach、detach、sync 会在真正写入时再次检查
+     * 模型是否持久化、仍属于当前执行作用域及租户范围。
+     *
+     * @throws ModelException 关系未声明、父模型失效或执行作用域不匹配时拒绝。
+     */
+    public function relation(string $name): RelationHandle
+    {
+        $this->assertValid();
+        return new RelationHandle($this, $name);
+    }
+
     /** 检查声明字段是否已加载；已加载的 null 仍返回 true，未知字段抛错。 */
     public function loaded(string $field): bool
     {
@@ -176,7 +190,7 @@ abstract class Model implements JsonSerializable
     }
 
     /**
-     * 保存当前作用域模型的变更，复用字段、租户、版本和行为约束。
+     * 保存当前作用域模型的变更，复用字段、租户、版本和行为约束；实际写入时统一维护受管时间。
      *
      * @return string created、updated、unchanged 或前置行为取消时的 cancelled。
      * @throws ModelException 状态、字段、必填、存储精度或乐观锁约束不满足。
@@ -245,16 +259,18 @@ abstract class Model implements JsonSerializable
             if ($softDelete !== null && !array_key_exists($softDelete, $this->values)) {
                 $this->values[$softDelete] = null;
             }
+            $timestamps = $this->definition->writeTimestamps(true);
+            $insertValues = array_merge($this->values, $timestamps);
             foreach ($this->definition->names() as $name) {
                 if ($name === $key && $this->definition->generatedKey()) {
                     continue;
                 }
-                if ($this->definition->field($name)->required() && !array_key_exists($name, $this->values)) {
+                if ($this->definition->field($name)->required() && !array_key_exists($name, $insertValues)) {
                     throw new ModelException('required_field', '新增模型缺少必需字段：' . $name);
                 }
             }
-            $row = $this->encode($this->values);
-            $this->definition->assertStorage($connection, array_keys($this->values));
+            $row = $this->encode($insertValues);
+            $this->definition->assertStorage($connection, array_keys($insertValues));
             if ($row === []) {
                 throw new ModelException('empty_insert', '新增模型至少需要一个显式字段');
             }
@@ -270,6 +286,7 @@ abstract class Model implements JsonSerializable
             } else {
                 $query->insert($row);
             }
+            $this->values = array_merge($this->values, $timestamps);
             $this->persisted = true;
             $this->original = $this->values;
             $this->event('created', false);
@@ -280,6 +297,8 @@ abstract class Model implements JsonSerializable
         if ($dirty === []) {
             return 'unchanged';
         }
+        $timestamps = $this->definition->writeTimestamps(false);
+        $dirty = array_merge($dirty, $timestamps);
         $target = $query->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
         $expectedVersion = $this->version();
         $values = $this->encode($dirty);
@@ -295,6 +314,7 @@ abstract class Model implements JsonSerializable
         } elseif ($affected === 0 && $target->first() === null) {
             throw new ModelException('not_found', '更新目标已经不存在');
         }
+        $this->values = array_merge($this->values, $timestamps);
         $this->original = $this->values;
         $this->event('updated', false);
         $this->event('saved', false);
@@ -335,8 +355,9 @@ abstract class Model implements JsonSerializable
         $soft = $this->definition->softDeleteField();
         if ($soft !== null && !$force) {
             $value = new DateTimeImmutable('now', new DateTimeZone('UTC'));
-            $this->definition->assertStorage($connection, [$soft]);
-            $values = [$this->definition->field($soft)->column() => $this->definition->field($soft)->encode($value)];
+            $managed = array_merge([$soft => $value], $this->definition->writeTimestamps(false, $value));
+            $this->definition->assertStorage($connection, array_keys($managed));
+            $values = $this->encode($managed);
             if ($expectedVersion !== null) {
                 $values[$this->definition->field($version)->column()] = $this->nextVersion($expectedVersion);
             }
@@ -345,8 +366,10 @@ abstract class Model implements JsonSerializable
                 $this->assertVersionWrite($connection, $affected, $expectedVersion, true);
             }
             if ($affected > 0) {
-                $this->values[$soft] = $value;
-                $this->original[$soft] = $value;
+                foreach ($managed as $name => $stored) {
+                    $this->values[$name] = $stored;
+                    $this->original[$name] = $stored;
+                }
                 $this->forgetRelations();
             }
             if ($affected > 0 && $expectedVersion !== null) {
@@ -386,7 +409,9 @@ abstract class Model implements JsonSerializable
             $query = $this->recordQuery($connection)->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
             $version = $this->definition->versionField();
             $expectedVersion = $this->version();
-            $values = [$this->definition->field($soft)->column() => null];
+            $managed = array_merge([$soft => null], $this->definition->writeTimestamps(false));
+            $this->definition->assertStorage($connection, array_keys($managed));
+            $values = $this->encode($managed);
             if ($expectedVersion !== null) {
                 $query = $query->where($this->definition->field($version)->column(), '=', $expectedVersion);
                 $values[$this->definition->field($version)->column()] = $this->nextVersion($expectedVersion);
@@ -396,8 +421,10 @@ abstract class Model implements JsonSerializable
                 $this->assertVersionWrite($connection, $affected, $expectedVersion, true);
             }
             if ($affected > 0) {
-                $this->values[$soft] = null;
-                $this->original[$soft] = null;
+                foreach ($managed as $name => $stored) {
+                    $this->values[$name] = $stored;
+                    $this->original[$name] = $stored;
+                }
                 $this->forgetRelations();
                 if ($expectedVersion !== null) {
                     $this->values[$version] = $expectedVersion + 1;

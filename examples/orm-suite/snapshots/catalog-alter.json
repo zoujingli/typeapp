@@ -1,0 +1,40 @@
+{
+    "protocol": 1,
+    "declaration": "2887c7f185e16d07c1a22e82fe84eaa8f36355d2c1b4f73cd408c18464403469",
+    "drivers": {
+        "mysql": {
+            "statements": [
+                "ALTER TABLE `type_suite_catalog` ADD COLUMN `state` VARCHAR(30) NOT NULL DEFAULT 'new'",
+                "ALTER TABLE `type_suite_catalog` RENAME COLUMN `title` TO `heading`",
+                "DROP INDEX `type_suite_catalog_title` ON `type_suite_catalog`",
+                "CREATE INDEX `type_suite_catalog_heading` ON `type_suite_catalog` (`heading`)",
+                "ALTER TABLE `type_suite_catalog` DROP COLUMN `spare`",
+                "ALTER TABLE `type_suite_catalog` RENAME TO `type_suite_catalog_entries`"
+            ],
+            "transactional": false
+        },
+        "pgsql": {
+            "statements": [
+                "ALTER TABLE \"type_suite_catalog\" ADD COLUMN \"state\" VARCHAR(30) NOT NULL DEFAULT 'new'",
+                "ALTER TABLE \"type_suite_catalog\" RENAME COLUMN \"title\" TO \"heading\"",
+                "DROP INDEX \"type_suite_catalog_title\"",
+                "CREATE INDEX \"type_suite_catalog_heading\" ON \"type_suite_catalog\" (\"heading\")",
+                "ALTER TABLE \"type_suite_catalog\" DROP COLUMN \"spare\"",
+                "ALTER TABLE \"type_suite_catalog\" RENAME TO \"type_suite_catalog_entries\""
+            ],
+            "transactional": true
+        },
+        "sqlite": {
+            "statements": [
+                "ALTER TABLE \"type_suite_catalog\" ADD COLUMN \"state\" VARCHAR(30) NOT NULL DEFAULT 'new'",
+                "ALTER TABLE \"type_suite_catalog\" RENAME COLUMN \"title\" TO \"heading\"",
+                "DROP INDEX \"type_suite_catalog_title\"",
+                "CREATE INDEX \"type_suite_catalog_heading\" ON \"type_suite_catalog\" (\"heading\")",
+                "ALTER TABLE \"type_suite_catalog\" DROP COLUMN \"spare\"",
+                "ALTER TABLE \"type_suite_catalog\" RENAME TO \"type_suite_catalog_entries\""
+            ],
+            "transactional": true
+        }
+    },
+    "sha256": "bd932cd2084e444432e3e9a26a39f397a663dd8240e6493264ffb9c35d09a02f"
+}

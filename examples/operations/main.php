@@ -14,7 +14,6 @@ use Type\Redis\Purpose;
 use Type\Redis\RedisConfiguration;
 use Type\Redis\RedisManager;
 use Type\Runtime\ExecutionScope;
-use TypeApp\Operations\UserOperations;
 use TypeApp\Operations\UserService;
 use TypeApp\ModelExample\Drivers;
 
@@ -31,7 +30,7 @@ function operationsAssert(bool $condition, string $message): void
 }
 
 /** 故障代理先由控制器准备持久表；只观察生成入口、缓存值和真实业务次数。 */
-function operationsUnknown(UserOperations $operations, TypedCache $cache): void
+function operationsUnknown(UserService $operations, TypedCache $cache): void
 {
     operationsAssert($operations->cached($cache, 1) === 'before', '未知提交前缓存没有准备好');
     $outcome = '';
@@ -55,7 +54,8 @@ function main(int $argc, array $argv): void
 {
     \Type\Runtime\CoroutineRuntime::enableIo();
     \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
-        $database = new DatabaseManager(['default' => Drivers::create((string) ($argv[1] ?? 'sqlite'))]);
+        $driver = Drivers::create((string) ($argv[1] ?? 'sqlite'));
+        $database = new DatabaseManager(['default' => $driver, 'named' => $driver]);
         $redisManager = new RedisManager(['default' => new RedisConfiguration(
             (string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
             (int) (getenv('TYPE_REDIS_PORT') ?: 6379)
@@ -64,10 +64,9 @@ function main(int $argc, array $argv): void
         $scope = new ExecutionScope();
         $cache = null;
         try {
-            $scope->run(static function (ExecutionScope $current) use ($scope, $redisManager, $argv, &$cache): void {
-                $connection = Db::connection('default', true);
+            $scope->run(static function (ExecutionScope $current) use ($scope, $database, $redisManager, $argv, &$cache): void {
                 $service = new UserService();
-                $operations = new UserOperations($service);
+                $operations = $service;
                 $redis = $redisManager->connection($scope, 'default', Purpose::SCRIPT);
                 $cacheApplication = 'operations-' . bin2hex(random_bytes(12));
                 $cache = new TypedCache(new NamespaceStore($redis, $cacheApplication, 'test', 'v1'), JsonCodec::data());
@@ -75,6 +74,34 @@ function main(int $argc, array $argv): void
                     operationsUnknown($operations, $cache);
                     return;
                 }
+                operationsAssert(!Db::inTransaction() && $database->statistics()['active'] === [], '事务状态检查借用了连接');
+                $named = Db::connection('named', true);
+                $named->execute('CREATE TEMPORARY TABLE operation_named (id INTEGER PRIMARY KEY, name VARCHAR(100) NOT NULL)');
+                $named->execute("INSERT INTO operation_named VALUES (1, 'named-before')");
+                operationsAssert($operations->namedCached($cache, 1) === 'named-before', '命名源缓存准备失败');
+                try {
+                    Db::transaction(static function () use ($operations, $cache): void {
+                        $operations->namedWrite($cache, 1, 'named-rollback');
+                        operationsAssert($operations->namedCached($cache, 1) === 'named-rollback', '命名源事务没有绕过缓存');
+                        $crossRejected = false;
+                        try {
+                            $operations->cached($cache, 1);
+                        } catch (\Type\Orm\ModelException $error) {
+                            $crossRejected = $error->errorCode() === 'cross_database_transaction';
+                        }
+                        operationsAssert($crossRejected, '缓存便利入口绕过跨库限制');
+                        throw new RuntimeException('named-rollback');
+                    }, 'named');
+                } catch (RuntimeException $error) {
+                    operationsAssert($error->getMessage() === 'named-rollback', '命名源回滚错误丢失');
+                }
+                operationsAssert($operations->namedCached($cache, 1) === 'named-before' && $operations->namedLoads() === 2, '命名源回滚污染缓存');
+                Db::transaction(static function () use ($operations, $cache): void {
+                    $operations->namedWrite($cache, 1, 'named-after');
+                    operationsAssert($operations->namedCached($cache, 1) === 'named-after', '命名源提交前读取错误');
+                }, 'named');
+                operationsAssert($operations->namedCached($cache, 1) === 'named-after' && $operations->namedLoads() === 4, '命名源提交后没有恢复缓存');
+                operationsAssert(!isset($database->statistics()['active']['default']), '命名源操作隐式借用了默认源');
                 $operations->initialize();
                 $operations->create(1, '中文事务');
                 operationsAssert($operations->read(1) === '中文事务', '事务成功后未读取到业务结果');
@@ -89,7 +116,13 @@ function main(int $argc, array $argv): void
                     $service->create(3, '普通调用', true);
                 } catch (RuntimeException) {
                 }
-                operationsAssert($operations->read(3) === '普通调用', '原业务方法不应被隐式拦截');
+                operationsAssert($operations->read(3) === null, '原 Service 调用没有执行事务声明');
+                $manual = new UserService();
+                try {
+                    $manual->createIndirect(4, '类内互调', true);
+                } catch (RuntimeException) {
+                }
+                operationsAssert($manual->read(4) === null, '手动构造后的类内互调没有执行事务声明');
                 operationsAssert($operations->cached($cache, 1) === '中文事务'
                     && $operations->cached($cache, 1) === '中文事务' && $operations->loads() === 1, '生成操作没有复用缓存命中');
                 operationsAssert($operations->cached($cache, 9) === null && $operations->cached($cache, 9) === null
@@ -117,40 +150,68 @@ function main(int $argc, array $argv): void
                 try {
                     Db::transaction(static function () use ($operations, $cache): void {
                         $operations->rename($cache, 1, '嵌套回滚');
-                        operationsAssert($operations->cached($cache, 1) === '中文事务', '内层提交提前清理外层事务缓存');
+                        operationsAssert($operations->cached($cache, 1) === '嵌套回滚', '活动事务未绕过共享缓存');
                         throw new RuntimeException('预期外层回滚');
                     });
                 } catch (RuntimeException $outerError) {
                     $outerFailed = $outerError->getMessage() === '预期外层回滚';
                 }
                 operationsAssert($outerFailed && $operations->read(1) === '中文事务'
-                    && $operations->cached($cache, 1) === '中文事务' && $operations->loads() === 6, '外层回滚没有丢弃缓存失效回调');
+                    && $operations->cached($cache, 1) === '中文事务' && $operations->loads() === 7, '外层回滚污染共享缓存或没有丢弃失效回调');
                 Db::transaction(static function () use ($operations, $cache): void {
                     operationsAssert($operations->rename($cache, 1, '提交后更新') === '提交后更新', '事务方法返回值错误');
-                    operationsAssert($operations->cached($cache, 1) === '中文事务', '缓存未等待最外层提交');
+                    operationsAssert($operations->cached($cache, 1) === '提交后更新', '事务读取未得到自身写入');
                 });
-                operationsAssert($operations->cached($cache, 1) === '提交后更新' && $operations->loads() === 7, '最外层提交后未失效缓存');
+                operationsAssert($operations->cached($cache, 1) === '提交后更新' && $operations->loads() === 9, '最外层提交后未失效缓存或事务内错误填充');
                 try {
                     $operations->evict($cache, 1, true);
                 } catch (RuntimeException) {
                 }
                 $operations->cached($cache, 1);
-                operationsAssert($operations->loads() === 7, '无事务失败方法错误清理缓存');
+                operationsAssert($operations->loads() === 9, '无事务失败方法错误清理缓存');
                 $operations->evict($cache, 1);
                 $operations->cached($cache, 1);
-                operationsAssert($operations->loads() === 8, '无事务成功方法没有清理缓存');
+                operationsAssert($operations->loads() === 10, '无事务成功方法没有清理缓存');
                 $operations->clearAfterWrite($cache, 1, ['name' => '按代次清理']);
-                operationsAssert($operations->cached($cache, 1) === '按代次清理' && $operations->loads() === 9, '事务成功后没有清理当前命名空间');
+                operationsAssert($operations->cached($cache, 1) === '按代次清理' && $operations->loads() === 11, '事务成功后没有清理当前命名空间');
                 $typeCases = [[null, 'null:null'], [false, 'bool:false'], [1, 'int:1'], [1.0, 'float:1.0'], ['1', 'string:"1"']];
                 foreach ($typeCases as $typeCase) {
                     operationsAssert($operations->typedKey($cache, $typeCase[0]) === $typeCase[1]
                         && $operations->typedKey($cache, $typeCase[0]) === $typeCase[1], '缓存 key 混淆 null、整数、浮点或字符串');
                 }
-                operationsAssert($operations->loads() === 14, '缓存键类型区分或复用次数错误');
+                operationsAssert($operations->loads() === 16, '缓存键类型区分或复用次数错误');
                 operationsAssert($operations->tenantKey($cache, null, 1) === '[null,1]' && $operations->tenantKey($cache, '', 1) === '["",1]'
                     && $operations->tenantKey($cache, 'tenant-a', 1) === '["tenant-a",1]', '可空租户参数未参与缓存隔离');
                 operationsAssert($operations->greet() === '你好，开发者！' && $operations->greet(repeat: 2, name: '中文') === '你好，中文！你好，中文！'
                     && $operations->collision('合法参数') === '合法参数', '默认参数、命名参数或内部生成变量与业务参数冲突');
+                $beforeEvict = $operations->loads();
+                try {
+                    Db::transaction(static function () use ($operations, $cache): void {
+                        $operations->evict($cache, 1);
+                        throw new RuntimeException('evict-rollback');
+                    });
+                } catch (RuntimeException $error) {
+                    operationsAssert($error->getMessage() === 'evict-rollback', '外层失效回滚错误丢失');
+                }
+                $operations->cached($cache, 1);
+                operationsAssert($operations->loads() === $beforeEvict, '无Transactional的失效方法没有服从外层回滚');
+                Db::transaction(static function () use ($operations, $cache): void {
+                    try {
+                        Db::transaction(static function () use ($operations, $cache): void {
+                            $operations->evict($cache, 1);
+                            throw new RuntimeException('savepoint-rollback');
+                        });
+                    } catch (RuntimeException $error) {
+                        operationsAssert($error->getMessage() === 'savepoint-rollback', '保存点回滚错误丢失');
+                    }
+                });
+                $operations->cached($cache, 1);
+                operationsAssert($operations->loads() === $beforeEvict, '保存点回滚仍发布了缓存失效');
+                Db::transaction(static function () use ($operations, $cache): void {
+                    $operations->evict($cache, 1);
+                });
+                $operations->cached($cache, 1);
+                operationsAssert($operations->loads() === $beforeEvict + 1, '外层确认提交没有执行普通失效声明');
                 $admin = new Redis();
                 try {
                     $admin->connect((string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379));

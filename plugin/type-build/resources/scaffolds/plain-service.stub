@@ -1,0 +1,15 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+/** 命令、Job 和调度任务共用的业务操作；在此填写实际业务逻辑。 */
+final class {{name}}
+{
+    /** @return array{marker:string} 显式返回值，不携带活动连接或对象。 */
+    public function execute(string $marker): array
+    {
+        return ['marker' => $marker];
+    }
+}

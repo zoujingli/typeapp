@@ -48,7 +48,9 @@ composer require zoujingli/type-orm:1.0.0-rc.14
 
 模型映射由[构建工具](type-build.md)生成，完整应用组织见[数据库与模型](../database.md)。`ModelQuery` 的 `find/first` 返回模型或 null，`get` 返回模型列表。
 
-当前 `main` 已补充模型 `sum/avg/min/max`、`insertMany` 与所选 PDO hook 前置检查，尚未包含在 RC14 中。模型级冲突写入仍未提供；底层 Query 的 SQL 能力不自动获得模型约束。支持范围与待补入口见[常用能力边界](../database.md#常用能力边界)。
+模型的 PHP 属性名不能与 `Type\Orm\Model` 基类成员重名，包括私有成员。数据库列可保留原名，例如 `#[Column(name: 'state')] public string $status;`；业务使用 `status` 和生成的 `getStatus()`，完整构建输入在生成阶段检查此冲突。
+
+当前 `main` 已补充模型 `sum/avg/min/max`、`insertMany`、受管时间字段、`firstOrCreate`、`upsert/upsertAnyUnique`、关系写入句柄与所选 PDO hook 前置检查，尚未包含在 RC14 中。底层 Query 的 SQL 能力不自动获得模型约束。支持范围与待补入口见[常用能力边界](../database.md#常用能力边界)。
 
 例如在独立应用的生产源码中声明：
 
@@ -97,6 +99,8 @@ if ($partial !== null) {
 
 `Model::create(array $values): Model` 返回已持久化模型，并复用严格字段、租户、版本和必填约束；行为取消时抛出 `model_creation_cancelled`。`Model::find(int|string $id): ?Model` 按当前作用域查找，未找到返回 `null`，仍遵守自动租户范围和主从路由。部分查询自动保留主键，保存只写改动的 name，响应明确投影 id/name。业务扩展可以复用生成映射；不要编辑生成文件保存业务方法。
 
+已有创建和更新时间列时，可在 `Table` 添加 `createdAt: 'created_at', updatedAt: 'updated_at'` 并声明对应非空属性。`int` 使用 Unix 秒，`DateTimeImmutable` 使用 UTC 微秒；调用者不再给这两个字段赋值。实例和集合写入统一维护，整批共用一次取时；无变化的 `save()` 和只推进版本的 `touch()` 不更新时间。字段不能兼任主键、租户、版本或软删除，完整建模与升级示例见[受管创建和更新时间](../database.md#受管创建和更新时间)。
+
 | 操作 | 语义 |
 | --- | --- |
 | `Model::create/find` | 无连接创建或按主键查找；创建返回已持久化模型，查找缺失返回 `null` |
@@ -105,6 +109,10 @@ if ($partial !== null) {
 | `dirty/save` | 只写真实变化；返回 created、updated、unchanged 或行为取消时的 cancelled |
 | `project/toArray` | 按输出可见性投影，隐藏字段不可对外读取 |
 | `with($name, $relation)` | 显式批量加载关系，`related($name)` 读取已加载结果 |
+| `Model::relation($name)` | 取得绑定父模型的关系句柄；多对多句柄提供 `attach/detach/sync`，写入后清除当前实例的关系结果 |
+| `Model::firstOrCreate($identity, $values)` | 主库上按真实完整非空唯一身份获取或创建，只恢复确认的目标唯一竞争 |
+| `Model::upsert($rows, $uniqueBy, $updateFields)` | PostgreSQL、SQLite 的单条批量冲突写入；保留租户、时间、版本，跳过软删除冲突 |
+| `Model::upsertAnyUnique($rows, $updateFields)` | MySQL 任意唯一键冲突；全部可能命中索引必须安全，软删除模型拒绝 |
 | `delete/restore/forceDelete` | 软删除、恢复、物理删除，取决于模型声明 |
 | `scope/search` | 组合不可变查询；搜索器只能来自显式映射 |
 | `ModelQuery::update/delete` | 单条集合写入，保留租户、软删除和版本约束；没有额外行数限制，不触发逐模型事件 |
@@ -178,7 +186,7 @@ $inserted = User::query()->insertMany([
 ]);
 ```
 
-两行使用相同字段集合，键顺序不影响写入。每行执行字段修改器、类型和必填校验；有租户声明时从可信上下文补入身份，有版本和软删除声明时自动初始化。空列表返回 0，成功返回影响行数；不水合模型、不触发逐模型事件。任一行校验或数据库约束失败时整批不保留，未知提交需对账。框架不添加行数上限或暗中拆批；数据库参数上限仍会明确报错。需要逐条事件或新对象时，在事务中逐条调用 `create()`。
+两行使用相同字段集合，键顺序不影响写入。每行执行字段修改器、类型和必填校验；有租户声明时从可信上下文补入身份，有版本、软删除和受管时间声明时自动初始化。空列表返回 0，成功返回影响行数；不水合模型、不触发逐模型事件。任一行校验或数据库约束失败时整批不保留，未知提交需对账。框架不添加行数上限或暗中拆批；数据库参数上限仍会明确报错。需要逐条事件或新对象时，在事务中逐条调用 `create()`。
 
 ```mermaid
 flowchart LR
@@ -334,7 +342,7 @@ $exported = $stream->each(static function (array $row): void {
 
 提交未知后结束原作用域，在新的作用域通过主库和稳定操作 ID 对账，不继续使用原连接或参与模型。`ReadWriteSession::reconcile()` 是显式会话入口，不是 `Db` 的方法。提交后回调开启新事务时，外层异常保留原事务已提交的事实，连接保留新事务的最新结果，包括 `UNKNOWN`；换连接对账不会清除未知事实，见[事务说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/transactions.md)。
 
-模型声明 `version` 后使用主键与旧版本匹配，冲突为 `optimistic_conflict`；底层 Query 批量写入不会自动加入模型版本或触发逐模型事件。`#[Transactional]` 只在显式生成的组合入口中生效。
+模型声明 `version` 后使用主键与旧版本匹配，冲突为 `optimistic_conflict`；底层 Query 批量写入不会自动加入模型版本或触发逐模型事件。标准入口在加载前将 `#[Transactional]` 转换到原 Service 方法，普通调用、手动构造及类内调用遵守同一事务声明；提前加载原文件会被拒绝，见[事务与缓存声明](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)。
 
 ```mermaid
 sequenceDiagram
@@ -366,9 +374,9 @@ sequenceDiagram
 
 迁移中断或失败后先核对实际数据库，使用 `recover($migrations, $version, 'retry'|'applied', $reason)` 显式恢复；没有自动 down。标准应用的实际迁移命令见[数据库指南](../database.md#显式迁移)。
 
-需要可靠外部投递时，先创建 `Type\Orm\Outbox\Store` 实例，通过 `$store->migration($driverName, $version)` 取得建表迁移，加入应用迁移计划。它是实例方法，返回 Migration 声明，不会自行创建表。在业务事务内调用 `enqueue($connection, $id, $topic, $version, $payload)`，使业务数据和投递意图一起提交或回滚。
+需要可靠外部投递时，先创建 `Type\Orm\Outbox\Store` 实例，通过 `$store->migration($driverName, $version)` 取得建表迁移，加入应用迁移计划。它是实例方法，返回 Migration 声明，不会自行创建表。业务在 `Db::transaction(..., 'outbox')` 或同源 Transactional 声明内调用 `$store->enqueue($id, $topic, $version, $payload, database: 'outbox')`，与声明相同数据源的 Model 一起提交或回滚；无事务或跨来源直接拒绝，业务不传 Connection。基础设施显式事务连接使用 `enqueueUsing()`，消费对应 `consumed()` / `consumedUsing()`，详见[命名来源与恢复协议](https://github.com/zoujingli/typeapp/blob/main/docs/development/outbox.md)。
 
-### 运行迁移与事务意图示例
+### 基础设施显式连接示例
 
 先按 [SQLite 插件](type-orm-sqlite.md#安装与依赖)安装驱动。下面是独立的 `app/main.php`，使用带参数[开发启动器](../components.md#运行声明式示例)，在专用 SQLite 文件中创建示例用户与 Outbox 表：
 
@@ -411,7 +419,7 @@ function main(int $argc, array $argv): void
         $userId = $connection->transaction(static function (Connection $transaction) use ($store): int {
             $transaction->table('users')->insert(['name' => '示例', 'age' => 20]);
             $id = (int) $transaction->lastInsertId();
-            $store->enqueue($transaction, 'user.created.' . $id, 'user.created', 1, ['user_id' => $id]);
+            $store->enqueueUsing($transaction, 'user.created.' . $id, 'user.created', 1, ['user_id' => $id]);
             return $id;
         });
         $intent = $store->status($connection, 'user.created.' . $userId);
@@ -472,3 +480,7 @@ Store 默认领取租约为 30000 毫秒，重放保留窗口为 604800 秒。�
 独立消费必须保留 Swoole 硬依赖，并记录实际扩展版本和加载方式。原生验收归档、回读核对 PHP 输入后移除应用、vendor 和生成源码，再运行原 release 产物；报告中的 `deployment.source_removal` 记录归档摘要与移除文件数。自动租户、关系中间表、模型筛选和事务等行为按各库真实结果验证；同提交的目标平台验收仍单独记录。
 
 本文以本仓库当前公开接口为依据；安装版本请同时核对包内 README。[对应源码与包说明](https://github.com/zoujingli/type-orm)。
+
+## Schema 冻结迁移
+
+当前 `main` 新增 `#[Type\Orm\Attribute\Schema]` 与 `php vendor/bin/type schema:prepare <声明.php>`，尚未包含 RC14。显式准备三库 SQL、协议和摘要后，将生成类的 `migration($driver)` 加入既有迁移列表；开发及 AOT 只核验并嵌入冻结结果，不同步在线结构。支持建表、增列、表与列改名、索引调整和原生删列；SQLite 不自动重建表，MySQL 非事务 DDL 保留部分生效与显式恢复。完整声明、字段语义、审查和状态/恢复调用见[Schema 教程](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。

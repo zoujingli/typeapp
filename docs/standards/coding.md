@@ -47,10 +47,10 @@ public function create(Connection $connection, array $values): array
 4. 标量局部默认固定原生存储，按职责命名，不在字符串、对象和循环键之间复用为不兼容类型；catch、foreach同样遵守函数作用域约束。整数除法/溢出显式保持业务语义，仅在确有需要时使用varint_types或局部std::any()。
 5. 缺失字段与显式 null 分开，属性明确初始化；不依赖 Reflection lazy object 或未初始化属性内部状态。
 6. 生产不 `eval`、加载未知 PHP 文件或回退 Composer 源码加载。`config.files` 中的 PHP 是受限配置声明，允许 `env()`；`config/route.php` 是路由声明，不允许 `env()`。两者都在构建期解析后一起编译。`.env` 只在启动读取数据，不嵌入编译产物。
-7. HTTP 路由来自控制器 `#[Route]`/`#[Group]`/`#[Resource]` 或 `config/route.php`，由构建生成 `register()`；缓存/事务 Attribute 通过显式生成的服务组合入口生效。直接调用原服务不自动拦截，不提供运行时 AOP。
+7. HTTP 路由来自控制器 `#[Route]`/`#[Group]`/`#[Resource]` 或 `config/route.php`，由构建生成 `register()`；缓存/事务 Attribute 由标准入口在加载前转换原 Service；普通调用、手动构造和类内互调执行同一声明，不提供运行时 AOP。
 8. 保留受支持的零参数 `toArray()`；避免与转换关键词冲突的额外参数方法，生成器和手写源码共同接受验收。
 
-第 7 条记录当前实现。后续已按 [ADR0025](../adr/0025-service-declaration-transformation.md) 选择同一 Service 类型的构建期转换；在统一生成、调用者迁移与验收完成前，不能按新语义使用旧版组件。转换交付时同步更新这里和所有示例，不长期保留两套声明入口。
+第 7 条记录开发分支按 [ADR0025](../adr/0025-service-declaration-transformation.md) 实现的同一 Service 类型转换。RC14 仍使用原有显式组合入口；安装旧版组件时不能套用开发版语义，新增行为的交付状态以对应候选的完整验收为准。
 
 组件 `extra.type` 中的源码替换声明使用单行片段；Packagist 生成索引时可能移除字符串换行，不能依赖多行文本在 Composer 元数据中原样往返。拆分替换仍须绑定原文件摘要、精确次数并验证生成源码字节和公开行为不变，不放宽构建器的完整性检查。
 

@@ -25,7 +25,7 @@ flowchart TB
 
 ## 安装与依赖
 
-组件源码按 Apache-2.0 提供，位于 `plugin/type-mqtt/`。尚未发布稳定版本标签。独立消费者应核对真实安装副本并提交 `composer.lock`。`type-orm`、`type-runtime` 由 Composer 从 Packagist 自动解析；启用 PostgreSQL 持久后端时应用另行安装 `type-orm-pgsql`，见[组件安装](../components.md)。
+组件源码按 Apache-2.0 提供，位于 `plugin/type-mqtt/`。尚未发布稳定版本标签。独立消费者应核对真实安装副本并提交 `composer.lock`。当前 `main` 的 `type-core`、`type-orm`、`type-runtime` 由 Composer 自动解析；新增 `type-core` 依赖用于复用 HTTP 能力，尚未包含 RC14。启用 PostgreSQL 持久后端时应用另行安装 `type-orm-pgsql`，见[组件安装](../components.md)。
 
 ```sh
 composer config minimum-stability RC

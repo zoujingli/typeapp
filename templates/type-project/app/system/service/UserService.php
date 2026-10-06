@@ -12,7 +12,7 @@ use Type\Orm\ModelQuery;
 /**
  * 用户业务只接收已校验的数据，连接由当前执行作用域自动管理。
  *
- * 写方法的事务由构建期生成的 UserOperations 执行；直接调用本类不会魔法开启事务。
+ * 标准入口在加载前转换原类；写方法的事务在普通调用、手动构造和类内互调时一致执行。
  */
 final class UserService
 {
@@ -54,7 +54,7 @@ final class UserService
     }
 
     /**
-     * 创建后从同一事务连接读回数据库生成值；提交结果由 UserOperations 确认。
+     * 创建后从同一事务连接读回数据库生成值；提交结果由生成的方法体确认。
      *
      * @param array{name: string, age: int, email?: ?string} $values 已通过输入校验的创建字段。
      * @return array{id: int, name: string, age: int, email: ?string, version: int}
@@ -90,7 +90,7 @@ final class UserService
     }
 
     /**
-     * 使用模型软删除而非物理删除；UserOperations 的事务提交成功后才向调用方返回。
+     * 使用模型软删除而非物理删除；事务提交成功后才向调用方返回。
      *
      * @throws ModelException 用户不存在或并发乐观锁冲突。
      */

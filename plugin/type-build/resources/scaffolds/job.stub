@@ -1,0 +1,29 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use {{service}};
+use Type\Queue\Job;
+use Type\Queue\JobContext;
+use Type\Queue\QueueException;
+
+/** 消息仅携带业务值；追踪信息不恢复身份、租户或访问权限。 */
+final class {{name}} implements Job
+{
+    /** 业务服务属于本次投递的执行作用域。 */
+    public function __construct(private {{serviceName}} $service)
+    {
+    }
+
+    /** @param array<array-key,mixed> $payload 校验后调用业务；确认、重试与停止交给 Worker。 */
+    public function handle(JobContext $context, array $payload): void
+    {
+        $context->assertActive();
+        if (!is_string($payload['marker'] ?? null)) {
+            throw new QueueException('invalid_payload', 'marker 必须是业务字符串');
+        }
+        echo json_encode($this->service->execute($payload['marker']), JSON_THROW_ON_ERROR) . PHP_EOL;
+    }
+}

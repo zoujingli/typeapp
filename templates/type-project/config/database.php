@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 // 驱动在首次安装前由 configure.php 选择，运行环境不能切换成未安装的驱动。
 return [
+    'driver' => env('DB_DRIVER', ''),
     'host' => env('DB_HOST', '127.0.0.1'),
     'port' => env('DB_PORT', 0),
     'database' => env('DB_DATABASE', 'type_project'),

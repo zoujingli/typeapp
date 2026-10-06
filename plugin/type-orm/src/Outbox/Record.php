@@ -8,14 +8,30 @@ namespace Type\Orm\Outbox;
 final class Record
 {
     private array $values;
+    private array $source;
     /**
      * @internal 保存 Store 已领取的记录，不持有数据库租约。
      *
      * @param array<string, mixed> $values 数据库行，包含消息身份、JSON 载荷及领取 token。
+     * @param array<string, string> $source 原领取物理来源身份；不保留连接或凭据明文。
      */
-    public function __construct(array $values)
+    public function __construct(array $values, array $source = [])
     {
         $this->values = $values;
+        $this->source = $source;
+    }
+    /**
+     * @internal 领取凭据只用于原端点和物理数据库，凭据轮换不改变消息来源。
+     * @param array<string, string> $identity 待登记连接的驱动身份。
+     */
+    public function belongsTo(array $identity): bool
+    {
+        foreach (['driver', 'endpoint', 'database', 'role'] as $key) {
+            if (!isset($this->source[$key], $identity[$key]) || $this->source[$key] !== $identity[$key]) {
+                return false;
+            }
+        }
+        return true;
     }
     /** 返回稳定消息 ID，外部系统应使用该身份去重或对账。 */
     public function id(): string

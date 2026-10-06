@@ -27,5 +27,6 @@ function main(int $argc, array $argv): void
         'group' => static fn (): TraceMiddleware => new TraceMiddleware('P'),
         'route' => static fn (): TraceMiddleware => new TraceMiddleware('R'),
     ]);
-    (new SwooleServer($router, $messages, $messages, $messages))->serve('127.0.0.1', $port);
+    $limits = new \Type\Core\Http\RequestLimits(bytes: 32768, fields: 10, depth: 8, fileBytes: 32768, fieldBytes: 32768);
+    (new SwooleServer($router, $messages, $messages, $messages, $limits))->serve('127.0.0.1', $port);
 }

@@ -25,6 +25,8 @@ final class ExecutionScope
     private Cancellation $cancellation;
     private array $context = [];
     private array $bindings = [];
+    /** execution 服务缓存只属于本作用域，真实收尾完成后释放。 */
+    private array $executionServices = [];
     private array $children = [];
     private array $childErrors = [];
     private int $childSequence = 0;
@@ -155,6 +157,28 @@ final class ExecutionScope
         return $this->bindings[$name] ?? null;
     }
 
+    /**
+     * 在当前作用域内惰性取得 execution 服务；同一作用域复用，子作用域不会继承。
+     *
+     * @internal 供已生成的直接工厂复用实例，不用于运行时查找服务声明。
+     * @param Closure(): mixed $factory 只负责构造服务，不应在构造阶段打开外部资源。
+     * @throws RuntimeException 作用域已关闭、正在关闭或跨执行者使用。
+     */
+    public function service(string $id, Closure $factory): mixed
+    {
+        $this->assertActive();
+        if (self::current() !== $this) {
+            throw new RuntimeException('执行服务必须在所属作用域绑定后构造');
+        }
+        if (!array_key_exists($id, $this->executionServices)) {
+            $instance = $factory();
+            $this->assertActive();
+            $this->executionServices[$id] = $instance;
+        }
+
+        return $this->executionServices[$id];
+    }
+
     /** 校验进程、线程、请求代次、协程和 Fiber 身份；清理时不要求仍处于 active。 */
     public function assertOwner(): void
     {
@@ -209,6 +233,9 @@ final class ExecutionScope
             foreach ($this->children as $child) {
                 if ($child instanceof ManagedTask && !$child->join($cleanup)) {
                     $errors[] = '子任务清理超时，资源继续隔离持有';
+                    if ($child->unobservedError() !== null) {
+                        $errors[] = $child->unobservedError()->getMessage();
+                    }
                 }
             }
             if (!$this->resourcesClosed) {
@@ -231,6 +258,7 @@ final class ExecutionScope
             }
             $this->childErrors = [];
             if ($this->resourcesClosed && $this->children === []) {
+                $this->executionServices = [];
                 $this->state = 'closed';
                 $this->completion?->close();
             }
@@ -295,10 +323,20 @@ final class ExecutionScope
         return $this->taskBudget->active();
     }
 
-    /** @param Closure(ExecutionScope): mixed $operation 子任务始终接收自己的作用域。 */
-    public function spawn(Closure $operation): ManagedTask
+    /**
+     * @param Closure(ExecutionScope): mixed $operation 子任务始终接收自己的作用域。
+     * @param array<string, string> $bindings 应用显式传给子任务的已验证标识；默认不继承父身份或租户。
+     */
+    public function spawn(Closure $operation, array $bindings = []): ManagedTask
     {
         $this->assertActive();
+        $snapshot = [];
+        foreach ($bindings as $key => $value) {
+            if (!is_string($key) || !is_string($value)) {
+                throw new \InvalidArgumentException('子任务绑定只接受显式字符串标识');
+            }
+            $snapshot[$key] = $value;
+        }
         $this->childErrors = array_values(array_filter($this->childErrors, static fn (ManagedTask $task): bool => $task->unobservedError() !== null));
         if (count($this->childErrors) >= $this->childLimit) {
             throw new TaskException('unobserved_task_errors', '未处理的子任务失败已达到上限');
@@ -326,11 +364,12 @@ final class ExecutionScope
                     unset($this->children[$id]);
                     $this->taskBudget->release();
                     if ($this->state === 'closing' && $this->resourcesClosed && $this->children === []) {
+                        $this->executionServices = [];
                         $this->state = 'closed';
                         $this->completion?->close();
                     }
                 },
-                $this->bindings
+                $snapshot
             );
         } catch (Throwable $error) {
             unset($this->children[$id]);

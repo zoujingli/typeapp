@@ -80,6 +80,50 @@ try {
     $name = '外部修改';
     expect($configuration->text('name') === '初始值', '配置快照保留了外部可变引用');
     echo '装配声明拒绝检查通过，共 ' . count($invalid) . " 个用例；配置快照引用隔离通过。\n";
+
+    $namespace = 'TypeApp\\AssemblyFixture\\';
+    $component = ['services' => [['id' => 'prefix', 'class' => $namespace . 'ComponentPrefix']],
+        'bindings' => [['type' => $namespace . 'Prefix', 'service' => 'prefix'], ['type' => $namespace . 'Label', 'service' => 'message']]];
+    $constructorApplication = ['enabled' => ['application', 'component'],
+        'services' => [['id' => 'prefix', 'class' => $namespace . 'ApplicationPrefix'],
+            ['id' => 'message', 'class' => $namespace . 'Message', 'factory' => ['class' => $namespace . 'MessageFactory', 'method' => 'create']]],
+        'bindings' => [['type' => $namespace . 'Settings::$name', 'value' => '构造器']],
+        'commands' => [['name' => 'show', 'class' => $namespace . 'ShowCommand']]];
+    $fixtureSources = [$root . '/plugin/type-core/src', $root . '/plugin/type-runtime/src', __DIR__ . '/fixtures/constructor-assembly.php'];
+    $generated = $generator->generate($constructorApplication, ['application' => $constructorApplication, 'component' => $component], $fixtureSources);
+    file_put_contents($directory . '/generated.php', $generated['code']);
+    file_put_contents($directory . '/run.php', '<?php require ' . var_export($root . '/vendor/autoload.php', true)
+        . '; require ' . var_export(__DIR__ . '/fixtures/constructor-assembly.php', true) . '; require __DIR__ . "/generated.php"; main($argc, $argv);');
+    expect(successful([PHP_BINARY, $directory . '/run.php', 'show']) === "应用:构造器\n", '构造器、具名工厂和组件默认覆盖没有执行真实行为');
+    expect($generated['services']['prefix']['overrides'] === 'component:prefix', '装配报告遗漏覆盖来源');
+    expect(count($generated['services']['message']['dependencies']) === 2, '具名工厂依赖未进入完整服务图');
+    $constructorInvalid = [];
+    $value = $constructorApplication;
+    $value['services'][1]['factory']['method'] = 'unknown';
+    $constructorInvalid[] = [$value, '工厂返回类型'];
+    $value = $constructorApplication;
+    $value['services'][1]['factory']['method'] = 'hidden';
+    $constructorInvalid[] = [$value, '全局取值'];
+    $value = $constructorApplication;
+    $value['services'][1]['lifetime'] = 'singleton';
+    $constructorInvalid[] = [$value, '单例不能持有'];
+    $value = $constructorApplication;
+    $value['bindings'][] = $value['bindings'][0];
+    $constructorInvalid[] = [$value, '重复显式绑定'];
+    $value = $constructorApplication;
+    $value['services'][1]['arguments'] = [['value' => '错误类型'], ['service' => 'prefix']];
+    $constructorInvalid[] = [$value, '构造常量类型不匹配'];
+    foreach ($constructorInvalid as [$value, $message]) {
+        $rejected = false;
+        try {
+            $generator->generate($value, ['application' => $value, 'component' => $component], $fixtureSources);
+        } catch (RuntimeException $error) {
+            $rejected = true;
+            expect(str_contains($error->getMessage(), $message), '构造器拒绝诊断不符合预期：' . $error->getMessage());
+        }
+        expect($rejected, '无效构造器装配没有拒绝：' . $message);
+    }
+    echo "构造器多层推导、接口与抽象绑定、具名工厂、应用覆盖及 5 项拒绝验证通过。\n";
 } finally {
     foreach (['generated.php', 'run.php'] as $name) {
         if (is_file($directory . '/' . $name)) {

@@ -182,9 +182,19 @@
     "test:build-platform": "@php tests/build-platform.php",
     "test:build-platform-native": "@php tests/build-platform-native.php",
     "test:testing-portable": "@php tests/testing-portable.php",
-    "test:operations": "@php tests/operations.php --php",
+    "test:operations": [
+      "@php tests/operations.php --php mysql",
+      "@php tests/operations.php --php pgsql",
+      "@php tests/operations.php --php sqlite",
+      "@php tests/operations-commit-failure.php --php"
+    ],
     "build:operations": "@php tests/build-scenario.php docs/build-config/type-operations.json",
-    "test:operations-native": "@php tests/operations.php build/operations/type-app",
+    "test:operations-native": [
+      "@php tests/operations.php build/operations/type-app mysql",
+      "@php tests/operations.php build/operations/type-app pgsql",
+      "@php tests/operations.php build/operations/type-app sqlite",
+      "@php tests/operations-commit-failure.php build/operations/type-app"
+    ],
     "test": [
       "@test:unit",
       "@test:configuration",
@@ -278,6 +288,24 @@
       "bash tools/test-rollout.sh sqlite"
     ],
     "check:assembly": "@php tests/assembly.php",
+    "check:work-assembly": "@php tests/work-assembly.php",
+    "check:execution-services": "@php tests/execution-services.php",
+    "test:framework": [
+      "Composer\\Config::disableProcessTimeout",
+      "@check:assembly",
+      "@check:work-assembly",
+      "@check:execution-services",
+      "@php tests/development-generation.php",
+      "@php tests/application-inspection.php",
+      "@php tests/http-assembly.php",
+      "@php tests/business-events.php",
+      "@php tests/scaffolding.php"
+    ],
+    "test:framework-native": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/http-assembly.php --native",
+      "@php tests/business-events.php --native"
+    ],
     "build:commands": "@php tests/build-scenario.php docs/build-config/type-commands.json",
     "test:commands": "@php tests/assembled-native.php build/commands/type-app",
     "test:assembly-consumer": "@php tests/assembly-consumer.php",
@@ -368,11 +396,18 @@
     "build:tenant-http": "@php tests/build-scenario.php docs/build-config/type-tenant-http.json",
     "test:tenant-http-native": "@php tests/tenant-http.php build/tenant-http/type-app",
     "test:queue": "@php tests/queue.php --php",
+    "test:outbox": [
+      "@php tests/outbox.php --php mysql",
+      "@php tests/outbox.php --php pgsql",
+      "@php tests/outbox.php --php sqlite",
+      "@php tests/outbox-commit-failure.php --php"
+    ],
     "build:outbox": "@php tests/build-scenario.php docs/build-config/type-outbox.json",
     "test:outbox-native": [
       "@php tests/outbox.php build/outbox/type-app mysql",
       "@php tests/outbox.php build/outbox/type-app pgsql",
-      "@php tests/outbox.php build/outbox/type-app sqlite"
+      "@php tests/outbox.php build/outbox/type-app sqlite",
+      "@php tests/outbox-commit-failure.php build/outbox/type-app"
     ],
     "test:queue-leases": "@php tests/queue-leases.php --php",
     "test:queue-retries": "@php tests/queue-retries.php --php",

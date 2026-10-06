@@ -10,7 +10,7 @@ ORM 使用 PDO 访问数据库协议，Swoole 提供协程上下文、等待、C
 
 当前已具备从模型声明、数据读写到事务与资源收尾的主路径，常用接口仍有待补项。下表区分模型能力与底层表查询；已有 SQL 接口不代表它自动执行模型字段、租户、软删除、版本或事件规则。
 
-本页的 `ModelQuery::sum/avg/min/max`、`insertMany` 和所选 PDO hook 前置检查属于当前 `main`，尚未包含在已发布的 RC14 中。开发应用使用含这些改动的组件源码并重新构建，版本安装仍按[发布说明](releases.md)核对。
+本页的 `ModelQuery::sum/avg/min/max`、`insertMany`、受管时间字段和所选 PDO hook 前置检查属于当前 `main`，尚未包含在已发布的 RC14 中。开发应用使用含这些改动的组件源码并重新构建，版本安装仍按[发布说明](releases.md)核对。
 
 | 需求 | 当前能力 | 使用边界 |
 | --- | --- | --- |
@@ -20,14 +20,14 @@ ORM 使用 PDO 访问数据库协议，Swoole 提供协程上下文、等待、C
 | 模型聚合 | `count/sum/avg/min/max`，保留字段映射、租户、软删除和读路由 | 空集计数为 0，其他为 null；精确文本列拒绝数据库数值聚合，不强制转浮点 |
 | 集合修改与删除 | `update/delete/increment/decrement` 已有 | 单条写入，不设额外匹配行数上限；不触发逐模型事件 |
 | 批量新增 | `ModelQuery::insertMany` 校验整批字段并执行单条 INSERT | 返回影响数量，不触发逐模型事件、不返回猜测主键；约束失败回滚整批 |
-| 批量冲突写入 | 底层 Query 已有；模型级 `upsert` 尚未提供 | MySQL 任意唯一键冲突与另两库的指定冲突目标不同，不能绕过租户、软删除及版本规则 |
+| 批量冲突写入 | 当前 main 提供 Model `upsert/upsertAnyUnique`，未包含 RC14 | MySQL 接受任意唯一键且拒绝软删除模型；另两库指定完整真实唯一目标，软删除冲突跳过；保留租户、时间和版本 |
 | 并发查找或创建 | 尚无模型专用入口 | `first` 后 `create` 存在竞争窗口；需要数据库唯一约束和明确冲突处理 |
 | 关系 | 四类关系、嵌套预加载、补加载、关系条件和计数/求和；多对多 `attach/detach/sync` | 关系读取不隐式发 SQL；没有专用多态、穿透关系或关系创建助手 |
-| 软删除与生命周期 | 实例恢复/物理删除、获取器/修改器和显式观察器 | 没有集合恢复/强制删除、自动时间字段声明或 `fresh/refresh` 专用接口；重新读主库取得新对象 |
+| 软删除与生命周期 | 实例恢复/物理删除、受管创建和更新时间、获取器/修改器和显式观察器 | 没有集合恢复/强制删除或 `fresh/refresh` 专用接口；重新读主库取得新对象 |
 | 事务、路由与租户 | 同库事务、保存点、提交后回调、乐观锁、主从与可信上下文范围 | 子任务独立事务；未知提交需要对账，不能自动重试 |
-| 迁移与外部效果 | 版本化 SQL 迁移、历史校验/恢复与事务 Outbox | 应用实现投递与目标幂等；没有迁移 `down` 或通用 Schema DSL |
+| 迁移与外部效果 | 版本化 SQL、Schema 三库冻结建表与有限结构变更、历史校验/恢复及事务 Outbox | 应用实现投递与目标幂等；没有迁移 `down` 或在线结构自动同步 |
 
-批量冲突写入与会话复用继续按 [ORM 补齐顺序](roadmap.md#orm-补齐顺序)推进；便捷方法按实际调用需求增加。隐式懒加载、动态扫描和共享活动模型不属于当前执行方式。真实三库与编译范围见[独立消费矩阵](https://github.com/zoujingli/typeapp/blob/main/docs/development/orm-consumer-matrix.md)。
+批量冲突写入遵守各库的真实唯一约束和影响行数语义；会话复用的剩余范围见 [ORM 补齐顺序](roadmap.md#orm-补齐顺序)，便捷方法按实际调用需求增加。隐式懒加载、动态扫描和共享活动模型不属于当前执行方式。真实三库与编译范围见[独立消费矩阵](https://github.com/zoujingli/typeapp/blob/main/docs/development/orm-consumer-matrix.md)。
 
 ## 一次模型操作怎样完成
 
@@ -107,6 +107,8 @@ Swoole 在可让出的数据库等待期间调度其他协程；ORM 负责把连
 物联中心的发布程序按数据库 profile 分开构建，`DB_DRIVER` 必须与下载程序一致，否则返回 `runtime_profile_database_mismatch`。开发环境可在已安装驱动间选择，独立模板在首次安装前确定驱动。更换程序或配置不会迁移原数据，也不会删除旧数据库。
 
 ## 显式迁移
+
+当前 `main` 支持通过 `#[Schema]` 声明新模块表及有限结构变更，显式 `php vendor/bin/type schema:prepare <声明.php>` 冻结并审查三库 SQL，再追加到已有迁移列表。开发和 AOT 构建只核验快照；旧迁移不改写。此能力尚未包含 RC14，完整流程与各库存储、失败恢复差异见[Schema 声明与冻结迁移](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。
 
 物联中心通过 `app:install` 初始化空库，同时建立身份、租户和权限数据，具体参数见[双端身份初始化](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-identity.md#初始化)。安装完成后，在本仓库根查询迁移状态：
 
@@ -194,6 +196,74 @@ flowchart LR
 
 输出使用 `project()` 或业务自己的投影方法。字段可见性与赋值权限分别声明，不能将持久化对象中的所有字段直接作为 API 响应。
 
+## 受管创建和更新时间
+
+创建和更新时间属于记录的持久化生命周期，可以交给 Model 统一维护。声明使用 PHP 属性名；下面的 `Article` 要求表包含 `id`、`title`、`created_at` 和 `updated_at`，主键由数据库生成：
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace app\content\model;
+
+use DateTimeImmutable;
+use Type\Orm\Attribute\Table;
+use Type\Orm\Model;
+
+/** 文章资料；记录时间由持久化流程维护。 */
+#[Table('articles', createdAt: 'created_at', updatedAt: 'updated_at')]
+final class Article extends Model
+{
+    public int $id;
+    public string $title;
+    public DateTimeImmutable $created_at;
+    public DateTimeImmutable $updated_at;
+}
+```
+
+在已经装配数据库并绑定执行作用域的业务服务中：
+
+```php
+$article = Article::create(['title' => '设备接入指南']);
+$created = $article->created_at;
+
+$article->title = '设备接入与排错指南';
+$article->save(); // created_at 保留，updated_at 与本次变更一同写入。
+$unchanged = $article->save(); // unchanged；时间和版本均保持不变。
+
+Article::query()->insertMany([
+    ['title' => '消息订阅'],
+    ['title' => '数据查询'],
+]); // 整批创建和更新时间共用同一时刻。
+```
+
+需要 Unix 秒时，将两个属性声明为 `int`，真实列使用能够保存时间戳的整数类型。`DateTimeImmutable` 统一为 UTC 并保留六位微秒；MySQL 使用 `DATETIME(6)`，PostgreSQL 使用 `TIMESTAMP(6)`，SQLite 使用 `TEXT`。实际列不满足精度要求时拒绝写入，不依赖数据库静默截断。创建时间和更新时间可以只声明其中一个。
+
+`set()`、`fill()`、属性赋值和集合输入均不能覆盖受管字段，错误码为 `field_not_fillable`；这些字段不能与主键、租户、版本或软删除字段重叠。集合 `update/increment/decrement/delete` 会为实际发出的写入补充统一更新时间，实例软删除和恢复也遵循此规则。集合写入不预读逐行差异，影响数量仍由数据库报告；无变化实例 `save()` 与只推进乐观锁版本的 `touch()` 不更新时间。
+
+```mermaid
+sequenceDiagram
+    participant Service as 业务服务
+    participant Model as Model
+    participant DB as 数据库
+    Service->>Model: fill / 属性赋值
+    Model->>Model: 字段白名单与类型校验
+    Service->>Model: save
+    alt 无实际变化
+        Model-->>Service: unchanged
+    else 创建或实际更新
+        Model->>Model: 前置事件通过后统一取时
+        Model->>DB: 同一 SQL 写入业务字段、时间和版本
+        DB-->>Model: 写入结果或原始错误
+        Model-->>Service: created / updated 或异常
+    end
+```
+
+时间来自执行写入的应用时钟，不代表数据库提交时刻，也不承诺跨节点严格递增。取消不写入；事务回滚及未知提交沿用模型失效与对账规则，不因时间生成而重试。物联中心的账号、租户、成员、角色、站点设置和产品资料已使用此声明。会话签发与过期、设备采样、告警发生等业务时间保留各自的计算规则。
+
+从手工时间迁移时，更新 `type-orm` 和 `type-build` 后添加声明，移除对应字段的业务赋值与观察器填值，再通过正常开发或 AOT 入口重新生成模型。只改变声明不需要重写已有迁移；真实列需要提升精度时新增迁移，保留历史迁移及其摘要。
+
 ## 并发与删除
 
 模型声明 `version` 后，写入使用主键与旧版本共同匹配，成功时推进版本。过期版本报 `optimistic_conflict`；物联中心成品案例将其转成 HTTP 409。冲突或事务失败后重新读取模型，不继续复用已经失效的对象。
@@ -206,7 +276,7 @@ PATCH 的缺失字段保持不变，明确的 null 用于清空可空字段。�
 
 普通业务异常在确认回滚后原样抛出；提交不能确认时通过 `TransactionException::outcome()` 保留 `UNKNOWN`，不能自动重试。结束原作用域后，在新作用域通过主库和业务操作 ID 核对实际结果。`AfterCommitException` 表示外层已经提交但后续回调失败，不能把它当作可以重跑原事务的信号。
 
-事务/缓存 Attribute 通过构建生成的操作组合对象执行；直接调用原服务不会自动开启事务。可靠外部效果可使用事务 Outbox，在事务内记录意图，再由转发器交付；消费者仍须处理重复。
+事务/缓存 Attribute 由标准入口在加载前转换到原 Service，直接调用与类内互调执行声明；活动事务绕过共享缓存且不填充，失效等待同数据源最外层确认提交。可靠外部效果可使用事务 Outbox，在事务内记录意图，再由转发器交付；消费者仍须处理重复。
 
 Outbox 的[投递、对账与回收](plugins/type-orm.md#投递、对账与回收)需要应用明确实现 Publisher；记录 pending 不等于已经投递，published 不等于目标业务已消费。
 

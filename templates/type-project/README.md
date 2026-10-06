@@ -18,7 +18,9 @@
 
 ## 创建与驱动选择
 
-从 Packagist 创建独立应用，先选择数据库，再将模板和第一方组件固定到同一批次。以下示例使用 SQLite 和候选版本 `1.0.0-rc.14`；执行前先确认该候选已在 Packagist 和 GitHub Release 公开：
+模板的 `composer.json` 保存组件版本策略，选择驱动时沿用原驱动约束、其他组件约束与稳定性。开发分支明确使用 `1.0.x-dev`；版本模板由维护者在 tag 前固定第一方生产及开发依赖闭包，RC 允许 `RC` 稳定性，正式版采用 `stable`。创建应用不会自动安装依赖。
+
+本次版本准备机制尚未随新批次公开。下面保留已公开 `1.0.0-rc.14` 的安装步骤：该旧模板需要手工固定组件约束，不能把本分支的改进归入旧版本。
 
 ```sh
 composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.14
@@ -41,11 +43,13 @@ php dev.php help
 php dev.php check
 ```
 
-`--no-install` 让驱动选择发生在依赖安装之前。`configure.php <mysql|pgsql|sqlite>` 只在没有 `vendor/` 和 `composer.lock` 时运行：它将所选工厂放到 `app/common/database/DatabaseFactory.php`，同时调整 Composer 的单一驱动依赖；`scaffold/` 中的其他候选不进入应用生产源码。该步骤不修改业务配置，也不通过安装钩子执行。已有应用应在代码审查下调整驱动和迁移，不能用脚本覆盖业务。
+`--no-install` 让驱动选择发生在依赖安装之前。`configure.php <mysql|pgsql|sqlite>` 只在没有 `vendor/` 和 `composer.lock` 时运行：它将所选工厂放到 `app/common/database/DatabaseFactory.php`，同时替换 Composer 的单一驱动包名；`scaffold/` 中的其他候选不进入应用生产源码。当前源码不会回填开发约束，所有内容先暂存，写入失败恢复原驱动。该步骤不修改业务配置，也不通过安装钩子执行。已有应用应在代码审查下调整驱动和迁移，不能用脚本覆盖业务。
 
 改用 MySQL 或 PostgreSQL 时，将 `configure.php` 参数换为 `mysql` 或 `pgsql`，并把版本约束中的 `type-orm-sqlite` 换为对应驱动。模板只安装选定的 `type-orm-*`，共同依赖 core、ORM、runtime、validate、log；构建和测试组件留在 `require-dev`。Composer 从 Packagist 解析其余依赖，无需配置各个 Git 仓库。RC 尚非稳定版；`dev-main` 跟进开发分支，不一定与本批次 tag 相同。安装后提交应用的 `composer.lock`，固定实际组件版本与来源。
 
 接着按[第一个应用教程](https://iots.top/#/guide/tutorial)完成迁移、配置令牌、真实 HTTP 操作与原生构建。
+
+采用新准备机制的版本公开后，创建流程只需 `create-project --no-install`、`configure.php` 和 `composer install`，不再重新声明全部第一方依赖。版本必须来自相应公开批次；检查 `composer.json` 中的准确组件版本与 `minimum-stability`，并在安装后用 `composer show 'zoujingli/type-*'` 核对版本和提交。维护者入口见[版本准备与分发](https://github.com/zoujingli/typeapp/blob/main/docs/development/distribution-batches.md#版本-tag-自动发布)。
 
 ### 复用本地模板
 
@@ -59,7 +63,7 @@ php vendor/bin/type doctor type-app.json development
 php vendor/bin/type dev type-app.json help
 ```
 
-该入口选择驱动并按白名单复制文件，不执行模板 PHP、不覆盖现有目录，无需再运行 `configure.php`。
+该入口选择驱动并按白名单复制文件，保留模板的组件版本与稳定性，不执行模板 PHP、不覆盖现有目录，无需再运行 `configure.php`。目标目录可以包含空格；命令中的路径应加引号。`.project-origin.json` 保存实际模板内容摘要，安装后由 `composer.lock` 固定完整来源。
 
 ### 直接检出模板
 
@@ -76,9 +80,10 @@ php dev.php check
 
 ## 目录与业务分层
 
+`type-app.json` 的 `application` 是共同服务声明；显式路由控制器和命令沿同一构造器依赖图生成。`Application::handler()` 调用生成的 `CommandApplication::registerRoutes()`，无需维护控制器工厂表。`application.bootstrap` 只负责已有角色、配置和启动/停止生命周期，原生 `main` 由构建器唯一生成。运行 `vendor/bin/type inspect-application type-app.json --json` 可以离线查看依赖、覆盖来源与路由，不执行工厂或连接数据库。
+
 ```text
 app/
-  main.php
   common/
     bootstrap/               Application 角色与模式、Settings 配置
     database/                所选驱动、SQLite 文件生命周期、迁移
@@ -101,7 +106,7 @@ type-app.json
 
 应用使用小写 `app\\` PSR-4 层级，控制器、服务和模型分别承担 HTTP 适配、业务行为与字段/水合责任。一级 `app/controller` 与多级 `app/system/controller` 共用相同机制，也可以继续分组；不会按目录层数自动发布路由。
 
-`User` 直接继承 `Type\Orm\Model`，使用 PHP 类型属性与 `Table/Column` Attribute 声明字段，通过 `present()` 选择公开字段。构建保留业务类名和方法，为属性生成状态钩子；开发入口先加载本代模型，AOT 编译同一转换结果。路由使用 `#[Route]`、`#[Group]`，构建配置指向 `config/route.php`；生产源码里的路由注解会进入生成结果，没有注解也没有写入 `routes` 表的类不会暴露。写方法的 `#[Transactional]` 由 type-build 生成 `UserOperations`，控制器明确调用该组合对象；直接调用原服务不会触发运行时 AOP。模板不为展示缓存引入 Redis。
+`User` 直接继承 `Type\Orm\Model`，使用 PHP 类型属性与 `Table/Column` Attribute 声明字段，通过 `present()` 选择公开字段。构建保留业务类名和方法，为属性生成状态钩子；开发入口先加载本代模型，AOT 编译同一转换结果。路由使用 `#[Route]`、`#[Group]`，构建配置指向 `config/route.php`；生产源码里的路由注解会进入生成结果，没有注解也没有写入 `routes` 表的类不会暴露。写方法的 `#[Transactional]` 由标准入口在加载前转换到原 `UserService`，控制器、手动构造和类内互调执行同一事务语义。模板不为展示缓存引入 Redis。
 
 ## 配置、开发与生产模式
 
@@ -171,3 +176,7 @@ build/type-project-release licenses
 `composer test` 保留 tests/smoke.php 公开入口，覆盖离线命令、外部dotenv、迁移、一级/多级静态路由、真实用户HTTP、筛选排序、PATCH、软删除和停止。设置 TYPE_APP_BINARY 为准确原生二进制路径，可驱动同一业务套件；已有 TYPE_APP_COMMAND/TYPE_APP_SERVER_COMMAND 部署验收接口保留。测试会创建用户，只能在新建专用数据库运行，不能使用业务数据库。
 
 完整原生、无源码镜像与分发证据记录在[开发主仓](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md)。使用本模板的新能力时还需对应的新组件批次与验收结果，旧报告不为新增修改背书。
+
+新增模块可用 `php vendor/bin/type make type-app.json module 'app\catalog\Product' --table=products --route=/products --role=users --version=002_products '--migration-registry=app\common\database\Schema'`，随后显式运行 `schema:prepare app/catalog/database/CreateProduct.php`、检查并提交冻结快照、`dev type-app.json migrate run`。完整单类/命令/Job/Task入口及鉴权边界见[开发通道脚手架教程](https://iots.top/next/#/guide/scaffolding)。生成的命令由模板入口委托共同装配执行。
+
+当前源码的[连续目录教程](https://iots.top/next/#/guide/tutorial)保留所选模板约束，按同批版本增加缓存、Queue 与 Scheduler，真实生成第二模块并验证租户、关系、三库冲突、事件和命名源 Outbox。[可靠性续篇](https://iots.top/next/#/guide/catalog-reliability)复用同一公开测试入口验证 Redis、持久游标、HTTPS 和停止；这些新增接口尚未包含 RC14。设置的 `DB_DRIVER` 与安装驱动不符时，检查、迁移和 HTTP 在连接前拒绝，错误码为 `runtime_profile_database_mismatch`。

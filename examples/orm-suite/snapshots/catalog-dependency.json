@@ -1,0 +1,25 @@
+{
+    "protocol": 1,
+    "declaration": "7e56258863607ea354a91e09dbef42b3bf1af56c82702f252999db883b232531",
+    "drivers": {
+        "mysql": {
+            "statements": [
+                "ALTER TABLE `type_suite_catalog_entries` DROP COLUMN `code`"
+            ],
+            "transactional": false
+        },
+        "pgsql": {
+            "statements": [
+                "ALTER TABLE \"type_suite_catalog_entries\" DROP COLUMN \"code\""
+            ],
+            "transactional": true
+        },
+        "sqlite": {
+            "statements": [
+                "ALTER TABLE \"type_suite_catalog_entries\" DROP COLUMN \"code\""
+            ],
+            "transactional": true
+        }
+    },
+    "sha256": "5e6099dce9f78a4ae277da2ba528928bc8a36b340163db36c08f111711ff3f11"
+}

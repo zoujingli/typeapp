@@ -40,6 +40,7 @@ final class Suite
         $scopes = CoreExercise::scopes($driver);
         $sessions = CoreExercise::sessions($driver);
         $callbacks = MutationExercise::callbacks($driver);
+        $schemas = SchemaExercise::run($driver);
         $plan = Schema::plan($driver->name());
         $migrator = new Migrator($driver, 'type_suite_migrations');
         self::check(array_column($migrator->status($plan), 'state') === ['pending', 'pending'], '新消费环境不是空迁移状态');
@@ -51,7 +52,7 @@ final class Suite
         Db::configure($manager);
         $scope = new ExecutionScope();
         try {
-            return $scope->run(static function (ExecutionScope $current) use ($manager, $driver, $sessions, $scopes, $callbacks): array {
+            return $scope->run(static function (ExecutionScope $current) use ($manager, $driver, $sessions, $scopes, $callbacks, $schemas): array {
                 $lazy = User::query();
                 self::check($manager->statistics()['active'] === [], '构造查询提前借用了连接');
                 $connection = Db::connection('default', true);
@@ -86,9 +87,9 @@ final class Suite
                 $two = new Tag(['label' => '数据库']);
                 $two->save();
                 $tags = Relation::belongsToMany(static fn (Connection $connection): ModelQuery => Tag::query()->onConnection($connection), 'type_suite_article_tags', 'article_id', 'tag_id', 'id', 'id', ['weight'], 2);
-                self::check($tags->attach($article, $one->getId(), ['weight' => 10])
-                    && !$tags->attach($article, $one->getId(), ['weight' => 11]), '重复标签挂载没有保持唯一关系');
-                $sync = $tags->sync($article, [['id' => $one->getId(), 'pivot' => ['weight' => 11]], ['id' => $two->getId(), 'pivot' => ['weight' => 20]]]);
+                self::check($article->relation('tags')->attach($one->getId(), ['weight' => 10])
+                    && !$article->relation('tags')->attach($one->getId(), ['weight' => 11]), '重复标签挂载没有保持唯一关系');
+                $sync = $article->relation('tags')->sync([['id' => $one->getId(), 'pivot' => ['weight' => 11]], ['id' => $two->getId(), 'pivot' => ['weight' => 20]]]);
                 self::check($sync === ['attached' => 1, 'detached' => 0, 'updated' => 1], '标签整组同步错误');
                 $posts = Relation::hasMany(static fn (Connection $connection): ModelQuery => Article::query()->onConnection($connection)->with('tags', $tags), 'user_id', 'id', 2);
                 $details = Relation::hasOne(static fn (Connection $connection): ModelQuery => Details::query()->onConnection($connection), 'user_id');
@@ -129,6 +130,9 @@ final class Suite
                 self::check($base->count() === 3 && self::reject(static fn () => $rolledBack->getTitle(), 'model_invalid'), '回滚没有同步模型失效');
                 CoreExercise::run($connection, $user->id, $article->id);
                 CoreExercise::tenants($current, $user->getId());
+                CoreExercise::relationHandles($current, $user->getId());
+                CoreExercise::firstOrCreate();
+                CoreExercise::upserts();
                 MutationExercise::run($current);
                 $capabilities = self::capabilities($manager, $connection, $article->getId());
                 self::check(User::query()->master()->find($user->getId())->getName() === '用户甲'
@@ -155,7 +159,7 @@ final class Suite
                 return ['driver' => $driver->name(), 'version' => $connection->serverVersion(), 'scope_checks' => $scopes, 'sessions' => $sessions, 'race_id' => $race->getId(),
                     'models' => true, 'relations' => true, 'soft_delete' => true, 'events' => true, 'scopes' => true, 'core_queries' => true,
                     'pagination' => true, 'optimistic_lock' => true, 'migrations' => true, 'strong_read' => true, 'tenant_isolation' => true,
-                    'model_mutations' => true, 'callback_outcomes' => $callbacks, 'capabilities' => $capabilities];
+                    'model_mutations' => true, 'callback_outcomes' => $callbacks, 'schemas' => $schemas, 'capabilities' => $capabilities];
             });
         } finally {
             $scope->close();

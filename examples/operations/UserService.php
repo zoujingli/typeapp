@@ -11,11 +11,12 @@ use Type\Cache\TypedCache;
 use Type\Orm\Attribute\Transactional;
 use Type\Orm\Db;
 
-/** 普通业务对象：只有显式生成的 UserOperations 才提供事务和缓存语义。 */
+/** 原业务类型由标准入口在加载前转换；普通调用与类内互调执行同一声明。 */
 final class UserService
 {
     private int $loads = 0;
     private int $changes = 0;
+    private int $namedLoads = 0;
 
     /** 示例表仅归当前连接所有，三库的重复消费均不遗留业务表。 */
     public function initialize(): void
@@ -23,7 +24,7 @@ final class UserService
         Db::connection('default', true)->execute('CREATE TEMPORARY TABLE operation_users (id INTEGER PRIMARY KEY, name VARCHAR(100) NOT NULL)');
     }
 
-    /** 写入演练用户；fail 模式在写后抛错，事务只在生成的服务组合入口生效。 */
+    /** 写入演练用户；fail 模式在写后抛错，由原方法的转换结果回滚。 */
     #[Transactional]
     public function create(int $id, string $name, bool $fail = false): void
     {
@@ -31,6 +32,34 @@ final class UserService
         if ($fail) {
             throw new RuntimeException('预期业务失败');
         }
+    }
+
+    /** 普通方法调用声明方法，验证手动构造与类内互调不绕过事务。 */
+    public function createIndirect(int $id, string $name, bool $fail = false): void
+    {
+        $this->create($id, $name, $fail);
+    }
+
+    /** 命名数据源的缓存读取，不触碰默认源。 */
+    #[Cacheable(cache: 'cache', key: 'named:{id}', database: 'named')]
+    public function namedCached(TypedCache $cache, int $id): string
+    {
+        $this->namedLoads++;
+        return (string) Db::connection('named', true)->query('SELECT name FROM operation_named WHERE id = ?', [$id])[0]['name'];
+    }
+
+    /** 同名源的嵌套事务与失效；省略失效 database 时沿用事务声明。 */
+    #[Transactional(database: 'named')]
+    #[CacheEvict(cache: 'cache', key: 'named:{id}')]
+    public function namedWrite(TypedCache $cache, int $id, string $name): void
+    {
+        Db::connection('named', true)->execute('UPDATE operation_named SET name = ? WHERE id = ?', [$name, $id]);
+    }
+
+    /** 可观察命名数据源的回源次数。 */
+    public function namedLoads(): int
+    {
+        return $this->namedLoads;
     }
 
     /** 返回明确的缺失状态；普通未标注的方法仍保留完全相同的类型。 */
@@ -84,7 +113,7 @@ final class UserService
         return json_encode([$tenant, $id], JSON_THROW_ON_ERROR);
     }
 
-    /** 中文说明和默认参数在公开组合对象上保持可见。 */
+    /** 中文说明和默认参数在原 Service 上保持可见。 */
     public function greet(string $name = '开发者', int $repeat = 1): string
     {
         return str_repeat('你好，' . $name . '！', $repeat);

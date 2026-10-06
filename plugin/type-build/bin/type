@@ -12,6 +12,9 @@ TypeApp 开发与构建工具（生产运行使用单个主程序，配置独立
   type create <已授权本地模板目录> <新项目目录> [sqlite|mysql|pgsql]
   type doctor <构建配置.json> [development|build]
   type prepare <构建配置.json>
+  type schema:prepare <独立Schema声明.php>
+  type inspect-application <构建配置.json> [--json]
+  type make <构建配置.json> <module|model|input|service|controller|migration|command|job|task> <完整类名> [--选项=值...]
   type dev <构建配置.json> [应用参数...]
   type watch <构建配置.json> [应用参数...]
   type test <构建配置.json> [测试参数...]
@@ -65,8 +68,52 @@ try {
         echo json_encode((new Type\Build\DevelopmentBuilder())->prepareConfiguration($argv[2]), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
         exit(0);
     }
+    if (($argv[1] ?? '') === 'schema:prepare' && count($argv) === 3) {
+        echo json_encode((new Type\Build\SchemaCompiler())->prepare($argv[2]), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+        exit(0);
+    }
+    if (($argv[1] ?? '') === 'make') {
+        if (count($argv) < 5) {
+            throw new InvalidArgumentException('用法：type make <构建配置.json> <类型> <完整类名> [--选项=值...]');
+        }
+        $options = [];
+        foreach (array_slice($argv, 5) as $argument) {
+            if (!preg_match('/^--([a-z][a-z-]*)=(.+)$/D', $argument, $match) || isset($options[$match[1]])) {
+                throw new InvalidArgumentException('make 选项必须是不重复的 --名称=值');
+            }
+            $options[$match[1]] = $match[2];
+        }
+        echo json_encode((new Type\Build\Scaffolder())->make($argv[2], $argv[3], $argv[4], $options),
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+        exit(0);
+    }
+    if (($argv[1] ?? '') === 'inspect-application') {
+        if (!in_array(count($argv), [3, 4], true) || (isset($argv[3]) && $argv[3] !== '--json')) {
+            throw new InvalidArgumentException('用法：type inspect-application <构建配置.json> [--json]；--inspect 用于已有产物');
+        }
+        $inspection = new Type\Build\ApplicationInspection();
+        $report = $inspection->inspect($argv[2]);
+        echo isset($argv[3])
+            ? json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL
+            : $inspection->describe($report);
+        exit(0);
+    }
     if (in_array($argv[1] ?? '', ['dev', 'test'], true) && count($argv) >= 3) {
         $project = (new Type\Build\BuildProject())->read($argv[2]);
+        $configuration = $project['file'];
+        $assembled = $argv[1] === 'dev' && isset($project['settings']['application']) && !isset($project['settings']['development']['entry']);
+        if ($assembled) {
+            (new Type\Build\DevelopmentBuilder())->loadConfiguration($configuration);
+            if (!chdir($project['root'])) {
+                throw new RuntimeException('无法切换到应用目录');
+            }
+            $argv = [$configuration, ...array_slice($argv, 3)];
+            $argc = count($argv);
+            $_SERVER['argv'] = $argv;
+            $_SERVER['argc'] = $argc;
+            main($argc, $argv);
+            exit(0);
+        }
         $selection = $argv[1] === 'dev' ? [$project['settings']['development']['entry'] ?? null] : ($project['settings']['development']['test'] ?? []);
         if (!is_array($selection) || !array_is_list($selection) || $selection === []) {
             throw new RuntimeException('请显式声明development.entry或development.test');
@@ -80,6 +127,10 @@ try {
         $file = Type\Build\BuildPlatform::resolve($project['root'] . '/' . $entry);
         if (!Type\Build\BuildPlatform::contains($project['root'], $file) || !is_file($file)) {
             throw new RuntimeException('开发入口超出项目');
+        }
+        (new Type\Build\DevelopmentBuilder())->loadConfiguration($configuration);
+        if (!chdir($project['root'])) {
+            throw new RuntimeException('无法切换到应用目录');
         }
         $argv = [$file, ...array_slice($selection, 1), ...array_slice($argv, 3)];
         $argc = count($argv);

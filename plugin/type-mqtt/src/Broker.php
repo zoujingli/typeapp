@@ -6,6 +6,8 @@ namespace Type\Mqtt;
 
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
+use Type\Core\Http\Client as HttpClient;
+use Type\Runtime\Cancellation;
 use Type\Runtime\Deadline;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
@@ -94,7 +96,9 @@ final class Broker
     private bool $crlUnavailable = false;
     private int $certificateEnforceAt = 0;
     private bool $crlFetching = false;
-    private ?\Swoole\Coroutine\Http\Client $crlClient = null;
+    private ?Cancellation $crlCancellation = null;
+    /** 清理失败时保留实际资源所有者，不把未关闭的下载标为完成。 */
+    private ?ExecutionScope $crlScope = null;
     private int $crlFetchAt = 0;
     /** @var array<string, true> 平台吊销序列号，本进程内只增不减。 */
     private array $platformRevoked = [];
@@ -3432,25 +3436,40 @@ final class Broker
         }
         $this->crlFetchAt = time() + (int) $this->options->clientCrlInterval;
         $this->crlFetching = true;
+        $this->crlCancellation = new Cancellation();
         $created = Coroutine::create(function (): void {
+            $scope = new ExecutionScope(new Deadline(10.0), cancellation: $this->crlCancellation);
+            $this->crlScope = $scope;
             try {
-                $this->downloadClientCrl($this->options->clientCrlUrl, $this->options->clientCa, $this->options->clientCrl);
+                $scope->run(function (ExecutionScope $current): void {
+                    $this->downloadClientCrl($this->options->clientCrlUrl, $this->options->clientCa, $this->options->clientCrl);
+                });
             } catch (\Throwable) {
                 // 保留原列表，既有 CRL 有效期规则决定是否继续接受连接。
             } finally {
-                $this->crlClient?->close();
-                $this->crlClient = null;
-                $this->crlFetching = false;
+                try {
+                    $scope->close();
+                } catch (\Throwable $cleanupError) {
+                    if ($this->coroutineFailure === null) {
+                        $this->coroutineFailure = $cleanupError;
+                    }
+                }
+                $this->crlFetching = $scope->state() !== 'closed';
+                if (!$this->crlFetching) {
+                    $this->crlScope = null;
+                    $this->crlCancellation = null;
+                }
             }
         });
         if ($created === false) {
+            $this->crlCancellation = null;
             $this->crlFetching = false;
         }
     }
 
     private function stopClientCrlFetch(): void
     {
-        $this->crlClient?->close();
+        $this->crlCancellation?->cancel();
     }
 
     /** 下载失败或停止时保持原文件；校验与接纳仍由串行 tick 完成。 */
@@ -3460,37 +3479,13 @@ final class Broker
         if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || !isset($parts['host']) || !is_string($parts['host']) || $parts['host'] === '') {
             return;
         }
-        $port = isset($parts['port']) && is_int($parts['port']) ? $parts['port'] : 443;
-        $path = (string) ($parts['path'] ?? '/');
-        if (isset($parts['query']) && is_string($parts['query']) && $parts['query'] !== '') {
-            $path .= '?' . $parts['query'];
+        $response = (new HttpClient())->request('GET', $url, timeout: 10.0, maxResponseBytes: 1048576, tlsOptions: ['ssl_cafile' => $ca]);
+        try {
+            $body = $response->getBody()->getContents();
+        } finally {
+            $response->getBody()->close();
         }
-        $client = new \Swoole\Coroutine\Http\Client($parts['host'], $port, true);
-        $this->crlClient = $client;
-        $body = '';
-        $client->set([
-            'timeout' => 10,
-            'ssl_verify_peer' => true,
-            'ssl_allow_self_signed' => false,
-            'ssl_cafile' => $ca,
-            'ssl_host_name' => $parts['host'],
-            'follow_location' => false,
-            'http_compression' => false,
-            'body_decompression' => false,
-            'write_func' => static function (\Swoole\Coroutine\Http\Client $http, string $chunk) use (&$body): void {
-                if (strlen($body) + strlen($chunk) > 1048576) {
-                    throw new \RuntimeException('crl_response_too_large');
-                }
-                $body .= $chunk;
-            },
-        ]);
-        $received = $client->get($path);
-        $status = (int) $client->statusCode;
-        $client->close();
-        if (!$received || $this->stopping) {
-            return;
-        }
-        if ($status !== 200 || $body === '' || strlen($body) > 1048576 || !str_contains($body, 'BEGIN X509 CRL')) {
+        if ($this->stopping || $response->getStatusCode() !== 200 || $body === '' || !str_contains($body, 'BEGIN X509 CRL')) {
             return;
         }
         $temporary = dirname($output) . '/.' . basename($output) . '.' . bin2hex(random_bytes(4)) . '.tmp';

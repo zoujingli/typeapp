@@ -867,7 +867,7 @@ final class ScopeMqttAccess implements \Type\Mqtt\AccessPolicy
                     throw new RuntimeException('mqtt_child_scope_invalid');
                 }
                 \Swoole\Coroutine::sleep(0.001);
-            })->await();
+            }, ['tenant_id' => 'verified-tenant'])->await();
         }, ['tenant_id' => 'verified-tenant']);
         if ($scope->binding('tenant_id') !== null) {
             throw new RuntimeException('mqtt_binding_not_restored');
@@ -1034,7 +1034,7 @@ $consumer = $root . '/build/mqtt-consumer-' . bin2hex(random_bytes(5));
 expect(mkdir($consumer . '/app', 0700, true), '无法创建独立 MQTT 消费者');
 $toolchain = json_decode(file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
 $repositories = [];
-foreach (['type-mqtt', 'type-runtime', 'type-orm', 'type-orm-pgsql', 'type-build'] as $package) {
+foreach (['type-mqtt', 'type-core', 'type-runtime', 'type-orm', 'type-orm-pgsql', 'type-build'] as $package) {
     $repositories[] = ['type' => 'path', 'url' => '../../plugin/' . $package,
         'options' => ['symlink' => false, 'versions' => ['zoujingli/' . $package => '1.0.x-dev']]];
 }
@@ -1109,7 +1109,8 @@ if ($native) {
     $report = json_decode(file_get_contents($consumer . '/build/mqtt/type-app.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $production = array_keys($report['production-packages']);
     sort($production);
-    expect($production === ['zoujingli/type-mqtt', 'zoujingli/type-orm', 'zoujingli/type-orm-pgsql', 'zoujingli/type-runtime'], '独立 MQTT 编译生产依赖不完整或混入业务');
+    expect($production === ['psr/http-factory', 'psr/http-message', 'psr/http-server-handler', 'psr/http-server-middleware',
+        'zoujingli/type-core', 'zoujingli/type-mqtt', 'zoujingli/type-orm', 'zoujingli/type-orm-pgsql', 'zoujingli/type-runtime'], '独立 MQTT 编译生产依赖不完整或混入业务');
     foreach ($report['sources'] as $source) {
         expect(str_starts_with($source, $consumer . '/'), '独立 MQTT 仍编译主仓源码');
     }

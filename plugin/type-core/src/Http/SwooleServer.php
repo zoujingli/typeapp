@@ -426,9 +426,14 @@ final class SwooleServer implements HttpServerInterface
             && strtoupper((string) ($raw->server['request_method'] ?? 'GET')) === 'GET') {
             // 探针保留独立请求额度，但应用可指定与业务相同的 Host/代理校验。
             try {
-                $host = $raw->header['host'] ?? '';
+                $headers = $this->requestHeaders($raw);
+                $hostValues = $headers['host'] ?? [];
+                if (count($hostValues) !== 1) {
+                    throw new HttpError(400, 'invalid_host');
+                }
+                $host = $hostValues[0];
                 $request = $this->requests->createServerRequest('GET', 'http://' . $host . $path, $raw->server ?? []);
-                foreach ($raw->header ?? [] as $name => $value) {
+                foreach ($headers as $name => $value) {
                     $request = $request->withHeader((string) $name, $value);
                 }
                 $request = $request->withAttribute('type.raw-target', $path . (isset($raw->server['query_string']) ? '?' . $raw->server['query_string'] : ''));
@@ -464,13 +469,15 @@ final class SwooleServer implements HttpServerInterface
             $method = (string) ($raw->server['request_method'] ?? 'GET');
             $target = (string) ($raw->server['request_uri'] ?? '/');
             $query = (string) ($raw->server['query_string'] ?? '');
-            $host = $raw->header['host'] ?? null;
-            if (!is_string($host) || $host === '') {
+            $headers = $this->requestHeaders($raw);
+            $hostValues = $headers['host'] ?? [];
+            $host = count($hostValues) === 1 ? $hostValues[0] : '';
+            if ($host === '') {
                 throw new HttpError(400, 'invalid_host');
             }
             $request = $this->requests->createServerRequest($method, 'http://' . $host . $target . ($query === '' ? '' : '?' . $query), $raw->server ?? []);
             $request = $request->withProtocolVersion(substr((string) ($raw->server['server_protocol'] ?? 'HTTP/1.1'), 5));
-            foreach ($raw->header ?? [] as $name => $value) {
+            foreach ($headers as $name => $value) {
                 $request = $request->withHeader((string) $name, $value);
             }
             $content = $raw->rawContent();
@@ -516,6 +523,40 @@ final class SwooleServer implements HttpServerInterface
             }
             $this->control->finish($scope, $cleanupFailed);
         }
+    }
+
+    /**
+     * 将原生已接受的 HTTP/1 头转成 PSR 多值映射，不依赖会覆盖重复值的原生 header 属性。
+     * 协议解析仍由 Swoole 完成；缺失原始头时明确拒绝，不能假装完成重复值校验。
+     *
+     * @return array<string, list<string>> 大小写无关的头名称到原始值列表。
+     * @throws HttpError 原始头不可用、格式错误或超过适配预算。
+     */
+    private function requestHeaders(Request $raw): array
+    {
+        $data = $raw->getData();
+        $end = is_string($data) ? strpos($data, "\r\n\r\n") : false;
+        if ($end === false) {
+            throw new HttpError(400, 'raw_headers_unavailable');
+        }
+        if ($end > 65536) {
+            throw new HttpError(431, 'headers_too_large');
+        }
+        $lines = explode("\r\n", substr($data, 0, $end));
+        array_shift($lines);
+        $headers = [];
+        foreach ($lines as $line) {
+            $separator = strpos($line, ':');
+            if ($separator === false) {
+                throw new HttpError(400, 'invalid_header');
+            }
+            $name = strtolower(substr($line, 0, $separator));
+            if (preg_match('/^[!#$%&\x27*+.^_`|~0-9a-z-]+$/D', $name) !== 1) {
+                throw new HttpError(400, 'invalid_header');
+            }
+            $headers[$name][] = trim(substr($line, $separator + 1), " \t");
+        }
+        return $headers;
     }
 
     private function error(int $status, string $code): ResponseInterface

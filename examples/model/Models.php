@@ -26,6 +26,9 @@ namespace TypeApp\ModelExample {
         #[\Type\Orm\Attribute\BelongsToMany(ScopedLabel::class, 'type_model_scoped_links', 'user_id', 'label_id', pivotTenant: 'tenant_id')]
         public array $labels;
 
+        #[\Type\Orm\Attribute\BelongsToMany(ScopedLabel::class, 'type_model_scoped_links', 'user_id', 'label_id')]
+        public array $unscopedLabels;
+
     }
 }
 
@@ -40,6 +43,12 @@ namespace TypeApp\ModelExample {
         public ?int $user_id;
 
         public string $title;
+
+        #[\Type\Orm\Attribute\BelongsToMany(Tag::class, 'type_model_article_tag', 'article_id', 'tag_id', pivotFields: ['position'])]
+        public array $tags;
+
+        #[\Type\Orm\Attribute\BelongsTo(User::class, 'user_id')]
+        public ?User $owner;
 
     }
 }

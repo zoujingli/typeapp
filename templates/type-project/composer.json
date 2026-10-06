@@ -6,14 +6,16 @@
   "require": {
     "php": ">=8.4 <8.6",
     "ext-swoole": ">=6.2 <7",
-    "zoujingli/type-core": "~1.0.0@dev",
-    "zoujingli/type-orm-sqlite": "~1.0.0@dev",
-    "zoujingli/type-validate": "~1.0.0@dev",
-    "zoujingli/type-log": "~1.0.0@dev"
+    "zoujingli/type-core": "1.0.x-dev",
+    "zoujingli/type-orm": "1.0.x-dev",
+    "zoujingli/type-orm-sqlite": "1.0.x-dev",
+    "zoujingli/type-runtime": "1.0.x-dev",
+    "zoujingli/type-validate": "1.0.x-dev",
+    "zoujingli/type-log": "1.0.x-dev"
   },
   "require-dev": {
-    "zoujingli/type-build": "~1.0.0@dev",
-    "zoujingli/type-testing": "~1.0.0@dev",
+    "zoujingli/type-build": "1.0.x-dev",
+    "zoujingli/type-testing": "1.0.x-dev",
     "swoole/typephp": "0.9.4",
     "swoole/phpx": "2.9.3"
   },

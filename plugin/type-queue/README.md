@@ -14,9 +14,9 @@ composer require zoujingli/type-queue:1.0.0-rc.14
 
 以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
 
-应用构建配置 `queue` 声明注册类与 type/version/handler 列表，JobCompiler 生成固定 Registry。重复类型版本在生成时失败。应用显式提供处理器构造工厂，Worker 每次执行创建新 Job、JobContext 和 ExecutionScope。
+应用通过 `application.jobs` 自动装配 Job 及其依赖，生成 `CommandApplication::jobs()`；声明规则与底层接口分别见下文。Worker 每次执行创建新 Job、JobContext 和 ExecutionScope。
 
-直接注册和生成注册类的工厂都使用 `Closure(JobContext): Job`，例如 `static fn (JobContext $context): Job => new ReportJob()`。即使构造本身不使用上下文，也要显式声明这个参数；TypePHP 对非 variadic 回调严格检查实参数量。
+底层直接注册与生成装配的工厂都使用 `Closure(JobContext): Job`，例如 `static fn (JobContext $context): Job => new ReportJob()`。即使构造本身不使用上下文，也要显式声明这个参数；TypePHP 对非 variadic 回调严格检查实参数量。
 
 `Queue::publish()` 投递，`reserve()` 通过消费组一次领取一条并原子登记持有者 token 和到期时间。一个队列命名空间只使用自有 workers 消费组，不支持其他应用共用同一 Stream 增加任意消费组。消息容量达到上限即拒绝新投递，不裁剪未确认消息。
 
@@ -70,7 +70,32 @@ Worker 当前固定最多一条预取、一条在途执行，不建立隐藏预�
 
 可靠 Redis 应独立于缓存实例，使用明确容量、noeviction 与 AOF 策略。`Type\Redis\StoragePolicy::verify()` 提供真实实例和持久化策略的只读预检；运行时故障与满载仍以实际命令结果为准。专属 Redis 的重启、写满和任务停止验证见开发主仓 `docs/development/task-reliability.md`。
 
-## 声明式使用示例
+## 应用自动装配
+
+应用安装 `type-core`，开发依赖安装 `type-build`；队列组件本身仍不强制依赖 core。将实现 `Job::handle(JobContext $context, array $payload): void` 的业务类列入生产 sources，在 `type-app.json` 声明：
+
+```json
+{
+  "application": {
+    "enabled": ["example/app"],
+    "jobs": [{"type": "reports.daily", "version": 1, "class": "App\\Job\\DailyReport"}]
+  }
+}
+```
+
+`enabled` 使用应用实际 Composer 名称。Job 的具体类型构造参数自动推导；接口或标量歧义使用 `application.bindings`。需要资源时声明 `resources: ["database"]`，对应服务必须是 execution 生命周期的 `ManagedResource`；Job 构造前资源已在同一个消息 scope 开启。也可用 `service` 引用已有的 execution 服务，`class` 与 `service` 只能选择一个。
+
+启动角色在同一 Swoole 协程内建立 Queue 和配置快照，然后取得生成注册表：
+
+```php
+$application = new \Type\Generated\CommandApplication($configuration);
+$worker = new \Type\Queue\Worker($queue, $application->jobs(), 'reports-worker');
+$worker->run(100);
+```
+
+启动角色通过 `application.bootstrap` 接入唯一生成入口；可运行的完整示例是 `examples/queue` 与 `docs/build-config/type-queue.json`。开发 `DevelopmentBuilder` 和 AOT 使用同一声明生成过程。旧顶层 `queue`、生成 `Jobs::create($factories)` 的映射已移除；改用 `application.jobs`，无需手写 Job 构造闭包。重复 type/version、错误方法签名、缺失依赖、依赖环和 singleton 持有 execution 服务均在构建期拒绝。每次投递、重试和恢复仍由 Worker 建立新的 Scope，不将 payload/context 自动提升为可信身份。
+
+## 底层 Registry 使用示例
 
 以下声明式入口在独立示例 Redis 命名空间投递并消费一条任务；只演示流程，不将输出当作恰好一次的业务效果。
 
@@ -181,4 +206,5 @@ composer test:queue-retries-native
 
 - [可靠任务存储与停止](https://github.com/zoujingli/typeapp/blob/main/docs/development/task-reliability.md)
 - [Outbox 对接](https://github.com/zoujingli/typeapp/blob/main/docs/development/outbox.md)
+- [开发通道连续目录：生成 Job、接受凭据与消费效果](https://iots.top/next/#/guide/catalog-reliability)
 - [独立角色无源码部署](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-roles.md)

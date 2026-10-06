@@ -81,7 +81,8 @@ final class Input
         try {
             return $this->with('query', QueryString::parse($query, $maxFields, $maxBytes));
         } catch (QueryStringException $error) {
-            throw new ValidationException([$error->field() => [$error->reason()]], $error->status(), $error->status() === 413 ? 'payload_too_large' : 'invalid_query');
+            $status = $error->reason() === 'too_many_fields' ? 413 : $error->status();
+            throw new ValidationException([$error->field() => [$error->reason()]], $status, $status === 413 ? 'payload_too_large' : 'invalid_query');
         }
     }
 

@@ -58,6 +58,9 @@ final class PdoSession implements ReusableResource
             }
         } catch (PDOException $error) {
             $this->reusable = false;
+            if (str_starts_with((string) $error->getCode(), '23')) {
+                throw new ConstraintException($this->driverName(), $error);
+            }
             throw new DatabaseException('数据库查询失败，SQLSTATE：' . $error->getCode(), 0, $error);
         }
     }
@@ -98,6 +101,9 @@ final class PdoSession implements ReusableResource
             }
         } catch (PDOException $error) {
             $this->reusable = false;
+            if (str_starts_with((string) $error->getCode(), '23')) {
+                throw new ConstraintException($this->driverName(), $error);
+            }
             throw new DatabaseException('数据库执行失败，SQLSTATE：' . $error->getCode(), 0, $error);
         }
     }

@@ -1,0 +1,66 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use {{model}};
+use Type\Orm\Attribute\Transactional;
+use Type\Orm\ModelException;
+
+/** {{name}} 使用原业务类型；事务声明由统一生成管线落实。 */
+final class {{name}}
+{
+    /** @return list<array{id:int, name:string, version:int}> 有界、稳定排序的公开投影。 */
+    public function page(): array
+    {
+        $result = [];
+        foreach ({{modelName}}::query()->orderBy('id')->limit(20)->get() as $record) {
+            if (!$record instanceof {{modelName}}) {
+                throw new ModelException('invalid_hydration', '查询没有返回声明的业务模型');
+            }
+            $result[] = $record->present();
+        }
+        return $result;
+    }
+
+    /** @return array{id:int, name:string, version:int} 只返回明确公开字段。 */
+    public function find(int $id): array
+    {
+        return $this->load($id)->present();
+    }
+
+    /** @param array{name:string} $values 有效创建字段，不包含主键、版本、身份或租户。 */
+    #[Transactional]
+    public function create(array $values): array
+    {
+        $record = new {{modelName}}(['name' => $values['name']]);
+        $record->save();
+        return $this->find($record->id);
+    }
+
+    /** @param array{name?:string} $values PATCH 未提供的字段保持原值。 */
+    #[Transactional]
+    public function update(int $id, array $values): array
+    {
+        $record = $this->load($id);
+        if (array_key_exists('name', $values)) {
+            $record->name = $values['name'];
+        }
+        $record->save();
+        return $this->find($record->id);
+    }
+
+    /** @throws ModelException 记录不存在或模型类型不符合声明。 */
+    private function load(int $id): {{modelName}}
+    {
+        $record = {{modelName}}::query()->find($id);
+        if ($record === null) {
+            throw new ModelException('record_not_found', '记录不存在');
+        }
+        if (!$record instanceof {{modelName}}) {
+            throw new ModelException('invalid_hydration', '查询没有返回声明的业务模型');
+        }
+        return $record;
+    }
+}

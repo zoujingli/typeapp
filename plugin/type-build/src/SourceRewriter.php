@@ -39,7 +39,7 @@ final class SourceRewriter
                 }
                 (new ParserFactory())->createForNewestSupportedVersion()->parse($source);
                 $hash = hash('sha256', $source);
-                $target = $directory . '/' . hash('sha256', $original . $rewrite['sha256'] . $hash) . '/' . basename($original);
+                $target = $directory . '/' . hash('sha256', $rewrite['package'] . '/' . basename($original) . $rewrite['sha256'] . $hash) . '/' . basename($original);
                 BuildLock::path($target);
                 if (!is_dir(dirname($target)) && !mkdir(dirname($target), 0700, true)) {
                     throw new RuntimeException('无法创建完整适配源码目录');

@@ -807,11 +807,12 @@ final class ModelQuery
         $version = $this->definition->versionField();
         $versionColumn = $version === null ? null : $this->definition->field($version)->column();
         $integer = $mapping->typeName() === 'integer';
-        return $this->mutate($query, static fn (Query $target): int => $target->adjust($mapping->column(), $amount, $decrement, $versionColumn, $integer));
+        $timestamps = $this->updateTimestamps();
+        return $this->mutate($query, static fn (Query $target): int => $target->adjust($mapping->column(), $amount, $decrement, $versionColumn, $integer, $timestamps));
     }
 
     /**
-     * 校验完整批次后执行一条 INSERT；自动写入租户及生命周期初值，不水合模型或触发逐模型事件。
+     * 校验完整批次后执行一条 INSERT；自动写入租户及生命周期初值，整批共用同一时刻，不触发逐模型事件。
      *
      * @param list<array<string, mixed>> $rows 使用模型属性名，每行须提供相同字段集合。
      * @return int 数据库报告的新增行数；空列表返回零，不推测自动主键。
@@ -830,19 +831,31 @@ final class ModelQuery
         $query = $this->query->select(['*']);
         // 空批次仍复用底层的完整插入形态校验，不执行 SQL，也不静默丢弃原查询状态。
         $query->insertMany([]);
+        $batch = $this->insertBatch($rows);
+        if ($batch[0] === []) {
+            return 0;
+        }
+        $this->definition->assertStorage($this->connection, $batch[1]);
+        return $this->mutate($query, static fn (Query $target): int => $target->insertMany($batch[0]));
+    }
+
+    /** 完整规范化和编码后才允许执行写入；同一批次只采样一次受管时间。 */
+    private function insertBatch(array $rows): array
+    {
         if (!array_is_list($rows)) {
             throw new ModelException('invalid_insert_rows', '批量新增必须传入关联行列表');
         }
         if ($rows === []) {
-            return 0;
+            return [[], []];
         }
         $encoded = [];
         $fields = [];
+        $timestamps = $this->definition->writeTimestamps(true);
         foreach ($rows as $row) {
             if (!is_array($row)) {
                 throw new ModelException('invalid_insert_rows', '批量新增的每项必须是字段映射');
             }
-            $values = $this->insertValues($row);
+            $values = $this->insertValues($row, $timestamps);
             $names = array_keys($values);
             sort($names);
             if ($encoded !== [] && $names !== $fields) {
@@ -859,12 +872,122 @@ final class ModelQuery
             }
             $encoded[] = $stored;
         }
-        $this->definition->assertStorage($this->connection, $fields);
-        return $this->mutate($query, static fn (Query $target): int => $target->insertMany($encoded));
+        return [$encoded, $fields];
+    }
+
+    /**
+     * PostgreSQL、SQLite 按真实非空唯一字段整批写入，保持租户、时间、版本和软删除范围。
+     * @param list<array<string, mixed>> $rows 每行相同字段集合，使用模型属性名。
+     * @param list<string> $uniqueBy 完整唯一索引字段，租户列必须包含在内。
+     * @param list<string> $updateFields 冲突时更新的普通字段，不允许主键、身份或生命周期字段。
+     * @return int 驱动真实影响行数；软删除冲突在 PostgreSQL、SQLite 中跳过。
+     */
+    public function upsert(array $rows, array $uniqueBy, array $updateFields): int
+    {
+        return $this->upsertBatch($rows, $uniqueBy, $updateFields);
+    }
+
+    /**
+     * MySQL 接受任意唯一键冲突；所有可能命中的唯一索引都必须安全，软删除模型明确拒绝。
+     * @param list<array<string, mixed>> $rows 每行相同字段集合，使用模型属性名。
+     * @param list<string> $updateFields 允许更新的普通字段，不能改变主键、身份或生命周期字段。
+     * @return int 驱动真实影响行数，不推断插入与更新的数量。
+     * @throws ModelException 非法写入形态、字段、租户或不安全唯一索引。
+     */
+    public function upsertAnyUnique(array $rows, array $updateFields): int
+    {
+        return $this->upsertBatch($rows, null, $updateFields);
+    }
+
+    private function upsertBatch(array $rows, ?array $uniqueBy, array $updateFields): int
+    {
+        if ($this->query === null) {
+            return $this->materialize(true)->upsertBatch($rows, $uniqueBy, $updateFields);
+        }
+        $this->assertExecution();
+        if ($this->explicitSelection || $this->relations !== [] || $this->computations !== [] || $this->trashed !== 'without') {
+            throw new ModelException('invalid_insert_query', '冲突写入不接受投影、预加载、关系计算或软删除查询模式');
+        }
+        $query = $this->query->select(['*']);
+        $query->upsertManaged([], $uniqueBy, [], null, null);
+        if ($uniqueBy !== null && ($uniqueBy === [] || !array_is_list($uniqueBy) || count(array_unique($uniqueBy)) !== count($uniqueBy))) {
+            throw new ModelException('invalid_unique_identity', '冲突目标必须是不重复的非空字段列表');
+        }
+        $batch = $this->insertBatch($rows);
+        if ($updateFields === [] || !array_is_list($updateFields) || count(array_unique($updateFields)) !== count($updateFields)) {
+            throw new ModelException('invalid_upsert_fields', '冲突更新需要不重复的普通字段列表');
+        }
+        $updates = [];
+        $definition = $this->definition;
+        foreach ($updateFields as $name) {
+            if (!is_string($name)) {
+                throw new ModelException('unknown_field', '冲突更新字段名必须为字符串');
+            }
+            $field = $definition->field($name);
+            if (!$field->fillable() || in_array($name, [$definition->key(), $definition->tenantField(), $definition->createdAtField(),
+                $definition->updatedAtField(), $definition->versionField(), $definition->softDeleteField()], true)
+                || ($uniqueBy !== null && in_array($name, $uniqueBy, true))) {
+                throw new ModelException('field_not_fillable', '冲突更新不能修改身份或受管字段：' . $name);
+            }
+            if ($batch[0] !== [] && !in_array($name, $batch[1], true)) {
+                throw new ModelException('invalid_upsert_fields', '冲突更新字段必须由完整批次提供：' . $name);
+            }
+            $updates[] = $field->column();
+        }
+        $deleted = $definition->softDeleteField();
+        if ($uniqueBy === null && $deleted !== null) {
+            throw new ModelException('unsafe_upsert_visibility', 'MySQL 冲突写入不能原子过滤软删除记录');
+        }
+        if ($batch[0] === []) {
+            return 0;
+        }
+        if ($definition->updatedAtField() !== null) {
+            $updates[] = $definition->field($definition->updatedAtField())->column();
+        }
+        $version = $definition->versionField();
+        $versionColumn = $version === null ? null : $definition->field($version)->column();
+        $deletedColumn = $deleted === null ? null : $definition->field($deleted)->column();
+        return $this->mutate($query, function (Query $write) use ($batch, $uniqueBy, $updates, $versionColumn, $deletedColumn): int {
+            // mutate 已锁定表元数据到事务结束，再证明唯一索引与实际存储，避免 DDL 更换安全边界。
+            $this->definition->assertStorage($this->connection, $batch[1]);
+            return $write->upsertManaged($batch[0], $this->upsertTarget($batch[0], $uniqueBy), $updates, $versionColumn, $deletedColumn);
+        });
+    }
+
+    private function upsertTarget(array $rows, ?array $uniqueBy): ?array
+    {
+        $definition = $this->definition;
+        $target = null;
+        if ($uniqueBy !== null) {
+            if (!array_is_list($uniqueBy)) {
+                throw new ModelException('invalid_unique_identity', '冲突目标必须使用字段列表');
+            }
+            $target = UniqueIdentity::resolve($definition, $this->connection, $uniqueBy)['columns'];
+            foreach ($rows as $row) {
+                foreach ($target as $column) {
+                    if (!array_key_exists($column, $row) || $row[$column] === null) {
+                        throw new ModelException('invalid_unique_identity', '冲突写入每行必须提供完整非空唯一身份');
+                    }
+                }
+            }
+        } else {
+            foreach ($this->connection->uniqueIndexes($definition->table()) as $index) {
+                $key = $definition->field($definition->key())->column();
+                if ($definition->generatedKey() && $index['columns'] === [$key] && !array_key_exists($key, $rows[0])) {
+                    continue;
+                }
+                $tenant = $definition->tenantField();
+                if ($index['nullable'] || $index['partial'] || $index['expression']
+                    || ($tenant !== null && !in_array($definition->field($tenant)->column(), $index['columns'], true))) {
+                    throw new ModelException('unsafe_unique_identity', 'MySQL 任意唯一键写入存在不可证明安全的唯一索引');
+                }
+            }
+        }
+        return $target;
     }
 
     /** 先转换普通输入，再补受管字段；修改器不得改变可信租户或生命周期初值。 */
-    private function insertValues(array $row): array
+    private function insertValues(array $row, array $timestamps): array
     {
         $tenant = $this->definition->tenantField();
         $identity = $this->definition->tenantIdentity($this->execution);
@@ -896,6 +1019,7 @@ final class ModelQuery
         if ($deleted !== null) {
             $values[$deleted] = null;
         }
+        $values = array_merge($values, $timestamps);
         foreach ($this->definition->names() as $required) {
             if ($required === $this->definition->key() && $this->definition->generatedKey()) {
                 continue;
@@ -908,7 +1032,7 @@ final class ModelQuery
     }
 
     /**
-     * 单条 SQL 集合更新；字段修改器对每份输入执行一次，不触发逐模型事件或刷新已有对象。
+     * 单条 SQL 集合更新，统一维护更新时间；字段修改器对每份输入执行一次，不触发逐模型事件或刷新已有对象。
      * @param array<string, mixed> $values 普通可赋值字段。
      * @throws ModelException 字段或物理存储声明不符合模型约束。
      * @throws DatabaseException 约束失败（含版本耗尽），整条写入回滚；提交未知时须对账。
@@ -951,17 +1075,33 @@ final class ModelQuery
         }
         $field = $this->definition->field($deleted);
         $this->definition->assertStorage($this->connection, [$deleted]);
+        $instant = new DateTimeImmutable('now', new DateTimeZone('UTC'));
         return $this->updateBatch(
             $query->where($field->column(), '=', null),
-            [$field->column() => $field->encode(new DateTimeImmutable('now', new DateTimeZone('UTC')))]
+            [$field->column() => $field->encode($instant)],
+            $instant
         );
     }
 
-    private function updateBatch(Query $query, array $values): int
+    private function updateBatch(Query $query, array $values, ?DateTimeImmutable $instant = null): int
     {
+        $values = array_merge($values, $this->updateTimestamps($instant));
         $version = $this->definition->versionField();
         $column = $version === null ? null : $this->definition->field($version)->column();
         return $this->mutate($query, static fn (Query $target): int => $target->updateGuarded($values, $column));
+    }
+
+    /** 编码同一次集合写入的更新时间，继续校验数据库实际时间精度。 */
+    private function updateTimestamps(?DateTimeImmutable $instant = null): array
+    {
+        $timestamps = $this->definition->writeTimestamps(false, $instant);
+        $this->definition->assertStorage($this->connection, array_keys($timestamps));
+        $values = [];
+        foreach ($timestamps as $name => $value) {
+            $field = $this->definition->field($name);
+            $values[$field->column()] = $field->encode($value);
+        }
+        return $values;
     }
 
     private function writingQuery(): Query

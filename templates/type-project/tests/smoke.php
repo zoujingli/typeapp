@@ -11,9 +11,9 @@ use Type\Testing\Process;
 use Type\Testing\Suite;
 
 /** 仅验收控制器可指定数组命令；参数不经过 shell，端口来自本测试的监听探测。 */
-function templateCommand(array $fallback, array $environment, bool $server = false): array
+function templateCommand(array $fallback, array $environment, bool $server = false, ?string $control = null): array
 {
-    $key = $server && isset($environment['TYPE_APP_SERVER_COMMAND']) ? 'TYPE_APP_SERVER_COMMAND' : 'TYPE_APP_COMMAND';
+    $key = $control ?? ($server && isset($environment['TYPE_APP_SERVER_COMMAND']) ? 'TYPE_APP_SERVER_COMMAND' : 'TYPE_APP_COMMAND');
     if (!isset($environment[$key])) {
         return $fallback;
     }
@@ -21,6 +21,7 @@ function templateCommand(array $fallback, array $environment, bool $server = fal
     Assert::true(is_array($command) && array_is_list($command) && $command !== [], '应用验收命令必须是非空数组');
     foreach ($command as $index => $argument) {
         Assert::true(is_string($argument) && !str_contains($argument, "\0"), '应用验收命令参数无效');
+        $command[$index] = $argument = str_replace('{{test}}', 'smoke', $argument);
         if (str_contains($argument, '{{port}}')) {
             $port = $environment['APP_PORT'] ?? '';
             Assert::true(ctype_digit($port) && (int) $port > 0 && (int) $port <= 65535, '应用验收发布端口无效');
@@ -28,6 +29,31 @@ function templateCommand(array $fallback, array $environment, bool $server = fal
         }
     }
     return $command;
+}
+
+/** 可选控制钩子仅发送真实服务停止信号；总计五秒内核验启动命令的真实退出结果。 */
+function templateStop(Process $process, string $root, array $settings): void
+{
+    $deadline = microtime(true) + 5;
+    try {
+        if ($process->running() && isset($settings['TYPE_APP_STOP_COMMAND'])) {
+            $stopper = new Process(templateCommand([], $settings, false, 'TYPE_APP_STOP_COMMAND'), $root, $settings);
+            try {
+                $signalled = $stopper->wait(max(0, $deadline - microtime(true)));
+                Assert::true($signalled->successful(), 'HTTP 停止控制失败：' . $signalled->stderr);
+            } finally {
+                $stopper->stop();
+            }
+            $process->wait(max(0, $deadline - microtime(true)));
+        }
+    } finally {
+        $result = $process->stop(max(0, $deadline - microtime(true)));
+        $secrets = array_values(array_filter([$settings['DB_PASSWORD'] ?? '', $settings['APP_API_TOKEN'] ?? ''], static fn (string $secret): bool => $secret !== ''));
+        echo 'server-stop ' . json_encode(['test' => 'smoke', 'exit-code' => $result->exitCode,
+            'timed-out' => $result->timedOut, 'output-exceeded' => $result->outputExceeded, 'signal' => $result->signal,
+            'stdout' => str_replace($secrets, '<REDACTED>', $result->stdout), 'stderr' => str_replace($secrets, '<REDACTED>', $result->stderr)], JSON_THROW_ON_ERROR) . "\n";
+        Assert::true($result->successful(), 'HTTP 未以成功状态正常停止，见 server-stop 回执');
+    }
 }
 
 $target = getenv('TYPE_APP_BINARY');
@@ -152,7 +178,7 @@ $suite->test('真实用户 API、分页、PATCH 和授权隔离', static functio
         Assert::true($ready, 'HTTP 没有按时就绪：' . $process->stderr());
         $observation = $settings['TYPE_APP_OBSERVE_COMMAND'] ?? null;
         if ($observation !== null) {
-            $observer = new Process(json_decode($observation, true, 512, JSON_THROW_ON_ERROR), $root, $settings);
+            $observer = new Process(templateCommand([], $settings, false, 'TYPE_APP_OBSERVE_COMMAND'), $root, $settings);
             try {
                 $observed = $observer->wait(5);
                 Assert::true($observed->successful(), '部署边界检查失败：' . $observed->stderr);
@@ -197,11 +223,7 @@ $suite->test('真实用户 API、分页、PATCH 和授权隔离', static functio
         Assert::same(404, $client->request('GET', '/users/' . $id, $authorization)->status);
         Assert::same(200, $client->request('DELETE', '/users/' . $secondId, $authorization)->status);
     } finally {
-        $result = $process->stop(5);
-        Assert::true(!$result->outputExceeded && $result->signal !== 9, 'HTTP 未能正常限时停止：' . $result->stderr);
-        if (isset($settings['TYPE_APP_SERVER_COMMAND'])) {
-            Assert::true($result->successful(), '部署进程未以成功状态正常停止：' . $result->stderr);
-        }
+        templateStop($process, $root, $settings);
     }
 });
 $exit = $suite->run();

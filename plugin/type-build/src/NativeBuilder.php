@@ -196,6 +196,7 @@ final class NativeBuilder
 
         $this->directory(dirname($output));
         $this->directory($buildDirectory);
+        $declarationSources = $sources;
         $embeddedCompiler = new EmbeddedResourceCompiler();
         $embeddedFiles = $embeddedCompiler->collect($root, $settings['embedded-resources'] ?? []);
         $embeddedManifest = $embeddedCompiler->manifest($embeddedFiles);
@@ -221,94 +222,19 @@ final class NativeBuilder
             $this->writeText($iniSource, (new RuntimeIni())->nativeSource());
             $sources[] = $iniSource;
         }
-        $adaptation = (new SourceRewriter())->apply($sources, $sourceSets, $buildDirectory . '/adapted-sources');
-        $sources = $adaptation['sources'];
-        $configurationFiles = [];
-        $configurationGeneration = [];
-        if (array_key_exists('config', $settings)) {
-            if (!is_array($settings['config']) || !isset($included['zoujingli/type-core'])) {
-                throw new RuntimeException('配置工厂需要 config 声明并安装 type-core');
-            }
-            $configurationGeneration = (new ConfigCompiler())->generate($root, $settings['config']);
-            $configurationFiles = $configurationGeneration['files'];
-            if (array_intersect((new BuildIdentity())->sources($sources), $configurationFiles) !== []) {
-                throw new RuntimeException('配置声明不能同时列为生产执行源码；请只通过 config 编译工厂');
-            }
-            $configurationFile = $buildDirectory . '/generated-config.php';
-            $this->writeText($configurationFile, $configurationGeneration['code']);
-            unset($configurationGeneration['code']);
-            $sources[] = $configurationFile;
-        }
-        (new ModelCompiler())->assertConfiguration($settings);
-        $modelGeneration = (new ModelCompiler())->compile($sources);
+        $generation = (new ApplicationGeneration())->generate($root, $settings, $declarationSources, $sourceSets, $modules, $included, $buildDirectory);
+        $compiledDeclarations = array_merge($generation['sources'], array_values(array_diff($sources, $declarationSources)));
+        // 原目录仍进入身份复核，防止生成后新增源码绕过完整输入检查。
+        $sources = array_values(array_unique(array_merge($sources, $generation['sources'])));
+        $adaptation = $generation['adaptation'];
+        $configurationGeneration = $generation['configuration'];
+        $configurationFiles = $configurationGeneration['files'] ?? [];
+        $modelGeneration = $generation['models'];
         $modelDeclarations = $modelGeneration['models'];
-        if ($modelDeclarations !== []) {
-            if (!isset($included['zoujingli/type-orm'])) {
-                throw new RuntimeException('生成模型需要将 type-orm 安装为生产依赖');
-            }
-            $modelFile = $buildDirectory . '/generated-models.php';
-            $this->writeText($modelFile, $modelGeneration['code']);
-        }
-        if (array_key_exists('threads', $settings)) {
-            if (!is_array($settings['threads']) || !isset($included['zoujingli/type-runtime'])) {
-                throw new RuntimeException('线程入口需要 threads 声明并安装 type-runtime');
-            }
-            if (!defined('Type\\Runtime\\CoroutineRuntime::THREAD_ENTRY_PROTOCOL')
-                || constant('Type\\Runtime\\CoroutineRuntime::THREAD_ENTRY_PROTOCOL') !== BuildIdentity::GENERATORS['threads']
-                || !method_exists(\Type\Runtime\CoroutineRuntime::class, 'enterThread')) {
-                throw new RuntimeException('type-build 与 type-runtime 的线程消息协议不匹配；请安装同批次兼容组件后重新构建');
-            }
-            $threadFile = $buildDirectory . '/generated-thread-entries.php';
-            $this->writeText($threadFile, (new ThreadCompiler())->generate($settings['threads']));
-            $sources[] = $threadFile;
-        }
-        $operations = [];
-        if (array_key_exists('operations', $settings)) {
-            if (!is_array($settings['operations'])) {
-                throw new RuntimeException('operations 必须是显式服务声明');
-            }
-            $operations = (new OperationCompiler())->generate($root, $settings['operations'], $sources);
-            $operationsFile = $buildDirectory . '/generated-operations.php';
-            $this->writeText($operationsFile, $operations['code']);
-            unset($operations['code']);
-            $sources[] = $operationsFile;
-        }
-        $routing = [];
-        if (array_key_exists('routing', $settings) && $settings['routing'] !== [] && !is_string($settings['routing'])) {
-            throw new RuntimeException('routing 必须是相对 PHP 文件路径（如 config/route.php）');
-        }
-        $routeDeclarations = (new RouteCompiler())->declarations($root, $settings['routing'] ?? []);
-        if ($routeDeclarations !== []) {
-            if (!isset($included['zoujingli/type-core'])) {
-                throw new RuntimeException('生成路由需要将 type-core 安装为生产依赖');
-            }
-            $routing = (new RouteCompiler())->generate($root, $routeDeclarations, $sources);
-            $routeFile = $buildDirectory . '/generated-routes.php';
-            $this->writeText($routeFile, $routing['code']);
-            unset($routing['code']);
-            $sources[] = $routeFile;
-        }
-        $assembly = [];
-        $jobs = $settings['queue'] ?? null;
-        if ($jobs !== null) {
-            if (!is_array($jobs) || !isset($included['zoujingli/type-queue'])) {
-                throw new RuntimeException('任务装配需要声明 queue 并安装 type-queue');
-            }
-            $jobFile = $buildDirectory . '/generated-jobs.php';
-            $this->writeText($jobFile, (new JobCompiler())->generate($jobs));
-            $sources[] = $jobFile;
-        }
-        if ($assembled) {
-            if (!isset($included['zoujingli/type-core'])) {
-                throw new RuntimeException('命令装配需要将 type-core 安装为生产依赖');
-            }
-            $modules[$this->string($composer, 'name')] = $settings['application'];
-            $assembly = (new CommandAssembly())->generate($settings['application'], $modules, $sources);
-            $generatedFile = $buildDirectory . '/assembled-application.php';
-            $this->writeText($generatedFile, $assembly['code']);
-            unset($assembly['code']);
-            $sources[] = $generatedFile;
-        }
+        $operations = $generation['operations'];
+        $routing = $generation['routing'];
+        $assembly = $generation['assembly'];
+        $applicationAuditInputs = $generation['autoload-inputs'];
         $compilerOptions = $settings['compiler'] ?? [];
         if (!is_array($compilerOptions) || array_diff(array_keys($compilerOptions), ['optimize', 'debug', 'jobs']) !== []) {
             throw new RuntimeException('compiler 只支持 optimize、debug 与 jobs');
@@ -322,20 +248,12 @@ final class NativeBuilder
         // entry 可以位于 sources 目录内；按锁定编译器规则展开并去重，不把头文件当作编译单元。
         // 原目录声明仍保留给构建身份与完成前重扫，确保新增文件或头文件变化不会绕过缓存检查。
         $compilerSources = [];
-        foreach ($sources as $sourcePath) {
+        foreach ($compiledDeclarations as $sourcePath) {
             $entries = is_dir($sourcePath) ? (new \TypePhp\Build\FileScanner($sourcePath))->scan() : [$sourcePath];
             foreach ($entries as $sourceFile) {
                 $resolvedSource = BuildPlatform::resolve($sourceFile);
                 $compilerSources[$resolvedSource] = $resolvedSource;
             }
-        }
-        $applicationAuditInputs = (new SourceSet())->auditAutoload($root, $composer, array_values($compilerSources));
-        if ($modelDeclarations !== []) {
-            foreach ($modelGeneration['originals'] as $originalModelSource) {
-                unset($compilerSources[$originalModelSource]);
-            }
-            $compilerSources[$modelFile] = $modelFile;
-            $sources[] = $modelFile;
         }
         $this->uniqueSymbols(array_values($compilerSources));
         // JSON 也是有效 YAML，避免为写出几项配置增加另一层序列化实现。
@@ -571,7 +489,7 @@ final class NativeBuilder
             } $input = $this->source($root, $input);
         }
         unset($input);
-        $declarations = array_merge([$configuration, $root . '/composer.json'], $configurationFiles, $notices['files']);
+        $declarations = array_merge([$configuration, $root . '/composer.json'], $configurationFiles, $notices['files'], $generation['schemas']['files']);
         foreach ($packageRoots as $packageRoot) {
             if (is_file($packageRoot . '/composer.json')) {
                 $declarations[] = $packageRoot . '/composer.json';
@@ -582,7 +500,7 @@ final class NativeBuilder
                 $declarations[] = $this->source($root, $settings[$key]);
             }
         }
-        $groups = ['sources' => $sourceInputs, 'original-sources' => array_merge($adaptation['originals'], $modelGeneration['originals']), 'headers' => $headers, 'native-inputs' => $extraInputs, 'resources' => array_column($resources, 'source'),
+        $groups = ['sources' => $sourceInputs, 'original-sources' => $generation['original-sources'], 'headers' => $headers, 'native-inputs' => $extraInputs, 'resources' => array_column($resources, 'source'),
             'embedded-resources' => array_column($embeddedFiles, 'source'),
             'locks' => [$root . '/composer.lock', $root . '/toolchain.lock.json'], 'declarations' => $declarations, 'tooling' => $toolRoots,
             'composer-runtime' => [$vendorDirectory . '/composer', $vendorDirectory . '/autoload.php', $binDirectory], 'native' => $native['files']];
@@ -601,7 +519,8 @@ final class NativeBuilder
             'runtime-extensions' => array_keys($profile['extensions']), 'static-archives' => $static === null ? [] : array_map('basename', $static->archives()),
             'system-link-flags' => $static === null ? $libraries : $static->systemFlags(),
             'artifact-stripping' => $static === null ? null : ($platform->family() === 'Linux' ? 'elf-strip-debug-symbols-v1' : ($platform->family() === 'Darwin' ? 'strip-x-v1' : 'msvc-release-no-pdb-v1')),
-            'resource-generation' => $resourceIdentity, 'embedded-resources' => $embeddedManifest];
+            'resource-generation' => $resourceIdentity, 'embedded-resources' => $embeddedManifest,
+            'declaration-generation' => $generation['identity']];
         $identity = $identityBuilder->create($groups, $facts);
         if ($stage !== null) {
             $auditPaths = $applicationAuditInputs;
@@ -622,7 +541,7 @@ final class NativeBuilder
             'embedded-resources' => $embeddedManifest,
             'dependency-notices' => $notices['summary'],
             'extension-modules' => $native['extension-modules'],
-            'source-adaptations' => $adaptation['mapping'],
+            'source-adaptations' => $adaptation['mapping'], 'declaration-generation' => $generation['identity'],
             'native-libraries' => $native['native-libraries'], 'capabilities' => $capabilities, 'generator-protocols' => BuildIdentity::GENERATORS,
             'composer-lock-sha256' => hash_file('sha256', $root . '/composer.lock'), 'toolchain-lock-sha256' => hash_file('sha256', $root . '/toolchain.lock.json'),
             'tools' => $native['tools'], 'tool-dependencies' => $native['tool-dependencies'], 'target-triple' => $native['target-triple'], 'extension-abi' => $native['extension-abi'],
@@ -734,8 +653,13 @@ final class NativeBuilder
             'production-packages' => $included,
             'sources' => array_values(array_unique($sources)),
             'assembly' => $assembly,
+            'declaration-generation' => $generation['identity'],
+            'declaration-metadata' => $generation['metadata'],
+            'original-sources' => $generation['original-sources'],
             'models' => $modelDeclarations,
-            'queue' => $jobs,
+            'schemas' => $generation['schemas']['schemas'],
+            'queue' => $assembly['jobs'] ?? [],
+            'schedules' => $assembly['schedules'] ?? [],
             'routing' => $routing,
             'configuration' => $configurationGeneration,
             'operations' => $operations,

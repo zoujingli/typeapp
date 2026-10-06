@@ -24,7 +24,7 @@ CoroutineRuntime::run(static function (): void {
 
 上例使用 `Type\Runtime\CoroutineRuntime` 和 `Type\Runtime\ExecutionScope`。独立入口在官方 Scheduler 的协程中创建资源；已有协程时复用当前执行者，保留启动期 hook flags，异常原样传回。不允许把外部执行者的连接带入新协程。
 
-`context()` 返回请求或消息的关联信息，不能直接授予权限。应用在完成验证后通过 `run($operation, ['tenant_id' => $verifiedTenantId])` 显式绑定字符串值，组件以 `binding('tenant_id')` 读取；运行时不验证业务身份，也不查询业务表。输入数组中的引用被切断，绑定在重入结束后恢复；受管子任务取得创建当时的绑定快照及独立当前作用域，普通原生子协程不隐式继承。
+`context()` 返回请求或消息的关联信息，不能直接授予权限。应用在完成验证后通过 `run($operation, ['tenant_id' => $verifiedTenantId])` 显式绑定字符串值，组件以 `binding('tenant_id')` 读取；运行时不验证业务身份，也不查询业务表。输入数组中的引用被切断，绑定在重入结束后恢复。受管子任务默认不继承父身份或租户；需传递已验证标识时使用 `spawn($operation, ['tenant_id' => $verifiedTenantId])` 显式提供快照。普通原生子协程也不隐式继承。
 
 无绑定时 `current()` 抛 `scope_missing`；非协程调用抛 `coroutine_required`；关闭、取消、截止和跨执行者使用遵守原有拒绝规则。HTTP 请求、WebSocket 公开回调、MQTT Broker 事件、生成 CLI、队列及定时任务已接入当前作用域。自定义 Socket 消息仍须在其实际装配入口绑定。持久 worker 的公开操作回调及设备授权 worker 在自己的协程内创建作用域，不从管道输入自动授予租户；具体业务装配和平台验证分别记录。
 

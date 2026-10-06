@@ -53,7 +53,7 @@ function main(int $argc, array $argv): void
                         }
                         usleep(1000);
                     }
-                    echo ArticleTags::relation()->attach($parent, 100) ? "attached\n" : "existing\n";
+                    echo $parent->relation('tags')->attach(100) ? "attached\n" : "existing\n";
                     return;
                 }
                 // 验证器为本程序创建独立数据库；三个表都具有真实键约束。
@@ -73,11 +73,11 @@ function main(int $argc, array $argv): void
                 $a = Article::query()->find(10);
                 $b = Article::query()->find(11);
                 $tags = ArticleTags::relation(2);
-                pivotExpect($tags->attach($a, 100, ['position' => 1]), '首次挂载没有新增关系');
-                pivotExpect(!$tags->attach($a, 100, ['position' => 2]), '重复挂载产生新关系');
-                $tags->attach($a, 101, ['position' => 3]);
-                $tags->attach($b, 100, ['position' => 9]);
-                $tags->attach($b, 102, ['position' => 4]);
+                pivotExpect($a->relation('tags')->attach(100, ['position' => 1]), '首次挂载没有新增关系');
+                pivotExpect(!$a->relation('tags')->attach(100, ['position' => 2]), '重复挂载产生新关系');
+                $a->relation('tags')->attach(101, ['position' => 3]);
+                $b->relation('tags')->attach(100, ['position' => 9]);
+                $b->relation('tags')->attach(102, ['position' => 4]);
                 $before = $connection->statistics()['read_attempts'];
                 $posts = Article::query()->select(['title'])->with('tags', $tags)->orderBy('id')->get();
                 pivotExpect($connection->statistics()['read_attempts'] - $before === 4, '多对多预加载出现逐记录查询');
@@ -85,24 +85,24 @@ function main(int $argc, array $argv): void
                 pivotExpect($posts[0]->related('tags')[0]->pivot() === ['position' => 2]
                     && $posts[1]->related('tags')[0]->pivot() === ['position' => 9], '同一标签的不同中间表状态相互污染');
                 pivotExpect($posts[0]->project(['title'], ['tags' => ['label']]) === ['title' => '文章甲', 'tags' => [['label' => 'PHP'], ['label' => '框架']]], '多对多输出字段或顺序错误');
-                pivotExpect(!$tags->detach($posts[0], 999) && !$posts[0]->relationLoaded('tags'), '解除不存在关系或旧预加载状态错误');
-                $result = $tags->sync($a, [['id' => 101, 'pivot' => ['position' => 8]], ['id' => 102, 'pivot' => ['position' => 7]]]);
+                pivotExpect(!$posts[0]->relation('tags')->detach(999) && !$posts[0]->relationLoaded('tags'), '解除不存在关系或旧预加载状态错误');
+                $result = $a->relation('tags')->sync([['id' => 101, 'pivot' => ['position' => 8]], ['id' => 102, 'pivot' => ['position' => 7]]]);
                 pivotExpect($result === ['attached' => 1, 'detached' => 1, 'updated' => 1], '同步结果错误');
                 $rejected = false;
                 try {
-                    $tags->sync($a, [['id' => 999]]);
+                    $a->relation('tags')->sync([['id' => 999]]);
                 } catch (ModelException $error) {
                     $rejected = $error->errorCode() === 'related_not_found';
                 }
                 pivotExpect($rejected, '同步不存在的目标未拒绝');
                 $a = Article::query()->with('tags', $tags)->find(10);
                 pivotExpect(count($a->related('tags')) === 2 && $a->related('tags')[0]->getId() === 101, '失败同步改变了已有关系');
-                $result = $tags->sync($a, []);
+                $result = $a->relation('tags')->sync([]);
                 pivotExpect($result === ['attached' => 0, 'detached' => 2, 'updated' => 0], '同步空集合没有只移除当前父记录的关系');
                 pivotExpect(count(Article::query()->with('tags', $tags)->find(11)->related('tags')) === 2, '同步误删了其他文章关系');
                 try {
                     $connection->transaction(static function (Connection $transaction) use ($tags, $b): void {
-                        $tags->attach($b, 101, ['position' => 6]);
+                        $b->relation('tags')->attach(101, ['position' => 6]);
                         throw new RuntimeException('回滚关系');
                     });
                 } catch (RuntimeException $error) {

@@ -1,6 +1,8 @@
 import net from 'node:net';
 import tls from 'node:tls';
 import dgram from 'node:dgram';
+import http from 'node:http';
+import https from 'node:https';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -115,6 +117,52 @@ if (dnsOnly) {
         track(socket);
         socket.once('data', () => socket.resetAndDestroy());
     }));
+
+    // HTTP 客户端复用同一真实网络对端和测试信任材料，协议由 Node 标准库解析。
+    const httpRequest = (request, response) => {
+        let body = '';
+        request.on('data', chunk => { body += chunk; if (body.length > 16777216) request.destroy(); });
+        request.on('end', () => {
+            const path = request.url.split('?')[0];
+            if (path === '/slow') {
+                const marker = new URL(request.url, 'http://localhost').searchParams.get('marker');
+                if (marker && /^[a-f0-9]{16}$/.test(marker)) writeFileSync(join(directory, 'http-slow-ready-' + marker), request.url);
+                return;
+            }
+            if (path === '/drip') {
+                response.writeHead(200);
+                const timer = setInterval(() => response.write('x'), 10);
+                response.on('close', () => clearInterval(timer));
+                return;
+            }
+            if (path === '/partial') {
+                response.writeHead(200, { 'Content-Length': 1024 });
+                response.write('partial');
+                return setTimeout(() => response.socket?.destroy(), 20);
+            }
+            if (path === '/redirect') {
+                response.writeHead(302, { Location: '/must-not-follow' });
+                return response.end('redirect');
+            }
+            if (path === '/large') {
+                response.writeHead(200);
+                return response.end(Buffer.alloc(16384, 'x'));
+            }
+            response.writeHead(path === '/missing' ? 404 : 200, {
+                'Content-Type': 'application/json',
+                'X-Multi': ['first', 'second'],
+                'Set-Cookie': ['left=1; Path=/', 'right=2; Path=/'],
+            });
+            response.end(JSON.stringify({ method: request.method, target: request.url, body, agent: request.headers['x-client'] ?? '' }));
+        });
+    };
+    const plainHttp = http.createServer(httpRequest);
+    plainHttp.on('connection', track);
+    await listen('http', '127.0.0.1', plainHttp);
+    const secureHttp = https.createServer({ cert, key, minVersion: 'TLSv1.2' }, httpRequest);
+    secureHttp.on('connection', track);
+    secureHttp.on('tlsClientError', () => {});
+    await listen('https', '127.0.0.1', secureHttp);
 
     const verifyServer = (command, control) => {
         const repetitions = command.repeat ?? 1;

@@ -1,0 +1,25 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use {{service}};
+use Type\Scheduler\Task;
+use Type\Scheduler\TaskContext;
+
+/** 一次 occurrence 一个作用域；持久游标、恢复与收尾由 Scheduler 管理。 */
+final class {{name}} implements Task
+{
+    /** 只保存共同装配的业务依赖，不保存租约或连接。 */
+    public function __construct(private {{serviceName}} $service)
+    {
+    }
+
+    /** @return array<string,mixed> 可持久记录的显式业务结果。 */
+    public function run(TaskContext $context): array
+    {
+        $context->assertActive();
+        return $this->service->execute($context->occurrenceId());
+    }
+}

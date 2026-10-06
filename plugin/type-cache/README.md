@@ -142,5 +142,6 @@ composer test:cache-consistency-native
 ```
 
 - [缓存一致性](https://github.com/zoujingli/typeapp/blob/main/docs/development/cache-consistency.md)
+- [开发通道连续目录：原 Service 的事务缓存与回滚](https://iots.top/next/#/guide/catalog-reliability)
 - [编译期缓存声明](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)
 - [TypeApp 标准项目缓存说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/typeapp.md)

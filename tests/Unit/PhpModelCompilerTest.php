@@ -11,6 +11,37 @@ use Type\Build\ModelCompiler;
 /** 静态声明错误在构建前拒绝；业务行为通过三库独立消费者另行验收。 */
 final class PhpModelCompilerTest extends TestCase
 {
+    /** 编译源中的 Model 基类成员不能被业务属性遮蔽；同名数据库列使用 Column 显式映射。 */
+    public function testInheritedPropertyCollisionsRequireExplicitColumnMapping(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $directory = $root . '/build/model-members-' . bin2hex(random_bytes(6));
+        self::assertTrue(mkdir($directory, 0700));
+        $file = $directory . '/Record.php';
+        $prefix = '<?php declare(strict_types=1); namespace ModelMembers; use Type\\Orm\\Model; use Type\\Orm\\Attribute\\{Table, Column}; '
+            . "#[Table('records')] final class Record extends Model { public int \$id; ";
+        try {
+            foreach (['public string $state;', 'private string $values;'] as $member) {
+                file_put_contents($file, $prefix . $member . ' }');
+                $rejected = false;
+                try {
+                    (new ModelCompiler())->compile([$file, $root . '/plugin/type-orm/src/Model.php']);
+                } catch (RuntimeException $failure) {
+                    $rejected = true;
+                    self::assertStringContainsString('模型属性与 Model 基类成员冲突', $failure->getMessage());
+                }
+                self::assertTrue($rejected, $member);
+            }
+            file_put_contents($file, $prefix . "#[Column(name: 'state')] public string \$status; }");
+            $result = (new ModelCompiler())->compile([$file, $root . '/plugin/type-orm/src/Model.php']);
+            self::assertSame('state', $result['models'][0]['fields']['status']['column']);
+            self::assertStringContainsString('getStatus()', $result['code']);
+        } finally {
+            unlink($file);
+            rmdir($directory);
+        }
+    }
+
     /** 验证非法模型声明在构建期被拒绝，且检查过程不加载业务类。 */
     public function testInvalidDeclarationsAreRejectedWithoutLoadingBusinessCode(): void
     {
@@ -45,9 +76,19 @@ final class PhpModelCompilerTest extends TestCase
             "#[Table('users'), Table('other')] class User extends Model { public int \$id; }",
             "#[Table(getenv('UNSAFE_MODEL_TABLE'))] class User extends Model { public int \$id; }",
             "#[Table('users', version: 'version')] class User extends Model { public int \$id; public ?int \$version; }",
+            "#[Table('users', createdAt: 'missing')] class User extends Model { public int \$id; }",
+            "#[Table('users', createdAt: 'created_at')] class User extends Model { public int \$id; public ?int \$created_at; }",
+            "#[Table('users', updatedAt: 'updated_at')] class User extends Model { public int \$id; public string \$updated_at; }",
+            "#[Table('users', createdAt: 'created_at')] class User extends Model { public int \$id; #[Column(fillable: true)] public int \$created_at; }",
+            "#[Table('users', createdAt: 'id')] class User extends Model { public int \$id; }",
+            "#[Table('users', createdAt: 'tenant_id')] class User extends Model { public int \$id; public int \$tenant_id; }",
+            "#[Table('users', version: 'version', updatedAt: 'version')] class User extends Model { public int \$id; public int \$version; }",
+            "#[Table('users', softDelete: 'deleted_at', updatedAt: 'deleted_at')] class User extends Model { public int \$id; public ?\\DateTimeImmutable \$deleted_at; }",
+            "#[Table('users', createdAt: 'at', updatedAt: 'at')] class User extends Model { public int \$id; public int \$at; }",
             "#[Table('users')] class User extends Model { public int \$id; } #[Table('other')] class User extends Model { public int \$id; }",
             "#[Table('users')] class User extends Model { public int \$id; private string \$id; }",
             "#[Table('users')] class User extends Model { public int \$id; public function set(string \$name, mixed \$value): void {} }",
+            "#[Table('users')] class User extends Model { public int \$id; public function ReLaTiOn(string \$name): void {} }",
             "#[Table('users')] class User extends Model { public int \$id; public function path(): string { return __DIR__; } }",
             "#[Table('users')] class User extends Model { public int \$id; public function path(): string { return __FILE__; } }",
             "#[Table('users')] class User extends Model { #[Table('bad')] public int \$id; }",
@@ -110,6 +151,15 @@ PHP;
             self::assertStringContainsString('public static function create(array $values): User', $first['code']);
             file_put_contents($file, str_replace('before:', 'after:', $source));
             self::assertNotSame(hash('sha256', $first['code']), hash('sha256', $compiler->compile([$file])['code']));
+            $timestamps = str_replace('public string $name;', 'public string $name; public int $created_at; public int $updated_at;', $source);
+            file_put_contents($file, str_replace("#[Table('users')]", "#[Table('users', createdAt: 'created_at', updatedAt: 'updated_at')]", $timestamps));
+            $managed = $compiler->compile([$file]);
+            self::assertSame('created_at', $managed['models'][0]['created-at']);
+            self::assertSame('updated_at', $managed['models'][0]['updated-at']);
+            self::assertStringNotContainsString('function setCreatedAt', $managed['code']);
+            self::assertStringNotContainsString('function setUpdatedAt', $managed['code']);
+            file_put_contents($file, str_replace("#[Table('users')]", "#[Table('users', createdAt: 'updated_at', updatedAt: 'created_at')]", $timestamps));
+            self::assertNotSame(hash('sha256', $managed['code']), hash('sha256', $compiler->compile([$file])['code']));
             self::assertFalse(class_exists('ModelIdentity\\User', false));
         } finally {
             unlink($file);
@@ -132,6 +182,10 @@ PHP;
         $directory = $root . '/build/model-dependency-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($directory . '/vendor/composer', 0700, true));
         self::assertTrue(mkdir($directory . '/vendor/example/models/src', 0700, true));
+        self::assertTrue(mkdir($directory . '/vendor/zoujingli/type-orm/src', 0700, true));
+        foreach (glob($root . '/plugin/type-orm/src/*.php') as $ormSource) {
+            self::assertTrue(copy($ormSource, $directory . '/vendor/zoujingli/type-orm/src/' . basename($ormSource)));
+        }
         $source = <<<'PHP'
 <?php
 declare(strict_types=1);
@@ -146,15 +200,28 @@ final class User extends Model {
 PHP;
         try {
             file_put_contents($directory . '/vendor/autoload.php', '<?php');
-            file_put_contents($directory . '/composer.json', json_encode(['name' => 'example/app', 'require' => ['example/models' => '*'],
+            file_put_contents($directory . '/composer.json', json_encode(['name' => 'example/app', 'require' => ['example/models' => '*', 'zoujingli/type-orm' => '*'],
                 'require-dev' => ['example/not-installed' => '*']], JSON_THROW_ON_ERROR));
             file_put_contents($directory . '/composer.lock', '{}');
             file_put_contents($directory . '/application.json', '{}');
             file_put_contents($directory . '/vendor/example/models/src/User.php', $source);
-            $metadata = ['packages' => [['name' => 'example/models', 'version' => '1.0.0', 'install-path' => '../example/models',
-                'autoload' => ['psr-4' => ['DependencyModels\\' => 'src']], 'extra' => ['type' => ['protocol' => 1, 'sources' => ['src'],
-                    'rewrites' => [['source' => 'src/User.php', 'sha256' => hash('sha256', $source), 'reason' => '验证模型转换保持同一适配行为',
-                        'replacements' => [['from' => "return 'original';", 'to' => "return 'adapted';", 'count' => 1]]]]]]]]];
+            $metadata = [
+                'packages' => [
+                    [
+                        'name' => 'example/models', 'version' => '1.0.0', 'install-path' => '../example/models',
+                        'autoload' => ['psr-4' => ['DependencyModels\\' => 'src']],
+                        'extra' => ['type' => ['protocol' => 1, 'sources' => ['src'], 'rewrites' => [[
+                            'source' => 'src/User.php', 'sha256' => hash('sha256', $source), 'reason' => '验证模型转换保持同一适配行为',
+                            'replacements' => [['from' => "return 'original';", 'to' => "return 'adapted';", 'count' => 1]],
+                        ]]]],
+                    ],
+                    [
+                        'name' => 'zoujingli/type-orm', 'version' => '1.0.0', 'install-path' => '../zoujingli/type-orm',
+                        'autoload' => ['files' => ['src/functions.php'], 'psr-4' => ['Type\\Orm\\' => 'src/']],
+                        'extra' => ['type' => ['protocol' => 1, 'sources' => ['src']]],
+                    ],
+                ],
+            ];
             $builder = new \Type\Build\DevelopmentBuilder();
             $generation = '';
             foreach (['adapted', 'changed'] as $marker) {
@@ -165,11 +232,11 @@ PHP;
                 self::assertSame($prepared, $builder->prepare($directory, 'application.json', 'build/development'));
                 $generation = $prepared['generation'];
                 $program = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; require '
-                    . var_export($prepared['directory'] . '/models.php', true) . '; echo DependencyModels\\User::marker();';
+                    . var_export($prepared['directory'] . '/generated-models.php', true) . '; echo DependencyModels\\User::marker();';
                 $process = new \Type\Testing\Process([PHP_BINARY, '-r', $program], $directory, getenv());
                 try {
                     $result = $process->wait(10);
-                    self::assertTrue($result->successful(), $result->stderr);
+                    self::assertTrue($result->successful(), $result->stdout . $result->stderr);
                     self::assertSame($marker, $result->stdout);
                 } finally {
                     $process->stop();

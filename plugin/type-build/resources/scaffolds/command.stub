@@ -1,0 +1,25 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use {{service}};
+use Type\Core\Command;
+use Type\Core\Configuration;
+
+/** 在命令的独立执行作用域中调用业务服务。 */
+final class {{name}} implements Command
+{
+    /** 业务服务来自共同装配；不在构造器打开外部资源。 */
+    public function __construct(private {{serviceName}} $service)
+    {
+    }
+
+    /** @param list<string> $arguments 目标命令参数；成功返回零。 */
+    public function run(Configuration $configuration, array $arguments): int
+    {
+        echo json_encode($this->service->execute((string) ($arguments[0] ?? 'command')), JSON_THROW_ON_ERROR) . PHP_EOL;
+        return 0;
+    }
+}

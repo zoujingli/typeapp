@@ -58,13 +58,13 @@ final class TagHandler implements RequestHandlerInterface
                         'pivot' => Field::object(new Schema(['position' => $position])),
                     ])))->required()->length(0, 500)]);
                     $data = $schema->validate($input);
-                    $tags->sync($article, $data->get('items'));
+                    $article->relation('tags')->sync($data->get('items'));
                 } else {
                     $data = (new Schema(['tag_id' => Field::integer()->required()->range(1, PHP_INT_MAX), 'position' => $position]))->validate($input);
                     if ($request->getMethod() === 'DELETE') {
-                        $tags->detach($article, $data->get('tag_id'));
+                        $article->relation('tags')->detach($data->get('tag_id'));
                     } else {
-                        $tags->attach($article, $data->get('tag_id'), $data->has('position') ? ['position' => $data->get('position')] : []);
+                        $article->relation('tags')->attach($data->get('tag_id'), $data->has('position') ? ['position' => $data->get('position')] : []);
                     }
                 }
             }

@@ -49,7 +49,7 @@ final class ArticleJob implements Job
                 $transaction->table('integration_audits')->insert(['id' => $context->message()->id(), 'article_id' => $id, 'observed_views' => $article->getViews()]);
                 $article->setStatus('audited');
                 $article->save();
-            } elseif ($this->outbox->consumed($transaction, $context->message()->id(), 'article:' . $id)) {
+            } elseif ($this->outbox->consumedUsing($transaction, $context->message()->id(), 'article:' . $id)) {
                 $article = Article::query()->find($id);
                 $article->setViews($article->getViews() + 1);
                 $article->save();

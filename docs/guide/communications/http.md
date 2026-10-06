@@ -136,30 +136,86 @@ curl -i --max-time 5 http://127.0.0.1:9501/missing
 
 路由工厂是零参数闭包，动作接收请求并返回响应。`add()` 注册静态路径，动态路由应使用构建声明生成 `RouteDefinition` 后 `register()`。所有路由与中间件在首次请求前注册。
 
-## 使用官方 HTTP 客户端
+## 受管 HTTP 客户端（开发源码）
 
-目前没有独立的通用 TypeApp HTTP 客户端封装，应用可直接复用 Swoole 协程 HTTP Client。下面保存为练习项目根的 `client.php`，服务运行时执行 `php client.php`：
+当前开发源码增加 `Type\Core\Http\Client`，网络与 TLS 使用 Swoole 官方协程 HTTP Client，框架负责当前作用域归属、总期限、正文预算和关闭。此接口不在 `1.0.0-rc.14` 中；跟进开发组件时锁定实际提交，发布版不能直接使用以下新接口。
+
+在已有请求、命令或任务作用域中，可以通过构造器注入 `Client`，直接发起请求：
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-Swoole\Coroutine\run(static function (): void {
-    $client = new Swoole\Coroutine\Http\Client('127.0.0.1', 9501);
-    try {
-        $client->set(['timeout' => 5.0]);
-        if (!$client->get('/status') || $client->statusCode !== 200) {
-            throw new RuntimeException('HTTP 调用失败：' . $client->statusCode);
-        }
-        echo $client->body, "\n";
-    } finally {
-        $client->close();
+use Type\Core\Http\Client;
+
+/** 从配置确定的状态服务获取结果，不接受客户端提供任意目标。 */
+final class StatusService
+{
+    public function __construct(private Client $http)
+    {
     }
-});
+
+    /** 返回已核对的响应文本；HTTP 错误状态属于业务判断。 */
+    public function fetch(): string
+    {
+        $response = $this->http->request(
+            'GET',
+            'http://127.0.0.1:9501/status',
+            timeout: 2.0,
+            maxResponseBytes: 16384
+        );
+        try {
+            if ($response->getStatusCode() !== 200) {
+                throw new RuntimeException('status_service_unavailable');
+            }
+            return $response->getBody()->getContents();
+        } finally {
+            $response->getBody()->close();
+        }
+    }
+}
 ```
 
-预期输出 `{"status":"ok"}`。这是独立客户端演示脚本；生产应用把调用装入声明式函数，在已有协程宿主内运行，不嵌套启动运行器。HTTPS 要显式启用 TLS、配置可信 CA 并验证证书主机名，重试要结合方法和业务幂等性。
+状态服务运行时，`fetch()` 返回 `{"status":"ok"}`。构造不建立连接，第一次 `request()` 自动向当前 `ExecutionScope` 登记；同一实例在同一作用域可顺序使用，子作用域和其他执行者必须获得自己的实例。独立入口通过 `CoroutineRuntime::run()` 建立协程，并在 `scope->run()` 中调用业务，最终关闭 scope；业务不要嵌套启动运行器。
+
+`request(method, url, headers, body, timeout, maxResponseBytes, tlsOptions)` 返回 PSR `ResponseInterface`。默认总期限 10 秒、正文预算 1 MiB；总期限范围 `(0, 60]` 秒，并被作用域剩余期限收紧。请求正文至多 16 MiB，响应预算可设为 1 B–16 MiB，请求头合计至多 64 KiB。正文在原生接收回调中限流；持续小块响应不能延长总期限。当前不协商压缩、不自动解压、不跟随 3xx，也不自动重试。HTTP 4xx/5xx 正常返回响应；网络失败不返回部分正文。
+
+HTTPS 默认验证系统信任链和 URL 主机名，仅允许 TLS 1.2/1.3。私有 CA 通过 `tlsOptions: ['ssl_cafile' => $caFile]` 提供；`ssl_host_name` 可显式指定真实服务身份，不影响目标地址。禁止传入关闭校验的选项。URL 不携带凭据或片段；请求头不允许改写 Host、Content-Length、Transfer-Encoding、Connection、Upgrade 或 Accept-Encoding。受控目标、业务认证、请求签名和幂等性仍由应用决定。
+
+| 失败 | 稳定错误码 |
+| --- | --- |
+| 无作用域、取消、作用域期限耗尽 | `scope_missing`、`cancelled`、`deadline_exceeded` |
+| 客户端归属错误或已停止 | `http_client_scope_mismatch`、`http_client_stopped` |
+| 配置或信任材料非法 | `http_client_invalid_configuration` |
+| 网络、TLS 或不完整响应 | `http_client_request_failed` |
+| 请求自身超时、响应正文超量 | `http_client_timeout`、`http_client_response_too_large` |
+| 原生连接尚未完成关闭 | `http_client_cleanup_incomplete` |
+
+错误由 `Type\Runtime\TaskException::errorCode()` 读取。请求超时可能发生在对端已提交之后，不能直接重发写操作。作用域取消唤醒原生等待，请求退出后才完成关闭；停止后不能复用该客户端。
+
+```mermaid
+sequenceDiagram
+    participant B as 业务服务
+    participant S as ExecutionScope
+    participant C as HTTP Client
+    participant N as 内置 Swoole
+    participant R as 外部服务
+    B->>C: request(method, url, budget)
+    C->>S: 核对归属、截止与取消
+    C->>N: 发起 HTTP / 验证 TLS
+    N->>R: 一次请求
+    loop 有界接收
+        R-->>N: 正文片段
+        N-->>C: 校验累计字节
+    end
+    C->>N: 关闭本次连接
+    C-->>B: 完整 PSR 响应
+    B->>B: 判断业务状态并关闭正文流
+    S->>C: 结束作用域，撤销后续请求
+```
+
+物联中心管理端和 MQTT 的 CRL HTTPS 下载共用此入口，但继续独立校验 HTTPS 目标、签名撤销列表、刷新间隔和接纳状态；失败不会覆盖已接纳的列表。当前 macOS ARM64 的 PHP 行为已验证，原生与其他平台结果须按同一产物另行核对。
 
 ## 应用接入与共用服务
 

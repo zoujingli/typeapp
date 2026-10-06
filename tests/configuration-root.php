@@ -37,9 +37,9 @@ $result = json_decode(successful([PHP_BINARY, $project . '/vendor/bin/type', '--
 expect($result['directory'] === $snapshot && is_file($project . '/build/program/type-app.lock'), '构建锁或快照没有归属显式项目根');
 expect(!is_dir($outside . '/build') && !is_dir($project . '/docs/build-config/build'), '嵌套配置错误地使用调用目录或配置目录作为项目根');
 $generated = json_decode(file_get_contents($project . '/build/program/compiler/project.yml'), true, 512, JSON_THROW_ON_ERROR);
-expect(in_array($project . '/app/main.php', $generated['sources'], true), 'entry 没有相对显式项目根解析');
+expect(in_array($project . '/app/common/bootstrap/Application.php', $generated['sources'], true), '生产 bootstrap 源码没有相对显式项目根解析');
 $inputs = json_decode(file_get_contents($snapshot . '/build-inputs.json'), true, 512, JSON_THROW_ON_ERROR);
-expect(isset($inputs['files']['docs/build-config/root-check.json'], $inputs['files']['composer.json'], $inputs['files']['app/main.php']), '隔离快照没有保留完整嵌套配置与项目声明');
+expect(isset($inputs['files']['docs/build-config/root-check.json'], $inputs['files']['composer.json'], $inputs['files']['app/common/bootstrap/Application.php']), '隔离快照没有保留完整嵌套配置与项目声明');
 $restaged = $snapshot . '/build/restaged';
 successful([PHP_BINARY, $snapshot . '/vendor/bin/type', '--stage', $snapshot . '/docs/build-config/root-check.json', $restaged], $outside);
 expect(is_file($restaged . '/docs/build-config/root-check.json'), '相对 project-root 在快照内不能再次解析');

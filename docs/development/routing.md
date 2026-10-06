@@ -4,6 +4,8 @@
 
 本任务的 TypePHP 与完整 CI 验收按当前开发顺序留到集中验收；下方保留可直接运行的入口。没有以 PHP 测试替代生产原生要求。
 
+开发源码支持 `ValidatedInput` 参数，此能力不属于 RC14。完整用法见[已校验输入](../guide/routing.md#已校验输入)。生成器核对 `schema(): Schema` 与 `fromData(Data): 具体输入类型`，拒绝缺少生产校验组件、错误签名和非法策略。`Schema::sources()` 只读提供来源、输入键与列表标记，不执行规则或暴露默认值。生成适配与普通路由共用中间件、作用域和输出协议。
+
 ## 显式声明
 
 在 `type-app.json` 中把 `routing` 指到应用目录内的 PHP 文件：
@@ -42,7 +44,9 @@ return [
 ];
 ```
 
-`route.php` 只能包含 `declare(strict_types=1)` 和一次 return 常量数组；构建器解析 AST，不 include、不读取环境。控制器文件必须已经在应用 `sources` 或生产包的源码清单中。动作使用公开实例方法，接收一个 `Psr\Http\Message\ServerRequestInterface` 并返回 `Psr\Http\Message\ResponseInterface`。构造函数按业务需求接收依赖，由启动入口提供工厂；构建器不执行控制器构造函数。参数从请求属性 `type.route.params` 读取，当前路由名在 `type.route` 中。
+`route.php` 只能包含 `declare(strict_types=1)` 和一次 return 常量数组；构建器解析 AST，不 include、不读取环境。控制器文件必须已经在应用 `sources` 或生产包的源码清单中。动作使用公开实例方法，可以按路径占位符同名接收 `int`/`string`，可选接收一个 `Psr\Http\Message\ServerRequestInterface`，并返回 `array`、`void` 或 `Psr\Http\Message\ResponseInterface`。构造函数按业务需求接收依赖，由启动入口提供工厂；构建器不执行控制器构造函数。类型化动作的路径值只来自 Router 的匹配结果，PSR 动作仍可从 `type.route.params` 读取参数，当前路由名在 `type.route` 中。
+
+数组结果由生成适配编码为 UTF-8 JSON，默认状态 200；声明 `status` 时只能使用允许正文的 2xx。`void` 只能省略状态或使用 204；PSR 响应不能叠加 `status`。生成器拒绝未知参数、联合类型、引用、可变参数、路径参数默认值和不支持的返回类型。路径约束不匹配是 404，匹配后无法严格转换的整数是 422 `route_parameter_invalid`；数组不能包含对象、资源或非法 JSON 值。
 
 分组可以嵌套，路径与名称前缀逐层拼接。分组前缀以 `/` 开头且没有尾斜线，名称前缀以 `.` 结尾；空前缀也有效。约束由外到内覆盖，中间件按“全局→外层分组→内层分组→路由→动作”进入，响应反向经过中间件。每次匹配都会创建新中间件，控制器在请求到达动作时才通过工厂创建。
 
@@ -56,11 +60,20 @@ use Type\Core\Http\Attribute\Route;
 final class BooksController
 {
     #[Route(path: '/books/{id}', methods: ['GET'], name: 'books.show', constraints: ['id' => '[0-9]+'])]
-    public function show(\Psr\Http\Message\ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface
+    public function show(int $id): array
     {
-        $id = $request->getAttribute('type.route.params')['id'];
-        $messages = new \Type\Core\Http\Message\Factory();
-        return $messages->createResponse()->withBody($messages->createStream($id));
+        return ['id' => $id];
+    }
+
+    #[Route(path: '/books', methods: ['POST'], name: 'books.store', status: 201)]
+    public function store(): array
+    {
+        return ['created' => true];
+    }
+
+    #[Route(path: '/books/{id}', methods: ['DELETE'], name: 'books.destroy', constraints: ['id' => '[0-9]+'])]
+    public function destroy(int $id): void
+    {
     }
 }
 ```
@@ -109,7 +122,7 @@ $url = $router->url('api.books.show', ['tenant' => 'acme', 'id' => 42], ['q' => 
 
 控制器工厂按类名索引，中间件工厂按声明标识索引；注册前检查所需闭包是否齐全。生成链接不会调用任何工厂。第一条请求到达后注册表冻结，不能继续增加路由或全局中间件。原有 `Router::add()` 保留静态路径入口，可增加可选名称；参数、分组与资源使用上述构建声明。
 
-控制器、处理器和中间件工厂均以零参数调用，依赖由显式捕获注入；生成的动作闭包接收一个 `ServerRequestInterface`。这两个层次的签名分别固定，TypePHP 对非 variadic 回调严格检查实参数量。
+控制器、处理器和中间件工厂均以零参数调用，依赖由显式捕获注入。生成的动作闭包根据构建期动作模型传入路径参数和至多一个 `ServerRequestInterface`，再把 `array`/`void` 适配为标准响应；完整 PSR 响应原样返回。TypePHP 对非 variadic 回调严格检查实参数量。
 
 ## 匹配与冲突规则
 

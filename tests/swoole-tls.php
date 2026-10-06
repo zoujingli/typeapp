@@ -293,7 +293,8 @@ if (($argv[1] ?? '') === '--deadline') {
 
 $root = BuildPlatform::resolve(dirname(__DIR__));
 $directory = BuildPlatform::path($argv[1] ?? '');
-expect($argc === 2 && BuildPlatform::contains($root . '/build', $directory) && !str_contains($directory, '..'), '需要 build 下的专用 TLS 验证目录');
+$httpOnly = ($argv[2] ?? '') === '--http-only';
+expect($argc === ($httpOnly ? 3 : 2) && BuildPlatform::contains($root . '/build', $directory) && !str_contains($directory, '..'), '需要 build 下的专用 TLS 验证目录，可追加 --http-only');
 expect(!file_exists($directory) && mkdir($directory, 0700, true), 'TLS 验证目录必须尚不存在');
 $peer = null;
 try {
@@ -315,16 +316,32 @@ try {
     expect(is_file($directory . '/peers.json'), 'TLS 对端未就绪：' . $peer->stderr());
     $peers = json_decode((string) file_get_contents($directory . '/peers.json'), true, 512, JSON_THROW_ON_ERROR);
     $results = [];
-    foreach (['first', 'restart'] as $role) {
+    if ($httpOnly) {
+        $code = 'require ' . var_export($root . '/vendor/autoload.php', true)
+            . '; require ' . var_export($root . '/vendor/swoole/typephp/src/polyfills.php', true)
+            . '; require ' . var_export(__DIR__ . '/fixtures/compiled-tcp.php', true) . '; main($argc,$argv);';
+        $process = new Process([PHP_BINARY, '-r', $code, $directory . '/peers.json', 'coroutine', $directory, 'http'], $directory);
+        try {
+            $execution = $process->wait(20);
+            $results['http'] = ['exit' => $execution->exitCode, 'timed_out' => $execution->timedOut,
+                'stdout' => $execution->stdout, 'stderr' => $execution->stderr,
+                'failure' => is_file($directory . '/main.json.failure') ? file_get_contents($directory . '/main.json.failure') : null,
+                'result' => is_file($directory . '/main.json') ? json_decode((string) file_get_contents($directory . '/main.json'), true, 512, JSON_THROW_ON_ERROR) : null];
+        } finally {
+            $process->stop();
+        }
+    }
+    foreach ($httpOnly ? [] : ['first', 'restart'] as $role) {
         $path = $directory . '/' . $role . '.json';
         $thread = new Swoole\Thread(__FILE__, json_encode($peers, JSON_THROW_ON_ERROR), $path);
         $thread->join();
         $results[$role] = ['exit' => $thread->getExitStatus(), 'result' => json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR)];
     }
-    $results['main'] = probeSwooleTls($peers);
-    $passed = $results['first']['exit'] === 0 && $results['restart']['exit'] === 0 && $results['main']['passed'];
+    $results['main'] = $httpOnly ? ['passed' => $execution->successful() && $results['http']['failure'] === null
+        && ($results['http']['result']['checks'] ?? 0) >= 75 && ($results['http']['result']['coroutines'] ?? -1) === 0] : probeSwooleTls($peers);
+    $passed = $results['main']['passed'] && ($httpOnly || ($results['first']['exit'] === 0 && $results['restart']['exit'] === 0));
     $deadlines = [];
-    foreach (['main', 'thread'] as $role) {
+    foreach ($httpOnly ? [] : ['main', 'thread'] as $role) {
         foreach (['timeout', 'cancel', 'framework-timeout', 'framework-cancel', 'framework-server'] as $mode) {
             $path = $directory . '/' . $role . '-' . $mode . '.json';
             $process = new Process([PHP_BINARY, __FILE__, '--deadline', $mode, $role, $directory . '/peers.json', $path], $directory);
@@ -342,7 +359,7 @@ try {
     file_put_contents($directory . '/verification.json', json_encode(['passed' => $passed, 'swoole' => phpversion('swoole'),
         'results' => $results, 'deadlines' => $deadlines], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
     expect($passed, 'TLS EOF、错误与握手截止必须保持明确语义；见 ' . $directory . '/verification.json');
-    echo "原生 TLS 半关闭、错误、握手截止与线程重建验证通过。\n";
+    echo $httpOnly ? "受管 HTTP/HTTPS 客户端、TLS 拒绝、总截止、取消和作用域关闭验证通过。\n" : "原生 TLS 半关闭、错误、握手截止与线程重建验证通过。\n";
 } finally {
     $peer?->stop();
     if (is_file($directory . '/key.pem')) {

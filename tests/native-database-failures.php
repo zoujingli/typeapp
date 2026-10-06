@@ -11,7 +11,7 @@ use Type\Build\ArtifactManifest;
 use Type\Build\BuildPlatform;
 
 $root = BuildPlatform::resolve(dirname(__DIR__));
-expect(in_array(PHP_OS_FAMILY, ['Linux', 'Darwin'], true) && posix_geteuid() > 0 && in_array($argc, [4, 5, 6], true), '用法：非root Linux/macOS PHP tests/native-database-failures.php <专项build根目录> <MySQL根目录> <PostgreSQL根目录> [all|query|models|lifecycle|connections|transactions|tasks] [mysql|pgsql|sqlite]');
+expect(in_array(PHP_OS_FAMILY, ['Linux', 'Darwin'], true) && posix_geteuid() > 0 && in_array($argc, [4, 5, 6], true), '用法：非root Linux/macOS PHP tests/native-database-failures.php <专项build根目录> <MySQL根目录> <PostgreSQL根目录> [all|query|models|lifecycle|connections|transactions|tasks|task-http|operations|combinations|outbox|tenant|migrations|pressure] [mysql|pgsql|sqlite]');
 $suites = match ($argv[4] ?? 'all') {
     'all' => ['transactions', 'outcomes', 'read-write', 'pagination'],
     'query' => ['query', 'pagination'],
@@ -21,6 +21,7 @@ $suites = match ($argv[4] ?? 'all') {
     'transactions' => ['transactions', 'outcomes'],
     'tasks' => ['tasks'],
     'task-http' => ['task-http'],
+    'operations' => ['operations'],
     'combinations' => ['operations', 'cache-consistency'],
     'outbox' => ['outbox'],
     'tenant' => ['tenant-http'],
@@ -82,6 +83,9 @@ try {
             if ($driver === 'mysql' && in_array('operations', $suites, true)) {
                 $cases[] = 'operations-commit-failure';
             }
+            if ($driver === 'mysql' && in_array('outbox', $suites, true)) {
+                $cases[] = 'outbox-commit-failure';
+            }
             foreach ($cases as $suite) {
                 foreach ($suite === 'migrations-core' ? ['native'] : ['php', 'native'] as $mode) {
                     echo '本机原生数据库专项：' . $driver . '/' . $suite . '/' . $mode . "\n";
@@ -89,6 +93,7 @@ try {
                         'commit-failure' => 'outcomes',
                         'identity-credentials' => 'identities',
                         'operations-commit-failure' => 'operations',
+                        'outbox-commit-failure' => 'outbox',
                         default => $suite,
                     };
                     $command = $mode === 'php' ? '--php' : $artifacts[$program]['file'];

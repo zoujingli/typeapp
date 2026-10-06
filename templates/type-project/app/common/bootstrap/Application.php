@@ -9,15 +9,12 @@ use app\common\database\Schema;
 use app\common\database\DatabaseStorage;
 use app\common\middleware\ApiErrors;
 use app\common\middleware\RequestLog;
-use app\controller\HomeController;
-use app\generated\Routes;
-use app\generated\UserOperations;
-use app\system\controller\UserController;
-use app\system\service\UserService;
 use InvalidArgumentException;
 use Psr\Http\Server\RequestHandlerInterface;
 use Throwable;
 use Type\Core\Config\Repository;
+use Type\Core\Configuration;
+use Type\Generated\CommandApplication;
 use Type\Core\Http\Authentication;
 use Type\Core\Http\CanonicalRequest;
 use Type\Core\Http\HttpControl;
@@ -79,7 +76,11 @@ final class Application
                 return;
             }
             if (!in_array($command, ['check', 'serve', 'migrate'], true)) {
-                throw new InvalidArgumentException('未知应用命令，请使用 help');
+                $status = (new CommandApplication(new Configuration([])))->run($command, array_slice($arguments, 2));
+                if ($status !== 0) {
+                    exit($status);
+                }
+                return;
             }
             if ($command === 'migrate' && (count($arguments) === 2 || (count($arguments) === 3 && $arguments[2] === 'help'))) {
                 echo "迁移命令：run、status、history、recover <版本> <retry|applied> <恢复说明>。只有 run 初始化 SQLite 数据目录。\n";
@@ -88,6 +89,7 @@ final class Application
             }
             $basePath = Settings::basePath();
             $settings = Settings::load($basePath);
+            self::assertDatabase($settings);
             $environment = Settings::environment($settings, $development);
             $debug = Settings::debug($settings, $development);
             if ($command === 'check') {
@@ -138,6 +140,7 @@ final class Application
      */
     public static function handler(Repository $settings, string $basePath, bool $development = false): RequestHandlerInterface
     {
+        self::assertDatabase($settings);
         $environment = Settings::environment($settings, $development);
         $debug = Settings::debug($settings, $development);
         $token = $settings->text('app.http.api_token');
@@ -172,11 +175,7 @@ final class Application
         Db::configure($database);
         $messages = new Factory();
         $router = new Router($messages, $messages);
-        $users = new UserOperations(new UserService());
-        Routes::register($router, [
-            HomeController::class => static fn (): HomeController => new HomeController($messages),
-            UserController::class => static fn (): UserController => new UserController($users, $messages),
-        ]);
+        (new CommandApplication(new Configuration([])))->registerRoutes($router);
 
         return new Pipeline([
             static fn (): RequestLog => new RequestLog($settings->text('app.name')),
@@ -199,6 +198,7 @@ final class Application
      */
     public static function migrate(Repository $settings, string $basePath, array $arguments): int
     {
+        self::assertDatabase($settings);
         if (!((count($arguments) === 1 && in_array($arguments[0], ['run', 'status', 'history'], true))
             || (count($arguments) === 4 && $arguments[0] === 'recover'))) {
             throw new InvalidArgumentException('迁移命令参数无效，请使用 migrate help');
@@ -218,6 +218,22 @@ final class Application
         return CoroutineRuntime::run(static function () use ($driver, $arguments): int {
             return (new MigrationConsole(new Migrator($driver), Schema::migrations($driver->name())))->run($arguments);
         });
+    }
+
+    /** 环境只可确认已安装驱动；原生 profile 还须与相同驱动一致，连接建立前拒绝。 */
+    public static function assertDatabase(Repository $settings): void
+    {
+        $requested = $settings->text('database.driver');
+        if ($requested !== '' && $requested !== DatabaseFactory::NAME) {
+            throw new InvalidArgumentException('runtime_profile_database_mismatch');
+        }
+        if (class_exists(\Type\Generated\BuildIdentity::class, false)) {
+            $identity = \Type\Generated\BuildIdentity::info();
+            $database = $identity['profile']['database'] ?? null;
+            if ($database !== null && $database !== DatabaseFactory::NAME) {
+                throw new InvalidArgumentException('runtime_profile_database_mismatch');
+            }
+        }
     }
 
     /** 返回服务器可复用的有界输入声明，不打开临时文件或创建目录。 */

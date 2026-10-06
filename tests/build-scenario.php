@@ -31,7 +31,8 @@ function buildScenario(string $root, string $configuration, ?string $stage = nul
     expect(str_starts_with($output, 'build/') && dirname($output) !== 'build' && !str_contains($output, '..'), '场景输出必须位于build的专属子目录');
     $work = $root . '/build/scenario-consumer-' . bin2hex(random_bytes(6));
     expect(mkdir($work, 0700, true), '无法创建独立场景消费者');
-    $tracked = explode("\0", rtrim(successful(['git', 'ls-files', '-z'], $root), "\0"));
+    // 开发验收也纳入尚未提交、未被忽略的新源码；不能只复制旧索引而漏编新增实现。
+    $tracked = explode("\0", rtrim(successful(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], $root), "\0"));
     foreach ($tracked as $relative) {
         expect($relative !== '' && !str_starts_with($relative, '/') && !str_contains($relative, '..'), '源码清单中的路径无效');
         if (is_file($root . '/' . $relative)) {
@@ -75,11 +76,12 @@ function buildScenario(string $root, string $configuration, ?string $stage = nul
         'type-mysql.json' => ['zoujingli/type-orm-mysql' => '~1.0.0@dev'],
         'type-pgsql.json' => ['zoujingli/type-orm-pgsql' => '~1.0.0@dev'],
         'type-redis.json' => ['zoujingli/type-redis' => '~1.0.0@dev'],
-        'type-scheduler.json' => ['zoujingli/type-scheduler' => '~1.0.0@dev'],
+        'type-scheduler.json' => ['zoujingli/type-scheduler' => '~1.0.0@dev', 'zoujingli/type-core' => '~1.0.0@dev'],
         'type-tls.json' => ['zoujingli/type-orm-mysql' => '~1.0.0@dev', 'zoujingli/type-orm-pgsql' => '~1.0.0@dev', 'zoujingli/type-redis' => '~1.0.0@dev'],
         'type-log.json', 'type-log-behavior.json', 'type-log-failures.json' => ['zoujingli/type-log' => '~1.0.0@dev'],
         'type-cache.json', 'type-psr-cache.json' => ['zoujingli/type-cache' => '~1.0.0@dev'],
-        'type-queue.json', 'type-queue-leases.json', 'type-queue-retries.json' => ['zoujingli/type-queue' => '~1.0.0@dev'],
+        'type-queue.json' => ['zoujingli/type-queue' => '~1.0.0@dev', 'zoujingli/type-core' => '~1.0.0@dev'],
+        'type-queue-leases.json', 'type-queue-retries.json' => ['zoujingli/type-queue' => '~1.0.0@dev'],
         'type-query.json' => ['zoujingli/type-orm-mysql' => '~1.0.0@dev', 'zoujingli/type-orm-pgsql' => '~1.0.0@dev', 'zoujingli/type-orm-sqlite' => '~1.0.0@dev', 'zoujingli/type-validate' => '~1.0.0@dev'],
         'type-pagination.json', 'type-read-write.json', 'type-identities.json', 'type-transactions.json', 'type-outcomes.json' => ['zoujingli/type-orm-mysql' => '~1.0.0@dev', 'zoujingli/type-orm-pgsql' => '~1.0.0@dev', 'zoujingli/type-orm-sqlite' => '~1.0.0@dev'],
         'type-models.json', 'type-exact-fields.json', 'type-relations.json', 'type-pivots.json', 'type-lifecycle.json', 'type-optimistic.json' => ['zoujingli/type-orm-mysql' => '~1.0.0@dev', 'zoujingli/type-orm-pgsql' => '~1.0.0@dev', 'zoujingli/type-orm-sqlite' => '~1.0.0@dev'],

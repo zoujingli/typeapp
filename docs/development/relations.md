@@ -18,6 +18,19 @@ $output = $users[0]->project(['name'], ['articles' => ['title']]);
 
 `related()` 只读取已加载结果；未加载报 `relation_not_loaded`。`relationLoaded()` 检查加载状态。输出必须通过 `project($fields, $relations)` 显式选择属性和关系字段，默认 `toArray/jsonSerialize` 只输出属性；隐藏字段的规则同样适用于关联模型。
 
+关系写入从父模型取得绑定句柄，句柄固定父实例并复用声明中的关系策略：
+
+```php
+$article = Article::query()->findOrFail($id);
+$article->relation('tags')->attach($tagId, ['position' => 1]);
+$article->relation('tags')->detach($tagId);
+$article->relation('tags')->sync([['id' => $tagId, 'pivot' => ['position' => 2]]]);
+```
+
+句柄不会隐式加载关系；`related()` 仍只读取已预加载结果。每次写入都会检查父模型已持久化、仍属于创建它的执行作用域和可信租户，模型失效或作用域关闭后拒绝操作。全局父模型的句柄也记录创建时的可信租户，临时切换租户后须重新取得句柄。未声明关系以 `unknown_relation` 拒绝，不支持写入的单外键关系以 `relation_write_unsupported` 拒绝。
+
+升级到包含本能力的开发源码时，将 `$parent->definition()->relation('tags')->loader()->attach($parent, $id)` 改为 `$parent->relation('tags')->attach($id)`；`detach/sync` 同样移除显式父模型参数。原先手写的多对多写入示例应将关系声明到父 Model，再用句柄写入；加载器仍负责批量加载和既有底层算法。关系句柄尚未纳入 RC14 的已发布接口。
+
 Connection 的统计包含读取尝试数、写入尝试数和最近 128 次读取的参数数量，记录有界且不包含 SQL 或参数值。示例以 3 个父键、每批 2 个键验证 1 次父查询和每个关系 2 次目标查询；属性访问与输出不会增加读取次数。
 
 HTTP 示例可使用 `/users?with[]=articles&with[]=profile` 读取用户、文章和简介。关系选择只用于 GET，其余方法明确拒绝该参数。数据库完整性或映射错误按服务器异常处理，不冒充客户端校验失败。
@@ -40,7 +53,7 @@ public array $labels;
 
 预加载、`whereHas()`、关系聚合和写入均限定中间表的当前可信租户。新增绑定自动填充该列；`pivotTenant` 不得与两侧关系键或可写 `pivotFields` 重名，也不能从普通 pivot 输入修改。缺少可信租户时拒绝执行；应用仍须在入口验证访问资格。无独立状态的绑定表使用关系即可；具有自身状态、审计或版本的关联实体应声明独立 Model。
 
-写入在事务中锁定父记录；MySQL/PostgreSQL 使用行锁，SQLite 的独立操作使用 IMMEDIATE 事务。已有外层事务时通过 savepoint 组合；SQLite 外层延迟事务升级冲突会明确失败，不隐式重试。成功写入清除该父模型的旧关系缓存，失败遵循模型事务失效规则。
+写入在事务中锁定父记录；MySQL/PostgreSQL 使用行锁，SQLite 的独立操作使用 IMMEDIATE 事务。已有外层事务时通过 savepoint 组合；SQLite 外层延迟事务升级冲突会明确失败，不隐式重试。成功写入清除该父模型的旧关系缓存，失败遵循模型事务失效规则；回滚后的关系结果仍需重新显式预加载。
 
 预加载先批量读取中间表，再按不同目标键批量读取模型。每个关联结果保留自己的 `pivot()` 字段，默认属性输出不混入中间表数据。目标查询过滤掉的记录不进入结果，重复关系、单条目标歧义及键规范化不一致均拒绝。
 

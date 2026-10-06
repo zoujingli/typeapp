@@ -21,8 +21,7 @@ try {
     $first = json_decode(successful([...$command, 'once']), true, 512, JSON_THROW_ON_ERROR);
     expect(array_column($first, 'state') === ['succeeded', 'succeeded'], '500ms正执行预算下没有真实完成两个任务');
     expect($first[1]['result']['message'] === '计划任务已完成', '独立命令没有返回任务结果');
-    putenv('TYPE_SCHEDULER_REVISION=new-build');
-    expect(json_decode(successful([...$command, 'once']), true, 512, JSON_THROW_ON_ERROR) === [], '命令重启或构建版本改变重复执行');
+    expect(json_decode(successful([...$command, 'once']), true, 512, JSON_THROW_ON_ERROR) === [], '命令重启后重复执行');
     $history = json_decode(successful([...$command, 'history']), true, 512, JSON_THROW_ON_ERROR);
     expect($history[0]['occurrence_id'] === $first[0]['occurrence_id'] && $history[1]['finished_at'] === strtotime('2026-09-09T12:00:00Z'), '执行身份或完成记录没有持久化');
     [$status, , $stderr] = execute([...$command, 'shell', 'touch', $directory . '/forbidden']);

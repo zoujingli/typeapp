@@ -28,6 +28,20 @@ final class Schema
     }
 
     /**
+     * 只读来源元数据，不执行条件或自定义规则，也不暴露字段默认值。
+     *
+     * @return array<string, array{source: string, key: string, list: bool}> 输出字段名到来源声明。
+     */
+    public function sources(): array
+    {
+        $sources = [];
+        foreach ($this->fields as $name => $field) {
+            $sources[$name] = ['source' => $field->sourceName(), 'key' => $field->inputKey($name), 'list' => $field->typeName() === 'list'];
+        }
+        return $sources;
+    }
+
+    /**
      * 按各字段的来源、场景和条件校验；未知字段不进入结果，原始Input不变。
      *
      * 非PATCH可填入显式可选默认值，PATCH只保留提供的字段。

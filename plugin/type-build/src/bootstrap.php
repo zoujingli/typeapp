@@ -10,7 +10,11 @@ $proxyAutoload = $GLOBALS['_composer_autoload_path'] ?? null;
 if (!is_string($proxyAutoload) || !is_file($proxyAutoload)) {
     throw new RuntimeException('构建工具需要 Composer 命令代理提供依赖目录');
 }
-$vendorDirectory = dirname($proxyAutoload);
+$vendorDirectory = $GLOBALS['__type_build_dependency_vendor_directory'] ?? dirname($proxyAutoload);
+$vendorDirectory = realpath($vendorDirectory);
+if ($vendorDirectory === false || !is_dir($vendorDirectory)) {
+    throw new RuntimeException('构建工具依赖目录不存在');
+}
 if (PHP_OS_FAMILY === 'Windows') {
     $vendorDirectory = str_replace('\\', '/', $vendorDirectory);
 }
@@ -32,7 +36,9 @@ while ($queue !== []) {
         continue;
     }
     $package = $packages[$name] ?? throw new RuntimeException('构建依赖未安装：' . $name);
-    $directory = realpath($vendorDirectory . '/composer/' . $package['install-path']);
+    $directory = $name === 'zoujingli/type-build' && isset($GLOBALS['__type_build_source_directory'])
+        ? realpath((string) $GLOBALS['__type_build_source_directory'])
+        : realpath($vendorDirectory . '/composer/' . $package['install-path']);
     if ($directory === false) {
         throw new RuntimeException('构建依赖路径不存在：' . $name);
     }
@@ -71,6 +77,9 @@ $owns = static function (string $file) use ($allowed): bool {
 require_once $vendorDirectory . '/composer/ClassLoader.php';
 $loader = new Composer\Autoload\ClassLoader($vendorDirectory);
 foreach (require $vendorDirectory . '/composer/autoload_psr4.php' as $prefix => $directories) {
+    if (isset($GLOBALS['__type_build_source_directory']) && $prefix === 'Type\\Build\\') {
+        continue;
+    }
     $directories = array_values(array_filter($directories, $owns));
     if ($directories !== []) {
         $loader->addPsr4($prefix, $directories);
@@ -84,9 +93,18 @@ foreach (require $vendorDirectory . '/composer/autoload_namespaces.php' as $pref
 }
 $classMap = [];
 foreach (require $vendorDirectory . '/composer/autoload_classmap.php' as $class => $file) {
+    if (isset($GLOBALS['__type_build_source_directory']) && str_starts_with($class, 'Type\\Build\\')) {
+        continue;
+    }
     if ($class === 'Composer\\InstalledVersions' || $owns($file)) {
         $classMap[$class] = $file;
     }
+}
+$sourceDirectory = $GLOBALS['__type_build_source_directory'] ?? null;
+if (is_string($sourceDirectory) && is_dir($sourceDirectory)) {
+    $sourceDirectory = realpath($sourceDirectory) ?: $sourceDirectory;
+    $sourceDirectory = rtrim($sourceDirectory, '/\\') . '/src';
+    $loader->addPsr4('Type\\Build\\', [PHP_OS_FAMILY === 'Windows' ? str_replace('\\', '/', $sourceDirectory) : $sourceDirectory]);
 }
 $loader->addClassMap($classMap);
 $loader->register(true);

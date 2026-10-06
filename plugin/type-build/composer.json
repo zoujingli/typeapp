@@ -9,7 +9,6 @@
     "composer-runtime-api": "^2.2",
     "zoujingli/type-runtime": "~1.0.0@dev",
     "nikic/php-parser": "^5.8",
-    "phpstan/phpdoc-parser": "^2.3.5",
     "swoole/phpx": "2.9.3",
     "swoole/typephp": "0.9.4"
   },

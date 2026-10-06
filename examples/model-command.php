@@ -165,8 +165,7 @@ function modelTenantChecks(ExecutionScope $scope, string $keySql, string $driver
             $label->save();
             $labels[$tenant] = $label->getId();
             $parent = User::query()->find($userId);
-            $links = $parent->definition()->relation('labels')->loader();
-            modelExpect($links->attach($parent, $label->getId()), '带租户中间表未自动填充归属');
+            modelExpect($parent->relation('labels')->attach($label->getId()), '带租户中间表未自动填充归属');
             modelExpect($label->getWorkspace() === $tenant, '自定义租户属性没有填充');
             return $record->getId();
         }, ['tenant_id' => $tenant]);
@@ -176,26 +175,19 @@ function modelTenantChecks(ExecutionScope $scope, string $keySql, string $driver
         $parent = User::query()->with('labels')->withCount('labels')->find($userId);
         modelExpect(count($parent->related('labels')) === 1 && $parent->related('labels')[0]->getId() === $labels['tenant-a']
             && $parent->computed('labels_count') === 1, '中间表预加载或聚合泄漏租户');
-        $links = $parent->definition()->relation('labels')->loader();
-        modelRejects(static fn () => $links->attach($parent, $labels['tenant-b']), 'related_not_found');
+        modelRejects(static fn () => $parent->relation('labels')->attach($labels['tenant-b']), 'related_not_found');
         $parent = User::query()->find($userId);
-        modelRejects(static fn () => $links->attach($parent, $labels['tenant-a'], ['tenant_id' => 'tenant-b']), 'invalid_pivot_field');
-        modelExpect(!$links->detach($parent, $labels['tenant-b']), '解绑影响其他租户关系');
+        modelRejects(static fn () => $parent->relation('labels')->attach($labels['tenant-a'], ['tenant_id' => 'tenant-b']), 'invalid_pivot_field');
+        modelExpect(!$parent->relation('labels')->detach($labels['tenant-b']), '解绑影响其他租户关系');
         // 无租户列的绑定同样受目标模型范围约束；不能整组删除不可见目标。
-        $unscoped = \Type\Orm\Relation::belongsToMany(
-            static fn (\Type\Orm\Connection $connection): \Type\Orm\ModelQuery => ScopedLabel::query()->onConnection($connection),
-            'type_model_scoped_links',
-            'user_id',
-            'label_id'
-        );
-        modelExpect($unscoped->sync($parent, []) === ['attached' => 0, 'detached' => 1, 'updated' => 0], '全局父模型同步删除越出租户目标范围');
-        modelExpect($links->attach($parent, $labels['tenant-a']) && $links->sync($parent, [])['detached'] === 1, '租户中间表同步失败');
+        modelExpect($parent->relation('unscopedLabels')->sync([]) === ['attached' => 0, 'detached' => 1, 'updated' => 0], '全局父模型同步删除越出租户目标范围');
+        modelExpect($parent->relation('labels')->attach($labels['tenant-a']) && $parent->relation('labels')->sync([])['detached'] === 1, '租户中间表同步失败');
         modelExpect(!User::query()->whereHas('labels')->where('id', '=', $userId)->exists(), '关联筛选泄漏其他租户绑定');
         // 受控底层写入模拟不一致绑定，验证中间表范围不能仅依靠目标模型。
         Db::connection('default', true)->table('type_model_scoped_links')->insert(['user_id' => $userId, 'label_id' => $labels['tenant-a'], 'tenant_id' => 'tenant-b']);
         $view = User::query()->with('labels')->withCount('labels')->find($userId);
         modelExpect($view->related('labels') === [] && $view->computed('labels_count') === 0, '中间表自身范围未覆盖预加载和关联子查询');
-        modelExpect(!$links->detach($parent, $labels['tenant-a']) && $links->sync($parent, [])['detached'] === 0, '中间表写入越过自身租户范围');
+        modelExpect(!$parent->relation('labels')->detach($labels['tenant-a']) && $parent->relation('labels')->sync([])['detached'] === 0, '中间表写入越过自身租户范围');
     }, ['tenant_id' => 'tenant-a']);
     $scope->run(static function (ExecutionScope $current) use ($userId, $labels): void {
         $view = User::query()->with('labels')->find($userId);

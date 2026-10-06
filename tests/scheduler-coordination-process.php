@@ -122,7 +122,11 @@ $command = ($argv[3] ?? '') === '--native' ? nativeCommand($argv[2]) : [PHP_BINA
         $newDefinition = json_decode(successful([...$command, 'once']), true, 512, JSON_THROW_ON_ERROR);
         expect(count($newDefinition) === 1 && $newDefinition[0]['occurrence_id'] !== $completed[0]['occurrence_id'], '真正新任务定义没有得到新身份');
         $registry = new Registry();
-        $registry->register('scheduled-report', 1, static fn (JobContext $context): Increment => new Increment($application . ':worker'));
+        $registry->register('scheduled-report', 1, static function (JobContext $context) use ($application): Increment {
+            $resource = new \TypeApp\QueueExample\Resource();
+            $context->scope()->open($resource);
+            return new Increment($application . ':worker', $resource);
+        });
         $worker = new Worker($queue, $registry, 'coordination-worker');
         expect(
             $worker->runOnce() && !$worker->runOnce() && $commandConnection->command('GET', [$application . ':worker:total']) === '1',

@@ -113,7 +113,7 @@ try {
 
 在已有协程内用 `$scope->run($operation, $bindings)` 绑定当前作用域，回调签名为 `Closure(ExecutionScope): mixed`。组件通过 `ExecutionScope::current()` 取得它；无绑定抛 `scope_missing`，非协程抛 `coroutine_required`。嵌套返回或异常都会恢复外层，同作用域重入复用资源，独立作用域不继承外层身份；创建者仍负责 `close()`。
 
-构造参数 `context` 是关联信息，消息可以携带它，不能直接视为授权依据。`run()` 的 `bindings` 必须由应用验证后显式提供，`binding($name)` 读取指定值，缺失返回 null。运行时只保存字符串快照并校验生命周期，不读取业务账号或权限表；子任务继承创建时的绑定值，不能继承连接和事务。
+构造参数 `context` 是关联信息，消息可以携带它，不能直接视为授权依据。`run()` 的 `bindings` 必须由应用验证后显式提供，`binding($name)` 读取指定值，缺失返回 null。运行时只保存字符串快照并校验生命周期，不读取业务账号或权限表；子任务默认不继承父绑定，确需传递时通过 `spawn($operation, $bindings)` 显式提供已验证标识，不能传递连接和事务。
 
 独立入口使用 `CoroutineRuntime::run(Closure(): mixed)` 进入官方 Swoole Scheduler，在回调内创建资源。已有协程时直接执行，保留原 hook 配置并传回结果或异常。生成的 CLI 装配先进入协程再创建命令依赖；HTTP 请求、WebSocket 公开回调、队列 Job 和调度 Task 各自绑定本次作用域，退出时恢复原绑定并清理。Worker、Scheduler 及其连接必须在同一协程内装配；直接使用 Socket 或其他自定义协议入口时，调用方负责在消息边界创建并绑定作用域。完整示例与验证方法见[当前作用域](https://github.com/zoujingli/typeapp/blob/main/docs/development/managed-tasks.md#当前作用域与应用绑定)。
 

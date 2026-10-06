@@ -186,8 +186,12 @@ $composer = ['name' => 'type-tests/orm-suite-' . $driver, 'type' => 'project', '
     'repositories' => $repositories, 'minimum-stability' => 'dev', 'prefer-stable' => true,
     'config' => ['allow-plugins' => false, 'platform' => $forbidden]];
 file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
-foreach (['main.php', 'Suite.php', 'CoreExercise.php', 'MutationExercise.php', 'Schema.php', 'ArticleObserver.php', 'Models.php'] as $file) {
+foreach (['main.php', 'Suite.php', 'CoreExercise.php', 'MutationExercise.php', 'Schema.php', 'SchemaExercise.php', 'CatalogCreate.php', 'CatalogAlter.php', 'CatalogFailure.php', 'CatalogDependency.php', 'ArticleObserver.php', 'Models.php'] as $file) {
     expect(copy($root . '/examples/orm-suite/' . $file, $consumer . '/app/' . $file), '无法复制独立业务文件');
+}
+expect(mkdir($consumer . '/app/snapshots', 0700), '无法创建冻结快照目录');
+foreach (glob($root . '/examples/orm-suite/snapshots/*.json') as $snapshot) {
+    expect(copy($snapshot, $consumer . '/app/snapshots/' . basename($snapshot)), '无法复制冻结快照');
 }
 expect(copy($root . '/examples/orm-suite/drivers/' . $driver . '.php', $consumer . '/app/DriverFactory.php'), '无法复制所选驱动工厂');
 expect(copy($root . '/examples/orm-suite/application.json', $consumer . '/application.json')
@@ -267,9 +271,19 @@ try {
     foreach ($packages as $package) {
         expect(!is_link($consumer . '/vendor/' . $package), '独立消费者不能链接回开发主仓源码');
     }
+    $schemaSnapshots = [];
+    foreach (['Create', 'Alter', 'Failure', 'Dependency'] as $step) {
+        $snapshotPath = $consumer . '/app/snapshots/catalog-' . strtolower($step) . '.json';
+        $beforeSnapshot = hash_file('sha256', $snapshotPath);
+        $prepared = json_decode(successful([PHP_BINARY, $consumer . '/vendor/bin/type', 'schema:prepare', $consumer . '/app/Catalog' . $step . '.php'], $consumer), true, 32, JSON_THROW_ON_ERROR);
+        expect($prepared['created'] === false && hash_file('sha256', $snapshotPath) === $beforeSnapshot, '独立准备改写了已冻结 SQL');
+        $schemaSnapshots[$step] = ['file_sha256' => $beforeSnapshot, 'plan_sha256' => $prepared['sha256']];
+    }
     $generated = $consumer . '/models-development.php';
     $generate = 'require ' . var_export($consumer . '/vendor/autoload.php', true) . '; $compiler = new Type\\Build\\ModelCompiler(); file_put_contents('
         . var_export($generated, true) . ', $compiler->compile([' . var_export($consumer . '/app/Models.php', true) . '])["code"]);';
+    $generatedSchema = $consumer . '/schema-development.php';
+    $generate .= ' file_put_contents(' . var_export($generatedSchema, true) . ', (new Type\\Build\\SchemaCompiler())->compile([' . var_export($consumer . '/app', true) . '])["code"]);';
     successful([PHP_BINARY, '-r', $generate], $consumer);
     if ($native) {
         [$buildStatus, $buildOutput, $buildError] = execute([PHP_BINARY, $consumer . '/vendor/bin/type', $consumer . '/application.json'], $consumer);
@@ -314,8 +328,8 @@ try {
     $actual = array_column($installed['packages'], 'name');
     sort($actual);
     expect($actual === $packages, '运行环境仍含构建工具依赖');
-    $launcher = 'require ' . var_export($consumer . '/vendor/autoload.php', true) . '; require ' . var_export($generated, true) . ';';
-    foreach (['DriverFactory.php', 'Schema.php', 'ArticleObserver.php', 'CoreExercise.php', 'MutationExercise.php', 'Suite.php', 'main.php'] as $file) {
+    $launcher = 'require ' . var_export($consumer . '/vendor/autoload.php', true) . '; require ' . var_export($generated, true) . '; require ' . var_export($generatedSchema, true) . ';';
+    foreach (['DriverFactory.php', 'Schema.php', 'SchemaExercise.php', 'ArticleObserver.php', 'CoreExercise.php', 'MutationExercise.php', 'Suite.php', 'main.php'] as $file) {
         $launcher .= ' require ' . var_export($consumer . '/app/' . $file, true) . ';';
     }
     $consumerPrefix = PHP_OS_FAMILY === 'Windows' ? strtolower($consumer . '/') : $consumer . '/';
@@ -427,6 +441,7 @@ try {
     }
     $result['swoole'] = $swoole;
     $result['source'] = $sourceIdentity;
+    $result['schema_snapshots'] = $schemaSnapshots;
     file_put_contents($consumer . '/verification.json', json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     echo $driver . ' 独立 Composer 用户、文章、标签业务与双进程并发通过；报告：' . $consumer . "/verification.json\n";
 } finally {

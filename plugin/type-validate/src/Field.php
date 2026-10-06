@@ -100,6 +100,12 @@ final class Field
     {
         return $this->source;
     }
+
+    /** 返回声明的基础类型，供输入适配保留列表与标量的来源语义。 */
+    public function typeName(): string
+    {
+        return $this->type;
+    }
     /** 优先使用显式输入别名；未声明别名时使用Schema字段名。 */
     public function inputKey(string $fallback): string
     {

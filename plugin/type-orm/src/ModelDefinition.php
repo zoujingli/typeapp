@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Type\Orm;
 
 use InvalidArgumentException;
+use DateTimeImmutable;
+use DateTimeZone;
 
 /** 模型的静态数据库映射；负责字段、生命周期、租户和实际存储一致性。 */
 final class ModelDefinition
@@ -17,13 +19,15 @@ final class ModelDefinition
     private ?string $version;
 
     /**
-     * 固定字段与关系映射，并检查租户、版本和软删除声明之间的约束。
+     * 固定字段与关系映射，并检查租户、版本、软删除和受管时间声明之间的约束。
      *
      * @param array<string, ModelField> $fields 模型属性名到字段策略。
      * @param array<string, RelationDefinition> $relations 模型属性名到关系策略。
      * @param class-string<Model>|string $modelClass 生成模型的稳定类身份，底层手工映射可为空。
+     * @param ?string $createdAt 受管创建时间属性，支持非空 integer 或 datetime。
+     * @param ?string $updatedAt 受管更新时间属性，不接受业务赋值。
      */
-    public function __construct(string $table, string $key, array $fields, bool $generatedKey = true, ?string $softDelete = null, ?string $version = null, private array $relations = [], private string $database = 'default', private ?string $tenant = null, private string $modelClass = '')
+    public function __construct(string $table, string $key, array $fields, bool $generatedKey = true, ?string $softDelete = null, ?string $version = null, private array $relations = [], private string $database = 'default', private ?string $tenant = null, private string $modelClass = '', private ?string $createdAt = null, private ?string $updatedAt = null)
     {
         if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/D', $table) || !isset($fields[$key])
             || preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $database) !== 1) {
@@ -62,6 +66,14 @@ final class ModelDefinition
             throw new InvalidArgumentException('版本字段必须是不可赋值的非空整数');
         }
         $this->version = $version;
+        foreach ([$createdAt, $updatedAt] as $timestamp) {
+            if ($timestamp !== null && (!isset($checked[$timestamp]) || $checked[$timestamp]->allowsNull()
+                || $checked[$timestamp]->fillable() || !in_array($checked[$timestamp]->typeName(), ['integer', 'datetime'], true)
+                || in_array($timestamp, [$key, $this->tenant, $softDelete, $version], true)
+                || $createdAt === $updatedAt)) {
+                throw new InvalidArgumentException('受管时间必须是独立、不可赋值的非空整数或时间字段');
+            }
+        }
         foreach ($relations as $name => $relation) {
             if (!is_string($name) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $name) || isset($fields[$name])
                 || !$relation instanceof RelationDefinition || !isset($fields[$relation->sourceKey()])) {
@@ -119,6 +131,37 @@ final class ModelDefinition
     {
         return $this->version;
     }
+
+    /** 返回受管创建时间属性；null 表示由业务自行管理创建时间。 */
+    public function createdAtField(): ?string
+    {
+        return $this->createdAt;
+    }
+
+    /** 返回受管更新时间属性；无变化的 save 和只推进版本的 touch 不更新此字段。 */
+    public function updatedAtField(): ?string
+    {
+        return $this->updatedAt;
+    }
+
+    /**
+     * @internal 为一次 SQL 写入采样时间；批量新增必须复用同一份结果。
+     * @return array<string, int|DateTimeImmutable> 模型属性值，继续经过字段编码和实际存储校验。
+     */
+    public function writeTimestamps(bool $creating, ?DateTimeImmutable $instant = null): array
+    {
+        if ($this->updatedAt === null && (!$creating || $this->createdAt === null)) {
+            return [];
+        }
+        $now = ($instant ?? new DateTimeImmutable('now', new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('UTC'));
+        $values = [];
+        foreach ([$creating ? $this->createdAt : null, $this->updatedAt] as $name) {
+            if ($name !== null) {
+                $values[$name] = $this->field($name)->typeName() === 'integer' ? $now->getTimestamp() : $now;
+            }
+        }
+        return $values;
+    }
     /**
      * 按声明顺序列出模型字段，不含关系与计算值。
      *
@@ -135,6 +178,7 @@ final class ModelDefinition
         if ($this->database !== $other->database || $this->modelClass !== $other->modelClass
             || $this->table !== $other->table || $this->key !== $other->key || $this->generatedKey !== $other->generatedKey
             || $this->tenant !== $other->tenant || $this->softDelete !== $other->softDelete || $this->version !== $other->version
+            || $this->createdAt !== $other->createdAt || $this->updatedAt !== $other->updatedAt
             || $this->names() !== $other->names()) {
             return false;
         }

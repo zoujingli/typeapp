@@ -46,6 +46,7 @@ final class MutationExercise
             $connection->table('type_suite_mutations')->insertMany($chunk);
         }
         $scope->run(static function (ExecutionScope $current) use ($connection): void {
+            self::timestamps($connection);
             self::unversionedArithmetic($connection);
             self::insertAndAggregate($connection, $current);
             self::integerStorage($connection);
@@ -130,6 +131,101 @@ final class MutationExercise
                 self::check($untouched->id === 10002 && $untouched->version === 1 && $untouched->value === 0, '集合写入越过租户范围');
             }, ['tenant_id' => 'tenant-b']);
         }, ['tenant_id' => 'tenant-a']);
+    }
+
+    /** 在当前专属数据库与租户作用域验证受管时间，不以等待时钟推进或模拟驱动代替写入。 */
+    public static function timestamps(Connection $connection): void
+    {
+        $date = match ($connection->driverName()) {
+            'mysql' => 'DATETIME(6)', 'pgsql' => 'TIMESTAMP(6)', default => 'TEXT'
+        };
+        foreach ([false, true] as $microseconds) {
+            $table = $microseconds ? 'type_suite_microsecond_records' : 'type_suite_second_records';
+            $timeType = $microseconds ? $date : 'BIGINT';
+            $connection->execute('CREATE TABLE ' . $table . ' (id INTEGER PRIMARY KEY, tenant_id VARCHAR(50) NOT NULL, '
+                . 'title VARCHAR(100) NOT NULL, value INTEGER NOT NULL CHECK (value >= 0), created_at ' . $timeType . ' NOT NULL, '
+                . 'updated_at ' . $timeType . ' NOT NULL, deleted_at ' . $date . ' NULL, version BIGINT NOT NULL)'
+                . ($connection->driverName() === 'mysql' ? ' ENGINE=InnoDB' : ''));
+            $query = $microseconds ? MicrosecondRecord::query() : SecondRecord::query();
+            $record = $microseconds ? new MicrosecondRecord(['id' => 1, 'title' => 'first', 'value' => 0])
+                : new SecondRecord(['id' => 1, 'title' => 'first', 'value' => 0]);
+            self::check($record->save() === 'created', '受管时间模型未正常创建');
+            $initial = $record->toArray();
+            self::check($initial['created_at'] === $initial['updated_at'] && $initial['version'] === 1
+                && $query->findOrFail(1)->project(array_keys($initial)) === $initial, '创建时间没有同刻取样或持久化丢失精度');
+            self::check($microseconds ? preg_match('/^[0-9-]+T[0-9:]+\.[0-9]{6}Z$/D', $initial['created_at']) === 1
+                : is_int($initial['created_at']) && abs(time() - $initial['created_at']) < 60, '受管时间没有遵守 UTC 微秒或 Unix 秒声明');
+            self::check($record->save() === 'unchanged' && $record->toArray() === $initial, '无变化 save 推进时间或版本');
+            self::check($record->touch() === 'updated' && $record->get('version') === 2
+                && $record->toArray()['updated_at'] === $initial['updated_at'], 'touch 改变了只推进版本的语义');
+
+            $past = $microseconds ? '2000-01-01 00:00:00.123456' : 946684800;
+            $connection->table($table)->where('id', '=', 1)->update(['updated_at' => $past]);
+            $changed = $query->findOrFail(1);
+            $old = $changed->toArray();
+            $changed->set('title', 'changed');
+            self::check($changed->save() === 'updated' && $changed->toArray()['updated_at'] !== $old['updated_at']
+                && $changed->toArray()['created_at'] === $initial['created_at'], '实例更新没有维护更新时间或覆盖创建时间');
+
+            foreach (['created_at', 'updated_at'] as $field) {
+                self::check(self::reject(static function () use ($changed, $field): void {
+                    $changed->set($field, 1);
+                }, 'field_not_fillable') && self::reject(static function () use ($changed, $field): void {
+                    $changed->fill(['title' => 'partial', $field => 1]);
+                }, 'field_not_fillable') && self::reject(static function () use ($changed, $field): void {
+                    $changed->{$field} = $changed->get('created_at') instanceof \DateTimeImmutable
+                        ? new \DateTimeImmutable('now', new \DateTimeZone('UTC')) : 1;
+                }, 'field_not_fillable') && $changed->get('title') === 'changed'
+                    && self::reject(static fn (): int => $query->where('id', '=', 1)->update([$field => 1]), 'field_not_fillable')
+                    && self::reject(static fn (): int => $query->insertMany([['id' => 9, 'title' => 'override', 'value' => 0, $field => 1]]), 'field_not_fillable'), '受管时间被普通或集合赋值覆盖');
+            }
+            $cancelled = $microseconds ? new MicrosecondRecord(['id' => 9, 'title' => '取消发布', 'value' => 0])
+                : new SecondRecord(['id' => 9, 'title' => '取消发布', 'value' => 0]);
+            $cancelled->useBehavior((new ModelBehavior())->observe(new ArticleObserver()));
+            self::check($cancelled->save() === 'cancelled' && !$cancelled->loaded('created_at') && !$cancelled->loaded('updated_at')
+                && $query->find(9) === null, '取消创建留下了受管时间或真实记录');
+
+            self::check($query->insertMany([['id' => 2, 'title' => 'batch', 'value' => 0], ['id' => 3, 'title' => 'batch', 'value' => 0]]) === 2, '受管时间批量新增失败');
+            $second = $query->findOrFail(2)->toArray();
+            $third = $query->findOrFail(3)->toArray();
+            self::check($second['created_at'] === $second['updated_at'] && $second['created_at'] === $third['created_at']
+                && $second['updated_at'] === $third['updated_at'], '同批新增使用了不同时刻');
+            $batch = $query->whereIn('id', [2, 3]);
+            foreach (['update', 'increment', 'decrement'] as $operation) {
+                $connection->table($table)->whereIn('id', [2, 3])->update(['updated_at' => $past]);
+                $before = $query->findOrFail(2)->toArray()['updated_at'];
+                $affected = match ($operation) {
+                    'update' => $batch->update(['title' => 'batch-changed']),
+                    'increment' => $batch->increment('value'),
+                    default => $batch->decrement('value')
+                };
+                self::check($affected === 2 && $query->findOrFail(2)->toArray()['updated_at'] !== $before
+                    && $query->findOrFail(2)->toArray()['updated_at'] === $query->findOrFail(3)->toArray()['updated_at'], '集合写入没有维护同刻时间：' . $operation);
+            }
+            $beforeFailure = $connection->table($table)->orderBy('id')->get();
+            self::check(self::reject(static fn (): int => $batch->decrement('value'))
+                && $connection->table($table)->orderBy('id')->get() === $beforeFailure, '失败的算术写入遗留时间或版本');
+            self::check(self::reject(static function () use ($query, $batch): void {
+                Db::transaction(static function () use ($query, $batch): void {
+                    $batch->update(['title' => 'rolled-back']);
+                    $instance = $query->findOrFail(1);
+                    $instance->set('title', 'rolled-back');
+                    $instance->save();
+                    throw new RuntimeException('rollback');
+                });
+            }, 'rollback') && $connection->table($table)->orderBy('id')->get() === $beforeFailure, '外层回滚没有还原实例和集合时间');
+            self::check($batch->delete() === 2, '受管时间集合软删除失败');
+            $deleted = $query->withTrashed()->findOrFail(2);
+            self::check($deleted->get('updated_at') instanceof \DateTimeImmutable
+                ? $deleted->get('updated_at')->format('U.u') === $deleted->get('deleted_at')->format('U.u')
+                : $deleted->get('updated_at') === $deleted->get('deleted_at')->getTimestamp(), '软删除和更新时间未共用一次取时');
+            $connection->table($table)->where('id', '=', 2)->update(['updated_at' => $past]);
+            $restored = $query->withTrashed()->findOrFail(2);
+            $oldDeleted = $restored->toArray();
+            self::check($restored->restore() && $restored->toArray()['updated_at'] !== $oldDeleted['updated_at']
+                && $restored->toArray()['created_at'] === $second['created_at'], '恢复没有维护更新时间或修改了创建时间');
+            self::check($restored->delete() && $restored->toArray()['updated_at'] === $query->withTrashed()->findOrFail(2)->toArray()['updated_at'], '实例软删除时间未持久化');
+        }
     }
 
     /**

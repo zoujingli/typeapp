@@ -92,6 +92,8 @@ function main(): void
 
 ## 默认值、PATCH 与场景
 
+开发版的 `ValidatedInput` 让控制器直接接收已校验的具体类型，复用本页的 Schema、Field 和 Data。`schema()` 返回规则，`fromData(Data)` 返回输入类自身；`Schema::sources()` 只读提供来源元数据。完整示例见[路由中的已校验输入](../routing.md#已校验输入)。这项接口不属于 RC14，使用时须核对组件与文档通道。
+
 下例可放在最小示例的 main 中，沿用 Field、Input、Schema 的 import：
 
 ```php
