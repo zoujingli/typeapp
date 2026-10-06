@@ -12,9 +12,13 @@
 | 同一程序三库 | `tests/iot-identity-databases.php <程序或--php> <MySQL工具根> <PostgreSQL工具根> --app`；原生隔离追加 `--no-source` |
 | 当前应用升级、就绪与停止 | `tests/application-runtime.php`，参数见该脚本及[修复验收](../evidence/system-architecture-fixes-20261004.md) |
 | 双端页面 | 身份入口的 `--app --browser-dist=<本轮前端目录>`；历史、告警及导出页面沿用 `tests/iot-history-browser-fixture.php` |
+| 生命周期页面 | `tests/iot-lifecycle-browser-fixture.php <程序或--php> <隔离HTTP端口>`，用 `TYPE_PGSQL_TOOLS` 指定 PostgreSQL 工具；再运行 `node tests/iot-lifecycle-browser.mjs <输出目录/fixture.json> <HTTP地址>`。使用当前管理端安装、客户账号与角色，覆盖真实 Broker 撤权、凭据清除、冲突、响应未知和窄屏；结束后向夹具所有者发送 SIGTERM 并核对 `cleanup.json` |
+| IoT 节点隔离审计 | `tests/broker-observability.php <程序或--php> --iot-audit-fence`，使用同一 PostgreSQL 主备装置和当前 `admin` 审计域、`app:audit-clean admin`；覆盖代际冻结、硬隔离依据、未知结果对账和有界清理 |
 | WAL 与物理恢复 | 独立 `tests/iot-recovery.php`；`--physical` 执行物理链，见[恢复说明](iot-recovery.md)；不使用身份入口的旧 `--recovery` 组合 |
 
 物联应用与独立 Broker 模式不能混用。身份入口在创建运行目录、读取产物或连接数据库前拒绝已退出及尚未接入的专项，避免只执行基础用例后报告组合成功。
+
+生命周期页面及节点隔离审计已恢复现行入口并通过 PHP 验收；报告中的 `native`、程序摘要和实际参数区分 PHP 与原生执行，不能把 PHP 结果计为同候选原生矩阵通过。生命周期浏览器脚本保留恢复后的页面分支，该分支仍须由恢复装置单独验收，普通生命周期结果不覆盖恢复场景。
 
 ## 合并后的构建与组件入口
 
@@ -39,12 +43,10 @@
 
 | 待处理项 | 当前阻塞 | 完成要求 |
 | --- | --- | --- |
-| 生命周期浏览器装置 | `tests/iot-lifecycle-browser-fixture.php` / `tests/iot-lifecycle-browser.mjs` 仍使用旧人员初始化、登录和租户接口 | 接入当前双端身份与角色，重验页面凭据清除、冲突、响应未知和窄屏；已有 API/MQTT 结果不能代替浏览器验收 |
-| IoT 节点隔离审计组合 | `tests/broker-observability.php --iot-audit-fence` 的辅助断言仍使用旧审计表与已移除的 `iot:audit-clean` | 按 `admin/customer` 审计域和 `app:audit-clean` 更新，保留真实硬隔离依据、未知结果对账和清理断言；独立 Broker 观察入口继续维护 |
 | 混合负载 | `tests/iot-load.php` 的历史准备入口及 `tests/iot-load.mjs` 的登录仍依赖旧身份 | 更新人员、角色、租户与令牌取得方式，重新跑同负载；独立样本及资源回归只证明发生器自身行为 |
 | 历史 HA/容量组合 | 旧 `--ha`、`--capacity`、`--cluster` 等组合未接入当前身份入口 | 使用当前设备装置保留持久确认、故障域、接管与资源收尾断言，再纳入完整组合验收 |
 
-`tests/docs-consistency.php` 只登记两个待迁移文件中既有旧命令的准确次数。新文件调用旧命令或存量次数改变都会失败；清理后同时移除登记，不能增加按命令名称的全局豁免。检查输出单独显示待迁移夹具数量。
+`tests/docs-consistency.php` 核对测试、工具与示例中的应用命令调用；已迁移夹具的旧命令登记已移除，未注册命令没有存量或全局豁免。显式验证旧入口拒绝的负向用例继续保留。
 
 没有 Composer 或 CI 调用者也不能直接作为删除依据。开发模式权限、分阶段 I/O 测量、备份保留、延迟发布和 macOS 隔离构建等独立专项仍保留；其中 macOS 旧隔离脚本的构建配置、产物路径及报告字段需要同步后重验。它们的独有断言须完成迁移或证明由现行入口覆盖，才能合并，不能随文件清理宣称验收完成。
 

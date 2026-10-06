@@ -41,7 +41,7 @@ php dev.php help
 php dev.php check
 ```
 
-安装后提交应用的 `composer.lock`，固定实际依赖版本。接着按[第一个应用教程](docs/guide/tutorial.md)完成迁移、令牌配置和真实 HTTP 操作，再按需安装[框架组件](docs/guide/components.md)。生产构建还须准备目标平台的静态 SDK，按[构建与部署](docs/guide/deployment.md)执行 `composer build`。
+安装后提交应用的 `composer.lock`，固定实际依赖版本。上述 RC14 使用[发布通道教程](https://iots.top/#/guide/tutorial)；当前源码的[连续目录教程](docs/guide/tutorial.md)从同批开发候选创建第二模块，再演练缓存、事件、Outbox、队列与调度，不能混用旧发布组件。生产构建还须准备目标平台的静态 SDK，按[构建与部署](docs/guide/deployment.md)执行 `composer build`。
 
 本地模板与 Git tag 创建方式见[快速开始](docs/guide/quickstart.md)。`dev-main` 跟进子仓开发分支，不一定与当前 RC 相同；按版本安装才能复现本批次。
 
@@ -71,7 +71,7 @@ HTTP 路由来自控制器 `#[Route]` 或 `config/route.php`；`#[Transactional]
 
 | 读者 | 入口 |
 | --- | --- |
-| 开始使用 | [公开指南](https://iots.top) · [环境与依赖](docs/guide/environment.md) · [快速开始](docs/guide/quickstart.md) · [第一个应用](docs/guide/tutorial.md) |
+| 开始使用 | [公开指南](https://iots.top) · [环境与依赖](docs/guide/environment.md) · [快速开始](docs/guide/quickstart.md) · [连续目录教程](docs/guide/tutorial.md) |
 | 运行与交付 | [系统架构](docs/guide/architecture.md) · [性能与调优](docs/guide/performance.md) · [构建与部署](docs/guide/deployment.md) |
 | 成品案例 | [物联网中心](docs/guide/iot-center.md) |
 | 许可证 | [LICENSE](LICENSE) · [NOTICE](NOTICE) · [许可证说明](docs/guide/licensing.md) |

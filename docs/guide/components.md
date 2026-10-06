@@ -67,7 +67,7 @@ composer require zoujingli/type-orm-sqlite:1.0.0-rc.14
 | `type-core`、`type-orm`、`type-validate`、`type-log`、`type-redis`、`type-build`、`type-testing` | `type-runtime` |
 | 三种 `type-orm-*` 驱动 | `type-orm`、`type-runtime` |
 | `type-cache`、`type-queue`、`type-scheduler` | `type-redis`、`type-runtime` |
-| `type-mqtt` | `type-orm`、`type-runtime`；PostgreSQL 持久后端另需 `type-orm-pgsql` |
+| `type-mqtt` | 当前 `main` 依赖 `type-core`、`type-orm`、`type-runtime`；RC14 的直接依赖为后两者。PostgreSQL 持久后端另需 `type-orm-pgsql` |
 
 具体公开依赖、扩展和版本要求以所用包的 `composer.json` 为准。
 

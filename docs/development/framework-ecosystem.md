@@ -2,7 +2,7 @@
 
 本设计收敛现有 15 个组件的日常开发体验：从独立应用创建开始，完成输入校验、Model、迁移、事务、缓存、任务、诊断和原生交付。目标是让开发者主要编写 Controller、Service、Model 与配置，由构建工具处理可确定的重复接线，并保留可检查的生命周期与失败语义。
 
-**状态：八项方向已经确定，以下是待实施与验收的完整设计，不是当前 API 手册。** 当前发布版为 RC14，`main` 另有尚未发布的改进；本设计新增的统一装配、Service 转换、类型化动作与 Schema 声明均未因此成为已实现能力。实施进度统一维护在[实现规划](../guide/roadmap.md)，不再另建重复任务台账。
+**状态：开发分支已实现主要接口，正在完成原生与发布验收。** 当前发布版为 RC14。开发源码包含共享生成、构造器装配、执行服务隔离、类型化动作与输入、原 Service 声明转换、Model 时间与关系写入、唯一冲突处理、Schema、任务装配、脚手架和连续教程。PHP、全量 AOT、静态单程序及公开消费分别验收；这些变更不属于 RC14。实施进度维护在[实现规划](../guide/roadmap.md)，本文保留完整设计，不替代有效 API 手册。
 
 ## 目标与范围
 
@@ -74,14 +74,14 @@ flowchart TB
 
 ### 类型化 HTTP 动作
 
-以下签名表示待实现的公开契约，不应复制到 RC14 使用：
+以下签名已进入开发源码，仍需完成同一候选的原生验收，不应复制到 RC14 使用：
 
 ```php
 public function update(int $id, UpdateUserInput $input): array
 ```
 
 1. 保留 `action(ServerRequestInterface): ResponseInterface`。类型化动作参数接受对应路径占位符的 `int/string`、至多一个输入类和可选 PSR 请求；Service 依赖使用构造器。无法确定的联合类型、未知参数、引用和可变参数在构建期拒绝。
-2. 新增一个输入契约 `Type\Validate\ValidatedInput`，包含静态 `schema(): Schema` 和 `fromData(Data): object`；具体工厂返回类型须收窄为自身类型。规则沿用现有 `Schema/Field`，生成器只验证签名并生成直接调用，不执行业务规则、不增加另一套校验 DSL。
+2. 新增一个输入契约 `Type\Validate\ValidatedInput`，包含静态 `schema(): Schema` 和 `fromData(Data): ValidatedInput`；具体工厂返回类型须收窄为自身类型。规则沿用现有 `Schema/Field`，生成器只验证签名并生成直接调用，不执行业务规则、不增加另一套校验 DSL。
 3. body 默认是 JSON 对象；query、route、header 各自独立。仅 Router 提供路由参数；header 名称不区分大小写，标量字段的多值头明确拒绝。复用 `Input` 的有界解析、重复键检查及大整数语义，以及 `RequestBody` 的有界读取。流和上传使用显式 PSR 动作。
 4. `Route` 与配置式路由使用同义的 `input` 选项表达解析预算、校验场景和部分更新策略；预算不超过接入层上限，模板既有 16 KiB、8 层限制保留。PATCH 默认按部分更新校验，不给缺失字段补默认值；DTO 保留字段存在性，显式 null 仍需声明允许。
 5. 路径 `int` 复用严格校验转换并拒绝溢出，不做截断强转；未匹配路径约束为 404，匹配后的类型/范围错误为 422。同名 query/body 不能覆盖路径值；输入不能自动建立身份或租户上下文。
@@ -97,7 +97,7 @@ public function update(int $id, UpdateUserInput $input): array
 
 已经具备的无连接 CRUD、聚合、分页、批量读取、预加载、租户隔离和 `Db` 同库事务继续作为基础，业务不退回传递 `Connection`。本轮补齐以下入口：
 
-| 能力 | 待实施契约 | 一致性边界 |
+| 能力 | 本轮接口契约 | 一致性边界 |
 | --- | --- | --- |
 | 自动时间字段 | Model 显式声明创建/更新时间，支持 Unix 秒与 UTC 微秒时间；同次写入或批次使用同一时刻 | 禁止与主键、租户、版本、软删除字段重叠及由批量赋值覆盖；无变化的 save 不更新时间/版本；业务采样与发生时间仍手工管理 |
 | 关系写入入口 | 父 Model 提供关系句柄，复用既有 attach/detach/sync | 保留主库、锁、事务、租户和 scope 校验；写后清除本实例的对应已加载关系；related 仍只读已加载结果 |

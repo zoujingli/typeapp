@@ -17,7 +17,6 @@ app/
     middleware/               人员与租户鉴权
     service/                  设备业务、接收、控制、转移与恢复
     database/                 物联网业务迁移
-  main.php                    AOT 入口
 web/                          独立 Vben 管理端及公共页面标准
 config/                       应用配置声明与路由声明
 .env.example                  无秘密的变量示例
@@ -29,6 +28,8 @@ build/                        生成源码、平台产物、报告与开发数�
 ```
 
 上图是当前物联中心的标准分层，不是框架强制层级。业务模块可以继续增加职责目录：PSR-4 负责命名空间到文件，构建 `sources` 明确全量源码，控制器通过 `#[Route]`/`#[Group]`/`#[Resource]` 或 `config/route.php` 的 `routes` 表参与注册。不会依据路径深度自动发布接口。
+
+物联中心由 `docs/build-config/type-app.json` 的应用声明生成原生入口，再调用 `app/common/bootstrap/Application::bootstrap()` 分派宿主及普通命令；入口与服务图生成在 `build/`，不再维护手写的 `app/main.php`。资源归属见[物联中心统一装配](../development/iot-application-assembly.md)。
 
 ## 业务职责
 

@@ -142,6 +142,25 @@ try {
     await page.setViewportSize({ width: 1440, height: 1000 });
   }
   report.checks.push('两通道导航和资源、许可材料、研发文件404、桌面与窄屏图表');
+  for (const [document, title, diagramCount] of [['tutorial', '应用开发实战', 3], ['catalog-reliability', '目录模块的后台与可靠交付', 3], ['scaffolding', '生成可编辑业务源码', 0]]) {
+    await page.goto(`${base}next/#/guide/${document}`);
+    await ready();
+    await expect(page.locator('.markdown-section h1')).toHaveText(title);
+    await expect(page.locator('.docs-channel-label')).toHaveText('开发版');
+    report.pages ??= [];
+    report.pages.push({ document, title: await page.locator('.markdown-section h1').textContent(), code: await page.locator('.markdown-section pre').evaluateAll(nodes => nodes.map(node => ({ language: node.getAttribute('data-lang'), className: node.className }))) });
+    await expect(page.locator('.markdown-section pre[data-lang="php"], .markdown-section pre[data-lang="bash"], .markdown-section pre[data-lang="sh"]').first()).toBeVisible();
+    await expect(page.locator('.diagram svg')).toHaveCount(diagramCount);
+    for (const diagram of await page.locator('.diagram svg').all()) await expect(diagram).toBeVisible();
+    if (diagramCount) {
+      await page.locator('.diagram').first().screenshot({ path: join(work, `${document}-diagram.png`) });
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: join(work, `${document}-mobile.png`) });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+  }
+  report.checks.push('连续教程、可靠投递续篇、脚手架代码与六张真实 Mermaid 图，窄屏无页面溢出');
   expect(report.errors).toEqual([]);
   report.status = 'passed';
 } catch (error) {

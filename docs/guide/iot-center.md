@@ -99,15 +99,17 @@ flowchart TB
 
 ```text
 app/
-  main.php                    原生应用入口
   common/                     配置、身份、RBAC、审计与跨端入口
   admin/                      平台管理端控制器与服务
   broker/                     Broker 管理与节点控制器
   iot/                        租户、产品、设备、数据与运维
 web/                          Vben Admin Pro 管理端
 config/                       应用、数据库与路由声明
-docs/build-config/type-app.json  本案例构建配置
+docs/build-config/type-app.json  本案例应用与构建声明
+build/                        生成入口、服务图与编译产物
 ```
+
+当前开发源码通过应用声明生成原生入口，再调用 `Application::bootstrap()` 分派各角色；已删除手写 `app/main.php`。RC14 的原始入口随其版本保留，不能把当前布局套用到旧产物。
 
 | 目录 | 当前责任 | 关键入口 |
 | --- | --- | --- |

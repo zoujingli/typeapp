@@ -32,11 +32,11 @@ flowchart TB
 
 ## 精简装配与标准共用
 
-TypeApp 优先复用 PSR、Swoole 以及现有 `ExecutionScope`、`ManagedResource` 和配置约定。应用入口显式构造需要的组件，组件只在通信、存储、日志、队列等真实替换边界使用接口；不增加通用运行时容器、未知源码扫描、AOP 代理或万能基础类。应用按声明顺序启动资源、按逆序停止资源，启动失败回收已启动部分，停止先拒绝新工作再在有界期限内排空。
+TypeApp 优先复用 PSR、Swoole 以及现有 `ExecutionScope`、`ManagedResource` 和配置约定。构建器依据应用声明、构造器类型与显式绑定生成直接调用代码，组件只在通信、存储、日志、队列等真实替换边界使用接口；不增加通用运行时容器、未知源码扫描、AOP 代理或万能基础类。应用按声明顺序启动资源、按逆序停止资源，启动失败回收已启动部分，停止先拒绝新工作再在有界期限内排空。
 
 HTTP、WebSocket、TCP、UDP、MQTT 保留各自协议入口和失败语义，只共用生命周期、资源预算、统计和关闭约定。HTTP 与 WebSocket 共用端口时由同一个 Swoole Server 持有监听，不引入额外的统一 Transport 或 Server 管理器。
 
-下一轮已确定把手工构造收敛为构建期自动装配，并在原 Service 类型上落实事务/缓存声明；当前命令生成器与 HTTP 手工装配尚未统一。该调整保持上面的依赖与生命周期边界，新增接口及开发/发布文档分版仍待实施，见[框架开发闭环](roadmap.md#框架开发闭环)。
+开发分支的 HTTP、命令、Job 与调度入口共用同一装配图，事务与缓存声明在加载前转换到原 Service 类型。每次请求或任务在自己的作用域取得服务，受管子协程重新创建作用域服务；单例不能持有请求状态。标准开发入口与 AOT 使用同一生成代次，详见[应用装配](https://github.com/zoujingli/typeapp/blob/main/docs/development/command-assembly.md)和[声明转换](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)。RC14 保持旧版入口，默认站点与 `/next/` 分别展示发布版和开发版；新能力的实际验收范围见[框架开发闭环](roadmap.md#框架开发闭环)。
 
 ## 构建期与运行期
 

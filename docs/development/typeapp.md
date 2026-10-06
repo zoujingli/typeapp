@@ -4,7 +4,7 @@
 
 ## 入口与责任
 
-`app/main.php` 是唯一生产入口，`common/bootstrap/Application` 装配命令和 HTTP，`Settings` 读取一次启动配置。共用的 `AuthController`、`IdentityService`、`RoleService` 分别拥有请求输入、会话和固定目录/当前权限。业务不向组件反向注入业务表依赖。
+`docs/build-config/type-app.json` 的应用声明生成生产入口，调用 `app/common/bootstrap/Application::bootstrap()` 分派 HTTP/MQTT 宿主及普通命令。`ApplicationContext` 按需读取一次启动配置，控制器、中间件、Job 和计划任务由同一生成服务图装配，详见[物联中心统一装配](iot-application-assembly.md)。共用的 `AuthController`、`IdentityService`、`RoleService` 分别拥有请求输入、会话和固定目录/当前权限。业务不向组件反向注入业务表依赖。
 
 `Schema::install` 复用 ORM 迁移锁和事务：先确认空库，创建新模式，再在一个事务中建立安装身份、管理账号、客户账号、初始租户及角色关系。两个账号域可以使用相同登录标识，但密码、会话及授权各自独立。密码使用既有 bcrypt 存储，令牌持久化只保存摘要；账号/成员/角色失效在后续请求重新判断。没有角色默认没有业务权限；固定目录由 `RoleService::catalog` 声明，初始化最高管理员获得当前目录的显式节点。
 
@@ -90,4 +90,4 @@ php tests/iot-identity-databases.php build/app/type-app <MySQL工具根> <Postgr
 
 全量 AOT 包含框架、业务、生成代码及全部生产 PHP 依赖；唯一例外是固定 Swoole 官方内置库沿用官方加载，版本和内容进入产物身份。公开 RC14 已完成四平台默认原生 CI 和 12 个数据库 profile 静态单程序的隔离部署，准确身份见[升级验收](../evidence/typephp-upgrade-0.9.4.md)。`main` 后续修改按自己的源码、产物和平台重新验收，不能继承历史通过结论；完整设备链路、全部业务故障及目标容量仍有专项边界，见[平台与验收](../guide/platforms.md)。
 
-`type-project` 是通用独立应用模板，已完成公开子仓消费和三库原生部署，不默认携带物联业务。物联成品的同源创建仍需从本业务、前端及配置单独实现和验收，不能用通用模板代替。组件只分发 `plugin/type-*` 子树，应用与私有配置不会进入组件子仓。
+`type-project` 是通用独立应用模板，不默认携带物联业务。已发布 RC14 的公开子仓消费和三库原生部署记录属于该固定版本，当前模板改动须按新候选重新验收。物联成品的同源创建仍需从本业务、前端及配置单独实现和验收，不能用通用模板代替。组件只分发 `plugin/type-*` 子树，应用与私有配置不会进入组件子仓。

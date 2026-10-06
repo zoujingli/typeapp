@@ -56,7 +56,7 @@ MQTT 完整规范义务、故障域与容量仍需逐项闭合，详见[实现�
 
 PostgreSQL 已有完整重置后物理 PDO 复用；MySQL、SQLite 当前安全关闭，完整复用仍是待交付能力。逻辑租约复用与物理连接复用不能混称。
 
-当前 `main` 提供模型 `sum/avg/min/max`、带字段和租户约束的 `insertMany`，并在创建协程 PDO 前检查所选驱动的官方 hook；这些新增入口尚未包含 RC14。模型冲突写入、MySQL/SQLite 完整会话重置复用及故障组合仍有待补项。具体[能力边界](database.md#常用能力边界)与 [ORM 补齐顺序](roadmap.md#orm-补齐顺序)分别说明现有入口和验收要求。
+当前 `main` 提供模型聚合、批量写入、受管时间、关系写入、`firstOrCreate()`、驱动专属 upsert 和 Schema 声明；创建协程 PDO 前检查所选驱动的官方 hook。这些新增入口未包含在 RC14，当前程序的原生与发布矩阵仍需单独验收。MySQL/SQLite 完整会话重置复用继续保留专项。具体[能力边界](database.md#常用能力边界)与 [ORM 补齐顺序](roadmap.md#orm-补齐顺序)分别说明现有入口和验收要求。
 
 ## 后台任务与通用服务
 

@@ -19,6 +19,8 @@
   - [进程与边界](/guide/iot-center.md#进程与维护入口)
 - 开发指南
   - [应用开发实战](/guide/tutorial.md)
+  - [业务脚手架](/guide/scaffolding.md)
+  - [目录后台与可靠交付](/guide/catalog-reliability.md)
   - [配置与环境](/guide/configuration.md)
   - [路由与中间件](/guide/routing.md)
   - [数据库与模型](/guide/database.md)

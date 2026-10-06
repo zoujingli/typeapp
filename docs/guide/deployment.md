@@ -114,6 +114,8 @@ build/typeapp-iot licenses
 
 `package-directory` 和 `archive` 保留给历史共享库产物的回归及维护。这些产物需要完整目录，不能只复制 `bin/app`；不进入新的单程序发布候选。主仓 `tools/build-application.php --shared-development` 显式选择旧开发构建，默认生产构建缺少静态 SDK 时直接失败。
 
+独立教程使用同一单程序交付与隔离入口，按 SQLite、MySQL、PostgreSQL 分别封存程序。每个程序只接受匹配的数据库配置，外置配置、业务服务与可写数据目录由部署者管理。维护者的[教程验收入口](https://github.com/zoujingli/typeapp/blob/main/docs/development/distribution-batches.md#教程的固定候选与公开消费)同时核对默认 Packagist 版本、完整生产编译清单与搬迁后公开业务断言；PHP、原生构建、原生运行和新版本公开消费各自报告，缺少任一项不能记为完整交付。
+
 ## 首次启动
 
 将已验收的单程序放到匹配 OS/架构和最低系统版本的服务器，下文将程序命名为 `app`。默认应用根是程序所在目录；需要分离数据时，在进程环境中指定已存在的绝对目录 `APP_BASE_PATH`。程序从应用根读取 `.env`，不依赖调用者的工作目录。
@@ -221,6 +223,8 @@ sequenceDiagram
 ## 物联网角色部署
 
 本仓库的物联网中心标准项目共用完整应用构建，但运行角色分别管理：HTTP、MQTT Broker、数据接收、统计、告警、通知和导出不能用单个 `serve` 命令替代。具体角色、环境键和管理端构建见[物联网中心](iot-center.md)。`type-project` 模板不默认包含这些业务与 Web 资源。
+
+物联中心的控制器、普通命令、队列协议与维护计划使用同一应用声明。HTTP 和 MQTT 监听宿主由启动入口持有原生服务循环；每请求、消息和计划执行仍有独立作用域。接线、资源归属及 Outbox 恢复时序见[物联中心统一装配](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-application-assembly.md)。
 
 设备 MQTT 与接收角色要求 PostgreSQL 严格同步主备和真实 TLS。先完成业务迁移及 `iot:mqtt-install`，再由角色宿主启动相应入口；`IOT_MQTT_COMMAND` 明确指向同一已验证应用产物。Swoole 原生能力由同一构建及运行包提供。管理 API 三库通过不构成 MQTT 三种存储后端或高可用通过证明。
 

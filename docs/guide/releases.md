@@ -6,10 +6,14 @@
 
 每个“平台 × profile”下载一个可执行文件，外置配置独立维护。PHP、PHPX、Swoole 等非系统原生库已静态链接，普通启动不释放运行库。历史 RC7 的目录归档与旧标签保持原样，其使用方式和验收身份保留在[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
+当前开发源码将事务与缓存声明转换到原 Service：升级时删除 `operations.classes`，控制器和启动构造直接依赖原类型，并通过标准准备入口在加载应用类前选择本代生成结果。活动事务内 Cacheable 绕过共享缓存且不填充，CacheEvict 等待同数据源最外层确认提交；与 RC14 的包装调用约定不同。详见[迁移后的声明接口](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)。这批源码的 PHP 与原生验收分别记录，未完成同一候选全平台门禁前不公开新候选。
+
 ## 一次 tag 如何形成版本
 
 ```mermaid
 flowchart TB
+  Prepare["tag 前准备模板版本闭包"] --> Commit["检查并提交正常源码"]
+  Commit --> Tag
   Tag["版本 tag → 固定完整提交"] --> Gate["main 历史、依赖约束、标签冲突检查"]
   Gate --> Web["冻结安装 → 类型检查 → 构建一份前端"]
   Web --> AOT["四平台 × 三数据库 profile · TypePHP 全量 AOT"]
@@ -119,6 +123,8 @@ composer show 'zoujingli/type-*'
 composer show zoujingli/type-build --format=json
 ```
 
+以上说明对应不可变的 RC14 模板。当前开发分支新增了 tag 前模板版本准备：后续采用该机制的版本会直接声明完整第一方版本闭包，驱动选择保留已有约束，公开消费不再改写 `composer.json`。新批次公开并完成消费验收后，才能简化对应版本教程；本次尚未指定新 RC，不把开发验证记为已公开版本。
+
 第一条列出已安装的组件版本；第二条的 `source.reference` 是对应子仓的拆分提交，不是主仓 SHA。发布流程会核对这两种身份的对应关系。提交生成的 `composer.lock`，日常构建用 `composer install` 复现实际版本；升级依赖时再受控更新。接着按[快速开始](quickstart.md#启动服务)启动服务，或进入[应用开发实战](tutorial.md)。
 
 ## 维护者触发与重试
@@ -127,10 +133,18 @@ composer show zoujingli/type-build --format=json
 
 用于自动发布的提交不要带 `[skip ci]` 等跳过标记，否则 GitHub 会跳过 tag 的 push 工作流。已有 tag 遇到这种情况时，使用下方同 tag 的 `workflow_dispatch` 入口启动；无需移动标签或重新打版本。RC14 使用的就是该手动入口。
 
-创建新版本时，先确定未使用的版本号，并在已检查的 `main` 提交上执行：
+创建新版本时，先确定未使用的版本号，在 `main` 准备并检查模板版本。该步骤修改正常源码，不创建标签：
 
 ```bash
 # 先设置已决定且尚未使用的版本号，例如 vX.Y.Z-rc.N。
+: "${release_tag:?请先设置本次新版本的 release_tag}"
+php tools/release.php prepare "$release_tag"
+git diff -- templates/type-project/composer.json
+```
+
+完成相关检查后，将模板版本变更纳入正常签署提交，再在已检查的提交上创建和推送 tag：
+
+```bash
 : "${release_tag:?请先设置本次新版本的 release_tag}"
 git tag -a "$release_tag" -m "TypeApp ${release_tag} 候选发布"
 git push origin "$release_tag"

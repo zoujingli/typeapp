@@ -14,11 +14,10 @@ flowchart TB
 
 ## 业务目录
 
-独立应用的常见布局：
+当前开发模板的常见布局；RC14 保留其已发布的手写入口：
 
 ```text
 app/
-  main.php                    原生应用入口
   common/
     bootstrap/                配置、应用角色与 HTTP 装配
     database/                 数据库工厂和迁移
@@ -30,7 +29,8 @@ config/
   database.php                数据库配置声明
   route.php                   路由声明
 .env.example                  无秘密的环境示例
-type-app.json                 构建声明
+type-app.json                 应用与构建声明
+build/                        生成入口、服务图与编译产物
 ```
 
 目录使用小写的 `app\` PSR-4 层级，类名使用 PascalCase。组件继续保留 `Type\...` 命名空间及原有目录大小写。
@@ -51,9 +51,11 @@ type-app.json                 构建声明
 
 独立模板使用自己的 `type-app.json`。本仓库成品案例的构建配置位于 `docs/build-config/type-app.json`，通过 `project-root` 指向仓库根；基础构建夹具使用 `type-foundation.json`。入口、源码和产物路径以各自声明的项目根为基准。
 
+当前模板的 `application.bootstrap` 指向 `app\common\bootstrap\Application::run()`，物联中心指向自身的 `Application::bootstrap()`；两者均由应用声明生成原生入口。组件教程中的独立声明式 `app/main.php` 示例仍可显式配置为入口，不属于模板或物联中心的现行目录。
+
 ## 手写业务与生成结果
 
-开发准备和 AOT 构建分别生成配置、模型、路由及操作组合类。生成代码放在 `build/`，由声明重新生成；业务类放在 `app/`。不要修改生成文件。
+开发准备和 AOT 构建使用同一生成管线，产生入口、配置、模型、路由、服务图及转换后的 Service。生成代码放在 `build/`，由声明重新生成；业务类放在 `app/`。不要修改生成文件。
 
 `#[Transactional]`、`#[Cacheable]` 等声明由标准入口在加载前转换原 Service 文件；普通调用、手动构造与类内互调使用同一事务和缓存语义。
 

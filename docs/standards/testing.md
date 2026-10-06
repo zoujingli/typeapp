@@ -9,6 +9,9 @@
 - `composer cs-check`：PSR-12 与显式非 risky 格式规则，不能代替功能验证。
 - `composer check`：PHP 语法及基础公开行为。
 - `composer test:unit`：PHPUnit 的无外部服务契约套件，覆盖结构、配置、生成器和约束；测试结果与原生证据分别报告。
+- `composer test:framework`：统一开发代次、依赖装配、执行作用域、离线检查、真实 HTTP、业务事件与独立脚手架消费；使用测试配置指定的 Redis 和临时 SQLite，不代替原生验收。
+- `composer test:framework-native`：独立 Composer 安装后全量编译 HTTP/命令共同装配和业务事件，用同一组断言检查原生请求隔离、资源归还以及提交后监听语义。
+- `composer test:operations` / `composer test:operations-native`：分别检查 PHP / AOT 原 Service 的事务与缓存声明，覆盖 MySQL、PostgreSQL、SQLite 及提交结果未知；运行前配置专用数据库和 Redis。
 - `composer typeapp:test` / `composer typeapp:test-native`：标准应用的离线命令、迁移、用户 HTTP、单应用/多应用路由以及实际配置加载；各自只操作新建的专用测试数据库。
 - 各组件 `test:*` / `build:*`：保留现有的真实三库、Redis、故障、独立消费和完整 AOT 验收，不为换测试框架删除已验证的场景。
 
