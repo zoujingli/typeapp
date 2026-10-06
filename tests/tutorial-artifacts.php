@@ -60,9 +60,18 @@ function archiveTutorialConsumer(string $consumer, string $destination, string $
     }
     if (is_dir($consumer . '/build')) {
         foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($consumer . '/build', FilesystemIterator::SKIP_DOTS)) as $file) {
+            $relative = str_replace('\\', '/', substr($file->getPathname(), strlen($consumer) + 1));
+            // 事务/缓存教程只保全当前编译尝试的相关转译文本，不复制对象、SDK 或完整 vendor。
+            $generatedPhp = in_array($relative, ['build/compiler/generated-operations.php', 'build/compiler/assembled-application.php'], true);
+            $generatedCpp = preg_match(
+                '~^build/compiler/attempts/[a-f0-9]{8}/(?:'
+                . '(?:app/catalog/(?:service/Reliability|event/(?:AuditChanged|ProductChanged))|vendor/zoujingli/type-orm/src/Connection|generated-operations|assembled-application)\\.cc'
+                . '|include/php_[A-Za-z0-9_]*(?:app_catalog_service_Reliability|app_catalog_event_(?:AuditChanged|ProductChanged)|vendor_zoujingli_type_orm_src_Connection|generated_operations|assembled_application)_[a-f0-9]{10}_decl\\.h)$~D',
+                $relative
+            ) === 1;
             if ($file->isFile() && (str_ends_with($file->getFilename(), '.log') || str_ends_with($file->getFilename(), '.build.json')
-                || $file->getFilename() === 'project.yml')) {
-                $paths[] = str_replace('\\', '/', substr($file->getPathname(), strlen($consumer) + 1));
+                || $file->getFilename() === 'project.yml' || $generatedPhp || $generatedCpp)) {
+                $paths[] = $relative;
             }
         }
     }

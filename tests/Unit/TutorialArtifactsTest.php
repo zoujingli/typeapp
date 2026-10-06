@@ -23,12 +23,27 @@ final class TutorialArtifactsTest extends TestCase
             'build/compiler/compile.log' => 'compiler failure', 'build/compiler/project.yml' => '{"sources":[]}',
             'package.log' => 'package failed', 'run.log' => 'run failed', 'composer.lock' => '{"packages":[]}',
             'type-app.json' => '{}', 'app/Main.php' => '<?php // exact source', 'config/app.php' => '<?php return [];'];
+        foreach (['generated-operations.php', 'assembled-application.php',
+            'attempts/1234abcd/app/catalog/service/Reliability.cc', 'attempts/1234abcd/app/catalog/event/AuditChanged.cc',
+            'attempts/1234abcd/app/catalog/event/ProductChanged.cc', 'attempts/1234abcd/vendor/zoujingli/type-orm/src/Connection.cc',
+            'attempts/1234abcd/generated-operations.cc', 'attempts/1234abcd/assembled-application.cc',
+            'attempts/1234abcd/include/php_artifact_app_catalog_service_Reliability_0123456789_decl.h',
+            'attempts/1234abcd/include/php_artifact_vendor_zoujingli_type_orm_src_Connection_0123456789_decl.h',
+            'attempts/1234abcd/include/php_artifact_generated_operations_0123456789_decl.h',
+        ] as $generated) {
+            $files['build/compiler/' . $generated] = '// preserved generated text: ' . $generated;
+        }
+        $excluded = ['vendor/large-sdk.bin', 'var/app.sqlite', 'build/compiler/attempts/1234abcd/app/catalog/service/Reliability.obj',
+            'build/compiler/attempts/1234abcd/vendor/other/Connection.cc', 'build/compiler/attempts/1234abcd/app/other/Reliability.cc',
+            'build/compiler/attempts/1234abcd/include/php_artifact_unrelated_0123456789_decl.h',
+            'build/other/attempts/1234abcd/app/catalog/service/Reliability.cc', 'build/compiler/sdk/generated-operations.cc'];
         try {
             foreach ($files as $path => $bytes) {
                 $this->write($consumer . '/' . $path, $bytes);
             }
-            $this->write($consumer . '/vendor/large-sdk.bin', 'must not be copied');
-            $this->write($consumer . '/var/app.sqlite', 'must not be copied');
+            foreach ($excluded as $path) {
+                $this->write($consumer . '/' . $path, 'must not be copied');
+            }
             $this->write($deployment . '/program only/bin/app', "exported\0program");
             $this->write($deployment . '/tutorial.log', 'interrupted deployment');
             $this->write($deployment . '/tutorial-smoke-process.json', '{"pid":110,"start":"smoke-owner"}');
@@ -40,8 +55,10 @@ final class TutorialArtifactsTest extends TestCase
                 self::assertSame($bytes, file_get_contents($root . '/evidence/' . $path));
                 self::assertSame(hash('sha256', $bytes), $record['files'][$path]['sha256']);
             }
-            self::assertFileDoesNotExist($root . '/evidence/vendor/large-sdk.bin');
-            self::assertFileDoesNotExist($root . '/evidence/var/app.sqlite');
+            foreach ($excluded as $path) {
+                self::assertFileDoesNotExist($root . '/evidence/' . $path);
+                self::assertArrayNotHasKey($path, $record['files']);
+            }
             self::assertSame("exported\0program", file_get_contents($root . '/evidence/deployment/program only/bin/app'));
             self::assertSame('{"pid":110,"start":"smoke-owner"}', file_get_contents($root . '/evidence/deployment/tutorial-smoke-process.json'));
             self::assertSame('{"pid":111,"start":"catalog-owner"}', file_get_contents($root . '/evidence/deployment/tutorial-catalog-process.json'));
