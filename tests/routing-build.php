@@ -263,3 +263,41 @@ PHP);
     }
 }
 echo "路由声明、资源展开、Attribute 与显式配置一致性验证通过。\n";
+
+// 名称解析必须先于签名裁剪：局部类仍参与重名检查，继承动作和别名不丢失。
+$symbolProbe = $directory . '/nested-symbols.php';
+try {
+    $symbolSource = <<<'PHP'
+<?php
+namespace TypeApp\NestedRouteProbe;
+use Type\Core\Http\Attribute\Route as Endpoint;
+use Psr\Http\Message\ServerRequestInterface as Incoming;
+use Psr\Http\Message\ResponseInterface as Reply;
+class ParentController {
+    public function handle(Incoming $request): Reply {
+        if (false) { class Local {} }
+        throw new \RuntimeException('构建不执行动作');
+    }
+}
+#[Endpoint('/inherited')]
+final class Controller extends ParentController {}
+PHP;
+    file_put_contents($symbolProbe, $symbolSource);
+    $symbolConfiguration = ['class' => 'TypeApp\\Generated\\NestedRoutes', 'attributes' => true];
+    $symbolRoutes = $compiler->generate($root, $symbolConfiguration, [$symbolProbe])['routes'];
+    expect(count($symbolRoutes) === 1 && $symbolRoutes[0]['path'] === '/inherited'
+        && $symbolRoutes[0]['action']['arguments'] === [['name' => 'request', 'type' => 'request']]
+        && $symbolRoutes[0]['action']['return'] === 'response', '局部声明、Attribute 别名或继承动作名称解析丢失');
+    file_put_contents($symbolProbe, $symbolSource . "\nclass Local {}\n");
+    $duplicateRejected = false;
+    try {
+        $compiler->generate($root, $symbolConfiguration, [$symbolProbe]);
+    } catch (RuntimeException $error) {
+        $duplicateRejected = str_contains($error->getMessage(), '路由源码类重名');
+    }
+    expect($duplicateRejected, '方法内具名类与顶级类的重名没有被拒绝');
+} finally {
+    if (is_file($symbolProbe)) {
+        unlink($symbolProbe);
+    }
+}

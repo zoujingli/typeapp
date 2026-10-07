@@ -7,6 +7,7 @@ require __DIR__ . '/support.php';
 $root = dirname(__DIR__);
 $consumer = $root . '/build/assembly-consumer-' . bin2hex(random_bytes(4));
 expect(mkdir($consumer . '/app', 0755, true), '无法创建装配消费项目');
+$complete = false;
 try {
     $repositories = [];
     foreach (['type-runtime', 'type-core', 'type-build'] as $package) {
@@ -19,7 +20,7 @@ try {
         'name' => 'type-tests/assembly-consumer', 'type' => 'project', 'license' => 'Apache-2.0',
         'require' => ['zoujingli/type-core' => '~1.0.0@dev', 'type-tests/optional-command' => '~1.0.0@dev'],
         'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => testToolchainVersion('typephp'), 'swoole/phpx' => testToolchainVersion('phpx')],
-        'repositories' => $repositories, 'minimum-stability' => 'dev', 'prefer-stable' => true,
+        'repositories' => [...$repositories, ...localComposerRepositories($root), ['packagist.org' => false]], 'minimum-stability' => 'dev', 'prefer-stable' => true,
         'config' => ['allow-plugins' => false],
     ];
     file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
@@ -30,12 +31,17 @@ try {
     file_put_contents($consumer . '/application.json', json_encode($configuration, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     expect(copy($root . '/examples/commands/Commands.php', $consumer . '/app/Commands.php'), '无法准备消费命令');
     expect(copy($root . '/toolchain.lock.json', $consumer . '/toolchain.lock.json'), '无法准备工具链约束');
-    successful([getenv('COMPOSER_BINARY') ?: 'composer', 'install', '--no-interaction', '--no-scripts', '--no-plugins', '--prefer-dist', '--no-progress'], $consumer);
+    $composerCommand = getenv('TYPE_COMPOSER_PHAR') ? [PHP_BINARY, getenv('TYPE_COMPOSER_PHAR')] : [getenv('COMPOSER_BINARY') ?: 'composer'];
+    successful([...$composerCommand, 'install', '--no-interaction', '--no-scripts', '--no-plugins', '--prefer-dist', '--no-progress'], $consumer);
+    $prepare = [PHP_BINARY, $consumer . '/vendor/bin/type', 'prepare', $consumer . '/application.json'];
+    $development = json_decode(successful($prepare, $consumer), true, 512, JSON_THROW_ON_ERROR);
+    echo successful([PHP_BINARY, $root . '/tests/assembled-native.php', $consumer . '/application.json', '--dev'], $root);
     $builder = [PHP_BINARY, $consumer . '/vendor/bin/type', $consumer . '/application.json'];
     successful($builder, $consumer);
     $binary = $consumer . '/build/commands/type-app';
     echo successful([PHP_BINARY, $root . '/tests/assembled-native.php', $binary]);
     $report = json_decode(file_get_contents($binary . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+    expect($development['declaration-generation'] === $report['declaration-generation'], '禁用模块的开发与原生构建没有使用同一声明生成身份');
     expect(isset($report['production-packages']['type-tests/optional-command'])
         && in_array('type-tests/optional-command', $report['assembly']['disabled-modules'], true), '已安装可选插件没有经过编译或禁用记录不正确');
     foreach (['psr/http-message', 'psr/http-factory', 'psr/http-server-handler', 'psr/http-server-middleware'] as $package) {
@@ -46,25 +52,36 @@ try {
     }
     $configuration['application']['enabled'][] = 'type-tests/optional-command';
     file_put_contents($consumer . '/application.json', json_encode($configuration, JSON_THROW_ON_ERROR));
+    $enabledDevelopment = json_decode(successful($prepare, $consumer), true, 512, JSON_THROW_ON_ERROR);
+    expect($enabledDevelopment['generation'] !== $development['generation'], '启用模块没有改变开发代次');
     successful($builder, $consumer);
     $enabledReport = json_decode(file_get_contents($binary . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+    expect($enabledDevelopment['declaration-generation'] === $enabledReport['declaration-generation'], '启用模块的开发与原生构建没有使用同一声明生成身份');
     expect(($enabledReport['assembly']['services']['greeting']['overrides'] ?? '') === 'type-tests/optional-command:greeting', '应用未覆盖已启用组件的默认服务');
     $previous = getenv('TYPE_APP_NAME');
     putenv('TYPE_APP_NAME');
     try {
-        expect(successful([$binary, 'greet']) === "你好，typeapp！\n", '启用的非目标服务被提前启动');
-        expect(str_contains(successful([$binary, 'help']), 'unavailable'), '启用插件的命令未注册');
-        expect(successful([$binary, 'check']) === "离线配置检查通过。\n", '离线检查触发了外部服务构造');
-        [$status, $stdout, $stderr] = execute([$binary, 'unavailable']);
-        expect($status === 70 && $stdout === '' && str_contains($stderr, '可选外部服务不可用'), '目标命令没有触发自己的服务构造');
+        foreach ([[PHP_BINARY, $consumer . '/vendor/bin/type', 'dev', $consumer . '/application.json'], [$binary]] as $command) {
+            expect(successful([...$command, 'greet']) === "你好，typeapp！\n", '启用的非目标服务被提前启动');
+            expect(str_contains(successful([...$command, 'help']), 'unavailable'), '启用插件的命令未注册');
+            expect(successful([...$command, 'check']) === "离线配置检查通过。\n", '离线检查触发了外部服务构造');
+            [$status, $stdout, $stderr] = execute([...$command, 'unavailable']);
+            expect($status === 70 && $stdout === '' && str_contains($stderr, '可选外部服务不可用'), '目标命令没有触发自己的服务构造');
+        }
     } finally {
         putenv($previous === false ? 'TYPE_APP_NAME' : 'TYPE_APP_NAME=' . $previous);
     }
-    echo "独立安装、禁用模块仍编译、按目标懒构造验证通过。\n";
+    echo "离线独立安装、开发与原生同代声明及行为、禁用模块仍编译、按目标懒构造验证通过。\n";
     file_put_contents($consumer . '.report.json', json_encode(['status' => 'passed', 'components' => $enabledReport['production-packages'],
         'lock-sha256' => hash_file('sha256', $consumer . '/composer.lock'), 'toolchain-sha256' => hash_file('sha256', $consumer . '/toolchain.lock.json'),
         'disabled-artifact-sha256' => $report['sha256'], 'enabled-artifact-sha256' => $enabledReport['sha256'],
+        'disabled-declaration-generation' => $development['declaration-generation'], 'enabled-declaration-generation' => $enabledDevelopment['declaration-generation'],
         'assembly' => $enabledReport['assembly']], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+    $complete = true;
 } finally {
-    removeTestDirectory($consumer);
+    if ($complete) {
+        removeTestDirectory($consumer);
+    } else {
+        fwrite(STDERR, '装配消费失败，复现目录保留：' . substr($consumer, strlen($root) + 1) . "\n");
+    }
 }

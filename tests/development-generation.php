@@ -13,7 +13,8 @@ use Type\Testing\Process;
  */
 function generationCommand(string $root): array
 {
-    return [PHP_BINARY, '-d', 'auto_prepend_file=' . $root . '/tooling/select.php', $root . '/bin/typeapp-prepare', '--json'];
+    // 预算必须作用于真正解析生产源码的子进程，不能只限制外层测试控制器。
+    return [PHP_BINARY, '-d', 'memory_limit=128M', '-d', 'auto_prepend_file=' . $root . '/tooling/select.php', $root . '/bin/typeapp-prepare', '--json'];
 }
 
 /** 通过公开准备命令取得代次；只为本轮 fixture 使用主仓已安装的构建依赖。 */

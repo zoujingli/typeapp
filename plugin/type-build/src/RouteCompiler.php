@@ -580,14 +580,10 @@ final class RouteCompiler
         $classes = [];
         foreach (array_keys($files) as $file) {
             try {
-                // 先从原始树找出类声明并删除方法体，再运行名称解析。名称解析器
-                // 不需要业务表达式；提前裁剪可避免在全量生产源码上同时保留两棵 AST。
-                $nodes = $parser->parse(file_get_contents($file)) ?? [];
+                // 完整解析当前文件的名称后索引所有声明，包括方法内的具名类。
+                // 保存签名副本，不能裁剪原树后再解析已脱离作用域的嵌套声明。
+                $nodes = (new NodeTraverser(new NameResolver()))->traverse($parser->parse(file_get_contents($file)) ?? []);
                 $classNodes = $finder->find($nodes, static fn (Node $node): bool => $node instanceof Node\Stmt\Class_ || $node instanceof Node\Stmt\Interface_);
-                foreach ($classNodes as $classNode) {
-                    $this->compactClass($classNode);
-                }
-                $nodes = (new NodeTraverser(new NameResolver()))->traverse($nodes);
             } catch (\PhpParser\Error $error) {
                 throw new RuntimeException('路由源码解析失败：' . $file . '，' . $error->getMessage(), 0, $error);
             }
@@ -599,28 +595,31 @@ final class RouteCompiler
                 if (isset($classes[strtolower($name)])) {
                     throw new RuntimeException('路由源码类重名：' . $name);
                 }
-                $classes[strtolower($name)] = ['name' => $name, 'node' => $node, 'file' => $file];
+                $classes[strtolower($name)] = ['name' => $name, 'node' => $this->compactClass($node), 'file' => $file];
             }
-            unset($nodes);
+            unset($nodes, $classNodes, $node);
         }
         return [$classes, $files];
     }
 
     /**
-     * 删除路由验证永远不会读取的类成员和方法体，同时保留继承、接口、Attribute
-     * 以及参数和返回类型节点，确保所有现有契约检查仍使用同一 AST 语义。
+     * 只保存类和方法的签名副本，保留继承、接口、Attribute 及类型节点。
+     * 原始树仍供同文件其他声明解析，不能通过原地修改丢失嵌套类。
      */
-    private function compactClass(Node\Stmt\ClassLike $node): void
+    private function compactClass(Node\Stmt\ClassLike $node): Node\Stmt\ClassLike
     {
+        $copy = clone $node;
         $methods = [];
         foreach ($node->stmts as $statement) {
             if (!$statement instanceof Node\Stmt\ClassMethod) {
                 continue;
             }
-            $statement->stmts = null;
-            $methods[] = $statement;
+            $method = clone $statement;
+            $method->stmts = null;
+            $methods[] = $method;
         }
-        $node->stmts = $methods;
+        $copy->stmts = $methods;
+        return $copy;
     }
 
     /**

@@ -6,6 +6,10 @@ require __DIR__ . '/support.php';
 
 if (($argv[1] ?? '') === '--chroot') {
     $command = nativeCommand($argv[2] ?? '', true, ['TYPE_APP_NAME']);
+} elseif (($argv[2] ?? '') === '--dev') {
+    $configuration = realpath($argv[1] ?? '');
+    expect($configuration !== false && is_file(dirname($configuration) . '/vendor/bin/type'), '独立装配应用或开发入口不存在');
+    $command = [PHP_BINARY, dirname($configuration) . '/vendor/bin/type', 'dev', $configuration];
 } elseif (($argv[2] ?? '') === '--php') {
     $binary = realpath($argv[1] ?? '');
     expect($binary !== false, '装配应用不存在');

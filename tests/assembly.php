@@ -124,8 +124,55 @@ try {
         expect($rejected, '无效构造器装配没有拒绝：' . $message);
     }
     echo "构造器多层推导、接口与抽象绑定、具名工厂、应用覆盖及 5 项拒绝验证通过。\n";
+
+    $symbolProbe = $directory . '/nested-symbols.php';
+    $symbolSource = <<<'PHP'
+<?php
+namespace TypeApp\NestedAssemblyProbe;
+use Type\Core\Command as CommandContract;
+use Type\Core\Configuration as Settings;
+final class Product {}
+final class Factory {
+    public static function create(): Product {
+        return new Product();
+    }
+}
+abstract class ParentRunner implements CommandContract {
+    public function __construct(Product $product) {}
+    public function unused(): void { if (false) { class Local {} } }
+}
+final class Runner extends ParentRunner {
+    public function run(Settings $configuration, array $arguments): int { return 0; }
+}
+namespace TypeApp\OtherAssemblyProbe;
+final class Factory { public static function create(): void { global $value; } }
+PHP;
+    $symbolApplication = ['enabled' => ['application'], 'services' => [['id' => 'product', 'class' => 'TypeApp\\NestedAssemblyProbe\\Product',
+        'factory' => ['class' => 'TypeApp\\NestedAssemblyProbe\\Factory', 'method' => 'create']]],
+        'commands' => [['name' => 'test', 'class' => 'TypeApp\\NestedAssemblyProbe\\Runner']]];
+    file_put_contents($symbolProbe, $symbolSource);
+    $symbolResult = $generator->generate($symbolApplication, ['application' => $symbolApplication], [$symbolProbe]);
+    expect($symbolResult['services']['auto.typeapp.nestedassemblyprobe.runner']['dependencies'] === ['product'], '继承构造器或完整工厂类名没有进入服务图');
+    foreach (['global $value;', '$capture = fn () => null;', '\\Locator::current();'] as $unsafeBody) {
+        file_put_contents($symbolProbe, str_replace('return new Product();', '$unused = new class { public function hidden(): void { ' . $unsafeBody . ' } }; return new Product();', $symbolSource));
+        $unsafeRejected = false;
+        try {
+            $generator->generate($symbolApplication, ['application' => $symbolApplication], [$symbolProbe]);
+        } catch (RuntimeException $error) {
+            $unsafeRejected = str_contains($error->getMessage(), '全局取值、服务定位器或闭包捕获');
+        }
+        expect($unsafeRejected, '具名工厂嵌套类中的不安全取值未被拒绝：' . $unsafeBody);
+    }
+    file_put_contents($symbolProbe, $symbolSource . "\nnamespace TypeApp\\NestedAssemblyProbe; class Local {}\n");
+    $duplicateRejected = false;
+    try {
+        $generator->generate($symbolApplication, ['application' => $symbolApplication], [$symbolProbe]);
+    } catch (RuntimeException $error) {
+        $duplicateRejected = str_contains($error->getMessage(), '重复源码符号');
+    }
+    expect($duplicateRejected, '签名裁剪遗漏了方法内具名类重名检查');
 } finally {
-    foreach (['generated.php', 'run.php'] as $name) {
+    foreach (['generated.php', 'run.php', 'nested-symbols.php'] as $name) {
         if (is_file($directory . '/' . $name)) {
             unlink($directory . '/' . $name);
         }

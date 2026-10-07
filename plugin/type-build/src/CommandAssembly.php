@@ -710,9 +710,7 @@ final class CommandAssembly
             if (!is_string($class) || $class === '') {
                 continue;
             }
-            $separator = strrpos($class, '\\');
-            $short = strtolower($separator === false ? $class : substr($class, $separator + 1));
-            $result[$short][strtolower($factory['method'])] = true;
+            $result[strtolower($class)][strtolower($factory['method'])] = true;
         }
 
         return $result;
@@ -745,17 +743,9 @@ final class CommandAssembly
         $interfaces = [];
         foreach (array_keys($files) as $file) {
             try {
-                // 只为具名工厂保留方法体；其余类成员在名称解析前裁剪，降低
-                // 生产源码大文件在并行开发准备中的瞬时 AST 峰值。
-                $nodes = $parser->parse(file_get_contents($file)) ?? [];
-                foreach ($finder->findInstanceOf($nodes, Node\Stmt\ClassLike::class) as $classNode) {
-                    if ($classNode instanceof Node\Stmt\Trait_) {
-                        continue;
-                    }
-                    $short = strtolower($classNode->name?->toString() ?? '');
-                    $this->compactClass($classNode, $factoryBodies[$short] ?? []);
-                }
-                $nodes = (new NodeTraverser(new NameResolver()))->traverse($nodes);
+                // 当前文件完整名称解析后才保存签名副本。保留所有嵌套声明和
+                // 具名工厂完整子树，其余文件无需常驻业务方法体。
+                $nodes = (new NodeTraverser(new NameResolver()))->traverse($parser->parse(file_get_contents($file)) ?? []);
             } catch (\PhpParser\Error $error) {
                 throw new RuntimeException('源码声明解析失败：' . $file . '，' . $error->getMessage(), 0, $error);
             }
@@ -768,28 +758,38 @@ final class CommandAssembly
                     throw new RuntimeException('重复源码符号：' . $name . '，' . $file . ':' . $node->getStartLine());
                 }
                 if ($node instanceof Node\Stmt\Class_) {
-                    $classes[$name] = ['node' => $node, 'parent' => strtolower($node->extends?->toString() ?? ''),
+                    $classes[$name] = ['node' => $this->compactClass($node, $factoryBodies[$name] ?? []), 'parent' => strtolower($node->extends?->toString() ?? ''),
                         'interfaces' => array_map(static fn (Node\Name $name): string => strtolower($name->toString()), $node->implements)];
                 } elseif ($node instanceof Node\Stmt\Interface_) {
                     $interfaces[$name] = array_map(static fn (Node\Name $name): string => strtolower($name->toString()), $node->extends);
                 }
             }
-            unset($nodes);
+            unset($nodes, $node);
         }
 
         return [$classes, $interfaces];
     }
 
-    /** @param array<string, true> $keepMethods */
-    private function compactClass(Node\Stmt\ClassLike $node, array $keepMethods): void
+    /**
+     * 不修改原始声明，具名工厂的完整子树继续供安全扫描使用。
+     * @param array<string, true> $keepMethods
+     */
+    private function compactClass(Node\Stmt\ClassLike $node, array $keepMethods): Node\Stmt\ClassLike
     {
+        $copy = clone $node;
+        $methods = [];
         foreach ($node->stmts as $statement) {
-            if (!$statement instanceof Node\Stmt\ClassMethod || isset($keepMethods[strtolower($statement->name->toString())])) {
+            if (!$statement instanceof Node\Stmt\ClassMethod) {
                 continue;
             }
-            $statement->stmts = null;
+            $method = clone $statement;
+            if (!isset($keepMethods[strtolower($statement->name->toString())])) {
+                $method->stmts = null;
+            }
+            $methods[] = $method;
         }
-        $node->stmts = array_values(array_filter($node->stmts, static fn (Node\Stmt $statement): bool => $statement instanceof Node\Stmt\ClassMethod));
+        $copy->stmts = $methods;
+        return $copy;
     }
 
     private function constructor(string $class, array $classes, array $seen = []): ?Node\Stmt\ClassMethod
