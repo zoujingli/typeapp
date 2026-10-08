@@ -8,7 +8,7 @@ RC14 的四平台默认原生 CI 已在同一源码基线上通过，覆盖 MySQ
 
 ## 安装与版本
 
-本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-orm)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
@@ -16,7 +16,7 @@ composer config prefer-stable true
 composer require zoujingli/type-orm:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。运行时通过 `type-runtime` 传递硬依赖 `ext-swoole >=6.2 <7`，PDO 和所选 PDO 驱动仍是数据库访问的直接依赖。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/zoujingli/type-orm/blob/v1.0.0-rc.14/README.md)为准；当前源码教程见[开发文档](https://iots.top/next/#/guide/plugins/type-orm)。文中标注的 `main` 新接口需要同批次开发组件，安装方法和升级核对统一见[版本与接口依据](https://iots.top/next/#/guide/components?id=版本与接口依据)。提交应用的 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。
 
 Database 通过 type-runtime 的有界池按作用域借还会话。Connection 不返回底层 PDO，支持 query、execute、lastInsertId 和固定连接的事务闭包；关闭租约或作用域后不能继续使用。归还先处理流和事务，只有驱动确认完整重置后才能保留物理连接。PostgreSQL 使用 `DISCARD ALL` 后恢复配置基线；MySQL 和 SQLite 当前归还即关闭，下一次借用重建。
 
@@ -152,7 +152,7 @@ sequenceDiagram
 
 ## AOT 与运行要求
 
-基础组件只要求 PDO 与 runtime，不隐式选择具体数据库驱动，不要求 core、queue 或 Redis。实际 MySQL/PostgreSQL/SQLite 应另装对应驱动；AOT 运行要包含所选 PDO 模块和其真实传递共享库、匹配 PHPX/libphp。静态内置驱动与可卸载模块的客观差异以 embed 验证记录为准。
+组件依赖 PDO 与 runtime，应用另选一个数据库驱动。TypePHP 编译 ORM、驱动及业务 Model；单程序构建从匹配的静态 SDK 链接 PDO、数据库客户端、PHPX/libphp 与 Swoole。部署机准备对应数据库服务或 SQLite 数据目录，无需安装 PDO 扩展。共享库开发验收和静态交付分开核对，见[构建与部署](https://iots.top/next/#/guide/deployment)。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

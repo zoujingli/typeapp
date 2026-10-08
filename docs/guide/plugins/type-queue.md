@@ -45,9 +45,11 @@ composer config prefer-stable true
 composer require zoujingli/type-queue:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-queue/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
 
 ## 应用自动装配
+
+本节的统一 `application.jobs` 装配属于开发版，需要当前 `type-build` 与运行组件配套使用；RC14 使用其包内的登记入口。首次理解投递与处理可直接运行下方[底层接口与角色示例](#底层接口与角色示例)。
 
 应用安装 `type-core`，开发依赖安装 `type-build`；队列组件本身仍不强制依赖 core。将实现 `Job::handle(JobContext $context, array $payload): void` 的业务类列入生产 sources，在 `type-app.json` 声明：
 

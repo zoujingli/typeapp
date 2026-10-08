@@ -33,7 +33,7 @@ TypePHP 将以上生产实现整体编译；非系统原生运行库由构建校
 
 ## 安装与版本
 
-本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-core)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
@@ -41,7 +41,7 @@ composer config prefer-stable true
 composer require zoujingli/type-core:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/zoujingli/type-core/blob/v1.0.0-rc.14/README.md)为准；当前源码教程见[开发文档](https://iots.top/next/#/guide/plugins/type-core)。文中标注的 `main` 新接口需要同批次开发组件，安装方法和升级核对统一见[版本与接口依据](https://iots.top/next/#/guide/components?id=版本与接口依据)。提交应用的 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。
 
 - `Configuration` 保存不可变的字符串快照，环境变量在应用启动时读取，合法空字符串和 `0` 不被默认值覆盖。
 - `Command::run` 接收配置快照与命令参数，返回进程退出码；业务失败可抛异常。
@@ -112,7 +112,7 @@ function main(): void
 
 ## AOT 与运行要求
 
-Composer 安装核心必须满足 `ext-swoole >=6.2 <7`，Swoole 是通信和基础并发的硬依赖。HTTP、WebSocket、TCP、UDP 网络入口复用 Swoole 原生能力；允许固定官方内置 PHP 库。各协议按目标平台实际构建能力选择 Server、协程 Server 或 Socket，分别完成原生验收。AOT 仍需匹配的 PHPX/libphp 与实际使用的原生扩展，PSR 接口及整个核心源码一起编译。
+源码开发必须满足 `ext-swoole >=6.2 <7`。HTTP、WebSocket、TCP、UDP 复用 Swoole 原生能力，各协议按目标平台选择并验收适用的 Server、协程 Server 或 Socket。TypePHP 编译核心与 PSR 生产源码；单程序构建从匹配 SDK 静态链接 PHPX、libphp、Swoole 及实际扩展，部署端无需安装这些扩展。
 
 当前 `HttpServerInterface` 只管理 HTTP 请求与响应。`SwooleServer` 对带 `Upgrade` 的请求返回 `501 / upgrade_not_supported` 并关闭连接。需要 HTTP 与 WebSocket 共用服务和端口时，由一个 `WebSocket\Server` 实例持有监听，通过 `onRequest()` 显式处理普通 HTTP 请求。
 
@@ -138,7 +138,7 @@ WSS 通过 `open_ssl=true` 以及成对的 `ssl_cert_file`/`ssl_key_file` 启用
 
 服务端可对 `subprotocol` 与 `allowed_origins` 设策略：**Swoole 原生的 `websocket_subprotocol` 会无条件回显配置值**（客户端不发或发其他值时也回显），因此本组件在握手完成时另行核对客户端是否真的提供该子协议，未提供按 1002 关闭；Origin 存在时必须与白名单精确匹配，不匹配按 1008 关闭。**Origin 缺失不直接拒绝**——那是非浏览器标准工具的常见情形，`onOpen` 第三参数为 `false` 交由业务鉴权。
 
-可编译示例如 [examples/websocket/main.php](https://github.com/zoujingli/typeapp/blob/main/examples/websocket/main.php)。握手、分片、二进制、控制帧、上限、HTTP 共存、子协议/Origin、WSS 与消息作用域均由 Swoole 原生入口承载；各平台的 PHP、AOT、TLS 和资源回收结果按实际构建产物分别记录。MQTT over WS 由 `type-mqtt` 自行复用 Swoole，不依赖本组件。
+可编译示例如 [examples/websocket/main.php](https://github.com/zoujingli/typeapp/blob/main/examples/websocket/main.php)。握手、分片、二进制、控制帧、上限、HTTP 共存、子协议/Origin、WSS 与消息作用域均由 Swoole 原生入口承载；各平台的 PHP、AOT、TLS 和资源回收结果按实际构建产物分别记录。MQTT over WS 由 `type-mqtt` 的 Broker 直接使用 Swoole WebSocket Server，未接入这里的 WebSocket 包装；当前 MQTT 对 core 的依赖用于受管 HTTP 客户端。
 
 ## TCP
 

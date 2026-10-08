@@ -30,7 +30,7 @@ composer config prefer-stable true
 composer require zoujingli/type-cache:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-cache/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
 
 ## 最小使用示例
 
@@ -185,6 +185,8 @@ PSR 的 TTL 使用秒，也支持 DateInterval；null 使用配置默认，构�
 SignedSerializer 保留 PHP 类型；对象必须提前加载并登记受信类，资源拒绝。HMAC 绑定命名空间、代次、键、类型策略和完整载荷；篡改、错误密钥和未知类型按未命中。登记对象的序列化钩子属于应用可信代码，密钥不能进入构建产物。
 
 ## 编译期缓存声明
+
+下述原 Service 转换属于开发版，RC14 按其包内生成入口使用。直接调用上文 `TypedCache` 或 `SimpleCache` 不需要声明转换。
 
 `#[Cacheable]` 和 `#[CacheEvict]` 由标准入口在加载前转换原 Service 方法，普通调用、手动构造和类内互调遵守相同策略。cache 指向 TypedCache 参数，业务标量参数须进入 key；活动事务绕过共享缓存且不填充，失效只在对应数据源最外层确认提交后执行。只有缓存依赖的应用不需要安装 ORM。详见[操作声明](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)。
 

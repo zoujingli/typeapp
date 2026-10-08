@@ -6,7 +6,7 @@ MySQL 驱动采用 PDO，连接时明确启用异常、原生预处理和 utf8mb
 
 ## 安装与版本
 
-本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-orm-mysql)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
@@ -14,7 +14,7 @@ composer config prefer-stable true
 composer require zoujingli/type-orm-mysql:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/zoujingli/type-orm-mysql/blob/v1.0.0-rc.14/README.md)为准；当前源码教程见[开发文档](https://iots.top/next/#/guide/plugins/type-orm-mysql)。文中标注的 `main` 新接口需要同批次开发组件，安装方法和升级核对统一见[版本与接口依据](https://iots.top/next/#/guide/components?id=版本与接口依据)。提交应用的 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。
 
 仅依赖 type-orm 及其运行时，不要求 PostgreSQL、SQLite 或 HTTP 核心。密码不进入公开错误信息；底层错误保留为内部异常原因。
 
@@ -102,7 +102,7 @@ flowchart LR
 
 ## AOT 与运行要求
 
-Composer 声明 `ext-pdo_mysql`；除 `type-orm` 与 `type-runtime` 外不要求其他驱动。AOT 需要匹配的 PDO MySQL 模块、其实际链接客户端库及 PHPX/libphp，客户端库可能由不同发行版采用 mysqlnd 或其他实现，按产物清单打包而非硬编码库名。
+源码开发需要 `ext-pdo_mysql`，Composer 自动解析 `type-orm` 与 `type-runtime`。发布 `mysql` 单程序时，从匹配静态 SDK 链接 PDO MySQL、客户端和公共原生库；部署机只准备 MySQL 服务与连接配置。客户端实现及系统库以实际构建清单为准，不从开发 PHP 的模块列表推定。
 
 当 SDK 把 mysqlnd 作为共享模块提供时，在构建配置当前平台的 `runtime.extensions` 中声明 `mysqlnd`，真实 embed 探针会将它和 `pdo_mysql` 一起加载并记录摘要。独立消费者测试按实际 SDK 的 mysqlnd 能力生成这一声明；使用其他客户端库的 SDK 不添加此模块。
 

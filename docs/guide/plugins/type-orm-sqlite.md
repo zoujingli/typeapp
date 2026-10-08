@@ -16,7 +16,7 @@ composer config prefer-stable true
 composer require zoujingli/type-orm-sqlite:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-orm-sqlite/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
 
 ## 最小使用示例
 
@@ -151,7 +151,7 @@ SQLite 没有 MySQL/PostgreSQL 的行锁语义，`lockForUpdate()` 不能模拟�
 
 ## 编译与验证
 
-AOT 携带实际 PDO SQLite、SQLite 库与匹配 PHPX/libphp。静态内置模块不能靠删除 ini 卸载；应以真实 embed 模块检查为准。
+生产选择 `sqlite` profile 的静态 SDK，将 PDO SQLite、SQLite 及公共非系统库链接进主程序。部署端准备外置配置与可写数据目录，无需安装 SQLite 命令行工具或数据库服务器；更换数据库需重新选择对应 profile 的程序。
 
 本仓库验证入口：`composer build:sqlite`、`composer test:sqlite`、`composer test:sqlite-consumer`。`php tests/orm-suite-consumer.php sqlite` 验证完整独立消费，原生模式加 `--native`。
 

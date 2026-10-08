@@ -1,5 +1,7 @@
 # type-mqtt · MQTT
 
+[返回组件总览](../components.md)
+
 `type-mqtt` 是 TypeApp 自研的独立 MQTT 服务端组件，负责连接、协议状态机和 Topic 路由。认证与 Topic 权限由消费应用提供；报文载荷的业务含义也由应用解释。运行不依赖 EMQX，也不提供 EMQX 专有管理 API。
 
 默认只做 QoS 0 转发。QoS 1/2、持久会话、保留、遗嘱、共享订阅和跨节点路由，要另接 PostgreSQL 同步存储。当前还不能称为已完整通过标准验收的 Broker。
@@ -33,7 +35,7 @@ composer config prefer-stable true
 composer require zoujingli/type-mqtt:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。传递依赖由 Composer 自动解析，提交应用的 `composer.lock` 固定实际版本。源码与包说明见 [type-mqtt 仓库](https://github.com/zoujingli/type-mqtt)。启用 PostgreSQL 持久后端时，在上述基础上添加同版本驱动：
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-mqtt/blob/v1.0.0-rc.14/README.md)为准。开发版按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。启用 PostgreSQL 持久后端时，在上述 RC 安装基础上添加同版本驱动：
 
 ```sh
 composer require zoujingli/type-orm-pgsql:1.0.0-rc.14
@@ -209,4 +211,4 @@ sequenceDiagram
 
 专题回归不能当作完整标准验收。WS/WSS、mTLS、持久后端、多节点接管及协议容量均由 MQTT 组件按目标平台独立验证。真实设备、业务接收回执和下行指令属于应用接入验收，成品案例见[物联网中心](../iot-center.md)。
 
-`IOT_MQTT_*` 是业务配置，与本页独立示例的 `MQTT_*` 不同。接口以安装副本的 `plugin/type-mqtt/README.md` 为准。
+`IOT_MQTT_*` 是物联中心的业务配置，与本页独立示例的 `MQTT_*` 不同。独立应用按安装副本的 `vendor/zoujingli/type-mqtt/README.md` 核对接口；主仓维护位置是 `plugin/type-mqtt/README.md`。

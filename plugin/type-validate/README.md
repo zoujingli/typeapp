@@ -4,7 +4,7 @@
 
 ## 安装与版本
 
-本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-validate)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
@@ -12,7 +12,7 @@ composer config prefer-stable true
 composer require zoujingli/type-validate:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/zoujingli/type-validate/blob/v1.0.0-rc.14/README.md)为准；当前源码教程见[开发文档](https://iots.top/next/#/guide/plugins/type-validate)。文中标注的 `main` 新接口需要同批次开发组件，安装方法和升级核对统一见[版本与接口依据](https://iots.top/next/#/guide/components?id=版本与接口依据)。提交应用的 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。
 
 ```php
 <?php
@@ -87,7 +87,7 @@ flowchart LR
 
 ## AOT 与运行要求
 
-独立安装依赖 `type-runtime`，因此继承其 Swoole 要求；纯字段校验不需要创建协程，也无需 PDO 或 Redis 服务。完整生产源码与调用方 DTO 一起 AOT，原生运行库按实际产物清单交付。不能以 PHP 行为通过代替生成规则与业务闭包的原生验收。
+独立安装依赖 `type-runtime`，因此开发 PHP 需满足其 Swoole 要求；纯字段校验不需要创建协程，也无需 PDO 或 Redis 服务。Schema、DTO 和业务闭包一起 AOT，所需非系统运行库静态链接。校验只是输入边界，权限、唯一约束及持久化仍由应用负责。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

@@ -242,6 +242,7 @@ body:has(.hero) { --content-max-width: 1120px; }
 .preview-editor { display: flex; gap: 17px; height: 191px; padding: 24px 20px; background: var(--night); }
 .preview-gutter { flex-shrink: 0; color: var(--night-muted); opacity: .6; font: 11px/28px ui-monospace, SFMono-Regular, Consolas, monospace; user-select: none; }
 .markdown-section .preview-code, .markdown-section .preview-command { display: block; min-width: 0; margin: 0; padding: 0; border-radius: 0; background: transparent; color: var(--night-text); font: 12px/28px ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; }
+.markdown-section .preview-command { line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .preview-code::after, .preview-command::after { content: ""; display: inline-block; width: 7px; height: 14px; margin-left: 2px; background: var(--accent); vertical-align: -2px; opacity: 0; }
 .code-preview[data-phase="source"] .preview-code::after,
 .code-preview[data-phase="build"] .preview-command::after { opacity: 1; }

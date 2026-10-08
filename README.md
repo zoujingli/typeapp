@@ -30,7 +30,7 @@ TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typep
 
 构建组件另附 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 共享模块，用于开发及共享库回归；生产单程序使用静态 SDK。当前固定 6.3 开发快照 `4aff74a`，运行时版本字符串为 `6.3.0RC1`，不是正式 6.3.0。模块 ABI 与平台实测范围分别核对，见[平台与验收](docs/guide/platforms.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
 
-`v1.0.0-rc.14` 已通过新版工具链的四平台完整回归、十二个单程序验收及公开消费，并完成主仓、15 个组件和应用模板的 Release。16 个 Packagist 版本及公开下载摘要已回读核对。准确源码、运行 ID 与未测范围见[升级验收记录](docs/evidence/typephp-upgrade-0.9.4.md)。RC 仍是预发布版本；RC13 的标签与原始证据保留作为历史对照。
+RC14 的四平台回归、十二个单程序、组件与模板分发及公开消费结果见[升级验收记录](docs/evidence/typephp-upgrade-0.9.4.md)。RC 仍是预发布版本；当前 `main` 的后续改动按各自证据记录，不自动继承 RC14 的验收结论。
 
 ## 快速开始
 
@@ -44,6 +44,8 @@ php dev.php check
 安装后提交应用的 `composer.lock`，固定实际依赖版本。上述 RC14 使用[发布通道教程](https://iots.top/#/guide/tutorial)；当前源码的[连续目录教程](docs/guide/tutorial.md)从同批开发候选创建第二模块，再演练缓存、事件、Outbox、队列与调度，不能混用旧发布组件。生产构建还须准备目标平台的静态 SDK，按[构建与部署](docs/guide/deployment.md)执行 `composer build`。
 
 本地模板与 Git tag 创建方式见[快速开始](docs/guide/quickstart.md)。`dev-main` 跟进子仓开发分支，不一定与当前 RC 相同；按版本安装才能复现本批次。
+
+独立使用组件时，从[组件参考](docs/guide/components.md)选择公开入口与第一项练习，再按[版本与接口依据](docs/guide/components.md#版本与接口依据)固定完整依赖。组件 README 提供可独立运行的起点，教程继续说明配置、失败与清理；组合为应用时统一接入执行作用域和业务 Service。
 
 运行本仓库附带的成品案例物联中心，见[物联网中心](docs/guide/iot-center.md)。
 
@@ -72,6 +74,7 @@ HTTP 路由来自控制器 `#[Route]` 或 `config/route.php`；`#[Transactional]
 | 读者 | 入口 |
 | --- | --- |
 | 开始使用 | [公开指南](https://iots.top) · [环境与依赖](docs/guide/environment.md) · [快速开始](docs/guide/quickstart.md) · [连续目录教程](docs/guide/tutorial.md) |
+| 组合组件 | [15 个组件与练习](docs/guide/components.md) · [数据库与模型](docs/guide/database.md) · [缓存、事件与可靠任务](docs/guide/catalog-reliability.md) |
 | 运行与交付 | [系统架构](docs/guide/architecture.md) · [性能与调优](docs/guide/performance.md) · [构建与部署](docs/guide/deployment.md) |
 | 成品案例 | [物联网中心](docs/guide/iot-center.md) |
 | 许可证 | [LICENSE](LICENSE) · [NOTICE](NOTICE) · [许可证说明](docs/guide/licensing.md) |

@@ -6,7 +6,7 @@ SQLite 驱动支持本地文件和普通 `:memory:`，每连接显式设置外�
 
 ## 安装与版本
 
-本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-orm-sqlite)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
@@ -14,7 +14,7 @@ composer config prefer-stable true
 composer require zoujingli/type-orm-sqlite:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/zoujingli/type-orm-sqlite/blob/v1.0.0-rc.14/README.md)为准；当前源码教程见[开发文档](https://iots.top/next/#/guide/plugins/type-orm-sqlite)。文中标注的 `main` 新接口需要同批次开发组件，安装方法和升级核对统一见[版本与接口依据](https://iots.top/next/#/guide/components?id=版本与接口依据)。提交应用的 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。
 
 普通内存库每条连接独立，不能把多连接池当作共享内存数据库；需要持续使用同一内存库时应选择单连接，并理解归还后销毁连接会同时销毁库。文件库使用绝对路径及已存在的本地目录，不承诺在共享网络文件系统上运行 WAL。
 
@@ -83,7 +83,7 @@ flowchart LR
 
 ## AOT 与运行要求
 
-Composer 声明 `ext-pdo_sqlite`，无 HTTP 或服务器型数据库依赖。AOT 需要实际嵌入/共享 PDO SQLite 及 SQLite 库、匹配 PHPX/libphp；不能假设静态内置的 SQLite 可通过删除 ini 卸载。文件数据库放独立可写本地数据卷，代码镜像只读不代表数据库不需要持久化。
+源码开发需要 `ext-pdo_sqlite`。发布 `sqlite` 单程序时，从匹配静态 SDK 链接 PDO SQLite、SQLite 与公共原生库；部署机无需数据库服务器。文件数据库放在独立可写本地目录，包含运行生成的 WAL/SHM，备份与持久化由应用部署管理。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

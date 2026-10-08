@@ -35,9 +35,11 @@ composer config prefer-stable true
 composer require zoujingli/type-scheduler:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-scheduler/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
 
 ## 应用自动装配
+
+本节的统一 `application.schedules` 装配属于开发版，需要当前 `type-build` 与运行组件配套使用；RC14 使用其包内的登记入口。首次理解调度行为可直接运行下方[底层接口与角色示例](#底层接口与角色示例)。
 
 应用安装 `type-core`，开发依赖安装 `type-build`；scheduler 组件本身不强制依赖 core。Task 保持 `run(TaskContext $context): array`，具体类型构造依赖自动推导。接口和标量歧义使用统一 `application.bindings`，不手写任务工厂列表。
 
@@ -202,7 +204,7 @@ echo json_encode($definition->due(300, 300), JSON_THROW_ON_ERROR) . "\n";
 
 输出分别是 `[180,240,300]` 和 `[]`，数值单位为 Unix UTC 秒。第一个区间 `(120,300]` 有三个到期时刻；第二个游标已经推进至本轮时间，没有重复执行空间。`due()` 返回的是待执行计划，不会自行保存游标。
 
-回到文件示例后，把计划临时改为 `IntervalSchedule(1)`，执行 `once` 再看 `history`，核对 `scheduled_at`、`started_at`、`finished_at` 和 `state`。完成后先停止该示例角色，再清理专属练习目录；生产状态文件不能当缓存删除，删除游标可能重新选择历史计划。
+回到文件示例后，把计划临时改为 `IntervalSchedule(1)`，重复执行 `php dev.php "$TYPE_SCHEDULER_STATE"` 观察 tick 结果。需要 `once/history/work` 命令时，先按下方[命令、停止与观测](#命令、停止与观测)接入 `SchedulerConsole`，再核对 `scheduled_at`、`started_at`、`finished_at` 和 `state`。完成后先停止该示例角色，再清理专属练习目录；生产状态文件不能当缓存删除，删除游标可能重新选择历史计划。
 
 ## 持久状态与中断
 

@@ -16,7 +16,7 @@ composer config prefer-stable true
 composer require zoujingli/type-orm-pgsql:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-orm-pgsql/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
 
 ## 最小使用示例
 
@@ -127,7 +127,7 @@ id 列应由数据库 identity 或默认值生成。返回的是所选列的行�
 
 指定 schema 会在连接初始化时设置 search_path；指定 databaseRole 会 SET ROLE。应用若需要多个身份，使用 `DatabaseManager` 以名字登记驱动，不能每次请求临时拼接不可信标识符。
 
-`query/execute/raw/rawQuery` 采用同一会话边界。归还时先关闭结果和事务，执行官方 `DISCARD ALL` 并恢复配置的角色、schema、时区、DateStyle 与只读用途，成功后允许物理连接进入有界空闲池；重置失败、SQL 错误或未知提交则关闭退役。跨进程、Fiber 或协程使用已借出的 Connection 会被拒绝。
+`query/execute/raw/rawQuery` 采用同一所有权与事务边界。普通查询归还时关闭结果和事务，执行官方 `DISCARD ALL` 并恢复角色、schema、时区、DateStyle 与只读用途，成功后允许物理连接进入有界空闲池；显式 `raw/rawQuery` 会标记当前会话退役。重置失败、SQL 错误或未知提交同样关闭退役。跨进程、Fiber 或协程使用已借出的 Connection 会被拒绝。
 
 ## 事务与迁移
 
@@ -155,7 +155,7 @@ CA 内容摘要属于连接身份，证书变更后创建新驱动并轮换代�
 
 ## 编译与验证
 
-AOT 运行包含 pdo_pgsql、实际 libpq 及传递依赖、匹配 PHPX/libphp；外部 CA 是运行配置。以实际产物清单交付库，不复制另一平台的模块。
+生产选择 `pgsql` profile 的静态 SDK，将 PDO PostgreSQL、libpq 及其非系统依赖链接进主程序。部署端准备 PostgreSQL 服务、连接配置及按需使用的 CA，无需手动安装 libpq 或 PDO 扩展。实际系统加载项仍以该平台产物清单为准。
 
 本仓库验证入口：`composer build:pgsql`、`composer test:pgsql`、`composer test:pgsql-consumer`。独立三库行为对照为 `php tests/orm-suite-consumer.php pgsql`，原生模式加 `--native`。
 

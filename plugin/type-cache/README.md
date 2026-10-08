@@ -4,7 +4,7 @@
 
 ## 安装与版本
 
-本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-cache)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
@@ -12,7 +12,7 @@ composer config prefer-stable true
 composer require zoujingli/type-cache:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/zoujingli/type-cache/blob/v1.0.0-rc.14/README.md)为准；当前源码教程见[开发文档](https://iots.top/next/#/guide/plugins/type-cache)。文中标注的 `main` 新接口需要同批次开发组件，安装方法和升级核对统一见[版本与接口依据](https://iots.top/next/#/guide/components?id=版本与接口依据)。提交应用的 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。
 
 ```php
 <?php
@@ -118,11 +118,11 @@ flowchart TD
 
 `TypedCache/CacheItem/CacheReader/Codec/JsonCodec` 负责类型化接口与回源策略；`NamespaceStore` 负责 Redis 代次和索引；`SimpleCache/SignedSerializer/SerializedPayload` 负责 PSR-16 类型往返与可信载荷；`Attribute/Cacheable/CacheEvict` 只表达构建期调用策略，不持有运行时缓存。
 
-示例在独立 `readme-example/local/profile-v1` 命名空间写入有限 TTL 数据。`Cacheable` 的 cache 必须指向 `TypedCache` 参数，业务标量参数全部进入 key 模板；只有通过 `OperationCompiler` 生成的包装才生效。`#[CacheEvict(cache: 'cache', all: true)]` 仅切换该缓存命名空间；与事务组合在最外层提交确认后失效，失败沿用 `AfterCommitException`，不重跑已提交业务。`Cacheable` 不与事务或同方法 CacheEvict 混用；具体限制见操作生成说明。
+示例在独立 `readme-example/local/profile-v1` 命名空间写入有限 TTL 数据。`Cacheable` 的 cache 必须指向 `TypedCache` 参数，业务标量参数全部进入 key 模板。当前开发版由标准入口在加载前转换原 Service，普通调用、手动构造和类内互调都执行同一策略；RC14 使用其既有生成入口。`#[CacheEvict(cache: 'cache', all: true)]` 仅切换该缓存命名空间；与事务组合在最外层提交确认后失效，失败沿用 `AfterCommitException`，不重跑已提交业务。`Cacheable` 不与事务或同方法 CacheEvict 混用；具体限制见[操作声明](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)。
 
 ## AOT 与运行要求
 
-依赖 `type-redis`、`type-runtime` 与 PSR-16，不要求 ORM 或 core；声明事务组合时应用另装 ORM/build。PSR 接口与已登记对象实现一起 AOT，运行包含 phpredis、PHPX/libphp 和实际原生库。`unserialize` 仅能调用已编译且明确允许的类，不允许缓存载荷驱动 PHP 源码加载。
+依赖 `type-redis` 及其 runtime、phpredis 依赖和 PSR-16；声明事务组合时应用另装 ORM/build。PSR 接口、codec 和已登记对象一起 AOT，phpredis 等非系统库静态链接进主程序；缓存 Redis 服务独立提供。`unserialize` 仅能调用已编译且明确允许的类，不允许缓存载荷驱动 PHP 源码加载。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

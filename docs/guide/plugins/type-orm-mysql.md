@@ -16,7 +16,7 @@ composer config prefer-stable true
 composer require zoujingli/type-orm-mysql:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-orm-mysql/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
 
 ## 最小使用示例
 
@@ -151,7 +151,7 @@ Scope 关闭归还租约，Database 由应用所有者关闭。MySQL 当前每�
 
 ## 编译与验证
 
-AOT 包含 PDO MySQL、实际客户端传递库和匹配 PHPX/libphp。SDK 将 mysqlnd 作为共享模块时，还需在平台 `runtime.extensions` 声明 mysqlnd；不能假定所有发行版都采用相同客户端库。
+生产选择 `mysql` profile 的静态 SDK，将 PDO MySQL、客户端及公共非系统库链接进主程序；部署端只需 MySQL 服务与连接配置。共享库开发 SDK 若将 mysqlnd 单独提供，还需在 `runtime.extensions` 声明它。这是构建输入约定，不是给单程序部署者安装 `.so/.dll` 的步骤。
 
 本仓库验证入口：`composer build:mysql`、`composer test:mysql`、`composer test:mysql-consumer`。三库对照使用 `php tests/orm-suite-consumer.php mysql`，原生模式加 `--native`；这些检查需要专属数据库环境。
 

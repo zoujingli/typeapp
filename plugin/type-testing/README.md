@@ -20,7 +20,7 @@ flowchart LR
 
 ## 安装与版本
 
-本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-testing)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
@@ -28,7 +28,7 @@ composer config prefer-stable true
 composer require --dev zoujingli/type-testing:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/zoujingli/type-testing/blob/v1.0.0-rc.14/README.md)为准；当前源码教程见[开发文档](https://iots.top/next/#/guide/plugins/type-testing)。文中标注的 `main` 新接口需要同批次开发组件，安装方法和升级核对统一见[版本与接口依据](https://iots.top/next/#/guide/components?id=版本与接口依据)。提交应用的 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。
 
 ```php
 <?php
@@ -90,7 +90,7 @@ Unix 使用非阻塞管道与 SIGTERM／SIGKILL。Windows 使用 NUL、临时输
 
 ## AOT 与运行要求
 
-通常作为 PHP 开发工具执行，仅需其 Composer 声明的 runtime 与 JSON 能力。确需编译独立验收程序时，本包有 `extra.type.sources` 可纳入整体 AOT，运行同样需要 PHPX/libphp；这不要求被测生产应用携带 PHP 测试源码或测试框架。
+通常作为 PHP 开发工具执行，需满足 runtime、JSON 及传递的 Swoole 要求。测试代码留在开发环境，被测部署程序仍是一个主程序和外置配置。确需编译独立验收程序时，单独声明其生产输入并通过 `extra.type.sources` 纳入 testing；不要为此改变业务应用的 `require-dev` 边界。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

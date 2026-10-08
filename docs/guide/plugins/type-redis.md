@@ -41,7 +41,7 @@ composer config prefer-stable true
 composer require zoujingli/type-redis:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-redis/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
 
 ## 最小使用示例
 
@@ -189,7 +189,7 @@ try {
 
 ## 编译与验证
 
-AOT 包含 phpredis、匹配 PHPX/libphp 和实际 TLS 依赖。本仓库可运行 `composer test:redis`、`composer test:redis-security`；原生先 `composer build:redis` 再 `composer test:redis-native`，使用专属 Redis 环境。
+单程序构建将 phpredis 和实际 TLS 等非系统依赖静态链接，部署者提供 Redis 服务与连接配置。角色使用范围、认证和用途容量在启动时确定，连接按需借用。本仓库可运行 `composer test:redis`、`composer test:redis-security`；原生先 `composer build:redis` 再 `composer test:redis-native`，使用专属 Redis 环境。
 
 继续阅读：[缓存](type-cache.md)、[队列](type-queue.md)、[调度](type-scheduler.md)。
 

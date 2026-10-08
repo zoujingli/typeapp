@@ -8,7 +8,7 @@
 
 ## 安装与版本
 
-通过 Packagist 在应用根安装候选版本，Composer 自动解析传递依赖，无需额外登记 VCS 仓库：
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-mqtt)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖：
 
 ```sh
 composer config minimum-stability RC
@@ -16,7 +16,7 @@ composer config prefer-stable true
 composer require zoujingli/type-mqtt:1.0.0-rc.14
 ```
 
-本组件使用 Apache-2.0，完整材料见 LICENSE 与 NOTICE。RC 不代表稳定版本或全部协议符合性验收已通过；提交应用的 composer.lock 固定实际版本与来源。跟进开发分支时可选择 `dev-main`，它不一定与本批次 tag 相同。
+本组件使用 Apache-2.0，完整材料见 LICENSE 与 NOTICE。RC 不代表稳定版本或全部协议符合性验收已通过；RC14 接口以 [RC14 包文档](https://github.com/zoujingli/type-mqtt/blob/v1.0.0-rc.14/README.md)为准，当前源码教程见[开发文档](https://iots.top/next/#/guide/plugins/type-mqtt)。使用开发能力时按[版本与接口依据](https://iots.top/next/#/guide/components?id=版本与接口依据)安装同批次组件，并提交 `composer.lock` 固定实际来源。
 
 ## 最小离线示例：连接字段与消息编码
 

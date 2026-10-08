@@ -20,7 +20,7 @@
     name: 'status'
 )]</code>
       </div>
-      <div class="preview-terminal" aria-hidden="true"><span class="preview-prompt">$</span><code class="preview-command">php vendor/bin/type build</code></div>
+      <div class="preview-terminal" aria-hidden="true"><span class="preview-prompt">$</span><code class="preview-command">php vendor/bin/type build type-app.json</code></div>
       <div class="preview-flow"><img src="assets/build-flow.svg" width="420" height="104" alt="应用、组件与生产依赖，经 TypePHP 全量编译生成原生入口。"><span class="preview-signal" aria-hidden="true"></span></div>
       <div class="preview-footer"><span class="preview-status">TypePHP 全量编译</span><a href="#/guide/architecture">查看系统架构 <span aria-hidden="true">↗</span></a></div>
     </figure>

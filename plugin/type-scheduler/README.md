@@ -6,7 +6,7 @@
 
 ## 安装与版本
 
-本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-scheduler)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
@@ -14,9 +14,11 @@ composer config prefer-stable true
 composer require zoujingli/type-scheduler:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/zoujingli/type-scheduler/blob/v1.0.0-rc.14/README.md)为准；当前源码教程见[开发文档](https://iots.top/next/#/guide/plugins/type-scheduler)。文中标注的 `main` 新接口需要同批次开发组件，安装方法和升级核对统一见[版本与接口依据](https://iots.top/next/#/guide/components?id=版本与接口依据)。提交应用的 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。
 
 ## 应用自动装配
+
+以下统一 `application.schedules` 入口属于当前开发版，尚未包含 RC14。配套使用同批次的构建器与运行组件；独立接入可先运行下方[底层 Definition 注册与执行](#底层-definition-注册与执行)，确认计划选择、持久状态及收尾。
 
 应用安装 `type-core`，开发依赖安装 `type-build`；scheduler 组件本身不强制依赖 core。Task 保持 `run(TaskContext $context): array`，具体类型构造依赖自动推导。接口和标量歧义使用统一 `application.bindings`，不手写任务工厂列表。
 
@@ -187,7 +189,7 @@ flowchart LR
 
 ## AOT 与运行要求
 
-Composer 包含 runtime、Redis、`dragonmantank/cron-expression ~3.6.0` 与 PSR-20；本地文件调度不连 Redis，但当前 Composer 安装仍检查 Redis 扩展依赖。Cron/PSR 源码按精确 imports 一起 AOT，运行携带时区数据，所需原生库按实际产物清单交付。多实例调度连接真实 Redis 服务；停止信号按 runtime 的平台能力装配，宿主可显式调用 stop。
+Composer 包含 runtime、Redis、`dragonmantank/cron-expression ~3.6.0` 与 PSR-20；本地文件调度不连接 Redis 服务，但开发安装仍检查 phpredis。Cron/PSR 源码按精确 imports 一起 AOT，静态 SDK 提供时区与原生库能力。部署使用文件存储时准备受信任的本地状态目录，多实例协调时准备可靠 Redis 服务；宿主负责停止通知和最终收尾。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

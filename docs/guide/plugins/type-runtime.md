@@ -34,7 +34,7 @@ composer config prefer-stable true
 composer require zoujingli/type-runtime:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-runtime/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
 
 ## 最小使用示例
 
@@ -129,7 +129,9 @@ try {
 
 `ResourcePool($factory, $capacity, $idleLimit)` 接收零参数工厂，返回实现 `ReusableResource` 的对象；通过 `borrow($scope)` 获取 `ResourceLease`。业务使用 `hold(static function (ReusableResource $resource): mixed { ... })`，在途操作结束前持有容量。不要把租约内资源保存到其他请求。
 
-池满时立即抛 `CapacityException`，不进入等待队列。`idleLimit` 不得超过总容量。Scope 负责归还本次租约；池的所有者在进程结束时调用 `close()`。需要 SQL 或 Redis 时直接使用对应插件的管理器，通常无需自己再包装一层池。
+池满时，同步调用立即抛 `CapacityException`；Swoole 协程默认最多排队 64 项、等待 1 秒。`borrow($scope, 0)` 显式选择立即拒绝；正数只能缩短本次等待，最终截止还受当前作用域约束。等待超时、取消与等待队列满分别按实际异常处理，等待中的任务还没有取得租约。
+
+构造器的 `waiterLimit`、`waitSeconds` 可调整排队和等待预算，`idleLimit` 不得超过总容量。Scope 负责归还本次租约；池的所有者在宿主退出时调用 `close()`。需要 SQL 或 Redis 时直接使用对应插件的管理器，让业务只关心自己的连接和作用域。容量规划见[部署连接预算](../configuration.md#部署连接预算)。
 
 ## 受管并发
 
@@ -217,7 +219,7 @@ sequenceDiagram
 
 ## 编译与验证
 
-作用域、资源实现及回调与应用一起全量编译，运行仍需要匹配 PHPX/libphp。自定义并发回调按 TypePHP 的完整参数签名编写。
+作用域、资源实现及回调与应用一起全量编译，PHPX、libphp 与 Swoole 在单程序构建时静态链接。开发 PHP 所需扩展与部署机准备内容分别见[环境与依赖](../environment.md)。自定义并发回调按 TypePHP 的完整参数签名编写。
 
 本仓库可运行 `composer test:tasks` 与 `composer test:deployment-budget`；对应原生验收为 `composer build:tasks` 后执行 `composer test:tasks-native`。
 

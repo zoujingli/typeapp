@@ -25,7 +25,7 @@ TypePHP 将应用、核心组件、生产依赖及生成声明编译为原生程
 
 需要 PHP `>=8.4 <8.6`、Swoole `>=6.2 <7`，依赖 `type-runtime` 和 PSR HTTP 接口。Swoole 是本组件配置、命令与 HTTP、WebSocket、TCP、UDP 通信入口的运行时基础；安装本包时即校验该硬依赖。
 
-以上是源码开发与构建要求。框架已接入 Swoole，原生构建默认复用 `type-build` 的匹配内置模块；部署使用包含实际运行库的完整包，见[环境与依赖](../environment.md)。
+以上是源码开发与构建要求。单程序构建从匹配的静态 SDK 链接 Swoole、PHPX、libphp 和实际扩展；`type-build` 自带的 Swoole 共享模块用于开发及共享库回归。部署机使用主程序和外置配置，准备内容见[环境与依赖](../environment.md)。
 
 在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
@@ -35,7 +35,7 @@ composer config prefer-stable true
 composer require zoujingli/type-core:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-core/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
 
 ## 最小使用示例
 

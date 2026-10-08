@@ -88,7 +88,7 @@ composer config prefer-stable true
 composer require --dev zoujingli/type-build:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-build/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
 
 ## 最小使用示例
 
@@ -124,13 +124,13 @@ function main(): void
 在该应用根执行：
 
 ```bash
-vendor/bin/type doctor type-app.json build
-vendor/bin/type prepare type-app.json
-vendor/bin/type type-app.json
-vendor/bin/type --inspect build/type-example
+php vendor/bin/type doctor type-app.json build
+php vendor/bin/type prepare type-app.json
+php vendor/bin/type build type-app.json
+php vendor/bin/type --inspect build/type-example
 ```
 
-成功构建后运行当前平台生成的可执行文件，应输出 `Type 应用已启动。`。可执行后缀和依赖布局以实际产物为准。本仓库使用 `docs/build-config/` 下的配置；独立应用仍可使用根 `type-app.json`。
+成功构建后运行当前平台生成的可执行文件，应输出 `Type 应用已启动。`；Windows 使用 `build/type-example.exe`，检查命令也传入该路径。本仓库使用 `docs/build-config/` 下的配置，独立应用仍可使用根 `type-app.json`。只有已选择并通过校验的静态 SDK 构建结果才能进入单程序 `package`；共享库开发构建成功不代表已经具备发布条件。
 
 按顺序观察每一步，而不只检查最终目录是否出现：
 
@@ -218,6 +218,8 @@ sequenceDiagram
 | `create` | 从 `type-project` 创建独立业务应用，不复制物联中心；参数与模板来源通过帮助确认 |
 | `doctor` | 检查配置与工具链环境 |
 | `prepare` | 生成 PHP 开发所需声明结果 |
+| `inspect-application` | 开发版：检查统一装配图及生命周期，支持 JSON 输出 |
+| `make` / `schema:prepare` | 开发版：生成业务源码 / 显式冻结 Schema 迁移 |
 | `dev` | 使用同一业务源码执行 PHP 开发入口 |
 | `watch` | 观察源码变化并重建开发入口 |
 | `test` | 执行配置声明的测试流程 |
@@ -252,7 +254,7 @@ main();
 
 直接用 `php dev.php` 启动时，复用标准模板入口的 `DevelopmentBuilder::loadConfiguration()`，在业务执行前核验并加载完整代次；同一进程重复加载同一代次保持幂等。具体约定见[模型生成加载](type-orm.md#models-relations-output)。`prepareConfiguration()` 和 `type prepare` 只生成并返回代次，不负责加载。watch 在新进程准备、检查并重启开发入口；通过 `development.check` 声明启动前检查参数。最小入口若没有 serve 命令，不会因使用 watch 而成为 HTTP 服务。
 
-首次生成会静态解析完整生产源码。标准应用本轮在 CLI `memory_limit=256M` 下通过，128 MiB 不足；可使用 `php -d memory_limit=256M vendor/bin/type prepare type-app.json`。watch/test 的子进程也要使用相应 CLI 配置，父进程的单次 `-d` 不会自动传给子进程。此限制属于开发生成，生产运行内存按实际角色另行测量。
+首次生成会静态解析完整生产源码；当前生成器逐文件释放 AST，同时保留跨文件声明检查。本仓库案例已在每个子进程 `memory_limit=128M`、八个进程并发准备的回归中通过，具体入口见[开发命令验证](https://github.com/zoujingli/typeapp/blob/main/docs/development/developer-cli.md)。这不是任意应用规模的固定内存承诺；watch/test 子进程使用其实际 CLI 配置，父进程的单次 `-d` 不会自动传递。生产运行内存按实际角色另行测量。
 
 ## 声明生成与显式调用
 

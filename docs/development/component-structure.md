@@ -25,7 +25,7 @@
 | 组件 | 稳定入口与实际职责分组 |
 | --- | --- |
 | `type-runtime` | 根入口承载参数、执行作用域、资源池/租约、截止/取消与部署预算；同一执行资源语境，不为单类建目录 |
-| `type-core` | 根为命令、事件、旧配置；`Config/` 为嵌套配置与环境；`Http/` 为路由和接入，`Http/Message/` 为 PSR 消息，`Http/Attribute/` 为构建声明 |
+| `type-core` | 根为应用、命令、事件与兼容配置；`Config/` 为嵌套配置与环境；`Http/` 为路由和接入，`Http/Message/` 为 PSR 消息，`Http/Attribute/` 为构建声明；`WebSocket/`、`TcpSocket`、`UdpSocket` 为对应协议入口 |
 | `type-orm` | 根为驱动、连接、查询、模型、关系与流；`Migration/` 为版本化迁移，`Outbox/` 为事务意图/转发，`Attribute/` 为显式事务声明 |
 | `type-orm-mysql` | 一个真实 MySQL Driver，复用 ORM 查询、事务和模型实现 |
 | `type-orm-pgsql` | 一个真实 PostgreSQL Driver，保留 schema、角色、RETURNING 与 TLS 语义 |
@@ -36,7 +36,7 @@
 | `type-cache` | 类型化缓存/codec、命名空间代次、PSR-16/可信序列化；`Attribute/` 为构建声明 |
 | `type-queue` | 消息/任务协议、注册、Queue/Reservation、Worker/RetryPolicy 与失败码 |
 | `type-scheduler` | 时间计划、执行入口、持久状态与多实例租约；文件与 Redis 适配同一状态接口 |
-| `type-mqtt` | 独立Broker、协议编解码、客户端、认证授权契约与PostgreSQL持久会话/交付；不依赖`app/iot` |
+| `type-mqtt` | 独立 Broker、协议编解码、客户端、认证授权契约与 PostgreSQL 持久会话/交付；复用 core 的 HTTP 客户端，不依赖 `app/iot` |
 | `type-build` | 输入审计、按职责划分的生成器、构建环境/锁、身份/缓存/资源清单；仅开发期使用 |
 | `type-testing` | 严格断言与 Suite、有界进程、真实 HTTP；通常仅开发期使用 |
 
@@ -46,27 +46,11 @@
 
 组件按 .github/distribution.json 从主仓拆分到公开 Git 子仓，包含 type-mqtt；15 个组件及 type-project 模板在 Packagist 登记。消费应用通过默认公共索引安装，Composer 自动解析传递依赖，无需额外 repositories。主仓改动需要先分发到子仓，随后 GitHub push webhook 才触发 Packagist 索引更新。
 
-| 所选组件 | 自动解析的传递依赖 |
-| --- | --- |
-| `type-runtime` | 无其他第一方包 |
-| `type-build`、`type-core`、`type-testing`、`type-validate`、`type-log`、`type-orm`、`type-redis` | `type-runtime`；build 另有公开编译工具依赖 |
-| 三种 `type-orm-*` 驱动 | `type-orm`、`type-runtime` |
-| `type-cache`、`type-queue`、`type-scheduler` | `type-redis`、`type-runtime` |
-| `type-mqtt` | `type-orm`、`type-runtime`；使用PostgreSQL持久适配时由应用显式安装`type-orm-pgsql`及其真实驱动 |
+第一方依赖表与安装命令统一见[组件总览](../guide/components.md#安装组件)，版本选择见[版本与接口依据](../guide/components.md#版本与接口依据)。开发消费者须明确选择同批第一方依赖闭包；`prefer-stable` 与 `--with-all-dependencies` 不会自动把所有组件升级到 `dev-main`。各包最低版本以自己的 `composer.json` 为准，不能假定所有包都使用相同的范围约束。
 
-例如在已有应用根安装独立 SQLite ORM：
+公开安装不需要项目分发凭据；不得把令牌、SSH 私钥或 `auth.json` 内容写入文档和 Git。消费应用提交 `composer.lock`，由构建机复现真实分发提交。主仓新 README 不证明修改已分发；单程序部署机也不通过 Composer 更新运行中的组件。
 
-```sh
-composer config minimum-stability dev
-composer config prefer-stable true
-composer require zoujingli/type-orm-sqlite:dev-main
-```
-
-公开安装不需要项目分发凭据；不得把令牌、SSH 私钥或 `auth.json` 内容写入文档和 Git。应用可以进一步收紧允许的开发依赖策略，以上命令与当前组件开发版本一致。
-
-每包将 `dev-main` 别名映射到 `1.0.x-dev`，组件间使用 `~1.0.0@dev` 约束；这不是稳定 `1.0.0` 标签。消费应用提交 `composer.lock`，使部署锁定真实分发提交，不在构建时任意更新依赖。根锁文件里选择的包来源决定当前消费的版本，新主仓修改只有完成对应分发才会出现在子仓；GitHub 目录中的新 README 不证明它已经发布。
-
-上面的入口用于跟进开发分支。按已发布版本创建应用时，使用[版本安装示例](../guide/releases.md#composer-按版本安装)，同时固定模板和需要的第一方组件；RC 需要在消费应用允许相应依赖稳定性。主仓版本 tag 的四平台验收、同版本拆分和 17 个 Release 由统一[发布工作流](distribution-batches.md#版本-tag-自动发布)衔接，不能用单个组件的 `dev-main` 更新冒充整个版本批次。
+按已发布版本创建应用时，使用[版本安装示例](../guide/releases.md#composer-按版本安装)，同时固定模板和需要的第一方组件；RC 需要在消费应用允许相应依赖稳定性。主仓版本 tag 的四平台验收、同版本拆分和 17 个 Release 由统一[发布工作流](distribution-batches.md#版本-tag-自动发布)衔接，不能用单个组件的 `dev-main` 更新冒充整个版本批次。
 
 当前模板源码显式声明第一方开发依赖闭包为 `1.0.x-dev`，避免开发模板优先选入不匹配的旧 RC。维护者用 `release.php prepare` 在 tag 前固定未来版本的完整闭包；配置和创建工具只切换驱动并继承版本策略。公开模板验收原样安装并核对锁文件版本、来源提交；本地 path 候选和默认 Packagist 消费分别记录。该改进尚未归入新的公开批次，RC14 按其既有安装步骤使用。
 
@@ -76,13 +60,13 @@ composer require zoujingli/type-orm-sqlite:dev-main
 
 生产文件使用 UTF-8、`declare(strict_types=1)`、明确的参数与返回类型。全局只放声明；一个二进制只有一个 `main(): void` 或 `main(int $argc, array $argv): void`。注释应说明职责、数组形状、回调、异常、资源和副作用约束，不重复方法签名已经表达的标量类型。
 
-公开回调必须完整声明实际形参：事务体接收 `Connection`，任务接收自己的上下文，规则接收字段值、分源输入和场景。不要添加反射裁参来模仿 PHP 宽松实参；不同用途的局部变量不复用为不兼容类型。新源码保持 PSR-12 风格；实际格式工具及范围以根 Composer 和格式配置为准，不能用格式整理改变公开语义。
+公开回调必须按具体入口声明形参：`Db::transaction()` 的业务闭包不接收参数，底层 `Connection::transaction()` 的闭包接收当前 `Connection`；任务接收自己的上下文，规则接收字段值、分源输入和场景。不要添加反射裁参来模仿 PHP 宽松实参；不同用途的局部变量不复用为不兼容类型。新源码保持 PSR-12 风格；实际格式工具及范围以根 Composer 和格式配置为准，不能用格式整理改变公开语义。
 
-`ModelCompiler`、`RouteCompiler`、`JobCompiler`、`ConfigCompiler`、`OperationCompiler` 各自管理一种生成责任，调用方显式提供生产源码与声明。手写业务类与生成类分开：生成模型可以作为稳定字段基类，但业务子类须显式实现符合业务类型的水合，不能靠空继承假装已扩展查询。事务/缓存 Attribute 完整转换原 Service 文件并复用同名替换关系，普通调用、手动构造和类内互调执行同一声明。详见[配置](configuration.md)与[操作生成](operations.md)。
+`ModelCompiler`、`RouteCompiler`、`JobCompiler`、`ScheduleCompiler`、`ConfigCompiler`、`OperationCompiler` 各自管理一种生成责任，应用入口通过完整生成代次组合这些结果。带 `Table` 声明的业务模型直接继承 `Type\Orm\Model`；生成器保留原类名、业务方法和类型属性，补入映射及水合行为，不要求再写生成基类和业务子类。事务/缓存 Attribute 同样转换原 Service 文件，普通调用、手动构造和类内互调执行同一声明。原声明文件与转换文件不能重复加载，生成结果不手工修改。详见[数据库与模型](../guide/database.md)、[开发代次](developer-cli.md)与[操作生成](operations.md)。
 
 ## AOT、运行库与验证
 
-Composer 负责安装与组合源码，TypePHP 负责把框架、业务、生产依赖和生成结果整体编译。生产不依赖 PHP CLI 进程、Composer 自动加载或 `require` 业务源码回退；仍需要匹配的 PHPX、libphp 和实际所选原生扩展及其传递库。原生依赖清单必须来自实际构建/运行身份，不能把“移除 PHP 源码”误写成“不需要 PHP 运行时”。
+Composer 负责安装与组合源码，TypePHP 负责把框架、业务、生产依赖和生成结果整体编译。单程序构建将匹配的 PHPX、libphp、所选扩展及非系统依赖静态链接进程序，部署者不另装 PHP CLI 或 Composer，也不准备组件动态库。构建端仍须提供匹配 SDK，系统基线与数据库、Redis 等外部服务按应用需要准备。原生依赖清单来自实际构建身份；共享库开发产物不能作为静态单程序验收结果。
 
 各组件 README 的 `composer test:*` 指向开发主仓根脚本，而非分发子仓自带命令。原生测试先构建对应产物，独立消费者测试负责验证只装所选依赖；三库与外部进程场景使用专属真实环境，不能以 SQLite 或内部 mock 代替另一数据库协议。
 

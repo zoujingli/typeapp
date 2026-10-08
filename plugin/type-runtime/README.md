@@ -57,7 +57,7 @@ TypeApp 应用的通信与基础并发必须使用 Swoole；线程与协程入�
 
 ## 安装与版本
 
-本组件通过 Packagist 提供 Composer 安装，源码在对应 GitHub 子仓维护。Composer 自动解析传递依赖，消费应用无需逐一登记 VCS 仓库。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-runtime)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
@@ -65,7 +65,7 @@ composer config prefer-stable true
 composer require zoujingli/type-runtime:1.0.0-rc.14
 ```
 
-以上安装固定候选版本 `1.0.0-rc.14`，RC 尚非稳定版。跟进开发分支时可选择 `dev-main`（别名 `1.0.x-dev`），它不一定与本批次 tag 相同。提交应用的 `composer.lock` 固定实际分发提交；构建工具只放 `require-dev`。详细依赖与公开分发规则见[组件组织与安装](https://github.com/zoujingli/typeapp/blob/main/docs/development/component-structure.md)。
+RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/zoujingli/type-runtime/blob/v1.0.0-rc.14/README.md)为准；当前源码教程见[开发文档](https://iots.top/next/#/guide/plugins/type-runtime)。文中标注的 `main` 新接口需要同批次开发组件，安装方法和升级核对统一见[版本与接口依据](https://iots.top/next/#/guide/components?id=版本与接口依据)。提交应用的 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。
 
 支持带值选项的空格和等号两种形式，以及不带值的开关。选项名由调用者声明；业务输出与退出码由应用入口决定。
 
@@ -126,7 +126,7 @@ function main(int $argc, array $argv): void
 
 ## AOT 与运行要求
 
-参数和作用域辅助接口可以独立使用；TypeApp 应用统一依赖 Swoole，HTTP、数据库和 Redis 组件按业务安装。Composer 声明 `ext-filter` 与 `ext-swoole >=6.2 <7`；线程与协程路径使用匹配的 Swoole 原生能力，业务线程还需要上文的受控 ABI 与完整编译入口。AOT 运行仍依赖匹配的 PHPX/libphp，不能把不需要 PHP CLI 解释器写成不需要 PHP 运行库。
+参数和作用域辅助接口可以独立使用；HTTP、数据库和 Redis 组件按业务安装。源码开发需满足 Composer 的 `ext-filter` 与 `ext-swoole >=6.2 <7`；业务线程还需要上文的受控 ABI 与完整编译入口。单程序构建将 PHPX、libphp、Swoole 等非系统运行库静态链接，部署机无需逐个安装扩展；系统与服务要求见[环境与依赖](https://iots.top/next/#/guide/environment)。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

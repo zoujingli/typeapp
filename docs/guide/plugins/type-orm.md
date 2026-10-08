@@ -40,7 +40,7 @@ composer config prefer-stable true
 composer require zoujingli/type-orm:1.0.0-rc.14
 ```
 
-以上固定该组件的候选版本 `1.0.0-rc.14`，RC 不代表稳定版本；执行前按[版本安装说明](../releases.md#composer-按版本安装)核对公开状态。Composer 从默认 Packagist 解析传递依赖，无需配置 VCS 仓库；提交应用的 `composer.lock` 固定实际版本。开发分支与版本安装的区别见[组件总览](../components.md#安装组件)。
+这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-orm/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
 
 <a id="models-relations-output"></a>
 
@@ -455,7 +455,8 @@ php dev.php "$(pwd)/var/docs-outbox/example.sqlite"
 | --- | --- |
 | `status($connection, $id)` | 按稳定 ID 查看状态和已有凭据；未找到为 null |
 | `enqueue(...)` | 同 ID、同载荷已存在时返回 false；同 ID 不同载荷拒绝 |
-| `consumed($connection, $id, $receipt)` | 消费效果和凭据在同一数据库事务内记录 |
+| `consumed($id, $receipt, $database)` | 业务入口复用当前命名数据源的事务，和消费效果一起记录凭据 |
+| `consumedUsing($connection, $id, $receipt)` | 基础设施已有显式事务连接时使用 |
 | `replay($connection, $id, $reason)` | 人工核对后重放保留期内的已发布记录，保留消息 ID |
 | `collect($connection, 100)` | 只清理已发布、已消费且超过重放窗口的记录 |
 
