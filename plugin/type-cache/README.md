@@ -58,9 +58,9 @@ function main(): void
 
 `Codec` 声明格式身份和读写转换；`JsonCodec::data()` 支持 null、标量和数组，不冒充支持任意 PHP 对象。DTO 使用显式的 JsonCodec 工厂转换，载荷不携带可动态加载的类名。格式不符或解码失败返回未命中，写入类型错误明确抛出。
 
-`CacheItem` 区分未命中与命中的 null。`put/get/delete` 及批量入口对应同一模型，批量按位置返回结果，避免 PHP 字符串键转整数影响映射。类型化入口默认 60 秒，TTL 必须有限且不超过配置上限；零或负 TTL 删除。单个载荷和批次字节数均有限制。
+`CacheItem` 区分未命中与命中的 null。`put/get/delete` 及批量入口对应同一模型，批量按位置返回结果，避免 PHP 字符串键转整数影响映射。类型化入口默认 60 秒，TTL 必须有限且不超过配置上限；`put/putMany` 的零或负 TTL 删除对应键。单个载荷和批次字节数均有限制。
 
-`remember()` 命中时返回缓存；未命中调用一次回源函数，回源异常不缓存。可显式 bypass 回源，依赖错误默认向调用者传播；没有暗中吞掉故障或承诺并发回源只执行一次。语义为最终一致，强一致读取由应用绕过缓存并选择相应数据库连接。
+`remember()` 先校验 TTL，再读取缓存；超出配置上限时抛出 `InvalidArgumentException`，不调用业务回源。命中时返回缓存；未命中调用一次回源函数，回源异常不缓存。非正 TTL 仍可读取已有值，未命中时只回源、不回填；需要直接取得最新值时使用 `bypass: true`，此时不访问缓存，也不应用 TTL。依赖错误默认向调用者传播，不提供并发回源互斥。语义为最终一致，强一致读取由应用绕过缓存并选择相应数据库连接。
 
 `remember()` 的 loader 为零参数 `Closure(): mixed`；`CacheReader::read()` 的 source 为 `Closure(bool): mixed`，始终接收强一致标志。`JsonCodec` 的 encode、decode 均为单参数 `Closure(mixed): mixed`，分别接收业务值和解析后的 JSON 数据。TypePHP 严格检查实参数量，按各入口签名声明闭包，依赖通过显式捕获传入。
 
@@ -102,12 +102,14 @@ $cache->collect(100);
 
 ```mermaid
 flowchart TD
-    Read[读取缓存] --> Hit{命中且格式有效}
+    TTL{TTL 未超上限} -->|否| Reject[拒绝调用，不回源]
+    TTL -->|是| Read[读取缓存]
+    Read --> Hit{命中且格式有效}
     Hit -->|是| Return[返回缓存值，包括 null]
     Hit -->|否| Source[读取真实数据源]
-    Source --> Generation{读取期间代次未变化}
+    Source --> Generation{TTL 为正且代次未变化}
     Generation -->|是| Put[按有限 TTL 回填]
-    Generation -->|否| Skip[放弃旧代回填]
+    Generation -->|否| Skip[不回填缓存]
     Put --> Result[返回数据源结果]
     Skip --> Result
 ```

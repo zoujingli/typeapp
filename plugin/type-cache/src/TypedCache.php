@@ -85,23 +85,25 @@ final class TypedCache
     }
 
     /**
-     * 命中直接返回；回源异常不缓存，旧代结果不回填新代，不提供并发回源互斥。
+     * 校验 TTL 后读取缓存，命中直接返回；回源异常不缓存，旧代结果不回填新代，不提供并发回源互斥。
      *
      * @param Closure(): mixed $loader 零参数回源，依赖通过显式捕获传入。
-     * @param bool $bypass 为 true 时只回源，不读取或回填缓存。
+     * @param int|null $ttlMilliseconds null 沿用默认；非正数仍可命中，未命中回源后不回填。
+     * @param bool $bypass 为 true 时只回源，不读取或回填缓存，也不应用 TTL。
+     * @throws InvalidArgumentException 未绕过缓存时 TTL 超限，在读取和回源之前拒绝。
      */
     public function remember(string $key, Closure $loader, ?int $ttlMilliseconds = null, bool $bypass = false): mixed
     {
         if ($bypass) {
             return $loader();
         }
+        $ttl = $this->ttl($ttlMilliseconds);
         $snapshot = $this->store->read([$key]);
         $item = $this->decode($snapshot['values'][0]);
         if ($item->hit()) {
             return $item->value();
         }
         $value = $loader();
-        $ttl = $this->ttl($ttlMilliseconds);
         if ($ttl > 0) {
             $this->store->write($snapshot['generation'], [$key], [$this->encode($value)], $ttl);
         }

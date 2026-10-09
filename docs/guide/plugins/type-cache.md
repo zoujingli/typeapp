@@ -108,7 +108,7 @@ $cache->delete('a');
 | --- | --- | --- |
 | `TypedCache.ttlMilliseconds` | 60000 | 毫秒 |
 | `TypedCache.maximumTtlMilliseconds` | 86400000 | 毫秒，默认最大一天 |
-| `put/remember` 的 TTL | null | null 用配置默认，非正值不保留数据 |
+| `put/remember` 的 TTL | null | null 用配置默认，超过上限拒绝；非正值行为见下文 |
 | `collect($limit)` | 100 | 每次有界回收数量 |
 
 类型化缓存只允许有限 TTL；构造默认 TTL 必须为正，不能超过最大值。`put` 的零/负 TTL 删除对应键。
@@ -135,7 +135,25 @@ $cache->collect(100);
 
 ## 回源与一致性
 
-`remember($key, static fn (): mixed => ..., $ttl, $bypass)` 命中直接返回；未命中执行回源，异常不缓存。bypass=true 只回源，不读取或回填缓存。它不提供跨请求互斥，多个并发未命中可能各自回源。
+`remember($key, static fn (): mixed => ..., $ttl, $bypass)` 在读取缓存前校验 TTL，超过配置上限抛出 `InvalidArgumentException`，不会先执行回源再报错。命中直接返回；未命中执行回源，异常不缓存。非正 TTL 仍可返回已有缓存，未命中时不回填；它不是强制刷新开关。
+
+需要绕过缓存时使用 `bypass: true`：只执行回源，不访问缓存，也不应用 TTL。该入口不提供跨请求互斥，多个并发未命中可能各自回源。例如，在上面的 `$cache` 装配后：
+
+```php
+$calls = 0;
+$loader = static function () use (&$calls): array {
+    $calls++;
+    return ['id' => 7, 'revision' => $calls];
+};
+$cache->delete('remember-demo');
+$first = $cache->remember('remember-demo', $loader);
+$cached = $cache->remember('remember-demo', $loader, 0);
+$fresh = $cache->remember('remember-demo', $loader, bypass: true);
+echo json_encode(['first' => $first['revision'], 'cached' => $cached['revision'],
+    'fresh' => $fresh['revision'], 'calls' => $calls], JSON_THROW_ON_ERROR) . "\n";
+```
+
+输出为 `{"first":1,"cached":1,"fresh":2,"calls":2}`。绕过读取不会更新原缓存；若需要替换它，应显式调用 `put()` 或按业务提交结果失效。
 
 `CacheReader($cache, $fallbackOnRedisFailure = false)` 提供明确策略，`read($key, $source, $strong = false)` 的 source 必须是 `Closure(bool): mixed`。strong 标志传给数据源，数据源自己选择满足一致性的数据库读取。默认 Redis 故障向外传播，只有显式允许才降级回源。
 

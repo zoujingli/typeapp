@@ -86,6 +86,18 @@ function main(int $argc, array $argv): void
             && $calls === 1, '缓存回源策略错误');
         $cache->remember('origin', $loader, null, true);
         cacheExpect($calls === 2, '强制回源没有绕过缓存');
+        foreach (['origin', 'invalid-ttl-miss'] as $key) {
+            $rejected = false;
+            try {
+                $cache->remember($key, $loader, 10001);
+            } catch (InvalidArgumentException) {
+                $rejected = true;
+            }
+            cacheExpect($rejected && $calls === 2, '超限 TTL 必须在命中读取或业务回源之前拒绝');
+        }
+        cacheExpect($cache->get('origin')->value() === ['id' => 1] && !$cache->get('invalid-ttl-miss')->hit(), '拒绝超限 TTL 改变了原有缓存');
+        $cache->remember('origin', $loader, 10001, true);
+        cacheExpect($calls === 3, 'bypass 应只执行回源，不应用缓存期限');
         $snapshot = $store->read([]);
         $cache->clear();
         cacheExpect(!$store->write($snapshot['generation'], ['old-writer'], ['json-data-v1\n1'], 1000) && !$cache->get('a')->hit(), 'clear 后旧写入污染新代次');
