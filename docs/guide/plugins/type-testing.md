@@ -79,7 +79,7 @@ function main(int $argc, array $argv): void
 
 ## 严格断言与测试集合
 
-`Suite::test($name, $callback)` 以唯一名称登记零参数闭包；`run()` 收集各项结果，单个失败不停止后续测试。调用方决定如何显示 `results()`，避免将业务秘密放在名称或错误说明里。
+`Suite::test($name, $callback)` 以唯一名称登记零参数闭包；`run()` 收集各项结果，单个失败不停止后续测试。`results()` 中的 `name` 始终为原字符串，包括纯数字名称；成功和失败结果遵守同一结构约定，便于直接输出 JSON 或交给报告工具。调用方决定如何显示结果，避免将业务秘密放在名称或错误说明里。
 
 ```php
 <?php

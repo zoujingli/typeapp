@@ -27,10 +27,10 @@ final class Suite
             $started = hrtime(true);
             try {
                 $operation();
-                $result = ['name' => $name, 'passed' => true];
+                $result = ['name' => (string) $name, 'passed' => true];
             } catch (\Throwable $error) {
                 $failed++;
-                $result = ['name' => $name, 'passed' => false, 'exception' => get_class($error), 'message' => $error->getMessage()];
+                $result = ['name' => (string) $name, 'passed' => false, 'exception' => get_class($error), 'message' => $error->getMessage()];
             }
             $result['seconds'] = (hrtime(true) - $started) / 1000000000.0;
             $this->results[] = $result;
@@ -38,7 +38,7 @@ final class Suite
         return $failed === 0 ? 0 : 1;
     }
     /**
-     * 返回最近一次执行的结果，未运行时为空；耗时使用单调时钟并以秒记录。
+     * 返回最近一次执行的结果，未运行时为空；名称始终保留原字符串，耗时使用单调时钟并以秒记录。
      * @return list<array{name: string, passed: bool, seconds: float, exception?: class-string<\Throwable>, message?: string}>
      */
     public function results(): array

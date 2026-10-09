@@ -36,6 +36,11 @@ $suite->test('套件收集失败与严格类型断言', static function (): void
     Assert::same(1, $inner->run());
     Assert::same(false, $inner->results()[0]['passed']);
     Assert::same(true, $inner->results()[1]['passed']);
+    $numeric = new Suite();
+    $numeric->test('0', static fn () => Assert::true(true))->test('123', static fn () => Assert::true(false));
+    Assert::same(1, $numeric->run());
+    Assert::same(['0', '123'], array_column($numeric->results(), 'name'));
+    Assert::throws(static fn () => $numeric->test('0', static fn () => true), InvalidArgumentException::class);
 });
 $suite->test('真实 HTTP 分块、重复响应头与截断拒绝', static function (): void {
     foreach ([
