@@ -177,10 +177,10 @@ final class RedisConnection
         return $command;
     }
 
+    /** 只解析 STREAMS 前的选项；GROUP 可换序，组名及消费者名不能被当作选项。 */
     private function hasBlockOption(string $command, array $arguments): bool
     {
-        $index = $command === 'XREADGROUP' ? 3 : 0;
-        for (; $index < count($arguments); $index++) {
+        for ($index = 0; $index < count($arguments); $index++) {
             $option = strtoupper((string) $arguments[$index]);
             if ($option === 'STREAMS') {
                 return false;
@@ -190,6 +190,8 @@ final class RedisConnection
             }
             if ($option === 'COUNT') {
                 $index++;
+            } elseif ($command === 'XREADGROUP' && $option === 'GROUP') {
+                $index += 2;
             }
         }
         return false;

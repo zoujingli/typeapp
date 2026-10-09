@@ -53,6 +53,8 @@ function main(): void
 
 普通命令拒绝改变连接状态、执行脚本、管理服务器和阻塞调用；这些操作使用对应入口或独立管理客户端。`blocking()` 只进入阻塞池。批次为 `[[命令, 参数列表]]`，最多 1000 项；`pipeline()` 不保证原子性。
 
+`XREAD/XREADGROUP` 携带 `BLOCK` 时使用 `Purpose::BLOCKING` 和 `blocking()`，其等待时间单位为毫秒。当前 `main` 按选项位置检查 `BLOCK`，支持 `XREADGROUP` 的 `GROUP/COUNT/BLOCK` 换序；组名、消费者名和流键不作为选项解释。普通命令、pipeline 和事务批次会在发送前以 `blocking_command / NOT_STARTED` 拒绝这类阻塞读取。这项换序修复尚未包含在 RC14，完整示例见[Streams 与阻塞读取](https://iots.top/next/#/guide/plugins/type-redis?id=streams-与阻塞读取)。
+
 `transaction($watchKeys, $operation)` 建立 WATCH 后调用一次回调。回调通过同一连接读取状态并返回待执行命令列表，再执行 MULTI/EXEC。`TransactionResult::committed()` 为 false 表示 WATCH 冲突，框架不重跑回调；EXEC 中命令错误仍可能已有部分效果，Redis 事务不等同于数据库回滚。回调中关闭租约会阻止后续提交。
 
 事务回调固定为 `Closure(RedisConnection): array`；即使不读取连接，也须显式声明 `RedisConnection $connection` 参数。TypePHP 对非 variadic 回调严格检查实参数量，返回值是已有批次格式的命令列表。

@@ -115,6 +115,31 @@ function main(): void
 
 容量范围 1–1024。同步调用满载立即拒绝；Swoole 协程默认最多等待 1 秒、排队 64 项，同时受作用域更短截止与取消约束。传入 `connection($scope, 'default', Purpose::COMMAND, 0)` 显式即时借用。普通会话可保留少量空闲连接；其余用途归还即销毁。不要使用 command 绕过状态、管理、阻塞或脚本限制。
 
+## Streams 与阻塞读取
+
+`XREAD/XREADGROUP` 不带 `BLOCK` 时可使用普通命令入口；带 `BLOCK` 时必须使用独立的 `Purpose::BLOCKING` 连接。`BLOCK` 的数值单位是毫秒，`BLPOP/BRPOP` 的等待单位是秒；连接读取超时使用 `RedisConfiguration::readTimeout` 的秒数，应大于命令正常等待时间并留出网络响应余量。
+
+下面放在最小示例的 `try` 中。先写入一条演示事件，再从 `0` 读取，正常会立即返回该条消息；没有可读消息时，`BLOCK 200` 声明 200 毫秒的服务端等待，客户端仍受读取超时约束。
+
+```php
+$streamKey = 'docs:redis:events';
+$blocking = $manager->connection($scope, 'default', \Type\Redis\Purpose::BLOCKING);
+try {
+    $redis->command('XADD', [$streamKey, '*', 'event', 'device.online']);
+    $messages = $blocking->blocking('XREAD', [
+        'COUNT', 1, 'BLOCK', 200, 'STREAMS', $streamKey, '0',
+    ]);
+    echo json_encode($messages, JSON_THROW_ON_ERROR) . "\n";
+} finally {
+    $blocking->close();
+    $redis->command('DEL', [$streamKey]);
+}
+```
+
+输出保留 Redis 的原始嵌套结构：流键、消息 ID 和字段值列表，不自动转成业务对象。`XREADGROUP` 还要求应用预先建立消费组，并负责处理确认、重试和幂等；需要受管任务投递时使用 [type-queue](type-queue.md)。
+
+当前 `main` 已修复 `XREADGROUP` 选项换序的用途检查：`BLOCK` 放在 `GROUP` 前后均需阻塞连接，组名或消费者名为 `BLOCK/STREAMS` 仍按普通数据处理。该修复尚未包含在 RC14。普通命令、pipeline 和事务批次中的阻塞读取返回 `blocking_command`，`outcome` 为 `NOT_STARTED`；批次在发送前整批检查，因此不会先执行排在它前面的 `SET`。参数通过检查后的服务器错误仍遵循下面的部分执行语义。
+
 ## 常用命令与 pipeline
 
 下例放在最小示例的 `try` 中，操作专属示例键：

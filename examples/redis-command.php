@@ -22,6 +22,59 @@ function redisExpect(bool $condition, string $message): void
 }
 
 /**
+ * 通过真实 Stream 核对阻塞用途边界；参数换序不能先消费消息或提交批次中的其他写入。
+ *
+ * GROUP 的组名/消费者名、STREAMS 之后的键均是数据，允许与选项名称相同。
+ * 所有键只属于本轮演练，成功或失败均清理；连接仍由调用者的作用域持有。
+ */
+function redisStreamChecks(RedisConnection $command, RedisConnection $blocking, RedisConnection $pipeline, RedisConnection $transaction, string $prefix): void
+{
+    $stream = $prefix . 'stream';
+    $marker = $prefix . 'stream-write';
+    try {
+        $command->command('XADD', [$stream, '1-0', 'value', '首条']);
+        $command->command('XGROUP', ['CREATE', $stream, 'group', '0']);
+        $variants = [
+            ['BLOCK', 1, 'GROUP', 'group', 'reader', 'STREAMS', $stream, '>'],
+            ['COUNT', 1, 'BLOCK', 1, 'GROUP', 'group', 'reader', 'STREAMS', $stream, '>'],
+            ['GROUP', 'group', 'reader', 'COUNT', 1, 'BLOCK', 1, 'STREAMS', $stream, '>'],
+        ];
+        foreach ($variants as $arguments) {
+            foreach (['command', 'pipeline', 'transaction'] as $purpose) {
+                $rejected = false;
+                try {
+                    if ($purpose === 'command') {
+                        $command->command('XREADGROUP', $arguments);
+                    } elseif ($purpose === 'pipeline') {
+                        $pipeline->pipeline([['SET', [$marker, '不能写入']], ['XREADGROUP', $arguments]]);
+                    } else {
+                        $transaction->transaction([$marker], static fn (RedisConnection $connection): array =>
+                            [['SET', [$marker, '不能写入']], ['XREADGROUP', $arguments]]);
+                    }
+                } catch (RedisException $error) {
+                    $rejected = $error->errorCode() === 'blocking_command' && $error->outcome() === 'NOT_STARTED';
+                }
+                redisExpect($rejected, 'XREADGROUP 参数换序绕过用途隔离：' . $purpose);
+                redisExpect($command->command('EXISTS', [$marker]) === 0
+                    && $command->command('XPENDING', [$stream, 'group'])[0] === 0, '被拒绝的批次产生写入或消费消息');
+            }
+        }
+        $received = $blocking->blocking('XREADGROUP', $variants[0]);
+        redisExpect(is_array($received) && $received[0][1][0][0] === '1-0', '专用阻塞入口不接受合法换序参数');
+        foreach ([['BLOCK', 'STREAMS'], ['STREAMS', 'BLOCK']] as $names) {
+            $command->command('XGROUP', ['CREATE', $stream, $names[0], '0']);
+            $ordinary = $command->command('XREADGROUP', ['COUNT', 1, 'GROUP', $names[0], $names[1], 'STREAMS', $stream, '>']);
+            redisExpect(is_array($ordinary) && $ordinary[0][1][0][0] === '1-0', '组名或消费者名被误判为阻塞选项');
+        }
+        // 非分组选项读取同样只在 STREAMS 之前识别 BLOCK。
+        $read = $command->command('XREAD', ['COUNT', 1, 'STREAMS', $stream, '0']);
+        redisExpect(is_array($read) && $read[0][1][0][0] === '1-0', '非阻塞 XREAD 不能读取消息');
+    } finally {
+        $command->command('DEL', [$stream, $marker]);
+    }
+}
+
+/**
  * 使用受控 Redis 验证命名用途、事务、pipeline、超时和失效连接恢复。
  *
  * @param list<string> $argv 程序路径与该示例的显式参数。
@@ -69,6 +122,8 @@ function main(int $argc, array $argv): void
             redisExpect($rejected, '不受管命令没有拒绝');
         }
         $pipeline = $redis->connection($scope, 'default', Purpose::PIPELINE);
+        $transaction = $redis->connection($scope, 'default', Purpose::TRANSACTION);
+        redisStreamChecks($command, $blocking, $pipeline, $transaction, $prefix);
         $replies = $pipeline->pipeline([['SET', [$prefix . 'number', '1']], ['INCR', [$prefix . 'number']], ['GET', [$prefix . 'number']]]);
         redisExpect(count($replies) === 3 && $replies[1] === 2 && $replies[2] === '2', 'pipeline 顺序或结果错误');
         $partial = false;
@@ -79,7 +134,6 @@ function main(int $argc, array $argv): void
         }
         redisExpect($partial && $command->command('GET', [$prefix . 'partial']) === '先写入', 'pipeline 错误被伪装为全部回滚');
         $pipeline->close();
-        $transaction = $redis->connection($scope, 'default', Purpose::TRANSACTION);
         $calls = 0;
         $conflict = $transaction->transaction([$prefix . 'number'], static function (RedisConnection $connection) use ($command, $prefix, &$calls): array {
             $calls++;
