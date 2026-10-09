@@ -65,6 +65,31 @@ try {
         && $cleanup[0]['finished_at'] === null && str_contains($cleanup[0]['cleanup_error']['message'], 'controlled scheduler cleanup failure'), '清理失败仍继续补跑或宣称任务已收尾');
     $persisted = json_decode(file_get_contents($directory . '/cleanup.json'), true, 512, JSON_THROW_ON_ERROR);
     expect(count($persisted['records']) === 1 && $persisted['cursors']['summary.minute'] === $cleanup[0]['scheduled_at'], '清理未完成推进了后续游标');
+    // 原状态合法，但追加 running 记录即超限；任务不能开始，也不能留下虚假的在途作用域。
+    $capacity = ['protocol' => 1, 'cursors' => [], 'records' => [[
+        'occurrence_id' => 'previous', 'task_id' => 'previous', 'scheduled_at' => 1,
+        'started_at' => 1, 'state' => 'succeeded', 'result' => '',
+    ]]];
+    $capacity['records'][0]['result'] = str_repeat('x', 16777216 - 32 - strlen(json_encode($capacity, JSON_THROW_ON_ERROR)));
+    $capacityFile = $directory . '/capacity.json';
+    file_put_contents($capacityFile, json_encode($capacity, JSON_THROW_ON_ERROR));
+    unset($capacity);
+    $before = hash_file('sha256', $capacityFile);
+    putenv('TYPE_SCHEDULER_STATE=' . $capacityFile);
+    putenv('TYPE_SCHEDULER_SCENARIO=storage-failure');
+    [$status, $stdout, $stderr] = execute([...$command, 'once']);
+    $storage = json_decode($stdout, true, 512, JSON_THROW_ON_ERROR);
+    expect($status === 70 && str_contains($stderr, 'TYPE_SCHEDULER_STORE') && str_contains($stderr, '16 MiB')
+        && $storage['storage_failures'] === 1 && $storage['cleanup_failures'] === 0 && $storage['triggered'] === 0
+        && $storage['in_flight'] === 0 && $storage['state'] === 'stopped' && !$storage['ready'], '开始记录保存失败后仍占用执行额度或误执行任务');
+    expect(hash_file('sha256', $capacityFile) === $before, '容量拒绝修改了原状态或游标');
+    $lock = fopen($capacityFile . '.lock', 'c+b');
+    expect(is_resource($lock), '无法核对容量故障后的状态锁');
+    try {
+        expect(flock($lock, LOCK_EX | LOCK_NB), '容量故障没有释放状态锁');
+    } finally {
+        fclose($lock);
+    }
     echo ($native ? '原生' : 'PHP') . " 调度命令验证通过：离线帮助、任务结果、重启游标、有界循环与真实中断恢复。\n";
 } finally {
     putenv($previousExecution === false ? 'TYPE_SCHEDULER_EXECUTION_MS' : 'TYPE_SCHEDULER_EXECUTION_MS=' . $previousExecution);

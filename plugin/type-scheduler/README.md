@@ -4,6 +4,8 @@
 
 资源清理失败且作用域尚未关闭时，当前记录保存为 `failed`，保留 `cleanup_error`，`finished_at` 保持 null；本角色撤销就绪、保留在途额度并停止本轮后续计划，不推进未执行的游标。`cleanup_failures` 单独计数，已有业务失败和组租约/fencing 协议继续适用；不自动重跑结果未知的旧执行。永久不合作的资源仍由角色外部监督处理。
 
+当前开发版在保存任务开始记录失败时也关闭本次空作用域：业务工厂不执行，角色停止接单，`storage_failures` 递增并归还在途额度。文件状态超限等确定拒绝保留原状态与游标，不能通过删除状态文件恢复调度。
+
 ## 安装与版本
 
 源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-scheduler)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖。

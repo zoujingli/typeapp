@@ -60,6 +60,11 @@ function schedulerScenario(int $argc, array $argv): int
         throw new InvalidArgumentException('TYPE_SCHEDULER_EXECUTION_MS必须是有效毫秒预算');
     }
     $milliseconds = $execution === false ? 30000 : (int) $execution;
-    $status = (new SchedulerConsole(new Scheduler($clock, $store, $definitions, executionMilliseconds: $milliseconds)))->run(array_slice($argv, 1));
+    $scheduler = new Scheduler($clock, $store, $definitions, executionMilliseconds: $milliseconds);
+    $status = (new SchedulerConsole($scheduler))->run(array_slice($argv, 1));
+    if ($scenario === 'storage-failure') {
+        // 容量故障演练复用真实文件存储，输出角色状态供 PHP 与同一原生程序核对收尾。
+        echo json_encode($scheduler->statistics(), JSON_THROW_ON_ERROR) . "\n";
+    }
     return $status;
 }

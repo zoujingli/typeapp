@@ -132,17 +132,23 @@ final class Scheduler
                         return $results;
                     }
                     $scope = new ExecutionScope(new Deadline($this->executionMilliseconds / 1000.0));
-                    $this->lifecycle->attach($scope);
-                    $context = new TaskContext($id, $scheduledAt, $scope, $this->store instanceof LeasedStateStore ? $this->store->lease() : null);
-                    $record = ['occurrence_id' => $context->occurrenceId(), 'task_id' => $id, 'scheduled_at' => $scheduledAt,
-                        'schedule' => $definition->schedule()->description(), 'revision' => $definition->revision(), 'state' => 'running',
-                        'lease_generation' => $context->lease()?->generation(),
-                        'started_at' => $this->clock->now()->getTimestamp(), 'finished_at' => null, 'result' => null, 'error' => null, 'cleanup_error' => null];
-                    $state['cursors'][$id] = $scheduledAt;
-                    $state['records'][] = $record;
-                    $state['records'] = array_slice($state['records'], -$this->historyLimit);
-                    $index = count($state['records']) - 1;
-                    $this->store->save($state);
+                    try {
+                        $this->lifecycle->attach($scope);
+                        $context = new TaskContext($id, $scheduledAt, $scope, $this->store instanceof LeasedStateStore ? $this->store->lease() : null);
+                        $record = ['occurrence_id' => $context->occurrenceId(), 'task_id' => $id, 'scheduled_at' => $scheduledAt,
+                            'schedule' => $definition->schedule()->description(), 'revision' => $definition->revision(), 'state' => 'running',
+                            'lease_generation' => $context->lease()?->generation(),
+                            'started_at' => $this->clock->now()->getTimestamp(), 'finished_at' => null, 'result' => null, 'error' => null, 'cleanup_error' => null];
+                        $state['cursors'][$id] = $scheduledAt;
+                        $state['records'][] = $record;
+                        $state['records'] = array_slice($state['records'], -$this->historyLimit);
+                        $index = count($state['records']) - 1;
+                        $this->store->save($state);
+                    } catch (Throwable $error) {
+                        // 工厂尚未执行；准备或持久化失败仍须关闭空作用域，才能归还在途额度。
+                        $scope->close();
+                        throw $error;
+                    }
                     try {
                         $record['result'] = $scope->run(static function (ExecutionScope $current) use ($definition, $context): array {
                             $context->assertActive();
