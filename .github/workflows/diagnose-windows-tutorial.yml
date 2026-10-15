@@ -20,6 +20,11 @@ on:
         required: false
         default: false
         type: boolean
+      replay:
+        description: 复用本诊断保存的原 EXE 定位 HTTPS 隔离失败；不重新编译
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -27,6 +32,7 @@ permissions:
 
 jobs:
   probe:
+    if: inputs.replay == false
     runs-on: windows-2022
     timeout-minutes: 60
     defaults:
@@ -121,3 +127,55 @@ jobs:
             build/windows-tutorial-diagnosis/*
             build/tutorial-fixed/**
             build/native-values-*/*.log
+
+  replay:
+    if: inputs.replay
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TYPE_PROBE_RUN: ${{ inputs.run_id }}
+      TYPE_PROBE_SOURCE: ${{ inputs.source_sha }}
+      TYPE_PROBE_PROGRAM_SHA256: ${{ inputs.program_sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 核对原诊断程序身份
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:TYPE_PROBE_RUN -cnotmatch '^[1-9][0-9]*$' -or $env:TYPE_PROBE_SOURCE -cnotmatch '^[a-f0-9]{40}$' -or $env:TYPE_PROBE_PROGRAM_SHA256 -cnotmatch '^[a-f0-9]{64}$') { throw '原程序身份格式无效。' }
+          $taskRun = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:TYPE_PROBE_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $taskRun.head_repository.full_name -cne $env:GITHUB_REPOSITORY -or $taskRun.head_sha -cne $env:TYPE_PROBE_SOURCE -or $taskRun.path -cne '.github/workflows/diagnose-windows-tutorial.yml' -or $taskRun.status -cne 'completed') { throw '原诊断身份不符。' }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+          name: windows-tutorial-stop-diagnosis
+          path: build/replay-tutorial
+      - name: 准备锁定测试控制器
+        run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 安装测试控制器依赖
+        run: |
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.21.1'
+      - name: 同一原 EXE 的 HTTPS 隔离诊断
+        run: |
+          $env:NODE_BINARY = (Get-Command node.exe).Source
+          $env:OPENSSL_BINARY = (Get-Command openssl.exe).Source
+          & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-tutorial-https.php
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 保全原程序诊断
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-tutorial-https-diagnosis
+          retention-days: 30
+          if-no-files-found: error
+          path: build/windows-tutorial-https-diagnosis/**
