@@ -17,6 +17,8 @@ final class TypephpCompatibility extends Translator
     private bool $interfaceConstantCompatibilityVerified = false;
     private bool $declaredMethodCompatibilityVerified = false;
     private bool $callArgumentsCompatibilityVerified = false;
+    private bool $classConstantSymbolsVerified = false;
+    private bool $classConstantSymbolContext = false;
     /** @var array<string, true> 需要真实 Zend 参数帧的具名函数与方法。 */
     private array $argumentFunctions = [];
     /** @var \WeakMap<\TypePhp\Context\FunctionContext, string>|null 编译期作用域到局部帧变量的映射。 */
@@ -423,6 +425,112 @@ final class TypephpCompatibility extends Translator
             throw new RuntimeException('全量 AOT 不支持匿名类解释回退，请声明具名类');
         }
         return parent::parseNew($expr);
+    }
+
+    /** 类数组常量按符号种类与原始大小写分配存储，不复用方法的小写名称。 */
+    private function classConstantStorageName(string $name, string $namespace, string $class): string
+    {
+        return self::PREFIX . 'typeapp_class_constant_' . hash('sha256', $namespace . "\0" . $class . "\0" . $name);
+    }
+
+    /** 仅在经过审查的常量生成入口内替换名称；普通方法和属性命名保持上游规则。 */
+    protected function getNativeName(string $fn, string $ns = '', string $class = ''): string
+    {
+        if ($this->classConstantSymbolContext && $class !== '') {
+            $fullClass = $ns === '' ? $class : $ns . '\\' . $class;
+            $definition = $this->hasClass($fullClass) ? $this->getClass($fullClass)
+                : ($this->hasInterface($fullClass) ? $this->getInterface($fullClass) : null);
+            if ($definition !== null && ($definition->constants[$fn]->type ?? null) === \TypePhp\Type::ARRAY) {
+                return substr($this->classConstantStorageName($fn, $ns, $class), strlen(self::PREFIX));
+            }
+        }
+        return parent::getNativeName($fn, $ns, $class);
+    }
+
+    /** 编译期上下文在嵌套生成和异常后恢复，不修改常量 AST 或公开名称。 */
+    private function withClassConstantSymbols(callable $operation): mixed
+    {
+        if (!$this->classConstantSymbolsVerified) {
+            $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+            foreach ([
+                'src/CompilerBase.php' => '8767d9599d1d2ab7ed7ae218fe33df90524f2f961cf76c5355574cc01cb310c3',
+                'src/Preprocessor.php' => 'efb567b27334d35ef15948399ca453e67afcaa199f2406fed0359ea280813adc',
+                'src/Translator.php' => '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c',
+                'src/Parser/ClassConstantFetchTrait.php' => '4d2bd3c7e2639bebd78dfc1aeeb1e5fdfbb966cea74ec90298349c4ed38aaa63',
+            ] as $file => $sha256) {
+                if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                    throw new RuntimeException('类常量符号隔离需要重新核对 TypePHP：' . $file);
+                }
+            }
+            $this->classConstantSymbolsVerified = true;
+        }
+        $previous = $this->classConstantSymbolContext;
+        $this->classConstantSymbolContext = true;
+        try {
+            return $operation();
+        } finally {
+            $this->classConstantSymbolContext = $previous;
+        }
+    }
+
+    /** 类/接口数组常量读取沿用上游继承和访问权限判断。 */
+    protected function findNativeClassConst(\PhpParser\NodeAbstract $expr, string $class, string $const, ?string $accessingClass = null): string|false
+    {
+        return $this->withClassConstantSymbols(fn (): string|false => parent::findNativeClassConst($expr, $class, $const, $accessingClass));
+    }
+
+    /** 分拆声明头与运行时头使用同一个常量符号。 */
+    protected function renderDataDeclarations(?string $sourceFile = null, bool $commonOnly = false, bool $includeGlobals = true): string
+    {
+        return $this->withClassConstantSymbols(fn (): string => parent::renderDataDeclarations($sourceFile, $commonOnly, $includeGlobals));
+    }
+
+    /** 非拆分的请求初始化仍保留原常量注册名和求值顺序。 */
+    protected function genClassArrayConstants(): string
+    {
+        return $this->withClassConstantSymbols(fn (): string => parent::genClassArrayConstants());
+    }
+
+    /** 请求清理指向与初始化一致的常量存储。 */
+    protected function genClassArrayConstantCleanup(): string
+    {
+        return $this->withClassConstantSymbols(fn (): string => parent::genClassArrayConstantCleanup());
+    }
+
+    /** 拆分的生命周期单元覆盖本类、父类和接口常量传播。 */
+    public function genClassArrayConstantLifecycleSources(): array
+    {
+        return $this->withClassConstantSymbols(fn (): array => parent::genClassArrayConstantLifecycleSources());
+    }
+
+    /** 上游扩展总单元内没有独立存储命名钩子，仅按完整声明替换登记的数组常量。 */
+    private function isolateClassConstantStorage(string $code): string
+    {
+        foreach (array_merge($this->symbols->classes(), $this->symbols->interfaces()) as $class) {
+            if ($class instanceof \TypePhp\Entity\ClassDef && $class->trait !== null) {
+                continue;
+            }
+            foreach ($class->constants as $constant) {
+                if ($constant->type !== \TypePhp\Type::ARRAY) {
+                    continue;
+                }
+                $original = self::PREFIX . parent::getNativeName($constant->name, $class->namespace, $class->name);
+                $storage = $this->classConstantStorageName($constant->name, $class->namespace, $class->name);
+                // 只匹配完整变量定义，不替换方法调用、PHP 字符串或常量注册名。
+                // 多个仅大小写不同的常量按上游登记顺序逐个替换，次数必须一致。
+                $code = preg_replace(
+                    '/^' . preg_quote(\TypePhp\Type::VAR . ' ' . $original . ';', '/') . '$/m',
+                    \TypePhp\Type::VAR . ' ' . $storage . ';',
+                    $code,
+                    1,
+                    $count
+                );
+                if ($code === null || $count !== 1) {
+                    throw new RuntimeException('类常量存储定义与登记不一致：' . $class->name . '::' . $constant->name);
+                }
+            }
+        }
+        return $code;
     }
 
     /** 已声明的 toString 是用户方法；仅未声明时沿用 TypePHP 的转换关键字。 */
@@ -866,6 +974,9 @@ final class TypephpCompatibility extends Translator
     /** 在上游格式化前按已登记符号调整生成存储；不修改已安装编译器源码。 */
     public function writeFile(string $file, string $content, bool $force = false): void
     {
+        if (basename($file) === 'extension-' . $this->targetName . '.cc') {
+            $content = $this->withClassConstantSymbols(fn (): string => $this->isolateClassConstantStorage($content));
+        }
         if ($this->staticRuntime() !== null && basename($file) === 'extension-' . $this->targetName . '.cc') {
             if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c') {
                 throw new RuntimeException('静态 profile 模块依赖适配需要重新核对 TypePHP 原文');
@@ -987,7 +1098,7 @@ CPP;
                     }
                     foreach ($class->constants as $constant) {
                         if ($constant->type === \TypePhp\Type::ARRAY) {
-                            $storage[self::PREFIX . $this->getNativeName($constant->name, $class->namespace, $class->name)] = \TypePhp\Type::VAR;
+                            $storage[$this->classConstantStorageName($constant->name, $class->namespace, $class->name)] = \TypePhp\Type::VAR;
                         }
                     }
                 }
