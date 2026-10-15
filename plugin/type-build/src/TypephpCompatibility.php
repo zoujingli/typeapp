@@ -543,6 +543,7 @@ final class TypephpCompatibility extends Translator
                 foreach ([
                     'src/CompilerBase.php' => '8767d9599d1d2ab7ed7ae218fe33df90524f2f961cf76c5355574cc01cb310c3',
                     'src/Parser/MethodCallTrait.php' => '64f941d2b5fe0a263282d4fc871539239477dc9ff769cf2e1961f3e68ffc50f1',
+                    'src/Parser/UniversalMethodCall.php' => '8c2b963287246a9b54d709ff1174a903e913d4c5c07d0fa3fe650bb523e6ffea',
                     'src/Parser/PropertyAccessTrait.php' => 'b9ce2e5a082dc568589f360c84c8b92f4aaa0698921863d2e638192cf32c908d',
                     'src/Generator/CallArgumentGenerator.php' => 'eddce4623049343393cb1e8e28ad0d0a7eaca4d6ad9233d4f85e1eeae9b4c900',
                 ] as $file => $sha256) {
@@ -566,13 +567,48 @@ final class TypephpCompatibility extends Translator
                     $declaration = $this->findAotMethodFunctionDef($property->class, $expr->name->toString());
                 }
             }
-            if ($declaration !== null) {
+            if ($declaration !== null || $expr->isFirstClassCallable()) {
                 // 复用上游跳过关键字的入口；后续仍负责可见性、继承和接收者单次求值。
                 $expr = clone $expr;
                 $expr->setAttribute('nativeKeywordCall', true);
             }
         }
         return parent::parseMethodCall($expr);
+    }
+
+    /** 未知对象的真实方法返回动态值，不能沿转换关键字预先固定为字符串。 */
+    protected function detectTypeOfExpr($expr): string
+    {
+        if ($expr instanceof \PhpParser\Node\Expr\MethodCall
+            && $expr->name instanceof \PhpParser\Node\Identifier
+            && $expr->name->toString() === 'toString') {
+            if ($expr->isFirstClassCallable()) {
+                return \TypePhp\Type::OBJECT;
+            }
+            $declaration = $this->resolveCalledFunctionDef($expr);
+            if ($declaration !== null) {
+                return $declaration->returnType;
+            }
+            if (in_array(parent::detectTypeOfExpr($expr->var), [\TypePhp\Type::OBJECT, \TypePhp\Type::VAR, \TypePhp\Type::REF], true)) {
+                return \TypePhp\Type::VAR;
+            }
+        }
+        return parent::detectTypeOfExpr($expr);
+    }
+
+    /** 类型擦除后按实际类查找声明；无真实方法时保留上游转换，接收者仅求值一次。 */
+    protected function genToConvertCall(string $receiver, string $method, string $receiverType = ''): string
+    {
+        if ($method !== 'toString'
+            || !in_array($receiverType, [\TypePhp\Type::OBJECT, \TypePhp\Type::VAR, \TypePhp\Type::REF], true)) {
+            return parent::genToConvertCall($receiver, $method, $receiverType);
+        }
+        $call = $this->classDef !== null && $this->methodDef !== null
+            ? 'php::callScoped(value, "toString", ' . $this->getCallableScopeExpr() . ')'
+            : 'value.call("toString")';
+        return '([&](php::Var value) -> php::Var {'
+            . ' if (value.isObject() && zend_hash_str_exists(&value.ce()->function_table, "tostring", 8)) {'
+            . ' return ' . $call . '; } return php::toString(value); })(' . $receiver . ')';
     }
 
     /** 接口中的 self 属于当前接口；上游类专用名称入口会丢掉接口名。 */

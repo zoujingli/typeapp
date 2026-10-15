@@ -162,7 +162,7 @@ vendor/bin/type --inspect build/type-example
 
 类和接口的数组常量使用与方法分离的原生存储名称，保留常量原始大小写；例如 `UNFINISHED` 与 `unfinished()` 可以共存。公开名称与读取语义不变，具体边界见上述语法基线。
 
-接收者类型能够解析到已声明的 `toString()` 时，兼容层保留该用户方法调用，包括接口、继承、属性和返回值类型。未声明该方法时继续使用 TypePHP 的转换语义；显式字符串强转及拼接仍调用 `__toString()`。具体边界与回归入口见语法基线。
+兼容层保留已声明的 `toString()` 用户方法调用；具体类型在 `object`、`mixed` 或链式返回中被擦除时，零参数调用根据实际对象的方法表分派，保留访问权限、返回值和异常。未声明该方法时继续使用 TypePHP 的转换语义；显式字符串强转、插值及拼接仍调用 `__toString()`。具体边界与回归入口见语法基线。
 
 普通用户函数、方法和 Zend 闭包支持额外位置参数，并通过各自调用帧保留 `func_get_args()` 等实参语义。缺参、类型和未知命名参数继续检查，内部函数规则不放宽；框架回调仍按公开合同声明完整签名。此能力需要包含修复的构建组件重新全量编译，Generator、Native ABI 和间接调用内省函数的边界见语法基线。
 
@@ -181,6 +181,7 @@ composer test:native-defaults
 composer test:native-interface-constants
 composer test:native-class-constants
 composer test:native-declared-tostring
+composer test:native-dynamic-tostring
 composer test:native-call-arguments
 composer test:isolated-build
 composer test:native-packaging
