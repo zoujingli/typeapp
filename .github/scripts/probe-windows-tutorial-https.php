@@ -78,39 +78,6 @@ try {
 } finally {
     $compiler->stop();
 }
-$launcherSource = file_get_contents($root . '/tests/native-windows-sandbox.cpp');
-$tokenAccess = <<<'CPP'
-    PACL originalAcl = nullptr, permittedAcl = nullptr;
-    PSECURITY_DESCRIPTOR descriptor = nullptr;
-    DWORD accessStatus = GetSecurityInfo(restricted, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION,
-                                        nullptr, nullptr, &originalAcl, nullptr, &descriptor);
-    if (accessStatus != ERROR_SUCCESS) return failure("diagnostic token DACL read");
-    EXPLICIT_ACCESSW entry{};
-    entry.grfAccessPermissions = TOKEN_ALL_ACCESS;
-    entry.grfAccessMode = GRANT_ACCESS;
-    entry.grfInheritance = NO_INHERITANCE;
-    BuildTrusteeWithSidW(&entry.Trustee, allocated.back());
-    accessStatus = SetEntriesInAclW(1, &entry, originalAcl, &permittedAcl);
-    if (accessStatus == ERROR_SUCCESS) {
-        accessStatus = SetSecurityInfo(restricted, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION,
-                                      nullptr, nullptr, permittedAcl, nullptr);
-    }
-    if (permittedAcl) LocalFree(permittedAcl);
-    LocalFree(descriptor);
-    if (accessStatus != ERROR_SUCCESS) return failure("diagnostic token DACL write");
-CPP;
-expect(substr_count($launcherSource, '    CloseHandle(original);') === 1, '隔离设置器入口漂移');
-$launcherSource = str_replace('#include <sddl.h>', "#include <sddl.h>\n#include <aclapi.h>", $launcherSource);
-$launcherSource = str_replace('    CloseHandle(original);', $tokenAccess . "\n    CloseHandle(original);", $launcherSource);
-file_put_contents($work . '/token-runner.cpp', $launcherSource);
-$compiler = new Process(['cl.exe', '/nologo', '/MT', '/EHsc', '/std:c++17', '/utf-8', $work . '/token-runner.cpp',
-    '/Fo' . $work . '/token-runner.obj', '/Fe' . $work . '/package/token-runner.exe', '/link', 'advapi32.lib'], $work);
-try {
-    $compiled = $compiler->wait(60);
-    expect($compiled->successful(), '令牌对照设置器编译失败：' . $compiled->stdout . $compiled->stderr);
-} finally {
-    $compiler->stop();
-}
 $environment = array_replace(getenv(), ['APP_BASE_PATH' => $work . '/runtime', 'APP_ENV' => 'prod',
     'DB_DRIVER' => 'sqlite', 'DB_SQLITE_FILE' => 'var/app.sqlite', 'APP_API_TOKEN' => str_repeat('tutorial-https-test-', 4),
     'TEMP' => $work . '/runtime', 'TMP' => $work . '/runtime']);
@@ -145,37 +112,9 @@ try {
                 usleep(10000);
             } while (microtime(true) < $deadline);
             $ready = json_decode(trim($line), true, 512, JSON_THROW_ON_ERROR);
-            $variants = $mode === 'sandbox' ? ['sandbox', 'sandbox-token-access', 'sandbox-readable-ca'] : ['direct'];
+            $variants = [$mode];
             foreach ($variants as $variant) {
                 $command = $sandbox === null ? [$work . '/package/app.exe'] : $sandbox->command();
-                if ($variant === 'sandbox-token-access') {
-                    $command[0] = $work . '/package/token-runner.exe';
-                }
-                if ($variant === 'sandbox-readable-ca') {
-                    // 只给本轮公开 CA 添加受限 SID 的读权限，源码与 SDK 的拒绝保持有效。
-                    $aclScript = $work . '/grant-ca.ps1';
-                    file_put_contents($aclScript, <<<'PS1'
-param([string]$Certificate, [string]$Sid)
-$ErrorActionPreference = 'Stop'
-Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1')
-$acl = Get-Acl -LiteralPath $Certificate
-$before = $acl.Sddl
-$identity = [Security.Principal.SecurityIdentifier]::new($Sid)
-$rule = [Security.AccessControl.FileSystemAccessRule]::new($identity, [Security.AccessControl.FileSystemRights]::Read, [Security.AccessControl.AccessControlType]::Allow)
-$acl.AddAccessRule($rule)
-Set-Acl -LiteralPath $Certificate -AclObject $acl
-@{before=$before; after=(Get-Acl -LiteralPath $Certificate).Sddl} | ConvertTo-Json -Compress
-PS1);
-                    $acl = new Process([(string) getenv('SystemRoot') . '/System32/WindowsPowerShell/v1.0/powershell.exe',
-                        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $aclScript, $certificate, $command[1]], $directory);
-                    try {
-                        $aclResult = $acl->wait(15);
-                        expect($aclResult->successful(), '无法核对本轮 CA 的读取权限');
-                        $report['ca-access'] = json_decode($aclResult->stdout, true, 512, JSON_THROW_ON_ERROR);
-                    } finally {
-                        $acl->stop();
-                    }
-                }
                 $accessCommand = $sandbox === null ? [$work . '/package/access.exe', $certificate]
                     : [$command[0], $command[1], $work . '/package/access.exe', $certificate];
                 $access = new Process($accessCommand, $directory, $environment);
@@ -196,6 +135,16 @@ PS1);
                             'stdout' => $result->stdout, 'stderr' => $result->stderr];
                         $report['cases'][$variant][$operation] = $record;
                         echo $variant . '/' . $operation . ': ' . json_encode($record, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n";
+                        expect($result->successful(), '原程序 HTTPS 命令未正常完成');
+                        $lines = explode("\n", trim($result->stdout));
+                        $reply = json_decode(array_pop($lines), true, 512, JSON_THROW_ON_ERROR);
+                        $expected = match ($operation) {
+                            'https' => ['status' => 200, 'body' => 'catalog-https-ok'],
+                            'https-host' => ['error' => 'http_client_request_failed'],
+                            'https-timeout' => ['error' => 'http_client_timeout'],
+                            'https-cancel' => ['error' => 'cancelled'],
+                        };
+                        expect($reply === $expected, '原程序 HTTPS 结果不符：' . $variant . '/' . $operation);
                     } finally {
                         $process->stop();
                     }

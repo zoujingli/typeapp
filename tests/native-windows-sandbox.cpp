@@ -2,6 +2,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <sddl.h>
+#include <aclapi.h>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -9,6 +10,30 @@
 static int failure(const char *operation) {
     std::fprintf(stderr, "sandbox %s failed: %lu\n", operation, GetLastError());
     return 125;
+}
+
+// PHP 8.5 的 is_readable() 用 TOKEN_ALL_ACCESS 打开自身令牌，再执行文件 AccessCheck。
+// 仅允许本轮 SID 检查该限制令牌；不增加令牌特权、不移除限制 SID 或修改文件拒绝规则。
+static bool permitTokenSelfAccess(HANDLE token, PSID sid) {
+    PACL originalAcl = nullptr, permittedAcl = nullptr;
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    DWORD status = GetSecurityInfo(token, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION,
+                                   nullptr, nullptr, &originalAcl, nullptr, &descriptor);
+    if (status != ERROR_SUCCESS) { SetLastError(status); return false; }
+    EXPLICIT_ACCESSW entry{};
+    entry.grfAccessPermissions = TOKEN_ALL_ACCESS;
+    entry.grfAccessMode = GRANT_ACCESS;
+    entry.grfInheritance = NO_INHERITANCE;
+    BuildTrusteeWithSidW(&entry.Trustee, sid);
+    status = SetEntriesInAclW(1, &entry, originalAcl, &permittedAcl);
+    if (status == ERROR_SUCCESS) {
+        status = SetSecurityInfo(token, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION,
+                                 nullptr, nullptr, permittedAcl, nullptr);
+    }
+    if (permittedAcl) LocalFree(permittedAcl);
+    LocalFree(descriptor);
+    SetLastError(status);
+    return status == ERROR_SUCCESS;
 }
 
 // 遵循 CommandLineToArgvW 的反斜线与引号规则；不经过 cmd 或 PowerShell 解析业务参数。
@@ -41,6 +66,15 @@ static bool readable(const wchar_t *path, DWORD access = GENERIC_READ) {
 static int probe(int argc, wchar_t **argv) {
     // 真实原文件由 PHP 控制端先确认可读，拒绝必须来自访问检查，不接受缺失路径假通过。
     if (argc < 7 || !readable(argv[2])) { return failure("positive read"); }
+    // 文件可打开还不够；保持 PHP 权限自检可用，同时确认仍在受限令牌下运行。
+    HANDLE token = nullptr, impersonated = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &token)) { return failure("self token access"); }
+    if (!IsTokenRestricted(token) || !DuplicateToken(token, SecurityImpersonation, &impersonated)) {
+        CloseHandle(token);
+        return failure("restricted token inspection");
+    }
+    CloseHandle(impersonated);
+    CloseHandle(token);
     // PHP realpath 会逐层查询目录元数据；能打开目标文件不等于数据路径可解析。
     std::wstring directory = argv[3];
     for (wchar_t &character : directory) { if (character == L'/') { character = L'\\'; } }
@@ -86,7 +120,7 @@ int wmain(int argc, wchar_t **argv) {
     if (argc > 1 && std::wstring(argv[1]) == L"--probe") { return probe(argc, argv); }
     if (argc < 3) { return 64; }
     HANDLE original = nullptr, restricted = nullptr;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY, &original)) {
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY | READ_CONTROL | WRITE_DAC, &original)) {
         return failure("open token");
     }
     std::vector<PSID> allocated;
@@ -113,6 +147,7 @@ int wmain(int argc, wchar_t **argv) {
                                static_cast<DWORD>(restricting.size()), restricting.data(), &restricted)) {
         return failure("restrict token");
     }
+    if (!permitTokenSelfAccess(restricted, allocated.back())) { return failure("token self access DACL"); }
     CloseHandle(original);
     for (PSID sid : allocated) { LocalFree(sid); }
     if (!IsTokenRestricted(restricted)) { return failure("restricted identity"); }
