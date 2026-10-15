@@ -57,15 +57,15 @@ TypeApp 应用的通信与基础并发必须使用 Swoole；线程与协程入�
 
 ## 安装与版本
 
-源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-runtime)维护，经分发子仓进入 Packagist。以下命令安装已公开的 RC14 候选版，Composer 自动解析传递依赖。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-runtime)维护，经分发子仓进入 Packagist。以下命令对应 RC16 批次，公开状态以[版本说明](https://iots.top/#/guide/releases)为准；Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-runtime:1.0.0-rc.14
+composer require zoujingli/type-runtime:1.0.0-rc.16
 ```
 
-RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/zoujingli/type-runtime/blob/v1.0.0-rc.14/README.md)为准；当前源码教程见[开发文档](https://iots.top/next/#/guide/plugins/type-runtime)。文中标注的 `main` 新接口需要同批次开发组件，安装方法和升级核对统一见[版本与接口依据](https://iots.top/next/#/guide/components?id=版本与接口依据)。提交应用的 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。
+本页接口对应 RC16，使用同批组件并提交 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。RC 仍为预发布版，验收范围见[版本说明](https://iots.top/#/guide/releases)。RC14 应用继续使用 [RC14 包文档](https://github.com/zoujingli/type-runtime/blob/v1.0.0-rc.14/README.md)，不要混用新版接口。安装和升级核对统一见[版本与接口依据](https://iots.top/#/guide/components?id=版本与接口依据)。
 
 支持带值选项的空格和等号两种形式，以及不带值的开关。选项名由调用者声明；业务输出与退出码由应用入口决定。
 
