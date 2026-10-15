@@ -62,6 +62,9 @@ try {
             $work,
             array_replace($environment, ['TYPE_TEST_EMBED_EXIT' => $exitMode])
         );
+        file_put_contents($work . '/native-exit-' . $exitMode . '.log', json_encode([
+            'exit-code' => $exitStatus, 'stdout' => $exitOutput, 'stderr' => $exitError,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
         expect($exitStatus === 7 && $exitOutput === $expected && $exitError === '', 'embed 提前退出语义不符，证据保留于 ' . $work);
     }
     if ($fixture === 'embed-lifecycle' && PHP_OS_FAMILY === 'Darwin' && is_file('/usr/lib/libgmalloc.dylib')) {

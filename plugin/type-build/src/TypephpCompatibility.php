@@ -1107,11 +1107,17 @@ final class TypephpCompatibility extends Translator
             $this->exitCompatibilityVerified = true;
         }
         // 嵌套节点已生成相同守卫时不重复插入；普通异常仍走上游的完整处理路径。
-        return (string) preg_replace(
-            '/(catch\s*\(zend_object \*(_ex|_catch_throw_ex)\) \{\n)([ \t]*)([A-Za-z_][A-Za-z0-9_]* = php::catchException\(\);)/',
-            '$1$3if (zend_is_graceful_exit($2)) { throw; }' . "\n" . '$3$4',
-            $code
+        $adapted = preg_replace(
+            '/(catch\s*\(zend_object \*(_ex|_catch_throw_ex)\) \{\R)([ \t]*)([A-Za-z_][A-Za-z0-9_]* = php::catchException\(\);)/',
+            '$1$3if (zend_is_graceful_exit($2)) { throw; }' . PHP_EOL . '$3$4',
+            $code,
+            -1,
+            $count
         );
+        if (!is_string($adapted) || $count < 1) {
+            throw new RuntimeException('embed 退出适配缺少异常边界');
+        }
+        return $adapted;
     }
 
     /** 全局嵌套数组沿用编译器的数组初始化计划，保留原实现遗漏的临时变量。 */
