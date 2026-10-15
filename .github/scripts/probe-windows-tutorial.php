@@ -62,7 +62,7 @@ function probeTutorialStop(string $name, array $requests, bool $trace, string $p
             $cdb = getenv('TYPE_PROBE_CDB');
             $lldb = getenv('TYPE_PROBE_LLDB');
             $command = $cdb !== false
-                ? [$cdb, '-G', '-p', (string) $server->pid(), '-c', 'sxe -c ".echo [tutorial-native-crash];.exr -1;kv;lm;u @rip-20 L30;q" av;g']
+                ? [$cdb, '-G', '-p', (string) $server->pid(), '-c', 'sxe -c "gn" 0x40010008;sxe -c ".echo [tutorial-native-crash];.exr -1;kv;lm;u @rip-20 L30;q" av;g']
                 : [$lldb, '--batch', '-p', (string) $server->pid(), '-o', 'continue', '-k', 'thread backtrace all', '-k', 'register read', '-k', 'disassemble --pc --count 24', '-k', 'image list', '-k', 'quit'];
             $debugger = new Process($command, $work, $environment);
             // 附加为诊断步骤，短暂等待不参与业务时限或发布验收。
@@ -139,7 +139,7 @@ try {
     $cdb = getenv('TYPE_PROBE_CDB');
     $lldb = getenv('TYPE_PROBE_LLDB');
     $debugCommand = $cdb !== false
-        ? [$cdb, '-G', '-p', (string) $server->pid(), '-c', 'sxe -c ".echo [tutorial-native-crash];.exr -1;kv;lm;u @rip-20 L30;q" av;g']
+        ? [$cdb, '-G', '-p', (string) $server->pid(), '-c', 'sxe -c "gn" 0x40010008;sxe -c ".echo [tutorial-native-crash];.exr -1;kv;lm;u @rip-20 L30;q" av;g']
         : [$lldb, '--batch', '-p', (string) $server->pid(), '-o', 'continue', '-k', 'thread backtrace all', '-k', 'register read', '-k', 'disassemble --pc --count 24', '-k', 'image list', '-k', 'quit'];
     $probeDebugger = new Process($debugCommand, $root, $settings);
     usleep(1000000);
