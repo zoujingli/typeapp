@@ -22,6 +22,95 @@ expect(mkdir($base, 0700, true), '无法创建诊断目录');
 $work = $root . '/build/tutorial-https-' . bin2hex(random_bytes(6));
 expect(mkdir($work . '/package', 0700, true) && mkdir($work . '/runtime/var', 0700, true), '无法创建运行目录');
 expect(copy($program, $work . '/package/app.exe') && hash_file('sha256', $work . '/package/app.exe') === $digest, '原程序搬迁改变字节');
+// 独立原生探针仅观察同一限制令牌下的文件与令牌访问，不替换应用。
+$accessSource = <<<'CPP'
+#define NOMINMAX
+#include <windows.h>
+#include <cstdio>
+#include <vector>
+int wmain(int argc, wchar_t **argv) {
+    if (argc != 2) return 64;
+    const DWORD attributes = GetFileAttributesW(argv[1]);
+    std::printf("attributes=%lu error=%lu\n", attributes, attributes == INVALID_FILE_ATTRIBUTES ? GetLastError() : 0);
+    HANDLE file = CreateFileW(argv[1], GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    std::printf("file_read=%d error=%lu\n", file != INVALID_HANDLE_VALUE, file == INVALID_HANDLE_VALUE ? GetLastError() : 0);
+    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
+    for (DWORD rights : {static_cast<DWORD>(TOKEN_QUERY), static_cast<DWORD>(TOKEN_QUERY | TOKEN_DUPLICATE), static_cast<DWORD>(TOKEN_ALL_ACCESS)}) {
+        HANDLE token = nullptr;
+        BOOL opened = OpenProcessToken(GetCurrentProcess(), rights, &token);
+        std::printf("token_rights=%lu opened=%d error=%lu\n", rights, opened, opened ? 0 : GetLastError());
+        if (opened) {
+            HANDLE impersonated = nullptr;
+            BOOL duplicated = DuplicateToken(token, SecurityImpersonation, &impersonated);
+            std::printf("token_duplicate=%d error=%lu\n", duplicated, duplicated ? 0 : GetLastError());
+            if (duplicated) {
+                DWORD length = 0;
+                const SECURITY_INFORMATION information = OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION;
+                GetFileSecurityW(argv[1], information, nullptr, 0, &length);
+                std::vector<BYTE> descriptor(length);
+                BOOL security = GetFileSecurityW(argv[1], information, descriptor.data(), length, &length);
+                std::printf("file_security=%d error=%lu\n", security, security ? 0 : GetLastError());
+                if (security) {
+                    for (DWORD desired : {static_cast<DWORD>(FILE_GENERIC_READ), static_cast<DWORD>(FILE_GENERIC_READ | FILE_FLAG_BACKUP_SEMANTICS)}) {
+                        GENERIC_MAPPING mapping{FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_GENERIC_EXECUTE, FILE_ALL_ACCESS};
+                        PRIVILEGE_SET privileges{};
+                        DWORD privilegeLength = sizeof(privileges), granted = 0;
+                        BOOL allowed = FALSE;
+                        BOOL checked = AccessCheck(descriptor.data(), impersonated, desired, &mapping, &privileges, &privilegeLength, &granted, &allowed);
+                        std::printf("desired=%lu checked=%d allowed=%d granted=%lu error=%lu\n", desired, checked, allowed, granted, checked ? 0 : GetLastError());
+                    }
+                }
+                CloseHandle(impersonated);
+            }
+            CloseHandle(token);
+        }
+    }
+    return 0;
+}
+CPP;
+file_put_contents($work . '/access.cpp', $accessSource);
+$compiler = new Process(['cl.exe', '/nologo', '/MT', '/EHsc', '/std:c++17', '/utf-8', $work . '/access.cpp',
+    '/Fo' . $work . '/access.obj', '/Fe' . $work . '/package/access.exe', '/link', 'advapi32.lib'], $work);
+try {
+    $compiled = $compiler->wait(60);
+    expect($compiled->successful(), '权限探针编译失败：' . $compiled->stdout . $compiled->stderr);
+} finally {
+    $compiler->stop();
+}
+$launcherSource = file_get_contents($root . '/tests/native-windows-sandbox.cpp');
+$tokenAccess = <<<'CPP'
+    PACL originalAcl = nullptr, permittedAcl = nullptr;
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    DWORD accessStatus = GetSecurityInfo(restricted, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION,
+                                        nullptr, nullptr, &originalAcl, nullptr, &descriptor);
+    if (accessStatus != ERROR_SUCCESS) return failure("diagnostic token DACL read");
+    EXPLICIT_ACCESSW entry{};
+    entry.grfAccessPermissions = TOKEN_ALL_ACCESS;
+    entry.grfAccessMode = GRANT_ACCESS;
+    entry.grfInheritance = NO_INHERITANCE;
+    BuildTrusteeWithSidW(&entry.Trustee, allocated.back());
+    accessStatus = SetEntriesInAclW(1, &entry, originalAcl, &permittedAcl);
+    if (accessStatus == ERROR_SUCCESS) {
+        accessStatus = SetSecurityInfo(restricted, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION,
+                                      nullptr, nullptr, permittedAcl, nullptr);
+    }
+    if (permittedAcl) LocalFree(permittedAcl);
+    LocalFree(descriptor);
+    if (accessStatus != ERROR_SUCCESS) return failure("diagnostic token DACL write");
+CPP;
+expect(substr_count($launcherSource, '    CloseHandle(original);') === 1, '隔离设置器入口漂移');
+$launcherSource = str_replace('#include <sddl.h>', "#include <sddl.h>\n#include <aclapi.h>", $launcherSource);
+$launcherSource = str_replace('    CloseHandle(original);', $tokenAccess . "\n    CloseHandle(original);", $launcherSource);
+file_put_contents($work . '/token-runner.cpp', $launcherSource);
+$compiler = new Process(['cl.exe', '/nologo', '/MT', '/EHsc', '/std:c++17', '/utf-8', $work . '/token-runner.cpp',
+    '/Fo' . $work . '/token-runner.obj', '/Fe' . $work . '/package/token-runner.exe', '/link', 'advapi32.lib'], $work);
+try {
+    $compiled = $compiler->wait(60);
+    expect($compiled->successful(), '令牌对照设置器编译失败：' . $compiled->stdout . $compiled->stderr);
+} finally {
+    $compiler->stop();
+}
 $environment = array_replace(getenv(), ['APP_BASE_PATH' => $work . '/runtime', 'APP_ENV' => 'prod',
     'DB_DRIVER' => 'sqlite', 'DB_SQLITE_FILE' => 'var/app.sqlite', 'APP_API_TOKEN' => str_repeat('tutorial-https-test-', 4),
     'TEMP' => $work . '/runtime', 'TMP' => $work . '/runtime']);
@@ -56,9 +145,12 @@ try {
                 usleep(10000);
             } while (microtime(true) < $deadline);
             $ready = json_decode(trim($line), true, 512, JSON_THROW_ON_ERROR);
-            $command = $sandbox === null ? [$work . '/package/app.exe'] : $sandbox->command();
-            $variants = $mode === 'sandbox' ? ['sandbox', 'sandbox-readable-ca'] : ['direct'];
+            $variants = $mode === 'sandbox' ? ['sandbox', 'sandbox-token-access', 'sandbox-readable-ca'] : ['direct'];
             foreach ($variants as $variant) {
+                $command = $sandbox === null ? [$work . '/package/app.exe'] : $sandbox->command();
+                if ($variant === 'sandbox-token-access') {
+                    $command[0] = $work . '/package/token-runner.exe';
+                }
                 if ($variant === 'sandbox-readable-ca') {
                     // 只给本轮公开 CA 添加受限 SID 的读权限，源码与 SDK 的拒绝保持有效。
                     $aclScript = $work . '/grant-ca.ps1';
@@ -83,6 +175,16 @@ PS1);
                     } finally {
                         $acl->stop();
                     }
+                }
+                $accessCommand = $sandbox === null ? [$work . '/package/access.exe', $certificate]
+                    : [$command[0], $command[1], $work . '/package/access.exe', $certificate];
+                $access = new Process($accessCommand, $directory, $environment);
+                try {
+                    $accessResult = $access->wait(15);
+                    $report['native-access'][$variant] = ['exit' => $accessResult->exitCode,
+                        'stdout' => $accessResult->stdout, 'stderr' => $accessResult->stderr];
+                } finally {
+                    $access->stop();
                 }
                 foreach (['https', 'https-host', 'https-timeout', 'https-cancel'] as $operation) {
                     $settings = array_replace($environment, ['CATALOG_HTTPS_URL' => 'https://127.0.0.1:' . $ready['port']
