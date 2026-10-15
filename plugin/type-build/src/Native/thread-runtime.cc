@@ -203,7 +203,9 @@ void register_standard_stream(const char *name, const char *path, const char *mo
 // 0.9.4 的 pre_shutdown 只服务于上游请求启动后登记的临时模块，此处不重复调用。
 extern "C" int typephp_runtime_start(typephp_module_getter get_module, typephp_module_pre_shutdown, int argc, char **argv) {
     if (embed_started) { return 0; }
+#ifdef TYPE_APP_COMPILED_THREADS
     if (php::typeAppThreadAbi() != 2) { return 1; }
+#endif
     application_module = get_module();
     if (!startup_embed(argc, argv)) {
         shutdown_embed();

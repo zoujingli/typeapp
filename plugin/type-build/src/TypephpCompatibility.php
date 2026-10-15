@@ -9,7 +9,7 @@ use RuntimeException;
 use TypePhp\Build\CompilerRuntime;
 use TypePhp\Translator;
 
-/** 构建期限定适配：保留 Zend 异常边界，并为显式线程应用分离 AOT 请求与主入口。 */
+/** 构建期限定适配：保留 Zend 异常边界，按正常请求生命周期运行完整 embed 应用。 */
 final class TypephpCompatibility extends Translator
 {
     private bool $propertyCompatibilityVerified = false;
@@ -56,6 +56,11 @@ final class TypephpCompatibility extends Translator
     protected function getCommonCompileCommandOptions(): \TypePhp\Build\CompileOptions
     {
         $options = parent::getCommonCompileCommandOptions();
+        if ($this->threaded()) {
+            $values = $options->toArray();
+            $values['user_defines'][] = 'TYPE_APP_COMPILED_THREADS=1';
+            $options = new \TypePhp\Build\CompileOptions($values);
+        }
         $static = $this->staticRuntime();
         if ($static !== null) {
             $values = $options->toArray();
@@ -892,10 +897,16 @@ final class TypephpCompatibility extends Translator
         $this->propertyCompatibilityVerified = true;
     }
 
-    /** 仅显式生成了线程入口表的完整应用使用新的模块生命周期。 */
+    /** 显式线程入口决定线程存储及受控 PHPX ABI；普通 embed 不额外要求线程 SDK。 */
     private function threaded(): bool
     {
         return $this->isBuildModeBin() && $this->hasFunction('type_app_compiled_thread_run');
+    }
+
+    /** 完整 embed 先注册应用模块再开启请求，避免退出时类元数据早于对象释放。 */
+    private function fullEmbed(): bool
+    {
+        return $this->isBuildModeBin() && $this->hasSapi('embed') && !$this->isNanoMode() && !$this->isSapiBuild();
     }
 
     /** 未静态解析的属性读取必须携带调用方权限，不能沿用 PHPX 的接收对象权限。 */
@@ -1016,7 +1027,7 @@ final class TypephpCompatibility extends Translator
     /** AOT 回调显式绑定声明作用域，不改写或伪造 Zend 用户函数栈。 */
     protected function markUserCodeCallableScope(): void
     {
-        if (!$this->threaded()) {
+        if (!$this->threaded() && !$this->fullEmbed()) {
             parent::markUserCodeCallableScope();
         }
     }
@@ -1024,7 +1035,7 @@ final class TypephpCompatibility extends Translator
     protected function markInternalFunctionCallbackCall(string $function, array $args): void
     {
         parent::markInternalFunctionCallbackCall($function, $args);
-        if (!$this->threaded()) {
+        if (!$this->threaded() && !$this->fullEmbed()) {
             return;
         }
         foreach ($args as $argument) {
@@ -1041,7 +1052,7 @@ final class TypephpCompatibility extends Translator
     protected function parseCallArgs(array $args, string $funcName = '', string $className = '', bool $separateNamedArgs = true, bool $forceArrayArgs = false, bool $preserveExistingReferences = false): string
     {
         $result = parent::parseCallArgs($args, $funcName, $className, $separateNamedArgs, $forceArrayArgs, $preserveExistingReferences);
-        if (!$this->threaded() || !$this->methodDef || $className !== '' || $forceArrayArgs || !$separateNamedArgs) {
+        if ((!$this->threaded() && !$this->fullEmbed()) || !$this->methodDef || $className !== '' || $forceArrayArgs || !$separateNamedArgs) {
             return $result;
         }
         $base = InstalledVersions::getInstallPath('swoole/typephp') . '/src/CompilerBase.php';
@@ -1069,11 +1080,11 @@ final class TypephpCompatibility extends Translator
         return $temporary . (isset($parts[2]) ? ', ' . $named : '');
     }
 
-    /** 线程应用的 exit 结束当前 Zend 请求，由外层 Swoole/embed 边界回收，不直接终止进程。 */
+    /** 完整 embed 的 exit 结束当前 Zend 请求，由外层宿主回收，不在活动业务栈内卸载模块。 */
     protected function parseExit(\PhpParser\Node\Expr\Exit_ $node): string
     {
         $call = parent::parseExit($node);
-        if (!$this->threaded()) {
+        if (!$this->threaded() && !$this->fullEmbed()) {
             return $call;
         }
         $call = $node->expr === null ? 'php::exit(0)' : str_replace('php::aotExit(', 'php::exit(', $call);
@@ -1107,13 +1118,14 @@ final class TypephpCompatibility extends Translator
             if (!$this->threaded() && $this->isBuildModeBin() && $this->hasSapi('embed') && !$this->isNanoMode()) {
                 if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c'
                     || hash_file('sha256', InstalledVersions::getInstallPath('swoole/phpx') . '/src/misc/typephp_runtime.cc') !== 'c16de4ca76275996c2d8778b97e46f289adb805b69679ccade36f8f6c55df48a') {
-                    throw new RuntimeException('embed 业务入口阶段适配需要重新核对 TypePHP/PHPX 原文');
+                    throw new RuntimeException('embed 请求生命周期适配需要重新核对 TypePHP/PHPX 原文');
                 }
-                // PHP CLI 在执行业务前结束请求启动阶段；embed 不会代做这一步。
-                // 保留模块初始化期间的启动错误，只在已生成的 main 分派前切换。
-                $content = preg_replace('/^php::eval\(/m', "PG(during_request_startup) = false;\nphp::eval(", $content, -1, $count);
-                if (!is_string($content) || $count !== 1) {
-                    throw new RuntimeException('embed 业务入口阶段适配缺少唯一主入口分派');
+                if (!$this->fullEmbed()) {
+                    // 混合 SAPI 继续使用上游宿主，保留业务分派前结束启动阶段的既有行为。
+                    $content = preg_replace('/^php::eval\(/m', "PG(during_request_startup) = false;\nphp::eval(", $content, -1, $count);
+                    if (!is_string($content) || $count !== 1) {
+                        throw new RuntimeException('embed 业务入口阶段适配缺少唯一主入口分派');
+                    }
                 }
             }
         }
@@ -1126,7 +1138,7 @@ final class TypephpCompatibility extends Translator
             // 省略启动依赖；其他未知扩展仍失败，不能掩盖真实依赖遗漏。
             $content = BuildProfile::targetModuleDependencies($content, $this->extensionDependencies);
         }
-        if ($this->threaded()) {
+        if ($this->threaded() || $this->fullEmbed()) {
             if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c') {
                 throw new RuntimeException('线程生成适配需要重新核对 TypePHP 原文');
             }
@@ -1227,7 +1239,7 @@ static inline void type_app_prepare_callback(php::Args &args, zend_array *named,
 }
 CPP;
             }
-            if ($extension || $declarations) {
+            if ($this->threaded() && ($extension || $declarations)) {
                 $storage = [];
                 foreach ($this->constants as $name => $constant) {
                     $storage[$name] = $constant->type;
@@ -1301,31 +1313,33 @@ CPP . "\n" . $request;
     php_request_cache = nullptr;
     module_clean();
 CPP, '    type_app_request_clean();');
-                $classes = array_values(array_filter($this->classCeList, fn (string $ce): bool => isset($this->classCeInfo[$ce])));
-                $prepare = '';
-                foreach ($classes as $ce) {
-                    $prepare .= 'type_app_thread_constants(' . $ce . ');' . "\n";
+                if ($this->threaded()) {
+                    $classes = array_values(array_filter($this->classCeList, fn (string $ce): bool => isset($this->classCeInfo[$ce])));
+                    $prepare = '';
+                    foreach ($classes as $ce) {
+                        $prepare .= 'type_app_thread_constants(' . $ce . ');' . "\n";
+                    }
+                    $content = $this->threadReplace(
+                        $content,
+                        'static void module_init() {',
+                        $this->threadConstantsHelper() . "\nstatic void module_init() {\n" . $prepare
+                    );
+                    // 只调整本模块生成的类表，在 PHP 发布进程级 ZTS 符号前准备请求槽。
+                    $flags = '';
+                    foreach ($classes as $ce) {
+                        $flags .= 'if (zend_hash_num_elements(&' . $ce . "->constants_table) != 0) {\n";
+                        $flags .= $ce . "->ce_flags |= ZEND_ACC_HAS_AST_CONSTANTS;\n";
+                        $flags .= 'if (!ZEND_MAP_PTR(' . $ce . '->mutable_data)) { ZEND_MAP_PTR(' . $ce . "->mutable_data) = static_cast<zend_class_mutable_data *>(zend_map_ptr_new()); }\n}\n";
+                    }
+                    $minitStart = strpos($content, 'PHP_MINIT_FUNCTION(' . $module . ') {');
+                    $minitEnd = strpos($content, 'PHP_MSHUTDOWN_FUNCTION(' . $module . ') {');
+                    if ($minitStart === false || $minitEnd === false) {
+                        throw new RuntimeException('线程生成适配缺少模块生命周期');
+                    }
+                    $minit = substr($content, $minitStart, $minitEnd - $minitStart);
+                    $minit = $this->threadReplace($minit, 'return SUCCESS;', $flags . 'return SUCCESS;');
+                    $content = substr_replace($content, $minit, $minitStart, $minitEnd - $minitStart);
                 }
-                $content = $this->threadReplace(
-                    $content,
-                    'static void module_init() {',
-                    $this->threadConstantsHelper() . "\nstatic void module_init() {\n" . $prepare
-                );
-                // 只调整本模块生成的类表，在 PHP 发布进程级 ZTS 符号前准备请求槽。
-                $flags = '';
-                foreach ($classes as $ce) {
-                    $flags .= 'if (zend_hash_num_elements(&' . $ce . "->constants_table) != 0) {\n";
-                    $flags .= $ce . "->ce_flags |= ZEND_ACC_HAS_AST_CONSTANTS;\n";
-                    $flags .= 'if (!ZEND_MAP_PTR(' . $ce . '->mutable_data)) { ZEND_MAP_PTR(' . $ce . "->mutable_data) = static_cast<zend_class_mutable_data *>(zend_map_ptr_new()); }\n}\n";
-                }
-                $minitStart = strpos($content, 'PHP_MINIT_FUNCTION(' . $module . ') {');
-                $minitEnd = strpos($content, 'PHP_MSHUTDOWN_FUNCTION(' . $module . ') {');
-                if ($minitStart === false || $minitEnd === false) {
-                    throw new RuntimeException('线程生成适配缺少模块生命周期');
-                }
-                $minit = substr($content, $minitStart, $minitEnd - $minitStart);
-                $minit = $this->threadReplace($minit, 'return SUCCESS;', $flags . 'return SUCCESS;');
-                $content = substr_replace($content, $minit, $minitStart, $minitEnd - $minitStart);
                 $arguments = count($this->symbols->function(self::ENTRY_FUNCTION)->argInfoList) === 2 ? ', php::ArgList{php::Var(argc), arguments}' : '';
                 $content .= "\nextern \"C\" void type_app_compiled_process_main(int argc, char **argv) {\n";
                 $content .= "php::Array arguments;\nfor (int index = 0; index < argc; ++index) { arguments.append(php::String(argv[index])); }\n";
@@ -1345,8 +1359,8 @@ CPP, '    type_app_request_clean();');
     }
 
     /**
-     * 线程运行时必须通过 compileFile() 替换 PHPX 的公共 runtime 源码。
-     * TypePHP 0.9 的进程池直接生成编译命令，绕过了该覆写；线程构建只
+     * 完整 embed 运行时必须通过 compileFile() 选择已审查的生命周期源码。
+     * TypePHP 0.9 的进程池直接生成编译命令，绕过了该覆写；完整 embed 构建只
      * 临时关闭这层进程池，仍复用上游的源码队列、缓存、编译选项和链接流程。
      *
      * @param list<string> $sourceFiles
@@ -1354,7 +1368,7 @@ CPP, '    type_app_request_clean();');
      */
     public function compile(array $sourceFiles): array
     {
-        if (!$this->threaded()) {
+        if (!$this->threaded() && !$this->fullEmbed()) {
             return parent::compile($sourceFiles);
         }
         $maxJob = $this->maxJob;
@@ -1366,12 +1380,15 @@ CPP, '    type_app_request_clean();');
         }
     }
 
-    /** 复用编译器的编译选项与对象缓存，仅替换显式线程应用的 embed 生命周期源。 */
+    /** 普通和线程 embed 共用正常模块启动、请求关闭；不修改已安装 PHPX 源码。 */
     public function compileFile(string $cppFile, string $objectFile, bool $parallel = false): void
     {
         $runtimeSource = realpath($this->getPhpxDir() . '/src/misc/typephp_runtime.cc');
         $compiledSource = realpath($cppFile);
-        if ($this->threaded() && $runtimeSource !== false && $compiledSource !== false && $compiledSource === $runtimeSource) {
+        if (($this->threaded() || $this->fullEmbed()) && $runtimeSource !== false && $compiledSource !== false && $compiledSource === $runtimeSource) {
+            if (hash_file('sha256', $runtimeSource) !== 'c16de4ca76275996c2d8778b97e46f289adb805b69679ccade36f8f6c55df48a') {
+                throw new RuntimeException('embed 请求生命周期适配需要固定 PHPX 原文');
+            }
             $cppFile = __DIR__ . '/Native/thread-runtime.cc';
         }
         parent::compileFile($cppFile, $objectFile, $parallel);

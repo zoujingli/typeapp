@@ -36,6 +36,8 @@ flowchart LR
 
 构建声明可通过 `threads` 登记已编译业务入口。构建器核对受控 Swoole/PHPX ABI 2、源码摘要与 fiber 通知配置，并在正常模块启动阶段发布应用符号；线程内协程作用域、初始化失败和清理边界见[已编译业务线程](https://github.com/zoujingli/typeapp/blob/main/docs/development/compiled-business-threads.md)，实际平台结果按该页记录。
 
+普通完整 embed 应用与线程应用共用请求宿主：先结束请求及对象清理，再卸载应用模块，避免回调仍持有对象时提前释放类信息。普通应用不额外启用线程；源码摘要门禁、退出码和原生回归见[embed 生命周期](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md#embed-请求与模块生命周期)。旧版已编译程序需要重新构建才能获得修复。
+
 线程适配另提供 TypeApp 私有 `Thread::TYPEAPP_JOIN_ABI=1` 与 `joinWithin(int $milliseconds)` 候选，只适用于编译线程；等待完整 C++ 线程局部清理通知后仍由 Swoole join。超时保留所有权，不取消或 detach；非零等待会阻塞调用方线程，只供独立主控使用。它不等于完整停止监督或硬实时截止，固定缺口、验收及撤除条件见同页的“有截止的完成等待候选”。
 
 `SwooleThreadSource` 还提供私有 `TYPEAPP_CONTROL_ARGUMENT_ABI=1`，允许 `startNative()` 的第四参数传递原生 `Thread\Map`；仅扩大编译入口的参数接缝，数据共享与引用回收继续使用上游 ZendArray/ThreadResource。当前调用者是 `type-runtime` 的有限线程监督及 `type-core` 的 HTTP 线程入口。原两/三参数形状保持不变；上游编译入口可等价传入受控 Map 后撤除此私有接缝，不能用脚本线程代替无源码入口。

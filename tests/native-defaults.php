@@ -6,7 +6,7 @@ require __DIR__ . '/support.php';
 
 $root = dirname(__DIR__);
 $fixture = $argv[1] ?? 'nested-default';
-expect(in_array($fixture, ['nested-default', 'interface-constants', 'class-constant-symbols', 'declared-tostring', 'dynamic-tostring', 'inherited-promoted-property', 'reference-parameter-capture', 'call-arguments', 'call-arguments-coroutine', 'builtin-warnings'], true), '未知的值语义回归夹具');
+expect(in_array($fixture, ['nested-default', 'interface-constants', 'class-constant-symbols', 'declared-tostring', 'dynamic-tostring', 'inherited-promoted-property', 'reference-parameter-capture', 'call-arguments', 'call-arguments-coroutine', 'builtin-warnings', 'embed-lifecycle'], true), '未知的值语义回归夹具');
 $extensions = [];
 if ($fixture === 'call-arguments-coroutine') {
     require $root . '/vendor/autoload.php';
@@ -26,6 +26,14 @@ try {
     [$phpStatus, $expected, $phpError] = execute([...$php, '-r', 'require $argv[1]; main();', $source], $work);
     expect($phpStatus === 0 && $phpError === '', '值语义 PHP 对照失败：' . $expected . $phpError);
     file_put_contents($work . '/php.json', $expected);
+    if ($fixture === 'embed-lifecycle') {
+        [$exitStatus, $exitOutput, $exitError] = execute(
+            [...$php, '-r', 'require $argv[1]; main();', $source],
+            $work,
+            array_replace(getenv(), ['TYPE_TEST_EMBED_EXIT' => '1'])
+        );
+        expect($exitStatus === 7 && $exitOutput === $expected && $exitError === '', 'PHP 提前退出对照失败');
+    }
     [$compileStatus, $compileOutput, $compileError] = execute([
         ...$php, $root . '/vendor/bin/type-compiler', $source,
         '--mode', 'bin', '--output', $binary, '--build-dir', $work . '/compiler',
@@ -48,6 +56,29 @@ try {
     file_put_contents($work . '/native.stdout.log', $actual);
     file_put_contents($work . '/native.stderr.log', $nativeError);
     expect($nativeStatus === 0 && $nativeError === '' && $actual === $expected, '原生值语义与 PHP 不符，证据保留于 ' . $work);
+    if ($fixture === 'embed-lifecycle') {
+        [$exitStatus, $exitOutput, $exitError] = execute(
+            nativeCommand($binary),
+            $work,
+            array_replace($environment, ['TYPE_TEST_EMBED_EXIT' => '1'])
+        );
+        expect($exitStatus === 7 && $exitOutput === $expected && $exitError === '', 'embed 提前退出语义不符，证据保留于 ' . $work);
+    }
+    if ($fixture === 'embed-lifecycle' && PHP_OS_FAMILY === 'Darwin' && is_file('/usr/lib/libgmalloc.dylib')) {
+        // 立即取消已释放内存的映射，把类元数据提前回收的间歇崩溃变为确定失败。
+        $guarded = array_replace($environment, ['USE_ZEND_ALLOC' => '0', 'DYLD_INSERT_LIBRARIES' => '/usr/lib/libgmalloc.dylib']);
+        [$guardStatus, $guardOutput, $guardError] = execute(nativeCommand($binary), $work, $guarded);
+        file_put_contents($work . '/guard.stdout.log', $guardOutput);
+        file_put_contents($work . '/guard.stderr.log', $guardError);
+        expect($guardStatus === 0 && $guardOutput === $expected, 'embed 请求关闭存在内存生命周期错误，证据保留于 ' . $work);
+        [$exitStatus, $exitOutput, $exitError] = execute(
+            nativeCommand($binary),
+            $work,
+            array_replace($guarded, ['TYPE_TEST_EMBED_EXIT' => '1'])
+        );
+        file_put_contents($work . '/guard-exit.stderr.log', $exitError);
+        expect($exitStatus === 7 && $exitOutput === $expected, 'embed 提前退出存在内存生命周期错误，证据保留于 ' . $work);
+    }
     $complete = true;
     echo $fixture . '：PHP/AOT 公开行为与无输入源码运行检查通过。' . PHP_EOL;
 } finally {

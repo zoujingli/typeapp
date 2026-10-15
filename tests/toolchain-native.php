@@ -16,6 +16,7 @@ expect(mkdir($work, 0700, true), '无法创建工具链原生回归目录');
 putenv('COMPOSER_CACHE_DIR=' . ((string) getenv('COMPOSER_CACHE_DIR') ?: $root . '/.cache/composer'));
 putenv('COMPOSER_DISABLE_NETWORK=1');
 $cases = [
+    'embed-lifecycle' => ['native-defaults.php', 'embed-lifecycle'],
     'dns-reuse' => ['swoole-dns-reuse.php'],
     'curl' => ['swoole-curl.php'],
     'threads' => ['compiled-threads.php'],
@@ -32,7 +33,8 @@ try {
         $script = array_shift($arguments);
         echo '工具链原生回归：' . $name . "\n";
         $started = microtime(true);
-        $process = new Process([PHP_BINARY, $root . '/tests/' . $script, $work . '/' . $name, ...$arguments], $root, null, 8 * 1024 * 1024);
+        $parameters = $script === 'native-defaults.php' ? $arguments : [$work . '/' . $name, ...$arguments];
+        $process = new Process([PHP_BINARY, $root . '/tests/' . $script, ...$parameters], $root, null, 8 * 1024 * 1024);
         try {
             $result = $process->wait(1500);
         } finally {
