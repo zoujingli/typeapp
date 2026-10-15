@@ -261,6 +261,10 @@
     "test:native-defaults": "@php tests/native-defaults.php",
     "test:native-interface-constants": "@php tests/native-defaults.php interface-constants",
     "test:native-declared-tostring": "@php tests/native-defaults.php declared-tostring",
+    "test:native-call-arguments": [
+      "@php tests/native-defaults.php call-arguments",
+      "@php tests/native-defaults.php call-arguments-coroutine"
+    ],
     "test:embed-runtime": "@php tests/embed-runtime.php",
     "test:build-source-collection": "@php tests/build-source-collection.php",
     "test:isolated-build": "bash tools/test-isolated-build.sh",

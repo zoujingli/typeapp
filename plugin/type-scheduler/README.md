@@ -108,7 +108,7 @@ function main(int $argc, array $argv): void
 }
 ```
 
-定义与任务类在应用构建时一并编译；注册工厂必须是显式 `Closure(TaskContext): Task`。即使构造时不使用上下文，也须声明 `TaskContext $context`，TypePHP 严格检查实参数量。配置不接受 shell、PHP 文件、字符串调用器或运行时目录发现。每次 occurrence 都调用工厂，工厂与任务可通过 `TaskContext::scope()` 登记资源，执行后无论成功或失败都会关闭独立 `ExecutionScope`。
+定义与任务类在应用构建时一并编译；注册工厂必须是显式 `Closure(TaskContext): Task`。即使构造时不使用上下文，也须按回调合同声明 `TaskContext $context`。配置不接受 shell、PHP 文件、字符串调用器或运行时目录发现。每次 occurrence 都调用工厂，工厂与任务可通过 `TaskContext::scope()` 登记资源，执行后无论成功或失败都会关闭独立 `ExecutionScope`。
 
 Cron 已验证 `dragonmantank/cron-expression` **3.6.0**，时钟采用 PSR-20 `ClockInterface` **1.0.0**。Composer 接受兼容补丁版本，应用通过 lock 文件锁定；两个生产依赖的 TypePHP 源码适配严格绑定上述已验证版本，升级后须更新适配并重新验收。包按既定依赖方向依赖 runtime 与 Redis，本地文件调度不连接 Redis；多实例使用下文 Redis 存储，不隐式拉入 queue、core 或 ORM。
 

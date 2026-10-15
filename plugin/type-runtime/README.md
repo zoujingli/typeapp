@@ -73,7 +73,7 @@ RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/z
 
 `ManagedResource::stop()` 抛错后，作用域继续持有失败项并保持 `closing`；同一所有者再次 `close()` 只收尾剩余项，成功项不重复停止。资源实现须保留再次收尾所需状态；正常返回也可表示在途所有权已交给既有池或原生完成回调。迟到子任务不能越过失败资源将作用域标成 `closed`，资源清理本身不增加后台重试；Deadline 唤醒使用作用域登记的 Swoole Timer，并在关闭时撤销。`WorkLifecycle::finish()` 遇到未关闭作用域会撤销就绪并保持在途额度，拒绝替换该作用域；业务已返回且真实清理完成后，统计回收额度，角色仍保持停止。
 
-运行时回调使用固定签名：`ExecutionScope::spawn()` 接收 `Closure(ExecutionScope): mixed`，子任务始终获得自己的作用域；`ResourceLease::hold()` 接收 `Closure(ReusableResource): mixed`；`ResourcePool` 工厂为 `Closure(): ReusableResource`。即使不使用上下文也须声明相应参数，TypePHP 对非 variadic 回调严格检查实参数量。依赖通过构造或 `use` 捕获传入，业务扩展不依赖参数引用写回。
+运行时回调使用固定签名：`ExecutionScope::spawn()` 接收 `Closure(ExecutionScope): mixed`，子任务始终获得自己的作用域；`ResourceLease::hold()` 接收 `Closure(ReusableResource): mixed`；`ResourcePool` 工厂为 `Closure(): ReusableResource`。即使不使用上下文，也按公开合同声明相应参数。依赖通过构造或 `use` 捕获传入，业务扩展不依赖参数引用写回。
 
 本包第一方源码按 Apache-2.0 提供；仓库可见性、分发批次和稳定版本仍由维护者按发布门槛管理。第三方运行时依赖保留各自许可证。
 

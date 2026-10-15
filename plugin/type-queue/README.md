@@ -16,7 +16,7 @@ RC 尚非稳定版。使用该版本时以 [RC14 包文档](https://github.com/z
 
 应用通过 `application.jobs` 自动装配 Job 及其依赖，生成 `CommandApplication::jobs()`；声明规则与底层接口分别见下文。Worker 每次执行创建新 Job、JobContext 和 ExecutionScope。
 
-底层直接注册与生成装配的工厂都使用 `Closure(JobContext): Job`，例如 `static fn (JobContext $context): Job => new ReportJob()`。即使构造本身不使用上下文，也要显式声明这个参数；TypePHP 对非 variadic 回调严格检查实参数量。
+底层直接注册与生成装配的工厂都使用 `Closure(JobContext): Job`，例如 `static fn (JobContext $context): Job => new ReportJob()`。即使构造本身不使用上下文，也按回调合同显式声明这个参数。
 
 `Queue::publish()` 投递，`reserve()` 通过消费组一次领取一条并原子登记持有者 token 和到期时间。一个队列命名空间只使用自有 workers 消费组，不支持其他应用共用同一 Stream 增加任意消费组。消息容量达到上限即拒绝新投递，不裁剪未确认消息。
 

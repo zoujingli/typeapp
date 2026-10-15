@@ -62,7 +62,7 @@ HTTP 使用 PSR-7/15/17 接口。`Http\Message\Factory` 创建消息和流，`Ht
 
 显式 `SwooleServer::serveThread($listener, $state)` 在编译业务线程中复用原生协程 HTTP 的配置、监听、停止及连接回收，沿用同一 PSR 链。监听副本与事件循环由该入口拥有；`HttpControl` 接收部署入口已分配的请求/连接份额，满额连接不占用受管子任务的预留。`$state` 是 `ThreadSupervisor` 提供的原生控制 Map，主控独立负责停止期限及最终 join。正常排空后执行已有 `onWorkerStop` 同步回调；无法完整收尾则报告失败，不能提前复用资源。主仓物联中心的生产 HTTP 已使用该入口，开发 HTTP、Broker 管理 HTTP 和通用模板 HTTP 使用经典 `serve()`；各平台与输入/流边界分别验收。
 
-处理器、中间件和生成路由的控制器工厂均为零参数闭包；通用 `ActionHandler` 仍接收一个 `ServerRequestInterface` 并返回 `ResponseInterface`。由 `type-build` 生成的控制器动作可以接收同名 `int`/`string` 路径参数、至多一个可选 PSR 请求，并返回 `array`、`void` 或 `ResponseInterface`；生成适配负责 JSON/204 转换。`Authentication` 的认证器签名为 `(string $token): ?Identity`，授权器为 `(Identity $identity, CanonicalRequest $request, string $method): bool`；`TenantResolver` 的授权器为 `(Identity $identity, Tenant $tenant): bool`。TypePHP 严格检查实参数量，未使用的上下文参数仍需显式声明。
+处理器、中间件和生成路由的控制器工厂均为零参数闭包；通用 `ActionHandler` 仍接收一个 `ServerRequestInterface` 并返回 `ResponseInterface`。由 `type-build` 生成的控制器动作可以接收同名 `int`/`string` 路径参数、至多一个可选 PSR 请求，并返回 `array`、`void` 或 `ResponseInterface`；生成适配负责 JSON/204 转换。`Authentication` 的认证器签名为 `(string $token): ?Identity`，授权器为 `(Identity $identity, CanonicalRequest $request, string $method): bool`；`TenantResolver` 的授权器为 `(Identity $identity, Tenant $tenant): bool`。未使用的上下文参数仍按公开回调合同显式声明。
 
 认证器可用 `new Identity($subject, $roles, $attributes)` 传递已验证的身份元数据，`attributes(): array` 返回值副本，供应用记录会话来源和审计。组件不解释业务字段，不从客户端自报数据构造可信来源；元数据不代替每次请求的当前授权检查，禁止存放口令和可认证令牌。
 

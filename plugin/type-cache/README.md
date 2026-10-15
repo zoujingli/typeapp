@@ -62,7 +62,7 @@ function main(): void
 
 `remember()` 先校验 TTL，再读取缓存；超出配置上限时抛出 `InvalidArgumentException`，不调用业务回源。命中时返回缓存；未命中调用一次回源函数，回源异常不缓存。非正 TTL 仍可读取已有值，未命中时只回源、不回填；需要直接取得最新值时使用 `bypass: true`，此时不访问缓存，也不应用 TTL。依赖错误默认向调用者传播，不提供并发回源互斥。语义为最终一致，强一致读取由应用绕过缓存并选择相应数据库连接。
 
-`remember()` 的 loader 为零参数 `Closure(): mixed`；`CacheReader::read()` 的 source 为 `Closure(bool): mixed`，始终接收强一致标志。`JsonCodec` 的 encode、decode 均为单参数 `Closure(mixed): mixed`，分别接收业务值和解析后的 JSON 数据。TypePHP 严格检查实参数量，按各入口签名声明闭包，依赖通过显式捕获传入。
+`remember()` 的 loader 为零参数 `Closure(): mixed`；`CacheReader::read()` 的 source 为 `Closure(bool): mixed`，始终接收强一致标志。`JsonCodec` 的 encode、decode 均为单参数 `Closure(mixed): mixed`，分别接收业务值和解析后的 JSON 数据。按各入口签名声明闭包，依赖通过显式捕获传入。
 
 命名空间区分应用、环境和格式。`clear()` 原子切换随机新代次，旧写入只能写它观察到的代次；回源期间发生 clear 时不回填新代次。并发 clear 不复用代次，不使用 FLUSHDB/FLUSHALL。
 

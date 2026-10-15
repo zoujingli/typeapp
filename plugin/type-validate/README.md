@@ -54,7 +54,7 @@ PATCH跳过缺失字段且不补默认值，嵌套对象递归保留该语义；
 
 条件和自定义规则接收原始分源 `Input` 及场景。规则按登记顺序运行；开发者规则异常向外传播，不伪装成用户输入错误。解析错误返回稳定的 400、体积超限 413、规则错误 422；`ValidationException` 只包含错误码与字段路径，不携带原始值。
 
-`when()` 的闭包必须声明 `(Input $input, string $scenario): bool`；`rule()` 必须声明 `(mixed $value, Input $input, string $scenario): bool`；`Data::map()` 接收 `(Data $data): object` 的 DTO 工厂。TypePHP 严格检查实参数量，即使规则只使用字段值，也要保留输入和场景参数。以下声明放在应用的字段装配方法内：
+`when()` 的闭包必须声明 `(Input $input, string $scenario): bool`；`rule()` 必须声明 `(mixed $value, Input $input, string $scenario): bool`；`Data::map()` 接收 `(Data $data): object` 的 DTO 工厂。即使规则只使用字段值，也按回调合同保留输入和场景参数。以下声明放在应用的字段装配方法内：
 
 ```php
 $slug = Field::text()->rule('reserved',

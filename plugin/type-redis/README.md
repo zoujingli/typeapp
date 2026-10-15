@@ -57,7 +57,7 @@ function main(): void
 
 `transaction($watchKeys, $operation)` 建立 WATCH 后调用一次回调。回调通过同一连接读取状态并返回待执行命令列表，再执行 MULTI/EXEC。`TransactionResult::committed()` 为 false 表示 WATCH 冲突，框架不重跑回调；EXEC 中命令错误仍可能已有部分效果，Redis 事务不等同于数据库回滚。回调中关闭租约会阻止后续提交。
 
-事务回调固定为 `Closure(RedisConnection): array`；即使不读取连接，也须显式声明 `RedisConnection $connection` 参数。TypePHP 对非 variadic 回调严格检查实参数量，返回值是已有批次格式的命令列表。
+事务回调固定为 `Closure(RedisConnection): array`；即使不读取连接，也按公开合同显式声明 `RedisConnection $connection` 参数，返回值是已有批次格式的命令列表。构建器对旧用户态调用的额外参数兼容不改变这一组件合同。
 
 `script()` 接收显式 Lua 和键/参数；仅允许应用可信脚本，脚本运行出错可能已经写入，不能推断全部回滚。脚本会话归还后销毁，下一次执行重选声明数据库。
 

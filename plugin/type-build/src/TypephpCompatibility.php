@@ -16,6 +16,13 @@ final class TypephpCompatibility extends Translator
     private bool $defaultCompatibilityVerified = false;
     private bool $interfaceConstantCompatibilityVerified = false;
     private bool $declaredMethodCompatibilityVerified = false;
+    private bool $callArgumentsCompatibilityVerified = false;
+    /** @var array<string, true> 需要真实 Zend 参数帧的具名函数与方法。 */
+    private array $argumentFunctions = [];
+    /** @var \WeakMap<\TypePhp\Context\FunctionContext, string>|null 编译期作用域到局部帧变量的映射。 */
+    private ?\WeakMap $argumentFrames = null;
+    /** @var list<\PhpParser\Node\Param> 当前闭包自己的参数，不包含捕获变量。 */
+    private array $argumentClosureParams = [];
     private ?StaticRuntimeSdk $staticRuntimeSdk = null;
 
     /** 静态构建直接绑定归档，不让编译器按 -l 名称优先选中 SDK 或 Homebrew 的共享库。 */
@@ -127,7 +134,286 @@ final class TypephpCompatibility extends Translator
         // 并传播同一异常，也正确清理序列化资源。普通函数和 universal methods 共用此映射。
         // 上游依据：swoole/phpx@a0138bbd 的 include/std/json.h 与 include/std/misc.h。
         unset($configuration['json_encode'], $configuration['serialize'], $configuration['unserialize']);
+        $configuration['func_get_arg']['namedArgs'] = ['position'];
         return $configuration;
+    }
+
+    /** 内省的参数展开不能落回读取错误调用帧的内部函数入口。 */
+    protected function parseFuncCallWithOptimizer(string $name, \PhpParser\Node\Expr\FuncCall $expr): string|false
+    {
+        if (in_array($name, ['func_get_args', 'func_get_arg', 'func_num_args'], true) && $this->hasUnpackCallArg($expr->args)) {
+            throw new RuntimeException('参数内省不支持动态展开，请直接调用 ' . $name . '()');
+        }
+        return parent::parseFuncCallWithOptimizer($name, $expr);
+    }
+
+    /** 用户态 Zend 包装只检查必需参数下限；未知命名参数和类型仍由原入口检查。 */
+    protected function genParameterCountCheck(int $requiredArgCount, int $declaredArgCount, bool $variadic): string
+    {
+        $this->assertCallArgumentsCompatibility();
+        return parent::genParameterCountCheck($requiredArgCount, $declaredArgCount, true);
+    }
+
+    /** 预处理时标记参数内省，避免直接 C++ 调用借用外层 Zend 帧。 */
+    protected function parseFunctionDecl(\PhpParser\Node\Stmt\Function_|\PhpParser\Node\Stmt\ClassMethod $v): \TypePhp\Entity\FunctionDef
+    {
+        $function = parent::parseFunctionDecl($v);
+        if ($this->usesCallArguments($v->stmts ?? [])) {
+            $this->assertCallArgumentsCompatibility();
+            if ($function->generator || $this->classDef?->nativeObject || $this->functionRequiresNativeAbi($function)) {
+                throw new RuntimeException('参数内省需要普通 Zend 函数或方法，不支持 Generator 或 Native ABI：' . $v->name);
+            }
+            $this->argumentFunctions[$this->getFunctionName($v)] = true;
+            // 元组返回的独立 C++ 入口不能绕过参数帧。
+            $function->multiReturnCount = 0;
+        }
+        return $function;
+    }
+
+    /** 只扫描当前函数体，内层闭包和类拥有独立参数作用域。 */
+    private function usesCallArguments(mixed $nodes): bool
+    {
+        foreach (is_array($nodes) ? $nodes : [$nodes] as $node) {
+            if (!$node instanceof \PhpParser\Node
+                || $node instanceof \PhpParser\Node\FunctionLike
+                || $node instanceof \PhpParser\Node\Stmt\ClassLike) {
+                continue;
+            }
+            if ($node instanceof \PhpParser\Node\Expr\FuncCall && $node->name instanceof \PhpParser\Node\Name) {
+                $target = $this->resolveStaticFunctionCallTarget($node->name);
+                if (in_array($target['lower'], ['func_get_args', 'func_get_arg', 'func_num_args'], true)
+                    && ($target['definitelyGlobal'] || $target['namespacedFallback'])) {
+                    return true;
+                }
+            }
+            foreach ($node->getSubNodeNames() as $field) {
+                if ($this->usesCallArguments($node->{$field})) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 具名调用允许额外位置参数，但仍检查缺参、命名覆盖和未知命名参数。 */
+    protected function checkNativeCallArgs(\PhpParser\Node\Expr\CallLike $expr, \TypePhp\Entity\FunctionDef $funcDef, array $args, string $name): void
+    {
+        if (!$funcDef->stub && !$this->functionRequiresNativeAbi($funcDef)
+            && !$funcDef->hasVariadicArg() && count($args) > count($funcDef->argInfoList)) {
+            $this->assertCallArgumentsCompatibility();
+            $this->validateNativeNamedCallArgs($funcDef, $args);
+            // 只限制数量检查所看的签名段；原调用 AST 与实际传入的所有值完整保留。
+            parent::checkNativeCallArgs($expr, $funcDef, array_slice($args, 0, count($funcDef->argInfoList)), $name);
+            return;
+        }
+        parent::checkNativeCallArgs($expr, $funcDef, $args, $name);
+    }
+
+    /** 需要内省或含额外实参的普通调用统一进入已编译的 Zend 包装。 */
+    protected function shouldUseDynamicCallForNativeArgs(string $nativeFunc, array $args): bool
+    {
+        $function = $this->getFunction($nativeFunc);
+        if (isset($this->argumentFunctions[$nativeFunc])
+            || (!$function->stub && !$this->functionRequiresNativeAbi($function)
+                && !$function->hasVariadicArg() && count($args) > count($function->argInfoList))) {
+            return true;
+        }
+        return parent::shouldUseDynamicCallForNativeArgs($nativeFunc, $args);
+    }
+
+    /** 已解析方法指针直接进入 Zend；PHPX 的 callScoped 只接受方法名或 callable。 */
+    protected function genRuntimeObjectMethodCall(
+        string $object,
+        string $method,
+        array $args,
+        string $funcName = '',
+        string $className = '',
+        bool $requiresDynamicScope = true,
+    ): string {
+        $function = $className === '' ? null : $this->findAotMethodFunctionDef($className, $funcName);
+        if ($function !== null && ($this->needsCallArgumentsFrame($function)
+            || (!$function->hasVariadicArg() && count($args) > count($function->argInfoList)))) {
+            // 可见性已由原生方法解析验证，直接传指针避免其被 Variant(bool) 转换为 1。
+            $requiresDynamicScope = false;
+        }
+        return parent::genRuntimeObjectMethodCall($object, $method, $args, $funcName, $className, $requiresDynamicScope);
+    }
+
+    /** 动态分派仍用 AOT 符号定位具名函数的引用参数，不将引用退化为值副本。 */
+    protected function genRuntimeFunctionCall(
+        string $callable,
+        array $args,
+        string $funcName = '',
+        string $className = '',
+        bool $separateNamedArgs = true,
+        string $scope = '',
+    ): string {
+        if ($className === '' && $funcName !== '') {
+            $native = $this->findNativeFunction('\\' . ltrim($funcName, '\\'));
+            if ($native !== false && $this->shouldUseDynamicCallForNativeArgs($native, $args)) {
+                $funcName = $native;
+            }
+        }
+        return parent::genRuntimeFunctionCall($callable, $args, $funcName, $className, $separateNamedArgs, $scope);
+    }
+
+    /** self/static 的快捷入口也必须保留被调用者自己的帧及晚绑定类。 */
+    protected function parseStaticCall(\PhpParser\Node\Expr\StaticCall $expr): string
+    {
+        if ($expr->class instanceof \PhpParser\Node\Name && in_array(strtolower($expr->class->toString()), ['self', 'static'], true)
+            && $expr->name instanceof \PhpParser\Node\Identifier) {
+            $method = $this->findAotMethodFunctionDef($this->getFullClassName(), $expr->name->toString());
+            if ($method !== null && ($this->needsCallArgumentsFrame($method)
+                || (!$method->hasVariadicArg() && count($expr->args) > count($method->argInfoList)))) {
+                // 沿用上游可见性和签名检查，实际参数仍完整传入 Zend。
+                $class = $this->getFullClassName();
+                $this->getNativeMethod($expr, $class, $method->name);
+                $calledClass = $this->getCalledCeExpr();
+                $pointer = strtolower($expr->class->toString()) === 'static'
+                    ? 'php::getMethod(' . $calledClass . ', ' . $this->getLiteralString($method->name) . ')'
+                    : $this->getMethodPtr($class, $method->name);
+                if (!($this->getMethodFlags($class, $method->name) & \PhpParser\Modifiers::STATIC)) {
+                    return $this->genRuntimeObjectMethodCall('this_', $pointer, $expr->args, $method->name, $class);
+                }
+                return $this->genRuntimeFunctionCall($calledClass . ', ' . $pointer, $expr->args, $method->name, $class);
+            }
+        }
+        return parent::parseStaticCall($expr);
+    }
+
+    /** 魔术方法不能从优化入口直接进入需要参数内省的函数体。 */
+    protected function parseDirectNativeMagicCall(\PhpParser\Node\Expr\MethodCall $expr, string $object, string $class, string $method): ?string
+    {
+        $function = $class === '' ? null : $this->findAotMethodFunctionDef($class, '__call');
+        return $function !== null && $this->needsCallArgumentsFrame($function)
+            ? null : parent::parseDirectNativeMagicCall($expr, $object, $class, $method);
+    }
+
+    /** 方法元数据归一到预处理登记的原生名称，继承方法使用实际声明类。 */
+    private function needsCallArgumentsFrame(\TypePhp\Entity\FunctionDef $function): bool
+    {
+        $class = $function->declaringClass === '' ? '' : $this->getClass($function->declaringClass)->name;
+        return isset($this->argumentFunctions[$this->getNativeName($function->name, $function->namespace, $class)]);
+    }
+
+    /** 闭包内省只读取本次闭包参数，不能读取外层具名函数的签名。 */
+    protected function genClosure(\PhpParser\Node\Expr\ArrowFunction|\PhpParser\Node\Expr\Closure $expr, array $params, array $uses = []): string
+    {
+        $previous = $this->argumentClosureParams;
+        $this->argumentClosureParams = $params;
+        try {
+            if ($this->usesCallArguments($expr instanceof \PhpParser\Node\Expr\ArrowFunction ? $expr->expr : $expr->stmts)
+                && $this->closureContainsYield($expr)) {
+                throw new RuntimeException('参数内省暂不支持 Generator 闭包');
+            }
+            return parent::genClosure($expr, $params, $uses);
+        } finally {
+            $this->argumentClosureParams = $previous;
+        }
+    }
+
+    /** 含内省别名的局部闭包同样保留 Zend 入口，不降级为无调用帧的 C++ lambda。 */
+    protected function parseNativeLocalClosureAssignment(\PhpParser\Node\Expr\Assign $assign): ?string
+    {
+        $closure = $assign->expr;
+        if (($closure instanceof \PhpParser\Node\Expr\Closure || $closure instanceof \PhpParser\Node\Expr\ArrowFunction)
+            && $this->usesCallArguments($closure instanceof \PhpParser\Node\Expr\ArrowFunction ? $closure->expr : $closure->stmts)) {
+            return null;
+        }
+        return parent::parseNativeLocalClosureAssignment($assign);
+    }
+
+    /** 每个 C++ 栈帧独立持有对应 Zend 帧，协程挂起和递归都不共享可变状态。 */
+    private function callArgumentsFrame(): string
+    {
+        $this->assertCallArgumentsCompatibility();
+        $this->argumentFrames ??= new \WeakMap();
+        return $this->argumentFrames[$this->context] ??= $this->genTmpVarName();
+    }
+
+    /** 在用户函数体执行前捕获参数帧，并拒绝意外绕过 Zend 包装的调用。 */
+    protected function genScopeVarDecl(): string
+    {
+        $frame = $this->argumentFrames[$this->context] ?? null;
+        if ($frame === null) {
+            return parent::genScopeVarDecl();
+        }
+        $capture = 'zend_execute_data *const ' . $frame . ' = EG(current_execute_data);' . PHP_EOL;
+        if (!$this->context->inClosure) {
+            $function = $this->functionDef;
+            $pointer = $function->method ? $this->getMethodPtr($function->declaringClass, $function->name)
+                : $this->getFuncPtr($function->getNamespacedName());
+            $capture .= 'if (!' . $frame . ' || ' . $frame . '->func->internal_function.handler != '
+                . $pointer . '->internal_function.handler) { zend_throw_error(nullptr, "runtime_argument_frame_mismatch"); php::throwErrorIfOccurred(); }' . PHP_EOL;
+        }
+        // getMethodPtr/getFuncPtr 可能登记新的局部符号，在最终声明生成前完成。
+        return parent::genScopeVarDecl() . $capture;
+    }
+
+    /** 参数列表使用本次实参数量；已声明位置读取当前局部值，额外位置保留原值。 */
+    protected function genFuncGetArgs(string $name, \PhpParser\Node\Expr\FuncCall $expr, array $config): string
+    {
+        $frame = $this->callArgumentsFrame();
+        $values = $this->genTmpVarName();
+        $index = $this->genTmpVarName();
+        $code = '([&]() { php::Array ' . $values . '; for (uint32_t ' . $index . ' = 0; '
+            . $index . ' < ZEND_CALL_NUM_ARGS(' . $frame . '); ++' . $index . ') { ';
+        $arguments = $this->context->inClosure ? $this->argumentClosureParams : $this->functionDef->argInfoList;
+        foreach ($arguments as $position => $argument) {
+            if ($argument->variadic) {
+                break;
+            }
+            $variable = $argument instanceof \PhpParser\Node\Param ? $this->parseIdentifier($argument->var) : $argument->name;
+            $code .= 'if (' . $index . ' == ' . $position . ') { ' . $values . '.appendValue(php::Var(' . $variable . ')); } else ';
+        }
+        return $code . '{ ' . $values . '.appendValue(php::Var(ZEND_CALL_ARG(' . $frame . ', ' . $index . ' + 1))); } } return ' . $values . '; }())';
+    }
+
+    /** 数量来自当前调用帧，省略的默认参数不增加数量，命名跳位遵守 Zend 规则。 */
+    protected function genFuncNumArgs(string $name, \PhpParser\Node\Expr\FuncCall $expr, array $config): string
+    {
+        return '(static_cast<php::Int>(ZEND_CALL_NUM_ARGS(' . $this->callArgumentsFrame() . ')))';
+    }
+
+    /** 允许运行时位置，越界按 PHP 抛出 ValueError，而非编译期截断到签名。 */
+    protected function genFuncGetArg(string $name, \PhpParser\Node\Expr\FuncCall $expr, array $config): string
+    {
+        $index = $this->genTmpVarName();
+        $value = $this->getArg($expr, 0);
+        $frame = $this->callArgumentsFrame();
+        $arguments = $this->genFuncGetArgs($name, $expr, $config);
+        return '([&](php::Var ' . $index . ') -> php::Var { '
+            . 'if (!' . $index . '.isInt()) { php::throwArgumentTypeError(' . $index . ', "func_get_arg", 1, "position", "int"); } '
+            . 'if (php::toInt(' . $index . ') < 0) { zend_value_error("func_get_arg(): Argument #1 ($position) must be greater than or equal to 0"); php::throwErrorIfOccurred(); } '
+            . 'if (php::toInt(' . $index . ') >= ZEND_CALL_NUM_ARGS(' . $frame . ')) { '
+            . 'zend_value_error("func_get_arg(): Argument #1 ($position) must be less than the number of the arguments passed to the currently executed function"); php::throwErrorIfOccurred(); } '
+            . 'return ' . $arguments . '.offsetGet(php::toInt(' . $index . ')); })(' . $value . ')';
+    }
+
+    /** 参数兼容只接受审查过的声明、分发、闭包和优化器源码。 */
+    private function assertCallArgumentsCompatibility(): void
+    {
+        if ($this->callArgumentsCompatibilityVerified) {
+            return;
+        }
+        $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+        foreach ([
+            'src/CompilerBase.php' => '8767d9599d1d2ab7ed7ae218fe33df90524f2f961cf76c5355574cc01cb310c3',
+            'src/Preprocessor.php' => 'efb567b27334d35ef15948399ca453e67afcaa199f2406fed0359ea280813adc',
+            'src/Translator.php' => '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c',
+            'src/Generator/ParameterCountCheckGenerator.php' => '491fffd20a20d554ecc46bfaedfa0179535b9cfa36264e8e2f81a785e79fa273',
+            'src/Generator/ClosureGenerator.php' => 'fc23c9113e8b90e0f24e4819506190de592aa565fae340caed594b15e7af5882',
+            'src/Generator/CallArgumentGenerator.php' => 'eddce4623049343393cb1e8e28ad0d0a7eaca4d6ad9233d4f85e1eeae9b4c900',
+            'src/Optimizer/FuncCallOptimizer.php' => 'e232cdec93e92aa8b1a74290730a0a9aa983156be771b2a7c1c5266ea3a9607c',
+            'src/Parser/FunctionCallTrait.php' => 'd7bf37b372b8541b8205079a1f04e9ea942d6e58148fe1094e88ad8bb6d9e7e7',
+            'src/Parser/MethodCallTrait.php' => '64f941d2b5fe0a263282d4fc871539239477dc9ff769cf2e1961f3e68ffc50f1',
+            'src/Analysis/LocalClosureAnalyzer.php' => 'f1cf6e659bd03fbc6282cc028fca3790a0603b36e8753b5b13d45eb82f0525b2',
+        ] as $file => $sha256) {
+            if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                throw new RuntimeException('调用实参适配需要重新核对 TypePHP：' . $file);
+            }
+        }
+        $this->callArgumentsCompatibilityVerified = true;
     }
 
     /** 上游匿名类使用 opcode 或 eval，不能计入本项目的全量 AOT 产物。 */
@@ -247,6 +533,19 @@ final class TypephpCompatibility extends Translator
         $code = parent::genWrapperFunctionArgs($fn, $functionDef, $displayName, $implicitMethodArgs);
         $nativeName = str_starts_with($fn, self::PREFIX) ? substr($fn, strlen(self::PREFIX)) : $fn;
         foreach ($functionDef->argInfoList as $index => $argument) {
+            if (!$argument->variadic && $argument->type === \TypePhp\Type::ARRAY) {
+                // 上游直接 toArray 会把错误类型转换为数组；Zend 用户函数应先拒绝。
+                $value = 'php::getCallArg(' . $index . ')';
+                $check = 'if (' . $index . ' < php::getCallArgNum() && !Z_ISUNDEF_P(ZEND_CALL_ARG(EG(current_execute_data), '
+                    . ($index + 1) . ')) && !' . $value . '.isArray()) { php::throwArgumentTypeError('
+                    . $value . ', ' . $this->getLiteralString($displayName) . ', ' . ($index + 1) . ', '
+                    . $this->getLiteralString($argument->phpName ?: $this->unescapeVarName($argument->name)) . ', "array"); }' . PHP_EOL;
+                $declaration = $this->getDefaultArgumentType($argument) . ' arg_' . $argument->name . ' = ';
+                $code = str_replace($declaration, $check . $declaration, $code, $count);
+                if ($count !== 1) {
+                    throw new RuntimeException('数组参数包装适配需要重新核对生成结构：' . $displayName);
+                }
+            }
             if ($argument->variadic || !$argument->hasDefaultValue()) {
                 continue;
             }

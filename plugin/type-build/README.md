@@ -162,6 +162,8 @@ vendor/bin/type --inspect build/type-example
 
 接收者类型能够解析到已声明的 `toString()` 时，兼容层保留该用户方法调用，包括接口、继承、属性和返回值类型。未声明该方法时继续使用 TypePHP 的转换语义；显式字符串强转及拼接仍调用 `__toString()`。具体边界与回归入口见语法基线。
 
+普通用户函数、方法和 Zend 闭包支持额外位置参数，并通过各自调用帧保留 `func_get_args()` 等实参语义。缺参、类型和未知命名参数继续检查，内部函数规则不放宽；框架回调仍按公开合同声明完整签名。此能力需要包含修复的构建组件重新全量编译，Generator、Native ABI 和间接调用内省函数的边界见语法基线。
+
 ## 主仓验证入口
 
 以下命令在安装完整开发依赖的 [TypeApp 开发主仓](https://github.com/zoujingli/typeapp/blob/main/composer.json)根执行，不是分发子仓默认自带的脚本。需要真实数据库、Redis、Linux SDK 或容器的用例应按其文档准备专属测试环境；先构建相应产物，再运行 native 验收。
@@ -176,6 +178,7 @@ composer test:source-rewrites
 composer test:native-defaults
 composer test:native-interface-constants
 composer test:native-declared-tostring
+composer test:native-call-arguments
 composer test:isolated-build
 composer test:native-packaging
 php tests/configuration.php
