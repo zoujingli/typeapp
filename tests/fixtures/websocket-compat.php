@@ -97,6 +97,15 @@ function main(int $argc, array $argv): void
     });
     $server->onRequest(function (Request $request, Response $response) use ($server): void {
         $response->header('Content-Type', 'application/json');
+        if (($request->server['request_uri'] ?? '') === '/disconnect-result') {
+            $fd = (int) ($request->get['fd'] ?? 0);
+            // 超过原生 123 字节关闭原因上限，确定触发 disconnect=false 后的 close 回退。
+            $reason = ($request->get['fallback'] ?? '') === '1' ? str_repeat('x', 124) : 'test_close';
+            $first = $server->tryDisconnect($fd, 1000, $reason);
+            $repeat = $server->tryDisconnect($fd, 1000, $reason);
+            $response->end(json_encode(['first' => $first, 'repeat' => $repeat], JSON_THROW_ON_ERROR));
+            return;
+        }
         $response->end(json_encode($server->statistics(), JSON_THROW_ON_ERROR));
         if (($request->server['request_uri'] ?? '') === '/stop') {
             $server->stop();

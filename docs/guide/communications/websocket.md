@@ -29,7 +29,8 @@ flowchart LR
 | 普通 HTTP 请求 | 进入 `onRequest()`；未注册则返回 404 |
 | WebSocket Upgrade | 由原生握手和 WebSocket 连接路径处理，不自动进入 `onRequest()` |
 | WebSocket 消息 | 进入 `onMessage()`，每条业务消息有独立 `ExecutionScope` |
-| `disconnect($fd, ...)` | 关闭指定连接 |
+| `disconnect($fd, ...)` | 请求关闭指定连接，保持 `void` 返回 |
+| `tryDisconnect($fd, ...)` | 返回已接受连接的真实关闭提交结果 |
 | `stop()` | 停止整个共用服务，普通 HTTP 也随之停止 |
 
 `onRequest()` 接收原生 `Swoole\Http\Request/Response`，不会自动安装 PSR 路由、认证、可信代理或请求预算。需要 PSR 时由应用明确装配兼容处理链与输入、清理、连接控制；内部 `SwooleServer::handleNative()` 是衔接方法，单独调用不包含完整监听监督，不应当作第二个服务启动器。
@@ -225,6 +226,10 @@ sequenceDiagram
 ```
 
 控制观察与消息回调共用每连接的有界串行队列，控制帧不进入 `onMessage()`，也不延长业务超时。`onClose(int $fd, int $reactorId)` 在主动关闭、对端关闭、回调异常及服务停止时对每个已接受连接结算一次；重复 `disconnect()` 不重复通知。第二参数是 reactor ID，服务退出兜底为 -1，不能作为 WebSocket 关闭状态码。业务应在此清除连接绑定；尚未接受的握手拒绝不产生业务 close 结算。
+
+需要统计关闭请求时，使用 `tryDisconnect(int $fd, int $code = 1000, string $reason = ''): bool`。仅当本实例已接受该连接，且原生 `disconnect()` 或其失败后的 `close($fd, true)` 返回成功时，结果才为 `true`。未知、已结算、正在关闭或原生提交失败均返回 `false`；批量汇总只能把 `true` 计为“已提交”，实际关闭数量以 `onClose()` 为准。
+
+两个入口都要求在服务所属的进程和线程请求中调用。发起关闭即停止该连接的业务投递，提交失败也不会恢复投递或允许重复发起；保留既有停止及最终关闭结算规则。`disconnect(): void` 继续兼容原调用者及尚未接受连接的握手拒绝路径。本接口属于开发代码和包含修复的固定候选，原始 RC14 没有 `tryDisconnect()`；不提供跨进程关闭分发。
 
 ## 应用设计与资源生命周期
 

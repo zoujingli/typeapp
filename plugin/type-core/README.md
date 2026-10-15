@@ -128,6 +128,8 @@ function main(): void
 
 同一服务实例用 `onRequest()` 处理普通 HTTP 请求，用 `onOpen()`、`onMessage()`、`onClose()` 处理 WebSocket 连接与消息，共用监听地址、端口、原生连接上限和生命周期。登记回调后调用一次 `start()`；`stop()` 停止整个共用服务，`disconnect()` 仅关闭指定 WebSocket 连接。明文监听提供 HTTP/WS，启用 TLS 后同一监听提供 HTTPS/WSS。
 
+需要统计提交结果时使用 `tryDisconnect($fd, $code = 1000, $reason = ''): bool`：只对本实例已接受的连接返回原生 `disconnect` 或回退 `close` 的成功结果，未知、重复、已关闭和提交失败均为 `false`。成功表示提交，不代表对端确认或关闭结算完成；最终以 `onClose` 为准。仍须由服务所属进程/线程请求调用，失败后不重新开放业务投递或重复提交。原 `disconnect(): void` 保持兼容；新接口不属于原始 RC14，需安装包含修复的固定候选后重新 AOT。
+
 `onRequest()` 接收 Swoole 原生请求和响应，未登记时普通请求返回 `404 / not_found`。PSR 消息转换、路由、HTTP 策略与请求资源清理需要应用显式装配；Upgrade 由 Swoole 握手入口处理，不自动经过普通 HTTP 回调和中间件。`onOpen()` 保留连接标识、请求头与 Origin 核对结果三个参数；在其中调用 `handshake($fd)` 读取 `path/query/remote_addr` 快照，业务自行解析原始查询和鉴权。组件不提供声明式 WebSocket 路由，也不自动获得 HTTP 业务线程模型，见[共用服务指南](https://github.com/zoujingli/typeapp/blob/main/docs/guide/communications/websocket.md#http-与-websocket-共用服务)。
 
 `handshake()`、`onControl()`、`ping()`、`pong()` 与下面的容量扩展属于 RC14 之后的源码变更，官方 RC14 原版不包含。使用补丁包时固定其来源和内容摘要；RC14 兼容别名不代表已经发布了同名官方修复版。

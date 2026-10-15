@@ -44,12 +44,20 @@ Swoole 原生的 `websocket_subprotocol` **会无条件回显配置值**：客�
 
 可编译示例：[examples/websocket/main.php](../../examples/websocket/main.php)。
 
-`composer test:websocket-compat` 使用独立协议客户端发送真实 Ping/Pong、分片及 50 MiB 双向载荷，覆盖原始查询 `ssid=0`、主动关闭、异常、对端断开、停止、逐连接一次结算、原生空闲关闭、默认 Pong 与容量拒绝。共享夹具 `tests/fixtures/websocket-compat.php` 有显式 `main()`，可独立安装组件后完整编译；通过 `TYPE_WS_NATIVE_COMMAND` 传入原生命令的 JSON 参数数组，以同一断言验证同一程序。PHP 与 AOT 结果分别记录，编译阶段不能排除生产依赖。
+`composer test:websocket-compat` 使用独立协议客户端发送真实 Ping/Pong、分片及 50 MiB 双向载荷，覆盖原始查询 `ssid=0`、主动关闭、异常、对端断开、停止、逐连接一次结算、原生空闲关闭、默认 Pong 与容量拒绝。关闭提交检查包含成功、重复、未知与已结算连接，以及超过原生关闭原因上限后 `disconnect=false`、回退 `close=true` 的真实断开；另验证尚未接受的子协议拒绝仍按 1002 关闭。共享夹具 `tests/fixtures/websocket-compat.php` 有显式 `main()`，可独立安装组件后完整编译；通过 `TYPE_WS_NATIVE_COMMAND` 传入原生命令的 JSON 参数数组，以同一断言验证同一程序。PHP 与 AOT 结果分别记录，编译阶段不能排除生产依赖。
 
 ## 2026-10-15 本地 RC14 补丁验收
 
 基线为 RC14 `683f6d4d30e1e99b6a93f6a6fb45625fbd87138a`，Composer ZIP 仅替换 core 的 `src/WebSocket/Server.php`，其 SHA-256 为 `37145e7df281f33e696f54e56715c4826db49f89eb356ed54bf8c787341ac217`。runtime/build 固定安装官方 RC14；本地版本 `dev-dmstype-websocket-37145e7df281` 通过显式 RC14 别名消费，没有移动官方 tag 或发布新版本。
 
-macOS ARM64、PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3 与固定 Swoole `4aff74a9ac086458d1c5251e71ac6e080f68b390` 下，独立安装的 89 个生产源码文件完整 AOT。最终程序 SHA-256 为 `6e25f08661544255e95418f9b45dd723dd117b5f211c7ef954fc804fcdd2d1d4`；删除消费者的 2398 个 PHP 文件并核对沙箱拒绝读取源码、执行 PHP 后，同一程序通过上述兼容回归，包括控制帧后的多条消息、50 MiB 双向载荷和逐连接关闭配对。
+macOS ARM64、PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3 与固定 Swoole `4aff74a9ac086458d1c5251e71ac6e080f68b390` 下，独立安装的 89 个生产源码文件完整 AOT。最终程序 SHA-256 为 `6e25f08661544255e95418f9b45dd723dd117b5f211c7ef954fc804fcdd2d1d4`；删除消费者的 2398 个 PHP 文件并核对沙箱拒绝读取源码、执行 PHP 后，同一程序通过当时的兼容回归，包括控制帧后的多条消息、50 MiB 双向载荷和逐连接关闭配对；不含后来新增的 `tryDisconnect()` 检查。
 
 原生首轮发现锁定 TypePHP 在含提前返回的 `finally` 中复用空合并临时值，导致正常消息收尾未归还 Channel 令牌；独立私有收尾方法消除了这一生成路径。失败程序、最小复现及修复后身份分别保留，未修改共享 SDK、vendor 或编译器。此结论针对 RC14 补丁消费者；本轮没有重验完整物联中心、Linux 或 Windows，WSS/TLS 的本轮证据来自既有 PHP 回归，不能算作该补丁的原生 WSS 验收。
+
+## 2026-10-15 关闭提交结果累计候选
+
+保留前述补丁，新增兼容入口 `tryDisconnect(): bool`。完整 RC14 core 包的 47 个文件中仅替换 `src/WebSocket/Server.php`；源码摘要为 `0327aa2ecf40edb43b2a8696d0357f09e808cd4e41bf42e5949160e05d57ec94`，固定版本 `dev-dmstype-websocket-disconnect-0327aa2ecf40 as 1.0.0-rc.14`。ZIP SHA-256 为 `530c921df55045d4740790ddc9d35f058e14e6984c9ed2388c397242ceba4121`；旧候选与官方版本保持原身份。
+
+独立 Composer 安装使用官方 RC14 runtime 和累计构建候选 `dev-dmstype-promoted-property-aab8f444fa20`，逐项核对包摘要与平台依赖。macOS ARM64 上 88 个 PHP 输入、73 个 C/C++ 单元完整编译，未应用源码替换；最终程序 SHA-256 为 `4b02ff3c7a46a2604a15ba607ee408a5b757d98d5a44f2470c8d3d0057e33667`。同一程序在删除 2398 个 PHP 文件后通过禁止源码读取及 PHP/Composer/Node 执行的沙箱，并在搬迁后再次通过完整协议回归。
+
+真实协议验证包含关闭帧、原生拒绝后的 reset close、未知/重复/已结算连接、握手拒绝旧入口及逐连接唯一结算，同时保留 HTTP、Ping/Pong、分片、50 MiB 双向和空闲关闭检查。原生 `disconnect` 与 `close` 同时失败、未建立状态及所有者拒绝另由 PHP 故障注入验证，不作为真实网络故障结果。此次仍为本地共享 embed 候选；Linux、Windows、完整业务、原生 WSS/TLS 与生产静态 SDK 未验收。

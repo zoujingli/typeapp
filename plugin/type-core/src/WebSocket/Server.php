@@ -278,22 +278,46 @@ final class Server implements ManagedResource
 
     /**
      * 请求原生关闭握手，code 使用标准状态码；重复调用不重复结算，不等待对端确认。
+     * 保留无返回值的调用合同；需要统计提交结果时使用 tryDisconnect。
      */
     public function disconnect(int $fd, int $code = 1000, string $reason = ''): void
     {
         $this->owner->assertCurrent();
+        $this->submitDisconnect($fd, $code, $reason);
+    }
+
+    /**
+     * 尝试关闭本实例已接受的连接；true 仅表示原生 disconnect 或回退 close 提交成功。
+     * 未知、已关闭、正在关闭或原生提交失败返回 false，不表示对端确认或 onClose 已完成。
+     * 发起关闭后停止业务投递；即使提交失败，也不重新打开连接投递或重复发起关闭。
+     * @throws \RuntimeException 当前进程或线程请求不是服务的所有者。
+     */
+    public function tryDisconnect(int $fd, int $code = 1000, string $reason = ''): bool
+    {
+        $this->owner->assertCurrent();
+        if (!isset($this->connections[$fd])) {
+            return false;
+        }
+        return $this->submitDisconnect($fd, $code, $reason);
+    }
+
+    /** 两个公开入口共用原生提交；旧入口还负责关闭尚未接受的握手拒绝连接。 */
+    private function submitDisconnect(int $fd, int $code, string $reason): bool
+    {
         if (isset($this->closing[$fd])) {
-            return;
+            return false;
         }
         if (isset($this->connections[$fd])) {
             $this->closing[$fd] = true;
             $this->connections[$fd]->close();
         }
         if ($this->server !== null && $this->server->isEstablished($fd)) {
-            if (!$this->server->disconnect($fd, $code, $reason)) {
-                $this->server->close($fd, true);
+            if ($this->server->disconnect($fd, $code, $reason)) {
+                return true;
             }
+            return $this->server->close($fd, true);
         }
+        return false;
     }
 
     /**

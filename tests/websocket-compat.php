@@ -167,6 +167,45 @@ try {
         expect(json_decode($validation, true) === ['accepted' => false, 'error' => 'websocket_invalid_configuration'], '无效/冲突配置未拒绝');
     }
     $checks[] = 'configuration_rejections';
+    $closing = compatStart($work, []);
+    $cases[] = $closing;
+    expect(compatHttp($closing['port'], '/disconnect-result?fd=2147483647') === ['first' => false, 'repeat' => false], '未知连接不能报告关闭提交成功');
+    foreach ([false, true] as $fallback) {
+        $socket = compatConnect($closing['port'], '/submission');
+        compatFrame($socket);
+        $events = json_decode((string) file_get_contents($closing['file']), true, 16, JSON_THROW_ON_ERROR);
+        $fd = (int) end($events)['fd'];
+        $path = '/disconnect-result?fd=' . $fd . ($fallback ? '&fallback=1' : '');
+        expect(compatHttp($closing['port'], $path) === ['first' => true, 'repeat' => false], '关闭提交结果或重复关闭结果不正确');
+        if ($fallback) {
+            // reset close 可产生 EOF 或连接重置；超时不能作为已关闭的证据。
+            stream_set_timeout($socket, 3);
+            $end = @fread($socket, 1);
+            expect(($end === '' || $end === false) && !stream_get_meta_data($socket)['timed_out'] && feof($socket), '回退关闭没有实际断开连接');
+        } else {
+            $frame = compatFrame($socket);
+            expect($frame['opcode'] === 8 && $frame['data'] === pack('n', 1000) . 'test_close', '关闭提交未产生指定关闭帧');
+        }
+        fclose($socket);
+        compatClosed($closing['file'], $fallback ? 2 : 1);
+        expect(compatHttp($closing['port'], '/disconnect-result?fd=' . $fd) === ['first' => false, 'repeat' => false], '已结算连接不能再次报告提交成功');
+    }
+    compatSettlements(compatClosed($closing['file'], 2), 2);
+    compatHttp($closing['port'], '/stop');
+    expect($closing['process']->wait(10)->successful(), '关闭提交验收服务未正常退出');
+    expect(str_contains($closing['process']->stdout() . $closing['process']->stderr(), 'the max length of close reason is 123'), '未观察到原生 disconnect 拒绝，不能证明 close 回退通过');
+    $checks[] = 'disconnect_submission_and_fallback';
+    $rejectedUpgrade = compatStart($work, ['subprotocol' => 'device-v1']);
+    $cases[] = $rejectedUpgrade;
+    $socket = compatConnect($rejectedUpgrade['port']);
+    $rejection = compatFrame($socket);
+    expect($rejection['opcode'] === 8 && unpack('n', substr($rejection['data'], 0, 2))[1] === 1002, '旧 disconnect 入口未关闭尚未接受的握手');
+    fclose($socket);
+    $rejectedStatistics = compatHttp($rejectedUpgrade['port'], '/stop');
+    expect($rejectedStatistics['accepted'] === 0 && $rejectedStatistics['rejected'] === 1, '拒绝握手被错误登记为业务连接');
+    expect($rejectedUpgrade['process']->wait(10)->successful(), '握手拒绝验收服务未正常退出');
+    compatSettlements(json_decode((string) file_get_contents($rejectedUpgrade['file']), true, 16, JSON_THROW_ON_ERROR), 0);
+    $checks[] = 'legacy_unaccepted_handshake_close';
     $options = ['max_frame_bytes' => 50 * 1024 * 1024, 'max_queued_bytes' => 50 * 1024 * 1024,
         'package_max_length' => 50 * 1024 * 1024 + 14, 'max_connections' => 4,
         'heartbeat_idle_time' => 45, 'heartbeat_check_interval' => 10,
