@@ -6,18 +6,18 @@
     "require": {
         "ext-swoole": ">=6.2 <7",
         "php": ">=8.4 <8.6",
-        "zoujingli/type-core": "1.0.0-rc.15",
-        "zoujingli/type-log": "1.0.0-rc.15",
-        "zoujingli/type-orm": "1.0.0-rc.15",
-        "zoujingli/type-orm-sqlite": "1.0.0-rc.15",
-        "zoujingli/type-runtime": "1.0.0-rc.15",
-        "zoujingli/type-validate": "1.0.0-rc.15"
+        "zoujingli/type-core": "1.0.0-rc.16",
+        "zoujingli/type-log": "1.0.0-rc.16",
+        "zoujingli/type-orm": "1.0.0-rc.16",
+        "zoujingli/type-orm-sqlite": "1.0.0-rc.16",
+        "zoujingli/type-runtime": "1.0.0-rc.16",
+        "zoujingli/type-validate": "1.0.0-rc.16"
     },
     "require-dev": {
         "swoole/phpx": "2.9.3",
         "swoole/typephp": "0.9.4",
-        "zoujingli/type-build": "1.0.0-rc.15",
-        "zoujingli/type-testing": "1.0.0-rc.15"
+        "zoujingli/type-build": "1.0.0-rc.16",
+        "zoujingli/type-testing": "1.0.0-rc.16"
     },
     "autoload": {
         "psr-4": {

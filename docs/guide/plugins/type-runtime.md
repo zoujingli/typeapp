@@ -31,10 +31,10 @@ flowchart TB
 ```bash
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-runtime:1.0.0-rc.15
+composer require zoujingli/type-runtime:1.0.0-rc.16
 ```
 
-这组命令对应 RC15；请先在[版本说明](../releases.md)确认公开状态，再安装同批组件并提交 `composer.lock`。当前接口以本页和所用 tag 的包 README 为准；RC14 应用继续使用原版本文档，不能混用新接口。
+这组命令对应 RC16；请先在[版本说明](../releases.md)确认公开状态，再安装同批组件并提交 `composer.lock`。当前接口以本页和所用 tag 的包 README 为准；RC14 应用继续使用原版本文档，不能混用新接口。
 
 ## 最小使用示例
 
