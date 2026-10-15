@@ -532,6 +532,7 @@
     "test:outcomes": "@php tests/outcomes.php",
     "test:commit-failure": "@php tests/commit-failure.php --php",
     "test:websocket": "@php tests/websocket.php",
+    "test:websocket-compat": "@php tests/websocket-compat.php",
     "test:websocket-native": [
       "Composer\\Config::disableProcessTimeout",
       "@php tests/websocket-native.php"

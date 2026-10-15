@@ -128,13 +128,17 @@ function main(): void
 
 同一服务实例用 `onRequest()` 处理普通 HTTP 请求，用 `onOpen()`、`onMessage()`、`onClose()` 处理 WebSocket 连接与消息，共用监听地址、端口、原生连接上限和生命周期。登记回调后调用一次 `start()`；`stop()` 停止整个共用服务，`disconnect()` 仅关闭指定 WebSocket 连接。明文监听提供 HTTP/WS，启用 TLS 后同一监听提供 HTTPS/WSS。
 
-`onRequest()` 接收 Swoole 原生请求和响应，未登记时普通请求返回 `404 / not_found`。PSR 消息转换、路由、HTTP 策略与请求资源清理需要应用显式装配；Upgrade 由 Swoole 握手入口处理，不自动经过普通 HTTP 回调和中间件。`onOpen()` 在握手完成后提供连接标识、请求头与 Origin 核对结果，没有 URI 路径或声明式 WebSocket 路由。共用监听不会自动获得 `SwooleServer::serveThread()` 的业务线程模型，见[共用服务指南](https://github.com/zoujingli/typeapp/blob/main/docs/guide/communications/websocket.md#http-与-websocket-共用服务)。
+`onRequest()` 接收 Swoole 原生请求和响应，未登记时普通请求返回 `404 / not_found`。PSR 消息转换、路由、HTTP 策略与请求资源清理需要应用显式装配；Upgrade 由 Swoole 握手入口处理，不自动经过普通 HTTP 回调和中间件。`onOpen()` 保留连接标识、请求头与 Origin 核对结果三个参数；在其中调用 `handshake($fd)` 读取 `path/query/remote_addr` 快照，业务自行解析原始查询和鉴权。组件不提供声明式 WebSocket 路由，也不自动获得 HTTP 业务线程模型，见[共用服务指南](https://github.com/zoujingli/typeapp/blob/main/docs/guide/communications/websocket.md#http-与-websocket-共用服务)。
+
+`handshake()`、`onControl()`、`ping()`、`pong()` 与下面的容量扩展属于 RC14 之后的源码变更，官方 RC14 原版不包含。使用补丁包时固定其来源和内容摘要；RC14 兼容别名不代表已经发布了同名官方修复版。
 
 `onMessage` 登记的回调以第四个参数接收本条消息的作用域：数据库连接必须挂在其上，回调返回后立即关闭，即使对端仍连接或尚未读取回显，事务也不会继续占用。当前服务端使用单 worker 并启用 Swoole 回调协程，同一连接经 Channel 顺序进入业务回调；可让出的 I/O 等待不阻塞其他连接，CPU 密集或不可让出的调用仍会占用当前线程。客户端的业务处理作用域由调用方管理。每条连接同一时刻只有一个消息所有者；`send($fd, $data, $binary, $seconds)` 对单条消息与排队字节双重设限，超限即关闭该连接而不静默丢弃。控制帧（PING/PONG/CLOSE）不进入业务消息路径，也不延长任何业务超时。
 
 WSS 通过 `open_ssl=true` 以及成对的 `ssl_cert_file`/`ssl_key_file` 启用，仅允许 TLS 1.2/1.3，不启用压缩或 0-RTT；本进程终止 TLS，四层透传同样走这一套证书，七层反代终止 TLS 后转到本进程时保持 `open_ssl=false`。客户端 `tls=true` 时强制校验证书链和主机名，可用 `ssl_cafile`/`ssl_host_name`。当前服务端固定使用经典 Swoole WebSocket Server，Windows `start()` 明确抛出 `websocket_unsupported_platform`；协程升级尚未接入本组件，普通 HTTP 的 Windows 路径不能代替 WS/WSS 验收。
 
-边界与默认值：帧上限与排队上限各为 1 B–1 MiB（默认 1 MiB），连接数 1–4096（默认 64），`package_max_bytes` 必须介于帧上限与两倍之间，`message_seconds` 为 (0,60] 秒（默认 30）。期限均为 (0,60] 秒。客户端 `receive($seconds)` 返回原生已重组的一条完整消息，`null` 表示关闭或超时，不代表收到空消息。
+边界与默认值：服务端消息上限与排队上限各为 1 B–64 MiB（默认仍为 1 MiB），连接数 1–4096（默认 64）。`package_max_length` 必须介于消息上限与两倍之间，并为帧头留空间；默认 2 MiB。`message_seconds` 为 (0,60] 秒（默认 30）。原生 `heartbeat_idle_time` / `heartbeat_check_interval` 使用整数秒，旧的 `package_max_bytes`、浮点秒 `idle_seconds` / `heartbeat_seconds` 继续兼容，冲突配置明确拒绝。客户端的默认消息上限仍为 1 MiB；`receive($seconds)` 返回原生已重组的完整消息，`null` 表示关闭或超时，不代表空消息。
+
+默认由 Swoole 自动回复 Ping。开启 `open_websocket_ping_frame` 后，框架负责原样回复一次 Pong，再通过 `onControl(int $fd, int $opcode, string $data, ExecutionScope $scope)` 观察；业务不要再次应答。`ping()` / `pong()` 主动发送的控制载荷最多 125 字节。`onClose(int $fd, int $reactorId)` 对已接受连接结算一次，覆盖主动断开、异常、对端关闭及停止；第二参数是 reactor ID，服务退出兜底为 -1，不是 WebSocket 关闭状态码。
 
 服务端可对 `subprotocol` 与 `allowed_origins` 设策略：**Swoole 原生的 `websocket_subprotocol` 会无条件回显配置值**（客户端不发或发其他值时也回显），因此本组件在握手完成时另行核对客户端是否真的提供该子协议，未提供按 1002 关闭；Origin 存在时必须与白名单精确匹配，不匹配按 1008 关闭。**Origin 缺失不直接拒绝**——那是非浏览器标准工具的常见情形，`onOpen` 第三参数为 `false` 交由业务鉴权。
 
@@ -175,6 +179,7 @@ composer check:assembly
 composer build:commands
 composer test:commands
 composer test:websocket
+composer test:websocket-compat
 composer test:websocket-native
 composer build:http
 composer test:http

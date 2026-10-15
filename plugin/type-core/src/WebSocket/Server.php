@@ -35,7 +35,10 @@ final class Server implements ManagedResource
     private ?NativeServer $server = null;
     private string $state = 'new';
     private bool $allocated = false;
+    private bool $running = false;
     private array $connections = [];
+    private array $closing = [];
+    private array $handshakes = [];
     private array $incomingBytes = [];
     private array $scopes = [];
     private array $queuedBytes = [];
@@ -45,6 +48,7 @@ final class Server implements ManagedResource
     private int $rejectedCount = 0;
     private ?\Closure $onOpen = null;
     private ?\Closure $onMessage = null;
+    private ?\Closure $onControl = null;
     private ?\Closure $onClose = null;
     private ?\Closure $onRequest = null;
     private string $certificate = '';
@@ -71,7 +75,8 @@ final class Server implements ManagedResource
      * 创建尚未监听的服务。端口 0 由系统分配，实际端口在 serve 后由 statistics 报告。
      *
      * @param array{subprotocol?: string, allowed_origins?: list<string>, max_frame_bytes?: int,
-     *     package_max_bytes?: int, max_connections?: int, max_queued_bytes?: int, max_pending_messages?: int, idle_seconds?: float,
+     *     package_max_length?: int, package_max_bytes?: int, max_connections?: int, max_queued_bytes?: int,
+     *     max_pending_messages?: int, heartbeat_idle_time?: int, heartbeat_check_interval?: int, idle_seconds?: float,
      *     heartbeat_seconds?: float, message_seconds?: float, open_websocket_close_frame?: bool,
      *     open_websocket_ping_frame?: bool, open_websocket_pong_frame?: bool, websocket_compression?: bool,
      *     open_ssl?: bool, ssl_cert_file?: string, ssl_key_file?: string, ssl_passphrase?: string,
@@ -98,6 +103,21 @@ final class Server implements ManagedResource
     }
 
     /**
+     * 读取已接受连接的握手快照；不保留原生 Request，也不解析或记录业务令牌。
+     * path 保持原生 request_uri，query 保持原始编码，remote_addr 是直连对端而非代理头。
+     * @return array{path: string, query: string, remote_addr: string}
+     * @throws TaskException 连接未知或已经开始关闭。
+     */
+    public function handshake(int $fd): array
+    {
+        $this->owner->assertCurrent();
+        if (!isset($this->handshakes[$fd]) || isset($this->closing[$fd])) {
+            throw new TaskException('websocket_unknown_connection', 'WebSocket 连接不存在或已经开始关闭');
+        }
+        return $this->handshakes[$fd];
+    }
+
+    /**
      * 登记消息回调；原生已按帧边界重组分片，回调收到的是完整消息。
      * 第四个参数是本条消息的作用域，数据库连接必须挂在其上；回调返回后作用域关闭，
      * 即使对端仍连接或发送尚未被读取，事务也不会继续占用。
@@ -109,8 +129,20 @@ final class Server implements ManagedResource
     }
 
     /**
+     * 观察启用回调的入站 Ping/Pong；需配置对应 open_websocket_*_frame 开关。
+     * Ping 已由框架原样回复一次 Pong，处理器不要再次应答；观察与消息共用有界串行队列。
+     * 控制帧不进入 onMessage，观察器只拥有本次 ExecutionScope，不延长业务截止。
+     * @param \Closure(int, int, string, ExecutionScope): void $handler 连接、原生 opcode、原始载荷及作用域。
+     */
+    public function onControl(\Closure $handler): void
+    {
+        $this->onControl = $handler;
+    }
+
+    /**
      * 登记关闭回调；用于释放业务资源，不能在其中再次发送。
-     * @param \Closure(int, int): void $handler 连接标识与原生关闭原因。
+     * 每个已接受连接只结算一次，含主动断开、异常、对端关闭及服务停止。
+     * @param \Closure(int, int): void $handler 连接标识与 reactor ID（不是 WebSocket 状态码）；服务退出兜底为 -1。
      */
     public function onClose(\Closure $handler): void
     {
@@ -150,19 +182,24 @@ final class Server implements ManagedResource
         }
         $this->state = 'active';
         $sockType = (int) (\SWOOLE_SOCK_TCP | ($this->options['open_ssl'] ? \SWOOLE_SSL : 0));
-        $native = new NativeServer($this->host, $this->port, (int) \SWOOLE_BASE, $sockType);
-        $this->apply($native);
-        $this->bind($native);
-        $this->server = $native;
-        $this->port = (int) $native->port;
         try {
+            $native = new NativeServer($this->host, $this->port, (int) \SWOOLE_BASE, $sockType);
+            $this->server = $native;
+            $this->apply($native);
+            $this->bind($native);
+            $this->port = (int) $native->port;
+            $this->running = true;
             $native->start();
         } catch (\Throwable $error) {
-            $this->stop();
             throw new TaskException('websocket_serve_failed', 'WebSocket 原生监听失败：' . $error->getMessage());
-        }
-        if ($this->state === 'active' || $this->state === 'stopping') {
-            $this->stop();
+        } finally {
+            $this->running = false;
+            $this->state = 'stopping';
+            // 原生事件循环已结束，未收到 close 的连接在此结算；不再发起网络操作。
+            foreach (array_keys($this->connections) as $fd) {
+                $this->settle($fd, -1);
+            }
+            $this->release();
         }
     }
 
@@ -173,16 +210,44 @@ final class Server implements ManagedResource
      */
     public function send(int $fd, string $data, bool $binary = true, float $timeout = 5.0): void
     {
+        $this->push($fd, $data, $binary ? \WEBSOCKET_OPCODE_BINARY : \WEBSOCKET_OPCODE_TEXT, $timeout);
+    }
+
+    /**
+     * 主动发送协议 Ping；载荷最多 125 字节，Pong 观察须启用 open_websocket_pong_frame。
+     * @throws TaskException 控制帧过长、连接关闭、预算耗尽或原生发送失败。
+     */
+    public function ping(int $fd, string $data = '', float $timeout = 5.0): void
+    {
+        $this->push($fd, $data, \WEBSOCKET_OPCODE_PING, $timeout);
+    }
+
+    /**
+     * 主动发送协议 Pong，或供未启用 Ping 观察的业务显式发送；自动应答由框架负责。
+     * @throws TaskException 控制帧过长、连接关闭、预算耗尽或原生发送失败。
+     */
+    public function pong(int $fd, string $data = '', float $timeout = 5.0): void
+    {
+        $this->push($fd, $data, \WEBSOCKET_OPCODE_PONG, $timeout);
+    }
+
+    /** 业务帧和控制帧共用发送预算；协议长度限制与业务消息上限分开。 */
+    private function push(int $fd, string $data, int $opcode, float $timeout): void
+    {
         $this->owner->assertCurrent();
         self::timeout($timeout);
         if ($this->state !== 'active' || $this->server === null) {
             throw new TaskException('websocket_not_active', 'WebSocket 服务未活动，不能发送');
         }
-        if (!$this->server->isEstablished($fd)) {
+        if (!isset($this->connections[$fd]) || isset($this->closing[$fd]) || !$this->server->isEstablished($fd)) {
             throw new TaskException('websocket_unknown_connection', 'WebSocket 连接不存在或尚未完成握手');
         }
         $length = (int) strlen($data);
-        if ($length > $this->options['max_frame_bytes']) {
+        $control = $opcode === \WEBSOCKET_OPCODE_PING || $opcode === \WEBSOCKET_OPCODE_PONG;
+        if ($control && $length > 125) {
+            throw new TaskException('websocket_control_too_large', 'WebSocket 控制帧载荷最多 125 字节，未提交');
+        }
+        if (!$control && $length > $this->options['max_frame_bytes']) {
             $this->disconnect($fd, 1009, 'message_too_large');
             $this->rejectedCount++;
             throw new TaskException('websocket_message_too_large', 'WebSocket 单条消息超过字节上限，已关闭该连接');
@@ -195,7 +260,6 @@ final class Server implements ManagedResource
         }
         $this->queuedBytes[$fd] = $queued;
         $deadline = new Deadline($timeout);
-        $opcode = $binary ? \WEBSOCKET_OPCODE_BINARY : \WEBSOCKET_OPCODE_TEXT;
         try {
             $sent = $this->server->push($fd, $data, $opcode, \SWOOLE_WEBSOCKET_FLAG_FIN);
         } finally {
@@ -213,16 +277,22 @@ final class Server implements ManagedResource
     }
 
     /**
-     * 主动完成关闭握手；reason 使用标准状态码，不等待对端确认。
+     * 请求原生关闭握手，code 使用标准状态码；重复调用不重复结算，不等待对端确认。
      */
     public function disconnect(int $fd, int $code = 1000, string $reason = ''): void
     {
         $this->owner->assertCurrent();
-        $gate = $this->connections[$fd] ?? null;
-        unset($this->connections[$fd], $this->queuedBytes[$fd], $this->incomingBytes[$fd]);
-        $gate?->close();
+        if (isset($this->closing[$fd])) {
+            return;
+        }
+        if (isset($this->connections[$fd])) {
+            $this->closing[$fd] = true;
+            $this->connections[$fd]->close();
+        }
         if ($this->server !== null && $this->server->isEstablished($fd)) {
-            $this->server->disconnect($fd, $code, $reason);
+            if (!$this->server->disconnect($fd, $code, $reason)) {
+                $this->server->close($fd, true);
+            }
         }
     }
 
@@ -243,10 +313,9 @@ final class Server implements ManagedResource
             foreach (array_keys($this->connections) as $fd) {
                 $this->disconnect($fd, 1001, 'server_stopping');
             }
-            $this->connections = [];
-            $this->queuedBytes = [];
-            $this->incomingBytes = [];
-            $this->server->shutdown();
+            if ($this->running) {
+                $this->server->shutdown();
+            }
         }
         $this->release();
     }
@@ -274,6 +343,9 @@ final class Server implements ManagedResource
             'accepted' => $this->acceptedCount, 'rejected' => $this->rejectedCount,
             'max_frame_bytes' => $this->options['max_frame_bytes'],
             'max_queued_bytes' => $this->options['max_queued_bytes'],
+            'package_max_length' => $this->options['package_max_bytes'],
+            'heartbeat_idle_time' => (int) ceil($this->options['idle_seconds']),
+            'heartbeat_check_interval' => (int) ceil($this->options['heartbeat_seconds']),
             'message_seconds' => $this->options['message_seconds'],
             'queued_connections' => count($this->queuedBytes),
             'sent_bytes' => $this->sentBytes, 'received_bytes' => $this->receivedBytes];
@@ -316,8 +388,18 @@ final class Server implements ManagedResource
                 $this->disconnect($fd, 1008, 'origin_not_allowed');
                 return;
             }
+            $handshake = ['path' => (string) ($request->server['request_uri'] ?? '/'),
+                'query' => (string) ($request->server['query_string'] ?? ''),
+                'remote_addr' => (string) ($request->server['remote_addr'] ?? '')];
+            // 握手元数据独立限额，不随大消息配置放大长期连接占用。
+            if (strlen($handshake['path']) + strlen($handshake['query']) > 8192 || strlen($handshake['remote_addr']) > 64) {
+                $this->rejectedCount++;
+                $this->disconnect($fd, 1009, 'handshake_too_large');
+                return;
+            }
             $gate = new Channel(1);
             $this->connections[$fd] = $gate;
+            $this->handshakes[$fd] = $handshake;
             $this->acceptedCount++;
             try {
                 if ($this->onOpen !== null) {
@@ -328,7 +410,7 @@ final class Server implements ManagedResource
             } catch (\Throwable $error) {
                 $this->disconnect($fd, 1011, 'open_failed');
             } finally {
-                if (($this->connections[$fd] ?? null) === $gate) {
+                if (($this->connections[$fd] ?? null) === $gate && !isset($this->closing[$fd])) {
                     $gate->push(true);
                 }
             }
@@ -336,23 +418,31 @@ final class Server implements ManagedResource
 
         $native->on('message', function (NativeServer $server, Frame $frame): void {
             $fd = $frame->fd;
-            if (!isset($this->connections[$fd])) {
+            if (!isset($this->connections[$fd]) || isset($this->closing[$fd])) {
                 return;
             }
             $received = (int) strlen($frame->data);
             $this->receivedBytes += $received;
-            // 控制帧不进入业务消息路径，也不延长任何业务超时。
-            if ($frame->opcode === \WEBSOCKET_OPCODE_PING || $frame->opcode === \WEBSOCKET_OPCODE_PONG
-                || $frame->opcode === \WEBSOCKET_OPCODE_CLOSE) {
+            // 原生处理关闭握手；Ping 回调启用后原生不再自动 Pong，必须在排队前回复一次。
+            if ($frame->opcode === \WEBSOCKET_OPCODE_CLOSE) {
                 return;
             }
-            if ($this->onMessage === null) {
+            $control = $frame->opcode === \WEBSOCKET_OPCODE_PING || $frame->opcode === \WEBSOCKET_OPCODE_PONG;
+            if ($frame->opcode === \WEBSOCKET_OPCODE_PING) {
+                try {
+                    $this->pong($fd, $frame->data);
+                } catch (\Throwable $error) {
+                    $this->disconnect($fd, 1011, 'pong_failed');
+                    return;
+                }
+            }
+            if ($control ? $this->onControl === null : $this->onMessage === null) {
                 return;
             }
             // 官方 Channel 串行放行业务；等待者同时受条数、字节和期限限制。
             $gate = $this->connections[$fd];
             $pending = ($this->incomingBytes[$fd] ?? 0) + $received;
-            if ($received > $this->options['max_frame_bytes'] || $pending > $this->options['max_queued_bytes']
+            if ((!$control && $received > $this->options['max_frame_bytes']) || $pending > $this->options['max_queued_bytes']
                 || $gate->stats()['consumer_num'] >= $this->options['max_pending_messages']) {
                 $this->rejectedCount++;
                 $this->disconnect($fd, 1009, 'message_queue_full');
@@ -362,42 +452,30 @@ final class Server implements ManagedResource
             $acquired = false;
             try {
                 $acquired = $gate->pop($this->options['message_seconds']) === true;
-                if (!$acquired || ($this->connections[$fd] ?? null) !== $gate) {
-                    if (($this->connections[$fd] ?? null) === $gate) {
+                if (!$acquired || ($this->connections[$fd] ?? null) !== $gate || isset($this->closing[$fd])) {
+                    if (($this->connections[$fd] ?? null) === $gate && !isset($this->closing[$fd])) {
                         $this->disconnect($fd, 1013, 'message_wait_timeout');
                     }
                     return;
                 }
-                $this->invoke(function (ExecutionScope $scope) use ($fd, $frame): void {
-                    ($this->onMessage)($fd, $frame->data, $frame->opcode !== \WEBSOCKET_OPCODE_TEXT, $scope);
+                $this->invoke(function (ExecutionScope $scope) use ($fd, $frame, $control): void {
+                    if ($control) {
+                        ($this->onControl)($fd, $frame->opcode, $frame->data, $scope);
+                    } else {
+                        ($this->onMessage)($fd, $frame->data, $frame->opcode !== \WEBSOCKET_OPCODE_TEXT, $scope);
+                    }
                 }, ['connection' => (string) $fd]);
             } catch (\Throwable $error) {
-                if (($this->connections[$fd] ?? null) === $gate) {
+                if (($this->connections[$fd] ?? null) === $gate && !isset($this->closing[$fd])) {
                     $this->disconnect($fd, 1011, 'message_failed');
                 }
             } finally {
-                if (($this->connections[$fd] ?? null) === $gate) {
-                    $this->incomingBytes[$fd] -= $received;
-                    if ($acquired) {
-                        $gate->push(true);
-                    }
-                }
+                $this->completeMessage($fd, $gate, $received, $acquired);
             }
         });
 
         $native->on('close', function (NativeServer $server, int $fd, int $reactorId): void {
-            $gate = $this->connections[$fd] ?? null;
-            unset($this->connections[$fd], $this->queuedBytes[$fd], $this->incomingBytes[$fd]);
-            $gate?->close();
-            if ($gate !== null && $this->onClose !== null) {
-                try {
-                    $this->invoke(function (ExecutionScope $scope) use ($fd, $reactorId): void {
-                        ($this->onClose)($fd, $reactorId);
-                    }, ['connection' => (string) $fd]);
-                } catch (\Throwable $error) {
-                    $this->stop();
-                }
-            }
+            $this->settle($fd, $reactorId);
         });
 
         $native->on('request', function (HttpRequest $request, HttpResponse $response): void {
@@ -417,6 +495,41 @@ final class Server implements ManagedResource
                 }
             }
         });
+    }
+
+    /**
+     * 只向仍由本回调持有的活动连接归还串行令牌。
+     * 独立方法避免锁定 TypePHP 在提前 return 与普通 finally 中复用空合并临时值，遗漏正常归还。
+     */
+    private function completeMessage(int $fd, Channel $gate, int $received, bool $acquired): void
+    {
+        if (($this->connections[$fd] ?? null) !== $gate || isset($this->closing[$fd])) {
+            return;
+        }
+        $this->incomingBytes[$fd] -= $received;
+        if ($acquired) {
+            $gate->push(true);
+        }
+    }
+
+    /** 原生 close 与事件循环退出共用一次性结算，先移除登记以阻止回调重入。 */
+    private function settle(int $fd, int $reactorId): void
+    {
+        $gate = $this->connections[$fd] ?? null;
+        if ($gate === null) {
+            return;
+        }
+        unset($this->connections[$fd], $this->closing[$fd], $this->handshakes[$fd], $this->queuedBytes[$fd], $this->incomingBytes[$fd]);
+        $gate->close();
+        if ($this->onClose !== null) {
+            try {
+                $this->invoke(function (ExecutionScope $scope) use ($fd, $reactorId): void {
+                    ($this->onClose)($fd, $reactorId);
+                }, ['connection' => (string) $fd]);
+            } catch (\Throwable $error) {
+                $this->stop();
+            }
+        }
     }
 
     /**
@@ -459,6 +572,9 @@ final class Server implements ManagedResource
             'log_level' => \SWOOLE_LOG_ERROR,
             'log_file' => '/dev/null',
             'package_max_length' => $this->options['package_max_bytes'],
+            // 载荷之外预留最大帧头；让原生输出缓冲同样遵守声明的连接预算。
+            'buffer_output_size' => $this->options['max_queued_bytes'] + 14,
+            'socket_buffer_size' => $this->options['max_queued_bytes'] + 14,
             'max_connection' => $this->options['max_connections'],
             'open_websocket_close_frame' => $this->options['open_websocket_close_frame'],
             'open_websocket_ping_frame' => $this->options['open_websocket_ping_frame'],
@@ -491,7 +607,7 @@ final class Server implements ManagedResource
 
     private function release(): void
     {
-        if ($this->scopes !== []) {
+        if ($this->running || $this->connections !== [] || $this->scopes !== []) {
             return;
         }
         $this->server = null;
@@ -529,30 +645,47 @@ final class Server implements ManagedResource
         if (filter_var($host, FILTER_VALIDATE_IP) === false || $port < 0 || $port > 65535) {
             throw new TaskException('websocket_invalid_configuration', 'WebSocket 监听需要数字 IP 与 0–65535 端口');
         }
-        $allowed = ['subprotocol', 'allowed_origins', 'max_frame_bytes', 'package_max_bytes', 'max_connections',
+        $allowed = ['subprotocol', 'allowed_origins', 'max_frame_bytes', 'package_max_bytes', 'package_max_length', 'max_connections',
             'max_queued_bytes', 'max_pending_messages', 'idle_seconds', 'heartbeat_seconds', 'message_seconds', 'open_websocket_close_frame',
+            'heartbeat_idle_time', 'heartbeat_check_interval',
             'open_websocket_ping_frame', 'open_websocket_pong_frame', 'websocket_compression', 'open_ssl',
             'ssl_cert_file', 'ssl_key_file', 'ssl_passphrase', 'ssl_protocols'];
         if (array_diff(array_keys($options), $allowed) !== []) {
             throw new TaskException('websocket_invalid_configuration', 'WebSocket 含有未声明的监听选项');
+        }
+        // 新调用使用 Swoole 原名；既有键继续接受，同时提供不同值时拒绝而非静默覆盖。
+        foreach (['package_max_length' => 'package_max_bytes', 'heartbeat_idle_time' => 'idle_seconds',
+            'heartbeat_check_interval' => 'heartbeat_seconds'] as $nativeName => $legacyName) {
+            if (!array_key_exists($nativeName, $options)) {
+                continue;
+            }
+            if (!is_int($options[$nativeName])) {
+                throw new TaskException('websocket_invalid_configuration', 'WebSocket 原生字节数和心跳秒数必须为整数');
+            }
+            $value = $nativeName === 'package_max_length' ? $options[$nativeName] : (float) $options[$nativeName];
+            if (array_key_exists($legacyName, $options) && $options[$legacyName] !== $value) {
+                throw new TaskException('websocket_invalid_configuration', 'WebSocket 原生选项与旧兼容键冲突');
+            }
+            $options[$legacyName] = $value;
         }
         $options += ['subprotocol' => '', 'allowed_origins' => [], 'max_frame_bytes' => 1048576, 'package_max_bytes' => 2097152,
             'max_connections' => 64, 'max_queued_bytes' => 1048576, 'max_pending_messages' => 16, 'idle_seconds' => 0.0, 'heartbeat_seconds' => 0.0,
             'message_seconds' => 30.0, 'open_websocket_close_frame' => true, 'open_websocket_ping_frame' => false,
             'open_websocket_pong_frame' => false, 'websocket_compression' => false, 'open_ssl' => false];
         if (!is_string($options['subprotocol']) || !is_array($options['allowed_origins']) || !is_int($options['max_frame_bytes'])
-            || $options['max_frame_bytes'] < 1 || $options['max_frame_bytes'] > 1048576
-            || !is_int($options['max_queued_bytes']) || $options['max_queued_bytes'] < 1 || $options['max_queued_bytes'] > 1048576
+            || $options['max_frame_bytes'] < 1 || $options['max_frame_bytes'] > 67108864
+            || !is_int($options['max_queued_bytes']) || $options['max_queued_bytes'] < 1 || $options['max_queued_bytes'] > 67108864
             || !is_int($options['max_connections']) || $options['max_connections'] < 1 || $options['max_connections'] > 4096
             || !is_int($options['max_pending_messages']) || $options['max_pending_messages'] < 1 || $options['max_pending_messages'] > 1024
             || !is_int($options['package_max_bytes']) || $options['package_max_bytes'] < $options['max_frame_bytes']
             || $options['package_max_bytes'] > 2 * $options['max_frame_bytes']
-            || !is_float($options['idle_seconds']) || $options['idle_seconds'] < 0 || $options['idle_seconds'] > 600
-            || !is_float($options['heartbeat_seconds']) || $options['heartbeat_seconds'] < 0
+            || !is_float($options['idle_seconds']) || !is_finite($options['idle_seconds']) || $options['idle_seconds'] < 0 || $options['idle_seconds'] > 600
+            || !is_float($options['heartbeat_seconds']) || !is_finite($options['heartbeat_seconds']) || $options['heartbeat_seconds'] < 0
+            || $options['heartbeat_seconds'] > $options['idle_seconds']
             || ($options['idle_seconds'] > 0 && $options['heartbeat_seconds'] <= 0)
-            || !is_float($options['message_seconds']) || $options['message_seconds'] <= 0 || $options['message_seconds'] > 60
+            || !is_float($options['message_seconds']) || !is_finite($options['message_seconds']) || $options['message_seconds'] <= 0 || $options['message_seconds'] > 60
             || !is_bool($options['open_ssl'])) {
-            throw new TaskException('websocket_invalid_configuration', 'WebSocket 需要 1 B–1 MiB 帧与排队上限、1–4096 连接、包上限介于帧上限与两倍之间，成对的空闲与心跳秒数，以及 (0,60] 秒的消息作用域期限');
+            throw new TaskException('websocket_invalid_configuration', 'WebSocket 需要 1 B–64 MiB 消息与排队上限、1–4096 连接、包上限介于消息上限与两倍之间，成对且检查间隔不大于空闲阈值的心跳秒数，以及 (0,60] 秒的消息作用域期限');
         }
         foreach (['open_websocket_close_frame', 'open_websocket_ping_frame', 'open_websocket_pong_frame',
             'websocket_compression'] as $key) {

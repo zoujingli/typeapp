@@ -356,7 +356,7 @@ try {
         $client->send($binary, true);
         expect($client->receive(5.0) === $binary, '二进制消息未保持原字节回显');
 
-        // 4. 控制帧不进入业务消息路径：PING 后仍然收到后续业务消息。
+        // 4. 普通文本消息继续回显；真实 Ping/Pong 控制帧由 websocket-compat.php 验证。
         $client->send('after-ping', false);
         expect($client->receive(5.0) === 'after-ping', '控制帧隔离后业务消息丢失');
 

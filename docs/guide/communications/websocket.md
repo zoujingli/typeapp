@@ -2,6 +2,8 @@
 
 WebSocket 在持续连接上交换文本或二进制消息，适合实时大屏、协作与交互通知。TypeApp 通过 `type-core` 的 `Type\Core\WebSocket\Server` 和 `Client` 提供入口；Swoole 负责 HTTP 升级、帧、控制消息、网络与 TLS，Plugins 负责业务回调、作用域和预算，TypePHP 编译业务与组件。关系见[通信导读](../communications.md)。
 
+本页的握手快照、控制帧观察与 64 MiB 服务端上限属于 RC14 后的源码变更，官方 RC14 原版不包含。消费修复包时应固定源码或分发包摘要；平台验收按实际产物记录，不能从 Composer 兼容别名推断已经发布。
+
 ## 协议模型
 
 客户端先发 HTTP Upgrade 请求，成功后以 WebSocket 消息通信。消息可能由多个帧组成，原生层完成分片重组；业务回调处理完整消息，不自行拼接 WebSocket 帧。文本消息使用 UTF-8，二进制消息由应用定义内容格式。
@@ -42,23 +44,25 @@ flowchart LR
 | --- | --- | --- |
 | `subprotocol` | `''` | 单个合法子协议 token；非空时客户端必须提供 |
 | `allowed_origins` | `[]` | 允许来源的小写字符串列表；空列表不做来源白名单限制 |
-| `max_frame_bytes` | 1048576 字节 | 1–1048576；当前用于服务端 `send()` 的单条消息检查 |
-| `package_max_bytes` | 2097152 字节 | 原生包限制，介于 `max_frame_bytes` 和其两倍之间 |
+| `max_frame_bytes` | 1048576 字节 | 1–67108864；服务端完整入站消息与 `send()` 的单条载荷检查 |
+| `package_max_length` | 2097152 字节 | 原生包限制，介于 `max_frame_bytes` 和其两倍之间；应为帧头预留空间 |
 | `max_connections` | 64 个 | 1–4096；连接准入上限 |
-| `max_queued_bytes` | 1048576 字节 | 1–1048576；单连接入站在途消息与待处理消息的合计字节上限，也分别限制正在提交的发送字节 |
+| `max_queued_bytes` | 1048576 字节 | 1–67108864；单连接入站在途消息与待处理消息的合计字节上限，也分别限制正在提交的发送字节 |
 | `max_pending_messages` | 16 条 | 1–1024；单连接等待进入消息回调的条数上限 |
-| `idle_seconds` | `0.0` | 空闲检查默认关闭；范围 0.0–600.0 秒 |
-| `heartbeat_seconds` | `0.0` | 原生检查间隔；启用空闲检查时必须大于 0 |
+| `heartbeat_idle_time` | `0` | 原生空闲阈值，整数 0–600 秒；0 关闭检查 |
+| `heartbeat_check_interval` | `0` | 原生检查间隔，启用时大于 0 且不超过空闲阈值 |
 | `message_seconds` | `30.0` | 单消息作用域期限，范围 `(0, 60]` 秒 |
 | `open_websocket_close_frame` | `true` | 原生 Close 帧开关 |
-| `open_websocket_ping_frame` / `open_websocket_pong_frame` | `false` | 原生控制帧开关；控制帧不作为业务消息回调 |
+| `open_websocket_ping_frame` / `open_websocket_pong_frame` | `false` | 开启后投递 `onControl()`，不进入 `onMessage()`；Ping 仍恰好应答一次 |
 | `websocket_compression` | `false` | 原生压缩开关，开启前验证客户端兼容与资源开销 |
 | `open_ssl` | `false` | TLS 开关；启用后需 `ssl_cert_file` 与 `ssl_key_file` |
 | `ssl_passphrase` / `ssl_protocols` | 无口令 / TLS 1.2 与 1.3 | 可选私钥口令与允许的 TLS 协议 |
 
-秒数字段按示例使用浮点数，开关使用布尔值。这些是组件的选项白名单，其中包含应用资源策略；不能把所有键都当作 Swoole 原生参数，也不支持任意 `Server::set()` 透传。
+`message_seconds` 使用浮点数，开关使用布尔值。原有 `package_max_bytes`、浮点秒 `idle_seconds` / `heartbeat_seconds` 继续接受；新旧键同时存在时必须一致，否则返回 `websocket_invalid_configuration`。选项白名单同时包含原生配置和组件资源策略，不支持任意 `Server::set()` 透传。
 
 入站先由原生 `package_max_length` 限制，重组后再按 `max_frame_bytes` 检查消息。等待业务回调的消息同时受条数、字节和 `message_seconds` 等待期限限制，超限关闭当前连接。发送侧 `max_queued_bytes` 的计数在 `push()` 返回后扣减，不代表原生缓冲已排空；慢消费者控制仍需结合原生发送结果与实际缓冲行为验收。
+
+例如 50 MiB 二进制消息可配置 `max_frame_bytes=52428800`、`max_queued_bytes=52428800`、`package_max_length=52428814`，后者为最大掩码帧头保留 14 字节。45 秒空闲检查、10 秒检查间隔分别使用 `heartbeat_idle_time=45`、`heartbeat_check_interval=10`。原生心跳检查不是主动定时 Ping，也不承诺在第 45 秒精确断开。大消息会增加缓冲和内存需求，需结合连接数及实际设备载荷设置；默认值不随上限扩展而增大。
 
 客户端工厂为 `Client::create($budget, $host, $port, $path, $tls, $headers, $maxMessageBytes, $connectTimeout, $tlsOptions)`：路径默认 `/`、TLS 默认 `false`、头默认空、消息上限默认 1 MiB、连接期限默认 5.0 秒。TLS 选项仅支持 `ssl_cafile`、`ssl_host_name`、`ssl_protocols`，强制验证证书链；每次收发期限为 `(0, 60]` 秒。
 
@@ -191,11 +195,36 @@ php dev.php client 127.0.0.1 9505 /ws hello ./tls/ca.pem
 
 ## Origin、身份与路径授权
 
-`onOpen(int $fd, array $headers, bool $originVerified)` 在原生握手完成后调用，只提供请求头，没有 URI 参数。子协议不匹配时关闭码为 1002；配置白名单且存在不匹配 Origin 时关闭码为 1008。没有 Origin 的客户端仍可进入 `onOpen()`，此时 `originVerified` 为 `false`。Origin 检查不是用户认证，非浏览器客户端也能自行设置头。
+`onOpen(int $fd, array $headers, bool $originVerified)` 在原生握手完成后调用，保持原有三个参数。调用 `$server->handshake($fd)` 读取 `['path' => '/device', 'query' => 'ssid=0&scene=3&token=a%2Bb', 'remote_addr' => '127.0.0.1']`；查询串保持原始编码，地址是直连对端，不信任转发头。组件不保存原生 Request，不自动解析 token；路径加查询最多 8192 字节，连接开始关闭后快照不可再读。
+
+业务可通过 `parse_str($snapshot['query'], $parameters)` 解析参数，再检查存在性与类型。`ssid=0` 是有效输入，不应使用 `empty($parameters['ssid'])` 判断缺失；使用 `array_key_exists()`，并拒绝 `ssid[]=...` 等数组形态。令牌验证由业务完成，不将原始查询写入日志。
+
+子协议不匹配时关闭码为 1002；配置白名单且存在不匹配 Origin 时关闭码为 1008。没有 Origin 的客户端仍可进入 `onOpen()`，此时 `originVerified` 为 `false`。Origin 检查不是用户认证，非浏览器客户端也能自行设置头。
 
 浏览器原生 WebSocket API 不能像普通 HTTP 客户端那样任意设置 Authorization 头。应用可设计受控 Cookie 或首次消息认证，并在认证完成前禁止业务操作；使用短期凭据、限定来源并清理未认证连接。不要在 URL 放长期密钥。当前组件不提供握手前 URI 授权接口，需要严格路径隔离时，应在可信代理或明确的原生握手装配层完成并验证。
 
 HTTP 中间件不会自动应用到 Upgrade、连接和后续消息。共用端口不等于共用认证策略：两条路径要验证同一业务身份规则，并分别落实请求/消息权限。MQTT over WebSocket 则由 `type-mqtt` 接管 MQTT 协议，不是给此服务发一段 JSON 就成为 MQTT，见 [MQTT](mqtt.md#通过-websocket-接入)。
+
+## 控制帧与关闭结算
+
+`ping($fd, $data = '', $timeout = 5.0)` 和 `pong(...)` 发送真正的协议控制帧，载荷最多 125 字节；超长返回 `websocket_control_too_large`，不提交。默认的自动 Pong 仍由 Swoole 处理。启用 Ping 回调后，上游不再自动应答，框架先原样发送一次 Pong，再进入 `onControl(int $fd, int $opcode, string $data, ExecutionScope $scope)`；该回调用于刷新业务连接状态，不要再调用 `pong()` 回复同一个 Ping。
+
+```mermaid
+sequenceDiagram
+    participant D as 设备
+    participant S as Swoole 原生帧处理
+    participant F as WebSocket Server
+    participant B as 业务观察回调
+    D->>S: Ping（原始载荷）
+    S->>F: 启用 Ping 回调时投递控制帧
+    F->>S: Pong（同一载荷）
+    S-->>D: 恰好一次 Pong
+    F->>B: onControl(fd, opcode, data, scope)
+    B-->>F: 更新业务状态并返回
+    F->>F: 关闭本次作用域
+```
+
+控制观察与消息回调共用每连接的有界串行队列，控制帧不进入 `onMessage()`，也不延长业务超时。`onClose(int $fd, int $reactorId)` 在主动关闭、对端关闭、回调异常及服务停止时对每个已接受连接结算一次；重复 `disconnect()` 不重复通知。第二参数是 reactor ID，服务退出兜底为 -1，不能作为 WebSocket 关闭状态码。业务应在此清除连接绑定；尚未接受的握手拒绝不产生业务 close 结算。
 
 ## 应用设计与资源生命周期
 
