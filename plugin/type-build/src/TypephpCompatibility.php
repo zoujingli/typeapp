@@ -19,6 +19,7 @@ final class TypephpCompatibility extends Translator
     private bool $callArgumentsCompatibilityVerified = false;
     private bool $classConstantSymbolsVerified = false;
     private bool $classConstantSymbolContext = false;
+    private bool $propertyPromotionVerified = false;
     /** @var array<string, true> 需要真实 Zend 参数帧的具名函数与方法。 */
     private array $argumentFunctions = [];
     /** @var \WeakMap<\TypePhp\Context\FunctionContext, string>|null 编译期作用域到局部帧变量的映射。 */
@@ -635,6 +636,35 @@ final class TypephpCompatibility extends Translator
             return parent::parseClassConstFetch($resolved);
         }
         return parent::parseClassConstFetch($expr);
+    }
+
+    /** 提升属性按构造器声明类写入，不能使用实际子类的权限创建同名动态属性。 */
+    protected function genPropertyPromotion(\TypePhp\Entity\ArgInfo $argInfo): string
+    {
+        if ($this->classDef?->nativeObject) {
+            return parent::genPropertyPromotion($argInfo);
+        }
+        if (!$this->propertyPromotionVerified) {
+            $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+            foreach ([
+                'src/CompilerBase.php' => '8767d9599d1d2ab7ed7ae218fe33df90524f2f961cf76c5355574cc01cb310c3',
+                'src/Translator.php' => '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c',
+                'src/Generator/PropertyPromotion.php' => 'e8d55199e9fafc2464a5d0a48ae079f80ebe04f3af0f3a0125058fdc090a8cfc',
+                'src/Parser/PropertyAccessTrait.php' => 'b9ce2e5a082dc568589f360c84c8b92f4aaa0698921863d2e638192cf32c908d',
+            ] as $file => $sha256) {
+                if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                    throw new RuntimeException('提升属性作用域适配需要重新核对 TypePHP：' . $file);
+                }
+            }
+            $this->propertyPromotionVerified = true;
+        }
+        $name = $argInfo->phpName ?: $this->unescapeVarName($argInfo->name);
+        // 提升赋值生成时局部声明已经输出；此处直接查声明类，不再登记新的局部指针。
+        return $this->withoutLocalClassEntryHoisting(fn (): string => $this->emitDynamicPropertyWrite(
+            'this_',
+            $this->getLiteralString($name),
+            $argInfo->name
+        )) . ';' . PHP_EOL;
     }
 
     /**
