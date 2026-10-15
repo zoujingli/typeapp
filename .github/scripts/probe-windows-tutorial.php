@@ -17,6 +17,14 @@ $digest = hash_file('sha256', $program);
 $preserved = json_decode(file_get_contents($original . '/preservation.json'), true, 512, JSON_THROW_ON_ERROR);
 Assert::same(getenv('TYPE_PROBE_PROGRAM_SHA256'), $digest, '原程序摘要不符');
 Assert::same($digest, $preserved['files']['build/type-project.exe']['sha256']);
+$fixed = getenv('TYPE_PROBE_FIXED') === '1';
+if ($fixed) {
+    $verification = json_decode(file_get_contents($root . '/build/tutorial-fixed/verification.json'), true, 512, JSON_THROW_ON_ERROR);
+    Assert::same('passed', $verification['status']);
+    Assert::same(getenv('GITHUB_SHA'), $verification['source']);
+    $program = $root . '/build/tutorial-fixed/sqlite/app.exe';
+    Assert::same(hash_file('sha256', $program), $verification['profiles']['sqlite']['program']['sha256']);
+}
 $base = $root . '/build/windows-tutorial-diagnosis';
 Assert::true(!file_exists($base) && mkdir($base, 0700, true));
 $work = $root . '/build/tutorial-stop-' . bin2hex(random_bytes(6));
@@ -30,9 +38,12 @@ $environment = array_replace(getenv(), [
 unset($environment['GH_TOKEN'], $environment['GITHUB_TOKEN']);
 $report = ['source' => getenv('TYPE_PROBE_SOURCE'), 'run' => getenv('TYPE_PROBE_RUN'),
     'sha256' => $digest, 'scope' => 'original tutorial stop diagnosis only', 'cases' => []];
+if ($fixed) {
+    $report['fixed'] = ['source' => getenv('GITHUB_SHA'), 'sha256' => hash_file('sha256', $program), 'scope' => 'recompiled diagnostic only'];
+}
 
 /** 一次新服务只执行指定请求，比较真实 CTRL_BREAK 后的退出；调试器仅观察崩溃栈。 */
-function probeTutorialStop(string $name, array $requests, bool $trace, string $program, string $work, string $base, array $environment): array
+function probeTutorialStop(string $name, array $requests, bool $trace, string $program, string $work, string $base, array $environment, string $test): array
 {
     $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     Assert::true(is_resource($socket), '无法选择诊断端口');
@@ -76,7 +87,6 @@ function probeTutorialStop(string $name, array $requests, bool $trace, string $p
         if (str_starts_with($name, 'concurrent')) {
             $environment['TYPE_CATALOG_URL'] = 'http://' . $address;
             $environment['TYPE_APP_TEST_DIRECTORY'] = dirname(__DIR__, 2);
-            $test = dirname($program, 2) . '/tests/catalog.php';
             $workers = [new Process([PHP_BINARY, $test, '--ensure-request'], $work, $environment), new Process([PHP_BINARY, $test, '--ensure-request'], $work, $environment)];
             try {
                 foreach ($workers as $worker) {
@@ -123,12 +133,12 @@ try {
         'ensure' => [['POST', '/products/ensure', '{"code":"contended","name":"竞争创建"}']],
     ];
     foreach ($cases as $name => $requests) {
-        $report['cases'][$name] = probeTutorialStop($name, $requests, false, $program, $work, $base, $environment);
+        $report['cases'][$name] = probeTutorialStop($name, $requests, false, $program, $work, $base, $environment, $original . '/tests/catalog.php');
         echo $name . ': ' . $report['cases'][$name]['exit-code'] . "\n";
     }
     foreach ($cases as $name => $requests) {
         if ($report['cases'][$name]['exit-code'] === -1073741819) {
-            $report['cases'][$name . '-trace'] = probeTutorialStop($name . '-trace', $requests, true, $program, $work, $base, $environment);
+            $report['cases'][$name . '-trace'] = probeTutorialStop($name . '-trace', $requests, true, $program, $work, $base, $environment, $original . '/tests/catalog.php');
             break;
         }
     }
@@ -146,7 +156,9 @@ try {
 PHP;
     $start = '$server = new Process([...catalogCommand($command, $settings, true), \'serve\'], $root, $settings);';
     Assert::same(1, substr_count($testSource, $start));
-    $testSource = str_replace($start, $start . "\n" . $attach, $testSource);
+    if (!$fixed) {
+        $testSource = str_replace($start, $start . "\n" . $attach, $testSource);
+    }
     $finish = <<<'PHP'
         try {
             catalogStop($server, $root, $settings);
@@ -156,7 +168,9 @@ PHP;
         }
 PHP;
     Assert::same(1, substr_count($testSource, 'catalogStop($server, $root, $settings);'));
-    $testSource = str_replace('catalogStop($server, $root, $settings);', $finish, $testSource);
+    if (!$fixed) {
+        $testSource = str_replace('catalogStop($server, $root, $settings);', $finish, $testSource);
+    }
     file_put_contents($work . '/catalog-trace.php', $testSource);
     // 每轮使用新数据库；只在完整断言之后发送 CTRL_BREAK，保持原停止预算。
     for ($attempt = 1; $attempt <= 10; ++$attempt) {
@@ -178,6 +192,15 @@ PHP;
             echo 'full-' . $attempt . ': ' . json_encode($report['full'][$attempt], JSON_THROW_ON_ERROR) . "\n";
         } finally {
             $process->stop();
+        }
+    }
+    if ($fixed) {
+        foreach ($report['cases'] as $case) {
+            Assert::same(0, $case['exit-code'], '重建程序的缩减场景停服失败');
+        }
+        foreach ($report['full'] as $case) {
+            Assert::same(0, $case['exit-code'], '重建程序的原始完整教程失败');
+            Assert::same(0, $case['server']['exit-code'], '重建程序未正常停止');
         }
     }
 } finally {

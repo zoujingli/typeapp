@@ -15,6 +15,11 @@ on:
         description: SQLite 教程原 EXE 的 SHA-256
         required: true
         type: string
+      rebuild:
+        description: 使用当前固定提交与原 SDK 重建教程并重复验收；不发布
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -23,7 +28,7 @@ permissions:
 jobs:
   probe:
     runs-on: windows-2022
-    timeout-minutes: 20
+    timeout-minutes: 60
     defaults:
       run:
         shell: pwsh
@@ -35,6 +40,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: 核对已结束的教程原程序任务
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,6 +71,41 @@ jobs:
           } elseif ($null -ne $taskLldb) {
             Add-Content $env:GITHUB_ENV ('TYPE_PROBE_LLDB=' + $taskLldb.Source)
           } else { throw '原生停服诊断需要 CDB 或 LLDB。' }
+      - name: 普通 embed 关闭回归
+        if: inputs.rebuild
+        run: |
+          & "$env:PHP_HOME/php.exe" tests/native-defaults.php embed-lifecycle
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: inputs.rebuild
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+          name: static-windows-sdk-sqlite-tutorial-candidate-1
+          path: build/tutorial-sdk
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        if: inputs.rebuild
+        with:
+          node-version: '22.21.1'
+      - name: 准备教程控制器及 Redis
+        if: inputs.rebuild
+        run: |
+          ./.github/scripts/prepare-windows-test-redis.ps1
+          Add-Content $env:GITHUB_ENV ('NODE_BINARY=' + (Get-Command node.exe).Source)
+          Add-Content $env:GITHUB_ENV ('OPENSSL_BINARY=' + (Get-Command openssl.exe).Source)
+          Add-Content $env:GITHUB_ENV ('TYPE_COMPOSER_PHAR=' + (Join-Path $env:PHP_HOME 'composer.phar'))
+          Add-Content $env:GITHUB_ENV 'TYPEAPP_BUILD_PROFILE=sqlite'
+          Add-Content $env:GITHUB_ENV ('TYPEAPP_BUILD_CONFIGURATION=' + (Join-Path $env:GITHUB_WORKSPACE 'examples/catalog/build-profiles.json'))
+      - name: 核对原 SDK 并全量编译当前教程
+        if: inputs.rebuild
+        run: |
+          $taskManifest = Join-Path $env:GITHUB_WORKSPACE 'build/tutorial-sdk/manifest.json'
+          & "$env:PHP_HOME/php.exe" tests/static-runtime-sdk.php $taskManifest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:PHP_HOME/php.exe" tests/tutorial-delivery.php candidate $env:GITHUB_SHA `
+            '--profile=sqlite' "--runtime=$taskManifest" "--output=$env:GITHUB_WORKSPACE/build/tutorial-fixed"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content $env:GITHUB_ENV 'TYPE_PROBE_FIXED=1'
       - name: 原 EXE 的请求缩减与崩溃栈
         run: |
           & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-tutorial.php
@@ -76,4 +117,7 @@ jobs:
           name: windows-tutorial-stop-diagnosis
           retention-days: 30
           if-no-files-found: error
-          path: build/windows-tutorial-diagnosis/*
+          path: |
+            build/windows-tutorial-diagnosis/*
+            build/tutorial-fixed/**
+            build/native-values-*/*.log
