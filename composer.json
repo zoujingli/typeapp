@@ -258,6 +258,7 @@
     "test:native": "@php tests/native.php build/native/type-app",
     "test:native-conversion": "@php tests/native-source-conversion.php",
     "test:native-serialization": "@php tests/native-serialization.php",
+    "test:native-defaults": "@php tests/native-defaults.php",
     "test:embed-runtime": "@php tests/embed-runtime.php",
     "test:build-source-collection": "@php tests/build-source-collection.php",
     "test:isolated-build": "bash tools/test-isolated-build.sh",

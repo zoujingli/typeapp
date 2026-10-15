@@ -13,6 +13,7 @@ use TypePhp\Translator;
 final class TypephpCompatibility extends Translator
 {
     private bool $propertyCompatibilityVerified = false;
+    private bool $defaultCompatibilityVerified = false;
     private ?StaticRuntimeSdk $staticRuntimeSdk = null;
 
     /** 静态构建直接绑定归档，不让编译器按 -l 名称优先选中 SDK 或 Homebrew 的共享库。 */
@@ -134,6 +135,86 @@ final class TypephpCompatibility extends Translator
             throw new RuntimeException('全量 AOT 不支持匿名类解释回退，请声明具名类');
         }
         return parent::parseNew($expr);
+    }
+
+    /**
+     * 默认对象工厂独立持有嵌套构造的临时值、顺序求值与清理语句。
+     * 上游 0.9.4 只保存返回表达式，会丢失 new Outer(new Inner()) 的临时声明。
+     * 复用上游降级及声明接口，不改应用 AST、共享 vendor 或默认参数的逐次创建语义。
+     */
+    protected function parseParamDefaultValue(?\PhpParser\NodeAbstract $default): ?string
+    {
+        if (!$default instanceof \PhpParser\Node\Expr\New_) {
+            return parent::parseParamDefaultValue($default);
+        }
+        $this->assertDefaultCompatibility();
+        $previous = $this->context;
+        $this->context = new \TypePhp\Context\FunctionContext();
+        try {
+            $value = parent::parseParamDefaultValue($default);
+            $declarations = $this->genScopeVarDecl();
+            $before = $this->parseBeforeStmtLines();
+            $after = $this->parseAfterStmtLines();
+            if ($declarations === '' && $before === '' && $after === '') {
+                return $value;
+            }
+            // 先持有返回对象再清理参数临时值；C++ 栈对象同样覆盖构造异常路径。
+            return '([]() {' . PHP_EOL . $declarations . $before
+                . 'auto type_app_default_result = ' . $value . ';' . PHP_EOL . $after
+                . 'return type_app_default_result;' . PHP_EOL . '})()';
+        } finally {
+            $this->context = $previous;
+        }
+    }
+
+    /** Zend 回调只在参数缺失时创建默认值，避免 C++ 实参求值提前触发构造及异常。 */
+    protected function genWrapperFunctionArgs(
+        string $fn,
+        \TypePhp\Entity\FunctionDef $functionDef,
+        string $displayName,
+        array $implicitMethodArgs = [],
+    ): string {
+        $code = parent::genWrapperFunctionArgs($fn, $functionDef, $displayName, $implicitMethodArgs);
+        $nativeName = str_starts_with($fn, self::PREFIX) ? substr($fn, strlen(self::PREFIX)) : $fn;
+        foreach ($functionDef->argInfoList as $index => $argument) {
+            if ($argument->variadic || !$argument->hasDefaultValue()) {
+                continue;
+            }
+            $this->assertDefaultCompatibility();
+            $default = $this->genDefaultArgumentExpr($nativeName, $index);
+            $getter = $argument->byRef ? 'php::getCallArgByRef' : 'php::getCallArg';
+            $type = $argument->byRef ? 'php::Ref' : 'php::Var';
+            // 与 PHPX 2.9.3 的 getCallArg/getCallArgByRef 保持一致：命名参数跳位是
+            // IS_UNDEF，显式 null 则是已提供的值；短路判断避免读取越界调用帧。
+            $missing = $index . ' >= php::getCallArgNum() || Z_ISUNDEF_P(ZEND_CALL_ARG(EG(current_execute_data), ' . ($index + 1) . '))';
+            $replacement = '((' . $missing . ') ? ' . $type . '(' . $default . ') : ' . $getter . '(' . $index . '))';
+            $code = str_replace($getter . '(' . $index . ', ' . $default . ')', $replacement, $code, $count);
+            if ($count !== 1) {
+                throw new RuntimeException('默认参数包装适配需要重新核对生成结构：' . $displayName);
+            }
+        }
+        return $code;
+    }
+
+    /** 降级、临时作用域和包装入口必须是同一受审上游实现，版本字符串相同也不能绕过。 */
+    private function assertDefaultCompatibility(): void
+    {
+        if ($this->defaultCompatibilityVerified) {
+            return;
+        }
+        $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+        foreach ([
+            'src/CompilerBase.php' => '8767d9599d1d2ab7ed7ae218fe33df90524f2f961cf76c5355574cc01cb310c3',
+            'src/Preprocessor.php' => 'efb567b27334d35ef15948399ca453e67afcaa199f2406fed0359ea280813adc',
+            'src/Translator.php' => '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c',
+            'src/Generator/DefaultArgumentGenerator.php' => 'a7f16aa7f332dbc4182db77ed52b35a4d93e952e8259e6e6e63893ce7e40112f',
+            'src/Context/FunctionContext.php' => '466114a79e5823aac3b3f99fb508708aaafc67a7937608bc02144195378f0551',
+        ] as $file => $sha256) {
+            if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                throw new RuntimeException('默认对象参数适配需要重新核对 TypePHP：' . $file);
+            }
+        }
+        $this->defaultCompatibilityVerified = true;
     }
 
     protected function getPlatform(): \TypePhp\Platform\PlatformBase
