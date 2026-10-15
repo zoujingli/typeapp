@@ -22,14 +22,17 @@ final class MysqlDriver implements Driver
     private string $role;
     private ?string $caFile;
     private string $caHash;
+    private string $timeZone;
 
     /**
      * 保存端点配置并验证连接身份，不在构造阶段建立数据库连接。
      *
-     * 会话使用 utf8mb4、UTC 与严格模式；CA 非空时要求 TLS。
+     * 会话使用 utf8mb4、默认 UTC 与严格模式；CA 非空时要求 TLS。
      * role 为 writer 或 reader；generation 用于凭据/配置轮换，不代表业务数据版本。
+     * timeZone 接受 SYSTEM 或 -13:59 至 +14:00 的 ±HH:MM 固定偏移，-00:00 规范化为 +00:00。
+     * SYSTEM 使用数据库服务器系统时区；不依赖 PHP 时区或命名时区表。
      *
-     * @throws DatabaseException 地址、角色、代次或文件配置无效。
+     * @throws DatabaseException 地址、角色、代次、文件或时区配置无效。
      */
     public function __construct(
         string $host,
@@ -39,11 +42,16 @@ final class MysqlDriver implements Driver
         #[\SensitiveParameter] string $password,
         int $generation = 1,
         string $role = 'writer',
-        ?string $caFile = null
+        ?string $caFile = null,
+        string $timeZone = '+00:00'
     ) {
         if ($port < 1 || $port > 65535 || $host === '' || $database === '' || preg_match('/[;\x00]/', $host . $database)
             || $generation < 1 || !in_array($role, ['writer', 'reader'], true) || ($caFile !== null && (!is_file($caFile) || !is_readable($caFile)))) {
             throw new DatabaseException('MySQL 连接配置无效');
+        }
+        if ($timeZone !== 'SYSTEM' && $timeZone !== '+14:00'
+            && preg_match('/\A[+-](?:0[0-9]|1[0-3]):[0-5][0-9]\z/', $timeZone) !== 1) {
+            throw new DatabaseException('MySQL 会话时区无效');
         }
         $this->host = $host;
         $this->port = $port;
@@ -54,6 +62,7 @@ final class MysqlDriver implements Driver
         $this->role = $role;
         $this->caFile = $caFile;
         $this->caHash = $caFile === null ? '' : hash_file('sha256', $caFile);
+        $this->timeZone = $timeZone === '-00:00' ? '+00:00' : $timeZone;
     }
 
     /** 返回 MySQL 对应的固定方言名称。 */
@@ -78,7 +87,7 @@ final class MysqlDriver implements Driver
         return ['driver' => 'mysql', 'endpoint' => $this->host . ':' . $this->port, 'database' => $this->database,
             'username' => $this->username, 'credential-generation' => $this->generation, 'role' => $this->role,
             'tls' => $this->caFile === null ? 'disabled' : 'verify-peer', 'ca-sha256' => $this->caHash,
-            'session' => ['timezone' => '+00:00', 'strict' => true]];
+            'session' => ['timezone' => $this->timeZone, 'strict' => true]];
     }
 
     /**
@@ -116,7 +125,7 @@ final class MysqlDriver implements Driver
                     throw new DatabaseException('MySQL 未建立要求的 TLS 连接');
                 }
             }
-            $pdo->exec("SET time_zone = '+00:00'");
+            $pdo->exec("SET time_zone = '" . $this->timeZone . "'");
             $pdo->exec("SET SESSION sql_mode = CONCAT(IF(@@SESSION.sql_mode = '', '', CONCAT(@@SESSION.sql_mode, ',')), 'STRICT_ALL_TABLES')");
             if ($this->role === 'reader') {
                 $pdo->exec('SET SESSION TRANSACTION READ ONLY');

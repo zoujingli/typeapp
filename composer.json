@@ -325,6 +325,7 @@
     "build:mysql": "@php tests/build-scenario.php docs/build-config/type-mysql.json",
     "test:mysql": "@php tests/database-native.php build/mysql/type-app",
     "test:mysql-consumer": "@php tests/database-consumer.php",
+    "test:mysql-timezone": "@php tests/mysql-timezone.php",
     "test:imports": "@php tests/imports-consumer.php",
     "test:source-rewrites": "@php tests/source-rewrites.php",
     "build:pgsql": "@php tests/build-scenario.php docs/build-config/type-pgsql.json",

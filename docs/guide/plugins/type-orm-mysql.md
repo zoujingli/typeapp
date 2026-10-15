@@ -79,7 +79,7 @@ function main(): void
 ```mermaid
 flowchart TB
     Config[运行配置] --> Driver[MysqlDriver]
-    Driver --> Init[原生 PDO / utf8mb4 / UTC / 严格模式]
+    Driver --> Init[原生 PDO / utf8mb4 / 所选时区 / 严格模式]
     Init --> Lease[当前作用域独占租约]
     Lease --> Work[查询与事务]
     Work --> Close[作用域收尾关闭物理连接]
@@ -93,7 +93,7 @@ $baseline = $connection->query('SELECT @@SESSION.time_zone AS timezone, @@SESSIO
 echo json_encode($baseline, JSON_THROW_ON_ERROR) . "\n";
 ```
 
-timezone 应为 `+00:00`，modes 包含 `STRICT_ALL_TABLES`；不要依赖完整 SQL 模式列表的固定顺序。此检查不证明所有 SQL 都具备相同超时，也不替代事务表检查。
+默认 timezone 为 `+00:00`，显式指定时应与所选时区一致；modes 包含 `STRICT_ALL_TABLES`。不要依赖完整 SQL 模式列表的固定顺序。此检查不证明所有 SQL 都具备相同超时，也不替代事务表检查。
 
 ## 连接配置
 
@@ -107,9 +107,30 @@ timezone 应为 `+00:00`，modes 包含 `STRICT_ALL_TABLES`；不要依赖完整
 | `DB_USERNAME` | type_example | 应用账号 |
 | `DB_PASSWORD` | 空字符串 | 启动时注入的密码 |
 
-`MysqlDriver` 还接受 `generation=1`、`role='writer'`、`caFile=null`。generation 必须为正整数；role 为 writer 或 reader，reader 初始化会话只读策略。凭据轮换由 `DatabaseManager::rotate()` 搭配新驱动身份完成。
+`MysqlDriver` 还接受 `generation=1`、`role='writer'`、`caFile=null`；当前 `main` 在末尾新增 `timeZone='+00:00'`。generation 必须为正整数；role 为 writer 或 reader，reader 初始化会话只读策略。凭据轮换由 `DatabaseManager::rotate()` 搭配新驱动身份完成。
 
-驱动设置 utf8mb4、UTC、严格 SQL 模式、异常模式和原生预处理，连接选项的超时为 5 秒。该超时不等于所有 SQL 或任意内核 I/O 的端到端硬截止。
+驱动设置 utf8mb4、所选时区（默认 UTC）、严格 SQL 模式、异常模式和原生预处理，连接选项的超时为 5 秒。该超时不等于所有 SQL 或任意内核 I/O 的端到端硬截止。
+
+### 连接已有数据库时选择时区
+
+旧应用如果继承服务器系统时区，可显式选择 `SYSTEM`；原始 RC14 没有此参数，须先安装包含该接口的固定组件版本并重新全量 AOT。
+
+```php
+$driver = new MysqlDriver($host, $port, $database, $username, $password, timeZone: 'SYSTEM');
+```
+
+`SYSTEM` 指数据库服务器的系统时区，与 PHP 默认时区无关，也不等同于 `@@GLOBAL.time_zone` 中可能另设的时区。先在旧连接查询 `@@SESSION.time_zone`，再选择一致的策略；不修改旧连接来掩盖迁移差异。时区是每个驱动的显式配置，不自动读取环境键。
+
+支持 `SYSTEM` 及 `-13:59` 至 `+14:00` 的 `±HH:MM` 固定偏移，例如 `+08:00`、`+05:45`；`-00:00` 归一为 `+00:00`。不接受空值、简写、空白或命名时区，不要求服务器导入时区表。较旧 MySQL 的合法偏移范围可能更窄，服务器拒绝初始化时连接失败并保留 PDO 原因，不退回默认时区。
+
+时区纳入 `identity()['session']['timezone']`。变更运行中配置须新建驱动、增加 `generation` 并通过 `DatabaseManager::rotate()` 轮换；旧租约仍使用原时区，新租约使用新时区。主库和读库应显式采用一致的业务策略，`SYSTEM` 要求各数据库服务器自身的系统时区一致。
+
+| 列类型 | 会话时区的影响 |
+| --- | --- |
+| `TIMESTAMP` | 输入与输出按会话时区转换；同一存储时刻的文本可能不同 |
+| `DATETIME` | 保留日期时间文本，不随会话时区自动转换 |
+
+因此不要在模型序列化层给所有日期统一加减 8 小时。先确认列类型、旧连接会话及新连接身份；配置变更也不会纠正历史写错的数据。主仓 `composer test:mysql-timezone` 只读检查固定时间戳、DATETIME、会话隔离和代次轮换，要求显式提供回环测试端点及 `TYPE_MYSQL_DATABASE=information_schema`。
 
 ## 参数查询与主键
 

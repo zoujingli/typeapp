@@ -82,6 +82,20 @@ echo json_encode($baseline, JSON_THROW_ON_ERROR) . "\n";
 
 默认应看到 `+00:00` 时区和包含 `STRICT_ALL_TABLES` 的模式，模式项顺序以服务器实际结果为准。驱动为每次建立的会话应用基线；当前归还时关闭物理连接，下次借用重新连接。
 
+### 显式选择会话时区
+
+当前 `main` 在构造函数末尾增加 `timeZone='+00:00'`，已有调用仍使用 UTC。原始 RC14 不包含此参数；消费应用须先安装包含该接口的固定组件版本并重新全量编译。
+
+```php
+$driver = new MysqlDriver($host, $port, $database, $username, $password, timeZone: 'SYSTEM');
+```
+
+`SYSTEM` 使用数据库服务器的系统时区，不是 PHP 默认时区，也不是服务器 `@@GLOBAL.time_zone` 中可能另设的固定偏移。需要沿用旧会话时，先核对旧连接的实际 `@@SESSION.time_zone`。固定偏移使用 `±HH:MM`，范围为 `-13:59` 至 `+14:00`；`-00:00` 与 MySQL 一致归一为 `+00:00`。不接受 `UTC`、`Asia/Shanghai` 等命名时区、空值或不完整格式，不依赖服务器时区表。
+
+所选时区写入 `identity()['session']['timezone']`，每次新连接都应用；初始化失败沿用 `DatabaseException` 及其 PDO 原因，不静默回退。MySQL 8.0.19 之前允许的偏移范围较窄，服务器拒绝时同样连接失败。运行中变更应创建新驱动并按既有规则增加 `generation`、调用 `DatabaseManager::rotate()`；已有租约保持原身份直至归还。主从端点应显式配置相同的业务时区策略。
+
+MySQL `TIMESTAMP` 按会话时区转换输入和输出，`DATETIME` 保留墙上时间文本。切换时区不会修复历史写错的数据，也不能在模型层对所有日期统一加减小时。只读会话专项为主仓的 `composer test:mysql-timezone`，需显式提供回环测试端点、账号和 `TYPE_MYSQL_DATABASE=information_schema`，不访问业务表。
+
 ```mermaid
 flowchart LR
     Config[MySQL 连接配置] --> Session[建立 PDO 并设置会话基线]
@@ -98,7 +112,7 @@ flowchart LR
 
 当前标准 PDO MySQL 没有完整会话重置接口，租约归还时关闭物理连接，下一次借用重新建立连接并初始化。连接池仍负责有界容量、等待及所有权；普通 CRUD 成功不代表物理 PDO 可以跨作用域安全复用。SQL 错误、未知提交及凭据代次退役同样关闭连接，不透明重放写入。
 
-示例从运行环境读取凭据，只执行参数绑定查询；请提前创建数据库和具有所需权限的应用账号。驱动会设置 UTC 时区与严格 SQL 模式，身份包含 credential generation、读写角色与 TLS 策略但不含密码。可选 `caFile` 要求证书验证，CA 内容变更会拒绝沿用旧连接身份。MySQL DDL 明确非事务，`INSERT RETURNING` 等能力不能按 PG 语义假定，需查询实际方言能力。
+示例从运行环境读取凭据，只执行参数绑定查询；请提前创建数据库和具有所需权限的应用账号。驱动默认设置 UTC 时区与严格 SQL 模式，身份包含 credential generation、读写角色、TLS 与所选会话时区，但不含密码。可选 `caFile` 要求证书验证，CA 内容变更会拒绝沿用旧连接身份。MySQL DDL 明确非事务，`INSERT RETURNING` 等能力不能按 PG 语义假定，需查询实际方言能力。
 
 ## AOT 与运行要求
 
