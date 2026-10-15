@@ -132,11 +132,38 @@ try {
             break;
         }
     }
-    // 继续复演保全的完整测试，新的数据库防止缩减用例改变原始输入。
-    for ($attempt = 1; $attempt <= 3; ++$attempt) {
+    // 原测试三次有一次访问冲突；复制到本轮目录附加调试器，不改保全原件。
+    $testSource = file_get_contents($original . '/tests/catalog.php');
+    Assert::same($preserved['files']['tests/catalog.php']['sha256'], hash('sha256', $testSource));
+    $attach = <<<'PHP'
+    $cdb = getenv('TYPE_PROBE_CDB');
+    $lldb = getenv('TYPE_PROBE_LLDB');
+    $debugCommand = $cdb !== false
+        ? [$cdb, '-G', '-p', (string) $server->pid(), '-c', 'sxe -c ".echo [tutorial-native-crash];.exr -1;kv;lm;u @rip-20 L30;q" av;g']
+        : [$lldb, '--batch', '-p', (string) $server->pid(), '-o', 'continue', '-k', 'thread backtrace all', '-k', 'register read', '-k', 'disassemble --pc --count 24', '-k', 'image list', '-k', 'quit'];
+    $probeDebugger = new Process($debugCommand, $root, $settings);
+    usleep(1000000);
+PHP;
+    $start = '$server = new Process([...catalogCommand($command, $settings, true), \'serve\'], $root, $settings);';
+    Assert::same(1, substr_count($testSource, $start));
+    $testSource = str_replace($start, $start . "\n" . $attach, $testSource);
+    $finish = <<<'PHP'
+        try {
+            catalogStop($server, $root, $settings);
+        } finally {
+            $trace = $probeDebugger->wait(5);
+            file_put_contents(getenv('TYPE_PROBE_TRACE_FILE'), $trace->stdout . $trace->stderr);
+        }
+PHP;
+    Assert::same(1, substr_count($testSource, 'catalogStop($server, $root, $settings);'));
+    $testSource = str_replace('catalogStop($server, $root, $settings);', $finish, $testSource);
+    file_put_contents($work . '/catalog-trace.php', $testSource);
+    // 每轮使用新数据库；只在完整断言之后发送 CTRL_BREAK，保持原停止预算。
+    for ($attempt = 1; $attempt <= 10; ++$attempt) {
         $settings = array_replace($environment, ['TYPE_APP_BINARY' => $program,
-            'TYPE_APP_TEST_DIRECTORY' => $root, 'DB_SQLITE_FILE' => $work . '/var/full-' . $attempt . '.sqlite']);
-        $process = new Process([PHP_BINARY, $original . '/tests/catalog.php'], $work, $settings);
+            'TYPE_APP_TEST_DIRECTORY' => $root, 'DB_SQLITE_FILE' => $work . '/var/full-' . $attempt . '.sqlite',
+            'TYPE_PROBE_TRACE_FILE' => $base . '/full-' . $attempt . '-stack.log']);
+        $process = new Process([PHP_BINARY, $work . '/catalog-trace.php'], $work, $settings);
         try {
             $result = $process->wait(60);
             file_put_contents($base . '/full-' . $attempt . '.log', $result->stdout . $result->stderr);
