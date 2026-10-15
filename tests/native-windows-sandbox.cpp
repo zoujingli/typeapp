@@ -120,7 +120,7 @@ int wmain(int argc, wchar_t **argv) {
     if (argc > 1 && std::wstring(argv[1]) == L"--probe") { return probe(argc, argv); }
     if (argc < 3) { return 64; }
     HANDLE original = nullptr, restricted = nullptr;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY | READ_CONTROL | WRITE_DAC, &original)) {
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY, &original)) {
         return failure("open token");
     }
     std::vector<PSID> allocated;
@@ -147,9 +147,7 @@ int wmain(int argc, wchar_t **argv) {
                                static_cast<DWORD>(restricting.size()), restricting.data(), &restricted)) {
         return failure("restrict token");
     }
-    if (!permitTokenSelfAccess(restricted, allocated.back())) { return failure("token self access DACL"); }
     CloseHandle(original);
-    for (PSID sid : allocated) { LocalFree(sid); }
     if (!IsTokenRestricted(restricted)) { return failure("restricted identity"); }
     HANDLE job = CreateJobObjectW(nullptr, nullptr);
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
@@ -178,6 +176,21 @@ int wmain(int argc, wchar_t **argv) {
     if (!AssignProcessToJobObject(job, child.hProcess)) {
         TerminateProcess(child.hProcess, 125);
         return failure("assign child");
+    }
+    // CreateProcessAsUser 可为子进程创建新的令牌对象，须在恢复线程前调整实际令牌。
+    HANDLE childToken = nullptr;
+    if (!OpenProcessToken(child.hProcess, READ_CONTROL | WRITE_DAC, &childToken)) {
+        TerminateProcess(child.hProcess, 125);
+        return failure("open child token DACL");
+    }
+    const bool permitted = permitTokenSelfAccess(childToken, allocated.back());
+    const DWORD tokenError = GetLastError();
+    CloseHandle(childToken);
+    for (PSID sid : allocated) { LocalFree(sid); }
+    if (!permitted) {
+        TerminateProcess(child.hProcess, 125);
+        SetLastError(tokenError);
+        return failure("child token self access DACL");
     }
     if (ResumeThread(child.hThread) == static_cast<DWORD>(-1)) { return failure("resume child"); }
     CloseHandle(child.hThread);
