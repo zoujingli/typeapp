@@ -78,7 +78,10 @@ try {
                 $arguments = $operation === 'migrate' ? ['migrate', 'status'] : ['check'];
                 $refused = (new Process([...$command, ...$arguments], $runtime, array_replace($environment, ['DB_DRIVER' => $disabled])))->wait(30);
                 expect($refused->exitCode === 1 && !$refused->timedOut
-                    && str_contains($refused->stdout . $refused->stderr, 'runtime_profile_database_mismatch'), '未选数据库未在连接前明确拒绝');
+                    && str_contains($refused->stdout . $refused->stderr, 'runtime_profile_database_mismatch'), '未选数据库未在连接前明确拒绝：' . json_encode([
+                        'driver' => $disabled, 'operation' => $operation, 'exit-code' => $refused->exitCode,
+                        'timed-out' => $refused->timedOut, 'stdout' => $refused->stdout, 'stderr' => $refused->stderr,
+                    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
             }
         }
         if ($project === $root && $driver !== 'sqlite') {

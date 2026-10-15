@@ -26,11 +26,11 @@ try {
     [$phpStatus, $expected, $phpError] = execute([...$php, '-r', 'require $argv[1]; main();', $source], $work);
     expect($phpStatus === 0 && $phpError === '', '值语义 PHP 对照失败：' . $expected . $phpError);
     file_put_contents($work . '/php.json', $expected);
-    if ($fixture === 'embed-lifecycle') {
+    foreach ($fixture === 'embed-lifecycle' ? ['1', 'nested'] : [] as $exitMode) {
         [$exitStatus, $exitOutput, $exitError] = execute(
             [...$php, '-r', 'require $argv[1]; main();', $source],
             $work,
-            array_replace(getenv(), ['TYPE_TEST_EMBED_EXIT' => '1'])
+            array_replace(getenv(), ['TYPE_TEST_EMBED_EXIT' => $exitMode])
         );
         expect($exitStatus === 7 && $exitOutput === $expected && $exitError === '', 'PHP 提前退出对照失败');
     }
@@ -56,11 +56,11 @@ try {
     file_put_contents($work . '/native.stdout.log', $actual);
     file_put_contents($work . '/native.stderr.log', $nativeError);
     expect($nativeStatus === 0 && $nativeError === '' && $actual === $expected, '原生值语义与 PHP 不符，证据保留于 ' . $work);
-    if ($fixture === 'embed-lifecycle') {
+    foreach ($fixture === 'embed-lifecycle' ? ['1', 'nested'] : [] as $exitMode) {
         [$exitStatus, $exitOutput, $exitError] = execute(
             nativeCommand($binary),
             $work,
-            array_replace($environment, ['TYPE_TEST_EMBED_EXIT' => '1'])
+            array_replace($environment, ['TYPE_TEST_EMBED_EXIT' => $exitMode])
         );
         expect($exitStatus === 7 && $exitOutput === $expected && $exitError === '', 'embed 提前退出语义不符，证据保留于 ' . $work);
     }

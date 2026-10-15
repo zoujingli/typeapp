@@ -38,6 +38,20 @@ function main(): void
     $handler = new EmbedShutdownHandler();
     set_error_handler($handler->error(...));
     echo "main\n";
+    if (getenv('TYPE_TEST_EMBED_EXIT') === 'nested') {
+        try {
+            try {
+                throw new InvalidArgumentException('rejected');
+            } catch (InvalidArgumentException $error) {
+                exit(7);
+            } finally {
+                echo "unexpected-finally\n";
+            }
+        } catch (Throwable $error) {
+            echo "unexpected-catch\n";
+            exit(70);
+        }
+    }
     if (getenv('TYPE_TEST_EMBED_EXIT') === '1') {
         exit(7);
     }
