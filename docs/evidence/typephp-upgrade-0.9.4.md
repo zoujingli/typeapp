@@ -6,7 +6,9 @@
 
 `RC14` 的公开程序和内置 Windows DLL 保持其原始身份，不因 `main` 后续提交自动更新。2026-10-07 在 `main` 增加了两项待原生复验的修复：`163395f` 将 ORM 事务帧的回调和模型列表改为显式取出、修改后写回，修复 Windows PHPX 多级数组 COW 可能造成的提交后回调丢失；`c4a2254` 将 Windows Swoole 的 `putenv()` hook 改为使用 PHP 的代码页转换和 `SetEnvironmentVariableW()`，保留 ZTS 环境锁及进程级字符串生命周期，并把主进程、子进程和两轮工作线程继承加入探针。
 
-Windows 环境故障的原始证据见 [run 37500835846](https://github.com/zoujingli/typeapp/actions/runs/37500835846) 及 Artifact `11429029225`：加载 Swoole 后中文值在 `putenv()` 返回时已被错误编码。修复候选重建运行 [37503916541](https://github.com/zoujingli/typeapp/actions/runs/37503916541) 已按 `c4a2254` 固定提交启动；在该运行生成的新 DLL、适配摘要和环境探针完成并回写清单前，不能宣称 Windows 编码修复、事务事件修复或新的四平台发布候选已经通过。旧模块的摘要仍保留在下方历史表中，不能作为修复后输入。
+Windows 环境故障的原始证据见 [run 37500835846](https://github.com/zoujingli/typeapp/actions/runs/37500835846) 及 Artifact `11429029225`：加载 Swoole 后中文值在 `putenv()` 返回时已被错误编码。首轮修复重建 [37503916541](https://github.com/zoujingli/typeapp/actions/runs/37503916541) 的环境探针通过，随后 DNS 对端未就绪而失败，未将该模块纳入分发。
+
+2026-10-16 按固定源码 `5acb8aa09a8c5ea96aaf09ec5d27da87412e9269` 完成 [38782633247](https://github.com/zoujingli/typeapp/actions/runs/38782633247) 重建：中文环境读写、PHP/宽字符子进程、两轮工作线程、零值及删除恢复通过，DNS、16 轮句柄复用、TLS 和 curl 回归也通过。Artifact `11996847853` 的摘要为 `4c873f27f73201f4f202667f468d5d04598908498ae79702ef6503885fc48861`；DLL 为 3,471,360 字节，SHA-256 `3045d22fcbb2af1b9ae865cb611454f34018d63f0afa8ae7a07411ab86134845`。组件清单记录同一 Artifact 的字节、依赖和适配身份；完整应用及新 RC 发布矩阵继续单独验收。下方 RC14 表格保留原身份。
 
 ## 固定输入
 

@@ -10,7 +10,7 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 RC13 的固定源码、12 个程序和公开发布身份保存在[profile 发布证据](../evidence/profile-release-20260930.md)。RC14 已使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及 `4aff74a9`（运行时字符串 `6.3.0RC1`）的 Swoole 开发快照完成正式发布门禁、十二程序、组件模板公开消费和下载回读。各平台的准确源码、运行轮次、失败诊断与性能限制统一见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)；功能通过不构成性能提升结论。
 
-RC14 之后的 `main` 仍处于修复候选阶段。Windows 旧 DLL 已确认存在 Swoole `putenv()` 中文环境编码故障；提交 `c4a2254` 已改用 PHP 宽字符环境 API，并扩展线程继承探针，运行 [37503916541](https://github.com/zoujingli/typeapp/actions/runs/37503916541) 负责重新构建和验证。新模块完成实际回读前，Windows 平台继续按 RC14 的历史身份描述，不能把候选修复写成当前发布能力。ORM 的 Windows 事务帧写回修复同样等待匹配原生消费者复验。
+RC14 之后的 `main` 正在准备 RC15。Windows `putenv()` 中文环境编码修复已通过 [模块重建 38782633247](https://github.com/zoujingli/typeapp/actions/runs/38782633247)，包含主进程、子进程及两轮线程继承，DNS、TLS 和 curl 回归；当前组件已换入同一 Artifact 的真实 DLL 与摘要。完整 Windows 应用、ORM 事务帧和十二个静态程序仍等待新发布源码的对应验收，不能用模块通过代替产品门禁。历史 RC14 身份保持不变。
 
 此前 2026-09-25 的 `bf28c8bd276f7d0f25535e82ec3ca4a59c4f241a` 四平台默认矩阵保留在[历史验收](../evidence/native-release-20260925.md)。该轮采用共享库构建，其发布目录与隔离范围不改写为本次静态单程序结果。
 
