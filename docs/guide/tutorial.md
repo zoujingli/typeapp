@@ -1,12 +1,12 @@
 # 应用开发实战
 
-本页是**开发通道的连续目录应用教程**，从全新独立应用开始，通过 `make` 增加模板之外的商品模块。当前接口尚未包含 RC14；使用 RC14 请阅读[发布通道的教程](https://iots.top/#/guide/tutorial)，不要把本页代码混入旧组件。开发候选的源码、模板、组件和锁文件必须作为一组保存；本地 path 安装是开发消费，公开批次的原样安装另由发布门禁验证。
+本页是 **RC15 的连续目录应用教程**，从全新独立应用开始，通过 `make` 增加模板之外的商品模块。执行前在[版本发布](releases.md)确认 RC15 已公开；本页接口不适用于 RC14。源码、模板、组件和锁文件必须作为一组保存；发布流程分别核对本地候选消费和默认 Packagist 的原样安装。
 
 先准备[开发环境](environment.md)：PHP、Composer、Swoole 及所选 PDO 驱动。完整教程还使用 Redis、PHP Redis 扩展，以及测试控制端的 Node.js/OpenSSL；后台依赖与启动步骤见[可靠性续篇](catalog-reliability.md)。SQLite 使用独占可写文件；MySQL/PostgreSQL 先准备专属数据库与账号。示例 shell 适用于 Linux/macOS；Windows 使用相应终端并遵守已验收的平台能力。目录业务不依赖物联中心。
 
 ```mermaid
 flowchart LR
-  Source[固定开发候选] --> Create[创建新应用与选择驱动]
+  Source[固定版本源码与组件] --> Create[创建新应用与选择驱动]
   Create --> Install[按模板约束安装并保存锁]
   Install --> Make[make 第二模块]
   Make --> Schema[填写业务源码并冻结新迁移]
@@ -14,15 +14,16 @@ flowchart LR
   HTTP --> Build[同一应用全量AOT并重跑验证]
 ```
 
-## 1. 固定候选并创建
+## 1. 固定版本并创建
 
-从[开发文档通道](https://iots.top/next/)的 `site-manifest.json` 取得明确源码身份，在已准备开发依赖的对应主仓检出中执行。不要使用未核对的移动分支覆盖一次练习：
+教程脚本来自主仓同一 tag，业务应用在独立目录安装公共组件。先准备已固定版本的教程源码与开发依赖：
 
 ```bash
-# 当前目录必须是已核对源码身份的 typeapp 开发候选。
+git clone --branch v1.0.0-rc.15 --single-branch https://github.com/zoujingli/typeapp.git typeapp-tutorial
+cd typeapp-tutorial
+composer install --no-scripts --no-plugins
 tutorial_source=$(pwd)
 php examples/catalog/create.php '../catalog application' sqlite
-php examples/catalog/use-development-sources.php '../catalog application'
 cd '../catalog application'
 composer install --no-scripts --no-plugins
 composer check-platform-reqs
@@ -31,7 +32,7 @@ php dev.php help
 php dev.php check
 ```
 
-[create.php 完整源码](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/create.php)复用 `ProjectCreator`，保留所选模板的约束并以同批约束增加 `type-redis`、`type-cache`、`type-queue`、`type-scheduler`。显式 `use-development-sources.php` 才把组件来源指向当前检出的复制安装；公开批次消费不执行此步骤。使用 `mysql` 或 `pgsql` 替换创建命令最后的 `sqlite`，在安装前确定驱动，随后填写 `.env` 的数据库地址、库名和账号；不要使用 `--ignore-platform-reqs`。
+[create.php 完整源码](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/create.php)复用 `ProjectCreator`，保留所选模板的约束并以同批约束增加 `type-redis`、`type-cache`、`type-queue`、`type-scheduler`。本教程从默认 Packagist 安装；维护者验证未发布源码时才额外运行 `use-development-sources.php`，该结果不替代公开消费。使用 `mysql` 或 `pgsql` 替换创建命令最后的 `sqlite`，在安装前确定驱动，随后填写 `.env` 的数据库地址、库名和账号；不要使用 `--ignore-platform-reqs`。
 
 提交 `composer.json`、`composer.lock` 和后续的 `catalog-candidate.json`。候选报告记录完整教程源码摘要、实际组件版本/参考提交、锁摘要和原迁移登记器摘要。包约束不会在教程准备时被偷偷改写。帮助和检查不连接外部数据库，不要求 API 令牌有效。
 

@@ -13,10 +13,10 @@
 ```bash
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm-sqlite:1.0.0-rc.14
+composer require zoujingli/type-orm-sqlite:1.0.0-rc.15
 ```
 
-这组命令固定 RC14，接口以 [RC14 包文档](https://github.com/zoujingli/type-orm-sqlite/blob/v1.0.0-rc.14/README.md)为准。本文同时说明当前源码能力，标为 `main` 或开发版的入口尚未包含在 RC14；需要这些能力时按[版本与接口依据](../components.md#版本与接口依据)安装同批次组件，核对并提交 `composer.lock`。
+这组命令对应 RC15；请先在[版本说明](../releases.md)确认公开状态，再安装同批组件并提交 `composer.lock`。当前接口以本页和所用 tag 的包 README 为准；RC14 应用继续使用原版本文档，不能混用新接口。
 
 ## 最小使用示例
 

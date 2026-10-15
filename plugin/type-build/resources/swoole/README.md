@@ -44,7 +44,7 @@ Linux 两种架构使用官方 `php:8.5.10-zts-bookworm` 镜像构建，启用�
 
 macOS 模块将 libpq（含配套的 libpgcommon_shlib、libpgport_shlib）、SQLite、OpenSSL、c-ares、Brotli 的静态归档链接进扩展，并隐藏这些库的符号，避免与 PHP 已加载的同名库混用。扩展保留 PHP API 的动态绑定以及系统库依赖；没有开发电脑的依赖路径，不需要伴随 dylib。静态子依赖及其来源记录在清单中。
 
-Unix 三个平台的模块来自 [重建 run 37075789749](https://github.com/zoujingli/typeapp/actions/runs/37075789749)，主仓源码为 `f6c092f436f2a341bb6d588d333d761c2ab64732`。Windows 模块来自 [run 37134319268](https://github.com/zoujingli/typeapp/actions/runs/37134319268)、源码 `5c409678213ebd12da3c3d80de4213f1896da7a3`，保留 IPv6 地址初始化与独占绑定适配、TLS 正常 EOF 修复；IOCP 关联缓存由 c-ares 和 libcurl 的真实关闭生命周期回收，使存活连接可重复登记事件、关闭后的数值句柄可安全复用。模块静态链接固定 c-ares 1.34.8，使指定 DNS 配置在主线程和重建的工作线程生效。共享模块使用与开发 PHP 一致的 `/MD` CRT，生产静态 SDK 独立使用 `/MT`；开发 SDK 的配套 DLL 不属于生产单程序的部署文件。
+Unix 三个平台的模块来自 [重建 run 37075789749](https://github.com/zoujingli/typeapp/actions/runs/37075789749)，主仓源码为 `f6c092f436f2a341bb6d588d333d761c2ab64732`。RC14 的 Windows 模块来自 [run 37134319268](https://github.com/zoujingli/typeapp/actions/runs/37134319268)、源码 `5c409678213ebd12da3c3d80de4213f1896da7a3`，保留 IPv6 地址初始化与独占绑定适配、TLS 正常 EOF 修复；IOCP 关联缓存由 c-ares 和 libcurl 的真实关闭生命周期回收，使存活连接可重复登记事件、关闭后的数值句柄可安全复用。模块静态链接固定 c-ares 1.34.8，使指定 DNS 配置在主线程和重建的工作线程生效。共享模块使用与开发 PHP 一致的 `/MD` CRT，生产静态 SDK 独立使用 `/MT`；开发 SDK 的配套 DLL 不属于生产单程序的部署文件。当前 Windows 模块身份见下一节。
 
 ### Windows 环境编码修复
 

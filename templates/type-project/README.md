@@ -18,26 +18,14 @@
 
 ## 创建与驱动选择
 
-模板的 `composer.json` 保存组件版本策略，选择驱动时沿用原驱动约束、其他组件约束与稳定性。开发分支明确使用 `1.0.x-dev`；版本模板由维护者在 tag 前固定第一方生产及开发依赖闭包，RC 允许 `RC` 稳定性，正式版采用 `stable`。创建应用不会自动安装依赖。
+模板的 `composer.json` 保存组件版本策略，选择驱动时沿用原驱动约束、其他组件约束与稳定性。本模板已固定第一方生产及开发依赖为 `1.0.0-rc.15`，允许 `RC` 稳定性；创建应用不会自动安装依赖。
 
-本次版本准备机制尚未随新批次公开。下面保留已公开 `1.0.0-rc.14` 的安装步骤：该旧模板需要手工固定组件约束，不能把本分支的改进归入旧版本。
+以下步骤用于 RC15 同批版本。执行前核对[版本发布页](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.15)已经公开；发布门禁尚未通过时，不从旧版本拼装这些接口。
 
 ```sh
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.14
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.15
 cd my-app
 php configure.php sqlite
-composer config minimum-stability RC
-composer config prefer-stable true
-composer require --no-update \
-  zoujingli/type-core:1.0.0-rc.14 \
-  zoujingli/type-orm:1.0.0-rc.14 \
-  zoujingli/type-orm-sqlite:1.0.0-rc.14 \
-  zoujingli/type-runtime:1.0.0-rc.14 \
-  zoujingli/type-log:1.0.0-rc.14 \
-  zoujingli/type-validate:1.0.0-rc.14
-composer require --dev --no-update \
-  zoujingli/type-build:1.0.0-rc.14 \
-  zoujingli/type-testing:1.0.0-rc.14
 composer install --no-plugins --no-scripts
 php dev.php help
 php dev.php check
@@ -45,11 +33,11 @@ php dev.php check
 
 `--no-install` 让驱动选择发生在依赖安装之前。`configure.php <mysql|pgsql|sqlite>` 只在没有 `vendor/` 和 `composer.lock` 时运行：它将所选工厂放到 `app/common/database/DatabaseFactory.php`，同时替换 Composer 的单一驱动包名；`scaffold/` 中的其他候选不进入应用生产源码。当前源码不会回填开发约束，所有内容先暂存，写入失败恢复原驱动。该步骤不修改业务配置，也不通过安装钩子执行。已有应用应在代码审查下调整驱动和迁移，不能用脚本覆盖业务。
 
-改用 MySQL 或 PostgreSQL 时，将 `configure.php` 参数换为 `mysql` 或 `pgsql`，并把版本约束中的 `type-orm-sqlite` 换为对应驱动。模板只安装选定的 `type-orm-*`，共同依赖 core、ORM、runtime、validate、log；构建和测试组件留在 `require-dev`。Composer 从 Packagist 解析其余依赖，无需配置各个 Git 仓库。RC 尚非稳定版；`dev-main` 跟进开发分支，不一定与本批次 tag 相同。安装后提交应用的 `composer.lock`，固定实际组件版本与来源。
+改用 MySQL 或 PostgreSQL 时，将 `configure.php` 参数换为 `mysql` 或 `pgsql`，脚本会替换驱动包并保留准确版本。模板只安装选定的 `type-orm-*`，共同依赖 core、ORM、runtime、validate、log；构建和测试组件留在 `require-dev`。Composer 从 Packagist 解析其余依赖，无需配置各个 Git 仓库。RC 尚非稳定版；`dev-main` 跟进开发分支，不一定与本批次 tag 相同。安装后提交应用的 `composer.lock`，固定实际组件版本与来源。
 
 接着按[第一个应用教程](https://iots.top/#/guide/tutorial)完成迁移、配置令牌、真实 HTTP 操作与原生构建。
 
-采用新准备机制的版本公开后，创建流程只需 `create-project --no-install`、`configure.php` 和 `composer install`，不再重新声明全部第一方依赖。版本必须来自相应公开批次；检查 `composer.json` 中的准确组件版本与 `minimum-stability`，并在安装后用 `composer show 'zoujingli/type-*'` 核对版本和提交。维护者入口见[版本准备与分发](https://github.com/zoujingli/typeapp/blob/main/docs/development/distribution-batches.md#版本-tag-自动发布)。
+检查 `composer.json` 中的准确组件版本与 `minimum-stability`，并在安装后用 `composer show 'zoujingli/type-*'` 核对版本和提交。新增组件也应选择同批版本；维护者入口见[版本准备与分发](https://github.com/zoujingli/typeapp/blob/main/docs/development/distribution-batches.md#版本-tag-自动发布)。RC14 的原模板没有固定完整传递依赖，使用旧版时以其 tag 内说明为准。
 
 ### 复用本地模板
 
@@ -70,7 +58,7 @@ php vendor/bin/type dev type-app.json help
 需要通过 Git 查看模板源码时，也可使用公开 HTTPS 地址，无需 SSH 密钥：
 
 ```sh
-git clone https://github.com/zoujingli/type-project.git my-app
+git clone --branch v1.0.0-rc.15 --single-branch https://github.com/zoujingli/type-project.git my-app
 cd my-app
 php configure.php sqlite
 composer install --no-plugins --no-scripts

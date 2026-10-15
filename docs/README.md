@@ -55,14 +55,14 @@
 
 ## 创建第一个应用
 
-按[版本安装教程](guide/releases.md#composer-按版本安装)创建 `my-app`，选择数据库，并将模板和组件固定到 `1.0.0-rc.14`。完成安装后，在应用根目录检查实际入口：
+当前[版本安装教程](guide/releases.md#composer-按版本安装)对应 RC15，确认该版本公开后创建 `my-app`、选择数据库并安装同批组件。在应用根目录检查实际入口：
 
 ```bash
 php dev.php help
 php dev.php check
 ```
 
-提交应用的 `composer.lock`，固定实际安装版本；RC 仍是候选版。RC14 使用[发布通道教程](https://iots.top/#/guide/tutorial)。当前开发通道的[连续目录教程](guide/tutorial.md)通过共同装配与脚手架完成第二模块，再连接缓存、事件、Outbox、队列、调度和同一原生验收；它需要对应开发候选，不能混用 RC14 组件。已有本地模板或需要 Git 检出的用户，可使用[快速开始](guide/quickstart.md)中的 `type create` 或 tag 克隆入口。
+提交应用的 `composer.lock`，固定实际安装版本；RC 仍是候选版。[连续目录教程](guide/tutorial.md)通过共同装配与脚手架完成第二模块，再连接缓存、事件、Outbox、队列、调度和同一原生验收；本页教程对应 RC15，不能混用 RC14 组件。已有本地模板或需要 Git 检出的用户，可使用[快速开始](guide/quickstart.md)中的 `type create` 或 tag 克隆入口。
 
 <div class="guide-grid">
   <a class="guide-card" href="#/guide/typephp"><span class="guide-index">AOT <span aria-hidden="true">↗</span></span><strong>TypePHP 全量编译</strong><span>从 PHP 生产实现到原生程序，理解编译流程、覆盖范围与验证边界。</span><span class="guide-meta">TYPEPHP</span></a>

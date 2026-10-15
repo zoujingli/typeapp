@@ -51,12 +51,12 @@ flowchart TB
   Build --> Package[目标平台运行包]
 ```
 
-以下从已公开的 `1.0.0-rc.14` 候选批次安装 SQLite ORM。RC 不代表稳定版本，执行前按[版本发布](releases.md)核对 Packagist 实际索引、批次和平台范围：
+以下安装示例对应 RC15；确认[版本发布](releases.md)已公开该批次后执行。RC 不代表稳定版本，须核对 Packagist 实际索引、批次和平台范围：
 
 ```bash
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm-sqlite:1.0.0-rc.14
+composer require zoujingli/type-orm-sqlite:1.0.0-rc.15
 ```
 
 提交应用的 `composer.lock`，让构建固定到实际安装的版本和提交。版本 tag 不会移动各子仓的 `main`；`dev-main` 表示各子仓最近一次分支同步，不能当作本批次版本的别名。
@@ -76,7 +76,7 @@ composer require zoujingli/type-orm-sqlite:1.0.0-rc.14
 构建与测试工具通常安装为开发依赖：
 
 ```bash
-composer require --dev zoujingli/type-build:1.0.0-rc.14 zoujingli/type-testing:1.0.0-rc.14
+composer require --dev zoujingli/type-build:1.0.0-rc.15 zoujingli/type-testing:1.0.0-rc.15
 ```
 
 需要跟进开发分支时，按下文[版本与接口依据](#版本与接口依据)明确选择开发依赖闭包；不要只改顶层包版本就假定其依赖都已升级。
@@ -161,7 +161,8 @@ main();
 
 | 使用目的 | 依赖选择 | 对应说明 |
 | --- | --- | --- |
-| 复现 RC14 | 模板与第一方组件固定 `1.0.0-rc.14` | 发布通道、各包不可变 tag 中的 README |
+| 使用 RC15 | 模板与第一方组件固定 `1.0.0-rc.15`，公开状态见版本说明 | 本批教程、各包不可变 tag 中的 README |
+| 复现 RC14 | 模板与第一方组件固定 `1.0.0-rc.14` | RC14 tag 中的文档与包 README |
 | 使用当前开发能力 | 同批分发的 `dev-main` / `1.0.x-dev` 组件及开发工具 | `/next/`、所用源码提交的 README |
 | 验证尚未分发的修改 | 主仓锁定依赖，或受控的本地独立消费者 | 该次源码与实际验证结果，不代表公开版本可用 |
 

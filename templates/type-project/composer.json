@@ -1,44 +1,77 @@
 {
-  "name": "zoujingli/type-project",
-  "description": "TypeApp 独立应用模板：按需组合 Plugins，提供开发入口、数据库驱动选择与 TypePHP 构建配置。",
-  "type": "project",
-  "license": "Apache-2.0",
-  "require": {
-    "php": ">=8.4 <8.6",
-    "ext-swoole": ">=6.2 <7",
-    "zoujingli/type-core": "1.0.x-dev",
-    "zoujingli/type-orm": "1.0.x-dev",
-    "zoujingli/type-orm-sqlite": "1.0.x-dev",
-    "zoujingli/type-runtime": "1.0.x-dev",
-    "zoujingli/type-validate": "1.0.x-dev",
-    "zoujingli/type-log": "1.0.x-dev"
-  },
-  "require-dev": {
-    "zoujingli/type-build": "1.0.x-dev",
-    "zoujingli/type-testing": "1.0.x-dev",
-    "swoole/typephp": "0.9.4",
-    "swoole/phpx": "2.9.3"
-  },
-  "autoload": {"psr-4": {"app\\": "app/"}},
-  "minimum-stability": "dev",
-  "prefer-stable": true,
-  "config": {"allow-plugins": false, "sort-packages": true},
-  "scripts": {
-    "prepare": "@php prepare.php",
-    "dev": "@php dev.php",
-    "doctor": "@php vendor/bin/type doctor type-app.json",
-    "watch": ["Composer\\Config::disableProcessTimeout", "@php vendor/bin/type watch type-app.json"],
-    "serve": ["Composer\\Config::disableProcessTimeout", "@php dev.php serve"],
-    "build": "@php vendor/bin/type type-app.json",
-    "package": "@php vendor/bin/type package build/type-project build/type-project-release",
-    "test": "@php tests/smoke.php"
-  },
-  "extra": {
-    "type-template": {
-      "protocol": 1,
-      "paths": ["app", "config", "scaffold", "tests/smoke.php", ".env.example", ".gitignore", "README.md", "LICENSE", "NOTICE", "composer.json", "type-app.json", "toolchain.lock.json", "configure.php", "prepare.php", "dev.php"],
-      "driver-target": "app/common/database/DatabaseFactory.php",
-      "drivers": {"sqlite": "scaffold/sqlite.php", "mysql": "scaffold/mysql.php", "pgsql": "scaffold/pgsql.php"}
+    "name": "zoujingli/type-project",
+    "description": "TypeApp 独立应用模板：按需组合 Plugins，提供开发入口、数据库驱动选择与 TypePHP 构建配置。",
+    "type": "project",
+    "license": "Apache-2.0",
+    "require": {
+        "ext-swoole": ">=6.2 <7",
+        "php": ">=8.4 <8.6",
+        "zoujingli/type-core": "1.0.0-rc.15",
+        "zoujingli/type-log": "1.0.0-rc.15",
+        "zoujingli/type-orm": "1.0.0-rc.15",
+        "zoujingli/type-orm-sqlite": "1.0.0-rc.15",
+        "zoujingli/type-runtime": "1.0.0-rc.15",
+        "zoujingli/type-validate": "1.0.0-rc.15"
+    },
+    "require-dev": {
+        "swoole/phpx": "2.9.3",
+        "swoole/typephp": "0.9.4",
+        "zoujingli/type-build": "1.0.0-rc.15",
+        "zoujingli/type-testing": "1.0.0-rc.15"
+    },
+    "autoload": {
+        "psr-4": {
+            "app\\": "app/"
+        }
+    },
+    "minimum-stability": "RC",
+    "prefer-stable": true,
+    "config": {
+        "allow-plugins": false,
+        "sort-packages": true
+    },
+    "scripts": {
+        "prepare": "@php prepare.php",
+        "dev": "@php dev.php",
+        "doctor": "@php vendor/bin/type doctor type-app.json",
+        "watch": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php vendor/bin/type watch type-app.json"
+        ],
+        "serve": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php dev.php serve"
+        ],
+        "build": "@php vendor/bin/type type-app.json",
+        "package": "@php vendor/bin/type package build/type-project build/type-project-release",
+        "test": "@php tests/smoke.php"
+    },
+    "extra": {
+        "type-template": {
+            "protocol": 1,
+            "paths": [
+                "app",
+                "config",
+                "scaffold",
+                "tests/smoke.php",
+                ".env.example",
+                ".gitignore",
+                "README.md",
+                "LICENSE",
+                "NOTICE",
+                "composer.json",
+                "type-app.json",
+                "toolchain.lock.json",
+                "configure.php",
+                "prepare.php",
+                "dev.php"
+            ],
+            "driver-target": "app/common/database/DatabaseFactory.php",
+            "drivers": {
+                "sqlite": "scaffold/sqlite.php",
+                "mysql": "scaffold/mysql.php",
+                "pgsql": "scaffold/pgsql.php"
+            }
+        }
     }
-  }
 }

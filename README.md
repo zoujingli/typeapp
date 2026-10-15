@@ -34,14 +34,14 @@ RC14 的四平台回归、十二个单程序、组件与模板分发及公开消
 
 ## 快速开始
 
-开发机准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展，具体分工见[环境与依赖](docs/guide/environment.md)。按[版本安装示例](docs/guide/releases.md#composer-按版本安装)创建 `my-app`，选择数据库，将模板与组件固定到 `1.0.0-rc.14`，然后在应用根目录执行：
+开发机准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展，具体分工见[环境与依赖](docs/guide/environment.md)。[版本安装示例](docs/guide/releases.md#composer-按版本安装)与当前教程已准备为 RC15，待该版本公开后创建 `my-app`，选择数据库并安装同批组件，然后在应用根目录执行：
 
 ```bash
 php dev.php help
 php dev.php check
 ```
 
-安装后提交应用的 `composer.lock`，固定实际依赖版本。上述 RC14 使用[发布通道教程](https://iots.top/#/guide/tutorial)；当前源码的[连续目录教程](docs/guide/tutorial.md)从同批开发候选创建第二模块，再演练缓存、事件、Outbox、队列与调度，不能混用旧发布组件。生产构建还须准备目标平台的静态 SDK，按[构建与部署](docs/guide/deployment.md)执行 `composer build`。
+安装后提交应用的 `composer.lock`，固定实际依赖版本。[连续目录教程](docs/guide/tutorial.md)从同一 RC15 批次创建第二模块，再演练缓存、事件、Outbox、队列与调度；已有 RC14 应用继续使用原 tag 的说明，升级差异见[版本说明](docs/guide/releases.md#从-rc14-升级到-rc15)。生产构建还须准备目标平台的静态 SDK，按[构建与部署](docs/guide/deployment.md)执行 `composer build`。
 
 本地模板与 Git tag 创建方式见[快速开始](docs/guide/quickstart.md)。`dev-main` 跟进子仓开发分支，不一定与当前 RC 相同；按版本安装才能复现本批次。
 
