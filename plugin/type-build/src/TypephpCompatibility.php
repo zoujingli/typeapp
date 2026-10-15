@@ -20,6 +20,7 @@ final class TypephpCompatibility extends Translator
     private bool $classConstantSymbolsVerified = false;
     private bool $classConstantSymbolContext = false;
     private bool $propertyPromotionVerified = false;
+    private bool $referenceCaptureVerified = false;
     /** @var array<string, true> 需要真实 Zend 参数帧的具名函数与方法。 */
     private array $argumentFunctions = [];
     /** @var \WeakMap<\TypePhp\Context\FunctionContext, string>|null 编译期作用域到局部帧变量的映射。 */
@@ -161,6 +162,7 @@ final class TypephpCompatibility extends Translator
     protected function parseFunctionDecl(\PhpParser\Node\Stmt\Function_|\PhpParser\Node\Stmt\ClassMethod $v): \TypePhp\Entity\FunctionDef
     {
         $function = parent::parseFunctionDecl($v);
+        $this->preserveCapturedArrayReferences($v, $function);
         if ($this->usesCallArguments($v->stmts ?? [])) {
             $this->assertCallArgumentsCompatibility();
             if ($function->generator || $this->classDef?->nativeObject || $this->functionRequiresNativeAbi($function)) {
@@ -171,6 +173,66 @@ final class TypephpCompatibility extends Translator
             $function->multiReturnCount = 0;
         }
         return $function;
+    }
+
+    /**
+     * 被闭包再次引用捕获的数组形参使用现有 Zend Ref ABI，不能复制成固定 Array 槽。
+     * 公开 PHP 签名及入口类型检查不变；调用侧的引用桥接和异常写回继续由上游持有。
+     */
+    private function preserveCapturedArrayReferences(
+        \PhpParser\Node\Stmt\Function_|\PhpParser\Node\Stmt\ClassMethod $node,
+        \TypePhp\Entity\FunctionDef $function
+    ): void {
+        if ($function->stub || $function->generator || $this->classDef?->nativeObject || $this->functionRequiresNativeAbi($function)) {
+            return;
+        }
+        $arguments = array_filter($function->argInfoList, static fn (\TypePhp\Entity\ArgInfo $argument): bool =>
+            $argument->type === \TypePhp\Type::ARRAY_REF && $argument->byRef && !$argument->variadic
+            && $argument->typedArray === null && $argument->stdContainer === null);
+        if ($arguments === []) {
+            return;
+        }
+        $this->assertReferenceCaptureCompatibility();
+        $captures = (new \TypePhp\Analysis\ReferenceCaptureAnalyzer())->analyze($node->stmts)['captures'];
+        $changed = false;
+        foreach ($arguments as $index => $argument) {
+            if (!isset($captures[$argument->phpName])) {
+                continue;
+            }
+            $type = $this->buildTypeCheckFromNode($node->params[$index]->type, true);
+            $argument->type = \TypePhp\Type::REF;
+            $argument->typeCheck = $type['check'];
+            $argument->typeStr = $type['typeStr'];
+            $argument->typeNode = $node->params[$index]->type;
+            $changed = true;
+        }
+        if ($changed) {
+            $function->params = implode(', ', array_map(fn (\TypePhp\Entity\ArgInfo $argument): string => $argument->variadic
+                ? \TypePhp\Type::ARRAY . ' ' . $argument->name : $this->genArgumentDeclaration($argument), $function->argInfoList));
+        }
+    }
+
+    /** 参数 ABI、捕获分析和生成规则须来自同一已核对版本，不绕过固定存储的引用保护。 */
+    private function assertReferenceCaptureCompatibility(): void
+    {
+        if ($this->referenceCaptureVerified) {
+            return;
+        }
+        $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+        foreach ([
+            'src/Preprocessor.php' => 'efb567b27334d35ef15948399ca453e67afcaa199f2406fed0359ea280813adc',
+            'src/Translator.php' => '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c',
+            'src/Analysis/ReferenceCaptureAnalyzer.php' => '0732aa48bae23c3ff1c547f08ffc48c829560ae98cb2fff11189d6de35df688c',
+            'src/Context/CompilationStateTrait.php' => '158d16dc36e46951f601fd4b996d6920aa4475270e4696ce8958c455cf786484',
+            'src/Generator/ClosureGenerator.php' => 'fc23c9113e8b90e0f24e4819506190de592aa565fae340caed594b15e7af5882',
+            'src/Generator/CallArgumentGenerator.php' => 'eddce4623049343393cb1e8e28ad0d0a7eaca4d6ad9233d4f85e1eeae9b4c900',
+            'src/Generator/TypeCheckGenerator.php' => 'f9e88981fa70ebc76e135ca8a477c994ee314fd9506d8dca6556b31f4a628018',
+        ] as $file => $sha256) {
+            if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                throw new RuntimeException('数组引用参数捕获适配需要重新核对 TypePHP：' . $file);
+            }
+        }
+        $this->referenceCaptureVerified = true;
     }
 
     /** 只扫描当前函数体，内层闭包和类拥有独立参数作用域。 */

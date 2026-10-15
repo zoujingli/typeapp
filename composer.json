@@ -264,6 +264,7 @@
     "test:native-declared-tostring": "@php tests/native-defaults.php declared-tostring",
     "test:native-dynamic-tostring": "@php tests/native-defaults.php dynamic-tostring",
     "test:native-promoted-property": "@php tests/native-defaults.php inherited-promoted-property",
+    "test:native-reference-capture": "@php tests/native-defaults.php reference-parameter-capture",
     "test:native-call-arguments": [
       "@php tests/native-defaults.php call-arguments",
       "@php tests/native-defaults.php call-arguments-coroutine"
