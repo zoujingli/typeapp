@@ -14,6 +14,7 @@ final class TypephpCompatibility extends Translator
 {
     private bool $propertyCompatibilityVerified = false;
     private bool $defaultCompatibilityVerified = false;
+    private bool $interfaceConstantCompatibilityVerified = false;
     private ?StaticRuntimeSdk $staticRuntimeSdk = null;
 
     /** 静态构建直接绑定归档，不让编译器按 -l 名称优先选中 SDK 或 Homebrew 的共享库。 */
@@ -135,6 +136,32 @@ final class TypephpCompatibility extends Translator
             throw new RuntimeException('全量 AOT 不支持匿名类解释回退，请声明具名类');
         }
         return parent::parseNew($expr);
+    }
+
+    /** 接口中的 self 属于当前接口；上游类专用名称入口会丢掉接口名。 */
+    protected function parseClassConstFetch(\PhpParser\Node\Expr\ClassConstFetch $expr): string
+    {
+        if ($this->classDef === null && $this->interface !== '' && $this->interfaceDef !== null
+            && $this->isNameExpr($expr->class) && $this->parseIdentifier($expr->class) === 'self') {
+            if (!$this->interfaceConstantCompatibilityVerified) {
+                $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+                foreach ([
+                    'src/CompilerBase.php' => '8767d9599d1d2ab7ed7ae218fe33df90524f2f961cf76c5355574cc01cb310c3',
+                    'src/Preprocessor.php' => 'efb567b27334d35ef15948399ca453e67afcaa199f2406fed0359ea280813adc',
+                    'src/Parser/ClassConstantFetchTrait.php' => '4d2bd3c7e2639bebd78dfc1aeeb1e5fdfbb966cea74ec90298349c4ed38aaa63',
+                ] as $file => $sha256) {
+                    if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                        throw new RuntimeException('接口 self 常量适配需要重新核对 TypePHP：' . $file);
+                    }
+                }
+                $this->interfaceConstantCompatibilityVerified = true;
+            }
+            // 仅规范化本次查找的目标；保留原声明 AST、常量注册顺序和上游解析流程。
+            $resolved = clone $expr;
+            $resolved->class = new \PhpParser\Node\Name\FullyQualified($this->interfaceDef->getNamespacedName(false), $expr->class->getAttributes());
+            return parent::parseClassConstFetch($resolved);
+        }
+        return parent::parseClassConstFetch($expr);
     }
 
     /**

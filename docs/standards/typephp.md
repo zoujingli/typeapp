@@ -31,6 +31,12 @@ TypePHP 0.9.4 生成 `new Outer(new Inner())` 默认参数时，只保存最终�
 
 该修复不改变已发布 RC14 的字节；旧版独立应用需要安装包含修复并固定身份的构建组件。升级上游后，应先移除本适配进行同一组 PHP/原生回归，确认两处缺口均被覆盖，再删除对应摘要门禁。业务包的全量 AOT 与实际签发、验签等流程仍须单独验收。
 
+## 接口 self 常量的编译适配
+
+TypePHP 0.9.4 在接口内解析 `self::` 时使用类专用名称入口，可能把 `Token\RegisteredClaims` 误解析为 `Token\`。例如接口中的 `ALL = [self::AUDIENCE]` 虽然可以编译链接，却会在原生程序进入 `main` 之前初始化失败。
+
+`TypephpCompatibility` 仅在当前声明确实为接口时，将该次常量查找中的 `self` 规范化为接口完整名称，再交给上游解析；不改原声明 AST、常量注册顺序或普通类的 `self` 语义。适配核对预处理、作用域及常量解析源码摘要，`composer test:native-interface-constants` 对照 PHP/原生程序验证前向常量、嵌套数组、`self::class`、接口继承、实现类覆盖、命名空间隔离与全局接口。上游升级后用同一回归证明原实现已修复，再撤除适配；该结果不替代业务包完整运行验收。
+
 ## PHPX 2.9 适配边界
 
 PHPX 的调试实现在 `src/core/debug.cc`，并提供异常/转换策略头文件。TypeApp 仍只在独立、固定的 PHPX 源码副本上应用线程与协程隔离、finalizer bailout 和可写字符串副本适配；共享 `vendor` 或 SDK 不直接改写。适配原文摘要和唯一替换由 `Type\Build\PhpxThreadSource` 门禁，完成后必须重新编译整份 PHPX。

@@ -158,6 +158,8 @@ vendor/bin/type --inspect build/type-example
 
 构建入口为 TypePHP 0.9.4 的具名类构造、方法及函数默认值补齐嵌套 `new` 的临时作用域，并让 Zend 包装入口仅在参数缺失时求值。显式实参和 `null` 不触发默认构造，省略参数则逐次创建对象。适配绑定已审查的上游源码摘要，不修改应用、共享 SDK 或已安装的编译器源码；它不表示所有 PHP 默认值上下文均已兼容，边界与撤除条件见上述语法基线。
 
+接口内的 `self::` 常量查找同样由受源码摘要约束的兼容层处理，保留接口完整名称和词法作用域，避免聚合常量在原生程序进入 `main` 前初始化失败。原接口声明和普通类行为保持不变，验证入口及上游撤除条件见语法基线。
+
 ## 主仓验证入口
 
 以下命令在安装完整开发依赖的 [TypeApp 开发主仓](https://github.com/zoujingli/typeapp/blob/main/composer.json)根执行，不是分发子仓默认自带的脚本。需要真实数据库、Redis、Linux SDK 或容器的用例应按其文档准备专属测试环境；先构建相应产物，再运行 native 验收。
@@ -170,6 +172,7 @@ composer test:build-install
 composer test:imports
 composer test:source-rewrites
 composer test:native-defaults
+composer test:native-interface-constants
 composer test:isolated-build
 composer test:native-packaging
 php tests/configuration.php
