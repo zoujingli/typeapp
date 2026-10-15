@@ -204,7 +204,7 @@ final class Settings
     {
         $definitions = [
             'APP_NAME' => ['path' => 'app.name', 'label' => '应用名称', 'group' => '应用', 'type' => 'string', 'editable' => true, 'secret' => false],
-            'APP_ENV' => ['path' => 'app.environment', 'label' => '运行环境', 'group' => '应用', 'type' => 'enum', 'editable' => true, 'secret' => false, 'options' => ['development', 'production']],
+            'APP_ENV' => ['path' => 'app.environment', 'label' => '运行环境（修改后重启）', 'group' => '应用', 'type' => 'enum', 'editable' => false, 'secret' => false, 'options' => ['dev', 'prod', 'demo']],
             'APP_DEBUG' => ['path' => 'app.debug', 'label' => '调试模式', 'group' => '应用', 'type' => 'boolean', 'editable' => true, 'secret' => false],
             'APP_LISTEN' => ['path' => 'app.http.listen', 'label' => '监听地址', 'group' => 'HTTP', 'type' => 'string', 'editable' => true, 'secret' => false],
             'APP_PORT' => ['path' => 'app.http.port', 'label' => '监听端口', 'group' => 'HTTP', 'type' => 'integer', 'editable' => true, 'secret' => false],
@@ -738,24 +738,24 @@ final class Settings
     }
 
     /**
-     * 区分配置声明的环境与显式开发入口；开发启动器的标记不写回环境或秘密配置。
+     * 环境只取启动配置；保留开发入口参数的调用兼容性，不允许其覆盖 demo。
      *
-     * @throws InvalidArgumentException APP_ENV 不是 development 或 production。
+     * @throws InvalidArgumentException APP_ENV 无效；旧值须显式迁移后重启。
      */
     public static function environment(Repository $configuration, bool $developmentEntry): string
     {
         $environment = $configuration->text('app.environment');
-        if (!in_array($environment, ['development', 'production'], true)) {
-            throw new InvalidArgumentException('APP_ENV 只接受 development 或 production');
+        if (!in_array($environment, ['dev', 'prod', 'demo'], true)) {
+            throw new InvalidArgumentException('APP_ENV 只接受 dev、prod 或 demo；development 请改为 dev，production 请改为 prod');
         }
 
-        return $developmentEntry ? 'development' : $environment;
+        return $environment;
     }
 
     /** 只有开发启动器的显式标记可以开启调试，HTTP 头与生产环境误配不能打开它。 */
     public static function debug(Repository $configuration, bool $developmentEntry): bool
     {
-        return $developmentEntry && $configuration->boolean('app.debug');
+        return $developmentEntry && self::environment($configuration, false) === 'dev' && $configuration->boolean('app.debug');
     }
 
     /**

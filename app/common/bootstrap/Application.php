@@ -128,6 +128,11 @@ final class Application
         $router = new Router($messages, $messages);
         $application = new \Type\Generated\CommandApplication(ApplicationContext::configuration($basePath, '', $development, $settings));
         $application->registerRoutes($router);
+        if ($environment === 'demo') {
+            $router->middleware(static fn (): \Type\Core\Http\ReadOnlyPolicy => new \Type\Core\Http\ReadOnlyPolicy([
+                'admin.login', 'customer.login', 'admin.logout', 'customer.logout',
+            ]));
+        }
 
         $pages = $broker ? null : new \app\common\service\FrontendPages(\app\common\service\FrontendAssets::application($basePath, $development));
         return new Pipeline([

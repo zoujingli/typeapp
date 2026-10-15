@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { ConfigurationField, ConfigurationView } from '../api';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { Alert, Button, Card, Col, Empty, Form, FormItem, Input, InputNumber, Row, Select, Space, Spin, Switch, Tag, message } from 'ant-design-vue';
@@ -81,7 +82,7 @@ onMounted(() => { void load(); });
   <section class="iot-page configuration-page">
     <header class="page-heading">
       <div><h1>系统配置</h1><p class="muted">查看运行配置来源并维护非敏感启动参数</p></div>
-      <Space><Button :loading="loading" @click="load">刷新</Button><Button v-if="canManage" type="primary" :loading="saving" @click="save">保存配置</Button></Space>
+      <Space><Button :loading="loading" @click="load">刷新</Button><MutationButton v-if="canManage" type="primary" :loading="saving" @click="save">保存配置</MutationButton></Space>
     </header>
     <Alert v-if="pendingRestart || view.restart_required" message="配置已写入运行文件，重启应用后生效；当前进程不会热加载新值。" type="warning" show-icon class="page-alert" />
     <Alert v-if="failure" :message="failure" type="error" show-icon role="alert" class="page-alert" />

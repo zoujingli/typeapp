@@ -33,7 +33,7 @@ foreach (array_keys($environment) as $key) {
     }
 }
 $environment += ['APP_BASE_PATH' => $base, 'APP_ADMIN_PASSWORD' => $secret, 'APP_CUSTOMER_PASSWORD' => 'customer-' . substr($secret, 0, 48), 'APP_DEBUG' => 'true',
-    'APP_ENV' => 'production', 'APP_CACHE_ENABLED' => 'false',
+    'APP_ENV' => 'prod', 'APP_CACHE_ENABLED' => 'false',
     'DB_DRIVER' => 'sqlite', 'DB_SQLITE_FILE' => $base . '/database.sqlite'];
 try {
     $install = new Process([...$development, 'app:install', 'mode-admin', '模式管理员', 'mode-customer', '模式客户', '模式租户'], $root, $environment);
@@ -44,9 +44,10 @@ try {
         $install->stop();
     }
     foreach ([['command' => $development, 'development' => true], ['command' => $production, 'development' => false]] as $mode) {
+        $environment['APP_ENV'] = $mode['development'] ? 'dev' : 'prod';
         $check = new Process([...$mode['command'], 'check'], $root, $environment);
         $checked = $check->wait(10);
-        expect($checked->successful() && str_contains($checked->stdout, $mode['development'] ? 'development' : 'production')
+        expect($checked->successful() && str_contains($checked->stdout, $mode['development'] ? 'dev' : 'prod')
             && str_contains($checked->stdout, $mode['development'] ? '调试：on' : '调试：off'), '启动模式和调试权限混淆');
         if ($target === '--php' && !$mode['development']) {
             // PHP 对照只核对生成 main 的权限；生产 HTTP 线程必须由实际 AOT 产物验证。

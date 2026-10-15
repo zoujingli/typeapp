@@ -56,6 +56,7 @@ cp .env.example .env
 | 环境键 | 用途 |
 | --- | --- |
 | `APP_NAME` | 应用名称，默认 `typeapp` |
+| `APP_ENV` | `dev/prod/demo`，默认 `prod`；后台只读，修改外置配置后重启。完整语义及旧值迁移见[运行环境](environment.md#运行环境) |
 | `APP_LISTEN` / `APP_PORT` | 监听地址与端口，默认 `127.0.0.1:9501` |
 | `APP_ALLOWED_HOSTS` | 接受的 Host，列表以逗号分隔 |
 | `APP_TRUSTED_PROXIES` | 明确信任的代理，默认不信任代理 |
@@ -125,7 +126,7 @@ Swoole 是必需通信与基础并发底层。Broker、客户端、持久 worker
 
 ## 调试边界
 
-PHP 开发入口明确取得开发权限；原生入口固定使用生产权限，HTTP 头、query 和 body 不能打开调试。内部错误响应保留 `internal_error` 和服务端生成的 `request_id`，调试细节写入受控日志。
+只有 `APP_ENV=dev` 的 PHP 开发入口可通过 `APP_DEBUG=true` 启用安全调试；`prod/demo` 和原生入口关闭调试，HTTP 头、query 和 body 不能切换环境或打开调试。内部错误响应保留 `internal_error` 和服务端生成的 `request_id`，调试细节写入受控日志。
 
 当前 `main` 的生产内部异常会记录稳定错误码、异常类型、受控代码位置、`request_id` 和真实 `build_id`，请求完成记录包含状态、耗时及结果。原始异常消息、SQL、参数与凭据不入日志；开发权限只增加有限调用帧。原生异常可能没有准确 PHP 行号，应结合构建身份定位。该修复尚未包含公开 RC14，使用方式见[运行探针与诊断](deployment.md#运行探针与诊断)。
 

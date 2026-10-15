@@ -5,7 +5,7 @@ declare(strict_types=1);
 // 声明只在构建时解析，env 的实际值在应用启动时取得，不将秘密编入产物。
 return [
     'name' => env('APP_NAME', 'type-project'),
-    'environment' => env('APP_ENV', 'production'),
+    'environment' => env('APP_ENV', 'prod'),
     'debug' => env('APP_DEBUG', false),
     'http' => [
         'listen' => env('APP_LISTEN', '127.0.0.1'),

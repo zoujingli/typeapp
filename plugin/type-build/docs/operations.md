@@ -32,7 +32,7 @@
 物联中心的页面已经编入程序。空库初始化使用 `./app app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>`，初始口令从 `APP_ADMIN_PASSWORD`、`APP_CUSTOMER_PASSWORD` 受控环境读取；它会先暂存页面，再初始化数据库，最后写入应用根的 `public/`。普通启动不释放资源。数据库成功但页面失败时运行 `./app web:install --force` 修复，不能重新初始化数据库。下面的 `migrate run` 仅适用于开放该命令的通用应用。
 
 1. 为所选驱动准备独立数据库及受限业务账号。SQLite准备私有、可写的数据父目录；其他驱动由数据库管理员创建库和账号。
-2. 在外部运行根配置`.env`或受控进程环境，设置`APP_BASE_PATH`、数据库连接、监听/Host白名单和令牌。生产保持`APP_ENV=production`、`APP_DEBUG=false`；密钥不写入构建或发布物。
+2. 在外部运行根配置`.env`或受控进程环境，设置`APP_BASE_PATH`、数据库连接、监听/Host白名单和令牌。生产保持`APP_ENV=prod`、`APP_DEBUG=false`；密钥不写入构建或发布物。
 3. 执行`./app migrate status`和`./app migrate history`了解现状；首次SQLite文件尚未初始化时，status失败是明确状态，不应通过serve暗建数据库。
 4. 由一个明确的迁移操作者执行`./app migrate run`。迁移器的锁和checksum是必要约束，但不代替部署协调。
 5. 再次检查迁移状态/历史，启动指定作用域的服务，验证`/healthz`、`/readyz`及鉴权和实际业务读写。检查退出码、日志及数据目录权限。

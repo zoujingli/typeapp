@@ -4,6 +4,8 @@
 
 ## 阅读与操作路径
 
+当前开发版提供 `Type\Core\Http\ReadOnlyPolicy`，通过 `Router::middleware()` 接入已匹配路由后的只读边界。默认只允许 GET、HEAD 和 OPTIONS；传入准确认证路由名时，仅额外允许这些路由的 POST，其他写请求返回 `403 demo_readonly`。应用须核查读取接口没有业务写副作用；该中间件不替代认证、租户授权或后台任务限制。物联中心和模板在 `APP_ENV=demo` 时接入，环境规则见[运行环境](https://iots.top/#/guide/environment?id=运行环境)。
+
 本组件负责应用配置、命令生命周期与基础通信。入门按[核心教程](https://iots.top/#/guide/plugins/type-core)先读取配置，再创建并直接调用 `/status` 路由，最后监听真实 HTTP；每一步都有预期响应和清理方式。需要数据库、校验或缓存时按业务职责安装相应组件。
 
 ```mermaid

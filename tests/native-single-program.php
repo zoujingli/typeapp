@@ -50,7 +50,7 @@ try {
         expect(chmod($package . '/' . $filename, 0555) && chmod($package, 0555), '无法准备只读程序目录');
     }
     $cleanEnvironment = PHP_OS_FAMILY === 'Windows' ? WindowsNativeSandbox::environment($runtime) : ['PATH' => '/usr/bin:/bin'];
-    $environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $runtime, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false',
+    $environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $runtime, 'APP_ENV' => 'prod', 'APP_DEBUG' => 'false',
         'APP_CACHE_ENABLED' => 'false', 'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'var/app.sqlite',
         'APP_API_TOKEN' => 'single-test-' . bin2hex(random_bytes(20)), 'TYPE_APP_TRACE' => '1'];
     $environment = array_replace($environment, $cleanEnvironment);

@@ -107,7 +107,7 @@ async function load(nextPage = page.value, nextPerPage = perPage.value) {
     if (version === requestVersion) { result.value = data; page.value = nextPage; perPage.value = nextPerPage; failure.value = ''; denied.value = false; now.value = Date.now() / 1000; }
   } catch (error) {
     if (version === requestVersion && !isCanceled(error)) {
-      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
       if (denied.value) { result.value = null; detail.value = null; }
     }
   } finally { if (version === requestVersion) { busy.value = false; pending = null; } }
@@ -160,7 +160,7 @@ onBeforeUnmount(() => { clearInterval(timer); document.removeEventListener('visi
             <template v-else-if="column.key === 'time'">{{ time(record.observed_at) }}</template>
             <template v-else-if="column.key === 'value'">{{ nodeState(record as RuntimeNode) !== 'reporting' ? '—' : record.kind === 'broker' ? `${number(Number(record.metrics.connections))} 连接` : `${number(record.received_per_second, 2)} 条/秒` }}</template>
             <template v-else-if="column.key === 'faults'"><Tag :color="nodeState(record as RuntimeNode) === 'reporting' && faults(record as RuntimeNode) ? 'error' : undefined">{{ nodeState(record as RuntimeNode) === 'reporting' ? number(faults(record as RuntimeNode)) : '—' }}</Tag></template>
-            <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '详情', onClick: () => { detail = record as RuntimeNode; } }]" />
+            <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '详情', readOnly: true, onClick: () => { detail = record as RuntimeNode; } }]" />
           </template>
         </Table>
       </Card>
@@ -190,7 +190,7 @@ onBeforeUnmount(() => { clearInterval(timer); document.removeEventListener('visi
             <Tag v-else-if="column.key === 'freshness'" :color="deviceFreshness(record as ObservedDevice) === 'fresh' ? 'green' : 'warning'">{{ freshnessNames[deviceFreshness(record as ObservedDevice)] }}</Tag>
             <template v-else-if="column.key === 'time'">{{ time(record.current.received_at) }}</template>
             <Tag v-else-if="column.key === 'authorization'" :color="record.authorization.status === 'pending' ? 'processing' : undefined">{{ record.authorization.status === 'pending' ? '等待执行' : '已生效' }}</Tag>
-            <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '设备详情', visible: canReadDevice, onClick: () => router.push(`/devices/${record.id}`) }]" />
+            <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '设备详情', readOnly: true, visible: canReadDevice, onClick: () => router.push(`/devices/${record.id}`) }]" />
           </template>
         </Table>
       </Card>

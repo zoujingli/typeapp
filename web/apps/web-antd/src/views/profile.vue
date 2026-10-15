@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { FormInstance } from 'ant-design-vue';
 import type { User } from '../api';
 import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
@@ -63,8 +64,8 @@ onBeforeUnmount(() => { form.current_password = ''; form.password = ''; cancelCo
         <DescriptionsItem v-if="session.realm === 'customer'" label="当前租户"><span class="break-all">{{ session.tenant?.name || '尚未加入租户' }}</span></DescriptionsItem>
       </Descriptions>
       <div v-if="session.realm === 'customer' && !session.impersonating && session.user && !failure" class="toolbar-actions mt-4">
-        <Button :disabled="busy || saving" @click="edit('update')">修改个人资料</Button>
-        <Button :disabled="busy || saving" danger @click="edit('password')">修改登录密码</Button>
+        <MutationButton :disabled="busy || saving" @click="edit('update')">修改个人资料</MutationButton>
+        <MutationButton :disabled="busy || saving" danger @click="edit('password')">修改登录密码</MutationButton>
       </div>
     </Card>
     <AppDrawer v-model:open="open" :title="mode === 'password' ? '修改登录密码' : '修改个人资料'" width-size="sm" :confirm-loading="saving" :closable="!saving" :ok-disabled="saving" :ok-danger="mode === 'password'" @ok="save">
@@ -74,7 +75,7 @@ onBeforeUnmount(() => { form.current_password = ''; form.password = ''; cancelCo
         <FormItem v-if="mode === 'update'" label="登录账号" name="login" :rules="[{ required: true, pattern: /^[a-z0-9][a-z0-9_.@-]{2,99}$/, message: '请输入3至100位小写账号' }]"><Input v-model:value="form.login" :disabled="saving" :maxlength="100" autocomplete="username" /></FormItem>
         <FormItem v-if="mode === 'update'" label="显示姓名" name="name" :rules="[{ required: true, whitespace: true, message: '请输入显示姓名' }]"><Input v-model:value="form.name" :disabled="saving" :maxlength="100" /></FormItem>
         <FormItem label="当前密码" name="current_password" :rules="[{ required: true, message: '请输入当前登录密码' }]"><Input.Password v-model:value="form.current_password" :disabled="saving" :maxlength="72" autocomplete="current-password" /></FormItem>
-        <FormItem v-if="mode === 'password'" label="新密码" name="password" :rules="[{ required: true, min: 12, max: 72, message: '请输入12至72字节密码' }]"><Input.Password v-model:value="form.password" :disabled="saving" :maxlength="72" autocomplete="new-password" /></FormItem>
+        <FormItem v-if="mode === 'password'" label="新密码" name="password" :rules="[{ required: true, min: 5, max: 72, message: '请输入5至72字节密码' }]"><Input.Password v-model:value="form.password" :disabled="saving" :maxlength="72" autocomplete="new-password" /></FormItem>
       </Form>
     </AppDrawer>
   </div>

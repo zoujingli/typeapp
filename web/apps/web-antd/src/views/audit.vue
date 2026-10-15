@@ -82,7 +82,7 @@ async function load(nextPage = page.value, cursor = cursors.value[nextPage] ?? n
     const data = await request<BrokerAuditPage>(endpoint.value, { tenant: tenant.value, signal: pending.signal, params: { ...applied.value, limit: limit.value, cursor: cursor || undefined } });
     if (version === requestVersion) { brokerResult.value = data; page.value = nextPage; cursors.value[nextPage] = cursor; }
   } catch (error) {
-    if (!isCanceled(error) && version === requestVersion) { failure.value = errorText(error); if (error instanceof ApiError && error.status === 403) clearResults(); }
+    if (!isCanceled(error) && version === requestVersion) { failure.value = errorText(error); if (error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly') clearResults(); }
   } finally { if (version === requestVersion) { busy.value = false; pending = null; } }
 }
 async function show(item: Audit) {
@@ -94,7 +94,7 @@ async function show(item: Audit) {
     const data = await request<BrokerAuditDetail>(`${endpoint.value}/${source}${encodeURIComponent(item.id)}`, { tenant: tenant.value, signal: pending.signal });
     if (version === requestVersion) detail.value = data.item;
   } catch (error) {
-    if (!isCanceled(error) && version === requestVersion) { failure.value = errorText(error); if (error instanceof ApiError && error.status === 403) clearResults(); }
+    if (!isCanceled(error) && version === requestVersion) { failure.value = errorText(error); if (error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly') clearResults(); }
   } finally { if (version === requestVersion) { detailBusy.value = false; pending = null; } }
 }
 function search(reset = false) {
@@ -147,7 +147,7 @@ onBeforeUnmount(cancel);
           <template v-else-if="column.key === 'stage'">{{ stages[record.stage] || display(record.stage) }}</template>
           <template v-else-if="column.key === 'identity'"><span class="audit-value">{{ display(record.details.customer_id) }}</span><br /><Tag v-if="record.details.impersonation_id" color="orange">模拟客户登录</Tag><span v-else class="muted">普通操作</span></template>
           <Tag v-else-if="column.key === 'result'" :color="outcomes[record.result]?.color">{{ outcomes[record.result]?.label || record.result }}</Tag>
-          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '详情', disabled: blocked, onClick: () => show(record as Audit) }]" />
+          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '详情', readOnly: true, disabled: blocked, onClick: () => show(record as Audit) }]" />
         </template>
       </Table>
       <div class="table-toolbar audit-pagination">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { FormInstance, TableColumnsType } from 'ant-design-vue';
 import type { AlarmRule, Device, DeviceDetail, ModelScalar, Page, TenantContext } from '../api';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
@@ -86,7 +87,7 @@ onBeforeUnmount(() => { generation++; deviceGeneration++; pending?.abort(); vers
 
 <template>
   <section class="iot-page">
-    <header class="page-heading"><div><h1>告警规则</h1><p class="muted tenant-title">{{ session.tenant?.name }} · 连续三次触发与恢复</p></div><Button v-if="canEdit" type="primary" @click="edit(null)">创建规则</Button></header>
+    <header class="page-heading"><div><h1>告警规则</h1><p class="muted tenant-title">{{ session.tenant?.name }} · 连续三次触发与恢复</p></div><MutationButton v-if="canEdit" type="primary" @click="edit(null)">创建规则</MutationButton></header>
     <Card :bordered="false">
       <form class="crud-search-grid" @submit.prevent="search()">
         <CrudSearchField label="规则名称"><Input v-model:value="filters.name" aria-label="规则名称筛选" :disabled="busy" :maxlength="100" allow-clear /></CrudSearchField>
@@ -103,7 +104,7 @@ onBeforeUnmount(() => { generation++; deviceGeneration++; pending?.abort(); vers
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'">{{ record.definition.name }}</template><template v-else-if="column.key === 'field'">{{ record.definition.property.name }} · {{ record.field }}</template>
           <template v-else-if="column.key === 'bounds'">{{ alarmBounds(record.definition) }}</template><template v-else-if="column.key === 'state'"><Tag :color="record.definition.enabled ? 'success' : 'default'">{{ record.definition.enabled ? '启用' : '停用' }}</Tag>v{{ record.rule_version }}</template>
-          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '版本', onClick: () => showVersions(record as AlarmRule) }, { label: '编辑', visible: canEdit, onClick: () => edit(record as AlarmRule) }]" />
+          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '版本', readOnly: true, onClick: () => showVersions(record as AlarmRule) }, { label: '编辑', visible: canEdit, onClick: () => edit(record as AlarmRule) }]" />
         </template>
       </Table>
     </Card>

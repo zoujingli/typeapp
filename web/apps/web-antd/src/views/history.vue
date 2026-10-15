@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { TableColumnsType } from 'ant-design-vue';
 import type { AggregateStatistic, ExportTask, HistoryCurve, HistoryPage, HistoryRecord, MinuteCurve, MinutePage, MinuteRecord, Page, TenantContext } from '../api';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
@@ -117,8 +118,8 @@ async function exportAction(task: ExportTask, action: 'download' | 'resume' | 'c
 }
 function exportActions(task: ExportTask) {
   const active = ['queued', 'running'].includes(task.status);
-  return [{ label: '详情', onClick: () => { exportDetails.value = task; } },
-    { label: '下载', visible: canDownloadExports.value && task.status === 'succeeded', onClick: () => exportAction(task, 'download') },
+  return [{ label: '详情', readOnly: true, onClick: () => { exportDetails.value = task; } },
+    { label: '下载', readOnly: true, visible: canDownloadExports.value && task.status === 'succeeded', onClick: () => exportAction(task, 'download') },
     { label: '恢复', visible: canExport.value && active && task.updated_at <= Date.now() / 1000 - 60, onClick: () => exportAction(task, 'resume') },
     { label: '取消', visible: canCancelExports.value && active, danger: true, confirmTitle: '确认取消此导出任务？', confirmContent: '已经生成的临时文件会被清理。', confirmOkText: '取消任务', onClick: () => exportAction(task, 'cancel') }];
 }
@@ -211,7 +212,7 @@ onBeforeUnmount(() => { cleanup(); document.removeEventListener('visibilitychang
 
 <template>
   <section class="iot-page">
-    <header class="page-heading"><div><h1>历史数据</h1><p class="muted tenant-title">{{ session.tenant?.name }} · 时间按 {{ timezone }} 显示</p></div><div class="toolbar-actions"><Button v-if="canExport" :disabled="(canRead && !result && !exportSubmission) || busy || exportCreating" :loading="exportCreating" @click="createExport">{{ exportSubmission ? '重试导出请求' : '导出当前查询' }}</Button><Button v-if="canReadExports" @click="showExports">导出任务</Button><Button v-if="session.permissions.includes('customer.devices.read')" @click="router.push('/devices')">设备列表</Button></div></header>
+    <header class="page-heading"><div><h1>历史数据</h1><p class="muted tenant-title">{{ session.tenant?.name }} · 时间按 {{ timezone }} 显示</p></div><div class="toolbar-actions"><MutationButton v-if="canExport" :disabled="(canRead && !result && !exportSubmission) || busy || exportCreating" :loading="exportCreating" @click="createExport">{{ exportSubmission ? '重试导出请求' : '导出当前查询' }}</MutationButton><Button v-if="canReadExports" @click="showExports">导出任务</Button><Button v-if="session.permissions.includes('customer.devices.read')" @click="router.push('/devices')">设备列表</Button></div></header>
     <Alert v-if="exportSubmission" message="上次导出结果尚未确认，请重试原请求核对结果。" type="warning" show-icon class="page-alert" />
     <Card :bordered="false">
       <Alert v-if="!canRead" message="当前角色没有遥测查询权限。" type="info" show-icon class="page-alert" />
@@ -239,7 +240,7 @@ onBeforeUnmount(() => { cleanup(); document.removeEventListener('visibilitychang
           <template v-else-if="column.key === 'updated'">{{ timeText(record.updated_at) }}</template>
           <template v-else-if="column.key === 'received'">{{ timeText(record.received_at) }}</template>
           <span v-else-if="column.key === 'values'" :title="valuesText(record as HistoryRecord)">{{ valuesText(record as HistoryRecord) }}</span>
-          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '详情', onClick: () => details = record as HistoryRecord }, ...(numeric(record as HistoryRecord) ? [{ label: '曲线', onClick: () => showCurve(record as HistoryRecord) }] : [])]" />
+          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '详情', readOnly: true, onClick: () => details = record as HistoryRecord }, ...(numeric(record as HistoryRecord) ? [{ label: '曲线', readOnly: true, onClick: () => showCurve(record as HistoryRecord) }] : [])]" />
         </template>
       </Table>
       <div v-if="canRead" class="history-pagination"><span class="muted">{{ result ? `当前保留 ${result.total} ${minuteMode ? '个分钟窗口' : '条'} · 第 ${result.page} 页` : '每页最多 100 条' }}</span><div class="toolbar-actions"><Select v-model:value="pageSize" aria-label="历史每页条数" :disabled="busy" :options="[20, 50, 100].map(value => ({ value, label: `${value} 条/页` }))" @change="search()" /><Button :disabled="busy || !result || result.page <= 1" @click="load(result!.page - 1, cursors[result!.page - 2])">上一页</Button><Button :disabled="busy || !result?.next_cursor" @click="load(result!.page + 1, result!.next_cursor!)">下一页</Button></div></div>

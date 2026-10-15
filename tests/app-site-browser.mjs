@@ -33,7 +33,7 @@ export async function siteBrowser(base, dist, upstream, adminPassword, customerP
     const publicResponse = await context.request.get(`${url}/public/site`);
     expect(publicResponse.status()).toBe(200);
     const publicSite = (await publicResponse.json()).data;
-    expect(Object.keys(publicSite).sort()).toEqual(['name', 'official_url', 'description', 'logo_url', 'timezone', 'theme', 'preferences'].sort());
+    expect(Object.keys(publicSite).sort()).toEqual(['environment', 'name', 'official_url', 'description', 'logo_url', 'timezone', 'theme', 'preferences'].sort());
     await page.goto(`${url}/#/admin/login`);
     await expect(page).toHaveTitle(`平台登录 · ${publicSite.name} · 物联开源分享`);
     await page.getByLabel('登录账号').fill('same-login');

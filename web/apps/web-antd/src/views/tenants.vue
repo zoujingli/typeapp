@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { FormInstance, TableColumnsType } from 'ant-design-vue';
 import type { AdminPage, Page, TenantAdministrator, WorkspaceTenant } from '../api';
 import type { CrudTableAction } from '../components/crud-table-actions.vue';
@@ -116,9 +117,9 @@ async function enter(tenant: WorkspaceTenant) {
   finally { entering.value = ''; }
 }
 function actions(tenant: WorkspaceTenant): CrudTableAction[] {
-  if (!platform.value) return [{ label: '进入租户', disabled: Boolean(entering.value), onClick: () => enter(tenant) }];
+  if (!platform.value) return [{ label: '进入租户', readOnly: true, disabled: Boolean(entering.value), onClick: () => enter(tenant) }];
   return [
-    { label: '详情', disabled: detailBusy.value, onClick: () => showDetail(tenant) },
+    { label: '详情', readOnly: true, disabled: detailBusy.value, onClick: () => showDetail(tenant) },
     { label: '编辑', visible: can('update'), onClick: () => edit(tenant) },
     { label: Number(tenant.enabled) ? '停用' : '启用', visible: can('status'), danger: Boolean(Number(tenant.enabled)), confirmTitle: `${Number(tenant.enabled) ? '停用' : '启用'}“${tenant.name}”？`, confirmContent: '停用只取消本租户业务访问，客户全局账号和其他租户不受影响。启用前必须保留有效最高管理员。', onClick: () => status(tenant) },
   ];
@@ -140,7 +141,7 @@ onBeforeUnmount(() => { read?.abort(); detailRead?.abort(); cancelContext(); for
   <section class="iot-page">
     <header class="page-heading">
       <div><h1>{{ platform ? '平台租户' : '我的租户' }}</h1><p class="muted">{{ platform ? '管理组织，创建或关联初始客户管理员。' : '选择当前工作区，各租户权限与业务数据独立。' }}</p></div>
-      <Button v-if="can('create')" type="primary" @click="edit(null)">创建租户</Button>
+      <MutationButton v-if="can('create')" type="primary" @click="edit(null)">创建租户</MutationButton>
     </header>
     <Card :bordered="false">
       <form class="crud-search-grid" @submit.prevent="search()">
@@ -165,7 +166,7 @@ onBeforeUnmount(() => { read?.abort(); detailRead?.abort(); cancelContext(); for
         <DescriptionsItem label="状态">{{ Number(detail.enabled) ? '启用' : '停用' }}</DescriptionsItem>
         <DescriptionsItem label="版本">{{ detail.version }}</DescriptionsItem>
         <DescriptionsItem label="最高管理员">
-          <div class="table-toolbar"><span class="muted">{{ detail.administrators?.length || 0 }} 位有效管理员</span><Button v-if="canAdministratorManage" type="primary" :disabled="administratorSaving" @click="manageAdministrator('add')">新增最高管理员</Button></div>
+          <div class="table-toolbar"><span class="muted">{{ detail.administrators?.length || 0 }} 位有效管理员</span><MutationButton v-if="canAdministratorManage" type="primary" :disabled="administratorSaving" @click="manageAdministrator('add')">新增最高管理员</MutationButton></div>
           <Table :columns="administratorColumns" :data-source="detail.administrators || []" row-key="member_id" size="small" :pagination="false" :scroll="{ x: 470 }">
             <template #emptyText><Empty description="暂无有效最高管理员" /></template>
             <template #bodyCell="{ column, record }"><CrudTableActions v-if="column.key === 'actions'" :actions="administratorActions(record as TenantAdministrator)" /></template>
@@ -180,7 +181,7 @@ onBeforeUnmount(() => { read?.abort(); detailRead?.abort(); cancelContext(); for
         <FormItem label="客户登录账号" name="login" :rules="[{ required: true, pattern: /^[a-z0-9][a-z0-9_.@-]{2,99}$/, message: '请输入3至100位小写登录标识' }]"><Input v-model:value="administratorForm.login" :maxlength="100" autocomplete="off" /></FormItem>
         <template v-if="administratorForm.new_customer">
           <FormItem label="客户显示姓名" name="owner_name" :rules="[{ required: true, whitespace: true, message: '请输入客户姓名' }]"><Input v-model:value="administratorForm.owner_name" :maxlength="100" /></FormItem>
-          <FormItem label="初始登录密码" name="owner_password" :rules="[{ required: true, min: 12, max: 72, message: '请输入12至72字节密码' }]"><Input.Password v-model:value="administratorForm.owner_password" :maxlength="72" autocomplete="new-password" /></FormItem>
+          <FormItem label="初始登录密码" name="owner_password" :rules="[{ required: true, min: 5, max: 72, message: '请输入5至72字节密码' }]"><Input.Password v-model:value="administratorForm.owner_password" :maxlength="72" autocomplete="new-password" /></FormItem>
         </template>
         <p v-if="administratorMode === 'replace'" class="muted">提交后将在同一事务中授予新账号最高管理员角色并解绑当前管理员，旧成员及其其他角色会保留。</p>
         <p v-else class="muted">关联已有账号不会修改其全局资料或密码；创建新账号后请安全交付登录凭据。</p>
@@ -195,7 +196,7 @@ onBeforeUnmount(() => { read?.abort(); detailRead?.abort(); cancelContext(); for
           <FormItem label="客户登录账号" name="owner_login" :rules="[{ required: true, pattern: /^[a-z0-9][a-z0-9_.@-]{2,99}$/, message: '请输入3至100位小写登录标识' }]"><Input v-model:value="form.owner_login" :maxlength="100" autocomplete="off" /></FormItem>
           <template v-if="form.new_customer">
             <FormItem label="客户显示姓名" name="owner_name" :rules="[{ required: true, whitespace: true, message: '请输入客户姓名' }]"><Input v-model:value="form.owner_name" :maxlength="100" /></FormItem>
-            <FormItem label="初始登录密码" name="owner_password" :rules="[{ required: true, min: 12, max: 72, message: '请输入12至72字节密码' }]"><Input.Password v-model:value="form.owner_password" :maxlength="72" autocomplete="new-password" /></FormItem>
+            <FormItem label="初始登录密码" name="owner_password" :rules="[{ required: true, min: 5, max: 72, message: '请输入5至72字节密码' }]"><Input.Password v-model:value="form.owner_password" :maxlength="72" autocomplete="new-password" /></FormItem>
           </template>
           <p class="muted span-full">客户取得此租户的最高管理员角色。关联已有账号不会修改其资料或密码。请安全交付新账号凭据。</p>
         </template>

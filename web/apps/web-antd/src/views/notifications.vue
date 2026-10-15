@@ -54,7 +54,7 @@ onBeforeUnmount(() => { generation++; pending?.abort(); });
           <template v-else-if="column.key === 'state'">{{ record.alarm_status === 'active' ? '活动告警' : record.alarm_status === 'ended' ? alarmEndReasons[record.alarm_end_reason || ''] || '已结束' : '告警保留期已过' }}</template>
           <template v-else-if="column.key === 'acknowledged'"><Tag v-if="record.alarm_status" :color="record.acknowledged_at ? 'success' : 'warning'">{{ record.acknowledged_at ? '已确认' : '未确认' }}</Tag><span v-else>—</span></template>
           <template v-else-if="column.key === 'occurred'">{{ time(record.payload.occurred_at) }}</template><template v-else-if="column.key === 'created'">{{ time(record.created_at) }}</template>
-          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '告警详情', visible: canReadAlarm, disabled: !record.alarm_status, onClick: () => router.push({ path: '/alarms', query: { alarm: record.alarm_id } }) }]" />
+          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '告警详情', readOnly: true, visible: canReadAlarm, disabled: !record.alarm_status, onClick: () => router.push({ path: '/alarms', query: { alarm: record.alarm_id } }) }]" />
         </template>
       </Table>
     </Card>

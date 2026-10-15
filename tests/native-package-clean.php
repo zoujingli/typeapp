@@ -106,7 +106,7 @@ try {
     $runtime = ['docker', 'run', '--rm', '--pull=never', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
         '--dns-search', 'typeapp-validation.invalid',
         '--tmpfs', '/tmp:rw,nosuid,nodev,size=16m', '--mount', 'type=bind,source=' . $data . ',target=/data',
-        '--env', 'APP_BASE_PATH=/data', '--env', 'APP_ENV=production', '--env', 'APP_DEBUG=false', '--env', 'APP_CACHE_ENABLED=false',
+        '--env', 'APP_BASE_PATH=/data', '--env', 'APP_ENV=prod', '--env', 'APP_DEBUG=false', '--env', 'APP_CACHE_ENABLED=false',
         '--env', 'APP_ADMIN_PASSWORD', '--env', 'APP_CUSTOMER_PASSWORD', '--env', 'TYPE_APP_TRACE=1',
         ...$databaseArguments, '--env', 'TYPE_APP_RELEASE_SHA256=' . $digest];
     $help = cleanPackageCommand([...$runtime, '--network=none', $image, 'help'], 30, $secretEnvironment);

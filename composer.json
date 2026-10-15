@@ -116,6 +116,7 @@
       "@php vendor/bin/type watch docs/build-config/type-app.json"
     ],
     "test:development-watch": "@php tests/development-watch.php",
+    "test:demo-mode": "@php tests/demo-mode.php --php",
     "test:project-create": "@php tests/project-create.php",
     "typeapp:package": "@php vendor/bin/type package build/app/type-app build/typeapp-iot",
     "test:package": "@php tests/native-package.php build/app/type-app",

@@ -40,7 +40,7 @@ try {
         $admin->exec('CREATE DATABASE ' . $database);
         $password = bin2hex(random_bytes(24));
         $environment = ['PATH' => '/usr/bin:/bin', 'SystemRoot' => (string) getenv('SystemRoot'), 'TEMP' => sys_get_temp_dir(),
-            'APP_BASE_PATH' => $runtime, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false',
+            'APP_BASE_PATH' => $runtime, 'APP_ENV' => 'prod', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false',
             'DB_DRIVER' => 'pgsql', 'DB_HOST' => (string) getenv('TYPE_PGSQL_HOST'), 'DB_PORT' => (string) getenv('TYPE_PGSQL_PORT'),
             'DB_DATABASE' => $database, 'DB_USERNAME' => (string) getenv('TYPE_PGSQL_USER'), 'DB_PASSWORD' => (string) getenv('TYPE_PGSQL_PASSWORD'),
             'APP_API_TOKEN' => bin2hex(random_bytes(20)), 'TYPE_APP_RELEASE_SHA256' => $record['manifest-sha256'], 'TYPE_APP_TRACE' => '1',

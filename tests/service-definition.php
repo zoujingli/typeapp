@@ -42,7 +42,7 @@ expect($record['program'] === $program && $record['delivery'] === ($single ? 'si
 expect(!file_exists($settings['runtime-directory']), '生成服务偷偷创建或读取了运行数据目录');
 $descriptor = file_get_contents($created['descriptor']);
 expect(!str_contains($descriptor, 'vendor/bin') && !str_contains($descriptor, PHP_BINARY), '服务依赖PHP或Composer');
-expect(str_contains($descriptor, $digest) && str_contains($descriptor, 'APP_BASE_PATH') && str_contains($descriptor, 'production'), '服务遗漏运行身份或安全默认值');
+expect(str_contains($descriptor, $digest) && str_contains($descriptor, 'APP_BASE_PATH') && str_contains($descriptor, 'APP_DEBUG') && !str_contains($descriptor, 'APP_ENV'), '服务遗漏运行身份或覆盖了外置环境');
 if (PHP_OS_FAMILY === 'Darwin') {
     successful(['/usr/bin/plutil', '-lint', $created['descriptor']]);
     $parsed = json_decode(successful(['/usr/bin/plutil', '-convert', 'json', '-o', '-', $created['descriptor']]), true, 512, JSON_THROW_ON_ERROR);

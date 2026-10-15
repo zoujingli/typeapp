@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { FormInstance, TableColumnsType } from 'ant-design-vue';
 import type { Device, DeviceAction, DeviceChange, DeviceManagement, DeviceRegistration, ModelVersion, Page, Product } from '../api';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
@@ -259,7 +260,7 @@ onBeforeUnmount(() => { active = false; document.removeEventListener('visibility
 
 <template>
   <section class="iot-page">
-    <header class="page-heading"><div><h1>{{ platform ? '设备资产' : '设备管理' }}</h1><p class="muted tenant-title">{{ platform ? '全局资产、归属与接入生命周期' : `${session.tenant?.name || '未选择租户'} · 设备身份与模型绑定` }}</p></div><Button v-if="canRegister" type="primary" :disabled="saving || changing" @click="create">注册设备</Button></header>
+    <header class="page-heading"><div><h1>{{ platform ? '设备资产' : '设备管理' }}</h1><p class="muted tenant-title">{{ platform ? '全局资产、归属与接入生命周期' : `${session.tenant?.name || '未选择租户'} · 设备身份与模型绑定` }}</p></div><MutationButton v-if="canRegister" type="primary" :disabled="saving || changing" @click="create">注册设备</MutationButton></header>
     <Card :bordered="false">
       <form class="crud-search-grid" @submit.prevent="search()">
         <CrudSearchField v-if="platform" label="租户标识"><Input v-model:value="filters.tenant_id" aria-label="租户标识筛选" :disabled="busy" :maxlength="32" allow-clear /></CrudSearchField>
@@ -280,7 +281,7 @@ onBeforeUnmount(() => { active = false; document.removeEventListener('visibility
           <Tag v-else-if="column.key === 'authorization'" :color="record.authorization?.status === 'pending' ? 'warning' : 'default'">{{ record.authorization?.status === 'pending' ? '等待 Broker 撤权' : record.authorization?.id ? '撤权已执行' : '无待处理撤权' }}</Tag>
           <template v-else-if="column.key === 'observed'">{{ record.connection.observed_at === null ? '尚无连接观察' : new Date(Number(record.connection.observed_at) * 1000).toLocaleString() }}</template>
           <template v-else-if="column.key === 'created'">{{ new Date(Number(record.created_at) * 1000).toLocaleString() }}</template>
-          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '详情', disabled: saving || changing, onClick: () => manage(record as Device) }, { label: '数据', visible: !platform, onClick: () => router.push(`/devices/${record.id}`) }, { label: '历史', visible: canReadTelemetry, onClick: () => router.push({ path: '/history', query: { device: record.id } }) }, { label: '管理', visible: canManage, disabled: saving || changing, onClick: () => manage(record as Device, true) }]" />
+          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '详情', readOnly: true, disabled: saving || changing, onClick: () => manage(record as Device) }, { label: '数据', readOnly: true, visible: !platform, onClick: () => router.push(`/devices/${record.id}`) }, { label: '历史', readOnly: true, visible: canReadTelemetry, onClick: () => router.push({ path: '/history', query: { device: record.id } }) }, { label: '管理', visible: canManage, disabled: saving || changing, onClick: () => manage(record as Device, true) }]" />
         </template>
       </Table>
     </Card>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { TableColumnsType } from 'ant-design-vue';
 import type { Alarm, Page, TenantContext } from '../api';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
@@ -77,13 +78,13 @@ onBeforeUnmount(() => { generation++; pending?.abort(); detailPending?.abort(); 
       <div class="table-toolbar"><span class="muted">{{ result.total }} 条告警</span><Button :loading="busy" @click="load(result.page)">刷新</Button></div>
       <Table :columns="columns" :data-source="result.items" row-key="id" :loading="busy" :scroll="buildTableScrollX(columns)" :pagination="pagination" @change="page => load(page.current, page.pageSize)">
         <template #emptyText><Empty :description="failure ? '数据暂不可用，请重试' : '暂无符合条件的告警'" /></template>
-        <template #bodyCell="{ column, record }"><template v-if="column.key === 'name'">{{ record.definition.name }} · v{{ record.rule_version }}</template><template v-else-if="column.key === 'state'"><Tag :color="record.status === 'active' ? 'error' : 'default'">{{ record.status === 'active' ? '活动告警' : alarmEndReasons[record.end_reason] || '已结束' }}</Tag></template><template v-else-if="column.key === 'acknowledged'"><Tag :color="record.acknowledged_at ? 'success' : 'warning'">{{ record.acknowledged_at ? '已确认' : '未确认' }}</Tag></template><template v-else-if="column.key === 'value'">{{ record.trigger.value }} {{ record.definition.property.unit }}</template><template v-else-if="column.key === 'time'">{{ time(record.created_at) }}</template><CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '详情', disabled: saving, onClick: () => showDetail(record as Alarm) }, { label: '确认', visible: canAcknowledge && record.acknowledged_at === null, disabled: saving, onClick: () => acknowledge(record as Alarm) }]" /></template>
+        <template #bodyCell="{ column, record }"><template v-if="column.key === 'name'">{{ record.definition.name }} · v{{ record.rule_version }}</template><template v-else-if="column.key === 'state'"><Tag :color="record.status === 'active' ? 'error' : 'default'">{{ record.status === 'active' ? '活动告警' : alarmEndReasons[record.end_reason] || '已结束' }}</Tag></template><template v-else-if="column.key === 'acknowledged'"><Tag :color="record.acknowledged_at ? 'success' : 'warning'">{{ record.acknowledged_at ? '已确认' : '未确认' }}</Tag></template><template v-else-if="column.key === 'value'">{{ record.trigger.value }} {{ record.definition.property.unit }}</template><template v-else-if="column.key === 'time'">{{ time(record.created_at) }}</template><CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '详情', readOnly: true, disabled: saving, onClick: () => showDetail(record as Alarm) }, { label: '确认', visible: canAcknowledge && record.acknowledged_at === null, disabled: saving, onClick: () => acknowledge(record as Alarm) }]" /></template>
       </Table>
     </Card>
     <AppDrawer :open="Boolean(detail)" title="告警详情" width-size="md" :show-footer="false" :confirm-loading="saving" :closable="!saving" @update:open="value => { if (!value && !saving) detail = null; }">
       <template v-if="detail">
         <Alert v-if="detailFailure" :message="detailFailure" type="error" show-icon class="page-alert" role="alert" />
-        <p><Button v-if="canAcknowledge && detail.acknowledged_at === null" type="primary" :loading="saving" :disabled="saving" @click="acknowledge(detail)">确认告警</Button><span class="muted"> 确认与数值恢复分别记录。</span></p>
+        <p><MutationButton v-if="canAcknowledge && detail.acknowledged_at === null" type="primary" :loading="saving" :disabled="saving" @click="acknowledge(detail)">确认告警</MutationButton><span class="muted"> 确认与数值恢复分别记录。</span></p>
         <Alert v-if="detail.status === 'active' && detail.rule_retired_at" message="规则已变更；正在处理该版本已接收的样本，随后记录结束原因。" type="info" show-icon class="page-alert" />
         <Descriptions :column="{ xs: 1, sm: 2 }" layout="vertical" bordered>
           <DescriptionsItem label="告警规则">{{ detail.definition.name }} · v{{ detail.rule_version }}</DescriptionsItem><DescriptionsItem label="告警状态">{{ detail.status === 'active' ? '活动告警' : alarmEndReasons[detail.end_reason || ''] || '已结束' }}</DescriptionsItem>

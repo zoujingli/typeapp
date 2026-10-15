@@ -115,7 +115,7 @@ async function load(nextPage = page.value, cursor = cursors.value[nextPage] ?? n
     result.value = data; page.value = nextPage; cursors.value[nextPage] = cursor; failure.value = ''; denied.value = false; now.value = Date.now() / 1000;
   } catch (error) {
     if (current === version && !isCanceled(error)) {
-      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
       if (denied.value) { result.value = null; detail.value = null; cursors.value = [null]; page.value = 0; }
     }
   } finally { if (current === version) { busy.value = false; polling.value = false; pending = null; } }
@@ -129,14 +129,14 @@ async function show(item: Item) {
     if (current === version) { detail.value = data; failure.value = ''; }
   } catch (error) {
     if (current === version && !isCanceled(error)) {
-      detail.value = null; failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+      detail.value = null; failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
       if (denied.value) result.value = null;
     }
   } finally { if (current === version) { detailBusy.value = false; pending = null; } }
 }
 function actions(item: Item) {
   return [
-    { label: '详情', disabled: busy.value || detailBusy.value || disconnecting.value || terminating.value || clearing.value, onClick: () => show(item) },
+    { label: '详情', readOnly: true, disabled: busy.value || detailBusy.value || disconnecting.value || terminating.value || clearing.value, onClick: () => show(item) },
     { label: '断开', visible: resource.value === 'connections' && canWrite.value && item.state === 'connected' && !stale(item),
       danger: true, disabled: busy.value || detailBusy.value || disconnecting.value || terminating.value || clearing.value,
       confirmTitle: `确认断开连接“${String(item.client_id)}”？`,
@@ -177,7 +177,7 @@ async function disconnect(item: Item) {
     await load(page.value, cursors.value[page.value] ?? null);
   } catch (error) {
     if (current === version && !isCanceled(error)) {
-      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
     }
   } finally { if (current === version) { disconnecting.value = false; pending = null; } }
 }
@@ -223,7 +223,7 @@ async function terminate(item: Item) {
     await load(page.value, cursors.value[page.value] ?? null);
   } catch (error) {
     if (current === version && !isCanceled(error)) {
-      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
     }
   } finally { if (current === version) { terminating.value = false; pending = null; } }
 }
@@ -267,7 +267,7 @@ async function clearRetained(item: Item) {
     await load(page.value, cursors.value[page.value] ?? null);
   } catch (error) {
     if (current !== version && !isCanceled(error)) {
-      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
     }
   } finally { if (current === version) { clearing.value = false; pending = null; } }
 }

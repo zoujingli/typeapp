@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { TableColumnsType } from 'ant-design-vue';
 import type { ModelDefinition, ModelVersion, Page, Product } from '../api';
 import type { CrudTableAction } from '../components/crud-table-actions.vue';
@@ -89,7 +90,7 @@ async function change(model: ModelVersion, action: 'publish' | 'delete') {
   } catch (error) { if (!isCanceled(error)) { failure.value = errorText(error); reject(error); message.error(failure.value); } }
 }
 function actions(model: ModelVersion): CrudTableAction[] { return [
-  { label: '详情', onClick: () => edit(model, 'detail') },
+  { label: '详情', readOnly: true, onClick: () => edit(model, 'detail') },
   { label: '编辑', visible: canEdit.value && model.status === 'draft', onClick: () => edit(model, 'edit') },
   { label: '复制草稿', visible: canEdit.value, onClick: () => edit(model, 'copy') },
   { label: '发布', visible: canEdit.value && model.status === 'draft', confirmTitle: `确认发布模型版本 ${model.model_version}？`, confirmContent: '发布后的定义不可修改或删除。后续调整需建立新的版本。', confirmOkText: '发布版本', onClick: () => change(model, 'publish') },
@@ -105,7 +106,7 @@ onBeforeUnmount(() => { requestVersion++; pending?.abort(); });
 
 <template>
   <section class="iot-page">
-    <header class="page-heading"><div><h1>物模型版本</h1><p class="muted tenant-title">{{ product?.name || '正在读取产品' }} · 已发布版本保持原有含义</p></div><div class="toolbar-actions"><Button @click="router.push('/products')">返回产品</Button><Button v-if="canEdit" type="primary" @click="edit(null, 'edit')">创建草稿</Button></div></header>
+    <header class="page-heading"><div><h1>物模型版本</h1><p class="muted tenant-title">{{ product?.name || '正在读取产品' }} · 已发布版本保持原有含义</p></div><div class="toolbar-actions"><Button @click="router.push('/products')">返回产品</Button><MutationButton v-if="canEdit" type="primary" @click="edit(null, 'edit')">创建草稿</MutationButton></div></header>
     <Card :bordered="false">
       <Alert v-if="failure" :message="failure" type="error" show-icon class="page-alert" role="alert" />
       <Alert v-else-if="canRead && !canEdit" message="当前角色可查看产品及历史物模型，无法编辑或发布版本。" type="info" show-icon class="page-alert" />

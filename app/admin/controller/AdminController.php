@@ -190,7 +190,7 @@ final class AdminController
         $version = ['version' => Field::integer()->required()->range(1, 2147483646)];
         $name = ['name' => Field::text()->required()->length(1, 100)];
         $login = ['login' => Field::text()->required()->matches('/^[a-z0-9][a-z0-9_.@-]{2,99}$/D')];
-        $password = ['password' => Field::text()->required()->length(12, 72)];
+        $password = ['password' => Field::text()->required()->length(5, 72)];
         $grants = ['permissions' => Field::listOf(Field::text()->oneOf(array_keys(RoleService::catalog('admin'))))->required()->length(0, 128)];
         $binding = Field::object(new Schema(['id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D')] + $version));
         $fields = match ($action) {
@@ -205,11 +205,11 @@ final class AdminController
             'admin.tenants.create' => $name + ['id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'),
                 'owner_login' => Field::text()->required()->matches('/^[a-z0-9][a-z0-9_.@-]{2,99}$/D'),
                 'new_customer' => Field::boolean()->required(),
-                'owner_name' => Field::text()->length(1, 100), 'owner_password' => Field::text()->length(12, 72)],
+                'owner_name' => Field::text()->length(1, 100), 'owner_password' => Field::text()->length(5, 72)],
             'admin.tenants.administrators.add' => $version + $login + ['new_customer' => Field::boolean()->required(),
-                'owner_name' => Field::text()->length(1, 100), 'owner_password' => Field::text()->length(12, 72)],
+                'owner_name' => Field::text()->length(1, 100), 'owner_password' => Field::text()->length(5, 72)],
             'admin.tenants.administrators.replace' => $version + $login + ['new_customer' => Field::boolean()->required(),
-                'owner_name' => Field::text()->length(1, 100), 'owner_password' => Field::text()->length(12, 72),
+                'owner_name' => Field::text()->length(1, 100), 'owner_password' => Field::text()->length(5, 72),
                 'replace_member_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'), 'replace_member_version' => Field::integer()->cast()->required()->range(1, 2147483646)],
             'admin.tenants.administrators.remove' => $version + ['member_version' => Field::integer()->cast()->required()->range(1, 2147483646)],
             'admin.roles.permissions' => $version + $grants,

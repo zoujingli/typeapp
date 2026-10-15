@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 /**
  * Broker 调试订阅页：签发当前租户或独立前缀范围内的短期 WSS 凭据并实时接收。
  * 口令只在签发响应出现一次；退出、换租户或离开页面立即断开。接收窗口最多 1000 条或 8 MiB。
@@ -8,7 +9,7 @@ import type { IClientOptions, MqttClient } from 'mqtt';
 import type { TableColumnsType } from 'ant-design-vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Alert, Button, Card, Input, Select, Table, Tag, message } from 'ant-design-vue';
+import { Alert, Card, Input, Select, Table, Tag, message } from 'ant-design-vue';
 import mqtt from 'mqtt';
 import { ApiError, errorText, isCanceled, request, session } from '../api';
 
@@ -179,7 +180,7 @@ async function load(quiet = false) {
     if (!secret.value) stopClient();
   } catch (error) {
     if (isCanceled(error) || version !== generation) return;
-    failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+    failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
     if (denied.value) { stopClient(); secret.value = ''; }
   } finally { if (version === generation) busy.value = false; }
 }
@@ -198,7 +199,7 @@ async function issue() {
     message.success('已签发短期凭据并开始订阅');
   } catch (error) {
     if (isCanceled(error) || version !== generation) return;
-    failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+    failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
   } finally { if (version === generation) busy.value = false; }
 }
 async function revoke() {
@@ -275,8 +276,8 @@ onBeforeUnmount(() => {
         <p class="muted">短期 MQTT 凭据绑定当前登录与{{ platform ? '平台工作区' : session.realm === 'broker' ? '独立前缀' : '当前租户' }}。口令只在签发时显示一次，退出或换租户后立即失效。接收窗口最多 1000 条或 8 MiB，先满淘汰最旧显示。MQTT 确认不是业务成功。</p>
       </div>
       <div class="crud-search-grid__actions">
-        <Button type="primary" :loading="busy" :disabled="!canIssue" @click="issue">{{ page.credential ? '重新签发' : '签发凭据' }}</Button>
-        <Button :disabled="busy || !page.credential || !canIssue" @click="revoke">撤销</Button>
+        <MutationButton type="primary" :loading="busy" :disabled="!canIssue" @click="issue">{{ page.credential ? '重新签发' : '签发凭据' }}</MutationButton>
+        <MutationButton :disabled="busy || !page.credential || !canIssue" @click="revoke">撤销</MutationButton>
       </div>
     </header>
     <Alert v-if="failure" class="page-alert" type="error" show-icon role="alert" :message="denied ? failure : `调试订阅失败：${failure}`" />
@@ -301,7 +302,7 @@ onBeforeUnmount(() => {
       <div class="crud-search-grid__actions">
         <Input v-model:value="testPayload" aria-label="测试发布内容" :disabled="status !== 'connected'" :maxlength="65536" />
         <Select v-model:value="publishQos" aria-label="测试发布 QoS" style="width: 200px" :options="[{ value: 0, label: 'QoS 0 无回执' }, { value: 1, label: 'QoS 1 MQTT 回执' }]" />
-        <Button :loading="publishing" :disabled="status !== 'connected'" @click="publishTest">向测试 Topic 发布</Button>
+        <MutationButton :loading="publishing" :disabled="status !== 'connected'" @click="publishTest">向测试 Topic 发布</MutationButton>
         <Tag :color="status === 'connected' ? 'green' : status === 'interrupted' ? 'orange' : 'default'">{{ status }}</Tag>
       </div>
     </Card>

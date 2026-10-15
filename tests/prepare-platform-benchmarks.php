@@ -58,7 +58,7 @@ function benchmarkPreserveRuntime(string $root, string $work, string $artifact, 
         expect($release['artifact']['sha256'] === $build['sha256'] && $release['artifact']['build-id'] === $build['build-id'], '恢复包不属于原基准程序');
         $output = nativeDatabaseCommand([$restored . '/run', 'verify-runtime'], [
             'PATH' => '/usr/bin:/bin', 'TYPE_APP_RELEASE_SHA256' => $created['manifest-sha256'],
-            'APP_BASE_PATH' => $data, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false',
+            'APP_BASE_PATH' => $data, 'APP_ENV' => 'prod', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false',
             'DB_DRIVER' => 'sqlite', 'DB_SQLITE_FILE' => 'data/benchmark.sqlite',
         ], [], $work . '/runtime-verify.log', 90);
         expect($output === "运行环境完整性校验通过。\n" && hash_file('sha256', $artifact) === $build['sha256'], '恢复后运行库审计未通过或原程序发生变化');

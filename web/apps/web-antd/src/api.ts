@@ -25,9 +25,9 @@ export interface SitePreferences {
   footer: { enable: boolean; fixed: boolean };
 }
 /** 登录前可读取的站点公开设置，不承载密钥。 */
-export interface PublicSiteSettings { name: string; official_url: string; description: string; logo_url: string; timezone: string; theme: SiteTheme; preferences: SitePreferences }
+export interface PublicSiteSettings { environment: 'dev' | 'prod' | 'demo'; name: string; official_url: string; description: string; logo_url: string; timezone: string; theme: SiteTheme; preferences: SitePreferences }
 /** 带并发版本和权限目录的站点编辑结果。 */
-export interface AdminSiteSettings extends PublicSiteSettings { version: number; updated_at: number; permissions: string[]; catalog: Record<string, string>; menus: Menu[]; changed?: string[] }
+export interface AdminSiteSettings extends Omit<PublicSiteSettings, 'environment'> { version: number; updated_at: number; permissions: string[]; catalog: Record<string, string>; menus: Menu[]; changed?: string[] }
 /** 当前登录、原始操作者与模拟身份的绑定；key 用于隔离未决操作。 */
 export interface IdentityContext { realm: Realm; actor_id: string; actor_realm: Realm; actor_name: string; customer_id: string; session_id: string; source_session_id: string; impersonation_id: string; tenant_id: string; expires_at: number; key: string }
 /** 当前账号可选择的租户摘要；role 为 null 时不能推定成员授权。 */
@@ -148,6 +148,7 @@ export const session = reactive<{ realm: Realm; token: string; user: User | null
 });
 /** 站点公开设置的响应式副本；启动请求失败时保留这些默认值。 */
 export const siteSettings = reactive<PublicSiteSettings>({
+  environment: 'prod',
   name: 'TypeApp', official_url: 'https://iots.top', description: '物联中心管理平台', logo_url: '', timezone: 'Asia/Shanghai',
   theme: { mode: 'light', colorPrimary: '#1677ff', radius: '0.5' },
   preferences: {
@@ -160,6 +161,7 @@ function sessionKey(field: 'token' | 'tenant') { return `typeapp.${session.imper
 const activeRequests = new Set<AbortController>();
 const client = new RequestClient({ timeout: 15_000 });
 const errors: Record<string, string> = {
+  demo_readonly: '演示环境，仅供浏览，无法修改数据。',
   impersonation_active: '已有模拟工作区，请先返回用户端退出模拟，再选择其他客户。',
   personal_credentials_required: '个人登录资料需由客户本人使用真实登录维护。',
   last_platform_admin: '请保留至少一位已启用且完成恢复核对的最高管理员。',
@@ -171,7 +173,7 @@ const errors: Record<string, string> = {
   role_exists: '角色名称已存在，请修改后重试。',
   role_name_invalid: '角色名称不能为空，且不能超过100字节。',
   account_exists: '登录账号已存在，请修改后重试。',
-  invalid_account: '请检查账号和姓名；密码需为12至72字节且不能包含空字符。',
+  invalid_account: '请检查账号和姓名；密码需为5至72字节且不能包含空字符。',
   broker_audit_query_invalid: '审计筛选条件无效，请核对标识、时间和每页数量。',
   broker_audit_cursor_invalid: '审计分页条件或授权范围已变化，请重新查询。',
   broker_audit_id_invalid: '审计事件标识无效，请刷新列表后重试。',
@@ -390,9 +392,11 @@ export interface ConfigurationView extends Pick<AdminPage<never>, 'permissions' 
 }
 /** 仅用于平台界面可见性和按钮状态，接口权限仍由服务端判断。 */
 export function canAdmin(action: string) { return session.realm === 'admin' && session.permissions.includes(`admin.${action}`); }
+/** 只读取服务端启动环境，不接受本地设置改变演示权限。 */
+export function isDemo() { return siteSettings.environment === 'demo'; }
 /** 授权失效时清空旧界面权限；越权提权请求被拒不代表现有授权失效。 */
 export function clearAdminAccess(error: unknown) {
-  if (error instanceof ApiError && (error.status === 401 || error.status === 403 && error.code !== 'permission_escalation')) {
+  if (error instanceof ApiError && (error.status === 401 || error.status === 403 && !['permission_escalation', 'demo_readonly'].includes(error.code))) {
     session.permissions = []; session.menus = []; return true;
   }
   return false;
@@ -405,6 +409,11 @@ export function errorText(error: unknown) { return error instanceof Error ? erro
 /** 绑定调用时的令牌和上下文代次，合并外部取消信号并拒绝过期响应。
  * 仅适配现有 data 响应封装；HTTP 错误保留稳定错误码与请求标识。 */
 export async function request<T>(path: string, options: { method?: string; data?: unknown; params?: Record<string, unknown>; tenant?: string; public?: boolean; signal?: AbortSignal; responseType?: 'blob' } = {}): Promise<T> {
+  const method = (options.method || 'GET').toUpperCase();
+  if (isDemo() && !['GET', 'HEAD', 'OPTIONS'].includes(method)
+    && !(method === 'POST' && /^\/(admin|customer)\/auth\/(login|logout)$/.test(path))) {
+    throw new ApiError('demo_readonly', 403);
+  }
   const controller = new AbortController();
   const generation = session.generation;
   const token = session.token;
@@ -428,10 +437,10 @@ export async function request<T>(path: string, options: { method?: string; data?
       if (error.response.status === 401 && !options.public && token === session.token) {
         clearSession(); session.notice = session.returnToAdmin ? '模拟登录已失效，请从管理端重新进入。' : '登录已失效，请重新登录。';
       }
-      if (error.response.status === 403 && body.error !== 'permission_escalation' && options.tenant && options.tenant === session.tenant?.id) {
+      if (error.response.status === 403 && !['permission_escalation', 'demo_readonly'].includes(body.error || '') && options.tenant && options.tenant === session.tenant?.id) {
         selectTenant(null); session.notice = '当前租户权限已改变，请重新选择租户。';
       }
-      if (error.response.status === 403 && !options.tenant && token === session.token) {
+      if (error.response.status === 403 && body.error !== 'demo_readonly' && !options.tenant && token === session.token) {
         if (session.realm === 'broker' && (path === '/broker/audit' || path.startsWith('/broker/audit/')
           || path === '/broker/access/principals' || path.startsWith('/broker/access/')
           || path === '/broker/quotas' || path.startsWith('/broker/quotas/')

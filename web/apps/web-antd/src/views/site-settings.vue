@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { AdminSiteSettings } from '../api';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { Alert, Button, Card, Col, Form, FormItem, Input, Row, Select, Space, Spin, Switch, message } from 'ant-design-vue';
@@ -83,7 +84,7 @@ onMounted(() => { void load(); });
   <section class="iot-page site-settings-page">
     <header class="page-heading">
       <div><h1>站点设置</h1><p class="muted">管理站点品牌和默认界面，保存后应用于登录页及工作区</p></div>
-      <Space><Button :loading="loading" :disabled="saving" @click="load">刷新</Button><Button v-if="canManage" type="primary" :loading="saving" :disabled="disabled || conflicted" @click="save">保存设置</Button></Space>
+      <Space><Button :loading="loading" :disabled="saving" @click="load">刷新</Button><MutationButton v-if="canManage" type="primary" :loading="saving" :disabled="disabled || conflicted" @click="save">保存设置</MutationButton></Space>
     </header>
     <Alert v-if="failure" :message="failure" type="error" show-icon role="alert" class="page-alert" />
     <Spin :spinning="loading">

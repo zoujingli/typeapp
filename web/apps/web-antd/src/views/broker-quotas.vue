@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 /**
  * Broker 配额页：预览并确认在线调整连接、会话与消息额度。
  * 降低额度不删除已确认积压，也不终止可靠会话；租户只读。
@@ -110,7 +111,7 @@ async function load(background = false) {
     }
   } catch (error) {
     if (current === generation && !isCanceled(error)) {
-      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
     }
   } finally { if (current === generation) busy.value = false; }
 }
@@ -225,7 +226,7 @@ onBeforeUnmount(() => { generation++; pending?.abort(); clearInterval(timer); do
       </Table>
       <Checkbox v-if="canWrite" v-model:checked="confirmed" :disabled="publishing || paused">确认按此额度拒绝新的超额占用，并保留已确认积压直到自然释放</Checkbox>
       <div v-if="canWrite" class="crud-search-grid__actions">
-        <Button type="primary" :loading="publishing" :disabled="!confirmed || paused" @click="publish">发布额度</Button>
+        <MutationButton type="primary" :loading="publishing" :disabled="!confirmed || paused" @click="publish">发布额度</MutationButton>
       </div>
     </Card>
     <AppDrawer :open="historyOpen" title="额度版本生效" width-size="lg" :show-footer="false" @update:open="value => { if (!value) historyOpen = false; }">

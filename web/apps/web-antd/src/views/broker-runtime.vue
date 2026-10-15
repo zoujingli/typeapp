@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 /**
  * Broker 运行配置页：校验并保存监听与证书路径。
  * 页面不执行重启；握手 CA 由节点在线重载，已有连接保持到吊销或到期。
@@ -101,7 +102,7 @@ async function load(background = false) {
     }
   } catch (error) {
     if (current === generation && !isCanceled(error)) {
-      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
     }
   } finally { if (current === generation) busy.value = false; }
 }
@@ -233,7 +234,7 @@ onBeforeUnmount(() => { generation++; pending?.abort(); clearInterval(timer); do
       </Table>
       <Checkbox v-if="canWrite" v-model:checked="confirmed" :disabled="publishing || paused">确认仅校验并保存，实际重启与滚动分发由运维执行</Checkbox>
       <div v-if="canWrite" class="crud-search-grid__actions">
-        <Button type="primary" :loading="publishing" :disabled="!confirmed || paused" @click="publish">保存配置</Button>
+        <MutationButton type="primary" :loading="publishing" :disabled="!confirmed || paused" @click="publish">保存配置</MutationButton>
       </div>
     </Card>
     <AppDrawer :open="historyOpen" title="运行配置版本生效" width-size="lg" :show-footer="false" @update:open="value => { if (!value) historyOpen = false; }">

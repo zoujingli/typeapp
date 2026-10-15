@@ -5,6 +5,7 @@
       :key="item.key"
       :danger="Boolean(item.action.danger)"
       :disabled="isActionDisabled(item)"
+      :title="isDemo() && item.action.readOnly !== true ? '演示环境，仅供浏览' : undefined"
       :loading="isActionLoading(item)"
       size="small"
       type="link"
@@ -37,6 +38,7 @@
               :key="entry.item.key"
               :danger="Boolean(entry.item.action.danger)"
               :disabled="isActionDisabled(entry.item)"
+              :title="isDemo() && entry.item.action.readOnly !== true ? '演示环境，仅供浏览' : undefined"
               @click="() => handleAction(entry.item)"
             >
               <Tooltip v-if="entry.item.action.tooltip" :title="entry.item.action.tooltip">
@@ -62,8 +64,11 @@
 import { computed } from 'vue';
 import { Button, Dropdown, Menu, MenuItem, Modal, Space, Tooltip } from 'ant-design-vue';
 import { useAsyncAction } from '#/utils/async-action';
+import { isDemo } from '../api';
 
 export interface CrudTableAction {
+  /** 仅查询或本地导航动作显式放行；未声明的行操作在演示环境禁用。 */
+  readOnly?: boolean;
   confirmCancelText?: string;
   confirmContent?: string;
   confirmOkText?: string;
@@ -173,7 +178,7 @@ function isActionLoading(item: CrudTableActionItem) {
 }
 
 function isActionDisabled(item: CrudTableActionItem) {
-  return Boolean(item.action.disabled) || (rowBusy.value && !isActionLoading(item));
+  return (isDemo() && item.action.readOnly !== true) || Boolean(item.action.disabled) || (rowBusy.value && !isActionLoading(item));
 }
 
 async function executeAction(item: CrudTableActionItem) {

@@ -82,19 +82,28 @@ if ($target === false && !isset($environment['TYPE_APP_COMMAND'])) {
         Assert::true(mkdir($directory, 0700, true), '无法建立本轮配置数据根');
         $settings = $environment;
         $settings['APP_BASE_PATH'] = $directory;
-        $settings['APP_ENV'] = 'production';
+        $settings['APP_ENV'] = 'dev';
         unset($settings['APP_DEBUG']);
         try {
             file_put_contents($directory . '/.env', "APP_DEBUG=true\nAPP_API_TOKEN=do-not-expose-template-test-secret\n");
             $enabled = new Process([...$command, 'check'], $root, $settings);
             try {
                 $result = $enabled->wait(5);
-                Assert::true($result->successful() && str_contains($result->stdout, 'development') && str_contains($result->stdout, '调试：on'));
+                Assert::true($result->successful() && str_contains($result->stdout, '运行模式：dev') && str_contains($result->stdout, '调试：on'));
                 Assert::true(!str_contains($result->stdout . $result->stderr, 'do-not-expose-template-test-secret'));
             } finally {
                 $enabled->stop();
             }
             $settings['APP_DEBUG'] = 'false';
+            foreach (['prod', 'demo'] as $mode) {
+                $guarded = new Process([...$command, 'check'], $root, array_replace($settings, ['APP_ENV' => $mode, 'APP_DEBUG' => 'true']));
+                try {
+                    $result = $guarded->wait(5);
+                    Assert::true($result->successful() && str_contains($result->stdout, '运行模式：' . $mode) && str_contains($result->stdout, '调试：off'), '开发入口覆盖了显式环境');
+                } finally {
+                    $guarded->stop();
+                }
+            }
             $overridden = new Process([...$command, 'check'], $root, $settings);
             try {
                 $result = $overridden->wait(5);

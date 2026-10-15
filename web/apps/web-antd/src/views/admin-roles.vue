@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { FormInstance, TableColumnsType } from 'ant-design-vue';
 import type { AdminPage, AdminRole, Page } from '../api';
 import type { CrudTableAction } from '../components/crud-table-actions.vue';
@@ -80,7 +81,7 @@ async function action(role: AdminRole, kind: 'status' | 'delete') {
   } catch (error) { if (!isCanceled(error)) { failure.value = errorText(error); reject(error); } }
 }
 function actions(role: AdminRole): CrudTableAction[] { return [
-  { label: '详情', disabled: detailBusy.value, onClick: () => showDetail(role) },
+  { label: '详情', readOnly: true, disabled: detailBusy.value, onClick: () => showDetail(role) },
   { label: '编辑', visible: can('update'), disabled: !grantable(role), onClick: () => edit(role, 'update') },
   { label: '权限', visible: can('permissions'), disabled: !grantable(role), onClick: () => edit(role, 'permissions') },
   { label: '复制', visible: can('copy') && can('permissions'), disabled: !grantable(role), onClick: () => edit(role, 'copy') },
@@ -99,7 +100,7 @@ onBeforeUnmount(() => { read?.abort(); detailRead?.abort(); cancelContext(); });
 
 <template>
   <section class="iot-page">
-    <header class="page-heading"><div><h1>{{ title }}</h1><p class="muted">固定功能节点、多角色并集和最高管理员保护</p></div><Button v-if="can('create') && can('permissions')" type="primary" @click="edit(null, 'create')">新增角色</Button></header>
+    <header class="page-heading"><div><h1>{{ title }}</h1><p class="muted">固定功能节点、多角色并集和最高管理员保护</p></div><MutationButton v-if="can('create') && can('permissions')" type="primary" @click="edit(null, 'create')">新增角色</MutationButton></header>
     <Card :bordered="false">
       <form class="crud-search-grid" @submit.prevent="search()"><CrudSearchField label="角色名称"><Input v-model:value="filters.search" aria-label="角色名称筛选" :disabled="busy" allow-clear :maxlength="100" /></CrudSearchField><CrudSearchField label="角色状态"><Select v-model:value="filters.enabled" :disabled="busy" :options="[{ label: '全部状态', value: -1 }, { label: '启用', value: 1 }, { label: '停用', value: 0 }]" /></CrudSearchField><div class="crud-search-grid__actions"><Button type="primary" html-type="submit" :disabled="busy" :loading="busy">查询</Button><Button :disabled="busy" @click="search(true)">重置</Button></div></form>
       <Alert v-if="failure" :message="failure" type="error" show-icon role="alert" class="page-alert" />

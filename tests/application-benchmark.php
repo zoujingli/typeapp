@@ -260,7 +260,7 @@ try {
             $adminPassword = 'Benchmark-admin-password-2026';
             $customerPassword = 'Benchmark-customer-password-2026';
             $secrets = [$adminPassword, $customerPassword];
-            $environment += ['APP_BASE_PATH' => $work . '/app', 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false',
+            $environment += ['APP_BASE_PATH' => $work . '/app', 'APP_ENV' => 'prod', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false',
                 'APP_ADMIN_PASSWORD' => $adminPassword, 'APP_CUSTOMER_PASSWORD' => $customerPassword,
                 'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'data/benchmark.sqlite'];
             if ($driver !== 'sqlite') {

@@ -302,7 +302,7 @@ if ($buildOnly) {
 }
 $environment = getenv();
 $environment['APP_BASE_PATH'] = $consumer;
-$environment['APP_ENV'] = 'production';
+$environment['APP_ENV'] = 'prod';
 $environment['APP_DEBUG'] = 'false';
 if ($onboarding) {
     $environment['TYPE_TEMPLATE_EXPECTED_MESSAGE'] = $marker;

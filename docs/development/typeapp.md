@@ -26,7 +26,7 @@ composer typeapp -- check
 composer typeapp -- app:install platform-admin 平台管理员 customer-admin 客户管理员 初始租户
 ```
 
-登录标识为 3–100 位小写字母、数字及 `_.@-`，首位是字母或数字；姓名非空且最多100字节，初始化密码12–72字节，不接受NUL。不在命令参数、配置示例或文档放置共享口令。初始化输出安装身份和人员标识，不回显秘密。
+登录标识为 3–100 位小写字母、数字及 `_.@-`，首位是字母或数字；姓名非空且最多100字节，初始化密码5–72字节，不接受NUL。不在命令参数、配置示例或文档放置共享口令。初始化输出安装身份和人员标识，不回显秘密。
 
 默认 SQLite 文件是应用根下 `build/app/runtime/typeapp.sqlite`；可通过 `DB_SQLITE_FILE` 指定隔离路径。MySQL/PostgreSQL 使用 `DB_DRIVER`、`DB_HOST`、`DB_PORT`、`DB_DATABASE`、`DB_USERNAME`、`DB_PASSWORD`，其余连接/TLS约束见 `config/database.php`。三个驱动按各自真实语义使用，不能据此推定 MQTT 后端也支持相同持久性。
 

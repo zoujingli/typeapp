@@ -26,7 +26,7 @@ foreach (array_keys($environment) as $key) {
     }
 }
 $environment += ['APP_BASE_PATH' => $base, 'APP_ADMIN_PASSWORD' => $secret, 'APP_CUSTOMER_PASSWORD' => $secret . '-customer',
-    'APP_DEBUG' => 'false', 'APP_ENV' => 'production', 'APP_CACHE_ENABLED' => 'false',
+    'APP_DEBUG' => 'false', 'APP_ENV' => 'prod', 'APP_CACHE_ENABLED' => 'false',
     'DB_DRIVER' => 'sqlite', 'DB_SQLITE_FILE' => $base . '/invalid.sqlite'];
 try {
     // 损坏的真实 SQLite 文件触发 PDO 原始错误，再由 ORM 包装；不添加测试故障入口。

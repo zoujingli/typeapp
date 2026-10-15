@@ -14,7 +14,7 @@ build/app/type-app broker:user administrator 管理员
 build/app/type-app broker:serve
 ```
 
-执行 `broker:user` 时通过受控进程环境临时提供 `BROKER_ADMIN_PASSWORD`，长度 12–72 字节；不要放到命令参数、共享默认配置或前端。重复登录名初始化被拒绝，不能借此覆盖口令。管理密码与 MQTT 接入密码分离。
+执行 `broker:user` 时通过受控进程环境临时提供 `BROKER_ADMIN_PASSWORD`，长度 5–72 字节；不要放到命令参数、共享默认配置或前端。重复登录名初始化被拒绝，不能借此覆盖口令。管理密码与 MQTT 接入密码分离。
 
 登录入口为 `POST /broker/auth/login`，JSON 字段 `login`、`password`；返回可撤销 Bearer 会话。`GET /broker/auth/me` 和 `GET /broker/nodes` 每次重新核对当前账号及管理权限。`POST /broker/auth/logout` 撤销本人当前有效令牌，管理角色被撤销后仍允许退出。会话八小时到期，每账号最多十个；连续五次口令失败锁定五分钟，数据库只保存令牌散列。登录拒绝、成功、初始化成功及退出记录脱敏审计。
 

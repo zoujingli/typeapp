@@ -106,7 +106,7 @@ final class TutorialArtifactsTest extends TestCase
         $project = $root . '/consumer';
         $deployment = null;
         try {
-            $this->write($project . '/.env.example', 'APP_ENV=production');
+            $this->write($project . '/.env.example', 'APP_ENV=prod');
             // 打包命令写入部分目标后失败；无需执行伪造原生文件即可观察准备阶段的真实收尾。
             $this->write($project . '/vendor/bin/type', <<<'PHP'
 <?php

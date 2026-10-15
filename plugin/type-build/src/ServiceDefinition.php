@@ -76,7 +76,8 @@ final class ServiceDefinition
         if ($family !== 'Windows' && isset($settings['windows-wrapper'])) {
             throw new RuntimeException('非Windows目标不接受Windows包装器');
         }
-        $environment = ['APP_BASE_PATH' => $runtime, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'TYPE_APP_RELEASE_SHA256' => $releaseSha256];
+        // APP_ENV 来自外置配置，不能在服务管理器中覆盖演示环境；应用缺省为 prod。
+        $environment = ['APP_BASE_PATH' => $runtime, 'APP_DEBUG' => 'false', 'TYPE_APP_RELEASE_SHA256' => $releaseSha256];
         if ($family !== 'Windows') {
             $environment['PATH'] = '/usr/bin:/bin:/usr/sbin:/sbin';
         }

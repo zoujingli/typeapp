@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { FormInstance, TableColumnsType } from 'ant-design-vue';
 import type { Page, Product } from '../api';
 import type { CrudTableAction } from '../components/crud-table-actions.vue';
@@ -78,8 +79,8 @@ async function remove(product: Product) {
   } catch (error) { if (!isCanceled(error)) { failure.value = errorText(error); reject(error); message.error(failure.value); } }
 }
 function actions(product: Product): CrudTableAction[] { return [
-  { label: '物模型', onClick: () => router.push(`/products/${product.id}/models`) },
-  { label: '详情', onClick: () => { detail.value = product; } },
+  { label: '物模型', readOnly: true, onClick: () => router.push(`/products/${product.id}/models`) },
+  { label: '详情', readOnly: true, onClick: () => { detail.value = product; } },
   { label: '编辑', visible: canEdit.value, onClick: () => edit(product) },
   { label: '删除', danger: true, visible: canEdit.value, confirmTitle: `确认删除产品“${product.name}”？`, confirmContent: '仅未发布产品可删除，其草稿将一并删除。存在已发布版本时会拒绝删除，以保留历史定义。', confirmOkText: '删除产品', onClick: () => remove(product) },
 ]; }
@@ -93,7 +94,7 @@ onBeforeUnmount(() => { requestVersion++; pending?.abort(); });
 
 <template>
   <section class="iot-page">
-    <header class="page-heading"><div><h1>产品管理</h1><p class="muted tenant-title">{{ session.tenant?.name }} · 产品与物模型版本</p></div><Button v-if="canEdit" type="primary" @click="edit(null)">创建产品</Button></header>
+    <header class="page-heading"><div><h1>产品管理</h1><p class="muted tenant-title">{{ session.tenant?.name }} · 产品与物模型版本</p></div><MutationButton v-if="canEdit" type="primary" @click="edit(null)">创建产品</MutationButton></header>
     <Card :bordered="false">
       <form class="crud-search-grid" @submit.prevent="search()">
         <CrudSearchField label="产品名称"><Input v-model:value="name" aria-label="产品名称筛选" :disabled="busy" :maxlength="100" allow-clear /></CrudSearchField>

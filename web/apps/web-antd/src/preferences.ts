@@ -53,7 +53,7 @@ function restore(scope: PreferenceScope) {
 }
 
 /** 将站点配置映射到 Vben 已接通的原生偏好字段，品牌字段不允许被个人缓存覆盖。 */
-export function sitePreferenceOverrides(site: PublicSiteSettings): PreferencePatch {
+export function sitePreferenceOverrides(site: Omit<PublicSiteSettings, 'environment'>): PreferencePatch {
   return {
     app: { name: site.name, defaultHomePath: '/profile', accessMode: 'frontend', locale: 'zh-CN', layout: site.preferences.layout },
     // VbenLogo 在图片为空时仍展示文字品牌；图片加载失败由原生 Avatar 提供回退。
@@ -82,7 +82,7 @@ export function configurePreferences(site: PublicSiteSettings) {
 }
 
 /** 站点设置更新后立即应用新默认值，个人已明确选择的字段仍保留。 */
-export function applySitePreferences(site: PublicSiteSettings) {
+export function applySitePreferences(site: Omit<PublicSiteSettings, 'environment'>) {
   const previous = defaults;
   defaults = sitePreferenceOverrides(site);
   const patch = JSON.parse(JSON.stringify(defaults)) as PreferencePatch;

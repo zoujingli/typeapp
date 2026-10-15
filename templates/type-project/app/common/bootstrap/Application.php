@@ -89,8 +89,8 @@ final class Application
             }
             $basePath = Settings::basePath();
             $settings = Settings::load($basePath);
-            self::assertDatabase($settings);
             $environment = Settings::environment($settings, $development);
+            self::assertDatabase($settings);
             $debug = Settings::debug($settings, $development);
             if ($command === 'check') {
                 if (count($arguments) !== 2) {
@@ -176,6 +176,10 @@ final class Application
         $messages = new Factory();
         $router = new Router($messages, $messages);
         (new CommandApplication(new Configuration([])))->registerRoutes($router);
+        if ($environment === 'demo') {
+            // 模板没有登录写接口；业务需要认证例外时显式传入准确路由名。
+            $router->middleware(static fn (): \Type\Core\Http\ReadOnlyPolicy => new \Type\Core\Http\ReadOnlyPolicy());
+        }
 
         return new Pipeline([
             static fn (): RequestLog => new RequestLog($settings->text('app.name')),

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { TableColumnsType } from 'ant-design-vue';
 import type { CommandAttempt, CurrentField, DeviceCommand, DeviceDetail, ModelOperation, ModelScalar, ModelSwitch, ModelVersion, Page, DeviceCurrent } from '../api';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -304,7 +305,7 @@ onBeforeUnmount(() => { active = false; stopRefresh(); document.removeEventListe
 <template>
   <section class="iot-page">
     <header class="page-heading"><div><h1>设备详情</h1><p class="muted tenant-title">{{ device?.name || session.tenant?.name }}</p></div><Button @click="router.push('/devices')">返回设备</Button></header>
-    <Alert v-if="intent" message="上次操作受理结果尚未确认" type="warning" show-icon class="page-alert"><template #description><p>已保留原操作标识、版本与参数；请确认原受理，不要另建动作。</p><Button :loading="actionBusy" :disabled="actionBusy" @click="resumeIntent">确认原操作受理</Button></template></Alert>
+    <Alert v-if="intent" message="上次操作受理结果尚未确认" type="warning" show-icon class="page-alert"><template #description><p>已保留原操作标识、版本与参数；请确认原受理，不要另建动作。</p><MutationButton :loading="actionBusy" :disabled="actionBusy" @click="resumeIntent">确认原操作受理</MutationButton></template></Alert>
     <Alert v-if="failure && !canReadDevice" :message="failure" type="error" show-icon class="page-alert" />
     <Button v-if="canReadTelemetry" @click="router.push({ path: '/history', query: { device: route.params.device } })">查看历史曲线</Button>
     <Card v-if="canReadDevice" title="基本信息" :bordered="false" :loading="busy && !device">
@@ -326,7 +327,7 @@ onBeforeUnmount(() => { active = false; stopRefresh(); document.removeEventListe
       <p v-if="device" class="muted">连接状态来自服务端观察；服务暂不可达或观察过期时为未知。生命周期独立表示设备是否获准使用。</p>
     </Card>
     <Card v-if="device || canManageModel" title="模型切换" :bordered="false" class="device-data-card">
-      <template #extra><Button v-if="canManageModel" :disabled="Boolean(intent) || actionBusy || Boolean(failure) || Boolean(device && (device.recovery_verified === 0 || device.transfer_id || device.lifecycle !== 'enabled' || device.authorization?.status === 'pending' || !device.credential_active))" @click="openModelSwitch">{{ device?.model_switch ? '继续原切换' : '切换模型' }}</Button></template>
+      <template #extra><MutationButton v-if="canManageModel" :disabled="Boolean(intent) || actionBusy || Boolean(failure) || Boolean(device && (device.recovery_verified === 0 || device.transfer_id || device.lifecycle !== 'enabled' || device.authorization?.status === 'pending' || !device.credential_active))" @click="openModelSwitch">{{ device?.model_switch ? '继续原切换' : '切换模型' }}</MutationButton></template>
       <p class="muted">当前绑定版本 {{ device?.model_version ?? '未获准读取' }}。目标版本由设备明确支持并确认后生效；超时继续待处理。切换期间暂停新控制，旧缓存与历史按原版本保留。</p>
       <Alert v-if="device?.model_switch" :message="`版本 ${device?.model_switch.source_version} → ${device?.model_switch.target_version} · ${switchNames[device?.model_switch.state]}`" type="warning" show-icon class="page-alert" />
       <Empty v-if="!switches.items.length && canReadDevice" description="尚无模型切换记录" />
@@ -388,12 +389,12 @@ onBeforeUnmount(() => { active = false; stopRefresh(); document.removeEventListe
       <p class="muted">显示当前归属阶段最新首次接收记录，重复上报不会改变排序。此结果表示平台保存的接收事实，不代表设备已经收到业务回执。</p>
     </Card>
     <Card v-if="canReadCommands || canCommand || canQuery || canCancel" title="设备指令" :bordered="false" class="device-data-card">
-      <template #extra><Button v-if="canCommand" type="primary" :disabled="!canStart || Boolean(device && !device.model.definition.commands.length)" @click="editCommand(null)">发起指令</Button></template>
+      <template #extra><MutationButton v-if="canCommand" type="primary" :disabled="!canStart || Boolean(device && !device.model.definition.commands.length)" @click="editCommand(null)">发起指令</MutationButton></template>
       <Alert v-if="device?.transfer_frozen" type="warning" show-icon message="设备转移已冻结新控制；原指令结果仍可查询、对账。" class="page-alert" />
       <Alert v-if="!canReadCommands" message="当前角色不能读取指令列表；获准的操作可使用准确指令标识执行。" type="info" show-icon class="page-alert" />
       <p class="muted">原截止时间固定为受理后 60 秒。在线且无执行证据时在 0/10/30 秒最多发送三次；到期无结果则在 60/120/300 秒查询已有结果，之后可主动对账。迟到合法回执可以补全未知结果；查询不会启动动作。</p>
       <Alert v-if="commandFailure && !commandOpen" :message="commandFailure" type="error" show-icon class="page-alert" />
-      <div v-if="!canReadCommands && (canQuery || canCancel)" class="toolbar-actions"><Input v-model:value="actionCommand" aria-label="目标指令标识" :maxlength="32" :disabled="actionBusy || Boolean(intent)" placeholder="准确指令标识" /><Button v-if="canQuery" :loading="querying" :disabled="actionBusy || Boolean(intent)" @click="reconcileCommand">主动对账</Button><Button v-if="canCancel" danger :loading="canceling" :disabled="actionBusy || Boolean(intent)" @click="cancelCommand">取消未下发指令</Button></div>
+      <div v-if="!canReadCommands && (canQuery || canCancel)" class="toolbar-actions"><Input v-model:value="actionCommand" aria-label="目标指令标识" :maxlength="32" :disabled="actionBusy || Boolean(intent)" placeholder="准确指令标识" /><MutationButton v-if="canQuery" :loading="querying" :disabled="actionBusy || Boolean(intent)" @click="reconcileCommand">主动对账</MutationButton><MutationButton v-if="canCancel" danger :loading="canceling" :disabled="actionBusy || Boolean(intent)" @click="cancelCommand">取消未下发指令</MutationButton></div>
       <Table v-if="canReadCommands" :columns="commandColumns" :data-source="commands.items" row-key="id" :scroll="buildTableScrollX(commandColumns)" :pagination="{ current: commands.page, pageSize: commands.per_page, total: commands.total, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }" @change="(page) => { commands.page = page.current || 1; commands.per_page = page.pageSize || 20; void load(); }">
         <template #emptyText><Empty description="此设备尚无指令记录" /></template>
         <template #bodyCell="{ column, record }">
@@ -425,8 +426,8 @@ onBeforeUnmount(() => { active = false; stopRefresh(); document.removeEventListe
         <Alert v-if="commandFailure" :message="commandFailure" type="error" show-icon class="page-alert" role="alert" />
         <Alert v-if="selectedCommand.unknown_reason" :message="unknownReasons[selectedCommand.unknown_reason] || '执行结果未知'" type="warning" show-icon class="page-alert" />
         <p v-if="canQuery && selectedCommand.execution === 'unknown'" class="muted">{{ selectedCommand.manual_query_id ? '已有主动查询等待发送。' : `可主动对账时间：${timeText(selectedCommand.manual_query_after)}。需设备在线，查询之间至少间隔 10 秒。` }}</p>
-        <Button v-if="canQuery && selectedCommand.execution === 'unknown'" :disabled="(!canReconcile && !queryUncertain) || querying" :loading="querying" @click="reconcileCommand">{{ queryUncertain ? '确认原查询受理' : '主动对账' }}</Button>
-        <Button v-if="canCancel && selectedCommand.dispatch_at === null && !['cancelled', 'not_dispatched', 'succeeded', 'failed', 'rejected'].includes(selectedCommand.execution)" danger :disabled="actionBusy || Boolean(intent)" :loading="canceling" @click="cancelCommand">取消未下发指令</Button>
+        <MutationButton v-if="canQuery && selectedCommand.execution === 'unknown'" :disabled="(!canReconcile && !queryUncertain) || querying" :loading="querying" @click="reconcileCommand">{{ queryUncertain ? '确认原查询受理' : '主动对账' }}</MutationButton>
+        <MutationButton v-if="canCancel && selectedCommand.dispatch_at === null && !['cancelled', 'not_dispatched', 'succeeded', 'failed', 'rejected'].includes(selectedCommand.execution)" danger :disabled="actionBusy || Boolean(intent)" :loading="canceling" @click="cancelCommand">取消未下发指令</MutationButton>
         <Descriptions :column="{ xs: 1, sm: 2 }" layout="vertical" bordered>
           <DescriptionsItem label="指令标识" :span="2">{{ selectedCommand.id }}</DescriptionsItem><DescriptionsItem label="指令名称">{{ commandName(selectedCommand.identifier) }}</DescriptionsItem><DescriptionsItem label="绑定模型">版本 {{ selectedCommand.model_version }}</DescriptionsItem>
           <DescriptionsItem label="平台受理">{{ timeText(selectedCommand.accepted_at) }}</DescriptionsItem><DescriptionsItem label="原截止时间">{{ timeText(selectedCommand.deadline_at) }}</DescriptionsItem>

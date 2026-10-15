@@ -68,7 +68,7 @@ async function load(page = result.value?.page || 1, perPage = result.value?.per_
     if (current === version) { result.value = data; compat.value = currentCompat; recovery.value = currentRecovery; denied.value = false; failure.value = ''; now.value = Date.now() / 1000; }
   } catch (error) {
     if (current === version && !isCanceled(error)) {
-      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
       if (denied.value) { result.value = null; compat.value = null; recovery.value = null; detail.value = null; }
     }
   } finally { if (current === version) { busy.value = false; pending = null; } }
@@ -140,7 +140,7 @@ onBeforeUnmount(() => { version++; pending?.abort(); clearInterval(timer); docum
           <template v-else-if="column.key === 'state'"><Tag :color="state(record as Node) === 'reporting' ? 'success' : state(record as Node) === 'stopped' ? 'default' : 'warning'">{{ names[state(record as Node)] }}</Tag></template>
           <template v-else-if="column.key === 'connections'">{{ state(record as Node) === 'reporting' ? (record.metrics.connections ?? '未知') : '—' }}</template>
           <template v-else-if="column.key === 'time'">{{ time(record.observed_at) }}</template>
-          <template v-else-if="column.key === 'actions'"><CrudTableActions :actions="[{ label: '详情', onClick: () => { detail = record as Node; } }]" /></template>
+          <template v-else-if="column.key === 'actions'"><CrudTableActions :actions="[{ label: '详情', readOnly: true, onClick: () => { detail = record as Node; } }]" /></template>
         </template>
       </Table>
     </Card>

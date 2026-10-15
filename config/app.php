@@ -5,7 +5,7 @@ declare(strict_types=1);
 // 构建器静态解析 env 占位，运行时值来自进程环境或外部 .env，不把秘密编入产物。
 return [
     'name' => env('APP_NAME', 'typeapp'),
-    'environment' => env('APP_ENV', 'production'),
+    'environment' => env('APP_ENV', 'prod'),
     'debug' => env('APP_DEBUG', false),
     'broker' => [
         'listen' => env('BROKER_LISTEN', '127.0.0.1'),

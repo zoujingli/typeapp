@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import { BasicLayout } from '@vben/layouts';
 import { useAccessStore } from '@vben/stores';
 import { Alert, Button, message } from 'ant-design-vue';
-import { errorText, logout, session, sessionExitPath } from '../api';
+import { errorText, isDemo, logout, session, sessionExitPath } from '../api';
 
 const router = useRouter();
 const access = useAccessStore();
@@ -33,6 +33,7 @@ async function leave() {
 <template>
   <BasicLayout @clear-preferences-and-logout="leave">
     <template #content-before>
+      <Alert v-if="isDemo()" class="demo-banner" type="info" show-icon message="演示环境，仅供浏览" description="可以查询数据和退出登录，业务修改已关闭。" role="status" />
       <Alert v-if="session.impersonating" class="impersonation-banner" type="warning" show-icon role="status">
         <template #message><strong>模拟登录中</strong></template>
         <template #description>
@@ -53,6 +54,7 @@ async function leave() {
 </template>
 
 <style scoped>
+.demo-banner { margin: 12px; }
 .impersonation-banner { position: sticky; top: var(--vben-header-height, 0px); z-index: 10; margin: 12px; }
 .impersonation-details { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
 .impersonation-details span { flex: 1 1 260px; overflow-wrap: anywhere; }

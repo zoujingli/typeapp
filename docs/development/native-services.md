@@ -28,7 +28,7 @@ php vendor/bin/type service /已验证主程序 service-spec.json /新的服务�
 - Unix显式选择非root账号。推荐专用、无Docker/管理权限的运行账号，不把“非root”误认为没有其他委托权限。运行根需私有且可写，发布目录只授予运行账号读取/执行权限；祖先目录需可遍历。
 - 参数是公开启动参数，不用于传递秘密；最多32项、每项512字节。未知字段、控制字符、路径跳转、作用域错误和发布摘要错误会被拒绝。Windows路径/参数不接受`%VAR%`插值；systemd参数关闭环境替换，`%`按其原生规则转义。路径末尾空白及Linux末尾反斜线明确拒绝。
 - 停止预算1–300秒、重启间隔1–3600秒。管理器超过停止预算会强杀；这不是正常排空证明。应用自身的停止协议仍需实测。
-- 生成环境固定 `APP_ENV=production`、`APP_DEBUG=false`、`APP_BASE_PATH` 与 `TYPE_APP_RELEASE_SHA256`；Unix限制启动工具PATH。秘密和可变配置只放在目标运行根的私有`.env`或受控外部环境，不写入描述文件或应用产物。
+- 生成环境固定 `APP_DEBUG=false`、`APP_BASE_PATH` 与 `TYPE_APP_RELEASE_SHA256`，不注入 `APP_ENV`；应用从外置配置读取 `dev/prod/demo`，缺省为 `prod`，避免覆盖演示模式。Unix限制启动工具PATH。秘密和可变配置只放在目标运行根的私有`.env`或受控外部环境，不写入描述文件或应用产物。
 
 ## macOS：launchd
 

@@ -24,8 +24,8 @@ use Type\Validate\Schema;
 /** 双端固定认证入口；账号域由编译路由决定，身份只来自各域的会话认证。 */
 final class AuthController
 {
-    /** 只保存响应工厂；身份与站点模型复用当前请求的受管数据库作用域。 */
-    public function __construct(private Factory $messages)
+    /** 响应工厂与启动配置由容器注入；身份和站点模型复用当前请求的受管数据库作用域。 */
+    public function __construct(private Factory $messages, private \app\common\bootstrap\ApplicationContext $context)
     {
     }
 
@@ -44,7 +44,7 @@ final class AuthController
     {
         // 保留安装代次检查；模型读取站点信息不代替整个应用的安装就绪门。
         $this->connection();
-        return $this->response(SiteSettings::publicView());
+        return $this->response(SiteSettings::publicView() + ['environment' => \app\common\bootstrap\Settings::environment($this->context->settings(), false)]);
     }
 
     /** 每次读取当前角色及菜单；客户只选择本人有效成员所在租户。 */
@@ -147,7 +147,7 @@ final class AuthController
         $grants = ['permissions' => Field::listOf(Field::text()->oneOf(array_keys(RoleService::catalog('customer'))))->required()->length(0, 128)];
         $fields = match ($action) {
             'customer.members.create' => $name + $roles + ['login' => Field::text()->required()->matches('/^[a-z0-9][a-z0-9_.@-]{2,99}$/D'),
-                'new_customer' => Field::boolean()->required(), 'account_name' => Field::text()->length(1, 100), 'password' => Field::text()->length(12, 72)],
+                'new_customer' => Field::boolean()->required(), 'account_name' => Field::text()->length(1, 100), 'password' => Field::text()->length(5, 72)],
             'customer.members.update', 'customer.roles.update', 'customer.roles.copy' => $version + $name,
             'customer.members.status', 'customer.roles.status' => $version + ['enabled' => Field::boolean()->required()],
             'customer.members.delete', 'customer.roles.delete' => $version,
@@ -196,7 +196,7 @@ final class AuthController
         }
         $action = $request->getAttribute('type.route') === 'customer.account.password' ? 'password' : 'update';
         $fields = ['version' => Field::integer()->required()->range(1, 2147483646), 'current_password' => Field::text()->required()->length(1, 72)]
-            + ($action === 'password' ? ['password' => Field::text()->required()->length(12, 72)]
+            + ($action === 'password' ? ['password' => Field::text()->required()->length(5, 72)]
                 : ['login' => Field::text()->required()->matches('/^[a-z0-9][a-z0-9_.@-]{2,99}$/D'), 'name' => Field::text()->required()->length(1, 100)]);
         $input = Input::json(RequestBody::read($request->getBody(), 16384), 16384, 12);
         if (array_diff(array_keys($input->source('body')), array_keys($fields)) !== []) {

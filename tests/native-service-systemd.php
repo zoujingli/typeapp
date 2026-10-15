@@ -96,13 +96,13 @@ $address = stream_socket_get_name($listener, false);
 fclose($listener);
 $port = substr(strrchr($address, ':'), 1);
 $token = 'systemd-test-' . bin2hex(random_bytes(20));
-file_put_contents($runtime . '/.env', "APP_ENV=production\nAPP_DEBUG=true\nAPP_LISTEN=127.0.0.1\nAPP_PORT=" . $port . "\nAPP_ALLOWED_HOSTS=" . $address
+file_put_contents($runtime . '/.env', "APP_ENV=prod\nAPP_DEBUG=true\nAPP_LISTEN=127.0.0.1\nAPP_PORT=" . $port . "\nAPP_ALLOWED_HOSTS=" . $address
     . "\nAPP_CACHE_ENABLED=false\n" . serviceDatabaseConfiguration() . 'APP_API_TOKEN=' . $token . "\n");
 chmod($runtime . '/.env', 0600);
 $linked = false;
 try {
     $password = bin2hex(random_bytes(16));
-    $migration = systemdRemote(['env', 'APP_BASE_PATH=' . $runtime, 'APP_ENV=production', 'APP_DEBUG=false', 'TYPE_APP_RELEASE_SHA256=' . $record['release-sha256'],
+    $migration = systemdRemote(['env', 'APP_BASE_PATH=' . $runtime, 'APP_ENV=prod', 'APP_DEBUG=false', 'TYPE_APP_RELEASE_SHA256=' . $record['release-sha256'],
         'APP_ADMIN_PASSWORD=' . $password, 'APP_CUSTOMER_PASSWORD=' . $password . '-customer',
         $entry, 'app:install', 'service-admin', '服务管理员', 'service-customer', '服务客户', '服务租户'], $prefix);
     expect($migration['code'] === 0, 'Linux发布包显式迁移失败：' . $migration['stderr']);

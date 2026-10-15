@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 import type { FormInstance, TableColumnsType } from 'ant-design-vue';
 import type { AdminPage, AdminRole, AdminUser, Page } from '../api';
 import type { CrudTableAction } from '../components/crud-table-actions.vue';
@@ -110,7 +111,7 @@ async function saveRoles() {
   finally { saving.value = false; }
 }
 function actions(user: AdminUser): CrudTableAction[] { return [
-  { label: '详情', disabled: detailBusy.value, onClick: () => showDetail(user) },
+  { label: '详情', readOnly: true, disabled: detailBusy.value, onClick: () => showDetail(user) },
   { label: '编辑', visible: can('update'), onClick: () => edit(user, 'update') },
   { label: '角色', visible: canAssign.value, onClick: () => assign([user]) },
   { label: '模拟登录', visible: customers.value && can('impersonate'), disabled: !Number(user.enabled) || !Number(user.recovery_verified), confirmTitle: `模拟登录“${user.login}”？`, confirmContent: '使用客户当前租户权限，全部操作保留你的真实管理身份。', onClick: () => enterCustomer(user) },
@@ -134,7 +135,7 @@ onBeforeUnmount(() => { read?.abort(); detailRead?.abort(); roleRead?.abort(); f
 
 <template>
   <section class="iot-page">
-    <header class="page-heading"><div><h1>{{ title }}</h1><p class="muted">{{ members ? '管理当前租户的姓名、成员状态和角色，客户全局资料由账号本人或平台维护' : customers ? '管理跨租户共享的客户资料、全局状态、密码和会话' : '管理平台账号、独立敏感动作及多角色授权' }}</p></div><div class="toolbar-actions"><Button v-if="canAssign" :disabled="!selected.length || busy" @click="assign(selected)">批量分配角色</Button><Button v-if="can('create') && (!members || canAssign)" type="primary" @click="edit(null, 'create')">{{ members ? '新增成员' : customers ? '新增客户' : '新增人员' }}</Button></div></header>
+    <header class="page-heading"><div><h1>{{ title }}</h1><p class="muted">{{ members ? '管理当前租户的姓名、成员状态和角色，客户全局资料由账号本人或平台维护' : customers ? '管理跨租户共享的客户资料、全局状态、密码和会话' : '管理平台账号、独立敏感动作及多角色授权' }}</p></div><div class="toolbar-actions"><MutationButton v-if="canAssign" :disabled="!selected.length || busy" @click="assign(selected)">批量分配角色</MutationButton><MutationButton v-if="can('create') && (!members || canAssign)" type="primary" @click="edit(null, 'create')">{{ members ? '新增成员' : customers ? '新增客户' : '新增人员' }}</MutationButton></div></header>
     <Card :bordered="false">
       <form class="crud-search-grid" @submit.prevent="search()"><CrudSearchField label="登录账号"><Input v-model:value="filters.search" aria-label="登录账号筛选" :disabled="busy" allow-clear :maxlength="100" /></CrudSearchField><CrudSearchField label="账号状态"><Select v-model:value="filters.enabled" :disabled="busy" :options="[{ label: '全部状态', value: -1 }, { label: '启用', value: 1 }, { label: '停用', value: 0 }]" /></CrudSearchField><div class="crud-search-grid__actions"><Button type="primary" html-type="submit" :disabled="busy" :loading="busy">查询</Button><Button :disabled="busy" @click="search(true)">重置</Button></div></form>
       <Alert v-if="failure" :message="failure" type="error" show-icon role="alert" class="page-alert" />
@@ -152,7 +153,7 @@ onBeforeUnmount(() => { read?.abort(); detailRead?.abort(); roleRead?.abort(); f
         <FormItem v-if="mode !== 'password' && !(members && mode === 'update')" label="登录账号" name="login" :rules="[{ required: true, pattern: /^[a-z0-9][a-z0-9_.@-]{2,99}$/, message: '请输入3至100位小写账号' }]"><Input v-model:value="form.login" :disabled="saving" :maxlength="100" autocomplete="off" /></FormItem>
         <FormItem v-if="mode !== 'password'" :label="members ? '本租户姓名' : '显示姓名'" name="name" :rules="[{ required: true, whitespace: true, message: '请输入姓名' }]"><Input v-model:value="form.name" :disabled="saving" :maxlength="100" /></FormItem>
         <FormItem v-if="members && mode === 'create' && form.new_customer" label="客户全局姓名" name="account_name" :rules="[{ required: true, whitespace: true, message: '请输入初始客户姓名' }]"><Input v-model:value="form.account_name" :disabled="saving" :maxlength="100" /></FormItem>
-        <FormItem v-if="mode !== 'update' && (!members || form.new_customer)" label="登录密码" name="password" :rules="[{ required: true, min: 12, max: 72, message: '请输入12至72字节密码' }]"><Input.Password v-model:value="form.password" :disabled="saving" autocomplete="new-password" :maxlength="72" /></FormItem>
+        <FormItem v-if="mode !== 'update' && (!members || form.new_customer)" label="登录密码" name="password" :rules="[{ required: true, min: 5, max: 72, message: '请输入5至72字节密码' }]"><Input.Password v-model:value="form.password" :disabled="saving" autocomplete="new-password" :maxlength="72" /></FormItem>
       </Form>
       <template v-if="members && mode === 'create'">
         <p class="muted">账号、成员与所选角色同时保存；未选择角色的成员可以登录及选择租户，尚无业务权限。</p>

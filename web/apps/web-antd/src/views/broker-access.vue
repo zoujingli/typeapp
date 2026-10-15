@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MutationButton from '../components/mutation-button.vue';
 /**
  * Broker 授权页：主体、受信 CA、客户端证书绑定、签名 CRL、平台吊销、换证预览与版本生效。
  * 握手 CA 文件不在本页更新；保存成功不等于集群生效。隐藏页停止轮询。
@@ -141,7 +142,7 @@ async function load(page = result.value.page, perPage = result.value.per_page, b
     }
   } catch (error) {
     if (current === generation && !isCanceled(error)) {
-      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403;
+      failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
       if (denied.value) {
         result.value = { items: [], total: 0, page: 1, per_page: 20, current_version: 0, publish_paused: false };
         cas.value = { items: [], current_version: 0, publish_paused: false };
@@ -307,7 +308,7 @@ onBeforeUnmount(() => { generation++; pending?.abort(); clearInterval(timer); do
   <section class="iot-page">
     <header class="page-heading">
       <div><h1>Broker 授权</h1><p class="muted">{{ platform ? '平台接入主体、受信 CA 与 Topic 授权' : session.realm === 'broker' ? '独立接入主体、受信 CA、证书绑定与 Topic 授权' : '当前租户设备 Topic 授权、受信 CA 与证书绑定' }}。当前版本 v{{ result.current_version }}{{ paused ? ' · 部分失败已暂停后续发布' : '' }}</p></div>
-      <div class="crud-search-grid__actions"><Button @click="showHistory">版本生效</Button><Button v-if="canWrite" type="primary" @click="edit(null)">新增主体</Button></div>
+      <div class="crud-search-grid__actions"><Button @click="showHistory">版本生效</Button><MutationButton v-if="canWrite" type="primary" @click="edit(null)">新增主体</MutationButton></div>
     </header>
     <Alert v-if="failure" class="page-alert" type="error" show-icon role="alert" :message="denied ? failure : `授权刷新失败：${failure}`" />
     <Alert v-if="!canRead" class="page-alert" type="warning" show-icon message="当前账号无权查看 Broker 授权" />
@@ -319,7 +320,7 @@ onBeforeUnmount(() => { generation++; pending?.abort(); clearInterval(timer); do
       <Alert v-if="caFailure" :message="caFailure" type="error" show-icon class="page-alert" role="alert" />
       <div v-if="canWrite" class="ca-form">
         <Input.TextArea v-model:value="caPem" aria-label="受信 CA 公钥" placeholder="粘贴单份 CA 公钥 PEM" :rows="4" :maxlength="16384" :disabled="caSaving || paused" />
-        <div class="crud-search-grid__actions"><Button type="primary" :loading="caSaving" :disabled="!caPem.trim() || paused" @click="saveCa">登记 CA</Button></div>
+        <div class="crud-search-grid__actions"><MutationButton type="primary" :loading="caSaving" :disabled="!caPem.trim() || paused" @click="saveCa">登记 CA</MutationButton></div>
       </div>
       <div v-if="canWrite && cas.items.length" class="ca-form">
         <Select v-model:value="crlCa" aria-label="CRL 对应 CA" :options="cas.items.map(item => ({ value: item.id, label: item.subject }))" :disabled="caSaving || paused" />
@@ -327,9 +328,9 @@ onBeforeUnmount(() => { generation++; pending?.abort(); clearInterval(timer); do
         <Input v-model:value="crlUrl" aria-label="受控 HTTPS 源" placeholder="https:// 受控 CRL 地址" :maxlength="2048" :disabled="caSaving || paused" />
         <InputNumber v-model:value="crlInterval" aria-label="刷新间隔秒数" :min="1" :max="3600" :precision="0" style="width:100%" :disabled="caSaving || paused" />
         <p class="muted">默认每 300 秒刷新。来源由管理员配置，客户端不能指定下载地址。不查询 OCSP。</p>
-        <div class="crud-search-grid__actions"><Button type="primary" :loading="caSaving" :disabled="(!crlPem.trim() && !crlUrl.trim()) || paused" @click="saveCrl">接纳 CRL</Button></div>
+        <div class="crud-search-grid__actions"><MutationButton type="primary" :loading="caSaving" :disabled="(!crlPem.trim() && !crlUrl.trim()) || paused" @click="saveCrl">接纳 CRL</MutationButton></div>
         <Input v-model:value="platformSerial" aria-label="平台吊销序列号" placeholder="证书序列号十六进制" :maxlength="64" :disabled="caSaving || paused" />
-        <div class="crud-search-grid__actions"><Button :loading="caSaving" :disabled="!platformSerial.trim() || paused" @click="savePlatformSerial">平台吊销</Button></div>
+        <div class="crud-search-grid__actions"><MutationButton :loading="caSaving" :disabled="!platformSerial.trim() || paused" @click="savePlatformSerial">平台吊销</MutationButton></div>
       </div>
       <div class="table-toolbar"><span class="muted">{{ cas.items.length }} 份受信 CA</span></div>
       <Table :columns="[{ title: '主体', dataIndex: 'subject', ellipsis: true }, { title: '指纹', key: 'fingerprint', width: 180 }, { title: '核对', key: 'verified', width: 90 }, { title: '获取状态', key: 'fetch', width: 140 }, { title: '执行状态', key: 'execute', width: 160 }, { title: '恢复条件', key: 'recovery', ellipsis: true }, { title: '操作', key: 'actions', width: 90 }]" :data-source="cas.items" row-key="id" :pagination="false" size="small" :scroll="{ x: 1050 }">
@@ -355,7 +356,7 @@ onBeforeUnmount(() => { generation++; pending?.abort(); clearInterval(timer); do
           <template v-else-if="column.key === 'certificates'">{{ certificateText(record as Principal) }}</template>
           <template v-else-if="column.key === 'enabled'"><Tag :color="record.enabled ? 'success' : 'default'">{{ record.enabled ? '启用' : '停用' }}</Tag></template>
           <template v-else-if="column.key === 'recovery'"><Tag :color="Number(record.recovery_verified) === 0 ? 'warning' : undefined">{{ Number(record.recovery_verified) === 0 ? '待核对' : '已核对' }}</Tag></template>
-          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '版本', onClick: showHistory }, { label: '编辑', visible: canWrite, onClick: () => edit(record as Principal) }]" />
+          <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '版本', readOnly: true, onClick: showHistory }, { label: '编辑', visible: canWrite, onClick: () => edit(record as Principal) }]" />
         </template>
       </Table>
     </Card>
@@ -383,7 +384,7 @@ onBeforeUnmount(() => { generation++; pending?.abort(); clearInterval(timer); do
         </FormItem>
         <div v-if="editing" class="span-full grant-list">
           <div class="crud-search-grid__actions">
-            <Button :loading="previewBusy" :disabled="!form.certificatePem.trim()" @click="previewRotation">预览换证</Button>
+            <MutationButton :loading="previewBusy" :disabled="!form.certificatePem.trim()" @click="previewRotation">预览换证</MutationButton>
           </div>
           <Alert v-if="previewFailure" :message="previewFailure" type="error" show-icon class="page-alert" role="alert" />
           <div v-if="preview" class="preview-box">
@@ -394,13 +395,13 @@ onBeforeUnmount(() => { generation++; pending?.abort(); clearInterval(timer); do
           </div>
         </div>
         <div class="span-full grant-list">
-          <div class="table-toolbar"><span>Topic 授权</span><Button size="small" :disabled="form.grants.length >= 32" @click="addGrant">添加规则</Button></div>
+          <div class="table-toolbar"><span>Topic 授权</span><MutationButton size="small" :disabled="form.grants.length >= 32" @click="addGrant">添加规则</MutationButton></div>
           <div v-for="(grant, index) in form.grants" :key="index" class="grant-row">
             <Input v-model:value="grant.topic" aria-label="授权主题" placeholder="以 / 结尾表示前缀" :maxlength="200" />
             <Checkbox v-model:checked="grant.publish">发布</Checkbox>
             <Checkbox v-model:checked="grant.subscribe">订阅</Checkbox>
             <Select v-model:value="grant.max_qos" aria-label="最大 QoS" :options="[0, 1, 2].map(value => ({ value, label: `QoS ${value}` }))" />
-            <Button size="small" @click="removeGrant(index)">删除</Button>
+            <MutationButton size="small" @click="removeGrant(index)">删除</MutationButton>
           </div>
         </div>
       </Form>

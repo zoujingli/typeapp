@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Alert, Button, Card, Form, FormItem, Input, InputPassword } from 'ant-design-vue';
-import { errorText, login, session, siteSettings } from '../api';
+import { errorText, isDemo, login, session, siteSettings } from '../api';
 
 const router = useRouter();
 const route = useRoute();
@@ -28,6 +28,7 @@ async function submit() {
     <Card class="login-card" :bordered="false">
       <p class="eyebrow">{{ siteSettings.name }} · {{ broker ? 'BROKER' : admin ? 'ADMIN' : 'IOT' }}</p>
       <h1>{{ broker ? 'Broker 管理' : admin ? '平台管理端' : siteSettings.name }}</h1>
+      <Alert v-if="isDemo()" type="info" show-icon message="演示环境，仅供浏览" class="page-alert" />
       <p class="muted login-subtitle">{{ broker ? '登录后查看 Broker 节点及运行状态。' : admin ? '使用平台管理账号登录。' : '使用客户账号进入所属租户的工作区。' }}</p>
       <Alert v-if="failure || session.notice" type="error" show-icon :message="failure || session.notice" class="page-alert" role="alert" />
       <Form layout="vertical" :model="form" @finish="submit">

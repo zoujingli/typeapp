@@ -76,7 +76,7 @@ unlink($base . '/.env.example');
 
 $runtime = $base . '/runtime-data';
 expect(mkdir($runtime, 0700), '无法创建发布之外的独立运行数据根');
-$environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $runtime, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false', 'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'var/app.sqlite',
+$environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $runtime, 'APP_ENV' => 'prod', 'APP_DEBUG' => 'false', 'APP_CACHE_ENABLED' => 'false', 'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'var/app.sqlite',
     'APP_API_TOKEN' => 'package-test-' . bin2hex(random_bytes(20)), 'TYPE_APP_RELEASE_SHA256' => $created['manifest-sha256'], 'TYPE_APP_TRACE' => '1'];
 // 与独立 ORM 消费者一致，直接交给 PHP 的数组进程接口，避免 cmd /c 再次解析路径引号。
 $command = [$package . (PHP_OS_FAMILY === 'Windows' ? '/run.cmd' : '/run')];

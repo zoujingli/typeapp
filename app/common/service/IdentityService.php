@@ -69,7 +69,7 @@ final class IdentityService
     public static function validateAccount(string $login, string $name, string $password): void
     {
         if (!preg_match('/^[a-z0-9][a-z0-9_.@-]{2,99}$/D', $login) || trim($name) === '' || strlen($name) > 100
-            || strlen($password) < 12 || strlen($password) > 72 || str_contains($password, "\0")) {
+            || strlen($password) < 5 || strlen($password) > 72 || str_contains($password, "\0")) {
             throw new HttpError(422, 'invalid_account');
         }
     }

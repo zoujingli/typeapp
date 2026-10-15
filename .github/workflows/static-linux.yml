@@ -207,6 +207,9 @@ jobs:
           php tools/build-application.php >build/static-linux-evidence/application.log 2>&1
           php tests/release-candidate.php prepare
           php tests/release-candidate.php test "$TYPEAPP_BUILD_PROFILE" "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS"
+          if [[ "$TYPEAPP_BUILD_PROFILE" == sqlite ]]; then
+            php tests/demo-mode.php "build/release-candidate/attachments/typeapp-iot-${TYPE_RELEASE_VERSION#v}-${{ matrix.platform }}-sqlite" >build/static-linux-evidence/demo-mode.log 2>&1
+          fi
           php tests/release-candidate.php materials
       - name: 同一单程序的 systemd 生命周期
         if: inputs.tutorial_mode == ''

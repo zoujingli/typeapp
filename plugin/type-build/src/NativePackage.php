@@ -49,7 +49,7 @@ final class NativePackage
         if (file_exists($destination) || is_link($destination)) {
             throw new RuntimeException('发布目录已存在，不能覆盖已部署版本');
         }
-        $example = $configurationExample === null ? "APP_ENV=production\nAPP_DEBUG=false\nAPP_API_TOKEN=\n" : $this->example($configurationExample);
+        $example = $configurationExample === null ? "APP_ENV=prod\nAPP_DEBUG=false\nAPP_API_TOKEN=\n" : $this->example($configurationExample);
         $libraries = [];
         $libraryDirectory = PHP_OS_FAMILY === 'Windows' ? 'bin' : 'lib';
         foreach ($manifest['native-libraries'] ?? [] as $library) {

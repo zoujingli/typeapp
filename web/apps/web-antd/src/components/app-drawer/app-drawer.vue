@@ -36,7 +36,7 @@
           <div class="app-drawer__footer-actions">
             <Button :disabled="confirmLoading" @click="handleCancel">{{ cancelText }}</Button>
             <slot name="footer-extra" />
-            <Button
+            <MutationButton
               v-if="okVisible"
               :danger="okDanger"
               :disabled="okDisabled"
@@ -45,7 +45,7 @@
               @click="handleOk"
             >
               {{ okText }}
-            </Button>
+            </MutationButton>
           </div>
         </template>
       </div>
@@ -60,6 +60,7 @@ import type { PopupWidthSize } from './types';
 import { computed, useAttrs } from 'vue';
 
 import { Button, Drawer, Spin } from 'ant-design-vue';
+import MutationButton from '../mutation-button.vue';
 
 const POPUP_VIEWPORT_GAP = 32;
 const POPUP_WIDTH_PX: Record<PopupWidthSize, number> = {

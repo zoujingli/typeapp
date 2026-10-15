@@ -120,7 +120,9 @@ type-app.json
 
 `php dev.php serve` 仍是单次开发进程；需要持续观察变更时使用 `composer watch` 或 `php vendor/bin/type watch type-app.json serve`。监督器先在新进程准备和检查，成功后停止旧进程并重新启动；错误源码或配置保留旧服务。它不是进程内替换类、eval 或零停机生产部署。原生入口固定使用已经编译的代码，修改生产声明必须重新构建，不会自动下载或生成源码。watch 的 Windows 控制事件仍须对应原生验收，不能用 Unix 结果代替。
 
-`APP_ENV` 默认 production，允许 development/production；`APP_DEBUG` 默认 false。dev.php 用显式参数取得开发权限，即使默认环境为 production，有效开发模式仍显示 development。生产 main 不具有该权限；HTTP 头、query、body 不能打开 debug。内部 HTTP 错误仅返回 internal_error 和服务端生成的 request_id，开发细节只记录异常类型、文件位置、行号及稳定码，不记录异常消息、调用参数、配置或令牌。
+`APP_ENV` 默认 `prod`，仅接受 `dev/prod/demo`；旧值 `development/production` 须分别改为 `dev/prod`。`dev.php` 尊重显式环境，只有 `APP_ENV=dev` 且 `APP_DEBUG=true` 才启用安全调试；`prod/demo` 和原生 main 均不具有该调试权限。HTTP 头、query、body 不能切换环境或打开 debug。内部 HTTP 错误仅返回 internal_error 和服务端生成的 request_id，不返回秘密配置或令牌。
+
+`demo` 使用 Router 的 `ReadOnlyPolicy` 拒绝写请求，返回 `403 demo_readonly`，仅放行查询方法；命令保留正常维护能力，演示部署须暂停业务后台任务。模板没有登录写接口，因此默认无认证例外；业务需要登录或退出时，向中间件显式声明准确路由名，仅放行这些路由的 POST。读取接口须保持无业务写副作用，必要安全审计可以保留。先在维护期间完成迁移和数据准备，再启用 `demo`；运行中的环境不会被开发入口覆盖。
 
 ## 迁移
 

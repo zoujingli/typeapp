@@ -141,7 +141,7 @@ file_put_contents($data . '/.env', $configuration);
 file_put_contents($data . '/uploads/example.bin', "backup-resource\0" . random_bytes(32));
 chmod($data . '/.env', 0600);
 chmod($data . '/uploads/example.bin', 0600);
-$environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $data, 'APP_ENV' => 'production', 'APP_DEBUG' => 'false',
+$environment = ['PATH' => '/usr/bin:/bin', 'APP_BASE_PATH' => $data, 'APP_ENV' => 'prod', 'APP_DEBUG' => 'false',
     'APP_CACHE_ENABLED' => 'false', 'APP_ADMIN_PASSWORD' => bin2hex(random_bytes(16)), 'APP_CUSTOMER_PASSWORD' => bin2hex(random_bytes(16)),
     'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'var/app.sqlite', 'TYPE_APP_RELEASE_SHA256' => $digest, 'TYPE_APP_TRACE' => '1'];
 $tools = match ($driver) {
