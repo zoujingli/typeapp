@@ -166,7 +166,8 @@ final class TcpProbe
                     }
                     self::$observations['http_phase'] = 'tls-rejection';
                     self::rejected(static fn (): mixed => $client->request('GET', $secure), 'http_client_request_failed');
-                    self::rejected(static fn (): mixed => $client->request('GET', str_replace('localhost', '127.0.0.1', $secure), tlsOptions: $options), 'http_client_request_failed');
+                    // 通信套件证书包含回环 IP；显式使用证书未覆盖的 IP 校验身份，不能把合法 SAN 当失败夹具。
+                    self::rejected(static fn (): mixed => $client->request('GET', str_replace('localhost', '127.0.0.1', $secure), tlsOptions: $options + ['ssl_host_name' => '127.0.0.2']), 'http_client_request_failed');
                     self::rejected(static fn (): mixed => $client->request('GET', $secure, tlsOptions: $options + ['ssl_host_name' => 'wrong.example']), 'http_client_request_failed');
                     foreach ([['ssl_verify_peer' => false], ['ssl_cafile' => null], ['ssl_protocols' => 0]] as $invalid) {
                         self::rejected(static fn (): mixed => $client->request('GET', $secure, tlsOptions: $invalid), 'http_client_invalid_configuration');
