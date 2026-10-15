@@ -3,6 +3,8 @@ import tls from 'node:tls';
 import dgram from 'node:dgram';
 import http from 'node:http';
 import https from 'node:https';
+import { gzipSync, deflateSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -121,12 +123,15 @@ if (dnsOnly) {
     // HTTP 客户端复用同一真实网络对端和测试信任材料，协议由 Node 标准库解析。
     const httpRequest = (request, response) => {
         let body = '';
-        request.on('data', chunk => { body += chunk; if (body.length > 16777216) request.destroy(); });
+        request.on('data', chunk => { body += chunk; if (body.length > 18874368) request.destroy(); });
         request.on('end', () => {
             const path = request.url.split('?')[0];
             if (path === '/slow') {
                 const marker = new URL(request.url, 'http://localhost').searchParams.get('marker');
-                if (marker && /^[a-f0-9]{16}$/.test(marker)) writeFileSync(join(directory, 'http-slow-ready-' + marker), request.url);
+                if (marker && /^[a-f0-9]{16}$/.test(marker)) {
+                    writeFileSync(join(directory, 'http-slow-ready-' + marker), request.url);
+                    request.socket.once('close', () => writeFileSync(join(directory, 'http-slow-closed-' + marker), 'closed'));
+                }
                 return;
             }
             if (path === '/drip') {
@@ -148,7 +153,19 @@ if (dnsOnly) {
                 response.writeHead(200);
                 return response.end(Buffer.alloc(16384, 'x'));
             }
-            response.writeHead(path === '/missing' ? 404 : 200, {
+            if (path === '/over-16m') {
+                response.writeHead(200);
+                return response.end(Buffer.alloc(16777217, 'x'));
+            }
+            if (path === '/upload-size') {
+                return response.end(JSON.stringify({ bytes: Buffer.byteLength(body), sha256: createHash('sha256').update(body).digest('hex') }));
+            }
+            if (path === '/gzip' || path === '/deflate') {
+                response.writeHead(200, { 'Content-Encoding': path.slice(1), 'X-Accept-Encoding': request.headers['accept-encoding'] ?? '', 'X-Authority': request.headers.host });
+                const bytes = Buffer.from('compressed\u0000body');
+                return response.end(path === '/gzip' ? gzipSync(bytes) : deflateSync(bytes));
+            }
+            response.writeHead(path === '/missing' ? 404 : (path === '/failure' ? 500 : 200), {
                 'Content-Type': 'application/json',
                 'X-Multi': ['first', 'second'],
                 'Set-Cookie': ['left=1; Path=/', 'right=2; Path=/'],

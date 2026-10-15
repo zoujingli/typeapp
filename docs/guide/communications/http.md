@@ -179,9 +179,29 @@ final class StatusService
 
 状态服务运行时，`fetch()` 返回 `{"status":"ok"}`。构造不建立连接，第一次 `request()` 自动向当前 `ExecutionScope` 登记；同一实例在同一作用域可顺序使用，子作用域和其他执行者必须获得自己的实例。独立入口通过 `CoroutineRuntime::run()` 建立协程，并在 `scope->run()` 中调用业务，最终关闭 scope；业务不要嵌套启动运行器。
 
-`request(method, url, headers, body, timeout, maxResponseBytes, tlsOptions)` 返回 PSR `ResponseInterface`。默认总期限 10 秒、正文预算 1 MiB；总期限范围 `(0, 60]` 秒，并被作用域剩余期限收紧。请求正文至多 16 MiB，响应预算可设为 1 B–16 MiB，请求头合计至多 64 KiB。正文在原生接收回调中限流；持续小块响应不能延长总期限。当前不协商压缩、不自动解压、不跟随 3xx，也不自动重试。HTTP 4xx/5xx 正常返回响应；网络失败不返回部分正文。
+`request(method, url, headers, body, timeout, maxResponseBytes, tlsOptions)` 返回 PSR `ResponseInterface`。默认总期限 10 秒、正文预算 1 MiB；正数期限受作用域剩余期限收紧，持续小块响应不能延长总期限。`timeout: 0.0` 不添加请求自身期限，仅服从当前作用域的截止与取消；作用域也没有截止时，请求等待直至完成、失败或取消。正数期限须在原生定时器可表示范围内，没有额外的 60 秒限制。
 
-HTTPS 默认验证系统信任链和 URL 主机名，仅允许 TLS 1.2/1.3。私有 CA 通过 `tlsOptions: ['ssl_cafile' => $caFile]` 提供；`ssl_host_name` 可显式指定真实服务身份，不影响目标地址。禁止传入关闭校验的选项。URL 不携带凭据或片段；请求头不允许改写 Host、Content-Length、Transfer-Encoding、Connection、Upgrade 或 Accept-Encoding。受控目标、业务认证、请求签名和幂等性仍由应用决定。
+`maxResponseBytes: 0` 不添加组件响应正文上限；正数在原生接收回调中核对收到的正文字节。请求和响应没有固定的 16 MiB 上限，请求头合计仍至多 64 KiB。接口完整接收响应后返回，不是流式下载接口；关闭字节上限时，调用方须根据负载控制内存与并发。
+
+```php
+$response = $client->request(
+    'GET',
+    $trustedUrl,
+    headers: ['Accept-Encoding' => 'gzip, deflate'],
+    timeout: 0.0,
+    maxResponseBytes: 0
+);
+try {
+    // 返回压缩原始字节；应用按 Content-Encoding 解压并检查自己的解压后大小预算。
+    $rawBody = $response->getBody()->getContents();
+} finally {
+    $response->getBody()->close();
+}
+```
+
+默认不协商压缩，允许显式传入 `Accept-Encoding`；无论是否协商，都不自动解压。不跟随 3xx，也不自动重试；业务跟随跳转时应沿用同一作用域预算，并在跨源时去掉认证与 Cookie 等敏感头。HTTP 4xx/5xx 正常返回响应；网络失败不返回部分正文。
+
+HTTPS 默认验证系统信任链和 URL 主机名，仅允许 TLS 1.2/1.3。私有 CA 通过 `tlsOptions: ['ssl_cafile' => $caFile]` 提供；`ssl_host_name` 可显式指定真实服务身份，不影响目标地址。禁止传入关闭校验的选项。URL 不携带凭据或片段；请求头不允许改写 Host、Content-Length、Transfer-Encoding、Connection 或 Upgrade，Host 由 URL authority 生成。受控目标、业务认证、请求签名和幂等性仍由应用决定。
 
 | 失败 | 稳定错误码 |
 | --- | --- |

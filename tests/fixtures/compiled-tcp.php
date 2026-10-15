@@ -140,6 +140,7 @@ final class TcpProbe
     /** 公共 HTTP 请求在真实 Node HTTP/HTTPS 对端验证，PHP 与 AOT 复用全部断言。 */
     private static function http(array $peers): void
     {
+        $timers = Swoole\Timer::stats()['num'];
         self::$observations['phase'] = 'http';
         $plain = 'http://127.0.0.1:' . $peers['http']['port'];
         $secure = 'https://localhost:' . $peers['https']['port'];
@@ -150,7 +151,7 @@ final class TcpProbe
             $scope = new ExecutionScope();
             $client = new \Type\Core\Http\Client();
             try {
-                $scope->run(static function (ExecutionScope $current) use ($client, $plain, $secure, $options, $peers): void {
+                $scope->run(static function (ExecutionScope $current) use ($client, $plain, $secure, $options, $peers, $round): void {
                     self::$observations['http_phase'] = 'first-response';
                     $response = $client->request('POST', $plain . '/echo?q=value', ['X-Client' => 'typeapp'], "\0body");
                     $data = json_decode((string) $response->getBody(), true, 32, JSON_THROW_ON_ERROR);
@@ -158,13 +159,14 @@ final class TcpProbe
                     self::check($response->getHeader('set-cookie') === ['left=1; Path=/', 'right=2; Path=/']
                         && $response->getHeader('x-multi') === ['first', 'second'], 'HTTP 重复响应头丢失');
                     $response->getBody()->close();
-                    foreach (['/echo' => 200, '/missing' => 404, '/redirect' => 302] as $path => $status) {
+                    foreach (['/echo' => 200, '/missing' => 404, '/failure' => 500, '/redirect' => 302] as $path => $status) {
                         $reply = $client->request('GET', $secure . $path, tlsOptions: $options);
                         self::check($reply->getStatusCode() === $status, 'HTTPS 状态或禁止跳转不符');
                         $reply->getBody()->close();
                     }
                     self::$observations['http_phase'] = 'tls-rejection';
                     self::rejected(static fn (): mixed => $client->request('GET', $secure), 'http_client_request_failed');
+                    self::rejected(static fn (): mixed => $client->request('GET', str_replace('localhost', '127.0.0.1', $secure), tlsOptions: $options), 'http_client_request_failed');
                     self::rejected(static fn (): mixed => $client->request('GET', $secure, tlsOptions: $options + ['ssl_host_name' => 'wrong.example']), 'http_client_request_failed');
                     foreach ([['ssl_verify_peer' => false], ['ssl_cafile' => null], ['ssl_protocols' => 0]] as $invalid) {
                         self::rejected(static fn (): mixed => $client->request('GET', $secure, tlsOptions: $invalid), 'http_client_invalid_configuration');
@@ -172,6 +174,27 @@ final class TcpProbe
                     self::rejected(static fn (): mixed => $client->request('GET', $plain, tlsOptions: $options), 'http_client_invalid_configuration');
                     self::rejected(static fn (): mixed => $client->request('GET', $plain, ['X-Test' => "bad\r\nInjected: value"]), 'http_client_invalid_configuration');
                     self::rejected(static fn (): mixed => $client->request('GET', $plain, ['Host' => 'wrong.example']), 'http_client_invalid_configuration');
+                    foreach ([-1.0, INF, NAN] as $invalidTimeout) {
+                        self::rejected(static fn (): mixed => $client->request('GET', $plain, timeout: $invalidTimeout), 'http_client_invalid_configuration');
+                    }
+                    self::rejected(static fn (): mixed => $client->request('GET', $plain, maxResponseBytes: -1), 'http_client_invalid_configuration');
+                    self::$observations['http_phase'] = 'scope-only-budget';
+                    $head = $client->request('HEAD', $plain . '/echo', timeout: 0.0, maxResponseBytes: 0);
+                    self::check($head->getStatusCode() === 200 && (string) $head->getBody() === '', '仅作用域预算的 HEAD 响应不符');
+                    $head->getBody()->close();
+                    $compressed = $client->request('GET', $secure . '/gzip', ['Accept-Encoding' => 'gzip, deflate'], timeout: 120.0, maxResponseBytes: 33554432, tlsOptions: $options);
+                    self::check($compressed->getHeaderLine('content-encoding') === 'gzip'
+                        && $compressed->getHeaderLine('x-accept-encoding') === 'gzip, deflate'
+                        && $compressed->getHeaderLine('x-authority') === 'localhost:' . $peers['https']['port']
+                        && gzdecode((string) $compressed->getBody()) === "compressed\0body", '压缩协商、原始正文或 URL authority 不符');
+                    $compressed->getBody()->close();
+                    $deflated = $client->request('GET', $plain . '/deflate', ['Accept-Encoding' => 'gzip, deflate'], timeout: 0.0);
+                    self::check($deflated->getHeaderLine('content-encoding') === 'deflate'
+                        && gzuncompress((string) $deflated->getBody()) === "compressed\0body", 'deflate 响应未保留原始字节');
+                    $deflated->getBody()->close();
+                    if ($round === 0) {
+                        self::httpLargeBodies($client, $plain);
+                    }
                     self::$observations['http_phase'] = 'response-budget';
                     self::rejected(static fn (): mixed => $client->request('GET', $plain . '/large', maxResponseBytes: 128), 'http_client_response_too_large');
                     self::rejected(static fn (): mixed => $client->request('GET', $plain . '/partial'), 'http_client_request_failed');
@@ -228,9 +251,17 @@ final class TcpProbe
         });
         try {
             $scope->run(static function (ExecutionScope $current) use ($plain, $marker): void {
-                self::rejected(static fn (): mixed => (new \Type\Core\Http\Client())->request('GET', $plain . '/slow?marker=' . $marker), 'cancelled');
+                self::rejected(static fn (): mixed => (new \Type\Core\Http\Client())->request('GET', $plain . '/slow?marker=' . $marker, timeout: 0.0, maxResponseBytes: 0), 'cancelled');
             });
             self::check($cancelResult->pop(3) === true, '取消未发生在对端已接纳请求之后');
+            $closed = dirname($peers['certificate']) . '/http-slow-closed-' . $marker;
+            $closeDeadline = new \Type\Runtime\Deadline(2.0);
+            while (!is_file($closed) && !$closeDeadline->expired()) {
+                clearstatcache(true, $closed);
+                Coroutine::sleep(0.001);
+            }
+            self::check(is_file($closed), '取消后对端未观察到连接关闭');
+            @unlink($closed);
         } finally {
             $scope->close();
             $cancelResult->close();
@@ -240,11 +271,47 @@ final class TcpProbe
         $deadlineScope = new ExecutionScope(new \Type\Runtime\Deadline(0.05));
         try {
             $deadlineScope->run(static function (ExecutionScope $current) use ($plain): void {
-                self::rejected(static fn (): mixed => (new \Type\Core\Http\Client())->request('GET', $plain . '/slow', timeout: 5.0), 'deadline_exceeded');
+                self::rejected(static fn (): mixed => (new \Type\Core\Http\Client())->request('GET', $plain . '/drip', timeout: 0.0), 'deadline_exceeded');
             });
         } finally {
             $deadlineScope->close();
         }
+        $shortened = new ExecutionScope();
+        $shortenedDeadline = $shortened->deadline();
+        Swoole\Timer::after(30, static function () use ($shortenedDeadline): void {
+            $shortenedDeadline->shorten(0.0);
+        });
+        try {
+            $shortened->run(static function (ExecutionScope $current) use ($plain): void {
+                self::rejected(static fn (): mixed => (new \Type\Core\Http\Client())->request('GET', $plain . '/drip', timeout: 0.0), 'deadline_exceeded');
+            });
+        } finally {
+            $shortened->close();
+        }
+        // 取消会在 Timer 回调中同步唤醒请求；等该回调真正返回后再核对计时器回收。
+        $settled = new Channel(1);
+        Swoole\Event::defer(static function () use ($settled): void {
+            $settled->push(true);
+        });
+        self::check($settled->pop(1) === true, 'HTTP 取消回调没有完成');
+        $settled->close();
+        self::check(Swoole\Timer::stats()['num'] === $timers, 'HTTP 请求退出后残留定时器');
+    }
+
+    /** 超过旧固定上限的真实收发；只执行一次，避免重复大正文增加验收成本。 */
+    private static function httpLargeBodies(\Type\Core\Http\Client $client, string $plain): void
+    {
+        self::$observations['http_phase'] = 'large-bodies';
+        $payload = str_repeat('x', 16777217);
+        $digest = hash('sha256', $payload);
+        $uploaded = $client->request('POST', $plain . '/upload-size', body: $payload, timeout: 0.0);
+        $upload = json_decode((string) $uploaded->getBody(), true, 32, JSON_THROW_ON_ERROR);
+        self::check($upload === ['bytes' => 16777217, 'sha256' => $digest], '超过 16 MiB 的请求正文被截断');
+        $uploaded->getBody()->close();
+        self::rejected(static fn (): mixed => $client->request('GET', $plain . '/over-16m'), 'http_client_response_too_large');
+        $reply = $client->request('GET', $plain . '/over-16m', timeout: 0.0, maxResponseBytes: 0);
+        self::check($reply->getBody()->getSize() === 16777217 && hash('sha256', (string) $reply->getBody()) === $digest, '不追加正文预算时仍截断响应');
+        $reply->getBody()->close();
     }
 
     /** 原生编译诊断只保留慢 TLS 握手、截止及清理，完整通信套件仍独立执行。 */

@@ -13,7 +13,7 @@ use Type\Runtime\ManagedResource;
 use Type\Runtime\TaskException;
 
 /**
- * 当前执行作用域的有界 HTTP 客户端；通信、TLS 与协议解析由 Swoole 官方客户端执行。
+ * 当前执行作用域的 HTTP 客户端；通信、TLS 与协议解析由 Swoole 官方客户端执行。
  *
  * 构造不连接，首次请求登记资源归属。同一实例仅在所属 scope 顺序使用，每次请求关闭
  * 原生连接；不持有跨请求池，不跟随跳转，不重试。响应是已完整接收的 PSR 消息，正文流
@@ -44,8 +44,9 @@ final class Client implements ManagedResource
     /**
      * 完整接收一次响应；HTTP 4xx/5xx 也是响应，由业务判断状态。
      *
-     * timeout 是连接、发送和接收合计的秒数，并受 scope 剩余期限进一步限制；读取中检查
-     * maxResponseBytes，不接受部分响应。禁用压缩协商和自动解压，预算针对收到的正文字节。
+     * timeout 是连接、发送和接收合计的秒数，0 表示仅服从 scope 截止与取消；正数仍被
+     * scope 剩余期限收紧。maxResponseBytes 为 0 时不添加正文上限，正数在读取中检查。
+     * 不接受部分响应；默认不协商压缩，显式 Accept-Encoding 仍返回未解压的正文字节。
      * URL 只允许 HTTP/HTTPS，不携带凭据或片段；请求头不得接管 Host、长度或连接协议。
      *
      * @param array<string,string> $headers 单值请求头；名称不区分大小写且不得重复。
@@ -66,8 +67,7 @@ final class Client implements ManagedResource
         if ($this->requesting || $this->client !== null) {
             throw new TaskException('http_client_busy', 'HTTP 客户端已有在途请求');
         }
-        if (!is_finite($timeout) || $timeout <= 0 || $timeout > 60
-            || $maxResponseBytes < 1 || $maxResponseBytes > 16777216 || strlen($body) > 16777216
+        if (!is_finite($timeout) || $timeout < 0 || $maxResponseBytes < 0
             || preg_match('/^[A-Z][A-Z0-9!#$%&\'*+.^_`|~-]*$/D', $method) !== 1 || $method === 'CONNECT') {
             throw new TaskException('http_client_invalid_configuration', 'HTTP 方法、期限或正文预算无效');
         }
@@ -75,8 +75,13 @@ final class Client implements ManagedResource
         $settings = self::tls($target['host'], $target['tls'], $tlsOptions);
         $requestHeaders = self::headers($headers);
         $remaining = $this->scope->deadline()->remaining();
-        $scopeDeadline = $remaining !== null && $remaining <= $timeout;
-        $seconds = $scopeDeadline ? $remaining : $timeout;
+        $scopeDeadline = $remaining !== null && ($timeout === 0.0 || $remaining <= $timeout);
+        // 原生 0 会采用默认超时；-1 才表示不增加等待期限，scope 仍负责取消。
+        $seconds = $scopeDeadline ? $remaining : ($timeout === 0.0 ? -1.0 : $timeout);
+        $milliseconds = ceil($seconds * 1000.0);
+        if ($milliseconds >= \SWOOLE_TIMER_MAX_MS) {
+            throw new TaskException('http_client_invalid_configuration', 'HTTP 期限超出原生定时器范围');
+        }
         $this->scope->assertActive();
         $client = new NativeClient($target['host'], $target['port'], $target['tls']);
         $this->client = $client;
@@ -94,7 +99,7 @@ final class Client implements ManagedResource
                 'http_compression' => false,
                 'body_decompression' => false,
                 'write_func' => static function (NativeClient $http, string $chunk) use (&$receivedBody, $maxResponseBytes): void {
-                    if (strlen($chunk) > $maxResponseBytes - strlen($receivedBody)) {
+                    if ($maxResponseBytes > 0 && strlen($chunk) > $maxResponseBytes - strlen($receivedBody)) {
                         throw new TaskException('http_client_response_too_large', 'HTTP 响应正文超过字节预算');
                     }
                     $receivedBody .= $chunk;
@@ -109,12 +114,14 @@ final class Client implements ManagedResource
                 $client->close();
             });
             // 原生 timeout 约束一次等待；总期限同时防止持续小块响应无限延长请求。
-            $timer = Timer::after(max(1, (int) ceil($seconds * 1000.0)), static function () use ($client, &$timedOut): void {
-                $timedOut = true;
-                $client->close();
-            });
-            if ($timer === false) {
-                throw new TaskException('http_client_timer_failed', '无法登记 HTTP 请求总期限');
+            if ($seconds > 0) {
+                $timer = Timer::after(max(1, (int) $milliseconds), static function () use ($client, &$timedOut): void {
+                    $timedOut = true;
+                    $client->close();
+                });
+                if ($timer === false) {
+                    throw new TaskException('http_client_timer_failed', '无法登记 HTTP 请求总期限');
+                }
             }
             $received = $client->execute($target['path']);
             $this->scope->assertActive();
@@ -222,7 +229,7 @@ final class Client implements ManagedResource
                 throw new TaskException('http_client_invalid_configuration', 'HTTP 请求头无效');
             }
             $key = strtolower($name);
-            if (isset($result[$key]) || in_array($key, ['host', 'content-length', 'transfer-encoding', 'connection', 'upgrade', 'accept-encoding'], true)) {
+            if (isset($result[$key]) || in_array($key, ['host', 'content-length', 'transfer-encoding', 'connection', 'upgrade'], true)) {
                 throw new TaskException('http_client_invalid_configuration', 'HTTP 请求头重复或试图覆盖协议字段');
             }
             $bytes += strlen($name) + strlen($value) + 4;
