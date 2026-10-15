@@ -81,6 +81,14 @@ TypePHP 0.9.4 把无默认值的 `array &$value` 编译为固定 `php::Array&`�
 
 `composer test:native-call-arguments` 对照 PHP/AOT 检查事件分派、默认值、命名参数、引用修改、递归、继承、闭包、异常后续调用及两个同时挂起的 Swoole 协程。调用分发、包装和优化器绑定同一组源码摘要，上游升级后须先通过上述回归再移除适配。
 
+## 内置函数警告与请求阶段
+
+普通 embed 程序在模块初始化完成后进入编译业务；PHPX 2.9.3 的该入口未结束 PHP 的请求启动阶段，会把 `gzdecode(): data error` 等内置警告标为 `PHP Request Startup: data error`。应用将 warning 转为 `ErrorException` 时，该差异也会进入异常消息与业务日志。
+
+构建兼容层仅在普通 embed 的已生成主入口分派前结束启动阶段，保留模块初始化期间的错误分类。函数名、严重级别和消息仍由 Zend 生成，不增加文本替换、错误屏蔽或应用错误策略；已有线程运行时及 Swoole 线程入口继续负责各自请求阶段。
+
+`composer test:native-builtin-warnings` 严格对照 PHP/AOT 的完整消息，覆盖直接与动态调用、多种内置函数、用户警告、warning 转异常、处理器恢复和后续成功调用，并在删除输入源码后运行。适配绑定 TypePHP 生成器和 PHPX embed 入口的源码摘要；上游升级后先验证相同行为再撤除。原始 RC14 与旧候选保持原字节，独立应用须更新固定构建候选并重新全量编译。
+
 ## PHPX 2.9 适配边界
 
 PHPX 的调试实现在 `src/core/debug.cc`，并提供异常/转换策略头文件。TypeApp 仍只在独立、固定的 PHPX 源码副本上应用线程与协程隔离、finalizer bailout 和可写字符串副本适配；共享 `vendor` 或 SDK 不直接改写。适配原文摘要和唯一替换由 `Type\Build\PhpxThreadSource` 门禁，完成后必须重新编译整份 PHPX。

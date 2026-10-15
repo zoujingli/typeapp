@@ -6,7 +6,7 @@ require __DIR__ . '/support.php';
 
 $root = dirname(__DIR__);
 $fixture = $argv[1] ?? 'nested-default';
-expect(in_array($fixture, ['nested-default', 'interface-constants', 'class-constant-symbols', 'declared-tostring', 'dynamic-tostring', 'inherited-promoted-property', 'reference-parameter-capture', 'call-arguments', 'call-arguments-coroutine'], true), '未知的值语义回归夹具');
+expect(in_array($fixture, ['nested-default', 'interface-constants', 'class-constant-symbols', 'declared-tostring', 'dynamic-tostring', 'inherited-promoted-property', 'reference-parameter-capture', 'call-arguments', 'call-arguments-coroutine', 'builtin-warnings'], true), '未知的值语义回归夹具');
 $extensions = [];
 if ($fixture === 'call-arguments-coroutine') {
     require $root . '/vendor/autoload.php';

@@ -1104,6 +1104,18 @@ final class TypephpCompatibility extends Translator
     {
         if (basename($file) === 'extension-' . $this->targetName . '.cc') {
             $content = $this->withClassConstantSymbols(fn (): string => $this->isolateClassConstantStorage($content));
+            if (!$this->threaded() && $this->isBuildModeBin() && $this->hasSapi('embed') && !$this->isNanoMode()) {
+                if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c'
+                    || hash_file('sha256', InstalledVersions::getInstallPath('swoole/phpx') . '/src/misc/typephp_runtime.cc') !== 'c16de4ca76275996c2d8778b97e46f289adb805b69679ccade36f8f6c55df48a') {
+                    throw new RuntimeException('embed 业务入口阶段适配需要重新核对 TypePHP/PHPX 原文');
+                }
+                // PHP CLI 在执行业务前结束请求启动阶段；embed 不会代做这一步。
+                // 保留模块初始化期间的启动错误，只在已生成的 main 分派前切换。
+                $content = preg_replace('/^php::eval\(/m', "PG(during_request_startup) = false;\nphp::eval(", $content, -1, $count);
+                if (!is_string($content) || $count !== 1) {
+                    throw new RuntimeException('embed 业务入口阶段适配缺少唯一主入口分派');
+                }
+            }
         }
         if ($this->staticRuntime() !== null && basename($file) === 'extension-' . $this->targetName . '.cc') {
             if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '8160f9c3f01ebe7eec0bbbc54fd54f9a21b67dcd4213c309d72d8de1a161603c') {
