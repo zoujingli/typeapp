@@ -14,12 +14,14 @@ $redis = null;
 try {
     (new ProjectCreator())->create($root . '/templates/type-project', $work, 'sqlite');
     $composer = json_decode(file_get_contents($work . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
-    $composer['require']['zoujingli/type-queue'] = '*';
-    $composer['require']['zoujingli/type-scheduler'] = '*';
+    // 本地候选只替换来源，组件版本与模板选定的发布批次保持一致。
+    $constraint = $composer['require']['zoujingli/type-core'];
+    $composer['require']['zoujingli/type-queue'] = $constraint;
+    $composer['require']['zoujingli/type-scheduler'] = $constraint;
     $composer['repositories'] = [];
     foreach (glob($root . '/plugin/type-*/composer.json') as $manifest) {
         $package = json_decode(file_get_contents($manifest), true, 512, JSON_THROW_ON_ERROR);
-        $composer['repositories'][] = ['type' => 'path', 'url' => dirname($manifest), 'options' => ['symlink' => false, 'versions' => [$package['name'] => '1.0.x-dev']]];
+        $composer['repositories'][] = ['type' => 'path', 'url' => dirname($manifest), 'options' => ['symlink' => false, 'versions' => [$package['name'] => $constraint]]];
     }
     $composer['repositories'] = [...$composer['repositories'], ...localComposerRepositories($root), ['packagist.org' => false]];
     file_put_contents($work . '/composer.json', json_encode($composer, JSON_THROW_ON_ERROR));
