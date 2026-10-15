@@ -1,0 +1,79 @@
+name: Windows 教程原程序停服诊断
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 保存教程原 EXE 的本仓发布运行
+        required: true
+        type: string
+      source_sha:
+        description: 原程序对应的完整源码 SHA
+        required: true
+        type: string
+      program_sha256:
+        description: SQLite 教程原 EXE 的 SHA-256
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TYPE_PROBE_RUN: ${{ inputs.run_id }}
+      TYPE_PROBE_SOURCE: ${{ inputs.source_sha }}
+      TYPE_PROBE_PROGRAM_SHA256: ${{ inputs.program_sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 核对已结束的教程原程序任务
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:TYPE_PROBE_RUN -cnotmatch '^[1-9][0-9]*$' -or $env:TYPE_PROBE_SOURCE -cnotmatch '^[a-f0-9]{40}$' -or $env:TYPE_PROBE_PROGRAM_SHA256 -cnotmatch '^[a-f0-9]{64}$') { throw '原程序身份格式无效。' }
+          $taskRun = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:TYPE_PROBE_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $taskRun.head_repository.full_name -cne $env:GITHUB_REPOSITORY -or $taskRun.head_sha -cne $env:TYPE_PROBE_SOURCE -or $taskRun.path -cne '.github/workflows/release.yml') { throw '原发布身份不符。' }
+          $taskPages = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:TYPE_PROBE_RUN/jobs?per_page=100" --paginate --slurp | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw '无法核对原教程任务。' }
+          $taskJobs = @($taskPages.jobs | Where-Object { $_.name -ceq 'tutorial-candidate / windows (sqlite) / sqlite · Windows x64 教程单程序' })
+          if ($taskJobs.Count -ne 1 -or $taskJobs[0].status -cne 'completed' -or @($taskJobs[0].steps | Where-Object { $_.name -ceq '保存构建与部署证据' -and $_.conclusion -ceq 'success' }).Count -ne 1) { throw '原教程任务尚未完成证据保全。' }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+          name: static-windows-application-evidence-sqlite-tutorial-candidate-1
+          path: build/original-tutorial
+      - name: 准备锁定测试控制器
+        run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 安装测试依赖与定位调试器
+        run: |
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $taskCdb = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/Debuggers/x64/cdb.exe'
+          $taskLldb = Get-Command lldb.exe -ErrorAction SilentlyContinue
+          if (Test-Path -LiteralPath $taskCdb) {
+            Add-Content $env:GITHUB_ENV ('TYPE_PROBE_CDB=' + $taskCdb)
+          } elseif ($null -ne $taskLldb) {
+            Add-Content $env:GITHUB_ENV ('TYPE_PROBE_LLDB=' + $taskLldb.Source)
+          } else { throw '原生停服诊断需要 CDB 或 LLDB。' }
+      - name: 原 EXE 的请求缩减与崩溃栈
+        run: |
+          & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-tutorial.php
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 保全原程序身份与停服结果
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-tutorial-stop-diagnosis
+          retention-days: 30
+          if-no-files-found: error
+          path: build/windows-tutorial-diagnosis/*
