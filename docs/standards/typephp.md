@@ -37,6 +37,12 @@ TypePHP 0.9.4 在接口内解析 `self::` 时使用类专用名称入口，可�
 
 `TypephpCompatibility` 仅在当前声明确实为接口时，将该次常量查找中的 `self` 规范化为接口完整名称，再交给上游解析；不改原声明 AST、常量注册顺序或普通类的 `self` 语义。适配核对预处理、作用域及常量解析源码摘要，`composer test:native-interface-constants` 对照 PHP/原生程序验证前向常量、嵌套数组、`self::class`、接口继承、实现类覆盖、命名空间隔离与全局接口。上游升级后用同一回归证明原实现已修复，再撤除适配；该结果不替代业务包完整运行验收。
 
+## 已声明 toString 方法的编译适配
+
+TypePHP 0.9.4 优先把 `toString()` 当作转换关键字，会将用户方法调用编译成 `php::toString()`。兼容层仅在静态类型能解析到真实方法声明时跳过该关键字入口，继续使用上游方法分发；涵盖类、接口及父接口、继承、类型属性和函数返回值。未知接收者类型仍遵守 TypePHP 的关键字规则，不在运行时猜测用户方法。
+
+显式 `(string)` 和字符串拼接保持 `__toString()` 语义；没有声明 `toString()` 的对象保留原转换行为。`composer test:native-declared-tostring` 对照 PHP/AOT 检查上述分派、空安全调用、接收者单次求值及原异常传播。适配核对方法解析、属性解析及声明查找的源码摘要；上游升级后须先验证同一行为再撤除。
+
 ## PHPX 2.9 适配边界
 
 PHPX 的调试实现在 `src/core/debug.cc`，并提供异常/转换策略头文件。TypeApp 仍只在独立、固定的 PHPX 源码副本上应用线程与协程隔离、finalizer bailout 和可写字符串副本适配；共享 `vendor` 或 SDK 不直接改写。适配原文摘要和唯一替换由 `Type\Build\PhpxThreadSource` 门禁，完成后必须重新编译整份 PHPX。

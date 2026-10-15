@@ -15,6 +15,7 @@ final class TypephpCompatibility extends Translator
     private bool $propertyCompatibilityVerified = false;
     private bool $defaultCompatibilityVerified = false;
     private bool $interfaceConstantCompatibilityVerified = false;
+    private bool $declaredMethodCompatibilityVerified = false;
     private ?StaticRuntimeSdk $staticRuntimeSdk = null;
 
     /** 静态构建直接绑定归档，不让编译器按 -l 名称优先选中 SDK 或 Homebrew 的共享库。 */
@@ -136,6 +137,48 @@ final class TypephpCompatibility extends Translator
             throw new RuntimeException('全量 AOT 不支持匿名类解释回退，请声明具名类');
         }
         return parent::parseNew($expr);
+    }
+
+    /** 已声明的 toString 是用户方法；仅未声明时沿用 TypePHP 的转换关键字。 */
+    protected function parseMethodCall(\PhpParser\Node\Expr\MethodCall $expr): string
+    {
+        if ($expr->name instanceof \PhpParser\Node\Identifier
+            && strtolower($expr->name->toString()) === 'tostring') {
+            if (!$this->declaredMethodCompatibilityVerified) {
+                $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+                foreach ([
+                    'src/CompilerBase.php' => '8767d9599d1d2ab7ed7ae218fe33df90524f2f961cf76c5355574cc01cb310c3',
+                    'src/Parser/MethodCallTrait.php' => '64f941d2b5fe0a263282d4fc871539239477dc9ff769cf2e1961f3e68ffc50f1',
+                    'src/Parser/PropertyAccessTrait.php' => 'b9ce2e5a082dc568589f360c84c8b92f4aaa0698921863d2e638192cf32c908d',
+                    'src/Generator/CallArgumentGenerator.php' => 'eddce4623049343393cb1e8e28ad0d0a7eaca4d6ad9233d4f85e1eeae9b4c900',
+                ] as $file => $sha256) {
+                    if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                        throw new RuntimeException('已声明方法适配需要重新核对 TypePHP：' . $file);
+                    }
+                }
+                $this->declaredMethodCompatibilityVerified = true;
+            }
+            $declaration = $this->resolveCalledFunctionDef($expr);
+            if ($declaration === null
+                && ($expr->var instanceof \PhpParser\Node\Expr\PropertyFetch || $expr->var instanceof \PhpParser\Node\Expr\StaticPropertyFetch)
+                && $expr->var->name instanceof \PhpParser\Node\Identifier) {
+                if ($expr->var instanceof \PhpParser\Node\Expr\PropertyFetch) {
+                    $this->getPropertyIdentifier($expr->var, $expr->var->var, $expr->var->name);
+                } elseif ($expr->var instanceof \PhpParser\Node\Expr\StaticPropertyFetch) {
+                    $this->resolveNativeStaticPropertyFetch($expr->var);
+                }
+                $property = $this->getNativePropertyDef($expr->var);
+                if ($property !== null && $property->class !== '') {
+                    $declaration = $this->findAotMethodFunctionDef($property->class, $expr->name->toString());
+                }
+            }
+            if ($declaration !== null) {
+                // 复用上游跳过关键字的入口；后续仍负责可见性、继承和接收者单次求值。
+                $expr = clone $expr;
+                $expr->setAttribute('nativeKeywordCall', true);
+            }
+        }
+        return parent::parseMethodCall($expr);
     }
 
     /** 接口中的 self 属于当前接口；上游类专用名称入口会丢掉接口名。 */

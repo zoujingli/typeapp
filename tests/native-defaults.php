@@ -6,7 +6,7 @@ require __DIR__ . '/support.php';
 
 $root = dirname(__DIR__);
 $fixture = $argv[1] ?? 'nested-default';
-expect(in_array($fixture, ['nested-default', 'interface-constants'], true), '未知的值语义回归夹具');
+expect(in_array($fixture, ['nested-default', 'interface-constants', 'declared-tostring'], true), '未知的值语义回归夹具');
 $work = $root . '/build/native-values-' . bin2hex(random_bytes(6));
 expect(mkdir($work, 0700, true), '无法创建原生值语义回归目录');
 $source = $work . '/input.php';
