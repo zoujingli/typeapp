@@ -35,6 +35,8 @@ PostgreSQL 的本机 TLS 夹具通过 libpq `hostaddr`/`PGHOSTADDR` 固定连接
 
 `tools/prepare-swoole-module.sh` 和 Windows SDK 准备脚本默认复用这些文件。维护者显式设置 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 才下载固定 Swoole 源码并应用当前适配；Unix 重建还需提供 `RUNNER_TEMP` 和 `SWOOLE_CONFIGURE_OPTS`。PHP SDK、PHPX 及其他依赖的准备不因此变为离线。内置共享模块是构建输入，最终程序静态链接和启动不释放运行库仍按[静态验证记录](static-runtime-feasibility.md)推进。
 
+依赖要求 `ext-sodium` 时，可使用[隔离 sodium 模块](sodium-module.md)入口，保持共享 SDK 与 vendor 不变。CLI 安装检查、共享 embed 加载和生产静态 SDK 分别验收，不忽略 Composer 平台依赖。
+
 ## 安装和快速检查
 
 ```bash

@@ -4,6 +4,8 @@ TypeApp 的开发与构建组件：生成配置、路由和模型，审计完整
 
 **已内置四平台 Swoole 共享模块。** 安装包含 `resources/swoole/` 的组件版本后，共享库开发构建默认校验并复用匹配模块，无需另行下载。静态单程序使用目标 SDK 中的静态归档；两种输入不能互换。ABI、许可证及覆盖方式见[资源说明](resources/swoole/README.md)。
 
+额外依赖需要 `ext-sodium` 时，主仓提供[隔离模块制备入口](https://github.com/zoujingli/typeapp/blob/main/docs/development/sodium-module.md)，不改共享 SDK 或 vendor。它服务于开发和共享 embed，不能替代目标平台完整静态 SDK 的制备与验收，也不能通过忽略 Composer 平台依赖解决缺失扩展。
+
 `package` 只输出一个可执行文件，要求非系统运行库静态链接、资源与许可材料内嵌，启动不释放运行库。构建时通过 `TYPE_STATIC_RUNTIME` 指定已校验的目标 SDK；缺少静态能力不能通过交付门禁。使用入口、已发布版本和目标系统要求见[构建指南](https://iots.top/#/guide/deployment)。
 
 应用可在 `type-app.json` 用 `build-profiles` 声明数据库与功能，通过 `TYPEAPP_BUILD_PROFILE=sqlite` 或 `build-profile` 选择。每个静态程序只保留所选 PDO 驱动；应用与生产 Composer 包仍全量编译。SDK 的 profile、功能闭包与真实 embed 扩展表必须一致，否则停止构建。物联中心的默认 `sqlite`、`mysql`、`pgsql` 均保留告警、导出、队列与调度，因此仍包含 Redis；通用缓存需显式声明 `cache`。程序在连接前拒绝不匹配的 `DB_DRIVER`，不能在运行时换库。
