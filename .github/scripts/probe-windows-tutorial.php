@@ -73,6 +73,23 @@ function probeTutorialStop(string $name, array $requests, bool $trace, string $p
             $response = $client->request($method, $path, $headers, $body);
             $observed[] = ['method' => $method, 'path' => $path, 'status' => $response->status, 'body' => $response->body];
         }
+        if (str_starts_with($name, 'concurrent')) {
+            $environment['TYPE_CATALOG_URL'] = 'http://' . $address;
+            $environment['TYPE_APP_TEST_DIRECTORY'] = dirname(__DIR__, 2);
+            $test = dirname($program, 2) . '/tests/catalog.php';
+            $workers = [new Process([PHP_BINARY, $test, '--ensure-request'], $work, $environment), new Process([PHP_BINARY, $test, '--ensure-request'], $work, $environment)];
+            try {
+                foreach ($workers as $worker) {
+                    $reply = $worker->wait(10);
+                    Assert::true($reply->successful(), '并发请求失败：' . $reply->stderr);
+                    $observed[] = ['concurrent' => true, 'body' => $reply->stdout];
+                }
+            } finally {
+                foreach ($workers as $worker) {
+                    $worker->stop();
+                }
+            }
+        }
     } finally {
         $result = $server->stop($trace ? 15 : 5);
         if ($debugger !== null) {
@@ -102,6 +119,7 @@ try {
         'missing' => [['GET', '/products/999999', '']],
         'relation' => [['POST', '/products/1/labels', '{}']],
         'upsert' => [['POST', '/products/import', '{}'], ['POST', '/products/import', '{}']],
+        'concurrent' => [],
         'ensure' => [['POST', '/products/ensure', '{"code":"contended","name":"竞争创建"}']],
     ];
     foreach ($cases as $name => $requests) {
@@ -112,6 +130,27 @@ try {
         if ($report['cases'][$name]['exit-code'] === -1073741819) {
             $report['cases'][$name . '-trace'] = probeTutorialStop($name . '-trace', $requests, true, $program, $work, $base, $environment);
             break;
+        }
+    }
+    // 继续复演保全的完整测试，新的数据库防止缩减用例改变原始输入。
+    for ($attempt = 1; $attempt <= 3; ++$attempt) {
+        $settings = array_replace($environment, ['TYPE_APP_BINARY' => $program,
+            'TYPE_APP_TEST_DIRECTORY' => $root, 'DB_SQLITE_FILE' => $work . '/var/full-' . $attempt . '.sqlite']);
+        $process = new Process([PHP_BINARY, $original . '/tests/catalog.php'], $work, $settings);
+        try {
+            $result = $process->wait(60);
+            file_put_contents($base . '/full-' . $attempt . '.log', $result->stdout . $result->stderr);
+            $report['full'][$attempt] = ['exit-code' => $result->exitCode, 'timed-out' => $result->timedOut];
+            foreach (explode("\n", $result->stdout) as $line) {
+                if (str_starts_with($line, 'server-stop ')) {
+                    $stop = json_decode(substr($line, 12), true, 512, JSON_THROW_ON_ERROR);
+                    unset($stop['stdout'], $stop['stderr']);
+                    $report['full'][$attempt]['server'] = $stop;
+                }
+            }
+            echo 'full-' . $attempt . ': ' . json_encode($report['full'][$attempt], JSON_THROW_ON_ERROR) . "\n";
+        } finally {
+            $process->stop();
         }
     }
 } finally {
