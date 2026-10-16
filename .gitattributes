@@ -1,2 +1,3 @@
 *.php text eol=lf
+**/snapshots/*.json text eol=lf
 web/pnpm-lock.yaml text eol=lf

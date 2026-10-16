@@ -52,6 +52,14 @@ php vendor/bin/type schema:prepare app/common/database/CreateProducts.php
 
 结果包含快照路径、摘要和是否新建。快照保存 `protocol`、声明身份、三库有序 SQL、各驱动事务标志与 `sha256`；逐项审查后将 PHP 声明和 JSON 一并提交。同声明、同协议再次准备不会改变文件。已存在的不同内容报 `TYPE_SCHEMA_FROZEN`，不得通过删除旧快照重写已应用迁移。
 
+冻结 JSON 使用 UTF-8 和 LF，重复准备会逐字节核对。应用应在自己的 `.gitattributes` 中固定快照换行，避免 Windows 检出自动转换为 CRLF：
+
+```gitattributes
+**/snapshots/*.json text eol=lf
+```
+
+自定义快照目录时相应调整规则。已有快照只恢复仓库中审查过的原始字节，不重新生成或修改历史 SQL。
+
 正常构建不调用 SQL 生成器。快照缺失报 `TYPE_SCHEMA_SNAPSHOT_MISSING`；协议、声明或 SQL 摘要不符报 `TYPE_SCHEMA_SNAPSHOT_CHANGED`。开发缓存复用前也会核验快照。准备失败不发布半份 JSON。路径只能位于声明文件目录内，不能通过 `..` 或符号链接越界。
 
 ## 接入现有迁移入口
