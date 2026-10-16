@@ -83,13 +83,13 @@ UNKNOWN 先停止当前动作，核对业务身份和 Outbox 记录，再显式�
 ```bash
 php vendor/bin/type dev type-app.json catalog relay-fail
 php vendor/bin/type dev type-app.json catalog status
-sleep 1
+php -r 'sleep(30);'
 php vendor/bin/type dev type-app.json catalog relay
 php vendor/bin/type dev type-app.json catalog consume
 php vendor/bin/type dev type-app.json catalog status
 ```
 
-`relay-fail` 真实发布到 Redis，随后在登记 Outbox 接受凭据前故意抛出 `catalog_accepted_without_receipt`，输出 `accepted:"unknown"`、`retry:false`。此时没有接受或消费凭据，不能推断 Redis 未接受。等本演练 250 毫秒 Outbox 领取租约结束后，下一次独立 `relay` 重新领取并投递同一 ID，再登记真实 Stream 回执。生产租约须按外部调用预算配置，短租约只用于快速演练。
+`relay-fail` 真实发布到 Redis，随后在登记 Outbox 接受凭据前故意抛出 `catalog_accepted_without_receipt`，输出 `accepted:"unknown"`、`retry:false`。此时没有接受或消费凭据，不能推断 Redis 未接受。示例沿用 Store 默认的 30 秒领取租约，覆盖领取事务、外部投递和接受凭据登记；租约到期后，下一次独立 `relay` 重新领取并投递同一 ID，再登记真实 Stream 回执。租约仍有效时返回 `accepted:0`。实际部署按完整投递预算设置租约，不能用短租约代替等待或忽略登记失败。
 
 `consume` 返回 `processed:2`、`remaining:0`、`effects:1`。Job 在 `catalog` 事务内调用 `Store::consumed()`，仅首次取得凭据时保存 `Delivery`。消息 ID 是效果主键；`trace_id=catalog-product-<id>` 只用于核对。最终状态具有接受和消费两个凭据，再次 relay 或 consume 都处理零条。
 

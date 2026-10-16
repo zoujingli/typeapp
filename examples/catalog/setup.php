@@ -43,12 +43,13 @@ $registration = '\app\catalog\database\CreateProduct::migration($driver)';
 if (substr_count($registrySource, $registration) !== 1) {
     throw new RuntimeException('教程迁移登记位置不唯一');
 }
-file_put_contents($registry, str_replace($registration, $registration . ', \app\catalog\database\CreateLabels::migration($driver), \app\catalog\database\AddProductNote::migration($driver), \app\catalog\database\CreateDelivery::migration($driver), (new \Type\Orm\Outbox\Store("catalog_outbox", 250))->migration($driver, "006_catalog_outbox")', $registrySource));
+file_put_contents($registry, str_replace($registration, $registration . ', \app\catalog\database\CreateLabels::migration($driver), \app\catalog\database\AddProductNote::migration($driver), \app\catalog\database\CreateDelivery::migration($driver), (new \Type\Orm\Outbox\Store("catalog_outbox"))->migration($driver, "006_catalog_outbox")', $registrySource));
 $settings = json_decode(file_get_contents($configuration), true, 512, JSON_THROW_ON_ERROR);
 $settings['application']['services'][] = ['id' => 'catalog.tenant', 'class' => 'app\\catalog\\middleware\\CatalogTenant'];
 $settings['application']['http']['middleware']['catalog.tenant'] = 'catalog.tenant';
 $settings['application']['services'][] = ['id' => 'catalog.infrastructure', 'class' => 'app\\catalog\\runtime\\Infrastructure', 'factory' => ['class' => 'app\\catalog\\runtime\\Infrastructure', 'method' => 'create']];
-$settings['application']['services'][] = ['id' => 'catalog.outbox', 'class' => 'Type\\Orm\\Outbox\\Store', 'arguments' => [['value' => 'catalog_outbox'], ['value' => 250]]];
+// 沿用 Store 的标准租约，覆盖领取、外部投递及登记；不能为缩短验收等待压缩业务租约。
+$settings['application']['services'][] = ['id' => 'catalog.outbox', 'class' => 'Type\\Orm\\Outbox\\Store', 'arguments' => [['value' => 'catalog_outbox']]];
 $settings['application']['services'][] = ['id' => 'catalog.audit', 'class' => 'app\\catalog\\event\\AuditChanged'];
 $settings['application']['events'][] = ['class' => 'app\\catalog\\event\\ProductChanged', 'listeners' => [['service' => 'catalog.audit', 'method' => 'changed']]];
 $settings['config']['files'][] = 'config/catalog.php';

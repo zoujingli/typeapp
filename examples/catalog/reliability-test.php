@@ -76,9 +76,17 @@ $suite->test('原Service缓存、同源事务、同步事件和Outbox重复消�
     $unknown = $run('status');
     Assert::same(false, $unknown['accepted']);
     Assert::same(false, $unknown['consumed']);
-    // 明确等待本演练250ms领取租约结束，再由下一次独立命令重新领取。
-    usleep(400000);
-    Assert::same(1, $run('relay')['accepted']);
+    // 通过公开领取结果等待标准租约到期；活动租约返回零，命令异常仍立即失败，不能盲目重发。
+    $deadline = microtime(true) + 35;
+    do {
+        $accepted = $run('relay')['accepted'];
+        Assert::true(in_array($accepted, [0, 1], true), 'Outbox 重领数量异常');
+        if ($accepted === 1) {
+            break;
+        }
+        usleep(1000000);
+    } while (microtime(true) < $deadline);
+    Assert::same(1, $accepted, 'Outbox 标准租约到期后未在预算内重新领取');
     Assert::same(0, $run('relay')['accepted']);
     $consumed = $run('consume');
     Assert::same(2, $consumed['processed']);

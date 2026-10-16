@@ -10,7 +10,7 @@
 
 RC15 的独立脚手架安装存在测试来源的版本声明冲突，Windows 教程还暴露了普通 embed 停服时类元数据提前释放的问题，未公开 Release。其标签保留原提交；修复后的模板消费与后续验收使用 RC17，不移动旧标签。生命周期修复及回归边界见[TypePHP 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md#embed-请求与模块生命周期)。
 
-RC16 被 Windows 的配置及声明生成契约检查阻止，未公开 Release。已修正生成路径身份，以及测试中的环境变量删除和快照链接夹具；后续使用 RC17 重新完整验收，RC16 标签保持原源码。
+RC16 被 Windows 的配置及声明生成契约检查和 PostgreSQL 教程投递验收阻止，未公开 Release。已修正生成路径身份、测试中的环境变量删除和快照链接夹具；教程改为沿用标准 Outbox 租约，避免领取和登记尚未完成就过期，依据见[租约诊断记录](../evidence/windows-tutorial-lease-20261016.md)。后续使用 RC17 重新完整验收，RC16 标签保持原源码。
 
 ## 从 RC14 升级到 RC17
 
