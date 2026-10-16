@@ -50,7 +50,8 @@ jobs:
   windows:
     if: github.repository == 'zoujingli/typeapp' && !contains(fromJSON('["http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace","environment-probe"]'), inputs.scope)
     runs-on: windows-2022
-    timeout-minutes: 120
+    # 完整串行门禁在最后一个数据库前已耗时约 116 分钟；单项编译及业务预算由验收入口分别约束。
+    timeout-minutes: 180
     env:
       TYPE_RELEASE_VERSION: ${{ inputs.version || inputs.candidate_version }}
       COMPOSER_NO_INTERACTION: '1'

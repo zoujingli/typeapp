@@ -29,10 +29,18 @@
 
 该平台程序 SHA-256 为 `dcb37b43fbb63b606c78cf9d3472e8bf6f98047e35f1e4001786ad10f53df00a`，证据 ZIP 摘要为 `a5ff3fad5e145e4a739397050b50bcf2c8c234f073b3fcdaf74fb001a3bcfed8`。归档逐项回读后已回收本轮消费者约 48 MiB。
 
-修改文件格式与语法、79 项相关契约测试和 678 个断言，以及 942 份 PHP 基础检查、1965 处文档引用与站点发布边界检查均通过。Windows 完整应用结果待复验后补记；RC17 尚未创建标签或公开。一次性 Windows 诊断入口已移除，原结果保留。
+修改文件格式与语法、79 项相关契约测试和 678 个断言，以及 942 份 PHP 基础检查、1965 处文档引用与站点发布边界检查均通过。当时 RC17 尚未创建标签或公开；后续 Windows 应用复验见下节。一次性 Windows 诊断入口已移除，原结果保留。
 
 ## 快捷接口的同类调用点
 
 `tests/helpers-build.php` 同样把控制器的三库配置交给仅使用 SQLite 的程序，现改为向该子进程传递构建报告中的运行配置。四组件全量 AOT、真实 SQLite、输入校验、受限查询和白名单排序的 PHP/原生对照通过。
 
-同一个新程序再次经公开 `tests/helpers.php` 验证：旧全量配置复现相同 PostgreSQL 常量错误，自身配置退出 0、业务断言通过。程序 SHA-256 为 `1f0e4f5af84d031f568fe753509ef9bb7624660837c9851dd7af825456ce026a`；此项是 macOS ARM64 共享 embed 结果，Windows 仍由后续应用复验覆盖。
+同一个新程序再次经公开 `tests/helpers.php` 验证：旧全量配置复现相同 PostgreSQL 常量错误，自身配置退出 0、业务断言通过。程序 SHA-256 为 `1f0e4f5af84d031f568fe753509ef9bb7624660837c9851dd7af825456ce026a`；此项是 macOS ARM64 共享 embed 结果。
+
+## Windows 应用复验
+
+[应用复验运行](https://github.com/zoujingli/typeapp/actions/runs/38847727655)固定源码 `f41b84ad594ae7c96e66fb8b2199bd2b4a10c97c`，完整通过 HTTP/CLI 共同装配、业务事件、快捷接口、内嵌资源、物联中心三库开发与原生入口，以及三库独立模板和可搬迁包验收。SQLite、MySQL、PostgreSQL 的原生 HTTP 结果均属于同一个主应用程序，SHA-256 为 `9be290d63513ab92be5690f7ceb862c2b25f80f3e146cdb3d232dd4605e5efb7`，各自执行 527、526、526 次 HTTP 检查并正常退出。
+
+原始 Artifact `12026965544` 共 23941024 字节，ZIP SHA-256 为 `2f990570ec1d836a92101e13d9cb66379f143b22c1840576a014b5b94589b2a8`。已回读 ZIP CRC、六份开发/原生业务报告、三份模板程序摘要、HTTP/事件构建报告身份、快捷接口程序摘要，以及两个外部数据库的进程清理回执。
+
+本轮使用 `scope=application`，属于 Windows 共享 embed 的应用复验，未执行完整公开契约、独立 ORM 或静态单程序发布门禁。RC17 标签随后固定到同一源码，由[正式发布运行](https://github.com/zoujingli/typeapp/actions/runs/38854215726)独立执行完整范围；上述定向结果不能替代该发布结论。
