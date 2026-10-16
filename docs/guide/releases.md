@@ -6,22 +6,24 @@
 
 每个“平台 × profile”下载一个可执行文件，外置配置独立维护。PHP、PHPX、Swoole 等非系统原生库已静态链接，普通启动不释放运行库。历史 RC7 的目录归档与旧标签保持原样，其使用方式和验收身份保留在[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
-本轮发布目标为 **RC17**，当前正在完成同一源码的四平台门禁，尚未公开。下面的 RC17 安装命令在对应 Release 公开后使用；RC14 的源码、标签和验收结论保持原身份。
+本轮发布目标为 **RC18**，当前正在完成同一源码的四平台门禁，尚未公开。下面的 RC18 安装命令在对应 Release 公开后使用；RC14 的源码、标签和验收结论保持原身份。
 
-RC15 的独立脚手架安装存在测试来源的版本声明冲突，Windows 教程还暴露了普通 embed 停服时类元数据提前释放的问题，未公开 Release。其标签保留原提交；修复后的模板消费与后续验收使用 RC17，不移动旧标签。生命周期修复及回归边界见[TypePHP 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md#embed-请求与模块生命周期)。
+RC15 的独立脚手架安装存在测试来源的版本声明冲突，Windows 教程还暴露了普通 embed 停服时类元数据提前释放的问题，未公开 Release。其标签保留原提交；修复后的模板消费与后续验收使用 RC18，不移动旧标签。生命周期修复及回归边界见[TypePHP 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md#embed-请求与模块生命周期)。
 
-RC16 被 Windows 的配置及声明生成契约检查和 PostgreSQL 教程投递验收阻止，未公开 Release。已修正生成路径身份、测试中的环境变量删除和快照链接夹具；教程改为沿用标准 Outbox 租约，避免领取和登记尚未完成就过期，依据见[租约诊断记录](../evidence/windows-tutorial-lease-20261016.md)。后续使用 RC17 重新完整验收，RC16 标签保持原源码。
+RC16 被 Windows 的配置及声明生成契约检查和 PostgreSQL 教程投递验收阻止，未公开 Release。已修正生成路径身份、测试中的环境变量删除和快照链接夹具；教程改为沿用标准 Outbox 租约，避免领取和登记尚未完成就过期，依据见[租约诊断记录](../evidence/windows-tutorial-lease-20261016.md)。后续使用 RC18 重新完整验收，RC16 标签保持原源码。
 
-## 从 RC14 升级到 RC17
+RC17 的十二个单程序和十二组教程候选已通过，但 Windows 完整串行任务达到两小时总时限，最后的 PostgreSQL 步骤被取消，未公开 Release。进入该步骤前已用时约 116 分钟；相同源码的独立应用复验中该步骤需要约 15 分钟。CI 总预算调整为三小时，单项编译与业务期限继续由验收入口约束；后续使用 RC18 完整复验，RC17 标签保持原身份。依据见[Windows 总预算记录](../evidence/windows-ci-budget-20261016.md)。
 
-RC17 收入共同装配、Model 操作完善、原 Service 声明转换、通信修复及只读演示环境。升级前备份配置和数据，核对以下变化：
+## 从 RC14 升级到 RC18
+
+RC18 收入共同装配、Model 操作完善、原 Service 声明转换、通信修复及只读演示环境。升级前备份配置和数据，核对以下变化：
 
 | 范围 | 升级操作 |
 | --- | --- |
 | 运行环境 | 将 `APP_ENV=development/production` 改为 `dev/prod`；演示站使用 `demo`。旧值和未知值会被拒绝，`prod/demo` 不开启调试 |
 | 只读演示 | 保留原账号体系，允许普通登录、退出和查询；其他匹配写路由返回 `403 demo_readonly`。CLI 维护能力保留，演示站须暂停业务消费和调度任务 |
 | 事务与缓存声明 | 删除 `operations.classes`，调用原 Service 类型，通过标准准备入口加载本代转换结果。活动事务内 Cacheable 不使用共享缓存，CacheEvict 等待同数据源最外层确认提交 |
-| 组件与模板 | 统一选择 RC17 并提交锁文件；新模板已固定完整第一方版本闭包，驱动选择不会回填开发约束 |
+| 组件与模板 | 统一选择 RC18 并提交锁文件；新模板已固定完整第一方版本闭包，驱动选择不会回填开发约束 |
 | 物联中心已有数据 | 停服备份后执行升级检查及必要迁移，再更新内嵌前端；不要对已有库重复执行首次安装 |
 
 环境以[运行环境](environment.md#运行环境)为准，声明转换见[操作声明](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)，数据及页面更新顺序见[构建与部署](deployment.md)。HTTP 客户端新增显式压缩头和作用域预算支持；WebSocket 新增握手信息、控制帧观察及关闭提交结果。协议边界见[type-core](plugins/type-core.md)，不把这些接口理解为自动重试、自动解压或新的设备协议。
@@ -57,7 +59,7 @@ flowchart TB
 
 ## 下载程序
 
-[v1.0.0-rc.17 下载页](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.17)在发布完成后提供带数据库 profile 的程序附件。每次部署只下载匹配平台和数据库的一个程序；其余 11 个程序是其他环境的选择项。发布附件共 14 项：12 个程序、`SHA256SUMS` 和 `release-manifest.json`，不包含重建 SDK。历史版本的附件名称和摘要不变。
+[v1.0.0-rc.18 下载页](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.18)在发布完成后提供带数据库 profile 的程序附件。每次部署只下载匹配平台和数据库的一个程序；其余 11 个程序是其他环境的选择项。发布附件共 14 项：12 个程序、`SHA256SUMS` 和 `release-manifest.json`，不包含重建 SDK。历史版本的附件名称和摘要不变。
 
 选择与操作系统、CPU、系统库基线和数据库匹配的附件，具体要求见[平台与验收](platforms.md)。文件名中的版本不带前缀 `v`：
 
@@ -76,7 +78,7 @@ GitHub 自动生成的 `Source code` 归档是源码下载入口，部署时无�
 
 ```bash
 set -eu
-release_version="${TYPEAPP_RELEASE_VERSION:-1.0.0-rc.17}"
+release_version="${TYPEAPP_RELEASE_VERSION:-1.0.0-rc.18}"
 release_base="https://github.com/zoujingli/typeapp/releases/download/v${release_version}"
 release_program="typeapp-iot-${release_version}-linux-x64-sqlite"
 curl --fail --location --output "$release_program" "$release_base/$release_program"
@@ -110,10 +112,10 @@ mv "$release_program" app
 
 ## Composer 按版本安装
 
-组件与通用模板不包含物联中心前端。RC17 模板在发布前固定第一方生产及开发依赖；发布门禁会从默认 Packagist 核对 16 个包的准确版本和来源提交。下面以 SQLite 独立应用为例，版本公开后执行：
+组件与通用模板不包含物联中心前端。RC18 模板在发布前固定第一方生产及开发依赖；发布门禁会从默认 Packagist 核对 16 个包的准确版本和来源提交。下面以 SQLite 独立应用为例，版本公开后执行：
 
 ```bash
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.17
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.18
 cd my-app
 php configure.php sqlite
 composer install --no-plugins --no-scripts
@@ -122,7 +124,7 @@ php dev.php check
 
 改用 MySQL 或 PostgreSQL 时，在首次安装前选择 `configure.php mysql` 或 `configure.php pgsql`，脚本会替换单一驱动包并保留本批版本约束。所选数据库服务和开发 PDO 扩展也须准备，见[环境与依赖](environment.md)。
 
-RC17 模板已经固定完整第一方依赖闭包，无需再次手工声明每个包。新增组件也应选择本批准确版本。`minimum-stability RC` 允许解析候选依赖，不表示 RC 已稳定。安装后可核对实际版本和来源：
+RC18 模板已经固定完整第一方依赖闭包，无需再次手工声明每个包。新增组件也应选择本批准确版本。`minimum-stability RC` 允许解析候选依赖，不表示 RC 已稳定。安装后可核对实际版本和来源：
 
 ```bash
 composer show 'zoujingli/type-*'
@@ -159,7 +161,7 @@ git push origin "$release_tag"
 需要补齐既有候选时，使用原版本重试，不创建或移动标签：
 
 ```bash
-gh workflow run release.yml --ref v1.0.0-rc.17 -f version=v1.0.0-rc.17
+gh workflow run release.yml --ref v1.0.0-rc.18 -f version=v1.0.0-rc.18
 ```
 
 候选尚未封存时，重新执行完整工作流；不要把不同运行轮次的零散平台结果拼为一次验收。候选草稿已存在时，工作流复用原运行的验收和已保存附件；附件上传不完整时从原 Actions artifact 恢复。原证据过期或同名附件摘要不同会停止，不能靠重编译冒充原候选。

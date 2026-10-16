@@ -51,12 +51,12 @@ flowchart TB
   Build --> Package[目标平台运行包]
 ```
 
-以下安装示例对应 RC17；确认[版本发布](releases.md)已公开该批次后执行。RC 不代表稳定版本，须核对 Packagist 实际索引、批次和平台范围：
+以下安装示例对应 RC18；确认[版本发布](releases.md)已公开该批次后执行。RC 不代表稳定版本，须核对 Packagist 实际索引、批次和平台范围：
 
 ```bash
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm-sqlite:1.0.0-rc.17
+composer require zoujingli/type-orm-sqlite:1.0.0-rc.18
 ```
 
 提交应用的 `composer.lock`，让构建固定到实际安装的版本和提交。版本 tag 不会移动各子仓的 `main`；`dev-main` 表示各子仓最近一次分支同步，不能当作本批次版本的别名。
@@ -76,7 +76,7 @@ composer require zoujingli/type-orm-sqlite:1.0.0-rc.17
 构建与测试工具通常安装为开发依赖：
 
 ```bash
-composer require --dev zoujingli/type-build:1.0.0-rc.17 zoujingli/type-testing:1.0.0-rc.17
+composer require --dev zoujingli/type-build:1.0.0-rc.18 zoujingli/type-testing:1.0.0-rc.18
 ```
 
 需要跟进开发分支时，按下文[版本与接口依据](#版本与接口依据)明确选择开发依赖闭包；不要只改顶层包版本就假定其依赖都已升级。
@@ -161,7 +161,7 @@ main();
 
 | 使用目的 | 依赖选择 | 对应说明 |
 | --- | --- | --- |
-| 使用 RC17 | 模板与第一方组件固定 `1.0.0-rc.17`，公开状态见版本说明 | 本批教程、各包不可变 tag 中的 README |
+| 使用 RC18 | 模板与第一方组件固定 `1.0.0-rc.18`，公开状态见版本说明 | 本批教程、各包不可变 tag 中的 README |
 | 复现 RC14 | 模板与第一方组件固定 `1.0.0-rc.14` | RC14 tag 中的文档与包 README |
 | 使用当前开发能力 | 同批分发的 `dev-main` / `1.0.x-dev` 组件及开发工具 | `/next/`、所用源码提交的 README |
 | 验证尚未分发的修改 | 主仓锁定依赖，或受控的本地独立消费者 | 该次源码与实际验证结果，不代表公开版本可用 |
@@ -176,7 +176,7 @@ composer require --dev zoujingli/type-build:dev-main --with-all-dependencies
 composer show --locked 'zoujingli/type-*'
 ```
 
-`dev-main` 的分支别名是 `1.0.x-dev`。`prefer-stable` 不会把所有传递依赖自动选成开发版，已有 RC 精确约束也不会被 `--with-all-dependencies` 解除；组合其他组件时，按上方依赖表核对完整第一方闭包。包可以声明更高的最低版本，例如当前 PDO 驱动要求带前置 hook 检查的 runtime；这个约束不是 RC17 已发布的声明。
+`dev-main` 的分支别名是 `1.0.x-dev`。`prefer-stable` 不会把所有传递依赖自动选成开发版，已有 RC 精确约束也不会被 `--with-all-dependencies` 解除；组合其他组件时，按上方依赖表核对完整第一方闭包。包可以声明更高的最低版本，例如当前 PDO 驱动要求带前置 hook 检查的 runtime；这个约束不是 RC18 已发布的声明。
 
 核对 lock 中的版本与 source reference，再提交锁文件。主仓提交只有完成子仓同步和 Packagist 索引才可由公开 Composer 安装；`dev-main` 也不保证就是主仓最新 SHA。升级后重新生成声明、执行对应业务回归和目标平台 AOT；不要用忽略平台要求或删除锁文件解决接口不匹配。
 

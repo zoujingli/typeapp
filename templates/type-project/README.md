@@ -18,12 +18,12 @@
 
 ## 创建与驱动选择
 
-模板的 `composer.json` 保存组件版本策略，选择驱动时沿用原驱动约束、其他组件约束与稳定性。本模板已固定第一方生产及开发依赖为 `1.0.0-rc.17`，允许 `RC` 稳定性；创建应用不会自动安装依赖。
+模板的 `composer.json` 保存组件版本策略，选择驱动时沿用原驱动约束、其他组件约束与稳定性。本模板已固定第一方生产及开发依赖为 `1.0.0-rc.18`，允许 `RC` 稳定性；创建应用不会自动安装依赖。
 
-以下步骤用于 RC17 同批版本。执行前核对[版本发布页](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.17)已经公开；发布门禁尚未通过时，不从旧版本拼装这些接口。
+以下步骤用于 RC18 同批版本。执行前核对[版本发布页](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.18)已经公开；发布门禁尚未通过时，不从旧版本拼装这些接口。
 
 ```sh
-composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.17
+composer create-project --no-install --no-plugins --no-scripts zoujingli/type-project my-app 1.0.0-rc.18
 cd my-app
 php configure.php sqlite
 composer install --no-plugins --no-scripts
@@ -58,7 +58,7 @@ php vendor/bin/type dev type-app.json help
 需要通过 Git 查看模板源码时，也可使用公开 HTTPS 地址，无需 SSH 密钥：
 
 ```sh
-git clone --branch v1.0.0-rc.17 --single-branch https://github.com/zoujingli/type-project.git my-app
+git clone --branch v1.0.0-rc.18 --single-branch https://github.com/zoujingli/type-project.git my-app
 cd my-app
 php configure.php sqlite
 composer install --no-plugins --no-scripts

@@ -6,15 +6,15 @@ PostgreSQL 驱动复用 type-orm 的 Connection、事务和作用域池，独立
 
 ## 安装与版本
 
-源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-orm-pgsql)维护，经分发子仓进入 Packagist。以下命令对应 RC17 批次，公开状态以[版本说明](https://iots.top/#/guide/releases)为准；Composer 自动解析传递依赖。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-orm-pgsql)维护，经分发子仓进入 Packagist。以下命令对应 RC18 批次，公开状态以[版本说明](https://iots.top/#/guide/releases)为准；Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm-pgsql:1.0.0-rc.17
+composer require zoujingli/type-orm-pgsql:1.0.0-rc.18
 ```
 
-本页接口对应 RC17，使用同批组件并提交 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。RC 仍为预发布版，验收范围见[版本说明](https://iots.top/#/guide/releases)。RC14 应用继续使用 [RC14 包文档](https://github.com/zoujingli/type-orm-pgsql/blob/v1.0.0-rc.14/README.md)，不要混用新版接口。安装和升级核对统一见[版本与接口依据](https://iots.top/#/guide/components?id=版本与接口依据)。
+本页接口对应 RC18，使用同批组件并提交 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。RC 仍为预发布版，验收范围见[版本说明](https://iots.top/#/guide/releases)。RC14 应用继续使用 [RC14 包文档](https://github.com/zoujingli/type-orm-pgsql/blob/v1.0.0-rc.14/README.md)，不要混用新版接口。安装和升级核对统一见[版本与接口依据](https://iots.top/#/guide/components?id=版本与接口依据)。
 
 连接采用原生预处理、异常模式及明确的连接超时。主键通过 PostgreSQL 的 RETURNING 语义取得，不假设 MySQL 的自增或 DDL 行为。原生执行仍保留参数绑定、错误信息边界和失效租约检查。
 

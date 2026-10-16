@@ -8,15 +8,15 @@
 
 ## 安装与版本
 
-源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-mqtt)维护，经分发子仓进入 Packagist。以下命令对应 RC17 批次，公开状态以[版本说明](https://iots.top/#/guide/releases)为准；Composer 自动解析传递依赖：
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-mqtt)维护，经分发子仓进入 Packagist。以下命令对应 RC18 批次，公开状态以[版本说明](https://iots.top/#/guide/releases)为准；Composer 自动解析传递依赖：
 
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-mqtt:1.0.0-rc.17
+composer require zoujingli/type-mqtt:1.0.0-rc.18
 ```
 
-本组件使用 Apache-2.0，完整材料见 LICENSE 与 NOTICE。本页接口对应 RC17，使用同批组件并提交 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。RC 仍为预发布版，验收范围见[版本说明](https://iots.top/#/guide/releases)。RC14 应用继续使用 [RC14 包文档](https://github.com/zoujingli/type-mqtt/blob/v1.0.0-rc.14/README.md)，不要混用新版接口。安装和升级核对统一见[版本与接口依据](https://iots.top/#/guide/components?id=版本与接口依据)。
+本组件使用 Apache-2.0，完整材料见 LICENSE 与 NOTICE。本页接口对应 RC18，使用同批组件并提交 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。RC 仍为预发布版，验收范围见[版本说明](https://iots.top/#/guide/releases)。RC14 应用继续使用 [RC14 包文档](https://github.com/zoujingli/type-mqtt/blob/v1.0.0-rc.14/README.md)，不要混用新版接口。安装和升级核对统一见[版本与接口依据](https://iots.top/#/guide/components?id=版本与接口依据)。
 
 ## 最小离线示例：连接字段与消息编码
 
@@ -67,7 +67,7 @@ function main(): void
 开发与构建要求 PHP 8.4/8.5、Swoole、OpenSSL、PCRE、JSON、PDO、`type-runtime` 与 `type-orm`；启用示例 PostgreSQL 存储时另安装 `type-orm-pgsql` 和原生 `pdo_pgsql`。生产单程序由构建链接原生库，数据库服务仍须单独准备。服务端、客户端、持久 worker 和协程 HTTP 均使用 Swoole 官方能力，按目标平台实际构建能力选择进程、线程或协程执行方式。本包第一方源码按 Apache-2.0 提供，已随本批次分发；协议、容量和平台覆盖继续以实际验收为准，不把版本发布等同于全部协议符合性完成。
 
 ```sh
-composer require zoujingli/type-mqtt:1.0.0-rc.17
+composer require zoujingli/type-mqtt:1.0.0-rc.18
 ```
 
 消费者实现 `Type\Mqtt\AccessPolicy`，将其和 `BrokerOptions` 显式传入 `Broker`，调用 `serve('127.0.0.1', 8883)`。`authenticate()` 接收已验证 CONNECT、实际网络远端和真实 TLS 状态；`authorize()` 分别校验 `publish`/`subscribe` 及请求 QoS，消息排队前再次检查接收者的订阅授权。认证方自行限制数据库等外部调用预算，每次 CONNECT 都重新认证；凭据和模型规则由消费者拥有。

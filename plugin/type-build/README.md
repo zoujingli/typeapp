@@ -72,17 +72,17 @@ prepare按完整源码、声明、生成器及锁文件内容身份复用不可�
 
 ## 安装与版本
 
-组件版本随主仓不可变 tag 分发。生成代次、统一应用装配及脚手架的新入口随 RC17 批次提供；复现旧 RC 时使用同版本组件与其包内说明。
+组件版本随主仓不可变 tag 分发。生成代次、统一应用装配及脚手架的新入口随 RC18 批次提供；复现旧 RC 时使用同版本组件与其包内说明。
 
-源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-build)维护，经分发子仓进入 Packagist。以下命令对应 RC17 批次，公开状态以[版本说明](https://iots.top/#/guide/releases)为准；Composer 自动解析传递依赖。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-build)维护，经分发子仓进入 Packagist。以下命令对应 RC18 批次，公开状态以[版本说明](https://iots.top/#/guide/releases)为准；Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require --dev zoujingli/type-build:1.0.0-rc.17
+composer require --dev zoujingli/type-build:1.0.0-rc.18
 ```
 
-本页接口对应 RC17，使用同批组件并提交 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。RC 仍为预发布版，验收范围见[版本说明](https://iots.top/#/guide/releases)。RC14 应用继续使用 [RC14 包文档](https://github.com/zoujingli/type-build/blob/v1.0.0-rc.14/README.md)，不要混用新版接口。安装和升级核对统一见[版本与接口依据](https://iots.top/#/guide/components?id=版本与接口依据)。
+本页接口对应 RC18，使用同批组件并提交 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。RC 仍为预发布版，验收范围见[版本说明](https://iots.top/#/guide/releases)。RC14 应用继续使用 [RC14 包文档](https://github.com/zoujingli/type-build/blob/v1.0.0-rc.14/README.md)，不要混用新版接口。安装和升级核对统一见[版本与接口依据](https://iots.top/#/guide/components?id=版本与接口依据)。
 
 支持协议 1 的 `extra.type.sources`，没有协议的第三方包可通过应用 imports 提供精确版本的适配。构建器检查自动加载入口、源码、排除原因与资源；不支持的生产包会明确失败。根应用的PSR-4、PSR-0、classmap和files生产入口同样与最终编译清单交叉核对，遗漏时在编译前明确拒绝并保护旧产物；测试消费者须声明自己的应用输入，不能借用主仓Composer映射却漏掉主仓业务。应用入口必须是TypePHP支持的声明式源码，产物只能写入应用自己的build目录。编译失败不会用旧二进制冒充本次成功结果。
 

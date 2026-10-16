@@ -1,6 +1,6 @@
 # 应用开发实战
 
-本页是 **RC17 的连续目录应用教程**，从全新独立应用开始，通过 `make` 增加模板之外的商品模块。执行前在[版本发布](releases.md)确认 RC17 已公开；本页接口不适用于 RC14。源码、模板、组件和锁文件必须作为一组保存；发布流程分别核对本地候选消费和默认 Packagist 的原样安装。
+本页是 **RC18 的连续目录应用教程**，从全新独立应用开始，通过 `make` 增加模板之外的商品模块。执行前在[版本发布](releases.md)确认 RC18 已公开；本页接口不适用于 RC14。源码、模板、组件和锁文件必须作为一组保存；发布流程分别核对本地候选消费和默认 Packagist 的原样安装。
 
 先准备[开发环境](environment.md)：PHP、Composer、Swoole 及所选 PDO 驱动。完整教程还使用 Redis、PHP Redis 扩展，以及测试控制端的 Node.js/OpenSSL；后台依赖与启动步骤见[可靠性续篇](catalog-reliability.md)。SQLite 使用独占可写文件；MySQL/PostgreSQL 先准备专属数据库与账号。示例 shell 适用于 Linux/macOS；Windows 使用相应终端并遵守已验收的平台能力。目录业务不依赖物联中心。
 
@@ -19,7 +19,7 @@ flowchart LR
 教程脚本来自主仓同一 tag，业务应用在独立目录安装公共组件。先准备已固定版本的教程源码与开发依赖：
 
 ```bash
-git clone --branch v1.0.0-rc.17 --single-branch https://github.com/zoujingli/typeapp.git typeapp-tutorial
+git clone --branch v1.0.0-rc.18 --single-branch https://github.com/zoujingli/typeapp.git typeapp-tutorial
 cd typeapp-tutorial
 composer install --no-scripts --no-plugins
 tutorial_source=$(pwd)
