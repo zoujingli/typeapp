@@ -6,15 +6,15 @@ SQLite 驱动支持本地文件和普通 `:memory:`，每连接显式设置外�
 
 ## 安装与版本
 
-源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-orm-sqlite)维护，经分发子仓进入 Packagist。以下命令对应 RC16 批次，公开状态以[版本说明](https://iots.top/#/guide/releases)为准；Composer 自动解析传递依赖。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-orm-sqlite)维护，经分发子仓进入 Packagist。以下命令对应 RC17 批次，公开状态以[版本说明](https://iots.top/#/guide/releases)为准；Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm-sqlite:1.0.0-rc.16
+composer require zoujingli/type-orm-sqlite:1.0.0-rc.17
 ```
 
-本页接口对应 RC16，使用同批组件并提交 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。RC 仍为预发布版，验收范围见[版本说明](https://iots.top/#/guide/releases)。RC14 应用继续使用 [RC14 包文档](https://github.com/zoujingli/type-orm-sqlite/blob/v1.0.0-rc.14/README.md)，不要混用新版接口。安装和升级核对统一见[版本与接口依据](https://iots.top/#/guide/components?id=版本与接口依据)。
+本页接口对应 RC17，使用同批组件并提交 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。RC 仍为预发布版，验收范围见[版本说明](https://iots.top/#/guide/releases)。RC14 应用继续使用 [RC14 包文档](https://github.com/zoujingli/type-orm-sqlite/blob/v1.0.0-rc.14/README.md)，不要混用新版接口。安装和升级核对统一见[版本与接口依据](https://iots.top/#/guide/components?id=版本与接口依据)。
 
 普通内存库每条连接独立，不能把多连接池当作共享内存数据库；需要持续使用同一内存库时应选择单连接，并理解归还后销毁连接会同时销毁库。文件库使用绝对路径及已存在的本地目录，不承诺在共享网络文件系统上运行 WAL。
 

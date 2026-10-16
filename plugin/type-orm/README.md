@@ -8,15 +8,15 @@ RC14 的四平台默认原生 CI 已在同一源码基线上通过，覆盖 MySQ
 
 ## 安装与版本
 
-源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-orm)维护，经分发子仓进入 Packagist。以下命令对应 RC16 批次，公开状态以[版本说明](https://iots.top/#/guide/releases)为准；Composer 自动解析传递依赖。
+源码在 [TypeApp 主仓](https://github.com/zoujingli/typeapp/tree/main/plugin/type-orm)维护，经分发子仓进入 Packagist。以下命令对应 RC17 批次，公开状态以[版本说明](https://iots.top/#/guide/releases)为准；Composer 自动解析传递依赖。
 
 ```sh
 composer config minimum-stability RC
 composer config prefer-stable true
-composer require zoujingli/type-orm:1.0.0-rc.16
+composer require zoujingli/type-orm:1.0.0-rc.17
 ```
 
-本页接口对应 RC16，使用同批组件并提交 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。RC 仍为预发布版，验收范围见[版本说明](https://iots.top/#/guide/releases)。RC14 应用继续使用 [RC14 包文档](https://github.com/zoujingli/type-orm/blob/v1.0.0-rc.14/README.md)，不要混用新版接口。安装和升级核对统一见[版本与接口依据](https://iots.top/#/guide/components?id=版本与接口依据)。
+本页接口对应 RC17，使用同批组件并提交 `composer.lock` 固定实际版本及来源；构建、测试工具放在 `require-dev`。RC 仍为预发布版，验收范围见[版本说明](https://iots.top/#/guide/releases)。RC14 应用继续使用 [RC14 包文档](https://github.com/zoujingli/type-orm/blob/v1.0.0-rc.14/README.md)，不要混用新版接口。安装和升级核对统一见[版本与接口依据](https://iots.top/#/guide/components?id=版本与接口依据)。
 
 Database 通过 type-runtime 的有界池按作用域借还会话。Connection 不返回底层 PDO，支持 query、execute、lastInsertId 和固定连接的事务闭包；关闭租约或作用域后不能继续使用。归还先处理流和事务，只有驱动确认完整重置后才能保留物理连接。PostgreSQL 使用 `DISCARD ALL` 后恢复配置基线；MySQL 和 SQLite 当前归还即关闭，下一次借用重建。
 
