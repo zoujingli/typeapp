@@ -1,0 +1,54 @@
+name: Windows 原 HTTP 程序运行配置对照
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 核对原失败运行
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $record = gh api repos/zoujingli/typeapp/actions/runs/38844063772 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $record.head_sha -cne '6de842c694cc2a7a5dc025b5633b2038179c18fe' -or $record.path -cne '.github/workflows/native-platform.yml' -or $record.conclusion -ne 'failure') { throw '原运行身份不一致。' }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: '38844063772'
+          name: windows-native-evidence
+          path: build/original-http-evidence
+      - name: 准备相同的锁定 SDK
+        run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 安装诊断控制器依赖
+        run: |
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 原 EXE 与不同运行配置的红绿对照
+        run: |
+          & "$env:PHP_HOME/php.exe" .github/scripts/probe-http-runtime.php
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 保全配置与原始运行结果
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-http-runtime-control
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            build/http-runtime-control/**/*.json
+            build/http-runtime-control/**/*.ini
+            build/http-runtime-control/**/*.log
+            build/windows-runtime-*/*.json
