@@ -19,9 +19,9 @@ on:
         required: false
         type: string
       scope:
-        description: 验收范围（environment-probe 仅环境变量；http-probe 仅 IOCP、socket-probe 仅 TCP/UDP、tls-probe 仅 PHP 探针、tcp-handshake 仅握手 AOT；sqlite-app/pgsql-app 仅应用诊断；template 仅模板）
+        description: 验收范围（application 从共同装配继续应用与三库模板；orm 仅三库 ORM；其余 probe 为专项诊断，均不能替代 full）
         type: choice
-        options: [full, native, orm, template, pgsql-probe, pgsql-app, sqlite-app, http-probe, socket-probe, tls-probe, tcp-handshake, tcp-trace, environment-probe]
+        options: [full, native, orm, application, template, pgsql-probe, pgsql-app, sqlite-app, http-probe, socket-probe, tls-probe, tcp-handshake, tcp-trace, environment-probe]
         default: full
       orm_driver:
         description: 仅 scope=orm 生效；单库结果不代表三库验收
@@ -43,7 +43,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-platform-${{ github.ref }}-${{ inputs.source_sha || github.sha }}${{ contains(fromJSON('["template","pgsql-app","sqlite-app","http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace","environment-probe"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
+  group: native-platform-${{ github.ref }}-${{ inputs.source_sha || github.sha }}${{ contains(fromJSON('["application","template","pgsql-app","sqlite-app","http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace","environment-probe"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -114,7 +114,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - name: 原生构建身份与缓存
-        if: inputs.scope != 'orm' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
+        if: inputs.scope != 'orm' && inputs.scope != 'application' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: |
           # 直接从控制器 SDK 环境启动，先确认产物使用自己的配置；不依赖 ORM 步骤留下的状态。
           & "$env:PHP_HOME/php.exe" tests/build-platform-native.php
@@ -123,17 +123,15 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || (inputs.scope != 'native' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app')
         run: ./.github/scripts/prepare-windows-test-redis.ps1
       - name: 检查完整公开契约
-        if: github.event_name != 'workflow_dispatch' || (inputs.scope != 'native' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app')
+        if: github.event_name != 'workflow_dispatch' || (inputs.scope != 'native' && inputs.scope != 'application' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app')
         run: |
           $env:TYPE_COMPOSER_PHAR="$env:PHP_HOME/composer.phar"
           & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" test:framework
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" vendor/bin/phpunit --configuration phpunit.xml --log-junit build/windows-contracts.xml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: 三库独立 ORM 与 Swoole 上下文验收
+      - name: 准备 ORM 与应用共享运行配置
         if: inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
-        env:
-          TYPE_ORM_DRIVER: ${{ inputs.scope == 'orm' && inputs.orm_driver || 'all' }}
         run: |
           # openssl 须先于 typephp_artifact 加载；完整应用产物会声明该必需依赖。
           $taskProfile = & "$env:PHP_HOME/php.exe" -r 'require "vendor/autoload.php"; $root=getcwd(); $p=(new Type\Build\RuntimeProfile())->prepare($root,$root."/build/windows-orm-runtime",getenv("PHP_HOME"),getenv("PHPX_HOME"),["openssl","pdo","pdo_mysql","pdo_pgsql","pdo_sqlite","sockets","swoole"]); echo $p["ini"];'
@@ -142,6 +140,11 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_ENV -Value ('TYPE_NATIVE_PHP_INI=' + $taskProfile) -Encoding utf8
           $env:TYPE_COMPOSER_PHAR="$env:PHP_HOME/composer.phar"
           Add-Content -LiteralPath $env:GITHUB_ENV -Value ('TYPE_COMPOSER_PHAR=' + $env:TYPE_COMPOSER_PHAR) -Encoding utf8
+      - name: 三库独立 ORM 与 Swoole 上下文验收
+        if: inputs.scope != 'application' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
+        env:
+          TYPE_ORM_DRIVER: ${{ inputs.scope == 'orm' && inputs.orm_driver || 'all' }}
+        run: |
           if ($env:TYPE_ORM_DRIVER -notin @('all', 'sqlite', 'mysql', 'pgsql')) { throw 'ORM 验收驱动无效。' }
           & "$env:PHP_HOME/php.exe" tests/build-scenario.php docs/build-config/type-read-write.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -248,6 +251,18 @@ jobs:
             build/release-candidate/*.json
             build/release-candidate/attachments/*
             build/windows-contracts.xml
+            build/http-assembly-*-report.json
+            build/http-assembly-*.evidence/**
+            build/http-assembly-*/failure.txt
+            build/http-assembly-*/build/http-assembly.exe
+            build/http-assembly-*/build/http-assembly.exe.build.json
+            build/http-assembly-*/build/http-assembly.exe.resources/**
+            build/business-events-*-report.json
+            build/business-events-*.evidence/**
+            build/business-events-*/failure.txt
+            build/business-events-*/build/business-events.exe
+            build/business-events-*/build/business-events.exe.build.json
+            build/business-events-*/build/business-events.exe.resources/**
             build/**/verification.json
             build/scheduler-consumer-*.verification.json
             build/toolchain-regressions-*/**/*.log

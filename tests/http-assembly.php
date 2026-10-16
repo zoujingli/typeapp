@@ -10,7 +10,7 @@ use Type\Build\CommandAssembly;
 use Type\Build\RouteCompiler;
 use Type\Testing\Process;
 
-$root = dirname(__DIR__);
+$root = Type\Build\BuildPlatform::resolve(dirname(__DIR__));
 $native = in_array('--native', $argv, true);
 $receipt = ['protocol' => 1, 'mode' => $native ? 'native' : 'php', 'passed' => false];
 $work = $root . '/build/http-assembly-' . bin2hex(random_bytes(6));

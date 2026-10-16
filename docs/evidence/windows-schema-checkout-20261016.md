@@ -16,4 +16,6 @@
 
 修复后再次使用相同 Git 转换命令，四份快照均保持 LF，公开准备入口全部通过且摘要不变。现有 `SchemaCompilerTest` 的 4 项测试、136 个断言通过，文档检查通过 1961 处引用；临时对照目录已回收，保留红绿结果与原证据 ZIP。
 
-已有独立 ORM 消费入口继续逐份核对 `created:false` 和文件摘要；完整 Windows 三库及最终发布验收仍须重新运行。本机 Git 转换对照不能代替 Windows 原生结果。
+[修复后的 Windows 运行](https://github.com/zoujingli/typeapp/actions/runs/38837392358)固定源码 `c0ba1367ef703d73819ede22637e8fa906351ef0`，完整公开契约和三库独立 ORM 步骤均通过。原有消费者仍逐份核对 `created:false` 和文件摘要，并执行各驱动的 PHP、AOT 及读写行为，未跳过冻结校验。
+
+该运行随后在 HTTP 共同装配的独立源码路径断言失败，尚未完成完整 Windows 平台验收，详见[路径断言记录](windows-http-assembly-path-20261016.md)。Schema 修复后的三库结果不代表 RC17 已发布；最终源码与程序仍须完成正式矩阵。
