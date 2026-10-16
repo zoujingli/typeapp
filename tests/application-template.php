@@ -350,7 +350,8 @@ try {
         $developmentProcess = null;
         try {
             $developmentProcess = new Process([PHP_BINARY, $consumer . '/vendor/bin/type', 'test', 'type-app.json'], $consumer, $developmentEnvironment, 2097152);
-            $developmentResult = $developmentProcess->wait(45);
+            // 教程包含标准 Outbox 租约到期演练，开发与原生使用相同完整套件预算。
+            $developmentResult = $developmentProcess->wait($tutorial ? 120 : 45);
             expect($developmentResult->successful(), '接入业务开发入口失败：' . $developmentResult->stderr);
             echo $developmentResult->stdout;
         } finally {
