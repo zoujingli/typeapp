@@ -50,7 +50,9 @@ expect($selected === ['zoujingli/type-orm', 'zoujingli/type-orm-sqlite', 'zoujin
 expect($report['cache']['hit'] === false, '新建验收目录不能以旧缓存代替首次编译');
 $manifest = (new ArtifactManifest())->read($artifact, $report['build-id'], $report['sha256']);
 $phpOutput = successful([PHP_BINARY, $root . '/tests/helpers.php', '--php']);
-$nativeOutput = successful([PHP_BINARY, $root . '/tests/helpers.php', $artifact]);
+$nativeEnvironment = getenv();
+$nativeEnvironment['TYPE_NATIVE_PHP_INI'] = $report['runtime-profile']['ini'];
+$nativeOutput = successful([PHP_BINARY, $root . '/tests/helpers.php', $artifact], null, $nativeEnvironment);
 expect($phpOutput === $nativeOutput, '快捷接口开发与编译产物业务行为不一致');
 $evidence = ['runtime' => $manifest['runtime'], 'binary-format' => $manifest['binary-format'],
     'build-id' => $report['build-id'], 'sha256' => $report['sha256'], 'typephp-reference' => $report['typephp-reference'],
