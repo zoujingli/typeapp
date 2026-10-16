@@ -23,8 +23,8 @@ $dsn = 'pgsql:host=' . getenv('TYPE_PGSQL_HOST') . ';port=' . getenv('TYPE_PGSQL
 $database = new PDO($dsn, getenv('TYPE_PGSQL_USER'), getenv('TYPE_PGSQL_PASSWORD'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $report = ['program-sha256' => $digest, 'source' => '1386d9af43ba746b8804111159cc8e4d358abecf', 'cases' => []];
 try {
-    foreach (['direct', 'sandbox'] as $mode) {
-        for ($round = 1; $round <= 3; $round++) {
+    foreach (['short-delay', 'default-delay'] as $mode) {
+        for ($round = 1; $round <= 2; $round++) {
             $work = $base . '/' . $mode . '-' . $round;
             expect(mkdir($work . '/package', 0700, true) && mkdir($work . '/runtime/var', 0700, true), '无法创建独立运行根');
             expect(copy($program, $work . '/package/app.exe'), '无法复制原程序');
@@ -47,16 +47,22 @@ try {
             unset($settings['GH_TOKEN'], $settings['GITHUB_TOKEN']);
             try {
                 $command = [$work . '/package/app.exe'];
-                if ($mode === 'sandbox') {
-                    $sandbox = new WindowsNativeSandbox($root, $work . '/package', $work . '/runtime');
-                    $command = $sandbox->command();
-                }
+                $sandbox = new WindowsNativeSandbox($root, $work . '/package', $work . '/runtime');
+                $command = $sandbox->command();
                 $steps = [['migrate', 'run'], ['catalog', 'cache'], ['catalog', 'relay-fail'], ['catalog', 'status'],
                     ['catalog', 'relay'], ['catalog', 'relay'], ['catalog', 'consume'], ['catalog', 'queue-invalid'],
                     ['catalog', 'queue-cancel'], ['catalog', 'queue-cleanup']];
                 foreach ($steps as $index => $arguments) {
                     if ($index === 4) {
-                        usleep(400000);
+                        $deadline = microtime(true) + 35;
+                        do {
+                            $remaining = (int) $observer->query('SELECT MAX(lease_until - floor(extract(epoch from clock_timestamp()) * 1000)::bigint) FROM catalog_outbox')->fetchColumn();
+                            if ($remaining <= 0) {
+                                break;
+                            }
+                            usleep(50000);
+                        } while (microtime(true) < $deadline);
+                        expect($remaining <= 0, '原领取未在预算内过期');
                     }
                     $started = microtime(true);
                     $process = new Process([...$command, ...$arguments], $work . '/runtime', $settings);
@@ -72,6 +78,13 @@ try {
                     }
                     $report['cases'][$mode . '-' . $round][] = $record;
                     file_put_contents($base . '/verification.json', json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n");
+                    if ($index === 0) {
+                        // 仅测试数据库触发器改变租约时长，并加入固定 350ms 领取延迟；原 EXE 字节不变。
+                        $extension = $mode === 'default-delay' ? 29750 : 0;
+                        $observer->exec('CREATE FUNCTION probe_claim_delay() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN '
+                            . "IF NEW.state = 'claimed' THEN NEW.lease_until = NEW.lease_until + " . $extension . '; PERFORM pg_sleep(0.35); END IF; RETURN NEW; END $$');
+                        $observer->exec('CREATE TRIGGER probe_claim_delay BEFORE UPDATE ON catalog_outbox FOR EACH ROW EXECUTE FUNCTION probe_claim_delay()');
+                    }
                 }
             } finally {
                 $sandbox?->close();

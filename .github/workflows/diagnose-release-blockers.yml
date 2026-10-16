@@ -2,6 +2,11 @@ name: 发布候选 Windows 阻塞诊断
 
 on:
   workflow_dispatch:
+    inputs:
+      pgsql_only:
+        description: 只复演原 PostgreSQL 程序的租约对照
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -9,6 +14,7 @@ permissions:
 
 jobs:
   threads:
+    if: inputs.pgsql_only != true
     runs-on: windows-2022
     timeout-minutes: 30
     defaults:
