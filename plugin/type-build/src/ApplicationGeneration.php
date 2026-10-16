@@ -26,6 +26,8 @@ final class ApplicationGeneration
      */
     public function generate(string $root, array $settings, array $sources, array $sourceSets, array $modules, array $included, string $directory): array
     {
+        // 编译器返回统一分隔符；生成路径须使用同一身份，避免 Windows 保留已替换的模型源码。
+        $directory = BuildPlatform::path($directory);
         $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
         $originals = (new BuildIdentity())->sources($sources);
         $audit = (new SourceSet())->auditAutoload($root, $composer, $originals);

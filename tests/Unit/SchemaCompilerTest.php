@@ -36,7 +36,7 @@ final class SchemaCompilerTest extends TestCase
             self::assertFalse($compiler->prepare($source)['created']);
             self::assertSame($bytes, file_get_contents($snapshot));
             $result = $compiler->compile([$source]);
-            self::assertSame([$snapshot], $compiler->inputs([$source]));
+            self::assertSame([\Type\Build\BuildPlatform::resolve($snapshot)], $compiler->inputs([$source]));
             self::assertFalse(class_exists('SchemaFixture\\' . $class, false));
             self::assertStringNotContainsString('file_get_contents', $result['code']);
             eval(substr($result['code'], 5));
@@ -143,8 +143,12 @@ final class SchemaCompilerTest extends TestCase
                 self::assertSame([], glob($directory . '/*.tmp-*'));
             }
             file_put_contents($source, $valid);
-            self::assertTrue(symlink(dirname($directory) . '/schema-escape.json', $directory . '/create.json'));
+            // Windows 需要存在的目标才能创建文件链接；同目录的有效目标同样不允许作为冻结快照。
+            $linkTarget = $directory . '/link-target.json';
+            file_put_contents($linkTarget, 'original snapshot target');
+            self::assertTrue(symlink(realpath($linkTarget), $directory . '/create.json'));
             $this->rejected(fn () => $compiler->prepare($source), 'TYPE_SCHEMA_INVALID');
+            self::assertSame('original snapshot target', file_get_contents($linkTarget));
         } finally {
             foreach (glob($directory . '/*') as $file) {
                 unlink($file);

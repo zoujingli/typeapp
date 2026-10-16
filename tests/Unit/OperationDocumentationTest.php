@@ -40,7 +40,7 @@ PHP);
             self::assertSame($target, $symbols['operationbundle\\item']['file']);
             self::assertSame($target, $symbols['operationbundle\\companion']['file']);
             self::assertSame(['source:0' => $target], $result['metadata']['replacements']);
-            self::assertSame([$root . '/generated/generated-operations.php'], $result['sources']);
+            self::assertSame([\Type\Build\BuildPlatform::resolve($root . '/generated/generated-operations.php')], $result['sources']);
             require $result['sources'][0];
             $service = new \OperationBundle\Service('kept-');
             self::assertSame('kept-companion', $service->label());

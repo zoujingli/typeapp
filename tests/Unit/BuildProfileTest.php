@@ -56,12 +56,11 @@ final class BuildProfileTest extends TestCase
 
     protected function tearDown(): void
     {
-        // Swoole 的线程安全 putenv 钩子使用 CRT；Windows 删除变量须传入空值，
-        // 仅传名称可能保留前一用例的值。空值与未设置在构建选择中语义相同。
-        $setting = $this->originalProfile === false && PHP_OS_FAMILY !== 'Windows'
-            ? 'TYPEAPP_BUILD_PROFILE' : 'TYPEAPP_BUILD_PROFILE=' . ($this->originalProfile ?: '');
+        // 锁定运行库支持标准删除语义；显式空值与未声明分别还原，避免污染后续配置来源判断。
+        $setting = $this->originalProfile === false
+            ? 'TYPEAPP_BUILD_PROFILE' : 'TYPEAPP_BUILD_PROFILE=' . $this->originalProfile;
         self::assertTrue(putenv($setting));
-        self::assertSame($this->originalProfile ?: '', getenv('TYPEAPP_BUILD_PROFILE') ?: '');
+        self::assertSame($this->originalProfile, getenv('TYPEAPP_BUILD_PROFILE'));
     }
 
     public function testResolvesDatabaseAndImplicitRedisClosure(): void
@@ -164,8 +163,9 @@ final class BuildProfileTest extends TestCase
         require $directory . '/ProjectConfig.php';
         $original = ['DB_DRIVER' => getenv('DB_DRIVER'), 'APP_NAME' => getenv('APP_NAME')];
         putenv('DB_DRIVER=' . $driver);
-        putenv(PHP_OS_FAMILY === 'Windows' ? 'APP_NAME=' : 'APP_NAME');
         try {
+            self::assertTrue(putenv('APP_NAME'));
+            self::assertFalse(getenv('APP_NAME'));
             file_put_contents($directory . '/.env', '');
             $view = \app\common\bootstrap\Settings::configurationView($directory);
             $saved = \app\common\bootstrap\Settings::configurationUpdate($directory, $view['version'], ['APP_NAME' => 'profile-settings']);
@@ -178,8 +178,8 @@ final class BuildProfileTest extends TestCase
             } catch (\InvalidArgumentException $error) {
                 self::assertSame('configuration_field_read_only', $error->getMessage());
             }
-            putenv(PHP_OS_FAMILY === 'Windows' ? 'DB_DRIVER=' : 'DB_DRIVER');
-            // Windows 空值删除与 Unix unset 采用各自平台语义；原生任务也运行本用例。
+            self::assertTrue(putenv('DB_DRIVER'));
+            self::assertFalse(getenv('DB_DRIVER'));
             $before = file_get_contents($directory . '/.env');
             try {
                 \app\common\bootstrap\Settings::configurationUpdate($directory, $saved['version'], ['DB_DRIVER' => 'sqlite']);
@@ -190,7 +190,7 @@ final class BuildProfileTest extends TestCase
             self::assertSame($before, file_get_contents($directory . '/.env'));
         } finally {
             foreach ($original as $key => $value) {
-                putenv($value === false && PHP_OS_FAMILY !== 'Windows' ? $key : $key . '=' . ($value ?: ''));
+                putenv($value === false ? $key : $key . '=' . $value);
             }
             foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
                 $entry->isDir() && !$entry->isLink() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
