@@ -67,8 +67,10 @@ try {
     if ($native) {
         successful([PHP_BINARY, $work . '/vendor/bin/type', 'build', $work . '/type-app.json'], $work);
         $binary = (new Type\Build\BuildPlatform())->output($work . '/build/http-assembly');
-        $command = nativeCommand($binary);
         $report = json_decode(file_get_contents($binary . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+        // 独立程序只加载自身已验证的依赖，不能注入控制器的全量数据库配置。
+        putenv('TYPE_NATIVE_PHP_INI=' . $report['runtime-profile']['ini']);
+        $command = nativeCommand($binary);
         expect(($report['assembly']['services']['message']['overrides'] ?? '') === 'type-tests/http-component:message', '原生入口没有应用组件覆盖');
         foreach ($report['sources'] as $source) {
             expect(str_starts_with($source, $work . '/'), '独立装配仍依赖主仓源码');

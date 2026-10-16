@@ -44,7 +44,11 @@ try {
     $native = in_array('--native', $argv, true);
     if ($native) {
         successful([PHP_BINARY, $work . '/vendor/bin/type', 'build', $work . '/type-app.json'], $work);
-        $command = nativeCommand((new Type\Build\BuildPlatform())->output($work . '/build/business-events'));
+        $binary = (new Type\Build\BuildPlatform())->output($work . '/build/business-events');
+        $build = json_decode(file_get_contents($binary . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+        // SQLite 消费者使用自己的运行清单，避免加载控制器的其他数据库驱动。
+        putenv('TYPE_NATIVE_PHP_INI=' . $build['runtime-profile']['ini']);
+        $command = nativeCommand($binary);
     } else {
         $command = [PHP_BINARY, $work . '/vendor/bin/type', 'dev', $work . '/type-app.json'];
     }

@@ -307,11 +307,10 @@ final class NativeBuilder
         if ($static !== null && $buildProfile !== null) {
             BuildProfile::assertExtensions(array_keys($profile['extensions']), $buildProfile);
         }
-        if ($static !== null || array_key_exists('threads', $settings)) {
-            // 线程入口在 MINIT 注册应用；仅依赖 Swoole 会将其提前到动态 PDO 驱动之前。
-            // 沿用已验证的运行扩展清单，让 PDO 先完成注册，再由 Swoole 接管协程驱动。
-            $project['extension-dependencies'] = array_keys($profile['extensions']);
-        }
+        // 普通、线程与静态 embed 均在请求开始前注册应用；仅靠类型引用推断会遗漏
+        // 显式声明但未引用驱动类的 PDO 扩展。沿用探针验证的顺序，先注册驱动再由
+        // Swoole 接管，不把宿主多余扩展带入产物依赖。
+        $project['extension-dependencies'] = array_keys($profile['extensions']);
         $this->writeJson($projectFile, $project);
         $compilerProfile = $static === null ? $profile : (new RuntimeProfile($environment))->prepare(
             $root,

@@ -45,6 +45,10 @@ declare(strict_types=1);
 
 function main(int $argc, array $argv): void
 {
+    // 显式运行依赖不必出现驱动类引用；其注册仍须早于 Swoole 的 PDO 接管。
+    if (!extension_loaded('pdo_pgsql')) {
+        throw new \RuntimeException('显式 PostgreSQL 运行扩展未加载');
+    }
     // PLATFORM_DIGEST_TEST
     if (($argv[1] ?? '') === 'verify-library') {
         try {
@@ -65,6 +69,7 @@ function main(int $argc, array $argv): void
 }
 PHP));
 $configuration = ['name' => 'type-platform', 'entry' => 'main.php', 'output' => 'build/native/type-app', 'build-directory' => 'build/native/compiler',
+    'runtime' => [PHP_OS_FAMILY => ['extensions' => ['pdo_pgsql']]],
     'compiler' => ['optimize' => 2, 'debug' => false, 'jobs' => 2]];
 file_put_contents($consumer . '/build.json', json_encode($configuration, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 $command = [PHP_BINARY, $root . '/vendor/bin/type', $consumer . '/build.json'];
