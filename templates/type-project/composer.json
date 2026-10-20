@@ -14,8 +14,8 @@
         "zoujingli/type-validate": "1.0.0-rc.18"
     },
     "require-dev": {
-        "swoole/phpx": "2.9.3",
-        "swoole/typephp": "0.9.4",
+        "swoole/phpx": "2.9.4",
+        "swoole/typephp": "0.9.5",
         "zoujingli/type-build": "1.0.0-rc.18",
         "zoujingli/type-testing": "1.0.0-rc.18"
     },

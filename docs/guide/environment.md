@@ -38,7 +38,7 @@ Redis 地址分别使用 `IOT_EXPORT_REDIS_*`、`IOT_NOTICES_REDIS_*` 和 `APP_S
 | 原生构建 | 目标平台编译工具、PHP ZTS/embed 静态 SDK、PHPX、实际扩展与锁定依赖；物联中心另需 Node.js/pnpm 构建页面 | TypePHP 全量编译，`type-build` 校验真实 embed 环境，将运行库静态链接并内嵌前端资源 |
 | 生产部署 | 匹配的操作系统与架构、已验收的程序、外置配置、数据目录及所用业务服务 | 执行已编译应用；无需安装 PHP、Swoole、Composer、TypePHP 或编译 SDK |
 
-开发 PHP 的版本范围是 `>=8.4 <8.6`，Swoole 范围是 `>=6.2 <7`；这不代表任意组合都能使用内置模块。当前源码的原生构建锁定 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，准确输入取自项目的 `toolchain.lock.json` 与 `composer.lock`。已发布版本使用各自封存的工具链，不能将当前源码的版本套用到旧 Release。
+开发 PHP 的版本范围是 `>=8.4 <8.6`，Swoole 范围是 `>=6.2 <7`；这不代表任意组合都能使用内置模块。当前源码的原生构建锁定 PHP 8.5.10 ZTS、TypePHP 0.9.5、PHPX 2.9.4，准确输入取自项目的 `toolchain.lock.json` 与 `composer.lock`。已发布版本使用各自封存的工具链，不能将当前源码的版本套用到旧 Release。
 
 通用模板的 HTTP `serve()` 按平台选择执行方式：Unix 使用经典 worker，Windows 使用协程 HTTP 与控制台停止事件。Windows PHP CLI 使用控制台处理器，原生产物使用编译的控制事件桥；入口需要可用控制台，不能把关闭窗口等同于正常排空。主仓生产 HTTP 采用业务线程内协程。具体入口已实现不等于完整平台验收通过，选择环境时按[平台与验收](platforms.md)核对实际场景。
 

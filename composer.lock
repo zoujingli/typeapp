@@ -4546,16 +4546,16 @@
         },
         {
             "name": "swoole/phpx",
-            "version": "v2.9.3",
+            "version": "v2.9.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/swoole/phpx.git",
-                "reference": "a0138bbdd6cbfda62225adc56c558d0742114c8a"
+                "reference": "f6a2555e14694e8888d2f40ff2838ffb22bc04f2"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/swoole/phpx/zipball/a0138bbdd6cbfda62225adc56c558d0742114c8a",
-                "reference": "a0138bbdd6cbfda62225adc56c558d0742114c8a",
+                "url": "https://api.github.com/repos/swoole/phpx/zipball/f6a2555e14694e8888d2f40ff2838ffb22bc04f2",
+                "reference": "f6a2555e14694e8888d2f40ff2838ffb22bc04f2",
                 "shasum": ""
             },
             "require": {
@@ -4705,22 +4705,22 @@
             ],
             "support": {
                 "issues": "https://github.com/swoole/phpx/issues",
-                "source": "https://github.com/swoole/phpx/tree/v2.9.3"
+                "source": "https://github.com/swoole/phpx/tree/v2.9.4"
             },
-            "time": "2026-09-29T10:12:16+00:00"
+            "time": "2026-10-13T05:06:53+00:00"
         },
         {
             "name": "swoole/typephp",
-            "version": "v0.9.4",
+            "version": "v0.9.5",
             "source": {
                 "type": "git",
                 "url": "https://github.com/swoole/typephp.git",
-                "reference": "874b82e96a2383712e8faf8177c6c715587e3546"
+                "reference": "5ba9376642d8dd75efcd002b41b09a9d6bcca3e2"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/swoole/typephp/zipball/874b82e96a2383712e8faf8177c6c715587e3546",
-                "reference": "874b82e96a2383712e8faf8177c6c715587e3546",
+                "url": "https://api.github.com/repos/swoole/typephp/zipball/5ba9376642d8dd75efcd002b41b09a9d6bcca3e2",
+                "reference": "5ba9376642d8dd75efcd002b41b09a9d6bcca3e2",
                 "shasum": ""
             },
             "require": {
@@ -4730,7 +4730,7 @@
                 "marcj/topsort": "^2.0",
                 "nikic/php-parser": "^5.6",
                 "php": ">=8.4 <8.6",
-                "swoole/phpx": "~2.9.3",
+                "swoole/phpx": "~2.9.4",
                 "symfony/var-dumper": "^8.0",
                 "symfony/yaml": "^8.0"
             },
@@ -4764,9 +4764,9 @@
             "description": "TypePHP native AOT compiler",
             "support": {
                 "issues": "https://github.com/swoole/typephp/issues",
-                "source": "https://github.com/swoole/typephp/tree/v0.9.4"
+                "source": "https://github.com/swoole/typephp/tree/v0.9.5"
             },
-            "time": "2026-09-30T04:56:36+00:00"
+            "time": "2026-10-13T07:06:13+00:00"
         },
         {
             "name": "symfony/console",
@@ -6501,15 +6501,15 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-build",
-                "reference": "9ab6513b5b9886bf9988f413f6974522e0bd16d9"
+                "reference": "2d50ed346846632bc801a3b4d651011c296fd843"
             },
             "require": {
                 "composer-runtime-api": "^2.2",
                 "ext-json": "*",
                 "nikic/php-parser": "^5.8",
                 "php": ">=8.4 <8.6",
-                "swoole/phpx": "2.9.3",
-                "swoole/typephp": "0.9.4",
+                "swoole/phpx": "2.9.4",
+                "swoole/typephp": "0.9.5",
                 "zoujingli/type-runtime": "~1.0.0@dev"
             },
             "bin": [

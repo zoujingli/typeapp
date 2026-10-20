@@ -154,11 +154,13 @@ vendor/bin/type --inspect build/type-example
 
 ## AOT 与运行要求
 
-本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP 0.9.4、PHPX 2.9.3 和 PHP 8.5.10 ZTS；构建须提供匹配目标平台的完整 SDK。各平台的隔离强度、已发布版本和新版验收进度统一见[平台与验收](https://iots.top/#/guide/platforms)。生产运行库由实际产物清单确定，不把编译 SDK、源码或构建秘密复制进运行镜像。
+本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP 0.9.5、PHPX 2.9.4 和 PHP 8.5.10 ZTS；构建须提供匹配目标平台的完整 SDK。各平台的隔离强度、已发布版本和新版验收进度统一见[平台与验收](https://iots.top/#/guide/platforms)。生产运行库由实际产物清单确定，不把编译 SDK、源码或构建秘密复制进运行镜像。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。标量存储、引用及std编译期接口按新版规则实现，带上下文的闭包必须完整声明参数；PHP开发对照只使用具有真实等价行为的能力。
 
-构建入口为 TypePHP 0.9.4 的具名类构造、方法及函数默认值补齐嵌套 `new` 的临时作用域，并让 Zend 包装入口仅在参数缺失时求值。显式实参和 `null` 不触发默认构造，省略参数则逐次创建对象。适配绑定已审查的上游源码摘要，不修改应用、共享 SDK 或已安装的编译器源码；它不表示所有 PHP 默认值上下文均已兼容，边界与撤除条件见上述语法基线。
+构建入口直接复用 TypePHP 0.9.5 对嵌套 `new` 默认值的临时作用域处理；项目继续适配 Zend 包装入口，使默认值仅在参数缺失时求值。显式实参和 `null` 不触发默认构造，省略参数则逐次创建对象。适配绑定已审查的上游源码摘要，不修改应用、共享 SDK 或已安装的编译器源码；它不表示所有 PHP 默认值上下文均已兼容，边界与撤除条件见上述语法基线。
+
+字符串三元表达式在两支均推断为 `string` 时，构建适配按实际 C++ 存储补齐转换，使共享空串可与类型属性读取组合。条件和分支仍只在原位置求值，主仓的 `composer test:native-string-ternary` 对照 PHP/AOT 的值、类型、惰性及异常；源码摘要门禁和撤除条件同样见语法基线。
 
 继承构造器的提升属性使用声明类作用域写入，防止父类私有属性变成子类动态属性；trait、类型与 `readonly` 约束继续使用上游与 Zend 的已有机制。Native ABI 字段保持原实现，父子同名属性的编译限制不放宽。专项入口为主仓的 `composer test:native-promoted-property`，作用域边界与撤除条件见语法基线。
 

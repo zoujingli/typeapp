@@ -260,6 +260,7 @@
     "test:native-conversion": "@php tests/native-source-conversion.php",
     "test:native-serialization": "@php tests/native-serialization.php",
     "test:native-defaults": "@php tests/native-defaults.php",
+    "test:native-string-ternary": "@php tests/native-defaults.php string-ternary",
     "test:native-interface-constants": "@php tests/native-defaults.php interface-constants",
     "test:native-class-constants": "@php tests/native-defaults.php class-constant-symbols",
     "test:native-declared-tostring": "@php tests/native-defaults.php declared-tostring",

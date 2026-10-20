@@ -299,8 +299,8 @@ if ($taskRuntime) {
 Write-Host 'Windows 静态 embed 探针通过；范围以 verification.json 为准，尚不代表 PHPX 或应用验收。'
 if ($WithPhpx) {
     Write-StaticStage 'PHPX static: start'
-    Get-StaticSource 'https://codeload.github.com/swoole/phpx/tar.gz/a0138bbdd6cbfda62225adc56c558d0742114c8a' 'bae0d807610ddaade17b741e11c9397fd3e92f6bf7766cc61ca857fb53c5e0dd' 'phpx.tar.gz'
-    $taskPhpx = Join-Path $taskWork 'phpx-a0138bbdd6cbfda62225adc56c558d0742114c8a'
+    Get-StaticSource 'https://codeload.github.com/swoole/phpx/tar.gz/f6a2555e14694e8888d2f40ff2838ffb22bc04f2' '4d7e749286d76a543a4a4bb6af84cb096802676c6cb819ec0b9ff1012855065b' 'phpx.tar.gz'
+    $taskPhpx = Join-Path $taskWork 'phpx-f6a2555e14694e8888d2f40ff2838ffb22bc04f2'
     & $taskHostPhp -n -r 'require $argv[1]."/plugin/type-build/src/PhpxThreadSource.php";echo json_encode((new Type\Build\PhpxThreadSource())->apply($argv[2]),JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);' $taskRoot $taskPhpx |
         Set-Content -LiteralPath (Join-Path $taskEvidence 'phpx-adaptations.json') -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw 'PHPX 固定源码适配失败。' }

@@ -105,7 +105,7 @@ $documents = [];
 foreach (['LICENSE', 'thirdparty/mpdecimal/COPYRIGHT.txt', 'thirdparty/wren-gc/LICENSE'] as $name) {
     $documents[] = staticSdkDocument($sdk, $phpx . '/' . $name, 'phpx/' . $name);
 }
-$notices['libphpx.a'] = ['component' => 'PHPX、mpdecimal、wren-gc', 'version' => 'PHPX 2.9.3',
+$notices['libphpx.a'] = ['component' => 'PHPX、mpdecimal、wren-gc', 'version' => 'PHPX 2.9.4',
     'license' => ['Apache-2.0', 'BSD-2-Clause', 'MIT'], 'files' => $documents];
 
 $formulas = [

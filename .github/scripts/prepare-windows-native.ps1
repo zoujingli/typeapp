@@ -11,8 +11,8 @@ $lockPath = Join-Path $taskRoot 'composer.lock'
 if (!(Test-Path -LiteralPath $lockPath)) { throw 'composer.lock is required to prepare the locked Windows toolchain.' }
 $lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
 $typePhpPackage = @($lock.'packages-dev' | Where-Object { $_.name -eq 'swoole/typephp' }) | Select-Object -First 1
-if (!$typePhpPackage -or $typePhpPackage.version -ne 'v0.9.4' -or $typePhpPackage.dist.reference -ne '874b82e96a2383712e8faf8177c6c715587e3546') {
-    throw 'composer.lock must select TypePHP 0.9.4 at the fixed source commit.'
+if (!$typePhpPackage -or $typePhpPackage.version -ne 'v0.9.5' -or $typePhpPackage.dist.reference -ne '5ba9376642d8dd75efcd002b41b09a9d6bcca3e2') {
+    throw 'composer.lock must select TypePHP 0.9.5 at the fixed source commit.'
 }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -47,7 +47,7 @@ function Get-VerifiedDownload {
     throw $lastError
 }
 
-# 上游 0.9.4 没有发布 PHP 8.5.10 的 Windows SDK 包；此处只把 0.9.0
+# 上游 0.9.5 没有发布 PHP 8.5.10 的 Windows SDK 包；此处只把 0.9.0
 # 发行包当作已核验的 PHP 8.5.10 ZTS SDK 载体。编译器身份由上面的
 # composer.lock 校验决定，PHPX 和 Swoole 随当前固定源码在本任务内重建。
 $archive = Join-Path $Directory 'php-8.5.10-sdk-carrier.zip'
@@ -211,10 +211,10 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
 Get-ChildItem -LiteralPath (Join-Path $taskDeps 'bin') -Filter '*.dll' -File | Copy-Item -Destination $sdk -Force
 
 $taskPhpxArchive = Join-Path $Directory 'phpx.tar.gz'
-Get-VerifiedArchive 'https://codeload.github.com/swoole/phpx/tar.gz/a0138bbdd6cbfda62225adc56c558d0742114c8a' 'bae0d807610ddaade17b741e11c9397fd3e92f6bf7766cc61ca857fb53c5e0dd' $taskPhpxArchive
+Get-VerifiedArchive 'https://codeload.github.com/swoole/phpx/tar.gz/f6a2555e14694e8888d2f40ff2838ffb22bc04f2' '4d7e749286d76a543a4a4bb6af84cb096802676c6cb819ec0b9ff1012855065b' $taskPhpxArchive
 & $taskTar -xzf $taskPhpxArchive -C $Directory
 if ($LASTEXITCODE -ne 0) { throw 'PHPX 源码解包失败。' }
-$taskPhpx = Join-Path $Directory 'phpx-a0138bbdd6cbfda62225adc56c558d0742114c8a'
+$taskPhpx = Join-Path $Directory 'phpx-f6a2555e14694e8888d2f40ff2838ffb22bc04f2'
 & (Join-Path $sdk 'php.exe') -n -r 'require $argv[1]."/plugin/type-build/src/PhpxThreadSource.php";echo json_encode((new Type\Build\PhpxThreadSource())->apply($argv[2]),JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);' $taskRoot $taskPhpx | Set-Content -LiteralPath (Join-Path $taskEvidence 'phpx-source.json') -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw 'PHPX 固定源码适配失败。' }
 $env:PHP_HOME = $sdk
@@ -260,4 +260,4 @@ Add-Content -LiteralPath $env:GITHUB_PATH -Value $phpxBuild -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw 'The real Windows PHP runtime did not match the SDK contract.' }
 & (Join-Path $sdk 'php.exe') -r 'if(!method_exists(Swoole\Thread::class,"startNative") || Swoole\Thread::NATIVE_ENTRY_ABI!==2 || !defined("SWOOLE_HOOK_PDO_PGSQL") || !defined("SWOOLE_HOOK_PDO_SQLITE")){exit(1);}'
 if ($LASTEXITCODE -ne 0) { throw 'Swoole 原生线程 ABI 或 PDO hook 不完整。' }
-@{ platform='Windows'; architecture='x64'; php='8.5.10'; sdk_tools_source=$taskToolsReference; sdk_tools_sha256=$taskToolsDigest; swoole_source=$taskSwooleReference; swoole_sha256=(Get-FileHash -LiteralPath (Join-Path $sdk 'ext/php_swoole.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); phpx_source='a0138bbdd6cbfda62225adc56c558d0742114c8a'; phpx_sha256=(Get-FileHash -LiteralPath (Join-Path $phpxBuild 'phpx.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); dependencies=$taskDependencies; source_dependencies=$taskSourceDependencies; passed=$true } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
+@{ platform='Windows'; architecture='x64'; php='8.5.10'; sdk_tools_source=$taskToolsReference; sdk_tools_sha256=$taskToolsDigest; swoole_source=$taskSwooleReference; swoole_sha256=(Get-FileHash -LiteralPath (Join-Path $sdk 'ext/php_swoole.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); phpx_source='f6a2555e14694e8888d2f40ff2838ffb22bc04f2'; phpx_sha256=(Get-FileHash -LiteralPath (Join-Path $phpxBuild 'phpx.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); dependencies=$taskDependencies; source_dependencies=$taskSourceDependencies; passed=$true } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8

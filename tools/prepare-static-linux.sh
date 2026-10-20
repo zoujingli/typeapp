@@ -85,7 +85,7 @@ cp -R "$task_root/vendor/swoole/phpx" "$task_work/src/phpx"
 # shellcheck disable=SC2016
 "$task_php" -n -r '
 require $argv[1] . "/vendor/autoload.php";
-if (Composer\InstalledVersions::getReference("swoole/phpx") !== "a0138bbdd6cbfda62225adc56c558d0742114c8a") {
+if (Composer\InstalledVersions::getReference("swoole/phpx") !== "f6a2555e14694e8888d2f40ff2838ffb22bc04f2") {
     throw new RuntimeException("PHPX 来源与锁定版本不符");
 }
 $report = [];

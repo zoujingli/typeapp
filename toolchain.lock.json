@@ -2,12 +2,12 @@
   "php": "8.5.10",
   "zts": true,
   "typephp": {
-    "version": "0.9.4",
-    "reference": "874b82e96a2383712e8faf8177c6c715587e3546"
+    "version": "0.9.5",
+    "reference": "5ba9376642d8dd75efcd002b41b09a9d6bcca3e2"
   },
   "phpx": {
-    "version": "2.9.3",
-    "reference": "a0138bbdd6cbfda62225adc56c558d0742114c8a"
+    "version": "2.9.4",
+    "reference": "f6a2555e14694e8888d2f40ff2838ffb22bc04f2"
   },
   "platform": "linux",
   "primary-architecture": "x86_64"

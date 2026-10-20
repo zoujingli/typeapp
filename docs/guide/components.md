@@ -131,7 +131,7 @@ flowchart TB
 
 各插件页面的完整 PHP 示例以独立消费应用为基准。先按该页安装组件，再准备 `app/main.php`；不要覆盖已有业务入口，可在单独示例项目练习。涉及数据库、Redis 和状态文件的示例，按对应页先准备环境。
 
-开发示例另安装锁定版本的 TypePHP 工具：`composer require --dev swoole/typephp:0.9.4`。当前组件使用 `std::any()` 等编译期接口，PHP 开发启动器需显式加载该版本的官方 `src/polyfills.php`；这不增加生产源码解释回退。
+开发示例另安装锁定版本的 TypePHP 工具：`composer require --dev swoole/typephp:0.9.5`。当前组件使用 `std::any()` 等编译期接口，PHP 开发启动器需显式加载该版本的官方 `src/polyfills.php`；这不增加生产源码解释回退。
 
 不含生成声明的最小组件示例，生产入口只声明函数或类，加载文件不会自动执行 `main()`。在独立示例根新建开发启动器 `dev.php`：
 
@@ -180,6 +180,6 @@ composer show --locked 'zoujingli/type-*'
 
 核对 lock 中的版本与 source reference，再提交锁文件。主仓提交只有完成子仓同步和 Packagist 索引才可由公开 Composer 安装；`dev-main` 也不保证就是主仓最新 SHA。升级后重新生成声明、执行对应业务回归和目标平台 AOT；不要用忽略平台要求或删除锁文件解决接口不匹配。
 
-当前主仓源码统一使用 PHP `8.5.10 ZTS`、TypePHP `0.9.4` 和 PHPX `2.9.3` 作为 AOT 基线；Swoole 线程、协程、事件循环及内置 PHP 库按组件实际需要复用，不能由某个组件的 PHP 开发通过推导原生平台已支持。每个组件页同时说明安装、接口、配置、失败语义和验证边界；待完成工作见[实现规划](roadmap.md)。
+当前主仓源码统一使用 PHP `8.5.10 ZTS`、TypePHP `0.9.5` 和 PHPX `2.9.4` 作为 AOT 基线；Swoole 线程、协程、事件循环及内置 PHP 库按组件实际需要复用，不能由某个组件的 PHP 开发通过推导原生平台已支持。每个组件页同时说明安装、接口、配置、失败语义和验证边界；待完成工作见[实现规划](roadmap.md)。
 
 常见流程见[HTTP 与路由](routing.md)、[数据库与模型](database.md)和[构建与部署](deployment.md)。

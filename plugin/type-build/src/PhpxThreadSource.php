@@ -6,15 +6,15 @@ namespace Type\Build;
 
 use RuntimeException;
 
-/** 隔离 PHPX 2.9.3 的线程及协程执行状态，保留请求级原生对象根链。 */
+/** 隔离 PHPX 2.9.4 的线程及协程执行状态，保留请求级原生对象根链。 */
 final class PhpxThreadSource
 {
-    /** 适配后的源码摘要；apply() 内部仍严格校验固定 2.9.3 原文摘要。 */
-    public const HEADER_SHA256 = '3408f394e49587d4e6393b491dcfa2503010fa5f74269c474684560190254218';
-    public const SOURCE_SHA256 = '476449006d3dd3d05cf3e9be56915be71023bc4477d2b9e1d27b54beccf7b53a';
-    public const DEBUG_SHA256 = '1098c689db6deb8b87937f4d57160369da289ecb1dd643c22da97fc5eda614c2';
+    /** 适配后的源码摘要；apply() 内部仍严格校验固定 2.9.4 原文摘要。 */
+    public const HEADER_SHA256 = '5b18c56c0862553ecbbd0cab1dcb6c962d10a15ee61ce0e4b4ee84015f8adbd9';
+    public const SOURCE_SHA256 = 'b99275234dc1816f2cb38938da2b2761673706e3dcecb101e9ec8b1f2988d5b7';
+    public const DEBUG_SHA256 = 'b142060b7ca420d2522932ac8bec4f826b96a725ce93865f56b5772414a8f5aa';
     public const NATIVE_GC_SHA256 = '22702f78430fa59f4367d24dfae881e2c12f42d171e55b55847843d5d04c42aa';
-    public const STRING_SHA256 = 'df26c5aad50de70d684c67db25c80a5e993fda8089e5d3c15b964621788a4bc5';
+    public const STRING_SHA256 = '3f88f471f305aacfcaf5250b8cbf1d22c17fef09719b651431f5c8d7224c96ea';
     /**
      * 只适配显式提供的固定版本源码副本；适配后必须重新编译整份 PHPX 库。
      *
@@ -24,11 +24,11 @@ final class PhpxThreadSource
     public function apply(string $directory): array
     {
         $hashes = [
-            'include/phpx.h' => '3a29ec6614b891417152a541442b3bcf24cb64ed599e135f10af24c6265c80eb',
-            'src/core/base.cc' => '69093807978f3647c3b48bd7eb11fa5dfb8ef6d9aba73efe9c00cd12bf773358',
-            'src/core/debug.cc' => '50cf6c0b1a50ab58fa360e4edcab6bf3958cd908cc195f3516252d3c300e3d46',
+            'include/phpx.h' => '1112ff62751fe6e3225e7c359e304291e97d9338aceadd4776fcc1561d4638ab',
+            'src/core/base.cc' => 'e744a000fa8953382752dbc1d95338a10b1ac433807f9ab256ef09c58f751e69',
+            'src/core/debug.cc' => '25e0c66dffc088a7a5acbdc4c50b8be53b988873bd2e97b0d705fd6217bd9e3a',
             'src/core/native_gc.cc' => 'a1a40dd926fbcfef9cbc18456a29dd092ca24c4501d275eea9403ca2204c5680',
-            'src/core/string.cc' => '3ef612e78db649ea488e606b8b9067b0ef65f6c817c3e3c6a6404eaf990387a2',
+            'src/core/string.cc' => '6dbb43168921f6e03a7052ecf1330267843ae45436b32f9bebd0a20fbf59d40a',
         ];
         $contents = [];
         foreach ($hashes as $file => $hash) {
