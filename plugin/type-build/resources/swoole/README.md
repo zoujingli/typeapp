@@ -52,7 +52,7 @@ RC14 的 Windows DLL 保留 `37134319268` 的历史构建身份。后续诊断�
 
 当前内置 DLL 来自 [run 38782633247](https://github.com/zoujingli/typeapp/actions/runs/38782633247)、主仓源码 `5acb8aa09a8c5ea96aaf09ec5d27da87412e9269`，SHA-256 为 `3045d22fcbb2af1b9ae865cb611454f34018d63f0afa8ae7a07411ab86134845`。同一模块通过中文环境的主进程、PHP/宽字符子进程、两轮工作线程、零字符串和删除恢复验证，以及 DNS、句柄复用、TLS、curl 原有回归。原始 Artifact 为 `11996847853`；完整应用和十二个静态程序仍须按新发布源码分别验收。
 
-各模块的加载、协程 SQLite 和 PostgreSQL 连接拒绝检查通过，Windows 另通过主线程及两次重建工作线程的指定 DNS、TLS 写半关闭、读取超时恢复及连接重置检查，以及各 16 次的原生 UDP / DNS 后 UDP 对照；清单保存各 Artifact、依赖和适配摘要。Windows 还包含 config.w32、IOCP、DNS 和 PHP 头文件的受控适配。这些模块检查不替代完整通信及十二组合静态程序验收，进展见[新版升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。
+各模块的加载、协程 SQLite 和 PostgreSQL 连接拒绝检查通过，Windows 另通过主线程及两次重建工作线程的指定 DNS、TLS 写半关闭、读取超时恢复及连接重置检查，以及各 16 次的原生 UDP / DNS 后 UDP 对照；清单保存各 Artifact、依赖和适配摘要。Windows 还包含 config.w32、IOCP、DNS 和 PHP 头文件的受控适配。这些模块检查不替代完整通信及十二组合静态程序验收；上述模块与 RC14 的历史验收身份见[历史升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，当前 0.9.5 / 2.9.4 的迁移范围见[当前升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.5.md)。
 
 Swoole 和其所含第三方材料保留 [LICENSES](LICENSES) 中的原始许可证，第一方适配按仓库 Apache-2.0 提供。分发这些二进制时应随附该目录；其中也保存 macOS 静态子依赖以及 Windows 静态链接的 c-ares 1.34.8、zlib 1.3.2、Zstandard 1.5.7 的许可。zlib 许可取自[固定版本](https://github.com/madler/zlib/blob/v1.3.2/LICENSE)，Zstandard 按[该版本的 BSD 许可](https://github.com/facebook/zstd/blob/v1.5.7/LICENSE)分发。
 

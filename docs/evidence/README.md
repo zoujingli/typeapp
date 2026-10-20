@@ -15,6 +15,7 @@
 | [四平台原生 CI 与开发分支发布](native-release-20260925.md) | 同一 bf28c8b 源码的四平台默认矩阵、目录包隔离边界、组件与模板发布及 Packagist 同步 |
 | [TypePHP 0.9.3 升级](typephp-upgrade-0.9.3.md) | macOS ARM64 编译线程、全量应用、三库无源码运行与性能对照 |
 | [TypePHP 0.9.4 与 Swoole 开发快照升级](typephp-upgrade-0.9.4.md) | TypePHP 0.9.4、PHPX 2.9.3、固定 Swoole 开发快照的兼容审查、RC14 四平台/十二 profile 发布与公开回读；保留各失败候选与性能对照边界 |
+| [TypePHP 0.9.5 / PHPX 2.9.4 升级](typephp-upgrade-0.9.5.md) | macOS ARM64 工具链迁移、完整应用 AOT、三库与线程回归、源码隔离及性能对照；Linux/Windows 和静态单程序矩阵未验证 |
 | [内置模块与组件迁移](swoole-bundle.md) | 四平台文件身份、独立组件选择及 macOS ARM64 原生回归 |
 | [组件文档与公共 Composer 发布](components-publication.md) | 16 包公共索引与自动同步、15 组件实际安装、模板业务、Docsify 及许可打包回归 |
 | [物联中心功能、界面与初始化](iot-center-audit.md) | 站点整页保存修复、默认值、双端页面与三库原生身份；保留 Vben 及完整业务缺口 |
