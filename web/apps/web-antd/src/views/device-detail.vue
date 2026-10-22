@@ -317,6 +317,7 @@ onBeforeUnmount(() => { active = false; stopRefresh(); document.removeEventListe
       <Alert v-if="device?.recovery_verified === 0" message="恢复后尚未核对设备当前授权与归属，接入、控制和变更保持隔离。请联系恢复核对负责人。" type="warning" show-icon class="page-alert" />
       <p class="muted">{{ busy ? '刷新中' : refreshedAt ? `数据读取于 ${new Date(refreshedAt).toLocaleString()}` : '等待数据' }} · 可见时每 5 秒刷新</p>
       <Descriptions v-if="device" :column="{ xs: 1, sm: 2 }" layout="vertical" bordered>
+        <DescriptionsItem v-if="device.upgrade" label="升级来源" :span="2">旧安装 · {{ device.upgrade.decision === 'quarantined' ? '已转换，等待授权核对' : '已转换为原始通信' }}；原产品 {{ device.upgrade.product_id }} / 模型 {{ device.upgrade.model_version }}</DescriptionsItem>
         <DescriptionsItem label="设备名称">{{ device.name }}</DescriptionsItem><DescriptionsItem label="设备标识">{{ device.id }}</DescriptionsItem>
         <DescriptionsItem label="生命周期"><Tag>{{ lifecycleNames[device.lifecycle] }}</Tag></DescriptionsItem><DescriptionsItem label="所属租户">{{ session.tenant?.name }}</DescriptionsItem>
         <DescriptionsItem label="连接状态"><Tag :color="connectionColors[device.connection.status]">{{ connectionNames[device.connection.status] }}</Tag></DescriptionsItem><DescriptionsItem label="连接观察时间">{{ device.connection.observed_at === null ? '尚无连接观察' : new Date(device.connection.observed_at * 1000).toLocaleString() }}</DescriptionsItem>

@@ -358,6 +358,7 @@ onBeforeUnmount(() => { active = false; document.removeEventListener('visibility
       <template v-if="managed">
         <Alert v-if="Number(managed.recovery_verified) === 0" message="设备仍待恢复核对" description="接入与控制保持隔离。请运维核对当前归属和授权；历史资料仍按当前人员权限提供。" type="warning" show-icon class="page-alert" />
         <Descriptions :column="{ xs: 1, sm: 2 }" layout="vertical" bordered>
+          <DescriptionsItem v-if="managed.upgrade" label="升级来源" :span="2">旧安装 · {{ managed.upgrade.decision === 'quarantined' ? '已转换，等待授权核对' : '已转换为原始通信' }}；原产品 {{ managed.upgrade.product_id }} / 模型 {{ managed.upgrade.model_version }}</DescriptionsItem>
           <DescriptionsItem label="设备名称" :span="2">{{ managed.name }}</DescriptionsItem><DescriptionsItem label="设备标识" :span="2">{{ managed.id }}</DescriptionsItem>
           <DescriptionsItem label="生命周期">{{ lifecycleNames[managed.lifecycle] }}</DescriptionsItem><DescriptionsItem label="接入凭据">{{ Number(managed.recovery_verified) === 0 ? '待恢复核对' : managed.credential_active ? '存在有效凭据' : '凭据已吊销' }}</DescriptionsItem>
           <DescriptionsItem label="所属租户" :span="2">{{ managed.tenant_name }} · {{ managed.tenant_id }}</DescriptionsItem>

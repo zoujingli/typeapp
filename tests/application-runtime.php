@@ -60,7 +60,7 @@ function runtimeIdentityUpgrade(PDO $database, string $driver, array $before, ar
     $grants = !isset($before['iot_application_grants']);
     $relationships = !isset($before['iot_device_reassignments']);
     $newTables = [...($enrollments ? ['iot_device_enrollments', 'iot_device_enrollment_bindings'] : []), ...($applications ? ['iot_applications'] : []), ...($grants ? ['iot_application_grants'] : []), ...($relationships ? ['iot_device_reassignments'] : [])];
-    $excluded = ['admin_roles', 'customer_roles', 'admin_role_permissions', 'customer_role_permissions', ...$newTables];
+    $excluded = ['admin_roles', 'customer_roles', 'admin_role_permissions', 'customer_role_permissions', 'iot_devices', 'broker_compatibility', 'iot_architecture_upgrade', 'iot_device_upgrade_records', ...$newTables];
     $business = static fn (array $tables): array => array_diff_key($tables, array_fill_keys($excluded, true));
     $comparable = $relationships ? runtimeDataIdentity($database, $driver, ['iot_device_ownerships' => 'id, device_id, tenant_id, started_at, ended_at']) : $after;
     expect($business($comparable) === $business($before), '身份增量修改了已有业务数据');
@@ -108,6 +108,56 @@ function runtimeIdentityUpgrade(PDO $database, string $driver, array $before, ar
         expect($actualPermissions === $expectedPermissions, '迁移没有准确补齐最高管理员或向普通角色增权');
     }
     return $after;
+}
+
+/** 只允许设备转换列与兼容门变化；其他业务原件由全表身份比较覆盖。 */
+function runtimeDeviceUpgrade(PDO $database, array $devices, array $compatibility): void
+{
+    $current = $database->query('SELECT * FROM iot_devices ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+    $records = $database->query('SELECT * FROM iot_device_upgrade_records ORDER BY device_id')->fetchAll(PDO::FETCH_ASSOC);
+    $ledger = [];
+    foreach ($records as $record) {
+        $ledger[$record['device_id']] = $record;
+    }
+    expect(count($current) === count($devices), '升级不能删除或重建设备');
+    foreach ($devices as $index => $device) {
+        $actual = $current[$index];
+        if ($device['model_version'] === null) {
+            expect($actual === $device, '既有原始设备被改写');
+            continue;
+        }
+        $record = $ledger[$device['id']] ?? null;
+        expect($record !== null && json_decode($record['source_json'], true, 32, JSON_THROW_ON_ERROR) === $device
+            && $record['ownership_id'] === $device['ownership_id'], '转换来源或稳定使用关系丢失');
+        $reasons = json_decode($record['reasons_json'], true, 32, JSON_THROW_ON_ERROR);
+        $quarantined = $reasons !== [];
+        expect($record['decision'] === ($quarantined ? 'quarantined' : 'converted'), '转换决定不匹配原因');
+        foreach (['product_id', 'model_version', 'model_switch_id', 'transfer_id'] as $field) {
+            expect($actual[$field] === null, '设备仍依赖旧处理链：' . $field);
+            $actual[$field] = $device[$field];
+        }
+        expect((int) $actual['transfer_frozen'] === 0 && (int) $actual['version'] === (int) $device['version'] + 1
+            && (int) $actual['updated_at'] >= (int) $device['updated_at'], '设备转换版本或时序错误');
+        foreach (['transfer_frozen', 'version', 'updated_at'] as $field) {
+            $actual[$field] = $device[$field];
+        }
+        if ($quarantined) {
+            expect((int) $actual['recovery_verified'] === 0 && $actual['lifecycle'] === ($device['lifecycle'] === 'retired' ? 'retired' : 'disabled'), '不明确设备未保持隔离');
+            $actual['recovery_verified'] = $device['recovery_verified'];
+            $actual['lifecycle'] = $device['lifecycle'];
+        }
+        expect($actual === $device, '设备转换改写了未授权字段');
+    }
+    $actual = $database->query('SELECT * FROM broker_compatibility')->fetchAll(PDO::FETCH_ASSOC);
+    expect(count($actual) === count($compatibility), '兼容身份数量改变');
+    foreach ($actual as $index => $row) {
+        expect((int) $row['runtime_epoch'] === \app\broker\service\CompatService::EPOCH
+            && (int) $row['min_runtime_epoch'] === \app\broker\service\CompatService::EPOCH, '未关闭旧程序运行门');
+        foreach (['runtime_epoch', 'min_runtime_epoch', 'updated_at'] as $field) {
+            $row[$field] = $compatibility[$index][$field];
+        }
+        expect($row === $compatibility[$index], '升级改写了其他兼容或持久存储状态');
+    }
 }
 
 /** 等待可观测的真实 HTTP 状态；不以固定休眠代替服务就绪。 */
@@ -164,7 +214,7 @@ function runtimeRedisBudget(array $environment): void
 }
 
 /** 从真实 HTTP 建立非空业务数据与未完成导出；升级前正常停写，秘密只留在内存。 */
-function runtimeBusinessFixture(array $command, array $environment, string $directory, string $password, string $tenant, string $adminPassword): array
+function runtimeBusinessFixture(array $command, array $environment, string $directory, string $password, string $tenant, string $adminPassword, bool $legacy): array
 {
     $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($socket), '无法分配夹具服务端口');
@@ -198,6 +248,18 @@ function runtimeBusinessFixture(array $command, array $environment, string $dire
             json_encode(['name' => '升级保留普通平台角色', 'permissions' => ['identity.read', 'admin.devices.read']], JSON_THROW_ON_ERROR)
         );
         expect($adminRole->status === 200, '升级前普通平台角色夹具失败');
+        if (!$legacy) {
+            $grant = $client->request(
+                'POST',
+                '/admin/device-authorizations',
+                ['Content-Type' => 'application/json', 'Authorization' => 'Bearer ' . $adminLogin->json()['data']['accessToken']],
+                json_encode(['id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenant, 'name' => '当前安装设备', 'capacity' => 1, 'register_expires_at' => time() + 3600], JSON_THROW_ON_ERROR)
+            );
+            expect($grant->status === 201, '当前安装注册资格失败');
+            $registered = $create('/public/devices/register', ['id' => bin2hex(random_bytes(16)), 'device_id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenant, 'name' => '升级保留设备', 'code' => $grant->json()['data']['code']], 201);
+            return ['token' => $token, 'admin_token' => $adminLogin->json()['data']['accessToken'], 'path' => $path, 'tenant' => $tenant,
+                'product' => null, 'device' => $registered['device']['id'], 'export' => null, 'legacy' => false];
+        }
         $product = $create($path . '/products', ['name' => '升级保留产品'], 201);
         $models = $path . '/products/' . $product['id'] . '/models';
         $create($models, ['definition' => ['properties' => [
@@ -208,7 +270,17 @@ function runtimeBusinessFixture(array $command, array $environment, string $dire
         $job = $create($path . '/devices/' . $device['id'] . '/exports', ['id' => bin2hex(random_bytes(16)),
             'kind' => 'records', 'from' => time() - 3600, 'to' => time(), 'timezone' => 'Asia/Shanghai', 'sort' => 'sampled_asc'], 202);
         expect($job['status'] === 'queued', '升级前没有留下未完成任务');
-        return ['token' => $token, 'path' => $path, 'tenant' => $tenant, 'product' => $product['id'], 'device' => $device['id'], 'export' => $job['id']];
+        $special = [];
+        for ($index = 0; $index < 102; $index++) {
+            $extra = $create($path . '/devices', ['name' => '升级批次设备 ' . $index, 'product_id' => $product['id'], 'model_version' => 1], 201)['device'];
+            if ($index < 3) {
+                $special[] = $extra['id'];
+            }
+        }
+        $create($path . '/devices/' . $special[0] . '/disable', ['version' => 1, 'confirm_device_id' => $special[0]], 202);
+        $create($path . '/devices/' . $special[1] . '/revoke', ['version' => 1, 'confirm_device_id' => $special[1]], 202);
+        return ['token' => $token, 'admin_token' => $adminLogin->json()['data']['accessToken'], 'path' => $path, 'tenant' => $tenant, 'product' => $product['id'],
+            'device' => $device['id'], 'export' => $job['id'], 'legacy' => true, 'enabled_device' => $extra['id'], 'unavailable' => $special];
     } finally {
         $stopped = $server->stop(5);
         file_put_contents($directory . '/before-upgrade-http.log', $stopped->stdout . $stopped->stderr);
@@ -315,18 +387,51 @@ try {
             expect($installed->successful(), '空库安装失败');
             $checks[] = $legacyCommands === [] ? 'current-installation' : 'fixed-baseline-installation';
             $receipt = json_decode($installed->stdout, true, 64, JSON_THROW_ON_ERROR);
-            $fixture = runtimeBusinessFixture($legacyCommands[$driver] ?? $command, $env, $directory, $password . '-customer', $receipt['data']['tenant_id'], $password);
+            $fixture = runtimeBusinessFixture($legacyCommands[$driver] ?? $command, $env, $directory, $password . '-customer', $receipt['data']['tenant_id'], $password, $legacyCommands !== []);
             $dsn = $driver === 'sqlite' ? 'sqlite:' . $directory . '/application.sqlite'
                 : $driver . ':host=' . $env['DB_HOST'] . ';port=' . $env['DB_PORT'] . ';dbname=' . $env['DB_DATABASE'];
             $database = new PDO($dsn, $env['DB_USERNAME'] ?? '', $env['DB_PASSWORD'] ?? '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+            if ($fixture['legacy']) {
+                // 受控恢复故障数据，不伪造迁移记录；旧公开接口已建立完整设备与凭据。
+                $unverified = $database->prepare('UPDATE iot_devices SET recovery_verified = 0 WHERE id = ?');
+                $unverified->execute([$fixture['unavailable'][2]]);
+                $unverified->closeCursor();
+                $enabled = $database->prepare("UPDATE iot_devices SET lifecycle = 'enabled' WHERE id = ?");
+                $enabled->execute([$fixture['enabled_device']]);
+                $enabled->closeCursor();
+                // 旧部署中已持久化但尚未执行的工作样本；不宣称收到过真实设备消息。
+                $source = $database->prepare('SELECT * FROM iot_devices WHERE id = ?');
+                $source->execute([$fixture['unavailable'][2]]);
+                $pendingDevice = $source->fetch(PDO::FETCH_ASSOC);
+                $source->closeCursor();
+                $insert = static function (string $table, array $fields) use ($database): void {
+                    $statement = $database->prepare('INSERT INTO ' . $table . ' (' . implode(', ', array_keys($fields)) . ') VALUES (' . implode(', ', array_fill(0, count($fields), '?')) . ')');
+                    $statement->execute(array_values($fields));
+                    $statement->closeCursor();
+                };
+                $id = bin2hex(random_bytes(16));
+                $insert('iot_commands', ['id' => $id, 'tenant_id' => $pendingDevice['tenant_id'], 'device_id' => $pendingDevice['id'], 'ownership_id' => $pendingDevice['ownership_id'],
+                    'model_version' => 1, 'identifier' => 'legacy_pending', 'payload' => '{}', 'content_hash' => hash('sha256', '{}'), 'actor_id' => $receipt['data']['customer']['id'],
+                    'accepted_at' => time(), 'deadline_at' => time() + 3600, 'source_context' => '{}', 'request_version' => 1]);
+                $insert('iot_command_uncertainties', ['command_id' => $id, 'device_id' => $pendingDevice['id'], 'ownership_id' => $pendingDevice['ownership_id']]);
+                $insert('iot_ingestion', ['message_id' => bin2hex(random_bytes(32)), 'tenant_id' => $pendingDevice['tenant_id'], 'device_id' => $pendingDevice['id'], 'ownership_id' => $pendingDevice['ownership_id'],
+                    'sequence' => '1', 'content_hash' => hash('sha256', 'pending'), 'status' => 'accepted', 'code' => 'accepted', 'received_at' => time(), 'receipt_proof_nonce' => bin2hex(random_bytes(16)), 'receipt_requested_at' => time()]);
+                $notice = bin2hex(random_bytes(16));
+                $insert('iot_notifications', ['id' => $notice, 'tenant_id' => $pendingDevice['tenant_id'], 'alarm_id' => bin2hex(random_bytes(16)), 'kind' => 'trigger', 'payload' => '{}', 'created_at' => time()]);
+                $insert('iot_notice_outbox', ['id' => $notice, 'topic' => 'iot.notice', 'version' => 1, 'payload' => '{}', 'context' => '{}', 'fingerprint' => hash('sha256', 'pending-notice'),
+                    'state' => 'pending', 'token' => '', 'lease_until' => 0, 'attempts' => 0, 'created_at' => time()]);
+            }
+            $sourceDevices = $database->query('SELECT * FROM iot_devices ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+            $sourceCompatibility = $database->query('SELECT * FROM broker_compatibility')->fetchAll(PDO::FETCH_ASSOC);
             $before = runtimeDataIdentity($database, $driver);
             $registrationPending = !isset($before['iot_registration_attempts']);
             $enrollmentPending = !isset($before['iot_device_enrollments']);
             $applicationPending = !isset($before['iot_applications']);
             $relationshipPending = !isset($before['iot_device_reassignments']);
+            $dataPending = !isset($before['iot_architecture_upgrade']);
             $enrollmentRoles = [];
             $enrollmentPermissions = [];
-            if ($enrollmentPending || $applicationPending || $relationshipPending) {
+            if ($enrollmentPending || $applicationPending || $relationshipPending || $dataPending) {
                 foreach (['admin', 'customer'] as $realm) {
                     $enrollmentRoles[$realm] = $database->query('SELECT * FROM ' . $realm . '_roles ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
                     $enrollmentPermissions[$realm] = [];
@@ -353,10 +458,98 @@ try {
             }
             chmod($backup, 0600);
             $upgrade = ['app:upgrade', '--offline', '--backup', 'backup', '--sha256', hash_file('sha256', $backup)];
-            expect($run(['app:upgrade', '--check'])->successful(), '升级只读预检失败');
+            $preflight = $run(['app:upgrade', '--check']);
+            expect($preflight->successful(), '升级只读预检失败');
+            $preflightData = json_decode($preflight->stdout, true, 64, JSON_THROW_ON_ERROR);
+            expect(($preflightData['data_upgrade']['installation_id'] ?? '') === $receipt['data']['installation_id']
+                && ($preflightData['data_upgrade']['legacy_devices'] ?? -1) === ($fixture['legacy'] ? 103 : 0)
+                && ($preflightData['data_upgrade']['pending']['exports'] ?? -1) === ($fixture['legacy'] ? 1 : 0), '升级预检缺少真实安装、旧设备或未决导出清单');
+            expect(runtimeDataIdentity($database, $driver) === $before, '只读升级预检修改了业务数据');
+            if ($fixture['legacy']) {
+                foreach (['commands', 'uncertain_commands', 'ingestion', 'notifications', 'exports'] as $kind) {
+                    expect($preflightData['data_upgrade']['pending'][$kind] === 1, '预检未准确记录未决工作：' . $kind);
+                }
+                $nextPage = $run(['app:upgrade', '--check', '--after', $preflightData['data_upgrade']['next_device_cursor']]);
+                expect($nextPage->successful(), '只读设备游标不可使用');
+                $nextInventory = json_decode($nextPage->stdout, true, 64, JSON_THROW_ON_ERROR)['data_upgrade'];
+                expect(count($nextInventory['devices']) === 3 && !$nextInventory['has_more_devices']
+                    && array_intersect(array_column($nextInventory['devices'], 'device_id'), array_column($preflightData['data_upgrade']['devices'], 'device_id')) === [], '设备预检分页遗漏或重复');
+                expect(runtimeDataIdentity($database, $driver) === $before, '继续预检改写了业务数据');
+            }
             $bad = $run(['app:upgrade', '--offline', '--backup', 'backup', '--sha256', str_repeat('0', 64)]);
             expect(!$bad->successful() && str_contains($bad->stderr, 'upgrade_backup_digest_mismatch'), '错误备份摘要未拒绝');
-            expect($run($upgrade)->successful() && $run($upgrade)->successful(), '升级不能安全重复');
+            if ($dataPending) {
+                $activeNode = $database->prepare('INSERT INTO broker_resource_runs (slot, node_id, run_id, observed_at, expires_at, connections) VALUES (?, ?, ?, ?, ?, ?)');
+                $activeNode->execute([31, 'upgrade-running-fixture', bin2hex(random_bytes(16)), time(), time() + 60, 0]);
+                $activeNode->closeCursor();
+                try {
+                    $activeBefore = runtimeDataIdentity($database, $driver);
+                    $activeRefusal = $run($upgrade);
+                    expect(!$activeRefusal->successful() && str_contains($activeRefusal->stderr, 'upgrade_writers_active'), '活动 MQTT 观察未阻止离线升级');
+                    expect(runtimeDataIdentity($database, $driver) === $activeBefore, '活动写角色拒绝仍改写业务状态');
+                } finally {
+                    $database->exec("DELETE FROM broker_resource_runs WHERE node_id = 'upgrade-running-fixture'");
+                }
+                // 让真实 107 的第二条 DDL 失败：MySQL 保留首条，事务 DDL 必须回滚。
+                $database->exec('CREATE TABLE iot_device_upgrade_records (fixture_id INTEGER PRIMARY KEY)');
+                $ddlFailure = $run($upgrade);
+                expect(!$ddlFailure->successful(), '冲突 DDL 未失败');
+                $state = $database->query("SELECT state FROM type_migrations WHERE version = '107_iot_raw_device_upgrade'")->fetchColumn();
+                expect($state === 'failed', '迁移未记录实际 DDL 失败');
+                $history = runtimeDataIdentity($database, $driver);
+                expect(isset($history['iot_architecture_upgrade']) === ($driver === 'mysql'), 'DDL 部分提交与真实数据库语义不一致');
+                $database->exec('DROP TABLE iot_device_upgrade_records');
+                if ($driver === 'mysql') {
+                    $database->exec('DROP TABLE iot_architecture_upgrade');
+                }
+                expect($run(['migrate', 'recover', '107_iot_raw_device_upgrade', 'retry', 'isolated-fixture-partial-ddl-verified-and-removed'])->successful(), '真实失败后不能恢复迁移');
+                $checks[] = 'real-ddl-failure-and-explicit-recovery';
+            }
+            $first = $run($upgrade);
+            expect($first->successful(), '升级首批失败：' . $first->stderr);
+            $firstData = json_decode($first->stdout, true, 64, JSON_THROW_ON_ERROR);
+            if ($fixture['legacy']) {
+                expect($preflightData['data_upgrade']['has_more_devices'] && count($preflightData['data_upgrade']['devices']) === 100, '预检未显式分页');
+                expect($firstData['status'] === 'upgrade_in_progress' && !$firstData['restart_required']
+                    && (int) $database->query('SELECT COUNT(*) FROM iot_device_upgrade_records')->fetchColumn() === 100, '首批未形成可续跑进度');
+                $blocked = $run(['serve']);
+                expect(!$blocked->successful() && str_contains($blocked->stderr, 'upgrade_data_incomplete'), '转换未完成时开放业务入口');
+                $oldRun = runtimeCommand($legacyCommands[$driver], ['serve'], $env, dirname($directory), $directory . '/stale-runtime.log');
+                expect(!$oldRun->successful() && str_contains($oldRun->stdout . $oldRun->stderr, 'broker_compat_runtime_stale'), '旧程序未被兼容门拒绝');
+                file_put_contents($directory . '/other-backup', 'different backup identity');
+                $different = $run(['app:upgrade', '--offline', '--backup', 'other-backup', '--sha256', hash_file('sha256', $directory . '/other-backup')]);
+                expect(!$different->successful() && str_contains($different->stderr, 'upgrade_backup_identity_changed'), '续跑接受了不同备份');
+                // 真实写入故障验证批次回滚，已提交的首批不能被谎称全部撤销。
+                if ($driver === 'mysql') {
+                    $database->exec("CREATE TRIGGER upgrade_batch_failure BEFORE INSERT ON iot_device_upgrade_records FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'controlled upgrade batch failure'");
+                } elseif ($driver === 'pgsql') {
+                    $database->exec("CREATE FUNCTION upgrade_batch_failure() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''controlled upgrade batch failure''; END'");
+                    $database->exec('CREATE TRIGGER upgrade_batch_failure BEFORE INSERT ON iot_device_upgrade_records FOR EACH ROW EXECUTE FUNCTION upgrade_batch_failure()');
+                } else {
+                    $database->exec("CREATE TRIGGER upgrade_batch_failure BEFORE INSERT ON iot_device_upgrade_records BEGIN SELECT RAISE(ABORT, 'controlled upgrade batch failure'); END");
+                }
+                $batchBefore = runtimeDataIdentity($database, $driver);
+                try {
+                    expect(!$run($upgrade)->successful(), '批次故障被报告为成功');
+                    expect(runtimeDataIdentity($database, $driver) === $batchBefore, '失败批次留下设备或游标部分变更');
+                } finally {
+                    $database->exec('DROP TRIGGER upgrade_batch_failure' . ($driver === 'pgsql' ? ' ON iot_device_upgrade_records' : ''));
+                    if ($driver === 'pgsql') {
+                        $database->exec('DROP FUNCTION upgrade_batch_failure()');
+                    }
+                }
+                $resumed = $run($upgrade);
+                expect($resumed->successful() && json_decode($resumed->stdout, true, 64, JSON_THROW_ON_ERROR)['status'] === 'upgrade_complete', '中断后续跑失败');
+                runtimeDeviceUpgrade($database, $sourceDevices, $sourceCompatibility);
+                $checks[] = 'legacy-batch-failure-resume-and-old-runtime-rejection';
+            }
+            $completeBefore = runtimeDataIdentity($database, $driver);
+            expect($run($upgrade)->successful() && runtimeDataIdentity($database, $driver) === $completeBefore, '完成后重复升级不幂等');
+            if ($fixture['legacy']) {
+                $different = $run(['app:upgrade', '--offline', '--backup', 'other-backup', '--sha256', hash_file('sha256', $directory . '/other-backup')]);
+                expect(!$different->successful() && str_contains($different->stderr, 'upgrade_backup_identity_changed')
+                    && runtimeDataIdentity($database, $driver) === $completeBefore, '完成后不能用另一个备份冒充原升级来源');
+            }
             if ($registrationPending) {
                 $attempts = runtimeDataIdentity($database, $driver)['iot_registration_attempts'];
                 expect($attempts === ['rows' => 0, 'sha256' => hash('sha256', '')], '升级不能产生注册尝试或丢失限流结构');
@@ -364,7 +557,7 @@ try {
                 ksort($before);
                 $checks[] = 'registration-increment-preserves-existing-device-references';
             }
-            if ($enrollmentPending || $applicationPending || $relationshipPending) {
+            if ($enrollmentPending || $applicationPending || $relationshipPending || $dataPending) {
                 $before = runtimeIdentityUpgrade($database, $driver, $before, $enrollmentRoles, $enrollmentPermissions);
             }
             expect(runtimeDataIdentity($database, $driver) === $before, '重复升级修改业务数据');
@@ -403,9 +596,40 @@ try {
             $headers = ['Authorization' => 'Bearer ' . $fixture['token'], 'X-Tenant-Id' => $fixture['tenant']];
             $device = $client->request('GET', $fixture['path'] . '/devices/' . $fixture['device'], $headers);
             expect($device->status === 200 && $device->json()['data']['name'] === '升级保留设备', '旧会话或设备升级后不可用');
-            $jobs = $client->request('GET', $fixture['path'] . '/exports', $headers);
-            expect($jobs->status === 200 && $jobs->json()['items'][0]['id'] === $fixture['export']
-                && $jobs->json()['items'][0]['status'] === 'queued', '未完成任务升级后丢失或被擅自执行');
+            if ($fixture['legacy']) {
+                $pending = $database->prepare('SELECT status FROM iot_exports WHERE id = ?');
+                $pending->execute([$fixture['export']]);
+                expect($pending->fetchColumn() === 'queued', '未完成任务升级后丢失或被擅自执行');
+                $pending->closeCursor();
+                $projection = $device->json()['data'];
+                expect($projection['model_version'] === null && $projection['upgrade']['source'] === 'legacy_installation'
+                    && $projection['upgrade']['decision'] === 'converted' && str_contains($projection['topics']['publish'], '/raw/'), '转换后的设备未提供原始接入及来源投影');
+                $application = $client->request(
+                    'POST',
+                    $fixture['path'] . '/applications',
+                    $headers + ['Content-Type' => 'application/json'],
+                    json_encode(['id' => bin2hex(random_bytes(16)), 'name' => '旧设备新业务系统'], JSON_THROW_ON_ERROR)
+                );
+                expect($application->status === 201, '旧会话不能创建新应用');
+                $applicationId = $application->json()['data']['application']['id'];
+                $permission = ['ownership_id' => $projection['ownership_id'], 'version' => 0, 'receive' => true, 'send' => true, 'subscribe' => true];
+                $granted = $client->request('POST', $fixture['path'] . '/applications/' . $applicationId . '/devices/' . $fixture['device'], $headers + ['Content-Type' => 'application/json'], json_encode($permission, JSON_THROW_ON_ERROR));
+                expect($granted->status === 200, '旧设备不能进入新逐设备授权路径：' . $granted->body);
+                foreach ($fixture['unavailable'] as $id) {
+                    $isolated = $client->request('GET', $fixture['path'] . '/devices/' . $id, $headers);
+                    expect($isolated->status === 200 && $isolated->json()['data']['recovery_verified'] === 0, '未核对旧设备未保持隔离');
+                    $refused = $client->request(
+                        'POST',
+                        $fixture['path'] . '/applications/' . $applicationId . '/devices/' . $id,
+                        $headers + ['Content-Type' => 'application/json'],
+                        json_encode(array_replace($permission, ['ownership_id' => $isolated->json()['data']['ownership_id']]), JSON_THROW_ON_ERROR)
+                    );
+                    expect($refused->status === 409, '旧不可用设备自动恢复通信授权');
+                }
+                $control = $client->request('GET', '/admin/devices/' . $fixture['device'], ['Authorization' => 'Bearer ' . $fixture['admin_token']]);
+                expect($control->status === 200 && $control->json()['data']['upgrade']['decision'] === 'converted', '控制端旧会话丢失或无法查询转换来源');
+                $checks[] = 'legacy-realms-new-grants-and-quarantine';
+            }
             $checks[] = 'business-data-and-pending-export-preserved';
             $untrusted = new HttpClient('http://localhost:' . $httpEnv['APP_PORT'], 3);
             expect($untrusted->request('GET', '/readyz')->status === 400, '探针绕过 Host 白名单');
@@ -541,6 +765,8 @@ try {
             $report['drivers'][$driver] = ['checks' => $checks, 'business_tables' => $before, 'scheduler_stop_ms' => $milliseconds];
         } finally {
             $report['drivers'][$driver]['checks'] = $checks;
+            // closeCursor 不释放 PDOStatement 持有的连接；夹具闭包也不能跨到数据库停机之后。
+            unset($insert, $unverified, $enabled, $source, $activeNode, $pending);
             foreach (['http' => $server, 'scheduler' => $scheduler] as $role => $process) {
                 if ($process !== null) {
                     $result = $process->stop(5);

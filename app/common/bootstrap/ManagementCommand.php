@@ -318,6 +318,9 @@ final class ManagementCommand implements \Type\Core\Command
                     $connection = \Type\Orm\Db::connection('default', true);
                     if ($operation === 'gate') {
                         \app\iot\service\RecoveryService::ready($connection, $host);
+                        if ($host === 'app') {
+                            \app\iot\service\DeviceUpgrade::ready($connection);
+                        }
                         return;
                     }
                     if ($operation === 'review') {

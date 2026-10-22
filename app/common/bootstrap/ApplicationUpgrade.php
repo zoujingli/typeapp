@@ -8,6 +8,7 @@ use app\broker\service\CompatService;
 use app\common\database\DatabaseFactory;
 use app\common\database\Schema;
 use app\iot\service\RecoveryService;
+use app\iot\service\DeviceUpgrade;
 use Type\Core\Config\Repository;
 use Type\Orm\Connection;
 use Type\Orm\Migration\Migrator;
@@ -26,10 +27,12 @@ final class ApplicationUpgrade
      */
     public static function run(Repository $settings, string $basePath, array $arguments): array
     {
-        $check = $arguments === ['--check'];
+        $check = $arguments === ['--check'] || (count($arguments) === 3 && $arguments[0] === '--check'
+            && $arguments[1] === '--after' && preg_match('/^[a-f0-9]{32}$/D', $arguments[2]) === 1);
+        $after = $check && count($arguments) === 3 ? $arguments[2] : '';
         if (!$check && (count($arguments) !== 5 || $arguments[0] !== '--offline' || $arguments[1] !== '--backup'
             || $arguments[3] !== '--sha256' || preg_match('/^[a-f0-9]{64}$/D', $arguments[4]) !== 1)) {
-            throw new \InvalidArgumentException('app:upgrade --check 或 --offline --backup <备份文件> --sha256 <SHA256>；先停止全部写入角色并验证备份可恢复');
+            throw new \InvalidArgumentException('app:upgrade --check [--after <设备ID>] 或 --offline --backup <备份文件> --sha256 <SHA256>；先停止全部写入角色并验证备份可恢复');
         }
         DatabaseFactory::requireExisting($settings, $basePath);
         $digest = '';
@@ -53,40 +56,45 @@ final class ApplicationUpgrade
                 fclose($stream);
             }
         }
-        return CoroutineRuntime::run(static function () use ($settings, $basePath, $check, $digest): array {
+        return CoroutineRuntime::run(static function () use ($settings, $basePath, $check, $digest, $after): array {
             $driver = DatabaseFactory::create($settings, $basePath);
             $plan = Schema::migrations($driver->name());
             $migrator = new Migrator($driver, budget: Settings::databaseBudget($settings));
-            if ($check) {
-                $states = $migrator->status($plan);
-                $database = Settings::database($settings, $basePath, 1);
-                $scope = new ExecutionScope();
-                try {
-                    self::verify($database->connect($scope), $states);
-                } finally {
-                    $scope->close();
-                    $database->close();
-                }
-            } else {
+            $states = $migrator->status($plan);
+            if (!$check) {
+                $sourceStates = $states;
                 $states = $migrator->run(
                     $plan,
                     false,
-                    static function (Connection $connection, array $states): void {
+                    static function (Connection $connection, array $states) use ($sourceStates): void {
                         self::verify($connection, $states);
-                    },
-                    static function (Connection $connection, array $states): void {
-                        self::verify($connection, $states);
-                        // 不改变已有账号/任务；当前代次无需重复写入兼容记录。
-                        $current = CompatService::current($connection);
-                        if ($current['runtime_epoch'] !== CompatService::EPOCH || $current['management_head'] !== CompatService::HEAD) {
-                            CompatService::recordUpgrade($connection);
+                        if ($states !== $sourceStates) {
+                            throw new \InvalidArgumentException('upgrade_source_changed：另一次迁移已改变来源，请重新预检');
                         }
+                        DeviceUpgrade::offline($connection);
+                    },
+                    static function (Connection $connection, array $states) use ($digest, $sourceStates): void {
+                        self::verify($connection, $states);
+                        DeviceUpgrade::advance($connection, $digest, $sourceStates);
                     }
                 );
             }
-            return ['status' => $check ? 'upgrade_checked' : 'upgrade_complete', 'schema_version' => 1,
+            $database = Settings::database($settings, $basePath, 1);
+            $scope = new ExecutionScope();
+            try {
+                $connection = $database->connect($scope);
+                self::verify($connection, $states);
+                $inventory = DeviceUpgrade::inspect($connection, $after);
+            } finally {
+                $scope->close();
+                $database->close();
+            }
+            $complete = $inventory['state'] === 'complete';
+            return ['status' => $check ? 'upgrade_checked' : ($complete ? 'upgrade_complete' : 'upgrade_in_progress'), 'schema_version' => 1,
                 'migrations' => $states, 'backup_sha256' => $digest === '' ? null : $digest,
-                'restart_required' => !$check, 'frontend_command' => 'web:install --force'];
+                'data_upgrade' => $inventory, 'restart_required' => !$check && $complete,
+                'continue_command' => $complete ? null : 'app:upgrade --offline --backup <原备份文件> --sha256 <原SHA256>',
+                'frontend_command' => 'web:install --force'];
         });
     }
 
@@ -97,7 +105,7 @@ final class ApplicationUpgrade
             if (in_array($state['state'], ['failed', 'running'], true)) {
                 throw new \InvalidArgumentException('upgrade_recovery_required：先通过 migrate history/recover 核对迁移实际状态');
             }
-            if ($state['state'] !== 'applied' && (!in_array($state['version'], ['101_app_broker_operation_recovery', '102_iot_device_enrollment', '103_iot_device_registration', '104_iot_client_applications', '105_iot_application_device_grants', '106_iot_device_ownership_lifecycle'], true) || $state['state'] !== 'pending')) {
+            if ($state['state'] !== 'applied' && (!in_array($state['version'], ['101_app_broker_operation_recovery', '102_iot_device_enrollment', '103_iot_device_registration', '104_iot_client_applications', '105_iot_application_device_grants', '106_iot_device_ownership_lifecycle', '107_iot_raw_device_upgrade'], true) || $state['state'] !== 'pending')) {
                 throw new \InvalidArgumentException('upgrade_schema_unsupported：只支持当前安装谱系，不能从未知旧模式直接升级');
             }
         }

@@ -235,6 +235,7 @@ final class DeviceService
         $active = $connection->table('iot_device_credentials')->where('device_id', '=', $deviceId)->where('ownership_id', '=', $device['ownership_id'])
             ->where('status', '=', 'active')->where('recovery_verified', '=', 1)->first();
         $result = self::observed($device) + ['credential_active' => $active !== null];
+        $result['upgrade'] = DeviceUpgrade::device($connection, $deviceId);
         $ownership = $connection->table('iot_device_ownerships')->where('id', '=', $device['ownership_id'])->first();
         $result['usage'] = $ownership === null ? null : ['started_at' => (int) $ownership['started_at'],
             'ended_at' => $ownership['ended_at'] === null ? null : (int) $ownership['ended_at'],

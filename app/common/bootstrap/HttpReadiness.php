@@ -62,6 +62,7 @@ final class HttpReadiness
             }
             RecoveryService::ready($connection, $this->broker ? 'broker' : 'app');
             if (!$this->broker) {
+                \app\iot\service\DeviceUpgrade::ready($connection);
                 $row = $connection->table('app_installation')->where('id', '=', 1)->first();
                 if ($row === null || (int) $row['schema_version'] !== 1) {
                     return $this->healthy = false;

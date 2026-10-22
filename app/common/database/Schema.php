@@ -70,7 +70,7 @@ final class Schema
             new Migration('101_app_broker_operation_recovery', '为双端Broker操作账本增加恢复核对标记', [
                 'ALTER TABLE admin_broker_operations ADD COLUMN recovery_verified INTEGER NOT NULL DEFAULT 1',
                 'ALTER TABLE customer_broker_operations ADD COLUMN recovery_verified INTEGER NOT NULL DEFAULT 1',
-            ], $driver !== 'mysql'), ...\app\iot\database\EnrollmentSchema::migrations($driver), ...\app\iot\database\RegistrationSchema::migrations($driver), ...\app\iot\database\ApplicationSchema::migrations($driver), ...\app\iot\database\OwnershipSchema::migrations($driver)];
+            ], $driver !== 'mysql'), ...\app\iot\database\EnrollmentSchema::migrations($driver), ...\app\iot\database\RegistrationSchema::migrations($driver), ...\app\iot\database\ApplicationSchema::migrations($driver), ...\app\iot\database\OwnershipSchema::migrations($driver), ...\app\iot\database\UpgradeSchema::migrations($driver)];
     }
 
     /**
@@ -107,6 +107,7 @@ final class Schema
                         RoleService::initializeScope('admin', 'platform', (string) $admin['id']);
                         RoleService::initializeScope('customer', $tenant, $member);
                         CompatService::recordUpgrade($connection);
+                        \app\iot\service\DeviceUpgrade::initialize($connection, $installation);
                         return ['installation_id' => $installation, 'admin' => $admin, 'customer' => $customer, 'tenant_id' => $tenant];
                     }, 'default', $driver->name() === 'sqlite' ? 'immediate' : 'default');
                 });

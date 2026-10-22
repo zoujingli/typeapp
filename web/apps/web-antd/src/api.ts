@@ -76,8 +76,10 @@ export const transferStatusNames: Record<DeviceTransfer['status'], string> = { r
 export const transferPendingNames: Record<string, string> = { recovery_not_verified: '恢复后尚未核对设备当前授权与归属', target_approval_required: '等待目标租户管理员审批', device_unavailable: '设备生命周期或归属不可用', device_not_online: '设备尚未在线确认', device_confirmation_required: '等待设备持久冻结确认', cache_state_unknown: '设备未报告待排空缓存', device_confirmation_stale: '设备确认已过期，等待新报告', device_model_not_ready: '设备尚未明确支持目标结构', cache_not_drained: '旧阶段上报仍待取得平台回执', device_commands_unresolved: '设备执行结果或回执尚未对账', commands_unresolved: '平台仍有未完成或未知指令', authorization_not_ready: '凭据不可用或撤权尚未完成', old_authorization_isolation_pending: '等待旧连接、会话和跨节点投递隔离；旧凭据已撤销', target_activation_required: '旧授权已隔离，等待目标管理员激活新归属', new_device_confirmation_required: '新归属已激活，请交付新配置和凭据，等待设备确认；超时仍保持待处理' };
 /** 设备管理接口支持的明确动作，页面按授权及当前状态筛选。 */
 export type DeviceAction = 'update' | 'rotate' | 'revoke' | 'disable' | 'enable' | 'retire';
-/** 设备管理详情中的凭据可用性和可选租户信息。 */
-export interface DeviceManagement extends Device { credential_active: boolean; tenant_name?: string; tenant_enabled?: number; usage?: { started_at: number; ended_at: number | null; expires_at: number | null; available: boolean } }
+/** 旧安装转换的安全投影；不包含原件 JSON、凭据或验证摘要。 */
+export interface DeviceUpgrade { source: 'legacy_installation'; decision: 'converted' | 'quarantined'; reasons: string[]; product_id: string; model_version: number; lifecycle: string; converted_at: number }
+/** 设备管理详情中的凭据可用性、使用关系和可选升级来源。 */
+export interface DeviceManagement extends Device { upgrade?: DeviceUpgrade | null; credential_active: boolean; tenant_name?: string; tenant_enabled?: number; usage?: { started_at: number; ended_at: number | null; expires_at: number | null; available: boolean } }
 /** 原始通信设备的关系交接；查询不推进清理，目标确认后才建立新关系。 */
 export interface DeviceReassignment {
   id: string; device_id: string; device_name: string; source_tenant_id: string; target_tenant_id: string | null;

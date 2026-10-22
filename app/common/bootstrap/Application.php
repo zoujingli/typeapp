@@ -117,6 +117,9 @@ final class Application
                 $connection = $compat->connect($compatScope);
                 CompatService::assertRuntime($connection);
                 \app\iot\service\RecoveryService::ready($connection, $broker ? 'broker' : 'app');
+                if (!$broker) {
+                    \app\iot\service\DeviceUpgrade::ready($connection);
+                }
             } finally {
                 $compatScope->close();
                 $compat->close();

@@ -322,6 +322,7 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
         try {
             $result = $scope->run(static function (ExecutionScope $current) use ($request, $serviceCredential, $serviceVerifier): array {
                 $connection = Db::connection('default', true);
+                DeviceUpgrade::ready($connection);
                 $connection->rawQuery("SELECT set_config('application_name', ?, false), set_config('statement_timeout', '1000', false), "
                     . "set_config('lock_timeout', '500', false), set_config('idle_in_transaction_session_timeout', '1000', false), "
                     . "set_config('synchronous_commit', 'remote_apply', false)", ['type_mqtt_' . $request['operation_id']]);
