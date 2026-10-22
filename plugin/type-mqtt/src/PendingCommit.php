@@ -10,15 +10,16 @@ use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
 
 /**
- * 一个有截止的持久 worker 及其精确后端清理；通过 Swoole PROC hook 的进程管道交换有界消息，不执行阻塞 PDO。
+ * 一个有截止的持久 worker 及其精确后端清理；通过进程私有 IPC 交换有界消息，不在调用者执行阻塞 PDO。
  * 未证明远端后端消失的结果 released=false，调用者必须保留该资源配额，不能无限重启。
  */
 final class PendingCommit
 {
-    /** @var resource|null Swoole PROC hook 管理的独立命令进程。 */
+    /** @var resource|null 独立命令进程；只有观察到退出后才回收句柄并归还配额。 */
     private mixed $process = null;
     /** @var array<int, resource> 子进程标准输入与合并输出；只关闭本实例持有的句柄。 */
     private array $pipes = [];
+    private ?WorkerSocket $socket = null;
     private string $token = '';
     private string $input = '';
     private string $output = '';
@@ -126,8 +127,19 @@ final class PendingCommit
         $environment = getenv();
         $environment['MQTT_WORKER_TOKEN'] = $this->token;
         $pipes = [];
-        // Swoole 的 PROC hook 使用 exec 专用原生路径；不会在协程中 fork 后继续执行 PHP 回调。
-        $this->process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, null, $environment);
+        // Windows 没有 PROC hook；独立进程仍提供硬隔离，IPC 由官方协程 Socket 有界等待。
+        $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]];
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->socket = new WorkerSocket($this->token);
+            $environment = array_replace($environment, $this->socket->environment());
+            $descriptors = [0 => ['file', 'NUL', 'rb'], 1 => ['file', 'NUL', 'wb'], 2 => ['file', 'NUL', 'wb']];
+        }
+        try {
+            $this->process = proc_open($command, $descriptors, $pipes, null, $environment);
+        } catch (\Throwable $error) {
+            $this->closePipe();
+            throw $error;
+        }
         $this->pipes = $pipes;
         if (!is_resource($this->process)) {
             $this->process = null;
@@ -135,13 +147,19 @@ final class PendingCommit
             throw new \RuntimeException('MQTT 持久 worker 启动失败');
         }
         foreach ($this->pipes as $pipe) {
-            stream_set_blocking($pipe, false);
+            if (!stream_set_blocking($pipe, false)) {
+                proc_terminate($this->process, SIGKILL);
+                $this->closePipe();
+                proc_close($this->process);
+                $this->process = null;
+                throw new \RuntimeException('MQTT 持久 worker IPC 不支持非阻塞');
+            }
         }
     }
 
     private function exchange(): void
     {
-        if ($this->process === null || $this->pipes === []) {
+        if ($this->process === null || ($this->pipes === [] && $this->socket === null)) {
             return;
         }
         // 管道可能只有 8KiB 缓冲；已开始的传输允许短暂协作等待，不能每个块都等待下一轮管理查询。
@@ -149,9 +167,22 @@ final class PendingCommit
         $exchange = new Deadline(0.01);
         $budget = 262144;
         while ($budget > 0) {
-            $chunk = fread($this->pipes[1], $budget);
+            if ($this->socket !== null) {
+                $seconds = min(0.001, $this->deadline->remaining() ?? 0.0);
+                if ($seconds <= 0.0) {
+                    return;
+                }
+                $chunk = $this->socket->read($budget, $seconds);
+                if (!$this->authenticated && $this->socket->authenticated()) {
+                    $this->authenticated = true;
+                    $this->output = $this->cleaning
+                        ? json_encode(['operation_id' => $this->operationId, 'action' => 'cleanup'], JSON_THROW_ON_ERROR) . "\n" : $this->serializedRequest;
+                }
+            } else {
+                $chunk = fread($this->pipes[1], $budget);
+            }
             if (!is_string($chunk) || $chunk === '') {
-                if ($this->input !== '' && !str_contains($this->input, "\n") && $this->readyPipe($this->pipes[1], false, $exchange)) {
+                if ($this->socket === null && $this->input !== '' && !str_contains($this->input, "\n") && $this->readyPipe($this->pipes[1], false, $exchange)) {
                     continue;
                 }
                 break;
@@ -193,9 +224,10 @@ final class PendingCommit
         }
         $budget = 262144;
         while ($this->output !== '' && $budget > 0) {
-            $written = @fwrite($this->pipes[0], substr($this->output, 0, min(16384, $budget)));
+            $bytes = substr($this->output, 0, min(16384, $budget));
+            $written = $this->socket === null ? @fwrite($this->pipes[0], $bytes) : $this->socket->write($bytes, 0.001);
             if ($written === false || $written === 0) {
-                if ($written === 0 && $this->readyPipe($this->pipes[0], true, $exchange)) {
+                if ($this->socket === null && $written === 0 && $this->readyPipe($this->pipes[0], true, $exchange)) {
                     continue;
                 }
                 if ($this->deadline->expired()) {
@@ -224,6 +256,8 @@ final class PendingCommit
 
     private function closePipe(): void
     {
+        $this->socket?->close();
+        $this->socket = null;
         foreach ($this->pipes as $pipe) {
             fclose($pipe);
         }
@@ -240,41 +274,60 @@ final class PendingCommit
     public static function work(PostgresStore $store, string $endpoint, ?Closure $operation = null): void
     {
         if ($endpoint !== 'pipe') {
-            throw new \InvalidArgumentException('MQTT 持久 worker 只接受 Swoole 管理的进程管道');
+            throw new \InvalidArgumentException('MQTT 持久 worker 只接受受控进程的私有 IPC');
         }
+        CoroutineRuntime::run(static function () use ($store, $operation): void {
+            self::workCurrent($store, $operation);
+        });
+    }
+
+    private static function workCurrent(PostgresStore $store, ?Closure $operation): void
+    {
         $token = (string) getenv('MQTT_WORKER_TOKEN');
         if (preg_match('/^[a-f0-9]{64}$/D', $token) !== 1) {
             throw new \RuntimeException('MQTT 持久 worker 缺少调用身份');
         }
-        self::write(STDOUT, $token . "\n");
-        $line = fgets(STDIN, 2097153);
-        if (!is_string($line) || !str_ends_with($line, "\n")) {
-            throw new \RuntimeException('MQTT 持久请求超过字节或等待预算');
-        }
-        $request = json_decode($line, true, 32, JSON_THROW_ON_ERROR);
-        if (!is_array($request) || !is_string($request['operation_id'] ?? null)) {
-            throw new \RuntimeException('MQTT 持久请求身份无效');
-        }
-        $result = CoroutineRuntime::run(static function () use ($request, $store, $operation): CommitResult {
-            $scope = new ExecutionScope();
-            try {
-                return $scope->run(static function (ExecutionScope $current) use ($request, $store, $operation): CommitResult {
-                    if (($request['action'] ?? '') === 'cleanup') {
-                        return new CommitResult($request['operation_id'], 'unknown', 0x88, [], $store->cleanup($request['operation_id']));
-                    }
-                    return $operation === null ? $store->execute($request) : $operation($request);
-                });
-            } finally {
+        $socket = PHP_OS_FAMILY === 'Windows' ? WorkerSocket::connect() : null;
+        try {
+            if ($socket === null) {
+                self::write(STDOUT, $token . "\n");
+            }
+            $line = $socket === null ? fgets(STDIN, 2097153) : $socket->recvLine(2097153, 5.0);
+            if (!is_string($line) || !str_ends_with($line, "\n")) {
+                throw new \RuntimeException('MQTT 持久请求超过字节或等待预算');
+            }
+            $request = json_decode($line, true, 32, JSON_THROW_ON_ERROR);
+            if (!is_array($request) || !is_string($request['operation_id'] ?? null)) {
+                throw new \RuntimeException('MQTT 持久请求身份无效');
+            }
+            $result = CoroutineRuntime::run(static function () use ($request, $store, $operation): CommitResult {
+                $scope = new ExecutionScope();
                 try {
-                    $scope->close();
+                    return $scope->run(static function (ExecutionScope $current) use ($request, $store, $operation): CommitResult {
+                        if (($request['action'] ?? '') === 'cleanup') {
+                            return new CommitResult($request['operation_id'], 'unknown', 0x88, [], $store->cleanup($request['operation_id']));
+                        }
+                        return $operation === null ? $store->execute($request) : $operation($request);
+                    });
                 } finally {
-                    if ($scope->state() !== 'closed') {
-                        $scope->awaitClosed();
+                    try {
+                        $scope->close();
+                    } finally {
+                        if ($scope->state() !== 'closed') {
+                            $scope->awaitClosed();
+                        }
                     }
                 }
+            });
+            $bytes = json_encode($result->data(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n";
+            if ($socket === null) {
+                self::write(STDOUT, $bytes);
+            } elseif ($socket->sendAll($bytes, 1.0) !== strlen($bytes)) {
+                throw new \RuntimeException('MQTT 持久 IPC 写入失败');
             }
-        });
-        self::write(STDOUT, json_encode($result->data(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n");
+        } finally {
+            $socket?->close();
+        }
     }
 
     /** @param resource $socket */

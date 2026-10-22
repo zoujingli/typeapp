@@ -152,6 +152,10 @@ jobs:
             & "$env:PHP_HOME/php.exe" @arguments
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+          New-Item -ItemType Directory -Path build/worker-ipc-probe -Force | Out-Null
+          & "$env:PHP_HOME/php.exe" .github/scripts/probe-worker-ipc.php |
+            Tee-Object build/worker-ipc-probe/socket.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 原生构建身份与缓存
         if: inputs.scope != 'orm' && inputs.scope != 'application' && inputs.scope != 'template' && inputs.scope != 'pgsql-probe' && inputs.scope != 'pgsql-app' && inputs.scope != 'sqlite-app'
         run: |
@@ -290,6 +294,7 @@ jobs:
             build/release-candidate/*.json
             build/release-candidate/attachments/*
             build/windows-contracts.xml
+            build/worker-ipc-probe/**
             build/http-assembly-*-report.json
             build/http-assembly-*.evidence/**
             build/http-assembly-*/failure.txt

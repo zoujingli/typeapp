@@ -59,11 +59,11 @@ sequenceDiagram
 | `allowedOrigins` | `[]` | WebSocket 来源限制，生产应明确允许来源 |
 | `mtlsPort` / `clientCa` | 0 / 空字符串 | 专用双向 TLS 监听与客户端 CA |
 | `handleSignals` | `true` | 由 Broker 处理停止信号；嵌入时需宿主接管停止 |
-| `workerCommand` | 空数组 | 通过 Swoole PROC hook 管理的进程管道启动持久 worker；为空时只开放 QoS 0 |
+| `workerCommand` | 空数组 | 显式启动持久 worker 的命令参数数组，私有 IPC 有界交换；为空时只开放 QoS 0 |
 
 经典 Swoole Server 可用时，Broker 的 TCP、TLS、mTLS 与 WebSocket 监听共用其生命周期；WebSocket 监听启用时，HTTP 升级和 MQTT 帧共用该服务。经典 Server 不可用的平台自动采用官方 Coroutine Socket 提供 TCP/TLS，两者共用协议、授权和资源预算。协程入口尚不支持 MQTT over WebSocket、客户端证书身份及服务端 SNI，配置这些能力时返回 `feature_unavailable`；不会静默改用明文或跳过身份验证。
 
-持久 worker 使用 Swoole PROC hook 管理的进程管道，客户端统一使用 Swoole Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行。具体平台与产物结果见[平台与验收](../platforms.md)。
+持久 worker 的 Unix 管道由 Swoole PROC hook 管理；Windows 通过 Swoole Coroutine Socket 建立仅监听回环地址的短生命周期通道，父子相互验证一次性身份后才交换业务数据。两种机制均限制消息字节和执行时间，结果到达与进程实际退出分别核对。客户端统一使用 Swoole Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行。具体平台与产物结果见[平台与验收](../platforms.md)。
 
 `wsPort`、`wssPort`、`mtlsPort` 不能与主端口重复；同一进程不能同时开启明文 WS 与 WSS，WSS/mTLS 不能混用明文调试配置。证书生命周期、持久资源与集群参数集中在[组件参考](../plugins/type-mqtt.md)，无需把它们复制成另一套配置体系。
 

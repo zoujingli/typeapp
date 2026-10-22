@@ -41,7 +41,7 @@ composer require zoujingli/type-mqtt:1.0.0-rc.18
 composer require zoujingli/type-orm-pgsql:1.0.0-rc.18
 ```
 
-PHP 要求 `>=8.4 <8.6`，依赖 OpenSSL、PCRE、JSON 及上述组件；持久后端需要 PDO PostgreSQL。通信、进程、线程、协程与事件循环统一使用 Swoole `>=6.2 <7` 的官方能力，允许固定官方内置 PHP 库按官方机制加载。Broker 优先使用经典 Server，不可用时由 Coroutine Socket 提供 TCP/TLS；客户端统一使用 Coroutine Socket，非协程调用沿现有 CoroutineRuntime 使用官方 Scheduler，持久 worker 使用 Swoole PROC hook 管理的进程管道。原生运行仍需对应扩展，不回退执行业务 PHP 源码。
+PHP 要求 `>=8.4 <8.6`，依赖 OpenSSL、PCRE、JSON 及上述组件；持久后端需要 PDO PostgreSQL。通信、线程、协程与事件循环复用 Swoole `>=6.2 <7` 的官方能力，允许固定官方内置 PHP 库按官方机制加载。Broker 优先使用经典 Server，不可用时由 Coroutine Socket 提供 TCP/TLS；客户端统一使用 Coroutine Socket，非协程调用沿现有 CoroutineRuntime 使用官方 Scheduler。持久 worker 是独立命令进程，私有 IPC 的平台机制和截止规则见[MQTT 通信](../communications/mqtt.md)。原生运行仍需对应扩展，不回退执行业务 PHP 源码。
 
 协程 Broker 共用原协议、授权和额度控制，可用 `serve($host, $port, coroutine: true)` 显式选择。MQTT over WebSocket、客户端证书身份与服务端 SNI 目前需要经典 Server；协程入口在监听前以 `feature_unavailable` 拒绝这些配置。TLS 证书验证及账号授权继续生效，平台结果见[平台与验收](../platforms.md)。
 

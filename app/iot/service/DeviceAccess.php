@@ -19,6 +19,7 @@ use Type\Mqtt\ProtocolError;
 use Type\Mqtt\QuotaUpdates;
 use Type\Mqtt\ResourceAccessPolicy;
 use Type\Mqtt\ResourceConnectionObserver;
+use Type\Mqtt\WorkerSocket;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Connection;
 use Type\Orm\Db;
@@ -311,7 +312,25 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
 
     private static function workCurrent(DatabaseManager $database): void
     {
-        $line = fgets(STDIN, self::MAXIMUM_REQUEST_BYTES + 1);
+        $socket = PHP_OS_FAMILY === 'Windows' ? WorkerSocket::connect() : null;
+        try {
+            $line = $socket === null ? fgets(STDIN, self::MAXIMUM_REQUEST_BYTES + 1)
+                : $socket->recvLine(self::MAXIMUM_REQUEST_BYTES + 1, 3.0);
+            $result = self::executeWorkerRequest($database, $line);
+            $bytes = json_encode($result, JSON_THROW_ON_ERROR) . "\n";
+            if ($socket === null) {
+                echo $bytes;
+            } elseif ($socket->sendAll($bytes, 1.0) !== strlen($bytes)) {
+                throw new RuntimeException('device_access_response_unavailable');
+            }
+        } finally {
+            $socket?->close();
+        }
+    }
+
+    /** 请求校验和数据库作用域保持在工作进程内，IPC 的身份不代替设备与应用授权。 */
+    private static function executeWorkerRequest(DatabaseManager $database, string|false $line): array
+    {
         $request = is_string($line) && str_ends_with($line, "\n") ? json_decode($line, true, 8, JSON_THROW_ON_ERROR) : null;
         if (!is_array($request) || !in_array($request['action'] ?? '', ['authenticate', 'authenticate_certificate', 'authorize', 'connected', 'disconnected', 'subscription', 'heartbeat', 'stopped', 'invalidation_next', 'invalidation_completed', 'disconnect_next', 'disconnect_completed', 'terminate_next', 'terminate_completed', 'clear_next', 'clear_completed', 'quota_next'], true)
             || preg_match('/^[a-f0-9]{32}$/D', (string) ($request['operation_id'] ?? '')) !== 1) {
@@ -380,7 +399,7 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
                 $database->close();
             }
         }
-        echo json_encode($result, JSON_THROW_ON_ERROR), "\n";
+        return $result;
     }
 
     /**
@@ -412,28 +431,44 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
         $environment['PGAPPNAME'] = 'type_mqtt_' . $operationId;
         $command = [...$this->command, 'iot:mqtt-access'];
         $pipes = [];
-        $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, null, $environment);
+        $socket = null;
+        $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]];
+        if (PHP_OS_FAMILY === 'Windows') {
+            $socket = new WorkerSocket(bin2hex(random_bytes(32)));
+            $environment = array_replace($environment, $socket->environment());
+            $descriptors = [0 => ['file', 'NUL', 'rb'], 1 => ['file', 'NUL', 'wb'], 2 => ['file', 'NUL', 'wb']];
+        }
+        try {
+            $process = proc_open($command, $descriptors, $pipes, null, $environment);
+        } catch (\Throwable $error) {
+            $socket?->close();
+            throw $error;
+        }
         if (!is_resource($process)) {
+            $socket?->close();
             $this->failed = true;
             throw new RuntimeException('device_access_unavailable');
-        }
-        foreach ($pipes as $pipe) {
-            stream_set_blocking($pipe, false);
         }
         $output = '';
         $complete = false;
         $deadline = new Deadline(3.0);
         try {
+            foreach ($pipes as $pipe) {
+                if (!stream_set_blocking($pipe, false)) {
+                    throw new RuntimeException('device_access_ipc_unavailable');
+                }
+            }
             do {
                 if ($input !== '') {
-                    $written = fwrite($pipes[0], substr($input, 0, 16384));
+                    $bytes = substr($input, 0, 16384);
+                    $written = $socket === null ? fwrite($pipes[0], $bytes) : $socket->write($bytes, 0.001);
                     if ($written === false) {
                         break;
                     }
                     // 非阻塞写入 0 表示暂时写满；继续排空响应并在原截止内协作等待。
                     $input = substr($input, $written);
                 }
-                $chunk = fread($pipes[1], 1025);
+                $chunk = $socket === null ? fread($pipes[1], 1025) : $socket->read(1025, 0.001);
                 if (is_string($chunk) && $chunk !== '') {
                     $output .= $chunk;
                 }
@@ -443,7 +478,7 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
                 $status = proc_get_status($process);
                 if (!$status['running']) {
                     // 子进程退出后仍排空内核管道，不能丢失尾部响应。
-                    $tail = fread($pipes[1], 1025);
+                    $tail = $socket === null ? fread($pipes[1], 1025) : $socket->read(1025, 0.001);
                     if (is_string($tail) && $tail !== '') {
                         $output .= $tail;
                     }
@@ -462,6 +497,7 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
             foreach ($pipes as $pipe) {
                 fclose($pipe);
             }
+            $socket?->close();
             proc_close($process);
         }
         if (!$complete) {

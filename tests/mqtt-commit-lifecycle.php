@@ -28,7 +28,7 @@ PHP, $source);
             }
             $lifecycle->executed = true;
             if ($lifecycleCase === 'cancel-before-result') {
-                file_put_contents(getcwd() . '/lifecycle-ready.json', json_encode(['phase' => 'before', 'pid' => getmypid()], JSON_THROW_ON_ERROR));
+                file_put_contents(mqttLifecycleDirectory() . '/lifecycle-ready.json', json_encode(['phase' => 'before', 'pid' => getmypid()], JSON_THROW_ON_ERROR));
                 mqttLifecycleWait();
             }
             $result = $store->execute($request);
@@ -40,17 +40,27 @@ PHP, $source);
         });
         // cleanup 不进入业务回调，也不重复制造退出延迟。
         if ($lifecycleCase !== '' && $lifecycle->executed) {
-            file_put_contents(getcwd() . '/lifecycle-ready.json', json_encode(['phase' => 'sent', 'pid' => getmypid(), 'result' => $lifecycle->result], JSON_THROW_ON_ERROR));
+            file_put_contents(mqttLifecycleDirectory() . '/lifecycle-ready.json', json_encode(['phase' => 'sent', 'pid' => getmypid(), 'result' => $lifecycle->result], JSON_THROW_ON_ERROR));
             mqttLifecycleWait();
         }
 PHP, $source);
     return $source . <<<'PHP'
 
+/** 原生入口会切换工作目录，场景同步文件必须由控制端显式定位，不能复用上一轮文件。 */
+function mqttLifecycleDirectory(): string
+{
+    $directory = (string) getenv('TYPE_MQTT_COMMIT_DIRECTORY');
+    if ($directory === '' || !is_dir($directory)) {
+        throw new RuntimeException('持久生命周期需要独立场景目录');
+    }
+    return $directory;
+}
+
 /** 测试进程保持存活，直到控制端放行；有独立硬截止以覆盖控制端异常。 */
 function mqttLifecycleWait(): void
 {
     $until = new \Type\Runtime\Deadline(8.0);
-    while (!is_file(getcwd() . '/lifecycle-release') && !$until->expired()) {
+    while (!is_file(mqttLifecycleDirectory() . '/lifecycle-release') && !$until->expired()) {
         usleep(10000);
         clearstatcache();
     }
@@ -65,7 +75,7 @@ function mqttCommitLifecycle(array $command, string $case): void
     $pending = new PendingCommit($command, $operation, $case === 'timeout-confirmed' ? 2.0 : 5.0);
     $result = null;
     try {
-        $ready = getcwd() . '/lifecycle-ready.json';
+        $ready = mqttLifecycleDirectory() . '/lifecycle-ready.json';
         $until = new \Type\Runtime\Deadline(4.0);
         while (!is_file($ready)) {
             $result = $pending->poll();
@@ -81,7 +91,7 @@ function mqttCommitLifecycle(array $command, string $case): void
             throw new RuntimeException('持久结果在本地进程退出前提前释放');
         }
         if ($case === 'normal') {
-            file_put_contents(getcwd() . '/lifecycle-release', 'release');
+            file_put_contents(mqttLifecycleDirectory() . '/lifecycle-release', 'release');
         } elseif ($case !== 'timeout-confirmed') {
             $pending->cancel();
             $pending->cancel();
@@ -104,7 +114,7 @@ function mqttCommitLifecycle(array $command, string $case): void
         }
         echo json_encode(['case' => $case, 'result' => $result->data(), 'worker_pid' => $sent['pid'], 'early_release' => false], JSON_THROW_ON_ERROR), "\n";
     } finally {
-        file_put_contents(getcwd() . '/lifecycle-release', 'release');
+        file_put_contents(mqttLifecycleDirectory() . '/lifecycle-release', 'release');
         if ($result === null) {
             $pending->cancel();
             do {
@@ -131,7 +141,7 @@ function mqttCommitLifecycleCases(string $consumer, array $command, array $envir
         if ($command[0] === PHP_BINARY) {
             $caseCommand = [PHP_BINARY, '-r', 'require $argv[1] . "/vendor/autoload.php"; require $argv[1] . "/app/main.php"; main(1, [$argv[0]]);', '--', $consumer];
         }
-        $caseEnvironment = array_replace($environment, ['TYPE_MQTT_COMMIT_LIFECYCLE' => $case]);
+        $caseEnvironment = array_replace($environment, ['TYPE_MQTT_COMMIT_LIFECYCLE' => $case, 'TYPE_MQTT_COMMIT_DIRECTORY' => $directory]);
         if ($command[0] === PHP_BINARY) {
             $caseEnvironment['MQTT_WORKER_COMMAND'] = json_encode([PHP_BINARY, '-r',
                 'require $argv[1] . "/vendor/autoload.php"; require $argv[1] . "/app/main.php"; main($argc - 1, array_merge([$argv[0]], array_slice($argv, 2)));', '--', $consumer], JSON_THROW_ON_ERROR);

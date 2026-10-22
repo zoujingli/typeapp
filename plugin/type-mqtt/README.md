@@ -2,7 +2,7 @@
 
 可独立安装和独立进程运行的 TypeApp MQTT 服务端组件。提供 MQTT 3.1.1/5.0 的 TCP/TLS 连接、认证、CONNECT/CONNACK、PING、DISCONNECT、客户端标识接管、精确及通配订阅/取消、MQTT 5 订阅选项与标识、二进制 QoS 0 路由，以及明确配置 PostgreSQL 同步持久存储后的 QoS 1/2 双向交付、保留消息、持久会话、遗嘱与延迟遗嘱、MQTT 5 共享订阅、重启恢复及跨节点接管与路由。
 
-通信与基础并发统一使用 Swoole 官方能力。Broker 在经典 Server 可用时沿用该入口，否则自动使用 Coroutine Socket 接收 TCP/TLS；两者共用 MQTT 协议、授权、持久操作和资源预算。客户端统一使用 Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行，持久 worker 使用 Swoole PROC hook 管理的进程管道。各平台及持久角色的实际验收分别记录。
+通信与基础并发统一使用 Swoole 官方能力。Broker 在经典 Server 可用时沿用该入口，否则自动使用 Coroutine Socket 接收 TCP/TLS；两者共用 MQTT 协议、授权、持久操作和资源预算。客户端统一使用 Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行。持久 worker 使用独立命令进程和私有 IPC：Unix 沿用 Swoole PROC hook 的管道，Windows 使用 Swoole Coroutine Socket 的回环通道，父子以一次性密钥互验身份后才交换业务数据。收发、进程退出和远端清理分别受原预算约束，各平台及持久角色的实际验收分别记录。
 
 协程监听支持服务端 TLS 证书与账号认证；当前锁定 Socket 未暴露客户端证书身份和服务端 SNI 配置，MQTT over WebSocket 也尚未接入该入口。因此这些配置需要经典 Server，强制使用协程时在监听前返回 `feature_unavailable`，不降低认证要求。可通过 `serve($host, $port, coroutine: true)` 在具有经典 Server 的平台显式验证协程入口。
 
