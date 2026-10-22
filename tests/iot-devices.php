@@ -540,7 +540,7 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
     $ha = in_array('--ha', $GLOBALS['argv'], true);
     $cluster = in_array('--cluster', $GLOBALS['argv'], true);
     $resources = in_array('--broker-resources', $GLOBALS['argv'], true);
-    if ($cluster || in_array('--transfer-faults', $GLOBALS['argv'], true)) {
+    if ($cluster || in_array('--transfer-faults', $GLOBALS['argv'], true) || in_array('--reassignments-mqtt', $GLOBALS['argv'], true)) {
         $environment['IOT_MQTT_CLUSTERED'] = 'true';
     }
     $capacity = in_array('--capacity', $GLOBALS['argv'], true);
@@ -604,6 +604,10 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
         $cases = [];
         $clientEnvironment = $environment + ['TYPE_DEVICE_FIXTURE' => json_encode($evidence, JSON_THROW_ON_ERROR),
             'TYPE_DEVICE_HTTP' => 'http://127.0.0.1:' . $environment['APP_PORT'], 'TYPE_DEVICE_CA' => $base . '/certificate.pem'];
+        if (in_array('--reassignments-mqtt', $GLOBALS['argv'], true)) {
+            require_once __DIR__ . '/iot-reassignments.php';
+            return iotReassignmentMqttChecks($command, $clientEnvironment, $base, $database, $process);
+        }
         if ($capacity || $resources) {
             $clientEnvironment['TYPE_INGESTION_PASSWORD'] = $servicePassword;
         }

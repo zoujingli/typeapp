@@ -47,6 +47,74 @@ export async function siteBrowser(base, dist, upstream, adminPassword, customerP
       expect(response.status()).toBe(status);
       return (await response.json()).data;
     };
+    if (process.env.TYPE_APP_BROWSER_CASES === 'reassignments') {
+      const source = randomUUID().replaceAll('-', ''); const target = randomUUID().replaceAll('-', '');
+      for (const [id, name] of [[source, '浏览器转配来源'], [target, '浏览器转配目标']]) {
+        await api('POST', '/admin/tenants', { id, name, new_customer: false, owner_login: 'same-login' });
+      }
+      const enrollment = await api('POST', '/admin/device-authorizations', { id: randomUUID().replaceAll('-', ''), tenant_id: source,
+        name: '页面转配批次', capacity: 1, register_expires_at: Math.floor(Date.now() / 1000) + 3600 }, 201);
+      const registered = await api('POST', '/public/devices/register', { id: randomUUID().replaceAll('-', ''), tenant_id: source,
+        device_id: randomUUID().replaceAll('-', ''), name: '页面转配设备', code: enrollment.code }, 201);
+      const drawer = () => page.locator('.ant-drawer-open').last();
+      await page.goto(`${url}/#/admin/devices`);
+      await page.getByLabel('设备名称筛选').fill('页面转配设备');
+      await page.getByRole('button', { name: /^查\s*询$/ }).click();
+      let row = page.getByRole('row').filter({ hasText: '页面转配设备' });
+      await row.getByRole('button', { name: '详情', exact: true }).click();
+      await drawer().getByRole('button', { name: '设置使用期限', exact: true }).click();
+      await drawer().getByLabel('使用期限', { exact: true }).fill('2030-01-01T00:00');
+      await drawer().getByLabel('确认设备标识', { exact: true }).fill(registered.device.id);
+      await drawer().getByRole('button', { name: /^保\s*存$/ }).click();
+      await expect(page.locator('.ant-drawer-content-wrapper:visible')).toHaveCount(0);
+      await row.getByRole('button', { name: '详情', exact: true }).click();
+      await expect(drawer()).toContainText('2030');
+      await drawer().getByRole('button', { name: '转配设备', exact: true }).click();
+      await drawer().getByLabel('目标客户标识', { exact: true }).fill(target);
+      await drawer().getByLabel('确认设备标识', { exact: true }).fill(registered.device.id);
+      const requested = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/usage/reassign'));
+      await drawer().getByRole('button', { name: /^保\s*存$/ }).click();
+      const operation = (await (await requested).json()).data;
+      await expect(page).toHaveURL(/#\/admin\/reassignments$/);
+      row = page.getByRole('row').filter({ hasText: '页面转配设备' });
+      await expect(row).toContainText('隔离旧授权');
+      await row.getByRole('button', { name: '查看处理', exact: true }).click();
+      await expect(drawer()).toContainText(operation.id);
+      await expect.poll(async () => { const box = await drawer().locator('.ant-drawer-content-wrapper').boundingBox(); return Boolean(box && Math.abs(box.x + box.width - 1440) < 1); }).toBe(true);
+      await page.screenshot({ path: resolve(base, 'reassignments-admin.png'), fullPage: true, animations: 'disabled' }); report.screenshots.push('reassignments-admin.png');
+      await drawer().getByRole('button', { name: '核验并推进', exact: true }).click();
+      await page.getByRole('button', { name: /^确\s*认$/ }).click();
+      await expect(drawer()).toContainText('隔离已完成，等待目标客户确认接收');
+      await drawer().getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(page.locator('.ant-drawer-content-wrapper:visible')).toHaveCount(0);
+      const customer = await api('POST', '/customer/auth/login', { login: 'same-login', password: customerPassword });
+      await page.evaluate(token => sessionStorage.setItem('typeapp.customer.token', token), customer.accessToken);
+      await page.goto(`${url}/#/tenants`);
+      await page.getByRole('row').filter({ hasText: '浏览器转配目标' }).getByRole('button', { name: '进入租户', exact: true }).click();
+      await expect(page).toHaveURL(/#\/profile$/);
+      await page.goto(`${url}/#/reassignments`);
+      row = page.getByRole('row').filter({ hasText: '页面转配设备' });
+      await row.getByRole('button', { name: '查看处理', exact: true }).click();
+      await drawer().getByRole('button', { name: '确认接收', exact: true }).click();
+      const acceptedResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith(`/reassignments/${operation.id}`));
+      await page.getByRole('button', { name: /^确\s*认$/ }).click();
+      const accepted = (await (await acceptedResponse).json()).data;
+      await expect(drawer()).toContainText(accepted.credential.password);
+      await drawer().getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(page.getByText(accepted.credential.password, { exact: true })).toHaveCount(0);
+      await expect(drawer()).toContainText('已建立新使用关系');
+      await drawer().getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(page.locator('.ant-drawer-content-wrapper:visible')).toHaveCount(0);
+      await page.setViewportSize({ width: 390, height: 844 });
+      if (!(await page.locator('html').getAttribute('class'))?.includes('dark')) await page.getByRole('button', { name: 'dark', exact: true }).click();
+      await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.locator('.ant-table-content').evaluateAll(elements => elements.forEach(element => { element.scrollLeft = 0; }));
+      await page.screenshot({ path: resolve(base, 'reassignments-customer-narrow.png'), fullPage: true, animations: 'disabled' }); report.screenshots.push('reassignments-customer-narrow.png');
+      report.cases.push('控制端使用期限和转配、真实阶段与推进、目标工作区确认、一次性凭据清除、暗色窄屏');
+      expect(report.errors).toEqual([]); report.status = 'passed';
+      return;
+    }
     if (process.env.TYPE_APP_BROWSER_CASES === 'applications') {
       const tenantId = randomUUID().replaceAll('-', '');
       await api('POST', '/admin/tenants', { id: tenantId, name: '浏览器应用客户', new_customer: false, owner_login: 'same-login' });

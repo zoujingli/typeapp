@@ -77,7 +77,17 @@ export const transferPendingNames: Record<string, string> = { recovery_not_verif
 /** 设备管理接口支持的明确动作，页面按授权及当前状态筛选。 */
 export type DeviceAction = 'update' | 'rotate' | 'revoke' | 'disable' | 'enable' | 'retire';
 /** 设备管理详情中的凭据可用性和可选租户信息。 */
-export interface DeviceManagement extends Device { credential_active: boolean; tenant_name?: string; tenant_enabled?: number }
+export interface DeviceManagement extends Device { credential_active: boolean; tenant_name?: string; tenant_enabled?: number; usage?: { started_at: number; ended_at: number | null; expires_at: number | null; available: boolean } }
+/** 原始通信设备的关系交接；查询不推进清理，目标确认后才建立新关系。 */
+export interface DeviceReassignment {
+  id: string; device_id: string; device_name: string; source_tenant_id: string; target_tenant_id: string | null;
+  ownership_id: string; new_ownership_id: string | null; kind: 'reassign' | 'end' | 'expire';
+  status: 'isolating' | 'awaiting_acceptance' | 'completed' | 'ended'; requires_store: boolean;
+  version: number; created_at: number; updated_at: number; pending_reasons: string[];
+  retained: Record<string, { state: string; checked_at?: number; operation_id?: string }>;
+}
+export const reassignmentStatusNames: Record<DeviceReassignment['status'], string> = { isolating: '隔离旧授权与持久内容', awaiting_acceptance: '等待目标客户确认', completed: '已建立新使用关系', ended: '使用关系已结束' };
+export const reassignmentPendingNames: Record<string, string> = { old_authorization_isolation_pending: '等待旧连接、会话及待投递消息隔离', retained_verification_required: '等待平台核验或清理旧保留消息', target_customer_confirmation_required: '隔离已完成，等待目标客户确认接收' };
 /** 设备变更后的状态；只有签发或轮换时才可能带回新凭据。 */
 export interface DeviceChange { device: DeviceManagement; credential: DeviceCredential | null }
 /** 设备获准发布和订阅的主题，由服务端生成。 */
@@ -309,6 +319,17 @@ const errors: Record<string, string> = {
   device_action_invalid: '设备操作或确认参数无效，请重新选择操作。',
   device_retired: '设备已退役，不能恢复接入或再次修改；历史仍按原权限保留。',
   device_authorization_pending: '前次撤权仍等待 Broker 执行，请刷新状态后再操作。',
+  device_expiry_invalid: '使用期限必须是未来时间，取消期限请留空。',
+  device_ownership_unavailable: '当前使用关系已结束、到期或正在转配，请查看设备转配记录。',
+  reassignment_request_conflict: '请求标识与原操作不一致，请读取当前记录核对结果。',
+  reassignment_target_required: '只有目标客户获授权的人员可以确认接收。',
+  reassignment_target_unavailable: '目标客户不存在、已停用或与来源客户相同。',
+  reassignment_isolation_pending: '旧授权与持久内容尚未完成隔离，暂不能接收。',
+  reassignment_relationship_changed: '设备当前关系已改变，请刷新记录。',
+  reassignment_store_required: '此设备需要真实持久存储的隔离证明，请配置并恢复 MQTT 存储服务。',
+  reassignment_in_progress: '设备已有未完成转配或已退役，请先查看现有记录。',
+  reassignment_legacy_upgrade_required: '旧模型设备须先完成升级核对，不能直接按原始通信设备转配。',
+  reassignment_not_found: '转配记录不存在或不在当前客户范围内。',
   device_lifecycle_conflict: '设备生命周期已变化，请刷新状态后重新选择操作。',
   device_credential_revoked: '当前凭据已吊销，请刷新设备状态。',
   device_credential_conflict: '设备凭据状态异常，请联系管理员核对。',

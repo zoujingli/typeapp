@@ -442,10 +442,11 @@ final class AccessService
      * 将已授权的应用身份变更纳入同一快照、版本和节点撤权流程；不在回调内发送网络消息。
      * @internal 调用者负责人员权限、领域写锁与租户范围；回调只修改当前事务的持久状态。
      * @param \Closure(Connection): void $change 对主体、凭据及授权的同事务变更。
+     * @param array<string,string> $clientIdHints 逐主体的离线 Client ID；多主体同批撤权不能复用一个提示。
      * @return array<string, mixed> 真实发布阶段和节点回执，不把数据库提交称作网络隔离完成。
      * @throws HttpError 版本冲突、上次发布未完成或无实际授权变化。
      */
-    public static function publishChange(Connection $connection, ?string $tenantId, string $actorId, string $actorRealm, int $expected, \Closure $change, string $clientIdHint = ''): array
+    public static function publishChange(Connection $connection, ?string $tenantId, string $actorId, string $actorRealm, int $expected, \Closure $change, string $clientIdHint = '', array $clientIdHints = []): array
     {
         $current = self::currentVersion($connection);
         if ($expected !== $current) {
@@ -455,7 +456,7 @@ final class AccessService
         if ($blocking !== null && in_array((string) $blocking['status'], ['pending', 'partial'], true)) {
             throw new HttpError(409, 'broker_access_publish_paused');
         }
-        return $connection->transaction(static function (Connection $transaction) use ($tenantId, $actorId, $actorRealm, $change, $current, $clientIdHint): array {
+        return $connection->transaction(static function (Connection $transaction) use ($tenantId, $actorId, $actorRealm, $change, $current, $clientIdHint, $clientIdHints): array {
             $before = self::snapshot($transaction, $tenantId);
             $change($transaction);
             $after = self::snapshot($transaction, $tenantId);
@@ -471,7 +472,7 @@ final class AccessService
                 'tightening' => $tightening ? 1 : 0, 'status' => 'pending', 'snapshot_json' => $after, 'created_at' => $now, 'updated_at' => $now,
             ]);
             if ($tightening) {
-                self::enqueueInvalidations($transaction, $before, $after, $actorId, $clientIdHint);
+                self::enqueueInvalidations($transaction, $before, $after, $actorId, $clientIdHint, $clientIdHints);
             }
             self::refreshStatus($transaction, $revisionId);
             return self::revision($transaction, $revisionId);
@@ -1446,7 +1447,7 @@ final class AccessService
     /**
      * 按收紧前后差集给仍在线连接排队撤权；无观察连接时用 client_id 提示补一条。
      */
-    private static function enqueueInvalidations(Connection $transaction, string $before, string $after, string $actor, string $clientIdHint): void
+    private static function enqueueInvalidations(Connection $transaction, string $before, string $after, string $actor, string $clientIdHint, array $clientIdHints = []): void
     {
         $left = json_decode($before, true, 16, JSON_THROW_ON_ERROR);
         $right = json_decode($after, true, 16, JSON_THROW_ON_ERROR);
@@ -1455,6 +1456,7 @@ final class AccessService
             $rightIds[$principal['id']] = $principal;
         }
         foreach ($left['principals'] as $principal) {
+            $hint = $clientIdHints[$principal['id']] ?? $clientIdHint;
             $next = $rightIds[$principal['id']] ?? null;
             $oldActive = array_values(array_filter($principal['credentials'], static fn (array $row): bool => $row['status'] === 'active'));
             $newActive = $next === null ? [] : array_values(array_filter($next['credentials'], static fn (array $row): bool => $row['status'] === 'active'));
@@ -1506,19 +1508,19 @@ final class AccessService
                 }
                 $queued[$clientId] = $identity;
             }
-            if ($queued === [] && $clientIdHint !== '') {
+            if ($queued === [] && $hint !== '') {
                 if ($revokedCerts !== []) {
-                    $queued[$clientIdHint] = [
+                    $queued[$hint] = [
                         'principal_id' => $principal['id'], 'credential_id' => $revokedCerts[0]['id'],
                         'credential_version' => (int) $revokedCerts[0]['certificate_version'], 'authentication_method' => 'mtls',
                     ];
                 } elseif ($credential === null) {
-                    $queued[$clientIdHint] = [
+                    $queued[$hint] = [
                         'principal_id' => 'device:' . $principal['id'], 'credential_id' => $principal['id'],
                         'credential_version' => 1, 'authentication_method' => 'connect',
                     ];
                 } else {
-                    $queued[$clientIdHint] = [
+                    $queued[$hint] = [
                         'principal_id' => $principal['id'], 'credential_id' => $credential['id'],
                         'credential_version' => (int) $credential['credential_version'], 'authentication_method' => 'connect',
                     ];

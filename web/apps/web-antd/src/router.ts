@@ -24,6 +24,7 @@ const customerWorkspace: RouteRecordRaw = {
       { path: '/transfers', name: 'CustomerTransfers', component: () => import('./views/transfers.vue'), meta: { title: '设备转移' } },
       { path: '/device-authorizations', name: 'CustomerEnrollments', component: () => import('./views/device-authorizations.vue'), meta: { title: '设备注册授权', requiresTenant: true } },
       { path: '/applications', name: 'CustomerApplications', component: () => import('./views/applications.vue'), meta: { title: '接入应用', requiresTenant: true } },
+      { path: '/reassignments', name: 'CustomerReassignments', component: () => import('./views/reassignments.vue'), meta: { title: '设备转配', requiresTenant: true } },
     ] },
     { path: 'data', meta: { title: '数据与告警', menuGroup: true }, children: [
       { path: '/history', name: 'CustomerHistory', component: () => import('./views/history.vue'), meta: { title: '历史数据' } },
@@ -63,6 +64,7 @@ const adminWorkspace: RouteRecordRaw = {
       { path: '/admin/devices', name: 'AdminDevices', component: () => import('./views/devices.vue'), meta: { title: '设备资产' } },
       { path: '/admin/device-authorizations', name: 'AdminEnrollments', component: () => import('./views/device-authorizations.vue'), meta: { title: '设备注册授权' } },
       { path: '/admin/applications', name: 'AdminApplications', component: () => import('./views/applications.vue'), meta: { title: '接入应用' } },
+      { path: '/admin/reassignments', name: 'AdminReassignments', component: () => import('./views/reassignments.vue'), meta: { title: '设备转配' } },
       { path: '/admin/audit', name: 'AdminAudit', component: () => import('./views/audit.vue'), meta: { title: '平台操作审计' } },
       { path: '/admin/operations', name: 'AdminOperations', component: () => import('./views/operations.vue'), meta: { title: '平台运行概览' } },
       { path: '/admin/broker', name: 'AdminBrokerResources', component: () => import('./views/broker-resources.vue'), meta: { title: '平台 Broker 资源' } },

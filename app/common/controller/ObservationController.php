@@ -599,11 +599,7 @@ final class ObservationController
      */
     private function storeWorker(): array
     {
-        $command = $this->mqttCommand === '' ? [] : json_decode($this->mqttCommand, true, 8, JSON_THROW_ON_ERROR);
-        if (!is_array($command) || !array_is_list($command)) {
-            throw new HttpError(503, 'broker_resource_store_unavailable');
-        }
-        return $command === [] ? [] : [...$command, 'iot:mqtt-store'];
+        return \app\common\bootstrap\ApplicationContext::iotStoreWorker($this->mqttCommand);
     }
 
     private function response(array $data): ResponseInterface

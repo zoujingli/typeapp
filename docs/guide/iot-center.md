@@ -2,7 +2,7 @@
 
 物联中心是基于 TypeApp 构建的成品案例，通过框架组件组织物联网业务，以 TypePHP 编译生产实现，原生运行库随应用交付。框架开发文档在侧栏「TypeApp 框架」和「开发指南」；职责分层见[系统架构](architecture.md)，本页说明案例的业务、使用契约和交付边界。
 
-控制端与客户端的新业务范围已确定，详见[架构设计](../development/iot-control-client-design.md)。开发版已接入注册资格、无物模型设备注册、独立接入应用和逐设备通信授权；转配、旧数据升级及旧处理链退出继续实施。以下说明区分当前接口与尚待完成的范围，不作为整批新架构已交付的依据。
+控制端与客户端的新业务范围已确定，详见[架构设计](../development/iot-control-client-design.md)。开发版已接入注册资格、无物模型设备注册、独立接入应用、逐设备通信授权及原始设备转配，并完成各分项的本机原生验收；旧设备业务转换及旧处理链退出继续实施。以下说明区分当前接口与尚待完成的范围，不作为整批新架构已交付的依据。
 
 本案例提供两个人员入口：平台管理端面向平台人员，维护账号、租户、站点与全局观察；SaaS 用户端面向客户账号，在当前租户内管理成员、产品、设备、数据与告警。设备经独立 MQTT Broker 接入，遥测由独立接收进程落库，统计、告警、通知和导出分角色运行。MQTT 标准、高可用、目标容量与真实设备按对应产物和平台证据分别验收。
 
@@ -398,6 +398,54 @@ await client.endAsync(false);
 ```
 
 消息继续遵守现有大小、频率、QoS 0/1/2、有效期和持久队列预算。MQTT 协议确认、订阅方收到原字节、设备自己的业务应答是三个不同事实；平台不解析载荷，不为原始通信写入遥测、告警或指令记录。撤权不能仅靠页面隐藏，身份、当前关系与通信权限会在新动作和持续交付时重新核对。`demo` 禁止授权写入，后台不提供绕过只读模式的发送入口。
+
+## 设备使用期限与转配
+
+开发版原始通信设备在控制端「设备资产 → 详情」管理使用期限和归属交接。使用期限属于当前客户使用关系，默认不设置；注册资格过期只影响新注册，不会自动结束已建立的关系。设定的使用期限到达后，新认证及通信动作立即被拒绝，Broker 的撤权轮询负责收尾，无须打开页面触发。
+
+控制端发起「转配设备」时固定设备版本、目标客户和请求标识，在同一管理事务内结束旧关系、撤销凭据和旧应用权限，并记录真实操作者。页面返回受理结果后，设备仍处于隔离阶段。平台从「设备转配」显式执行「核验并推进」，目标客户只能在隔离完成后确认接收。
+
+```mermaid
+stateDiagram-v2
+  [*] --> isolating: 平台发起转配或结束使用
+  isolating: 隔离旧授权与持久内容
+  awaiting_acceptance: 等待目标客户确认
+  completed: 新使用关系已建立
+  ended: 使用关系已结束
+  isolating --> isolating: 旧所有者或持久清理仍待完成
+  isolating --> awaiting_acceptance: 全部隔离证明成立且有目标客户
+  isolating --> ended: 全部隔离证明成立且仅结束使用
+  awaiting_acceptance --> completed: 目标客户确认并取得新凭据
+```
+
+隔离复用 Broker 的连接关闭、跨节点所有者隔离和持久会话清理，还会核验旧关系两个精确 Topic 的 retained 内容。设备从未认证且相关应用也没有接入历史时可使用管理账本证明；历史未知按需要真实存储核验处理。节点不可达、存储缺失或清理没有完成时保留待处理状态，不能凭离线显示或观察超时推断全部隔离成功。集群进程异常退出后先完成基础设施硬隔离，再通过既有 `iot:mqtt-fence` 登记准确节点与运行身份，详见 [MQTT 集群运维](plugins/type-mqtt.md)。
+
+| HTTP 入口 | 权限与输入 |
+| --- | --- |
+| `POST /admin/devices/{device}/usage/{operation}`，`operation=expiry` | `admin.devices.expiry`；`version`、Unix 秒 `expires_at`，显式 `null` 取消期限 |
+| 同一入口，`operation=end` | `admin.devices.end`；`id`、`version`，仅结束使用 |
+| 同一入口，`operation=reassign` | `admin.reassignments.create`；`id`、`version`、`target_tenant_id` |
+| `GET /admin/reassignments[/{id}]` | `admin.reassignments.read`；列表支持 `page`、`per_page` |
+| `POST /admin/reassignments/{id}` | `admin.reassignments.advance`；`action: "advance"`、当前记录 `version` |
+| `GET /customer/tenants/{tenant}/reassignments[/{id}]` | `customer.reassignments.read`；仅本客户转出或接收记录 |
+| `POST /customer/tenants/{tenant}/reassignments/{id}` | `customer.reassignments.accept`；目标客户提交 `action: "accept"`、确认请求 `id`、记录 `version` |
+
+控制端不发送 `X-Tenant-Id`，客户端该头须与路径一致。普通角色须明确取得新增权限，升级不自动增权；`demo` 拒绝发起、推进、设置期限和确认接收。
+
+```sh
+# 控制端发起；保留同一个 REQUEST_ID 与 VERSION，用于结果未知时核对原请求。
+curl --fail-with-body "$APP_URL/admin/devices/$DEVICE_ID/usage/reassign" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"id\":\"$REQUEST_ID\",\"version\":$VERSION,\"target_tenant_id\":\"$TARGET_TENANT_ID\"}"
+
+# 先读取实际阶段及版本，再明确推进；GET 本身不启动清理。
+curl --fail-with-body "$APP_URL/admin/reassignments/$REQUEST_ID" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+目标客户确认后设备标识保持不变，使用关系、凭据和精确 Topic 更新，使用期限默认重新置空。旧应用授权不会继承，新客户须明确重新授权。首次确认响应一次性交付密码；同一确认请求重试只返回原结果，密码为 `null`，遗失时从设备管理轮换。不要将密码写入日志、工单或普通查询记录。
+
+`pending_reasons` 表示仍缺少的证明；`stale_version` 要求读取当前记录，`reassignment_isolation_pending` 表示尚不可接收，`reassignment_store_required` 表示必须恢复正确的持久存储配置。结束旧关系后不能通过重新启用设备或轮换旧凭据绕过交接；已送达对端的消息无法撤回。
 
 ## 设备注册授权
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import MutationButton from '../components/mutation-button.vue';
 import type { FormInstance, TableColumnsType } from 'ant-design-vue';
-import type { Device, DeviceAction, DeviceChange, DeviceManagement, DeviceRegistration, ModelVersion, Page, Product } from '../api';
+import type { Device, DeviceAction, DeviceChange, DeviceManagement, DeviceReassignment, DeviceRegistration, ModelVersion, Page, Product } from '../api';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { Alert, Button, Card, Descriptions, DescriptionsItem, Empty, Form, FormItem, Input, InputNumber, Pagination, Select, Table, Tag, message } from 'ant-design-vue';
@@ -9,7 +9,7 @@ import AppDrawer from '../components/app-drawer/app-drawer.vue';
 import CrudSearchField from '../components/crud-search-field.vue';
 import CrudTableActions from '../components/crud-table-actions.vue';
 import { buildTableScrollX, estimateVisibleActionColumnWidth } from '../utils/table';
-import { ApiError, applyAdminContext, clearAdminAccess, connectionColors, connectionNames, errorText, isCanceled, lifecycleNames, request, session } from '../api';
+import { ApiError, applyAdminContext, clearAdminAccess, connectionColors, connectionNames, errorText, isCanceled, isDemo, lifecycleNames, request, session } from '../api';
 
 const router = useRouter();
 const platform = computed(() => session.realm === 'admin');
@@ -41,6 +41,15 @@ const editing = ref(false);
 const deviceName = ref('');
 const action = ref<DeviceAction>();
 const confirmation = ref('');
+type UsageAction = 'expiry' | 'end' | 'reassign';
+const usageOpen = ref(false); const usageAction = ref<UsageAction>('expiry');
+const usageFormRef = ref<FormInstance>();
+const usageForm = reactive({ id: '', target_tenant_id: '', expires_at: '', confirm_device_id: '' });
+const usageFailure = ref('');
+const usageNames = { expiry: '设置使用期限', end: '结束使用关系', reassign: '转配设备' };
+const canUsage = (value: UsageAction) => platform.value && session.permissions.includes(value === 'reassign' ? 'admin.reassignments.create' : `admin.devices.${value}`);
+const usageBlocked = computed(() => managementBlocked.value || Boolean(managed.value?.transfer_id) || managed.value?.lifecycle === 'retired');
+const usageUnavailable = (value: UsageAction) => usageBlocked.value || !managed.value?.usage || (value === 'expiry' && !managed.value.usage.available) || (value === 'end' && managed.value.usage.ended_at !== null);
 let managementVersion = 0;
 let managementPending: AbortController | null = null;
 let changePending: AbortController | null = null;
@@ -77,6 +86,7 @@ const actionOptions = computed(() => {
   if (!device || Number(device.recovery_verified) === 0 || device.lifecycle === 'retired') return [];
   return (Object.keys(actionNames) as DeviceAction[]).filter(value => {
     if (!session.permissions.includes(`${session.realm}.devices.${value}`)) return false;
+    if (device.model_version === null && !device.usage?.available && ['enable', 'rotate'].includes(value)) return false;
     return value === 'enable' ? device.lifecycle === 'disabled' : value === 'disable' ? device.lifecycle !== 'disabled' : value === 'revoke' ? device.credential_active : true;
   }).map(value => ({ value, label: actionNames[value] }));
 });
@@ -214,6 +224,40 @@ async function changeDevice() {
     }
   } finally { changing.value = false; }
 }
+/** 发起时固定设备版本与请求 ID；不将超时当作未提交，也不自动重发转配。 */
+function editUsage(value: UsageAction) {
+  if (!managed.value || !canUsage(value) || usageUnavailable(value) || isDemo()) return;
+  usageAction.value = value; usageFailure.value = '';
+  const expiry = managed.value.usage?.expires_at;
+  const local = expiry ? new Date(expiry * 1000) : null;
+  Object.assign(usageForm, { id: crypto.randomUUID().replaceAll('-', ''), target_tenant_id: '', confirm_device_id: '',
+    expires_at: local ? new Date(local.getTime() - local.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '' });
+  usageOpen.value = true;
+}
+async function saveUsage() {
+  const device = managed.value; const selectedAction = usageAction.value;
+  if (!device || changing.value || isDemo() || !canUsage(selectedAction)) return;
+  changing.value = true; usageFailure.value = '';
+  const generation = session.generation;
+  try {
+    try { await usageFormRef.value?.validate(); } catch { return; }
+    if (generation !== session.generation || !active) return;
+    if (usageForm.confirm_device_id !== device.id) { usageFailure.value = '请输入与当前设备完全一致的设备标识。'; return; }
+    const expiresAt = usageForm.expires_at ? Math.floor(new Date(usageForm.expires_at).getTime() / 1000) : null;
+    if (selectedAction === 'expiry' && expiresAt !== null && (!Number.isFinite(expiresAt) || expiresAt <= Date.now() / 1000)) { usageFailure.value = '请选择未来的使用期限，留空表示取消期限。'; return; }
+    changePending = new AbortController();
+    await request<DeviceReassignment | { device_version: number }>(`/admin/devices/${device.id}/usage/${selectedAction}`, {
+      method: 'POST', signal: changePending.signal, data: { version: device.version, ...(selectedAction === 'expiry' ? { expires_at: expiresAt } : { id: usageForm.id,
+        ...(selectedAction === 'reassign' ? { target_tenant_id: usageForm.target_tenant_id.trim() } : {}) }) },
+    });
+    if (generation !== session.generation || !active) return;
+    usageOpen.value = false; managementOpen.value = false;
+    message.success(selectedAction === 'expiry' ? '使用期限已更新' : '旧使用关系已结束，请在设备转配中核验隔离进度');
+    if (selectedAction !== 'expiry' && session.permissions.includes('admin.reassignments.read')) await router.push('/admin/reassignments');
+    else await load(result.value.page);
+  } catch (error) { if (!isCanceled(error) && generation === session.generation) { usageFailure.value = errorText(error); reject(error); } }
+  finally { if (generation === session.generation) changing.value = false; }
+}
 async function save() {
   const tenant = session.tenant?.id;
   if (!tenant || !canRegister.value || saving.value) return;
@@ -237,6 +281,7 @@ function clear() {
   managementVersion++; managementOpen.value = false; managed.value = null; managementBusy.value = false; changing.value = false;
   managementDeviceId.value = '';
   managementFailure.value = ''; managementNotice.value = ''; outcomeUnknown.value = false; action.value = undefined; confirmation.value = '';
+  usageOpen.value = false; usageFailure.value = ''; usageForm.id = ''; usageForm.confirm_device_id = '';
   registration.value = null; open.value = false; result.value = { items: [], total: 0, page: 1, per_page: 20 };
 }
 function reject(error: unknown) {
@@ -320,7 +365,10 @@ onBeforeUnmount(() => { active = false; document.removeEventListener('visibility
           <DescriptionsItem label="产品标识" :span="2">{{ managed.product_id }}</DescriptionsItem><DescriptionsItem label="绑定模型版本">{{ managed.model_version }}</DescriptionsItem><DescriptionsItem label="归属阶段">{{ managed.ownership_id }}</DescriptionsItem>
           <DescriptionsItem label="授权执行" :span="2"><Tag :color="outcomeUnknown || managed.authorization?.status === 'pending' ? 'warning' : 'success'">{{ outcomeUnknown ? '操作结果待核对' : managed.authorization?.status === 'pending' ? '等待 Broker 撤权' : managed.authorization?.id ? '撤权已执行' : '无待处理撤权' }}</Tag></DescriptionsItem>
           <DescriptionsItem label="设备版本">{{ managed.version }}</DescriptionsItem><DescriptionsItem label="撤权完成时间">{{ managed.authorization?.completed_at ? new Date(managed.authorization.completed_at * 1000).toLocaleString() : '尚无完成记录' }}</DescriptionsItem>
+          <DescriptionsItem v-if="managed.usage" label="使用期限">{{ managed.usage.expires_at ? new Date(managed.usage.expires_at * 1000).toLocaleString() : '未设置' }}</DescriptionsItem>
+          <DescriptionsItem v-if="managed.usage" label="使用关系">{{ managed.usage.ended_at ? `已结束 · ${new Date(managed.usage.ended_at * 1000).toLocaleString()}` : managed.usage.available ? '当前有效' : '不可使用，请核对转配或到期状态' }}</DescriptionsItem>
         </Descriptions>
+        <div v-if="platform && managed.model_version === null" class="table-toolbar"><CrudTableActions :actions="(['expiry', 'end', 'reassign'] as UsageAction[]).map(value => ({ label: usageNames[value], visible: canUsage(value), disabled: usageUnavailable(value), onClick: () => editUsage(value) }))" /></div>
         <Alert v-if="managed.authorization?.status === 'pending'" message="管理变更已保存，仍等待 Broker 执行撤权。页面每 5 秒更新执行状态；当前不能继续修改设备。" type="warning" show-icon class="page-alert" />
         <Alert v-if="managed.lifecycle === 'retired'" message="设备已永久退役，不提供恢复或硬删除。保留期内历史仍可按原权限查询。" type="info" show-icon class="page-alert" />
         <Form v-else-if="editing && canManage" layout="vertical" class="form-grid" :disabled="managementBlocked">
@@ -332,6 +380,16 @@ onBeforeUnmount(() => { active = false; document.removeEventListener('visibility
           </template>
         </Form>
       </template>
+    </AppDrawer>
+    <AppDrawer v-model:open="usageOpen" :title="usageNames[usageAction]" width-size="sm" :closable="!changing" :confirm-loading="changing" :ok-disabled="isDemo()" :ok-danger="usageAction !== 'expiry'" @ok="saveUsage">
+      <Alert type="warning" show-icon class="page-alert" :message="usageAction === 'expiry' ? '使用期限独立于注册资格。到期后立即拒绝新认证与通信，Broker 负责后续隔离。' : '提交后结束旧使用关系并撤销旧凭据和应用权限。隔离完成前不建立新关系，此操作不能通过启用设备撤回。'" />
+      <Alert v-if="usageFailure" :message="usageFailure" type="error" show-icon class="page-alert" role="alert" />
+      <Form ref="usageFormRef" :model="usageForm" layout="vertical" :disabled="changing">
+        <FormItem v-if="usageAction === 'expiry'" label="使用期限（本地时间，留空取消）"><Input v-model:value="usageForm.expires_at" type="datetime-local" aria-label="使用期限" /></FormItem>
+        <FormItem v-if="usageAction === 'reassign'" label="目标客户标识" name="target_tenant_id" :rules="[{ required: true, pattern: /^[a-f0-9]{32}$/, message: '请输入有效客户标识' }]"><Input v-model:value="usageForm.target_tenant_id" :maxlength="32" /></FormItem>
+        <p class="muted">当前设备：{{ managed?.name }} · {{ managed?.id }}</p>
+        <FormItem label="确认设备标识" name="confirm_device_id" :rules="[{ required: true, message: '请输入上方完整设备标识' }]"><Input v-model:value="usageForm.confirm_device_id" :maxlength="32" autocomplete="off" /></FormItem>
+      </Form>
     </AppDrawer>
     <AppDrawer :open="Boolean(registration)" title="保存设备接入凭据" width-size="sm" :mask-closable="false" :ok-visible="false" cancel-text="已保存，关闭" @update:open="(value) => { if (!value) registration = null; }">
       <template v-if="registration">

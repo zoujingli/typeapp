@@ -74,7 +74,10 @@ async function finish(client) {
 
 try {
   const mode = process.argv[2];
-  if (mode === 'applications') {
+  if (mode === 'reassignments') {
+    const { reassignmentClient } = await import('./iot-reassignments.mjs');
+    checks.push(...await reassignmentClient({ fixture, url, start, connect, denied }));
+  } else if (mode === 'applications') {
     const base = `/customer/tenants/${fixture.tenant}/applications`;
     const call = async (method, path, token, body = null, expected = 200, scoped = true) => {
       const response = await fetch(process.env.TYPE_DEVICE_HTTP + path, { method,

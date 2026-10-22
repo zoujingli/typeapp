@@ -50,6 +50,9 @@ final class RoleService
                 'admin.config.read' => '查看系统配置', 'admin.config.manage' => '维护系统配置',
                 'admin.enrollments.read' => '查看设备注册授权', 'admin.enrollments.issue' => '签发设备注册授权',
                 'admin.enrollments.disable' => '停用设备注册授权', 'admin.enrollments.reset' => '重置设备注册码',
+                'admin.devices.expiry' => '设置设备使用期限', 'admin.devices.end' => '结束设备使用关系',
+                'admin.reassignments.read' => '查看设备转配', 'admin.reassignments.create' => '发起设备转配',
+                'admin.reassignments.advance' => '核验并推进设备隔离',
             ];
         } else {
             $catalog += [
@@ -62,6 +65,7 @@ final class RoleService
                 'customer.roles.permissions' => '编辑租户角色权限',
                 'customer.products.read' => '查看产品与物模型', 'customer.products.manage' => '维护产品与物模型',
                 'customer.enrollments.read' => '查看已分配的设备注册授权',
+                'customer.reassignments.read' => '查看设备转配', 'customer.reassignments.accept' => '确认接收转配设备',
             ];
         }
         foreach (['read' => '查看设备资产', 'update' => '修改设备资料', 'enable' => '启用设备', 'disable' => '禁用设备',
@@ -235,6 +239,9 @@ final class RoleService
             if (in_array('customer.applications.read', $permissions, true)) {
                 $iot[] = ['name' => '接入应用', 'path' => '/applications', 'icon' => 'lucide:app-window', 'order' => 5];
             }
+            if (in_array('customer.reassignments.read', $permissions, true)) {
+                $iot[] = ['name' => '设备转配', 'path' => '/reassignments', 'icon' => 'lucide:arrow-left-right', 'order' => 6];
+            }
             if ($iot !== []) {
                 $menus[] = ['name' => '物联管理', 'path' => '/iot', 'redirectPath' => $iot[0]['path'], 'icon' => 'lucide:cpu', 'order' => 4, 'children' => $iot];
             }
@@ -262,6 +269,9 @@ final class RoleService
         }
         if ($realm === 'admin' && in_array('admin.applications.read', $permissions, true)) {
             $operations[] = ['name' => '接入应用', 'path' => '/admin/applications', 'icon' => 'lucide:app-window', 'order' => count($operations) + 1];
+        }
+        if ($realm === 'admin' && in_array('admin.reassignments.read', $permissions, true)) {
+            $operations[] = ['name' => '设备转配', 'path' => '/admin/reassignments', 'icon' => 'lucide:arrow-left-right', 'order' => count($operations) + 1];
         }
         foreach (['audit' => '操作审计', 'operations' => '运行概览'] as $node => $label) {
             if (in_array($realm . '.' . $node . '.read', $permissions, true)) {

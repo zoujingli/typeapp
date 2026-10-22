@@ -41,7 +41,7 @@ try {
         $base . '/application.log',
         // 对账/掉电场景包含真实 60 秒等待；模型场景包含两段 35 秒确认、重启及上报，组合预算须覆盖完整业务，单次网络/客户端预算为 180 秒。
         in_array('--broker-resources', $argv, true) && getenv('TYPE_BROKER_RESOURCE_DIST') ? 600
-            : (in_array('--ingestion', $argv, true) ? 600 : (in_array('--lifecycle', $argv, true) || in_array('--lifecycle-mqtt', $argv, true) || in_array('--communication-mqtt', $argv, true) ? 360 : 240)),
+            : (in_array('--reassignments-mqtt', $argv, true) ? 480 : (in_array('--ingestion', $argv, true) ? 600 : (in_array('--lifecycle', $argv, true) || in_array('--lifecycle-mqtt', $argv, true) || in_array('--communication-mqtt', $argv, true) ? 360 : 240))),
         $ioReceiptTrace ? static fn () => $database->drainOutput() : null
     );
     echo $output;

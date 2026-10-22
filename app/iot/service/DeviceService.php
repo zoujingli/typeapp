@@ -79,7 +79,7 @@ final class DeviceService
                         'ownership_id' => bin2hex(random_bytes(16)), 'name' => $data['name'], 'lifecycle' => 'inactive',
                         'model_switch_id' => null, 'model_start_sequence' => '0', 'transfer_id' => null, 'transfer_frozen' => false, 'recovery_verified' => true]);
                     $now = $device->getCreatedAt();
-                    $transaction->table('iot_device_ownerships')->insert(['id' => $device->getOwnershipId(), 'device_id' => $device->getId(), 'tenant_id' => $data['tenant_id'], 'started_at' => $now]);
+                    $transaction->table('iot_device_ownerships')->insert(['id' => $device->getOwnershipId(), 'device_id' => $device->getId(), 'tenant_id' => $data['tenant_id'], 'started_at' => $now, 'access_started' => 0]);
                     $transaction->table('iot_device_connections')->insert(['device_id' => $device->getId(), 'ownership_id' => $device->getOwnershipId(), 'status' => 'unknown']);
                     $credentialId = bin2hex(random_bytes(16));
                     $credentialSecret = bin2hex(random_bytes(32));
@@ -235,6 +235,11 @@ final class DeviceService
         $active = $connection->table('iot_device_credentials')->where('device_id', '=', $deviceId)->where('ownership_id', '=', $device['ownership_id'])
             ->where('status', '=', 'active')->where('recovery_verified', '=', 1)->first();
         $result = self::observed($device) + ['credential_active' => $active !== null];
+        $ownership = $connection->table('iot_device_ownerships')->where('id', '=', $device['ownership_id'])->first();
+        $result['usage'] = $ownership === null ? null : ['started_at' => (int) $ownership['started_at'],
+            'ended_at' => $ownership['ended_at'] === null ? null : (int) $ownership['ended_at'],
+            'expires_at' => $ownership['expires_at'] === null ? null : (int) $ownership['expires_at'],
+            'available' => TransferService::ownershipCurrent($connection, $device)];
         return $realm === 'admin' ? $result : $result + [
             'model' => $device['model_version'] === null ? null : ProductService::publishedModel($connection, $device['tenant_id'], $device['product_id'], (int) $device['model_version']),
             'topics' => self::topics($device), 'model_switch' => $device['model_switch_id'] === null ? null
@@ -592,7 +597,13 @@ final class DeviceService
             if ($device['lifecycle'] === 'retired') {
                 throw new HttpError(409, 'device_retired');
             }
+            if ($device['model_version'] === null && in_array($action, ['enable', 'rotate'], true) && !TransferService::ownershipCurrent($transaction, $device)) {
+                throw new HttpError(409, 'device_ownership_unavailable');
+            }
             if ($device['transfer_id'] !== null) {
+                if ($device['model_version'] === null && $action !== 'update') {
+                    throw new HttpError(409, 'reassignment_in_progress');
+                }
                 $transfer = $transaction->table('iot_transfers')->where('id', '=', $device['transfer_id'])->first();
                 if ($transfer !== null && ($transfer['status'] === 'isolating'
                     || ($transfer['status'] === 'activating' && !in_array($action, ['rotate', 'revoke'], true)))) {
@@ -648,7 +659,7 @@ final class DeviceService
     }
 
     /** 调用者持有设备锁且已授权；冻结真实来源，退出或撤权不撤回已经提交的隔离意图。 */
-    public static function invalidateCredential(Connection $transaction, array $device, Identity $actor): string
+    public static function invalidateCredential(Connection $transaction, array $device, Identity|array $actor, bool $allowRevoked = false): string
     {
         if ($transaction->transactionDepth() < 1) {
             throw new \LogicException('device_transaction_required');
@@ -657,11 +668,16 @@ final class DeviceService
         $previous = ($transaction->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
         $credentialQuery = $transaction->table('iot_device_credentials')->where('device_id', '=', $device['id'])->where('status', '=', 'active')->limit(2);
         $credentials = ($transaction->driverName() === 'sqlite' ? $credentialQuery : $credentialQuery->lockForUpdate())->get();
+        if ($credentials === [] && $allowRevoked) {
+            $credentialQuery = $transaction->table('iot_device_credentials')->where('device_id', '=', $device['id'])->where('ownership_id', '=', $device['ownership_id'])
+                ->orderBy('created_at', 'DESC')->orderBy('id', 'DESC')->limit(1);
+            $credentials = ($transaction->driverName() === 'sqlite' ? $credentialQuery : $credentialQuery->lockForUpdate())->get();
+        }
         if (($previous !== null && $previous['completed_at'] === null) || count($credentials) !== 1 || $credentials[0]['ownership_id'] !== $device['ownership_id']) {
             throw new HttpError(409, 'device_authorization_pending');
         }
         $old = $credentials[0];
-        $context = IdentityService::context($actor, $device['tenant_id']);
+        $context = $actor instanceof Identity ? IdentityService::context($actor, $device['tenant_id']) : $actor;
         if (!in_array($context['realm'] ?? '', ['admin', 'customer'], true)) {
             throw new HttpError(403, 'identity_context_invalid');
         }
@@ -706,8 +722,26 @@ final class DeviceService
      */
     public static function access(Connection $connection, array $request): array
     {
+        if (in_array($request['action'], ['authenticate', 'authenticate_certificate'], true)) {
+            // 与结束关系共用授权锁，先记录可能建立持久会话，再允许 Broker 接受身份。
+            return $connection->transaction(static function (Connection $transaction) use ($request): array {
+                RoleService::lockAuthorization();
+                $result = self::accessState($transaction, $request);
+                if ($result['allowed']) {
+                    $transaction->table('iot_device_ownerships')->where('device_id', '=', $request['client_id'])->whereNull('ended_at')->update(['access_started' => 1]);
+                }
+                return $result;
+            }, $connection->driverName() === 'sqlite' && $connection->transactionDepth() === 0 ? 'immediate' : 'default');
+        }
+        return self::accessState($connection, $request);
+    }
+
+    /** 仅由 access 在所需的身份写锁内调用；普通授权不改变关系期限或结束状态。 */
+    private static function accessState(Connection $connection, array $request): array
+    {
         $action = $request['action'];
         if ($action === 'invalidation_next') {
+            TransferService::expireOwnership($connection);
             $ca = getenv('IOT_MQTT_CLIENT_CA');
             if (is_string($ca) && $ca !== '') {
                 AccessService::syncHandshakeCa($connection, $ca);
@@ -801,6 +835,10 @@ final class DeviceService
                     $allowed = false;
                     $reason = 'device_unavailable';
                 }
+                if ($allowed && !TransferService::ownershipCurrent($connection, $device)) {
+                    $allowed = false;
+                    $reason = 'device_ownership_unavailable';
+                }
                 if ($allowed && $connection->table('iot_tenants')->where('id', '=', $device['tenant_id'])->where('enabled', '=', 1)->first() === null) {
                     $allowed = false;
                     $reason = 'tenant_unavailable';
@@ -879,6 +917,10 @@ final class DeviceService
         if ($allowed && !in_array($device['lifecycle'], ['inactive', 'enabled'], true)) {
             $allowed = false;
             $reason = 'device_unavailable';
+        }
+        if ($allowed && $action !== 'connected' && !TransferService::ownershipCurrent($connection, $device)) {
+            $allowed = false;
+            $reason = 'device_ownership_unavailable';
         }
         if ($allowed && $connection->table('iot_tenants')->where('id', '=', $device['tenant_id'])->where('enabled', '=', 1)->first() === null) {
             $allowed = false;

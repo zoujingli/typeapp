@@ -29,7 +29,7 @@ function runtimeCommand(array $command, array $arguments, array $environment, st
 }
 
 /** 核对所有业务表字节；迁移控制表另由迁移状态断言核对。 */
-function runtimeDataIdentity(PDO $database, string $driver): array
+function runtimeDataIdentity(PDO $database, string $driver, array $columns = []): array
 {
     $query = match ($driver) {
         'mysql' => 'SHOW TABLES',
@@ -42,7 +42,7 @@ function runtimeDataIdentity(PDO $database, string $driver): array
             continue;
         }
         expect(preg_match('/^[a-z_]+$/D', $table) === 1, '测试数据库含未知表名');
-        $rows = $database->query('SELECT * FROM ' . $table)->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $database->query('SELECT ' . ($columns[$table] ?? '*') . ' FROM ' . $table)->fetchAll(PDO::FETCH_ASSOC);
         $encoded = array_map(static fn (array $row): string => json_encode($row, JSON_THROW_ON_ERROR), $rows);
         sort($encoded, SORT_STRING);
         $identity[$table] = ['rows' => count($rows), 'sha256' => hash('sha256', implode("\n", $encoded))];
@@ -58,10 +58,18 @@ function runtimeIdentityUpgrade(PDO $database, string $driver, array $before, ar
     $enrollments = !isset($before['iot_device_enrollments']);
     $applications = !isset($before['iot_applications']);
     $grants = !isset($before['iot_application_grants']);
-    $newTables = [...($enrollments ? ['iot_device_enrollments', 'iot_device_enrollment_bindings'] : []), ...($applications ? ['iot_applications'] : []), ...($grants ? ['iot_application_grants'] : [])];
+    $relationships = !isset($before['iot_device_reassignments']);
+    $newTables = [...($enrollments ? ['iot_device_enrollments', 'iot_device_enrollment_bindings'] : []), ...($applications ? ['iot_applications'] : []), ...($grants ? ['iot_application_grants'] : []), ...($relationships ? ['iot_device_reassignments'] : [])];
     $excluded = ['admin_roles', 'customer_roles', 'admin_role_permissions', 'customer_role_permissions', ...$newTables];
     $business = static fn (array $tables): array => array_diff_key($tables, array_fill_keys($excluded, true));
-    expect($business($after) === $business($before), '身份增量修改了已有业务数据');
+    $comparable = $relationships ? runtimeDataIdentity($database, $driver, ['iot_device_ownerships' => 'id, device_id, tenant_id, started_at, ended_at']) : $after;
+    expect($business($comparable) === $business($before), '身份增量修改了已有业务数据');
+    if ($relationships) {
+        expect(
+            (int) $database->query('SELECT COUNT(*) FROM iot_device_ownerships WHERE expires_at IS NOT NULL OR expiry_context IS NOT NULL OR access_started <> 1 OR version <> 1')->fetchColumn() === 0,
+            '旧使用关系必须保持无新增期限、通信历史未知及初始版本'
+        );
+    }
     foreach ($newTables as $table) {
         expect($after[$table]['rows'] === 0, '升级不能自动签发资格、注册设备或创建接入应用');
     }
@@ -74,7 +82,7 @@ function runtimeIdentityUpgrade(PDO $database, string $driver, array $before, ar
             if ((int) $role['protected'] !== 1) {
                 continue;
             }
-            $version = (int) $role['version'] + (int) $enrollments + (int) $applications + (int) $grants;
+            $version = (int) $role['version'] + (int) $enrollments + (int) $applications + (int) $grants + (int) $relationships;
             $expected[$index]['version'] = is_string($role['version']) ? (string) $version : $version;
             foreach ($enrollments ? $actions : [] as $action) {
                 $expectedPermissions[] = $role['id'] . ':' . $realm . '.enrollments.' . $action;
@@ -84,6 +92,9 @@ function runtimeIdentityUpgrade(PDO $database, string $driver, array $before, ar
             }
             if ($grants) {
                 $expectedPermissions[] = $role['id'] . ':' . $realm . '.applications.authorize';
+            }
+            foreach ($relationships ? ($realm === 'admin' ? ['devices.expiry', 'devices.end', 'reassignments.read', 'reassignments.create', 'reassignments.advance'] : ['reassignments.read', 'reassignments.accept']) : [] as $action) {
+                $expectedPermissions[] = $role['id'] . ':' . $realm . '.' . $action;
             }
         }
         expect($current === $expected, '迁移必须只推进受保护角色的版本');
@@ -312,9 +323,10 @@ try {
             $registrationPending = !isset($before['iot_registration_attempts']);
             $enrollmentPending = !isset($before['iot_device_enrollments']);
             $applicationPending = !isset($before['iot_applications']);
+            $relationshipPending = !isset($before['iot_device_reassignments']);
             $enrollmentRoles = [];
             $enrollmentPermissions = [];
-            if ($enrollmentPending || $applicationPending) {
+            if ($enrollmentPending || $applicationPending || $relationshipPending) {
                 foreach (['admin', 'customer'] as $realm) {
                     $enrollmentRoles[$realm] = $database->query('SELECT * FROM ' . $realm . '_roles ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
                     $enrollmentPermissions[$realm] = [];
@@ -352,7 +364,7 @@ try {
                 ksort($before);
                 $checks[] = 'registration-increment-preserves-existing-device-references';
             }
-            if ($enrollmentPending || $applicationPending) {
+            if ($enrollmentPending || $applicationPending || $relationshipPending) {
                 $before = runtimeIdentityUpgrade($database, $driver, $before, $enrollmentRoles, $enrollmentPermissions);
             }
             expect(runtimeDataIdentity($database, $driver) === $before, '重复升级修改业务数据');

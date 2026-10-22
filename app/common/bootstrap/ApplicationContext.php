@@ -108,4 +108,19 @@ final class ApplicationContext
         return $command;
     }
 
+    /** @return list<string> 物联持久资源观察及转配复用同一已配置角色，空值明确表示未配置。 */
+    public static function iotStoreWorker(string $encoded): array
+    {
+        $command = $encoded === '' ? [] : json_decode($encoded, true, 8, JSON_THROW_ON_ERROR);
+        if (!is_array($command) || !array_is_list($command) || count($command) > 16) {
+            throw new \Type\Core\Http\HttpError(503, 'broker_resource_store_unavailable');
+        }
+        foreach ($command as $argument) {
+            if (!is_string($argument) || $argument === '' || strlen($argument) > 4096 || str_contains($argument, "\0")) {
+                throw new \Type\Core\Http\HttpError(503, 'broker_resource_store_unavailable');
+            }
+        }
+        return $command === [] ? [] : [...$command, 'iot:mqtt-store'];
+    }
+
 }

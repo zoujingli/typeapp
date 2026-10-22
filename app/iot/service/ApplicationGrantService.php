@@ -82,7 +82,8 @@ final class ApplicationGrantService
                     $connection = Db::connection('default', true);
                     $device = Device::query()->master()->find($deviceId);
                     $ownership = $connection->table('iot_device_ownerships')->where('id', '=', $data['ownership_id'])->where('device_id', '=', $deviceId)->where('tenant_id', '=', $tenantId)->first();
-                    if ($enabled && ($device === null || $ownership === null || $ownership['ended_at'] !== null || $device->getOwnershipId() !== $data['ownership_id'])) {
+                    if ($enabled && ($device === null || $ownership === null || $ownership['ended_at'] !== null
+                        || ($ownership['expires_at'] !== null && (int) $ownership['expires_at'] <= time()) || $device->getOwnershipId() !== $data['ownership_id'])) {
                         throw new HttpError(409, 'application_device_relationship_changed');
                     }
                     if ($enabled && ($device->getModelVersion() !== null || !$device->getRecoveryVerified()
@@ -188,8 +189,7 @@ final class ApplicationGrantService
             || !in_array($device['lifecycle'], ['inactive', 'enabled'], true)) {
             return false;
         }
-        return $connection->table('iot_device_ownerships')->where('id', '=', $matches[3])->where('device_id', '=', $device['id'])
-            ->where('tenant_id', '=', $application['tenant_id'])->whereNull('ended_at')->first() !== null;
+        return TransferService::ownershipCurrent($connection, $device);
     }
 
     private static function project(ApplicationGrant $model): array

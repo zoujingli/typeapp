@@ -458,6 +458,7 @@ final class ConnectionOperations
     }
 
     /**
+     * @param array<string, mixed> $context 已授权来源；required_action 仅由业务服务明确传入原领域动作，不能来自请求体。
      * @param array<string, mixed> $row 已核对的连接观察或会话目标。
      * @return array<string, mixed>
      */
@@ -476,7 +477,7 @@ final class ConnectionOperations
                 'source' => $context['actor_realm'] === 'broker' ? 'broker-admin' : ($context['actor_realm'] === 'admin' ? 'platform' : 'customer-member'),
                 'role' => $context['actor_realm'] === 'broker' ? 'broker_admin' : 'rbac',
                 'permissions' => $context['permissions'],
-                'required_action' => ($context['actor_realm'] === 'broker' ? '' : $context['actor_realm'] . '.') . 'broker.write',
+                'required_action' => $context['required_action'] ?? (($context['actor_realm'] === 'broker' ? '' : $context['actor_realm'] . '.') . 'broker.write'),
                 'decision' => 'allowed', 'support_id' => null, 'support_version' => null, 'support_expires_at' => null,
             ],
             'target' => [
