@@ -2,93 +2,121 @@
 
 declare(strict_types=1);
 
-// 无数据库及秘密的真实进程探针；仅验证锁定 Windows SDK 的本地 IPC，不代替应用原生验收。
+// 无数据库及秘密的真实进程探针；只验证锁定 SDK 的本地 IPC，不代替应用原生验收。
 $root = dirname(__DIR__, 2);
 require $root . '/plugin/type-runtime/src/TaskException.php';
 require $root . '/plugin/type-runtime/src/CoroutineRuntime.php';
 
 \Type\Runtime\CoroutineRuntime::enableIo();
+if (($argv[1] ?? '') === '--worker') {
+    \Type\Runtime\CoroutineRuntime::run(static function (): void {
+        \Swoole\Coroutine::sleep(0.75);
+        $socket = new \Swoole\Coroutine\Socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+        try {
+            if (!$socket->connect('127.0.0.1', (int) getenv('TYPE_IPC_PORT'), 1.0)) {
+                throw new RuntimeException('worker connect failed');
+            }
+            $hello = (string) getenv('TYPE_IPC_TOKEN') . "\n";
+            if ($socket->sendAll($hello, 1.0) !== strlen($hello)) {
+                throw new RuntimeException('worker identity send failed');
+            }
+            $input = $socket->recvLine(397307, 2.0);
+            if (!is_string($input) || strlen($input) !== 397305 || !str_ends_with($input, "\n")) {
+                throw new RuntimeException('worker request incomplete');
+            }
+            $output = hash('sha256', $input) . "\n" . str_repeat('b', 524288) . "\n";
+            if ($socket->sendAll($output, 2.0) !== strlen($output)) {
+                throw new RuntimeException('worker response incomplete');
+            }
+        } finally {
+            $socket->close();
+        }
+    });
+    exit(0);
+}
+
 $report = \Type\Runtime\CoroutineRuntime::run(static function (): array {
     $payload = str_repeat('a', 397304) . "\n";
-    $worker = 'usleep(750000); echo "ready\n"; $s=fgets(STDIN, 397307); '
-        . 'if (!is_string($s) || !str_ends_with($s, "\n")) { exit(2); } '
-        . 'echo hash("sha256", $s), "\n", str_repeat("b", 524288), "\n";';
+    $token = bin2hex(random_bytes(32));
+    $listener = new \Swoole\Coroutine\Socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+    if (!$listener->bind('127.0.0.1', 0) || !$listener->listen(1)) {
+        $listener->close();
+        throw new RuntimeException('worker listener failed');
+    }
+    $address = $listener->getsockname();
+    $null = PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null';
+    $log = dirname(__DIR__, 2) . '/build/worker-ipc-probe/worker.log';
     $process = proc_open(
-        [PHP_BINARY, '-n', '-r', $worker],
-        [0 => ['socket'], 1 => ['socket'], 2 => ['redirect', 1]],
-        $pipes
+        [PHP_BINARY, __FILE__, '--worker'],
+        [0 => ['file', $null, 'rb'], 1 => ['file', $null, 'wb'], 2 => ['file', $log, 'wb']],
+        $pipes,
+        null,
+        array_replace(getenv(), ['TYPE_IPC_PORT' => (string) $address['port'], 'TYPE_IPC_TOKEN' => $token])
     );
     if (!is_resource($process)) {
+        $listener->close();
         throw new RuntimeException('socket IPC worker spawn failed');
     }
     $state = (object) ['progress' => 0, 'finished' => false];
     $started = hrtime(true);
+    $peer = null;
+    $output = '';
+    $error = null;
+    $written = 0;
+    $authenticated = false;
+    $status = null;
     try {
-        $nonblocking = [];
-        foreach ($pipes as $pipe) {
-            $nonblocking[] = stream_set_blocking($pipe, false);
-        }
         \Swoole\Coroutine::create(static function () use ($state): void {
             while (!$state->finished) {
                 \Swoole\Coroutine::sleep(0.01);
                 ++$state->progress;
             }
         });
-        $firstStarted = hrtime(true);
-        $output = fread($pipes[1], 16);
-        $firstSeconds = (hrtime(true) - $firstStarted) / 1e9;
-        // 与实际调用者一致：非阻塞读取的空值不视作业务结果，完整性由最终字节与退出状态证明。
-        $falseReads = $output === false ? 1 : 0;
-        $output = is_string($output) ? $output : '';
-        $input = '';
-        $authenticated = false;
-        $maximumReadSeconds = $firstSeconds;
+        $accepted = $listener->accept(2.0);
+        if ($accepted === false) {
+            throw new RuntimeException('socket IPC accept failed');
+        }
+        $peer = $accepted;
+        $identity = $peer->recvLine(65, 1.0);
+        $authenticated = is_string($identity) && hash_equals($token . "\n", $identity);
+        if (!$authenticated) {
+            throw new RuntimeException('socket IPC worker identity invalid');
+        }
+        $written = $peer->sendAll($payload, 2.0);
+        if ($written !== strlen($payload)) {
+            throw new RuntimeException('socket IPC request incomplete');
+        }
+        $response = $peer->recvAll(64 + 1 + 524288 + 1, 2.0);
+        $output = is_string($response) ? $response : '';
         do {
-            $readStarted = hrtime(true);
-            $chunk = fread($pipes[1], 262144);
-            $maximumReadSeconds = max($maximumReadSeconds, (hrtime(true) - $readStarted) / 1e9);
-            if ($chunk === false) {
-                ++$falseReads;
-            }
-            $output .= is_string($chunk) ? $chunk : '';
-            if (!$authenticated && str_starts_with($output, "ready\n")) {
-                $authenticated = true;
-                $output = substr($output, 6);
-                $input = $payload;
-            }
-            if ($input !== '') {
-                $written = fwrite($pipes[0], substr($input, 0, 16384));
-                if ($written === false) {
-                    throw new RuntimeException('socket IPC write failed');
-                }
-                $input = substr($input, $written);
-            }
             $status = proc_get_status($process);
-            if (!$status['running'] && strlen($output) === 64 + 1 + 524288 + 1) {
+            if (!$status['running']) {
                 break;
             }
             usleep(1000);
         } while ((hrtime(true) - $started) / 1e9 < 5.0);
-        $expected = hash('sha256', $payload) . "\n" . str_repeat('b', 524288) . "\n";
-        $passed = $nonblocking === [true, true] && $firstSeconds < 0.1 && $maximumReadSeconds < 0.1
-            && $state->progress >= 10 && $authenticated && $input === '' && $output === $expected && !$status['running'];
-        return ['passed' => $passed, 'php' => PHP_VERSION, 'swoole' => phpversion('swoole'),
-            'hook_flags' => \Swoole\Runtime::getHookFlags(), 'nonblocking_accepted' => $nonblocking,
-            'first_read_seconds' => $firstSeconds, 'maximum_read_seconds' => $maximumReadSeconds,
-            'false_reads' => $falseReads, 'read_metadata' => stream_get_meta_data($pipes[1]),
-            'coroutine_progress' => $state->progress, 'request_bytes' => strlen($payload), 'response_bytes' => strlen($output),
-            'response_sha256' => hash('sha256', $output), 'expected_sha256' => hash('sha256', $expected),
-            'seconds' => (hrtime(true) - $started) / 1e9, 'worker_running' => $status['running']];
+    } catch (Throwable $failure) {
+        $error = $failure->getMessage();
     } finally {
         $state->finished = true;
-        if (proc_get_status($process)['running']) {
+        if ($status === null || $status['running']) {
+            $status = proc_get_status($process);
+        }
+        if ($status['running']) {
             proc_terminate($process, 9);
         }
-        foreach ($pipes as $pipe) {
-            fclose($pipe);
-        }
+        $peer?->close();
+        $listener->close();
         proc_close($process);
     }
+    $expected = hash('sha256', $payload) . "\n" . str_repeat('b', 524288) . "\n";
+    return ['passed' => $error === null && $state->progress >= 10 && $authenticated && $output === $expected
+        && !$status['running'] && $status['exitcode'] === 0,
+        'php' => PHP_VERSION, 'swoole' => phpversion('swoole'), 'mechanism' => 'Swoole Coroutine Socket',
+        'error' => $error, 'coroutine_progress' => $state->progress, 'authenticated' => $authenticated,
+        'request_bytes' => strlen($payload), 'written_bytes' => $written, 'response_bytes' => strlen($output),
+        'response_sha256' => hash('sha256', $output), 'expected_sha256' => hash('sha256', $expected),
+        'seconds' => (hrtime(true) - $started) / 1e9, 'worker_running' => $status['running'], 'worker_exit' => $status['exitcode']];
 });
 echo json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR), "\n";
 exit($report['passed'] ? 0 : 1);

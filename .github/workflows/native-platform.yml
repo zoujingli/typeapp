@@ -70,7 +70,7 @@ jobs:
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
       - name: 准备锁定的 PHP 与 Swoole
         run: ./.github/scripts/prepare-windows-native.ps1
-      - name: 核对进程 socket 描述符的有界双向传输
+      - name: 核对原生协程 Socket 的有界进程通信
         run: |
           New-Item -ItemType Directory -Path build/worker-ipc-probe | Out-Null
           & "$env:PHP_HOME/php.exe" .github/scripts/probe-worker-ipc.php |
