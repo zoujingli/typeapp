@@ -15,7 +15,7 @@ if (upstream.protocol !== 'http:' || upstream.hostname !== '127.0.0.1' || upstre
 const adminPassword = process.env.APP_ADMIN_PASSWORD;
 const customerPassword = process.env.APP_CUSTOMER_PASSWORD;
 if (!adminPassword || !customerPassword) throw new Error('browser_credentials_required');
-if (process.env.TYPE_APP_BROWSER_CASES === 'site') {
+if (['site', 'workspaces'].includes(process.env.TYPE_APP_BROWSER_CASES)) {
   await siteBrowser(base, dist, upstream, adminPassword, customerPassword);
   process.exit(0);
 }
@@ -87,8 +87,23 @@ try {
   await login('/admin/login', adminPassword, '平台管理端');
   await expect(page).toHaveURL(/#\/admin\/profile$/);
   await expect(page.getByText('平台管理账号', { exact: true })).toBeVisible();
+  // 品牌入口必须回到当前工作区，不能由全局默认首页把控制端切回客户端。
+  await page.goto(`${url}/#/admin/users`);
+  await expect(page.getByRole('heading', { name: '平台人员', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'breadcrumb' })).toContainText('身份与租户');
+  await page.getByRole('link', { name: 'TypeApp', exact: true }).click();
+  await expect(page).toHaveURL(/#\/admin\/profile$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/admin\/users$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/#\/admin\/profile$/);
+  await page.goto(`${url}/#/admin/unavailable-page`);
+  await expect(page).toHaveURL(/#\/admin\/profile$/);
+  await expect(page.locator('.current-tenant')).toHaveText('控制端');
+  report.cases.push('控制端父级面包屑、品牌返回、前进后退和未知地址保持工作区');
   await page.goto(`${url}/#/profile`);
   await expect(page.getByText('客户账号', { exact: true })).toBeVisible();
+  await expect(page.locator('.current-tenant')).toContainText('客户端');
   await page.goto(`${url}/#/admin/profile`);
   await expect(page.getByText('平台管理账号', { exact: true })).toBeVisible();
   report.cases.push('同一浏览器双端会话独立恢复');

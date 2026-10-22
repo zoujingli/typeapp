@@ -10,6 +10,7 @@ let activeScope: PreferenceScope = 'anonymous';
 let defaults: PreferencePatch = {};
 let started = false;
 let switching = false;
+let activeHomePath = '/profile';
 
 function cacheKey(scope: PreferenceScope): string {
   return `typeapp-iot-v1-scope-${scope}-preferences`;
@@ -55,7 +56,7 @@ function restore(scope: PreferenceScope) {
 /** 将站点配置映射到 Vben 已接通的原生偏好字段，品牌字段不允许被个人缓存覆盖。 */
 export function sitePreferenceOverrides(site: Omit<PublicSiteSettings, 'environment'>): PreferencePatch {
   return {
-    app: { name: site.name, defaultHomePath: '/profile', accessMode: 'frontend', locale: 'zh-CN', layout: site.preferences.layout },
+    app: { name: site.name, defaultHomePath: activeHomePath, accessMode: 'frontend', locale: 'zh-CN', layout: site.preferences.layout },
     // VbenLogo 在图片为空时仍展示文字品牌；图片加载失败由原生 Avatar 提供回退。
     logo: { enable: true, source: site.logo_url },
     copyright: { enable: site.preferences.footer.enable, companyName: site.name, companySiteLink: site.official_url },
@@ -107,14 +108,17 @@ export function applySitePreferences(site: Omit<PublicSiteSettings, 'environment
 /** 切换登录域或账号时隔离个人缓存，模拟登录再增加独立来源键。 */
 export function switchPreferencesScope(realm: string = '', userId: string = '', impersonating = false, actorId = '') {
   if (!started) return;
+  const homePath = realm === 'admin' ? '/admin/profile' : realm === 'broker' ? '/broker/nodes' : '/profile';
   const next: PreferenceScope = !userId ? 'anonymous' : impersonating
     ? `customer-impersonation-${actorId || 'unknown'}-${userId}`
     : `${realm}-${userId}`;
-  if (next === activeScope) return;
+  if (next === activeScope && homePath === activeHomePath) return;
   writeCache(activeScope);
   // 恢复另一身份偏好时抑制持久化监听，防止中间默认值覆盖目标缓存。
   switching = true;
   activeScope = next;
+  activeHomePath = homePath;
+  defaults = { ...defaults, app: { ...defaults.app, defaultHomePath: homePath } };
   restore(activeScope);
   switching = false;
 }

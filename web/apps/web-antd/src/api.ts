@@ -353,7 +353,7 @@ export function clearSession() {
   session.user = null;
   session.tenant = null;
   session.permissions = []; session.menus = [];
-  switchPreferencesScope('anonymous');
+  switchPreferencesScope(session.realm);
 }
 /** 恢复目标登录域的独立令牌，同时使旧域在途响应和权限失效。 */
 export function activateRealm(realm: Realm) {
@@ -365,6 +365,7 @@ export function activateRealm(realm: Realm) {
   session.identity = null; session.returnToAdmin = false;
   session.user = null; session.tenant = null;
   session.permissions = []; session.menus = []; session.notice = '';
+  switchPreferencesScope(realm);
 }
 /** 按登录域生成登录入口，客户域使用根路径。 */
 export function loginPath(realm: Realm = session.realm) { return realm === 'customer' ? '/login' : `/${realm}/login`; }

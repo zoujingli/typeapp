@@ -2,6 +2,7 @@
 import { watch, watchEffect, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { BasicLayout } from '@vben/layouts';
+import { preferences } from '@vben/preferences';
 import { useAccessStore } from '@vben/stores';
 import { Alert, Button, message } from 'ant-design-vue';
 import { errorText, isDemo, logout, session, sessionExitPath } from '../api';
@@ -31,7 +32,7 @@ async function leave() {
 </script>
 
 <template>
-  <BasicLayout @clear-preferences-and-logout="leave">
+  <BasicLayout @clear-preferences-and-logout="leave" @click-logo="router.push(preferences.app.defaultHomePath)">
     <template #content-before>
       <Alert v-if="isDemo()" class="demo-banner" type="info" show-icon message="演示环境，仅供浏览" description="可以查询数据和退出登录，业务修改已关闭。" role="status" />
       <Alert v-if="session.impersonating" class="impersonation-banner" type="warning" show-icon role="status">
@@ -42,7 +43,7 @@ async function leave() {
       </Alert>
     </template>
     <template #header-left-60>
-      <span class="px-3 current-tenant" :title="session.tenant?.name">{{ session.realm === 'broker' ? '独立 Broker' : session.realm === 'admin' ? '平台管理端' : session.tenant?.name || '客户工作区' }}</span>
+      <span class="px-3 current-tenant" :title="session.tenant?.name">{{ session.realm === 'broker' ? '独立 Broker' : session.realm === 'admin' ? '控制端' : `客户端 · ${session.tenant?.name || '尚未选择租户'}` }}</span>
     </template>
     <template #user-dropdown>
       <div class="user-actions">

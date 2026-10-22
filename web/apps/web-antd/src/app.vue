@@ -19,5 +19,5 @@ watchEffect(() => {
 </script>
 
 <template>
-  <ConfigProvider :locale="zhCN" :theme="tokenTheme"><App><RouterView /></App></ConfigProvider>
+  <ConfigProvider :locale="zhCN" :theme="tokenTheme"><App><RouterView :key="String(route.meta.realm || 'login')" /></App></ConfigProvider>
 </template>
