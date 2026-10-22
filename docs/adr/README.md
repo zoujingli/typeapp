@@ -25,3 +25,4 @@
 - [Model 优先的业务 CRUD 边界](0023-model-first-crud-boundary.md)
 - [构建期自动装配作为应用默认入口](0024-build-time-application-assembly.md)
 - [在原 Service 类型上落实事务与缓存声明](0025-service-declaration-transformation.md)
+- [双端管理与设备通信授权（待实施）](0026-control-client-device-authorization.md)
