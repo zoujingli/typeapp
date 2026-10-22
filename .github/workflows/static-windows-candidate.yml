@@ -243,6 +243,18 @@ jobs:
           Copy-Item "$taskOriginal/app/type-app.exe" (Join-Path 'build/release-candidate/attachments' $taskName)
           & "$env:PHP_HOME/php.exe" vendor/bin/type verify-package (Join-Path 'build/release-candidate/attachments' $taskName) $taskRecord.sha256
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 准备原始通信标准客户端运行时
+        if: inputs.tutorial_mode == '' && (inputs.profile || 'sqlite') == 'pgsql'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.21.1'
+      - name: 核对真实公开升级基线
+        if: inputs.tutorial_mode == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          & "$env:PHP_HOME/php.exe" tools/release/prepare-upgrade-baseline.php
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 准备专用 Redis 业务验收服务
         run: ./.github/scripts/prepare-windows-test-redis.ps1
       - name: 同一 EXE 的 SQLite 无源码部署与业务闭环

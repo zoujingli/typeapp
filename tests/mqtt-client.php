@@ -602,3 +602,40 @@ function mqttClientCases(string $root, string $consumer, array $command, array $
     $checks['independent-peer'] = mqttClientPeerCases($consumer, $command, $environment);
     return $checks;
 }
+
+/**
+ * 在隔离目录安装 mqtt.js 5.15.0，供候选及原始通信验收使用。
+ */
+function testMqttJsClient(string $directory): string
+{
+    expect(mkdir($directory, 0700), '无法创建 MQTT.js 目录');
+    file_put_contents($directory . '/package.json', json_encode([
+        'name' => 'typeapp-broker-candidate-client',
+        'private' => true,
+        'dependencies' => ['mqtt' => '5.15.0'],
+    ], JSON_THROW_ON_ERROR));
+    $npm = ['npm'];
+    if (PHP_OS_FAMILY === 'Windows') {
+        $node = trim(successful(['node', '-p', 'process.execPath']));
+        $cli = dirname($node) . '/node_modules/npm/bin/npm-cli.js';
+        expect(is_file($cli), '当前 Node 安装缺少 npm CLI');
+        $npm = [$node, $cli];
+    }
+    $install = new \Type\Testing\Process(
+        [...$npm, 'install', '--ignore-scripts', '--no-audit', '--no-fund'],
+        $directory,
+        getenv()
+    );
+    try {
+        $result = $install->wait(120);
+        $output = $result->stdout . $result->stderr;
+        expect(file_put_contents($directory . '/install.log', $output) === strlen($output), '无法保存 MQTT.js 安装日志');
+        expect($result->successful(), 'MQTT.js 5.15.0 安装失败：' . $output);
+    } finally {
+        $install->stop();
+    }
+    expect(is_file($directory . '/node_modules/mqtt/package.json'), 'MQTT.js 5.15.0 未安装到独立目录');
+    $version = json_decode((string) file_get_contents($directory . '/node_modules/mqtt/package.json'), true, 16, JSON_THROW_ON_ERROR);
+    expect(($version['version'] ?? '') === '5.15.0', 'MQTT.js 版本不是锁定的 5.15.0');
+    return $directory;
+}

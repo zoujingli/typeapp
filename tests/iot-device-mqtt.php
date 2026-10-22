@@ -14,11 +14,13 @@ $clientRoot = realpath((string) getenv('TYPE_MQTT_CLIENT_ROOT'));
 expect((is_string($clientRoot) && is_file($clientRoot . '/node_modules/mqtt/package.json')), 'TYPE_MQTT_CLIENT_ROOT需要已安装MQTT.js 5.15.0的测试依赖根');
 $base = $root . '/build/iot-device-mqtt-' . bin2hex(random_bytes(6));
 expect(mkdir($base, 0700), '无法创建接入测试根');
-$database = new NativeDatabase($base . '/primary', 'pgsql', $tools);
+$database = PHP_OS_FAMILY === 'Windows' ? null : new NativeDatabase($base . '/primary', 'pgsql', $tools);
 $sync = null;
 try {
-    $sync = new PostgresSync($database, $base . '/standby', $tools);
-    $environment = array_replace(getenv(), $database->environment());
+    // Windows 主库由外层已隔离的 PowerShell 装置持有，PostgresSync 另核对其准确数据目录。
+    $parameters = $database === null ? getenv() : $database->environment();
+    $sync = new PostgresSync($database ?? $parameters, $base . '/standby', $tools);
+    $environment = array_replace(getenv(), $parameters);
     $environment['PATH'] = (string) getenv('PATH');
     $environment['TYPE_MQTT_CLIENT_ROOT'] = $clientRoot ?: '';
     $environment['TYPE_PGSQL_STANDBY_PORT'] = (string) $sync->standby()->query('SHOW port')->fetchColumn();
@@ -36,6 +38,6 @@ try {
     try {
         $sync?->close();
     } finally {
-        $database->close();
+        $database?->close();
     }
 }

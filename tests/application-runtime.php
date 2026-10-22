@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '/support.php';
-require dirname(__DIR__) . '/vendor/autoload.php';
-require __DIR__ . '/native-database.php';
-require __DIR__ . '/native-rollout-redis.php';
+require_once __DIR__ . '/support.php';
+require_once dirname(__DIR__) . '/vendor/autoload.php';
+require_once __DIR__ . '/native-database.php';
+require_once __DIR__ . '/native-rollout-redis.php';
 
 use Type\Build\BuildPlatform;
 use Type\Testing\HttpClient;
@@ -224,7 +224,7 @@ function runtimeBusinessFixture(array $command, array $environment, string $dire
         $environment,
         ['APP_PORT' => substr(strrchr($address, ':'), 1), 'APP_ALLOWED_HOSTS' => $address]
     ), 4194304);
-    $client = new HttpClient('http://' . $address, 5);
+    $client = new HttpClient('http://' . $address, PHP_OS_FAMILY === 'Windows' ? 15 : 5);
     try {
         runtimeProbe($client, $server, '/readyz', 200);
         $headers = ['Content-Type' => 'application/json'];
@@ -286,6 +286,11 @@ function runtimeBusinessFixture(array $command, array $environment, string $dire
         file_put_contents($directory . '/before-upgrade-http.log', $stopped->stdout . $stopped->stderr);
         expect($stopped->successful(), '升级前服务未正常停写');
     }
+}
+
+// 固定公开版本的 profile 验收复用同一升级夹具与原件断言，不启动此文件的三库控制流程。
+if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') !== __FILE__) {
+    return;
 }
 
 $root = dirname(__DIR__);

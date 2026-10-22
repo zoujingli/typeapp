@@ -7,6 +7,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 require dirname(__DIR__) . '/tools/distribution/Process.php';
 require dirname(__DIR__) . '/tools/release/Plan.php';
 require dirname(__DIR__) . '/tools/release/Candidate.php';
+require __DIR__ . '/mqtt-client.php';
 
 use Type\Build\ArtifactManifest;
 use Type\Build\BuildPlatform;
@@ -76,11 +77,17 @@ if ($operation === 'prepare') {
     $hiddenDist = $work . '/unavailable-dist';
     expect(is_dir($dist) && !file_exists($hiddenDist) && rename($dist, $hiddenDist), '无法移走构建端dist以验证内嵌资源');
     try {
+        if ($driver === 'pgsql' && in_array('iot', $record['features'], true) && in_array('mqtt', $record['features'], true)) {
+            $environment['TYPE_MQTT_CLIENT_ROOT'] = testMqttJsClient($work . '/mqtt-client');
+        }
         if (count($argv) === 5) {
             require __DIR__ . '/native-database.php';
             $tools = $driver === 'sqlite' ? [] : NativeDatabase::tools($driver, $driver === 'mysql' ? $argv[3] : $argv[4]);
             $database = new NativeDatabase($work . '/database-' . $driver, $driver, $tools);
             $environment = array_replace($environment, $database->environment());
+            if ($driver !== 'sqlite') {
+                $environment['TYPE_' . strtoupper($driver) . '_TOOLS'] = $driver === 'mysql' ? $argv[3] : $argv[4];
+            }
         }
         $result = (new Process([PHP_BINARY, $root . '/tests/native-single-program.php', $candidate], $root, $environment))->wait(600);
         file_put_contents($work . '/' . $driver . '.log', $result->stdout . $result->stderr);
@@ -101,9 +108,14 @@ if ($operation === 'prepare') {
             }
             if (in_array('iot', $features, true)) {
                 $checks['iot'] = ['tests/iot-identity.php', $candidate, $driver,
-                    '--products', '--devices', '--enrollments', '--applications', '--reassignments'];
+                    '--app', '--audit', '--products', '--devices', '--enrollments', '--registration', '--applications', '--reassignments', '--operations'];
+                $checks['iot-demo'] = ['tests/demo-mode.php', $candidate, '--driver=' . $driver];
+                $upgradeReceipt = $work . '/' . $driver . '-upgrade.json';
+                $checks['iot-upgrade'] = ['tests/candidate-upgrade.php', $candidate, $driver, $root . '/build/upgrade-baseline', $upgradeReceipt];
                 if ($driver === 'pgsql' && in_array('mqtt', $features, true)) {
                     $checks['iot-communication'] = ['tests/iot-device-mqtt.php', $candidate, '--communication-mqtt'];
+                    $checks['iot-reassignment'] = ['tests/iot-device-mqtt.php', $candidate, '--reassignments-mqtt'];
+                    $checks['iot-demo-store'] = ['tests/demo-mode.php', $candidate, '--driver=pgsql', '--pgsql-store'];
                 }
             }
             if (in_array('scheduler', $features, true)) {
@@ -116,6 +128,12 @@ if ($operation === 'prepare') {
                 expect($businessResult->successful(), '最终候选业务验收失败：' . $feature . "\n" . $businessResult->stdout . $businessResult->stderr);
                 expect(hash_file('sha256', $candidate) === $record['sha256'], '业务验收期间候选字节改变');
                 $business[$feature] = ['status' => 'passed', 'artifact-sha256' => $record['sha256'], 'log-sha256' => hash_file('sha256', $log)];
+                if ($feature === 'iot-upgrade') {
+                    $upgraded = json_decode(file_get_contents($upgradeReceipt), true, 64, JSON_THROW_ON_ERROR);
+                    expect(($upgraded['status'] ?? null) === 'passed' && ($upgraded['driver'] ?? null) === $driver
+                        && ($upgraded['artifact-sha256'] ?? null) === $record['sha256'], '升级回执不属于同一候选');
+                    $business[$feature]['baseline'] = $upgraded['baseline'];
+                }
             }
         } finally {
             unlink($candidate . '.build.json');
@@ -125,6 +143,9 @@ if ($operation === 'prepare') {
             $database?->close();
         } finally {
             expect(!file_exists($dist) && rename($hiddenDist, $dist), '无法恢复本轮前端构建资源');
+            if (is_dir($work . '/mqtt-client/node_modules')) {
+                removeTestDirectory($work . '/mqtt-client/node_modules');
+            }
         }
     }
     expect(hash_file('sha256', $candidate) === $record['sha256'], '对应数据库验收期间候选字节改变');

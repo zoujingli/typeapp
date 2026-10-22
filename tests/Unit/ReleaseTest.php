@@ -19,6 +19,7 @@ require_once dirname(__DIR__, 2) . '/tools/release/Plan.php';
 require_once dirname(__DIR__, 2) . '/tools/release/Evidence.php';
 require_once dirname(__DIR__, 2) . '/tools/release/GitHub.php';
 require_once dirname(__DIR__, 2) . '/tools/release/Candidate.php';
+require_once dirname(__DIR__, 2) . '/tools/release/UpgradeBaseline.php';
 
 /** 发布资格测试使用完整任务证据；Release外部边界使用保存真实文件的命令哨兵。 */
 final class ReleaseTest extends TestCase
@@ -113,25 +114,42 @@ final class ReleaseTest extends TestCase
         }
     }
 
-    /** profile 候选必须提供与数据库一致的闭包和实际依赖列表。 */
-    public function testProfileCandidateRejectsMissingOrMismatchedDependencyFacts(): void
+    /** @return iterable<string,array{string}> 每种管理数据库均需同一程序及公开旧版升级证据。 */
+    public static function managementProfiles(): iterable
+    {
+        foreach (['sqlite', 'mysql', 'pgsql'] as $profile) {
+            yield $profile => [$profile];
+        }
+    }
+
+    /** profile 候选必须提供对应依赖闭包、只读与真实升级证据；通信项不能借用另一个程序。 */
+    #[DataProvider('managementProfiles')]
+    public function testProfileCandidateRejectsMissingOrMismatchedDependencyFacts(string $profile): void
     {
         $root = dirname(__DIR__, 2) . '/build/profile-candidate-' . bin2hex(random_bytes(6));
         mkdir($root, 0700);
         $version = 'v1.0.0-rc.8';
         $source = str_repeat('a', 40);
-        $profile = 'mysql';
         $name = Candidate::filename($version, 'linux-x64', $profile);
         file_put_contents($root . '/' . $name, 'profile program bytes');
         $sha = hash_file('sha256', $root . '/' . $name);
-        $material = 'typeapp-rebuild-1.0.0-rc.8-linux-x64-mysql.zip';
+        $material = 'typeapp-rebuild-1.0.0-rc.8-linux-x64-' . $profile . '.zip';
         file_put_contents($root . '/' . $material, 'rebuild material');
+        $business = [];
+        $required = ['mqtt', 'iot', 'iot-demo', 'iot-upgrade'];
+        if ($profile === 'pgsql') {
+            $required = [...$required, 'iot-communication', 'iot-reassignment', 'iot-demo-store'];
+        }
+        foreach ($required as $feature) {
+            $business[$feature] = ['status' => 'passed', 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('e', 64)];
+        }
+        $business['iot-upgrade']['baseline'] = \TypeApp\Release\UpgradeBaseline::expected('linux-x64', $profile);
         $record = [
             'protocol' => 2, 'delivery' => 'single-executable', 'status' => 'passed', 'source' => $source,
             'version' => $version, 'platform' => 'linux-x64', 'profile' => $profile, 'database' => $profile,
-            'profile-facts' => ['name' => $profile, 'database' => $profile, 'features' => ['iot', 'redis'], 'rejected-capabilities' => \Type\Build\BuildProfile::rejectedCapabilities(['database' => 'mysql', 'features' => ['iot', 'redis']])],
-            'features' => ['iot', 'redis'],
-            'runtime-extensions' => ['pdo_mysql', 'redis'], 'static-archives' => ['libphp.a', 'libmysql.a'],
+            'profile-facts' => ['name' => $profile, 'database' => $profile, 'features' => ['iot', 'mqtt', 'redis'], 'rejected-capabilities' => \Type\Build\BuildProfile::rejectedCapabilities(['database' => $profile, 'features' => ['iot', 'mqtt', 'redis']])],
+            'features' => ['iot', 'mqtt', 'redis'],
+            'runtime-extensions' => ['pdo_' . $profile, 'redis'], 'static-archives' => ['libphp.a', 'lib' . $profile . '.a'],
             'system-libraries' => ['libc.so.6'], 'file' => $name, 'sha256' => $sha, 'bytes' => filesize($root . '/' . $name),
             'artifact-sha256' => $sha, 'build-id' => str_repeat('b', 64), 'frontend-manifest-sha256' => str_repeat('f', 64),
             'size-breakdown' => ['protocol' => 1, 'total' => strlen('profile program bytes'), 'code' => 1, 'data' => 20, 'symbols' => 0,
@@ -140,7 +158,7 @@ final class ReleaseTest extends TestCase
             'sdk-manifest-sha256' => str_repeat('d', 64), 'acceptance' => [
                 $profile => ['status' => 'passed', 'driver' => $profile, 'frontend-source-removed' => true, 'runtime-profile-enforced' => true,
                     'single-executable-only' => true, 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('c', 64),
-                    'business' => ['iot' => ['status' => 'passed', 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('e', 64)]]],
+                    'business' => $business],
             ],
             'rebuild' => ['protocol' => 1, 'source' => $source, 'version' => $version, 'platform' => 'linux-x64',
                 'file' => $material, 'sha256' => hash_file('sha256', $root . '/' . $material), 'bytes' => filesize($root . '/' . $material),
@@ -152,8 +170,8 @@ final class ReleaseTest extends TestCase
             self::assertSame($name, Candidate::attachments($record, false)[0]['file']);
             foreach ([
                 ['profile-facts' => null],
-                ['database' => 'pgsql'],
-                ['runtime-extensions' => ['pdo_pgsql', 'redis']],
+                ['database' => 'unknown'],
+                ['runtime-extensions' => ['pdo_unknown', 'redis']],
                 ['static-archives' => []],
                 ['system-libraries' => []],
                 ['acceptance' => [$profile => array_replace($record['acceptance'][$profile], ['business' => []])]],
@@ -166,6 +184,29 @@ final class ReleaseTest extends TestCase
                 } catch (\RuntimeException) {
                     self::assertTrue(true);
                 }
+            }
+            $invalid = [];
+            foreach ($required as $feature) {
+                $missing = $record;
+                unset($missing['acceptance'][$profile]['business'][$feature]);
+                $invalid['missing-' . $feature] = $missing;
+                $different = $record;
+                $different['acceptance'][$profile]['business'][$feature]['artifact-sha256'] = str_repeat('0', 64);
+                $invalid['different-artifact-' . $feature] = $different;
+            }
+            foreach (array_keys($business['iot-upgrade']['baseline']) as $field) {
+                $different = $record;
+                $different['acceptance'][$profile]['business']['iot-upgrade']['baseline'][$field] = 'not-the-published-baseline';
+                $invalid['different-baseline-' . $field] = $different;
+            }
+            foreach ($invalid as $case => $broken) {
+                $failure = null;
+                try {
+                    Candidate::verify($broken, $root, $source, $version, 'linux-x64', $profile);
+                } catch (\RuntimeException $error) {
+                    $failure = $error;
+                }
+                self::assertNotNull($failure, '候选门禁漏检：' . $profile . '/' . $case);
             }
         } finally {
             \removeTestDirectory($root);

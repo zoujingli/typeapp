@@ -13,12 +13,13 @@
 | 分类、设备及使用关系 | 同一入口追加 `--products --devices --enrollments --applications --reassignments`；分类可选、无模型注册、授权、转配和审计回滚分别断言，不再执行旧处理链 |
 | 独立 Broker 身份与观察 | 同一入口的 `--broker`；`--broker-observability` 由真实 PostgreSQL 同步装置调用 |
 | 同一程序三库 | `tests/iot-identity-databases.php <程序或--php> <MySQL工具根> <PostgreSQL工具根> --app`；原生隔离追加 `--no-source` |
+| 公开旧版本升级 | `tests/candidate-upgrade.php <当前程序> <profile> <已核验旧版目录> [回执路径]`；使用 `.github/upgrade-baseline.json` 固定的 RC14 原程序建立非空旧库，再验证备份、100条分批续跑、旧程序拒绝、原件保全、不增权及新页面安装 |
 | 当前应用升级、就绪与停止 | `tests/application-runtime.php`，参数见该脚本及[修复验收](../evidence/system-architecture-fixes-20261004.md) |
 | 双端页面 | 身份入口的 `--app --browser-dist=<本轮前端目录>`；覆盖双端工作区、分类、注册资格、应用授权和重新分配 |
 | 生命周期页面 | `tests/iot-lifecycle-browser-fixture.php <程序或--php> <隔离HTTP端口>`，用 `TYPE_PGSQL_TOOLS` 指定 PostgreSQL 工具；再运行 `node tests/iot-lifecycle-browser.mjs <输出目录/fixture.json> <HTTP地址>`。使用当前管理端安装、客户账号与角色，覆盖真实 Broker 撤权、凭据清除、冲突、响应未知和窄屏；结束后向夹具所有者发送 SIGTERM 并核对 `cleanup.json` |
 | IoT 节点隔离审计 | `tests/broker-observability.php <程序或--php> --iot-audit-fence`，使用同一 PostgreSQL 主备装置和当前 `admin` 审计域、`app:audit-clean admin`；覆盖代际冻结、硬隔离依据、未知结果对账和有界清理 |
 | WAL 与物理恢复 | 独立 `tests/iot-recovery.php`；`--physical` 执行物理链，见[恢复说明](iot-recovery.md)；不使用身份入口的旧 `--recovery` 组合 |
-| Demo 只读 | `tests/demo-mode.php <程序或--php>` 验证 SQLite、环境、HTTP 与命令；追加 `--pgsql-store` 使用隔离 PostgreSQL 同步主备，核对内部 worker 的读写动作、过期会话原件及精确后端清理 |
+| Demo 只读 | `tests/demo-mode.php <程序或--php> --driver=<sqlite或mysql或pgsql>` 验证对应数据库、环境、HTTP 与命令；外部数据库使用本轮专用实例并新建临时库；追加 `--pgsql-store` 使用隔离 PostgreSQL 同步主备，核对内部 worker 的读写动作、过期会话原件及精确后端清理 |
 
 物联应用与独立 Broker 模式不能混用。身份入口在创建运行目录、读取产物或连接数据库前拒绝已退出及尚未接入的专项，避免只执行基础用例后报告组合成功。
 
@@ -35,7 +36,7 @@
 | 完整应用构建 | `tools/build-application.php` 校验前端输入后执行全量编译；共享库开发验收须明确追加 `--shared-development`，不作为静态发布结果 |
 | 同一最终应用的三库业务 | `tests/iot-identity-databases.php <程序> <MySQL工具根> <PostgreSQL工具根> --app --no-source --products --devices --enrollments --applications --reassignments`；PHP/原生基础对照仍由 `tests/native-database-application.php` 保留 |
 | 独立原生格式与命令控制器 | `tests/Unit/TestCommandTest.php` 在无 `vendor` 的临时目录中运行真实子进程，并核对格式校验、输出及清理；由 `composer test:unit` 执行，不代表应用无 PHP 部署验收 |
-| 发布程序及历史共享库包 | `tests/release-candidate.php` 验证静态单程序；`tests/native-package.php` 保留共享库目录包的专用回归，两类结果分别记录 |
+| 发布程序及历史共享库包 | `tests/release-candidate.php` 验证静态单程序，每个 profile 强制包含普通模式、Demo 和公开旧版升级回执，PostgreSQL 另包含原始通信、跨节点转配及内部存储只读；`tests/native-package.php` 保留共享库目录包的专用回归，两类结果分别记录 |
 
 旧 `orm-matrix.php`、`orm-app-matrix.php` 的职责由上述现行入口承接，`standalone-native-verifier.php` 的行为已并入 PHPUnit。历史运行记录保留原入口和源码身份，不重写成新一轮通过证据。
 
@@ -51,6 +52,8 @@
 | 容量与多节点 | 同一 MQTT 入口分别追加 `--capacity` 或 `--cluster`，使用真实注册设备与独立应用凭据 |
 | PostgreSQL HA | 同一入口追加 `--ha`，需要专用 Patroni、etcd 和 HAProxy；按协议确认、原始 retained、离线 pending 及资源收尾验收，不再检查退役业务回执 |
 | 重新分配 | 同一入口追加 `--reassignments-mqtt`，覆盖旧节点冻结、硬隔离、旧关系清理与目标确认 |
+
+Windows 跨节点故障使用 `tests/windows-process-fault.ps1` 暂停及终止本轮程序，核对可执行路径、进程启动身份和整个子进程树退出后才登记硬隔离；同步备库只绑定 Windows 数据库装置明确拥有的数据目录，结束时恢复该主库的原同步配置。Unix 继续使用本轮进程的信号与进程树检查。
 
 以上入口已迁移到当前身份合同；是否通过以对应运行报告为准，不能由脚本存在推断矩阵通过。
 

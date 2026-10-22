@@ -8,11 +8,19 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
-/** 对同一公开应用入口检查环境、认证例外和业务表不变；支持 PHP 与最终 SQLite 程序。 */
+/** 对同一公开应用入口检查环境、认证例外和业务表不变；每次明确验证一个数据库 profile。 */
 $root = dirname(__DIR__);
 $target = $argv[1] ?? '--php';
 $command = $target === '--php' ? [PHP_BINARY, $root . '/bin/typeapp'] : nativeCommand($target);
-if (($argv[2] ?? '') === '--pgsql-store') {
+$driver = 'sqlite';
+foreach (array_slice($argv, 2) as $option) {
+    expect($option === '--pgsql-store' || str_starts_with($option, '--driver='), '未知 Demo 验收参数');
+    if (str_starts_with($option, '--driver=')) {
+        $driver = substr($option, 9);
+    }
+}
+expect(in_array($driver, ['sqlite', 'mysql', 'pgsql'], true), 'Demo 验收需要明确数据库 profile');
+if (in_array('--pgsql-store', $argv, true)) {
     demoStoreChecks($command, $target === '--php' ? null : realpath($target));
     exit(0);
 }
@@ -27,10 +35,28 @@ foreach (array_keys($environment) as $key) {
 $password = 'admin';
 $environment += ['APP_BASE_PATH' => $base, 'APP_ENV' => 'prod', 'APP_DEBUG' => 'true', 'APP_CACHE_ENABLED' => 'false',
     'APP_ADMIN_PASSWORD' => $password, 'APP_CUSTOMER_PASSWORD' => $password, 'APP_HTTP_THREADS' => '1',
-    'DB_DRIVER' => 'sqlite', 'DB_SQLITE_FILE' => 'demo.sqlite'];
+    'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'demo.sqlite'];
 $server = null;
 $database = null;
+$ownedDatabase = null;
+$controlDsn = null;
 try {
+    if ($driver !== 'sqlite') {
+        $prefix = 'TYPE_' . strtoupper($driver) . '_';
+        foreach (['HOST' => 'HOST', 'PORT' => 'PORT', 'DATABASE' => 'DATABASE', 'USERNAME' => 'USER', 'PASSWORD' => 'PASSWORD'] as $to => $from) {
+            $value = getenv($prefix . $from);
+            expect(is_string($value) && $value !== '', 'Demo 验收缺少专用数据库参数：' . $prefix . $from);
+            $environment['DB_' . $to] = $value;
+        }
+        expect($environment['DB_HOST'] === '127.0.0.1', 'Demo 夹具只接受本轮回环数据库');
+        $controlDsn = $driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $environment['DB_DATABASE'];
+        $owner = new PDO($controlDsn, $environment['DB_USERNAME'], $environment['DB_PASSWORD'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $createdDatabase = 'type_demo_' . bin2hex(random_bytes(8));
+        $owner->exec('CREATE DATABASE ' . $createdDatabase);
+        $ownedDatabase = $createdDatabase;
+        $owner = null;
+        $environment['DB_DATABASE'] = $ownedDatabase;
+    }
     $install = new Process([...$command, 'app:install', 'admin', '演示管理员', 'admin', '演示客户', '演示租户'], $root, $environment);
     try {
         $result = $install->wait(45);
@@ -62,15 +88,23 @@ try {
         }
     }
     $environment['APP_ENV'] = 'demo';
-    $database = new PDO('sqlite:' . $base . '/demo.sqlite');
-    $tables = $database->query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
-    $snapshot = static function () use ($database, $tables): array {
+    $dsn = $driver === 'sqlite' ? 'sqlite:' . $base . '/demo.sqlite'
+        : $driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $environment['DB_DATABASE'];
+    $database = new PDO($dsn, $environment['DB_USERNAME'] ?? '', $environment['DB_PASSWORD'] ?? '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $tableQuery = match ($driver) {
+        'mysql' => 'SHOW TABLES', 'pgsql' => "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
+        default => "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    };
+    $tables = $database->query($tableQuery)->fetchAll(PDO::FETCH_COLUMN);
+    $snapshot = static function () use ($database, $tables, $driver): array {
         $records = [];
         foreach ($tables as $table) {
             if (in_array($table, ['admin_sessions', 'customer_sessions', 'admin_audit', 'customer_audit'], true)) {
                 continue;
             }
-            $rows = $database->query('SELECT * FROM "' . $table . '"')->fetchAll(PDO::FETCH_ASSOC);
+            expect(preg_match('/^[a-z_]+$/D', $table) === 1, 'Demo 专用数据库含未知表名');
+            $quote = $driver === 'mysql' ? '`' : '"';
+            $rows = $database->query('SELECT * FROM ' . $quote . $table . $quote)->fetchAll(PDO::FETCH_ASSOC);
             $encoded = array_map(static fn (array $row): string => json_encode($row, JSON_THROW_ON_ERROR), $rows);
             sort($encoded, SORT_STRING);
             $records[$table] = hash('sha256', implode("\n", $encoded));
@@ -99,7 +133,7 @@ try {
     $environment['APP_PORT'] = substr(strrchr($address, ':'), 1);
     $environment['APP_ALLOWED_HOSTS'] = $address;
     $server = new Process([...$command, 'serve'], dirname($base), $environment);
-    $client = new HttpClient('http://' . $address);
+    $client = new HttpClient('http://' . $address, PHP_OS_FAMILY === 'Windows' ? 15 : 3);
     $deadline = microtime(true) + 15;
     do {
         expect($server->running(), '演示服务提前退出：' . $server->stderr());
@@ -145,11 +179,16 @@ try {
     }
     expect($snapshot() === $before, '演示浏览或拒绝操作修改了业务表');
     expect($server->stop(5)->successful(), '演示服务没有正常停止');
-    echo "三种环境、调试限制、旧值拒绝、两端普通账号登录退出、HTTP 只读及业务表不变通过。\n";
+    echo $driver . "：三种环境、调试限制、旧值拒绝、两端普通账号登录退出、HTTP 只读及业务表不变通过。\n";
 } finally {
     $server?->stop(5);
     $database = null;
-    unset($snapshot);
+    unset($snapshot, $owner);
+    if ($ownedDatabase !== null) {
+        $cleanup = new PDO($controlDsn, $environment['DB_USERNAME'], $environment['DB_PASSWORD'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $cleanup->exec('DROP DATABASE ' . $ownedDatabase);
+        $cleanup = null;
+    }
     removeTestDirectory($base);
 }
 
@@ -162,15 +201,15 @@ function demoStoreChecks(array $command, ?string $artifact): void
     $base = $root . '/build/demo-store-' . bin2hex(random_bytes(6));
     expect(mkdir($base, 0700), '无法创建 Demo 存储验收目录');
     $tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
-    $database = new NativeDatabase($base . '/primary', 'pgsql', $tools);
+    $database = PHP_OS_FAMILY === 'Windows' ? null : new NativeDatabase($base . '/primary', 'pgsql', $tools);
     $sync = null;
     $inspection = null;
     $victim = null;
     $requestFile = $base . '/request.json';
     $report = ['status' => 'running', 'native' => $artifact !== null, 'binary_sha256' => $artifact === null ? null : hash_file('sha256', $artifact), 'checks' => []];
     try {
-        $sync = new PostgresSync($database, $base . '/standby', $tools);
-        $parameters = $database->environment();
+        $parameters = $database === null ? getenv() : $database->environment();
+        $sync = new PostgresSync($database ?? $parameters, $base . '/standby', $tools);
         $environment = getenv();
         foreach (array_keys($environment) as $key) {
             if (str_starts_with($key, 'APP_') || str_starts_with($key, 'DB_') || str_starts_with($key, 'IOT_') || str_starts_with($key, 'BROKER_')) {
@@ -261,8 +300,8 @@ function demoStoreChecks(array $command, ?string $artifact): void
         try {
             $sync?->close();
         } finally {
-            $database->close();
-            $report['database'] = $database->evidence();
+            $database?->close();
+            $report['database'] = $database?->evidence() ?? ['owner' => 'windows-database-runner', 'sync' => $sync?->evidence()];
             if ($report['status'] !== 'passed') {
                 $report['status'] = 'failed';
             }

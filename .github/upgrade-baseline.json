@@ -1,0 +1,69 @@
+{
+  "protocol": 1,
+  "version": "v1.0.0-rc.14",
+  "source": "683f6d4d30e1e99b6a93f6a6fb45625fbd87138a",
+  "manifest-sha256": "161e2566ba0fce8c24826822244271ccd9534dd190a7520288ae3a4241c3156c",
+  "environment": "production",
+  "programs": {
+    "linux-x64-sqlite": {
+      "file": "typeapp-iot-1.0.0-rc.14-linux-x64-sqlite",
+      "sha256": "d3d75df119cfd00d9339cfd5baa25dc364bfab2bcac0a01cd919e0cbd271aa7f",
+      "bytes": 59004694
+    },
+    "linux-x64-mysql": {
+      "file": "typeapp-iot-1.0.0-rc.14-linux-x64-mysql",
+      "sha256": "16cfb38d24ca3915daaf86092ba44c04d86dea277864c94cb498acb5a62d2fc7",
+      "bytes": 56724839
+    },
+    "linux-x64-pgsql": {
+      "file": "typeapp-iot-1.0.0-rc.14-linux-x64-pgsql",
+      "sha256": "44623268926032b2063e3a066673e318f89b967b47fb6654052217930dfc1d99",
+      "bytes": 56821616
+    },
+    "linux-arm64-sqlite": {
+      "file": "typeapp-iot-1.0.0-rc.14-linux-arm64-sqlite",
+      "sha256": "777ca5f6cf3b0fcc4099d1e7f0509ad35669abd20538b416061e29a0abc2cd98",
+      "bytes": 50307350
+    },
+    "linux-arm64-mysql": {
+      "file": "typeapp-iot-1.0.0-rc.14-linux-arm64-mysql",
+      "sha256": "a4f91939a6e9609de4af0e5ad649d822fcdbd42d0706e6dceb66948d86d0816c",
+      "bytes": 50033687
+    },
+    "linux-arm64-pgsql": {
+      "file": "typeapp-iot-1.0.0-rc.14-linux-arm64-pgsql",
+      "sha256": "02444fd1c0073520fbb6e673929329ca26fabedea905c0cfbbcb74455dec4fac",
+      "bytes": 50159384
+    },
+    "macos-arm64-sqlite": {
+      "file": "typeapp-iot-1.0.0-rc.14-macos-arm64-sqlite",
+      "sha256": "2a21b41a6a52fb0d4a94c8a8bca454e1110d2c37b1a8c72b2638805ba237a5c1",
+      "bytes": 47764568
+    },
+    "macos-arm64-mysql": {
+      "file": "typeapp-iot-1.0.0-rc.14-macos-arm64-mysql",
+      "sha256": "b9d39cdccba348c20ed49029224978ecd13769fc68c9719817eec5f1e79a05c5",
+      "bytes": 46146760
+    },
+    "macos-arm64-pgsql": {
+      "file": "typeapp-iot-1.0.0-rc.14-macos-arm64-pgsql",
+      "sha256": "fdea6b6cfe7a313a9c494b4db3e31004b3513a4ca636ef8223075fd263f9298a",
+      "bytes": 46238856
+    },
+    "windows-x64-sqlite": {
+      "file": "typeapp-iot-1.0.0-rc.14-windows-x64-sqlite.exe",
+      "sha256": "f21472d5d9ed24ca53140233beb579a34c4afa810a22c93dd4300b75d3cbf523",
+      "bytes": 50736511
+    },
+    "windows-x64-mysql": {
+      "file": "typeapp-iot-1.0.0-rc.14-windows-x64-mysql.exe",
+      "sha256": "5485c9ff884f9d193a3140300f138940543ecf9a273ac02be6de13cb34266e31",
+      "bytes": 49806246
+    },
+    "windows-x64-pgsql": {
+      "file": "typeapp-iot-1.0.0-rc.14-windows-x64-pgsql.exe",
+      "sha256": "084e899ac158597a257c99be5e972b3c9b543432591e87204b6255aee564ebba",
+      "bytes": 49981264
+    }
+  }
+}

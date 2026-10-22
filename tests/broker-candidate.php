@@ -5,6 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 require __DIR__ . '/native-database.php';
+require __DIR__ . '/mqtt-client.php';
 require dirname(__DIR__) . '/tools/distribution/Process.php';
 
 use Type\Build\ArtifactManifest;
@@ -31,36 +32,6 @@ function brokerCandidateArchive(string $root, string $split, string $directory):
     }
     ksort($files);
     return ['split' => $split, 'archive_sha256' => hash_file('sha256', $tar), 'files' => $files];
-}
-
-/**
- * 在隔离目录安装 mqtt.js 5.15.0，供 完整目标平台验收 接收链标准客户端使用。
- */
-function brokerCandidateMqttJs(string $directory): string
-{
-    expect(mkdir($directory, 0700), '无法创建 MQTT.js 目录');
-    file_put_contents($directory . '/package.json', json_encode([
-        'name' => 'typeapp-broker-candidate-client',
-        'private' => true,
-        'dependencies' => ['mqtt' => '5.15.0'],
-    ], JSON_THROW_ON_ERROR));
-    $install = new \Type\Testing\Process(
-        ['npm', 'install', '--ignore-scripts', '--no-audit', '--no-fund'],
-        $directory,
-        getenv()
-    );
-    try {
-        $result = $install->wait(120);
-        $output = $result->stdout . $result->stderr;
-        expect(file_put_contents($directory . '/install.log', $output) === strlen($output), '无法保存 MQTT.js 安装日志');
-        expect($result->successful(), 'MQTT.js 5.15.0 安装失败：' . $output);
-    } finally {
-        $install->stop();
-    }
-    expect(is_file($directory . '/node_modules/mqtt/package.json'), 'MQTT.js 5.15.0 未安装到独立目录');
-    $version = json_decode((string) file_get_contents($directory . '/node_modules/mqtt/package.json'), true, 16, JSON_THROW_ON_ERROR);
-    expect(($version['version'] ?? '') === '5.15.0', 'MQTT.js 版本不是锁定的 5.15.0');
-    return $directory;
 }
 
 /**
@@ -220,7 +191,7 @@ $report = [
 try {
     $clientRoot = getenv('TYPE_MQTT_CLIENT_ROOT');
     if (!is_string($clientRoot) || $clientRoot === '' || !is_file($clientRoot . '/node_modules/mqtt/package.json')) {
-        $clientRoot = brokerCandidateMqttJs($base . '/mqtt-js');
+        $clientRoot = testMqttJsClient($base . '/mqtt-js');
         $report['checks'][] = 'installed-locked-mqttjs-5.15.0';
     }
     $environment['TYPE_MQTT_CLIENT_ROOT'] = $clientRoot;

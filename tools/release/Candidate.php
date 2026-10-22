@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TypeApp\Release;
 
+require_once __DIR__ . '/UpgradeBaseline.php';
+
 /** 跨平台汇总只接收同一可执行文件的回执；不会把历史目录归档升级为单程序证据。 */
 final class Candidate
 {
@@ -141,14 +143,23 @@ final class Candidate
                 throw new \RuntimeException('候选缺少数据库拒绝和能力边界验收');
             }
             $requiredBusiness = array_intersect(['mqtt', 'iot', 'alerts', 'exports', 'scheduler'], $record['features']);
+            if (in_array('iot', $record['features'], true)) {
+                $requiredBusiness[] = 'iot-demo';
+                $requiredBusiness[] = 'iot-upgrade';
+            }
             if ($profile === 'pgsql' && in_array('iot', $record['features'], true) && in_array('mqtt', $record['features'], true)) {
                 $requiredBusiness[] = 'iot-communication';
+                $requiredBusiness[] = 'iot-reassignment';
+                $requiredBusiness[] = 'iot-demo-store';
             }
             foreach ($requiredBusiness as $feature) {
                 $business = $acceptance['business'][$feature] ?? [];
                 if (($business['status'] ?? '') !== 'passed' || ($business['artifact-sha256'] ?? '') !== $record['sha256']
                     || preg_match('/^[a-f0-9]{64}$/D', $business['log-sha256'] ?? '') !== 1) {
                     throw new \RuntimeException('候选缺少同一程序的业务验收：' . $feature);
+                }
+                if ($feature === 'iot-upgrade' && ($business['baseline'] ?? null) !== UpgradeBaseline::expected($platform, $profile)) {
+                    throw new \RuntimeException('候选升级未使用固定公开旧程序：' . $platform . '/' . $profile);
                 }
             }
             if ($platform !== 'windows-x64') {

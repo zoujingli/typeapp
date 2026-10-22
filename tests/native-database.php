@@ -58,14 +58,21 @@ final class NativeDatabase
      */
     public static function tools(string $driver, string $directory): array
     {
-        expect(in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true) && in_array($driver, ['mysql', 'pgsql'], true), '原生数据库工具要求Linux/macOS和明确驱动');
+        expect(in_array(PHP_OS_FAMILY, ['Darwin', 'Linux', 'Windows'], true) && in_array($driver, ['mysql', 'pgsql'], true), '原生数据库工具要求受支持平台和明确驱动');
         $root = realpath($directory);
         expect($root !== false && is_dir($root), '数据库工具根目录不存在');
         $tools = ['root' => $root];
         $names = $driver === 'mysql' ? ['mysqld', 'mysql', 'mysqldump'] : ['postgres', 'initdb', 'pg_dump', 'pg_restore'];
+        if (PHP_OS_FAMILY === 'Windows' && $driver === 'pgsql') {
+            $names = [...$names, 'pg_ctl', 'pg_basebackup'];
+        }
+        $suffix = PHP_OS_FAMILY === 'Windows' ? '.exe' : '';
+        $format = match (PHP_OS_FAMILY) {
+            'Darwin' => 'Mach-O', 'Windows' => 'PE', default => 'ELF'
+        };
         foreach ($names as $name) {
-            $binary = realpath($root . '/bin/' . $name);
-            expect($binary !== false && is_executable($binary) && BuildPlatform::format($binary) === (PHP_OS_FAMILY === 'Darwin' ? 'Mach-O' : 'ELF'), '需要原生数据库工具，不能使用容器、脚本或其他平台二进制：' . $name);
+            $binary = realpath($root . '/bin/' . $name . $suffix);
+            expect($binary !== false && is_executable($binary) && BuildPlatform::format($binary) === $format, '需要原生数据库工具，不能使用容器、脚本或其他平台二进制：' . $name);
             $tools[$name] = $binary;
         }
         return $tools;

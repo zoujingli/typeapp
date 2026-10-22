@@ -161,6 +161,11 @@ try {
     }
     $taskPrefix = 'TYPE_' + $Driver.ToUpperInvariant() + '_'
     $taskEnvironment = @{ ($taskPrefix+'HOST')='127.0.0.1'; ($taskPrefix+'PORT')=[string]$taskPort; ($taskPrefix+'DATABASE')='type_app_test'; ($taskPrefix+'USER')=$taskUser; ($taskPrefix+'PASSWORD')=$taskPassword; TYPE_DB_PROBE_DRIVER=$Driver; TYPE_COMPOSER_PHAR=(Join-Path $env:PHP_HOME 'composer.phar') }
+    $taskEnvironment[$taskPrefix+'TOOLS'] = Split-Path $taskBin -Parent
+    if ($SingleProgram -and $Driver -eq 'pgsql') {
+        # 同步备库只能绑定本脚本新建的数据目录；后续测试共用主库，不能修改镜像预装服务。
+        $taskEnvironment['TYPE_PGSQL_OWNED_DATA'] = $taskData
+    }
     $taskProbe = '$d=getenv("TYPE_DB_PROBE_DRIVER");$p="TYPE_".strtoupper($d)."_";$dsn=($d==="mysql"?"mysql:":"pgsql:")."host=".getenv($p."HOST").";port=".getenv($p."PORT").";dbname=".getenv($p."DATABASE");$until=microtime(true)+60;do{try{$c=new PDO($dsn,getenv($p."USER"),getenv($p."PASSWORD"));if((int)$c->query("SELECT 1")->fetchColumn()===1){exit(0);}}catch(Throwable){}usleep(100000);}while(microtime(true)<$until);exit(1);'
     Invoke-TaskProcess $taskPhp @('-r', $taskProbe) (Join-Path $taskEvidence 'ready.log') 90 $taskEnvironment | Out-Null
     if (Test-Path -LiteralPath $taskSecretFile) { Remove-Item -LiteralPath $taskSecretFile }

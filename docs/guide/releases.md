@@ -51,6 +51,8 @@ flowchart TB
 
 当前架构的最终候选执行真实 MQTT 授权、设备注册、应用逐设备原始通信及维护调度，逐项记录同一程序摘要和日志摘要；业务回归与无源码隔离部署分别留证。旧版本的告警通知和导出验收保持历史身份，不计入新架构的能力清单。Windows 的 Redis 测试服务来自固定摘要的 Cygwin 构建，仅用于 Actions 专用实例，不安装为系统服务、不进入部署程序，也不构成 Redis 官方原生 Windows 支持声明。设备持久 MQTT 的 PostgreSQL 同步语义仍按既有完整业务门禁验证，普通 MQTT 授权测试不替代该语义。
 
+候选门禁还要求每个数据库 profile 使用同一程序通过 Demo 只读和真实 RC14 升级。旧程序和公开清单的身份固定在 `.github/upgrade-baseline.json`；升级从非空旧库开始，核对备份、分批转换、旧程序拒绝、数据保全、普通角色不增权及页面更新。PostgreSQL 候选另外执行双节点撤权转配和内部存储只读。回执缺失、程序摘要不同或旧版基线不符均阻止封存，不能用另一个程序的通过记录补齐。各平台实际结果以当次 Actions 回执为准。
+
 发布链保留各平台完整业务回归，并单独核验最终静态候选。Linux 两种架构调用 `static-linux.yml`，macOS 调用 `native-macos.yml` 的 `single-program` 范围，Windows 调用 `static-windows-candidate.yml`；它们使用同一固定提交及前端清单。每个平台/profile 先构建并验证对应静态 SDK，再全量编译程序，以该文件完成对应数据库的无源码部署。分发门禁同时检查这些任务的成功状态、源码和执行轮次，只有旧共享库回归或静态核心探针成功不能继续发布。任一候选或重建材料失败均阻止发布。
 
 新候选附件名为 `typeapp-iot-<版本>-<平台>-<profile>`，Windows 追加 `.exe`，Unix 不加 `.tar.gz`。每个下载项就是一个主程序；同一平台不能在运行时切换数据库，必须选择对应 profile。`SHA256SUMS` 和 `release-manifest.json` 是下载核验材料，不是运行依赖。下载后在 Unix 赋予执行权限，按[单程序部署](deployment.md)直接运行；运行库不会释放到磁盘，页面只在显式安装时写入 `public`。

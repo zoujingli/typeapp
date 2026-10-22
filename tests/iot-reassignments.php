@@ -133,6 +133,20 @@ function iotReassignmentMqttChecks(array $command, array $environment, string $b
     $client = null;
     $frozen = false;
     $gate = $base . '/reassignment-stage';
+    $windowsFault = static function (string $action, \Type\Testing\Process $process) use ($root, $base, $command): array {
+        $pid = $process->pid();
+        expect(is_int($pid), 'Windows 故障目标须仍是本轮运行节点');
+        $helper = new \Type\Testing\Process(['pwsh', '-NoProfile', '-NonInteractive', '-File', $root . '/tests/windows-process-fault.ps1',
+            '-Action', $action, '-TargetProcessId', (string) $pid, '-Artifact', $command[count($command) - 1],
+            '-Receipt', $base . '/reassignment-windows-process.json'], $root);
+        try {
+            $result = $helper->wait(45);
+            expect($result->successful(), 'Windows 节点故障操作失败：' . $result->stderr . $result->stdout);
+            return json_decode($result->stdout, true, 32, JSON_THROW_ON_ERROR);
+        } finally {
+            $helper->stop(5);
+        }
+    };
     $wait = static function (Closure $condition, string $message, int $seconds = 25): void {
         $until = microtime(true) + $seconds;
         do {
@@ -178,8 +192,12 @@ function iotReassignmentMqttChecks(array $command, array $environment, string $b
             $phase = is_file($gate . '.json') ? json_decode((string) file_get_contents($gate . '.json'), true, 8, JSON_THROW_ON_ERROR) : null;
             if ($phase !== null && !isset($processed[$phase['stage']])) {
                 if ($phase['stage'] === 'freeze') {
-                    expect(posix_kill($second->pid(), SIGSTOP), '无法暂停旧连接所在节点');
                     $frozen = true;
+                    if (PHP_OS_FAMILY === 'Windows') {
+                        expect($windowsFault('freeze', $second)['status'] === 'frozen', '旧节点没有确认暂停');
+                    } else {
+                        expect(posix_kill($second->pid(), SIGSTOP), '无法暂停旧连接所在节点');
+                    }
                 } elseif ($phase['stage'] === 'restart') {
                     $operation = $database->prepare('SELECT status, isolation_id FROM iot_device_reassignments WHERE id = ?');
                     $operation->execute([$phase['id']]);
@@ -193,26 +211,34 @@ function iotReassignmentMqttChecks(array $command, array $environment, string $b
                     $runId = $run->fetchColumn();
                     expect(is_string($runId), '待隔离节点缺少固定运行身份');
                     $parent = $second->pid();
-                    $states = unixProcessStates();
-                    $workers = unixProcessStates($parent);
-                    do {
-                        $previousCount = count($workers);
-                        foreach ($states as $pid => $state) {
-                            if (isset($workers[$state['parent']])) {
-                                $workers[$pid] = $state;
+                    $workers = [];
+                    if (PHP_OS_FAMILY === 'Windows') {
+                        $terminated = $windowsFault('terminate', $second);
+                        expect($terminated['status'] === 'terminated' && $terminated['all_owned_pids_absent'] === true, '旧节点进程树没有确认退出');
+                    } else {
+                        $states = unixProcessStates();
+                        $workers = unixProcessStates($parent);
+                        do {
+                            $previousCount = count($workers);
+                            foreach ($states as $pid => $state) {
+                                if (isset($workers[$state['parent']])) {
+                                    $workers[$pid] = $state;
+                                }
                             }
+                        } while (count($workers) !== $previousCount);
+                        // 持久授权 worker 不会因父进程暂停而自然退出；硬故障必须包含本轮已确认的进程树。
+                        foreach (array_reverse(array_keys($workers)) as $pid) {
+                            expect(posix_kill($pid, SIGKILL) || !isset(unixProcessStates()[$pid]), '无法隔离本轮节点子进程');
                         }
-                    } while (count($workers) !== $previousCount);
-                    // 持久授权 worker 不会因父进程暂停而自然退出；硬故障必须包含本轮已确认的进程树。
-                    foreach (array_reverse(array_keys($workers)) as $pid) {
-                        expect(posix_kill($pid, SIGKILL) || !isset(unixProcessStates()[$pid]), '无法隔离本轮节点子进程');
+                        expect(posix_kill($parent, SIGKILL), '无法中断本轮旧节点');
                     }
-                    expect(posix_kill($parent, SIGKILL), '无法中断本轮旧节点');
                     $frozen = false;
                     $stopped = $second->wait(10);
                     expect(!$stopped->successful() && !$stopped->timedOut && !$second->running(), '旧节点没有真正退出');
-                    $owned = array_fill_keys([$parent, ...array_keys($workers)], true);
-                    $wait(static fn (): bool => array_intersect_key(unixProcessStates(), $owned) === [], '旧节点或子进程尚未回收', 5);
+                    if (PHP_OS_FAMILY !== 'Windows') {
+                        $owned = array_fill_keys([$parent, ...array_keys($workers)], true);
+                        $wait(static fn (): bool => array_intersect_key(unixProcessStates(), $owned) === [], '旧节点或子进程尚未回收', 5);
+                    }
                     file_put_contents($base . '/reassignment-interrupted-node.log', $second->stdout() . $second->stderr());
                     $proof = identityCommand([...$command, 'iot:mqtt-fence', $node, $runId, 'reassignment-test', 'owned_process_exited_children_absent'], $environment);
                     expect($proof['fenced'], '硬隔离登记没有同步完成');
@@ -254,17 +280,33 @@ function iotReassignmentMqttChecks(array $command, array $environment, string $b
         }
         return ['client' => 'MQTT.js 5.15.0', 'tls' => true, 'checks' => json_decode(trim($completed->stdout), true, 16, JSON_THROW_ON_ERROR), 'statistics' => $statistics, 'faults' => array_keys($processed)];
     } finally {
-        if ($frozen && $second !== null && $second->running()) {
-            posix_kill($second->pid(), SIGCONT);
+        $cleanupFailure = null;
+        try {
+            if ($frozen && $second !== null && $second->running()) {
+                if (PHP_OS_FAMILY === 'Windows') {
+                    $windowsFault('resume', $second);
+                } else {
+                    posix_kill($second->pid(), SIGCONT);
+                }
+            }
+        } catch (Throwable $failure) {
+            $cleanupFailure = $failure;
         }
-        $client?->stop(5);
+        foreach ([$client, $second, $first] as $ownedProcess) {
+            try {
+                $ownedProcess?->stop(15);
+            } catch (Throwable $failure) {
+                $cleanupFailure ??= $failure;
+            }
+        }
         if ($client !== null) {
             file_put_contents($base . '/reassignment-client.log', $client->stdout() . $client->stderr());
         }
-        $second?->stop(15);
-        $first->stop(15);
         if ($second !== null) {
             file_put_contents($base . '/reassignment-second-final.log', $second->stdout() . $second->stderr());
+        }
+        if ($cleanupFailure !== null) {
+            throw $cleanupFailure;
         }
     }
 }

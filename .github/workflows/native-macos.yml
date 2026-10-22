@@ -236,6 +236,16 @@ jobs:
         env:
           TYPE_MACOS_SUITE: ${{ matrix.suite }}
         run: bash .github/scripts/run-macos-native.sh "$TYPE_MACOS_SUITE"
+      - name: 准备原始通信标准客户端运行时
+        if: matrix.suite == 'single-program' && inputs.tutorial_mode == '' && inputs.profile == 'pgsql'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.21.1'
+      - name: 核对真实公开升级基线
+        if: matrix.suite == 'single-program' && inputs.tutorial_mode == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: php tools/release/prepare-upgrade-baseline.php
       - name: 静态 SDK 与所选数据库单程序验收
         if: matrix.suite == 'single-program'
         run: |
@@ -253,6 +263,8 @@ jobs:
           if [[ -n "$TYPE_TUTORIAL_MODE" ]]; then exit 0; fi
           php tools/build-application.php >build/static-macos-evidence/application.log 2>&1
           php tests/release-candidate.php prepare
+          export TYPE_PGSQL_TOOLS
+          TYPE_PGSQL_TOOLS="$(brew --prefix postgresql@17)"
           TYPE_REDIS_SERVER="$(command -v redis-server)" php tests/release-candidate.php test "$TYPEAPP_BUILD_PROFILE" "$(brew --prefix mysql@8.4)" "$(brew --prefix postgresql@17)"
           php tests/release-candidate.php materials
           php tests/release-candidate.php service "$(brew --prefix mysql@8.4)" "$(brew --prefix postgresql@17)"
