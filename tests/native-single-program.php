@@ -84,11 +84,6 @@ try {
                     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
             }
         }
-        if ($project === $root && $driver !== 'sqlite') {
-            $refused = (new Process([...$command, 'iot:device', 'state'], $runtime, $environment))->wait(30);
-            expect($refused->exitCode === 1 && !$refused->timedOut
-                && str_contains($refused->stdout . $refused->stderr, 'runtime_profile_database_mismatch'), '非 SQLite 程序未在设备缓冲连接前明确拒绝');
-        }
         if ($project === $root && (!in_array('cache', $identity['profile']['features'], true) || !in_array('redis', $identity['profile']['features'], true))) {
             $refused = (new Process([...$command, 'check'], $runtime, array_replace($environment, ['APP_CACHE_ENABLED' => 'true'])))->wait(30);
             expect($refused->exitCode === 1 && !$refused->timedOut
@@ -116,7 +111,7 @@ try {
 
     $initialization = verifyNativeApplicationDeployment($project, $package, $runtime, $command, $environment, $driver, $identity['embedded-resources'], true, true);
     if ($project === $root && ($identity['profile']['name'] ?? null) !== null) {
-        foreach (['alerts' => ['iot:notices', '1'], 'exports' => ['iot:exports', '1'], 'scheduler' => ['app:schedule', 'history']] as $feature => $arguments) {
+        foreach (['scheduler' => ['app:schedule', 'history']] as $feature => $arguments) {
             if (!in_array($feature, $identity['profile']['features'], true)) {
                 $refused = (new Process([...$command, ...$arguments], $runtime, $environment))->wait(30);
                 expect($refused->exitCode === 1 && !$refused->timedOut

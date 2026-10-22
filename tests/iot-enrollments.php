@@ -138,7 +138,7 @@ function iotRegistrationChecks(Closure $request, PDO $inspection, string $driver
     $modelsBefore = (int) $inspection->query('SELECT COUNT(*) FROM iot_models')->fetchColumn();
     $registered = $call('POST', $path, '', $input, 201)['data'];
     expect($registered['device']['id'] === $input['device_id'] && $registered['device']['product_id'] === null
-        && $registered['device']['model_version'] === null && $registered['device']['connection']['status'] === 'unknown'
+        && !array_key_exists('model_version', $registered['device']) && $registered['device']['connection']['status'] === 'unknown'
         && $registered['replayed'] === false && strlen($registered['credential']['password']) === 64, '注册没有形成独立的设备、未知连接状态和一次性凭据');
     expect(str_ends_with($registered['credential']['topics']['publish'], '/raw/up') && str_ends_with($registered['credential']['topics']['subscribe'], '/raw/down'), '新设备主题会进入旧数据解析链');
     expect((int) $inspection->query('SELECT COUNT(*) FROM iot_models')->fetchColumn() === $modelsBefore, '注册通过伪造物模型规避约束');
@@ -148,8 +148,8 @@ function iotRegistrationChecks(Closure $request, PDO $inspection, string $driver
     $call('POST', $path, '', array_replace($input, ['id' => bin2hex(random_bytes(16))]), 409, [], 'device_already_registered');
     $detailPath = '/customer/tenants/' . $tenant . '/devices/' . $input['device_id'];
     $device = $call('GET', $detailPath, $customer, null, 200, ['X-Tenant-Id' => $tenant])['data'];
-    expect($device['model'] === null && $device['credential_active'] && !str_contains(json_encode($device, JSON_THROW_ON_ERROR), $registered['credential']['password']), '客户详情要求物模型或回显凭据');
-    $call('GET', $detailPath . '/current', $customer, null, 409, ['X-Tenant-Id' => $tenant], 'device_model_unavailable');
+    expect(!array_key_exists('model', $device) && $device['credential_active'] && !str_contains(json_encode($device, JSON_THROW_ON_ERROR), $registered['credential']['password']), '客户详情要求物模型或回显凭据');
+    $call('GET', $detailPath . '/current', $customer, null, 404, ['X-Tenant-Id' => $tenant], 'not_found');
     $call('GET', '/customer/tenants/' . $other . '/devices/' . $input['device_id'], $customer, null, 404, ['X-Tenant-Id' => $other], 'device_not_found');
     $changed = $call('POST', $grantPath . '/' . $grant['authorization']['id'] . '/reset', $platform, ['tenant_id' => $tenant, 'version' => 2])['data'];
     expect($changed['authorization']['registered_count'] === 1 && $changed['authorization']['remaining'] === 1, '重置丢失已用额度');

@@ -11,12 +11,9 @@ use Type\Build\BuildPlatform;
 $root = dirname(__DIR__);
 expect(
     $argc >= 4 && $argc <= 20
-    && array_diff(array_slice($argv, 4), ['--app', '--broker', '--no-source', '--audit', '--broker-resources', '--products', '--devices', '--enrollments', '--registration', '--applications', '--reassignments', '--business', '--history', '--aggregate', '--alarms', '--exports', '--export-transfers-only', '--io-export-baseline', '--lifecycle', '--operations', '--scheduler']) === [],
-    '用法：php tests/iot-identity-databases.php <原生产物或--php> <MySQL工具根> <PostgreSQL工具根> [--app|--broker] [--no-source] [--audit] [--broker-resources] [--products] [--devices] [--enrollments] [--registration] [--applications] [--reassignments] [--business] [--history] [--aggregate] [--alarms] [--exports [--export-transfers-only|--io-export-baseline]] [--lifecycle] [--operations] [--scheduler]'
+    && array_diff(array_slice($argv, 4), ['--app', '--broker', '--no-source', '--audit', '--broker-resources', '--products', '--devices', '--enrollments', '--registration', '--applications', '--reassignments', '--lifecycle', '--operations', '--scheduler']) === [],
+    '用法：php tests/iot-identity-databases.php <原生产物或--php> <MySQL工具根> <PostgreSQL工具根> [--app|--broker] [--no-source] [--audit] [--broker-resources] [--products] [--devices] [--enrollments] [--registration] [--applications] [--reassignments] [--lifecycle] [--operations] [--scheduler]'
 );
-expect(!in_array('--export-transfers-only', $argv, true) || in_array('--exports', $argv, true), '转移导出专项需要--exports');
-$ioExportBaseline = in_array('--io-export-baseline', $argv, true);
-expect(!$ioExportBaseline || (in_array('--exports', $argv, true) && !in_array('--export-transfers-only', $argv, true)), 'I/O导出基线需要--exports，不能与转移专项混用');
 $target = $argv[1] === '--php' ? '--php' : realpath($argv[1]);
 expect(is_string($target), '身份验证产物不存在');
 $tools = ['mysql' => NativeDatabase::tools('mysql', $argv[2]), 'pgsql' => NativeDatabase::tools('pgsql', $argv[3])];
@@ -31,13 +28,10 @@ if ($target !== '--php') {
 }
 $report = ['status' => 'running', 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'drivers' => []];
 // 组合运行包含多个独立有界场景，按额外场景增加总预算；各HTTP和子命令自身截止保持不变。
-$scenarios = count(array_intersect(array_slice($argv, 4), ['--history', '--aggregate', '--alarms', '--exports']));
+$scenarios = count(array_intersect(array_slice($argv, 4), ['--products', '--devices', '--enrollments', '--registration', '--applications', '--reassignments', '--lifecycle', '--operations', '--audit', '--scheduler']));
 $timeout = 120 + max(0, $scenarios - 1) * 60;
-if ($ioExportBaseline) {
-    $timeout = 600;
-}
 try {
-    foreach ($ioExportBaseline ? ['pgsql'] : ['mysql', 'pgsql', 'sqlite'] as $driver) {
+    foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
         $database = new NativeDatabase($base . '/' . $driver, $driver, $tools[$driver] ?? []);
         try {
             $run = array_replace($environment, $database->environment());

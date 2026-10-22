@@ -15,7 +15,7 @@ import { applyAdminContext, clearAdminAccess, errorText, isCanceled, request, se
 /** 普通投影从不含注册码或验证值；一次性交付只在内存抽屉中短暂持有。 */
 interface Authorization {
   id: string; tenant_id: string; name: string; capacity: number; registered_count: number; remaining: number;
-  register_expires_at: number; enabled: boolean; status: 'available' | 'expired' | 'exhausted' | 'disabled'; version: number;
+  register_expires_at: number; enabled: boolean; recovery_verified: boolean; status: 'available' | 'expired' | 'exhausted' | 'disabled' | 'unverified'; version: number;
 }
 const router = useRouter();
 const admin = computed(() => session.realm === 'admin');
@@ -38,7 +38,7 @@ const detailBusy = ref(false);
 const detailFailure = ref('');
 let generation = 0;
 let pending: AbortController | null = null;
-const status = { available: '可注册', expired: '注册期限已过', exhausted: '额度已用完', disabled: '已停用' };
+const status = { available: '可注册', expired: '注册期限已过', exhausted: '额度已用完', disabled: '已停用', unverified: '待恢复核对' };
 const columns = computed<TableColumnsType<Authorization>>(() => [
   { title: '授权名称', dataIndex: 'name', width: 220, ellipsis: true },
   ...(admin.value ? [{ title: '客户标识', dataIndex: 'tenant_id', width: 300, ellipsis: true }] : []),

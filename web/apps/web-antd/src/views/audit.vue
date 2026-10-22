@@ -44,7 +44,7 @@ const actions: Record<string, string> = {
   'product.created': '创建产品', 'product.changed': '修改产品', 'product.deleted': '删除产品', 'product.listed': '查询产品', 'product.viewed': '查看产品',
   'model.created': '创建模型草稿', 'model.edit': '编辑模型草稿', 'model.delete': '删除模型草稿', 'model.publish': '发布模型', 'model.listed': '查询模型版本', 'model.viewed': '查看模型版本', 'model.validated': '校验模型数据',
 };
-const contexts: Record<string, string> = { 'customer-impersonation': '模拟客户登录', 'tenant-member': '租户成员', platform: '平台管理', identity: '人员身份', 'operator-command': '受控开通', 'product-model': '产品与物模型' };
+const contexts: Record<string, string> = { 'customer-impersonation': '模拟客户登录', 'tenant-member': '租户成员', platform: '平台管理', identity: '人员身份', 'operator-command': '受控开通', product: '产品分类', 'product-model': '历史产品与物模型' };
 const labels: Record<string, string> = {
   role: '成员角色', previous_role: '原有角色', version: '记录版本', context: '身份上下文', reason: '结果原因', changed_fields: '变更字段', facts: '阶段事实',
   source: '授权来源', permissions: '获准动作', required_action: '所需动作', decision: '授权结论', support_id: '支持标识', support_version: '支持版本', support_expires_at: '支持到期',

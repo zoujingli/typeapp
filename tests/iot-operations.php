@@ -26,36 +26,19 @@ function iotOperationsChecks(Closure $request, array $tokens, string $tenantA, s
     $second = $request('GET', $path . '?per_page=1&page=2', $tokens['bob'], $tenantA, null, 200);
     expect(count($first['devices']['items']) === 1 && $first['devices']['items'][0]['id'] !== $second['devices']['items'][0]['id'], '设备观察分页重复或越界');
     $other = $request('GET', '/customer/tenants/' . $tenantB . '/operations', $tokens['bob'], $tenantB, null, 200);
-    expect($other['recorded'] === 0 && $other['devices']['total'] === 0, '其他租户的空概览混入当前租户数据');
+    expect($other['devices']['total'] === 0, '其他租户的空概览混入当前租户数据');
     $empty = $request('GET', $path . '?name=does-not-exist', $tokens['bob'], $tenantA, null, 200);
     expect($empty['devices']['items'] === [] && $empty['devices']['total'] === 0, '设备名称空筛选无效');
     $device = $fixture['second']['device'];
     $beforeAudits = $database->query('SELECT COUNT(*) FROM customer_audit')->fetchColumn();
-    // 只构造本次新设备的投影边界；实际可靠接收仍由原MQTT专项验收。
-    $database->prepare('INSERT INTO iot_current_data (device_id, ownership_id, model_version, sequence, sampled_at, received_at, fields_json, realtime_sequence, realtime_sampled_at, realtime_received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        ->execute([$device['id'], $device['ownership_id'], $device['model_version'], '1', time(), time(), '{"secret":"must-not-read-telemetry-payload"}', '1', time(), time()]);
-    $pick = static function (array $page) use ($device): array {
-        return array_values(array_filter($page['devices']['items'], static fn (array $row): bool => $row['id'] === $device['id']))[0];
-    };
-    try {
-        expect($pick($read())['current']['freshness'] === 'fresh', '实时新鲜度丢失');
-        $database->prepare('UPDATE iot_current_data SET realtime_received_at = ? WHERE device_id = ?')->execute([time() - 60, $device['id']]);
-        expect($pick($read())['current']['freshness'] === 'stale', '60秒边界应为陈旧');
-        $database->prepare('UPDATE iot_current_data SET ownership_id = ? WHERE device_id = ?')->execute([bin2hex(random_bytes(16)), $device['id']]);
-        expect($pick($read())['current']['freshness'] === 'empty', '旧归属遥测不得进入当前概览');
-        $database->prepare('UPDATE iot_current_data SET ownership_id = ?, model_version = 2 WHERE device_id = ?')->execute([$device['ownership_id'], $device['id']]);
-        expect($pick($read())['current']['freshness'] === 'empty', '其他模型遥测不得进入当前概览');
-        $json = json_encode($read(), JSON_THROW_ON_ERROR);
-        foreach (['must-not-read-telemetry-payload', 'fields_json', 'password', 'secret_hash', 'run_id', 'model_start_sequence'] as $forbidden) {
-            expect(!str_contains($json, $forbidden), '运行元数据泄漏秘密、载荷或内部基础设施字段');
-        }
-        expect($database->query('SELECT COUNT(*) FROM customer_audit')->fetchColumn() === $beforeAudits, '无副作用轮询制造审计噪音');
-    } finally {
-        $database->prepare('DELETE FROM iot_current_data WHERE device_id = ?')->execute([$device['id']]);
+    $json = json_encode($read(), JSON_THROW_ON_ERROR);
+    foreach (['fields_json', 'password', 'secret_hash', 'run_id', 'model_start_sequence', 'recorded_per_second', 'freshness'] as $forbidden) {
+        expect(!str_contains($json, $forbidden), '运行概览泄漏秘密、旧数据处理投影或内部字段');
     }
+    expect($database->query('SELECT COUNT(*) FROM customer_audit')->fetchColumn() === $beforeAudits, '无副作用轮询制造审计噪音');
     $request('GET', '/iot/operations', $tokens['platform'], null, null, 404);
     return ['checks' => ['fixed-node-isolation', 'http-live-distinct-from-durable-ready', 'unknown-without-samples', 'bounded-device-pages', 'tenant-empty-filter',
-        'fresh-stale-ownership-model-boundaries', 'metadata-without-payload', 'polling-without-audit-writes', 'old-route-removed'], 'driver' => $driver];
+        'raw-communication-metadata', 'metadata-without-payload', 'polling-without-audit-writes', 'old-route-removed'], 'driver' => $driver];
 }
 
 /**

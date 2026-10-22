@@ -33,7 +33,7 @@ const columns = computed<TableColumnsType<Product>>(() => [
   { title: '产品名称', dataIndex: 'name', width: 260, ellipsis: true },
   { title: '产品说明', dataIndex: 'description', width: 360, ellipsis: true },
   { title: '创建时间', key: 'time', width: 200 },
-  { title: '操作', key: 'actions', fixed: 'right', width: estimateVisibleActionColumnWidth([{ label: '物模型' }, { label: '详情' }, { label: '编辑', visible: canEdit.value }, { label: '删除', visible: canEdit.value }]) },
+  { title: '操作', key: 'actions', fixed: 'right', width: estimateVisibleActionColumnWidth([{ label: '详情' }, { label: '编辑', visible: canEdit.value }, { label: '删除', visible: canEdit.value }]) },
 ]);
 const pagination = computed(() => ({ current: result.value.page, pageSize: result.value.per_page, total: result.value.total, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }));
 function reject(error: unknown) { if (clearAdminAccess(error)) { result.value.items = []; result.value.total = 0; open.value = false; detail.value = null; editing.value = null; } }
@@ -79,7 +79,6 @@ async function remove(product: Product) {
   } catch (error) { if (!isCanceled(error)) { failure.value = errorText(error); reject(error); message.error(failure.value); } }
 }
 function actions(product: Product): CrudTableAction[] { return [
-  { label: '物模型', readOnly: true, onClick: () => router.push(`/products/${product.id}/models`) },
   { label: '详情', readOnly: true, onClick: () => { detail.value = product; } },
   { label: '编辑', visible: canEdit.value, onClick: () => edit(product) },
   { label: '删除', danger: true, visible: canEdit.value, confirmTitle: `确认删除产品“${product.name}”？`, confirmContent: '仅未发布产品可删除，其草稿将一并删除。存在已发布版本时会拒绝删除，以保留历史定义。', confirmOkText: '删除产品', onClick: () => remove(product) },
@@ -87,21 +86,21 @@ function actions(product: Product): CrudTableAction[] { return [
 watch([() => session.tenant?.id, () => session.token], ([tenant]) => {
   requestVersion++; pending?.abort(); cancelContext(); result.value.items = [];  open.value = false; detail.value = null;
   result.value.total = 0; failure.value = ''; saveFailure.value = '';
-  if (!tenant) void router.replace('/tenants'); else if (canRead.value) void load(); else failure.value = '当前没有产品与物模型查看权限。';
+  if (!tenant) void router.replace('/tenants'); else if (canRead.value) void load(); else failure.value = '当前没有产品分类查看权限。';
 }, { immediate: true });
 onBeforeUnmount(() => { requestVersion++; pending?.abort(); });
 </script>
 
 <template>
   <section class="iot-page">
-    <header class="page-heading"><div><h1>产品管理</h1><p class="muted tenant-title">{{ session.tenant?.name }} · 产品与物模型版本</p></div><MutationButton v-if="canEdit" type="primary" @click="edit(null)">创建产品</MutationButton></header>
+    <header class="page-heading"><div><h1>产品分类</h1><p class="muted tenant-title">{{ session.tenant?.name }} · 设备分类资料，不参与接入鉴权或载荷解析</p></div><MutationButton v-if="canEdit" type="primary" @click="edit(null)">创建产品</MutationButton></header>
     <Card :bordered="false">
       <form class="crud-search-grid" @submit.prevent="search()">
         <CrudSearchField label="产品名称"><Input v-model:value="name" aria-label="产品名称筛选" :disabled="busy" :maxlength="100" allow-clear /></CrudSearchField>
         <div class="crud-search-grid__actions"><Button type="primary" html-type="submit" :loading="busy">查询</Button><Button :disabled="busy" @click="search(true)">重置</Button></div>
       </form>
       <Alert v-if="failure" :message="failure" type="error" show-icon class="page-alert" role="alert" />
-      <Alert v-else-if="canRead && !canEdit" message="当前角色可查看产品与物模型，当前未获产品与模型维护权限。" type="info" show-icon class="page-alert" />
+      <Alert v-else-if="canRead && !canEdit" message="当前角色可查看产品分类，当前未获分类维护权限。" type="info" show-icon class="page-alert" />
       <div class="table-toolbar"><span class="muted">{{ result.total }} 个产品</span><Button :loading="busy" :disabled="!canRead" @click="load(result.page)">刷新</Button></div>
       <Table :columns="columns" :data-source="result.items" row-key="id" :loading="busy" :scroll="buildTableScrollX(columns)" :pagination="pagination" @change="(page) => load(page.current, page.pageSize)">
         <template #emptyText><Empty :description="failure ? '数据暂不可用，请重试' : '暂无符合条件的产品'" /></template>

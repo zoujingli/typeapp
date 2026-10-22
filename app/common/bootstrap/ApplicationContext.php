@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace app\common\bootstrap;
 
 use app\common\database\DatabaseFactory;
-use app\iot\service\ExportService;
 use InvalidArgumentException;
 use Type\Core\Configuration;
 use Type\Core\Config\Repository;
@@ -40,21 +39,6 @@ final class ApplicationContext
         return $this->repository;
     }
 
-    /** 导出文件服务不打开资源；HTTP 与后台使用相同根目录规则。 */
-    public function exportService(): ExportService
-    {
-        return self::exports($this->settings(), $this->basePath);
-    }
-
-    /** 相对私有文件目录以APP_BASE_PATH为基准，HTTP和后台角色采用同一启动配置。 */
-    public static function exports(Repository $settings, string $basePath): ExportService
-    {
-        RuntimeCapabilities::requireFeature('exports');
-        $directory = $settings->text('app.exports.directory');
-        return new ExportService(Settings::absolutePath($directory) ? $directory : $basePath . '/' . $directory);
-    }
-
-
     /**
      * 独立角色共用一个受控原生worker命令；未配置时保留QoS0开发入口，不宣称可靠接收就绪。
      * @return list<string> 完整存储角色命令；空列表表示未配置。
@@ -80,7 +64,6 @@ final class ApplicationContext
         return [...$command, 'broker:store'];
     }
 
-
     /**
      * 管理额度预览读取持久用量；独立宿主用 BROKER_COMMAND，双端宿主用 MQTT 存储命令。
      *
@@ -105,7 +88,7 @@ final class ApplicationContext
                 return [];
             }
         }
-        return $command;
+        return [...$command, 'iot:mqtt-store'];
     }
 
     /** @return list<string> 物联持久资源观察及转配复用同一已配置角色，空值明确表示未配置。 */

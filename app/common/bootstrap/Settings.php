@@ -174,8 +174,8 @@ final class Settings
     public static function redis(Repository $settings, string $basePath, string $purpose): RedisConfiguration
     {
         RuntimeCapabilities::requireFeature('redis');
-        RuntimeCapabilities::requireFeature($purpose === 'notices' ? 'alerts' : $purpose);
-        if (!in_array($purpose, ['exports', 'notices', 'scheduler'], true)) {
+        RuntimeCapabilities::requireFeature($purpose);
+        if (!in_array($purpose, ['scheduler'], true)) {
             throw new InvalidArgumentException('Redis 配置用途无效');
         }
         $prefix = 'app.' . $purpose . '.redis_';
@@ -406,11 +406,11 @@ final class Settings
 
     /**
      * 配置管理检查 all，运行角色检查自身需求；不连接服务、不建库、不启动角色。
-     * @param string $role all、http、database、scheduler、exports 或 notices。
+     * @param string $role all、http、database 或 scheduler。
      */
     public static function validateRuntimeConfiguration(Repository $settings, string $basePath, string $role = 'all'): void
     {
-        if (!in_array($role, ['all', 'http', 'database', 'scheduler', 'exports', 'notices'], true)) {
+        if (!in_array($role, ['all', 'http', 'database', 'scheduler'], true)) {
             throw new InvalidArgumentException('configuration_role_invalid');
         }
         self::environment($settings, false);
@@ -436,7 +436,7 @@ final class Settings
             self::requestPolicy($settings);
             self::requestLimits($settings);
         }
-        foreach (['exports', 'notices', 'scheduler'] as $purpose) {
+        foreach (['scheduler'] as $purpose) {
             if (($role === 'all' && self::redisEnabled($settings, $purpose)) || $role === $purpose) {
                 self::redisBudget($settings);
                 self::integer($settings, 'database.redis_budget.capacity', 1, 1024);
@@ -535,7 +535,7 @@ final class Settings
     /** 配置检查只探测构建产物声明的真实业务用途。 */
     private static function redisEnabled(Repository $settings, string $purpose): bool
     {
-        return RuntimeCapabilities::hasFeature($purpose === 'notices' ? 'alerts' : $purpose);
+        return RuntimeCapabilities::hasFeature($purpose);
     }
 
     /** @return array<string, string> 每个真实依赖独立返回结果；不输出驱动异常、DSN或凭据。 */
@@ -563,7 +563,7 @@ final class Settings
         } catch (Throwable) {
             $results['database'] = 'failed';
         }
-        foreach (['exports', 'notices', 'scheduler'] as $purpose) {
+        foreach (['scheduler'] as $purpose) {
             if (!self::redisEnabled($settings, $purpose)) {
                 $results['redis_' . $purpose] = 'disabled';
                 continue;

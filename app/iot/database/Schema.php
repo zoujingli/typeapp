@@ -155,7 +155,7 @@ final class Schema
         ];
     }
 
-    /** @return list<string> 私有导出唯一完整声明；快照及文件生命周期仍归ExportService。 */
+    /** @return list<string> 旧私有导出表的不可变迁移声明；退出生产处理后仍保留原表与历史数据。 */
     public static function exports(string $driver): array
     {
         $suffix = $driver === 'mysql' ? ' ENGINE=InnoDB' : '';

@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { Settings } from '@vben/icons';
+import { $t } from '@vben/locales';
 
 import { VbenIconButton } from '@vben-core/shadcn-ui';
 
@@ -20,7 +21,11 @@ function savePreferences() {
     @clear-preferences-and-logout="clearPreferencesAndLogout"
     @save-preferences="savePreferences"
   >
-    <VbenIconButton class="hover:animate-[shrink_0.3s_ease-in-out]">
+    <VbenIconButton
+      :aria-label="$t('preferences.title')"
+      :title="$t('preferences.title')"
+      class="hover:animate-[shrink_0.3s_ease-in-out]"
+    >
       <Settings class="text-foreground size-4" />
     </VbenIconButton>
   </Preferences>

@@ -48,7 +48,7 @@
     <span class="guide-arrow" aria-hidden="true">↗</span>
   </a>
   <a class="case-guide" href="#/guide/iot-center">
-    <span class="start-copy"><span class="guide-kicker">CASE / 案例</span><strong>物联中心</strong><span>平台管理端与租户 SaaS：设备、物模型、遥测与 MQTT。不是框架本身。</span></span>
+    <span class="start-copy"><span class="guide-kicker">CASE / 案例</span><strong>物联中心</strong><span>独立控制端与客户端：完整 RBAC、设备注册授权、应用接入与原始通信。</span></span>
     <span class="guide-arrow" aria-hidden="true">↗</span>
   </a>
 </div>

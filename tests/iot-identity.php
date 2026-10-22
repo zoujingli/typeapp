@@ -140,14 +140,14 @@ function identityBrokerChecks(Closure $request, PDO $database, array $fixture, s
     $reader = $call('GET', '/customer/members?search=device-reader', $tokens['bob'], $headers)['data']['items'][0];
     $call('PUT', '/customer/members/roles', $tokens['bob'], $headers, ['members' => [['id' => $reader['id'], 'version' => $reader['version']]], 'roles' => [['id' => $role['id'], 'version' => $role['version']]]]);
     $call('GET', $path . '/audit', $tokens['alice'], $headers, null, 403);
-    $call('GET', '/customer/tenants/' . $tenant . '/devices/' . $fixture['device']['id'] . '/current', $tokens['alice'], $headers, null, 403);
+    $call('GET', '/customer/tenants/' . $tenant . '/devices/' . $fixture['device']['id'] . '/current', $tokens['alice'], $headers, null, 404);
     $call(
         'POST',
         '/customer/tenants/' . $tenant . '/devices/' . $fixture['device']['id'] . '/commands',
         $tokens['alice'],
         $headers,
         ['command_id' => bin2hex(random_bytes(16)), 'identifier' => 'switch', 'values' => ['on' => true], 'version' => (int) $fixture['device']['version']],
-        403
+        404
     );
     $call('GET', $path . '/resources/connections', $tokens['platform'], $headers, null, 401);
     $call('GET', '/admin/broker/resources/connections', $tokens['bob'], [], null, 401);
@@ -246,7 +246,10 @@ function identityBrokerChecks(Closure $request, PDO $database, array $fixture, s
         $call('POST', $path . '/debug/revoke', $tokens['alice'], $headers, [], 200);
         $call('GET', '/admin/broker/debug', $tokens['platform'], [], null, 403);
         $call('POST', '/admin/broker/debug', $tokens['platform'], [], [], 403);
-        $event = $call('GET', $path . '/audit?action=broker.resource.read&subject_id=' . $owners[0], $tokens['bob'], $headers)['items'][0];
+        $events = $call('GET', $path . '/audit?action=broker.resource.read&subject_id=' . $owners[0], $tokens['bob'], $headers)['items'];
+        $simulatedEvents = array_values(array_filter($events, static fn (array $item): bool => ($item['details']['impersonation_id'] ?? '') === $fixture['simulated']['identity']['impersonation_id']));
+        expect(count($simulatedEvents) === 1, '没有找到本次模拟身份的准确资源读取审计');
+        $event = $simulatedEvents[0];
         expect($event['details']['source_session_id'] === $fixture['source']['identity']['session_id']
             && $event['details']['customer_id'] === $fixture['simulated']['identity']['customer_id']
             && $event['actor_id'] === $fixture['source']['identity']['actor_id'], 'Broker审计丢失真实来源或有效客户');
@@ -372,7 +375,7 @@ function identityAuditChecks(Closure $request, PDO $database, array $fixture, ar
     $call('POST', '/admin/auth/logout', $origin['accessToken'], [], []);
     $call('GET', $path . '/' . $event['id'], $second['accessToken'], $headers, null, 401);
     $call('GET', $path, $customer, $headers);
-    // 独立观察角色不含设备、遥测或控制权限；变更当前权限使原游标失效。
+    // 独立观察角色不含设备查询或修改权限；变更当前权限使原游标失效。
     $role = $call('POST', '/customer/roles', $customer, $headers, ['name' => '审计与运行只读', 'permissions' => ['identity.read', 'customer.audit.read', 'customer.operations.read']])['data'];
     $call('POST', '/customer/roles/' . $role['id'] . '/status', $customer, $headers, ['version' => 1, 'enabled' => true]);
     $call('POST', '/customer/members', $customer, $headers, ['login' => 'observation-only', 'new_customer' => true, 'account_name' => '独立观察', 'password' => $password, 'name' => '独立观察', 'roles' => [['id' => $role['id'], 'version' => 2]]]);
@@ -380,7 +383,7 @@ function identityAuditChecks(Closure $request, PDO $database, array $fixture, ar
     $observerPage = $call('GET', $path . '?limit=1', $observer, $headers);
     $call('GET', '/customer/tenants/' . $tenant . '/operations', $observer, $headers);
     $call('GET', $fixture['path'], $observer, $headers, null, 403);
-    $call('GET', $fixture['path'] . '/current', $observer, $headers, null, 403);
+    $call('PATCH', $fixture['path'], $observer, $headers, ['version' => $current['version'] + 2, 'name' => '拒绝观察者修改'], 403);
     $call('PUT', '/customer/roles/' . $role['id'] . '/permissions', $customer, $headers, ['version' => 2, 'permissions' => ['customer.audit.read', 'customer.operations.read']]);
     $call('GET', $path . '?limit=1&cursor=' . rawurlencode($observerPage['next_cursor']), $observer, $headers, null, 400);
     $call('PUT', '/customer/roles/' . $role['id'] . '/permissions', $customer, $headers, ['version' => 3, 'permissions' => ['customer.operations.read']]);
@@ -628,8 +631,19 @@ function identityRoleCases(callable $request, PDO $inspection, string $driver, s
     $call('PUT', '/customer/roles/' . $second['id'] . '/permissions', ['version' => 2, 'permissions' => []]);
     $call('GET', '/customer/roles', null, 403, $workerToken);
     $call('PUT', '/customer/roles/' . $second['id'] . '/permissions', ['version' => 3, 'permissions' => ['customer.roles.read']]);
+    // 模拟已升级但保留原件的旧角色；投影、绑定和复制不能复活退役节点或自动扩权。
+    $legacyPermission = 'customer.history.read';
+    $inspection->prepare('INSERT INTO customer_role_permissions (role_id, permission) VALUES (?, ?)')->execute([$second['id'], $legacyPermission]);
+    expect($role($second['id'])['permissions'] === ['customer.roles.read'], '旧角色详情回显退役权限');
+    expect($call('GET', '/customer/auth/me', null, 200, $workerToken)['permissions'] === ['customer.roles.read'], '旧角色扩张当前人员权限');
     $copy = $call('POST', '/customer/roles/' . $second['id'] . '/copy', ['version' => 4, 'name' => '查询副本']);
     expect((int) $copy['enabled'] === 0 && (int) $copy['protected'] === 0 && $copy['permissions'] === ['customer.roles.read'], '复制角色错误继承状态或缺权限');
+    $legacyCheck = $inspection->prepare('SELECT COUNT(*) FROM customer_role_permissions WHERE role_id = ? AND permission = ?');
+    $legacyCheck->execute([$second['id'], $legacyPermission]);
+    $legacyCount = (int) $legacyCheck->fetchColumn();
+    // SQLite 游标持有读取快照；观察结束即归还，避免后续真实并发装置升级事务时自锁。
+    $legacyCheck->closeCursor();
+    expect($legacyCount === 1, '读取或复制角色篡改了历史权限原件');
     foreach ([['GET', '', null], ['PATCH', '', ['version' => 1, 'name' => '越界']], ['POST', '/copy', ['version' => 1, 'name' => '越界']], ['POST', '/status', ['version' => 1, 'enabled' => true]], ['PUT', '/permissions', ['version' => 1, 'permissions' => []]], ['DELETE', '', ['version' => 1]]] as [$method, $suffix, $data]) {
         $call($method, '/customer/roles/' . $other['id'] . $suffix, $data, 404);
     }
@@ -1312,8 +1326,6 @@ function identityAdminCases(callable $request, PDO $inspection, string $driver, 
 $root = dirname(__DIR__);
 $target = $argv[1] ?? '--php';
 $driver = $argv[2] ?? 'sqlite';
-expect(!in_array('--alarms', $argv, true) || in_array('--devices', $argv, true), '告警验收需要--devices，以新应用身份和真实角色装置运行');
-expect(!in_array('--exports', $argv, true) || (in_array('--devices', $argv, true) && array_intersect($argv, ['--alarms', '--lifecycle', '--device-mqtt']) === []), '导出验收需要--devices，来源撤销使用独立装置');
 expect(in_array($driver, ['sqlite', 'mysql', 'pgsql'], true), '身份验证需要明确的受支持驱动');
 expect(
     in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_array('--devices', $argv, true) || in_array('--broker', $argv, true),
@@ -1321,13 +1333,12 @@ expect(
 );
 // 在创建目录、启动数据库或准备原生运行环境前拒绝失效组合，不能跳过专项后报告成功。
 expect(
-    array_intersect($argv, ['--broker-audit', '--ha', '--recovery', '--support', '--support-mqtt', '--capacity', '--cluster',
-        '--load-baseline', '--load-history', '--load-mqtt', '--load-phases']) === [],
+    array_intersect($argv, ['--broker-audit', '--recovery', '--support', '--support-mqtt',
+        '--load-baseline', '--load-history', '--load-mqtt', '--load-phases', '--business', '--history', '--aggregate', '--alarms', '--exports', '--export-transfers-only', '--io-export-baseline', '--io-receipt-baseline', '--io-receipt-db-trace', '--ingestion', '--transfers-only']) === [],
     '验收选项已退出或尚未接入当前身份；入口与迁移边界见 docs/development/test-entrypoints.md'
 );
 expect(
-    !in_array('--broker', $argv, true) || array_intersect($argv, ['--app', '--products', '--devices', '--business', '--history',
-        '--aggregate', '--lifecycle', '--alarms', '--exports', '--audit', '--operations', '--broker-resources', '--scheduler', '--device-mqtt', '--iot-audit-fence']) === [],
+    !in_array('--broker', $argv, true) || array_intersect($argv, ['--app', '--products', '--devices', '--lifecycle', '--audit', '--operations', '--broker-resources', '--scheduler', '--device-mqtt', '--iot-audit-fence']) === [],
     '身份验收不能混用物联应用与独立 Broker 场景'
 );
 expect(
@@ -1412,6 +1423,10 @@ if ($driver !== 'sqlite') {
         expect(is_string($value), '数据库验证必须由隔离实例提供参数：' . $source);
         $environment['DB_' . $destination] = $value;
     }
+    $databaseCa = getenv($prefix . 'CA');
+    if (is_string($databaseCa) && $databaseCa !== '') {
+        $environment['DB_TLS_CA'] = $databaseCa;
+    }
 }
 $environment['APP_API_TOKEN'] = bin2hex(random_bytes(32));
 $environment['APP_CACHE_ENABLED'] = 'false';
@@ -1423,13 +1438,17 @@ if (in_array('--operations', $argv, true) || in_array('--broker-resources', $arg
 if (in_array('--iot-audit-fence', $argv, true)) {
     $environment['IOT_MQTT_STANDBY'] = 'broker_observe_sync';
 }
+if (in_array('--ha', $argv, true)) {
+    $standbyNames = getenv('TYPE_PGSQL_STANDBY_NAMES');
+    expect(is_string($standbyNames) && $standbyNames !== '', 'HA需要本轮Patroni同步成员名单');
+    $environment['IOT_MQTT_STANDBY'] = $standbyNames;
+}
 if (in_array('--operations', $argv, true)) {
     require_once __DIR__ . '/iot-operations.php';
 }
 if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_array('--devices', $argv, true)) {
     expect(!in_array('--broker-resources', $argv, true) || in_array('--devices', $argv, true), 'Broker集成验收需要新设备与模拟身份装置');
     expect(in_array('--devices', $argv, true) || array_intersect($argv, ['--audit', '--operations']) === [], '审计与观察验收需要新设备及模拟身份装置');
-    expect(in_array('--devices', $argv, true) || array_intersect($argv, ['--business', '--history', '--aggregate', '--alarms']) === [], '遥测、告警、转移和指令需要新设备装置');
     expect(in_array('--devices', $argv, true) || array_intersect($argv, ['--lifecycle', '--device-mqtt', '--lifecycle-mqtt']) === [], '生命周期与MQTT需要新设备装置');
     $ownedDatabase = null;
     $sharedDatabase = $environment['DB_DATABASE'] ?? '';
@@ -1459,7 +1478,13 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
     $report = ['status' => 'running', 'driver' => $driver, 'native' => $target !== '--php',
         'binary_sha256' => $target === '--php' ? null : hash_file('sha256', $target), 'no_source' => $noSource, 'http_checks' => 0];
     try {
-        foreach ([['migrate', 'run'], ['iot:user', 'legacy-user', '旧开通'], ['iot:support-clean']] as $legacy) {
+        $retiredCommands = [['migrate', 'run'], ['iot:user', 'legacy-user', '旧开通'], ['iot:support-clean']];
+        foreach (['iot:ingest', 'iot:ingest-store', 'iot:device', 'iot:command-clean', 'iot:history-clean',
+            'iot:aggregate', 'iot:aggregate-clean', 'iot:alarm', 'iot:notices', 'iot:notices-clean',
+            'iot:exports', 'iot:exports-work', 'iot:exports-clean'] as $commandName) {
+            $retiredCommands[] = [$commandName];
+        }
+        foreach ($retiredCommands as $legacy) {
             $retired = new Process([...$command, ...$legacy], $root, $environment + $credentials);
             try {
                 $rejected = $retired->wait(30);
@@ -1474,7 +1499,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
                 $retired->stop();
             }
         }
-        $report['retired_commands'] = ['migrate run', 'iot:user', 'iot:support-clean'];
+        $report['retired_commands'] = array_map(static fn (array $arguments): string => implode(' ', $arguments), $retiredCommands);
         $dsn = $driver === 'sqlite' ? 'sqlite:' . $base . '/identity.sqlite' : $driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $environment['DB_DATABASE'];
         $inspection = new PDO($dsn, $environment['DB_USERNAME'] ?? null, $environment['DB_PASSWORD'] ?? null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         if ($driver === 'pgsql') {
@@ -1485,6 +1510,19 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         $existing = new Process($installCommand, $root, $environment + $credentials);
         try {
             $rejected = $existing->wait(30);
+            // 保留实际退出结果，区分初始化保护、连接失败与超时；测试凭据不进入报告。
+            if ($rejected->successful() || !str_contains($rejected->stderr, 'TYPE_MIGRATION_NOT_EMPTY')) {
+                $secrets = array_values($credentials);
+                foreach (['DB_PASSWORD', 'APP_API_TOKEN'] as $key) {
+                    if (($environment[$key] ?? '') !== '') {
+                        $secrets[] = $environment[$key];
+                    }
+                }
+                $report['existing_install_failure'] = ['exit_code' => $rejected->exitCode,
+                    'timed_out' => $rejected->timedOut, 'signal' => $rejected->signal,
+                    'stdout' => str_replace($secrets, '<REDACTED>', $rejected->stdout),
+                    'stderr' => str_replace($secrets, '<REDACTED>', $rejected->stderr)];
+            }
             expect(!$rejected->successful() && str_contains($rejected->stderr, 'TYPE_MIGRATION_NOT_EMPTY'), '已有外部模式没有拒绝初始化');
         } finally {
             $existing->stop();
@@ -1755,7 +1793,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
                 }
             } while (!$ready && microtime(true) < $deadline);
             expect($ready, '产品重启未就绪');
-            expect($request('GET', $products['path'], $products['token'], ['X-Tenant-Id' => $products['tenant']], null, 200)['data'] === $products['published'], '重启后精确历史定义或发布时间改变');
+            expect($request('GET', $products['path'], $products['token'], ['X-Tenant-Id' => $products['tenant']], null, 200)['data'] === $products['product'], '重启后分类资料改变');
             unset($products['token']);
             $report['products'] = $products;
             $adminToken = $request('POST', '/admin/auth/login', '', [], ['login' => 'same-login', 'password' => $password], 200)['data']['accessToken'];
@@ -1778,42 +1816,20 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
             if (in_array('--operations', $argv, true)) {
                 $report['operations'] = iotOperationsChecks($deviceRequest, $deviceEvidence['tokens'], $deviceEvidence['tenant'], $deviceEvidence['other_tenant'], $driver, $inspection, $deviceEvidence);
             }
-            if (array_intersect($argv, ['--business', '--history', '--aggregate']) !== []) {
-                $report['business'] = iotDeviceBusinessChecks($deviceRequest, $deviceEvidence['tokens'], $deviceEvidence['tenant'], $deviceEvidence['other_tenant'], $inspection, $environment, $deviceEvidence);
-            }
-            if (in_array('--history', $argv, true)) {
-                require __DIR__ . '/iot-history.php';
-                $report['history'] = iotHistoryChecks($deviceRequest, $deviceEvidence['tokens'], $deviceEvidence['tenant'], $deviceEvidence['other_tenant'], $inspection, $command, $environment, $base);
-            }
-            if (in_array('--aggregate', $argv, true)) {
-                require __DIR__ . '/iot-aggregate.php';
-                $report['aggregate'] = iotAggregateChecks($deviceRequest, $deviceEvidence['tokens'], $deviceEvidence['tenant'], $deviceEvidence['other_tenant'], $inspection, $command, $environment, $base);
-            }
             if (in_array('--lifecycle', $argv, true)) {
-                expect(!in_array('--alarms', $argv, true), '告警撤权装置与生命周期需分别使用独立来源');
                 require __DIR__ . '/iot-lifecycle.php';
                 $report['lifecycle'] = iotLifecycleChecks($deviceRequest, $deviceEvidence['tokens'], $deviceEvidence['tenant'], $deviceEvidence['other_tenant'], $inspection, $deviceEvidence, $environment, $base, $address, $password);
             }
             if (in_array('--device-mqtt', $argv, true)) {
                 expect($driver === 'pgsql', '设备MQTT验证需要真实同步PostgreSQL');
                 $report['device_mqtt'] = iotDeviceMqttChecks($deviceRequest, $deviceEvidence, $command, $environment, $base, $inspection);
-            }
-            if (in_array('--alarms', $argv, true)) {
-                require __DIR__ . '/iot-alarms.php';
-                $report['alarms'] = iotAlarmChecks($deviceRequest, $deviceEvidence['tokens'], $deviceEvidence['tenant'], $deviceEvidence['other_tenant'], $inspection, $command, $environment, $base, $deviceEvidence);
-            }
-            if (in_array('--exports', $argv, true)) {
-                require __DIR__ . '/iot-exports.php';
-                require_once __DIR__ . '/native-rollout-redis.php';
-                $report['exports'] = iotExportChecks($deviceRequest, $deviceEvidence['tokens'], $deviceEvidence['tenant'], $deviceEvidence['other_tenant'], $inspection, $command, $environment, $base, $client, $deviceEvidence);
+                if (in_array('--ha', $argv, true)) {
+                    // 旧主已真实退出；后续身份夹具使用新控制连接，应用自身的重连另由HA HTTP断言证明。
+                    $inspection = $GLOBALS['postgresHa']->connection($environment['DB_DATABASE']);
+                    $report['inspection_pid_after_ha'] = (int) $inspection->query('SELECT pg_backend_pid()')->fetchColumn();
+                }
             }
             $deviceSnapshot = $deviceRequest('GET', $deviceEvidence['path'], $deviceEvidence['token'], $deviceEvidence['tenant'], null, 200)['data'];
-            if (isset($report['exports'])) {
-                foreach ([...array_values($deviceEvidence['tokens']), $deviceEvidence['simulated']['accessToken'], $deviceEvidence['source']['accessToken'], '=1+1'] as $secret) {
-                    expect(!str_contains($server->stdout() . $server->stderr(), $secret), '普通导出日志泄漏令牌或遥测载荷');
-                }
-                $report['exports']['no_secret_payload_in_http_log'] = true;
-            }
             $beforeRestart = $server->stop(5);
             file_put_contents($base . '/http-before-device-restart.log', str_replace(array_values($credentials), '<REDACTED>', $server->stdout() . $server->stderr()));
             expect($beforeRestart->successful() && !$server->running(), '设备重启前HTTP未正常排空');
@@ -1832,15 +1848,6 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
             } while (!$ready && microtime(true) < $deadline);
             expect($ready, '设备重启未就绪');
             expect($deviceRequest('GET', $deviceEvidence['path'], $deviceEvidence['token'], $deviceEvidence['tenant'], null, 200)['data'] === $deviceSnapshot, '重启改变了设备资产、归属或凭据状态');
-            if (isset($report['alarms'])) {
-                expect($deviceRequest('GET', $report['alarms']['path'], $deviceEvidence['tokens']['alice'], $deviceEvidence['tenant'], null, 200)['items'] === $report['alarms']['items'], 'HTTP重启后告警条件、样本与确认必须保持');
-                $report['alarms']['restart_persisted'] = true;
-            }
-            if (isset($report['exports']['example_task'])) {
-                $response = $client->request('GET', '/customer/tenants/' . $deviceEvidence['tenant'] . '/exports/' . $report['exports']['example_task'] . '/download', ['Authorization' => 'Bearer ' . $deviceEvidence['tokens']['bob'], 'X-Tenant-Id' => $deviceEvidence['tenant']]);
-                expect($response->status === 200 && hash('sha256', $response->body) === $report['exports']['csv_sha256'], 'HTTP重启后导出内容或权限改变');
-                $report['exports']['restart_persisted'] = true;
-            }
             $report['devices'] = ['checks' => $deviceEvidence['checks'], 'restart_persisted' => true];
         }
         if (in_array('--scheduler', $argv, true)) {
@@ -1931,7 +1938,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         expect($server === null || ($stopped->successful() && !$server->running()), '双端服务没有正常排空退出');
     }
     echo '双端身份 HTTP 通过：' . $base . "/verification.json\n";
-    if (in_array('--iot-audit-fence', $argv, true)) {
+    if (in_array('--iot-audit-fence', $argv, true) || in_array('--ha', $argv, true)) {
         return;
     }
     exit(0);

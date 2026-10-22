@@ -61,7 +61,7 @@ PostgreSQL `pg_hba` 只允许 TLS 与 SCRAM；网络来源进一步收窄至实�
 
 先执行 `haproxy -c -f haproxy.cfg`，再以 `haproxy -db -f haproxy.cfg` 前台运行。入口使用 mTLS 请求 `/primary`，只接纳 200，启动时所有节点为 `fully-down`，两次探活成功后才可路由。节点降为不可用后关闭既有连接，促使连接池丢弃旧连接。入口透传 PostgreSQL TLS；应用配置 `DB_HOST` 为稳定写入口、`DB_TLS_CA` 为 CA，`IOT_MQTT_STANDBY=iot_a,iot_b,iot_c`。
 
-数据库连接错误不会触发未知写事务重试。HTTP 可在后续新请求重新建连；失败的 Broker、接收角色由监督者使用原 `IOT_MQTT_NODE_ID`、原 `IOT_INGESTION_INSTANCE` 和凭据恢复。集群 Broker 须先完成下述旧运行关闭或硬隔离登记，再允许相同稳定节点名的新运行注册。接收角色的连接截止为十秒，与应用 Broker 的握手上限一致；超过截止仍退出，由监督者恢复。恢复依靠持久会话和幂等账本，不能用新 Client ID 绕过旧状态。网络/持久失败期间不得发送成功回执，数据库中可见记录也不能把取消或未知提交改写为成功。
+数据库连接错误不会触发未知写事务重试。HTTP 可在后续新请求重新建连；失败的 Broker 由监督者使用原 `IOT_MQTT_NODE_ID` 恢复。集群 Broker 须先完成下述旧运行关闭或硬隔离登记，再允许相同稳定节点名的新运行注册。设备与接入应用使用各自原有身份重新连接，依靠持久会话恢复原始消息，不能用新 Client ID 绕过旧状态。网络或持久存储失败期间不得发送成功确认，数据库中可见记录也不能把取消或未知提交改写为成功。应用不再运行遥测接收处理角色。
 
 ## 多 Broker 与旧运行隔离
 
@@ -97,11 +97,11 @@ php tests/iot-ha.php build/app/type-app --no-source
 
 入口仅在 `build/iot-ha-<随机值>` 下建立新私有数据，所有监听仅在回环。`PostgresHa` 拥有三个真实 Patroni/PostgreSQL、三个 etcd 投票者、三个仅供注入 DCS 网络故障的 TCP 转发及一个写入口。启动检查除明确的本机回环公告地址外不允许 Patroni 校验错误；正式部署没有这个例外。
 
-故障顺序为：设备保存真实业务回执；服务给离线设备保存 QoS 1 消息；设备接收但故意不 PUBACK；旧主进程退出并重新加入；同一会话恢复原 packet ID 与 DUP 消息、重发原上报得到原回执；隔离现主到全部 DCS 入口；恢复后验证旧主直连真实写入被只读拒绝；停止全部备库，验证没有成功 PUBACK 或业务回执；恢复备库及原应用角色；再执行一次正常角色重启。
+故障顺序为：独立应用保存原始 retained 消息并向离线设备发送 QoS 1 消息；设备接收但故意不 PUBACK；旧主进程退出并重新加入；同一会话恢复原 packet ID 与 DUP 消息，核对 retained 原字节；隔离现主到全部 DCS 入口；恢复后验证旧主直连真实写入被只读拒绝；停止全部备库，验证没有成功 PUBACK；恢复备库及 Broker；再执行一次正常角色重启。协议确认不代表客户业务系统已经完成处理。
 
 可复用边界是 `PostgresHa::crashLeader()`、`partitionLeader()`、`stopStandbys()`、`restartStandbys()` 和 `snapshot()`，只操作对象自行创建的进程。多 Broker/满负载入口可以复用相同业务客户端、故障阶段和证据字段；独立节点测试必须替换资源拥有者，并使用已经核验的故障节点控制及硬隔离。不要通过任意 shell 命令字符串或裸 PID 让该本机入口接管外部资源。
 
-最终证据保存到本轮目录的 `verification.json` 与身份测试目录的 `verification.json`。分别记录 `topology`、`watchdog`、`hard_fencing_verified`、工具版本、真实 DCS 同步角色、旧/新主、单次故障耗时、旧主只读拒绝、客户端确认 ID 集合、原回执及 QoS 重放、同一 HTTP 进程连接恢复、角色退出和数据库后端回收。原始日志留在同轮目录，测试私钥与复制密码文件在退出时删除。失败记录必须保持 `failed`，不能以清理完成推定验收通过。
+最终证据保存到本轮目录的 `verification.json` 与身份测试目录的 `verification.json`。分别记录 `topology`、`watchdog`、`hard_fencing_verified`、工具版本、真实 DCS 同步角色、旧/新主、单次故障耗时、旧主只读拒绝、客户端确认 ID 集合、retained 原字节及 QoS 重放、同一 HTTP 进程连接恢复、角色退出和数据库后端回收。原始日志留在同轮目录，测试私钥与复制密码文件在退出时删除。失败记录必须保持 `failed`，不能以清理完成推定验收通过。
 
 ## 上游依据
 

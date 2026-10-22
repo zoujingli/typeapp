@@ -144,13 +144,24 @@ final class PendingCommit
         if ($this->process === null || $this->pipes === []) {
             return;
         }
-        $chunk = fread($this->pipes[1], 65536);
-        if (is_string($chunk) && strlen($chunk) + strlen($this->input) > 2097152) {
-            $this->cancel();
-            return;
-        }
-        if (is_string($chunk) && $chunk !== '') {
+        // 管道可能只有 8KiB 缓冲；已开始的传输允许短暂协作等待，不能每个块都等待下一轮管理查询。
+        // 单轮读写各至多 256KiB，共享 10ms 等待预算；原操作截止和总消息上限不变。
+        $exchange = new Deadline(0.01);
+        $budget = 262144;
+        while ($budget > 0) {
+            $chunk = fread($this->pipes[1], $budget);
+            if (!is_string($chunk) || $chunk === '') {
+                if ($this->input !== '' && !str_contains($this->input, "\n") && $this->readyPipe($this->pipes[1], false, $exchange)) {
+                    continue;
+                }
+                break;
+            }
+            if (strlen($chunk) + strlen($this->input) > 2097152) {
+                $this->cancel();
+                return;
+            }
             $this->input .= $chunk;
+            $budget -= strlen($chunk);
         }
         $newline = strpos($this->input, "\n");
         if ($newline !== false) {
@@ -180,16 +191,35 @@ final class PendingCommit
                 }
             }
         }
-        if ($this->output !== '') {
-            $written = @fwrite($this->pipes[0], substr($this->output, 0, 4096));
+        $budget = 262144;
+        while ($this->output !== '' && $budget > 0) {
+            $written = @fwrite($this->pipes[0], substr($this->output, 0, min(16384, $budget)));
             if ($written === false || $written === 0) {
+                if ($written === 0 && $this->readyPipe($this->pipes[0], true, $exchange)) {
+                    continue;
+                }
                 if ($this->deadline->expired()) {
                     $this->cancel();
                 }
+                break;
             } else {
                 $this->output = substr($this->output, $written);
+                $budget -= $written;
             }
         }
+    }
+
+    /** 复用 Swoole 的 stream hook 等待管道就绪；一次至多 1ms，并同时受本轮与操作截止约束。 */
+    private function readyPipe(mixed $pipe, bool $writing, Deadline $exchange): bool
+    {
+        $remaining = min($exchange->remaining() ?? 0.0, $this->deadline->remaining() ?? 0.0, 0.001);
+        if ($remaining <= 0.0) {
+            return false;
+        }
+        $read = $writing ? [] : [$pipe];
+        $write = $writing ? [$pipe] : [];
+        $except = [];
+        return @stream_select($read, $write, $except, 0, (int) ceil($remaining * 1000000.0)) > 0;
     }
 
     private function closePipe(): void

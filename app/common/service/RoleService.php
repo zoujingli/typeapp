@@ -63,7 +63,7 @@ final class RoleService
                 'customer.roles.copy' => '复制租户角色', 'customer.roles.update' => '修改租户角色资料',
                 'customer.roles.status' => '启停租户角色', 'customer.roles.delete' => '删除租户角色',
                 'customer.roles.permissions' => '编辑租户角色权限',
-                'customer.products.read' => '查看产品与物模型', 'customer.products.manage' => '维护产品与物模型',
+                'customer.products.read' => '查看产品分类', 'customer.products.manage' => '维护产品分类',
                 'customer.enrollments.read' => '查看已分配的设备注册授权',
                 'customer.reassignments.read' => '查看设备转配', 'customer.reassignments.accept' => '确认接收转配设备',
             ];
@@ -75,25 +75,6 @@ final class RoleService
         foreach (['read' => '查看接入应用', 'create' => '创建接入应用', 'update' => '修改接入应用资料',
             'enable' => '启用接入应用', 'disable' => '停用接入应用', 'keys' => '管理应用密钥', 'authorize' => '授权应用设备通信'] as $action => $label) {
             $catalog[$realm . '.applications.' . $action] = $label;
-        }
-        if ($realm === 'customer') {
-            $catalog['customer.devices.create'] = '登记设备并生成凭据';
-            $catalog['customer.devices.model-switch'] = '请求与重试设备模型切换';
-            $catalog['customer.telemetry.read'] = '查看当前遥测与归属历史';
-            $catalog['customer.alarms.read'] = '查看告警与规则版本';
-            $catalog['customer.alarms.manage'] = '发布与停用告警规则';
-            $catalog['customer.alarms.acknowledge'] = '确认告警';
-            $catalog['customer.notifications.read'] = '查看站内通知';
-            foreach (['read' => '查看本人导出任务', 'create' => '创建与恢复历史导出', 'cancel' => '取消本人导出', 'download' => '下载本人私有导出'] as $action => $label) {
-                $catalog['customer.exports.' . $action] = $label;
-            }
-            foreach (['read' => '查看指令结果', 'create' => '下发设备指令', 'query' => '主动查询设备执行结果', 'cancel' => '取消尚未下发的指令'] as $action => $label) {
-                $catalog['customer.commands.' . $action] = $label;
-            }
-            foreach (['read' => '查看设备转移', 'request' => '发起设备转移', 'accept' => '接受设备转移', 'reject' => '拒绝设备转移',
-                'cancel' => '取消未决设备转移', 'retry' => '重发原冻结请求', 'switch' => '推进设备归属切换'] as $action => $label) {
-                $catalog['customer.transfers.' . $action] = $label;
-            }
         }
         return $catalog;
     }
@@ -225,13 +206,10 @@ final class RoleService
             $menus[] = ['name' => '组织与成员', 'path' => '/organization', 'redirectPath' => $organization[0]['path'], 'icon' => 'lucide:users-round', 'order' => 2, 'children' => $organization];
             $iot = [];
             if (in_array('customer.products.read', $permissions, true)) {
-                $iot[] = ['name' => '产品管理', 'path' => '/products', 'icon' => 'lucide:box', 'order' => 1];
+                $iot[] = ['name' => '产品分类', 'path' => '/products', 'icon' => 'lucide:box', 'order' => 1];
             }
             if (in_array('customer.devices.read', $permissions, true)) {
                 $iot[] = ['name' => '设备管理', 'path' => '/devices', 'icon' => 'lucide:cpu', 'order' => 2];
-            }
-            if (in_array('customer.transfers.read', $permissions, true)) {
-                $iot[] = ['name' => '设备转移', 'path' => '/transfers', 'icon' => 'lucide:arrow-left-right', 'order' => 3];
             }
             if (in_array('customer.enrollments.read', $permissions, true)) {
                 $iot[] = ['name' => '设备注册授权', 'path' => '/device-authorizations', 'icon' => 'lucide:badge-check', 'order' => 4];
@@ -244,20 +222,6 @@ final class RoleService
             }
             if ($iot !== []) {
                 $menus[] = ['name' => '物联管理', 'path' => '/iot', 'redirectPath' => $iot[0]['path'], 'icon' => 'lucide:cpu', 'order' => 4, 'children' => $iot];
-            }
-            $data = [];
-            if (array_intersect(['customer.telemetry.read', 'customer.exports.read', 'customer.exports.create'], $permissions) !== []) {
-                $data[] = ['name' => '历史数据', 'path' => '/history', 'icon' => 'lucide:chart-line', 'order' => 1];
-            }
-            if (in_array('customer.alarms.read', $permissions, true)) {
-                $data[] = ['name' => '告警规则', 'path' => '/alarm-rules', 'icon' => 'lucide:sliders', 'order' => 2];
-                $data[] = ['name' => '告警中心', 'path' => '/alarms', 'icon' => 'lucide:triangle-alert', 'order' => 3];
-            }
-            if (in_array('customer.notifications.read', $permissions, true)) {
-                $data[] = ['name' => '站内通知', 'path' => '/notifications', 'icon' => 'lucide:bell', 'order' => 4];
-            }
-            if ($data !== []) {
-                $menus[] = ['name' => '数据与告警', 'path' => '/data', 'redirectPath' => $data[0]['path'], 'icon' => 'lucide:chart-line', 'order' => 5, 'children' => $data];
             }
         }
         $operations = [];
@@ -354,7 +318,7 @@ final class RoleService
                             $values[] = (string) $relation['permission'];
                         }
                     }
-                    $items[$index]['permissions'] = $values;
+                    $items[$index]['permissions'] = self::activePermissions($values, $realm);
                 }
             }
             return ['items' => $items, 'total' => $page->total(), 'page' => $page->number(), 'per_page' => $page->perPage(),
@@ -504,7 +468,7 @@ final class RoleService
         $grants = $realm === 'admin'
             ? $connection->query('SELECT DISTINCT p.permission FROM admin_user_roles b JOIN admin_role_permissions p ON p.role_id = b.role_id WHERE b.user_id = ?', [$id])
             : $connection->query('SELECT DISTINCT p.permission FROM customer_member_roles b JOIN customer_role_permissions p ON p.role_id = b.role_id WHERE b.member_id = ? AND b.tenant_id = ?', [$id, $scopeId]);
-        self::canGrant($permissions, array_column($grants, 'permission'), $realm);
+        self::canGrant($permissions, self::activePermissions(array_column($grants, 'permission'), $realm), $realm);
     }
 
     /** 全部目标和角色都带预期版本；一批至多100人/每人64角色，任何一项失败整体回滚。 */
@@ -551,8 +515,14 @@ final class RoleService
         if ((int) $role['recovery_verified'] !== 1) {
             throw new HttpError(409, 'recovery_reconciliation_required');
         }
-        $role['permissions'] = array_column($connection->table($realm . '_role_permissions')->where('role_id', '=', $id)->orderBy('permission')->get(), 'permission');
+        $role['permissions'] = self::activePermissions(array_column($connection->table($realm . '_role_permissions')->where('role_id', '=', $id)->orderBy('permission')->get(), 'permission'), $realm);
         return $role;
+    }
+
+    /** 退役节点仅保留数据库原件，不参与展示、复制和可授予范围，也不映射为新权限。 */
+    private static function activePermissions(array $permissions, string $realm): array
+    {
+        return array_values(array_intersect($permissions, array_keys(self::catalog($realm))));
     }
 
     /** 受保护角色可改显示名称或复制，不能停用、删除或收紧固定必要权限。 */

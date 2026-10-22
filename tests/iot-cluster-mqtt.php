@@ -5,18 +5,18 @@ declare(strict_types=1);
 use Type\Testing\Process;
 
 /** 复用真实设备管理与MQTT.js授权客户端；集群完成位必须等待远端旧所有者关闭。 */
-function iotClusterMqttChecks(Closure $request, array $evidence, array $command, array $environment, string $base, PDO $database, Process $first, #[SensitiveParameter] string $servicePassword): array
+function iotClusterMqttChecks(Closure $request, array $evidence, array $command, array $environment, string $base, PDO $database, Process $first): array
 {
     ini_set('zend.exception_ignore_args', '1');
     $root = dirname(__DIR__);
-    $devices = '/iot/tenants/' . $evidence['tenant'] . '/devices';
+    $devices = '/customer/tenants/' . $evidence['tenant'] . '/devices';
     $nodes = [$environment['IOT_MQTT_NODE_ID'] => $first];
     $ports = [$environment['IOT_MQTT_NODE_ID'] => $environment['IOT_MQTT_PORT']];
     $clients = [];
     $frozen = null;
     $checks = [];
     $statistics = [];
-    $secrets = [$servicePassword, $evidence['admin_token'], $evidence['token']];
+    $secrets = [$evidence['admin_token'], $evidence['token']];
     $wait = static function (Closure $condition, string $message, float $seconds = 20): mixed {
         $until = microtime(true) + $seconds;
         do {
@@ -28,17 +28,15 @@ function iotClusterMqttChecks(Closure $request, array $evidence, array $command,
         } while (microtime(true) < $until);
         throw new RuntimeException($message);
     };
-    $create = static function (string $name) use ($request, $devices, $evidence, &$secrets): array {
-        $result = $request(
-            'POST',
-            $devices,
-            $evidence['admin_token'],
-            $evidence['tenant'],
-            ['name' => '集群撤权-' . $name, 'product_id' => $evidence['device']['product_id'], 'model_version' => 1],
-            201
-        )['data'];
-        $secrets[] = $result['credential']['password'];
-        return $result;
+    require_once __DIR__ . '/iot-communication-fixture.php';
+    $applications = [];
+    $create = static function (string $name) use ($request, $evidence, &$applications, &$secrets): array {
+        $created = iotRegisteredFixture($request, $evidence['platform_token'], $evidence['tenant'], $name);
+        $application = iotApplicationFixture($request, $evidence['admin_token'], $evidence['tenant'], [$created], $name);
+        $applications[$created['device']['id']] = $application;
+        $secrets[] = $created['credential']['password'];
+        $secrets[] = $application['password'];
+        return $created;
     };
     $read = static fn (array $created): array => $request('GET', $devices . '/' . $created['device']['id'], $evidence['token'], $evidence['tenant'], null, 200)['data'];
     $manage = static function (array $created, string $action) use ($request, $devices, $evidence, $read, &$secrets): array {
@@ -72,13 +70,13 @@ function iotClusterMqttChecks(Closure $request, array $evidence, array $command,
         return json_decode($lines[count($lines) - 1], true, 16, JSON_THROW_ON_ERROR);
     };
     // Closure捕获端口表的引用，确保启动后新节点对所有客户端可见。
-    $spawn = static function (string $mode, array $created, string $node) use ($root, $environment, $base, &$ports, $devices, $evidence, $servicePassword, &$clients): array {
+    $spawn = static function (string $mode, array $created, string $node) use ($root, $environment, $base, &$ports, $devices, $evidence, &$applications, &$clients): array {
         $gate = $base . '/cluster-client-' . bin2hex(random_bytes(6));
-        $fixture = ['credential' => $created['credential'], 'path' => $devices . '/' . $created['device']['id'], 'tenant' => $evidence['tenant'], 'token' => $evidence['token']];
+        $fixture = ['credential' => $created['credential'], 'path' => $devices . '/' . $created['device']['id'], 'tenant' => $evidence['tenant'], 'token' => $evidence['token'], 'application' => $applications[$created['device']['id']]];
         $client = new Process(['node', $root . '/tests/iot-lifecycle-mqtt.mjs', $mode], $root, array_replace(
             $environment,
             ['IOT_MQTT_PORT' => $ports[$node], 'TYPE_LIFECYCLE_FIXTURE' => json_encode($fixture, JSON_THROW_ON_ERROR),
-                'TYPE_LIFECYCLE_GATE' => $gate, 'TYPE_INGESTION_PASSWORD' => $servicePassword]
+                'TYPE_LIFECYCLE_GATE' => $gate]
         ));
         $clients[] = $client;
         return [$client, $gate];

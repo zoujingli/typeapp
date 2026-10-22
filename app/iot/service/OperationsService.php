@@ -20,19 +20,16 @@ final class OperationsService
      */
     public static function observe(Connection $connection, string $kind, string $node, string $run, array $metrics, bool $initial): void
     {
-        if (!in_array($kind, ['broker', 'ingestion'], true) || preg_match('/^[a-zA-Z0-9_-]{1,64}$/D', $node) !== 1
+        if ($kind !== 'broker' || preg_match('/^[a-zA-Z0-9_-]{1,64}$/D', $node) !== 1
             || preg_match('/^[a-f0-9]{32}$/D', $run) !== 1 || $connection->driverName() !== 'pgsql') {
             throw new \InvalidArgumentException('operations_observation_invalid');
         }
-        $allowed = $kind === 'broker'
-            ? ['connections', 'accepted', 'rejected', 'closed', 'stopping', 'observationFailures', 'subscriptions', 'bufferedBytes',
+        $allowed = ['connections', 'accepted', 'rejected', 'closed', 'stopping', 'observationFailures', 'subscriptions', 'bufferedBytes',
                 'deviceConnections', 'serviceConnections', 'maximumConnections', 'maximumDeviceConnections', 'maximumServiceConnections',
                 'incomingExchanges', 'outgoingExchanges', 'pendingCommits', 'durableCommits', 'rejectedCommits', 'unknownCommits', 'quarantinedCommits',
                 'connectionQuotaRefusals', 'packetQuotaRefusals', 'subscriptionQuotaRefusals', 'commitQuotaRefusals', 'flushTimeouts', 'handshakeTimeouts',
                 'nodeGeneration', 'nodePending', 'nodeFailures', 'pendingFences', 'invalidationFailures', 'invalidationPending',
-                'disconnected', 'disconnectFailures', 'disconnectPending', 'terminated', 'terminationFailures', 'terminationPending', 'retainedCleared', 'retainClearFailures', 'retainClearPending', 'quotaRevision', 'quotaFailures', 'handshakeCaReloads', 'handshakeCaFailures', 'processMemoryBytes', 'processPeakMemoryBytes']
-            : ['received', 'accepted', 'rejected', 'discarded', 'acknowledged', 'observed', 'pending', 'quarantined', 'running',
-                'receiptCount', 'receiptLatencyTotalMs', 'receiptLatencyMaximumMs'];
+                'disconnected', 'disconnectFailures', 'disconnectPending', 'terminated', 'terminationFailures', 'terminationPending', 'retainedCleared', 'retainClearFailures', 'retainClearPending', 'quotaRevision', 'quotaFailures', 'handshakeCaReloads', 'handshakeCaFailures', 'processMemoryBytes', 'processPeakMemoryBytes'];
         $values = [];
         foreach ([...$allowed, 'uptimeMs'] as $key) {
             $value = $metrics[$key] ?? null;
@@ -76,29 +73,14 @@ final class OperationsService
         $access = RoleService::readContext($identity, 'admin', '', 'operations.read');
         $now = time();
         $nodes = [];
-        foreach ($connection->table('iot_runtime_metrics')->orderBy('kind')->orderBy('node_id')->limit(64)->get() as $row) {
+        foreach ($connection->table('iot_runtime_metrics')->where('kind', '=', 'broker')->orderBy('node_id')->limit(64)->get() as $row) {
             $metrics = json_decode($row['metrics_json'], true, 16, JSON_THROW_ON_ERROR);
             $previous = $row['previous_json'] === null ? null : json_decode($row['previous_json'], true, 16, JSON_THROW_ON_ERROR);
             $elapsed = $previous === null ? 0.0 : ((float) $metrics['uptimeMs'] - (float) $previous['uptimeMs']) / 1000.0;
-            $state = ($row['kind'] === 'broker' ? $metrics['stopping'] : !$metrics['running']) ? 'stopped'
-                : ($now - (int) $row['observed_at'] >= 15 ? 'unreachable' : 'reporting');
-            $rate = null;
-            $latency = null;
-            $receipts = 0;
-            if ($row['kind'] === 'ingestion' && $elapsed > 0 && $state === 'reporting') {
-                $received = (int) $metrics['received'] - (int) $previous['received'];
-                $receipts = (int) $metrics['receiptCount'] - (int) $previous['receiptCount'];
-                if ($received >= 0) {
-                    $rate = (float) $received / $elapsed;
-                }
-                if ($receipts > 0 && $metrics['receiptLatencyTotalMs'] >= $previous['receiptLatencyTotalMs']) {
-                    $latency = ((float) $metrics['receiptLatencyTotalMs'] - (float) $previous['receiptLatencyTotalMs']) / (float) $receipts;
-                }
-            }
+            $state = $metrics['stopping'] ? 'stopped' : ($now - (int) $row['observed_at'] >= 15 ? 'unreachable' : 'reporting');
             $nodes[] = ['kind' => $row['kind'], 'node_id' => $row['node_id'], 'run_id' => $row['run_id'], 'state' => $state,
                 'observed_at' => (int) $row['observed_at'], 'expires_at' => (int) $row['observed_at'] + 15,
-                'interval_seconds' => $elapsed > 0 ? $elapsed : null, 'received_per_second' => $rate, 'receipt_latency_mean_ms' => $latency,
-                'receipt_samples' => $latency === null ? 0 : $receipts, 'metrics' => $metrics];
+                'interval_seconds' => $elapsed > 0 ? $elapsed : null, 'metrics' => $metrics];
         }
         $command = $mqttCommand === '' ? [] : json_decode($mqttCommand, true, 8, JSON_THROW_ON_ERROR);
         if (!is_array($command) || !array_is_list($command)) {
@@ -126,7 +108,7 @@ final class OperationsService
         }
         return ['scope' => 'platform', 'generated_at' => time(), 'freshness_seconds' => 15, 'nodes' => $nodes,
             'health' => ['http_alive' => true, 'durable_store_ready' => $persistent['state'] === 'unsupported' ? null : $persistent['state'] === 'available'],
-            'coverage' => 'observed_instances_only', 'latency_scope' => 'application_receive_to_receipt_publish_ack', 'store' => $persistent];
+            'coverage' => 'observed_instances_only', 'store' => $persistent];
     }
 
     private static function persistent(array $command, string $action): \Type\Mqtt\CommitResult
@@ -145,33 +127,21 @@ final class OperationsService
         return $result;
     }
 
-    /** 租户只获得自己的首次接收记录和有界设备页；设备投影沿用现有连接和实时遥测规则。 */
+    /** 客户仅取得当前租户的有界设备页；连接状态与授权完成情况分别展示，不解释载荷。 */
     public static function tenant(Connection $connection, Identity $identity, string $tenantId, int $page, int $perPage, array $filters): array
     {
         $access = RoleService::readContext($identity, 'customer', $tenantId, 'operations.read');
         $devices = DeviceService::observations($connection, $tenantId, $page, $perPage, $filters);
-        $freshness = IngestionService::freshness($connection, $tenantId, array_column($devices['items'], 'id'));
-        $now = time();
-        $records = $connection->query('SELECT COUNT(*) AS recorded, SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS rejected '
-            . 'FROM iot_ingestion WHERE tenant_id = ? AND received_at > ? AND received_at <= ?', ['rejected', $tenantId, $now - 60, $now])[0];
         $items = [];
         foreach ($devices['items'] as $device) {
-            $current = $freshness[$device['id']] ?? null;
-            if ($current === null || $current['ownership_id'] !== $device['ownership_id'] || $current['model_version'] !== (int) $device['model_version']) {
-                // 归属/模型已在分页之后改变，不能把两次快照拼成一台设备的当前事实。
-                continue;
-            }
             $items[] = ['id' => $device['id'], 'name' => $device['name'], 'lifecycle' => $device['lifecycle'],
                 'connection' => $device['connection'], 'authorization' => ['status' => $device['authorization']['status'],
-                    'requested_at' => $device['authorization']['requested_at'], 'completed_at' => $device['authorization']['completed_at']],
-                'current' => ['freshness' => $current['freshness'], 'received_at' => $current['received_at'], 'sampled_at' => $current['sampled_at']]];
+                    'requested_at' => $device['authorization']['requested_at'], 'completed_at' => $device['authorization']['completed_at']]];
         }
         $devices['items'] = $items;
         if ($access !== RoleService::readContext($identity, 'customer', $tenantId, 'operations.read')) {
             throw new HttpError(403, 'authorization_changed');
         }
-        return ['scope' => 'tenant', 'generated_at' => $now, 'window_seconds' => 60,
-            'recorded' => (int) $records['recorded'], 'rejected' => (int) ($records['rejected'] ?? 0),
-            'recorded_per_second' => (float) $records['recorded'] / 60.0, 'devices' => $devices];
+        return ['scope' => 'tenant', 'generated_at' => time(), 'devices' => $devices];
     }
 }

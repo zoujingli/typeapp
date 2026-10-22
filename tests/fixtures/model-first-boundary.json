@@ -116,49 +116,13 @@
             "owner": "app\\iot\\service\\ProductService::change",
             "method": "table",
             "argument": "'iot_models'",
-            "reason": "在产品删除事务内清理未发布物模型版本；真实身份是三列复合主键。"
-        },
-        {
-            "owner": "app\\iot\\service\\ProductService::models",
-            "method": "table",
-            "argument": "'iot_models'",
-            "reason": "物模型版本按租户、产品和版本三列身份读取，当前 Model 不表达复合主键。"
-        },
-        {
-            "owner": "app\\iot\\service\\ProductService::createModel",
-            "method": "table",
-            "argument": "'iot_products'",
-            "reason": "同一授权事务内只分配 next_model_version，不改变产品公开 version。"
-        },
-        {
-            "owner": "app\\iot\\service\\ProductService::createModel",
-            "method": "table",
-            "argument": "'iot_models'",
-            "reason": "分配永久版本后写入三列复合键物模型快照。"
-        },
-        {
-            "owner": "app\\iot\\service\\ProductService::changeModel",
-            "method": "table",
-            "argument": "'iot_models'",
-            "reason": "对已限定租户、产品和版本的单一快照编辑、发布或删除。"
-        },
-        {
-            "owner": "app\\iot\\service\\ProductService::findModel",
-            "method": "table",
-            "argument": "'iot_models'",
-            "reason": "按真实三列复合键读取不可变物模型快照。"
+            "reason": "分类删除前核对三列复合身份的历史物模型引用，保全原件。"
         },
         {
             "owner": "app\\iot\\service\\ProductService::failure",
             "method": "table",
             "argument": "'customer_members'",
             "reason": "尚未授权时不建立可信租户上下文，仅确认拒绝审计的成员归属。"
-        },
-        {
-            "owner": "app\\iot\\service\\ProductService::publishedModel",
-            "method": "connection_parameter",
-            "argument": "$connection: Type\\Orm\\Connection",
-            "reason": "接收、告警和转移在原有基础设施事务连接中读取已发布复合键快照，不另取租约。"
         },
         {
             "owner": "app\\common\\controller\\AuthController::me",

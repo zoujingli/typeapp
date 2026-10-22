@@ -210,7 +210,7 @@ export async function brokerResourceBrowser({ origin, dist: distArgument, base: 
     page.on('requestfailed', request => observedRequest(request, 'failed'));
     page.on('response', response => observedRequest(response.request(), 'response', response.status()));
     await bounded((async () => {
-      await login('device-owner'); const first = await enterTenant(tenant, '设备甲'); expect(first.items.length).toBe(2);
+      await login('device-owner'); const first = await enterTenant(tenant, '设备甲'); expect(first.items.length).toBe(3);
       for (const [value, label] of [['nodes', '节点'], ['connections', '连接'], ['sessions', '会话'], ['subscriptions', '订阅'], ['retained', '保留消息'], ['backlog', '积压']]) {
         const data = await choose(value, label); expect(data.items.length).toBeGreaterThan(0); expect(data.total).toBeNull();
         if (['connections', 'sessions', 'subscriptions'].includes(value)) for (const item of data.items) expect(item.resource_scope).toBe(`iot:${tenant}`);
@@ -220,7 +220,7 @@ export async function brokerResourceBrowser({ origin, dist: distArgument, base: 
       report.cases.push('real-six-resource-lists-scoped-metadata-and-readonly-mask-close-details');
       await choose('connections', '连接'); await page.getByLabel('客户标识筛选').fill('browser-empty-resource');
       expect((await query(/^查\s*询$/, { params: { client_id: 'browser-empty-resource' } })).items).toEqual([]); await screenshot('empty');
-      expect((await query(/^重\s*置$/)).items.length).toBe(2); await expect(page.getByLabel('客户标识筛选')).toHaveValue('');
+      expect((await query(/^重\s*置$/)).items.length).toBe(3); await expect(page.getByLabel('客户标识筛选')).toHaveValue('');
       await page.getByLabel('客户标识筛选').fill(fixture.second.credential.client_id);
       const filtered = await query(/^查\s*询$/, { params: { client_id: fixture.second.credential.client_id } }); expect(filtered.items.map(item => item.client_id)).toEqual([fixture.second.credential.client_id]);
       await query(/^重\s*置$/); report.cases.push('real-exact-filter-empty-reset');
@@ -252,20 +252,19 @@ export async function brokerResourceBrowser({ origin, dist: distArgument, base: 
         await expect(rows()).toHaveCount(20);
       } finally { releasePagination(); await paginationDone; await page.unroute(pollingPage, delayPagination); cancelDelay = undefined; if (paginationFailure) throw paginationFailure; }
       report.cases.push('real-background-refresh-does-not-drop-pagination');
-      expect(browserFixture?.long_filter?.length).toBeGreaterThan(200);
-      const longPrefix = browserFixture.long_filter.slice(0, 120);
+      expect(browserFixture?.exact_filter).toMatch(/^iot\/[a-f0-9]{32}\/devices\/[a-f0-9]{32}\/epochs\/[a-f0-9]{32}\/raw\/up$/);
+      const longPrefix = browserFixture.exact_filter;
       let longRow = rows().filter({ hasText: longPrefix });
       if (!await longRow.count()) { await query('下一页', { cursor: subscriptions.next_cursor, page: 2 }); longRow = rows().filter({ hasText: longPrefix }); }
-      await openDetail(longRow); await expect(drawer()).toContainText(browserFixture.long_filter); await screenshot('long-detail'); await closeDetail();
-      report.cases.push('real-default-20-row-stable-next-previous-and-long-shared-filter');
+      await openDetail(longRow); await expect(drawer()).toContainText(browserFixture.exact_filter); await screenshot('exact-topic-detail'); await closeDetail();
+      report.cases.push('real-default-20-row-stable-next-previous-and-exact-device-topic');
       const dark = async enabled => {
         if (await page.locator('html').evaluate(element => element.classList.contains('dark')) !== enabled) await page.getByRole('button', { name: enabled ? 'dark' : 'light', exact: true }).click();
         if (enabled) await expect(page.locator('html')).toHaveClass(/dark/); else await expect(page.locator('html')).not.toHaveClass(/dark/);
       };
       await dark(true); await screenshot('dark'); await dark(false); await screenshot('light');
-      await page.getByRole('button', { name: '主题色', exact: true }).click();
-      await page.getByLabel('主题色', { exact: true }).first().click(); await page.getByText('紫罗兰', { exact: true }).last().click();
-      await page.getByRole('heading', { name: 'Broker 资源', exact: true }).click();
+      await page.getByTitle('偏好设置', { exact: true }).click(); await page.getByText('外观', { exact: true }).click();
+      await page.getByText('紫罗兰', { exact: true }).click(); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.setViewportSize({ width: 390, height: 844 }); await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
       await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeInViewport();
       const fields = await page.locator('.search-card .crud-search-field').count();
@@ -294,7 +293,10 @@ export async function brokerResourceBrowser({ origin, dist: distArgument, base: 
       await expect(drawer().getByText('观察已过期，当前未知', { exact: true }).first()).toBeVisible();
       await screenshot('offline-detail'); await closeDetail();
       await expect(page.getByRole('alert').filter({ hasText: '资源刷新失败' })).toContainText('网络连接失败');
-      await expect(page.getByText('观察已过期，当前连接和投递状态未知', { exact: true })).toBeVisible();
+      // 节点快照可能先到期；详情已过期不能证明整个列表的 15 秒观察期也已结束。
+      report.observations.offline = { list_observed_at: fresh.observed_at, detail_observed_at: snapshot.observed_at,
+        detail_expires_at: snapshot.item.broker_expires_at ?? snapshot.item.expires_at ?? null };
+      await expect(page.getByText('观察已过期，当前连接和投递状态未知', { exact: true })).toBeVisible({ timeout: 22000 });
       await expect(rows().first()).toContainText('观察已过期，当前未知'); await screenshot('offline-expired');
       await context.setOffline(false); const restored = await query(); expect(restored.observed_at).toBeGreaterThan(fresh.observed_at);
       await expect(page.getByRole('alert').filter({ hasText: '资源刷新失败' })).toHaveCount(0);
@@ -307,11 +309,11 @@ export async function brokerResourceBrowser({ origin, dist: distArgument, base: 
       try { await delay(5500, undefined, { signal: stop.signal }); expect(hiddenRequests).toBe(0); }
       finally { page.off('request', countHidden); await page.evaluate(() => { delete document.visibilityState; document.dispatchEvent(new Event('visibilitychange')); }); }
       await query(); report.cases.push('simulated-visibility-event-stops-polling-and-resumes-real-requests');
-      const switched = await enterTenant(otherTenant, '设备乙'); expect(switched.items.length).toBe(1);
+      const switched = await enterTenant(otherTenant, '设备乙'); expect(switched.items.length).toBe(2);
       expect(switched.items.every(item => item.resource_scope === `iot:${otherTenant}`)).toBe(true);
       expect(switched.items.some(item => first.items.some(previous => previous.client_id === item.client_id))).toBe(false);
       await expect(page.getByLabel('客户标识筛选')).toHaveValue(''); await screenshot('tenant-b');
-      await login('device-reader'); expect((await enterTenant(tenant, '设备甲')).items.length).toBe(2);
+      await login('device-reader'); expect((await enterTenant(tenant, '设备甲')).items.length).toBe(3);
       expect((await browserApi(`/customer/tenants/${otherTenant}/broker/resources/connections`, otherTenant)).status).toBe(403);
       expect((await browserApi('/admin/broker/resources/connections')).status).toBe(401);
       await expect(page.getByRole('link', { name: 'Broker 审计', exact: true })).toHaveCount(0);
@@ -325,7 +327,7 @@ export async function brokerResourceBrowser({ origin, dist: distArgument, base: 
       expect((await browserApi(`${tenantPath}/connections`, tenant)).status).toBe(403); await screenshot('no-membership');
       await login('same-login', 'admin'); expect((await browserApi(`${tenantPath}/connections`, tenant)).status).toBe(401);
       prefix = '/admin/broker/resources'; resource = 'connections'; await navigate('/admin/broker');
-      const platform = await query(); expect(platform.items.length).toBe(4); await screenshot('platform');
+      const platform = await query(); expect(platform.items.length).toBe(5); await screenshot('platform');
       await navigate('/admin/customers');
       await page.getByLabel('登录账号筛选', { exact: true }).fill('device-owner');
       await actionResponse(response => new URL(response.url()).pathname === '/admin/customers' && new URL(response.url()).searchParams.get('search') === 'device-owner',
@@ -339,7 +341,7 @@ export async function brokerResourceBrowser({ origin, dist: distArgument, base: 
       expect(simulation.status()).toBe(200); const simulated = (await simulation.json()).data;
       simulatedToken = simulated.accessToken; secrets.push(simulatedToken); report.cleanup.simulation = false;
       await page.waitForURL('**/#/tenants');
-      expect((await enterTenant(tenant, '设备甲')).items.length).toBe(2);
+      expect((await enterTenant(tenant, '设备甲')).items.length).toBe(3);
       const simulatedIdentity = (await browserApi('/customer/auth/me', tenant)).body.data.identity;
       await expect(page.locator('.impersonation-banner')).toContainText('模拟登录中');
       expect((await browserApi('/admin/broker/resources/connections')).status).toBe(401);
@@ -555,7 +557,8 @@ export async function brokerAuditBrowser({ page, baseUrl, base: baseArgument, fi
     await inspect(item.id);
     const dark = async enabled => { if (await page.locator('html').evaluate(element => element.classList.contains('dark')) !== enabled) { await close(); await page.getByRole('button', { name: enabled ? 'dark' : 'light', exact: true }).click(); await open(item.id); } await expect(page.locator('html')).toHaveClass(enabled ? /dark/ : /^(?!.*\bdark\b)/); };
     await dark(true); await screenshot('dark-detail'); await dark(false); await screenshot('light-detail'); await close();
-    await page.getByRole('button', { name: '主题色', exact: true }).click(); await page.getByLabel('主题色', { exact: true }).first().click(); await page.getByText('紫罗兰', { exact: true }).last().click(); await page.getByRole('heading', { name: '租户 Broker 审计', exact: true }).click();
+    await page.getByTitle('偏好设置', { exact: true }).click(); await page.getByText('外观', { exact: true }).click();
+    await page.getByText('紫罗兰', { exact: true }).click(); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 }); await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
     await expect.poll(() => page.locator('.audit-search-card .crud-search-grid').evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length)).toBe(1);
     await open(item.id); await expect(drawer()).toContainText(fixture.long_text); await expect.poll(() => drawer().locator('.ant-drawer-body').evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1); await screenshot('mobile-purple-long-detail'); await close(); await page.setViewportSize({ width: 1440, height: 1000 });

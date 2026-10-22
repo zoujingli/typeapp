@@ -57,9 +57,8 @@ try {
     await screenshot('recovery-desktop-isolated-dark'); await close();
     await goto(`/devices/${fixture.devices.isolated}`);
     await expect(page.getByText('恢复后尚未核对设备当前授权与归属，接入、控制和变更保持隔离。请联系恢复核对负责人。')).toBeVisible();
-    await expect(page.getByRole('button', { name: '切换模型', exact: true })).toBeDisabled();
-    const modelButton = page.getByRole('button', { name: '发起指令', exact: true });
-    if (await modelButton.count()) await expect(modelButton).toBeDisabled();
+    await expect(page.getByRole('button', { name: '切换模型', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '发起指令', exact: true })).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
     await screenshot('recovery-mobile-isolated-dark');
@@ -101,9 +100,10 @@ try {
   await page.setViewportSize({ width: 390, height: 844 }); await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390); await screenshot('lifecycle-mobile-retired-dark'); await close();
   await page.getByRole('button', { name: 'light', exact: true }).click(); await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
   await page.getByTitle('偏好设置', { exact: true }).click(); await page.getByText('外观', { exact: true }).click(); await page.getByText('紫罗兰', { exact: true }).click(); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
-  await manage(fixture.devices.main); await screenshot('lifecycle-mobile-retired-light-purple'); await body().evaluate(el => { el.scrollTop = el.scrollHeight; }); await expect(body().getByText('设备已永久退役，不提供恢复或硬删除。保留期内历史仍可按原权限查询。')).toBeInViewport(); await close(); await page.setViewportSize({ width: 1440, height: 1000 });
-  await rowAction(fixture.devices.main, '历史'); await expect(page.getByText('当前保留 1 条', { exact: false })).toBeVisible(); await goto('/devices');
-  report.cases.push('disable-revoke-enable-does-not-revive-retire-terminal-original-history-long-name-theme-mobile');
+  await manage(fixture.devices.main); await screenshot('lifecycle-mobile-retired-light-purple'); await body().evaluate(el => { el.scrollTop = el.scrollHeight; }); await expect(body().getByText('设备已永久退役，不提供恢复或硬删除。历史原件由升级备份与运维记录保全。')).toBeInViewport(); await close(); await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(page.getByRole('button', { name: '历史', exact: true })).toHaveCount(0);
+  await rowAction(fixture.devices.main, '通信详情'); await expect(page.getByText('原始通信', { exact: true })).toBeVisible(); await goto('/devices');
+  report.cases.push('disable-revoke-enable-does-not-revive-retire-terminal-raw-communication-no-history-entry-long-name-theme-mobile');
 
   await manage(fixture.devices.lost); await prepare('轮换凭据', fixture.devices.lost); let lostCalls = 0; let lostSecret = '';
   await page.route(`**/devices/${fixture.devices.lost}/rotate`, async route => { lostCalls++; const response = await route.fetch(); lostSecret = (await response.json()).data.credential.password; await route.abort('failed'); });

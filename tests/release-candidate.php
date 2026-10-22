@@ -99,9 +99,11 @@ if ($operation === 'prepare') {
             if (in_array('mqtt', $features, true)) {
                 $checks['mqtt'] = ['tests/broker-access.php', $candidate, $driver, '--tls'];
             }
-            foreach (['alerts' => '--alarms', 'exports' => '--exports'] as $feature => $flag) {
-                if (in_array($feature, $features, true)) {
-                    $checks[$feature] = ['tests/iot-identity.php', $candidate, $driver, '--devices', $flag];
+            if (in_array('iot', $features, true)) {
+                $checks['iot'] = ['tests/iot-identity.php', $candidate, $driver,
+                    '--products', '--devices', '--enrollments', '--applications', '--reassignments'];
+                if ($driver === 'pgsql' && in_array('mqtt', $features, true)) {
+                    $checks['iot-communication'] = ['tests/iot-device-mqtt.php', $candidate, '--communication-mqtt'];
                 }
             }
             if (in_array('scheduler', $features, true)) {

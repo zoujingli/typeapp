@@ -8,7 +8,7 @@ use Type\Orm\Attribute\Column;
 use Type\Orm\Attribute\Table;
 use Type\Orm\Model;
 
-/** 租户产品资料；物模型的永久编号与产品资料版本分别管理。 */
+/** 租户产品分类资料；历史模型编号字段仅保全原件，不再由业务入口分配。 */
 #[Table('iot_products', generatedPrimary: false, version: 'version', createdAt: 'created_at', updatedAt: 'updated_at')]
 final class Product extends Model
 {

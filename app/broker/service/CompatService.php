@@ -13,7 +13,7 @@ use Type\Orm\Connection;
 final class CompatService
 {
     /** 本应用能维持的管理/会话语义代次；与 037 恢复核对及占用、CRL 粘性等表同时生效。 */
-    public const EPOCH = 20;
+    public const EPOCH = 21;
     /** 写入兼容行的管理迁移版本；与 Schema 中的 037 保持同一字面量。 */
     public const HEAD = '037_broker_recovery';
 

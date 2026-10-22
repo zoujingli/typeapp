@@ -739,42 +739,21 @@ try {
       const response = await context.request.fetch(`${url}${path}`, { method, data, headers: { Authorization: `Bearer ${ownerToken}`, 'X-Tenant-Id': tenant.id } });
       expect(response.status()).toBe(status); const body = await response.json(); return body.data || body;
     };
-    const products = `/customer/tenants/${tenant.id}/products`;
-    const product = await deviceApi('POST', products, { name: '设备验收产品', description: '' }, 201);
-    await deviceApi('POST', `${products}/${product.id}/models`, { definition: { properties: [{ identifier: 'temperature', name: '温度', type: 'number', required: true, unit: '°C' }], events: [], commands: [] } }, 201);
-    await deviceApi('POST', `${products}/${product.id}/models/1/publish`, { version: 1 });
     const path = `/customer/tenants/${tenant.id}/devices`;
     await page.goto(`${url}/#/devices`); await expect(page.getByText('暂无符合条件的设备')).toBeVisible();
+    await expect(page.getByRole('button', { name: '注册设备', exact: true })).toHaveCount(0);
     await screenshot('devices-empty');
-    await page.getByRole('button', { name: '注册设备', exact: true }).click();
     const name = '长名称设备资产-'.repeat(3);
-    await drawer().getByLabel('设备名称', { exact: true }).fill(name);
-    await drawer().getByLabel('绑定产品', { exact: true }).click();
-    await page.getByTitle('设备验收产品', { exact: true }).click();
-    await drawer().getByLabel('模型版本', { exact: true }).click();
-    await page.getByTitle('版本 1 · 已发布', { exact: true }).click();
-    let release; let writes = 0;
-    const held = new Promise(resolve => { release = resolve; });
-    await page.route(`**${path}`, async route => { if (route.request().method() === 'POST') { writes++; await held; } await route.continue(); });
-    const creating = perform('POST', path, () => drawer().getByRole('button', { name: '注册并生成凭据', exact: true }).click(), 201); creating.catch(() => {});
-    try {
-      await expect.poll(() => writes).toBe(1);
-      await expect(drawer().getByRole('button', { name: /^取\s*消$/ })).toBeDisabled();
-      await expect(drawer().locator('.ant-drawer-footer .ant-btn-primary')).toHaveClass(/ant-btn-loading/);
-      await drawer().locator('.ant-drawer-footer .ant-btn-primary').click();
-      expect(writes).toBe(1);
-    } finally { release(); }
-    const created = await creating; await page.unroute(`**${path}`); expect(writes).toBe(1);
+    const grant = await api('POST', '/admin/device-authorizations', { id: crypto.randomUUID().replaceAll('-', ''), tenant_id: tenant.id, name: '页面设备资格', capacity: 1, register_expires_at: Math.floor(Date.now() / 1000) + 3600 }, 201);
+    const registration = await context.request.post(`${url}/public/devices/register`, { data: { id: crypto.randomUUID().replaceAll('-', ''), tenant_id: tenant.id, device_id: crypto.randomUUID().replaceAll('-', ''), name, code: grant.code } });
+    expect(registration.status()).toBe(201); const created = (await registration.json()).data;
     generatedSecrets.push(created.credential.password);
-    await expect(drawer().getByText(created.credential.password, { exact: true })).toBeVisible();
-    // 凭据截图先关闭秘密抽屉；不把一次性密码保存到验收图片或报告。
-    await drawer().getByRole('button', { name: '已保存，关闭', exact: true }).click();
-    await expect(page.locator('.ant-drawer-open')).toHaveCount(0);
+    await perform('GET', path, () => page.getByRole('button', { name: /^刷\s*新$/ }).click());
     await rowAction(name, '详情'); await expect(drawer().getByText(created.device.id, { exact: true })).toBeVisible();
     await expect(drawer().getByText(created.credential.password, { exact: true })).toHaveCount(0);
     await expect(drawer().locator('.ant-drawer-footer .ant-btn-primary')).toHaveCount(0);
     await screenshot('device-detail-light'); await close();
-    report.cases.push('客户页面登记防重复、独立凭据仅本次显示、详情不含秘密和只读抽屉');
+    report.cases.push('控制端资格与公开注册创建设备、客户没有人工登记入口、详情不含秘密和只读抽屉');
     await login('/admin/login', adminPassword, '平台管理端'); await page.goto(`${url}/#/admin/devices`);
     await expect(page.getByRole('heading', { name: '设备资产', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '注册设备', exact: true })).toHaveCount(0);
@@ -836,7 +815,7 @@ try {
     report.cases.push('客户只读按钮与详情、实际撤权清除设备数据和菜单');
   }
   if (!deviceFocus) {
-  const productTenant = await api('POST', '/admin/tenants', { id: crypto.randomUUID().replaceAll('-', ''), name: '页面产品租户', new_customer: true, owner_login: 'browser-products', owner_name: '产品管理员', owner_password: customerPassword });
+  const productTenant = await api('POST', '/admin/tenants', { id: crypto.randomUUID().replaceAll('-', ''), name: '页面产品租户', new_customer: true, owner_login: 'browser-products', owner_name: '产品分类员', owner_password: customerPassword });
   await login('/login', customerPassword, '物联中心用户端', 'browser-products');
   const productOwnerToken = await page.evaluate(() => sessionStorage.getItem('typeapp.customer.token'));
   const productApi = async (method, path, data, status = 200, scope = productTenant.id) => {
@@ -849,7 +828,7 @@ try {
   await page.getByRole('button', { name: '创建产品', exact: true }).click();
   const productName = '页面长名称产品-'.repeat(3);
   await drawer().getByLabel('产品名称', { exact: true }).fill(productName);
-  await drawer().getByLabel('产品说明', { exact: true }).fill('摄氏版本必须保留历史含义\n新版本采用华氏单位');
+  await drawer().getByLabel('产品说明', { exact: true }).fill('办公区传感器分类\n分类不改变通信主题或授权');
   let releaseProduct; let productWrites = 0;
   const heldProduct = new Promise(resolve => { releaseProduct = resolve; });
   await page.route(`**${productPath}`, async route => { if (route.request().method() === 'POST') { productWrites++; await heldProduct; } await route.continue(); });
@@ -873,31 +852,9 @@ try {
   await rowAction(productName, '详情');
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await screenshot('product-detail-dark-narrow'); await close(); await page.setViewportSize({ width: 1440, height: 1000 });
-  await rowAction(productName, '物模型');
-  await expect(page.getByText('此产品尚无物模型版本')).toBeVisible();
-  await page.getByRole('button', { name: '创建草稿', exact: true }).click();
-  await drawer().getByRole('button', { name: '添加属性（0/64）' }).click();
-  await drawer().getByLabel('属性1字段标识').fill('bad.field');
-  await drawer().getByLabel('属性1字段名称').fill('温度');
-  await drawer().getByLabel('属性1计量单位').fill('°C');
-  const modelsPath = `${productPath}/${product.id}/models`;
-  await save('POST', modelsPath, 422);
-  await expect(drawer().getByRole('alert')).toContainText('须以字母开头');
-  await expect(drawer().getByLabel('属性1字段名称')).toHaveValue('温度');
-  await drawer().getByLabel('属性1字段标识').fill('temperature');
-  await screenshot('model-editor-dark');
-  await save('POST', modelsPath, 201);
-  await rowAction('1', '发布');
-  await perform('POST', `${modelsPath}/1/publish`, () => page.getByRole('dialog').getByRole('button', { name: '发布版本', exact: true }).click());
-  await rowAction('1', '详情'); await expect(drawer().getByLabel('属性1计量单位')).toHaveValue('°C');
-  await expect(drawer().getByLabel('属性1计量单位')).toBeDisabled(); await close();
-  await rowAction('1', '复制草稿'); await drawer().getByLabel('属性1计量单位').fill('°F');
-  await save('POST', modelsPath, 201); await rowAction('2', '发布');
-  await perform('POST', `${modelsPath}/2/publish`, () => page.getByRole('dialog').getByRole('button', { name: '发布版本', exact: true }).click());
-  expect((await productApi('GET', `${modelsPath}/1`)).definition.properties[0].unit).toBe('°C');
-  await productApi('PATCH', `${modelsPath}/1`, { version: 2, definition: { properties: [], events: [], commands: [] } }, 409);
-  await page.getByRole('button', { name: 'light', exact: true }).click(); await screenshot('model-versions-light');
-  report.cases.push('新工作区产品创建防重复、资料冲突保留、模型字段错误保留、发布冻结及复制新单位保留精确旧版本');
+  await expect(row(productName).getByRole('button', { name: '物模型', exact: true })).toHaveCount(0);
+  await productApi('GET', `${productPath}/${product.id}/models`, undefined, 404);
+  report.cases.push('分类创建防重复、资料冲突保留、亮暗窄屏详情、物模型入口已退出');
   await page.goto(`${url}/#/products`);
   await page.getByLabel('产品名称筛选').fill('not-matching-product');
   await perform('GET', productPath, () => page.getByRole('button', { name: /^查\s*询$/ }).click());
@@ -929,19 +886,19 @@ try {
   await login('/login', customerPassword, '物联中心用户端', 'browser-product-reader');
   await page.goto(`${url}/#/products`); await expect(row(productName)).toBeVisible();
   await expect(page.getByRole('button', { name: '创建产品', exact: true })).toHaveCount(0);
-  await rowAction(productName, '物模型');
-  await expect(page.getByRole('button', { name: '创建草稿', exact: true })).toHaveCount(0);
+  await expect(row(productName).getByRole('button', { name: '编辑', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'dark', exact: true }).click(); await page.setViewportSize({ width: 390, height: 844 });
-  await rowAction('1', '详情');
-  await expect(drawer().getByLabel('属性1计量单位')).toHaveValue('°C');
+  await rowAction(productName, '详情');
+  await expect(drawer()).toContainText(productName);
+  await expect(drawer().getByRole('textbox')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-  await screenshot('model-readonly-dark-narrow'); await close(); await page.setViewportSize({ width: 1440, height: 1000 });
+  await screenshot('product-readonly-dark-narrow'); await close(); await page.setViewportSize({ width: 1440, height: 1000 });
   await productApi('PUT', `/customer/roles/${productReaderRole.id}/permissions`, { version: 2, permissions: ['identity.read'] });
   await page.getByRole('button', { name: /^刷\s*新$/ }).click();
   await expect(page).toHaveURL(/#\/tenants$/);
-  await expect(page.locator('.ant-menu-item').filter({ hasText: '产品管理' })).toHaveCount(0);
+  await expect(page.locator('.ant-menu-item').filter({ hasText: '产品分类' })).toHaveCount(0);
   await screenshot('products-revoked');
-  report.cases.push('产品只读菜单不授予变更、精确历史详情、亮暗及390px长文本、实际撤权清除模型与菜单');
+  report.cases.push('分类只读菜单不授予变更、详情亮暗及390px长文本、实际撤权清除分类与菜单');
   }
   await login('/admin/login', adminPassword, '平台管理端');
   await login('/login', customerPassword, '物联中心用户端');

@@ -129,8 +129,8 @@ final class ReleaseTest extends TestCase
         $record = [
             'protocol' => 2, 'delivery' => 'single-executable', 'status' => 'passed', 'source' => $source,
             'version' => $version, 'platform' => 'linux-x64', 'profile' => $profile, 'database' => $profile,
-            'profile-facts' => ['name' => $profile, 'database' => $profile, 'features' => ['alerts', 'redis'], 'rejected-capabilities' => \Type\Build\BuildProfile::rejectedCapabilities(['database' => 'mysql', 'features' => ['alerts', 'redis']])],
-            'features' => ['alerts', 'redis'],
+            'profile-facts' => ['name' => $profile, 'database' => $profile, 'features' => ['iot', 'redis'], 'rejected-capabilities' => \Type\Build\BuildProfile::rejectedCapabilities(['database' => 'mysql', 'features' => ['iot', 'redis']])],
+            'features' => ['iot', 'redis'],
             'runtime-extensions' => ['pdo_mysql', 'redis'], 'static-archives' => ['libphp.a', 'libmysql.a'],
             'system-libraries' => ['libc.so.6'], 'file' => $name, 'sha256' => $sha, 'bytes' => filesize($root . '/' . $name),
             'artifact-sha256' => $sha, 'build-id' => str_repeat('b', 64), 'frontend-manifest-sha256' => str_repeat('f', 64),
@@ -140,7 +140,7 @@ final class ReleaseTest extends TestCase
             'sdk-manifest-sha256' => str_repeat('d', 64), 'acceptance' => [
                 $profile => ['status' => 'passed', 'driver' => $profile, 'frontend-source-removed' => true, 'runtime-profile-enforced' => true,
                     'single-executable-only' => true, 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('c', 64),
-                    'business' => ['alerts' => ['status' => 'passed', 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('e', 64)]]],
+                    'business' => ['iot' => ['status' => 'passed', 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('e', 64)]]],
             ],
             'rebuild' => ['protocol' => 1, 'source' => $source, 'version' => $version, 'platform' => 'linux-x64',
                 'file' => $material, 'sha256' => hash_file('sha256', $root . '/' . $material), 'bytes' => filesize($root . '/' . $material),
@@ -157,7 +157,7 @@ final class ReleaseTest extends TestCase
                 ['static-archives' => []],
                 ['system-libraries' => []],
                 ['acceptance' => [$profile => array_replace($record['acceptance'][$profile], ['business' => []])]],
-                ['acceptance' => [$profile => array_replace($record['acceptance'][$profile], ['business' => ['alerts' => ['status' => 'passed', 'artifact-sha256' => str_repeat('f', 64), 'log-sha256' => str_repeat('e', 64)]]])]],
+                ['acceptance' => [$profile => array_replace($record['acceptance'][$profile], ['business' => ['iot' => ['status' => 'passed', 'artifact-sha256' => str_repeat('f', 64), 'log-sha256' => str_repeat('e', 64)]]])]],
             ] as $change) {
                 $broken = array_replace($record, $change);
                 try {

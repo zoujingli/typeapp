@@ -7,9 +7,8 @@ function iotLifecycleChecks(Closure $request, array $tokens, string $tenantA, st
 {
     $path = '/customer/tenants/' . $tenantA . '/devices';
     $admin = $tokens['bob'];
-    $newDevice = static function (string $name) use ($request, $path, $admin, $tenantA, $evidence): array {
-        return $request('POST', $path, $admin, $tenantA, ['name' => $name, 'product_id' => $evidence['device']['product_id'], 'model_version' => 1], 201)['data'];
-    };
+    require_once __DIR__ . '/iot-communication-fixture.php';
+    $newDevice = static fn (string $name): array => iotRegisteredFixture($request, $evidence['platform_token'], $tenantA, $name);
     $created = $newDevice('轮换测试');
     $id = $created['device']['id'];
     $payload = ['version' => 1, 'confirm_device_id' => $id];
@@ -129,53 +128,4 @@ function iotLifecycleChecks(Closure $request, array $tokens, string $tenantA, st
         $checks[] = 'current-device-version-after-row-lock';
     }
     return $checks;
-}
-
-/** 通过既有接收公共接口准备三库历史；网络认证与同步回执由TLS专项另外验证。 */
-function iotLifecycleHistory(array $registration, array $environment, string $base, string $sequence): array
-{
-    $driver = $environment['DB_DRIVER'];
-    $adapter = match ($driver) {
-        'mysql' => new Type\Orm\Mysql\MysqlDriver($environment['DB_HOST'], (int) $environment['DB_PORT'], $environment['DB_DATABASE'], $environment['DB_USERNAME'], $environment['DB_PASSWORD']),
-        'pgsql' => new Type\Orm\Pgsql\PgsqlDriver($environment['DB_HOST'], (int) $environment['DB_PORT'], $environment['DB_DATABASE'], $environment['DB_USERNAME'], $environment['DB_PASSWORD']),
-        default => new Type\Orm\Sqlite\SqliteDriver($base . '/identity.sqlite', 1000, true),
-    };
-    $pool = new Type\Orm\Database($adapter, 1, 1);
-    $scope = new Type\Runtime\ExecutionScope();
-    try {
-        $connection = $pool->connect($scope);
-        $device = $registration['device'];
-        $received = time() - 2;
-        $payload = json_encode(['app_version' => 1, 'type' => 'telemetry', 'device_id' => $device['id'], 'ownership_id' => $device['ownership_id'],
-            'model_version' => 1, 'sequence' => $sequence, 'sampled_at' => $received, 'values' => ['temperature' => 21.5]], JSON_THROW_ON_ERROR);
-        return $connection->transaction(static fn (Type\Orm\Connection $transaction): array => app\iot\service\IngestionService::accept(
-            $transaction,
-            $registration['credential']['topics']['publish'],
-            $payload,
-            1,
-            $received
-        ), $driver === 'sqlite' ? 'immediate' : 'default');
-    } finally {
-        $scope->close();
-        $pool->close();
-    }
-}
-
-/** 真实接收与退役业务组合，须独立验证遥测、生命周期与资源清理。 */
-function iotRetirementHistoryChecks(Closure $request, array $tokens, string $tenantA, string $tenantB, PDO $database, array $candidate, array $environment, string $base): void
-{
-    $admin = $tokens['bob'];
-    $path = '/customer/tenants/' . $tenantA . '/devices';
-    $deviceId = $candidate['device']['id'];
-    $fact = iotLifecycleHistory($candidate, $environment, $base, '1');
-    expect($fact['code'] === 'accepted', '退役前必须通过真实接收服务保存可查询历史');
-    $current = $request('GET', $path . '/' . $deviceId, $admin, $tenantA, null, 200)['data'];
-    $request('POST', $path . '/' . $deviceId . '/retire', $admin, $tenantA, ['version' => $current['version'], 'confirm_device_id' => $deviceId], 202);
-    $history = $request('GET', $path . '/' . $deviceId . '/history', $tokens['alice'], $tenantA, null, 200);
-    expect($history['total'] === 1 && $history['items'][0]['message_id'] === $fact['message_id']
-        && $history['items'][0]['ownership_id'] === $candidate['device']['ownership_id'], '退役后真实历史与原归属须继续保留');
-    $request('GET', '/customer/tenants/' . $tenantB . '/devices/' . $deviceId . '/history', $admin, $tenantB, null, 404, 'device_not_found');
-    $request('GET', $path . '/' . $deviceId . '/history', $tokens['platform'], $tenantA, null, 403, 'tenant_forbidden');
-    expect(iotLifecycleHistory($candidate, $environment, $base, '2')['code'] === 'device_unavailable', '退役后不得接纳新的业务事实');
-    expect($request('GET', $path . '/' . $deviceId . '/history', $tokens['alice'], $tenantA, null, 200)['total'] === 1, '被拒绝的新上报不得污染保留历史');
 }

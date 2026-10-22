@@ -91,7 +91,7 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
             return null;
         }
         if (!is_array($result['access_identity'] ?? null) || !is_string($result['resource_scope'] ?? null)
-            || preg_match('/^(?:iot:[a-f0-9]{32}|service:ingestion)$/D', $result['resource_scope']) !== 1) {
+            || preg_match('/^iot:[a-f0-9]{32}$/D', $result['resource_scope']) !== 1) {
             throw new RuntimeException('device_access_identity_invalid');
         }
         $identity = AccessIdentity::fromData($result['access_identity']);
@@ -115,7 +115,7 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
             return null;
         }
         if (!is_array($result['access_identity'] ?? null) || !is_string($result['resource_scope'] ?? null)
-            || preg_match('/^(?:iot:[a-f0-9]{32}|service:ingestion)$/D', $result['resource_scope']) !== 1) {
+            || preg_match('/^iot:[a-f0-9]{32}$/D', $result['resource_scope']) !== 1) {
             throw new RuntimeException('device_access_identity_invalid');
         }
         $identity = AccessIdentity::fromData($result['access_identity']);
@@ -302,14 +302,14 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
      * 当前应用的受控子进程入口；输入遵守父子共用固定预算、响应至多1KiB，数据库租约退出即归还。
      * 父进程负责三秒硬截止和不确定后端清理；客户端不能通过网络选择此角色。
      */
-    public static function work(DatabaseManager $database, string $serviceCredential = '', string $serviceVerifier = ''): void
+    public static function work(DatabaseManager $database): void
     {
-        CoroutineRuntime::run(static function () use ($database, $serviceCredential, $serviceVerifier): void {
-            self::workCurrent($database, $serviceCredential, $serviceVerifier);
+        CoroutineRuntime::run(static function () use ($database): void {
+            self::workCurrent($database);
         });
     }
 
-    private static function workCurrent(DatabaseManager $database, string $serviceCredential, string $serviceVerifier): void
+    private static function workCurrent(DatabaseManager $database): void
     {
         $line = fgets(STDIN, self::MAXIMUM_REQUEST_BYTES + 1);
         $request = is_string($line) && str_ends_with($line, "\n") ? json_decode($line, true, 8, JSON_THROW_ON_ERROR) : null;
@@ -320,7 +320,7 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
         Db::configure($database);
         $scope = new ExecutionScope(new Deadline(2.0));
         try {
-            $result = $scope->run(static function (ExecutionScope $current) use ($request, $serviceCredential, $serviceVerifier): array {
+            $result = $scope->run(static function (ExecutionScope $current) use ($request): array {
                 $connection = Db::connection('default', true);
                 DeviceUpgrade::ready($connection);
                 $connection->rawQuery("SELECT set_config('application_name', ?, false), set_config('statement_timeout', '1000', false), "
@@ -365,9 +365,7 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
                     if (str_starts_with($username, 'app:')) {
                         $result = ClientApplicationService::access($connection, $request);
                     } else {
-                        $result = str_starts_with($username, 'service:')
-                            ? self::serviceAccess($connection, $request, $serviceCredential, $serviceVerifier)
-                            : DeviceService::access($connection, $request);
+                        $result = DeviceService::access($connection, $request);
                     }
                 }
                 if (in_array($request['action'], ['heartbeat', 'stopped'], true) && is_array($request['metrics'] ?? null)) {
@@ -429,9 +427,10 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
             do {
                 if ($input !== '') {
                     $written = fwrite($pipes[0], substr($input, 0, 16384));
-                    if ($written === false || $written === 0) {
+                    if ($written === false) {
                         break;
                     }
+                    // 非阻塞写入 0 表示暂时写满；继续排空响应并在原截止内协作等待。
                     $input = substr($input, $written);
                 }
                 $chunk = fread($pipes[1], 1025);
@@ -489,61 +488,16 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
         return $data;
     }
 
-    /** 只接受设备、独立接入应用或现有上报消费 Client ID；其他值当成未识别。 */
+    /** 只接受设备或独立接入应用 Client ID；其他值当成未识别。 */
     private static function clientId(string $value): string
     {
-        return preg_match('/^(?:[a-f0-9]{32}|app:[a-f0-9]{32}|iot-ingestion-[a-z0-9][a-z0-9_-]{0,39})$/D', $value) === 1 ? $value : '';
+        return preg_match('/^(?:[a-f0-9]{32}|app:[a-f0-9]{32})$/D', $value) === 1 ? $value : '';
     }
 
     /** 人员账号不在协议用户名空间内，应用密钥与设备凭据分别验证。 */
     private static function username(string $value): string
     {
-        return preg_match('/^(?:[a-f0-9]{32}:[a-f0-9]{32}|app:[a-f0-9]{32}|service:ingestion:[a-f0-9]{32}|debug:[a-f0-9]{32})$/D', $value) === 1 ? $value : '';
+        return preg_match('/^(?:[a-f0-9]{32}:[a-f0-9]{32}|app:[a-f0-9]{32}|debug:[a-f0-9]{32})$/D', $value) === 1 ? $value : '';
     }
 
-    /** 服务凭据独立于设备；只授予上报消费与当前阶段下行，不改变任何设备的激活或连接观察。 */
-    private static function serviceAccess(Connection $connection, array $request, string $credential, string $verifier): array
-    {
-        $allowed = preg_match('/^[a-f0-9]{32}$/D', $credential) === 1 && preg_match('/^[a-f0-9]{64}$/D', $verifier) === 1
-            && $request['username'] === 'service:ingestion:' . $credential
-            && preg_match('/^iot-ingestion-[a-z0-9][a-z0-9_-]{0,39}$/D', $request['client_id']) === 1;
-        $action = $request['action'];
-        $identity = $allowed ? new AccessIdentity('service:ingestion', $credential, 1) : null;
-        if ($allowed && isset($request['access_identity'])) {
-            $allowed = is_array($request['access_identity']) && $identity->matches(AccessIdentity::fromData($request['access_identity']));
-        }
-        if ($allowed && $action === 'authenticate') {
-            $allowed = hash_equals($verifier, $request['verifier']) && $request['secure'] && $request['protocol'] === 5
-                && $request['keep_alive'] === 30 && $request['expiry'] === 86400;
-        } elseif ($allowed && $action === 'authorize') {
-            $topic = $request['topic'];
-            $operation = $request['operation'];
-            // Broker向策略传入已解析的实际过滤器，普通和共享均不能扩大服务职责。
-            if ($operation === 'subscribe' && $topic === 'iot/+/devices/+/epochs/+/up') {
-                return ['allowed' => true];
-            }
-            $parts = [];
-            $allowed = in_array($operation, ['publish', 'subscribe'], true)
-                && preg_match('#^iot/([a-f0-9]{32})/devices/([a-f0-9]{32})/epochs/([a-f0-9]{32})/(up|down)$#D', $topic, $parts) === 1;
-            if ($allowed) {
-                $device = $connection->table('iot_devices')->where('id', '=', $parts[2])->where('tenant_id', '=', $parts[1])
-                    ->where('ownership_id', '=', $parts[3])->where('lifecycle', '=', 'enabled')->where('recovery_verified', '=', 1)->first();
-                $allowed = $device !== null && $parts[4] === ($operation === 'publish' ? 'down' : 'up')
-                    && $connection->table('iot_tenants')->where('id', '=', $parts[1])->where('enabled', '=', 1)->first() !== null;
-            }
-        }
-        if (!$allowed) {
-            AuditLog::append($connection, null, 'mqtt-service', 'service.access_denied', 'ingestion', 'denied', ['reason' => 'service_forbidden'], 'customer');
-        }
-        if ($allowed && $action === 'connected' && isset($request['resource'])) {
-            if (($request['resource']['resource_scope'] ?? null) !== 'service:ingestion') {
-                throw new RuntimeException('device_resource_scope_changed');
-            }
-            ResourceObservations::connected($connection, $request['node_id'], $request['run_id'], $request['resource'], (int) $request['observed_at']);
-        } elseif ($action === 'disconnected') {
-            ResourceObservations::disconnected($connection, $request['node_id'], $request['run_id'], $request['owner_id']);
-        }
-        return ['allowed' => $allowed] + ($allowed && $action === 'authenticate'
-            ? ['access_identity' => $identity->data(), 'resource_scope' => 'service:ingestion'] : []);
-    }
 }

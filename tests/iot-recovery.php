@@ -124,14 +124,13 @@ function iotRecoveryFacts(PDO $connection): array
     return $facts;
 }
 
-/** 复用管理HTTP、TLS标准客户端和既有消费者建立非空恢复事实；退出全部业务角色后才允许备份取点。 */
+/** 通过注册资格、应用授权和 TLS 原始通信建立非空事实；全部写入角色退出后才允许备份取点。 */
 function iotRecoveryPhysicalSeed(array $command, array $environment, string $directory, PDO $database, array &$report, array &$context, string $phase = 'seed'): void
 {
-    require_once __DIR__ . '/native-rollout-redis.php';
+    require_once __DIR__ . '/iot-communication-fixture.php';
     $root = dirname(__DIR__);
     if ($phase !== 'seed') {
         $environment = array_replace($environment, $context['environment'], ['DB_PORT' => $environment['TYPE_PGSQL_PORT']]);
-        $servicePassword = $context['service_password'];
     } else {
         foreach (array_keys($environment) as $name) {
             if (str_starts_with($name, 'APP_') || str_starts_with($name, 'DB_') || str_starts_with($name, 'IOT_')) {
@@ -154,9 +153,6 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
         $environment['IOT_MQTT_MAXIMUM_SERVICE_CONNECTIONS'] = '4';
         $environment['IOT_MQTT_CERTIFICATE'] = 'certificate.pem';
         $environment['IOT_MQTT_PRIVATE_KEY'] = 'private.pem';
-        $servicePassword = bin2hex(random_bytes(32));
-        $environment['IOT_INGESTION_CREDENTIAL_ID'] = bin2hex(random_bytes(16));
-        $environment['IOT_INGESTION_SECRET_HASH'] = hash('sha256', $servicePassword);
         foreach (['APP_PORT', 'IOT_MQTT_PORT'] as $name) {
             $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $error);
             expect(is_resource($listener), '不能分配恢复事实验证端口');
@@ -165,8 +161,8 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
         }
         $environment['APP_ALLOWED_HOSTS'] = '127.0.0.1:' . $environment['APP_PORT'];
         $certificateConfiguration = $directory . '/certificate.cnf';
-        file_put_contents($certificateConfiguration, "[req]\ndistinguished_name=dn\nx509_extensions=server\n[dn]\n[server]\nsubjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\n");
-        $options = ['config' => $certificateConfiguration, 'private_key_bits' => 2048, 'digest_alg' => 'sha256'];
+        file_put_contents($certificateConfiguration, "[req]\ndistinguished_name=dn\nx509_extensions=server\n[dn]\n[server]\nsubjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\nextendedKeyUsage=serverAuth\n");
+        $options = ['config' => $certificateConfiguration, 'private_key_bits' => 2048, 'digest_alg' => 'sha256', 'x509_extensions' => 'server'];
         $key = openssl_pkey_new($options);
         $csr = openssl_csr_new(['commonName' => '127.0.0.1'], $key, $options);
         $certificate = openssl_csr_sign($csr, null, $key, 1, $options);
@@ -175,13 +171,19 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
         file_put_contents($directory . '/private.pem', $privatePem);
         expect(chmod($directory . '/private.pem', 0600), '恢复测试TLS私钥未限制权限');
     }
+    if ($phase === 'seed') {
+        $environment['APP_ENV'] = 'prod';
+        $environment['APP_ADMIN_PASSWORD'] = 'Recovery-password-2026';
+        $environment['APP_CUSTOMER_PASSWORD'] = 'Recovery-password-2026';
+        $report['installation'] = iotRecoveryRun([...$command, 'app:install', 'platform', '恢复管理人员', 'owner', '恢复客户人员', '恢复初始客户'], $environment, true, 45)['data'];
+    }
     $http = new Type\Testing\HttpClient('http://127.0.0.1:' . $environment['APP_PORT']);
-    $request = static function (string $method, string $path, string $token, string $tenant, ?array $data, int $status = 200) use ($http, &$report): array {
+    $request = static function (string $method, string $path, string $token, ?string $tenant, ?array $data, int $status = 200) use ($http, &$report): array {
         $headers = ['Content-Type' => 'application/json'];
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-        if ($tenant !== '') {
+        if ($tenant !== '' && $tenant !== null) {
             $headers['X-Tenant-Id'] = $tenant;
         }
         $response = $http->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
@@ -191,8 +193,6 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
     };
     $server = null;
     $broker = null;
-    $worker = null;
-    $redis = null;
     $report['status'] = 'preparing';
     try {
         $server = new Process([...$command, 'serve'], $root, $environment);
@@ -218,42 +218,33 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
         $tokens = [];
         $accounts = [];
         $login = static function (string $realm, string $account) use ($request): array {
-            return $request('POST', '/' . $realm . '/auth/login', '', '', ['login' => $account, 'password' => 'Test-ingestion-password'])['data'];
+            return $request('POST', '/' . $realm . '/auth/login', '', '', ['login' => $account, 'password' => 'Recovery-password-2026'])['data'];
         };
-        foreach (['admin' => ['platform'], 'customer' => ['owner', 'outsider']] as $realm => $logins) {
-            foreach ($logins as $account) {
-                $accounts[$account] = $login($realm, $account);
-                $tokens[$account] = $accounts[$account]['accessToken'];
-            }
+        $accounts['platform'] = $login('admin', 'platform');
+        $tokens['platform'] = $accounts['platform']['accessToken'];
+        if ($phase === 'seed') {
+            $request('POST', '/admin/customers', $tokens['platform'], null, ['login' => 'outsider', 'name' => '恢复转配接收者', 'password' => 'Recovery-password-2026']);
+        }
+        foreach (['owner', 'outsider'] as $account) {
+            $accounts[$account] = $login('customer', $account);
+            $tokens[$account] = $accounts[$account]['accessToken'];
         }
         if ($phase === 'seed') {
             $tenant = bin2hex(random_bytes(16));
             $tenant = $request('POST', '/admin/tenants', $tokens['platform'], '', ['id' => $tenant, 'name' => '恢复非空事实租户', 'owner_login' => 'owner', 'new_customer' => false], 200)['data']['id'];
             $path = '/customer/tenants/' . $tenant;
             $token = $tokens['owner'];
-            $product = $request('POST', $path . '/products', $token, $tenant, ['name' => '恢复温度产品'], 201)['data'];
-            $models = $path . '/products/' . $product['id'] . '/models';
-            $request('POST', $models, $token, $tenant, ['definition' => ['properties' => [
-                ['identifier' => 'temperature', 'name' => '温度', 'type' => 'number', 'required' => true, 'unit' => '°C'],
-            ], 'events' => [], 'commands' => [['identifier' => 'switch', 'name' => '切换开关', 'parameters' => [
-                ['identifier' => 'on', 'name' => '开关状态', 'type' => 'boolean', 'required' => true],
-            ]]]]], 201);
-            $request('POST', $models . '/1/publish', $token, $tenant, ['version' => 1]);
-            $registered = $request('POST', $path . '/devices', $token, $tenant, ['name' => '恢复温度设备', 'product_id' => $product['id'], 'model_version' => 1], 201)['data'];
+            $registered = iotRegisteredFixture($request, $tokens['platform'], $tenant, '恢复原始通信设备');
             $device = $registered['device'];
-            $request('POST', $path . '/alarm-rules', $token, $tenant, ['name' => '恢复温度阈值', 'device_id' => $device['id'], 'field' => 'temperature', 'lower' => 0, 'upper' => 10, 'hysteresis' => 2], 201);
-            $context = ['environment' => $environment, 'service_password' => $servicePassword, 'tokens' => $tokens,
-                'tenant' => $tenant, 'registration' => $registered, 'devices' => []];
-            foreach (['stable' => '恢复后合法控制设备', 'revoked' => '备份后吊销设备', 'transferred' => '备份后真实转移设备'] as $kind => $name) {
-                $context['devices'][$kind] = $request(
-                    'POST',
-                    $path . '/devices',
-                    $token,
-                    $tenant,
-                    ['name' => $name, 'product_id' => $product['id'], 'model_version' => 1],
-                    201
-                )['data'];
+            $context = ['environment' => $environment, 'tokens' => $tokens, 'tenant' => $tenant, 'registration' => $registered, 'devices' => [], 'applications' => []];
+            foreach (['stable' => '恢复后合法通信设备', 'revoked' => '备份后吊销设备', 'transferred' => '备份后真实转配设备'] as $kind => $name) {
+                $context['devices'][$kind] = iotRegisteredFixture($request, $tokens['platform'], $tenant, $name);
+                $context['applications'][$kind] = iotApplicationFixture($request, $token, $tenant, [$context['devices'][$kind]], $name);
             }
+            $context['application'] = iotApplicationFixture($request, $token, $tenant, [$registered], '恢复原始业务系统');
+            $context['spare_enrollment'] = $request('POST', '/admin/device-authorizations', $tokens['platform'], null, [
+                'id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenant, 'name' => '备份后停用资格', 'capacity' => 1, 'register_expires_at' => time() + 3600,
+            ], 201)['data'];
             $target = bin2hex(random_bytes(16));
             $context['target'] = $request('POST', '/admin/tenants', $tokens['platform'], '', ['id' => $target, 'name' => '恢复核对目标租户', 'owner_login' => 'outsider', 'new_customer' => false], 200)['data']['id'];
             $context['impersonation'] = $request('POST', '/admin/customers/' . $accounts['owner']['user']['id'] . '/impersonate', $tokens['platform'], '', ['version' => $accounts['owner']['user']['version']], 200)['data'];
@@ -286,76 +277,29 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
             usleep(20000);
         } while (microtime(true) < $deadline);
         expect($ready, '恢复事实Broker未就绪');
-        $workerEnvironment = array_replace($environment, ['IOT_INGESTION_PASSWORD' => $servicePassword,
-            'IOT_INGESTION_PORT' => $environment['IOT_MQTT_PORT'], 'IOT_INGESTION_CA' => 'certificate.pem', 'IOT_INGESTION_INSTANCE' => 'recovery']);
-        unset($workerEnvironment['IOT_INGESTION_SECRET_HASH']);
-        $worker = new Process([...$command, 'iot:ingest'], $root, $workerEnvironment);
-        $deadline = microtime(true) + 15;
-        do {
-            expect($worker->running(), '恢复事实接收角色提前退出：' . $worker->stderr());
-            $subscription = $database->query("SELECT subscriptions::text FROM type_mqtt_sessions WHERE client_id='iot-ingestion-recovery' AND owner_id IS NOT NULL")->fetchColumn();
-            if (is_string($subscription) && str_contains($subscription, '$share/ingestion/')) {
-                break;
-            }
-            usleep(20000);
-        } while (microtime(true) < $deadline);
-        expect(is_string($subscription) && str_contains($subscription, '$share/ingestion/'), '恢复事实接收订阅未就绪');
-        $fixture = ['credential' => $registered['credential'], 'token' => $token, 'tenant' => $tenant,
-            'path' => $path . '/devices/' . $device['id'], 'ownership_id' => $device['ownership_id']];
-        $mqtt = static function (string $mode, array $extra = []) use ($environment, $fixture, $directory, $root, $servicePassword, &$report): void {
-            $client = new Process(['node', $root . '/tests/iot-lifecycle-mqtt.mjs', $mode], $root, array_replace($environment, [
-                'TYPE_LIFECYCLE_FIXTURE' => json_encode(array_replace($fixture, $extra), JSON_THROW_ON_ERROR),
-                'TYPE_DEVICE_HTTP' => 'http://127.0.0.1:' . $environment['APP_PORT'],
-                'TYPE_DEVICE_CA' => $directory . '/certificate.pem', 'TYPE_INGESTION_PASSWORD' => $servicePassword,
+        $mqtt = static function (string $mode, array $registration, array $application = []) use ($environment, $directory, $root, &$report): void {
+            $fixture = ['credential' => $registration['credential'], 'application' => $application];
+            $client = new Process(['node', $root . '/tests/iot-recovery-client.mjs', $mode], $root, array_replace($environment, [
+                'TYPE_RECOVERY_FIXTURE' => json_encode($fixture, JSON_THROW_ON_ERROR), 'TYPE_DEVICE_CA' => $directory . '/certificate.pem',
             ]));
             try {
-                $result = $client->wait(60);
-                expect($result->successful(), '恢复MQTT公开入口失败：' . $result->stderr . $result->stdout);
+                $result = $client->wait(45);
+                expect($result->successful(), '恢复 MQTT 公开入口失败：' . $result->stderr . $result->stdout);
                 $report['mqtt'][] = json_decode(trim($result->stdout), true, 16, JSON_THROW_ON_ERROR);
             } finally {
                 $client->stop();
             }
         };
-        $alarm = static function () use ($command, $environment): void {
-            for ($batch = 0; $batch < 100; $batch++) {
-                if (!iotRecoveryRun([...$command, 'iot:alarm', '100'], $environment)['data']['has_more']) {
-                    return;
-                }
-            }
-            throw new RuntimeException('恢复告警消费者未在有界批次排空');
-        };
         if ($phase === 'seed') {
-            $mqtt('recovery-telemetry', ['sequence_start' => 1, 'values' => [11, 12, 13]]);
-            $alarm();
-            $active = $request('GET', $path . '/alarms?status=active', $token, $tenant, null);
-            expect($active['total'] === 1, '真实连续三次超限没有建立唯一告警');
-            $alarmPath = $path . '/alarms/' . $active['items'][0]['id'];
-            $acknowledged = $request('POST', $alarmPath . '/acknowledge', $token, $tenant, [])['data'];
-            expect($acknowledged['acknowledged_at'] !== null, '公开确认未保存人员与时间');
-            $mqtt('recovery-telemetry', ['sequence_start' => 4, 'values' => [2, 8, 5]]);
-            $alarm();
-            $ended = $request('GET', $alarmPath, $token, $tenant, null)['data'];
-            expect($ended['status'] === 'ended' && $ended['end_reason'] === 'value_recovered' && $ended['acknowledged_at'] === $acknowledged['acknowledged_at'], '真实恢复样本未保留结束与确认事实');
-            $redisServer = getenv('TYPE_REDIS_SERVER');
-            expect(is_string($redisServer) && is_file($redisServer), '非空通知恢复需要TYPE_REDIS_SERVER指向本机原生Redis');
-            $redis = new NativeRolloutRedis($directory . '/notice-redis', $redisServer);
-            $redisEnvironment = $redis->environment();
-            $noticeEnvironment = array_replace($environment, ['IOT_NOTICES_REDIS_HOST' => $redisEnvironment['TYPE_REDIS_HOST'],
-                'IOT_NOTICES_REDIS_PORT' => $redisEnvironment['TYPE_REDIS_PORT'], 'IOT_NOTICES_NAMESPACE' => 'recovery-' . basename(dirname($directory))]);
-            iotRecoveryRun([...$command, 'iot:notices', '100'], $noticeEnvironment);
-            foreach (['triggered', 'ended'] as $kind) {
-                expect($request('GET', $path . '/notifications?kind=' . $kind, $token, $tenant, null)['total'] === 1, '告警触发或结束通知没有形成非空读模型');
-            }
-            $report['stable_device'] = iotRecoveryPhysicalControl($request, $context, $token, $command, $environment, $directory, $database);
-            $mqtt('transfer-retained');
-            $retained = $database->prepare("SELECT encode(payload, 'base64') FROM type_mqtt_retained WHERE topic=?");
+            $mqtt('seed', $registered, $context['application']);
+            $mqtt('roundtrip', $context['devices']['stable'], $context['applications']['stable']);
+            $retained = $database->prepare("SELECT encode(payload, 'base64') FROM type_mqtt_retained WHERE topic = ?");
             $retained->execute([$registered['credential']['topics']['subscribe']]);
-            expect($retained->fetchColumn() === base64_encode("lifecycle-control\0binary"), '真实MQTT保留消息字节不符');
-            $queued = $database->prepare("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id=? AND state='pending' AND qos=1 AND NOT started");
+            expect($retained->fetchColumn() === base64_encode("recovery-down\0binary"), '真实 MQTT 保留消息字节不符');
+            $queued = $database->prepare("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = ? AND state = 'pending' AND qos = 1 AND NOT started");
             $queued->execute([$device['id']]);
             expect((int) $queued->fetchColumn() === 1, '离线持久会话没有保留真实待投递消息');
             $report['device_id'] = $device['id'];
-            $report['alarm_id'] = $active['items'][0]['id'];
             $report['client'] = 'MQTT.js 5.15.0';
             $report['tls'] = true;
         } elseif ($phase === 'current') {
@@ -368,16 +312,56 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
                 ['version' => $revoked['version'], 'confirm_device_id' => $revoked['id']],
                 202
             );
-            $clientEnvironment = array_replace($environment, ['TYPE_DEVICE_HTTP' => 'http://127.0.0.1:' . $environment['APP_PORT'],
-                'TYPE_DEVICE_CA' => $directory . '/certificate.pem', 'TYPE_INGESTION_PASSWORD' => $servicePassword]);
-            $report['transfer'] = iotRecoveryPhysicalTransfer($request, $context, $tokens, $command, $environment, $clientEnvironment, $directory, $database, $worker);
+            $transferred = $context['devices']['transferred']['device'];
+            $transfer = $request(
+                'POST',
+                '/admin/devices/' . $transferred['id'] . '/usage/reassign',
+                $tokens['platform'],
+                null,
+                ['id' => bin2hex(random_bytes(16)), 'version' => $transferred['version'], 'target_tenant_id' => $context['target']],
+                202
+            )['data'];
+            // 设备未接入，但应用授权撤销仍须等待活动节点的真实回执。
+            $ready = $transfer;
+            $deadline = microtime(true) + 12;
+            do {
+                $ready = $request(
+                    'POST',
+                    '/admin/reassignments/' . $transfer['id'],
+                    $tokens['platform'],
+                    null,
+                    ['action' => 'advance', 'version' => $ready['version']]
+                )['data'];
+                if ($ready['status'] === 'awaiting_acceptance') {
+                    break;
+                }
+                usleep(50000);
+            } while (microtime(true) < $deadline);
+            expect($ready['status'] === 'awaiting_acceptance', '备份后转配没有完成旧关系隔离');
+            $accepted = $request(
+                'POST',
+                '/customer/tenants/' . $context['target'] . '/reassignments/' . $transfer['id'],
+                $tokens['outsider'],
+                $context['target'],
+                ['action' => 'accept', 'version' => $ready['version'], 'id' => bin2hex(random_bytes(16))]
+            )['data'];
+            expect($accepted['operation']['status'] === 'completed', '备份后转配未完成');
+            $enrollment = $context['spare_enrollment']['authorization'];
+            $request(
+                'POST',
+                '/admin/device-authorizations/' . $enrollment['id'] . '/disable',
+                $tokens['platform'],
+                null,
+                ['tenant_id' => $tenant, 'version' => $enrollment['version']]
+            );
+            $applicationPath = $path . '/applications/' . substr($context['application']['client_id'], 4);
+            $application = $request('GET', $applicationPath, $token, $tenant, null)['data']['application'];
+            $request('POST', $applicationPath . '/disable', $token, $tenant, ['version' => $application['version']]);
             $report['credential_rotated_by_http'] = true;
-            $report['impersonation_session_created'] = isset($context['impersonation']);
+            $report['transfer'] = ['completed' => true, 'device_id' => $transferred['id']];
+            $report['enrollment_disabled_by_http'] = true;
+            $report['application_disabled_by_http'] = true;
         } elseif ($phase === 'reopen') {
-            foreach ($context['old_sessions'] as $oldSession) {
-                $request('GET', '/' . $oldSession['realm'] . '/auth/me', $oldSession['token'], '', null, 401);
-            }
-            $report['old_sessions_refused'] = true;
             foreach ($context['devices'] as $kind => $registration) {
                 $detail = $request('GET', $path . '/devices/' . $registration['device']['id'], $token, $tenant, null)['data'];
                 expect((int) $detail['recovery_verified'] === ($kind === 'stable' ? 1 : 0), '真实恢复后错误放行或隔离设备：' . $kind);
@@ -385,29 +369,36 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
                 if ($kind !== 'stable') {
                     $denied = $request(
                         'POST',
-                        $path . '/devices/' . $detail['id'] . '/commands',
+                        $path . '/devices/' . $detail['id'] . '/rotate',
                         $token,
                         $tenant,
-                        ['command_id' => bin2hex(random_bytes(16)), 'identifier' => 'switch', 'values' => ['on' => true], 'version' => (int) $detail['version']],
+                        ['version' => $detail['version'], 'confirm_device_id' => $detail['id']],
                         409
                     );
-                    expect($denied['error'] === 'command_device_not_online', '旧设备控制没有返回现有指令不可用稳定码');
-                    $mqtt('denied', ['credential' => $registration['credential']]);
+                    expect($denied['error'] === 'recovery_reconciliation_required', '未核对设备仍能变更凭据');
+                    $mqtt('denied', $registration);
                 }
             }
-            $report['stable_device'] = iotRecoveryPhysicalControl($request, $context, $token, $command, $environment, $directory, $database);
+            $refused = $request('POST', '/public/devices/register', '', null, ['id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenant,
+                'device_id' => bin2hex(random_bytes(16)), 'name' => '旧备份不得复活资格', 'code' => $context['spare_enrollment']['code']], 409);
+            expect($refused['error'] === 'recovery_reconciliation_required', '恢复后已停用的注册码重新获得资格');
+            $enrollment = $request('GET', '/admin/device-authorizations/' . $context['spare_enrollment']['authorization']['id'], $tokens['platform'], null, null)['data']['authorization'];
+            expect($enrollment['status'] === 'unverified' && !$enrollment['recovery_verified'], '隔离的注册资格没有显示核对状态');
+            $mqtt('application-denied', $registered, $context['application']);
+            $mqtt('roundtrip', $context['devices']['stable'], $context['applications']['stable']);
+            $report['old_enrollment_and_application_refused'] = true;
         } else {
             throw new RuntimeException('未定义的物理恢复公开入口阶段');
         }
     } finally {
         $failures = [];
-        foreach (['ingestion' => $worker, 'broker' => $broker, 'http' => $server] as $role => $process) {
+        foreach (['broker' => $broker, 'http' => $server] as $role => $process) {
             if ($process === null) {
                 continue;
             }
             try {
                 $result = $process->stop(20);
-                $log = str_replace([$servicePassword, hash('sha256', $servicePassword), $environment['DB_PASSWORD']], '<REDACTED>', $result->stdout . $result->stderr);
+                $log = str_replace([$environment['DB_PASSWORD'], 'Recovery-password-2026'], '<REDACTED>', $result->stdout . $result->stderr);
                 file_put_contents($directory . '/' . $phase . '-' . $role . '.log', $log);
                 chmod($directory . '/' . $phase . '-' . $role . '.log', 0600);
                 expect($result->successful(), '恢复事实角色未正常退出：' . $role . ' ' . $log);
@@ -419,23 +410,16 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
                 $failures[] = $failure->getMessage();
             }
         }
-        try {
-            $redis?->close();
-            $report['stopped']['redis'] = $redis !== null;
-        } catch (Throwable $failure) {
-            $failures[] = $failure->getMessage();
-        }
         $report['cleanup_failures'] = $failures;
         expect($failures === [], implode('；', $failures));
     }
-    expect(!$report['ingestion']['pending'] && !$report['ingestion']['quarantined'] && !$report['ingestion']['running'], '备份前接收角色仍有受管工作');
     foreach (['connections', 'subscriptions', 'bufferedBytes', 'incomingExchanges', 'outgoingExchanges', 'eventRegistrations',
         'eventTimers', 'pendingCommits', 'closingSessions'] as $resource) {
         expect($report['broker'][$resource] === 0, '备份前Broker仍有活动资源：' . $resource);
     }
     expect((int) $database->query("SELECT COUNT(*) FROM pg_stat_activity WHERE datname=current_database() AND application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0, '备份前Broker后台数据库连接未清理');
     $facts = iotRecoveryFacts($database);
-    foreach (['iot_alarm_rules', 'iot_alarm_rule_versions', 'iot_alarm_states', 'iot_alarms', 'iot_notice_outbox', 'iot_notifications',
+    foreach (['iot_devices', 'iot_device_enrollments', 'iot_device_enrollment_bindings', 'iot_applications', 'iot_application_grants',
         'type_mqtt_sessions', 'type_mqtt_messages', 'type_mqtt_deliveries', 'type_mqtt_retained'] as $table) {
         expect(($facts[$table]['rows'] ?? 0) > 0, '恢复事实仍为空：' . $table);
         $report['required_nonempty'][$table] = $facts[$table]['rows'];
@@ -443,197 +427,7 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
     $report['status'] = 'passed';
 }
 
-/** 恢复点已包含该设备；只在备份之后通过正式设备与HTTP实施转移。 */
-function iotRecoveryPhysicalTransfer(Closure $request, array $context, array $tokens, array $command, array $environment, array $clientEnvironment, string $base, PDO $database, Process $worker): array
-{
-    require_once __DIR__ . '/iot-ingestion-mqtt.php';
-    $source = $context['tenant'];
-    $target = $context['target'];
-    $registration = $context['devices']['transferred'];
-    $device = $registration['device'];
-    $call = static fn (string $method, string $path, string $tenant, ?array $data = null, int $expected = 200): array =>
-        $request($method, $path, $tenant === $source ? $tokens['owner'] : $tokens['outsider'], $tenant, $data, $expected);
-    $prefix = '/customer/tenants/' . $source;
-    $sourceDetail = $call('GET', $prefix . '/devices/' . $device['id'], $source)['data'];
-    $model = $sourceDetail['model'];
-    $deviceEnvironment = array_replace($environment, ['IOT_DEVICE_CACHE' => 'transfer-device.sqlite', 'IOT_DEVICE_ID' => $device['id'],
-        'IOT_DEVICE_OWNERSHIP_ID' => $device['ownership_id'], 'IOT_DEVICE_TENANT_ID' => $source, 'IOT_DEVICE_MODEL_VERSION' => '1',
-        'IOT_DEVICE_CREDENTIAL_ID' => $registration['credential']['id'], 'IOT_DEVICE_PASSWORD' => $registration['credential']['password'],
-        'IOT_DEVICE_HOST' => '127.0.0.1', 'IOT_DEVICE_PORT' => $environment['IOT_MQTT_PORT'], 'IOT_DEVICE_CA' => 'certificate.pem',
-        'IOT_DEVICE_PEER_NAME' => '127.0.0.1', 'IOT_DEVICE_SUPPORTED_MODELS' => json_encode([1 => $model['structure_hash']], JSON_THROW_ON_ERROR),
-        'DB_HOST' => '192.0.2.1', 'DB_PORT' => '1']);
-    $run = static fn (string $action, ?array $input = null, bool $success = true, array $overrides = []): array =>
-        iotRecoveryDeviceRun($command, array_replace($deviceEnvironment, $overrides), $base, 'transfer-device', $action, $input, $success);
-    $run('enqueue', ['type' => 'telemetry', 'sampled_at' => time(), 'values' => ['temperature' => 20]]);
-    expect($run('send')['delivery']['accepted'] === 1, '备份后的待转移设备未取得真实回执');
-    $deadline = microtime(true) + 15;
-    do {
-        $sourceDetail = $call('GET', $prefix . '/devices/' . $device['id'], $source)['data'];
-        if ($sourceDetail['connection']['status'] === 'offline') {
-            break;
-        }
-        usleep(20000);
-    } while (microtime(true) < $deadline);
-    expect($sourceDetail['connection']['status'] === 'offline', '备份后转移设备尚未完成持久关闭');
-    $run('enqueue', ['type' => 'telemetry', 'sampled_at' => time(), 'values' => ['temperature' => 21]]);
-    $intent = ['transfer_id' => bin2hex(random_bytes(16)), 'device_id' => $device['id'], 'target_tenant_id' => $target,
-        'version' => (int) $sourceDetail['version']];
-    $requested = $call('POST', $prefix . '/transfers', $source, $intent, 202)['data'];
-    $transferPath = '/customer/tenants/' . $target . '/transfers/' . $intent['transfer_id'];
-    $requested = $call('GET', $prefix . '/transfers/' . $intent['transfer_id'], $source)['data'];
-    expect($call('POST', $transferPath, $target, ['action' => 'accept', 'decision_id' => bin2hex(random_bytes(16)),
-        'copy_name' => '恢复核对实际接收产品', 'version' => $requested['device_version']], 202)['data']['status'] === 'frozen', '备份后的转移未进入设备冻结阶段');
-    $listener = new Process([...$command, 'iot:device', 'listen'], dirname(__DIR__), $deviceEnvironment);
-    try {
-        $deadline = microtime(true) + 45;
-        do {
-            expect($worker->running() && $listener->running(), '备份后的冻结排空角色提前退出：' . $listener->stderr() . $worker->stderr());
-            $observed = $call('GET', $transferPath, $target)['data'];
-            if ($observed['ready_for_switch']) {
-                break;
-            }
-            usleep(50000);
-        } while (microtime(true) < $deadline);
-        expect($observed['ready_for_switch'] && $observed['device_status']['pending_count'] === 0, '备份后设备未实际冻结并排空旧缓存');
-    } finally {
-        expect($listener->stop(15)->successful(), '备份后转移监听未正常退出');
-    }
-    $fixture = ['tenant' => $source, 'transfer_target' => $target, 'admin_token' => $tokens['owner'], 'transfer_target_token' => $tokens['outsider']];
-    $switch = iotDeviceTransferSwitchChecks(
-        $call,
-        $run,
-        $fixture,
-        $registration,
-        $intent,
-        $clientEnvironment,
-        $database,
-        $base,
-        $command,
-        $environment,
-        static function (): never {
-            throw new RuntimeException('物理恢复场景不注入第二套接收角色接管');
-        }
-    );
-    expect($call('GET', $transferPath, $target)['data']['status'] === 'completed', '备份后真实转移尚未完成');
-    return ['device_existed_at_backup' => true, 'independent_admins' => true, 'completed' => true, 'switch' => $switch];
-}
-
-/** 正式设备入口共享本轮输入生命周期；设备仅持有自己的SQLite，平台数据库故意不可达。 */
-function iotRecoveryDeviceRun(array $command, array $environment, string $base, string $name, string $action, ?array $input = null, bool $success = true): array
-{
-    $file = $input === null ? null : $base . '/' . $name . '-input.json';
-    if ($file !== null) {
-        expect(file_put_contents($file, json_encode($input, JSON_THROW_ON_ERROR)) !== false && chmod($file, 0600), '不能创建私有设备命令输入');
-    }
-    $process = new Process([...$command, 'iot:device', $action], dirname(__DIR__), $environment, 65536, $file);
-    try {
-        $result = $process->wait(65);
-        expect(!$result->timedOut && $result->successful() === $success, '恢复设备命令失败：' . $action . ' ' . $result->stderr . $result->stdout);
-        expect(!str_contains($result->stdout . $result->stderr, $environment['IOT_DEVICE_PASSWORD']), '恢复设备命令泄漏凭据');
-        return trim($result->stdout) === '' ? [] : json_decode(trim($result->stdout), true, 32, JSON_THROW_ON_ERROR);
-    } finally {
-        $process->stop();
-        if ($file !== null && is_file($file)) {
-            expect(unlink($file), '本轮设备一次性输入未清理');
-        }
-    }
-}
-
-/** 核对一致的备份内设备重新上报，并以设备执行回执闭合真实HTTP控制。 */
-function iotRecoveryPhysicalControl(Closure $request, array $context, string $token, array $command, array $environment, string $base, PDO $database): array
-{
-    $registration = $context['devices']['stable'];
-    $device = $registration['device'];
-    $tenant = $context['tenant'];
-    $path = '/customer/tenants/' . $tenant . '/devices/' . $device['id'];
-    $deviceEnvironment = array_replace($environment, ['IOT_DEVICE_CACHE' => 'reopened-device.sqlite', 'IOT_DEVICE_ID' => $device['id'],
-        'IOT_DEVICE_OWNERSHIP_ID' => $device['ownership_id'], 'IOT_DEVICE_TENANT_ID' => $tenant, 'IOT_DEVICE_MODEL_VERSION' => '1',
-        'IOT_DEVICE_CREDENTIAL_ID' => $registration['credential']['id'], 'IOT_DEVICE_PASSWORD' => $registration['credential']['password'],
-        'IOT_DEVICE_HOST' => '127.0.0.1', 'IOT_DEVICE_PORT' => $environment['IOT_MQTT_PORT'], 'IOT_DEVICE_CA' => 'certificate.pem',
-        'IOT_DEVICE_PEER_NAME' => '127.0.0.1', 'DB_HOST' => '192.0.2.1', 'DB_PORT' => '1']);
-    $run = static fn (string $action, ?array $input = null): array => iotRecoveryDeviceRun($command, $deviceEnvironment, $base, 'reopened-device', $action, $input);
-    $queued = $run('enqueue', ['type' => 'telemetry', 'sampled_at' => time(), 'values' => ['temperature' => 28]]);
-    expect($run('send')['delivery']['accepted'] === 1, '物理恢复后合法设备未取得持久业务回执');
-    $current = $request('GET', $path . '/current', $token, $tenant, null)['data'];
-    expect($current['sequence'] === $queued['sequence'] && $current['fields'][0]['value'] === 28, '物理恢复后HTTP未读到实际新采样');
-    $deadline = microtime(true) + 15;
-    do {
-        $closed = $request('GET', $path, $token, $tenant, null)['data']['connection']['status'];
-        if ($closed === 'offline') {
-            break;
-        }
-        usleep(20000);
-    } while (microtime(true) < $deadline);
-    expect($closed === 'offline', '恢复后设备send尚未完成持久关闭');
-    $deviceVersion = (int) $request('GET', $path, $token, $tenant, null)['data']['version'];
-    $started = microtime(true);
-    $listener = new Process([...$command, 'iot:device', 'listen'], dirname(__DIR__), $deviceEnvironment);
-    try {
-        $clock = $database->prepare("SELECT encode(m.payload, 'base64') FROM type_mqtt_messages m JOIN type_mqtt_deliveries d ON d.message_id=m.id"
-            . " WHERE m.topic=? AND d.client_id=? AND d.state='acknowledged' AND m.created_at >= to_timestamp(?)");
-        $ready = false;
-        $deadline = microtime(true) + 25;
-        do {
-            expect($listener->running(), '恢复后设备控制监听提前退出：' . $listener->stderr());
-            $clock->execute([$registration['credential']['topics']['subscribe'], $device['id'], $started]);
-            foreach ($clock->fetchAll(PDO::FETCH_COLUMN) as $bytes) {
-                $message = json_decode(base64_decode($bytes), true);
-                if (($message['type'] ?? '') === 'time_response' && ($message['ownership_id'] ?? '') === $device['ownership_id']) {
-                    $ready = true;
-                }
-            }
-            if ($ready) {
-                break;
-            }
-            usleep(20000);
-        } while (microtime(true) < $deadline);
-        expect($ready, '恢复后设备尚未完成真实时间挑战');
-        $record = $request(
-            'POST',
-            $path . '/commands',
-            $token,
-            $tenant,
-            ['command_id' => bin2hex(random_bytes(16)), 'identifier' => 'switch', 'values' => ['on' => true], 'version' => $deviceVersion],
-            201
-        )['data'];
-        $deadline = microtime(true) + 30;
-        do {
-            expect($listener->running(), '恢复后执行回执前设备退出：' . $listener->stderr());
-            $execution = $request('GET', $path . '/commands', $token, $tenant, null)['items'][0];
-            if ($execution['execution'] !== 'pending') {
-                break;
-            }
-            usleep(20000);
-        } while (microtime(true) < $deadline);
-        expect(
-            $execution['id'] === $record['id'] && $execution['execution'] === 'succeeded'
-            && $execution['device_received_at'] !== null && $execution['mqtt_at'] !== null && $execution['result']['simulated'] === true,
-            '物理恢复后真实控制未闭环：' . json_encode($execution, JSON_THROW_ON_ERROR)
-        );
-        $ledger = new PDO('sqlite:' . $base . '/reopened-device.sqlite', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-        $receipt = $ledger->prepare('SELECT status, pending FROM device_commands WHERE id = ?');
-        $deadline = microtime(true) + 15;
-        do {
-            $receipt->execute([$record['id']]);
-            $local = $receipt->fetch(PDO::FETCH_ASSOC);
-            if (is_array($local) && (int) $local['pending'] === 0) {
-                break;
-            }
-            expect($listener->running(), '恢复设备没有收到最终执行结果业务确认');
-            usleep(20000);
-        } while (microtime(true) < $deadline);
-        expect(is_array($local) && $local['status'] === 'succeeded' && (int) $local['pending'] === 0, '恢复设备本地执行结果没有得到平台业务确认');
-        $receipt = null;
-        $ledger = null;
-        return ['tls' => true, 'protocol' => 5, 'business_receipt' => true, 'http_current_visible' => true,
-            'sequence' => $queued['sequence'], 'command_id' => $record['id'], 'execution' => 'succeeded',
-            'execution_business_ack' => true, 'database_unavailable_to_device' => true];
-    } finally {
-        expect($listener->stop(15)->successful(), '恢复后设备控制监听未正常退出');
-    }
-}
-
-/** 全量→增量→合成→真实WAL恢复点→独立权威核对→新同步主备重新开放。 */
+/** 官方物理备份链与恢复点保留非空协议数据，当前权威清单来自备份之后的真实授权变更。 */
 function iotRecoveryPhysical(array $command, array $environment, string $base, array &$report): void
 {
     $root = dirname(__DIR__);
@@ -675,11 +469,7 @@ function iotRecoveryPhysical(array $command, array $environment, string $base, a
         $pass = '127.0.0.1:' . $dbEnvironment['TYPE_PGSQL_PORT'] . ':*:' . $dbEnvironment['TYPE_PGSQL_USER'] . ':' . $password . "\n";
         expect(file_put_contents($passwordFile, $pass) === strlen($pass) && chmod($passwordFile, 0600), '不能创建私有物理备份凭据');
         $dbEnvironment['PGPASSFILE'] = $passwordFile;
-        $dbEnvironment['INGESTION_STATUS_CACHE'] = $directory . '/status.sqlite';
-        // 复用已存在的公开服务场景建立真实IoT表与行为，不用手写SQL冒充接入/指令业务。
-        nativeDatabaseCommand([PHP_BINARY, '-r', 'require $argv[1]; require $argv[2]; main(2, [$argv[2], "pgsql"]);',
-            $root . '/vendor/autoload.php', $root . '/tests/fixtures/iot-ingestion-cases.php'], $dbEnvironment, [$password], $directory . '/seed.log', 120);
-        $report['seed'] = 'existing-php-public-services-fixture';
+        $report['seed'] = 'same-program-install-http-registration-and-tls-raw-communication';
         $report['public_seed'] = [];
         $context = [];
         iotRecoveryPhysicalSeed($command, $dbEnvironment, $directory, $source, $report['public_seed'], $context);

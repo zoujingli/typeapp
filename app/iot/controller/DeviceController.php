@@ -5,10 +5,6 @@ declare(strict_types=1);
 namespace app\iot\controller;
 
 use app\iot\service\DeviceService;
-use app\iot\service\CommandService;
-use app\iot\service\IngestionService;
-use app\iot\service\HistoryService;
-use app\iot\service\AggregateService;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Type\Core\Http\Attribute\Route;
@@ -69,17 +65,7 @@ final class DeviceController
         return $this->response(200, $this->devices->devices($this->connection($request), $this->identity($request), $tenantId, $query['page'], $query['per_page'], $query, $realm));
     }
 
-    /** 登记仅由客户身份完成，按精确已发布模型生成仅本次返回的凭据。 */
-    #[Route('/customer/tenants/{tenant}/devices', methods: ['POST'], name: 'customer.device-create', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}'])]
-    public function register(ServerRequestInterface $request): ResponseInterface
-    {
-        $tenantId = $this->tenant($request, $this->realm($request));
-        $data = $this->payload($request, ['name' => Field::text()->required()->trim()->length(1, 100),
-            'product_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'), 'model_version' => Field::integer()->required()->range(1, 2147483646)]);
-        return $this->response(201, ['data' => $this->devices->register($this->connection($request), $this->identity($request), $tenantId, $data['product_id'], $data['model_version'], $data['name'])]);
-    }
-
-    /** 详情采用当前身份域投影；资料修改不允许更换归属、产品、模型或生命周期。 */
+    /** 详情采用当前身份域投影；资料修改只接受名称及同客户分类，不能更换归属或生命周期。 */
     #[Route('/customer/tenants/{tenant}/devices/{device}', methods: ['GET', 'PATCH'], name: 'customer.device', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}', 'device' => '[a-f0-9]{32}'])]
     #[Route('/admin/devices/{device}', methods: ['GET', 'PATCH'], name: 'admin.device', middleware: ['admin.auth'], constraints: ['device' => '[a-f0-9]{32}'])]
     public function device(ServerRequestInterface $request): ResponseInterface
@@ -92,8 +78,9 @@ final class DeviceController
         if ($request->getMethod() === 'GET') {
             return $this->response(200, ['data' => $this->devices->device($connection, $identity, $tenantId, $parameters['device'], $realm)]);
         }
-        $data = $this->payload($request, ['version' => Field::integer()->required()->range(1, 2147483646), 'name' => Field::text()->required()->trim()->length(1, 100)]);
-        return $this->response(200, ['data' => $this->devices->change($connection, $identity, $tenantId, $parameters['device'], 'update', $data['version'], '', $realm, $data['name'])]);
+        $data = $this->payload($request, ['version' => Field::integer()->required()->range(1, 2147483646), 'name' => Field::text()->required()->trim()->length(1, 100),
+            'product_id' => Field::text()->nullable()->matches('/^[a-f0-9]{32}$/D')]);
+        return $this->response(200, ['data' => $this->devices->change($connection, $identity, $tenantId, $parameters['device'], 'update', $data['version'], '', $realm, $data)]);
     }
 
     /** 202只表示撤权已提交；网络隔离的真实完成由Broker回写，不能用HTTP成功代替。 */
@@ -109,140 +96,11 @@ final class DeviceController
         return $this->response($result['device']['authorization']['status'] === 'pending' ? 202 : 200, ['data' => $result]);
     }
 
-    /** 模型切换使用当前客户独立权限和设备版本；GET只读，响应丢失使用原ID确认，retry明确重发同一意图。 */
-    #[Route('/customer/tenants/{tenant}/devices/{device}/model-switches', methods: ['GET', 'POST'], name: 'customer.model-switches', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}', 'device' => '[a-f0-9]{32}'])]
-    public function modelSwitches(ServerRequestInterface $request): ResponseInterface
-    {
-        $tenantId = $this->tenant($request, 'customer');
-        $parameters = $request->getAttribute('type.route.params', []);
-        if ($request->getMethod() === 'GET') {
-            $query = $this->query($request, []);
-            return $this->response(200, $this->devices->modelSwitches($this->connection($request), $this->identity($request), $tenantId, $parameters['device'], $query['page'], $query['per_page']));
-        }
-        $data = $this->payload($request, ['switch_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'),
-            'model_version' => Field::integer()->required()->range(1, 2147483646), 'version' => Field::integer()->required()->range(1, 2147483646), 'retry' => Field::boolean()->defaultValue(false)]);
-        return $this->response(202, ['data' => $this->devices->switchModel(
-            $this->connection($request),
-            $this->identity($request),
-            $tenantId,
-            $parameters['device'],
-            $data['switch_id'],
-            $data['model_version'],
-            $data['version'],
-            $data['retry']
-        )]);
-    }
-
-    /** 指令列表只读取已有事实，发起操作独立授权并返回受理状态。 */
-    #[Route('/customer/tenants/{tenant}/devices/{device}/commands', methods: ['GET', 'POST'], name: 'customer.commands', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}', 'device' => '[a-f0-9]{32}'])]
-    public function commands(ServerRequestInterface $request): ResponseInterface
-    {
-        $tenantId = $this->tenant($request, 'customer');
-        $parameters = $request->getAttribute('type.route.params', []);
-        if ($request->getMethod() === 'GET') {
-            $query = $this->query($request, []);
-            return $this->response(200, CommandService::history($this->connection($request), $this->identity($request), $tenantId, $parameters['device'], $query['page'], $query['per_page']));
-        }
-        $data = $this->payload($request, ['version' => Field::integer()->required()->range(1, 2147483645), 'command_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'), 'identifier' => Field::text()->required()->matches('/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/D'), 'values' => (new Field('object'))->required()], 16384, 16);
-        return $this->response(201, ['data' => CommandService::create($this->connection($request), $this->identity($request), $tenantId, $parameters['device'], $data['identifier'], $data['values'], $data['command_id'], $data['version'])]);
-    }
-
-    /** 只读单条指令的受理与执行事实，旧未知结果不因列表翻页丢失观察入口。 */
-    #[Route('/customer/tenants/{tenant}/devices/{device}/commands/{command}', methods: ['GET'], name: 'customer.command-detail', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}', 'device' => '[a-f0-9]{32}', 'command' => '[a-f0-9]{32}'])]
-    public function commandDetail(ServerRequestInterface $request): ResponseInterface
-    {
-        $tenantId = $this->tenant($request, 'customer');
-        $parameters = $request->getAttribute('type.route.params', []);
-        return $this->response(200, ['data' => CommandService::detail($this->connection($request), $this->identity($request), $tenantId, $parameters['device'], $parameters['command'])]);
-    }
-
-    /** GET只读传输证据；POST主动查询独立授权，受理不等于设备结果。 */
-    #[Route('/customer/tenants/{tenant}/devices/{device}/commands/{command}/queries', methods: ['GET', 'POST'], name: 'customer.command-queries', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}', 'device' => '[a-f0-9]{32}', 'command' => '[a-f0-9]{32}'])]
-    public function commandQueries(ServerRequestInterface $request): ResponseInterface
-    {
-        $tenantId = $this->tenant($request, 'customer');
-        $parameters = $request->getAttribute('type.route.params', []);
-        if ($request->getMethod() === 'GET') {
-            $query = $this->query($request, []);
-            return $this->response(200, CommandService::timeline($this->connection($request), $this->identity($request), $tenantId, $parameters['device'], $parameters['command'], $query['page'], $query['per_page']));
-        }
-        $data = $this->payload($request, ['query_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D')]);
-        return $this->response(202, ['data' => CommandService::query($this->connection($request), $this->identity($request), $tenantId, $parameters['device'], $parameters['command'], $data['query_id'])]);
-    }
-
-
-    /** 原始历史和显示曲线共用严格筛选声明；未知参数、跨租户和越界页不降级为宽泛查询。 */
-    #[Route('/customer/tenants/{tenant}/devices/{device}/history', name: 'customer.history', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}', 'device' => '[a-f0-9]{32}'])]
-    public function history(ServerRequestInterface $request): ResponseInterface
-    {
-        $tenantId = $this->tenant($request, 'customer');
-        $fields = ['view' => Field::text()->oneOf(['records', 'curve', 'minutes', 'minute_curve']),
-            'stat' => Field::text()->oneOf(['count', 'min', 'max', 'sum', 'avg', 'last']),
-            'from' => Field::integer()->cast()->range(1, 253402300799), 'to' => Field::integer()->cast()->range(1, 253402300799),
-            'product_id' => Field::text()->matches('/^([a-f0-9]{32})?$/D'), 'ownership_id' => Field::text()->matches('/^([a-f0-9]{32})?$/D'),
-            'model_version' => Field::integer()->cast()->range(1, 2147483646), 'field' => Field::text()->matches('/^([a-zA-Z_][a-zA-Z0-9_]{0,63})?$/D'),
-            'sort' => Field::text()->oneOf(['sampled_desc', 'sampled_asc', 'received_desc', 'received_asc']), 'cursor' => Field::text()->length(0, 1024)];
-        $raw = (new Input([]))->withQuery($request->getUri()->getQuery())->source('query');
-        if (array_diff(array_keys($raw), [...array_keys($fields), 'page', 'per_page']) !== []) {
-            throw new HttpError(422, 'history_filter_invalid');
-        }
-        $query = $this->query($request, $fields);
-        $view = $query['view'] ?? 'records';
-        unset($query['view']);
-        if ($view !== 'minute_curve' && isset($query['stat'])) {
-            throw new HttpError(422, 'history_filter_invalid');
-        }
-        $parameters = $request->getAttribute('type.route.params', []);
-        $connection = $this->connection($request);
-        $identity = $this->identity($request);
-        if ($view === 'minutes' || $view === 'minute_curve') {
-            return $this->response(200, $view === 'minute_curve'
-                ? ['data' => AggregateService::curve($connection, $identity, $tenantId, $parameters['device'], $query)]
-                : AggregateService::search($connection, $identity, $tenantId, $parameters['device'], $query));
-        }
-        return $this->response(200, $view === 'curve'
-            ? ['data' => HistoryService::curve($connection, $identity, $tenantId, $parameters['device'], $query)]
-            : HistoryService::search($connection, $identity, $tenantId, $parameters['device'], $query));
-    }
-
-    /** 当前遥测独立授权；资产查询权限不隐含业务数据读取。 */
-    #[Route('/customer/tenants/{tenant}/devices/{device}/current', name: 'customer.device-current', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}', 'device' => '[a-f0-9]{32}'])]
-    public function current(ServerRequestInterface $request): ResponseInterface
-    {
-        $this->query($request, []);
-        $parameters = $request->getAttribute('type.route.params', []);
-        return $this->response(200, ['data' => IngestionService::current($this->connection($request), $this->identity($request), $this->tenant($request, 'customer'), $parameters['device'])]);
-    }
-
-    /** 尚未取得发送领取才可取消；已下发保留未知和真实回执。 */
-    #[Route('/customer/tenants/{tenant}/devices/{device}/commands/{command}/cancel', methods: ['POST'], name: 'customer.command-cancel', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}', 'device' => '[a-f0-9]{32}', 'command' => '[a-f0-9]{32}'])]
-    public function cancelCommand(ServerRequestInterface $request): ResponseInterface
-    {
-        $parameters = $request->getAttribute('type.route.params', []);
-        $data = $this->payload($request, ['cancel_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D')]);
-        return $this->response(200, ['data' => CommandService::cancel($this->connection($request), $this->identity($request), $this->tenant($request, 'customer'), $parameters['device'], $parameters['command'], $data['cancel_id'])]);
-    }
-
-    /** @param array<string, Field> $fields 有界查询；未知参数不能放宽范围。 */
-    private function query(ServerRequestInterface $request, array $fields): array
-    {
-        $fields += ['page' => Field::integer()->cast()->range(1, 100000), 'per_page' => Field::integer()->cast()->range(1, 100)];
-        $input = (new Input([]))->withQuery($request->getUri()->getQuery());
-        if (array_diff(array_keys($input->source('query')), array_keys($fields)) !== []) {
-            throw new HttpError(422, 'unexpected_field');
-        }
-        $declarations = [];
-        foreach ($fields as $name => $field) {
-            $declarations[$name] = $field->from('query');
-        }
-        return \_vali($declarations, $input) + ['page' => 1, 'per_page' => 20];
-    }
-
     private function realm(ServerRequestInterface $request): string
     {
         return match ((string) $request->getAttribute('type.route', '')) {
             'admin.devices', 'admin.device', 'admin.device-change' => 'admin',
-            'customer.devices', 'customer.device', 'customer.device-create', 'customer.device-change' => 'customer',
+            'customer.devices', 'customer.device', 'customer.device-change' => 'customer',
             default => throw new HttpError(404, 'not_found'),
         };
     }

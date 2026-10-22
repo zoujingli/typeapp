@@ -150,19 +150,50 @@ export async function brokerResourceCases(fixture, connect, start) {
   const otherPath = `/customer/tenants/${otherTenant}/broker/resources`;
   const a = fixture.registration.credential;
   const b = fixture.second.credential;
-  const product = (await http(`/customer/tenants/${otherTenant}/products`, tokens.bob, otherTenant, 201, 'POST', { name: 'Broker 跨租户产品' })).data;
-  const modelPath = `/customer/tenants/${otherTenant}/products/${product.id}/models`;
-  await http(modelPath, tokens.bob, otherTenant, 201, 'POST', { definition: { properties: [{ identifier: 'temperature', name: '温度', type: 'number', required: true }], events: [], commands: [] } });
-  await http(`${modelPath}/1/publish`, tokens.bob, otherTenant, 200, 'POST', { version: 1 });
-  const otherDevice = (await http(`/customer/tenants/${otherTenant}/devices`, tokens.bob, otherTenant, 201, 'POST', { name: '资源隔离设备', product_id: product.id, model_version: 1 })).data;
+  const id = () => randomBytes(16).toString('hex');
+  async function register(scope, name) {
+    const enrollment = (await http('/admin/device-authorizations', tokens.platform, null, 201, 'POST', {
+      id: id(), tenant_id: scope, name, capacity: 1, register_expires_at: Math.floor(Date.now() / 1000) + 3600,
+    })).data;
+    return (await http('/public/devices/register', '', null, 201, 'POST', {
+      id: id(), tenant_id: scope, device_id: id(), name, code: enrollment.code,
+    })).data;
+  }
+  async function settled(applicationPath, scope) {
+    const until = Date.now() + 15000;
+    do {
+      const result = (await http(applicationPath, tokens.bob, scope)).data.application;
+      if (result.publication.status === 'effective') return;
+      await delay(100);
+    } while (Date.now() < until);
+    throw new Error('resource application publication not effective');
+  }
+  async function grant(application, scope, registration) {
+    const applicationPath = `/customer/tenants/${scope}/applications/${application.application.id}`;
+    await http(`${applicationPath}/devices/${registration.device.id}`, tokens.bob, scope, 200, 'POST', {
+      ownership_id: registration.device.ownership_id, version: 0, receive: true, send: true, subscribe: true,
+    });
+    await settled(applicationPath, scope);
+  }
+  async function application(scope, registrations) {
+    const applicationPath = `/customer/tenants/${scope}/applications`;
+    const created = (await http(applicationPath, tokens.bob, scope, 201, 'POST', { id: id(), name: '资源观察业务系统' })).data;
+    await settled(`${applicationPath}/${created.application.id}`, scope);
+    for (const registration of registrations) await grant(created, scope, registration);
+    return created;
+  }
+  const otherDevice = await register(otherTenant, '资源隔离设备');
   const c = otherDevice.credential;
+  const app = await application(tenant, [fixture.registration, fixture.second]);
+  const otherApp = await application(otherTenant, [otherDevice]);
   const first = await connect(a);
   const second = await connect(b);
   const third = await connect(c);
   const secretPayload = `broker-resource-private-${randomBytes(20).toString('hex')}`;
-  const service = { client_id: 'iot-ingestion-broker-resources', username: `service:ingestion:${process.env.IOT_INGESTION_CREDENTIAL_ID}`, password: process.env.TYPE_INGESTION_PASSWORD };
-  const ingestion = await slowResourceConsumer(service);
+  const consumer = await slowResourceConsumer(app.credential);
+  let otherConsumer;
   try {
+    otherConsumer = await slowResourceConsumer(otherApp.credential);
     await first.client.subscribeAsync(a.topics.subscribe, { qos: 1 });
     await second.client.subscribeAsync(b.topics.subscribe, { qos: 1 });
     await third.client.subscribeAsync(c.topics.subscribe, { qos: 1 });
@@ -170,10 +201,11 @@ export async function brokerResourceCases(fixture, connect, start) {
     await assert.rejects(first.client.subscribeAsync(`$share/cross/${c.topics.subscribe}`, { qos: 1 }));
     await assert.rejects(first.client.subscribeAsync('iot/+/devices/+/epochs/+/down', { qos: 1 }));
     await first.client.subscribeAsync(`$share/authorized/${a.topics.subscribe}`, { qos: 1 });
-    await ingestion.client.subscribeAsync('$share/resource-workers/iot/+/devices/+/epochs/+/up', { qos: 1 });
-    // 同一服务连接发送下行并等待真实 PUBACK，入站慢消费不阻塞出站交换。
+    await consumer.client.subscribeAsync(a.topics.publish);
+    await otherConsumer.client.subscribeAsync(c.topics.publish);
+    // 两个客户分别以自己的应用消费；慢接收窗口不阻塞同一应用的出站交换。
     const down = once(second.client, 'message');
-    await ingestion.client.publishAsync(b.topics.subscribe, secretPayload, { qos: 1, retain: true });
+    await consumer.client.publishAsync(b.topics.subscribe, secretPayload, { qos: 1, retain: true });
     assert.equal((await down)[0], b.topics.subscribe);
     await second.client.unsubscribeAsync(b.topics.subscribe);
     const retained = once(second.client, 'message');
@@ -181,14 +213,16 @@ export async function brokerResourceCases(fixture, connect, start) {
     assert.equal((await retained)[0], b.topics.subscribe);
     await first.client.publishAsync(a.topics.publish, secretPayload, { qos: 1, retain: true });
     await third.client.publishAsync(c.topics.publish, secretPayload, { qos: 1, retain: true });
-    // 接收窗口已满，余下两租户消息必须以真实共享积压留存。
-    await first.client.publishAsync(a.topics.publish, secretPayload, { qos: 1 });
-    await third.client.publishAsync(c.topics.publish, secretPayload, { qos: 1 });
+    // 每个应用窗口为 2；第三条消息必须形成各自客户范围内的持久积压。
+    for (let index = 0; index < 2; index++) {
+      await first.client.publishAsync(a.topics.publish, secretPayload, { qos: 1 });
+      await third.client.publishAsync(c.topics.publish, secretPayload, { qos: 1 });
+    }
     checks.push('standard-tls-cross-tenant-wildcard-and-shared-refused-authorized-retained-replayed');
 
     function safe(body, foreign = true) {
       const encoded = JSON.stringify(body);
-      for (const forbidden of [secretPayload, a.password, b.password, c.password, service.password, '"payload"', '"properties"', '"password"', 'secret_hash']) assert(!encoded.includes(forbidden));
+      for (const forbidden of [secretPayload, a.password, b.password, c.password, app.credential.password, otherApp.credential.password, '"payload"', '"properties"', '"password"', 'secret_hash']) assert(!encoded.includes(forbidden));
       if (foreign) { assert(!encoded.includes(c.client_id)); assert(!encoded.includes(c.topics.publish)); }
     }
     async function list(resource, token = tokens.alice, scope = tenant, prefix = path, support) {
@@ -207,32 +241,32 @@ export async function brokerResourceCases(fixture, connect, start) {
       throw new Error('resource pagination exceeded bounded fixture');
     }
     const connections = await list('connections');
-    assert.equal(connections.length, 2);
+    assert.equal(connections.length, 3);
     assert(connections.every(item => item.connection_confirmed && item.resource_scope === `iot:${tenant}`));
     const sessions = await list('sessions');
-    assert.equal(sessions.length, 2);
+    assert.equal(sessions.length, 3);
     assert(sessions.every(item => item.connection_confirmed === false && item.state === 'owner_claim'));
     const subscriptions = await list('subscriptions');
-    assert.equal(subscriptions.length, 3);
+    assert.equal(subscriptions.length, 4);
     assert(subscriptions.some(item => item.shared));
     const retainedItems = await list('retained');
     assert.deepEqual(retainedItems.map(item => item.topic).sort(), [a.topics.publish, b.topics.subscribe].sort());
     const backlog = await list('backlog');
     assert(backlog.length > 0);
-    assert(backlog.some(item => item.shared));
+    assert(backlog.every(item => !item.shared));
     assert(backlog.every(item => item.topic.startsWith(`iot/${tenant}/`)));
     const nodes = await list('nodes');
-    assert.equal(nodes.length, 1); assert.equal(nodes[0].connections, 2);
+    assert.equal(nodes.length, 1); assert.equal(nodes[0].connections, 3);
     for (const [kind, items] of [['connections', connections], ['sessions', sessions], ['subscriptions', subscriptions], ['retained', retainedItems], ['backlog', backlog], ['nodes', nodes]]) {
       const result = await http(`${path}/${kind}/${encodeURIComponent(items[0].id)}`, tokens.alice);
       assert(result.found); safe(result);
       await http(`${otherPath}/${kind}/${encodeURIComponent(items[0].id)}`, tokens.bob, otherTenant, kind === 'nodes' ? 200 : 404);
     }
     const otherConnections = await list('connections', tokens.bob, otherTenant, otherPath);
-    assert.equal(otherConnections.length, 1); assert.equal(otherConnections[0].client_id, c.client_id);
+    assert.equal(otherConnections.length, 2); assert(otherConnections.some(item => item.client_id === c.client_id));
     const platformConnections = await list('connections', tokens.platform, null, '/admin/broker/resources');
-    assert.equal(platformConnections.length, 4);
-    checks.push('real-connections-sessions-subscriptions-retained-shared-backlog-stable-pagination-and-scoped-details');
+    assert.equal(platformConnections.length, 5);
+    checks.push('real-device-application-connections-sessions-exact-subscriptions-retained-backlog-and-scoped-pagination');
     await http(`${path}/connections`, tokens.platform, tenant, 401);
     await http(`${path}/connections`, tokens.outsider, tenant, 403);
     await http('/admin/broker/resources/connections', tokens.alice, null, 401);
@@ -250,11 +284,11 @@ export async function brokerResourceCases(fixture, connect, start) {
     await http(`${otherPath}/connections?limit=1&cursor=${encodeURIComponent(pageOne.next_cursor)}`, tokens.bob, otherTenant, 400);
     await http(`${path}/connections?limit=1&state=connected&cursor=${encodeURIComponent(pageOne.next_cursor)}`, tokens.alice, tenant, 400);
     const simulated = fixture.simulated.accessToken;
-    assert.equal((await list('connections', simulated)).length, 2);
+    assert.equal((await list('connections', simulated)).length, 3);
     await http('/admin/broker/resources/connections', simulated, null, 401);
     await http(`${path}/connections?limit=1&cursor=${encodeURIComponent(pageOne.next_cursor)}`, simulated, tenant, 400);
     await http(`${path}/connections`, simulated, tenant, 403, 'GET', undefined, randomBytes(16).toString('hex'));
-    assert.equal((await list('connections', simulated, otherTenant, otherPath)).length, 1);
+    assert.equal((await list('connections', simulated, otherTenant, otherPath)).length, 2);
     const simulationRead = await http(`${path}/connections/${connections[0].id}`, simulated);
     safe(simulationRead);
     const audits = await http(`/customer/tenants/${tenant}/broker/audit?action=broker.resource.read&subject_id=${connections[0].id}`);
@@ -267,7 +301,7 @@ export async function brokerResourceCases(fixture, connect, start) {
     assert.deepEqual((await http(`/admin/broker/audit/customer/${event.id}`, tokens.platform, null)).item, detail);
     checks.push('new-rbac-platform-metadata-exact-simulation-source-and-cursor-revalidation');
     await first.client.unsubscribeAsync(`$share/authorized/${a.topics.subscribe}`);
-    assert.equal((await list('subscriptions')).length, 2);
+    assert.equal((await list('subscriptions')).length, 3);
     const oldOwner = connections.find(item => item.client_id === a.client_id).id;
     const closed = once(first.client, 'close');
     let takeover = start(a);
@@ -309,13 +343,16 @@ export async function brokerResourceCases(fixture, connect, start) {
       const payload = `${stage}-${secretPayload}`;
       const received = once(second.client, 'message', { signal: AbortSignal.timeout(10000) });
       const [, [topic, bytes]] = await Promise.all([
-        ingestion.client.publishAsync(b.topics.subscribe, payload, { qos: 1, retain: false }), received,
+        consumer.client.publishAsync(b.topics.subscribe, payload, { qos: 1, retain: false }), received,
       ]);
       assert.equal(topic, b.topics.subscribe); assert.deepEqual(bytes, Buffer.from(payload));
       await second.client.publishAsync(b.topics.publish, payload, { qos: 1 });
       assert(takeover.connected && second.client.connected && third.client.connected, '长共享订阅操作不能停止 Broker 或断开其他设备');
     }
-    for (const filter of longFilters) await takeover.subscribeAsync(filter, { qos: 1 });
+    for (const [index, filter] of longFilters.entries()) {
+      try { await takeover.subscribeAsync(filter, { qos: 1 }); }
+      catch (error) { throw new Error(`long shared subscription ${index} failed`, { cause: error }); }
+    }
     const longItems = await longSubscriptions();
     await ordinaryTraffic('long-subscribed');
     await takeover.endAsync(false);
@@ -326,22 +363,28 @@ export async function brokerResourceCases(fixture, connect, start) {
     assert.deepEqual(restoredItems.map(item => [item.id, item.session_id]), longItems.map(item => [item.id, item.session_id]));
     await ordinaryTraffic('long-restored');
     for (const filter of longFilters) await takeover.unsubscribeAsync(filter);
-    assert.equal((await list('subscriptions')).length, 2);
+    assert.equal((await list('subscriptions')).length, 3);
     for (const item of longItems) await http(`${path}/subscriptions/${item.id}`, tokens.alice, tenant, 404);
     await ordinaryTraffic('long-unsubscribed');
     checks.push('standard-65535-byte-shared-filters-json-expansion-resume-and-unsubscribe-preserve-other-client-traffic');
     if (process.env.TYPE_BROKER_RESOURCE_DIST) {
-      // 浏览器的20条默认页需要真实跨页数据，使用同一设备已获准Topic上的独立共享组。
-      const browserFilters = Array.from({ length: 22 }, (_, index) => `$share/browser-${index === 0 ? 'long-group-'.repeat(12) : index}/${a.topics.subscribe}`);
-      for (const filter of browserFilters) await takeover.subscribeAsync(filter, { qos: 1 });
-      fixture.broker_resources.browser = { long_filter: browserFilters[0] };
+      // 20 条默认页由 22 台真实注册设备的精确应用订阅跨页，不扩大设备授权范围。
+      const browserFilters = [];
+      for (let index = 0; index < 22; index++) {
+        const registration = await register(tenant, `资源分页设备 ${index + 1}`);
+        await grant(app, tenant, registration);
+        const topic = registration.credential.topics.publish;
+        await consumer.client.subscribeAsync(topic);
+        browserFilters.push(topic);
+      }
+      fixture.broker_resources.browser = { exact_filter: browserFilters[0] };
       const { brokerResourceBrowser } = await import('./broker-resources-browser.mjs');
       // 这些订阅属于本轮专用数据库；外层关闭全部客户端并回收数据库。
       // 浏览器失败时不能再等待可能已经断开的客户端确认，掩盖原始错误。
       checks.push(...await brokerResourceBrowser({ origin, dist: process.env.TYPE_BROKER_RESOURCE_DIST, base: process.env.APP_BASE_PATH, fixture }));
       assert(takeover.connected && second.client.connected && third.client.connected, '浏览器验收期间真实设备连接保持在线');
     }
-    ingestion.check();
+    consumer.check(); otherConsumer.check();
     return checks;
-  } finally { await ingestion.close(); }
+  } finally { await consumer.close(); await otherConsumer?.close(); }
 }

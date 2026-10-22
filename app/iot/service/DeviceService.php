@@ -23,7 +23,7 @@ use Type\Orm\Query;
 use Type\Orm\Db;
 use Type\Runtime\ExecutionScope;
 
-/** 设备注册、当前使用关系与接入凭据的持久所有者；历史模型接入在迁移完成前保持原合同。 */
+/** 设备注册、当前使用关系与接入凭据的持久所有者；接入只提供当前关系的原始通信。 */
 final class DeviceService
 {
     /**
@@ -50,6 +50,9 @@ final class DeviceService
                     $grant = DeviceEnrollment::query()->master()->find($id);
                     if ($grant === null || !hash_equals($grant->getSecretHash(), hash('sha256', $secret))) {
                         throw new HttpError(401, 'registration_credentials_invalid');
+                    }
+                    if (!$grant->getRecoveryVerified()) {
+                        throw new HttpError(409, 'recovery_reconciliation_required');
                     }
                     $transaction = Db::connection('default', true);
                     $requestHash = hash('sha256', json_encode([$data['tenant_id'], $data['device_id'], $data['name'], $id], JSON_THROW_ON_ERROR));
@@ -180,37 +183,7 @@ final class DeviceService
     }
 
     /**
-     * 授权事务中绑定精确已发布模型并生成独立凭据；不推进租户资料版本。
-     * 256位随机秘密只随本次成功结果返回，数据库仅保存SHA-256验证值。
-     * @return array{device: array<string, mixed>, credential: array<string, mixed>}
-     * @throws HttpError 无登记权限、跨租户模型、模型未发布或不存在。
-     */
-    public function register(Connection $connection, Identity $identity, string $tenantId, string $productId, int $modelVersion, string $name): array
-    {
-        return $this->run($connection, $identity, $tenantId, 'customer', 'create', 'device.registered', $productId, true, static function (Connection $transaction, Identity $current, array $context) use ($tenantId, $productId, $modelVersion, $name): array {
-            ProductService::publishedModel($transaction, $tenantId, $productId, $modelVersion);
-            $device = ['id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenantId, 'product_id' => $productId,
-                'model_version' => $modelVersion, 'ownership_id' => bin2hex(random_bytes(16)), 'name' => $name,
-                'lifecycle' => 'inactive', 'version' => 1, 'created_at' => time(), 'updated_at' => time(),
-                'model_switch_id' => null, 'model_start_sequence' => '0', 'transfer_id' => null, 'transfer_frozen' => 0, 'recovery_verified' => 1];
-            $credentialId = bin2hex(random_bytes(16));
-            $secret = bin2hex(random_bytes(32));
-            $transaction->table('iot_devices')->insert($device);
-            $transaction->table('iot_device_ownerships')->insert(['id' => $device['ownership_id'], 'device_id' => $device['id'],
-                'tenant_id' => $tenantId, 'started_at' => $device['created_at']]);
-            $transaction->table('iot_device_connections')->insert(['device_id' => $device['id'], 'ownership_id' => $device['ownership_id'], 'status' => 'unknown']);
-            $transaction->table('iot_device_credentials')->insert(['id' => $credentialId, 'device_id' => $device['id'],
-                'ownership_id' => $device['ownership_id'], 'secret_hash' => hash('sha256', $secret), 'status' => 'active',
-                'created_at' => time(), 'revoked_at' => null]);
-            AuditLog::append($transaction, $tenantId, $current, 'device.registered', $device['id'], 'success', ['context' => 'device', 'version' => 1], 'customer');
-            AuditLog::append($transaction, $tenantId, $current, 'credential.created', $device['id'], 'success', ['context' => 'device', 'version' => 1], 'customer');
-            return ['device' => self::project($transaction, $device['id'], 'customer'),
-                'credential' => self::credential($device, $credentialId, $secret)];
-        });
-    }
-
-    /**
-     * 客户可读绑定模型和公开Topic，平台仅取得资产与接入状态；不混入遥测、指令或导出。
+     * 客户可读当前关系的公开 Topic；平台取得资产、接入状态与可核对的升级来源。
      * @return array<string, mixed> 精确目标的只读投影，不返回秘密或验证值。
      * @throws HttpError 身份无权查看或目标不在所选范围。
      */
@@ -241,11 +214,7 @@ final class DeviceService
             'ended_at' => $ownership['ended_at'] === null ? null : (int) $ownership['ended_at'],
             'expires_at' => $ownership['expires_at'] === null ? null : (int) $ownership['expires_at'],
             'available' => TransferService::ownershipCurrent($connection, $device)];
-        return $realm === 'admin' ? $result : $result + [
-            'model' => $device['model_version'] === null ? null : ProductService::publishedModel($connection, $device['tenant_id'], $device['product_id'], (int) $device['model_version']),
-            'topics' => self::topics($device), 'model_switch' => $device['model_switch_id'] === null ? null
-                : self::switchProjection($connection->table('iot_model_switches')->where('id', '=', $device['model_switch_id'])->first()),
-        ];
+        return $realm === 'admin' ? $result : $result + ['topics' => self::topics($device)];
     }
 
     /**
@@ -290,293 +259,19 @@ final class DeviceService
         }
     }
 
-    /** 当前有权客户提出精确设备版本；原ID确认受理，retry只重新发送原目标并保留真实来源。 */
-    public function switchModel(Connection $connection, Identity $identity, string $tenantId, string $deviceId, string $switchId, int $targetVersion, int $version, bool $retry = false): array
-    {
-        if (!preg_match('/^[a-f0-9]{32}$/D', $switchId) || $targetVersion < 1 || $targetVersion > 2147483646) {
-            throw new HttpError(422, 'model_switch_invalid');
-        }
-        return $this->run($connection, $identity, $tenantId, 'customer', 'model-switch', 'device.model_switch_requested', $deviceId, true, static function (Connection $transaction, Identity $current, array $context) use ($tenantId, $deviceId, $switchId, $targetVersion, $version, $retry): array {
-            $lookup = $transaction->table('iot_devices')->where('tenant_id', '=', $tenantId)->where('id', '=', $deviceId);
-            $device = ($transaction->driverName() === 'sqlite' ? $lookup : $lookup->lockForUpdate())->first();
-            if ($device === null) {
-                throw new HttpError(404, 'device_not_found');
-            }
-            $query = $transaction->table('iot_model_switches')->where('id', '=', $switchId);
-            $existing = ($transaction->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
-            if ($existing !== null) {
-                if ($existing['tenant_id'] !== $tenantId || $existing['device_id'] !== $deviceId || (int) $existing['target_version'] !== $targetVersion
-                    || (!$retry && ((int) $existing['request_version'] !== $version || json_decode($existing['source_context'], true, 8, JSON_THROW_ON_ERROR)['key'] !== $context['identity']['key']))) {
-                    throw new HttpError(409, 'model_switch_identity_conflict');
-                }
-                if ($retry && (int) ($existing['retry_version'] ?? 0) === $version) {
-                    if (json_decode($existing['dispatch_context'], true, 8, JSON_THROW_ON_ERROR)['key'] !== $context['identity']['key']) {
-                        throw new HttpError(409, 'model_switch_identity_conflict');
-                    }
-                    return self::switchProjection($existing);
-                }
-                if ($retry && $existing['status'] === 'pending') {
-                    if ($version < 1 || $version >= 2147483646 || (int) $device['version'] !== $version) {
-                        throw new HttpError(409, 'stale_version');
-                    }
-                    if (!self::modelSwitchAllowed($transaction, $device) || $device['model_switch_id'] !== $switchId || $device['ownership_id'] !== $existing['ownership_id']) {
-                        throw new HttpError(409, 'model_switch_device_unavailable');
-                    }
-                    if ($existing['last_attempt_at'] !== null && time() < (int) $existing['last_attempt_at'] + 10) {
-                        throw new HttpError(409, 'model_switch_retry_too_soon');
-                    }
-                    $transaction->table('iot_model_switches')->where('id', '=', $switchId)->update(['next_attempt_at' => time(), 'retry_version' => $version,
-                        'dispatch_context' => json_encode($context['identity'], JSON_THROW_ON_ERROR)]);
-                    $lookup->update(['version' => $version + 1, 'updated_at' => time()]);
-                    AuditLog::append($transaction, $tenantId, $current, 'device.model_switch_retried', $deviceId, 'unknown', ['switch_id' => $switchId, 'version' => $version + 1], 'customer');
-                }
-                return self::switchProjection($transaction->table('iot_model_switches')->where('id', '=', $switchId)->first());
-            }
-            if ($retry) {
-                throw new HttpError(404, 'model_switch_not_found');
-            }
-            if ($version < 1 || $version >= 2147483646 || (int) $device['version'] !== $version) {
-                throw new HttpError(409, 'stale_version');
-            }
-            if (!self::modelSwitchAllowed($transaction, $device)) {
-                throw new HttpError(409, 'model_switch_device_unavailable');
-            }
-            if ($device['model_switch_id'] !== null) {
-                throw new HttpError(409, 'model_switch_in_progress');
-            }
-            if ((int) $device['model_version'] === $targetVersion) {
-                throw new HttpError(409, 'model_already_bound');
-            }
-            $target = ProductService::publishedModel($transaction, $tenantId, $device['product_id'], $targetVersion);
-            $source = ProductService::publishedModel($transaction, $tenantId, $device['product_id'], (int) $device['model_version']);
-            $now = time();
-            $record = ['id' => $switchId, 'tenant_id' => $tenantId, 'device_id' => $deviceId, 'ownership_id' => $device['ownership_id'],
-                'product_id' => $device['product_id'], 'source_version' => (int) $device['model_version'], 'target_version' => $targetVersion,
-                'source_start' => $device['model_start_sequence'], 'structure_hash' => ModelDefinition::structuralHash($target['definition']),
-                'same_structure' => ModelDefinition::structurallyEqual($source['definition'], $target['definition']) ? 1 : 0,
-                'actor_id' => $current->subject(), 'request_version' => $version, 'source_context' => json_encode($context['identity'], JSON_THROW_ON_ERROR),
-                'dispatch_context' => json_encode($context['identity'], JSON_THROW_ON_ERROR), 'created_at' => $now, 'next_attempt_at' => $now, 'status' => 'pending'];
-            $transaction->table('iot_model_switches')->insert($record);
-            $lookup->update(['model_switch_id' => $switchId, 'version' => (int) $device['version'] + 1, 'updated_at' => $now]);
-            AuditLog::append(
-                $transaction,
-                $tenantId,
-                $current,
-                'device.model_switch_requested',
-                $deviceId,
-                'unknown',
-                ['switch_id' => $switchId, 'source_version' => (int) $device['model_version'], 'target_version' => $targetVersion],
-                'customer'
-            );
-            return self::switchProjection($transaction->table('iot_model_switches')->where('id', '=', $switchId)->first());
-        });
-    }
-
-    /** 只读、有界的切换记录；超时只投影为尚未确认，不撤回可能已经在设备持久生效的意图。 */
-    public function modelSwitches(Connection $connection, Identity $identity, string $tenantId, string $deviceId, int $page = 1, int $perPage = 20): array
-    {
-        $this->device($connection, $identity, $tenantId, $deviceId);
-        if ($page < 1 || $page > 100000 || $perPage < 1 || $perPage > 100) {
-            throw new HttpError(422, 'model_switch_page_invalid');
-        }
-        $pagination = $connection->table('iot_model_switches')->where('tenant_id', '=', $tenantId)->where('device_id', '=', $deviceId)
-            ->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
-        $items = [];
-        foreach ($pagination->items() as $record) {
-            $items[] = self::switchProjection($record);
-        }
-        return ['items' => $items, 'total' => $pagination->total(), 'page' => $pagination->number(), 'per_page' => $pagination->perPage()];
-    }
-
-    /** 同步事务内领取至多一个原意图；自动最多三次，60秒以后保留未知等待管理员重试。 */
-    public static function claimModelSwitch(Connection $transaction): ?array
-    {
-        if ($transaction->transactionDepth() < 1) {
-            throw new \LogicException('model_switch_transaction_required');
-        }
-        RoleService::lockAuthorization();
-        $query = $transaction->table('iot_model_switches')->where('next_attempt_at', '<=', time())->orderBy('next_attempt_at')->orderBy('id')->limit(1);
-        $record = $query->first();
-        if ($record === null) {
-            return null;
-        }
-        $deviceLock = $transaction->table('iot_devices')->where('id', '=', $record['device_id']);
-        $lockedDevice = ($transaction->driverName() === 'sqlite' ? $deviceLock : $deviceLock->lockForUpdate())->first();
-        $recordLock = $transaction->table('iot_model_switches')->where('id', '=', $record['id']);
-        $record = ($transaction->driverName() === 'sqlite' ? $recordLock : $recordLock->lockForUpdate())->first();
-        if ($record === null || $record['next_attempt_at'] === null || (int) $record['next_attempt_at'] > time()) {
-            return null;
-        }
-        $now = time();
-        $source = json_decode($record['dispatch_context'], true, 8, JSON_THROW_ON_ERROR);
-        $current = (new IdentityService('customer'))->resume($source);
-        $allowed = false;
-        if ($current !== null) {
-            try {
-                $allowed = in_array('customer.devices.model-switch', RoleService::permissions($current, 'customer', $record['tenant_id']), true);
-            } catch (HttpError $revoked) {
-                $allowed = false;
-            }
-        }
-        if (!$allowed) {
-            // 未领取过才可解除模型冻结；已发送的意图保留未知并继续接收设备确认。
-            $transaction->table('iot_model_switches')->where('id', '=', $record['id'])->update(['next_attempt_at' => null,
-                'status' => $record['last_attempt_at'] === null ? 'rejected' : $record['status'], 'result_code' => 'source_permission_revoked']);
-            if ($record['last_attempt_at'] === null) {
-                $transaction->execute('UPDATE iot_devices SET model_switch_id = NULL, version = version + 1 WHERE id = ? AND model_switch_id = ?', [$record['device_id'], $record['id']]);
-            }
-            AuditLog::append(
-                $transaction,
-                $record['tenant_id'],
-                $source,
-                'device.model_switch_stopped',
-                $record['device_id'],
-                $record['last_attempt_at'] === null ? 'denied' : 'unknown',
-                ['switch_id' => $record['id'], 'reason' => 'source_permission_revoked'],
-                'customer'
-            );
-            return null;
-        }
-        $device = self::observation($transaction, $record['device_id'], $lockedDevice);
-        $available = $device !== null && self::modelSwitchAllowed($transaction, $device) && $device['connection']['status'] === 'online'
-            && $device['model_switch_id'] === $record['id'] && $device['ownership_id'] === $record['ownership_id']
-            && (int) $device['model_version'] === (int) $record['source_version'] && $record['status'] === 'pending';
-        $count = (int) $record['attempt_count'];
-        // 离线不消耗发送次数，但自动等待有60秒上限；人工重试的节点可以晚于首次请求。
-        $automaticExpired = $now >= (int) $record['created_at'] + 60 && (int) $record['next_attempt_at'] < (int) $record['created_at'] + 60;
-        if (!$available || $automaticExpired || $count >= 100000) {
-            $transaction->table('iot_model_switches')->where('id', '=', $record['id'])->update(['next_attempt_at' => $available || $now + 10 >= (int) $record['created_at'] + 60 ? null : $now + 10]);
-            return null;
-        }
-        $next = $now + ($count === 0 ? 10 : 20);
-        $transaction->table('iot_model_switches')->where('id', '=', $record['id'])->update(['attempt_count' => $count + 1,
-            'last_attempt_at' => $now, 'next_attempt_at' => $count < 2 && $next < (int) $record['created_at'] + 60 ? $next : null]);
-        AuditLog::append($transaction, $record['tenant_id'], $current, 'device.model_switch_dispatched', $record['device_id'], 'unknown', ['switch_id' => $record['id'], 'version' => $count + 1], 'customer');
-        return ['topic' => DeviceService::topics($device)['subscribe'], 'deadline_at' => min($now + 30, (int) $current->attributes()['expires_at']),
-            'payload' => json_encode(['app_version' => 1, 'type' => 'model_switch',
-            'device_id' => $record['device_id'], 'ownership_id' => $record['ownership_id'], 'switch_id' => $record['id'],
-            'source_version' => (int) $record['source_version'], 'target_version' => (int) $record['target_version'],
-            'source_start' => $record['source_start'], 'structure_hash' => $record['structure_hash']], JSON_THROW_ON_ERROR)];
-    }
-
-    /** 仅设备在本地同步切换后发出的精确确认改变绑定；业务ACK须由调用者取得本次同步提交证明后发送。 */
-    public static function confirmModelSwitch(Connection $transaction, string $topic, array $data, int $qos, int $receivedAt): array
-    {
-        $none = ['message_id' => '', 'topic' => '', 'receipt' => null, 'code' => 'invalid_model_switch_receipt'];
-        $fields = ['app_version', 'type', 'device_id', 'ownership_id', 'switch_id', 'source_version', 'target_version', 'structure_hash', 'boundary_sequence', 'status', 'code'];
-        if ($transaction->transactionDepth() < 1) {
-            throw new \LogicException('model_switch_transaction_required');
-        }
-        if ($qos !== 1 || count($data) !== count($fields) || array_diff(array_keys($data), $fields) !== [] || ($data['app_version'] ?? null) !== 1
-            || ($data['type'] ?? '') !== 'model_switch_receipt' || !is_string($data['device_id'] ?? null) || !is_string($data['switch_id'] ?? null)
-            || !is_string($data['boundary_sequence'] ?? null) || !preg_match('/^(0|[1-9][0-9]{0,37})$/D', $data['boundary_sequence'])
-            || !is_int($data['source_version'] ?? null) || !is_int($data['target_version'] ?? null)
-            || !in_array($data['status'] ?? '', ['confirmed', 'rejected'], true)
-            || !in_array($data['code'] ?? '', $data['status'] === 'confirmed' ? ['model_switched'] : ['model_unsupported', 'model_state_conflict'], true)) {
-            return $none;
-        }
-        $lookup = $transaction->table('iot_devices')->where('id', '=', $data['device_id'])->where('recovery_verified', '=', 1);
-        $device = ($transaction->driverName() === 'sqlite' ? $lookup : $lookup->lockForUpdate())->first();
-        $recordQuery = $transaction->table('iot_model_switches')->where('id', '=', $data['switch_id']);
-        $record = ($transaction->driverName() === 'sqlite' ? $recordQuery : $recordQuery->lockForUpdate())->first();
-        if ($device === null || $record === null || !self::modelSwitchAllowed($transaction, $device) || DeviceService::topics($device)['publish'] !== $topic
-            || $device['ownership_id'] !== ($data['ownership_id'] ?? '') || $record['ownership_id'] !== $device['ownership_id']
-            || $record['device_id'] !== $device['id'] || (int) $record['source_version'] !== $data['source_version']
-            || (int) $record['target_version'] !== $data['target_version'] || $record['structure_hash'] !== ($data['structure_hash'] ?? '')
-            || $record['last_attempt_at'] === null) {
-            return $none;
-        }
-        $hash = IngestionService::contentHash(json_encode((object) $data, JSON_THROW_ON_ERROR));
-        if ($record['status'] !== 'pending') {
-            if ($record['result_hash'] !== $hash) {
-                return $none;
-            }
-        } else {
-            if ($device['model_switch_id'] !== $record['id'] || (int) $device['model_version'] !== (int) $record['source_version']
-                || self::sequenceCompare($data['boundary_sequence'], $record['source_start']) < 0) {
-                return $none;
-            }
-            $current = $transaction->table('iot_current_data')->where('device_id', '=', $device['id'])->first();
-            if ($data['status'] === 'confirmed' && $current !== null && $current['ownership_id'] === $device['ownership_id']
-                && self::sequenceCompare($data['boundary_sequence'], $current['sequence']) < 0) {
-                return $none;
-            }
-            $change = ['model_switch_id' => null, 'version' => (int) $device['version'] + 1, 'updated_at' => $receivedAt];
-            if ($data['status'] === 'confirmed') {
-                $change += ['model_version' => (int) $record['target_version'], 'model_start_sequence' => $data['boundary_sequence']];
-            }
-            $lookup->update($change);
-            $transaction->table('iot_model_switches')->where('id', '=', $record['id'])->update(['status' => $data['status'], 'result_code' => $data['code'],
-                'boundary_sequence' => $data['boundary_sequence'], 'confirmed_at' => $receivedAt, 'result_hash' => $hash, 'next_attempt_at' => null]);
-            AuditLog::append(
-                $transaction,
-                $record['tenant_id'],
-                json_decode($record['dispatch_context'], true, 8, JSON_THROW_ON_ERROR),
-                'device.model_switch_confirmed',
-                $device['id'],
-                $data['status'] === 'confirmed' ? 'success' : 'failed',
-                ['switch_id' => $record['id'], 'source_version' => $data['source_version'], 'target_version' => $data['target_version'], 'reason' => $data['code'], 'boundary_sequence' => $data['boundary_sequence']],
-                'customer'
-            );
-        }
-        $transaction->table('iot_model_switches')->where('id', '=', $record['id'])->update(['receipt_nonce' => bin2hex(random_bytes(16))]);
-        return ['message_id' => '', 'topic' => DeviceService::topics($device)['subscribe'], 'code' => 'accepted', 'receipt' => ['app_version' => 1,
-            'type' => 'model_switch_ack', 'device_id' => $device['id'], 'ownership_id' => $device['ownership_id'], 'switch_id' => $record['id'], 'result_hash' => $hash]];
-    }
-
-    /** 只接受当前序号区间或已确认结束的原绑定区间；旧缓存按原版本进入历史，不能伪造从未绑定的版本。 */
-    public static function acceptsModel(Connection $connection, array $device, int $modelVersion, string $sequence): bool
-    {
-        if ($modelVersion === (int) $device['model_version'] && self::sequenceCompare($sequence, $device['model_start_sequence']) > 0) {
-            return true;
-        }
-        $rows = $connection->query(
-            "SELECT id FROM iot_model_switches WHERE device_id = ? AND ownership_id = ? AND source_version = ? AND status = 'confirmed'"
-            . ' AND (LENGTH(source_start) < ? OR (LENGTH(source_start) = ? AND source_start < ?))'
-            . ' AND (LENGTH(boundary_sequence) > ? OR (LENGTH(boundary_sequence) = ? AND boundary_sequence >= ?)) LIMIT 1',
-            [$device['id'], $device['ownership_id'], $modelVersion, strlen($sequence), strlen($sequence), $sequence, strlen($sequence), strlen($sequence), $sequence]
-        );
-        return $rows !== [];
-    }
-
-    /** 十进制持久序号不转为机器整数；供缓存、平台绑定与迟到数据边界使用。 */
-    public static function sequenceCompare(string $left, string $right): int
-    {
-        return strlen($left) === strlen($right) ? strcmp($left, $right) : (strlen($left) < strlen($right) ? -1 : 1);
-    }
-
-    private static function switchProjection(array $record): array
-    {
-        unset($record['receipt_nonce'], $record['result_hash'], $record['source_context'], $record['dispatch_context']);
-        foreach (['source_version', 'target_version', 'request_version', 'retry_version', 'created_at', 'next_attempt_at', 'attempt_count', 'last_attempt_at', 'confirmed_at'] as $field) {
-            $record[$field] = $record[$field] === null ? null : (int) $record[$field];
-        }
-        $record['state'] = $record['status'] === 'pending' && time() >= (int) $record['created_at'] + 60 ? 'unconfirmed' : $record['status'];
-        $record['same_structure'] = (int) $record['same_structure'] === 1;
-        return $record;
-    }
-
-    /** 沿用生命周期与撤权事实；设备锁由请求/确认调用者拥有，待撤权或无有效凭据时不能继续模型切换。 */
-    private static function modelSwitchAllowed(Connection $connection, array $device): bool
-    {
-        return (int) $device['recovery_verified'] === 1 && $device['lifecycle'] === 'enabled' && $device['transfer_id'] === null
-            && $connection->table('iot_authorization_invalidations')->where('device_id', '=', $device['id'])->whereNull('completed_at')->first() === null
-            && $connection->table('iot_device_credentials')->where('device_id', '=', $device['id'])->where('status', '=', 'active')->where('recovery_verified', '=', 1)->first() !== null;
-    }
-
     /**
      * 管理动作在授权和设备锁内重验独立节点、版本及危险确认；平台身份不伪造成租户成员。
      * 禁用撤销旧凭据，重新启用须另行生成新凭据。退役是终态，历史及原归属不删除。
-     * @param string $name 资料入口已通过公共Field校验的1–100字符名称；其他动作忽略。
+     * @param array{name?:string,product_id?:?string} $data 资料入口已校验的名称和分类；分类缺省保持、null 清除，其他动作忽略。
      * @return array{device:array<string,mixed>,credential:array<string,mixed>|null} authorization.pending须等Broker完成，不能当作网络已隔离。
      * @throws HttpError 无权限、确认不符、版本冲突、退役终态或前次撤权尚未完成。
      */
-    public function change(Connection $connection, Identity $identity, string $tenantId, string $deviceId, string $action, int $version, string $confirmation, string $realm = 'customer', string $name = ''): array
+    public function change(Connection $connection, Identity $identity, string $tenantId, string $deviceId, string $action, int $version, string $confirmation, string $realm = 'customer', array $data = []): array
     {
         if (!in_array($action, ['update', 'rotate', 'revoke', 'disable', 'enable', 'retire'], true)) {
             throw new HttpError(422, 'device_action_invalid');
         }
-        return $this->run($connection, $identity, $tenantId, $realm, $action, 'device.' . $action, $deviceId, true, static function (Connection $transaction, Identity $current, array $context) use ($tenantId, $deviceId, $action, $version, $confirmation, $realm, $name): array {
+        return $this->run($connection, $identity, $tenantId, $realm, $action, 'device.' . $action, $deviceId, true, static function (Connection $transaction, Identity $current, array $context) use ($tenantId, $deviceId, $action, $version, $confirmation, $realm, $data): array {
             $lookup = $transaction->table('iot_devices')->where('id', '=', $deviceId);
             if ($realm === 'customer') {
                 $lookup = $lookup->where('tenant_id', '=', $tenantId);
@@ -598,18 +293,11 @@ final class DeviceService
             if ($device['lifecycle'] === 'retired') {
                 throw new HttpError(409, 'device_retired');
             }
-            if ($device['model_version'] === null && in_array($action, ['enable', 'rotate'], true) && !TransferService::ownershipCurrent($transaction, $device)) {
+            if (in_array($action, ['enable', 'rotate'], true) && !TransferService::ownershipCurrent($transaction, $device)) {
                 throw new HttpError(409, 'device_ownership_unavailable');
             }
-            if ($device['transfer_id'] !== null) {
-                if ($device['model_version'] === null && $action !== 'update') {
-                    throw new HttpError(409, 'reassignment_in_progress');
-                }
-                $transfer = $transaction->table('iot_transfers')->where('id', '=', $device['transfer_id'])->first();
-                if ($transfer !== null && ($transfer['status'] === 'isolating'
-                    || ($transfer['status'] === 'activating' && !in_array($action, ['rotate', 'revoke'], true)))) {
-                    throw new HttpError(409, 'transfer_switch_in_progress');
-                }
+            if ($device['transfer_id'] !== null && ($action !== 'update' || array_key_exists('product_id', $data))) {
+                throw new HttpError(409, 'reassignment_in_progress');
             }
             $pending = $transaction->table('iot_authorization_invalidations')->where('device_id', '=', $deviceId);
             $previous = ($transaction->driverName() === 'sqlite' ? $pending : $pending->lockForUpdate())->first();
@@ -636,7 +324,19 @@ final class DeviceService
             };
             $changes = ['lifecycle' => $lifecycle, 'version' => $version + 1, 'updated_at' => $now];
             if ($action === 'update') {
-                $changes['name'] = $name;
+                $changes['name'] = $data['name'];
+                if (array_key_exists('product_id', $data)) {
+                    if ($data['product_id'] !== null) {
+                        $product = ExecutionScope::current()->run(
+                            static fn (ExecutionScope $scope): ?\app\iot\model\Product => \app\iot\model\Product::query()->master()->find($data['product_id']),
+                            ['tenant_id' => $device['tenant_id']]
+                        );
+                        if ($product === null) {
+                            throw new HttpError(404, 'product_not_found');
+                        }
+                    }
+                    $changes['product_id'] = $data['product_id'];
+                }
             }
             $lookup->update($changes);
             $credential = null;
@@ -938,11 +638,9 @@ final class DeviceService
         } elseif ($allowed && $action === 'authorize') {
             $topics = self::topics($device);
             $allowed = AccessService::authorizeDevice($connection, $device['id'], $request['topic'], $request['operation'], (int) $request['qos'], $topics);
-            if ($device['model_version'] === null) {
-                // 原始设备只拥有自身当前使用关系的两个精确主题，历史自定义规则不能扩大范围。
-                $expected = $request['operation'] === 'publish' ? $topics['publish'] : $topics['subscribe'];
-                $allowed = $allowed && $request['topic'] === $expected && in_array($request['operation'], ['publish', 'subscribe'], true);
-            }
+            // 历史自定义规则不能扩大当前使用关系的两个精确主题。
+            $expected = $request['operation'] === 'publish' ? $topics['publish'] : $topics['subscribe'];
+            $allowed = $allowed && $request['topic'] === $expected && in_array($request['operation'], ['publish', 'subscribe'], true);
             $reason = 'topic_forbidden';
         }
         if (!$allowed) {
@@ -1007,6 +705,7 @@ final class DeviceService
             'completed_at' => $row['authorization_completed'] === null ? null : (int) $row['authorization_completed'], 'node_id' => $row['authorization_node']];
         unset($row['authorization_id'], $row['authorization_requested'], $row['authorization_completed'], $row['authorization_node']);
         unset($row['connection_status'], $row['connection_ownership'], $row['connection_time'], $row['connection_run'], $row['broker_run'], $row['broker_time'], $row['broker_expiry']);
+        unset($row['model_version'], $row['model_switch_id'], $row['model_start_sequence']);
         return $row;
     }
 
@@ -1112,15 +811,13 @@ final class DeviceService
 
     /**
      * 设备只发布up、订阅down；归属阶段进入Topic，转移后旧阶段不能命中新身份范围。
-     * @param array{id: string, tenant_id: string, ownership_id: string, model_version?: ?int} $device 已从数据库取得的归属事实；空模型使用独立 raw 主题。
+     * @param array{id: string, tenant_id: string, ownership_id: string, model_version?: ?int} $device 已从数据库取得的归属事实；始终使用独立 raw 主题。
      * @return array{publish: string, subscribe: string} 两个精确Topic；具体消息类型由业务载荷表达。
      */
     public static function topics(array $device): array
     {
         $prefix = 'iot/' . $device['tenant_id'] . '/devices/' . $device['id'] . '/epochs/' . $device['ownership_id'];
-        if (array_key_exists('model_version', $device) && $device['model_version'] === null) {
-            $prefix .= '/raw';
-        }
+        $prefix .= '/raw';
         return ['publish' => $prefix . '/up', 'subscribe' => $prefix . '/down'];
     }
 }

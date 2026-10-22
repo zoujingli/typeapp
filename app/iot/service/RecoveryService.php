@@ -12,7 +12,7 @@ use Type\Orm\Connection;
 /** 隔离恢复库的授权核对；操作前须隔离旧系统，当前授权清单来自备份之外的受控来源。 */
 final class RecoveryService
 {
-    private const APP_KINDS = ['admin_user', 'customer_user', 'admin_role', 'customer_role', 'member', 'device', 'credential'];
+    private const APP_KINDS = ['admin_user', 'customer_user', 'admin_role', 'customer_role', 'member', 'device', 'credential', 'enrollment', 'application'];
     private const SESSION_TABLES = ['customer_sessions', 'admin_sessions'];
 
     /**
@@ -425,6 +425,8 @@ final class RecoveryService
             'admin_role', 'customer_role' => ['id', 'scope_id', 'name', 'enabled', 'protected', 'version'],
             'member' => ['id', 'tenant_id', 'user_id', 'name', 'enabled', 'version'],
             'device' => ['id', 'tenant_id', 'ownership_id', 'product_id', 'model_version', 'lifecycle', 'version'],
+            'enrollment' => ['id', 'tenant_id', 'name', 'capacity', 'registered_count', 'register_expires_at', 'enabled', 'secret_hash', 'version'],
+            'application' => ['id', 'tenant_id', 'name', 'enabled', 'credential_id', 'key_version', 'access_version', 'version'],
             default => ['id', 'device_id', 'ownership_id', 'secret_hash', 'status'],
         };
         $identity = [];
@@ -455,6 +457,7 @@ final class RecoveryService
         return match ($kind) {
             'admin_user' => 'admin_users', 'customer_user' => 'customer_users', 'admin_role' => 'admin_roles',
             'customer_role' => 'customer_roles', 'member' => 'customer_members', 'device' => 'iot_devices', 'credential' => 'iot_device_credentials',
+            'enrollment' => 'iot_device_enrollments', 'application' => 'iot_applications',
             default => RecoveryCatalog::table($kind),
         };
     }

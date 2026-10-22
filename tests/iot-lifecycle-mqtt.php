@@ -5,12 +5,12 @@ declare(strict_types=1);
 use Type\Testing\Process;
 
 /** 真实管理HTTP、TLS标准客户端及同步主备共同证明授权失效；只控制本函数拥有的进程和数据库。 */
-function iotLifecycleMqttChecks(Closure $request, array $evidence, array $command, array $environment, string $base, PDO $database, Process $broker, #[SensitiveParameter] string $servicePassword, Closure $startBroker): array
+function iotLifecycleMqttChecks(Closure $request, array $evidence, array $command, array $environment, string $base, PDO $database, Process $broker, Closure $startBroker): array
 {
     $root = dirname(__DIR__);
     $devices = '/customer/tenants/' . $evidence['tenant'] . '/devices';
     $clients = [];
-    $secrets = [$servicePassword, $evidence['admin_token'], $evidence['token'], $evidence['platform_token'], $evidence['source']['accessToken'], $evidence['simulated']['accessToken']];
+    $secrets = [$evidence['admin_token'], $evidence['token'], $evidence['platform_token'], $evidence['source']['accessToken'], $evidence['simulated']['accessToken']];
     $cases = [];
     $brokerLogs = '';
     $standby = new PDO(
@@ -30,16 +30,14 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $comman
         } while (microtime(true) < $until);
         throw new RuntimeException($message);
     };
-    $create = static function (string $name) use ($request, $devices, $evidence, &$secrets): array {
-        $created = $request(
-            'POST',
-            $devices,
-            $evidence['admin_token'],
-            $evidence['tenant'],
-            ['name' => '网络撤权-' . $name, 'product_id' => $evidence['device']['product_id'], 'model_version' => 1],
-            201
-        )['data'];
+    require_once __DIR__ . '/iot-communication-fixture.php';
+    $applications = [];
+    $create = static function (string $name) use ($request, $evidence, &$applications, &$secrets): array {
+        $created = iotRegisteredFixture($request, $evidence['platform_token'], $evidence['tenant'], $name);
+        $application = iotApplicationFixture($request, $evidence['admin_token'], $evidence['tenant'], [$created], $name);
+        $applications[$created['device']['id']] = $application;
         $secrets[] = $created['credential']['password'];
+        $secrets[] = $application['password'];
         return $created;
     };
     $read = static function (array $created) use ($request, $devices, $evidence): array {
@@ -60,12 +58,11 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $comman
         }
         return $changed;
     };
-    $spawn = static function (string $mode, array $created) use ($root, $environment, $base, $devices, $evidence, $servicePassword, &$clients): array {
+    $spawn = static function (string $mode, array $created) use ($root, $environment, $base, $devices, $evidence, &$applications, &$clients): array {
         $gate = $base . '/lifecycle-' . bin2hex(random_bytes(8));
-        $fixture = ['credential' => $created['credential'], 'path' => $devices . '/' . $created['device']['id'], 'tenant' => $evidence['tenant'], 'token' => $evidence['token']];
+        $fixture = ['credential' => $created['credential'], 'path' => $devices . '/' . $created['device']['id'], 'tenant' => $evidence['tenant'], 'token' => $evidence['token'], 'application' => $applications[$created['device']['id']]];
         $client = new Process(['node', $root . '/tests/iot-lifecycle-mqtt.mjs', $mode], $root, $environment + [
             'TYPE_LIFECYCLE_FIXTURE' => json_encode($fixture, JSON_THROW_ON_ERROR), 'TYPE_LIFECYCLE_GATE' => $gate,
-            'TYPE_INGESTION_PASSWORD' => $servicePassword,
         ]);
         $clients[] = $client;
         return [$client, $gate];
@@ -108,10 +105,22 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $comman
     };
     try {
         // HTTP套件留下的意图也必须经真实Broker完成；装置不伪造完成字段。
+        $drainStarted = microtime(true);
+        $drainSamples = [];
+        $initialPending = (int) $database->query('SELECT COUNT(*) FROM iot_authorization_invalidations WHERE completed_at IS NULL')->fetchColumn();
+        expect($initialPending <= 20, '生命周期夹具留下了超出本套范围的管理意图');
         $wait(
-            static fn (): bool => (int) $database->query('SELECT COUNT(*) FROM iot_authorization_invalidations WHERE completed_at IS NULL')->fetchColumn() === 0,
+            static function () use ($database, $base, $drainStarted, &$drainSamples): bool {
+                $pending = (int) $database->query('SELECT COUNT(*) FROM iot_authorization_invalidations WHERE completed_at IS NULL')->fetchColumn();
+                if ($drainSamples === [] || end($drainSamples)['pending'] !== $pending) {
+                    $drainSamples[] = ['seconds' => microtime(true) - $drainStarted, 'pending' => $pending];
+                    file_put_contents($base . '/lifecycle-initial-drain.json', json_encode($drainSamples, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+                }
+                return $pending === 0;
+            },
             'Broker未恢复已有管理意图',
-            20.0
+            // 每个真实同步终止约需1.3～1.9秒；整批准备按数量预算，单项撤权仍保持20秒截止。
+            max(20.0, $initialPending * 3.0)
         );
         if (!in_array('--lifecycle-failure-only', $GLOBALS['argv'], true)) {
             foreach ([['idle', 'rotate'], ['publish', 'revoke'], ['subscribe', 'disable'], ['idle', 'retire']] as [$mode, $action]) {

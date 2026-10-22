@@ -602,7 +602,7 @@ try {
                 expect($pending->fetchColumn() === 'queued', '未完成任务升级后丢失或被擅自执行');
                 $pending->closeCursor();
                 $projection = $device->json()['data'];
-                expect($projection['model_version'] === null && $projection['upgrade']['source'] === 'legacy_installation'
+                expect(!array_key_exists('model_version', $projection) && $projection['upgrade']['source'] === 'legacy_installation'
                     && $projection['upgrade']['decision'] === 'converted' && str_contains($projection['topics']['publish'], '/raw/'), '转换后的设备未提供原始接入及来源投影');
                 $application = $client->request(
                     'POST',

@@ -14,19 +14,17 @@
 | `prod` | 正常业务读写，关闭调试 |
 | `demo` | 业务只读，允许普通登录、退出及必要认证、安全审计，关闭调试 |
 
-原生入口不因 `APP_ENV=dev` 获得开发调试权限。演示环境拒绝业务写入并返回 `403 demo_readonly`；限制在已匹配的 HTTP 路由上执行，命令保留维护能力，前端禁用按钮仅用于提示。日志和备份可以继续，业务消费与调度必须暂停。详细操作见[演示部署](deployment.md#只读演示部署)。
+原生入口不因 `APP_ENV=dev` 获得开发调试权限。演示环境在已匹配的 HTTP 路由上拒绝业务写入，返回 `403 demo_readonly`；命令只开放查询白名单，内部 MQTT 存储 worker 再按动作限权。前端禁用按钮用于提示，无法替代后端限制。维护写入须停服并显式切换环境，外部备份和日志轮转可以继续。详细操作见[演示部署](deployment.md#只读演示部署)。
 
 这套规则适用于包含环境迁移的构建；公开 RC14 仍使用 `development/production`。升级时将旧配置明确迁为 `dev/prod`，不能直接给 RC14 配置新值。新程序拒绝旧值及未知值，不自动猜测环境。
 
 ## 数据库 profile
 
-每个生产程序在编译时固定一个数据库 profile，运行时不能切换。`sqlite` 使用本地文件；`mysql` 和 `pgsql` 连接外部数据库服务。配置中的 `DB_DRIVER` 与程序不一致时返回 `runtime_profile_database_mismatch` 并拒绝继续；关闭的可选能力返回 `feature_unavailable`。Redis 只在队列、调度、告警或导出等启用能力的 profile 中进入依赖闭包，Redis 服务始终由部署环境提供。
+每个生产程序在编译时固定一个数据库 profile，运行时不能切换。`sqlite` 使用本地文件；`mysql` 和 `pgsql` 连接外部数据库服务。配置中的 `DB_DRIVER` 与程序不一致时返回 `runtime_profile_database_mismatch` 并拒绝继续；关闭的可选能力返回 `feature_unavailable`。Redis 仅由启用的能力引入，服务由部署环境提供。
 
-物联中心默认三个 profile 都保留告警、导出、队列与调度，因此仍需为这些角色准备 Redis。数据库 profile 只裁剪原生依赖，不扩大既有业务语义：HTTP 管理、告警和导出支持三库；设备 MQTT 的可靠持久接入仍要求 PostgreSQL 同步后端，应选择 `pgsql`。`sqlite`、`mysql` 不承诺同等持久 MQTT 或集群恢复能力。
+当前物联中心三个 profile 声明 `web`、`mqtt`、`iot`、`scheduler`，维护调度仍需 Redis。双端管理、设备注册、应用密钥和逐设备授权支持三库；设备 MQTT 的可靠持久接入要求 PostgreSQL 同步后端，应选择 `pgsql`。`sqlite`、`mysql` 不提供同等持久 MQTT 或集群恢复能力。
 
-设备模拟器 `iot:device` 的本地离线缓冲使用 SQLite，设备端应选择 `sqlite` 程序；它可连接使用 `pgsql` 的平台 MQTT 入口。`mysql`、`pgsql` 程序调用这个设备端角色时会在创建缓冲前返回 `runtime_profile_database_mismatch`，不会另行加载 SQLite 扩展。
-
-Redis 地址分别使用 `IOT_EXPORT_REDIS_*`、`IOT_NOTICES_REDIS_*` 和 `APP_SCHEDULER_REDIS_*`，命名空间在同一部署内保持稳定。维护调度通过显式 `app:schedule` 命令执行，不会随 HTTP 启动自动清理数据。通用缓存默认关闭；`REDIS_*` 为显式缓存消费者保留，物联中心当前尚未据此装配业务查询缓存。独立应用需要同时具备 `cache` 构建能力与实际调用者，配置开关本身不会产生缓存效果，见[数据库与缓存](configuration.md#数据库与缓存)。
+维护调度使用 `APP_SCHEDULER_REDIS_*`，命名空间在同一部署内保持稳定。它由显式 `app:schedule` 命令执行，不会随 HTTP 启动自动清理数据。物联中心未装配通用业务查询缓存；独立应用需要同时具备 `cache` 构建能力与实际调用者，见[数据库与缓存](configuration.md#数据库与缓存)。旧遥测、告警、通知、导出和设备模拟器已退出当前案例；公开 RC14 的原功能与证据保持不变。
 
 ## 按使用阶段准备环境
 
@@ -76,7 +74,7 @@ PHP 版本号和 ZTS 一致仍不足以保证二进制兼容：SDK 的编译选�
 | TLS 证书与 CA | 对外 TLS、受保护数据库或设备接入 | 配置证书、信任链和续期；秘密不编入程序 |
 | 数据、上传与日志 | 按应用需要 | 指向持久目录，设置权限、容量和备份；不随程序升级覆盖 |
 
-物联中心的设备持久接入要求 PostgreSQL 严格同步主备；通知和导出另有 Redis 依赖。这些是案例业务要求，其他应用按所选组件准备，见[物联网中心](iot-center.md)。Web 管理端的 Node.js 与 pnpm 用于前端开发和构建，不是原生后端的运行依赖。
+物联中心的设备持久接入要求 PostgreSQL 严格同步主备，维护调度使用 Redis。这些是案例角色的要求，其他应用按所选组件准备，见[物联网中心](iot-center.md)。Web 管理端的 Node.js 与 pnpm 用于前端开发和构建，不是原生后端的运行依赖。
 
 ## 检查与定位
 

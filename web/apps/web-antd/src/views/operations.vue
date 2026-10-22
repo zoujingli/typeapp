@@ -11,17 +11,16 @@ import { buildTableScrollX, estimateVisibleActionColumnWidth } from '../utils/ta
 import { ApiError, errorText, isCanceled, request, session } from '../api';
 
 interface RuntimeNode {
-  kind: 'broker' | 'ingestion'; node_id: string; run_id: string; state: 'reporting' | 'stopped' | 'unreachable';
-  observed_at: number; expires_at: number; interval_seconds: number | null; received_per_second: number | null;
-  receipt_latency_mean_ms: number | null; receipt_samples: number; metrics: Record<string, number | boolean>;
+  kind: 'broker'; node_id: string; run_id: string; state: 'reporting' | 'stopped' | 'unreachable';
+  observed_at: number; expires_at: number; interval_seconds: number | null; metrics: Record<string, number | boolean>;
 }
 interface PlatformView {
   scope: 'platform'; generated_at: number; nodes: RuntimeNode[];
   health: { http_alive: boolean; durable_store_ready: boolean | null };
   store: { state: 'available' | 'unavailable' | 'unsupported'; quarantined: boolean; observed_at: number; metrics: Record<string, number> | null; nodes: { node_id: string; run_id: string; generation: number; state: string; actor: string; proof_ref: string }[] | null };
 }
-interface ObservedDevice extends Pick<Device, 'id' | 'name' | 'lifecycle' | 'connection'> { authorization: { status: string; requested_at: number | null; completed_at: number | null }; current: { freshness: 'empty' | 'fresh' | 'stale'; received_at: number | null; sampled_at: number | null } }
-interface TenantView { scope: 'tenant'; generated_at: number; window_seconds: number; recorded: number; rejected: number; recorded_per_second: number; devices: Page<ObservedDevice> }
+interface ObservedDevice extends Pick<Device, 'id' | 'name' | 'lifecycle' | 'connection'> { authorization: { status: string; requested_at: number | null; completed_at: number | null } }
+interface TenantView { scope: 'tenant'; generated_at: number; devices: Page<ObservedDevice> }
 const route = useRoute();
 const router = useRouter();
 const platform = computed(() => route.path === '/admin/operations');
@@ -47,7 +46,6 @@ const persistentFresh = computed(() => platformData.value?.store.state === 'avai
 const pagination = computed(() => ({ current: page.value, pageSize: perPage.value, total: tenantData.value?.devices.total || 0, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }));
 const stateNames = { reporting: '正在上报', stopped: '已停止', unreachable: '节点暂不可达', expired: '页面观察已过期' };
 const connectionNames = { online: '在线', offline: '已观察到离线', unknown: '连接状态未知' };
-const freshnessNames = { empty: '尚无遥测', fresh: '实时数据', stale: '数据陈旧' };
 const lifecycleNames = { inactive: '未激活', enabled: '启用', disabled: '禁用', retired: '退役' };
 const metricNames: Record<string, string> = {
   connections: '物理连接', accepted: '接纳计数', rejected: '拒绝计数', closed: '关闭计数', stopping: '正在停止', observationFailures: '观察失败',
@@ -57,19 +55,18 @@ const metricNames: Record<string, string> = {
   connectionQuotaRefusals: '连接配额拒绝', packetQuotaRefusals: '报文配额拒绝', subscriptionQuotaRefusals: '订阅配额拒绝', commitQuotaRefusals: '持久配额拒绝',
   flushTimeouts: '输出超时', handshakeTimeouts: '握手超时', nodeGeneration: '节点代次', nodePending: '节点操作处理中', nodeFailures: '节点操作失败', pendingFences: '等待隔离',
   invalidationFailures: '撤权处理失败', invalidationPending: '撤权处理中', processMemoryBytes: 'PHP分配器当前字节', processPeakMemoryBytes: 'PHP分配器峰值字节',
-  received: '应用收到消息', discarded: '无法识别消息', acknowledged: '原交付确认', observed: '设备状态观察', pending: '采样时持久操作处理中', quarantined: '后端隔离', running: '接收进程运行中',
-  receiptCount: '已发布持久接收回执', receiptLatencyTotalMs: '回执处理累计毫秒', receiptLatencyMaximumMs: '本次运行最慢回执毫秒', uptimeMs: '本次运行毫秒',
+  uptimeMs: '本次运行毫秒',
 };
 const nodeColumns: TableColumnsType<RuntimeNode> = [
   { title: '节点标识', dataIndex: 'node_id', width: 230, ellipsis: true }, { title: '进程角色', key: 'kind', width: 130 },
   { title: '观察状态', key: 'state', width: 165 }, { title: '采样时间', key: 'time', width: 200 },
-  { title: '连接 / 接收速率', key: 'value', width: 160 }, { title: '故障计数', key: 'faults', width: 120 },
+  { title: '连接数', key: 'value', width: 160 }, { title: '故障计数', key: 'faults', width: 120 },
   { title: '操作', key: 'actions', fixed: 'right', width: estimateVisibleActionColumnWidth([{ label: '详情' }]) },
 ];
 const deviceColumns = computed<TableColumnsType<ObservedDevice>>(() => [
   { title: '设备名称', dataIndex: 'name', width: 220, ellipsis: true }, { title: '生命周期', key: 'lifecycle', width: 120 },
-  { title: '连接观察', key: 'connection', width: 180 }, { title: '遥测新鲜度', key: 'freshness', width: 150 },
-  { title: '最近有效接收', key: 'time', width: 210 },
+  { title: '连接观察', key: 'connection', width: 180 },
+  { title: '连接观察时间', key: 'time', width: 210 },
   { title: '授权进度', key: 'authorization', width: 140 },
   ...(canReadDevice.value ? [{ title: '操作', key: 'actions', fixed: 'right' as const, width: estimateVisibleActionColumnWidth([{ label: '设备详情' }]) }] : []),
 ]);
@@ -80,19 +77,8 @@ function sum(kind: RuntimeNode['kind'], metric: string): number | null {
   if (!nodes.length || nodes.some(node => nodeState(node) !== 'reporting' || typeof node.metrics[metric] !== 'number')) return null;
   return nodes.reduce((total, node) => total + Number(node.metrics[metric]), 0);
 }
-const receiveRate = computed(() => {
-  const nodes = platformData.value?.nodes.filter(node => node.kind === 'ingestion') || [];
-  return !nodes.length || nodes.some(node => nodeState(node) !== 'reporting' || node.received_per_second === null) ? null : nodes.reduce((total, node) => total + Number(node.received_per_second), 0);
-});
-const meanLatency = computed(() => {
-  const nodes = platformData.value?.nodes.filter(node => node.kind === 'ingestion') || [];
-  if (!nodes.length || nodes.some(node => nodeState(node) !== 'reporting')) return null;
-  const samples = nodes.reduce((total, node) => total + node.receipt_samples, 0);
-  return samples > 0 ? nodes.reduce((total, node) => total + (node.receipt_latency_mean_ms || 0) * node.receipt_samples, 0) / samples : null;
-});
 function number(value: number | null | undefined, digits = 0) { return value === null || value === undefined ? '—' : value.toLocaleString(undefined, { maximumFractionDigits: digits }); }
 function time(value: number | null) { return value === null ? '尚无观察' : new Date(value * 1000).toLocaleString(); }
-function deviceFreshness(device: ObservedDevice) { return device.current.freshness === 'fresh' && (device.current.received_at === null || now.value - device.current.received_at >= 60) ? 'stale' : device.current.freshness; }
 function connectionState(device: ObservedDevice) { return device.connection.status === 'online' && (device.connection.broker_observed_at === null || now.value - device.connection.broker_observed_at >= 15) ? 'unknown' : device.connection.status; }
 async function load(nextPage = page.value, nextPerPage = perPage.value) {
   if (busy.value || !visible.value || !canRead.value) return;
@@ -142,8 +128,6 @@ onBeforeUnmount(() => { clearInterval(timer); document.removeEventListener('visi
       <div class="operations-cards">
         <Card title="HTTP 存活 / 持久依赖就绪" :bordered="false"><p>HTTP：{{ platformData?.health.http_alive && now - platformData.generated_at < 15 ? '已响应' : '未知或观察过期' }}</p><p>持久依赖：{{ !platformData || now - platformData.store.observed_at >= 15 ? '未知或观察过期' : platformData.health.durable_store_ready === null ? '当前驱动不支持可靠 MQTT' : platformData.health.durable_store_ready ? '已取得同步证明' : '未就绪' }}</p><p class="muted">HTTP 响应不代表消息服务就绪，节点仍按各自采样判断。</p></Card>
         <Card title="设备连接" :bordered="false"><strong>{{ number(sum('broker', 'deviceConnections')) }}</strong><p class="muted">新鲜节点采样的当前连接</p></Card>
-        <Card title="应用接收速率" :bordered="false"><strong>{{ number(receiveRate, 2) }}</strong><span> 条/秒</span><p class="muted">前后两次采样间的实际交付</p></Card>
-        <Card title="持久回执处理延迟" :bordered="false"><strong>{{ number(meanLatency, 1) }}</strong><span> ms</span><p class="muted">区间均值 · 无回执样本时留空</p></Card>
         <Card title="持久待投递积压" :bordered="false"><strong>{{ number(persistentFresh ? platformData?.store.metrics?.pendingMessages : null) }}</strong><span> 条</span><p class="muted">{{ persistentFresh ? `${number(platformData?.store.metrics?.pendingBytes)} 字节` : '尚无可确认的持久状态' }}</p></Card>
         <Card title="配额拒绝" :bordered="false"><strong>{{ number(sum('broker', 'commitQuotaRefusals')) }}</strong><p class="muted">本次运行的持久配额拒绝</p></Card>
         <Card title="提交结果未知" :bordered="false"><strong>{{ number(sum('broker', 'unknownCommits')) }}</strong><p class="muted">本次运行累计 · 不作为成功</p></Card>
@@ -151,14 +135,14 @@ onBeforeUnmount(() => { clearInterval(timer); document.removeEventListener('visi
       <Alert v-if="platformData?.store.state === 'unavailable'" message="同步持久状态暂不可确认" description="未取得本次同步证明，持久积压指标留空；不会降级成零值。" type="warning" show-icon class="page-alert" />
       <Alert v-if="platformData?.store.quarantined" message="持久观察已隔离" description="后端资源清理尚未确认，当前服务已停止发起新的持久观察。需要运维核对清理结果后恢复服务。" type="error" show-icon class="page-alert" />
       <Card title="运行节点" :bordered="false">
-        <p class="muted">15 秒无新采样显示暂不可达；尚未登记的实例不推定健康。回执延迟从应用取得交付计至持久回执发布获得协议确认，不含此前 Broker 排队时间，不代表设备已收到回执。</p>
+        <p class="muted">15 秒无新采样显示暂不可达；尚未登记的实例不推定健康。协议积压及确认只反映 Broker 状态，不代表应用业务执行结果。</p>
         <Table :columns="nodeColumns" :data-source="platformData?.nodes || []" :row-key="(node: RuntimeNode) => `${node.kind}:${node.node_id}`" :loading="busy" :scroll="buildTableScrollX(nodeColumns)" :pagination="{ pageSize: 20, showSizeChanger: false }">
           <template #emptyText><Empty :description="failure ? '数据暂不可用' : '尚无运行节点采样'" /></template>
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'kind'">{{ record.kind === 'broker' ? 'MQTT 接入' : '业务接收' }}</template>
+            <template v-if="column.key === 'kind'">MQTT 接入</template>
             <Tag v-else-if="column.key === 'state'" :color="nodeState(record as RuntimeNode) === 'reporting' ? 'blue' : 'warning'">{{ stateNames[nodeState(record as RuntimeNode)] }}</Tag>
             <template v-else-if="column.key === 'time'">{{ time(record.observed_at) }}</template>
-            <template v-else-if="column.key === 'value'">{{ nodeState(record as RuntimeNode) !== 'reporting' ? '—' : record.kind === 'broker' ? `${number(Number(record.metrics.connections))} 连接` : `${number(record.received_per_second, 2)} 条/秒` }}</template>
+            <template v-else-if="column.key === 'value'">{{ nodeState(record as RuntimeNode) !== 'reporting' ? '—' : `${number(Number(record.metrics.connections))} 连接` }}</template>
             <template v-else-if="column.key === 'faults'"><Tag :color="nodeState(record as RuntimeNode) === 'reporting' && faults(record as RuntimeNode) ? 'error' : undefined">{{ nodeState(record as RuntimeNode) === 'reporting' ? number(faults(record as RuntimeNode)) : '—' }}</Tag></template>
             <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '详情', readOnly: true, onClick: () => { detail = record as RuntimeNode; } }]" />
           </template>
@@ -174,21 +158,15 @@ onBeforeUnmount(() => { clearInterval(timer); document.removeEventListener('visi
       </Card>
     </template>
     <template v-else>
-      <div class="operations-cards">
-        <Card title="首次接收记录速率" :bordered="false"><strong>{{ number(tenantData?.recorded_per_second, 2) }}</strong><span> 条/秒</span><p class="muted">当前租户最近 60 秒的账本记录</p></Card>
-        <Card title="首次接收记录" :bordered="false"><strong>{{ number(tenantData?.recorded) }}</strong><p class="muted">记录可见不代表设备已收到持久回执</p></Card>
-        <Card title="接收拒绝记录" :bordered="false"><strong>{{ number(tenantData?.rejected) }}</strong><p class="muted">最近 60 秒 · 仅本租户</p></Card>
-      </div>
       <Card title="设备观察" :bordered="false">
         <form class="crud-search-grid" @submit.prevent="search()"><CrudSearchField label="设备名称"><Input v-model:value="filters.name" aria-label="设备名称筛选" :disabled="busy" :maxlength="100" allow-clear /></CrudSearchField><div class="crud-search-grid__actions"><Button type="primary" html-type="submit" :loading="busy">查询</Button><Button :disabled="busy" @click="search(true)">重置</Button></div></form>
-        <p class="muted">生命周期、连接观察和数据新鲜度分别展示。节点观察过期时连接为未知；60 秒无有效实时遥测为数据陈旧。</p>
+        <p class="muted">生命周期、连接观察和授权隔离分别展示；节点观察过期时连接为未知，不将查询失败解释为离线。</p>
         <Table :columns="deviceColumns" :data-source="tenantData?.devices.items || []" row-key="id" :loading="busy" :scroll="buildTableScrollX(deviceColumns)" :pagination="pagination" @change="(value) => load(value.current, value.pageSize)">
           <template #emptyText><Empty :description="failure ? '数据暂不可用' : '暂无符合条件的设备'" /></template>
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'lifecycle'">{{ lifecycleNames[record.lifecycle as Device['lifecycle']] }}</template>
             <Tag v-else-if="column.key === 'connection'" :color="connectionState(record as ObservedDevice) === 'online' ? 'green' : 'warning'">{{ connectionNames[connectionState(record as ObservedDevice)] }}</Tag>
-            <Tag v-else-if="column.key === 'freshness'" :color="deviceFreshness(record as ObservedDevice) === 'fresh' ? 'green' : 'warning'">{{ freshnessNames[deviceFreshness(record as ObservedDevice)] }}</Tag>
-            <template v-else-if="column.key === 'time'">{{ time(record.current.received_at) }}</template>
+            <template v-else-if="column.key === 'time'">{{ time(record.connection.observed_at) }}</template>
             <Tag v-else-if="column.key === 'authorization'" :color="record.authorization.status === 'pending' ? 'processing' : undefined">{{ record.authorization.status === 'pending' ? '等待执行' : '已生效' }}</Tag>
             <CrudTableActions v-else-if="column.key === 'actions'" :actions="[{ label: '设备详情', readOnly: true, visible: canReadDevice, onClick: () => router.push(`/devices/${record.id}`) }]" />
           </template>

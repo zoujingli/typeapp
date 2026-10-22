@@ -17,7 +17,7 @@ use Type\Runtime\ExecutionScope;
 /** 平台签发注册资格的所有者；注册码、设备凭据和人员权限分别管理。 */
 final class EnrollmentService
 {
-    private const PUBLIC_FIELDS = ['id', 'tenant_id', 'name', 'capacity', 'registered_count', 'register_expires_at', 'enabled', 'version', 'created_at', 'updated_at'];
+    private const PUBLIC_FIELDS = ['id', 'tenant_id', 'name', 'capacity', 'registered_count', 'register_expires_at', 'enabled', 'recovery_verified', 'version', 'created_at', 'updated_at'];
 
     /**
      * 控制端可查询授权目录，客户端只查询当前已授权客户；任何查询均不返回验证值。
@@ -106,7 +106,7 @@ final class EnrollmentService
             $secret = bin2hex(random_bytes(32));
             $model = DeviceEnrollment::create(['id' => $data['id'], 'name' => $data['name'], 'capacity' => $data['capacity'],
                 'registered_count' => 0, 'register_expires_at' => $data['register_expires_at'], 'enabled' => true,
-                'secret_hash' => hash('sha256', $secret), 'request_hash' => $requestHash]);
+                'secret_hash' => hash('sha256', $secret), 'request_hash' => $requestHash, 'recovery_verified' => true]);
             AuditLog::append(Db::connection('default', true), $data['tenant_id'], $current, 'enrollment.issued', $model->getId(), 'success', ['version' => $model->getVersion()], 'admin');
             return ['authorization' => self::project($model->project(self::PUBLIC_FIELDS)), 'code' => $model->getId() . '.' . $secret, 'replayed' => false];
         });
@@ -132,6 +132,9 @@ final class EnrollmentService
             }
             $code = null;
             if ($action === 'reset') {
+                if (!$model->getRecoveryVerified()) {
+                    throw new HttpError(409, 'recovery_reconciliation_required');
+                }
                 if (!$model->getEnabled() || $model->getRegisterExpiresAt() <= time() || $model->getRegisteredCount() >= $model->getCapacity()) {
                     throw new HttpError(409, 'enrollment_unavailable');
                 }
@@ -186,8 +189,9 @@ final class EnrollmentService
             $row[$field] = (int) $row[$field];
         }
         $row['enabled'] = (bool) $row['enabled'];
+        $row['recovery_verified'] = (bool) $row['recovery_verified'];
         $row['remaining'] = $row['capacity'] - $row['registered_count'];
-        $row['status'] = !$row['enabled'] ? 'disabled' : ($row['register_expires_at'] <= time() ? 'expired' : ($row['remaining'] === 0 ? 'exhausted' : 'available'));
+        $row['status'] = !$row['recovery_verified'] ? 'unverified' : (!$row['enabled'] ? 'disabled' : ($row['register_expires_at'] <= time() ? 'expired' : ($row['remaining'] === 0 ? 'exhausted' : 'available')));
         return $row;
     }
 }

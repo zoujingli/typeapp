@@ -11,21 +11,12 @@ use app\common\database\Schema;
 use app\broker\service\CompatService;
 use app\broker\service\NodeAccess;
 use app\broker\service\QuotaService;
-use app\iot\service\AggregateService;
-use app\iot\service\AlarmService;
 use app\common\service\AuditLog;
-use app\iot\service\CommandService;
 use app\iot\service\DeviceAccess;
-use app\iot\service\DeviceBuffer;
-use app\iot\service\DeviceSimulator;
-use app\iot\service\ExportPublisher;
-use app\iot\service\HistoryService;
 use app\common\service\IdentityService;
-use app\iot\service\IngestionWorker;
 use Type\Core\Config\Repository;
 use Type\Mqtt\Broker;
 use Type\Mqtt\BrokerOptions;
-use Type\Mqtt\Client;
 use Type\Mqtt\ConnectPacket;
 use Type\Mqtt\PendingCommit;
 use Type\Mqtt\PostgresStore;
@@ -66,6 +57,14 @@ final class ManagementCommand implements \Type\Core\Command
                 Licenses::run($arguments);
                 return 0;
             }
+            // 配置修复不能依赖完整业务配置已有效；其余角色复用本次启动快照。
+            $environment = in_array($command, ['config:check', 'config:restore', 'iot:backup', 'iot:wal'], true)
+                ? (string) \Type\Core\Config\Environment::load($this->context->basePath . '/.env')->get('APP_ENV', 'prod')
+                : Settings::environment($this->context->settings(), $development);
+            if (in_array($command, ['iot:backup', 'iot:wal'], true) && !in_array($environment, ['dev', 'prod', 'demo'], true)) {
+                throw new InvalidArgumentException('APP_ENV 只接受 dev、prod、demo；请迁移旧环境值');
+            }
+            self::demoCommand($environment, $command, array_slice($arguments, 2));
             CoroutineRuntime::enableIo();
             if ($command === 'iot:backup') {
                 $operation = $arguments[2] ?? '';
@@ -169,7 +168,7 @@ final class ManagementCommand implements \Type\Core\Command
                 }
                 return 0;
             }
-            if (!in_array($command, ['check', 'serve', 'migrate', 'iot:recovery', 'app:audit-clean', 'iot:command-clean', 'iot:history-clean', 'iot:aggregate', 'iot:aggregate-clean', 'iot:alarm', 'iot:notices', 'iot:notices-clean', 'iot:mqtt', 'iot:mqtt-install', 'iot:mqtt-statistics', 'iot:mqtt-nodes', 'iot:mqtt-fence', 'iot:mqtt-fence-result', 'iot:mqtt-store', 'iot:mqtt-access', 'iot:ingest', 'iot:ingest-store', 'iot:device', 'iot:exports', 'iot:exports-work', 'iot:exports-clean'], true)) {
+            if (!in_array($command, ['check', 'serve', 'migrate', 'iot:recovery', 'app:audit-clean', 'iot:mqtt', 'iot:mqtt-install', 'iot:mqtt-statistics', 'iot:mqtt-nodes', 'iot:mqtt-fence', 'iot:mqtt-fence-result', 'iot:mqtt-store', 'iot:mqtt-access'], true)) {
                 throw new InvalidArgumentException('未知应用命令，请使用 help');
             }
             if ($command === 'migrate' && (count($arguments) === 2 || (count($arguments) === 3 && $arguments[2] === 'help'))) {
@@ -186,19 +185,11 @@ final class ManagementCommand implements \Type\Core\Command
                 self::recovery($settings, $basePath, array_slice($arguments, 2));
                 return 0;
             }
-            // 内部持久子进程由已通过启动门的父角色拥有；设备端与离线检查不连接业务库。
-            if (!in_array($command, ['check', 'migrate', 'iot:device', 'iot:mqtt-store', 'iot:mqtt-access', 'iot:ingest-store'], true)) {
+            // 内部持久子进程由已通过启动门的父角色拥有；离线检查不连接业务库。
+            if (!in_array($command, ['check', 'migrate', 'iot:mqtt-store', 'iot:mqtt-access'], true)) {
                 self::recovery($settings, $basePath, ['gate']);
             }
-            if (str_starts_with($command, 'iot:exports')) {
-                self::exports($settings, $basePath, $command, array_slice($arguments, 2));
-                return 0;
-            }
-            if ($command === 'iot:device') {
-                self::device($settings, $basePath, array_slice($arguments, 2));
-                return 0;
-            }
-            if (str_starts_with($command, 'iot:mqtt') || str_starts_with($command, 'iot:ingest')) {
+            if (str_starts_with($command, 'iot:mqtt')) {
                 self::mqtt($settings, $basePath, $command, array_slice($arguments, 2));
                 return 0;
             }
@@ -215,30 +206,12 @@ final class ManagementCommand implements \Type\Core\Command
             if ($command === 'migrate') {
                 return self::migrate($settings, $basePath, array_slice($arguments, 2));
             }
-            if (in_array($command, ['app:audit-clean', 'iot:command-clean'], true)) {
-                if ($command === 'iot:command-clean') {
-                    RuntimeCapabilities::requireFeature('iot');
-                }
+            if ($command === 'app:audit-clean') {
                 self::pruneRecords($settings, $basePath, array_slice($arguments, 2), $command);
                 return 0;
             }
-            if ($command === 'iot:history-clean') {
-                RuntimeCapabilities::requireFeature('iot');
-                self::pruneHistory($settings, $basePath, array_slice($arguments, 2));
-                return 0;
-            }
-            if ($command === 'iot:alarm') {
-                self::alarm($settings, $basePath, array_slice($arguments, 2));
-                return 0;
-            }
-            if ($command === 'iot:notices' || $command === 'iot:notices-clean') {
-                self::notices($settings, $basePath, $command === 'iot:notices-clean', array_slice($arguments, 2));
-                return 0;
-            }
-            if ($command === 'iot:aggregate' || $command === 'iot:aggregate-clean') {
-                RuntimeCapabilities::requireFeature('iot');
-                self::aggregate($settings, $basePath, $command === 'iot:aggregate-clean', array_slice($arguments, 2));
-                return 0;
+            if ($command !== 'serve') {
+                throw new InvalidArgumentException('未知应用命令，请使用 help');
             }
             if (count($arguments) !== 2) {
                 throw new InvalidArgumentException('serve 不接受额外参数，启动值从配置读取');
@@ -292,6 +265,42 @@ final class ManagementCommand implements \Type\Core\Command
         }
     }
 
+    /** Demo 只开放无业务写入的命令；操作人维护时须停服并显式切换环境。 */
+    private static function demoCommand(string $environment, string $command, array $arguments): void
+    {
+        if ($environment !== 'demo') {
+            return;
+        }
+        $allowed = match ($command) {
+            'check', 'serve', 'broker:serve', 'iot:mqtt-statistics', 'iot:mqtt-nodes', 'broker:nodes' => true,
+            // HTTP 的持久查询复用相同 worker，实际动作在 storeWorker 内再次限权。
+            'iot:mqtt-store', 'broker:store' => $arguments === ['--store-worker-pipe'],
+            'config:check' => !in_array('--remember', $arguments, true),
+            'web:install' => in_array('--dry-run', $arguments, true),
+            'app:upgrade' => ($arguments[0] ?? '') === '--check',
+            'app:schedule' => $arguments === [] || in_array($arguments[0] ?? '', ['help', 'history'], true),
+            'migrate', 'broker:migrate' => in_array($arguments[0] ?? 'help', ['help', 'status', 'history'], true),
+            'iot:recovery', 'broker:recovery' => in_array($arguments[0] ?? '', ['snapshot', 'status', 'gate'], true),
+            'iot:backup' => ($arguments[0] ?? '') === 'status',
+            'iot:wal' => ($arguments[0] ?? '') === 'verify',
+            default => false,
+        };
+        if (!$allowed) {
+            throw new InvalidArgumentException('demo_readonly');
+        }
+    }
+
+    /** 同一受控管道保留查询及精确清理；Demo 不允许通过内部 worker 绕过通信写入限制。 */
+    private static function storeWorker(PostgresStore $store, Repository $settings): void
+    {
+        $readonly = Settings::environment($settings, false) === 'demo';
+        PendingCommit::work($store, 'pipe', static function (array $request) use ($store, $readonly): \Type\Mqtt\CommitResult {
+            if ($readonly && !in_array($request['action'] ?? '', ['resource_list', 'resource_detail', 'node_statistics', 'session_statistics'], true)) {
+                return new \Type\Mqtt\CommitResult($request['operation_id'], 'rejected', 0x87, [], true, ['error' => 'demo_readonly']);
+            }
+            return $store->execute($request);
+        });
+    }
 
     /**
      * 受控维护入口；旧系统及当前授权来源须已停止写入，恢复库只能供维护角色访问。
@@ -368,161 +377,6 @@ final class ManagementCommand implements \Type\Core\Command
         });
     }
 
-
-    /** 有界后台角色复用Outbox、队列和Worker；只有工作角色连接Redis，清理可在队列故障时独立执行。 */
-    private static function exports(Repository $settings, string $basePath, string $command, array $arguments): void
-    {
-        RuntimeCapabilities::requireFeature('exports');
-        Settings::validateRuntimeConfiguration($settings, $basePath, $command === 'iot:exports-clean' ? 'database' : 'exports');
-        \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $command, $arguments): void {
-            $limit = filter_var($arguments[0] ?? '100', FILTER_VALIDATE_INT);
-            if (count($arguments) > 1 || $limit === false || $limit < 1 || $limit > ($command === 'iot:exports-clean' ? 100 : ($command === 'iot:exports-work' ? 3600 : 10000))) {
-                throw new InvalidArgumentException('导出参数需为有界批次，work参数为1至3600秒');
-            }
-            DatabaseFactory::requireExisting($settings, $basePath);
-            $database = Settings::database($settings, $basePath, 2);
-            \Type\Orm\Db::configure($database);
-            $scope = new ExecutionScope();
-            $exports = ApplicationContext::exports($settings, $basePath);
-            $redis = null;
-            $signals = new \Type\Runtime\ProcessSignals();
-            try {
-                $scope->run(static function (ExecutionScope $current) use ($settings, $basePath, $command, $limit, $database, $scope, $exports, &$redis, $signals): void {
-                    if ($command === 'iot:exports-clean') {
-                        echo json_encode(['data' => $exports->clean(\Type\Orm\Db::connection('default', true), $limit)], JSON_THROW_ON_ERROR) . "\n";
-                        return;
-                    }
-                    $redis = Settings::redisManager($settings, $basePath, 'exports');
-                    $queue = new \Type\Queue\Queue($redis->connection($scope, 'exports', \Type\Redis\Purpose::SCRIPT), $settings->text('app.exports.namespace'), 'exports', 60000, 2000);
-                    $application = new \Type\Generated\CommandApplication(ApplicationContext::configuration($basePath, '', false, $settings));
-                    $registry = $application->jobs();
-                    $worker = new \Type\Queue\Worker($queue, $registry, 'exports-' . getmypid(), new \Type\Queue\RetryPolicy(100, 1000, 60000, 30000));
-                    $relay = new \Type\Orm\Outbox\Relay($database, new \Type\Orm\Outbox\Store('iot_export_outbox'), new ExportPublisher($queue), 'default');
-                    $signals->attach(static function () use ($worker, $relay): void {
-                        $relay->stop(5.0);
-                        $worker->stop(5.0);
-                    });
-                    $processed = 0;
-                    $published = 0;
-                    $deadline = microtime(true) + ($command === 'iot:exports-work' ? $limit : 3600);
-                    try {
-                        while ($worker->ready() && microtime(true) < $deadline && ($command === 'iot:exports-work' || $processed < $limit)) {
-                            $signals->dispatch();
-                            $published += $relay->runOnce(10);
-                            if ($worker->runOnce()) {
-                                $processed++;
-                            } elseif ($command !== 'iot:exports-work') {
-                                break;
-                            } else {
-                                usleep(50000);
-                            }
-                        }
-                    } finally {
-                        $relay->stop(5.0);
-                        $worker->stop(5.0);
-                    }
-                    echo json_encode(['data' => ['published' => $published, 'processed' => $processed, 'worker' => $worker->statistics(), 'relay' => $relay->statistics()]], JSON_THROW_ON_ERROR) . "\n";
-                });
-            } finally {
-                $signals->close();
-                $scope->close();
-                $database->close();
-                $redis?->close();
-            }
-        });
-    }
-
-
-    /** 设备本地SQLite缓存与平台数据库装配独立；网络发送复用标准客户端及受管信号。 */
-    private static function device(Repository $settings, string $basePath, array $arguments): void
-    {
-        RuntimeCapabilities::requireFeature('iot');
-        // 设备缓冲始终是本地 SQLite；平台数据库裁剪后不能隐式调用缺失驱动。
-        RuntimeCapabilities::assertDatabase('sqlite');
-        if (count($arguments) !== 1 || !in_array($arguments[0], ['state', 'enqueue', 'send', 'listen', 'transfer'], true)) {
-            throw new InvalidArgumentException('iot:device需要state、enqueue、send、listen或transfer；enqueue和transfer从标准输入读取JSON');
-        }
-        $cache = $settings->text('app.device.cache');
-        if ($cache === '') {
-            throw new InvalidArgumentException('设备角色需要IOT_DEVICE_CACHE和已存在的父目录');
-        }
-        $provision = [];
-        $supportedModels = json_decode($settings->text('app.device.supported_models'), true, 8, JSON_THROW_ON_ERROR);
-        if ($arguments[0] === 'transfer') {
-            $input = stream_get_contents(STDIN, 16385);
-            $provision = is_string($input) && strlen($input) <= 16384 ? json_decode($input, true, 16, JSON_THROW_ON_ERROR) : null;
-            if (!is_array($provision)) {
-                throw new InvalidArgumentException('device_transfer_provision_invalid');
-            }
-        }
-        $buffer = new DeviceBuffer(
-            Settings::absolutePath($cache) ? $cache : $basePath . '/' . $cache,
-            $settings->text('app.device.id'),
-            $settings->text('app.device.ownership_id'),
-            Settings::integer($settings, 'app.device.maximum_records', 1, 86400),
-            Settings::integer($settings, 'app.device.maximum_bytes', 128, 1073741824),
-            128,
-            1048576,
-            $provision,
-            $supportedModels
-        );
-        $simulator = null;
-        $signals = new \Type\Runtime\ProcessSignals();
-        try {
-            $model = $buffer->modelVersion(Settings::integer($settings, 'app.device.model_version', 1, 2147483646));
-            if (in_array($arguments[0], ['state', 'transfer'], true)) {
-                echo json_encode($buffer->statistics(), JSON_THROW_ON_ERROR) . "\n";
-                return;
-            }
-            if ($arguments[0] === 'enqueue') {
-                $input = stream_get_contents(STDIN, 16385);
-                $sample = is_string($input) && strlen($input) <= 16384 ? json_decode($input, false, 32, JSON_THROW_ON_ERROR) : null;
-                if (!$sample instanceof \stdClass || !is_string($sample->type ?? null) || !is_int($sample->sampled_at ?? null)
-                    || !($sample->values ?? null) instanceof \stdClass || !is_string($sample->identifier ?? '')
-                    || array_diff(array_keys(get_object_vars($sample)), ['type', 'sampled_at', 'values', 'identifier']) !== []) {
-                    throw new InvalidArgumentException('device_sample_invalid');
-                }
-                $record = $buffer->enqueue($model, $sample->type, $sample->sampled_at, $sample->values, $sample->identifier ?? '');
-                echo json_encode(['status' => $record === null ? 'not_admitted' : 'buffered', 'sequence' => $record['sequence'] ?? null,
-                    'buffer' => $buffer->statistics()], JSON_THROW_ON_ERROR) . "\n";
-                return;
-            }
-            $ca = $settings->text('app.device.ca');
-            if ($ca === '') {
-                throw new InvalidArgumentException('设备发送需要TLS CA');
-            }
-            $simulator = new DeviceSimulator(
-                $buffer,
-                $settings->text('app.device.tenant_id'),
-                $model,
-                $settings->text('app.device.credential_id'),
-                $settings->text('app.device.password'),
-                $settings->text('app.device.host'),
-                Settings::integer($settings, 'app.device.port', 1, 65535),
-                Settings::absolutePath($ca) ? $ca : $basePath . '/' . $ca,
-                $settings->text('app.device.peer_name'),
-                $arguments[0] === 'listen' ? static fn (string $identifier, \stdClass $values): \stdClass => (object) ['simulated' => true, 'identifier' => $identifier] : null,
-                $supportedModels
-            );
-            $signals->attach(static function () use ($simulator): void {
-                $simulator->stop();
-            });
-            try {
-                $result = $simulator->run(60.0, 15.0, $signals, $arguments[0] === 'listen');
-                echo json_encode(['status' => $result['stopped'] ? 'stopped' : 'finished', 'delivery' => $result,
-                    'buffer' => $buffer->statistics()], JSON_THROW_ON_ERROR) . "\n";
-            } catch (\RuntimeException $unconfirmed) {
-                echo json_encode(['status' => 'retry_required', 'code' => 'device_delivery_unconfirmed', 'buffer' => $buffer->statistics()], JSON_THROW_ON_ERROR) . "\n";
-                throw $unconfirmed;
-            }
-        } finally {
-            $signals->close();
-            $simulator?->close();
-            $buffer->close();
-        }
-    }
-
-
     /**
      * 应用设备接入角色；HTTP及注册继续支持三库，持久MQTT设备会话只用约定的PostgreSQL同步后端。
      * @param list<string> $arguments 持久worker通过 Swoole PROC hook 管理的进程管道接入；节点硬隔离登记接受精确运行身份与已完成的隔离证明。
@@ -534,7 +388,7 @@ final class ManagementCommand implements \Type\Core\Command
             throw new InvalidArgumentException('设备MQTT接入需要PostgreSQL同步持久后端');
         }
         $driver = DatabaseFactory::create($settings, $basePath);
-        if ($role === 'iot:mqtt-store' || $role === 'iot:ingest-store') {
+        if ($role === 'iot:mqtt-store') {
             if ($arguments !== ['--store-worker-pipe']) {
                 throw new InvalidArgumentException('持久worker需要 Swoole PROC hook 管理的进程管道');
             }
@@ -551,18 +405,14 @@ final class ManagementCommand implements \Type\Core\Command
                 maximumApplicationMessages: Settings::integer($settings, 'app.mqtt.maximum_application_messages', 1, 1000000),
                 maximumApplicationBytes: Settings::integer($settings, 'app.mqtt.maximum_application_bytes', 1, 2147483648)
             );
-            if ($role === 'iot:ingest-store') {
-                IngestionWorker::work($store, 'pipe');
-            } else {
-                PendingCommit::work($store, 'pipe');
-            }
+            self::storeWorker($store, $settings);
             return;
         }
         if ($arguments !== [] && !in_array($role, ['iot:mqtt-fence', 'iot:mqtt-fence-result'], true)) {
             throw new InvalidArgumentException('设备MQTT角色不接受额外参数');
         }
         if ($role === 'iot:mqtt-access') {
-            DeviceAccess::work(Settings::database($settings, $basePath, 1), $settings->text('app.ingestion.credential_id'), $settings->text('app.ingestion.secret_hash'));
+            DeviceAccess::work(Settings::database($settings, $basePath, 1));
             return;
         }
         $command = json_decode($settings->text('app.mqtt.command'), true, 8, JSON_THROW_ON_ERROR);
@@ -573,29 +423,6 @@ final class ManagementCommand implements \Type\Core\Command
             if (!is_string($argument) || $argument === '' || str_contains($argument, "\0")) {
                 throw new InvalidArgumentException('IOT_MQTT_COMMAND参数无效');
             }
-        }
-        if ($role === 'iot:ingest') {
-            $instance = $settings->text('app.ingestion.instance');
-            $credential = $settings->text('app.ingestion.credential_id');
-            $password = $settings->text('app.ingestion.password');
-            $ca = $settings->text('app.ingestion.ca');
-            if (preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $instance) !== 1 || preg_match('/^[a-f0-9]{32}$/D', $credential) !== 1
-                || preg_match('/^[a-f0-9]{64}$/D', $password) !== 1 || $ca === '') {
-                throw new InvalidArgumentException('接收进程需要有效实例、独立服务凭据及TLS CA');
-            }
-            $client = new Client(
-                $settings->text('app.ingestion.host'),
-                Settings::integer($settings, 'app.ingestion.port', 1, 65535),
-                'iot-ingestion-' . $instance,
-                'service:ingestion:' . $credential,
-                $password,
-                Settings::absolutePath($ca) ? $ca : $basePath . '/' . $ca,
-                $settings->text('app.ingestion.peer_name')
-            );
-            $ingestion = new IngestionWorker($client, [...$command, 'iot:ingest-store'], $instance);
-            $ingestion->run();
-            echo json_encode($ingestion->statistics(), JSON_THROW_ON_ERROR) . "\n";
-            return;
         }
         $worker = [...$command, 'iot:mqtt-store'];
         if (in_array($role, ['iot:mqtt-fence', 'iot:mqtt-fence-result'], true)) {
@@ -623,6 +450,16 @@ final class ManagementCommand implements \Type\Core\Command
         $limits['maximumConnections'] = Settings::integer($settings, 'app.mqtt.maximum_connections', 1, 10100);
         $limits['maximumDeviceConnections'] = Settings::integer($settings, 'app.mqtt.maximum_device_connections', 1, 10000);
         $limits['maximumServiceConnections'] = Settings::integer($settings, 'app.mqtt.maximum_service_connections', 0, 100);
+        // 初始发布快照必须与持久 worker 的启动额度一致，不能由默认值扩大外置配置。
+        $limits['maximumSessions'] = Settings::integer($settings, 'app.mqtt.maximum_sessions', 1, 20000);
+        $limits['maximumPendingMessages'] = Settings::integer($settings, 'app.mqtt.maximum_pending_messages', 1, 2000000);
+        $limits['maximumPendingBytes'] = Settings::integer($settings, 'app.mqtt.maximum_pending_bytes', 1, 4294967296);
+        $limits['maximumDeviceMessages'] = Settings::integer($settings, 'app.mqtt.maximum_device_messages', 1, 10000);
+        $limits['maximumDeviceBytes'] = Settings::integer($settings, 'app.mqtt.maximum_device_bytes', 1, 16777216);
+        $limits['maximumApplicationMessages'] = Settings::integer($settings, 'app.mqtt.maximum_application_messages', 1, 1000000);
+        $limits['maximumApplicationBytes'] = Settings::integer($settings, 'app.mqtt.maximum_application_bytes', 1, 2147483648);
+        $limits['maximumSharedMessages'] = Settings::integer($settings, 'app.mqtt.maximum_shared_messages', 1, 1000000);
+        $limits['maximumSharedBytes'] = Settings::integer($settings, 'app.mqtt.maximum_shared_bytes', 1, 2147483648);
         $access = new DeviceAccess($command, $settings->text('app.mqtt.node_id'), $limits);
         $certificate = $settings->text('app.mqtt.certificate');
         $privateKey = $settings->text('app.mqtt.private_key');
@@ -647,8 +484,8 @@ final class ManagementCommand implements \Type\Core\Command
             $worker,
             $settings->text('app.mqtt.node_id'),
             $access,
-            // Broker只在DeviceAccess完成TLS、Client ID和独立服务凭据认证后调用，不采信客户端自报分类属性。
-            static fn (ConnectPacket $connect): string => str_starts_with($connect->username ?? '', 'service:ingestion:') || str_starts_with($connect->username ?? '', 'debug:') ? 'application' : 'device',
+            // Broker只在DeviceAccess完成TLS、Client ID和应用或设备凭据认证后调用，不采信客户端自报分类属性。
+            static fn (ConnectPacket $connect): string => str_starts_with($connect->username ?? '', 'app:') || str_starts_with($connect->username ?? '', 'debug:') ? 'application' : 'device',
             $access,
             $access,
             $access
@@ -666,9 +503,8 @@ final class ManagementCommand implements \Type\Core\Command
         }
     }
 
-
     /**
-     * 一次只执行一批审计、指令或支持授权清理；调度者依据has_more重复调用，不在进程中无限循环。
+     * 一次只执行一批审计清理；调度者依据has_more重复调用，不在进程中无限循环。
      * @param list<string> $arguments 应用审计须先指定admin/customer；其余为可选批次，默认1000，最大1000。
      */
     private static function pruneRecords(Repository $settings, string $basePath, array $arguments, string $kind): void
@@ -696,10 +532,7 @@ final class ManagementCommand implements \Type\Core\Command
             try {
                 $scope->run(static function (ExecutionScope $current) use ($kind, $batch, $realm): void {
                     $connection = \Type\Orm\Db::connection('default', true);
-                    $result = match ($kind) {
-                        'iot:command-clean' => CommandService::prune($connection, $batch),
-                        default => AuditLog::prune($connection, $batch, $realm),
-                    };
+                    $result = AuditLog::prune($connection, $batch, $realm);
                     echo json_encode(['data' => $result], JSON_THROW_ON_ERROR) . "\n";
                 });
             } finally {
@@ -708,153 +541,6 @@ final class ManagementCommand implements \Type\Core\Command
             }
         });
     }
-
-
-    /** 告警角色有界处理独立待办，命令结束时释放受管资源。 */
-    private static function alarm(Repository $settings, string $basePath, array $arguments): void
-    {
-        RuntimeCapabilities::requireFeature('alerts');
-        \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): void {
-            if (count($arguments) > 1 || (isset($arguments[0]) && (!preg_match('/^[1-9][0-9]{0,2}$/D', $arguments[0]) || (int) $arguments[0] > 100))) {
-                throw new InvalidArgumentException('iot:alarm 只接受一个1至100的可选批次');
-            }
-            DatabaseFactory::requireExisting($settings, $basePath);
-            $database = Settings::database($settings, $basePath);
-            \Type\Orm\Db::configure($database);
-            $scope = new ExecutionScope();
-            try {
-                $scope->run(static function (ExecutionScope $current) use ($arguments): void {
-                    echo json_encode(['data' => AlarmService::run(\Type\Orm\Db::connection('default', true), isset($arguments[0]) ? (int) $arguments[0] : 100)], JSON_THROW_ON_ERROR) . "\n";
-                });
-            } finally {
-                $scope->close();
-                $database->close();
-            }
-        });
-    }
-
-
-    /** 通知角色执行有界恢复、relay及worker；清理和HTTP不依赖Redis可用。 */
-    private static function notices(Repository $settings, string $basePath, bool $cleanup, array $arguments): void
-    {
-        RuntimeCapabilities::requireFeature('alerts');
-        Settings::validateRuntimeConfiguration($settings, $basePath, $cleanup ? 'database' : 'notices');
-        \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $cleanup, $arguments): void {
-            $batch = filter_var($arguments[0] ?? '100', FILTER_VALIDATE_INT);
-            if (count($arguments) > 1 || $batch === false || $batch < 1 || $batch > 100) {
-                throw new InvalidArgumentException('通知角色只接受1至100的可选批次');
-            }
-            DatabaseFactory::requireExisting($settings, $basePath);
-            $database = Settings::database($settings, $basePath, 2);
-            \Type\Orm\Db::configure($database);
-            $scope = new ExecutionScope();
-            $redis = null;
-            $signals = new \Type\Runtime\ProcessSignals();
-            try {
-                $scope->run(static function (ExecutionScope $current) use ($settings, $basePath, $cleanup, $batch, $database, $scope, &$redis, $signals): void {
-                    if ($cleanup) {
-                        echo json_encode(['data' => \app\iot\service\NoticeService::clean(\Type\Orm\Db::connection('default', true), $batch)], JSON_THROW_ON_ERROR) . "\n";
-                        return;
-                    }
-                    $recoveryConnection = \Type\Orm\Db::connection('default', true);
-                    $recovery = \app\iot\service\NoticeService::recover($recoveryConnection, $batch);
-                    $recoveryConnection->close();
-                    $redis = Settings::redisManager($settings, $basePath, 'notices');
-                    $queue = new \Type\Queue\Queue($redis->connection($scope, 'notices', \Type\Redis\Purpose::SCRIPT), $settings->text('app.notices.namespace'), 'notices', 60000, 10000);
-                    $collected = $queue->collect($batch);
-                    $service = new \app\iot\service\NoticeService($queue);
-                    $application = new \Type\Generated\CommandApplication(ApplicationContext::configuration($basePath, '', false, $settings));
-                    $registry = $application->jobs();
-                    $worker = new \Type\Queue\Worker($queue, $registry, 'notices-' . getmypid(), new \Type\Queue\RetryPolicy(10, 1000, 60000, 30000));
-                    $relay = new \Type\Orm\Outbox\Relay($database, new \Type\Orm\Outbox\Store('iot_notice_outbox'), $service, 'default');
-                    $signals->attach(static function () use ($worker, $relay): void {
-                        $relay->stop(5.0);
-                        $worker->stop(5.0);
-                    });
-                    $processed = 0;
-                    $published = 0;
-                    try {
-                        while ($processed < $batch && $worker->ready()) {
-                            $signals->dispatch();
-                            // 先消费已有任务，队列满额时仍能释放容量。
-                            if ($worker->runOnce()) {
-                                $processed++;
-                                continue;
-                            }
-                            $sent = $relay->runOnce(min(10, $batch - $processed));
-                            $published += $sent;
-                            if ($sent === 0) {
-                                break;
-                            }
-                        }
-                    } finally {
-                        $relay->stop(5.0);
-                        $worker->stop(5.0);
-                    }
-                    echo json_encode(['data' => $recovery + ['published' => $published, 'processed' => $processed, 'quarantine_collected' => $collected, 'worker' => $worker->statistics(), 'relay' => $relay->statistics()]], JSON_THROW_ON_ERROR) . "\n";
-                });
-            } finally {
-                $signals->close();
-                $scope->close();
-                $database->close();
-                $redis?->close();
-            }
-        });
-    }
-
-
-    /** 聚合和回收共享已有数据库作用域；角色只运行一批，不启动HTTP或持有空闲连接。 */
-    private static function aggregate(Repository $settings, string $basePath, bool $cleanup, array $arguments): void
-    {
-        $maximum = $cleanup ? 1000 : 100;
-        if (count($arguments) > 1 || (isset($arguments[0]) && (!preg_match('/^[1-9][0-9]{0,3}$/D', $arguments[0]) || (int) $arguments[0] > $maximum))) {
-            throw new InvalidArgumentException('聚合角色只接受1至' . $maximum . '的可选批次');
-        }
-        $batch = isset($arguments[0]) ? (int) $arguments[0] : $maximum;
-        DatabaseFactory::requireExisting($settings, $basePath);
-        CoroutineRuntime::run(static function () use ($settings, $basePath, $cleanup, $batch): void {
-            $database = Settings::database($settings, $basePath);
-            \Type\Orm\Db::configure($database);
-            $scope = new ExecutionScope();
-            try {
-                $scope->run(static function (ExecutionScope $current) use ($cleanup, $batch): void {
-                    $connection = \Type\Orm\Db::connection('default', true);
-                    echo json_encode(['data' => $cleanup ? AggregateService::prune($connection, $batch) : AggregateService::run($connection, $batch)], JSON_THROW_ON_ERROR) . "\n";
-                });
-            } finally {
-                $scope->close();
-                $database->close();
-            }
-        });
-    }
-
-
-    /** 一次只回收一批到期历史；续扫游标跳过未完成消费者，下一轮从头重查阻塞项。 */
-    private static function pruneHistory(Repository $settings, string $basePath, array $arguments): void
-    {
-        if (count($arguments) > 2 || (isset($arguments[0]) && !preg_match('/^[1-9][0-9]{0,3}$/D', $arguments[0]))) {
-            throw new InvalidArgumentException('iot:history-clean 接受1至1000的可选批次和续扫游标');
-        }
-        $batch = isset($arguments[0]) ? (int) $arguments[0] : 1000;
-        if ($batch > 1000) {
-            throw new InvalidArgumentException('历史清理批次最大1000');
-        }
-        DatabaseFactory::requireExisting($settings, $basePath);
-        CoroutineRuntime::run(static function () use ($settings, $basePath, $batch, $arguments): void {
-            $database = Settings::database($settings, $basePath);
-            \Type\Orm\Db::configure($database);
-            $scope = new ExecutionScope();
-            try {
-                $scope->run(static function (ExecutionScope $current) use ($batch, $arguments): void {
-                    echo json_encode(['data' => HistoryService::prune(\Type\Orm\Db::connection('default', true), $batch, $arguments[1] ?? '')], JSON_THROW_ON_ERROR) . "\n";
-                });
-            } finally {
-                $scope->close();
-                $database->close();
-            }
-        });
-    }
-
 
     /**
      * 独立迁移角色只查询或核对记录，不创建 HTTP、缓存资源或初始化数据库。
@@ -879,7 +565,6 @@ final class ManagementCommand implements \Type\Core\Command
             return (new MigrationConsole(new Migrator($driver, budget: Settings::databaseBudget($settings)), Schema::migrations($driver->name())))->run($arguments);
         });
     }
-
 
     /** 独立管理角色只连接自己的账号与采样表；恢复核对走 broker:recovery，不经过 IoT 人员表或隐式迁移。 */
     private static function standalone(Repository $settings, string $basePath, string $command, array $arguments, bool $development): int
@@ -943,7 +628,7 @@ final class ManagementCommand implements \Type\Core\Command
             if (DatabaseFactory::name($settings) !== 'pgsql' || $arguments !== ['--store-worker-pipe']) {
                 throw new InvalidArgumentException('独立持久worker需要PostgreSQL和 Swoole PROC hook 管理的进程管道');
             }
-            PendingCommit::work(new PostgresStore(DatabaseFactory::create($settings, $basePath), $settings->text('app.broker.standby')), 'pipe');
+            self::storeWorker(new PostgresStore(DatabaseFactory::create($settings, $basePath), $settings->text('app.broker.standby')), $settings);
             return 0;
         }
         $worker = ApplicationContext::brokerWorker($settings);
@@ -1073,7 +758,6 @@ final class ManagementCommand implements \Type\Core\Command
         return 0;
     }
 
-
     /** @param list<string> $worker 显式同步存储命令；查询只返回有界节点元数据。 */
     private static function brokerNodes(array $worker): void
     {
@@ -1092,7 +776,6 @@ final class ManagementCommand implements \Type\Core\Command
         }
         echo json_encode($result->value, JSON_THROW_ON_ERROR) . "\n";
     }
-
 
     /**
      * 受控命令登记已经完成的基础设施硬隔离；不根据心跳失联自动隔离。

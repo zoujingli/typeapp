@@ -89,11 +89,11 @@ MySQL/PostgreSQL 使用 `DB_HOST`、`DB_PORT`、`DB_DATABASE`、`DB_USERNAME`、
 
 物联中心尚未接入通用业务查询缓存，因此配置表单不提供启用开关，旧 `APP_CACHE_ENABLED=true` 在预检时返回 `feature_unavailable`。旧通用 `REDIS_HOST` 等键不再作为业务缓存配置消费。独立应用仍可使用 [type-cache](plugins/type-cache.md)，显式配置缓存范围、租户键、TTL、事务后失效及故障策略，并在构建 profile 中声明能力。
 
-通知、导出和调度使用各自的 Redis 配置及命名空间，HTTP 查询和维护清理不因此强制连接 Redis。默认发布 profile 保留这些后台能力，按运行的角色准备持久、不可淘汰的 Redis 服务。
+维护调度使用 `APP_SCHEDULER_REDIS_*` 与独立命名空间，HTTP 查询和显式数据库维护不因此强制连接 Redis。当前构建 profile 保留调度能力，运行该角色时准备持久、不可淘汰的 Redis 服务。
 
 ## 部署连接预算
 
-HTTP、数据库维护、通知、导出与调度通过同一应用工厂装配数据库池；迁移专用连接也计入预算。Redis 的命名端点和用途池共享当前执行者的分额。以下值是部署规划，不是服务端当前连接数。
+HTTP、数据库维护与调度通过同一应用工厂装配数据库池；迁移和 MQTT 专用连接也计入预算。Redis 的命名端点和用途池共享当前执行者的分额。以下值是部署规划，不是服务端当前连接数。
 
 | 配置 | 默认值与含义 |
 | --- | --- |
@@ -117,12 +117,9 @@ HTTP、数据库维护、通知、导出与调度通过同一应用工厂装配�
 | 配置组 | 用途 |
 | --- | --- |
 | `IOT_MQTT_*` | 独立 Broker、TLS、显式 worker 命令、节点身份和分类资源预算 |
-| `IOT_INGESTION_*` | 接收进程的独立服务凭据、实例名和 TLS 验证 |
-| `IOT_DEVICE_*` | 设备模拟器的归属、模型、凭据、持久缓存和 TLS 验证 |
-| `IOT_EXPORT_*` | 私有导出目录、专用 Redis 连接和命名空间 |
-| `IOT_NOTICES_*` | 通知消费的专用 Redis 连接和命名空间 |
+| `APP_SCHEDULER_*` | 审计维护调度、专用 Redis 连接及命名空间 |
 
-Swoole 是必需通信与基础并发底层。Broker、客户端、持久 worker 和设备授权均直接使用 Swoole 官方能力，不再配置可切换的网络驱动。`IOT_MQTT_COMMAND` 是当前应用的 JSON 命令参数数组，不经 shell；开发可显式指向 PHP 与 `bin/typeapp`，原生部署改为该产物入口。设备接入与接收角色要求 PostgreSQL 严格同步主备，不能沿用物联中心成品案例的默认 SQLite。启动角色及使用流程见[物联网中心](iot-center.md)。
+Swoole 是内置通信与并发运行库。Broker、协议客户端和持久 worker 复用其官方能力，不配置可切换的网络驱动。`IOT_MQTT_COMMAND` 是当前应用的 JSON 命令参数数组，不经 shell；开发可显式指向 PHP 与 `bin/typeapp`，原生部署改为该程序入口。设备接入要求 PostgreSQL 严格同步主备，不能沿用案例的默认 SQLite。应用密钥与逐设备授权通过后台管理，不在配置中创建通用接收服务身份。启动角色及使用流程见[物联网中心](iot-center.md)。
 
 ## 调试边界
 

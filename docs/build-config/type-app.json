@@ -29,9 +29,6 @@
         "web",
         "mqtt",
         "iot",
-        "alerts",
-        "exports",
-        "queue",
         "scheduler"
       ]
     },
@@ -41,9 +38,6 @@
         "web",
         "mqtt",
         "iot",
-        "alerts",
-        "exports",
-        "queue",
         "scheduler"
       ]
     },
@@ -53,9 +47,6 @@
         "web",
         "mqtt",
         "iot",
-        "alerts",
-        "exports",
-        "queue",
         "scheduler"
       ]
     }
@@ -215,15 +206,6 @@
       {
         "id": "auth.probe",
         "class": "app\\common\\middleware\\ProbeAuthentication"
-      },
-      {
-        "id": "exports",
-        "class": "app\\iot\\service\\ExportService",
-        "factory": {
-          "service": "application.context",
-          "method": "exportService",
-          "class": "app\\common\\bootstrap\\ApplicationContext"
-        }
       },
       {
         "id": "command.check",
@@ -394,90 +376,6 @@
         ]
       },
       {
-        "id": "command.iot:command-clean",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:command-clean"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:history-clean",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:history-clean"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:aggregate",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:aggregate"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:aggregate-clean",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:aggregate-clean"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:alarm",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:alarm"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:notices",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:notices"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:notices-clean",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:notices-clean"
-          }
-        ]
-      },
-      {
         "id": "command.iot:mqtt-install",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
@@ -558,78 +456,6 @@
           },
           {
             "value": "iot:mqtt-access"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:ingest",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:ingest"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:ingest-store",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:ingest-store"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:device",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:device"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:exports",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:exports"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:exports-work",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:exports-work"
-          }
-        ]
-      },
-      {
-        "id": "command.iot:exports-clean",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "iot:exports-clean"
           }
         ]
       },
@@ -840,34 +666,6 @@
         "service": "command.app:audit-clean"
       },
       {
-        "name": "iot:command-clean",
-        "service": "command.iot:command-clean"
-      },
-      {
-        "name": "iot:history-clean",
-        "service": "command.iot:history-clean"
-      },
-      {
-        "name": "iot:aggregate",
-        "service": "command.iot:aggregate"
-      },
-      {
-        "name": "iot:aggregate-clean",
-        "service": "command.iot:aggregate-clean"
-      },
-      {
-        "name": "iot:alarm",
-        "service": "command.iot:alarm"
-      },
-      {
-        "name": "iot:notices",
-        "service": "command.iot:notices"
-      },
-      {
-        "name": "iot:notices-clean",
-        "service": "command.iot:notices-clean"
-      },
-      {
         "name": "iot:mqtt-install",
         "service": "command.iot:mqtt-install"
       },
@@ -894,30 +692,6 @@
       {
         "name": "iot:mqtt-access",
         "service": "command.iot:mqtt-access"
-      },
-      {
-        "name": "iot:ingest",
-        "service": "command.iot:ingest"
-      },
-      {
-        "name": "iot:ingest-store",
-        "service": "command.iot:ingest-store"
-      },
-      {
-        "name": "iot:device",
-        "service": "command.iot:device"
-      },
-      {
-        "name": "iot:exports",
-        "service": "command.iot:exports"
-      },
-      {
-        "name": "iot:exports-work",
-        "service": "command.iot:exports-work"
-      },
-      {
-        "name": "iot:exports-clean",
-        "service": "command.iot:exports-clean"
       },
       {
         "name": "broker:install",
@@ -969,18 +743,7 @@
         "body.json": "body.json"
       }
     },
-    "jobs": [
-      {
-        "type": "iot.export",
-        "version": 1,
-        "class": "app\\iot\\service\\ExportJob"
-      },
-      {
-        "type": "iot.notice",
-        "version": 1,
-        "class": "app\\iot\\service\\NoticeJob"
-      }
-    ],
+    "jobs": [],
     "schedules": [
       {
         "id": "audit.admin",

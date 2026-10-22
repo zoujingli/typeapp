@@ -13,24 +13,16 @@ const customerWorkspace: RouteRecordRaw = {
       { path: '/roles', name: 'CustomerRoles', component: () => import('./views/admin-roles.vue'), meta: { title: '租户角色' } },
     ] },
     { path: 'iot', meta: { title: '物联管理', menuGroup: true }, children: [
-      { path: '/products', meta: { title: '产品管理' }, children: [
-        { path: '', name: 'CustomerProducts', component: () => import('./views/products.vue'), meta: { title: '产品管理', hideInBreadcrumb: true } },
-        { path: ':product/models', name: 'CustomerModels', component: () => import('./views/models.vue'), meta: { title: '物模型版本', hideInMenu: true, activePath: '/products' } },
+      { path: '/products', meta: { title: '产品分类' }, children: [
+        { path: '', name: 'CustomerProducts', component: () => import('./views/products.vue'), meta: { title: '产品分类', hideInBreadcrumb: true } },
       ] },
       { path: '/devices', meta: { title: '设备管理' }, children: [
         { path: '', name: 'CustomerDevices', component: () => import('./views/devices.vue'), meta: { title: '设备管理', hideInBreadcrumb: true } },
         { path: ':device', name: 'CustomerDeviceDetail', component: () => import('./views/device-detail.vue'), meta: { title: '设备详情', hideInMenu: true, activePath: '/devices' } },
       ] },
-      { path: '/transfers', name: 'CustomerTransfers', component: () => import('./views/transfers.vue'), meta: { title: '设备转移' } },
       { path: '/device-authorizations', name: 'CustomerEnrollments', component: () => import('./views/device-authorizations.vue'), meta: { title: '设备注册授权', requiresTenant: true } },
       { path: '/applications', name: 'CustomerApplications', component: () => import('./views/applications.vue'), meta: { title: '接入应用', requiresTenant: true } },
       { path: '/reassignments', name: 'CustomerReassignments', component: () => import('./views/reassignments.vue'), meta: { title: '设备转配', requiresTenant: true } },
-    ] },
-    { path: 'data', meta: { title: '数据与告警', menuGroup: true }, children: [
-      { path: '/history', name: 'CustomerHistory', component: () => import('./views/history.vue'), meta: { title: '历史数据' } },
-      { path: '/alarm-rules', name: 'CustomerAlarmRules', component: () => import('./views/alarm-rules.vue'), meta: { title: '告警规则' } },
-      { path: '/alarms', name: 'CustomerAlarms', component: () => import('./views/alarms.vue'), meta: { title: '告警中心' } },
-      { path: '/notifications', name: 'CustomerNotifications', component: () => import('./views/notifications.vue'), meta: { title: '站内通知' } },
     ] },
     { path: 'operations-center', meta: { title: '运维中心', menuGroup: true }, children: [
       { path: '/audit', name: 'CustomerAudit', component: () => import('./views/audit.vue'), meta: { title: '操作审计' } },

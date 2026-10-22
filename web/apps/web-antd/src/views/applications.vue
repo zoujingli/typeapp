@@ -258,7 +258,7 @@ onBeforeUnmount(() => { generation++; pending?.abort(); credential.value = null;
       <Form ref="grantFormRef" :model="grantForm" layout="vertical" :disabled="grantSaving">
         <template v-if="!grantForm.version && canReadDevices">
           <FormItem label="搜索设备"><Input.Search v-model:value="candidateQuery" :maxlength="100" :loading="candidateBusy" @search="loadCandidates()" /></FormItem>
-          <FormItem label="选择设备" name="device_id" :rules="[{ required: true, message: '请选择设备' }]"><Select :value="grantForm.device_id || undefined" :loading="candidateBusy" :options="candidates.items.map(device => ({ value: device.id, label: `${device.name} · ${device.id}`, disabled: device.model_version !== null || !['inactive', 'enabled'].includes(device.lifecycle) }))" @change="selectDevice" /></FormItem>
+          <FormItem label="选择设备" name="device_id" :rules="[{ required: true, message: '请选择设备' }]"><Select :value="grantForm.device_id || undefined" :loading="candidateBusy" :options="candidates.items.map(device => ({ value: device.id, label: `${device.name} · ${device.id}`, disabled: !['inactive', 'enabled'].includes(device.lifecycle) }))" @change="selectDevice" /></FormItem>
           <Pagination size="small" :current="candidates.page" :page-size="20" :total="candidates.total" :show-size-changer="false" @change="loadCandidates" />
         </template>
         <FormItem v-else label="设备标识" name="device_id" :rules="[{ required: true, pattern: /^[a-f0-9]{32}$/, message: '请输入完整设备标识' }]"><Input v-model:value="grantForm.device_id" :readonly="Boolean(grantForm.version)" :maxlength="32" /></FormItem>

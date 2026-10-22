@@ -128,8 +128,8 @@ function candidateIot(string $root, string $source): void
         $scenarios = [
             'package' => ['native-package.php', [], 180],
             'framework-databases' => ['native-database-application.php', [$mysql, $pgsql], 600],
-            'iot-databases' => ['iot-identity-databases.php', [$mysql, $pgsql, '--no-source', '--app', '--audit', '--products', '--devices', '--history', '--aggregate', '--alarms', '--exports', '--operations'], 1500],
-            'iot-mqtt' => ['iot-device-mqtt.php', ['--ingestion', '--no-source'], 720],
+            'iot-databases' => ['iot-identity-databases.php', [$mysql, $pgsql, '--no-source', '--app', '--audit', '--products', '--devices', '--enrollments', '--registration', '--applications', '--reassignments', '--operations'], 1500],
+            'iot-mqtt' => ['iot-device-mqtt.php', ['--communication-mqtt', '--no-source'], 720],
         ];
         foreach ($scenarios as $name => [$script, $arguments, $seconds]) {
             echo '正在运行同一IoT产物公开验收：' . $name . "\n";

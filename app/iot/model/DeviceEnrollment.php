@@ -19,6 +19,7 @@ final class DeviceEnrollment extends Model
     public int $registered_count;
     public int $register_expires_at;
     public bool $enabled;
+    public bool $recovery_verified;
 
     #[Column(visible: false)]
     public string $secret_hash;

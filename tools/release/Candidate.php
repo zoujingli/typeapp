@@ -140,7 +140,11 @@ final class Candidate
             if (($acceptance['runtime-profile-enforced'] ?? false) !== true) {
                 throw new \RuntimeException('候选缺少数据库拒绝和能力边界验收');
             }
-            foreach (array_intersect(['mqtt', 'alerts', 'exports', 'scheduler'], $record['features']) as $feature) {
+            $requiredBusiness = array_intersect(['mqtt', 'iot', 'alerts', 'exports', 'scheduler'], $record['features']);
+            if ($profile === 'pgsql' && in_array('iot', $record['features'], true) && in_array('mqtt', $record['features'], true)) {
+                $requiredBusiness[] = 'iot-communication';
+            }
+            foreach ($requiredBusiness as $feature) {
                 $business = $acceptance['business'][$feature] ?? [];
                 if (($business['status'] ?? '') !== 'passed' || ($business['artifact-sha256'] ?? '') !== $record['sha256']
                     || preg_match('/^[a-f0-9]{64}$/D', $business['log-sha256'] ?? '') !== 1) {

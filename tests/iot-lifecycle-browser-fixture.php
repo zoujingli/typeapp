@@ -7,12 +7,6 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 require __DIR__ . '/native-database.php';
 require __DIR__ . '/postgres-sync.php';
 
-use app\iot\service\DeviceService;
-use app\iot\service\IngestionService;
-use Type\Orm\Connection;
-use Type\Orm\Database;
-use Type\Orm\Pgsql\PgsqlDriver;
-use Type\Runtime\ExecutionScope;
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
@@ -122,26 +116,12 @@ try {
         $members[] = $call('POST', '/customer/members', $values, $token, $memberTenant)['data'];
     }
     $member = $members[0];
-    $product = $call('POST', $path . '/products', ['name' => '生命周期测试传感器'], $token, $tenant)['data'];
-    $models = $path . '/products/' . $product['id'] . '/models';
-    $call('POST', $models, ['definition' => ['properties' => [['identifier' => 'temperature', 'name' => '温度', 'type' => 'number', 'required' => true, 'unit' => '°C']], 'events' => [], 'commands' => []]], $token, $tenant);
-    $call('POST', $models . '/1/publish', ['version' => 1], $token, $tenant);
+    $grant = $call('POST', '/admin/device-authorizations', ['id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenant,
+        'name' => '生命周期页面验收', 'capacity' => 4, 'register_expires_at' => time() + 3600], $platform, null)['data'];
     $devices = [];
     foreach (['main' => '生命周期长设备名称' . str_repeat('用于窄屏换行', 8), 'lost' => '响应丢失设备', 'conflict' => '并发变更设备', 'switch' => '切租户凭据清理设备'] as $purpose => $name) {
-        $devices[$purpose] = $call('POST', $path . '/devices', ['name' => $name, 'product_id' => $product['id'], 'model_version' => 1], $token, $tenant)['data']['device'];
-    }
-    $pool = new Database(new PgsqlDriver($environment['DB_HOST'], (int) $environment['DB_PORT'], $environment['DB_DATABASE'], $environment['DB_USERNAME'], $environment['DB_PASSWORD']), 1, 1);
-    $scope = new ExecutionScope();
-    try {
-        $pool->connect($scope)->transaction(static function (Connection $connection) use ($devices): void {
-            $device = $devices['main'];
-            $now = time();
-            $payload = ['app_version' => 1, 'type' => 'telemetry', 'device_id' => $device['id'], 'ownership_id' => $device['ownership_id'], 'model_version' => 1, 'sequence' => '1', 'sampled_at' => $now, 'values' => ['temperature' => 24.5]];
-            expect(IngestionService::accept($connection, DeviceService::topics($device)['publish'], json_encode($payload, JSON_THROW_ON_ERROR), 1, $now)['code'] === 'accepted', '浏览器历史须通过真实接收');
-        });
-    } finally {
-        $scope->close();
-        $pool->close();
+        $devices[$purpose] = $call('POST', '/public/devices/register', ['id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenant,
+            'device_id' => bin2hex(random_bytes(16)), 'name' => $name, 'code' => $grant['code']], '', null)['data']['device'];
     }
     $metadata = ['pid' => getmypid(), 'base' => $base, 'port' => $port, 'mqtt_port' => $mqttPort, 'native' => $argv[1] !== '--php',
         'binary_sha256' => $argv[1] === '--php' ? null : hash_file('sha256', $argv[1]), 'tenant' => $tenant, 'other' => $other, 'member' => $member['id'], 'member_version' => $member['version'],

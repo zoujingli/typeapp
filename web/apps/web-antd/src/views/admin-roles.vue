@@ -27,7 +27,7 @@ const form = reactive({ name: '' }); const checked = ref<string[]>([]); const fo
 let read: AbortController | null = null; let detailRead: AbortController | null = null;
 const can = (action: string) => session.realm === realm.value && session.permissions.includes(`${realm.value}.roles.${action}`);
 const grantable = (role: AdminRole) => role.permissions.every(permission => session.permissions.includes(permission));
-const groupNames: Record<string, string> = { identity: '个人工作区', 'admin.users': '平台人员', 'admin.roles': '平台角色', 'admin.tenants': '平台租户', 'admin.customers': '客户账号', 'customer.members': '租户成员', 'customer.roles': '租户角色', 'customer.products': '产品与物模型' };
+const groupNames: Record<string, string> = { identity: '个人工作区', 'admin.users': '平台人员', 'admin.roles': '平台角色', 'admin.tenants': '平台租户', 'admin.customers': '客户账号', 'customer.members': '租户成员', 'customer.roles': '租户角色', 'customer.products': '产品分类' };
 const tree = computed(() => [...new Set(Object.keys(catalog.value).map(key => key.slice(0, key.lastIndexOf('.'))))].map(prefix => ({
   key: prefix, title: groupNames[prefix] || prefix,
   children: Object.entries(catalog.value).filter(([key]) => key.startsWith(`${prefix}.`)).map(([key, label]) => ({ key, title: label, disabled: !session.permissions.includes(key) || saving.value || Boolean(Number(editing.value?.protected)) && mode.value === 'permissions' })),
