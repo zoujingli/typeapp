@@ -1885,7 +1885,10 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         $report['password_response_log_checks'] = true;
         $report['status'] = 'passed';
     } catch (Throwable $failure) {
-        $report['failure'] = ['type' => $failure::class, 'message' => str_replace(array_values($credentials), '<REDACTED>', $failure->getMessage())];
+        $report['failure'] = ['type' => $failure::class, 'message' => str_replace(array_values($credentials), '<REDACTED>', $failure->getMessage()),
+            // support.php 已禁用异常参数捕获；只保留位置，定位没有业务响应的进程启动失败。
+            'file' => str_replace($root . DIRECTORY_SEPARATOR, '', $failure->getFile()), 'line' => $failure->getLine(),
+            'trace' => str_replace($root . DIRECTORY_SEPARATOR, '', $failure->getTraceAsString())];
         $report['http_checks'] = $checks ?? 0;
         if ($driver === 'pgsql' && $ownedDatabase !== null) {
             try {

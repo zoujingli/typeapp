@@ -357,6 +357,8 @@ jobs:
             build/release-candidate/*.log
             build/release-candidate/*.json
             build/release-candidate/attachments/*
+            build/iot-identity-*/http.log
+            build/iot-device-mqtt-*/application.log
             build/**/verification.json
             build/scheduler-consumer-*.verification.json
             build/toolchain-regressions-*/**/*.log

@@ -1,0 +1,128 @@
+name: Linux 原候选通信诊断
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 保存失败原程序和证据的静态 Linux 运行编号
+        required: true
+        type: string
+      source_sha:
+        description: 原程序的完整源码 SHA
+        required: true
+        type: string
+      platform:
+        description: 原程序平台
+        required: true
+        type: choice
+        options: [linux-x64, linux-arm64]
+      suite:
+        description: 复用原程序的诊断范围，不生成发布候选
+        required: true
+        type: choice
+        options: [communication, reassignment]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ${{ inputs.platform == 'linux-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 25
+    env:
+      TYPE_PROBE_RUN: ${{ inputs.run_id }}
+      TYPE_PROBE_SOURCE: ${{ inputs.source_sha }}
+      TYPE_PROBE_PLATFORM: ${{ inputs.platform }}
+      TYPE_PROBE_SUITE: ${{ inputs.suite }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: 核对原运行与平台任务身份
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == zoujingli/typeapp && "$TYPE_PROBE_RUN" =~ ^[1-9][0-9]*$ && "$TYPE_PROBE_SOURCE" =~ ^[a-f0-9]{40}$ ]]
+          git merge-base --is-ancestor "$TYPE_PROBE_SOURCE" origin/main
+          mkdir -p build/linux-candidate-diagnosis
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TYPE_PROBE_RUN" > build/linux-candidate-diagnosis/source-run.json
+          jq -e --arg source "$TYPE_PROBE_SOURCE" '.head_sha == $source and .path == ".github/workflows/static-linux.yml" and .head_repository.full_name == "zoujingli/typeapp"' build/linux-candidate-diagnosis/source-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TYPE_PROBE_RUN/jobs?per_page=100" > build/linux-candidate-diagnosis/source-jobs.json
+          jq -e --arg name "pgsql · 静态单程序 · $TYPE_PROBE_PLATFORM" '[.jobs[] | select(.name == $name and .status == "completed")] | length == 1' build/linux-candidate-diagnosis/source-jobs.json
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+          name: static-${{ inputs.platform }}-pgsql-evidence
+          path: build/original-linux-evidence
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+          name: static-${{ inputs.platform }}-pgsql-failed-program
+          path: build/original-linux-program
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.5.10'
+          extensions: pdo_mysql, pdo_pgsql, pdo_sqlite, mbstring, openssl, redis-6.3.0
+          coverage: none
+          tools: composer:2.10.3
+          ini-values: memory_limit=1G, display_errors=1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.21.1'
+      - name: 准备测试控制器及独占数据库工具
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes postgresql
+          sudo systemctl stop postgresql
+          composer install --no-scripts --no-plugins --prefer-dist --no-progress --ignore-platform-req=ext-swoole
+          printf 'TYPE_PGSQL_TOOLS=%s\n' "$(dirname "$(pg_config --bindir)")" >> "$GITHUB_ENV"
+      - name: 核对原字节并运行既有通信验收
+        run: |
+          set -euo pipefail
+          php <<'PHP'
+          <?php
+          require 'tests/support.php';
+          require 'vendor/autoload.php';
+          require 'tests/mqtt-client.php';
+          $base = 'build/linux-candidate-diagnosis';
+          $artifact = 'build/original-linux-program/type-app';
+          $record = json_decode(file_get_contents('build/original-linux-evidence/release-candidate/preparation.json'), true, 64, JSON_THROW_ON_ERROR);
+          expect($record['source'] === getenv('TYPE_PROBE_SOURCE') && $record['platform'] === getenv('TYPE_PROBE_PLATFORM')
+              && $record['profile'] === 'pgsql' && $record['sha256'] === hash_file('sha256', $artifact)
+              && $record['bytes'] === filesize($artifact), '原程序与封存身份不一致');
+          expect(chmod($artifact, 0555), '无法恢复原程序执行位');
+          copy('build/original-linux-evidence/app/type-app.build.json', $artifact . '.build.json');
+          (new Type\Build\ArtifactManifest())->read($artifact, null, $record['sha256']);
+          file_put_contents($base . '/identity.json', json_encode(['scope' => 'diagnostic only', 'program_source' => $record['source'],
+              'test_source' => getenv('GITHUB_SHA'), 'sha256' => $record['sha256'], 'suite' => getenv('TYPE_PROBE_SUITE')], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+          $client = testMqttJsClient($base . '/mqtt-client');
+          try {
+              $flag = getenv('TYPE_PROBE_SUITE') === 'reassignment' ? '--reassignments-mqtt' : '--communication-mqtt';
+              $result = (new Type\Testing\Process([PHP_BINARY, 'tests/iot-device-mqtt.php', realpath($artifact), $flag], getcwd(),
+                  array_replace(getenv(), ['TYPE_MQTT_CLIENT_ROOT' => realpath($client)])))->wait(600);
+              file_put_contents($base . '/probe.log', $result->stdout . $result->stderr);
+              expect(hash_file('sha256', $artifact) === $record['sha256'], '诊断改变原程序字节');
+              expect($result->successful(), '原程序通信诊断失败，见 probe.log 及内层 application.log');
+          } finally {
+              removeTestDirectory($client);
+          }
+          PHP
+      - name: 保存原程序身份与内层失败位置
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: linux-candidate-diagnosis-${{ inputs.platform }}-${{ inputs.suite }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            build/linux-candidate-diagnosis/*.json
+            build/linux-candidate-diagnosis/*.log
+            build/iot-device-mqtt-*/application.log
+            build/iot-identity-*/verification.json
+            build/iot-identity-*/http.log
