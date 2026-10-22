@@ -171,6 +171,12 @@ final class Migrator
         } catch (\Type\Orm\DatabaseException $error) {
             throw new MigrationException('TYPE_MIGRATION_UNSUPPORTED：' . $error->getMessage(), 0, $error);
         }
+        // SQLite 重建被引用的表需要推迟校验；只开放事务内的精确开关，绝不关闭 foreign_keys。
+        // Connection 在恢复即时校验前检查完整引用，避免 SQLite 清除延迟计数后漏掉损坏数据。
+        if ($transactional && $this->driver->name() === 'sqlite'
+            && preg_match('/^\s*PRAGMA\s+defer_foreign_keys\s*=\s*(ON|OFF)\s*;?\s*$/iD', $sql)) {
+            return;
+        }
         if (!preg_match('/^\s*(CREATE\s+(TABLE|INDEX|UNIQUE\s+INDEX)\b|ALTER\s+TABLE\b|DROP\s+(TABLE|INDEX)\b|INSERT\s+INTO\b|UPDATE\s+|DELETE\s+FROM\b|VACUUM\b)/i', $sql)) {
             throw new MigrationException('TYPE_MIGRATION_UNSUPPORTED：迁移只接受普通表、索引 DDL 与数据写入 SQL');
         }

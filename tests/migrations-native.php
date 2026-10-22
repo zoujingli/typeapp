@@ -126,7 +126,8 @@ $indexStatement->execute([$prefix . '_label_idx']);
 expect($indexStatement->fetchColumn() !== false, '索引 DDL 没有在真实数据库生效');
 $indexStatement->closeCursor();
 foreach (['changed' => 'TYPE_MIGRATION_CHANGED', 'missing' => 'TYPE_MIGRATION_MISSING', 'duplicate' => 'TYPE_MIGRATION_DUPLICATE',
-    'compound' => 'TYPE_MIGRATION_UNSUPPORTED', 'ambiguous-escape' => 'TYPE_MIGRATION_UNSUPPORTED'] as $scenario => $errorCode) {
+    'compound' => 'TYPE_MIGRATION_UNSUPPORTED', 'ambiguous-escape' => 'TYPE_MIGRATION_UNSUPPORTED',
+    'unsafe-defer' => 'TYPE_MIGRATION_UNSUPPORTED', 'unsafe-foreign-keys' => 'TYPE_MIGRATION_UNSUPPORTED'] as $scenario => $errorCode) {
     putenv('TYPE_MIGRATION_SCENARIO=' . $scenario);
     migrationFailure($command, ['run'], $errorCode);
 }
@@ -230,7 +231,36 @@ $pdo->exec('UPDATE ' . $crashPrefix . '_gate SET delay = 0');
 migrationResult($command, ['recover', '202609080001', 'retry', '确认中断并检查数据库，已清理非事务操作']);
 expect(migrationResult($command, ['run'])[0]['state'] === 'applied', '迁移中断后不能恢复执行');
 
-foreach ([$prefix, $failurePrefix, $manualPrefix, $crashPrefix] as $generatedPrefix) {
+$rebuildPrefix = $prefix . 'r';
+if ($driver === 'sqlite') {
+    putenv('TYPE_MIGRATION_PREFIX=' . $rebuildPrefix);
+    putenv('TYPE_MIGRATION_SCENARIO=sqlite-rebuild');
+    $pdo->exec('PRAGMA foreign_keys = ON');
+    $pdo->exec('CREATE TABLE ' . $rebuildPrefix . '_gate (id INTEGER PRIMARY KEY)');
+    $pdo->exec('INSERT INTO ' . $rebuildPrefix . '_gate VALUES (1)');
+    migrationFailure($command, ['run'], 'TYPE_MIGRATION_FAILED');
+    $rebuildState = migrationResult($command, ['status']);
+    expect($rebuildState[0]['state'] === 'applied' && $rebuildState[1]['state'] === 'failed', '重建失败没有准确保留迁移阶段');
+    expect($pdo->query('SELECT label FROM ' . $rebuildPrefix . '_items WHERE id = 1')->fetchColumn() === '保留引用'
+        && (int) $pdo->query('SELECT item_id FROM ' . $rebuildPrefix . '_references WHERE id = 1')->fetchColumn() === 1
+        && !migrationTableExists($pdo, $driver, $rebuildPrefix . '_replacement'), '外键失败没有回滚原表、数据及引用');
+    $pdo->exec('UPDATE ' . $rebuildPrefix . '_gate SET id = 0');
+    migrationResult($command, ['recover', '202609080002', 'retry', '已核对原表和引用保留，修复数据复制条件']);
+    expect(migrationResult($command, ['run'])[1]['state'] === 'applied', '有引用的 SQLite 表不能安全重建');
+    $pdo->exec('INSERT INTO ' . $rebuildPrefix . '_items VALUES (2, NULL)');
+    $pdo->exec('INSERT INTO ' . $rebuildPrefix . '_references VALUES (2, 2)');
+    expect($pdo->query('PRAGMA foreign_key_check')->fetchAll(PDO::FETCH_ASSOC) === [], '重建留下了损坏的外键');
+    $foreignRejected = false;
+    try {
+        $pdo->exec('INSERT INTO ' . $rebuildPrefix . '_references VALUES (3, 99)');
+    } catch (PDOException) {
+        $foreignRejected = true;
+    }
+    expect($foreignRejected && migrationResult($command, ['run'])[1]['attempts'] === 2, '重建关闭了外键约束或重试重复执行');
+    $pdo->exec('DROP TABLE ' . $rebuildPrefix . '_references');
+}
+
+foreach ([$prefix, $failurePrefix, $manualPrefix, $crashPrefix, $rebuildPrefix] as $generatedPrefix) {
     foreach (['_items', '_gate', '_migrations_events', '_migrations'] as $suffix) {
         $pdo->exec('DROP TABLE IF EXISTS ' . $generatedPrefix . $suffix);
     }

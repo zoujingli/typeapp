@@ -21,6 +21,29 @@ final class Plan
         }
 
         $scenario = getenv('TYPE_MIGRATION_SCENARIO') ?: 'normal';
+        if (in_array($scenario, ['unsafe-defer', 'unsafe-foreign-keys'], true)) {
+            return [new Migration('202609080001', '拒绝越界外键开关', [
+                $scenario === 'unsafe-defer' ? 'PRAGMA defer_foreign_keys = ON' : 'PRAGMA foreign_keys = OFF',
+            ], false)];
+        }
+        if ($scenario === 'sqlite-rebuild') {
+            return [
+                new Migration('202609080001', '建立带引用的迁移记录', [
+                    'CREATE TABLE ' . $prefix . '_items (id INTEGER PRIMARY KEY, label VARCHAR(100) NOT NULL)',
+                    'CREATE TABLE ' . $prefix . '_references (id INTEGER PRIMARY KEY, item_id INTEGER NOT NULL REFERENCES ' . $prefix . '_items(id))',
+                    'INSERT INTO ' . $prefix . "_items VALUES (1, '保留引用')",
+                    'INSERT INTO ' . $prefix . '_references VALUES (1, 1)',
+                ]),
+                new Migration('202609080002', '在同一事务中调整引用表的空值约束', [
+                    'PRAGMA defer_foreign_keys = ON',
+                    'CREATE TABLE ' . $prefix . '_replacement (id INTEGER PRIMARY KEY, label VARCHAR(100) NULL)',
+                    'INSERT INTO ' . $prefix . '_replacement SELECT * FROM ' . $prefix . '_items WHERE id <> (SELECT id FROM ' . $prefix . '_gate)',
+                    'DROP TABLE ' . $prefix . '_items',
+                    'ALTER TABLE ' . $prefix . '_replacement RENAME TO ' . $prefix . '_items',
+                    'PRAGMA defer_foreign_keys = OFF',
+                ]),
+            ];
+        }
         $statements = [
             'CREATE TABLE ' . $prefix . '_items (id INTEGER PRIMARY KEY, label VARCHAR(100) NOT NULL)',
             'INSERT INTO ' . $prefix . "_items VALUES (1, '中文迁移')",

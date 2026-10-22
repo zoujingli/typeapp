@@ -46,6 +46,8 @@ Database 通过 type-runtime 的有界池按作用域借还会话。Connection �
 
 全新应用可以调用 `Migrator::run($migrations, true)`：在同一迁移锁内检查空数据库（PostgreSQL 为当前 schema），在创建任何迁移记录前以 `TYPE_MIGRATION_NOT_EMPTY` 拒绝已有对象。默认第二个参数为 `false`，既有版本化迁移行为不变；空库建表失败同样保留真实记录，不自动清库或重试 MySQL DDL。
 
+SQLite 人工审查的表重建计划可在事务迁移中使用精确的 `PRAGMA defer_foreign_keys = ON/OFF`。进入延迟检查及恢复即时检查前均验证外键开启和实际引用，损坏时回滚；不允许关闭外键，也不放宽普通业务事务。表数据、索引、触发器及级联影响仍由迁移作者明确处理，详见[原生迁移边界](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-migrations.md#sql-与恢复边界)。
+
 当前 `main` 的应用升级可通过 `run($migrations, false, $before, $after)` 接入业务前后置校验。两个回调均为 `Closure(Connection, array): void`，在同一迁移锁内使用当前专属连接与迁移状态；`before` 在写入迁移控制表之前执行，`after` 在全部迁移完成后执行。回调不能另借迁移连接；后置校验失败不撤销已经提交的 DDL，须保留失败回执并显式核对。构造 `Migrator` 时可通过 `budget` 注入同一连接域的 `DeploymentBudget`，将迁移连接计入部署分额。这些新增参数尚未包含 RC14。
 
 ## 声明式使用示例

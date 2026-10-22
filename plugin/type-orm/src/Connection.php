@@ -422,6 +422,17 @@ final class Connection
             && preg_match('/^\s*(CREATE\s+(TABLE|(?:TEMP|TEMPORARY)\s+TABLE|INDEX|UNIQUE\s+INDEX)\b|ALTER\s+TABLE\b|DROP\s+(TABLE|INDEX)\b)/i', $sql)) {
             return;
         }
+        if ($this->transactions[count($this->transactions) - 1]['schema'] && $this->driverName() === 'sqlite'
+            && preg_match('/^\s*PRAGMA\s+defer_foreign_keys\s*=\s*(ON|OFF)\s*;?\s*$/iD', $sql)) {
+            // OFF 会清除 SQLite 延迟约束计数，必须先验证同一事务的真实引用。
+            // 两端均检查，既不接受关闭了外键的驱动，也不掩盖迁移前已有的坏引用。
+            $foreignKeys = $this->query('SELECT foreign_keys FROM pragma_foreign_keys');
+            if ((int) ($foreignKeys[0]['foreign_keys'] ?? 0) !== 1
+                || $this->query('SELECT * FROM pragma_foreign_key_check LIMIT 1') !== []) {
+                throw new DatabaseException('SQLite 表重建要求外键已开启且全部引用有效');
+            }
+            return;
+        }
         throw new DatabaseException('普通事务只接受受管查询和数据写入；DDL 使用独立迁移入口');
     }
 
