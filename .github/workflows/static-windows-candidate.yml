@@ -264,6 +264,40 @@ jobs:
         run: |
           & "$env:PHP_HOME/php.exe" tests/release-candidate.php test $env:TYPEAPP_BUILD_PROFILE
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 测量 Windows 原生管道的实际等待行为
+        if: inputs.program_run != '' && env.TYPEAPP_BUILD_PROFILE == 'pgsql'
+        run: |
+          @'
+          <?php
+          require 'vendor/autoload.php';
+          \Type\Runtime\CoroutineRuntime::enableIo();
+          $report = \Type\Runtime\CoroutineRuntime::run(static function (): array {
+              $state = (object) ['yielded' => false];
+              $process = proc_open([PHP_BINARY, '-n', '-r', 'usleep(750000); echo "ready";'],
+                  [0 => ['file', 'NUL', 'rb'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes);
+              if (!is_resource($process)) { throw new RuntimeException('pipe probe spawn failed'); }
+              try {
+                  $nonblocking = stream_set_blocking($pipes[1], false);
+                  \Swoole\Coroutine::create(static function () use ($state): void {
+                      \Swoole\Coroutine::sleep(0.01);
+                      $state->yielded = true;
+                  });
+                  $started = hrtime(true);
+                  $bytes = fread($pipes[1], 16);
+                  return ['php' => PHP_VERSION, 'swoole' => phpversion('swoole'), 'hook_flags' => \Swoole\Runtime::getHookFlags(),
+                      'nonblocking_accepted' => $nonblocking, 'read_seconds' => (hrtime(true) - $started) / 1e9,
+                      'other_coroutine_progressed' => $state->yielded, 'bytes' => strlen($bytes)];
+              } finally {
+                  proc_terminate($process);
+                  fclose($pipes[1]);
+                  proc_close($process);
+              }
+          });
+          echo json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR), "\n";
+          '@ | Set-Content build/static-windows-application-evidence/pipe-probe.php -Encoding utf8NoBOM
+          & "$env:PHP_HOME/php.exe" build/static-windows-application-evidence/pipe-probe.php |
+            Tee-Object build/static-windows-application-evidence/pipe-probe.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 同一 EXE 的外部数据库无源码部署
         if: env.TYPEAPP_BUILD_PROFILE != 'sqlite' && inputs.tutorial_mode == ''
         env:
