@@ -287,7 +287,7 @@ composer typeapp:serve
 | `GET /customer/tenants/{tenant}/device-authorizations` | 客户查看自身资格，`X-Tenant-Id` 必须与路径一致 |
 | `GET /customer/tenants/{tenant}/device-authorizations/{authorization}` | 客户查看自身资格的真实绑定记录 |
 
-列表和绑定分页使用 `page`、`per_page`，默认 20 条，单页最多 100 条。注册码的注册期限只约束新的注册，不自动限制已注册设备的使用期；已注册设备撤权继续走设备生命周期。当前这一项完成资格管理，设备使用注册码注册及新的原始通信路径按[设计中的后续任务](../development/iot-control-client-design.md)推进，不能把签发成功当作设备已接入。
+列表和绑定分页使用 `page`、`per_page`，默认 20 条，单页最多 100 条。注册码的注册期限只约束新的注册，不自动限制已注册设备的使用期；已注册设备撤权继续走设备生命周期。设备通过 `POST /public/devices/register` 消费资格，不要求物模型，成功时一次性交付独立接入凭据。重复请求只确认原注册结果；秘密遗失由有权人员轮换恢复。完整请求、错误码与原始 Topic 见[设备注册教程](../development/iot-devices.md#使用控制端签发的资格注册)。签发或注册成功均不代表设备已经建立网络连接。
 
 ## 设备接入与确认
 

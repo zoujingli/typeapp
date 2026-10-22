@@ -74,7 +74,58 @@ async function finish(client) {
 
 try {
   const mode = process.argv[2];
-  if (mode === 'broker-resources') {
+  if (mode === 'registration') {
+    const invoke = async (path, data, authorization = '', tenant = '', status = 201) => {
+      const response = await fetch(process.env.TYPE_DEVICE_HTTP + path, { method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}), ...(tenant ? { 'X-Tenant-Id': tenant } : {}) },
+        body: JSON.stringify(data), signal: AbortSignal.timeout(5000) });
+      assert.equal(response.status, status, `registration request failed: ${path}`);
+      return (await response.json()).data;
+    };
+    const id = () => randomUUID().replaceAll('-', '');
+    const grant = await invoke('/admin/device-authorizations', { id: id(), tenant_id: fixture.tenant, name: '真实原始通信注册', capacity: 2, register_expires_at: Math.floor(Date.now() / 1000) + 3600 }, fixture.platform_token);
+    const raw = await invoke('/public/devices/register', { id: id(), tenant_id: fixture.tenant, device_id: id(), name: '原始通信一号', code: grant.code });
+    const other = await invoke('/public/devices/register', { id: id(), tenant_id: fixture.tenant, device_id: id(), name: '原始通信二号', code: grant.code });
+    assert.equal(raw.device.model_version, null);
+    assert.equal((await observation('unknown', raw.device.id)).model, null);
+    await denied(raw.credential, { password: 'wrong-secret' });
+    await denied(other.credential, { clientId: raw.device.id });
+    await denied(raw.credential, {}, `mqtt://127.0.0.1:${process.env.IOT_MQTT_PORT}`);
+    const { client } = await connect(raw.credential);
+    const online = await observation('online', raw.device.id);
+    assert.equal(online.lifecycle, 'enabled');
+    assert.equal((await client.subscribeAsync(raw.credential.topics.subscribe, { qos: 1 }))[0].qos, 1);
+    await client.publishAsync(raw.credential.topics.publish, Buffer.from([0, 255, 128, 17, 10, 65]), { qos: 1, retain: true });
+    for (const topic of [other.credential.topics.subscribe, raw.credential.topics.subscribe.replace('/raw/', '/'), 'iot/#']) {
+      await assert.rejects(client.subscribeAsync(topic, { qos: 1 }));
+    }
+    let currentCredential = raw.credential;
+    let renewed = { client };
+    for (let round = 0; round < 6; round++) {
+      const current = await observation('online', raw.device.id);
+      const rotation = await invoke(`/customer/tenants/${fixture.tenant}/devices/${raw.device.id}/rotate`,
+        { version: current.version, confirm_device_id: raw.device.id }, fixture.admin_token, fixture.tenant, 202);
+      await denied(currentCredential);
+      const until = Date.now() + 15000;
+      let authorization;
+      do {
+        authorization = (await read(`${fixture.path.slice(0, fixture.path.lastIndexOf('/'))}/${raw.device.id}`)).data.authorization;
+        if (authorization.status !== 'pending') break;
+        await delay(100);
+      } while (Date.now() < until);
+      assert.notEqual(authorization.status, 'pending');
+      currentCredential = rotation.credential;
+      renewed = await connect(currentCredential);
+      await observation('online', raw.device.id);
+    }
+    await renewed.client.endAsync(false);
+    await observation('offline', raw.device.id);
+    const second = await connect(other.credential);
+    await second.client.publishAsync(other.credential.topics.publish, Buffer.from([0, 255, 128, 17, 10, 65]), { qos: 1, retain: true });
+    await second.client.endAsync(false);
+    await observation('offline', other.device.id);
+    checks.push('registration-without-model-mqtt5-tls-binary-qos1-own-topics', 'wrong-cross-device-legacy-topic-and-rotated-secret-denied', 'credential-rotation-observed-and-renewed-connection');
+  } else if (mode === 'broker-resources') {
     const { brokerResourceCases } = await import('./broker-resource-cases.mjs');
     checks.push(...await brokerResourceCases(fixture, connect, start));
   } else if (mode === 'capacity') {

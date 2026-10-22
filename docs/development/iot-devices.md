@@ -1,6 +1,60 @@
-# 设备预注册、生命周期与MQTT接入
+# 设备注册、生命周期与 MQTT 接入
+
+## 使用控制端签发的资格注册
+
+控制端在“设备注册授权”签发指定客户的注册码。设备安装流程通过 HTTPS 调用 `POST /public/devices/register`，提交客户标识、稳定设备标识、请求标识、设备名称及注册码。此入口不使用后台人员令牌，人员登录不能代替注册资格；`APP_ENV=demo` 返回 `403 demo_readonly`。
+
+```json
+{
+  "id": "11111111111111111111111111111111",
+  "tenant_id": "22222222222222222222222222222222",
+  "device_id": "33333333333333333333333333333333",
+  "name": "一号网关",
+  "code": "<控制端本次签发的完整注册码>"
+}
+```
+
+示例标识仅说明格式。实际设备使用独立的 32 位小写十六进制稳定标识，首次请求生成并保存另一个同格式的 `id`。`name` 为 1–100 个字符，不接受 `product_id`、`model_version` 或自行指定归属状态。秘密应通过请求体交付，不放入 URL、日志或前端持久存储。
+
+首次成功返回 `201`，`data` 包含 `device`、`credential` 和 `replayed:false`。设备、唯一当前使用关系、资格绑定、额度和审计在同一事务提交；新设备的 `product_id/model_version` 为 `null`，连接状态为 `unknown`。`credential` 只在这次响应返回，安装方须安全保存。响应丢失时使用相同 `id` 和请求内容重试，返回 `200`、原设备关系及 `replayed:true`，`credential` 为 `null`。需要恢复交付时，由有权人员使用下述凭据轮换入口，不查询或重新导出旧秘密。
+
+```mermaid
+sequenceDiagram
+  participant C as 控制端
+  participant D as 设备安装流程
+  participant H as 注册 API
+  participant DB as 数据库
+  participant M as MQTT 接入
+  C->>D: 受控交付客户标识与注册码
+  D->>H: 注册请求（固定请求标识与设备标识）
+  H->>DB: 校验客户、资格、期限与剩余额度
+  H->>DB: 同事务保存设备、关系、凭据摘要与审计
+  DB-->>H: 提交完成
+  H-->>D: 一次性接入凭据与精确 Topic
+  D->>M: MQTT 5 / TLS CONNECT
+  M->>DB: 校验当前设备关系与凭据
+  M-->>D: CONNACK
+  M->>DB: 记录真实连接观察
+```
+
+| 拒绝结果 | 含义与处理 |
+| --- | --- |
+| `401 registration_credentials_invalid` | 客户不可用或注册码无效；不泄露其他客户归属 |
+| `409 enrollment_unavailable` | 资格停用、过期或耗尽；不创建部分设备 |
+| `409 registration_request_conflict` | 相同请求标识用于不同意图；核对原请求 |
+| `409 device_already_registered` | 稳定设备已存在；查询原关系并受控恢复凭据 |
+| `409 registration_ownership_changed` | 原注册对应的使用关系已改变；不得沿用旧结果 |
+| `429 registration_rate_limited` | 同一来源每 60 秒最多 60 次有效形状的尝试，失败也计数 |
+
+来源使用经过可信代理校验的地址，不接受任意转发头；最多保留 1024 个活动来源，预算耗尽时明确拒绝。注册码重置保留已用额度和绑定；注册截止时间只限制新的注册，不代表已注册设备使用期到期。
+
+新设备只发布 `iot/{tenant}/devices/{device}/epochs/{ownership}/raw/up`，只订阅对应的 `/raw/down`，准确值以交付响应为准。载荷保持原字节，不解释为遥测，也不进入旧 `/up` 消费链。MQTT 确认只代表协议接管，不代表业务执行成功。逐应用通信授权由后续任务补齐；当前不能把任意同客户应用视为获准。
+
+升级追加 `103_iot_device_registration`，不改写历史迁移摘要。SQLite 在维护窗口重建设备表并验证外键，保留旧设备、使用关系和引用；MySQL/PostgreSQL 解除模型列的非空约束。三库支持注册管理，完整持久 MQTT 仍限定 PostgreSQL 同步后端。
 
 ## HTTP与设备契约
+
+以下模型登记和处理链为迁移期间保留的旧入口，退出与历史数据处置按[重设计任务](iot-control-client-design.md)推进。新注册设备在详情中只展示资料、连接和原始通信 Topic；旧模型操作不能对无模型设备执行。
 
 客户通过新账号域认证，向 `POST /customer/tenants/{tenant}/devices` 提交 `name,product_id,model_version`，单独要求 `customer.devices.create`。路径租户须与唯一 `X-Tenant-Id` 一致；产品和已发布模型必须属于当前租户。成功返回 `data.device` 和只显示一次的 `data.credential`。未知设备不能通过MQTT自注册，普通详情和列表不返回凭据或验证值。
 

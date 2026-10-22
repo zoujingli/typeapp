@@ -29,6 +29,21 @@ final class DeviceController
     {
     }
 
+    /** 设备以独立注册码建立接入身份；不接受人员会话代替资格，幂等重试不回显旧凭据。 */
+    #[Route('/public/devices/register', methods: ['POST'], name: 'device.registration')]
+    public function enroll(ServerRequestInterface $request): ResponseInterface
+    {
+        $data = $this->payload($request, ['id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'),
+            'tenant_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'), 'device_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'),
+            'name' => Field::text()->required()->trim()->length(1, 100), 'code' => Field::text()->required()->matches('/^[a-f0-9]{32}\.[a-f0-9]{64}$/D')]);
+        $canonical = $request->getAttribute('type.request');
+        if (!$canonical instanceof \Type\Core\Http\CanonicalRequest) {
+            throw new HttpError(400, 'invalid_peer');
+        }
+        $result = $this->devices->enroll($data, $canonical->clientIp());
+        return $this->response($result['replayed'] ? 200 : 201, ['data' => $result]);
+    }
+
     /** 客户查询当前租户，平台可按归属筛选全局资产；列表不附带模型内容或遥测。 */
     #[Route('/customer/tenants/{tenant}/devices', name: 'customer.devices', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}'])]
     #[Route('/admin/devices', name: 'admin.devices', middleware: ['admin.auth'])]

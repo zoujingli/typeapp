@@ -67,7 +67,7 @@ export interface DeviceConnection { status: 'online' | 'offline' | 'unknown'; ob
 /** 设备授权动作的执行进度，pending 时不能声称撤权已完成。 */
 export interface DeviceAuthorization { status: 'pending' | 'enforced'; id?: string | null; requested_at?: number | null; completed_at?: number | null; node_id?: string | null }
 /** 设备业务生命周期与连接观察分开记录，并绑定具体归属和模型版本。 */
-export interface Device { id: string; tenant_id: string; product_id: string; model_version: number; ownership_id: string; name: string; lifecycle: 'inactive' | 'enabled' | 'disabled' | 'retired'; connection: DeviceConnection; authorization?: DeviceAuthorization; recovery_verified?: number; version: number; created_at: number; updated_at: number; transfer_id?: string | null; transfer_frozen?: number }
+export interface Device { id: string; tenant_id: string; product_id: string | null; model_version: number | null; ownership_id: string; name: string; lifecycle: 'inactive' | 'enabled' | 'disabled' | 'retired'; connection: DeviceConnection; authorization?: DeviceAuthorization; recovery_verified?: number; version: number; created_at: number; updated_at: number; transfer_id?: string | null; transfer_frozen?: number }
 /** 设备转移后需要交付的新归属配置，与新凭据一起完成激活。 */
 export interface TransferProvision { app_version: number; type: string; device_id: string; transfer_id: string; source_ownership_id: string; ownership_id: string; tenant_id: string; product_id: string; model_version: number; structure_hash: string }
 /** 跨租户转移全过程；冻结、隔离、激活及设备确认分别记录，不以审批代表完成。 */
@@ -93,7 +93,7 @@ export interface DeviceCurrent { model: ModelVersion; device_id: string; ownersh
 /** 模型切换请求与设备确认边界；超时的 unconfirmed 仍需核对原请求。 */
 export interface ModelSwitch { id: string; request_version: number; retry_version: number | null; device_id: string; source_version: number; target_version: number; source_start: string; structure_hash: string; same_structure: boolean; created_at: number; last_attempt_at: number | null; attempt_count: number; status: 'pending' | 'confirmed' | 'rejected'; state: 'pending' | 'unconfirmed' | 'confirmed' | 'rejected'; result_code: string | null; boundary_sequence: string | null; confirmed_at: number | null }
 /** 设备详情包含当前模型、主题和仍需关注的模型切换。 */
-export interface DeviceDetail extends DeviceManagement { model: ModelVersion; topics: DeviceTopics; model_switch: ModelSwitch | null }
+export interface DeviceDetail extends DeviceManagement { model: ModelVersion | null; topics: DeviceTopics; model_switch: ModelSwitch | null }
 /** 告警边界及迟滞值；null 表示该方向未设置阈值。 */
 export interface AlarmDefinition { name: string; lower: number | null; upper: number | null; hysteresis: number; enabled: boolean; property: ModelScalar }
 /** 绑定归属、模型与序号区间的告警规则版本。 */
@@ -276,11 +276,12 @@ const errors: Record<string, string> = {
   stale_version: '记录已被其他人修改，请刷新后重新编辑。',
   product_not_found: '产品不存在或不属于当前租户。',
   device_not_found: '设备不存在或不属于当前租户。',
+  device_model_unavailable: '此设备使用原始通信，不提供物模型数据和业务指令。',
   enrollment_not_found: '注册授权不存在或不属于当前客户。',
   enrollment_query_invalid: '注册授权筛选条件无效，请修改后重试。',
   enrollment_request_conflict: '此请求标识已用于另一项授权，请核对原结果或重新创建。',
   enrollment_expired: '注册截止时间已过，请填写将来的时间。',
-  enrollment_unavailable: '资格已停用、过期或额度已用完，不能重置注册码。',
+  enrollment_unavailable: '资格已停用、过期或额度已用完，不能注册新设备或重置注册码。',
   enrollment_customer_disabled: '客户工作区已停用，不能签发或重置注册授权。',
   command_device_not_online: '设备当前没有有效在线观察，暂不能发起控制。',
   command_payload_too_large: '完整指令超过 16 KiB，请缩小参数内容。',

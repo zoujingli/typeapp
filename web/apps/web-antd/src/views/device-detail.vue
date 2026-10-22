@@ -19,8 +19,9 @@ const commands = ref<Page<DeviceCommand>>({ items: [], total: 0, page: 1, per_pa
 const telemetry = ref<DeviceCurrent | null>(null);
 const can = (node: string) => session.realm === 'customer' && session.permissions.includes(`customer.${node}`);
 const canReadDevice = computed(() => can('devices.read'));
-const canReadTelemetry = computed(() => can('telemetry.read'));
-const canReadCommands = computed(() => can('commands.read'));
+const modelAvailable = computed(() => !device.value || device.value.model !== null);
+const canReadTelemetry = computed(() => modelAvailable.value && can('telemetry.read'));
+const canReadCommands = computed(() => modelAvailable.value && can('commands.read'));
 const canCancel = computed(() => can('commands.cancel'));
 const scopeKey = () => `${session.realm}:${session.token}:${session.tenant?.id}:${route.params.device}`;
 const devicePath = () => `/customer/tenants/${session.tenant?.id}/devices/${route.params.device}`;
@@ -88,7 +89,7 @@ const switchModels = ref<Page<ModelVersion>>({ items: [], total: 0, page: 1, per
 const switchModelsBusy = ref(false);
 let switchRequest: AbortController | null = null;
 let switchVersion = 0;
-const canManageModel = computed(() => can('devices.model-switch'));
+const canManageModel = computed(() => modelAvailable.value && can('devices.model-switch'));
 const requestedSwitchVersion = ref(1);
 const retrySwitch = ref(false);
 const switchOptions = computed(() => switchModels.value.items.map((item) => ({ value: item.model_version,
@@ -104,7 +105,7 @@ const timeline = ref<Page<CommandAttempt>>({ items: [], total: 0, page: 1, per_p
 const timelineBusy = ref(false);
 let timelineRequest: AbortController | null = null;
 let timelineVersion = 0;
-const canCommand = computed(() => can('commands.create'));
+const canCommand = computed(() => modelAvailable.value && can('commands.create'));
 const canQuery = computed(() => can('commands.query'));
 const canStart = computed(() => canCommand.value && !intent.value && !failure.value && (!device.value || device.value.recovery_verified !== 0 && !device.value.model_switch && !device.value.transfer_frozen && device.value.lifecycle === 'enabled' && device.value.connection.status === 'online'));
 const canReconcile = computed(() => canQuery.value && !failure.value && selectedCommand.value?.execution === 'unknown'
@@ -119,7 +120,7 @@ const commandColumns: TableColumnsType<DeviceCommand> = [
   { title: 'MQTT 交付', key: 'delivery', width: 170 }, { title: '设备执行', key: 'execution', width: 160 },
   { title: '原截止时间', key: 'deadline', width: 190 }, { title: '操作', key: 'actions', fixed: 'right', width: 80 },
 ];
-function commandName(identifier: string) { return device.value?.model.definition.commands.find((item) => item.identifier === identifier)?.name || identifier; }
+function commandName(identifier: string) { return device.value?.model?.definition.commands.find((item) => item.identifier === identifier)?.name || identifier; }
 async function loadSwitchModels(pageNumber = 1) {
   const item = device.value; const tenant = session.tenant?.id;
   if (!item || !tenant || !switchOpen.value || !can('products.read')) return;
@@ -199,7 +200,7 @@ function cancelCommand() {
     finally { if (scope === scopeKey()) canceling.value = false; }
   } });
 }
-function selectOperation(value: unknown) { operation.value = device.value?.model.definition.commands.find((item) => item.identifier === value) || null; commandValues.value = {}; }
+function selectOperation(value: unknown) { operation.value = device.value?.model?.definition.commands.find((item) => item.identifier === value) || null; commandValues.value = {}; }
 function parameterValue(field: string, value: unknown) { commandValues.value[field] = value === null || value === undefined ? undefined : value as number | string | boolean; }
 async function sendCommand() {
   const tenant = session.tenant?.id; const scope = scopeKey();
@@ -256,11 +257,13 @@ async function load() {
   pending?.abort(); pending = new AbortController(); busy.value = true; failure.value = '';
   const options = { tenant, signal: pending.signal }; const path = devicePath();
   try {
-    const [data, live, history, modelHistory] = await Promise.all([
-      canReadDevice.value ? request<DeviceDetail>(path, options) : null,
-      canReadTelemetry.value ? request<DeviceCurrent>(path + '/current', options) : null,
-      canReadCommands.value ? request<Page<DeviceCommand> & { context: { permissions: string[]; menus: typeof session.menus } }>(path + '/commands', { ...options, params: { page: commands.value.page, per_page: commands.value.per_page } }) : null,
-      canReadDevice.value ? request<Page<ModelSwitch>>(path + '/model-switches', { ...options, params: { page: switches.value.page, per_page: switches.value.per_page } }) : null,
+    const data = canReadDevice.value ? await request<DeviceDetail>(path, options) : null;
+    if (current !== version || scope !== scopeKey()) return;
+    const legacy = !data || data.model !== null;
+    const [live, history, modelHistory] = await Promise.all([
+      legacy && can('telemetry.read') ? request<DeviceCurrent>(path + '/current', options) : null,
+      legacy && can('commands.read') ? request<Page<DeviceCommand> & { context: { permissions: string[]; menus: typeof session.menus } }>(path + '/commands', { ...options, params: { page: commands.value.page, per_page: commands.value.per_page } }) : null,
+      legacy && canReadDevice.value ? request<Page<ModelSwitch>>(path + '/model-switches', { ...options, params: { page: switches.value.page, per_page: switches.value.per_page } }) : null,
     ]);
     if (current !== version || scope !== scopeKey()) return;
     device.value = data; telemetry.value = live; refreshedAt.value = Date.now();
@@ -318,15 +321,15 @@ onBeforeUnmount(() => { active = false; stopRefresh(); document.removeEventListe
         <DescriptionsItem label="生命周期"><Tag>{{ lifecycleNames[device.lifecycle] }}</Tag></DescriptionsItem><DescriptionsItem label="所属租户">{{ session.tenant?.name }}</DescriptionsItem>
         <DescriptionsItem label="连接状态"><Tag :color="connectionColors[device.connection.status]">{{ connectionNames[device.connection.status] }}</Tag></DescriptionsItem><DescriptionsItem label="连接观察时间">{{ device.connection.observed_at === null ? '尚无连接观察' : new Date(device.connection.observed_at * 1000).toLocaleString() }}</DescriptionsItem>
         <DescriptionsItem label="服务观察时间" :span="2">{{ device.connection.broker_observed_at === null ? '尚无服务观察' : new Date(device.connection.broker_observed_at * 1000).toLocaleString() }}</DescriptionsItem>
-        <DescriptionsItem label="产品标识">{{ device.product_id }}</DescriptionsItem><DescriptionsItem label="模型版本"><Button type="link" @click="router.push(`/products/${device.product_id}/models`)">版本 {{ device.model_version }}</Button></DescriptionsItem>
+        <DescriptionsItem label="接入方式">{{ device.model ? '历史物模型接入' : '原始通信' }}</DescriptionsItem><DescriptionsItem v-if="device.model" label="模型版本"><Button type="link" @click="router.push(`/products/${device.product_id}/models`)">版本 {{ device.model_version }}</Button></DescriptionsItem>
         <DescriptionsItem label="归属阶段">{{ device.ownership_id }}</DescriptionsItem><DescriptionsItem label="注册时间">{{ new Date(Number(device.created_at) * 1000).toLocaleString() }}</DescriptionsItem>
-        <DescriptionsItem v-if="can('transfers.read') || can('transfers.request')" label="转移状态"><Button type="link" @click="router.push({ path: '/transfers', query: { device: device.id, transfer: device.transfer_id || undefined } })">{{ device.transfer_frozen ? '已冻结，继续处理' : device.transfer_id ? '等待目标审批' : '查看或发起转移' }}</Button></DescriptionsItem>
+        <DescriptionsItem v-if="device.model && (can('transfers.read') || can('transfers.request'))" label="转移状态"><Button type="link" @click="router.push({ path: '/transfers', query: { device: device.id, transfer: device.transfer_id || undefined } })">{{ device.transfer_frozen ? '已冻结，继续处理' : device.transfer_id ? '等待目标审批' : '查看或发起转移' }}</Button></DescriptionsItem>
         <DescriptionsItem label="上报 Topic" :span="2">{{ device.topics.publish }}</DescriptionsItem><DescriptionsItem label="下行 Topic" :span="2">{{ device.topics.subscribe }}</DescriptionsItem>
       </Descriptions>
       <Empty v-else-if="!busy" description="设备资料暂不可用，请重试" />
       <p v-if="device" class="muted">连接状态来自服务端观察；服务暂不可达或观察过期时为未知。生命周期独立表示设备是否获准使用。</p>
     </Card>
-    <Card v-if="device || canManageModel" title="模型切换" :bordered="false" class="device-data-card">
+    <Card v-if="modelAvailable && (device || canManageModel)" title="模型切换" :bordered="false" class="device-data-card">
       <template #extra><MutationButton v-if="canManageModel" :disabled="Boolean(intent) || actionBusy || Boolean(failure) || Boolean(device && (device.recovery_verified === 0 || device.transfer_id || device.lifecycle !== 'enabled' || device.authorization?.status === 'pending' || !device.credential_active))" @click="openModelSwitch">{{ device?.model_switch ? '继续原切换' : '切换模型' }}</MutationButton></template>
       <p class="muted">当前绑定版本 {{ device?.model_version ?? '未获准读取' }}。目标版本由设备明确支持并确认后生效；超时继续待处理。切换期间暂停新控制，旧缓存与历史按原版本保留。</p>
       <Alert v-if="device?.model_switch" :message="`版本 ${device?.model_switch.source_version} → ${device?.model_switch.target_version} · ${switchNames[device?.model_switch.state]}`" type="warning" show-icon class="page-alert" />
@@ -388,8 +391,8 @@ onBeforeUnmount(() => { active = false; stopRefresh(); document.removeEventListe
       <Empty v-else description="当前归属阶段尚无接收记录" />
       <p class="muted">显示当前归属阶段最新首次接收记录，重复上报不会改变排序。此结果表示平台保存的接收事实，不代表设备已经收到业务回执。</p>
     </Card>
-    <Card v-if="canReadCommands || canCommand || canQuery || canCancel" title="设备指令" :bordered="false" class="device-data-card">
-      <template #extra><MutationButton v-if="canCommand" type="primary" :disabled="!canStart || Boolean(device && !device.model.definition.commands.length)" @click="editCommand(null)">发起指令</MutationButton></template>
+    <Card v-if="modelAvailable && (canReadCommands || canCommand || canQuery || canCancel)" title="设备指令" :bordered="false" class="device-data-card">
+      <template #extra><MutationButton v-if="canCommand" type="primary" :disabled="!canStart || Boolean(device && !device.model?.definition.commands.length)" @click="editCommand(null)">发起指令</MutationButton></template>
       <Alert v-if="device?.transfer_frozen" type="warning" show-icon message="设备转移已冻结新控制；原指令结果仍可查询、对账。" class="page-alert" />
       <Alert v-if="!canReadCommands" message="当前角色不能读取指令列表；获准的操作可使用准确指令标识执行。" type="info" show-icon class="page-alert" />
       <p class="muted">原截止时间固定为受理后 60 秒。在线且无执行证据时在 0/10/30 秒最多发送三次；到期无结果则在 60/120/300 秒查询已有结果，之后可主动对账。迟到合法回执可以补全未知结果；查询不会启动动作。</p>
@@ -417,7 +420,7 @@ onBeforeUnmount(() => { active = false; stopRefresh(); document.removeEventListe
       <Button v-if="can('products.read') && device" :loading="switchModelsBusy" @click="loadSwitchModels(switchModels.page)">刷新版本</Button>
       <Pagination v-if="switchModels.total > switchModels.per_page" :current="switchModels.page" :page-size="switchModels.per_page" :total="switchModels.total" :show-size-changer="false" simple @change="loadSwitchModels" />
       <Descriptions v-if="selectedModel" :column="1" layout="vertical" bordered>
-        <DescriptionsItem label="结构比较">{{ selectedModel.structure_hash === device?.model.structure_hash ? '业务结构一致，仍需设备明确确认' : '业务结构有变化，旧历史与聚合按原版本解释' }}</DescriptionsItem>
+        <DescriptionsItem label="结构比较">{{ selectedModel.structure_hash === device?.model?.structure_hash ? '业务结构一致，仍需设备明确确认' : '业务结构有变化，旧历史与聚合按原版本解释' }}</DescriptionsItem>
         <DescriptionsItem label="目标属性"><p v-for="field in selectedModel.definition.properties" :key="field.identifier" class="current-value">{{ field.name }} · {{ typeNames[field.type] }}{{ field.unit ? ` · ${field.unit}` : '' }}{{ field.values ? ` · ${field.values.join(' / ')}` : '' }}</p><Empty v-if="!selectedModel.definition.properties.length" description="此版本没有属性" /></DescriptionsItem>
       </Descriptions>
     </AppDrawer>
@@ -454,7 +457,7 @@ onBeforeUnmount(() => { active = false; stopRefresh(); document.removeEventListe
         <p class="muted">确认后向当前设备发起一次动作。平台受理不等于设备执行成功，请在记录中查看结果。</p>
         <FormItem label="设备版本" required><InputNumber v-model:value="commandVersion" aria-label="指令设备版本" :min="1" :max="2147483645" :precision="0" :disabled="commandSaving || commandUncertain" /></FormItem>
         <template v-if="!device"><FormItem label="指令标识" required><Input v-model:value="rawIdentifier" aria-label="指令标识" :disabled="commandSaving || commandUncertain" /></FormItem><FormItem label="指令参数 JSON" required><Input.TextArea v-model:value="rawValues" aria-label="指令参数 JSON" :disabled="commandSaving || commandUncertain" :rows="5" /></FormItem></template>
-        <FormItem v-else label="选择指令" required><Select :value="operation?.identifier" aria-label="选择指令" :disabled="commandSaving || commandUncertain" :options="device?.model.definition.commands.map((item) => ({ label: item.name, value: item.identifier }))" @change="selectOperation" /></FormItem>
+        <FormItem v-else label="选择指令" required><Select :value="operation?.identifier" aria-label="选择指令" :disabled="commandSaving || commandUncertain" :options="device?.model?.definition.commands.map((item) => ({ label: item.name, value: item.identifier }))" @change="selectOperation" /></FormItem>
         <div class="form-grid">
           <FormItem v-for="field in operation?.parameters || []" :key="field.identifier" :label="field.name" :required="field.required" :class="field.type === 'string' ? 'span-full' : ''">
             <Select v-if="field.type === 'boolean'" :value="commandValues[field.identifier] === undefined ? undefined : String(commandValues[field.identifier])" :aria-label="field.name" :disabled="commandSaving || commandUncertain" :allow-clear="!field.required" :options="[{ label: '是', value: 'true' }, { label: '否', value: 'false' }]" @change="(value) => parameterValue(field.identifier, value === undefined ? undefined : value === 'true')" />

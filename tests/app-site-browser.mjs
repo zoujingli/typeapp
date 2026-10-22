@@ -78,6 +78,14 @@ export async function siteBrowser(base, dist, upstream, adminPassword, customerP
       expect(changed.code !== result.code).toBe(true);
       await expect.poll(async () => await drawer().getByLabel('一次性注册码').inputValue() === changed.code).toBe(true);
       await drawer().locator('.ant-drawer-close').click();
+      const registered = await api('POST', '/public/devices/register', { id: randomUUID().replaceAll('-', ''), tenant_id: tenantId,
+        device_id: randomUUID().replaceAll('-', ''), name: '页面原始通信设备', code: changed.code }, 201, '');
+      await row.getByRole('button', { name: /^详\s*情$/ }).click();
+      await expect(drawer()).toContainText(registered.device.id);
+      expect((await drawer().innerText()).includes(registered.credential.password)).toBe(false);
+      await drawer().locator('.ant-drawer-close').click();
+      await page.getByRole('button', { name: /^刷\s*新$/ }).click();
+      await expect(row).toContainText('1 / 3 已注册');
       await row.getByRole('button', { name: /^停\s*用$/ }).click();
       const disableResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith(`/${result.authorization.id}/disable`));
       await page.locator('.ant-modal-confirm').getByRole('button', { name: /^确\s*认$/ }).click();
@@ -108,6 +116,18 @@ export async function siteBrowser(base, dist, upstream, adminPassword, customerP
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.screenshot({ path: resolve(base, 'enrollments-customer-narrow.png'), fullPage: true }); report.screenshots.push('enrollments-customer-narrow.png');
       report.cases.push('客户端按当前客户读取真实资格，隐藏管理动作，窄屏暗色无页面横向溢出');
+      await page.goto(`${url}/#/devices/${registered.device.id}`);
+      await expect(page.getByRole('heading', { name: '设备详情', exact: true })).toBeVisible();
+      await expect(page.locator('.iot-page')).toContainText('页面原始通信设备');
+      await expect(page.locator('.iot-page')).toContainText('原始通信');
+      await expect(page.locator('.iot-page')).toContainText('/raw/up');
+      await expect(page.locator('.iot-page')).toContainText('尚无连接观察');
+      await expect(page.getByText('模型切换', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('设备指令', { exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '查看历史曲线' })).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: resolve(base, 'registration-device-narrow.png'), fullPage: true }); report.screenshots.push('registration-device-narrow.png');
+      report.cases.push('真实资格消费与绑定可见，无物模型详情展示原始主题并隐藏旧业务动作');
       expect(report.errors).toEqual([]); report.status = 'passed';
       return;
     }

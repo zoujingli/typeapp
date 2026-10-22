@@ -12,15 +12,127 @@ use app\broker\service\ResourceObservations;
 use app\common\service\AuditLog;
 use app\common\service\IdentityService;
 use app\common\service\RoleService;
+use app\common\model\Tenant;
+use app\iot\model\Device;
+use app\iot\model\DeviceEnrollment;
 use Closure;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Orm\Connection;
 use Type\Orm\Query;
+use Type\Orm\Db;
+use Type\Runtime\ExecutionScope;
 
-/** 预注册设备、精确模型绑定与凭据的持久所有者；归属只能通过显式转移流程变更。 */
+/** 设备注册、当前使用关系与接入凭据的持久所有者；历史模型接入在迁移完成前保持原合同。 */
 final class DeviceService
 {
+    /**
+     * 注册证明先经过有界尝试预算，资格、设备、当前关系、凭据和绑定在同一授权事务内提交。
+     * 幂等重试只返回原关系；一次性秘密丢失后由有权人员走既有 rotate 入口恢复。
+     * @param array{id:string,tenant_id:string,device_id:string,name:string,code:string} $data 已校验的注册声明。
+     * @param string $clientIp 已由 RequestPolicy 解析的真实来源，不能取未经验证的转发头。
+     * @return array{device:array<string,mixed>,credential:?array<string,mixed>,replayed:bool}
+     * @throws HttpError 证明无效、资格不可用、请求冲突、设备已注册或尝试预算耗尽。
+     */
+    public function enroll(array $data, string $clientIp): array
+    {
+        $this->registrationAttempt($clientIp);
+        $connection = Db::connection('default', true);
+        try {
+            return Db::transaction(static function () use ($data): array {
+                RoleService::lockAuthorization();
+                $tenant = Tenant::query()->master()->find($data['tenant_id']);
+                if ($tenant === null || !$tenant->getEnabled()) {
+                    throw new HttpError(401, 'registration_credentials_invalid');
+                }
+                return ExecutionScope::current()->run(static function (ExecutionScope $scope) use ($data): array {
+                    [$id, $secret] = explode('.', $data['code'], 2);
+                    $grant = DeviceEnrollment::query()->master()->find($id);
+                    if ($grant === null || !hash_equals($grant->getSecretHash(), hash('sha256', $secret))) {
+                        throw new HttpError(401, 'registration_credentials_invalid');
+                    }
+                    $transaction = Db::connection('default', true);
+                    $requestHash = hash('sha256', json_encode([$data['tenant_id'], $data['device_id'], $data['name'], $id], JSON_THROW_ON_ERROR));
+                    $previous = $transaction->table('iot_device_enrollment_bindings')->where('request_id', '=', $data['id'])->first();
+                    if ($previous !== null) {
+                        if ($previous['enrollment_id'] !== $id || !hash_equals($previous['request_hash'], $requestHash)) {
+                            throw new HttpError(409, 'registration_request_conflict');
+                        }
+                        $existing = Device::query()->master()->find($data['device_id']);
+                        if ($existing === null || $existing->getOwnershipId() !== $previous['ownership_id']) {
+                            throw new HttpError(409, 'registration_ownership_changed');
+                        }
+                        return ['device' => self::project($transaction, $existing->getId(), 'customer'), 'credential' => null, 'replayed' => true];
+                    }
+                    // 全球稳定设备 ID 不因客户变化重复创建；跨客户只返回冲突，不暴露原归属。
+                    if ($transaction->table('iot_devices')->where('id', '=', $data['device_id'])->first() !== null) {
+                        throw new HttpError(409, 'device_already_registered');
+                    }
+                    if (!$grant->getEnabled() || $grant->getRegisterExpiresAt() <= time() || $grant->getRegisteredCount() >= $grant->getCapacity()) {
+                        throw new HttpError(409, 'enrollment_unavailable');
+                    }
+                    if ($grant->getVersion() >= 2147483646) {
+                        throw new HttpError(409, 'stale_version');
+                    }
+                    $device = Device::create(['id' => $data['device_id'], 'product_id' => null, 'model_version' => null,
+                        'ownership_id' => bin2hex(random_bytes(16)), 'name' => $data['name'], 'lifecycle' => 'inactive',
+                        'model_switch_id' => null, 'model_start_sequence' => '0', 'transfer_id' => null, 'transfer_frozen' => false, 'recovery_verified' => true]);
+                    $now = $device->getCreatedAt();
+                    $transaction->table('iot_device_ownerships')->insert(['id' => $device->getOwnershipId(), 'device_id' => $device->getId(), 'tenant_id' => $data['tenant_id'], 'started_at' => $now]);
+                    $transaction->table('iot_device_connections')->insert(['device_id' => $device->getId(), 'ownership_id' => $device->getOwnershipId(), 'status' => 'unknown']);
+                    $credentialId = bin2hex(random_bytes(16));
+                    $credentialSecret = bin2hex(random_bytes(32));
+                    $transaction->table('iot_device_credentials')->insert(['id' => $credentialId, 'device_id' => $device->getId(), 'ownership_id' => $device->getOwnershipId(),
+                        'secret_hash' => hash('sha256', $credentialSecret), 'status' => 'active', 'created_at' => $now, 'revoked_at' => null]);
+                    $transaction->table('iot_device_enrollment_bindings')->insert(['ownership_id' => $device->getOwnershipId(), 'device_id' => $device->getId(),
+                        'enrollment_id' => $id, 'registered_at' => $now, 'request_id' => $data['id'], 'request_hash' => $requestHash]);
+                    $grant->setRegisteredCount($grant->getRegisteredCount() + 1);
+                    $grant->save();
+                    AuditLog::append($transaction, $data['tenant_id'], $device->getId(), 'device.enrolled', $device->getId(), 'success', ['context' => 'device-registration', 'ownership_id' => $device->getOwnershipId(), 'version' => 1], 'customer');
+                    AuditLog::append($transaction, $data['tenant_id'], $device->getId(), 'enrollment.consumed', $id, 'success', ['context' => 'device-registration', 'device_id' => $device->getId(), 'version' => $grant->getVersion()], 'customer');
+                    return ['device' => self::project($transaction, $device->getId(), 'customer'),
+                        'credential' => self::credential($device->project(['id', 'tenant_id', 'ownership_id', 'model_version']), $credentialId, $credentialSecret), 'replayed' => false];
+                }, ['tenant_id' => $data['tenant_id']]);
+            }, 'default', $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
+        } catch (HttpError $failure) {
+            AuditLog::append($connection, null, 'registration', 'device.registration_denied', $data['device_id'], 'denied', ['context' => 'device-registration', 'reason' => $failure->errorCode()], 'customer');
+            throw $failure;
+        }
+    }
+
+    /** 每来源每分钟最多 60 次有效形状的尝试，最多保留 1024 个活动来源；失败不会回滚尝试计数。 */
+    private function registrationAttempt(string $clientIp): void
+    {
+        if (filter_var($clientIp, FILTER_VALIDATE_IP) === false) {
+            throw new HttpError(400, 'invalid_peer');
+        }
+        $connection = Db::connection('default', true);
+        $allowed = Db::transaction(static function () use ($clientIp): bool {
+            RoleService::lockAuthorization();
+            $transaction = Db::connection('default', true);
+            $now = time();
+            $transaction->table('iot_registration_attempts')->where('window_started', '<=', $now - 60)->delete();
+            $source = hash('sha256', $clientIp);
+            $query = $transaction->table('iot_registration_attempts')->where('source_hash', '=', $source);
+            $previous = $query->first();
+            if ($previous !== null) {
+                if ((int) $previous['attempts'] >= 60) {
+                    return false;
+                }
+                $query->update(['attempts' => (int) $previous['attempts'] + 1]);
+                return true;
+            }
+            if ((int) $transaction->table('iot_registration_attempts')->aggregate('COUNT') >= 1024) {
+                return false;
+            }
+            $transaction->table('iot_registration_attempts')->insert(['source_hash' => $source, 'window_started' => $now, 'attempts' => 1]);
+            return true;
+        }, 'default', $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
+        if (!$allowed) {
+            throw new HttpError(429, 'registration_rate_limited');
+        }
+    }
+
     /**
      * 客户只查询所选租户，平台查询全局资产；凭据验证值不进入任何投影。
      * @param array{name?: string, product_id?: string, lifecycle?: string, tenant_id?: string} $filters 公开筛选。
@@ -123,7 +235,7 @@ final class DeviceService
             ->where('status', '=', 'active')->where('recovery_verified', '=', 1)->first();
         $result = self::observed($device) + ['credential_active' => $active !== null];
         return $realm === 'admin' ? $result : $result + [
-            'model' => ProductService::publishedModel($connection, $device['tenant_id'], $device['product_id'], (int) $device['model_version']),
+            'model' => $device['model_version'] === null ? null : ProductService::publishedModel($connection, $device['tenant_id'], $device['product_id'], (int) $device['model_version']),
             'topics' => self::topics($device), 'model_switch' => $device['model_switch_id'] === null ? null
                 : self::switchProjection($connection->table('iot_model_switches')->where('id', '=', $device['model_switch_id'])->first()),
         ];
@@ -782,6 +894,11 @@ final class DeviceService
         } elseif ($allowed && $action === 'authorize') {
             $topics = self::topics($device);
             $allowed = AccessService::authorizeDevice($connection, $device['id'], $request['topic'], $request['operation'], (int) $request['qos'], $topics);
+            if ($device['model_version'] === null) {
+                // 原始设备只拥有自身当前使用关系的两个精确主题，历史自定义规则不能扩大范围。
+                $expected = $request['operation'] === 'publish' ? $topics['publish'] : $topics['subscribe'];
+                $allowed = $allowed && $request['topic'] === $expected && in_array($request['operation'], ['publish', 'subscribe'], true);
+            }
             $reason = 'topic_forbidden';
         }
         if (!$allowed) {
@@ -951,12 +1068,15 @@ final class DeviceService
 
     /**
      * 设备只发布up、订阅down；归属阶段进入Topic，转移后旧阶段不能命中新身份范围。
-     * @param array{id: string, tenant_id: string, ownership_id: string} $device 已从数据库取得的归属事实。
+     * @param array{id: string, tenant_id: string, ownership_id: string, model_version?: ?int} $device 已从数据库取得的归属事实；空模型使用独立 raw 主题。
      * @return array{publish: string, subscribe: string} 两个精确Topic；具体消息类型由业务载荷表达。
      */
     public static function topics(array $device): array
     {
         $prefix = 'iot/' . $device['tenant_id'] . '/devices/' . $device['id'] . '/epochs/' . $device['ownership_id'];
+        if (array_key_exists('model_version', $device) && $device['model_version'] === null) {
+            $prefix .= '/raw';
+        }
         return ['publish' => $prefix . '/up', 'subscribe' => $prefix . '/down'];
     }
 }

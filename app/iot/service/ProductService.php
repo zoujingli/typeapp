@@ -171,10 +171,13 @@ final class ProductService
      * 供设备注册、接收及控制入口在自身授权与事务内调用；只返回精确已发布版本。
      * @internal 复合主键快照沿用调用者连接，不建立新的租户授权或事务。
      * @return array<string, mixed> 含完整冻结定义的版本事实。
-     * @throws HttpError 模型不存在或未发布；绝不查找其他租户或最新草稿。
+     * @throws HttpError 设备没有模型、模型不存在或未发布；绝不查找其他租户或最新草稿。
      */
-    public static function publishedModel(Connection $connection, string $tenantId, string $productId, int $number): array
+    public static function publishedModel(Connection $connection, string $tenantId, ?string $productId, int $number): array
     {
+        if ($productId === null) {
+            throw new HttpError(409, 'device_model_unavailable');
+        }
         $model = self::findModel($connection, $tenantId, $productId, $number);
         if ($model['status'] !== 'published') {
             throw new HttpError(409, 'model_not_published');

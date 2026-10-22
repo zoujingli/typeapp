@@ -196,7 +196,7 @@ function runtimeBusinessFixture(array $command, array $environment, string $dire
 }
 
 $root = dirname(__DIR__);
-expect(in_array($argc, [5, 6], true), '用法：php tests/application-runtime.php <原生产物> <MySQL工具根> <PostgreSQL工具根> <redis-server> [已发布旧版目录]');
+expect(in_array($argc, [5, 6], true), '用法：php tests/application-runtime.php <原生产物> <MySQL工具根> <PostgreSQL工具根> <redis-server> [已发布旧版目录或带构建身份的基线程序]');
 $target = realpath($argv[1]);
 expect(is_string($target) && is_file($target . '.build.json'), '需要原生产物及身份');
 $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
@@ -214,7 +214,17 @@ foreach (array_keys($environment) as $key) {
 $report = ['status' => 'running', 'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
     'binary_sha256' => hash_file('sha256', $target), 'drivers' => []];
 $legacyCommands = [];
-if ($argc === 6) {
+if ($argc === 6 && is_file($argv[5])) {
+    $old = realpath($argv[5]);
+    expect(is_file($old . '.build.json'), '基线程序缺少构建身份');
+    $legacy = json_decode(file_get_contents($old . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+    expect(hash_file('sha256', $old) === $legacy['sha256'], '基线程序摘要不一致');
+    foreach (['sqlite', 'mysql', 'pgsql'] as $driver) {
+        $legacyCommands[$driver] = nativeCommand($old);
+    }
+    $report['legacy'] = ['kind' => 'development-candidate', 'sha256' => $legacy['sha256'], 'build_id' => $legacy['build-id'],
+        'manifest_sha256' => hash_file('sha256', $old . '.build.json')];
+} elseif ($argc === 6) {
     $legacyRoot = realpath($argv[5]);
     expect(is_string($legacyRoot), '旧版目录不存在');
     $legacy = json_decode(file_get_contents($legacyRoot . '/release-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
@@ -282,13 +292,14 @@ try {
                 $directory . '/install.log'
             );
             expect($installed->successful(), '空库安装失败');
-            $checks[] = $legacyCommands === [] ? 'current-installation' : 'published-legacy-installation';
+            $checks[] = $legacyCommands === [] ? 'current-installation' : 'fixed-baseline-installation';
             $receipt = json_decode($installed->stdout, true, 64, JSON_THROW_ON_ERROR);
             $fixture = runtimeBusinessFixture($legacyCommands[$driver] ?? $command, $env, $directory, $password . '-customer', $receipt['data']['tenant_id'], $password);
             $dsn = $driver === 'sqlite' ? 'sqlite:' . $directory . '/application.sqlite'
                 : $driver . ':host=' . $env['DB_HOST'] . ';port=' . $env['DB_PORT'] . ';dbname=' . $env['DB_DATABASE'];
             $database = new PDO($dsn, $env['DB_USERNAME'] ?? '', $env['DB_PASSWORD'] ?? '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
             $before = runtimeDataIdentity($database, $driver);
+            $registrationPending = !isset($before['iot_registration_attempts']);
             $enrollmentPending = !isset($before['iot_device_enrollments']);
             $enrollmentRoles = [];
             $enrollmentPermissions = [];
@@ -323,6 +334,13 @@ try {
             $bad = $run(['app:upgrade', '--offline', '--backup', 'backup', '--sha256', str_repeat('0', 64)]);
             expect(!$bad->successful() && str_contains($bad->stderr, 'upgrade_backup_digest_mismatch'), '错误备份摘要未拒绝');
             expect($run($upgrade)->successful() && $run($upgrade)->successful(), '升级不能安全重复');
+            if ($registrationPending) {
+                $attempts = runtimeDataIdentity($database, $driver)['iot_registration_attempts'];
+                expect($attempts === ['rows' => 0, 'sha256' => hash('sha256', '')], '升级不能产生注册尝试或丢失限流结构');
+                $before['iot_registration_attempts'] = $attempts;
+                ksort($before);
+                $checks[] = 'registration-increment-preserves-existing-device-references';
+            }
             if ($enrollmentPending) {
                 $before = runtimeEnrollmentUpgrade($database, $driver, $before, $enrollmentRoles, $enrollmentPermissions);
             }
@@ -345,26 +363,10 @@ try {
             expect($run(['app:upgrade', '--check'])->successful(), '恢复后不能重新检查升级');
             $checks[] = 'known-increment-and-interrupted-migration-rejection';
 
-            // 独立夹具还原 102 之前的已知结构和授权目录，不改写历史迁移的 SQL 或摘要。
-            $database->exec('DROP TABLE iot_device_enrollment_bindings');
-            $database->exec('DROP TABLE iot_device_enrollments');
-            $database->exec("DELETE FROM type_migrations WHERE version = '102_iot_device_enrollment'");
-            $enrollmentRoles = [];
-            $enrollmentPermissions = [];
-            foreach (['admin', 'customer'] as $realm) {
-                $database->exec("DELETE FROM {$realm}_role_permissions WHERE permission LIKE '{$realm}.enrollments.%'");
-                $enrollmentRoles[$realm] = $database->query('SELECT * FROM ' . $realm . '_roles ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
-                $enrollmentPermissions[$realm] = [];
-                foreach ($database->query('SELECT role_id, permission FROM ' . $realm . '_role_permissions')->fetchAll(PDO::FETCH_ASSOC) as $binding) {
-                    $enrollmentPermissions[$realm][] = $binding['role_id'] . ':' . $binding['permission'];
-                }
+            // 有后续迁移后不能单独删除 102 表伪造旧库；增量验收使用上面的固定基线程序建立真实旧结构。
+            if ($enrollmentPending) {
+                $checks[] = 'enrollment-increment-with-protected-role-only-grants';
             }
-            $enrollmentBefore = runtimeDataIdentity($database, $driver);
-            expect($run(['app:upgrade', '--check'])->successful(), '注册授权追加迁移预检失败');
-            expect(runtimeDataIdentity($database, $driver) === $enrollmentBefore, '注册授权预检写入了业务数据');
-            expect($run($upgrade)->successful() && $run($upgrade)->successful(), '注册授权增量升级或重试失败');
-            $before = runtimeEnrollmentUpgrade($database, $driver, $enrollmentBefore, $enrollmentRoles, $enrollmentPermissions);
-            $checks[] = 'enrollment-increment-with-protected-role-only-grants';
 
             $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
             expect(is_resource($socket), '无法分配测试端口');

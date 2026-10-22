@@ -627,6 +627,18 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
                 $client->stop();
             }
         };
+        if (in_array('--registration-mqtt', $GLOBALS['argv'], true)) {
+            $telemetryBefore = (int) $database->query('SELECT COUNT(*) FROM iot_ingestion_facts')->fetchColumn();
+            $modelsBefore = (int) $database->query('SELECT COUNT(*) FROM iot_models')->fetchColumn();
+            $run('registration', $process);
+            expect((int) $database->query('SELECT COUNT(*) FROM iot_ingestion_facts')->fetchColumn() === $telemetryBefore
+                && (int) $database->query('SELECT COUNT(*) FROM iot_models')->fetchColumn() === $modelsBefore, '原始设备注册和上行创建了物模型或遥测');
+            expect((int) $database->query('SELECT COUNT(*) FROM iot_devices WHERE model_version IS NULL')->fetchColumn() === 2, '真实接入没有使用注册资格创建的设备');
+            $retained = $database->query("SELECT encode(payload, 'hex') FROM type_mqtt_retained WHERE topic LIKE '%/raw/up'")->fetchAll(PDO::FETCH_COLUMN);
+            expect($retained !== [] && array_values(array_unique($retained)) === ['00ff80110a41'], '原始二进制消息没有按原字节持久保存');
+            expect($process->stop(15)->successful(), '注册接入节点没有正常退出');
+            return ['client' => 'MQTT.js 5.15.0', 'tls' => true, 'cases' => $cases, 'no_telemetry_or_model' => true, 'broker_stopped' => true];
+        }
         if ($resources) {
             $run('broker-resources', $process);
             expect($process->stop(30)->successful(), '资源查询验收节点没有正常退出');
@@ -805,6 +817,15 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
         expect(str_contains($audits, 'unknown_device') && str_contains($audits, 'device.connection_denied')
             && str_contains($audits, 'device.topic_denied') && str_contains($audits, 'device.connected') && str_contains($audits, 'device.disconnected'), '真实拒绝或连接审计缺失');
         return ['client' => 'MQTT.js 5.15.0', 'tls' => true, 'cases' => $cases, 'broker_stopped' => true, 'secrets_redacted' => true];
+    } catch (Throwable $failure) {
+        if (in_array('--registration-mqtt', $GLOBALS['argv'], true)) {
+            $diagnostic = ['audits' => $database->query("SELECT action, subject_id, details FROM customer_audit WHERE action LIKE 'device.%' ORDER BY created_at, id")->fetchAll(PDO::FETCH_ASSOC),
+                'connections' => $database->query('SELECT * FROM iot_device_connections')->fetchAll(PDO::FETCH_ASSOC),
+                'node' => $database->query('SELECT * FROM iot_broker_observations')->fetchAll(PDO::FETCH_ASSOC)];
+            file_put_contents($base . '/registration-diagnostic.json', json_encode($diagnostic, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+            chmod($base . '/registration-diagnostic.json', 0600);
+        }
+        throw $failure;
     } finally {
         $process?->stop(15);
         unlink($base . '/private.pem');

@@ -47,14 +47,14 @@ function search(reset = false) { if (busy.value) return; if (reset) Object.assig
 async function searchDevices(name = '') {
   const tenant = session.tenant?.id; if (!tenant) return;
   const current = ++deviceGeneration; deviceBusy.value = true;
-  try { const data = await request<Page<Device>>(`/customer/tenants/${tenant}/devices`, { tenant, params: { name, per_page: 100 } }); if (current === deviceGeneration) devices.value = data.items; }
+  try { const data = await request<Page<Device>>(`/customer/tenants/${tenant}/devices`, { tenant, params: { name, per_page: 100 } }); if (current === deviceGeneration) devices.value = data.items.filter(device => device.model_version !== null); }
   catch (error) { if (!isCanceled(error) && current === deviceGeneration) saveFailure.value = errorText(error); }
   finally { if (current === deviceGeneration) deviceBusy.value = false; }
 }
 async function chooseDevice(id: string) {
   const tenant = session.tenant?.id; if (!tenant || editing.value) return;
   const current = ++deviceGeneration; fields.value = []; form.field = ''; deviceBusy.value = true;
-  try { const device = await request<DeviceDetail>(`/customer/tenants/${tenant}/devices/${id}`, { tenant }); if (current === deviceGeneration) fields.value = device.model.definition.properties.filter(field => ['number', 'integer'].includes(field.type)); }
+  try { const device = await request<DeviceDetail>(`/customer/tenants/${tenant}/devices/${id}`, { tenant }); if (current === deviceGeneration) fields.value = device.model?.definition.properties.filter(field => ['number', 'integer'].includes(field.type)) ?? []; }
   catch (error) { if (!isCanceled(error) && current === deviceGeneration) saveFailure.value = errorText(error); }
   finally { if (current === deviceGeneration) deviceBusy.value = false; }
 }

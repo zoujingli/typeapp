@@ -1723,6 +1723,10 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
             require __DIR__ . '/iot-enrollments.php';
             $report['enrollments'] = iotEnrollmentChecks($request, $inspection, $driver, $address, $adminToken, $password);
         }
+        if (in_array('--registration', $argv, true)) {
+            require_once __DIR__ . '/iot-enrollments.php';
+            $report['registration'] = iotRegistrationChecks($request, $inspection, $driver, $address, $adminToken, $password);
+        }
         if (in_array('--products', $argv, true)) {
             require __DIR__ . '/iot-products.php';
             $products = iotProductChecks($request, $inspection, $driver, $address, $adminToken, $password, $client);

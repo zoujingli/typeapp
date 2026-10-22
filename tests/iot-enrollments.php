@@ -115,3 +115,111 @@ function iotEnrollmentChecks(Closure $request, PDO $inspection, string $driver, 
     return ['idempotent_issue' => $duplicates, 'concurrent_reset_disable' => $race, 'audit_rollback' => true,
         'tenant_isolation' => true, 'one_time_code' => true, 'expiration_without_write' => true, 'platform_only_issue' => true];
 }
+
+/** 设备通过公开注册入口消费资格；观察真实额度、绑定、重试和凭据，不伪造物模型。 */
+function iotRegistrationChecks(Closure $request, PDO $inspection, string $driver, string $address, string $platform, string $password): array
+{
+    $call = static fn (string $method, string $path, string $token, ?array $body = null, int $status = 200, array $headers = [], string $error = ''): array
+        => $request($method, $path, $token, $headers, $body, $status, $error);
+    $path = '/public/devices/register';
+    $input = ['id' => bin2hex(random_bytes(16)), 'tenant_id' => bin2hex(random_bytes(16)), 'device_id' => bin2hex(random_bytes(16)),
+        'name' => '无物模型设备', 'code' => str_repeat('0', 32) . '.' . str_repeat('0', 64)];
+    $call('POST', $path, '', $input, 401, [], 'registration_credentials_invalid');
+    $tenant = $input['tenant_id'];
+    $other = bin2hex(random_bytes(16));
+    $call('POST', '/admin/tenants', $platform, ['id' => $tenant, 'name' => '设备注册客户', 'new_customer' => true, 'owner_login' => 'registration-owner', 'owner_name' => '注册客户', 'owner_password' => $password]);
+    $call('POST', '/admin/tenants', $platform, ['id' => $other, 'name' => '注册另一客户', 'new_customer' => false, 'owner_login' => 'registration-owner']);
+    $customer = $call('POST', '/customer/auth/login', '', ['login' => 'registration-owner', 'password' => $password])['data']['accessToken'];
+    $grantPath = '/admin/device-authorizations';
+    $grant = $call('POST', $grantPath, $platform, ['id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenant, 'name' => '设备安装资格', 'capacity' => 2, 'register_expires_at' => time() + 3600], 201)['data'];
+    $input['code'] = $grant['code'];
+    $call('POST', $path, '', array_replace($input, ['tenant_id' => $other]), 401, [], 'registration_credentials_invalid');
+    $call('POST', $path, '', $input + ['product_id' => bin2hex(random_bytes(16))], 422, [], 'unexpected_field');
+    $modelsBefore = (int) $inspection->query('SELECT COUNT(*) FROM iot_models')->fetchColumn();
+    $registered = $call('POST', $path, '', $input, 201)['data'];
+    expect($registered['device']['id'] === $input['device_id'] && $registered['device']['product_id'] === null
+        && $registered['device']['model_version'] === null && $registered['device']['connection']['status'] === 'unknown'
+        && $registered['replayed'] === false && strlen($registered['credential']['password']) === 64, '注册没有形成独立的设备、未知连接状态和一次性凭据');
+    expect(str_ends_with($registered['credential']['topics']['publish'], '/raw/up') && str_ends_with($registered['credential']['topics']['subscribe'], '/raw/down'), '新设备主题会进入旧数据解析链');
+    expect((int) $inspection->query('SELECT COUNT(*) FROM iot_models')->fetchColumn() === $modelsBefore, '注册通过伪造物模型规避约束');
+    $replayed = $call('POST', $path, '', $input)['data'];
+    expect($replayed['replayed'] === true && $replayed['credential'] === null && $replayed['device']['ownership_id'] === $registered['device']['ownership_id'], '响应丢失重试重复消费资格或回显旧凭据');
+    $call('POST', $path, '', array_replace($input, ['name' => '不同请求意图']), 409, [], 'registration_request_conflict');
+    $call('POST', $path, '', array_replace($input, ['id' => bin2hex(random_bytes(16))]), 409, [], 'device_already_registered');
+    $detailPath = '/customer/tenants/' . $tenant . '/devices/' . $input['device_id'];
+    $device = $call('GET', $detailPath, $customer, null, 200, ['X-Tenant-Id' => $tenant])['data'];
+    expect($device['model'] === null && $device['credential_active'] && !str_contains(json_encode($device, JSON_THROW_ON_ERROR), $registered['credential']['password']), '客户详情要求物模型或回显凭据');
+    $call('GET', $detailPath . '/current', $customer, null, 409, ['X-Tenant-Id' => $tenant], 'device_model_unavailable');
+    $call('GET', '/customer/tenants/' . $other . '/devices/' . $input['device_id'], $customer, null, 404, ['X-Tenant-Id' => $other], 'device_not_found');
+    $changed = $call('POST', $grantPath . '/' . $grant['authorization']['id'] . '/reset', $platform, ['tenant_id' => $tenant, 'version' => 2])['data'];
+    expect($changed['authorization']['registered_count'] === 1 && $changed['authorization']['remaining'] === 1, '重置丢失已用额度');
+    $binding = $call('GET', $grantPath . '/' . $grant['authorization']['id'], $platform)['data']['bindings'];
+    expect($binding['total'] === 1 && $binding['items'][0]['device_id'] === $input['device_id'] && $binding['items'][0]['ownership_id'] === $registered['device']['ownership_id'], '重置丢失或伪造真实设备绑定');
+    $call('POST', $path, '', array_replace($input, ['id' => bin2hex(random_bytes(16)), 'device_id' => bin2hex(random_bytes(16))]), 401, [], 'registration_credentials_invalid');
+    $input['code'] = $changed['code'];
+    $race = identityCompete($inspection, $driver, $address, [
+        ['POST', $path, '', array_replace($input, ['id' => bin2hex(random_bytes(16)), 'device_id' => bin2hex(random_bytes(16))])],
+        ['POST', $path, '', array_replace($input, ['id' => bin2hex(random_bytes(16)), 'device_id' => bin2hex(random_bytes(16))])],
+    ]);
+    sort($race);
+    expect($race === [201, 409], '一个剩余额度被并发注册多次消费');
+    $exhausted = $call('GET', $grantPath . '/' . $grant['authorization']['id'], $platform)['data'];
+    expect($exhausted['authorization']['registered_count'] === 2 && $exhausted['bindings']['total'] === 2, '真实绑定数与注册计数不一致');
+    $rotated = $call('POST', $detailPath . '/rotate', $customer, ['version' => $device['version'], 'confirm_device_id' => $device['id']], 202, ['X-Tenant-Id' => $tenant])['data'];
+    expect($rotated['credential']['id'] !== $registered['credential']['id'] && $rotated['device']['ownership_id'] === $device['ownership_id'], '恢复交付不能创建新设备使用关系');
+    $credentialState = $inspection->prepare('SELECT status FROM iot_device_credentials WHERE id = ?');
+    $credentialState->execute([$registered['credential']['id']]);
+    expect($credentialState->fetchColumn() === 'revoked', '受控换证没有撤销旧凭据');
+    $credentialState->closeCursor();
+    $next = $call('POST', $grantPath, $platform, ['id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenant, 'name' => '失败与重试资格', 'capacity' => 3, 'register_expires_at' => time() + 3600], 201)['data'];
+    $retry = array_replace($input, ['id' => bin2hex(random_bytes(16)), 'device_id' => bin2hex(random_bytes(16)), 'code' => $next['code']]);
+    $sameRequest = identityCompete($inspection, $driver, $address, [['POST', $path, '', $retry], ['POST', $path, '', $retry]]);
+    sort($sameRequest);
+    expect($sameRequest === [200, 201], '同一请求并发重试没有只创建一次设备');
+    $nextDetail = $call('GET', $grantPath . '/' . $next['authorization']['id'], $platform)['data'];
+    expect($nextDetail['authorization']['registered_count'] === 1 && $nextDetail['bindings']['total'] === 1, '同请求并发重试重复消费资格');
+    $failure = array_replace($retry, ['id' => bin2hex(random_bytes(16)), 'device_id' => bin2hex(random_bytes(16))]);
+    $expiry = $inspection->prepare('UPDATE iot_device_enrollments SET register_expires_at = ? WHERE id = ?');
+    try {
+        $expiry->execute([time() - 1, $next['authorization']['id']]);
+        $call('POST', $path, '', $failure, 409, [], 'enrollment_unavailable');
+    } finally {
+        $expiry->execute([$next['authorization']['register_expires_at'], $next['authorization']['id']]);
+    }
+    if ($driver === 'pgsql') {
+        $inspection->exec("CREATE FUNCTION registration_test_failure() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN IF NEW.action = ''enrollment.consumed'' THEN RAISE EXCEPTION ''controlled registration audit failure''; END IF; RETURN NEW; END'");
+        $inspection->exec('CREATE TRIGGER registration_test_failure BEFORE INSERT ON customer_audit FOR EACH ROW EXECUTE FUNCTION registration_test_failure()');
+    } elseif ($driver === 'mysql') {
+        $inspection->exec("CREATE TRIGGER registration_test_failure BEFORE INSERT ON customer_audit FOR EACH ROW BEGIN IF NEW.action = 'enrollment.consumed' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'controlled registration audit failure'; END IF; END");
+    } else {
+        $inspection->exec("CREATE TRIGGER registration_test_failure BEFORE INSERT ON customer_audit WHEN NEW.action = 'enrollment.consumed' BEGIN SELECT RAISE(ABORT, 'controlled registration audit failure'); END");
+    }
+    try {
+        $call('POST', $path, '', $failure, 500);
+    } finally {
+        $inspection->exec('DROP TRIGGER registration_test_failure' . ($driver === 'pgsql' ? ' ON customer_audit' : ''));
+        if ($driver === 'pgsql') {
+            $inspection->exec('DROP FUNCTION registration_test_failure()');
+        }
+    }
+    foreach (['iot_devices' => 'id', 'iot_device_ownerships' => 'device_id', 'iot_device_credentials' => 'device_id', 'iot_device_connections' => 'device_id', 'iot_device_enrollment_bindings' => 'device_id'] as $table => $column) {
+        $orphan = $inspection->prepare('SELECT COUNT(*) FROM ' . $table . ' WHERE ' . $column . ' = ?');
+        $orphan->execute([$failure['device_id']]);
+        expect((int) $orphan->fetchColumn() === 0, '注册审计失败遗留部分提交：' . $table);
+        $orphan->closeCursor();
+    }
+    expect($call('GET', $grantPath . '/' . $next['authorization']['id'], $platform)['data']['authorization']['registered_count'] === 1, '注册审计失败仍消费额度');
+    $call('POST', $path, '', $failure, 201);
+    $call('POST', $grantPath . '/' . $next['authorization']['id'] . '/disable', $platform, ['tenant_id' => $tenant, 'version' => 3]);
+    $call('POST', $path, '', array_replace($failure, ['id' => bin2hex(random_bytes(16)), 'device_id' => bin2hex(random_bytes(16))]), 409, [], 'enrollment_unavailable');
+    // 使用本轮独立来源的最后一个预算，观察失败也计数；到期恢复只调整测试账本的时钟边界。
+    expect((int) $inspection->query('SELECT COUNT(*) FROM iot_registration_attempts')->fetchColumn() === 1, '测试来源账本不是唯一记录');
+    $inspection->exec('UPDATE iot_registration_attempts SET attempts = 59, window_started = ' . time());
+    $call('POST', $path, '', array_replace($failure, ['code' => str_repeat('0', 32) . '.' . str_repeat('0', 64)]), 401, [], 'registration_credentials_invalid');
+    $call('POST', $path, '', $failure, 429, [], 'registration_rate_limited');
+    $inspection->exec('UPDATE iot_registration_attempts SET window_started = ' . (time() - 61));
+    expect($call('POST', $path, '', $failure)['data']['replayed'] === true, '预算到期后无法确认原注册结果');
+    return ['without_model' => true, 'one_time_secret' => true, 'quota_race' => $race, 'reset_preserves_binding' => true,
+        'replay_preserves_ownership' => true, 'credential_recovery' => true, 'tenant_isolation' => true, 'same_request_race' => $sameRequest,
+        'audit_failure_atomic' => true, 'expired_disabled_denied' => true, 'failed_attempt_budget_and_expiration' => true];
+}
