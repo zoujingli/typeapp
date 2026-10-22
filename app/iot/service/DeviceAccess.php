@@ -360,9 +360,14 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
                 } elseif ($request['action'] === 'clear_completed') {
                     $result = ['allowed' => true, 'completed' => ConnectionOperations::complete($connection, (string) $request['clear_id'], (string) $request['outcome'])];
                 } else {
-                    $result = str_starts_with((string) ($request['username'] ?? ''), 'service:')
-                        ? self::serviceAccess($connection, $request, $serviceCredential, $serviceVerifier)
-                        : DeviceService::access($connection, $request);
+                    $username = (string) ($request['username'] ?? '');
+                    if (str_starts_with($username, 'app:')) {
+                        $result = ClientApplicationService::access($connection, $request);
+                    } else {
+                        $result = str_starts_with($username, 'service:')
+                            ? self::serviceAccess($connection, $request, $serviceCredential, $serviceVerifier)
+                            : DeviceService::access($connection, $request);
+                    }
                 }
                 if (in_array($request['action'], ['heartbeat', 'stopped'], true) && is_array($request['metrics'] ?? null)) {
                     OperationsService::observe($connection, 'broker', $request['node_id'], $request['run_id'], $request['metrics'], $request['initial']);
@@ -483,16 +488,16 @@ final class DeviceAccess implements ResourceAccessPolicy, CertificateAccessPolic
         return $data;
     }
 
-    /** 只接受设备 id 或上报消费 Client ID；其他值当成未识别。 */
+    /** 只接受设备、独立接入应用或现有上报消费 Client ID；其他值当成未识别。 */
     private static function clientId(string $value): string
     {
-        return preg_match('/^(?:[a-f0-9]{32}|iot-ingestion-[a-z0-9][a-z0-9_-]{0,39})$/D', $value) === 1 ? $value : '';
+        return preg_match('/^(?:[a-f0-9]{32}|app:[a-f0-9]{32}|iot-ingestion-[a-z0-9][a-z0-9_-]{0,39})$/D', $value) === 1 ? $value : '';
     }
 
-    /** 只接受设备凭据用户名、上报服务用户名或调试短期凭据。 */
+    /** 人员账号不在协议用户名空间内，应用密钥与设备凭据分别验证。 */
     private static function username(string $value): string
     {
-        return preg_match('/^(?:[a-f0-9]{32}:[a-f0-9]{32}|service:ingestion:[a-f0-9]{32}|debug:[a-f0-9]{32})$/D', $value) === 1 ? $value : '';
+        return preg_match('/^(?:[a-f0-9]{32}:[a-f0-9]{32}|app:[a-f0-9]{32}|service:ingestion:[a-f0-9]{32}|debug:[a-f0-9]{32})$/D', $value) === 1 ? $value : '';
     }
 
     /** 服务凭据独立于设备；只授予上报消费与当前阶段下行，不改变任何设备的激活或连接观察。 */

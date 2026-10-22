@@ -627,6 +627,11 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
                 $client->stop();
             }
         };
+        if (in_array('--applications-mqtt', $GLOBALS['argv'], true)) {
+            $run('applications', $process);
+            expect($process->stop(15)->successful(), '应用身份节点没有正常退出');
+            return ['client' => 'MQTT.js 5.15.0', 'tls' => true, 'cases' => $cases, 'broker_stopped' => true];
+        }
         if (in_array('--registration-mqtt', $GLOBALS['argv'], true)) {
             $telemetryBefore = (int) $database->query('SELECT COUNT(*) FROM iot_ingestion_facts')->fetchColumn();
             $modelsBefore = (int) $database->query('SELECT COUNT(*) FROM iot_models')->fetchColumn();

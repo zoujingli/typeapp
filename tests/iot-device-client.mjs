@@ -74,7 +74,75 @@ async function finish(client) {
 
 try {
   const mode = process.argv[2];
-  if (mode === 'registration') {
+  if (mode === 'applications') {
+    const base = `/customer/tenants/${fixture.tenant}/applications`;
+    const call = async (method, path, token, body = null, expected = 200, scoped = true) => {
+      const response = await fetch(process.env.TYPE_DEVICE_HTTP + path, { method,
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(scoped ? { 'X-Tenant-Id': fixture.tenant } : {}) },
+        body: body === null ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(5000) });
+      assert.equal(response.status, expected, `${method} ${path}`);
+      return (await response.json()).data;
+    };
+    const created = await call('POST', base, fixture.admin_token, { id: randomUUID().replaceAll('-', ''), name: 'MQTT 独立应用' }, 201);
+    let credential = created.credential;
+    const path = `${base}/${created.application.id}`;
+    await denied(credential, { password: fixture.admin_token });
+    await denied(a, { password: credential.password });
+    await denied(credential, { clientId: a.client_id });
+    await call('GET', '/customer/auth/me', credential.password, null, 401);
+    let current = await connect(credential);
+    await assert.rejects(current.client.subscribeAsync(a.topics.publish, { qos: 1 }));
+    await assert.rejects(current.client.subscribeAsync('iot/#', { qos: 1 }));
+    const refusedPublish = once(current.client, 'disconnect', { signal: AbortSignal.timeout(10000) });
+    const refusedClosed = once(current.client, 'close', { signal: AbortSignal.timeout(10000) });
+    current.client.publish(a.topics.subscribe, 'no-device-grant', { qos: 1 }, () => {});
+    assert.equal((await refusedPublish)[0].reasonCode, 0x87);
+    await refusedClosed;
+    current = await connect(credential);
+    const closed = async client => {
+      const until = Date.now() + 15000;
+      while (!client.disconnected && !client.stream.destroyed && Date.now() < until) await delay(50);
+      assert.ok(client.disconnected || client.stream.destroyed, 'old connection survived revocation');
+    };
+    const settled = async () => {
+      const until = Date.now() + 15000;
+      let view;
+      do {
+        view = (await call('GET', path, fixture.admin_token)).application;
+        if (view.publication.status === 'effective') return view;
+        await delay(100);
+      } while (Date.now() < until);
+      assert.equal(view.publication.status, 'effective', 'revocation never obtained real node receipt');
+    };
+    const mutate = async action => {
+      const before = (await call('GET', path, fixture.admin_token)).application;
+      const result = await call('POST', `${path}/${action}`, fixture.admin_token, { version: before.version });
+      await settled();
+      return result;
+    };
+    for (const action of ['rotate', 'revoke', 'disable']) {
+      const changed = await mutate(action);
+      await closed(current.client);
+      await denied(credential);
+      if (action === 'rotate') credential = changed.credential;
+      if (action === 'revoke') credential = (await mutate('issue')).credential;
+      if (action === 'disable') await mutate('enable');
+      current = await connect(credential);
+    }
+    // 创建者退出只撤人员令牌，外部应用及其真实连接继续独立工作。
+    await call('POST', '/customer/auth/logout', fixture.admin_token, {}, 200, false);
+    await call('GET', '/customer/auth/me', fixture.admin_token, null, 401, false);
+    await current.client.endAsync(false);
+    current = await connect(credential);
+    assert.equal(current.client.connected, true);
+    const tenant = await call('GET', `/admin/tenants/${fixture.tenant}`, fixture.platform_token, null, 200, false);
+    await call('POST', `/admin/tenants/${fixture.tenant}/status`, fixture.platform_token, { version: tenant.items[0].version, enabled: false }, 200, false);
+    await denied(credential);
+    await current.client.endAsync(false);
+    await call('POST', `/admin/tenants/${fixture.tenant}/status`, fixture.platform_token, { version: tenant.items[0].version + 1, enabled: true }, 200, false);
+    checks.push('independent-mqtt5-tls-identity', 'person-device-credential-confusion-denied', 'no-device-grants-default-deny',
+      'rotate-revoke-disable-disconnect-and-old-key-reject', 'creator-logout-does-not-revoke-application', 'customer-disabled-denies-new-connection');
+  } else if (mode === 'registration') {
     const invoke = async (path, data, authorization = '', tenant = '', status = 201) => {
       const response = await fetch(process.env.TYPE_DEVICE_HTTP + path, { method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}), ...(tenant ? { 'X-Tenant-Id': tenant } : {}) },

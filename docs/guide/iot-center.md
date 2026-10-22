@@ -2,7 +2,7 @@
 
 物联中心是基于 TypeApp 构建的成品案例，通过框架组件组织物联网业务，以 TypePHP 编译生产实现，原生运行库随应用交付。框架开发文档在侧栏「TypeApp 框架」和「开发指南」；职责分层见[系统架构](architecture.md)，本页说明案例的业务、使用契约和交付边界。
 
-控制端与客户端的新业务范围已确定，详见[架构设计](../development/iot-control-client-design.md)。新的注册授权、应用接入及逐设备通信授权尚待实施；以下内容记录当前代码的使用合同，不能作为新架构已交付的依据。
+控制端与客户端的新业务范围已确定，详见[架构设计](../development/iot-control-client-design.md)。开发版已提供注册资格、无物模型设备注册和独立接入应用管理，逐设备通信授权、转配和旧处理链退出继续实施。以下说明区分当前接口与尚待完成的范围，不作为整批新架构已交付的依据。
 
 本案例提供两个人员入口：平台管理端面向平台人员，维护账号、租户、站点与全局观察；SaaS 用户端面向客户账号，在当前租户内管理成员、产品、设备、数据与告警。设备经独立 MQTT Broker 接入，遥测由独立接收进程落库，统计、告警、通知和导出分角色运行。MQTT 标准、高可用、目标容量与真实设备按对应产物和平台证据分别验收。
 
@@ -269,6 +269,57 @@ composer typeapp:serve
 设备首次完整成功连接后激活。生命周期的未激活、启用、禁用、退役，与在线、离线、未知以及数据新鲜度分别展示。没有新观察时保留未知或过期状态；浏览器断网不证明设备离线。禁用会撤销旧凭据，重新启用不会恢复它；退役为终态，保留期内历史仍按原权限查询。
 
 轮换、吊销、禁用或退役提交后，旧授权可能显示“待完成”。这表示 Broker 尚未完成旧连接、会话和持久工作的隔离，不能按 HTTP 受理成功提前认定撤权完成。秘密响应丢失时先刷新核对，不能通过自动重试重复生成新凭据。
+
+## 接入应用与密钥
+
+客户端在「物联管理 → 接入应用」维护本客户外部业务系统，控制端在「运维中心 → 接入应用」按平台权限管理。两端共用一套应用事实，分别核对人员权限和客户范围。应用凭据用于 MQTT 服务认证，后台人员令牌、设备凭据与应用密钥不能混用；创建者退出后台不会使应用身份失效。
+
+创建时填写名称，控制端还需明确客户标识。首次成功返回随机密钥，页面关闭后无法再次查看；列表和详情只显示密钥代次及状态。请求标识 `id` 是 32 位小写十六进制值，同一客户和名称使用同一标识重试只确认原应用，不重新交付秘密。响应丢失且密钥未保存时，使用「轮换密钥」恢复。
+
+| 操作 | 权限后缀 | 行为 |
+| --- | --- | --- |
+| 查看 | `applications.read` | 分页、详情和当前授权发布回执 |
+| 创建、编辑 | `applications.create`、`applications.update` | 创建独立身份或修改名称，不隐式更换已有密钥 |
+| 启用、停用 | `applications.enable`、`applications.disable` | 控制应用可否接入，停用保留身份与密钥代次 |
+| 轮换、撤销、签发 | `applications.keys` | 旧密钥不能恢复，重新签发继续推进代次 |
+
+权限带所属域前缀 `admin.` 或 `customer.`。升级只给受保护的最高管理员补充权限，普通角色由管理员明确授权。模拟登录仍按目标客户权限执行，并记录真实平台人员来源。`APP_ENV=demo` 拒绝上述写操作。
+
+例如，客户端在已认证的当前客户范围内创建应用：
+
+```http
+POST /customer/tenants/{tenant}/applications
+Authorization: Bearer <客户人员令牌>
+X-Tenant-Id: <与路径一致的客户标识>
+Content-Type: application/json
+
+{"id":"93c2a69096b84484bd42e52a832783ef","name":"客户业务系统"}
+```
+
+首次响应为 `201`，`data.application` 是公开应用信息，`data.credential` 是一次性交付；重试为 `200`，`credential=null`。普通详情使用 `GET /customer/tenants/{tenant}/applications/{application}`。控制端对应 `/admin/applications` 和 `/admin/applications/{application}`，创建及变更请求体包含 `tenant_id`，不携带客户工作区头。
+
+变更入口是 `POST .../{application}/{action}`，`action` 为 `update`、`enable`、`disable`、`rotate`、`revoke` 或 `issue`，请求体携带当前 `version`；仅 `update` 另带 `name`。旧表单返回 `stale_version`；前次隔离未完成时返回 `broker_access_publish_paused`，应先核对发布详情，不能通过重试强行越过。
+
+```mermaid
+sequenceDiagram
+  actor Operator as 获准人员
+  participant API as 应用管理
+  participant DB as 管理数据库
+  participant Broker as MQTT 节点
+  participant External as 外部业务系统
+  Operator->>API: 轮换密钥（当前版本）
+  API->>DB: 同事务保存新代次、审计及撤权意图
+  API-->>Operator: 一次性新密钥与发布状态
+  Broker->>DB: 读取撤权意图
+  Broker->>External: 终止旧凭据对应连接
+  Broker->>DB: 写入实际执行回执
+  Operator->>API: 刷新详情
+  API-->>Operator: 当前节点执行结果
+```
+
+连接使用交付结果中的 `client_id` 和 `username`（均为 `app:<应用标识>`）、一次性 `password`，固定 MQTT 5、TLS、30 秒 keepalive 和 86400 秒 session expiry。一个应用对应一个受管 Client ID，多份独立会话应分别创建应用。完整持久 MQTT 仍要求 PostgreSQL 同步存储；三库管理能力不表示 SQLite/MySQL 可启动该通信路径。
+
+轮换、撤销或停用先使新认证拒绝旧身份，再由现有 Broker 撤权流程处理活动连接。页面显示实际发布状态；节点不在线或隔离待处理时不宣称完成。通用 Broker 主体修改和快照回退不能绕过应用管理恢复旧密钥。当前未授予逐设备权限的应用，认证成功后仍拒绝设备收发和订阅；后续通信授权完成前，不提供自动获得全客户设备权限的捷径。
 
 ## 设备注册授权
 

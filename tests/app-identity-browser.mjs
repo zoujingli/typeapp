@@ -15,7 +15,7 @@ if (upstream.protocol !== 'http:' || upstream.hostname !== '127.0.0.1' || upstre
 const adminPassword = process.env.APP_ADMIN_PASSWORD;
 const customerPassword = process.env.APP_CUSTOMER_PASSWORD;
 if (!adminPassword || !customerPassword) throw new Error('browser_credentials_required');
-if (['site', 'workspaces', 'enrollments'].includes(process.env.TYPE_APP_BROWSER_CASES)) {
+if (['site', 'workspaces', 'enrollments', 'applications'].includes(process.env.TYPE_APP_BROWSER_CASES)) {
   await siteBrowser(base, dist, upstream, adminPassword, customerPassword);
   process.exit(0);
 }

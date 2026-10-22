@@ -425,7 +425,28 @@ final class AccessService
      */
     public static function publish(Connection $connection, ?string $tenantId, string $actorId, string $actorRealm, array $input, string $clientIdHint = ''): array
     {
-        $expected = (int) ($input['expected_version'] ?? -1);
+        return self::publishChange(
+            $connection,
+            $tenantId,
+            $actorId,
+            $actorRealm,
+            (int) ($input['expected_version'] ?? -1),
+            static function (Connection $transaction) use ($tenantId, $input): void {
+                self::applyChange($transaction, $tenantId, $input);
+            },
+            $clientIdHint
+        );
+    }
+
+    /**
+     * 将已授权的应用身份变更纳入同一快照、版本和节点撤权流程；不在回调内发送网络消息。
+     * @internal 调用者负责人员权限、领域写锁与租户范围；回调只修改当前事务的持久状态。
+     * @param \Closure(Connection): void $change 对主体、凭据及授权的同事务变更。
+     * @return array<string, mixed> 真实发布阶段和节点回执，不把数据库提交称作网络隔离完成。
+     * @throws HttpError 版本冲突、上次发布未完成或无实际授权变化。
+     */
+    public static function publishChange(Connection $connection, ?string $tenantId, string $actorId, string $actorRealm, int $expected, \Closure $change, string $clientIdHint = ''): array
+    {
         $current = self::currentVersion($connection);
         if ($expected !== $current) {
             throw new HttpError(409, 'broker_access_version_conflict');
@@ -434,9 +455,9 @@ final class AccessService
         if ($blocking !== null && in_array((string) $blocking['status'], ['pending', 'partial'], true)) {
             throw new HttpError(409, 'broker_access_publish_paused');
         }
-        return $connection->transaction(static function (Connection $transaction) use ($tenantId, $actorId, $actorRealm, $input, $current, $clientIdHint): array {
+        return $connection->transaction(static function (Connection $transaction) use ($tenantId, $actorId, $actorRealm, $change, $current, $clientIdHint): array {
             $before = self::snapshot($transaction, $tenantId);
-            self::applyChange($transaction, $tenantId, $input);
+            $change($transaction);
             $after = self::snapshot($transaction, $tenantId);
             if ($before === $after) {
                 throw new HttpError(409, 'broker_access_unchanged');
@@ -454,7 +475,7 @@ final class AccessService
             }
             self::refreshStatus($transaction, $revisionId);
             return self::revision($transaction, $revisionId);
-        }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
+        }, $connection->driverName() === 'sqlite' && $connection->transactionDepth() === 0 ? 'immediate' : 'default');
     }
 
     /**
@@ -719,6 +740,11 @@ final class AccessService
             if ($previous === null) {
                 throw new HttpError(409, 'broker_access_no_previous');
             }
+            // 应用保存独立的当前密钥代次，不能用通用租户快照绕过应用权限或恢复旧身份。
+            if (self::containsManagedApplication((string) $previous['snapshot_json'])
+                || self::containsManagedApplication(self::snapshot($transaction, $tenantId))) {
+                throw new HttpError(409, 'broker_access_managed_principal');
+            }
             self::restoreSnapshot($transaction, $current['tenant_id'] === null ? null : (string) $current['tenant_id'], (string) $previous['snapshot_json']);
             $now = time();
             $newId = bin2hex(random_bytes(16));
@@ -904,6 +930,16 @@ final class AccessService
     {
         $now = time();
         $principalId = (string) $input['id'];
+        if (str_starts_with((string) ($input['login'] ?? ''), 'app:')) {
+            throw new HttpError(403, 'broker_access_managed_principal');
+        }
+        if ($principalId !== '') {
+            foreach ($transaction->table('broker_access_credentials')->where('principal_id', '=', $principalId)->get() as $owned) {
+                if (str_starts_with((string) $owned['login'], 'app:')) {
+                    throw new HttpError(403, 'broker_access_managed_principal');
+                }
+            }
+        }
         if ($principalId === '') {
             if ((string) $input['login'] === '' || (string) $input['password'] === '' || strlen((string) $input['password']) < 12) {
                 throw new HttpError(422, 'broker_access_credential_required');
@@ -1504,6 +1540,20 @@ final class AccessService
     private static function sameTenant(mixed $stored, ?string $tenantId): bool
     {
         return $tenantId === null ? $stored === null : is_string($stored) && $stored === $tenantId;
+    }
+
+    /** 应用保留的登录命名空间仅由接入应用生命周期维护，通用回滚不能删除其关联记录。 */
+    private static function containsManagedApplication(string $snapshot): bool
+    {
+        $data = json_decode($snapshot, true, 16, JSON_THROW_ON_ERROR);
+        foreach ($data['principals'] as $principal) {
+            foreach ($principal['credentials'] as $credential) {
+                if (str_starts_with((string) $credential['login'], 'app:')) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

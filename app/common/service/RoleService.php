@@ -68,6 +68,10 @@ final class RoleService
             'retire' => '退役设备', 'rotate' => '轮换设备凭据', 'revoke' => '撤销设备凭据'] as $action => $label) {
             $catalog[$realm . '.devices.' . $action] = $label;
         }
+        foreach (['read' => '查看接入应用', 'create' => '创建接入应用', 'update' => '修改接入应用资料',
+            'enable' => '启用接入应用', 'disable' => '停用接入应用', 'keys' => '管理应用密钥'] as $action => $label) {
+            $catalog[$realm . '.applications.' . $action] = $label;
+        }
         if ($realm === 'customer') {
             $catalog['customer.devices.create'] = '登记设备并生成凭据';
             $catalog['customer.devices.model-switch'] = '请求与重试设备模型切换';
@@ -228,6 +232,9 @@ final class RoleService
             if (in_array('customer.enrollments.read', $permissions, true)) {
                 $iot[] = ['name' => '设备注册授权', 'path' => '/device-authorizations', 'icon' => 'lucide:badge-check', 'order' => 4];
             }
+            if (in_array('customer.applications.read', $permissions, true)) {
+                $iot[] = ['name' => '接入应用', 'path' => '/applications', 'icon' => 'lucide:app-window', 'order' => 5];
+            }
             if ($iot !== []) {
                 $menus[] = ['name' => '物联管理', 'path' => '/iot', 'redirectPath' => $iot[0]['path'], 'icon' => 'lucide:cpu', 'order' => 4, 'children' => $iot];
             }
@@ -252,6 +259,9 @@ final class RoleService
         }
         if ($realm === 'admin' && in_array('admin.enrollments.read', $permissions, true)) {
             $operations[] = ['name' => '设备注册授权', 'path' => '/admin/device-authorizations', 'icon' => 'lucide:badge-check', 'order' => count($operations) + 1];
+        }
+        if ($realm === 'admin' && in_array('admin.applications.read', $permissions, true)) {
+            $operations[] = ['name' => '接入应用', 'path' => '/admin/applications', 'icon' => 'lucide:app-window', 'order' => count($operations) + 1];
         }
         foreach (['audit' => '操作审计', 'operations' => '运行概览'] as $node => $label) {
             if (in_array($realm . '.' . $node . '.read', $permissions, true)) {

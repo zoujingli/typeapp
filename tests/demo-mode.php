@@ -110,6 +110,11 @@ try {
             $response = $client->request($method, $path, $headers, '{}');
             expect($response->status === 403 && $response->json()['error'] === 'demo_readonly', '演示写接口未拒绝：' . $method . ' ' . $path);
         }
+        $applications = $realm === 'admin' ? '/admin/applications' : '/customer/tenants/' . $tenant . '/applications';
+        foreach (['', '/' . $product . '/update', '/' . $product . '/enable', '/' . $product . '/disable', '/' . $product . '/rotate', '/' . $product . '/revoke', '/' . $product . '/issue'] as $suffix) {
+            $response = $client->request('POST', $applications . $suffix, $headers, '{}');
+            expect($response->status === 403 && $response->json()['error'] === 'demo_readonly', '演示模式不能创建应用或修改密钥');
+        }
         expect($client->request('GET', '/' . $realm . '/auth/me', $headers)->status === 200, '拒绝写入改变了登录状态');
         expect($client->request('POST', '/' . $realm . '/auth/logout', $headers, '{}')->status === 200, '退出登录被错误拒绝');
         expect($client->request('GET', '/' . $realm . '/auth/me', $headers)->status === 401, '退出后旧令牌仍可使用');

@@ -51,15 +51,18 @@ function runtimeDataIdentity(PDO $database, string $driver): array
     return $identity;
 }
 
-/** 追加注册授权结构时，仅最高管理员的目录与版本可改变，其他业务表必须逐字保留。 */
-function runtimeEnrollmentUpgrade(PDO $database, string $driver, array $before, array $roles, array $permissions): array
+/** 追加注册资格和应用身份时，仅最高管理员准确增权；普通角色和已有业务数据逐字保留。 */
+function runtimeIdentityUpgrade(PDO $database, string $driver, array $before, array $roles, array $permissions): array
 {
     $after = runtimeDataIdentity($database, $driver);
-    $excluded = ['admin_roles', 'customer_roles', 'admin_role_permissions', 'customer_role_permissions', 'iot_device_enrollments', 'iot_device_enrollment_bindings'];
+    $enrollments = !isset($before['iot_device_enrollments']);
+    $applications = !isset($before['iot_applications']);
+    $newTables = [...($enrollments ? ['iot_device_enrollments', 'iot_device_enrollment_bindings'] : []), ...($applications ? ['iot_applications'] : [])];
+    $excluded = ['admin_roles', 'customer_roles', 'admin_role_permissions', 'customer_role_permissions', ...$newTables];
     $business = static fn (array $tables): array => array_diff_key($tables, array_fill_keys($excluded, true));
-    expect($business($after) === $business($before), '注册授权增量修改了已有业务数据');
-    foreach (['iot_device_enrollments', 'iot_device_enrollment_bindings'] as $table) {
-        expect($after[$table]['rows'] === 0, '升级不能替客户自动签发或绑定注册资格');
+    expect($business($after) === $business($before), '身份增量修改了已有业务数据');
+    foreach ($newTables as $table) {
+        expect($after[$table]['rows'] === 0, '升级不能自动签发资格、注册设备或创建接入应用');
     }
     foreach (['admin' => ['read', 'issue', 'disable', 'reset'], 'customer' => ['read']] as $realm => $actions) {
         $current = $database->query('SELECT * FROM ' . $realm . '_roles ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
@@ -70,10 +73,13 @@ function runtimeEnrollmentUpgrade(PDO $database, string $driver, array $before, 
             if ((int) $role['protected'] !== 1) {
                 continue;
             }
-            $version = (int) $role['version'] + 1;
+            $version = (int) $role['version'] + (int) $enrollments + (int) $applications;
             $expected[$index]['version'] = is_string($role['version']) ? (string) $version : $version;
-            foreach ($actions as $action) {
+            foreach ($enrollments ? $actions : [] as $action) {
                 $expectedPermissions[] = $role['id'] . ':' . $realm . '.enrollments.' . $action;
+            }
+            foreach ($applications ? ['read', 'create', 'update', 'enable', 'disable', 'keys'] : [] as $action) {
+                $expectedPermissions[] = $role['id'] . ':' . $realm . '.applications.' . $action;
             }
         }
         expect($current === $expected, '迁移必须只推进受保护角色的版本');
@@ -301,9 +307,10 @@ try {
             $before = runtimeDataIdentity($database, $driver);
             $registrationPending = !isset($before['iot_registration_attempts']);
             $enrollmentPending = !isset($before['iot_device_enrollments']);
+            $applicationPending = !isset($before['iot_applications']);
             $enrollmentRoles = [];
             $enrollmentPermissions = [];
-            if ($enrollmentPending) {
+            if ($enrollmentPending || $applicationPending) {
                 foreach (['admin', 'customer'] as $realm) {
                     $enrollmentRoles[$realm] = $database->query('SELECT * FROM ' . $realm . '_roles ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
                     $enrollmentPermissions[$realm] = [];
@@ -341,8 +348,8 @@ try {
                 ksort($before);
                 $checks[] = 'registration-increment-preserves-existing-device-references';
             }
-            if ($enrollmentPending) {
-                $before = runtimeEnrollmentUpgrade($database, $driver, $before, $enrollmentRoles, $enrollmentPermissions);
+            if ($enrollmentPending || $applicationPending) {
+                $before = runtimeIdentityUpgrade($database, $driver, $before, $enrollmentRoles, $enrollmentPermissions);
             }
             expect(runtimeDataIdentity($database, $driver) === $before, '重复升级修改业务数据');
             expect($run(['web:install', '--force'])->successful(), '升级后内嵌页面安装失败');

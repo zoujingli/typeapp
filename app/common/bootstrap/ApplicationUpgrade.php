@@ -97,7 +97,7 @@ final class ApplicationUpgrade
             if (in_array($state['state'], ['failed', 'running'], true)) {
                 throw new \InvalidArgumentException('upgrade_recovery_required：先通过 migrate history/recover 核对迁移实际状态');
             }
-            if ($state['state'] !== 'applied' && (!in_array($state['version'], ['101_app_broker_operation_recovery', '102_iot_device_enrollment', '103_iot_device_registration'], true) || $state['state'] !== 'pending')) {
+            if ($state['state'] !== 'applied' && (!in_array($state['version'], ['101_app_broker_operation_recovery', '102_iot_device_enrollment', '103_iot_device_registration', '104_iot_client_applications'], true) || $state['state'] !== 'pending')) {
                 throw new \InvalidArgumentException('upgrade_schema_unsupported：只支持当前安装谱系，不能从未知旧模式直接升级');
             }
         }

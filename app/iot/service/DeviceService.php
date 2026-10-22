@@ -65,7 +65,8 @@ final class DeviceService
                         return ['device' => self::project($transaction, $existing->getId(), 'customer'), 'credential' => null, 'replayed' => true];
                     }
                     // 全球稳定设备 ID 不因客户变化重复创建；跨客户只返回冲突，不暴露原归属。
-                    if ($transaction->table('iot_devices')->where('id', '=', $data['device_id'])->first() !== null) {
+                    if ($transaction->table('iot_devices')->where('id', '=', $data['device_id'])->first() !== null
+                        || $transaction->table('broker_access_principals')->where('id', '=', $data['device_id'])->first() !== null) {
                         throw new HttpError(409, 'device_already_registered');
                     }
                     if (!$grant->getEnabled() || $grant->getRegisterExpiresAt() <= time() || $grant->getRegisteredCount() >= $grant->getCapacity()) {
