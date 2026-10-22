@@ -222,6 +222,7 @@ try {
         usleep(50000);
     } while (microtime(true) < $deadline);
     expect(count($connections['items']) === 1, '真实连接未进入资源观察');
+    $oldOwner = $connections['items'][0]['owner_id'];
     $rotated = bin2hex(random_bytes(16));
     $secrets[] = $rotated;
     $published = $request('POST', '/broker/access/principals/' . $principal['id'], $token, [
@@ -232,6 +233,7 @@ try {
     expect($published['tightening'] === true && $published['version'] === 2, '轮换凭据必须记为收紧并形成版本2');
     $request('POST', '/broker/access/revisions/' . $published['id'] . '/rollback', $token, [], 409);
     $disconnected = false;
+    $disconnectObservation = '';
     $deadline = microtime(true) + 5.2;
     do {
         try {
@@ -239,6 +241,13 @@ try {
         } catch (ProtocolError $failure) {
             expect(in_array($failure->reason, [0x87, 0x83, 0x82, 0x8e], true), '旧连接拒绝原因应是未授权或会话接管');
             $disconnected = true;
+            $disconnectObservation = 'protocol:' . $failure->reason;
+            break;
+        } catch (RuntimeException $failure) {
+            // 撤权会直接丢弃旧输出并关闭；不能要求它在旧控制消息后再发送 DISCONNECT。
+            expect($failure->getMessage() === 'mqtt_client_disconnected', '撤权不能以超时、取消或其他网络故障代替连接关闭');
+            $disconnected = true;
+            $disconnectObservation = 'transport_closed';
             break;
         }
         try {
@@ -246,10 +255,31 @@ try {
         } catch (ProtocolError $failure) {
             expect($failure->reason === 0x87 || $failure->reason === 0x8e, '旧连接断开原因应是未授权或会话接管');
             $disconnected = true;
+            $disconnectObservation = 'protocol:' . $failure->reason;
+            break;
+        } catch (RuntimeException $failure) {
+            expect($failure->getMessage() === 'mqtt_client_disconnected', '撤权不能以超时、取消或其他网络故障代替连接关闭');
+            $disconnected = true;
+            $disconnectObservation = 'transport_closed';
             break;
         }
     } while (microtime(true) < $deadline);
     expect($disconnected, '健康节点未在5秒内停止旧连接收发并断开');
+    // 传输断开本身不证明撤权成功：同一预算内核对精确 owner 清理，节点必须仍然存活。
+    do {
+        expect($node->running(), '撤权期间节点退出，不能作为旧连接关闭成功');
+        $remaining = $request('GET', '/broker/resources/connections?limit=20', $token, null, 200);
+        $oldPresent = false;
+        foreach ($remaining['items'] as $item) {
+            $oldPresent = $oldPresent || $item['owner_id'] === $oldOwner;
+        }
+        if (!$oldPresent) {
+            break;
+        }
+        usleep(10000);
+    } while (microtime(true) < $deadline);
+    expect(!$oldPresent && microtime(true) <= $deadline, '旧连接关闭后未在原预算内清理资源观察');
+    $report['revocation'] = ['connection_result' => $disconnectObservation, 'old_owner_removed' => true, 'node_running' => true];
     $mqttNew = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'access-new', 'broker-client', $rotated, caFile: $certificateFile, sessionExpiry: 0, allowPlaintext: !$tls);
     expect(!$mqttNew->connect(true), '新代次连接失败');
     expect($mqttNew->subscribe('broker-access/allowed', 0) === 0, '新凭据应获得收紧后的前缀订阅');
