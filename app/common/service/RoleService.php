@@ -48,6 +48,8 @@ final class RoleService
                 'admin.customers.impersonate' => '模拟客户登录',
                 'admin.site.read' => '查看站点设置', 'admin.site.manage' => '维护站点设置',
                 'admin.config.read' => '查看系统配置', 'admin.config.manage' => '维护系统配置',
+                'admin.enrollments.read' => '查看设备注册授权', 'admin.enrollments.issue' => '签发设备注册授权',
+                'admin.enrollments.disable' => '停用设备注册授权', 'admin.enrollments.reset' => '重置设备注册码',
             ];
         } else {
             $catalog += [
@@ -59,6 +61,7 @@ final class RoleService
                 'customer.roles.status' => '启停租户角色', 'customer.roles.delete' => '删除租户角色',
                 'customer.roles.permissions' => '编辑租户角色权限',
                 'customer.products.read' => '查看产品与物模型', 'customer.products.manage' => '维护产品与物模型',
+                'customer.enrollments.read' => '查看已分配的设备注册授权',
             ];
         }
         foreach (['read' => '查看设备资产', 'update' => '修改设备资料', 'enable' => '启用设备', 'disable' => '禁用设备',
@@ -222,6 +225,9 @@ final class RoleService
             if (in_array('customer.transfers.read', $permissions, true)) {
                 $iot[] = ['name' => '设备转移', 'path' => '/transfers', 'icon' => 'lucide:arrow-left-right', 'order' => 3];
             }
+            if (in_array('customer.enrollments.read', $permissions, true)) {
+                $iot[] = ['name' => '设备注册授权', 'path' => '/device-authorizations', 'icon' => 'lucide:badge-check', 'order' => 4];
+            }
             if ($iot !== []) {
                 $menus[] = ['name' => '物联管理', 'path' => '/iot', 'redirectPath' => $iot[0]['path'], 'icon' => 'lucide:cpu', 'order' => 4, 'children' => $iot];
             }
@@ -243,6 +249,9 @@ final class RoleService
         $operations = [];
         if ($realm === 'admin' && in_array('admin.devices.read', $permissions, true)) {
             $operations[] = ['name' => '设备资产', 'path' => '/admin/devices', 'icon' => 'lucide:cpu', 'order' => 1];
+        }
+        if ($realm === 'admin' && in_array('admin.enrollments.read', $permissions, true)) {
+            $operations[] = ['name' => '设备注册授权', 'path' => '/admin/device-authorizations', 'icon' => 'lucide:badge-check', 'order' => count($operations) + 1];
         }
         foreach (['audit' => '操作审计', 'operations' => '运行概览'] as $node => $label) {
             if (in_array($realm . '.' . $node . '.read', $permissions, true)) {

@@ -51,6 +51,44 @@ function runtimeDataIdentity(PDO $database, string $driver): array
     return $identity;
 }
 
+/** 追加注册授权结构时，仅最高管理员的目录与版本可改变，其他业务表必须逐字保留。 */
+function runtimeEnrollmentUpgrade(PDO $database, string $driver, array $before, array $roles, array $permissions): array
+{
+    $after = runtimeDataIdentity($database, $driver);
+    $excluded = ['admin_roles', 'customer_roles', 'admin_role_permissions', 'customer_role_permissions', 'iot_device_enrollments', 'iot_device_enrollment_bindings'];
+    $business = static fn (array $tables): array => array_diff_key($tables, array_fill_keys($excluded, true));
+    expect($business($after) === $business($before), '注册授权增量修改了已有业务数据');
+    foreach (['iot_device_enrollments', 'iot_device_enrollment_bindings'] as $table) {
+        expect($after[$table]['rows'] === 0, '升级不能替客户自动签发或绑定注册资格');
+    }
+    foreach (['admin' => ['read', 'issue', 'disable', 'reset'], 'customer' => ['read']] as $realm => $actions) {
+        $current = $database->query('SELECT * FROM ' . $realm . '_roles ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+        $expected = $roles[$realm];
+        expect(array_filter($expected, static fn (array $role): bool => (int) $role['protected'] === 0) !== [], '升级夹具必须包含普通角色，不能空验不增权');
+        $expectedPermissions = $permissions[$realm];
+        foreach ($expected as $index => $role) {
+            if ((int) $role['protected'] !== 1) {
+                continue;
+            }
+            $version = (int) $role['version'] + 1;
+            $expected[$index]['version'] = is_string($role['version']) ? (string) $version : $version;
+            foreach ($actions as $action) {
+                $expectedPermissions[] = $role['id'] . ':' . $realm . '.enrollments.' . $action;
+            }
+        }
+        expect($current === $expected, '迁移必须只推进受保护角色的版本');
+        $actualPermissions = [];
+        foreach ($database->query('SELECT role_id, permission FROM ' . $realm . '_role_permissions')->fetchAll(PDO::FETCH_ASSOC) as $binding) {
+            $actualPermissions[] = $binding['role_id'] . ':' . $binding['permission'];
+        }
+        sort($actualPermissions, SORT_STRING);
+        $expectedPermissions = array_values(array_unique($expectedPermissions));
+        sort($expectedPermissions, SORT_STRING);
+        expect($actualPermissions === $expectedPermissions, '迁移没有准确补齐最高管理员或向普通角色增权');
+    }
+    return $after;
+}
+
 /** 等待可观测的真实 HTTP 状态；不以固定休眠代替服务就绪。 */
 function runtimeProbe(HttpClient $client, Process $server, string $path, int $expected): array
 {
@@ -105,7 +143,7 @@ function runtimeRedisBudget(array $environment): void
 }
 
 /** 从真实 HTTP 建立非空业务数据与未完成导出；升级前正常停写，秘密只留在内存。 */
-function runtimeBusinessFixture(array $command, array $environment, string $directory, string $password, string $tenant): array
+function runtimeBusinessFixture(array $command, array $environment, string $directory, string $password, string $tenant, string $adminPassword): array
 {
     $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($socket), '无法分配夹具服务端口');
@@ -129,6 +167,16 @@ function runtimeBusinessFixture(array $command, array $environment, string $dire
             expect($response->status === $status, '升级前业务夹具失败：' . $url . ' status=' . $response->status);
             return $response->json()['data'];
         };
+        $create('/customer/roles', ['name' => '升级保留普通客户角色', 'permissions' => ['identity.read', 'customer.devices.read']], 200);
+        $adminLogin = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode(['login' => 'operator', 'password' => $adminPassword], JSON_THROW_ON_ERROR));
+        expect($adminLogin->status === 200, '升级前平台登录失败');
+        $adminRole = $client->request(
+            'POST',
+            '/admin/roles',
+            ['Content-Type' => 'application/json', 'Authorization' => 'Bearer ' . $adminLogin->json()['data']['accessToken']],
+            json_encode(['name' => '升级保留普通平台角色', 'permissions' => ['identity.read', 'admin.devices.read']], JSON_THROW_ON_ERROR)
+        );
+        expect($adminRole->status === 200, '升级前普通平台角色夹具失败');
         $product = $create($path . '/products', ['name' => '升级保留产品'], 201);
         $models = $path . '/products/' . $product['id'] . '/models';
         $create($models, ['definition' => ['properties' => [
@@ -236,11 +284,23 @@ try {
             expect($installed->successful(), '空库安装失败');
             $checks[] = $legacyCommands === [] ? 'current-installation' : 'published-legacy-installation';
             $receipt = json_decode($installed->stdout, true, 64, JSON_THROW_ON_ERROR);
-            $fixture = runtimeBusinessFixture($legacyCommands[$driver] ?? $command, $env, $directory, $password . '-customer', $receipt['data']['tenant_id']);
+            $fixture = runtimeBusinessFixture($legacyCommands[$driver] ?? $command, $env, $directory, $password . '-customer', $receipt['data']['tenant_id'], $password);
             $dsn = $driver === 'sqlite' ? 'sqlite:' . $directory . '/application.sqlite'
                 : $driver . ':host=' . $env['DB_HOST'] . ';port=' . $env['DB_PORT'] . ';dbname=' . $env['DB_DATABASE'];
             $database = new PDO($dsn, $env['DB_USERNAME'] ?? '', $env['DB_PASSWORD'] ?? '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
             $before = runtimeDataIdentity($database, $driver);
+            $enrollmentPending = !isset($before['iot_device_enrollments']);
+            $enrollmentRoles = [];
+            $enrollmentPermissions = [];
+            if ($enrollmentPending) {
+                foreach (['admin', 'customer'] as $realm) {
+                    $enrollmentRoles[$realm] = $database->query('SELECT * FROM ' . $realm . '_roles ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+                    $enrollmentPermissions[$realm] = [];
+                    foreach ($database->query('SELECT role_id, permission FROM ' . $realm . '_role_permissions')->fetchAll(PDO::FETCH_ASSOC) as $binding) {
+                        $enrollmentPermissions[$realm][] = $binding['role_id'] . ':' . $binding['permission'];
+                    }
+                }
+            }
             $backup = $directory . '/backup';
             if ($driver === 'sqlite') {
                 $database->exec('VACUUM INTO ' . $database->quote($backup));
@@ -263,6 +323,9 @@ try {
             $bad = $run(['app:upgrade', '--offline', '--backup', 'backup', '--sha256', str_repeat('0', 64)]);
             expect(!$bad->successful() && str_contains($bad->stderr, 'upgrade_backup_digest_mismatch'), '错误备份摘要未拒绝');
             expect($run($upgrade)->successful() && $run($upgrade)->successful(), '升级不能安全重复');
+            if ($enrollmentPending) {
+                $before = runtimeEnrollmentUpgrade($database, $driver, $before, $enrollmentRoles, $enrollmentPermissions);
+            }
             expect(runtimeDataIdentity($database, $driver) === $before, '重复升级修改业务数据');
             expect($run(['web:install', '--force'])->successful(), '升级后内嵌页面安装失败');
             $checks[] = 'backup-gate-and-idempotent-upgrade';
@@ -281,6 +344,27 @@ try {
             expect($run(['migrate', 'recover', '101_app_broker_operation_recovery', 'applied', 'fixture-schema-verified'])->successful(), '已核对的迁移不能通过公开入口恢复');
             expect($run(['app:upgrade', '--check'])->successful(), '恢复后不能重新检查升级');
             $checks[] = 'known-increment-and-interrupted-migration-rejection';
+
+            // 独立夹具还原 102 之前的已知结构和授权目录，不改写历史迁移的 SQL 或摘要。
+            $database->exec('DROP TABLE iot_device_enrollment_bindings');
+            $database->exec('DROP TABLE iot_device_enrollments');
+            $database->exec("DELETE FROM type_migrations WHERE version = '102_iot_device_enrollment'");
+            $enrollmentRoles = [];
+            $enrollmentPermissions = [];
+            foreach (['admin', 'customer'] as $realm) {
+                $database->exec("DELETE FROM {$realm}_role_permissions WHERE permission LIKE '{$realm}.enrollments.%'");
+                $enrollmentRoles[$realm] = $database->query('SELECT * FROM ' . $realm . '_roles ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+                $enrollmentPermissions[$realm] = [];
+                foreach ($database->query('SELECT role_id, permission FROM ' . $realm . '_role_permissions')->fetchAll(PDO::FETCH_ASSOC) as $binding) {
+                    $enrollmentPermissions[$realm][] = $binding['role_id'] . ':' . $binding['permission'];
+                }
+            }
+            $enrollmentBefore = runtimeDataIdentity($database, $driver);
+            expect($run(['app:upgrade', '--check'])->successful(), '注册授权追加迁移预检失败');
+            expect(runtimeDataIdentity($database, $driver) === $enrollmentBefore, '注册授权预检写入了业务数据');
+            expect($run($upgrade)->successful() && $run($upgrade)->successful(), '注册授权增量升级或重试失败');
+            $before = runtimeEnrollmentUpgrade($database, $driver, $enrollmentBefore, $enrollmentRoles, $enrollmentPermissions);
+            $checks[] = 'enrollment-increment-with-protected-role-only-grants';
 
             $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
             expect(is_resource($socket), '无法分配测试端口');

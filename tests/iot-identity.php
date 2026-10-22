@@ -1719,6 +1719,10 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         $report['member_management'] = identityMemberCases($request, $inspection, $driver, $address, $adminToken, $customerToken, $password, $installed['tenant_id']);
         $report['role_management'] = identityRoleCases($request, $inspection, $driver, $address, $adminToken, $customerToken, $password);
         $report['impersonation'] = identityImpersonationCases($request, $inspection, $driver, $address, $adminToken, $customerToken, $password);
+        if (in_array('--enrollments', $argv, true)) {
+            require __DIR__ . '/iot-enrollments.php';
+            $report['enrollments'] = iotEnrollmentChecks($request, $inspection, $driver, $address, $adminToken, $password);
+        }
         if (in_array('--products', $argv, true)) {
             require __DIR__ . '/iot-products.php';
             $products = iotProductChecks($request, $inspection, $driver, $address, $adminToken, $password, $client);

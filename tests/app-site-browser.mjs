@@ -2,6 +2,7 @@ import { chromium, expect } from '../web/node_modules/@playwright/test/index.mjs
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { randomUUID } from 'node:crypto';
 import { brokerPreview } from './broker-resources-browser.mjs';
 
 /** 使用调用方持有的隔离 HTTP 应用，验证品牌读取、设置保存、冲突及窄屏真实交互。 */
@@ -46,6 +47,70 @@ export async function siteBrowser(base, dist, upstream, adminPassword, customerP
       expect(response.status()).toBe(status);
       return (await response.json()).data;
     };
+    if (process.env.TYPE_APP_BROWSER_CASES === 'enrollments') {
+      const tenantId = randomUUID().replaceAll('-', '');
+      await api('POST', '/admin/tenants', { id: tenantId, name: '浏览器注册客户', new_customer: false, owner_login: 'same-login' });
+      await page.goto(`${url}/#/admin/device-authorizations`);
+      await expect(page.getByRole('heading', { name: '设备注册授权', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: '签发授权', exact: true }).click();
+      const drawer = () => page.locator('.ant-drawer-open').last();
+      await drawer().getByLabel('客户标识', { exact: true }).fill(tenantId);
+      await drawer().getByLabel('授权名称', { exact: true }).fill('页面验收注册批次');
+      await drawer().getByLabel('可注册设备数', { exact: true }).fill('3');
+      await drawer().getByLabel('注册截止时间（本地时区）', { exact: true }).fill('2030-01-01T00:00');
+      const issuedResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/admin/device-authorizations');
+      await drawer().getByRole('button', { name: /^保\s*存$/ }).click();
+      const issued = await issuedResponse; expect(issued.status()).toBe(201);
+      const result = (await issued.json()).data;
+      await expect.poll(async () => await drawer().getByLabel('一次性注册码').inputValue() === result.code).toBe(true);
+      await drawer().locator('.ant-drawer-close').click();
+      await expect(page.getByLabel('一次性注册码')).not.toBeVisible();
+      const row = page.getByRole('row').filter({ hasText: '页面验收注册批次' });
+      await row.getByRole('button', { name: /^详\s*情$/ }).click();
+      await expect(drawer()).toContainText('尚无设备通过本资格注册');
+      expect((await drawer().innerText()).includes(result.code)).toBe(false);
+      await drawer().locator('.ant-drawer-close').click();
+      await row.getByRole('button', { name: '重置注册码', exact: true }).click();
+      const resetResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith(`/${result.authorization.id}/reset`));
+      await page.locator('.ant-modal-confirm').getByRole('button', { name: /^确\s*认$/ }).click();
+      const reset = await resetResponse; expect(reset.status()).toBe(200);
+      const changed = (await reset.json()).data;
+      expect(changed.code !== result.code).toBe(true);
+      await expect.poll(async () => await drawer().getByLabel('一次性注册码').inputValue() === changed.code).toBe(true);
+      await drawer().locator('.ant-drawer-close').click();
+      await row.getByRole('button', { name: /^停\s*用$/ }).click();
+      const disableResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith(`/${result.authorization.id}/disable`));
+      await page.locator('.ant-modal-confirm').getByRole('button', { name: /^确\s*认$/ }).click();
+      expect((await disableResponse).status()).toBe(200);
+      await expect(row).toContainText('已停用'); await expect(row.getByRole('button', { name: '重置注册码', exact: true })).toBeDisabled();
+      await expect(page.locator('.ant-modal-confirm')).toHaveCount(0);
+      await page.locator('.ant-table-body, .ant-table-content').evaluateAll(elements => { for (const element of elements) element.scrollLeft = 0; });
+      report.cases.push('控制端真实签发、一次性交付、详情无秘密、换码与停用');
+      await page.screenshot({ path: resolve(base, 'enrollments-admin.png'), fullPage: true }); report.screenshots.push('enrollments-admin.png');
+      const customer = await api('POST', '/customer/auth/login', { login: 'same-login', password: customerPassword });
+      await page.evaluate(({ token }) => {
+        sessionStorage.setItem('typeapp.customer.token', token);
+      }, { token: customer.accessToken });
+      await page.goto(`${url}/#/tenants`);
+      const tenantRow = page.getByRole('row').filter({ hasText: '浏览器注册客户' });
+      await tenantRow.getByRole('button', { name: '进入租户', exact: true }).click();
+      await expect(page).toHaveURL(/#\/profile$/);
+      await expect(page.locator('.current-tenant')).toContainText('浏览器注册客户');
+      await page.goto(`${url}/#/device-authorizations`);
+      await expect(page.getByRole('row').filter({ hasText: '页面验收注册批次' })).toContainText('已停用');
+      await expect(page.getByRole('button', { name: '签发授权', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '重置注册码', exact: true })).toHaveCount(0);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole('button', { name: 'dark', exact: true }).click();
+      await expect(page.locator('html')).toHaveClass(/dark/);
+      await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation =>
+        animation.playState === 'running' && Number.isFinite(animation.effect?.getComputedTiming().endTime)).length)).toBe(0);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: resolve(base, 'enrollments-customer-narrow.png'), fullPage: true }); report.screenshots.push('enrollments-customer-narrow.png');
+      report.cases.push('客户端按当前客户读取真实资格，隐藏管理动作，窄屏暗色无页面横向溢出');
+      expect(report.errors).toEqual([]); report.status = 'passed';
+      return;
+    }
     if (process.env.TYPE_APP_BROWSER_CASES === 'workspaces') {
       let settings = await api('GET', '/admin/site');
       await api('PUT', '/admin/site', { version: settings.version, changes: { tabbar_enable: true, tabbar_style: 'chrome', sidebar_collapsed: false } });

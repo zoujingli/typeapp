@@ -90,14 +90,14 @@ final class ApplicationUpgrade
         });
     }
 
-    /** 在写入前复核安装身份、已知迁移、恢复门及二进制兼容；仅 101 可作为已知增量。 */
+    /** 在写入前复核安装身份、明确支持的追加迁移、恢复门及二进制兼容。 */
     private static function verify(Connection $connection, array $states): void
     {
         foreach ($states as $state) {
             if (in_array($state['state'], ['failed', 'running'], true)) {
                 throw new \InvalidArgumentException('upgrade_recovery_required：先通过 migrate history/recover 核对迁移实际状态');
             }
-            if ($state['state'] !== 'applied' && ($state['version'] !== '101_app_broker_operation_recovery' || $state['state'] !== 'pending')) {
+            if ($state['state'] !== 'applied' && (!in_array($state['version'], ['101_app_broker_operation_recovery', '102_iot_device_enrollment'], true) || $state['state'] !== 'pending')) {
                 throw new \InvalidArgumentException('upgrade_schema_unsupported：只支持当前安装谱系，不能从未知旧模式直接升级');
             }
         }

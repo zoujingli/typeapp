@@ -22,7 +22,7 @@
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
 .span-full { grid-column: 1 / -1; }
 .ant-descriptions-item-content, .tenant-title { overflow-wrap: anywhere; }
-.current-tenant { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.current-tenant { min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-name { max-width: 130px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .login-page { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; background: radial-gradient(ellipse at 10% 10%, hsl(var(--primary) / 14%), transparent 50%), hsl(var(--background-deep)); }
 .login-card { width: 440px; max-width: 100%; box-shadow: 0 16px 64px hsl(var(--foreground) / 6%); }

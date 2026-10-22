@@ -253,6 +253,7 @@ composer typeapp:serve
 | --- | --- |
 | 我的租户、成员管理 | 选择成员租户，维护角色 |
 | 平台租户 | 平台管理员维护平台租户目录；不代替成员租户选择 |
+| 设备注册授权 | 控制端签发、停用与重置注册资格；客户端只查看本客户获配资格及绑定结果 |
 | 产品管理、物模型版本 | 创建产品，编辑模型草稿并发布不可变版本 |
 | 设备管理、设备详情 | 预注册、交付凭据，查看连接、当前数据与缓存，管理生命周期、模型切换和指令 |
 | 设备转移 | 双方审批后冻结、排空、隔离旧身份并完成新归属确认 |
@@ -268,6 +269,25 @@ composer typeapp:serve
 设备首次完整成功连接后激活。生命周期的未激活、启用、禁用、退役，与在线、离线、未知以及数据新鲜度分别展示。没有新观察时保留未知或过期状态；浏览器断网不证明设备离线。禁用会撤销旧凭据，重新启用不会恢复它；退役为终态，保留期内历史仍按原权限查询。
 
 轮换、吊销、禁用或退役提交后，旧授权可能显示“待完成”。这表示 Broker 尚未完成旧连接、会话和持久工作的隔离，不能按 HTTP 受理成功提前认定撤权完成。秘密响应丢失时先刷新核对，不能通过自动重试重复生成新凭据。
+
+## 设备注册授权
+
+开发版在控制端的「运维中心 → 设备注册授权」管理注册资格，客户端从「物联管理 → 设备注册授权」查看当前客户已获配的资格。每项资格有独立标识、客户、额度和注册截止时间。页面分别展示可注册、已过期、额度用完及已停用；这些状态不表示设备在线，也不等于应用获得通信权限。
+
+控制端签发需要 `admin.enrollments.issue`，换码与停用分别需要 `admin.enrollments.reset`、`admin.enrollments.disable`。只读人员使用对应身份域的 `enrollments.read`；升级时只为现有受保护最高管理员补齐新增节点，普通角色需要明确授予权限。客户端没有签发或增额接口，`demo` 环境拒绝所有相关写操作。
+
+签发时保留请求 `id`，相同内容重试返回原资格，不能再次取回注册码；相同 `id` 携带不同内容返回 `enrollment_request_conflict`。注册码仅在成功签发或重置时交付一次，服务端只存验证摘要，列表、详情和审计不返回秘密。丢失注册码后通过控制端重置；已停用、过期或额度用完的资格不能通过重置重新启用。重置不改变客户、注册截止时间和已用额度，设备已形成的使用关系也不被删除。
+
+| HTTP 入口 | 行为 |
+| --- | --- |
+| `GET /admin/device-authorizations` | 控制端分页查询，可用 `tenant_id` 筛选客户 |
+| `POST /admin/device-authorizations` | 签发，提供 `id`、`tenant_id`、`name`、`capacity`、`register_expires_at`（Unix 秒） |
+| `GET /admin/device-authorizations/{authorization}` | 查询公开资格及绑定记录分页 |
+| `POST /admin/device-authorizations/{authorization}/{action}` | 提供准确 `tenant_id`、`version`；`action=reset` 一次性交付新注册码，`action=disable` 禁止新的注册 |
+| `GET /customer/tenants/{tenant}/device-authorizations` | 客户查看自身资格，`X-Tenant-Id` 必须与路径一致 |
+| `GET /customer/tenants/{tenant}/device-authorizations/{authorization}` | 客户查看自身资格的真实绑定记录 |
+
+列表和绑定分页使用 `page`、`per_page`，默认 20 条，单页最多 100 条。注册码的注册期限只约束新的注册，不自动限制已注册设备的使用期；已注册设备撤权继续走设备生命周期。当前这一项完成资格管理，设备使用注册码注册及新的原始通信路径按[设计中的后续任务](../development/iot-control-client-design.md)推进，不能把签发成功当作设备已接入。
 
 ## 设备接入与确认
 

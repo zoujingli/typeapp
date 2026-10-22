@@ -103,7 +103,8 @@ try {
         $tenant = (string) $database->query('SELECT id FROM iot_tenants LIMIT 1')->fetchColumn();
         $product = str_repeat('a', 32);
         $paths = $realm === 'admin'
-            ? [['PUT', '/admin/site'], ['PUT', '/admin/configuration'], ['POST', '/admin/users'], ['PATCH', '/admin/users/' . $product], ['DELETE', '/admin/users/' . $product . '/sessions']]
+            ? [['PUT', '/admin/site'], ['PUT', '/admin/configuration'], ['POST', '/admin/users'], ['PATCH', '/admin/users/' . $product], ['DELETE', '/admin/users/' . $product . '/sessions'],
+                ['POST', '/admin/device-authorizations'], ['POST', '/admin/device-authorizations/' . $product . '/reset'], ['POST', '/admin/device-authorizations/' . $product . '/disable']]
             : [['POST', '/customer/tenants/' . $tenant . '/products'], ['PATCH', '/customer/tenants/' . $tenant . '/products/' . $product], ['DELETE', '/customer/tenants/' . $tenant . '/products/' . $product], ['POST', '/customer/account/password']];
         foreach ($paths as [$method, $path]) {
             $response = $client->request($method, $path, $headers, '{}');
