@@ -69,7 +69,7 @@ final class RoleService
             $catalog[$realm . '.devices.' . $action] = $label;
         }
         foreach (['read' => '查看接入应用', 'create' => '创建接入应用', 'update' => '修改接入应用资料',
-            'enable' => '启用接入应用', 'disable' => '停用接入应用', 'keys' => '管理应用密钥'] as $action => $label) {
+            'enable' => '启用接入应用', 'disable' => '停用接入应用', 'keys' => '管理应用密钥', 'authorize' => '授权应用设备通信'] as $action => $label) {
             $catalog[$realm . '.applications.' . $action] = $label;
         }
         if ($realm === 'customer') {

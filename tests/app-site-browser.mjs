@@ -69,6 +69,26 @@ export async function siteBrowser(base, dist, upstream, adminPassword, customerP
       expect(await drawer().innerText()).not.toContain(result.credential.password);
       await drawer().getByRole('button', { name: 'Close', exact: true }).click();
       await expect(page.locator('.ant-drawer-content-wrapper:visible')).toHaveCount(0);
+      const enrollment = await api('POST', '/admin/device-authorizations', { id: randomUUID().replaceAll('-', ''), tenant_id: tenantId,
+        name: '页面授权注册批次', capacity: 1, register_expires_at: Math.floor(Date.now() / 1000) + 3600 }, 201);
+      const registered = await api('POST', '/public/devices/register', { id: randomUUID().replaceAll('-', ''), tenant_id: tenantId,
+        device_id: randomUUID().replaceAll('-', ''), name: '页面通信设备', code: enrollment.code }, 201);
+      await row.getByRole('button', { name: '更多' }).click();
+      await page.getByRole('menuitem', { name: '设备授权', exact: true }).click();
+      await drawer().getByRole('button', { name: '添加设备授权', exact: true }).click();
+      await drawer().getByLabel('选择设备', { exact: true }).click();
+      await page.getByTitle(`页面通信设备 · ${registered.device.id}`, { exact: true }).click();
+      await expect(drawer().getByLabel('当前使用关系', { exact: true })).toHaveValue(registered.device.ownership_id);
+      await drawer().getByRole('checkbox', { name: '接收上行', exact: true }).check();
+      await drawer().getByRole('checkbox', { name: '发送下行', exact: true }).check();
+      await drawer().getByRole('checkbox', { name: '订阅上行', exact: true }).check();
+      const authorized = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith(`/devices/${registered.device.id}`));
+      await drawer().getByRole('button', { name: /^保\s*存$/ }).click();
+      expect((await authorized).status()).toBe(200);
+      await expect(drawer().getByRole('row').filter({ hasText: '页面通信设备' })).toContainText('订阅');
+      await page.screenshot({ path: resolve(base, 'application-grants-admin.png'), fullPage: true, animations: 'disabled' }); report.screenshots.push('application-grants-admin.png');
+      await drawer().getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(page.locator('.ant-drawer-content-wrapper:visible')).toHaveCount(0);
       await page.screenshot({ path: resolve(base, 'applications-admin.png'), fullPage: true, animations: 'disabled' }); report.screenshots.push('applications-admin.png');
       const customer = await api('POST', '/customer/auth/login', { login: 'same-login', password: customerPassword });
       await page.evaluate(token => sessionStorage.setItem('typeapp.customer.token', token), customer.accessToken);
@@ -92,12 +112,23 @@ export async function siteBrowser(base, dist, upstream, adminPassword, customerP
       await drawer().getByRole('button', { name: 'Close', exact: true }).click();
       await expect(row).toContainText('v2');
       await expect(page.locator('.ant-drawer-content-wrapper:visible')).toHaveCount(0);
+      await row.getByRole('button', { name: '更多' }).click();
+      await page.getByRole('menuitem', { name: '设备授权', exact: true }).click();
+      await drawer().getByRole('row').filter({ hasText: '页面通信设备' }).getByRole('button', { name: '调整授权', exact: true }).click();
+      await drawer().getByRole('checkbox', { name: '接收上行', exact: true }).uncheck();
+      await expect(drawer().getByRole('checkbox', { name: '订阅上行', exact: true })).not.toBeChecked();
+      await expect(drawer().getByRole('checkbox', { name: '订阅上行', exact: true })).toBeDisabled();
+      await drawer().getByRole('checkbox', { name: '发送下行', exact: true }).uncheck();
+      await drawer().getByRole('button', { name: /^保\s*存$/ }).click();
+      await expect(drawer().getByRole('row').filter({ hasText: '页面通信设备' })).toContainText('已撤销');
+      await drawer().getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(page.locator('.ant-drawer-content-wrapper:visible')).toHaveCount(0);
       await page.setViewportSize({ width: 390, height: 844 });
       if (!(await page.locator('html').getAttribute('class'))?.includes('dark')) await page.getByRole('button', { name: 'dark', exact: true }).click();
       await expect(page.locator('html')).toHaveClass(/\bdark\b/);
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.screenshot({ path: resolve(base, 'applications-customer-narrow.png'), fullPage: true, animations: 'disabled' }); report.screenshots.push('applications-customer-narrow.png');
-      report.cases.push('控制端创建与一次性交付、详情无秘密、客户端独立工作区编辑和轮换、暗色窄屏无溢出');
+      report.cases.push('控制端创建与一次性交付、详情无秘密、设备选择及三项授权、客户端编辑换证与撤销授权、暗色窄屏无溢出');
       expect(report.errors).toEqual([]); report.status = 'passed';
       return;
     }

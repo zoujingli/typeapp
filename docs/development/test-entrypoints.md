@@ -9,6 +9,7 @@
 | 双端账号、租户、角色及旧入口拒绝 | `tests/iot-identity.php <程序或--php> <驱动> --app` |
 | 设备注册资格管理 | 同一入口追加 `--enrollments`；三库控制器支持相同参数，覆盖签发、查询、换码、停用、并发版本、资格期限、租户隔离与审计失败回滚；实际设备注册另行验收 |
 | 接入应用管理与密钥 | 同一入口追加 `--applications`；三库控制器支持相同参数，覆盖独立权限、一次性交付、幂等并发、换证撤销、模拟来源与审计失败回滚；`tests/iot-device-mqtt.php <程序或--php> --applications-mqtt` 使用真实 PostgreSQL 同步主备、MQTT.js/TLS 验证独立认证、无设备授权拒绝及活动连接撤权 |
+| 逐设备应用通信授权 | `--applications` 同时覆盖三项权限、当前关系、并发版本、撤销和审计回滚；`tests/iot-device-mqtt.php <程序或--php> --communication-mqtt` 验证真实原字节双向通信、QoS、活动订阅及持久会话撤权，不用 HTTP 保存成功替代协议验收 |
 | 产品、设备及业务操作 | 同一入口追加 `--products --devices --business`；`--business` 包含设备转移及外层审计失败回滚，只有 `--devices` 不会执行这些场景；历史、聚合、生命周期、告警、导出等专项按对应指南组合 |
 | 独立 Broker 身份与观察 | 同一入口的 `--broker`；`--broker-observability` 由真实 PostgreSQL 同步装置调用 |
 | 同一程序三库 | `tests/iot-identity-databases.php <程序或--php> <MySQL工具根> <PostgreSQL工具根> --app`；原生隔离追加 `--no-source` |

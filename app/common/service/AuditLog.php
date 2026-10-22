@@ -45,6 +45,12 @@ final class AuditLog
             throw new InvalidArgumentException('审计动作或结果无效');
         }
         foreach ($details as $key => $value) {
+            if (in_array($key, ['receive_allowed', 'send_allowed', 'subscribe_allowed'], true)) {
+                if ($action !== 'application.device_authorization' || !in_array($value, [0, 1], true)) {
+                    throw new InvalidArgumentException('审计通信权限无效');
+                }
+                continue;
+            }
             // 配置页一次保存多个字段，使用独立有界字段清单，不能截断或放宽其他审计事实。
             if ($key === 'changed_fields') {
                 if (!in_array($action, ['admin.site.update', 'admin.configuration.update'], true) || !is_string($value)

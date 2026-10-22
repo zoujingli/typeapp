@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\iot\controller;
 
 use app\iot\service\ClientApplicationService;
+use app\iot\service\ApplicationGrantService;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Type\Core\Http\Attribute\Route;
@@ -90,6 +91,40 @@ final class ClientApplicationController
         }
         $data = self::payload($request, $fields);
         return $this->response(200, ['data' => $this->applications->change($identity, $realm, $realm === 'admin' ? $data['tenant_id'] : $tenant, $application, $action, $data)]);
+    }
+
+    /** 授权列表同时投影当前使用关系和真实发布状态；读取不推进授权版本。 */
+    #[Route('/admin/applications/{application}/devices', name: 'admin.application-devices', middleware: ['admin.auth'], constraints: ['application' => '[a-f0-9]{32}'])]
+    #[Route('/customer/tenants/{tenant}/applications/{application}/devices', name: 'customer.application-devices', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}', 'application' => '[a-f0-9]{32}'])]
+    public function devices(string $application, ServerRequestInterface $request): ResponseInterface
+    {
+        $realm = self::realm($request);
+        $tenant = self::tenant($request, $realm);
+        $identity = self::identity($request, $realm, $tenant);
+        $fields = ['page' => Field::integer()->cast()->range(1, 100000)->from('query'), 'per_page' => Field::integer()->cast()->range(1, 100)->from('query')];
+        $input = (new Input([]))->withQuery($request->getUri()->getQuery());
+        if (array_diff(array_keys($input->source('query')), array_keys($fields)) !== []) {
+            throw new HttpError(422, 'application_query_invalid');
+        }
+        $data = \_vali($fields, $input) + ['page' => 1, 'per_page' => 20];
+        return $this->response(200, (new ApplicationGrantService())->listing($identity, $realm, $tenant, $application, $data['page'], $data['per_page']));
+    }
+
+    /** 只接受明确当前关系和三项独立能力，不接受通配 Topic 或客户端自定租户来源。 */
+    #[Route('/admin/applications/{application}/devices/{device}', methods: ['POST'], name: 'admin.application-device-authorize', middleware: ['admin.auth'], constraints: ['application' => '[a-f0-9]{32}', 'device' => '[a-f0-9]{32}'])]
+    #[Route('/customer/tenants/{tenant}/applications/{application}/devices/{device}', methods: ['POST'], name: 'customer.application-device-authorize', middleware: ['customer.auth'], constraints: ['tenant' => '[a-f0-9]{32}', 'application' => '[a-f0-9]{32}', 'device' => '[a-f0-9]{32}'])]
+    public function authorizeDevice(string $application, string $device, ServerRequestInterface $request): ResponseInterface
+    {
+        $realm = self::realm($request);
+        $tenant = self::tenant($request, $realm);
+        $identity = self::identity($request, $realm, $tenant);
+        $fields = ['ownership_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'), 'version' => Field::integer()->required()->range(0, 2147483646),
+            'receive' => Field::boolean()->required(), 'send' => Field::boolean()->required(), 'subscribe' => Field::boolean()->required()];
+        if ($realm === 'admin') {
+            $fields['tenant_id'] = Field::text()->required()->matches('/^[a-f0-9]{32}$/D');
+        }
+        $data = self::payload($request, $fields);
+        return $this->response(200, ['data' => (new ApplicationGrantService())->save($identity, $realm, $realm === 'admin' ? $data['tenant_id'] : $tenant, $application, $device, $data)]);
     }
 
     private static function realm(ServerRequestInterface $request): string

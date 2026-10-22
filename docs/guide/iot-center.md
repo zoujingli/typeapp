@@ -2,7 +2,7 @@
 
 物联中心是基于 TypeApp 构建的成品案例，通过框架组件组织物联网业务，以 TypePHP 编译生产实现，原生运行库随应用交付。框架开发文档在侧栏「TypeApp 框架」和「开发指南」；职责分层见[系统架构](architecture.md)，本页说明案例的业务、使用契约和交付边界。
 
-控制端与客户端的新业务范围已确定，详见[架构设计](../development/iot-control-client-design.md)。开发版已提供注册资格、无物模型设备注册和独立接入应用管理，逐设备通信授权、转配和旧处理链退出继续实施。以下说明区分当前接口与尚待完成的范围，不作为整批新架构已交付的依据。
+控制端与客户端的新业务范围已确定，详见[架构设计](../development/iot-control-client-design.md)。开发版已接入注册资格、无物模型设备注册、独立接入应用和逐设备通信授权；转配、旧数据升级及旧处理链退出继续实施。以下说明区分当前接口与尚待完成的范围，不作为整批新架构已交付的依据。
 
 本案例提供两个人员入口：平台管理端面向平台人员，维护账号、租户、站点与全局观察；SaaS 用户端面向客户账号，在当前租户内管理成员、产品、设备、数据与告警。设备经独立 MQTT Broker 接入，遥测由独立接收进程落库，统计、告警、通知和导出分角色运行。MQTT 标准、高可用、目标容量与真实设备按对应产物和平台证据分别验收。
 
@@ -282,6 +282,7 @@ composer typeapp:serve
 | 创建、编辑 | `applications.create`、`applications.update` | 创建独立身份或修改名称，不隐式更换已有密钥 |
 | 启用、停用 | `applications.enable`、`applications.disable` | 控制应用可否接入，停用保留身份与密钥代次 |
 | 轮换、撤销、签发 | `applications.keys` | 旧密钥不能恢复，重新签发继续推进代次 |
+| 调整设备通信授权 | `applications.authorize` | 按设备当前使用关系明确授予或撤销接收、发送和订阅能力 |
 
 权限带所属域前缀 `admin.` 或 `customer.`。升级只给受保护的最高管理员补充权限，普通角色由管理员明确授权。模拟登录仍按目标客户权限执行，并记录真实平台人员来源。`APP_ENV=demo` 拒绝上述写操作。
 
@@ -319,7 +320,84 @@ sequenceDiagram
 
 连接使用交付结果中的 `client_id` 和 `username`（均为 `app:<应用标识>`）、一次性 `password`，固定 MQTT 5、TLS、30 秒 keepalive 和 86400 秒 session expiry。一个应用对应一个受管 Client ID，多份独立会话应分别创建应用。完整持久 MQTT 仍要求 PostgreSQL 同步存储；三库管理能力不表示 SQLite/MySQL 可启动该通信路径。
 
-轮换、撤销或停用先使新认证拒绝旧身份，再由现有 Broker 撤权流程处理活动连接。页面显示实际发布状态；节点不在线或隔离待处理时不宣称完成。通用 Broker 主体修改和快照回退不能绕过应用管理恢复旧密钥。当前未授予逐设备权限的应用，认证成功后仍拒绝设备收发和订阅；后续通信授权完成前，不提供自动获得全客户设备权限的捷径。
+轮换、撤销或停用先使新认证拒绝旧身份，再由现有 Broker 撤权流程处理活动连接。页面显示实际发布状态；节点不在线或隔离待处理时不宣称完成。通用 Broker 主体修改和快照回退不能绕过应用管理恢复旧密钥。未授予逐设备权限的应用，认证成功后仍拒绝设备收发和订阅。
+
+## 应用设备授权与原始通信
+
+在接入应用的「设备授权」中查看当前范围、选择设备并保存权限。具有设备读取权限的人员可分页搜索设备，页面自动带入当前使用关系；接口调用方也可提供准确的 `device_id` 与 `ownership_id`。授权限定同一客户和设备当前未结束的关系，同属客户、新设备注册或应用密钥有效都不会自动扩大范围。旧模型设备须先完成迁移，不能直接授予新的原始通信权限。
+
+| 能力 | 对应行为 | 限制 |
+| --- | --- | --- |
+| 接收 | 允许取得该设备上行的资格 | 单独授予不会建立 MQTT 订阅，也不允许发送下行 |
+| 订阅 | 建立、恢复及持续交付该设备上行订阅 | 必须同时有接收资格；通配符和其他设备 Topic 被拒绝 |
+| 发送 | 向该设备当前关系的下行 Topic 发布 | 独立授权，不附带接收或订阅能力 |
+
+查询使用 `GET .../applications/{application}/devices?page=1&per_page=20`，返回分页授权、当前关系及应用发布状态。保存示例：
+
+```http
+POST /customer/tenants/{tenant}/applications/{application}/devices/{device}
+Authorization: Bearer <客户人员令牌>
+X-Tenant-Id: <与路径一致的客户标识>
+Content-Type: application/json
+
+{"ownership_id":"<设备当前使用关系标识>","version":0,"receive":true,"send":false,"subscribe":true}
+```
+
+控制端对应 `/admin/applications/{application}/devices/{device}`，请求体另带 `tenant_id`。`version=0` 仅用于首次创建，后续用授权行自己的 `version`，不是应用版本。相同权限返回 `changed=false`；取消全部权限会保留撤销记录并推进版本，旧表单返回 `stale_version`。订阅缺少接收资格返回 `application_subscription_requires_receive`。应用停用、设备失效或使用关系已更改时不能新增有效授权，已失效关系仍可撤销。
+
+```mermaid
+sequenceDiagram
+  actor Operator as 获准管理人员
+  participant API as 应用授权接口
+  participant DB as 管理数据库
+  participant Broker as MQTT 节点
+  participant External as 接入应用
+  participant Device as 设备
+  Operator->>API: 设备当前关系、权限与版本
+  API->>DB: 同事务保存授权、审计和发布意图
+  API-->>Operator: 授权版本与实际发布状态
+  Broker->>DB: 核对当前身份及设备范围
+  External->>Broker: 订阅设备上行
+  Broker-->>External: SUBACK（接收与订阅均获准）
+  Device->>Broker: 发布原始上行
+  Broker->>DB: 再次核对交付权限
+  Broker-->>External: 原字节消息
+  Operator->>API: 撤销或收紧权限
+  Broker->>External: 隔离旧连接和持久会话资源
+  Broker->>DB: 写入实际执行回执
+```
+
+设备只发布 `iot/{tenant}/devices/{device}/epochs/{ownership}/raw/up`、订阅对应 `raw/down`；应用方向相反。使用注册响应或授权列表中的精确 Topic，不自行省略关系标识。下面的外部业务示例使用 MQTT.js 5，凭据和服务地址由受控环境提供：
+
+```js
+import mqtt from 'mqtt';
+import { readFileSync } from 'node:fs';
+
+const client = await mqtt.connectAsync(process.env.MQTT_URL, {
+  protocolVersion: 5,
+  clientId: process.env.APPLICATION_USERNAME,
+  username: process.env.APPLICATION_USERNAME,
+  password: process.env.APPLICATION_PASSWORD,
+  ca: readFileSync(process.env.MQTT_CA_FILE),
+  rejectUnauthorized: true,
+  keepalive: 30,
+  clean: false,
+  reconnectPeriod: 0,
+  properties: { sessionExpiryInterval: 86400 },
+});
+client.on('message', (topic, bytes) => {
+  // bytes 是原始载荷；业务系统自行解码、保存和确认执行结果。
+  console.log(topic, bytes.length);
+});
+await client.subscribeAsync(process.env.DEVICE_UP_TOPIC, { qos: 1 });
+await client.publishAsync(process.env.DEVICE_DOWN_TOPIC, Buffer.from([0x01, 0x00]), {
+  qos: 1, properties: { messageExpiryInterval: 30 },
+});
+// publishAsync 完成表示对应协议发送流程完成，不表示设备业务执行成功。
+await client.endAsync(false);
+```
+
+消息继续遵守现有大小、频率、QoS 0/1/2、有效期和持久队列预算。MQTT 协议确认、订阅方收到原字节、设备自己的业务应答是三个不同事实；平台不解析载荷，不为原始通信写入遥测、告警或指令记录。撤权不能仅靠页面隐藏，身份、当前关系与通信权限会在新动作和持续交付时重新核对。`demo` 禁止授权写入，后台不提供绕过只读模式的发送入口。
 
 ## 设备注册授权
 

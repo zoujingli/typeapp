@@ -142,6 +142,110 @@ try {
     await call('POST', `/admin/tenants/${fixture.tenant}/status`, fixture.platform_token, { version: tenant.items[0].version + 1, enabled: true }, 200, false);
     checks.push('independent-mqtt5-tls-identity', 'person-device-credential-confusion-denied', 'no-device-grants-default-deny',
       'rotate-revoke-disable-disconnect-and-old-key-reject', 'creator-logout-does-not-revoke-application', 'customer-disabled-denies-new-connection');
+  } else if (mode === 'communication') {
+    const id = () => randomUUID().replaceAll('-', '');
+    const call = async (method, path, data = null, token = fixture.admin_token, scoped = true, expected = 200) => {
+      const response = await fetch(process.env.TYPE_DEVICE_HTTP + path, { method,
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(scoped ? { 'X-Tenant-Id': fixture.tenant } : {}) },
+        body: data === null ? undefined : JSON.stringify(data), signal: AbortSignal.timeout(5000) });
+      assert.equal(response.status, expected, `${method} ${path}: ${response.status}`);
+      return (await response.json()).data;
+    };
+    const enrollment = await call('POST', '/admin/device-authorizations', { id: id(), tenant_id: fixture.tenant, name: '设备应用双向通信', capacity: 2,
+      register_expires_at: Math.floor(Date.now() / 1000) + 3600 }, fixture.platform_token, false, 201);
+    const register = name => call('POST', '/public/devices/register', { id: id(), tenant_id: fixture.tenant, device_id: id(), name, code: enrollment.code }, '', false, 201);
+    const raw = await register('授权通信设备');
+    const created = await call('POST', `/customer/tenants/${fixture.tenant}/applications`, { id: id(), name: '原始业务系统' }, fixture.admin_token, true, 201);
+    const path = `/customer/tenants/${fixture.tenant}/applications/${created.application.id}`;
+    const grantPath = `${path}/devices/${raw.device.id}`;
+    let version = 0;
+    const settled = async () => {
+      const until = Date.now() + 15000;
+      let app;
+      do {
+        app = (await call('GET', path)).application;
+        if (app.publication.status === 'effective') return app;
+        await delay(100);
+      } while (Date.now() < until);
+      assert.equal(app.publication.status, 'effective', 'grant change lacks real node receipt');
+    };
+    const grant = async (receive, send, subscribe) => {
+      const result = await call('POST', grantPath, { ownership_id: raw.device.ownership_id, version, receive, send, subscribe });
+      version = result.grant.version; await settled(); return result;
+    };
+    const publishDenied = async (client, topic) => {
+      const disconnected = once(client, 'disconnect', { signal: AbortSignal.timeout(10000) });
+      const closed = once(client, 'close', { signal: AbortSignal.timeout(10000) });
+      client.publish(topic, Buffer.from([0, 255, 16]), { qos: 1 }, () => {});
+      assert.equal((await disconnected)[0].reasonCode, 0x87); await closed;
+    };
+    const payload = Buffer.from([0, 255, 128, 17, 10, 65]);
+    const exchanged = async (sender, recipient, topic, qos, retain = false) => {
+      const received = once(recipient, 'message', { signal: AbortSignal.timeout(10000) });
+      await sender.publishAsync(topic, payload, { qos, retain, properties: { messageExpiryInterval: 30 } });
+      const [actualTopic, actual, packet] = await received;
+      assert.equal(actualTopic, topic); assert.deepEqual(actual, payload); assert.equal(packet.qos, qos);
+      assert.ok(packet.properties.messageExpiryInterval > 0 && packet.properties.messageExpiryInterval <= 30);
+    };
+    let app = await connect(created.credential);
+    await assert.rejects(app.client.subscribeAsync(raw.credential.topics.publish, { qos: 2 }));
+    await publishDenied(app.client, raw.credential.topics.subscribe);
+    const device = await connect(raw.credential);
+    await observation('online', raw.device.id);
+    assert.equal((await device.client.subscribeAsync(raw.credential.topics.subscribe, { qos: 2 }))[0].qos, 2);
+    await grant(false, true, false);
+    app = await connect(created.credential);
+    await exchanged(app.client, device.client, raw.credential.topics.subscribe, 2);
+    await assert.rejects(app.client.subscribeAsync(raw.credential.topics.publish, { qos: 1 }));
+    const other = await register('后来注册且未授权的设备');
+    await assert.rejects(app.client.subscribeAsync(other.credential.topics.publish, { qos: 1 }));
+    await publishDenied(app.client, other.credential.topics.subscribe);
+    await grant(true, false, false);
+    app = await connect(created.credential);
+    await assert.rejects(app.client.subscribeAsync(raw.credential.topics.publish, { qos: 1 }));
+    await publishDenied(app.client, raw.credential.topics.subscribe);
+    await grant(true, false, true);
+    app = await connect(created.credential);
+    assert.equal((await app.client.subscribeAsync(raw.credential.topics.publish, { qos: 2 }))[0].qos, 2);
+    for (const topic of ['iot/#', other.credential.topics.publish, raw.credential.topics.subscribe]) await assert.rejects(app.client.subscribeAsync(topic, { qos: 1 }));
+    await exchanged(device.client, app.client, raw.credential.topics.publish, 2, true);
+    await exchanged(device.client, app.client, raw.credential.topics.publish, 0);
+    // 活动订阅收紧须实际关闭旧连接并取得节点隔离回执。
+    const activeClosed = once(app.client, 'close', { signal: AbortSignal.timeout(15000) });
+    await grant(true, false, false); await activeClosed;
+    app = await connect(created.credential);
+    await assert.rejects(app.client.subscribeAsync(raw.credential.topics.publish, { qos: 1 }));
+    await app.client.endAsync(false);
+    await grant(true, true, true);
+    app = await connect(created.credential);
+    await app.client.subscribeAsync(raw.credential.topics.publish, { qos: 2, rh: 2 });
+    await exchanged(device.client, app.client, raw.credential.topics.publish, 1);
+    await app.client.endAsync(false);
+    const oldPending = Buffer.from('pending-before-revocation');
+    await device.client.publishAsync(raw.credential.topics.publish, oldPending, { qos: 1 });
+    await grant(false, false, false);
+    await call('POST', grantPath, { ownership_id: raw.device.ownership_id, version: version - 1, receive: true, send: true, subscribe: true }, fixture.admin_token, true, 409);
+    const observed = [];
+    const reopened = start(created.credential);
+    reopened.on('message', (topic, bytes) => observed.push(bytes.toString('hex')));
+    await once(reopened, 'connect', { signal: AbortSignal.timeout(10000) });
+    await assert.rejects(reopened.subscribeAsync(raw.credential.topics.publish, { qos: 1 }));
+    await reopened.endAsync(false);
+    await grant(true, true, true);
+    const restored = start(created.credential);
+    restored.on('message', (topic, bytes) => observed.push(bytes.toString('hex')));
+    await once(restored, 'connect', { signal: AbortSignal.timeout(10000) });
+    await restored.subscribeAsync(raw.credential.topics.publish, { qos: 2, rh: 2 });
+    await exchanged(device.client, restored, raw.credential.topics.publish, 1);
+    assert.ok(!observed.includes(oldPending.toString('hex')), 'revoked queued message leaked into restored grant');
+    const currentDevice = await observation('online', raw.device.id);
+    await call('POST', `/admin/devices/${raw.device.id}/disable`, { version: currentDevice.version, confirm_device_id: raw.device.id }, fixture.platform_token, false, 202);
+    await assert.rejects(restored.subscribeAsync(raw.credential.topics.publish, { qos: 1 }));
+    await publishDenied(restored, raw.credential.topics.subscribe);
+    checks.push('explicit-current-ownership-no-inherited-device-permissions', 'send-only-receive-only-subscription-dependency',
+      'binary-up-down-qos0-qos1-qos2-and-message-expiry', 'active-subscription-revocation-real-node-receipt',
+      'persistent-offline-queue-revocation-and-stale-version-denied', 'disabled-device-communication-denied',
+      'protocol-ack-and-recipient-bytes-observed-without-business-result-claim');
   } else if (mode === 'registration') {
     const invoke = async (path, data, authorization = '', tenant = '', status = 201) => {
       const response = await fetch(process.env.TYPE_DEVICE_HTTP + path, { method: 'POST',

@@ -36,7 +36,7 @@ final class ClientApplicationService
                 $result = ClientApplication::query()->master()->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
                 $items = [];
                 foreach ($result->items() as $model) {
-                    $items[] = self::modelProjection($model);
+                    $items[] = self::publicProjection($model);
                 }
                 return ['items' => $items, 'total' => $result->total(), 'page' => $page, 'per_page' => $perPage, 'context' => $context];
             }, ['tenant_id' => $tenantId]);
@@ -80,7 +80,7 @@ final class ClientApplicationService
                 if (!hash_equals($existing->getRequestHash(), $hash)) {
                     throw new HttpError(409, 'application_request_conflict');
                 }
-                return ['application' => self::modelProjection($existing), 'credential' => null, 'replayed' => true];
+                return ['application' => self::publicProjection($existing), 'credential' => null, 'replayed' => true];
             }
             $connection = Db::connection('default', true);
             // 协议身份共享主体索引；即使用户名分域，也不能复用另一设备的主体 ID。
@@ -114,7 +114,7 @@ final class ClientApplicationService
             if ($model === null) {
                 throw new \LogicException('application_create_missing');
             }
-            return ['application' => self::modelProjection($model), 'credential' => self::credential($model, $secret), 'replayed' => false];
+            return ['application' => self::publicProjection($model), 'credential' => self::credential($model, $secret), 'replayed' => false];
         });
     }
 
@@ -182,7 +182,7 @@ final class ClientApplicationService
                 },
                 $model->getAccessStarted() ? 'app:' . $id : ''
             );
-            return ['application' => self::modelProjection($model), 'credential' => $secret === null ? null : self::credential($model, $secret)];
+            return ['application' => self::publicProjection($model), 'credential' => $secret === null ? null : self::credential($model, $secret)];
         });
     }
 
@@ -208,7 +208,7 @@ final class ClientApplicationService
         return self::accessCurrent($connection, $request);
     }
 
-    /** 应用当前身份和客户状态每次重验，尚未授予任何设备通信能力时默认拒绝 Topic。 */
+    /** 应用身份、客户状态和当前设备授权逐动作核对，无匹配授权默认拒绝 Topic。 */
     private static function accessCurrent(Connection $connection, array $request): array
     {
         $username = (string) ($request['username'] ?? '');
@@ -245,9 +245,8 @@ final class ClientApplicationService
         } elseif ($allowed) {
             $allowed = isset($request['access_identity']) && is_array($request['access_identity'])
                 && $identity->matches(AccessIdentity::fromData($request['access_identity']));
-            if ($request['action'] !== 'connected') {
-                $allowed = false;
-            }
+            $allowed = $allowed && $request['action'] === 'authorize'
+                && ApplicationGrantService::allows($connection, $row, $request['topic'], $request['operation'], (int) $request['qos']);
         }
         if (!$allowed) {
             AuditLog::append(
@@ -311,7 +310,8 @@ final class ClientApplicationService
         return $context;
     }
 
-    private static function modelProjection(ClientApplication $model): array
+    /** @internal 已在可信租户范围读取的应用，只投影公开状态及真实发布回执。 */
+    public static function publicProjection(ClientApplication $model): array
     {
         return self::project($model->project(self::FIELDS) + ['credential_id' => $model->getCredentialId()]);
     }

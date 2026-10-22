@@ -111,7 +111,7 @@ try {
             expect($response->status === 403 && $response->json()['error'] === 'demo_readonly', '演示写接口未拒绝：' . $method . ' ' . $path);
         }
         $applications = $realm === 'admin' ? '/admin/applications' : '/customer/tenants/' . $tenant . '/applications';
-        foreach (['', '/' . $product . '/update', '/' . $product . '/enable', '/' . $product . '/disable', '/' . $product . '/rotate', '/' . $product . '/revoke', '/' . $product . '/issue'] as $suffix) {
+        foreach (['', '/' . $product . '/update', '/' . $product . '/enable', '/' . $product . '/disable', '/' . $product . '/rotate', '/' . $product . '/revoke', '/' . $product . '/issue', '/' . $product . '/devices/' . $product] as $suffix) {
             $response = $client->request('POST', $applications . $suffix, $headers, '{}');
             expect($response->status === 403 && $response->json()['error'] === 'demo_readonly', '演示模式不能创建应用或修改密钥');
         }

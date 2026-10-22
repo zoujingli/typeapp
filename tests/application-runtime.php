@@ -57,7 +57,8 @@ function runtimeIdentityUpgrade(PDO $database, string $driver, array $before, ar
     $after = runtimeDataIdentity($database, $driver);
     $enrollments = !isset($before['iot_device_enrollments']);
     $applications = !isset($before['iot_applications']);
-    $newTables = [...($enrollments ? ['iot_device_enrollments', 'iot_device_enrollment_bindings'] : []), ...($applications ? ['iot_applications'] : [])];
+    $grants = !isset($before['iot_application_grants']);
+    $newTables = [...($enrollments ? ['iot_device_enrollments', 'iot_device_enrollment_bindings'] : []), ...($applications ? ['iot_applications'] : []), ...($grants ? ['iot_application_grants'] : [])];
     $excluded = ['admin_roles', 'customer_roles', 'admin_role_permissions', 'customer_role_permissions', ...$newTables];
     $business = static fn (array $tables): array => array_diff_key($tables, array_fill_keys($excluded, true));
     expect($business($after) === $business($before), '身份增量修改了已有业务数据');
@@ -73,13 +74,16 @@ function runtimeIdentityUpgrade(PDO $database, string $driver, array $before, ar
             if ((int) $role['protected'] !== 1) {
                 continue;
             }
-            $version = (int) $role['version'] + (int) $enrollments + (int) $applications;
+            $version = (int) $role['version'] + (int) $enrollments + (int) $applications + (int) $grants;
             $expected[$index]['version'] = is_string($role['version']) ? (string) $version : $version;
             foreach ($enrollments ? $actions : [] as $action) {
                 $expectedPermissions[] = $role['id'] . ':' . $realm . '.enrollments.' . $action;
             }
             foreach ($applications ? ['read', 'create', 'update', 'enable', 'disable', 'keys'] : [] as $action) {
                 $expectedPermissions[] = $role['id'] . ':' . $realm . '.applications.' . $action;
+            }
+            if ($grants) {
+                $expectedPermissions[] = $role['id'] . ':' . $realm . '.applications.authorize';
             }
         }
         expect($current === $expected, '迁移必须只推进受保护角色的版本');

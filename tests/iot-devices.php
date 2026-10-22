@@ -614,7 +614,8 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
                 $clientEnvironment + ['TYPE_DEVICE_BROKER_PID' => (string) $broker->pid()]
             );
             try {
-                $result = $client->wait($mode === 'broker-resources' && getenv('TYPE_BROKER_RESOURCE_DIST') ? 480 : 80);
+                // 通信授权包含多次发布及同步持久收发，独立增加整组预算；单次协议/撤权期限不变。
+                $result = $client->wait($mode === 'broker-resources' && getenv('TYPE_BROKER_RESOURCE_DIST') ? 480 : ($mode === 'communication' ? 240 : 80));
                 if (!$result->successful()) {
                     $broker->stop(15);
                 }
@@ -627,6 +628,18 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
                 $client->stop();
             }
         };
+        if (in_array('--communication-mqtt', $GLOBALS['argv'], true)) {
+            $before = [];
+            foreach (['iot_models', 'iot_ingestion_facts', 'iot_alarms', 'iot_commands'] as $table) {
+                $before[$table] = (int) $database->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
+            }
+            $run('communication', $process);
+            foreach ($before as $table => $count) {
+                expect((int) $database->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn() === $count, '原始通信不能进入旧处理链：' . $table);
+            }
+            expect($process->stop(15)->successful(), '设备应用通信节点没有正常退出');
+            return ['client' => 'MQTT.js 5.15.0', 'tls' => true, 'cases' => $cases, 'no_legacy_processing' => true, 'broker_stopped' => true];
+        }
         if (in_array('--applications-mqtt', $GLOBALS['argv'], true)) {
             $run('applications', $process);
             expect($process->stop(15)->successful(), '应用身份节点没有正常退出');

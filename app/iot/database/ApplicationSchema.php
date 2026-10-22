@@ -25,6 +25,17 @@ final class ApplicationSchema
             }
             $statements[] = "UPDATE {$realm}_roles SET version = version + 1 WHERE protected = 1";
         }
-        return [new Migration('104_iot_client_applications', '建立客户接入应用及独立密钥生命周期', $statements, $driver !== 'mysql')];
+        $grants = [
+            'CREATE TABLE iot_application_grants (id VARCHAR(32) NOT NULL PRIMARY KEY, tenant_id VARCHAR(32) NOT NULL, application_id ' . $brokerId . ' NOT NULL, device_id VARCHAR(32) NOT NULL, ownership_id VARCHAR(32) NOT NULL, receive INTEGER NOT NULL, send INTEGER NOT NULL, subscribe INTEGER NOT NULL, version INTEGER NOT NULL DEFAULT 1, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, UNIQUE (application_id, ownership_id), FOREIGN KEY (tenant_id, application_id) REFERENCES iot_applications(tenant_id, id), FOREIGN KEY (device_id) REFERENCES iot_devices(id), FOREIGN KEY (ownership_id) REFERENCES iot_device_ownerships(id))' . ($driver === 'mysql' ? ' ENGINE=InnoDB' : ''),
+            'CREATE INDEX iot_application_grants_scope ON iot_application_grants (tenant_id, application_id, created_at, id)',
+            'CREATE INDEX iot_application_grants_device ON iot_application_grants (device_id, ownership_id)',
+        ];
+        foreach (['admin', 'customer'] as $realm) {
+            $permission = $realm . '.applications.authorize';
+            $grants[] = "INSERT INTO {$realm}_role_permissions (role_id, permission) SELECT r.id, '{$permission}' FROM {$realm}_roles r WHERE r.protected = 1 AND NOT EXISTS (SELECT 1 FROM {$realm}_role_permissions p WHERE p.role_id = r.id AND p.permission = '{$permission}')";
+            $grants[] = "UPDATE {$realm}_roles SET version = version + 1 WHERE protected = 1";
+        }
+        return [new Migration('104_iot_client_applications', '建立客户接入应用及独立密钥生命周期', $statements, $driver !== 'mysql'),
+            new Migration('105_iot_application_device_grants', '按设备当前使用关系授予应用通信权限', $grants, $driver !== 'mysql')];
     }
 }
