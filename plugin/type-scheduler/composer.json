@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "require": {
     "php": ">=8.4 <8.6",
-    "dragonmantank/cron-expression": "~3.6.0",
+    "dragonmantank/cron-expression": "3.6.0",
     "psr/clock": "~1.0.0",
     "zoujingli/type-runtime": "~1.0.0@dev",
     "zoujingli/type-redis": "~1.0.0@dev"

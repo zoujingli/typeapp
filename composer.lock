@@ -938,10 +938,10 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-scheduler",
-                "reference": "28f54c4fcad87e25f2fdce8026b775284f5e9a6a"
+                "reference": "d8fa15d08fd43e8cf6edff45bab15608c4cb2b85"
             },
             "require": {
-                "dragonmantank/cron-expression": "~3.6.0",
+                "dragonmantank/cron-expression": "3.6.0",
                 "php": ">=8.4 <8.6",
                 "psr/clock": "~1.0.0",
                 "zoujingli/type-redis": "~1.0.0@dev",

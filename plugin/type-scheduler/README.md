@@ -110,7 +110,7 @@ function main(int $argc, array $argv): void
 
 定义与任务类在应用构建时一并编译；注册工厂必须是显式 `Closure(TaskContext): Task`。即使构造时不使用上下文，也须按回调合同声明 `TaskContext $context`。配置不接受 shell、PHP 文件、字符串调用器或运行时目录发现。每次 occurrence 都调用工厂，工厂与任务可通过 `TaskContext::scope()` 登记资源，执行后无论成功或失败都会关闭独立 `ExecutionScope`。
 
-Cron 已验证 `dragonmantank/cron-expression` **3.6.0**，时钟采用 PSR-20 `ClockInterface` **1.0.0**。Composer 接受兼容补丁版本，应用通过 lock 文件锁定；两个生产依赖的 TypePHP 源码适配严格绑定上述已验证版本，升级后须更新适配并重新验收。包按既定依赖方向依赖 runtime 与 Redis，本地文件调度不连接 Redis；多实例使用下文 Redis 存储，不隐式拉入 queue、core 或 ORM。
+Cron 精确依赖 `dragonmantank/cron-expression` **3.6.0**，避免独立安装自动选择未经适配的补丁版本；时钟采用 PSR-20 `ClockInterface` **1.0.0**，应用通过 lock 文件锁定依赖。两个生产依赖的 TypePHP 源码适配严格绑定上述已验证版本，升级后须更新适配并重新验收。包按既定依赖方向依赖 runtime 与 Redis，本地文件调度不连接 Redis；多实例使用下文 Redis 存储，不隐式拉入 queue、core 或 ORM。
 
 适配声明使用单行替换，保持通过 Packagist 安装后的匹配文本一致；构建仍检查原文件摘要和精确替换次数，原 Composer 源码不被修改。匹配失败须核对组件版本和锁文件，不能跳过校验继续编译。
 
@@ -191,7 +191,7 @@ flowchart LR
 
 ## AOT 与运行要求
 
-Composer 包含 runtime、Redis、`dragonmantank/cron-expression ~3.6.0` 与 PSR-20；本地文件调度不连接 Redis 服务，但开发安装仍检查 phpredis。Cron/PSR 源码按精确 imports 一起 AOT，静态 SDK 提供时区与原生库能力。部署使用文件存储时准备受信任的本地状态目录，多实例协调时准备可靠 Redis 服务；宿主负责停止通知和最终收尾。
+Composer 包含 runtime、Redis、`dragonmantank/cron-expression 3.6.0` 与 PSR-20；本地文件调度不连接 Redis 服务，但开发安装仍检查 phpredis。Cron/PSR 源码按精确 imports 一起 AOT，静态 SDK 提供时区与原生库能力。部署使用文件存储时准备受信任的本地状态目录，多实例协调时准备可靠 Redis 服务；宿主负责停止通知和最终收尾。
 
 语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 

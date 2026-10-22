@@ -25,7 +25,7 @@ flowchart TD
 
 ## 安装与依赖
 
-需要 PHP `>=8.4 <8.6`、runtime、Redis、Cron Expression 和 PSR-20。文件调度不连接 Redis，但当前 Composer 传递依赖仍检查 phpredis 扩展。
+需要 PHP `>=8.4 <8.6`、runtime、Redis、Cron Expression 和 PSR-20。Cron 精确依赖 3.6.0，与构建适配的源码身份一致；升级前须更新适配并完成验收。文件调度不连接 Redis，但当前 Composer 传递依赖仍检查 phpredis 扩展。
 
 在消费应用根执行以下命令，源码与完整 API 说明也随包安装：
 
