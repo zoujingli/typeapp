@@ -28,7 +28,7 @@
 - [设备预注册、生命周期与MQTT接入](iot-devices.md)
 - [双端身份与 RBAC](iot-identity.md)
 - [物联网运行概览](iot-operations.md)
-- [产品与不可变物模型](iot-products.md)
+- [产品分类资料](iot-products.md)
 - [物联网备份与恢复](iot-recovery.md)
 - [真实断网、只读输入的全量 AOT 构建验收](isolated-build.md)
 - [许可证与分发边界](licensing.md)

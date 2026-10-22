@@ -4,7 +4,7 @@
 
 ## 入口与责任
 
-`docs/build-config/type-app.json` 的应用声明生成生产入口，调用 `app/common/bootstrap/Application::bootstrap()` 分派 HTTP/MQTT 宿主及普通命令。`ApplicationContext` 按需读取一次启动配置，控制器、中间件、Job 和计划任务由同一生成服务图装配，详见[物联中心统一装配](iot-application-assembly.md)。共用的 `AuthController`、`IdentityService`、`RoleService` 分别拥有请求输入、会话和固定目录/当前权限。业务不向组件反向注入业务表依赖。
+`docs/build-config/type-app.json` 的应用声明生成生产入口，调用 `app/common/bootstrap/Application::bootstrap()` 分派 HTTP/MQTT 宿主及普通命令。`ApplicationContext` 按需读取一次启动配置，控制器、中间件和维护计划任务由同一生成服务图装配，详见[物联中心统一装配](iot-application-assembly.md)。共用的 `AuthController`、`IdentityService`、`RoleService` 分别拥有请求输入、会话和固定目录/当前权限。业务不向组件反向注入业务表依赖。
 
 `Schema::install` 复用 ORM 迁移锁和事务：先确认空库，创建新模式，再在一个事务中建立安装身份、管理账号、客户账号、初始租户及角色关系。两个账号域可以使用相同登录标识，但密码、会话及授权各自独立。密码使用既有 bcrypt 存储，令牌持久化只保存摘要；账号/成员/角色失效在后续请求重新判断。没有角色默认没有业务权限；固定目录由 `RoleService::catalog` 声明，初始化最高管理员获得当前目录的显式节点。
 
@@ -36,7 +36,7 @@ composer typeapp -- app:install platform-admin 平台管理员 customer-admin �
 
 ## 配置与运行
 
-`config.files` 中的 PHP 只包含受限数组及 `env` 声明，构建时生成并编译，生产不解释 PHP 配置。`config/route.php` 是路由声明，不允许 `env()`。`.env` 是启动数据，优先级为：进程环境 > 软件运行根 `.env` > 声明默认值；不读取实际部署密钥生成源码。运行根依次取进程显式 `APP_BASE_PATH`、发布启动器提供的 `TYPE_APP_RUNTIME_ROOT`、原生软件所在目录；开发 `bin/typeapp` 使用项目根。根必须为已经存在的绝对目录；软件绝对/相对路径或 PATH 启动均按实际入口定位，切换工作目录不改变配置目标。数据库 CA、SQLite、导出和通知 Redis CA 的相对路径均基于该根。
+`config.files` 中的 PHP 只包含受限数组及 `env` 声明，构建时生成并编译，生产不解释 PHP 配置。`config/route.php` 是路由声明，不允许 `env()`。`.env` 是启动数据，优先级为：进程环境 > 软件运行根 `.env` > 声明默认值；不读取实际部署密钥生成源码。运行根依次取进程显式 `APP_BASE_PATH`、发布启动器提供的 `TYPE_APP_RUNTIME_ROOT`、原生软件所在目录；开发 `bin/typeapp` 使用项目根。根必须为已经存在的绝对目录；软件绝对/相对路径或 PATH 启动均按实际入口定位，切换工作目录不改变配置目标。数据库 CA、SQLite 和维护调度 Redis CA 的相对路径均基于该根。
 
 ### 本地检查与恢复
 
@@ -51,7 +51,7 @@ composer typeapp -- app:install platform-admin 平台管理员 customer-admin �
 
 `config:check` 只读，报告已编译声明的键、类型、文件是否声明、实际来源、文件 SHA256 版本和结构错误，不输出任何配置值。进程覆盖键显示只读及 `process_environment_requires_operator_restart`；运维须修改进程环境并重启。未声明的文件键单独列出，不成为运行代码或可管理字段。检查也验证被覆盖文件值的声明类型，防止恢复副本藏有无效类型。普通检查不连接数据库、不初始化 SQLite、不创建恢复文件。
 
-`--connect` 在当前环境下用真实驱动执行 `SELECT 1`，并按构建能力检查导出、通知和调度的 Redis 连接、认证及 PING；未启用的用途返回 `disabled`，各结果独立返回且不泄漏驱动异常。物联中心没有通用业务缓存消费者，旧 `APP_CACHE_ENABLED=true` 在预检时返回 `feature_unavailable`。检查不迁移模式、不改变安装身份，也不表示所有业务角色已就绪。`--remember` 隐含连接检查，全部通过且文件版本未变化才更新 `runtime/config/last-valid.json`；纯检查、失联或错误文件不会覆盖有效副本。副本保存原始文件内容、校验和、检查时间及进程覆盖键名，**不会把进程环境中的值写入文件**；连通结果只对检查时的有效配置成立，不承诺后续环境或依赖不变。
+`--connect` 在当前环境下用真实驱动执行 `SELECT 1`，并按构建能力检查维护调度的 Redis 连接、认证及 PING；未启用时返回 `redis_scheduler: disabled`，各结果独立返回且不泄漏驱动异常。物联中心没有通用业务缓存消费者，旧 `APP_CACHE_ENABLED=true` 在预检时返回 `feature_unavailable`。检查不迁移模式、不改变安装身份，也不表示所有业务角色已就绪。`--remember` 隐含连接检查，全部通过且文件版本未变化才更新 `runtime/config/last-valid.json`；纯检查、失联或错误文件不会覆盖有效副本。副本保存原始文件内容、校验和、检查时间及进程覆盖键名，**不会把进程环境中的值写入文件**；连通结果只对检查时的有效配置成立，不承诺后续环境或依赖不变。
 
 `config:restore` 不连接数据库或 Redis，即使当前 `.env` 损坏、数据库失联或进程覆盖存在类型错误，也可把受控副本原子恢复到原位置。当前环境覆盖继续生效，输出显示其来源及结构是否有效；`loaded_version` 为 null，成功状态为 `restored_restart_required`，由运维重启并核对实际健康。它不启动或重启服务，不将文件成功等同于进程已恢复。
 
@@ -66,7 +66,7 @@ build/app/type-app serve
 
 原生构建配置为 `docs/build-config/type-app.json`，产物为 `build/app/type-app`。生产 HTTP 使用 Swoole 的线程与协程，`APP_HTTP_THREADS` 指定 HTTP 执行线程数，默认 2；Windows 当前使用单执行者。`APP_DATABASE_THREADS` 单独声明每进程最多同时占用数据库连接的线程数，不能当作 HTTP 启动数量。主线程启用 hook 并建立监听，每个编译业务线程建立自身配置和数据库资源，复用既有 `ThreadSupervisor`、`SwooleServer::serveThread` 和部署分额，子线程不重复更改进程级 hook。实际角色与滚动重叠须纳入[部署预算](../guide/configuration.md#部署连接预算)。
 
-HTTP 传输固定复用 Swoole 线程与协程入口。独立 Broker 使用 `broker:install`、`broker:user`、`broker:serve`，见[Broker说明](broker-management.md)。设备、告警、导出、调度和独立恢复按当前业务装置分别验收；旧组合参数与负载夹具的边界见[验收入口与迁移边界](test-entrypoints.md)，不能从角色存在推断整条业务路径已经验证。
+HTTP 传输固定复用 Swoole 线程与协程入口。独立 Broker 使用 `broker:install`、`broker:user`、`broker:serve`，见[Broker说明](broker-management.md)。设备注册、应用授权、原始通信、转配、维护调度和独立恢复按当前业务装置分别验收；旧组合参数与负载夹具的边界见[验收入口与迁移边界](test-entrypoints.md)，不能从角色存在推断整条业务路径已经验证。
 
 平台 `/admin/customers` 复用账号目录和授权事务，提供列表/详情、创建、资料更新、启停、密码重置及会话撤销。各写入按独立固定节点检查，修改使用预期 `version`；启用租户必须始终保有有效最高管理员，平台停用客户同样遵守。客户本人通过 `PATCH /customer/account` 修改 `login/name`，通过 `POST /customer/account/password` 改密；两者均需要 `version/current_password`，目标来自真实客户会话，不依赖租户角色或接受客户端账号标识。改密、全局停用及会话撤销删除对应客户全部旧会话；资料变更不隐含这些敏感动作。操作与审计同事务，平台操作记录在平台审计并保留客户目标域。
 
