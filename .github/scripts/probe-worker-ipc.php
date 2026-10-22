@@ -37,9 +37,9 @@ $report = \Type\Runtime\CoroutineRuntime::run(static function (): array {
         $firstStarted = hrtime(true);
         $output = fread($pipes[1], 16);
         $firstSeconds = (hrtime(true) - $firstStarted) / 1e9;
-        if (!is_string($output)) {
-            throw new RuntimeException('socket IPC first read failed');
-        }
+        // 与实际调用者一致：非阻塞读取的空值不视作业务结果，完整性由最终字节与退出状态证明。
+        $falseReads = $output === false ? 1 : 0;
+        $output = is_string($output) ? $output : '';
         $input = '';
         $authenticated = false;
         $maximumReadSeconds = $firstSeconds;
@@ -47,10 +47,10 @@ $report = \Type\Runtime\CoroutineRuntime::run(static function (): array {
             $readStarted = hrtime(true);
             $chunk = fread($pipes[1], 262144);
             $maximumReadSeconds = max($maximumReadSeconds, (hrtime(true) - $readStarted) / 1e9);
-            if (!is_string($chunk)) {
-                throw new RuntimeException('socket IPC read failed');
+            if ($chunk === false) {
+                ++$falseReads;
             }
-            $output .= $chunk;
+            $output .= is_string($chunk) ? $chunk : '';
             if (!$authenticated && str_starts_with($output, "ready\n")) {
                 $authenticated = true;
                 $output = substr($output, 6);
@@ -75,6 +75,7 @@ $report = \Type\Runtime\CoroutineRuntime::run(static function (): array {
         return ['passed' => $passed, 'php' => PHP_VERSION, 'swoole' => phpversion('swoole'),
             'hook_flags' => \Swoole\Runtime::getHookFlags(), 'nonblocking_accepted' => $nonblocking,
             'first_read_seconds' => $firstSeconds, 'maximum_read_seconds' => $maximumReadSeconds,
+            'false_reads' => $falseReads, 'read_metadata' => stream_get_meta_data($pipes[1]),
             'coroutine_progress' => $state->progress, 'request_bytes' => strlen($payload), 'response_bytes' => strlen($output),
             'response_sha256' => hash('sha256', $output), 'expected_sha256' => hash('sha256', $expected),
             'seconds' => (hrtime(true) - $started) / 1e9, 'worker_running' => $status['running']];
