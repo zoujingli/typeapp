@@ -1,0 +1,35 @@
+name: Windows 工作进程 IPC 诊断
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: 准备锁定的 PHP 与 Swoole
+        run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 核对进程 socket 描述符的有界双向传输
+        run: |
+          New-Item -ItemType Directory -Path build/worker-ipc-probe | Out-Null
+          & "$env:PHP_HOME/php.exe" .github/scripts/probe-worker-ipc.php |
+            Tee-Object build/worker-ipc-probe/socket.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 保存诊断原始结果
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-worker-ipc-probe
+          retention-days: 30
+          path: build/worker-ipc-probe/**
+          if-no-files-found: error
