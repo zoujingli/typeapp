@@ -85,6 +85,8 @@ if ($operation === 'prepare') {
             $tools = $driver === 'sqlite' ? [] : NativeDatabase::tools($driver, $driver === 'mysql' ? $argv[3] : $argv[4]);
             $database = new NativeDatabase($work . '/database-' . $driver, $driver, $tools);
             $environment = array_replace($environment, $database->environment());
+            // 数据库自己的受限 PATH 只用于数据库进程；嵌套验收仍须找到已准备的 Node 等控制端工具。
+            $environment['PATH'] = (string) getenv('PATH');
             if ($driver !== 'sqlite') {
                 $environment['TYPE_' . strtoupper($driver) . '_TOOLS'] = $driver === 'mysql' ? $argv[3] : $argv[4];
             }
