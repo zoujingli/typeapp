@@ -35,8 +35,10 @@ foreach (['release-manifest.json', $expected['file']] as $name) {
         $process->stop();
     }
 }
-UpgradeBaseline::verify($directory, $platform, $profile);
-if (PHP_OS_FAMILY !== 'Windows' && !chmod($directory . '/' . $expected['file'], 0555)) {
+$program = $directory . '/' . $expected['file'];
+// Release 下载只传输字节；先恢复普通文件的执行位，符号链接仍交由身份门拒绝。
+if (PHP_OS_FAMILY !== 'Windows' && is_file($program) && !is_link($program) && !chmod($program, 0555)) {
     throw new RuntimeException('无法设置基线程序执行权限');
 }
+UpgradeBaseline::verify($directory, $platform, $profile);
 echo '已核对公开升级基线：' . $expected['version'] . ' ' . $platform . '/' . $profile . "\n";

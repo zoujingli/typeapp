@@ -24,6 +24,61 @@ require_once dirname(__DIR__, 2) . '/tools/release/UpgradeBaseline.php';
 /** 发布资格测试使用完整任务证据；Release外部边界使用保存真实文件的命令哨兵。 */
 final class ReleaseTest extends TestCase
 {
+    /** HTTP 下载不携带 POSIX 执行位，准备入口须先恢复权限再验证可执行形态。 */
+    public function testUpgradePreparationRestoresDownloadedProgramPermissions(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('Windows 不使用 POSIX 执行位');
+        }
+        $project = dirname(__DIR__, 2);
+        $root = $project . '/build/upgrade-permissions-' . bin2hex(random_bytes(6));
+        $environment = getenv('TYPEAPP_BUILD_PROFILE');
+        foreach (['tools/release', 'vendor', '.github', 'build/upgrade-baseline'] as $directory) {
+            mkdir($root . '/' . $directory, 0700, true);
+        }
+        try {
+            foreach (['UpgradeBaseline.php', 'prepare-upgrade-baseline.php'] as $script) {
+                copy($project . '/tools/release/' . $script, $root . '/tools/release/' . $script);
+            }
+            file_put_contents($root . '/vendor/autoload.php', '<?php require ' . var_export($project . '/vendor/autoload.php', true) . ';');
+            $platform = PHP_OS_FAMILY === 'Darwin' ? 'macos-arm64'
+                : (in_array(php_uname('m'), ['arm64', 'aarch64'], true) ? 'linux-arm64' : 'linux-x64');
+            $header = str_repeat("\0", 64);
+            $header = substr_replace($header, PHP_OS_FAMILY === 'Darwin' ? "\xcf\xfa\xed\xfe" : "\x7fELF", 0, 4);
+            $header = substr_replace($header, pack('V', 2), PHP_OS_FAMILY === 'Darwin' ? 12 : 16, 4);
+            $program = ['file' => 'old-program', 'sha256' => hash('sha256', $header), 'bytes' => strlen($header)];
+            $manifest = ['version' => 'v1.0.0-rc.14', 'source' => str_repeat('a', 40), 'programs' => [$platform . '-sqlite' => $program]];
+            $bytes = json_encode($manifest, JSON_THROW_ON_ERROR);
+            file_put_contents($root . '/build/upgrade-baseline/release-manifest.json', $bytes);
+            file_put_contents($root . '/.github/upgrade-baseline.json', json_encode($manifest + ['manifest-sha256' => hash('sha256', $bytes)], JSON_THROW_ON_ERROR));
+            $file = $root . '/build/upgrade-baseline/old-program';
+            file_put_contents($file, $header);
+            chmod($file, 0644);
+            putenv('TYPEAPP_BUILD_PROFILE=sqlite');
+            $command = [PHP_BINARY, $root . '/tools/release/prepare-upgrade-baseline.php'];
+            [$code, $output, $error] = \TypeApp\Distribution\Process::run($command, $root);
+            self::assertSame(0, $code, $error);
+            clearstatcache(true, $file);
+            self::assertTrue(is_executable($file));
+            self::assertSame($program['sha256'], hash_file('sha256', $file));
+            self::assertStringContainsString('已核对公开升级基线', $output);
+            self::assertSame(0, \TypeApp\Distribution\Process::run($command, $root)[0]);
+            chmod($file, 0644);
+            file_put_contents($file, 'tampered');
+            self::assertNotSame(0, \TypeApp\Distribution\Process::run($command, $root)[0]);
+            unlink($file);
+            file_put_contents($root . '/outside', $header);
+            chmod($root . '/outside', 0644);
+            symlink($root . '/outside', $file);
+            self::assertNotSame(0, \TypeApp\Distribution\Process::run($command, $root)[0]);
+            clearstatcache(true, $root . '/outside');
+            self::assertFalse(is_executable($root . '/outside'));
+        } finally {
+            putenv($environment === false ? 'TYPEAPP_BUILD_PROFILE' : 'TYPEAPP_BUILD_PROFILE=' . $environment);
+            \removeTestDirectory($root);
+        }
+    }
+
     /** 文件形态与三库回执缺一不可；旧归档即使已有成功记录，也不能重新标成单程序。 */
     public function testSingleProgramCandidateRequiresTheSameDownloadedBytesAndEveryDatabase(): void
     {
