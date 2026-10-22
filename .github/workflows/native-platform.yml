@@ -21,7 +21,7 @@ on:
       scope:
         description: 验收范围（application 从共同装配继续应用与三库模板；orm 仅三库 ORM；其余 probe 为专项诊断，均不能替代 full）
         type: choice
-        options: [full, native, orm, application, template, pgsql-probe, pgsql-app, sqlite-app, http-probe, socket-probe, tls-probe, tcp-handshake, tcp-trace, environment-probe]
+        options: [full, native, orm, application, template, pgsql-probe, pgsql-app, sqlite-app, http-probe, socket-probe, tls-probe, tcp-handshake, tcp-trace, environment-probe, ipc-probe]
         default: full
       orm_driver:
         description: 仅 scope=orm 生效；单库结果不代表三库验收
@@ -43,12 +43,50 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-platform-${{ github.ref }}-${{ inputs.source_sha || github.sha }}${{ contains(fromJSON('["application","template","pgsql-app","sqlite-app","http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace","environment-probe"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
+  group: native-platform-${{ github.ref }}-${{ inputs.source_sha || github.sha }}${{ contains(fromJSON('["application","template","pgsql-app","sqlite-app","http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace","environment-probe","ipc-probe"]'), inputs.scope) && format('-{0}', inputs.scope) || '' }}
   cancel-in-progress: true
 
 jobs:
+  ipc-probe:
+    if: github.repository == 'zoujingli/typeapp' && github.event_name == 'workflow_dispatch' && inputs.scope == 'ipc-probe' && inputs.candidate_version == ''
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: 核对固定 main 源码
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ && "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+      - name: 准备锁定的 PHP 与 Swoole
+        run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 核对进程 socket 描述符的有界双向传输
+        run: |
+          New-Item -ItemType Directory -Path build/worker-ipc-probe | Out-Null
+          & "$env:PHP_HOME/php.exe" .github/scripts/probe-worker-ipc.php |
+            Tee-Object build/worker-ipc-probe/socket.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 保存诊断原始结果
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-worker-ipc-probe
+          retention-days: 30
+          path: build/worker-ipc-probe/**
+          if-no-files-found: error
+
   windows:
-    if: github.repository == 'zoujingli/typeapp' && !contains(fromJSON('["http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace","environment-probe"]'), inputs.scope)
+    if: github.repository == 'zoujingli/typeapp' && !contains(fromJSON('["http-probe","socket-probe","tls-probe","tcp-handshake","tcp-trace","environment-probe","ipc-probe"]'), inputs.scope)
     runs-on: windows-2022
     # 完整串行门禁在最后一个数据库前已耗时约 116 分钟；单项编译及业务预算由验收入口分别约束。
     timeout-minutes: 180
