@@ -267,6 +267,7 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
         $environment['IOT_MQTT_MAXIMUM_DEVICE_MESSAGES'] = '1';
     }
     $process = null;
+    $clientFixtureFile = $base . '/device-client-fixture.json';
     try {
         $installed = (new Type\Testing\Process([...$command, 'iot:mqtt-install'], $root, $environment))->wait(15);
         expect($installed->successful(), '应用MQTT存储安装失败：' . $installed->stderr);
@@ -309,7 +310,11 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
         };
         $process = $start();
         $cases = [];
-        $clientEnvironment = $environment + ['TYPE_DEVICE_FIXTURE' => json_encode($evidence, JSON_THROW_ON_ERROR),
+        // Windows PHP 的显式环境块有长度限制；凭据夹具由本轮私有文件传递，最后统一销毁。
+        $clientFixture = json_encode($evidence, JSON_THROW_ON_ERROR);
+        expect(file_put_contents($clientFixtureFile, $clientFixture) === strlen($clientFixture)
+            && chmod($clientFixtureFile, 0600), '无法保存设备客户端的私有测试夹具');
+        $clientEnvironment = $environment + ['TYPE_DEVICE_FIXTURE_FILE' => $clientFixtureFile,
             'TYPE_DEVICE_HTTP' => 'http://127.0.0.1:' . $environment['APP_PORT'], 'TYPE_DEVICE_CA' => $base . '/certificate.pem'];
         if (in_array('--reassignments-mqtt', $GLOBALS['argv'], true)) {
             require_once __DIR__ . '/iot-reassignments.php';
@@ -559,7 +564,13 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
         }
         throw $failure;
     } finally {
-        $process?->stop(15);
-        unlink($base . '/private.pem');
+        try {
+            $process?->stop(15);
+        } finally {
+            unlink($base . '/private.pem');
+            if (is_file($clientFixtureFile)) {
+                unlink($clientFixtureFile);
+            }
+        }
     }
 }

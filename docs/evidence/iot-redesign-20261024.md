@@ -20,6 +20,8 @@ Windows PostgreSQL 原 EXE 已完成编译、受限单文件部署、两端登�
 
 [Windows 原字节复验 39997939234](https://github.com/zoujingli/typeapp/actions/runs/39997939234)确认同步备库启动、WAL 接收与正常停止通过，原密码问题没有复现；后续失败发生在标准 MQTT 测试客户端启动，Node 读取 `TYPE_DEVICE_CA` 得到缺失值。此时尚未进入该客户端的通信断言，不能将其判为生产通信失败或验收成功。已保留原 EXE、测试源码 `554d73d`、失败报告及 Artifact `12522088612`；附件 SHA-256 为 `defbbd77e9437858278e4bcae05642044c7b55ff91bf2277f24ee0dd9ee0a905`。后续通过现有 Windows 环境变量专项缩小测试进程传递问题，完整矩阵仍未结项。
 
+[最小环境对照 40003433220](https://github.com/zoujingli/typeapp/actions/runs/40003433220)复现同一症状：显式环境中的 64 字节载荷与后续哨兵完整，20,000 字节载荷本身完整，但后面的 HTTP 和 CA 变量同时丢失；PHP 和 Node 子进程结果一致。锁定 PHP 8.5.10 的 `php_win32_cp_env_any_to_w()` 使用固定长度缓冲及提前终止条件，现象与源码对应。测试夹具改为受控文件，同一 macOS AOT 程序已通过 674 项 HTTP 检查、TLS 原始通信、管理概览与无源码运行；节点与 HTTP 正常退出，临时库及凭据文件已删除。Windows 文件传递对照与原 EXE 完整业务复验仍须分别通过，不能以本机成功代替。
+
 ## Demo 程序身份
 
 | 项目 | 实际值 |

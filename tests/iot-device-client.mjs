@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 const require = createRequire(`${process.env.TYPE_MQTT_CLIENT_ROOT}/package.json`);
 const mqtt = require('mqtt');
 assert.equal(require('mqtt/package.json').version, '5.15.0');
-const fixture = JSON.parse(process.env.TYPE_DEVICE_FIXTURE);
+const fixture = JSON.parse(readFileSync(process.env.TYPE_DEVICE_FIXTURE_FILE, 'utf8'));
 const a = fixture.registration.credential;
 const b = fixture.second.credential;
 const url = `mqtts://127.0.0.1:${process.env.IOT_MQTT_PORT}`;
