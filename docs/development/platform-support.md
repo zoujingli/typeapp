@@ -10,7 +10,7 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 RC13 的固定源码、12 个程序和公开发布身份保存在[profile 发布证据](../evidence/profile-release-20260930.md)。RC14 已使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及 `4aff74a9`（运行时字符串 `6.3.0RC1`）的 Swoole 开发快照完成正式发布门禁、十二程序、组件模板公开消费和下载回读。各平台的准确源码、运行轮次、失败诊断与性能限制统一见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)；功能通过不构成性能提升结论。
 
-RC14 之后的 `main` 以固定源码 `3818a30` 验证双端物联架构的开发候选，未创建新公开版本。四平台 × 三数据库 profile 中已有 11 个组合的静态候选工作流成功；Windows PostgreSQL 修正撤权观察后的原 EXE 复验仍有后续失败，完整矩阵未结项。逐轮身份、实际范围及 Demo 更新见[候选验收记录](../evidence/iot-redesign-20261024.md)。Windows `putenv()` 中文环境编码修复另有[模块重建 38782633247](https://github.com/zoujingli/typeapp/actions/runs/38782633247)证据，包含主进程、子进程、两轮线程继承、DNS、TLS 和 curl；模块通过不替代应用验收。
+RC14 之后的 `main` 以固定源码 `3818a30` 验证双端物联架构的开发候选，未创建新公开版本。四平台 × 三数据库 profile 中已有 11 个组合的静态候选工作流成功；Windows PostgreSQL 最新原 EXE 复验在测试备库启动时发生文件访问拒绝，完整矩阵未结项。逐轮身份、实际范围及 Demo 更新见[候选验收记录](../evidence/iot-redesign-20261024.md)。Windows `putenv()` 中文环境编码修复另有[模块重建 38782633247](https://github.com/zoujingli/typeapp/actions/runs/38782633247)证据，包含主进程、子进程、两轮线程继承、DNS、TLS 和 curl；模块通过不替代应用验收。
 
 此前 2026-09-25 的 `bf28c8bd276f7d0f25535e82ec3ca4a59c4f241a` 四平台默认矩阵保留在[历史验收](../evidence/native-release-20260925.md)。该轮采用共享库构建，其发布目录与隔离范围不改写为本次静态单程序结果。
 

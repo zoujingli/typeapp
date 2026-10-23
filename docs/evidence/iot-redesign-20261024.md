@@ -20,7 +20,11 @@ Windows PostgreSQL 原 EXE 已完成编译、受限单文件部署、两端登�
 
 [Windows 原字节复验 39997939234](https://github.com/zoujingli/typeapp/actions/runs/39997939234)确认同步备库启动、WAL 接收与正常停止通过，原密码问题没有复现；后续失败发生在标准 MQTT 测试客户端启动，Node 读取 `TYPE_DEVICE_CA` 得到缺失值。此时尚未进入该客户端的通信断言，不能将其判为生产通信失败或验收成功。已保留原 EXE、测试源码 `554d73d`、失败报告及 Artifact `12522088612`；附件 SHA-256 为 `defbbd77e9437858278e4bcae05642044c7b55ff91bf2277f24ee0dd9ee0a905`。后续通过现有 Windows 环境变量专项缩小测试进程传递问题，完整矩阵仍未结项。
 
-[最小环境对照 40003433220](https://github.com/zoujingli/typeapp/actions/runs/40003433220)复现同一症状：显式环境中的 64 字节载荷与后续哨兵完整，20,000 字节载荷本身完整，但后面的 HTTP 和 CA 变量同时丢失；PHP 和 Node 子进程结果一致。锁定 PHP 8.5.10 的 `php_win32_cp_env_any_to_w()` 使用固定长度缓冲及提前终止条件，现象与源码对应。测试夹具改为受控文件，同一 macOS AOT 程序已通过 674 项 HTTP 检查、TLS 原始通信、管理概览与无源码运行；节点与 HTTP 正常退出，临时库及凭据文件已删除。Windows 文件传递对照与原 EXE 完整业务复验仍须分别通过，不能以本机成功代替。
+[最小环境对照 40003433220](https://github.com/zoujingli/typeapp/actions/runs/40003433220)复现同一症状：显式环境中的 64 字节载荷与后续哨兵完整，20,000 字节载荷本身完整，但后面的 HTTP 和 CA 变量同时丢失；PHP 和 Node 子进程结果一致。锁定 PHP 8.5.10 的 `php_win32_cp_env_any_to_w()` 使用固定长度缓冲及提前终止条件，现象与源码对应。修正提交 `be0b5175ede07bd67cfde3ec7e93b7d84406fcd7` 只将测试夹具改为受控文件，同一 macOS AOT 程序已通过 674 项 HTTP 检查、TLS 原始通信、管理概览与无源码运行；节点与 HTTP 正常退出，临时库及凭据文件已删除。
+
+[Windows 文件传递对照 40005047668](https://github.com/zoujingli/typeapp/actions/runs/40005047668)通过：原内联方式继续复现缺失，改为含空格文件路径后，PHP 与 Node 均收到完整的 20,000 字节内容且摘要相同，后续 HTTP/CA 哨兵完整。原始报告及诊断源码已归档，临时诊断入口回收。
+
+同一原 EXE 的完整复验 [40005679561](https://github.com/zoujingli/typeapp/actions/runs/40005679561)仍失败。该轮复制完成后的备库启动报告 `global/pg_control: Permission denied`；清理时停止已退出进程又返回 `No such process`，覆盖了外层显示的启动错误。标准客户端尚未执行，权限来源仍未确认，不能用前一轮备库成功推断本轮通过。原 EXE 摘要保持不变，外层数据库实例清理通过；原始 Artifact `12524997553` 的 SHA-256 为 `b5a71c648d83c9b79b2cc6b142685d1c6a4c25a9c42954a7ebb9484cdb4173e0`。本平台完整验收与正式候选封存继续保持未完成，不将两项测试装置修复或 Linux Demo 上线计为整个矩阵通过。
 
 ## Demo 程序身份
 

@@ -45,7 +45,7 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 当前源码的原生构建基线为 PHP 8.5.10 ZTS、TypePHP 0.9.5、PHPX 2.9.4，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 固定为 `4aff74a` 开发快照，运行时报告 `6.3.0RC1`，不是正式 6.3.0；源码、构建开关、模块摘要和官方内置库配置分别记录。CLI 加载成功还需要对应 embed 环境验证，不能只复制一个扩展文件就认定 ABI 匹配。
 
-当前 0.9.5 / 2.9.4 的早期 macOS ARM64 完整应用、三库和独立线程结果见[工具链升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.5.md)。后续双端物联架构候选 `3818a30` 已有 11 个平台/profile 组合的静态工作流成功，Windows PostgreSQL 修正测试后的原 EXE 复验仍有后续失败，完整矩阵尚未结项。Linux x64 SQLite 候选已更新到只读 Demo；逐项结果见[开发候选与现场记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/iot-redesign-20261024.md)，不改变上表 RC14 的公开发布范围。
+当前 0.9.5 / 2.9.4 的早期 macOS ARM64 完整应用、三库和独立线程结果见[工具链升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.5.md)。后续双端物联架构候选 `3818a30` 已有 11 个平台/profile 组合的静态工作流成功，Windows PostgreSQL 最新原 EXE 复验在测试备库启动时发生文件访问拒绝，完整矩阵尚未结项。Linux x64 SQLite 候选已更新到只读 Demo；逐项结果见[开发候选与现场记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/iot-redesign-20261024.md)，不改变上表 RC14 的公开发布范围。
 
 上表记录 RC14 的功能验收结果；模块重建、十二组合程序及性能对照的准确身份见[历史升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。新旧版本性能比较仅按实际测量的平台、源码和负载成立，不能扩展为所有平台的性能结论。
 
