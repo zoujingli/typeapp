@@ -549,6 +549,10 @@ jobs:
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
       - name: 准备已核验的 Windows x64 ZTS SDK
         run: ./.github/scripts/prepare-windows-native.ps1
+      - name: 对照显式环境中长载荷后的路径变量
+        run: |
+          & "$env:PHP_HOME/php.exe" .github/scripts/probe-windows-env-block.php (Get-Command node.exe).Source
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 核对 PHP 与 Swoole 环境读写和继承
         timeout-minutes: 2
         run: |
@@ -639,5 +643,6 @@ jobs:
           if-no-files-found: error
           path: |
             build/windows-environment-probe/*
+            build/windows-env-block-*/*.json
             build/windows-runtime-*/*.json
             build/windows-runtime-*/*.log
