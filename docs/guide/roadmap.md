@@ -74,7 +74,7 @@ MySQL/SQLite 完整会话重置、纯 CRUD 跨租约物理身份观测及复用�
 
 物联中心使用框架公开接口，以下任务不纳入 ORM 组件内部，也不作为其他应用独立安装框架的前置条件。
 
-物联中心已接入[控制端与客户端设计](../development/iot-control-client-design.md)：同一部署保留双端 RBAC，由控制端签发设备注册授权，客户端管理接入应用与逐设备通信权限，保留接入与原始通信。旧处理链已经退出生产入口，历史安装通过显式升级保全原件。分项本机验收与最终四平台静态候选验收分别记录，后者仍在推进。
+物联中心已接入[控制端与客户端设计](../development/iot-control-client-design.md)：同一部署保留双端 RBAC，由控制端签发设备注册授权，客户端管理接入应用与逐设备通信权限，保留接入与原始通信。旧处理链已经退出生产入口，历史安装通过显式升级保全原件。固定候选已通过 11 个平台/profile 组合，Windows PostgreSQL 原 EXE 复验仍有后续失败；Linux x64 SQLite 已完成只读 Demo 更新、数据保全与两端现场验证。准确身份和未完成边界统一见[候选与 Demo 记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/iot-redesign-20261024.md)。
 
 | 工作 | 当前代码边界 | 完成条件 |
 | --- | --- | --- |

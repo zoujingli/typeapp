@@ -10,13 +10,13 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 RC13 的固定源码、12 个程序和公开发布身份保存在[profile 发布证据](../evidence/profile-release-20260930.md)。RC14 已使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及 `4aff74a9`（运行时字符串 `6.3.0RC1`）的 Swoole 开发快照完成正式发布门禁、十二程序、组件模板公开消费和下载回读。各平台的准确源码、运行轮次、失败诊断与性能限制统一见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)；功能通过不构成性能提升结论。
 
-RC14 之后的 `main` 当前按 RC18 同批次准备。Windows `putenv()` 中文环境编码修复已通过 [模块重建 38782633247](https://github.com/zoujingli/typeapp/actions/runs/38782633247)，包含主进程、子进程及两轮线程继承，DNS、TLS 和 curl 回归；当前组件已换入同一 Artifact 的真实 DLL 与摘要。完整 Windows 应用、ORM 事务帧和十二个静态程序仍等待新发布源码的对应验收，不能用模块通过代替产品门禁。历史 RC14 身份保持不变。
+RC14 之后的 `main` 以固定源码 `3818a30` 验证双端物联架构的开发候选，未创建新公开版本。四平台 × 三数据库 profile 中已有 11 个组合的静态候选工作流成功；Windows PostgreSQL 修正撤权观察后的原 EXE 复验仍有后续失败，完整矩阵未结项。逐轮身份、实际范围及 Demo 更新见[候选验收记录](../evidence/iot-redesign-20261024.md)。Windows `putenv()` 中文环境编码修复另有[模块重建 38782633247](https://github.com/zoujingli/typeapp/actions/runs/38782633247)证据，包含主进程、子进程、两轮线程继承、DNS、TLS 和 curl；模块通过不替代应用验收。
 
 此前 2026-09-25 的 `bf28c8bd276f7d0f25535e82ec3ca4a59c4f241a` 四平台默认矩阵保留在[历史验收](../evidence/native-release-20260925.md)。该轮采用共享库构建，其发布目录与隔离范围不改写为本次静态单程序结果。
 
 四平台 Swoole 模块随 Composer 构建组件分发，匹配 SDK 后默认复用。macOS 矩阵在原生 macOS 15 runner 运行，Linux ARM64 在原生 ARM64 runner 运行；Windows 的 SDK、完整应用 AOT 和模板搬迁历史结果保留原版本身份。每种产物按报告解释，不能把主应用 `no_source=false` 的检查与独立模板隔离结果混为一项。新版 Windows HTTP 线程回归在线程内自绑定监听，Unix 回归继续使用共享监听副本；停止、回收和 join 的公共契约不变。
 
-RC14 的四平台共享模块和静态程序继续保留各自的历史身份；当前 0.9.5 / 2.9.4 只完成 macOS ARM64 的共享库开发产物、完整应用 AOT、三库和线程专项，见[当前升级证据](../evidence/typephp-upgrade-0.9.5.md)。Linux/Windows 共享模块、静态 SDK 与单程序矩阵尚未按新工具链重建验收，不能把历史模块或单项加载结果扩展为当前平台通过。
+RC14 的四平台共享模块和静态程序继续保留各自的历史身份；当前 0.9.5 / 2.9.4 的早期 macOS ARM64 共享库开发产物、三库及线程专项见[工具链升级证据](../evidence/typephp-upgrade-0.9.5.md)。后续静态程序结果以上述候选记录为准，独立共享模块与静态产物分别判断，不由一种产物推断另一种产物通过。
 
 ## 历史结果
 
