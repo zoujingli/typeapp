@@ -58,6 +58,8 @@ final class PostgresSync
         $passwordFile = $directory . '/pgpass';
         $pass = '127.0.0.1:' . $this->environment['TYPE_PGSQL_PORT'] . ':*:' . $this->environment['TYPE_PGSQL_USER'] . ':' . $this->password . "\n";
         expect(file_put_contents($passwordFile, $pass) === strlen($pass) && chmod($passwordFile, 0600), '无法创建隔离复制凭据');
+        // libpq 优先使用 PGPASSWORD；只让本装置的子进程读取自己的凭据文件，不修改宿主环境。
+        unset($this->environment['PGPASSWORD']);
         $this->environment['PGPASSFILE'] = $passwordFile;
         try {
             nativeDatabaseCommand(

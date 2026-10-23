@@ -19,7 +19,8 @@ $sync = null;
 try {
     // Windows 主库由外层已隔离的 PowerShell 装置持有，PostgresSync 另核对其准确数据目录。
     $parameters = $database === null ? getenv() : $database->environment();
-    $sync = new PostgresSync($database ?? $parameters, $base . '/standby', $tools);
+    // runner 可为预装数据库设置 PGPASSWORD；复制必须使用本轮主库的专用凭据文件。
+    $sync = new PostgresSync(array_replace($parameters, ['PGPASSWORD' => bin2hex(random_bytes(24))]), $base . '/standby', $tools);
     $environment = array_replace(getenv(), $parameters);
     $environment['PATH'] = (string) getenv('PATH');
     $environment['TYPE_MQTT_CLIENT_ROOT'] = $clientRoot ?: '';
