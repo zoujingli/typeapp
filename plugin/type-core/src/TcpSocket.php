@@ -8,7 +8,6 @@ use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 use Swoole\Coroutine\Socket;
 use Type\Runtime\CoroutineRuntime;
-use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionOwner;
 use Type\Runtime\ManagedResource;
 use Type\Runtime\ResourceBudget;
@@ -101,7 +100,7 @@ final class TcpSocket implements ManagedResource
         }
         $this->state = 'starting';
         $this->operations['start'] = Coroutine::getCid();
-        $deadline = new Deadline($timeout);
+        $expiresAt = hrtime(true) / 1000000000.0 + $timeout;
         $timer = \std::any(false);
         try {
             $timer = \Swoole\Timer::after(max(1, (int) ceil($timeout * 1000.0)), function (): void {
@@ -143,7 +142,7 @@ final class TcpSocket implements ManagedResource
             // macOS 可能在 connect() 后自动调大 TCP 缓冲；连接和 TLS 完成后重新应用
             // 声明的边界，使统计值和资源契约对应实际继续使用的 Socket。
             $this->buffers(true);
-            $this->expired = $this->expired || $deadline->expired();
+            $this->expired = $this->expired || hrtime(true) / 1000000000.0 >= $expiresAt;
             $this->checkCompletion();
             $local = $this->socket->getsockname();
             $peer = $this->kind === 'listener' ? [] : $this->socket->getpeername();
