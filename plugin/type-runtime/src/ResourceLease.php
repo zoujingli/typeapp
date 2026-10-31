@@ -62,10 +62,15 @@ final class ResourceLease implements ManagedResource
     /**
      * 操作退出前继续占用池容量；关闭意图不会提前复用活动资源。
      * @param Closure(ReusableResource): mixed $operation 接收本租约持有的资源。
+     * @throws RuntimeException 作用域不可用、租约已归还或池资源不可借用。
      */
     public function hold(Closure $operation): mixed
     {
-        $this->resource();
+        // 池在 hold 内取得并校验资源，此处只检查租约自身状态。
+        $this->scope->assertActive();
+        if ($this->released) {
+            throw new RuntimeException('资源租约已经归还');
+        }
         return $this->pool->hold($this->id, $operation);
     }
 
