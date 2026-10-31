@@ -192,34 +192,10 @@ final class SwooleServer implements HttpServerInterface
                 + $this->control->maximumRequests * $this->control->maximumChildren + 2]);
             $server = \Swoole\Coroutine\Http\Server::fromSocket($listener, 128);
             $this->configureCoroutineServer($server, true);
-            $created = \Swoole\Coroutine::create(function () use ($server, $state): void {
-                try {
-                    $this->startThreadServer($server, $state);
-                } catch (Throwable $error) {
-                    $this->threadFailure = $error;
-                    $state['failed'] = true;
-                } finally {
-                    $state['ready'] = false;
-                    $this->control->stop();
-                    $this->clearThreadTimer();
-                }
-            });
-            if ($created === false) {
-                throw new TaskException('http_thread_start_failed', '无法启动 HTTP 监听协程');
-            }
-            \Swoole\Event::wait();
-            if ($this->threadFailure !== null) {
-                throw $this->threadFailure;
-            }
-            $statistics = $this->control->statistics();
-            if (($server->errCode !== 0 && $server->errCode !== SOCKET_ECANCELED) || $statistics['in_flight'] !== 0
-                || $statistics['quarantined'] !== 0 || $statistics['cleanup_failures'] !== 0) {
-                throw new TaskException('http_thread_cleanup_failed', 'HTTP 线程没有完整回收请求或原生连接');
-            }
-            $shutdown = $this->onWorkerStop;
-            if ($shutdown !== null) {
-                $shutdown();
-            }
+            $this->runThreadServer(function () use ($server, $state): \Swoole\Coroutine\Http\Server {
+                $this->startThreadServer($server, $state);
+                return $server;
+            }, $state);
         } catch (Throwable $error) {
             $state['failed'] = true;
             throw $error;
@@ -256,46 +232,12 @@ final class SwooleServer implements HttpServerInterface
             \Swoole\Coroutine::set(['max_coroutine' => $this->control->maximumConnections
                 + $this->control->maximumRequests * $this->control->maximumChildren + 2]);
             // 监听器的创建、配置、handler 注册和 start() 使用同一个协程生命周期。
-            $server = null;
-            $run = function () use (&$server, $host, $port, $state): void {
-                try {
-                    $server = new \Swoole\Coroutine\Http\Server($host, $port);
-                    $this->configureCoroutineServer($server, true);
-                    $this->startThreadServer($server, $state);
-                } catch (Throwable $error) {
-                    $this->threadFailure = $error;
-                    $state['failed'] = true;
-                } finally {
-                    $state['ready'] = false;
-                    $this->control->stop();
-                    $this->clearThreadTimer();
-                }
-            };
-            if (PHP_OS_FAMILY === 'Windows') {
-                // Windows 与公开 serve() 入口统一使用官方 Scheduler。
-                \Type\Runtime\CoroutineRuntime::run($run);
-            } else {
-                $created = \Swoole\Coroutine::create($run);
-                if ($created === false) {
-                    throw new TaskException('http_thread_start_failed', '无法启动 HTTP 监听协程');
-                }
-                \Swoole\Event::wait();
-            }
-            if ($this->threadFailure !== null) {
-                throw $this->threadFailure;
-            }
-            if (!$server instanceof \Swoole\Coroutine\Http\Server) {
-                throw new TaskException('http_thread_start_failed', 'HTTP 线程没有创建监听器');
-            }
-            $statistics = $this->control->statistics();
-            if (($server->errCode !== 0 && $server->errCode !== SOCKET_ECANCELED) || $statistics['in_flight'] !== 0
-                || $statistics['quarantined'] !== 0 || $statistics['cleanup_failures'] !== 0) {
-                throw new TaskException('http_thread_cleanup_failed', 'HTTP 线程没有完整回收请求或原生连接');
-            }
-            $shutdown = $this->onWorkerStop;
-            if ($shutdown !== null) {
-                $shutdown();
-            }
+            $this->runThreadServer(function () use ($host, $port, $state): \Swoole\Coroutine\Http\Server {
+                $server = new \Swoole\Coroutine\Http\Server($host, $port);
+                $this->configureCoroutineServer($server, true);
+                $this->startThreadServer($server, $state);
+                return $server;
+            }, $state);
         } catch (Throwable $error) {
             $state['failed'] = true;
             throw $error;
@@ -326,6 +268,51 @@ final class SwooleServer implements HttpServerInterface
         $server->handle('/', function (Request $request, Response $response): void {
             $this->handleNative($request, $response);
         });
+    }
+
+    /**
+     * 两种监听共用官方 Scheduler、线程状态与完成检查；根协程拒绝仍保留 HTTP 的启动错误码。
+     * @param Closure(): \Swoole\Coroutine\Http\Server $operation 在所属协程运行原生服务，返回已结束接收的实例。
+     */
+    private function runThreadServer(Closure $operation, \Swoole\Thread\Map $state): void
+    {
+        $entered = false;
+        $server = null;
+        try {
+            \Type\Runtime\CoroutineRuntime::run(function () use ($operation, $state, &$entered, &$server): void {
+                $entered = true;
+                try {
+                    $server = $operation();
+                } catch (Throwable $error) {
+                    $this->threadFailure = $error;
+                    $state['failed'] = true;
+                } finally {
+                    $state['ready'] = false;
+                    $this->control->stop();
+                    $this->clearThreadTimer();
+                }
+            });
+        } catch (TaskException $error) {
+            if (!$entered && $error->errorCode() === 'coroutine_start_failed') {
+                throw new TaskException('http_thread_start_failed', '无法启动 HTTP 监听协程');
+            }
+            throw $error;
+        }
+        if ($this->threadFailure !== null) {
+            throw $this->threadFailure;
+        }
+        if (!$server instanceof \Swoole\Coroutine\Http\Server) {
+            throw new TaskException('http_thread_start_failed', 'HTTP 线程没有创建监听器');
+        }
+        $statistics = $this->control->statistics();
+        if (($server->errCode !== 0 && $server->errCode !== SOCKET_ECANCELED) || $statistics['in_flight'] !== 0
+            || $statistics['quarantined'] !== 0 || $statistics['cleanup_failures'] !== 0) {
+            throw new TaskException('http_thread_cleanup_failed', 'HTTP 线程没有完整回收请求或原生连接');
+        }
+        $shutdown = $this->onWorkerStop;
+        if ($shutdown !== null) {
+            $shutdown();
+        }
     }
 
     /** 在监听所属协程启动原生接收循环；共享监听与自绑定监听使用相同的就绪和停止协议。 */
