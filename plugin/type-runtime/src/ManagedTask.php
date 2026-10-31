@@ -77,7 +77,7 @@ final class ManagedTask
     }
 
     /**
-     * 等待结果或重抛任务异常；超时取消任务，但不提前归还仍在途的资源。
+     * 等待结果或重抛任务异常；实时响应共享截止的缩短，超时不提前归还仍在途的资源。
      * @param float|null $seconds 本次最多等待的秒数，null 沿用共享截止。
      * @throws TaskException 等待超时，错误码为 task_timeout。
      * @throws \InvalidArgumentException 等待秒数为负数或非有限值。
@@ -93,7 +93,24 @@ final class ManagedTask
             }
             $remaining = $remaining === null ? $seconds : min($remaining, $seconds);
         }
-        $finished = $this->error !== null || $this->wait($remaining);
+        $finished = $this->error !== null || $this->finished;
+        if (!$finished && ($remaining === null || $remaining > 0.0)) {
+            $waiting = false;
+            $cid = Coroutine::getCid();
+            $subscription = $this->deadline->watch(function () use ($cid, &$waiting): void {
+                if ($waiting && $this->deadline->expired()) {
+                    Coroutine::cancel($cid);
+                }
+            });
+            try {
+                $waiting = true;
+                $finished = $this->wait($this->deadline->expired() ? 0.0 : $remaining);
+            } finally {
+                // 到期通知快照可能仍持有回调，不能取消 await 之后的独立清理等待。
+                $waiting = false;
+                $this->deadline->unwatch($subscription);
+            }
+        }
         if ($this->error !== null) {
             $this->observed = true;
             throw $this->error;
