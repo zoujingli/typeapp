@@ -128,6 +128,8 @@ function main(): void
 
 `WebSocket\Server::create($budget, $ip, $port, $options)` 创建监听，`WebSocket\Client::create($budget, $host, $port, $path, $tls, $headers, $maxMessageBytes, $connectTimeout, $tlsOptions)` 创建客户端。握手、掩码、分帧重组、控制帧、关闭握手与 TLS **全部由 Swoole 原生持有**，本组件只负责升级授权、连接会话、每条消息的 `ExecutionScope`、发送排队上限和关闭结算，不实现 RFC 6455 的帧解析或状态机。
 
+客户端仅在原生 `upgrade()` 成功、HTTP 状态为 101 且 `Upgrade` 包含 `websocket` 标记后进入活动状态；普通 HTTP 响应不能当作升级成功，Connection 和 Sec-WebSocket-Accept 校验继续由 Swoole 执行。握手失败自动关闭并归还本实例额度，同线程 `stop()` 可中断握手，等待中的实例不允许再次 `start()`，也不会在停止后重新激活。
+
 同一服务实例用 `onRequest()` 处理普通 HTTP 请求，用 `onOpen()`、`onMessage()`、`onClose()` 处理 WebSocket 连接与消息，共用监听地址、端口、原生连接上限和生命周期。登记回调后调用一次 `start()`；`stop()` 停止整个共用服务，`disconnect()` 仅关闭指定 WebSocket 连接。明文监听提供 HTTP/WS，启用 TLS 后同一监听提供 HTTPS/WSS。
 
 需要统计提交结果时使用 `tryDisconnect($fd, $code = 1000, $reason = ''): bool`：只对本实例已接受的连接返回原生 `disconnect` 或回退 `close` 的成功结果，未知、重复、已关闭和提交失败均为 `false`。成功表示提交，不代表对端确认或关闭结算完成；最终以 `onClose` 为准。仍须由服务所属进程/线程请求调用，失败后不重新开放业务投递或重复提交。原 `disconnect(): void` 保持兼容；新接口不属于原始 RC14，需安装包含修复的固定候选后重新 AOT。

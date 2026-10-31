@@ -80,6 +80,7 @@ final class Client implements ManagedResource
 
     /**
      * 完成真实握手；TLS 与 HTTP 升级由原生一次完成，合计受 connectTimeout 约束。
+     * 仅接受 101 升级；失败自动收尾，同线程 stop() 可中断握手，不允许重复进入。
      * @throws TaskException 缺少协程、状态不符、握手失败或期限用尽。
      * @throws \Type\Runtime\CapacityException 线程共享额度已满。
      */
@@ -100,24 +101,26 @@ final class Client implements ManagedResource
             $this->budget->acquire();
             $this->allocated = true;
         }
-        $client = new NativeClient($this->host, $this->port, $this->tls);
-        $settings = ['timeout' => $this->connectTimeout, 'websocket_mask' => true];
-        if ($this->tls) {
-            $settings = $settings + $this->tlsOptions;
-        }
-        $client->set($settings);
-        $client->setHeaders($this->headers + ['Host' => $this->host . ':' . $this->port]);
+        $this->state = 'starting';
         try {
-            if (!$client->upgrade($this->path)) {
-                $this->state = 'closed';
+            $client = new NativeClient($this->host, $this->port, $this->tls);
+            $this->client = $client;
+            $settings = ['timeout' => $this->connectTimeout, 'websocket_mask' => true];
+            if ($this->tls) {
+                $settings = $settings + $this->tlsOptions;
+            }
+            $client->set($settings);
+            $client->setHeaders($this->headers + ['Host' => $this->host . ':' . $this->port]);
+            // upgrade() 也可返回普通 HTTP 成功；WS 标记正确时才进入原生握手校验。
+            if (!$client->upgrade($this->path) || $client->statusCode !== 101
+                || !is_string($client->headers['upgrade'] ?? null)
+                || preg_match('/(?:^|,)[ \t]*websocket[ \t]*(?:,|$)/iD', $client->headers['upgrade']) !== 1) {
                 throw new TaskException('websocket_upgrade_failed', 'WebSocket 握手未成功：' . $client->statusCode);
             }
         } catch (\Throwable $error) {
-            $this->client = $client;
             $this->stop();
             throw $error;
         }
-        $this->client = $client;
         $this->state = 'active';
     }
 

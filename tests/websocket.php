@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
+require __DIR__ . '/websocket-client.php';
 
 use Type\Core\WebSocket\Client;
 use Type\Core\WebSocket\Server;
@@ -290,6 +291,9 @@ function wsReexec(): void
 }
 
 wsReexec();
+\Swoole\Coroutine\run(static function (): void {
+    expect(count(websocketClientUpgradeChecks()) === 10, 'WebSocket 客户端升级生命周期场景不足');
+});
 expect(extension_loaded('swoole'), 'WebSocket 验收需要已加载的 Swoole 扩展');
 
 $rejected = false;
