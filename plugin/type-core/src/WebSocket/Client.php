@@ -8,7 +8,6 @@ use Swoole\Coroutine;
 use Swoole\Coroutine\Http\Client as NativeClient;
 use Swoole\WebSocket\Frame;
 use Type\Runtime\CoroutineRuntime;
-use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionOwner;
 use Type\Runtime\ManagedResource;
 use Type\Runtime\ResourceBudget;
@@ -18,8 +17,8 @@ use Type\Runtime\TaskException;
  * 有界 WebSocket 客户端；握手、掩码、分帧、关闭握手与 TLS 完全由 Swoole 原生持有。
  *
  * 本类只负责升级结果校验、发送与接收上限、以及真实关闭结算，不自己拼装帧或计算
- * 掩码。每次接收返回原生已经重组好的一条消息；控制帧不进入业务消息路径，也不延长
- * 本次接收期限之外的等待。WSS 强制校验证书链和主机名，仅允许 TLS 1.2/1.3，不启用
+ * 掩码。每次接收返回原生已经重组好的一条消息；控制帧不进入业务消息路径，等待遵循
+ * 原生 recv() 语义。WSS 强制校验证书链和主机名，仅允许 TLS 1.2/1.3，不启用
  * 0-RTT 或自签名绕过。
  *
  * 实例固定在创建线程，同线程允许一读一写并行；不提供自动重连、隐式重发或应用级排队。
@@ -144,7 +143,7 @@ final class Client implements ManagedResource
     }
 
     /**
-     * 接收一条完整消息；原生已重组分片，控制帧不会作为消息返回。
+     * 接收一条完整消息；原生重组分片并处理控制帧，timeout 直接作为原生读取期限。
      * 返回 null 表示连接已关闭或本次接收超时，不表示收到一条空消息。
      * @throws TaskException 未握手或单条消息超过上限。
      */
@@ -152,34 +151,18 @@ final class Client implements ManagedResource
     {
         $timeout = self::timeout($timeout);
         $this->assertActive($timeout);
-        $deadline = new Deadline($timeout);
-        while (true) {
-            $remaining = $deadline->remaining() ?? 0.0;
-            if ($remaining <= 0) {
-                return null;
-            }
-            $frame = $this->client->recv($remaining);
-            if ($frame === false || $frame === '') {
-                return null;
-            }
-            if ($frame instanceof Frame && ($frame->opcode === \WEBSOCKET_OPCODE_PING
-                || $frame->opcode === \WEBSOCKET_OPCODE_PONG
-                || $frame->opcode === \WEBSOCKET_OPCODE_CLOSE)) {
-                if ($frame->opcode === \WEBSOCKET_OPCODE_CLOSE) {
-                    $this->stop();
-                    return null;
-                }
-                continue;
-            }
-            $data = $frame instanceof Frame ? $frame->data : (string) $frame;
-            $length = (int) strlen($data);
-            if ($length > $this->maxMessageBytes) {
-                $this->stop();
-                throw new TaskException('websocket_message_too_large', 'WebSocket 收到超过字节上限的消息，已关闭连接');
-            }
-            $this->receivedBytes += $length;
-            return $data;
+        $frame = $this->client->recv($timeout);
+        if ($frame === false || $frame === '') {
+            return null;
         }
+        $data = $frame instanceof Frame ? $frame->data : (string) $frame;
+        $length = (int) strlen($data);
+        if ($length > $this->maxMessageBytes) {
+            $this->stop();
+            throw new TaskException('websocket_message_too_large', 'WebSocket 收到超过字节上限的消息，已关闭连接');
+        }
+        $this->receivedBytes += $length;
+        return $data;
     }
 
     /** 关闭连接并释放额度；不等待对端确认，也不保留可重连状态。 */

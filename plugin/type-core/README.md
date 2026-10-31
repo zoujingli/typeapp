@@ -138,7 +138,9 @@ function main(): void
 
 `handshake()`、`onControl()`、`ping()`、`pong()` 与下面的容量扩展属于 RC14 之后的源码变更，官方 RC14 原版不包含。使用补丁包时固定其来源和内容摘要；RC14 兼容别名不代表已经发布了同名官方修复版。
 
-`onMessage` 登记的回调以第四个参数接收本条消息的作用域：数据库连接必须挂在其上，回调返回后立即关闭，即使对端仍连接或尚未读取回显，事务也不会继续占用。当前服务端使用单 worker 并启用 Swoole 回调协程，同一连接经 Channel 顺序进入业务回调；可让出的 I/O 等待不阻塞其他连接，CPU 密集或不可让出的调用仍会占用当前线程。客户端的业务处理作用域由调用方管理。每条连接同一时刻只有一个消息所有者；`send($fd, $data, $binary, $seconds)` 对单条消息与排队字节双重设限，超限即关闭该连接而不静默丢弃。控制帧（PING/PONG/CLOSE）不进入业务消息路径，也不延长任何业务超时。
+`onMessage` 登记的回调以第四个参数接收本条消息的作用域：数据库连接必须挂在其上，回调返回后立即关闭，即使对端仍连接或尚未读取回显，事务也不会继续占用。当前服务端使用单 worker 并启用 Swoole 回调协程，同一连接经 Channel 顺序进入业务回调；可让出的 I/O 等待不阻塞其他连接，CPU 密集或不可让出的调用仍会占用当前线程。客户端的业务处理作用域由调用方管理。每条连接同一时刻只有一个消息所有者；`send($fd, $data, $binary, $seconds)` 对单条消息与排队字节双重设限，超限即关闭该连接而不静默丢弃。控制帧（PING/PONG/CLOSE）由原生处理，不进入业务消息路径。
+
+客户端 `receive($seconds)` 直接调用 Swoole `recv($seconds)`，返回完整消息；空消息为 `''`，普通超时或连接关闭为 `null`，普通超时后连接仍可继续接收。当前固定 Swoole 在内部循环中逐帧使用读取期限，持续控制帧或分片可能延长整次调用；该参数尚不保证整条消息的总截止，PHP 外层计时也无法中断原生内部等待。
 
 WSS 通过 `open_ssl=true` 以及成对的 `ssl_cert_file`/`ssl_key_file` 启用，仅允许 TLS 1.2/1.3，不启用压缩或 0-RTT；本进程终止 TLS，四层透传同样走这一套证书，七层反代终止 TLS 后转到本进程时保持 `open_ssl=false`。客户端 `tls=true` 时强制校验证书链和主机名，可用 `ssl_cafile`/`ssl_host_name`。当前服务端固定使用经典 Swoole WebSocket Server，Windows `start()` 明确抛出 `websocket_unsupported_platform`；协程升级尚未接入本组件，普通 HTTP 的 Windows 路径不能代替 WS/WSS 验收。
 

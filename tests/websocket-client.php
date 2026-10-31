@@ -136,3 +136,119 @@ function websocketClientUpgradeChecks(): array
     }
     return $checks;
 }
+
+/**
+ * 通过客户端公开入口核对原生控制帧、分片和空消息，以及普通超时后的连接复用。
+ * 客户端发出就绪消息后对端才发送，并等待客户端关闭，避免握手及关闭与接收场景交叠。
+ * @return list<string> 已通过的接收场景。
+ */
+function websocketClientReceiveChecks(): array
+{
+    $server = new CoroutineHttpServer('127.0.0.1', 0);
+    $server->set(['open_websocket_close_frame' => true]);
+    $release = new Channel(1);
+    $server->handle('/controls', static function (Request $request, Response $response): void {
+        if ($response->upgrade() && $response->recv(1.0) instanceof Frame) {
+            $response->push('ping', WEBSOCKET_OPCODE_PING);
+            $response->push('pong', WEBSOCKET_OPCODE_PONG);
+            $response->push('message', WEBSOCKET_OPCODE_TEXT);
+            $response->recv(1.0);
+        }
+    });
+    $server->handle('/fragments', static function (Request $request, Response $response): void {
+        if ($response->upgrade() && $response->recv(1.0) instanceof Frame) {
+            $response->push('left-', WEBSOCKET_OPCODE_TEXT, 0);
+            $response->push('ping', WEBSOCKET_OPCODE_PING);
+            $response->push('right', WEBSOCKET_OPCODE_CONTINUATION, SWOOLE_WEBSOCKET_FLAG_FIN);
+            $response->recv(1.0);
+        }
+    });
+    $server->handle('/empty', static function (Request $request, Response $response): void {
+        if ($response->upgrade() && $response->recv(1.0) instanceof Frame) {
+            $response->push('');
+            $response->recv(1.0);
+        }
+    });
+    $server->handle('/closed', static function (Request $request, Response $response): void {
+        if ($response->upgrade() && $response->recv(1.0) instanceof Frame) {
+            $response->close();
+        }
+    });
+    $server->handle('/close-frame', static function (Request $request, Response $response): void {
+        if ($response->upgrade() && $response->recv(1.0) instanceof Frame) {
+            $response->push('', WEBSOCKET_OPCODE_CLOSE);
+            $frame = $response->recv(1.0);
+            if (!$frame instanceof Frame || $frame->opcode !== WEBSOCKET_OPCODE_CLOSE) {
+                throw new RuntimeException('WebSocket 客户端未由原生回应关闭帧');
+            }
+        }
+    });
+    $server->handle('/oversized', static function (Request $request, Response $response): void {
+        if ($response->upgrade() && $response->recv(1.0) instanceof Frame) {
+            $response->push('too-large');
+            $response->recv(1.0);
+        }
+    });
+    $server->handle('/timeout', static function (Request $request, Response $response) use ($release): void {
+        if ($response->upgrade() && $response->recv(1.0) instanceof Frame && $release->pop(1.0) === true) {
+            $response->push('after-timeout');
+            $response->recv(1.0);
+        }
+    });
+    Coroutine::create(static function () use ($server): void {
+        $server->start();
+    });
+    $checks = [];
+    try {
+        foreach (['/controls' => 'message', '/fragments' => 'left-right', '/empty' => '', '/closed' => null, '/close-frame' => null,
+            '/timeout' => 'after-timeout'] as $path => $expected) {
+            $budget = new ResourceBudget(1);
+            $client = Client::create($budget, '127.0.0.1', $server->port, $path);
+            try {
+                $client->start();
+                $client->send('?');
+                if ($path === '/timeout') {
+                    if ($client->receive(0.02) !== null || $client->statistics()['state'] !== 'active'
+                        || $client->statistics()['received_bytes'] !== 0 || $budget->statistics()['allocated'] !== 1) {
+                        throw new RuntimeException('WebSocket 普通接收超时改变连接或计数');
+                    }
+                    $release->push(true);
+                }
+                $message = $client->receive(1.0);
+                if ($message !== $expected
+                    || $client->statistics()['received_bytes'] !== ($expected === null ? 0 : strlen($expected))) {
+                    throw new RuntimeException('WebSocket 接收内容或业务字节计数错误：' . $path . '，内容=' . var_export($message, true));
+                }
+                $checks[] = $path;
+            } finally {
+                $client->stop();
+            }
+            if ($budget->statistics()['allocated'] !== 0) {
+                throw new RuntimeException('WebSocket 接收结束后未归还额度：' . $path);
+            }
+        }
+        $budget = new ResourceBudget(1);
+        $client = Client::create($budget, '127.0.0.1', $server->port, '/oversized', false, [], 4);
+        $failure = '';
+        try {
+            $client->start();
+            $client->send('?');
+            $client->receive(1.0);
+        } catch (TaskException $error) {
+            $failure = $error->errorCode();
+        } finally {
+            $allocated = $budget->statistics()['allocated'];
+            $state = $client->statistics()['state'];
+            $received = $client->statistics()['received_bytes'];
+            $client->stop();
+        }
+        if ($failure !== 'websocket_message_too_large' || $state !== 'closed' || $allocated !== 0 || $received !== 0) {
+            throw new RuntimeException('WebSocket 超长消息未关闭连接或错误累计业务字节');
+        }
+        $checks[] = '/oversized';
+    } finally {
+        $release->close();
+        $server->shutdown();
+    }
+    return $checks;
+}
