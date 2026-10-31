@@ -40,16 +40,19 @@ final class CoroutineRuntime
         }
         $scheduler = new Scheduler();
         $scheduler->set(['hook_flags' => \Swoole\Runtime::getHookFlags()]);
+        // Scheduler 跑完事件循环也会返回成功；另核对根协程是否真正进入。
+        $started = false;
         $result = null;
         $failure = null;
         try {
-            if ($scheduler->add(static function () use ($operation, &$result, &$failure): void {
+            if ($scheduler->add(static function () use ($operation, &$started, &$result, &$failure): void {
+                $started = true;
                 try {
                     $result = $operation();
                 } catch (Throwable $error) {
                     $failure = $error;
                 }
-            }) === false || !$scheduler->start()) {
+            }) === false || !$scheduler->start() || !$started) {
                 throw new TaskException('coroutine_start_failed', '无法启动 Swoole 协程入口');
             }
         } finally {
