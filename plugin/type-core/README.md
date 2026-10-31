@@ -144,6 +144,8 @@ function main(): void
 
 WSS 通过 `open_ssl=true` 以及成对的 `ssl_cert_file`/`ssl_key_file` 启用，仅允许 TLS 1.2/1.3，不启用压缩或 0-RTT；本进程终止 TLS，四层透传同样走这一套证书，七层反代终止 TLS 后转到本进程时保持 `open_ssl=false`。客户端 `tls=true` 时强制校验证书链和主机名，可用 `ssl_cafile`/`ssl_host_name`。当前服务端固定使用经典 Swoole WebSocket Server，Windows `start()` 明确抛出 `websocket_unsupported_platform`；协程升级尚未接入本组件，普通 HTTP 的 Windows 路径不能代替 WS/WSS 验收。
 
+当前固定 Swoole 的经典 Server 未读取 `ssl_passphrase`。本组件接受并转交该可选键，但加密私钥仍在原生 `ssl_init()` 阶段失败，尚不属于已支持能力；普通私钥的 TLS 1.2/1.3 握手、WS 消息与同端口 HTTPS 按实际产物验收。
+
 边界与默认值：服务端消息上限与排队上限各为 1 B–64 MiB（默认仍为 1 MiB），连接数 1–4096（默认 64）。`package_max_length` 必须介于消息上限与两倍之间，并为帧头留空间；默认 2 MiB。`message_seconds` 为 (0,60] 秒（默认 30）。原生 `heartbeat_idle_time` / `heartbeat_check_interval` 使用整数秒，旧的 `package_max_bytes`、浮点秒 `idle_seconds` / `heartbeat_seconds` 继续兼容，冲突配置明确拒绝。客户端的默认消息上限仍为 1 MiB；`receive($seconds)` 返回原生已重组的完整消息，`null` 表示关闭或超时，不代表空消息。
 
 默认由 Swoole 自动回复 Ping。开启 `open_websocket_ping_frame` 后，框架负责原样回复一次 Pong，再通过 `onControl(int $fd, int $opcode, string $data, ExecutionScope $scope)` 观察；业务不要再次应答。`ping()` / `pong()` 主动发送的控制载荷最多 125 字节。`onClose(int $fd, int $reactorId)` 对已接受连接结算一次，覆盖主动断开、异常、对端关闭及停止；第二参数是 reactor ID，服务退出兜底为 -1，不是 WebSocket 关闭状态码。

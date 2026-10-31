@@ -51,10 +51,6 @@ final class Server implements ManagedResource
     private ?\Closure $onControl = null;
     private ?\Closure $onClose = null;
     private ?\Closure $onRequest = null;
-    private string $certificate = '';
-    private string $privateKey = '';
-    private string $passphrase = '';
-    private int $sslProtocols = 0;
 
     private function __construct(
         private ResourceBudget $budget,
@@ -63,12 +59,6 @@ final class Server implements ManagedResource
         private array $options
     ) {
         $this->owner = new ExecutionOwner(false);
-        if ($this->options['open_ssl']) {
-            $this->certificate = $this->options['ssl_cert_file'];
-            $this->privateKey = $this->options['ssl_key_file'];
-            $this->sslProtocols = $this->options['ssl_protocols'];
-            $this->passphrase = $this->options['ssl_passphrase'] ?? '';
-        }
     }
 
     /**
@@ -614,14 +604,14 @@ final class Server implements ManagedResource
             $settings['websocket_subprotocol'] = $this->options['subprotocol'];
         }
         if ($this->options['open_ssl']) {
-            $settings['ssl_cert_file'] = $this->certificate;
-            $settings['ssl_key_file'] = $this->privateKey;
+            $settings['ssl_cert_file'] = $this->options['ssl_cert_file'];
+            $settings['ssl_key_file'] = $this->options['ssl_key_file'];
             $settings['ssl_verify_peer'] = false;
             $settings['ssl_allow_self_signed'] = false;
             $settings['ssl_compress'] = false;
-            $settings['ssl_protocols'] = $this->sslProtocols;
-            if ($this->passphrase !== '') {
-                $settings['ssl_passphrase'] = $this->passphrase;
+            $settings['ssl_protocols'] = $this->options['ssl_protocols'];
+            if (($this->options['ssl_passphrase'] ?? '') !== '') {
+                $settings['ssl_passphrase'] = $this->options['ssl_passphrase'];
             }
         }
         if ($native->set($settings) === false) {
