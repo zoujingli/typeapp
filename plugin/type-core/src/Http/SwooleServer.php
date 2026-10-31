@@ -74,14 +74,7 @@ final class SwooleServer implements HttpServerInterface
             try {
                 \Type\Runtime\CoroutineRuntime::run(function () use ($host, $port, $signals): void {
                     $server = new \Swoole\Coroutine\Http\Server($host, $port);
-                    $server->set([
-                        'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
-                        'http_compression' => false, 'package_max_length' => $this->limits->bytes,
-                        'socket_timeout' => $this->control->requestSeconds,
-                    ]);
-                    $server->handle('/', function (Request $request, Response $response): void {
-                        $this->handleNative($request, $response);
-                    });
+                    $this->configureCoroutineServer($server, false);
                     // tick 固定传入定时器 ID；即使未使用，也须满足 AOT 的完整回调签名。
                     $timer = \Swoole\Timer::tick(20, function (int $timerId) use ($server, $signals): void {
                         $signals->dispatch();
@@ -198,48 +191,10 @@ final class SwooleServer implements HttpServerInterface
             \Swoole\Coroutine::set(['max_coroutine' => $this->control->maximumConnections
                 + $this->control->maximumRequests * $this->control->maximumChildren + 2]);
             $server = \Swoole\Coroutine\Http\Server::fromSocket($listener, 128);
-            $server->set(['http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
-                'typeapp_http1_input' => true, 'http_compression' => false, 'package_max_length' => $this->limits->bytes,
-                'socket_timeout' => $this->control->requestSeconds, 'typeapp_max_connections' => $this->control->maximumConnections]);
-            $server->handle('/', function (Request $request, Response $response): void {
-                $this->handleNative($request, $response);
-            });
+            $this->configureCoroutineServer($server, true);
             $created = \Swoole\Coroutine::create(function () use ($server, $state): void {
                 try {
-                    if ($state['stop'] === true) {
-                        $this->control->stop();
-                        return;
-                    }
-                    $timer = \Swoole\Timer::tick(20, function (int $timerId) use ($server, $state): void {
-                        try {
-                            $state['pulse'] = hrtime(true);
-                            if ($this->control->mustTerminate()) {
-                                $state['failed'] = true;
-                                $this->control->stop();
-                            }
-                            if ($state['stop'] === true || $this->control->stopping()) {
-                                $state['ready'] = false;
-                                $this->control->stop();
-                                $server->shutdown();
-                                $this->clearThreadTimer();
-                            }
-                        } catch (Throwable $error) {
-                            $this->threadFailure = $error;
-                            $state['failed'] = true;
-                            $state['ready'] = false;
-                            $this->clearThreadTimer();
-                            $server->shutdown();
-                        }
-                    });
-                    if ($timer === false) {
-                        throw new TaskException('http_thread_timer', '无法启动 HTTP 线程停止检查');
-                    }
-                    $this->watchdog = $timer;
-                    $state['pulse'] = hrtime(true);
-                    $state['ready'] = true;
-                    if (!$server->start()) {
-                        throw new TaskException('http_thread_start_failed', 'HTTP 线程监听启动失败：' . $server->errCode . ' ' . $server->errMsg);
-                    }
+                    $this->startThreadServer($server, $state);
                 } catch (Throwable $error) {
                     $this->threadFailure = $error;
                     $state['failed'] = true;
@@ -305,49 +260,8 @@ final class SwooleServer implements HttpServerInterface
             $run = function () use (&$server, $host, $port, $state): void {
                 try {
                     $server = new \Swoole\Coroutine\Http\Server($host, $port);
-                    $server->set([
-                        'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
-                        'http_compression' => false, 'package_max_length' => $this->limits->bytes,
-                        'socket_timeout' => $this->control->requestSeconds,
-                        'typeapp_http1_input' => true, 'typeapp_max_connections' => $this->control->maximumConnections,
-                    ]);
-                    $server->handle('/', function (Request $request, Response $response): void {
-                        $this->handleNative($request, $response);
-                    });
-                    if ($state['stop'] === true) {
-                        $this->control->stop();
-                        return;
-                    }
-                    $timer = \Swoole\Timer::tick(20, function (int $timerId) use ($server, $state): void {
-                        try {
-                            $state['pulse'] = hrtime(true);
-                            if ($this->control->mustTerminate()) {
-                                $state['failed'] = true;
-                                $this->control->stop();
-                            }
-                            if ($state['stop'] === true || $this->control->stopping()) {
-                                $state['ready'] = false;
-                                $this->control->stop();
-                                $server->shutdown();
-                                $this->clearThreadTimer();
-                            }
-                        } catch (Throwable $error) {
-                            $this->threadFailure = $error;
-                            $state['failed'] = true;
-                            $state['ready'] = false;
-                            $this->clearThreadTimer();
-                            $server->shutdown();
-                        }
-                    });
-                    if ($timer === false) {
-                        throw new TaskException('http_thread_timer', '无法启动 HTTP 线程停止检查');
-                    }
-                    $this->watchdog = $timer;
-                    $state['pulse'] = hrtime(true);
-                    $state['ready'] = true;
-                    if (!$server->start()) {
-                        throw new TaskException('http_thread_start_failed', 'HTTP 线程监听启动失败：' . $server->errCode . ' ' . $server->errMsg);
-                    }
+                    $this->configureCoroutineServer($server, true);
+                    $this->startThreadServer($server, $state);
                 } catch (Throwable $error) {
                     $this->threadFailure = $error;
                     $state['failed'] = true;
@@ -395,6 +309,62 @@ final class SwooleServer implements HttpServerInterface
     public function stop(): void
     {
         $this->control->stop();
+    }
+
+    /** 原生配置与 PSR 处理链共用一处；编译线程额外启用已核验的输入与连接额度适配。 */
+    private function configureCoroutineServer(\Swoole\Coroutine\Http\Server $server, bool $threaded): void
+    {
+        $settings = [
+            'http_parse_post' => false, 'http_parse_files' => false, 'http_parse_cookie' => false,
+            'http_compression' => false, 'package_max_length' => $this->limits->bytes,
+            'socket_timeout' => $this->control->requestSeconds,
+        ];
+        if ($threaded) {
+            $settings += ['typeapp_http1_input' => true, 'typeapp_max_connections' => $this->control->maximumConnections];
+        }
+        $server->set($settings);
+        $server->handle('/', function (Request $request, Response $response): void {
+            $this->handleNative($request, $response);
+        });
+    }
+
+    /** 在监听所属协程启动原生接收循环；共享监听与自绑定监听使用相同的就绪和停止协议。 */
+    private function startThreadServer(\Swoole\Coroutine\Http\Server $server, \Swoole\Thread\Map $state): void
+    {
+        if ($state['stop'] === true) {
+            $this->control->stop();
+            return;
+        }
+        $timer = \Swoole\Timer::tick(20, function (int $timerId) use ($server, $state): void {
+            try {
+                $state['pulse'] = hrtime(true);
+                if ($this->control->mustTerminate()) {
+                    $state['failed'] = true;
+                    $this->control->stop();
+                }
+                if ($state['stop'] === true || $this->control->stopping()) {
+                    $state['ready'] = false;
+                    $this->control->stop();
+                    $server->shutdown();
+                    $this->clearThreadTimer();
+                }
+            } catch (Throwable $error) {
+                $this->threadFailure = $error;
+                $state['failed'] = true;
+                $state['ready'] = false;
+                $this->clearThreadTimer();
+                $server->shutdown();
+            }
+        });
+        if ($timer === false) {
+            throw new TaskException('http_thread_timer', '无法启动 HTTP 线程停止检查');
+        }
+        $this->watchdog = $timer;
+        $state['pulse'] = hrtime(true);
+        $state['ready'] = true;
+        if (!$server->start()) {
+            throw new TaskException('http_thread_start_failed', 'HTTP 线程监听启动失败：' . $server->errCode . ' ' . $server->errMsg);
+        }
     }
 
     private function clearThreadTimer(): void
