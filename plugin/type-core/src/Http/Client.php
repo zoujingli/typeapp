@@ -74,7 +74,8 @@ final class Client implements ManagedResource
         $target = self::target($url);
         $settings = self::tls($target['host'], $target['tls'], $tlsOptions);
         $requestHeaders = self::headers($headers);
-        $remaining = $this->scope->deadline()->remaining();
+        $deadline = $this->scope->deadline();
+        $remaining = $deadline->remaining();
         $scopeDeadline = $remaining !== null && ($timeout === 0.0 || $remaining <= $timeout);
         // 原生 0 会采用默认超时；-1 才表示不增加等待期限，scope 仍负责取消。
         $seconds = $scopeDeadline ? $remaining : ($timeout === 0.0 ? -1.0 : $timeout);
@@ -91,6 +92,7 @@ final class Client implements ManagedResource
         // Swoole 返回 int|false；保留联合值，避免 AOT 将定时器编号收窄为 bool。
         $timer = \std::any(false);
         $subscription = 0;
+        $deadlineSubscription = 0;
         try {
             $client->set($settings + [
                 'connect_timeout' => $seconds,
@@ -113,8 +115,17 @@ final class Client implements ManagedResource
             $subscription = $this->scope->cancellation()->subscribe(static function () use ($client): void {
                 $client->close();
             });
-            // 原生 timeout 约束一次等待；总期限同时防止持续小块响应无限延长请求。
-            if ($seconds > 0) {
+            try {
+                $deadlineSubscription = $deadline->watch(static function () use ($client, $deadline): void {
+                    if ($deadline->expired()) {
+                        $client->close();
+                    }
+                });
+            } catch (\Throwable) {
+                throw new TaskException('http_client_timer_failed', '无法登记 HTTP 请求总期限');
+            }
+            // 原生分阶段计时；只有请求自身预算更短时才另设总期限，作用域等待共用 Deadline。
+            if ($seconds > 0 && !$scopeDeadline) {
                 $timer = Timer::after(max(1, (int) $milliseconds), static function () use ($client, &$timedOut): void {
                     $timedOut = true;
                     $client->close();
@@ -123,6 +134,7 @@ final class Client implements ManagedResource
                     throw new TaskException('http_client_timer_failed', '无法登记 HTTP 请求总期限');
                 }
             }
+            $this->scope->assertActive();
             $received = $client->execute($target['path']);
             $this->scope->assertActive();
             if ($timedOut || $client->statusCode === -2) {
@@ -147,6 +159,7 @@ final class Client implements ManagedResource
             if ($timer !== false && Timer::exists($timer)) {
                 Timer::clear($timer);
             }
+            $deadline->unwatch($deadlineSubscription);
             $this->scope->cancellation()->unsubscribe($subscription);
             $this->requesting = false;
             $this->closeConnection();

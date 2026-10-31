@@ -289,6 +289,52 @@ final class TcpProbe
         } finally {
             $shortened->close();
         }
+        foreach ([[$plain, [], 0.0, 2.0], [$secure, $options, 0.0, 2.0], [$plain, [], 0.8, 2.0], [$secure, $options, 0.8, 2.0],
+            [$plain, [], 0.0, null], [$secure, $options, 0.0, null], [$plain, [], 0.8, null], [$secure, $options, 0.8, null]] as [$deadlineUrl, $deadlineTls, $requestSeconds, $scopeSeconds]) {
+            self::$observations['http_phase'] = 'external-deadline';
+            $externalCancellation = new \Type\Runtime\Cancellation();
+            $externalScope = new ExecutionScope(new \Type\Runtime\Deadline($scopeSeconds), cancellation: $externalCancellation);
+            $independentScope = new ExecutionScope(new \Type\Runtime\Deadline(5.0), cancellation: $externalCancellation);
+            $externalDeadline = $externalScope->deadline();
+            $marker = bin2hex(random_bytes(8));
+            $ready = dirname($peers['certificate']) . '/http-slow-ready-' . $marker;
+            $closed = dirname($peers['certificate']) . '/http-slow-closed-' . $marker;
+            $changed = new Channel(1);
+            Coroutine::create(static function () use ($ready, $externalDeadline, $changed): void {
+                $wait = new \Type\Runtime\Deadline(2.0);
+                while (!is_file($ready) && !$wait->expired()) {
+                    clearstatcache(true, $ready);
+                    Coroutine::sleep(0.001);
+                }
+                $accepted = is_file($ready);
+                $externalDeadline->shorten(0.02);
+                $changed->push($accepted);
+            });
+            $began = hrtime(true);
+            try {
+                $externalScope->run(static function (ExecutionScope $current) use ($deadlineUrl, $deadlineTls, $requestSeconds, $marker): void {
+                    self::rejected(static fn (): mixed => (new \Type\Core\Http\Client())->request('GET',
+                        $deadlineUrl . '/slow?marker=' . $marker, timeout: $requestSeconds, tlsOptions: $deadlineTls), 'deadline_exceeded');
+                });
+                $elapsed = (hrtime(true) - $began) / 1e9;
+                self::check($changed->pop(3) === true, '缩短截止前对端尚未实际接纳 HTTP 请求');
+                self::check($elapsed < 0.25, '外部取消对象的作用域缩短截止后未及时结束请求：' . $elapsed);
+                self::check(!$externalCancellation->cancelled(), 'HTTP 自身到期取消了外部共享取消对象');
+                $independentScope->assertActive();
+                $closeDeadline = new \Type\Runtime\Deadline(2.0);
+                while (!is_file($closed) && !$closeDeadline->expired()) {
+                    clearstatcache(true, $closed);
+                    Coroutine::sleep(0.001);
+                }
+                self::check(is_file($closed), '截止后对端未观察到 HTTP 连接关闭');
+            } finally {
+                $externalScope->close();
+                $independentScope->close();
+                $changed->close();
+                @unlink($ready);
+                @unlink($closed);
+            }
+        }
         // 取消会在 Timer 回调中同步唤醒请求；等该回调真正返回后再核对计时器回收。
         $settled = new Channel(1);
         Swoole\Event::defer(static function () use ($settled): void {

@@ -181,6 +181,8 @@ final class StatusService
 
 `request(method, url, headers, body, timeout, maxResponseBytes, tlsOptions)` 返回 PSR `ResponseInterface`。默认总期限 10 秒、正文预算 1 MiB；正数期限受作用域剩余期限收紧，持续小块响应不能延长总期限。`timeout: 0.0` 不添加请求自身期限，仅服从当前作用域的截止与取消；作用域也没有截止时，请求等待直至完成、失败或取消。正数期限须在原生定时器可表示范围内，没有额外的 60 秒限制。
 
+作用域期限更早时，请求与作用域共用 `Deadline` 的原生计时；请求自身预算更短时保留独立总计时。等待期间缩短作用域期限会关闭本次 HTTP 连接，即使该作用域使用外部 `Cancellation`；这不会替调用方取消同一对象关联的其他独立作用域。
+
 `maxResponseBytes: 0` 不添加组件响应正文上限；正数在原生接收回调中核对收到的正文字节。请求和响应没有固定的 16 MiB 上限，请求头合计仍至多 64 KiB。接口完整接收响应后返回，不是流式下载接口；关闭字节上限时，调用方须根据负载控制内存与并发。
 
 ```php
