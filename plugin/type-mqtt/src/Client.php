@@ -109,16 +109,17 @@ final class Client
         $this->stopped = false;
         $this->resetNetwork();
         try {
-            CoroutineRuntime::run(function () use ($deadline): void {
+            $frame = CoroutineRuntime::run(function () use ($deadline, $cleanStart): ?array {
                 $this->connectSocket($deadline);
+                $connectProperties = "\x11" . pack('N', $this->sessionExpiry) . "\x21" . pack('n', $this->receiveMaximum)
+                    . "\x27" . pack('N', $this->maximumPacketBytes) . "\x22\0\0";
+                $body = self::field('MQTT') . "\x05" . chr($cleanStart ? 0xc2 : 0xc0) . pack('n', $this->keepAlive)
+                    . PacketReader::encodeVariable(strlen($connectProperties)) . $connectProperties . self::field($this->clientId)
+                    . self::field($this->username) . pack('n', strlen($this->password)) . $this->password;
+                $this->write(self::packet(0x10, $body), $deadline);
+                return $this->frame($deadline, true);
             });
-            $connectProperties = "\x11" . pack('N', $this->sessionExpiry) . "\x21" . pack('n', $this->receiveMaximum)
-                . "\x27" . pack('N', $this->maximumPacketBytes) . "\x22\0\0";
-            $body = self::field('MQTT') . "\x05" . chr($cleanStart ? 0xc2 : 0xc0) . pack('n', $this->keepAlive)
-                . PacketReader::encodeVariable(strlen($connectProperties)) . $connectProperties . self::field($this->clientId)
-                . self::field($this->username) . pack('n', strlen($this->password)) . $this->password;
-            $this->write(self::packet(0x10, $body), $deadline);
-            $frame = $this->frame($deadline, true);
+            $this->assertSocket();
             if ($frame === null || $frame['header'] !== 0x20) {
                 throw new ProtocolError(0x82);
             }
@@ -332,10 +333,14 @@ final class Client
         $this->waitingType = $responseType;
         $this->response = null;
         try {
-            $this->write($encoded ? $body : self::packet($header, $body), $deadline);
-            while ($this->response === null) {
-                $this->pump($deadline, true);
-            }
+            CoroutineRuntime::run(function () use ($header, $body, $deadline, $encoded): void {
+                $this->write($encoded ? $body : self::packet($header, $body), $deadline);
+                while ($this->response === null) {
+                    $this->pump($deadline, true);
+                }
+            });
+            // Scheduler 可能在根协程退出后继续分发 stop；整次调用返回前不确认成功。
+            $this->assertSocket();
             $reason = $this->response;
             if ($responseType === 0x40) {
                 $this->publication = null;
@@ -555,15 +560,21 @@ final class Client
                 }
                 return null;
             }
+            // 已缓冲报文保持同步解析；只有需要网络时建立一次上下文，分片续收复用该协程。
+            if (\Swoole\Coroutine::getCid() < 0) {
+                $receivedFrame = CoroutineRuntime::run(function () use ($deadline, $required): ?array {
+                    return $this->frame($deadline, $required);
+                });
+                $this->assertSocket();
+                return $receivedFrame;
+            }
             if ($this->connected && $this->effectiveKeepAlive > 0 && $this->ping === null
                 && ($deadline->remaining() ?? 0.0) >= 0.01
                 && self::now() - $this->lastWrite >= max(0.25, (float)$this->effectiveKeepAlive / 2.0)) {
                 $this->write("\xc0\0", $deadline);
                 $this->ping = new Deadline((float)$this->effectiveKeepAlive);
             }
-            $bytes = CoroutineRuntime::run(function () use ($deadline): string|false {
-                return $this->socket->recv(min(16384, $this->maximumPacketBytes - strlen($this->input)), $this->readTimeout($deadline));
-            });
+            $bytes = $this->socket->recv(min(16384, $this->maximumPacketBytes - strlen($this->input)), $this->readTimeout($deadline));
             $this->assertSocket();
             if ($bytes === false && $this->socket->errCode === SOCKET_ETIMEDOUT) {
                 continue;

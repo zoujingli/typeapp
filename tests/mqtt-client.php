@@ -165,6 +165,16 @@ function clientPeerCase(array $settings): void
     $result = [];
     try {
         $client->connect(true, 1.0);
+        if (in_array($scenario, ['receive-sync-stop', 'publish-sync-stop'], true)) {
+            Swoole\Timer::tick(1, static function (int $timerId) use ($client): void {
+                // 仅剩定时器回调自身时，根协程已退出；Scheduler 处理取消后才返回调用者。
+                if (Swoole\Coroutine::stats()['coroutine_num'] === 1) {
+                    Swoole\Timer::clear($timerId);
+                    $client->stop();
+                }
+            });
+            file_put_contents($settings['signal_file'], 'ready');
+        }
         if (in_array($scenario, ['short-wait-partial', 'tls-success'], true)) {
             clientCheck($client->receive(0.1) === null && $client->statistics()['connected'], '短等待误关闭连接');
             $received = $client->receive(1.0);
@@ -323,7 +333,8 @@ function main(int $argc, array $argv): void
 {
     if (in_array('--client-peer', $argv, true)) {
         $settings = ['scenario' => (string) getenv('CLIENT_SCENARIO'), 'port' => (int) getenv('CLIENT_PORT'),
-            'certificate' => (string) getenv('CLIENT_CA'), 'coroutine' => getenv('CLIENT_COROUTINE') === '1'];
+            'certificate' => (string) getenv('CLIENT_CA'), 'coroutine' => getenv('CLIENT_COROUTINE') === '1',
+            'signal_file' => (string) getenv('CLIENT_SIGNAL_FILE')];
         if (getenv('CLIENT_THREAD') === '1') {
             $thread = Type\Runtime\CoroutineRuntime::startThread('client-peer', json_encode($settings, JSON_THROW_ON_ERROR));
             $thread->join();
@@ -376,6 +387,9 @@ function mqttClientPeerCases(string $consumer, array $command, array $environmen
     if (($environment['CLIENT_COROUTINE'] ?? '') === '1') {
         $cases += ['stop-wait' => [null, '', null], 'cancel-wait' => [null, '', null], 'foreign-owner' => [null, '', null],
             'default-coroutine-owner' => [null, '', null], 'parallel-client' => [null, '', null]];
+    } else {
+        $cases += ['receive-sync-stop' => [null, mqttPacket(0x32, mqttField('example/wire') . "\0\x01\0payload"), null],
+            'publish-sync-stop' => [null, mqttPacket(0x40, "\0\x01"), null]];
     }
     expect(array_diff($only, array_keys($cases)) === [], '指定的客户端场景不存在');
     if ($only !== []) {
@@ -390,6 +404,7 @@ function mqttClientPeerCases(string $consumer, array $command, array $environmen
         $environment['CLIENT_PORT'] = substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
         $environment['CLIENT_SCENARIO'] = $scenario;
         $environment['CLIENT_CA'] = $consumer . '/certificate.pem';
+        $environment['CLIENT_SIGNAL_FILE'] = $evidenceDirectory . '/' . $mode . '-' . $scenario . '.ready';
         $client = new Process([...$command, '--client-peer'], $consumer, $environment);
         $socket = null;
         try {
@@ -448,6 +463,13 @@ function mqttClientPeerCases(string $consumer, array $command, array $environmen
                         expect(mqttRead($socket) === "\xc0\0", '等待期间未按保活期限发送PING');
                         mqttWrite($socket, "\xd0\0");
                     }
+                } elseif ($scenario === 'receive-sync-stop') {
+                    $readyDeadline = microtime(true) + 2.0;
+                    while (!is_file($environment['CLIENT_SIGNAL_FILE'])) {
+                        expect($client->running() && microtime(true) < $readyDeadline, '同步接收取消夹具没有就绪');
+                        usleep(1000);
+                    }
+                    mqttWrite($socket, $expected[1]);
                 } elseif (str_starts_with($scenario, 'publish-') && $scenario !== 'publish-packet-budget') {
                     $publish = mqttRead($socket);
                     expect(ord($publish[0]) === 0x32 && strlen($publish) > 256, 'Client发布编码或QoS不符');
@@ -506,6 +528,9 @@ function mqttClientPeerCases(string $consumer, array $command, array $environmen
                 expect($observation['failure'] === 'mqtt_client_tls_failed', 'TLS证书身份未拒绝');
             } elseif ($scenario === 'stop-wait' || $scenario === 'cancel-wait') {
                 expect($observation['failure'] === ($scenario === 'stop-wait' ? 'mqtt_client_stopped' : 'mqtt_client_cancelled'), '取消等待结果不符');
+            } elseif ($scenario === 'receive-sync-stop' || $scenario === 'publish-sync-stop') {
+                expect($observation['failure'] === 'mqtt_client_stopped', '同步入口在 Scheduler 退出前取消后仍返回成功');
+                expect($scenario !== 'publish-sync-stop' || $observation['unknown_publication'], '取消提前把未返回的发布交换标记为确定成功');
             } elseif ($scenario === 'partial-expiry') {
                 expect($observation['failure'] === 'mqtt_client_partial_timeout', '短等待重置了半包截止');
             } elseif ($scenario === 'publish-lost-ack') {
@@ -531,6 +556,9 @@ function mqttClientPeerCases(string $consumer, array $command, array $environmen
             }
             fclose($listener);
             $stopped = $client->stop();
+            if (is_file($environment['CLIENT_SIGNAL_FILE'])) {
+                unlink($environment['CLIENT_SIGNAL_FILE']);
+            }
             if (!is_file($evidenceDirectory . '/' . $mode . '-' . $scenario . '.json')) {
                 file_put_contents($evidenceDirectory . '/' . $mode . '-' . $scenario . '.json', json_encode([
                     'exit' => $stopped->exitCode, 'stdout' => $stopped->stdout, 'stderr' => $stopped->stderr,
