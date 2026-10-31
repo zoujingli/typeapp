@@ -64,15 +64,7 @@ final class SchedulerConsole
                     break;
                 }
                 if ($tick + 1 < $ticks) {
-                    // 使用原生 hook 等待；至多 50ms 复核停止状态，不把 60s 间隔变成停机延迟。
-                    $until = hrtime(true) + $milliseconds * 1000000;
-                    while ($this->scheduler->ready()) {
-                        $remaining = $until - hrtime(true);
-                        if ($remaining <= 0) {
-                            break;
-                        }
-                        usleep((int) min(50000, max(1, intdiv($remaining, 1000))));
-                    }
+                    $this->scheduler->awaitInterval($milliseconds / 1000.0);
                 }
             }
 

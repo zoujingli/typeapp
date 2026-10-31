@@ -6,6 +6,7 @@ namespace Type\Scheduler;
 
 use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
+use Swoole\Coroutine\Channel;
 use Throwable;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
@@ -22,6 +23,7 @@ final class Scheduler
     private int $tickLimit;
     private int $executionMilliseconds;
     private WorkLifecycle $lifecycle;
+    private ?Channel $intervalWait = null;
     private array $counts = ['triggered' => 0, 'failed' => 0, 'interrupted' => 0, 'storage_failures' => 0, 'cleanup_failures' => 0, 'lease_conflicts' => 0, 'limit_reached' => 0];
 
     /**
@@ -70,7 +72,7 @@ final class Scheduler
                 $this->counts['lease_conflicts']++;
             } else {
                 $this->counts['storage_failures']++;
-                $this->lifecycle->stop(0.0);
+                $this->stop(0.0);
             }
             throw $error;
         } finally {
@@ -82,6 +84,26 @@ final class Scheduler
     public function stop(float $drainSeconds = 5.0): void
     {
         $this->lifecycle->stop($drainSeconds);
+        $this->intervalWait?->close();
+    }
+    /**
+     * @internal 控制台在已有协程中等待已校验的轮询间隔；停止直接唤醒，不触发任务。
+     * 取消原生等待仅唤醒本次 pop，不能提前执行下一轮。
+     */
+    public function awaitInterval(float $seconds): void
+    {
+        if (!$this->ready()) {
+            return;
+        }
+        $deadline = new Deadline($seconds);
+        $this->intervalWait ??= new Channel(1);
+        while ($this->ready()) {
+            $remaining = $deadline->remaining() ?? 0.0;
+            if ($remaining <= 0.0) {
+                return;
+            }
+            $this->intervalWait->pop($remaining);
+        }
     }
     /** 返回是否继续接受新 tick 及本轮剩余计划。 */
     public function ready(): bool
@@ -185,7 +207,7 @@ final class Scheduler
                     }
                     if ($cleanupIncomplete) {
                         $this->counts['cleanup_failures']++;
-                        $this->lifecycle->stop(0.0);
+                        $this->stop(0.0);
                         return $results;
                     }
                 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/support.php';
 require $argv[1] ?? dirname(__DIR__) . '/vendor/autoload.php';
+require __DIR__ . '/scheduler-wait.php';
 
 use Psr\Clock\ClockInterface;
 use Type\Runtime\ManagedResource;
@@ -105,6 +106,7 @@ expect(scheduledTimes(new CronSchedule('45 1 * * *', 'Australia/Lord_Howe', 'bot
 expect(scheduledTimes(new CronSchedule('0 0 L * *'), '2028-02-28T23:59:59Z', '2028-03-01T00:00:00Z') === ['2028-02-29 00:00:00'], 'Cron 解析库没有处理闰年月末');
 expect((new IntervalSchedule(10, 5))->occurrences(5, 46, 3) === [25, 35, 45], '固定锚点间隔或最新补跑上限错误');
 
+\Type\Runtime\CoroutineRuntime::enableIo();
 \Type\Runtime\CoroutineRuntime::run(static function (): void {
     $directory = dirname(__DIR__) . '/build/type_scheduler_' . bin2hex(random_bytes(8));
     expect(mkdir($directory, 0700), '无法建立调度测试状态目录');
@@ -180,7 +182,8 @@ expect((new IntervalSchedule(10, 5))->occurrences(5, 46, 3) === [25, 35, 45], '�
             $rejected = true;
         }
         expect($rejected && file_get_contents($directory . '/corrupt.json') === '{损坏的状态', '损坏状态被静默重置导致计划重复执行');
-        echo "调度公共接口验证通过：UTC、时区、DST、稳定身份、间隔、有限补跑、重启、回拨、作用域与失败状态。\n";
+        expect(count(schedulerWaitChecks($directory)) === 6, '调度控制台等待场景未完整运行');
+        echo "调度公共接口验证通过：UTC、时区、DST、稳定身份、间隔、有限补跑、重启、回拨、作用域、失败状态与控制台等待。\n";
     } finally {
         foreach (glob($directory . '/*') as $file) {
             unlink($file);
