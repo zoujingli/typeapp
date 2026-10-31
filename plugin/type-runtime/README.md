@@ -71,7 +71,9 @@ composer require zoujingli/type-runtime:1.0.0-rc.18
 
 还提供 `ExecutionScope`、`ManagedResource`、有界 `ResourcePool` 与 `ResourceLease`：按登记顺序启动，逆序停止；部分启动失败可收尾，单个清理失败不阻止其余资源释放。作用域绑定当前执行者，受管子任务共享截止和容量预算，资源操作实际退出前继续持有租约。
 
-`ManagedResource::stop()` 抛错后，作用域继续持有失败项并保持 `closing`；同一所有者再次 `close()` 只收尾剩余项，成功项不重复停止。资源实现须保留再次收尾所需状态；正常返回也可表示在途所有权已交给既有池或原生完成回调。迟到子任务不能越过失败资源将作用域标成 `closed`，资源清理本身不增加后台重试；Deadline 唤醒使用作用域登记的 Swoole Timer，并在关闭时撤销。`WorkLifecycle::finish()` 遇到未关闭作用域会撤销就绪并保持在途额度，拒绝替换该作用域；业务已返回且真实清理完成后，统计回收额度，角色仍保持停止。
+`ManagedResource::stop()` 抛错后，作用域继续持有失败项并保持 `closing`；同一所有者再次 `close()` 只收尾剩余项，成功项不重复停止。资源实现须保留再次收尾所需状态；正常返回也可表示在途所有权已交给既有池或原生完成回调。迟到子任务不能越过失败资源将作用域标成 `closed`，资源清理本身不增加后台重试。`WorkLifecycle::finish()` 遇到未关闭作用域会撤销就绪并保持在途额度，拒绝替换该作用域；业务已返回且真实清理完成后，统计回收额度，角色仍保持停止。
+
+在已有协程中，同一个 `Deadline` 的观察者共用一个 Swoole Timer。作用域和 HTTP 发送各自登记、撤销监听；最后一个监听撤销时清除未触发的定时器，到期通知完成后由原生回收。缩短截止会重设这一次原生等待，响应已经结束的监听不会再取消后续资源清理。传入外部 `Cancellation` 时仍由调用方保留取消所有权，某个作用域自身到期不会取消共享该对象的其他独立作用域。
 
 运行时回调使用固定签名：`ExecutionScope::spawn()` 接收 `Closure(ExecutionScope): mixed`，子任务始终获得自己的作用域；`ResourceLease::hold()` 接收 `Closure(ReusableResource): mixed`；`ResourcePool` 工厂为 `Closure(): ReusableResource`。即使不使用上下文，也按公开合同声明相应参数。依赖通过构造或 `use` 捕获传入，业务扩展不依赖参数引用写回。
 

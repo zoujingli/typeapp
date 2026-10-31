@@ -9,7 +9,6 @@ use Throwable;
 use Closure;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
-use Swoole\Timer;
 
 /** 单次执行的资源所有权；线程请求、Fiber 和协程均参与检查。 */
 final class ExecutionScope
@@ -37,11 +36,10 @@ final class ExecutionScope
     private ?Deadline $shutdownDeadline = null;
     private TaskBudget $taskBudget;
     private ?Channel $completion = null;
-    private ?int $deadlineTimer = null;
     private int $deadlineSubscription = 0;
-    private bool $ownsCancellation;
 
     /**
+     * 未传取消对象时拥有本作用域的到期通知；传入时由调用方保留取消所有权。
      * @param array<string, string> $context 只保存有界关联标识；资源句柄和可变对象必须由当前作用域登记。
      */
     public function __construct(?Deadline $deadline = null, array $context = [], int $childLimit = 16, float $cleanupSeconds = 5.0, ?Cancellation $cancellation = null, ?TaskBudget $taskBudget = null)
@@ -57,16 +55,16 @@ final class ExecutionScope
             $this->context[$key] = $value;
         }
         $this->deadline = $deadline ?? new Deadline();
-        $this->ownsCancellation = $cancellation === null;
         $this->cancellation = $cancellation ?? new Cancellation();
         $this->childLimit = $childLimit;
         $this->cleanupSeconds = $cleanupSeconds;
         $this->taskBudget = $taskBudget ?? new TaskBudget($childLimit);
-        if ($this->ownsCancellation) {
+        if ($cancellation === null) {
             $this->deadlineSubscription = $this->deadline->watch(function (): void {
-                $this->armDeadlineTimer();
+                if ($this->state === 'active' && $this->deadline->expired()) {
+                    $this->cancellation->cancel();
+                }
             });
-            $this->armDeadlineTimer();
         }
     }
 
@@ -223,7 +221,10 @@ final class ExecutionScope
                 // 监听异常仍需报告，但不能跳过子任务与已登记资源的收尾。
                 $errors[] = $cancelError->getMessage();
             }
-            $this->stopDeadlineTimer();
+            if ($this->deadlineSubscription !== 0) {
+                $this->deadline->unwatch($this->deadlineSubscription);
+                $this->deadlineSubscription = 0;
+            }
             foreach ($this->children as $child) {
                 if ($child instanceof ManagedTask) {
                     $child->cancel();
@@ -382,42 +383,4 @@ final class ExecutionScope
         return $task;
     }
 
-    private function armDeadlineTimer(): void
-    {
-        if ($this->deadlineTimer !== null) {
-            Timer::clear($this->deadlineTimer);
-            $this->deadlineTimer = null;
-        }
-        $remaining = $this->deadline->remaining();
-        if ($remaining === null) {
-            return;
-        }
-        if ($remaining <= 0) {
-            if ($this->state === 'active') {
-                $this->cancellation->cancel();
-            }
-            return;
-        }
-        if (!extension_loaded('swoole') || \Swoole\Coroutine::getCid() < 0) {
-            return;
-        }
-        $this->deadlineTimer = Timer::after(max(1, (int) ceil($remaining * 1000.0)), function (): void {
-            $this->deadlineTimer = null;
-            if ($this->state === 'active' && $this->deadline->expired()) {
-                $this->cancellation->cancel();
-            }
-        });
-    }
-
-    private function stopDeadlineTimer(): void
-    {
-        if ($this->deadlineTimer !== null) {
-            Timer::clear($this->deadlineTimer);
-            $this->deadlineTimer = null;
-        }
-        if ($this->deadlineSubscription !== 0) {
-            $this->deadline->unwatch($this->deadlineSubscription);
-            $this->deadlineSubscription = 0;
-        }
-    }
 }

@@ -17,7 +17,8 @@ final class ResponseEmitter
     public function emit(ResponseInterface $message, Response $output, bool $head, ?ExecutionScope $scope = null): void
     {
         $sent = false;
-        $sendTimer = 0;
+        $deadlineSubscription = 0;
+        $emitting = false;
         try {
             if ($scope !== null) {
                 $scope->assertActive();
@@ -36,16 +37,17 @@ final class ResponseEmitter
             if ($scope !== null) {
                 // 第一块读取期间取消协程会让随后的错误响应写不完整。截止由读取方的 assertActive 判定。
                 $scope->assertActive();
-                $remaining = $scope->deadline()->remaining();
-                if ($remaining !== null) {
+                $deadline = $scope->deadline();
+                if ($deadline->remaining() !== null) {
                     $coroutine = \Swoole\Coroutine::getCid();
-                    // Swoole的send_yield默认无限等待；只唤醒本次发送协程，资源仍由原所有者清理。
-                    $sendTimer = (int) \Swoole\Timer::after(max(1, (int) ceil($remaining * 1000)), static function () use ($coroutine): void {
-                        \Swoole\Coroutine::cancel($coroutine);
+                    $emitting = true;
+                    // 共用 Deadline 的原生唤醒；通知快照中的旧监听不能取消随后进行的资源清理。
+                    $deadlineSubscription = $deadline->watch(static function () use ($deadline, $coroutine, &$emitting): void {
+                        if ($emitting && $deadline->expired() && \Swoole\Coroutine::getCid() !== $coroutine
+                            && \Swoole\Coroutine::exists($coroutine)) {
+                            \Swoole\Coroutine::cancel($coroutine);
+                        }
                     });
-                    if ($sendTimer < 1) {
-                        throw new \RuntimeException('无法设置HTTP响应发送截止');
-                    }
                 }
             }
             $output->status($status);
@@ -100,8 +102,9 @@ final class ResponseEmitter
                 $output->end($head ? '' : $body);
             }
         } finally {
-            if ($sendTimer > 0 && \Swoole\Timer::exists($sendTimer)) {
-                \Swoole\Timer::clear($sendTimer);
+            $emitting = false;
+            if ($scope !== null && $deadlineSubscription !== 0) {
+                $scope->deadline()->unwatch($deadlineSubscription);
             }
             try {
                 $message->getBody()->close();
