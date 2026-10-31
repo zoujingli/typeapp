@@ -300,25 +300,25 @@ final class PendingCommit
             if (!is_array($request) || !is_string($request['operation_id'] ?? null)) {
                 throw new \RuntimeException('MQTT 持久请求身份无效');
             }
-            $result = CoroutineRuntime::run(static function () use ($request, $store, $operation): CommitResult {
-                $scope = new ExecutionScope();
+            $scope = new ExecutionScope();
+            try {
+                $result = $scope->run(static function (ExecutionScope $current) use ($request, $store, $operation): CommitResult {
+                    if (($request['action'] ?? '') === 'cleanup') {
+                        return new CommitResult($request['operation_id'], 'unknown', 0x88, [], $store->cleanup($request['operation_id']));
+                    }
+                    return $operation === null ? $store->execute($request) : $operation($request);
+                });
+            } finally {
                 try {
-                    return $scope->run(static function (ExecutionScope $current) use ($request, $store, $operation): CommitResult {
-                        if (($request['action'] ?? '') === 'cleanup') {
-                            return new CommitResult($request['operation_id'], 'unknown', 0x88, [], $store->cleanup($request['operation_id']));
-                        }
-                        return $operation === null ? $store->execute($request) : $operation($request);
-                    });
+                    $scope->close();
                 } finally {
-                    try {
-                        $scope->close();
-                    } finally {
-                        if ($scope->state() !== 'closed') {
-                            $scope->awaitClosed();
-                        }
+                    if ($scope->state() !== 'closed') {
+                        $scope->awaitClosed();
                     }
                 }
-            });
+            }
+            // 序列化可能调用业务回调，先释放已经关闭的作用域引用。
+            unset($scope);
             $bytes = json_encode($result->data(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n";
             if ($socket === null) {
                 self::write(STDOUT, $bytes);
