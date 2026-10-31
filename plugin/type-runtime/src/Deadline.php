@@ -109,7 +109,7 @@ final class Deadline
         }
     }
 
-    /** 原生唤醒可能先于单调截止；仅补齐剩余时间，不把提前唤醒当作已经到期。 */
+    /** 按原生范围分段唤醒并复核单调截止，覆盖过早唤醒与超长预算。 */
     private function armTimer(): void
     {
         if ($this->timer !== null) {
@@ -125,7 +125,9 @@ final class Deadline
             || !extension_loaded('swoole') || Coroutine::getCid() < 0) {
             return;
         }
-        $this->timer = Timer::after(max(1, (int) ceil($remaining * 1000.0)), function (): void {
+        // 整数上限转为浮点数可能向上舍入；半范围也为原生绝对触发时间保留空间。
+        $delay = max(1, (int) min(ceil($remaining * 1000.0), \SWOOLE_TIMER_MAX_MS / 2.0));
+        $this->timer = Timer::after($delay, function (): void {
             $this->timer = null;
             $this->armTimer();
         });

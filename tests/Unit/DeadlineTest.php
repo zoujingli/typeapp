@@ -155,6 +155,25 @@ final class DeadlineTest extends TestCase
         });
     }
 
+    /** 单调截止可以跨越多次原生等待；不能把合法长预算直接传给有上限的 Timer。 */
+    public function testLongDeadlineCanBeObservedWithinTheNativeTimerRange(): void
+    {
+        CoroutineRuntime::run(static function (): void {
+            $before = self::timerCount();
+            $deadline = new Deadline(SWOOLE_TIMER_MAX_MS / 1000.0 + 1.0);
+            $scope = null;
+            try {
+                $scope = new ExecutionScope($deadline);
+                self::assertSame($before + 1, self::timerCount());
+                self::assertFalse($deadline->expired());
+                $scope->assertActive();
+            } finally {
+                $scope?->close();
+            }
+            self::assertSame($before, self::timerCount());
+        });
+    }
+
     private static function timerCount(): int
     {
         return (Timer::stats() ?: [])['num'] ?? 0;
