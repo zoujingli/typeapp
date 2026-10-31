@@ -252,3 +252,89 @@ function websocketClientReceiveChecks(): array
     }
     return $checks;
 }
+
+/**
+ * 实际停止对端读取，检查每次发送的原生写期限及同时在途的读取隔离。
+ * @return list<string> 已通过的发送、计数与资源归还场景。
+ */
+function websocketClientSendChecks(): array
+{
+    $server = new CoroutineHttpServer('127.0.0.1', 0);
+    $release = new Channel(1);
+    $server->handle('/stalled', static function (Request $request, Response $response) use ($release): void {
+        if ($response->upgrade()) {
+            $response->socket->setOption(SOL_SOCKET, SO_RCVBUF, 8192);
+            $release->pop(2.0);
+        }
+    });
+    $server->handle('/read', static function (Request $request, Response $response): void {
+        if ($response->upgrade()) {
+            $frame = $response->recv(0.5);
+            if ($frame instanceof Frame && $frame->data === 'probe') {
+                Coroutine::sleep(0.08);
+                $response->push('reply');
+                $response->recv(0.5);
+            }
+        }
+    });
+    Coroutine::create(static function () use ($server): void {
+        $server->start();
+    });
+    $checks = [];
+    try {
+        $budget = new ResourceBudget(1);
+        $client = Client::create($budget, '127.0.0.1', $server->port, '/stalled', connectTimeout: 0.6);
+        $payload = str_repeat('x', 1048576);
+        $written = 0;
+        $failedCode = '';
+        $blockedSeconds = 0.0;
+        try {
+            $client->start();
+            for ($attempt = 0; $attempt < 32; $attempt++) {
+                $started = hrtime(true);
+                try {
+                    $written += $client->send($payload, true, 0.03);
+                } catch (TaskException $sendError) {
+                    $failedCode = $sendError->errorCode();
+                    $blockedSeconds = (hrtime(true) - $started) / 1000000000.0;
+                    break;
+                }
+            }
+            if ($failedCode !== 'websocket_send_failed' || $blockedSeconds < 0.02 || $blockedSeconds >= 0.25
+                || $client->statistics()['sent_bytes'] !== $written || $budget->statistics()['allocated'] !== 1) {
+                throw new RuntimeException('WebSocket 单次写期限未生效或改变发送结算：' . $blockedSeconds);
+            }
+            $checks[] = 'stalled-send-deadline';
+        } finally {
+            $client->stop();
+            $client->stop();
+            $release->push(true);
+        }
+        if ($budget->statistics()['allocated'] !== 0) {
+            throw new RuntimeException('WebSocket 发送失败后未归还额度');
+        }
+        $client = Client::create($budget, '127.0.0.1', $server->port, '/read');
+        $received = new Channel(1);
+        try {
+            $client->start();
+            Coroutine::create(static function () use ($client, $received): void {
+                $received->push($client->receive(0.3));
+            });
+            if ($client->send('probe', false, 0.02) !== 5 || $received->pop(0.5) !== 'reply'
+                || $client->statistics()['sent_bytes'] !== 5 || $client->statistics()['received_bytes'] !== 5) {
+                throw new RuntimeException('WebSocket 写期限影响同时在途的读取或字节结算');
+            }
+            $checks[] = 'write-timeout-keeps-concurrent-read';
+        } finally {
+            $client->stop();
+            $received->close();
+        }
+        if ($budget->statistics()['allocated'] !== 0) {
+            throw new RuntimeException('WebSocket 并行收发后未归还额度');
+        }
+    } finally {
+        $release->close();
+        $server->shutdown();
+    }
+    return $checks;
+}

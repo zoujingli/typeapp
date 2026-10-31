@@ -294,6 +294,7 @@ wsReexec();
 \Swoole\Coroutine\run(static function (): void {
     expect(count(websocketClientUpgradeChecks()) === 10, 'WebSocket 客户端升级生命周期场景不足');
     expect(count(websocketClientReceiveChecks()) === 7, 'WebSocket 客户端接收行为场景不足');
+    expect(count(websocketClientSendChecks()) === 2, 'WebSocket 客户端发送期限与并行读取场景不足');
 });
 expect(extension_loaded('swoole'), 'WebSocket 验收需要已加载的 Swoole 扩展');
 

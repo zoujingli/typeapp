@@ -124,17 +124,20 @@ final class Client implements ManagedResource
     }
 
     /**
-     * 发送一条消息；超过上限直接拒绝，不提交给原生，也不自动分片。
+     * 发送一条消息；写等待直接使用原生 write_timeout，不改变同时在途的读取期限。
+     * 超过上限直接拒绝，不提交给原生，也不自动分片。
      * @throws TaskException 未握手、长度超限或原生发送失败。
      */
     public function send(string $data, bool $binary = true, float $timeout = 5.0): int
     {
-        $this->assertActive(self::timeout($timeout));
+        $timeout = self::timeout($timeout);
+        $this->assertActive();
         $length = (int) strlen($data);
         if ($length > $this->maxMessageBytes) {
             throw new TaskException('websocket_message_too_large', 'WebSocket 单条消息超过字节上限，未提交');
         }
         $opcode = $binary ? \WEBSOCKET_OPCODE_BINARY : \WEBSOCKET_OPCODE_TEXT;
+        $this->client->set(['write_timeout' => $timeout]);
         if ($this->client->push($data, $opcode, \SWOOLE_WEBSOCKET_FLAG_FIN) !== true) {
             throw new TaskException('websocket_send_failed', 'WebSocket 原生发送失败，errno=' . $this->client->errCode);
         }
@@ -150,7 +153,7 @@ final class Client implements ManagedResource
     public function receive(float $timeout = 5.0): ?string
     {
         $timeout = self::timeout($timeout);
-        $this->assertActive($timeout);
+        $this->assertActive();
         $frame = $this->client->recv($timeout);
         if ($frame === false || $frame === '') {
             return null;
@@ -208,7 +211,7 @@ final class Client implements ManagedResource
     {
     }
 
-    private function assertActive(float $timeout): void
+    private function assertActive(): void
     {
         if ($this->state !== 'active' || $this->client === null) {
             throw new TaskException('websocket_not_active', 'WebSocket 客户端尚未完成握手');
