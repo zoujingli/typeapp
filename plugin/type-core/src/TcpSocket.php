@@ -496,7 +496,7 @@ final class TcpSocket implements ManagedResource
         $protocols = SWOOLE_SSL_TLSv1_2 | SWOOLE_SSL_TLSv1_3;
         $options += ['ssl_verify_peer' => !$listener, 'ssl_protocols' => $protocols];
         if (!$listener) {
-            $options += ['ssl_host_name' => $host];
+            $options += ['ssl_host_name' => $host, 'ssl_verify_host' => true];
         }
         if (!is_bool($options['ssl_verify_peer']) || (!$listener && !$options['ssl_verify_peer'])
             || !is_int($options['ssl_protocols']) || $options['ssl_protocols'] <= 0 || ($options['ssl_protocols'] & ~$protocols) !== 0

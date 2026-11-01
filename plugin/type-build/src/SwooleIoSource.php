@@ -16,13 +16,13 @@ final class SwooleIoSource
         'include/swoole_file_hook.h' => '844629a99d602a81e9309f2d46949fd05c45aa9c6e5df7402e626a43056cc6b7',
         'include/swoole_file.h' => 'e77236625a852f63a69d9d35473e57cef1b92c3087ba6678e750f4ef327f910c',
         'src/os/file.cc' => '8f3bf564cdc4b59047df710e887e7a0ce240ab644a42376b3926899d25ae3aa2',
-        'src/os/async_thread.cc' => 'b40566b7ffd3981bbbf6bbde4be0ca0fc9183c64cde3c62c07824861832b94f0',
-        'src/coroutine/system.cc' => '28bad08b4a036801e791559e9f41ea14389c16bc3bac94c20479742bd85497f7',
-        'src/coroutine/hook.cc' => '16f01983bba935c1bd8507c09f02e9ebfa8bc78d55c455083a2a7ad21f7443e4',
-        'ext-src/swoole_async_coro.cc' => '131a926cfe297855c7789d74b3780b040379bcebba1ab2ce435e3b969c236680',
-        'ext-src/swoole_coroutine.cc' => '6adf21c286abbb9ef07f6d95e2aa34cb8fa88846e8e3d7e6c3086c6e9d7ea8ef',
-        'ext-src/stubs/php_swoole_coroutine.stub.php' => '7778b464fecf3398bbc89293dd3c27d498e62dabcbe93fc02b031f79cb54c9e6',
-        'ext-src/swoole_runtime.cc' => '7cea7579b9790b0b680e1baef9460e73238fc4432fc5137a9c090cb978d25331',
+        'src/os/async_thread.cc' => '3d3f8ba2c3098bc59631bec08cbdec64f0407518ab3f71c0583ab6175fad63d1',
+        'src/coroutine/system.cc' => '703e3c1046ba2957326251e1570cb9cf4387e10e1661f365804adf86f80b90ef',
+        'src/coroutine/hook.cc' => 'b0ac08f8a977e93a16a29e03b16d6bb1997e15c9c17a5390b85144900f4a09a4',
+        'ext-src/swoole_async_coro.cc' => '1d115cd1b77cfc66b05bc2ed74ca5303511b29ef03770e44e4c02622ed26ca09',
+        'ext-src/swoole_coroutine.cc' => 'afdabb0d1a6f4caf5e4596ed4e06d0778721a15b13777bccbe5767e60a5c8181',
+        'ext-src/stubs/php_swoole_coroutine.stub.php' => '44de15592859d6098705922e066a8698d823e06685d78cf4c0667de5bd4dea31',
+        'ext-src/swoole_runtime.cc' => 'eaf5302cf6d8b7d2cebbff5c67c0f49fb3b291ddec095aa705683b4f33f8c68f',
         'thirdparty/php/streams/plain_wrapper.c' => '10cf429262cdfda51e139761755eefed25b344df60fcf435f0f3e0c0f14b79b5',
     ];
 
@@ -1412,18 +1412,18 @@ CPP);
     request_cache_map.clear();
 }
 
-void php_swoole_set_aio_option(const HashTable *vht) {
+void php_swoole_set_aio_option(const HashTable *vht) try {
     zval *ztmp;
     /* AIO */
     if (php_swoole_array_get_value(vht, "aio_core_worker_num", ztmp)) {
-        zend_long v = zval_get_long(ztmp);
+        zend_long v = zend::setting::get_long(ztmp);
         v = SW_MAX(1, SW_MIN(v, UINT32_MAX));
         SwooleG.aio_core_worker_num = v;
 CPP, <<<'CPP'
     request_cache_map.clear();
 }
 
-void php_swoole_set_aio_option(const HashTable *vht) {
+void php_swoole_set_aio_option(const HashTable *vht) try {
     zval *ztmp;
     auto bounded = swoole::async::limits();
     bool changed = false;
@@ -1445,7 +1445,7 @@ void php_swoole_set_aio_option(const HashTable *vht) {
     }
     /* AIO */
     if (php_swoole_array_get_value(vht, "aio_core_worker_num", ztmp)) {
-        zend_long v = zval_get_long(ztmp);
+        zend_long v = zend::setting::get_long(ztmp);
         v = SW_MAX(1, SW_MIN(v, UINT32_MAX));
         SwooleG.aio_core_worker_num = v;
 CPP);

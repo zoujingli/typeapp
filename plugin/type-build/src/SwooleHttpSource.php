@@ -9,7 +9,7 @@ use RuntimeException;
 /** 显式协程 HTTP 候选：复用已绑定套接字、原生接受循环和解析器，不进入默认线程适配。 */
 final class SwooleHttpSource
 {
-    public const REFERENCE = '4aff74a9ac086458d1c5251e71ac6e080f68b390';
+    public const REFERENCE = 'c9745c443265db59d0a9f32310e1f27e1873739f';
 
     /**
      * 仅修改隔离原文；上游提供等价套接字入口并处理共享监听 EAGAIN 后撤除。
@@ -21,10 +21,10 @@ final class SwooleHttpSource
     public function apply(string $directory): array
     {
         $hashes = [
-            'ext-src/swoole_http_server_coro.cc' => '53b4940473168d41f31a2ce745a55f7ce809bf6690b08e0bdbc60de3c32a4c29',
+            'ext-src/swoole_http_server_coro.cc' => '88b9c59825a5ab224bfc3f4bb240957d6d9c6c544ce79adfd7aa1ddff58407ec',
             'ext-src/stubs/php_swoole_http_server_coro.stub.php' => 'c656a32f9758ac831d2213ed6fe64aac9dffc3e1211f90f853786cfa2edc992a',
-            'ext-src/swoole_http_request.cc' => '0f45f0798a1f2521e32a20867cbdafc0e2c9b6993645a0f34a0329092ac4485c',
-            'ext-src/php_swoole_http.h' => '44dd4e87a3a6b32187a79a932f2ee431de6df9567e19cc702fbb07b4987710f4',
+            'ext-src/swoole_http_request.cc' => '0800c136ab8bdf1d515711fabc385fd91e4b05c35e9eeb5c9ed8205bb82b89ab',
+            'ext-src/php_swoole_http.h' => '3617d2017aa18de41e4575dc36722175a1a6807ca5ae31ad5864984e347bf8bb',
         ];
         $contents = [];
         foreach ($hashes as $file => $hash) {
@@ -78,17 +78,12 @@ CPP);
     swoole_http_server_coro_ce->ce_flags |= ZEND_ACC_FINAL;
     zend_declare_class_constant_long(swoole_http_server_coro_ce, ZEND_STRL("TYPEAPP_LISTENER_ABI"), 1);
 CPP);
-        $source = $this->replace($source, <<<'CPP'
-    HttpServerObject *hsc = http_server_coro_fetch_object(Z_OBJ_P(ZEND_THIS));
-    std::string host_str(host, l_host);
-CPP, <<<'CPP'
-    HttpServerObject *hsc = http_server_coro_fetch_object(Z_OBJ_P(ZEND_THIS));
-    if (hsc->server) {
-        zend_throw_error(nullptr, "HTTP server is already initialized");
-        RETURN_THROWS();
-    }
-    std::string host_str(host, l_host);
-CPP);
+        // 上游已拒绝重复构造；新增监听引用一并交给现有 GC 枚举。
+        $source = $this->replace(
+            $source,
+            '        zend_get_gc_buffer_add_zval(buffer, &server->zclients);',
+            "        zend_get_gc_buffer_add_zval(buffer, &server->zclients);\n        zend_get_gc_buffer_add_zval(buffer, &server->zlistener);"
+        );
         $source = $this->replace($source, 'static PHP_METHOD(swoole_http_server_coro, handle) {', <<<'CPP'
 static PHP_METHOD(swoole_http_server_coro, fromSocket) {
     zval *listener;
@@ -258,10 +253,10 @@ CPP);
             . '    zend_declare_class_constant_long(swoole_http_server_coro_ce, ZEND_STRL("TYPEAPP_CONNECTION_LIMIT_ABI"), 1);'
         );
         $source = $this->replace($source, <<<'CPP'
-static PHP_METHOD(swoole_http_server_coro, start) {
+static PHP_METHOD(swoole_http_server_coro, start) try {
     HttpServer *hs = http_server_coro_get_object(Z_OBJ_P(ZEND_THIS));
 CPP, <<<'CPP'
-static PHP_METHOD(swoole_http_server_coro, start) {
+static PHP_METHOD(swoole_http_server_coro, start) try {
     HttpServer *hs = http_server_coro_get_object(Z_OBJ_P(ZEND_THIS));
     if (hs->typeapp_admission) {
         zend_throw_error(nullptr, "bounded HTTP server can only be started once");
@@ -305,11 +300,15 @@ CPP, <<<'CPP'
 CPP);
         $source = $this->replace($source, <<<'CPP'
     RETURN_TRUE;
+} catch (const zend::setting::ParseError &) {
+    RETURN_THROWS();
 }
 
 static PHP_METHOD(swoole_http_server_coro, onAccept) {
 CPP, <<<'CPP'
     RETURN_BOOL(!hs->typeapp_close_failed);
+} catch (const zend::setting::ParseError &) {
+    RETURN_THROWS();
 }
 
 static PHP_METHOD(swoole_http_server_coro, onAccept) {

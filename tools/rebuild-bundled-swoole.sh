@@ -13,15 +13,16 @@ task_reference="$("$task_php" -n -r 'require $argv[1]; echo Type\Build\SwooleThr
 task_archive="$task_work/swoole.tar.gz"
 task_source="$task_work/swoole-src-$task_reference"
 curl --fail --location --silent --show-error --retry 3 "https://codeload.github.com/swoole/swoole-src/tar.gz/$task_reference" --output "$task_archive"
-"$task_php" -n -r 'if (hash_file("sha256", $argv[1]) !== "63598eba7d2a36d8820b1501854161e5c326ab30a32a419e3aa0e4d5154936cd") { throw new RuntimeException("Swoole 源码归档摘要不符"); }' "$task_archive"
+"$task_php" -n -r 'if (hash_file("sha256", $argv[1]) !== "fff55ac1e7bbb96394adcc81c1f97fc6a69e6b81a455bef88a9a01b61bb7477d") { throw new RuntimeException("Swoole 源码归档摘要不符"); }' "$task_archive"
 tar -xzf "$task_archive" -C "$task_work"
 "$task_php" -n -r '
 $report = [];
-foreach (["SwooleThreadSource", "SwooleHttpSource", "SwooleSocketSource"] as $name) {
+foreach (["SwooleThreadSource", "SwooleHttpSource"] as $name) {
     require $argv[1] . "/plugin/type-build/src/" . $name . ".php";
     $class = "Type\\Build\\" . $name;
     $report[$name] = (new $class())->apply($argv[2]);
 }
+require $argv[1] . "/plugin/type-build/src/SwooleSocketSource.php";
 $report["tls"] = (new Type\Build\SwooleSocketSource())->applyTls($argv[2]);
 file_put_contents($argv[3], json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n");
 ' "$task_root" "$task_source" "$task_work/output/source.json"
@@ -48,8 +49,20 @@ case "$(uname -s)" in
       make -C src/include install
       cp src/common/libpgcommon_shlib.a src/port/libpgport_shlib.a "$task_pgsql/lib/"
     ) >"$task_work/postgresql.log" 2>&1
-    task_pkgconfig="$task_pgsql/lib/pkgconfig"
-    for task_formula in openssl@3 c-ares sqlite brotli; do
+    # 保持内置模块既有 SQLite 版本和功能，不随维护者本机的 Homebrew 版本降级。
+    task_sqlite="$task_work/sqlite"
+    curl --fail --location --silent --show-error --retry 3 https://www.sqlite.org/2026/sqlite-autoconf-3530400.tar.gz --output "$task_work/sqlite.tar.gz"
+    printf '%s  %s\n' 0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c "$task_work/sqlite.tar.gz" | shasum -a 256 --check
+    tar -xf "$task_work/sqlite.tar.gz" -C "$task_work"
+    (
+      cd "$task_work/sqlite-autoconf-3530400"
+      CFLAGS='-O2 -g0 -fPIC' CPPFLAGS='-DSQLITE_ENABLE_API_ARMOR=1 -DSQLITE_ENABLE_COLUMN_METADATA=1 -DSQLITE_ENABLE_DBSTAT_VTAB=1 -DSQLITE_ENABLE_FTS3=1 -DSQLITE_ENABLE_FTS3_PARENTHESIS=1 -DSQLITE_ENABLE_FTS5=1 -DSQLITE_ENABLE_GEOPOLY=1 -DSQLITE_ENABLE_JSON1=1 -DSQLITE_ENABLE_MEMORY_MANAGEMENT=1 -DSQLITE_ENABLE_RTREE=1 -DSQLITE_ENABLE_STAT4=1 -DSQLITE_ENABLE_UNLOCK_NOTIFY=1 -DSQLITE_MAX_VARIABLE_NUMBER=250000 -DSQLITE_USE_URI=1 -DSQLITE_DEFAULT_AUTOVACUUM=1 -DSQLITE_DEFAULT_RECURSIVE_TRIGGERS=1 -DSQLITE_ENABLE_PERCENTILE=1' \
+        ./configure --prefix="$task_sqlite" --disable-shared --disable-readline --disable-editline --enable-session --disable-carray
+      make -j2
+      make install
+    ) >"$task_work/sqlite.log" 2>&1
+    task_pkgconfig="$task_pgsql/lib/pkgconfig:$task_sqlite/lib/pkgconfig"
+    for task_formula in openssl@3 c-ares brotli; do
       task_prefix="$(brew --prefix "$task_formula")"
       task_pkgconfig="$task_pkgconfig:$task_prefix/lib/pkgconfig"
     done
@@ -63,7 +76,7 @@ case "$(uname -s)" in
     task_options+=("--with-openssl-dir=$task_openssl")
     # load_hidden 隐藏静态子依赖，避免与 PHP 宿主已加载的同名库争用符号。
     task_archives=("$task_pgsql/lib/libpq.a" "$task_pgsql/lib/libpgcommon_shlib.a" "$task_pgsql/lib/libpgport_shlib.a"
-      "$task_openssl/lib/libssl.a" "$task_openssl/lib/libcrypto.a" "$(brew --prefix sqlite)/lib/libsqlite3.a"
+      "$task_openssl/lib/libssl.a" "$task_openssl/lib/libcrypto.a" "$task_sqlite/lib/libsqlite3.a"
       "$(brew --prefix c-ares)/lib/libcares.a" "$(brew --prefix brotli)/lib/libbrotlienc.a"
       "$(brew --prefix brotli)/lib/libbrotlidec.a" "$(brew --prefix brotli)/lib/libbrotlicommon.a")
     for task_library in "${task_archives[@]}"; do
@@ -74,7 +87,9 @@ case "$(uname -s)" in
     "$task_php" -n -r '$items=[]; foreach(array_slice($argv, 2) as $file){$items[basename($file)]=hash_file("sha256",$file);}file_put_contents($argv[1],json_encode($items,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");' "$task_work/output/static-archives.json" "${task_archives[@]}"
     mkdir -p "$task_work/output/LICENSES/postgresql"
     cp "$task_work/postgresql-17.11/COPYRIGHT" "$task_work/output/LICENSES/postgresql/COPYRIGHT"
-    for task_pair in 'openssl@3/LICENSE.txt' 'c-ares/LICENSE.md' 'brotli/LICENSE' 'sqlite/include/sqlite3.h'; do
+    mkdir -p "$task_work/output/LICENSES/sqlite"
+    cp "$task_sqlite/include/sqlite3.h" "$task_work/output/LICENSES/sqlite/sqlite3.h"
+    for task_pair in 'openssl@3/LICENSE.txt' 'c-ares/LICENSE.md' 'brotli/LICENSE'; do
       task_formula="${task_pair%%/*}"
       task_relative="${task_pair#*/}"
       mkdir -p "$task_work/output/LICENSES/$task_formula"

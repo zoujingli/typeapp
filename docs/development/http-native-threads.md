@@ -13,7 +13,7 @@
 | PSR 请求 | `SwooleServer` 原有转换、错误、发送、`HttpControl` 与 `ExecutionScope`。 | 原私有响应方法成为内部 `handleNative()`，经典和协程 HTTP 共用一份实现；每次响应完成前清理请求，不依赖 keep-alive 连接协程退出。 |
 | HTTP 连接额度 | 原生 `zclients` 连接表、Coroutine Channel 与 Socket 的 Event defer 关闭。 | 显式连接上限在 accept 前挂起；登记包含 TLS 握手，FD 关闭完成后再删除表项。没有另建连接表、调度器或扫描回收器。 |
 
-最初诊断固定在 Swoole 6.2.1 / `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`：macOS 上两个 `reuse_port=true` 的原生服务均绑定成功，但三轮每轮 100 个请求全部进入后绑定线程，调换顺序仍跟随后绑定者。改用同一原生监听的线程副本后，共享唤醒存在 EAGAIN 竞争；适配将其并入既有重试分支。当前适配已迁至 `4aff74a9ac086458d1c5251e71ac6e080f68b390` 开发快照，当前工具链迁移的实际范围见[0.9.5 升级记录](../evidence/typephp-upgrade-0.9.5.md)。原始 TCP 共享监听和纯原生 HTTP 诊断保留原身份，不充当新版本 AOT 或 PSR 验收。
+最初诊断固定在 Swoole 6.2.1 / `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`：macOS 上两个 `reuse_port=true` 的原生服务均绑定成功，但三轮每轮 100 个请求全部进入后绑定线程，调换顺序仍跟随后绑定者。改用同一原生监听的线程副本后，共享唤醒存在 EAGAIN 竞争；适配将其并入既有重试分支。当前适配已迁至 `c9745c443265db59d0a9f32310e1f27e1873739f` 开发快照，模块及平台状态见[构建输入](../../plugin/type-build/resources/swoole/README.md)。原始 TCP 共享监听和纯原生 HTTP 诊断保留原身份，不充当新版本 AOT 或 PSR 验收。
 
 原生 [Socket 传递](https://github.com/swoole/swoole-src/blob/0f3bee2f0ed8704ce33a336e7feabb0115411dd7/ext-src/swoole_thread.cc)及 [HTTP 接收和关闭](https://github.com/swoole/swoole-src/blob/0f3bee2f0ed8704ce33a336e7feabb0115411dd7/ext-src/swoole_http_server_coro.cc)仍由上游维护。Windows 的描述符复制存在不代表多 IOCP 共享监听已经成立；该组合等待真实目标验收，不能提前写成支持或不支持。
 
@@ -21,7 +21,7 @@
 
 `Type\Build\SwooleHttpSource::apply($directory)` 只接受独立解压的固定原文，并核对文件摘要与唯一替换位置。当前文件及原文摘要以[适配器](../../plugin/type-build/src/SwooleHttpSource.php)为准，内置模块的组合结果以[模块清单](../../plugin/type-build/resources/swoole/manifest.json)中的 `adapted-sources` 核对，不另维护历史摘要表。
 
-该适配与 `SwooleThreadSource` 保持独立入口，默认模块准备脚本显式组合两者及 Socket/TLS 适配；文件 AIO 候选不进入默认组合。监听传递的两项 TypeApp 私有能力是 `Thread::TYPEAPP_SOCKET_ARGUMENT_ABI=1` 与 `Coroutine\Http\Server::TYPEAPP_LISTENER_ABI=1`，不是官方 API；原 `NATIVE_ENTRY_ABI=2` 保持不变。自建模块后用显式模块和既有 `tools/configure-toolchain.php` 建立 SDK 视图，不覆盖原 SDK。
+该适配与 `SwooleThreadSource` 保持独立入口，默认模块准备脚本显式组合两者，并为标准 stream hook 保留独立 TLS 兼容适配；UDP 来源已由固定官方源码覆盖，文件 AIO 候选不进入默认组合。监听传递的两项 TypeApp 私有能力是 `Thread::TYPEAPP_SOCKET_ARGUMENT_ABI=1` 与 `Coroutine\Http\Server::TYPEAPP_LISTENER_ABI=1`，不是官方 API；原 `NATIVE_ENTRY_ABI=2` 保持不变。自建模块后用显式模块和既有 `tools/configure-toolchain.php` 建立 SDK 视图，不覆盖原 SDK。
 
 `Server::fromSocket(Socket $socket, int $backlog=0)` 要求当前线程没有协程读写绑定的、打开且已绑定非零本地端口的 TCP/TCP6 Socket，backlog 为 0 到 INT_MAX。它直接调用上游 `Socket::listen()`，沿用 backlog 默认值并恢复复制后本地 Socket 的监听及 TLS 服务端标记。曾使用 `SO_ACCEPTCONN` 核对状态，但 macOS 的原生 getsockopt 返回 ENOPROTOOPT；该不可移植探针已撤回，失败原件保留。
 

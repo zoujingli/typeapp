@@ -19,16 +19,15 @@ final class SwooleWindowsSource
     public function apply(string $directory): array
     {
         $hashes = [
-            'config.w32' => 'a8c2ead0b6d0bee99011b57a18f25503dcf7f714be636f75e1886b077099619f',
-            'ext-src/swoole_curl.cc' => '78b8c7581a36371266c8aefb200403851261520aead58e9ca8dc628a6637d840',
-            'ext-src/swoole_runtime.cc' => '7cea7579b9790b0b680e1baef9460e73238fc4432fc5137a9c090cb978d25331',
-            'include/swoole_iocp.h' => '5c7a094064a71b43c6698dff60a6d9054c79bfe271fd429928b5e4b6fb3f6f41',
-            'src/coroutine/iocp.cc' => 'f77f1a5cf38153df491204b84e9a341803f2fbd551de617080c2a5a1f8c0d990',
-            'src/coroutine/iocp_socket.cc' => 'f38615b8c967e70429ba29ff317c98f62126f709e73fd575c5e0c6cae22114bf',
-            'src/network/dns.cc' => '1528f5e6e65569f0497695340c9e762527e83eb554acb3f9bd062d903fe530e1',
+            'config.w32' => '5ba939d93f8682fa61c4d9d6d1613acd6943265b9b60f245ceebf8b2b406d81d',
+            'ext-src/swoole_curl.cc' => 'c58d4907e11b49bed9910d0d28ac2410d241dd1eadc05ced390ce7cd4f6679cd',
+            'ext-src/swoole_runtime.cc' => 'eaf5302cf6d8b7d2cebbff5c67c0f49fb3b291ddec095aa705683b4f33f8c68f',
+            'src/coroutine/iocp.cc' => 'f42ba99a3d30d10b39885304d0e529c3018756512eac4882868ea313cc9bcc0d',
+            'src/coroutine/iocp_socket.cc' => '419ca0c4d91fd32c042ecbfb582400f8cede4c9e27d77a241c36a2682a0d983f',
+            'src/network/dns.cc' => '07ac0cc8522c9f24e4d01ee0deae16382939e396c98961f5c9ba1293cfb1ac85',
             'src/network/address.cc' => 'e0b57b87c89b3b3689e9ec2c5fe01dcda006655f4edc21100199ba056deda352',
-            'src/coroutine/socket.cc' => 'ce7e1d08943d29262d77079c7d8b23977bd4f2d04d8f3d3bd3179b15ffb340fc',
-            'php_swoole.h' => '66305cdd37bcaf35ee17e7d24ed12b6be4d18a4ad34d0a7dc883954344009e28',
+            'src/coroutine/socket.cc' => 'e66deecae2081274199349b39c51f20fee4d21e0f5a90f057c3a6506ac95d361',
+            'php_swoole.h' => '210b685a580ee97d28f58da223157f605bc705e384f7f6b6cbb32ae0abd8bc75',
         ];
         $sources = [];
         foreach ($hashes as $file => $digest) {
@@ -97,29 +96,24 @@ CPP
             'int retval = WSAPoll(fds, nfds, 0);',
             'int retval = ::WSAPoll(fds, nfds, 0);'
         );
-        // Windows 拒绝重复关联同一存活 Socket，必须保留关联缓存。外部所有者关闭时
-        // 同步清除记录，避免后续 Socket 复用数值句柄却没有关联到当前 IOCP。
-        $sources['include/swoole_iocp.h'] = $this->replace(
-            $sources['include/swoole_iocp.h'],
-            "    bool associate_socket(swSocketFd fd) {\n        return associate(fd);\n    }",
-            <<<'CPP'
-    bool associate_socket(swSocketFd fd) {
-        return associate(fd);
-    }
-
-    // The external owner must call this immediately before closing its socket.
-    void forget_socket(swSocketFd fd) {
-        associated_sockets.erase(fd);
-    }
-CPP
-        );
+        // forget_socket 已由上游提供；仍须在真实关闭时清除关联，不能依赖事件包装释放。
         // libcurl 的关闭回调跟随真实连接，不能用 CURL_POLL_REMOVE 代替关闭；后者
         // 也发生在仍可复用的连接上。无捕获回调不持有已销毁的 easy/multi 指针。
         $sources['ext-src/swoole_curl.cc'] = $this->replace(
             $sources['ext-src/swoole_curl.cc'],
+            <<<'CPP'
+    // libcurl closes its sockets without Iocp::close(), so their handles may be reused outside the cache.
+    if (SwooleTG.iocp) {
+        SwooleTG.iocp->forget_socket(curl_socket->sockfd);
+    }
+CPP,
+            '    // The close callback owns cache removal; releasing a poll wrapper does not close the connection.'
+        );
+        $sources['ext-src/swoole_curl.cc'] = $this->replace(
+            $sources['ext-src/swoole_curl.cc'],
             'Handle *create_handle(CURL *cp) {',
             <<<'CPP'
-#ifdef SW_CURL_USE_IOCP
+#ifdef _WIN32
 static int close_socket(void *, curl_socket_t fd) {
     return Iocp::close(fd);
 }
@@ -134,7 +128,7 @@ CPP
             <<<'CPP'
     auto *handle = new Handle(cp);
     curl_easy_setopt(cp, CURLOPT_PRIVATE, handle);
-#ifdef SW_CURL_USE_IOCP
+#ifdef _WIN32
     curl_easy_setopt(cp, CURLOPT_CLOSESOCKETFUNCTION, close_socket);
 #endif
 CPP
@@ -145,7 +139,7 @@ CPP
             <<<'CPP'
     curl_easy_reset(cp);
     curl_easy_setopt(cp, CURLOPT_PRIVATE, handle);
-#ifdef SW_CURL_USE_IOCP
+#ifdef _WIN32
     curl_easy_setopt(cp, CURLOPT_CLOSESOCKETFUNCTION, swoole::curl::close_socket);
 #endif
 CPP
@@ -188,14 +182,14 @@ CPP
         $sources['src/network/dns.cc'] = $this->replace(
             $sources['src/network/dns.cc'],
             '#include "swoole_coroutine_socket.h"',
-            "#include \"swoole_coroutine_socket.h\"\n#ifdef SW_USE_IOCP\n#include \"swoole_iocp.h\"\n#endif"
+            "#include \"swoole_coroutine_socket.h\"\n#ifdef _WIN32\n#include \"swoole_iocp.h\"\n#endif"
         );
         $sources['src/network/dns.cc'] = $this->replace(
             $sources['src/network/dns.cc'],
             "                swoole_event_del(_socket);\n                _socket->fd = SW_BAD_SOCKET;",
             <<<'CPP'
                 swoole_event_del(_socket);
-#ifdef SW_USE_IOCP
+#ifdef _WIN32
                 if (SwooleTG.iocp) {
                     SwooleTG.iocp->forget_socket(fd);
                 }

@@ -268,6 +268,7 @@ final class Client implements ManagedResource
         }
         $settings = [
             'ssl_verify_peer' => true,
+            'ssl_verify_host' => true,
             'ssl_allow_self_signed' => false,
             'ssl_host_name' => $options['ssl_host_name'],
             'ssl_protocols' => $options['ssl_protocols'],

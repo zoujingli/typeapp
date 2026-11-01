@@ -99,14 +99,25 @@ try {
     expect($ready, 'Redis TLS没有在期限内就绪');
     $environment = array_replace($environment, ['TYPE_TLS_PORT' => (string) $port, 'TYPE_TLS_HOST' => '127.0.0.1',
         'TYPE_TLS_WRONG_HOST' => 'localhost', 'TYPE_TLS_CA' => $base . '/ca.pem', 'TYPE_TLS_WRONG_CA' => $base . '/wrong-ca.pem']);
-    foreach (['php' => '--php', 'native' => $artifact] as $mode => $target) {
+    // 协程中的 stream hook 与普通 PHP OpenSSL 分开验证，避免同步成功掩盖 IP SAN 回归。
+    foreach (['php-coroutine' => '--php', 'php' => '--php', 'native' => $artifact] as $mode => $target) {
         $runEnvironment = $environment;
         if ($mode === 'native') {
             $runEnvironment['TYPE_NATIVE_PHP_INI'] = $built['runtime-profile']['ini'];
         }
+        if ($mode === 'php-coroutine') {
+            $runEnvironment['TYPE_TLS_SWOOLE_LOG'] = $base . '/php-coroutine-swoole.log';
+        }
         $log = $base . '/' . $mode . '.log';
-        echo nativeDatabaseCommand([PHP_BINARY, $root . '/tests/tls.php', $target, 'redis'], $runEnvironment, [], $log, 60);
+        $arguments = [PHP_BINARY, $root . '/tests/tls.php', $target, 'redis'];
+        if ($mode === 'php-coroutine') {
+            $arguments[] = '--coroutine';
+        }
+        echo nativeDatabaseCommand($arguments, $runEnvironment, [], $log, 60);
         $report['steps'][] = ['mode' => $mode, 'status' => 'passed', 'log' => basename($log), 'sha256' => hash_file('sha256', $log)];
+        if ($mode === 'php-coroutine') {
+            $report['coroutine-swoole-log-sha256'] = hash_file('sha256', $runEnvironment['TYPE_TLS_SWOOLE_LOG']);
+        }
     }
     expect(hash_file('sha256', $artifact) === $report['artifact-sha256'], 'TLS验收期间产物发生变化');
     $report['status'] = 'passed';

@@ -6,85 +6,29 @@ namespace Type\Build;
 
 use RuntimeException;
 
-/** 按实际协议分别修正固定 Socket 的空 UDP 来源与 TLS IP 身份校验，不接管原生机制。 */
+/** 为未接入严格身份选项的 stream hook 延续 IP SAN 校验；匹配仍由官方 OpenSSL 分支承担。 */
 final class SwooleSocketSource
 {
-    public const REFERENCE = '4aff74a9ac086458d1c5251e71ac6e080f68b390';
+    public const REFERENCE = 'c9745c443265db59d0a9f32310e1f27e1873739f';
 
     /**
-     * 仅适配隔离的上游原文；上游零长度报文也写回地址后撤除此补丁。
+     * 官方 stream hook 尚未把 verify_peer_name 映射到 ssl_verify_host，Redis/mysqlnd 仍走旧入口。
+     * 只解除 IP SAN 分支的严格模式前提，不改变证书链或显式关闭主机名验证的原生入口。
+     * 上游补齐调用者映射并通过相同协程 Redis/MySQL TLS 回归后撤除。
      *
      * @return array<string, array{before: string, after: string}>
-     * @throws RuntimeException 原文身份、唯一替换或保存失败。
-     */
-    public function apply(string $directory): array
-    {
-        $file = 'ext-src/swoole_socket_coro.cc';
-        $path = $directory . '/' . $file;
-        $before = 'fe2af0dac225938381d968d5bd226077fb5c05c7a062df4db3d9728eedf57fc2';
-        if (!is_file($path) || is_link($path) || hash_file('sha256', $path) !== $before) {
-            throw new RuntimeException('Swoole Socket 适配需要固定原文：' . $file);
-        }
-        $original = <<<'CPP'
-    } else if (bytes == 0) {
-        zend_string_free(buf);
-        RETURN_EMPTY_STRING();
-    } else {
-        zval_dtor(peername);
-        array_init(peername);
-        add_assoc_string(peername, "address", (char *) sock->socket->get_addr());
-        add_assoc_long(peername, "port", sock->socket->get_port());
-
-        ZSTR_LEN(buf) = bytes;
-CPP;
-        $replacement = <<<'CPP'
-    } else {
-        zval_dtor(peername);
-        array_init(peername);
-        add_assoc_string(peername, "address", (char *) sock->socket->get_addr());
-        add_assoc_long(peername, "port", sock->socket->get_port());
-        if (bytes == 0) {
-            zend_string_free(buf);
-            RETURN_EMPTY_STRING();
-        }
-
-        ZSTR_LEN(buf) = bytes;
-CPP;
-        $source = (string) file_get_contents($path);
-        if (substr_count($source, $original) !== 1) {
-            throw new RuntimeException('Swoole Socket 适配位置不唯一');
-        }
-        $source = str_replace($original, $replacement, $source);
-        if (file_put_contents($path, $source) !== strlen($source)) {
-            throw new RuntimeException('无法保存 Swoole Socket 适配');
-        }
-        return [$file => ['before' => $before, 'after' => hash('sha256', $source)]];
-    }
-
-    /**
-     * 数字 IP 交给 OpenSSL 的 IP SAN 校验，域名继续使用原路径；不弱化证书链验证。
-     * 上游等价支持 IP SAN 并通过相同双端行为验收后撤除；不强制组合 UDP 适配。
-     *
-     * @return array<string, array{before: string, after: string}>
-     * @throws RuntimeException 固定原文、唯一位置或保存失败。
+     * @throws RuntimeException 固定原文、唯一替换或保存失败。
      */
     public function applyTls(string $directory): array
     {
         $file = 'src/network/socket.cc';
         $path = $directory . '/' . $file;
-        $before = '6f423e3a194f74dc76f3226851a1e67020aaede793bfebdee53a305a9624a3ee';
+        $before = 'e5238743808338fab3430d562b2ea49187cedd91370c4de548b14b8757d148be';
         if (!is_file($path) || is_link($path) || hash_file('sha256', $path) !== $before) {
             throw new RuntimeException('Swoole TLS 适配需要固定原文：' . $file);
         }
-        $original = <<<'CPP'
-    if (X509_check_host(cert, tls_host_name, strlen(tls_host_name), 0, nullptr) != 1) {
-CPP;
-        $replacement = <<<'CPP'
-    const bool is_ip = Address::verify_ip(AF_INET, tls_host_name) || Address::verify_ip(AF_INET6, tls_host_name);
-    const int identity_matches = is_ip ? X509_check_ip_asc(cert, tls_host_name, 0)
-                                       : X509_check_host(cert, tls_host_name, strlen(tls_host_name), 0, nullptr);
-    if (identity_matches != 1) {
-CPP;
+        $original = '    if ((strict && is_ip ? X509_check_ip_asc(cert, tls_host_name, 0)';
+        $replacement = '    if ((is_ip ? X509_check_ip_asc(cert, tls_host_name, 0)';
         $source = (string) file_get_contents($path);
         if (substr_count($source, $original) !== 1) {
             throw new RuntimeException('Swoole TLS 适配位置不唯一');

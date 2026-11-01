@@ -117,7 +117,7 @@ foreach ($taskDependency in $taskDependencies.Keys) {
     Get-VerifiedArchive ('https://downloads.php.net/~windows/php-sdk/deps/vs17/x64/' + $taskDependency) $taskDependencies[$taskDependency] $taskZip
     Expand-Archive -LiteralPath $taskZip -DestinationPath $taskDeps -Force
 }
-$taskSwooleReference = '4aff74a9ac086458d1c5251e71ac6e080f68b390'
+$taskSwooleReference = 'c9745c443265db59d0a9f32310e1f27e1873739f'
 $taskSourceDependencies = @{}
 if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
     # PHP curl 扩展已加载并不代表 Swoole 编入原生 curl。使用官方 /MD 静态库，
@@ -157,11 +157,11 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
     if ($LASTEXITCODE -ne 0 -or $taskCaresDirectives -notmatch '(?i)DEFAULTLIB:"?MSVCRT\b' -or $taskCaresDirectives -match '(?i)DEFAULTLIB:"?LIBCMT') { throw 'c-ares 必须使用共享 PHP 对应的发布 CRT。' }
     $taskSourceDependencies['c-ares'] = @{ version='1.34.8'; reference=$taskCaresReference; 'archive-sha256'=$taskCaresDigest; 'license-sha256'=$taskCaresLicenseDigest; 'library-sha256'=(Get-FileHash -LiteralPath $taskCaresLibrary -Algorithm SHA256).Hash.ToLowerInvariant(); linkage='static'; crt='MD' }
     $taskSwooleArchive = Join-Path $Directory 'swoole.tar.gz'
-    Get-VerifiedArchive ('https://codeload.github.com/swoole/swoole-src/tar.gz/' + $taskSwooleReference) '63598eba7d2a36d8820b1501854161e5c326ab30a32a419e3aa0e4d5154936cd' $taskSwooleArchive
+    Get-VerifiedArchive ('https://codeload.github.com/swoole/swoole-src/tar.gz/' + $taskSwooleReference) 'fff55ac1e7bbb96394adcc81c1f97fc6a69e6b81a455bef88a9a01b61bb7477d' $taskSwooleArchive
     & $taskTar -xzf $taskSwooleArchive -C $Directory
     if ($LASTEXITCODE -ne 0) { throw 'Swoole 源码解包失败。' }
     $taskSwoole = Join-Path $Directory ('swoole-src-' + $taskSwooleReference)
-    $taskPatch = 'foreach(["SwooleThreadSource","SwooleHttpSource","SwooleSocketSource"] as $name){require $argv[1]."/plugin/type-build/src/".$name.".php";$class="Type\\Build\\".$name;$patch=new $class();$report[$name]=$patch->apply($argv[2]);} $report["tls"]=(new Type\Build\SwooleSocketSource())->applyTls($argv[2]);echo json_encode($report,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);'
+    $taskPatch = 'foreach(["SwooleThreadSource","SwooleHttpSource"] as $name){require $argv[1]."/plugin/type-build/src/".$name.".php";$class="Type\\Build\\".$name;$patch=new $class();$report[$name]=$patch->apply($argv[2]);}require $argv[1]."/plugin/type-build/src/SwooleSocketSource.php";$report["tls"]=(new Type\Build\SwooleSocketSource())->applyTls($argv[2]);echo json_encode($report,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);'
     & (Join-Path $sdk 'php.exe') -n -r $taskPatch $taskRoot $taskSwoole | Set-Content -LiteralPath (Join-Path $taskEvidence 'swoole-source.json') -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw '固定 Swoole 源码适配核验失败。' }
     # 与静态 SDK 共用固定的官方构建与 IOCP 适配，避免两套实现漂移。

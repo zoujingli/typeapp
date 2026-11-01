@@ -13,9 +13,9 @@
 
 ## 原生分包边界
 
-当前锁定的 Swoole 构建提供 Socket 连接、TLS、收发和超时，但其报文辅助接口不能同时满足 MQTT 半包续收、非最短编码拒绝和应用总期限。因此 `Client::frame()` 保留一份有界输入缓冲，继续由 TypeApp 校验固定头、剩余长度、属性和 QoS；不在其上增加后台读循环、第二套完成通道或自建协议引擎。
+当前锁定的 Swoole 构建提供 Socket 连接、TLS、收发和超时，长度协议也能在超时后保留半包；其报文辅助接口仍不能同时满足 MQTT 非最短编码拒绝和应用总期限。因此 `Client::frame()` 保留一份有界输入缓冲，继续由 TypeApp 校验固定头、剩余长度、属性和 QoS；不在其上增加后台读循环、第二套完成通道或自建协议引擎。
 
-2026-11-01 核对的官方主线 `c9745c443265db59d0a9f32310e1f27e1873739f` 已在 [`Socket::recv_packet()`](https://github.com/swoole/swoole-src/blob/c9745c443265db59d0a9f32310e1f27e1873739f/src/coroutine/socket.cc#L1570) 中保留长度协议超时后的半包；当前固定的 `4aff74a9ac086458d1c5251e71ac6e080f68b390` 尚无此修复。
+2026-11-01 已将官方提交 `c9745c443265db59d0a9f32310e1f27e1873739f` 纳入源码基线，直接复用 [`Socket::recv_packet()`](https://github.com/swoole/swoole-src/blob/c9745c443265db59d0a9f32310e1f27e1873739f/src/coroutine/socket.cc#L1570) 的半包保留修复。各平台模块更新状态见[构建输入](../../plugin/type-build/resources/swoole/README.md)。
 
 该主线的 [`mqtt::get_package_length()`](https://github.com/swoole/swoole-src/blob/c9745c443265db59d0a9f32310e1f27e1873739f/src/protocol/mqtt.cc#L43) 仍接受非最短剩余长度，例如收到 `30 81 00` 后继续等待一个正文字节，而当前客户端立即按协议错误拒绝；`recvPacket()` 的返回值也不携带首字节到达时刻，无法据此恢复原始半包期限。仅升级这项超时修复还不足以删除现有输入缓冲。
 

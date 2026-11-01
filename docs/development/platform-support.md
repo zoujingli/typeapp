@@ -8,6 +8,8 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 面向使用者的状态统一维护在[平台与验收](../guide/platforms.md)。该页进入 Docsify 公开站点；本文保留执行入口和可复核的产物身份。
 
+2026-11-01 源码基线已跟进官方 Swoole `c9745c4` 开发快照，运行时仍报告 `6.3.0RC1`。当前逐平台模块重建、拒绝旧快照和适配撤除状态统一维护在[构建输入](../../plugin/type-build/resources/swoole/README.md)；本轮 macOS 共享模块验证不替代其他平台或静态单程序验收。以下历史产物继续保持原身份。
+
 RC13 的固定源码、12 个程序和公开发布身份保存在[profile 发布证据](../evidence/profile-release-20260930.md)。RC14 已使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及 `4aff74a9`（运行时字符串 `6.3.0RC1`）的 Swoole 开发快照完成正式发布门禁、十二程序、组件模板公开消费和下载回读。各平台的准确源码、运行轮次、失败诊断与性能限制统一见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)；功能通过不构成性能提升结论。
 
 RC14 之后的 `main` 以固定源码 `3818a30` 验证双端物联架构的开发候选，未创建新公开版本。四平台 × 三数据库 profile 中已有 11 个组合的静态候选工作流成功；Windows PostgreSQL 最新原 EXE 复验在测试备库启动时发生文件访问拒绝，完整矩阵未结项。逐轮身份、实际范围及 Demo 更新见[候选验收记录](../evidence/iot-redesign-20261024.md)。Windows `putenv()` 中文环境编码修复另有[模块重建 38782633247](https://github.com/zoujingli/typeapp/actions/runs/38782633247)证据，包含主进程、子进程、两轮线程继承、DNS、TLS 和 curl；模块通过不替代应用验收。

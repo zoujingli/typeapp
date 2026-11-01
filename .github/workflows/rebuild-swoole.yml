@@ -92,6 +92,7 @@ jobs:
             build/bundled-swoole-candidate/output/**
             build/bundled-swoole-candidate/build.log
             build/bundled-swoole-candidate/postgresql.log
+            build/bundled-swoole-candidate/sqlite.log
           if-no-files-found: error
           retention-days: 30
 

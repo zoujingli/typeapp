@@ -44,7 +44,7 @@ flowchart LR
 
 `SwooleIoSource` 仍是显式文件候选，独立核验原文再组合线程适配。当前私有 `SWOOLE_FILE_IO_ABI=2` 将原生提交硬截止交给 `type-runtime` 的独立主控，不再创建额外监督线程；Swoole 原工作池、空闲回收通知与 `release_callback` 继续负责调度和 join。主控持有默认完成接收者，防止业务线程退役后通知指向已关闭的描述符；诊断、候选配置和撤除条件见[文件 I/O 记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/swoole-file-io.md)。它不进入默认线程构建，普通 metadata 旁路、上传故障及平台汇合继续验证。
 
-`SwooleHttpSource::apply($directory)` 为固定上游增加已绑定 Socket 的协程 HTTP 接入，继续使用原生 accept、解析器、响应与 shutdown；与 `SwooleThreadSource` 的原生 Socket 参数配合。显式 `typeapp_max_connections` 复用原生连接表、Channel 和 FD 延迟关闭实现连接准入，属于 TypeApp 私有配置，不是经典 `max_connection`。默认模块准备脚本组合 HTTP、线程及 Socket/TLS 适配，各自保留独立入口，文件 AIO 候选不进入该组合。私有 ABI、失败复现、所有权及撤除条件见[HTTP 线程接入](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-native-threads.md)，不能将适配入口当作官方 API 或完整平台支持。
+`SwooleHttpSource::apply($directory)` 为固定上游增加已绑定 Socket 的协程 HTTP 接入，继续使用原生 accept、解析器、响应与 shutdown；与 `SwooleThreadSource` 的原生 Socket 参数配合。显式 `typeapp_max_connections` 复用原生连接表、Channel 和 FD 延迟关闭实现连接准入，属于 TypeApp 私有配置，不是经典 `max_connection`。默认模块准备脚本组合 HTTP、线程与标准 stream hook 所需的最小 TLS 适配，各自保留独立入口，文件 AIO 候选不进入该组合；UDP 来源和显式严格 TLS 校验复用官方实现。私有 ABI、失败复现、所有权及撤除条件见[HTTP 线程接入](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-native-threads.md)，不能将适配入口当作官方 API 或完整平台支持。
 
 同一候选的 `typeapp_http1_input=true` 在原生解析回调覆盖前拒绝重复 Host、Authorization、Content-Type，其余多值头复用上游数组机制；仅接受 HTTP/1.0 和 HTTP/1.1。它是 TypeApp 私有布尔选项，配合原生 `http_parse_cookie=false` 供既有 PSR 处理链执行输入策略；默认原生行为、经典入口及 HTTP/2 不因此获得相同验收结论。
 
@@ -88,7 +88,7 @@ composer require --dev zoujingli/type-build:1.0.0-rc.18
 
 第三方源码中需要调整的已知 TypePHP 语义可通过 `rewrites` 声明准确文件、SHA-256、中文原因和有限替换。构建器先审计完整生产源码，再生成保持行号的完整适配副本，原 Composer 文件保持不变；原文、适配结果与映射均参与构建身份。版本、摘要或匹配次数变化即拒绝使用旧适配，具体约束见[第三方适配说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/source-imports.md#版本限定的源码适配)。
 
-本组件在 [resources/swoole](resources/swoole/README.md) 携带四个平台的 Swoole 共享模块、固定清单及原始许可证。当前固定 6.3 开发快照 `4aff74a`（运行时字符串 `6.3.0RC1`），不是正式 6.3.0。匹配 PHP 8.5.10 ZTS 的构建默认按组件安装位置校验并复用，不另行下载 Swoole；独立应用无需复制主仓目录。真实 embed 已内置、显式 `runtime.modules` 和有效 `TYPE_SWOOLE_MODULE` 优先；默认内置清单缺失、ABI 不匹配或内容校验失败时明确拒绝。PHP SDK、PHPX 和其他原生依赖仍需准备，共享模块选择与静态单程序验收分别记录。
+本组件在 [resources/swoole](resources/swoole/README.md) 携带四个平台的 Swoole 共享模块、固定清单及原始许可证。当前固定 6.3 开发快照 `c9745c4`（运行时字符串 `6.3.0RC1`），不是正式 6.3.0；各平台模块的重建状态以上述构建输入说明为准。匹配 PHP 8.5.10 ZTS 的构建默认按组件安装位置校验并复用，不另行下载 Swoole；独立应用无需复制主仓目录。真实 embed 已内置、显式 `runtime.modules` 和有效 `TYPE_SWOOLE_MODULE` 优先；默认内置清单缺失、ABI 不匹配或内容校验失败时明确拒绝。PHP SDK、PHPX 和其他原生依赖仍需准备，共享模块选择与静态单程序验收分别记录。
 
 构建会初始化真正的embed探针，区分CLI和embed的内置扩展；运行声明按Linux/Darwin/Windows分开。其他缺失扩展可由SDK标准目录或显式文件/SHA256候选提供，Swoole遵守上述选择顺序；加载警告、ABI不符或缺少函数在编译前拒绝。选中的共享扩展、依赖及运行配置进入构建身份和发布清单，不在部署后手工补库。当前 INI 默认 `swoole.enable_library=On`，仅允许固定 Swoole 官方内置 PHP 库沿用官方加载；库内容由承载扩展字节摘要约束，源码版本与构建开关随产物证据核对，其余生产 PHP 仍全量 AOT。参见[真实embed运行依赖](https://github.com/zoujingli/typeapp/blob/main/docs/development/runtime-profiles.md)。
 

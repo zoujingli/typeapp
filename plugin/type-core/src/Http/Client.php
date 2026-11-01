@@ -275,6 +275,6 @@ final class Client implements ManagedResource
                 || $options['ssl_cafile'] === '' || str_contains($options['ssl_cafile'], "\0") || !is_readable($options['ssl_cafile'])))) {
             throw new TaskException('http_client_invalid_configuration', 'HTTP 的 TLS 信任材料、主机名或协议无效');
         }
-        return $options + ['ssl_verify_peer' => true, 'ssl_allow_self_signed' => false];
+        return $options + ['ssl_verify_peer' => true, 'ssl_verify_host' => true, 'ssl_allow_self_signed' => false];
     }
 }

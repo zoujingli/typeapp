@@ -46,6 +46,13 @@ final class BundledSwoole
         if (PHP_DEBUG || PHP_INT_SIZE !== 8 || !is_array($module)) {
             throw new RuntimeException('没有匹配当前 PHP ABI 的内置 Swoole：' . $target);
         }
+        require_once __DIR__ . '/SwooleThreadSource.php';
+        if (!is_string($data['swoole'] ?? null) || $data['swoole'] === ''
+            || ($data['source']['reference'] ?? null) !== SwooleThreadSource::REFERENCE
+            || ($module['verification']['source'] ?? null) !== SwooleThreadSource::REFERENCE
+            || ($module['verification']['swoole'] ?? null) !== ($data['swoole'] ?? null)) {
+            throw new RuntimeException('内置 Swoole 的源码或运行版本已过期，请重新构建模块：' . $target);
+        }
         $relative = $module['file'] ?? null;
         $expected = $module['sha256'] ?? null;
         if (!is_string($relative) || preg_match('#^[a-z0-9_-]+/php-[0-9.]+-zts/(?:swoole\.so|php_swoole\.dll)$#D', $relative) !== 1

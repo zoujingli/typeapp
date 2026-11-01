@@ -6,10 +6,10 @@
 
 - TypePHP：`v0.9.5`，提交 `5ba9376642d8dd75efcd002b41b09a9d6bcca3e2`
 - PHPX：`v2.9.4`，提交 `f6a2555e14694e8888d2f40ff2838ffb22bc04f2`
-- Swoole：固定开发快照 `4aff74a9ac086458d1c5251e71ac6e080f68b390`，运行时字符串 `6.3.0RC1`
+- Swoole：固定开发快照 `c9745c443265db59d0a9f32310e1f27e1873739f`，运行时字符串 `6.3.0RC1`
 - PHP：`8.5.10 ZTS`（目标平台 SDK 必须与实际 PHP、架构和线程模式一致）
 
-准确依赖以根 `composer.lock` 和 `toolchain.lock.json` 为准；模板也必须携带相同的工具链身份。上面的 Swoole 提交是 RC1 后的开发快照，不能称为正式 6.3.0；正式版 6.2.3 也不能在没有重新构建和完整验收的情况下替换它。
+PHP、TypePHP 与 PHPX 的准确依赖以根 `composer.lock` 和 `toolchain.lock.json` 为准；模板也必须携带相同的工具链身份。Swoole 的固定源码与逐平台模块身份以[内置清单](../../plugin/type-build/resources/swoole/manifest.json)为准，重建状态见[构建输入](../../plugin/type-build/resources/swoole/README.md)。上面的 Swoole 提交是 RC1 后的开发快照，不能称为正式 6.3.0；正式版 6.2.4 也不能在没有重新构建和完整验收的情况下替换它。
 
 TypePHP 0.9.5 的匿名类会回退到嵌入 opcode 或 `eval`，本仓构建入口明确拒绝该路径；生产实现使用具名类。静态 PHP embed 构建与源码是否全量 AOT 是两项独立检查，不能以嵌入业务字节码替代编译。Nano 的能力边界不覆盖当前应用的 Swoole、数据库及任务系统，本次不采用。
 

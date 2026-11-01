@@ -158,9 +158,11 @@ php vendor/bin/type --inspect build/type-example
 
 ## 内置 Swoole 与运行依赖
 
-`type-build` 的 Composer 分发内容包含四平台 Swoole 共享模块、清单和原始许可证。当前源码固定 6.3 开发快照 `4aff74a`（运行时字符串 `6.3.0RC1`），不标为正式 6.3.0。主仓位置是 `plugin/type-build/resources/swoole/`，独立应用通常安装在 `vendor/zoujingli/type-build/resources/swoole/`；构建组件按自身安装位置查找，不依赖应用根目录或当前工作目录。应用无需复制主仓目录，也无需增加 `resources` 声明；根目录 `build/` 继续只保存不入仓的生成产物。
+`type-build` 的 Composer 分发内容包含四平台 Swoole 共享模块、清单和原始许可证。当前源码固定 6.3 开发快照 `c9745c4`（运行时字符串 `6.3.0RC1`），不标为正式 6.3.0。主仓位置是 `plugin/type-build/resources/swoole/`，独立应用通常安装在 `vendor/zoujingli/type-build/resources/swoole/`；构建组件按自身安装位置查找，不依赖应用根目录或当前工作目录。应用无需复制主仓目录，也无需增加 `resources` 声明；根目录 `build/` 继续只保存不入仓的生成产物。
 
 公共 `type-build` 开发分支已包含上述资源，并完成独立安装与字节核对。应用提交 `composer.lock` 固定实际版本；旧锁文件指向不含清单的分发版本时，须先受控更新再使用默认内置模块。
+
+本轮源码升级及逐平台模块状态见[构建输入](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)；上述历史公开消费不代表新版模块已完成四平台重建或分发。
 
 预编译模块固定使用 **PHP 8.5.10、ZTS、非 debug、64 位 ABI**。当前主仓源码工具链为 TypePHP 0.9.5、PHPX 2.9.4，准确版本以应用的工具链锁和 Composer 锁文件为准。源码升级进度与已公开 Release 分开记录，见[本次升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.5.md)。
 
@@ -171,7 +173,7 @@ php vendor/bin/type --inspect build/type-example
 | `macos-arm64/php-8.5.10-zts/swoole.so` | macOS ARM64，部署目标 15.0；新版模块加载与 PDO hook 已验收，完整应用范围见升级记录 |
 | `windows-x64/php-8.5.10-zts/php_swoole.dll` | Windows x64，PHP 官方 VS17 ZTS ABI |
 
-Linux 模块不适用于 Alpine/musl；NTS、其他 PHP 版本、macOS Intel 和 Windows ARM64 未提供内置文件。模块包含项目的编译线程、HTTP、Socket 与 TLS 适配，普通官方 Thread 可用不代表满足项目的编译入口 ABI。
+Linux 模块不适用于 Alpine/musl；NTS、其他 PHP 版本、macOS Intel 和 Windows ARM64 未提供内置文件。当前基线保留项目的编译线程与 HTTP 适配，UDP 来源和显式严格 TLS 校验复用官方实现，标准 stream hook 仍需最小 TLS 兼容适配，普通官方 Thread 可用不代表满足项目的编译入口 ABI。
 
 ### 选择与失败处理
 

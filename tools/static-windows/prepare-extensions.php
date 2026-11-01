@@ -9,11 +9,12 @@ if ($argc !== 3 || PHP_VERSION !== '8.5.10' || !PHP_ZTS) {
 $root = dirname(__DIR__, 2);
 $source = $argv[1];
 $report = [];
-foreach (['SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource', 'SwooleStaticSource', 'SwooleWindowsSource'] as $name) {
+foreach (['SwooleThreadSource', 'SwooleHttpSource', 'SwooleStaticSource', 'SwooleWindowsSource'] as $name) {
     require $root . '/plugin/type-build/src/' . $name . '.php';
     $class = 'Type\\Build\\' . $name;
     $report[$name] = (new $class())->apply($source . '/ext/swoole');
 }
+require $root . '/plugin/type-build/src/SwooleSocketSource.php';
 $report['tls'] = (new Type\Build\SwooleSocketSource())->applyTls($source . '/ext/swoole');
 
 // 当前 curl 的固定功能集没有 SSH；PHP 官方配置无条件检查 libssh2，

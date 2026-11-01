@@ -88,7 +88,7 @@ $status = $thread->getExitStatus();
 
 基础版本为工具链锁中的 PHP 8.5.10 ZTS、TypePHP 0.9.5 与 PHPX 2.9.4。额外适配只写显式的独立源码副本，先核对原文件 SHA-256 和替换次数，不修改已安装的共享 vendor 或 SDK。
 
-- `Type\Build\SwooleThreadSource::apply($directory)` 接受 Swoole 源码 `4aff74a9ac086458d1c5251e71ac6e080f68b390`，增加 `Thread::startNative` 与 `NATIVE_ENTRY_ABI=2`。这是 RC1 后的开发快照，实际报告 **6.3.0RC1**。中断钩子在进程模块初始化/关闭时安装/恢复，线程不相互覆盖；关闭回调使用其自身的有效 bailout 边界。标准流 FD 副本的注册和请求关闭回收已由上游承担，本次移除项目的重复所有权标记及 RSHUTDOWN 处理。当前构建使用 `swoole.enable_library=On` 和 `swoole.enable_fiber_mock=On`；旧模块必须重建，不能只凭 ABI 2 继续复用。
+- `Type\Build\SwooleThreadSource::apply($directory)` 接受 Swoole 源码 `c9745c443265db59d0a9f32310e1f27e1873739f`，增加 `Thread::startNative` 与 `NATIVE_ENTRY_ABI=2`。这是 RC1 后的开发快照，实际报告 **6.3.0RC1**。中断钩子在进程模块初始化/关闭时安装/恢复，线程不相互覆盖；关闭回调使用其自身的有效 bailout 边界。标准流 FD 副本的注册和请求关闭回收已由上游承担，项目不再重复维护所有权标记及 RSHUTDOWN 处理；原生入口同时登记上游的已构造状态，拒绝二次构造。当前构建使用 `swoole.enable_library=On` 和 `swoole.enable_fiber_mock=On`；旧模块必须重建，不能只凭 ABI 2 继续复用。
 - `Type\Build\PhpxThreadSource::apply($directory)` 接受锁定 PHPX 2.9.4 源码，按线程和协程隔离调试与权限状态，保护 Native finalizer 的堆清理边界。持久字符串保留原有进程寿命，预计算哈希并设为不可变，避免跨线程修改引用计数；`String::offsetSet()` 和 `Variant::setByteOfStr()` 使用 `zend_string_separate()` 取得可写副本，不能使用只按引用计数判断的 `SEPARATE_STRING`。重新编译整份 PHPX；ABI 2、头文件、核心、debug、GC 及字符串源码摘要共同防止混用旧适配。
 - `TypephpCompatibility` 使用受审 TypePHP 生成接缝，分离进程主入口与请求初始化；线程应用的主入口直接调用已编译 Zend handler，不使用 `eval`。全局常量存储使用 TLS，类与接口常量使用 Zend 自有的请求常量表；未静态解析的属性读取、nullsafe 读取及数组间接写入携带调用方权限，私有回调在解包后仍保留声明作用域。初始化错误先在编译缓存存活时报告，再按已获得的请求阶段清理。
 

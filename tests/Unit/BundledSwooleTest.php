@@ -56,7 +56,8 @@ final class BundledSwooleTest extends TestCase
             default => php_uname('m'),
         };
         $target = PHP_OS_FAMILY . '-' . $architecture . '-' . PHP_VERSION . (PHP_ZTS ? '-zts' : '-nts');
-        $manifest['modules'] = [$target => ['file' => $relative, 'sha256' => hash('sha256', 'controlled-module')]];
+        $manifest['modules'] = [$target => ['file' => $relative, 'sha256' => hash('sha256', 'controlled-module'),
+            'verification' => ['source' => $manifest['source']['reference'], 'swoole' => $manifest['swoole']]]];
         try {
             self::assertTrue(mkdir($work . '/src', 0700));
             foreach (['BundledSwoole', 'SwooleThreadSource', 'SwooleHttpSource', 'SwooleSocketSource', 'SwooleWindowsSource'] as $class) {
@@ -70,6 +71,22 @@ final class BundledSwooleTest extends TestCase
             $selected = json_decode($stdout, true, 32, JSON_THROW_ON_ERROR);
             self::assertSame(realpath($directory . '/' . $relative), $selected['file']);
             self::assertSame(realpath($directory . '/manifest.json'), $selected['manifest']);
+            // 版本字符串相同仍可能是旧开发快照，不能只更新全局适配摘要就复用旧模块。
+            foreach (['source' => str_repeat('0', 40), 'swoole' => '6.2.4'] as $field => $value) {
+                $invalid = $manifest;
+                $invalid['modules'][$target]['verification'][$field] = $value;
+                file_put_contents($directory . '/manifest.json', json_encode($invalid, JSON_THROW_ON_ERROR));
+                $this->assertRejected($work, '源码或运行版本已过期');
+            }
+            $invalid = $manifest;
+            $invalid['source']['reference'] = str_repeat('0', 40);
+            file_put_contents($directory . '/manifest.json', json_encode($invalid, JSON_THROW_ON_ERROR));
+            $this->assertRejected($work, '源码或运行版本已过期');
+            $invalid = $manifest;
+            unset($invalid['swoole'], $invalid['modules'][$target]['verification']['swoole']);
+            file_put_contents($directory . '/manifest.json', json_encode($invalid, JSON_THROW_ON_ERROR));
+            $this->assertRejected($work, '源码或运行版本已过期');
+            file_put_contents($directory . '/manifest.json', json_encode($manifest, JSON_THROW_ON_ERROR));
             file_put_contents($directory . '/' . $relative, 'corrupted-module');
             $this->assertRejected($work, '摘要不一致');
             unlink($directory . '/' . $relative);

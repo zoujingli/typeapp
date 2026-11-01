@@ -445,6 +445,15 @@ function httpThreadJoinContracts(string $directory): int
             usleep(1000);
             clearstatcache(true, $directory . '/gate-entered');
         }
+        try {
+            $thread->__construct(__FILE__);
+            throw new RuntimeException('native thread initialized twice');
+        } catch (Error $error) {
+            if ($error->getMessage() !== 'Constructor of Swoole\\Thread can only be called once') {
+                throw $error;
+            }
+            $checks++;
+        }
         foreach ([-1, 60001] as $invalidWait) {
             try {
                 $thread->joinWithin($invalidWait);
@@ -600,7 +609,7 @@ function httpThreadContracts(string $directory): int
         $server->__construct('127.0.0.1', 0);
         throw new RuntimeException('HTTP server initialized twice');
     } catch (Error $error) {
-        if ($error->getMessage() !== 'HTTP server is already initialized') {
+        if ($error->getMessage() !== 'Constructor of Swoole\\Coroutine\\Http\\Server can only be called once') {
             throw $error;
         }
         $checks++;

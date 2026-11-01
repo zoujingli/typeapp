@@ -176,7 +176,7 @@ TLS 通过 `open_ssl=true` 启用，沿用 `ssl_cert_file/ssl_key_file/ssl_cafil
 
 原生等待到期报告 `udp_timeout`，取消为 `udp_cancelled`，停止中的原等待为 `udp_stopped`；原生消息大小错误为 `udp_message_size`，不包装成截断成功。`stop()` 先禁止新操作，调用原生取消，等收发退出后释放 Socket；额度结算排在原生事件循环真正关闭 FD 之后。期间 `statistics()` 保持 `stopping` 和 `allocated=true`，直到状态为 `closed`，不能将停止意图当作已释放。已经关闭的实例不能重启，新一代端点重新构造。
 
-固定 Swoole 上游的 Socket `recvfrom()` 没有为空报文填写来源。本仓构建工具的 `SwooleSocketSource` 只修正该分支，并验证原文摘要；未修模块在该路径明确报告 `udp_peer_unavailable`。复现、原生预算与构建说明见[UDP 原生接入](https://github.com/zoujingli/typeapp/blob/main/docs/development/udp-native-io.md)，可执行例子见[UDP 示例](https://github.com/zoujingli/typeapp/blob/main/examples/udp/main.php)。
+当前固定的 Swoole 6.3 开发快照已在 Socket `recvfrom()` 中为空报文写回来源，直接复用官方实现；构建工具已删除 UDP 补丁，独立 TLS 入口仍为标准 stream hook 保留必要修正。来源缺失仍明确报告 `udp_peer_unavailable`。复现、原生预算与逐平台构建状态见[UDP 原生接入](https://github.com/zoujingli/typeapp/blob/main/docs/development/udp-native-io.md)，可执行例子见[UDP 示例](https://github.com/zoujingli/typeapp/blob/main/examples/udp/main.php)。
 
 `write_timeout` 通过原生 `SO_SNDTIMEO` 设置，`statistics()['write_timeout']` 返回原生回读的实际秒数。Socket 的 `setProtocol()` 不接收发送期限，不能用它的 true 返回值判断超时配置有效。
 

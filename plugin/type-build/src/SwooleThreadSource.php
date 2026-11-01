@@ -9,7 +9,7 @@ use RuntimeException;
 /** 为固定上游补充编译线程入口、退出通知与进程级中断钩子；线程创建、请求及回收仍由 Swoole 承担。 */
 final class SwooleThreadSource
 {
-    public const REFERENCE = '4aff74a9ac086458d1c5251e71ac6e080f68b390';
+    public const REFERENCE = 'c9745c443265db59d0a9f32310e1f27e1873739f';
 
     /**
      * 只修改显式提供的隔离源码副本；原文摘要或替换次数不匹配时拒绝。
@@ -20,12 +20,12 @@ final class SwooleThreadSource
     public function apply(string $directory): array
     {
         $hashes = [
-            'ext-src/swoole_thread.cc' => '0e4d38111d510e113e2356190ed1efc6e3864de4d58a193485dc155616844108',
+            'ext-src/swoole_thread.cc' => '3949d1bc0b44c4b7ec7d33676d60b1135e23ab7b3ed1572de8f46404e907f371',
             'ext-src/php_swoole_thread.h' => '002c8cd826170c254a8aa2c974982b94aee26dc7bd56f6278aff58b1835355fa',
             'ext-src/stubs/php_swoole_thread.stub.php' => 'ead2f3aa059ec4c10dd759e0e7e813f07f8c50a6d450dc54f0b123aff89cd360',
-            'ext-src/swoole_coroutine.cc' => '6adf21c286abbb9ef07f6d95e2aa34cb8fa88846e8e3d7e6c3086c6e9d7ea8ef',
-            'ext-src/php_swoole.cc' => '01f70bf8923ba2bbf5d8f4e7f2e2ce4bbb0bebb8a7b5e3549ff9a686ecc459b1',
-            'ext-src/php_swoole_private.h' => 'e2bcfccb1f54666182ca922e23323fdd6302be6305e36b8249d2d472a357cd97',
+            'ext-src/swoole_coroutine.cc' => 'afdabb0d1a6f4caf5e4596ed4e06d0778721a15b13777bccbe5767e60a5c8181',
+            'ext-src/php_swoole.cc' => 'e40bdc1afb495a88f9737e6af619a3088931c29cb1fe48e1f2db22c11acf4674',
+            'ext-src/php_swoole_private.h' => '2a9d4ef5aced190d972b6170769d0cf4c104692f9af2374b7b711ff8e8cc990c',
         ];
         $contents = [];
         foreach ($hashes as $file => $hash) {
@@ -158,6 +158,7 @@ static PHP_METHOD(swoole_thread, startNative) {
         zend_throw_exception(swoole_exception_ce, error.what(), SW_ERROR_SYSTEM_CALL_FAIL);
         RETURN_THROWS();
     }
+    pt->constructed = true;
     zend::object_set(return_value, ZEND_STRL("id"), (zend_long) pt->thread->get_id());
 }
 

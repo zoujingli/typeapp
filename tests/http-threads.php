@@ -218,7 +218,7 @@ for ($round = 0; $round < 3; $round++) {
         $final = json_decode(trim($result->stdout), true, flags: JSON_THROW_ON_ERROR);
         $expectedExits = $isWindows ? [0] : [0, 0, 0];
         expect($final['exits'] === $expectedExits && $final['active_threads'] === 1 && $final['contracts'] === 34
-            && $final['join_checks'] === 6, '线程没有完整 join 或原生契约不符');
+            && $final['join_checks'] === 7, '线程没有完整 join 或原生契约不符');
         $statistics = [];
         $stoppedWorkers = $isWindows ? ['1-1'] : ['1-1', '2-1', '1-2'];
         foreach ($stoppedWorkers as $worker) {

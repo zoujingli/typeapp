@@ -1,13 +1,17 @@
 # 内置 Swoole 构建输入
 
-此目录保存固定 Swoole 6.3 开发快照的预编译扩展，源码为 `4aff74a9ac086458d1c5251e71ac6e080f68b390`，运行时字符串为 `6.3.0RC1`。该提交包含 RC1 后续修复，不是正式 6.3.0。安装完整的 `zoujingli/type-build` 组件后，匹配的构建直接校验、复用本地文件，不再下载或编译 Swoole；文件不是 Git LFS 指针。固定 PHP 为 **8.5.10、ZTS、非 debug、64 位**，其他 ABI 不自动混用。
+当前源码基线为官方 Swoole 6.3 开发快照 `c9745c443265db59d0a9f32310e1f27e1873739f`，运行时字符串仍为 `6.3.0RC1`，不是正式 6.3.0。2026-11-01 核对的最新稳定发行版为 [6.2.4](https://github.com/swoole/swoole-src/releases/tag/v6.2.4)，尚无项目现用的 Windows 构建入口；本次沿既有 6.3 路线前进 117 个提交，归档和适配均固定摘要，不追随浮动分支。固定 PHP 为 **8.5.10、ZTS、非 debug、64 位**，其他 ABI 不自动混用。
 
 | 目录 | 平台与边界 |
 | --- | --- |
-| `linux-x64/php-8.5.10-zts/swoole.so` | Linux x86-64，Debian 12 / glibc 2.36 构建基线 |
-| `linux-arm64/php-8.5.10-zts/swoole.so` | Linux ARM64，Debian 12 / glibc 2.36 构建基线 |
-| `macos-arm64/php-8.5.10-zts/swoole.so` | macOS ARM64，部署目标 15；在 macOS 15 原生 ARM64 runner 构建并校验 |
-| `windows-x64/php-8.5.10-zts/php_swoole.dll` | Windows x64，PHP 官方 VS17 ZTS ABI |
+| `linux-x64/php-8.5.10-zts/swoole.so` | Linux x86-64，Debian 12 / glibc 2.36；暂存旧快照，待重建 |
+| `linux-arm64/php-8.5.10-zts/swoole.so` | Linux ARM64，Debian 12 / glibc 2.36；暂存旧快照，待重建 |
+| `macos-arm64/php-8.5.10-zts/swoole.so` | macOS ARM64，部署目标 15；本轮在原生 ARM64 本机构建并验证 |
+| `windows-x64/php-8.5.10-zts/php_swoole.dll` | Windows x64，PHP 官方 VS17 ZTS ABI；暂存旧快照，待重建 |
+
+本轮只更新 macOS 模块；其他三个文件保留原来的字节、来源和验证身份，选择器会拒绝旧快照。完成各平台重建和验收后才恢复对应默认复用，不能将本次源码更新当作四平台运行库或新版本已经发布。安装完整且模块匹配的 `zoujingli/type-build` 后，构建从组件安装位置校验、复用本地文件，不依赖主仓布局；文件不是 Git LFS 指针。
+
+本轮 macOS 模块在 macOS 27.2 ARM64 上通过真实加载、协程 SQLite、PostgreSQL 连接拒绝，以及完整应用与 21 个生产包的全量 AOT；同一程序通过 SQLite 业务和禁读源码验收。HTTP、TCP、UDP、WebSocket、MQTT 的独立原生消费者及 Redis TLS 回归通过，Redis 另验证协程 PHP、普通 PHP 与原生程序的正确证书、错误主机名和错误 CA。部署目标 15 不代表已在 macOS 15 实际执行；其他平台、静态单程序、MySQL/PostgreSQL 真实业务和三库性能对照尚未在本轮验收。
 
 Linux 文件不适用于 Alpine/musl。macOS Intel、Windows ARM64、NTS 或其他 PHP 版本未提供预编译文件。模块存在和能够加载均不等于完整应用的平台验收。
 
@@ -19,7 +23,7 @@ macOS ARM64 还要求配套 PHP 启用 Zend signals；关闭该选项的 Homebre
 
 1. 真实 embed 已内置的 Swoole 不重复加载。
 2. 显式 `runtime.modules` 声明优先，其次为有效的 `TYPE_SWOOLE_MODULE`。
-3. 默认读取本组件的 [manifest.json](manifest.json)，按操作系统、架构和 PHP ABI 选择本目录文件，校验 SHA-256 及 Thread、HTTP、Socket 适配类的身份，Windows 另验 Windows 适配类；清单缺失或不匹配时失败。
+3. 默认读取本组件的 [manifest.json](manifest.json)，按操作系统、架构和 PHP ABI 选择本目录文件，校验 SHA-256、固定源码和运行版本，以及 Thread、HTTP、Socket 适配类的身份，Windows 另验 Windows 适配类；清单缺失或不匹配时失败。运行时字符串相同不能替代源码提交核验。
 
 实际 embed 仍须通过模块加载、版本、依赖和警告检查，清单和选中模块一同进入构建身份。独立应用直接使用已安装组件的 `resources/swoole`，路径不依赖应用根目录或当前工作目录。其他扩展继续按 SDK 或显式候选解析；本目录是构建输入，不声明为应用资源，不会把四个平台的文件全部复制到应用产物。
 
@@ -38,13 +42,13 @@ Windows 共享模块已启用 `--enable-swoole-curl`，构建输入固定官方 
 
 ## 来源与依赖
 
-全部模块基于官方 [swoole-src](https://github.com/swoole/swoole-src/tree/4aff74a9ac086458d1c5251e71ac6e080f68b390) 固定提交。固定归档摘要、模块摘要、补丁身份、构建参数和来源记录在清单中。它们包含 TypeApp 的原生线程入口 ABI 2、HTTP、Socket 与 TLS 适配，不是未经修改的上游发行文件。上游已承担线程标准流回收，项目不再重复实现该生命周期。
+新基线来自官方 [swoole-src](https://github.com/swoole/swoole-src/tree/c9745c443265db59d0a9f32310e1f27e1873739f)。固定归档摘要、模块摘要、适配身份、构建参数和逐平台来源记录在清单中。TypeApp 保留原生线程入口 ABI 2、共享 HTTP 监听和连接/输入准入；删除官方已覆盖的空 UDP 来源与重复构造补丁。TCP、HTTP、WebSocket 客户端开启官方 `ssl_verify_host`；标准 stream hook 尚未映射此选项，仍需最小 IP SAN 兼容适配以保持协程 Redis/mysqlnd 行为，实证和撤除条件见[TCP 说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/tcp-native-io.md#数字-ip-的-tls-校验修正)。上游继续承担线程标准流回收。
 
 Linux 两种架构使用官方 `php:8.5.10-zts-bookworm` 镜像构建，启用线程、sockets、mysqlnd、c-ares、PostgreSQL/SQLite hook、OpenSSL 和原生 cURL。运行仍需要相容的 libpq、SQLite、c-ares、OpenSSL、libcurl、C++ 与系统库，现有原生依赖收集器负责纳入发布清单。
 
 macOS 模块将 libpq（含配套的 libpgcommon_shlib、libpgport_shlib）、SQLite、OpenSSL、c-ares、Brotli 的静态归档链接进扩展，并隐藏这些库的符号，避免与 PHP 已加载的同名库混用。扩展保留 PHP API 的动态绑定以及系统库依赖；没有开发电脑的依赖路径，不需要伴随 dylib。静态子依赖及其来源记录在清单中。
 
-Unix 三个平台的模块来自 [重建 run 37075789749](https://github.com/zoujingli/typeapp/actions/runs/37075789749)，主仓源码为 `f6c092f436f2a341bb6d588d333d761c2ab64732`。RC14 的 Windows 模块来自 [run 37134319268](https://github.com/zoujingli/typeapp/actions/runs/37134319268)、源码 `5c409678213ebd12da3c3d80de4213f1896da7a3`，保留 IPv6 地址初始化与独占绑定适配、TLS 正常 EOF 修复；IOCP 关联缓存由 c-ares 和 libcurl 的真实关闭生命周期回收，使存活连接可重复登记事件、关闭后的数值句柄可安全复用。模块静态链接固定 c-ares 1.34.8，使指定 DNS 配置在主线程和重建的工作线程生效。共享模块使用与开发 PHP 一致的 `/MD` CRT，生产静态 SDK 独立使用 `/MT`；开发 SDK 的配套 DLL 不属于生产单程序的部署文件。当前 Windows 模块身份见下一节。
+升级前 Unix 三个平台的模块来自 [重建 run 37075789749](https://github.com/zoujingli/typeapp/actions/runs/37075789749)，主仓源码为 `f6c092f436f2a341bb6d588d333d761c2ab64732`；目前仅 Linux 两个平台继续保留该来源，macOS 已替换为本轮本机构建。RC14 的 Windows 模块来自 [run 37134319268](https://github.com/zoujingli/typeapp/actions/runs/37134319268)、源码 `5c409678213ebd12da3c3d80de4213f1896da7a3`，保留 IPv6 地址初始化与独占绑定适配、TLS 正常 EOF 修复；IOCP 关联缓存由 c-ares 和 libcurl 的真实关闭生命周期回收，使存活连接可重复登记事件、关闭后的数值句柄可安全复用。模块静态链接固定 c-ares 1.34.8，使指定 DNS 配置在主线程和重建的工作线程生效。共享模块使用与开发 PHP 一致的 `/MD` CRT，生产静态 SDK 独立使用 `/MT`；开发 SDK 的配套 DLL 不属于生产单程序的部署文件。当前 Windows 模块身份见下一节。
 
 ### Windows 环境编码修复
 
@@ -70,7 +74,7 @@ bash tools/prepare-swoole-module.sh
 
 上述开关对应 Linux。可移植四平台模块统一通过主仓的 `rebuild-swoole.yml` 手动工作流重建；Unix 实现为 `tools/rebuild-bundled-swoole.sh`，Windows 使用 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 调用既有 SDK 准备脚本。macOS 固定 `MACOSX_DEPLOYMENT_TARGET=15.0`，以 `-Wl,-load_hidden,<归档文件>` 隐藏链接非系统库，保留系统 curl、zlib、C++ 与平台库，最后 strip 并重新 ad-hoc 签名。不得复用系统要求高于目标平台的归档。
 
-验收包括准确机器类型和 SHA-256、真实 PHP 加载、原生线程 ABI、协程和 PDO hook，以及真实 embed 和应用 AOT 的对应回归。macOS 必须确认没有未解析的 PostgreSQL 私有符号，并实际验证 PDO 连接失败返回异常；仅加载扩展不能发现遗漏静态依赖导致的延迟绑定崩溃。本批四个平台均使用原生 runner，旧模块的模拟加载结果保留在历史证据中。
+验收包括准确机器类型和 SHA-256、真实 PHP 加载、原生线程 ABI、协程和 PDO hook，以及真实 embed 和应用 AOT 的对应回归。macOS 必须确认没有未解析的 PostgreSQL 私有符号，并实际验证 PDO 连接失败返回异常；仅加载扩展不能发现遗漏静态依赖导致的延迟绑定崩溃。既有四平台重建使用原生 runner，旧模块的模拟加载结果保留在历史证据中；本轮尚未执行远端矩阵。
 
 **这些文件是共享扩展构建输入。** PHP SDK、PHPX 和其他依赖仍须准备；本目录不代表整个构建离线。生产 Release 另由静态 SDK 生成一个主程序，非系统运行库在构建期链接，启动不释放 `.so` 或 `.dll`；各版本的实际范围见[平台与验收](https://iots.top/#/guide/platforms)。
 

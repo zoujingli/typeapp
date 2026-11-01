@@ -51,12 +51,12 @@ source_archive "${TYPE_STATIC_PHP_ARCHIVE:-}" php-8.5.10.tar.xz https://www.php.
 if [[ "$task_redis_enabled" == 1 ]]; then
     source_archive "${TYPE_STATIC_REDIS_ARCHIVE:-}" redis-6.3.0.tgz https://pecl.php.net/get/redis-6.3.0.tgz 0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5
 fi
-source_archive "${TYPE_STATIC_SWOOLE_ARCHIVE:-}" swoole.tar.gz https://codeload.github.com/swoole/swoole-src/tar.gz/4aff74a9ac086458d1c5251e71ac6e080f68b390 63598eba7d2a36d8820b1501854161e5c326ab30a32a419e3aa0e4d5154936cd
+source_archive "${TYPE_STATIC_SWOOLE_ARCHIVE:-}" swoole.tar.gz https://codeload.github.com/swoole/swoole-src/tar.gz/c9745c443265db59d0a9f32310e1f27e1873739f fff55ac1e7bbb96394adcc81c1f97fc6a69e6b81a455bef88a9a01b61bb7477d
 task_source="$task_work/src/php-8.5.10"
 if [[ "$task_redis_enabled" == 1 ]]; then
     mv "$task_work/src/redis-6.3.0" "$task_source/ext/redis"
 fi
-mv "$task_work/src/swoole-src-4aff74a9ac086458d1c5251e71ac6e080f68b390" "$task_source/ext/swoole"
+mv "$task_work/src/swoole-src-c9745c443265db59d0a9f32310e1f27e1873739f" "$task_source/ext/swoole"
 # Composer 锁定的原始 PHPX 复制到任务内适配；不改共享 vendor 或宿主 SDK。
 cp -R "$task_root/vendor/swoole/phpx" "$task_work/src/phpx"
 # shellcheck disable=SC2016
@@ -66,12 +66,12 @@ if (Composer\InstalledVersions::getReference("swoole/phpx") !== "f6a2555e14694e8
     throw new RuntimeException("PHPX 来源与锁定版本不符");
 }
 $report = [];
-foreach (["Thread", "Http", "Socket", "Static"] as $kind) {
+foreach (["Thread", "Http", "Static"] as $kind) {
     $class = "Type\\Build\\Swoole" . $kind . "Source";
     $report[$kind] = (new $class())->apply($argv[2] . "/ext/swoole");
 }
-$report["Tls"] = (new Type\Build\SwooleSocketSource())->applyTls($argv[2] . "/ext/swoole");
 $report["PHPX"] = (new Type\Build\PhpxThreadSource())->apply($argv[3]);
+$report["Tls"] = (new Type\Build\SwooleSocketSource())->applyTls($argv[2] . "/ext/swoole");
 file_put_contents($argv[4], json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 ' "$task_root" "$task_source" "$task_work/src/phpx" "$task_work/adaptations.json"
 
