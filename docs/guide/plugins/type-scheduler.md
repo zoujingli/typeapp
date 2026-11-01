@@ -263,7 +263,7 @@ work 3 1000 总共检查三轮，轮间相隔 1000 毫秒，不代表必然执�
 
 `stop($drainSeconds = 5.0)` 取消 ready、停止后续 tick 和本轮剩余补跑；不能撤销已执行外部效果。`statistics()` 提供 triggered、failed、interrupted、lease_conflicts、storage_failures 和 limit_reached 等有界计数。
 
-当前 `main` 的命令轮询在空闲期间最多每 50ms 检查停止状态，物联中心 `app:schedule` 已接入 `ProcessSignals`，不必等完整轮询间隔才退出。独立应用仍由宿主登记信号并调用 `stop()`；Windows 控制事件还需宿主持续 `dispatch()`。在途工作以真实完成和持久记录为准，失去 Redis 租约后不能写成功状态；接管者保留 `interrupted` 供业务核对。这些新接线尚未包含 RC14。
+当前 `main` 的命令轮询以 Swoole Channel 等待轮间间隔，调用 `stop()` 或存储失败撤销就绪时直接关闭通道唤醒，不周期检查停止状态；原生取消一次等待不会提前执行下一轮。物联中心 `app:schedule` 已接入 `ProcessSignals`，不必等完整轮间间隔才退出。独立应用仍由宿主登记信号并调用 `stop()`；Windows 控制事件还需宿主持续 `dispatch()`。在途工作以真实完成和持久记录为准，失去 Redis 租约后不能写成功状态；接管者保留 `interrupted` 供业务核对。这些新接线尚未包含 RC14。
 
 Scheduler 不拥有应用另行创建的 RedisManager。停止调度后，仍需关闭外层 Redis Scope 和管理器。
 
