@@ -62,17 +62,21 @@ $status = $thread->getExitStatus();
 
 线程应用的 `exit()` 结束当前请求，由 Swoole 或主 embed 边界回收。普通角色建议返回退出码。`join()` 沿用 Swoole 的等待语义；本入口尚未提供任务排空截止、取消传播或强制终止协议，不能把线程句柄当作这些能力的完成证明。
 
-### 有截止的完成等待候选
+<a id="有截止的完成等待候选"></a>
+
+### 有截止的完成等待
 
 固定上游 `living` 在线程实际进入前是 false，并在 PHP/TSRM 最后清理之前变为 false；`isAlive()` 不能证明 join 不阻塞。`joinable()` 只说明仍有 join 所有权，`activeCount()` 不能归属某一线程，detach 也不证明资源已回收。原生脚本诊断连续 30 次观察到创建后立即 isAlive=false，收到 Queue 就绪后 join 仍等待约 20–25ms；该诊断不是 AOT 验收。
 
-适配只在现有 PhpThread 句柄保存标准 C++ future，在原生线程执行器完整返回后调用 `promise::set_value_at_thread_exit()`，由标准库在线程局部析构结束后通知。没有新增工作池、线程或扫描器，不依赖上述 living 标记。等待阻塞调用方 OS 线程，不能用于业务协程中的非零等待；由独立主控线程使用。毫秒参数约束完成通知的等待预算，调度及最后的原生 join 不构成硬实时保证，也不代替永久阻塞时的独立故障退出。
+当前内置模块提供 TypeApp 私有 `Thread::joinWithin(0..60000)` 与 `TYPEAPP_JOIN_ABI=1`。Unix 路径在现有 PhpThread 句柄保存标准 C++ future，在线程执行器完整返回后调用 `promise::set_value_at_thread_exit()`，由标准库在线程局部析构结束后通知；Windows 路径等待原生线程句柄变为有信号状态，覆盖 MSVC 的通知可能早于 TLS 析构结束的情况。没有新增工作池、线程或扫描器，不依赖上述 living 标记。等待阻塞调用方 OS 线程，不能用于业务协程中的非零等待；由独立主控线程使用。毫秒参数约束完成通知的等待预算，调度及最后的原生 join 不构成硬实时保证，也不代替永久阻塞时的独立故障退出。
 
-线程角色可直接使用官方 `Swoole\Coroutine\run()`，已有 `Swoole\Coroutine::create()` 与 `Swoole\Event::wait()` 仍是原生入口。库按 Swoole 请求初始化加载；调用 run 前明确局部 `hook_flags`，避免它默认补齐 `SWOOLE_HOOK_ALL` 改变既定配置。协程通过 Channel、sleep 或实际异步操作让出时，PHPX 保存各协程的 lexical/fake scope 与调试栈；Native 对象继续由整个请求的根注册表保持可达，协程结束顺序不要求后进先出。
+线程角色沿用 `CoroutineRuntime::run()` 进入官方 Scheduler，已有协程时直接执行，保留启动期验证的 hook flags。库按 Swoole 请求初始化加载；自行装配官方 `Swoole\Coroutine\run()` 时需明确局部 `hook_flags`，避免默认补齐 `SWOOLE_HOOK_ALL` 改变既定配置。协程通过 Channel、sleep 或实际异步操作让出时，PHPX 保存各协程的 lexical/fake scope 与调试栈；Native 对象继续由整个请求的根注册表保持可达，协程结束顺序不要求后进先出。
 
 普通 PHP 异常、fatal、exit、shutdown 回调和析构异常可能形成不同的请求退出结果。PHP 8.5 的 fatal 会将 Zend 对象标为已析构，因此不会再执行其用户析构方法；资源可靠清理不能只依赖 `__destruct()`。Native finalizer 的 bailout 由 GC 边界暂时接住，完成剩余对象释放后按请求失败语义收尾。未 join 就关闭主请求会由 Swoole 终止整个进程，不能当作线程局部失败。
 
-### 控制参数与生产监督候选
+<a id="控制参数与生产监督候选"></a>
+
+### 控制参数与生产监督
 
 编译线程入口新增可选第四参数 `Thread\Map`，TypeApp 私有能力为 `TYPEAPP_CONTROL_ARGUMENT_ABI=1`。运行时仅在使用它时检查能力；原两参数及仅带 Socket 的三参数调用不变。Map 固定在子线程 `getArguments()[2]`，无 Socket 时下标 1 是 null；原生 ZendArray/ThreadResource 负责共享数据引用，各线程创建自己的 Zend 对象。当前生产调用者为 `ThreadSupervisor` 与 `SwooleServer::serveThread()`，不经业务源码解释或文件消息通道。
 

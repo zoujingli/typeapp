@@ -8,9 +8,9 @@
 
 ## 入口与配置
 
-`CoroutineRuntime::startThread()` 在启动业务线程前调用 `enableIo()`；Swoole HTTP 入口也调用同一方法。通用入口只加入 TCP、SLEEP、STREAM_FUNCTION 并保留既有 mask，不要求文件私有 ABI。文件消费者在主线程显式加入原生 `SWOOLE_HOOK_FILE`，子线程直接复用已安装的 hook，不重复调用 `enableIo()`。只有进入协程的适用操作才会让出，同步入口不会自动创建协程。
+`CoroutineRuntime::startThread()` 在启动业务线程前调用 `enableIo()`；Swoole HTTP 入口也调用同一方法。通用入口按当前扩展组合补齐官方网络、等待、PROC 与 PDO hook，保留既有 mask，不自动加入 FILE，也不要求文件私有 ABI。文件消费者在主线程显式加入原生 `SWOOLE_HOOK_FILE`，子线程直接复用已安装的 hook，不重复安装。只有进入协程的适用操作才会让出，同步入口不会自动创建协程。
 
-当前文件消费者要求 `SWOOLE_FILE_IO_ABI=2`，在传入私有配置前检查并于缺失时抛出 `swoole_file_io_unavailable`。候选不依赖额外原生监督线程。当前标志仅在 macOS 候选中注册；其他平台不能使用不匹配模块假装满足文件约束。`enableIo()` 对子线程调用和存在存活业务线程时的配置变更抛出 `swoole_hook_startup_required`，在调用原生配置方法前拒绝，避免失败仍改变线程局部选项。
+当前文件消费者要求 `SWOOLE_FILE_IO_ABI=2`，在传入私有配置前检查并于缺失时抛出 `swoole_file_io_unavailable`。候选不依赖额外原生监督线程。当前标志仅在 macOS 候选中注册；其他平台不能使用不匹配模块假装满足文件约束。子线程调用 `enableIo()`，或主线程在业务线程存活时调用，只复核启动期必需的 flags；完整则返回，缺失时抛出 `swoole_hook_startup_required`，不在运行期间重装进程级 handler。hook 的安装与继承规则见[运行时入口](../guide/plugins/type-runtime.md#协程上下文与所有权)。
 
 选择文件候选 SDK 后，生产 `ThreadSupervisor::run()` 在创建业务线程之前调用私有 `Coroutine::typeappSuperviseIo()`，将原生 `AsyncThreads` 接收者附着到独立主控 reactor。既有 Timer 随后检查最早未结算操作的硬截止，原身份表改为按递增提交编号排序，无第二份期限队列或全量周期扫描；未附着的候选 AIO 提交报 `aio_supervisor_required`。业务 reactor 不再覆盖默认回收目标，原 `release_callback` 和完成通道仍执行空闲回收，主控在所有真实 join 后才退出事件循环。心跳只证明业务线程可以前进，不能替代这个操作期限。
 

@@ -38,13 +38,13 @@ flowchart LR
 
 普通完整 embed 应用与线程应用共用请求宿主：先结束请求及对象清理，再卸载应用模块，避免回调仍持有对象时提前释放类信息。普通应用不额外启用线程；源码摘要门禁、退出码和原生回归见[embed 生命周期](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md#embed-请求与模块生命周期)。旧版已编译程序需要重新构建才能获得修复。
 
-线程适配另提供 TypeApp 私有 `Thread::TYPEAPP_JOIN_ABI=1` 与 `joinWithin(int $milliseconds)` 候选，只适用于编译线程；等待完整 C++ 线程局部清理通知后仍由 Swoole join。超时保留所有权，不取消或 detach；非零等待会阻塞调用方线程，只供独立主控使用。它不等于完整停止监督或硬实时截止，固定缺口、验收及撤除条件见同页的“有截止的完成等待候选”。
+当前内置模块的线程适配提供 TypeApp 私有 `Thread::TYPEAPP_JOIN_ABI=1` 与 `joinWithin(int $milliseconds)`，只适用于编译线程；确认线程实际完成后仍由 Swoole join。超时保留所有权，不取消或 detach；非零等待会阻塞调用方线程，只供独立主控使用。它不等于完整停止监督或硬实时截止，Unix/Windows 的完成判定、固定缺口与验收边界见[有截止的完成等待](https://github.com/zoujingli/typeapp/blob/main/docs/development/compiled-business-threads.md#有截止的完成等待)。
 
 `SwooleThreadSource` 还提供私有 `TYPEAPP_CONTROL_ARGUMENT_ABI=1`，允许 `startNative()` 的第四参数传递原生 `Thread\Map`；仅扩大编译入口的参数接缝，数据共享与引用回收继续使用上游 ZendArray/ThreadResource。当前调用者是 `type-runtime` 的有限线程监督及 `type-core` 的 HTTP 线程入口。原两/三参数形状保持不变；上游编译入口可等价传入受控 Map 后撤除此私有接缝，不能用脚本线程代替无源码入口。
 
 `SwooleIoSource` 仍是显式文件候选，独立核验原文再组合线程适配。当前私有 `SWOOLE_FILE_IO_ABI=2` 将原生提交硬截止交给 `type-runtime` 的独立主控，不再创建额外监督线程；Swoole 原工作池、空闲回收通知与 `release_callback` 继续负责调度和 join。主控持有默认完成接收者，防止业务线程退役后通知指向已关闭的描述符；诊断、候选配置和撤除条件见[文件 I/O 记录](https://github.com/zoujingli/typeapp/blob/main/docs/development/swoole-file-io.md)。它不进入默认线程构建，普通 metadata 旁路、上传故障及平台汇合继续验证。
 
-显式 HTTP 线程候选通过 `SwooleHttpSource::apply($directory)` 为固定上游增加已绑定 Socket 的协程 HTTP 接入，继续使用原生 accept、解析器、响应与 shutdown；与 `SwooleThreadSource` 的原生 Socket 参数配合。显式 `typeapp_max_connections` 复用原生连接表、Channel 和 FD 延迟关闭实现连接准入，属于 TypeApp 私有配置，不是经典 `max_connection`。此适配独立于默认线程与 FILE 适配，私有 ABI、失败复现、所有权及撤除条件见[HTTP 线程接入](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-native-threads.md)，不能将候选入口当作官方 API 或完整平台支持。
+`SwooleHttpSource::apply($directory)` 为固定上游增加已绑定 Socket 的协程 HTTP 接入，继续使用原生 accept、解析器、响应与 shutdown；与 `SwooleThreadSource` 的原生 Socket 参数配合。显式 `typeapp_max_connections` 复用原生连接表、Channel 和 FD 延迟关闭实现连接准入，属于 TypeApp 私有配置，不是经典 `max_connection`。默认模块准备脚本组合 HTTP、线程及 Socket/TLS 适配，各自保留独立入口，文件 AIO 候选不进入该组合。私有 ABI、失败复现、所有权及撤除条件见[HTTP 线程接入](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-native-threads.md)，不能将适配入口当作官方 API 或完整平台支持。
 
 同一候选的 `typeapp_http1_input=true` 在原生解析回调覆盖前拒绝重复 Host、Authorization、Content-Type，其余多值头复用上游数组机制；仅接受 HTTP/1.0 和 HTTP/1.1。它是 TypeApp 私有布尔选项，配合原生 `http_parse_cookie=false` 供既有 PSR 处理链执行输入策略；默认原生行为、经典入口及 HTTP/2 不因此获得相同验收结论。
 
