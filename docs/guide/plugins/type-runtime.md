@@ -105,6 +105,8 @@ try {
 | `cleanupSeconds` | 秒，0–60，默认 5，控制合作式清理 |
 | `TaskBudget` | 可共享的执行额度，限制任务树总在途量 |
 
+`Deadline::shorten($seconds)` 只缩短现有截止，已开始的受管等待也会响应变化。同一截止的观察者共用原生计时，不为每个子任务另建周期检查。未传 `Cancellation` 时，作用域负责把到期转为自己的取消通知；传入外部对象时，调用方保留其取消所有权，当前作用域到期不会取消其他独立作用域。
+
 自定义资源实现 `ManagedResource::start()/stop()`，以 `$scope->open($resource)` 登记。登记发生在启动之前，因此部分启动失败也会清理；`stop()` 必须能处理该状态。单个关闭异常不阻止其他资源关闭。
 
 ## 协程上下文与所有权
@@ -127,7 +129,7 @@ try {
 
 ## 资源池与租约
 
-`ResourcePool($factory, $capacity, $idleLimit)` 接收零参数工厂，返回实现 `ReusableResource` 的对象；通过 `borrow($scope)` 获取 `ResourceLease`。业务使用 `hold(static function (ReusableResource $resource): mixed { ... })`，在途操作结束前持有容量。不要把租约内资源保存到其他请求。
+`ResourcePool($factory, $capacity, $idleLimit)` 接收零参数工厂，返回实现 `ReusableResource` 的对象；通过 `borrow($scope)` 获取 `ResourceLease`。业务使用 `hold(static function (ReusableResource $resource): mixed { ... })`，在途操作结束前持有容量。`resource()` 只做取得时的校验，不登记持有期，不能代替可能让出的操作所需的 `hold()`。不要把租约内资源保存到其他请求。
 
 池满时，同步调用立即抛 `CapacityException`；Swoole 协程默认最多排队 64 项、等待 1 秒。`borrow($scope, 0)` 显式选择立即拒绝；正数只能缩短本次等待，最终截止还受当前作用域约束。等待超时、取消与等待队列满分别按实际异常处理，等待中的任务还没有取得租约。
 

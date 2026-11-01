@@ -21,7 +21,7 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过�
 
 构建期登记的业务线程通过 `CoroutineRuntime::startThread()` 启动，复用 Swoole Thread 句柄；需要受控 Swoole/PHPX ABI 2、开启 fiber 通知、完整 AOT 入口及调用者显式 join。接入方式、参数预算、线程内协程和失败收尾的实际验证边界见[已编译业务线程](https://github.com/zoujingli/typeapp/blob/main/docs/development/compiled-business-threads.md)。
 
-显式完成等待候选直接使用句柄上的 `joinWithin(0..60000)`，额外检查 TypeApp 私有 `Thread::TYPEAPP_JOIN_ABI=1`。超时仍持有线程和资源，不可提前释放额度；非零等待阻塞 OS 线程，仅用于独立主控。它不替代任务停止、排空或永久阻塞后的进程故障处理，旧 `join()` 调用不依赖此候选。
+有期限的完成等待使用句柄上的 `joinWithin(0..60000)`，额外检查 TypeApp 私有 `Thread::TYPEAPP_JOIN_ABI=1`。当前内置模块提供该适配，`ThreadSupervisor` 使用它探测完成；它不是上游标准 API。超时仍持有线程和资源，不可提前释放额度；非零等待阻塞 OS 线程，仅用于独立主控。它不替代任务停止、排空或永久阻塞后的进程故障处理，原 `join()` 调用不依赖此能力。
 
 `startThread($entry, $payload, $socket)` 可选传入一个原生协程 Socket，复用 Swoole 自有的描述符复制；子线程从 `Thread::getArguments()[1]` 取得自己的对象。该入口额外要求 TypeApp 私有 `Thread::TYPEAPP_SOCKET_ARGUMENT_ABI=1`，缺失时抛出 `compiled_thread_socket_unavailable`，未传 Socket 的原两参数入口不依赖此能力。调用原生复制前会使用官方 `Socket::isClosed()` 检查所有权边界；已关闭 Socket 直接抛出 `Swoole\Exception`，不会创建线程，无法检查状态时抛出 `compiled_thread_socket_unavailable`。调用者负责原对象、各副本及 join，不能共享 PDO 或业务对象；当前用途与候选边界见[HTTP 线程接入](https://github.com/zoujingli/typeapp/blob/main/docs/development/http-native-threads.md)。
 
@@ -45,7 +45,7 @@ TypeApp 应用的通信与基础并发必须使用 Swoole；线程与协程入�
 
 构造参数 `context` 是关联信息，队列消息也可携带它。`run()` 的 `bindings` 是应用验证后显式提供的字符串值，通过 `$scope->binding($name)` 读取，缺失返回 null；关联信息不会自动成为这些绑定。两类值均取快照，不能传入连接、事务或可变对象。框架不读取账号、成员或角色，也不替应用确认身份、权限或租户资格。
 
-独立命令可用 `CoroutineRuntime::run(Closure(): mixed)` 进入官方 Swoole Scheduler，并在回调内创建作用域和资源；已有协程时直接执行，不另建执行者，不改变启动时的 hook flags。不要把在外部协程创建的连接带入回调。HTTP、WebSocket、MQTT Broker 事件、持久 worker、生成 CLI、队列、调度及受管子任务已接入；自定义 Socket 消息由应用入口显式绑定。各角色和平台的实际验证范围见[受管任务](https://github.com/zoujingli/typeapp/blob/main/docs/development/managed-tasks.md)。
+独立命令可用 `CoroutineRuntime::run(Closure(): mixed)` 进入官方 Swoole Scheduler，并在回调内创建作用域和资源；已有协程时直接执行，不另建执行者，不改变启动时的 hook flags。只有根回调实际进入才视为启动成功，未进入时抛出 `coroutine_start_failed`；业务结果和异常原样传回。不要把在外部协程创建的连接带入回调。HTTP、WebSocket、MQTT Broker 事件、持久 worker、生成 CLI、队列、调度及受管子任务已接入；自定义 Socket 消息由应用入口显式绑定。各角色和平台的实际验证范围见[受管任务](https://github.com/zoujingli/typeapp/blob/main/docs/development/managed-tasks.md)。
 
 `CoroutineRuntime::enableIo()` 在启动期补齐官方网络、等待、PDO 和 `SWOOLE_HOOK_PROC`，保留已有配置。普通主线程会直接安装进程级 handler；原生编译入口若已经运行在 Swoole 协程中，则先确保进程级 handler 已安装，再用 `Coroutine::set()` 同步当前协程的 hook 快照，其他已运行协程不会被改写。主线程完成短期 Scheduler 后，实际 hook 可能已被撤销；启动业务线程前会重新应用配置，不能仅凭 `getHookFlags()` 判断已安装。生成的线程入口校验启动消息，再将主线程已验证的 flags 同步到线程本地选项；线程内的 PDO 与 Scheduler 因而读取同一配置。业务线程存活期间不修改进程级 hook。`type-build` 与 `type-runtime` 的线程消息协议必须一致，混用旧组件会在构建时明确拒绝。独立命令进程使用参数数组及 Swoole 接管的 `proc_open` 管道，启动、状态、终止和回收在协程中完成；不在协程中调用会在 fork 后执行 PHP 回调的 `Swoole\Process::start()`。
 
@@ -73,7 +73,7 @@ composer require zoujingli/type-runtime:1.0.0-rc.18
 
 `ManagedResource::stop()` 抛错后，作用域继续持有失败项并保持 `closing`；同一所有者再次 `close()` 只收尾剩余项，成功项不重复停止。资源实现须保留再次收尾所需状态；正常返回也可表示在途所有权已交给既有池或原生完成回调。迟到子任务不能越过失败资源将作用域标成 `closed`，资源清理本身不增加后台重试。`WorkLifecycle::finish()` 遇到未关闭作用域会撤销就绪并保持在途额度，拒绝替换该作用域；业务已返回且真实清理完成后，统计回收额度，角色仍保持停止。
 
-在已有协程中，同一个 `Deadline` 的观察者共用一个 Swoole Timer。作用域和 HTTP 发送各自登记、撤销监听；最后一个监听撤销时清除未触发的定时器，到期通知完成后由原生回收。超过原生单次等待范围的预算分段登记，仍以单调时钟判断到期。缩短截止会重设这一次原生等待，响应已经结束的监听不会再取消后续资源清理。传入外部 `Cancellation` 时仍由调用方保留取消所有权，某个作用域自身到期不会取消共享该对象的其他独立作用域。
+在已有协程中，同一个 `Deadline` 的观察者共用一个 Swoole Timer。作用域、受管任务等待、HTTP 请求与响应发送各自登记、撤销监听；最后一个监听撤销时清除未触发的定时器，到期通知完成后由原生回收。超过原生单次等待范围的预算分段登记，仍以单调时钟判断到期。缩短截止会重设这一次原生等待，已经结束的监听不会再取消后续资源清理。传入外部 `Cancellation` 时仍由调用方保留取消所有权，某个作用域自身到期不会取消共享该对象的其他独立作用域。
 
 运行时回调使用固定签名：`ExecutionScope::spawn()` 接收 `Closure(ExecutionScope): mixed`，子任务始终获得自己的作用域；`ResourceLease::hold()` 接收 `Closure(ReusableResource): mixed`；`ResourcePool` 工厂为 `Closure(): ReusableResource`。即使不使用上下文，也按公开合同声明相应参数。依赖通过构造或 `use` 捕获传入，业务扩展不依赖参数引用写回。
 
@@ -112,7 +112,7 @@ function main(int $argc, array $argv): void
 }
 ```
 
-上例展示独立的同步命令用法，只使用参数解析和作用域清理，不涉及通信和并发启动；完整 TypeApp 应用仍要求 Swoole。线程与协程应用使用上文的运行时基础能力；`ExecutionScope::spawn()` 的受管子任务在当前线程内创建协程，需要已启用的 Swoole 协程上下文。角色入口可直接调用官方 `Swoole\Coroutine\run()`，或沿用原生 `Swoole\Coroutine::create()` 和 `Swoole\Event::wait()`。官方内置 PHP 库按 Swoole 请求初始化加载，是全量 AOT 的唯一例外；框架、业务、生成入口和其他生产 PHP 仍完整编译。调用 run 前应明确既定 `hook_flags`，避免它默认补齐全部 hook；缺少上下文会抛出 `TaskException` 并保留 `coroutine_required` 错误码。
+上例展示独立的同步命令用法，只使用参数解析和作用域清理，不涉及通信和并发启动；完整 TypeApp 应用仍要求 Swoole。线程与协程应用使用上文的运行时基础能力；`ExecutionScope::spawn()` 的受管子任务在当前线程内创建协程，需要已启用的 Swoole 协程上下文。独立角色沿用 `CoroutineRuntime::run()`，保留已安装的 hook 配置；自行装配原生入口时须核对官方 `Swoole\Coroutine\run()` 默认补齐 `SWOOLE_HOOK_ALL` 的行为。官方内置 PHP 库按 Swoole 请求初始化加载，是全量 AOT 的唯一例外；框架、业务、生成入口和其他生产 PHP 仍完整编译。受管子任务缺少协程上下文时抛出 `TaskException`，错误码为 `coroutine_required`。
 
 ## 接口与源码组织
 

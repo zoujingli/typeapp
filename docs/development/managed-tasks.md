@@ -40,16 +40,16 @@ MQTT Broker 在有界接纳后显式使用官方 `Coroutine::create()` 与一个
 
 `ExecutionScope` 可配置单调时钟 `Deadline`、显式字符串上下文、子任务容量和清理预算。`spawn()` 创建拥有独立作用域的子任务，继承同一个剩余截止时间和上下文副本，不继承父连接及可变模型。整个子任务树共用容量，递归创建不能绕过根上限。
 
-`ManagedTask::await()` 返回结果或抛出业务异常。等待预算耗尽会发出取消意图并抛 `task_timeout`，不会宣称远端 SQL 或其他副作用已撤销。子任务通过 `assertActive()` 配合取消检查；ORM 操作在返回后再次检查租约和截止状态，取消过的数据库会话丢弃复用资格。
+`ManagedTask::await()` 返回结果或抛出业务异常。本次等待取显式秒数和共享截止中的较小值；等待期间缩短共享截止也会生效。它复用 `Deadline::watch()` 的到期通知和原生 Channel，不另设周期检查；等待结束撤销监听，并阻止通知快照中的旧回调取消后续 `join()` 清理。等待预算耗尽会发出取消意图并抛 `task_timeout`，不会宣称远端 SQL 或其他副作用已撤销。子任务通过 `assertActive()` 配合取消检查；ORM 操作在返回后再次检查租约和截止状态，取消过的数据库会话丢弃复用资格。
 
 协程借用默认进入有界池等待，显式 `connect($scope, 0)` 保留即时拒绝。父任务占有最后一个连接并等待独立借用的子任务时，不会隐式继承连接：子任务按较小截止失败，等待登记撤销，父连接仍可正常收尾。取消等待由 Swoole Channel 通知唤醒，不使用定时轮询。
 
 Scope 关闭时先拒绝新工作并取消子任务，再用共享清理预算等待子树。资源在各自执行者退出后逆序释放。取消监听器抛出的异常会在收尾后报告，不会跳过子任务等待或资源释放；如果已全部收尾，作用域仍进入 closed，重复关闭不会再次释放资源。清理超时会明确报错，作用域保持 closing；后台操作仍由受管任务引用持有，继续占用任务预算和连接容量，直到真实结束后转为 closed。永久不退出的任务需要工作进程监督器结束并替换进程，不强行释放仍在使用的原生句柄。
 
-`ResourceLease::hold()` 将句柄使用期与等待期分开，ORM 的查询、写入、事务以及 Redis 调用均在实际操作期间持有容量。跨协程捕获父连接会被拒绝。完成的子任务错误需要 await 观察或由 Scope 收尾报告，未观察错误数量同样受限。
+`ResourceLease::hold()` 将句柄使用期与等待期分开，ORM 的查询、写入、事务以及 Redis 调用均在实际操作期间持有容量。租约入口检查作用域与归还状态，再由 `ResourcePool::hold()` 统一取得资源、校验池与租约所有者并登记在途操作；避免先调用 `resource()` 后再次执行相同的池校验。回调返回或异常都由池结算持有期，关闭意图不能提前归还容量。跨协程捕获父连接仍被拒绝。完成的子任务错误需要 await 观察或由 Scope 收尾报告，未观察错误数量同样受限。
 
 PHP 真实 MySQL 运行验证包括延迟 SELECT、短等待超时、父先关闭、跨协程捕获、共享子树预算、清理超时后完成及新连接恢复。HTTP 验证包括 503 返回期间池仍满、客户端断开后收尾、后续请求不串结果。对应原生入口为 `docs/build-config/type-tasks.json` 与 `docs/build-config/type-task-http.json`，已接入 Linux x64 原生 CI 的可靠性分组；固定源码与运行结果见[四平台验收记录](../evidence/native-release-20260925.md)。这些场景不自动代表其他平台或后续提交也已通过。
 
 `php tests/tasks.php --php --scope-only` 单独验证通用当前作用域、嵌套恢复、绑定快照、原生子协程隔离及 hook 配置，不连接数据库，也不读取身份业务数据。相同场景包含在 `type-tasks.json` 的编译输入内，原生运行时使用 `php tests/tasks.php build/tasks/type-app --scope-only`；PHP 通过不代表原生或完整角色验收通过。
 
-通用绑定契约已通过 PHP 行为验证，以及 macOS ARM64 上仅包含 `type-runtime` 全量生产源码的 TypePHP 0.9 原生验证。原生环境为 PHP 8.5.10 ZTS、Swoole 6.2.1；禁止读取应用、组件、vendor 与测试入口源码后相同测试仍通过。这一结果只覆盖当前作用域契约，各角色自动接入、ORM 和其他平台仍按各自范围验收。
+通用绑定契约的早期专项通过 PHP 行为验证，以及 macOS ARM64 上仅包含 `type-runtime` 全量生产源码的 TypePHP 0.9 原生验证。当时环境为 PHP 8.5.10 ZTS、Swoole 6.2.1；禁止读取应用、组件、vendor 与测试入口源码后相同测试仍通过。这份历史结果只覆盖当时的作用域契约，不代表当前完整应用或其他平台验收。当前截止通知与等待缩短的定向回归见 [`DeadlineTest`](../../tests/Unit/DeadlineTest.php) 和 [`ManagedTaskDeadlineTest`](../../tests/Unit/ManagedTaskDeadlineTest.php)；当前工具链与原生验证范围按[升级记录](../evidence/typephp-upgrade-0.9.5.md)分别核对。
