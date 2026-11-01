@@ -28,7 +28,7 @@ UDP 客户端与服务端使用统一公共契约。各目标平台须分别验�
 
 `Type\Build\SwooleSocketSource::apply($isolatedSourceDirectory)` 只在原文摘要和唯一替换均匹配时修改一个方法：所有成功接收先写回 peer，再返回空串或非空串。原生收发、等待和协议保持不变，没有私有 ABI。与独立的 `SwooleThreadSource` 分别显式应用，不把线程构建绑定到文件 I/O 候选或无关网络特性；未自动安装或替换共享 SDK。
 
-当采用的上游版本原生返回 IPv4/IPv6 空报文地址，并通过同一公共接口消费者后，撤除这一源适配；不能只改变固定摘要后继续打补丁。macOS 构建沿[已验证的标准 TLS 链接配置](mqtt-native-client.md#macos-原生-tls-链接)，不另加 TLS 补丁。
+2026-11-01 核对的[官方主线 `recvfrom()`](https://github.com/swoole/swoole-src/blob/c9745c443265db59d0a9f32310e1f27e1873739f/ext-src/swoole_socket_coro.cc)已在返回空串前写回来源；当前固定快照仍需此适配。采用该上游实现并通过相同 IPv4/IPv6 公共消费者后撤除补丁，不能只改变固定摘要后继续打补丁。macOS 构建沿[已验证的标准 TLS 链接配置](mqtt-native-client.md#macos-原生-tls-链接)，数字 IP 的 TLS 身份修正另见[TCP 接入说明](tcp-native-io.md#数字-ip-的-tls-校验修正)。
 
 ## 协程启动时的内置库缺口
 

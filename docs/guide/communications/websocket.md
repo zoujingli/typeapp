@@ -57,7 +57,8 @@ flowchart LR
 | `open_websocket_ping_frame` / `open_websocket_pong_frame` | `false` | 开启后投递 `onControl()`，不进入 `onMessage()`；Ping 仍恰好应答一次 |
 | `websocket_compression` | `false` | 原生压缩开关，开启前验证客户端兼容与资源开销 |
 | `open_ssl` | `false` | TLS 开关；启用后需 `ssl_cert_file` 与 `ssl_key_file` |
-| `ssl_passphrase` / `ssl_protocols` | 无口令 / TLS 1.2 与 1.3 | 可选私钥口令与允许的 TLS 协议 |
+| `ssl_protocols` | TLS 1.2 与 1.3 | 仅接受这两种协议的有效位组合 |
+| `ssl_passphrase` | 未设置 | 私钥口令键；当前经典 Server 的限制见[HTTPS 与 WSS 共用 TLS](#https-与-wss-共用-tls) |
 
 `message_seconds` 使用浮点数，开关使用布尔值。原有 `package_max_bytes`、浮点秒 `idle_seconds` / `heartbeat_seconds` 继续接受；新旧键同时存在时必须一致，否则返回 `websocket_invalid_configuration`。选项白名单同时包含原生配置和组件资源策略，不支持任意 `Server::set()` 透传。
 
@@ -192,6 +193,8 @@ php dev.php client 127.0.0.1 9505 /ws hello ./tls/ca.pem
 
 预期为 `http-ok` 与回显 JSON，随后服务退出。正式域名部署时按证书域名连接与校验，监听仍使用本机数字 IP；私钥与 CA 路径来自外置配置。TLS 监听不同时接收明文 HTTP/WS，TLS 错误不能靠禁用验证解决。
 
+当前固定 Swoole 的经典 Server 未读取 `ssl_passphrase`。组件接受并转交该可选键，但加密私钥仍在原生 `ssl_init()` 阶段失败，不能当作已支持能力；当前应使用受保护的普通私钥文件。TLS 配置直接交给原生服务，组件只保留已校验的选项。
+
 经反向代理接入时，代理需要转发 Upgrade 和 Connection 语义，读写超时与业务心跳配合。TLS 可以在代理终止，也可以继续加密到后端；代理部署不改变应用必须验证会话身份的责任。
 
 ## Origin、身份与路径授权
@@ -237,7 +240,9 @@ sequenceDiagram
 
 回调签名为 `(int $fd, string $data, bool $binary, ExecutionScope $scope): void`。数据库租约等短期资源跟随消息作用域清理，连接只保存必要身份和订阅状态。广播需要限制接收人数、单消息大小与慢客户端队列，不给每条连接保留无限历史。
 
-服务端 `send()` 成功表示交给原生发送缓冲，不代表对端业务已处理。客户端在已有协程中启动、收发；`receive()` 返回 `null` 表示关闭或本次超时，空字符串是有效消息。`stop()` 关闭客户端，重连要创建新实例，并重新认证、恢复订阅或拉取快照。
+服务端 `send()` 成功表示交给原生发送缓冲，不代表对端业务已处理。客户端在已有协程中启动、收发；`send($data, $binary, $seconds)` 每次使用 Swoole `write_timeout`，不沿用握手期限，也不改变同时在途的读取期限。失败抛出 `websocket_send_failed`，不自动重试。
+
+客户端 `receive($seconds)` 直接调用原生 `recv($seconds)`，由 Swoole 重组分片和处理控制帧，返回一条完整消息。`null` 表示关闭或本次超时，空字符串是有效消息；普通超时后连接仍可继续接收。当前固定 Swoole 在内部循环中逐帧使用读取期限，持续控制帧或分片可能延长整次等待，所以该参数尚不保证整条消息的总截止，PHP 外层计时也无法中断其内部等待。`stop()` 关闭客户端，重连要创建新实例，并重新认证、恢复订阅或拉取快照。
 
 当前服务端的经典 Swoole WebSocket Server 路线在 Windows 启动时明确拒绝，协程 HTTP 升级尚未接入本组件。普通 HTTP 的 Windows 协程路径、WebSocket 客户端或其他平台的 WSS 结果，都不能替代该服务端入口的实现与验收。
 
@@ -249,6 +254,7 @@ sequenceDiagram
 | 握手 501 | 是否误用了普通 `Http\SwooleServer` |
 | 升级后立即关闭 1002/1008 | 子协议与 Origin 配置，以及应用鉴权 |
 | HTTPS/WSS 验证失败 | 证书链、SAN、CA、有效期、实际 TLS 监听 |
+| 加密私钥在 `ssl_init()` 失败 | 当前经典 Server 不读取 `ssl_passphrase`，核对上文 TLS 限制 |
 | 消息超限或慢客户端被关闭 | 核对包、消息与发送队列三种上限 |
 | `websocket_unsupported_platform` | 当前服务端明确拒绝 Windows 原生启动，协程升级尚未接入 |
 

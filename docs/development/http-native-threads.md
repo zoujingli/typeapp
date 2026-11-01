@@ -19,16 +19,9 @@
 
 ## 显式适配与所有权
 
-`Type\Build\SwooleHttpSource::apply($directory)` 只接受独立解压的固定原文，并核对文件摘要与唯一替换位置：
+`Type\Build\SwooleHttpSource::apply($directory)` 只接受独立解压的固定原文，并核对文件摘要与唯一替换位置。当前文件及原文摘要以[适配器](../../plugin/type-build/src/SwooleHttpSource.php)为准，内置模块的组合结果以[模块清单](../../plugin/type-build/resources/swoole/manifest.json)中的 `adapted-sources` 核对，不另维护历史摘要表。
 
-| 文件 | 原文 SHA-256 |
-| --- | --- |
-| `ext-src/swoole_http_server_coro.cc` | `711fa3732141b3b90bf098157936729003bcaebe74f7bc9fa0b8e130a98e47d2` |
-| `ext-src/stubs/php_swoole_http_server_coro.stub.php` | `c656a32f9758ac831d2213ed6fe64aac9dffc3e1211f90f853786cfa2edc992a` |
-| `ext-src/swoole_http_request.cc` | `33719a36f822333338d46a686a59de89db2f7872b2d73ca442e6a912d74cb9a2` |
-| `ext-src/php_swoole_http.h` | `aa879b1cb2dcab56ee53956d4242cfdb65c4a7030d977db158ae21289d8a8b05` |
-
-该适配与 `SwooleThreadSource` 分开应用，不组合进默认线程或 FILE 准备。监听传递的两项 TypeApp 私有能力是 `Thread::TYPEAPP_SOCKET_ARGUMENT_ABI=1` 与 `Coroutine\Http\Server::TYPEAPP_LISTENER_ABI=1`，不是官方 API；原 `NATIVE_ENTRY_ABI=2` 保持不变。准备后用显式模块和既有 `tools/configure-toolchain.php` 建立 SDK 视图，不覆盖原 SDK。
+该适配与 `SwooleThreadSource` 保持独立入口，默认模块准备脚本显式组合两者及 Socket/TLS 适配；文件 AIO 候选不进入默认组合。监听传递的两项 TypeApp 私有能力是 `Thread::TYPEAPP_SOCKET_ARGUMENT_ABI=1` 与 `Coroutine\Http\Server::TYPEAPP_LISTENER_ABI=1`，不是官方 API；原 `NATIVE_ENTRY_ABI=2` 保持不变。自建模块后用显式模块和既有 `tools/configure-toolchain.php` 建立 SDK 视图，不覆盖原 SDK。
 
 `Server::fromSocket(Socket $socket, int $backlog=0)` 要求当前线程没有协程读写绑定的、打开且已绑定非零本地端口的 TCP/TCP6 Socket，backlog 为 0 到 INT_MAX。它直接调用上游 `Socket::listen()`，沿用 backlog 默认值并恢复复制后本地 Socket 的监听及 TLS 服务端标记。曾使用 `SO_ACCEPTCONN` 核对状态，但 macOS 的原生 getsockopt 返回 ENOPROTOOPT；该不可移植探针已撤回，失败原件保留。
 
@@ -63,6 +56,8 @@
 ### 生产线程生命周期
 
 `SwooleServer::serveThread(Socket $listener, Thread\Map $state)` 在已编译业务线程的同步入口执行一次，拥有该线程的事件循环与监听副本。它复用 `Server::fromSocket()`、原生选项、`handle()/start()/shutdown()` 及既有 `handleNative()`；原消费者中的监听配置、协程数量、停止和错误结算已迁入此处。`HttpControl` 的份额仍由部署入口明确分配。
+
+`serveThread()` 与在线程内绑定监听的 `serveThreadOwned()` 共用配置、`CoroutineRuntime::run()`、停止和退出核对。根协程未实际进入时报告 `http_thread_start_failed`；已经进入后的业务异常保留原原因。请求、响应和连接仍由同一原生协程 HTTP Server 执行，没有第二套 Scheduler 或接收循环。
 
 原生 Timer 每 20ms 更新进度并检查主控停止标记及请求清理；停止先撤销就绪、缩短在途请求截止，再调用原生 shutdown。已进入的响应沿原请求作用域完成，事件循环退出后核对原生错误与请求清理，再调用已有 `onWorkerStop` 同步关闭回调。子线程不能重复安装进程 hook，也不能在入口内注册角色级信号或自行释放主控句柄。
 

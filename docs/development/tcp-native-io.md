@@ -12,7 +12,7 @@
 | `receive()`、`send()`、`shutdownWrite()` | `recv()`、`sendAll()`、原生读写期限与 `shutdown(SHUT_WR)`。 | 片段上限，一读一写准入，EOF 与未知部分写入语义；业务自行限制总消息大小。 |
 | `stop()`、`awaitClosed()` | `Coroutine::cancel()`、Socket 析构、`Event::defer()`、原生 Channel 通知。 | 取消重入保护；原生 FD 关闭后归还额度；等待超时不提前释放。 |
 
-最初审查固定在 `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`（6.2.1）；当前固定开发快照为 `4aff74a9ac086458d1c5251e71ac6e080f68b390`。当前工具链迁移的范围和未验证平台见[0.9.5 升级记录](../evidence/typephp-upgrade-0.9.5.md)；本页 TCP/TLS 协议仍须按对应平台专项验收。`src/coroutine/socket.cc` 的 `accept()` 只创建接入 Socket、继承 TLS 上下文，不执行握手，因此无需修改原生接入循环。客户端 `connect()` 已串联解析、连接与握手，应用只加一次总截止 Timer；分段握手不能延长总预算。SSL 握手的 PHP 方法不保证同步 `errCode`，失败仍按连接或握手阶段报告，超时和取消由当前执行状态区别。
+最初审查固定在 `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`（6.2.1）；当前固定开发快照为 `4aff74a9ac086458d1c5251e71ac6e080f68b390`。当前工具链迁移的范围和未验证平台见[0.9.5 升级记录](../evidence/typephp-upgrade-0.9.5.md)；本页 TCP/TLS 协议仍须按对应平台专项验收。`src/coroutine/socket.cc` 的 `accept()` 只创建接入 Socket、继承 TLS 上下文，不执行握手，因此无需修改原生接入循环。客户端 `connect()` 已串联解析、连接与握手，应用只加一次总截止 Timer，并用单调时钟复核合计预算，不为启动再创建一次性 `Deadline`；分段握手不能延长总预算。SSL 握手的 PHP 方法不保证同步 `errCode`，失败仍按连接或握手阶段报告，超时和取消由当前执行状态区别。
 
 沿用已经核验的六文件线程入口适配及内嵌库关闭修复；TCP 不依赖 UDP 空报文修正或文件 I/O 候选补丁。macOS TLS 链接要求沿用[已有修正](mqtt-native-client.md#macos-原生-tls-链接)。IP 证书身份有下面的单方法原生修正，不改调度、握手或协议处理。
 
@@ -20,11 +20,11 @@
 
 ## 数字 IP 的 TLS 校验修正
 
-固定 `src/network/socket.cc` 的 SHA-256 为 `e6919bae549f08932e6922c118b830d1f9fe6e5318efb874a7909ccd2a3814bd`。原 `Socket::ssl_check_host()` 无论输入是域名还是数字 IP，都调用 `X509_check_host()`。同一份含 `DNS:localhost,IP:127.0.0.1,IP:::1` 的证书，独立 Node TLS 对端下的原生最小复现得到：localhost 成功、127.0.0.1 失败、错误域名失败。该缺陷阻止普通 IP SAN 证书的合法连接。
+最初诊断的 `Socket::ssl_check_host()` 无论输入是域名还是数字 IP，都调用 `X509_check_host()`。同一份含 `DNS:localhost,IP:127.0.0.1,IP:::1` 的证书，独立 Node TLS 对端下的原生最小复现得到：localhost 成功、127.0.0.1 失败、错误域名失败。当前固定快照仍需对应修正，准确原文身份由 [`SwooleSocketSource::applyTls()`](../../plugin/type-build/src/SwooleSocketSource.php)核验，不复用历史版本摘要。
 
 `ssl_host_name` 只能传入待验证身份，没有切换 IP SAN 校验的配置；传空值或关闭验证会丢失身份约束，PHP 解析证书再自己匹配则重复实现 TLS 规则。现由已有 `SwooleSocketSource::applyTls()` 在固定原文唯一位置调整分支：数字 IPv4/IPv6 使用 OpenSSL `X509_check_ip_asc()`，域名保持 `X509_check_host()`。证书链、协议版本和全部成功/失败关闭路径继续由原生实现。本地对照修正后得到成功、成功、失败；公共 AOT 消费者进一步验证 IPv4/IPv6 TLS。
 
-补丁只修改这一原生方法，不增加 ABI 或自定义 TLS 选项；独立于既有 UDP `apply()`，维护归属为 / `type-build`。匹配 IP SAN 的行为影响所有使用该方法的原生 TLS 调用者，升级时须重验正确 IP、错误身份、链拒绝、取消和退役。上游等价修复并通过同一公共消费者时撤除此补丁。其他平台必须分别构建和实际验收。
+补丁只修改这一原生方法，不增加 ABI 或自定义 TLS 选项；独立于既有 UDP `apply()`，维护归属为 `type-build`。匹配 IP SAN 的行为影响所有使用该方法的原生 TLS 调用者，升级时须重验正确 IP、错误身份、链拒绝、取消和退役。2026-11-01 核对的[官方主线](https://github.com/swoole/swoole-src/blob/c9745c443265db59d0a9f32310e1f27e1873739f/src/network/socket.cc)已增加严格身份校验下的 IP SAN 分支；该主线路径尚未纳入当前固定模块，现有 IP SAN 行为仍由上述适配提供。采用等价上游实现并通过同一公共消费者后撤除此补丁，其他平台分别构建和实际验收。
 
 ## 公共契约
 
