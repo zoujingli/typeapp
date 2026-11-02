@@ -107,7 +107,7 @@ $taskDependencies = @{
     'libzstd-1.5.7-vs17-x64.zip' = '59dbce5548104788ccfc5040bb7140916454fd0138d306705bd9b3d67741dc4a'
     'nghttp2-1.70.0-vs17-x64.zip' = '51e21698b80f4e1a151508656f6ca7caf13adfef65dfefbc160645cf9c1129f1'
     'libcurl-8.22.0-3-vs17-x64.zip' = '4499604d8daf51c70f86cd06255df091f8350bfadd8c5a11fb5bfaca26ed0ad8'
-    'libssh2-1.11.1-10-vs17-x64.zip' = '8976f728b0e1c8ea704fa61973b57077d3d760afc82ebfbdfcccf745b7802100'
+    'libssh2-1.11.1-10-vs17-x64.zip' = '41b6faddea9a2c32176538f2884a9581967d07ab93291274ead94ab477fc37a9'
     'libpq-16.15-vs17-x64.zip' = 'f5fa47ebb2cf650428870e24ab2b8a7ce9663a782ddb9d790dfb432fd22e4728'
     'sqlite3-3.53.4-vs17-x64.zip' = 'abb5e36fc76803b4df9a63ab56b931f37058d62c9e6303172015ff4f101ef4cd'
 }
