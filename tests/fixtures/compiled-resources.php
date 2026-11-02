@@ -174,7 +174,11 @@ final class PoolProbe
             $other->close();
             self::rejected(static fn (): string => serialize($connection), 'resource_transfer_forbidden');
             self::check($budget->poolBudget()->statistics()['allocated'] === 1, '同步拒绝错误归还额度');
-            file_put_contents($directory . '/' . $role . '.ready', json_encode(['allocated' => 1, 'hooks' => $hooks], JSON_THROW_ON_ERROR));
+            // 消费者以文件存在为屏障；完整写入后再发布，避免读到刚创建的空文件。
+            $ready = $directory . '/' . $role . '.ready';
+            $message = json_encode(['allocated' => 1, 'hooks' => $hooks], JSON_THROW_ON_ERROR);
+            self::check(file_put_contents($ready . '.pending', $message) === strlen($message)
+                && rename($ready . '.pending', $ready), '无法发布完整线程就绪状态');
             self::waitFile($directory . '/go');
             $scope->close();
             $database->close();
