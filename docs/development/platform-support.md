@@ -8,7 +8,7 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 面向使用者的状态统一维护在[平台与验收](../guide/platforms.md)。该页进入 Docsify 公开站点；本文保留执行入口和可复核的产物身份。
 
-2026-11-01 源码基线已跟进官方 Swoole `c9745c4` 开发快照，运行时仍报告 `6.3.0RC1`。当前逐平台模块重建、拒绝旧快照和适配撤除状态统一维护在[构建输入](../../plugin/type-build/resources/swoole/README.md)；本轮 macOS 共享模块验证不替代其他平台或静态单程序验收。以下历史产物继续保持原身份。
+2026-11-02 源码基线继续使用官方 Swoole `c9745c4` 开发快照，运行时仍报告 `6.3.0RC1`。四个平台模块已由[重建运行 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137)从提交 `41a6739` 重建并通过模块级回归；逐平台摘要、依赖和后续完整应用状态统一维护在[构建输入](../../plugin/type-build/resources/swoole/README.md)。以下历史产物继续保持原身份。
 
 RC13 的固定源码、12 个程序和公开发布身份保存在[profile 发布证据](../evidence/profile-release-20260930.md)。RC14 已使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及 `4aff74a9`（运行时字符串 `6.3.0RC1`）的 Swoole 开发快照完成正式发布门禁、十二程序、组件模板公开消费和下载回读。各平台的准确源码、运行轮次、失败诊断与性能限制统一见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)；功能通过不构成性能提升结论。
 

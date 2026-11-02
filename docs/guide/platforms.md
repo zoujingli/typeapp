@@ -10,6 +10,8 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 当前公开版本为 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14)。同一源码已完成四平台完整验收，四个平台各提供 `sqlite`、`mysql`、`pgsql` 程序；12 个最终程序均完成对应数据库的隔离部署和公开下载摘要核验。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
 
+当前 `main` 的开发运行库已切换到官方 Swoole `c9745c4`（运行时 `6.3.0RC1`），四个平台模块由[重建运行 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137)统一构建并通过模块级验证。该开发基线的完整应用和静态程序验收以模块替换后的新 Actions 运行记录为准。
+
 RC14 使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及提交 `4aff74a9`、运行时字符串 `6.3.0RC1` 的 Swoole 开发快照。新版共享模块已完成四平台重建，完整应用与十二个静态程序均已通过本批发布门禁。准确源码、各轮结果及最终程序摘要统一维护在[升级证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，不将旧提交或其他平台结果计为当前候选通过。
 
 下表记录 RC14 的已发布范围，源码为 `683f6d4d30e1e99b6a93f6a6fb45625fbd87138a`，正式发布运行是 [37138941959](https://github.com/zoujingli/typeapp/actions/runs/37138941959)。
