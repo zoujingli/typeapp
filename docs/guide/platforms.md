@@ -10,7 +10,18 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 当前公开版本为 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14)。同一源码已完成四平台完整验收，四个平台各提供 `sqlite`、`mysql`、`pgsql` 程序；12 个最终程序均完成对应数据库的隔离部署和公开下载摘要核验。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
 
-当前 `main` 的开发运行库已切换到官方 Swoole `c9745c4`（运行时 `6.3.0RC1`），四个平台模块由[重建运行 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137)统一构建并通过模块级验证。该开发基线的完整应用和静态程序验收以模块替换后的新 Actions 运行记录为准。
+当前 `main` 的开发运行库已切换到官方 Swoole `c9745c4`（运行时 `6.3.0RC1`），四个平台模块由[重建运行 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137)统一构建并通过模块级验证。模块替换后的应用基线 `4163148` 已有以下原生结果：
+
+| 平台 | 实际结果与来源 |
+| --- | --- |
+| Linux x64 | [完整默认矩阵通过](https://github.com/zoujingli/typeapp/actions/runs/41369198454)，包含应用、三库、组件、通信、部署与工具链 |
+| Linux ARM64 | [完整业务矩阵通过](https://github.com/zoujingli/typeapp/actions/runs/41369574883)，包含应用、三库、恢复、回滚与工具链 |
+| macOS ARM64 | [八组业务回归通过](https://github.com/zoujingli/typeapp/actions/runs/41369198274)，包含应用、部署、回滚、恢复、契约、ORM、HTTP 与可靠性；该运行的 toolchain 失败，见下述定向复验 |
+| Windows x64 | [默认原生验收通过](https://github.com/zoujingli/typeapp/actions/runs/41369198281)，包含 SDK、契约、三库 ORM 与应用 PHP/AOT |
+
+macOS toolchain 的资源线程夹具存在就绪文件发布竞态，读取尚未写完的 JSON 会报语法异常。`1bcd193` 改为完整写入临时文件后原子重命名；本地 3,000 次文件握手及三轮无源码 AOT/SQLite 资源回归通过。[Linux x64 工具链复验](https://github.com/zoujingli/typeapp/actions/runs/41396881672)和[macOS 工具链复验](https://github.com/zoujingli/typeapp/actions/runs/41396880252)均已通过，分别覆盖全部九个工具链子用例。该修复只改测试屏障，同批校正 macOS 模块依赖元数据，四个平台的模块字节均未改变。
+
+本轮未重建十二个静态单程序，也未完成本次 Swoole 更新的跨平台性能对照；这些边界与下述 RC14 已发布范围分别记录。
 
 RC14 使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及提交 `4aff74a9`、运行时字符串 `6.3.0RC1` 的 Swoole 开发快照。新版共享模块已完成四平台重建，完整应用与十二个静态程序均已通过本批发布门禁。准确源码、各轮结果及最终程序摘要统一维护在[升级证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，不将旧提交或其他平台结果计为当前候选通过。
 

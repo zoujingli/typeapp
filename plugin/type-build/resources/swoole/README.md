@@ -11,7 +11,7 @@
 
 本轮四个平台模块均由 [重建运行 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137) 从同一源码提交构建并通过模块加载、协程 SQLite、PostgreSQL 连接拒绝和 ABI 校验；Windows 另通过中文环境、DNS、TLS 和 curl 回归。清单已回填各 Artifact、源码、依赖和模块摘要，选择器不再拒绝这些新模块。安装完整且模块匹配的 `zoujingli/type-build` 后，构建从组件安装位置校验、复用本地文件，不依赖主仓布局；文件不是 Git LFS 指针。
 
-本轮四个平台模块的远端重建和模块级验收通过；此前 macOS 原生验收运行 41308274610 已通过完整应用、HTTP/TCP/UDP/WebSocket/MQTT 及 Redis TLS 场景。模块替换后，完整四平台应用、静态单程序、MySQL/PostgreSQL 真实业务和三库性能对照仍需以新的原生验收运行作为最终证据；部署目标 15 不代表已在 macOS 15 实际执行。
+模块替换后的应用、真实三库与工具链结果统一见[当前平台状态](https://iots.top/#/guide/platforms?id=当前平台状态)，逐项保留源码提交、运行链接和失败后的复验身份。本轮共享模块重建不包含十二个静态单程序重建或跨平台性能对照。
 
 Linux 文件不适用于 Alpine/musl。macOS Intel、Windows ARM64、NTS 或其他 PHP 版本未提供预编译文件。模块存在和能够加载均不等于完整应用的平台验收。
 
@@ -54,7 +54,7 @@ macOS 模块将 libpq（含配套的 libpgcommon_shlib、libpgport_shlib）、SQ
 
 RC14 的 Windows DLL 保留 `37134319268` 的历史构建身份。后续诊断确认，加载该 DLL 后，Windows 的窄字节 `putenv()` 会把 UTF-8 环境值按 ANSI 路径写坏；故障发生在函数返回前。固定源码适配改用 `php_win32_cp_any_to_w()` 与 `SetEnvironmentVariableW()`，继续使用 Swoole 的 ZTS 环境锁。
 
-当前内置 DLL 来自 [run 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137)、主仓源码 `41a67392bd792658361c2c985a47f815ef22ad5c`，SHA-256 为 `d1a400008f0077e8307f58758e3e59bcda4c8c43dae3d8c477384079edef0093`。同一模块通过中文环境的主进程、PHP/宽字符子进程、两轮工作线程、零字符串和删除恢复验证，以及 DNS、句柄复用、TLS、curl 回归；原始 Artifact 为 `13107259689`。完整应用和静态程序仍须按模块替换后的新原生验收分别记录。
+当前内置 DLL 来自 [run 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137)、主仓源码 `41a67392bd792658361c2c985a47f815ef22ad5c`，SHA-256 为 `d1a400008f0077e8307f58758e3e59bcda4c8c43dae3d8c477384079edef0093`。同一模块通过中文环境的主进程、PHP/宽字符子进程、两轮工作线程、零字符串和删除恢复验证，以及 DNS、句柄复用、TLS、curl 回归；原始 Artifact 为 `13107259689`。后续应用矩阵的结果见上文平台状态入口，静态程序另行验收。
 
 各模块的加载、协程 SQLite 和 PostgreSQL 连接拒绝检查通过，Windows 另通过主线程及两次重建工作线程的指定 DNS、TLS 写半关闭、读取超时恢复及连接重置检查，以及各 16 次的原生 UDP / DNS 后 UDP 对照；清单保存各 Artifact、依赖和适配摘要。Windows 还包含 config.w32、IOCP、DNS 和 PHP 头文件的受控适配。这些模块检查不替代完整通信及十二组合静态程序验收；上述模块与 RC14 的历史验收身份见[历史升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，当前 0.9.5 / 2.9.4 的迁移范围见[当前升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.5.md)。
 
@@ -74,7 +74,7 @@ bash tools/prepare-swoole-module.sh
 
 上述开关对应 Linux。可移植四平台模块统一通过主仓的 `rebuild-swoole.yml` 手动工作流重建；Unix 实现为 `tools/rebuild-bundled-swoole.sh`，Windows 使用 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 调用既有 SDK 准备脚本。macOS 固定 `MACOSX_DEPLOYMENT_TARGET=15.0`，以 `-Wl,-load_hidden,<归档文件>` 隐藏链接非系统库，保留系统 curl、zlib、C++ 与平台库，最后 strip 并重新 ad-hoc 签名。不得复用系统要求高于目标平台的归档。
 
-验收包括准确机器类型和 SHA-256、真实 PHP 加载、原生线程 ABI、协程和 PDO hook，以及真实 embed 和应用 AOT 的对应回归。macOS 必须确认没有未解析的 PostgreSQL 私有符号，并实际验证 PDO 连接失败返回异常；仅加载扩展不能发现遗漏静态依赖导致的延迟绑定崩溃。既有四平台重建使用原生 runner，旧模块的模拟加载结果保留在历史证据中；本轮尚未执行远端矩阵。
+验收包括准确机器类型和 SHA-256、真实 PHP 加载、原生线程 ABI、协程和 PDO hook，以及真实 embed 和应用 AOT 的对应回归。macOS 必须确认没有未解析的 PostgreSQL 私有符号，并实际验证 PDO 连接失败返回异常；仅加载扩展不能发现遗漏静态依赖导致的延迟绑定崩溃。本轮四平台模块重建均使用原生 runner，旧模块的模拟加载结果保留在历史证据中。
 
 **这些文件是共享扩展构建输入。** PHP SDK、PHPX 和其他依赖仍须准备；本目录不代表整个构建离线。生产 Release 另由静态 SDK 生成一个主程序，非系统运行库在构建期链接，启动不释放 `.so` 或 `.dll`；各版本的实际范围见[平台与验收](https://iots.top/#/guide/platforms)。
 
