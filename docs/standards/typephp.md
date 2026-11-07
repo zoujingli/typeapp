@@ -11,7 +11,7 @@
 
 PHP、TypePHP 与 PHPX 的准确依赖以根 `composer.lock` 和 `toolchain.lock.json` 为准；模板也必须携带相同的工具链身份。Swoole 的固定源码与逐平台模块身份以[内置清单](../../plugin/type-build/resources/swoole/manifest.json)为准，重建状态见[构建输入](../../plugin/type-build/resources/swoole/README.md)。上面的 Swoole 提交是 RC1 后的开发快照，不能称为正式 6.3.0；官方稳定线 6.2.5 与当前 6.3 快照分叉，不能在没有重新适配、重建和完整验收的情况下替换它。
 
-当前采用上述 TypePHP 开发快照与 PHPX 2.9.5。根项目、模板和独立消费者通过 `dev-master#完整提交` 固定安装，构建入口再次校验锁文件和源码摘要，不跟随分支漂移。旧版 TypePHP 的 `~2.9.4` 约束本身允许 2.9.5；升级需要重新核对原生适配与行为，而不是受该版本约束禁止。
+当前采用上述 TypePHP 开发快照与 PHPX 2.9.5。根项目使用 `composer install` 安装锁文件中的精确提交；模板和无锁文件的独立消费者使用 `dev-master#完整提交`。构建入口再次校验工具链锁和源码摘要，拒绝未经适配的分支漂移。根清单不重复声明 commit-ref，保持 Composer 严格校验无警告。旧版 TypePHP 的 `~2.9.4` 约束本身允许 2.9.5；升级需要重新核对原生适配与行为，而不是受该版本约束禁止。
 
 TypePHP 0.9.5 的匿名类会回退到嵌入 opcode 或 `eval`，本仓构建入口明确拒绝该路径；生产实现使用具名类。静态 PHP embed 构建与源码是否全量 AOT 是两项独立检查，不能以嵌入业务字节码替代编译。Nano 的能力边界不覆盖当前应用的 Swoole、数据库及任务系统，本次不采用。
 
