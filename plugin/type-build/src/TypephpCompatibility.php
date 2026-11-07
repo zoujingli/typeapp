@@ -1217,12 +1217,11 @@ static void type_app_request_clean() {
 
 CPP . "\n" . $request;
                 $content = substr_replace($content, $request, $start, $end - $start);
-                $content = $this->threadReplace($content, <<<'CPP'
-php::request_shutdown();
-module_clean();
-delete php_request_cache;
-php_request_cache = nullptr;
-CPP, 'type_app_request_clean();');
+                // 上游按 PHP_EOL 拼接关闭阶段；保留 Windows CRLF 与 Unix LF 的精确匹配。
+                $content = $this->threadReplace($content, implode(PHP_EOL, [
+                    'php::request_shutdown();', 'module_clean();',
+                    'delete php_request_cache;', 'php_request_cache = nullptr;',
+                ]), 'type_app_request_clean();');
                 if ($this->threaded()) {
                     $classes = array_values(array_filter($this->classCeList, fn (string $ce): bool => isset($this->classCeInfo[$ce])));
                     $prepare = '';
