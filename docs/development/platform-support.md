@@ -8,7 +8,7 @@ Swoole 是通信和基础并发的必需依赖。按构建能力选择官方进�
 
 面向使用者的状态统一维护在[平台与验收](../guide/platforms.md)。该页进入 Docsify 公开站点；本文保留执行入口和可复核的产物身份。
 
-2026-11-02 的历史源码基线使用官方 Swoole `c9745c4` 开发快照，运行时仍报告 `6.3.0RC1`。四个平台模块已由[重建运行 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137)从提交 `41a6739` 重建并通过模块级回归；模块摘要与依赖见[构建输入](../../plugin/type-build/resources/swoole/README.md)，模块替换后的应用矩阵和工具链复验统一见[当前平台状态](../guide/platforms.md#当前平台状态)。以下历史产物继续保持原身份。
+2026-11-07 的工具链升级已完成四平台共享模块重建与默认原生矩阵。最新固定版本、实际源码及运行链接统一维护在上述平台状态入口；静态单程序与性能比较分别验收。
 
 RC13 的固定源码、12 个程序和公开发布身份保存在[profile 发布证据](../evidence/profile-release-20260930.md)。RC14 已使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及 `4aff74a9`（运行时字符串 `6.3.0RC1`）的 Swoole 开发快照完成正式发布门禁、十二程序、组件模板公开消费和下载回读。各平台的准确源码、运行轮次、失败诊断与性能限制统一见[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)；功能通过不构成性能提升结论。
 
@@ -23,6 +23,17 @@ RC14 的四平台共享模块和静态程序继续保留各自的历史身份；
 ## 历史结果
 
 以下记录保留原源码、工具链和产物。TypePHP 升级对照见[升级验收](../evidence/typephp-upgrade-0.9.3.md)；模块首次迁移的独立消费与 macOS 回归见[迁移验收](../evidence/swoole-bundle.md#迁入构建组件后的验证)。其中的待验收项描述当时状态，当前进展以上节为准。
+
+2026-11-02 的 Swoole `c9745c4` 模块由[重建运行 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137)从源码 `41a6739` 构建。原始模块及依赖身份见[该轮清单](https://github.com/zoujingli/typeapp/blob/982c6d3bc74f2b34c2350b8329efe11d8f942aa4/plugin/type-build/resources/swoole/manifest.json)，模块替换后的应用源码为 `4163148`：
+
+| 平台 | 实际结果与来源 |
+| --- | --- |
+| Linux x64 | [完整默认矩阵通过](https://github.com/zoujingli/typeapp/actions/runs/41369198454)，包含应用、三库、组件、通信、部署与工具链 |
+| Linux ARM64 | [完整业务矩阵通过](https://github.com/zoujingli/typeapp/actions/runs/41369574883)，包含应用、三库、恢复、回滚与工具链 |
+| macOS ARM64 | [八组业务回归通过](https://github.com/zoujingli/typeapp/actions/runs/41369198274)，包含应用、部署、回滚、恢复、契约、ORM、HTTP 与可靠性；该运行的 toolchain 失败，见下述定向复验 |
+| Windows x64 | [默认原生验收通过](https://github.com/zoujingli/typeapp/actions/runs/41369198281)，包含 SDK、契约、三库 ORM 与应用 PHP/AOT |
+
+macOS toolchain 的资源线程夹具存在就绪文件发布竞态，读取尚未写完的 JSON 会报语法异常。`1bcd193` 改为完整写入临时文件后原子重命名；本地 3,000 次文件握手及三轮无源码 AOT/SQLite 资源回归通过。[Linux x64 工具链复验](https://github.com/zoujingli/typeapp/actions/runs/41396881672)和[macOS 工具链复验](https://github.com/zoujingli/typeapp/actions/runs/41396880252)均已通过，分别覆盖全部九个工具链子用例。该修复只改测试屏障，同批校正 macOS 模块依赖元数据，四个平台的模块字节均未改变。
 
 | 平台 | 已保存结果与身份 | 范围 |
 | --- | --- | --- |

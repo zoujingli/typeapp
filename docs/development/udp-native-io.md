@@ -26,9 +26,9 @@ UDP 客户端与服务端使用统一公共契约。各目标平台须分别验�
 
 `getpeername()` 查询的是已连接对端，不能取得未连接 UDP 空报文来源。sockets hook 最终仍调用上述 Socket 方法。协程 Client 的 socket 懒创建且没有直接绑定入口，sendto 又拒绝空载荷；stream UDP hook 在固定源码中还有 IPv6/Windows 路径缺口，不能用假发送、解释库或同步路径绕过。
 
-当前固定的[官方 `recvfrom()`](https://github.com/swoole/swoole-src/blob/c9745c443265db59d0a9f32310e1f27e1873739f/ext-src/swoole_socket_coro.cc)已在返回空串前写回来源。2026-11-01 升级删除 `SwooleSocketSource::apply()` 及各入口的 UDP 补丁调用，直接复用官方收发、等待和协议实现，没有增加私有 ABI，也不要求文件 I/O 候选。独立 TLS 入口仍因 stream hook 的实证缺口保留，见下文链接的 TCP 说明。
+2026-11-01 采用的[官方 `recvfrom()`](https://github.com/swoole/swoole-src/blob/c9745c443265db59d0a9f32310e1f27e1873739f/ext-src/swoole_socket_coro.cc)已在返回空串前写回来源。2026-11-01 升级删除 `SwooleSocketSource::apply()` 及各入口的 UDP 补丁调用，直接复用官方收发、等待和协议实现，没有增加私有 ABI，也不要求文件 I/O 候选。独立 TLS 入口仍因 stream hook 的实证缺口保留，见下文链接的 TCP 说明。
 
-新模块的真实验证范围与未重建平台见[构建输入](../../plugin/type-build/resources/swoole/README.md)。macOS 构建沿[已验证的标准 TLS 链接配置](mqtt-native-client.md#macos-原生-tls-链接)，数字 IP 的 TLS 身份校验见[TCP 接入说明](tcp-native-io.md#数字-ip-的-tls-校验修正)。
+模块的真实验证范围与构建身份见[构建输入](../../plugin/type-build/resources/swoole/README.md)。macOS 构建沿[已验证的标准 TLS 链接配置](mqtt-native-client.md#macos-原生-tls-链接)，数字 IP 的 TLS 身份校验见[TCP 接入说明](tcp-native-io.md#数字-ip-的-tls-校验修正)。
 
 ## 协程启动时的内置库缺口
 
