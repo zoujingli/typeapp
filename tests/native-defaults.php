@@ -41,7 +41,8 @@ try {
     ], $root);
     file_put_contents($work . '/build.stdout.log', $compileOutput);
     file_put_contents($work . '/build.stderr.log', $compileError);
-    expect($compileStatus === 0, '值语义原生编译失败，证据保留于 ' . $work);
+    expect($compileStatus === 0, '值语义原生编译失败，证据保留于 ' . $work . "\n"
+        . substr($compileOutput . $compileError, -16384));
     // 成功编译后删除本次输入，再从不同目录执行同一字节产物，不能回读 PHP 夹具。
     expect(unlink($source), '无法删除已编译的测试输入');
     $ini = "display_errors=stderr\n";
