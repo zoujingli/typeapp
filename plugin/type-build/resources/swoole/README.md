@@ -2,18 +2,16 @@
 
 当前源码基线为官方 Swoole 6.3 开发快照 `64988849fa898e510a38039912610cab6e9cf3f5`，运行时字符串仍为 `6.3.0RC1`，不是正式 6.3.0。2026-11-07 核对的最新稳定发行版为 [6.2.5](https://github.com/swoole/swoole-src/releases/tag/v6.2.5)；项目继续沿既有 6.3 路线固定源码提交与归档摘要，不跟随浮动分支。固定 PHP 为 **8.5.10、ZTS、非 debug、64 位**，其他 ABI 不自动混用。
 
-新快照已通过本机模块编译与加载；四平台可分发模块待重建。下列文件和清单暂保留上一轮 `c9745c4` 的原始身份，默认选择器会拒绝其与新适配混用。必须取得新模块和真实验证结果后再回填清单，不能仅修改旧模块的来源字段。
-
-以下记录上一轮模块的实际构建身份。
+四平台共享模块已从同一固定源码重建并通过各自门禁，模块、源码适配和依赖摘要已逐项回填；以下记录对应的真实产物。完整应用和静态单程序仍分别验收。
 
 | 目录 | 平台与边界 |
 | --- | --- |
-| `linux-x64/php-8.5.10-zts/swoole.so` | Linux x86-64，Debian 12 / glibc 2.36；重建运行 41367743137 |
-| `linux-arm64/php-8.5.10-zts/swoole.so` | Linux ARM64，Debian 12 / glibc 2.36；重建运行 41367743137 |
-| `macos-arm64/php-8.5.10-zts/swoole.so` | macOS ARM64，部署目标 15；重建运行 41367743137 |
-| `windows-x64/php-8.5.10-zts/php_swoole.dll` | Windows x64，PHP 官方 VS17 ZTS ABI；重建运行 41367743137 |
+| `linux-x64/php-8.5.10-zts/swoole.so` | Linux x86-64，Debian 12 / glibc 2.36；重建运行 42354619862 |
+| `linux-arm64/php-8.5.10-zts/swoole.so` | Linux ARM64，Debian 12 / glibc 2.36；重建运行 42354619862 |
+| `macos-arm64/php-8.5.10-zts/swoole.so` | macOS ARM64，部署目标 15；重建运行 42354619862 |
+| `windows-x64/php-8.5.10-zts/php_swoole.dll` | Windows x64，PHP 官方 VS17 ZTS ABI；重建运行 42354619862 |
 
-本轮四个平台模块均由 [重建运行 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137) 从同一源码提交构建并通过模块加载、协程 SQLite、PostgreSQL 连接拒绝和 ABI 校验；Windows 另通过中文环境、DNS、TLS 和 curl 回归。清单已回填各 Artifact、源码、依赖和模块摘要，选择器不再拒绝这些新模块。安装完整且模块匹配的 `zoujingli/type-build` 后，构建从组件安装位置校验、复用本地文件，不依赖主仓布局；文件不是 Git LFS 指针。
+本轮四个平台模块均由 [重建运行 42354619862](https://github.com/zoujingli/typeapp/actions/runs/42354619862) 从同一源码提交构建并通过模块加载、协程 SQLite、PostgreSQL 连接拒绝和 ABI 校验；Windows 另通过中文环境、DNS、TLS 和 curl 回归。清单已回填各 Artifact、源码、依赖和模块摘要，选择器不再拒绝这些新模块。安装完整且模块匹配的 `zoujingli/type-build` 后，构建从组件安装位置校验、复用本地文件，不依赖主仓布局；文件不是 Git LFS 指针。
 
 模块替换后的应用、真实三库与工具链结果统一见[当前平台状态](https://iots.top/#/guide/platforms?id=当前平台状态)，逐项保留源码提交、运行链接和失败后的复验身份。本轮共享模块重建不包含十二个静态单程序重建或跨平台性能对照。
 
@@ -46,21 +44,21 @@ Windows 共享模块已启用 `--enable-swoole-curl`，构建输入固定官方 
 
 ## 来源与依赖
 
-新基线来自官方 [swoole-src](https://github.com/swoole/swoole-src/tree/c9745c443265db59d0a9f32310e1f27e1873739f)。固定归档摘要、模块摘要、适配身份、构建参数和逐平台来源记录在清单中。TypeApp 保留原生线程入口 ABI 2、共享 HTTP 监听和连接/输入准入；删除官方已覆盖的空 UDP 来源与重复构造补丁。TCP、HTTP、WebSocket 客户端开启官方 `ssl_verify_host`；标准 stream hook 尚未映射此选项，仍需最小 IP SAN 兼容适配以保持协程 Redis/mysqlnd 行为，实证和撤除条件见[TCP 说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/tcp-native-io.md#数字-ip-的-tls-校验修正)。上游继续承担线程标准流回收。
+新基线来自官方 [swoole-src](https://github.com/swoole/swoole-src/tree/64988849fa898e510a38039912610cab6e9cf3f5)。固定归档摘要、模块摘要、适配身份、构建参数和逐平台来源记录在清单中。TypeApp 保留原生线程入口 ABI 2、共享 HTTP 监听和连接/输入准入；删除官方已覆盖的空 UDP 来源与重复构造补丁。TCP、HTTP、WebSocket 客户端开启官方 `ssl_verify_host`；标准 stream hook 尚未映射此选项，仍需最小 IP SAN 兼容适配以保持协程 Redis/mysqlnd 行为，实证和撤除条件见[TCP 说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/tcp-native-io.md#数字-ip-的-tls-校验修正)。上游继续承担线程标准流回收。
 
 Linux 两种架构使用官方 `php:8.5.10-zts-bookworm` 镜像构建，启用线程、sockets、mysqlnd、c-ares、PostgreSQL/SQLite hook、OpenSSL 和原生 cURL。运行仍需要相容的 libpq、SQLite、c-ares、OpenSSL、libcurl、C++ 与系统库，现有原生依赖收集器负责纳入发布清单。
 
 macOS 模块将 libpq（含配套的 libpgcommon_shlib、libpgport_shlib）、SQLite、OpenSSL、c-ares、Brotli 的静态归档链接进扩展，并隐藏这些库的符号，避免与 PHP 已加载的同名库混用。扩展保留 PHP API 的动态绑定以及系统库依赖；没有开发电脑的依赖路径，不需要伴随 dylib。静态子依赖及其来源记录在清单中。
 
-升级前的 Unix 和 Windows 模块身份继续保留在历史记录；当前四平台模块统一来自 [重建运行 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137)，源码提交为 `41a6739`，并分别记录 Linux glibc、macOS ARM64 和 Windows VS17 ABI 的真实 Artifact。Windows 仍保留 IPv6 地址初始化与独占绑定适配、TLS 正常 EOF 修复；IOCP 关联缓存由 c-ares 和 libcurl 的真实关闭生命周期回收，使存活连接可重复登记事件、关闭后的数值句柄可安全复用。模块静态链接固定 c-ares 1.34.8，使指定 DNS 配置在主线程和重建的工作线程生效。共享模块使用与开发 PHP 一致的 `/MD` CRT，生产静态 SDK 独立使用 `/MT`；开发 SDK 的配套 DLL 不属于生产单程序的部署文件。
+升级前的 Unix 和 Windows 模块身份继续保留在历史记录；当前四平台模块统一来自 [重建运行 42354619862](https://github.com/zoujingli/typeapp/actions/runs/42354619862)，源码提交为 `e8b4ba7`，并分别记录 Linux glibc、macOS ARM64 和 Windows VS17 ABI 的真实 Artifact。Windows 仍保留 IPv6 地址初始化与独占绑定适配、TLS 正常 EOF 修复；IOCP 关联缓存由 c-ares 和 libcurl 的真实关闭生命周期回收，使存活连接可重复登记事件、关闭后的数值句柄可安全复用。模块静态链接固定 c-ares 1.34.8，使指定 DNS 配置在主线程和重建的工作线程生效。共享模块使用与开发 PHP 一致的 `/MD` CRT，生产静态 SDK 独立使用 `/MT`；开发 SDK 的配套 DLL 不属于生产单程序的部署文件。
 
 ### Windows 环境编码修复
 
 RC14 的 Windows DLL 保留 `37134319268` 的历史构建身份。后续诊断确认，加载该 DLL 后，Windows 的窄字节 `putenv()` 会把 UTF-8 环境值按 ANSI 路径写坏；故障发生在函数返回前。固定源码适配改用 `php_win32_cp_any_to_w()` 与 `SetEnvironmentVariableW()`，继续使用 Swoole 的 ZTS 环境锁。
 
-当前内置 DLL 来自 [run 41367743137](https://github.com/zoujingli/typeapp/actions/runs/41367743137)、主仓源码 `41a67392bd792658361c2c985a47f815ef22ad5c`，SHA-256 为 `d1a400008f0077e8307f58758e3e59bcda4c8c43dae3d8c477384079edef0093`。同一模块通过中文环境的主进程、PHP/宽字符子进程、两轮工作线程、零字符串和删除恢复验证，以及 DNS、句柄复用、TLS、curl 回归；原始 Artifact 为 `13107259689`。后续应用矩阵的结果见上文平台状态入口，静态程序另行验收。
+当前内置 DLL 来自 [run 42354619862](https://github.com/zoujingli/typeapp/actions/runs/42354619862)、主仓源码 `e8b4ba774be2bc1f195c0a8ea3a65cd79f5374f3`，SHA-256 为 `66c972f9af52945b93cbfab8fcc13dafb87efd0461cf394c35daade3f6d0bc6f`。同一模块通过中文环境的主进程、PHP/宽字符子进程、两轮工作线程、零字符串和删除恢复验证，以及 DNS、句柄复用、TLS、curl 回归；原始 Artifact 为 `13566249673`。后续应用矩阵的结果见上文平台状态入口，静态程序另行验收。
 
-各模块的加载、协程 SQLite 和 PostgreSQL 连接拒绝检查通过，Windows 另通过主线程及两次重建工作线程的指定 DNS、TLS 写半关闭、读取超时恢复及连接重置检查，以及各 16 次的原生 UDP / DNS 后 UDP 对照；清单保存各 Artifact、依赖和适配摘要。Windows 还包含 config.w32、IOCP、DNS 和 PHP 头文件的受控适配。这些模块检查不替代完整通信及十二组合静态程序验收；上述模块与 RC14 的历史验收身份见[历史升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，当前 0.9.5 / 2.9.4 的迁移范围见[当前升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.5.md)。
+各模块的加载、协程 SQLite 和 PostgreSQL 连接拒绝检查通过，Windows 另通过主线程及两次重建工作线程的指定 DNS、TLS 写半关闭、读取超时恢复及连接重置检查，以及各 16 次的原生 UDP / DNS 后 UDP 对照；清单保存各 Artifact、依赖和适配摘要。Windows 还包含 config.w32、IOCP、DNS 和 PHP 头文件的受控适配。这些模块检查不替代完整通信及十二组合静态程序验收；上述模块与 RC14 的历史验收身份见[历史升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，当前工具链与应用迁移范围见[平台与验收](https://iots.top/#/guide/platforms)。
 
 Swoole 和其所含第三方材料保留 [LICENSES](LICENSES) 中的原始许可证，第一方适配按仓库 Apache-2.0 提供。分发这些二进制时应随附该目录；其中也保存 macOS 静态子依赖以及 Windows 静态链接的 c-ares 1.34.8、zlib 1.3.2、Zstandard 1.5.7 的许可。zlib 许可取自[固定版本](https://github.com/madler/zlib/blob/v1.3.2/LICENSE)，Zstandard 按[该版本的 BSD 许可](https://github.com/facebook/zstd/blob/v1.5.7/LICENSE)分发。
 

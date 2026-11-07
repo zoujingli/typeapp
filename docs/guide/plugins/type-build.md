@@ -164,7 +164,7 @@ php vendor/bin/type --inspect build/type-example
 
 本轮源码升级及逐平台模块状态见[构建输入](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)；上述历史公开消费不代表新版模块已完成四平台重建或分发。
 
-预编译模块固定使用 **PHP 8.5.10、ZTS、非 debug、64 位 ABI**。当前主仓源码工具链为 TypePHP 固定开发快照（0.9.6）、PHPX 2.9.5，准确版本以应用的工具链锁和 Composer 锁文件为准。源码升级进度与已公开 Release 分开记录，见[本次升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.5.md)。
+预编译模块固定使用 **PHP 8.5.10、ZTS、非 debug、64 位 ABI**。当前主仓源码工具链为 TypePHP 固定开发快照（0.9.6）、PHPX 2.9.5，准确版本以应用的工具链锁和 Composer 锁文件为准。源码升级进度与已公开 Release 分开记录，见[当前平台状态](../platforms.md#当前平台状态)。
 
 | 资源子目录 | 平台与限制 |
 | --- | --- |
