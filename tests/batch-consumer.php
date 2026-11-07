@@ -32,7 +32,12 @@ $toolchainContent = GitProcess::output(['git', 'show', $source . ':toolchain.loc
 $toolchain = json_decode($toolchainContent, true, 512, JSON_THROW_ON_ERROR);
 foreach (['typephp', 'phpx'] as $component) {
     $version = $toolchain[$component]['version'] ?? null;
-    expect(is_string($version) && preg_match('/^\d+\.\d+\.\d+$/D', $version), '固定批次工具链版本无效：' . $component);
+    expect(is_string($version) && preg_match('/^(?:\d+\.\d+\.\d+|dev-[A-Za-z0-9._-]+)$/D', $version), '固定批次工具链版本无效：' . $component);
+    if (str_starts_with($version, 'dev-')) {
+        $reference = $toolchain[$component]['reference'] ?? null;
+        expect(is_string($reference) && preg_match('/^[a-f0-9]{40}$/D', $reference) === 1, '固定批次开发工具链提交无效：' . $component);
+        $version .= '#' . $reference;
+    }
     $composer['require-dev']['swoole/' . $component] = $version;
 }
 $consumer = $root . '/build/batch-consumer-' . bin2hex(random_bytes(6));

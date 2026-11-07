@@ -28,6 +28,7 @@ $composer = [
     'repositories' => [
         ['type' => 'path', 'url' => $root . '/plugin/type-runtime', 'options' => ['symlink' => false, 'versions' => ['zoujingli/type-runtime' => '1.0.x-dev']]],
         ['type' => 'path', 'url' => $root . '/plugin/type-build', 'options' => ['symlink' => false, 'versions' => ['zoujingli/type-build' => '1.0.x-dev']]],
+        ...localComposerRepositories($root),
     ],
     'minimum-stability' => 'dev', 'prefer-stable' => true,
     'config' => ['allow-plugins' => false, 'vendor-dir' => 'dependencies', 'bin-dir' => 'commands'],
@@ -54,7 +55,13 @@ expect(array_keys($report['production-packages']) === ['zoujingli/type-runtime']
 foreach ($report['sources'] as $source) {
     expect(str_starts_with($source, $consumer . '/'), '独立消费仍引用主仓生产源码');
 }
-$greetingOutput = successful([PHP_BINARY, $root . '/tests/native.php', $consumer . '/build/native/type-app']);
+// 使用该产物实际探测的运行配置，避免控制器的全量 PDO/Swoole INI 改变模块启动顺序。
+$nativeEnvironment = array_replace(getenv(), [
+    'PHPRC' => $report['runtime-profile']['ini'],
+    'PHP_INI_SCAN_DIR' => dirname($report['runtime-profile']['ini']) . '/php.d',
+    'TYPE_NATIVE_PHP_INI' => $report['runtime-profile']['ini'],
+]);
+$greetingOutput = successful([PHP_BINARY, $root . '/tests/native.php', $consumer . '/build/native/type-app'], $consumer, $nativeEnvironment);
 echo $greetingOutput;
 $summarize = static fn (array $build): array => array_intersect_key($build, array_flip([
     'build-id', 'sha256', 'typephp', 'typephp-reference', 'phpx', 'phpx-reference',
@@ -113,7 +120,10 @@ PHP;
     foreach ($languageCases as [$languageArguments, $expectedStatus, $expectedOutput]) {
         $phpResult = execute([PHP_BINARY, '-r', $development, $consumer . '/dependencies/autoload.php',
             $consumer . '/dependencies/swoole/typephp/src/polyfills.php', $consumer . '/app/main.php', ...$languageArguments], $consumer);
-        $nativeResult = execute([...nativeCommand($consumer . '/build/native/type-app'), ...$languageArguments], $consumer);
+        $nativeEnvironment['PHPRC'] = $languageReport['runtime-profile']['ini'];
+        $nativeEnvironment['TYPE_NATIVE_PHP_INI'] = $languageReport['runtime-profile']['ini'];
+        $nativeEnvironment['PHP_INI_SCAN_DIR'] = dirname($languageReport['runtime-profile']['ini']) . '/php.d';
+        $nativeResult = execute([$consumer . '/build/native/type-app', ...$languageArguments], $consumer, $nativeEnvironment);
         expect($phpResult === $nativeResult, '新版标量、引用、回调或对象恢复的PHP/AOT结果不同：' . json_encode([$phpResult, $nativeResult]));
         expect($nativeResult[0] === $expectedStatus && $nativeResult[1] === $expectedOutput, '新版语言业务结果错误');
         expect($expectedStatus === 0 ? $nativeResult[2] === '' : str_contains($nativeResult[2], '选项必须是范围内的整数'), '新版语言业务错误边界不符');

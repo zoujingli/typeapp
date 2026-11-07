@@ -9,7 +9,7 @@ use RuntimeException;
 /** 静态链接时分离 Swoole 协程 PDO 与 PHP 原生 PDO 的内部 C 符号，保留两套驱动及公开接口。 */
 final class SwooleStaticSource
 {
-    public const REFERENCE = 'c9745c443265db59d0a9f32310e1f27e1873739f';
+    public const REFERENCE = '64988849fa898e510a38039912610cab6e9cf3f5';
 
     /**
      * 仅接受固定上游原文；上游为协程驱动提供独立符号并通过同一回归后撤除。
@@ -22,7 +22,7 @@ final class SwooleStaticSource
     {
         $declarations = [
             'ext-src/php_swoole_pgsql.h' => [
-                'sha256' => '018cdce89c0809d39dbc56fe8b92eeb9fc195466517b90b96ff5a7fb3e5fd9ab',
+                'sha256' => 'c35f53f5f409b051905042426477f0b32903dc18241baa97295ac0477f5382e8',
                 'guard' => '#define PHP_SWOOLE_PGSQL_H',
                 'symbols' => [
                     '_pdo_pgsql_error', 'pdo_libpq_version', 'pdo_pgsql_cleanup_notice_callback',

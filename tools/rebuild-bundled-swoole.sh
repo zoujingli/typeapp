@@ -13,7 +13,7 @@ task_reference="$("$task_php" -n -r 'require $argv[1]; echo Type\Build\SwooleThr
 task_archive="$task_work/swoole.tar.gz"
 task_source="$task_work/swoole-src-$task_reference"
 curl --fail --location --silent --show-error --retry 3 "https://codeload.github.com/swoole/swoole-src/tar.gz/$task_reference" --output "$task_archive"
-"$task_php" -n -r 'if (hash_file("sha256", $argv[1]) !== "fff55ac1e7bbb96394adcc81c1f97fc6a69e6b81a455bef88a9a01b61bb7477d") { throw new RuntimeException("Swoole 源码归档摘要不符"); }' "$task_archive"
+"$task_php" -n -r 'if (hash_file("sha256", $argv[1]) !== "d4e9e5bff6f19430e69425ddf2b485c045a5b0c2551af38b5efd6f79d1fe30a1") { throw new RuntimeException("Swoole 源码归档摘要不符"); }' "$task_archive"
 tar -xzf "$task_archive" -C "$task_work"
 "$task_php" -n -r '
 $report = [];

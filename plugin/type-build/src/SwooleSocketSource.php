@@ -9,7 +9,7 @@ use RuntimeException;
 /** 为未接入严格身份选项的 stream hook 延续 IP SAN 校验；匹配仍由官方 OpenSSL 分支承担。 */
 final class SwooleSocketSource
 {
-    public const REFERENCE = 'c9745c443265db59d0a9f32310e1f27e1873739f';
+    public const REFERENCE = '64988849fa898e510a38039912610cab6e9cf3f5';
 
     /**
      * 官方 stream hook 尚未把 verify_peer_name 映射到 ssl_verify_host，Redis/mysqlnd 仍走旧入口。
@@ -23,7 +23,7 @@ final class SwooleSocketSource
     {
         $file = 'src/network/socket.cc';
         $path = $directory . '/' . $file;
-        $before = 'e5238743808338fab3430d562b2ea49187cedd91370c4de548b14b8757d148be';
+        $before = 'db139e1299fc85dce9204322c0776c6248b581ccac157a5f5ad10316bb8e99ff';
         if (!is_file($path) || is_link($path) || hash_file('sha256', $path) !== $before) {
             throw new RuntimeException('Swoole TLS 适配需要固定原文：' . $file);
         }

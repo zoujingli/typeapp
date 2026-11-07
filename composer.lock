@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "c527a5f8ad3b7fdbdec5bbbfae4169bd",
+    "content-hash": "401b271c7b9ab04bc529dbc63ed73e96",
     "packages": [
         {
             "name": "dragonmantank/cron-expression",
@@ -4546,16 +4546,16 @@
         },
         {
             "name": "swoole/phpx",
-            "version": "v2.9.4",
+            "version": "v2.9.5",
             "source": {
                 "type": "git",
                 "url": "https://github.com/swoole/phpx.git",
-                "reference": "f6a2555e14694e8888d2f40ff2838ffb22bc04f2"
+                "reference": "13cf717579b216d4a4fa49fe4439573b4d072e71"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/swoole/phpx/zipball/f6a2555e14694e8888d2f40ff2838ffb22bc04f2",
-                "reference": "f6a2555e14694e8888d2f40ff2838ffb22bc04f2",
+                "url": "https://api.github.com/repos/swoole/phpx/zipball/13cf717579b216d4a4fa49fe4439573b4d072e71",
+                "reference": "13cf717579b216d4a4fa49fe4439573b4d072e71",
                 "shasum": ""
             },
             "require": {
@@ -4705,22 +4705,23 @@
             ],
             "support": {
                 "issues": "https://github.com/swoole/phpx/issues",
-                "source": "https://github.com/swoole/phpx/tree/v2.9.4"
+                "source": "https://github.com/swoole/phpx/tree/v2.9.5"
             },
-            "time": "2026-10-13T05:06:53+00:00"
+            "time": "2026-10-20T04:18:46+00:00",
+            "published-time": "2026-10-27T07:33:31+00:00"
         },
         {
             "name": "swoole/typephp",
-            "version": "v0.9.5",
+            "version": "dev-master",
             "source": {
                 "type": "git",
                 "url": "https://github.com/swoole/typephp.git",
-                "reference": "5ba9376642d8dd75efcd002b41b09a9d6bcca3e2"
+                "reference": "840c626c2505d2214708d129557adef3604a3576"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/swoole/typephp/zipball/5ba9376642d8dd75efcd002b41b09a9d6bcca3e2",
-                "reference": "5ba9376642d8dd75efcd002b41b09a9d6bcca3e2",
+                "url": "https://api.github.com/repos/swoole/typephp/zipball/840c626c2505d2214708d129557adef3604a3576",
+                "reference": "840c626c2505d2214708d129557adef3604a3576",
                 "shasum": ""
             },
             "require": {
@@ -4730,7 +4731,7 @@
                 "marcj/topsort": "^2.0",
                 "nikic/php-parser": "^5.6",
                 "php": ">=8.4 <8.6",
-                "swoole/phpx": "~2.9.4",
+                "swoole/phpx": "~2.9.5",
                 "symfony/var-dumper": "^8.0",
                 "symfony/yaml": "^8.0"
             },
@@ -4740,6 +4741,7 @@
                 "phpunit/phpunit": "^10.4",
                 "swoole/php-nano": "^1.1"
             },
+            "default-branch": true,
             "bin": [
                 "bin/tpc",
                 "bin/tpc.php"
@@ -4764,9 +4766,10 @@
             "description": "TypePHP native AOT compiler",
             "support": {
                 "issues": "https://github.com/swoole/typephp/issues",
-                "source": "https://github.com/swoole/typephp/tree/v0.9.5"
+                "source": "https://github.com/swoole/typephp/tree/master"
             },
-            "time": "2026-10-13T07:06:13+00:00"
+            "time": "2026-11-05T10:01:17+00:00",
+            "published-time": "2026-11-05T10:52:07+00:00"
         },
         {
             "name": "symfony/console",
@@ -6371,16 +6374,16 @@
         },
         {
             "name": "symfony/yaml",
-            "version": "v8.1.6",
+            "version": "v8.1.11",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/yaml.git",
-                "reference": "0b4aa53a67f9fece88c665f1a1dadcfd25d93fe5"
+                "reference": "e8266f55160f674f290a5f567cb55e11e21f921b"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/yaml/zipball/0b4aa53a67f9fece88c665f1a1dadcfd25d93fe5",
-                "reference": "0b4aa53a67f9fece88c665f1a1dadcfd25d93fe5",
+                "url": "https://api.github.com/repos/symfony/yaml/zipball/e8266f55160f674f290a5f567cb55e11e21f921b",
+                "reference": "e8266f55160f674f290a5f567cb55e11e21f921b",
                 "shasum": ""
             },
             "require": {
@@ -6423,7 +6426,7 @@
             "description": "Loads and dumps YAML files",
             "homepage": "https://symfony.com",
             "support": {
-                "source": "https://github.com/symfony/yaml/tree/v8.1.6"
+                "source": "https://github.com/symfony/yaml/tree/v8.1.11"
             },
             "funding": [
                 {
@@ -6443,7 +6446,8 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-08-30T01:03:44+00:00"
+            "time": "2026-11-04T08:39:20+00:00",
+            "published-time": "2026-11-04T11:31:03+00:00"
         },
         {
             "name": "theseer/tokenizer",
@@ -6501,15 +6505,15 @@
             "dist": {
                 "type": "path",
                 "url": "plugin/type-build",
-                "reference": "2d50ed346846632bc801a3b4d651011c296fd843"
+                "reference": "0475936da15472b137338cc418f6a739d94ab179"
             },
             "require": {
                 "composer-runtime-api": "^2.2",
                 "ext-json": "*",
                 "nikic/php-parser": "^5.8",
                 "php": ">=8.4 <8.6",
-                "swoole/phpx": "2.9.4",
-                "swoole/typephp": "0.9.5",
+                "swoole/phpx": "2.9.5",
+                "swoole/typephp": "dev-master",
                 "zoujingli/type-runtime": "~1.0.0@dev"
             },
             "bin": [
@@ -6582,6 +6586,7 @@
     "aliases": [],
     "minimum-stability": "dev",
     "stability-flags": {
+        "swoole/typephp": 20,
         "zoujingli/type-build": 20,
         "zoujingli/type-cache": 20,
         "zoujingli/type-core": 20,
@@ -6604,5 +6609,5 @@
         "ext-swoole": ">=6.2 <7"
     },
     "platform-dev": {},
-    "plugin-api-version": "2.9.0"
+    "plugin-api-version": "2.11.0"
 }

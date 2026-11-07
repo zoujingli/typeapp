@@ -25,6 +25,7 @@
     "friendsofphp/php-cs-fixer": "3.95.25",
     "phpunit/phpunit": "13.3.3",
     "swoole/ide-helper": ">=6.2.2",
+    "swoole/typephp": "dev-master#840c626c2505d2214708d129557adef3604a3576",
     "zoujingli/type-build": "~1.0.0@dev",
     "zoujingli/type-testing": "~1.0.0@dev"
   },

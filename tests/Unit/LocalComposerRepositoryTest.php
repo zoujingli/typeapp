@@ -83,7 +83,7 @@ final class LocalComposerRepositoryTest extends TestCase
         try {
             $toolchain = json_decode((string) file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
             $configuration = ['name' => 'type-tests/offline-toolchain',
-                'require' => ['swoole/typephp' => $toolchain['typephp']['version'], 'swoole/phpx' => $toolchain['phpx']['version']],
+                'require' => ['swoole/typephp' => \testToolchainVersion('typephp'), 'swoole/phpx' => \testToolchainVersion('phpx')],
                 'repositories' => [...\localComposerRepositories($root), ['packagist.org' => false]],
                 'config' => ['allow-plugins' => false]];
             file_put_contents($directory . '/composer.json', json_encode($configuration, JSON_THROW_ON_ERROR));

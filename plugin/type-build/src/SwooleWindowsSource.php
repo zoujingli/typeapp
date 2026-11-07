@@ -19,9 +19,9 @@ final class SwooleWindowsSource
     public function apply(string $directory): array
     {
         $hashes = [
-            'config.w32' => '5ba939d93f8682fa61c4d9d6d1613acd6943265b9b60f245ceebf8b2b406d81d',
-            'ext-src/swoole_curl.cc' => 'c58d4907e11b49bed9910d0d28ac2410d241dd1eadc05ced390ce7cd4f6679cd',
-            'ext-src/swoole_runtime.cc' => 'eaf5302cf6d8b7d2cebbff5c67c0f49fb3b291ddec095aa705683b4f33f8c68f',
+            'config.w32' => '76208439df2b8885c46250a549ed03f66c093e761d6012348f04a4a67c4b27c2',
+            'ext-src/swoole_curl.cc' => 'a02794228793ad77fbbde29cb5503c3c6923803c1bac5dba411e60c454661342',
+            'ext-src/swoole_runtime.cc' => '7319e162e3646d4c603b5c67e3dbe1b8d8a636966b9fc6691544374a46d285e0',
             'src/coroutine/iocp.cc' => 'f42ba99a3d30d10b39885304d0e529c3018756512eac4882868ea313cc9bcc0d',
             'src/coroutine/iocp_socket.cc' => '419ca0c4d91fd32c042ecbfb582400f8cede4c9e27d77a241c36a2682a0d983f',
             'src/network/dns.cc' => '07ac0cc8522c9f24e4d01ee0deae16382939e396c98961f5c9ba1293cfb1ac85',

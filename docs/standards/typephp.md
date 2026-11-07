@@ -4,14 +4,14 @@
 
 ## 锁定身份
 
-- TypePHP：`v0.9.5`，提交 `5ba9376642d8dd75efcd002b41b09a9d6bcca3e2`
-- PHPX：`v2.9.4`，提交 `f6a2555e14694e8888d2f40ff2838ffb22bc04f2`
-- Swoole：固定开发快照 `c9745c443265db59d0a9f32310e1f27e1873739f`，运行时字符串 `6.3.0RC1`
+- TypePHP：`dev-master`，提交 `840c626c2505d2214708d129557adef3604a3576`（源码版本 `0.9.6`，尚非正式发行版）
+- PHPX：`v2.9.5`，提交 `13cf717579b216d4a4fa49fe4439573b4d072e71`
+- Swoole：固定开发快照 `64988849fa898e510a38039912610cab6e9cf3f5`，运行时字符串 `6.3.0RC1`
 - PHP：`8.5.10 ZTS`（目标平台 SDK 必须与实际 PHP、架构和线程模式一致）
 
 PHP、TypePHP 与 PHPX 的准确依赖以根 `composer.lock` 和 `toolchain.lock.json` 为准；模板也必须携带相同的工具链身份。Swoole 的固定源码与逐平台模块身份以[内置清单](../../plugin/type-build/resources/swoole/manifest.json)为准，重建状态见[构建输入](../../plugin/type-build/resources/swoole/README.md)。上面的 Swoole 提交是 RC1 后的开发快照，不能称为正式 6.3.0；官方稳定线 6.2.5 与当前 6.3 快照分叉，不能在没有重新适配、重建和完整验收的情况下替换它。
 
-官方 PHPX 最新正式版为 `v2.9.5`，但 TypePHP `v0.9.5` 的正式依赖仍为 `~2.9.4`，其适配器和源码摘要也绑定 PHPX 2.9.4。TypePHP master 已进入下一版 PHPX 组合但尚未发布；当前不得只把 PHPX 改成 2.9.5，待新的 TypePHP 正式组合完成适配、四平台重建和原生验收后再同步。
+当前采用上述 TypePHP 开发快照与 PHPX 2.9.5。根项目、模板和独立消费者通过 `dev-master#完整提交` 固定安装，构建入口再次校验锁文件和源码摘要，不跟随分支漂移。旧版 TypePHP 的 `~2.9.4` 约束本身允许 2.9.5；升级需要重新核对原生适配与行为，而不是受该版本约束禁止。
 
 TypePHP 0.9.5 的匿名类会回退到嵌入 opcode 或 `eval`，本仓构建入口明确拒绝该路径；生产实现使用具名类。静态 PHP embed 构建与源码是否全量 AOT 是两项独立检查，不能以嵌入业务字节码替代编译。Nano 的能力边界不覆盖当前应用的 Swoole、数据库及任务系统，本次不采用。
 
@@ -45,9 +45,9 @@ TypePHP 0.9.5 将空字符串降级为 PHPX 2.9.4 的共享 `const String`，但
 
 TypePHP 0.9.5 为普通 Zend 类生成提升属性赋值时，PHPX 的 `setProperty()` 使用实际对象类作为写入作用域。子类继承父构造器时，父类的 `private` 属性可能被错误写成子类动态属性，随后父方法无法读取已声明的属性槽。
 
-兼容层复用上游带声明作用域的属性写入入口：普通类使用构造器声明类，trait 使用组合后的实际声明作用域；写入仍在构造体之前完成，类型、可见性与 `readonly` 由 Zend 检查。Native ABI 的字段生成保持上游实现，不新增运行时反射或源码加载。
+当前 TypePHP 已使用声明类作用域写入提升属性，TypeApp 删除 `genPropertyPromotion()` 覆写，直接复用上游生成器。普通类使用构造器声明类，trait 使用组合后的声明作用域；类型、可见性与 `readonly` 继续由 Zend 检查。
 
-`composer test:native-promoted-property` 对照 PHP/AOT，覆盖抽象父类、多层继承、显式父构造调用、trait、公共/受保护属性、默认对象身份、私有槽和只读写入拒绝。父子同名属性仍受锁定 TypePHP 的属性遮蔽限制，本项不放宽。适配绑定提升赋值、属性处理及构造生成的源码摘要；上游升级后通过同一回归再撤除。原始 RC14 不包含此修复，独立应用须使用固定构建候选重新全量编译。
+`composer test:native-promoted-property` 对照 PHP/AOT，覆盖抽象父类、多层继承、显式父构造调用、trait、公共/受保护属性、默认对象身份、私有槽和只读写入拒绝。删除覆写后，macOS ARM64 的同一回归及无输入源码运行通过。父子同名属性仍受锁定 TypePHP 的属性遮蔽限制，本项不放宽；其他平台按实际回归分别记录。
 
 ## 接口 self 常量的编译适配
 
@@ -59,7 +59,7 @@ TypePHP 0.9.5 在接口内解析 `self::` 时使用类专用名称入口，可�
 
 PHP 类常量大小写敏感，方法名称大小写不敏感；`UNFINISHED` 数组常量与 `unfinished()` 方法可以同时声明。TypePHP 0.9.5 为两者生成相同的小写 C++ 名称时会导致编译歧义，只有大小写不同的多个数组常量也会相互碰撞。
 
-兼容层为类和接口的数组常量分配独立存储符号，身份包含命名空间、声明类和保持大小写的常量名；声明、读取、请求初始化与清理以及线程存储使用同一符号。PHP 公开名称、方法分派、标量常量及访问权限仍由上游处理。`composer test:native-class-constants` 对照 PHP/AOT 检查同名方法、大小写常量、继承、接口、trait、动态读取和写时复制；原始最小输入也必须可直接编译，无需业务改名。适配绑定四个上游源码摘要，升级后通过同一回归再撤除。
+当前 TypePHP 的 `getNativeClassConstName()` 已统一生成独立且保留常量名大小写的符号。TypeApp 删除自有符号分配及包装逻辑，线程存储声明也调用同一上游入口。`composer test:native-class-constants` 对照 PHP/AOT 检查同名方法、大小写常量、继承、接口、trait、动态读取和写时复制；删除适配后，macOS ARM64 的同一回归及无输入源码运行通过，业务无需改名。
 
 ## 已声明 toString 方法的编译适配
 
@@ -111,11 +111,11 @@ PHPX 2.9.4 的普通 embed 入口在请求启动后登记临时应用模块，�
 
 PHPX 的调试实现在 `src/core/debug.cc`，并提供异常/转换策略头文件。TypeApp 仍只在独立、固定的 PHPX 源码副本上应用线程与协程隔离、finalizer bailout 和可写字符串副本适配；共享 `vendor` 或 SDK 不直接改写。适配原文摘要和唯一替换由 `Type\Build\PhpxThreadSource` 门禁，完成后必须重新编译整份 PHPX。
 
-2.9.4 在原有 `src/core/base.cc` 请求初始化中发布共享不可变空字符串，编译器和运行库直接复用；线程/协程状态隔离、finalizer 和可写字符串适配仍由项目承担。Windows 的 C 与 C++ 编译统一使用静态 CRT，并通过 TypePHP 的 `section_gc` 接口控制发布代码裁剪。0.9.5 / 2.9.4 的检查须使用本次源码与产物；[RC14 历史验收](../evidence/typephp-upgrade-0.9.4.md)不作为新基线的通过证据。
+2.9.5 已将持久字符串转换为 interned 存储，TypeApp 删除重复转换补丁，直接复用上游；线程/协程状态隔离、finalizer 和可写字符串适配仍由项目承担。Windows 的 C 与 C++ 编译统一使用静态 CRT，并通过 TypePHP 的 `section_gc` 接口控制发布代码裁剪。新基线必须使用对应源码与产物重新验证；[RC14 历史验收](../evidence/typephp-upgrade-0.9.4.md)不作为新基线的通过证据。
 
 TypePHP 编译器的属性访问边界仍由 `Type\Build\TypephpCompatibility` 承接，适配只接受锁定版本的源码摘要。上游已实现的能力优先直接复用，新的版本升级若使适配不再必要，应先用等价回归用例证明后删除门禁和补丁。
 
 ## 一手依据
 
-- [TypePHP v0.9.5](https://github.com/swoole/typephp/tree/v0.9.5)
-- [PHPX v2.9.4](https://github.com/swoole/phpx/tree/v2.9.4)
+- [固定 TypePHP 开发快照](https://github.com/swoole/typephp/tree/840c626c2505d2214708d129557adef3604a3576)
+- [PHPX v2.9.5](https://github.com/swoole/phpx/tree/v2.9.5)

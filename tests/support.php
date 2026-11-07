@@ -5,7 +5,7 @@ declare(strict_types=1);
 // 测试故障仍保留消息与调用位置；参数不能泄漏凭据或延长 PDO 生命周期，阻塞专用数据库清理。
 ini_set('zend.exception_ignore_args', '1');
 
-/** 独立消费者使用主仓受审工具链版本；精确源码提交另由构建入口校验。 */
+/** 独立消费者固定主仓工具链版本；开发版本同时约束源码提交，构建入口再次核验。 */
 function testToolchainVersion(string $component): string
 {
     static $lock = null;
@@ -13,7 +13,13 @@ function testToolchainVersion(string $component): string
     if (!in_array($component, ['typephp', 'phpx'], true) || !is_string($lock[$component]['version'] ?? null)) {
         throw new RuntimeException('测试需要有效的工具链组件版本：' . $component);
     }
-    return $lock[$component]['version'];
+    $version = $lock[$component]['version'];
+    if (str_starts_with($version, 'dev-')) {
+        $reference = $lock[$component]['reference'] ?? null;
+        expect(is_string($reference) && preg_match('/^[a-f0-9]{40}$/D', $reference) === 1, '开发工具链需要固定源码提交：' . $component);
+        return $version . '#' . $reference;
+    }
+    return $version;
 }
 
 /** 独立消费者使用构建组件清单中的 Swoole 运行时版本，避免验证入口继续固定历史版本。 */

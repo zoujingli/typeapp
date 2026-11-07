@@ -6,12 +6,12 @@ namespace Type\Build;
 
 use RuntimeException;
 
-/** 隔离 PHPX 2.9.4 的线程及协程执行状态，保留请求级原生对象根链。 */
+/** 隔离 PHPX 2.9.5 的线程及协程执行状态，保留请求级原生对象根链。 */
 final class PhpxThreadSource
 {
-    /** 适配后的源码摘要；apply() 内部仍严格校验固定 2.9.4 原文摘要。 */
-    public const HEADER_SHA256 = '5b18c56c0862553ecbbd0cab1dcb6c962d10a15ee61ce0e4b4ee84015f8adbd9';
-    public const SOURCE_SHA256 = 'b99275234dc1816f2cb38938da2b2761673706e3dcecb101e9ec8b1f2988d5b7';
+    /** 适配后的源码摘要；apply() 内部仍严格校验固定 2.9.5 原文摘要。 */
+    public const HEADER_SHA256 = 'c3049bf9eb9db6a12b338fd14cda12a4893d860123a2bafda9cdf8636e86571b';
+    public const SOURCE_SHA256 = 'a093734785554288b84c6caac33dd955ebd7e547a8e16c50c2da203aee34e98d';
     public const DEBUG_SHA256 = 'b142060b7ca420d2522932ac8bec4f826b96a725ce93865f56b5772414a8f5aa';
     public const NATIVE_GC_SHA256 = '22702f78430fa59f4367d24dfae881e2c12f42d171e55b55847843d5d04c42aa';
     public const STRING_SHA256 = '3f88f471f305aacfcaf5250b8cbf1d22c17fef09719b651431f5c8d7224c96ea';
@@ -24,8 +24,8 @@ final class PhpxThreadSource
     public function apply(string $directory): array
     {
         $hashes = [
-            'include/phpx.h' => '1112ff62751fe6e3225e7c359e304291e97d9338aceadd4776fcc1561d4638ab',
-            'src/core/base.cc' => 'e744a000fa8953382752dbc1d95338a10b1ac433807f9ab256ef09c58f751e69',
+            'include/phpx.h' => 'ee2244823b619ada38858ded250fb636eae60e6e4f32451746c6c9292d4e7ba6',
+            'src/core/base.cc' => '10283aa71060452badea026f4b4732ba71acaf119db4adea4fe41cbf11b189e0',
             'src/core/debug.cc' => '25e0c66dffc088a7a5acbdc4c50b8be53b988873bd2e97b0d705fd6217bd9e3a',
             'src/core/native_gc.cc' => 'a1a40dd926fbcfef9cbc18456a29dd092ca24c4501d275eea9403ca2204c5680',
             'src/core/string.cc' => '6dbb43168921f6e03a7052ecf1330267843ae45436b32f9bebd0a20fbf59d40a',
@@ -43,28 +43,7 @@ final class PhpxThreadSource
             'extern DebugInfo debug_info;',
             "extern THREAD_LOCAL DebugInfo debug_info;\nPHPX_API int typeAppThreadAbi();\nPHPX_API bool typeAppRunFinalizer(void (*finalizer)(void *), void *object);"
         );
-        $contents['include/phpx.h'] = $this->replace($contents['include/phpx.h'], <<<'CPP'
-            ZVAL_NEW_STR(&val, zend_string_init(str, len, persistent));
-            /**
-             * There is a flaw in PHP's design: persistent strings cause assertion failures upon destruction.
-             * By incrementing the reference count once, these strings are never released,
-             * and are instead reclaimed automatically by the operating system when the process terminates.
-             */
-            addRef();
-            /**
-             * Persistent string must have its hash value precomputed. This string may be used for hash lookups in a
-             * multi-threaded environment. If the hash value is null and requires calculation, it may lead to
-             * multi-thread contention.
-             */
-            zend_string_hash_val(Z_STR(val));
-CPP, <<<'CPP'
-            // 保留原有进程寿命；不可变标记同时阻止跨线程引用计数写入和原地改写。
-            auto value = zend_string_init(str, len, true);
-            zend_string_hash_val(value);
-            GC_ADD_FLAGS(value, IS_STR_INTERNED | IS_STR_PERMANENT);
-            ZVAL_INTERNED_STR(&val, value);
-CPP);
-        // SEPARATE_STRING 只处理有引用计数的字符串；共享 interned 字节必须先取得可写副本。
+        // PHPX 2.9.5 已将共享持久字符串改为 interned 常量；保留项目的可写副本适配。
         $contents['include/phpx.h'] = $this->replace(
             $contents['include/phpx.h'],
             '        SEPARATE_STRING(zv());',
@@ -81,7 +60,7 @@ CPP);
             "int typeAppThreadAbi() { return 2; }\n\nconst char *box_res_name = \"php::box\";"
         );
         $source = $this->replace($source, '#include <zend_observer.h>', "#include <zend_observer.h>\n#include <unordered_map>");
-        $source = $this->replace($source, 'thread_local zend_class_entry *lexical_call_scope = nullptr;', '');
+        $source = $this->replace($source, 'THREAD_LOCAL zend_class_entry *lexical_call_scope = nullptr;', '');
         $source = $this->replace($source, 'static void initializeProcessState() noexcept {', <<<'CPP'
 namespace {
 thread_local zend_class_entry *lexical_call_scope = nullptr;

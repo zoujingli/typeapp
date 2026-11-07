@@ -9,7 +9,7 @@ use RuntimeException;
 /** 显式协程 HTTP 候选：复用已绑定套接字、原生接受循环和解析器，不进入默认线程适配。 */
 final class SwooleHttpSource
 {
-    public const REFERENCE = 'c9745c443265db59d0a9f32310e1f27e1873739f';
+    public const REFERENCE = '64988849fa898e510a38039912610cab6e9cf3f5';
 
     /**
      * 仅修改隔离原文；上游提供等价套接字入口并处理共享监听 EAGAIN 后撤除。
@@ -21,10 +21,10 @@ final class SwooleHttpSource
     public function apply(string $directory): array
     {
         $hashes = [
-            'ext-src/swoole_http_server_coro.cc' => '88b9c59825a5ab224bfc3f4bb240957d6d9c6c544ce79adfd7aa1ddff58407ec',
+            'ext-src/swoole_http_server_coro.cc' => '048a9a11ae9d3e17b875a5d3a4706d228584128630c5ec83b7ddeadeb0765849',
             'ext-src/stubs/php_swoole_http_server_coro.stub.php' => 'c656a32f9758ac831d2213ed6fe64aac9dffc3e1211f90f853786cfa2edc992a',
-            'ext-src/swoole_http_request.cc' => '0800c136ab8bdf1d515711fabc385fd91e4b05c35e9eeb5c9ed8205bb82b89ab',
-            'ext-src/php_swoole_http.h' => '3617d2017aa18de41e4575dc36722175a1a6807ca5ae31ad5864984e347bf8bb',
+            'ext-src/swoole_http_request.cc' => '95d327443e6f80637a55b398548615ddcdc959d932a11866e39118f278705b2b',
+            'ext-src/php_swoole_http.h' => 'dbf75116b35c65eb4624e9ed5268beadc9e3397e3c4f296bbf02b9bc706300a3',
         ];
         $contents = [];
         foreach ($hashes as $file => $hash) {

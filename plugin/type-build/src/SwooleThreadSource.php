@@ -9,7 +9,7 @@ use RuntimeException;
 /** 为固定上游补充编译线程入口、退出通知与进程级中断钩子；线程创建、请求及回收仍由 Swoole 承担。 */
 final class SwooleThreadSource
 {
-    public const REFERENCE = 'c9745c443265db59d0a9f32310e1f27e1873739f';
+    public const REFERENCE = '64988849fa898e510a38039912610cab6e9cf3f5';
 
     /**
      * 只修改显式提供的隔离源码副本；原文摘要或替换次数不匹配时拒绝。
@@ -20,12 +20,12 @@ final class SwooleThreadSource
     public function apply(string $directory): array
     {
         $hashes = [
-            'ext-src/swoole_thread.cc' => '3949d1bc0b44c4b7ec7d33676d60b1135e23ab7b3ed1572de8f46404e907f371',
+            'ext-src/swoole_thread.cc' => '1058e32eee366e4e0e1f463ba07f0bf3a3b63897b69f7b7a973dea056c3372ce',
             'ext-src/php_swoole_thread.h' => '002c8cd826170c254a8aa2c974982b94aee26dc7bd56f6278aff58b1835355fa',
             'ext-src/stubs/php_swoole_thread.stub.php' => 'ead2f3aa059ec4c10dd759e0e7e813f07f8c50a6d450dc54f0b123aff89cd360',
-            'ext-src/swoole_coroutine.cc' => 'afdabb0d1a6f4caf5e4596ed4e06d0778721a15b13777bccbe5767e60a5c8181',
-            'ext-src/php_swoole.cc' => 'e40bdc1afb495a88f9737e6af619a3088931c29cb1fe48e1f2db22c11acf4674',
-            'ext-src/php_swoole_private.h' => '2a9d4ef5aced190d972b6170769d0cf4c104692f9af2374b7b711ff8e8cc990c',
+            'ext-src/swoole_coroutine.cc' => 'dcca422327781073bfb4290df6d36085b3ccb46ff1b7ddff729d9ff79acbaeea',
+            'ext-src/php_swoole.cc' => 'c8cd99669b6e0d911d7611f90529fb51038d5f4d28062aa10d31ed0a7f29f9f3',
+            'ext-src/php_swoole_private.h' => '2ccbb18388ba9c6763c6419cfbd4cf7b7f41d76a44010a2957cb9f8634b84b3c',
         ];
         $contents = [];
         foreach ($hashes as $file => $hash) {

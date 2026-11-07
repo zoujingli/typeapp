@@ -12,7 +12,7 @@
 | `receive()`、`send()`、`shutdownWrite()` | `recv()`、`sendAll()`、原生读写期限与 `shutdown(SHUT_WR)`。 | 片段上限，一读一写准入，EOF 与未知部分写入语义；业务自行限制总消息大小。 |
 | `stop()`、`awaitClosed()` | `Coroutine::cancel()`、Socket 析构、`Event::defer()`、原生 Channel 通知。 | 取消重入保护；原生 FD 关闭后归还额度；等待超时不提前释放。 |
 
-最初审查固定在 `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`（6.2.1）；当前固定开发快照为 `c9745c443265db59d0a9f32310e1f27e1873739f`，模块及平台状态见[构建输入](../../plugin/type-build/resources/swoole/README.md)。`src/coroutine/socket.cc` 的 `accept()` 只创建接入 Socket、继承 TLS 上下文，不执行握手，因此无需修改原生接入循环。客户端 `connect()` 已串联解析、连接与握手，应用只加一次总截止 Timer，并用单调时钟复核合计预算，不为启动再创建一次性 `Deadline`；分段握手不能延长总预算。SSL 握手的 PHP 方法不保证同步 `errCode`，失败仍按连接或握手阶段报告，超时和取消由当前执行状态区别。
+最初审查固定在 `0f3bee2f0ed8704ce33a336e7feabb0115411dd7`（6.2.1）；当前固定开发快照为 `64988849fa898e510a38039912610cab6e9cf3f5`，模块及平台状态见[构建输入](../../plugin/type-build/resources/swoole/README.md)。`src/coroutine/socket.cc` 的 `accept()` 只创建接入 Socket、继承 TLS 上下文，不执行握手，因此无需修改原生接入循环。客户端 `connect()` 已串联解析、连接与握手，应用只加一次总截止 Timer，并用单调时钟复核合计预算，不为启动再创建一次性 `Deadline`；分段握手不能延长总预算。SSL 握手的 PHP 方法不保证同步 `errCode`，失败仍按连接或握手阶段报告，超时和取消由当前执行状态区别。
 
 沿用已经核验的六文件线程入口适配及内嵌库关闭修复；TCP 不依赖文件 I/O 候选。macOS TLS 链接要求沿用[已有修正](mqtt-native-client.md#macos-原生-tls-链接)。IP 证书身份改用下述官方严格校验，不改调度、握手或协议处理。
 
@@ -22,7 +22,7 @@
 
 最初诊断的 `Socket::ssl_check_host()` 无论输入是域名还是数字 IP，都调用 `X509_check_host()`。同一份含 `DNS:localhost,IP:127.0.0.1,IP:::1` 的证书，独立 Node TLS 对端下的原生最小复现得到：localhost 成功、127.0.0.1 失败、错误域名失败。旧模块因此使用项目的 IP SAN 补丁；原始诊断身份保留，不作为新模块的通过证据。
 
-当前固定的[官方实现](https://github.com/swoole/swoole-src/blob/c9745c443265db59d0a9f32310e1f27e1873739f/src/network/socket.cc)已在严格身份校验中支持 IP SAN。TCP、HTTP 与 WebSocket 客户端内部同时开启原生 `ssl_verify_peer=true` 和 `ssl_verify_host=true`，`ssl_host_name` 继续传递待验证身份：数字 IPv4/IPv6 由 OpenSSL `X509_check_ip_asc()` 校验，域名使用 `X509_check_host()`。证书链、协议版本和成功/失败关闭路径继续由原生实现，公开配置与错误契约不变。
+当前固定的[官方实现](https://github.com/swoole/swoole-src/blob/64988849fa898e510a38039912610cab6e9cf3f5/src/network/socket.cc)已在严格身份校验中支持 IP SAN。TCP、HTTP 与 WebSocket 客户端内部同时开启原生 `ssl_verify_peer=true` 和 `ssl_verify_host=true`，`ssl_host_name` 继续传递待验证身份：数字 IPv4/IPv6 由 OpenSSL `X509_check_ip_asc()` 校验，域名使用 `X509_check_host()`。证书链、协议版本和成功/失败关闭路径继续由原生实现，公开配置与错误契约不变。
 
 官方 stream hook 尚未把 PHP `verify_peer_name` 映射到 `ssl_verify_host`，Redis 和 mysqlnd 仍会进入旧身份校验路径。独立真实 Redis TLS 服务的协程对照中，旧模块通过，直接撤掉 TLS 修正的候选连接失败。因此保留 [`SwooleSocketSource::applyTls()`](../../plugin/type-build/src/SwooleSocketSource.php)：仅让已有 IP SAN 分支也适用于旧入口，不改变证书链或显式关闭主机名校验的原生入口；恢复后同一公共连接接口通过。
 

@@ -40,7 +40,7 @@ source_archive "${TYPE_STATIC_PHP_ARCHIVE:-}" php-8.5.10.tar.xz https://www.php.
 if [[ "$task_redis_enabled" == 1 ]]; then
     source_archive "${TYPE_STATIC_REDIS_ARCHIVE:-}" redis-6.3.0.tgz https://pecl.php.net/get/redis-6.3.0.tgz 0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5
 fi
-source_archive "${TYPE_STATIC_SWOOLE_ARCHIVE:-}" swoole.tar.gz https://codeload.github.com/swoole/swoole-src/tar.gz/c9745c443265db59d0a9f32310e1f27e1873739f fff55ac1e7bbb96394adcc81c1f97fc6a69e6b81a455bef88a9a01b61bb7477d
+source_archive "${TYPE_STATIC_SWOOLE_ARCHIVE:-}" swoole.tar.gz https://codeload.github.com/swoole/swoole-src/tar.gz/64988849fa898e510a38039912610cab6e9cf3f5 d4e9e5bff6f19430e69425ddf2b485c045a5b0c2551af38b5efd6f79d1fe30a1
 if [[ "$task_profile" == all || "$task_profile" == pgsql ]]; then
     source_archive "${TYPE_STATIC_PGSQL_ARCHIVE:-}" postgresql-17.11.tar.bz2 https://ftp.postgresql.org/pub/source/v17.11/postgresql-17.11.tar.bz2 dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979
 fi
@@ -80,12 +80,12 @@ task_source="$task_work/src/php-8.5.10"
 if [[ "$task_redis_enabled" == 1 ]]; then
     mv "$task_work/src/redis-6.3.0" "$task_source/ext/redis"
 fi
-mv "$task_work/src/swoole-src-c9745c443265db59d0a9f32310e1f27e1873739f" "$task_source/ext/swoole"
+mv "$task_work/src/swoole-src-64988849fa898e510a38039912610cab6e9cf3f5" "$task_source/ext/swoole"
 cp -R "$task_root/vendor/swoole/phpx" "$task_work/src/phpx"
 # shellcheck disable=SC2016
 "$task_php" -n -r '
 require $argv[1] . "/vendor/autoload.php";
-if (Composer\InstalledVersions::getReference("swoole/phpx") !== "f6a2555e14694e8888d2f40ff2838ffb22bc04f2") {
+if (Composer\InstalledVersions::getReference("swoole/phpx") !== "13cf717579b216d4a4fa49fe4439573b4d072e71") {
     throw new RuntimeException("PHPX 来源与锁定版本不符");
 }
 $report = [];

@@ -20,9 +20,6 @@ final class TypephpCompatibility extends Translator
     private bool $interfaceConstantCompatibilityVerified = false;
     private bool $declaredMethodCompatibilityVerified = false;
     private bool $callArgumentsCompatibilityVerified = false;
-    private bool $classConstantSymbolsVerified = false;
-    private bool $classConstantSymbolContext = false;
-    private bool $propertyPromotionVerified = false;
     private bool $referenceCaptureVerified = false;
     private bool $exitCompatibilityVerified = false;
     /** @var array<string, true> 需要真实 Zend 参数帧的具名函数与方法。 */
@@ -113,8 +110,8 @@ final class TypephpCompatibility extends Translator
     }
 
     private const REFERENCES = [
-        'swoole/typephp' => '5ba9376642d8dd75efcd002b41b09a9d6bcca3e2',
-        'swoole/phpx' => 'f6a2555e14694e8888d2f40ff2838ffb22bc04f2',
+        'swoole/typephp' => '840c626c2505d2214708d129557adef3604a3576',
+        'swoole/phpx' => '13cf717579b216d4a4fa49fe4439573b4d072e71',
     ];
 
     /**
@@ -143,9 +140,9 @@ final class TypephpCompatibility extends Translator
     protected function buildFuncCallConfig(): array
     {
         $configuration = parent::buildFuncCallConfig();
-        // PHPX 2.9.4 的快速路径调用对象钩子后仍未检查 EG(exception)。标准 php::call 已检查
+        // PHPX 2.9.5 的快速路径调用对象钩子后仍未检查 EG(exception)。标准 php::call 已检查
         // 并传播同一异常，也正确清理序列化资源。普通函数和 universal methods 共用此映射。
-        // 上游依据：swoole/phpx@f6a2555e 的 include/std/json.h 与 include/std/misc.h。
+        // 上游依据：swoole/phpx@13cf7175 的 include/std/json.h 与 include/std/misc.h。
         unset($configuration['json_encode'], $configuration['serialize'], $configuration['unserialize']);
         $configuration['func_get_arg']['namedArgs'] = ['position'];
         return $configuration;
@@ -229,8 +226,8 @@ final class TypephpCompatibility extends Translator
         }
         $compiler = InstalledVersions::getInstallPath('swoole/typephp');
         foreach ([
-            'src/Preprocessor.php' => '8a8526ddcb84081341568b3308992336f180365ca1a3205a32d7774127a8e0be',
-            'src/Translator.php' => 'b35744130995254057822a09c0bbb38fd7863b474be0d5747faf0069989d3894',
+            'src/Preprocessor.php' => '20feb0bacf189feeb58f6ffa6e48df1b53a5dac8ec0d4278d14c8d63ff801fb0',
+            'src/Translator.php' => '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913',
             'src/Analysis/ReferenceCaptureAnalyzer.php' => '0732aa48bae23c3ff1c547f08ffc48c829560ae98cb2fff11189d6de35df688c',
             'src/Context/CompilationStateTrait.php' => '158d16dc36e46951f601fd4b996d6920aa4475270e4696ce8958c455cf786484',
             'src/Generator/ClosureGenerator.php' => 'fc23c9113e8b90e0f24e4819506190de592aa565fae340caed594b15e7af5882',
@@ -472,15 +469,15 @@ final class TypephpCompatibility extends Translator
         }
         $compiler = InstalledVersions::getInstallPath('swoole/typephp');
         foreach ([
-            'src/CompilerBase.php' => '10a2a106f776ac1fd27db8901fa6bceadbb24f2c98ab00eaaedaf5daa807154f',
-            'src/Preprocessor.php' => '8a8526ddcb84081341568b3308992336f180365ca1a3205a32d7774127a8e0be',
-            'src/Translator.php' => 'b35744130995254057822a09c0bbb38fd7863b474be0d5747faf0069989d3894',
+            'src/CompilerBase.php' => '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30',
+            'src/Preprocessor.php' => '20feb0bacf189feeb58f6ffa6e48df1b53a5dac8ec0d4278d14c8d63ff801fb0',
+            'src/Translator.php' => '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913',
             'src/Generator/ParameterCountCheckGenerator.php' => '491fffd20a20d554ecc46bfaedfa0179535b9cfa36264e8e2f81a785e79fa273',
             'src/Generator/ClosureGenerator.php' => 'fc23c9113e8b90e0f24e4819506190de592aa565fae340caed594b15e7af5882',
             'src/Generator/CallArgumentGenerator.php' => 'd0e5b1e9248a312749911e3d6d063f2be91b230a296e2a6ded7aba694d74e6e0',
-            'src/Optimizer/FuncCallOptimizer.php' => '8a5f773ad88eb4281d9e797ce7d4393affb3a17fd106318c22e3e7aa41f51b3e',
+            'src/Optimizer/FuncCallOptimizer.php' => '8627ec85b3d0173ba3d704d36243eee99e9af43d50b9e598b6a20c32c3779b9a',
             'src/Parser/FunctionCallTrait.php' => 'd7bf37b372b8541b8205079a1f04e9ea942d6e58148fe1094e88ad8bb6d9e7e7',
-            'src/Parser/MethodCallTrait.php' => '64f941d2b5fe0a263282d4fc871539239477dc9ff769cf2e1961f3e68ffc50f1',
+            'src/Parser/MethodCallTrait.php' => 'b35e79713ced34b1eb5e90fc8c8f752902c8b543bb8910df7f325e4cab3d1523',
             'src/Analysis/LocalClosureAnalyzer.php' => 'f1cf6e659bd03fbc6282cc028fca3790a0603b36e8753b5b13d45eb82f0525b2',
         ] as $file => $sha256) {
             if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
@@ -499,112 +496,6 @@ final class TypephpCompatibility extends Translator
         return parent::parseNew($expr);
     }
 
-    /** 类数组常量按符号种类与原始大小写分配存储，不复用方法的小写名称。 */
-    private function classConstantStorageName(string $name, string $namespace, string $class): string
-    {
-        return self::PREFIX . 'typeapp_class_constant_' . hash('sha256', $namespace . "\0" . $class . "\0" . $name);
-    }
-
-    /** 仅在经过审查的常量生成入口内替换名称；普通方法和属性命名保持上游规则。 */
-    protected function getNativeName(string $fn, string $ns = '', string $class = ''): string
-    {
-        if ($this->classConstantSymbolContext && $class !== '') {
-            $fullClass = $ns === '' ? $class : $ns . '\\' . $class;
-            $definition = $this->hasClass($fullClass) ? $this->getClass($fullClass)
-                : ($this->hasInterface($fullClass) ? $this->getInterface($fullClass) : null);
-            if ($definition !== null && ($definition->constants[$fn]->type ?? null) === \TypePhp\Type::ARRAY) {
-                return substr($this->classConstantStorageName($fn, $ns, $class), strlen(self::PREFIX));
-            }
-        }
-        return parent::getNativeName($fn, $ns, $class);
-    }
-
-    /** 编译期上下文在嵌套生成和异常后恢复，不修改常量 AST 或公开名称。 */
-    private function withClassConstantSymbols(callable $operation): mixed
-    {
-        if (!$this->classConstantSymbolsVerified) {
-            $compiler = InstalledVersions::getInstallPath('swoole/typephp');
-            foreach ([
-                'src/CompilerBase.php' => '10a2a106f776ac1fd27db8901fa6bceadbb24f2c98ab00eaaedaf5daa807154f',
-                'src/Preprocessor.php' => '8a8526ddcb84081341568b3308992336f180365ca1a3205a32d7774127a8e0be',
-                'src/Translator.php' => 'b35744130995254057822a09c0bbb38fd7863b474be0d5747faf0069989d3894',
-                'src/Parser/ClassConstantFetchTrait.php' => '0b6408a36aeae677ef03acd686a3a719ad861e5c1337f056cab6dff27c48f705',
-            ] as $file => $sha256) {
-                if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
-                    throw new RuntimeException('类常量符号隔离需要重新核对 TypePHP：' . $file);
-                }
-            }
-            $this->classConstantSymbolsVerified = true;
-        }
-        $previous = $this->classConstantSymbolContext;
-        $this->classConstantSymbolContext = true;
-        try {
-            return $operation();
-        } finally {
-            $this->classConstantSymbolContext = $previous;
-        }
-    }
-
-    /** 类/接口数组常量读取沿用上游继承和访问权限判断。 */
-    protected function findNativeClassConst(\PhpParser\NodeAbstract $expr, string $class, string $const, ?string $accessingClass = null): string|false
-    {
-        return $this->withClassConstantSymbols(fn (): string|false => parent::findNativeClassConst($expr, $class, $const, $accessingClass));
-    }
-
-    /** 分拆声明头与运行时头使用同一个常量符号。 */
-    protected function renderDataDeclarations(?string $sourceFile = null, bool $commonOnly = false, bool $includeGlobals = true): string
-    {
-        return $this->withClassConstantSymbols(fn (): string => parent::renderDataDeclarations($sourceFile, $commonOnly, $includeGlobals));
-    }
-
-    /** 非拆分的请求初始化仍保留原常量注册名和求值顺序。 */
-    protected function genClassArrayConstants(): string
-    {
-        return $this->withClassConstantSymbols(fn (): string => parent::genClassArrayConstants());
-    }
-
-    /** 请求清理指向与初始化一致的常量存储。 */
-    protected function genClassArrayConstantCleanup(): string
-    {
-        return $this->withClassConstantSymbols(fn (): string => parent::genClassArrayConstantCleanup());
-    }
-
-    /** 拆分的生命周期单元覆盖本类、父类和接口常量传播。 */
-    public function genClassArrayConstantLifecycleSources(): array
-    {
-        return $this->withClassConstantSymbols(fn (): array => parent::genClassArrayConstantLifecycleSources());
-    }
-
-    /** 上游扩展总单元内没有独立存储命名钩子，仅按完整声明替换登记的数组常量。 */
-    private function isolateClassConstantStorage(string $code): string
-    {
-        foreach (array_merge($this->symbols->classes(), $this->symbols->interfaces()) as $class) {
-            if ($class instanceof \TypePhp\Entity\ClassDef && $class->trait !== null) {
-                continue;
-            }
-            foreach ($class->constants as $constant) {
-                if ($constant->type !== \TypePhp\Type::ARRAY) {
-                    continue;
-                }
-                $original = self::PREFIX . parent::getNativeName($constant->name, $class->namespace, $class->name);
-                $storage = $this->classConstantStorageName($constant->name, $class->namespace, $class->name);
-                // 只匹配完整变量定义，不替换方法调用、PHP 字符串或常量注册名。
-                // 多个仅大小写不同的常量按上游登记顺序逐个替换，次数必须一致。
-                $code = preg_replace(
-                    '/^' . preg_quote(\TypePhp\Type::VAR . ' ' . $original . ';', '/') . '$/m',
-                    \TypePhp\Type::VAR . ' ' . $storage . ';',
-                    $code,
-                    1,
-                    $count
-                );
-                if ($code === null || $count !== 1) {
-                    throw new RuntimeException('类常量存储定义与登记不一致：' . $class->name . '::' . $constant->name);
-                }
-            }
-        }
-        return $code;
-    }
-
     /** 已声明的 toString 是用户方法；仅未声明时沿用 TypePHP 的转换关键字。 */
     protected function parseMethodCall(\PhpParser\Node\Expr\MethodCall $expr): string
     {
@@ -613,8 +504,8 @@ final class TypephpCompatibility extends Translator
             if (!$this->declaredMethodCompatibilityVerified) {
                 $compiler = InstalledVersions::getInstallPath('swoole/typephp');
                 foreach ([
-                    'src/CompilerBase.php' => '10a2a106f776ac1fd27db8901fa6bceadbb24f2c98ab00eaaedaf5daa807154f',
-                    'src/Parser/MethodCallTrait.php' => '64f941d2b5fe0a263282d4fc871539239477dc9ff769cf2e1961f3e68ffc50f1',
+                    'src/CompilerBase.php' => '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30',
+                    'src/Parser/MethodCallTrait.php' => 'b35e79713ced34b1eb5e90fc8c8f752902c8b543bb8910df7f325e4cab3d1523',
                     'src/Parser/UniversalMethodCall.php' => '8c2b963287246a9b54d709ff1174a903e913d4c5c07d0fa3fe650bb523e6ffea',
                     'src/Parser/PropertyAccessTrait.php' => 'f507a357cfb3f85e0f7d9e282e3e26304f0c9f1b5a3e8f04673b1f60a0c69fee',
                     'src/Generator/CallArgumentGenerator.php' => 'd0e5b1e9248a312749911e3d6d063f2be91b230a296e2a6ded7aba694d74e6e0',
@@ -691,9 +582,9 @@ final class TypephpCompatibility extends Translator
             if (!$this->interfaceConstantCompatibilityVerified) {
                 $compiler = InstalledVersions::getInstallPath('swoole/typephp');
                 foreach ([
-                    'src/CompilerBase.php' => '10a2a106f776ac1fd27db8901fa6bceadbb24f2c98ab00eaaedaf5daa807154f',
-                    'src/Preprocessor.php' => '8a8526ddcb84081341568b3308992336f180365ca1a3205a32d7774127a8e0be',
-                    'src/Parser/ClassConstantFetchTrait.php' => '0b6408a36aeae677ef03acd686a3a719ad861e5c1337f056cab6dff27c48f705',
+                    'src/CompilerBase.php' => '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30',
+                    'src/Preprocessor.php' => '20feb0bacf189feeb58f6ffa6e48df1b53a5dac8ec0d4278d14c8d63ff801fb0',
+                    'src/Parser/ClassConstantFetchTrait.php' => '6a92cb3779a5cb2132cc88c46d139da75b6932d7f931218808b6d824ebbfbbf0',
                 ] as $file => $sha256) {
                     if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
                         throw new RuntimeException('接口 self 常量适配需要重新核对 TypePHP：' . $file);
@@ -707,35 +598,6 @@ final class TypephpCompatibility extends Translator
             return parent::parseClassConstFetch($resolved);
         }
         return parent::parseClassConstFetch($expr);
-    }
-
-    /** 提升属性按构造器声明类写入，不能使用实际子类的权限创建同名动态属性。 */
-    protected function genPropertyPromotion(\TypePhp\Entity\ArgInfo $argInfo): string
-    {
-        if ($this->classDef?->nativeObject) {
-            return parent::genPropertyPromotion($argInfo);
-        }
-        if (!$this->propertyPromotionVerified) {
-            $compiler = InstalledVersions::getInstallPath('swoole/typephp');
-            foreach ([
-                'src/CompilerBase.php' => '10a2a106f776ac1fd27db8901fa6bceadbb24f2c98ab00eaaedaf5daa807154f',
-                'src/Translator.php' => 'b35744130995254057822a09c0bbb38fd7863b474be0d5747faf0069989d3894',
-                'src/Generator/PropertyPromotion.php' => 'e8d55199e9fafc2464a5d0a48ae079f80ebe04f3af0f3a0125058fdc090a8cfc',
-                'src/Parser/PropertyAccessTrait.php' => 'f507a357cfb3f85e0f7d9e282e3e26304f0c9f1b5a3e8f04673b1f60a0c69fee',
-            ] as $file => $sha256) {
-                if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
-                    throw new RuntimeException('提升属性作用域适配需要重新核对 TypePHP：' . $file);
-                }
-            }
-            $this->propertyPromotionVerified = true;
-        }
-        $name = $argInfo->phpName ?: $this->unescapeVarName($argInfo->name);
-        // 提升赋值生成时局部声明已经输出；此处直接查声明类，不再登记新的局部指针。
-        return $this->withoutLocalClassEntryHoisting(fn (): string => $this->emitDynamicPropertyWrite(
-            'this_',
-            $this->getLiteralString($name),
-            $argInfo->name
-        )) . ';' . PHP_EOL;
     }
 
     /** Zend 回调只在参数缺失时创建默认值，避免 C++ 实参求值提前触发构造及异常。 */
@@ -768,7 +630,7 @@ final class TypephpCompatibility extends Translator
             $default = $this->genDefaultArgumentExpr($nativeName, $index);
             $getter = $argument->byRef ? 'php::getCallArgByRef' : 'php::getCallArg';
             $type = $argument->byRef ? 'php::Ref' : 'php::Var';
-            // 与 PHPX 2.9.4 的 getCallArg/getCallArgByRef 保持一致：命名参数跳位是
+            // 与 PHPX 2.9.5 的 getCallArg/getCallArgByRef 保持一致：命名参数跳位是
             // IS_UNDEF，显式 null 则是已提供的值；短路判断避免读取越界调用帧。
             $missing = $index . ' >= php::getCallArgNum() || Z_ISUNDEF_P(ZEND_CALL_ARG(EG(current_execute_data), ' . ($index + 1) . '))';
             $replacement = '((' . $missing . ') ? ' . $type . '(' . $default . ') : ' . $getter . '(' . $index . '))';
@@ -788,9 +650,9 @@ final class TypephpCompatibility extends Translator
         }
         $compiler = InstalledVersions::getInstallPath('swoole/typephp');
         foreach ([
-            'src/CompilerBase.php' => '10a2a106f776ac1fd27db8901fa6bceadbb24f2c98ab00eaaedaf5daa807154f',
-            'src/Preprocessor.php' => '8a8526ddcb84081341568b3308992336f180365ca1a3205a32d7774127a8e0be',
-            'src/Translator.php' => 'b35744130995254057822a09c0bbb38fd7863b474be0d5747faf0069989d3894',
+            'src/CompilerBase.php' => '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30',
+            'src/Preprocessor.php' => '20feb0bacf189feeb58f6ffa6e48df1b53a5dac8ec0d4278d14c8d63ff801fb0',
+            'src/Translator.php' => '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913',
             'src/Generator/DefaultArgumentGenerator.php' => '09efd00e6088e813c4380eb828e7c74bd7f8d22113525f579c3d4b1051ba6678',
             'src/Context/FunctionContext.php' => '6477a62b0a9470464ebd9777c555ef26760df96b8a0845ffa384a705df3f8ba2',
         ] as $file => $sha256) {
@@ -838,8 +700,8 @@ final class TypephpCompatibility extends Translator
         }
         $compiler = InstalledVersions::getInstallPath('swoole/typephp');
         foreach ([
-            'src/CompilerBase.php' => '10a2a106f776ac1fd27db8901fa6bceadbb24f2c98ab00eaaedaf5daa807154f',
-            'src/Parser/SelectionExpressionTrait.php' => '32878cf69cb3391e26f93bfac32421f4fd218c9d27882c7e9f23354347851277',
+            'src/CompilerBase.php' => '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30',
+            'src/Parser/SelectionExpressionTrait.php' => '10b298d8682e61bb8207d1fd634d3085618e6cfe82813366911143fab78714cb',
             'src/Parser/TypeConversionTrait.php' => '62ad6ea84056b8aab7bee64d755c676da23597c3255b860a7900dab9a27a41f6',
         ] as $file => $sha256) {
             if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
@@ -1078,7 +940,7 @@ final class TypephpCompatibility extends Translator
             return $result;
         }
         $base = InstalledVersions::getInstallPath('swoole/typephp') . '/src/CompilerBase.php';
-        if (hash_file('sha256', $base) !== '10a2a106f776ac1fd27db8901fa6bceadbb24f2c98ab00eaaedaf5daa807154f') {
+        if (hash_file('sha256', $base) !== '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30') {
             throw new RuntimeException('回调适配需要重新核对 TypePHP 描述表');
         }
         // 读取构建器的固定静态表，不在生产反射业务签名或猜测 callable 参数。
@@ -1122,7 +984,7 @@ final class TypephpCompatibility extends Translator
         }
         if (!$this->exitCompatibilityVerified) {
             $source = InstalledVersions::getInstallPath('swoole/typephp') . '/src/Parser/ExceptionControlFlowTrait.php';
-            if (hash_file('sha256', $source) !== 'b9226fbb12e320112a1fb9260a3b48ae09ea2594b7be71832ad2259def00fd86') {
+            if (hash_file('sha256', $source) !== 'ccc6bbab3029f5d61f699422747f61711a158b5729857380985592e1bcd17c9c') {
                 throw new RuntimeException('embed 退出适配需要固定异常控制流原文');
             }
             $this->exitCompatibilityVerified = true;
@@ -1164,10 +1026,9 @@ final class TypephpCompatibility extends Translator
     public function writeFile(string $file, string $content, bool $force = false): void
     {
         if (basename($file) === 'extension-' . $this->targetName . '.cc') {
-            $content = $this->withClassConstantSymbols(fn (): string => $this->isolateClassConstantStorage($content));
             if (!$this->threaded() && $this->isBuildModeBin() && $this->hasSapi('embed') && !$this->isNanoMode()) {
-                if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== 'b35744130995254057822a09c0bbb38fd7863b474be0d5747faf0069989d3894'
-                    || hash_file('sha256', InstalledVersions::getInstallPath('swoole/phpx') . '/src/misc/typephp_runtime.cc') !== 'c16de4ca76275996c2d8778b97e46f289adb805b69679ccade36f8f6c55df48a') {
+                if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913'
+                    || hash_file('sha256', InstalledVersions::getInstallPath('swoole/phpx') . '/src/misc/typephp_runtime.cc') !== 'a89a13944a0a4ba75229e2fadaa08581f839fbbd10c9d5a1b73e10f9c34c9078') {
                     throw new RuntimeException('embed 请求生命周期适配需要重新核对 TypePHP/PHPX 原文');
                 }
                 if (!$this->fullEmbed()) {
@@ -1180,7 +1041,7 @@ final class TypephpCompatibility extends Translator
             }
         }
         if ($this->staticRuntime() !== null && basename($file) === 'extension-' . $this->targetName . '.cc') {
-            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== 'b35744130995254057822a09c0bbb38fd7863b474be0d5747faf0069989d3894') {
+            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913') {
                 throw new RuntimeException('静态 profile 模块依赖适配需要重新核对 TypePHP 原文');
             }
             // 0.9.5 按显式声明生成启动依赖；继续核对生成模块表与目标 profile，
@@ -1188,7 +1049,7 @@ final class TypephpCompatibility extends Translator
             $content = BuildProfile::targetModuleDependencies($content, $this->extensionDependencies);
         }
         if ($this->threaded() || $this->fullEmbed()) {
-            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== 'b35744130995254057822a09c0bbb38fd7863b474be0d5747faf0069989d3894') {
+            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913') {
                 throw new RuntimeException('线程生成适配需要重新核对 TypePHP 原文');
             }
             $extension = basename($file) === 'extension-' . $this->targetName . '.cc';
@@ -1299,7 +1160,7 @@ CPP;
                     }
                     foreach ($class->constants as $constant) {
                         if ($constant->type === \TypePhp\Type::ARRAY) {
-                            $storage[$this->classConstantStorageName($constant->name, $class->namespace, $class->name)] = \TypePhp\Type::VAR;
+                            $storage[$this->getNativeClassConstName($constant->name, $class->namespace, $class->name)] = \TypePhp\Type::VAR;
                         }
                     }
                 }
@@ -1357,11 +1218,11 @@ static void type_app_request_clean() {
 CPP . "\n" . $request;
                 $content = substr_replace($content, $request, $start, $end - $start);
                 $content = $this->threadReplace($content, <<<'CPP'
-    php::request_shutdown();
-    delete php_request_cache;
-    php_request_cache = nullptr;
-    module_clean();
-CPP, '    type_app_request_clean();');
+php::request_shutdown();
+module_clean();
+delete php_request_cache;
+php_request_cache = nullptr;
+CPP, 'type_app_request_clean();');
                 if ($this->threaded()) {
                     $classes = array_values(array_filter($this->classCeList, fn (string $ce): bool => isset($this->classCeInfo[$ce])));
                     $prepare = '';
@@ -1435,7 +1296,7 @@ CPP, '    type_app_request_clean();');
         $runtimeSource = realpath($this->getPhpxDir() . '/src/misc/typephp_runtime.cc');
         $compiledSource = realpath($cppFile);
         if (($this->threaded() || $this->fullEmbed()) && $runtimeSource !== false && $compiledSource !== false && $compiledSource === $runtimeSource) {
-            if (hash_file('sha256', $runtimeSource) !== 'c16de4ca76275996c2d8778b97e46f289adb805b69679ccade36f8f6c55df48a') {
+            if (hash_file('sha256', $runtimeSource) !== 'a89a13944a0a4ba75229e2fadaa08581f839fbbd10c9d5a1b73e10f9c34c9078') {
                 throw new RuntimeException('embed 请求生命周期适配需要固定 PHPX 原文');
             }
             $cppFile = __DIR__ . '/Native/thread-runtime.cc';

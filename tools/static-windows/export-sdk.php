@@ -11,7 +11,7 @@ $work = str_replace('\\', '/', (string) realpath($argv[1]));
 $dependencies = str_replace('\\', '/', (string) realpath($argv[2]));
 $sdk = $work . '/sdk';
 $php = $work . '/php-8.5.10';
-$phpx = $work . '/phpx-f6a2555e14694e8888d2f40ff2838ffb22bc04f2';
+$phpx = $work . '/phpx-13cf717579b216d4a4fa49fe4439573b4d072e71';
 if ($work === '' || $dependencies === '' || file_exists($sdk) || is_link($sdk)) {
     throw new RuntimeException('SDK 导出需要有效的任务输入和未使用的目标目录');
 }
@@ -131,7 +131,7 @@ $notices = ['typeapp-static.lib' => ['component' => $redisEnabled ? 'PHP、Swool
 $phpxLicense = exportSdkFile($phpx . '/LICENSE', $sdk, 'licenses/phpx/LICENSE');
 $gcLicense = exportSdkFile($phpx . '/thirdparty/wren-gc/LICENSE', $sdk, 'licenses/phpx/wren-gc/LICENSE');
 $decimalLicense = exportSdkFile($phpx . '/thirdparty/mpdecimal/COPYRIGHT.txt', $sdk, 'licenses/phpx/mpdecimal/COPYRIGHT.txt');
-$notices['phpx.lib'] = ['component' => 'PHPX、wren-gc', 'version' => 'PHPX 2.9.4',
+$notices['phpx.lib'] = ['component' => 'PHPX、wren-gc', 'version' => 'PHPX 2.9.5',
     'license' => ['Apache-2.0', 'MIT'], 'files' => [$phpxLicense, $gcLicense]];
 foreach (['libmpdec-4.0.1.lib', 'libmpdec++-4.0.1.lib'] as $name) {
     $notices[$name] = ['component' => 'mpdecimal', 'version' => '4.0.1', 'license' => 'BSD-2-Clause', 'files' => [$decimalLicense]];
