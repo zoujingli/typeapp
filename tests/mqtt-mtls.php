@@ -1416,7 +1416,7 @@ try {
         }
         $composer = ['name' => 'type-tests/mqtt-mtls-consumer', 'type' => 'project', 'license' => 'Apache-2.0',
             'require' => ['zoujingli/type-mqtt' => '~1.0.0@dev', 'zoujingli/type-orm-pgsql' => '~1.0.0@dev'],
-            'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => $toolchain['typephp']['version'], 'swoole/phpx' => $toolchain['phpx']['version']],
+            'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => testToolchainVersion('typephp'), 'swoole/phpx' => $toolchain['phpx']['version']],
             'autoload' => ['classmap' => ['app/main.php']], 'repositories' => $repositories,
             'minimum-stability' => 'dev', 'prefer-stable' => true, 'config' => ['allow-plugins' => false]];
         file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));

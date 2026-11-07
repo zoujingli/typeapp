@@ -165,7 +165,7 @@ $repositories = $composer['repositories'];
 $repositories[0]['url'] = '../../plugin/*';
 $repositories[0]['options']['symlink'] = false;
 $configuration = ['name' => 'type-tests/device-simulator', 'type' => 'project', 'license' => 'Apache-2.0', 'require' => $composer['require'],
-    'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => $toolchain['typephp']['version'], 'swoole/phpx' => $toolchain['phpx']['version']],
+    'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => testToolchainVersion('typephp'), 'swoole/phpx' => $toolchain['phpx']['version']],
     'autoload' => ['psr-4' => ['app\\iot\\' => 'app/iot/'], 'classmap' => ['app/main.php']], 'repositories' => $repositories,
     'minimum-stability' => 'dev', 'prefer-stable' => true, 'config' => ['allow-plugins' => false]];
 file_put_contents($base . '/composer.json', json_encode($configuration, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));

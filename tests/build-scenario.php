@@ -94,7 +94,7 @@ function buildScenario(string $root, string $configuration, ?string $stage = nul
     $composer['require'] = ['php' => $composer['require']['php']] + $requirements;
     $toolchain = json_decode(file_get_contents($work . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
     $composer['require-dev'] = ['zoujingli/type-build' => '~1.0.0@dev',
-        'swoole/typephp' => $toolchain['typephp']['version'], 'swoole/phpx' => $toolchain['phpx']['version']];
+        'swoole/typephp' => testToolchainVersion('typephp'), 'swoole/phpx' => $toolchain['phpx']['version']];
     file_put_contents($work . '/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
     if (isset($settings['application']['enabled'])) {
         $settings['application']['enabled'] = array_map(static fn (string $name): string => $name === $originalName ? $composer['name'] : $name, $settings['application']['enabled']);
