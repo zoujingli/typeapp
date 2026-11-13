@@ -171,7 +171,7 @@ if ($driver !== 'sqlite') {
 }
 if ($project === $root) {
     $record['checks'] = [...$record['checks'], 'embedded-frontend-all-file-digests', 'web-install-repeat-dry-run-force',
-        'uploads-preserved-not-public', 'static-get-head-cache', 'admin-customer-login', 'default-site-information', 'role-crud'];
+        'uploads-preserved-not-public', 'static-get-head-cache', 'platform-system-center-login', 'default-site-information', 'role-crud'];
 }
 file_put_contents($base . '/verification.json', json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
 if (in_array('--archive', $argv, true)) {

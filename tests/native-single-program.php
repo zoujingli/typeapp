@@ -132,7 +132,7 @@ try {
         'license-documents-verified' => count($documents), 'application' => $project === $root ? 'iot-center' : 'independent-template',
         'checks' => $tutorial ? ['single-program-export', 'export-no-overwrite', 'tutorial-public-assertions', 'profile-database-rejection', 'graceful-stop'] : ($project === $root ? ['single-program-export', 'export-no-overwrite', 'embedded-resources-audit', 'app-install',
             'web-install-repeat-dry-run-force', 'web-digests', 'uploads-preserved', 'http-get-head-cache',
-            'admin-customer-login', 'site-defaults', 'role-crud', 'graceful-stop']
+            'platform-system-center-login', 'site-defaults', 'role-crud', 'graceful-stop']
             : ['single-program-export', 'export-no-overwrite', 'migrations', 'modified-business', 'authentication', 'users-create-read-sort', 'input-validation', 'graceful-stop'])];
     file_put_contents($base . '/verification.json', json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
     $passed = true;
