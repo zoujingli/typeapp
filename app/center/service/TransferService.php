@@ -7,6 +7,8 @@ namespace app\center\service;
 use app\center\model\ApplicationGrant;
 use app\center\model\ClientApplication;
 use app\center\model\Device;
+use app\center\model\DeviceConnection;
+use app\center\model\DeviceCredential;
 use app\center\model\DeviceOwnership;
 use app\center\model\DeviceReassignment;
 use app\common\service\AuditLog;
@@ -35,9 +37,12 @@ final class TransferService
         if ($device['transfer_id'] !== null) {
             return false;
         }
-        $row = $connection->table('center_device_ownership')->where('id', '=', $device['ownership_id'])->where('device_id', '=', $device['id'])
-            ->where('tenant_id', '=', $device['tenant_id'])->first();
-        return $row !== null && $row['ended_at'] === null && ($row['expires_at'] === null || (int)$row['expires_at'] > time());
+        return (bool)ExecutionScope::current()->run(static function () use ($connection, $device): bool {
+            $ownership = DeviceOwnership::query()->master()->onConnection($connection)->where('id', '=', $device['ownership_id'])
+                ->where('device_id', '=', $device['id'])->first();
+            return $ownership !== null && $ownership->getEndedAt() === null
+                && ($ownership->getExpiresAt() === null || $ownership->getExpiresAt() > time());
+        }, ['tenant_id' => $device['tenant_id']]);
     }
 
     /** 平台显式设置使用期限；保存原授权来源，到期收尾不重新借用已退出的人员会话。 */
@@ -122,11 +127,20 @@ final class TransferService
                     return;
                 }
                 $row = self::relationshipDevice($transaction, $due[0]['id']);
-                $ownership = $transaction->table('center_device_ownership')->where('id', '=', $row['ownership_id'])->first();
-                if ($ownership['expiry_context'] === null) {
+                $ownership = ExecutionScope::current()->run(static function () use ($transaction, $row): DeviceOwnership {
+                    return DeviceOwnership::query()->master()->onConnection($transaction)->findOrFail($row['ownership_id']);
+                }, ['tenant_id' => $row['tenant_id']]);
+                if ($ownership->getExpiryContext() === null) {
                     throw new \RuntimeException('device_expiry_context_missing');
                 }
-                self::beginRelationship($transaction, $row, bin2hex(random_bytes(16)), null, 'expire', json_decode($ownership['expiry_context'], true, 8, JSON_THROW_ON_ERROR));
+                self::beginRelationship(
+                    $transaction,
+                    $row,
+                    bin2hex(random_bytes(16)),
+                    null,
+                    'expire',
+                    json_decode($ownership->getExpiryContext(), true, 8, JSON_THROW_ON_ERROR)
+                );
             }, $connection->driverName() === 'sqlite' && $connection->transactionDepth() === 0 ? 'immediate' : 'default');
         } catch (HttpError $failure) {
             if (!in_array($failure->errorCode(), ['broker_access_publish_paused', 'device_authorization_pending'], true)) {
@@ -243,7 +257,13 @@ final class TransferService
                 $record->setStatus($record->getTargetTenantId() === null ? 'ended' : 'awaiting_acceptance');
                 $changed = true;
                 if ($record->getTargetTenantId() === null) {
-                    $connection->table('center_device')->where('id', '=', $record->getDeviceId())->where('transfer_id', '=', $id)->update(['transfer_id' => null]);
+                    ExecutionScope::current()->run(static function () use ($record, $id): void {
+                        $device = Device::query()->master()->find($record->getDeviceId());
+                        if ($device !== null && $device->getTransferId() === $id) {
+                            $device->setTransferId(null);
+                            $device->save();
+                        }
+                    }, ['tenant_id' => $record->getSourceTenantId()]);
                 }
                 self::relationshipAudit($connection, $record, IdentityService::context($current, $record->getSourceTenantId()), 'reassignment.isolated');
             }
@@ -294,8 +314,17 @@ final class TransferService
             $connection->table('center_device')->where('id', '=', $device['id'])->where('ownership_id', '=', $record->getOwnershipId())
                 ->where('transfer_id', '=', $id)->update(['tenant_id' => $tenant, 'product_id' => null, 'ownership_id' => $ownershipId, 'lifecycle' => 'inactive',
                     'transfer_id' => null, 'transfer_frozen' => 0, 'version' => (int)$device['version'] + 1, 'updated_at' => time()]);
-            $connection->table('center_device_connection')->where('device_id', '=', $device['id'])->update(['ownership_id' => $ownershipId, 'status' => 'unknown',
-                'owner_id' => null, 'node_id' => null, 'run_id' => null, 'observed_at' => null]);
+            $deviceConnection = DeviceConnection::query()->master()->find($device['id']);
+            if ($deviceConnection === null) {
+                throw new HttpError(409, 'reassignment_connection_missing');
+            }
+            $deviceConnection->setOwnershipId($ownershipId);
+            $deviceConnection->setStatus('unknown');
+            $deviceConnection->setOwnerId(null);
+            $deviceConnection->setNodeId(null);
+            $deviceConnection->setRunId(null);
+            $deviceConnection->setObservedAt(null);
+            $deviceConnection->save();
             $record->setNewOwnershipId($ownershipId);
             $record->setStatus('completed');
             $record->setAcceptId($acceptId);
@@ -373,7 +402,7 @@ final class TransferService
             if ($requiresStore) {
                 $isolationId = DeviceService::invalidateCredential($connection, $row, $context, true);
             } else {
-                $connection->table('center_device_credential')->where('device_id', '=', $row['id'])->where('ownership_id', '=', $row['ownership_id'])
+                DeviceCredential::query()->master()->where('device_id', '=', $row['id'])->where('ownership_id', '=', $row['ownership_id'])
                     ->where('status', '=', 'active')->update(['status' => 'revoked', 'revoked_at' => time()]);
             }
             if ($ownership->getEndedAt() === null) {
