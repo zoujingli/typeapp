@@ -84,7 +84,7 @@ final class EnrollmentService
             throw new HttpError(404, 'enrollment_not_found');
         }
         $bindings = DeviceEnrollmentBinding::query()->master()->where('enrollment_id', '=', $id)
-            ->orderBy('registered_at', 'DESC')->orderBy('ownership_id')->paginate($page, $perPage, 'ownership_id');
+            ->orderBy('registered_at', 'DESC')->orderBy('ownership_id')->paginate($page, $perPage);
         $items = [];
         foreach ($bindings->items() as $binding) {
             $items[] = $binding->project(['ownership_id', 'device_id', 'registered_at']);
