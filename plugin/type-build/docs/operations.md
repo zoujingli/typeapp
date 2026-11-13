@@ -129,12 +129,12 @@ MySQL DDL可能部分提交。只有核对实际状态并完成所需补偿后�
 
 单程序入口为 `tests/native-single-program.php <完整静态应用>`，按 `TYPE_PACKAGE_DRIVER` 选择数据库，分别校验文件身份、运行库、无源码隔离、前端安装、真实 API 与正常停止；受控数据库和平台隔离工具由原生 CI 准备。具体命令见[原生验收](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-command.md)。
 
-以下保留历史目录包的备份恢复入口；它不能代替单程序验收：
+以下路径仅用于读取历史目录包验收装置；它不能代替当前 Tenant 管理入口或单程序验收：
 
 ```sh
-php tests/native-package-clean.php <Linux发布目录> <受信清单SHA256> sqlite --recover
-php tests/native-package-clean.php <Linux发布目录> <受信清单SHA256> mysql --recover
-php tests/native-package-clean.php <Linux发布目录> <受信清单SHA256> pgsql --recover
+php tests/archive/legacy/native-package-clean.php <Linux发布目录> <受信清单SHA256> sqlite --recover
+php tests/archive/legacy/native-package-clean.php <Linux发布目录> <受信清单SHA256> mysql --recover
+php tests/archive/legacy/native-package-clean.php <Linux发布目录> <受信清单SHA256> pgsql --recover
 ```
 
 控制器只创建自己的测试数据库/网络/容器，原生应用始终在无源码镜像中运行。它停止应用后使用sqlite3/mysqldump/pg_dump备份，验证损坏与既有目标拒绝，恢复到新目标，核对迁移历史/配置/资源，确认原生读写及原目标数据保留，再回收测试资源。
