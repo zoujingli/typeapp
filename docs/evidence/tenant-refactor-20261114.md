@@ -16,6 +16,7 @@
 - `php tests/tenant.php mysql <MySQL工具根目录>`：MySQL 8.4.11 原生隔离实例上的同一 Tenant HTTP 闭环通过。
 - `php tests/tenant.php pgsql <PostgreSQL工具根目录>`：PostgreSQL 17.11 原生隔离实例上的同一 Tenant HTTP 闭环通过。
 - `php tests/model-sync.php <MySQL工具根目录>`：真实 MySQL 8.4.11 结构反向同步、字段注释、生成列、增删保护、非法输入拒绝及生成模型 Tenant CRUD 通过。
+- `php tests/application-diagnostics.php --php`：应用数据库失败拒绝、显式错误码和秘密隔离诊断通过。
 - `php tests/mqtt-consumer.php --connect-fields-only`：独立 MQTT 消费者的真实 TCP、TLS 1.2/1.3 CONNECT 字段和证书校验通过。
 - `php tests/mqtt-consumer.php --retained`：MQTT.js 5.15.0 互操作、TCP/TLS QoS 0 发布订阅、QoS/retained 场景通过。
 - `php tests/mqtt-mtls.php`：源运行 mTLS/WSS 证书链、CRL、吊销、轮换、SNI、TLS 1.2/1.3 和降级拒绝全部通过；报告明确 `native:false`。
@@ -25,7 +26,7 @@
 
 ## 当前实现范围
 
-Platform、System、Center 的职责、Tenant 入口、主域名客户选择、子域名和 `/t/{tenant_id}/` 固定路径、双身份会话、RBAC、菜单分组与图标、模拟登录、Vben 5.7.0 页面、模型优先 CRUD、表字段注释、MySQL `model:sync` 和发布包安装说明均已同步到当前源码。
+Platform、System、Center 的职责、Tenant 入口、主域名客户选择、子域名和 `/t/{tenant_id}/` 固定路径、双身份会话、RBAC、菜单分组与图标、模拟登录、Vben 5.7.0 页面、模型优先 CRUD、设备注册限流 Model、表字段注释、MySQL `model:sync` 和发布包安装说明均已同步到当前源码。
 
 核心表使用 `platform_*`、`system_*`、`center_*` 和 `platform_mqtt_*` 前缀。Platform 跨 Tenant 的接入应用目录使用不带 `tenantKey` 的 `ApplicationDirectory` 只读 Model，写入仍使用带 Tenant 范围的 `ClientApplication`。MQTT 协议持久状态使用组件自身的 `type_mqtt_*` 表；审计、恢复、运行观测和协议认证热路径保留受控基础设施查询，并在数据库指南中说明边界。
 
