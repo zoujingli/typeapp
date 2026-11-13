@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace app\center\service;
 
+use app\center\model\CenterRuntimeMetric;
 use app\common\service\RoleService;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
@@ -44,29 +45,7 @@ final class OperationsService
         if (strlen($encoded) > 4096) {
             throw new \InvalidArgumentException('operations_metric_budget');
         }
-        $now = time();
-        $current = $connection->table('center_runtime_metric')->where('kind', '=', $kind)->where('node_id', '=', $node)->first();
-        if ($current === null) {
-            // 主键和CHECK同时约束实际槽位，竞争插入也不会突破64行；不用无界历史采样表。
-            for ($slot = 0; $slot < 64; ++$slot) {
-                $inserted = $connection->execute('INSERT INTO center_runtime_metric (slot, kind, node_id, run_id, observed_at, metrics_json, previous_json) '
-                    . 'VALUES (?, ?, ?, ?, ?, ?, NULL) ON CONFLICT DO NOTHING', [$slot, $kind, $node, $run, $now, $encoded]);
-                if ($inserted === 1) {
-                    return;
-                }
-                if ($connection->table('center_runtime_metric')->where('kind', '=', $kind)->where('node_id', '=', $node)->first() !== null) {
-                    break;
-                }
-            }
-        }
-        $updated = $connection->execute(
-            'UPDATE center_runtime_metric SET previous_json = CASE WHEN run_id = ? THEN metrics_json ELSE NULL END, '
-            . 'run_id = ?, observed_at = ?, metrics_json = ? WHERE kind = ? AND node_id = ?' . ($initial ? '' : ' AND run_id = ?'),
-            $initial ? [$run, $run, $now, $encoded, $kind, $node] : [$run, $run, $now, $encoded, $kind, $node, $run]
-        );
-        if ($updated !== 1) {
-            throw new \RuntimeException('operations_observation_owner_or_capacity');
-        }
+        CenterRuntimeMetric::recordObservation($connection, $kind, $node, $run, time(), $encoded, $initial);
     }
 
     /** 平台运行节点独立授权；只返回数值元数据，HTTP存活与同步持久依赖就绪分别展示。 */
@@ -75,13 +54,15 @@ final class OperationsService
         $access = RoleService::readContext($identity, 'platform', '', 'operations.read');
         $now = time();
         $nodes = [];
-        foreach ($connection->table('center_runtime_metric')->where('kind', '=', 'broker')->orderBy('node_id')->limit(64)->get() as $row) {
-            $metrics = json_decode($row['metrics_json'], true, 16, JSON_THROW_ON_ERROR);
-            $previous = $row['previous_json'] === null ? null : json_decode($row['previous_json'], true, 16, JSON_THROW_ON_ERROR);
+        foreach (CenterRuntimeMetric::query()->master()->onConnection($connection)->where('kind', '=', 'broker')->orderBy('node_id')->limit(64)->get() as $row) {
+            $metrics = json_decode((string)$row->get('metrics_json'), true, 16, JSON_THROW_ON_ERROR);
+            $previousValue = $row->get('previous_json');
+            $previous = $previousValue === null ? null : json_decode((string)$previousValue, true, 16, JSON_THROW_ON_ERROR);
             $elapsed = $previous === null ? 0.0 : ((float)$metrics['uptimeMs'] - (float)$previous['uptimeMs']) / 1000.0;
-            $state = $metrics['stopping'] ? 'stopped' : ($now - (int)$row['observed_at'] >= 15 ? 'unreachable' : 'reporting');
-            $nodes[] = ['kind' => $row['kind'], 'node_id' => $row['node_id'], 'run_id' => $row['run_id'], 'state' => $state,
-                'observed_at' => (int)$row['observed_at'], 'expires_at' => (int)$row['observed_at'] + 15,
+            $observedAt = (int)$row->get('observed_at');
+            $state = $metrics['stopping'] ? 'stopped' : ($now - $observedAt >= 15 ? 'unreachable' : 'reporting');
+            $nodes[] = ['kind' => $row->get('kind'), 'node_id' => $row->get('node_id'), 'run_id' => $row->get('run_id'), 'state' => $state,
+                'observed_at' => $observedAt, 'expires_at' => $observedAt + 15,
                 'interval_seconds' => $elapsed > 0 ? $elapsed : null, 'metrics' => $metrics];
         }
         $command = $mqttCommand === '' ? [] : json_decode($mqttCommand, true, 8, JSON_THROW_ON_ERROR);

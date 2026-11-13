@@ -8,6 +8,7 @@
         "app/platform/service/ImpersonationService.php",
         "app/center/service/EnrollmentService.php",
         "app/center/service/ProductService.php",
+        "app/center/service/OperationsService.php",
         "app/common/middleware/TenantContext.php",
         "app/common/controller/AuthController.php",
         "app/common/controller/IdentityController.php",
@@ -18,5 +19,24 @@
         "app/system/controller/SystemController.php",
         "app/center/controller/ProductController.php"
     ],
-    "exceptions": []
+    "exceptions": [
+        {
+            "owner": "app\\center\\service\\OperationsService::observe",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议观察沿用已建立的 PostgreSQL 写连接，模型内部封装槽位与运行代次原子写入。"
+        },
+        {
+            "owner": "app\\center\\service\\OperationsService::platform",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "平台运行观察复用当前请求连接，读取通过 CenterRuntimeMetric ModelQuery。"
+        },
+        {
+            "owner": "app\\center\\service\\OperationsService::tenant",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "客户设备观察复用当前请求连接，设备投影由 DeviceService 管理。"
+        }
+    ]
 }

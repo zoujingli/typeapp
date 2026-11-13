@@ -129,6 +129,7 @@ final class ProjectStructureTest extends TestCase
             'app/platform/service/ImpersonationService.php',
             'app/center/service/EnrollmentService.php',
             'app/center/service/ProductService.php',
+            'app/center/service/OperationsService.php',
             'app/common/middleware/TenantContext.php',
             'app/common/controller/AuthController.php',
             'app/common/controller/IdentityController.php',
@@ -172,6 +173,22 @@ final class ProjectStructureTest extends TestCase
         $documentation = (string)file_get_contents($root . '/docs/development/iot-identity.md');
         self::assertStringContainsString('角色与菜单的关联由 `RoleService`', $documentation);
         self::assertStringContainsString('客户不能修改菜单目录', $documentation);
+    }
+
+    /** 运行观察投影以 Model 暴露字段，只有槽位/CAS 写入留在模型内部。 */
+    public function testRuntimeMetricUsesTheCenterModelBoundary(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $models = (new \Type\Build\ModelCompiler())->compile([$root . '/app/center/model'])['models'];
+        $models = array_column($models, null, 'class');
+        $metric = $models['app\center\model\CenterRuntimeMetric'];
+        self::assertSame('center_runtime_metric', $metric['table']);
+        self::assertSame('slot', $metric['primary']);
+        self::assertNull($metric['tenant']);
+        self::assertSame('integer', $metric['fields']['slot']['type']);
+        self::assertFalse($metric['fields']['metrics_json']['visible']);
+        self::assertTrue($metric['fields']['previous_json']['nullable']);
+        self::assertStringContainsString('CenterRuntimeMetric::recordObservation', (string)file_get_contents($root . '/docs/guide/database.md'));
     }
 
     /** @return array<string, mixed> 已检查的项目声明。 */
