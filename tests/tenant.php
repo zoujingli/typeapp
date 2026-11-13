@@ -9,10 +9,27 @@ require __DIR__ . '/native-database.php';
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
+/**
+ * 运行用法：sqlite [原生程序]；mysql|pgsql <工具根目录> [原生程序]。
+ * 原生程序缺省使用开发入口，传入后在同一隔离数据库上验证最终应用。
+ */
 $root = dirname(__DIR__);
 $driver = $argv[1] ?? 'sqlite';
+$toolsRoot = '';
+$program = '';
+if ($driver === 'sqlite') {
+    expect(count($argv) <= 3, 'SQLite Tenant 验证最多接受可选原生程序路径');
+    $program = $argv[2] ?? '';
+} else {
+    expect(count($argv) >= 3 && count($argv) <= 4, '网络数据库验证须提供工具根目录及可选原生程序路径');
+    $toolsRoot = $argv[2];
+    $program = $argv[3] ?? '';
+}
 expect(in_array($driver, ['sqlite', 'mysql', 'pgsql'], true), 'Tenant 验证只接受三种正式数据库驱动');
-expect($driver === 'sqlite' ? count($argv) <= 2 : count($argv) === 3, '网络数据库验证须显式提供本轮原生工具根目录');
+if ($program !== '') {
+    $program = preg_match('#^(?:/|[A-Za-z]:[\\\\/])#', $program) === 1 ? $program : $root . '/' . $program;
+    expect(is_file($program) && is_executable($program), '原生 Tenant 验证需要可执行应用程序：' . $program);
+}
 $work = $root . '/build/tenant-' . bin2hex(random_bytes(6));
 expect(mkdir($work, 0700), '无法创建 Tenant 隔离验证目录');
 $environment = getenv();
@@ -24,12 +41,12 @@ foreach (array_keys($environment) as $key) {
 $environment += ['APP_BASE_PATH' => $work, 'DB_DRIVER' => $driver, 'DB_SQLITE_FILE' => 'tenant.sqlite',
     'APP_ENV' => 'dev', 'APP_DEBUG' => 'true', 'APP_HTTP_THREADS' => '1', 'TENANT_BASE_DOMAIN' => 'tenant.test',
     'APP_TRUSTED_PROXIES' => '127.0.0.1', 'APP_PLATFORM_PASSWORD' => bin2hex(random_bytes(16))];
-$command = [PHP_BINARY, $root . '/bin/typeapp'];
+$command = $program === '' ? [PHP_BINARY, $root . '/bin/typeapp'] : [$program];
 $server = null;
 $database = null;
 try {
     if ($driver !== 'sqlite') {
-        $database = new NativeDatabase($work . '/database', $driver, NativeDatabase::tools($driver, $argv[2]));
+        $database = new NativeDatabase($work . '/database', $driver, NativeDatabase::tools($driver, $toolsRoot));
         $owned = $database->environment();
         $prefix = 'TYPE_' . strtoupper($driver) . '_';
         foreach (['HOST' => 'HOST', 'PORT' => 'PORT', 'DATABASE' => 'DATABASE', 'USER' => 'USERNAME', 'PASSWORD' => 'PASSWORD'] as $source => $target) {

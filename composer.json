@@ -82,6 +82,8 @@
       "Composer\\Config::disableProcessTimeout",
       "@php tests/iot-identity-databases.php"
     ],
+    "test:tenant": "@php tests/tenant.php sqlite",
+    "test:tenant-native": "@php tests/tenant.php sqlite build/app/type-app",
     "typeapp:migrate": "@php bin/typeapp migrate",
     "typeapp:serve": [
       "Composer\\Config::disableProcessTimeout",
@@ -164,13 +166,11 @@
     "typeapp:test": [
       "@typeapp:prepare",
       "@php tests/application-diagnostics.php --php",
-      "@php tests/iot-identity.php --php sqlite --app"
+      "@php tests/tenant.php sqlite"
     ],
     "typeapp:test-native": [
       "@php tests/application-diagnostics.php build/app/type-app",
-      "@php tests/iot-identity.php build/app/type-app sqlite --app",
-      "@php tests/iot-identity.php build/app/type-app mysql --app",
-      "@php tests/iot-identity.php build/app/type-app pgsql --app"
+      "@php tests/tenant.php sqlite build/app/type-app"
     ],
     "test:app-candidate": [
       "Composer\\Config::disableProcessTimeout",
