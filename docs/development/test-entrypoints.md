@@ -6,7 +6,7 @@
 
 | 验证范围 | 入口与前置条件 |
 | --- | --- |
-| 独立身份、Tenant 与 Center 管理 HTTP | `composer test:tenant` 或 `php tests/tenant.php sqlite`；网络数据库分别使用 `php tests/tenant.php mysql <MySQL工具根>`、`php tests/tenant.php pgsql <PostgreSQL工具根>`；测试自己建立、停止并回收专用实例 |
+| 独立身份、Tenant 与 Center 管理 HTTP | `composer test:tenant` 或 `php tests/tenant.php sqlite`；网络数据库使用 `composer test:tenant-mysql -- <MySQL工具根>`、`composer test:tenant-pgsql -- <PostgreSQL工具根>`，也可直接执行 `php tests/tenant.php mysql <MySQL工具根>`、`php tests/tenant.php pgsql <PostgreSQL工具根>`；测试自己建立、停止并回收专用实例 |
 | 同一 Tenant 入口的原生应用 | `composer test:tenant-native` 或 `php tests/tenant.php sqlite <原生程序>`；原生程序路径可放在项目根的相对路径或使用绝对路径，测试仍使用全新 SQLite 数据库 |
 | MQTT 运维归属与统一节点目录 | 上述三库入口覆盖 Platform 只读账号拒绝调试写入、已退出人员命令拒绝；`tests/fixtures/mqtt-node-observation.php` 模拟设备/协议节点上报，核对真实数据库与 HTTP 投影、迟到运行拒绝及停止事实 |
 | 当前独立身份恢复 | 上述三库入口在停止 HTTP 后执行 `center:recovery snapshot` 和 `tests/fixtures/tenant-recovery.php`，验证指纹、隔离、权威清单、会话/交接码清理及重启后的登录行为 |

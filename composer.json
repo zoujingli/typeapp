@@ -84,6 +84,14 @@
     ],
     "test:tenant": "@php tests/tenant.php sqlite",
     "test:tenant-native": "@php tests/tenant.php sqlite build/app/type-app",
+    "test:tenant-mysql": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/tenant.php mysql"
+    ],
+    "test:tenant-pgsql": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php tests/tenant.php pgsql"
+    ],
     "typeapp:migrate": "@php bin/typeapp migrate",
     "typeapp:serve": [
       "Composer\\Config::disableProcessTimeout",
