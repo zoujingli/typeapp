@@ -19,22 +19,22 @@ use Type\Cache\Attribute\Cacheable;
 use Type\Cache\Attribute\CacheEvict;
 use Type\Cache\TypedCache;
 use Type\Orm\Attribute\Transactional;
-use app\common\model\User;
+use app\system\model\SystemUser;
 
 final class UserService
 {
     #[Cacheable(cache: 'cache', key: 'user:{id}', ttlMilliseconds: 60000)]
-    public function find(TypedCache $cache, int $id): ?array
+    public function find(TypedCache $cache, string $id): ?array
     {
-        $user = User::query()->find($id);
+        $user = SystemUser::query()->find($id);
         return $user === null ? null : $user->present(['id', 'name']);
     }
 
     #[Transactional]
     #[CacheEvict(cache: 'cache', key: 'user:{id}')]
-    public function rename(TypedCache $cache, int $id, string $name): void
+    public function rename(TypedCache $cache, string $id, string $name): void
     {
-        $user = User::query()->findOrFail($id);
+        $user = SystemUser::query()->findOrFail($id);
         $user->name = $name;
         $user->save();
     }
@@ -45,14 +45,14 @@ final class UserService
 
 ```php
 $service = new \app\system\service\UserService();
-$service->rename($cache, 7, '中文名称');
+$service->rename($cache, 'user-a', '中文名称');
 ```
 
 普通方法调用、手动 `new` 后调用和类内 `$this->find(...)` 均执行相同声明。构造器和无声明的辅助方法保留原实现。不要绕过标准入口直接加载原文件，也不再创建另一种生成服务类型。
 
 ## 事务与失效顺序
 
-示例中的 `User` 是消费应用声明并编译的领域模型；应用启动装配 `Db`，宿主在调用操作前绑定当前执行作用域。`#[Transactional]` 默认使用 `default` 数据源，`#[Transactional(database: 'archive')]` 显式指定其他逻辑数据源；不接受 `connection` 参数。生成代码调用 `Db::transaction()`，闭包为 `Closure(): 返回类型`，业务方法无需接收连接。`void` 方法不生成 `return 表达式`，其他返回值原样返回。
+示例中的 `SystemUser` 是消费应用声明并编译的客户系统领域模型；应用启动装配 `Db`，宿主在调用操作前绑定当前 Tenant 执行上下文。`#[Transactional]` 默认使用 `default` 数据源，`#[Transactional(database: 'archive')]` 显式指定其他逻辑数据源；不接受 `connection` 参数。生成代码调用 `Db::transaction()`，闭包为 `Closure(): 返回类型`，业务方法无需接收连接。`void` 方法不生成 `return 表达式`，其他返回值原样返回。
 
 没有重试、异常吞掉或事务状态猜测；保存点、取消、回滚、未知提交结果均沿用原连接的真实语义。
 
