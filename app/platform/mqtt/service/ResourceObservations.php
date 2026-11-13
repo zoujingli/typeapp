@@ -44,7 +44,7 @@ final class ResourceObservations
             self::heartbeat($transaction, $nodeId, $runId, $observedAt, $initial, $stopped);
             $run = self::locked($transaction, $transaction->table('platform_mqtt_resource_run')->where('node_id', '=', $nodeId)->where('run_id', '=', $runId))->first();
             if ($run === null) {
-                throw new \RuntimeException('broker_observation_owner_lost');
+                throw new \RuntimeException('platform_mqtt_observation_owner_lost');
             }
             $row = self::locked($transaction, $transaction->table('platform_mqtt_node')->where('slot', '=', (int)$run['slot']))->first();
             $values = ['node_id' => $nodeId, 'run_id' => $runId, 'observed_at' => $observedAt, 'stopped' => $stopped ? 1 : 0,
@@ -54,7 +54,7 @@ final class ResourceObservations
             } else {
                 $target = $transaction->table('platform_mqtt_node')->where('slot', '=', (int)$run['slot'])->where('run_id', '=', $row['run_id']);
                 if ($target->update($values) === 0 && $target->first() === null) {
-                    throw new \RuntimeException('broker_observation_owner_lost');
+                    throw new \RuntimeException('platform_mqtt_observation_owner_lost');
                 }
             }
         }, $connection->driverName() === 'sqlite' && $connection->transactionDepth() === 0 ? 'immediate' : 'default');

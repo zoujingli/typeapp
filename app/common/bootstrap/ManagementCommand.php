@@ -702,7 +702,7 @@ final class ManagementCommand implements Command
             }
         } while ($result === null);
         if ($result->state !== 'committed' || !$result->released) {
-            throw new \RuntimeException('broker_nodes_unconfirmed');
+            throw new \RuntimeException('platform_mqtt_nodes_unconfirmed');
         }
         echo json_encode($result->value, JSON_THROW_ON_ERROR) . "\n";
     }
@@ -768,7 +768,7 @@ final class ManagementCommand implements Command
                     }
                 } while ($statistics === null);
                 if ($statistics->state !== 'committed' || !$statistics->released) {
-                    throw new \RuntimeException('broker_nodes_unconfirmed');
+                    throw new \RuntimeException('platform_mqtt_nodes_unconfirmed');
                 }
                 $generation = 0;
                 foreach ($statistics->value['nodes'] as $registered) {
@@ -829,7 +829,7 @@ final class ManagementCommand implements Command
                 || ($result->value['operation_id'] ?? '') !== $operationId || ($result->value['node_id'] ?? '') !== $target['node_id']
                 || ($result->value['node_run_id'] ?? '') !== $target['node_run_id'] || ($result->value['generation'] ?? 0) !== $target['generation']
                 || ($result->value['observation_run'] ?? '') !== $target['observation_run']) {
-                throw new \RuntimeException('broker_node_fence_unconfirmed');
+                throw new \RuntimeException('platform_mqtt_node_fence_unconfirmed');
             }
             $receipt = $connection->transaction(static function (Connection $transaction) use ($operation, $realm, $requestId): array {
                 $current = AuditLog::brokerOperation($transaction, $realm, $operation['operation_id']);
@@ -837,7 +837,7 @@ final class ManagementCommand implements Command
                     $observed = $transaction->table('platform_mqtt_node')->where('node_id', '=', $operation['target']['node_id'])
                         ->where('run_id', '=', $operation['target']['observation_run'])->lockForUpdate()->first();
                     if ($observed === null || (json_decode($observed['metrics_json'], true, 8, JSON_THROW_ON_ERROR)['nodeGeneration'] ?? 0) !== $operation['target']['generation']) {
-                        throw new \RuntimeException('broker_observation_owner_lost');
+                        throw new \RuntimeException('platform_mqtt_observation_owner_lost');
                     }
                     $transaction->table('platform_mqtt_node')->where('node_id', '=', $operation['target']['node_id'])
                         ->where('run_id', '=', $operation['target']['observation_run'])->update(['stopped' => 2]);
@@ -877,7 +877,7 @@ final class ManagementCommand implements Command
             'result' => $confirmed ? 'success' : ($accepted ? 'unknown' : 'failed'), 'fenced' => $confirmed, 'observation_isolated' => $confirmed && $realm === 'broker',
             'event_id' => $receipt['event_id'] ?? null, 'expired' => $receipt['expired'] ?? false], JSON_THROW_ON_ERROR) . "\n";
         if (!$confirmed) {
-            throw new \RuntimeException('broker_node_fence_unconfirmed');
+            throw new \RuntimeException('platform_mqtt_node_fence_unconfirmed');
         }
     }
 }
