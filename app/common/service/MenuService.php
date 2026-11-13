@@ -52,7 +52,7 @@ final class MenuService
             'platform' => [
                 ['operations', '客户与物联', 'lucide:building-2', ['tenants', 'enrollments', 'devices', 'applications', 'reassignments']],
                 ['access', '平台权限', 'lucide:shield-check', ['users', 'roles', 'menus']],
-                ['monitoring', '运维监控', 'lucide:activity', ['broker', 'operations', 'audit']],
+                ['monitoring', '运维监控', 'lucide:activity', ['operations', 'broker', 'audit']],
                 ['settings', '平台设置', 'lucide:settings', ['site', 'defaults', 'config']],
             ],
             'system' => [

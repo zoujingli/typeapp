@@ -9,9 +9,9 @@ export const platformRoutes: RouteRecordRaw = { path: '/platform', component: ba
     { path: '/platform/profile', component: profile, meta: { title: '个人中心' } },
     { path: 'groups/operations', name: 'platform-directory-operations', meta: { directory: true, title: '客户与物联', icon: 'lucide:building-2' }, children: [
       { path: '/platform/tenants', component: () => import('#/views/platform/tenants.vue'), meta: { title: '客户管理', permission: 'platform.tenants.read' } },
+      { path: '/platform/enrollments', component: () => import('#/views/center/enrollments.vue'), meta: { title: '注册资格', permission: 'platform.enrollments.read' } },
       { path: '/platform/devices', component: () => import('#/views/center/devices.vue'), meta: { title: '设备资产', permission: 'platform.devices.read' } },
       { path: '/platform/devices/:device', component: () => import('#/views/center/device-detail.vue'), meta: { title: '设备详情', permission: 'platform.devices.read', activePath: '/platform/devices' } },
-      { path: '/platform/enrollments', component: () => import('#/views/center/enrollments.vue'), meta: { title: '注册资格', permission: 'platform.enrollments.read' } },
       { path: '/platform/applications', component: () => import('#/views/center/applications.vue'), meta: { title: '接入应用', permission: 'platform.applications.read' } },
       { path: '/platform/reassignments', component: () => import('#/views/center/reassignments.vue'), meta: { title: '设备转配', permission: 'platform.reassignments.read' } },
     ] },
@@ -21,7 +21,6 @@ export const platformRoutes: RouteRecordRaw = { path: '/platform', component: ba
       { path: '/platform/menus', component: () => import('#/views/platform/menus.vue'), meta: { title: '菜单管理', permission: 'platform.menus.read' } },
     ] },
     { path: 'groups/monitoring', name: 'platform-directory-monitoring', meta: { directory: true, title: '运维监控', icon: 'lucide:activity' }, children: [
-      { path: '/platform/audit', component: () => import('#/views/shared/identity/audit.vue'), meta: { title: '操作审计', permission: 'platform.audit.read' } },
       { path: '/platform/operations', component: () => import('#/views/platform/operations.vue'), meta: { title: '运行概览', permission: 'platform.operations.read' } },
       { path: '/platform/broker', component: () => import('#/views/shared/mqtt-resources.vue'), meta: { title: 'MQTT 资源', permission: 'platform.broker.read' } },
       { path: '/platform/broker/access', component: () => import('#/views/platform/mqtt/access.vue'), meta: { title: 'MQTT 授权', permission: 'platform.broker.read' } },
@@ -29,6 +28,7 @@ export const platformRoutes: RouteRecordRaw = { path: '/platform', component: ba
       { path: '/platform/broker/runtime', component: () => import('#/views/platform/mqtt/runtime.vue'), meta: { title: 'MQTT 配置', permission: 'platform.broker.read' } },
       { path: '/platform/broker/debug', component: () => import('#/views/platform/mqtt/debug.vue'), meta: { title: 'MQTT 调试', permission: 'platform.broker.read' } },
       { path: '/platform/broker/nodes', component: () => import('#/views/platform/mqtt/nodes.vue'), meta: { title: 'MQTT 节点', permission: 'platform.broker.read' } },
+      { path: '/platform/audit', component: () => import('#/views/shared/identity/audit.vue'), meta: { title: '操作审计', permission: 'platform.audit.read' } },
     ] },
     { path: 'groups/settings', name: 'platform-directory-settings', meta: { directory: true, title: '平台设置', icon: 'lucide:settings' }, children: [
       { path: '/platform/site', component: () => import('#/views/shared/site-settings.vue'), meta: { title: '平台设置', permission: 'platform.site.read' } },
