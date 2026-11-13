@@ -2,6 +2,23 @@
 
 可独立安装和独立进程运行的 TypeApp MQTT 服务端组件。提供 MQTT 3.1.1/5.0 的 TCP/TLS 连接、认证、CONNECT/CONNACK、PING、DISCONNECT、客户端标识接管、精确及通配订阅/取消、MQTT 5 订阅选项与标识、二进制 QoS 0 路由，以及明确配置 PostgreSQL 同步持久存储后的 QoS 1/2 双向交付、保留消息、持久会话、遗嘱与延迟遗嘱、MQTT 5 共享订阅、重启恢复及跨节点接管与路由。
 
+**支持多 Broker 分布式部署，使用共享 PostgreSQL 同步存储。** 所有节点须启用 `BrokerOptions(clustered: true)`、配置持久 worker 并使用不同稳定 `nodeId`；当前最多登记 32 个节点。节点失联后的接管需要旧连接关闭或实际硬隔离的证明，不按心跳超时自动放行；数据库和公共接入入口的高可用由部署环境提供。
+
+## 使用与部署入口
+
+| 需要完成的事情 | 文档入口 |
+| --- | --- |
+| 第一次连接、订阅、发布 | [MQTT 基础收发教程](https://iots.top/#/guide/communications/mqtt) |
+| 准备独立应用、开发启动器和原生程序 | [独立应用入口与配置](https://iots.top/#/guide/plugins/type-mqtt?id=独立应用入口与配置) |
+| 配置同步存储、初始化并启动一个 Broker | [单节点部署](https://iots.top/#/guide/plugins/type-mqtt?id=单节点部署) |
+| 启动两个节点、配置 TCP/TLS 透传及 Linux 托管 | [多节点集群部署](https://iots.top/#/guide/plugins/type-mqtt?id=多节点集群部署) |
+| 验证跨节点消息、持久会话与共享订阅 | [客户端验证](https://iots.top/#/guide/plugins/type-mqtt?id=客户端验证) |
+| 查询统计、停止、升级及异常隔离 | [运行维护与排障](https://iots.top/#/guide/plugins/type-mqtt?id=运行维护与排障) |
+
+上述操作步骤集中维护在组件参考，本文继续维护公开接口和协议契约。站点默认是发布通道；当前开发源码对应的说明使用 [开发通道](https://iots.top/next/#/guide/plugins/type-mqtt)，也可阅读[同一源码的 Markdown](https://github.com/zoujingli/typeapp/blob/main/docs/guide/plugins/type-mqtt.md)。先核对实际版本，不能将开发文档当作旧 RC 的可用能力。
+
+单节点的可靠交付也需要同步主备，不能只准备一个 PostgreSQL 实例。完整示例通过进程环境读取配置，不会自动加载 `.env`；worker 指向同一应用入口，生产使用同一个原生程序。独立示例的 `MQTT_*`、`TYPE_PGSQL_*` 与物联中心的 `IOT_MQTT_*` 分别使用，不能混用。
+
 通信与基础并发统一使用 Swoole 官方能力。Broker 在经典 Server 可用时沿用该入口，否则自动使用 Coroutine Socket 接收 TCP/TLS；两者共用 MQTT 协议、授权、持久操作和资源预算。客户端统一使用 Coroutine Socket，非协程调用由现有 CoroutineRuntime 使用官方 Scheduler 执行。持久 worker 使用独立命令进程和私有 IPC：Unix 沿用 Swoole PROC hook 的管道，Windows 使用 Swoole Coroutine Socket 的回环通道，父子以一次性密钥互验身份后才交换业务数据。收发、进程退出和远端清理分别受原预算约束，各平台及持久角色的实际验收分别记录。
 
 协程监听支持服务端 TLS 证书与账号认证；当前锁定 Socket 未暴露客户端证书身份和服务端 SNI 配置，MQTT over WebSocket 也尚未接入该入口。因此这些配置需要经典 Server，强制使用协程时在监听前返回 `feature_unavailable`，不降低认证要求。可通过 `serve($host, $port, coroutine: true)` 在具有经典 Server 的平台显式验证协程入口。

@@ -4,6 +4,8 @@ MQTT 通过 Broker 将发布者的消息路由给订阅者，适合设备遥测�
 
 本篇先用无持久存储的 QoS 0 示例完成认证、订阅、发布、接收和关闭，再说明 TLS、WebSocket 与可靠交付的前提。当前组件尚未完整通过 MQTT 标准验收，不能把协议中定义的所有能力写成默认已开启。
 
+准备独立部署时，从[type-mqtt 使用与部署说明](../plugins/type-mqtt.md#独立应用入口与配置)继续：该页集中维护完整应用入口、运行环境、单节点与多节点部署、客户端验证和故障恢复步骤。本文的 `guide` 账号示例与完整入口的 `example` 账号分别用于各自练习，切换入口时同步更换客户端配置。
+
 ## 发布订阅模型
 
 ```mermaid
@@ -55,6 +57,7 @@ sequenceDiagram
 | `partialPacketSeconds` | 15.0 秒 | 半包等待，范围 `(0, 60]` |
 | `callbackSeconds` | 30.0 秒 | 原生事件排队和业务回调共用的截止，范围 `(0, 60]`；真实收尾后才归还额度 |
 | `maximumDeviceConnections` / `maximumServiceConnections` | 10000 / 100 个 | 分类预算，同时受物理连接上限约束 |
+| `clustered` | `false` | 多 Broker 共享存储时全部设为 `true`，并通过 Broker 的 `nodeId` 参数分配不同稳定节点身份 |
 | `wsPort` / `wssPort` | 0，关闭 | MQTT over WebSocket 的额外监听；本机示例显式设 `wsPort` |
 | `allowedOrigins` | `[]` | WebSocket 来源限制，生产应明确允许来源 |
 | `mtlsPort` / `clientCa` | 0 / 空字符串 | 专用双向 TLS 监听与客户端 CA |
@@ -279,7 +282,9 @@ Broker 在官方 Swoole 协程中处理原生事件，使用一个 Channel 保�
 
 无持久 worker 的示例只完成 QoS 0 路由。QoS 1/2、持久会话、保留消息、遗嘱、共享订阅及跨节点路由需要显式 PostgreSQL 同步存储；不要只把客户端 QoS 改成 1 就认为能力已经具备。
 
-完整持久入口通过 `MQTT_WORKER_COMMAND` 指向同一程序的命令参数数组，使用真实 PostgreSQL 主备，在监听前显式安装存储。配置、初始化与资源预算见[type-mqtt 持久存储](../plugins/type-mqtt.md#持久存储与集群)。存储按真实 WAL 提交与重放证明区分 `committed/rejected/unknown`；主库行可见或 worker 退出不能代替同步提交证明。
+完整持久入口通过 `MQTT_WORKER_COMMAND` 指向同一程序的命令参数数组，使用真实 PostgreSQL 同步主备，即使只有一个 Broker 也须满足这个持久前提。先按[独立应用入口与配置](../plugins/type-mqtt.md#独立应用入口与配置)准备程序及导出环境，再按[单节点部署](../plugins/type-mqtt.md#单节点部署)显式安装存储并监听；需要横向部署时继续[多节点集群部署](../plugins/type-mqtt.md#多节点集群部署)。基础练习的入口没有持久 worker 分支，不能只加一个环境变量就当作完整入口使用。
+
+存储按真实 WAL 提交与重放证明区分 `committed/rejected/unknown`；管理命令须检查 JSON 的 `state`、`released` 和证明，主库行可见或 worker 退出不能代替同步提交。部署后按[客户端验证](../plugins/type-mqtt.md#客户端验证)分别检查 TLS 收发、跨节点路由、离线消息和共享订阅，运行维护见[统计、升级与异常恢复](../plugins/type-mqtt.md#运行维护与排障)。
 
 `Type\Mqtt\Client` 是 MQTT 5 消费客户端，当前发布仅支持 QoS 1，接收 QoS 0/1。因此本文无持久 Broker 的 QoS 0 发布采用标准客户端，不能用内置 `publish()` 伪造可运行闭环。
 
