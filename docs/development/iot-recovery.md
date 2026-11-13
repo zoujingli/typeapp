@@ -91,7 +91,7 @@ php tests/iot-recovery.php build/app/type-app --no-source --physical
 
 装置通过同一程序的空库安装、双端登录、控制端签发和公开注册准备设备，再通过真实应用授权与 MQTT.js/TLS 建立原始双向通信。保存包含 NUL 的 retained 字节、持久订阅和离线 QoS 1 待投递；`pending` 才是未开始发送的 QoS 1 状态，不能用 QoS 0 的 `queued` 终态代替。
 
-备份取点前停止 HTTP、Broker，核对网络资源与协议存储后端归零。资格、绑定、应用、设备授权、会话、消息、待投递与 retained 必须非空；恢复到只读暂停点后逐表比较 `iot_*`、`type_mqtt_*` 及阶段标记的行数和内容摘要。历史表即使本次为空仍参与一致性比较。
+备份取点前停止 HTTP、MQTT 节点，核对网络资源与协议存储后端归零。资格、绑定、应用、设备授权、会话、消息、待投递与 retained 必须非空；恢复到只读暂停点后逐表比较 `platform_*`、`system_*`、`center_*`、`platform_mqtt_*` 及阶段标记的行数和内容摘要。历史表即使本次为空仍参与一致性比较。
 
 ## 物理恢复后核对与重新开放
 

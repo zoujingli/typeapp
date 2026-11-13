@@ -1,38 +1,37 @@
-# 产品分类资料
+# Center 分类资料
 
-产品在当前物联中心表示租户内的设备分类，只保存名称、说明及版本，不决定注册资格或消息载荷。设备可以不选择分类，也可在资料编辑时关联或清除本客户分类。分类表与历史模型原件仍保留，不能用删除分类间接清除历史。
+Center 的分类资料属于当前 Tenant，只保存名称、说明和版本，不解释设备载荷，也不替代注册资格。设备可以不关联分类；删除分类前必须确认没有设备引用。
 
-## 客户权限与数据边界
+## 接口与权限
 
-入口为 `/customer/tenants/{tenant}/products`，`X-Tenant-Id` 必须与路径租户一致。`customer.products.read` 允许查询，`customer.products.manage` 允许维护；菜单和按钮不代替服务端权限。领域 `Product` Model 在当前租户作用域完成 CRUD，授权写锁内重验账号、角色、模拟来源与表单版本，审计失败回滚同一事务。
+客户入口使用 `/t/{tenant_id}/center/*`，子域名直接使用 `/center/*`。Tenant 来自可信路径或登记域名，客户端请求头不能建立或切换范围。查询需要 `center.products.read`，新增、修改和删除需要 `center.products.manage`；菜单显示不代替后端授权。
 
-| 方法及路径 | 输入与结果 |
-| --- | --- |
-| `GET /customer/tenants/{tenant}/products` | `name,page,per_page`，默认 20、最多 100 条 |
-| `POST /customer/tenants/{tenant}/products` | `{name,description?}`，成功 201 |
-| `GET /customer/tenants/{tenant}/products/{product}` | 读取本客户资料，越界按不存在处理 |
-| `PATCH /customer/tenants/{tenant}/products/{product}` | `{version,name?,description?}`；省略保持原值，null 拒绝 |
-| `DELETE /customer/tenants/{tenant}/products/{product}` | `{version}`；当前设备或历史模型引用时返回 `409 product_referenced` |
+| 方法 | 入口 | 结果 |
+| --- | --- | --- |
+| `GET` | `/t/{tenant_id}/center/products` | 按名称分页，默认20条，最多100条 |
+| `POST` | `/t/{tenant_id}/center/products` | 创建分类，返回一次性业务结果 |
+| `GET` | `/t/{tenant_id}/center/products/{product}` | 返回当前 Tenant 的分类 |
+| `PATCH` | `/t/{tenant_id}/center/products/{product}` | 按 `version` 乐观更新名称和说明 |
+| `DELETE` | `/t/{tenant_id}/center/products/{product}` | 有设备引用时返回 `409 product_referenced` |
 
-响应只含 `id,tenant_id,name,description,version,created_at,updated_at`。同值保存仍消耗表单版本，旧表单 `409 stale_version`。设备资料 PATCH 接受 `name`、`product_id` 和必需的 `version`；分类 null 表示显式解除，省略表示保持。服务和复合外键共同拒绝跨客户分类；平台资料编辑同样受目标设备客户范围限制。
+响应只公开 `id、tenant_id、name、description、version、created_at、updated_at`。Service 通过 `Product` Model 完成查询、对象修改、版本推进和持久化；ORM 从可信执行作用域自动补入 Tenant 条件。审计与业务变更在同一授权事务内提交。
 
 ```mermaid
 flowchart LR
-  Tenant[客户工作区] --> Product[分类资料]
-  Tenant --> Device[设备当前关系]
-  Device -.可选关联.-> Product
-  Enrollment[控制端注册资格] --> Device
-  Device --> Communication[独立原始通信授权]
+    Tenant[当前 Tenant] --> Product[Product Model]
+    Product --> Device[Device Model 的可选 product_id]
+    Product --> Store[(center_product)]
+    Enrollment[注册资格] --> Device
+    Device --> Access[接入应用与 MQTT 授权]
 ```
 
-模型草稿、发布、校验与设备模型切换入口已退出，旧路径不映射为新分类操作。已发布 SQL 摘要保持不变，分类外键通过追加迁移建立。
+分类不携带物模型草稿、发布历史或消息解析配置。需要载荷建模的业务应在独立业务模块中声明自己的 Model、Service 和迁移，不向 Center 分类增加隐式字段。
 
-## 验证入口
+## 验证
 
 ```sh
-php tests/iot-identity.php --php sqlite --products --devices
-php tests/iot-identity-databases.php --php "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS" --products --devices
-php tests/iot-identity-databases.php build/app/type-app "$TYPE_MYSQL_TOOLS" "$TYPE_PGSQL_TOOLS" --products --devices --no-source
+php tests/tenant.php sqlite
+php tests/model-sync.php <MySQL工具根目录>
 ```
 
-测试覆盖真实 HTTP、权限撤销、跨客户、缺失/null、同值保存、版本竞争、审计失败回滚、当前与历史引用保护及重启持久性；设备夹具经控制端资格和公开注册创建，不直接写入新设备。PHP、原生与无源码结果分别记录。
+真实 MySQL 反向同步会读取表注释和字段注释，生成 `Product` 的类型提示；模型同步只修改源码，不执行 DDL。MySQL、PostgreSQL、AOT 及真实 MQTT 的结果分别记录，不能用 SQLite 静态检查代替。

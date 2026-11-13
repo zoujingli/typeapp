@@ -3,7 +3,7 @@
 本目录描述当前代码、配置、边界及可复用验证方法。有明确产物身份的历史结果保留在[验收证据](../evidence/README.md)，不作为当前版本的通用通过声明。公开教程见[使用指南](../guide/)，待完成能力见[实现规划](../guide/roadmap.md)。
 
 - [独立业务应用模板](application-template.md)
-- [独立 Broker 管理宿主](broker-management.md)
+- [Platform MQTT 运维](broker-management.md)
 - [构建身份、缓存与隔离输入](build-identity.md)
 - [构建拒绝用例的真实依赖](build-rejection-regression.md)
 - [缓存与事务的一致性边界](cache-consistency.md)

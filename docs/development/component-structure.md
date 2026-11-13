@@ -7,7 +7,7 @@
 | 位置 | 职责与约束 |
 | --- | --- |
 | `app/` | 成品案例物联中心的业务源码，使用 `app\` PSR-4 与小写职责目录；可同时有一级和任意多级模块 |
-| `app/iot/`、`web/` | 物联网业务及Vben管理端；身份、设备、接收、控制、转移和恢复由业务所有者维护，不进入组件分发 |
+| `app/platform/`、`app/system/`、`app/center/`、`web/` | Platform、System、Center 业务及 Vben 管理端；Tenant 身份、设备、授权、转配和恢复由业务所有者维护，不进入组件分发 |
 | `config/*.php`（不含 `route.php`） | 显式选择的受限配置声明，构建时解析为可编译类；不执行任意配置代码 |
 | `app/*`、`config/route.php` | 物联中心业务源码与路由构建声明，不保存运行秘密 |
 | `.env` | 应用根下的外部运行数据，进程环境优先；不提交、不编译、不自动复制进镜像 |
@@ -16,7 +16,7 @@
 | `templates/type-project/` | 独立应用模板，与主仓示例分别验证并通过专门工作流分发 |
 | `build/` | 生成代码、ELF、身份报告和受控验收输出，不手工维护生成业务实现 |
 
-`app/admin`、`app/iot` 与 `app/broker` 通过同一 Composer 映射加载。路由来自生产源码上的 `#[Route]`/`#[Group]`/`#[Resource]`，或 `config/route.php` 中的显式 `routes` 表。新增目录不会自动成为公开路由，也没有要求所有模块必须固定两层；参见[成品案例物联中心](typeapp.md)。
+`app/platform`、`app/system`、`app/center` 和 `app/common` 通过同一 Composer 映射加载。路由来自生产源码上的 `#[Route]`/`#[Group]`/`#[Resource]`，或 `config/route.php` 中的显式 `routes` 表。新增目录不会自动成为公开路由，也没有要求所有模块必须固定两层；参见[成品案例物联中心](typeapp.md)。
 
 组件保留现有 `Type\...` FQCN 与 `src/` 大小写，因为命名空间、Composer 映射、构建符号、生成引用及下游业务已经共同依赖这些入口。应用采用小写目录不意味着应把 `Type\Orm\Connection` 改成新的路径或类名。真正需要迁移公开接口时，要单独评估兼容、调用者和发布版本，不能以“统一目录”为由直接破坏消费者。
 
@@ -36,7 +36,7 @@
 | `type-cache` | 类型化缓存/codec、命名空间代次、PSR-16/可信序列化；`Attribute/` 为构建声明 |
 | `type-queue` | 消息/任务协议、注册、Queue/Reservation、Worker/RetryPolicy 与失败码 |
 | `type-scheduler` | 时间计划、执行入口、持久状态与多实例租约；文件与 Redis 适配同一状态接口 |
-| `type-mqtt` | 独立 Broker、协议编解码、客户端、认证授权契约与 PostgreSQL 持久会话/交付；复用 core 的 HTTP 客户端，不依赖 `app/iot` |
+| `type-mqtt` | MQTT 服务、协议编解码、客户端、认证授权契约与 PostgreSQL 持久会话/交付；复用 core 的 HTTP 客户端，不依赖物联中心业务 |
 | `type-build` | 输入审计、按职责划分的生成器、构建环境/锁、身份/缓存/资源清单；仅开发期使用 |
 | `type-testing` | 严格断言与 Suite、有界进程、真实 HTTP；通常仅开发期使用 |
 

@@ -50,9 +50,9 @@ $member->save();
 
 实体 CRUD 不要求控制器或 Service 接收、传递和关闭 `Connection`。迁移、驱动验收及明确的基础设施操作仍可以使用显式连接，普通业务不依赖该入口。每个 Model 声明稳定的逻辑数据源，默认使用应用默认数据源；数据源配置在应用启动装配，查询输入不能任意决定数据库地址或凭据。
 
-物联中心当前 `main` 已将站点设置和产品资料加入这一入口：`SiteSettings::publicView()/adminView()/update()` 与产品服务的人工作业接口不再接收连接。站点读取使用主库，公共 HTTP 入口仍先检查应用安装身份；产品在重新认证、授权后绑定租户，写入与审计复用授权事务。两类表单即使保存相同内容也推进版本：存在更新时间等脏字段时执行 `save()`，没有脏字段时显式 `touch()`。普通 Model 的无变更 `save()` 仍返回 `unchanged`。
+物联中心当前 `main` 已将平台与 Tenant 站点设置、Center 分类资料加入这一入口：`SiteSettings::publicView()/managementView()/update()` 与产品服务的人工作业接口不再接收连接。站点读取使用主库，公共 HTTP 入口仍先检查应用安装身份；分类在重新认证、授权后绑定 Tenant，写入与审计复用授权事务。两类表单即使保存相同内容也推进版本：存在更新时间等脏字段时执行 `save()`，没有脏字段时显式 `touch()`。普通 Model 的无变更 `save()` 仍返回 `unchanged`。
 
-产品的 `next_model_version` 是独立编号分配器，不能通过模型赋值或公开投影取得；受控表操作在授权锁内分配号码，不改变产品资料版本。`iot_models` 的复合主键尚不适用于单主键模型；接收、告警和转移调用的 `ProductService::publishedModel(Connection, …)` 保持同连接的精确快照，不另外借连接。此类例外与普通产品 CRUD 分开登记，不能据此宣称其他 IoT/Broker 服务已全部迁移。
+Center 分类的版本由 `Product` Model 管理，不能通过客户端赋值或公开投影伪造；设备、接入应用和转配分别使用各自的 Model 与业务 Service。MQTT 运行观察、恢复扫描和跨 Tenant 资产汇总保持明确的基础设施查询边界，不能据此宣称普通 Center CRUD 可以直接访问数据表。
 
 ## 静态筛选助手
 

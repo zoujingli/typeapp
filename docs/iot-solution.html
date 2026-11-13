@@ -74,7 +74,7 @@
     <div class="hero" id="top">
       <span class="eyebrow">TypeApp / IoT Center</span>
       <h1>管理设备与授权，<br>连接客户的业务系统。</h1>
-      <p class="lead">同一部署，两套独立后台。控制端管理平台与客户，客户端管理自己的人员、设备和接入应用。原始消息由获授权的设备与业务系统交换。</p>
+      <p class="lead">同一部署，三个清晰运行角色。Platform 管理平台与 Tenant，System 管理当前 Tenant 的人员，Center 管理设备和接入应用。原始消息由获授权的设备与业务系统交换。</p>
       <div class="actions"><a class="button primary" href="index.html#/guide/iot-center">阅读接入教程</a><a class="button" href="index.html#/guide/deployment">安装与升级</a></div>
       <p class="notice">本页描述当前开发源码架构，整批最终候选验收仍在进行。公开版本按各自发布说明和程序摘要使用；本页不改变已有 RC 的功能或验收结论。</p>
     </div>
@@ -83,8 +83,8 @@
       <h2 id="architecture-title">工作区独立，基础设施共用</h2>
       <p class="lead">账号域、登录会话与 RBAC 分开。控制端的跨客户管理使用明确的平台权限；客户端每次请求核对当前成员关系与租户范围。</p>
       <div class="grid">
-        <article class="card"><span class="tag">CONTROL / #/admin</span><h3>控制端</h3><ul><li>平台人员、角色、权限与客户工作区</li><li>注册资格签发、期限、额度与停用</li><li>设备目录、应用管理、撤权与重新分配</li><li>站点配置、平台审计与运行观察</li></ul></article>
-        <article class="card"><span class="tag">CLIENT / #/profile</span><h3>客户端</h3><ul><li>当前租户的成员、角色与权限</li><li>查看注册资格，管理已获授权的设备</li><li>维护接入应用与密钥，逐设备授予通信权限</li><li>查看连接、授权生效状态及本客户审计</li></ul></article>
+        <article class="card"><span class="tag">PLATFORM / #/platform/login</span><h3>Platform</h3><ul><li>平台人员、角色、菜单与 Tenant</li><li>注册资格签发、期限、额度与停用</li><li>设备资产、接入应用、撤权与设备转配</li><li>站点配置、平台审计与 MQTT 运维</li></ul></article>
+        <article class="card"><span class="tag">SYSTEM + CENTER / #/system/login</span><h3>System / Center</h3><ul><li>当前 Tenant 的用户、角色与权限</li><li>System 品牌、主题、审计和会话</li><li>Center 分类、设备、注册资格和接入应用</li><li>连接观察、通信授权和转配接收</li></ul></article>
       </div>
       <figure><img src="assets/iot-architecture.svg" width="1120" height="540" alt="设备和接入应用通过物联中心交换原始消息，控制端与客户端分别执行 RBAC，TypePHP 编译整个应用"><figcaption>TypeApp 组织应用与组件，TypePHP 编译全部生产实现；Swoole 是程序内置的通信与并发运行库。</figcaption></figure>
     </section>
