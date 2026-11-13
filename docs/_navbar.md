@@ -3,6 +3,7 @@
 - [环境与依赖](/guide/environment.md)
 - [TypePHP 编译](/guide/typephp.md)
 - [系统架构](/guide/architecture.md)
+- [Tenant 三端架构](/guide/tenant-architecture.md)
 - [组件参考](/guide/components.md)
 - [物联中心](/guide/iot-center.md)
 - [许可证](/guide/licensing.md)

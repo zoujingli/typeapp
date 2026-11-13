@@ -4,6 +4,7 @@
   - [快速开始](/guide/quickstart.md)
   - [TypePHP 全量编译](/guide/typephp.md)
   - [系统架构](/guide/architecture.md)
+  - [Tenant 三端架构](/guide/tenant-architecture.md)
   - [基础能力与验收](/guide/capabilities.md)
   - [进程、线程与协程](/guide/runtime.md)
   - [性能与调优](/guide/performance.md)
