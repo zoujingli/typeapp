@@ -1,8 +1,8 @@
 # Platform / System / Center Tenant 重构验收记录
 
-日期：2026-11-14。实际执行基线为 `affca55327fc3eec009cf510eeaf50d74079921e`；本记录只描述该基线及其对应环境中实际执行的检查，不自动覆盖其后的源码提交，也不替代 MySQL/PostgreSQL、AOT、无源码和真实 MQTT 验收。
+日期：2026-11-14。当前执行基线为 `160f82ba529c3a97e6f1ed608c5728d351a82a5f`；本记录只描述该基线及其对应环境中实际执行的检查，不替代 MySQL/PostgreSQL、静态单程序、无源码和正式平台矩阵验收。
 
-当前 `main` 后续已增加设备转配 Model 写入、设备撤权意图 Model、MySQL 注释补齐、前端菜单元数据同步及 PHP 8.5.12/TypePHP v0.10.1 工具链入口；这些改动需按当前提交重新执行受影响的 PHP、三库、原生和前端门禁。
+本轮在 PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8（`90e6d22a9c3f4d5dbd2c75d62e90bf5adfe58c89`）上重新完成线程源码适配、PHPX 编译、全量 AOT 和原生 SQLite Tenant 验收。
 
 ## 已通过
 
@@ -15,6 +15,9 @@
 - `php tests/check.php`：963 个文件、3 个分发拒绝用例、文档站边界检查通过。
 - `php tests/docs-consistency.php`：1,504 处引用、131 条路由、292 个命令、247 个 Composer 脚本通过。
 - `php tests/tenant.php sqlite`：空库安装、模块表前缀、主域/子域/固定路径、RBAC、独立品牌、模拟交接、MQTT 模拟观测、恢复核对和真实 HTTP 隔离通过。
+- `bash tools/prepare-toolchain.sh`：固定 PHPX 2.9.8 五个线程适配文件校验及适配通过；独立 SDK `build/phpx-thread-sdk.rB3rw1/phpx/lib/libphpx.dylib` 摘要为 `cbe798b1b20c09b1671737fcb0480859ddf464a0826bc46ec0903f9cd668505e`。
+- `PATH=.cache/macos-locked-php/8.5.12-zts/bin:$PATH PHP_HOME=.cache/macos-locked-php/8.5.12-zts PHPX_HOME=build/phpx-thread-sdk.rB3rw1/phpx bash tools/build-application.php --shared-development`：前端 7,875 modules 构建通过；TypePHP 全量生成并编译 301 个 C++ 文件，原生程序链接通过。产物 `build/app/type-app` 摘要为 `ee6c90ee4622ffba7d7d06a25d341ff6b42b5cd0cf2b74a11bf4739700084331`，build id 为 `f7ab74faca810f57fbe61d248d0092994ea58730de5920fa996083d0852167a3`。
+- `PHPRC=build/app/compiler/runtime-profile/native.ini PHP_INI_SCAN_DIR=build/app/compiler/runtime-profile/php.d .cache/macos-locked-php/8.5.12-zts/bin/php tests/tenant.php sqlite build/app/type-app`：同一 AOT 产物的原生 SQLite Tenant 空库安装、入口、RBAC、品牌、模拟交接、MQTT 模拟观测、恢复核对及真实 HTTP 隔离通过。
 - `php tests/tenant.php mysql <MySQL工具根目录>`：MySQL 8.4.11 原生隔离实例上的同一 Tenant HTTP 闭环通过。
 - `php tests/tenant.php pgsql <PostgreSQL工具根目录>`：PostgreSQL 17.11 原生隔离实例上的同一 Tenant HTTP 闭环通过。
 - `php tests/model-sync.php <MySQL工具根目录>`：真实 MySQL 8.4.11 结构反向同步、字段注释、生成列、增删保护、非法输入拒绝及生成模型 Tenant CRUD 通过。
@@ -40,4 +43,4 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 
 仓库目标工具链记录在 `toolchain.lock.json`：PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8；本机实际 Node.js 为 26.13.1，pnpm 为 11.15.1，而前端工作区声明 pnpm 12.18.0。前端检查结果仍只证明在当前可用 Node/pnpm 环境下的静态与生产构建行为。
 
-仍未验证：当前源码的 TypePHP 全量 AOT、删除源码后的无源码运行、正式平台/profile 矩阵、物联中心 AOT 产物上的真实设备身份 MQTT 持久会话/跨 Tenant 撤权与转配，以及 Windows SDK。上述 MQTT 结果属于独立通信组件源运行验收，不替代当前应用生产产物验收。补齐匹配的静态 SDK 和真实 MQTT 设备环境后，按 `docs/development/test-entrypoints.md` 顺序重跑剩余门禁，并以同一源码、锁文件和原生产物记录最终结果。
+仍未验证：静态 SDK 单程序交付、删除源码后的发布包运行、正式平台/profile 矩阵、物联中心 AOT 产物上的真实设备身份 MQTT 持久会话/跨 Tenant 撤权与转配，以及 Windows SDK。当前 `--shared-development` 产物用于开发和原生回归，不能替代静态单程序发布候选；直接运行原生程序时必须通过发布启动器或显式提供其受控 `PHPRC`，否则 Swoole 共享模块不会加载。上述 MQTT 结果属于独立通信组件源运行验收，不替代当前应用生产产物验收。补齐匹配的静态 SDK 和真实 MQTT 设备环境后，按 `docs/development/test-entrypoints.md` 顺序重跑剩余门禁，并以同一源码、锁文件和原生产物记录最终结果。
