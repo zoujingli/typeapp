@@ -79,6 +79,50 @@ final class Schema
         return [new Migration('300_platform_system_center', '建立独立客户账号、平台菜单与物联业务的新安装基线', $sql, $driver !== 'mysql')];
     }
 
+    /** 在任何业务读取前拒绝旧安装，不尝试执行转换。 */
+    public static function ready(Connection $connection): void
+    {
+        $row = $connection->table('platform_installation')->where('id', '=', 1)->first();
+        if ($row === null || (int)$row['schema_version'] !== self::VERSION) {
+            throw new HttpError(503, 'installation_incompatible');
+        }
+    }
+
+    /** 空库只创建平台初始账号；客户由平台显式开通，口令来自受控进程环境。 */
+    public static function install(Driver $driver, array $accounts, string $password, ?DeploymentBudget $budget = null): array
+    {
+        if (count($accounts) !== 2) {
+            throw new HttpError(422, 'installation_input_invalid');
+        }
+        IdentityService::validateAccount($accounts[0], $accounts[1], $password);
+        return CoroutineRuntime::run(static function () use ($driver, $accounts, $password, $budget): array {
+            (new Migrator($driver, budget: $budget))->run(self::migrations($driver->name()), true);
+            $database = new DatabaseManager(['default' => $driver], 1, 0, $budget);
+            Db::configure($database);
+            $scope = new ExecutionScope();
+            try {
+                return $scope->run(static function (ExecutionScope $current) use ($driver, $accounts, $password): array {
+                    return Db::transaction(static function () use ($accounts, $password): array {
+                        $connection = Db::connection('default', true);
+                        $installation = bin2hex(random_bytes(16));
+                        $now = time();
+                        $connection->table('platform_installation')->insert(['id' => 1, 'installation_id' => $installation, 'schema_version' => self::VERSION, 'created_at' => $now]);
+                        $connection->table('platform_setting')->insert(['id' => 1, ...SiteSettings::defaults(), 'version' => 1, 'created_at' => $now, 'updated_at' => $now]);
+                        $connection->table('platform_setting')->insert(['id' => 2, ...SiteSettings::defaults(), 'version' => 1, 'created_at' => $now, 'updated_at' => $now]);
+                        MenuService::initialize();
+                        $user = (new IdentityService('platform'))->provision($accounts[0], $accounts[1], $password, false);
+                        RoleService::initializeScope('platform', 'platform', $user['id']);
+                        CompatService::recordUpgrade($connection);
+                        return ['installation_id' => $installation, 'platform' => $user];
+                    }, 'default', $driver->name() === 'sqlite' ? 'immediate' : 'default');
+                });
+            } finally {
+                $scope->close();
+                $database->close();
+            }
+        });
+    }
+
     /**
      * MySQL 的 INFORMATION_SCHEMA 才能提供反向模型同步所需的表/字段说明。
      * SQLite 和 PostgreSQL 没有等价的字段 COMMENT 语义，模型 PHPDoc 仍是它们的权威说明。
@@ -355,49 +399,5 @@ final class Schema
             "ALTER TABLE center_device_reassignment MODIFY COLUMN created_at BIGINT NOT NULL COMMENT '创建时间，UTC Unix 秒'",
             "ALTER TABLE center_device_reassignment MODIFY COLUMN updated_at BIGINT NOT NULL COMMENT '最后更新时间，UTC Unix 秒'",
         ];
-    }
-
-    /** 在任何业务读取前拒绝旧安装，不尝试执行转换。 */
-    public static function ready(Connection $connection): void
-    {
-        $row = $connection->table('platform_installation')->where('id', '=', 1)->first();
-        if ($row === null || (int)$row['schema_version'] !== self::VERSION) {
-            throw new HttpError(503, 'installation_incompatible');
-        }
-    }
-
-    /** 空库只创建平台初始账号；客户由平台显式开通，口令来自受控进程环境。 */
-    public static function install(Driver $driver, array $accounts, string $password, ?DeploymentBudget $budget = null): array
-    {
-        if (count($accounts) !== 2) {
-            throw new HttpError(422, 'installation_input_invalid');
-        }
-        IdentityService::validateAccount($accounts[0], $accounts[1], $password);
-        return CoroutineRuntime::run(static function () use ($driver, $accounts, $password, $budget): array {
-            (new Migrator($driver, budget: $budget))->run(self::migrations($driver->name()), true);
-            $database = new DatabaseManager(['default' => $driver], 1, 0, $budget);
-            Db::configure($database);
-            $scope = new ExecutionScope();
-            try {
-                return $scope->run(static function (ExecutionScope $current) use ($driver, $accounts, $password): array {
-                    return Db::transaction(static function () use ($accounts, $password): array {
-                        $connection = Db::connection('default', true);
-                        $installation = bin2hex(random_bytes(16));
-                        $now = time();
-                        $connection->table('platform_installation')->insert(['id' => 1, 'installation_id' => $installation, 'schema_version' => self::VERSION, 'created_at' => $now]);
-                        $connection->table('platform_setting')->insert(['id' => 1, ...SiteSettings::defaults(), 'version' => 1, 'created_at' => $now, 'updated_at' => $now]);
-                        $connection->table('platform_setting')->insert(['id' => 2, ...SiteSettings::defaults(), 'version' => 1, 'created_at' => $now, 'updated_at' => $now]);
-                        MenuService::initialize();
-                        $user = (new IdentityService('platform'))->provision($accounts[0], $accounts[1], $password, false);
-                        RoleService::initializeScope('platform', 'platform', $user['id']);
-                        CompatService::recordUpgrade($connection);
-                        return ['installation_id' => $installation, 'platform' => $user];
-                    }, 'default', $driver->name() === 'sqlite' ? 'immediate' : 'default');
-                });
-            } finally {
-                $scope->close();
-                $database->close();
-            }
-        });
     }
 }

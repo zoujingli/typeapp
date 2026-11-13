@@ -27,7 +27,7 @@ if ($driver === 'sqlite') {
 }
 expect(in_array($driver, ['sqlite', 'mysql', 'pgsql'], true), 'Tenant 验证只接受三种正式数据库驱动');
 if ($program !== '') {
-    $program = preg_match('#^(?:/|[A-Za-z]:[\\\\/])#', $program) === 1 ? $program : $root . '/' . $program;
+    $program = preg_match('#^(?:/|[A-Za-z]:[\\\/])#', $program) === 1 ? $program : $root . '/' . $program;
     expect(is_file($program) && is_executable($program), '原生 Tenant 验证需要可执行应用程序：' . $program);
 }
 $work = $root . '/build/tenant-' . bin2hex(random_bytes(6));
