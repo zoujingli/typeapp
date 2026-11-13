@@ -1,6 +1,6 @@
 # Platform / System / Center Tenant 重构验收记录
 
-日期：2026-11-14。当前执行基线为 `160f82ba529c3a97e6f1ed608c5728d351a82a5f`；本记录只描述该基线及其对应环境中实际执行的检查，不替代 MySQL/PostgreSQL、静态单程序、无源码和正式平台矩阵验收。
+日期：2026-11-14。当前执行基线为 `01814595ec430c8fbe740625a32b77fcf9f7d655`；本记录只描述该基线及其对应环境中实际执行的检查，不替代 MySQL/PostgreSQL、静态单程序、无源码和正式平台矩阵验收。
 
 本轮在 PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8（`90e6d22a9c3f4d5dbd2c75d62e90bf5adfe58c89`）上重新完成线程源码适配、PHPX 编译、全量 AOT 和原生 SQLite Tenant 验收。
 
@@ -19,6 +19,8 @@
 - `bash tools/prepare-toolchain.sh`：固定 PHPX 2.9.8 五个线程适配文件校验及适配通过；独立 SDK `build/phpx-thread-sdk.rB3rw1/phpx/lib/libphpx.dylib` 摘要为 `cbe798b1b20c09b1671737fcb0480859ddf464a0826bc46ec0903f9cd668505e`。
 - `PATH=.cache/macos-locked-php/8.5.12-zts/bin:$PATH PHP_HOME=.cache/macos-locked-php/8.5.12-zts PHPX_HOME=build/phpx-thread-sdk.rB3rw1/phpx bash tools/build-application.php --shared-development`：前端 7,875 modules 构建通过；TypePHP 全量生成并编译 301 个 C++ 文件，原生程序链接通过。产物 `build/app/type-app` 摘要为 `ee6c90ee4622ffba7d7d06a25d341ff6b42b5cd0cf2b74a11bf4739700084331`，build id 为 `f7ab74faca810f57fbe61d248d0092994ea58730de5920fa996083d0852167a3`。
 - `PHPRC=build/app/compiler/runtime-profile/native.ini PHP_INI_SCAN_DIR=build/app/compiler/runtime-profile/php.d .cache/macos-locked-php/8.5.12-zts/bin/php tests/tenant.php sqlite build/app/type-app`：同一 AOT 产物的原生 SQLite Tenant 空库安装、入口、RBAC、品牌、模拟交接、MQTT 模拟观测、恢复核对及真实 HTTP 隔离通过。
+- `CenterRuntimeMetric` Model-first 改造：运行观察读取返回模型对象，64 槽位与运行代次 CAS 收口到 `recordObservation()`；模型边界契约、字段注释和 MySQL COMMENT 已通过。
+- 本轮 AOT 产物 `build/app/type-app` 摘要为 `5690b7509eda78ffb21f3933d450876d2a144e3a724188de288d8efe09096ec4`，build id 为 `c094b8a4c891d260fdb0688802d05e6a223cd356de99868a215d16f9095b77c6`；同一产物再次通过原生 SQLite Tenant 闭环。
 - `php tests/tenant.php mysql <MySQL工具根目录>`：MySQL 8.4.11 原生隔离实例上的同一 Tenant HTTP 闭环通过。
 - `php tests/tenant.php pgsql <PostgreSQL工具根目录>`：PostgreSQL 17.11 原生隔离实例上的同一 Tenant HTTP 闭环通过。
 - `php tests/model-sync.php <MySQL工具根目录>`：真实 MySQL 8.4.11 结构反向同步、字段注释、生成列、增删保护、非法输入拒绝及生成模型 Tenant CRUD 通过。
