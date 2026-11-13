@@ -232,6 +232,8 @@ final class ManagementCommand implements Command
                     $publicMessage = $matched[0];
                 } elseif ($error instanceof HttpError) {
                     $publicMessage = $error->errorCode();
+                } elseif ($error instanceof TaskException) {
+                    $publicMessage = $error->errorCode();
                 }
             }
             if ($command === 'serve' && $error instanceof TaskException) {
