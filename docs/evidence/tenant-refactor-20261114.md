@@ -15,7 +15,7 @@
 
 Platform、System、Center 的职责、Tenant 入口、主域名客户选择、子域名和 `/t/{tenant_id}/` 固定路径、双身份会话、RBAC、菜单分组与图标、模拟登录、Vben 5.7.0 页面、模型优先 CRUD、表字段注释、MySQL `model:sync` 和发布包安装说明均已同步到当前源码。
 
-核心表使用 `platform_*`、`system_*`、`center_*` 和 `platform_mqtt_*` 前缀。MQTT 协议持久状态使用组件自身的 `type_mqtt_*` 表；审计、恢复、运行观测和跨 Tenant 聚合保留受控基础设施查询，并在数据库指南中说明边界。
+核心表使用 `platform_*`、`system_*`、`center_*` 和 `platform_mqtt_*` 前缀。Platform 跨 Tenant 的接入应用目录使用不带 `tenantKey` 的 `ApplicationDirectory` 只读 Model，写入仍使用带 Tenant 范围的 `ClientApplication`。MQTT 协议持久状态使用组件自身的 `type_mqtt_*` 表；审计、恢复、运行观测和协议认证热路径保留受控基础设施查询，并在数据库指南中说明边界。
 
 ## 未验证及阻塞
 
