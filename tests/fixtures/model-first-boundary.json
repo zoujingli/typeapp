@@ -17,12 +17,5 @@
         "app/system/controller/SystemController.php",
         "app/center/controller/ProductController.php"
     ],
-    "exceptions": [
-        {
-            "owner": "app\\common\\service\\MenuService::save",
-            "method": "table",
-            "argument": "$realm . '_role_permission'",
-            "reason": "平台删除公共菜单前核对全部客户的角色关联，不能用单个 Tenant 的模型范围漏判引用。"
-        }
-    ]
+    "exceptions": []
 }

@@ -14,6 +14,28 @@ require __DIR__ . '/support.php';
 
 $root = dirname(__DIR__);
 
+/** 当前验收不把已退出人员后台和旧协议装置误判为生产命令调用者。 */
+function docsCheckLegacySource(string $file): bool
+{
+    return str_starts_with($file, 'tests/broker-')
+        || in_array($file, [
+            'tests/iot-identity.php',
+            'tests/application-runtime.php',
+            'tests/candidate-upgrade.php',
+            'tests/backup-recovery.php',
+            'tests/development-mode.php',
+            'tests/demo-mode.php',
+            'tests/iot-backup-retention.php',
+            'tests/iot-cluster-mqtt.php',
+            'tests/iot-devices.php',
+            'tests/iot-lifecycle-browser-fixture.php',
+            'tests/iot-lifecycle-mqtt.php',
+            'tests/iot-operations.php',
+            'tests/iot-reassignments.php',
+            'tests/iot-recovery.php',
+        ], true);
+}
+
 // 文档明确记录实现已移除时的语义标记：同一行命中则跳过该引用。
 $removedHints = ['已移除', '已删除', '已废弃', '不再提供', '不再支持', '不再使用', '已下线'];
 
@@ -91,9 +113,15 @@ foreach (docsCheckFiles($root, ['app', 'bin', 'config', 'plugin', 'templates'], 
 }
 
 // 前端页面路由同样会出现在文档中，与菜单 path 一并作为已知的界面路径。
-// 文档里的 `/admin/login`、`/broker/login` 等页面地址没有后端路由与菜单项，属正常。
-$routerSource = $root . '/web/apps/web-antd/src/router.ts';
-if (is_file($routerSource)) {
+// 文档里的登录页地址没有后端路由与菜单项，属正常。
+$routerFiles = [
+    $root . '/web/apps/web-antd/src/router/index.ts',
+    ...glob($root . '/web/apps/web-antd/src/router/routes/*.ts'),
+];
+foreach ($routerFiles as $routerSource) {
+    if (!is_file($routerSource)) {
+        continue;
+    }
     $router = (string)file_get_contents($routerSource);
     if (preg_match_all("/path:\\s*'([^']+)'/", $router, $matches) > 0) {
         foreach ($matches[1] as $pagePath) {
@@ -140,6 +168,10 @@ $documents = array_values(array_unique($documents));
 sort($documents);
 
 foreach ($documents as $document) {
+    // evidence 目录保存历史候选的原始记录，路径和命令按当时产物保留，不作为当前实现门禁。
+    if (str_starts_with($document, 'docs/evidence/')) {
+        continue;
+    }
     $lines = explode("\n", (string)file_get_contents($root . '/' . $document));
     foreach ($lines as $index => $line) {
         $recorded = false;
@@ -209,7 +241,7 @@ foreach ($documents as $document) {
 
         // HTTP 接口（含 `GET /path` 形式）
         if (preg_match_all(
-            '/`(?:(?:GET|POST|PATCH|PUT|DELETE|HEAD|OPTIONS)\s+)?(\/(?:admin|customer|iot|broker|public)\/[A-Za-z0-9\/_{}.-]+)`/',
+            '/`(?:(?:GET|POST|PATCH|PUT|DELETE|HEAD|OPTIONS)\s+)?(\/(?:platform|system|center|t\/[a-f0-9_{}-]+|public)\/[A-Za-z0-9\/_{}.-]+)`/',
             $line,
             $matches
         ) > 0) {
@@ -250,6 +282,9 @@ foreach ($documents as $document) {
 $callPattern = '/(?:identityCommand|\$run|nativeCommand|Process)\(\s*\[[^\]]*?[\'"]((?:iot|app|broker):[a-z][a-z0-9-]*)[\'"]/';
 
 foreach (docsCheckFiles($root, ['tests', 'tools', 'examples'], ['php', 'sh', 'mjs']) as $source) {
+    if (docsCheckLegacySource($source)) {
+        continue;
+    }
     $text = (string)file_get_contents($root . '/' . $source);
     if (preg_match_all($callPattern, $text, $matches) === 0) {
         continue;

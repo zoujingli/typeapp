@@ -49,7 +49,7 @@ php dev.php check
 
 物联中心采用同一部署中的独立控制端与客户端，两端均有完整 RBAC。控制端签发设备注册资格，客户端管理接入应用和逐设备通信权限；设备与客户业务系统交换原始消息，分类资料不决定通信协议。安装、接入与已有数据升级见[物联网中心](docs/guide/iot-center.md)。当前开发源码的最终候选仍在验收，公开版本按各自发布说明使用。
 
-当前 `main` 补齐了配置与角色预检、生产错误关联、业务就绪探针、维护调度停止及 `app:upgrade` 升级入口；这些修改未包含在已发布的 RC14 中。使用新入口须从对应源码构建；操作顺序与实际平台验收范围见[构建与部署](docs/guide/deployment.md)和[实现规划](docs/guide/roadmap.md#启动与运行收口)。
+当前 `main` 补齐了配置与角色预检、生产错误关联、业务就绪探针和维护调度停止。物联中心采用全新空库安装，旧安装拒绝接入且不自动升级；操作顺序与实际平台验收范围见[构建与部署](docs/guide/deployment.md)和[实现规划](docs/guide/roadmap.md#启动与运行收口)。
 
 物联中心前端随 TypePHP 构建编入主程序，首次 `app:install` 安装到 `public/`，升级可用 `web:install --dry-run --force` 预览后再执行 `web:install --force`。普通启动不释放资源，运行端无需 Node.js 或前端开发服务器。推送版本 tag 的四平台构建、同版本组件分发、Packagist 核验与 Release 顺序见[版本发布与安装](docs/guide/releases.md)。
 

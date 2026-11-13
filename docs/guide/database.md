@@ -119,14 +119,13 @@ composer typeapp:migrate -- history
 
 物联中心的 `migrate` 提供 `status`、`history` 和经核对后的 `recover`，不提供独立建表的 `run`。通用应用模板使用 `php dev.php migrate run` 初始化自身模型所需的表，并提供 `status`、`history` 查询；模板不包含物联中心的身份安装流程。框架迁移按版本和校验和执行，已完成版本重复运行保持幂等。
 
-已有物联中心数据使用 `app:upgrade`，不重新执行空库安装。该入口属于当前 `main`，未包含在已发布的 RC14 中；须先构建含此功能的新程序，按[升级与恢复](deployment.md#升级与恢复)检查安装谱系、停写、备份及摘要，再执行升级。迁移中断先核对历史与真实数据库状态，页面通过 `web:install --force` 单独更新。
+物联中心只接受全新空库安装。检测到已有安装或旧表时返回 `installation_incompatible`，不自动转换、不清库，也不提供业务升级分支；需要切换版本时由运维按发布批次准备新空库并完成现场迁移。
 
 ```mermaid
 flowchart LR
   Empty["空数据库"] --> Install["app:install · 初始化身份与表"]
-  Existing["已有安装"] --> Check["app:upgrade --check"]
-  Check --> Backup["停写 · 备份 · 核对摘要"]
-  Backup --> Upgrade["app:upgrade --offline …"]
+  Existing["已有安装"] --> Reject["拒绝接入 · 不清库"]
+  Reject --> Operator["运维准备新空库并按发布批次迁移"]
   Upgrade --> Web["web:install --force · 更新页面"]
 ```
 

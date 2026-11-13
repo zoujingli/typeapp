@@ -24,7 +24,7 @@ flowchart TD
 
 `ApplicationContext` 只保存启动路径、开发模式及配置快照，按需读取同一个 `Repository`，不持有连接、Model 或当前身份。控制器通过构造参数取得服务和固定配置；原来未使用的 `DatabaseManager` 参数与手写控制器工厂已删除。数据库管理器由角色创建并 `Db::configure()`，业务连接归当前执行作用域，角色退出再关闭管理器。
 
-`serve`、`broker:serve`、`iot:mqtt`、`broker:run` 属于 bootstrap 宿主分派，继续列在应用 `help` 中。它们需要拥有 Swoole Server 的外层事件循环，不能注册成会自动进入命令协程的普通命令。`inspect` 的 commands 清单因此只表示生成命令图；HTTP 列表表示同一宿主登记的路由。此边界与应用模板一致。HTTP 业务工厂仍来自生成图，在实际 worker 的请求 scope 中解析，不把主线程活动对象传给线程。
+`serve`、`broker:run`、`center:mqtt`、`broker:store` 和 `center:mqtt-store` 属于 bootstrap 宿主分派，继续列在应用 `help` 中。它们需要拥有 Swoole Server 的外层事件循环，不能注册成会自动进入命令协程的普通命令。`inspect` 的 commands 清单因此只表示生成命令图；HTTP 列表表示同一宿主登记的路由。此边界与应用模板一致。HTTP 业务工厂仍来自生成图，在实际 worker 的请求 scope 中解析，不把主线程活动对象传给线程。
 
 其他现有管理及后台命令通过生成的命令服务执行。`check` 的内部登记名是 `app:check`，避免与框架离线检查保留名冲突；用户入口仍为 `check`。离线 `help` 不加载 Composer、运行配置或数据库，`check` 只核对配置而不建立外部连接。
 
@@ -36,16 +36,16 @@ flowchart TD
 
 生成动作负责有界读取、分源解析和 Schema 校验。`JsonBody` 仅保留业务已有的 JSON 媒体类型与空正文错误，不再次消费正文。额外字段明确拒绝；PATCH 的 `Data::has()` 保留“未提供”，显式 null 依照字段规则拒绝。产品的版本不能省略，省略名称或描述不清空原值。
 
-身份域仍由固定路由确定；客户路径租户必须匹配 `X-Tenant-Id`，当前权限、成员有效性、乐观版本和审计事务仍由原服务检查。输入 DTO 不承载可信身份，不允许覆盖数据源、配置或角色。站点公开投影与 `no-store` 响应保持原行为。
+身份域仍由固定路由或登记域名确定；客户端不能通过 `X-Tenant-Id` 等请求头建立或切换 Tenant，当前权限、账号状态、乐观版本和审计事务仍由服务检查。输入 DTO 不承载可信身份，不允许覆盖数据源、配置或角色。站点公开投影与 `no-store` 响应保持原行为。
 
 ## 后台声明与恢复
 
 | 角色 | 入口 | 所有权 |
 | --- | --- | --- |
-| 原始通信 | `iot:mqtt` | Broker 持有监听、会话与有界协议状态，认证和持久操作经受控 worker 执行 |
-| 协议存储与授权 | `iot:mqtt-store` / `iot:mqtt-access` | 仅由当前宿主管理的内部命令，独立作用域借用数据库，退出时归还 |
+| 原始通信 | `center:mqtt` / `broker:run` | MQTT 节点持有监听、会话与有界协议状态，认证和持久操作经受控 worker 执行 |
+| 协议存储与授权 | `center:mqtt-store` / `broker:store` | 仅由当前宿主管理的内部命令，独立作用域借用数据库，退出时归还 |
 | 审计维护 | `app:schedule`；`audit.admin` / `audit.customer` | 保留每 60 秒计划、skip 错过策略、Redis 游标及独立 occurrence scope |
-| 升级与恢复 | `app:upgrade` / `iot:recovery` | 停写维护、分批可续跑、固定备份及当前授权证据 |
+| 恢复核对 | `center:recovery` | 停服维护、分批核对、固定清单及当前授权证据 |
 
 当前应用不再登记业务消息 Job。退出的通知、导出、遥测和统计角色不由计划任务重新拉起；框架的 Queue、Outbox、Job 注册和 Scheduler 机制仍由独立组件与教程消费。默认 profile 保留 `web,mqtt,iot,scheduler`，因维护调度仍使用 Redis 而保留相应原生依赖。
 
