@@ -4,7 +4,7 @@
 
 ## 固定输入与构建
 
-当前入口固定 PHP 8.5.10 ZTS、非调试 ABI 和 libsodium 1.0.22，下载前后核对脚本中的 SHA-256。需要同一 SDK 的 `php/phpize/php-config`，以及 C 编译器、make、autoconf、pkg-config、tar、curl 和平台库检查工具。PHP 版本、ZTS、debug、CPU 架构任一不匹配，都不能混用模块。
+当前入口固定 PHP 8.5.12 ZTS、非调试 ABI 和 libsodium 1.0.22，下载前后核对脚本中的 SHA-256。需要同一 SDK 的 `php/phpize/php-config`，以及 C 编译器、make、autoconf、pkg-config、tar、curl 和平台库检查工具。PHP 版本、ZTS、debug、CPU 架构任一不匹配，都不能混用模块。
 
 在 TypeApp 主仓执行，`PHP_HOME` 指向已准备的匹配 SDK。输出目录必须尚不存在，其父目录已存在：
 

@@ -42,7 +42,7 @@ jobs:
           mkdir -p build
           docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
             -e PHP_HOME=/usr/local \
-            php:8.5.10-zts-bookworm@sha256:6d417535666c59c08d2e448faaa3571ec0762da197c503df31ee23c73a3c27a3 \
+            php:8.5.12-zts-bookworm@sha256:6d417535666c59c08d2e448faaa3571ec0762da197c503df31ee23c73a3c27a3 \
             bash -euo pipefail -c '
               apt-get update
               apt-get install --yes libpq-dev libsqlite3-dev libc-ares-dev libcurl4-openssl-dev libssl-dev libbrotli-dev pkg-config
@@ -76,7 +76,7 @@ jobs:
           path: |
             .cache/macos-locked-php
             .cache/macos-locked-php-build
-          key: locked-macos-php-8.5.10-zts-signals-${{ hashFiles('tools/install-locked-macos-php.sh') }}
+          key: locked-macos-php-8.5.12-zts-signals-${{ hashFiles('tools/install-locked-macos-php.sh') }}
       - name: 固定 PHP ABI 并隐藏链接原生子依赖
         run: |
           task_bison="$(brew --prefix bison)"

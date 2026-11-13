@@ -163,7 +163,7 @@ $databases = new \Type\Orm\DatabaseManager([
 
 当前 `DatabaseManager → Database → ResourcePool → PdoSession` 已提供容量、等待、租约、凭据轮换和执行者校验。`PdoSession::reset()` 先处理结果流和未结束事务，再由驱动确认会话是否可以保留。PostgreSQL 执行 `DISCARD ALL` 并恢复配置基线后复用物理 PDO；MySQL、SQLite 当前归还即断开。池容量、空闲上限与物理复用是不同概念，空闲槽位复用不等于物理连接复用。
 
-不通过 `PDO::ATTR_PERSISTENT` 绕过归还检查。锁定 PHP 8.5.10 的 [PDO MySQL 接口](https://github.com/php/php-src/blob/php-8.5.10/ext/pdo_mysql/pdo_mysql.stub.php)没有暴露完整会话重置能力；[mysqlnd 的持久会话清理](https://github.com/php/php-src/blob/php-8.5.10/ext/mysqlnd/mysqlnd_connection.c)只清理客户端结果等状态，不能证明服务器端变量、临时表和命名锁均已恢复。Swoole hook 负责数据库等待时让出协程，也不会替 PDO 完成上述重置。因此当前 MySQL 驱动保持非持久连接并在归还时关闭；补齐可靠重置及真实驱动验收后，才允许改变该策略。
+不通过 `PDO::ATTR_PERSISTENT` 绕过归还检查。锁定 PHP 8.5.12 的 [PDO MySQL 接口](https://github.com/php/php-src/blob/php-8.5.12/ext/pdo_mysql/pdo_mysql.stub.php)没有暴露完整会话重置能力；[mysqlnd 的持久会话清理](https://github.com/php/php-src/blob/php-8.5.12/ext/mysqlnd/mysqlnd_connection.c)只清理客户端结果等状态，不能证明服务器端变量、临时表和命名锁均已恢复。Swoole hook 负责数据库等待时让出协程，也不会替 PDO 完成上述重置。因此当前 MySQL 驱动保持非持久连接并在归还时关闭；补齐可靠重置及真实驱动验收后，才允许改变该策略。
 
 目标是在既有池中复用经过验证的干净 PDO 会话，避免普通模型操作反复认证建连。池容量、空闲上限和等待期限保持有界；归还必须关闭结果游标、处理未结束事务、清除本次作用域引用并恢复驱动声明的会话基线。会话修改、不可确认的状态、失效连接、重置失败和旧凭据代次均不能作为正常空闲连接再次借出，必须隔离并关闭。
 

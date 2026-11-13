@@ -152,14 +152,14 @@ def vcpkg_source_url(location):
 def library_sources(bundle, project, sdk, metadata, temporary, dependencies):
     """收集 LGPL 对应源码及实际构建配方；其余库保留可重链接 SDK 和原许可。"""
     sources = {}
-    php_checksum = "6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957"
+    php_checksum = "08bc2eba2a588654ade1357174aa646b761556c862dda0678345ee29ed481209"
     recorded_php = metadata["sources"].get("php", {}).get("archive-sha256") or metadata["sources"].get("php.tar.xz", {}).get("sha256")
     if recorded_php != php_checksum:
         raise ValueError("PHP 对应源码摘要与 SDK 来源不一致")
-    php = temporary / "php-8.5.10.tar.xz"
-    download("https://www.php.net/distributions/php-8.5.10.tar.xz", php, php_checksum)
+    php = temporary / "php-8.5.12.tar.xz"
+    download("https://www.php.net/distributions/php-8.5.12.tar.xz", php, php_checksum)
     bundle.add(php, "rebuild/native-sources/" + php.name)
-    sources["PHP/libmbfl"] = {"file": php.name, "version": "8.5.10", "license": "LGPL-2.1-or-later (libmbfl)"}
+    sources["PHP/libmbfl"] = {"file": php.name, "version": "8.5.12", "license": "LGPL-2.1-or-later (libmbfl)"}
     family = metadata["os"]
     if family == "Darwin":
         for name in ("gmp", "mpfr"):
@@ -239,7 +239,7 @@ def create(project, sdk, output, version, platform, dependencies=None):
     metadata_path = sdk / "manifest.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8-sig"))
     target = {"Darwin": "macos-arm64", "Windows": "windows-x64", "Linux": "linux-arm64" if metadata["architecture"] in ("arm64", "aarch64") else "linux-x64"}
-    if target.get(metadata["os"]) != platform or metadata["php"] != "8.5.10" or metadata["zts"] is not True:
+    if target.get(metadata["os"]) != platform or metadata["php"] != "8.5.12" or metadata["zts"] is not True:
         raise ValueError("重建材料平台或 PHP ABI 与 SDK 不一致")
     for name, notice in metadata["notices"].items():
         license_text = json.dumps(notice["license"])

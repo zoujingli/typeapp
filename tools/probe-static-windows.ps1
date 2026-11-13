@@ -65,9 +65,9 @@ function Get-StaticSource {
     }
     Write-StaticStage ('source ready: ' + $Name)
 }
-Get-StaticSource 'https://www.php.net/distributions/php-8.5.10.tar.xz' '6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957' 'php.tar.xz'
+Get-StaticSource 'https://www.php.net/distributions/php-8.5.12.tar.xz' '08bc2eba2a588654ade1357174aa646b761556c862dda0678345ee29ed481209' 'php.tar.xz'
 Get-StaticSource 'https://codeload.github.com/php/php-sdk-binary-tools/zip/1142e4abaf90ceb6cc25d983797b25cc948669cf' '083324ab6ad0f5b8727539d717600ab0f29a2fe84bd147095cf0b115a63a45c4' 'tools.zip'
-$taskSource = Join-Path $taskWork 'php-8.5.10'
+$taskSource = Join-Path $taskWork 'php-8.5.12'
 $taskTools = Join-Path $taskWork 'php-sdk-binary-tools-1142e4abaf90ceb6cc25d983797b25cc948669cf'
 $env:PATH = (Join-Path $taskTools 'bin') + ';' + (Join-Path $taskTools 'msys2/usr/bin') + ';' + $env:PATH
 
@@ -166,8 +166,8 @@ if ($taskRuntime -ne ($DependencyVerification -ne '')) { throw '静态依赖和�
 if ($WithPhpx -and !$taskRuntime) { throw 'PHPX 探针必须先启用并验证完整静态扩展。' }
 if ($taskRuntime) {
     # 仅作为制备控制器，不加入目标链接输入。先解析应用能力，再决定扩展源码。
-    Get-StaticSource 'https://github.com/swoole/typephp/releases/download/v0.9.0/tpc_v0.9.0_windows_x64.zip' '187c2ca1644b37163d5f67725a29752f91da9e058583a8d3e471a71703570ff6' 'host.zip'
-    $taskHostPhp = Join-Path $taskWork 'tpc_v0.9.0_windows_x64/php.exe'
+    Get-StaticSource 'https://github.com/swoole/typephp/releases/download/v0.10.1/tpc_v0.10.1_windows_x64_php8.5.12-zts.zip' '6dadc7caab3005868428c071494c0a06b6458e2d4dd2f81611b0aafadfb47cef' 'host.zip'
+    $taskHostPhp = Join-Path $taskWork 'tpc_v0.10.1_windows_x64_php8.5.12-zts/php.exe'
     $taskFeatures = & $taskHostPhp -n (Join-Path $PSScriptRoot 'build-profile.php') $Profile
     if ($LASTEXITCODE -ne 0) { throw '应用 profile 闭包解析失败。' }
     $env:TYPEAPP_BUILD_FEATURES = $taskFeatures
@@ -284,7 +284,7 @@ try {
 } finally { $env:PATH = $taskOldPath }
 $taskProfile = ($taskOutput -join "`n") | ConvertFrom-Json
 $taskOutput | Set-Content -LiteralPath (Join-Path $taskEvidence 'runtime.json') -Encoding utf8
-if ($taskProfile.php -ne '8.5.10' -or !$taskProfile.zts -or $taskProfile.sapi -ne 'embed' -or
+if ($taskProfile.php -ne '8.5.12' -or !$taskProfile.zts -or $taskProfile.sapi -ne 'embed' -or
     ![string]::Equals([IO.Path]::GetFullPath($taskProfile.'core-library'), (Join-Path $taskDeploy 'probe.exe'), [StringComparison]::OrdinalIgnoreCase)) {
     throw '实际 PHP 核心未位于静态主程序内。'
 }

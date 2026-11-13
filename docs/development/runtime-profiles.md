@@ -43,7 +43,7 @@ Composer生产依赖的`ext-*`要求自动参与探测。构建器读取构建 P
 
 共享候选的SHA256是调用方固定输入的依据，不独立证明来源真实。模块必须来自可信且匹配的SDK；构建不会自动下载扩展。扩展依赖元数据来自构建 PHP，不能证明另一份候选模块已经可用；候选特有且未声明的依赖、不是正常PHP扩展的库或不兼容ABI，仍由实际加载失败或警告拒绝。构建 PHP 尚未加载的候选若有额外依赖，需在 `runtime.extensions` 中明确补齐。Zend扩展、WASI等不同加载模型没有由本机制自动获得支持。
 
-探针在自己的C进程中设置PHPRC/扫描目录，避免让构建用PHP CLI误加载只属于embed的共享模块。它只查询运行时注册信息，不执行PHP脚本；这与把业务交给解释器运行是不同路径。[锁定PHP embed实现](https://github.com/php/php-src/blob/php-8.5.10/sapi/embed/php_embed.c)
+探针在自己的C进程中设置PHPRC/扫描目录，避免让构建用PHP CLI误加载只属于embed的共享模块。它只查询运行时注册信息，不执行PHP脚本；这与把业务交给解释器运行是不同路径。[锁定PHP embed实现](https://github.com/php/php-src/blob/php-8.5.12/sapi/embed/php_embed.c)
 
 ## 产物与运行
 

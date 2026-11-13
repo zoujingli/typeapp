@@ -4,7 +4,7 @@ set -euo pipefail
 task_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 task_sdk="${PHP_HOME:?需要锁定 PHP SDK}"
 task_version="$("$task_sdk/bin/php-config" --version)"
-test "$task_version" = 8.5.10
+test "$task_version" = 8.5.12
 task_work="$task_root/.cache/embed-runtime/$task_version"
 mkdir -p "$task_work/php.d"
 read -r -a task_includes <<< "$("$task_sdk/bin/php-config" --includes)"
@@ -36,11 +36,11 @@ esac
 
 # 官方 CLI 专有模块不一定静态编入 embed；使用同一版本源码构建共享 pcntl。
 if [[ ! -f "$task_work/pcntl.so" ]]; then
-  task_archive="$task_work/php-8.5.10.tar.xz"
-  curl --fail --location --silent --show-error --retry 3 https://www.php.net/distributions/php-8.5.10.tar.xz --output "$task_archive"
-  printf '%s  %s\n' 6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957 "$task_archive" | sha256sum --check >&2
-  tar -xJf "$task_archive" -C "$task_work" php-8.5.10/ext/pcntl
-  task_configure="$task_work/php-8.5.10/ext/pcntl"
+  task_archive="$task_work/php-8.5.12.tar.xz"
+  curl --fail --location --silent --show-error --retry 3 https://www.php.net/distributions/php-8.5.12.tar.xz --output "$task_archive"
+  printf '%s  %s\n' 08bc2eba2a588654ade1357174aa646b761556c862dda0678345ee29ed481209 "$task_archive" | sha256sum --check >&2
+  tar -xJf "$task_archive" -C "$task_work" php-8.5.12/ext/pcntl
+  task_configure="$task_work/php-8.5.12/ext/pcntl"
   (cd "$task_configure" && phpize && ./configure --with-php-config="$task_sdk/bin/php-config" --enable-pcntl=shared && make -j2) >&2
   cp "$task_configure/modules/pcntl.so" "$task_work/pcntl.so"
 fi

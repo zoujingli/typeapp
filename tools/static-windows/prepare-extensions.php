@@ -4,8 +4,8 @@ declare(strict_types=1);
 use Type\Build\SwooleSocketSource;
 
 // 仅在任务内源码树应用固定适配；不读取或修改宿主 PHP SDK。
-if ($argc !== 3 || PHP_VERSION !== '8.5.10' || !PHP_ZTS) {
-    throw new InvalidArgumentException('需要锁定 PHP 8.5.10 ZTS、目标 PHP 源码目录和报告路径');
+if ($argc !== 3 || PHP_VERSION !== '8.5.12' || !PHP_ZTS) {
+    throw new InvalidArgumentException('需要锁定 PHP 8.5.12 ZTS、目标 PHP 源码目录和报告路径');
 }
 $root = dirname(__DIR__, 2);
 $source = $argv[1];

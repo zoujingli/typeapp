@@ -11,7 +11,7 @@ $lockPath = Join-Path $taskRoot 'composer.lock'
 if (!(Test-Path -LiteralPath $lockPath)) { throw 'composer.lock is required to prepare the locked Windows toolchain.' }
 $lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
 $typePhpPackage = @($lock.'packages-dev' | Where-Object { $_.name -eq 'swoole/typephp' }) | Select-Object -First 1
-if (!$typePhpPackage -or $typePhpPackage.version -ne 'dev-master' -or $typePhpPackage.dist.reference -ne '840c626c2505d2214708d129557adef3604a3576') {
+if (!$typePhpPackage -or $typePhpPackage.version -ne 'dev-master' -or $typePhpPackage.dist.reference -ne 'c5599c5c9e8597e7124dd79db94739cabe39c526') {
     throw 'composer.lock must select the pinned TypePHP master commit.'
 }
 
@@ -47,14 +47,13 @@ function Get-VerifiedDownload {
     throw $lastError
 }
 
-# 当前编译器没有发布 PHP 8.5.10 的 Windows SDK 包；此处只把 0.9.0
-# 发行包当作已核验的 PHP 8.5.10 ZTS SDK 载体。编译器身份由上面的
+# TypePHP v0.10.1 发布包提供匹配 PHP 8.5.12 的 Windows ZTS SDK 载体。编译器身份由上面的
 # composer.lock 校验决定，PHPX 和 Swoole 随当前固定源码在本任务内重建。
-$archive = Join-Path $Directory 'php-8.5.10-sdk-carrier.zip'
-Get-VerifiedDownload 'https://github.com/swoole/typephp/releases/download/v0.9.0/tpc_v0.9.0_windows_x64.zip' $archive
-if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne '187c2ca1644b37163d5f67725a29752f91da9e058583a8d3e471a71703570ff6') { throw 'TypePHP SDK checksum mismatch.' }
+$archive = Join-Path $Directory 'php-8.5.12-sdk-carrier.zip'
+Get-VerifiedDownload 'https://github.com/swoole/typephp/releases/download/v0.10.1/tpc_v0.10.1_windows_x64_php8.5.12-zts.zip' $archive
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne '6dadc7caab3005868428c071494c0a06b6458e2d4dd2f81611b0aafadfb47cef') { throw 'TypePHP SDK checksum mismatch.' }
 Expand-Archive -LiteralPath $archive -DestinationPath $Directory
-$sdk = Join-Path $Directory 'tpc_v0.9.0_windows_x64'
+$sdk = Join-Path $Directory 'tpc_v0.10.1_windows_x64_php8.5.12-zts'
 # 发行包把 DLL 放在顶层，锁定编译器要求 PHPX_HOME/build；只保留一个运行库位置。
 $phpxBuild = Join-Path $sdk 'phpx\build'
 $packagedPhpx = Join-Path $sdk 'phpx.dll'
@@ -96,9 +95,9 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
         if ($LASTEXITCODE -ne 0) { throw ('PHP SDK 构建工具不能运行：' + $taskTool) }
     }
     $taskDevelArchive = Join-Path $Directory 'php-devel.zip'
-    Get-VerifiedArchive 'https://downloads.php.net/~windows/releases/archives/php-devel-pack-8.5.10-Win32-vs17-x64.zip' '0031d279f13f21e81fd62f9a98e919f28b1875ba457916d60daed85586e479dd' $taskDevelArchive
+    Get-VerifiedArchive 'https://downloads.php.net/~windows/releases/archives/php-devel-pack-8.5.12-Win32-vs17-x64.zip' '82977ddb4cc7173a3e34822e4ceb72d2d942b8d7ed01ce302d1c59b494425aef' $taskDevelArchive
     Expand-Archive -LiteralPath $taskDevelArchive -DestinationPath (Join-Path $Directory 'php-devel')
-    $taskDevel = Join-Path $Directory 'php-devel/php-8.5.10-devel-vs17-x64'
+    $taskDevel = Join-Path $Directory 'php-devel/php-8.5.12-devel-vs17-x64'
 }
 $taskDependencies = @{
     'openssl-3.5.7-vs17-x64.zip' = 'bc86233e1f0826b0e0c8b745ed5221a781a1d403c6f69bb8fbe086e07dd3979e'
@@ -202,7 +201,7 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
     if ($LASTEXITCODE -ne 0 -or !$taskBundledSwoole -or !(Test-Path -LiteralPath $taskBundledSwoole -PathType Leaf)) { throw '项目内置 Swoole 校验失败。' }
     Copy-Item -LiteralPath $taskBundledSwoole -Destination (Join-Path $sdk 'ext/php_swoole.dll')
     Copy-Item -LiteralPath (Join-Path $taskRoot 'plugin/type-build/resources/swoole/manifest.json') -Destination (Join-Path $taskEvidence 'swoole-bundle.json')
-    $taskSourceDependencies = (Get-Content -LiteralPath (Join-Path $taskEvidence 'swoole-bundle.json') -Raw | ConvertFrom-Json).modules.'Windows-x64-8.5.10-zts'.build.'source-dependencies'
+    $taskSourceDependencies = (Get-Content -LiteralPath (Join-Path $taskEvidence 'swoole-bundle.json') -Raw | ConvertFrom-Json).modules.'Windows-x64-8.5.12-zts'.build.'source-dependencies'
     $taskToolsReference = $null
     $taskToolsDigest = $null
     Write-Host '已复用项目内置 Swoole，无需下载或编译 Swoole 源码。'
@@ -256,8 +255,8 @@ foreach ($key in $settings.Keys) {
 }
 Add-Content -LiteralPath $env:GITHUB_PATH -Value $sdk -Encoding utf8
 Add-Content -LiteralPath $env:GITHUB_PATH -Value $phpxBuild -Encoding utf8
-& (Join-Path $sdk 'php.exe') -r 'if(PHP_VERSION!=="8.5.10" || !PHP_ZTS || PHP_INT_SIZE!==8){exit(1);} foreach(["dom","mbstring","pdo_mysql","pdo_pgsql","pdo_sqlite","redis","swoole"] as $e){if(!extension_loaded($e)){fwrite(STDERR,"missing ".$e);exit(1);}} if(phpversion("redis")!=="6.3.0" || version_compare(phpversion("swoole"),"6.2","<") || version_compare(phpversion("swoole"),"7",">=") || !filter_var(ini_get("swoole.enable_library"),FILTER_VALIDATE_BOOL)){exit(1);} echo PHP_VERSION," ZTS x64 SDK verified; Swoole ",phpversion("swoole"),"\n";'
+& (Join-Path $sdk 'php.exe') -r 'if(PHP_VERSION!=="8.5.12" || !PHP_ZTS || PHP_INT_SIZE!==8){exit(1);} foreach(["dom","mbstring","pdo_mysql","pdo_pgsql","pdo_sqlite","redis","swoole"] as $e){if(!extension_loaded($e)){fwrite(STDERR,"missing ".$e);exit(1);}} if(phpversion("redis")!=="6.3.0" || version_compare(phpversion("swoole"),"6.2","<") || version_compare(phpversion("swoole"),"7",">=") || !filter_var(ini_get("swoole.enable_library"),FILTER_VALIDATE_BOOL)){exit(1);} echo PHP_VERSION," ZTS x64 SDK verified; Swoole ",phpversion("swoole"),"\n";'
 if ($LASTEXITCODE -ne 0) { throw 'The real Windows PHP runtime did not match the SDK contract.' }
 & (Join-Path $sdk 'php.exe') -r 'if(!method_exists(Swoole\Thread::class,"startNative") || Swoole\Thread::NATIVE_ENTRY_ABI!==2 || !defined("SWOOLE_HOOK_PDO_PGSQL") || !defined("SWOOLE_HOOK_PDO_SQLITE")){exit(1);}'
 if ($LASTEXITCODE -ne 0) { throw 'Swoole 原生线程 ABI 或 PDO hook 不完整。' }
-@{ platform='Windows'; architecture='x64'; php='8.5.10'; sdk_tools_source=$taskToolsReference; sdk_tools_sha256=$taskToolsDigest; swoole_source=$taskSwooleReference; swoole_sha256=(Get-FileHash -LiteralPath (Join-Path $sdk 'ext/php_swoole.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); phpx_source='13cf717579b216d4a4fa49fe4439573b4d072e71'; phpx_sha256=(Get-FileHash -LiteralPath (Join-Path $phpxBuild 'phpx.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); dependencies=$taskDependencies; source_dependencies=$taskSourceDependencies; passed=$true } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8
+@{ platform='Windows'; architecture='x64'; php='8.5.12'; sdk_tools_source=$taskToolsReference; sdk_tools_sha256=$taskToolsDigest; swoole_source=$taskSwooleReference; swoole_sha256=(Get-FileHash -LiteralPath (Join-Path $sdk 'ext/php_swoole.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); phpx_source='13cf717579b216d4a4fa49fe4439573b4d072e71'; phpx_sha256=(Get-FileHash -LiteralPath (Join-Path $phpxBuild 'phpx.dll') -Algorithm SHA256).Hash.ToLowerInvariant(); dependencies=$taskDependencies; source_dependencies=$taskSourceDependencies; passed=$true } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskEvidence 'verification.json') -Encoding utf8

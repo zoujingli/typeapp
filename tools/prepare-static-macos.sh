@@ -47,12 +47,12 @@ source_archive() {
     printf '%s  %s\n' "$task_sha" "$task_file" | shasum -a 256 --check >&2
     tar -xf "$task_file" -C "$task_work/src"
 }
-source_archive "${TYPE_STATIC_PHP_ARCHIVE:-}" php-8.5.10.tar.xz https://www.php.net/distributions/php-8.5.10.tar.xz 6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957
+source_archive "${TYPE_STATIC_PHP_ARCHIVE:-}" php-8.5.12.tar.xz https://www.php.net/distributions/php-8.5.12.tar.xz 08bc2eba2a588654ade1357174aa646b761556c862dda0678345ee29ed481209
 if [[ "$task_redis_enabled" == 1 ]]; then
     source_archive "${TYPE_STATIC_REDIS_ARCHIVE:-}" redis-6.3.0.tgz https://pecl.php.net/get/redis-6.3.0.tgz 0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5
 fi
 source_archive "${TYPE_STATIC_SWOOLE_ARCHIVE:-}" swoole.tar.gz https://codeload.github.com/swoole/swoole-src/tar.gz/64988849fa898e510a38039912610cab6e9cf3f5 d4e9e5bff6f19430e69425ddf2b485c045a5b0c2551af38b5efd6f79d1fe30a1
-task_source="$task_work/src/php-8.5.10"
+task_source="$task_work/src/php-8.5.12"
 if [[ "$task_redis_enabled" == 1 ]]; then
     mv "$task_work/src/redis-6.3.0" "$task_source/ext/redis"
 fi
@@ -142,7 +142,7 @@ fi
     make "${task_release_flags[@]}"
     make "${task_release_flags[@]}" install
 ) >&2
-# PHP 8.5.10 已包含该 C++ 转换；旧 SDK 才需要补丁，禁止 patch 自动反向应用。
+# PHP 8.5.12 已包含该 C++ 转换；旧 SDK 才需要补丁，禁止 patch 自动反向应用。
 if ! grep -Fq 'char *base = (char *) ecalloc(1, ops->context_size + align);' "$task_sdk/include/php/ext/hash/php_hash.h"; then
     patch --forward --batch --directory="$task_sdk/include/php" --strip=1 < "$task_root/tools/php-hash-cxx.patch" >&2
 fi

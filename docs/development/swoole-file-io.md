@@ -34,7 +34,7 @@ FILE hook 不涵盖 PHP 的所有文件函数。PHP 8.5 对普通本地路径的
 
 ## 验收与未完成项
 
-项目根使用已经核验的 `PHP_HOME`、`PHPX_HOME` 运行。命令中的 `php` 必须是锁定 SDK 的 PHP 8.5.10 ZTS；只设置 `PHP_HOME` 而继续使用版本不符的系统 PHP，会在编译前被拒绝：
+项目根使用已经核验的 `PHP_HOME`、`PHPX_HOME` 运行。命令中的 `php` 必须是锁定 SDK 的 PHP 8.5.12 ZTS；只设置 `PHP_HOME` 而继续使用版本不符的系统 PHP，会在编译前被拒绝：
 
 ```sh
 task_dir="$(mktemp -d build/io-files.XXXXXX)"

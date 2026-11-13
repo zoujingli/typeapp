@@ -13,10 +13,10 @@ use Type\Testing\Process;
 
 // Unix SDK 制备入口：登记本轮构建的归档、目标头文件和许可原文。
 // 不能用清单生成或归档后缀代替最终应用的静态加载及业务验收。
-if (($argc !== 3 && $argc !== 4) || !in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true) || PHP_VERSION !== '8.5.10' || !PHP_ZTS
+if (($argc !== 3 && $argc !== 4) || !in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true) || PHP_VERSION !== '8.5.12' || !PHP_ZTS
     || (PHP_OS_FAMILY === 'Darwin' && php_uname('m') !== 'arm64')
     || (PHP_OS_FAMILY === 'Linux' && !in_array(php_uname('m'), ['x86_64', 'aarch64'], true))) {
-    throw new InvalidArgumentException('用法：锁定 PHP 8.5.10 ZTS static-runtime-manifest.php <制备工作目录> <PostgreSQL静态SDK根目录> [sqlite|mysql|pgsql|all]');
+    throw new InvalidArgumentException('用法：锁定 PHP 8.5.12 ZTS static-runtime-manifest.php <制备工作目录> <PostgreSQL静态SDK根目录> [sqlite|mysql|pgsql|all]');
 }
 $root = dirname(__DIR__);
 $work = BuildPlatform::resolve($argv[1]);
@@ -33,7 +33,7 @@ $features = explode(',', trim($featureResult->stdout));
 $redisEnabled = in_array('redis', $features, true);
 $intlEnabled = in_array('intl', $features, true);
 $sdk = $work . '/sdk';
-$php = $work . '/src/php-8.5.10';
+$php = $work . '/src/php-8.5.12';
 $phpx = $work . '/src/phpx';
 $materials = $root . '/plugin/type-build/resources/swoole/LICENSES';
 $notices = [];
@@ -99,7 +99,7 @@ foreach (['LICENSE', 'thirdparty/nlohmann/LICENSE.MIT', 'thirdparty/php/LICENSE'
     $documents[] = staticSdkDocument($sdk, $php . '/ext/swoole/' . $name, 'swoole/' . $name);
 }
 $notices['libphp.a'] = ['component' => $redisEnabled ? 'PHP、Swoole、phpredis 及随附代码' : 'PHP、Swoole 及随附代码',
-    'version' => $redisEnabled ? 'PHP 8.5.10; Swoole 6.3.0RC1; phpredis 6.3.0' : 'PHP 8.5.10; Swoole 6.3.0RC1',
+    'version' => $redisEnabled ? 'PHP 8.5.12; Swoole 6.3.0RC1; phpredis 6.3.0' : 'PHP 8.5.12; Swoole 6.3.0RC1',
     'license' => ['PHP-3.01', 'BSD-3-Clause', 'BSD-2-Clause', 'MIT', 'Apache-2.0', 'BSL-1.0'], 'files' => $documents];
 $documents = [];
 foreach (['LICENSE', 'thirdparty/mpdecimal/COPYRIGHT.txt', 'thirdparty/wren-gc/LICENSE'] as $name) {
@@ -230,7 +230,7 @@ $manifest = ['protocol' => 1, 'profile' => $profile, 'php' => PHP_VERSION, 'zts'
     'integer-size' => PHP_INT_SIZE, 'os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
     'archives' => $archives, 'headers' => array_values($headers), 'notices' => $notices, 'patches' => [],
     'sources' => [
-        'php' => ['version' => '8.5.10', 'archive-sha256' => '6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957'],
+        'php' => ['version' => '8.5.12', 'archive-sha256' => '08bc2eba2a588654ade1357174aa646b761556c862dda0678345ee29ed481209'],
         'swoole' => StaticRuntimeSdk::swooleSource(),
         'phpx' => ['reference' => InstalledVersions::getReference('swoole/phpx')],
     ], 'dependency-inputs' => $dependencies, 'features' => $features,

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# 在 Linux CI 上安装工具链锁定的 PHP 8.5.10 ZTS + embed。
-# setup-php 对 ZTS 只认主版本并拉取 php-builder 当前补丁（现为 8.5.11），
+# 在 Linux CI 上安装工具链锁定的 PHP 8.5.12 ZTS + embed。
+# setup-php 对 ZTS 只认主版本并拉取 php-builder 当前补丁，不能证明 8.5.12；
 # 与 macOS 固定 Homebrew 瓶同理，这里从官方源码构建锁定补丁。
 # 标准输出仅打印安装前缀；构建日志一律写入 stderr，避免被命令替换吞进 PATH。
 set -euo pipefail
 
 task_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-task_lock_php='8.5.10'
-task_archive_sha='6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957'
+task_lock_php='8.5.12'
+task_archive_sha='08bc2eba2a588654ade1357174aa646b761556c862dda0678345ee29ed481209'
 task_prefix="${1:-$task_root/.cache/php-sdk/${task_lock_php}-zts}"
 task_work="${TYPE_LOCKED_PHP_WORK:-$task_root/.cache/php-sdk-build/${task_lock_php}-zts}"
 
@@ -102,6 +102,6 @@ if ! "$task_prefix/bin/php" -m 2>/dev/null | grep -qx redis; then
   printf 'extension=redis.so\n' > "$task_prefix/etc/php.d/redis.ini"
 fi
 
-"$task_prefix/bin/php" -r 'if (PHP_VERSION !== "8.5.10" || !PHP_ZTS || !extension_loaded("ctype") || !function_exists("ctype_digit") || !extension_loaded("curl") || !extension_loaded("pdo_mysql") || !extension_loaded("pdo_pgsql") || !extension_loaded("pdo_sqlite") || !extension_loaded("redis") || phpversion("redis") !== "6.3.0") { fwrite(STDERR, "锁定 PHP 扩展不完整\n"); exit(1); }' >&2
+"$task_prefix/bin/php" -r 'if (PHP_VERSION !== "8.5.12" || !PHP_ZTS || !extension_loaded("ctype") || !function_exists("ctype_digit") || !extension_loaded("curl") || !extension_loaded("pdo_mysql") || !extension_loaded("pdo_pgsql") || !extension_loaded("pdo_sqlite") || !extension_loaded("redis") || phpversion("redis") !== "6.3.0") { fwrite(STDERR, "锁定 PHP 扩展不完整\n"); exit(1); }' >&2
 
 printf '%s\n' "$task_prefix"

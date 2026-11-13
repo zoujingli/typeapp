@@ -15,7 +15,7 @@ export TYPEAPP_BUILD_FEATURES="$task_features"
 task_redis_enabled=0
 case ",$task_features," in *,redis,*) task_redis_enabled=1 ;; esac
 task_php="$PHP_HOME/bin/php"
-[[ "$("$task_php" -n -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')" == '8.5.10 zts' ]] || { echo '需要 PHP 8.5.10 ZTS 构建宿主。' >&2; exit 1; }
+[[ "$("$task_php" -n -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')" == '8.5.12 zts' ]] || { echo '需要 PHP 8.5.12 ZTS 构建宿主。' >&2; exit 1; }
 for task_tool in gcc g++ cmake make pkg-config autoconf bison re2c flex curl patch; do
     command -v "$task_tool" >/dev/null || { echo "缺少静态 SDK 构建工具：$task_tool" >&2; exit 1; }
 done
@@ -36,7 +36,7 @@ source_archive() {
     printf '%s  %s\n' "$task_sha" "$task_file" | sha256sum --check >&2
     tar -xf "$task_file" -C "$task_work/src"
 }
-source_archive "${TYPE_STATIC_PHP_ARCHIVE:-}" php-8.5.10.tar.xz https://www.php.net/distributions/php-8.5.10.tar.xz 6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957
+source_archive "${TYPE_STATIC_PHP_ARCHIVE:-}" php-8.5.12.tar.xz https://www.php.net/distributions/php-8.5.12.tar.xz 08bc2eba2a588654ade1357174aa646b761556c862dda0678345ee29ed481209
 if [[ "$task_redis_enabled" == 1 ]]; then
     source_archive "${TYPE_STATIC_REDIS_ARCHIVE:-}" redis-6.3.0.tgz https://pecl.php.net/get/redis-6.3.0.tgz 0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5
 fi
@@ -76,7 +76,7 @@ fi
     make install
 ) >&2
 
-task_source="$task_work/src/php-8.5.10"
+task_source="$task_work/src/php-8.5.12"
 if [[ "$task_redis_enabled" == 1 ]]; then
     mv "$task_work/src/redis-6.3.0" "$task_source/ext/redis"
 fi

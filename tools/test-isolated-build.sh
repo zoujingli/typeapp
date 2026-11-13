@@ -64,7 +64,7 @@ task_work="$(mktemp -d "$task_root/build/isolated-build-XXXXXX")"
 task_relative="${task_work#"$task_root/"}"
 # host 隔离用 env -i，必须自备受控 Swoole 与锁定 PHP 的扫描目录，不能依赖宿主 PHP_INI_SCAN_DIR。
 task_cli_d=""
-# configure-toolchain 的 PHP_HOME 可能是哈希目录；bin/php 常符号链接到 8.5.10-zts。
+# configure-toolchain 的 PHP_HOME 可能是哈希目录；bin/php 常符号链接到 8.5.12-zts。
 # bubblewrap 只绑定 PHP_HOME 时链接目标不可见，必须解析并额外绑定真实前缀。
 task_isolated_php="$(readlink -f "$task_php_home/bin/php")"
 [[ -x "$task_isolated_php" ]] || { echo "锁定 PHP 可执行文件不可用：$task_php_home/bin/php" >&2; exit 1; }

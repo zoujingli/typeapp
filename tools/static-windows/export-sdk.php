@@ -5,14 +5,14 @@ use Type\Build\BuildProfile;
 use Type\Build\StaticRuntimeSdk;
 
 // 仅导出本轮已实际链接并独立运行的归档；不把构建宿主 DLL 混入目标 SDK。
-if (($argc !== 4 && $argc !== 5) || PHP_OS_FAMILY !== 'Windows' || PHP_VERSION !== '8.5.10' || !PHP_ZTS) {
-    throw new InvalidArgumentException('需要 Windows PHP 8.5.10 ZTS、运行库工作目录、依赖目录、依赖验证报告和可选 profile');
+if (($argc !== 4 && $argc !== 5) || PHP_OS_FAMILY !== 'Windows' || PHP_VERSION !== '8.5.12' || !PHP_ZTS) {
+    throw new InvalidArgumentException('需要 Windows PHP 8.5.12 ZTS、运行库工作目录、依赖目录、依赖验证报告和可选 profile');
 }
 $root = dirname(__DIR__, 2);
 $work = str_replace('\\', '/', (string)realpath($argv[1]));
 $dependencies = str_replace('\\', '/', (string)realpath($argv[2]));
 $sdk = $work . '/sdk';
-$php = $work . '/php-8.5.10';
+$php = $work . '/php-8.5.12';
 $phpx = $work . '/phpx-13cf717579b216d4a4fa49fe4439573b4d072e71';
 if ($work === '' || $dependencies === '' || file_exists($sdk) || is_link($sdk)) {
     throw new RuntimeException('SDK 导出需要有效的任务输入和未使用的目标目录');
@@ -128,7 +128,7 @@ foreach (['LICENSE', 'thirdparty/nlohmann/LICENSE.MIT', 'thirdparty/php/LICENSE'
     $documents[] = exportSdkFile($php . '/ext/swoole/' . $name, $sdk, 'licenses/swoole/' . $name);
 }
 $notices = ['typeapp-static.lib' => ['component' => $redisEnabled ? 'PHP、Swoole、phpredis 及随附代码' : 'PHP、Swoole 及随附代码',
-    'version' => $redisEnabled ? 'PHP 8.5.10; Swoole 6.3.0RC1; phpredis 6.3.0' : 'PHP 8.5.10; Swoole 6.3.0RC1',
+    'version' => $redisEnabled ? 'PHP 8.5.12; Swoole 6.3.0RC1; phpredis 6.3.0' : 'PHP 8.5.12; Swoole 6.3.0RC1',
     'license' => ['PHP-3.01', 'BSD-3-Clause', 'BSD-2-Clause', 'MIT', 'Apache-2.0', 'BSL-1.0'], 'files' => $documents]];
 $phpxLicense = exportSdkFile($phpx . '/LICENSE', $sdk, 'licenses/phpx/LICENSE');
 $gcLicense = exportSdkFile($phpx . '/thirdparty/wren-gc/LICENSE', $sdk, 'licenses/phpx/wren-gc/LICENSE');

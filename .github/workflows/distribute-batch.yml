@@ -68,7 +68,7 @@ jobs:
           persist-credentials: false
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
         with:
-          php-version: '8.5.10'
+          php-version: '8.5.12'
           coverage: none
           tools: none
         env:
@@ -118,7 +118,7 @@ jobs:
           persist-credentials: false
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
         with:
-          php-version: '8.5.10'
+          php-version: '8.5.12'
           coverage: none
           extensions: dom, filter, mbstring, pdo_mysql, pdo_pgsql, pdo_sqlite, posix, pcntl, redis-6.3.0
           tools: composer:2.10.3
@@ -130,14 +130,14 @@ jobs:
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: |
-            .cache/php-sdk/8.5.10-zts
-            .cache/php-sdk-build/8.5.10-zts
-          key: locked-php-8.5.10-zts-${{ runner.os }}-${{ runner.arch }}-v6
-      - name: 换用工具链锁定的 PHP 8.5.10 ZTS
+            .cache/php-sdk/8.5.12-zts
+            .cache/php-sdk-build/8.5.12-zts
+          key: locked-php-8.5.12-zts-${{ runner.os }}-${{ runner.arch }}-v6
+      - name: 换用工具链锁定的 PHP 8.5.12 ZTS
         run: |
           set -euo pipefail
           task_php="$(php -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
-          if [[ "$task_php" != "8.5.10 zts" ]]; then
+          if [[ "$task_php" != "8.5.12 zts" ]]; then
             printf 'setup-php 实际版本为 %s，改用源码锁定安装\n' "$task_php"
             task_prefix="$(bash tools/install-locked-linux-php.sh)"
             [[ "$task_prefix" == /* && -x "$task_prefix/bin/php" ]]
@@ -146,7 +146,7 @@ jobs:
             hash -r
           fi
           task_php="$(php -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
-          [[ "$task_php" == "8.5.10 zts" ]] || { printf '锁定 PHP 未生效：%s\n' "$task_php" >&2; exit 1; }
+          [[ "$task_php" == "8.5.12 zts" ]] || { printf '锁定 PHP 未生效：%s\n' "$task_php" >&2; exit 1; }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: type-batch-result
@@ -213,7 +213,7 @@ jobs:
           persist-credentials: false
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
         with:
-          php-version: '8.5.10'
+          php-version: '8.5.12'
           coverage: none
           tools: none
         env:
@@ -263,7 +263,7 @@ jobs:
           persist-credentials: false
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
         with:
-          php-version: '8.5.10'
+          php-version: '8.5.12'
           coverage: none
           tools: none
         env:

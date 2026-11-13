@@ -28,7 +28,7 @@ for task_archive in "${TYPE_SODIUM_PHP_ARCHIVE:-}" "${TYPE_SODIUM_ARCHIVE:-}"; d
     [[ -z "$task_archive" || -f "$task_archive" ]] || { echo '指定的源码归档不存在，拒绝向该路径下载。' >&2; exit 1; }
 done
 task_version="$("$task_sdk/bin/php" -n -r 'echo PHP_VERSION, ":", (int) PHP_ZTS, ":", (int) PHP_DEBUG;')"
-[[ "$task_version" == '8.5.10:1:0' && "$("$task_sdk/bin/php-config" --version)" == '8.5.10' ]] || { echo '需要 PHP 8.5.10 ZTS 非调试 SDK。' >&2; exit 1; }
+[[ "$task_version" == '8.5.12:1:0' && "$("$task_sdk/bin/php-config" --version)" == '8.5.12' ]] || { echo '需要 PHP 8.5.12 ZTS 非调试 SDK。' >&2; exit 1; }
 for task_tool in curl tar make cc autoconf pkg-config nm; do command -v "$task_tool" >/dev/null || { echo "缺少构建工具：$task_tool" >&2; exit 1; }; done
 [[ "$task_root" != *[[:space:]]* ]] || { echo '上游 libtool 要求脚本所在检出路径不含空白；最终输出目录允许空格。' >&2; exit 1; }
 mkdir -p "$task_root/build"
@@ -56,9 +56,9 @@ source_archive() {
     tar -xf "$task_file" -C "$task_scratch/src"
 }
 
-task_php_archive="${TYPE_SODIUM_PHP_ARCHIVE:-$task_work/downloads/php-8.5.10.tar.xz}"
+task_php_archive="${TYPE_SODIUM_PHP_ARCHIVE:-$task_work/downloads/php-8.5.12.tar.xz}"
 task_sodium_archive="${TYPE_SODIUM_ARCHIVE:-$task_work/downloads/libsodium-1.0.22.tar.gz}"
-source_archive "$task_php_archive" 'https://www.php.net/distributions/php-8.5.10.tar.xz' '6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957'
+source_archive "$task_php_archive" 'https://www.php.net/distributions/php-8.5.12.tar.xz' '08bc2eba2a588654ade1357174aa646b761556c862dda0678345ee29ed481209'
 source_archive "$task_sodium_archive" 'https://download.libsodium.org/libsodium/releases/libsodium-1.0.22.tar.gz' 'adbdd8f16149e81ac6078a03aca6fc03b592b89ef7b5ed83841c086191be3349'
 
 (
@@ -69,17 +69,17 @@ source_archive "$task_sodium_archive" 'https://download.libsodium.org/libsodium/
     make install
 ) >"$task_work/libsodium-build.log" 2>&1
 (
-    cd "$task_scratch/src/php-8.5.10/ext/sodium"
+    cd "$task_scratch/src/php-8.5.12/ext/sodium"
     "$task_sdk/bin/phpize"
     # PHP_EVAL_LIBLINE 识别 -L/-l，不接受裸归档路径；私有目录中只生成 .a，避免遗漏或链接共享库。
     LIBSODIUM_CFLAGS="-I$task_scratch/libsodium/include" LIBSODIUM_LIBS="-L$task_scratch/libsodium/lib -lsodium" \
         CFLAGS='-O2 -g0' ./configure --with-php-config="$task_sdk/bin/php-config" --with-sodium=shared
     make -j2
 ) >"$task_work/sodium-build.log" 2>&1
-cp "$task_scratch/src/php-8.5.10/ext/sodium/modules/sodium.so" "$task_work/modules/sodium.so"
+cp "$task_scratch/src/php-8.5.12/ext/sodium/modules/sodium.so" "$task_work/modules/sodium.so"
 cp "$task_scratch/libsodium/lib/libsodium.a" "$task_work/libsodium/lib/libsodium.a"
 cp -R "$task_scratch/libsodium/include" "$task_work/libsodium/include"
-cp "$task_scratch/src/php-8.5.10/LICENSE" "$task_work/licenses/PHP-LICENSE"
+cp "$task_scratch/src/php-8.5.12/LICENSE" "$task_work/licenses/PHP-LICENSE"
 cp "$task_scratch/src/libsodium-1.0.22/LICENSE" "$task_work/licenses/libsodium-LICENSE"
 
 # macOS 扩展允许延迟解析 PHP 符号，但 sodium 符号必须已经静态链接，不能靠加载时崩溃发现漏链。

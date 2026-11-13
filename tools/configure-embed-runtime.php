@@ -6,7 +6,7 @@ try {
     $directory = realpath($argv[1] ?? '') ?: throw new RuntimeException('需要已准备的 embed 运行库目录');
     $pcntl = $directory . '/pcntl.so';
     $mode = $argv[2] ?? '';
-    if (!in_array($mode, ['base', 'shared'], true) || ($mode === 'shared' && !is_file($pcntl)) || PHP_VERSION !== '8.5.10' || !PHP_ZTS) {
+    if (!in_array($mode, ['base', 'shared'], true) || ($mode === 'shared' && !is_file($pcntl)) || PHP_VERSION !== '8.5.12' || !PHP_ZTS) {
         throw new RuntimeException('embed 运行库必须匹配锁定 PHP ZTS');
     }
     $ini = (string)(php_ini_loaded_file() === false ? '' : file_get_contents(php_ini_loaded_file()));
