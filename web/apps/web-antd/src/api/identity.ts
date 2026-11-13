@@ -87,7 +87,7 @@ const errors: Record<string, string> = {
   tenant_name_invalid: '租户名称不能为空，且不得超过100字节。',
   tenant_owner_input_invalid: '新账号需填写姓名和密码，关联已有账号仅填写准确登录标识。',
   administrator_account_unavailable: '最高管理员账号不可用，请确认系统账号已开通且未停用。',
-  administrator_member_unavailable: '目标账号在此租户的成员关系不可用，请先恢复成员资格。',
+  administrator_member_unavailable: '目标 System 账号在此 Tenant 中不可用，请先恢复账号资格。',
   administrator_exists: '此账号已经是当前客户最高管理员。',
   administrator_not_found: '最高管理员关系已变化，请刷新租户详情。',
   administrator_replacement_invalid: '更换目标无效，请刷新租户详情后重试。',

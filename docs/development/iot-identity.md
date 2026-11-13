@@ -11,7 +11,7 @@
 | `platform_installation` | `PlatformInstallation` | 安装身份与授权互斥 |
 | `platform_tenant` | `Tenant` | 平台客户目录，稳定 32 位小写十六进制标识 |
 | `platform_user/role/session` | `PlatformUser/PlatformRole/PlatformSession` | 独立平台账号域 |
-| `system_user/role/session` | `SystemUser/SystemRole/SystemSession` | 带 `tenant_id` 的独立客户账号域 |
+| `system_user/role/session` | `SystemUser/SystemRole/SystemSession` | 带 `tenant_id` 的独立 System 账号域 |
 | `platform_menu/system_menu` | `PlatformMenu/SystemMenu` | 平台维护的两套公共目录 |
 | `platform_setting/system_setting` | `PlatformSetting/SystemSetting` | 平台及当前 Tenant 的品牌和默认主题 |
 | `platform_user_role/system_user_role` | `User.roles`、`Role.users` | 人员与角色的多对多关系 |

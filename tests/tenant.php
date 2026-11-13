@@ -58,7 +58,7 @@ try {
         $result = $install->wait(30);
         expect($result->successful(), '全新安装应仅创建平台账号：' . $result->stderr);
         $installed = json_decode($result->stdout, true, 64, JSON_THROW_ON_ERROR)['data'];
-        expect(isset($installed['platform']['id']) && !isset($installed['system']), '安装不应预置客户账号');
+        expect(isset($installed['platform']['id']) && !isset($installed['system']), '安装不应预置 Tenant 的 System 账号');
     } finally {
         $install->stop();
     }

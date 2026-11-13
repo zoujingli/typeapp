@@ -62,7 +62,7 @@ try {
                     $member->setVersion(2);
                     expect($member->save() === 'updated' && $member->getVersion() === 2, '成员修改未遵守版本契约');
                     $bound->run(static function (ExecutionScope $other) use ($member): void {
-                        expect(SystemUser::query()->master()->find('user-a') === null, '模型查询泄露其他租户成员');
+                        expect(SystemUser::query()->master()->find('user-a') === null, '模型查询泄露其他 Tenant 的 System 账号');
                         try {
                             $member->save();
                             throw new RuntimeException('模型随上下文变化切换了归属');

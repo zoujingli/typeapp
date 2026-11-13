@@ -169,7 +169,7 @@ final class DeviceService
     }
 
     /**
-     * 管理动作在授权和设备锁内重验独立节点、版本及危险确认；平台身份不伪造成租户成员。
+     * 管理动作在授权和设备锁内重验独立节点、版本及危险确认；平台身份不伪造成 System 账号。
      * 禁用撤销旧凭据，重新启用须另行生成新凭据。退役是终态，历史及原归属不删除。
      * @param array{name?:string,product_id?:?string} $data 资料入口已校验的名称和分类；分类缺省保持、null 清除，其他动作忽略
      * @return array{device:array<string,mixed>,credential:null|array<string,mixed>} authorization.pending须等Broker完成，不能当作网络已隔离。

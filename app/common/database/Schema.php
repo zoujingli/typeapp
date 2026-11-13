@@ -76,7 +76,7 @@ final class Schema
         if ($driver === 'mysql') {
             $sql = [...$sql, ...self::mysqlComments()];
         }
-        return [new Migration('300_platform_system_center', '建立独立客户账号、平台菜单与物联业务的新安装基线', $sql, $driver !== 'mysql')];
+        return [new Migration('300_platform_system_center', '建立 Tenant、System 账号、平台菜单与物联业务的新安装基线', $sql, $driver !== 'mysql')];
     }
 
     /** 在任何业务读取前拒绝旧安装，不尝试执行转换。 */
