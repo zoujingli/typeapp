@@ -9,6 +9,7 @@
 - `pnpm --dir web typecheck`：通过。
 - `pnpm --dir web exec vitest run apps/web-antd/src/preferences.test.ts apps/web-antd/src/screen-lock.test.ts`：2 个文件、3 个测试通过。
 - `pnpm --dir web build`：Vite 8.3.8 生产构建通过；保留大分块提示，未将其当作性能验收通过。
+- Playwright CLI 真实浏览器 smoke：临时 SQLite 服务下主域 `/#/system/login` 显示客户搜索选择、账号、密码和平台入口；未选客户提交显示“请选择客户”；切换 `/#/platform/login` 显示平台账号密码和返回系统入口；375×812 窄屏下登录卡片、字段和按钮无横向溢出。该项只覆盖登录入口和布局，不替代登录后 CRUD 全量浏览器验收。
 - PHP 8.5.12 ZTS（Swoole 6.3.0RC1、PDO MySQL/PostgreSQL/SQLite）下 `composer validate --strict`：通过。
 - PHP CS-Fixer 3.95.30：918 个文件检查通过，0 个待修正。
 - PHPUnit 13.4.6：306 tests、18,005 assertions 通过。
