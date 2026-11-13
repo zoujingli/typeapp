@@ -8,14 +8,17 @@
 - `pnpm --dir web exec vitest run apps/web-antd/src/preferences.test.ts apps/web-antd/src/screen-lock.test.ts`：2 个文件、3 个测试通过。
 - `pnpm --dir web build`：Vite 8.3.8 生产构建通过；保留大分块提示，未将其当作性能验收通过。
 - PHP 8.5.12 ZTS（Swoole 6.3.0RC1、PDO MySQL/PostgreSQL/SQLite）下 `composer validate --strict`：通过。
-- PHP CS-Fixer 3.95.30：915 个文件检查通过，0 个待修正。
+- PHP CS-Fixer 3.95.30：916 个文件检查通过，0 个待修正。
 - PHPUnit 13.4.6：306 tests、18,005 assertions 通过。
-- `php tests/check.php`：962 个文件、3 个分发拒绝用例、文档站边界检查通过。
+- `php tests/check.php`：963 个文件、3 个分发拒绝用例、文档站边界检查通过。
 - `php tests/docs-consistency.php`：1,504 处引用、131 条路由、292 个命令、247 个 Composer 脚本通过。
 - `php tests/tenant.php sqlite`：空库安装、模块表前缀、主域/子域/固定路径、RBAC、独立品牌、模拟交接、MQTT 模拟观测、恢复核对和真实 HTTP 隔离通过。
 - `php tests/tenant.php mysql <MySQL工具根目录>`：MySQL 8.4.11 原生隔离实例上的同一 Tenant HTTP 闭环通过。
 - `php tests/tenant.php pgsql <PostgreSQL工具根目录>`：PostgreSQL 17.11 原生隔离实例上的同一 Tenant HTTP 闭环通过。
 - `php tests/model-sync.php <MySQL工具根目录>`：真实 MySQL 8.4.11 结构反向同步、字段注释、生成列、增删保护、非法输入拒绝及生成模型 Tenant CRUD 通过。
+- `php tests/mqtt-consumer.php --connect-fields-only`：独立 MQTT 消费者的真实 TCP、TLS 1.2/1.3 CONNECT 字段和证书校验通过。
+- `php tests/mqtt-consumer.php --retained`：MQTT.js 5.15.0 互操作、TCP/TLS QoS 0 发布订阅、QoS/retained 场景通过。
+- `php tests/mqtt-mtls.php`：源运行 mTLS/WSS 证书链、CRL、吊销、轮换、SNI、TLS 1.2/1.3 和降级拒绝全部通过；报告明确 `native:false`。
 - 活动源码、前端、文档、CI 和验收入口扫描：未发现 `SaaS`、`saas_id`、`public/saas`、`/s/`、旧双账号安装变量、旧客户成员模型、旧 `iot:*` 恢复命令或未加模块前缀的 `broker_nodes` 表名。
 - `docs/build-config/type-app.json` JSON 解析通过；活动 GitHub 工作流 YAML 解析通过。
 - 当前工作区 `git diff --check` 通过；提交按功能拆分并保留中文背景、影响和验证说明。
@@ -34,4 +37,4 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 
 仓库目标工具链记录在 `toolchain.lock.json`：PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8；本机实际 Node.js 为 26.13.1，pnpm 为 11.15.1，而前端工作区声明 pnpm 12.18.0。前端检查结果仍只证明在当前可用 Node/pnpm 环境下的静态与生产构建行为。
 
-仍未验证：当前源码的 TypePHP 全量 AOT、删除源码后的无源码运行、正式平台/profile 矩阵、真实 TLS MQTT 持久会话/retained/撤权/跨 Tenant 转配，以及 Windows SDK。补齐匹配的静态 SDK 和真实 MQTT 设备环境后，按 `docs/development/test-entrypoints.md` 顺序重跑剩余门禁，并以同一源码、锁文件和原生产物记录最终结果。
+仍未验证：当前源码的 TypePHP 全量 AOT、删除源码后的无源码运行、正式平台/profile 矩阵、物联中心 AOT 产物上的真实设备身份 MQTT 持久会话/跨 Tenant 撤权与转配，以及 Windows SDK。上述 MQTT 结果属于独立通信组件源运行验收，不替代当前应用生产产物验收。补齐匹配的静态 SDK 和真实 MQTT 设备环境后，按 `docs/development/test-entrypoints.md` 顺序重跑剩余门禁，并以同一源码、锁文件和原生产物记录最终结果。
