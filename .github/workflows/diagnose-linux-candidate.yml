@@ -89,7 +89,6 @@ jobs:
           <?php
           require 'tests/support.php';
           require 'vendor/autoload.php';
-          require 'tests/mqtt-client.php';
           $base = 'build/linux-candidate-diagnosis';
           $artifact = 'build/original-linux-program/type-app';
           $record = json_decode(file_get_contents('build/original-linux-evidence/release-candidate/preparation.json'), true, 64, JSON_THROW_ON_ERROR);
@@ -101,17 +100,11 @@ jobs:
           (new Type\Build\ArtifactManifest())->read($artifact, null, $record['sha256']);
           file_put_contents($base . '/identity.json', json_encode(['scope' => 'diagnostic only', 'program_source' => $record['source'],
               'test_source' => getenv('GITHUB_SHA'), 'sha256' => $record['sha256'], 'suite' => getenv('TYPE_PROBE_SUITE')], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
-          $client = testMqttJsClient($base . '/mqtt-client');
-          try {
-              $flag = getenv('TYPE_PROBE_SUITE') === 'reassignment' ? '--reassignments-mqtt' : '--communication-mqtt';
-              $result = (new Type\Testing\Process([PHP_BINARY, 'tests/iot-device-mqtt.php', realpath($artifact), $flag], getcwd(),
-                  array_replace(getenv(), ['TYPE_MQTT_CLIENT_ROOT' => realpath($client)])))->wait(600);
-              file_put_contents($base . '/probe.log', $result->stdout . $result->stderr);
-              expect(hash_file('sha256', $artifact) === $record['sha256'], '诊断改变原程序字节');
-              expect($result->successful(), '原程序通信诊断失败，见 probe.log 及内层 application.log');
-          } finally {
-              removeTestDirectory($client);
-          }
+          $tools = getenv('TYPE_PGSQL_TOOLS') ?: '';
+          $result = (new Type\Testing\Process([PHP_BINARY, 'tests/tenant.php', 'pgsql', $tools, realpath($artifact)], getcwd(), getenv()))->wait(600);
+          file_put_contents($base . '/probe.log', $result->stdout . $result->stderr);
+          expect(hash_file('sha256', $artifact) === $record['sha256'], '诊断改变原程序字节');
+          expect($result->successful(), '原程序 Tenant 管理诊断失败，见 probe.log');
           PHP
       - name: 保存原程序身份与内层失败位置
         if: always()
@@ -123,6 +116,3 @@ jobs:
           path: |
             build/linux-candidate-diagnosis/*.json
             build/linux-candidate-diagnosis/*.log
-            build/iot-device-mqtt-*/application.log
-            build/iot-identity-*/verification.json
-            build/iot-identity-*/http.log

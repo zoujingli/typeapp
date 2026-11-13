@@ -541,15 +541,15 @@ jobs:
         if: matrix.suite == 'app'
         run: |
           composer typeapp:prepare
-          php tests/iot-identity.php --php mysql --app
-          php tests/iot-identity.php --php pgsql --app
-          php tests/iot-identity.php --php sqlite --app
+          composer test:tenant-mysql -- "$TYPE_MYSQL_TOOLS"
+          composer test:tenant-pgsql -- "$TYPE_PGSQL_TOOLS"
+          composer test:tenant
           composer test:operations
           composer build:operations
           composer test:operations-native
           composer typeapp:build -- --shared-development
           composer typeapp:test-native
-          php tests/iot-identity.php build/app/type-app sqlite --app
+          composer test:tenant-native
           for task_driver in mysql pgsql sqlite; do
             php tests/application-template.php "$task_driver" --onboarding --native --package
           done
