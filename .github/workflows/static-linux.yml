@@ -204,7 +204,7 @@ jobs:
         if: inputs.tutorial_mode == '' && (inputs.profile || 'sqlite') == 'pgsql'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: '22.21.1'
+          node-version: '26.13.1'
       - name: 核对真实公开升级基线
         if: inputs.tutorial_mode == ''
         env:
@@ -264,7 +264,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         if: inputs.tutorial_mode != ''
         with:
-          node-version: '22.21.1'
+          node-version: '26.13.1'
       - name: 同一固定教程的独立编译与无源码部署
         if: inputs.tutorial_mode != ''
         run: |

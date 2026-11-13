@@ -73,7 +73,7 @@ jobs:
           ini-values: memory_limit=1G, display_errors=1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: '22.21.1'
+          node-version: '26.13.1'
       - name: 准备测试控制器及独占数据库工具
         run: |
           set -euo pipefail
