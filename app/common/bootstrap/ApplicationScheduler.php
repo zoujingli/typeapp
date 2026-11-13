@@ -31,7 +31,7 @@ final class ApplicationScheduler
         RuntimeCapabilities::requireFeature('scheduler');
         RuntimeCapabilities::requireFeature('redis');
         if ($arguments === [] || $arguments === ['help']) {
-            echo "app:schedule once|history|work <次数> <间隔毫秒>；每分钟有界清理管理端和客户端满180天的审计。\n";
+            echo "app:schedule once|history|work <次数> <间隔毫秒>；每分钟有界清理 Platform 和 System 满180天的审计。\n";
             return 0;
         }
         Settings::validateRuntimeConfiguration($settings, $basePath, 'scheduler');

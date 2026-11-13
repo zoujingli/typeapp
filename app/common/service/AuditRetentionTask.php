@@ -13,7 +13,7 @@ final class AuditRetentionTask implements Task
 {
     private string $realm;
 
-    /** 注册时固定管理端或客户端，不接受外部表名。 */
+    /** 注册时固定 Platform 或 System 身份域，不接受外部表名。 */
     public function __construct(string $realm)
     {
         if (!in_array($realm, ['platform', 'system'], true)) {
