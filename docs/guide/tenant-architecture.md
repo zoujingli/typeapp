@@ -95,7 +95,7 @@ flowchart LR
     Model --> Build[TypePHP 构建期校验]
 ```
 
-使用 `php vendor/bin/type model:sync` 时，工具只读取目标表结构，不执行 DDL、不加载业务自动加载文件，也不直接写数据库。默认仅预览；显式 `--write` 才更新源码。删除字段必须显式 `--drop-missing`，生成列自动标记为不可赋值，`BIGINT` 和精确小数保留无损字符串语义，表注释与字段注释同步为类和属性文档。表结构变更仍由迁移管理，反向同步负责让模型声明与已确认的数据库事实保持一致。
+MySQL 全新安装基线会把 Platform、System、Center 核心表及字段的中文说明写入 `COMMENT`；SQLite/PostgreSQL 没有等价的字段注释语义，模型 PHPDoc 是权威说明。使用 `php vendor/bin/type model:sync` 时，工具只读取目标表结构，不执行 DDL、不加载业务自动加载文件，也不直接写数据库。默认仅预览；显式 `--write` 才更新源码。删除字段必须显式 `--drop-missing`，生成列自动标记为不可赋值，`BIGINT` 和精确小数保留无损字符串语义，表注释与字段注释同步为类和属性文档。表结构变更仍由迁移管理，反向同步负责让模型声明与已确认的数据库事实保持一致。
 
 ## 表命名与验证
 

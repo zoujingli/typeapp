@@ -46,7 +46,7 @@ php vendor/bin/type model:sync type-app.json 'app\center\model\Product' \
   --table=center_product --connection=/private/mysql.json --write
 ```
 
-该命令默认只预览；`--write` 才更新源码，`--drop-missing` 才允许确认删除字段。它不执行 DDL，结构变更仍由迁移管理。
+MySQL 全新安装会为核心 Platform、System、Center 表和字段写入中文 `COMMENT`，供 `information_schema` 和同步工具读取；SQLite/PostgreSQL 以模型 PHPDoc 作为注释权威。该命令默认只预览；`--write` 才更新源码，`--drop-missing` 才允许确认删除字段。它不执行 DDL，结构变更仍由迁移管理。
 
 ## 验收边界
 
