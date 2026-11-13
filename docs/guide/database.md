@@ -137,7 +137,7 @@ flowchart LR
 
 ## 声明模型
 
-在 `app/` 的领域 `model/` 目录中声明直接继承 `Type\Orm\Model` 的业务类。默认使用 `$table` 与 `$schema`，字段在一处定义；业务读取和修改对象属性，查询返回模型对象。物联中心的 Platform、System、Center 模型使用这一声明方式；协议持久状态、迁移和恢复等基础设施按实际职责使用受控数据库接口。
+在 `app/` 的领域 `model/` 目录中声明直接继承 `Type\Orm\Model` 的业务类。默认使用 `$table` 与 `$schema`，字段在一处定义；业务读取和修改对象属性，查询返回模型对象。物联中心的 Platform、System、Center 模型使用这一声明方式；协议持久状态、迁移和复合身份恢复主体等基础设施按实际职责使用受控数据库接口，单主键恢复进度仍使用 `CenterRecovery` Model。
 
 ```php
 /**
@@ -225,9 +225,9 @@ flowchart LR
 | 迁移、安装种子与就绪探测 | 模型操作以真实表结构及完成安装为前提 |
 | Platform 跨 Tenant 目录、授权关联、审计与 Outbox | 需要受控跨模型投影、授权锁或与业务同事务落库；可用不带 `tenantKey` 的只读目录 Model，写入仍回到带 Tenant 范围的领域 Model |
 | 旧安装保全与分批转换 | 核对历史复合身份、原件摘要及升级游标，不能用当前模型覆盖旧数据 |
-| 设备运行观测与协议持久状态 | `CenterRuntimeMetric::recordObservation()` 封装 PostgreSQL 64 槽位和运行代次 CAS；协议持久状态保留原子状态转换、幂等约束及集合 SQL，避免逐行加载改变语义或性能 |
+| 设备运行观测与协议持久状态 | `CenterRuntimeMetric::recordObservation()` 封装 PostgreSQL 64 槽位和运行代次 CAS；`CenterRecovery` 负责恢复操作的单主键进度状态；协议持久状态保留原子状态转换、幂等约束及集合 SQL，避免逐行加载改变语义或性能 |
 
-这些例外不授予普通 CRUD 绕过模型的权利。`CenterRuntimeMetric` 的普通读取通过 ModelQuery，只有 `recordObservation()` 内的两条原子 SQL 属于已登记的运行观察例外；审计动态联合查询、恢复游标和 MQTT 协议表也必须按具体方法登记。后续迁移先验证真实事务和租户边界，再扩大覆盖范围。
+这些例外不授予普通 CRUD 绕过模型的权利。`CenterRuntimeMetric` 的普通读取通过 ModelQuery，只有 `recordObservation()` 内的两条原子 SQL 属于已登记的运行观察例外；`CenterRecovery` 的状态读取、创建和推进通过 ModelQuery，`center_recovery_subject` 因 `(recovery_id, kind, subject_id)` 复合主键超出当前单主键 ORM 能力，继续由 `RecoveryService` 在固定白名单内执行受控查询，不能用任一列冒充主键；审计动态联合查询、恢复游标和 MQTT 协议表也必须按具体方法登记。后续迁移先验证真实事务和租户边界，再扩大覆盖范围。
 
 ## 字段与修改
 

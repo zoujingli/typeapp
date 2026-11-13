@@ -8,6 +8,7 @@ use app\center\service\RecoveryService;
 use app\common\database\Schema;
 use app\platform\mqtt\service\CompatService;
 use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
 
@@ -41,40 +42,46 @@ final class HttpReadiness
         $this->checking = true;
         $scope = new ExecutionScope(new Deadline(1.0));
         try {
-            $connection = $this->database->connect($scope, 'default', 0.0);
-            if ($this->migrations === []) {
-                $plan = Schema::migrations($connection->driverName());
-                foreach ($plan as $migration) {
-                    $this->migrations[$migration->version()] = $migration->checksum();
+            $scope->run(function (): void {
+                $connection = Db::connection('default', true);
+                if ($this->migrations === []) {
+                    $plan = Schema::migrations($connection->driverName());
+                    foreach ($plan as $migration) {
+                        $this->migrations[$migration->version()] = $migration->checksum();
+                    }
                 }
-            }
-            $applied = $connection->query('SELECT version, checksum, state FROM type_migrations');
-            if (count($applied) !== count($this->migrations)) {
-                return $this->healthy = false;
-            }
-            foreach ($applied as $record) {
-                if ($record['state'] !== 'applied' || !isset($this->migrations[$record['version']])
-                    || !hash_equals($this->migrations[$record['version']], (string)$record['checksum'])) {
-                    return $this->healthy = false;
+                $applied = $connection->query('SELECT version, checksum, state FROM type_migrations');
+                if (count($applied) !== count($this->migrations)) {
+                    $this->healthy = false;
+                    return;
                 }
-            }
-            $compatibility = CompatService::current($connection);
-            if (!$compatibility['recorded'] || !$compatibility['compatible']) {
-                return $this->healthy = false;
-            }
-            RecoveryService::ready($connection);
-            Schema::ready($connection);
-            $row = $connection->table('platform_installation')->where('id', '=', 1)->first();
-            if ($row === null || (int)$row['schema_version'] !== Schema::VERSION) {
-                return $this->healthy = false;
-            }
-            $identity = (string)$row['installation_id'];
-            if ($this->installation !== '' && $this->installation !== $identity) {
-                return $this->healthy = false;
-            }
-            $this->installation = $identity;
-            $scope->assertActive();
-            $this->healthy = true;
+                foreach ($applied as $record) {
+                    if ($record['state'] !== 'applied' || !isset($this->migrations[$record['version']])
+                        || !hash_equals($this->migrations[$record['version']], (string)$record['checksum'])) {
+                        $this->healthy = false;
+                        return;
+                    }
+                }
+                $compatibility = CompatService::current($connection);
+                if (!$compatibility['recorded'] || !$compatibility['compatible']) {
+                    $this->healthy = false;
+                    return;
+                }
+                RecoveryService::ready($connection);
+                Schema::ready($connection);
+                $row = $connection->table('platform_installation')->where('id', '=', 1)->first();
+                if ($row === null || (int)$row['schema_version'] !== Schema::VERSION) {
+                    $this->healthy = false;
+                    return;
+                }
+                $identity = (string)$row['installation_id'];
+                if ($this->installation !== '' && $this->installation !== $identity) {
+                    $this->healthy = false;
+                    return;
+                }
+                $this->installation = $identity;
+                $this->healthy = true;
+            });
         } catch (\Throwable) {
             $this->healthy = false;
         } finally {

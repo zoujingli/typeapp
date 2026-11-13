@@ -127,10 +127,13 @@ final class Application
             $compat = Settings::database($settings, $basePath, 1);
             $compatScope = new ExecutionScope(new Deadline(2.0));
             try {
-                $connection = $compat->connect($compatScope);
-                Schema::ready($connection);
-                CompatService::assertRuntime($connection);
-                RecoveryService::ready($connection);
+                Db::configure($compat);
+                $compatScope->run(static function (): void {
+                    $connection = Db::connection('default', true);
+                    Schema::ready($connection);
+                    CompatService::assertRuntime($connection);
+                    RecoveryService::ready($connection);
+                });
             } finally {
                 $compatScope->close();
                 $compat->close();

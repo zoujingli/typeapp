@@ -76,7 +76,7 @@ flowchart LR
 
 ## 模型和表
 
-设备领域使用 `Device`、`DeviceOwnership`、`DeviceEnrollment`、`ApplicationGrant` 和 `DeviceReassignment` Model；持久表均采用 `center_` 前缀。业务读取和写入优先使用模型对象，MQTT 运行观察、批量撤权和恢复扫描属于基础设施投影并登记受限查询例外。
+设备领域使用 `Device`、`DeviceOwnership`、`DeviceEnrollment`、`ApplicationGrant` 和 `DeviceReassignment` Model；持久表均采用 `center_` 前缀。业务读取和写入优先使用模型对象，运行观察和恢复进度分别由 `CenterRuntimeMetric`、`CenterRecovery` Model 承载；复合身份的恢复主体、批量撤权和协议状态属于基础设施投影并登记受限查询例外。
 
 ## 验证
 

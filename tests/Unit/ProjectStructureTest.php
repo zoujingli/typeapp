@@ -191,6 +191,24 @@ final class ProjectStructureTest extends TestCase
         self::assertStringContainsString('CenterRuntimeMetric::recordObservation', (string)file_get_contents($root . '/docs/guide/database.md'));
     }
 
+    /** 恢复主状态使用单主键 Model；复合主体表保持受控查询边界。 */
+    public function testRecoveryStateUsesTheCenterModelBoundary(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $models = (new \Type\Build\ModelCompiler())->compile([$root . '/app/center/model'])['models'];
+        $models = array_column($models, null, 'class');
+        $recovery = $models['app\center\model\CenterRecovery'];
+        self::assertSame('center_recovery', $recovery['table']);
+        self::assertSame('id', $recovery['primary']);
+        self::assertNull($recovery['tenant']);
+        self::assertSame('state', $recovery['fields']['phase']['column']);
+        self::assertTrue($recovery['fields']['slot']['nullable']);
+        $service = (string)file_get_contents($root . '/app/center/service/RecoveryService.php');
+        self::assertStringContainsString('CenterRecovery::query()', $service);
+        self::assertStringContainsString('center_recovery_subject', $service);
+        self::assertStringContainsString('复合主键', (string)file_get_contents($root . '/docs/guide/database.md'));
+    }
+
     /** @return array<string, mixed> 已检查的项目声明。 */
     private function json(string $file): array
     {
