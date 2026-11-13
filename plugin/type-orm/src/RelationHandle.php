@@ -16,7 +16,7 @@ final class RelationHandle
 {
     private ?string $tenantBinding;
 
-    private ManyToMany $relation;
+    private Relation $relation;
 
     /** @internal 通过 Model::relation() 创建，名称只能引用父模型声明的多对多关系。 */
     public function __construct(private Model $parent, string $name)
@@ -70,6 +70,10 @@ final class RelationHandle
         if (ExecutionScope::current()->binding('tenant_id') !== $this->tenantBinding) {
             throw new ModelException('tenant_context_changed', '关系句柄的租户上下文已经改变，请重新取得句柄');
         }
-        return $this->relation;
+        $relation = $this->relation;
+        if (!$relation instanceof ManyToMany) {
+            throw new ModelException('relation_write_unsupported', '当前关系类型不支持 attach、detach 或 sync');
+        }
+        return $relation;
     }
 }

@@ -38,14 +38,16 @@ final class RoleService
             $values = ['id' => bin2hex(random_bytes(16)), 'name' => '超级管理员', 'enabled' => true,
                 'protected' => true, 'recovery_verified' => true];
             if ($realm === 'platform') {
-                $role = new PlatformRole($values + ['scope_id' => 'platform']);
-                $user = PlatformUser::query()->master()->findOrFail($subjectId);
-            } else {
-                $role = new SystemRole($values);
-                $user = SystemUser::query()->master()->findOrFail($subjectId);
+                $platformRole = new PlatformRole($values + ['scope_id' => 'platform']);
+                $platformUser = PlatformUser::query()->master()->findOrFail($subjectId);
+                $platformRole->save();
+                $platformUser->relation('roles')->attach($platformRole->id);
+                return;
             }
-            $role->save();
-            $user->relation('roles')->attach($role->id);
+            $systemRole = new SystemRole($values);
+            $systemUser = SystemUser::query()->master()->findOrFail($subjectId);
+            $systemRole->save();
+            $systemUser->relation('roles')->attach($systemRole->id);
         };
         if ($realm === 'system') {
             ExecutionScope::current()->run($operation, TenantContext::bindings($scopeId));
