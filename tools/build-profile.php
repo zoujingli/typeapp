@@ -12,7 +12,7 @@ try {
         throw new InvalidArgumentException('用法：php tools/build-profile.php <sqlite|mysql|pgsql|all>');
     }
     $configuration = getenv('TYPEAPP_BUILD_CONFIGURATION') ?: dirname(__DIR__) . '/docs/build-config/type-app.json';
-    $settings = json_decode((string) file_get_contents($configuration), true, 64, JSON_THROW_ON_ERROR);
+    $settings = json_decode((string)file_get_contents($configuration), true, 64, JSON_THROW_ON_ERROR);
     $resolved = BuildProfile::resolve($settings);
     $name = $argv[1];
     if ($name === 'all') {

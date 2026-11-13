@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use TypeApp\ModelExample\Drivers;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -10,7 +11,7 @@ $driver = $argv[2] ?? 'sqlite';
 expect(in_array($driver, ['mysql', 'pgsql', 'sqlite'], true), '未知缓存一致性驱动');
 $databases = [];
 $previous = [];
-$admin = $driver === 'sqlite' ? null : TypeApp\ModelExample\Drivers::create($driver)->connect();
+$admin = $driver === 'sqlite' ? null : Drivers::create($driver)->connect();
 try {
     foreach (['primary'] as $role) {
         $name = $driver === 'sqlite' ? tempnam(sys_get_temp_dir(), 'type_consistency_' . $role . '_') : 'type_consistency_' . $role . '_' . bin2hex(random_bytes(6));

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Core\Http\Message;
 
-use InvalidArgumentException;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UploadedFileInterface;
 use RuntimeException;
@@ -13,16 +12,21 @@ use RuntimeException;
 final class UploadedFile implements UploadedFileInterface
 {
     private StreamInterface $stream;
+
     private ?int $size;
+
     private int $error;
+
     private ?string $filename;
+
     private ?string $mediaType;
+
     private bool $moved = false;
 
     /**
      * 验证上传错误码和可读性；size 以字节计，null 尝试从流读取大小。
-     * @param string|null $filename 客户端声明名称，不能直接作为可信存储路径。
-     * @param string|null $mediaType 客户端声明媒体类型，不能替代内容检查。
+     * @param null|string $filename 客户端声明名称，不能直接作为可信存储路径
+     * @param null|string $mediaType 客户端声明媒体类型，不能替代内容检查
      */
     public function __construct(
         StreamInterface $stream,
@@ -34,7 +38,7 @@ final class UploadedFile implements UploadedFileInterface
         if (!in_array($error, [UPLOAD_ERR_OK, UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE, UPLOAD_ERR_PARTIAL,
             UPLOAD_ERR_NO_FILE, UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE, UPLOAD_ERR_EXTENSION], true)
             || ($size !== null && $size < 0) || ($error === UPLOAD_ERR_OK && !$stream->isReadable())) {
-            throw new InvalidArgumentException('上传文件流、大小或错误码无效');
+            throw new \InvalidArgumentException('上传文件流、大小或错误码无效');
         }
         $this->stream = $stream;
         $this->size = $size ?? $stream->getSize();
@@ -52,19 +56,19 @@ final class UploadedFile implements UploadedFileInterface
 
     /**
      * 把内容移至本地目标并关闭原流；目标目录由调用方准备，失败由调用方处理。
-     * @throws RuntimeException 内容复制、移动、源清理或关闭失败；异常时需核对目标是否已生成。
+     * @throws \RuntimeException 内容复制、移动、源清理或关闭失败；异常时需核对目标是否已生成
      */
     public function moveTo(string $targetPath): void
     {
         $this->assertAvailable();
         if ($targetPath === '' || str_contains($targetPath, "\0") || str_contains($targetPath, '://')) {
-            throw new InvalidArgumentException('上传文件目标路径无效');
+            throw new \InvalidArgumentException('上传文件目标路径无效');
         }
         $directory = dirname($targetPath);
         if (!is_dir($directory) || !is_writable($directory)) {
-            throw new RuntimeException('上传文件目标目录不可写');
+            throw new \RuntimeException('上传文件目标目录不可写');
         }
-        $source = (string) $this->stream->getMetadata('uri');
+        $source = (string)$this->stream->getMetadata('uri');
         $sourceFile = $source !== '' && !str_contains($source, '://') && is_file($source);
         if ($sourceFile && realpath($source) === realpath($targetPath)) {
             $this->stream->close();
@@ -73,7 +77,7 @@ final class UploadedFile implements UploadedFileInterface
         }
         if ($sourceFile && is_uploaded_file($source)) {
             if (!move_uploaded_file($source, $targetPath)) {
-                throw new RuntimeException('无法移动 SAPI 上传文件');
+                throw new \RuntimeException('无法移动 SAPI 上传文件');
             }
             $this->stream->close();
             $this->moved = true;
@@ -81,12 +85,12 @@ final class UploadedFile implements UploadedFileInterface
         }
         $temporary = tempnam($directory, '.type-upload-');
         if ($temporary === false) {
-            throw new RuntimeException('无法创建上传文件目标');
+            throw new \RuntimeException('无法创建上传文件目标');
         }
         $output = @fopen($temporary, 'wb');
         if ($output === false) {
             unlink($temporary);
-            throw new RuntimeException('无法打开上传文件目标');
+            throw new \RuntimeException('无法打开上传文件目标');
         }
         try {
             if ($this->stream->isSeekable()) {
@@ -95,30 +99,30 @@ final class UploadedFile implements UploadedFileInterface
             while (!$this->stream->eof()) {
                 $chunk = $this->stream->read(8192);
                 if ($chunk === '' && !$this->stream->eof()) {
-                    throw new RuntimeException('上传流读取没有进展');
+                    throw new \RuntimeException('上传流读取没有进展');
                 }
                 $offset = 0;
                 $length = strlen($chunk);
                 while ($offset < $length) {
                     $written = @fwrite($output, substr($chunk, $offset));
                     if ($written === false || $written === 0) {
-                        throw new RuntimeException('上传文件写入失败');
+                        throw new \RuntimeException('上传文件写入失败');
                     }
                     $offset += $written;
                 }
             }
             if (!fflush($output)) {
-                throw new RuntimeException('上传文件缓冲写入失败');
+                throw new \RuntimeException('上传文件缓冲写入失败');
             }
             fclose($output);
             $output = null;
             if (!@rename($temporary, $targetPath)) {
-                throw new RuntimeException('无法完成上传文件移动');
+                throw new \RuntimeException('无法完成上传文件移动');
             }
             $this->stream->close();
             $this->moved = true;
             if ($sourceFile && is_file($source) && !@unlink($source)) {
-                throw new RuntimeException('上传内容已移动，但原文件无法删除');
+                throw new \RuntimeException('上传内容已移动，但原文件无法删除');
             }
         } finally {
             if (is_resource($output)) {
@@ -157,7 +161,7 @@ final class UploadedFile implements UploadedFileInterface
     private function assertAvailable(): void
     {
         if ($this->moved || $this->error !== UPLOAD_ERR_OK) {
-            throw new RuntimeException('上传文件已经移动或上传失败');
+            throw new \RuntimeException('上传文件已经移动或上传失败');
         }
     }
 }

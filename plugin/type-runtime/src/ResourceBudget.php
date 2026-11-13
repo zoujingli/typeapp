@@ -10,14 +10,20 @@ use Swoole\Coroutine\Channel;
 final class ResourceBudget
 {
     private int $capacity;
+
     private int $used = 0;
+
     private int $rejected = 0;
+
     private ExecutionOwner $owner;
+
     private array $listeners = [];
+
     private int $sequence = 0;
+
     /**
      * 在当前线程请求内分配共享容量，池及凭据代次复用同一实例。
-     * @throws \InvalidArgumentException 容量不在 1 至 1000000 范围内。
+     * @throws \InvalidArgumentException 容量不在 1 至 1000000 范围内
      */
     public function __construct(int $capacity)
     {
@@ -27,14 +33,16 @@ final class ResourceBudget
         $this->capacity = $capacity;
         $this->owner = new ExecutionOwner(false);
     }
+
     /** @throws CapacityException 额度已满；本次拒绝计入统计，不等待空位。 */
     public function acquire(): void
     {
         if (!$this->tryAcquire()) {
-            $this->rejected++;
+            ++$this->rejected;
             throw new CapacityException('共享资源预算已满');
         }
     }
+
     /** 池等待中的容量探测不计为业务拒绝；成功即保留额度。 */
     public function tryAcquire(): bool
     {
@@ -42,7 +50,7 @@ final class ResourceBudget
         if ($this->used >= $this->capacity) {
             return false;
         }
-        $this->used++;
+        ++$this->used;
         return true;
     }
 
@@ -53,7 +61,7 @@ final class ResourceBudget
         if ($this->used <= 0) {
             throw new \LogicException('共享资源预算重复归还');
         }
-        $this->used--;
+        --$this->used;
         $listeners = $this->listeners;
         foreach ($listeners as $listener) {
             if (!$listener->isFull()) {

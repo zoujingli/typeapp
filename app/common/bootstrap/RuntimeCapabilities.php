@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace app\common\bootstrap;
 
-use InvalidArgumentException;
+use Type\Generated\BuildIdentity;
 
 /**
  * 读取编译产物声明的运行能力，并在业务开始建立外部连接前拒绝不匹配配置。
@@ -16,8 +16,8 @@ final class RuntimeCapabilities
     /** 日志使用编译身份；源码开发没有封存产物，明确标为 development。 */
     public static function buildId(): string
     {
-        if (class_exists('Type\\Generated\\BuildIdentity') && method_exists('Type\\Generated\\BuildIdentity', 'info')) {
-            $identity = \Type\Generated\BuildIdentity::info();
+        if (class_exists('Type\Generated\BuildIdentity') && method_exists('Type\Generated\BuildIdentity', 'info')) {
+            $identity = BuildIdentity::info();
             $id = $identity['build-id'] ?? null;
             if (is_string($id) && preg_match('/^[a-f0-9]{64}$/D', $id) === 1) {
                 return $id;
@@ -30,8 +30,8 @@ final class RuntimeCapabilities
     public static function profile(): array
     {
         $info = null;
-        if (class_exists('Type\\Generated\\BuildIdentity') && method_exists('Type\\Generated\\BuildIdentity', 'info')) {
-            $candidate = \Type\Generated\BuildIdentity::info();
+        if (class_exists('Type\Generated\BuildIdentity') && method_exists('Type\Generated\BuildIdentity', 'info')) {
+            $candidate = BuildIdentity::info();
             $info = is_array($candidate) ? ($candidate['profile'] ?? null) : null;
         }
         if (!is_array($info) || ($info['name'] ?? null) === null) {
@@ -43,12 +43,12 @@ final class RuntimeCapabilities
         return ['name' => $name, 'database' => $database, 'features' => $features, 'verified' => true];
     }
 
-    /** @throws InvalidArgumentException profile 只允许使用编译时选择的数据库。 */
+    /** @throws \InvalidArgumentException profile 只允许使用编译时选择的数据库。 */
     public static function assertDatabase(string $database): void
     {
         $profile = self::profile();
         if ($profile['database'] !== null && $profile['database'] !== $database) {
-            throw new RuntimeCapabilityException('runtime_profile_database_mismatch', 'profile=' . (string) $profile['name'] . ', database=' . $database);
+            throw new RuntimeCapabilityException('runtime_profile_database_mismatch', 'profile=' . (string)$profile['name'] . ', database=' . $database);
         }
     }
 
@@ -59,7 +59,7 @@ final class RuntimeCapabilities
         return !$profile['verified'] || in_array($feature, $profile['features'], true);
     }
 
-    /** @throws InvalidArgumentException 关闭的构建能力不能在运行时启用。 */
+    /** @throws \InvalidArgumentException 关闭的构建能力不能在运行时启用。 */
     public static function requireFeature(string $feature): void
     {
         $profile = self::profile();

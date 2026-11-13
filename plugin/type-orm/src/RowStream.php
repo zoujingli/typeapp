@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
-use Throwable;
 use Type\Runtime\ExecutionOwner;
 use Type\Runtime\ResourceLease;
 use Type\Runtime\ReusableResource;
@@ -14,7 +12,9 @@ use Type\Runtime\ReusableResource;
 final class RowStream
 {
     private bool $closed = false;
+
     private int $rows = 0;
+
     private ExecutionOwner $owner;
 
     /** @internal 绑定已打开游标与所属租约；maxRowBytes 为单行字节上限。 */
@@ -30,7 +30,7 @@ final class RowStream
     /**
      * 读取一行，结束返回 null；超限或异常关闭游标，不能跨执行者读取。
      *
-     * @return array<string, mixed>|null
+     * @return null|array<string, mixed>
      */
     public function next(): ?array
     {
@@ -56,14 +56,14 @@ final class RowStream
                 if (is_resource($value)) {
                     throw new DatabaseException('流式导出不接受隐式 LOB 资源');
                 }
-                $bytes += strlen((string) $value);
+                $bytes += strlen((string)$value);
             }
             if ($bytes > $this->maxRowBytes) {
                 throw new DatabaseException('流式读取超过声明的单行大小');
             }
-            $this->rows++;
+            ++$this->rows;
             return $row;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->close();
             throw $error;
         }
@@ -71,9 +71,9 @@ final class RowStream
 
     /**
      * 成功、异常、提前退出均关闭游标。
-     * @param Closure(array): mixed $consumer 接收当前行；可返回 void，仅 false 提前退出。
+     * @param \Closure(array): mixed $consumer 接收当前行；可返回 void，仅 false 提前退出
      */
-    public function each(Closure $consumer): int
+    public function each(\Closure $consumer): int
     {
         try {
             while (($row = $this->next()) !== null) {
@@ -102,6 +102,7 @@ final class RowStream
     {
         return $this->closed || !$this->session->streamActive($this->id);
     }
+
     /** 返回本流已成功交付的行数，不执行总数查询。 */
     public function rows(): int
     {

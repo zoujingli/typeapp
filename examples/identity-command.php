@@ -15,25 +15,25 @@ use Type\Runtime\ExecutionScope;
 function identityDriver(string $name, int $generation = 1, string $role = 'writer', ?string $schema = null, ?string $password = null, ?string $databaseRole = null): Driver
 {
     if ($name === 'sqlite') {
-        return new SqliteDriver((string) getenv('TYPE_SQLITE_FILE'), 1000, true, $generation, $role);
+        return new SqliteDriver((string)getenv('TYPE_SQLITE_FILE'), 1000, true, $generation, $role);
     }
     if ($name === 'mysql') {
         return new MysqlDriver(
-            (string) (getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1'),
-            (int) (getenv('TYPE_MYSQL_PORT') ?: 3306),
-            (string) (getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test'),
-            (string) (getenv('TYPE_MYSQL_USER') ?: 'root'),
-            $password ?? (string) (getenv('TYPE_MYSQL_PASSWORD') ?: ''),
+            (string)(getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1'),
+            (int)(getenv('TYPE_MYSQL_PORT') ?: 3306),
+            (string)(getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test'),
+            (string)(getenv('TYPE_MYSQL_USER') ?: 'root'),
+            $password ?? (string)(getenv('TYPE_MYSQL_PASSWORD') ?: ''),
             $generation,
             $role
         );
     }
     return new PgsqlDriver(
-        (string) (getenv('TYPE_PGSQL_HOST') ?: '127.0.0.1'),
-        (int) (getenv('TYPE_PGSQL_PORT') ?: 5432),
-        (string) (getenv('TYPE_PGSQL_DATABASE') ?: 'type_app_test'),
-        (string) (getenv('TYPE_PGSQL_USER') ?: 'type_app'),
-        $password ?? (string) (getenv('TYPE_PGSQL_PASSWORD') ?: ''),
+        (string)(getenv('TYPE_PGSQL_HOST') ?: '127.0.0.1'),
+        (int)(getenv('TYPE_PGSQL_PORT') ?: 5432),
+        (string)(getenv('TYPE_PGSQL_DATABASE') ?: 'type_app_test'),
+        (string)(getenv('TYPE_PGSQL_USER') ?: 'type_app'),
+        $password ?? (string)(getenv('TYPE_PGSQL_PASSWORD') ?: ''),
         $generation,
         $role,
         $schema,
@@ -44,7 +44,7 @@ function identityDriver(string $name, int $generation = 1, string $role = 'write
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function identityExpect(bool $condition, string $message): void
 {
@@ -56,11 +56,11 @@ function identityExpect(bool $condition, string $message): void
 /**
  * 验证数据库身份、读写用途、凭据代次轮换和独立进程租约边界。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    $driver = (string) ($argv[1] ?? 'sqlite');
+    $driver = (string)($argv[1] ?? 'sqlite');
     if (($argv[2] ?? '') === 'session-baseline') {
         identityExpect($driver === 'pgsql', '角色与 schema 会话基线仅适用于 PostgreSQL');
         identitySessionBaseline();
@@ -71,9 +71,9 @@ function main(int $argc, array $argv): void
     try {
         $connection = $manager->connect($scope);
         if (($argv[2] ?? '') === 'credentials') {
-            $ready = (string) getenv('TYPE_IDENTITY_READY');
-            $continue = (string) getenv('TYPE_IDENTITY_CONTINUE');
-            identityExpect((int) $connection->query('SELECT 1 AS value')[0]['value'] === 1, '旧凭据无法建立初始会话');
+            $ready = (string)getenv('TYPE_IDENTITY_READY');
+            $continue = (string)getenv('TYPE_IDENTITY_CONTINUE');
+            identityExpect((int)$connection->query('SELECT 1 AS value')[0]['value'] === 1, '旧凭据无法建立初始会话');
             file_put_contents($ready, 'ready');
             $deadline = microtime(true) + 10;
             while (!is_file($continue)) {
@@ -81,10 +81,10 @@ function main(int $argc, array $argv): void
                     throw new RuntimeException('密码轮换等待超时');
                 } usleep(1000);
             }
-            $manager->rotate('default', identityDriver($driver, 2, 'writer', null, (string) getenv('TYPE_IDENTITY_NEXT_PASSWORD')));
+            $manager->rotate('default', identityDriver($driver, 2, 'writer', null, (string)getenv('TYPE_IDENTITY_NEXT_PASSWORD')));
             $new = $manager->connect($scope);
-            identityExpect($new->identity()['credential-generation'] === 2 && (int) $new->query('SELECT 2 AS value')[0]['value'] === 2
-                && (int) $connection->query('SELECT 1 AS value')[0]['value'] === 1, '真实密码轮换没有保留旧租约并启用新凭据');
+            identityExpect($new->identity()['credential-generation'] === 2 && (int)$new->query('SELECT 2 AS value')[0]['value'] === 2
+                && (int)$connection->query('SELECT 1 AS value')[0]['value'] === 1, '真实密码轮换没有保留旧租约并启用新凭据');
             $bad = new Database(identityDriver($driver), 1, 0);
             $rejected = false;
             try {
@@ -123,7 +123,7 @@ function main(int $argc, array $argv): void
             $state = $next->query("SELECT pg_backend_pid() AS id, current_setting('TimeZone') AS zone, current_schema() AS schema")[0];
             identityExpect($state['id'] === $sessionId && $state['zone'] === 'UTC' && $state['schema'] !== 'pg_catalog', 'PostgreSQL 没有复用已完整重置的会话');
         } else {
-            identityExpect((int) $next->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1 && (int) $next->query('PRAGMA busy_timeout')[0]['timeout'] === 1000, 'SQLite PRAGMA 污染下一租约');
+            identityExpect((int)$next->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1 && (int)$next->query('PRAGMA busy_timeout')[0]['timeout'] === 1000, 'SQLite PRAGMA 污染下一租约');
         }
         $missing = false;
         try {
@@ -137,7 +137,7 @@ function main(int $argc, array $argv): void
         $manager->rotate('default', identityDriver($driver, 2));
         $new = $manager->connect($scope);
         identityExpect($old->identity()['credential-generation'] === 1 && $new->identity()['credential-generation'] === 2
-            && (int) $old->query('SELECT 1 AS value')[0]['value'] === 1, '轮换改变旧租约身份或阻止其安全收尾');
+            && (int)$old->query('SELECT 1 AS value')[0]['value'] === 1, '轮换改变旧租约身份或阻止其安全收尾');
         $old->close();
         identityExpect(($manager->statistics()['retired-generations']['default'] ?? 0) === 0, '旧代池没有退役排空');
         $new->close();
@@ -168,7 +168,7 @@ function main(int $argc, array $argv): void
                 } catch (RuntimeException $error) {
                     $rejected = str_contains($error->getMessage(), '进程');
                 }
-                fwrite($pipes[1], (int) $child->query('SELECT 9 AS value')[0]['value'] === 9 && $rejected ? 'ok' : 'failed');
+                fwrite($pipes[1], (int)$child->query('SELECT 9 AS value')[0]['value'] === 9 && $rejected ? 'ok' : 'failed');
             } finally {
                 $childScope->close();
                 $unused->close();
@@ -193,8 +193,8 @@ function main(int $argc, array $argv): void
 /** 同一物理会话归还后恢复配置角色、schema 与读写用途，PHP 和 AOT 使用相同断言。 */
 function identitySessionBaseline(): void
 {
-    $schema = (string) getenv('TYPE_IDENTITY_SCHEMA');
-    $databaseRole = (string) getenv('TYPE_IDENTITY_ROLE');
+    $schema = (string)getenv('TYPE_IDENTITY_SCHEMA');
+    $databaseRole = (string)getenv('TYPE_IDENTITY_ROLE');
     foreach (['writer', 'reader'] as $role) {
         $database = new Database(identityDriver('pgsql', 1, $role, $schema, null, $databaseRole), 1, 1);
         $scope = new ExecutionScope();

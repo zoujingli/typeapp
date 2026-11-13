@@ -7,21 +7,24 @@ namespace Type\Orm\Outbox;
 use Type\Orm\Connection;
 use Type\Orm\DatabaseException;
 use Type\Orm\Db;
-use Type\Orm\ModelException;
 use Type\Orm\Migration\Migration;
+use Type\Orm\ModelException;
 use Type\Orm\SqlDialect;
 
 /** 业务事务中的消息意图及投递凭据；未知效果保留对账，不承诺跨系统原子事务。 */
 final class Store
 {
     private string $table;
+
     private int $leaseMilliseconds;
+
     private int $retentionSeconds;
+
     /**
      * 声明 Outbox 表与保留策略，构造不执行建表。
      *
-     * @param int $leaseMilliseconds 领取租约毫秒数，范围 10 至 3600000。
-     * @param int $retentionSeconds 发布后重放窗口秒数，范围 1 至 31536000。
+     * @param int $leaseMilliseconds 领取租约毫秒数，范围 10 至 3600000
+     * @param int $retentionSeconds 发布后重放窗口秒数，范围 1 至 31536000
      */
     public function __construct(string $table = 'type_outbox', int $leaseMilliseconds = 30000, int $retentionSeconds = 604800)
     {
@@ -52,8 +55,8 @@ final class Store
     /**
      * 在业务同一事务登记意图；同 ID 同内容返回 false，不同内容拒绝。
      *
-     * @param array<array-key, mixed> $payload 仅允许有限 JSON 数据。
-     * @param array<string, string> $context 显式上下文，连同载荷最多 60000 字节。
+     * @param array<array-key, mixed> $payload 仅允许有限 JSON 数据
+     * @param array<string, string> $context 显式上下文，连同载荷最多 60000 字节
      */
     public function enqueue(string $id, string $topic, int $version, array $payload, array $context = [], string $database = 'default'): bool
     {
@@ -62,8 +65,8 @@ final class Store
 
     /**
      * 基础设施已有显式事务连接时使用；业务优先使用 enqueue 的命名源入口。
-     * @param array<array-key, mixed> $payload 仅允许有限 JSON 数据。
-     * @param array<string, string> $context 显式追踪上下文。
+     * @param array<array-key, mixed> $payload 仅允许有限 JSON 数据
+     * @param array<string, string> $context 显式追踪上下文
      */
     public function enqueueUsing(Connection $connection, string $id, string $topic, int $version, array $payload, array $context = []): bool
     {
@@ -100,7 +103,7 @@ final class Store
     /**
      * 在专属短事务领取待投递或租约过期记录，递增次数并生成新 token。
      *
-     * @param int $limit 1 至 1000 条。
+     * @param int $limit 1 至 1000 条
      * @return list<Record>
      */
     public function claim(Connection $connection, int $limit = 100): array
@@ -120,9 +123,9 @@ final class Store
             foreach ($transaction->query($sql, ['pending', 'claimed', $now]) as $row) {
                 $token = bin2hex(random_bytes(16));
                 $transaction->table($this->table)->where('id', '=', $row['id'])->update(['state' => 'claimed', 'token' => $token, 'lease_until' => $now + $this->leaseMilliseconds,
-                    'attempts' => (int) $row['attempts'] + 1]);
+                    'attempts' => (int)$row['attempts'] + 1]);
                 $row['token'] = $token;
-                $row['attempts'] = (int) $row['attempts'] + 1;
+                $row['attempts'] = (int)$row['attempts'] + 1;
                 $records[] = new Record($row, $transaction->identity());
             }
             return $records;
@@ -161,7 +164,7 @@ final class Store
     /**
      * 按稳定消息 ID 读取现状及凭据；缺失返回 null。
      *
-     * @return array<string, mixed>|null
+     * @return null|array<string, mixed>
      */
     public function status(Connection $connection, string $id): ?array
     {
@@ -199,8 +202,9 @@ final class Store
             'pgsql' => 'SELECT CAST(EXTRACT(EPOCH FROM clock_timestamp()) * 1000 AS BIGINT) AS value',
             'sqlite' => "SELECT CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) AS value",
         };
-        return (int) $connection->query($sql)[0]['value'];
+        return (int)$connection->query($sql)[0]['value'];
     }
+
     /** 先观察已有事务，拒绝时不建立会话、不另借默认来源。 */
     private function transactionConnection(string $database): Connection
     {
@@ -212,12 +216,14 @@ final class Store
         }
         return Db::connection($database, true);
     }
+
     private function limit(int $limit): void
     {
         if ($limit < 1 || $limit > 1000) {
             throw new DatabaseException('Outbox 批次必须为 1 至 1000');
         }
     }
+
     private static function data(mixed $value, int $depth): void
     {
         if ($depth > 24) {

@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 use Type\Orm\Connection;
 use Type\Orm\Database;
+use Type\Orm\DatabaseException;
 use Type\Orm\Sqlite\SqliteDriver;
 use Type\Runtime\ExecutionScope;
 
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function databaseExpect(bool $condition, string $message): void
 {
@@ -31,7 +32,7 @@ function sqliteRecovery(string $mode, string $filename): void
             $connection->transaction(static function (Connection $transaction): void {
                 $transaction->execute('INSERT INTO recovery_probe VALUES (?, ?)', [1, '已提交']);
             });
-            posix_kill((int) getmypid(), 9);
+            posix_kill((int)getmypid(), 9);
             throw new RuntimeException('测试进程未被终止');
         }
         databaseExpect($connection->query('SELECT value FROM recovery_probe WHERE id = ?', [1])[0]['value'] === '已提交', 'WAL 崩溃恢复丢失已提交数据');
@@ -45,7 +46,7 @@ function sqliteRecovery(string $mode, string $filename): void
 /**
  * 在专属 SQLite 文件验证读写、事务、租约与 WAL 崩溃恢复；按参数选择故障阶段。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
@@ -53,8 +54,8 @@ function main(int $argc, array $argv): void
         echo json_encode(PDO::getAvailableDrivers(), JSON_THROW_ON_ERROR), "\n";
         return;
     }
-    if ($argc === 3 && in_array((string) $argv[1], ['test-crash-write', 'test-recover'], true)) {
-        sqliteRecovery((string) $argv[1], (string) $argv[2]);
+    if ($argc === 3 && in_array((string)$argv[1], ['test-crash-write', 'test-recover'], true)) {
+        sqliteRecovery((string)$argv[1], (string)$argv[2]);
         return;
     }
     $memoryScope = new ExecutionScope();
@@ -62,7 +63,7 @@ function main(int $argc, array $argv): void
     $filename = tempnam(sys_get_temp_dir(), 'type_app_sqlite_');
     databaseExpect($filename !== false, '无法创建 SQLite 测试文件');
     $scope = new ExecutionScope();
-    $database = new Database(new SqliteDriver((string) $filename, 100, true), 2, 0);
+    $database = new Database(new SqliteDriver((string)$filename, 100, true), 2, 0);
     try {
         $memoryA = $memory->connect($memoryScope);
         $memoryB = $memory->connect($memoryScope);
@@ -73,8 +74,8 @@ function main(int $argc, array $argv): void
 
         $one = $database->connect($scope);
         $two = $database->connect($scope);
-        databaseExpect((int) $one->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1
-            && (int) $two->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1, '每连接外键未启用');
+        databaseExpect((int)$one->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1
+            && (int)$two->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1, '每连接外键未启用');
         databaseExpect($one->query('PRAGMA journal_mode')[0]['journal_mode'] === 'wal', '文件库没有使用 WAL');
         $one->raw('CREATE TABLE parent_probe (id INTEGER PRIMARY KEY, name TEXT NOT NULL)');
         $one->raw('CREATE TABLE child_probe (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent_probe(id))');
@@ -84,7 +85,7 @@ function main(int $argc, array $argv): void
         $foreignKey = false;
         try {
             $two->execute('INSERT INTO child_probe (parent_id) VALUES (?)', [999]);
-        } catch (\Type\Orm\DatabaseException $error) {
+        } catch (DatabaseException $error) {
             $foreignKey = true;
         }
         databaseExpect($foreignKey, 'SQLite 外键约束没有生效');
@@ -103,13 +104,13 @@ function main(int $argc, array $argv): void
             $transaction->execute('UPDATE parent_probe SET name = ? WHERE id = ?', ['已提交', 1]);
             try {
                 $two->execute('UPDATE parent_probe SET name = ? WHERE id = ?', ['不能抢写', 1]);
-            } catch (\Type\Orm\DatabaseException $error) {
+            } catch (DatabaseException $error) {
                 return true;
             }
             return false;
         });
         $elapsed = microtime(true) - $started;
-        databaseExpect((bool) $busy && $elapsed >= 0.05 && $elapsed < 5.0, 'SQLite 写竞争或 busy 上限无效');
+        databaseExpect((bool)$busy && $elapsed >= 0.05 && $elapsed < 5.0, 'SQLite 写竞争或 busy 上限无效');
         databaseExpect($two->query('SELECT name FROM parent_probe WHERE id = ?', [1])[0]['name'] === '已提交', 'SQLite 提交失败');
         $one->execute('INSERT INTO parent_probe (name) VALUES (?)', ['待删除']);
         $one->execute('DELETE FROM parent_probe WHERE id = ?', [2]);
@@ -118,13 +119,13 @@ function main(int $argc, array $argv): void
             $reader->query('SELECT * FROM parent_probe');
             $one->execute('UPDATE parent_probe SET name = ? WHERE id = ?', ['读者期间写入', 1]);
             $checkpoint = $one->query('PRAGMA wal_checkpoint(PASSIVE)')[0];
-            databaseExpect((int) $checkpoint['log'] > (int) $checkpoint['checkpointed'], '长读者没有体现 WAL 检查点限制');
+            databaseExpect((int)$checkpoint['log'] > (int)$checkpoint['checkpointed'], '长读者没有体现 WAL 检查点限制');
         });
         $one->query('PRAGMA wal_checkpoint(TRUNCATE)');
         $scope->close();
         $database->close();
         $reopenScope = new ExecutionScope();
-        $reopen = new Database(new SqliteDriver((string) $filename, 100, true), 1, 0);
+        $reopen = new Database(new SqliteDriver((string)$filename, 100, true), 1, 0);
         try {
             databaseExpect($reopen->connect($reopenScope)->query('SELECT name FROM parent_probe WHERE id = ?', [1])[0]['name'] === '读者期间写入', 'SQLite 文件重新打开后数据错误');
         } finally {
@@ -140,7 +141,7 @@ function main(int $argc, array $argv): void
         $database->close();
         exit(70);
     }
-    foreach ([(string) $filename, (string) $filename . '-wal', (string) $filename . '-shm'] as $file) {
+    foreach ([(string)$filename, (string)$filename . '-wal', (string)$filename . '-shm'] as $file) {
         if (is_file($file)) {
             unlink($file);
         }

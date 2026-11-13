@@ -27,8 +27,8 @@ final class RequestLog implements MiddlewareInterface
     /**
      * 日志资源由请求作用域持有，成功、失败与取消路径均交给作用域清理。
      *
-     * @throws \RuntimeException 请求不含框架执行作用域。
-     * @throws \Throwable 下游未处理的业务或基础设施异常。
+     * @throws \RuntimeException 请求不含框架执行作用域
+     * @throws \Throwable 下游未处理的业务或基础设施异常
      */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {

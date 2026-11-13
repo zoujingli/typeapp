@@ -89,7 +89,7 @@ if (in_array($report['protocol'] ?? null, [2, 3], true)) {
             && ($manifest['declaration-generation'] ?? null) === ($generationIdentity['declaration_generation'] ?? null)
             && is_int($generationIdentity['generated_bytes'] ?? null) && $generationIdentity['generated_bytes'] >= 0
             && is_int($prepared['bytes'] ?? null) && $prepared['bytes'] > 0
-            && is_numeric($prepared['build_seconds'] ?? null) && is_finite((float) $prepared['build_seconds']) && $prepared['build_seconds'] > 0
+            && is_numeric($prepared['build_seconds'] ?? null) && is_finite((float)$prepared['build_seconds']) && $prepared['build_seconds'] > 0
             && ($prepared['runtime_linkage'] ?? null) === ($static ? 'static' : 'shared'), '准备报告缺少固定源码和完整生成身份');
         foreach ($static ? ['sha256', 'build_id', 'sdk_manifest_sha256'] : ['sha256', 'build_id', 'runtime_ini_sha256'] as $field) {
             expect(preg_match('/^[a-f0-9]{64}$/D', $prepared[$field] ?? '') === 1, '准备报告缺少产物或运行配置身份');
@@ -106,7 +106,7 @@ if (in_array($report['protocol'] ?? null, [2, 3], true)) {
         foreach (['cold_seconds', 'reuse_seconds'] as $phase) {
             expect(is_array($generation[$phase] ?? null) && array_is_list($generation[$phase]) && count($generation[$phase]) === 3, '生成计时缺少三轮原始样本');
             foreach ($generation[$phase] as $seconds) {
-                expect(is_numeric($seconds) && is_finite((float) $seconds) && $seconds > 0, '生成计时样本无效');
+                expect(is_numeric($seconds) && is_finite((float)$seconds) && $seconds > 0, '生成计时样本无效');
             }
         }
         $builds[$version] = ['source' => $preparation['source_commits'][$version], 'artifact_sha256' => $prepared['sha256'],
@@ -121,7 +121,7 @@ if (in_array($report['protocol'] ?? null, [2, 3], true)) {
             $path = dirname(__DIR__) . '/' . ($source['file'] ?? '');
             expect(($source['file'] ?? '') === dirname($preparedFile) . $suffix && is_file($path) && !is_link($path)
                 && hash_file('sha256', $path) === ($source['sha256'] ?? null)
-                && json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR) === ($source['record'] ?? null), '原候选或原编译计时缺失、被替换');
+                && json_decode((string)file_get_contents($path), true, 512, JSON_THROW_ON_ERROR) === ($source['record'] ?? null), '原候选或原编译计时缺失、被替换');
         }
         $candidate = $preparation['candidate']['record'];
         $timing = $preparation['candidate_build']['record'];

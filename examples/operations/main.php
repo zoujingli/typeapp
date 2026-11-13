@@ -2,25 +2,27 @@
 
 declare(strict_types=1);
 
-use Type\Orm\DatabaseManager;
-use Type\Orm\Db;
-use Type\Orm\AfterCommitException;
-use Type\Orm\TransactionException;
-use Type\Orm\TransactionOutcome;
 use Type\Cache\JsonCodec;
 use Type\Cache\NamespaceStore;
 use Type\Cache\TypedCache;
+use Type\Orm\AfterCommitException;
+use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
+use Type\Orm\ModelException;
+use Type\Orm\TransactionException;
+use Type\Orm\TransactionOutcome;
 use Type\Redis\Purpose;
 use Type\Redis\RedisConfiguration;
 use Type\Redis\RedisManager;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
-use TypeApp\Operations\UserService;
 use TypeApp\ModelExample\Drivers;
+use TypeApp\Operations\UserService;
 
 /**
  * 将生成服务组合入口的断言失败转为明确异常。
  *
- * @throws RuntimeException 断言不成立。
+ * @throws RuntimeException 断言不成立
  */
 function operationsAssert(bool $condition, string $message): void
 {
@@ -48,17 +50,17 @@ function operationsUnknown(UserService $operations, TypedCache $cache): void
 /**
  * 在专属三库与 Redis 验证生成的事务、缓存与提交后失效操作。
  *
- * @param list<string> $argv 程序路径与数据库驱动参数。
+ * @param list<string> $argv 程序路径与数据库驱动参数
  */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::enableIo();
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
-        $driver = Drivers::create((string) ($argv[1] ?? 'sqlite'));
+    CoroutineRuntime::enableIo();
+    CoroutineRuntime::run(static function () use ($argv): void {
+        $driver = Drivers::create((string)($argv[1] ?? 'sqlite'));
         $database = new DatabaseManager(['default' => $driver, 'named' => $driver]);
         $redisManager = new RedisManager(['default' => new RedisConfiguration(
-            (string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
-            (int) (getenv('TYPE_REDIS_PORT') ?: 6379)
+            (string)(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
+            (int)(getenv('TYPE_REDIS_PORT') ?: 6379)
         )], [Purpose::SCRIPT => 1]);
         Db::configure($database);
         $scope = new ExecutionScope();
@@ -86,7 +88,7 @@ function main(int $argc, array $argv): void
                         $crossRejected = false;
                         try {
                             $operations->cached($cache, 1);
-                        } catch (\Type\Orm\ModelException $error) {
+                        } catch (ModelException $error) {
                             $crossRejected = $error->errorCode() === 'cross_database_transaction';
                         }
                         operationsAssert($crossRejected, '缓存便利入口绕过跨库限制');
@@ -131,7 +133,7 @@ function main(int $argc, array $argv): void
                 usleep(60000);
                 $operations->shortLived($cache, 1);
                 operationsAssert($operations->loads() === 4, '缓存过期没有重新回源');
-                for ($attempt = 0; $attempt < 2; $attempt++) {
+                for ($attempt = 0; $attempt < 2; ++$attempt) {
                     $originFailed = false;
                     try {
                         $operations->failing($cache, 1);
@@ -214,7 +216,7 @@ function main(int $argc, array $argv): void
                 operationsAssert($operations->loads() === $beforeEvict + 1, '外层确认提交没有执行普通失效声明');
                 $admin = new Redis();
                 try {
-                    $admin->connect((string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379));
+                    $admin->connect((string)(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int)(getenv('TYPE_REDIS_PORT') ?: 6379));
                     $admin->rawCommand('CLIENT', 'KILL', 'ID', $redis->identity());
                 } finally {
                     $admin->close();

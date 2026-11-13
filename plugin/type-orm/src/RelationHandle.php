@@ -15,6 +15,7 @@ use Type\Runtime\ExecutionScope;
 final class RelationHandle
 {
     private ?string $tenantBinding;
+
     private ManyToMany $relation;
 
     /** @internal 通过 Model::relation() 创建，名称只能引用父模型声明的多对多关系。 */
@@ -32,8 +33,8 @@ final class RelationHandle
      * 在当前父模型上挂载一个目标；重复挂载仍返回 false。
      *
      * @param int|string $id 目标模型主键
-     * @param array<string, scalar|null> $values 允许写入的中间表字段
-     * @throws ModelException 父模型、作用域、租户、目标或中间表字段不满足写入约束。
+     * @param array<string, null|scalar> $values 允许写入的中间表字段
+     * @throws ModelException 父模型、作用域、租户、目标或中间表字段不满足写入约束
      */
     public function attach(int|string $id, array $values = []): bool
     {
@@ -42,7 +43,7 @@ final class RelationHandle
 
     /**
      * 解除当前父模型与目标的关系；目标不可见或关系不存在返回 false。
-     * @throws ModelException 父模型失效、作用域不匹配或租户上下文改变。
+     * @throws ModelException 父模型失效、作用域不匹配或租户上下文改变
      */
     public function detach(int|string $id): bool
     {
@@ -52,9 +53,9 @@ final class RelationHandle
     /**
      * 将当前父模型的关系同步到目标列表，并返回新增、移除和更新数量。
      *
-     * @param list<array{id: int|string, pivot?: array<string, scalar|null>}> $items
+     * @param list<array{id: int|string, pivot?: array<string, null|scalar>}> $items
      * @return array{attached: int, detached: int, updated: int}
-     * @throws ModelException 模型、作用域或租户失效，或目标列表及中间表字段非法。
+     * @throws ModelException 模型、作用域或租户失效，或目标列表及中间表字段非法
      */
     public function sync(array $items): array
     {

@@ -1,17 +1,18 @@
 # 内置 Swoole 构建输入
 
-当前源码基线为官方 Swoole 6.3 开发快照 `64988849fa898e510a38039912610cab6e9cf3f5`，运行时字符串仍为 `6.3.0RC1`，不是正式 6.3.0。2026-11-07 核对的最新稳定发行版为 [6.2.5](https://github.com/swoole/swoole-src/releases/tag/v6.2.5)；项目继续沿既有 6.3 路线固定源码提交与归档摘要，不跟随浮动分支。固定 PHP 为 **8.5.10、ZTS、非 debug、64 位**，其他 ABI 不自动混用。
+当前源码基线为官方 Swoole 6.3 开发快照 `814049090dd9ba8000adc6cd09ad09dd3f0c9989`，运行时字符串为 `6.3.0RC1`，不是正式 6.3.0。项目固定源码提交、归档、补丁输出及模块摘要，不跟随浮动分支。当前 PHP 为 **8.5.12、ZTS、非 debug、64 位**，其他 ABI 不自动混用。
 
-四平台共享模块已从同一固定源码重建并通过各自门禁，模块、源码适配和依赖摘要已逐项回填；以下记录对应的真实产物。完整应用和静态单程序仍分别验收。
+当前仅 macOS ARM64 的对应模块已重建，静态链接 OpenSSL 4.1.0、c-ares 1.34.9、Brotli 1.2.1、libpq 17.11 和 SQLite 3.53.4，保留系统 curl、zlib、C++ 与平台库。已验证真实模块加载、协程 SQLite、PostgreSQL 连接拒绝、TLS 半关闭及握手截止/取消、HTTP/HTTPS、DNS、原生 curl 与线程重建。完整应用 AOT、静态单程序、完整依赖闭包及其他平台仍须验收。
 
 | 目录 | 平台与边界 |
 | --- | --- |
+| `macos-arm64/php-8.5.12-zts/swoole.so` | 当前 macOS ARM64 模块，部署目标 15；准确来源、依赖及验证摘要见清单 |
 | `linux-x64/php-8.5.10-zts/swoole.so` | Linux x86-64，Debian 12 / glibc 2.36；重建运行 42354619862 |
 | `linux-arm64/php-8.5.10-zts/swoole.so` | Linux ARM64，Debian 12 / glibc 2.36；重建运行 42354619862 |
 | `macos-arm64/php-8.5.10-zts/swoole.so` | macOS ARM64，部署目标 15；重建运行 42354619862 |
 | `windows-x64/php-8.5.10-zts/php_swoole.dll` | Windows x64，PHP 官方 VS17 ZTS ABI；重建运行 42354619862 |
 
-本轮四个平台模块均由 [重建运行 42354619862](https://github.com/zoujingli/typeapp/actions/runs/42354619862) 从同一源码提交构建并通过模块加载、协程 SQLite、PostgreSQL 连接拒绝和 ABI 校验；Windows 另通过中文环境、DNS、TLS 和 curl 回归。清单已回填各 Artifact、源码、依赖和模块摘要，选择器不再拒绝这些新模块。安装完整且模块匹配的 `zoujingli/type-build` 后，构建从组件安装位置校验、复用本地文件，不依赖主仓布局；文件不是 Git LFS 指针。
+表中的 PHP 8.5.10 文件属于历史基线，来自 [重建运行 42354619862](https://github.com/zoujingli/typeapp/actions/runs/42354619862)，保留其 Artifact、源码、依赖及模块身份；它们不能满足当前 PHP 8.5.12 或当前源码适配门禁。安装完整且模块匹配的 `zoujingli/type-build` 后，从组件安装位置校验、复用本地文件，不依赖主仓布局；文件不是 Git LFS 指针。
 
 模块替换后的应用、真实三库与工具链结果统一见[当前平台状态](https://iots.top/#/guide/platforms?id=当前平台状态)，逐项保留源码提交、运行链接和失败后的复验身份。本轮共享模块重建不包含十二个静态单程序重建或跨平台性能对照。
 
@@ -44,19 +45,19 @@ Windows 共享模块已启用 `--enable-swoole-curl`，构建输入固定官方 
 
 ## 来源与依赖
 
-新基线来自官方 [swoole-src](https://github.com/swoole/swoole-src/tree/64988849fa898e510a38039912610cab6e9cf3f5)。固定归档摘要、模块摘要、适配身份、构建参数和逐平台来源记录在清单中。TypeApp 保留原生线程入口 ABI 2、共享 HTTP 监听和连接/输入准入；删除官方已覆盖的空 UDP 来源与重复构造补丁。TCP、HTTP、WebSocket 客户端开启官方 `ssl_verify_host`；标准 stream hook 尚未映射此选项，仍需最小 IP SAN 兼容适配以保持协程 Redis/mysqlnd 行为，实证和撤除条件见[TCP 说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/tcp-native-io.md#数字-ip-的-tls-校验修正)。上游继续承担线程标准流回收。
+当前基线来自官方 [swoole-src](https://github.com/swoole/swoole-src/tree/814049090dd9ba8000adc6cd09ad09dd3f0c9989)，历史模块的原提交继续记录在各自验证项中。固定归档摘要、模块摘要、适配身份、构建参数和逐平台来源见清单。TypeApp 保留原生线程入口 ABI 2、共享 HTTP 监听和连接/输入准入；删除官方已覆盖的空 UDP 来源与重复构造补丁。TCP、HTTP、WebSocket 客户端开启官方 `ssl_verify_host`；标准 stream hook 尚未映射此选项，仍需最小 IP SAN 兼容适配以保持协程 Redis/mysqlnd 行为，实证和撤除条件见[TCP 说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/tcp-native-io.md#数字-ip-的-tls-校验修正)。上游继续承担线程标准流回收。
 
-Linux 两种架构使用官方 `php:8.5.10-zts-bookworm` 镜像构建，启用线程、sockets、mysqlnd、c-ares、PostgreSQL/SQLite hook、OpenSSL 和原生 cURL。运行仍需要相容的 libpq、SQLite、c-ares、OpenSSL、libcurl、C++ 与系统库，现有原生依赖收集器负责纳入发布清单。
+历史 Linux 模块使用官方 `php:8.5.10-zts-bookworm` 镜像构建，启用线程、sockets、mysqlnd、c-ares、PostgreSQL/SQLite hook、OpenSSL 和原生 cURL。运行需要相容的 libpq、SQLite、c-ares、OpenSSL、libcurl、C++ 与系统库；当前 PHP 8.5.12 的对应模块与完整运行组合仍须重建。
 
 macOS 模块将 libpq（含配套的 libpgcommon_shlib、libpgport_shlib）、SQLite、OpenSSL、c-ares、Brotli 的静态归档链接进扩展，并隐藏这些库的符号，避免与 PHP 已加载的同名库混用。扩展保留 PHP API 的动态绑定以及系统库依赖；没有开发电脑的依赖路径，不需要伴随 dylib。静态子依赖及其来源记录在清单中。
 
-升级前的 Unix 和 Windows 模块身份继续保留在历史记录；当前四平台模块统一来自 [重建运行 42354619862](https://github.com/zoujingli/typeapp/actions/runs/42354619862)，源码提交为 `e8b4ba7`，并分别记录 Linux glibc、macOS ARM64 和 Windows VS17 ABI 的真实 Artifact。Windows 仍保留 IPv6 地址初始化与独占绑定适配、TLS 正常 EOF 修复；IOCP 关联缓存由 c-ares 和 libcurl 的真实关闭生命周期回收，使存活连接可重复登记事件、关闭后的数值句柄可安全复用。模块静态链接固定 c-ares 1.34.8，使指定 DNS 配置在主线程和重建的工作线程生效。共享模块使用与开发 PHP 一致的 `/MD` CRT，生产静态 SDK 独立使用 `/MT`；开发 SDK 的配套 DLL 不属于生产单程序的部署文件。
+历史四平台模块来自 [重建运行 42354619862](https://github.com/zoujingli/typeapp/actions/runs/42354619862)，源码提交为 `e8b4ba7`，分别记录 Linux glibc、macOS ARM64 和 Windows VS17 ABI 的真实 Artifact。Windows 原模块保留 IPv6 地址初始化与独占绑定适配、TLS 正常 EOF 修复；IOCP 关联缓存由 c-ares 和 libcurl 的真实关闭生命周期回收。其静态 c-ares、`/MD` CRT 及线程 DNS 验证保持原产物身份，不能计为当前基线通过；生产静态 SDK 独立使用 `/MT`。
 
 ### Windows 环境编码修复
 
 RC14 的 Windows DLL 保留 `37134319268` 的历史构建身份。后续诊断确认，加载该 DLL 后，Windows 的窄字节 `putenv()` 会把 UTF-8 环境值按 ANSI 路径写坏；故障发生在函数返回前。固定源码适配改用 `php_win32_cp_any_to_w()` 与 `SetEnvironmentVariableW()`，继续使用 Swoole 的 ZTS 环境锁。
 
-当前内置 DLL 来自 [run 42354619862](https://github.com/zoujingli/typeapp/actions/runs/42354619862)、主仓源码 `e8b4ba774be2bc1f195c0a8ea3a65cd79f5374f3`，SHA-256 为 `66c972f9af52945b93cbfab8fcc13dafb87efd0461cf394c35daade3f6d0bc6f`。同一模块通过中文环境的主进程、PHP/宽字符子进程、两轮工作线程、零字符串和删除恢复验证，以及 DNS、句柄复用、TLS、curl 回归；原始 Artifact 为 `13566249673`。后续应用矩阵的结果见上文平台状态入口，静态程序另行验收。
+历史内置 DLL 来自 [run 42354619862](https://github.com/zoujingli/typeapp/actions/runs/42354619862)、主仓源码 `e8b4ba774be2bc1f195c0a8ea3a65cd79f5374f3`，SHA-256 为 `66c972f9af52945b93cbfab8fcc13dafb87efd0461cf394c35daade3f6d0bc6f`。同一模块通过中文环境、子进程、两轮工作线程及 DNS、TLS、curl 回归；原始 Artifact 为 `13566249673`。当前源码及 PHP ABI 的 Windows 模块尚须重建和复验，静态程序另行验收。
 
 各模块的加载、协程 SQLite 和 PostgreSQL 连接拒绝检查通过，Windows 另通过主线程及两次重建工作线程的指定 DNS、TLS 写半关闭、读取超时恢复及连接重置检查，以及各 16 次的原生 UDP / DNS 后 UDP 对照；清单保存各 Artifact、依赖和适配摘要。Windows 还包含 config.w32、IOCP、DNS 和 PHP 头文件的受控适配。这些模块检查不替代完整通信及十二组合静态程序验收；上述模块与 RC14 的历史验收身份见[历史升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，当前工具链与应用迁移范围见[平台与验收](https://iots.top/#/guide/platforms)。
 
@@ -75,6 +76,8 @@ bash tools/prepare-swoole-module.sh
 ```
 
 上述开关对应 Linux。可移植四平台模块统一通过主仓的 `rebuild-swoole.yml` 手动工作流重建；Unix 实现为 `tools/rebuild-bundled-swoole.sh`，Windows 使用 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 调用既有 SDK 准备脚本。macOS 固定 `MACOSX_DEPLOYMENT_TARGET=15.0`，以 `-Wl,-load_hidden,<归档文件>` 隐藏链接非系统库，保留系统 curl、zlib、C++ 与平台库，最后 strip 并重新 ad-hoc 签名。不得复用系统要求高于目标平台的归档。
+
+macOS 可通过 `TYPE_OPENSSL_PREFIX` 指定独立 OpenSSL 安装；该前缀须包含头文件、`libssl.a`、`libcrypto.a` 和原始 `LICENSE.txt`。校验使用隔离 PHP 配置并显式加载实际依赖，防止 SDK 中预先加载的旧模块代替本轮产物通过检查。
 
 验收包括准确机器类型和 SHA-256、真实 PHP 加载、原生线程 ABI、协程和 PDO hook，以及真实 embed 和应用 AOT 的对应回归。macOS 必须确认没有未解析的 PostgreSQL 私有符号，并实际验证 PDO 连接失败返回异常；仅加载扩展不能发现遗漏静态依赖导致的延迟绑定崩溃。本轮四平台模块重建均使用原生 runner，旧模块的模拟加载结果保留在历史证据中。
 

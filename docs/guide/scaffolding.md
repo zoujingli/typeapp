@@ -47,6 +47,37 @@ php vendor/bin/type make type-app.json migration 'app\notes\CreateNotes' --versi
 
 单独迁移输出空操作列表，须按 [Schema](plugins/type-orm.md) 填写业务结构，再准备快照并显式追加到迁移列表。空操作不会通过 `schema:prepare`。单独 Controller/Service 使用与模块相同的 `name` 字段示范契约；改变模型字段时同步修改输入、Service 和公开投影。
 
+## MySQL 反向同步模型
+
+`model:sync` 从已安装的 `type-orm-mysql` 读取当前数据库的持久基础表，生成或更新简洁模型声明、字段说明和 IDE 提示。它只读数据库结构，写入目标是项目源码；建表与结构变更继续由迁移管理。默认返回预览及新增、移除字段清单，显式 `--write` 才发布源码。
+
+准备仅当前开发者可读的连接 JSON 文件，不将凭据写进构建配置、命令参数或版本库：
+
+```json
+{
+  "host": "127.0.0.1",
+  "port": 3306,
+  "database": "development",
+  "username": "schema_reader",
+  "password": "本地开发凭据"
+}
+```
+
+可选 `caFile` 指定实际 CA 文件并启用服务器证书校验。使用只有目标结构读取权限的开发连接；读取不到目标表会失败。命令不会加载应用的 `autoload.files` 或启动业务服务。
+
+```sh
+php vendor/bin/type model:sync type-app.json 'app\catalog\model\Product' \
+  --table=center_product --connection=/私有目录/mysql.json
+php vendor/bin/type model:sync type-app.json 'app\catalog\model\Product' \
+  --table=center_product --connection=/私有目录/mysql.json --write
+```
+
+生成位置使用当前项目 PSR-4 映射。更新要求同表的 `$table/$schema` 声明，保留业务方法、关系、字段别名和既有可见性/赋值策略；不会重写整个文件。数据库删除字段时先拒绝并保全原文件，核对所有调用者后加 `--drop-missing`。相同结构重复同步不产生修改。写入前复用完整模型、路由和应用装配检查以及 make 的路径、锁、原字节核对和原子发布机制；失败不会留下半个模型。
+
+支持整数、字符和文本、枚举、集合、JSON、精确小数，以及六位微秒的 `DATETIME(6)/TIMESTAMP(6)`。`BIGINT` 生成字符串字段和对应 `signed64/unsigned64` 范围；生成列不可赋值。数据库默认值保留在数据库端，字段允许省略，重新查询取得实际默认值。不会猜测布尔、版本、软删除或时间字段的业务语义，已有声明继续保留；新增声明需要开发者明确配置。
+
+主键支持单列，或 `tenant_id` 加单一业务主键；后者仍由可信 Tenant 范围与复合数据库约束保证身份。无主键、其他复合主键、浮点、二进制、低于微秒精度的时间类型及其他不能无损映射的类型明确拒绝，需要开发者显式建模。视图、临时表及跨库表名不参与反向同步。
+
 ## 命令、Job 与 Task
 
 先显式安装需要的 `type-queue` 或 `type-scheduler`，并准备真实 Redis 或持久状态目录。共享服务契约是 `public execute(string $marker): array`，生成代码保留构造器注入，可直接改成实际业务操作。

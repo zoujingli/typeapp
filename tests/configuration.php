@@ -5,9 +5,9 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+use Type\Build\ConfigCompiler;
 use Type\Core\Config\Environment;
 use Type\Core\Config\Repository;
-use Type\Build\ConfigCompiler;
 
 /**
  * 要求配置操作抛出包含约定诊断的异常，并验证错误信息未泄漏测试秘密。
@@ -54,7 +54,7 @@ try {
 
 $quoted = $work . '/quoted.test';
 file_put_contents($quoted, 'export ' . $prefix . "SINGLE=' a # literal $ HOME ' # comment\n"
-    . $prefix . 'DOUBLE="line\\nnext\\t\\"quote\\"\\\\end" # comment' . "\r\n"
+    . $prefix . 'DOUBLE="line\nnext\t\"quote\"\\\end" # comment' . "\r\n"
     . $prefix . "COMMENT=abc#literal # ignored\n" . $prefix . "ESCAPED=escaped\\ value\\#suffix\n");
 $quotedEnvironment = Environment::load($quoted);
 expect($quotedEnvironment->get($prefix . 'SINGLE') === ' a # literal $ HOME '
@@ -87,7 +87,7 @@ $declaration = "<?php\ndeclare(strict_types=1);\nreturn ['name' => env('" . $pre
     . "ENABLED', false), 'port' => env('" . $prefix . "PORT', 9501), 'ratio' => 1.25, 'offset' => -2, 'positive' => +3, 'cast' => (int) '42', 'nullable' => null, 'list' => [true, 'item']];\n";
 file_put_contents($work . '/config/app.php', $declaration);
 file_put_contents($work . '/config/nested/auth.php', "<?php\ndeclare(strict_types=1);\nreturn ['driver' => 'token'];\n");
-$generatedClass = 'TypeTests\\Configuration\\Generated' . bin2hex(random_bytes(5));
+$generatedClass = 'TypeTests\Configuration\Generated' . bin2hex(random_bytes(5));
 $compiled = (new ConfigCompiler())->generate($work, ['class' => $generatedClass, 'files' => ['config/app.php', 'config/nested/auth.php']]);
 expect($compiled['class'] === $generatedClass && $compiled['files'] === [$work . '/config/app.php', $work . '/config/nested/auth.php'], '配置编译器没有返回准确输入文件清单');
 file_put_contents($work . '/Generated.php', $compiled['code']);
@@ -100,7 +100,7 @@ expect($compiledRepository->text('app.name') === 'dotenv' && !$compiledRepositor
     && $compiledRepository->integer('app.cast') === 42 && $compiledRepository->text('nested.auth.driver') === 'token', '配置 DSL 没有生成可执行的类型化嵌套配置');
 
 file_put_contents($work . '/config/numeric.php', "<?php\ndeclare(strict_types=1);\nreturn ['positive' => ['1' => 'a', 'b'], 'negative' => [-2 => 'a', 'b']];\n");
-$numericClass = 'TypeTests\\Configuration\\Numeric' . bin2hex(random_bytes(5));
+$numericClass = 'TypeTests\Configuration\Numeric' . bin2hex(random_bytes(5));
 $numericCompiled = (new ConfigCompiler())->generate($work, ['class' => $numericClass, 'files' => ['config/numeric.php']]);
 file_put_contents($work . '/Numeric.php', $numericCompiled['code']);
 require $work . '/Numeric.php';
@@ -154,7 +154,7 @@ var_dump($secretRepository);
 $debug = ob_get_clean();
 expect(!str_contains($debug, 'configuration-secret-canary') && str_contains($debug, '[REDACTED]'), '默认调试输出包含秘密配置值');
 
-$rejectedClass = 'TypeTests\\Configuration\\Rejected' . bin2hex(random_bytes(5));
+$rejectedClass = 'TypeTests\Configuration\Rejected' . bin2hex(random_bytes(5));
 $invalidConfig = $work . '/config/invalid.php';
 $compiler = new ConfigCompiler();
 $declarationPrefix = "<?php\ndeclare(strict_types=1);\n";
@@ -190,7 +190,7 @@ file_put_contents($invalidConfig, $declarationPrefix . 'return [; // configurati
 configurationRejects(static fn () => $compiler->generate($work, ['class' => $rejectedClass, 'files' => ['config/invalid.php']]), 'PHP 语法');
 configurationRejects(static fn () => $compiler->generate($work, ['class' => $rejectedClass, 'files' => ['config/app.php'], 'extra' => true]), '只接受');
 configurationRejects(static fn () => $compiler->generate($work, ['class' => $generatedClass, 'files' => ['config/app.php']]), '重名');
-foreach (['../config/app.php', '/config/app.php', 'config/../app.php', 'config\\app.php', 'config/app.json', 'app.php'] as $invalidPath) {
+foreach (['../config/app.php', '/config/app.php', 'config/../app.php', 'config\app.php', 'config/app.json', 'app.php'] as $invalidPath) {
     configurationRejects(static fn () => $compiler->generate($work, ['class' => $rejectedClass, 'files' => [$invalidPath]]), '配置');
 }
 configurationRejects(static fn () => $compiler->generate($work, ['class' => $rejectedClass, 'files' => ['config/app.php', 'config/app.php']]), '重复');
@@ -206,7 +206,7 @@ try {
     file_put_contents($work . '/.env', 'invalid configuration-secret-canary file');
     file_put_contents($work . '/config/casts.php', $declarationPrefix . "return ['name' => env('" . $runtimeKey . "', 'default'), 'port' => (int) env('"
         . $prefix . "PORT', '9501'), 'debug' => (bool) env('" . $prefix . "DEBUG', 'true'), 'ratio' => (float) env('" . $prefix . "RATIO', '0.1')];");
-    $runtimeClass = 'TypeTests\\Configuration\\Runtime' . bin2hex(random_bytes(5));
+    $runtimeClass = 'TypeTests\Configuration\Runtime' . bin2hex(random_bytes(5));
     $runtimeCompiled = $compiler->generate($work, ['class' => $runtimeClass, 'files' => ['config/casts.php']]);
     expect(!str_contains($runtimeCompiled['code'], 'configuration-secret-canary'), '构建时秘密进入了生成代码');
     file_put_contents($work . '/Runtime.php', $runtimeCompiled['code']);
@@ -219,14 +219,14 @@ try {
     putenv($runtimeKey);
 }
 
-file_put_contents($invalidEnvironment, $prefix . 'VALUE=kept\\ ' . "\n");
+file_put_contents($invalidEnvironment, $prefix . 'VALUE=kept\ ' . "\n");
 expect(Environment::load($invalidEnvironment)->get($prefix . 'VALUE') === 'kept ', 'dotenv 丢失了显式转义的尾随空格');
 
 $fixture = $work . '/fixture';
 mkdir($fixture . '/config', 0700, true);
 file_put_contents($fixture . '/config/app.php', $declarationPrefix . "return ['name' => env('TYPE_CONFIGURATION_DEMO_NAME', 'default'), 'port' => env('TYPE_CONFIGURATION_DEMO_PORT', 9501), "
     . "'debug' => env('TYPE_CONFIGURATION_DEMO_DEBUG', false), 'ratio' => env('TYPE_CONFIGURATION_DEMO_RATIO', 0.0), 'nullable' => null, 'nested' => ['enabled' => true]];\n");
-$fixtureCompiled = $compiler->generate($fixture, ['class' => 'TypeApp\\Generated\\ConfigurationFixture', 'files' => ['config/app.php']]);
+$fixtureCompiled = $compiler->generate($fixture, ['class' => 'TypeApp\Generated\ConfigurationFixture', 'files' => ['config/app.php']]);
 file_put_contents($fixture . '/Generated.php', $fixtureCompiled['code']);
 file_put_contents($fixture . '/runtime.test', "TYPE_CONFIGURATION_DEMO_NAME='运行时配置'\nTYPE_CONFIGURATION_DEMO_PORT=9527\nTYPE_CONFIGURATION_DEMO_DEBUG=true\nTYPE_CONFIGURATION_DEMO_RATIO=1.25\n");
 $relativeWork = substr($work, strlen($root) + 1);

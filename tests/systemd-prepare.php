@@ -5,8 +5,8 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-use Type\Build\BuildPlatform;
 use Type\Build\ArtifactManifest;
+use Type\Build\BuildPlatform;
 use Type\Build\NativePackage;
 use Type\Build\ServiceDefinition;
 use Type\Build\SingleProgram;

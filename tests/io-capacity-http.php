@@ -6,9 +6,9 @@ require __DIR__ . '/support.php';
 require __DIR__ . '/http-support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-use Type\Testing\Process;
 use Type\Build\BuildEnvironment;
 use Type\Build\BuildPlatform;
+use Type\Testing\Process;
 
 $root = dirname(__DIR__);
 $work = BuildPlatform::path($argv[1] ?? '');
@@ -18,7 +18,7 @@ expect(
     '用法：php tests/io-capacity-http.php <build 下独立消费者绝对目录> [--verify]'
 );
 $runner = new BuildEnvironment();
-$environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME'));
+$environment = $runner->environment((string)getenv('PHP_HOME'), (string)getenv('PHPX_HOME'));
 if (!$verify) {
     expect(!file_exists($work) && mkdir($work . '/app', 0700, true), '需要尚不存在的消费者目录');
     $composer = ['name' => 'type-tests/io-capacity-http', 'type' => 'project', 'license' => 'Apache-2.0',
@@ -44,7 +44,7 @@ if (!$verify) {
         && copy(__DIR__ . '/fixtures/io-capacity-http.php', $work . '/app/main.php')
         && copy($root . '/app/common/middleware/ApiErrors.php', $work . '/app/ApiErrors.php')
         && copy($root . '/app/common/bootstrap/RuntimeCapabilities.php', $work . '/app/RuntimeCapabilities.php'), '无法复制完整消费者输入');
-    $composerBinary = (string) (getenv('COMPOSER_BINARY') ?: trim(successful(['which', 'composer'])));
+    $composerBinary = (string)(getenv('COMPOSER_BINARY') ?: trim(successful(['which', 'composer'])));
     expect(is_file($composerBinary), '需要真实的 Composer 脚本');
     file_put_contents($work . '/install.log', $runner->run([PHP_BINARY, $composerBinary, 'install', '--no-interaction',
         '--no-scripts', '--no-plugins', '--no-progress'], $work, $environment + ['COMPOSER_HOME' => $work . '/composer-home'], 300));
@@ -85,9 +85,9 @@ expect($resource !== false && ftruncate($resource, 16777216) && fclose($resource
 $results = [];
 try {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
-    $environment['TYPE_HTTP_PORT'] = (string) $port;
+    $environment['TYPE_HTTP_PORT'] = (string)$port;
     $environment['TYPE_CAPACITY_FILE'] = $file;
     $server = new Process([...$policy, $binary], $work, $environment);
     try {

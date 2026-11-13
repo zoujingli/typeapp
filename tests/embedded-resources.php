@@ -19,7 +19,7 @@ file_put_contents($work . '/dist/assets/payload.bin', $bytes);
 file_put_contents($work . '/dist/empty.txt', '');
 $composer = ['name' => 'type-tests/embedded', 'require' => ['zoujingli/type-core' => '1.0.x-dev'],
     'require-dev' => ['zoujingli/type-build' => '1.0.x-dev'], 'config' => ['vendor-dir' => '../../vendor', 'allow-plugins' => false],
-    'autoload' => ['psr-4' => ['app\\common\\service\\' => 'app/']]];
+    'autoload' => ['psr-4' => ['app\common\service\\' => 'app/']]];
 mkdir($work . '/app');
 foreach (['FrontendAssets', 'FrontendPages', 'FrontendException'] as $name) {
     copy($root . '/app/common/service/' . $name . '.php', $work . '/app/' . $name . '.php');

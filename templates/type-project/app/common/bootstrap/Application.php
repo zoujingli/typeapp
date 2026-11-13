@@ -5,16 +5,13 @@ declare(strict_types=1);
 namespace app\common\bootstrap;
 
 use app\common\database\DatabaseFactory;
-use app\common\database\Schema;
 use app\common\database\DatabaseStorage;
+use app\common\database\Schema;
 use app\common\middleware\ApiErrors;
 use app\common\middleware\RequestLog;
-use InvalidArgumentException;
 use Psr\Http\Server\RequestHandlerInterface;
-use Throwable;
 use Type\Core\Config\Repository;
 use Type\Core\Configuration;
-use Type\Generated\CommandApplication;
 use Type\Core\Http\Authentication;
 use Type\Core\Http\CanonicalRequest;
 use Type\Core\Http\HttpControl;
@@ -22,10 +19,13 @@ use Type\Core\Http\HttpServerInterface;
 use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\Pipeline;
+use Type\Core\Http\ReadOnlyPolicy;
 use Type\Core\Http\RequestLimits;
 use Type\Core\Http\RequestPolicy;
 use Type\Core\Http\Router;
 use Type\Core\Http\SwooleServer;
+use Type\Generated\BuildIdentity;
+use Type\Generated\CommandApplication;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
 use Type\Orm\Migration\MigrationConsole;
@@ -43,7 +43,7 @@ final class Application
     /**
      * 帮助不要求配置或生成代码；其余角色读取一次配置，失败以非零进程状态退出。
      *
-     * @param list<string> $arguments 包含程序名的完整 CLI 参数。
+     * @param list<string> $arguments 包含程序名的完整 CLI 参数
      */
     public static function run(array $arguments, bool $development = false): void
     {
@@ -51,15 +51,15 @@ final class Application
         try {
             $command = $arguments[1] ?? 'help';
             if ($command === 'verify-runtime') {
-                if (count($arguments) !== 2 || !class_exists(\Type\Generated\BuildIdentity::class, false)) {
-                    throw new InvalidArgumentException('verify-runtime 只接受原生产物且不接受额外参数');
+                if (count($arguments) !== 2 || !class_exists(BuildIdentity::class, false)) {
+                    throw new \InvalidArgumentException('verify-runtime 只接受原生产物且不接受额外参数');
                 }
-                \Type\Generated\BuildIdentity::verifyDeployment();
+                BuildIdentity::verifyDeployment();
                 echo "运行环境完整性校验通过。\n";
                 return;
             }
-            if (class_exists(\Type\Generated\BuildIdentity::class, false)) {
-                \Type\Generated\BuildIdentity::verifyRuntime();
+            if (class_exists(BuildIdentity::class, false)) {
+                BuildIdentity::verifyRuntime();
             }
             if ($command === 'licenses') {
                 Licenses::run($arguments);
@@ -67,7 +67,7 @@ final class Application
             }
             if ($command === 'help' || $command === '--help') {
                 if (count($arguments) > 2) {
-                    throw new InvalidArgumentException('help 不接受额外参数');
+                    throw new \InvalidArgumentException('help 不接受额外参数');
                 }
                 echo "Type 业务应用：help、check、verify-runtime、serve、migrate <run|status|history|recover>。\n";
                 echo "内嵌许可：licenses 查看索引，licenses <notices/资源路径> 查看对应原文。\n";
@@ -94,7 +94,7 @@ final class Application
             $debug = Settings::debug($settings, $development);
             if ($command === 'check') {
                 if (count($arguments) !== 2) {
-                    throw new InvalidArgumentException('check 不接受额外参数');
+                    throw new \InvalidArgumentException('check 不接受额外参数');
                 }
                 echo '应用声明有效，数据库驱动：' . DatabaseFactory::NAME
                     . '；运行模式：' . $environment . '；调试：' . ($debug ? 'on' : 'off')
@@ -111,12 +111,12 @@ final class Application
                 return;
             }
             if (count($arguments) !== 2) {
-                throw new InvalidArgumentException('serve 不接受额外参数，启动值从配置读取');
+                throw new \InvalidArgumentException('serve 不接受额外参数，启动值从配置读取');
             }
             self::serve($settings, $basePath, $development);
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $message = $error->getMessage();
-            $publicMessage = $error instanceof InvalidArgumentException || str_starts_with($message, 'dotenv ')
+            $publicMessage = $error instanceof \InvalidArgumentException || str_starts_with($message, 'dotenv ')
                 ? $message : 'internal_error';
             fwrite(STDERR, '应用启动或命令失败：' . $publicMessage . "\n");
             if ($debug) {
@@ -136,7 +136,7 @@ final class Application
      *
      * 每次实际请求必须由服务器创建执行作用域，响应结束后收回所有请求租约。
      *
-     * @throws InvalidArgumentException 模式、令牌、Host、预算或 SQLite 初始化条件无效。
+     * @throws \InvalidArgumentException 模式、令牌、Host、预算或 SQLite 初始化条件无效
      */
     public static function handler(Repository $settings, string $basePath, bool $development = false): RequestHandlerInterface
     {
@@ -145,7 +145,7 @@ final class Application
         $debug = Settings::debug($settings, $development);
         $token = $settings->text('app.http.api_token');
         if (strlen($token) < 32 || !preg_match('/^[A-Za-z0-9._~+\/-]+=*$/D', $token)) {
-            throw new InvalidArgumentException('APP_API_TOKEN 必须为至少 32 字符的有效 Bearer 令牌');
+            throw new \InvalidArgumentException('APP_API_TOKEN 必须为至少 32 字符的有效 Bearer 令牌');
         }
         $port = Settings::integer($settings, 'app.http.port', 1, 65535);
         $hosts = Settings::list($settings->text('app.http.allowed_hosts'));
@@ -178,7 +178,7 @@ final class Application
         (new CommandApplication(new Configuration([])))->registerRoutes($router);
         if ($environment === 'demo') {
             // 模板没有登录写接口；业务需要认证例外时显式传入准确路由名。
-            $router->middleware(static fn (): \Type\Core\Http\ReadOnlyPolicy => new \Type\Core\Http\ReadOnlyPolicy());
+            $router->middleware(static fn (): ReadOnlyPolicy => new ReadOnlyPolicy());
         }
 
         return new Pipeline([
@@ -197,15 +197,15 @@ final class Application
     /**
      * 独立迁移角色不创建 HTTP 或缓存资源；只有精确 run 命令初始化 SQLite 父目录。
      *
-     * @param list<string> $arguments 不含程序名和 migrate 的动作参数。
-     * @throws InvalidArgumentException 参数无效或非初始化角色缺少 SQLite 文件。
+     * @param list<string> $arguments 不含程序名和 migrate 的动作参数
+     * @throws \InvalidArgumentException 参数无效或非初始化角色缺少 SQLite 文件
      */
     public static function migrate(Repository $settings, string $basePath, array $arguments): int
     {
         self::assertDatabase($settings);
         if (!((count($arguments) === 1 && in_array($arguments[0], ['run', 'status', 'history'], true))
             || (count($arguments) === 4 && $arguments[0] === 'recover'))) {
-            throw new InvalidArgumentException('迁移命令参数无效，请使用 migrate help');
+            throw new \InvalidArgumentException('迁移命令参数无效，请使用 migrate help');
         }
         if (DatabaseFactory::NAME === 'sqlite') {
             if ($arguments === ['run']) {
@@ -229,13 +229,13 @@ final class Application
     {
         $requested = $settings->text('database.driver');
         if ($requested !== '' && $requested !== DatabaseFactory::NAME) {
-            throw new InvalidArgumentException('runtime_profile_database_mismatch');
+            throw new \InvalidArgumentException('runtime_profile_database_mismatch');
         }
-        if (class_exists(\Type\Generated\BuildIdentity::class, false)) {
-            $identity = \Type\Generated\BuildIdentity::info();
+        if (class_exists(BuildIdentity::class, false)) {
+            $identity = BuildIdentity::info();
             $database = $identity['profile']['database'] ?? null;
             if ($database !== null && $database !== DatabaseFactory::NAME) {
-                throw new InvalidArgumentException('runtime_profile_database_mismatch');
+                throw new \InvalidArgumentException('runtime_profile_database_mismatch');
             }
         }
     }

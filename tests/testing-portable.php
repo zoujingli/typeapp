@@ -15,8 +15,8 @@ if (PHP_OS_FAMILY === 'Windows') {
     try {
         file_put_contents($batchPackage . '/arguments.php', '<?php echo json_encode([getcwd(), array_slice($argv, 1)], JSON_THROW_ON_ERROR); exit(7);');
         file_put_contents($batchPackage . '/run.cmd', "@echo off\r\nsetlocal\r\ncd /d \"%~dp0\"\r\n\"%TYPE_TEST_PHP_BINARY%\" -n \"%~dp0arguments.php\" %*\r\nexit /b %errorlevel%\r\n");
-        $batchEnvironment = ['SystemRoot' => (string) getenv('SystemRoot'), 'TEMP' => sys_get_temp_dir(),
-            'PATH' => (string) getenv('SystemRoot') . '/System32', 'TYPE_TEST_PHP_BINARY' => PHP_BINARY];
+        $batchEnvironment = ['SystemRoot' => (string)getenv('SystemRoot'), 'TEMP' => sys_get_temp_dir(),
+            'PATH' => (string)getenv('SystemRoot') . '/System32', 'TYPE_TEST_PHP_BINARY' => PHP_BINARY];
         $batchArguments = ['help', 'space value', '中文参数'];
         foreach ([$batchPackage, $batchDirectory] as $batchCwd) {
             $batchResult = (new Process([$batchPackage . '/run.cmd', ...$batchArguments], $batchCwd, $batchEnvironment))->wait(5);

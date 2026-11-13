@@ -13,9 +13,9 @@ use Type\Testing\Process;
 /**
  * 通过相同公开入口验证文档声明的参数/配置拒绝，不连接外部业务资源。
  *
- * @param array<string, list<string>> $commands 执行模式到实际入口命令的映射。
- * @param array<string, string> $environment 传给测试进程的显式环境。
- * @return list<array{mode: string, exit_code: int|null, rejected: bool}>
+ * @param array<string, list<string>> $commands 执行模式到实际入口命令的映射
+ * @param array<string, string> $environment 传给测试进程的显式环境
+ * @return list<array{mode: string, exit_code: null|int, rejected: bool}>
  */
 function documentedFailures(string $name, string $base, array $commands, array $environment): array
 {
@@ -245,7 +245,7 @@ PHP : '';
         expect($result->successful() && $result->stderr === '', '文档示例执行失败：' . str_replace($secrets, '<REDACTED>', $result->stdout . $result->stderr));
         $output = $result->stdout;
         if (in_array($name, ['type-orm-mysql', 'type-orm-pgsql', 'type-orm-sqlite'], true)) {
-            expect((int) json_decode($output, true, 512, JSON_THROW_ON_ERROR)[0]['value'] === 7, '文档参数绑定查询结果不符');
+            expect((int)json_decode($output, true, 512, JSON_THROW_ON_ERROR)[0]['value'] === 7, '文档参数绑定查询结果不符');
         } elseif ($name === 'type-cache') {
             expect(json_decode($output, true, 512, JSON_THROW_ON_ERROR) === ['id' => 7, 'name' => '示例'], '文档缓存值不符');
         } elseif ($name === 'type-queue') {
@@ -267,7 +267,7 @@ PHP : '';
         } elseif ($name === 'type-mqtt') {
             expect(
                 json_decode($output, true, 512, JSON_THROW_ON_ERROR) === ['protocol' => 5, 'client_id' => 'guide-client',
-                'topic' => 'example/up', 'qos' => 0, 'packet_bytes' => 33, 'publish_header' => 48, 'invalid_topic_rejected' => true],
+                    'topic' => 'example/up', 'qos' => 0, 'packet_bytes' => 33, 'publish_header' => 48, 'invalid_topic_rejected' => true],
                 '文档 MQTT 离线报文构建、解码或非法主题拒绝不符'
             );
             $record['mqtt_scope'] = 'offline-public-contract';

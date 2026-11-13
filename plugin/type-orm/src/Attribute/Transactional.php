@@ -9,7 +9,5 @@ namespace Type\Orm\Attribute;
 final class Transactional
 {
     /** 指定生成方法体使用的逻辑数据源，复用既有保存点与提交结果语义。 */
-    public function __construct(public string $database = 'default')
-    {
-    }
+    public function __construct(public string $database = 'default') {}
 }

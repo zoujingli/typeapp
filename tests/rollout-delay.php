@@ -14,7 +14,7 @@ use Type\Redis\RedisManager;
 use Type\Runtime\ExecutionScope;
 use TypeApp\Rollout\Publisher;
 
-$configuration = new RedisConfiguration(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1', (int) (getenv('TYPE_REDIS_PORT') ?: 6379));
+$configuration = new RedisConfiguration(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1', (int)(getenv('TYPE_REDIS_PORT') ?: 6379));
 $scope = new ExecutionScope();
 $manager = new RedisManager(['queue' => $configuration]);
 $queue = new Queue($manager->connection($scope, 'queue', Purpose::SCRIPT), 'rollout-delay-' . bin2hex(random_bytes(6)));
@@ -28,7 +28,7 @@ try {
     usleep(6000000);
     $promoted = $queue->promote();
     $stats = $queue->statistics();
-    echo json_encode(['elapsed-ms' => (int) ((microtime(true) - $started) * 1000), 'promoted' => $promoted, 'delayed' => $stats['delayed']], JSON_THROW_ON_ERROR) . "\n";
+    echo json_encode(['elapsed-ms' => (int)((microtime(true) - $started) * 1000), 'promoted' => $promoted, 'delayed' => $stats['delayed']], JSON_THROW_ON_ERROR) . "\n";
     expect($promoted === 0 && $stats['delayed'] === 1, '旧延迟消息没有保留到六秒消费者切换窗口');
     $deadline = $started + 13;
     do {

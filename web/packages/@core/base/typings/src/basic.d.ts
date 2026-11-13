@@ -21,10 +21,6 @@ interface BasicUserInfo {
    */
   roles?: string[];
   /**
-   * 当前登录用户所属租户
-   */
-  tenant_id?: number;
-  /**
    * 用户id
    */
   userId: string;
@@ -34,6 +30,12 @@ interface BasicUserInfo {
   username: string;
 }
 
-type ClassType = Array<object | string> | object | string;
+type ClassType =
+  | Array<ClassType>
+  | boolean
+  | null
+  | object
+  | string
+  | undefined;
 
 export type { BasicOption, BasicUserInfo, ClassType, SelectOption, TabOption };

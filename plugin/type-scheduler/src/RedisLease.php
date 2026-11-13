@@ -7,18 +7,24 @@ namespace Type\Scheduler;
 use Type\Redis\RedisConnection;
 use Type\Redis\ScriptGuard;
 use Type\Runtime\ExecutionOwner;
-use Throwable;
 
 /** 单 Redis 权威租约；token 与持久化代次共同参与每一次写入校验。 */
 final class RedisLease implements ExecutionLease, ScriptGuard
 {
     private RedisConnection $redis;
+
     private string $key;
+
     private string $value;
+
     private string $generation;
+
     private int $milliseconds;
+
     private ExecutionOwner $owner;
+
     private bool $finished = false;
+
     private bool $lost = false;
 
     private function __construct(RedisConnection $redis, string $key, string $token, string $generation, int $milliseconds)
@@ -34,8 +40,8 @@ final class RedisLease implements ExecutionLease, ScriptGuard
     /**
      * 以随机 token 和持久代次原子获取权威 Redis 租约，不等待其他持有者退出。
      *
-     * @param int $milliseconds 租期 10 至 3600000 毫秒。
-     * @throws LeaseException 参数无效、已有持有者或代次响应无效。
+     * @param int $milliseconds 租期 10 至 3600000 毫秒
+     * @throws LeaseException 参数无效、已有持有者或代次响应无效
      */
     public static function acquire(RedisConnection $redis, string $namespace, int $milliseconds = 30000): RedisLease
     {
@@ -75,7 +81,7 @@ LUA;
     /**
      * 仅为 token 与代次仍匹配的持有者刷新 TTL；未知结果使本地租约失效。
      *
-     * @throws LeaseException 续租失败、结果未知或旧执行者已经失权。
+     * @throws LeaseException 续租失败、结果未知或旧执行者已经失权
      */
     public function renew(): void
     {
@@ -86,7 +92,7 @@ LUA;
                 [$this->key],
                 [$this->value, $this->milliseconds]
             );
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->lost = true;
             throw new LeaseException('lease_lost', '续租结果未知，停止新的受管效果', $error);
         }
@@ -99,8 +105,8 @@ LUA;
     /**
      * 在租约本身的 Redis 连接内原子检查持有权，再运行可信业务脚本。
      *
-     * @param list<string> $keys 同一目标中的业务键。
-     * @param list<string|int|float> $arguments 有限标量参数。
+     * @param list<string> $keys 同一目标中的业务键
+     * @param list<float|int|string> $arguments 有限标量参数
      */
     public function effect(string $script, array $keys = [], array $arguments = []): mixed
     {
@@ -110,9 +116,9 @@ LUA;
     /**
      * 要求目标为取得租约的同一连接；Lua 校验与副作用在一次脚本内完成。
      *
-     * @param list<string> $keys 最多 1000 个非空键。
-     * @param list<string|int|float> $arguments 最多 1000 个有限标量参数。
-     * @throws LeaseException 参数非法、目标不同、租约失效或效果结果未知。
+     * @param list<string> $keys 最多 1000 个非空键
+     * @param list<float|int|string> $arguments 最多 1000 个有限标量参数
+     * @throws LeaseException 参数非法、目标不同、租约失效或效果结果未知
      */
     public function execute(RedisConnection $target, string $script, array $keys, array $arguments): mixed
     {
@@ -142,7 +148,7 @@ LUA;
         $guard .= "\nlocal function effect(KEYS,ARGV)\n" . $script . "\nend\nreturn {1,effect(effectKeys,effectArgs)}";
         try {
             $result = $target->script($guard, array_merge([$this->key], $keys), array_merge([$this->value], $arguments));
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->lost = true;
             throw new LeaseException('effect_unknown', '受管效果结果无法确认，停止后续执行并核对实际写入', $error);
         }
@@ -157,7 +163,7 @@ LUA;
     /**
      * 按 token 与代次条件删除租约；未知结果不重试删除，等待自然到期。
      *
-     * @throws LeaseException 服务端不能确认释放或持有权已改变。
+     * @throws LeaseException 服务端不能确认释放或持有权已改变
      */
     public function release(): void
     {
@@ -172,7 +178,7 @@ LUA;
                 [$this->key],
                 [$this->value]
             );
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->lost = true;
             throw new LeaseException('lease_lost', '释放租约结果未知，等待过期且不重试删除', $error);
         }

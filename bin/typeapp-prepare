@@ -3,6 +3,8 @@
 
 declare(strict_types=1);
 
+use Type\Build\DevelopmentBuilder;
+
 /** 公开应用准备入口，实际生成由 type-build 统一维护。 */
 function prepareTypeAppApplication(string $root): array
 {
@@ -10,10 +12,10 @@ function prepareTypeAppApplication(string $root): array
 }
 
 /** 只定位开发构建器；调用者选择准备或加载，避免启动子进程时重复核验同一完整代次。 */
-function typeAppDevelopmentBuilder(string $root): Type\Build\DevelopmentBuilder
+function typeAppDevelopmentBuilder(string $root): DevelopmentBuilder
 {
     $composer = is_file($root . '/composer.json')
-        ? json_decode((string) file_get_contents($root . '/composer.json'), true, 512, JSON_THROW_ON_ERROR) : [];
+        ? json_decode((string)file_get_contents($root . '/composer.json'), true, 512, JSON_THROW_ON_ERROR) : [];
     $vendor = $composer['config']['vendor-dir'] ?? 'vendor';
     if (!is_string($vendor) || $vendor === '') {
         throw new RuntimeException('Composer vendor-dir 配置无效');
@@ -32,11 +34,11 @@ function typeAppDevelopmentBuilder(string $root): Type\Build\DevelopmentBuilder
         $bootstrap = $root . '/tooling/src/bootstrap.php';
     }
     require_once $bootstrap;
-    return new Type\Build\DevelopmentBuilder();
+    return new DevelopmentBuilder();
 }
 
 // 作为脚本直接运行时输出结果；被 bin/typeapp 加载时仅声明上述开发期函数。
-if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) {
+if (realpath((string)($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) {
     try {
         if (count($argv) > 2 || (isset($argv[1]) && $argv[1] !== '--json')) {
             throw new InvalidArgumentException('用法：bin/typeapp-prepare [--json]');

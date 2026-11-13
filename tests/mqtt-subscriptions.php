@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Type\Testing\Process;
 
 /** 独立应用保留完整示例入口，只替换公开 AccessPolicy 装配并追加测试消费者策略。 */
 function mqttSubscriptionApplication(string $root): string
@@ -76,7 +77,7 @@ function mqttSubscribeFilters(int $version, array $filters, int $subscriptionIde
     $properties = $subscriptionIdentifier > 0 ? "\x0b" . mqttLength($subscriptionIdentifier) : '';
     $body = pack('n', $packetId) . ($version === 5 ? mqttLength(strlen($properties)) . $properties : '');
     foreach ($filters as $filter => $options) {
-        $body .= mqttField((string) $filter) . chr($options);
+        $body .= mqttField((string)$filter) . chr($options);
     }
     return mqttPacket(0x82, $body);
 }
@@ -90,7 +91,7 @@ function mqttDeliveryProperties(string $bytes): array
     while ($position < strlen($bytes)) {
         $start = $position;
         $code = ord($bytes[$position++]);
-        if ($code === 0x0b) {
+        if ($code === 0x0B) {
             $value = 0;
             $multiple = 1;
             do {
@@ -102,14 +103,14 @@ function mqttDeliveryProperties(string $bytes): array
             continue;
         }
         if ($code === 0x01) {
-            $position++;
+            ++$position;
         } elseif ($code === 0x02) {
             $position += 4;
         } elseif ($code === 0x23) {
             $position += 2;
         } else {
             expect(in_array($code, [0x03, 0x08, 0x09, 0x26], true), '未知交付属性：' . bin2hex($bytes));
-            for ($index = 0; $index < ($code === 0x26 ? 2 : 1); $index++) {
+            for ($index = 0; $index < ($code === 0x26 ? 2 : 1); ++$index) {
                 $length = unpack('n', substr($bytes, $position, 2))[1];
                 $position += 2 + $length;
             }
@@ -153,7 +154,7 @@ function mqttSubscriptionCases(int $port, ?string $certificate): int
                 mqttQuiet($subscriber);
                 mqttWrite($subscriber, mqttSubscription($version, $filter, 1, 0, false));
                 expect(mqttRead($subscriber) === mqttSubscriptionAck($version, "\0", 1, false), '通配取消失败');
-                $cases++;
+                ++$cases;
             }
             foreach (['example/++', 'example/a#', 'example/#/', 'example/+/a+'] as $filter) {
                 $invalid = mqttSocket($port, $certificate);
@@ -163,7 +164,7 @@ function mqttSubscriptionCases(int $port, ?string $certificate): int
                 mqttWrite($invalid, mqttSubscription($version, $filter));
                 expect(mqttRead($invalid) === ($version === 5 ? "\xe0\x02\x82\0" : ''), '非法通配未拒绝');
                 fclose($invalid);
-                $cases++;
+                ++$cases;
             }
             if ($version === 4) {
                 foreach ([4, 8, 16, 32] as $options) {
@@ -174,7 +175,7 @@ function mqttSubscriptionCases(int $port, ?string $certificate): int
                     mqttWrite($invalid, mqttSubscription(4, 'example/+', 1, $options));
                     expect(mqttRead($invalid) === '', '3.1.1 接受了 MQTT 5 订阅选项');
                     fclose($invalid);
-                    $cases++;
+                    ++$cases;
                 }
             }
             fclose($subscriber);
@@ -189,7 +190,7 @@ function mqttSubscriptionCases(int $port, ?string $certificate): int
         mqttAck($subscriber, 5);
         mqttAck($publisher, 5);
         $exchange = mqttPublish(5, 'example/exchange', "binary\0\xff");
-        for ($iteration = 0; $iteration < 2000; $iteration++) {
+        for ($iteration = 0; $iteration < 2000; ++$iteration) {
             mqttWrite($subscriber, mqttSubscription(5, 'example/#'));
             expect(mqttRead($subscriber) === mqttSubscriptionAck(5), '连续往返SUBACK丢失：' . $iteration);
             mqttWrite($publisher, $exchange);
@@ -198,7 +199,7 @@ function mqttSubscriptionCases(int $port, ?string $certificate): int
             mqttQuiet($subscriber);
             mqttWrite($subscriber, mqttSubscription(5, 'example/#', 1, 0, false));
             expect(mqttRead($subscriber) === mqttSubscriptionAck(5, "\0", 1, false), '连续往返UNSUBACK丢失：' . $iteration);
-            $cases++;
+            ++$cases;
         }
         fclose($subscriber);
         fclose($publisher);
@@ -225,14 +226,14 @@ function mqttSubscriptionCases(int $port, ?string $certificate): int
         $overlap = mqttRetainedRead($subscriber, 5);
         expect(mqttDeliveryProperties($overlap['properties'])['identifiers'] === [7, 7, 8], '重叠订阅遗漏、去重或重复交付标识');
         mqttQuiet($subscriber);
-        $cases++;
+        ++$cases;
         mqttWrite($subscriber, mqttSubscribeFilters(5, ['example/#' => 4, 'example/+' => 4], 9));
         expect(mqttRead($subscriber) === mqttSubscriptionAck(5, "\0\0"), 'No Local 替换失败');
         mqttWrite($subscriber, mqttPublish(5, 'example/open', 'self'));
         $self = mqttRetainedRead($subscriber, 5);
         expect(mqttDeliveryProperties($self['properties'])['identifiers'] === [7], 'No Local 未按匹配订阅分别排除');
         mqttQuiet($subscriber);
-        $cases++;
+        ++$cases;
         foreach (['example/#', 'example/+'] as $filter) {
             mqttWrite($subscriber, mqttSubscription(5, $filter, 1, 0, false));
             expect(mqttRead($subscriber) === mqttSubscriptionAck(5, "\0", 1, false), '重叠取消失败');
@@ -243,7 +244,7 @@ function mqttSubscriptionCases(int $port, ?string $certificate): int
             mqttWrite($publisher, mqttPublish(5, 'example/open', 'identifier'));
             expect(mqttRead($subscriber) === mqttPublish(5, 'example/open', 'identifier', $identifier > 0 ? "\x0b" . mqttLength($identifier) : ''), '替换标识遗留或编码错误');
             mqttQuiet($subscriber);
-            $cases++;
+            ++$cases;
         }
         fclose($subscriber);
         $limited = mqttSocket($port, $certificate);
@@ -270,7 +271,7 @@ function mqttSubscriptionCases(int $port, ?string $certificate): int
         mqttWrite($many, mqttConnect(5, 'subscription-many', 0));
         mqttAck($many, 5);
         $filters = [];
-        for ($index = 0; $index < 100; $index++) {
+        for ($index = 0; $index < 100; ++$index) {
             $filters['example/count/' . str_repeat('+/', $index) . '#'] = 0;
         }
         mqttWrite($many, mqttSubscribeFilters(5, $filters, 268435455));
@@ -297,7 +298,7 @@ function mqttSubscriptionCases(int $port, ?string $certificate): int
 /**
  * UNSUBACK不终结已经开始的QoS交换；用真实只读备库区分终结确认与静默丢弃。
  *
- * @return array<string,array<string,mixed>> 双版本三个取消切点的网络与持久事实。
+ * @return array<string,array<string,mixed>> 双版本三个取消切点的网络与持久事实
  */
 function mqttUnsubscribeInflightCases(int $port, ?string $certificate, PDO $standby): array
 {
@@ -363,7 +364,7 @@ function mqttUnsubscribeInflightCases(int $port, ?string $certificate, PDO $stan
                 $before = $snapshot();
                 $phase = $qos === 1 ? 'none' : ($stage === 'wait-pubcomp' ? 'wait_pubcomp' : 'wait_pubrec');
                 expect(count($before) === 1 && $before[0]['state'] === 'pending' && $before[0]['phase'] === $phase
-                    && $before[0]['started'] === true && (int) $before[0]['packet_id'] === $delivery['id'], '取消前在途持久阶段不符');
+                    && $before[0]['started'] === true && (int)$before[0]['packet_id'] === $delivery['id'], '取消前在途持久阶段不符');
                 $trace['snapshots']['beforeUnsubscribe'] = $before;
                 $write($subscriber, 'subscriber', mqttSubscription($version, $filter, 60000, 0, false));
                 $read($subscriber, 'subscriber', mqttSubscriptionAck($version, "\0", 60000, false), '在途取消未返回原标识UNSUBACK');
@@ -385,7 +386,7 @@ function mqttUnsubscribeInflightCases(int $port, ?string $certificate, PDO $stan
                     . "WHERE m.client_id = ? AND m.topic = ? AND encode(m.payload, 'hex') = ? GROUP BY m.id");
                 $newMessage->execute([$identity . '-publisher', $topic, bin2hex($newPayload)]);
                 $newRows = $newMessage->fetchAll(PDO::FETCH_ASSOC);
-                expect(count($newRows) === 1 && (int) $newRows[0]['deliveries'] === 0, 'UNSUBACK后新匹配消息仍派生交付');
+                expect(count($newRows) === 1 && (int)$newRows[0]['deliveries'] === 0, 'UNSUBACK后新匹配消息仍派生交付');
                 $trace['snapshots']['newPublication'] = $newRows;
                 mqttRetainedQuiet($subscriber);
                 if ($stage === 'wait-pubrec') {
@@ -396,9 +397,9 @@ function mqttUnsubscribeInflightCases(int $port, ?string $certificate, PDO $stan
                 $completed = mqttUntil(static function () use ($snapshot, $before, $qos): array|false {
                     $rows = $snapshot();
                     return count($rows) === 1 && $rows[0]['id'] === $before[0]['id'] && $rows[0]['state'] === 'acknowledged'
-                        && $rows[0]['phase'] === ($qos === 2 ? 'complete' : 'none') && (int) $rows[0]['ack_reason'] === 0 ? $rows : false;
+                        && $rows[0]['phase'] === ($qos === 2 ? 'complete' : 'none') && (int)$rows[0]['ack_reason'] === 0 ? $rows : false;
                 }, '取消后终结确认未完成原QoS交付');
-                expect((int) $completed[0]['packet_id'] === $delivery['id'] && $completed[0]['payload_hex'] === bin2hex($payload), '取消后完成了错误的交换或载荷');
+                expect((int)$completed[0]['packet_id'] === $delivery['id'] && $completed[0]['payload_hex'] === bin2hex($payload), '取消后完成了错误的交换或载荷');
                 $trace['snapshots']['afterTerminalAcknowledgement'] = $completed;
                 mqttRetainedQuiet($subscriber);
                 expect($snapshot() === $completed, '终结确认后出现新的匹配交付');
@@ -458,7 +459,7 @@ function mqttSubscriptionDurableCases(int $port, PDO $primary, PDO $standby, Clo
         mqttWrite($subscriber, mqttSubscription(5, $topic, 1, 0, false));
         expect(mqttRead($subscriber) === mqttSubscriptionAck(5, "\0", 1, false), '取消重叠精确订阅失败');
         mqttRetainedPublish($publisher, 5, $topic, 'queued-current', 2);
-        mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'subscription-durable' AND state = 'pending'")->fetchColumn() === 2, '满窗口通配交付没有持久排队');
+        mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'subscription-durable' AND state = 'pending'")->fetchColumn() === 2, '满窗口通配交付没有持久排队');
         $original = $standby->query("SELECT encode(properties, 'hex') FROM type_mqtt_messages WHERE client_id = 'subscription-publisher' ORDER BY created_at LIMIT 1")->fetchColumn();
         expect($original === bin2hex($properties), '订阅标识污染发布者持久原件');
         mqttWrite($subscriber, "\xe0\0");
@@ -485,14 +486,14 @@ function mqttSubscriptionDurableCases(int $port, PDO $primary, PDO $standby, Clo
                 && mqttDeliveryProperties($delivery['properties'])['identifiers'] === [11, 13], '在线满窗口或离线通配使用了旧选项/标识');
             mqttRetainedComplete($subscriber, $delivery);
         }
-        mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'subscription-durable' AND state = 'pending'")->fetchColumn() === 0, '订阅恢复交换没有终结');
+        mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'subscription-durable' AND state = 'pending'")->fetchColumn() === 0, '订阅恢复交换没有终结');
         $saved = json_decode($standby->query("SELECT subscriptions::text FROM type_mqtt_sessions WHERE client_id = 'subscription-durable'")->fetchColumn(), true);
         expect(count($saved) === 2 && $saved['t:example/subscription/+'] === ['options' => 33, 'identifier' => 13], '替换计数或持久选项/标识不符');
         foreach (['example/subscription/#', 'example/subscription/+'] as $filter) {
             mqttWrite($subscriber, mqttSubscription(5, $filter, 1, 0, false));
             expect(mqttRead($subscriber) === mqttSubscriptionAck(5, "\0", 1, false), '取消持久通配失败');
         }
-        mqttWrite($subscriber, mqttPacket(0xe0, "\0\x05\x11\0\0\0\0"));
+        mqttWrite($subscriber, mqttPacket(0xE0, "\0\x05\x11\0\0\0\0"));
         expect(mqttRead($subscriber) === '', '订阅测试会话没有清理');
         fclose($subscriber);
         $cases += 10;
@@ -502,7 +503,7 @@ function mqttSubscriptionDurableCases(int $port, PDO $primary, PDO $standby, Clo
         mqttWrite($publisher, mqttConnect(5, 'subscription-cursor-source', 0));
         mqttAck($publisher, 5);
         // 前65个键不匹配，后3个键有96KB二进制；必须跨越空页且逐条加载载荷。
-        for ($index = 0; $index < 65; $index++) {
+        for ($index = 0; $index < 65; ++$index) {
             mqttRetainedPublish($publisher, 5, 'example/cursor/a' . sprintf('%02d', $index) . '/miss', 'skip', 1);
         }
         $binary = str_repeat("\0\xff", 48001);
@@ -512,19 +513,19 @@ function mqttSubscriptionDurableCases(int $port, PDO $primary, PDO $standby, Clo
         $cursor = '';
         $probe = 'require "vendor/autoload.php"; $request = json_decode($argv[1], true, 32, JSON_THROW_ON_ERROR); '
             . '$worker = json_decode(getenv("MQTT_WORKER_COMMAND"), true, 32, JSON_THROW_ON_ERROR); '
-            . '$pending = new Type\\Mqtt\\PendingCommit($worker, $request); '
+            . '$pending = new Type\Mqtt\PendingCommit($worker, $request); '
             . 'do { $result = $pending->poll(); if ($result === null) { usleep(10000); } } while ($result === null); '
             . 'echo json_encode($result->data(), JSON_THROW_ON_ERROR);';
         foreach (['example/cursor/a31/miss', 'example/cursor/a63/miss', 'example/cursor/x/hit'] as $index => $expectedCursor) {
             $request = ['operation_id' => bin2hex(random_bytes(16)), 'action' => 'retained_read', 'topic' => 'example/cursor/+/hit',
                 'cursor' => $cursor, 'no_local' => false, 'client_id' => 'subscription-cursor-probe'];
-            $result = (new Type\Testing\Process([PHP_BINARY, '-r', $probe, json_encode($request, JSON_THROW_ON_ERROR)], $consumer, $environment))->wait(10);
+            $result = (new Process([PHP_BINARY, '-r', $probe, json_encode($request, JSON_THROW_ON_ERROR)], $consumer, $environment))->wait(10);
             expect($result->successful() && $result->stderr === '', '独立安装游标调用失败：' . $result->stderr);
             $page = json_decode($result->stdout, true, 32, JSON_THROW_ON_ERROR);
             expect($page['state'] === 'committed' && $page['released'] && $page['value']['cursor'] === $expectedCursor
                 && !$page['value']['done'] && $page['value']['found'] === ($index === 2), '保留读取没有按32键上限推进有界游标');
             $cursor = $page['value']['cursor'];
-            $cases++;
+            ++$cases;
         }
         foreach ([4, 5] as $version) {
             $subscriber = mqttSocket($port);
@@ -538,7 +539,7 @@ function mqttSubscriptionDurableCases(int $port, PDO $primary, PDO $standby, Clo
                 expect($delivery['topic'] === 'example/cursor/' . $suffix . '/hit' && $delivery['payload'] === $binary && $delivery['retain']
                     && mqttDeliveryProperties($delivery['properties'])['identifiers'] === ($version === 5 ? [101] : []), '通配保留游标遗漏、重复或丢失标识/二进制');
                 mqttRetainedComplete($subscriber, $delivery);
-                $cases++;
+                ++$cases;
             }
             mqttRetainedQuiet($subscriber);
             fclose($subscriber);
@@ -551,14 +552,14 @@ function mqttSubscriptionDurableCases(int $port, PDO $primary, PDO $standby, Clo
             mqttWrite($subscriber, mqttSubscribeFilters(5, ['example/cursor/+/hit' => 1 | $handling], $identifier));
             expect(mqttRead($subscriber) === mqttSubscriptionAck(5, "\x01"), 'RH 替换失败');
             if ($replay) {
-                for ($index = 0; $index < 3; $index++) {
+                for ($index = 0; $index < 3; ++$index) {
                     $delivery = mqttRetainedRead($subscriber, 5);
                     expect($delivery['retain'] && mqttDeliveryProperties($delivery['properties'])['identifiers'] === [$identifier], 'RH 重放未绑定新标识');
                     mqttRetainedComplete($subscriber, $delivery);
                 }
             }
             mqttRetainedQuiet($subscriber);
-            $cases++;
+            ++$cases;
         }
         mqttWrite($subscriber, mqttSubscription(5, 'example/cursor/+/hit', 1, 0, false));
         expect(mqttRead($subscriber) === mqttSubscriptionAck(5, "\0", 1, false), 'RH 取消失败');
@@ -611,7 +612,7 @@ function mqttSubscriptionDurableCases(int $port, PDO $primary, PDO $standby, Clo
         mqttRetainedComplete($guarded, $public);
         mqttRetainedQuiet($guarded);
         fclose($guarded);
-        $cases++;
+        ++$cases;
 
         foreach ([4, 5] as $version) {
             $subscriber = mqttSocket($port);
@@ -635,7 +636,7 @@ function mqttSubscriptionDurableCases(int $port, PDO $primary, PDO $standby, Clo
             mqttRetainedComplete($subscriber, $delivery);
             mqttRetainedQuiet($subscriber);
             fclose($subscriber);
-            $cases++;
+            ++$cases;
         }
         fclose($publisher);
         $cases += count(mqttUnsubscribeInflightCases($port, null, $standby));

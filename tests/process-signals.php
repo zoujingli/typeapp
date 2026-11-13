@@ -7,9 +7,10 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Runtime\ProcessSignals;
 use Type\Runtime\TaskException;
+use Type\Testing\Process;
 
 expect(PHP_OS_FAMILY !== 'Windows' && function_exists('pcntl_signal'), '此契约用例需要真实Unix PCNTL；Windows控制事件由原生HTTP进程用例验收');
-$child = new Type\Testing\Process([PHP_BINARY, '-r', 'echo "ready"; while (true) { usleep(10000); }']);
+$child = new Process([PHP_BINARY, '-r', 'echo "ready"; while (true) { usleep(10000); }']);
 try {
     $childPid = $child->pid();
     $states = unixProcessStates(getmypid());
@@ -61,20 +62,19 @@ $originalAsync = pcntl_async_signals();
 $previousCalls = 0;
 $calls = 0;
 $previousHandler = static function (int $signal, mixed $information) use (&$previousCalls): void {
-    $previousCalls++;
+    ++$previousCalls;
 };
 pcntl_signal(SIGTERM, $previousHandler);
 pcntl_async_signals(false);
 $signals = new ProcessSignals();
 try {
     $signals->attach(static function () use (&$calls): void {
-        $calls++;
+        ++$calls;
     });
     expect(pcntl_async_signals(), '没有启用可及时处理的Unix信号');
     $rejected = false;
     try {
-        (new ProcessSignals())->attach(static function (): void {
-        });
+        (new ProcessSignals())->attach(static function (): void {});
     } catch (TaskException $error) {
         $rejected = $error->errorCode() === 'signal_owner_busy';
     }
@@ -90,7 +90,7 @@ try {
     pcntl_signal_dispatch();
     expect($previousCalls === 1 && $calls === 1, '关闭后仍由已经释放的所有者接收停止');
     $signals->attach(static function () use (&$calls): void {
-        $calls++;
+        ++$calls;
     });
     expect(posix_kill(getmypid(), SIGTERM), '无法验证重新注册');
     expect($calls === 2, '明确关闭后无法重新取得停止所有权');

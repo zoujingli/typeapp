@@ -10,6 +10,4 @@ use Type\Orm\Attribute\Schema;
 #[Schema(version: '202610060004', description: '验证 SQLite 索引依赖拒绝', snapshot: 'snapshots/catalog-dependency.json', operations: [
     ['action' => 'drop-column', 'table' => 'type_suite_catalog_entries', 'name' => 'code'],
 ])]
-final class CatalogDependency
-{
-}
+final class CatalogDependency {}

@@ -8,6 +8,7 @@ require_once __DIR__ . '/native-database.php';
 require_once __DIR__ . '/postgres-sync.php';
 require_once __DIR__ . '/iot-recovery.php';
 
+use Type\Build\NativePackage;
 use Type\Mqtt\Client;
 use Type\Mqtt\Message;
 use Type\Mqtt\ProtocolError;
@@ -152,7 +153,7 @@ if ($target === '--php') {
     $command = [PHP_BINARY, '-d', 'memory_limit=512M'];
     if (!extension_loaded('swoole')) {
         $swoole = getenv('TYPE_SWOOLE_MODULE');
-        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string)ini_get('extension_dir'), '/') . '/swoole.so';
         expect(is_file($swoole), 'PHP 恢复核对验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
         array_push($command, '-d', 'extension=' . $swoole);
     }
@@ -172,7 +173,7 @@ foreach ($argv as $argument) {
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '无源码恢复核对验收使用macOS内核策略及原生产物');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $sourceRoot = realpath($built['identity']['description']['facts']['workspace']);
     expect(is_string($sourceRoot), '无源码验收必须能定位实际编译输入');
@@ -187,7 +188,7 @@ $directory = $base . '/physical';
 expect(mkdir($directory, 0700), '不能建立物理恢复测试目录');
 $archive = $directory . '/wal';
 expect(mkdir($archive, 0700), '不能建立独立WAL测试目录');
-$tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+$tools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
 foreach (['pg_basebackup', 'pg_combinebackup', 'pg_verifybackup'] as $name) {
     $binary = $tools['root'] . '/bin/' . $name;
     expect(is_executable($binary), '缺少PostgreSQL物理备份工具：' . $name);
@@ -228,7 +229,7 @@ $passwordFile = $directory . '/pgpass';
 try {
     $database = new NativeDatabase($directory . '/primary', 'pgsql', $tools, [], [
         'archive_mode' => 'on', 'archive_command' => $hook, 'summarize_wal' => 'on', 'wal_summary_keep_time' => '10d']);
-    $sync = new PostgresSync($database, $directory . '/standby', $tools, 'broker_recovery_sync');
+    $sync = new PostgresSync($database, $directory . '/standby', $tools, 'platform_mqtt_recovery_sync');
     $source = $sync->connection();
     $dbEnvironment = array_replace($environment, $database->environment());
     $password = $dbEnvironment['TYPE_PGSQL_PASSWORD'];
@@ -246,7 +247,7 @@ try {
     $dbEnvironment['APP_CACHE_ENABLED'] = 'false';
     $dbEnvironment['APP_DEBUG'] = 'true';
     $dbEnvironment['BROKER_COMMAND'] = json_encode($command, JSON_THROW_ON_ERROR);
-    $dbEnvironment['BROKER_STANDBY_NAMES'] = 'broker_recovery_sync';
+    $dbEnvironment['BROKER_STANDBY_NAMES'] = 'platform_mqtt_recovery_sync';
     $install = new Process([...$command, 'broker:install'], $root, $dbEnvironment);
     try {
         expect($install->wait(30)->successful(), '独立恢复库安装失败：' . $install->stdout() . $install->stderr());
@@ -263,7 +264,7 @@ try {
     $secrets[] = $adminPassword;
     identityCommand([...$command, 'broker:user', 'access-admin', '恢复核对管理员'], $dbEnvironment + ['BROKER_ADMIN_PASSWORD' => $adminPassword]);
     $addresses = [];
-    for ($index = 0; $index < 5; $index++) {
+    for ($index = 0; $index < 5; ++$index) {
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorText);
         expect(is_resource($listener), '无法选择恢复核对测试端口');
         $addresses[] = stream_socket_get_name($listener, false);
@@ -280,10 +281,10 @@ try {
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $auth = $request('POST', '/broker/auth/login', '', ['login' => 'access-admin', 'password' => $adminPassword], 200)['data'];
@@ -295,13 +296,13 @@ try {
     $request('POST', '/broker/recovery', $token, [], 405);
     $mqttPassword = bin2hex(random_bytes(16));
     $secrets[] = $mqttPassword;
-    $tlsPort = (int) substr(strrchr($addresses[1], ':'), 1);
-    $wssPort = (int) substr(strrchr($addresses[3], ':'), 1);
+    $tlsPort = (int)substr(strrchr($addresses[1], ':'), 1);
+    $wssPort = (int)substr(strrchr($addresses[3], ':'), 1);
     $nodeEnvironment = $dbEnvironment + [
         'BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => $mqttPassword,
         'BROKER_TOPIC_PREFIX' => 'broker-recovery/', 'BROKER_NODE_ID' => 'recovery-node',
         'BROKER_LISTEN' => '127.0.0.1', 'BROKER_PLAINTEXT' => 'false',
-        'BROKER_PORT' => (string) $tlsPort, 'BROKER_WSS_PORT' => (string) $wssPort,
+        'BROKER_PORT' => (string)$tlsPort, 'BROKER_WSS_PORT' => (string)$wssPort,
         'BROKER_CERTIFICATE' => $certs['server'], 'BROKER_PRIVATE_KEY' => $certs['key'],
         'BROKER_ALLOWED_ORIGINS' => $previewOrigin,
     ];
@@ -353,7 +354,7 @@ try {
     $revokedLive = null;
     $issued = $request('POST', '/broker/debug', $token, [], 200)['data'];
     expect(is_string($issued['username'] ?? null) && ($issued['recovery_verified'] ?? 0) === 1, '调试凭据签发失败');
-    $debugPassword = (string) $issued['password'];
+    $debugPassword = (string)$issued['password'];
     $secrets[] = $debugPassword;
     $baseCommand = [$tools['root'] . '/bin/pg_basebackup', '-h', '127.0.0.1', '-p', $dbEnvironment['TYPE_PGSQL_PORT'],
         '-U', $dbEnvironment['TYPE_PGSQL_USER'], '-X', 'stream', '-c', 'fast', '--no-password', '--no-clean', '--manifest-checksums=SHA256'];
@@ -372,9 +373,9 @@ try {
     nativeDatabaseCommand([$tools['root'] . '/bin/pg_combinebackup', '--manifest-checksums=SHA256', '-o', $combined,
         $directory . '/full', $directory . '/incremental'], $dbEnvironment, $secrets, $directory . '/combine.log', 120);
     nativeDatabaseCommand([$tools['root'] . '/bin/pg_verifybackup', $combined], $dbEnvironment, $secrets, $directory . '/verify-combined.log');
-    $restoreLsn = (string) $source->query("SELECT pg_create_restore_point('broker_recovery_target')")->fetchColumn();
+    $restoreLsn = (string)$source->query("SELECT pg_create_restore_point('platform_mqtt_recovery_target')")->fetchColumn();
     expect($restoreLsn !== '', '不能建立命名恢复点');
-    $walName = (string) $source->query('SELECT pg_walfile_name(' . $source->quote($restoreLsn) . '::pg_lsn)')->fetchColumn();
+    $walName = (string)$source->query('SELECT pg_walfile_name(' . $source->quote($restoreLsn) . '::pg_lsn)')->fetchColumn();
     $rotatedPassword = bin2hex(random_bytes(16));
     $secrets[] = $rotatedPassword;
     $rotated = $request('POST', '/broker/access/principals/' . $revokedItem['id'], $token, [
@@ -422,7 +423,7 @@ try {
     expect(file_put_contents($combined . '/recovery.signal', '') === 0, '不能建立恢复信号');
     $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $message);
     expect(is_resource($listener), '不能分配隔离恢复端口');
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
     $restoreHook = iotRecoveryHook(
         [...$command, 'iot:wal', 'restore', $archive],
@@ -430,9 +431,9 @@ try {
         ["'%f'", escapeshellarg(str_replace('%', '%%', $combined) . '/%p')]
     );
     $recovered = new Process(
-        [$tools['postgres'], '-D', $combined, '-h', '127.0.0.1', '-p', (string) $port, '-k', '',
-        '-c', 'archive_mode=off', '-c', 'restore_command=' . $restoreHook,
-        '-c', 'recovery_target_name=broker_recovery_target', '-c', 'recovery_target_action=pause', '-c', 'hot_standby=on'],
+        [$tools['postgres'], '-D', $combined, '-h', '127.0.0.1', '-p', (string)$port, '-k', '',
+            '-c', 'archive_mode=off', '-c', 'restore_command=' . $restoreHook,
+            '-c', 'recovery_target_name=platform_mqtt_recovery_target', '-c', 'recovery_target_action=pause', '-c', 'hot_standby=on'],
         $directory,
         $dbEnvironment,
         16777216
@@ -459,7 +460,7 @@ try {
     expect($restored !== null, '恢复未在预算内到达指定暂停点');
     expect($restored->query('SELECT pg_is_in_recovery()')->fetchColumn() === true, '授权核对前恢复库已开放写入');
     $pauseEnvironment = array_replace($dbEnvironment, [
-        'TYPE_PGSQL_PORT' => (string) $port, 'DB_PORT' => (string) $port,
+        'TYPE_PGSQL_PORT' => (string)$port, 'DB_PORT' => (string)$port,
     ]);
     $pausedBegin = new Process([...$command, 'broker:recovery', 'begin', bin2hex(random_bytes(16)), 'physical-recovery', 'owned-source-stopped'], $root, $pauseEnvironment);
     try {
@@ -472,28 +473,28 @@ try {
     expect($restored->query('SELECT pg_promote(true, 60)')->fetchColumn() === true, '受控恢复主库没有在旧源退出后提升');
     $restored = null;
     $newEnvironment = array_replace($dbEnvironment, [
-        'TYPE_PGSQL_PORT' => (string) $port, 'DB_PORT' => (string) $port, 'BROKER_STANDBY_NAMES' => 'broker_recovery_reopened',
+        'TYPE_PGSQL_PORT' => (string)$port, 'DB_PORT' => (string)$port, 'BROKER_STANDBY_NAMES' => 'platform_mqtt_recovery_reopened',
     ]);
-    $recoveredSync = new PostgresSync($newEnvironment, $directory . '/recovered-standby', $tools, 'broker_recovery_reopened');
+    $recoveredSync = new PostgresSync($newEnvironment, $directory . '/recovered-standby', $tools, 'platform_mqtt_recovery_reopened');
     $restored = $recoveredSync->connection();
     $id = bin2hex(random_bytes(16));
     $state = recoveryRun([...$command, 'broker:recovery', 'begin', $id, 'physical-recovery', 'owned-source-primary-standby-and-business-processes-stopped'], $newEnvironment);
     foreach (['broker:serve', 'broker:run'] as $role) {
-        recoveryRun([...$command, $role], $role === 'broker:run' ? array_replace($nodeEnvironment, ['DB_PORT' => (string) $port, 'TYPE_PGSQL_PORT' => (string) $port, 'BROKER_STANDBY_NAMES' => 'broker_recovery_reopened']) : $newEnvironment, false, 30, 'recovery_isolated');
+        recoveryRun([...$command, $role], $role === 'broker:run' ? array_replace($nodeEnvironment, ['DB_PORT' => (string)$port, 'TYPE_PGSQL_PORT' => (string)$port, 'BROKER_STANDBY_NAMES' => 'platform_mqtt_recovery_reopened']) : $newEnvironment, false, 30, 'recovery_isolated');
     }
     $steps = ['isolating' => 0, 'reviewing' => 0, 'restoring' => 0];
     foreach (['isolating' => 'isolate', 'reviewing' => 'review', 'restoring' => 'restore'] as $stage => $action) {
-        for ($batch = 0; $batch < 100 && $state['state'] === $stage; $batch++) {
+        for ($batch = 0; $batch < 100 && $state['state'] === $stage; ++$batch) {
             $arguments = $action === 'review' ? [$authorityFile, $authorityDigest, $state['cursor'] === '' ? '0' : $state['cursor']] : [];
             $state = recoveryRun([...$command, 'broker:recovery', $action, $id, ...$arguments], $newEnvironment);
-            $steps[$stage]++;
+            ++$steps[$stage];
         }
         expect($state['state'] !== $stage, '物理恢复核对未在有界批次内完成：' . $stage);
     }
     expect($state['state'] === 'ready' && ($state['host'] ?? '') === 'broker', '真实物理恢复核对没有允许重新开放');
-    expect((int) $restored->query('SELECT count(*) FROM broker_sessions')->fetchColumn() === 0, '物理恢复后旧管理登录会话复活');
-    expect((int) $restored->query("SELECT count(*) FROM broker_access_platform_serials WHERE serial = '0a1b'")->fetchColumn() >= 1
-        || (int) $restored->query('SELECT count(*) FROM broker_access_platform_serials')->fetchColumn() >= 1, '当前平台吊销序列未并入恢复库');
+    expect((int)$restored->query('SELECT count(*) FROM broker_sessions')->fetchColumn() === 0, '物理恢复后旧管理登录会话复活');
+    expect((int)$restored->query("SELECT count(*) FROM platform_mqtt_access_platform_serial WHERE serial = '0a1b'")->fetchColumn() >= 1
+        || (int)$restored->query('SELECT count(*) FROM platform_mqtt_access_platform_serial')->fetchColumn() >= 1, '当前平台吊销序列未并入恢复库');
     $report['authorization_reconciliation'] = ['state' => $state, 'steps' => $steps,
         'snapshot_sha256' => $authorityDigest, 'startup_denied_until_reviewed' => true, 'old_sessions_removed' => true];
     $server = new Process([...$command, 'broker:serve'], $root, $newEnvironment);
@@ -504,10 +505,10 @@ try {
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $auth = $request('POST', '/broker/auth/login', '', ['login' => 'access-admin', 'password' => $adminPassword], 200)['data'];
@@ -522,16 +523,16 @@ try {
     $revokedIsolated = false;
     foreach ($reopened['items'] as $item) {
         if (($item['login'] ?? '') === 'broker-client') {
-            $keepVerified = (int) ($item['recovery_verified'] ?? 0) === 1;
+            $keepVerified = (int)($item['recovery_verified'] ?? 0) === 1;
         }
         if (($item['login'] ?? '') === 'broker-revoked') {
-            $revokedIsolated = (int) ($item['recovery_verified'] ?? 1) === 0;
+            $revokedIsolated = (int)($item['recovery_verified'] ?? 1) === 0;
         }
     }
     expect($keepVerified && $revokedIsolated, '合法主体应已核对，轮换后的旧身份应保持隔离');
-    $nodeEnvironment['DB_PORT'] = (string) $port;
-    $nodeEnvironment['TYPE_PGSQL_PORT'] = (string) $port;
-    $nodeEnvironment['BROKER_STANDBY_NAMES'] = 'broker_recovery_reopened';
+    $nodeEnvironment['DB_PORT'] = (string)$port;
+    $nodeEnvironment['TYPE_PGSQL_PORT'] = (string)$port;
+    $nodeEnvironment['BROKER_STANDBY_NAMES'] = 'platform_mqtt_recovery_reopened';
     $node = new Process([...$command, 'broker:run'], $root, $nodeEnvironment);
     recoveryWaitTls($node, $tlsPort, $certs['ca']);
     $deadline = microtime(true) + 30;
@@ -556,19 +557,19 @@ try {
         $denied->connect(true);
         expect(false, '轮换前口令在恢复核对后仍被接入');
     } catch (ProtocolError $error) {
-        expect(in_array($error->reason, [0x87, 0x86, 0x84, 0x8c], true), '隔离后原因码异常：' . $error->reason);
+        expect(in_array($error->reason, [0x87, 0x86, 0x84, 0x8C], true), '隔离后原因码异常：' . $error->reason);
     }
     try {
-        $debugDenied = new Client('127.0.0.1', $tlsPort, (string) $issued['client_id'], (string) $issued['username'], $debugPassword, $certs['ca'], '127.0.0.1', 30, 0);
+        $debugDenied = new Client('127.0.0.1', $tlsPort, (string)$issued['client_id'], (string)$issued['username'], $debugPassword, $certs['ca'], '127.0.0.1', 30, 0);
         $debugDenied->connect(true);
         expect(false, '已撤销调试凭据在恢复核对后仍被接入');
     } catch (ProtocolError $error) {
-        expect(in_array($error->reason, [0x87, 0x86, 0x84, 0x8c, 0x82], true), '调试隔离原因码异常：' . $error->reason);
+        expect(in_array($error->reason, [0x87, 0x86, 0x84, 0x8C, 0x82], true), '调试隔离原因码异常：' . $error->reason);
     }
     $debugPage = $request('GET', '/broker/debug', $token, null, 200);
     $debugSubjects = $ready['subjects']['broker_debug'] ?? ['total' => 0, 'approved' => 0];
     expect(($debugSubjects['total'] ?? 0) > ($debugSubjects['approved'] ?? 0)
-        || (is_array($debugPage['credential'] ?? null) && (int) ($debugPage['credential']['recovery_verified'] ?? 1) === 0), '未核对调试凭据应保持隔离');
+        || (is_array($debugPage['credential'] ?? null) && (int)($debugPage['credential']['recovery_verified'] ?? 1) === 0), '未核对调试凭据应保持隔离');
     $appBase = $base . '/app';
     expect(mkdir($appBase, 0700), '无法创建双端恢复核对测试目录');
     $appEnvironment = $dbEnvironment;
@@ -593,10 +594,10 @@ try {
     $appClient = new HttpClient('http://' . $addresses[2], 8.0);
     recoveryWaitHttp($appServer, $appClient);
     $appRequest = static function (string $method, string $path, string $token, array $headers, ?array $data, int $status) use ($appClient, $appServer, &$checks): array {
-        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '双端 ' . $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $appServer->stdout() . $appServer->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $platformToken = $appRequest('POST', '/admin/auth/login', '', [], ['login' => 'platform-admin', 'password' => $appPassword], 200)['data']['accessToken'];

@@ -14,7 +14,7 @@ use Type\Runtime\TaskException;
 
 /**
  * 在已有协程中通过真实 HTTP/WS 核对升级拒绝、额度复用及握手停止；不使用外部服务。
- * @return list<string> 已通过的公开行为场景。
+ * @return list<string> 已通过的公开行为场景
  */
 function websocketClientUpgradeChecks(): array
 {
@@ -140,7 +140,7 @@ function websocketClientUpgradeChecks(): array
 /**
  * 通过客户端公开入口核对原生控制帧、分片和空消息，以及普通超时后的连接复用。
  * 客户端发出就绪消息后对端才发送，并等待客户端关闭，避免握手及关闭与接收场景交叠。
- * @return list<string> 已通过的接收场景。
+ * @return list<string> 已通过的接收场景
  */
 function websocketClientReceiveChecks(): array
 {
@@ -255,7 +255,7 @@ function websocketClientReceiveChecks(): array
 
 /**
  * 实际停止对端读取，检查每次发送的原生写期限及同时在途的读取隔离。
- * @return list<string> 已通过的发送、计数与资源归还场景。
+ * @return list<string> 已通过的发送、计数与资源归还场景
  */
 function websocketClientSendChecks(): array
 {
@@ -290,7 +290,7 @@ function websocketClientSendChecks(): array
         $blockedSeconds = 0.0;
         try {
             $client->start();
-            for ($attempt = 0; $attempt < 32; $attempt++) {
+            for ($attempt = 0; $attempt < 32; ++$attempt) {
                 $started = hrtime(true);
                 try {
                     $written += $client->send($payload, true, 0.03);

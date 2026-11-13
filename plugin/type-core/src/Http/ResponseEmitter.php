@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace Type\Core\Http;
 
 use Psr\Http\Message\ResponseInterface;
+use Swoole\Coroutine;
 use Swoole\Http\Response;
-use Throwable;
 use Type\Runtime\CapacityException;
 use Type\Runtime\ExecutionScope;
+use Type\Runtime\TaskException;
 
 /** 分块发送并限制背压等待；第一块发出后失败只断开，不产生第二份 HTTP 响应。 */
 final class ResponseEmitter
@@ -39,13 +40,13 @@ final class ResponseEmitter
                 $scope->assertActive();
                 $deadline = $scope->deadline();
                 if ($deadline->remaining() !== null) {
-                    $coroutine = \Swoole\Coroutine::getCid();
+                    $coroutine = Coroutine::getCid();
                     $emitting = true;
                     // 共用 Deadline 的原生唤醒；通知快照中的旧监听不能取消随后进行的资源清理。
                     $deadlineSubscription = $deadline->watch(static function () use ($deadline, $coroutine, &$emitting): void {
-                        if ($emitting && $deadline->expired() && \Swoole\Coroutine::getCid() !== $coroutine
-                            && \Swoole\Coroutine::exists($coroutine)) {
-                            \Swoole\Coroutine::cancel($coroutine);
+                        if ($emitting && $deadline->expired() && Coroutine::getCid() !== $coroutine
+                            && Coroutine::exists($coroutine)) {
+                            Coroutine::cancel($coroutine);
                         }
                     });
                 }
@@ -58,7 +59,7 @@ final class ResponseEmitter
                 $output->header($name, $values);
             }
             if ($head && $size !== null && !in_array($status, [204, 304], true) && $status >= 200) {
-                $output->header('Content-Length', (string) $size);
+                $output->header('Content-Length', (string)$size);
             }
             if ($noBody) {
                 $sent = true;
@@ -86,11 +87,11 @@ final class ResponseEmitter
             }
             $sent = true;
             $output->end();
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             if ($sent) {
                 $output->close();
             } else {
-                $timeout = $error instanceof \Type\Runtime\TaskException && $error->errorCode() === 'deadline_exceeded';
+                $timeout = $error instanceof TaskException && $error->errorCode() === 'deadline_exceeded';
                 $capacity = CapacityException::matches($error);
                 $body = $timeout ? '{"error":"deadline_exceeded"}' : ($capacity ? '{"error":"resource_capacity_exceeded"}' : '{"error":"internal_error"}');
                 $output->status($timeout ? 504 : ($capacity ? 503 : 500));
@@ -98,7 +99,7 @@ final class ResponseEmitter
                     $output->header('Retry-After', '1');
                 }
                 $output->header('Content-Type', 'application/json');
-                $output->header('Content-Length', (string) strlen($body));
+                $output->header('Content-Length', (string)strlen($body));
                 $output->end($head ? '' : $body);
             }
         } finally {
@@ -108,7 +109,7 @@ final class ResponseEmitter
             }
             try {
                 $message->getBody()->close();
-            } catch (Throwable) {
+            } catch (\Throwable) {
                 fwrite(STDERR, "HTTP 响应流关闭失败。\n");
             }
         }

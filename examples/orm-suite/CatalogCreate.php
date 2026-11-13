@@ -24,6 +24,4 @@ use Type\Orm\Attribute\Schema;
         ['name' => 'type_suite_catalog_title', 'columns' => ['title']],
     ]],
 ])]
-final class CatalogCreate
-{
-}
+final class CatalogCreate {}

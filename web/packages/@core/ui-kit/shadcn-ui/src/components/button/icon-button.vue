@@ -27,6 +27,8 @@ const props = withDefaults(defineProps<Props>(), {
   variant: 'icon',
 });
 
+defineOptions({ inheritAttrs: false });
+
 const slots = useSlots();
 
 const showTooltip = computed(() => !!slots.tooltip || !!props.tooltip);
@@ -35,6 +37,8 @@ const showTooltip = computed(() => !!slots.tooltip || !!props.tooltip);
 <template>
   <VbenButton
     v-if="!showTooltip"
+    :aria-label="tooltip"
+    v-bind="$attrs"
     :class="cn('rounded-full', props.class)"
     :disabled="disabled"
     :variant="variant"
@@ -51,6 +55,8 @@ const showTooltip = computed(() => !!slots.tooltip || !!props.tooltip);
   >
     <template #trigger>
       <VbenButton
+        :aria-label="tooltip"
+        v-bind="$attrs"
         :class="cn('rounded-full', props.class)"
         :disabled="disabled"
         :variant="variant"

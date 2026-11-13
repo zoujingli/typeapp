@@ -8,7 +8,7 @@ use TypeApp\Distribution\Process;
 require __DIR__ . '/distribution/Process.php';
 require __DIR__ . '/distribution/Batch.php';
 
-/** 将已通过原生 CI 的固定主仓提交拆分到显式登记的公开子仓。 */
+/* 将已通过原生 CI 的固定主仓提交拆分到显式登记的公开子仓。 */
 try {
     if (count($argv) !== 3 || !preg_match('/^[a-f0-9]{40}$/D', $argv[1]) || !preg_match('/^type-[a-z0-9-]+$/D', $argv[2])) {
         throw new InvalidArgumentException('用法：php tools/distribute-plugin.php <已验证的完整提交 SHA> <插件名>');

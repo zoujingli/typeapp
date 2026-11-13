@@ -11,7 +11,7 @@ interface ScriptGuard
      * 在目标脚本的同一次原子执行中验证权限，不能用单独的预查询替代。
      *
      * @param list<string> $keys
-     * @param list<string|int|float> $arguments
+     * @param list<float|int|string> $arguments
      */
     public function execute(RedisConnection $target, string $script, array $keys, array $arguments): mixed;
 }

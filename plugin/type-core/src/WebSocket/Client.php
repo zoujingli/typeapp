@@ -7,6 +7,7 @@ namespace Type\Core\WebSocket;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Http\Client as NativeClient;
 use Swoole\WebSocket\Frame;
+use Type\Runtime\CapacityException;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionOwner;
 use Type\Runtime\ManagedResource;
@@ -26,10 +27,15 @@ use Type\Runtime\TaskException;
 final class Client implements ManagedResource
 {
     private ExecutionOwner $owner;
+
     private ?NativeClient $client = null;
+
     private string $state = 'new';
+
     private bool $allocated = false;
+
     private int $sentBytes = 0;
+
     private int $receivedBytes = 0;
 
     private function __construct(
@@ -46,12 +52,26 @@ final class Client implements ManagedResource
         $this->owner = new ExecutionOwner(false);
     }
 
+    /** 活动连接禁止序列化、跨线程传递和复制。 */
+    public function __serialize(): array
+    {
+        throw new TaskException('resource_transfer_forbidden', 'WebSocket 客户端不能序列化或跨线程传递');
+    }
+
+    /** 不允许从外部数据恢复资源归属及额度。 */
+    public function __unserialize(array $data): void
+    {
+        throw new TaskException('resource_transfer_forbidden', 'WebSocket 客户端必须在所属线程创建');
+    }
+
+    private function __clone(): void {}
+
     /**
      * 创建尚未握手的客户端。path 必须为以 `/` 开头的绝对路径；WSS 强制校验证书链。
      *
-     * @param array<string, string> $headers 附加请求头，可包含 Origin 与 Sec-WebSocket-Protocol。
-     * @param array{ssl_cafile?: string, ssl_host_name?: string, ssl_protocols?: int} $tlsOptions 仅在 tls=true 时使用。
-     * @throws TaskException 主机、端口、路径、字节上限、期限或 TLS 配置无效。
+     * @param array<string, string> $headers 附加请求头，可包含 Origin 与 Sec-WebSocket-Protocol
+     * @param array{ssl_cafile?: string, ssl_host_name?: string, ssl_protocols?: int} $tlsOptions 仅在 tls=true 时使用
+     * @throws TaskException 主机、端口、路径、字节上限、期限或 TLS 配置无效
      */
     public static function create(
         ResourceBudget $budget,
@@ -80,8 +100,8 @@ final class Client implements ManagedResource
     /**
      * 完成真实握手；TLS 与 HTTP 升级由原生一次完成，合计受 connectTimeout 约束。
      * 仅接受 101 升级；失败自动收尾，同线程 stop() 可中断握手，不允许重复进入。
-     * @throws TaskException 缺少协程、状态不符、握手失败或期限用尽。
-     * @throws \Type\Runtime\CapacityException 线程共享额度已满。
+     * @throws TaskException 缺少协程、状态不符、握手失败或期限用尽
+     * @throws CapacityException 线程共享额度已满
      */
     public function start(): void
     {
@@ -126,13 +146,13 @@ final class Client implements ManagedResource
     /**
      * 发送一条消息；写等待直接使用原生 write_timeout，不改变同时在途的读取期限。
      * 超过上限直接拒绝，不提交给原生，也不自动分片。
-     * @throws TaskException 未握手、长度超限或原生发送失败。
+     * @throws TaskException 未握手、长度超限或原生发送失败
      */
     public function send(string $data, bool $binary = true, float $timeout = 5.0): int
     {
         $timeout = self::timeout($timeout);
         $this->assertActive();
-        $length = (int) strlen($data);
+        $length = (int)strlen($data);
         if ($length > $this->maxMessageBytes) {
             throw new TaskException('websocket_message_too_large', 'WebSocket 单条消息超过字节上限，未提交');
         }
@@ -148,7 +168,7 @@ final class Client implements ManagedResource
     /**
      * 接收一条完整消息；原生重组分片并处理控制帧，timeout 直接作为原生读取期限。
      * 返回 null 表示连接已关闭或本次接收超时，不表示收到一条空消息。
-     * @throws TaskException 未握手或单条消息超过上限。
+     * @throws TaskException 未握手或单条消息超过上限
      */
     public function receive(float $timeout = 5.0): ?string
     {
@@ -158,8 +178,8 @@ final class Client implements ManagedResource
         if ($frame === false || $frame === '') {
             return null;
         }
-        $data = $frame instanceof Frame ? $frame->data : (string) $frame;
-        $length = (int) strlen($data);
+        $data = $frame instanceof Frame ? $frame->data : (string)$frame;
+        $length = (int)strlen($data);
         if ($length > $this->maxMessageBytes) {
             $this->stop();
             throw new TaskException('websocket_message_too_large', 'WebSocket 收到超过字节上限的消息，已关闭连接');
@@ -193,22 +213,6 @@ final class Client implements ManagedResource
         return ['state' => $this->state, 'host' => $this->host, 'port' => $this->port, 'tls' => $this->tls,
             'path' => $this->path, 'max_message_bytes' => $this->maxMessageBytes,
             'sent_bytes' => $this->sentBytes, 'received_bytes' => $this->receivedBytes];
-    }
-
-    /** 活动连接禁止序列化、跨线程传递和复制。 */
-    public function __serialize(): array
-    {
-        throw new TaskException('resource_transfer_forbidden', 'WebSocket 客户端不能序列化或跨线程传递');
-    }
-
-    /** 不允许从外部数据恢复资源归属及额度。 */
-    public function __unserialize(array $data): void
-    {
-        throw new TaskException('resource_transfer_forbidden', 'WebSocket 客户端必须在所属线程创建');
-    }
-
-    private function __clone(): void
-    {
     }
 
     private function assertActive(): void
@@ -258,7 +262,7 @@ final class Client implements ManagedResource
         if (array_diff(array_keys($options), $allowed) !== []) {
             throw new TaskException('websocket_invalid_configuration', 'WebSocket 含有未声明的 TLS 选项');
         }
-        $protocols = (int) (\SWOOLE_SSL_TLSv1_2 | \SWOOLE_SSL_TLSv1_3);
+        $protocols = (int)(\SWOOLE_SSL_TLSv1_2 | \SWOOLE_SSL_TLSv1_3);
         $options += ['ssl_host_name' => $host, 'ssl_protocols' => $protocols];
         if (!is_string($options['ssl_host_name']) || $options['ssl_host_name'] === '' || str_contains($options['ssl_host_name'], "\0")
             || !is_int($options['ssl_protocols']) || $options['ssl_protocols'] <= 0 || ($options['ssl_protocols'] & ~$protocols) !== 0

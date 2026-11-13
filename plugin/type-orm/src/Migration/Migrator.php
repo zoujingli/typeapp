@@ -4,18 +4,19 @@ declare(strict_types=1);
 
 namespace Type\Orm\Migration;
 
-use Closure;
-use Throwable;
 use Type\Orm\Connection;
 use Type\Orm\Database;
+use Type\Orm\DatabaseException;
 use Type\Orm\Driver;
-use Type\Runtime\ExecutionScope;
+use Type\Orm\SqlStatement;
 use Type\Runtime\DeploymentBudget;
+use Type\Runtime\ExecutionScope;
 
 /** 独立数据库角色：锁、迁移与记录始终使用同一条专属连接。 */
 final class Migrator
 {
     private Driver $driver;
+
     private string $table;
 
     /** 声明迁移专属驱动及记录表名；每次操作建立独立短生命周期连接。 */
@@ -46,11 +47,11 @@ final class Migrator
     /**
      * 在同一迁移锁内执行计划；fresh 只允许空数据库/当前 PostgreSQL schema。
      * 已有对象在建立迁移记录前拒绝，不覆盖、升级或清空已有数据。
-     * @param list<Migration> $migrations 完整迁移计划。
-     * @param ?Closure(Connection, array):void $before 持锁且写入前核对应用前置条件；不能在回调中另借迁移连接。
-     * @param ?Closure(Connection, array):void $after 全部迁移成功后、同一锁内验证和记录应用版本。失败须显式重试，不自动撤销已提交 DDL。
+     * @param list<Migration> $migrations 完整迁移计划
+     * @param ?\Closure(Connection, array):void $before 持锁且写入前核对应用前置条件；不能在回调中另借迁移连接
+     * @param ?\Closure(Connection, array):void $after 全部迁移成功后、同一锁内验证和记录应用版本。失败须显式重试，不自动撤销已提交 DDL。
      */
-    public function run(array $migrations, bool $fresh = false, ?Closure $before = null, ?Closure $after = null): array
+    public function run(array $migrations, bool $fresh = false, ?\Closure $before = null, ?\Closure $after = null): array
     {
         $plan = $this->plan($migrations);
 
@@ -80,7 +81,7 @@ final class Migrator
                     if ($states[$index]['state'] === 'applied') {
                         continue;
                     }
-                    $this->apply($connection, $migration, (int) $states[$index]['attempts']);
+                    $this->apply($connection, $migration, (int)$states[$index]['attempts']);
                 }
 
                 $finished = $this->snapshot($connection, $plan);
@@ -129,7 +130,7 @@ final class Migrator
                             'UPDATE ' . $this->table . ' SET state = ?, finished_at = ?, error = ? WHERE version = ?',
                             [$next, gmdate('c'), '', $version]
                         );
-                        $this->record($transaction, $version, 'recovered_' . $next, (int) $state['attempts'], $reason);
+                        $this->record($transaction, $version, 'recovered_' . $next, (int)$state['attempts'], $reason);
                     });
 
                     return $this->snapshot($connection, $plan);
@@ -167,8 +168,8 @@ final class Migrator
     {
         // 每个元素只能包含一个普通 SQL 语句，避免隐式事务控制改变记录的原子性。
         try {
-            \Type\Orm\SqlStatement::operation($sql);
-        } catch (\Type\Orm\DatabaseException $error) {
+            SqlStatement::operation($sql);
+        } catch (DatabaseException $error) {
             throw new MigrationException('TYPE_MIGRATION_UNSUPPORTED：' . $error->getMessage(), 0, $error);
         }
         // SQLite 重建被引用的表需要推迟校验；只开放事务内的精确开关，绝不关闭 foreign_keys。
@@ -185,7 +186,7 @@ final class Migrator
         }
     }
 
-    private function connection(Closure $operation): mixed
+    private function connection(\Closure $operation): mixed
     {
         $scope = new ExecutionScope();
         $database = new Database($this->driver, 1, 0, $this->budget);
@@ -197,33 +198,33 @@ final class Migrator
         }
     }
 
-    /** @param Closure(): mixed $operation 同一专属数据库连接上的迁移操作。 */
-    private function locked(Connection $connection, Closure $operation): mixed
+    /** @param \Closure(): mixed $operation 同一专属数据库连接上的迁移操作。 */
+    private function locked(Connection $connection, \Closure $operation): mixed
     {
         $driver = $this->driver->name();
         $name = '';
         $key = 0;
         if ($driver === 'mysql') {
-            $database = (string) $connection->query('SELECT DATABASE() AS name')[0]['name'];
+            $database = (string)$connection->query('SELECT DATABASE() AS name')[0]['name'];
             $name = 'type-migration:' . substr(hash('sha256', $database . ':' . $this->table), 0, 48);
-            if ((int) $connection->query('SELECT GET_LOCK(?, 0) AS acquired', [$name])[0]['acquired'] !== 1) {
+            if ((int)$connection->query('SELECT GET_LOCK(?, 0) AS acquired', [$name])[0]['acquired'] !== 1) {
                 throw new MigrationException('TYPE_MIGRATION_LOCKED：已有迁移持有数据库互斥锁');
             }
         } elseif ($driver === 'pgsql') {
-            $schema = (string) $connection->query('SELECT current_schema() AS name')[0]['name'];
-            $key = (int) hexdec(substr(hash('sha256', $schema . ':' . $this->table), 0, 7));
-            if ((int) $connection->query('SELECT CASE WHEN pg_try_advisory_lock(1348032837, ?) THEN 1 ELSE 0 END AS acquired', [$key])[0]['acquired'] !== 1) {
+            $schema = (string)$connection->query('SELECT current_schema() AS name')[0]['name'];
+            $key = (int)hexdec(substr(hash('sha256', $schema . ':' . $this->table), 0, 7));
+            if ((int)$connection->query('SELECT CASE WHEN pg_try_advisory_lock(1348032837, ?) THEN 1 ELSE 0 END AS acquired', [$key])[0]['acquired'] !== 1) {
                 throw new MigrationException('TYPE_MIGRATION_LOCKED：已有迁移持有数据库互斥锁');
             }
         } else {
-            $file = (string) $connection->query('PRAGMA database_list')[0]['file'];
+            $file = (string)$connection->query('PRAGMA database_list')[0]['file'];
 
             return $file === '' ? $operation() : $this->sqliteLocked($file, $operation);
         }
         $failed = false;
         try {
             return $operation();
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $failed = true;
             throw $error;
         } finally {
@@ -233,7 +234,7 @@ final class Migrator
                 } elseif ($driver === 'pgsql') {
                     $connection->query('SELECT pg_advisory_unlock(1348032837, ?)', [$key]);
                 }
-            } catch (Throwable $cleanupError) {
+            } catch (\Throwable $cleanupError) {
                 if (!$failed) {
                     throw new MigrationException('TYPE_MIGRATION_UNLOCK_FAILED：迁移已结束但释放会话锁失败', 0, $cleanupError);
                 }
@@ -244,10 +245,10 @@ final class Migrator
     /**
      * 持有稳定的独立锁文件；Linux 同时持有旧数据库 flock，兼容已发布的旧执行者。
      *
-     * @param Closure(): mixed $operation 已取得文件互斥后执行的迁移操作。
-     * @throws MigrationException 锁文件不安全、不能打开、已有执行者或释放锁失败。
+     * @param \Closure(): mixed $operation 已取得文件互斥后执行的迁移操作
+     * @throws MigrationException 锁文件不安全、不能打开、已有执行者或释放锁失败
      */
-    private function sqliteLocked(string $file, Closure $operation): mixed
+    private function sqliteLocked(string $file, \Closure $operation): mixed
     {
         $databaseFile = realpath($file);
         if ($databaseFile === false || !is_file($databaseFile)) {
@@ -268,7 +269,7 @@ final class Migrator
             }
 
             return $operation();
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $failed = true;
             throw $error;
         } finally {
@@ -289,13 +290,13 @@ final class Migrator
     /**
      * 锁文件不写内容、不截断、不删除；父目录必须由受信任的迁移执行账户管理。
      *
-     * @return resource 已取得非阻塞排他锁的文件句柄。
-     * @throws MigrationException 路径不安全、打开失败或已有执行者持锁。
+     * @return resource 已取得非阻塞排他锁的文件句柄
+     * @throws MigrationException 路径不安全、打开失败或已有执行者持锁
      */
     private function sqliteFileLock(string $path, bool $create): mixed
     {
         $handle = null;
-        for ($attempt = 0; $attempt < 3; $attempt++) {
+        for ($attempt = 0; $attempt < 3; ++$attempt) {
             clearstatcache(true, $path);
             $before = @lstat($path);
             if (is_link($path) || ($before !== false && (($before['mode'] & 0170000) !== 0100000))) {
@@ -327,7 +328,7 @@ final class Migrator
             $this->sqliteLockIdentity($path, $handle);
 
             return $handle;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             @flock($handle, LOCK_UN);
             fclose($handle);
             throw $error;
@@ -391,8 +392,8 @@ final class Migrator
                 throw new MigrationException('TYPE_MIGRATION_CHANGED：已记录迁移的内容发生变化：' . $version);
             }
             $result[] = ['version' => $version, 'description' => $migration->description(), 'checksum' => $migration->checksum(),
-                'state' => $record === null ? 'pending' : (string) $record['state'], 'transactional' => $migration->transactional(),
-                'attempts' => $record === null ? 0 : (int) $record['attempts'], 'error' => $record === null ? '' : (string) $record['error']];
+                'state' => $record === null ? 'pending' : (string)$record['state'], 'transactional' => $migration->transactional(),
+                'attempts' => $record === null ? 0 : (int)$record['attempts'], 'error' => $record === null ? '' : (string)$record['error']];
             unset($records[$version]);
         }
         if ($records !== []) {
@@ -439,7 +440,7 @@ final class Migrator
                 }
                 $connection->transaction($complete);
             }
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             try {
                 $connection->transaction(function (Connection $transaction) use ($version, $attempt, $error): void {
                     $transaction->execute(
@@ -448,7 +449,7 @@ final class Migrator
                     );
                     $this->record($transaction, $version, 'failed', $attempt, substr($error->getMessage(), 0, 2000));
                 });
-            } catch (Throwable $recordError) {
+            } catch (\Throwable $recordError) {
                 throw new MigrationException('TYPE_MIGRATION_INTERRUPTED：迁移失败且记录无法确认；需要查看状态并显式恢复：' . $version, 0, $error);
             }
             throw new MigrationException('TYPE_MIGRATION_FAILED：迁移失败，需要检查实际数据并显式恢复：' . $version, 0, $error);
@@ -457,7 +458,7 @@ final class Migrator
 
     private function record(Connection $connection, string $version, string $state, int $attempt, string $note): void
     {
-        $next = (int) $connection->query('SELECT COALESCE(MAX(number), 0) + 1 AS value FROM ' . $this->table . '_events')[0]['value'];
+        $next = (int)$connection->query('SELECT COALESCE(MAX(number), 0) + 1 AS value FROM ' . $this->table . '_events')[0]['value'];
         $connection->execute(
             'INSERT INTO ' . $this->table . '_events (number, version, state, attempt, recorded_at, note) VALUES (?, ?, ?, ?, ?, ?)',
             [$next, $version, $state, $attempt, gmdate('c'), $note]

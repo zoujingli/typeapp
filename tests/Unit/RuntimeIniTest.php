@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace TypeTests\Unit;
 
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use Type\Build\RuntimeIni;
 
-/** 核对既有INI字节、语义及注入拒绝，不依赖宿主环境配置。 */
+/**
+ * 核对既有INI字节、语义及注入拒绝，不依赖宿主环境配置。
+ * @internal
+ * @coversNothing
+ */
 final class RuntimeIniTest extends TestCase
 {
     private const BASE = "expose_php=0\nenable_dl=0\nallow_url_include=0\nauto_prepend_file=\nauto_append_file=\nopcache.preload=\nuser_ini.filename=\ninclude_path=\nopcache.enable=0\nopcache.enable_cli=0\nswoole.enable_library=On\ndisplay_errors=stderr\ndisplay_startup_errors=1\nlog_errors=0\nmemory_limit=256M\ndate.timezone=UTC\n";
@@ -34,7 +37,7 @@ final class RuntimeIniTest extends TestCase
     /** 验证含引号、反斜线及空格的路径写入 INI 后仍指向原路径。 */
     public function testQuotedPathsRoundTripWithoutChangingTheirMeaning(): void
     {
-        foreach (['C:\\SDK folder\\php_redis.dll', '/tmp/模块 "one".so'] as $path) {
+        foreach (['C:\SDK folder\php_redis.dll', '/tmp/模块 "one".so'] as $path) {
             // 实际INI加载使用普通扫描语义；RAW模式刻意保留转义，不适合作为路径还原判据。
             $result = parse_ini_string((new RuntimeIni())->generate([$path]), false, INI_SCANNER_NORMAL);
             self::assertSame($path, $result['extension']);
@@ -52,7 +55,7 @@ final class RuntimeIniTest extends TestCase
                 $rejected = false;
                 try {
                     (new RuntimeIni())->generate($directory ? [] : [$path], $directory ? $path : '');
-                } catch (RuntimeException) {
+                } catch (\RuntimeException) {
                     $rejected = true;
                 }
                 self::assertTrue($rejected);
@@ -62,7 +65,7 @@ final class RuntimeIniTest extends TestCase
             $rejected = false;
             try {
                 (new RuntimeIni())->generate($modules);
-            } catch (RuntimeException) {
+            } catch (\RuntimeException) {
                 $rejected = true;
             }
             self::assertTrue($rejected);

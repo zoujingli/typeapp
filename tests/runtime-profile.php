@@ -30,7 +30,7 @@ try {
     $rejected = str_contains($error->getMessage(), 'type_profile_not_a_real_function');
 }
 expect($rejected, '缺失运行函数没有在编译前明确失败');
-$manifest = ['runtime' => ['php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'architecture' => php_uname('m'), 'os' => PHP_OS_FAMILY,
+$manifest = ['runtime' => ['php' => PHP_VERSION, 'zts' => (bool)PHP_ZTS, 'architecture' => php_uname('m'), 'os' => PHP_OS_FAMILY,
     'extensions' => [], 'functions' => ['type_profile_not_a_real_function']], 'native-libraries' => []];
 $rejected = false;
 try {
@@ -58,7 +58,7 @@ if (is_string($swooleModule) && $swooleModule !== '') {
 $swoole = $profile->prepare($root, $base . '/swoole', $phpHome, $phpxHome, ['swoole'], $swooleRuntime);
 expect(array_key_exists('curl', $swoole['extensions']), 'Swoole运行配置必须同时包含curl扩展');
 if (isset($swoole['module-files']['curl'], $swoole['module-files']['swoole'])) {
-    $iniText = (string) file_get_contents($swoole['ini']);
+    $iniText = (string)file_get_contents($swoole['ini']);
     expect(
         strpos($iniText, $swoole['module-files']['curl']) < strpos($iniText, $swoole['module-files']['swoole']),
         'curl必须在Swoole之前加载'
@@ -73,7 +73,7 @@ $checks[] = 'swoole-required-extension-dependencies';
 // 模块加载成功仍可能缺少延迟绑定符号；实际走连接失败路径，必须得到 PDO 异常而非崩溃。
 $pgsql = $profile->prepare($root, $base . '/pgsql-rejection', $phpHome, $phpxHome, ['swoole', 'pdo_pgsql'], $swooleRuntime);
 if (isset($pgsql['module-files']['pdo_pgsql'], $pgsql['module-files']['swoole'])) {
-    $pgsqlIni = (string) file_get_contents($pgsql['ini']);
+    $pgsqlIni = (string)file_get_contents($pgsql['ini']);
     expect(
         strpos($pgsqlIni, $pgsql['module-files']['pdo_pgsql']) < strpos($pgsqlIni, $pgsql['module-files']['swoole']),
         '已选择的原生 PDO 驱动必须先于 Swoole hook 加载'

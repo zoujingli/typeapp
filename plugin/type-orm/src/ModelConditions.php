@@ -4,15 +4,11 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
-
 /** 模型条件组统一执行字段映射与编码，不能注入未声明列。 */
 final class ModelConditions
 {
     /** @internal 绑定模型映射、同一连接的条件与可选关联别名。 */
-    public function __construct(private ModelDefinition $definition, private Conditions $conditions, private string $qualifier = '')
-    {
-    }
+    public function __construct(private ModelDefinition $definition, private Conditions $conditions, private string $qualifier = '') {}
 
     /** 字段值先按模型类型规范化；null 仅用于显式空值比较。 */
     public function where(string $field, string $operator, mixed $value, string $boolean = 'AND'): ModelConditions
@@ -70,8 +66,8 @@ final class ModelConditions
         return $copy;
     }
 
-    /** @param Closure(ModelConditions): ModelConditions $group 返回非空模型条件组。 */
-    public function whereGroup(Closure $group, string $boolean = 'AND'): ModelConditions
+    /** @param \Closure(ModelConditions): ModelConditions $group 返回非空模型条件组。 */
+    public function whereGroup(\Closure $group, string $boolean = 'AND'): ModelConditions
     {
         $definition = $this->definition;
         $qualifier = $this->qualifier;

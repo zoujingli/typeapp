@@ -4,19 +4,27 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
+use TypePhp\Platform\Windows;
 
 /** 收集Clang或MSVC的真实工具、头文件和动态依赖，不把平台名称当作ABI证明。 */
 final class PlatformFingerprint
 {
     private BuildEnvironment $runner;
+
     private array $environment = [];
+
     private array $systemImages = [];
+
     private array $cacheFiles = [];
+
     private array $delayImports = [];
+
     private array $apiSetPaths = [];
+
     private array $importTables = [];
+
     private string $phpHome = '';
+
     private string $phpxHome = '';
 
     /** 注入受管工具执行器，用其受限环境读取平台与原生依赖事实。 */
@@ -28,10 +36,10 @@ final class PlatformFingerprint
     /**
      * 收集macOS/Windows的实际构建环境与应用运行库身份，不执行应用。
      *
-     * @param list<string> $extensions 应用明确要求且构建PHP已加载的扩展。
-     * @param array<string, string>|null $moduleFiles 扩展名到实际模块文件；null沿用SDK目录推断，空映射明确禁止猜测共享模块。
-     * @return array{runtime: array{php: string, zts: bool, architecture: string, os: string, extensions: array<string, string|false>}, native-libraries: list<array<string, mixed>>, system-images: list<array<string, mixed>>, system-cache-files: list<array{name: string, path: string, sha256: string}>, system-cache-policy: string, extension-modules: array<string, string>, delay-imports: list<array<string, mixed>>, build-environment: array<string, string>, tools: array<string, array{path: string, sha256: string, version-sha256?: string}>, tool-dependencies: list<array<string, mixed>>, target-triple: string, extension-abi: string, loaded-extensions: array<string, string|false>, files: list<string>}
-     * @throws RuntimeException 平台不支持、SDK/ABI不匹配、工具/库缺失或依赖身份无法完整核对。
+     * @param list<string> $extensions 应用明确要求且构建PHP已加载的扩展
+     * @param null|array<string, string> $moduleFiles 扩展名到实际模块文件；null沿用SDK目录推断，空映射明确禁止猜测共享模块
+     * @return array{runtime: array{php: string, zts: bool, architecture: string, os: string, extensions: array<string, false|string>}, native-libraries: list<array<string, mixed>>, system-images: list<array<string, mixed>>, system-cache-files: list<array{name: string, path: string, sha256: string}>, system-cache-policy: string, extension-modules: array<string, string>, delay-imports: list<array<string, mixed>>, build-environment: array<string, string>, tools: array<string, array{path: string, sha256: string, version-sha256?: string}>, tool-dependencies: list<array<string, mixed>>, target-triple: string, extension-abi: string, loaded-extensions: array<string, false|string>, files: list<string>}
+     * @throws \RuntimeException 平台不支持、SDK/ABI不匹配、工具/库缺失或依赖身份无法完整核对
      */
     public function collect(string $phpHome, string $phpxHome, array $extensions, ?array $moduleFiles = null): array
     {
@@ -50,7 +58,7 @@ final class PlatformFingerprint
         if ($platform->family() === 'Darwin') {
             $phpConfig = $phpHome . '/bin/php-config';
             if (trim($this->command([$phpConfig, '--version'])) !== PHP_VERSION) {
-                throw new RuntimeException('PHP SDK与当前构建PHP版本不一致');
+                throw new \RuntimeException('PHP SDK与当前构建PHP版本不一致');
             }
             foreach (['clang', 'clang++', 'ld', 'as'] as $name) {
                 $toolFiles[$name] = trim($this->command(['/usr/bin/xcrun', '--find', $name]));
@@ -73,7 +81,7 @@ final class PlatformFingerprint
             foreach (['cl.exe', 'link.exe', 'dumpbin.exe', 'rc.exe'] as $name) {
                 $toolFiles[$name] = $this->executable($name);
             }
-            $imports = (new \TypePhp\Platform\Windows())->detectPhpLibs($phpHome);
+            $imports = (new Windows())->detectPhpLibs($phpHome);
             array_push($extraFiles, $imports['embed'], $imports['core'], $phpxHome . '/lib/phpx.lib');
             $headerDirectories[] = $phpHome . '/SDK/include';
             foreach (['INCLUDE', 'LIB', 'LIBPATH'] as $key) {
@@ -85,7 +93,7 @@ final class PlatformFingerprint
             }
             $vc = $this->environment['VCToolsInstallDir'] ?? '';
             if ($vc === '' || !is_dir($vc . '/bin/Hostx64/x64')) {
-                throw new RuntimeException('必须在已初始化的x64 MSVC工具环境构建');
+                throw new \RuntimeException('必须在已初始化的x64 MSVC工具环境构建');
             }
             $extraFiles = array_merge($extraFiles, array_keys((new BuildIdentity())->files([$vc . '/bin/Hostx64/x64'], ['exe', 'dll'])));
             $extensionDirectory = $phpHome . '/ext';
@@ -93,21 +101,21 @@ final class PlatformFingerprint
             // /?可能被Windows参数通配展开为盘符根目录下的单字符路径。
             $version = $this->command([$toolFiles['cl.exe'], '/HELP']);
             if (PHP_INT_SIZE !== 8 || !in_array(strtolower(php_uname('m')), ['amd64', 'x86_64'], true)) {
-                throw new RuntimeException('锁定Windows工具链只接受x64');
+                throw new \RuntimeException('锁定Windows工具链只接受x64');
             }
-            $header = (string) file_get_contents($phpHome . '/SDK/include/main/php_version.h');
+            $header = (string)file_get_contents($phpHome . '/SDK/include/main/php_version.h');
             if (!str_contains($header, '"' . PHP_VERSION . '"')) {
-                throw new RuntimeException('Windows PHP头文件版本不匹配');
+                throw new \RuntimeException('Windows PHP头文件版本不匹配');
             }
         } else {
-            throw new RuntimeException('此收集器仅负责macOS与Windows');
+            throw new \RuntimeException('此收集器仅负责macOS与Windows');
         }
         $toolFiles['php'] = PHP_BINARY;
         $tools = [];
         foreach ($toolFiles as $name => $file) {
             $real = realpath($file);
             if ($real === false || !is_file($real)) {
-                throw new RuntimeException('平台工具不存在：' . $name);
+                throw new \RuntimeException('平台工具不存在：' . $name);
             }
             $tools[$name] = ['path' => BuildPlatform::path($real), 'sha256' => hash_file('sha256', $real)];
         }
@@ -128,7 +136,7 @@ final class PlatformFingerprint
         $extensionModules = [];
         foreach ($extensions as $extension) {
             if (!is_string($extension) || !extension_loaded($extension)) {
-                throw new RuntimeException('产物需要的扩展未加载');
+                throw new \RuntimeException('产物需要的扩展未加载');
             }
             $required[$extension] = phpversion($extension);
             foreach ($moduleFiles === null ? [$extensionDirectory . '/' . $extension . '.so', $extensionDirectory . '/php_' . $extension . '.dll'] : [] as $candidate) {
@@ -140,7 +148,7 @@ final class PlatformFingerprint
         }
         foreach ($moduleFiles ?? [] as $extension => $moduleFile) {
             if (!is_string($extension) || !is_string($moduleFile) || !is_file($moduleFile)) {
-                throw new RuntimeException('运行扩展文件声明无效');
+                throw new \RuntimeException('运行扩展文件声明无效');
             }
             $libraries[] = $moduleFile;
             $extensionModules[$extension] = basename($moduleFile);
@@ -161,7 +169,7 @@ final class PlatformFingerprint
         if (php_ini_loaded_file() !== false) {
             $iniFiles[] = php_ini_loaded_file();
         }
-        foreach (explode(',', (string) php_ini_scanned_files()) as $ini) {
+        foreach (explode(',', (string)php_ini_scanned_files()) as $ini) {
             if (trim($ini) !== '') {
                 $iniFiles[] = trim($ini);
             }
@@ -173,7 +181,7 @@ final class PlatformFingerprint
         foreach (array_keys($this->cacheFiles) as $file) {
             $cache[] = ['name' => basename($file), 'path' => $file, 'sha256' => hash_file('sha256', $file)];
         }
-        return ['runtime' => ['php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'architecture' => php_uname('m'), 'os' => PHP_OS_FAMILY, 'extensions' => $required],
+        return ['runtime' => ['php' => PHP_VERSION, 'zts' => (bool)PHP_ZTS, 'architecture' => php_uname('m'), 'os' => PHP_OS_FAMILY, 'extensions' => $required],
             'native-libraries' => $native, 'system-images' => $images, 'system-cache-files' => $cache,
             'system-cache-policy' => $platform->family() === 'Darwin' ? 'explicit-deployment-audit' : 'not-applicable',
             'extension-modules' => $extensionModules,
@@ -203,12 +211,12 @@ final class PlatformFingerprint
             foreach ($roots as $root) {
                 $rootPath = realpath($root);
                 if ($rootPath === false || !is_file($rootPath)) {
-                    throw new RuntimeException('平台动态依赖路径不存在：' . $root);
+                    throw new \RuntimeException('平台动态依赖路径不存在：' . $root);
                 }
                 $rootName = strtolower(basename($rootPath));
                 if (isset($declaredWindowsLibraries[$rootName])) {
                     if (hash_file('sha256', $declaredWindowsLibraries[$rootName]) !== hash_file('sha256', $rootPath)) {
-                        throw new RuntimeException('同名平台运行库存在不同身份：' . basename($rootPath));
+                        throw new \RuntimeException('同名平台运行库存在不同身份：' . basename($rootPath));
                     }
                     continue;
                 }
@@ -225,7 +233,7 @@ final class PlatformFingerprint
             [$file, $deferred] = array_shift($queue);
             $real = realpath($file);
             if ($real === false) {
-                throw new RuntimeException('平台动态依赖路径不存在：' . $file);
+                throw new \RuntimeException('平台动态依赖路径不存在：' . $file);
             }
             $real = BuildPlatform::path($real);
             if (array_key_exists($real, $seen) && (!$seen[$real] || $deferred)) {
@@ -234,11 +242,11 @@ final class PlatformFingerprint
             $seen[$real] = $deferred;
             try {
                 $format = BuildPlatform::format($real);
-            } catch (RuntimeException) {
+            } catch (\RuntimeException) {
                 continue;
             }
             if (($format !== 'Mach-O' && PHP_OS_FAMILY === 'Darwin') || ($format !== 'PE' && PHP_OS_FAMILY === 'Windows')) {
-                throw new RuntimeException('工具或运行库属于其他平台：' . $real);
+                throw new \RuntimeException('工具或运行库属于其他平台：' . $real);
             }
             $name = basename($file);
             $entry = ['name' => $name, 'path' => $real, 'sha256' => hash_file('sha256', $real)];
@@ -248,7 +256,7 @@ final class PlatformFingerprint
             }
             $libraryKey = PHP_OS_FAMILY === 'Windows' ? strtolower($name) : $name;
             if (isset($libraries[$libraryKey]) && $libraries[$libraryKey]['sha256'] !== $entry['sha256']) {
-                throw new RuntimeException('同名平台运行库存在不同身份：' . $name);
+                throw new \RuntimeException('同名平台运行库存在不同身份：' . $name);
             }
             $libraries[$libraryKey] = $entry;
             if (PHP_OS_FAMILY === 'Darwin') {
@@ -285,8 +293,8 @@ final class PlatformFingerprint
                             // 仍须进入发布闭包，审计仅在实际按声明路径加载时要求一致。
                             $queue[] = [$this->windowsLibrary($dependencyName, $applicationDirectory, basename($real), $declaredWindowsLibraries),
                                 $deferred || $kind === 'delayed' || preg_match('/^libmpdec/i', $dependencyName) === 1];
-                        } catch (RuntimeException $error) {
-                            throw new RuntimeException($error->getMessage() . "\n父映像依赖表：\n" . $output, 0, $error);
+                        } catch (\RuntimeException $error) {
+                            throw new \RuntimeException($error->getMessage() . "\n父映像依赖表：\n" . $output, 0, $error);
                         }
                     }
                 }
@@ -302,7 +310,7 @@ final class PlatformFingerprint
         try {
             (new BuildPlatform('Darwin'))->assertArtifact($loader);
             $executableDirectory = dirname($loader);
-        } catch (RuntimeException) {
+        } catch (\RuntimeException) {
         }
         $candidates = [$name];
         if (str_starts_with($name, '@loader_path/')) {
@@ -328,11 +336,11 @@ final class PlatformFingerprint
             }
         }
         if (!str_starts_with($name, '/usr/lib/') && !str_starts_with($name, '/System/Library/')) {
-            throw new RuntimeException('无法解析Mach-O动态依赖：' . $name);
+            throw new \RuntimeException('无法解析Mach-O动态依赖：' . $name);
         }
         $output = $this->command(['/usr/bin/dyld_info', '-uuid', $name]);
         if (preg_match('/\b([A-F0-9]{8}(?:-[A-F0-9]{4}){3}-[A-F0-9]{12})\b/i', $output, $match) !== 1) {
-            throw new RuntimeException('无法确认系统dyld共享缓存中的运行库：' . $name);
+            throw new \RuntimeException('无法确认系统dyld共享缓存中的运行库：' . $name);
         }
         $this->systemImages[$name] = ['path' => $name, 'uuid' => strtoupper($match[1])];
         if ($this->cacheFiles === []) {
@@ -345,7 +353,7 @@ final class PlatformFingerprint
                 }
             }
             if ($this->cacheFiles === []) {
-                throw new RuntimeException('无法定位当前架构dyld缓存字节，拒绝不完整身份');
+                throw new \RuntimeException('无法定位当前架构dyld缓存字节，拒绝不完整身份');
             }
         }
         return null;
@@ -359,7 +367,7 @@ final class PlatformFingerprint
             $declaredPath = $declared[strtolower($name)] ?? null;
             if ($declaredPath !== null) {
                 if (!is_file($declaredPath)) {
-                    throw new RuntimeException('已声明Windows动态依赖路径不存在：' . $name);
+                    throw new \RuntimeException('已声明Windows动态依赖路径不存在：' . $name);
                 }
                 return $declaredPath;
             }
@@ -369,7 +377,7 @@ final class PlatformFingerprint
                     return $candidate;
                 }
             }
-            throw new RuntimeException('无法解析Windows动态依赖：' . $name);
+            throw new \RuntimeException('无法解析Windows动态依赖：' . $name);
         }
         $apiKey = strtolower($name);
         if (isset($this->apiSetPaths[$apiKey])) {
@@ -390,7 +398,7 @@ POWERSHELL;
         $environment['TYPE_BUILD_IMPORTER'] = $importer;
         $resolved = trim($this->runner->run([$this->executable('powershell.exe'), '-NoProfile', '-NonInteractive', '-Command', $script], $this->phpHome, $environment));
         if (!is_file($resolved) || !BuildPlatform::contains($environment['SystemRoot'] . '/System32', $resolved)) {
-            throw new RuntimeException('API-set未解析到受信系统目录');
+            throw new \RuntimeException('API-set未解析到受信系统目录');
         }
         $this->apiSetPaths[$apiKey] = $resolved;
         return $resolved;
@@ -403,7 +411,7 @@ POWERSHELL;
                 return $directory . '/' . $name;
             }
         }
-        throw new RuntimeException('平台缺少必需工具：' . $name);
+        throw new \RuntimeException('平台缺少必需工具：' . $name);
     }
 
     private function command(array $command): string
@@ -415,8 +423,8 @@ POWERSHELL;
      * 系统SDK的公开include目录允许Homebrew/Framework链接；只记录实际目标并避免环。
      * 应用生产目录仍由BuildIdentity保留禁止越界链接的原约束。
      *
-     * @param list<string> $directories 已经确定的系统/SDK搜索路径。
-     * @return list<string> 实际头文件、接口描述及导入库。
+     * @param list<string> $directories 已经确定的系统/SDK搜索路径
+     * @return list<string> 实际头文件、接口描述及导入库
      */
     private function headerFiles(array $directories): array
     {
@@ -440,7 +448,7 @@ POWERSHELL;
                 } elseif ($entry->isFile() && in_array(strtolower($entry->getExtension()), $extensions, true)) {
                     $file = $entry->getRealPath();
                     if ($file === false) {
-                        throw new RuntimeException('SDK头文件链接目标不存在');
+                        throw new \RuntimeException('SDK头文件链接目标不存在');
                     }
                     $files[BuildPlatform::path($file)] = true;
                 }

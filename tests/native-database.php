@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Pdo\Mysql;
 use Type\Build\BuildLock;
 use Type\Build\BuildPlatform;
 use Type\Runtime\Deadline;
@@ -10,11 +11,11 @@ use Type\Testing\Process;
 /**
  * 执行明确测试命令，完整捕获双输出并脱敏保存；不经shell。
  *
- * @param list<string> $command 原生程序及参数。
- * @param array<string,string> $environment 调用者显式提供的环境。
- * @param list<string> $secrets 本轮输出中需要隐藏的测试凭据。
- * @param Closure(): void|null $observe 等待期间排空其他受控进程输出；不参与应用协议。
- * @throws RuntimeException 命令、输出预算或日志保存失败。
+ * @param list<string> $command 原生程序及参数
+ * @param array<string,string> $environment 调用者显式提供的环境
+ * @param list<string> $secrets 本轮输出中需要隐藏的测试凭据
+ * @param null|Closure(): void $observe 等待期间排空其他受控进程输出；不参与应用协议
+ * @throws RuntimeException 命令、输出预算或日志保存失败
  */
 function nativeDatabaseCommand(array $command, array $environment, array $secrets, string $log, int $seconds = 90, ?Closure $observe = null): string
 {
@@ -36,7 +37,7 @@ function nativeDatabaseCommand(array $command, array $environment, array $secret
     }
     $output = str_replace($secrets, '<REDACTED>', $result->stdout . $result->stderr);
     expect(file_put_contents($log, $output) === strlen($output) && chmod($log, 0600), '无法保存原生数据库命令的私有脱敏日志');
-    expect($result->successful(), '原生数据库命令失败（exit=' . $result->exitCode . ', timeout=' . (int) $result->timedOut . '），日志：' . $log);
+    expect($result->successful(), '原生数据库命令失败（exit=' . $result->exitCode . ', timeout=' . (int)$result->timedOut . '），日志：' . $log);
     return $result->stdout;
 }
 
@@ -44,47 +45,24 @@ function nativeDatabaseCommand(array $command, array $environment, array $secret
 final class NativeDatabase
 {
     private ?Process $process = null;
-    private ?string $socketDirectory = null;
-    private array $environment;
-    private array $evidence;
-    private string $password;
-    private bool $closed = false;
 
-    /**
-     * 在分配测试目录前验证原生工具；不下载、安装、运行程序或连接数据库。
-     *
-     * @return array<string,string> 经解析的root及本驱动明确需要的程序路径。
-     * @throws RuntimeException 驱动、目录或原生文件无效。
-     */
-    public static function tools(string $driver, string $directory): array
-    {
-        expect(in_array(PHP_OS_FAMILY, ['Darwin', 'Linux', 'Windows'], true) && in_array($driver, ['mysql', 'pgsql'], true), '原生数据库工具要求受支持平台和明确驱动');
-        $root = realpath($directory);
-        expect($root !== false && is_dir($root), '数据库工具根目录不存在');
-        $tools = ['root' => $root];
-        $names = $driver === 'mysql' ? ['mysqld', 'mysql', 'mysqldump'] : ['postgres', 'initdb', 'pg_dump', 'pg_restore'];
-        if (PHP_OS_FAMILY === 'Windows' && $driver === 'pgsql') {
-            $names = [...$names, 'pg_ctl', 'pg_basebackup'];
-        }
-        $suffix = PHP_OS_FAMILY === 'Windows' ? '.exe' : '';
-        $format = match (PHP_OS_FAMILY) {
-            'Darwin' => 'Mach-O', 'Windows' => 'PE', default => 'ELF'
-        };
-        foreach ($names as $name) {
-            $binary = realpath($root . '/bin/' . $name . $suffix);
-            expect($binary !== false && is_executable($binary) && BuildPlatform::format($binary) === $format, '需要原生数据库工具，不能使用容器、脚本或其他平台二进制：' . $name);
-            $tools[$name] = $binary;
-        }
-        return $tools;
-    }
+    private ?string $socketDirectory = null;
+
+    private array $environment;
+
+    private array $evidence;
+
+    private string $password;
+
+    private bool $closed = false;
 
     /**
      * 创建build下不存在的私有目录及独立实例；SQLite仅提供无服务器的测试环境。
      *
-     * @param array<string,string> $tools tools()返回的本驱动工具，SQLite传空数组。
-     * @param array{ca: string, certificate: string, key: string}|array{} $tls 本轮证书文件；仅用于本实例，空数组保持非TLS测试。
-     * @param array<string,string> $postgresOptions 仅允许本轮归档/WAL汇总启动参数，不修改系统级配置。
-     * @throws RuntimeException 环境、目录、初始化或身份检查失败；本轮资源仍会清理。
+     * @param array<string,string> $tools tools()返回的本驱动工具，SQLite传空数组
+     * @param array{ca: string, certificate: string, key: string}|array{} $tls 本轮证书文件；仅用于本实例，空数组保持非TLS测试
+     * @param array<string,string> $postgresOptions 仅允许本轮归档/WAL汇总启动参数，不修改系统级配置
+     * @throws RuntimeException 环境、目录、初始化或身份检查失败；本轮资源仍会清理
      */
     public function __construct(private string $directory, private string $driver, array $tools = [], private array $tls = [], private array $postgresOptions = [])
     {
@@ -130,6 +108,34 @@ final class NativeDatabase
         }
     }
 
+    /**
+     * 在分配测试目录前验证原生工具；不下载、安装、运行程序或连接数据库。
+     *
+     * @return array<string,string> 经解析的root及本驱动明确需要的程序路径
+     * @throws RuntimeException 驱动、目录或原生文件无效
+     */
+    public static function tools(string $driver, string $directory): array
+    {
+        expect(in_array(PHP_OS_FAMILY, ['Darwin', 'Linux', 'Windows'], true) && in_array($driver, ['mysql', 'pgsql'], true), '原生数据库工具要求受支持平台和明确驱动');
+        $root = realpath($directory);
+        expect($root !== false && is_dir($root), '数据库工具根目录不存在');
+        $tools = ['root' => $root];
+        $names = $driver === 'mysql' ? ['mysqld', 'mysql', 'mysqldump'] : ['postgres', 'initdb', 'pg_dump', 'pg_restore'];
+        if (PHP_OS_FAMILY === 'Windows' && $driver === 'pgsql') {
+            $names = [...$names, 'pg_ctl', 'pg_basebackup'];
+        }
+        $suffix = PHP_OS_FAMILY === 'Windows' ? '.exe' : '';
+        $format = match (PHP_OS_FAMILY) {
+            'Darwin' => 'Mach-O', 'Windows' => 'PE', default => 'ELF'
+        };
+        foreach ($names as $name) {
+            $binary = realpath($root . '/bin/' . $name . $suffix);
+            expect($binary !== false && is_executable($binary) && BuildPlatform::format($binary) === $format, '需要原生数据库工具，不能使用容器、脚本或其他平台二进制：' . $name);
+            $tools[$name] = $binary;
+        }
+        return $tools;
+    }
+
     /** @return array<string,string> 本轮连接参数及工具路径；调用者不应记录其中的测试密码。 */
     public function environment(): array
     {
@@ -153,7 +159,7 @@ final class NativeDatabase
     /**
      * 幂等停止自己持有的前台进程，移除初始化秘密与空socket目录，保留数据库及日志。
      *
-     * @throws RuntimeException 停止、日志或清理失败；失败状态不得计为验收通过。
+     * @throws RuntimeException 停止、日志或清理失败；失败状态不得计为验收通过
      */
     public function close(): void
     {
@@ -257,8 +263,8 @@ final class NativeDatabase
         $options = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 1];
         if ($this->tls !== []) {
             if ($mysql) {
-                $options[\Pdo\Mysql::ATTR_SSL_CA] = $this->tls['ca'];
-                $options[\Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = true;
+                $options[Mysql::ATTR_SSL_CA] = $this->tls['ca'];
+                $options[Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = true;
             } else {
                 $dsn .= ';sslmode=verify-full;sslrootcert=' . $this->tls['ca'];
             }
@@ -278,16 +284,16 @@ final class NativeDatabase
             expect(is_string($actual) && realpath($actual) === $data, '连接并非本轮数据库数据根');
             $pidFile = $data . ($mysql ? '/mysql.pid' : '/postmaster.pid');
             expect(is_file($pidFile), '数据库缺少进程身份记录');
-            $pid = strtok((string) file_get_contents($pidFile), "\n");
-            expect(is_string($pid) && ctype_digit($pid) && (int) $pid > 1, '数据库PID无效');
+            $pid = strtok((string)file_get_contents($pidFile), "\n");
+            expect(is_string($pid) && ctype_digit($pid) && (int)$pid > 1, '数据库PID无效');
             $parent = trim($this->command(['/bin/ps', '-p', $pid, '-o', 'ppid='], 'parent-pid.log', 5));
-            expect($parent === (string) getmypid(), '数据库不是本控制器直接持有的前台子进程');
-            $version = (string) $connection->getAttribute(PDO::ATTR_SERVER_VERSION);
+            expect($parent === (string)getmypid(), '数据库不是本控制器直接持有的前台子进程');
+            $version = (string)$connection->getAttribute(PDO::ATTR_SERVER_VERSION);
             if (!$mysql) {
                 $connection->exec('CREATE DATABASE type_app_test');
             }
             $connection = null;
-            return ['pid' => (int) $pid, 'port' => (int) $port, 'version' => $version, 'data' => $data, 'owner-pid' => getmypid()];
+            return ['pid' => (int)$pid, 'port' => (int)$port, 'version' => $version, 'data' => $data, 'owner-pid' => getmypid()];
         } while (microtime(true) < $deadline);
         throw new RuntimeException('本轮原生数据库未在预算内通过认证');
     }

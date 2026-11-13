@@ -45,7 +45,7 @@ function brokerCandidateIndependent(string $root, string $source, string $base, 
     $consumer = $base . '/consumer';
     $record = ['kind' => 'independent-broker-candidate', 'source' => $source, 'internal_links' => []];
     $record['snapshot'] = brokerCandidateArchive($root, $source, $consumer);
-    $composer = realpath((string) getenv('TYPE_COMPOSER_PHAR'));
+    $composer = realpath((string)getenv('TYPE_COMPOSER_PHAR'));
     expect(is_string($composer) && is_file($composer), '独立安装需要显式 TYPE_COMPOSER_PHAR');
     $environment = array_replace(getenv(), (new BuildPlatform())->environment(getenv('PHP_HOME') ?: '', getenv('PHPX_HOME') ?: ''));
     $environment['PHPRC'] = getenv('PHPRC') ?: '';
@@ -72,10 +72,10 @@ function brokerCandidateIndependent(string $root, string $source, string $base, 
             continue;
         }
         $resolved = $entry->getRealPath();
-        expect(is_string($resolved) && str_starts_with($resolved, $consumer . '/') && !str_starts_with((string) readlink($entry->getPathname()), '/'), '安装链接越出独立快照');
+        expect(is_string($resolved) && str_starts_with($resolved, $consumer . '/') && !str_starts_with((string)readlink($entry->getPathname()), '/'), '安装链接越出独立快照');
         $record['internal_links'][substr($entry->getPathname(), strlen($consumer) + 1)] = substr($resolved, strlen($consumer) + 1);
     }
-    $lock = json_decode((string) file_get_contents($consumer . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
+    $lock = json_decode((string)file_get_contents($consumer . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
     foreach ([...$lock['packages'], ...$lock['packages-dev']] as $package) {
         if (($package['dist']['type'] ?? '') !== 'path') {
             continue;
@@ -89,8 +89,8 @@ function brokerCandidateIndependent(string $root, string $source, string $base, 
             }
         }
     }
-    $web = json_decode((string) file_get_contents($consumer . '/web/package.json'), true, 512, JSON_THROW_ON_ERROR);
-    expect(preg_match('/^pnpm@(\d+\.\d+\.\d+)$/', (string) ($web['packageManager'] ?? ''), $pnpmLock) === 1, 'Web 未锁定 pnpm 版本');
+    $web = json_decode((string)file_get_contents($consumer . '/web/package.json'), true, 512, JSON_THROW_ON_ERROR);
+    expect(preg_match('/^pnpm@(\d+\.\d+\.\d+)$/', (string)($web['packageManager'] ?? ''), $pnpmLock) === 1, 'Web 未锁定 pnpm 版本');
     $pnpm = ['npx', '--yes', $web['packageManager']];
     $record['node'] = trim(nativeDatabaseCommand(['node', '--version'], $environment, [], $base . '/node.log', 10));
     $record['pnpm'] = trim(nativeDatabaseCommand([...$pnpm, '--version'], $environment, [], $base . '/pnpm.log', 60));
@@ -125,7 +125,7 @@ function brokerCandidateScenario(string $name, array $arguments, array $environm
     echo '正在运行 Broker 候选公开验收：' . $name . "\n";
     $output = nativeDatabaseCommand($arguments, $environment, [], $log, $seconds);
     expect(preg_match('#(?:通过|证据)：([^\r\n]*?/verification\.json)#u', $output, $matches) === 1, $name . ' 没有返回通过证据');
-    $report = json_decode((string) file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
+    $report = json_decode((string)file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
     expect(($report['status'] ?? '') === 'passed', $name . ' 报告尚未通过：' . $matches[1]);
     return [
         'evidence' => substr($matches[1], strlen($root) + 1),
@@ -172,7 +172,7 @@ expect(mkdir($base, 0700), '无法创建 Broker 候选验收目录');
 $environment = getenv();
 if ($target !== '--php') {
     $environment = array_replace($environment, (new BuildPlatform())->environment(getenv('PHP_HOME') ?: '', getenv('PHPX_HOME') ?: ''));
-    $built = json_decode((string) file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+    $built = json_decode((string)file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $environment['TYPE_NATIVE_PHP_INI'] = getenv('TYPE_NATIVE_PHP_INI') ?: $built['runtime-profile']['ini'];
 }
 
@@ -258,7 +258,7 @@ try {
         $browserFlag === [] ? 420 : 540,
         $root
     );
-    $report['broker_recovery'] = ['evidence' => $recovery['evidence'], 'sha256' => $recovery['sha256'],
+    $report['platform_mqtt_recovery'] = ['evidence' => $recovery['evidence'], 'sha256' => $recovery['sha256'],
         'http_checks' => $recovery['report']['http_checks'] ?? null,
         'browser' => $recovery['report']['browser']['status'] ?? null];
     $report['checks'][] = 'recovery-and-config-public-api';

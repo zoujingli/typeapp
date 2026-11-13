@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\JobCompiler;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -19,7 +20,7 @@ $invalid = $settings['application']['jobs'];
 $invalid[] = $invalid[0];
 $rejected = false;
 try {
-    (new Type\Build\JobCompiler())->validate($invalid);
+    (new JobCompiler())->validate($invalid);
 } catch (RuntimeException) {
     $rejected = true;
 }

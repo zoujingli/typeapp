@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace TypeApp\Example;
 
-use RuntimeException;
 use Type\Core\Command;
 use Type\Core\Configuration;
 use Type\Core\Listener;
+use Type\Generated\CommandApplication;
+use Type\Runtime\Cancellation;
+use Type\Runtime\Deadline;
+use Type\Runtime\ExecutionScope;
 use Type\Runtime\ManagedResource;
+use Type\Runtime\TaskException;
 
 /** 展示配置值经容器装配进入命令依赖，不直接读取全局环境。 */
 final class Greeting
@@ -42,7 +46,7 @@ final class GreetCommand implements Command
     /**
      * 输出问候；status-23 参数用于验证退出码原样传递。
      *
-     * @param list<string> $arguments 当前命令收到的显式参数。
+     * @param list<string> $arguments 当前命令收到的显式参数
      */
     public function run(Configuration $configuration, array $arguments): int
     {
@@ -56,9 +60,7 @@ final class GreetCommand implements Command
 final class GreetingMessage
 {
     /** 接收已有配置服务，保持直接类型依赖。 */
-    public function __construct(private Greeting $greeting)
-    {
-    }
+    public function __construct(private Greeting $greeting) {}
 
     /** 返回已配置问候。 */
     public function message(): string
@@ -71,7 +73,9 @@ final class GreetingMessage
 final class ExampleResource implements ManagedResource
 {
     private string $name;
+
     private bool $failStart;
+
     private bool $failStop;
 
     /** 记录资源名与两阶段故障开关，不提前执行生命周期。 */
@@ -87,7 +91,7 @@ final class ExampleResource implements ManagedResource
     {
         echo '开启：' . $this->name . "\n";
         if ($this->failStart) {
-            throw new RuntimeException('启动失败：' . $this->name);
+            throw new \RuntimeException('启动失败：' . $this->name);
         }
     }
 
@@ -96,7 +100,7 @@ final class ExampleResource implements ManagedResource
     {
         echo '关闭：' . $this->name . "\n";
         if ($this->failStop) {
-            throw new RuntimeException('停止失败：' . $this->name);
+            throw new \RuntimeException('停止失败：' . $this->name);
         }
     }
 }
@@ -105,6 +109,7 @@ final class ExampleResource implements ManagedResource
 final class ExampleListener implements Listener
 {
     private string $name;
+
     private bool $fail;
 
     /** 固定监听器身份及故障开关。 */
@@ -119,7 +124,7 @@ final class ExampleListener implements Listener
     {
         echo '事件：' . $this->name . ':' . $event . "\n";
         if ($this->fail) {
-            throw new RuntimeException('监听失败：' . $this->name);
+            throw new \RuntimeException('监听失败：' . $this->name);
         }
     }
 }
@@ -130,12 +135,12 @@ final class FailingCommand implements Command
     /**
      * 抛出预期业务异常，不返回伪造成功状态。
      *
-     * @throws RuntimeException 每次调用均失败。
-     * @param list<string> $arguments 当前命令收到的显式参数。
+     * @param list<string> $arguments 当前命令收到的显式参数
+     * @throws \RuntimeException 每次调用均失败
      */
     public function run(Configuration $configuration, array $arguments): int
     {
-        throw new RuntimeException('业务命令失败');
+        throw new \RuntimeException('业务命令失败');
     }
 }
 
@@ -143,12 +148,13 @@ final class FailingCommand implements Command
 final class SequenceValue
 {
     private static int $next = 0;
+
     private int $value;
 
     /** 每次构造分配新序号，供跨命令实例隔离比较。 */
     public function __construct()
     {
-        self::$next++;
+        ++self::$next;
         $this->value = self::$next;
     }
 
@@ -163,6 +169,7 @@ final class SequenceValue
 final class IdentityCommand implements Command
 {
     private SequenceValue $singleton;
+
     private SequenceValue $execution;
 
     /** 显式注入两种生命周期的值，不自行从全局容器查找。 */
@@ -175,7 +182,7 @@ final class IdentityCommand implements Command
     /**
      * 输出单例与执行级序号，外部验收比较连续两次命令。
      *
-     * @param list<string> $arguments 当前命令收到的显式参数。
+     * @param list<string> $arguments 当前命令收到的显式参数
      */
     public function run(Configuration $configuration, array $arguments): int
     {
@@ -191,11 +198,11 @@ final class BatchCommand implements Command
     /**
      * 连续调用两次 identity，保留共同应用容器但建立独立执行。
      *
-     * @param list<string> $arguments 当前命令收到的显式参数。
+     * @param list<string> $arguments 当前命令收到的显式参数
      */
     public function run(Configuration $configuration, array $arguments): int
     {
-        $application = new \Type\Generated\CommandApplication($configuration);
+        $application = new CommandApplication($configuration);
         $application->run('identity', []);
         $application->run('identity', []);
 
@@ -209,7 +216,7 @@ final class SnapshotCommand implements Command
     /**
      * 保存配置值后修改演练环境，再输出同一配置对象的读取结果。
      *
-     * @param list<string> $arguments 当前命令收到的显式参数。
+     * @param list<string> $arguments 当前命令收到的显式参数
      */
     public function run(Configuration $configuration, array $arguments): int
     {
@@ -229,51 +236,51 @@ final class ScopeCommand implements Command
     /** 构造必须发生在 Application 绑定本次执行作用域之后。 */
     public function __construct()
     {
-        $this->constructedInScope = \Type\Runtime\ExecutionScope::current() instanceof \Type\Runtime\ExecutionScope;
+        $this->constructedInScope = ExecutionScope::current() instanceof ExecutionScope;
     }
 
     /**
      * 创建子作用域并取消，验证命令 Scope 保留与资源清理边界。
      *
-     * @param list<string> $arguments 当前命令收到的显式参数。
+     * @param list<string> $arguments 当前命令收到的显式参数
      */
     public function run(Configuration $configuration, array $arguments): int
     {
-        $cancellation = new \Type\Runtime\Cancellation();
-        $commandScope = \Type\Runtime\ExecutionScope::current();
-        $scope = new \Type\Runtime\ExecutionScope(cancellation: $cancellation);
+        $cancellation = new Cancellation();
+        $commandScope = ExecutionScope::current();
+        $scope = new ExecutionScope(cancellation: $cancellation);
         $scope->open(new ExampleResource('scope', false, false));
         $cancellation->cancel();
         $cancelled = false;
         try {
             $scope->assertActive();
-        } catch (\Type\Runtime\TaskException $cancelError) {
+        } catch (TaskException $cancelError) {
             $cancelled = $cancelError->errorCode() === 'cancelled';
         }
         $scope->close();
         $closedRejected = false;
         try {
             $scope->assertActive();
-        } catch (RuntimeException $closedError) {
+        } catch (\RuntimeException $closedError) {
             $closedRejected = true;
         }
-        $expired = new \Type\Runtime\ExecutionScope(new \Type\Runtime\Deadline(0.0));
+        $expired = new ExecutionScope(new Deadline(0.0));
         $deadlineRejected = false;
         try {
             $expired->assertActive();
-        } catch (\Type\Runtime\TaskException $deadlineError) {
+        } catch (TaskException $deadlineError) {
             $deadlineRejected = $deadlineError->errorCode() === 'deadline_exceeded';
         }
         $expired->close();
-        $parent = new \Type\Runtime\ExecutionScope();
-        $childResult = $parent->spawn(static fn (\Type\Runtime\ExecutionScope $child): bool => \Type\Runtime\ExecutionScope::current() === $child)->await();
+        $parent = new ExecutionScope();
+        $childResult = $parent->spawn(static fn (ExecutionScope $child): bool => ExecutionScope::current() === $child)->await();
         $parent->close();
         $executionFirst = $commandScope->service('scope-probe', static fn (): SequenceValue => new SequenceValue());
         $executionSecond = $commandScope->service('scope-probe', static fn (): SequenceValue => new SequenceValue());
-        $isolated = $commandScope->spawn(static fn (\Type\Runtime\ExecutionScope $child): SequenceValue => $child->service('scope-probe', static fn (): SequenceValue => new SequenceValue()))->await();
-        if (!$this->constructedInScope || !$cancelled || !$closedRejected || !$deadlineRejected || $childResult !== true || $executionFirst !== $executionSecond || $executionFirst === $isolated || \Type\Runtime\ExecutionScope::current() !== $commandScope
+        $isolated = $commandScope->spawn(static fn (ExecutionScope $child): SequenceValue => $child->service('scope-probe', static fn (): SequenceValue => new SequenceValue()))->await();
+        if (!$this->constructedInScope || !$cancelled || !$closedRejected || !$deadlineRejected || $childResult !== true || $executionFirst !== $executionSecond || $executionFirst === $isolated || ExecutionScope::current() !== $commandScope
             || $scope->state() !== 'closed' || $expired->state() !== 'closed' || $parent->state() !== 'closed' || $parent->activeTasks() !== 0) {
-            throw new RuntimeException('作用域状态、服务缓存、子任务绑定或预算未恢复');
+            throw new \RuntimeException('作用域状态、服务缓存、子任务绑定或预算未恢复');
         }
         echo "取消、截止、关闭拒绝、服务缓存与子任务预算恢复通过。\n";
         return 0;
@@ -286,17 +293,17 @@ final class UnusedCommand implements Command
     /**
      * 故意拒绝构造，证明未启用命令不会被提前实例化。
      *
-     * @throws RuntimeException 若生成入口错误实例化此类则立即失败。
+     * @throws \RuntimeException 若生成入口错误实例化此类则立即失败
      */
     public function __construct()
     {
-        throw new RuntimeException('未启用的命令被构造');
+        throw new \RuntimeException('未启用的命令被构造');
     }
 
     /**
      * 为接口提供失败状态；正常演练不应构造或执行此命令。
      *
-     * @param list<string> $arguments 当前命令收到的显式参数。
+     * @param list<string> $arguments 当前命令收到的显式参数
      */
     public function run(Configuration $configuration, array $arguments): int
     {

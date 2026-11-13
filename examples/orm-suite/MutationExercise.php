@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace TypeApp\OrmSuite;
 
-use Closure;
-use RuntimeException;
 use Type\Orm\AfterCommitException;
 use Type\Orm\Connection;
-use Type\Orm\DatabaseManager;
 use Type\Orm\DatabaseException;
+use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
 use Type\Orm\Driver;
 use Type\Orm\Model;
@@ -20,6 +18,7 @@ use Type\Orm\ModelField;
 use Type\Orm\ModelQuery;
 use Type\Orm\ReadWriteSession;
 use Type\Orm\Relation;
+use Type\Orm\RelationDefinition;
 use Type\Orm\TransactionException;
 use Type\Orm\TransactionOutcome;
 use Type\Runtime\ExecutionScope;
@@ -38,7 +37,7 @@ final class MutationExercise
             . 'title VARCHAR(100) NOT NULL, value INTEGER NOT NULL, deleted_at ' . $date . ' NULL, version BIGINT NOT NULL, '
             . 'CHECK (id <> 10001 OR value < 2))' . ($connection->driverName() === 'mysql' ? ' ENGINE=InnoDB' : ''));
         $seed = [];
-        for ($id = 1; $id <= 10002; $id++) {
+        for ($id = 1; $id <= 10002; ++$id) {
             $seed[] = ['id' => $id, 'tenant_id' => $id === 10002 ? 'tenant-b' : 'tenant-a', 'title' => 'original',
                 'value' => 0, 'deleted_at' => null, 'version' => 1];
         }
@@ -97,7 +96,7 @@ final class MutationExercise
                 && self::reject(static fn (): int => $target->update([]), 'empty_update')
                 && self::reject(static fn (): int => $target->select(['title'])->delete(), 'invalid_write_query'), '集合字段或查询形态未拒绝');
             $observer = new ArticleObserver();
-            $behavior = (new ModelBehavior())->observe($observer)->setter('title', static fn (mixed $value): mixed => trim((string) $value));
+            $behavior = (new ModelBehavior())->observe($observer)->setter('title', static fn (mixed $value): mixed => trim((string)$value));
             $stale = $base->find(1);
             self::check($target->withBehavior($behavior)->update(['title' => ' changed ']) === 2 && $observer->events() === []
                 && $base->find(1)->title === 'changed' && $base->find(1)->version === 2, '集合写入的修改器、事件或版本错误');
@@ -118,7 +117,7 @@ final class MutationExercise
             self::check($base->allowAll()->increment('value') === 10001 && $base->allowAll()->decrement('value') === 10001, '集合写入被隐式行数上限截断');
             self::check(self::reject(static fn (): mixed => Db::transaction(static function () use ($target): void {
                 $target->update(['title' => 'rolled-back']);
-                throw new RuntimeException('rollback');
+                throw new \RuntimeException('rollback');
             })) && $base->find(1)->title === 'changed', '嵌套集合更新逃逸外层回滚');
             self::check($target->delete() === 2 && $target->count() === 0 && $target->onlyTrashed()->count() === 2
                 && $target->withTrashed()->delete() === 0 && $target->onlyTrashed()->delete() === 0
@@ -211,7 +210,7 @@ final class MutationExercise
                     $instance = $query->findOrFail(1);
                     $instance->set('title', 'rolled-back');
                     $instance->save();
-                    throw new RuntimeException('rollback');
+                    throw new \RuntimeException('rollback');
                 });
             }, 'rollback') && $connection->table($table)->orderBy('id')->get() === $beforeFailure, '外层回滚没有还原实例和集合时间');
             self::check($batch->delete() === 2, '受管时间集合软删除失败');
@@ -231,7 +230,7 @@ final class MutationExercise
     /**
      * 验证整数模型的实际上下界、NULL 与全批回滚；同一入口供三库 PHP 和全量 AOT 消费。
      *
-     * @param Connection $connection 专属测试数据库的当前作用域写连接，不连接用户数据。
+     * @param Connection $connection 专属测试数据库的当前作用域写连接，不连接用户数据
      */
     public static function integerArithmetic(Connection $connection): void
     {
@@ -263,7 +262,7 @@ final class MutationExercise
             $query->where('id', '=', 3)->increment('value', PHP_INT_MAX);
             $query->where('id', '=', 3)->decrement('value', PHP_INT_MAX);
             self::check($query->findOrFail(3)->get('value') === null
-                && (int) $connection->table($table)->where('id', '=', 3)->value('version') === ($versioned ? 3 : 1), 'NULL 算术改变空值或版本语义');
+                && (int)$connection->table($table)->where('id', '=', 3)->value('version') === ($versioned ? 3 : 1), 'NULL 算术改变空值或版本语义');
 
             $connection->table($table)->where('id', '=', 2)->update(['stored_value' => PHP_INT_MAX]);
             $beforeTransaction = $connection->table($table)->orderBy('id')->get();
@@ -272,7 +271,7 @@ final class MutationExercise
                     && $connection->transactionDepth() === 1
                     && $connection->table($table)->orderBy('id')->get() === $beforeTransaction, '整数失败未保留外层事务或留下部分更新');
                 self::check($query->where('id', '=', 1)->increment('value') === 1 && $query->findOrFail(1)->get('value') === 11, '整数失败回滚保存点后不能继续合法写入');
-                throw new RuntimeException('rollback');
+                throw new \RuntimeException('rollback');
             }), 'rollback') && $connection->table($table)->orderBy('id')->get() === $beforeTransaction, '整数算术逃逸外层回滚');
 
             if ($connection->driverName() === 'sqlite') {
@@ -286,11 +285,87 @@ final class MutationExercise
                 // 通用表查询没有整数模型契约，继续保留 SQLite 对普通数值表达式的原有语义。
                 $connection->table($table)->where('id', '=', 2)->update(['stored_value' => 1.5]);
                 self::check($connection->table($table)->where('id', '=', 2)->increment('stored_value') === 1
-                    && (float) $connection->table($table)->where('id', '=', 2)->value('stored_value') === 2.5, '模型守卫错误改变通用 Query 的数值运算');
+                    && (float)$connection->table($table)->where('id', '=', 2)->value('stored_value') === 2.5, '模型守卫错误改变通用 Query 的数值运算');
             }
         }
         if ($connection->driverName() === 'mysql') {
             self::unsignedIntegerArithmetic($connection);
+        }
+    }
+
+    /** 外层提交事实与提交后新事务结果分别保留，未知结果不允许自动重试。 */
+    public static function callbacks(Driver $driver): array
+    {
+        $manager = new DatabaseManager(['default' => $driver], 2, 0);
+        Db::configure($manager);
+        $scope = new ExecutionScope();
+        try {
+            return $scope->run(static function (ExecutionScope $current) use ($driver, $manager): array {
+                $connection = Db::connection('default', true);
+                $events = new ArticleObserver();
+                try {
+                    Db::transaction(static function () use ($events): void {
+                        Db::afterCommit(static function (): void {
+                            Db::transaction(static function (): void {
+                                Db::afterCommit(static function (): void {
+                                    Db::transaction(static function (): void {
+                                        throw new \RuntimeException('inner-rollback');
+                                    });
+                                });
+                            });
+                        });
+                        Db::afterCommit(static function () use ($events): void {
+                            // 仅记录回调到达，不访问模型持久化或外部系统。
+                            $events->onEvent('continued', new MappingProbe(new ModelDefinition('probe', 'id', ['id' => new ModelField('id', 'integer')]), ['id' => 1]));
+                        });
+                    });
+                    throw new \RuntimeException('没有报告提交后失败');
+                } catch (AfterCommitException $error) {
+                    self::check($error->outcome() === TransactionOutcome::COMMITTED && $connection->transactionOutcome() === TransactionOutcome::ROLLED_BACK
+                        && $events->events() === ['continued'], '外层提交覆写了回调事务结果或后续回调丢失');
+                }
+                if ($driver->name() === 'mysql') {
+                    return ['recursive_rollback' => true, 'deferred_commit_unknown' => 'unsupported'];
+                }
+                $connection->execute('CREATE TABLE type_callback_parent (id INTEGER PRIMARY KEY)');
+                $connection->execute('CREATE TABLE type_callback_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES type_callback_parent(id) DEFERRABLE INITIALLY DEFERRED)');
+                try {
+                    Db::transaction(static function (): void {
+                        Db::afterCommit(static function (): void {
+                            Db::transaction(static function (): void {
+                                Db::connection('default', true)->table('type_callback_child')->insert(['id' => 1, 'parent_id' => -1]);
+                            });
+                        });
+                    });
+                    throw new \RuntimeException('延迟外键没有导致提交失败');
+                } catch (AfterCommitException $error) {
+                    self::check($error->outcome() === TransactionOutcome::COMMITTED && $error->errors()[0] instanceof TransactionException
+                        && $error->errors()[0]->outcome() === TransactionOutcome::UNKNOWN
+                        && $connection->transactionOutcome() === TransactionOutcome::UNKNOWN, '提交后未知事实被覆写');
+                }
+                try {
+                    Db::connection();
+                    throw new \RuntimeException('未知提交后仍允许普通读取');
+                } catch (TransactionException $error) {
+                    self::check($error->outcome() === TransactionOutcome::UNKNOWN, '未知状态没有保留');
+                }
+                $connection->close();
+                $session = new ReadWriteSession($manager, $current, 'default', null);
+                try {
+                    $session->write()->transaction(static function (Connection $transaction): void {
+                        $transaction->table('type_callback_child')->insert(['id' => 2, 'parent_id' => -1]);
+                    });
+                    throw new \RuntimeException('底层提交未失败');
+                } catch (TransactionException $error) {
+                    self::check($error->outcome() === TransactionOutcome::UNKNOWN, '底层未知提交错误');
+                }
+                self::check($session->reconcile()->table('type_callback_child')->get() === []
+                    && $session->outcome() === TransactionOutcome::UNKNOWN, '更换对账连接丢失原未知事实');
+                return ['recursive_rollback' => true, 'deferred_commit_unknown' => true, 'reconcile_preserves_unknown' => true];
+            });
+        } finally {
+            $scope->close();
+            $manager->close();
         }
     }
 
@@ -326,7 +401,7 @@ final class MutationExercise
             $query->where('id', '=', 3)->increment('value', PHP_INT_MAX);
             $query->where('id', '=', 3)->decrement('value', PHP_INT_MAX);
             self::check($query->findOrFail(3)->get('value') === null
-                && (int) $connection->table($table)->where('id', '=', 3)->value('version') === ($versioned ? 3 : 1), 'MySQL 无符号列 NULL 算术改变空值或版本语义');
+                && (int)$connection->table($table)->where('id', '=', 3)->value('version') === ($versioned ? 3 : 1), 'MySQL 无符号列 NULL 算术改变空值或版本语义');
 
             // 历史超界值即使递减后能回到 PHP int 范围，也不能通过模型运算隐式修复。
             foreach (['9223372036854775808', '18446744073709551615'] as $invalid) {
@@ -339,7 +414,7 @@ final class MutationExercise
             // 通用 Query 保留数据库本身的无符号算术范围，不套用模型的 PHP int 值域。
             $connection->table($table)->where('id', '=', 2)->update(['stored_value' => PHP_INT_MAX]);
             self::check($connection->table($table)->where('id', '=', 2)->increment('stored_value') === 1
-                && (string) $connection->table($table)->where('id', '=', 2)->value('stored_value') === '9223372036854775808', 'integer 模型守卫错误收窄通用 MySQL Query');
+                && (string)$connection->table($table)->where('id', '=', 2)->value('stored_value') === '9223372036854775808', 'integer 模型守卫错误收窄通用 MySQL Query');
         }
     }
 
@@ -372,7 +447,7 @@ final class MutationExercise
             'occurred_at' => '2026-10-04T00:30:02.123456Z']);
         $third = array_replace($row, ['id' => 3, 'title' => 'gamma', 'quantity' => null, 'amount' => null, 'large' => null, 'occurred_at' => null]);
         $observer = new ArticleObserver();
-        $behavior = (new ModelBehavior())->observe($observer)->setter('title', static fn (mixed $value): mixed => trim((string) $value))
+        $behavior = (new ModelBehavior())->observe($observer)->setter('title', static fn (mixed $value): mixed => trim((string)$value))
             ->setter('tenant_id', static fn (mixed $value): mixed => 'tenant-b');
         $log = $connection->listen($scope, null, 50, 65536, true);
         try {
@@ -383,7 +458,7 @@ final class MutationExercise
         $inserts = 0;
         foreach ($log->records() as $record) {
             if (str_starts_with(strtoupper($record['sql'] ?? ''), 'INSERT INTO ')) {
-                $inserts++;
+                ++$inserts;
             }
         }
         self::check($inserts === 1 && $query->insertMany([]) === 0, '批量新增被拆为多条 INSERT 或空批次行为错误');
@@ -391,7 +466,7 @@ final class MutationExercise
         self::check($model->get('title') === 'alpha' && $model->get('tenant_id') === 'tenant-a' && $model->get('version') === 1
             && $model->get('deleted_at') === null && $model->get('optional') === null
             && $model->get('occurred_at')->format('Y-m-d H:i:s.u') === '2026-10-04 00:30:01.123456', '批量创建没有保持映射、租户、生命周期或 UTC 时间');
-        self::check((string) $query->sum('quantity') === '6' && (float) $query->avg('quantity') === 3.0
+        self::check((string)$query->sum('quantity') === '6' && (float)$query->avg('quantity') === 3.0
             && $query->min('quantity') === 2 && $query->max('quantity') === 4 && $query->min('title') === 'alpha'
             && $query->max('occurred_at')->format('Y-m-d H:i:s.u') === '2026-10-04 00:30:02.123456', '模型聚合的字段类型或 null 排除错误');
         foreach ([$query->where('id', '=', 3), $query->where('id', '=', -1)] as $empty) {
@@ -407,9 +482,9 @@ final class MutationExercise
                 && self::reject(static fn (): mixed => $query->min('large'), 'exact_arithmetic_unsupported')
                 && self::reject(static fn (): mixed => $query->max('amount'), 'exact_arithmetic_unsupported'), 'SQLite 精确文本聚合未拒绝');
         } else {
-            self::check((string) $query->sum('amount') === '199.97' && $query->min('amount') === '99.98'
-                && preg_match('/^99\.9850*$/D', (string) $query->avg('amount')) === 1
-                && (string) $query->sum('large') === '18014398509481988' && $query->max('large') === '9007199254740995', '聚合总精度被单字段精度截断或经过浮点数');
+            self::check((string)$query->sum('amount') === '199.97' && $query->min('amount') === '99.98'
+                && preg_match('/^99\.9850*$/D', (string)$query->avg('amount')) === 1
+                && (string)$query->sum('large') === '18014398509481988' && $query->max('large') === '9007199254740995', '聚合总精度被单字段精度截断或经过浮点数');
         }
         self::insertRejections($connection, $query, $row);
         $scope->run(static function (ExecutionScope $current) use ($definition, $query, $row): void {
@@ -417,11 +492,11 @@ final class MutationExercise
                 && self::reject(static fn (): int => $query->insertMany([]), 'tenant_context_changed'), '现有查询越过变更后的租户绑定');
             $other = new ModelQuery($definition, static fn (array $record): MappingProbe => new MappingProbe($definition, $record));
             self::check($other->insertMany([array_replace($row, ['id' => 9, 'quantity' => 100])]) === 1
-                && (string) $other->sum('quantity') === '100', '另一租户不能独立创建或聚合');
+                && (string)$other->sum('quantity') === '100', '另一租户不能独立创建或聚合');
         }, ['tenant_id' => 'tenant-b']);
-        self::check((string) $query->sum('quantity') === '6', '聚合越过租户范围');
-        self::check($query->where('id', '=', 1)->delete() === 1 && (string) $query->sum('quantity') === '4'
-            && (string) $query->onlyTrashed()->sum('quantity') === '2' && (string) $query->withTrashed()->sum('quantity') === '6', '聚合没有遵守软删除范围');
+        self::check((string)$query->sum('quantity') === '6', '聚合越过租户范围');
+        self::check($query->where('id', '=', 1)->delete() === 1 && (string)$query->sum('quantity') === '4'
+            && (string)$query->onlyTrashed()->sum('quantity') === '2' && (string)$query->withTrashed()->sum('quantity') === '6', '聚合没有遵守软删除范围');
         self::generatedInsert();
     }
 
@@ -455,19 +530,19 @@ final class MutationExercise
         }
         foreach (['int_value', 'big_value', 'short_value', 'long_value'] as $safe) {
             self::check(
-                (string) $query->sum($safe) === '12' && (float) $query->avg($safe) === 6.0
+                (string)$query->sum($safe) === '12' && (float)$query->avg($safe) === 6.0
                 && $query->min($safe) === 2 && $query->max($safe) === 10
                 && $query->where('id', '=', 1)->increment($safe) === 1 && $query->where('id', '=', 1)->decrement($safe) === 1,
                 '真实整型列声明被错误拒绝或整数运算失真'
             );
         }
-        $relation = new \Type\Orm\RelationDefinition('HasMany', static function (Connection $database, string $alias) use ($definition): ModelQuery {
+        $relation = new RelationDefinition('HasMany', static function (Connection $database, string $alias) use ($definition): ModelQuery {
             return (new ModelQuery($definition, static fn (array $row): MappingProbe => new MappingProbe($definition, $row), $alias))->onConnection($database);
         }, 'id', 'parent_id');
         $parent = new ModelDefinition('type_suite_integer_storage', 'id', ['id' => new ModelField('id', 'integer')], false, null, null, ['children' => $relation]);
         $parents = new ModelQuery($parent, static fn (array $row): MappingProbe => new MappingProbe($parent, $row));
         self::check(self::reject(static fn (): array => $parents->withSum('children', 'text_value')->get(), 'integer_arithmetic_unsupported')
-            && (string) $parents->withSum('children', 'int_value')->findOrFail(1)->computed('children_int_value_sum') === '12', '关系求和未复用整数真实存储校验');
+            && (string)$parents->withSum('children', 'int_value')->findOrFail(1)->computed('children_int_value_sum') === '12', '关系求和未复用整数真实存储校验');
         self::check($connection->table('type_suite_integer_storage')->orderBy('id')->pluck('text_value') === ['2', '10'], '被拒绝的整数算术修改了原文本值');
     }
 
@@ -503,7 +578,7 @@ final class MutationExercise
             }
         }
         if ($connection->driverName() === 'mysql') {
-            $mode = (string) $connection->query('SELECT @@SESSION.sql_mode AS modes')[0]['modes'];
+            $mode = (string)$connection->query('SELECT @@SESSION.sql_mode AS modes')[0]['modes'];
             $connection->execute("SET SESSION sql_mode = ''");
             try {
                 self::check(self::reject(static fn (): int => $query->insertMany([$good]), 'unsafe_batch_storage'), '非严格 MySQL 会话允许模型批量新增');
@@ -515,7 +590,7 @@ final class MutationExercise
             self::check(self::reject(static fn (): int => $query->insertMany([$good, $bad])) && $connection->transactionDepth() === 1
                 && $query->find(10) === null, '批量新增失败破坏外层事务或留下部分结果');
             self::check($query->insertMany([$good]) === 1, '保存点失败后无法继续新增');
-            throw new RuntimeException('rollback');
+            throw new \RuntimeException('rollback');
         }), 'rollback') && $query->find(10) === null && $query->count() === 3, '保存点后不能继续写入、外层回滚未覆盖新增或校验写入了部分批次');
     }
 
@@ -543,7 +618,7 @@ final class MutationExercise
             . 'value INTEGER NOT NULL, CHECK (id <> 10001 OR value BETWEEN -1 AND 1))'
             . ($connection->driverName() === 'mysql' ? ' ENGINE=InnoDB' : ''));
         $seed = [];
-        for ($id = 1; $id <= 10002; $id++) {
+        for ($id = 1; $id <= 10002; ++$id) {
             $seed[] = ['id' => $id, 'tenant_id' => $id === 10002 ? 'tenant-b' : 'tenant-a', 'value' => 0];
         }
         foreach (array_chunk($seed, 500) as $chunk) {
@@ -571,12 +646,12 @@ final class MutationExercise
                 '无版本算术失败破坏外层事务或留下部分写入'
             );
             self::check($base->where('id', '=', 1)->increment('value') === 1, '保存点回滚后不能继续外层事务');
-            throw new RuntimeException('rollback');
+            throw new \RuntimeException('rollback');
         })) && $base->where('value', '!=', 0)->count() === 0, '无版本算术逃逸外层回滚');
         self::check(
             $base->allowAll()->increment('value') === 10001 && $base->allowAll()->decrement('value') === 10001
             && $base->where('value', '!=', 0)->count() === 0
-            && (int) $connection->table('type_suite_counters')->where('id', '=', 10002)->first()['value'] === 0,
+            && (int)$connection->table('type_suite_counters')->where('id', '=', 10002)->first()['value'] === 0,
             '无版本算术被截断、计算错误或越过租户范围'
         );
     }
@@ -585,7 +660,7 @@ final class MutationExercise
     private static function storageEdges(Connection $connection, ModelQuery $base): void
     {
         if ($connection->driverName() === 'mysql') {
-            $mode = (string) $connection->query('SELECT @@SESSION.sql_mode AS modes')[0]['modes'];
+            $mode = (string)$connection->query('SELECT @@SESSION.sql_mode AS modes')[0]['modes'];
             $connection->execute("SET SESSION sql_mode = ''");
             try {
                 self::check(self::reject(static fn (): int => $base->allowAll()->update(['title' => 'unsafe']), 'unsafe_batch_storage'), '非严格 MySQL 会话允许集合写入');
@@ -621,83 +696,7 @@ final class MutationExercise
         self::check($base->where('title', '!=', 'original')->count() === 0, '存储拒绝路径修改了业务记录');
     }
 
-    /** 外层提交事实与提交后新事务结果分别保留，未知结果不允许自动重试。 */
-    public static function callbacks(Driver $driver): array
-    {
-        $manager = new DatabaseManager(['default' => $driver], 2, 0);
-        Db::configure($manager);
-        $scope = new ExecutionScope();
-        try {
-            return $scope->run(static function (ExecutionScope $current) use ($driver, $manager): array {
-                $connection = Db::connection('default', true);
-                $events = new ArticleObserver();
-                try {
-                    Db::transaction(static function () use ($events): void {
-                        Db::afterCommit(static function (): void {
-                            Db::transaction(static function (): void {
-                                Db::afterCommit(static function (): void {
-                                    Db::transaction(static function (): void {
-                                        throw new RuntimeException('inner-rollback');
-                                    });
-                                });
-                            });
-                        });
-                        Db::afterCommit(static function () use ($events): void {
-                            // 仅记录回调到达，不访问模型持久化或外部系统。
-                            $events->onEvent('continued', new MappingProbe(new ModelDefinition('probe', 'id', ['id' => new ModelField('id', 'integer')]), ['id' => 1]));
-                        });
-                    });
-                    throw new RuntimeException('没有报告提交后失败');
-                } catch (AfterCommitException $error) {
-                    self::check($error->outcome() === TransactionOutcome::COMMITTED && $connection->transactionOutcome() === TransactionOutcome::ROLLED_BACK
-                        && $events->events() === ['continued'], '外层提交覆写了回调事务结果或后续回调丢失');
-                }
-                if ($driver->name() === 'mysql') {
-                    return ['recursive_rollback' => true, 'deferred_commit_unknown' => 'unsupported'];
-                }
-                $connection->execute('CREATE TABLE type_callback_parent (id INTEGER PRIMARY KEY)');
-                $connection->execute('CREATE TABLE type_callback_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES type_callback_parent(id) DEFERRABLE INITIALLY DEFERRED)');
-                try {
-                    Db::transaction(static function (): void {
-                        Db::afterCommit(static function (): void {
-                            Db::transaction(static function (): void {
-                                Db::connection('default', true)->table('type_callback_child')->insert(['id' => 1, 'parent_id' => -1]);
-                            });
-                        });
-                    });
-                    throw new RuntimeException('延迟外键没有导致提交失败');
-                } catch (AfterCommitException $error) {
-                    self::check($error->outcome() === TransactionOutcome::COMMITTED && $error->errors()[0] instanceof TransactionException
-                        && $error->errors()[0]->outcome() === TransactionOutcome::UNKNOWN
-                        && $connection->transactionOutcome() === TransactionOutcome::UNKNOWN, '提交后未知事实被覆写');
-                }
-                try {
-                    Db::connection();
-                    throw new RuntimeException('未知提交后仍允许普通读取');
-                } catch (TransactionException $error) {
-                    self::check($error->outcome() === TransactionOutcome::UNKNOWN, '未知状态没有保留');
-                }
-                $connection->close();
-                $session = new ReadWriteSession($manager, $current, 'default', null);
-                try {
-                    $session->write()->transaction(static function (Connection $transaction): void {
-                        $transaction->table('type_callback_child')->insert(['id' => 2, 'parent_id' => -1]);
-                    });
-                    throw new RuntimeException('底层提交未失败');
-                } catch (TransactionException $error) {
-                    self::check($error->outcome() === TransactionOutcome::UNKNOWN, '底层未知提交错误');
-                }
-                self::check($session->reconcile()->table('type_callback_child')->get() === []
-                    && $session->outcome() === TransactionOutcome::UNKNOWN, '更换对账连接丢失原未知事实');
-                return ['recursive_rollback' => true, 'deferred_commit_unknown' => true, 'reconcile_preserves_unknown' => true];
-            });
-        } finally {
-            $scope->close();
-            $manager->close();
-        }
-    }
-
-    private static function reject(Closure $operation, string $code = ''): bool
+    private static function reject(\Closure $operation, string $code = ''): bool
     {
         try {
             $operation();
@@ -705,7 +704,7 @@ final class MutationExercise
             return $code === '' || $error->errorCode() === $code;
         } catch (DatabaseException) {
             return $code === '';
-        } catch (RuntimeException $error) {
+        } catch (\RuntimeException $error) {
             return ($code === '' || $code === 'rollback') && $error->getMessage() === 'rollback';
         }
         return false;
@@ -714,7 +713,7 @@ final class MutationExercise
     private static function check(bool $condition, string $message): void
     {
         if (!$condition) {
-            throw new RuntimeException($message);
+            throw new \RuntimeException($message);
         }
     }
 }
@@ -725,7 +724,7 @@ final class MappingProbe extends Model
     /**
      * 以指定映射水合探针模型，验证同表同字段名也不能混用不同映射。
      *
-     * @param array<string, mixed> $row 已读取数据库字段。
+     * @param array<string, mixed> $row 已读取数据库字段
      */
     public function __construct(ModelDefinition $definition, array $row)
     {

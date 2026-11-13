@@ -11,7 +11,7 @@ use Type\Core\Configuration;
 $root = dirname(__DIR__);
 $settings = json_decode(file_get_contents($root . '/docs/build-config/type-commands.json'), true, 512, JSON_THROW_ON_ERROR);
 $application = $settings['application'];
-$optional = ['services' => [['id' => 'unused', 'class' => 'TypeApp\\Example\\UnusedCommand']],
+$optional = ['services' => [['id' => 'unused', 'class' => 'TypeApp\Example\UnusedCommand']],
     'commands' => [['name' => 'unavailable', 'service' => 'unused']]];
 $sources = [$root . '/plugin/type-core/src', $root . '/plugin/type-runtime/src', $root . '/examples/commands'];
 $generator = new CommandAssembly();
@@ -47,7 +47,7 @@ try {
     $value['enabled'][] = 'not-installed';
     $invalid[] = [$value, '启用的模块未安装'];
     $value = $application;
-    $value['services'][0]['class'] = 'TypeApp\\Example\\MissingClass';
+    $value['services'][0]['class'] = 'TypeApp\Example\MissingClass';
     $invalid[] = [$value, '找不到服务类'];
     $value = $application;
     $value['services'][0]['arguments'] = [];
@@ -81,7 +81,7 @@ try {
     expect($configuration->text('name') === '初始值', '配置快照保留了外部可变引用');
     echo '装配声明拒绝检查通过，共 ' . count($invalid) . " 个用例；配置快照引用隔离通过。\n";
 
-    $namespace = 'TypeApp\\AssemblyFixture\\';
+    $namespace = 'TypeApp\AssemblyFixture\\';
     $component = ['services' => [['id' => 'prefix', 'class' => $namespace . 'ComponentPrefix']],
         'bindings' => [['type' => $namespace . 'Prefix', 'service' => 'prefix'], ['type' => $namespace . 'Label', 'service' => 'message']]];
     $constructorApplication = ['enabled' => ['application', 'component'],
@@ -147,13 +147,13 @@ final class Runner extends ParentRunner {
 namespace TypeApp\OtherAssemblyProbe;
 final class Factory { public static function create(): void { global $value; } }
 PHP;
-    $symbolApplication = ['enabled' => ['application'], 'services' => [['id' => 'product', 'class' => 'TypeApp\\NestedAssemblyProbe\\Product',
-        'factory' => ['class' => 'TypeApp\\NestedAssemblyProbe\\Factory', 'method' => 'create']]],
-        'commands' => [['name' => 'test', 'class' => 'TypeApp\\NestedAssemblyProbe\\Runner']]];
+    $symbolApplication = ['enabled' => ['application'], 'services' => [['id' => 'product', 'class' => 'TypeApp\NestedAssemblyProbe\Product',
+        'factory' => ['class' => 'TypeApp\NestedAssemblyProbe\Factory', 'method' => 'create']]],
+        'commands' => [['name' => 'test', 'class' => 'TypeApp\NestedAssemblyProbe\Runner']]];
     file_put_contents($symbolProbe, $symbolSource);
     $symbolResult = $generator->generate($symbolApplication, ['application' => $symbolApplication], [$symbolProbe]);
     expect($symbolResult['services']['auto.typeapp.nestedassemblyprobe.runner']['dependencies'] === ['product'], '继承构造器或完整工厂类名没有进入服务图');
-    foreach (['global $value;', '$capture = fn () => null;', '\\Locator::current();'] as $unsafeBody) {
+    foreach (['global $value;', '$capture = fn () => null;', '\Locator::current();'] as $unsafeBody) {
         file_put_contents($symbolProbe, str_replace('return new Product();', '$unused = new class { public function hidden(): void { ' . $unsafeBody . ' } }; return new Product();', $symbolSource));
         $unsafeRejected = false;
         try {

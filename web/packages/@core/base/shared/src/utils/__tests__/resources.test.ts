@@ -1,45 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { loadScript } from '../resources';
-
-const testJsPath =
-  'https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js';
-const happyDOM = (window as typeof window & {
-  happyDOM?: {
-    settings?: {
-      disableJavaScriptFileLoading?: boolean;
-      handleDisabledFileLoadingAsSuccess?: boolean;
-    };
-  };
-}).happyDOM;
 
 describe('loadScript', () => {
   beforeEach(() => {
     // 每个测试前清空 head，保证环境干净
     document.head.innerHTML = '';
-    if (happyDOM?.settings) {
-      happyDOM.settings.disableJavaScriptFileLoading = true;
-      happyDOM.settings.handleDisabledFileLoadingAsSuccess = true;
-    }
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it('should resolve when the script loads successfully', async () => {
-    const promise = loadScript(testJsPath);
+    // happy-dom v20+ auto-fires 'load' via handleDisabledFileLoadingAsSuccess
+    const promise = loadScript('/test-script.js');
 
-    // 此时脚本元素已被创建并插入
     const script = document.querySelector(
-      `script[src="${testJsPath}"]`,
+      'script[src="/test-script.js"]',
     ) as HTMLScriptElement;
     expect(script).toBeTruthy();
 
-    // 模拟加载成功
-    script.dispatchEvent(new Event('load'));
-
-    // 等待 promise resolve
     await expect(promise).resolves.toBeUndefined();
   });
 
@@ -61,40 +38,44 @@ describe('loadScript', () => {
   });
 
   it('should reject when the script fails to load', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    let capturedScript: HTMLScriptElement | null = null;
 
-    if (happyDOM?.settings) {
-      happyDOM.settings.handleDisabledFileLoadingAsSuccess = false;
-    }
+    // 拦截 append，捕获 script 元素但不插入 DOM，
+    // 防止 happy-dom v20+ 自动触发 load 事件
+    const appendSpy = vi
+      .spyOn(document.head, 'append')
+      .mockImplementation((...nodes) => {
+        for (const node of nodes) {
+          if (node instanceof HTMLScriptElement) {
+            capturedScript = node;
+          }
+        }
+      });
 
     const promise = loadScript('error.js');
 
-    const script = document.querySelector(
-      'script[src="error.js"]',
-    ) as HTMLScriptElement;
-    expect(script).toBeTruthy();
+    appendSpy.mockRestore();
+
+    expect(capturedScript).toBeTruthy();
+    if (!capturedScript) {
+      throw new Error('Expected the captured script element to exist');
+    }
+    capturedScript.dispatchEvent(new Event('error'));
 
     await expect(promise).rejects.toThrow('Failed to load script: error.js');
   });
 
   it('should handle multiple concurrent calls and only insert one script tag', async () => {
-    const p1 = loadScript(testJsPath);
-    const p2 = loadScript(testJsPath);
+    const p1 = loadScript('/test-script.js');
+    const p2 = loadScript('/test-script.js');
 
-    const script = document.querySelector(
-      `script[src="${testJsPath}"]`,
-    ) as HTMLScriptElement;
-    expect(script).toBeTruthy();
-
-    // 触发一次 load，两个 promise 都应该 resolve
-    script.dispatchEvent(new Event('load'));
-
+    // happy-dom v20+ auto-fires 'load'，两个 promise 都应该 resolve
     await expect(p1).resolves.toBeUndefined();
     await expect(p2).resolves.toBeUndefined();
 
     // 只插入一次
     const scripts = document.head.querySelectorAll(
-      `script[src="${testJsPath}"]`,
+      'script[src="/test-script.js"]',
     );
     expect(scripts).toHaveLength(1);
   });

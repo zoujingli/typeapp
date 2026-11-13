@@ -22,7 +22,7 @@ $pcntl = getenv('TYPE_TEST_PCNTL_MODULE');
 if (PHP_OS_FAMILY === 'Linux' && $pcntl !== false) {
     $configuration['runtime']['Linux']['modules']['pcntl'] = ['file' => $pcntl, 'sha256' => hash_file('sha256', $pcntl)];
 }
-$phpx = (new BuildPlatform())->runtimeLibraries((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME'));
+$phpx = (new BuildPlatform())->runtimeLibraries((string)getenv('PHP_HOME'), (string)getenv('PHPX_HOME'));
 $phpxLibrary = null;
 foreach ($phpx as $file) {
     if (str_contains(strtolower(basename($file)), 'phpx')) {

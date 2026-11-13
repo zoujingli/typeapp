@@ -6,12 +6,20 @@ namespace Type\Mqtt;
 
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
+use Swoole\Coroutine\Socket;
+use Swoole\Event;
+use Swoole\Http\Request;
+use Swoole\Http\Response;
+use Swoole\Server;
+use Swoole\Timer;
+use Swoole\WebSocket\Frame;
 use Type\Core\Http\Client as HttpClient;
 use Type\Runtime\Cancellation;
-use Type\Runtime\Deadline;
 use Type\Runtime\CoroutineRuntime;
+use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\ProcessSignals;
+use Type\Runtime\TaskException;
 
 /**
  * 独立进程的 MQTT 连接、授权与过滤器 QoS 0/1/2 路由入口。
@@ -21,58 +29,102 @@ final class Broker
 {
     /** @var array<int, Connection> */
     private array $connections = [];
+
     private bool $started = false;
+
     private bool $stopping = false;
+
     private bool $nativeExiting = false;
+
     private int $accepted = 0;
+
     private int $rejected = 0;
+
     private int $closed = 0;
+
     private int $delivered = 0;
+
     private int $dropped = 0;
+
     private ?ProcessSignals $signals = null;
+
     /** @var array<string,array<string,mixed>> 当前持久操作；全局最多 32 个，消息原件最多 32 MiB。 */
     private array $commits = [];
+
     /** @var array<string,Connection> 断线后待登记的会话；与连接上限共享容量。 */
     private array $closingSessions = [];
+
     private int $durableCommits = 0;
+
     private int $unknownCommits = 0;
+
     private int $quarantinedCommits = 0;
+
     private int $rejectedCommits = 0;
+
     private float $observationAt = 0.0;
+
     private int $observationFailures = 0;
+
     private bool $willPending = false;
+
     private float $willPollAt = 0.0;
+
     private int $publishedWills = 0;
+
     private int $deniedWills = 0;
+
     private int $failedWills = 0;
+
     private int $connectionQuotaRefusals = 0;
+
     private int $packetQuotaRefusals = 0;
+
     private int $subscriptionQuotaRefusals = 0;
+
     private int $commitQuotaRefusals = 0;
+
     private int $flushTimeouts = 0;
+
     private int $handshakeTimeouts = 0;
+
     private int $eventTimer = 0;
+
     /** 官方 Channel 串行放行协议状态机；事件额度在作用域真实关闭后归还。 */
     private ?Channel $eventGate = null;
+
     private int $pendingEvents = 0;
+
     private int $pendingEventBytes = 0;
+
     private int $callbackFailures = 0;
+
     private int $eventQuotaRefusals = 0;
+
     private bool $tickPending = false;
+
     /** @var array<int, int> 原生事件接纳代次；排队期间关闭或复用的 fd 不再执行旧事件。 */
     private array $nativeEpochs = [];
+
     /** @var array<int, int> 同一原生连接在途事件数；全部收尾才恢复原生读取。 */
     private array $pendingFdEvents = [];
+
     /** 当前 Swoole Server，统一持有 TCP、TLS 与 WebSocket 监听。 */
     private mixed $nativeServer = null;
-    private ?\Swoole\Coroutine\Socket $coroutineListener = null;
+
+    private ?Socket $coroutineListener = null;
+
     private bool $coroutineClosing = false;
-    /** @var array<int, \Swoole\Coroutine\Socket> 接入与 TLS 握手也占用同一连接预算。 */
+
+    /** @var array<int, Socket> 接入与 TLS 握手也占用同一连接预算。 */
     private array $coroutineSockets = [];
+
     /** @var array<int, int> 由监听角色创建并负责收尾的读取协程。 */
     private array $coroutineReaders = [];
+
     /** 子读取异常在全部连接收尾后传回监听调用者，避免未捕获的协程异常退出进程。 */
     private ?\Throwable $coroutineFailure = null;
+
     /**
      * 需要重载握手 CA 的 Swoole 监听端口。
      * Server::set 在启动后会拒绝；Port::set 会重建 SSL_CTX，只影响新连接。
@@ -80,103 +132,173 @@ final class Broker
      * @var list<mixed>
      */
     private array $handshakeCaPorts = [];
+
     private int $handshakeCaMtime = 0;
+
     private int $handshakeCaSize = 0;
+
     private int $handshakeCaReloads = 0;
+
     private int $handshakeCaFailures = 0;
+
     /** @var array<int, array{fingerprint:string,serial:string,notAfter:int}> WSS 握手前在 onConnect 暂存的客户端证书事实。 */
     private array $pendingCertificates = [];
+
     private int $nativeInstances = 0;
+
     /** @var array<int, int> 已请求关闭的 fd 及其接纳序号；迟到 close 不能拆掉后来占用者。 */
     private array $closingNativeInstances = [];
+
     /** 已导入的签名 CRL；未配置时保持 null。 */
     private ?CertificateRevocationList $revocationList = null;
+
     private int $crlMtime = 0;
+
     private int $crlSize = 0;
+
     private bool $crlUnavailable = false;
+
     private int $certificateEnforceAt = 0;
+
     private bool $crlFetching = false;
+
     private ?Cancellation $crlCancellation = null;
+
     /** 清理失败时保留实际资源所有者，不把未关闭的下载标为完成。 */
     private ?ExecutionScope $crlScope = null;
+
     private int $crlFetchAt = 0;
+
     /** @var array<string, true> 平台吊销序列号，本进程内只增不减。 */
     private array $platformRevoked = [];
+
     private int $revokeMtime = 0;
+
     private int $revokeSize = 0;
+
     /** @var array<string, int> 换证重叠指纹到截止时间。 */
     private array $overlapUntil = [];
+
     /** @var array<string, true> 本进程见过的重叠指纹；移出文件后结束重叠。 */
     private array $overlapKnown = [];
+
     private int $overlapMtime = 0;
+
     private int $overlapSize = 0;
-    /** @var array{id:string,client_id:string,principal:string,actor:string,access_identity?:array<string,mixed>}|null 一次只隔离一项，持久意图由来源保留。 */
+
+    /** @var null|array{id:string,client_id:string,principal:string,actor:string,access_identity?:array<string,mixed>} 一次只隔离一项，持久意图由来源保留。 */
     private ?array $invalidation = null;
+
     private bool $invalidationPending = false;
+
     private float $invalidationAt = 0.0;
+
     private int $invalidated = 0;
+
     private int $invalidationFailures = 0;
-    /** @var array{id:string,owner_id:string,session_id:string,session_generation:int,actor:string}|null 一次只执行一项管理断开，意图由来源保留。 */
+
+    /** @var null|array{id:string,owner_id:string,session_id:string,session_generation:int,actor:string} 一次只执行一项管理断开，意图由来源保留。 */
     private ?array $disconnectOp = null;
+
     private bool $disconnectMatched = false;
+
     private float $disconnectAt = 0.0;
+
     private int $disconnected = 0;
+
     private int $disconnectFailures = 0;
-    /** @var array{id:string,owner_id:string,session_id:string,session_generation:int,actor:string}|null 一次只执行一项精确会话终止。 */
+
+    /** @var null|array{id:string,owner_id:string,session_id:string,session_generation:int,actor:string} 一次只执行一项精确会话终止。 */
     private ?array $terminateOp = null;
+
     private bool $terminateMatched = false;
+
     private bool $terminateStorePending = false;
+
     private bool $terminateErased = false;
+
     private string $terminateOutcome = '';
+
     private float $terminateAt = 0.0;
+
     private int $terminated = 0;
+
     private int $terminationFailures = 0;
-    /** @var array{id:string,owner_id:string,session_id:string,session_generation:int,actor:string}|null 一次只清除一项保留原件。 */
+
+    /** @var null|array{id:string,owner_id:string,session_id:string,session_generation:int,actor:string} 一次只清除一项保留原件。 */
     private ?array $clearOp = null;
+
     private bool $clearStorePending = false;
+
     private bool $clearErased = false;
+
     private string $clearOutcome = '';
+
     private float $clearAt = 0.0;
+
     private int $retainedCleared = 0;
+
     private int $retainClearFailures = 0;
+
     /** 当前生效的连接与订阅额度；启动值是本进程上限，在线只能降到该上限以内。 */
     private int $maximumConnections = 256;
+
     private int $maximumDeviceConnections = 10000;
+
     private int $maximumServiceConnections = 100;
+
     private int $maximumSubscriptions = 100;
+
     private int $startupMaximumConnections = 256;
+
     private int $startupMaximumDeviceConnections = 10000;
+
     private int $startupMaximumServiceConnections = 100;
-    /** @var array<string, int>|null 已交给存储 worker 的持久额度；空表示沿用 worker 启动默认。 */
+
+    /** @var null|array<string, int> 已交给存储 worker 的持久额度；空表示沿用 worker 启动默认。 */
     private ?array $storeQuotas = null;
+
     private int $appliedQuotaVersion = 0;
-    /** @var array{version:int,limits:array<string,int>}|null */
+
+    /** @var null|array{version:int,limits:array<string,int>} */
     private ?array $quotaOp = null;
+
     private bool $quotaStorePending = false;
+
     private float $quotaAt = 0.0;
+
     private int $quotaFailures = 0;
+
     private string $nodeRunId = '';
+
     private int $nodeGeneration = 0;
+
     private bool $nodePending = false;
+
     private float $nodePollAt = 0.0;
+
     private string $nodeDeliveryCursor = '';
+
     private int $nodeFailures = 0;
+
     /** @var list<array{owner_id:string}> 每节点最多100个关闭意图；未知旧运行只能由硬隔离完成登记释放。 */
     private array $nodeFences = [];
+
     /** Swoole Server 未接线 ssl_passphrase 时的解密私钥路径；空则沿用配置文件。 */
     private string $nativeKeyFile = '';
+
     /** 主证书与 SNI 叶证书中较早的 notAfter；0 表示未启用 TLS。 */
     private int $serverCertificateNotAfter = 0;
 
     /**
      * 必须显式注入认证方；没有默认匿名访问或应用反向依赖。
-     * @param list<string> $workerCommand 已编译应用的明确 worker 命令；空数组仅开放 QoS 0。
-     * @param string $nodeId 稳定节点身份；集群模式由持久运行身份隔离，不允许两个active运行共用。
-     * @param ConnectionObserver|null $observer 仅观察真实网络生命周期；不接收密码、载荷或内部 Connection。
-     * @param \Closure(ConnectPacket): string|null $classify 认证成功后返回 device/application；缺省为 device。分类必须来自受信身份，不能信任客户端自报属性。
-     * @param AuthorizationInvalidations|null $invalidations 明确撤权来源；失败停止实例，不以普通观察回调承担授权证明。
-     * @param ConnectionDisconnects|null $disconnects 精确管理断开、会话终止与清保留；断开按 owner 与代次匹配并保留会话，终止按 session_id 与代次删除该会话，清保留按 resource_id 与原件代次删除当前原件。
-     * @param QuotaUpdates|null $quotas 版本化连接/会话/消息额度；降低不得删除已确认积压或终止可靠会话。
+     * @param list<string> $workerCommand 已编译应用的明确 worker 命令；空数组仅开放 QoS 0
+     * @param string $nodeId 稳定节点身份；集群模式由持久运行身份隔离，不允许两个active运行共用
+     * @param null|ConnectionObserver $observer 仅观察真实网络生命周期；不接收密码、载荷或内部 Connection
+     * @param null|\Closure(ConnectPacket): string $classify 认证成功后返回 device/application；缺省为 device。分类必须来自受信身份，不能信任客户端自报属性。
+     * @param null|AuthorizationInvalidations $invalidations 明确撤权来源；失败停止实例，不以普通观察回调承担授权证明
+     * @param null|ConnectionDisconnects $disconnects 精确管理断开、会话终止与清保留；断开按 owner 与代次匹配并保留会话，终止按 session_id 与代次删除该会话，清保留按 resource_id 与原件代次删除当前原件
+     * @param null|QuotaUpdates $quotas 版本化连接/会话/消息额度；降低不得删除已确认积压或终止可靠会话
      */
     public function __construct(private AccessPolicy $access, private BrokerOptions $options, private array $workerCommand = [], private string $nodeId = 'default', private ?ConnectionObserver $observer = null, private ?\Closure $classify = null, private ?AuthorizationInvalidations $invalidations = null, private ?ConnectionDisconnects $disconnects = null, private ?QuotaUpdates $quotas = null)
     {
@@ -194,18 +316,18 @@ final class Broker
         if ($options->handleSignals) {
             $this->signals = new ProcessSignals();
         }
-        $this->startupMaximumConnections = (int) $options->maximumConnections;
-        $this->startupMaximumDeviceConnections = (int) $options->maximumDeviceConnections;
-        $this->startupMaximumServiceConnections = (int) $options->maximumServiceConnections;
-        $this->maximumConnections = (int) $options->maximumConnections;
-        $this->maximumDeviceConnections = (int) $options->maximumDeviceConnections;
-        $this->maximumServiceConnections = (int) $options->maximumServiceConnections;
+        $this->startupMaximumConnections = (int)$options->maximumConnections;
+        $this->startupMaximumDeviceConnections = (int)$options->maximumDeviceConnections;
+        $this->startupMaximumServiceConnections = (int)$options->maximumServiceConnections;
+        $this->maximumConnections = (int)$options->maximumConnections;
+        $this->maximumDeviceConnections = (int)$options->maximumDeviceConnections;
+        $this->maximumServiceConnections = (int)$options->maximumServiceConnections;
     }
 
     /**
      * 绑定明确 IP 并运行至停止信号；一个实例只启动一次。
-     * @param bool $coroutine 显式使用官方协程 Socket；经典 Server 不可用时自动选择。
-     * @throws \RuntimeException 监听、TLS 配置或信号能力不可用。
+     * @param bool $coroutine 显式使用官方协程 Socket；经典 Server 不可用时自动选择
+     * @throws \RuntimeException 监听、TLS 配置或信号能力不可用
      */
     public function serve(string $host, int $port, bool $coroutine = false): void
     {
@@ -218,10 +340,10 @@ final class Broker
         if ($this->started || $this->stopping) {
             throw new \RuntimeException('MQTT 服务实例不能重复启动');
         }
-        $coroutine = $coroutine || !class_exists(\Swoole\Server::class, false) || !defined('SWOOLE_BASE');
+        $coroutine = $coroutine || !class_exists(Server::class, false) || !defined('SWOOLE_BASE');
         if ($coroutine && ($this->websocketEnabled() || $this->options->mtlsPort > 0 || $this->options->sniHost !== '')) {
             // 当前官方 Socket 未提供服务端证书事实/SNI 与经典多监听入口，不能静默降低认证。
-            throw new \Type\Runtime\TaskException('feature_unavailable', 'MQTT 协程监听支持 TCP/TLS；WebSocket、客户端证书身份与 SNI 需要经典 Server');
+            throw new TaskException('feature_unavailable', 'MQTT 协程监听支持 TCP/TLS；WebSocket、客户端证书身份与 SNI 需要经典 Server');
         }
         CoroutineRuntime::enableIo();
         // 原生事件只接纳工作；显式协程与全局 Channel 保持状态机串行，不嵌套 Scheduler。
@@ -230,8 +352,8 @@ final class Broker
         }
         if (!$this->options->allowPlaintext) {
             // 第一份须为与私钥匹配的叶证书；其后的中间 CA 由 Swoole/OpenSSL 作为链下发。
-            $certificate = @openssl_x509_read((string) file_get_contents($this->options->certificate));
-            $key = @openssl_pkey_get_private((string) file_get_contents($this->options->privateKey), $this->options->privateKeyPassphrase);
+            $certificate = @openssl_x509_read((string)file_get_contents($this->options->certificate));
+            $key = @openssl_pkey_get_private((string)file_get_contents($this->options->privateKey), $this->options->privateKeyPassphrase);
             $parsed = $certificate === false ? false : openssl_x509_parse($certificate, false);
             if ($certificate === false || $key === false || !openssl_x509_check_private_key($certificate, $key)) {
                 throw new \RuntimeException('MQTT TLS 证书或私钥无效、口令错误或二者不匹配');
@@ -241,8 +363,8 @@ final class Broker
             }
             $this->rememberServerExpiry($parsed);
             if ($this->options->sniHost !== '') {
-                $sniCertificate = @openssl_x509_read((string) file_get_contents($this->options->sniCertificate));
-                $sniKey = @openssl_pkey_get_private((string) file_get_contents($this->options->sniPrivateKey));
+                $sniCertificate = @openssl_x509_read((string)file_get_contents($this->options->sniCertificate));
+                $sniKey = @openssl_pkey_get_private((string)file_get_contents($this->options->sniPrivateKey));
                 $sniParsed = $sniCertificate === false ? false : openssl_x509_parse($sniCertificate, false);
                 if ($sniCertificate === false || $sniKey === false || !openssl_x509_check_private_key($sniCertificate, $sniKey)) {
                     throw new \RuntimeException('MQTT TLS 证书或私钥无效、口令错误或二者不匹配');
@@ -258,8 +380,8 @@ final class Broker
         }
         if ($this->options->clientCa !== '') {
             clearstatcache(true, $this->options->clientCa);
-            $this->handshakeCaMtime = (int) filemtime($this->options->clientCa);
-            $this->handshakeCaSize = (int) filesize($this->options->clientCa);
+            $this->handshakeCaMtime = (int)filemtime($this->options->clientCa);
+            $this->handshakeCaSize = (int)filesize($this->options->clientCa);
         }
         if ($this->options->clientCrl !== '') {
             $this->revocationList = CertificateRevocationList::fromFiles($this->options->clientCrl, $this->options->clientCa);
@@ -267,8 +389,8 @@ final class Broker
                 throw new \RuntimeException('MQTT 客户端 CRL 不在有效期内');
             }
             clearstatcache(true, $this->options->clientCrl);
-            $this->crlMtime = (int) filemtime($this->options->clientCrl);
-            $this->crlSize = (int) filesize($this->options->clientCrl);
+            $this->crlMtime = (int)filemtime($this->options->clientCrl);
+            $this->crlSize = (int)filesize($this->options->clientCrl);
         }
         if ($this->options->clientRevoke !== '') {
             $loaded = self::readPlatformRevokeFile($this->options->clientRevoke);
@@ -279,8 +401,8 @@ final class Broker
                 $this->platformRevoked[$serial] = true;
             }
             clearstatcache(true, $this->options->clientRevoke);
-            $this->revokeMtime = (int) filemtime($this->options->clientRevoke);
-            $this->revokeSize = (int) filesize($this->options->clientRevoke);
+            $this->revokeMtime = (int)filemtime($this->options->clientRevoke);
+            $this->revokeSize = (int)filesize($this->options->clientRevoke);
         }
         if ($this->options->clientOverlap !== '') {
             $windows = BrokerOptions::overlapWindows($this->options->clientOverlap, time());
@@ -289,8 +411,8 @@ final class Broker
             }
             $this->applyOverlapWindows($windows);
             clearstatcache(true, $this->options->clientOverlap);
-            $this->overlapMtime = (int) filemtime($this->options->clientOverlap);
-            $this->overlapSize = (int) filesize($this->options->clientOverlap);
+            $this->overlapMtime = (int)filemtime($this->options->clientOverlap);
+            $this->overlapSize = (int)filesize($this->options->clientOverlap);
         }
         $this->started = true;
         try {
@@ -334,12 +456,12 @@ final class Broker
                 try {
                     $scope->run(function (ExecutionScope $current): void {
                         foreach ($this->connections as $connection) {
-                            $this->disconnect($connection, 0x8b);
+                            $this->disconnect($connection, 0x8B);
                             $connection->flush();
                             $connection->close();
                             $this->observeClosed($connection);
                             $this->finishSession($connection);
-                            $this->closed++;
+                            ++$this->closed;
                         }
                         $this->connections = [];
                         // 已启动工作沿用原有界截止；正常停机不把仍可确认的事务强制转为未知。
@@ -352,7 +474,7 @@ final class Broker
                         if ($this->options->clustered && $this->nodeGeneration > 0 && $this->quarantinedCommits === 0) {
                             $retired = $this->nodeRequest('node_close');
                             if ($retired->state !== 'committed' || !$retired->released) {
-                                $this->nodeFailures++;
+                                ++$this->nodeFailures;
                             }
                         }
                         $this->nodeFences = [];
@@ -360,7 +482,7 @@ final class Broker
                         try {
                             $this->observer?->stopped(time());
                         } catch (\Throwable) {
-                            $this->observationFailures++;
+                            ++$this->observationFailures;
                         }
                     });
                 } finally {
@@ -389,7 +511,7 @@ final class Broker
         if ($this->pendingEvents === 0 && $this->coroutineListener !== null && !$this->coroutineClosing) {
             // 信号可能在读取协程内到达；退出信号调用栈后再取消 accept/recv，避免嵌套恢复及 join 环。
             $this->coroutineClosing = true;
-            if (!\Swoole\Event::defer(function (): void {
+            if (!Event::defer(function (): void {
                 $this->coroutineListener?->close();
                 foreach ($this->coroutineSockets as $socket) {
                     $socket->close();
@@ -405,6 +527,92 @@ final class Broker
             } catch (\Throwable) {
             }
         }
+    }
+
+    /** @return array<string,bool|int> 连接、缓冲和持久操作计数，不包含凭据及客户端标识。 */
+    public function statistics(): array
+    {
+        $reservedServices = $this->classify === null ? 0 : min($this->maximumServiceConnections, max(0, $this->maximumConnections - 1));
+        $subscriptions = 0;
+        $buffered = 0;
+        $retainedQueued = 0;
+        $retainedPending = 0;
+        $retainedBytes = 0;
+        $devices = 0;
+        $services = 0;
+        $incoming = 0;
+        $outgoing = 0;
+        $events = count($this->connections);
+        $pendingReads = 0;
+        foreach ($this->connections as $connection) {
+            $devices += $connection->capacityClass === 'device' && !$connection->closing ? 1 : 0;
+            $services += $connection->capacityClass === 'application' && !$connection->closing ? 1 : 0;
+            $incoming += count($connection->incoming) + count($connection->incomingQos2);
+            $outgoing += count($connection->outgoing);
+            $subscriptions += count($connection->subscriptions);
+            $buffered += strlen($connection->input) + strlen($connection->output);
+            $retainedQueued += count($connection->retainedTopics) + ($connection->retainedMessage === null ? 0 : 1);
+            $retainedPending += $connection->retainedPending ? 1 : 0;
+            if ($connection->retainedMessage !== null) {
+                $retainedBytes += strlen($connection->retainedMessage->topic) + strlen($connection->retainedMessage->payload)
+                    + strlen($connection->retainedMessage->properties);
+            }
+        }
+        return ['connections' => count($this->connections), 'accepted' => $this->accepted,
+            'rejected' => $this->rejected, 'closed' => $this->closed, 'stopping' => $this->stopping, 'observationFailures' => $this->observationFailures,
+            'subscriptions' => $subscriptions, 'bufferedBytes' => $buffered, 'retainedQueued' => $retainedQueued, 'retainedPending' => $retainedPending,
+            'retainedBytes' => $retainedBytes, 'deviceConnections' => $devices, 'serviceConnections' => $services,
+            'maximumConnections' => $this->maximumConnections,
+            'maximumDeviceConnections' => min($this->maximumDeviceConnections, $this->maximumConnections - $reservedServices),
+            'maximumServiceConnections' => $reservedServices,
+            'quotaRevision' => $this->appliedQuotaVersion,
+            'incomingExchanges' => $incoming, 'outgoingExchanges' => $outgoing,
+            'eventRegistrations' => $events, 'eventTimers' => $this->eventTimer === 0 ? 0 : 1,
+            'readyEvents' => $this->pendingEvents, 'pendingReads' => $pendingReads,
+            'pendingEventBytes' => $this->pendingEventBytes, 'callbackFailures' => $this->callbackFailures,
+            'eventQuotaRefusals' => $this->eventQuotaRefusals,
+            'connectionQuotaRefusals' => $this->connectionQuotaRefusals, 'packetQuotaRefusals' => $this->packetQuotaRefusals,
+            'subscriptionQuotaRefusals' => $this->subscriptionQuotaRefusals, 'commitQuotaRefusals' => $this->commitQuotaRefusals,
+            'flushTimeouts' => $this->flushTimeouts, 'handshakeTimeouts' => $this->handshakeTimeouts,
+            'processMemoryBytes' => memory_get_usage(true), 'processPeakMemoryBytes' => memory_get_peak_usage(true),
+            'invalidated' => $this->invalidated, 'invalidationFailures' => $this->invalidationFailures,
+            'invalidationPending' => $this->invalidation !== null,
+            'disconnected' => $this->disconnected, 'disconnectFailures' => $this->disconnectFailures,
+            'disconnectPending' => $this->disconnectOp !== null,
+            'terminated' => $this->terminated, 'terminationFailures' => $this->terminationFailures,
+            'terminationPending' => $this->terminateOp !== null,
+            'retainedCleared' => $this->retainedCleared, 'retainClearFailures' => $this->retainClearFailures,
+            'retainClearPending' => $this->clearOp !== null,
+            'quotaFailures' => $this->quotaFailures,
+            'handshakeCaReloads' => $this->handshakeCaReloads, 'handshakeCaFailures' => $this->handshakeCaFailures,
+            'nodeGeneration' => $this->nodeGeneration, 'nodePending' => $this->nodePending, 'nodeFailures' => $this->nodeFailures,
+            'pendingFences' => count($this->nodeFences),
+            'delivered' => $this->delivered, 'dropped' => $this->dropped,
+            'pendingCommits' => count($this->commits), 'durableCommits' => $this->durableCommits,
+            'rejectedCommits' => $this->rejectedCommits, 'unknownCommits' => $this->unknownCommits,
+            'quarantinedCommits' => $this->quarantinedCommits, 'closingSessions' => count($this->closingSessions),
+            'willPending' => $this->willPending, 'publishedWills' => $this->publishedWills, 'deniedWills' => $this->deniedWills, 'failedWills' => $this->failedWills];
+    }
+
+    /**
+     * 以调用方已经认证的发布身份执行 Topic 授权，向当前合法订阅排队 QoS 0 消息。
+     * 返回排队数，不代表到达、持久保存或业务完成；网络入口按实际线长检查后复用路由。
+     * 使用 IdentityAccessPolicy 时调用方同时提供已经认证的 identity；缺失拒绝，不能从协议字段猜测。
+     * @throws ProtocolError 未获授权、授权依赖异常或消息超过服务端完整报文上限
+     */
+    public function publish(ConnectPacket $publisher, Message $message, ?AccessIdentity $identity = null): int
+    {
+        if ($message->qos !== 0) {
+            throw new ProtocolError(0x9B);
+        }
+        if ($message->retain) {
+            // 同步排队计数不能冒充持久保留接管；网络保留发布经过有界 worker。
+            throw new ProtocolError(0x9A);
+        }
+        if (strlen($message->packet($publisher->version)) > $this->options->maximumPacketBytes) {
+            throw new ProtocolError(0x95);
+        }
+        return $this->route($publisher, $message, $identity);
     }
 
     /** 启动和退出阶段的单个有硬截止工作；事件循环的轮询继续使用全局32工作预算。 */
@@ -425,7 +633,7 @@ final class Broker
     private function pollNode(): void
     {
         if (!$this->options->clustered || $this->stopping || $this->nodePending
-            || (float) hrtime(true) / 1000000000.0 < $this->nodePollAt || count($this->commits) + $this->quarantinedCommits >= 32) {
+            || (float)hrtime(true) / 1000000000.0 < $this->nodePollAt || count($this->commits) + $this->quarantinedCommits >= 32) {
             return;
         }
         if ($this->quarantinedCommits !== 0) {
@@ -457,7 +665,7 @@ final class Broker
             }
         }
         $operationId = bin2hex(random_bytes(16));
-        $this->nodePollAt = (float) hrtime(true) / 1000000000.0 + 0.25;
+        $this->nodePollAt = (float)hrtime(true) / 1000000000.0 + 0.25;
         try {
             $this->commits[$operationId] = ['kind' => 'node_poll', 'pending' => new PendingCommit(
                 $this->workerCommand,
@@ -473,7 +681,7 @@ final class Broker
     /** 失去持久节点证明先丢弃所有网络输出；关闭事实确认之前其他节点仍保持等待。 */
     private function failNode(): void
     {
-        $this->nodeFailures++;
+        ++$this->nodeFailures;
         foreach ($this->connections as $connection) {
             $connection->close();
         }
@@ -493,7 +701,7 @@ final class Broker
     private function serveCoroutine(string $host, int $port): void
     {
         CoroutineRuntime::run(function () use ($host, $port): void {
-            $listener = new \Swoole\Coroutine\Socket(str_contains($host, ':') ? AF_INET6 : AF_INET, SOCK_STREAM, 0);
+            $listener = new Socket(str_contains($host, ':') ? AF_INET6 : AF_INET, SOCK_STREAM, 0);
             $this->coroutineListener = $listener;
             try {
                 if (!$this->options->allowPlaintext
@@ -520,7 +728,7 @@ final class Broker
             } finally {
                 $this->stopping = true;
                 if ($this->eventTimer !== 0) {
-                    \Swoole\Timer::clear($this->eventTimer);
+                    Timer::clear($this->eventTimer);
                     $this->eventTimer = 0;
                 }
                 $listener->close();
@@ -540,17 +748,17 @@ final class Broker
     }
 
     /** 接纳临时值限于一次调用，不能让编译后的数组或赋值临时引用跨入下一次 accept 等待。 */
-    private function acceptCoroutineReader(\Swoole\Coroutine\Socket $socket): void
+    private function acceptCoroutineReader(Socket $socket): void
     {
         $reserved = count($this->connections) + count($this->closingSessions);
         foreach (array_keys($this->coroutineSockets) as $identifier) {
             if (!isset($this->connections[$identifier])) {
-                $reserved++;
+                ++$reserved;
             }
         }
         if ($reserved >= $this->startupMaximumConnections) {
-            $this->connectionQuotaRefusals++;
-            $this->rejected++;
+            ++$this->connectionQuotaRefusals;
+            ++$this->rejected;
             $socket->close();
             return;
         }
@@ -570,14 +778,14 @@ final class Broker
     }
 
     /** 接管一个有额度的 Socket，TLS 与读取失败只关闭本连接；业务仍由统一事件门串行处理。 */
-    private function readCoroutine(\Swoole\Coroutine\Socket $socket, int $fd): void
+    private function readCoroutine(Socket $socket, int $fd): void
     {
         $epoch = ++$this->nativeInstances;
         $this->nativeEpochs[$fd] = $epoch;
         $this->pendingFdEvents[$fd] = 0;
         try {
             if (!$this->options->allowPlaintext && (!$socket->sslHandshake() || $this->serverCertificateExpired(time()))) {
-                $this->rejected++;
+                ++$this->rejected;
                 return;
             }
             $peer = $socket->getpeername();
@@ -586,11 +794,11 @@ final class Broker
             }
             $this->awaitCoroutineEvent('connect', function (ExecutionScope $scope) use ($socket, $fd, $peer, $epoch): void {
                 $this->releaseNativeFd($fd);
-                $connection = new Connection($socket, (string) $peer['address'] . ':' . (string) $peer['port'], $this->options->handshakeSeconds, 'tcp');
+                $connection = new Connection($socket, (string)$peer['address'] . ':' . (string)$peer['port'], $this->options->handshakeSeconds, 'tcp');
                 $connection->nativeInstance = $epoch;
                 $connection->secure = !$this->options->allowPlaintext;
                 $this->connections[$fd] = $connection;
-                $this->accepted++;
+                ++$this->accepted;
             }, $fd);
             while (!$this->stopping && !$socket->isClosed()) {
                 $bytes = $socket->recv(min(65536, $this->options->maximumPacketBytes), -1);
@@ -615,12 +823,12 @@ final class Broker
             }
             $this->stop();
         } finally {
-            $this->closeCoroutineReader($socket, $fd, (int) $epoch);
+            $this->closeCoroutineReader($socket, $fd, (int)$epoch);
         }
     }
 
     /** 读取退出后按连接代次撤销登记；独立入口让所有 finally 路径重新读取当前状态。 */
-    private function closeCoroutineReader(\Swoole\Coroutine\Socket $socket, int $fd, int $epoch): void
+    private function closeCoroutineReader(Socket $socket, int $fd, int $epoch): void
     {
         $socket->close();
         if (($this->nativeEpochs[$fd] ?? 0) !== $epoch) {
@@ -651,7 +859,7 @@ final class Broker
     /** 两种官方监听共用信号分发、维护及发送；一轮未完成时不重复排入维护事件。 */
     private function startEventTimer(): void
     {
-        $timer = \Swoole\Timer::tick(50, function (int $timerId): void {
+        $timer = Timer::tick(50, function (int $timerId): void {
             if ($this->stopping) {
                 $this->stopClientCrlFetch();
                 $this->stop();
@@ -688,7 +896,7 @@ final class Broker
             'max_connection' => min(10100, $this->options->maximumConnections + 16),
             'max_request' => 0,
             'reload_async' => true,
-            'max_wait_time' => (int) ceil($this->options->callbackSeconds + 6),
+            'max_wait_time' => (int)ceil($this->options->callbackSeconds + 6),
             'package_max_length' => min(2097152, $this->options->maximumPacketBytes * 2),
             'buffer_output_size' => 2097152,
             'open_tcp_nodelay' => true,
@@ -740,7 +948,7 @@ final class Broker
             return;
         }
         $secure = !$this->options->allowPlaintext;
-        $tcpServer = new \Swoole\Server($host, $port, SWOOLE_BASE, self::nativeTcp($host) | ($secure ? SWOOLE_SSL : 0));
+        $tcpServer = new Server($host, $port, SWOOLE_BASE, self::nativeTcp($host) | ($secure ? SWOOLE_SSL : 0));
         if ($secure) {
             $settings = array_merge($settings, $this->swooleTls(false));
         }
@@ -777,7 +985,7 @@ final class Broker
     }
 
     /** WebSocket 与纯 mTLS 分支各自持有稳定的 Server 类型后再进入同一启动路径。 */
-    private function launchNative(\Swoole\Server $server, int $wsPort, int $port): void
+    private function launchNative(Server $server, int $wsPort, int $port): void
     {
         $this->bindNative($server, $wsPort, $port);
         $this->nativeServer = $server;
@@ -785,7 +993,7 @@ final class Broker
     }
 
     /**
-     * @param bool $mutual 为真时校验客户端证书；mTLS TCP 主端口或配置了 CA 的 WSS 主端口启用。
+     * @param bool $mutual 为真时校验客户端证书；mTLS TCP 主端口或配置了 CA 的 WSS 主端口启用
      * @return array<string, mixed>
      */
     private function swooleTls(bool $mutual): array
@@ -822,12 +1030,12 @@ final class Broker
         return 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305';
     }
 
-    private function bindNative(\Swoole\Server $server, int $wsPort, int $tcpPort): void
+    private function bindNative(Server $server, int $wsPort, int $tcpPort): void
     {
-        $server->on('workerStart', function (\Swoole\Server $native, int $workerId): void {
+        $server->on('workerStart', function (Server $native, int $workerId): void {
             $this->startEventTimer();
         });
-        $server->on('connect', function (\Swoole\Server $native, int $fd, int $reactorId) use ($wsPort, $tcpPort): void {
+        $server->on('connect', function (Server $native, int $fd, int $reactorId) use ($wsPort, $tcpPort): void {
             // 先撤销旧传输，避免正在让出的回调把输出写入复用后的连接；持久收尾仍串行执行。
             $previous = $this->connections[$fd] ?? null;
             if ($previous !== null) {
@@ -841,7 +1049,7 @@ final class Broker
                 if (!is_array($info)) {
                     $info = $native->getClientInfo($fd);
                 }
-                $listen = is_array($info) ? (int) ($info['server_port'] ?? 0) : 0;
+                $listen = is_array($info) ? (int)($info['server_port'] ?? 0) : 0;
                 if ($wsPort > 0 && $this->options->clientCa !== '' && $listen === $wsPort) {
                     $this->pendingCertificates[$fd] = $this->certificateFromInfo(is_array($info) ? $info : []);
                     return;
@@ -858,7 +1066,7 @@ final class Broker
                 $this->acceptNative($native, $fd, 'tcp', !$this->options->allowPlaintext, is_array($info) ? $info : []);
             }, $fd);
         });
-        $server->on('receive', function (\Swoole\Server $native, int $fd, int $reactorId, string $data): void {
+        $server->on('receive', function (Server $native, int $fd, int $reactorId, string $data): void {
             $this->nativeEvent('receive', function (ExecutionScope $scope) use ($fd, $data): void {
                 $connection = $this->connections[$fd] ?? null;
                 if ($connection === null || $connection->transport !== 'tcp' || $connection->closing) {
@@ -874,7 +1082,7 @@ final class Broker
             }, $fd, strlen($data));
         });
         if ($this->websocketEnabled() && $server instanceof \Swoole\WebSocket\Server) {
-            $server->on('open', function (\Swoole\WebSocket\Server $native, \Swoole\Http\Request $request): void {
+            $server->on('open', function (\Swoole\WebSocket\Server $native, Request $request): void {
                 $fd = $request->fd;
                 if (!isset($this->nativeEpochs[$fd])) {
                     $this->nativeEpochs[$fd] = ++$this->nativeInstances;
@@ -882,16 +1090,16 @@ final class Broker
                 $this->nativeEvent('open', function (ExecutionScope $scope) use ($native, $request, $fd): void {
                     $headers = [];
                     foreach ($request->header as $name => $value) {
-                        $headers[(string) $name] = (string) $value;
+                        $headers[(string)$name] = (string)$value;
                     }
                     if (!self::offersMqtt($headers)) {
-                        $this->rejected++;
+                        ++$this->rejected;
                         $native->disconnect($fd, 1002, 'subprotocol_not_offered');
                         return;
                     }
                     $origin = strtolower($headers['origin'] ?? $headers['sec-websocket-origin'] ?? '');
                     if ($this->options->allowedOrigins !== [] && $origin !== '' && !in_array($origin, $this->options->allowedOrigins, true)) {
-                        $this->rejected++;
+                        ++$this->rejected;
                         $native->disconnect($fd, 1008, 'origin_not_allowed');
                         return;
                     }
@@ -903,14 +1111,14 @@ final class Broker
                         $facts = $this->certificateFromInfo(is_array($info) ? $info : []);
                     }
                     if ($mutual && $facts['fingerprint'] === '') {
-                        $this->rejected++;
+                        ++$this->rejected;
                         $native->disconnect($fd, 1008, 'client_certificate_required');
                         return;
                     }
                     $this->acceptNative($native, $fd, 'websocket', $this->options->wssPort > 0, is_array($info) ? $info : [], $facts['fingerprint'], $mutual, $facts['serial'], $facts['notAfter']);
                 }, $fd);
             });
-            $server->on('message', function (\Swoole\WebSocket\Server $native, \Swoole\WebSocket\Frame $frame): void {
+            $server->on('message', function (\Swoole\WebSocket\Server $native, Frame $frame): void {
                 $this->nativeEvent('message', function (ExecutionScope $scope) use ($native, $frame): void {
                     $connection = $this->connections[$frame->fd] ?? null;
                     if ($connection === null || $connection->transport !== 'websocket' || !$connection->alive()) {
@@ -937,12 +1145,12 @@ final class Broker
                     }
                 }, $frame->fd, strlen($frame->data));
             });
-            $server->on('request', function (\Swoole\Http\Request $request, \Swoole\Http\Response $response): void {
+            $server->on('request', function (Request $request, Response $response): void {
                 $response->status(404);
                 $response->end('not_found');
             });
         }
-        $server->on('close', function (\Swoole\Server $native, int $fd, int $reactorId): void {
+        $server->on('close', function (Server $native, int $fd, int $reactorId): void {
             $closingInstance = $this->closingNativeInstances[$fd] ?? 0;
             unset($this->closingNativeInstances[$fd]);
             if ($closingInstance !== 0 && ($this->nativeEpochs[$fd] ?? 0) !== $closingInstance) {
@@ -964,11 +1172,11 @@ final class Broker
                 $connection->endedAt = microtime(true);
             }
         });
-        $server->on('workerExit', function (\Swoole\Server $native, int $workerId): void {
+        $server->on('workerExit', function (Server $native, int $workerId): void {
             $this->stopping = true;
             $this->nativeExiting = true;
             if ($this->eventTimer !== 0) {
-                \Swoole\Timer::clear($this->eventTimer);
+                Timer::clear($this->eventTimer);
                 $this->eventTimer = 0;
             }
             $this->stopClientCrlFetch();
@@ -984,7 +1192,7 @@ final class Broker
     {
         if ($this->stopping || $this->pendingEvents >= $this->startupMaximumConnections + 32
             || $this->pendingEventBytes + $bytes > 33554432) {
-            $this->eventQuotaRefusals++;
+            ++$this->eventQuotaRefusals;
             if ($fd > 0) {
                 $this->closeEventConnection($fd);
             } else {
@@ -997,7 +1205,7 @@ final class Broker
         if ($fd > 0) {
             $this->pendingFdEvents[$fd] = ($this->pendingFdEvents[$fd] ?? 0) + 1;
         }
-        $this->pendingEvents++;
+        ++$this->pendingEvents;
         $this->pendingEventBytes += $bytes;
         $created = Coroutine::create(function () use ($event, $operation, $fd, $bytes, $epoch): void {
             $acquired = false;
@@ -1019,7 +1227,7 @@ final class Broker
                     $this->nativeServer->pause($fd);
                     $paused = true;
                 }
-                $scope = new ExecutionScope(new Deadline($this->options->callbackSeconds), ['protocol' => 'mqtt', 'event' => $event, 'connection' => (string) $fd]);
+                $scope = new ExecutionScope(new Deadline($this->options->callbackSeconds), ['protocol' => 'mqtt', 'event' => $event, 'connection' => (string)$fd]);
                 try {
                     $scope->run($operation);
                 } finally {
@@ -1033,7 +1241,7 @@ final class Broker
                     }
                 }
             } catch (\Throwable $error) {
-                $this->callbackFailures++;
+                ++$this->callbackFailures;
                 $queued = $error instanceof \RuntimeException && $error->getMessage() === 'mqtt_callback_wait_timeout';
                 if (!$queued && $fd > 0 && ($this->nativeEpochs[$fd] ?? 0) === $epoch) {
                     $this->closeEventConnection($fd);
@@ -1045,7 +1253,7 @@ final class Broker
             }
         });
         if ($created === false) {
-            $this->callbackFailures++;
+            ++$this->callbackFailures;
             $this->completeNativeEvent($event, $fd, $bytes, $epoch, false, false);
             $this->stop();
         }
@@ -1066,10 +1274,10 @@ final class Broker
     /** 正常、异常及创建失败共用额度归还；只有本次确实暂停过的连接才恢复读取。 */
     private function completeNativeEvent(string $event, int $fd, int $bytes, int $epoch, bool $acquired, bool $paused): void
     {
-        $this->pendingEvents--;
+        --$this->pendingEvents;
         $this->pendingEventBytes -= $bytes;
         if ($fd > 0 && ($this->nativeEpochs[$fd] ?? 0) === $epoch) {
-            $this->pendingFdEvents[$fd]--;
+            --$this->pendingFdEvents[$fd];
             if ($paused && $this->pendingFdEvents[$fd] === 0 && !$this->stopping) {
                 $this->nativeServer?->resume($fd);
             }
@@ -1100,16 +1308,16 @@ final class Broker
         $existing->close();
         $this->observeClosed($existing);
         $this->finishSession($existing);
-        $this->closed++;
+        ++$this->closed;
     }
 
     /** @param array<string, mixed> $info */
-    private function acceptNative(\Swoole\Server $server, int $fd, string $transport, bool $secure, array $info, string $fingerprint = '', bool $mutualTls = false, string $serial = '', int $notAfter = 0): void
+    private function acceptNative(Server $server, int $fd, string $transport, bool $secure, array $info, string $fingerprint = '', bool $mutualTls = false, string $serial = '', int $notAfter = 0): void
     {
         $this->releaseNativeFd($fd);
         if ($this->stopping || count($this->connections) + count($this->closingSessions) >= $this->startupMaximumConnections) {
-            $this->connectionQuotaRefusals++;
-            $this->rejected++;
+            ++$this->connectionQuotaRefusals;
+            ++$this->rejected;
             if ($transport === 'websocket' && $server instanceof \Swoole\WebSocket\Server) {
                 $server->disconnect($fd, 1013, 'connection_quota');
             } else {
@@ -1118,7 +1326,7 @@ final class Broker
             return;
         }
         if ($secure && $this->serverCertificateExpired(time())) {
-            $this->rejected++;
+            ++$this->rejected;
             if ($transport === 'websocket' && $server instanceof \Swoole\WebSocket\Server) {
                 $server->disconnect($fd, 1011, 'server_certificate_expired');
             } else {
@@ -1126,7 +1334,7 @@ final class Broker
             }
             return;
         }
-        $peer = (string) ($info['remote_ip'] ?? '') . ':' . (string) ($info['remote_port'] ?? 0);
+        $peer = (string)($info['remote_ip'] ?? '') . ':' . (string)($info['remote_port'] ?? 0);
         $connection = new Connection($fd, $peer, $this->options->handshakeSeconds, $transport, $server);
         $connection->secure = $secure;
         $connection->mutualTls = $mutualTls || $fingerprint !== '';
@@ -1138,7 +1346,7 @@ final class Broker
             $this->closingNativeInstances[$closedFd] = $instance;
         };
         $this->connections[$fd] = $connection;
-        $this->accepted++;
+        ++$this->accepted;
     }
 
     /**
@@ -1160,7 +1368,7 @@ final class Broker
 
     /**
      * Swoole 仍可能用过期或 clientAuth 叶证书监听。
-     * @param array<string, mixed> $parsed openssl_x509_parse 长名结果。
+     * @param array<string, mixed> $parsed openssl_x509_parse 长名结果
      */
     private static function serverCertificateUsable(array $parsed): bool
     {
@@ -1281,7 +1489,7 @@ final class Broker
     {
         $this->stopClientCrlFetch();
         if ($this->eventTimer !== 0) {
-            \Swoole\Timer::clear($this->eventTimer);
+            Timer::clear($this->eventTimer);
             $this->eventTimer = 0;
         }
         if ($this->nativeServer !== null) {
@@ -1297,7 +1505,7 @@ final class Broker
     /** Swoole 6.2 Server::set 不把 ssl_passphrase 写入 SSLContext，加密钥只能先解密成 0600 临时文件。 */
     private function materializeNativePrivateKey(): string
     {
-        $key = @openssl_pkey_get_private((string) file_get_contents($this->options->privateKey), $this->options->privateKeyPassphrase);
+        $key = @openssl_pkey_get_private((string)file_get_contents($this->options->privateKey), $this->options->privateKeyPassphrase);
         $exported = '';
         if ($key === false || !openssl_pkey_export($key, $exported) || $exported === '') {
             throw new \RuntimeException('MQTT TLS 证书或私钥无效、口令错误或二者不匹配');
@@ -1319,92 +1527,6 @@ final class Broker
         $this->nativeKeyFile = '';
     }
 
-    /** @return array<string,int|bool> 连接、缓冲和持久操作计数，不包含凭据及客户端标识。 */
-    public function statistics(): array
-    {
-        $reservedServices = $this->classify === null ? 0 : min($this->maximumServiceConnections, max(0, $this->maximumConnections - 1));
-        $subscriptions = 0;
-        $buffered = 0;
-        $retainedQueued = 0;
-        $retainedPending = 0;
-        $retainedBytes = 0;
-        $devices = 0;
-        $services = 0;
-        $incoming = 0;
-        $outgoing = 0;
-        $events = count($this->connections);
-        $pendingReads = 0;
-        foreach ($this->connections as $connection) {
-            $devices += $connection->capacityClass === 'device' && !$connection->closing ? 1 : 0;
-            $services += $connection->capacityClass === 'application' && !$connection->closing ? 1 : 0;
-            $incoming += count($connection->incoming) + count($connection->incomingQos2);
-            $outgoing += count($connection->outgoing);
-            $subscriptions += count($connection->subscriptions);
-            $buffered += strlen($connection->input) + strlen($connection->output);
-            $retainedQueued += count($connection->retainedTopics) + ($connection->retainedMessage === null ? 0 : 1);
-            $retainedPending += $connection->retainedPending ? 1 : 0;
-            if ($connection->retainedMessage !== null) {
-                $retainedBytes += strlen($connection->retainedMessage->topic) + strlen($connection->retainedMessage->payload)
-                    + strlen($connection->retainedMessage->properties);
-            }
-        }
-        return ['connections' => count($this->connections), 'accepted' => $this->accepted,
-            'rejected' => $this->rejected, 'closed' => $this->closed, 'stopping' => $this->stopping, 'observationFailures' => $this->observationFailures,
-            'subscriptions' => $subscriptions, 'bufferedBytes' => $buffered, 'retainedQueued' => $retainedQueued, 'retainedPending' => $retainedPending,
-            'retainedBytes' => $retainedBytes, 'deviceConnections' => $devices, 'serviceConnections' => $services,
-            'maximumConnections' => $this->maximumConnections,
-            'maximumDeviceConnections' => min($this->maximumDeviceConnections, $this->maximumConnections - $reservedServices),
-            'maximumServiceConnections' => $reservedServices,
-            'quotaRevision' => $this->appliedQuotaVersion,
-            'incomingExchanges' => $incoming, 'outgoingExchanges' => $outgoing,
-            'eventRegistrations' => $events, 'eventTimers' => $this->eventTimer === 0 ? 0 : 1,
-            'readyEvents' => $this->pendingEvents, 'pendingReads' => $pendingReads,
-            'pendingEventBytes' => $this->pendingEventBytes, 'callbackFailures' => $this->callbackFailures,
-            'eventQuotaRefusals' => $this->eventQuotaRefusals,
-            'connectionQuotaRefusals' => $this->connectionQuotaRefusals, 'packetQuotaRefusals' => $this->packetQuotaRefusals,
-            'subscriptionQuotaRefusals' => $this->subscriptionQuotaRefusals, 'commitQuotaRefusals' => $this->commitQuotaRefusals,
-            'flushTimeouts' => $this->flushTimeouts, 'handshakeTimeouts' => $this->handshakeTimeouts,
-            'processMemoryBytes' => memory_get_usage(true), 'processPeakMemoryBytes' => memory_get_peak_usage(true),
-            'invalidated' => $this->invalidated, 'invalidationFailures' => $this->invalidationFailures,
-            'invalidationPending' => $this->invalidation !== null,
-            'disconnected' => $this->disconnected, 'disconnectFailures' => $this->disconnectFailures,
-            'disconnectPending' => $this->disconnectOp !== null,
-            'terminated' => $this->terminated, 'terminationFailures' => $this->terminationFailures,
-            'terminationPending' => $this->terminateOp !== null,
-            'retainedCleared' => $this->retainedCleared, 'retainClearFailures' => $this->retainClearFailures,
-            'retainClearPending' => $this->clearOp !== null,
-            'quotaFailures' => $this->quotaFailures,
-            'handshakeCaReloads' => $this->handshakeCaReloads, 'handshakeCaFailures' => $this->handshakeCaFailures,
-            'nodeGeneration' => $this->nodeGeneration, 'nodePending' => $this->nodePending, 'nodeFailures' => $this->nodeFailures,
-            'pendingFences' => count($this->nodeFences),
-            'delivered' => $this->delivered, 'dropped' => $this->dropped,
-            'pendingCommits' => count($this->commits), 'durableCommits' => $this->durableCommits,
-            'rejectedCommits' => $this->rejectedCommits, 'unknownCommits' => $this->unknownCommits,
-            'quarantinedCommits' => $this->quarantinedCommits, 'closingSessions' => count($this->closingSessions),
-            'willPending' => $this->willPending, 'publishedWills' => $this->publishedWills, 'deniedWills' => $this->deniedWills, 'failedWills' => $this->failedWills];
-    }
-
-    /**
-     * 以调用方已经认证的发布身份执行 Topic 授权，向当前合法订阅排队 QoS 0 消息。
-     * 返回排队数，不代表到达、持久保存或业务完成；网络入口按实际线长检查后复用路由。
-     * 使用 IdentityAccessPolicy 时调用方同时提供已经认证的 identity；缺失拒绝，不能从协议字段猜测。
-     * @throws ProtocolError 未获授权、授权依赖异常或消息超过服务端完整报文上限。
-     */
-    public function publish(ConnectPacket $publisher, Message $message, ?AccessIdentity $identity = null): int
-    {
-        if ($message->qos !== 0) {
-            throw new ProtocolError(0x9b);
-        }
-        if ($message->retain) {
-            // 同步排队计数不能冒充持久保留接管；网络保留发布经过有界 worker。
-            throw new ProtocolError(0x9a);
-        }
-        if (strlen($message->packet($publisher->version)) > $this->options->maximumPacketBytes) {
-            throw new ProtocolError(0x95);
-        }
-        return $this->route($publisher, $message, $identity);
-    }
-
     /** 网络入口已校验实际完整报文；展开别名后的 Topic 不再作为入站线长重新拒绝。 */
     private function route(ConnectPacket $publisher, Message $message, ?AccessIdentity $identity): int
     {
@@ -1412,7 +1534,7 @@ final class Broker
             throw new ProtocolError(0x87);
         }
         if ($message->remaining() === 0) {
-            $this->dropped++;
+            ++$this->dropped;
             return 0;
         }
         $delivered = 0;
@@ -1423,7 +1545,7 @@ final class Broker
             try {
                 $selection = $this->selection($connection, $message, $publisher->clientId);
             } catch (ProtocolError) {
-                $this->dropped++;
+                ++$this->dropped;
                 continue;
             }
             if ($selection['qos'] < 0) {
@@ -1441,9 +1563,9 @@ final class Broker
                 false,
                 $selection['identifiers']
             ) !== '') {
-                $delivered++;
+                ++$delivered;
             } else {
-                $this->dropped++;
+                ++$this->dropped;
             }
         }
         $delivered += $this->routeShared($message);
@@ -1483,10 +1605,10 @@ final class Broker
                         $subscription['identifier'] > 0 ? [$subscription['identifier']] : []
                     ) !== '') {
                         $groups[$key] = true;
-                        $delivered++;
+                        ++$delivered;
                     }
                 } catch (ProtocolError) {
-                    $this->dropped++;
+                    ++$this->dropped;
                 }
             }
         }
@@ -1546,7 +1668,7 @@ final class Broker
             } elseif ($exchange['responses'] >= 32) {
                 throw new ProtocolError(0x97);
             } else {
-                $publisher->incomingQos2[$identifier]['responses']++;
+                ++$publisher->incomingQos2[$identifier]['responses'];
             }
             return;
         }
@@ -1598,12 +1720,12 @@ final class Broker
                 $qos = min($message->qos, $selection['qos']);
                 $retain = $message->retain && $subscriber->connect->version === 5 && $selection['retain'];
                 if ($subscriber->publication($message, $qos > 0 ? 1 : 0, $qos, $this->options->maximumPacketBytes, false, false, $retain, false, $selection['identifiers']) === '') {
-                    $this->dropped++;
+                    ++$this->dropped;
                     continue;
                 }
                 $deliveryId = hash('sha256', $messageId . $subscriber->sessionId);
                 if ($qos > 0 && ($subscriber->sessionExpiry !== 0 || $subscriber->sessionPresent) && ($subscriber->draining || $subscriber->replaying
-                    || count($subscriber->outgoing) >= min(32, (int) ($subscriber->connect->properties[0x21] ?? 65535)))) {
+                    || count($subscriber->outgoing) >= min(32, (int)($subscriber->connect->properties[0x21] ?? 65535)))) {
                     $subscriber->draining = true;
                     $queuedSessions[] = $subscriber->sessionId;
                     $deliveries[] = ['id' => $deliveryId, 'session_id' => $subscriber->sessionId, 'client_id' => $subscriber->connect->clientId,
@@ -1620,9 +1742,9 @@ final class Broker
             }
             $request = ['operation_id' => $operationId, 'action' => 'accept', 'session_id' => $publisher->sessionId, 'owner_id' => $publisher->ownerId,
                 'route_sessions' => true, 'queued_sessions' => $queuedSessions, 'excluded_sessions' => $excludedSessions, 'message' => ['id' => $messageId,
-                'session_id' => $publisher->sessionId, 'client_id' => $publisher->connect->clientId, 'packet_id' => $identifier,
-                'topic' => $message->topic, 'payload' => base64_encode($message->payload), 'properties' => base64_encode($message->properties), 'qos' => $message->qos,
-                'retain' => $message->retain, 'expires_at' => $message->expiresAt()],
+                    'session_id' => $publisher->sessionId, 'client_id' => $publisher->connect->clientId, 'packet_id' => $identifier,
+                    'topic' => $message->topic, 'payload' => base64_encode($message->payload), 'properties' => base64_encode($message->properties), 'qos' => $message->qos,
+                    'retain' => $message->retain, 'expires_at' => $message->expiresAt()],
                 'deliveries' => $deliveries];
             if ($this->options->clustered) {
                 $request['node_id'] = $this->nodeId;
@@ -1738,7 +1860,7 @@ final class Broker
                 if ($delivery['responses'] >= 32) {
                     throw new ProtocolError(0x97);
                 }
-                $connection->outgoing[$identifier]['responses']++;
+                ++$connection->outgoing[$identifier]['responses'];
                 return;
             }
             if ($delivery['state'] === 'completing') {
@@ -1796,7 +1918,7 @@ final class Broker
             if ($exchange['responses'] >= 32) {
                 throw new ProtocolError(0x97);
             }
-            $connection->incomingQos2[$identifier]['responses']++;
+            ++$connection->incomingQos2[$identifier]['responses'];
             return;
         }
         if ($exchange['state'] !== 'received') {
@@ -1866,7 +1988,7 @@ final class Broker
                         unset($this->commits[$operationId]);
                         $this->cancelPublications($commit['publisher']);
                         $this->disconnect($commit['publisher'], 0x88);
-                        $this->dropped++;
+                        ++$this->dropped;
                     } elseif (!isset($publishing[$commit['publisher']->ownerId])) {
                         unset($this->commits[$operationId]);
                         $this->deliverMessage($commit, null);
@@ -1899,15 +2021,15 @@ final class Broker
             }
             unset($this->commits[$operationId]);
             if (!$result->released) {
-                $this->quarantinedCommits++;
+                ++$this->quarantinedCommits;
             }
             if ($result->state === 'committed' && $result->released) {
-                $this->durableCommits++;
+                ++$this->durableCommits;
             } elseif ($result->state === 'rejected') {
-                $this->rejectedCommits++;
+                ++$this->rejectedCommits;
                 $this->commitQuotaRefusals += $result->reason === 0x97 ? 1 : 0;
             } else {
-                $this->unknownCommits++;
+                ++$this->unknownCommits;
             }
             if ($commit['kind'] === 'node_poll') {
                 $this->nodePending = false;
@@ -1927,7 +2049,7 @@ final class Broker
                     foreach ($this->nodeFences as $fence) {
                         foreach ($this->connections as $fencedConnection) {
                             if ($fencedConnection->ownerId === $fence['owner_id']) {
-                                $fencedConnection->closeReason = 0x8e;
+                                $fencedConnection->closeReason = 0x8E;
                                 $fencedConnection->endReason = 'taken_over';
                                 $fencedConnection->close();
                             }
@@ -1938,12 +2060,12 @@ final class Broker
                 $this->invalidationPending = false;
                 if ($result->state === 'committed' && $result->released && $this->quarantinedCommits === 0) {
                     if ($result->value['waiting'] ?? false) {
-                        $this->invalidationAt = (float) hrtime(true) / 1000000000.0 + 0.25;
+                        $this->invalidationAt = (float)hrtime(true) / 1000000000.0 + 0.25;
                     } else {
                         try {
                             $this->invalidations->invalidationCompleted($this->invalidation['id']);
                             $this->invalidation = null;
-                            $this->invalidated++;
+                            ++$this->invalidated;
                         } catch (\Throwable) {
                             $this->failInvalidation();
                         }
@@ -1961,7 +2083,7 @@ final class Broker
                         $this->terminateErased = true;
                     }
                     if ($result->value['waiting'] ?? false) {
-                        $this->terminateAt = (float) hrtime(true) / 1000000000.0 + 0.25;
+                        $this->terminateAt = (float)hrtime(true) / 1000000000.0 + 0.25;
                     } else {
                         $outcome = $this->terminateErased ? 'terminated' : 'missing';
                         try {
@@ -1970,10 +2092,10 @@ final class Broker
                                 $this->terminateMatched = false;
                                 $this->terminateErased = false;
                                 $this->terminateOutcome = '';
-                                $this->terminated++;
+                                ++$this->terminated;
                             } else {
                                 $this->terminateOutcome = $outcome;
-                                $this->terminateAt = (float) hrtime(true) / 1000000000.0 + 0.25;
+                                $this->terminateAt = (float)hrtime(true) / 1000000000.0 + 0.25;
                             }
                         } catch (\Throwable) {
                             $this->failTermination();
@@ -1991,7 +2113,7 @@ final class Broker
                         $this->clearErased = true;
                     }
                     if ($result->value['waiting'] ?? false) {
-                        $this->clearAt = (float) hrtime(true) / 1000000000.0 + 0.25;
+                        $this->clearAt = (float)hrtime(true) / 1000000000.0 + 0.25;
                     } else {
                         $outcome = $this->clearErased ? 'cleared' : 'missing';
                         try {
@@ -1999,10 +2121,10 @@ final class Broker
                                 $this->clearOp = null;
                                 $this->clearErased = false;
                                 $this->clearOutcome = '';
-                                $this->retainedCleared++;
+                                ++$this->retainedCleared;
                             } else {
                                 $this->clearOutcome = $outcome;
-                                $this->clearAt = (float) hrtime(true) / 1000000000.0 + 0.25;
+                                $this->clearAt = (float)hrtime(true) / 1000000000.0 + 0.25;
                             }
                         } catch (\Throwable) {
                             $this->failClearance();
@@ -2014,19 +2136,19 @@ final class Broker
             } elseif ($commit['kind'] === 'quota') {
                 $this->quotaStorePending = false;
                 if ($this->quotaOp === null) {
-                    $this->quotaFailures++;
+                    ++$this->quotaFailures;
                 } elseif ($result->state === 'committed' && $result->released && $this->quarantinedCommits === 0) {
                     $this->appliedQuotaVersion = $this->quotaOp['version'];
                     $this->quotaOp = null;
                 } else {
-                    $this->quotaFailures++;
+                    ++$this->quotaFailures;
                     $this->quotaOp = null;
-                    $this->quotaAt = (float) hrtime(true) / 1000000000.0 + 1.0;
+                    $this->quotaAt = (float)hrtime(true) / 1000000000.0 + 1.0;
                 }
             } elseif ($commit['kind'] === 'ending') {
                 if (($result->state !== 'committed' || !$result->released) && !$this->stopping && $result->released) {
                     $closing = $commit['connection'];
-                    $closing->closeRetryAt = (float) hrtime(true) / 1000000000.0 + 1.0;
+                    $closing->closeRetryAt = (float)hrtime(true) / 1000000000.0 + 1.0;
                     $this->closingSessions[$closing->ownerId] = $closing;
                 }
             } elseif (str_starts_with($commit['kind'], 'will_')) {
@@ -2068,13 +2190,13 @@ final class Broker
                     if ($commit['kind'] === 'received') {
                         $connection->outgoing[$identifier]['state'] = 'released';
                         $responses = $connection->outgoing[$identifier]['responses'];
-                        for ($response = 0; $response < $responses && !$connection->closing; $response++) {
+                        for ($response = 0; $response < $responses && !$connection->closing; ++$response) {
                             $connection->send("\x62\x02" . pack('n', $identifier));
                         }
                     } else {
                         $connection->incomingQos2[$identifier]['state'] = 'completing';
                         $responses = $connection->incomingQos2[$identifier]['responses'];
-                        for ($response = 0; $response < $responses && !$connection->closing; $response++) {
+                        for ($response = 0; $response < $responses && !$connection->closing; ++$response) {
                             $connection->acknowledge($identifier, 0x70);
                         }
                     }
@@ -2082,7 +2204,7 @@ final class Broker
             }
         }
         foreach ($this->closingSessions as $ownerId => $closing) {
-            if ($this->sessionBusy($closing) || (!$this->stopping && (float) hrtime(true) / 1000000000.0 < $closing->closeRetryAt)) {
+            if ($this->sessionBusy($closing) || (!$this->stopping && (float)hrtime(true) / 1000000000.0 < $closing->closeRetryAt)) {
                 continue;
             }
             if (count($this->commits) + $this->quarantinedCommits >= 32) {
@@ -2106,9 +2228,9 @@ final class Broker
                         : ['operation_id' => $operationId, 'action' => 'abandon', 'session_id' => $closing->sessionId]
                 ), 'kind' => 'ending', 'connection' => $closing];
             } catch (\Throwable) {
-                $this->unknownCommits++;
+                ++$this->unknownCommits;
                 if (!$this->stopping) {
-                    $closing->closeRetryAt = (float) hrtime(true) / 1000000000.0 + 1.0;
+                    $closing->closeRetryAt = (float)hrtime(true) / 1000000000.0 + 1.0;
                     $this->closingSessions[$ownerId] = $closing;
                 }
             }
@@ -2134,7 +2256,7 @@ final class Broker
         $willId = $commit['will_id'] ?? '';
         if ($willId !== '') {
             $this->willPending = false;
-            $this->willPollAt = (float) hrtime(true) / 1000000000.0 + 0.25;
+            $this->willPollAt = (float)hrtime(true) / 1000000000.0 + 0.25;
             if ($accepted && !($result->value['accepted'] ?? false)) {
                 foreach ($commit['targets'] as $cancelledTarget) {
                     unset($cancelledTarget['connection']->outgoing[$cancelledTarget['packet_id']]);
@@ -2142,7 +2264,7 @@ final class Broker
                 return;
             }
             if ($accepted) {
-                $this->publishedWills++;
+                ++$this->publishedWills;
             } else {
                 $this->deferWill($willId, $result->reason ?: 0x83);
             }
@@ -2153,7 +2275,7 @@ final class Broker
                 if (!$publisher->closing) {
                     $publisher->incomingQos2[$identifier]['state'] = 'received';
                     $responses = $publisher->incomingQos2[$identifier]['responses'];
-                    for ($response = 0; $response < $responses && !$publisher->closing; $response++) {
+                    for ($response = 0; $response < $responses && !$publisher->closing; ++$response) {
                         $publisher->send("\x50\x02" . pack('n', $identifier));
                     }
                 }
@@ -2207,22 +2329,22 @@ final class Broker
                 if (!$subscriber->alive()) {
                     $this->finishSession($subscriber);
                 }
-                $this->dropped++;
+                ++$this->dropped;
                 continue;
             }
             if ($message->remaining() === 0) {
                 if ($result !== null && !$this->completeDelivery($subscriber, $target['id'], $target['packet_id'], 0, 'expired')) {
                     $this->disconnect($subscriber, 0x97);
                 }
-                $this->dropped++;
+                ++$this->dropped;
                 continue;
             }
             if ($subscriber->publication($message, $target['packet_id'], $target['qos'], $this->options->maximumPacketBytes, true, false, $target['retain'] ?? false, false, $target['subscription_identifiers'] ?? []) === '') {
-                $this->dropped++;
+                ++$this->dropped;
                 $this->finishSession($subscriber);
                 continue;
             }
-            $this->delivered++;
+            ++$this->delivered;
             if ($target['qos'] > 0) {
                 $subscriber->outgoing[$target['packet_id']]['state'] = 'sent';
             } elseif ($result !== null && !$this->completeDelivery($subscriber, $target['id'], 0, 0, 'queued')) {
@@ -2294,8 +2416,8 @@ final class Broker
         $elapsed = $value['expires_at'] === null ? 0 : max(0, $value['expiry_interval'] - max(0, $value['expires_at'] - time()));
         $connection->retainedMessage = new Message(
             $value['message']['topic'],
-            (string) base64_decode($value['message']['payload'], true),
-            (string) base64_decode($value['message']['properties'], true),
+            (string)base64_decode($value['message']['payload'], true),
+            (string)base64_decode($value['message']['properties'], true),
             $value['message']['qos'],
             $elapsed
         );
@@ -2334,7 +2456,7 @@ final class Broker
             $connection->retainedPending = true;
             $connection->retainedMessage = null;
             $connection->retainedAdvance = [];
-            $this->dropped++;
+            ++$this->dropped;
         } catch (\Throwable) {
             $this->disconnect($connection, 0x88);
         }
@@ -2433,15 +2555,15 @@ final class Broker
             } elseif ($qos > 0) {
                 $connection->outgoing[$identifier]['state'] = 'completing';
             }
-            $this->dropped++;
+            ++$this->dropped;
             return;
         }
         if ($connection->publication($message, $identifier, $qos, $this->options->maximumPacketBytes, true, false, true, false, $delivery['subscription_identifiers'] ?? []) === '') {
-            $this->dropped++;
+            ++$this->dropped;
             $this->finishSession($connection);
             return;
         }
-        $this->delivered++;
+        ++$this->delivered;
         if ($qos > 0) {
             $connection->outgoing[$identifier]['state'] = 'sent';
         } elseif (!$this->completeDelivery($connection, $delivery['id'], 0, 0, 'queued')) {
@@ -2452,7 +2574,7 @@ final class Broker
     /** 全节点只保留一条遗嘱原件及一个工作；空轮询和失败均有节流，复用全局 worker 容量。 */
     private function willCommit(string $action, array $request): void
     {
-        $this->willPollAt = (float) hrtime(true) / 1000000000.0 + 1.0;
+        $this->willPollAt = (float)hrtime(true) / 1000000000.0 + 1.0;
         if ($this->stopping || count($this->commits) + $this->quarantinedCommits >= 32) {
             return;
         }
@@ -2467,27 +2589,27 @@ final class Broker
             $this->commits[$operationId] = ['pending' => new PendingCommit($this->workerCommand, $request), 'kind' => $action];
             $this->willPending = true;
         } catch (\Throwable) {
-            $this->failedWills++;
+            ++$this->failedWills;
         }
     }
 
     private function deferWill(string $willId, int $reason): void
     {
-        $this->failedWills++;
+        ++$this->failedWills;
         $this->willCommit('will_defer', ['will_id' => $willId, 'reason' => $reason]);
     }
 
     private function willResult(array $commit, CommitResult $result): void
     {
         $this->willPending = false;
-        $this->willPollAt = (float) hrtime(true) / 1000000000.0 + 1.0;
+        $this->willPollAt = (float)hrtime(true) / 1000000000.0 + 1.0;
         if ($result->state !== 'committed' || !$result->released) {
-            $this->failedWills++;
+            ++$this->failedWills;
             $this->willPollAt += 1.0;
             return;
         }
         if ($commit['kind'] === 'will_discard') {
-            $this->deniedWills++;
+            ++$this->deniedWills;
         }
         if (!isset($result->value['will']) || $this->stopping) {
             return;
@@ -2505,8 +2627,8 @@ final class Broker
         try {
             $message = new Message(
                 $original['topic'],
-                (string) base64_decode($original['payload'], true),
-                (string) base64_decode($original['properties'], true),
+                (string)base64_decode($original['payload'], true),
+                (string)base64_decode($original['properties'], true),
                 $original['qos'],
                 0,
                 $original['retain']
@@ -2559,7 +2681,7 @@ final class Broker
         $this->pollCommits();
         $this->pollNode();
         if ($this->workerCommand !== [] && !$this->willPending && !$this->stopping
-            && (float) hrtime(true) / 1000000000.0 >= $this->willPollAt && count($this->commits) + $this->quarantinedCommits < 32) {
+            && (float)hrtime(true) / 1000000000.0 >= $this->willPollAt && count($this->commits) + $this->quarantinedCommits < 32) {
             $this->willCommit('will_read', ['node_id' => $this->nodeId]);
         }
         foreach ($this->connections as $identifier => $connection) {
@@ -2567,14 +2689,14 @@ final class Broker
                 $this->observeClosed($connection);
                 $this->finishSession($connection);
                 unset($this->connections[$identifier]);
-                $this->closed++;
+                ++$this->closed;
                 continue;
             }
             if ($connection->sessionPending && !$connection->sessionOpening && !$connection->closing) {
                 $this->openSession($connection);
             }
             if ($connection->sessionRetryAt > 0.0 && !$connection->closing && !$this->sessionBusy($connection)
-                && (float) hrtime(true) / 1000000000.0 >= $connection->sessionRetryAt
+                && (float)hrtime(true) / 1000000000.0 >= $connection->sessionRetryAt
                 && count($this->commits) + $this->quarantinedCommits < 32) {
                 $connection->sessionRetryAt = 0.0;
                 try {
@@ -2588,16 +2710,16 @@ final class Broker
                 // 不重置截止；原生发送仍未接管就关闭，慢端不能因此无限延长缓冲寿命。
                 $this->flush($connection);
                 if ($connection->flush?->expired()) {
-                    $this->flushTimeouts++;
+                    ++$this->flushTimeouts;
                     $connection->close();
                 }
             } elseif (!$connection->connected && !$connection->authPending && !$connection->sessionPending && $connection->handshake->expired() && $connection->input === '') {
                 // 半包走 partial 截止；会话打开等待不能按空闲握手掐断。
-                $this->handshakeTimeouts++;
+                ++$this->handshakeTimeouts;
                 $connection->close();
-                $this->rejected++;
+                ++$this->rejected;
             } elseif (!$connection->closing && $connection->keepAlive?->expired()) {
-                $this->disconnect($connection, 0x8d);
+                $this->disconnect($connection, 0x8D);
             } elseif (!$connection->closing && $connection->partial?->expired()) {
                 $this->disconnect($connection, 0x81);
             } elseif (!$connection->closing && $connection->input !== '') {
@@ -2611,11 +2733,11 @@ final class Broker
                 $this->pollShared($connection);
             }
             if ($connection->connected && $connection->sessionManaged && !$connection->closing && ($connection->draining || (!$this->options->clustered && ($connection->sessionExpiry !== 0 || $connection->sessionPresent))) && !$connection->sessionPending
-                && !$connection->replaying && !$this->sessionBusy($connection) && (float) hrtime(true) / 1000000000.0 >= $connection->replayAt
+                && !$connection->replaying && !$this->sessionBusy($connection) && (float)hrtime(true) / 1000000000.0 >= $connection->replayAt
                 && count($this->commits) + $this->quarantinedCommits < 32) {
                 try {
                     $this->sessionCommit($connection, 'session_next', ['ignored' => array_keys($connection->outgoing),
-                        'check_only' => count($connection->outgoing) >= min(32, (int) ($connection->connect->properties[0x21] ?? 65535))]);
+                        'check_only' => count($connection->outgoing) >= min(32, (int)($connection->connect->properties[0x21] ?? 65535))]);
                     $connection->replaying = true;
                     $connection->sharedTurn = true;
                 } catch (ProtocolError $error) {
@@ -2626,12 +2748,12 @@ final class Broker
                 $this->pollShared($connection);
             }
         }
-        if ($this->observer !== null && !$this->stopping && (float) hrtime(true) / 1000000000.0 >= $this->observationAt) {
+        if ($this->observer !== null && !$this->stopping && (float)hrtime(true) / 1000000000.0 >= $this->observationAt) {
             try {
                 $this->observer->heartbeat(time());
-                $this->observationAt = (float) hrtime(true) / 1000000000.0 + 5.0;
+                $this->observationAt = (float)hrtime(true) / 1000000000.0 + 5.0;
             } catch (\Throwable) {
-                $this->observationFailures++;
+                ++$this->observationFailures;
                 $this->stop();
             }
         }
@@ -2641,15 +2763,15 @@ final class Broker
     /** 只在存在新意图时扫描连接；不对万条空闲连接逐一调用外部授权进程。 */
     private function invalidateAuthorization(): void
     {
-        if ($this->invalidations === null || $this->stopping || $this->invalidationPending || (float) hrtime(true) / 1000000000.0 < $this->invalidationAt) {
+        if ($this->invalidations === null || $this->stopping || $this->invalidationPending || (float)hrtime(true) / 1000000000.0 < $this->invalidationAt) {
             return;
         }
         try {
             if ($this->invalidation === null) {
-                if ((float) hrtime(true) / 1000000000.0 < $this->invalidationAt) {
+                if ((float)hrtime(true) / 1000000000.0 < $this->invalidationAt) {
                     return;
                 }
-                $this->invalidationAt = (float) hrtime(true) / 1000000000.0 + 0.5;
+                $this->invalidationAt = (float)hrtime(true) / 1000000000.0 + 0.5;
                 $next = $this->invalidations->nextInvalidation();
                 if ($next === null) {
                     return;
@@ -2704,7 +2826,7 @@ final class Broker
             if ($this->workerCommand === []) {
                 $this->invalidations->invalidationCompleted($this->invalidation['id']);
                 $this->invalidation = null;
-                $this->invalidated++;
+                ++$this->invalidated;
             } elseif (count($this->commits) + $this->quarantinedCommits < 32) {
                 $operationId = bin2hex(random_bytes(16));
                 $this->commits[$operationId] = ['kind' => 'invalidation', 'pending' => new PendingCommit(
@@ -2723,7 +2845,7 @@ final class Broker
     /** 隔离失败后先丢弃所有未输出数据，再停止；finally的普通关闭不能冲刷旧控制消息。 */
     private function failInvalidation(): void
     {
-        $this->invalidationFailures++;
+        ++$this->invalidationFailures;
         foreach ($this->connections as $connection) {
             $connection->close();
         }
@@ -2736,12 +2858,12 @@ final class Broker
      */
     private function applyDisconnect(): void
     {
-        if ($this->disconnects === null || $this->stopping || (float) hrtime(true) / 1000000000.0 < $this->disconnectAt) {
+        if ($this->disconnects === null || $this->stopping || (float)hrtime(true) / 1000000000.0 < $this->disconnectAt) {
             return;
         }
         try {
             if ($this->disconnectOp === null) {
-                $this->disconnectAt = (float) hrtime(true) / 1000000000.0 + 0.5;
+                $this->disconnectAt = (float)hrtime(true) / 1000000000.0 + 0.5;
                 $next = $this->disconnects->nextDisconnect();
                 if ($next === null) {
                     return;
@@ -2799,7 +2921,7 @@ final class Broker
             }
             $this->disconnectOp = null;
             $this->disconnectMatched = false;
-            $this->disconnected++;
+            ++$this->disconnected;
         } catch (\Throwable) {
             $this->failDisconnect();
         }
@@ -2808,7 +2930,7 @@ final class Broker
     /** 来源失败后丢弃未输出数据并停止；不能把未完成断开标成成功。 */
     private function failDisconnect(): void
     {
-        $this->disconnectFailures++;
+        ++$this->disconnectFailures;
         foreach ($this->connections as $connection) {
             $connection->close();
         }
@@ -2830,12 +2952,12 @@ final class Broker
      */
     private function applyTermination(): void
     {
-        if ($this->disconnects === null || $this->stopping || (float) hrtime(true) / 1000000000.0 < $this->terminateAt) {
+        if ($this->disconnects === null || $this->stopping || (float)hrtime(true) / 1000000000.0 < $this->terminateAt) {
             return;
         }
         try {
             if ($this->terminateOp === null) {
-                $this->terminateAt = (float) hrtime(true) / 1000000000.0 + 0.5;
+                $this->terminateAt = (float)hrtime(true) / 1000000000.0 + 0.5;
                 $next = $this->disconnects->nextTermination();
                 if ($next === null) {
                     return;
@@ -2895,14 +3017,14 @@ final class Broker
             }
             if ($this->terminateOutcome !== '' && $this->terminateOp !== null) {
                 if (!$this->disconnects->terminationCompleted($this->terminateOp['id'], $this->terminateOutcome)) {
-                    $this->terminateAt = (float) hrtime(true) / 1000000000.0 + 0.25;
+                    $this->terminateAt = (float)hrtime(true) / 1000000000.0 + 0.25;
                     return;
                 }
                 $this->terminateOp = null;
                 $this->terminateMatched = false;
                 $this->terminateErased = false;
                 $this->terminateOutcome = '';
-                $this->terminated++;
+                ++$this->terminated;
                 return;
             }
             if ($this->workerCommand === []) {
@@ -2929,7 +3051,7 @@ final class Broker
     /** 来源或存储失败后丢弃未输出数据并停止；不能把未完成终止标成成功。 */
     private function failTermination(): void
     {
-        $this->terminationFailures++;
+        ++$this->terminationFailures;
         foreach ($this->connections as $connection) {
             $connection->close();
         }
@@ -2948,12 +3070,12 @@ final class Broker
      */
     private function applyClearance(): void
     {
-        if ($this->disconnects === null || $this->stopping || (float) hrtime(true) / 1000000000.0 < $this->clearAt) {
+        if ($this->disconnects === null || $this->stopping || (float)hrtime(true) / 1000000000.0 < $this->clearAt) {
             return;
         }
         try {
             if ($this->clearOp === null) {
-                $this->clearAt = (float) hrtime(true) / 1000000000.0 + 0.5;
+                $this->clearAt = (float)hrtime(true) / 1000000000.0 + 0.5;
                 $next = $this->disconnects->nextClearance();
                 if ($next === null) {
                     return;
@@ -2975,13 +3097,13 @@ final class Broker
             }
             if ($this->clearOutcome !== '' && $this->clearOp !== null) {
                 if (!$this->disconnects->clearanceCompleted($this->clearOp['id'], $this->clearOutcome)) {
-                    $this->clearAt = (float) hrtime(true) / 1000000000.0 + 0.25;
+                    $this->clearAt = (float)hrtime(true) / 1000000000.0 + 0.25;
                     return;
                 }
                 $this->clearOp = null;
                 $this->clearErased = false;
                 $this->clearOutcome = '';
-                $this->retainedCleared++;
+                ++$this->retainedCleared;
                 return;
             }
             if ($this->workerCommand === []) {
@@ -3009,7 +3131,7 @@ final class Broker
     /** 来源或存储失败后丢弃未输出数据并停止；不能把未完成清保留标成成功。 */
     private function failClearance(): void
     {
-        $this->retainClearFailures++;
+        ++$this->retainClearFailures;
         foreach ($this->connections as $connection) {
             $connection->close();
         }
@@ -3021,12 +3143,12 @@ final class Broker
      */
     private function applyQuota(): void
     {
-        if ($this->quotas === null || $this->stopping || (float) hrtime(true) / 1000000000.0 < $this->quotaAt) {
+        if ($this->quotas === null || $this->stopping || (float)hrtime(true) / 1000000000.0 < $this->quotaAt) {
             return;
         }
         try {
             if ($this->quotaOp === null) {
-                $this->quotaAt = (float) hrtime(true) / 1000000000.0 + 0.5;
+                $this->quotaAt = (float)hrtime(true) / 1000000000.0 + 0.5;
                 $next = $this->quotas->nextQuota();
                 if ($next === null || $next['version'] <= $this->appliedQuotaVersion) {
                     return;
@@ -3057,10 +3179,10 @@ final class Broker
             )];
             $this->quotaStorePending = true;
         } catch (\Throwable) {
-            $this->quotaFailures++;
+            ++$this->quotaFailures;
             $this->quotaOp = null;
             $this->quotaStorePending = false;
-            $this->quotaAt = (float) hrtime(true) / 1000000000.0 + 1.0;
+            $this->quotaAt = (float)hrtime(true) / 1000000000.0 + 1.0;
         }
     }
 
@@ -3103,7 +3225,7 @@ final class Broker
         try {
             $this->observer?->disconnected($connection->connect->clientId, $connection->connect->username ?? '', $connection->ownerId, time(), $connection->closeReason);
         } catch (\Throwable) {
-            $this->observationFailures++;
+            ++$this->observationFailures;
             $this->stop();
         }
     }
@@ -3131,7 +3253,7 @@ final class Broker
                     $this->observer->connected($connection->connect->clientId, $connection->connect->username ?? '', $connection->ownerId, time());
                 }
             } catch (\Throwable) {
-                $this->observationFailures++;
+                ++$this->observationFailures;
                 $this->stop();
             }
         }
@@ -3155,7 +3277,7 @@ final class Broker
                 }
             }
         } catch (\Throwable) {
-            $this->observationFailures++;
+            ++$this->observationFailures;
             $this->stop();
         }
     }
@@ -3167,7 +3289,7 @@ final class Broker
             return;
         }
         try {
-            for ($iteration = 0; $iteration < 32 && $connection->input !== '' && !$connection->closing; $iteration++) {
+            for ($iteration = 0; $iteration < 32 && $connection->input !== '' && !$connection->closing; ++$iteration) {
                 $head = ord($connection->input[0]);
                 $type = $head >> 4;
                 $flags = $head & 15;
@@ -3220,7 +3342,7 @@ final class Broker
                 }
             }
         } catch (ProtocolError $error) {
-            $this->rejected++;
+            ++$this->rejected;
             $this->packetQuotaRefusals += $error->reason === 0x97 ? 1 : 0;
             if (!$connection->connected && in_array($connection->connect->version, [4, 5], true)) {
                 $this->connack($connection, $error->reason);
@@ -3246,7 +3368,7 @@ final class Broker
                 );
                 $hasCredentials = $connection->connect->username !== null || $connection->connect->password !== null;
                 if ($hasCredentials) {
-                    if (!($this->access instanceof IdentityAccessPolicy)) {
+                    if (!$this->access instanceof IdentityAccessPolicy) {
                         throw new ProtocolError(0x87);
                     }
                     $credentialIdentity = $this->access->authenticateIdentity($connection->connect, $connection->peer, $connection->secure);
@@ -3324,7 +3446,7 @@ final class Broker
     }
 
     /**
-     * @return list<string>|null 无效正文返回 null，不更新 mtime。
+     * @return null|list<string> 无效正文返回 null，不更新 mtime
      */
     private static function readPlatformRevokeFile(string $path): ?array
     {
@@ -3434,7 +3556,7 @@ final class Broker
         if ($this->options->clientCrlUrl === '' || $this->stopping || $this->crlFetching || time() < $this->crlFetchAt) {
             return;
         }
-        $this->crlFetchAt = time() + (int) $this->options->clientCrlInterval;
+        $this->crlFetchAt = time() + (int)$this->options->clientCrlInterval;
         $this->crlFetching = true;
         $this->crlCancellation = new Cancellation();
         $created = Coroutine::create(function (): void {
@@ -3507,7 +3629,7 @@ final class Broker
     }
 
     /** 主监听对应的 Swoole Port；启动后 Server::set 会拒绝，握手 CA 必须走 Port::set。 */
-    private function primaryPort(\Swoole\Server $server): mixed
+    private function primaryPort(Server $server): mixed
     {
         $ports = $server->ports;
         if (!is_array($ports) || !isset($ports[0])) {
@@ -3532,7 +3654,7 @@ final class Broker
             return;
         }
         if ($this->handshakeCaPorts === []) {
-            $this->handshakeCaFailures++;
+            ++$this->handshakeCaFailures;
             return;
         }
         $settings = [
@@ -3543,13 +3665,13 @@ final class Broker
         ];
         foreach ($this->handshakeCaPorts as $port) {
             if (!is_object($port) || !method_exists($port, 'set') || $port->set($settings) === false) {
-                $this->handshakeCaFailures++;
+                ++$this->handshakeCaFailures;
                 return;
             }
         }
         $this->handshakeCaMtime = $mtime;
         $this->handshakeCaSize = $size;
-        $this->handshakeCaReloads++;
+        ++$this->handshakeCaReloads;
     }
 
     /** 文件更新后接纳较新 CRL；缺失、过期或已列入序列号在 Swoole tick 内断开。 */
@@ -3635,7 +3757,7 @@ final class Broker
             if ($connection->closing || !$connection->secure || !$connection->alive()) {
                 continue;
             }
-            $this->disconnect($connection, 0x8b);
+            $this->disconnect($connection, 0x8B);
         }
     }
 
@@ -3708,7 +3830,7 @@ final class Broker
                 $occupied = $counted[1];
             }
             if ($live >= $this->maximumConnections || $occupied >= $capacityLimit) {
-                $this->connectionQuotaRefusals++;
+                ++$this->connectionQuotaRefusals;
                 throw new ProtocolError(0x97);
             }
             $connection->capacityClass = $capacityClass;
@@ -3722,11 +3844,11 @@ final class Broker
             }
             foreach ($this->connections as $existing) {
                 if ($existing !== $connection && !$existing->closing && $existing->connect->clientId === $connection->connect->clientId) {
-                    $this->disconnect($existing, 0x8e);
+                    $this->disconnect($existing, 0x8E);
                 }
             }
             $connection->sessionExpiry = $connection->connect->version === 4
-                ? ($connection->connect->cleanStart ? 0 : -1) : (int) ($connection->connect->properties[0x11] ?? 0);
+                ? ($connection->connect->cleanStart ? 0 : -1) : (int)($connection->connect->properties[0x11] ?? 0);
             if ($this->workerCommand !== []) {
                 $connection->sessionPending = true;
                 $this->openSession($connection);
@@ -3739,7 +3861,7 @@ final class Broker
                 $connection->activity();
             }
         } catch (ProtocolError $error) {
-            $this->rejected++;
+            ++$this->rejected;
             $this->packetQuotaRefusals += $error->reason === 0x97 ? 1 : 0;
             if (!$connection->connected && in_array($connection->connect->version, [4, 5], true)) {
                 $this->connack($connection, $error->reason);
@@ -3765,10 +3887,10 @@ final class Broker
         } elseif (($head >> 4) === 3) {
             $qos = ($head >> 1) & 3;
             if ($qos > 0 && $this->workerCommand === []) {
-                throw new ProtocolError(0x9b);
+                throw new ProtocolError(0x9B);
             }
             if (($head & 1) !== 0 && $this->workerCommand === []) {
-                throw new ProtocolError(0x9a);
+                throw new ProtocolError(0x9A);
             }
             $reader = new PacketReader($payload);
             $topic = $reader->text();
@@ -3799,11 +3921,11 @@ final class Broker
             $this->acknowledged($connection, $payload);
         } elseif (in_array($head, [0x50, 0x62, 0x70], true)) {
             $this->qos2Acknowledgement($connection, $head, $payload);
-        } elseif ($head === 0x82 || $head === 0xa2) {
+        } elseif ($head === 0x82 || $head === 0xA2) {
             $this->subscriptions($connection, $payload, $head === 0x82);
-        } elseif ($head === 0xc0 && $payload === '') {
+        } elseif ($head === 0xC0 && $payload === '') {
             $connection->send("\xd0\x00");
-        } elseif ($head === 0xe0) {
+        } elseif ($head === 0xE0) {
             $connection->closeReason = 0;
             $reason = 0;
             if ($connection->connect->version === 4) {
@@ -3814,15 +3936,15 @@ final class Broker
                 $reader = new PacketReader($payload);
                 $reason = $reader->integer(1);
                 $connection->closeReason = $reason;
-                if (!in_array($reason, [0, 4, 0x80, 0x81, 0x82, 0x83, 0x87, 0x8f, 0x90, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99], true)) {
+                if (!in_array($reason, [0, 4, 0x80, 0x81, 0x82, 0x83, 0x87, 0x8F, 0x90, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99], true)) {
                     throw new ProtocolError(0x82);
                 }
                 $properties = $reader->remaining() > 0 ? $reader->properties('disconnect') : [];
-                if ($reader->remaining() !== 0 || (isset($properties[0x11]) && $connection->sessionExpiry === 0 && (int) $properties[0x11] !== 0)) {
+                if ($reader->remaining() !== 0 || (isset($properties[0x11]) && $connection->sessionExpiry === 0 && (int)$properties[0x11] !== 0)) {
                     throw new ProtocolError(0x82);
                 }
                 if (isset($properties[0x11])) {
-                    $connection->sessionExpiry = (int) $properties[0x11];
+                    $connection->sessionExpiry = (int)$properties[0x11];
                 }
             }
             $connection->endReason = $reason === 4 ? 'will_requested' : 'normal';
@@ -3845,7 +3967,7 @@ final class Broker
         if ($connection->connect->version === 5) {
             $properties = $reader->properties($subscribe ? 'subscribe' : 'unsubscribe');
         }
-        $subscriptionIdentifier = $connection->connect->version === 5 ? (int) ($properties[0x0b] ?? 0) : 0;
+        $subscriptionIdentifier = $connection->connect->version === 5 ? (int)($properties[0x0B] ?? 0) : 0;
         $topics = [];
         while ($reader->remaining() > 0) {
             $topic = $reader->text();
@@ -3854,7 +3976,7 @@ final class Broker
                 throw new ProtocolError(0x81);
             }
             if ($topic === '' || ($options & 3) === 3 || (($options >> 4) & 3) === 3
-                || ($connection->connect->version === 4 && ($options & 0xfc) !== 0)) {
+                || ($connection->connect->version === 4 && ($options & 0xFC) !== 0)) {
                 throw new ProtocolError(0x82);
             }
             $filter = TopicFilter::actual($topic);
@@ -3866,7 +3988,7 @@ final class Broker
             TopicFilter::validate($filter);
             if ($subscribe && $connection->connect->version === 5) {
                 if (str_starts_with($topic, '$share/') && $this->workerCommand === []) {
-                    throw new ProtocolError(0x9e);
+                    throw new ProtocolError(0x9E);
                 }
             }
             $topics[] = [$topic, $options];
@@ -3892,7 +4014,7 @@ final class Broker
                 $reason = isset($connection->subscriptions[$key]) ? 0 : 0x11;
                 unset($connection->subscriptions[$key]);
             } elseif (str_starts_with($topic, '$share/') && $connection->connect->version === 4) {
-                $reason = 0x9e;
+                $reason = 0x9E;
             } else {
                 try {
                     if (!$this->subscriptionAuthorized($connection, $topic, $options & 3)) {
@@ -3981,7 +4103,7 @@ final class Broker
                 'access_identity' => $connection->identity?->data(),
                 'will' => $connection->connect->will ? ['topic' => $connection->connect->willTopic, 'payload' => base64_encode($connection->connect->willPayload),
                     'properties' => base64_encode($connection->connect->willPublicationProperties), 'qos' => $connection->connect->willQos,
-                    'retain' => $connection->connect->willRetain, 'delay' => (int) ($connection->connect->willProperties[0x18] ?? 0),
+                    'retain' => $connection->connect->willRetain, 'delay' => (int)($connection->connect->willProperties[0x18] ?? 0),
                     'username' => $connection->connect->username] : null]);
             $connection->sessionOpening = true;
         } catch (ProtocolError $error) {
@@ -4018,9 +4140,9 @@ final class Broker
     private function pollShared(Connection $connection): void
     {
         if (!$connection->connected || $connection->closing || !$connection->sessionManaged || $connection->connect->version !== 5
-            || $connection->sessionPending || $this->sessionBusy($connection) || (float) hrtime(true) / 1000000000.0 < $connection->sharedAt
+            || $connection->sessionPending || $this->sessionBusy($connection) || (float)hrtime(true) / 1000000000.0 < $connection->sharedAt
             || count($this->commits) + $this->quarantinedCommits >= 32
-            || count($connection->outgoing) >= min(32, (int) ($connection->connect->properties[0x21] ?? 65535))) {
+            || count($connection->outgoing) >= min(32, (int)($connection->connect->properties[0x21] ?? 65535))) {
             return;
         }
         foreach ($connection->subscriptions as $key => $subscription) {
@@ -4039,9 +4161,9 @@ final class Broker
     private function sharedResult(array $commit, CommitResult $result): void
     {
         $connection = $commit['connection'];
-        $connection->sharedAt = (float) hrtime(true) / 1000000000.0 + 0.25;
+        $connection->sharedAt = (float)hrtime(true) / 1000000000.0 + 0.25;
         if ($commit['kind'] === 'shared_claim') {
-            $identifier = (int) $commit['response'];
+            $identifier = (int)$commit['response'];
             if ($result->state !== 'committed' || !isset($result->value['delivery'])) {
                 unset($connection->outgoing[$identifier]);
             }
@@ -4074,8 +4196,8 @@ final class Broker
                 return;
             }
             $elapsed = $delivery['expires_at'] === null ? $delivery['age']
-                : max(0, (int) $delivery['expiry_interval'] - max(0, $delivery['expires_at'] - time()));
-            $message = new Message($delivery['topic'], (string) base64_decode($delivery['payload'], true), (string) base64_decode($delivery['properties'], true), $delivery['qos'], $elapsed);
+                : max(0, (int)$delivery['expiry_interval'] - max(0, $delivery['expires_at'] - time()));
+            $message = new Message($delivery['topic'], (string)base64_decode($delivery['payload'], true), (string)base64_decode($delivery['properties'], true), $delivery['qos'], $elapsed);
             if ($connection->publication(
                 $message,
                 $delivery['qos'] > 0 ? 1 : 0,
@@ -4089,15 +4211,15 @@ final class Broker
             ) === '') {
                 // MQTT 5 允许超出所选成员包上限时终结该组副本，不能截断或无限占用。
                 $this->sessionCommit($connection, 'shared_drop', ['delivery_id' => $delivery['id']]);
-                $this->dropped++;
+                ++$this->dropped;
                 return;
             }
-            if ($delivery['qos'] > 0 && count($connection->outgoing) >= min(32, (int) ($connection->connect->properties[0x21] ?? 65535))) {
+            if ($delivery['qos'] > 0 && count($connection->outgoing) >= min(32, (int)($connection->connect->properties[0x21] ?? 65535))) {
                 return;
             }
             $identifier = $delivery['qos'] > 0 ? $connection->reserve($delivery['id'], $delivery['qos']) : 0;
             try {
-                $this->sessionCommit($connection, 'shared_claim', ['delivery_id' => $delivery['id'], 'packet_id' => $identifier, 'subscription' => $subscription], (string) $identifier);
+                $this->sessionCommit($connection, 'shared_claim', ['delivery_id' => $delivery['id'], 'packet_id' => $identifier, 'subscription' => $subscription], (string)$identifier);
             } catch (ProtocolError $error) {
                 unset($connection->outgoing[$identifier]);
                 throw $error;
@@ -4112,7 +4234,7 @@ final class Broker
         $connection = $commit['connection'];
         if ($commit['kind'] === 'session_next') {
             $connection->replaying = false;
-            $connection->replayAt = (float) hrtime(true) / 1000000000.0 + ($result->value === [] || isset($result->value['checked']) ? 0.25 : 0.0);
+            $connection->replayAt = (float)hrtime(true) / 1000000000.0 + ($result->value === [] || isset($result->value['checked']) ? 0.25 : 0.0);
             if ($result->value === [] && $result->state === 'committed') {
                 $connection->draining = false;
             }
@@ -4145,10 +4267,10 @@ final class Broker
                 return;
             }
             foreach ($result->value['incoming'] as $exchange) {
-                $connection->incomingQos2[(int) $exchange['packet_id']] = ['id' => $exchange['id'], 'state' => 'received', 'responses' => 1];
+                $connection->incomingQos2[(int)$exchange['packet_id']] = ['id' => $exchange['id'], 'state' => 'received', 'responses' => 1];
             }
             foreach ($result->value['identifiers'] as $reserved) {
-                $connection->durableIdentifiers[(int) $reserved['packet_id']] = true;
+                $connection->durableIdentifiers[(int)$reserved['packet_id']] = true;
             }
             try {
                 foreach ($result->value['subscriptions'] as $key => $options) {
@@ -4169,7 +4291,7 @@ final class Broker
         }
         if ($commit['kind'] === 'session_save') {
             if ($result->value['waiting'] ?? false) {
-                $connection->sessionRetryAt = (float) hrtime(true) / 1000000000.0 + 0.25;
+                $connection->sessionRetryAt = (float)hrtime(true) / 1000000000.0 + 0.25;
                 return;
             }
             $connection->sessionPending = false;
@@ -4227,11 +4349,11 @@ final class Broker
             } else {
                 // 同步读取本身也会等待；按绝对截止扣除该等待，不能从数据库读取时重新计时。
                 $elapsed = $delivery['expires_at'] === null ? $delivery['age']
-                    : max(0, (int) $delivery['expiry_interval'] - max(0, $delivery['expires_at'] - time()));
+                    : max(0, (int)$delivery['expiry_interval'] - max(0, $delivery['expires_at'] - time()));
                 $message = new Message(
                     $delivery['topic'],
-                    (string) base64_decode($delivery['payload'], true),
-                    (string) base64_decode($delivery['properties'], true),
+                    (string)base64_decode($delivery['payload'], true),
+                    (string)base64_decode($delivery['properties'], true),
                     $qos,
                     $elapsed
                 );
@@ -4253,7 +4375,7 @@ final class Broker
                         $connection->outgoing[$identifier]['state'] = 'completing';
                     }
                 } else {
-                    $this->delivered++;
+                    ++$this->delivered;
                     if ($qos === 0 && !$this->completeDelivery($connection, $delivery['id'], 0, 0, 'queued')) {
                         $this->disconnect($connection, 0x97);
                     }
@@ -4267,7 +4389,7 @@ final class Broker
     private function connack(Connection $connection, int $reason): void
     {
         // Session taken over属于DISCONNECT；尚未接纳的CONNECT使用Implementation specific error。
-        $reason = $reason === 0x8e ? 0x83 : $reason;
+        $reason = $reason === 0x8E ? 0x83 : $reason;
         if ($reason !== 0 && !$connection->connected) {
             // 已保存但尚未接纳的 CONNECT 在后续授权/同步失败时取消遗嘱。
             $connection->endReason = 'normal';
@@ -4307,7 +4429,7 @@ final class Broker
         $connection->closeReason = $reason;
         if (!$connection->closing) {
             $connection->endReason = match ($reason) {
-                0x8e => 'taken_over', 0x8b => 'server_shutdown', 0x98 => 'administrative', default => 'network_lost'
+                0x8E => 'taken_over', 0x8B => 'server_shutdown', 0x98 => 'administrative', default => 'network_lost'
             };
         }
         if ($connection->connected && $connection->connect->version === 5 && $connection->alive()) {
@@ -4323,7 +4445,7 @@ final class Broker
     }
 
     /**
-     * @return array{0:int,1:int} 当前活连接数与同类占用（不含本连接及同 Client ID 接管）。
+     * @return array{0:int,1:int} 当前活连接数与同类占用（不含本连接及同 Client ID 接管）
      */
     private function capacityCounts(Connection $connection, string $capacityClass): array
     {
@@ -4333,10 +4455,10 @@ final class Broker
             if ($otherConnection === $connection || $otherConnection->closing) {
                 continue;
             }
-            $live++;
+            ++$live;
             if ($otherConnection->capacityClass === $capacityClass
                 && $otherConnection->connect->clientId !== $connection->connect->clientId) {
-                $occupied++;
+                ++$occupied;
             }
         }
         return [$live, $occupied];

@@ -19,16 +19,16 @@ function tlsPort(int $default): int
     if ($value === false || $value === '') {
         return $default;
     }
-    if (!ctype_digit($value) || (int) $value < 1 || (int) $value > 65535) {
+    if (!ctype_digit($value) || (int)$value < 1 || (int)$value > 65535) {
         throw new InvalidArgumentException('TYPE_TLS_PORT必须是有效端口');
     }
-    return (int) $value;
+    return (int)$value;
 }
 
 /** 为受控 TLS 数据库创建带显式 CA 的驱动，凭据仅从运行环境读取。 */
 function tlsDriver(string $kind, string $host, string $ca): Driver
 {
-    $password = (string) getenv('TYPE_TLS_PASSWORD');
+    $password = (string)getenv('TYPE_TLS_PASSWORD');
     if ($kind === 'mysql') {
         return new MysqlDriver($host, tlsPort(3306), 'type_app_test', 'root', $password, caFile: $ca);
     }
@@ -56,7 +56,7 @@ function tlsDatabase(Driver $driver): void
             }
         } else {
             $row = $connection->query('SELECT CASE WHEN ssl THEN 1 ELSE 0 END AS secured FROM pg_stat_ssl WHERE pid = pg_backend_pid()')[0];
-            if ((int) $row['secured'] !== 1) {
+            if ((int)$row['secured'] !== 1) {
                 throw new RuntimeException('PostgreSQL 实际连接未启用 TLS');
             }
         }
@@ -87,7 +87,7 @@ function tlsRedis(string $host, string $ca): void
 /**
  * 执行负向 TLS 探针，只识别数据库或 Redis 的连接失败。
  *
- * @param Closure(): void $operation 连接或查询的负向演练。
+ * @param Closure(): void $operation 连接或查询的负向演练
  */
 function tlsRejected(Closure $operation): bool
 {
@@ -102,15 +102,15 @@ function tlsRejected(Closure $operation): bool
 /**
  * 连接受控数据库或 Redis，分别验证正确信任链、错误 CA 和主机名拒绝。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
     $kind = $argv[1] ?? '';
-    $host = (string) getenv('TYPE_TLS_HOST');
-    $wrongHost = (string) getenv('TYPE_TLS_WRONG_HOST');
-    $ca = (string) getenv('TYPE_TLS_CA');
-    $wrongCa = (string) getenv('TYPE_TLS_WRONG_CA');
+    $host = (string)getenv('TYPE_TLS_HOST');
+    $wrongHost = (string)getenv('TYPE_TLS_WRONG_HOST');
+    $ca = (string)getenv('TYPE_TLS_CA');
+    $wrongCa = (string)getenv('TYPE_TLS_WRONG_CA');
     if ($kind === 'redis') {
         tlsRedis($host, $ca);
         if (!tlsRejected(static function () use ($wrongHost, $ca): void {

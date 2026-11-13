@@ -7,6 +7,10 @@ return [
     'name' => env('APP_NAME', 'typeapp'),
     'environment' => env('APP_ENV', 'prod'),
     'debug' => env('APP_DEBUG', false),
+    'tenant' => [
+        'base_domain' => env('TENANT_BASE_DOMAIN', ''),
+        'public_origin' => env('APP_PUBLIC_ORIGIN', ''),
+    ],
     'broker' => [
         'listen' => env('BROKER_LISTEN', '127.0.0.1'),
         'port' => env('BROKER_PORT', 8883),

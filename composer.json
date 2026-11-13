@@ -22,9 +22,9 @@
   },
   "require-dev": {
     "composer/metadata-minifier": "^1.0",
-    "friendsofphp/php-cs-fixer": "3.95.25",
-    "phpunit/phpunit": "13.3.3",
-    "swoole/ide-helper": ">=6.2.2",
+    "friendsofphp/php-cs-fixer": "3.95.30",
+    "phpunit/phpunit": "13.4.6",
+    "swoole/ide-helper": "6.2.5",
     "swoole/typephp": "dev-master",
     "zoujingli/type-build": "~1.0.0@dev",
     "zoujingli/type-testing": "~1.0.0@dev"
@@ -515,6 +515,7 @@
     "build:validate": "@php tests/build-scenario.php docs/build-config/type-validation.json",
     "test:validate-native": "@php tests/validation.php build/validation/type-app",
     "test:models": "@php tests/models.php",
+    "test:model-sync": "@php tests/model-sync.php",
     "test:app-models": "@php tests/app-models.php",
     "test:relations": "@php tests/relations.php",
     "test:pivots": "@php tests/pivots.php",

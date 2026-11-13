@@ -5,25 +5,33 @@ declare(strict_types=1);
 namespace Type\Orm;
 
 use PDO;
-use PDOException;
-use PDOStatement;
-use Throwable;
 use Type\Runtime\ReusableResource;
 
 /** @internal 原生 PDO 句柄封装，不经 Connection 公共接口向外泄露。 */
 final class PdoSession implements ReusableResource
 {
-    private ?PDO $pdo;
+    private ?\PDO $pdo;
+
     private Driver $driver;
+
     private bool $reusable = true;
-    private ?PDOStatement $streamStatement = null;
+
+    private ?\PDOStatement $streamStatement = null;
+
     private int $streamId = 0;
+
     private int $streamSequence = 0;
+
     private int $streamBatchSize = 250;
+
     private array $streamBuffer = [];
+
     private int $streamOffset = 0;
+
     private string $streamName = '';
+
     private bool $streamTransaction = false;
+
     private ?bool $mysqlBuffered = null;
 
     /** 建立并拥有物理 PDO；构造失败不向资源池交付可借用会话。 */
@@ -31,13 +39,13 @@ final class PdoSession implements ReusableResource
     {
         $this->driver = $driver;
         $this->pdo = $driver->connect();
-        $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
     }
 
     /**
      * 准备并执行已校验 SQL，一次性取完关联数组，finally 关闭语句游标。
      *
-     * @param array<int|string, scalar|null> $parameters
+     * @param array<int|string, null|scalar> $parameters
      * @return list<array<string, mixed>>
      */
     public function query(string $sql, array $parameters): array
@@ -52,13 +60,13 @@ final class PdoSession implements ReusableResource
                 $this->bind($statement, $parameters);
                 $statement->execute();
 
-                return $statement->fetchAll(PDO::FETCH_ASSOC);
+                return $statement->fetchAll(\PDO::FETCH_ASSOC);
             } finally {
                 $statement->closeCursor();
             }
-        } catch (PDOException $error) {
+        } catch (\PDOException $error) {
             $this->reusable = false;
-            if (str_starts_with((string) $error->getCode(), '23')) {
+            if (str_starts_with((string)$error->getCode(), '23')) {
                 throw new ConstraintException($this->driverName(), $error);
             }
             throw new DatabaseException('数据库查询失败，SQLSTATE：' . $error->getCode(), 0, $error);
@@ -75,13 +83,13 @@ final class PdoSession implements ReusableResource
     public function serverVersion(): string
     {
         $this->assertIdle();
-        return (string) $this->connection()->getAttribute(PDO::ATTR_SERVER_VERSION);
+        return (string)$this->connection()->getAttribute(\PDO::ATTR_SERVER_VERSION);
     }
 
     /**
      * 准备、绑定并执行语句，返回驱动原始影响行数；SQL 错误使会话退役。
      *
-     * @param array<int|string, scalar|null> $parameters
+     * @param array<int|string, null|scalar> $parameters
      */
     public function execute(string $sql, array $parameters): int
     {
@@ -99,9 +107,9 @@ final class PdoSession implements ReusableResource
             } finally {
                 $statement->closeCursor();
             }
-        } catch (PDOException $error) {
+        } catch (\PDOException $error) {
             $this->reusable = false;
-            if (str_starts_with((string) $error->getCode(), '23')) {
+            if (str_starts_with((string)$error->getCode(), '23')) {
                 throw new ConstraintException($this->driverName(), $error);
             }
             throw new DatabaseException('数据库执行失败，SQLSTATE：' . $error->getCode(), 0, $error);
@@ -112,7 +120,7 @@ final class PdoSession implements ReusableResource
     public function lastInsertId(): string
     {
         $this->assertIdle();
-        return (string) $this->connection()->lastInsertId();
+        return (string)$this->connection()->lastInsertId();
     }
 
     /** 拒绝在未关闭结果流时插入其他数据库操作。 */
@@ -126,9 +134,9 @@ final class PdoSession implements ReusableResource
     /**
      * 在事务外建立专用流：MySQL 非缓冲、PostgreSQL 游标、SQLite 逐行读取。
      *
-     * @param array<int|string, scalar|null> $parameters
-     * @param int $batchSize PostgreSQL 游标每批获取行数，范围 1 至 1000。
-     * @return int 本会话生成的游标身份。
+     * @param array<int|string, null|scalar> $parameters
+     * @param int $batchSize postgreSQL 游标每批获取行数，范围 1 至 1000
+     * @return int 本会话生成的游标身份
      */
     public function openStream(string $sql, array $parameters, int $batchSize): int
     {
@@ -144,8 +152,8 @@ final class PdoSession implements ReusableResource
         $this->streamBatchSize = $batchSize;
         try {
             if ($this->driverName() === 'mysql') {
-                $attribute = constant('Pdo\\Mysql::ATTR_USE_BUFFERED_QUERY');
-                $this->mysqlBuffered = (bool) $pdo->getAttribute($attribute);
+                $attribute = constant('Pdo\Mysql::ATTR_USE_BUFFERED_QUERY');
+                $this->mysqlBuffered = (bool)$pdo->getAttribute($attribute);
                 $pdo->setAttribute($attribute, false);
             }
             if ($this->driverName() === 'pgsql') {
@@ -163,7 +171,7 @@ final class PdoSession implements ReusableResource
                 $this->streamStatement->execute();
             }
             return $this->streamId;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->reusable = false;
             $this->closeStream($this->streamId);
             throw new DatabaseException('数据库结果流未能启动', 0, $error);
@@ -173,7 +181,7 @@ final class PdoSession implements ReusableResource
     /**
      * 读取指定活动流的一行，结果耗尽返回 null，失败禁止会话复用。
      *
-     * @return array<string, mixed>|null
+     * @return null|array<string, mixed>
      */
     public function fetchStream(int $id): ?array
     {
@@ -187,16 +195,16 @@ final class PdoSession implements ReusableResource
                     $this->streamOffset = 0;
                     $statement = $this->pdo->query('FETCH FORWARD ' . $this->streamBatchSize . ' FROM ' . $this->streamName);
                     try {
-                        $this->streamBuffer = $statement->fetchAll(PDO::FETCH_ASSOC);
+                        $this->streamBuffer = $statement->fetchAll(\PDO::FETCH_ASSOC);
                     } finally {
                         $statement->closeCursor();
                     }
                 }
                 return $this->streamBuffer[$this->streamOffset++] ?? null;
             }
-            $row = $this->streamStatement->fetch(PDO::FETCH_ASSOC);
+            $row = $this->streamStatement->fetch(\PDO::FETCH_ASSOC);
             return $row === false ? null : $row;
-        } catch (PDOException $error) {
+        } catch (\PDOException $error) {
             $this->reusable = false;
             throw new DatabaseException('数据库结果流读取失败，SQLSTATE：' . $error->getCode(), 0, $error);
         }
@@ -225,9 +233,9 @@ final class PdoSession implements ReusableResource
                 $this->pdo->rollBack();
             }
             if ($this->mysqlBuffered !== null && $this->pdo !== null) {
-                $this->pdo->setAttribute(constant('Pdo\\Mysql::ATTR_USE_BUFFERED_QUERY'), $this->mysqlBuffered);
+                $this->pdo->setAttribute(constant('Pdo\Mysql::ATTR_USE_BUFFERED_QUERY'), $this->mysqlBuffered);
             }
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->reusable = false;
             $this->streamStatement = null;
             $this->pdo = null;
@@ -239,25 +247,6 @@ final class PdoSession implements ReusableResource
             $this->streamOffset = 0;
             $this->streamTransaction = false;
             $this->mysqlBuffered = null;
-        }
-    }
-
-    private function bind(PDOStatement $statement, array $parameters): void
-    {
-        foreach ($parameters as $key => $value) {
-            if ($value !== null && !is_scalar($value)) {
-                throw new DatabaseException('数据库参数只接受标量或 NULL');
-            }
-            $type = PDO::PARAM_STR;
-            if ($value === null) {
-                $type = PDO::PARAM_NULL;
-            } elseif (is_bool($value)) {
-                $type = PDO::PARAM_BOOL;
-            } elseif (is_int($value)) {
-                $type = PDO::PARAM_INT;
-            }
-            $parameter = is_int($key) ? $key + 1 : $key;
-            $statement->bindValue($parameter, $value, $type);
         }
     }
 
@@ -282,7 +271,7 @@ final class PdoSession implements ReusableResource
                 $this->reusable = false;
                 throw new DatabaseException('数据库事务未能开始');
             }
-        } catch (PDOException $error) {
+        } catch (\PDOException $error) {
             $this->reusable = false;
             throw new DatabaseException('数据库事务未能开始', 0, $error);
         }
@@ -316,7 +305,7 @@ final class PdoSession implements ReusableResource
                 $this->reusable = false;
                 throw new DatabaseException('数据库提交未确认，不允许自动重试');
             }
-        } catch (PDOException $error) {
+        } catch (\PDOException $error) {
             $this->reusable = false;
             throw new DatabaseException('数据库提交结果未知，不允许自动重试', 0, $error);
         }
@@ -372,7 +361,26 @@ final class PdoSession implements ReusableResource
         $this->connection();
     }
 
-    private function connection(): PDO
+    private function bind(\PDOStatement $statement, array $parameters): void
+    {
+        foreach ($parameters as $key => $value) {
+            if ($value !== null && !is_scalar($value)) {
+                throw new DatabaseException('数据库参数只接受标量或 NULL');
+            }
+            $type = \PDO::PARAM_STR;
+            if ($value === null) {
+                $type = \PDO::PARAM_NULL;
+            } elseif (is_bool($value)) {
+                $type = \PDO::PARAM_BOOL;
+            } elseif (is_int($value)) {
+                $type = \PDO::PARAM_INT;
+            }
+            $parameter = is_int($key) ? $key + 1 : $key;
+            $statement->bindValue($parameter, $value, $type);
+        }
+    }
+
+    private function connection(): \PDO
     {
         $this->pdo ??= $this->driver->connect();
         return $this->pdo;

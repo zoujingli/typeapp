@@ -13,9 +13,9 @@ use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
 /**
- * @param list<string> $command 参数数组，不经shell插值；文件输入保持原字节。
- * @param array<string,string> $environment 仅在进程环境中传递测试凭据。
- * @throws RuntimeException 子进程未成功结束；不打印可能含备份内容的stdout。
+ * @param list<string> $command 参数数组，不经shell插值；文件输入保持原字节
+ * @param array<string,string> $environment 仅在进程环境中传递测试凭据
+ * @throws RuntimeException 子进程未成功结束；不打印可能含备份内容的stdout
  */
 function nativeRecoveryRun(array $command, array $environment, ?string $stdin = null, int $seconds = 90): string
 {
@@ -31,7 +31,7 @@ function nativeRecoveryRun(array $command, array $environment, ?string $stdin = 
         if ($result->signal !== null) {
             $detail = 'signal=' . $result->signal . ($detail !== '' ? ' ' . $detail : '');
         }
-        expect($result->successful(), '恢复验收命令失败（exit=' . $result->exitCode . ', timeout=' . (int) $result->timedOut . '）：' . $detail);
+        expect($result->successful(), '恢复验收命令失败（exit=' . $result->exitCode . ', timeout=' . (int)$result->timedOut . '）：' . $detail);
         return $result->stdout;
     } finally {
         $process->stop();
@@ -39,11 +39,11 @@ function nativeRecoveryRun(array $command, array $environment, ?string $stdin = 
 }
 
 /**
- * @param string $root 测试项目根。
- * @param string $package 已验证的原生发布目录。
- * @param array<string,string> $environment 专用数据根和测试连接配置。
- * @return array{0:Process,1:HttpClient,2:?string} 调用者使用明确进程身份停止本轮原生应用。
- * @throws RuntimeException 进程提前退出或HTTP未就绪；失败时停止已启动进程。
+ * @param string $root 测试项目根
+ * @param string $package 已验证的原生发布目录
+ * @param array<string,string> $environment 专用数据根和测试连接配置
+ * @return array{0:Process,1:HttpClient,2:?string} 调用者使用明确进程身份停止本轮原生应用
+ * @throws RuntimeException 进程提前退出或HTTP未就绪；失败时停止已启动进程
  */
 function nativeRecoveryServer(string $root, string $package, array $environment): array
 {
@@ -78,8 +78,8 @@ function nativeRecoveryServer(string $root, string $package, array $environment)
 }
 
 /**
- * @param array{HOST:string,PORT:string,DATABASE:string,USER:string,PASSWORD:string} $connection 专用回环测试连接。
- * @throws RuntimeException 标识非法或实际连接失败。
+ * @param array{HOST:string,PORT:string,DATABASE:string,USER:string,PASSWORD:string} $connection 专用回环测试连接
+ * @throws RuntimeException 标识非法或实际连接失败
  */
 function nativeRecoveryConnection(string $driver, array $connection, string $database): PDO
 {
@@ -96,11 +96,11 @@ function nativeRecoveryConnection(string $driver, array $connection, string $dat
 /**
  * 在调用客户端前验证备份与空目标；不通过DROP/CLEAN准备恢复位置。
  *
- * @param array<string,string> $connection 服务端数据库连接；SQLite使用空数组。
- * @param list<string> $command 维护工具前缀；目标参数由本函数统一构造。
- * @param array<string,string> $environment 维护凭据不放进命令参数。
- * @param array{driver:string,'release-sha256':string,'build-id':string} $expected 当前受信恢复上下文，不能从备份自我推导。
- * @throws RuntimeException 备份无效、目标已占用或恢复失败。
+ * @param array<string,string> $connection 服务端数据库连接；SQLite使用空数组
+ * @param list<string> $command 维护工具前缀；目标参数由本函数统一构造
+ * @param array<string,string> $environment 维护凭据不放进命令参数
+ * @param array{driver:string,'release-sha256':string,'build-id':string} $expected 当前受信恢复上下文，不能从备份自我推导
+ * @throws RuntimeException 备份无效、目标已占用或恢复失败
  */
 function nativeRecoveryRestore(string $driver, string $backup, string $trusted, string $target, array $connection, array $command, array $environment, array $expected): void
 {
@@ -113,7 +113,7 @@ function nativeRecoveryRestore(string $driver, string $backup, string $trusted, 
     } else {
         // 检查和恢复由同一目标构造，不能分别传入不相干的PDO与客户端参数。
         $database = nativeRecoveryConnection($driver, $connection, $target);
-        expect((int) $database->query(recoveryEmptyQuery($driver))->fetchColumn() === 0, '恢复拒绝写入非空数据库');
+        expect((int)$database->query(recoveryEmptyQuery($driver))->fetchColumn() === 0, '恢复拒绝写入非空数据库');
         $database = null;
         $options = $driver === 'mysql'
             ? ['--no-defaults', '--protocol=TCP', '--host=' . $connection['HOST'], '--port=' . $connection['PORT'], '--user=' . $connection['USER'], '--database=' . $target, '--binary-mode', '--batch']
@@ -187,7 +187,7 @@ if ($driver !== 'sqlite') {
         $connection[$key] = $value;
     }
     expect(in_array($connection['HOST'], ['127.0.0.1', '::1'], true) && ctype_digit($connection['PORT'])
-        && (int) $connection['PORT'] > 0 && (int) $connection['PORT'] < 65536, '恢复验收只接受专用回环测试连接');
+        && (int)$connection['PORT'] > 0 && (int)$connection['PORT'] < 65536, '恢复验收只接受专用回环测试连接');
     $environment['DB_HOST'] = $connection['HOST'];
     $environment['DB_PORT'] = $connection['PORT'];
     $environment['DB_USERNAME'] = $connection['USER'];
@@ -224,7 +224,7 @@ try {
     if ($driver === 'sqlite') {
         // 保留维护连接，使应用退出后仍有真实WAL，而不是仅备份已自动检查点的主文件。
         $sourceDatabase = new PDO('sqlite:' . $data . '/var/app.sqlite');
-        expect(strtolower((string) $sourceDatabase->query('PRAGMA journal_mode')->fetchColumn()) === 'wal', '源SQLite未使用WAL');
+        expect(strtolower((string)$sourceDatabase->query('PRAGMA journal_mode')->fetchColumn()) === 'wal', '源SQLite未使用WAL');
     } elseif ($driver === 'pgsql') {
         $sourceDatabase->exec('CREATE SCHEMA recovery_meta');
         $sourceDatabase->exec('CREATE TABLE recovery_meta.owner_probe (role_name TEXT NOT NULL)');
@@ -411,7 +411,7 @@ try {
     nativeRecoveryRun([...$restoredCommand, 'migrate', 'status'], $restoreEnvironment);
     expect(nativeRecoveryRun([...$restoredCommand, 'migrate', 'history'], $restoreEnvironment) === $restoredHistory, '恢复后重复迁移改动了既有历史');
     $sourceDatabase ??= new PDO('sqlite:' . $data . '/var/app.sqlite');
-    expect((int) $sourceDatabase->query('SELECT COUNT(*) FROM admin_users')->fetchColumn() === 3, '恢复改动了原数据库');
+    expect((int)$sourceDatabase->query('SELECT COUNT(*) FROM admin_users')->fetchColumn() === 3, '恢复改动了原数据库');
     expect(file_get_contents($data . '/uploads/example.bin') === 'asset-after-backup'
         && file_get_contents($data . '/.env') === "APP_NAME=after-backup\nAPP_API_TOKEN=" . $token . "\n", '恢复覆盖了原配置或资源');
     recoveryVerify($backup, $trusted, $expected);

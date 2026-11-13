@@ -5,9 +5,12 @@ declare(strict_types=1);
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
 use Type\Orm\Driver;
+use Type\Orm\ModelException;
+use Type\Orm\ModelQuery;
 use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Orm\Sqlite\SqliteDriver;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\ReadWriteProbe;
 
@@ -20,22 +23,22 @@ function readWriteDriver(string $driver, string $database, string $role, bool $b
     if ($driver === 'mysql') {
         $prefix = $role === 'reader' ? 'TYPE_READER_MYSQL_' : 'TYPE_MYSQL_';
         return new MysqlDriver(
-            (string) (getenv($prefix . 'HOST') ?: '127.0.0.1'),
-            $broken ? 1 : (int) (getenv($prefix . 'PORT') ?: 3306),
+            (string)(getenv($prefix . 'HOST') ?: '127.0.0.1'),
+            $broken ? 1 : (int)(getenv($prefix . 'PORT') ?: 3306),
             $database,
-            (string) (getenv($prefix . 'USER') ?: 'root'),
-            (string) (getenv($prefix . 'PASSWORD') ?: ''),
+            (string)(getenv($prefix . 'USER') ?: 'root'),
+            (string)(getenv($prefix . 'PASSWORD') ?: ''),
             1,
             $role
         );
     }
     $prefix = $role === 'reader' ? 'TYPE_READER_PGSQL_' : 'TYPE_PGSQL_';
     return new PgsqlDriver(
-        (string) (getenv($prefix . 'HOST') ?: '127.0.0.1'),
-        $broken ? 1 : (int) (getenv($prefix . 'PORT') ?: 5432),
+        (string)(getenv($prefix . 'HOST') ?: '127.0.0.1'),
+        $broken ? 1 : (int)(getenv($prefix . 'PORT') ?: 5432),
         $database,
-        (string) (getenv($prefix . 'USER') ?: 'type_app'),
-        (string) (getenv($prefix . 'PASSWORD') ?: ''),
+        (string)(getenv($prefix . 'USER') ?: 'type_app'),
+        (string)(getenv($prefix . 'PASSWORD') ?: ''),
         1,
         $role
     );
@@ -44,7 +47,7 @@ function readWriteDriver(string $driver, string $database, string $role, bool $b
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function readWriteExpect(bool $condition, string $message): void
 {
@@ -54,24 +57,24 @@ function readWriteExpect(bool $condition, string $message): void
 }
 
 /** 四种模型聚合均在执行时选路；使用主从已知不同的子记录主键验证实际数据来源。 */
-function readWriteAggregateExpect(\Type\Orm\ModelQuery $query, int $expected): void
+function readWriteAggregateExpect(ModelQuery $query, int $expected): void
 {
     $children = $query->where('parent_id', '=', 1);
-    readWriteExpect((string) $children->sum('id') === (string) $expected && (float) $children->avg('id') === (float) $expected
+    readWriteExpect((string)$children->sum('id') === (string)$expected && (float)$children->avg('id') === (float)$expected
         && $children->min('id') === $expected && $children->max('id') === $expected, '模型聚合没有使用当前读写路由');
 }
 
 /**
  * 验证模型执行时选路、事务固定与写后不粘主，读写端点由测试配置指定。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::enableIo();
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
-        $driver = (string) ($argv[1] ?? 'sqlite');
-        $database = (string) getenv('TYPE_PRIMARY_DATABASE');
+    CoroutineRuntime::enableIo();
+    CoroutineRuntime::run(static function () use ($argv): void {
+        $driver = (string)($argv[1] ?? 'sqlite');
+        $database = (string)getenv('TYPE_PRIMARY_DATABASE');
         $writer = readWriteDriver($driver, $database, 'writer');
         $manager = new DatabaseManager(['default' => ['master' => $writer,
             'reader' => $driver === 'sqlite' ? null : readWriteDriver($driver, $database, 'reader')]], 4, 1);
@@ -126,7 +129,7 @@ function main(int $argc, array $argv): void
                     $rejected = false;
                     try {
                         ReadWriteProbe::query()->first();
-                    } catch (\Type\Orm\ModelException $error) {
+                    } catch (ModelException $error) {
                         $rejected = $error->errorCode() === 'reader_unavailable';
                     }
                     readWriteExpect($rejected && !isset($failedManager->statistics()['active']['default']), '副本失败没有明确报错或转投了主库');

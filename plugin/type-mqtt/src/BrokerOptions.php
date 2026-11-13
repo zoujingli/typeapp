@@ -8,24 +8,24 @@ namespace Type\Mqtt;
 final class BrokerOptions
 {
     /**
-     * @param string $certificate PEM 证书链路径，TLS 启动必填；第一份为叶证书，其后可跟中间 CA。
-     * @param string $privateKey PEM 私钥路径，TLS 启动必填；口令由启动环境提供。
-     * @param bool $allowPlaintext 仅用于独立客户端调试，生产设备配置保持 false。
-     * @param bool $clustered 多Broker共享存储必选；以旧socket关闭或受控基础设施硬隔离事实批准接管。
-     * @param int $wsPort 明文 MQTT over WebSocket 端口；0 表示关闭，且必须同时允许明文。
-     * @param int $wssPort MQTT over WebSocket TLS 端口；0 表示关闭，需要证书。
-     * @param list<string> $allowedOrigins 浏览器 Origin 精确白名单，须预先小写；空列表表示不按 Origin 拒绝。
+     * @param string $certificate PEM 证书链路径，TLS 启动必填；第一份为叶证书，其后可跟中间 CA
+     * @param string $privateKey PEM 私钥路径，TLS 启动必填；口令由启动环境提供
+     * @param bool $allowPlaintext 仅用于独立客户端调试，生产设备配置保持 false
+     * @param bool $clustered 多Broker共享存储必选；以旧socket关闭或受控基础设施硬隔离事实批准接管
+     * @param int $wsPort 明文 MQTT over WebSocket 端口；0 表示关闭，且必须同时允许明文
+     * @param int $wssPort MQTT over WebSocket TLS 端口；0 表示关闭，需要证书
+     * @param list<string> $allowedOrigins 浏览器 Origin 精确白名单，须预先小写；空列表表示不按 Origin 拒绝
      * @param int $mtlsPort 专用 mTLS 端口；0 表示关闭。与凭据 TLS 入口分开，需要可读客户端 CA。
-     * @param string $clientCa 校验客户端证书的 CA 文件，可为含根与签发中间 CA 的 PEM 包；mTLS TCP 或 WSS 入口使用。
+     * @param string $clientCa 校验客户端证书的 CA 文件，可为含根与签发中间 CA 的 PEM 包；mTLS TCP 或 WSS 入口使用
      * @param string $clientCrl 可选 PEM CRL；须由 clientCa 包内某份 CA 签发。Swoole 不核吊销列表，Broker 在取指纹前拒绝已列入的证书。
      * @param string $clientCrlUrl 可选管理员受控 HTTPS CRL 源；只从启动配置读取，不接受客户端指定。拉取由 Swoole 协程 HTTP 客户端完成，写入 clientCrl 后沿用文件重载。
-     * @param int $clientCrlInterval HTTPS 刷新间隔秒，默认 300，范围 1–3600。
-     * @param string $clientRevoke 可选平台吊销名单，每行一个证书序列号十六进制；不经 CA 签名，已接纳项本进程内只增不减。
+     * @param int $clientCrlInterval HTTPS 刷新间隔秒，默认 300，范围 1–3600
+     * @param string $clientRevoke 可选平台吊销名单，每行一个证书序列号十六进制；不经 CA 签名，已接纳项本进程内只增不减
      * @param string $clientOverlap 可选换证重叠名单，每行指纹与截止 Unix 时间；缺截止默认 24 小时，上限 24 小时，零或过去立即结束。吊销与到期无重叠宽限。
-     * @param string $sniHost 可选 SNI 主机名，须小写域名；与 sniCertificate、sniPrivateKey 同时提供。
-     * @param string $sniCertificate SNI 主机对应的 PEM 证书链；第一份为叶证书。
-     * @param string $sniPrivateKey SNI 主机对应的 PEM 私钥；本切片不解密口令，须为明文钥。
-     * @param float $callbackSeconds 单次原生事件排队与业务回调的共同截止秒数；清理完成前仍占用事件额度。
+     * @param string $sniHost 可选 SNI 主机名，须小写域名；与 sniCertificate、sniPrivateKey 同时提供
+     * @param string $sniCertificate SNI 主机对应的 PEM 证书链；第一份为叶证书
+     * @param string $sniPrivateKey SNI 主机对应的 PEM 私钥；本切片不解密口令，须为明文钥
+     * @param float $callbackSeconds 单次原生事件排队与业务回调的共同截止秒数；清理完成前仍占用事件额度
      */
     public function __construct(
         public readonly string $certificate = '',
@@ -142,27 +142,10 @@ final class BrokerOptions
         }
     }
 
-    /** HTTPS CRL 源必须是不含用户信息的 https URL，由管理员在启动期配置。 */
-    private static function requireHttpsCrlUrl(string $url): void
-    {
-        if (strlen($url) > 2048) {
-            throw new \InvalidArgumentException('MQTT 客户端 CRL 地址过长');
-        }
-        $parts = parse_url($url);
-        if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https'
-            || !isset($parts['host']) || !is_string($parts['host']) || $parts['host'] === ''
-            || isset($parts['user']) || isset($parts['pass'])) {
-            throw new \InvalidArgumentException('MQTT 客户端 CRL 地址必须是不含用户信息的 https URL');
-        }
-        if (isset($parts['port']) && (!is_int($parts['port']) || $parts['port'] < 1 || $parts['port'] > 65535)) {
-            throw new \InvalidArgumentException('MQTT 客户端 CRL 地址端口无效');
-        }
-    }
-
     /**
      * 读取换证重叠窗口。无效正文返回 null。
      *
-     * @return array<string, int>|null 指纹到截止 Unix 时间；缺截止按 now+86400，超过 24 小时则截断。
+     * @return null|array<string, int> 指纹到截止 Unix 时间；缺截止按 now+86400，超过 24 小时则截断
      */
     public static function overlapWindows(string $path, int $now): ?array
     {
@@ -194,7 +177,7 @@ final class BrokerOptions
             } elseif (preg_match('/^[0-9]{1,10}$/D', $parts[1]) !== 1) {
                 return null;
             } else {
-                $until = (int) $parts[1];
+                $until = (int)$parts[1];
                 if ($until > $limit) {
                     $until = $limit;
                 }
@@ -202,5 +185,22 @@ final class BrokerOptions
             $windows[$fingerprint] = $until;
         }
         return $windows;
+    }
+
+    /** HTTPS CRL 源必须是不含用户信息的 https URL，由管理员在启动期配置。 */
+    private static function requireHttpsCrlUrl(string $url): void
+    {
+        if (strlen($url) > 2048) {
+            throw new \InvalidArgumentException('MQTT 客户端 CRL 地址过长');
+        }
+        $parts = parse_url($url);
+        if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https'
+            || !isset($parts['host']) || !is_string($parts['host']) || $parts['host'] === ''
+            || isset($parts['user']) || isset($parts['pass'])) {
+            throw new \InvalidArgumentException('MQTT 客户端 CRL 地址必须是不含用户信息的 https URL');
+        }
+        if (isset($parts['port']) && (!is_int($parts['port']) || $parts['port'] < 1 || $parts['port'] > 65535)) {
+            throw new \InvalidArgumentException('MQTT 客户端 CRL 地址端口无效');
+        }
     }
 }

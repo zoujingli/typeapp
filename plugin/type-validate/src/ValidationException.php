@@ -4,19 +4,19 @@ declare(strict_types=1);
 
 namespace Type\Validate;
 
-use RuntimeException;
-
 /** 用稳定字段路径、错误码及HTTP状态表达失败；框架不将原始输入写入消息。 */
-final class ValidationException extends RuntimeException
+final class ValidationException extends \RuntimeException
 {
     private array $errors;
+
     private int $status;
+
     private string $errorCode;
 
     /**
      * 保存调用方提供的结构化错误；自定义调用方同样不能将秘密放入错误码。
      *
-     * @param array<string, list<string>> $errors 完整字段路径到稳定错误码列表。
+     * @param array<string, list<string>> $errors 完整字段路径到稳定错误码列表
      */
     public function __construct(array $errors, int $status = 422, string $errorCode = 'validation_failed')
     {

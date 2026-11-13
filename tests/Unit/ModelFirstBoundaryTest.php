@@ -9,30 +9,34 @@ use TypeTests\Support\ModelFirstBoundary;
 
 require_once dirname(__DIR__) . '/Support/ModelFirstBoundary.php';
 
-/** 用真实解析的业务片段验证门禁，违规夹具不会混入生产源码。 */
+/**
+ * 用真实解析的业务片段验证门禁，违规夹具不会混入生产源码。
+ * @internal
+ * @coversNothing
+ */
 final class ModelFirstBoundaryTest extends TestCase
 {
     /** 别名连接参数、空安全调用、动态方法和底层静态调用都不能绕过检查。 */
     public function testRejectsAlternateConnectionAndSqlCallSyntax(): void
     {
-        $prefix = '<?php namespace Demo; use Type\\Orm\\Connection as Sql; use Type\\Orm\\Db as Database; ';
+        $prefix = '<?php namespace Demo; use Type\Orm\Connection as Sql; use Type\Orm\Db as Database; ';
         $cases = [
             'public_connection_parameter' => [
                 'public function run(Sql $db): void {}',
                 'public function run(?Sql $db): void {}',
                 'public function run(Sql|false $db): void {}',
-                'public function run((Sql&\\Stringable)|null $db): void {}',
+                'public function run((Sql&\Stringable)|null $db): void {}',
             ],
             'public_connection_return' => ['public function run(): ?Sql {}'],
             'public_connection_property' => ['public Sql $connection;'],
             'direct_connection_construction' => [
-                'public function run(): void { new \\PDO("sqlite::memory:"); }',
+                'public function run(): void { new \PDO("sqlite::memory:"); }',
                 'public function run(): void { new Sql($lease); }',
             ],
             'indirect_database_call' => [
                 'public function run(): void { call_user_func([$db, "table"], "users"); }',
                 'public function run(): void { call_user_func_array([$db, "raw"], ["DELETE FROM users"]); }',
-                'public function run(): void { forward_static_call("Type\\\\Orm\\\\Connection::query", "SELECT * FROM users"); }',
+                'public function run(): void { forward_static_call("Type\\\Orm\\\Connection::query", "SELECT * FROM users"); }',
             ],
             'unapproved_database_call' => [
                 'public function run(): void { $db->table("users")->delete(); }',
@@ -84,10 +88,10 @@ PHP;
     public function testExceptionsAreExactAndMustRemainUsed(): void
     {
         $source = '<?php namespace Demo; final class Service { public function project(): void { $db->query("SELECT a.id FROM a JOIN b ON a.id = b.id"); } }';
-        $exception = ['owner' => 'Demo\\Service::project', 'method' => 'query', 'argument' => 'SELECT a.id FROM a JOIN b ON a.id = b.id', 'reason' => '授权后跨模型投影'];
+        $exception = ['owner' => 'Demo\Service::project', 'method' => 'query', 'argument' => 'SELECT a.id FROM a JOIN b ON a.id = b.id', 'reason' => '授权后跨模型投影'];
         $guard = new ModelFirstBoundary();
         self::assertSame([], $guard->violations(['fixture.php' => $source], [$exception]));
-        foreach (['owner' => 'Demo\\Service::other', 'method' => 'table', 'argument' => 'SELECT a.id FROM a JOIN b ON a.id = b.id WHERE 1 = 1'] as $key => $changed) {
+        foreach (['owner' => 'Demo\Service::other', 'method' => 'table', 'argument' => 'SELECT a.id FROM a JOIN b ON a.id = b.id WHERE 1 = 1'] as $key => $changed) {
             $violations = $guard->violations(['fixture.php' => $source], [array_replace($exception, [$key => $changed])]);
             self::assertCount(2, $violations);
             self::assertStringStartsWith('unapproved_database_call: ', $violations[0]);
@@ -101,8 +105,8 @@ PHP;
     /** 基础设施连接参数的单一豁免不能扩为其他方法、参数名或可空类型。 */
     public function testInfrastructureParameterExceptionDoesNotPermitWiderSignatures(): void
     {
-        $source = '<?php namespace Demo; use Type\\Orm\\Connection as Sql; final class Service { public function snapshot(Sql $connection): void {} }';
-        $exception = ['owner' => 'Demo\\Service::snapshot', 'method' => 'connection_parameter', 'argument' => '$connection: Type\\Orm\\Connection', 'reason' => '读取已有基础设施事务中的固定快照'];
+        $source = '<?php namespace Demo; use Type\Orm\Connection as Sql; final class Service { public function snapshot(Sql $connection): void {} }';
+        $exception = ['owner' => 'Demo\Service::snapshot', 'method' => 'connection_parameter', 'argument' => '$connection: Type\Orm\Connection', 'reason' => '读取已有基础设施事务中的固定快照'];
         $guard = new ModelFirstBoundary();
         self::assertSame([], $guard->violations(['fixture.php' => $source], [$exception]));
         foreach (['snapshot' => 'query', '$connection' => '$other', 'Sql $connection' => '?Sql $connection'] as $before => $after) {

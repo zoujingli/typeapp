@@ -4,26 +4,27 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
+use PhpParser\Error;
 use PhpParser\Node;
 use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\ParserFactory;
-use RuntimeException;
 
 /** 从声明与源码符号生成直接工厂，不在构建期间执行应用类。 */
 final class CommandAssembly
 {
     /** @var list<string> 类型不匹配延后到依赖环检查之后报告，确保循环诊断保留完整依赖链。 */
     private array $typeErrors = [];
+
     /**
      * 从 AST 和显式模块声明生成命令工厂、入口与装配报告，不加载业务类。
-     * @param array<string, mixed> $application 唯一应用入口；enabled 选择模块，services/bindings 覆盖组件默认，commands 声明明确入口。
-     * @param array<string, array<string, mixed>> $modules 可用模块的服务和命令声明。
-     * @param list<string> $sources 完整生产源码路径。
-     * @param array<string, mixed> $routing 已由 RouteCompiler 校验的显式路由结果；控制器和中间件加入同一服务图。
-     * @return array<string, mixed> 直接调用源码、命令清单及不含配置值的服务依赖图。
-     * @throws RuntimeException 重复绑定、不可构造类型、不确定工厂、缺失参数、类型不匹配、依赖环或生命周期冲突。
+     * @param array<string, mixed> $application 唯一应用入口；enabled 选择模块，services/bindings 覆盖组件默认，commands 声明明确入口
+     * @param array<string, array<string, mixed>> $modules 可用模块的服务和命令声明
+     * @param list<string> $sources 完整生产源码路径
+     * @param array<string, mixed> $routing 已由 RouteCompiler 校验的显式路由结果；控制器和中间件加入同一服务图
+     * @return array<string, mixed> 直接调用源码、命令清单及不含配置值的服务依赖图
+     * @throws \RuntimeException 重复绑定、不可构造类型、不确定工厂、缺失参数、类型不匹配、依赖环或生命周期冲突
      */
     public function generate(array $application, array $modules, array $sources, array $routing = []): array
     {
@@ -31,28 +32,28 @@ final class CommandAssembly
         $enabled = $application['enabled'] ?? null;
         if (!is_array($enabled) || !array_is_list($enabled) || $enabled === []
             || array_filter($enabled, static fn (mixed $name): bool => !is_string($name)) !== [] || count(array_unique($enabled)) !== count($enabled)) {
-            throw new RuntimeException('装配 enabled 必须是非空且不重复的模块列表');
+            throw new \RuntimeException('装配 enabled 必须是非空且不重复的模块列表');
         }
         $configuration = $application['config'] ?? [];
         if (!is_array($configuration)) {
-            throw new RuntimeException('装配 config 必须是配置映射');
+            throw new \RuntimeException('装配 config 必须是配置映射');
         }
         foreach ($configuration as $key => $definition) {
             if (!is_string($key) || !is_array($definition) || !is_string($definition['env'] ?? null)
                 || !preg_match('/^[A-Z][A-Z0-9_]*$/D', $definition['env']) || !is_string($definition['default'] ?? null)) {
-                throw new RuntimeException('配置必须声明合法环境变量与字符串默认值：' . (string) $key);
+                throw new \RuntimeException('配置必须声明合法环境变量与字符串默认值：' . (string)$key);
             }
         }
         [$services, $commands, $bindings, $bindingReport] = $this->declarations($application, $enabled, $modules);
         [$classes, $interfaces] = $this->symbols($sources, $this->factoryBodies($services));
         if ($commands === [] && ($routing['routes'] ?? []) === [] && ($application['events'] ?? []) === []
             && ($application['jobs'] ?? []) === [] && ($application['schedules'] ?? []) === []) {
-            throw new RuntimeException('启用模块没有可执行命令');
+            throw new \RuntimeException('启用模块没有可执行命令');
         }
         foreach ($commands as &$command) {
             if (isset($command['class'])) {
                 if (isset($command['service']) || !is_string($command['class'])) {
-                    throw new RuntimeException('命令必须只选择 class 或 service：' . $command['origin']);
+                    throw new \RuntimeException('命令必须只选择 class 或 service：' . $command['origin']);
                 }
                 $command['service'] = $this->serviceForClass($command['class'], $services, $classes, $interfaces);
             }
@@ -60,28 +61,28 @@ final class CommandAssembly
         unset($command);
         $events = $this->events($application['events'] ?? [], $services, $classes, $interfaces);
         if ($events !== []) {
-            $this->serviceForClass('Type\\Core\\BusinessEvents', $services, $classes, $interfaces);
+            $this->serviceForClass('Type\Core\BusinessEvents', $services, $classes, $interfaces);
         }
         foreach (['jobs', 'schedules'] as $collection) {
             if (isset($application[$collection]) && !is_array($application[$collection])) {
-                throw new RuntimeException('application.' . $collection . ' 必须是声明列表');
+                throw new \RuntimeException('application.' . $collection . ' 必须是声明列表');
             }
         }
         $jobs = isset($application['jobs']) ? (new JobCompiler())->validate($application['jobs']) : [];
         $schedules = isset($application['schedules']) ? (new ScheduleCompiler())->validate($application['schedules']) : [];
-        $jobs = $this->workRoots($jobs, 'Type\\Queue\\Job', 'handle', ['Type\\Queue\\JobContext', 'array'], 'void', $services, $classes, $interfaces);
-        $schedules = $this->workRoots($schedules, 'Type\\Scheduler\\Task', 'run', ['Type\\Scheduler\\TaskContext'], 'array', $services, $classes, $interfaces);
+        $jobs = $this->workRoots($jobs, 'Type\Queue\Job', 'handle', ['Type\Queue\JobContext', 'array'], 'void', $services, $classes, $interfaces);
+        $schedules = $this->workRoots($schedules, 'Type\Scheduler\Task', 'run', ['Type\Scheduler\TaskContext'], 'array', $services, $classes, $interfaces);
         $http = ['class' => $routing['class'] ?? null, 'controllers' => [], 'middleware' => []];
         $middleware = $application['http']['middleware'] ?? [];
         if (!is_array($middleware) || ($middleware !== [] && array_is_list($middleware))) {
-            throw new RuntimeException('application.http.middleware 必须是名称到服务标识的映射');
+            throw new \RuntimeException('application.http.middleware 必须是名称到服务标识的映射');
         }
         foreach ($routing['routes'] ?? [] as $route) {
             $class = $route['handler'][0];
             $http['controllers'][$class] = $this->serviceForClass($class, $services, $classes, $interfaces);
             foreach ($route['middleware'] as $name) {
                 if (!is_string($middleware[$name] ?? null)) {
-                    throw new RuntimeException('路由缺少具名中间件绑定：' . $name);
+                    throw new \RuntimeException('路由缺少具名中间件绑定：' . $name);
                 }
                 $http['middleware'][$name] = $middleware[$name];
             }
@@ -89,20 +90,20 @@ final class CommandAssembly
         $bootstrap = $application['bootstrap'] ?? null;
         if ($bootstrap !== null) {
             if (!is_array($bootstrap) || !is_string($bootstrap['class'] ?? null) || !is_string($bootstrap['method'] ?? null)) {
-                throw new RuntimeException('application.bootstrap 必须声明 class 与 method');
+                throw new \RuntimeException('application.bootstrap 必须声明 class 与 method');
             }
             $method = ($classes[strtolower($bootstrap['class'])]['node'] ?? null)?->getMethod($bootstrap['method']);
             if ($method === null || !$method->isPublic() || !$method->isStatic() || $method->isAbstract() || $method->byRef
                 || $this->typeName($method->returnType) !== 'void' || count($method->params) !== 2
                 || $this->typeName($method->params[0]->type) !== 'array' || $this->typeName($method->params[1]->type) !== 'bool'
                 || $method->params[0]->byRef || $method->params[1]->byRef || $method->params[0]->variadic || $method->params[1]->variadic) {
-                throw new RuntimeException('application.bootstrap 必须是 public static run(array, bool): void 形状的角色入口');
+                throw new \RuntimeException('application.bootstrap 必须是 public static run(array, bool): void 形状的角色入口');
             }
             $bootstrap = ['class' => $bootstrap['class'], 'method' => $bootstrap['method']];
         }
         $dependencies = $this->resolveServices($services, $classes, $interfaces, $configuration, $bindings);
         foreach ($http['middleware'] as $name => $id) {
-            $this->role($id, 'Psr\\Http\\Server\\MiddlewareInterface', $services, $classes, $interfaces, 'http.middleware:' . $name);
+            $this->role($id, 'Psr\Http\Server\MiddlewareInterface', $services, $classes, $interfaces, 'http.middleware:' . $name);
         }
         $visited = [];
         foreach (array_keys($services) as $id) {
@@ -112,32 +113,32 @@ final class CommandAssembly
             if ($service['lifetime'] === 'singleton') {
                 foreach ($this->descendants($id, $dependencies) as $dependency) {
                     if ($services[$dependency]['lifetime'] === 'execution') {
-                        throw new RuntimeException('单例不能持有执行作用域服务：' . $service['origin'] . ' -> ' . $services[$dependency]['origin']);
+                        throw new \RuntimeException('单例不能持有执行作用域服务：' . $service['origin'] . ' -> ' . $services[$dependency]['origin']);
                     }
                 }
             }
         }
         if ($this->typeErrors !== []) {
-            throw new RuntimeException($this->typeErrors[0]);
+            throw new \RuntimeException($this->typeErrors[0]);
         }
         foreach ($commands as &$command) {
-            $this->role($command['service'] ?? null, 'Type\\Core\\Command', $services, $classes, $interfaces, $command['origin']);
+            $this->role($command['service'] ?? null, 'Type\Core\Command', $services, $classes, $interfaces, $command['origin']);
             $command['resources'] = $command['resources'] ?? [];
             $command['listeners'] = $command['listeners'] ?? [];
             if (!is_array($command['resources']) || !array_is_list($command['resources']) || !is_array($command['listeners']) || !array_is_list($command['listeners'])) {
-                throw new RuntimeException('命令资源和监听器必须是列表：' . $command['origin']);
+                throw new \RuntimeException('命令资源和监听器必须是列表：' . $command['origin']);
             }
             foreach ($command['resources'] as $resource) {
-                $this->role($resource, 'Type\\Runtime\\ManagedResource', $services, $classes, $interfaces, $command['origin']);
+                $this->role($resource, 'Type\Runtime\ManagedResource', $services, $classes, $interfaces, $command['origin']);
                 if ($services[$resource]['lifetime'] !== 'execution') {
-                    throw new RuntimeException('命令资源必须属于执行作用域：' . $command['origin']);
+                    throw new \RuntimeException('命令资源必须属于执行作用域：' . $command['origin']);
                 }
             }
             foreach ($command['listeners'] as $listener) {
                 if (!is_array($listener) || !in_array($listener['event'] ?? null, ['ready', 'completed'], true)) {
-                    throw new RuntimeException('命令监听器事件无效：' . $command['origin']);
+                    throw new \RuntimeException('命令监听器事件无效：' . $command['origin']);
                 }
-                $this->role($listener['service'] ?? null, 'Type\\Core\\Listener', $services, $classes, $interfaces, $command['origin']);
+                $this->role($listener['service'] ?? null, 'Type\Core\Listener', $services, $classes, $interfaces, $command['origin']);
             }
         }
         unset($command);
@@ -157,14 +158,14 @@ final class CommandAssembly
     /**
      * 合并已启用模块的声明。应用模块拥有覆盖组件默认值的优先级；同一来源内的重复仍然拒绝。
      *
-     * @return array{0: array, 1: array, 2: array, 3: array} 服务、命令、类型绑定及脱敏绑定来源报告。
+     * @return array{0: array, 1: array, 2: array, 3: array} 服务、命令、类型绑定及脱敏绑定来源报告
      */
     private function declarations(array $application, array $enabled, array $modules): array
     {
         $moduleRows = [];
         foreach ($enabled as $module) {
             if (!array_key_exists($module, $modules) || !is_array($modules[$module])) {
-                throw new RuntimeException('启用的模块未安装或未声明：' . (string) $module);
+                throw new \RuntimeException('启用的模块未安装或未声明：' . (string)$module);
             }
             $isApplication = $modules[$module] === $application;
             $moduleRows[] = [$module, $isApplication, $modules[$module]];
@@ -181,7 +182,7 @@ final class CommandAssembly
         foreach ($ordered as [$module, $isApplication, $declaration]) {
             foreach ($this->bindings($declaration['bindings'] ?? []) as $type => $binding) {
                 if (isset($bindings[$type]) && !$isApplication) {
-                    throw new RuntimeException('重复显式绑定：' . $module . ':' . $type . ' / ' . $bindingOrigins[$type]);
+                    throw new \RuntimeException('重复显式绑定：' . $module . ':' . $type . ' / ' . $bindingOrigins[$type]);
                 }
                 $kind = array_key_first($binding);
                 $bindingReport[$type] = ['kind' => $kind, 'origin' => $module . ':' . $type, 'overrides' => $bindingOrigins[$type] ?? null];
@@ -194,17 +195,17 @@ final class CommandAssembly
             foreach (['services', 'commands'] as $collection) {
                 $rows = $declaration[$collection] ?? [];
                 if (!is_array($rows) || !array_is_list($rows)) {
-                    throw new RuntimeException($module . ' 的 ' . $collection . ' 必须是声明列表');
+                    throw new \RuntimeException($module . ' 的 ' . $collection . ' 必须是声明列表');
                 }
                 $local = [];
                 foreach ($rows as $row) {
                     $key = $collection === 'services' ? 'id' : 'name';
                     if (!is_array($row) || !is_string($row[$key] ?? null) || !preg_match('/^[a-z][a-z0-9_.:-]*$/D', $row[$key])) {
-                        throw new RuntimeException('模块声明缺少合法标识：' . $module . '/' . $collection);
+                        throw new \RuntimeException('模块声明缺少合法标识：' . $module . '/' . $collection);
                     }
                     $id = $row[$key];
                     if (isset($local[$id])) {
-                        throw new RuntimeException(($collection === 'services' ? '重复服务注册' : '重复命令注册') . '（同一模块）：' . $module . ':' . $id);
+                        throw new \RuntimeException(($collection === 'services' ? '重复服务注册' : '重复命令注册') . '（同一模块）：' . $module . ':' . $id);
                     }
                     $local[$id] = true;
                     $row['origin'] = $module . ':' . $id;
@@ -212,13 +213,13 @@ final class CommandAssembly
                         $row['lifetime'] = $row['lifetime'] ?? 'execution';
                         if (!in_array($row['lifetime'], ['singleton', 'execution'], true)
                             || (array_key_exists('arguments', $row) && (!is_array($row['arguments']) || !array_is_list($row['arguments'])))) {
-                            throw new RuntimeException('服务生命周期或构造参数声明无效：' . $row['origin']);
+                            throw new \RuntimeException('服务生命周期或构造参数声明无效：' . $row['origin']);
                         }
                         if (array_key_exists('factory', $row) && !is_array($row['factory'])) {
-                            throw new RuntimeException('具名工厂声明必须是对象：' . $row['origin']);
+                            throw new \RuntimeException('具名工厂声明必须是对象：' . $row['origin']);
                         }
                         if (isset($services[$id]) && !$isApplication) {
-                            throw new RuntimeException('重复服务注册：' . $row['origin'] . ' / ' . $services[$id]['origin']);
+                            throw new \RuntimeException('重复服务注册：' . $row['origin'] . ' / ' . $services[$id]['origin']);
                         }
                         if (isset($services[$id]) && $isApplication) {
                             $row['overrides'] = $services[$id]['origin'];
@@ -226,13 +227,13 @@ final class CommandAssembly
                         $services[$id] = $row;
                     } else {
                         if (isset($commands[$id]) && !$isApplication) {
-                            throw new RuntimeException('重复命令注册：' . $row['origin'] . ' / ' . $commands[$id]['origin']);
+                            throw new \RuntimeException('重复命令注册：' . $row['origin'] . ' / ' . $commands[$id]['origin']);
                         }
                         if (isset($commands[$id]) && $isApplication) {
                             $row['overrides'] = $commands[$id]['origin'];
                         }
                         if (in_array($id, ['help', 'check'], true)) {
-                            throw new RuntimeException('重复命令注册：' . $row['origin']);
+                            throw new \RuntimeException('重复命令注册：' . $row['origin']);
                         }
                         $commands[$id] = $row;
                     }
@@ -255,25 +256,25 @@ final class CommandAssembly
             return [];
         }
         if (!is_array($declarations)) {
-            throw new RuntimeException('application.bindings 必须是列表或映射');
+            throw new \RuntimeException('application.bindings 必须是列表或映射');
         }
         $bindings = [];
         $rows = array_is_list($declarations) ? $declarations : array_map(
-            static fn (mixed $value, string|int $key): array => is_array($value) ? ['type' => (string) $key, ...$value] : ['type' => (string) $key, 'value' => $value],
+            static fn (mixed $value, int|string $key): array => is_array($value) ? ['type' => (string)$key, ...$value] : ['type' => (string)$key, 'value' => $value],
             $declarations,
             array_keys($declarations),
         );
         foreach ($rows as $row) {
             if (!is_array($row) || !is_string($row['type'] ?? null) || $row['type'] === '') {
-                throw new RuntimeException('显式绑定必须声明 type');
+                throw new \RuntimeException('显式绑定必须声明 type');
             }
             $type = strtolower(ltrim($row['type'], '?\\'));
             if (isset($bindings[$type])) {
-                throw new RuntimeException('重复显式绑定：' . $row['type']);
+                throw new \RuntimeException('重复显式绑定：' . $row['type']);
             }
             $keys = array_values(array_intersect(['service', 'config', 'value', 'factory'], array_keys($row)));
             if (count($keys) !== 1) {
-                throw new RuntimeException('显式绑定必须且只能选择 service、config、value 或 factory：' . $row['type']);
+                throw new \RuntimeException('显式绑定必须且只能选择 service、config、value 或 factory：' . $row['type']);
             }
             $bindings[$type] = [$keys[0] => $row[$keys[0]]];
         }
@@ -285,7 +286,7 @@ final class CommandAssembly
     private function events(mixed $declarations, array &$services, array $classes, array $interfaces): array
     {
         if (!is_array($declarations) || !array_is_list($declarations)) {
-            throw new RuntimeException('application.events 必须是事件声明列表');
+            throw new \RuntimeException('application.events 必须是事件声明列表');
         }
         $events = [];
         $seen = [];
@@ -293,12 +294,12 @@ final class CommandAssembly
             $class = is_array($declaration) ? ($declaration['class'] ?? null) : null;
             if (!is_string($class) || !isset($classes[strtolower($class)]) || $classes[strtolower($class)]['node']->isAbstract()
                 || isset($seen[strtolower($class)]) || array_diff(array_keys($declaration), ['class', 'listeners']) !== []) {
-                throw new RuntimeException('业务事件需要不重复的生产具体类声明');
+                throw new \RuntimeException('业务事件需要不重复的生产具体类声明');
             }
             $seen[strtolower($class)] = true;
             $listeners = $declaration['listeners'] ?? [];
             if (!is_array($listeners) || !array_is_list($listeners)) {
-                throw new RuntimeException('业务事件 listeners 必须是有序列表：' . $class);
+                throw new \RuntimeException('业务事件 listeners 必须是有序列表：' . $class);
             }
             $resolved = [];
             $duplicates = [];
@@ -306,12 +307,12 @@ final class CommandAssembly
                 if (!is_array($listener) || !is_string($listener['method'] ?? null)
                     || array_diff(array_keys($listener), ['service', 'class', 'method']) !== []
                     || (isset($listener['service']) === isset($listener['class']))) {
-                    throw new RuntimeException('业务监听必须声明 method 和唯一 service 或 class：' . $class);
+                    throw new \RuntimeException('业务监听必须声明 method 和唯一 service 或 class：' . $class);
                 }
                 $id = isset($listener['class']) && is_string($listener['class'])
                     ? $this->serviceForClass($listener['class'], $services, $classes, $interfaces) : ($listener['service'] ?? null);
                 if (!is_string($id) || !isset($services[$id]) || !is_string($services[$id]['class'] ?? null)) {
-                    throw new RuntimeException('业务监听缺失服务绑定：' . $class);
+                    throw new \RuntimeException('业务监听缺失服务绑定：' . $class);
                 }
                 $listenerClass = $services[$id]['class'];
                 $method = ($classes[strtolower($listenerClass)]['node'] ?? null)?->getMethod($listener['method']);
@@ -320,7 +321,7 @@ final class CommandAssembly
                     || count($method->params) !== 1 || $method->params[0]->byRef || $method->params[0]->variadic
                     || strtolower($this->typeName($method->params[0]->type) ?? '') !== strtolower($class)
                     || $this->typeName($method->returnType) !== 'void' || isset($duplicates[$key])) {
-                    throw new RuntimeException('业务监听需要不重复的 public 实例方法，唯一参数为事件类型且返回 void：' . $class . ' -> ' . $id . '::' . $listener['method']);
+                    throw new \RuntimeException('业务监听需要不重复的 public 实例方法，唯一参数为事件类型且返回 void：' . $class . ' -> ' . $id . '::' . $listener['method']);
                 }
                 $duplicates[$key] = true;
                 $resolved[] = ['service' => $id, 'class' => $listenerClass, 'method' => $listener['method']];
@@ -340,7 +341,7 @@ final class CommandAssembly
             $row['service'] = $id;
             $row['class'] = $services[$id]['class'];
             if ($services[$id]['lifetime'] !== 'execution') {
-                throw new RuntimeException('任务处理器必须属于执行作用域：' . $origin);
+                throw new \RuntimeException('任务处理器必须属于执行作用域：' . $origin);
             }
             $methodClass = strtolower($row['class']);
             $method = null;
@@ -354,7 +355,7 @@ final class CommandAssembly
                 $methodClass = $classes[$methodClass]['parent'];
             }
             if ($method === null) {
-                throw new RuntimeException('任务缺少可静态确定的公开执行方法：' . $origin . '::' . $methodName);
+                throw new \RuntimeException('任务缺少可静态确定的公开执行方法：' . $origin . '::' . $methodName);
             }
             if ($method !== null) {
                 $valid = $method->isPublic() && !$method->isStatic() && !$method->isAbstract() && !$method->byRef
@@ -364,13 +365,13 @@ final class CommandAssembly
                         && strtolower($this->typeName($parameter->type) ?? '') === strtolower($parameters[$position] ?? '');
                 }
                 if (!$valid) {
-                    throw new RuntimeException('任务公开执行方法签名不符合接口：' . $origin . '::' . $methodName);
+                    throw new \RuntimeException('任务公开执行方法签名不符合接口：' . $origin . '::' . $methodName);
                 }
             }
             foreach ($row['resources'] as $resource) {
-                $this->role($resource, 'Type\\Runtime\\ManagedResource', $services, $classes, $interfaces, $origin);
+                $this->role($resource, 'Type\Runtime\ManagedResource', $services, $classes, $interfaces, $origin);
                 if ($services[$resource]['lifetime'] !== 'execution') {
-                    throw new RuntimeException('任务资源必须属于执行作用域：' . $origin);
+                    throw new \RuntimeException('任务资源必须属于执行作用域：' . $origin);
                 }
             }
         }
@@ -396,9 +397,9 @@ final class CommandAssembly
             $id = $ids[$index++];
             $service = &$services[$id];
             $class = $this->serviceClass($service, $classes, $interfaces);
-            if (strtolower($class) === 'type\\core\\businessevents') {
+            if (strtolower($class) === 'type\core\businessevents') {
                 if (isset($service['factory']) || isset($service['arguments']) || $service['lifetime'] !== 'execution') {
-                    throw new RuntimeException('BusinessEvents 由当前执行作用域生成，不能自定义工厂、参数或 singleton 生命周期');
+                    throw new \RuntimeException('BusinessEvents 由当前执行作用域生成，不能自定义工厂、参数或 singleton 生命周期');
                 }
                 $service['arguments'] = [];
                 $service['generated'] = 'events';
@@ -416,13 +417,13 @@ final class CommandAssembly
             $explicit = array_key_exists('arguments', $service);
             $provided = $explicit ? $service['arguments'] : [];
             if (!is_array($provided) || !array_is_list($provided)) {
-                throw new RuntimeException('构造参数必须是列表：' . $service['origin']);
+                throw new \RuntimeException('构造参数必须是列表：' . $service['origin']);
             }
             $arguments = [];
             $parametersCount = count($parameters);
             foreach ($parameters as $position => $parameter) {
                 if ($parameter->byRef || $parameter->variadic || $this->typeName($parameter->type) === null) {
-                    throw new RuntimeException('装配参数必须是确定的具名类型，不能引用或可变参数：' . $service['origin']);
+                    throw new \RuntimeException('装配参数必须是确定的具名类型，不能引用或可变参数：' . $service['origin']);
                 }
                 if (array_key_exists($position, $provided)) {
                     $argument = $this->validateArgument($provided[$position], $service['origin']);
@@ -432,18 +433,18 @@ final class CommandAssembly
                         if ($parameter->default !== null) {
                             break;
                         }
-                        throw new RuntimeException('构造参数数量或缺失绑定不符合声明：' . $service['origin'] . '::$' . (string) $parameter->var->name);
+                        throw new \RuntimeException('构造参数数量或缺失绑定不符合声明：' . $service['origin'] . '::$' . (string)$parameter->var->name);
                     }
                 }
                 if (isset($argument['config']) && !array_key_exists($argument['config'], $configuration)) {
-                    throw new RuntimeException('缺失配置绑定：' . $service['origin'] . '::$' . (string) $parameter->var->name);
+                    throw new \RuntimeException('缺失配置绑定：' . $service['origin'] . '::$' . (string)$parameter->var->name);
                 }
                 $this->appendDependency($dependencies[$id], $argument, $services, $service['origin']);
                 $this->assertArgumentType($parameter, $argument, $services, $classes, $interfaces, $service['origin']);
                 $arguments[] = $argument;
             }
             if (($factory['method'] !== null && !$factory['method']->isPublic()) || count($provided) > $parametersCount && !($parameters !== [] && end($parameters)->variadic)) {
-                throw new RuntimeException('构造参数数量或可见性不符合声明：' . $service['origin']);
+                throw new \RuntimeException('构造参数数量或可见性不符合声明：' . $service['origin']);
             }
             $service['arguments'] = $arguments;
             $service['factory'] = $factory;
@@ -460,18 +461,18 @@ final class CommandAssembly
     private function serviceClass(array $service, array $classes, array $interfaces): string
     {
         $class = $service['class'] ?? null;
-        if (!is_string($class) || !preg_match('/^(?:[A-Za-z_][A-Za-z0-9_]*\\\\)*[A-Za-z_][A-Za-z0-9_]*$/D', $class)) {
-            throw new RuntimeException('服务类名无效：' . $service['origin']);
+        if (!is_string($class) || !preg_match('/^(?:[A-Za-z_][A-Za-z0-9_]*\\\)*[A-Za-z_][A-Za-z0-9_]*$/D', $class)) {
+            throw new \RuntimeException('服务类名无效：' . $service['origin']);
         }
         $name = strtolower($class);
         if (isset($service['factory']) && (isset($interfaces[$name]) || isset($classes[$name]))) {
             return $class;
         }
         if (isset($interfaces[$name]) || !isset($classes[$name])) {
-            throw new RuntimeException('生产源码中找不到服务类：' . $service['origin'] . ' -> ' . $class);
+            throw new \RuntimeException('生产源码中找不到服务类：' . $service['origin'] . ' -> ' . $class);
         }
         if ($classes[$name]['node']->isAbstract()) {
-            throw new RuntimeException('不能构造抽象服务：' . $service['origin']);
+            throw new \RuntimeException('不能构造抽象服务：' . $service['origin']);
         }
 
         return $class;
@@ -479,7 +480,7 @@ final class CommandAssembly
 
     /**
      * 返回服务实际消费的构造器或具名工厂方法。工厂仅检查 AST，不调用业务代码。
-     * @return array{method: Node\Stmt\ClassMethod|null, static: bool, owner: ?string, class: ?string, name: ?string}
+     * @return array{method: null|Node\Stmt\ClassMethod, static: bool, owner: ?string, class: ?string, name: ?string}
      */
     private function factoryMethod(array $service, string $class, array $services, array $classes, array $interfaces): array
     {
@@ -488,34 +489,34 @@ final class CommandAssembly
         }
         $factory = $service['factory'];
         if (!is_array($factory) || !is_string($factory['method'] ?? null) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $factory['method'])) {
-            throw new RuntimeException('具名工厂必须声明合法 method：' . $service['origin']);
+            throw new \RuntimeException('具名工厂必须声明合法 method：' . $service['origin']);
         }
         $owner = null;
         $factoryClass = $factory['class'] ?? null;
         if (isset($factory['service'])) {
             if (!is_string($factory['service'])) {
-                throw new RuntimeException('具名工厂 service 必须是服务标识：' . $service['origin']);
+                throw new \RuntimeException('具名工厂 service 必须是服务标识：' . $service['origin']);
             }
             $owner = $factory['service'];
             if ($owner === ($service['id'] ?? null)) {
-                throw new RuntimeException('具名工厂不能引用自身：' . $service['origin']);
+                throw new \RuntimeException('具名工厂不能引用自身：' . $service['origin']);
             }
             if (!isset($services[$owner]) || !is_string($factoryClass)) {
-                throw new RuntimeException('具名工厂必须同时声明有效 service 与 class：' . $service['origin']);
+                throw new \RuntimeException('具名工厂必须同时声明有效 service 与 class：' . $service['origin']);
             }
-        } elseif (!is_string($factoryClass) || !preg_match('/^(?:[A-Za-z_][A-Za-z0-9_]*\\\\)*[A-Za-z_][A-Za-z0-9_]*$/D', $factoryClass)) {
-            throw new RuntimeException('具名工厂必须声明 class 或 service：' . $service['origin']);
+        } elseif (!is_string($factoryClass) || !preg_match('/^(?:[A-Za-z_][A-Za-z0-9_]*\\\)*[A-Za-z_][A-Za-z0-9_]*$/D', $factoryClass)) {
+            throw new \RuntimeException('具名工厂必须声明 class 或 service：' . $service['origin']);
         }
         $symbol = $classes[strtolower($factoryClass)] ?? null;
         if ($symbol === null || isset($interfaces[strtolower($factoryClass)])) {
-            throw new RuntimeException('生产源码中找不到工厂类：' . $service['origin'] . ' -> ' . (string) $factoryClass);
+            throw new \RuntimeException('生产源码中找不到工厂类：' . $service['origin'] . ' -> ' . (string)$factoryClass);
         }
         $method = $symbol['node']->getMethod($factory['method']);
         if ($method === null || !$method->isPublic() || ($owner === null && !$method->isStatic())) {
-            throw new RuntimeException('具名工厂方法必须是 public static，或绑定到服务实例：' . $service['origin']);
+            throw new \RuntimeException('具名工厂方法必须是 public static，或绑定到服务实例：' . $service['origin']);
         }
         if ($method->byRef || $method->isAbstract() || ($owner !== null && !$this->isA($services[$owner]['class'], $factoryClass, $classes, $interfaces))) {
-            throw new RuntimeException('具名工厂不能引用返回、抽象声明或不匹配的实例：' . $service['origin']);
+            throw new \RuntimeException('具名工厂不能引用返回、抽象声明或不匹配的实例：' . $service['origin']);
         }
         $finder = new NodeFinder();
         $unsafe = $finder->findFirst($method->stmts ?? [], static function (Node $node): bool {
@@ -529,11 +530,11 @@ final class CommandAssembly
                 && in_array(strtolower($node->name->toString()), ['current', 'getinstance'], true);
         });
         if ($unsafe !== null) {
-            throw new RuntimeException('具名工厂依赖必须来自类型化参数，不能使用全局取值、服务定位器或闭包捕获：' . $service['origin']);
+            throw new \RuntimeException('具名工厂依赖必须来自类型化参数，不能使用全局取值、服务定位器或闭包捕获：' . $service['origin']);
         }
         $return = $this->typeName($method->returnType);
         if ($return === null || !$this->isA($return === 'self' ? $factoryClass : $return, $class, $classes, $interfaces)) {
-            throw new RuntimeException('具名工厂返回类型不匹配：' . $service['origin'] . ' -> ' . $class);
+            throw new \RuntimeException('具名工厂返回类型不匹配：' . $service['origin'] . ' -> ' . $class);
         }
 
         return ['method' => $method, 'static' => $owner === null, 'owner' => $owner, 'class' => $factoryClass, 'name' => $factory['method']];
@@ -543,24 +544,24 @@ final class CommandAssembly
     private function validateArgument(mixed $argument, string $origin): array
     {
         if (!is_array($argument) || count($argument) !== 1) {
-            throw new RuntimeException('构造参数必须只声明 service、config、value 或 factory：' . $origin);
+            throw new \RuntimeException('构造参数必须只声明 service、config、value 或 factory：' . $origin);
         }
         $keys = array_values(array_intersect(['service', 'config', 'value', 'factory'], array_keys($argument)));
         if (count($keys) !== 1) {
-            throw new RuntimeException('构造参数必须只声明 service、config、value 或 factory：' . $origin);
+            throw new \RuntimeException('构造参数必须只声明 service、config、value 或 factory：' . $origin);
         }
         $key = $keys[0];
         if ($key === 'service' && !is_string($argument[$key])) {
-            throw new RuntimeException('服务绑定必须是字符串：' . $origin);
+            throw new \RuntimeException('服务绑定必须是字符串：' . $origin);
         }
         if ($key === 'config' && !is_string($argument[$key])) {
-            throw new RuntimeException('配置绑定必须是字符串：' . $origin);
+            throw new \RuntimeException('配置绑定必须是字符串：' . $origin);
         }
         if ($key === 'factory' && !is_string($argument[$key])) {
-            throw new RuntimeException('工厂绑定必须是服务标识：' . $origin);
+            throw new \RuntimeException('工厂绑定必须是服务标识：' . $origin);
         }
         if ($key === 'value' && (!is_scalar($argument[$key]) && $argument[$key] !== null)) {
-            throw new RuntimeException('构造常量只支持标量或 null：' . $origin);
+            throw new \RuntimeException('构造常量只支持标量或 null：' . $origin);
         }
 
         return [$key => $argument[$key]];
@@ -571,7 +572,7 @@ final class CommandAssembly
         if (isset($argument['service']) || isset($argument['factory'])) {
             $dependency = $argument['service'] ?? $argument['factory'];
             if (!is_string($dependency) || !isset($services[$dependency])) {
-                throw new RuntimeException('缺失服务绑定：' . $origin . ' -> ' . (string) $dependency);
+                throw new \RuntimeException('缺失服务绑定：' . $origin . ' -> ' . (string)$dependency);
             }
             $dependencies[] = $dependency;
         }
@@ -589,7 +590,7 @@ final class CommandAssembly
         }
         $name = strtolower(ltrim($type, '?\\'));
         if (isset($interfaces[$name]) || !isset($classes[$name]) || $classes[$name]['node']->isAbstract()) {
-            throw new RuntimeException('缺失显式绑定：' . $origin . '::$' . (string) $parameter->var->name . ' (' . $type . ')');
+            throw new \RuntimeException('缺失显式绑定：' . $origin . '::$' . (string)$parameter->var->name . ' (' . $type . ')');
         }
         $id = $this->serviceForClass($type, $services, $classes, $interfaces);
 
@@ -602,12 +603,12 @@ final class CommandAssembly
         $name = strtolower(ltrim($class, '?\\'));
         $matches = [];
         foreach ($services as $id => $service) {
-            if (strtolower((string) ($service['class'] ?? '')) === $name) {
+            if (strtolower((string)($service['class'] ?? '')) === $name) {
                 $matches[] = $id;
             }
         }
         if (count($matches) > 1) {
-            throw new RuntimeException('具体类型存在多个服务绑定：' . $class . ' -> ' . implode(', ', $matches));
+            throw new \RuntimeException('具体类型存在多个服务绑定：' . $class . ' -> ' . implode(', ', $matches));
         }
         if ($matches !== []) {
             return $matches[0];
@@ -633,22 +634,22 @@ final class CommandAssembly
         if (isset($argument['service']) || isset($argument['factory'])) {
             $id = $argument['service'] ?? $argument['factory'];
             if (!is_string($id) || !isset($services[$id])) {
-                throw new RuntimeException('缺失服务绑定：' . $origin . ' -> ' . (string) $id);
+                throw new \RuntimeException('缺失服务绑定：' . $origin . ' -> ' . (string)$id);
             }
             $actual = $services[$id]['class'] ?? null;
             if (!is_string($actual) || !$this->isA($actual, ltrim($type, '?\\'), $classes, $interfaces)) {
-                $this->typeErrors[] = '服务绑定类型不匹配：' . $origin . '::$' . (string) $parameter->var->name . ' (' . $type . ')';
+                $this->typeErrors[] = '服务绑定类型不匹配：' . $origin . '::$' . (string)$parameter->var->name . ' (' . $type . ')';
             }
             return;
         }
         if (isset($argument['config'])) {
             if (strtolower(ltrim($type, '?')) !== 'string') {
-                $this->typeErrors[] = '配置绑定只能用于 string 参数：' . $origin . '::$' . (string) $parameter->var->name;
+                $this->typeErrors[] = '配置绑定只能用于 string 参数：' . $origin . '::$' . (string)$parameter->var->name;
             }
             return;
         }
         if (array_key_exists('value', $argument) && !$this->valueMatches($argument['value'], $type)) {
-            $this->typeErrors[] = '构造常量类型不匹配：' . $origin . '::$' . (string) $parameter->var->name;
+            $this->typeErrors[] = '构造常量类型不匹配：' . $origin . '::$' . (string)$parameter->var->name;
         }
     }
 
@@ -746,8 +747,8 @@ final class CommandAssembly
                 // 当前文件完整名称解析后才保存签名副本。保留所有嵌套声明和
                 // 具名工厂完整子树，其余文件无需常驻业务方法体。
                 $nodes = (new NodeTraverser(new NameResolver()))->traverse($parser->parse(file_get_contents($file)) ?? []);
-            } catch (\PhpParser\Error $error) {
-                throw new RuntimeException('源码声明解析失败：' . $file . '，' . $error->getMessage(), 0, $error);
+            } catch (Error $error) {
+                throw new \RuntimeException('源码声明解析失败：' . $file . '，' . $error->getMessage(), 0, $error);
             }
             foreach ($finder->findInstanceOf($nodes, Node\Stmt\ClassLike::class) as $node) {
                 if ($node->name === null || $node instanceof Node\Stmt\Trait_) {
@@ -755,7 +756,7 @@ final class CommandAssembly
                 }
                 $name = strtolower($node->namespacedName?->toString() ?? $node->name->toString());
                 if (isset($classes[$name]) || isset($interfaces[$name])) {
-                    throw new RuntimeException('重复源码符号：' . $name . '，' . $file . ':' . $node->getStartLine());
+                    throw new \RuntimeException('重复源码符号：' . $name . '，' . $file . ':' . $node->getStartLine());
                 }
                 if ($node instanceof Node\Stmt\Class_) {
                     $classes[$name] = ['node' => $this->compactClass($node, $factoryBodies[$name] ?? []), 'parent' => strtolower($node->extends?->toString() ?? ''),
@@ -795,7 +796,7 @@ final class CommandAssembly
     private function constructor(string $class, array $classes, array $seen = []): ?Node\Stmt\ClassMethod
     {
         if (isset($seen[$class])) {
-            throw new RuntimeException('服务继承存在循环：' . $class);
+            throw new \RuntimeException('服务继承存在循环：' . $class);
         }
         $seen[$class] = true;
         $symbol = $classes[$class] ?? null;
@@ -809,7 +810,7 @@ final class CommandAssembly
     private function visit(string $id, array $dependencies, array $path, array &$visited): void
     {
         if (in_array($id, $path, true)) {
-            throw new RuntimeException('依赖循环：' . implode(' -> ', [...$path, $id]));
+            throw new \RuntimeException('依赖循环：' . implode(' -> ', [...$path, $id]));
         }
         if (isset($visited[$id])) {
             return;
@@ -857,10 +858,10 @@ final class CommandAssembly
     private function role(mixed $id, string $expected, array $services, array $classes, array $interfaces, string $origin): void
     {
         if (!is_string($id) || !isset($services[$id])) {
-            throw new RuntimeException('命令缺少服务绑定：' . $origin);
+            throw new \RuntimeException('命令缺少服务绑定：' . $origin);
         }
         if (!$this->isA($services[$id]['class'], $expected, $classes, $interfaces)) {
-            throw new RuntimeException('服务未实现要求的接口：' . $origin . ' -> ' . $id . '，需要 ' . $expected);
+            throw new \RuntimeException('服务未实现要求的接口：' . $origin . ' -> ' . $id . '，需要 ' . $expected);
         }
     }
 
@@ -882,7 +883,7 @@ final class CommandAssembly
             $code .= "    private function {$service['method']}(\\Type\\Runtime\\ExecutionScope \$scope): \\{$service['class']}\n    {\n";
             $factory = $service['factory'] ?? ['name' => null, 'static' => false, 'class' => null, 'owner' => null];
             if (($service['generated'] ?? null) === 'events') {
-                $construction = 'new \\Type\\Core\\BusinessEvents($scope, function (object $event): void { $this->dispatchEvent($event); })';
+                $construction = 'new \Type\Core\BusinessEvents($scope, function (object $event): void { $this->dispatchEvent($event); })';
             } elseif ($factory['name'] === null) {
                 $construction = 'new \\' . $service['class'] . '(' . implode(', ', $arguments) . ')';
             } elseif ($factory['static']) {
@@ -891,10 +892,10 @@ final class CommandAssembly
                 $construction = '$this->' . $services[$factory['owner']]['method'] . '($scope)->' . $factory['name'] . '(' . implode(', ', $arguments) . ')';
             }
             if ($service['lifetime'] === 'singleton') {
-                $code .= "        if (!array_key_exists($key, \$this->singletons)) { \$this->singletons[$key] = {$construction}; }\n";
-                $code .= "        return \$this->singletons[$key];\n    }\n";
+                $code .= "        if (!array_key_exists({$key}, \$this->singletons)) { \$this->singletons[{$key}] = {$construction}; }\n";
+                $code .= "        return \$this->singletons[{$key}];\n    }\n";
             } else {
-                $code .= "        return \$scope->service(\$this->identity . ':' . $key, fn (): \\{$service['class']} => {$construction});\n    }\n";
+                $code .= "        return \$scope->service(\$this->identity . ':' . {$key}, fn (): \\{$service['class']} => {$construction});\n    }\n";
             }
             if (($service['generated'] ?? null) === 'events') {
                 $code .= "    /** 在当前作用域取得固定业务监听表的派发入口。 */\n    public function events(): \\Type\\Core\\BusinessEvents { \$this->assertOwner(); return \$this->{$service['method']}(\\Type\\Runtime\\ExecutionScope::current()); }\n";
@@ -912,7 +913,7 @@ final class CommandAssembly
         if ($jobs !== []) {
             $code .= "    /** 只登记确定类型/版本；Worker在每次消息scope内调用直接工厂。 */\n    public function jobs(): \\Type\\Queue\\Registry\n    {\n        \$registry = new \\Type\\Queue\\Registry();\n";
             foreach ($jobs as $job) {
-                $factory = $this->workFactory($job, $services, 'Type\\Queue\\JobContext', 'Type\\Queue\\Job');
+                $factory = $this->workFactory($job, $services, 'Type\Queue\JobContext', 'Type\Queue\Job');
                 $code .= '        $registry->register(' . var_export($job['type'], true) . ', ' . $job['version'] . ', ' . $factory . ");\n";
             }
             $code .= "        return \$registry;\n    }\n";
@@ -920,7 +921,7 @@ final class CommandAssembly
         if ($schedules !== []) {
             $code .= "    /** @return list<\\Type\\Scheduler\\Definition> 固定计划及当前occurrence的直接任务工厂。 */\n    public function schedules(): array\n    {\n        return [\n";
             foreach ($schedules as $schedule) {
-                $factory = $this->workFactory($schedule, $services, 'Type\\Scheduler\\TaskContext', 'Type\\Scheduler\\Task');
+                $factory = $this->workFactory($schedule, $services, 'Type\Scheduler\TaskContext', 'Type\Scheduler\Task');
                 $code .= '            ' . (new ScheduleCompiler())->renderDefinition($schedule, $factory) . ",\n";
             }
             $code .= "        ];\n    }\n";
@@ -933,7 +934,7 @@ final class CommandAssembly
                 foreach ($http[$kind] as $name => $id) {
                     $service = $services[$id];
                     $factories[$kind][] = var_export($name, true) . ' => function (): \\' . $service['class']
-                        . ' { $this->assertOwner(); return $this->' . $service['method'] . '(\\Type\\Runtime\\ExecutionScope::current()); }';
+                        . ' { $this->assertOwner(); return $this->' . $service['method'] . '(\Type\Runtime\ExecutionScope::current()); }';
                 }
             }
             $code .= '        \\' . $http['class'] . '::register($router, [' . implode(', ', $factories['controllers'])
@@ -951,11 +952,11 @@ final class CommandAssembly
             $code .= '                case ' . var_export($name, true) . ":\n";
             $commandService = $services[$command['service']]['method'];
             $code .= "                    return \$this->runner->runFactories(\n";
-            $code .= '                        fn (\\Type\\Runtime\\ExecutionScope $scope): \\Type\\Core\\Command => $this->' . $commandService . "(\$scope),\n";
+            $code .= '                        fn (\Type\Runtime\ExecutionScope $scope): \Type\Core\Command => $this->' . $commandService . "(\$scope),\n";
             $code .= "                        \$this->configuration, \$arguments,\n";
             $resourceFactories = array_map(static fn (string $id): string => '$this->' . $services[$id]['method'] . '($scope)', $command['resources']);
-            $code .= '                        fn (\\Type\\Runtime\\ExecutionScope $scope): array => [' . implode(', ', $resourceFactories) . "],\n";
-            $code .= '                        fn (\\Type\\Runtime\\ExecutionScope $scope): \\Type\\Core\\Events => (function () use ($scope): \\Type\\Core\\Events { $events = new \\Type\\Core\\Events(); ';
+            $code .= '                        fn (\Type\Runtime\ExecutionScope $scope): array => [' . implode(', ', $resourceFactories) . "],\n";
+            $code .= '                        fn (\Type\Runtime\ExecutionScope $scope): \Type\Core\Events => (function () use ($scope): \Type\Core\Events { $events = new \Type\Core\Events(); ';
             foreach ($command['listeners'] as $listener) {
                 $code .= '$events->listen(' . var_export($listener['event'], true) . ', $this->' . $services[$listener['service']]['method'] . '($scope)); ';
             }
@@ -967,7 +968,7 @@ final class CommandAssembly
             $code .= '        \\' . $bootstrap['class'] . '::' . $bootstrap['method'] . "(\$argv, false);\n";
             return $code . "    } catch (\\Throwable \$error) { fwrite(STDERR, \"应用启动失败：internal_error\\n\"); exit(70); }\n}\n}\n";
         }
-        $code .= '        $configuration = \\Type\\Core\\Configuration::fromEnvironment(' . var_export($configuration, true) . ");\n";
+        $code .= '        $configuration = \Type\Core\Configuration::fromEnvironment(' . var_export($configuration, true) . ");\n";
         $code .= "        \$application = new \\Type\\Generated\\CommandApplication(\$configuration);\n        \$status = \$application->run(\$argc > 1 ? (string) \$argv[1] : 'help', array_slice(\$argv, 2));\n        if (\$status !== 0) { exit(\$status); }\n";
         $code .= "    } catch (\\Throwable \$error) { fwrite(STDERR, '命令执行失败：' . \$error->getMessage() . PHP_EOL); exit(70); }\n}\n}\n";
 
@@ -978,7 +979,7 @@ final class CommandAssembly
     private function workFactory(array $row, array $services, string $context, string $role): string
     {
         $code = 'function (\\' . $context . ' $context): \\' . $role . ' { $this->assertOwner(); $scope = $context->scope(); '
-            . 'if (\\Type\\Runtime\\ExecutionScope::current() !== $scope) { throw new \\RuntimeException(\'任务工厂需要当前角色作用域\'); } ';
+            . 'if (\Type\Runtime\ExecutionScope::current() !== $scope) { throw new \RuntimeException(\'任务工厂需要当前角色作用域\'); } ';
         foreach ($row['resources'] as $resource) {
             $code .= '$scope->open($this->' . $services[$resource]['method'] . '($scope)); ';
         }

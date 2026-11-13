@@ -4,51 +4,72 @@ declare(strict_types=1);
 
 namespace Type\Runtime;
 
-use Closure;
-use RuntimeException;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
-use Throwable;
 
 /** 线程内共享有界池；协程等待由 Swoole 唤醒，同步与零等待立即拒绝。 */
 final class ResourcePool
 {
-    private Closure $factory;
+    private \Closure $factory;
+
     private int $capacity;
+
     private int $idleLimit;
+
     private ExecutionOwner $owner;
+
     private int $created = 0;
+
     private int $creating = 0;
+
     private int $sequence = 0;
+
     private array $idle = [];
+
     private array $leased = [];
+
     private array $leaseOwners = [];
+
     private array $inUse = [];
+
     private array $pending = [];
+
     private array $closing = [];
+
     private array $quarantined = [];
+
     private array $waiters = [];
+
     private int $waitSequence = 0;
+
     private int $waiterLimit;
+
     private float $waitLimit;
+
     private bool $closed = false;
+
     private bool $retired = false;
+
     private ?ResourceBudget $budget;
+
     private int $rejected = 0;
+
     private int $cleanupFailures = 0;
+
     private int $borrows = 0;
+
     private float $waitSeconds = 0.0;
 
     /**
-     * @param Closure(): ReusableResource $factory 零参数工厂，失败时负责完成部分建连的关闭。
-     * @param int $waiterLimit 协程排队上限，0 禁止等待。
-     * @param float $waitSeconds 单次借用最长等待秒数，0 立即拒绝。
+     * @param \Closure(): ReusableResource $factory 零参数工厂，失败时负责完成部分建连的关闭
+     * @param int $waiterLimit 协程排队上限，0 禁止等待
+     * @param float $waitSeconds 单次借用最长等待秒数，0 立即拒绝
      */
-    public function __construct(Closure $factory, int $capacity, int $idleLimit, ?ResourceBudget $budget = null, int $waiterLimit = 64, float $waitSeconds = 1.0)
+    public function __construct(\Closure $factory, int $capacity, int $idleLimit, ?ResourceBudget $budget = null, int $waiterLimit = 64, float $waitSeconds = 1.0)
     {
         if ($capacity < 1 || $idleLimit < 0 || $idleLimit > $capacity || $waiterLimit < 0 || $waiterLimit > 65536
             || !is_finite($waitSeconds) || $waitSeconds < 0 || $waitSeconds > 60) {
-            throw new RuntimeException('连接池容量、空闲上限或等待预算无效');
+            throw new \RuntimeException('连接池容量、空闲上限或等待预算无效');
         }
         $this->factory = $factory;
         $this->capacity = $capacity;
@@ -61,9 +82,9 @@ final class ResourcePool
 
     /**
      * 借用只属于当前作用域；等待截止取作用域、池配置和本次上限中的较小值。
-     * @param ?float $waitSeconds null 沿用池配置，0 即时借用，正数只能缩短等待。
-     * @throws CapacityException 同步满载、零等待或等待队列已满。
-     * @throws TaskException 等待到期或作用域取消；资源尚未借出。
+     * @param ?float $waitSeconds null 沿用池配置，0 即时借用，正数只能缩短等待
+     * @throws CapacityException 同步满载、零等待或等待队列已满
+     * @throws TaskException 等待到期或作用域取消；资源尚未借出
      */
     public function borrow(ExecutionScope $scope, ?float $waitSeconds = null): ResourceLease
     {
@@ -77,7 +98,7 @@ final class ResourcePool
         if ($resource === null) {
             $seconds = min($this->waitLimit, $waitSeconds ?? $this->waitLimit, $scope->deadline()->remaining() ?? $this->waitLimit);
             if ($seconds <= 0 || !extension_loaded('swoole') || Coroutine::getCid() < 0 || count($this->waiters) >= $this->waiterLimit) {
-                $this->rejected++;
+                ++$this->rejected;
                 throw new CapacityException('连接额度或等待队列已满，本次借用立即拒绝');
             }
             $resource = $this->waitForResource($scope, $seconds);
@@ -90,11 +111,11 @@ final class ResourcePool
             // 工厂与排队均可能让出；期间的取消和退役不能接受新的租约。
             $this->assertOpen();
             $scope->open($lease);
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->release($id);
             throw $error;
         }
-        $this->borrows++;
+        ++$this->borrows;
         return $lease;
     }
 
@@ -103,24 +124,24 @@ final class ResourcePool
     {
         $this->owner->assertCurrent();
         if ($this->closed || !isset($this->leased[$id]) || isset($this->pending[$id])) {
-            throw new RuntimeException('资源租约已失效');
+            throw new \RuntimeException('资源租约已失效');
         }
         $this->leaseOwners[$id]->assertCurrent();
         return $this->leased[$id];
     }
 
     /**
-     * @internal 记录真实在途操作，释放意图只在最后一个操作退出后生效。
-     * @param Closure(ReusableResource): mixed $operation 使用本租约资源，不向外转交句柄。
+     * @internal 记录真实在途操作，释放意图只在最后一个操作退出后生效
+     * @param \Closure(ReusableResource): mixed $operation 使用本租约资源，不向外转交句柄
      */
-    public function hold(int $id, Closure $operation): mixed
+    public function hold(int $id, \Closure $operation): mixed
     {
         $resource = $this->resource($id);
         $this->inUse[$id] = ($this->inUse[$id] ?? 0) + 1;
         try {
             return $operation($resource);
         } finally {
-            $this->inUse[$id]--;
+            --$this->inUse[$id];
             if ($this->inUse[$id] === 0) {
                 unset($this->inUse[$id]);
                 if (isset($this->pending[$id])) {
@@ -148,8 +169,8 @@ final class ResourcePool
         $reusable = false;
         try {
             $reusable = $resource->reset();
-        } catch (Throwable $error) {
-            $this->cleanupFailures++;
+        } catch (\Throwable $error) {
+            ++$this->cleanupFailures;
         }
         if ($reusable && !$this->closed && !$this->retired && count($this->idle) < $this->idleLimit) {
             $this->idle[] = $resource;
@@ -198,21 +219,21 @@ final class ResourcePool
         if ($this->created >= $this->capacity || ($this->budget !== null && !$this->budget->tryAcquire())) {
             return null;
         }
-        $this->created++;
-        $this->creating++;
+        ++$this->created;
+        ++$this->creating;
         try {
             $resource = ($this->factory)();
             if (!$resource instanceof ReusableResource) {
-                throw new RuntimeException('资源工厂没有返回可复用资源');
+                throw new \RuntimeException('资源工厂没有返回可复用资源');
             }
             return $resource;
-        } catch (Throwable $error) {
-            $this->created--;
+        } catch (\Throwable $error) {
+            --$this->created;
             $this->budget?->release();
             $this->wake();
             throw $error;
         } finally {
-            $this->creating--;
+            --$this->creating;
         }
     }
 
@@ -253,8 +274,8 @@ final class ResourcePool
                     }
                 }
             }
-        } catch (Throwable $error) {
-            $this->rejected++;
+        } catch (\Throwable $error) {
+            ++$this->rejected;
             throw $error;
         } finally {
             unset($this->waiters[$id]);
@@ -264,7 +285,7 @@ final class ResourcePool
                 $this->budget->unsubscribe($budgetSubscription);
             }
             $signal->close();
-            $elapsed = (float) ((hrtime(true) - $started) / 1000000000.0);
+            $elapsed = (float)((hrtime(true) - $started) / 1000000000.0);
             $this->waitSeconds += $elapsed;
             $this->wake();
         }
@@ -292,7 +313,7 @@ final class ResourcePool
     private function assertOpen(): void
     {
         if ($this->closed || $this->retired) {
-            throw new RuntimeException('连接池已经关闭或退役');
+            throw new \RuntimeException('连接池已经关闭或退役');
         }
     }
 
@@ -318,14 +339,14 @@ final class ResourcePool
     {
         try {
             $resource->close();
-        } catch (Throwable $error) {
-            $this->cleanupFailures++;
+        } catch (\Throwable $error) {
+            ++$this->cleanupFailures;
             $this->quarantined[$id] = $resource;
             unset($this->closing[$id]);
             return;
         }
         unset($this->closing[$id]);
-        $this->created--;
+        --$this->created;
         $this->budget?->release();
         $this->wake();
     }

@@ -112,7 +112,7 @@ HTTP、数据库维护与调度通过同一应用工厂装配数据库池；迁�
 
 ## 物联网配置
 
-主仓物联网配置声明同样位于 `config/app.php`，环境示例统一在 `.env.example`。`/admin` 与 `/customer` 使用独立账号域、登录令牌和每次请求的租户授权；初始账号由 `app:install` 创建，密码只从 `APP_ADMIN_PASSWORD`、`APP_CUSTOMER_PASSWORD` 的受控进程环境取得，不从命令参数读取。
+主仓物联网配置声明同样位于 `config/app.php`，环境示例统一在 `.env.example`。Platform 使用 `/platform`，System/Center 使用当前 Tenant 的 `/system`、`/center`；初始平台账号由 `app:install` 创建，口令只从 `APP_PLATFORM_PASSWORD` 的受控进程环境取得。客户由 Platform 开通并一次性交付随机初始口令。
 
 | 配置组 | 用途 |
 | --- | --- |

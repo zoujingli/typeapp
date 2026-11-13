@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/vendor/autoload.php';
 require_once __DIR__ . '/native-database.php';
 require_once __DIR__ . '/postgres-sync.php';
 
+use Type\Build\NativePackage;
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
@@ -35,7 +36,6 @@ if (!function_exists('identityCommand')) {
  * Broker 互操作：新增传输与身份组合的标准互操作。独立 mqtt.js 5.15.0 与原始 WebSocket 帧，
  * 不把 type-mqtt 编解码器当作唯一客户端。
  */
-
 function interopField(string $value): string
 {
     return pack('n', strlen($value)) . $value;
@@ -81,7 +81,7 @@ function interopFrame(string $payload, int $opcode): string
     }
     $mask = random_bytes(4);
     $masked = '';
-    for ($i = 0; $i < $length; $i++) {
+    for ($i = 0; $i < $length; ++$i) {
         $masked .= $payload[$i] ^ $mask[$i % 4];
     }
     return $header . $mask . $masked;
@@ -100,8 +100,8 @@ function interopWsRead(mixed $socket): string
         expect($chunk !== false && $chunk !== '', 'WebSocket 帧头读取失败');
         $header .= $chunk;
     }
-    $opcode = ord($header[0]) & 0x0f;
-    $length = ord($header[1]) & 0x7f;
+    $opcode = ord($header[0]) & 0x0F;
+    $length = ord($header[1]) & 0x7F;
     $masked = (ord($header[1]) & 0x80) !== 0;
     if ($length === 126) {
         $extended = fread($socket, 2);
@@ -125,7 +125,7 @@ function interopWsRead(mixed $socket): string
     }
     if ($masked) {
         $decoded = '';
-        for ($i = 0; $i < $length; $i++) {
+        for ($i = 0; $i < $length; ++$i) {
             $decoded .= $payload[$i] ^ $mask[$i % 4];
         }
         $payload = $decoded;
@@ -134,7 +134,7 @@ function interopWsRead(mixed $socket): string
         $code = strlen($payload) >= 2 ? unpack('n', substr($payload, 0, 2))[1] : 0;
         throw new RuntimeException('WebSocket 已关闭：' . $code);
     }
-    if ($opcode === 0x9 || $opcode === 0xa) {
+    if ($opcode === 0x9 || $opcode === 0xA) {
         return interopWsRead($socket);
     }
     return $payload;
@@ -180,7 +180,7 @@ function interopWsHandshake(int $port, array $headers, string $ca, string $origi
 /**
  * 将 MQTT 报文封装为客户端二进制 WebSocket 帧，要求一次完整写出。
  *
- * @param resource $socket 调用者持有并负责关闭的连接。
+ * @param resource $socket 调用者持有并负责关闭的连接
  */
 function interopWsWrite(mixed $socket, string $packet): void
 {
@@ -375,7 +375,7 @@ function interopWsHandshakeCases(int $wssPort, string $ca, string $username, str
     $reason = 0;
     try {
         $reply = interopWsRead($big);
-        if ($reply !== '' && ord($reply[0]) === 0xe0) {
+        if ($reply !== '' && ord($reply[0]) === 0xE0) {
             $reason = ord($reply[2] ?? "\0");
             $overClosed = $reason === 0x95;
         }
@@ -386,9 +386,6 @@ function interopWsHandshakeCases(int $wssPort, string $ca, string $username, str
     expect($overClosed, '超过 1 MiB 的报文没有关闭连接，原因码 ' . $reason);
 }
 
-/**
- * @param callable(string,string,string,?array,int,array): array $request
- */
 function interopKeepAliveCases(int $wssPort, string $ca, string $username, string $password, string $allowedOrigin): void
 {
     [$alive, $header] = interopWsHandshake($wssPort, ['Sec-WebSocket-Protocol: mqtt'], $ca, $allowedOrigin);
@@ -402,7 +399,7 @@ function interopKeepAliveCases(int $wssPort, string $ca, string $username, strin
     while (microtime(true) < $deadline) {
         try {
             $message = interopWsRead($alive);
-            if ($message !== '' && ord($message[0]) === 0xe0 && isset($message[2]) && ord($message[2]) === 0x8d) {
+            if ($message !== '' && ord($message[0]) === 0xE0 && isset($message[2]) && ord($message[2]) === 0x8D) {
                 $expired = true;
                 break;
             }
@@ -421,7 +418,7 @@ $driver = $argv[2] ?? 'pgsql';
 expect($driver === 'pgsql', '互操作验收需要 PostgreSQL 同步存储');
 if ($target === '--php') {
     $swoole = getenv('TYPE_SWOOLE_MODULE');
-    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string)ini_get('extension_dir'), '/') . '/swoole.so';
     expect(is_file($swoole), 'PHP 互操作验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
     $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
 } else {
@@ -439,7 +436,7 @@ foreach ($argv as $argument) {
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '无源码互操作验收使用macOS内核策略及原生产物');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $sourceRoot = realpath($built['identity']['description']['facts']['workspace']);
     expect(is_string($sourceRoot), '无源码验收必须能定位实际编译输入');
@@ -450,7 +447,7 @@ if ($noSource) {
     }
     $command = [...$policy, $runtime . '/run'];
 }
-$databaseTools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+$databaseTools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
 $fixtureDatabase = new NativeDatabase($base . '/primary', 'pgsql', $databaseTools);
 $fixtureSync = new PostgresSync($fixtureDatabase, $base . '/standby', $databaseTools, 'broker_interop_sync');
 $environment = getenv();
@@ -512,7 +509,7 @@ try {
     $secrets[] = $password;
     identityCommand([...$command, 'broker:user', 'access-admin', '互操作管理员'], $environment + ['BROKER_ADMIN_PASSWORD' => $password]);
     $addresses = [];
-    for ($index = 0; $index < 7; $index++) {
+    for ($index = 0; $index < 7; ++$index) {
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorText);
         expect(is_resource($listener), '无法选择互操作测试端口');
         $addresses[] = stream_socket_get_name($listener, false);
@@ -530,10 +527,10 @@ try {
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $auth = $request('POST', '/broker/auth/login', '', ['login' => 'access-admin', 'password' => $password], 200)['data'];
@@ -541,14 +538,14 @@ try {
     $secrets[] = $token;
     $mqttPassword = bin2hex(random_bytes(16));
     $secrets[] = $mqttPassword;
-    $tlsPort = (int) substr(strrchr($addresses[1], ':'), 1);
-    $wssPort = (int) substr(strrchr($addresses[3], ':'), 1);
-    $mtlsPort = (int) substr(strrchr($addresses[5], ':'), 1);
+    $tlsPort = (int)substr(strrchr($addresses[1], ':'), 1);
+    $wssPort = (int)substr(strrchr($addresses[3], ':'), 1);
+    $mtlsPort = (int)substr(strrchr($addresses[5], ':'), 1);
     $nodeEnvironment = $environment + [
         'BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => $mqttPassword,
         'BROKER_TOPIC_PREFIX' => 'broker-interop/', 'BROKER_NODE_ID' => 'interop-node',
         'BROKER_LISTEN' => '127.0.0.1', 'BROKER_PLAINTEXT' => 'false',
-        'BROKER_PORT' => (string) $tlsPort, 'BROKER_WSS_PORT' => (string) $wssPort,
+        'BROKER_PORT' => (string)$tlsPort, 'BROKER_WSS_PORT' => (string)$wssPort,
         'BROKER_CERTIFICATE' => $certs['server'], 'BROKER_PRIVATE_KEY' => $certs['key'],
         'BROKER_ALLOWED_ORIGINS' => $previewOrigin,
     ];
@@ -566,8 +563,8 @@ try {
     expect(($nodes['total'] ?? 0) === 1, '互操作节点未上报');
     interopWsHandshakeCases($wssPort, $certs['ca'], 'broker-client', $mqttPassword, $previewOrigin);
     $jsEnv = array_replace(getenv(), [
-        'INTEROP_MQTT_TLS_PORT' => (string) $tlsPort,
-        'INTEROP_MQTT_WSS_PORT' => (string) $wssPort,
+        'INTEROP_MQTT_TLS_PORT' => (string)$tlsPort,
+        'INTEROP_MQTT_WSS_PORT' => (string)$wssPort,
         'INTEROP_MQTT_USERNAME' => 'broker-client',
         'INTEROP_MQTT_PASSWORD' => $mqttPassword,
         'INTEROP_MQTT_CA' => $certs['ca'],
@@ -585,12 +582,12 @@ try {
     );
     $session5 = $pdo->query("SELECT expiry FROM type_mqtt_sessions WHERE client_id = 'interop-session-5'")->fetch(PDO::FETCH_ASSOC);
     $session311 = $pdo->query("SELECT expiry, expires_at FROM type_mqtt_sessions WHERE client_id = 'interop-session-311'")->fetch(PDO::FETCH_ASSOC);
-    expect(is_array($session5) && (int) $session5['expiry'] === 86400, 'MQTT5 显式 Session Expiry 不是 86400');
-    expect(is_array($session311) && (int) $session311['expiry'] === -1 && $session311['expires_at'] === null, 'MQTT 3.1.1 CleanSession=0 被套用了 24 小时 TTL');
+    expect(is_array($session5) && (int)$session5['expiry'] === 86400, 'MQTT5 显式 Session Expiry 不是 86400');
+    expect(is_array($session311) && (int)$session311['expiry'] === -1 && $session311['expires_at'] === null, 'MQTT 3.1.1 CleanSession=0 被套用了 24 小时 TTL');
     $retain = $request('GET', '/broker/resources/retained?topic=' . rawurlencode('broker-interop/retain') . '&limit=20', $token, null, 200);
     expect(($retain['items'][0]['topic'] ?? '') === 'broker-interop/retain', '保留消息未进入资源查询');
     $item = $retain['items'][0];
-    $clearBody = ['generation' => (int) $item['generation'], 'confirmed' => true];
+    $clearBody = ['generation' => (int)$item['generation'], 'confirmed' => true];
     $clearId = bin2hex(random_bytes(16));
     $cleared = $request('POST', '/broker/resources/retained/' . $item['id'] . '/clear', $token, $clearBody + ['operation_id' => $clearId], 200);
     $deadline = microtime(true) + 12;
@@ -673,10 +670,10 @@ try {
     $appClient = new HttpClient('http://' . $addresses[2], 8.0);
     interopWaitHttp($appServer, $appClient);
     $appRequest = static function (string $method, string $path, string $token, array $headers, ?array $data, int $status) use ($appClient, $appServer, &$checks): array {
-        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '双端 ' . $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $appServer->stdout() . $appServer->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $platformToken = $appRequest('POST', '/admin/auth/login', '', [], ['login' => 'platform-admin', 'password' => $appPassword], 200)['data']['accessToken'];
@@ -703,7 +700,7 @@ try {
             'APP_BROWSER_PASSWORD' => $appPassword,
             'APP_BROWSER_CUSTOMER_PASSWORD' => $appPassword . '-customer',
             'APP_BROWSER_TENANT' => $tenantId,
-            'INTEROP_WSS_PORT' => (string) $wssPort,
+            'INTEROP_WSS_PORT' => (string)$wssPort,
         ]));
         $browserResult = $browser->wait(180);
         file_put_contents($base . '/browser.log', str_replace($secrets, '<REDACTED>', $browserResult->stdout . $browserResult->stderr));
@@ -723,7 +720,7 @@ try {
     $node->stop(5);
     $node = null;
     $mtlsEnvironment = $nodeEnvironment + [
-        'BROKER_MTLS_PORT' => (string) $mtlsPort,
+        'BROKER_MTLS_PORT' => (string)$mtlsPort,
         'BROKER_CLIENT_CA' => $certs['ca'],
     ];
     $node = new Process([...$command, 'broker:run'], $root, $mtlsEnvironment);
@@ -738,7 +735,7 @@ try {
         usleep(100000);
     } while (microtime(true) < $deadline);
     expect(($nodes['total'] ?? 0) === 1, 'mTLS 节点未上报');
-    $jsEnv['INTEROP_MQTT_MTLS_PORT'] = (string) $mtlsPort;
+    $jsEnv['INTEROP_MQTT_MTLS_PORT'] = (string)$mtlsPort;
     $jsEnv['INTEROP_MQTT_CERT'] = $certs['client'];
     $jsEnv['INTEROP_MQTT_KEY'] = $certs['clientKey'];
     $report['mqttjs_mtls'] = interopJs($root, $clientRoot, 'mtls', $jsEnv, 90);

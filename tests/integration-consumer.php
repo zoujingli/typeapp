@@ -1,6 +1,8 @@
 <?php
 
 declare(strict_types=1);
+use TypeApp\Distribution\Batch;
+use TypeApp\Distribution\Process;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/tools/distribution/Process.php';
@@ -31,7 +33,7 @@ mkdir($consumer, 0700, true);
 $mapping = json_decode(file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
 $batch = $remote ? json_decode(file_get_contents($root . '/build/distribution/batch-result.json'), true, 512, JSON_THROW_ON_ERROR) : null;
 if ($remote) {
-    \TypeApp\Distribution\Batch::verifyReport($root, \TypeApp\Distribution\Process::output(['git', 'rev-parse', 'HEAD'], $root), $batch, $mapping);
+    Batch::verifyReport($root, Process::output(['git', 'rev-parse', 'HEAD'], $root), $batch, $mapping);
 }
 $composer = ['name' => 'type-tests/full-integration', 'type' => 'project', 'license' => 'Apache-2.0', 'require' => [], 'require-dev' => [], 'repositories' => [],
     'autoload' => ['classmap' => ['examples/integration', 'examples/model/Drivers.php', 'examples/orm-suite/Schema.php', 'examples/outbox/Adapters.php', 'examples/coordination/QueueDispatchTask.php']],

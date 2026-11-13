@@ -17,7 +17,7 @@ final class Reader
     /**
      * 读取文章、作者和标签并转换为业务字段，不直接泄漏模型内部状态。
      *
-     * @return array<string, mixed> 显式文章 DTO。
+     * @return array<string, mixed> 显式文章 DTO
      */
     public static function article(int $id): array
     {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+use Type\Build\BuildPlatform;
 use Type\Build\CommandAssembly;
 
 $root = dirname(__DIR__);
@@ -12,7 +13,7 @@ $work = $root . '/build/business-events-' . bin2hex(random_bytes(6));
 mkdir($work, 0700, true);
 $complete = false;
 try {
-    $namespace = 'TypeApp\\BusinessEventFixture\\';
+    $namespace = 'TypeApp\BusinessEventFixture\\';
     $sources = [$root . '/plugin/type-core/src', $root . '/plugin/type-runtime/src', __DIR__ . '/fixtures/business-events.php'];
     $application = ['enabled' => ['type-tests/business-events'], 'bootstrap' => ['class' => $namespace . 'Application', 'method' => 'run'], 'services' => [['id' => 'first', 'class' => $namespace . 'First'],
         ['id' => 'second', 'class' => $namespace . 'Second'], ['id' => 'reject', 'class' => $namespace . 'Reject'],
@@ -44,7 +45,7 @@ try {
     $native = in_array('--native', $argv, true);
     if ($native) {
         successful([PHP_BINARY, $work . '/vendor/bin/type', 'build', $work . '/type-app.json'], $work);
-        $binary = (new Type\Build\BuildPlatform())->output($work . '/build/business-events');
+        $binary = (new BuildPlatform())->output($work . '/build/business-events');
         $build = json_decode(file_get_contents($binary . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
         // SQLite 消费者使用自己的运行清单，避免加载控制器的其他数据库驱动。
         putenv('TYPE_NATIVE_PHP_INI=' . $build['runtime-profile']['ini']);
@@ -89,7 +90,7 @@ try {
         'lock-sha256' => hash_file('sha256', $work . '/composer.lock'), 'configuration-sha256' => hash_file('sha256', $work . '/type-app.json'),
         'checks' => ['ordered', 'empty', 'failure', 'commit', 'sync', 'rollback', 'after-failure', 'scopes', 'six-build-rejections'], 'passed' => true];
     if ($native) {
-        $report['binary-sha256'] = hash_file('sha256', (new Type\Build\BuildPlatform())->output($work . '/build/business-events'));
+        $report['binary-sha256'] = hash_file('sha256', (new BuildPlatform())->output($work . '/build/business-events'));
     }
     $evidence = $work . '.evidence';
     expect(mkdir($evidence, 0700), '无法保全独立事件验收身份');
@@ -98,7 +99,7 @@ try {
     if ($native) {
         $preserved['build/compiler/project.yml'] = 'project.yml';
         $preserved['build/compiler/assembled-application.php'] = 'assembled-application.php';
-        $preserved[substr((new Type\Build\BuildPlatform())->output($work . '/build/business-events'), strlen($work) + 1) . '.build.json'] = 'build.json';
+        $preserved[substr((new BuildPlatform())->output($work . '/build/business-events'), strlen($work) + 1) . '.build.json'] = 'build.json';
     }
     foreach ($preserved as $source => $destination) {
         expect(copy($work . '/' . $source, $evidence . '/' . $destination)

@@ -8,13 +8,18 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 use app\common\model\CustomerMember;
 use app\common\model\Tenant;
 use Type\Build\ModelCompiler;
+use Type\Mqtt\PostgresStore;
+use Type\Mqtt\ProtocolError;
+use Type\Orm\Connection;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
 use Type\Orm\Helper\QueryHelper;
 use Type\Orm\ModelException;
+use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Orm\Sqlite\SqliteDriver;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
+use Type\Runtime\TaskException;
 
 $root = dirname(__DIR__);
 $work = $root . '/build/app-models-' . bin2hex(random_bytes(6));
@@ -85,18 +90,18 @@ try {
             $primary = new NativeDatabase($work . '/primary', 'pgsql', $tools);
             $standby = new PostgresSync($primary, $work . '/standby', $tools);
             $environment = $primary->environment();
-            $driver = new Type\Orm\Pgsql\PgsqlDriver(
+            $driver = new PgsqlDriver(
                 $environment['TYPE_PGSQL_HOST'],
-                (int) $environment['TYPE_PGSQL_PORT'],
+                (int)$environment['TYPE_PGSQL_PORT'],
                 $environment['TYPE_PGSQL_DATABASE'],
                 $environment['TYPE_PGSQL_USER'],
                 $environment['TYPE_PGSQL_PASSWORD']
             );
-            $store = new Type\Mqtt\PostgresStore($driver);
+            $store = new PostgresStore($driver);
             $admin = $standby->connection();
             $admin->exec('CREATE TABLE iot_tenants (id VARCHAR(32) PRIMARY KEY, name VARCHAR(100) NOT NULL, enabled INTEGER NOT NULL, version INTEGER NOT NULL, created_at INTEGER NOT NULL)');
             CoroutineRuntime::run(static function () use ($store, $admin): void {
-                $committed = $store->transaction(str_repeat('a', 32), static function (Type\Orm\Connection $transaction): array {
+                $committed = $store->transaction(str_repeat('a', 32), static function (Connection $transaction): array {
                     expect(Db::connection('default', true) === $transaction, '持久回调与 Model 使用了不同租约');
                     expect(ExecutionScope::current()->binding('tenant_id') === null, '持久消息未经认证即授予租户身份');
                     return Db::transaction(static function (): array {
@@ -106,17 +111,17 @@ try {
                     });
                 });
                 expect($committed->state === 'committed' && $committed->released && $committed->value['id'] === 'committed', 'Model 写入未取得同步持久证明或未释放');
-                $rejected = $store->transaction(str_repeat('b', 32), static function (Type\Orm\Connection $transaction): array {
+                $rejected = $store->transaction(str_repeat('b', 32), static function (Connection $transaction): array {
                     $tenant = new Tenant(['id' => 'rollback', 'name' => '须回滚', 'enabled' => true]);
                     $tenant->save();
-                    throw new Type\Mqtt\ProtocolError(0x87);
+                    throw new ProtocolError(0x87);
                 });
                 expect($rejected->state === 'rejected' && $rejected->released && $rejected->reason === 0x87, '业务异常没有按原合同拒绝并清理');
                 expect($admin->query("SELECT COUNT(*) FROM iot_tenants WHERE id = 'rollback'")->fetchColumn() === 0, 'Model 写入逃逸原持久事务');
                 try {
                     ExecutionScope::current();
                     throw new RuntimeException('持久回调结束后遗留当前作用域');
-                } catch (Type\Runtime\TaskException $error) {
+                } catch (TaskException $error) {
                     expect($error->errorCode() === 'scope_missing', '回调退出后的作用域错误不符');
                 }
             });

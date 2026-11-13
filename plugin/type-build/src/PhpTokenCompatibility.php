@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use PhpParser\Parser\Php8;
 
 // 某些受控 PHP 运行配置会保留 tokenizer 函数却没有注册 PHP 8 的
 // PhpToken 类。PHP-Parser 的兼容层在 PHP 8+ 会直接继承该类，因此先
@@ -11,8 +12,11 @@ if (!class_exists('PhpToken', false)) {
     class PhpToken
     {
         public int $id;
+
         public string $text;
+
         public int $line;
+
         public int $pos;
 
         /** 保存词法 token 编号、原始文本、起始行与字节偏移；未知位置用 -1。 */
@@ -22,6 +26,12 @@ if (!class_exists('PhpToken', false)) {
             $this->text = $text;
             $this->line = $line;
             $this->pos = $pos;
+        }
+
+        /** 返回原始 token 文本，保留空白及注释字节供格式保留输出使用。 */
+        public function __toString(): string
+        {
+            return $this->text;
         }
 
         /** @return list<static> */
@@ -63,7 +73,7 @@ if (!class_exists('PhpToken', false)) {
             return $name === 'UNKNOWN' ? null : $name;
         }
 
-        /** @param int|string|array<int|string> $kind */
+        /** @param array<int|string>|int|string $kind */
         public function is($kind): bool
         {
             if (is_int($kind)) {
@@ -93,12 +103,6 @@ if (!class_exists('PhpToken', false)) {
             }
             return false;
         }
-
-        /** 返回原始 token 文本，保留空白及注释字节供格式保留输出使用。 */
-        public function __toString(): string
-        {
-            return $this->text;
-        }
     }
 }
 
@@ -108,7 +112,7 @@ if (!class_exists('PhpToken', false)) {
 // 使用同一套映射，不依赖某一个扩展配置或 token_get_all() 示例。
 $runtimeTokenIds = [];
 if (function_exists('token_name')) {
-    for ($tokenId = 256; $tokenId < 1024; $tokenId++) {
+    for ($tokenId = 256; $tokenId < 1024; ++$tokenId) {
         $tokenName = token_name($tokenId);
         if (is_string($tokenName) && str_starts_with($tokenName, 'T_')) {
             $runtimeTokenIds[$tokenName] = $tokenId;
@@ -141,8 +145,8 @@ foreach ($specialTokenIds as $tokenName => $tokenId) {
     define($tokenName, $runtimeTokenIds[$tokenName] ?? $tokenId);
 }
 
-if (class_exists(\PhpParser\Parser\Php8::class)) {
-    foreach ((new ReflectionClass(\PhpParser\Parser\Php8::class))->getConstants() as $tokenName => $tokenId) {
+if (class_exists(Php8::class)) {
+    foreach ((new ReflectionClass(Php8::class))->getConstants() as $tokenName => $tokenId) {
         if (!str_starts_with($tokenName, 'T_') || defined($tokenName)) {
             continue;
         }

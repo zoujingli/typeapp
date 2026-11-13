@@ -46,7 +46,7 @@ function iotClusterMqttChecks(Closure $request, array $evidence, array $command,
             $devices . '/' . $current['id'] . '/' . $action,
             $evidence['admin_token'],
             $evidence['tenant'],
-            ['version' => (int) $current['version'], 'confirm_device_id' => $current['id']],
+            ['version' => (int)$current['version'], 'confirm_device_id' => $current['id']],
             202
         )['data'];
         if ($result['credential'] !== null) {
@@ -93,8 +93,8 @@ function iotClusterMqttChecks(Closure $request, array $evidence, array $command,
             fclose($listener);
             $nodes[$node] = new Process([...$command, 'iot:mqtt'], $root, array_replace($environment, ['IOT_MQTT_PORT' => $ports[$node], 'IOT_MQTT_NODE_ID' => $node]));
         }
-        $wait(static fn (): bool => (int) $database->query("SELECT COUNT(*) FROM type_mqtt_nodes WHERE state = 'active'")->fetchColumn() === 3, '三个原生设备Broker未注册');
-        $wait(static fn (): bool => (int) $database->query('SELECT COUNT(*) FROM iot_authorization_invalidations WHERE completed_at IS NULL')->fetchColumn() === 0, '未处理已有管理意图');
+        $wait(static fn (): bool => (int)$database->query("SELECT COUNT(*) FROM type_mqtt_nodes WHERE state = 'active'")->fetchColumn() === 3, '三个原生设备Broker未注册');
+        $wait(static fn (): bool => (int)$database->query('SELECT COUNT(*) FROM iot_authorization_invalidations WHERE completed_at IS NULL')->fetchColumn() === 0, '未处理已有管理意图');
         foreach (['rotate', 'revoke', 'disable', 'retire'] as $action) {
             $created = $create($action);
             [$oldClient] = $spawn('idle', $created, $environment['IOT_MQTT_NODE_ID']);
@@ -105,14 +105,14 @@ function iotClusterMqttChecks(Closure $request, array $evidence, array $command,
             $owner = $database->prepare('SELECT node_id, generation FROM type_mqtt_sessions WHERE client_id = ?');
             $owner->execute([$created['device']['id']]);
             $current = $owner->fetch(PDO::FETCH_ASSOC);
-            expect($current['node_id'] === 't29-beta' && (int) $current['generation'] === 2, '真实设备没有跨Broker恢复');
+            expect($current['node_id'] === 't29-beta' && (int)$current['generation'] === 2, '真实设备没有跨Broker恢复');
             $frozen = $nodes['t29-beta'];
             expect(posix_kill($frozen->pid(), SIGSTOP), '无法暂停本轮设备节点');
             $changed = $manage($created, $action);
             $wait(static function () use ($database, $created): bool {
                 $fences = $database->prepare('SELECT COUNT(*) FROM type_mqtt_fences WHERE client_id = ?');
                 $fences->execute([$created['device']['id']]);
-                return (int) $fences->fetchColumn() === 1;
+                return (int)$fences->fetchColumn() === 1;
             }, '远端撤权未建立持久关闭意图');
             expect($read($created)['authorization']['status'] === 'pending', '旧节点暂停时首个Broker提前完成了全集群撤权');
             expect(posix_kill($frozen->pid(), SIGCONT), '无法恢复本轮设备节点');
@@ -121,7 +121,7 @@ function iotClusterMqttChecks(Closure $request, array $evidence, array $command,
             $enforced($created);
             $remaining = $database->prepare("SELECT (SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id = ?) + (SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = ? AND state = 'pending')");
             $remaining->execute([$created['device']['id'], $created['device']['id']]);
-            expect((int) $remaining->fetchColumn() === 0, '集群撤权完成后残留旧会话或交付');
+            expect((int)$remaining->fetchColumn() === 0, '集群撤权完成后残留旧会话或交付');
             foreach (array_keys($nodes) as $node) {
                 $run('denied', $created, $node);
             }
@@ -142,11 +142,11 @@ function iotClusterMqttChecks(Closure $request, array $evidence, array $command,
             $run('control', $offline, 't29-gamma');
             $pending = $database->prepare("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = ? AND state = 'pending'");
             $pending->execute([$offline['device']['id']]);
-            expect((int) $pending->fetchColumn() === 1, '离线撤权装置缺少真实排队交付');
+            expect((int)$pending->fetchColumn() === 1, '离线撤权装置缺少真实排队交付');
             $manage($offline, $action);
             $enforced($offline);
             $pending->execute([$offline['device']['id']]);
-            expect((int) $pending->fetchColumn() === 0, '授权失效留下可跨节点恢复的离线投递');
+            expect((int)$pending->fetchColumn() === 0, '授权失效留下可跨节点恢复的离线投递');
             $run('denied', $offline, 't29-beta');
             $checks[$action][] = 'offline-delivery-cleared-and-other-node-resume-denied';
         }

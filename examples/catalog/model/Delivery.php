@@ -12,5 +12,6 @@ use Type\Orm\Model;
 final class Delivery extends Model
 {
     public string $id;
+
     public int $product_id;
 }

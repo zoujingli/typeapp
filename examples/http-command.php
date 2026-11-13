@@ -14,7 +14,7 @@ use TypeApp\ValidationExample\Handler as ValidationHandler;
 /**
  * 启动 PSR HTTP 与请求资源示例，严格校验监听端口并记录作用域收尾。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
@@ -22,7 +22,7 @@ function main(int $argc, array $argv): void
     if (!is_int($port) || $port < 1 || $port > 65535) {
         throw new InvalidArgumentException('HTTP 端口无效');
     }
-    $trace = (string) (getenv('TYPE_HTTP_TRACE') ?: '');
+    $trace = (string)(getenv('TYPE_HTTP_TRACE') ?: '');
     $responses = new Factory();
     $requests = $responses;
     $streams = $responses;
@@ -33,5 +33,5 @@ function main(int $argc, array $argv): void
     $router->add('GET', '/fail', static fn (): FailingHandler => new FailingHandler($trace));
     $router->add('POST', '/validate', static fn (): ValidationHandler => new ValidationHandler($responses, $streams));
     $router->add('PATCH', '/validate', static fn (): ValidationHandler => new ValidationHandler($responses, $streams));
-    (new SwooleServer($router, $requests, $responses, $streams))->serve('127.0.0.1', (int) $port);
+    (new SwooleServer($router, $requests, $responses, $streams))->serve('127.0.0.1', (int)$port);
 }

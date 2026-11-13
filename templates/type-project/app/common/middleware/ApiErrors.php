@@ -8,7 +8,6 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use Throwable;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Message\Factory;
 use Type\Log\Logger;
@@ -25,7 +24,9 @@ use Type\Validate\ValidationException;
 final class ApiErrors implements MiddlewareInterface
 {
     private Factory $messages;
+
     private bool $debug;
+
     private string $basePath;
 
     /** 只保存响应工厂、明确的调试权限和代码路径根，不保存配置值或异常对象。 */
@@ -73,13 +74,13 @@ final class ApiErrors implements MiddlewareInterface
             }
 
             return $this->failure($modelError, $request, $requestId);
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             return $this->failure($error, $request, $requestId);
         }
     }
 
     /** 不字符串化异常或记录消息、参数；调试日志只选取代码位置、函数名与异常类型。 */
-    private function failure(Throwable $error, ServerRequestInterface $request, string $requestId): ResponseInterface
+    private function failure(\Throwable $error, ServerRequestInterface $request, string $requestId): ResponseInterface
     {
         if ($this->debug) {
             $filename = str_replace('\\', '/', $error->getFile());
@@ -109,7 +110,7 @@ final class ApiErrors implements MiddlewareInterface
                 // 只复制允许的字段；原始 frame 可能含令牌或请求对象，不能交给日志层。
                 $frames[] = [
                     'file' => substr($frameFile, strlen($base) + 1),
-                    'line' => max(0, (int) ($frame['line'] ?? 0)),
+                    'line' => max(0, (int)($frame['line'] ?? 0)),
                     'function' => is_string($frame['function'] ?? null) ? $frame['function'] : '[unknown]',
                 ];
             }

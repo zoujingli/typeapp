@@ -4,16 +4,27 @@ declare(strict_types=1);
 
 namespace {{namespace}};
 
-use Type\Orm\Attribute\Table;
 use Type\Orm\Model;
 
-/** {{name}} 的持久字段；数据库连接归当前执行作用域所有。 */
-#[Table('{{table}}', version: 'version')]
+/**
+ * {{name}} 的持久字段；数据库连接归当前执行作用域所有。
+ *
+ * @property int $id 记录标识。
+ * @property string $name 显示名称。
+ * @property-read int $version 并发版本。
+ * @method static \Type\Orm\ModelQuery<static> query(string $alias = '')
+ * @method static static|null find(int|string $id)
+ * @method static static create(array $values)
+ */
 final class {{name}} extends Model
 {
-    public int $id;
-    public string $name;
-    public int $version;
+    protected string $table = '{{table}}';
+    protected string $versionKey = 'version';
+    protected array $schema = [
+        'id' => ['type' => 'int', 'comment' => '记录标识。'],
+        'name' => ['type' => 'string', 'comment' => '显示名称。'],
+        'version' => ['type' => 'int', 'comment' => '并发版本。'],
+    ];
 
     /** @return array{id:int, name:string, version:int} 显式公开字段，不序列化活动模型。 */
     public function present(): array

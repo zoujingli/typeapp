@@ -7,6 +7,8 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Build\BuildEnvironment;
 use Type\Build\BuildPlatform;
+use Type\Testing\Process;
+use Type\Testing\ProcessResult;
 
 $root = BuildPlatform::resolve(dirname(__DIR__));
 $work = BuildPlatform::path($argv[1] ?? '');
@@ -34,7 +36,7 @@ $settings = [
     'name' => 'compiled-threads', 'entry' => 'app/main.php',
     'output' => $artifactRelative, 'build-directory' => 'build/native/compiler',
     'threads' => ['probe' => $files ? 'FileProbe::run' : ($resources ? 'PoolProbe::run' : 'ThreadProbe::run')],
-    'runtime' => [PHP_OS_FAMILY => ['extensions' => ['swoole'], 'functions' => ['Swoole\\Coroutine\\run']]],
+    'runtime' => [PHP_OS_FAMILY => ['extensions' => ['swoole'], 'functions' => ['Swoole\Coroutine\run']]],
     'compiler' => ['debug' => true, 'jobs' => 2],
 ];
 $composer = [
@@ -71,13 +73,13 @@ foreach (['composer.json' => $composer, 'type-app.json' => $settings] as $file =
 }
 expect(copy($root . '/tests/fixtures/' . ($files ? 'compiled-files.php' : ($resources ? 'compiled-resources.php' : 'compiled-threads.php')), $work . '/app/main.php'), '无法复制线程消费者');
 if ($initializationFailure) {
-    $input = (string) file_get_contents($work . '/app/main.php');
+    $input = (string)file_get_contents($work . '/app/main.php');
     $input = str_replace("const THREAD_TEXT = 'thread-string';", "const THREAD_TEXT = 'thread-string';\nuse varint_types;\nconst THREAD_INITIALIZATION_FAILURE = 1 / 0;", $input, $replacements);
     expect($replacements === 1 && file_put_contents($work . '/app/main.php', $input) === strlen($input), '无法建立部分初始化失败的真实声明');
 }
 expect(copy($root . '/toolchain.lock.json', $work . '/toolchain.lock.json'), '无法复制工具链约束');
 $runner = new BuildEnvironment();
-$environment = controlledRuntimeEnvironment($runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME')));
+$environment = controlledRuntimeEnvironment($runner->environment((string)getenv('PHP_HOME'), (string)getenv('PHPX_HOME')));
 // 独立安装和编译使用本轮控制器的配置，不要求修改共享 SDK 的默认 ini。
 $environment['PHPRC'] = php_ini_loaded_file() ?: '';
 $environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
@@ -100,9 +102,9 @@ if ($files) {
 function verifyCompiledFileThreads(string $work): void
 {
     $runner = new BuildEnvironment();
-    $environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME'));
+    $environment = $runner->environment((string)getenv('PHP_HOME'), (string)getenv('PHPX_HOME'));
     $artifact = (new BuildPlatform())->output($work . '/build/native/type-app');
-    $report = json_decode((string) file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+    $report = json_decode((string)file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     expect(hash_file('sha256', $artifact) === $report['sha256'], '消费者产物摘要不一致');
     $packages = array_keys($report['production-packages']);
     sort($packages);
@@ -159,7 +161,7 @@ function verifyCompiledFileThreads(string $work): void
                 && $result['stats']['aio_process_peak_bytes'] <= $result['stats']['aio_max_bytes'], '共享容量没有守恒');
             $threads = [];
             foreach (['left', 'right'] as $role) {
-                $thread = json_decode((string) file_get_contents($directory . '/' . $role . '/result.json'), true, 512, JSON_THROW_ON_ERROR);
+                $thread = json_decode((string)file_get_contents($directory . '/' . $role . '/result.json'), true, 512, JSON_THROW_ON_ERROR);
                 expect($thread['process'] === $result['process'] && $thread['native_id'] !== $result['main_thread'], '文件必须在真实业务线程执行');
                 if ($mode === 'normal') {
                     expect($thread['ticks'] >= 11 && $thread['checks'] >= 275, '文件、锁或迟到收尾验证不完整');
@@ -185,9 +187,9 @@ function verifyCompiledFileThreads(string $work): void
 function verifyCompiledResourceThreads(string $work): void
 {
     $runner = new BuildEnvironment();
-    $environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME'));
+    $environment = $runner->environment((string)getenv('PHP_HOME'), (string)getenv('PHPX_HOME'));
     $artifact = (new BuildPlatform())->output($work . '/build/native/type-app');
-    $report = json_decode((string) file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+    $report = json_decode((string)file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     expect(hash_file('sha256', $artifact) === $report['sha256'], '消费者产物摘要不一致');
     $packages = array_keys($report['production-packages']);
     sort($packages);
@@ -218,7 +220,7 @@ function verifyCompiledResourceThreads(string $work): void
             expect($result['exits'] === [0, 0] && $result['restarts'] === [0, 0] && $result['active_threads'] === 1 && $result['source_free'] === true, '业务线程与重建线程必须全部 join 且无源码');
             $threads = [];
             foreach (['left', 'right', 'again-0', 'again-1'] as $role) {
-                $thread = json_decode((string) file_get_contents($directory . '/' . $role . '.json'), true, 512, JSON_THROW_ON_ERROR);
+                $thread = json_decode((string)file_get_contents($directory . '/' . $role . '.json'), true, 512, JSON_THROW_ON_ERROR);
                 expect($thread['checks'] >= 40 && $thread['remaining_coroutines'] === 0 && $thread['allocated'] === 0, '资源行为或收尾不完整');
                 expect($thread['native_id'] !== $result['main_thread'] && $thread['process'] === $result['process'], '必须是同一进程内的真实业务线程');
                 expect($thread['observations']['model_mapping'] === ['reused' => true, 'scopes' => 2,
@@ -242,12 +244,12 @@ function verifyCompiledResourceThreads(string $work): void
 function verifyCompiledThreads(string $work, bool $initializationFailure = false): void
 {
     $runner = new BuildEnvironment();
-    $environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME'));
+    $environment = $runner->environment((string)getenv('PHP_HOME'), (string)getenv('PHPX_HOME'));
     $artifact = (new BuildPlatform())->output($work . '/build/native/type-app');
-    $report = json_decode((string) file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+    $report = json_decode((string)file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     expect(hash_file('sha256', $artifact) === $report['sha256'], '消费者产物摘要不一致');
     expect(array_keys($report['production-packages']) === ['zoujingli/type-runtime'], '消费者完整生产依赖不符');
-    expect(in_array('swoole\\coroutine\\run', $report['runtime-profile']['functions'], true), '官方库公开入口必须纳入运行身份');
+    expect(in_array('swoole\coroutine\run', $report['runtime-profile']['functions'], true), '官方库公开入口必须纳入运行身份');
     foreach ($report['sources'] as $source) {
         expect(BuildPlatform::contains($work, $source), '消费者仍引用主仓生产源码');
     }
@@ -297,8 +299,8 @@ function verifyCompiledThreads(string $work, bool $initializationFailure = false
             $result = json_decode(trim($stdout), true, 512, JSON_THROW_ON_ERROR);
             expect($result['main-count'] === 1 && $result['statuses'] === [7, 0, 0, 0, 0, 0, 0, 0, 0]
                 && $result['exit'] === 9 && $result['b'] === 0, '线程返回值与清理状态不符');
-            $a = json_decode((string) file_get_contents($directory . '/a.json'), true, 512, JSON_THROW_ON_ERROR);
-            $b = json_decode((string) file_get_contents($directory . '/b.json'), true, 512, JSON_THROW_ON_ERROR);
+            $a = json_decode((string)file_get_contents($directory . '/a.json'), true, 512, JSON_THROW_ON_ERROR);
+            $b = json_decode((string)file_get_contents($directory . '/b.json'), true, 512, JSON_THROW_ON_ERROR);
             expect($a['native-id'] !== $b['native-id'] && $a['native-id'] !== $result['main-native-id']
                 && $b['native-id'] !== $result['main-native-id'], '两个业务线程必须具有不同原生线程身份');
             $identities = [];
@@ -306,11 +308,11 @@ function verifyCompiledThreads(string $work, bool $initializationFailure = false
                 'again-4' => 7, 'again-5' => 8, 'again-6' => 9, 'again-7' => 10, 'exit' => 11];
             foreach ($generations as $role => $generation) {
                 expect(file_get_contents($directory . '/' . $role . '.cleanup') === 'cleaned', '线程请求析构未完成：' . $role);
-                $strings = json_decode((string) file_get_contents($directory . '/' . $role . '.ready'), true, 512, JSON_THROW_ON_ERROR);
+                $strings = json_decode((string)file_get_contents($directory . '/' . $role . '.ready'), true, 512, JSON_THROW_ON_ERROR);
                 expect($strings['constant-text'] === 'thread-string' && $strings['literal-text'] === 'shared-thread-literal', '共享字符串被原地改写：' . $role);
                 expect($strings['official-library'] === '@swoole/library/core/Coroutine/functions.php'
                     && $strings['compiled-entry'] === true, '官方库与编译业务入口的来源不符：' . $role);
-                $last = json_decode((string) file_get_contents($directory . '/' . $role . '.json'), true, 512, JSON_THROW_ON_ERROR);
+                $last = json_decode((string)file_get_contents($directory . '/' . $role . '.json'), true, 512, JSON_THROW_ON_ERROR);
                 expect($last === $strings && $last['role'] === $role && $last['generation'] === $generation
                     && $last['process-id'] === $result['process-id'] && $last['native-id'] > 0
                     && $last['native-id'] !== $result['main-native-id'], '启动代次或首尾线程身份不符：' . $role);
@@ -321,7 +323,7 @@ function verifyCompiledThreads(string $work, bool $initializationFailure = false
             $coroutines = [];
             foreach (['a', 'b'] as $role) {
                 expect(file_get_contents($directory . '/' . $role . '.shutdown') === "shutdown\n", '线程关闭回调没有恰好执行一次');
-                $observation = json_decode((string) file_get_contents($directory . '/' . $role . '.coroutines.json'), true, 512, JSON_THROW_ON_ERROR);
+                $observation = json_decode((string)file_get_contents($directory . '/' . $role . '.coroutines.json'), true, 512, JSON_THROW_ON_ERROR);
                 expect($observation['remaining-coroutines'] === 0 && $observation['source-free'] === true
                     && $observation['ids']['left'] !== $observation['ids']['right']
                     && $observation['generation'] === $generations[$role] && $observation['process-id'] === $result['process-id']
@@ -419,7 +421,7 @@ function parseThreadFailureOutput(string $stdout): array
 }
 
 /** 有界运行同一原生产物；观察失败也先保存原始输出和真实退出结果，再向调用者报错。 */
-function runThreadArtifact(array $command, string $work, string $directory, array $environment, bool $observeResources = false): \Type\Testing\ProcessResult
+function runThreadArtifact(array $command, string $work, string $directory, array $environment, bool $observeResources = false): ProcessResult
 {
     foreach (['stdout.json', 'stderr.log', 'execution.json'] as $file) {
         expect(!file_exists($directory . '/' . $file), '运行目录已有原始证据，不能覆盖：' . $file);
@@ -430,7 +432,7 @@ function runThreadArtifact(array $command, string $work, string $directory, arra
     $samples = [];
     $failure = null;
     $started = microtime(true);
-    $process = new \Type\Testing\Process($command, $work, $environment);
+    $process = new Process($command, $work, $environment);
     try {
         if ($observeResources) {
             foreach (threadResourcePhases() as $phase) {
@@ -442,7 +444,7 @@ function runThreadArtifact(array $command, string $work, string $directory, arra
                     usleep(1000);
                     clearstatcache(true, $ready);
                 }
-                $checkpoint = json_decode((string) file_get_contents($ready), true, 512, JSON_THROW_ON_ERROR);
+                $checkpoint = json_decode((string)file_get_contents($ready), true, 512, JSON_THROW_ON_ERROR);
                 $pid = $process->pid();
                 expect($pid !== null && $checkpoint === ['phase' => $phase, 'pid' => $pid], '资源检查点不属于当前子进程');
                 $samples[$phase] = sampleThreadResources($pid, $directory, $phase);
@@ -450,7 +452,7 @@ function runThreadArtifact(array $command, string $work, string $directory, arra
             }
         }
         $result = $process->wait(max(0.0, 60.0 - (microtime(true) - $started)));
-    } catch (\Throwable $error) {
+    } catch (Throwable $error) {
         $failure = $error;
         $result = $process->stop();
     } finally {
@@ -462,7 +464,7 @@ function runThreadArtifact(array $command, string $work, string $directory, arra
     if ($observeResources) {
         writeThreadObservation($directory . '/resources.json', json_encode(
             ['platform' => PHP_OS_FAMILY,
-            'status' => $failure === null ? 'observed' : 'failed', 'error' => $failure?->getMessage(), 'samples' => $samples],
+                'status' => $failure === null ? 'observed' : 'failed', 'error' => $failure?->getMessage(), 'samples' => $samples],
             JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
         ) . "\n");
     }
@@ -494,7 +496,7 @@ function writeThreadObservation(string $path, string $contents): void
 /** 使用现有进程所有者限制工具运行时间和双流；解析前保存包含双流的原始结果。 */
 function threadResourceCommand(array $command, string $directory, string $name): string
 {
-    $process = new \Type\Testing\Process($command, $directory, null, 65536);
+    $process = new Process($command, $directory, null, 65536);
     try {
         // Windows PowerShell 首次启动可能需要数秒；三秒会把正常的资源
         // 观察误判为超时并发送 CTRL_BREAK（退出码 0xC000013A）。资源
@@ -532,26 +534,26 @@ function sampleThreadResources(int $pid, string $directory, string $phase): arra
         expect(is_array($paths) && count($paths) > 0 && count($paths) <= 4096 && !in_array(false, $descriptors, true), '无法有界读取 Linux 文件描述符');
         expect(preg_match('/^VmRSS:\s+([0-9]+) kB$/m', $status, $rss) === 1
             && preg_match('/^Threads:\s+([0-9]+)$/m', $status, $threads) === 1, 'Linux RSS 或线程数缺失');
-        $sample = ['method' => 'proc-status-and-fd', 'handles' => count($descriptors), 'threads' => (int) $threads[1], 'rss-bytes' => (int) $rss[1] * 1024];
+        $sample = ['method' => 'proc-status-and-fd', 'handles' => count($descriptors), 'threads' => (int)$threads[1], 'rss-bytes' => (int)$rss[1] * 1024];
     } elseif (PHP_OS_FAMILY === 'Darwin') {
-        $rssText = threadResourceCommand(['ps', '-p', (string) $pid, '-o', 'rss='], $directory, $prefix . '-rss');
-        $threadText = threadResourceCommand(['ps', '-M', '-p', (string) $pid], $directory, $prefix . '-threads');
+        $rssText = threadResourceCommand(['ps', '-p', (string)$pid, '-o', 'rss='], $directory, $prefix . '-rss');
+        $threadText = threadResourceCommand(['ps', '-M', '-p', (string)$pid], $directory, $prefix . '-threads');
         // NUL 字段边界避免文件名中的换行被误算为额外 FD。
-        $fdText = threadResourceCommand(['/usr/sbin/lsof', '-nP', '-a', '-p', (string) $pid, '-F0fn'], $directory, $prefix . '-fds');
+        $fdText = threadResourceCommand(['/usr/sbin/lsof', '-nP', '-a', '-p', (string)$pid, '-F0fn'], $directory, $prefix . '-fds');
         $descriptors = [];
         $observedPid = false;
         foreach (explode("\0", $fdText) as $field) {
             $field = trim($field, "\n");
             $observedPid = $observedPid || $field === 'p' . $pid;
             if (preg_match('/^f([0-9]+)$/D', $field, $fd) === 1) {
-                $descriptors[(int) $fd[1]] = true;
+                $descriptors[(int)$fd[1]] = true;
             }
         }
         // ps -M 的后续线程行省略 USER 列，但仍保留目标 PID。
         $threadCount = preg_match_all('/^[ \t]*(?:\S+[ \t]+)?' . $pid . '[ \t]+/m', $threadText);
         expect(preg_match('/^[0-9]+$/D', trim($rssText)) === 1 && $threadCount > 0
             && $observedPid && $descriptors !== [], 'macOS RSS、线程或数字 FD 观察不完整');
-        $sample = ['method' => 'ps-and-lsof', 'handles' => count($descriptors), 'threads' => $threadCount, 'rss-bytes' => (int) trim($rssText) * 1024];
+        $sample = ['method' => 'ps-and-lsof', 'handles' => count($descriptors), 'threads' => $threadCount, 'rss-bytes' => (int)trim($rssText) * 1024];
     } elseif (PHP_OS_FAMILY === 'Windows') {
         // Windows 的线程句柄在 join 后由 CRT 和 PHP 对象分别收尾；单次
         // Refresh 可能正好落在两个清理阶段之间。短窗口重复读取同一进程，
@@ -587,7 +589,7 @@ function sampleThreadResources(int $pid, string $directory, string $phase): arra
 /** 相同存活角色下重建不能积累句柄或 OS 线程；RSS 保留真实差值，不强求 allocator 归还全部缓存。 */
 function verifyThreadResources(string $directory): array
 {
-    $report = json_decode((string) file_get_contents($directory . '/resources.json'), true, 512, JSON_THROW_ON_ERROR);
+    $report = json_decode((string)file_get_contents($directory . '/resources.json'), true, 512, JSON_THROW_ON_ERROR);
     $samples = $report['samples'];
     expect($report['status'] === 'observed' && array_keys($samples) === threadResourcePhases(), '线程资源检查点不完整');
     $baseline = $samples['survivor'];

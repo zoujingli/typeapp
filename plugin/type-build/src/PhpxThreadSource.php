@@ -4,27 +4,30 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
-
-/** 隔离 PHPX 2.9.5 的线程及协程执行状态，保留请求级原生对象根链。 */
+/** 隔离 PHPX 2.9.8 的线程及协程执行状态，保留请求级原生对象根链。 */
 final class PhpxThreadSource
 {
-    /** 适配后的源码摘要；apply() 内部仍严格校验固定 2.9.5 原文摘要。 */
-    public const HEADER_SHA256 = 'c3049bf9eb9db6a12b338fd14cda12a4893d860123a2bafda9cdf8636e86571b';
+    /** 适配后的源码摘要；apply() 内部仍严格校验固定 2.9.8 原文摘要。 */
+    public const HEADER_SHA256 = '2f6c354e65f483f28b8baca785e089ff74acc6b3e592bc76d3fc283a83ee648f';
+
     public const SOURCE_SHA256 = 'a093734785554288b84c6caac33dd955ebd7e547a8e16c50c2da203aee34e98d';
+
     public const DEBUG_SHA256 = 'b142060b7ca420d2522932ac8bec4f826b96a725ce93865f56b5772414a8f5aa';
+
     public const NATIVE_GC_SHA256 = '22702f78430fa59f4367d24dfae881e2c12f42d171e55b55847843d5d04c42aa';
+
     public const STRING_SHA256 = '3f88f471f305aacfcaf5250b8cbf1d22c17fef09719b651431f5c8d7224c96ea';
+
     /**
      * 只适配显式提供的固定版本源码副本；适配后必须重新编译整份 PHPX 库。
      *
      * @return array<string, array{before: string, after: string}>
-     * @throws RuntimeException 原文摘要、替换位置或写入结果不符。
+     * @throws \RuntimeException 原文摘要、替换位置或写入结果不符
      */
     public function apply(string $directory): array
     {
         $hashes = [
-            'include/phpx.h' => 'ee2244823b619ada38858ded250fb636eae60e6e4f32451746c6c9292d4e7ba6',
+            'include/phpx.h' => '199b3affcd0ea9d40ef98218a0563f2402604d927f7b4b019edf386410aa96ac',
             'src/core/base.cc' => '10283aa71060452badea026f4b4732ba71acaf119db4adea4fe41cbf11b189e0',
             'src/core/debug.cc' => '25e0c66dffc088a7a5acbdc4c50b8be53b988873bd2e97b0d705fd6217bd9e3a',
             'src/core/native_gc.cc' => 'a1a40dd926fbcfef9cbc18456a29dd092ca24c4501d275eea9403ca2204c5680',
@@ -34,9 +37,9 @@ final class PhpxThreadSource
         foreach ($hashes as $file => $hash) {
             $path = $directory . '/' . $file;
             if (!is_file($path) || is_link($path) || hash_file('sha256', $path) !== $hash) {
-                throw new RuntimeException('PHPX 线程适配需要固定原文：' . $file);
+                throw new \RuntimeException('PHPX 线程适配需要固定原文：' . $file);
             }
-            $contents[$file] = (string) file_get_contents($path);
+            $contents[$file] = (string)file_get_contents($path);
         }
         $contents['include/phpx.h'] = $this->replace(
             $contents['include/phpx.h'],
@@ -173,7 +176,7 @@ CPP);
         $report = [];
         foreach ($contents as $file => $content) {
             if (file_put_contents($directory . '/' . $file, $content) !== strlen($content)) {
-                throw new RuntimeException('无法保存 PHPX 线程适配：' . $file);
+                throw new \RuntimeException('无法保存 PHPX 线程适配：' . $file);
             }
             $report[$file] = ['before' => $hashes[$file], 'after' => hash('sha256', $content)];
         }
@@ -183,7 +186,7 @@ CPP);
     private function replace(string $source, string $before, string $after): string
     {
         if (substr_count($source, $before) !== 1) {
-            throw new RuntimeException('PHPX 原文替换位置不唯一，拒绝继续');
+            throw new \RuntimeException('PHPX 原文替换位置不唯一，拒绝继续');
         }
         return str_replace($before, $after, $source);
     }

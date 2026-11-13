@@ -11,8 +11,8 @@ final class StateCodec
      * 验证版本、游标和记录状态；非法或超限数据必须保留现场而不是静默清空。
      *
      * @return array{protocol: int, cursors: array<string, int>, records: list<array<string, mixed>>}
-     * @throws \RuntimeException 状态超过 16 MiB 或结构损坏。
-     * @throws \JsonException JSON 无法解析。
+     * @throws \RuntimeException 状态超过 16 MiB 或结构损坏
+     * @throws \JsonException JSON 无法解析
      */
     public static function decode(string $json): array
     {
@@ -42,9 +42,9 @@ final class StateCodec
     /**
      * 编码完整状态并限制为 16 MiB；调用方负责传入有效的状态结构。
      *
-     * @param array{protocol: int, cursors: array<string, int>, records: list<array<string, mixed>>} $state 待保存状态。
-     * @throws \RuntimeException 编码结果超过 16 MiB。
-     * @throws \JsonException 数据不能编码。
+     * @param array{protocol: int, cursors: array<string, int>, records: list<array<string, mixed>>} $state 待保存状态
+     * @throws \RuntimeException 编码结果超过 16 MiB
+     * @throws \JsonException 数据不能编码
      */
     public static function encode(array $state): string
     {

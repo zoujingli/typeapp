@@ -4,7 +4,7 @@
 set -euo pipefail
 
 task_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-task_version=8.5.10
+task_version=8.5.12
 task_prefix="${1:-$task_root/.cache/macos-locked-php/$task_version-zts}"
 task_work="${TYPE_LOCKED_PHP_WORK:-$task_root/.cache/macos-locked-php-build/$task_version-zts}"
 [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || { echo '此 SDK 入口仅支持 macOS ARM64。' >&2; exit 1; }
@@ -27,7 +27,7 @@ verify_sdk() {
   grep -qx '#define ZEND_SIGNALS 1' "$task_prefix/include/php/main/php_config.h" || return 1
   otool -L "$task_prefix/lib/libphp.dylib" | awk '{print $1}' | grep -qx '/usr/lib/libiconv.2.dylib' || return 1
   env -u PHPRC PHP_INI_SCAN_DIR="$task_prefix/etc/php.d" "$task_prefix/bin/php" -r '
-    if (PHP_VERSION !== "8.5.10" || !PHP_ZTS || PHP_DEBUG || PHP_INT_SIZE !== 8) { exit(1); }
+    if (PHP_VERSION !== "8.5.12" || !PHP_ZTS || PHP_DEBUG || PHP_INT_SIZE !== 8) { exit(1); }
     foreach (["ctype", "tokenizer", "dom", "mbstring", "iconv", "curl", "pdo_mysql", "pdo_pgsql", "pdo_sqlite", "redis", "sockets"] as $extension) {
         if (!extension_loaded($extension)) { exit(1); }
     }
@@ -43,7 +43,7 @@ task_archive="$task_work/php-$task_version.tar.xz"
 if [[ ! -f "$task_archive" ]]; then
   curl --fail --location --silent --show-error --retry 3 "https://www.php.net/distributions/php-$task_version.tar.xz" --output "$task_archive"
 fi
-printf '%s  %s\n' 6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957 "$task_archive" | shasum -a 256 --check >&2
+printf '%s  %s\n' 08bc2eba2a588654ade1357174aa646b761556c862dda0678345ee29ed481209 "$task_archive" | shasum -a 256 --check >&2
 if [[ ! -d "$task_work/php-$task_version" ]]; then tar -xJf "$task_archive" -C "$task_work"; fi
 (
   cd "$task_work/php-$task_version"

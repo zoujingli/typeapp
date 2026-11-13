@@ -53,7 +53,7 @@ flowchart TB
 
 单程序构建通过 `TYPE_STATIC_RUNTIME` 选择目标 SDK 清单，并校验 PHP ABI、目标头文件、归档、源码适配与许可材料。构建组件内的四平台 [Swoole 共享模块](plugins/type-build.md#内置-swoole-与运行依赖)仅继续用于共享库开发及历史回归，不能放进程序冒充静态链接。构建宿主 PHP 与目标静态 PHP 分开校验。
 
-构建维护者可使用以下静态 SDK 制备入口；工作目录须为尚不存在的绝对路径，宿主 `PHP_HOME` 使用锁定的 PHP 8.5.10 ZTS。SDK 仅供构建，不随程序部署。
+构建维护者可使用以下静态 SDK 制备入口；工作目录须为尚不存在的绝对路径，宿主 `PHP_HOME` 使用锁定的 PHP 8.5.12 ZTS。SDK 仅供构建，不随程序部署。
 
 | 目标 | 制备入口与依赖选择 |
 | --- | --- |
@@ -168,13 +168,12 @@ HTTP 路由和命令分别执行只读限制。命令仅允许服务启动、帮
 物联中心首次安装示例（在已配置的空库和应用数据根执行）：
 
 ```sh
-APP_ADMIN_PASSWORD='至少12字节的管理密码' \
-APP_CUSTOMER_PASSWORD='至少12字节的客户密码' \
-./app app:install platform-admin '平台管理员' customer-admin '客户管理员' '初始租户'
+APP_PLATFORM_PASSWORD='至少12字节的受控平台口令' \
+./app app:install platform-root '平台管理员'
 ./app serve
 ```
 
-安装完成后访问客户登录页 `/#/login` 或平台登录页 `/#/admin/login`。页面与 API 由同一 Swoole HTTP 入口提供，继续执行 Host 和路径校验。部署端不需要另外启动前端开发服务器。
+安装完成后访问平台登录页 `/#/platform/login`，由平台开通客户并一次性交付随机初始口令。主域名客户入口为 `/#/system/login`，登记子域名及 `/s/{saas_id}/` 固定客户身份。页面与 API 由同一 Swoole HTTP 入口提供，继续执行 Host 和路径校验。部署端不需要另外启动前端开发服务器。
 
 数据库主机名按部署网络的 DNS 规则解析。若容器网络已注册明确别名 `database`，可设置 `DB_HOST=database.`，末尾点表示不追加 DNS 搜索域；依赖搜索域补全的服务名则保留原有配置。框架不会自动改写主机名。当前 Linux 验收所用的 c-ares 1.27 在带搜索域的封闭网络中可能使短名称连接失败，因此无源码部署验收显式覆盖带搜索域的环境，并使用绝对 DNS 名称连接本轮数据库。
 
@@ -188,7 +187,7 @@ APP_CUSTOMER_PASSWORD='至少12字节的客户密码' \
 
 | 命令 | 行为 |
 | --- | --- |
-| `./app app:install …` | 校验并暂存页面，初始化空库与双端账号，再提交页面安装 |
+| `./app app:install …` | 校验并暂存页面，初始化空库、平台账号与公共菜单，再提交页面安装 |
 | `./app web:install` | 只安装页面；相同内容重复执行成功，不同内容拒绝覆盖 |
 | `./app web:install --dry-run` | 输出 `actions.add/replace/delete` 和 `conflicts`，不写目录、锁或文件 |
 | `./app web:install --dry-run --force` | 预览强制更新的新增、替换与删除 |
@@ -218,7 +217,7 @@ sequenceDiagram
   participant Public as public
   Operator->>App: app:install 账号参数
   App->>App: 持锁恢复中断<br/>暂存并复核摘要
-  App->>DB: 初始化账号、租户<br/>与站点默认值
+  App->>DB: 初始化平台身份、公共菜单<br/>与登录缺省值
   DB-->>App: 初始化成功
   App->>App: 写入恢复记录
   App->>Public: 同文件系统替换托管文件
@@ -246,78 +245,41 @@ sequenceDiagram
 
 物联中心的控制器、普通命令与维护计划使用同一应用声明。HTTP 和 MQTT 监听宿主由启动入口持有原生服务循环；每请求、消息和计划执行仍有独立作用域。接线、资源归属及停止流程见[物联中心统一装配](../development/iot-application-assembly.md)。
 
-设备 MQTT 原始通信要求 PostgreSQL 严格同步主备和真实 TLS。先完成业务迁移及 `iot:mqtt-install`，再启动 Broker；`IOT_MQTT_COMMAND` 明确指向同一已验证应用产物。设备与接入应用各自认证，逐设备通信权限由客户端或获授权的控制端管理。Swoole 原生能力由同一构建提供。管理 API 三库通过不构成 MQTT 三种存储后端或高可用通过证明。
+设备 MQTT 原始通信要求 PostgreSQL 严格同步主备和真实 TLS。先完成业务迁移及 `center:mqtt-install`，再启动 Broker；`IOT_MQTT_COMMAND` 明确指向同一已验证应用产物。设备与接入应用各自认证，逐设备通信权限由当前 Tenant 的 Center 或获授权的 Platform 管理。Swoole 原生能力由同一构建提供。管理 API 三库通过不构成 MQTT 三种存储后端或高可用通过证明。
 
 Broker 接入、持久工作和设备授权均使用 Swoole 官方 Process、Thread 或 Coroutine 管道与网络能力；平台按实际构建能力选择执行方式，不按操作系统名称拒绝通信入口。完整角色隔离、停止和原生验收仍以对应平台产物证据为准，详见[平台与执行方式](communications.md#平台与执行方式)。
 
-每个 Broker 配置唯一稳定节点名，并保留本次运行身份。`iot:mqtt-fence` 只登记精确旧实例已完成的基础设施硬隔离，不能代替断开网络或停止旧主。WAL、备份、秘密和保全的旧业务文件与 Web 静态目录分开管理；所有角色保留有界停止、失败日志与未知结果。
+每个 Broker 配置唯一稳定节点名，并保留本次运行身份。`center:mqtt-fence` 只登记精确旧实例已完成的基础设施硬隔离，不能代替断开网络或停止旧主。WAL、备份、秘密和保全的旧业务文件与 Web 静态目录分开管理；所有角色保留有界停止、失败日志与未知结果。
 
 ## 升级与恢复
 
-本节的 `app:upgrade` 及下方增强的就绪、诊断行为属于当前 `main`，尚未包含在公开 RC14 中；使用前确认程序来自包含这些接口的源码构建。
+当前 Platform/System/Center 采用全新安装，不提供旧身份、旧人员入口或旧数据转换分支。`app:install` 只接受空库；旧安装拒绝接入且不自动清库。历史版本的升级流程和回执只证明原版本，不适用于当前架构。现场数据切换、外部 DNS/TLS 准备与发布由部署计划单独处理。
 
-升级生成新的发布目录，保留旧版本及明确的备份。先核对版本、依赖、数据库兼容和迁移计划，再切换服务；切回旧二进制不会自动回滚数据库。
+初始化失败后先查看 `migrate status/history`。MySQL 的部分 DDL 不会自动回滚，只有核对实际状态后才使用 `migrate recover <版本> <retry|applied> <核对说明>`；`migrate run` 不开放，不能绕过应用空库安装。通用模板仍使用自己的迁移合同。
 
-物联中心用 `app:install` 初始化空库，用 `app:upgrade` 检查和升级已安装数据库。后者复用迁移锁，核对安装身份、迁移摘要、二进制兼容和恢复门；不重建初始账号。当前接受 `100_app_identity` 安装谱系及 `101` 至 `109` 的已知追加迁移，未知旧模式或被修改的迁移明确拒绝，不承诺任意历史版本直升。新增分类关系与恢复核对标记也通过追加迁移完成，历史迁移摘要保持不变。
-
-预检返回 `data_upgrade`：安装身份、人员与设备数量、未决指令/接收/通知/导出、旧模型切换与转移、可观察到的 MQTT 节点，以及设备转换决定和原因。一次最多列出 100 台旧设备；有 `next_device_cursor` 时用 `app:upgrade --check --after <游标>` 继续读取，不能把一页当作完整清单。预检不写入业务数据，也不证明其他写角色已经停止。
-
-```bash
-# 新程序使用既有 APP_BASE_PATH 和 .env，先只读核对计划
-./type-app app:upgrade --check
-./type-app migrate status
-# 停止全部写入角色，在隔离库验证备份可恢复，核对文件摘要后执行
-: "${BACKUP_SHA256:?先设置已核对备份文件的 SHA-256 摘要}"
-./type-app app:upgrade --offline --backup backups/before-upgrade --sha256 "$BACKUP_SHA256"
-# 返回 upgrade_in_progress 时保持停写，重复上一命令，直到 upgrade_complete
-./type-app web:install --dry-run --force
-./type-app web:install --force
-./type-app config:check --connect
-# 由原有监督器重启所需角色，HTTP 就绪及业务检查通过后恢复流量
-./type-app serve
-```
-
-`--offline` 是操作人已停止全部写入角色的明确确认，程序不会替你停止其他机器或进程。停止 HTTP、MQTT、接收、指令、通知、导出与业务调度，并核对监督器没有自动拉起旧角色；仍可观察到活动 MQTT 节点时命令拒绝执行，观察过期也不能代替硬隔离。备份须覆盖管理库、MQTT 持久库、应用数据及私有导出文件。备份路径相对应用根，必须是非空本地普通文件，摘要只证明文件字节一致，不能证明备份完整或可恢复。
-
-设备转换每次最多 100 台，来源账本、设备变更和进度在同一事务内提交。开始转换后，旧程序被兼容代次拒绝；新版 HTTP 和后台角色在全部转换完成前也拒绝启动。中断后使用原备份与摘要重复命令；`upgrade_in_progress` 是已提交部分进度，不能据此恢复流量。失败批次回滚不影响此前已提交的批次。完成时复核旧处理链各表的行数与摘要，发现仍有写入则保持维护状态，不宣称全量回滚。
-
-升级保留账号、角色、成员、客户、站点、审计、设备 ID、当前使用关系以及凭据原件，不伪造历史注册授权。普通角色不自动获得新敏感权限。旧设备解除物模型依赖，原产品、模型、生命周期与转换决定保存在来源账本，并在两端详情显示。新通信使用详情返回的 `/raw/` 主题；有效口令保留不代表旧固件已适配原始通信，设备侧须核对 Topic 和业务系统的收发约定。旧任务及历史数据保持原件，不在升级时执行或清空。
-
-存在未核对恢复身份、矛盾使用关系、多个活动凭据、未完成撤权/模型切换/旧转移或未知指令结果的设备标记为 `quarantined`，接入和授权保持关闭。先依据转换原因核对真实归属、设备状态与旧节点隔离，不能把数据库中“待处理”改成“完成”来跳过外部结果。人员与设备当前授权的重新核对沿用 [恢复流程](../development/iot-recovery.md#恢复后的授权核对)，须提供独立受控的当前身份清单；核对不会自动启用已禁用设备，也不会复活已撤销口令。确需改变客户或重新发证时，在核对完成后使用现有结束/重新分配或凭据签发入口，重新授予应用通信权限。无法建立可靠当前身份的设备继续隔离，重新注册必须显式采用新身份，不冒充原设备恢复。
-
-升级后保留原备份、程序、回执和转换来源。重复执行已完成迁移不会重复业务写入；检测到完成后又产生旧模型设备时明确拒绝。数据库、页面和流量切换不是跨资源原子事务。需要回到旧版时，在隔离的新目标恢复升级前备份并核对后续撤权事实，不能直接以旧程序打开已转换的库。
-
-遇到 `upgrade_recovery_required`，先读取 `migrate history` 并核对数据库实际状态，再使用 `migrate recover <版本> <retry|applied> <核对说明>`；MySQL 的部分 DDL 不会自动回滚，不能未经核对直接重试。`migrate run` 继续拒绝绕过应用升级门。通用模板的迁移命令与物联中心分别使用。
+当前安装的灾难恢复继续使用受控备份与 `center:recovery`：先停止并隔离原系统的全部写入角色，在隔离的新目标恢复备份，再使用备份之外的当前授权清单核对。状态机的快照、隔离、核对及恢复每批有界且可续跑，未匹配主体保持隔离；旧人员会话及未消费交接码清除，不把数据库回滚当作重新授权。Platform 管理 HTTP 和 MQTT 协议节点共用该恢复门，管理页面只显示进度。
 
 ```mermaid
 sequenceDiagram
-  autonumber
   participant O as 运维与监督器
-  participant A as 新程序
-  participant D as 业务数据库
-  participant P as public
-  O->>A: app:upgrade --check
-  A->>D: 读取迁移、安装身份、兼容与恢复状态
-  A-->>O: 可执行计划或明确拒绝
-  O->>O: 停止写入角色，备份并验证恢复
-  O->>A: app:upgrade --offline --backup ... --sha256 ...
-  A->>A: 核对备份字节
-  A->>D: 取得迁移锁，再次核对并应用已知增量
-  A->>D: 保存来源与旧任务摘要，关闭旧版本兼容门
-  loop 同一备份身份续跑，每批最多 100 台
-    A->>D: 原子转换设备、来源账本与游标
-    A-->>O: upgrade_in_progress 或失败诊断
-  end
-  A->>D: 复核保全摘要，完成转换
-  A-->>O: upgrade_complete 与重启要求
-  O->>A: web:install --force
-  A->>P: 校验、暂存、更新托管页面
-  O->>A: 重启角色并检查 readyz 与业务
+  participant A as 同一应用程序
+  participant D as 隔离恢复库
+  participant C as 外部当前授权清单
+  O->>O: 停止原写入角色并完成基础设施隔离
+  O->>D: 在新目标恢复受控备份
+  O->>A: center:recovery begin
+  A->>D: 关闭启动门，分批隔离主体
+  O->>C: 核对清单来源及 SHA-256
+  O->>A: center:recovery review
+  A->>D: 按身份和授权指纹核对
+  O->>A: center:recovery restore
+  A->>D: 恢复匹配主体，清除旧会话和交接码
+  A-->>O: ready，保留未匹配主体隔离状态
 ```
 
-[运维手册](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/docs/operations.md)涵盖三库备份、恢复和不能自动回滚的情况；其中目录包启动与监督脚本仅适用于旧交付布局。恢复演练使用新目标并保留原数据，按实际数据库语义验证。
+恢复门限制新角色启动，不能替代停止旧进程或隔离旧主库。设备状态、凭据及当前使用关系仍按实际事实核对；恢复不自动启用已停用设备或复活已撤销秘密。恢复状态机的三库 PHP 验证与真实物理备份、同步复制、MQTT/TLS、全量 AOT 及正式平台验收分别记录，实际边界见[验收入口](../development/test-entrypoints.md)。
 
-物联网恢复另使用 `iot:recovery snapshot/status/begin/isolate/review/restore`，先隔离旧系统，再依据受信的当前授权快照核对恢复后的身份。恢复门限制新角色启动，不会代替维护人员停止旧进程。管理端仅显示相关状态，不提供绕过核对的一键恢复；旧身份、设备归属和未完成指令不能随数据库回滚自动重新授权。
+备份应覆盖管理数据库、协议持久存储、配置及应用持久数据，并在隔离目标验证可恢复。保留原备份、程序和核对凭据，不通过手改完成状态跳过未知外部结果。页面使用 `web:install --dry-run --force` 核对后显式更新，不与数据库形成跨资源原子事务。
 
 发布文件摘要需从受信渠道取得。`type verify-package` 对单程序接收程序 SHA-256，对历史目录包接收 `release.json` SHA-256；程序和同一不受信来源的摘要不能互相证明来源可信。
 

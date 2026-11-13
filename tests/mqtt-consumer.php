@@ -192,7 +192,7 @@ function mqttPacket(int $header, string $body): string
 /** 按协议版本构造订阅或取消订阅报文；调用者明确报文标识符和订阅选项。 */
 function mqttSubscription(int $version, string $topic, int $identifier = 1, int $options = 0, bool $subscribe = true): string
 {
-    return mqttPacket($subscribe ? 0x82 : 0xa2, pack('n', $identifier) . ($version === 5 ? "\0" : '')
+    return mqttPacket($subscribe ? 0x82 : 0xA2, pack('n', $identifier) . ($version === 5 ? "\0" : '')
         . mqttField($topic) . ($subscribe ? chr($options) : ''));
 }
 
@@ -205,7 +205,7 @@ function mqttPublish(int $version, string $topic, string $payload, string $prope
 /** 生成预期 SUBACK 或 UNSUBACK 字节，供实际服务响应进行独立比对。 */
 function mqttSubscriptionAck(int $version, string $reasons = "\0", int $identifier = 1, bool $subscribe = true): string
 {
-    return mqttPacket($subscribe ? 0x90 : 0xb0, pack('n', $identifier) . ($version === 5 ? "\0" : '')
+    return mqttPacket($subscribe ? 0x90 : 0xB0, pack('n', $identifier) . ($version === 5 ? "\0" : '')
         . ($subscribe || $version === 5 ? $reasons : ''));
 }
 
@@ -252,19 +252,19 @@ function mqttTextCases(int $port, ?string $certificate): int
                 mqttWrite($publisher, $wire);
                 mqttQuiet($publisher);
                 mqttQuiet($subscriber);
-                $cases++;
+                ++$cases;
             }
             // 一个UNSUBSCRIBE包含存在/不存在/重复项，响应顺序、标识和随后无交付同时可观察。
             $prefix = pack('n', 32768) . ($version === 5 ? "\0" : '');
             mqttWrite($subscriber, mqttPacket(0x82, $prefix . mqttField('example/multi/first') . "\0" . mqttField('example/multi/second') . "\0"));
             expect(mqttRead($subscriber) === mqttSubscriptionAck($version, "\0\0", 32768), '多Topic订阅没有合并等量有序SUBACK');
-            mqttWrite($subscriber, mqttPacket(0xa2, $prefix . mqttField('example/multi/second') . mqttField('example/multi/missing')
+            mqttWrite($subscriber, mqttPacket(0xA2, $prefix . mqttField('example/multi/second') . mqttField('example/multi/missing')
                 . mqttField('example/multi/first') . mqttField('example/multi/second')));
             expect(mqttRead($subscriber) === mqttSubscriptionAck($version, "\0\x11\0\x11", 32768, false), '多Topic取消没有合并等量有序UNSUBACK');
             mqttWrite($publisher, mqttPublish($version, 'example/multi/first', 'after-unsubscribe') . mqttPublish($version, 'example/multi/second', 'after-unsubscribe'));
             mqttQuiet($publisher);
             mqttQuiet($subscriber);
-            $cases++;
+            ++$cases;
         } finally {
             fclose($publisher);
             fclose($subscriber);
@@ -285,7 +285,7 @@ function mqttMessageCases(int $port, ?string $certificate): int
         mqttAck($subscriber, $version);
         mqttAck($publisher, $version);
         $subscription = mqttSubscription($version, 'example/wire');
-        for ($index = 0; $index < strlen($subscription); $index++) {
+        for ($index = 0; $index < strlen($subscription); ++$index) {
             mqttWrite($subscriber, $subscription[$index]);
         }
         expect(mqttRead($subscriber) === mqttSubscriptionAck($version), '分段 SUBSCRIBE/SUBACK 错误');
@@ -298,7 +298,7 @@ function mqttMessageCases(int $port, ?string $certificate): int
             expect(mqttRead($subscriber) === $publish, '二进制 PUBLISH 被重复、截断或转码');
             mqttQuiet($publisher);
             mqttQuiet($subscriber);
-            $cases++;
+            ++$cases;
         }
         mqttWrite($subscriber, mqttSubscription($version, 'example/wire', 2, 0, false));
         expect(mqttRead($subscriber) === mqttSubscriptionAck($version, "\0", 2, false), 'UNSUBACK 与版本不符');
@@ -307,7 +307,7 @@ function mqttMessageCases(int $port, ?string $certificate): int
         mqttWrite($publisher, mqttPublish($version, 'example/wire', 'unsubscribed'));
         mqttQuiet($publisher);
         mqttQuiet($subscriber);
-        $cases++;
+        ++$cases;
 
         // 每 Topic 独立授予；含属性和授权拒绝的多项订阅不影响合法项。
         $body = "\0\x04" . ($version === 5 ? "\x07\x26\0\x01k\0\x01v" : '')
@@ -320,35 +320,35 @@ function mqttMessageCases(int $port, ?string $certificate): int
         expect(mqttRead($publisher) === ($version === 5 ? "\xe0\x02\x87\0" : ''), '发布授权拒绝未采用对应版本语义');
         fclose($publisher);
         fclose($subscriber);
-        $cases++;
+        ++$cases;
 
         $invalid = [
             [mqttPacket(0x80, "\0\x01"), 0x81],
-            [mqttPacket(0xa0, "\0\x01"), 0x81],
+            [mqttPacket(0xA0, "\0\x01"), 0x81],
             [mqttSubscription($version, 'example/x', 0), 0x82],
             [mqttSubscription($version, '', 1), 0x82],
             [mqttSubscription($version, 'example/a+b'), 0x82],
             [mqttSubscription($version, 'example/#/tail'), 0x82],
             [mqttSubscription($version, 'example/x', 1, 3), 0x82],
-            [mqttSubscription($version, 'example/x', 1, 0xc0), 0x81],
+            [mqttSubscription($version, 'example/x', 1, 0xC0), 0x81],
             [mqttSubscription($version, "example/\0x"), 0x81],
             [mqttSubscription($version, 'example/x', 0, 0, false), 0x82],
             [mqttPacket(0x82, "\0\x01" . ($version === 5 ? "\0" : '')), 0x82],
-            [mqttPacket(0xa2, "\0\x01" . ($version === 5 ? "\0" : '')), 0x82],
+            [mqttPacket(0xA2, "\0\x01" . ($version === 5 ? "\0" : '')), 0x82],
             [mqttPacket(0x82, "\0"), 0x81],
-            [mqttPacket(0xa2, "\0"), 0x81],
+            [mqttPacket(0xA2, "\0"), 0x81],
             [mqttPublish($version, 'example/+', 'x'), 0x90],
             [mqttPublish($version, '', 'x'), 0x90],
             [mqttPublish($version, "example/\xed\xa0\x80", 'x'), 0x81],
             [mqttPacket(0x38, mqttField('example/x') . "\0"), 0x81],
             [mqttPacket(0x36, mqttField('example/x') . "\0"), 0x81],
-            [mqttPacket(0x32, mqttField('example/x') . "\0\x01" . ($version === 5 ? "\0" : '')), 0x9b],
-            [mqttPacket(0x31, mqttField('example/x') . ($version === 5 ? "\0" : '')), 0x9a],
+            [mqttPacket(0x32, mqttField('example/x') . "\0\x01" . ($version === 5 ? "\0" : '')), 0x9B],
+            [mqttPacket(0x31, mqttField('example/x') . ($version === 5 ? "\0" : '')), 0x9A],
         ];
         if ($version === 5) {
             $invalid[] = [mqttPacket(0x82, "\0\x01"), 0x81];
-            $invalid[] = [mqttPacket(0xa2, "\0\x01"), 0x81];
-            $invalid[] = [mqttSubscription(5, '$share/group/example/x'), 0x9e];
+            $invalid[] = [mqttPacket(0xA2, "\0\x01"), 0x81];
+            $invalid[] = [mqttSubscription(5, '$share/group/example/x'), 0x9E];
             foreach ([["\x01\x02", 0x82], ["\x01\0\x01\0", 0x82], ["\x11\0\0\0\0", 0x82],
                 ["\x23\0\x21", 0x94], ["\x23\0\0", 0x94], ["\x08" . mqttField('example/#'), 0x82],
                 ["\x01\x01", 0x99], ["\x0b\x01", 0x82]] as [$property, $reason]) {
@@ -356,7 +356,7 @@ function mqttMessageCases(int $port, ?string $certificate): int
             }
             $invalid[] = [mqttPacket(0x82, "\0\x01\x02\x0b\0" . mqttField('example/x') . "\0"), 0x82];
             $invalid[] = [mqttPacket(0x82, "\0\x01\x04\x0b\x01\x0b\x02" . mqttField('example/x') . "\0"), 0x82];
-            $invalid[] = [mqttPacket(0xa2, "\0\x01\x02\x01\0" . mqttField('example/x')), 0x82];
+            $invalid[] = [mqttPacket(0xA2, "\0\x01\x02\x01\0" . mqttField('example/x')), 0x82];
         } else {
             $legacy = mqttSocket($port, $certificate);
             mqttWrite($legacy, mqttConnect(4, 'legacy-unsupported-subscribe'));
@@ -364,7 +364,7 @@ function mqttMessageCases(int $port, ?string $certificate): int
             mqttWrite($legacy, mqttSubscription(4, 'example/+'));
             expect(mqttRead($legacy) === mqttSubscriptionAck(4), '3.1.1 合法通配订阅未授予');
             fclose($legacy);
-            $cases++;
+            ++$cases;
         }
         foreach ($invalid as [$wire, $reason]) {
             $socket = mqttSocket($port, $certificate);
@@ -373,13 +373,13 @@ function mqttMessageCases(int $port, ?string $certificate): int
             mqttWrite($socket, $wire);
             expect(mqttRead($socket) === ($version === 5 ? "\xe0\x02" . chr($reason) . "\0" : ''), '非法发布订阅未正确拒绝：' . bin2hex($wire));
             fclose($socket);
-            $cases++;
+            ++$cases;
         }
         $limited = mqttSocket($port, $certificate);
         mqttWrite($limited, mqttConnect($version, 'subscription-limit'));
         mqttAck($limited, $version);
         $body = "\0\x01" . ($version === 5 ? "\0" : '');
-        for ($index = 0; $index < 101; $index++) {
+        for ($index = 0; $index < 101; ++$index) {
             $body .= mqttField('example/limit/' . $index) . "\0";
         }
         mqttWrite($limited, mqttPacket(0x82, $body));
@@ -391,7 +391,7 @@ function mqttMessageCases(int $port, ?string $certificate): int
         mqttWrite($reconnected, mqttSubscription($version, 'example/new'));
         expect(mqttRead($reconnected) === mqttSubscriptionAck($version), '重连遗留了旧连接的订阅配额');
         fclose($reconnected);
-        $cases++;
+        ++$cases;
     }
 
     $subscriber = mqttSocket($port, $certificate);
@@ -411,7 +411,7 @@ function mqttMessageCases(int $port, ?string $certificate): int
     mqttQuiet($subscriber);
     fclose($subscriber);
     fclose($publisher);
-    $cases++;
+    ++$cases;
 
     // 接收者停止读取，仍让发布者获得 PING；超过有界输出后只回收慢连接。
     $slow = mqttSocket($port, $certificate);
@@ -424,7 +424,7 @@ function mqttMessageCases(int $port, ?string $certificate): int
     expect(mqttRead($slow) === mqttSubscriptionAck(5), '慢客户端订阅失败');
     $large = mqttPublish(5, 'example/slow', str_repeat('s', 1048557));
     expect(strlen($large) === 1048576, '最大消息测试必须恰好为 1 MiB');
-    for ($index = 0; $index < 12; $index++) {
+    for ($index = 0; $index < 12; ++$index) {
         mqttWrite($publisher, $large);
         mqttQuiet($publisher);
     }
@@ -486,7 +486,7 @@ function mqttAliasCases(int $port, ?string $certificate): int
         mqttWrite($socket, mqttPublish(5, $name, 'invalid', "\x23" . pack('n', $alias)));
         expect(mqttRead($socket) === "\xe0\x02\x94\0", '非法或跨连接别名引用没有拒绝');
         fclose($socket);
-        $cases++;
+        ++$cases;
     }
     foreach (["\x23\0\x01\x23\0\x01", "\x23\0"] as $invalid) {
         $socket = mqttSocket($port, $certificate);
@@ -495,7 +495,7 @@ function mqttAliasCases(int $port, ?string $certificate): int
         mqttWrite($socket, mqttPublish(5, $topic, 'invalid', $invalid));
         expect(mqttRead($socket) === "\xe0\x02" . (strlen($invalid) === 2 ? "\x81" : "\x82") . "\0", '重复或截断别名属性未拒绝');
         fclose($socket);
-        $cases++;
+        ++$cases;
     }
     // 注册别名会超上限时回退完整普通编码；失败预览不得留下未发送的映射。
     $publisher = mqttSocket($port, $certificate);
@@ -589,7 +589,7 @@ function mqttConnectFieldCases(int $port, ?string $certificate): int
                     'CONNECT字段分类错误：' . $version . '/' . $name . '/' . bin2hex($response)
                 );
                 expect(mqttRead($socket) === '', '非法CONNECT后仍处理报文：' . $name);
-                $cases++;
+                ++$cases;
             } finally {
                 fclose($socket);
             }
@@ -600,7 +600,7 @@ function mqttConnectFieldCases(int $port, ?string $certificate): int
                 mqttWrite($socket, mqttConnect($version, $identifier) . "\xc0\0");
                 mqttAck($socket, $version);
                 expect(mqttRead($socket) === "\xd0\0", '合法1或23字节字母数字Client ID不能建立连接');
-                $cases++;
+                ++$cases;
             } finally {
                 fclose($socket);
             }
@@ -610,7 +610,7 @@ function mqttConnectFieldCases(int $port, ?string $certificate): int
             try {
                 mqttWrite($socket, mqttPacket(0x10, $protocol . chr($version) . "\xc2" . $tail . $identity . $credentials));
                 expect(mqttRead($socket) === '', '错误协议名仍按MQTT接入');
-                $cases++;
+                ++$cases;
             } finally {
                 fclose($socket);
             }
@@ -621,7 +621,7 @@ function mqttConnectFieldCases(int $port, ?string $certificate): int
         try {
             mqttWrite($socket, $first . mqttConnect(5));
             expect(mqttRead($socket) === '', '非CONNECT首包之后仍接受同流CONNECT');
-            $cases++;
+            ++$cases;
         } finally {
             fclose($socket);
         }
@@ -636,19 +636,19 @@ function mqttWireCases(int $port, ?string $certificate): int
     foreach ([4, 5] as $version) {
         $socket = mqttSocket($port, $certificate);
         $wire = mqttConnect($version, '分段-' . $version);
-        for ($position = 0; $position < strlen($wire); $position++) {
+        for ($position = 0; $position < strlen($wire); ++$position) {
             mqttWrite($socket, $wire[$position]);
             usleep(500);
         }
         mqttAck($socket, $version);
         mqttWrite($socket, str_repeat("\xc0\x00", 70));
-        for ($ping = 0; $ping < 70; $ping++) {
+        for ($ping = 0; $ping < 70; ++$ping) {
             expect(mqttRead($socket) === "\xd0\x00", '合并报文或循环公平预算丢失 PING');
         }
         mqttWrite($socket, "\xe0\x00");
         expect(mqttRead($socket) === '', '正常 DISCONNECT 没有关闭');
         fclose($socket);
-        $cases++;
+        ++$cases;
 
         $socket = mqttSocket($port, $certificate);
         mqttWrite($socket, mqttConnect($version, 'wrong-password', 10, '', 'invalid'));
@@ -656,7 +656,7 @@ function mqttWireCases(int $port, ?string $certificate): int
         expect(ord($failure[3]) === ($version === 5 ? 0x86 : 4), '认证拒绝原因码错误');
         expect(mqttRead($socket) === '', '认证拒绝后未关闭');
         fclose($socket);
-        $cases++;
+        ++$cases;
 
         $socket = mqttSocket($port, $certificate);
         mqttWrite($socket, mqttConnect($version, 'keepalive', 1));
@@ -669,7 +669,7 @@ function mqttWireCases(int $port, ?string $certificate): int
         expect($version === 5 ? $expired === "\xe0\x02\x8d\x00" : $expired === '', 'Keep Alive 超时行为错误');
         expect($elapsed >= 1.3 && $elapsed < 2.5, '半包延长了 Keep Alive 或未按 1.5 倍超时');
         fclose($socket);
-        $cases++;
+        ++$cases;
 
         foreach (["\x11\x00", "\xc1\x00", "\xc0\x01\x00", "\xc0\x80\x80\x80\x80", "\xc0\x80\x00",
             "\xe0\x01\x7f", mqttConnect($version), "\xc0\xff\xff\x7f"] as $malformed) {
@@ -680,12 +680,12 @@ function mqttWireCases(int $port, ?string $certificate): int
             $response = mqttRead($socket);
             expect($version === 4 ? $response === '' : str_starts_with($response, "\xe0\x02"), '畸形控制报文未拒绝：' . bin2hex($malformed));
             fclose($socket);
-            $cases++;
+            ++$cases;
         }
 
         // OASIS Table 2-2：逐种控制包翻转每个保留位；格式错误必须与有效报文的顺序错误分开。
-        $invalidHeaders = [0x00, 0x06, 0x36, 0x37, 0x3e, 0x3f, 0x38, 0x39];
-        foreach ([0x10, 0x20, 0x40, 0x50, 0x62, 0x70, 0x82, 0x90, 0xa2, 0xb0, 0xc0, 0xd0, 0xe0, 0xf0] as $validHeader) {
+        $invalidHeaders = [0x00, 0x06, 0x36, 0x37, 0x3E, 0x3F, 0x38, 0x39];
+        foreach ([0x10, 0x20, 0x40, 0x50, 0x62, 0x70, 0x82, 0x90, 0xA2, 0xB0, 0xC0, 0xD0, 0xE0, 0xF0] as $validHeader) {
             foreach ([1, 2, 4, 8] as $reservedBit) {
                 $invalidHeaders[] = $validHeader ^ $reservedBit;
             }
@@ -706,7 +706,7 @@ function mqttWireCases(int $port, ?string $certificate): int
                 mqttWrite($socket, $wire);
                 expect(mqttRead($socket) === ($version === 5 ? "\xe0\x02" . chr($reason) . "\0" : ''), '固定头格式与协议顺序原因码混淆：' . bin2hex($wire));
                 expect(mqttRead($socket) === '', '错误控制响应之后连接未关闭：' . bin2hex($wire));
-                $cases++;
+                ++$cases;
             } finally {
                 fclose($socket);
             }
@@ -718,7 +718,7 @@ function mqttWireCases(int $port, ?string $certificate): int
             $response = mqttRead($socket);
             expect($version === 4 ? $response === '' : (strlen($response) >= 4 && ord($response[3]) === 0x81), '非法 UTF-8 未拒绝');
             fclose($socket);
-            $cases++;
+            ++$cases;
         }
     }
     foreach (["\x21\x00\x00", "\x27\x00\x00\x00\x00", "\x17\x02", "\x11\x00\x00\x00\x00\x11\x00\x00\x00\x00",
@@ -728,7 +728,7 @@ function mqttWireCases(int $port, ?string $certificate): int
         $response = mqttRead($socket);
         expect(strlen($response) >= 4 && ord($response[3]) === 0x82, '非法属性未按协议拒绝');
         fclose($socket);
-        $cases++;
+        ++$cases;
     }
     $socket = mqttSocket($port, $certificate);
     mqttWrite($socket, mqttConnect(5, '', 0, "\x26" . mqttField('同名') . mqttField('a') . "\x26" . mqttField('同名') . mqttField('b')));
@@ -738,7 +738,7 @@ function mqttWireCases(int $port, ?string $certificate): int
     mqttWrite($socket, "\xc0\x00");
     expect(mqttRead($socket) === "\xd0\x00", '零 Keep Alive 被擅自改成固定心跳');
     fclose($socket);
-    $cases++;
+    ++$cases;
 
     foreach ([3, 6] as $unsupported) {
         $socket = mqttSocket($port, $certificate);
@@ -746,27 +746,27 @@ function mqttWireCases(int $port, ?string $certificate): int
         $response = mqttRead($socket);
         expect(strlen($response) >= 4 && ord($response[3]) === ($unsupported < 5 ? 1 : 0x84), '不支持的协议版本未拒绝');
         fclose($socket);
-        $cases++;
+        ++$cases;
     }
 
     // 属性填充使整个合法 CONNECT 恰好达到 1 MiB，不能只计算载荷而遗漏报头。
     $properties = '';
     $property = "\x26" . mqttField('k') . mqttField(str_repeat('x', 65535));
-    for ($index = 0; $index < 15; $index++) {
+    for ($index = 0; $index < 15; ++$index) {
         $properties .= $property;
     }
     $baseLength = strlen(mqttConnect(5, 'maximum', 10, $properties));
     $properties .= "\x26" . mqttField('k') . mqttField(str_repeat('x', 1048576 - $baseLength - 6));
     $maximum = mqttConnect(5, 'maximum', 10, $properties);
     expect(strlen($maximum) === 1048576, '测试最大完整 Control Packet 编码错误');
-    for ($iteration = 0; $iteration < 3; $iteration++) {
+    for ($iteration = 0; $iteration < 3; ++$iteration) {
         $socket = mqttSocket($port, $certificate);
         // 最大报文后紧接另一个控制报文，覆盖流预读及描述符重用后的就绪通知。
         mqttWrite($socket, $maximum . "\xc0\0");
         mqttAck($socket, 5);
         expect(mqttRead($socket) === "\xd0\0", '最大报文后的 PINGRESP 丢失');
         fclose($socket);
-        $cases++;
+        ++$cases;
     }
     // CONNECT在同一TLS记录中偏移最大PUBLISH的分段边界，末尾PING可能只留在SSL解密缓冲。
     $prefix = mqttField('example/coalesced-maximum') . "\0";
@@ -777,20 +777,20 @@ function mqttWireCases(int $port, ?string $certificate): int
     mqttAck($socket, 5);
     expect(mqttRead($socket) === "\xd0\0", '合并TLS报文后的PINGRESP丢失');
     fclose($socket);
-    $cases++;
+    ++$cases;
 
     $socket = mqttSocket($port, $certificate);
     mqttWrite($socket, mqttConnect(5, 'small-receiver', 10, "\x27\x00\x00\x00\x04"));
     expect(mqttRead($socket) === '', '服务端发送了超过接收者 Maximum Packet Size 的响应');
     fclose($socket);
-    $cases++;
+    ++$cases;
 
     $socket = mqttSocket($port, $certificate);
     mqttWrite($socket, mqttConnect(5, 'binary-password', 10, '', "\0\xff\xed\xa0\x80"));
     $response = mqttRead($socket);
     expect(ord($response[3]) === 0x86, '二进制密码被错误当作 UTF-8 协议畸形');
     fclose($socket);
-    $cases++;
+    ++$cases;
 
     if ($certificate === null) {
         $slow = mqttSocket($port);
@@ -816,9 +816,9 @@ function mqttWireCases(int $port, ?string $certificate): int
     $socket = mqttSocket($port, $certificate);
     mqttWrite($socket, mqttConnect(5, 'enhanced-auth', 10, "\x15" . mqttField('unsupported')));
     $response = mqttRead($socket);
-    expect(ord($response[3]) === 0x8c, '不支持的增强认证未返回 Bad Authentication Method');
+    expect(ord($response[3]) === 0x8C, '不支持的增强认证未返回 Bad Authentication Method');
     fclose($socket);
-    $cases++;
+    ++$cases;
 
     $first = mqttSocket($port, $certificate);
     mqttWrite($first, mqttConnect(5, 'duplicate-id'));
@@ -950,7 +950,7 @@ function mqttScopeLifecycleCases(string $consumer, array $command, array $enviro
     foreach (['signal', 'deadline', 'cleanup-late'] as $case) {
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
         expect(is_resource($listener), '无法分配作用域专项端口');
-        $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+        $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
         fclose($listener);
         $environment['MQTT_SCOPE_TIMEOUT'] = $case === 'deadline' ? '1' : '0';
         $process = new Process([...$command, '--plaintext', '--port=' . $port], $consumer, $environment);
@@ -1149,7 +1149,7 @@ if ($native) {
 } else {
     $runtimeOptions = [];
     if (successful([PHP_BINARY, '-r', 'echo extension_loaded("swoole") ? "yes" : "no";'], $consumer) === 'no') {
-        $module = (string) (getenv('TYPE_SWOOLE_MODULE') ?: ini_get('extension_dir') . '/swoole.so');
+        $module = (string)(getenv('TYPE_SWOOLE_MODULE') ?: ini_get('extension_dir') . '/swoole.so');
         expect(is_file($module), '原生事件测试需要匹配SDK的Swoole模块');
         $runtimeOptions = ['-d', 'extension=' . $module, '-d', 'swoole.enable_library=On'];
     }
@@ -1184,7 +1184,7 @@ foreach ($commitLifecycleOnly || in_array('--qos1-only', $argv, true) || in_arra
     || in_array('--capacity-only', $argv, true) || in_array('--connection-scale-only', $argv, true)
     || in_array('--conformance-only', $argv, true) || $identityOnly ? [] : [false, true] as $tls) {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
     $certificate = $tls ? $consumer . '/certificate.pem' : null;
     $environment['MQTT_CERTIFICATE'] = $certificate ?? '';
@@ -1215,7 +1215,7 @@ foreach ($commitLifecycleOnly || in_array('--qos1-only', $argv, true) || in_arra
         $aliasCaseCount = $connectFieldsOnly ? 0 : mqttAliasCases($port, $certificate);
         $subscriptionCaseCount = in_array('--subscriptions', $argv, true) ? mqttDelayedAccessCases($port, $certificate) + mqttSubscriptionCases($port, $certificate) : 0;
         if (!$connectFieldsOnly) {
-            $standard = new Process(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, $certificate ?? 'plain'], $consumer);
+            $standard = new Process(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, $certificate ?? 'plain'], $consumer);
             try {
                 $standardResult = $standard->wait(90);
                 expect($standardResult->successful(), 'MQTT.js 互操作失败或超时：' . $standardResult->stdout . $standardResult->stderr);
@@ -1253,7 +1253,7 @@ foreach ($commitLifecycleOnly || in_array('--qos1-only', $argv, true) || in_arra
         mqttWrite($held, "\x30\x7f\0\x10partial");
         $result = $process->stop(3);
         fclose($held);
-        expect($result->successful() && $result->stderr === '', 'MQTT 停止或资源清理失败：exit=' . $result->exitCode . ' timeout=' . (int) $result->timedOut . ' ' . $result->stdout . $result->stderr);
+        expect($result->successful() && $result->stderr === '', 'MQTT 停止或资源清理失败：exit=' . $result->exitCode . ' timeout=' . (int)$result->timedOut . ' ' . $result->stdout . $result->stderr);
         $statistics = json_decode(trim($result->stdout), true, 512, JSON_THROW_ON_ERROR);
         expect($statistics['connections'] === 0 && $statistics['stopping'] && $statistics['closed'] === $statistics['accepted'], 'MQTT 连接资源没有完整回收');
         expect($statistics['subscriptions'] === 0 && $statistics['bufferedBytes'] === 0, 'MQTT 订阅或半包/发送缓冲没有完整回收');

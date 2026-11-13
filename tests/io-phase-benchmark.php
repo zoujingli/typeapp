@@ -18,13 +18,13 @@ use Type\Runtime\CapacityException;
 use Type\Runtime\ExecutionScope;
 
 /**
- * @param Closure(): mixed $operation 返回资源的释放不计入本阶段，操作内显式收尾仍计入。
- * @return array 样本保留原顺序；驱动execute含传输/缓冲，不能标作纯服务器SQL时间。
+ * @param Closure(): mixed $operation 返回资源的释放不计入本阶段，操作内显式收尾仍计入
+ * @return array 样本保留原顺序；驱动execute含传输/缓冲，不能标作纯服务器SQL时间
  */
 function ioPhaseSamples(Closure $operation, int $samples, int $warmup): array
 {
     $values = [];
-    for ($index = 0; $index < $warmup + $samples; $index++) {
+    for ($index = 0; $index < $warmup + $samples; ++$index) {
         $started = hrtime(true);
         $value = $operation();
         $elapsed = (hrtime(true) - $started) / 1e6;
@@ -35,8 +35,8 @@ function ioPhaseSamples(Closure $operation, int $samples, int $warmup): array
     }
     $ordered = $values;
     sort($ordered, SORT_NUMERIC);
-    return ['samples_ms' => $values, 'p50_ms' => $ordered[(int) ceil($samples * 0.5) - 1],
-        'p95_ms' => $ordered[(int) ceil($samples * 0.95) - 1], 'p99_ms' => $ordered[(int) ceil($samples * 0.99) - 1]];
+    return ['samples_ms' => $values, 'p50_ms' => $ordered[(int)ceil($samples * 0.5) - 1],
+        'p95_ms' => $ordered[(int)ceil($samples * 0.95) - 1], 'p99_ms' => $ordered[(int)ceil($samples * 0.99) - 1]];
 }
 
 /** 使用既有日志公开接口和真实满载流；不修改日志实现以加入测量钩子。 */
@@ -50,7 +50,7 @@ function ioBlockedLog(): array
         stream_set_blocking($pair[0], false);
         stream_set_blocking($pair[1], false);
         $filled = false;
-        for ($index = 0; $index < 8192; $index++) {
+        for ($index = 0; $index < 8192; ++$index) {
             if (fwrite($pair[0], str_repeat('F', 4096)) === 0) {
                 $filled = true;
                 break;
@@ -141,18 +141,18 @@ try {
     $environment = $native->environment();
     $prefix = 'TYPE_' . strtoupper($name) . '_';
     $driver = match ($name) {
-        'mysql' => new MysqlDriver($environment[$prefix . 'HOST'], (int) $environment[$prefix . 'PORT'], $environment[$prefix . 'DATABASE'], $environment[$prefix . 'USER'], $environment[$prefix . 'PASSWORD']),
-        'pgsql' => new PgsqlDriver($environment[$prefix . 'HOST'], (int) $environment[$prefix . 'PORT'], $environment[$prefix . 'DATABASE'], $environment[$prefix . 'USER'], $environment[$prefix . 'PASSWORD']),
+        'mysql' => new MysqlDriver($environment[$prefix . 'HOST'], (int)$environment[$prefix . 'PORT'], $environment[$prefix . 'DATABASE'], $environment[$prefix . 'USER'], $environment[$prefix . 'PASSWORD']),
+        'pgsql' => new PgsqlDriver($environment[$prefix . 'HOST'], (int)$environment[$prefix . 'PORT'], $environment[$prefix . 'DATABASE'], $environment[$prefix . 'USER'], $environment[$prefix . 'PASSWORD']),
         'sqlite' => new SqliteDriver($base . '/baseline.sqlite'),
     };
     $report['phases']['connect_and_initialize'] = ioPhaseSamples(static fn (): PDO => $driver->connect(), $samples, $warmup);
     $pdo = $driver->connect();
-    $report['server_version'] = (string) $pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
+    $report['server_version'] = (string)$pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
     $pdo->exec('CREATE TABLE io_baseline (id INTEGER PRIMARY KEY, payload VARCHAR(256) NOT NULL)');
     $statement = $pdo->prepare('INSERT INTO io_baseline (id, payload) VALUES (?, ?)');
     $expectedHash = hash_init('sha256');
     $pdo->beginTransaction();
-    for ($index = 1; $index <= $rows; $index++) {
+    for ($index = 1; $index <= $rows; ++$index) {
         $payload = str_repeat(hash('sha256', 'type-io-baseline-v1/' . $index), 4);
         $statement->execute([$index, $payload]);
         hash_update($expectedHash, $index . ':' . $payload . "\n");
@@ -163,7 +163,7 @@ try {
     $statement = $pdo->prepare('SELECT id, payload FROM io_baseline ORDER BY id');
     $executions = [];
     $materializations = [];
-    for ($iteration = 0; $iteration < $samples + $warmup; $iteration++) {
+    for ($iteration = 0; $iteration < $samples + $warmup; ++$iteration) {
         $started = hrtime(true);
         $statement->execute();
         $executed = hrtime(true);
@@ -208,7 +208,7 @@ try {
         try {
             while (($row = $stream->next()) !== null) {
                 hash_update($actual, $row['id'] . ':' . $row['payload'] . "\n");
-                $count++;
+                ++$count;
             }
             expect($count === $rows && hash_final($actual) === $report['dataset_sha256'], '公开ORM流结果错误');
         } finally {
@@ -223,7 +223,7 @@ try {
         try {
             $lease = $pool->connect($leaseScope);
             if ($name !== 'sqlite') {
-                $backendIds[] = (int) $lease->query($name === 'mysql' ? 'SELECT CONNECTION_ID() AS id' : 'SELECT pg_backend_pid() AS id')[0]['id'];
+                $backendIds[] = (int)$lease->query($name === 'mysql' ? 'SELECT CONNECTION_ID() AS id' : 'SELECT pg_backend_pid() AS id')[0]['id'];
             }
         } finally {
             $leaseScope->close();

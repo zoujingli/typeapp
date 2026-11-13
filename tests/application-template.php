@@ -8,13 +8,17 @@ require dirname(__DIR__) . '/tools/distribution/Process.php';
 require dirname(__DIR__) . '/tools/distribution/Batch.php';
 require dirname(__DIR__) . '/tools/release/TutorialEvidence.php';
 
+use Type\Build\ArtifactManifest;
+use Type\Build\BuildIdentity;
+use Type\Build\BuildPlatform;
 use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Testing\Process;
 use TypeApp\Distribution\Batch;
 use TypeApp\Distribution\Process as GitProcess;
+use TypeApp\Release\TutorialEvidence;
 
-$root = Type\Build\BuildPlatform::resolve(dirname(__DIR__));
+$root = BuildPlatform::resolve(dirname(__DIR__));
 $driver = $argv[1] ?? 'sqlite';
 expect(in_array($driver, ['mysql', 'pgsql', 'sqlite'], true), '应用模板验收驱动无效');
 $native = in_array('--native', $argv, true);
@@ -46,9 +50,9 @@ if ($candidateFile !== false) {
     expect(!$remote && $componentRoot !== false, '固定候选不能冒充公开消费或缺少组件快照');
     $candidate = json_decode(file_get_contents($candidateFile), true, 512, JSON_THROW_ON_ERROR);
     expect(preg_match('/^[a-f0-9]{40}$/D', $candidate['source'] ?? '') === 1, '候选缺少固定源码身份');
-    TypeApp\Release\TutorialEvidence::snapshot($template, $candidate['template']['files'] ?? []);
+    TutorialEvidence::snapshot($template, $candidate['template']['files'] ?? []);
     if ($tutorial) {
-        TypeApp\Release\TutorialEvidence::snapshot($tutorialRoot, $candidate['tutorial']['files'] ?? []);
+        TutorialEvidence::snapshot($tutorialRoot, $candidate['tutorial']['files'] ?? []);
     }
 }
 if ($remote) {
@@ -60,7 +64,7 @@ if ($remote) {
     Batch::verifyReport($root, $source, $batch, $mapping);
     $templateSource = getenv('TYPE_TEMPLATE_SOURCE');
     expect(is_string($templateSource) && $templateSource !== '' && is_dir($templateSource), '远端模板消费需要显式 TYPE_TEMPLATE_SOURCE 检出目录');
-    $template = Type\Build\BuildPlatform::resolve($templateSource);
+    $template = BuildPlatform::resolve($templateSource);
     $templateReportPath = $reportDirectory . '/template.json';
     expect(is_file($templateReportPath), '远端模板消费需要分发与克隆验证报告');
     $templateReport = json_decode(file_get_contents($templateReportPath), true, 512, JSON_THROW_ON_ERROR);
@@ -143,7 +147,7 @@ while ($pending !== []) {
 $expected = [];
 if (!$remote) {
     if ($componentRoot !== false) {
-        $componentRoot = Type\Build\BuildPlatform::resolve($componentRoot);
+        $componentRoot = BuildPlatform::resolve($componentRoot);
         expect(str_starts_with($componentRoot, $root . '/build/') && is_dir($componentRoot), '候选组件必须来自主仓build下的独立快照');
     }
     $composer['repositories'] = [];
@@ -190,7 +194,7 @@ $composerPhar = getenv('TYPE_COMPOSER_PHAR');
 $composerCommand = [getenv('COMPOSER_BINARY') ?: 'composer'];
 if ($composerPhar !== false) {
     expect(is_file($composerPhar), '显式Composer PHAR不存在');
-    $composerCommand = [PHP_BINARY, Type\Build\BuildPlatform::resolve($composerPhar)];
+    $composerCommand = [PHP_BINARY, BuildPlatform::resolve($composerPhar)];
 }
 successful([...$composerCommand, 'install', '--no-scripts', '--no-plugins', '--no-interaction', '--prefer-dist', '--no-progress'], $consumer);
 expect(!$remote || hash_file('sha256', $consumer . '/composer.json') === $configuredComposerHash, '公开消费修改了模板依赖声明');
@@ -204,7 +208,7 @@ foreach (array_merge($installed['packages'], $installed['packages-dev']) as $pac
     if ($candidate !== null && str_starts_with($package['name'], 'zoujingli/type-')) {
         $name = substr($package['name'], strlen('zoujingli/'));
         expect(isset($candidate['components'][$name]), '安装出现候选之外的组件');
-        TypeApp\Release\TutorialEvidence::snapshot($consumer . '/vendor/' . $package['name'], $candidate['components'][$name]['files']);
+        TutorialEvidence::snapshot($consumer . '/vendor/' . $package['name'], $candidate['components'][$name]['files']);
     }
     if ($remote && str_starts_with($package['name'], 'zoujingli/type-')) {
         expect($package['source']['reference'] === $expected[substr($package['name'], 10)], '模板安装提交与分发批次不同');
@@ -234,8 +238,8 @@ if ($onboarding) {
 if ($native) {
     echo "独立模板全量AOT构建中。\n";
     successful([PHP_BINARY, $consumer . '/vendor/bin/type', ...($onboarding ? ['build', 'type-app.json'] : [$consumer . '/type-app.json'])], $consumer);
-    $artifact = (new Type\Build\BuildPlatform())->output($consumer . '/build/type-project');
-    $manifest = (new Type\Build\ArtifactManifest())->read($artifact);
+    $artifact = (new BuildPlatform())->output($consumer . '/build/type-project');
+    $manifest = (new ArtifactManifest())->read($artifact);
     $compiledPackages = array_keys($manifest['production-packages']);
     $installedPackages = $packages;
     sort($compiledPackages);
@@ -248,8 +252,8 @@ if ($native) {
     $declarationSources = $buildReport['original-sources'];
     $declarationMetadata = $buildReport['declaration-metadata'];
     expect(
-        ($declarationMetadata['protocol'] ?? null) === Type\Build\BuildIdentity::GENERATORS['declarations']
-        && ($declarationMetadata['generators'] ?? null) === Type\Build\BuildIdentity::GENERATORS
+        ($declarationMetadata['protocol'] ?? null) === BuildIdentity::GENERATORS['declarations']
+        && ($declarationMetadata['generators'] ?? null) === BuildIdentity::GENERATORS
         && $declarationSources !== [] && array_values(array_unique($declarationSources)) === $declarationSources,
         '独立模板缺少当前声明协议和原始源码列表'
     );
@@ -259,7 +263,7 @@ if ($native) {
             && $originalSources[$sourcePath]['sha256'] === hash_file('sha256', $sourcePath), '声明原始源码与构建身份不一致');
         $declarationHashes[] = $originalSources[$sourcePath]['sha256'];
     }
-    expect(Type\Build\BuildIdentity::digest(['sources' => $declarationHashes, 'generation' => $declarationMetadata]) === $manifest['declaration-generation']
+    expect(BuildIdentity::digest(['sources' => $declarationHashes, 'generation' => $declarationMetadata]) === $manifest['declaration-generation']
         && $buildReport['declaration-generation'] === $manifest['declaration-generation'], '独立模板声明代次不能由当前真实输入回算');
     $generatedSources = [];
     foreach ($declarationMetadata['files'] as $relative => $sha) {
@@ -271,8 +275,8 @@ if ($native) {
     expect(count($compiledSources) === count(array_unique($compiledSources)), '独立模板编译源码存在重复');
     foreach ($declarationMetadata['replacements'] as $original => $replacement) {
         expect(
-            preg_match('/^source:([0-9]+)$/D', $original, $match) === 1 && isset($declarationSources[(int) $match[1]])
-            && isset($generatedSources[$replacement]) && in_array($generatedSources[$replacement], $compiledSources, true),
+            preg_match('/^source:([0-9]+)$/D', $original, $match) === 1 && isset($declarationSources[(int)$match[1]], $generatedSources[$replacement])
+              && in_array($generatedSources[$replacement], $compiledSources, true),
             '源码替换未指向实际编译的声明产物'
         );
     }
@@ -285,7 +289,7 @@ if ($native) {
     }
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($consumer . '/app', FilesystemIterator::SKIP_DOTS)) as $sourceFile) {
         if ($sourceFile->isFile() && $sourceFile->getExtension() === 'php') {
-            $sourcePath = Type\Build\BuildPlatform::path($sourceFile->getPathname());
+            $sourcePath = BuildPlatform::path($sourceFile->getPathname());
             expect(in_array($sourcePath, $declarationSources, true), '独立模板遗漏业务源码：' . $sourceFile->getFilename());
         }
     }
@@ -318,7 +322,7 @@ try {
         $environment['DB_PORT'] = getenv('TYPE_MYSQL_PORT') ?: '3306';
         $environment['DB_USERNAME'] = getenv('TYPE_MYSQL_USER') ?: 'root';
         $environment['DB_PASSWORD'] = getenv('TYPE_MYSQL_PASSWORD') ?: '';
-        $admin = (new MysqlDriver($environment['DB_HOST'], (int) $environment['DB_PORT'], getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test', $environment['DB_USERNAME'], $environment['DB_PASSWORD']))->connect();
+        $admin = (new MysqlDriver($environment['DB_HOST'], (int)$environment['DB_PORT'], getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test', $environment['DB_USERNAME'], $environment['DB_PASSWORD']))->connect();
         $admin->exec('CREATE DATABASE ' . $database);
         $createdDatabase = true;
         $environment['DB_DATABASE'] = $database;
@@ -327,13 +331,13 @@ try {
         $environment['DB_PORT'] = getenv('TYPE_PGSQL_PORT') ?: '5432';
         $environment['DB_USERNAME'] = getenv('TYPE_PGSQL_USER') ?: 'type_app';
         $environment['DB_PASSWORD'] = getenv('TYPE_PGSQL_PASSWORD') ?: '';
-        $admin = (new PgsqlDriver($environment['DB_HOST'], (int) $environment['DB_PORT'], getenv('TYPE_PGSQL_DATABASE') ?: 'type_app_test', $environment['DB_USERNAME'], $environment['DB_PASSWORD']))->connect();
+        $admin = (new PgsqlDriver($environment['DB_HOST'], (int)$environment['DB_PORT'], getenv('TYPE_PGSQL_DATABASE') ?: 'type_app_test', $environment['DB_USERNAME'], $environment['DB_PASSWORD']))->connect();
         $admin->exec('CREATE DATABASE ' . $database);
         $createdDatabase = true;
         $environment['DB_DATABASE'] = $database;
     }
     if ($native) {
-        $environment['TYPE_APP_BINARY'] = (new Type\Build\BuildPlatform())->output($consumer . '/build/type-project');
+        $environment['TYPE_APP_BINARY'] = (new BuildPlatform())->output($consumer . '/build/type-project');
     } else {
         unset($environment['TYPE_APP_BINARY']);
     }
@@ -402,7 +406,7 @@ try {
             echo $packaged->stdout;
             if ($tutorial) {
                 expect(preg_match('#单程序真实业务验收通过：([^\r\n]+/verification\.json)#u', $packaged->stdout, $match) === 1, '教程缺少单程序部署回执');
-                $deployment = Type\Build\BuildPlatform::resolve($match[1]);
+                $deployment = BuildPlatform::resolve($match[1]);
                 expect(is_string($deployment) && str_starts_with($deployment, $root . '/build/single program-'), '教程部署回执不属于本轮隔离范围');
                 copy($deployment, $consumer . '/deployment.json');
                 expect(copy(dirname($deployment) . '/tutorial.log', $consumer . '/deployment-tutorial.log'), '无法保全隔离教程公开断言日志');

@@ -14,7 +14,7 @@ interface AuthorizationInvalidations
      * 返回尚未完成的旧身份；重启或未知提交后重复返回同一项，不能仅因已领取就移除。
      * 新身份策略同时返回 access_identity，按完整凭据代次匹配；principal 仅匹配尚无快照的旧连接/会话，不替代新身份选择。
      * 旧来源省略 access_identity 时仍按原 username/principal 匹配，不提供同用户名多代凭据的精确撤权保证。
-     * @return array{id:string,client_id:string,principal:string,actor:string,access_identity?:array{principal_id:string,credential_id:string,credential_version:int,authentication_method:string}}|null id为32位小写十六进制。
+     * @return null|array{id:string,client_id:string,principal:string,actor:string,access_identity?:array{principal_id:string,credential_id:string,credential_version:int,authentication_method:string}} id为32位小写十六进制
      */
     public function nextInvalidation(): ?array;
 

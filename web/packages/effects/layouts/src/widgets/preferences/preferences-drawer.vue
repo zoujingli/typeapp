@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SupportedLanguagesType } from '@vben/locales';
+import type { CustomPreferencesRecord } from '@vben/preferences';
 import type {
   BreadcrumbStyleType,
   BuiltinThemeType,
@@ -22,6 +23,7 @@ import {
   clearCache,
   preferences,
   resetPreferences,
+  updateCustomPreferences,
   usePreferences,
 } from '@vben/preferences';
 
@@ -42,6 +44,8 @@ import {
   BuiltinTheme,
   ColorMode,
   Content,
+  Copyright,
+  Custom,
   FontSize,
   Footer,
   General,
@@ -56,11 +60,12 @@ import {
   Widget,
 } from './blocks';
 
-const emit = defineEmits<{ clearPreferencesAndLogout: []; savePreferences: [] }>();
+const emit = defineEmits<{ clearPreferencesAndLogout: [] }>();
 
 const message = globalShareState.getMessage();
 
 const appLocale = defineModel<SupportedLanguagesType>('appLocale');
+const appTimezone = defineModel<string>('appTimezone');
 const appDynamicTitle = defineModel<boolean>('appDynamicTitle');
 const appLayout = defineModel<LayoutType>('appLayout');
 const appColorGrayMode = defineModel<boolean>('appColorGrayMode');
@@ -68,6 +73,10 @@ const appColorWeakMode = defineModel<boolean>('appColorWeakMode');
 const appContentCompact = defineModel<ContentCompactType>('appContentCompact');
 const appWatermark = defineModel<boolean>('appWatermark');
 const appWatermarkContent = defineModel<string>('appWatermarkContent');
+const appEnableCheckUpdates = defineModel<boolean>('appEnableCheckUpdates');
+const appEnableCopyPreferences = defineModel<boolean>(
+  'appEnableCopyPreferences',
+);
 const appEnableStickyPreferencesNavigationBar = defineModel<boolean>(
   'appEnableStickyPreferencesNavigationBar',
 );
@@ -86,10 +95,12 @@ const themeMode = defineModel<ThemeModeType>('themeMode');
 const themeRadius = defineModel<string>('themeRadius');
 const themeFontSize = defineModel<number>('themeFontSize');
 const themeSemiDarkSidebar = defineModel<boolean>('themeSemiDarkSidebar');
+const themeSemiDarkSidebarSub = defineModel<boolean>('themeSemiDarkSidebarSub');
 const themeSemiDarkHeader = defineModel<boolean>('themeSemiDarkHeader');
 
 const sidebarEnable = defineModel<boolean>('sidebarEnable');
 const sidebarWidth = defineModel<number>('sidebarWidth');
+const sidebarDraggable = defineModel<boolean>('sidebarDraggable');
 const sidebarCollapsed = defineModel<boolean>('sidebarCollapsed');
 const sidebarCollapsedShowTitle = defineModel<boolean>(
   'sidebarCollapsedShowTitle',
@@ -138,6 +149,16 @@ const navigationAccordion = defineModel<boolean>('navigationAccordion');
 const footerEnable = defineModel<boolean>('footerEnable');
 const footerFixed = defineModel<boolean>('footerFixed');
 
+const copyrightSettingShow = defineModel<boolean>('copyrightSettingShow');
+const copyrightEnable = defineModel<boolean>('copyrightEnable');
+const copyrightCompanyName = defineModel<string>('copyrightCompanyName');
+const copyrightCompanySiteLink = defineModel<string>(
+  'copyrightCompanySiteLink',
+);
+const copyrightDate = defineModel<string>('copyrightDate');
+const copyrightIcp = defineModel<string>('copyrightIcp');
+const copyrightIcpLink = defineModel<string>('copyrightIcpLink');
+
 const shortcutKeysEnable = defineModel<boolean>('shortcutKeysEnable');
 const shortcutKeysGlobalSearch = defineModel<boolean>(
   'shortcutKeysGlobalSearch',
@@ -158,14 +179,18 @@ const widgetThemeToggle = defineModel<boolean>('widgetThemeToggle');
 const widgetSidebarToggle = defineModel<boolean>('widgetSidebarToggle');
 const widgetLockScreen = defineModel<boolean>('widgetLockScreen');
 const widgetRefresh = defineModel<boolean>('widgetRefresh');
+const widgetTimezone = defineModel<boolean>('widgetTimezone');
 
 const {
+  customPreferences,
+  diffCustomPreference,
   diffPreference,
   isDark,
   isFullContent,
   isHeaderNav,
   isHeaderSidebarNav,
   isMixedNav,
+  preferencesExtension,
   isSideMixedNav,
   isSideMode,
   isSideNav,
@@ -176,8 +201,42 @@ const [Drawer] = useVbenDrawer();
 
 const activeTab = ref('appearance');
 
+const customPreferencesTab = computed(() => {
+  return preferencesExtension.value;
+});
+
+const customTabLabel = computed(() => {
+  return customPreferencesTab.value?.tabLabel
+    ? $t(customPreferencesTab.value.tabLabel)
+    : '';
+});
+
+const customTabTitle = computed(() => {
+  const title =
+    customPreferencesTab.value?.title || customPreferencesTab.value?.tabLabel;
+  return title ? $t(title) : '';
+});
+
+const mergedDiffPreference = computed(() => {
+  const result: Record<string, unknown> = {};
+
+  if (diffPreference.value) {
+    Object.assign(result, diffPreference.value);
+  }
+
+  if (diffCustomPreference.value) {
+    result.custom = diffCustomPreference.value;
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+});
+
+const showCustomTab = computed(() => {
+  return (customPreferencesTab.value?.fields.length ?? 0) > 0;
+});
+
 const tabs = computed((): SegmentedItem[] => {
-  return [
+  const items: SegmentedItem[] = [
     {
       label: $t('preferences.appearance'),
       value: 'appearance',
@@ -195,6 +254,15 @@ const tabs = computed((): SegmentedItem[] => {
       value: 'general',
     },
   ];
+
+  if (showCustomTab.value) {
+    items.push({
+      label: customTabLabel.value,
+      value: 'custom',
+    });
+  }
+
+  return items;
 });
 
 const showBreadcrumbConfig = computed(() => {
@@ -207,7 +275,7 @@ const showBreadcrumbConfig = computed(() => {
 });
 
 async function handleCopy() {
-  await copy(JSON.stringify(diffPreference.value, null, 2));
+  await copy(JSON.stringify(mergedDiffPreference.value, null, 2));
 
   message.copyPreferencesSuccess?.(
     $t('preferences.copyPreferencesSuccessTitle'),
@@ -216,21 +284,21 @@ async function handleCopy() {
 }
 
 async function handleClearCache() {
-  resetPreferences();
-  clearCache();
+  await resetPreferences();
+  await clearCache();
   emit('clearPreferencesAndLogout');
 }
 
 async function handleReset() {
-  if (!diffPreference.value) {
+  if (!mergedDiffPreference.value) {
     return;
   }
-  resetPreferences();
+  await resetPreferences();
   await loadLocaleMessages(preferences.app.locale);
 }
 
-function handleSavePreferences() {
-  emit('savePreferences');
+function handleCustomPreferencesUpdate(updates: CustomPreferencesRecord) {
+  updateCustomPreferences(updates);
 }
 </script>
 
@@ -239,19 +307,19 @@ function handleSavePreferences() {
     <Drawer
       :description="$t('preferences.subtitle')"
       :title="$t('preferences.title')"
-      class="!border-0 sm:max-w-sm"
+      class="border-0! sm:max-w-sm"
     >
       <template #extra>
         <div class="flex items-center">
           <VbenIconButton
-            :disabled="!diffPreference"
+            :disabled="!mergedDiffPreference"
             :tooltip="$t('preferences.resetTip')"
             class="relative"
             @click="handleReset"
           >
             <span
-              v-if="diffPreference"
-              class="bg-primary absolute right-0.5 top-0.5 h-2 w-2 rounded"
+              v-if="mergedDiffPreference"
+              class="absolute top-0.5 right-0.5 size-2 rounded-sm bg-primary"
             ></span>
             <RotateCw class="size-4" />
           </VbenIconButton>
@@ -289,7 +357,10 @@ function handleSavePreferences() {
             <Block :title="$t('preferences.general')">
               <General
                 v-model:app-dynamic-title="appDynamicTitle"
+                v-model:app-enable-check-updates="appEnableCheckUpdates"
+                v-model:app-enable-copy-preferences="appEnableCopyPreferences"
                 v-model:app-locale="appLocale"
+                v-model:app-timezone="appTimezone"
                 v-model:app-watermark="appWatermark"
                 v-model:app-watermark-content="appWatermarkContent"
               />
@@ -310,6 +381,7 @@ function handleSavePreferences() {
                 v-model="themeMode"
                 v-model:theme-semi-dark-header="themeSemiDarkHeader"
                 v-model:theme-semi-dark-sidebar="themeSemiDarkSidebar"
+                v-model:theme-semi-dark-sidebar-sub="themeSemiDarkSidebarSub"
               />
             </Block>
             <Block :title="$t('preferences.theme.builtin.title')">
@@ -343,6 +415,7 @@ function handleSavePreferences() {
             <Block :title="$t('preferences.sidebar.title')">
               <Sidebar
                 v-model:sidebar-auto-activate-child="sidebarAutoActivateChild"
+                v-model:sidebar-draggable="sidebarDraggable"
                 v-model:sidebar-collapsed="sidebarCollapsed"
                 v-model:sidebar-collapsed-show-title="sidebarCollapsedShowTitle"
                 v-model:sidebar-enable="sidebarEnable"
@@ -415,12 +488,27 @@ function handleSavePreferences() {
                 v-model:widget-refresh="widgetRefresh"
                 v-model:widget-sidebar-toggle="widgetSidebarToggle"
                 v-model:widget-theme-toggle="widgetThemeToggle"
+                v-model:widget-timezone="widgetTimezone"
               />
             </Block>
             <Block :title="$t('preferences.footer.title')">
               <Footer
                 v-model:footer-enable="footerEnable"
                 v-model:footer-fixed="footerFixed"
+              />
+            </Block>
+            <Block
+              v-if="copyrightSettingShow"
+              :title="$t('preferences.copyright.title')"
+            >
+              <Copyright
+                v-model:copyright-company-name="copyrightCompanyName"
+                v-model:copyright-company-site-link="copyrightCompanySiteLink"
+                v-model:copyright-date="copyrightDate"
+                v-model:copyright-enable="copyrightEnable"
+                v-model:copyright-icp="copyrightIcp"
+                v-model:copyright-icp-link="copyrightIcpLink"
+                :disabled="!footerEnable"
               />
             </Block>
           </template>
@@ -435,30 +523,32 @@ function handleSavePreferences() {
               />
             </Block>
           </template>
+          <template #custom>
+            <Block :title="customTabTitle">
+              <Custom
+                :fields="customPreferencesTab?.fields || []"
+                :values="customPreferences"
+                @update="handleCustomPreferencesUpdate"
+              />
+            </Block>
+          </template>
         </VbenSegmented>
       </div>
 
       <template #footer>
         <VbenButton
+          v-if="appEnableCopyPreferences"
+          :disabled="!mergedDiffPreference"
           class="mx-4 w-full"
           size="sm"
           variant="default"
-          @click="handleSavePreferences"
-        >
-          {{ $t('preferences.savePreferences') }}
-        </VbenButton>
-        <VbenButton
-          :disabled="!diffPreference"
-          class="w-full"
-          size="sm"
-          variant="ghost"
           @click="handleCopy"
         >
           <Copy class="mr-2 size-3" />
           {{ $t('preferences.copyPreferences') }}
         </VbenButton>
         <VbenButton
-          :disabled="!diffPreference"
+          :disabled="!mergedDiffPreference"
           class="mr-4 w-full"
           size="sm"
           variant="ghost"
@@ -473,8 +563,6 @@ function handleSavePreferences() {
 
 <style scoped>
 :deep(.sticky-tabs-header [role='tablist']) {
-  position: sticky;
-  top: -12px;
-  z-index: 9999;
+  @apply -top-3 z-9999 sticky;
 }
 </style>

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
 use Type\Runtime\ExecutionScope;
 
 /** @internal 生成模型的获取或创建入口，共用既有工厂及事务生命周期。 */
@@ -13,14 +12,14 @@ final class ModelCreation
     /**
      * 只恢复已确认的目标唯一竞争；事务 UNKNOWN、其他约束和不可见冲突保留失败。
      *
-     * @param Closure(): ModelQuery $query
-     * @param Closure(array): Model $create
-     * @param array<string, mixed> $identity 完整唯一身份；租户字段由当前可信绑定补齐。
-     * @param array<string, mixed> $values 仅在新增时使用的普通字段，不得覆盖唯一身份。
-     * @throws ModelException 身份或输入非法、唯一获胜记录在当前范围不可见。
-     * @throws ConstraintException 非目标唯一冲突或其他数据库约束失败。
+     * @param \Closure(): ModelQuery $query
+     * @param \Closure(array): Model $create
+     * @param array<string, mixed> $identity 完整唯一身份；租户字段由当前可信绑定补齐
+     * @param array<string, mixed> $values 仅在新增时使用的普通字段，不得覆盖唯一身份
+     * @throws ModelException 身份或输入非法、唯一获胜记录在当前范围不可见
+     * @throws ConstraintException 非目标唯一冲突或其他数据库约束失败
      */
-    public static function firstOrCreate(ModelDefinition $definition, Closure $query, Closure $create, array $identity, array $values): Model
+    public static function firstOrCreate(ModelDefinition $definition, \Closure $query, \Closure $create, array $identity, array $values): Model
     {
         if ($identity === []) {
             throw new ModelException('invalid_unique_identity', '获取或创建需要非空唯一身份');

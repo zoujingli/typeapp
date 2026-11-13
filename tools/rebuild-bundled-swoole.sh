@@ -4,7 +4,7 @@
 # shellcheck disable=SC2016
 set -euo pipefail
 task_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-: "${PHP_HOME:?需要 PHP 8.5.10 ZTS SDK}"
+: "${PHP_HOME:?需要 PHP 8.5.12 ZTS SDK}"
 [[ $# == 1 && "$1" == /* && ! -e "$1" ]] || { echo '用法：rebuild-bundled-swoole.sh <尚不存在的绝对目录>' >&2; exit 1; }
 task_work="$1"
 mkdir -p "$task_work/output" "$task_work/php.d"
@@ -13,7 +13,7 @@ task_reference="$("$task_php" -n -r 'require $argv[1]; echo Type\Build\SwooleThr
 task_archive="$task_work/swoole.tar.gz"
 task_source="$task_work/swoole-src-$task_reference"
 curl --fail --location --silent --show-error --retry 3 "https://codeload.github.com/swoole/swoole-src/tar.gz/$task_reference" --output "$task_archive"
-"$task_php" -n -r 'if (hash_file("sha256", $argv[1]) !== "d4e9e5bff6f19430e69425ddf2b485c045a5b0c2551af38b5efd6f79d1fe30a1") { throw new RuntimeException("Swoole 源码归档摘要不符"); }' "$task_archive"
+"$task_php" -n -r 'if (hash_file("sha256", $argv[1]) !== "126c61b57c2cf27ff4a9aa6d9bef65ffebb3f6e60826e77c37c5edf1c5b6a19d") { throw new RuntimeException("Swoole 源码归档摘要不符"); }' "$task_archive"
 tar -xzf "$task_archive" -C "$task_work"
 "$task_php" -n -r '
 $report = [];
@@ -36,7 +36,11 @@ case "$(uname -s)" in
   Darwin)
     [[ "$(uname -m)" == arm64 ]] || { echo 'macOS 模块只提供 ARM64。' >&2; exit 1; }
     export MACOSX_DEPLOYMENT_TARGET=15.0
-    task_openssl="$(brew --prefix openssl@3)"
+    # 可显式使用已核对的独立 OpenSSL 前缀，不修改开发机或 SDK 的共享安装。
+    task_openssl="${TYPE_OPENSSL_PREFIX:-$(brew --prefix openssl@3)}"
+    [[ -f "$task_openssl/include/openssl/ssl.h" && -f "$task_openssl/lib/libssl.a" && -f "$task_openssl/lib/libcrypto.a" && -f "$task_openssl/LICENSE.txt" ]] || {
+      echo 'OpenSSL 前缀须包含头文件、静态库和 LICENSE.txt。' >&2; exit 1;
+    }
     task_pgsql="$task_work/postgresql"
     curl --fail --location --silent --show-error --retry 3 https://ftp.postgresql.org/pub/source/v17.11/postgresql-17.11.tar.bz2 --output "$task_work/postgresql.tar.bz2"
     printf '%s  %s\n' dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979 "$task_work/postgresql.tar.bz2" | shasum -a 256 --check
@@ -61,8 +65,8 @@ case "$(uname -s)" in
       make -j2
       make install
     ) >"$task_work/sqlite.log" 2>&1
-    task_pkgconfig="$task_pgsql/lib/pkgconfig:$task_sqlite/lib/pkgconfig"
-    for task_formula in openssl@3 c-ares brotli; do
+    task_pkgconfig="$task_pgsql/lib/pkgconfig:$task_sqlite/lib/pkgconfig:$task_openssl/lib/pkgconfig"
+    for task_formula in c-ares brotli; do
       task_prefix="$(brew --prefix "$task_formula")"
       task_pkgconfig="$task_pkgconfig:$task_prefix/lib/pkgconfig"
     done
@@ -89,7 +93,9 @@ case "$(uname -s)" in
     cp "$task_work/postgresql-17.11/COPYRIGHT" "$task_work/output/LICENSES/postgresql/COPYRIGHT"
     mkdir -p "$task_work/output/LICENSES/sqlite"
     cp "$task_sqlite/include/sqlite3.h" "$task_work/output/LICENSES/sqlite/sqlite3.h"
-    for task_pair in 'openssl@3/LICENSE.txt' 'c-ares/LICENSE.md' 'brotli/LICENSE'; do
+    mkdir -p "$task_work/output/LICENSES/openssl"
+    cp "$task_openssl/LICENSE.txt" "$task_work/output/LICENSES/openssl/LICENSE.txt"
+    for task_pair in 'c-ares/LICENSE.md' 'brotli/LICENSE'; do
       task_formula="${task_pair%%/*}"
       task_relative="${task_pair#*/}"
       mkdir -p "$task_work/output/LICENSES/$task_formula"
@@ -125,5 +131,10 @@ while IFS= read -r task_relative; do
   mkdir -p "$task_work/output/LICENSES/swoole/$(dirname "$task_relative")"
   cp "$task_source/$task_relative" "$task_work/output/LICENSES/swoole/$task_relative"
 done < <("$task_php" -n -r '$data=json_decode(file_get_contents($argv[1]),true,32,JSON_THROW_ON_ERROR);foreach(array_keys($data["licenses"]) as $file){if(str_starts_with($file,"LICENSES/swoole/")){echo substr($file,16),"\n";}}' "$task_root/plugin/type-build/resources/swoole/manifest.json")
-"$task_php" -d "extension=$task_work/output/swoole.so" "$task_root/tools/verify-swoole-module.php" "$task_work/output/swoole.so" > "$task_work/output/verification.json"
+# 禁止继承 SDK 中可能已加载的旧模块；原生 curl 未内置时显式加载其扩展依赖。
+task_verify_options=(-n)
+if [[ "$("$task_php" -n -r 'echo extension_loaded("curl") ? "1" : "0";')" != 1 ]]; then
+  task_verify_options+=(-d extension=curl)
+fi
+"$task_php" "${task_verify_options[@]}" -d "extension=$task_work/output/swoole.so" "$task_root/tools/verify-swoole-module.php" "$task_work/output/swoole.so" > "$task_work/output/verification.json"
 printf '%s\n' "$task_work/output"

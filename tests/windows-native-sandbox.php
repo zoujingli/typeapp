@@ -10,9 +10,13 @@ use Type\Testing\Process;
 final class WindowsNativeSandbox
 {
     private string $work;
+
     private string $specification;
+
     private string $powershell;
+
     private string $script;
+
     private array $command;
 
     /** 本轮目录由测试创建；仅子进程受限，控制端仍可读取报告和清理资源。 */
@@ -29,17 +33,17 @@ final class WindowsNativeSandbox
         $this->work = $root . '/build/windows-sandbox-' . bin2hex(random_bytes(6));
         expect(mkdir($this->work, 0700), '无法创建 Windows 隔离控制目录');
         $this->specification = $this->work . '/specification.json';
-        $this->powershell = (string) getenv('SystemRoot') . '/System32/WindowsPowerShell/v1.0/powershell.exe';
+        $this->powershell = (string)getenv('SystemRoot') . '/System32/WindowsPowerShell/v1.0/powershell.exe';
         $this->script = $root . '/tests/native-windows-sandbox.ps1';
         $runner = $this->work . '/restricted-runner.exe';
         $compile = (new Process(['cl.exe', '/nologo', '/MT', '/EHsc', '/std:c++17', '/utf-8',
             $root . '/tests/native-windows-sandbox.cpp', '/Fo' . $this->work . '/runner.obj', '/Fe' . $runner,
             '/link', 'advapi32.lib'], $this->work))->wait(60);
         expect($compile->successful(), 'Windows 隔离设置器编译失败：' . $compile->stdout . $compile->stderr);
-        $found = successful([(string) getenv('SystemRoot') . '/System32/where.exe', 'cl.exe'], $root);
+        $found = successful([(string)getenv('SystemRoot') . '/System32/where.exe', 'cl.exe'], $root);
         $compiler = BuildPlatform::resolve(trim(explode("\n", $found)[0]));
-        $host = BuildPlatform::resolve((string) getenv('PHP_HOME'));
-        $phpx = BuildPlatform::resolve((string) getenv('PHPX_HOME'));
+        $host = BuildPlatform::resolve((string)getenv('PHP_HOME'));
+        $phpx = BuildPlatform::resolve((string)getenv('PHPX_HOME'));
         $blocked = [$root . '/app/common/bootstrap/Application.php', $root . '/vendor/autoload.php', $host . '/php.exe', $host . '/php8ts.dll', $compiler];
         $directories = [$root, $host, $phpx, dirname($compiler)];
         $staticManifest = getenv('TYPE_STATIC_RUNTIME');
@@ -48,7 +52,7 @@ final class WindowsNativeSandbox
             $directories[] = $staticRoot;
             $blocked[] = $staticRoot . '/include/php/main/php.h';
         }
-        $node = (new Process([(string) getenv('SystemRoot') . '/System32/where.exe', 'node.exe'], $root))->wait(10);
+        $node = (new Process([(string)getenv('SystemRoot') . '/System32/where.exe', 'node.exe'], $root))->wait(10);
         if ($node->successful()) {
             // setup-node 可将另一版本放到 PATH 首位，系统预装版本仍须隔离。
             foreach (explode("\n", trim($node->stdout)) as $nodeEntry) {
@@ -98,7 +102,7 @@ final class WindowsNativeSandbox
     /** @return array<string,string> 控制端 PHP、Node、Composer 与 MSVC 不出现在部署 PATH。 */
     public static function environment(string $runtime): array
     {
-        return ['SystemRoot' => (string) getenv('SystemRoot'), 'PATH' => (string) getenv('SystemRoot') . '/System32',
+        return ['SystemRoot' => (string)getenv('SystemRoot'), 'PATH' => (string)getenv('SystemRoot') . '/System32',
             'TEMP' => $runtime, 'TMP' => $runtime];
     }
 

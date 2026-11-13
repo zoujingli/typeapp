@@ -7,6 +7,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 require __DIR__ . '/native-database.php';
 
 use Type\Build\BuildPlatform;
+use Type\Build\ServiceDefinition;
 
 $root = BuildPlatform::resolve(dirname(__DIR__));
 expect(in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true) && posix_geteuid() > 0 && in_array($argc, [4, 5], true), '用法：非root Linux/macOS PHP tests/native-database-onboarding.php <MySQL根目录> <PostgreSQL根目录> <Composer PHAR> [mysql|pgsql|sqlite]');
@@ -56,7 +57,7 @@ try {
             expect(preg_match('#应用模板独立 ' . $driver . ' 消费验证通过：(.*)\s*$#u', $output, $matches) === 1, '接入入口没有返回已验证项目');
             $consumer = realpath(trim($matches[1]));
             expect($consumer !== false && str_starts_with($consumer, $root . '/build/template-' . $driver . '-'), '接入结果不属于本轮独立模板范围');
-            $evidence = json_decode((string) file_get_contents($consumer . '/verification.json'), true, 512, JSON_THROW_ON_ERROR);
+            $evidence = json_decode((string)file_get_contents($consumer . '/verification.json'), true, 512, JSON_THROW_ON_ERROR);
             expect($evidence['native'] && $evidence['onboarding'] && $evidence['package-verified'] && !$evidence['remote'] && $evidence['driver'] === $driver, '接入验收缺少原生、业务修改或发布范围');
             $entry['template-evidence'] = $consumer . '/verification.json';
             $entry['template-evidence-sha256'] = hash_file('sha256', $consumer . '/verification.json');
@@ -76,7 +77,7 @@ try {
                 $settings = ['name' => 'typeappsystemd' . bin2hex(random_bytes(6)), 'scope' => 'user',
                     'user' => posix_getpwuid(posix_geteuid())['name'], 'runtime-directory' => $runtime,
                     'restart-seconds' => 1, 'stop-seconds' => 10];
-                $service = (new \Type\Build\ServiceDefinition())->create($packaging['package'], $work . '/service', $packaging['release-sha256'], $settings);
+                $service = (new ServiceDefinition())->create($packaging['package'], $work . '/service', $packaging['release-sha256'], $settings);
                 $serviceEnvironment = $environment;
                 foreach (['XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS'] as $key) {
                     $value = getenv($key);

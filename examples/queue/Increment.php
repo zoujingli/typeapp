@@ -6,40 +6,48 @@ namespace TypeApp\QueueExample;
 
 use Type\Queue\Job;
 use Type\Queue\JobContext;
-use Type\Runtime\ManagedResource;
 use Type\Runtime\ExecutionScope;
+use Type\Runtime\ManagedResource;
 
 /** 队列作用域的可观测资源，累计开启/关闭并可注入清理失败。 */
 final class Resource implements ManagedResource
 {
     public static int $opened = 0;
+
     public static int $closed = 0;
+
     public static bool $failStop = false;
+
     private ExecutionScope $scope;
+
     private bool $started = false;
+
     /** 构造时已绑定本次投递作用域。 */
     public function __construct()
     {
         $this->scope = ExecutionScope::current();
     }
+
     /** 验证注入的是已在本次投递开启的同一资源。 */
     public function ready(ExecutionScope $scope): bool
     {
         return $this->scope === $scope && $this->started;
     }
+
     /** 累计资源启动次数，不建立外部连接。 */
     public function start(): void
     {
-        self::$opened++;
+        ++self::$opened;
         $this->started = true;
     }
+
     /** 正常累计关闭次数，failStop 时故意失败以阻止提前确认投递。 */
     public function stop(): void
     {
         if (self::$failStop) {
             throw new \RuntimeException('controlled queue cleanup failure');
         }
-        self::$closed++;
+        ++self::$closed;
         $this->started = false;
     }
 }
@@ -48,9 +56,13 @@ final class Resource implements ManagedResource
 final class Increment implements Job
 {
     public static ?ExecutionScope $lastScope = null;
+
     private string $prefix;
+
     private Resource $resource;
+
     private int $calls = 0;
+
     /** 记录演练键前缀，避免不同任务批次共享业务效果。 */
     public function __construct(string $prefix, Resource $resource)
     {
@@ -60,10 +72,11 @@ final class Increment implements Job
             throw new \RuntimeException('Job 构造前资源没有在本次作用域开启');
         }
     }
+
     /**
      * 校验作用域与整数载荷，在租约保护中按稳定消息 ID 去重并累加。
      *
-     * @param array{amount: int} $payload 待累计的整数。
+     * @param array{amount: int} $payload 待累计的整数
      */
     public function handle(JobContext $context, array $payload): void
     {

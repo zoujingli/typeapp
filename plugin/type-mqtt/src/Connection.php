@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Type\Mqtt;
 
+use Swoole\Coroutine\Socket;
 use Type\Runtime\Deadline;
 
 /** @internal 一条 Swoole 连接的所有者；明文/TLS/WebSocket、帧缓冲和发送预算均随连接回收。 */
@@ -11,95 +12,157 @@ final class Connection
 {
     /** 连接表键：Swoole Server 或 Coroutine Socket fd；内部发布者编号为0。 */
     public readonly int $id;
+
     public string $input = '';
+
     public string $output = '';
+
     public bool $secure = false;
+
     /** 专用 mTLS 入口上的连接；证书指纹、序列号与 notAfter 在握手时写入，不保存 PEM。 */
     public bool $mutualTls = false;
+
     public string $clientCertificateFingerprint = '';
+
     public string $clientCertificateSerial = '';
+
     /** 握手时记下的 notAfter Unix 秒；0 表示未取得，不按到期断开。 */
     public int $clientCertificateNotAfter = 0;
+
     public bool $connected = false;
+
     /** 成功认证形成的身份；与客户端协议字段、连接 owner 及持久会话代次分开。 */
     public ?AccessIdentity $identity = null;
+
     /** 真实认证确定的管理归属，独立于协议及接入身份。 */
     public ?string $resourceScope = null;
+
     /** 认证后由消费者分类，不采用客户端属性或标识前缀自报身份。 */
     public string $capacityClass = '';
+
     /** 原生接纳序号；Swoole close 只回收同一序号，避免 fd 复用后误伤新连接。 */
     public int $nativeInstance = 0;
+
     /** @var null|\Closure(int, int): void */
     public mixed $noteNativeClosing = null;
+
     /** CONNECT 已解码，等待 tick 完成同步认证，避免在收包回调里堵住事件循环。 */
     public bool $authPending = false;
+
     public bool $readPending = false;
+
     public int $connackRemaining = 0;
+
     public bool $connackSent = false;
+
     public bool $observed = false;
+
     public int $closeReason = 0x80;
+
     public bool $closing = false;
+
     public Deadline $handshake;
+
     public ?Deadline $partial = null;
+
     public ?Deadline $keepAlive = null;
+
     public ?Deadline $flush = null;
+
     public ConnectPacket $connect;
+
     public string $sessionId;
+
     public readonly string $ownerId;
+
     public bool $sessionPending = false;
+
     public bool $sessionOpening = false;
+
     public bool $sessionOpened = false;
+
     public bool $sessionManaged = false;
+
     public bool $sessionPresent = false;
+
     /** 接管隔离未完成时只重试保存屏障，不能重新打开并制造另一代所有者。 */
     public float $sessionRetryAt = 0.0;
+
     public int $sessionGeneration = 0;
+
     public int $sessionExpiry = 0;
+
     /** 只有合法客户端 DISCONNECT（非 0x04）取消遗嘱；服务端管理断开 0x98 仍按失联处理遗嘱并保留会话。 */
     public string $endReason = 'network_lost';
+
     /** 首次观察到网络结束的 Unix 秒；关闭工作等待不能刷新遗嘱期限。 */
     public float $endedAt = 0.0;
+
     public float $closeRetryAt = 0.0;
+
     public bool $replaying = false;
+
     public bool $draining = true;
+
     public float $replayAt = 0.0;
+
     public float $sharedAt = 0.0;
+
     /** 普通与共享读取轮换优先权；慢同步回调不能让空轮询持续抢占同一工作槽。 */
     public bool $sharedTurn = false;
+
     public string $sharedCursor = '';
+
     /** @var array<int,string> 尚未返回 PUBACK 的接收交换；确认后删除，不能形成永久去重缓存。 */
     public array $incoming = [];
+
     /** @var array<int,array{id:string,state:string,responses:int}> QoS 2 接收交换，发送 PUBCOMP 后归还标识。 */
     public array $incomingQos2 = [];
-    /** @var array<int,int> 各接收交换的 PUBACK 末尾距离当前发送缓冲起点的字节数。 */
-    private array $acknowledgements = [];
+
     /** @var array<int,array{id:string,state:string,qos:int,responses:int}> 发往本会话且未持久终结的 Packet Identifier。 */
     public array $outgoing = [];
+
     /** @var array<int,bool> 已持久预留但尚未装入重放窗口的标识。 */
     public array $durableIdentifiers = [];
+
     public bool $hadDeliveries = false;
-    private int $nextIdentifier = 1;
+
     /** @var array<string,array{options:int,identifier:int}> 过滤器选项及标识；前缀避免数字 Topic 转为整数键。 */
     public array $subscriptions = [];
-    /** @var array<int,string> 当前网络连接的入站别名，独立于会话及出站映射。 */
-    private array $incomingAliases = [];
-    /** @var array<string,int> 已成功排入本连接输出的出站 Topic 映射，最多 32 项。 */
-    private array $outgoingAliases = [];
+
     /** @var list<array{snapshot_id:string,topic:string,subscription:array{options:int,identifier:int},cursor:string}> 有界保留游标；每会话最多100项。 */
     public array $retainedTopics = [];
+
     public bool $retainedPending = false;
+
     /** @var array{snapshot_id?:string,snapshot_cursor?:string,snapshot_done?:bool} 原件接管或明确丢弃后才推进的持久游标。 */
     public array $retainedAdvance = [];
+
     /** 真实读取后等待发送窗口的单条原件；没有为不存在的保留消息预留标识。 */
     public ?Message $retainedMessage = null;
+
     public string $retainedPublisher = '';
+
     public int $retainedOptions = 0;
+
     public int $retainedIdentifier = 0;
+
     public string $retainedFilter = '';
 
+    /** @var array<int,int> 各接收交换的 PUBACK 末尾距离当前发送缓冲起点的字节数。 */
+    private array $acknowledgements = [];
+
+    private int $nextIdentifier = 1;
+
+    /** @var array<int,string> 当前网络连接的入站别名，独立于会话及出站映射。 */
+    private array $incomingAliases = [];
+
+    /** @var array<string,int> 已成功排入本连接输出的出站 Topic 映射，最多 32 项。 */
+    private array $outgoingAliases = [];
+
     /**
-     * @param int|\Swoole\Coroutine\Socket|null $socket 原生连接或其 fd；内部发布者可为空。
-     * @param string $transport `tcp`/`websocket` 为原生监听，`internal` 表示无网络的内部发布者。
+     * @param null|int|Socket $socket 原生连接或其 fd；内部发布者可为空
+     * @param string $transport `tcp`/`websocket` 为原生监听，`internal` 表示无网络的内部发布者
      */
     public function __construct(
         public mixed $socket,
@@ -117,8 +180,8 @@ final class Connection
             }
             $this->id = 0;
         } else {
-            $identifier = $socket instanceof \Swoole\Coroutine\Socket ? $socket->fd : $socket;
-            if (!is_int($identifier) || $identifier < 1 || ($socket instanceof \Swoole\Coroutine\Socket && $transport !== 'tcp')) {
+            $identifier = $socket instanceof Socket ? $socket->fd : $socket;
+            if (!is_int($identifier) || $identifier < 1 || ($socket instanceof Socket && $transport !== 'tcp')) {
                 throw new \InvalidArgumentException('MQTT 原生连接需要有效 fd');
             }
             $this->id = $identifier;
@@ -132,7 +195,7 @@ final class Connection
     /** 网络仍可读写时为真；关闭后 socket 置空，不把已回收 fd 当作活连接。 */
     public function alive(): bool
     {
-        return $this->socket instanceof \Swoole\Coroutine\Socket
+        return $this->socket instanceof Socket
             ? !$this->socket->isClosed()
             : $this->transport !== 'internal' && is_int($this->socket) && $this->socket > 0 && $this->native !== null;
     }
@@ -152,10 +215,10 @@ final class Connection
     /** 预留当前发送窗口中的标识；超过客户端 Receive Maximum 或本组件 32 条上限时拒绝接管。 */
     public function reserve(string $deliveryId, int $qos = 1): int
     {
-        if (count($this->outgoing) >= min(32, (int) ($this->connect->properties[0x21] ?? 65535))) {
+        if (count($this->outgoing) >= min(32, (int)($this->connect->properties[0x21] ?? 65535))) {
             throw new ProtocolError(0x97);
         }
-        for ($attempt = 0; $attempt < 65535; $attempt++) {
+        for ($attempt = 0; $attempt < 65535; ++$attempt) {
             $identifier = $this->nextIdentifier;
             $this->nextIdentifier = $identifier === 65535 ? 1 : $identifier + 1;
             if (!isset($this->outgoing[$identifier]) && !isset($this->durableIdentifiers[$identifier])) {
@@ -185,13 +248,13 @@ final class Connection
      * 预览或排队完整 PUBLISH；只有成功排队才建立出站别名，预览不产生连接副作用。
      * 空串表示已到期、超过接收方/服务端上限或排队失败；大小拒绝不关闭连接。
      * finishExchange 只用于持久证据表明已经开始的协议交换，仍遵守本连接别名和报文预算。
-     * @param list<int> $subscriptionIdentifiers 本次交付标识，包含在别名回退及完整报文大小核验中。
+     * @param list<int> $subscriptionIdentifiers 本次交付标识，包含在别名回退及完整报文大小核验中
      */
     public function publication(Message $message, int $identifier, int $qos, int $maximumBytes, bool $enqueue = false, bool $duplicate = false, bool $retain = false, bool $finishExchange = false, array $subscriptionIdentifiers = []): string
     {
-        $maximum = min($maximumBytes, (int) ($this->connect->properties[0x27] ?? 268435455));
+        $maximum = min($maximumBytes, (int)($this->connect->properties[0x27] ?? 268435455));
         $key = 't:' . $message->topic;
-        $aliasMaximum = $this->connect->version === 5 ? min(32, (int) ($this->connect->properties[0x22] ?? 0)) : 0;
+        $aliasMaximum = $this->connect->version === 5 ? min(32, (int)($this->connect->properties[0x22] ?? 0)) : 0;
         $known = isset($this->outgoingAliases[$key]);
         $alias = $known ? $this->outgoingAliases[$key] : (count($this->outgoingAliases) < $aliasMaximum ? count($this->outgoingAliases) + 1 : 0);
         $packet = $message->packet($this->connect->version, $identifier, $duplicate, $qos, $alias, $known, $retain, $finishExchange, $subscriptionIdentifiers);
@@ -230,7 +293,7 @@ final class Connection
     /** 排队完整控制响应并设定单调发送预算；受客户端声明的最大报文长度约束。 */
     public function send(string $packet): bool
     {
-        if (!$this->alive() || strlen($packet) > (int) ($this->connect->properties[0x27] ?? 268435455) || strlen($this->output) + strlen($packet) > 2097152) {
+        if (!$this->alive() || strlen($packet) > (int)($this->connect->properties[0x27] ?? 268435455) || strlen($this->output) + strlen($packet) > 2097152) {
             $this->close();
             return false;
         }
@@ -279,7 +342,7 @@ final class Connection
         if ($this->endedAt === 0.0) {
             $this->endedAt = microtime(true);
         }
-        if ($this->socket instanceof \Swoole\Coroutine\Socket) {
+        if ($this->socket instanceof Socket) {
             $socket = $this->socket;
             $this->socket = null;
             $socket->close();
@@ -331,9 +394,9 @@ final class Connection
     }
 
     /** 返回原生实际接纳的字节数；协程 Socket 允许短写，失败由调用方关闭。 */
-    private function flushNative(string $chunk): int|false
+    private function flushNative(string $chunk): false|int
     {
-        if ($this->socket instanceof \Swoole\Coroutine\Socket) {
+        if ($this->socket instanceof Socket) {
             // 原生协程处理可写等待；短写只消耗已发送前缀，共用现有总发送截止。
             return $this->socket->send($chunk, max(0.001, $this->flush?->remaining() ?? 1.0));
         }

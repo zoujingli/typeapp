@@ -4,22 +4,24 @@ declare(strict_types=1);
 
 namespace Type\Cache;
 
-use Closure;
 use Type\Redis\RedisException;
 
 /** 明确选择强一致回源以及缓存故障时的回源策略。 */
 final class CacheReader
 {
     private TypedCache $cache;
+
     private bool $fallback;
+
     /** 选择 Redis 故障是否允许降级回源；默认传播错误，业务数据源异常不被吞掉。 */
     public function __construct(TypedCache $cache, bool $fallbackOnRedisFailure = false)
     {
         $this->cache = $cache;
         $this->fallback = $fallbackOnRedisFailure;
     }
-    /** @param Closure(bool): mixed $source 接收本次是否要求强一致读取。 */
-    public function read(string $key, Closure $source, bool $strong = false): mixed
+
+    /** @param \Closure(bool): mixed $source 接收本次是否要求强一致读取。 */
+    public function read(string $key, \Closure $source, bool $strong = false): mixed
     {
         if ($strong) {
             return $source(true);

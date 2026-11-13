@@ -7,7 +7,7 @@ use TypeApp\Distribution\Process;
 
 $temporary = null;
 try {
-    $environment = (string) getenv('GITHUB_ENV');
+    $environment = (string)getenv('GITHUB_ENV');
     if ($environment === '') {
         throw new RuntimeException('模板写入凭据加载入口仅用于当前 Actions 任务');
     }

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ProjectCreator;
 
 // 使用明确选择的模板约束；来源由调用者配置，不把开发路径写入公开消费。
 if (count($argv) < 2 || count($argv) > 5) {
@@ -9,7 +10,7 @@ if (count($argv) < 2 || count($argv) > 5) {
 }
 $source = $argv[4] ?? dirname(__DIR__, 2);
 require $source . '/vendor/autoload.php';
-$result = (new Type\Build\ProjectCreator())->create($argv[3] ?? $source . '/templates/type-project', $argv[1], $argv[2] ?? 'sqlite');
+$result = (new ProjectCreator())->create($argv[3] ?? $source . '/templates/type-project', $argv[1], $argv[2] ?? 'sqlite');
 $project = $result['directory'];
 $composer = json_decode(file_get_contents($project . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
 $constraint = $composer['require']['zoujingli/type-core'];

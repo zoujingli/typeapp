@@ -7,7 +7,7 @@ use Type\Testing\Process;
 /** 独立安装的PendingCommit只负责受控IPC；实际存储动作仍由本轮PHP/原生worker执行。 */
 function mqttClusterRequest(string $consumer, array $workerCommand, array $environment, array $request): array
 {
-    $program = 'require $argv[1]; $p = new Type\\Mqtt\\PendingCommit(json_decode($argv[2], true), json_decode($argv[3], true)); '
+    $program = 'require $argv[1]; $p = new Type\Mqtt\PendingCommit(json_decode($argv[2], true), json_decode($argv[3], true)); '
         . 'do { $r = $p->poll(); if ($r === null) usleep(10000); } while ($r === null); echo json_encode($r->data(), JSON_THROW_ON_ERROR);';
     $request['operation_id'] = bin2hex(random_bytes(16));
     $result = (new Process([PHP_BINARY, '-r', $program, '--', $consumer . '/vendor/autoload.php', json_encode($workerCommand, JSON_THROW_ON_ERROR),
@@ -25,7 +25,7 @@ function mqttClusterFenceUnknownCase(PostgresSync $sync, string $consumer, array
     expect(is_array($target) && $target['state'] === 'fenced', '未知隔离回归仅可使用已经结束的本轮节点');
     $actionId = bin2hex(random_bytes(16));
     $request = ['action' => 'node_fence', 'action_operation_id' => $actionId, 'node_id' => 'beta', 'node_run_id' => $target['run_id'],
-        'generation' => (int) $target['generation'], 'observation_run' => '', 'actor' => 'cluster-test',
+        'generation' => (int)$target['generation'], 'observation_run' => '', 'actor' => 'cluster-test',
         'proof_ref' => 'sha256:' . hash('sha256', 'owned-node-stopped-before-replication-fault')];
     $query = array_replace($request, ['action' => 'node_fence_result']);
     $missing = mqttClusterRequest($consumer, $workerCommand, $environment, $query);
@@ -67,7 +67,7 @@ function mqttClusterPort(): int
 {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($listener), '无法准备集群隔离端口');
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
     return $port;
 }
@@ -78,7 +78,7 @@ function mqttClusterClosed(mixed $socket, bool $opening = false): void
     $packet = mqttRead($socket);
     if ($packet !== '') {
         expect(
-            ord($packet[0]) === 0xe0 || ($opening && ord($packet[0]) === 0x20 && ord($packet[3]) !== 0),
+            ord($packet[0]) === 0xE0 || ($opening && ord($packet[0]) === 0x20 && ord($packet[3]) !== 0),
             '旧节点在接管后仍输出有效协议动作：' . bin2hex($packet)
         );
         expect(mqttRead($socket) === '', '拒绝之后旧连接仍然开放');
@@ -93,7 +93,7 @@ function mqttClusterPublish(mixed $publisher, int $version, string $topic, strin
         try {
             $response = mqttRead($publisher);
         } catch (RuntimeException $error) {
-            throw new RuntimeException('跨节点发布确认读取失败：' . $topic . ' qos=' . $qos . ' retain=' . (int) $retain
+            throw new RuntimeException('跨节点发布确认读取失败：' . $topic . ' qos=' . $qos . ' retain=' . (int)$retain
                 . ' metadata=' . json_encode(stream_get_meta_data($publisher)) . ' cause=' . $error->getMessage(), 0, $error);
         }
         expect($response === mqttPacket($qos === 1 ? 0x40 : 0x50, "\0\x11"), '跨节点发布没有成功确认：' . $topic . ' response=' . bin2hex($response));
@@ -111,7 +111,7 @@ function mqttClusterRoutingCases(array $ports, ?string $certificate, PDO $standb
     foreach ([4, 5] as $version) {
         foreach ([0, 1, 2] as $publishedQos) {
             foreach ([0, 1, 2] as $subscribedQos) {
-                $identity = 'route-' . (int) ($certificate !== null) . '-' . $version . '-' . $publishedQos . '-' . $subscribedQos;
+                $identity = 'route-' . (int)($certificate !== null) . '-' . $version . '-' . $publishedQos . '-' . $subscribedQos;
                 $topic = 'example/' . $identity;
                 $publisher = mqttSocket($ports['alpha'], $certificate);
                 $ordinary = mqttSocket($ports['beta'], $certificate);
@@ -140,7 +140,7 @@ function mqttClusterRoutingCases(array $ports, ?string $certificate, PDO $standb
                 $properties = $version === 5 ? "\x03" . mqttField('application/octet-stream') . "\x09" . mqttField("\0\xffcorrelation")
                     . "\x26" . mqttField('route') . mqttField('three-nodes') : '';
                 foreach ([false, true] as $retain) {
-                    $payload = "\0\xffpayload-" . $identity . '-' . (int) $retain;
+                    $payload = "\0\xffpayload-" . $identity . '-' . (int)$retain;
                     mqttClusterPublish($publisher, $version, $topic, $payload, $publishedQos, $properties, $retain);
                     $message = mqttRetainedRead($ordinary, $version);
                     expect($message['topic'] === $topic && $message['payload'] === $payload && $message['qos'] === min($publishedQos, $subscribedQos)
@@ -159,13 +159,13 @@ function mqttClusterRoutingCases(array $ports, ?string $certificate, PDO $standb
                         foreach ($members as $member) {
                             mqttWillSilence($member, 0.3);
                         }
-                        $copies = (int) $standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id '
+                        $copies = (int)$standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id '
                             . 'WHERE m.topic = ' . $standby->quote($topic) . " AND d.group_id <> ''")->fetchColumn();
                         expect($copies === ($retain ? 2 : 1), '节点边界为同一共享组派生多个副本');
-                        $cases++;
+                        ++$cases;
                     }
                     mqttWillSilence($ordinary, 0.2);
-                    $cases++;
+                    ++$cases;
                 }
                 foreach ([$publisher, $ordinary, ...$members] as $socket) {
                     mqttWrite($socket, "\xe0\0");
@@ -182,7 +182,7 @@ function mqttClusterRoutingCases(array $ports, ?string $certificate, PDO $standb
 function mqttClusterRouteStateCases(array $ports, ?string $certificate, PDO $standby, array $processes, array &$sockets): int
 {
     $cases = 0;
-    $suffix = (string) (int) ($certificate !== null);
+    $suffix = (string)(int)($certificate !== null);
     $publisher = mqttSocket($ports['alpha'], $certificate);
     $ordinary = mqttSocket($ports['beta'], $certificate);
     array_push($sockets, $publisher, $ordinary);
@@ -239,11 +239,11 @@ function mqttClusterRouteStateCases(array $ports, ?string $certificate, PDO $sta
             expect(mqttRead($socket) === '', '离线用例未完成正常断线');
             fclose($socket);
         }
-        mqttUntil(static fn (): bool => (int) $standby->query('SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id IN ('
+        mqttUntil(static fn (): bool => (int)$standby->query('SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id IN ('
             . $standby->quote($identity) . ',' . $standby->quote($identity . '-shared') . ') AND owner_id IS NOT NULL')->fetchColumn() === 0, '接收会话没有同步离线');
         mqttClusterPublish($publisher, $version, $topic, 'volatile-offline', 0);
-        mqttUntil(static fn (): bool => (int) $standby->query('SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = ' . $standby->quote($topic))->fetchColumn() === 1, 'QoS0跨节点原件没有结束接管');
-        expect((int) $standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id WHERE m.topic = '
+        mqttUntil(static fn (): bool => (int)$standby->query('SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = ' . $standby->quote($topic))->fetchColumn() === 1, 'QoS0跨节点原件没有结束接管');
+        expect((int)$standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id WHERE m.topic = '
             . $standby->quote($topic))->fetchColumn() === 0, '全员离线仍为QoS0派生副本');
         mqttClusterPublish($publisher, $version, $topic, 'durable-offline', 2);
         $restored = mqttSocket($ports['gamma'], $certificate);
@@ -285,7 +285,7 @@ function mqttClusterRouteStateCases(array $ports, ?string $certificate, PDO $sta
         expect(posix_kill($processes['beta']->pid(), SIGSTOP), '无法暂停QoS0旧接收节点');
         try {
             mqttClusterPublish($publisher, 5, $topic, 'old-owner-only', $publishedQos);
-            mqttUntil(static fn (): bool => (int) $standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id '
+            mqttUntil(static fn (): bool => (int)$standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id '
                 . 'WHERE m.topic = ' . $standby->quote($topic) . " AND d.state = 'pending' AND d.qos = 0 AND NOT d.started")->fetchColumn() === 1, 'QoS0没有绑定旧在线连接');
             $new = mqttSocket($ports['gamma'], $certificate);
             $sockets[] = $new;
@@ -312,7 +312,7 @@ function mqttClusterRouteStateCases(array $ports, ?string $certificate, PDO $sta
         foreach ([$publisher, $old, $new] as $socket) {
             fclose($socket);
         }
-        $cases++;
+        ++$cases;
     }
     $identity = 'route-volatile-group-' . $suffix;
     $topic = 'example/' . $identity;
@@ -333,7 +333,7 @@ function mqttClusterRouteStateCases(array $ports, ?string $certificate, PDO $sta
     expect(posix_kill($processes['beta']->pid(), SIGSTOP), '无法暂停QoS0组原节点');
     try {
         mqttClusterPublish($publisher, 5, $topic, 'original-members-only', 0);
-        mqttUntil(static fn (): bool => (int) $standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id WHERE m.topic = '
+        mqttUntil(static fn (): bool => (int)$standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id WHERE m.topic = '
             . $standby->quote($topic) . " AND d.group_id <> '' AND d.state = 'pending'")->fetchColumn() === 1, 'QoS0组没有在线转发事实');
         mqttWrite($new, mqttSubscription(5, $filter, 1, 2));
         expect(mqttRead($new) === mqttSubscriptionAck(5, "\x02"), 'QoS0组后加入成员订阅失败');
@@ -366,7 +366,7 @@ function mqttClusterRoutePageCases(array $ports, PDO $standby, array $processes,
     $sockets[] = $publisher;
     mqttWrite($publisher, mqttConnect(5, 'route-pages-publisher', 0));
     mqttAck($publisher, 5);
-    for ($index = 0; $index < 105; $index++) {
+    for ($index = 0; $index < 105; ++$index) {
         $subscriber = mqttSocket($ports['beta']);
         $subscribers[] = $subscriber;
         $sockets[] = $subscriber;
@@ -416,13 +416,13 @@ function mqttClusterRouteCapacityCases(array $ports, PDO $standby, array &$proce
         $bytes = strlen($topic) + strlen($payload);
         $budget = match ($profile) {
             'global-count' => ['MQTT_PENDING_MAX_MESSAGES' => '2'],
-            'global-bytes' => ['MQTT_PENDING_MAX_BYTES' => (string) ($bytes * 2)],
+            'global-bytes' => ['MQTT_PENDING_MAX_BYTES' => (string)($bytes * 2)],
             'device-count' => ['MQTT_DEVICE_MAX_MESSAGES' => '1'],
-            'device-bytes' => ['MQTT_DEVICE_MAX_BYTES' => (string) $bytes],
+            'device-bytes' => ['MQTT_DEVICE_MAX_BYTES' => (string)$bytes],
             'shared-count' => ['MQTT_SHARED_MAX_MESSAGES' => '1'],
-            default => ['MQTT_SHARED_MAX_BYTES' => (string) $bytes],
+            default => ['MQTT_SHARED_MAX_BYTES' => (string)$bytes],
         };
-        mqttUntil(static fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE state = 'pending'")->fetchColumn() === 0, '低配额回归前已有未完成义务');
+        mqttUntil(static fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE state = 'pending'")->fetchColumn() === 0, '低配额回归前已有未完成义务');
         $stop($processes['alpha']);
         unset($processes['alpha']);
         $processes['alpha'] = $start('alpha', false, $budget);
@@ -439,7 +439,7 @@ function mqttClusterRouteCapacityCases(array $ports, PDO $standby, array &$proce
         foreach ([true, false] as $accepted) {
             $publisher = mqttSocket($ports['alpha']);
             $sockets[] = $publisher;
-            mqttWrite($publisher, mqttConnect(5, $identity . '-' . (int) $accepted, 0));
+            mqttWrite($publisher, mqttConnect(5, $identity . '-' . (int)$accepted, 0));
             mqttAck($publisher, 5);
             mqttWrite($publisher, mqttRetainedPacket(5, $topic, $payload, 1, 17, '', false));
             $response = mqttRead($publisher);
@@ -450,7 +450,7 @@ function mqttClusterRouteCapacityCases(array $ports, PDO $standby, array &$proce
             expect(mqttRead($publisher) === '', '配额发布者没有结束');
             fclose($publisher);
         }
-        expect((int) $standby->query('SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = ' . $standby->quote($topic))->fetchColumn() === 1, '容量拒绝插入第二原件或删除旧原件');
+        expect((int)$standby->query('SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = ' . $standby->quote($topic))->fetchColumn() === 1, '容量拒绝插入第二原件或删除旧原件');
         $subscriber = mqttSocket($ports['gamma']);
         $sockets[] = $subscriber;
         mqttWrite($subscriber, mqttSessionConnect(5, $identity));
@@ -458,7 +458,7 @@ function mqttClusterRouteCapacityCases(array $ports, PDO $standby, array &$proce
         $message = mqttRetainedRead($subscriber, 5);
         expect($message['payload'] === $payload && $message['qos'] === 1 && !$message['duplicate'], '配额拒绝后旧原件没有跨节点恢复');
         mqttRetainedComplete($subscriber, $message);
-        mqttUntil(static fn (): bool => (int) $standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id WHERE m.topic = '
+        mqttUntil(static fn (): bool => (int)$standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id WHERE m.topic = '
             . $standby->quote($topic) . " AND d.state = 'pending'")->fetchColumn() === 0, '真实ACK没有释放跨节点义务');
         $publisher = mqttSocket($ports['alpha']);
         $sockets[] = $publisher;
@@ -521,7 +521,7 @@ function mqttClusterStateCases(array $ports, PDO $standby, array &$sockets): int
     }
     $cases += 5;
     foreach ([false, true] as $clean) {
-        $id = 'cluster-delay-' . (int) $clean;
+        $id = 'cluster-delay-' . (int)$clean;
         $topic = 'example/' . $id;
         $observer = mqttWillSubscriber($ports['beta'], $id . '-observer', $topic);
         $old = mqttSocket($ports['alpha']);
@@ -560,7 +560,7 @@ function mqttClusterStateCases(array $ports, PDO $standby, array &$sockets): int
     mqttSessionAck($new, false);
     fclose($old);
     fclose($new);
-    $cases++;
+    ++$cases;
     $old = mqttSocket($ports['alpha']);
     $sockets[] = $old;
     mqttWrite($old, mqttSessionConnect(5, 'cluster-shared'));
@@ -626,7 +626,7 @@ function mqttClusterCases(string $root, string $consumer, array $command, array 
     require_once __DIR__ . '/mqtt-sessions.php';
     require_once __DIR__ . '/mqtt-retained.php';
     require_once __DIR__ . '/mqtt-will.php';
-    $tools = NativeDatabase::tools('pgsql', (string) (getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
+    $tools = NativeDatabase::tools('pgsql', (string)(getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
     $database = new NativeDatabase($consumer . '/cluster-primary', 'pgsql', $tools);
     $sync = null;
     $primary = null;
@@ -711,7 +711,7 @@ function mqttClusterCases(string $root, string $consumer, array $command, array 
             }
             foreach ([4, 5] as $version) {
                 foreach ([1, 2] as $qos) {
-                    $id = 'cluster-' . (int) $tls . '-' . $version . '-' . $qos;
+                    $id = 'cluster-' . (int)$tls . '-' . $version . '-' . $qos;
                     $topic = 'example/' . $id;
                     $old = mqttSocket($ports['alpha'], $certificate);
                     $publisher = mqttSocket($ports['alpha'], $certificate);
@@ -738,7 +738,7 @@ function mqttClusterCases(string $root, string $consumer, array $command, array 
                     mqttRetainedComplete($new, $restored);
                     $current = $standby->query('SELECT * FROM type_mqtt_sessions WHERE client_id = ' . $standby->quote($id))->fetch(PDO::FETCH_ASSOC);
                     expect($current['node_id'] === 'beta' && $current['owner_id'] !== $previous['owner_id']
-                        && (int) $current['generation'] === (int) $previous['generation'] + 1, '接管代次或所有者没有同步转移');
+                        && (int)$current['generation'] === (int)$previous['generation'] + 1, '接管代次或所有者没有同步转移');
                     $stale = mqttClusterRequest($consumer, $workerCommand, $environment, ['action' => 'session_save', 'session_id' => $previous['id'],
                         'owner_id' => $previous['owner_id'], 'subscriptions' => []]);
                     expect($stale['state'] === 'rejected', '旧所有者恢复后仍可有效写入');
@@ -788,7 +788,7 @@ function mqttClusterCases(string $root, string $consumer, array $command, array 
         mqttSessionAck($third, true);
         mqttClusterClosed($old);
         mqttClusterClosed($second, true);
-        expect((int) $standby->query("SELECT generation FROM type_mqtt_sessions WHERE client_id = 'cluster-race'")->fetchColumn() === 3, '连续接管代次错误');
+        expect((int)$standby->query("SELECT generation FROM type_mqtt_sessions WHERE client_id = 'cluster-race'")->fetchColumn() === 3, '连续接管代次错误');
         $cases += 5;
         foreach ([$old, $second, $third] as $socket) {
             fclose($socket);
@@ -805,7 +805,7 @@ function mqttClusterCases(string $root, string $consumer, array $command, array 
         expect(posix_kill($frozen->pid(), SIGCONT), '无法恢复撤权目标节点');
         $frozen = null;
         mqttClusterClosed($old);
-        mqttUntil(static fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_fences WHERE client_id = 'cluster-revoke'")->fetchColumn() === 0, '远端撤权未同步确认关闭');
+        mqttUntil(static fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_fences WHERE client_id = 'cluster-revoke'")->fetchColumn() === 0, '远端撤权未同步确认关闭');
         $terminated = mqttClusterRequest($consumer, $workerCommand, $environment, ['action' => 'session_terminate', 'client_id' => 'cluster-revoke', 'principal' => 'example', 'actor' => 'cluster-test']);
         expect($terminated['state'] === 'committed' && !$terminated['value']['waiting'], '撤权关闭完成仍未释放意图');
         fclose($old);
@@ -846,11 +846,11 @@ function mqttClusterCases(string $root, string $consumer, array $command, array 
         expect($rejected['state'] === 'rejected', '没有硬隔离证据标识仍被接受');
         $fenceActionId = bin2hex(random_bytes(16));
         $fenceRequest = ['action' => 'node_fence', 'action_operation_id' => $fenceActionId, 'node_id' => 'alpha', 'node_run_id' => $run,
-            'generation' => (int) $fenceTarget['generation'], 'observation_run' => '', 'actor' => 'cluster-test',
+            'generation' => (int)$fenceTarget['generation'], 'observation_run' => '', 'actor' => 'cluster-test',
             'proof_ref' => 'sha256:' . hash('sha256', 'owned_process_exited_children_absent')];
         $fenced = mqttClusterRequest($consumer, $workerCommand, $environment, $fenceRequest);
         expect($fenced['state'] === 'committed' && $fenced['released'] && $fenced['value']['fenced']
-            && $fenced['value']['operation_id'] === $fenceActionId && $fenced['value']['generation'] === (int) $fenceTarget['generation'], '硬退出完成登记没有冻结动作身份和同步证明');
+            && $fenced['value']['operation_id'] === $fenceActionId && $fenced['value']['generation'] === (int)$fenceTarget['generation'], '硬退出完成登记没有冻结动作身份和同步证明');
         $fenceAudit = $standby->query('SELECT * FROM type_mqtt_node_audit WHERE operation_id = ' . $standby->quote($fenceActionId))->fetch(PDO::FETCH_ASSOC);
         $fencedNode = $standby->query("SELECT * FROM type_mqtt_nodes WHERE node_id = 'alpha'")->fetch(PDO::FETCH_ASSOC);
         foreach (['node_fence', 'node_fence_result'] as $action) {
@@ -860,7 +860,7 @@ function mqttClusterCases(string $root, string $consumer, array $command, array 
             expect($standby->query('SELECT * FROM type_mqtt_node_audit WHERE operation_id = ' . $standby->quote($fenceActionId))->fetchAll(PDO::FETCH_ASSOC) === [$fenceAudit]
                 && $standby->query("SELECT * FROM type_mqtt_nodes WHERE node_id = 'alpha'")->fetch(PDO::FETCH_ASSOC) === $fencedNode, '重复隔离或结果查询增加审计、刷新时间或重复修改节点');
         }
-        foreach (['node_id' => 'gamma', 'node_run_id' => bin2hex(random_bytes(16)), 'generation' => (int) $fenceTarget['generation'] + 1,
+        foreach (['node_id' => 'gamma', 'node_run_id' => bin2hex(random_bytes(16)), 'generation' => (int)$fenceTarget['generation'] + 1,
             'observation_run' => bin2hex(random_bytes(16)), 'actor' => 'another-actor', 'proof_ref' => 'sha256:' . hash('sha256', 'different-proof')] as $field => $conflict) {
             foreach (['node_fence', 'node_fence_result'] as $action) {
                 $conflicted = mqttClusterRequest($consumer, $workerCommand, $environment, array_replace($fenceRequest, ['action' => $action, $field => $conflict]));
@@ -870,7 +870,7 @@ function mqttClusterCases(string $root, string $consumer, array $command, array 
         mqttSessionAck($new, true);
         $processes['alpha'] = $start('alpha');
         $newNode = $standby->query("SELECT * FROM type_mqtt_nodes WHERE node_id = 'alpha'")->fetch(PDO::FETCH_ASSOC);
-        expect($newNode['state'] === 'active' && $newNode['run_id'] !== $run && (int) $newNode['generation'] === (int) $fenceTarget['generation'] + 1, '隔离后未形成新的准确节点运行');
+        expect($newNode['state'] === 'active' && $newNode['run_id'] !== $run && (int)$newNode['generation'] === (int)$fenceTarget['generation'] + 1, '隔离后未形成新的准确节点运行');
         foreach (['node_fence', 'node_fence_result'] as $action) {
             $oldResult = mqttClusterRequest($consumer, $workerCommand, $environment, array_replace($fenceRequest, ['action' => $action]));
             expect($oldResult['state'] === 'committed' && $oldResult['released'] && $oldResult['value']['fenced']
@@ -895,9 +895,9 @@ function mqttClusterCases(string $root, string $consumer, array $command, array 
         $proxyConfig = $consumer . '/cluster-database-proxy.cfg';
         file_put_contents($proxyConfig, "defaults\n    mode tcp\n    timeout connect 1s\n    timeout client 15s\n    timeout server 15s\nlisten database\n    bind 127.0.0.1:" . $proxyPort
             . "\n    server primary 127.0.0.1:" . $environment['TYPE_PGSQL_PORT'] . "\n");
-        $proxyCommand = [(string) (getenv('TYPE_HAPROXY_BINARY') ?: 'haproxy'), '-db', '-f', $proxyConfig];
+        $proxyCommand = [(string)(getenv('TYPE_HAPROXY_BINARY') ?: 'haproxy'), '-db', '-f', $proxyConfig];
         $proxy = new Process($proxyCommand, $consumer, $environment);
-        $processes['alpha'] = $start('alpha', false, ['TYPE_PGSQL_PORT' => (string) $proxyPort]);
+        $processes['alpha'] = $start('alpha', false, ['TYPE_PGSQL_PORT' => (string)$proxyPort]);
         $old = mqttSocket($ports['alpha']);
         $sockets[] = $old;
         mqttWrite($old, mqttSessionConnect(5, 'cluster-partition'));
@@ -920,7 +920,7 @@ function mqttClusterCases(string $root, string $consumer, array $command, array 
         expect($fenced['state'] === 'committed', '已退出分区节点的隔离登记失败');
         mqttSessionAck($new, true);
         $proxy = new Process($proxyCommand, $consumer, $environment);
-        $processes['alpha'] = $start('alpha', false, ['TYPE_PGSQL_PORT' => (string) $proxyPort]);
+        $processes['alpha'] = $start('alpha', false, ['TYPE_PGSQL_PORT' => (string)$proxyPort]);
         $staleRun = mqttClusterRequest($consumer, $workerCommand, $environment, ['action' => 'node_poll', 'node_id' => 'alpha', 'node_run_id' => $partitionRun]);
         expect($staleRun['state'] === 'rejected', '恢复网络后旧运行重新取得输出权限');
         foreach ([$old, $new] as $socket) {
@@ -932,8 +932,8 @@ function mqttClusterCases(string $root, string $consumer, array $command, array 
             unset($processes[$node]);
         }
         mqttDatabaseIdle($primary);
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_nodes WHERE state = 'active'")->fetchColumn() === 0, '正常结束后仍有active节点');
-        expect((int) $standby->query('SELECT COUNT(*) FROM type_mqtt_fences')->fetchColumn() === 0, '隔离意图没有有界回收');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_nodes WHERE state = 'active'")->fetchColumn() === 0, '正常结束后仍有active节点');
+        expect((int)$standby->query('SELECT COUNT(*) FROM type_mqtt_fences')->fetchColumn() === 0, '隔离意图没有有界回收');
         $fenceUnknown = mqttClusterFenceUnknownCase($sync, $consumer, $workerCommand, $environment);
         $cases += 6;
         return ['wire_cases' => $cases, 'statistics' => $statistics, 'node_generations' => $standby->query('SELECT node_id, generation, state FROM type_mqtt_nodes ORDER BY node_id')->fetchAll(PDO::FETCH_ASSOC),

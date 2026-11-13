@@ -4,41 +4,52 @@ declare(strict_types=1);
 
 namespace app\common\bootstrap;
 
-use InvalidArgumentException;
-use Throwable;
+use app\center\service\DeviceAccess;
+use app\center\service\RecoveryArchive;
+use app\center\service\RecoveryService;
 use app\common\database\DatabaseFactory;
 use app\common\database\Schema;
-use app\broker\service\CompatService;
-use app\broker\service\NodeAccess;
-use app\broker\service\QuotaService;
 use app\common\service\AuditLog;
-use app\iot\service\DeviceAccess;
+use app\common\service\FrontendAssets;
+use app\common\service\FrontendException;
 use app\common\service\IdentityService;
+use app\platform\mqtt\service\CompatService;
+use app\platform\mqtt\service\NodeAccess;
+use app\platform\mqtt\service\QuotaService;
+use Type\Core\Command;
+use Type\Core\Config\Environment;
 use Type\Core\Config\Repository;
+use Type\Core\Configuration;
+use Type\Core\Http\HttpError;
+use Type\Generated\BuildIdentity;
 use Type\Mqtt\Broker;
 use Type\Mqtt\BrokerOptions;
+use Type\Mqtt\CommitResult;
 use Type\Mqtt\ConnectPacket;
 use Type\Mqtt\PendingCommit;
 use Type\Mqtt\PostgresStore;
+use Type\Mqtt\ProtocolError;
+use Type\Orm\Connection;
+use Type\Orm\Db;
 use Type\Orm\Migration\MigrationConsole;
+use Type\Orm\Migration\MigrationException;
 use Type\Orm\Migration\Migrator;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
+use Type\Runtime\TaskException;
 
 /** 统一装配中的管理命令；保留各角色的运行、失败及资源回收实现。 */
-final class ManagementCommand implements \Type\Core\Command
+final class ManagementCommand implements Command
 {
     /** 命令名来自构建声明，配置归本应用启动上下文。 */
-    public function __construct(private ApplicationContext $context, private string $name)
-    {
-    }
+    public function __construct(private ApplicationContext $context, private string $name) {}
 
     /**
      * 帮助不要求配置或生成代码；其余角色读取一次配置，失败以非零进程状态退出。
      *
-     * @param list<string> $arguments 不含程序名和固定命令名的业务参数。
+     * @param list<string> $arguments 不含程序名和固定命令名的业务参数
      */
-    public function run(\Type\Core\Configuration $configuration, array $arguments): int
+    public function run(Configuration $configuration, array $arguments): int
     {
         $arguments = [$this->context->program, $this->name, ...$arguments];
         $development = $this->context->development;
@@ -46,10 +57,10 @@ final class ManagementCommand implements \Type\Core\Command
         try {
             $command = $arguments[1] ?? 'help';
             if ($command === 'verify-runtime') {
-                if (count($arguments) !== 2 || !class_exists(\Type\Generated\BuildIdentity::class, false)) {
-                    throw new InvalidArgumentException('verify-runtime 只接受原生产物且不接受额外参数');
+                if (count($arguments) !== 2 || !class_exists(BuildIdentity::class, false)) {
+                    throw new \InvalidArgumentException('verify-runtime 只接受原生产物且不接受额外参数');
                 }
-                \Type\Generated\BuildIdentity::verifyDeployment();
+                BuildIdentity::verifyDeployment();
                 echo "运行环境完整性校验通过。\n";
                 return 0;
             }
@@ -58,26 +69,26 @@ final class ManagementCommand implements \Type\Core\Command
                 return 0;
             }
             // 配置修复不能依赖完整业务配置已有效；其余角色复用本次启动快照。
-            $environment = in_array($command, ['config:check', 'config:restore', 'iot:backup', 'iot:wal'], true)
-                ? (string) \Type\Core\Config\Environment::load($this->context->basePath . '/.env')->get('APP_ENV', 'prod')
+            $environment = in_array($command, ['config:check', 'config:restore', 'center:backup', 'center:wal'], true)
+                ? (string)Environment::load($this->context->basePath . '/.env')->get('APP_ENV', 'prod')
                 : Settings::environment($this->context->settings(), $development);
-            if (in_array($command, ['iot:backup', 'iot:wal'], true) && !in_array($environment, ['dev', 'prod', 'demo'], true)) {
-                throw new InvalidArgumentException('APP_ENV 只接受 dev、prod、demo；请迁移旧环境值');
+            if (in_array($command, ['center:backup', 'center:wal'], true) && !in_array($environment, ['dev', 'prod', 'demo'], true)) {
+                throw new \InvalidArgumentException('APP_ENV 只接受 dev、prod、demo；请迁移旧环境值');
             }
             self::demoCommand($environment, $command, array_slice($arguments, 2));
             CoroutineRuntime::enableIo();
-            if ($command === 'iot:backup') {
+            if ($command === 'center:backup') {
                 $operation = $arguments[2] ?? '';
                 if (!in_array($operation, ['register', 'clean', 'status', 'pin', 'unpin'], true)
                     || ($operation === 'status' && count($arguments) !== 4)
                     || (in_array($operation, ['register', 'pin', 'unpin'], true) && count($arguments) !== 6)
                     || ($operation === 'clean' && (count($arguments) < 5 || count($arguments) > 6))) {
-                    throw new InvalidArgumentException('iot:backup参数无效，请使用help');
+                    throw new \InvalidArgumentException('center:backup参数无效，请使用help');
                 }
-                $archive = new \app\iot\service\RecoveryArchive($arguments[3]);
+                $archive = new RecoveryArchive($arguments[3]);
                 $record = match ($operation) {
                     'register' => $archive->registerBackup($arguments[4], $arguments[5]),
-                    'clean' => $archive->cleanBackups($arguments[4], isset($arguments[5]) && ctype_digit($arguments[5]) ? (int) $arguments[5] : (isset($arguments[5]) ? 0 : 100)),
+                    'clean' => $archive->cleanBackups($arguments[4], isset($arguments[5]) && ctype_digit($arguments[5]) ? (int)$arguments[5] : (isset($arguments[5]) ? 0 : 100)),
                     'pin' => $archive->pinBackup($arguments[4], $arguments[5]),
                     'unpin' => $archive->pinBackup($arguments[4], $arguments[5], true),
                     default => $archive->backupStatus(),
@@ -85,12 +96,12 @@ final class ManagementCommand implements \Type\Core\Command
                 echo json_encode($record, JSON_THROW_ON_ERROR) . "\n";
                 return 0;
             }
-            if ($command === 'iot:wal') {
+            if ($command === 'center:wal') {
                 $operation = $arguments[2] ?? '';
                 if (!in_array($operation, ['archive', 'restore', 'verify'], true) || count($arguments) !== ($operation === 'verify' ? 5 : 6)) {
-                    throw new InvalidArgumentException('iot:wal参数无效，请使用help');
+                    throw new \InvalidArgumentException('center:wal参数无效，请使用help');
                 }
-                $archive = new \app\iot\service\RecoveryArchive($arguments[3]);
+                $archive = new RecoveryArchive($arguments[3]);
                 $record = match ($operation) {
                     'archive' => $archive->archive($arguments[4], $arguments[5]),
                     'restore' => $archive->restore($arguments[4], $arguments[5]),
@@ -102,14 +113,14 @@ final class ManagementCommand implements \Type\Core\Command
             if (in_array($command, ['config:check', 'config:restore'], true)) {
                 $result = Settings::configurationCommand($this->context->basePath, $command, array_slice($arguments, 2));
                 echo json_encode($result, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
-                return (int) $result['exit'];
+                return (int)$result['exit'];
             }
             if (str_starts_with($command, 'broker:')) {
                 RuntimeCapabilities::requireFeature('mqtt');
                 $basePath = $this->context->basePath;
                 $settings = $this->context->settings();
                 $debug = Settings::debug($settings, $development);
-                return self::standalone($settings, $basePath, $command, array_slice($arguments, 2), $development);
+                return self::broker($settings, $basePath, $command, array_slice($arguments, 2));
             }
             if ($command === 'app:schedule') {
                 RuntimeCapabilities::requireFeature('scheduler');
@@ -124,36 +135,28 @@ final class ManagementCommand implements \Type\Core\Command
             if ($command === 'web:install') {
                 $options = array_slice($arguments, 2);
                 if (array_diff($options, ['--force', '--dry-run']) !== [] || count($options) !== count(array_unique($options))) {
-                    throw new InvalidArgumentException('用法：web:install [--force] [--dry-run]');
+                    throw new \InvalidArgumentException('用法：web:install [--force] [--dry-run]');
                 }
                 $basePath = $this->context->basePath;
-                $assets = \app\common\service\FrontendAssets::application($basePath, $development);
+                $assets = FrontendAssets::application($basePath, $development);
                 echo json_encode($assets->install(in_array('--force', $options, true), in_array('--dry-run', $options, true)), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
-                return 0;
-            }
-            if ($command === 'app:upgrade') {
-                $basePath = $this->context->basePath;
-                $settings = $this->context->settings();
-                echo json_encode(ApplicationUpgrade::run($settings, $basePath, array_slice($arguments, 2)), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
                 return 0;
             }
             if ($command === 'app:install') {
                 $basePath = $this->context->basePath;
                 $settings = $this->context->settings();
-                $adminPassword = getenv('APP_ADMIN_PASSWORD');
-                $customerPassword = getenv('APP_CUSTOMER_PASSWORD');
-                if (count($arguments) !== 7 || !is_string($adminPassword) || !is_string($customerPassword)) {
-                    throw new InvalidArgumentException('app:install 需要管理账号、姓名、客户账号、姓名、租户名；APP_ADMIN_PASSWORD 和 APP_CUSTOMER_PASSWORD 由受控进程环境提供');
+                $platformPassword = getenv('APP_PLATFORM_PASSWORD');
+                if (count($arguments) !== 4 || !is_string($platformPassword)) {
+                    throw new \InvalidArgumentException('app:install <平台账号> <姓名>；APP_PLATFORM_PASSWORD 由受控进程环境提供');
                 }
-                IdentityService::validateAccount($arguments[2], $arguments[3], $adminPassword);
-                IdentityService::validateAccount($arguments[4], $arguments[5], $customerPassword);
-                $assets = \app\common\service\FrontendAssets::application($basePath, $development);
+                IdentityService::validateAccount($arguments[2], $arguments[3], $platformPassword);
+                $assets = FrontendAssets::application($basePath, $development);
                 $databaseInstalled = false;
                 try {
                     try {
                         $assets->prepare();
                         DatabaseFactory::prepareMigration($settings, $basePath);
-                        $result = Schema::install(DatabaseFactory::create($settings, $basePath), array_slice($arguments, 2), $adminPassword, $customerPassword, Settings::databaseBudget($settings));
+                        $result = Schema::install(DatabaseFactory::create($settings, $basePath), array_slice($arguments, 2), $platformPassword, Settings::databaseBudget($settings));
                         $databaseInstalled = true;
                         $frontend = $assets->commit();
                     } finally {
@@ -162,14 +165,14 @@ final class ManagementCommand implements \Type\Core\Command
                     echo json_encode(['data' => $result, 'frontend' => $frontend], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
                 } catch (\Throwable $installError) {
                     if ($databaseInstalled) {
-                        throw new InvalidArgumentException('数据库初始化已完成，前端安装失败；请运行web:install --force修复，不要重新初始化数据库', 0, $installError);
+                        throw new \InvalidArgumentException('数据库初始化已完成，前端安装失败；请运行web:install --force修复，不要重新初始化数据库', 0, $installError);
                     }
                     throw $installError;
                 }
                 return 0;
             }
-            if (!in_array($command, ['check', 'serve', 'migrate', 'iot:recovery', 'app:audit-clean', 'iot:mqtt', 'iot:mqtt-install', 'iot:mqtt-statistics', 'iot:mqtt-nodes', 'iot:mqtt-fence', 'iot:mqtt-fence-result', 'iot:mqtt-store', 'iot:mqtt-access'], true)) {
-                throw new InvalidArgumentException('未知应用命令，请使用 help');
+            if (!in_array($command, ['check', 'serve', 'migrate', 'center:recovery', 'app:audit-clean', 'center:mqtt', 'center:mqtt-install', 'center:mqtt-statistics', 'center:mqtt-nodes', 'center:mqtt-fence', 'center:mqtt-fence-result', 'center:mqtt-store', 'center:mqtt-access'], true)) {
+                throw new \InvalidArgumentException('未知应用命令，请使用 help');
             }
             if ($command === 'migrate' && (count($arguments) === 2 || (count($arguments) === 3 && $arguments[2] === 'help'))) {
                 echo "迁移查询：status、history；异常记录核对：recover <版本> <retry|applied> <恢复说明>。全新空库仅通过 app:install 初始化，run 不开放。\n";
@@ -180,22 +183,22 @@ final class ManagementCommand implements \Type\Core\Command
             $settings = $this->context->settings();
             $environment = Settings::environment($settings, $development);
             $debug = Settings::debug($settings, $development);
-            if ($command === 'iot:recovery') {
+            if ($command === 'center:recovery') {
                 RuntimeCapabilities::requireFeature('iot');
                 self::recovery($settings, $basePath, array_slice($arguments, 2));
                 return 0;
             }
             // 内部持久子进程由已通过启动门的父角色拥有；离线检查不连接业务库。
-            if (!in_array($command, ['check', 'migrate', 'iot:mqtt-store', 'iot:mqtt-access'], true)) {
+            if (!in_array($command, ['check', 'migrate', 'center:mqtt-store', 'center:mqtt-access'], true)) {
                 self::recovery($settings, $basePath, ['gate']);
             }
-            if (str_starts_with($command, 'iot:mqtt')) {
+            if (str_starts_with($command, 'center:mqtt')) {
                 self::mqtt($settings, $basePath, $command, array_slice($arguments, 2));
                 return 0;
             }
             if ($command === 'check') {
                 if (count($arguments) !== 2) {
-                    throw new InvalidArgumentException('check 不接受额外参数');
+                    throw new \InvalidArgumentException('check 不接受额外参数');
                 }
                 echo '应用声明有效，数据库驱动：' . DatabaseFactory::name($settings)
                     . '；运行模式：' . $environment . '；调试：' . ($debug ? 'on' : 'off')
@@ -207,31 +210,31 @@ final class ManagementCommand implements \Type\Core\Command
                 return self::migrate($settings, $basePath, array_slice($arguments, 2));
             }
             if ($command === 'app:audit-clean') {
-                self::pruneRecords($settings, $basePath, array_slice($arguments, 2), $command);
+                self::pruneRecords($settings, $basePath, array_slice($arguments, 2));
                 return 0;
             }
             if ($command !== 'serve') {
-                throw new InvalidArgumentException('未知应用命令，请使用 help');
+                throw new \InvalidArgumentException('未知应用命令，请使用 help');
             }
             if (count($arguments) !== 2) {
-                throw new InvalidArgumentException('serve 不接受额外参数，启动值从配置读取');
+                throw new \InvalidArgumentException('serve 不接受额外参数，启动值从配置读取');
             }
             Application::serve($settings, $basePath, $development);
             return 0;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $message = $error->getMessage();
-            $publicMessage = $error instanceof InvalidArgumentException || $error instanceof \app\common\service\FrontendException || str_starts_with($message, 'dotenv ')
-                || (in_array($command, ['iot:wal', 'iot:backup', 'iot:recovery', 'broker:recovery'], true) && preg_match('/^recovery_[a-z_]+$/D', $message) === 1)
+            $publicMessage = $error instanceof \InvalidArgumentException || $error instanceof FrontendException || str_starts_with($message, 'dotenv ')
+                || (in_array($command, ['center:wal', 'center:backup', 'center:recovery'], true) && preg_match('/^recovery_[a-z_]+$/D', $message) === 1)
                 || $message === 'recovery_isolated'
                 ? $message : 'internal_error';
             if ($command === 'app:install') {
-                if ($error instanceof \Type\Orm\Migration\MigrationException && preg_match('/^TYPE_MIGRATION_[A-Z_]+/', $message, $matched) === 1) {
+                if ($error instanceof MigrationException && preg_match('/^TYPE_MIGRATION_[A-Z_]+/', $message, $matched) === 1) {
                     $publicMessage = $matched[0];
-                } elseif ($error instanceof \Type\Core\Http\HttpError) {
+                } elseif ($error instanceof HttpError) {
                     $publicMessage = $error->errorCode();
                 }
             }
-            if ($command === 'serve' && $error instanceof \Type\Runtime\TaskException) {
+            if ($command === 'serve' && $error instanceof TaskException) {
                 $publicMessage = $error->errorCode();
             }
             fwrite(STDERR, 'TypeApp 物联中心启动或命令失败：' . $publicMessage . "\n");
@@ -239,13 +242,13 @@ final class ManagementCommand implements \Type\Core\Command
                 fwrite(STDERR, $error::class . ': ' . $message . "\n");
                 // 驱动原始消息可能包含 SQL、连接串或业务值；仅输出有限异常链中的标准错误码。
                 $cause = $error->getPrevious();
-                for ($depth = 0; $cause !== null && $depth < 8; $depth++) {
+                for ($depth = 0; $cause !== null && $depth < 8; ++$depth) {
                     if ($cause instanceof \PDOException) {
-                        $sqlstate = (string) ($cause->errorInfo[0] ?? '');
+                        $sqlstate = (string)($cause->errorInfo[0] ?? '');
                         fwrite(STDERR, json_encode([
                             'exception_type' => 'PDOException',
                             'sqlstate' => preg_match('/^[A-Z0-9]{5}$/D', $sqlstate) === 1 ? $sqlstate : null,
-                            'driver_code' => (int) ($cause->errorInfo[1] ?? 0),
+                            'driver_code' => (int)($cause->errorInfo[1] ?? 0),
                         ], JSON_THROW_ON_ERROR) . "\n");
                         break;
                     }
@@ -256,13 +259,37 @@ final class ManagementCommand implements \Type\Core\Command
                 fwrite(STDERR, json_encode([
                     'error' => 'internal_error',
                     'exception_type' => get_class($error),
-                    'mqtt_reason' => $error instanceof \Type\Mqtt\ProtocolError ? $error->reason : null,
+                    'mqtt_reason' => $error instanceof ProtocolError ? $error->reason : null,
                     'file' => basename(str_replace('\\', '/', $error->getFile())),
                     'line' => max(0, $error->getLine()),
                 ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n");
             }
             return 1;
         }
+    }
+
+    /**
+     * 独立迁移角色只查询或核对记录，不创建 HTTP、缓存资源或初始化数据库。
+     *
+     * @param list<string> $arguments 不含程序名和 migrate 的动作参数
+     * @throws \InvalidArgumentException 参数无效或非初始化角色缺少 SQLite 文件
+     */
+    public static function migrate(Repository $settings, string $basePath, array $arguments): int
+    {
+        if (!((count($arguments) === 1 && in_array($arguments[0], ['run', 'status', 'history'], true))
+            || (count($arguments) === 4 && $arguments[0] === 'recover'))) {
+            throw new \InvalidArgumentException('迁移命令参数无效，请使用 migrate help');
+        }
+        if ($arguments === ['run']) {
+            throw new \InvalidArgumentException('请使用 app:install 初始化全新空库；旧安装不支持接入或自动转换');
+        }
+        DatabaseFactory::requireExisting($settings, $basePath);
+
+        return CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): int {
+            $driver = DatabaseFactory::create($settings, $basePath);
+
+            return (new MigrationConsole(new Migrator($driver, budget: Settings::databaseBudget($settings)), Schema::migrations($driver->name())))->run($arguments);
+        });
     }
 
     /** Demo 只开放无业务写入的命令；操作人维护时须停服并显式切换环境。 */
@@ -272,21 +299,20 @@ final class ManagementCommand implements \Type\Core\Command
             return;
         }
         $allowed = match ($command) {
-            'check', 'serve', 'broker:serve', 'iot:mqtt-statistics', 'iot:mqtt-nodes', 'broker:nodes' => true,
+            'check', 'serve', 'center:mqtt-statistics', 'center:mqtt-nodes', 'broker:nodes' => true,
             // HTTP 的持久查询复用相同 worker，实际动作在 storeWorker 内再次限权。
-            'iot:mqtt-store', 'broker:store' => $arguments === ['--store-worker-pipe'],
+            'center:mqtt-store', 'broker:store' => $arguments === ['--store-worker-pipe'],
             'config:check' => !in_array('--remember', $arguments, true),
             'web:install' => in_array('--dry-run', $arguments, true),
-            'app:upgrade' => ($arguments[0] ?? '') === '--check',
             'app:schedule' => $arguments === [] || in_array($arguments[0] ?? '', ['help', 'history'], true),
-            'migrate', 'broker:migrate' => in_array($arguments[0] ?? 'help', ['help', 'status', 'history'], true),
-            'iot:recovery', 'broker:recovery' => in_array($arguments[0] ?? '', ['snapshot', 'status', 'gate'], true),
-            'iot:backup' => ($arguments[0] ?? '') === 'status',
-            'iot:wal' => ($arguments[0] ?? '') === 'verify',
+            'migrate' => in_array($arguments[0] ?? 'help', ['help', 'status', 'history'], true),
+            'center:recovery' => in_array($arguments[0] ?? '', ['snapshot', 'status', 'gate'], true),
+            'center:backup' => ($arguments[0] ?? '') === 'status',
+            'center:wal' => ($arguments[0] ?? '') === 'verify',
             default => false,
         };
         if (!$allowed) {
-            throw new InvalidArgumentException('demo_readonly');
+            throw new \InvalidArgumentException('demo_readonly');
         }
     }
 
@@ -294,9 +320,9 @@ final class ManagementCommand implements \Type\Core\Command
     private static function storeWorker(PostgresStore $store, Repository $settings): void
     {
         $readonly = Settings::environment($settings, false) === 'demo';
-        PendingCommit::work($store, 'pipe', static function (array $request) use ($store, $readonly): \Type\Mqtt\CommitResult {
+        PendingCommit::work($store, 'pipe', static function (array $request) use ($store, $readonly): CommitResult {
             if ($readonly && !in_array($request['action'] ?? '', ['resource_list', 'resource_detail', 'node_statistics', 'session_statistics'], true)) {
-                return new \Type\Mqtt\CommitResult($request['operation_id'], 'rejected', 0x87, [], true, ['error' => 'demo_readonly']);
+                return new CommitResult($request['operation_id'], 'rejected', 0x87, [], true, ['error' => 'demo_readonly']);
             }
             return $store->execute($request);
         });
@@ -305,67 +331,64 @@ final class ManagementCommand implements \Type\Core\Command
     /**
      * 受控维护入口；旧系统及当前授权来源须已停止写入，恢复库只能供维护角色访问。
      *
-     * @param list<string> $arguments 子命令及参数。
+     * @param list<string> $arguments 子命令及参数
      */
-    private static function recovery(Repository $settings, string $basePath, array $arguments, string $host = 'app'): void
+    private static function recovery(Repository $settings, string $basePath, array $arguments): void
     {
         $operation = $arguments[0] ?? '';
         $expected = match ($operation) {
             'snapshot', 'status', 'gate' => 1, 'begin' => 4, 'isolate', 'restore' => 2, 'review' => 5, default => 0,
         };
-        $prefix = $host === 'broker' ? 'broker:recovery' : 'iot:recovery';
         if ($expected === 0 || count($arguments) !== $expected) {
-            throw new InvalidArgumentException($prefix . '参数无效，请使用help；每次isolate/review/restore最多处理100个主体');
+            throw new \InvalidArgumentException('center:recovery参数无效，请使用help；每次isolate/review/restore最多处理100个主体');
         }
         DatabaseFactory::requireExisting($settings, $basePath);
-        CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments, $host, $operation): void {
+        CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments, $operation): void {
             $database = Settings::database($settings, $basePath, 1);
-            \Type\Orm\Db::configure($database);
+            Db::configure($database);
             $scope = new ExecutionScope();
             try {
-                $scope->run(static function (ExecutionScope $current) use ($basePath, $arguments, $host, $operation): void {
-                    $connection = \Type\Orm\Db::connection('default', true);
+                $scope->run(static function (ExecutionScope $current) use ($basePath, $arguments, $operation): void {
+                    $connection = Db::connection('default', true);
+                    Schema::ready($connection);
                     if ($operation === 'gate') {
-                        \app\iot\service\RecoveryService::ready($connection, $host);
-                        if ($host === 'app') {
-                            \app\iot\service\DeviceUpgrade::ready($connection);
-                        }
+                        RecoveryService::ready($connection);
                         return;
                     }
                     if ($operation === 'review') {
                         $offset = filter_var($arguments[4], FILTER_VALIDATE_INT);
                         if ($offset === false || $offset < 0) {
-                            throw new InvalidArgumentException('核对偏移量必须为非负整数');
+                            throw new \InvalidArgumentException('核对偏移量必须为非负整数');
                         }
                         $path = Settings::absolutePath($arguments[2]) ? $arguments[2] : $basePath . '/' . $arguments[2];
                         $metadata = @lstat($path);
                         if ($metadata === false || ($metadata['mode'] & 0170000) !== 0100000 || ($metadata['mode'] & 0077) !== 0 || $metadata['size'] > 67108864) {
-                            throw new InvalidArgumentException('恢复清单必须是至多64MiB且仅属主可访问的普通文件');
+                            throw new \InvalidArgumentException('恢复清单必须是至多64MiB且仅属主可访问的普通文件');
                         }
                         $stream = @fopen($path, 'rb');
                         if (!is_resource($stream)) {
-                            throw new InvalidArgumentException('恢复清单不可读');
+                            throw new \InvalidArgumentException('恢复清单不可读');
                         }
                         try {
                             $opened = fstat($stream);
                             if ($opened === false || $opened['dev'] !== $metadata['dev'] || $opened['ino'] !== $metadata['ino'] || $opened['mode'] !== $metadata['mode']) {
-                                throw new InvalidArgumentException('恢复清单文件身份已改变');
+                                throw new \InvalidArgumentException('恢复清单文件身份已改变');
                             }
                             $contents = stream_get_contents($stream, 67108865);
                             if ($contents === false) {
-                                throw new InvalidArgumentException('恢复清单读取失败');
+                                throw new \InvalidArgumentException('恢复清单读取失败');
                             }
                         } finally {
                             fclose($stream);
                         }
-                        $record = \app\iot\service\RecoveryService::review($connection, $arguments[1], $contents, $arguments[3], $offset, $host);
+                        $record = RecoveryService::review($connection, $arguments[1], $contents, $arguments[3], $offset);
                     } else {
                         $record = match ($operation) {
-                            'snapshot' => \app\iot\service\RecoveryService::snapshot($connection, $host),
-                            'status' => \app\iot\service\RecoveryService::status($connection, $host),
-                            'begin' => \app\iot\service\RecoveryService::begin($connection, $arguments[1], $arguments[2], $arguments[3], $host),
-                            'isolate' => \app\iot\service\RecoveryService::isolate($connection, $arguments[1], $host),
-                            default => \app\iot\service\RecoveryService::restore($connection, $arguments[1], $host),
+                            'snapshot' => RecoveryService::snapshot($connection),
+                            'status' => RecoveryService::status($connection),
+                            'begin' => RecoveryService::begin($connection, $arguments[1], $arguments[2], $arguments[3]),
+                            'isolate' => RecoveryService::isolate($connection, $arguments[1]),
+                            default => RecoveryService::restore($connection, $arguments[1]),
                         };
                     }
                     echo json_encode($record, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n";
@@ -379,18 +402,18 @@ final class ManagementCommand implements \Type\Core\Command
 
     /**
      * 应用设备接入角色；HTTP及注册继续支持三库，持久MQTT设备会话只用约定的PostgreSQL同步后端。
-     * @param list<string> $arguments 持久worker通过 Swoole PROC hook 管理的进程管道接入；节点硬隔离登记接受精确运行身份与已完成的隔离证明。
+     * @param list<string> $arguments 持久worker通过 Swoole PROC hook 管理的进程管道接入；节点硬隔离登记接受精确运行身份与已完成的隔离证明
      */
     private static function mqtt(Repository $settings, string $basePath, string $role, array $arguments): void
     {
         RuntimeCapabilities::requireFeature('mqtt');
         if (DatabaseFactory::name($settings) !== 'pgsql') {
-            throw new InvalidArgumentException('设备MQTT接入需要PostgreSQL同步持久后端');
+            throw new \InvalidArgumentException('设备MQTT接入需要PostgreSQL同步持久后端');
         }
         $driver = DatabaseFactory::create($settings, $basePath);
-        if ($role === 'iot:mqtt-store') {
+        if ($role === 'center:mqtt-store') {
             if ($arguments !== ['--store-worker-pipe']) {
-                throw new InvalidArgumentException('持久worker需要 Swoole PROC hook 管理的进程管道');
+                throw new \InvalidArgumentException('持久worker需要 Swoole PROC hook 管理的进程管道');
             }
             $store = new PostgresStore(
                 $driver,
@@ -408,30 +431,30 @@ final class ManagementCommand implements \Type\Core\Command
             self::storeWorker($store, $settings);
             return;
         }
-        if ($arguments !== [] && !in_array($role, ['iot:mqtt-fence', 'iot:mqtt-fence-result'], true)) {
-            throw new InvalidArgumentException('设备MQTT角色不接受额外参数');
+        if ($arguments !== [] && !in_array($role, ['center:mqtt-fence', 'center:mqtt-fence-result'], true)) {
+            throw new \InvalidArgumentException('设备MQTT角色不接受额外参数');
         }
-        if ($role === 'iot:mqtt-access') {
+        if ($role === 'center:mqtt-access') {
             DeviceAccess::work(Settings::database($settings, $basePath, 1));
             return;
         }
         $command = json_decode($settings->text('app.mqtt.command'), true, 8, JSON_THROW_ON_ERROR);
         if (!is_array($command) || !array_is_list($command) || $command === []) {
-            throw new InvalidArgumentException('IOT_MQTT_COMMAND必须为当前应用的显式命令参数数组');
+            throw new \InvalidArgumentException('IOT_MQTT_COMMAND必须为当前应用的显式命令参数数组');
         }
         foreach ($command as $argument) {
             if (!is_string($argument) || $argument === '' || str_contains($argument, "\0")) {
-                throw new InvalidArgumentException('IOT_MQTT_COMMAND参数无效');
+                throw new \InvalidArgumentException('IOT_MQTT_COMMAND参数无效');
             }
         }
-        $worker = [...$command, 'iot:mqtt-store'];
-        if (in_array($role, ['iot:mqtt-fence', 'iot:mqtt-fence-result'], true)) {
-            self::fenceNode($settings, $basePath, $worker, $arguments, 'admin', $role === 'iot:mqtt-fence-result');
+        $worker = [...$command, 'center:mqtt-store'];
+        if (in_array($role, ['center:mqtt-fence', 'center:mqtt-fence-result'], true)) {
+            self::fenceNode($settings, $basePath, $worker, $arguments, 'platform', $role === 'center:mqtt-fence-result');
             return;
         }
-        if (in_array($role, ['iot:mqtt-install', 'iot:mqtt-statistics', 'iot:mqtt-nodes'], true)) {
+        if (in_array($role, ['center:mqtt-install', 'center:mqtt-statistics', 'center:mqtt-nodes'], true)) {
             $operation = ['operation_id' => bin2hex(random_bytes(16)), 'action' => match ($role) {
-                'iot:mqtt-install' => 'install', 'iot:mqtt-nodes' => 'node_statistics', default => 'session_statistics'
+                'center:mqtt-install' => 'install', 'center:mqtt-nodes' => 'node_statistics', default => 'session_statistics'
             }];
             $pending = new PendingCommit($worker, $operation);
             do {
@@ -441,9 +464,9 @@ final class ManagementCommand implements \Type\Core\Command
                 }
             } while ($result === null);
             if ($result->state !== 'committed' || !$result->released) {
-                throw new \RuntimeException($role === 'iot:mqtt-install' ? 'device_mqtt_install_unconfirmed' : 'device_mqtt_statistics_unconfirmed');
+                throw new \RuntimeException($role === 'center:mqtt-install' ? 'device_mqtt_install_unconfirmed' : 'device_mqtt_statistics_unconfirmed');
             }
-            echo $role === 'iot:mqtt-install' ? "设备MQTT持久存储已取得同步提交证明。\n" : json_encode($result->value, JSON_THROW_ON_ERROR) . "\n";
+            echo $role === 'center:mqtt-install' ? "设备MQTT持久存储已取得同步提交证明。\n" : json_encode($result->value, JSON_THROW_ON_ERROR) . "\n";
             return;
         }
         $limits = QuotaService::defaults();
@@ -505,33 +528,30 @@ final class ManagementCommand implements \Type\Core\Command
 
     /**
      * 一次只执行一批审计清理；调度者依据has_more重复调用，不在进程中无限循环。
-     * @param list<string> $arguments 应用审计须先指定admin/customer；其余为可选批次，默认1000，最大1000。
+     * @param list<string> $arguments 先指定 platform/system；其余为可选批次，默认1000，最大1000
      */
-    private static function pruneRecords(Repository $settings, string $basePath, array $arguments, string $kind): void
+    private static function pruneRecords(Repository $settings, string $basePath, array $arguments): void
     {
-        $realm = 'broker';
-        if ($kind === 'app:audit-clean') {
-            $realm = $arguments[0] ?? '';
-            if (!in_array($realm, ['admin', 'customer'], true)) {
-                throw new InvalidArgumentException('应用审计清理须指定admin或customer');
-            }
-            $arguments = array_slice($arguments, 1);
+        $realm = $arguments[0] ?? '';
+        if (!in_array($realm, ['platform', 'system'], true)) {
+            throw new \InvalidArgumentException('应用审计清理须指定 platform 或 system');
         }
+        $arguments = array_slice($arguments, 1);
         if (count($arguments) > 1 || (isset($arguments[0]) && !preg_match('/^[1-9][0-9]{0,3}$/D', $arguments[0]))) {
-            throw new InvalidArgumentException('清理角色只接受一个1至1000的可选批次');
+            throw new \InvalidArgumentException('清理角色只接受一个1至1000的可选批次');
         }
-        $batch = isset($arguments[0]) ? (int) $arguments[0] : 1000;
+        $batch = isset($arguments[0]) ? (int)$arguments[0] : 1000;
         if ($batch > 1000) {
-            throw new InvalidArgumentException('清理批次最大1000');
+            throw new \InvalidArgumentException('清理批次最大1000');
         }
         DatabaseFactory::requireExisting($settings, $basePath);
-        CoroutineRuntime::run(static function () use ($settings, $basePath, $kind, $batch, $realm): void {
+        CoroutineRuntime::run(static function () use ($settings, $basePath, $batch, $realm): void {
             $database = Settings::database($settings, $basePath);
-            \Type\Orm\Db::configure($database);
+            Db::configure($database);
             $scope = new ExecutionScope();
             try {
-                $scope->run(static function (ExecutionScope $current) use ($kind, $batch, $realm): void {
-                    $connection = \Type\Orm\Db::connection('default', true);
+                $scope->run(static function (ExecutionScope $current) use ($batch, $realm): void {
+                    $connection = Db::connection('default', true);
                     $result = AuditLog::prune($connection, $batch, $realm);
                     echo json_encode(['data' => $result], JSON_THROW_ON_ERROR) . "\n";
                 });
@@ -542,98 +562,31 @@ final class ManagementCommand implements \Type\Core\Command
         });
     }
 
-    /**
-     * 独立迁移角色只查询或核对记录，不创建 HTTP、缓存资源或初始化数据库。
-     *
-     * @param list<string> $arguments 不含程序名和 migrate 的动作参数。
-     * @throws InvalidArgumentException 参数无效或非初始化角色缺少 SQLite 文件。
-     */
-    public static function migrate(Repository $settings, string $basePath, array $arguments): int
+    /** 协议节点与持久角色复用应用安装、恢复门及平台审计，不维护另一套人员身份。 */
+    private static function broker(Repository $settings, string $basePath, string $command, array $arguments): int
     {
-        if (!((count($arguments) === 1 && in_array($arguments[0], ['run', 'status', 'history'], true))
-            || (count($arguments) === 4 && $arguments[0] === 'recover'))) {
-            throw new InvalidArgumentException('迁移命令参数无效，请使用 migrate help');
-        }
-        if ($arguments === ['run']) {
-            throw new InvalidArgumentException('新应用请使用 app:install 初始化空库；已有应用使用 app:upgrade --check 核对受支持的升级路径');
-        }
-        DatabaseFactory::requireExisting($settings, $basePath);
-
-        return CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): int {
-            $driver = DatabaseFactory::create($settings, $basePath);
-
-            return (new MigrationConsole(new Migrator($driver, budget: Settings::databaseBudget($settings)), Schema::migrations($driver->name())))->run($arguments);
-        });
-    }
-
-    /** 独立管理角色只连接自己的账号与采样表；恢复核对走 broker:recovery，不经过 IoT 人员表或隐式迁移。 */
-    private static function standalone(Repository $settings, string $basePath, string $command, array $arguments, bool $development): int
-    {
-        if (!in_array($command, ['broker:install', 'broker:migrate', 'broker:recovery', 'broker:user', 'broker:serve', 'broker:run', 'broker:store-install', 'broker:store', 'broker:nodes', 'broker:node-fence', 'broker:node-fence-result', 'broker:audit-clean'], true)
+        if (!in_array($command, ['broker:run', 'broker:store-install', 'broker:store', 'broker:nodes', 'broker:node-fence', 'broker:node-fence-result'], true)
             || !match ($command) {
                 'broker:node-fence' => count($arguments) === 5 || count($arguments) === 6,
                 'broker:node-fence-result', 'broker:store' => count($arguments) === 1,
-                'broker:audit-clean' => count($arguments) <= 1,
-                'broker:user' => count($arguments) === 2,
-                'broker:migrate' => (count($arguments) === 1 && in_array($arguments[0], ['status', 'history'], true))
-                    || (count($arguments) === 4 && $arguments[0] === 'recover' && in_array($arguments[2], ['retry', 'applied'], true) && $arguments[3] !== ''),
-                'broker:recovery' => in_array($arguments[0] ?? '', ['snapshot', 'status'], true) && count($arguments) === 1
-                    || ($arguments[0] ?? '') === 'begin' && count($arguments) === 4
-                    || in_array($arguments[0] ?? '', ['isolate', 'restore'], true) && count($arguments) === 2
-                    || ($arguments[0] ?? '') === 'review' && count($arguments) === 5,
                 default => $arguments === [],
             }) {
-            throw new InvalidArgumentException('独立 Broker 命令参数无效，请使用 help');
-        }
-        if ($command === 'broker:install') {
-            DatabaseFactory::prepareMigration($settings, $basePath);
-            $driver = DatabaseFactory::create($settings, $basePath);
-            $result = CoroutineRuntime::run(static function () use ($driver, $settings): int {
-                return (new MigrationConsole(new Migrator($driver, budget: Settings::databaseBudget($settings)), \app\broker\database\Schema::migrations($driver->name())))->run(['run']);
-            });
-            if ($result !== 0) {
-                return $result;
-            }
-            return CoroutineRuntime::run(static function () use ($settings, $basePath): int {
-                $database = Settings::database($settings, $basePath, 1);
-                $scope = new ExecutionScope();
-                try {
-                    CompatService::recordUpgrade($database->connect($scope));
-                } finally {
-                    $scope->close();
-                    $database->close();
-                }
-                return 0;
-            });
+            throw new \InvalidArgumentException('MQTT 协议角色参数无效，请使用 help');
         }
         DatabaseFactory::requireExisting($settings, $basePath);
-        if ($command === 'broker:migrate') {
-            return CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): int {
-                $driver = DatabaseFactory::create($settings, $basePath);
-                return (new MigrationConsole(new Migrator($driver, budget: Settings::databaseBudget($settings)), \app\broker\database\Schema::migrations($driver->name())))->run($arguments);
-            });
-        }
-        if ($command === 'broker:recovery') {
-            self::recovery($settings, $basePath, $arguments, 'broker');
-            return 0;
-        }
         if ($command !== 'broker:store') {
-            self::recovery($settings, $basePath, ['gate'], 'broker');
-        }
-        if ($command === 'broker:audit-clean') {
-            self::pruneRecords($settings, $basePath, $arguments, $command);
-            return 0;
+            self::recovery($settings, $basePath, ['gate']);
         }
         if ($command === 'broker:store') {
             if (DatabaseFactory::name($settings) !== 'pgsql' || $arguments !== ['--store-worker-pipe']) {
-                throw new InvalidArgumentException('独立持久worker需要PostgreSQL和 Swoole PROC hook 管理的进程管道');
+                throw new \InvalidArgumentException('独立持久worker需要PostgreSQL和 Swoole PROC hook 管理的进程管道');
             }
             self::storeWorker(new PostgresStore(DatabaseFactory::create($settings, $basePath), $settings->text('app.broker.standby')), $settings);
             return 0;
         }
         $worker = ApplicationContext::brokerWorker($settings);
         if (in_array($command, ['broker:node-fence', 'broker:node-fence-result'], true)) {
-            self::fenceNode($settings, $basePath, $worker, $arguments, 'broker', $command === 'broker:node-fence-result');
+            self::fenceNode($settings, $basePath, $worker, $arguments, 'platform', $command === 'broker:node-fence-result');
             return 0;
         }
         if ($command === 'broker:nodes') {
@@ -642,7 +595,7 @@ final class ManagementCommand implements \Type\Core\Command
         }
         if ($command === 'broker:store-install') {
             if ($worker === [] || DatabaseFactory::name($settings) !== 'pgsql') {
-                throw new InvalidArgumentException('独立持久存储需要BROKER_COMMAND与PostgreSQL同步后端');
+                throw new \InvalidArgumentException('独立持久存储需要BROKER_COMMAND与PostgreSQL同步后端');
             }
             $pending = new PendingCommit($worker, ['action' => 'install', 'operation_id' => bin2hex(random_bytes(16))]);
             do {
@@ -663,33 +616,8 @@ final class ManagementCommand implements \Type\Core\Command
                     $scope->close();
                     $database->close();
                 }
-                echo "独立Broker持久存储已取得同步提交证明。\n";
+                echo "MQTT 协议节点持久存储已取得同步提交证明。\n";
                 return 0;
-            });
-        }
-        if ($command === 'broker:serve') {
-            Application::serve($settings, $basePath, $development, true);
-            return 0;
-        }
-        if ($command === 'broker:user') {
-            return \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments): int {
-                $password = getenv('BROKER_ADMIN_PASSWORD');
-                if (!is_string($password)) {
-                    throw new InvalidArgumentException('请通过 BROKER_ADMIN_PASSWORD 提供独立管理员初始化密码');
-                }
-                $manager = Settings::database($settings, $basePath, 1);
-                \Type\Orm\Db::configure($manager);
-                $work = new ExecutionScope();
-                try {
-                    return $work->run(static function (ExecutionScope $current) use ($arguments, $password): int {
-                        $user = (new IdentityService('broker'))->provision($arguments[0], $arguments[1], $password, true);
-                        echo json_encode(['data' => $user], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
-                        return 0;
-                    });
-                } finally {
-                    $work->close();
-                    $manager->close();
-                }
             });
         }
         $database = Settings::database($settings, $basePath, 1);
@@ -762,7 +690,7 @@ final class ManagementCommand implements \Type\Core\Command
     private static function brokerNodes(array $worker): void
     {
         if ($worker === []) {
-            throw new InvalidArgumentException('独立节点恢复需要明确同步持久配置');
+            throw new \InvalidArgumentException('独立节点恢复需要明确同步持久配置');
         }
         $pending = new PendingCommit($worker, ['action' => 'node_statistics', 'operation_id' => bin2hex(random_bytes(16))]);
         do {
@@ -780,20 +708,20 @@ final class ManagementCommand implements \Type\Core\Command
     /**
      * 受控命令登记已经完成的基础设施硬隔离；不根据心跳失联自动隔离。
      * 原动作只派发一次；重试与对账只查询原目标的同步事实，不再隔离同名节点的新运行。
-     * @param list<string> $worker 当前宿主的显式同步存储命令。
-     * @param list<string> $arguments 独立宿主五参、IoT四参，可追加操作ID；对账仅接受原操作ID。
-     * @throws InvalidArgumentException 参数或原操作上下文冲突；尚未派发外部动作。
-     * @throws \RuntimeException 结果或资源释放未知；标准输出保留可对账的操作ID。
+     * @param list<string> $worker 当前宿主的显式同步存储命令
+     * @param list<string> $arguments 独立宿主五参、IoT四参，可追加操作ID；对账仅接受原操作ID
+     * @throws \InvalidArgumentException 参数或原操作上下文冲突；尚未派发外部动作
+     * @throws \RuntimeException 结果或资源释放未知；标准输出保留可对账的操作ID
      */
     private static function fenceNode(Repository $settings, string $basePath, array $worker, array $arguments, string $realm, bool $reconcile): void
     {
         $required = $realm === 'broker' ? 5 : 4;
         if ($worker === [] || ($reconcile ? count($arguments) !== 1 : !in_array(count($arguments), [$required, $required + 1], true))) {
-            throw new InvalidArgumentException('节点隔离或对账参数无效，请使用help');
+            throw new \InvalidArgumentException('节点隔离或对账参数无效，请使用help');
         }
         $operationId = $reconcile ? $arguments[0] : ($arguments[$required] ?? bin2hex(random_bytes(16)));
         if (preg_match('/^[a-f0-9]{32}$/D', $operationId) !== 1) {
-            throw new InvalidArgumentException('节点隔离操作ID必须为32位小写十六进制');
+            throw new \InvalidArgumentException('节点隔离操作ID必须为32位小写十六进制');
         }
         $actor = $reconcile ? '' : $arguments[$required - 2];
         $proof = $reconcile ? '' : $arguments[$required - 1];
@@ -803,7 +731,7 @@ final class ManagementCommand implements \Type\Core\Command
             || preg_match('/^[a-f0-9]{32}$/D', $arguments[1]) !== 1
             || ($realm === 'broker' && preg_match('/^[a-f0-9]{32}$/D', $observation) !== 1)
             || $proof === '' || strlen($proof) > 256 || preg_match('/[\x00-\x1f\x7f]/', $proof) === 1)) {
-            throw new InvalidArgumentException('节点运行、操作人或已完成隔离的依据标识无效');
+            throw new \InvalidArgumentException('节点运行、操作人或已完成隔离的依据标识无效');
         }
         $requestId = bin2hex(random_bytes(16));
         $database = Settings::database($settings, $basePath, 1);
@@ -817,7 +745,7 @@ final class ManagementCommand implements \Type\Core\Command
             $connection = $database->connect($scope);
             $saved = AuditLog::brokerOperation($connection, $realm, $operationId);
             if ($saved === null && $reconcile) {
-                throw new InvalidArgumentException('broker_operation_not_found');
+                throw new \InvalidArgumentException('broker_operation_not_found');
             }
             if ($saved !== null) {
                 $operation = $saved;
@@ -826,7 +754,7 @@ final class ManagementCommand implements \Type\Core\Command
                     || (!$reconcile && ($operation['actor_id'] !== $actor || $operation['target']['node_id'] !== $arguments[0]
                         || $operation['target']['node_run_id'] !== $arguments[1] || $operation['target']['observation_run'] !== $observation
                         || !hash_equals($operation['impact']['proof_hash'], hash('sha256', $proof))))) {
-                    throw new InvalidArgumentException('broker_operation_conflict');
+                    throw new \InvalidArgumentException('broker_operation_conflict');
                 }
                 $accepted = true;
             } else {
@@ -843,13 +771,13 @@ final class ManagementCommand implements \Type\Core\Command
                 $generation = 0;
                 foreach ($statistics->value['nodes'] as $registered) {
                     if ($registered['node_id'] === $arguments[0] && $registered['run_id'] === $arguments[1]) {
-                        $generation = (int) $registered['generation'];
+                        $generation = (int)$registered['generation'];
                     }
                 }
                 $row = $realm === 'broker' ? $connection->table('broker_nodes')->where('node_id', '=', $arguments[0])->where('run_id', '=', $observation)->first() : null;
                 if ($generation < 1 || ($realm === 'broker' && ($row === null
                     || (json_decode($row['metrics_json'], true, 8, JSON_THROW_ON_ERROR)['nodeGeneration'] ?? 0) !== $generation))) {
-                    throw new InvalidArgumentException('节点运行与采样代次不匹配');
+                    throw new \InvalidArgumentException('节点运行与采样代次不匹配');
                 }
                 // 同ID首次并发受理共享冻结身份；只有取得执行回执的一方使用它派发动作。
                 $requestId = $operationId;
@@ -901,7 +829,7 @@ final class ManagementCommand implements \Type\Core\Command
                 || ($result->value['observation_run'] ?? '') !== $target['observation_run']) {
                 throw new \RuntimeException('broker_node_fence_unconfirmed');
             }
-            $receipt = $connection->transaction(static function (\Type\Orm\Connection $transaction) use ($operation, $realm, $requestId): array {
+            $receipt = $connection->transaction(static function (Connection $transaction) use ($operation, $realm, $requestId): array {
                 $current = AuditLog::brokerOperation($transaction, $realm, $operation['operation_id']);
                 if ($realm === 'broker' && ($current['current_stage'] ?? '') !== 'completed') {
                     $observed = $transaction->table('broker_nodes')->where('node_id', '=', $operation['target']['node_id'])
@@ -918,8 +846,8 @@ final class ManagementCommand implements \Type\Core\Command
                 ]);
             });
             $confirmed = true;
-        } catch (Throwable $failure) {
-            if (!$accepted && $failure instanceof InvalidArgumentException) {
+        } catch (\Throwable $failure) {
+            if (!$accepted && $failure instanceof \InvalidArgumentException) {
                 throw $failure;
             }
             if ($accepted && $operation !== null && $connection !== null) {
@@ -927,19 +855,19 @@ final class ManagementCommand implements \Type\Core\Command
                     $receipt = AuditLog::recordBroker($connection, $realm, $operation, 'unknown', [
                         'request_id' => $requestId, 'stage' => 'unknown', 'result' => 'unknown', 'facts' => ['reason' => 'result_unconfirmed'],
                     ]);
-                } catch (Throwable $auditFailure) {
+                } catch (\Throwable $auditFailure) {
                     // 原受理事实和操作ID仍可恢复；不能因审计写入失败丢掉未知结果。
                 }
             }
         } finally {
             try {
                 $scope->close();
-            } catch (Throwable $scopeFailure) {
+            } catch (\Throwable $scopeFailure) {
                 $confirmed = false;
             }
             try {
                 $database->close();
-            } catch (Throwable $databaseFailure) {
+            } catch (\Throwable $databaseFailure) {
                 $confirmed = false;
             }
         }
@@ -950,5 +878,4 @@ final class ManagementCommand implements \Type\Core\Command
             throw new \RuntimeException('broker_node_fence_unconfirmed');
         }
     }
-
 }

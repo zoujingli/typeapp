@@ -13,7 +13,7 @@ $root = BuildPlatform::resolve(dirname(__DIR__));
 $work = $root . '/build/toolchain-regressions-' . bin2hex(random_bytes(6));
 expect(mkdir($work, 0700, true), '无法创建工具链原生回归目录');
 // 根工作流先安装并缓存锁定工具链；独立消费者随后只读同一缓存，避免 codeload 部分下载把网络抖动误报为协议失败。
-putenv('COMPOSER_CACHE_DIR=' . ((string) getenv('COMPOSER_CACHE_DIR') ?: $root . '/.cache/composer'));
+putenv('COMPOSER_CACHE_DIR=' . ((string)getenv('COMPOSER_CACHE_DIR') ?: $root . '/.cache/composer'));
 putenv('COMPOSER_DISABLE_NETWORK=1');
 $cases = [
     'embed-lifecycle' => ['native-defaults.php', 'embed-lifecycle'],

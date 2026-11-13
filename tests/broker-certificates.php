@@ -5,11 +5,12 @@ declare(strict_types=1);
 require_once __DIR__ . '/support.php';
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
+use Type\Build\NativePackage;
 use Type\Mqtt\Client;
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
-/**
+/*
  * 管理端登记受信 CA 与客户端证书后，mTLS 入口按指纹形成身份；换证重叠到期、CRL 列入、缺失/过期或吊销后旧连接按撤权意图断开。
  * 握手 CA 仍由节点文件提供。默认 SQLite 开发路径；浏览器脚本另验三端页面。不覆盖集群 5 秒证明。
  */
@@ -277,7 +278,7 @@ function brokerCertSerial(string $pem): string
     if (isset($parsed['serialNumberHex']) && is_string($parsed['serialNumberHex'])) {
         $hex = strtolower(str_replace(':', '', $parsed['serialNumberHex']));
     } elseif (isset($parsed['serialNumber'])) {
-        $hex = dechex((int) $parsed['serialNumber']);
+        $hex = dechex((int)$parsed['serialNumber']);
     }
     $hex = ltrim($hex, '0');
     $hex = $hex === '' ? '00' : (strlen($hex) % 2 === 1 ? '0' . $hex : $hex);
@@ -313,10 +314,10 @@ function brokerCertCrl(string $directory, string $output, array $serials): void
 /** 运行本轮证书测试的独立 HTTPS CRL 源；服务端不要求客户端证书，监听参数来自显式测试环境。 */
 function brokerCertServeCrlHttps(): void
 {
-    $port = (int) getenv('BROKER_CRL_HTTPS_PORT');
-    $file = (string) getenv('BROKER_CRL_HTTPS_FILE');
-    $certificate = (string) getenv('BROKER_CRL_HTTPS_CERT');
-    $privateKey = (string) getenv('BROKER_CRL_HTTPS_KEY');
+    $port = (int)getenv('BROKER_CRL_HTTPS_PORT');
+    $file = (string)getenv('BROKER_CRL_HTTPS_FILE');
+    $certificate = (string)getenv('BROKER_CRL_HTTPS_CERT');
+    $privateKey = (string)getenv('BROKER_CRL_HTTPS_KEY');
     expect($port > 0 && is_file($file) && is_file($certificate) && is_file($privateKey), 'HTTPS CRL 源配置无效');
     $context = stream_context_create(['ssl' => [
         'local_cert' => $certificate,
@@ -349,7 +350,7 @@ function brokerCertServeCrlHttps(): void
                 break;
             }
         }
-        $body = (string) file_get_contents($file);
+        $body = (string)file_get_contents($file);
         $wire = 'HTTP/1.0 200 OK' . "\r\n" . 'Content-Type: application/pkix-crl' . "\r\n"
             . 'Content-Length: ' . strlen($body) . "\r\n" . 'Connection: close' . "\r\n\r\n" . $body;
         @fwrite($client, $wire);
@@ -396,7 +397,7 @@ if ($target === '--php') {
     if ($loadedSwoole === '') {
         $swoole = getenv('TYPE_SWOOLE_MODULE');
         $moduleName = PHP_OS_FAMILY === 'Windows' ? 'php_swoole.dll' : 'swoole.so';
-        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/\\') . '/' . $moduleName;
+        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string)ini_get('extension_dir'), '/\\') . '/' . $moduleName;
         expect(is_file($swoole), 'PHP 证书授权验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中匹配平台的 Swoole 模块');
         array_push($command, '-d', 'extension=' . $swoole);
     } else {
@@ -418,7 +419,7 @@ foreach ($argv as $argument) {
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '无源码证书授权验收使用macOS内核策略及原生产物');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $sourceRoot = realpath($built['identity']['description']['facts']['workspace']);
     expect(is_string($sourceRoot), '无源码验收必须能定位实际编译输入');
@@ -470,7 +471,7 @@ try {
     $secrets[] = $password;
     identityCommand([...$command, 'broker:user', 'access-admin', '授权管理员'], $environment + ['BROKER_ADMIN_PASSWORD' => $password]);
     $addresses = [];
-    for ($index = 0; $index < 5; $index++) {
+    for ($index = 0; $index < 5; ++$index) {
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorText);
         expect(is_resource($listener), '无法选择证书授权测试端口');
         $addresses[] = stream_socket_get_name($listener, false);
@@ -492,10 +493,10 @@ try {
         usleep(10000);
     } while (microtime(true) < $deadline);
     $request = static function (string $method, string $path, string $token, ?array $data = null, int $status = 200, array $headers = []) use ($client, $server, &$checks): array {
-        $response = $client->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $client->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $login = $request('POST', '/broker/auth/login', '', ['login' => 'access-admin', 'password' => $password], 200);
@@ -517,7 +518,7 @@ try {
         'BROKER_CLIENT_CA' => $certs['ca'],
     ];
     $node = new Process([...$command, 'broker:run'], $root, $nodeEnvironment);
-    brokerCertWait($node, (int) $nodeEnvironment['BROKER_PORT'], $certs['ca']);
+    brokerCertWait($node, (int)$nodeEnvironment['BROKER_PORT'], $certs['ca']);
     $deadline = microtime(true) + 12;
     $nodes = [];
     do {
@@ -551,7 +552,7 @@ try {
     expect(count($cas['items']) === 1 && $cas['items'][0]['fingerprint'] === brokerCertFingerprint($certs['caPem'])
         && !isset($cas['items'][0]['pem']), 'CA 列表应有指纹且不含 PEM');
     $request('POST', '/broker/access/cas', $token, ['pem' => $certs['clientPem'], 'expected_version' => 2], 422);
-    $request('POST', '/broker/access/cas', $token, ['pem' => (string) file_get_contents($certs['clientKey']), 'expected_version' => 2], 422);
+    $request('POST', '/broker/access/cas', $token, ['pem' => (string)file_get_contents($certs['clientKey']), 'expected_version' => 2], 422);
     $bound = $request('POST', '/broker/access/principals/' . $principal['id'], $token, [
         'name' => $principal['name'], 'enabled' => 1, 'expected_version' => 2, 'grants' => $principal['grants'],
         'certificates' => [['pem' => $certs['clientPem']]],
@@ -568,7 +569,7 @@ try {
     expect(($bound['status'] ?? '') === 'effective', '绑定证书后节点必须上报已加载版本');
     $detail = $request('GET', '/broker/access/principals/' . $principal['id'], $token, null, 200)['item'];
     expect(count($detail['certificates']) === 1 && $detail['certificates'][0]['fingerprint'] === $certs['fingerprint']
-        && $detail['certificates'][0]['status'] === 'active' && (int) $detail['certificates'][0]['overlap_until'] === 0
+        && $detail['certificates'][0]['status'] === 'active' && (int)$detail['certificates'][0]['overlap_until'] === 0
         && !isset($detail['certificates'][0]['pem']), '主体应投影活动证书指纹');
     $request('POST', '/broker/access/principals/' . $principal['id'] . '/certificate-preview', $token, [
         'pem' => $certs['extraPem'], 'overlap_seconds' => 86401,
@@ -590,8 +591,8 @@ try {
     ], 200);
     expect($previewShort['overlap_seconds'] === 2 && $previewShort['tightening'] === false
         && $previewShort['overlap_until'] > time(), '短重叠预览应给出未来截止时间');
-    $tlsPort = (int) $nodeEnvironment['BROKER_PORT'];
-    $mtlsPort = (int) $nodeEnvironment['BROKER_MTLS_PORT'];
+    $tlsPort = (int)$nodeEnvironment['BROKER_PORT'];
+    $mtlsPort = (int)$nodeEnvironment['BROKER_MTLS_PORT'];
     $mqttTls = new Client('127.0.0.1', $tlsPort, 'access-tls', 'broker-client', $mqttPassword, $certs['ca'], '127.0.0.1', sessionExpiry: 0);
     expect(!$mqttTls->connect(true), '凭据 TLS 入口连接失败');
     expect($mqttTls->subscribe('broker-access/tls', 0) === 0, '凭据 TLS 入口仍应可用');
@@ -646,7 +647,7 @@ try {
         }
     }
     expect($oldCert !== null && $newCert !== null && $oldCert['status'] === 'active' && $newCert['status'] === 'active'
-        && (int) $oldCert['overlap_until'] > time() && (int) $newCert['overlap_until'] === 0, '重叠期内新旧证书都应保持活动');
+        && (int)$oldCert['overlap_until'] > time() && (int)$newCert['overlap_until'] === 0, '重叠期内新旧证书都应保持活动');
     $fresh = brokerCertSocket($mtlsPort, $certs['ca'], $certs['extra'], $certs['extraKey']);
     brokerCertWrite($fresh, brokerCertConnect('access-extra'));
     $freshAck = brokerCertRead($fresh);
@@ -654,7 +655,7 @@ try {
     brokerCertWrite($only, brokerCertSubscribe('broker-access/overlap'));
     $onlyOverlap = brokerCertRead($only);
     expect(ord($onlyOverlap[0]) === 0x90, '旧证书在重叠期内应仍可收发');
-    $remain = (int) $oldCert['overlap_until'] - time();
+    $remain = (int)$oldCert['overlap_until'] - time();
     if ($remain > 0) {
         usleep(($remain + 1) * 1000000);
     }
@@ -702,7 +703,7 @@ try {
     $cas = $request('GET', '/broker/access/cas', $token, null, 200);
     $caId = $cas['items'][0]['id'];
     expect(($cas['items'][0]['crl']['state'] ?? '') === 'none' && !isset($cas['items'][0]['pem']), '未配置 CRL 时状态应为 none 且不含 PEM');
-    $httpsPort = (int) substr(strrchr($addresses[4], ':'), 1);
+    $httpsPort = (int)substr(strrchr($addresses[4], ':'), 1);
     $request('POST', '/broker/access/cas/' . $caId . '/crl', $token, [
         'url' => 'http://127.0.0.1:' . $httpsPort . '/crl.pem', 'expected_version' => 6,
     ], 422);
@@ -725,7 +726,7 @@ try {
     expect(($cas['items'][0]['crl']['state'] ?? '') === 'missing' && ($cas['items'][0]['crl']['recovery'] ?? '') !== ''
         && ($cas['items'][0]['crl']['fetch_status'] ?? '') !== '', '缺失时应展示获取状态、执行状态和恢复条件');
     brokerCertCrl($base . '/certs', $certs['crl'], ['04']);
-    $restoredCrl = (string) file_get_contents($certs['crl']);
+    $restoredCrl = (string)file_get_contents($certs['crl']);
     $restored = $request('POST', '/broker/access/cas/' . $caId . '/crl', $token, [
         'pem' => $restoredCrl, 'expected_version' => 7,
     ], 200)['data'];
@@ -739,7 +740,7 @@ try {
     brokerCertCrl($base . '/certs', $certs['crl'], ['04', $certs['listedSerial']]);
     $https = new Process([PHP_BINARY, __FILE__], $root, array_replace(getenv(), [
         'BROKER_CRL_HTTPS' => '1',
-        'BROKER_CRL_HTTPS_PORT' => (string) $httpsPort,
+        'BROKER_CRL_HTTPS_PORT' => (string)$httpsPort,
         'BROKER_CRL_HTTPS_FILE' => $certs['crl'],
         'BROKER_CRL_HTTPS_CERT' => $certs['server'],
         'BROKER_CRL_HTTPS_KEY' => $certs['key'],
@@ -750,13 +751,13 @@ try {
     do {
         $httpsCas = $request('GET', '/broker/access/cas', $token, null, 200);
         if (($httpsCas['items'][0]['crl']['fetch_status'] ?? '') === 'success'
-            && (int) ($httpsCas['items'][0]['crl']['serial_count'] ?? 0) >= 2) {
+            && (int)($httpsCas['items'][0]['crl']['serial_count'] ?? 0) >= 2) {
             break;
         }
         usleep(200000);
     } while (microtime(true) < $httpsDeadline);
     expect(($httpsCas['items'][0]['crl']['fetch_status'] ?? '') === 'success'
-        && (int) ($httpsCas['items'][0]['crl']['serial_count'] ?? 0) >= 2
+        && (int)($httpsCas['items'][0]['crl']['serial_count'] ?? 0) >= 2
         && !isset($httpsCas['items'][0]['pem']), 'HTTPS 接纳后应更新获取状态且序列号只增不减');
     brokerCertDisconnected($listedRestored, 'broker-access/crl-https', 5.2, 'HTTPS 刷新列入后健康节点未断开会话');
     try {
@@ -772,7 +773,7 @@ try {
         'pem' => $restoredCrl, 'expected_version' => 8,
     ], 422);
     $request('POST', '/broker/access/cas/' . $caId . '/crl', $token, [
-        'pem' => (string) file_get_contents($certs['rogue']), 'expected_version' => 8,
+        'pem' => (string)file_get_contents($certs['rogue']), 'expected_version' => 8,
     ], 422);
     $platform = $request('POST', '/broker/access/revocations', $token, [
         'serial' => $certs['extraSerial'], 'expected_version' => 8,
@@ -843,10 +844,10 @@ try {
         usleep(10000);
     } while (microtime(true) < $deadline);
     $appRequest = static function (string $method, string $path, string $token, array $headers, ?array $data, int $status) use ($appClient, $appServer, &$checks): array {
-        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '双端 ' . $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $appServer->stdout() . $appServer->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $platformToken = $appRequest('POST', '/admin/auth/login', '', [], ['login' => 'platform-admin', 'password' => $appPassword], 200)['data']['accessToken'];
@@ -875,7 +876,7 @@ try {
     $tenantCaId = $tenantCas['items'][0]['id'];
     brokerCertCrl($base . '/certs', $base . '/certs/tenant-crl.pem', ['04']);
     $tenantCrl = $appRequest('POST', '/customer/tenants/' . $tenantId . '/broker/access/cas/' . $tenantCaId . '/crl', $customerToken, $tenantHeaders, [
-        'pem' => (string) file_get_contents($base . '/certs/tenant-crl.pem'), 'expected_version' => $created['version'],
+        'pem' => (string)file_get_contents($base . '/certs/tenant-crl.pem'), 'expected_version' => $created['version'],
     ], 200)['data'];
     expect($tenantCrl['actor_realm'] === 'customer' && $tenantCrl['tightening'] === true, '租户应能导入签名 CRL');
     $tenantCas = $appRequest('GET', '/customer/tenants/' . $tenantId . '/broker/access/cas', $customerToken, $tenantHeaders, null, 200);

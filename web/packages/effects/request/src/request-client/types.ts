@@ -69,13 +69,12 @@ type MakeErrorMessageFn = (message: string, error: any) => void;
 
 interface HttpResponse<T = any> {
   /**
-   * 业务码。
-   * 当前项目 HTTP status 固定为 200，业务状态只读取 body.code。
+   * 0 表示成功 其他表示失败
+   * 0 means success, others means fail
    */
   code: number;
-  info?: string;
   data: T;
-  path?: string;
+  message: string;
 }
 
 export type {

@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Type\Build\NativePackage;
 use Type\Testing\Process;
 
-/** @param array<string,string>|null $environment 测试秘密只经进程环境转交。 */
+/** @param null|array<string,string> $environment 测试秘密只经进程环境转交。 */
 function cleanPackageCommand(array $command, float $seconds = 30, ?array $environment = null): string
 {
     $process = new Process($command, null, $environment, 4194304);
@@ -18,8 +18,8 @@ function cleanPackageCommand(array $command, float $seconds = 30, ?array $enviro
                     $diagnostic = str_replace($value, '<REDACTED>', $diagnostic);
                 }
             }
-            throw new RuntimeException('干净部署命令失败：exit=' . $result->exitCode . ', timeout=' . (int) $result->timedOut
-                . ', signal=' . (string) $result->signal . "\n" . $diagnostic);
+            throw new RuntimeException('干净部署命令失败：exit=' . $result->exitCode . ', timeout=' . (int)$result->timedOut
+                . ', signal=' . (string)$result->signal . "\n" . $diagnostic);
         }
         return $result->stdout;
     } finally {
@@ -36,7 +36,7 @@ function cleanPackageLoader(string $binary): string
     $size = unpack('v', substr($header, 54, 2))[1];
     $count = unpack('v', substr($header, 56, 2))[1];
     expect($offset >= 64 && $size >= 56 && $size <= 256 && $count > 0 && $count <= 128 && $offset <= filesize($binary) - $size * $count, 'ELF程序头无效');
-    for ($index = 0; $index < $count; $index++) {
+    for ($index = 0; $index < $count; ++$index) {
         $entry = file_get_contents($binary, false, null, $offset + $index * $size, $size);
         if (unpack('V', substr($entry, 0, 4))[1] !== 3) {
             continue;
@@ -98,7 +98,7 @@ function cleanPackageImage(string $package, string $digest, string $base, int $u
             $name = $entry->getFilename();
             expect(!preg_match('/\.(?:php[0-9]?|phtml|phar|inc|h|hpp|c|cc|cpp)$/iD', $name), '运行镜像包含业务/SDK源码');
             expect(!preg_match('/^(?:php(?:[0-9.]+)?|php-cgi|php-fpm|phpdbg|phpize|composer(?:\.json|\.lock|\.phar)?|gcc|g\+\+|clang\+\+|clang|cl\.exe|auth\.json|\.env)$/iD', $name), '运行镜像包含解释器、工具链或秘密');
-            $entries++;
+            ++$entries;
         }
         unset($archive);
         cleanPackageCommand(['docker', 'cp', $inspection . ':/app/' . $manifest['artifact']['path'], $base . '/verified-native-app']);

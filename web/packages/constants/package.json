@@ -1,6 +1,6 @@
 {
   "name": "@vben/constants",
-  "version": "5.6.0",
+  "version": "5.7.0",
   "homepage": "https://github.com/vbenjs/vue-vben-admin",
   "bugs": "https://github.com/vbenjs/vue-vben-admin/issues",
   "repository": {
@@ -8,7 +8,7 @@
     "url": "git+https://github.com/vbenjs/vue-vben-admin.git",
     "directory": "packages/constants"
   },
-  "license": "Apache-2.0",
+  "license": "MIT",
   "type": "module",
   "sideEffects": [
     "**/*.css"

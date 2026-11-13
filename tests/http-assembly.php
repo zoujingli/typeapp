@@ -6,11 +6,12 @@ require __DIR__ . '/support.php';
 require __DIR__ . '/http-support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+use Type\Build\BuildPlatform;
 use Type\Build\CommandAssembly;
 use Type\Build\RouteCompiler;
 use Type\Testing\Process;
 
-$root = Type\Build\BuildPlatform::resolve(dirname(__DIR__));
+$root = BuildPlatform::resolve(dirname(__DIR__));
 $native = in_array('--native', $argv, true);
 $receipt = ['protocol' => 1, 'mode' => $native ? 'native' : 'php', 'passed' => false];
 $work = $root . '/build/http-assembly-' . bin2hex(random_bytes(6));
@@ -18,9 +19,9 @@ mkdir($work, 0700, true);
 $process = null;
 $pending = [];
 try {
-    $namespace = 'TypeApp\\HttpAssemblyFixture\\';
+    $namespace = 'TypeApp\HttpAssemblyFixture\\';
     $sources = [$root . '/plugin/type-core/src', $root . '/plugin/type-runtime/src', __DIR__ . '/fixtures/http-assembly.php'];
-    $declarations = ['class' => 'TypeApp\\HttpAssemblyFixture\\Routes', 'routes' => []];
+    $declarations = ['class' => 'TypeApp\HttpAssemblyFixture\Routes', 'routes' => []];
     foreach (['value', 'hold', 'metrics', 'release', 'fail'] as $action) {
         $declarations['routes'][] = ['methods' => ['GET'], 'path' => '/' . $action, 'handler' => [$namespace . 'Controller', $action],
             'middleware' => in_array($action, ['value', 'hold', 'fail'], true) ? ['identity'] : []];
@@ -30,8 +31,8 @@ try {
     $component = ['services' => [['id' => 'message', 'class' => $namespace . 'Message', 'arguments' => [['value' => 'component']]]]];
     $application = ['enabled' => ['type-tests/http-component', 'type-tests/http-assembly'],
         'bootstrap' => ['class' => $namespace . 'Application', 'method' => 'run'], 'services' => [
-        ['id' => 'message', 'class' => $namespace . 'Message', 'arguments' => [['value' => 'application']]],
-        ['id' => 'identity', 'class' => $namespace . 'Identify']],
+            ['id' => 'message', 'class' => $namespace . 'Message', 'arguments' => [['value' => 'application']]],
+            ['id' => 'identity', 'class' => $namespace . 'Identify']],
         'commands' => [['name' => 'show', 'class' => $namespace . 'Show'], ['name' => 'scopes', 'class' => $namespace . 'ChildScopes']], 'http' => ['middleware' => ['identity' => 'identity']]];
     $assembly = (new CommandAssembly())->generate($application, ['type-tests/http-assembly' => $application, 'type-tests/http-component' => $component], $sources, $routing);
     expect($assembly['services']['message']['overrides'] === 'type-tests/http-component:message', 'HTTP 与命令未共享覆盖图');
@@ -39,7 +40,7 @@ try {
     mkdir($work . '/config', 0700);
     mkdir($work . '/component', 0700);
     mkdir($work . '/component/src', 0700);
-    file_put_contents($work . '/component/src/Component.php', '<?php declare(strict_types=1); namespace TypeApp\\HttpAssemblyComponent; final class Component {}');
+    file_put_contents($work . '/component/src/Component.php', '<?php declare(strict_types=1); namespace TypeApp\HttpAssemblyComponent; final class Component {}');
     copy(__DIR__ . '/fixtures/http-assembly.php', $work . '/src/Application.php');
     copy($root . '/toolchain.lock.json', $work . '/toolchain.lock.json');
     file_put_contents($work . '/component/composer.json', json_encode(['name' => 'type-tests/http-component',
@@ -66,7 +67,7 @@ try {
     successful([...$composerCommand, 'install', '--no-interaction', '--no-scripts', '--no-plugins', '--no-progress'], $work);
     if ($native) {
         successful([PHP_BINARY, $work . '/vendor/bin/type', 'build', $work . '/type-app.json'], $work);
-        $binary = (new Type\Build\BuildPlatform())->output($work . '/build/http-assembly');
+        $binary = (new BuildPlatform())->output($work . '/build/http-assembly');
         $report = json_decode(file_get_contents($binary . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
         // 独立程序只加载自身已验证的依赖，不能注入控制器的全量数据库配置。
         putenv('TYPE_NATIVE_PHP_INI=' . $report['runtime-profile']['ini']);
@@ -89,9 +90,9 @@ try {
     $receipt['configuration-sha256'] = hash_file('sha256', $work . '/type-app.json');
     $address = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($address), '无法分配 HTTP 装配端口');
-    $port = (int) substr(strrchr(stream_socket_get_name($address, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($address, false), ':'), 1);
     fclose($address);
-    $process = new Process([...$command, 'serve', (string) $port], sys_get_temp_dir(), getenv());
+    $process = new Process([...$command, 'serve', (string)$port], sys_get_temp_dir(), getenv());
     $deadline = microtime(true) + 5;
     do {
         if (!$process->running()) {
@@ -107,7 +108,7 @@ try {
     } while (microtime(true) < $deadline);
     [$status, $body] = httpRequest($port, 'GET', '/value', 'first');
     expect($status === 200 && json_decode($body, true) === ['message' => trim($cli), 'marker' => 'first'], 'HTTP 与 CLI 业务值或请求内实例复用不一致：' . $body);
-    for ($index = 0; $index < 8; $index++) {
+    for ($index = 0; $index < 8; ++$index) {
         $pending[$index] = sendHttp($port, 'GET', '/hold', 'request-' . $index);
     }
     $deadline = microtime(true) + 3;

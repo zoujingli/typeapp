@@ -7,6 +7,9 @@ require_once dirname(__DIR__) . '/vendor/autoload.php';
 require_once __DIR__ . '/native-database.php';
 require_once __DIR__ . '/postgres-sync.php';
 
+use app\broker\database\Schema;
+use app\broker\service\CompatService;
+use Type\Build\NativePackage;
 use Type\Mqtt\Client;
 use Type\Mqtt\Message;
 use Type\Mqtt\ProtocolError;
@@ -140,7 +143,7 @@ $driver = $argv[2] ?? 'pgsql';
 expect($driver === 'pgsql', '升级回退验收需要 PostgreSQL 同步存储');
 if ($target === '--php') {
     $swoole = getenv('TYPE_SWOOLE_MODULE');
-    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string)ini_get('extension_dir'), '/') . '/swoole.so';
     expect(is_file($swoole), 'PHP 升级回退验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
     $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
 } else {
@@ -158,7 +161,7 @@ foreach ($argv as $argument) {
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '无源码升级回退验收使用macOS内核策略及原生产物');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $sourceRoot = realpath($built['identity']['description']['facts']['workspace']);
     expect(is_string($sourceRoot), '无源码验收必须能定位实际编译输入');
@@ -169,7 +172,7 @@ if ($noSource) {
     }
     $command = [...$policy, $runtime . '/run'];
 }
-$databaseTools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+$databaseTools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
 $fixtureDatabase = new NativeDatabase($base . '/primary', 'pgsql', $databaseTools);
 $fixtureSync = new PostgresSync($fixtureDatabase, $base . '/standby', $databaseTools, 'broker_compat_sync');
 $environment = getenv();
@@ -218,15 +221,15 @@ try {
 try {
     $legacy = [];
     $head = null;
-    foreach (\app\broker\database\Schema::migrations('pgsql') as $migration) {
-        if ($migration->version() === '037_broker_recovery') {
+    foreach (Schema::migrations('pgsql') as $migration) {
+        if ($migration->version() === '037_platform_mqtt_recovery') {
             continue;
         }
-        if ($migration->version() === '036_broker_compatibility') {
+        if ($migration->version() === '036_platform_mqtt_compatibility') {
             $head = $migration;
             continue;
         }
-        if ($migration->version() === '035_broker_debug_occupancy') {
+        if ($migration->version() === '035_platform_mqtt_debug_occupancy') {
             continue;
         }
         $legacy[] = $migration;
@@ -234,13 +237,13 @@ try {
     expect($head !== null && $legacy !== [], '缺少独立管理迁移计划');
     (new Migrator(new PgsqlDriver(
         $environment['DB_HOST'],
-        (int) $environment['DB_PORT'],
+        (int)$environment['DB_PORT'],
         $environment['DB_DATABASE'],
         $environment['DB_USERNAME'],
         $environment['DB_PASSWORD']
     )))->run($legacy);
     $pdo = compatPdo($environment);
-    expect($pdo->query("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'broker_compatibility'")->fetch() === false, '旧库不应已有兼容表');
+    expect($pdo->query("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'platform_mqtt_compatibility'")->fetch() === false, '旧库不应已有兼容表');
     $store = new Process([...$command, 'broker:store-install'], $root, $environment);
     try {
         expect($store->wait(30)->successful(), '独立持久存储安装失败：' . $store->stdout() . $store->stderr());
@@ -251,7 +254,7 @@ try {
     $secrets[] = $password;
     identityCommand([...$command, 'broker:user', 'access-admin', '升级回退管理员'], $environment + ['BROKER_ADMIN_PASSWORD' => $password]);
     $addresses = [];
-    for ($index = 0; $index < 4; $index++) {
+    for ($index = 0; $index < 4; ++$index) {
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorText);
         expect(is_resource($listener), '无法选择升级回退测试端口');
         $addresses[] = stream_socket_get_name($listener, false);
@@ -278,10 +281,10 @@ try {
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $auth = $request('POST', '/broker/auth/login', '', ['login' => 'access-admin', 'password' => $password], 200)['data'];
@@ -289,15 +292,15 @@ try {
     $secrets[] = $token;
     $request('GET', '/broker/compat', '', null, 401);
     $before = $request('GET', '/broker/compat', $token, null, 200);
-    expect(($before['recorded'] ?? true) === false && ($before['binary_epoch'] ?? 0) === \app\broker\service\CompatService::EPOCH, '升级前兼容快照错误');
+    expect(($before['recorded'] ?? true) === false && ($before['binary_epoch'] ?? 0) === CompatService::EPOCH, '升级前兼容快照错误');
     $mqttPassword = bin2hex(random_bytes(16));
     $secrets[] = $mqttPassword;
-    $tlsPort = (int) substr(strrchr($addresses[1], ':'), 1);
+    $tlsPort = (int)substr(strrchr($addresses[1], ':'), 1);
     $nodeEnvironment = $environment + [
         'BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => $mqttPassword,
         'BROKER_TOPIC_PREFIX' => 'broker-compat/', 'BROKER_NODE_ID' => 'compat-node',
         'BROKER_LISTEN' => '127.0.0.1', 'BROKER_PLAINTEXT' => 'false',
-        'BROKER_PORT' => (string) $tlsPort,
+        'BROKER_PORT' => (string)$tlsPort,
         'BROKER_CERTIFICATE' => $certs['server'], 'BROKER_PRIVATE_KEY' => $certs['key'],
         'BROKER_ALLOWED_ORIGINS' => $previewOrigin,
     ];
@@ -362,7 +365,7 @@ try {
     ], 200)['data'];
     compatWaitRevision($request, $token, $disabled, '撤销主体未生效');
     $willHold = new Process(['node', $root . '/tests/broker-compat-client.mjs', $clientRoot, 'will-hold', $certs['ca']], $root, array_replace(getenv(), [
-        'COMPAT_MQTT_HOST' => '127.0.0.1', 'COMPAT_MQTT_PORT' => (string) $tlsPort,
+        'COMPAT_MQTT_HOST' => '127.0.0.1', 'COMPAT_MQTT_PORT' => (string)$tlsPort,
         'COMPAT_MQTT_USERNAME' => 'broker-client', 'COMPAT_MQTT_PASSWORD' => $mqttPassword,
         'COMPAT_MQTT_CLIENT_ID' => 'compat-will-hold',
         'COMPAT_WILL_TOPIC' => 'broker-compat/will', 'COMPAT_WILL_PAYLOAD' => $willPayload,
@@ -382,7 +385,7 @@ try {
     } finally {
         $blocked->stop();
     }
-    $recover = new Process([...$command, 'broker:migrate', 'recover', '036_broker_compatibility', 'retry', '核对中断后的兼容迁移后重试'], $root, $environment);
+    $recover = new Process([...$command, 'broker:migrate', 'recover', '036_platform_mqtt_compatibility', 'retry', '核对中断后的兼容迁移后重试'], $root, $environment);
     try {
         expect($recover->wait(30)->successful(), '兼容迁移恢复失败：' . $recover->stdout() . $recover->stderr());
     } finally {
@@ -400,13 +403,13 @@ try {
     } finally {
         $storeAgain->stop();
     }
-    $tables = $pdo->query("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name IN ('broker_debug_occupancy','broker_compatibility','broker_access_crl_serials')")->fetchAll(PDO::FETCH_COLUMN);
-    expect(in_array('broker_debug_occupancy', $tables, true) && in_array('broker_compatibility', $tables, true)
-        && in_array('broker_access_crl_serials', $tables, true), '升级后缺少占用、兼容或 CRL 粘性表');
+    $tables = $pdo->query("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name IN ('platform_mqtt_debug_occupancy','platform_mqtt_compatibility','platform_mqtt_access_crl_serial')")->fetchAll(PDO::FETCH_COLUMN);
+    expect(in_array('platform_mqtt_debug_occupancy', $tables, true) && in_array('platform_mqtt_compatibility', $tables, true)
+        && in_array('platform_mqtt_access_crl_serial', $tables, true), '升级后缺少占用、兼容或 CRL 粘性表');
     $compat = $request('GET', '/broker/compat', $token, null, 200);
-    expect(($compat['recorded'] ?? false) === true && ($compat['runtime_epoch'] ?? 0) === \app\broker\service\CompatService::EPOCH && ($compat['min_runtime_epoch'] ?? 0) === \app\broker\service\CompatService::EPOCH
+    expect(($compat['recorded'] ?? false) === true && ($compat['runtime_epoch'] ?? 0) === CompatService::EPOCH && ($compat['min_runtime_epoch'] ?? 0) === CompatService::EPOCH
         && ($compat['rollback_allowed'] ?? true) === false && ($compat['store_ready'] ?? 0) === 1
-        && str_contains((string) ($compat['maintenance']['do_not_drop_state'] ?? ''), 'broker_debug_occupancy'), '升级后兼容契约错误');
+        && str_contains((string)($compat['maintenance']['do_not_drop_state'] ?? ''), 'platform_mqtt_debug_occupancy'), '升级后兼容契约错误');
     $request('POST', '/broker/compat', $token, [], 405);
     $node = new Process([...$command, 'broker:run'], $root, $nodeEnvironment);
     compatWaitTls($node, $tlsPort, $certs['ca']);
@@ -451,7 +454,7 @@ try {
         $denied->connect(true);
         expect(false, '已撤销身份在升级后仍被接入');
     } catch (ProtocolError $error) {
-        expect(in_array($error->reason, [0x87, 0x86, 0x84, 0x8c], true), '撤销后原因码异常：' . $error->reason);
+        expect(in_array($error->reason, [0x87, 0x86, 0x84, 0x8C], true), '撤销后原因码异常：' . $error->reason);
     }
     $appBase = $base . '/app';
     expect(mkdir($appBase, 0700), '无法创建双端升级回退测试目录');
@@ -487,10 +490,10 @@ try {
         usleep(10000);
     } while (microtime(true) < $deadline);
     $appRequest = static function (string $method, string $path, string $token, array $headers, ?array $data, int $status) use ($appClient, $appServer, &$checks): array {
-        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '双端 ' . $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $appServer->stdout() . $appServer->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $platformToken = $appRequest('POST', '/admin/auth/login', '', [], ['login' => 'platform-admin', 'password' => $appPassword], 200)['data']['accessToken'];
@@ -501,7 +504,7 @@ try {
     $tenantId = $me['tenant_id'];
     $tenantHeaders = ['X-Tenant-Id' => $tenantId];
     $tenantCompat = $appRequest('GET', '/customer/tenants/' . $tenantId . '/broker/compat', $customerToken, $tenantHeaders, null, 200);
-    expect(($tenantCompat['rollback_allowed'] ?? true) === false && ($tenantCompat['runtime_epoch'] ?? 0) === \app\broker\service\CompatService::EPOCH, '租户兼容查询失败');
+    expect(($tenantCompat['rollback_allowed'] ?? true) === false && ($tenantCompat['runtime_epoch'] ?? 0) === CompatService::EPOCH, '租户兼容查询失败');
     $appRequest('POST', '/customer/tenants/' . $tenantId . '/broker/compat', $customerToken, $tenantHeaders, [], 405);
     $platformCompat = $appRequest('GET', '/admin/broker/compat', $platformToken, [], null, 200);
     expect(($platformCompat['recorded'] ?? false) === true, '平台兼容查询失败');
@@ -524,8 +527,8 @@ try {
     }
     expect($node->stop(5)->successful(), '升级后节点停止失败');
     $node = null;
-    $futureEpoch = \app\broker\service\CompatService::EPOCH + 1;
-    $pdo->exec("UPDATE broker_compatibility SET runtime_epoch = {$futureEpoch}, min_runtime_epoch = {$futureEpoch} WHERE id = 'default'");
+    $futureEpoch = CompatService::EPOCH + 1;
+    $pdo->exec("UPDATE platform_mqtt_compatibility SET runtime_epoch = {$futureEpoch}, min_runtime_epoch = {$futureEpoch} WHERE id = 'default'");
     $staleRun = new Process([...$command, 'broker:run'], $root, $nodeEnvironment);
     try {
         $stale = $staleRun->wait(15);
@@ -542,8 +545,8 @@ try {
     } finally {
         $staleServe->stop();
     }
-    $currentEpoch = \app\broker\service\CompatService::EPOCH;
-    $pdo->exec("UPDATE broker_compatibility SET runtime_epoch = {$currentEpoch}, min_runtime_epoch = {$currentEpoch} WHERE id = 'default'");
+    $currentEpoch = CompatService::EPOCH;
+    $pdo->exec("UPDATE platform_mqtt_compatibility SET runtime_epoch = {$currentEpoch}, min_runtime_epoch = {$currentEpoch} WHERE id = 'default'");
     $report['status'] = 'passed';
 } finally {
     $pdo = null;

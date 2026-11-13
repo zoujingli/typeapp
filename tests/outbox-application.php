@@ -28,7 +28,7 @@ function outboxApplication(string $root): array
         'output' => 'build/type-app', 'build-directory' => 'build/compiler'];
     file_put_contents($directory . '/application.json', json_encode($settings, JSON_THROW_ON_ERROR));
     $launcher = 'require ' . var_export($root . '/vendor/autoload.php', true)
-        . '; (new Type\\Build\\DevelopmentBuilder())->loadConfiguration(' . var_export($directory . '/application.json', true) . '); main($argc,$argv);';
+        . '; (new Type\Build\DevelopmentBuilder())->loadConfiguration(' . var_export($directory . '/application.json', true) . '); main($argc,$argv);';
     return ['directory' => $directory, 'command' => [PHP_BINARY, '-r', $launcher]];
 }
 
@@ -37,7 +37,7 @@ function cleanupOutboxQueue(string $application): void
 {
     $redis = new Redis();
     try {
-        expect($redis->connect(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1', (int) (getenv('TYPE_REDIS_PORT') ?: 6379)), '无法清理本轮Outbox队列');
+        expect($redis->connect(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1', (int)(getenv('TYPE_REDIS_PORT') ?: 6379)), '无法清理本轮Outbox队列');
         $keys = $redis->keys('type:queue:{' . hash('sha256', $application . "\0default") . '}:*');
         if ($keys !== []) {
             $redis->del($keys);

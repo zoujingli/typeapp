@@ -11,8 +11,11 @@ use Type\Runtime\ExecutionScope;
 final class UploadStorage
 {
     private string $directory;
+
     private int $maximumBytes;
+
     private int $maximumFiles;
+
     /** 使用应用专用的可写真实目录；总字节和文件数量预算包含待保存内容。 */
     public function __construct(string $directory, int $maximumBytes = 67108864, int $maximumFiles = 128)
     {
@@ -23,10 +26,11 @@ final class UploadStorage
         $this->maximumBytes = $maximumBytes;
         $this->maximumFiles = $maximumFiles;
     }
+
     /**
      * 把流复制为作用域拥有的待保存文件；可定位流从头读取，源流仍由调用方关闭。
-     * @param int $maximumFileBytes 单个文件允许的最大字节数。
-     * @throws HttpError 读取无进展、超量、存储配额或磁盘写入失败。
+     * @param int $maximumFileBytes 单个文件允许的最大字节数
+     * @throws HttpError 读取无进展、超量、存储配额或磁盘写入失败
      */
     public function receive(StreamInterface $stream, ExecutionScope $scope, int $maximumFileBytes = 1048576): PendingUpload
     {
@@ -62,6 +66,7 @@ final class UploadStorage
         }
         return $upload;
     }
+
     /** @internal 在配额锁内独占创建临时文件，由 PendingUpload 管理其生命周期。 */
     public function create(string $key): void
     {
@@ -77,6 +82,7 @@ final class UploadStorage
             fclose($file);
         });
     }
+
     /** @internal 在配额锁内追加并刷新完整字节串，超量或短写直接失败。 */
     public function append(string $key, string $bytes): void
     {
@@ -102,6 +108,7 @@ final class UploadStorage
             }
         });
     }
+
     /** @internal 同步临时文件再改名为持久内容，成功后返回原存储键。 */
     public function commit(string $key): string
     {
@@ -123,6 +130,7 @@ final class UploadStorage
         });
         return $key;
     }
+
     /** @internal 删除该键的待保存内容；不删除已保存文件，也不等待配额锁。 */
     public function discard(string $key): void
     {
@@ -132,9 +140,10 @@ final class UploadStorage
             throw new HttpError(507, 'upload_cleanup_failed');
         }
     }
+
     /**
      * 打开已保存文件供读取，返回流由调用者关闭。
-     * @throws HttpError 存储键非法或文件缺失。
+     * @throws HttpError 存储键非法或文件缺失
      */
     public function open(string $key): StreamInterface
     {
@@ -144,6 +153,7 @@ final class UploadStorage
         }
         return (new Message\Factory())->createStreamFromFile($file);
     }
+
     /** 由业务所有者在配额锁内删除已保存文件；不存在时保持幂等。 */
     public function remove(string $key): void
     {
@@ -154,6 +164,7 @@ final class UploadStorage
             }
         });
     }
+
     /**
      * 在同一配额锁内读取文件及字节使用情况，包含待保存上传。
      * @return array{files: int, bytes: int, pending: int}
@@ -165,6 +176,7 @@ final class UploadStorage
             return ['files' => $count, 'bytes' => $bytes, 'pending' => $pending];
         });
     }
+
     private function path(string $key, bool $saved): string
     {
         if (!preg_match('/^[a-f0-9]{32}$/D', $key)) {
@@ -175,6 +187,7 @@ final class UploadStorage
             throw new HttpError(400, 'invalid_storage_path');
         } return $file;
     }
+
     private function usage(): array
     {
         clearstatcache();
@@ -192,14 +205,15 @@ final class UploadStorage
             if ($size === false) {
                 continue;
             } // 另一个进程可以同时取消自己的未保存上传。
-            $count++;
+            ++$count;
             $bytes += $size;
             if (str_starts_with($file->getFilename(), 'pending-')) {
-                $pending++;
+                ++$pending;
             }
         }
         return [$count, $bytes, $pending];
     }
+
     private function locked(\Closure $operation): mixed
     {
         $path = $this->directory . '/.type-upload.lock';

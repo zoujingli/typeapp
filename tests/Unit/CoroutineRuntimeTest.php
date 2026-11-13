@@ -12,7 +12,11 @@ use Swoole\Event;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\TaskException;
 
-/** 隔离进程级协程选项，通过公开入口观察根任务是否执行及失败后能否继续使用。 */
+/**
+ * 隔离进程级协程选项，通过公开入口观察根任务是否执行及失败后能否继续使用。
+ * @internal
+ * @coversNothing
+ */
 #[RunTestsInSeparateProcesses]
 #[PreserveGlobalState(false)]
 final class CoroutineRuntimeTest extends TestCase

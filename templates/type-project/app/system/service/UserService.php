@@ -19,9 +19,9 @@ final class UserService
     /**
      * 先按白名单选择排序，再由分页补真实主键保证稳定收尾；不提前固定 id 抹掉用户排序。
      *
-     * @param array{name?: string, age?: int, sort?: string, direction?: string} $filters 已校验输入；客户端名称必须映射到下方受信字段。
+     * @param array{name?: string, age?: int, sort?: string, direction?: string} $filters 已校验输入；客户端名称必须映射到下方受信字段
      * @return array{data: list<array{id: int, name: string, age: int, email: ?string, version: int}>, total: int, page: int}
-     * @throws ModelException 行数据或模型水合类型不符合声明。
+     * @throws ModelException 行数据或模型水合类型不符合声明
      */
     public function page(int $number, array $filters = []): array
     {
@@ -46,7 +46,7 @@ final class UserService
      * 只返回可见用户，软删除的用户与不存在的用户使用同一失败语义。
      *
      * @return array{id: int, name: string, age: int, email: ?string, version: int}
-     * @throws ModelException 用户不存在或查询映射失败。
+     * @throws ModelException 用户不存在或查询映射失败
      */
     public function find(int $id): array
     {
@@ -56,9 +56,9 @@ final class UserService
     /**
      * 创建后从同一事务连接读回数据库生成值；提交结果由生成的方法体确认。
      *
-     * @param array{name: string, age: int, email?: ?string} $values 已通过输入校验的创建字段。
+     * @param array{name: string, age: int, email?: ?string} $values 已通过输入校验的创建字段
      * @return array{id: int, name: string, age: int, email: ?string, version: int}
-     * @throws ModelException 字段不符合模型规则或写后记录不可见。
+     * @throws ModelException 字段不符合模型规则或写后记录不可见
      */
     #[Transactional]
     public function create(array $values): array
@@ -72,9 +72,9 @@ final class UserService
     /**
      * 未提供字段保持原值，明确 null 写回空值；可选版本断言与模型乐观锁共同保护更新。
      *
-     * @param array{name?: string, age?: int, email?: ?string} $values 已校验且排除 version 的局部更新字段。
+     * @param array{name?: string, age?: int, email?: ?string} $values 已校验且排除 version 的局部更新字段
      * @return array{id: int, name: string, age: int, email: ?string, version: int}
-     * @throws ModelException 用户不存在、版本已过期或并发写入冲突。
+     * @throws ModelException 用户不存在、版本已过期或并发写入冲突
      */
     #[Transactional]
     public function update(int $id, array $values, ?int $version = null): array
@@ -92,7 +92,7 @@ final class UserService
     /**
      * 使用模型软删除而非物理删除；事务提交成功后才向调用方返回。
      *
-     * @throws ModelException 用户不存在或并发乐观锁冲突。
+     * @throws ModelException 用户不存在或并发乐观锁冲突
      */
     #[Transactional]
     public function delete(int $id): bool

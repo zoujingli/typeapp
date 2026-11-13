@@ -5,24 +5,26 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require $argv[1] ?? dirname(__DIR__) . '/vendor/autoload.php';
 
+use Type\Queue\JobContext;
 use Type\Queue\Queue;
 use Type\Queue\Registry;
 use Type\Queue\Worker;
-use Type\Queue\JobContext;
 use Type\Redis\Purpose;
 use Type\Redis\RedisConfiguration;
 use Type\Redis\RedisManager;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use Type\Scheduler\RedisStateStore;
 use TypeApp\QueueExample\Increment;
+use TypeApp\QueueExample\Resource;
 
 require ($argv[3] ?? '') === '--native' ? dirname(__DIR__) . '/examples/queue/Increment.php' : dirname($argv[2]) . '/app/Increment.php';
 
 $command = ($argv[3] ?? '') === '--native' ? nativeCommand($argv[2]) : [PHP_BINARY, $argv[2]];
-\Type\Runtime\CoroutineRuntime::run(static function () use ($command): void {
+CoroutineRuntime::run(static function () use ($command): void {
     $manager = new RedisManager(['default' => new RedisConfiguration(
         getenv('TYPE_REDIS_HOST') ?: '127.0.0.1',
-        (int) (getenv('TYPE_REDIS_PORT') ?: 6379)
+        (int)(getenv('TYPE_REDIS_PORT') ?: 6379)
     )]);
     $scope = new ExecutionScope();
     $commandConnection = $manager->connection($scope);
@@ -123,7 +125,7 @@ $command = ($argv[3] ?? '') === '--native' ? nativeCommand($argv[2]) : [PHP_BINA
         expect(count($newDefinition) === 1 && $newDefinition[0]['occurrence_id'] !== $completed[0]['occurrence_id'], '真正新任务定义没有得到新身份');
         $registry = new Registry();
         $registry->register('scheduled-report', 1, static function (JobContext $context) use ($application): Increment {
-            $resource = new \TypeApp\QueueExample\Resource();
+            $resource = new TypeApp\QueueExample\Resource();
             $context->scope()->open($resource);
             return new Increment($application . ':worker', $resource);
         });
@@ -163,7 +165,7 @@ $command = ($argv[3] ?? '') === '--native' ? nativeCommand($argv[2]) : [PHP_BINA
         [$status, $stdout, $stderr] = execute([...$command, 'once']);
         $takeover = json_decode($stdout, true, 512, JSON_THROW_ON_ERROR);
         expect($status === 70 && $stderr === '' && array_column($takeover, 'state') === ['interrupted', 'succeeded'], '接管没有记录中断并执行下一时刻');
-        expect((int) $takeover[1]['lease_generation'] > (int) $takeover[0]['lease_generation'], '跨进程接管没有增加租约代次');
+        expect((int)$takeover[1]['lease_generation'] > (int)$takeover[0]['lease_generation'], '跨进程接管没有增加租约代次');
         expect(proc_terminate($children[1][0], SIGCONT), '无法恢复旧调度进程');
         $paused = $children[1];
         unset($children[1]);

@@ -1,6 +1,8 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ModelCompiler;
+use TypeApp\ModelExample\Drivers;
 
 require __DIR__ . '/support.php';
 require __DIR__ . '/http-support.php';
@@ -11,7 +13,7 @@ $root = dirname(__DIR__);
 $driverName = $argv[2] ?? 'sqlite';
 expect(in_array($driverName, ['mysql', 'sqlite'], true), 'HTTP 模型验证请选择 MySQL 或 SQLite');
 $configuration = json_decode(file_get_contents($root . '/docs/build-config/type-model-http.json'), true, 512, JSON_THROW_ON_ERROR);
-$compiler = new Type\Build\ModelCompiler();
+$compiler = new ModelCompiler();
 $generatedFile = tempnam(sys_get_temp_dir(), 'type_http_models_');
 $sqliteFile = tempnam(sys_get_temp_dir(), 'type_model_db_');
 $log = tmpfile();
@@ -26,7 +28,7 @@ $previousDatabase = getenv('TYPE_MYSQL_DATABASE');
 $previousSqlite = getenv('TYPE_SQLITE_FILE');
 try {
     if ($driverName === 'mysql') {
-        $admin = TypeApp\ModelExample\Drivers::create('mysql')->connect();
+        $admin = Drivers::create('mysql')->connect();
         // 独立随机数据库只由本次测试创建，退出时只清理自己的实例。
         $admin->exec('CREATE DATABASE `' . $testDatabase . '`');
         $createdDatabase = true;
@@ -34,7 +36,7 @@ try {
     } else {
         putenv('TYPE_SQLITE_FILE=' . $sqliteFile);
     }
-    $pdo = TypeApp\ModelExample\Drivers::create($driverName)->connect();
+    $pdo = Drivers::create($driverName)->connect();
     $pdo->exec('CREATE TABLE type_model_users (id ' . ($driverName === 'mysql' ? 'BIGINT PRIMARY KEY AUTO_INCREMENT' : 'INTEGER PRIMARY KEY AUTOINCREMENT')
         . ', display_name VARCHAR(255) NOT NULL, age INTEGER NOT NULL, active BOOLEAN NOT NULL, secret VARCHAR(255) NOT NULL, note VARCHAR(255) NULL)');
     $pdo->exec('CREATE TABLE type_model_articles (id INTEGER PRIMARY KEY, user_id INTEGER NULL, title VARCHAR(255) NOT NULL)');
@@ -54,11 +56,11 @@ try {
     $pdo = null;
     $address = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($address), '无法分配模型请求端口');
-    $port = (int) substr(strrchr(stream_socket_get_name($address, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($address, false), ':'), 1);
     fclose($address);
     $environment = getenv();
     $environment['TYPE_MODEL_DRIVER'] = $driverName;
-    $environment['TYPE_HTTP_PORT'] = (string) $port;
+    $environment['TYPE_HTTP_PORT'] = (string)$port;
     if (($argv[1] ?? '--php') === '--php') {
         $launcher = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; require ' . var_export($generatedFile, true)
             . '; require ' . var_export($root . '/examples/model/Drivers.php', true)
@@ -122,7 +124,7 @@ try {
     [$status, $body] = httpRequest($port, 'POST', '/transaction-check');
     expect($status === 200 && json_decode($body, true) === ['inner_rollback' => true, 'outer_rollback' => true,
         'partial_fields' => true, 'models_invalidated' => true], 'HTTP 事务回滚与模型失效失败：' . $body);
-    $fixture = TypeApp\ModelExample\Drivers::create($driverName)->connect();
+    $fixture = Drivers::create($driverName)->connect();
     $statement = $fixture->prepare('INSERT INTO type_model_articles (id, user_id, title) VALUES (?, ?, ?)');
     $statement->execute([10, $id, '第一篇文章']);
     $statement->execute([11, $id, '第二篇文章']);

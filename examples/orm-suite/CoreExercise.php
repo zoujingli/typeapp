@@ -4,24 +4,23 @@ declare(strict_types=1);
 
 namespace TypeApp\OrmSuite;
 
-use Closure;
-use RuntimeException;
-use Throwable;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 use Type\Orm\Connection;
+use Type\Orm\ConstraintException;
 use Type\Orm\Database;
+use Type\Orm\DatabaseException;
 use Type\Orm\DatabaseManager;
-use Type\Orm\Driver;
 use Type\Orm\Db;
+use Type\Orm\Driver;
 use Type\Orm\ModelConditions;
 use Type\Orm\ModelException;
 use Type\Orm\ModelQuery;
 use Type\Orm\Query;
 use Type\Orm\QueryEvent;
 use Type\Orm\TransactionOutcome;
-use Type\Runtime\ExecutionScope;
 use Type\Runtime\Deadline;
+use Type\Runtime\ExecutionScope;
 use Type\Runtime\ManagedTask;
 use Type\Runtime\TaskException;
 
@@ -57,7 +56,7 @@ final class CoreExercise
             $failed = false;
             try {
                 $write([['id' => 10, 'code' => 'new-before-overflow', 'title' => '应回滚'], ['id' => 11, 'code' => 'alpha', 'title' => '溢出']]);
-            } catch (\Type\Orm\DatabaseException $error) {
+            } catch (DatabaseException $error) {
                 $failed = true;
             }
             self::check($failed && UpsertRecord::find(10) === null && UpsertRecord::find(1)->getVersion() === PHP_INT_MAX, '冲突版本耗尽留下部分写入');
@@ -110,8 +109,8 @@ final class CoreExercise
         self::check(self::reject(static fn (): User => User::firstOrCreate(['name' => '没有唯一索引']), 'unsafe_unique_identity'), '未声明真实唯一索引仍获取或创建');
         try {
             Details::firstOrCreate(['user_id' => 2147483647], ['bio' => '不存在父模型']);
-            throw new RuntimeException('外键失败被吞掉');
-        } catch (\Type\Orm\ConstraintException $error) {
+            throw new \RuntimeException('外键失败被吞掉');
+        } catch (ConstraintException $error) {
             self::check($error->kind() === 'foreign_key', '真实外键错误分类不正确');
         }
         $connection->execute('CREATE TABLE type_suite_unique_records (id INTEGER PRIMARY KEY, tenant_id VARCHAR(30) NOT NULL, code VARCHAR(50) NOT NULL, alias VARCHAR(50) NOT NULL, optional_code VARCHAR(50) NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, deleted_at VARCHAR(30) NULL, version BIGINT NOT NULL, UNIQUE (tenant_id, code), UNIQUE (tenant_id, alias), UNIQUE (tenant_id, optional_code))');
@@ -125,8 +124,8 @@ final class CoreExercise
                 Tag::create(['label' => '外层写入']);
                 try {
                     UniqueRecord::firstOrCreate(['code' => 'beta'], ['id' => 2, 'alias' => 'first', 'optional_code' => null]);
-                    throw new RuntimeException('吞掉其他唯一约束');
-                } catch (\Type\Orm\ConstraintException $error) {
+                    throw new \RuntimeException('吞掉其他唯一约束');
+                } catch (ConstraintException $error) {
                     self::check($error->kind() === 'unique', '真实唯一错误分类错误');
                 }
                 self::check(Tag::query()->where('label', '=', '外层写入')->exists(), '唯一错误破坏外层保存点');
@@ -139,7 +138,7 @@ final class CoreExercise
         $ready = new Channel(2);
         $release = new Channel(2);
         $tasks = [];
-        for ($index = 0; $index < 2; $index++) {
+        for ($index = 0; $index < 2; ++$index) {
             $tasks[] = ExecutionScope::current()->spawn(static function (ExecutionScope $child) use ($ready, $release): int {
                 $connection = Db::connection('default', true);
                 $paused = false;
@@ -167,67 +166,6 @@ final class CoreExercise
         Tag::query()->where('label', '=', '并发唯一创建')->delete();
         self::uniqueMetadata();
         self::uniqueSnapshot();
-    }
-
-    private static function uniqueMetadata(): void
-    {
-        $connection = Db::connection('default', true);
-        $connection->execute('CREATE TABLE type_suite_unsafe_unique (id INTEGER PRIMARY KEY, code VARCHAR(50) NULL UNIQUE)');
-        self::check(self::reject(static fn (): UnsafeUniqueRecord => UnsafeUniqueRecord::firstOrCreate(['code' => 'nullable'], ['id' => 1]), 'unsafe_unique_identity'), '模型非空声明掩盖实际可空唯一列');
-        $connection->execute('DROP TABLE type_suite_unsafe_unique');
-        $connection->execute('CREATE TABLE type_suite_unsafe_unique (id INTEGER PRIMARY KEY, code VARCHAR(50) NOT NULL)');
-        if ($connection->driverName() === 'mysql') {
-            $connection->execute('CREATE UNIQUE INDEX type_suite_unsafe_prefix ON type_suite_unsafe_unique (code(3))');
-        } else {
-            $connection->execute('CREATE UNIQUE INDEX type_suite_unsafe_partial ON type_suite_unsafe_unique (code) WHERE id > 1');
-            $connection->execute('CREATE UNIQUE INDEX type_suite_unsafe_expression ON type_suite_unsafe_unique (lower(code))');
-        }
-        self::check(self::reject(static fn (): UnsafeUniqueRecord => UnsafeUniqueRecord::firstOrCreate(['code' => 'unsafe'], ['id' => 2]), 'unsafe_unique_identity'), '部分、表达式或前缀索引冒充完整唯一身份');
-    }
-
-    /** 在真实可重复读快照中保留外层写入，明确报告不可见获胜者，不重跑事务体。 */
-    private static function uniqueSnapshot(): void
-    {
-        $connection = Db::connection('default', true);
-        $driver = $connection->driverName();
-        if ($driver === 'sqlite') {
-            return;
-        }
-        $original = $driver === 'mysql' ? $connection->query('SELECT @@SESSION.transaction_isolation AS level')[0]['level']
-            : $connection->query('SHOW default_transaction_isolation')[0]['default_transaction_isolation'];
-        $original = strtoupper(str_replace('-', ' ', $original));
-        self::check(in_array($original, ['READ COMMITTED', 'REPEATABLE READ', 'SERIALIZABLE', 'READ UNCOMMITTED'], true), '未知隔离级别');
-        $prefix = $driver === 'mysql' ? 'SET SESSION TRANSACTION ISOLATION LEVEL ' : 'SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL ';
-        $connection->execute($prefix . 'REPEATABLE READ');
-        $start = new Channel(1);
-        $done = new Channel(1);
-        $task = ExecutionScope::current()->spawn(static function (ExecutionScope $child) use ($start, $done): int {
-            self::check($start->pop(5) === true, '快照竞争未收到开始信号');
-            $model = Tag::create(['label' => '快照获胜者']);
-            $done->push(true);
-            return $model->getId();
-        });
-        $paused = false;
-        $listener = $connection->listen(ExecutionScope::current(), static function (QueryEvent $event) use (&$paused, $start, $done): void {
-            $data = $event->toArray();
-            if (!$paused && $data['phase'] === 'statement' && str_starts_with($data['sql'], 'SELECT ')
-                && in_array('快照获胜者', $data['parameters'], true)) {
-                $paused = true;
-                $start->push(true);
-                self::check($done->pop(5) === true, '快照竞争获胜者没有提交');
-            }
-        }, 50, 65536, true);
-        try {
-            $connection->transaction(static function (Connection $transaction): void {
-                self::check(self::reject(static fn (): Tag => Tag::firstOrCreate(['label' => '快照获胜者']), 'unique_conflict_not_visible'), '过时快照误报获胜模型或重试外层');
-                Tag::create(['label' => '快照外层保留']);
-            });
-            self::check($task->await(10) > 0 && Tag::query()->where('label', '=', '快照外层保留')->exists(), '竞争恢复破坏外层事务');
-        } finally {
-            $listener->stop();
-            $connection->execute($prefix . $original);
-        }
-        Tag::query()->whereIn('label', ['快照获胜者', '快照外层保留'])->delete();
     }
 
     /** 公开父模型句柄的读写分离、作用域、租户绑定、回滚失效与前置拒绝。 */
@@ -269,9 +207,9 @@ final class CoreExercise
         try {
             Db::transaction(static function () use ($rollback): void {
                 $rollback->sync([]);
-                throw new RuntimeException('relation_handle_rollback');
+                throw new \RuntimeException('relation_handle_rollback');
             });
-        } catch (RuntimeException $error) {
+        } catch (\RuntimeException $error) {
             self::check($error->getMessage() === 'relation_handle_rollback', '关系回滚错误丢失');
         }
         self::check(self::reject(static fn (): array => $rollback->sync([]), 'model_invalid'), '旧句柄绕过回滚失效');
@@ -308,7 +246,7 @@ final class CoreExercise
                             $snapshot['request_id'] = 'child';
                             self::check($connection->transactionDepth() === 1, '子事务没有独立开始');
                             return ['tenant' => $child->binding('tenant_id'), 'context' => $snapshot,
-                                'value' => (int) $connection->query('SELECT 7 AS value')[0]['value']];
+                                'value' => (int)$connection->query('SELECT 7 AS value')[0]['value']];
                         });
                     }, ['tenant_id' => 'tenant-a']);
                     self::check($ready->pop(1) === true, '子任务没有建立独立连接');
@@ -317,9 +255,9 @@ final class CoreExercise
                             self::check($nested->binding('tenant_id') === 'tenant-b', '重入没有临时覆盖绑定');
                             $resume->push(true);
                             self::check($task->await(1) === ['tenant' => 'tenant-a', 'context' => ['request_id' => 'child'], 'value' => 7], '父子可信值快照相互污染');
-                            throw new RuntimeException('scope_restore_probe');
+                            throw new \RuntimeException('scope_restore_probe');
                         }, ['tenant_id' => 'tenant-b']);
-                    } catch (RuntimeException $error) {
+                    } catch (\RuntimeException $error) {
                         self::check($error->getMessage() === 'scope_restore_probe', '子任务或重入失败');
                     }
                     self::check($current->binding('tenant_id') === 'tenant-a' && $current->context()['request_id'] === 'parent', '异常没有恢复绑定或父上下文');
@@ -374,7 +312,7 @@ final class CoreExercise
         try {
             $delayed = $waiting->spawn(static function (ExecutionScope $child) use ($database, $entered): void {
                 $connection = $database->connect($child);
-                self::check((int) $connection->query('SELECT 1 AS value')[0]['value'] === 1, '迟到收尾场景未建立真实数据库租约');
+                self::check((int)$connection->query('SELECT 1 AS value')[0]['value'] === 1, '迟到收尾场景未建立真实数据库租约');
                 $entered->push(true);
                 Coroutine::sleep(0.08);
             });
@@ -388,48 +326,6 @@ final class CoreExercise
         }
         self::databaseWait($driver);
         return ['binding-restore', 'snapshot', 'child-transaction', 'connection-owner', 'closed-connection', 'parent-cancel', 'parent-close', 'deadline', 'late-release', 'database-io-wait'];
-    }
-
-    /** 真实写锁等待期间让出协程；停止等待不能提前归还仍在执行 SQL 的连接。 */
-    private static function databaseWait(Driver $driver): void
-    {
-        $controller = new Database($driver, 1, 0);
-        $worker = new Database($driver, 1, 0);
-        $scope = new ExecutionScope();
-        $waiting = new ExecutionScope();
-        $entered = new Channel(1);
-        $connection = $controller->connect($scope);
-        try {
-            $connection->execute('CREATE TABLE type_scope_io_lock (id INTEGER PRIMARY KEY, value INTEGER NOT NULL)');
-            $connection->execute('INSERT INTO type_scope_io_lock (id, value) VALUES (1, 0)');
-            $task = $connection->transaction(static function (Connection $locked) use ($worker, $waiting, $entered): ManagedTask {
-                $locked->execute('UPDATE type_scope_io_lock SET value = 1 WHERE id = 1');
-                $task = $waiting->spawn(static function (ExecutionScope $child) use ($worker, $entered): int {
-                    $contender = $worker->connect($child);
-                    // 先完成连接初始化，观察的在途操作只包含等待行锁的 UPDATE。
-                    $contender->query('SELECT 1');
-                    $entered->push(true);
-                    return $contender->execute('UPDATE type_scope_io_lock SET value = value + 1 WHERE id = 1');
-                });
-                self::check($entered->pop(2) === true, '数据库等待任务没有开始');
-                self::check(self::reject(static fn (): mixed => $task->await(0.01), 'task_timeout'), '真实数据库锁等待没有让出协程');
-                $statistics = $worker->statistics();
-                self::check(!$task->finished() && $statistics['leased'] === 1 && $statistics['in_flight'] === 1, '真实数据库操作完成前丢失租约或在途预算');
-                return $task;
-            });
-            self::check($task->join(new Deadline(2)) && self::reject(static fn (): mixed => $task->await(0.1), 'cancelled'), '释放数据库锁后操作没有按取消状态收尾');
-            self::check($worker->statistics()['leased'] === 0 && $worker->statistics()['in_flight'] === 0, '数据库操作收尾后仍占用租约');
-            self::check((int) $connection->query('SELECT value FROM type_scope_io_lock WHERE id = 1')[0]['value'] === 2, '数据库等待后发生丢失或重复写入');
-        } finally {
-            $waiting->close();
-            try {
-                $connection->execute('DROP TABLE IF EXISTS type_scope_io_lock');
-            } finally {
-                $scope->close();
-                $worker->close();
-                $controller->close();
-            }
-        }
     }
 
     /** 同一消费程序验证租户 CRUD、全局父模型关系、部分投影及异常边界。 */
@@ -520,7 +416,7 @@ final class CoreExercise
             $connection = $database->connect($scope);
             if ($name === 'pgsql') {
                 self::check(
-                    (int) $connection->query('SELECT count(*) AS active FROM pg_prepared_statements')[0]['active'] === 0,
+                    (int)$connection->query('SELECT count(*) AS active FROM pg_prepared_statements')[0]['active'] === 0,
                     '单次参数查询不应创建需要单独释放的服务端命名语句'
                 );
             }
@@ -531,16 +427,16 @@ final class CoreExercise
             }
             $connection->close();
             $identities = [];
-            for ($index = 0; $index < 4; $index++) {
+            for ($index = 0; $index < 4; ++$index) {
                 $connection = $database->connect($scope);
                 if ($name !== 'sqlite') {
                     $id = $connection->query($name === 'pgsql' ? 'SELECT pg_backend_pid() AS id' : 'SELECT CONNECTION_ID() AS id')[0]['id'];
-                    $identities[] = (string) $id;
+                    $identities[] = (string)$id;
                 }
                 $connection->table('type_session_probe')->insert(['id' => $index, 'value' => 1]);
                 self::check(
                     $connection->table('type_session_probe')->where('id', '=', $index)->increment('value') === 1
-                    && (int) $connection->table('type_session_probe')->where('id', '=', $index)->value('value') === 2,
+                    && (int)$connection->table('type_session_probe')->where('id', '=', $index)->value('value') === 2,
                     '连续租约的实际 CRUD 失败'
                 );
                 if ($name === 'pgsql') {
@@ -566,19 +462,19 @@ final class CoreExercise
                     $state = $connection->query("SELECT current_setting('TimeZone') AS zone, current_setting('DateStyle') AS style, current_schema() AS schema, current_setting('application_name') AS application, (SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()) AS locks, to_regclass('pg_temp.type_session_temp') AS temporary")[0];
                     self::check(
                         $state['zone'] === 'UTC' && $state['style'] === 'ISO, YMD' && $state['schema'] !== 'pg_catalog'
-                        && $state['application'] !== 'session-contaminated' && (int) $state['locks'] === 0 && $state['temporary'] === null,
+                        && $state['application'] !== 'session-contaminated' && (int)$state['locks'] === 0 && $state['temporary'] === null,
                         'PostgreSQL 重置没有清除字符串 SQL 或触发器副作用'
                     );
                 } elseif ($name === 'mysql') {
                     $state = $connection->query("SELECT @@time_zone AS zone, @type_session_secret AS secret, IS_FREE_LOCK('type_session_probe_lock') AS first_lock, IS_FREE_LOCK('type_session_raw_lock') AS second_lock")[0];
                     self::check(
-                        $state['zone'] === '+00:00' && $state['secret'] === null && (int) $state['first_lock'] === 1 && (int) $state['second_lock'] === 1,
+                        $state['zone'] === '+00:00' && $state['secret'] === null && (int)$state['first_lock'] === 1 && (int)$state['second_lock'] === 1,
                         'MySQL 未退役带变量或命名锁的会话'
                     );
                 } else {
-                    self::check((int) $connection->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1
-                        && (int) $connection->query('PRAGMA busy_timeout')[0]['timeout'] === $driver->identity()['session']['busy-milliseconds']
-                        && (int) $connection->query('PRAGMA query_only')[0]['query_only'] === 0
+                    self::check((int)$connection->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1
+                        && (int)$connection->query('PRAGMA busy_timeout')[0]['timeout'] === $driver->identity()['session']['busy-milliseconds']
+                        && (int)$connection->query('PRAGMA query_only')[0]['query_only'] === 0
                         && $connection->query("SELECT name FROM sqlite_temp_master WHERE name = 'type_session_temp'") === [], 'SQLite 会话状态泄漏');
                 }
                 $connection->table('type_session_probe')->where('id', '=', $index)->delete();
@@ -594,7 +490,7 @@ final class CoreExercise
                 $control = $driver->connect();
                 try {
                     $connection = $database->connect($scope);
-                    $terminated = (int) $connection->query($name === 'pgsql' ? 'SELECT pg_backend_pid() AS id' : 'SELECT CONNECTION_ID() AS id')[0]['id'];
+                    $terminated = (int)$connection->query($name === 'pgsql' ? 'SELECT pg_backend_pid() AS id' : 'SELECT CONNECTION_ID() AS id')[0]['id'];
                     if ($name === 'pgsql') {
                         $control->exec('SELECT pg_terminate_backend(' . $terminated . ', 1000)');
                     } else {
@@ -608,7 +504,7 @@ final class CoreExercise
                         $checks[] = 'reset-failure-retirement';
                     }
                     $connection = $database->connect($scope);
-                    $replacement = (int) $connection->query($name === 'pgsql' ? 'SELECT pg_backend_pid() AS id' : 'SELECT CONNECTION_ID() AS id')[0]['id'];
+                    $replacement = (int)$connection->query($name === 'pgsql' ? 'SELECT pg_backend_pid() AS id' : 'SELECT CONNECTION_ID() AS id')[0]['id'];
                     self::check($replacement !== $terminated, '断连后借出了相同物理会话');
                     $connection->close();
                     if ($name === 'pgsql') {
@@ -619,7 +515,7 @@ final class CoreExercise
                         self::check($database->statistics()['created'] === 0, '失效空闲连接未在失败后回收');
                     }
                     $connection = $database->connect($scope);
-                    self::check((int) $connection->query('SELECT 7 AS value')[0]['value'] === 7, '断连回收后无法建立新会话');
+                    self::check((int)$connection->query('SELECT 7 AS value')[0]['value'] === 7, '断连回收后无法建立新会话');
                     $connection->close();
                     $checks[] = 'disconnect-retirement';
                 } finally {
@@ -632,8 +528,8 @@ final class CoreExercise
                 $manager->rotate('default', DriverFactory::create('writer', 2));
                 $next = $manager->connect($scope);
                 self::check($old->identity()['credential-generation'] === 1 && $next->identity()['credential-generation'] === 2
-                    && (int) $old->query('SELECT 1 AS value')[0]['value'] === 1
-                    && (int) $next->query('SELECT 2 AS value')[0]['value'] === 2, '轮换没有保持旧租约并启用新代次');
+                    && (int)$old->query('SELECT 1 AS value')[0]['value'] === 1
+                    && (int)$next->query('SELECT 2 AS value')[0]['value'] === 2, '轮换没有保持旧租约并启用新代次');
                 self::check(self::reject(static function () use ($manager): void {
                     $manager->rotate('default', DriverFactory::create('writer', 2));
                 }), '轮换允许重用凭据代次');
@@ -725,7 +621,7 @@ final class CoreExercise
         $counted = $users->whereHas('articles.tags', static fn (ModelQuery $query): ModelQuery => $query->where('label', '=', '框架'))
             ->withCount('articles')->withCount('articles.tags')->withSum('articles', 'views')->findOrFail($userId);
         self::check($counted->computed('articles_count') === 3 && $counted->computed('articles_tags_count') === 2
-            && (int) $counted->computed('articles_views_sum') === 10 && !$counted->relationLoaded('articles'), '数据库端关系过滤或统计错误');
+            && (int)$counted->computed('articles_views_sum') === 10 && !$counted->relationLoaded('articles'), '数据库端关系过滤或统计错误');
         self::check($counted->dirty() === [] && !array_key_exists('articles_count', $counted->toArray())
             && $counted->project(['name'], [], ['articles_count'])['articles_count'] === 3, '计算值污染持久化或隐式输出');
         self::check(self::reject(static fn () => $counted->set('articles_count', 8), 'unknown_field'), '计算值允许作为字段保存');
@@ -788,11 +684,114 @@ final class CoreExercise
         try {
             $connection->transaction(static function (Connection $transaction) use ($articleId, &$rollback): void {
                 $rollback = Article::query()->findOrFail($articleId);
-                throw new RuntimeException('rollback');
+                throw new \RuntimeException('rollback');
             });
-        } catch (RuntimeException) {
+        } catch (\RuntimeException) {
         }
         self::check(self::reject(static fn () => $rollback->title, 'model_invalid'), '属性读取绕过回滚失效');
+    }
+
+    private static function uniqueMetadata(): void
+    {
+        $connection = Db::connection('default', true);
+        $connection->execute('CREATE TABLE type_suite_unsafe_unique (id INTEGER PRIMARY KEY, code VARCHAR(50) NULL UNIQUE)');
+        self::check(self::reject(static fn (): UnsafeUniqueRecord => UnsafeUniqueRecord::firstOrCreate(['code' => 'nullable'], ['id' => 1]), 'unsafe_unique_identity'), '模型非空声明掩盖实际可空唯一列');
+        $connection->execute('DROP TABLE type_suite_unsafe_unique');
+        $connection->execute('CREATE TABLE type_suite_unsafe_unique (id INTEGER PRIMARY KEY, code VARCHAR(50) NOT NULL)');
+        if ($connection->driverName() === 'mysql') {
+            $connection->execute('CREATE UNIQUE INDEX type_suite_unsafe_prefix ON type_suite_unsafe_unique (code(3))');
+        } else {
+            $connection->execute('CREATE UNIQUE INDEX type_suite_unsafe_partial ON type_suite_unsafe_unique (code) WHERE id > 1');
+            $connection->execute('CREATE UNIQUE INDEX type_suite_unsafe_expression ON type_suite_unsafe_unique (lower(code))');
+        }
+        self::check(self::reject(static fn (): UnsafeUniqueRecord => UnsafeUniqueRecord::firstOrCreate(['code' => 'unsafe'], ['id' => 2]), 'unsafe_unique_identity'), '部分、表达式或前缀索引冒充完整唯一身份');
+    }
+
+    /** 在真实可重复读快照中保留外层写入，明确报告不可见获胜者，不重跑事务体。 */
+    private static function uniqueSnapshot(): void
+    {
+        $connection = Db::connection('default', true);
+        $driver = $connection->driverName();
+        if ($driver === 'sqlite') {
+            return;
+        }
+        $original = $driver === 'mysql' ? $connection->query('SELECT @@SESSION.transaction_isolation AS level')[0]['level']
+            : $connection->query('SHOW default_transaction_isolation')[0]['default_transaction_isolation'];
+        $original = strtoupper(str_replace('-', ' ', $original));
+        self::check(in_array($original, ['READ COMMITTED', 'REPEATABLE READ', 'SERIALIZABLE', 'READ UNCOMMITTED'], true), '未知隔离级别');
+        $prefix = $driver === 'mysql' ? 'SET SESSION TRANSACTION ISOLATION LEVEL ' : 'SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL ';
+        $connection->execute($prefix . 'REPEATABLE READ');
+        $start = new Channel(1);
+        $done = new Channel(1);
+        $task = ExecutionScope::current()->spawn(static function (ExecutionScope $child) use ($start, $done): int {
+            self::check($start->pop(5) === true, '快照竞争未收到开始信号');
+            $model = Tag::create(['label' => '快照获胜者']);
+            $done->push(true);
+            return $model->getId();
+        });
+        $paused = false;
+        $listener = $connection->listen(ExecutionScope::current(), static function (QueryEvent $event) use (&$paused, $start, $done): void {
+            $data = $event->toArray();
+            if (!$paused && $data['phase'] === 'statement' && str_starts_with($data['sql'], 'SELECT ')
+                && in_array('快照获胜者', $data['parameters'], true)) {
+                $paused = true;
+                $start->push(true);
+                self::check($done->pop(5) === true, '快照竞争获胜者没有提交');
+            }
+        }, 50, 65536, true);
+        try {
+            $connection->transaction(static function (Connection $transaction): void {
+                self::check(self::reject(static fn (): Tag => Tag::firstOrCreate(['label' => '快照获胜者']), 'unique_conflict_not_visible'), '过时快照误报获胜模型或重试外层');
+                Tag::create(['label' => '快照外层保留']);
+            });
+            self::check($task->await(10) > 0 && Tag::query()->where('label', '=', '快照外层保留')->exists(), '竞争恢复破坏外层事务');
+        } finally {
+            $listener->stop();
+            $connection->execute($prefix . $original);
+        }
+        Tag::query()->whereIn('label', ['快照获胜者', '快照外层保留'])->delete();
+    }
+
+    /** 真实写锁等待期间让出协程；停止等待不能提前归还仍在执行 SQL 的连接。 */
+    private static function databaseWait(Driver $driver): void
+    {
+        $controller = new Database($driver, 1, 0);
+        $worker = new Database($driver, 1, 0);
+        $scope = new ExecutionScope();
+        $waiting = new ExecutionScope();
+        $entered = new Channel(1);
+        $connection = $controller->connect($scope);
+        try {
+            $connection->execute('CREATE TABLE type_scope_io_lock (id INTEGER PRIMARY KEY, value INTEGER NOT NULL)');
+            $connection->execute('INSERT INTO type_scope_io_lock (id, value) VALUES (1, 0)');
+            $task = $connection->transaction(static function (Connection $locked) use ($worker, $waiting, $entered): ManagedTask {
+                $locked->execute('UPDATE type_scope_io_lock SET value = 1 WHERE id = 1');
+                $task = $waiting->spawn(static function (ExecutionScope $child) use ($worker, $entered): int {
+                    $contender = $worker->connect($child);
+                    // 先完成连接初始化，观察的在途操作只包含等待行锁的 UPDATE。
+                    $contender->query('SELECT 1');
+                    $entered->push(true);
+                    return $contender->execute('UPDATE type_scope_io_lock SET value = value + 1 WHERE id = 1');
+                });
+                self::check($entered->pop(2) === true, '数据库等待任务没有开始');
+                self::check(self::reject(static fn (): mixed => $task->await(0.01), 'task_timeout'), '真实数据库锁等待没有让出协程');
+                $statistics = $worker->statistics();
+                self::check(!$task->finished() && $statistics['leased'] === 1 && $statistics['in_flight'] === 1, '真实数据库操作完成前丢失租约或在途预算');
+                return $task;
+            });
+            self::check($task->join(new Deadline(2)) && self::reject(static fn (): mixed => $task->await(0.1), 'cancelled'), '释放数据库锁后操作没有按取消状态收尾');
+            self::check($worker->statistics()['leased'] === 0 && $worker->statistics()['in_flight'] === 0, '数据库操作收尾后仍占用租约');
+            self::check((int)$connection->query('SELECT value FROM type_scope_io_lock WHERE id = 1')[0]['value'] === 2, '数据库等待后发生丢失或重复写入');
+        } finally {
+            $waiting->close();
+            try {
+                $connection->execute('DROP TABLE IF EXISTS type_scope_io_lock');
+            } finally {
+                $scope->close();
+                $worker->close();
+                $controller->close();
+            }
+        }
     }
 
     private static function modifyTypedArray(User $user): void
@@ -838,7 +837,7 @@ final class CoreExercise
         $scalar = $outer->select(['u.id'])->selectSub($correlated->aggregateQuery('COUNT'), 'drafts')->where('u.id', '=', $userId);
         $before = $connection->statistics();
         self::check($scalar->bindings() === ['draft', $userId] && $connection->statistics() === $before, '标量子查询绑定顺序或预览副作用错误');
-        self::check((int) $scalar->first()['drafts'] === 1, '标量相关子查询执行错误');
+        self::check((int)$scalar->first()['drafts'] === 1, '标量相关子查询执行错误');
         $derived = Query::fromSub($posts->where('views', '>=', 0)->select(['id', 'user_id']), 'p')->where('p.id', '=', $articleId);
         self::check($derived->bindings() === [0, $articleId] && count($derived->get()) === 1, '派生表绑定顺序错误');
         $joined = $outer->joinSub($sub, 'p', 'u.id', '=', 'p.user_id')->select(['id' => 'u.id']);
@@ -860,7 +859,7 @@ final class CoreExercise
             ->unionAll($posts->where('id', '!=', $articleId)->select(['id']));
         self::check($uniqueUnion->uniqueOrderBy(['id'])->paginate(2, 1)->total() === 3, '合并查询总数错误');
         self::check(
-            count($uniqueUnion->pluck('id')) === 3 && (int) $uniqueUnion->orderBy('id')->value('id') === $articleId,
+            count($uniqueUnion->pluck('id')) === 3 && (int)$uniqueUnion->orderBy('id')->value('id') === $articleId,
             '合并查询值提取改变了分支投影'
         );
         $simple = Article::query()->simplePaginate(2, 2);
@@ -873,7 +872,7 @@ final class CoreExercise
         $scope = new ExecutionScope();
         $log = $connection->listen($scope, null, 5, 4096, false, 0.0);
         $throwing = $connection->listen($scope, static function (QueryEvent $event): void {
-            throw new RuntimeException('listener-secret');
+            throw new \RuntimeException('listener-secret');
         }, 5, 4096);
         try {
             $connection->query('SELECT ? AS secret', ['private-binding']);
@@ -889,7 +888,7 @@ final class CoreExercise
             $last = $log->records()[2];
             self::check($last['transaction_depth'] === 1 && $last['transaction_outcome'] === TransactionOutcome::ACTIVE, '事件没有携带真实事务状态');
             $connection->table('type_suite_articles')->where('id', '=', $articleId)->decrement('views');
-            for ($index = 0; $index < 10; $index++) {
+            for ($index = 0; $index < 10; ++$index) {
                 $connection->query('SELECT ? AS n', [$index]);
             }
             self::check(
@@ -916,7 +915,7 @@ final class CoreExercise
         self::check($log->statistics() === $before && !$before['active'], '作用域结束后仍然监听连接');
     }
 
-    private static function reject(Closure $operation, string $code = ''): bool
+    private static function reject(\Closure $operation, string $code = ''): bool
     {
         try {
             $operation();
@@ -924,7 +923,7 @@ final class CoreExercise
             return $code === '' || $error->errorCode() === $code;
         } catch (TaskException $error) {
             return $code === '' || $error->errorCode() === $code;
-        } catch (Throwable) {
+        } catch (\Throwable) {
             return $code === '';
         }
         return false;
@@ -933,7 +932,7 @@ final class CoreExercise
     private static function check(bool $condition, string $message): void
     {
         if (!$condition) {
-            throw new RuntimeException($message);
+            throw new \RuntimeException($message);
         }
     }
 }

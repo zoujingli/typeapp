@@ -11,7 +11,6 @@ use Type\Testing\Process;
  * MQTT over WS/WSS：真实握手选择 mqtt、二进制流、跨消息半包、同进程 TCP 跨传输，
  * 以及独立 MQTT.js 客户端。WebSocket PING 不得延长 MQTT Keep Alive。
  */
-
 function mqttWsField(string $value): string
 {
     return pack('n', strlen($value)) . $value;
@@ -56,7 +55,7 @@ function mqttWsPort(): int
 {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($listener), '无法分配临时端口');
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
     return $port;
 }
@@ -76,7 +75,7 @@ function mqttWsPhp(): array
 function mqttWsExtensionArgs(array $extensions, bool $forChild = false): array
 {
     $arguments = [];
-    $directory = (string) ini_get('extension_dir');
+    $directory = (string)ini_get('extension_dir');
     // 子进程继承 INI，但不继承父进程命令行的 -d 扩展配置。
     $loaded = $forChild
         ? json_decode(successful([PHP_BINARY, '-r', 'echo json_encode(get_loaded_extensions(), JSON_THROW_ON_ERROR);']), true, 32, JSON_THROW_ON_ERROR)
@@ -87,7 +86,7 @@ function mqttWsExtensionArgs(array $extensions, bool $forChild = false): array
         }
         $module = $directory . '/' . $extension . '.so';
         if ($extension === 'swoole') {
-            $module = (string) (getenv('TYPE_SWOOLE_MODULE') ?: $module);
+            $module = (string)(getenv('TYPE_SWOOLE_MODULE') ?: $module);
         }
         if (!is_file($module)) {
             continue;
@@ -116,7 +115,7 @@ function mqttWsFrame(string $payload, int $opcode, bool $fin = true): string
     }
     $mask = random_bytes(4);
     $masked = '';
-    for ($i = 0; $i < $length; $i++) {
+    for ($i = 0; $i < $length; ++$i) {
         $masked .= $payload[$i] ^ $mask[$i % 4];
     }
     return $header . $mask . $masked;
@@ -135,8 +134,8 @@ function mqttWsRead(mixed $socket): string
         expect($chunk !== false && $chunk !== '', 'WebSocket 帧头读取失败');
         $header .= $chunk;
     }
-    $opcode = ord($header[0]) & 0x0f;
-    $length = ord($header[1]) & 0x7f;
+    $opcode = ord($header[0]) & 0x0F;
+    $length = ord($header[1]) & 0x7F;
     $masked = (ord($header[1]) & 0x80) !== 0;
     if ($length === 126) {
         $extended = fread($socket, 2);
@@ -160,7 +159,7 @@ function mqttWsRead(mixed $socket): string
     }
     if ($masked) {
         $decoded = '';
-        for ($i = 0; $i < $length; $i++) {
+        for ($i = 0; $i < $length; ++$i) {
             $decoded .= $payload[$i] ^ $mask[$i % 4];
         }
         $payload = $decoded;
@@ -169,7 +168,7 @@ function mqttWsRead(mixed $socket): string
         $code = strlen($payload) >= 2 ? unpack('n', substr($payload, 0, 2))[1] : 0;
         throw new RuntimeException('WebSocket 已关闭：' . $code);
     }
-    if ($opcode === 0x9 || $opcode === 0xa) {
+    if ($opcode === 0x9 || $opcode === 0xA) {
         return mqttWsRead($socket);
     }
     return $payload;
@@ -275,7 +274,6 @@ function mqttTcpWrite(mixed $socket, string $bytes): void
     expect(fwrite($socket, $bytes) === strlen($bytes), 'MQTT TCP 写入失败');
 }
 
-/** @param array<string, string> $environment */
 function mqttWsWait(Process $process, int $port, ?string $certificate = null): void
 {
     $ready = false;
@@ -306,7 +304,7 @@ function mqttWsBroker(array $command, string $directory, array $environment, arr
 function mqttJsClient(array $command, string $directory): void
 {
     $last = '';
-    for ($attempt = 0; $attempt < 2; $attempt++) {
+    for ($attempt = 0; $attempt < 2; ++$attempt) {
         try {
             echo successful($command, $directory);
             return;
@@ -364,7 +362,7 @@ function mqttWsPhpxHome(string $consumer): string
     foreach (['phpx_exception_policy.h', 'phpx_cast_policy.h'] as $header) {
         expect(is_file($locked . '/' . $header) && copy($locked . '/' . $header, $home . '/include/' . $header), '无法覆盖 PHPX 策略头文件');
     }
-    $phpx = (string) file_get_contents($home . '/include/phpx.h');
+    $phpx = (string)file_get_contents($home . '/include/phpx.h');
     if (!str_contains($phpx, 'phpx_exception_policy.h')) {
         $needle = "#include \"phpx_native_gc.h\"\n";
         expect(str_contains($phpx, $needle), 'PHPX 头文件缺少 native_gc 插入点');
@@ -493,7 +491,7 @@ try {
                 fwrite($alive, mqttWsFrame('', 0x9));
                 try {
                     $message = mqttWsRead($alive);
-                    if ($message !== '' && ord($message[0]) === 0xe0 && isset($message[2]) && ord($message[2]) === 0x8d) {
+                    if ($message !== '' && ord($message[0]) === 0xE0 && isset($message[2]) && ord($message[2]) === 0x8D) {
                         $keepAliveExpired = true;
                         break;
                     }
@@ -539,7 +537,7 @@ try {
             fclose($wsSub);
             fclose($tcpPub);
 
-            mqttJsClient(['node', $root . '/tests/mqtt-websocket-client.mjs', $consumer, (string) $wsPort, 'ws'], $consumer);
+            mqttJsClient(['node', $root . '/tests/mqtt-websocket-client.mjs', $consumer, (string)$wsPort, 'ws'], $consumer);
 
             $verified['ws'] = ['subprotocol' => true, 'origin' => true, 'binary' => true, 'cross-tcp' => true, 'mqtt.js' => '3.1.1/5.0-qos0'];
             $result = $process->stop(5);
@@ -575,7 +573,7 @@ try {
             expect(str_contains($wssDelivered, 'wss'), 'WSS 发布没有到达 TLS 订阅者：' . bin2hex($wssDelivered));
             fclose($wss);
             fclose($tlsSub);
-            mqttJsClient(['node', $root . '/tests/mqtt-websocket-client.mjs', $consumer, (string) $wssPort, 'wss', $consumer . '/certificate.pem'], $consumer);
+            mqttJsClient(['node', $root . '/tests/mqtt-websocket-client.mjs', $consumer, (string)$wssPort, 'wss', $consumer . '/certificate.pem'], $consumer);
             $verified['wss'] = ['handshake' => true, 'cross-tls' => true, 'mqtt.js' => '3.1.1/5.0-qos0'];
             $tlsResult = $tlsProcess->stop(5);
             expect($tlsResult->successful() && $tlsResult->stderr === '', 'WSS Broker 停止失败：' . $tlsResult->stderr);
@@ -597,7 +595,7 @@ try {
         require_once $root . '/tests/native-database.php';
         require_once $root . '/tests/postgres-sync.php';
         ini_set('zend.exception_ignore_args', '1');
-        $tools = NativeDatabase::tools('pgsql', (string) (getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
+        $tools = NativeDatabase::tools('pgsql', (string)(getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
         $database = new NativeDatabase($consumer . '/primary', 'pgsql', $tools);
         $sync = null;
         $durableProcess = null;
@@ -622,7 +620,7 @@ try {
                 '--host=127.0.0.1', '--port=' . $durableTcp, '--plaintext', '--ws-port=' . $durableWs,
             ]);
             mqttWsWait($durableProcess, $durableTcp);
-            mqttJsClient(['node', $root . '/tests/mqtt-websocket-client.mjs', $consumer, (string) $durableWs, 'ws', 'qos12'], $consumer);
+            mqttJsClient(['node', $root . '/tests/mqtt-websocket-client.mjs', $consumer, (string)$durableWs, 'ws', 'qos12'], $consumer);
             $durableResult = $durableProcess->stop(8);
             expect($durableResult->successful() && $durableResult->stderr === '', '持久 WS Broker 停止失败：' . $durableResult->stderr);
             $verified['durable'] = ['mqtt.js' => '3.1.1-qos1/5.0-qos2', 'store' => true];
@@ -649,7 +647,7 @@ try {
         file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         copy($root . '/examples/mqtt/main.php', $consumer . '/app/main.php');
         copy($root . '/toolchain.lock.json', $consumer . '/toolchain.lock.json');
-        $module = (string) (getenv('TYPE_SWOOLE_MODULE') ?: ini_get('extension_dir') . '/swoole.so');
+        $module = (string)(getenv('TYPE_SWOOLE_MODULE') ?: ini_get('extension_dir') . '/swoole.so');
         expect(is_file($module), '原生 WebSocket 编译需要匹配 SDK 的 Swoole 模块');
         expect(copy($module, $consumer . '/swoole.so'), '无法固定 Swoole 运行模块');
         $hash = hash_file('sha256', $consumer . '/swoole.so');
@@ -714,8 +712,8 @@ try {
             $verified['native'] = [
                 'artifact' => $report['sha256'],
                 'platform' => PHP_OS_FAMILY,
-                'architecture' => (string) ($report['architecture'] ?? ''),
-                'php' => (string) ($report['php'] ?? ''),
+                'architecture' => (string)($report['architecture'] ?? ''),
+                'php' => (string)($report['php'] ?? ''),
             ];
         } finally {
             $nativeProcess->stop();

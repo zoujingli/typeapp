@@ -53,9 +53,9 @@ try {
     }
     $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $message);
     expect(is_resource($listener), '无法选择本轮TLS端口');
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
-    $server = new Process([$serverBinary, '--bind', '127.0.0.1', '::1', '--protected-mode', 'yes', '--port', '0', '--tls-port', (string) $port,
+    $server = new Process([$serverBinary, '--bind', '127.0.0.1', '::1', '--protected-mode', 'yes', '--port', '0', '--tls-port', (string)$port,
         '--tls-cert-file', $base . '/server.pem', '--tls-key-file', $base . '/server.key', '--tls-ca-cert-file', $base . '/ca.pem',
         '--tls-auth-clients', 'no', '--daemonize', 'no', '--dir', $base, '--pidfile', $base . '/redis.pid', '--save', '',
         '--appendonly', 'no', '--maxmemory', '16mb', '--maxmemory-policy', 'noeviction'], $base, $environment);
@@ -78,8 +78,8 @@ try {
                 $info = $client->info('server');
                 $directory = $client->config('GET', 'dir');
                 expect(
-                    $client->ping() === true && (int) $info['process_id'] === $server->pid()
-                    && realpath($directory['dir']) === $base && (int) trim(file_get_contents($base . '/redis.pid')) === $server->pid(),
+                    $client->ping() === true && (int)$info['process_id'] === $server->pid()
+                    && realpath($directory['dir']) === $base && (int)trim(file_get_contents($base . '/redis.pid')) === $server->pid(),
                     '错误主机名没有到达本轮相同Redis进程和数据根'
                 );
                 $report['server'] = ['pid' => $server->pid(), 'version' => $info['redis_version'], 'port' => $port,
@@ -97,7 +97,7 @@ try {
         }
     } while (!$ready && hrtime(true) < $until);
     expect($ready, 'Redis TLS没有在期限内就绪');
-    $environment = array_replace($environment, ['TYPE_TLS_PORT' => (string) $port, 'TYPE_TLS_HOST' => '127.0.0.1',
+    $environment = array_replace($environment, ['TYPE_TLS_PORT' => (string)$port, 'TYPE_TLS_HOST' => '127.0.0.1',
         'TYPE_TLS_WRONG_HOST' => 'localhost', 'TYPE_TLS_CA' => $base . '/ca.pem', 'TYPE_TLS_WRONG_CA' => $base . '/wrong-ca.pem']);
     // 协程中的 stream hook 与普通 PHP OpenSSL 分开验证，避免同步成功掩盖 IP SAN 回归。
     foreach (['php-coroutine' => '--php', 'php' => '--php', 'native' => $artifact] as $mode => $target) {

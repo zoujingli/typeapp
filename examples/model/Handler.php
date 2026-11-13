@@ -9,9 +9,8 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use RuntimeException;
-use Type\Orm\ModelException;
 use Type\Orm\Connection;
+use Type\Orm\ModelException;
 use Type\Orm\ModelQuery;
 use Type\Orm\Relation;
 use Type\Runtime\ExecutionScope;
@@ -24,6 +23,7 @@ use Type\Validate\ValidationException;
 final class Handler implements RequestHandlerInterface
 {
     private ResponseFactoryInterface $responses;
+
     private StreamFactoryInterface $streams;
 
     /** 注入 PSR 响应和流工厂，数据库由当前作用域解析。 */
@@ -38,7 +38,7 @@ final class Handler implements RequestHandlerInterface
     {
         $scope = $request->getAttribute('type.scope');
         if (!$scope instanceof ExecutionScope) {
-            throw new RuntimeException('用户请求缺少执行作用域');
+            throw new \RuntimeException('用户请求缺少执行作用域');
         }
         try {
             $method = $request->getMethod();
@@ -121,6 +121,6 @@ final class Handler implements RequestHandlerInterface
             $result = ['error' => $error->errorCode()];
         }
         return $this->responses->createResponse($status)->withHeader('Content-Type', 'application/json')
-            ->withBody($this->streams->createStream((string) json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
+            ->withBody($this->streams->createStream((string)json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
     }
 }

@@ -4,16 +4,15 @@ declare(strict_types=1);
 
 namespace Type\Cache;
 
-use DateInterval;
-use DateTimeImmutable;
 use Psr\SimpleCache\CacheInterface;
-use Throwable;
 
 /** 通过命名空间代次和签名载荷实现 PSR-16；Redis 故障不会自动降级成功。 */
 final class SimpleCache implements CacheInterface
 {
     private NamespaceStore $store;
+
     private SignedSerializer $serializer;
+
     private ?int $defaultTtl;
 
     /** 绑定命名空间与受信序列化策略；默认 TTL 单位秒，null 表示永久。 */
@@ -39,7 +38,7 @@ final class SimpleCache implements CacheInterface
     }
 
     /** 按 PSR-16 TTL 写入；null 沿用默认，非正 TTL 删除，代次变化可返回 false。 */
-    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
+    public function set(string $key, mixed $value, \DateInterval|int|null $ttl = null): bool
     {
         return $this->setMultiple([$key => $value], $ttl);
     }
@@ -50,6 +49,7 @@ final class SimpleCache implements CacheInterface
         $this->key($key);
         return $this->store->delete([$key]);
     }
+
     /** 切换命名空间代次使旧数据不可见；物理清理由 collect 或数据 TTL 完成。 */
     public function clear(): bool
     {
@@ -61,7 +61,7 @@ final class SimpleCache implements CacheInterface
      * 批量读取并按键返回业务值或默认值；使用同一次代次快照。
      *
      * @param iterable<string> $keys
-     * @return iterable<array-key, mixed> 整数字符串键遵循 PHP 数组键转换。
+     * @return iterable<array-key, mixed> 整数字符串键遵循 PHP 数组键转换
      */
     public function getMultiple(iterable $keys, mixed $default = null): iterable
     {
@@ -78,15 +78,15 @@ final class SimpleCache implements CacheInterface
     /**
      * 先校验与编码整个批次再写入当前代，最多 1000 项；TTL 单位遵循 PSR-16。
      *
-     * @param iterable<array-key, mixed> $values 整数键转换为对应字符串缓存键。
+     * @param iterable<array-key, mixed> $values 整数键转换为对应字符串缓存键
      */
-    public function setMultiple(iterable $values, null|int|DateInterval $ttl = null): bool
+    public function setMultiple(iterable $values, \DateInterval|int|null $ttl = null): bool
     {
         $keys = [];
         $items = [];
         foreach ($values as $key => $value) {
             if (is_int($key)) {
-                $key = (string) $key;
+                $key = (string)$key;
             }
             $this->key($key);
             $keys[] = $key;
@@ -116,6 +116,7 @@ final class SimpleCache implements CacheInterface
     {
         return $this->store->delete($this->keyList($keys));
     }
+
     /** 使用 1 至 1000 个索引或旧代标记的预算回收，返回实际移除的缓存键数。 */
     public function collect(int $limit = 100): int
     {
@@ -136,7 +137,7 @@ final class SimpleCache implements CacheInterface
         }
         try {
             return new CacheItem(true, $this->serializer->decode($payload, $this->store->identity(), $generation, $key));
-        } catch (Throwable) {
+        } catch (\Throwable) {
             return new CacheItem(false);
         }
     }
@@ -161,19 +162,19 @@ final class SimpleCache implements CacheInterface
         return $result;
     }
 
-    private function milliseconds(null|int|DateInterval $ttl): ?int
+    private function milliseconds(\DateInterval|int|null $ttl): ?int
     {
-        if ($ttl instanceof DateInterval) {
-            $now = new DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        if ($ttl instanceof \DateInterval) {
+            $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
             try {
-                $milliseconds = ceil(((float) $now->add($ttl)->format('U.u') - (float) $now->format('U.u')) * 1000);
-            } catch (Throwable $error) {
+                $milliseconds = ceil(((float)$now->add($ttl)->format('U.u') - (float)$now->format('U.u')) * 1000);
+            } catch (\Throwable $error) {
                 throw new InvalidCacheArgument('缓存 DateInterval 无效', 0, $error);
             }
             if (!is_finite($milliseconds) || $milliseconds > PHP_INT_MAX) {
                 throw new InvalidCacheArgument('缓存 TTL 超出原生整数范围');
             }
-            return $milliseconds <= 0 ? 0 : (int) $milliseconds;
+            return $milliseconds <= 0 ? 0 : (int)$milliseconds;
         }
         $ttl ??= $this->defaultTtl;
         if ($ttl === null) {

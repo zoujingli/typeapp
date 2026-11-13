@@ -5,23 +5,33 @@ declare(strict_types=1);
 namespace Type\Orm\Mysql;
 
 use PDO;
-use PDOException;
+use Pdo\Mysql;
 use Type\Orm\DatabaseException;
 use Type\Orm\Driver;
 use Type\Runtime\CoroutineRuntime;
+use Type\Runtime\TaskException;
 
 /** MySQL 驱动配置与会话初始化；连接生命周期交由 ORM 资源池管理。 */
 final class MysqlDriver implements Driver
 {
     private string $host;
+
     private int $port;
+
     private string $database;
+
     private string $username;
+
     private string $password;
+
     private int $generation;
+
     private string $role;
+
     private ?string $caFile;
+
     private string $caHash;
+
     private string $timeZone;
 
     /**
@@ -32,14 +42,15 @@ final class MysqlDriver implements Driver
      * timeZone 接受 SYSTEM 或 -13:59 至 +14:00 的 ±HH:MM 固定偏移，-00:00 规范化为 +00:00。
      * SYSTEM 使用数据库服务器系统时区；不依赖 PHP 时区或命名时区表。
      *
-     * @throws DatabaseException 地址、角色、代次、文件或时区配置无效。
+     * @throws DatabaseException 地址、角色、代次、文件或时区配置无效
      */
     public function __construct(
         string $host,
         int $port,
         string $database,
         string $username,
-        #[\SensitiveParameter] string $password,
+        #[\SensitiveParameter]
+        string $password,
         int $generation = 1,
         string $role = 'writer',
         ?string $caFile = null,
@@ -72,7 +83,7 @@ final class MysqlDriver implements Driver
     }
 
     /** @internal 标准 PDO MySQL 没有完整会话重置接口，归还时退役物理连接。 */
-    public function reset(PDO $pdo): bool
+    public function reset(\PDO $pdo): bool
     {
         return false;
     }
@@ -80,7 +91,7 @@ final class MysqlDriver implements Driver
     /**
      * 返回当前端点与会话策略身份，供池隔离及凭据代次核对。
      *
-     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码。
+     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码
      */
     public function identity(): array
     {
@@ -93,34 +104,34 @@ final class MysqlDriver implements Driver
     /**
      * 创建新 PDO 并确认驱动要求的会话基线；失败向上抛出，不回退到其他数据库。
      *
-     * @return PDO 由调用者或受管 PdoSession 拥有的真实连接。
-     * @throws DatabaseException 扩展、连接或会话初始化不满足约定。
-     * @throws \Type\Runtime\TaskException 协程连接缺少 mysqlnd 或启动期网络 hook。
+     * @return \PDO 由调用者或受管 PdoSession 拥有的真实连接
+     * @throws DatabaseException 扩展、连接或会话初始化不满足约定
+     * @throws TaskException 协程连接缺少 mysqlnd 或启动期网络 hook
      */
-    public function connect(): PDO
+    public function connect(): \PDO
     {
         if (!extension_loaded('pdo_mysql')) {
             throw new DatabaseException('缺少已选择的 pdo_mysql 扩展');
         }
         CoroutineRuntime::assertPdoHooks('mysql');
         try {
-            $options = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false,
-                PDO::ATTR_STRINGIFY_FETCHES => false, PDO::ATTR_TIMEOUT => 5];
+            $options = [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION, \PDO::ATTR_EMULATE_PREPARES => false,
+                \PDO::ATTR_STRINGIFY_FETCHES => false, \PDO::ATTR_TIMEOUT => 5];
             if ($this->caFile !== null) {
                 if (hash_file('sha256', $this->caFile) !== $this->caHash) {
                     throw new DatabaseException('MySQL TLS 配置已变化，需要新连接身份');
                 }
-                $options[\Pdo\Mysql::ATTR_SSL_CA] = $this->caFile;
-                $options[\Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = true;
+                $options[Mysql::ATTR_SSL_CA] = $this->caFile;
+                $options[Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = true;
             }
-            $pdo = new PDO(
+            $pdo = new \PDO(
                 'mysql:host=' . $this->host . ';port=' . $this->port . ';dbname=' . $this->database . ';charset=utf8mb4',
                 $this->username,
                 $this->password,
                 $options
             );
             if ($this->caFile !== null) {
-                $tls = $pdo->query("SHOW SESSION STATUS LIKE 'Ssl_cipher'")->fetch(PDO::FETCH_ASSOC);
+                $tls = $pdo->query("SHOW SESSION STATUS LIKE 'Ssl_cipher'")->fetch(\PDO::FETCH_ASSOC);
                 if (!is_array($tls) || ($tls['Value'] ?? '') === '') {
                     throw new DatabaseException('MySQL 未建立要求的 TLS 连接');
                 }
@@ -131,7 +142,7 @@ final class MysqlDriver implements Driver
                 $pdo->exec('SET SESSION TRANSACTION READ ONLY');
             }
             return $pdo;
-        } catch (PDOException $error) {
+        } catch (\PDOException $error) {
             throw new DatabaseException('MySQL 连接失败', 0, $error);
         }
     }

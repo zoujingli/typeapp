@@ -16,7 +16,7 @@ expect(array_diff($drivers, ['mysql', 'pgsql', 'sqlite']) === [], '未知原生�
 expect(array_diff($drivers, PDO::getAvailableDrivers()) === [], '恢复控制器缺少所选PDO驱动，须先配置匹配的原生扩展');
 $preparationFile = realpath($argv[1]);
 expect($preparationFile !== false && is_file($preparationFile), '需要已生成的发布准备清单');
-$preparation = json_decode((string) file_get_contents($preparationFile), true, 512, JSON_THROW_ON_ERROR);
+$preparation = json_decode((string)file_get_contents($preparationFile), true, 512, JSON_THROW_ON_ERROR);
 expect(is_array($preparation) && is_string($preparation['directory'] ?? null) && is_string($preparation['manifest-sha256'] ?? null), '发布准备清单缺少目录或受信摘要');
 $release = (new NativePackage())->verify($preparation['directory'], $preparation['manifest-sha256']);
 expect($release['runtime']['os'] === PHP_OS_FAMILY, '需要本平台原生发布包');
@@ -46,13 +46,13 @@ try {
             // 已把版本化 bin 放在最前的顺序，否则 Ubuntu 的 /usr/bin/pg_dump 包装脚本会抢先。
             foreach (['TYPE_BWRAP_BINARY', 'TYPE_SQLITE_BACKUP_TOOL'] as $name) {
                 if (getenv($name) !== false && getenv($name) !== '') {
-                    $environment[$name] = (string) getenv($name);
+                    $environment[$name] = (string)getenv($name);
                 }
             }
             $secrets = $driver === 'sqlite' ? [] : [$environment['TYPE_' . strtoupper($driver) . '_PASSWORD']];
             $output = nativeDatabaseCommand([PHP_BINARY, $root . '/tests/native-package-recovery.php', $preparation['directory'], $preparation['manifest-sha256'], $driver], $environment, $secrets, $work . '/recovery.log', 420);
-            expect(preg_match('#通过：(.*?/verification\\.json)\\s*$#u', $output, $matches) === 1, '恢复入口没有返回验收报告');
-            $evidence = json_decode((string) file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
+            expect(preg_match('#通过：(.*?/verification\.json)\s*$#u', $output, $matches) === 1, '恢复入口没有返回验收报告');
+            $evidence = json_decode((string)file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
             expect($evidence['maintenance-execution'] === 'native' && $evidence['artifact-sha256'] === $release['artifact']['sha256']
                 && $evidence['build-id'] === $release['artifact']['build-id'] && $evidence['release-sha256'] === $preparation['manifest-sha256'], '恢复报告不是同一原生发布及原生维护工具');
             $entry['recovery-evidence'] = $matches[1];

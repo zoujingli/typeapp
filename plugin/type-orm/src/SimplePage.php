@@ -8,9 +8,7 @@ namespace Type\Orm;
 final class SimplePage
 {
     /** @internal 由查询入口传入本页结果、已验证页码和多取一行的判断。 */
-    public function __construct(private array $items, private int $page, private int $perPage, private bool $more)
-    {
-    }
+    public function __construct(private array $items, private int $page, private int $perPage, private bool $more) {}
 
     /** 本页行或模型列表。 */
     public function items(): array

@@ -17,9 +17,9 @@ final class ModelFirstBoundary
     /**
      * 只检查调用者明确提供的文件，不把尚未迁移的业务隐式视为已通过。
      *
-     * @param array<string, string> $sources 相对文件名到 PHP 源码。
-     * @param list<array{owner:string, method:string, argument:string, reason:string}> $exceptions 受限底层访问或基础设施参数；已删除或改写的例外必须同步清理。
-     * @return list<string> 可定位的违规原因；空列表表示本次切片通过。
+     * @param array<string, string> $sources 相对文件名到 PHP 源码
+     * @param list<array{owner:string, method:string, argument:string, reason:string}> $exceptions 受限底层访问或基础设施参数；已删除或改写的例外必须同步清理
+     * @return list<string> 可定位的违规原因；空列表表示本次切片通过
      */
     public function violations(array $sources, array $exceptions = []): array
     {
@@ -100,7 +100,7 @@ final class ModelFirstBoundary
                         }
                         // 模型工厂和普通业务静态方法不是 Connection 的 SQL 入口。
                         if ($call instanceof Node\Expr\StaticCall
-                            && !in_array(strtolower($call->class->toString()), ['type\\orm\\connection', 'type\\orm\\db', 'pdo'], true)) {
+                            && !in_array(strtolower($call->class->toString()), ['type\orm\connection', 'type\orm\db', 'pdo'], true)) {
                             continue;
                         }
                         if (!in_array($name, ['table', 'query', 'execute', 'exec', 'prepare', 'raw', 'rawquery'], true)
@@ -150,7 +150,7 @@ final class ModelFirstBoundary
         }
         if ($callable instanceof Node\Scalar\String_) {
             $parts = explode('::', ltrim(strtolower($callable->value), '\\'));
-            return count($parts) === 2 && in_array($parts[0], ['type\\orm\\connection', 'type\\orm\\db', 'pdo'], true) && in_array($parts[1], $methods, true);
+            return count($parts) === 2 && in_array($parts[0], ['type\orm\connection', 'type\orm\db', 'pdo'], true) && in_array($parts[1], $methods, true);
         }
         return false;
     }
@@ -159,7 +159,7 @@ final class ModelFirstBoundary
     private function connectionType(Node|string|null $type): bool
     {
         if ($type instanceof Node\Name) {
-            return in_array(strtolower($type->toString()), ['type\\orm\\connection', 'pdo'], true);
+            return in_array(strtolower($type->toString()), ['type\orm\connection', 'pdo'], true);
         }
         if ($type instanceof Node\NullableType) {
             return $this->connectionType($type->type);
@@ -186,6 +186,6 @@ final class ModelFirstBoundary
         if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
             return '(' . implode($type instanceof Node\UnionType ? '|' : '&', array_map(fn (Node $part): string => $this->typeLabel($part), $type->types)) . ')';
         }
-        return (string) $type;
+        return (string)$type;
     }
 }

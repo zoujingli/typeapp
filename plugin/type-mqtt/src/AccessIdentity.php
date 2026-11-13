@@ -10,7 +10,7 @@ final class AccessIdentity
     /**
      * 标识由认证策略解析，不由 Client ID 或用户名展示文字推定；同一凭据标识的版本只能递增。
      * authenticationMethod 是消费者的稳定认证方法名，不表示 Broker 已实现对应认证。
-     * @throws \InvalidArgumentException 身份缺失、超界或包含不能持久传递的文字。
+     * @throws \InvalidArgumentException 身份缺失、超界或包含不能持久传递的文字
      */
     public function __construct(
         public readonly string $principalId,
@@ -38,8 +38,8 @@ final class AccessIdentity
 
     /**
      * 仅用于受控工作请求或持久状态恢复；读取快照不等于重新认证。
-     * @param array<string,mixed> $data 精确的无秘密身份字段。
-     * @throws \InvalidArgumentException 快照结构或身份非法。
+     * @param array<string,mixed> $data 精确的无秘密身份字段
+     * @throws \InvalidArgumentException 快照结构或身份非法
      */
     public static function fromData(array $data): self
     {

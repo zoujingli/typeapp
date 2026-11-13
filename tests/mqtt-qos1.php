@@ -95,7 +95,7 @@ function mqttPublicationOrderCases(int $port, ?string $certificate): array
                 $receiver = mqttSocket($port, $certificate);
                 $publisher = mqttSocket($port, $certificate);
                 $sockets = [$receiver, $publisher];
-                $qos = (int) substr($phase, -1);
+                $qos = (int)substr($phase, -1);
                 $id = 'order-' . $version . '-' . str_replace('/', '-', $phase);
                 mqttWrite($receiver, mqttConnect($version, $id . '-r', 0));
                 mqttAck($receiver, $version);
@@ -107,13 +107,13 @@ function mqttPublicationOrderCases(int $port, ?string $certificate): array
                 mqttWrite($publisher, mqttRetainedPacket($version, $topic, 'first', $qos, 1, '', false)
                     . mqttRetainedPacket($version, $topic, 'second', $qos, 2, '', false));
                 $trace = ['deliveries' => [], 'acknowledgements' => []];
-                for ($index = 0; $index < 2; $index++) {
+                for ($index = 0; $index < 2; ++$index) {
                     $message = mqttRetainedRead($receiver, $version);
                     expect($message['qos'] === 1 && !$message['duplicate'], '顺序回归出现非首次QoS1交付');
                     $trace['deliveries'][] = $message['payload'];
                     mqttRetainedComplete($receiver, $message);
                 }
-                for ($index = 0; $index < 2; $index++) {
+                for ($index = 0; $index < 2; ++$index) {
                     $ack = mqttRead($publisher);
                     expect($ack === mqttPacket($qos === 1 ? 0x40 : 0x50, pack('n', $index + 1)), '同源确认顺序或标识错误');
                     $trace['acknowledgements'][] = bin2hex($ack);
@@ -160,7 +160,7 @@ function mqttVolatileOrderCases(int $port, ?string $certificate, PDO $standby): 
             expect(mqttRead($receiver) === mqttSubscriptionAck($version), 'QoS0顺序回归没有SUBACK');
             mqttWrite($publisher, mqttRetainedPacket($version, $topic, 'first', 0) . mqttPublish($version, $topic, 'second'));
             $trace = [];
-            for ($index = 0; $index < 2; $index++) {
+            for ($index = 0; $index < 2; ++$index) {
                 $message = mqttRetainedRead($receiver, $version);
                 expect($message['qos'] === 0 && !$message['duplicate'], 'QoS0顺序回归改变交付等级');
                 $trace[] = $message['payload'];
@@ -168,7 +168,7 @@ function mqttVolatileOrderCases(int $port, ?string $certificate, PDO $standby): 
             expect($trace === ['first', 'second'], 'QoS0保留与普通发布乱序：' . json_encode($trace, JSON_THROW_ON_ERROR));
             mqttQuiet($receiver);
             mqttQuiet($publisher);
-            expect((int) $standby->query('SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = ' . $standby->quote($topic)
+            expect((int)$standby->query('SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = ' . $standby->quote($topic)
                 . ' AND retain = false')->fetchColumn() === 0, '临时排序把QoS0普通发布改成持久消息');
             $traces[$id] = $trace;
         } finally {
@@ -224,7 +224,7 @@ function mqttPublicationQueueCases(int $port, ?string $certificate, string $cons
             } else {
                 expect(mqttRead($publisher) === "\xe0\x02\x83\0", '首项拒绝没有关闭来源');
                 expect(
-                    (int) $standby->query('SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = ' . $standby->quote($topic))->fetchColumn() === 0,
+                    (int)$standby->query('SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = ' . $standby->quote($topic))->fetchColumn() === 0,
                     '首项拒绝后后继未启动消息仍持久接管'
                 );
                 $report[$case] = 'following-unstarted-publications-rejected-without-persistence';
@@ -250,7 +250,7 @@ function mqttPublicationQueueCases(int $port, ?string $certificate, string $cons
 /** 独立线编码，不借用 Broker 的消息或 PUBACK 实现。 */
 function mqttReliablePublish(int $version, string $topic, string $payload, int $identifier, bool $duplicate = false, string $properties = ''): string
 {
-    return mqttPacket($duplicate ? 0x3a : 0x32, mqttField($topic) . pack('n', $identifier)
+    return mqttPacket($duplicate ? 0x3A : 0x32, mqttField($topic) . pack('n', $identifier)
         . ($version === 5 ? mqttLength(strlen($properties)) . $properties : '') . $payload);
 }
 
@@ -278,7 +278,7 @@ function mqttDatabaseIdle(PDO $database): void
     $until = microtime(true) + 8.0;
     $stable = microtime(true) + 0.3;
     do {
-        if ((int) $database->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'")->fetchColumn() > 0) {
+        if ((int)$database->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'")->fetchColumn() > 0) {
             $stable = microtime(true) + 0.3;
         } elseif (microtime(true) >= $stable) {
             return;
@@ -351,7 +351,7 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
     ini_set('zend.exception_ignore_args', '1');
     require_once $root . '/tests/native-database.php';
     require_once $root . '/tests/postgres-sync.php';
-    $tools = NativeDatabase::tools('pgsql', (string) (getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
+    $tools = NativeDatabase::tools('pgsql', (string)(getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
     $database = new NativeDatabase($consumer . '/primary', 'pgsql', $tools);
     $sync = null;
     $process = null;
@@ -402,7 +402,7 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
             return $report;
         }
         $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $error);
-        $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+        $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
         fclose($listener);
         $process = new Process([...$command, '--plaintext', '--port=' . $port], $consumer, $environment);
         mqttUntil(function () use ($port, $process): bool {
@@ -451,13 +451,13 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
             expect($row['payload'] === bin2hex($payload) && $row['state'] === 'accepted', 'PUBACK 前没有同步接管原件');
             mqttQuiet($subscriber);
             mqttWrite($subscriber, "\x40\x02\0\x01");
-            mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'reliable-subscriber-" . $version . "' AND state = 'acknowledged'")->fetchColumn() === 1, 'PUBACK 终结没有同步落地');
+            mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'reliable-subscriber-" . $version . "' AND state = 'acknowledged'")->fetchColumn() === 1, 'PUBACK 终结没有同步落地');
             // 已完成交换之后，DUP=1 的相同标识也必须视为新消息。
             mqttWrite($publisher, mqttReliablePublish($version, $topic, $payload, 7, true));
             expect(mqttRead($publisher) === "\x40\x02\0\x07", '相同标识不能用于新消息');
             expect(mqttRead($subscriber) === mqttReliablePublish($version, $topic, $payload, 2), '已完成标识被永久去重');
             mqttWrite($subscriber, $version === 5 ? "\x40\x04\0\x02\x80\0" : "\x40\x02\0\x02");
-            mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "' AND state = 'complete'")->fetchColumn() === 2, '新消息与负 PUBACK 没有终结');
+            mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "' AND state = 'complete'")->fetchColumn() === 2, '新消息与负 PUBACK 没有终结');
             mqttQuiet($subscriber);
             $cases += 6;
             fclose($publisher);
@@ -466,7 +466,7 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
         $report['publication-order'] = mqttPublicationOrderCases($port, null);
         $report['volatile-order'] = mqttVolatileOrderCases($port, null, $standby);
         $report['publication-queue'] = mqttPublicationQueueCases($port, null, $consumer, $standby);
-        $report['standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, 'plain', 'qos1'], $consumer));
+        $report['standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, 'plain', 'qos1'], $consumer));
         mqttDatabaseIdle($primary);
         $window = mqttSocket($port);
         $windowPublisher = mqttSocket($port);
@@ -483,7 +483,7 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
         mqttWrite($windowPublisher, mqttReliablePublish(5, 'example/window', 'second', 2));
         expect(mqttRead($windowPublisher) === "\xe0\x02\x97\0", '超过 Receive Maximum 仍接管消息');
         mqttQuiet($window);
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/window'")->fetchColumn() === 1, '拒绝后仍写入第二条');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/window'")->fetchColumn() === 1, '拒绝后仍写入第二条');
         mqttWrite($window, "\x40\x02\0\x01");
         mqttUntil(fn (): bool => $standby->query("SELECT state FROM type_mqtt_messages WHERE topic = 'example/window'")->fetchColumn() === 'complete', '接收窗口未持久释放');
         fclose($windowPublisher);
@@ -503,7 +503,7 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
         mqttWrite($lowerPublisher, mqttReliablePublish(5, 'example/lower', "\0\xff", 1));
         expect(mqttRead($lowerPublisher) === "\x40\x02\0\x01", '降级订阅使发布者失去持久确认');
         expect(mqttRead($lower) === mqttPublish(4, 'example/lower', "\0\xff"), '交付 QoS 没有取订阅上限');
-        mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'lower-qos-subscriber' AND state = 'queued'")->fetchColumn() === 1, 'QoS 0 排队被伪记为接收者 ACK');
+        mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'lower-qos-subscriber' AND state = 'queued'")->fetchColumn() === 1, 'QoS 0 排队被伪记为接收者 ACK');
         fclose($lowerPublisher);
         fclose($lower);
         $report['lower-qos'] = 'durable-inbound-with-qos0-queue-fact';
@@ -526,7 +526,7 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
         $standby->query('SELECT pg_wal_replay_resume()')->fetchColumn();
         expect(mqttRead($expiringPublisher) === "\x40\x02\0\x01", '合法到期消息没有完成同步接管');
         mqttQuiet($expiring);
-        mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'expiry-subscriber' AND state = 'expired'")->fetchColumn() === 1, '过期交付没有保留终结事实');
+        mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'expiry-subscriber' AND state = 'expired'")->fetchColumn() === 1, '过期交付没有保留终结事实');
         fclose($expiringPublisher);
         fclose($expiring);
         $report['expiry'] = 'expired-during-commit-without-delivery';
@@ -541,9 +541,9 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
         mqttWrite($before, mqttReliablePublish(5, 'example/before-commit', 'must-rollback', 11));
         expect(mqttRead($before) === "\xe0\x02\x83\0", '提交前故障未返回标准 Implementation specific error');
         $primary->rollBack();
-        expect((int) $primary->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/before-commit'")->fetchColumn() === 0, '提交前故障留下消息');
+        expect((int)$primary->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/before-commit'")->fetchColumn() === 0, '提交前故障留下消息');
         $report['before-commit'] = 'rolled-back-without-puback';
-        $cases++;
+        ++$cases;
         fclose($before);
         // 应用不读取 PUBACK 就断开；新清洁连接重发属于新交换，允许业务收到重复。
         $lost = mqttSocket($port);
@@ -551,7 +551,7 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
         mqttWrite($lost, mqttConnect(5, 'ack-lost'));
         mqttAck($lost, 5);
         mqttWrite($lost, mqttReliablePublish(5, 'example/ack-lost', 'again', 21));
-        mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/ack-lost'")->fetchColumn() === 1, '确认丢失前未同步提交');
+        mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/ack-lost'")->fetchColumn() === 1, '确认丢失前未同步提交');
         fclose($lost);
         $retried = mqttSocket($port);
         $sockets[] = $retried;
@@ -559,10 +559,10 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
         mqttAck($retried, 5);
         mqttWrite($retried, mqttReliablePublish(5, 'example/ack-lost', 'again', 21, true));
         expect(mqttRead($retried) === "\x40\x02\0\x15", '确认丢失后新清洁交换失败');
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/ack-lost'")->fetchColumn() === 2, '错误宣称业务恰好一次');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/ack-lost'")->fetchColumn() === 2, '错误宣称业务恰好一次');
         fclose($retried);
         $report['ack-lost'] = 'two-distinct-clean-session-messages-preserved';
-        $cases++;
+        ++$cases;
         foreach ([true, false] as $cancelCommit) {
             mqttDatabaseIdle($primary);
             $unknown = mqttSocket($port);
@@ -577,20 +577,20 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
             mqttWrite($unknown, mqttReliablePublish(5, $topic, 'local-visible-is-insufficient', 31, true));
             mqttWrite($unknown, mqttReliablePublish(5, $topic, 'queued-never-started', 32));
             mqttQuiet($unknown);
-            expect((int) $primary->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%' AND wait_event = 'SyncRep'")->fetchColumn() === 1, '当前 pending DUP 派生了额外提交');
-            expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 0, '暂停回放夹具失效');
+            expect((int)$primary->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%' AND wait_event = 'SyncRep'")->fetchColumn() === 1, '当前 pending DUP 派生了额外提交');
+            expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 0, '暂停回放夹具失效');
             if ($cancelCommit) {
-                $primary->query('SELECT pg_cancel_backend(' . (int) $backend . ')')->fetchColumn();
+                $primary->query('SELECT pg_cancel_backend(' . (int)$backend . ')')->fetchColumn();
             }
             $started = microtime(true);
             expect(mqttRead($unknown) === "\xe0\x02\x83\0", '未知同步结果未返回标准 Implementation specific error');
             $elapsed = microtime(true) - $started;
             expect($elapsed < 11.0, '持久等待或后端清理失去截止');
-            mqttUntil(fn (): bool => (int) $primary->query('SELECT COUNT(*) FROM pg_stat_activity WHERE pid = ' . (int) $backend)->fetchColumn() === 0, '超时遗留同步后端');
+            mqttUntil(fn (): bool => (int)$primary->query('SELECT COUNT(*) FROM pg_stat_activity WHERE pid = ' . (int)$backend)->fetchColumn() === 0, '超时遗留同步后端');
             $unknownMessages = $primary->query("SELECT packet_id, state FROM type_mqtt_messages WHERE topic = '" . $topic . "' ORDER BY packet_id")->fetchAll(PDO::FETCH_ASSOC);
             expect(count($unknownMessages) === 1, '未知提交被删除或重试：' . $topic . ':' . json_encode($unknownMessages, JSON_THROW_ON_ERROR));
             $standby->query('SELECT pg_wal_replay_resume()')->fetchColumn();
-            mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '恢复后未知事实丢失');
+            mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '恢复后未知事实丢失');
             $report[$cancelCommit ? 'cancelled-syncrep' : 'worker-deadline'] = ['local-visible' => true, 'puback' => false,
                 'queued-following-written' => false, 'backend-released' => true, 'seconds' => $elapsed];
             $cases += 4;
@@ -604,23 +604,23 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
         $sync->stopStandby();
         mqttWrite($unavailable, mqttReliablePublish(5, 'example/no-standby', 'cannot-own', 41));
         expect(mqttRead($unavailable) === "\xe0\x02\x83\0", '缺同步备库未返回标准 Implementation specific error');
-        expect((int) $primary->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/no-standby'")->fetchColumn() === 0, '前置条件失败仍写入');
+        expect((int)$primary->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/no-standby'")->fetchColumn() === 0, '前置条件失败仍写入');
         fclose($unavailable);
         $standby = null;
         $sync->restartStandby();
         $report['standby-unavailable'] = 'rejected-before-write';
-        $cases++;
+        ++$cases;
         $standby = $sync->standby();
         if (in_array('--qos2', $_SERVER['argv'], true)) {
             $report['qos2'] = mqttQos2Cases($port, $primary, $standby);
-            $report['qos2-standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, 'plain', 'qos2'], $consumer));
+            $report['qos2-standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, 'plain', 'qos2'], $consumer));
         }
         if (in_array('--retained', $_SERVER['argv'], true)) {
             require_once $root . '/tests/mqtt-retained.php';
             $report['retained'] = mqttRetainedCases($port, $primary, $standby);
-            $report['retained']['standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, 'plain', 'retained'], $consumer));
+            $report['retained']['standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, 'plain', 'retained'], $consumer));
         }
-        mqttUntil(fn (): bool => (int) $primary->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0, '结束时遗留持久 worker 后端');
+        mqttUntil(fn (): bool => (int)$primary->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0, '结束时遗留持久 worker 后端');
         $result = $process->stop(12);
         expect($result->successful() && $result->stderr === '', 'QoS 1 进程停止失败：' . $result->stderr);
         $statistics = json_decode(trim($result->stdout), true, 32, JSON_THROW_ON_ERROR);
@@ -656,14 +656,14 @@ function mqttQos1Cases(string $root, string $consumer, array $command, array $wo
         if (in_array('--retained', $_SERVER['argv'], true)) {
             mqttRetainedRestart($port, $consumer . '/certificate.pem');
             $report['retained']['restart'] = 'preserved-with-qos2-handshake-over-tls';
-            $report['retained']['tls-standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, $consumer . '/certificate.pem', 'retained'], $consumer));
+            $report['retained']['tls-standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, $consumer . '/certificate.pem', 'retained'], $consumer));
         }
         $report['tls-publication-order'] = mqttPublicationOrderCases($port, $consumer . '/certificate.pem');
         $report['tls-volatile-order'] = mqttVolatileOrderCases($port, $consumer . '/certificate.pem', $standby);
         $report['tls-publication-queue'] = mqttPublicationQueueCases($port, $consumer . '/certificate.pem', $consumer, $standby);
-        $report['tls-standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, $consumer . '/certificate.pem', 'qos1'], $consumer));
+        $report['tls-standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, $consumer . '/certificate.pem', 'qos1'], $consumer));
         if (in_array('--qos2', $_SERVER['argv'], true)) {
-            $report['qos2-tls-standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, $consumer . '/certificate.pem', 'qos2'], $consumer));
+            $report['qos2-tls-standard-client'] = trim(successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, $consumer . '/certificate.pem', 'qos2'], $consumer));
         }
         mqttDatabaseIdle($primary);
         $tlsResult = $process->stop(12);

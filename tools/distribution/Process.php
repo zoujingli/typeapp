@@ -9,10 +9,10 @@ final class Process
 {
     /**
      * 等待命令结束并回收临时输出文件；非零退出由调用方决定是否重试。
-     * @param list<string> $command 完整可执行文件与参数。
-     * @param bool $trim 是否去掉 stdout 首尾空白；字节摘要必须传 false。
-     * @return array{int, string, string} 退出码、stdout 与去首尾空白的 stderr。
-     * @throws \RuntimeException 无法创建输出文件或启动子进程。
+     * @param list<string> $command 完整可执行文件与参数
+     * @param bool $trim 是否去掉 stdout 首尾空白；字节摘要必须传 false
+     * @return array{int, string, string} 退出码、stdout 与去首尾空白的 stderr
+     * @throws \RuntimeException 无法创建输出文件或启动子进程
      */
     public static function run(array $command, string $directory, bool $trim = true): array
     {
@@ -36,10 +36,11 @@ final class Process
             fclose($errors);
         }
     }
+
     /**
      * 返回成功命令的 stdout，将失败退出转成带 stderr 的异常。
-     * @param list<string> $command 完整可执行文件与参数，不得携带应被日志保密的值。
-     * @throws \RuntimeException 命令不能启动或退出码非零。
+     * @param list<string> $command 完整可执行文件与参数，不得携带应被日志保密的值
+     * @throws \RuntimeException 命令不能启动或退出码非零
      */
     public static function output(array $command, string $directory): string
     {
@@ -49,10 +50,11 @@ final class Process
         }
         return $output;
     }
+
     /**
      * 在目标目录写临时 JSON 后原子替换报告，失败时回收临时文件。
-     * @param array<string, mixed> $report 不含凭据的分发身份与操作结果。
-     * @throws \RuntimeException 目录、临时文件或最终写入失败。
+     * @param array<string, mixed> $report 不含凭据的分发身份与操作结果
+     * @throws \RuntimeException 目录、临时文件或最终写入失败
      */
     public static function report(string $path, array $report): void
     {

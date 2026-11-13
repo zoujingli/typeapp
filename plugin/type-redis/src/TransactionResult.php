@@ -8,6 +8,7 @@ namespace Type\Redis;
 final class TransactionResult
 {
     private bool $committed;
+
     private array $replies;
 
     /**
@@ -26,6 +27,7 @@ final class TransactionResult
     {
         return $this->committed;
     }
+
     /**
      * 按入队顺序取得各命令响应；不把响应解释成数据库式回滚证明。
      *

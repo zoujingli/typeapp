@@ -339,7 +339,7 @@ function mqttIdentityCompatibilityCases(string $root, string $consumer, array $c
             foreach ([4, 5] as $version) {
                 $port = mqttClusterPort();
                 $certificate = $tls ? $consumer . '/certificate.pem' : null;
-                $clientId = 'identity-compatibility-' . (int) $tls . '-' . $version;
+                $clientId = 'identity-compatibility-' . (int)$tls . '-' . $version;
                 $query = $standby->prepare('SELECT id, principal, access_identity, subscriptions, '
                     . '(SELECT COUNT(*) FROM type_mqtt_deliveries d WHERE d.session_id = s.id AND d.state = \'pending\') AS pending '
                     . 'FROM type_mqtt_sessions s WHERE client_id = ?');
@@ -350,8 +350,8 @@ function mqttIdentityCompatibilityCases(string $root, string $consumer, array $c
                     $environment['MQTT_TEST_LEGACY_POLICY'] = $phase === 'migrated' ? '0' : '1';
                     $broker = mqttIdentityStart($consumer, $command, $environment, $port, $certificate);
                     foreach ($phase === 'legacy' ? ['identity-seed', 'identity-cycle'] : [$phase === 'migrated' ? 'identity-cycle' : 'identity-downgrade'] as $mode) {
-                        $client = new Process(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, $certificate ?? 'plain',
-                            $mode, (string) $version, $clientId], $consumer, $environment);
+                        $client = new Process(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, $certificate ?? 'plain',
+                            $mode, (string)$version, $clientId], $consumer, $environment);
                         $checked = $client->wait(25);
                         expect($checked->successful() && $checked->stderr === '', '旧调用兼容/迁移拒绝失败：' . $phase . ' ' . $checked->stderr);
                         $client = null;
@@ -360,7 +360,7 @@ function mqttIdentityCompatibilityCases(string $root, string $consumer, array $c
                     $broker = null;
                     $query->execute([$clientId]);
                     $row = $query->fetch(PDO::FETCH_ASSOC);
-                    expect(is_array($row) && (int) $row['pending'] === 2, '兼容场景丢失待恢复会话或积压');
+                    expect(is_array($row) && (int)$row['pending'] === 2, '兼容场景丢失待恢复会话或积压');
                     if ($phase === 'legacy') {
                         expect($row['access_identity'] === null, '原AccessPolicy被隐式猜测为新身份');
                         $sessionId = $row['id'];
@@ -380,7 +380,7 @@ function mqttIdentityCompatibilityCases(string $root, string $consumer, array $c
                     $environment['MQTT_TEST_LEGACY_POLICY'] = '0';
                     $environment['MQTT_TEST_PRINCIPAL'] = 'other-principal';
                     $broker = mqttIdentityStart($consumer, $command, $environment, $port, $certificate);
-                    $client = new Process(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, $certificate,
+                    $client = new Process(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, $certificate,
                         'identity-foreign', '5', $clientId], $consumer, $environment);
                     $checked = $client->wait(25);
                     expect($checked->successful() && $checked->stderr === '', '跨主体隔离失败：' . $checked->stderr);
@@ -391,7 +391,7 @@ function mqttIdentityCompatibilityCases(string $root, string $consumer, array $c
                     $row = $query->fetch(PDO::FETCH_ASSOC);
                     expect(is_array($row) && $row['id'] !== $sessionId
                         && json_decode($row['access_identity'], true)['principal_id'] === 'other-principal', '新主体继承了旧会话所有权');
-                    expect((int) $row['pending'] === 0, '新主体会话仍有待恢复的旧积压');
+                    expect((int)$row['pending'] === 0, '新主体会话仍有待恢复的旧积压');
                     $run['different_principal_fresh_session'] = true;
                 }
                 $terminated = (new Process([...$command, '--terminate-session=' . $clientId, '--actor=identity-compatibility'], $consumer, $environment))->wait(12);
@@ -492,7 +492,7 @@ function mqttIdentityUpgradeCases(string $root, string $consumer, array $command
         $next = mqttSocket($ports['identity-old-b']);
         $sockets[] = $next;
         mqttWrite($next, mqttSessionConnect(5, 'identity-old-fence'));
-        mqttUntil(static fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_fences WHERE client_id = 'identity-old-fence'")->fetchColumn() === 1, '真实旧所有者没有产生待完成fence');
+        mqttUntil(static fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_fences WHERE client_id = 'identity-old-fence'")->fetchColumn() === 1, '真实旧所有者没有产生待完成fence');
         mqttWillSilence($next, 0.2);
         $report['hard_stops'][] = mqttIdentityKill($processes['identity-old-b']);
         unset($processes['identity-old-b']);
@@ -503,8 +503,8 @@ function mqttIdentityUpgradeCases(string $root, string $consumer, array $command
         $before = [];
         foreach (['type_mqtt_sessions', 'type_mqtt_wills', 'type_mqtt_fences'] as $table) {
             expect(
-                (int) $primary->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn() > 0
-                && (int) $primary->query('SELECT COUNT(*) FROM ' . $table . ' WHERE access_identity IS NOT NULL')->fetchColumn() === 0,
+                (int)$primary->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn() > 0
+                && (int)$primary->query('SELECT COUNT(*) FROM ' . $table . ' WHERE access_identity IS NOT NULL')->fetchColumn() === 0,
                 '旧表装置缺少实际数据或包含已迁移身份：' . $table
             );
             $before[$table] = $primary->query("SELECT (to_jsonb(t) - 'access_identity')::text AS row FROM " . $table . ' t ORDER BY 1')->fetchAll(PDO::FETCH_COLUMN);
@@ -515,7 +515,7 @@ function mqttIdentityUpgradeCases(string $root, string $consumer, array $command
             $primary->exec('ALTER TABLE ' . $table . ' DROP COLUMN access_identity');
         }
         $primary->commit();
-        expect((int) $standby->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_name IN ('type_mqtt_sessions', 'type_mqtt_wills', 'type_mqtt_fences') AND column_name = 'access_identity'")->fetchColumn() === 0, '旧表结构没有同步到备库');
+        expect((int)$standby->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_name IN ('type_mqtt_sessions', 'type_mqtt_wills', 'type_mqtt_fences') AND column_name = 'access_identity'")->fetchColumn() === 0, '旧表结构没有同步到备库');
         foreach ([1, 2] as $migration) {
             $installation = (new Process([...$command, '--install-store'], $consumer, $environment))->wait(12);
             expect($installation->successful() && $installation->stderr === '', '既有数据升级/重复安装失败：' . $installation->stderr);
@@ -524,7 +524,7 @@ function mqttIdentityUpgradeCases(string $root, string $consumer, array $command
             foreach ($before as $table => $rows) {
                 expect(
                     $standby->query("SELECT (to_jsonb(t) - 'access_identity')::text AS row FROM " . $table . ' t ORDER BY 1')->fetchAll(PDO::FETCH_COLUMN) === $rows
-                    && (int) $standby->query('SELECT COUNT(*) FROM ' . $table . ' WHERE access_identity IS NOT NULL')->fetchColumn() === 0,
+                    && (int)$standby->query('SELECT COUNT(*) FROM ' . $table . ' WHERE access_identity IS NOT NULL')->fetchColumn() === 0,
                     '升级改写了旧持久事实或猜测了身份：' . $table
                 );
             }
@@ -550,7 +550,7 @@ function mqttIdentityUpgradeCases(string $root, string $consumer, array $command
         $environment['MQTT_TEST_DENIED_TOPIC'] = 'example/identity-old-will/denied';
         $port = mqttClusterPort();
         $processes['identity-new'] = mqttIdentityStart($consumer, $command, $environment, $port, null, 'identity-new', true);
-        mqttUntil(static fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_will_audit WHERE client_id IN ('identity-old-will-allowed', 'identity-old-will-denied')")->fetchColumn() === 2, '旧NULL身份遗嘱没有在新策略下恢复处理');
+        mqttUntil(static fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_will_audit WHERE client_id IN ('identity-old-will-allowed', 'identity-old-will-denied')")->fetchColumn() === 2, '旧NULL身份遗嘱没有在新策略下恢复处理');
         $outcomes = $standby->query("SELECT client_id, outcome FROM type_mqtt_will_audit WHERE client_id IN ('identity-old-will-allowed', 'identity-old-will-denied') ORDER BY client_id")->fetchAll(PDO::FETCH_KEY_PAIR);
         expect($outcomes === ['identity-old-will-allowed' => 'published', 'identity-old-will-denied' => 'denied'], '旧遗嘱没有按当前旧授权契约允许/拒绝');
         $subscriber = mqttWillSubscriber($port, 'identity-old-will-reader', 'example/identity-old-will/#');
@@ -559,7 +559,7 @@ function mqttIdentityUpgradeCases(string $root, string $consumer, array $command
         expect($message['topic'] === 'example/identity-old-will/allowed' && $message['payload'] === "\0\xfflegacy-allowed" && $message['retain'], '旧遗嘱恢复改变原二进制载荷或保留语义');
         mqttRetainedComplete($subscriber, $message);
         mqttWillSilence($subscriber, 0.3);
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = 'example/identity-old-will/denied'")->fetchColumn() === 0, '被拒绝的旧遗嘱进入了保留存储');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = 'example/identity-old-will/denied'")->fetchColumn() === 0, '被拒绝的旧遗嘱进入了保留存储');
         $restored = mqttSocket($port);
         $sockets[] = $restored;
         mqttWrite($restored, mqttSessionConnect(5, 'identity-old-will-allowed'));
@@ -616,7 +616,7 @@ function mqttIdentityCases(string $root, string $consumer, array $command, array
     require_once $root . '/tests/native-database.php';
     require_once $root . '/tests/postgres-sync.php';
     require_once $root . '/tests/mqtt-qos1.php';
-    $tools = NativeDatabase::tools('pgsql', (string) (getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
+    $tools = NativeDatabase::tools('pgsql', (string)(getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
     $database = new NativeDatabase($consumer . '/identity-primary', 'pgsql', $tools);
     $sync = null;
     $broker = null;
@@ -647,7 +647,7 @@ function mqttIdentityCases(string $root, string $consumer, array $command, array
                 }
                 $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
                 expect(is_resource($listener), '身份场景无法分配监听');
-                $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+                $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
                 fclose($listener);
                 $certificate = $tls ? $consumer . '/certificate.pem' : null;
                 $environment['MQTT_CERTIFICATE'] = $certificate ?? '';
@@ -664,7 +664,7 @@ function mqttIdentityCases(string $root, string $consumer, array $command, array
                     $environment['MQTT_USERNAME'] = $generation === 2 && $version === 5 ? 'renamed-example' : 'example';
                     $environment['MQTT_PASSWORD'] = $generation === 1 ? 'mqtt-test-secret' : 'mqtt-rotated-secret';
                     $environment['MQTT_CREDENTIAL_ID'] = $generation === 1 ? 'example-account' : $newIdentity['credential_id'];
-                    $environment['MQTT_CREDENTIAL_VERSION'] = (string) $generation;
+                    $environment['MQTT_CREDENTIAL_VERSION'] = (string)$generation;
                     $broker = new Process([...$command, '--port=' . $port, ...($tls ? [] : ['--plaintext'])], $consumer, $environment);
                     mqttUntil(function () use ($broker, $port, $certificate): bool {
                         expect($broker->running(), '身份Broker提前退出：' . $broker->stderr());
@@ -676,8 +676,8 @@ function mqttIdentityCases(string $root, string $consumer, array $command, array
                             return false;
                         }
                     }, '身份Broker未开始监听', 12.0);
-                    $client = new Process(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, $certificate ?? 'plain',
-                        $generation === 1 ? 'identity-seed' : 'identity-resume', (string) $version, $clientId], $consumer, $environment);
+                    $client = new Process(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, $certificate ?? 'plain',
+                        $generation === 1 ? 'identity-seed' : 'identity-resume', (string)$version, $clientId], $consumer, $environment);
                     if ($generation === 1) {
                         $seeded = $client->wait(20);
                         expect($seeded->successful() && $seeded->stderr === '', '标准身份会话准备失败：' . $seeded->stderr);
@@ -822,7 +822,7 @@ function mqttAdministrativeDisconnectCases(string $root, string $consumer, array
         $query = $standby->prepare('SELECT owner_id, expiry FROM type_mqtt_sessions WHERE client_id = ?');
         $query->execute(['disconnect-admin']);
         $session = $query->fetch(PDO::FETCH_ASSOC);
-        expect(is_array($session) && $session['owner_id'] === null && (int) $session['expiry'] === 86400, '管理断开后持久会话被终止或期限被清零');
+        expect(is_array($session) && $session['owner_id'] === null && (int)$session['expiry'] === 86400, '管理断开后持久会话被终止或期限被清零');
         $socket = mqttSocket($port);
         mqttWrite($socket, mqttSessionConnect(5, 'disconnect-admin'));
         mqttSessionAck($socket, true);
@@ -936,7 +936,7 @@ function mqttResourceCases(string $root, string $consumer, array $command, array
         foreach (['example/resource-a/one', 'example/resource-a', 'example/resource-b/hidden'] as $topic) {
             mqttWrite($publisher, mqttRetainedPacket(5, $topic, 'resource-payload-secret', 1, $packetId));
             expect(mqttRead($publisher) === "\x40\x02" . pack('n', $packetId), '资源准备发布没有取得 PUBACK');
-            $packetId++;
+            ++$packetId;
         }
         mqttWrite($publisher, "\xe0\0");
         expect(mqttRead($publisher) === '', '资源发布者没有正常断开');
@@ -1114,7 +1114,7 @@ function mqttResourceCases(string $root, string $consumer, array $command, array
 function mqttSessionConnect(int $version, string $id, bool $clean = false, ?int $expiry = 86400, string $extraProperties = '', int $keepalive = 10): string
 {
     $properties = ($version === 5 && $expiry !== null ? "\x11" . pack('N', $expiry) : '') . $extraProperties;
-    $body = mqttField('MQTT') . chr($version) . chr($clean ? 0xc2 : 0xc0) . pack('n', $keepalive)
+    $body = mqttField('MQTT') . chr($version) . chr($clean ? 0xC2 : 0xC0) . pack('n', $keepalive)
         . ($version === 5 ? mqttLength(strlen($properties)) . $properties : '')
         . mqttField($id) . mqttField('example') . mqttField('mqtt-test-secret');
     return mqttPacket(0x10, $body);
@@ -1149,8 +1149,8 @@ function mqttSessionKeepaliveCases(int $port): int
             mqttWrite($socket, "\xc0\0");
             expect(mqttRead($socket) === "\xd0\0", '持久 SUBSCRIBE 未重置 Keep Alive');
             usleep(1800000);
-            mqttWrite($socket, mqttPacket(0xa2, pack('n', 2) . ($version === 5 ? "\0" : '') . mqttField('example/keepalive')));
-            expect(mqttRead($socket) === mqttPacket(0xb0, pack('n', 2) . ($version === 5 ? "\0\0" : '')), '心跳回归持久退订未确认');
+            mqttWrite($socket, mqttPacket(0xA2, pack('n', 2) . ($version === 5 ? "\0" : '') . mqttField('example/keepalive')));
+            expect(mqttRead($socket) === mqttPacket(0xB0, pack('n', 2) . ($version === 5 ? "\0\0" : '')), '心跳回归持久退订未确认');
             usleep(1500000);
             mqttWrite($socket, "\xc0\0");
             expect(mqttRead($socket) === "\xd0\0", '持久 UNSUBSCRIBE 未重置 Keep Alive');
@@ -1202,9 +1202,9 @@ function mqttSessionRetainedCases(int $port, PDO $standby): int
                 && $restored['payload'] === 'original-deadline' && $restored['retain'] && $restored['duplicate'], '持久保留恢复丢失标志、标识或消息');
             expect($restored['properties'] === "\x02\0\0\0\0\x23\0\x01", '恢复刷新原始期限或未重新建立 Topic Alias：' . bin2hex($restored['properties']));
             mqttRetainedComplete($subscriber, $restored);
-            mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = '" . $id . "' AND state = 'pending'")->fetchColumn() === 0, '恢复保留交换没有持久终结');
+            mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = '" . $id . "' AND state = 'pending'")->fetchColumn() === 0, '恢复保留交换没有持久终结');
             mqttRetainedQuiet($subscriber);
-            mqttWrite($subscriber, mqttPacket(0xe0, "\0\x05\x11\0\0\0\0"));
+            mqttWrite($subscriber, mqttPacket(0xE0, "\0\x05\x11\0\0\0\0"));
             expect(mqttRead($subscriber) === '', '组合会话未清理');
             fclose($subscriber);
             $cases += 3;
@@ -1237,7 +1237,7 @@ function mqttSessionRetainedCases(int $port, PDO $standby): int
             mqttRetainedComplete($subscriber, $delivery);
             mqttRetainedQuiet($subscriber);
             fclose($subscriber);
-            $cases++;
+            ++$cases;
         }
         return $cases;
     } finally {
@@ -1261,11 +1261,11 @@ function mqttShutdownInFlightCases(string $root, string $consumer, array $comman
     $socket = null;
     $receiver = null;
     $report = ['status' => 'running', 'runs' => []];
-    $locker = (int) $primary->query('SELECT pg_backend_pid()')->fetchColumn();
+    $locker = (int)$primary->query('SELECT pg_backend_pid()')->fetchColumn();
     try {
         foreach ([false, true] as $tls) {
             foreach (['session_next', 'retained_read', 'accept'] as $kind) {
-                $clientId = 'shutdown-inflight-' . (int) $tls . '-' . $kind;
+                $clientId = 'shutdown-inflight-' . (int)$tls . '-' . $kind;
                 $recipientId = $kind === 'accept' ? $clientId . '-receiver' : $clientId;
                 $topic = 'example/' . $clientId;
                 $payload = "\0\xffshutdown-" . $kind;
@@ -1356,7 +1356,7 @@ function mqttShutdownInFlightCases(string $root, string $consumer, array $comman
                     expect($restored['id'] === $unacknowledged['id'], '停机改变未确认交付标识');
                 }
                 mqttRetainedComplete($socket, $restored);
-                mqttUntil(fn (): bool => (int) $standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries WHERE state = \'pending\' AND client_id = '
+                mqttUntil(fn (): bool => (int)$standby->query('SELECT COUNT(*) FROM type_mqtt_deliveries WHERE state = \'pending\' AND client_id = '
                     . $standby->quote($recipientId))->fetchColumn() === 0, '恢复后的实际PUBACK未终结交付');
                 mqttWrite($socket, "\xe0\0");
                 expect(mqttRead($socket) === '', '恢复客户端没有正常关闭');
@@ -1398,7 +1398,7 @@ function mqttSessionShutdownCases(string $root, string $consumer, array $command
     require_once $root . '/tests/native-database.php';
     require_once $root . '/tests/postgres-sync.php';
     require_once $root . '/tests/mqtt-qos1.php';
-    $tools = NativeDatabase::tools('pgsql', (string) (getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
+    $tools = NativeDatabase::tools('pgsql', (string)(getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
     $database = new NativeDatabase($consumer . '/shutdown-primary', 'pgsql', $tools);
     $sync = null;
     $process = null;
@@ -1418,18 +1418,18 @@ function mqttSessionShutdownCases(string $root, string $consumer, array $command
         $primary = $sync->connection();
         $observer = $sync->connection();
         $standby = $sync->standby();
-        $locker = (int) $primary->query('SELECT pg_backend_pid()')->fetchColumn();
+        $locker = (int)$primary->query('SELECT pg_backend_pid()')->fetchColumn();
         foreach ([false, true] as $tls) {
             foreach ([[4, true, 0], [4, false, -1], [5, false, 0], [5, false, 60], [5, false, 4294967295], [5, false, 0, 'sync-loss']] as $case) {
                 [$version, $clean, $expiry] = $case;
                 $fault = ($case[3] ?? '') === 'sync-loss';
-                $id = 'shutdown-' . ($tls ? 'tls' : 'tcp') . '-' . $version . '-' . ($clean ? 'clean' : (string) $expiry) . ($fault ? '-fault' : '');
+                $id = 'shutdown-' . ($tls ? 'tls' : 'tcp') . '-' . $version . '-' . ($clean ? 'clean' : (string)$expiry) . ($fault ? '-fault' : '');
                 $certificate = $tls ? $consumer . '/certificate.pem' : null;
                 $environment['MQTT_CERTIFICATE'] = $certificate ?? '';
                 $environment['MQTT_PRIVATE_KEY'] = $tls ? $consumer . '/private.pem' : '';
                 $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
                 expect(is_resource($listener), '停机回归无法分配监听');
-                $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+                $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
                 fclose($listener);
                 $process = new Process([...$command, '--port=' . $port, ...($tls ? [] : ['--plaintext'])], $consumer, $environment);
                 $socket = mqttUntil(function () use ($process, $port, $certificate): mixed {
@@ -1457,7 +1457,7 @@ function mqttSessionShutdownCases(string $root, string $consumer, array $command
                 $backend = mqttUntil(fn (): mixed => $observer->query("SELECT pid, application_name FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%' "
                     . "AND wait_event_type = 'Lock' AND " . $locker . ' = ANY(pg_blocking_pids(pid)) '
                     . "AND query LIKE 'SELECT * FROM type_mqtt_sessions WHERE client_id = % AND owner_id = % FOR UPDATE'")->fetch(PDO::FETCH_ASSOC), '会话结束没有进入可观察的真实行锁等待');
-                $workerPid = (int) $backend['pid'];
+                $workerPid = (int)$backend['pid'];
                 if ($fault) {
                     $standby = null;
                     $sync->stopStandby();
@@ -1486,8 +1486,8 @@ function mqttSessionShutdownCases(string $root, string $consumer, array $command
                 }
                 $remaining = $standby->query("SELECT owner_id, expiry, EXTRACT(EPOCH FROM expires_at)::double precision AS expires_at FROM type_mqtt_sessions WHERE client_id = '" . $id . "'")->fetch(PDO::FETCH_ASSOC);
                 $correctState = $expiry === 0 ? $remaining === false
-                    : is_array($remaining) && $remaining['owner_id'] === null && (int) $remaining['expiry'] === $expiry
-                        && ($expiry === 60 ? (float) $remaining['expires_at'] >= $closedAt + 60 && (float) $remaining['expires_at'] <= $stoppingAt + 60
+                    : is_array($remaining) && $remaining['owner_id'] === null && (int)$remaining['expiry'] === $expiry
+                        && ($expiry === 60 ? (float)$remaining['expires_at'] >= $closedAt + 60 && (float)$remaining['expires_at'] <= $stoppingAt + 60
                             : $remaining['expires_at'] === null);
                 $passed = $fault ? $statistics['unknownCommits'] === 1 && $seconds < 11.0
                     : $statistics['unknownCommits'] === 0 && $correctState && $seconds < 5.0;
@@ -1538,7 +1538,7 @@ function mqttSessionCases(string $root, string $consumer, array $command, array 
     require_once $root . '/tests/postgres-sync.php';
     require_once $root . '/tests/mqtt-qos1.php';
     require_once $root . '/tests/mqtt-qos2.php';
-    $tools = NativeDatabase::tools('pgsql', (string) (getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
+    $tools = NativeDatabase::tools('pgsql', (string)(getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
     $database = new NativeDatabase($consumer . '/session-primary', 'pgsql', $tools);
     $sync = null;
     $process = null;
@@ -1558,7 +1558,7 @@ function mqttSessionCases(string $root, string $consumer, array $command, array 
         $primary = $sync->connection();
         $standby = $sync->standby();
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-        $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+        $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
         fclose($listener);
         $start = function () use ($command, $consumer, $environment, $port): Process {
             $running = new Process([...$command, '--port=' . $port, '--plaintext'], $consumer, $environment);
@@ -1646,13 +1646,13 @@ function mqttSessionCases(string $root, string $consumer, array $command, array 
             expect(in_array(mqttQos2Ack(0x62, 2), $replay, true), '重启退回 PUBLISH 或漏掉 PUBREL');
             mqttWrite($subscriber, mqttQos2Ack(0x40, 1) . mqttQos2Ack(0x70, 2));
             mqttQuiet($subscriber);
-            mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = '" . $id . "' AND state = 'pending'")->fetchColumn() === 0, '恢复确认未同步终结');
+            mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = '" . $id . "' AND state = 'pending'")->fetchColumn() === 0, '恢复确认未同步终结');
             fclose($subscriber);
             $clean = mqttSocket($port);
             $sockets[] = $clean;
             mqttWrite($clean, mqttSessionConnect($version, $id, true, 0));
             mqttSessionAck($clean, false);
-            expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_session_audit WHERE client_id = '" . $id . "' AND action = 'client_clean'")->fetchColumn() === 1, '客户端清理缺少审计');
+            expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_session_audit WHERE client_id = '" . $id . "' AND action = 'client_clean'")->fetchColumn() === 1, '客户端清理缺少审计');
             fclose($clean);
             $cases += 11;
         }
@@ -1671,7 +1671,7 @@ function mqttSessionCases(string $root, string $consumer, array $command, array 
             mqttWrite($reconnect, mqttSessionConnect(5, $id, false, $expiry));
             mqttSessionAck($reconnect, false);
             fclose($reconnect);
-            $cases++;
+            ++$cases;
         }
         // 已持久 PUBREC 的接收状态和未收到 PUBREC 的发送状态均跨硬停止恢复。
         foreach ([4, 5] as $version) {
@@ -1695,9 +1695,9 @@ function mqttSessionCases(string $root, string $consumer, array $command, array 
             fclose($subscriber);
             $process = $start();
             if ($version === 5) {
-                mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id IN ('crash-p-5', 'crash-s-5') AND owner_id IS NULL")->fetchColumn() === 2, '无限期会话没有登记崩溃失联');
-                expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id IN ('crash-p-5', 'crash-s-5') AND expires_at IS NULL")->fetchColumn() === 2, 'MQTT 5 的 0xffffffff 在崩溃恢复时变成有限期限');
-                $cases++;
+                mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id IN ('crash-p-5', 'crash-s-5') AND owner_id IS NULL")->fetchColumn() === 2, '无限期会话没有登记崩溃失联');
+                expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id IN ('crash-p-5', 'crash-s-5') AND expires_at IS NULL")->fetchColumn() === 2, 'MQTT 5 的 0xffffffff 在崩溃恢复时变成有限期限');
+                ++$cases;
             }
             $publisher = mqttSocket($port);
             $subscriber = mqttSocket($port);
@@ -1716,13 +1716,13 @@ function mqttSessionCases(string $root, string $consumer, array $command, array 
             expect(mqttRead($subscriber) === mqttQos2Ack(0x62, 1), '恢复发送状态没有 PUBREL');
             mqttWrite($subscriber, mqttQos2Ack(0x70, 1));
             mqttQuiet($subscriber);
-            expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '崩溃恢复重复接管 QoS 2');
+            expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '崩溃恢复重复接管 QoS 2');
             fclose($publisher);
             fclose($subscriber);
             if ($version === 5) {
-                mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id IN ('crash-p-5', 'crash-s-5') AND owner_id IS NULL")->fetchColumn() === 2, '无限期会话未保存网络关闭');
-                expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id IN ('crash-p-5', 'crash-s-5') AND expires_at IS NULL")->fetchColumn() === 2, 'MQTT 5 的 0xffffffff 在关闭时变成有限期限');
-                $cases++;
+                mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id IN ('crash-p-5', 'crash-s-5') AND owner_id IS NULL")->fetchColumn() === 2, '无限期会话未保存网络关闭');
+                expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id IN ('crash-p-5', 'crash-s-5') AND expires_at IS NULL")->fetchColumn() === 2, 'MQTT 5 的 0xffffffff 在关闭时变成有限期限');
+                ++$cases;
             }
             $cases += 5;
         }
@@ -1740,7 +1740,7 @@ function mqttSessionCases(string $root, string $consumer, array $command, array 
         mqttQuiet($new);
         fclose($old);
         fclose($new);
-        $cases++;
+        ++$cases;
         // MQTT 3.1.1 的无限会话不因内部更新时间超过一天而消失。
         $legacy = mqttSocket($port);
         $sockets[] = $legacy;
@@ -1756,7 +1756,7 @@ function mqttSessionCases(string $root, string $consumer, array $command, array 
         mqttWrite($legacy, mqttSessionConnect(4, 'no-internal-ttl'));
         mqttSessionAck($legacy, true);
         fclose($legacy);
-        $cases++;
+        ++$cases;
         $expiring = mqttSocket($port);
         $sockets[] = $expiring;
         mqttWrite($expiring, mqttSessionConnect(5, 'message-expiry'));
@@ -1772,7 +1772,7 @@ function mqttSessionCases(string $root, string $consumer, array $command, array 
         mqttAck($sender, 5);
         mqttWrite($sender, mqttReliablePublish(5, 'example/message-expiry', 'expires', 1, false, "\x02\0\0\0\x03"));
         expect(mqttRead($sender) === mqttQos2Ack(0x40, 1), '消息期限接管失败');
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'message-expiry' AND state = 'pending'")->fetchColumn() === 1, '离线期限夹具未建立真实待交付状态');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'message-expiry' AND state = 'pending'")->fetchColumn() === 1, '离线期限夹具未建立真实待交付状态');
         fclose($sender);
         // 等待已持久入队的消息过期；一秒夹具可能在首次接管前已经到期，无法观察恢复清理。
         usleep(3200000);
@@ -1780,15 +1780,15 @@ function mqttSessionCases(string $root, string $consumer, array $command, array 
         $sockets[] = $expiring;
         mqttWrite($expiring, mqttSessionConnect(5, 'message-expiry'));
         mqttSessionAck($expiring, true);
-        mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'message-expiry' AND state = 'expired'")->fetchColumn() === 1, '离线到期消息未终结');
+        mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'message-expiry' AND state = 'expired'")->fetchColumn() === 1, '离线到期消息未终结');
         mqttQuiet($expiring);
-        mqttWrite($expiring, mqttPacket(0xe0, "\0\x05\x11\0\0\0\0"));
+        mqttWrite($expiring, mqttPacket(0xE0, "\0\x05\x11\0\0\0\0"));
         expect(mqttRead($expiring) === '', 'DISCONNECT 未允许将期限修改为零');
         fclose($expiring);
-        mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id = 'message-expiry'")->fetchColumn() === 0, 'DISCONNECT 零期限没有清理');
+        mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id = 'message-expiry'")->fetchColumn() === 0, 'DISCONNECT 零期限没有清理');
         $cases += 2;
         $cases += mqttSessionRetainedCases($port, $standby);
-        $standard = (new Process(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, 'plain', 'sessions'], $consumer, $environment))->wait(25);
+        $standard = (new Process(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, 'plain', 'sessions'], $consumer, $environment))->wait(25);
         expect($standard->successful() && $standard->stderr === '', '标准客户端持久恢复失败：' . $standard->stderr);
         echo $standard->stdout;
         $cases += 4;

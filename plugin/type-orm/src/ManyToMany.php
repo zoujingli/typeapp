@@ -4,24 +4,30 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
-use InvalidArgumentException;
+use Type\Runtime\ExecutionScope;
 
 /** 通过中间表加载及修改多对多关系，保留目标范围、租户归属和共享读取预算。 */
 final class ManyToMany extends Relation
 {
-    private Closure $target;
+    private \Closure $target;
+
     private string $table;
+
     private string $sourcePivot;
+
     private string $targetPivot;
+
     private string $source;
+
     private string $related;
+
     private array $fields;
+
     private int $batchSize;
 
-    /** @param Closure(Connection): ModelQuery $target 接收关联查询所用连接。 */
+    /** @param \Closure(Connection): ModelQuery $target 接收关联查询所用连接。 */
     public function __construct(
-        Closure $target,
+        \Closure $target,
         string $table,
         string $sourcePivot,
         string $targetPivot,
@@ -34,21 +40,21 @@ final class ManyToMany extends Relation
         if ($batchSize < 1 || $batchSize > 1000 || strtolower($sourcePivot) === strtolower($targetPivot)
             || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/D', $table)
             || !array_is_list($fields)) {
-            throw new InvalidArgumentException('中间表或批量声明无效');
+            throw new \InvalidArgumentException('中间表或批量声明无效');
         }
         foreach (array_merge([$sourcePivot, $targetPivot, $source, $related], $fields) as $field) {
             if (!is_string($field) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $field)) {
-                throw new InvalidArgumentException('关系字段无效');
+                throw new \InvalidArgumentException('关系字段无效');
             }
         }
         $normalizedFields = array_map('strtolower', $fields);
         if ($pivotTenant !== null && (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $pivotTenant)
             || in_array(strtolower($pivotTenant), array_merge($normalizedFields, [strtolower($sourcePivot), strtolower($targetPivot)]), true))) {
-            throw new InvalidArgumentException('中间表租户列不能覆盖关系键或业务字段');
+            throw new \InvalidArgumentException('中间表租户列不能覆盖关系键或业务字段');
         }
         if (count(array_unique($normalizedFields)) !== count($fields)
             || array_intersect($normalizedFields, [strtolower($sourcePivot), strtolower($targetPivot)]) !== []) {
-            throw new InvalidArgumentException('中间表业务字段不能覆盖关系键');
+            throw new \InvalidArgumentException('中间表业务字段不能覆盖关系键');
         }
         $this->target = $target;
         $this->table = $table;
@@ -84,61 +90,6 @@ final class ManyToMany extends Relation
     public function loadBounded(Connection $connection, array $models, string $name, ReadBudget $budget): void
     {
         $this->loadRows($connection, $models, $name, $budget);
-    }
-
-    private function loadRows(Connection $connection, array $models, string $name, ?ReadBudget $budget = null): void
-    {
-        $keys = [];
-        foreach ($models as $model) {
-            $value = $model->rawValue($this->source);
-            if ($value !== null) {
-                $keys[$this->identity($value)] = $value;
-            }
-        }
-        $pivots = [];
-        $targetIds = [];
-        $pairs = [];
-        foreach (array_chunk(array_values($keys), $this->batchSize) as $chunk) {
-            $query = $connection->table($this->table)->select(array_merge([$this->sourcePivot, $this->targetPivot], $this->fields))
-                ->whereIn($this->sourcePivot, $chunk)->orderBy($this->sourcePivot)->orderBy($this->targetPivot);
-            $query = $this->restrictPivot($query);
-            $rows = ($budget === null ? $query : $query->limit($budget->remaining() + 1))->get();
-            $budget?->consume(count($rows));
-            foreach ($rows as $row) {
-                $source = $this->identity($row[$this->sourcePivot]);
-                $target = $this->identity($row[$this->targetPivot]);
-                if (!isset($keys[$source])) {
-                    throw new ModelException('relation_key_comparison', '中间表关系键与模型比较规则不一致');
-                }
-                $pair = json_encode([$source, $target], JSON_THROW_ON_ERROR);
-                if (isset($pairs[$pair])) {
-                    throw new ModelException('duplicate_pivot', '中间表缺少唯一关系约束');
-                }
-                $pairs[$pair] = true;
-                $pivots[$source][] = $row;
-                $targetIds[$target] = $row[$this->targetPivot];
-            }
-        }
-        $targets = $this->targets($connection, array_values($targetIds), false, $budget);
-        foreach ($models as $model) {
-            $key = $model->rawValue($this->source);
-            $linked = [];
-            foreach ($key === null ? [] : ($pivots[$this->identity($key)] ?? []) as $pivot) {
-                $relatedModel = $targets[$this->identity($pivot[$this->targetPivot])] ?? null;
-                if ($relatedModel === null) {
-                    continue;
-                }
-                $copy = clone $relatedModel;
-                $values = [];
-                foreach ($this->fields as $field) {
-                    $values[$field] = $pivot[$field];
-                }
-                $copy->setPivot($values);
-                $connection->trackModel($copy);
-                $linked[] = $copy;
-            }
-            $model->setRelation($name, $linked);
-        }
     }
 
     /** 返回是否新增关系；重复挂载可更新显式提供的中间表字段。 */
@@ -241,17 +192,72 @@ final class ManyToMany extends Relation
             foreach ($desired as $key => $item) {
                 if (!isset($existing[$key])) {
                     $connection->table($this->table)->insert($this->pivotValues($source, $item['id'], $item['pivot']));
-                    $result['attached']++;
+                    ++$result['attached'];
                 } elseif ($item['pivot'] !== []) {
                     $query->where($this->targetPivot, '=', $item['id'])->update($item['pivot']);
-                    $result['updated']++;
+                    ++$result['updated'];
                 }
             }
             return $result;
         });
     }
 
-    private function mutate(Connection $connection, Model $parent, Closure $operation): mixed
+    private function loadRows(Connection $connection, array $models, string $name, ?ReadBudget $budget = null): void
+    {
+        $keys = [];
+        foreach ($models as $model) {
+            $value = $model->rawValue($this->source);
+            if ($value !== null) {
+                $keys[$this->identity($value)] = $value;
+            }
+        }
+        $pivots = [];
+        $targetIds = [];
+        $pairs = [];
+        foreach (array_chunk(array_values($keys), $this->batchSize) as $chunk) {
+            $query = $connection->table($this->table)->select(array_merge([$this->sourcePivot, $this->targetPivot], $this->fields))
+                ->whereIn($this->sourcePivot, $chunk)->orderBy($this->sourcePivot)->orderBy($this->targetPivot);
+            $query = $this->restrictPivot($query);
+            $rows = ($budget === null ? $query : $query->limit($budget->remaining() + 1))->get();
+            $budget?->consume(count($rows));
+            foreach ($rows as $row) {
+                $source = $this->identity($row[$this->sourcePivot]);
+                $target = $this->identity($row[$this->targetPivot]);
+                if (!isset($keys[$source])) {
+                    throw new ModelException('relation_key_comparison', '中间表关系键与模型比较规则不一致');
+                }
+                $pair = json_encode([$source, $target], JSON_THROW_ON_ERROR);
+                if (isset($pairs[$pair])) {
+                    throw new ModelException('duplicate_pivot', '中间表缺少唯一关系约束');
+                }
+                $pairs[$pair] = true;
+                $pivots[$source][] = $row;
+                $targetIds[$target] = $row[$this->targetPivot];
+            }
+        }
+        $targets = $this->targets($connection, array_values($targetIds), false, $budget);
+        foreach ($models as $model) {
+            $key = $model->rawValue($this->source);
+            $linked = [];
+            foreach ($key === null ? [] : ($pivots[$this->identity($key)] ?? []) as $pivot) {
+                $relatedModel = $targets[$this->identity($pivot[$this->targetPivot])] ?? null;
+                if ($relatedModel === null) {
+                    continue;
+                }
+                $copy = clone $relatedModel;
+                $values = [];
+                foreach ($this->fields as $field) {
+                    $values[$field] = $pivot[$field];
+                }
+                $copy->setPivot($values);
+                $connection->trackModel($copy);
+                $linked[] = $copy;
+            }
+            $model->setRelation($name, $linked);
+        }
+    }
+
+    private function mutate(Connection $connection, Model $parent, \Closure $operation): mixed
     {
         if (!$parent->isPersisted()) {
             throw new ModelException('not_persisted', '关系写入要求已持久化父模型');
@@ -267,7 +273,7 @@ final class ManyToMany extends Relation
                 ->where($definition->field($definition->key())->column(), '=', $parent->rawValue($definition->key()));
             if ($definition->tenantField() !== null) {
                 $field = $definition->field($definition->tenantField());
-                $query = $query->where($field->column(), '=', $field->encode($definition->tenantIdentity(\Type\Runtime\ExecutionScope::current())));
+                $query = $query->where($field->column(), '=', $field->encode($definition->tenantIdentity(ExecutionScope::current())));
             }
             if ($definition->softDeleteField() !== null) {
                 $query = $query->where($definition->field($definition->softDeleteField())->column(), '=', null);
@@ -340,7 +346,7 @@ final class ManyToMany extends Relation
 
     private function tenantIdentity(): string
     {
-        $tenant = \Type\Runtime\ExecutionScope::current()->binding('tenant_id');
+        $tenant = ExecutionScope::current()->binding('tenant_id');
         if ($tenant === null || $tenant === '') {
             throw new ModelException('tenant_scope_required', '中间表关系需要可信租户上下文');
         }
@@ -361,6 +367,6 @@ final class ManyToMany extends Relation
         if (!is_int($value) && !is_string($value)) {
             throw new ModelException('invalid_relation_key', '关系键必须是整数或字符串');
         }
-        return 'key:' . (string) $value;
+        return 'key:' . (string)$value;
     }
 }

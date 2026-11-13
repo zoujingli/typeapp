@@ -11,7 +11,7 @@ use Type\Testing\Process;
 
 // 消费者身份独立于应用候选；静态 SDK 与本机共享 embed 的结果分别记录。
 $root = dirname(__DIR__);
-$driver = (string) getenv('TYPE_DB_PROBE_DRIVER');
+$driver = (string)getenv('TYPE_DB_PROBE_DRIVER');
 expect(in_array($driver, ['mysql', 'pgsql'], true), '需要明确数据库驱动');
 $work = $root . '/build/pdo-progress-' . $driver . '-' . bin2hex(random_bytes(5));
 expect(mkdir($work . '/app', 0700, true), '无法创建 PDO 进度消费者');
@@ -35,14 +35,14 @@ foreach (['composer.json' => $composer, 'type-app.json' => $settings] as $name =
 expect(copy($root . '/toolchain.lock.json', $work . '/toolchain.lock.json')
     && copy(__DIR__ . '/fixtures/compiled-pdo-progress.php', $work . '/app/main.php'), '无法复制锁与完整消费者');
 $runner = new BuildEnvironment();
-$environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME'));
+$environment = $runner->environment((string)getenv('PHP_HOME'), (string)getenv('PHPX_HOME'));
 $environment['PHPRC'] = php_ini_loaded_file() ?: '';
-$environment['PHP_INI_SCAN_DIR'] = (string) (getenv('PHP_INI_SCAN_DIR') ?: '');
-$environment['TYPE_STATIC_RUNTIME'] = (string) getenv('TYPE_STATIC_RUNTIME');
+$environment['PHP_INI_SCAN_DIR'] = (string)(getenv('PHP_INI_SCAN_DIR') ?: '');
+$environment['TYPE_STATIC_RUNTIME'] = (string)getenv('TYPE_STATIC_RUNTIME');
 expect(mkdir($work . '/composer-home', 0700), '无法创建独立 Composer 配置目录');
 $environment['COMPOSER_HOME'] = $work . '/composer-home';
 $environment['COMPOSER_CACHE_DIR'] = $root . '/.cache/composer';
-$composerBinary = (string) (getenv('TYPE_COMPOSER_PHAR') ?: getenv('COMPOSER_BINARY'));
+$composerBinary = (string)(getenv('TYPE_COMPOSER_PHAR') ?: getenv('COMPOSER_BINARY'));
 expect(is_file($composerBinary), '需要明确 Composer');
 expect($environment['TYPE_STATIC_RUNTIME'] === '' || is_file($environment['TYPE_STATIC_RUNTIME']), '显式静态 SDK 不存在');
 file_put_contents($work . '/install.log', $runner->run([PHP_BINARY, $composerBinary, 'install', '--no-interaction',

@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Type\Build;
 
 use PhpParser\ConstExprEvaluator;
+use PhpParser\Error;
 use PhpParser\Node;
 use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\ParserFactory;
-use RuntimeException;
 
 /** 只解析已纳入生产源码的 AST；注解与 route.php 生成同一模型和直接调用。 */
 final class RouteCompiler
@@ -19,7 +19,7 @@ final class RouteCompiler
      * 读取构建配置中的 routing：空值表示不生成；相对 PHP 文件经 AST 求值；测试可直接传入声明对象。
      *
      * @return array<string, mixed>
-     * @throws RuntimeException JSON 路径、可执行 PHP、非对象声明。
+     * @throws \RuntimeException JSON 路径、可执行 PHP、非对象声明
      */
     public function declarations(string $root, mixed $value): array
     {
@@ -28,35 +28,35 @@ final class RouteCompiler
         }
         if (is_string($value)) {
             if (str_ends_with(strtolower($value), '.json')) {
-                throw new RuntimeException('routing 必须是相对 PHP 文件（如 config/route.php），不再读取 JSON');
+                throw new \RuntimeException('routing 必须是相对 PHP 文件（如 config/route.php），不再读取 JSON');
             }
             if (!str_ends_with($value, '.php')) {
-                throw new RuntimeException('routing 必须是相对 PHP 文件（如 config/route.php）');
+                throw new \RuntimeException('routing 必须是相对 PHP 文件（如 config/route.php）');
             }
             $value = $this->phpDeclaration($this->localFile($root, $value));
         }
         if (!is_array($value) || array_is_list($value)) {
-            throw new RuntimeException('routing 必须是相对 PHP 文件或声明对象');
+            throw new \RuntimeException('routing 必须是相对 PHP 文件或声明对象');
         }
         return $value;
     }
 
     /**
      * 静态读取生产类和路由声明，拒绝冲突后生成直接注册调用，不执行控制器。
-     * @param array<string, mixed> $configuration 已解析的 routing 声明。
-     * @param list<string> $sources 完整生产源码文件或目录。
+     * @param array<string, mixed> $configuration 已解析的 routing 声明
+     * @param list<string> $sources 完整生产源码文件或目录
      * @return array{class: string, routes: list<array<string, mixed>>, code: string}
      */
     public function generate(string $root, array $configuration, array $sources): array
     {
         $this->keys($configuration, ['class', 'routes', 'attributes']);
         $class = $configuration['class'] ?? '';
-        if (!is_string($class) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)+$/D', $class)) {
-            throw new RuntimeException('routing.class 必须是带命名空间的生成类名');
+        if (!is_string($class) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\\\[A-Za-z_][A-Za-z0-9_]*)+$/D', $class)) {
+            throw new \RuntimeException('routing.class 必须是带命名空间的生成类名');
         }
         [$classes, $files] = $this->symbols($sources);
         if (isset($classes[strtolower($class)])) {
-            throw new RuntimeException('生成路由类与生产类重名：' . $class);
+            throw new \RuntimeException('生成路由类与生产类重名：' . $class);
         }
         $routes = [];
         $context = ['prefix' => '', 'name-prefix' => '', 'middleware' => [], 'constraints' => []];
@@ -74,8 +74,8 @@ final class RouteCompiler
         $code = $this->render($class, $routes);
         try {
             (new ParserFactory())->createForNewestSupportedVersion()->parse($code);
-        } catch (\PhpParser\Error $error) {
-            throw new RuntimeException('生成路由 PHP 无效：' . $error->getMessage(), 0, $error);
+        } catch (Error $error) {
+            throw new \RuntimeException('生成路由 PHP 无效：' . $error->getMessage(), 0, $error);
         }
         return ['class' => $class, 'routes' => $routes, 'code' => $code];
     }
@@ -83,11 +83,11 @@ final class RouteCompiler
     private function expand(mixed $rows, array $context, array $classes, array &$routes): void
     {
         if (!is_array($rows) || !array_is_list($rows)) {
-            throw new RuntimeException('routes 必须是路由列表');
+            throw new \RuntimeException('routes 必须是路由列表');
         }
         foreach ($rows as $row) {
             if (!is_array($row)) {
-                throw new RuntimeException('每条路由必须是声明对象');
+                throw new \RuntimeException('每条路由必须是声明对象');
             }
             if (array_key_exists('routes', $row)) {
                 $this->keys($row, ['prefix', 'name-prefix', 'middleware', 'constraints', 'routes']);
@@ -107,7 +107,7 @@ final class RouteCompiler
         if (!is_string($prefix) || str_contains($prefix, '?') || str_contains($prefix, '#')
             || ($prefix !== '' && (!str_starts_with($prefix, '/') || str_ends_with($prefix, '/')))
             || !is_string($namePrefix) || ($namePrefix !== '' && !preg_match('/^[A-Za-z_][A-Za-z0-9_.-]*\.$/D', $namePrefix))) {
-            throw new RuntimeException('分组路径必须为空或无尾斜线的绝对路径，名称前缀必须以点结尾');
+            throw new \RuntimeException('分组路径必须为空或无尾斜线的绝对路径，名称前缀必须以点结尾');
         }
         return ['prefix' => $parent['prefix'] . $prefix, 'name-prefix' => $parent['name-prefix'] . $namePrefix,
             'middleware' => array_merge($parent['middleware'], $this->middleware($row['middleware'] ?? [])),
@@ -123,7 +123,7 @@ final class RouteCompiler
         if (!is_string($path) || !str_starts_with($path, '/') || str_ends_with($path, '/')
             || !is_string($name) || !preg_match('/^[A-Za-z_][A-Za-z0-9_.-]*$/D', $name)
             || !is_string($parameter) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $parameter)) {
-            throw new RuntimeException('资源路由路径、名称或参数无效');
+            throw new \RuntimeException('资源路由路径、名称或参数无效');
         }
         $actions = [
             'index' => [['GET'], ''], 'create' => [['GET'], '/create'], 'store' => [['POST'], ''],
@@ -133,13 +133,13 @@ final class RouteCompiler
         $only = $row['only'] ?? array_keys($actions);
         if (!is_array($only) || !array_is_list($only) || $only === [] || array_filter($only, static fn (mixed $action): bool => !is_string($action)) !== []
             || count(array_unique($only)) !== count($only) || array_diff($only, array_keys($actions)) !== []) {
-            throw new RuntimeException('资源路由 only 包含无效或重复动作');
+            throw new \RuntimeException('资源路由 only 包含无效或重复动作');
         }
         $context['middleware'] = array_merge($context['middleware'], $this->middleware($row['middleware'] ?? []));
         $resourceConstraints = $this->constraints($row['constraints'] ?? []);
         preg_match_all('/(?:^|\/)\{([A-Za-z_][A-Za-z0-9_]*)\}(?=\/|$)/', $context['prefix'] . $path . '/{' . $parameter . '}', $matches);
         if (array_diff_key($resourceConstraints, array_fill_keys($matches[1], true)) !== []) {
-            throw new RuntimeException('资源路由约束引用不存在的参数');
+            throw new \RuntimeException('资源路由约束引用不存在的参数');
         }
         $context['constraints'] = array_replace($context['constraints'], $resourceConstraints);
         foreach ($actions as $action => [$methods, $suffix]) {
@@ -159,22 +159,22 @@ final class RouteCompiler
         if (!is_string($path) || !str_starts_with($path, '/') || str_contains($path, '?') || str_contains($path, '#')
             || !is_array($methods) || !array_is_list($methods) || $methods === []
             || ($name !== null && (!is_string($name) || !preg_match('/^[A-Za-z_][A-Za-z0-9_.-]*$/D', $name)))) {
-            throw new RuntimeException('路由路径、方法列表或名称无效');
+            throw new \RuntimeException('路由路径、方法列表或名称无效');
         }
         foreach ($methods as &$method) {
             if (!is_string($method) || !preg_match('/^[!#$%&\x27*+.^_`|~0-9A-Za-z-]+$/D', $method)) {
-                throw new RuntimeException('路由方法无效');
+                throw new \RuntimeException('路由方法无效');
             }
             $method = strtoupper($method);
         }
         unset($method);
         if (count(array_unique($methods)) !== count($methods)) {
-            throw new RuntimeException('路由方法重复');
+            throw new \RuntimeException('路由方法重复');
         }
         sort($methods);
         $path = $context['prefix'] . $path;
         if (str_starts_with($path, '//')) {
-            throw new RuntimeException('路由必须是本地绝对路径，不能包含 authority');
+            throw new \RuntimeException('路由必须是本地绝对路径，不能包含 authority');
         }
         $constraints = array_replace($context['constraints'], $this->constraints($row['constraints'] ?? []));
         $segments = [];
@@ -183,40 +183,40 @@ final class RouteCompiler
             if (preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)\}$/D', $piece, $match)) {
                 $parameter = $match[1];
                 if (isset($parameters[$parameter])) {
-                    throw new RuntimeException('路由参数重复：' . $path);
+                    throw new \RuntimeException('路由参数重复：' . $path);
                 }
                 $parameters[$parameter] = true;
                 $segments[] = ['parameter' => $parameter, 'pattern' => $this->pattern($constraints[$parameter] ?? '[^/]+')];
             } else {
                 if (str_contains($piece, '{') || str_contains($piece, '}') || preg_match('/%(?![A-Fa-f0-9]{2})/', $piece)) {
-                    throw new RuntimeException('路由参数必须占完整段，且编码必须有效：' . $path);
+                    throw new \RuntimeException('路由参数必须占完整段，且编码必须有效：' . $path);
                 }
                 $literal = rawurldecode($piece);
                 if ($literal === '.' || $literal === '..' || preg_match('/[\\\\\/\x00-\x1f\x7f]/', $literal) || preg_match('//u', $literal) !== 1) {
-                    throw new RuntimeException('路由包含非法静态路径段：' . $path);
+                    throw new \RuntimeException('路由包含非法静态路径段：' . $path);
                 }
                 $segments[] = ['literal' => $literal];
             }
         }
         if (array_diff_key($row['constraints'] ?? [], $parameters) !== []) {
-            throw new RuntimeException('路由约束引用不存在的参数：' . $path);
+            throw new \RuntimeException('路由约束引用不存在的参数：' . $path);
         }
         $status = $row['status'] ?? null;
         if ($status !== null && (!is_int($status) || $status < 200 || $status > 299)) {
-            throw new RuntimeException('路由固定成功状态必须是 2xx 整数：' . $path);
+            throw new \RuntimeException('路由固定成功状态必须是 2xx 整数：' . $path);
         }
         $handler = $row['handler'] ?? null;
         if (!is_array($handler) || !array_is_list($handler) || count($handler) !== 2
             || !is_string($handler[0]) || !is_string($handler[1])) {
-            throw new RuntimeException('路由 handler 必须是控制器类和方法二元组');
+            throw new \RuntimeException('路由 handler 必须是控制器类和方法二元组');
         }
-        $symbol = $classes[strtolower($handler[0])] ?? throw new RuntimeException('生产源码中没有路由控制器：' . $handler[0]);
+        $symbol = $classes[strtolower($handler[0])] ?? throw new \RuntimeException('生产源码中没有路由控制器：' . $handler[0]);
         if (!$symbol['node'] instanceof Node\Stmt\Class_ || $symbol['node']->isAbstract()) {
-            throw new RuntimeException('路由控制器不能是抽象类');
+            throw new \RuntimeException('路由控制器不能是抽象类');
         }
         $method = $this->method($symbol, $handler[1], $classes, []);
         if ($method === null || !$method->isPublic() || $method->isStatic() || $method->isAbstract() || $method->byRef) {
-            throw new RuntimeException('控制器动作必须是公开实例方法：' . implode('::', $handler));
+            throw new \RuntimeException('控制器动作必须是公开实例方法：' . implode('::', $handler));
         }
         $action = $this->action($method, array_keys($parameters), $status, $handler, $classes, $row['input'] ?? []);
         return ['methods' => $methods, 'path' => $path, 'segments' => $segments,
@@ -232,9 +232,9 @@ final class RouteCompiler
      * 路径值只允许由同名占位符接收为 string/int；PSR 请求和已校验输入各最多一个。
      * 返回值只允许数组、void 或 PSR 响应，状态码在构建期完成相容性检查。
      *
-     * @param list<string> $parameters 路由中声明的路径参数名。
-     * @param int|null $status 路由声明的固定成功状态。
-     * @return array{arguments: list<array{name: string, type: string}>, return: string, status: int|null}
+     * @param list<string> $parameters 路由中声明的路径参数名
+     * @param null|int $status 路由声明的固定成功状态
+     * @return array{arguments: list<array{name: string, type: string}>, return: string, status: null|int}
      */
     private function action(Node\Stmt\ClassMethod $method, array $parameters, ?int $status, array $handler, array $classes, mixed $input): array
     {
@@ -245,40 +245,40 @@ final class RouteCompiler
         $inputClass = null;
         foreach ($method->params as $parameter) {
             if ($parameter->variadic || $parameter->byRef || $parameter->type === null) {
-                throw new RuntimeException('控制器动作参数必须是非引用的明确类型：' . implode('::', $handler));
+                throw new \RuntimeException('控制器动作参数必须是非引用的明确类型：' . implode('::', $handler));
             }
             $name = $parameter->var->name;
             if ($parameter->type instanceof Node\Name
-                && $parameter->type->toString() === 'Psr\\Http\\Message\\ServerRequestInterface') {
-                $requestCount++;
+                && $parameter->type->toString() === 'Psr\Http\Message\ServerRequestInterface') {
+                ++$requestCount;
                 if ($requestCount > 1) {
-                    throw new RuntimeException('控制器动作最多接收一个 PSR 请求参数：' . implode('::', $handler));
+                    throw new \RuntimeException('控制器动作最多接收一个 PSR 请求参数：' . implode('::', $handler));
                 }
                 $arguments[] = ['name' => $name, 'type' => 'request'];
                 continue;
             }
             if ($parameter->type instanceof Node\Name) {
                 if ($inputClass !== null || $parameter->default !== null) {
-                    throw new RuntimeException('控制器动作最多接收一个无默认值的已校验输入：' . implode('::', $handler));
+                    throw new \RuntimeException('控制器动作最多接收一个无默认值的已校验输入：' . implode('::', $handler));
                 }
                 $inputClass = $this->validatedInput($parameter->type->toString(), $classes);
                 $arguments[] = ['name' => $name, 'type' => 'input', 'class' => $inputClass];
                 continue;
             }
             if (!$parameter->type instanceof Node\Identifier) {
-                throw new RuntimeException('控制器动作只接受 string/int 路径参数、已校验输入或 PSR 请求：' . implode('::', $handler));
+                throw new \RuntimeException('控制器动作只接受 string/int 路径参数、已校验输入或 PSR 请求：' . implode('::', $handler));
             }
             $type = strtolower($parameter->type->toString());
             if (!in_array($type, ['string', 'int'], true) || !isset($available[$name]) || isset($used[$name])
                 || $parameter->default !== null) {
-                throw new RuntimeException('控制器动作参数必须匹配路径占位符且不能带默认值：' . implode('::', $handler));
+                throw new \RuntimeException('控制器动作参数必须匹配路径占位符且不能带默认值：' . implode('::', $handler));
             }
             $used[$name] = true;
             $arguments[] = ['name' => $name, 'type' => $type];
         }
         $returnType = $method->returnType;
         $return = null;
-        if ($returnType instanceof Node\Name && $returnType->toString() === 'Psr\\Http\\Message\\ResponseInterface') {
+        if ($returnType instanceof Node\Name && $returnType->toString() === 'Psr\Http\Message\ResponseInterface') {
             $return = 'response';
         } elseif ($returnType instanceof Node\Identifier) {
             $candidate = strtolower($returnType->toString());
@@ -287,23 +287,23 @@ final class RouteCompiler
             }
         }
         if ($return === null) {
-            throw new RuntimeException('控制器动作返回值必须是 array、void 或 PSR 响应：' . implode('::', $handler));
+            throw new \RuntimeException('控制器动作返回值必须是 array、void 或 PSR 响应：' . implode('::', $handler));
         }
         if ($return === 'response' && $status !== null) {
-            throw new RuntimeException('PSR 响应动作不能声明固定成功状态：' . implode('::', $handler));
+            throw new \RuntimeException('PSR 响应动作不能声明固定成功状态：' . implode('::', $handler));
         }
         if ($return === 'array' && $status !== null && in_array($status, [204, 205], true)) {
-            throw new RuntimeException('数组动作不能使用无正文成功状态：' . implode('::', $handler));
+            throw new \RuntimeException('数组动作不能使用无正文成功状态：' . implode('::', $handler));
         }
         if ($return === 'void' && $status !== null && $status !== 204) {
-            throw new RuntimeException('void 动作只能省略状态或使用 204：' . implode('::', $handler));
+            throw new \RuntimeException('void 动作只能省略状态或使用 204：' . implode('::', $handler));
         }
         $result = ['arguments' => $arguments, 'return' => $return,
             'status' => $status ?? ($return === 'void' ? 204 : ($return === 'array' ? 200 : null))];
         if ($inputClass !== null) {
             $result['input'] = $this->inputOptions($input);
         } elseif ($input !== []) {
-            throw new RuntimeException('没有已校验输入参数的动作不能声明 input 策略');
+            throw new \RuntimeException('没有已校验输入参数的动作不能声明 input 策略');
         }
         return $result;
     }
@@ -311,28 +311,28 @@ final class RouteCompiler
     /** 静态核对组件、契约与具体工厂，不调用业务 schema 或构造器。 */
     private function validatedInput(string $name, array $classes): string
     {
-        foreach (['Type\\Validate\\ValidatedInput', 'Type\\Validate\\Schema', 'Type\\Validate\\Data', 'Type\\Validate\\Input'] as $required) {
+        foreach (['Type\Validate\ValidatedInput', 'Type\Validate\Schema', 'Type\Validate\Data', 'Type\Validate\Input'] as $required) {
             if (!isset($classes[strtolower($required)])) {
-                throw new RuntimeException('类型化输入需要将 type-validate 完整纳入生产依赖：' . $required);
+                throw new \RuntimeException('类型化输入需要将 type-validate 完整纳入生产依赖：' . $required);
             }
         }
-        $symbol = $classes[strtolower($name)] ?? throw new RuntimeException('已校验输入未纳入生产源码：' . $name);
+        $symbol = $classes[strtolower($name)] ?? throw new \RuntimeException('已校验输入未纳入生产源码：' . $name);
         $node = $symbol['node'];
         if (!$node instanceof Node\Stmt\Class_ || $node->isAbstract() || !$this->implementsInput($symbol, $classes, [])) {
-            throw new RuntimeException('输入参数必须是实现 Type\\Validate\\ValidatedInput 的具体类：' . $name);
+            throw new \RuntimeException('输入参数必须是实现 Type\Validate\ValidatedInput 的具体类：' . $name);
         }
         $schema = $this->method($symbol, 'schema', $classes, []);
         $factory = $this->method($symbol, 'fromData', $classes, []);
         if ($schema === null || !$schema->isPublic() || !$schema->isStatic() || $schema->isAbstract() || $schema->byRef
-            || $schema->params !== [] || !$schema->returnType instanceof Node\Name || $schema->returnType->toString() !== 'Type\\Validate\\Schema') {
-            throw new RuntimeException('输入 schema 必须是公开静态零参数方法并返回 Schema：' . $name);
+            || $schema->params !== [] || !$schema->returnType instanceof Node\Name || $schema->returnType->toString() !== 'Type\Validate\Schema') {
+            throw new \RuntimeException('输入 schema 必须是公开静态零参数方法并返回 Schema：' . $name);
         }
         if ($factory === null || !$factory->isPublic() || !$factory->isStatic() || $factory->isAbstract() || $factory->byRef
             || count($factory->params) !== 1 || $factory->params[0]->byRef || $factory->params[0]->variadic || $factory->params[0]->default !== null
-            || !$factory->params[0]->type instanceof Node\Name || $factory->params[0]->type->toString() !== 'Type\\Validate\\Data'
+            || !$factory->params[0]->type instanceof Node\Name || $factory->params[0]->type->toString() !== 'Type\Validate\Data'
             || !$factory->returnType instanceof Node\Name || !in_array(strtolower($factory->returnType->toString()), [strtolower($name), 'self'], true)
             || ($factory->returnType->toString() === 'self' && $node->getMethod('fromData') === null)) {
-            throw new RuntimeException('输入 fromData 必须接收一个 Data 并明确返回自身类型：' . $name);
+            throw new \RuntimeException('输入 fromData 必须接收一个 Data 并明确返回自身类型：' . $name);
         }
         return $symbol['name'];
     }
@@ -342,9 +342,9 @@ final class RouteCompiler
     {
         $key = strtolower($symbol['name']);
         if (isset($visited[$key])) {
-            throw new RuntimeException('输入类型继承循环');
+            throw new \RuntimeException('输入类型继承循环');
         }
-        if ($key === 'type\\validate\\validatedinput') {
+        if ($key === 'type\validate\validatedinput') {
             return true;
         }
         $visited[$key] = true;
@@ -366,19 +366,19 @@ final class RouteCompiler
     private function inputOptions(mixed $input): array
     {
         if (!is_array($input) || ($input !== [] && array_is_list($input))) {
-            throw new RuntimeException('路由 input 必须是策略对象');
+            throw new \RuntimeException('路由 input 必须是策略对象');
         }
         $this->keys($input, ['maxBytes', 'maxDepth', 'maxQueryBytes', 'maxQueryFields', 'scenario', 'patch']);
         $options = array_replace(['maxBytes' => 16384, 'maxDepth' => 8, 'maxQueryBytes' => 16384,
             'maxQueryFields' => 100, 'scenario' => 'default', 'patch' => null], $input);
         foreach (['maxBytes' => [1, 67108864], 'maxDepth' => [2, 128], 'maxQueryBytes' => [1, 67108864], 'maxQueryFields' => [1, 10000]] as $name => [$minimum, $maximum]) {
             if (!is_int($options[$name]) || $options[$name] < $minimum || $options[$name] > $maximum) {
-                throw new RuntimeException('路由输入预算无效：' . $name);
+                throw new \RuntimeException('路由输入预算无效：' . $name);
             }
         }
         if (!is_string($options['scenario']) || preg_match('/^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/D', $options['scenario']) !== 1
             || (array_key_exists('patch', $input) && !is_bool($input['patch']))) {
-            throw new RuntimeException('路由输入场景或部分更新策略无效');
+            throw new \RuntimeException('路由输入场景或部分更新策略无效');
         }
         return $options;
     }
@@ -388,9 +388,9 @@ final class RouteCompiler
         $node = $symbol['node'];
         $group = null;
         foreach ($this->attributeList($node->attrGroups) as $attribute) {
-            if ($attribute->name->toString() === 'Type\\Core\\Http\\Attribute\\Group') {
+            if ($attribute->name->toString() === 'Type\Core\Http\Attribute\Group') {
                 if ($group !== null) {
-                    throw new RuntimeException('控制器 Group Attribute 重复：' . $symbol['name']);
+                    throw new \RuntimeException('控制器 Group Attribute 重复：' . $symbol['name']);
                 }
                 $group = $this->arguments($attribute, ['prefix', 'namePrefix', 'middleware', 'constraints']);
                 if (array_key_exists('namePrefix', $group)) {
@@ -401,11 +401,11 @@ final class RouteCompiler
             }
         }
         foreach ($this->attributeList($node->attrGroups) as $attribute) {
-            if ($attribute->name->toString() === 'Type\\Core\\Http\\Attribute\\Route') {
+            if ($attribute->name->toString() === 'Type\Core\Http\Attribute\Route') {
                 $row = $this->arguments($attribute, ['path', 'methods', 'name', 'constraints', 'middleware', 'status', 'input']);
                 $row['handler'] = [$symbol['name'], 'handle'];
                 $routes[] = $this->route($row, $context, $classes);
-            } elseif ($attribute->name->toString() === 'Type\\Core\\Http\\Attribute\\Resource') {
+            } elseif ($attribute->name->toString() === 'Type\Core\Http\Attribute\Resource') {
                 $row = $this->arguments($attribute, ['path', 'name', 'parameter', 'only', 'constraints', 'middleware']);
                 $row['resource'] = $row['path'] ?? null;
                 unset($row['path']);
@@ -415,12 +415,12 @@ final class RouteCompiler
         }
         foreach ($node->getMethods() as $method) {
             foreach ($this->attributeList($method->attrGroups) as $attribute) {
-                if ($attribute->name->toString() === 'Type\\Core\\Http\\Attribute\\Route') {
+                if ($attribute->name->toString() === 'Type\Core\Http\Attribute\Route') {
                     $row = $this->arguments($attribute, ['path', 'methods', 'name', 'constraints', 'middleware', 'status', 'input']);
                     $row['handler'] = [$symbol['name'], $method->name->toString()];
                     $routes[] = $this->route($row, $context, $classes);
-                } elseif (in_array($attribute->name->toString(), ['Type\\Core\\Http\\Attribute\\Group', 'Type\\Core\\Http\\Attribute\\Resource'], true)) {
-                    throw new RuntimeException('Group 和 Resource Attribute 只能用于控制器类');
+                } elseif (in_array($attribute->name->toString(), ['Type\Core\Http\Attribute\Group', 'Type\Core\Http\Attribute\Resource'], true)) {
+                    throw new \RuntimeException('Group 和 Resource Attribute 只能用于控制器类');
                 }
             }
         }
@@ -436,21 +436,21 @@ final class RouteCompiler
                 && $expression->name instanceof Node\Identifier && $expression->name->toString() === 'class') {
                 return $expression->class->toString();
             }
-            throw new RuntimeException('路由 Attribute 只接受常量表达式，不执行应用代码');
+            throw new \RuntimeException('路由 Attribute 只接受常量表达式，不执行应用代码');
         });
         foreach ($attribute->args as $argument) {
             if ($argument->unpack || $argument->byRef || ($argument->name === null && $named)) {
-                throw new RuntimeException('路由 Attribute 参数顺序或解包无效');
+                throw new \RuntimeException('路由 Attribute 参数顺序或解包无效');
             }
             $name = $argument->name?->toString() ?? ($names[$position++] ?? '');
             $named = $named || $argument->name !== null;
             if (!in_array($name, $names, true) || array_key_exists($name, $values)) {
-                throw new RuntimeException('路由 Attribute 参数未知或重复：' . $name);
+                throw new \RuntimeException('路由 Attribute 参数未知或重复：' . $name);
             }
             try {
                 $values[$name] = $evaluator->evaluateDirectly($argument->value);
             } catch (\Throwable $error) {
-                throw new RuntimeException('路由 Attribute 必须能静态求值：' . $name, 0, $error);
+                throw new \RuntimeException('路由 Attribute 必须能静态求值：' . $name, 0, $error);
             }
         }
         return $values;
@@ -471,11 +471,11 @@ final class RouteCompiler
         foreach ($routes as $index => $route) {
             if ($route['name'] !== null) {
                 if (isset($names[$route['name']])) {
-                    throw new RuntimeException('路由名称重复：' . $route['name']);
+                    throw new \RuntimeException('路由名称重复：' . $route['name']);
                 }
                 $names[$route['name']] = true;
             }
-            for ($prior = 0; $prior < $index; $prior++) {
+            for ($prior = 0; $prior < $index; ++$prior) {
                 $other = $routes[$prior];
                 if (array_intersect($route['methods'], $other['methods']) === [] || count($route['segments']) !== count($other['segments'])) {
                     continue;
@@ -490,7 +490,7 @@ final class RouteCompiler
                     }
                 }
                 if ($ambiguous) {
-                    throw new RuntimeException('路由重复或同形参数歧义，无法证明约束无交集：' . $route['path'] . ' / ' . $other['path']);
+                    throw new \RuntimeException('路由重复或同形参数歧义，无法证明约束无交集：' . $route['path'] . ' / ' . $other['path']);
                 }
             }
         }
@@ -499,11 +499,11 @@ final class RouteCompiler
     private function middleware(mixed $values): array
     {
         if (!is_array($values) || !array_is_list($values)) {
-            throw new RuntimeException('路由中间件必须是标识列表');
+            throw new \RuntimeException('路由中间件必须是标识列表');
         }
         foreach ($values as $value) {
             if (!is_string($value) || !preg_match('/^[A-Za-z_][A-Za-z0-9_.:-]*$/D', $value)) {
-                throw new RuntimeException('路由中间件标识无效');
+                throw new \RuntimeException('路由中间件标识无效');
             }
         }
         return $values;
@@ -512,11 +512,11 @@ final class RouteCompiler
     private function constraints(mixed $values): array
     {
         if (!is_array($values)) {
-            throw new RuntimeException('路由约束必须是参数映射');
+            throw new \RuntimeException('路由约束必须是参数映射');
         }
         foreach ($values as $name => $value) {
             if (!is_string($name) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $name) || !is_string($value)) {
-                throw new RuntimeException('路由约束声明无效');
+                throw new \RuntimeException('路由约束声明无效');
             }
             $this->pattern($value);
         }
@@ -526,25 +526,25 @@ final class RouteCompiler
     private function pattern(string $expression): string
     {
         if ($expression === '' || strlen($expression) > 512) {
-            throw new RuntimeException('路由约束表达式必须在 1 到 512 字节之间');
+            throw new \RuntimeException('路由约束表达式必须在 1 到 512 字节之间');
         }
         foreach (['~', '#', '%', '!', ';', '@', '`'] as $delimiter) {
             if (!str_contains($expression, $delimiter)) {
-                $pattern = $delimiter . '(*LIMIT_MATCH=100000)(*LIMIT_DEPTH=256)\\A(?:' . $expression . ')\\z' . $delimiter . 'uD';
+                $pattern = $delimiter . '(*LIMIT_MATCH=100000)(*LIMIT_DEPTH=256)\A(?:' . $expression . ')\z' . $delimiter . 'uD';
                 if (@preg_match($pattern, '') === false) {
-                    throw new RuntimeException('路由参数正则无效：' . $expression);
+                    throw new \RuntimeException('路由参数正则无效：' . $expression);
                 }
                 return $pattern;
             }
         }
-        throw new RuntimeException('路由约束包含全部可用分隔符');
+        throw new \RuntimeException('路由约束包含全部可用分隔符');
     }
 
     private function method(array $symbol, string $name, array $classes, array $visited): ?Node\Stmt\ClassMethod
     {
         $key = strtolower($symbol['name']);
         if (isset($visited[$key])) {
-            throw new RuntimeException('路由控制器继承循环');
+            throw new \RuntimeException('路由控制器继承循环');
         }
         $visited[$key] = true;
         foreach ($symbol['node']->getMethods() as $method) {
@@ -571,7 +571,7 @@ final class RouteCompiler
                     }
                 }
             } else {
-                throw new RuntimeException('路由输入源码不存在');
+                throw new \RuntimeException('路由输入源码不存在');
             }
         }
         ksort($files);
@@ -584,8 +584,8 @@ final class RouteCompiler
                 // 保存签名副本，不能裁剪原树后再解析已脱离作用域的嵌套声明。
                 $nodes = (new NodeTraverser(new NameResolver()))->traverse($parser->parse(file_get_contents($file)) ?? []);
                 $classNodes = $finder->find($nodes, static fn (Node $node): bool => $node instanceof Node\Stmt\Class_ || $node instanceof Node\Stmt\Interface_);
-            } catch (\PhpParser\Error $error) {
-                throw new RuntimeException('路由源码解析失败：' . $file . '，' . $error->getMessage(), 0, $error);
+            } catch (Error $error) {
+                throw new \RuntimeException('路由源码解析失败：' . $file . '，' . $error->getMessage(), 0, $error);
             }
             foreach ($classNodes as $node) {
                 if ($node->name === null) {
@@ -593,7 +593,7 @@ final class RouteCompiler
                 }
                 $name = $node->namespacedName->toString();
                 if (isset($classes[strtolower($name)])) {
-                    throw new RuntimeException('路由源码类重名：' . $name);
+                    throw new \RuntimeException('路由源码类重名：' . $name);
                 }
                 $classes[strtolower($name)] = ['name' => $name, 'node' => $this->compactClass($node), 'file' => $file];
             }
@@ -631,29 +631,29 @@ final class RouteCompiler
     {
         $contents = @file_get_contents($file, false, null, 0, 1048577);
         if ($contents === false || strlen($contents) > 1048576) {
-            throw new RuntimeException('路由声明不可读或超过 1 MiB');
+            throw new \RuntimeException('路由声明不可读或超过 1 MiB');
         }
         try {
             $statements = (new ParserFactory())->createForNewestSupportedVersion()->parse($contents);
-        } catch (\PhpParser\Error $error) {
-            throw new RuntimeException('路由声明 PHP 语法无效，行 ' . $error->getStartLine(), 0, $error);
+        } catch (Error $error) {
+            throw new \RuntimeException('路由声明 PHP 语法无效，行 ' . $error->getStartLine(), 0, $error);
         }
         if (!is_array($statements) || count($statements) !== 2 || !$statements[0] instanceof Node\Stmt\Declare_
             || $statements[0]->stmts !== null || count($statements[0]->declares) !== 1
             || $statements[0]->declares[0]->key->toString() !== 'strict_types'
             || !$statements[0]->declares[0]->value instanceof Node\Scalar\Int_ || $statements[0]->declares[0]->value->value !== 1
             || !$statements[1] instanceof Node\Stmt\Return_ || $statements[1]->expr === null) {
-            throw new RuntimeException('路由声明只能包含 declare(strict_types=1) 和一次 return 数组');
+            throw new \RuntimeException('路由声明只能包含 declare(strict_types=1) 和一次 return 数组');
         }
         try {
             $value = (new ConstExprEvaluator(static function (Node\Expr $expression): mixed {
-                throw new RuntimeException('路由声明只接受常量表达式，不执行应用代码');
+                throw new \RuntimeException('路由声明只接受常量表达式，不执行应用代码');
             }))->evaluateDirectly($statements[1]->expr);
         } catch (\Throwable $error) {
-            throw new RuntimeException('路由声明必须能静态求值', 0, $error);
+            throw new \RuntimeException('路由声明必须能静态求值', 0, $error);
         }
         if (!is_array($value) || $value === [] || array_is_list($value)) {
-            throw new RuntimeException('路由声明必须返回含 class 的关联数组');
+            throw new \RuntimeException('路由声明必须返回含 class 的关联数组');
         }
 
         return $value;
@@ -664,7 +664,7 @@ final class RouteCompiler
      *
      * @param array<string, mixed> $configuration
      * @param array<string, true> $files
-     * @return array<string, true>|null null 表示扫描全部生产类
+     * @return null|array<string, true> null 表示扫描全部生产类
      */
     private function attributeFiles(string $root, array $configuration, array $files): ?array
     {
@@ -676,16 +676,16 @@ final class RouteCompiler
             return null;
         }
         if (!is_array($attributes) || !array_is_list($attributes) || count(array_unique($attributes, SORT_REGULAR)) !== count($attributes)) {
-            throw new RuntimeException('routing.attributes 必须是 true 或不重复的显式 PHP 文件列表');
+            throw new \RuntimeException('routing.attributes 必须是 true 或不重复的显式 PHP 文件列表');
         }
         $selected = [];
         foreach ($attributes as $file) {
             if (!is_string($file)) {
-                throw new RuntimeException('Attribute 输入必须是 PHP 文件路径');
+                throw new \RuntimeException('Attribute 输入必须是 PHP 文件路径');
             }
             $file = $this->localFile($root, $file);
             if (!isset($files[$file])) {
-                throw new RuntimeException('Attribute 文件未纳入生产编译源码：' . $file);
+                throw new \RuntimeException('Attribute 文件未纳入生产编译源码：' . $file);
             }
             $selected[$file] = true;
         }
@@ -698,7 +698,7 @@ final class RouteCompiler
         $root = realpath($root);
         $file = $root === false ? false : realpath($root . '/' . $relative);
         if ($file === false || !BuildPlatform::contains($root, $file) || !is_file($file)) {
-            throw new RuntimeException('路由声明文件不存在或超出应用目录');
+            throw new \RuntimeException('路由声明文件不存在或超出应用目录');
         }
         return $file;
     }
@@ -706,7 +706,7 @@ final class RouteCompiler
     private function keys(array $values, array $allowed): void
     {
         if (array_diff(array_keys($values), $allowed) !== []) {
-            throw new RuntimeException('路由包含未知配置项');
+            throw new \RuntimeException('路由包含未知配置项');
         }
     }
 
@@ -789,10 +789,10 @@ final class RouteCompiler
         }
         $lines = array_merge($lines, [
             '    /**',
-            '     * @param array<class-string, \\Closure(): object> $controllers 零参数控制器工厂。',
-            '     * @param array<string, \\Closure(): \\Psr\\Http\\Server\\MiddlewareInterface> $middleware 零参数中间件工厂。',
+            '     * @param array<class-string, \Closure(): object> $controllers 零参数控制器工厂。',
+            '     * @param array<string, \Closure(): \Psr\Http\Server\MiddlewareInterface> $middleware 零参数中间件工厂。',
             '     */',
-            '    public static function register(\\Type\\Core\\Http\\Router $router, array $controllers, array $middleware = []): void',
+            '    public static function register(\Type\Core\Http\Router $router, array $controllers, array $middleware = []): void',
             '    {',
         ]);
         $controllers = [];
@@ -819,7 +819,7 @@ final class RouteCompiler
             $factories = implode(', ', array_map(static fn (string $name): string => '$middleware[' . var_export($name, true) . ']', $route['middleware']));
             $lines[] = "        \$factory{$index} = \$controllers[{$literal}];";
             $lines[] = "        \$router->register(new \\Type\\Core\\Http\\RouteDefinition({$definition}),";
-            $lines[] = '            static fn (): \\Psr\\Http\\Server\\RequestHandlerInterface => new \\Type\\Core\\Http\\ActionHandler(';
+            $lines[] = '            static fn (): \Psr\Http\Server\RequestHandlerInterface => new \Type\Core\Http\ActionHandler(';
             $lines[] = "                static function (\\Psr\\Http\\Message\\ServerRequestInterface \$request) use (\$factory{$index}): \\Psr\\Http\\Message\\ResponseInterface {";
             $lines[] = "                    \$controller = \$factory{$index}();";
             $lines[] = "                    if (!\$controller instanceof \\{$controller}) { throw new \\RuntimeException('路由工厂返回了错误控制器'); }";
@@ -844,7 +844,7 @@ final class RouteCompiler
                     $inputClass = '\\' . $argument['class'];
                     $lines[] = '                    try {';
                     $lines[] = "                        \$inputData = self::readInput(\$request, {$inputClass}::schema(), {$options});";
-                    $lines[] = '                    } catch (\\Type\\Validate\\ValidationException $inputError) {';
+                    $lines[] = '                    } catch (\Type\Validate\ValidationException $inputError) {';
                     $lines[] = "                        return self::jsonResponse(['error' => \$inputError->errorCode(), 'fields' => \$inputError->errors()], \$inputError->status());";
                     $lines[] = '                    }';
                     $lines[] = "                    \$validatedInput = {$inputClass}::fromData(\$inputData);";
@@ -867,11 +867,11 @@ final class RouteCompiler
             if ($resultType === 'response') {
                 $lines[] = "                    return {$invocation};";
             } elseif ($resultType === 'array') {
-                $status = (int) $route['action']['status'];
+                $status = (int)$route['action']['status'];
                 $lines[] = "                    \$result = {$invocation};";
                 $lines[] = "                    return self::jsonResponse(\$result, {$status});";
             } else {
-                $status = (int) $route['action']['status'];
+                $status = (int)$route['action']['status'];
                 $lines[] = "                    {$invocation};";
                 $lines[] = "                    return self::emptyResponse({$status});";
             }

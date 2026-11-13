@@ -4,29 +4,37 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
-use Throwable;
+use Type\Runtime\ExecutionScope;
 use Type\Runtime\ResourceLease;
 use Type\Runtime\ReusableResource;
-use Type\Runtime\ExecutionScope;
 
 /** 执行作用域中的数据库租约；集中管理参数绑定、事务事实、模型失效与查询诊断。 */
 final class Connection
 {
     private ResourceLease $lease;
+
     private int $reads = 0;
+
     private int $writes = 0;
+
     private array $readParameterSizes = [];
+
     private array $transactions = [];
+
     private bool $rollbackOnly = false;
+
     private string $outcome = TransactionOutcome::NOT_STARTED;
+
     private array $identity;
+
     private array $listeners = [];
+
     private int $listenerSequence = 0;
+
     private bool $notifying = false;
 
     /**
-     * @internal 绑定作用域已借出的 PDO 租约及端点身份。
+     * @internal 绑定作用域已借出的 PDO 租约及端点身份
      *
      * @param array<string, mixed> $identity
      */
@@ -39,7 +47,7 @@ final class Connection
     /**
      * 返回借出时的身份快照，后续凭据轮换不会改变已借出租约。
      *
-     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码。
+     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码
      */
     public function identity(): array
     {
@@ -49,7 +57,7 @@ final class Connection
     /**
      * 执行参数化查询并读取全部行；大结果应选择 stream 或分页。
      *
-     * @param array<int|string, scalar|null> $parameters 位置参数从零编号，命名参数保留键名。
+     * @param array<int|string, null|scalar> $parameters 位置参数从零编号，命名参数保留键名
      * @return list<array<string, mixed>>
      */
     public function query(string $sql, array $parameters = []): array
@@ -106,18 +114,18 @@ final class Connection
         $sqlitePrimaryCount = 0;
         if ($driver === 'sqlite') {
             foreach ($rows as $row) {
-                $sqlitePrimaryCount += (int) $row['primary_key'] > 0 ? 1 : 0;
+                $sqlitePrimaryCount += (int)$row['primary_key'] > 0 ? 1 : 0;
             }
         }
         foreach ($rows as $row) {
             $primary = $driver === 'mysql' ? $row['Key'] === 'PRI' : in_array($row['primary_key'], [true, 1, '1', 't'], true);
             $notNull = $driver === 'mysql' ? $row['Null'] === 'NO' : in_array($row['not_null'], [true, 1, '1', 't'], true);
             if ($driver === 'sqlite') {
-                $primary = (int) $row['primary_key'] > 0;
-                $notNull = $notNull || ($sqlitePrimaryCount === 1 && $primary && (int) $row['rowid_primary'] === 1 && strtoupper((string) $row['type']) === 'INTEGER');
+                $primary = (int)$row['primary_key'] > 0;
+                $notNull = $notNull || ($sqlitePrimaryCount === 1 && $primary && (int)$row['rowid_primary'] === 1 && strtoupper((string)$row['type']) === 'INTEGER');
             }
-            $columns[] = ['name' => (string) ($driver === 'mysql' ? $row['Field'] : $row['name']),
-                'type' => (string) ($driver === 'mysql' ? $row['Type'] : $row['type']), 'primary' => $primary, 'nullable' => !$notNull];
+            $columns[] = ['name' => (string)($driver === 'mysql' ? $row['Field'] : $row['name']),
+                'type' => (string)($driver === 'mysql' ? $row['Type'] : $row['type']), 'primary' => $primary, 'nullable' => !$notNull];
         }
         return $columns;
     }
@@ -160,14 +168,14 @@ final class Connection
         $rows = $this->operation(static fn (PdoSession $resource): array => $resource->query($sql, $parameters), $sql, $parameters, 'metadata');
         $indexes = [];
         foreach ($rows as $row) {
-            if ($driver === 'mysql' && (int) $row['Non_unique'] !== 0) {
+            if ($driver === 'mysql' && (int)$row['Non_unique'] !== 0) {
                 continue;
             }
-            $name = (string) ($driver === 'mysql' ? $row['Key_name'] : $row['name']);
+            $name = (string)($driver === 'mysql' ? $row['Key_name'] : $row['name']);
             $column = $driver === 'mysql' ? $row['Column_name'] : $row['column_name'];
             $indexes[$name] ??= ['name' => $name, 'columns' => [], 'nullable' => false, 'partial' => false, 'expression' => false];
             $index = $indexes[$name];
-            $index['columns'][] = (string) $column;
+            $index['columns'][] = (string)$column;
             $index['nullable'] = $index['nullable'] || ($nullable[$column ?? ''] ?? true);
             $index['partial'] = $index['partial'] || in_array($row['partial'] ?? false, [true, 1, '1', 't'], true);
             $index['expression'] = $index['expression'] || $column === null
@@ -200,7 +208,7 @@ final class Connection
         $this->recordRead(0);
         $schema = $this->operation(static fn (PdoSession $session): array => $session->query($sql, []), $sql, [], 'metadata');
         $mode = $this->query('SELECT @@SESSION.sql_mode AS modes')[0]['modes'];
-        if (count($schema) !== 1 || preg_match('/^\) ENGINE=InnoDB\b/m', (string) ($schema[0]['Create Table'] ?? '')) !== 1
+        if (count($schema) !== 1 || preg_match('/^\) ENGINE=InnoDB\b/m', (string)($schema[0]['Create Table'] ?? '')) !== 1
             || preg_match('/(?:^|,)(?:STRICT_ALL_TABLES|STRICT_TRANS_TABLES)(?:,|$)/', $mode) !== 1) {
             throw new ModelException('unsafe_batch_storage', 'MySQL 集合写入需要 InnoDB 事务表及严格 SQL 模式');
         }
@@ -225,12 +233,12 @@ final class Connection
     /**
      * 执行参数化语句并返回数据库报告的影响行数，遵守事务与只读角色检查。
      *
-     * @param array<int|string, scalar|null> $parameters
-     * @return int 各数据库保留各自的匹配行/改变行语义。
+     * @param array<int|string, null|scalar> $parameters
+     * @return int 各数据库保留各自的匹配行/改变行语义
      */
     public function execute(string $sql, array $parameters = []): int
     {
-        $this->writes++;
+        ++$this->writes;
         return $this->operation(static fn (PdoSession $session): int => $session->execute($sql, $parameters), $sql, $parameters);
     }
 
@@ -242,7 +250,7 @@ final class Connection
      */
     public function raw(string $sql, array $parameters = []): int
     {
-        $this->writes++;
+        ++$this->writes;
         return $this->operation(static fn (PdoSession $session): int => $session->execute($sql, $parameters), $sql, $parameters, 'raw', true);
     }
 
@@ -259,8 +267,8 @@ final class Connection
         return $this->session()->lastInsertId();
     }
 
-    /** @param Closure(Connection): mixed $operation 始终接收当前事务连接，异常时回滚。 */
-    public function transaction(Closure $operation, string $mode = 'default'): mixed
+    /** @param \Closure(Connection): mixed $operation 始终接收当前事务连接，异常时回滚。 */
+    public function transaction(\Closure $operation, string $mode = 'default'): mixed
     {
         $this->session()->assertIdle();
         return $this->lease->hold(function (ReusableResource $resource) use ($operation, $mode): mixed {
@@ -271,7 +279,94 @@ final class Connection
         });
     }
 
-    private function runTransaction(PdoSession $session, Closure $operation, string $mode): mixed
+    /** 返回当前连接活动事务帧数；内层帧对应保存点。 */
+    public function transactionDepth(): int
+    {
+        return count($this->transactions);
+    }
+
+    /** 返回当前连接最近的事务事实；提交后回调里的新事务可以推进该状态。 */
+    public function transactionOutcome(): string
+    {
+        return $this->outcome;
+    }
+
+    /** @param \Closure(): mixed $callback 提交确认后零参数调用，返回值忽略。 */
+    public function afterCommit(\Closure $callback): void
+    {
+        $this->session();
+        if ($this->transactions === []) {
+            throw new TransactionException(TransactionOutcome::NOT_STARTED, '提交后回调必须在活动事务中登记');
+        }
+        $index = count($this->transactions) - 1;
+        $frame = $this->transactions[$index];
+        $callbacks = $frame['callbacks'];
+        $callbacks[] = $callback;
+        $frame['callbacks'] = $callbacks;
+        $this->transactions[$index] = $frame;
+    }
+
+    /** @internal 水合、保存、删除均登记；内层成功后合并至父事务。 */
+    public function trackModel(Model $model): void
+    {
+        if ($this->transactions === []) {
+            return;
+        }
+        $this->session();
+        $index = count($this->transactions) - 1;
+        $frame = $this->transactions[$index];
+        if (!in_array($model, $frame['models'], true)) {
+            $models = $frame['models'];
+            $models[] = $model;
+            $frame['models'] = $models;
+            $this->transactions[$index] = $frame;
+        }
+    }
+
+    /** 检查租约是否已归还，不能据此绕过执行者或作用域检查。 */
+    public function released(): bool
+    {
+        return $this->lease->released();
+    }
+
+    /** 停止当前租约，后续操作拒绝；持有中的原生操作完成前不会转借会话。 */
+    public function close(): void
+    {
+        if ($this->notifying) {
+            throw new DatabaseException('查询监听不能关闭正在通知的连接');
+        }
+        foreach ($this->listeners as $listener) {
+            $listener->stop();
+        }
+        $this->lease->stop();
+    }
+
+    /**
+     * 注册作用域监听；默认不记录 SQL 字面值或绑定值，记录 SQL 摘要以关联显式预览。
+     * @param null|\Closure(QueryEvent): mixed $listener 只处理事件，不能重入当前连接
+     */
+    public function listen(ExecutionScope $scope, ?\Closure $listener = null, int $maxRecords = 100, int $maxBytes = 65536, bool $includeValues = false, float $slowMilliseconds = 100.0): QueryLog
+    {
+        $this->session();
+        if (count($this->listeners) >= 16) {
+            throw new DatabaseException('同一连接最多注册十六个查询监听');
+        }
+        $id = ++$this->listenerSequence;
+        $log = new QueryLog($listener, function () use ($id): void {
+            unset($this->listeners[$id]);
+        }, $maxRecords, $maxBytes, $includeValues, $slowMilliseconds);
+        $scope->open($log);
+        $this->listeners[$id] = $log;
+        return $log;
+    }
+
+    /** 当前逻辑连接的调用统计；只保留最近 128 次读取的参数数量。 */
+    public function statistics(): array
+    {
+        return ['read_attempts' => $this->reads, 'write_attempts' => $this->writes, 'recent_read_parameter_sizes' => $this->readParameterSizes];
+    }
+
+    private function runTransaction(PdoSession $session, \Closure $operation, string $mode): mixed
     {
         $depth = count($this->transactions);
         if ($this->rollbackOnly || ($depth > 0 && $mode !== 'default')) {
@@ -286,14 +381,14 @@ final class Connection
             }
             try {
                 $session->begin($mode === 'schema' ? 'default' : $mode);
-            } catch (Throwable $error) {
+            } catch (\Throwable $error) {
                 throw new TransactionException(TransactionOutcome::NOT_STARTED, $error->getMessage(), $error);
             }
             $this->outcome = TransactionOutcome::ACTIVE;
         } else {
             try {
                 $session->savepoint($savepoint);
-            } catch (Throwable $error) {
+            } catch (\Throwable $error) {
                 $session->retire();
                 $this->rollbackOnly = true;
                 $this->outcome = TransactionOutcome::UNKNOWN;
@@ -310,7 +405,7 @@ final class Connection
             if ($this->rollbackOnly) {
                 throw new DatabaseException('事务已经失效，只允许回滚');
             }
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $frame = array_pop($this->transactions);
             $this->invalidateModels($frame['models']);
             try {
@@ -321,7 +416,7 @@ final class Connection
                 } else {
                     $session->rollbackTo($savepoint);
                 }
-            } catch (Throwable $cleanupError) {
+            } catch (\Throwable $cleanupError) {
                 $session->retire();
                 $this->rollbackOnly = true;
                 $this->outcome = TransactionOutcome::UNKNOWN;
@@ -339,7 +434,7 @@ final class Connection
             } else {
                 $session->releaseSavepoint($savepoint);
             }
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $frame = array_pop($this->transactions);
             $this->invalidateModels($frame['models']);
             $session->retire();
@@ -369,7 +464,7 @@ final class Connection
             foreach ($frame['callbacks'] as $callback) {
                 try {
                     $callback();
-                } catch (Throwable $error) {
+                } catch (\Throwable $error) {
                     $errors[] = $error;
                 }
             }
@@ -378,32 +473,6 @@ final class Connection
             }
         }
         return $result;
-    }
-
-    /** 返回当前连接活动事务帧数；内层帧对应保存点。 */
-    public function transactionDepth(): int
-    {
-        return count($this->transactions);
-    }
-    /** 返回当前连接最近的事务事实；提交后回调里的新事务可以推进该状态。 */
-    public function transactionOutcome(): string
-    {
-        return $this->outcome;
-    }
-
-    /** @param Closure(): mixed $callback 提交确认后零参数调用，返回值忽略。 */
-    public function afterCommit(Closure $callback): void
-    {
-        $this->session();
-        if ($this->transactions === []) {
-            throw new TransactionException(TransactionOutcome::NOT_STARTED, '提交后回调必须在活动事务中登记');
-        }
-        $index = count($this->transactions) - 1;
-        $frame = $this->transactions[$index];
-        $callbacks = $frame['callbacks'];
-        $callbacks[] = $callback;
-        $frame['callbacks'] = $callbacks;
-        $this->transactions[$index] = $frame;
     }
 
     private function guardTransactionSql(string $sql): void
@@ -427,30 +496,13 @@ final class Connection
             // OFF 会清除 SQLite 延迟约束计数，必须先验证同一事务的真实引用。
             // 两端均检查，既不接受关闭了外键的驱动，也不掩盖迁移前已有的坏引用。
             $foreignKeys = $this->query('SELECT foreign_keys FROM pragma_foreign_keys');
-            if ((int) ($foreignKeys[0]['foreign_keys'] ?? 0) !== 1
+            if ((int)($foreignKeys[0]['foreign_keys'] ?? 0) !== 1
                 || $this->query('SELECT * FROM pragma_foreign_key_check LIMIT 1') !== []) {
                 throw new DatabaseException('SQLite 表重建要求外键已开启且全部引用有效');
             }
             return;
         }
         throw new DatabaseException('普通事务只接受受管查询和数据写入；DDL 使用独立迁移入口');
-    }
-
-    /** @internal 水合、保存、删除均登记；内层成功后合并至父事务。 */
-    public function trackModel(Model $model): void
-    {
-        if ($this->transactions === []) {
-            return;
-        }
-        $this->session();
-        $index = count($this->transactions) - 1;
-        $frame = $this->transactions[$index];
-        if (!in_array($model, $frame['models'], true)) {
-            $models = $frame['models'];
-            $models[] = $model;
-            $frame['models'] = $models;
-            $this->transactions[$index] = $frame;
-        }
     }
 
     private function invalidateModels(array $models): void
@@ -467,52 +519,9 @@ final class Connection
         }
     }
 
-    /** 检查租约是否已归还，不能据此绕过执行者或作用域检查。 */
-    public function released(): bool
-    {
-        return $this->lease->released();
-    }
-
-    /** 停止当前租约，后续操作拒绝；持有中的原生操作完成前不会转借会话。 */
-    public function close(): void
-    {
-        if ($this->notifying) {
-            throw new DatabaseException('查询监听不能关闭正在通知的连接');
-        }
-        foreach ($this->listeners as $listener) {
-            $listener->stop();
-        }
-        $this->lease->stop();
-    }
-
-    /**
-     * 注册作用域监听；默认不记录 SQL 字面值或绑定值，记录 SQL 摘要以关联显式预览。
-     * @param Closure(QueryEvent): mixed|null $listener 只处理事件，不能重入当前连接。
-     */
-    public function listen(ExecutionScope $scope, ?Closure $listener = null, int $maxRecords = 100, int $maxBytes = 65536, bool $includeValues = false, float $slowMilliseconds = 100.0): QueryLog
-    {
-        $this->session();
-        if (count($this->listeners) >= 16) {
-            throw new DatabaseException('同一连接最多注册十六个查询监听');
-        }
-        $id = ++$this->listenerSequence;
-        $log = new QueryLog($listener, function () use ($id): void {
-            unset($this->listeners[$id]);
-        }, $maxRecords, $maxBytes, $includeValues, $slowMilliseconds);
-        $scope->open($log);
-        $this->listeners[$id] = $log;
-        return $log;
-    }
-
-    /** 当前逻辑连接的调用统计；只保留最近 128 次读取的参数数量。 */
-    public function statistics(): array
-    {
-        return ['read_attempts' => $this->reads, 'write_attempts' => $this->writes, 'recent_read_parameter_sizes' => $this->readParameterSizes];
-    }
-
     private function recordRead(int $parameters): void
     {
-        $this->reads++;
+        ++$this->reads;
         $this->readParameterSizes[] = $parameters;
         if (count($this->readParameterSizes) > 128) {
             array_shift($this->readParameterSizes);
@@ -535,7 +544,7 @@ final class Connection
         return $resource;
     }
 
-    private function operation(Closure $operation, string $sql, array $parameters, string $phase = 'statement', bool $retire = false): mixed
+    private function operation(\Closure $operation, string $sql, array $parameters, string $phase = 'statement', bool $retire = false): mixed
     {
         $started = hrtime(true);
         $success = false;
@@ -553,7 +562,7 @@ final class Connection
                     $result = $operation($resource);
                     try {
                         $this->lease->resource();
-                    } catch (Throwable $error) {
+                    } catch (\Throwable $error) {
                         $resource->retire();
                         throw $error;
                     }
@@ -566,7 +575,7 @@ final class Connection
             });
             $success = true;
             return $result;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $errorClass = get_class($error);
             throw $error;
         } finally {
@@ -590,7 +599,7 @@ final class Connection
             foreach ($this->listeners as $listener) {
                 try {
                     $listener->record($event, $sql, $parameters);
-                } catch (Throwable) {
+                } catch (\Throwable) {
                     // 诊断实现自身失败也不能改变已经发生的数据库结果。
                 }
             }

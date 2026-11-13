@@ -10,8 +10,8 @@ final class LocalFile
     /**
      * 校验显式绝对文件路径，父目录必须已存在；Windows 仅支持完整盘符路径。
      * 返回统一分隔符，不依赖工作目录，也不创建文件或目录。
-     * @param bool $inspect false 仅检查路径语法；延迟打开的调用方须在打开前后执行完整检查。
-     * @throws \InvalidArgumentException 路径越界、目录缺失或存在链接/特殊文件。
+     * @param bool $inspect false 仅检查路径语法；延迟打开的调用方须在打开前后执行完整检查
+     * @throws \InvalidArgumentException 路径越界、目录缺失或存在链接/特殊文件
      */
     public static function path(string $path, bool $inspect = true): string
     {

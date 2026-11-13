@@ -7,6 +7,8 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 require __DIR__ . '/native-rollout-redis.php';
 
 use Type\Build\ProjectCreator;
+use Type\Testing\HttpClient;
+use Type\Testing\Process;
 
 $root = dirname(__DIR__);
 $work = $root . '/build/scaffolding space ' . bin2hex(random_bytes(6));
@@ -45,20 +47,20 @@ try {
         ksort($files);
         return $files;
     };
-    $make(['module', 'app\\catalog\\Product', '--table=products', '--route=/products', '--role=users', '--version=002_products', '--migration-registry=app\\common\\database\\Schema']);
+    $make(['module', 'app\catalog\Product', '--table=products', '--route=/products', '--role=users', '--version=002_products', '--migration-registry=app\common\database\Schema']);
     successful([PHP_BINARY, $work . '/vendor/bin/type', 'schema:prepare', $work . '/app/catalog/database/CreateProduct.php'], sys_get_temp_dir());
-    $make(['service', 'app\\work\\Marker']);
-    $make(['command', 'app\\work\\PrintMarker', '--service=app\\work\\Marker', '--name=marker']);
-    $make(['job', 'app\\work\\MarkerJob', '--service=app\\work\\Marker', '--type=marker', '--version=1']);
-    $make(['task', 'app\\work\\MarkerTask', '--service=app\\work\\Marker', '--name=marker', '--interval=60']);
+    $make(['service', 'app\work\Marker']);
+    $make(['command', 'app\work\PrintMarker', '--service=app\work\Marker', '--name=marker']);
+    $make(['job', 'app\work\MarkerJob', '--service=app\work\Marker', '--type=marker', '--version=1']);
+    $make(['task', 'app\work\MarkerTask', '--service=app\work\Marker', '--name=marker', '--interval=60']);
     $inspection = json_decode(successful([PHP_BINARY, $work . '/vendor/bin/type', 'inspect-application', $config, '--json'], sys_get_temp_dir()), true, 512, JSON_THROW_ON_ERROR);
     expect(in_array('marker', $inspection['assembly']['commands'], true) && count($inspection['routes']) >= 4, '生成结果未接入统一声明');
     $result = successful([PHP_BINARY, $work . '/vendor/bin/type', 'dev', $config, 'marker', 'scaffold-ok'], sys_get_temp_dir());
     expect(str_contains($result, 'scaffold-ok'), '命令没有经过标准入口执行业务服务');
     $composerSource = file_get_contents($work . '/composer.json');
     foreach ([
-        ['zoujingli/type-queue', ['job', 'app\\work\\MissingQueueJob', '--service=app\\work\\Marker', '--type=missing-queue', '--version=1']],
-        ['zoujingli/type-scheduler', ['task', 'app\\work\\MissingSchedulerTask', '--service=app\\work\\Marker', '--name=missing-scheduler', '--interval=60']],
+        ['zoujingli/type-queue', ['job', 'app\work\MissingQueueJob', '--service=app\work\Marker', '--type=missing-queue', '--version=1']],
+        ['zoujingli/type-scheduler', ['task', 'app\work\MissingSchedulerTask', '--service=app\work\Marker', '--name=missing-scheduler', '--interval=60']],
     ] as [$package, $arguments]) {
         // 已安装或可自动加载的包不能代替应用显式声明的生产依赖。
         $missing = json_decode($composerSource, true, 512, JSON_THROW_ON_ERROR);
@@ -75,12 +77,12 @@ try {
     }
     $before = file_get_contents($config);
     $beforeFiles = $snapshot();
-    foreach ([['model', 'app\\catalog\\model\\Product', '--table=other'], ['model', 'app\\..\\Invalid', '--table=invalid'],
-        ['command', 'app\\work\\Duplicate', '--service=app\\work\\Marker', '--name=marker'],
-        ['job', 'app\\work\\DuplicateJob', '--service=app\\work\\Marker', '--type=marker', '--version=1'],
-        ['task', 'app\\..\\InvalidTask', '--service=app\\work\\Marker', '--name=invalid-task', '--interval=60'],
-        ['task', 'app\\work\\InvalidTaskName', '--service=app\\work\\Marker', '--name=invalid/name', '--interval=60'],
-        ['task', 'app\\work\\InvalidTask', '--service=app\\work\\Marker', '--name=invalid', '--cron=invalid', '--timezone=UTC']] as $arguments) {
+    foreach ([['model', 'app\catalog\model\Product', '--table=other'], ['model', 'app\..\Invalid', '--table=invalid'],
+        ['command', 'app\work\Duplicate', '--service=app\work\Marker', '--name=marker'],
+        ['job', 'app\work\DuplicateJob', '--service=app\work\Marker', '--type=marker', '--version=1'],
+        ['task', 'app\..\InvalidTask', '--service=app\work\Marker', '--name=invalid-task', '--interval=60'],
+        ['task', 'app\work\InvalidTaskName', '--service=app\work\Marker', '--name=invalid/name', '--interval=60'],
+        ['task', 'app\work\InvalidTask', '--service=app\work\Marker', '--name=invalid', '--cron=invalid', '--timezone=UTC']] as $arguments) {
         expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, ...$arguments], sys_get_temp_dir())[0] !== 0, '无效脚手架没有失败');
         expect(file_get_contents($config) === $before, '拒绝后改变原声明');
         expect($snapshot() === $beforeFiles, '无效脚手架改变已有文件或留下角色源码');
@@ -95,9 +97,9 @@ try {
     fclose($listener);
     $environment['APP_PORT'] = substr(strrchr($address, ':'), 1);
     $environment['APP_ALLOWED_HOSTS'] = $address;
-    $process = new Type\Testing\Process([PHP_BINARY, $work . '/vendor/bin/type', 'dev', $config, 'serve'], $work, $environment);
+    $process = new Process([PHP_BINARY, $work . '/vendor/bin/type', 'dev', $config, 'serve'], $work, $environment);
     try {
-        $client = new Type\Testing\HttpClient('http://' . $address, 2);
+        $client = new HttpClient('http://' . $address, 2);
         $deadline = microtime(true) + 10;
         $ready = false;
         do {
@@ -141,26 +143,26 @@ try {
     $firstTick = json_decode(successful([PHP_BINARY, $work . '/verify-work.php', 'schedule'], $work), true, 512, JSON_THROW_ON_ERROR);
     $nextTick = json_decode(successful([PHP_BINARY, $work . '/verify-work.php', 'schedule'], $work), true, 512, JSON_THROW_ON_ERROR);
     expect(count($firstTick) === 1 && $firstTick[0]['state'] === 'succeeded' && isset($firstTick[0]['result']['marker']) && $nextTick === [], '生成Task没有保留跨进程游标');
-    $make(['model', 'app\\notes\\Note', '--table=notes']);
-    $make(['input', 'app\\notes\\NoteInput']);
-    $make(['service', 'app\\notes\\NoteService', '--model=app\\notes\\Note']);
-    $make(['controller', 'app\\notes\\NoteController', '--service=app\\notes\\NoteService', '--input=app\\notes\\NoteInput', '--route=/notes', '--role=users']);
-    $make(['migration', 'app\\notes\\CreateNotes', '--version=003_notes']);
+    $make(['model', 'app\notes\Note', '--table=notes']);
+    $make(['input', 'app\notes\NoteInput']);
+    $make(['service', 'app\notes\NoteService', '--model=app\notes\Note']);
+    $make(['controller', 'app\notes\NoteController', '--service=app\notes\NoteService', '--input=app\notes\NoteInput', '--route=/notes', '--role=users']);
+    $make(['migration', 'app\notes\CreateNotes', '--version=003_notes']);
     $before = file_get_contents($config);
     $registry = file_get_contents($work . '/app/common/database/Schema.php');
-    expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'module', 'app\\duplicate\\Product', '--table=duplicate', '--route=/products', '--role=users', '--version=004_duplicate', '--migration-registry=app\\common\\database\\Schema'])[0] !== 0, '重复路由未在发布前拒绝');
+    expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'module', 'app\duplicate\Product', '--table=duplicate', '--route=/products', '--role=users', '--version=004_duplicate', '--migration-registry=app\common\database\Schema'])[0] !== 0, '重复路由未在发布前拒绝');
     expect(!is_dir($work . '/app/duplicate') && file_get_contents($config) === $before && file_get_contents($work . '/app/common/database/Schema.php') === $registry, '重复路由留下半个模块');
     if (PHP_OS_FAMILY !== 'Windows') {
         symlink($work . '/app/notes', $work . '/app/linked');
         try {
-            expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'model', 'app\\linked\\Escape', '--table=escape'])[0] !== 0, '链接目标没有拒绝');
+            expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'model', 'app\linked\Escape', '--table=escape'])[0] !== 0, '链接目标没有拒绝');
         } finally {
             unlink($work . '/app/linked');
         }
         if (function_exists('posix_geteuid') && posix_geteuid() !== 0) {
             chmod($work . '/app/common/database/Schema.php', 0444);
             try {
-                expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'module', 'app\\readonly\\Product', '--table=readonly', '--route=/readonly', '--role=users', '--version=004_readonly', '--migration-registry=app\\common\\database\\Schema'])[0] !== 0, '只读关联文件没有拒绝');
+                expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'module', 'app\readonly\Product', '--table=readonly', '--route=/readonly', '--role=users', '--version=004_readonly', '--migration-registry=app\common\database\Schema'])[0] !== 0, '只读关联文件没有拒绝');
                 expect(!is_dir($work . '/app/readonly') && file_get_contents($config) === $before, '只读目标留下半个模块');
             } finally {
                 chmod($work . '/app/common/database/Schema.php', 0644);

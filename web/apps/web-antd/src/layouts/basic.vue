@@ -1,62 +1,55 @@
 <script setup lang="ts">
-import { watch, watchEffect, ref } from 'vue';
-import { useRouter } from 'vue-router';
-import { BasicLayout } from '@vben/layouts';
+import { computed, ref, watch, watchEffect } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import type { Menu } from '../api/contracts';
+import { BasicLayout, GlobalSearch, LockScreen, LockScreenModal, UserDropdown } from '@vben/layouts';
+import { useVbenModal, VbenFullScreen, VbenIconButton } from '@vben/common-ui';
+import { LockKeyhole } from '@vben/icons';
 import { preferences } from '@vben/preferences';
 import { useAccessStore } from '@vben/stores';
-import { Alert, Button, message } from 'ant-design-vue';
-import { errorText, isDemo, logout, session, sessionExitPath } from '../api';
-
-const router = useRouter();
-const access = useAccessStore();
-const leaving = ref(false);
-watchEffect(() => {
-  access.setAccessMenus(session.realm === 'broker'
-    ? [{ name: 'Broker 管理', path: '/broker/operations', redirectPath: '/broker/nodes', icon: 'lucide:server', order: 1, children: [
-      { name: 'Broker 节点', path: '/broker/nodes', icon: 'lucide:server', order: 1 },
-      { name: 'Broker 资源', path: '/broker/resources', icon: 'lucide:network', order: 2 },
-      { name: 'Broker 授权', path: '/broker/access', icon: 'lucide:key-round', order: 3 },
-      { name: 'Broker 配额', path: '/broker/quotas', icon: 'lucide:gauge', order: 4 },
-      { name: 'Broker 运行配置', path: '/broker/runtime', icon: 'lucide:sliders-horizontal', order: 5 },
-      { name: 'Broker 调试订阅', path: '/broker/debug', icon: 'lucide:radio-tower', order: 6 },
-      ...(session.user?.platform_admin ? [{ name: 'Broker 审计', path: '/broker/audit', icon: 'lucide:history', order: 7 }] : []),
-    ] }]
-    : session.menus);
+import { Alert, Button, Space, message } from 'ant-design-vue';
+import { errorText, isDemo, logout, session, sessionExitPath } from '../api/identity';
+import { lockScreen, verifyScreenPassword } from '../screen-lock';
+const router = useRouter(); const route = useRoute(); const access = useAccessStore(); const leaving = ref(false);
+const userMenus = computed(() => [{ text: '个人中心', icon: 'lucide:user', handler: () => router.push(`/${session.realm}/profile`) }]);
+const searchKey = computed(() => `typeapp.search.${session.realm}.${session.tenant?.id || 'platform'}.${session.user?.id || 'anonymous'}.${session.impersonating ? session.identity?.actor_id : 'self'}`);
+const searchMenus = computed(() => {
+  const leaves = (menus: Menu[]): Menu[] => menus.flatMap(menu => menu.children?.length ? leaves(menu.children) : [menu]);
+  return leaves(session.menus);
 });
-watch(() => session.token, (token) => { if (!token) void router.replace(sessionExitPath()); });
+const [LockModal, lockModal] = useVbenModal({ connectedComponent: LockScreenModal });
+async function lock(password: string) {
+  try { if (await lockScreen(password)) { lockModal.close(); return true; } }
+  catch { message.error('锁屏失败，请重试。'); }
+  return false;
+}
+const mqttSections = [['', '资源'], ['/access', '授权'], ['/quotas', '配额'], ['/runtime', '配置'], ['/debug', '调试'], ['/nodes', '节点']];
+watchEffect(() => { access.setAccessMenus(session.menus); access.setAccessCodes(session.permissions); });
+watch(() => session.token, token => { if (!token) void router.replace(sessionExitPath()); });
 async function leave() {
   if (leaving.value) return;
   leaving.value = true;
-  try { await logout(); await router.replace(sessionExitPath()); } catch (error) { message.error(errorText(error)); } finally { leaving.value = false; }
+  try { await logout(); await router.replace(sessionExitPath()); }
+  catch (error) { message.error(errorText(error)); }
+  finally { leaving.value = false; }
 }
 </script>
-
 <template>
   <BasicLayout @clear-preferences-and-logout="leave" @click-logo="router.push(preferences.app.defaultHomePath)">
     <template #content-before>
-      <Alert v-if="isDemo()" class="demo-banner" type="info" show-icon message="演示环境，仅供浏览" description="可以查询数据和退出登录，业务修改已关闭。" role="status" />
-      <Alert v-if="session.impersonating" class="impersonation-banner" type="warning" show-icon role="status">
-        <template #message><strong>模拟登录中</strong></template>
-        <template #description>
-          <div class="impersonation-details"><span>真实管理人员：{{ session.identity?.actor_name || '正在核验' }} · 客户：{{ session.user?.name }}（{{ session.user?.login }}） · 当前租户：{{ session.tenant?.name || '尚未选择' }}</span><Button :loading="leaving" @click="leave">退出模拟</Button></div>
-        </template>
+      <Alert v-if="isDemo()" type="info" show-icon message="演示环境，仅供浏览" class="m-3" />
+      <Alert v-if="session.impersonating" type="warning" show-icon class="m-3" role="status">
+        <template #message>正在模拟 {{ session.user?.name }}</template>
+        <template #description><Space wrap><span>操作者：{{ session.identity?.actor_name }} · 客户：{{ session.tenant?.name }}</span><Button :loading="leaving" @click="leave">退出模拟</Button></Space></template>
       </Alert>
+      <Space v-if="route.path.startsWith('/platform/broker')" wrap class="m-4"><Button v-for="[path, name] in mqttSections" :key="path" :type="route.path === '/platform/broker' + path ? 'primary' : 'default'" @click="router.push('/platform/broker' + path)">{{ name }}</Button></Space>
     </template>
-    <template #header-left-60>
-      <span class="px-3 current-tenant" :title="session.tenant?.name">{{ session.realm === 'broker' ? '独立 Broker' : session.realm === 'admin' ? '控制端' : `客户端 · ${session.tenant?.name || '尚未选择租户'}` }}</span>
-    </template>
-    <template #user-dropdown>
-      <div class="user-actions">
-        <span class="user-name" :title="session.user?.name">{{ session.user?.name }}</span>
-        <Button type="text" :loading="leaving" @click="leave">{{ session.impersonating ? '退出模拟' : '退出登录' }}</Button>
-      </div>
-    </template>
+    <template #header-left-60><span class="px-3">{{ session.realm === 'platform' ? '平台管理' : session.tenant?.name }}</span></template>
+    <template #global-search><GlobalSearch :key="searchKey" :history-key="searchKey" :menus="searchMenus" :enable-shortcut-key="preferences.shortcutKeys.enable && preferences.shortcutKeys.globalSearch" class="mr-1 sm:mr-4" /></template>
+    <template #fullscreen><VbenFullScreen tooltip="全屏切换" aria-label="全屏切换" class="mr-1" /></template>
+    <template v-if="preferences.widget.lockScreen" #header-right-175><VbenIconButton tooltip="锁定屏幕" aria-label="锁定屏幕" class="mr-1" @click="lockModal.open()"><LockKeyhole class="size-4" /></VbenIconButton></template>
+    <template #user-dropdown><UserDropdown :text="session.user?.name" :description="session.user?.login" :menus="userMenus" :lock-screen="lock" @logout="leave" @clear-preferences-and-logout="leave" /></template>
+    <template #lock-screen><LockScreen :verify-password="verifyScreenPassword" :timezone="preferences.app.timezone" @to-login="leave" /></template>
+    <template #extra><LockModal :text="session.user?.name" @submit="lock" /></template>
   </BasicLayout>
 </template>
-
-<style scoped>
-.demo-banner { margin: 12px; }
-.impersonation-banner { position: sticky; top: var(--vben-header-height, 0px); z-index: 10; margin: 12px; }
-.impersonation-details { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
-.impersonation-details span { flex: 1 1 260px; overflow-wrap: anywhere; }
-</style>

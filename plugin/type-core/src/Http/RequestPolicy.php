@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Core\Http;
 
-use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -16,35 +15,37 @@ use Type\Runtime\QueryStringException;
 final class RequestPolicy implements MiddlewareInterface
 {
     private array $hosts;
+
     private array $proxies;
 
     /**
      * 固定允许的 Host 及可信代理；来源白名单不能为空。
-     * @param list<string> $allowedAuthorities 主机名及可选端口。
-     * @param list<string> $trustedProxies 允许覆盖来源信息的 IP 或 CIDR。
+     * @param list<string> $allowedAuthorities 主机名及可选端口
+     * @param list<string> $trustedProxies 允许覆盖来源信息的 IP 或 CIDR
+     * @param ?\Closure(string): bool $allowAuthority 应用登记来源校验；参数已经过 authority 规范化，只补充固定白名单
      */
-    public function __construct(array $allowedAuthorities, array $trustedProxies = [])
+    public function __construct(array $allowedAuthorities, array $trustedProxies = [], private ?\Closure $allowAuthority = null)
     {
         if ($allowedAuthorities === []) {
-            throw new InvalidArgumentException('必须明确 HTTP Host 白名单');
+            throw new \InvalidArgumentException('必须明确 HTTP Host 白名单');
         }
         $this->hosts = [];
         foreach ($allowedAuthorities as $host) {
             if (!is_string($host)) {
-                throw new InvalidArgumentException('HTTP Host 必须是字符串');
+                throw new \InvalidArgumentException('HTTP Host 必须是字符串');
             }
             $this->hosts[] = $this->authority($host);
         }
         $this->proxies = [];
         foreach ($trustedProxies as $proxy) {
             if (!is_string($proxy)) {
-                throw new InvalidArgumentException('代理必须是 IP/CIDR');
+                throw new \InvalidArgumentException('代理必须是 IP/CIDR');
             }
             $parts = explode('/', $proxy, 2);
             $packed = @inet_pton($parts[0]);
-            $bits = isset($parts[1]) && ctype_digit($parts[1]) ? (int) $parts[1] : (isset($parts[1]) ? -1 : ($packed === false ? -1 : strlen($packed) * 8));
+            $bits = isset($parts[1]) && ctype_digit($parts[1]) ? (int)$parts[1] : (isset($parts[1]) ? -1 : ($packed === false ? -1 : strlen($packed) * 8));
             if ($packed === false || $bits < 0 || $bits > strlen($packed) * 8) {
-                throw new InvalidArgumentException('代理 IP/CIDR 无效');
+                throw new \InvalidArgumentException('代理 IP/CIDR 无效');
             }
             $this->proxies[] = [$packed, $bits];
         }
@@ -52,11 +53,11 @@ final class RequestPolicy implements MiddlewareInterface
 
     /**
      * 验证来源、可信代理链、路径和查询，再设置 type.request 并移除转发头。
-     * @throws HttpError 来源不可信、转发信息冲突或请求编码有歧义。
+     * @throws HttpError 来源不可信、转发信息冲突或请求编码有歧义
      */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $peer = (string) ($request->getServerParams()['remote_addr'] ?? $request->getServerParams()['REMOTE_ADDR'] ?? '');
+        $peer = (string)($request->getServerParams()['remote_addr'] ?? $request->getServerParams()['REMOTE_ADDR'] ?? '');
         if (filter_var($peer, FILTER_VALIDATE_IP) === false) {
             throw new HttpError(400, 'invalid_peer');
         }
@@ -93,12 +94,12 @@ final class RequestPolicy implements MiddlewareInterface
                         throw new HttpError(400, 'invalid_forwarded_for');
                     }
                 }
-                for ($index = count($chain) - 1; $index >= 0 && $this->trusted($client); $index--) {
+                for ($index = count($chain) - 1; $index >= 0 && $this->trusted($client); --$index) {
                     $client = $chain[$index];
                 }
             }
         }
-        if (!in_array($host, $this->hosts, true)) {
+        if (!in_array($host, $this->hosts, true) && ($this->allowAuthority === null || !($this->allowAuthority)($host))) {
             throw new HttpError(400, 'untrusted_host');
         }
         $target = $request->getAttribute('type.raw-target', $request->getRequestTarget());
@@ -122,7 +123,7 @@ final class RequestPolicy implements MiddlewareInterface
         $parsed = parse_url($scheme . '://' . $host);
         $psrUri = $request->getUri()->withScheme($scheme)->withHost($parsed['host'])->withPort($parsed['port'] ?? null)
             ->withUserInfo('')->withPath($path)->withQuery($query)->withFragment('');
-        $canonical = new CanonicalRequest((string) $psrUri, $path, $query, $segments, $client);
+        $canonical = new CanonicalRequest((string)$psrUri, $path, $query, $segments, $client);
         foreach (['Forwarded', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'X-Forwarded-For', 'X-Forwarded-Port'] as $header) {
             $request = $request->withoutHeader($header);
         }
@@ -133,7 +134,7 @@ final class RequestPolicy implements MiddlewareInterface
 
     private function authority(string $authority): string
     {
-        if ($authority === '' || preg_match('/[\s\x00-\x1f\x7f,@\/\\\\?#%]/', $authority)) {
+        if ($authority === '' || preg_match('/[\s\x00-\x1f\x7f,@\/\\\?#%]/', $authority)) {
             throw new HttpError(400, 'invalid_host');
         }
         $uri = parse_url('http://' . $authority);

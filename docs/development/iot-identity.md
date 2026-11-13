@@ -1,87 +1,82 @@
-# 双端身份与 RBAC
+# Platform / System 身份与授权
 
-物联中心的身份系统分为互不相通的管理端和 SaaS 客户端两个账号域。管理账号只进入 `/admin`，客户账号只进入 `/customer`；密码、会话、角色和审计来源分别存储和校验。客户账号通过租户成员关系进入一个或多个租户，平台管理账号不会因为能够管理租户目录而自动取得租户业务权限。身份规则由应用实现，通用框架不读取这些业务表。
+物联中心使用两个独立账号域。Platform 管理平台配置、客户开通、客户超管、菜单目录及全局物联与 MQTT 运维；System 管理当前 Tenant 的用户、角色、会话、审计和系统品牌。Center 使用当前 Tenant 的 System 身份，负责设备及接入应用业务。框架提供作用域、ORM、事务和通信机制，业务身份规则由应用维护。
 
-## 模型与事务
+## 模型与数据归属
 
-账号、会话、租户、成员和角色使用稳定的领域 Model；`IdentityService`、`TenantService`、`RoleService` 的公开实体操作不接收连接。应用启动时装配 `Db`，HTTP 和任务入口绑定当前 Swoole 执行作用域，模型按实际操作取得当前作用域的受管连接。查询与上下文的通用规则见[Model 自动连接与主从路由](model-connections.md)。
+业务采用 Controller → Service → Model。Service 通过模型查询和对象属性完成实体读写；连接由当前 Swoole 执行作用域管理，授权修改和审计参与同一主库事务。声明、严格字段及自动隔离规则见[数据库与模型](../guide/database.md)。
 
-| 数据表 | 当前 Model | 归属与字段语义 |
+| 数据表 | 模型或关系 | 范围 |
 | --- | --- | --- |
-| `admin_users` | `app\common\model\AdminUser` | 全局平台账号；`version` 是授权锁保护的资料版本 |
-| `customer_users` | `app\common\model\CustomerUser` | 全局客户账号；不以当前租户限定账号 |
-| `admin_sessions` | `app\common\model\AdminSession` | 平台会话与撤销状态 |
-| `customer_sessions` | `app\common\model\CustomerSession` | 客户会话；普通登录的 `actor_id`、`source_session_id` 明确为 null |
-| `iot_tenants` | `app\common\model\Tenant` | 全局租户目录，使用模型乐观锁 |
-| `customer_members` | `app\common\model\CustomerMember` | 带 `tenant_id` 的成员实体，自动隔离并使用模型乐观锁 |
-| `admin_roles` | `app\common\model\AdminRole` | 平台角色，使用模型乐观锁；`scope_id` 固定为平台范围 |
-| `customer_roles` | `app\common\model\CustomerRole` | 将 `scope_id` 映射为租户字段，自动隔离并使用模型乐观锁 |
-| `admin_user_roles` | `AdminUser.roles`、`AdminRole.users` | 纯绑定关系，由 `BelongsToMany` 管理 |
-| `customer_member_roles` | `CustomerMember.roles`、`CustomerRole.members` | 纯绑定关系；中间表以 `pivotTenant: 'tenant_id'` 隔离 |
-| `admin_role_permissions`、`customer_role_permissions` | `RoleService` 维护的固定权限值集合 | 以角色与权限码唯一定位；无独立实体状态，在授权事务内整体维护 |
-| `broker_users`、`broker_sessions` | `app\broker\model\BrokerUser`、`BrokerSession` | 独立 Broker 管理域的账号和会话 |
+| `platform_installation` | `PlatformInstallation` | 安装身份与授权互斥 |
+| `platform_tenant` | `Tenant` | 平台客户目录，稳定 32 位小写十六进制标识 |
+| `platform_user/role/session` | `PlatformUser/PlatformRole/PlatformSession` | 独立平台账号域 |
+| `system_user/role/session` | `SystemUser/SystemRole/SystemSession` | 带 `tenant_id` 的独立客户账号域 |
+| `platform_menu/system_menu` | `PlatformMenu/SystemMenu` | 平台维护的两套公共目录 |
+| `platform_setting/system_setting` | `PlatformSetting/SystemSetting` | 平台及当前 Tenant 的品牌和默认主题 |
+| `platform_user_role/system_user_role` | `User.roles`、`Role.users` | 人员与角色的多对多关系 |
+| `platform_role_permission/system_role_permission` | `Role.menus` | 角色与菜单稳定权限值的关联 |
+| `platform_handoff` | `PlatformHandoff` | 一次性交接记录，目的客户使用 `target_tenant_id` |
 
-角色实体与人员角色绑定已通过 Model 和关系持久化。静态检查限制三个 Service 的底层表查询：安装互斥、本人租户投影、最后管理员保护和固定权限码集合按具体方法与数据集合登记，不向整个 Service 开放例外。权限值集合仅由 `RoleService` 的 `initializeScope`、`directory`、`requireHighest`、`role`、`changeRole` 访问对应表；授权聚合的固定 SQL 单独登记。完整身份表结构以 `app/common/database/Schema.php` 为准；角色授权规则由 `RoleService` 维护，权限码取自固定目录，不是可由客户端任意新增的实体。macOS ARM64 同一完整应用 AOT 产物已通过三库身份 HTTP 与移除源码运行，其他平台及完整业务组合另行验收。
+Platform 模型位于 `app/platform/model`，System 模型位于 `app/system/model`。`SystemMenu` 是全客户共用目录，其余客户身份、设置及 Center 业务由可信 Tenant 上下文隔离；System 账号直接归属一个客户，登录名按 `(tenant_id, login)` 唯一。不存在跨客户成员关系或登录后切换客户。
 
-登录、会话撤销检查、权限与租户资格验证明确读取主库。修改通过 `Db::transaction()` 保持同库事务，业务与审计共用该作用域的主库租约；事务外写后需要立即确认结果时显式 `master()`。账户资料版本由身份服务在授权和账号锁内推进，错误原密码只改变既定失败计数，不推进资料版本。租户、成员的普通模型保存使用各自声明的版本字段，不把这两种版本合同混为一谈。
+人员角色和角色菜单使用 `BelongsToMany`，System 中间表同时绑定 `tenant_id` 并建立复合外键。角色与菜单的关联由 `RoleService` 在授权事务内维护；客户不能修改菜单目录。已迁移身份链路的 Model 边界以 `tests/fixtures/model-first-boundary.json` 检查；公共菜单删除前核对全部客户角色引用，是按具体方法登记的全局只读例外。其他 Center、恢复及协议存储的迁移和验证范围另行记录。
 
-`RoleService::authorized()` 在授权锁内重验身份，并向回调提供 `Identity` 和有效权限列表；回调不接收连接。普通实体直接调用 Model，审计及受控跨模型操作通过当前 `Db` 主库租约参与同一事务。角色解除和管理员替换同步推进受影响账号或成员的资料版本；失败整体回滚。
+## 登录入口与可信上下文
 
-成员操作先验证会话、成员资格及权限，再将目标租户绑定到当前作用域。尚未选择租户时，本人可用租户列表是以已认证账号为条件的受控跨模型投影；平台管理员操作单个租户时，验证平台权限后临时绑定目标租户。退出正常或异常路径均恢复外层绑定，请求头与消息载荷不直接授予身份。
+| 访问入口 | 登录行为 |
+| --- | --- |
+| 主域名根目录 | 默认 `/#/system/login`；搜索、分页选择启用客户后填写账号与密码 |
+| 登记客户子域名 | 加载该客户品牌和主题，只填写账号与密码 |
+| `/s/{saas_id}/` | 固定客户，刷新和深链接保留范围 |
+| `/#/platform/login` | 平台账号与密码，身份独立 |
 
-## 初始化
+主域名选定客户后请求 `/s/{saas_id}/system/auth/login`，成功进入该固定路径工作区；子域名保持当前域名。切换客户会清空账号、密码和错误，并取消旧配置请求，防止响应乱序覆盖当前客户。
 
-新部署只接受空数据库，使用 `app:install` 在一个事务边界内建立安装身份、平台初始管理员、客户初始管理员、初始租户及固定权限目录：
+`GET /public/saas` 只提供启用客户的标识与名称。`GET /public/context`、`GET /s/{saas_id}/public/context` 和平台的 `/platform/public/context` 仅返回登录展示白名单。认证接口为各域的 `POST /{realm}/auth/login`、`GET /{realm}/auth/me`、`POST /{realm}/auth/logout`，令牌通过 Bearer 头传递；System 与 Center API 必须位于匹配的客户入口下。
+
+请求先经过可信代理与 Host 规范化，再由 `TenantContext` 核对登记子域名或固定路径。未知子域名、停用客户、域名/路径冲突、会话与入口客户不一致均拒绝；客户端请求头不能授予 Tenant 身份。只有通过平台授权的管理操作，才在目标客户子作用域内访问 System 模型，退出后恢复外层绑定。
+
+## 初始化与 RBAC
+
+新安装只接受空数据库，建立平台安装身份、初始平台超管及两套菜单目录：
 
 ```sh
-export APP_ADMIN_PASSWORD='至少12字节的管理密码'
-export APP_CUSTOMER_PASSWORD='至少12字节的客户密码'
-php bin/typeapp app:install platform-admin '平台管理员' customer-admin '客户管理员' '初始租户'
+APP_PLATFORM_PASSWORD='本地受控初始口令' php bin/typeapp app:install platform-root '平台管理员'
 ```
 
-口令只从受控进程环境读取，不写入命令参数、`.env` 或日志。安装前必须确认数据库为空；已有表或安装记录返回 `TYPE_MIGRATION_NOT_EMPTY`，不会迁移、删除或覆盖现有数据。安装后使用 `php bin/typeapp serve` 启动 HTTP，生产使用同一命令名的 AOT 产物。
+口令由受控进程环境提供，不进入命令参数或审计。已有安装拒绝接入，不自动清库。客户开通在一个事务中建立客户目录、系统设置、受保护超管角色和初始账号，随机初始口令一次性交付；平台可以维护、替换及重置客户超管。
 
-## 认证接口
+权限采用 `platform.*`、`system.*`、`center.*`。`MenuService` 将构建期登记的页面和操作绑定到平台维护的目录，导航、按钮及服务端使用同一授权事实。隐藏仅影响导航，节点或祖先停用会撤销能力；所有客户共用启用的子系统菜单。
 
-所有认证请求要求 JSON，令牌使用 Bearer 头传递。服务端每次读取会话、账号状态、角色和租户成员关系，不把前端菜单或上一次 `auth/me` 结果当作授权依据。
-
-| 入口 | 作用 |
-| --- | --- |
-| `POST /admin/auth/login` | 管理账号登录，返回平台会话令牌。 |
-| `GET /admin/auth/me` | 返回管理账号、平台权限目录和管理端菜单。 |
-| `POST /admin/auth/logout` | 撤销当前管理会话。 |
-| `POST /customer/auth/login` | 客户账号登录，返回客户会话令牌。 |
-| `GET /customer/auth/me` | 返回客户账号、可用租户、当前成员角色和客户端菜单。 |
-| `POST /customer/auth/logout` | 撤销当前客户会话。 |
-| `GET /admin/profile` | 管理人员个人工作区。 |
-| `GET /customer/profile` | 当前租户客户工作区，需要准确的 `X-Tenant-Id`。 |
-
-登录标识为 3–100 位小写字母、数字及 `_.@-`，密码为 1–72 字节；初始化和修改口令统一接受 5–72 字节，不接受 NUL。密码使用 bcrypt，数据库只保存会话令牌摘要。账号停用、角色停用、成员停用、密码修改和会话撤销会在下一次请求立即生效。
-
-## 管理端权限
-
-平台角色使用固定 `admin.*` 权限目录，由 `app\common\service\RoleService::catalog('admin')` 声明。控制端可维护平台人员、平台角色、客户账号、租户、设备注册授权、设备资产、接入应用、设备转配、全局配置、操作审计和 Broker 观察；每个读取和写入动作都有独立节点。平台最高管理员和最后一个有效最高管理员受到事务级保护，普通授权员不能授予自己没有的节点。
-
-## 客户端权限
-
-租户角色使用固定 `customer.*` 权限目录，由 `RoleService::catalog('customer')` 声明。客户端管理租户成员、租户角色、产品分类、已获授权设备、接入应用及逐设备通信权限，查看已分配的注册资格，并确认接收转配设备；客户端不能签发或扩增注册资格。带租户路径的请求同时校验路径租户 ID、`X-Tenant-Id`、成员状态和角色并集；成员和角色等独立入口从已认证请求的租户头确定作用域。角色或成员停用后直接拒绝访问，菜单分组不构成授权边界。
-
-成员和角色变更携带读取时的 `version`，写入在同一事务中重新读取调用者权限并保护最后一个有效租户管理员。批量角色绑定限制成员和角色数量，失败整体回滚；跨租户查询、跨域令牌和伪造支持头均拒绝。
+多个有效角色取权限并集，普通授权员不能授予自身没有的权限。受保护超管覆盖所属域当前启用的登记权限，普通角色不会因为新增菜单自动增权；受保护角色及最后一位有效超管受事务保护。授权操作先获取安装互斥并重新检查来源会话、账号、角色和目标版本，业务变更与审计共同提交；停用、撤权和会话撤销在后续请求重新生效。
 
 ## 模拟登录与审计
 
-平台人员可在明确的 `admin.customers.impersonate` 权限下进入客户工作区。模拟会话绑定来源管理会话、目标客户和期限，权限只取目标客户当前租户角色；退出来源、撤销来源或停用目标都会撤销派生会话。审计记录真实操作人、来源会话、目标客户、租户、动作和结果，不记录密码、令牌或设备秘密。
+`platform.tenants.impersonate` 允许平台人员选定目标 Tenant 的有效超管。服务端只依据部署来源和登记入口计算目的地址，签发绑定来源会话、目标版本与准确地址的交接码；有效期最多 60 秒，数据库只保存摘要。
 
-人员会话、设备凭据和应用密钥分别管理。设备注册资格、应用密钥和通信授权的后台操作在授权事务内重验人员身份、模拟来源、当前权限及目标归属；同一事务保存业务变更和审计。设备与应用的实际通信核对自身状态、凭据和当前设备使用关系，应用不会因为创建者退出后台而失效，也不会继承其人员权限。原始收发、订阅、撤权和转配的完整合同见[物联网中心](../guide/iot-center.md)。
-
-## 验证
-
-优先在 macOS 上使用同一 PHP 入口和同一 AOT 产物分别验证：
-
-```sh
-php tests/iot-identity.php --php sqlite --app
-composer typeapp:build
-php tests/iot-identity.php build/app/type-app sqlite --app
+```mermaid
+sequenceDiagram
+    participant P as 平台工作区
+    participant A as Platform 授权服务
+    participant S as 目标 System 入口
+    P->>A: 目标客户、超管及读取版本
+    A->>A: 重验权限、目标与来源会话
+    A-->>P: 交接码与固定目的地址
+    P->>S: 在目的入口提交交接码
+    S->>S: 核对入口、期限、来源与目标版本
+    S->>S: 原子消费并创建 System 会话
+    S-->>P: 以目标超管实际权限进入
 ```
 
-MySQL 和 PostgreSQL 验收必须使用独立测试实例；无源码运行再追加 `--no-source`。身份测试只证明当前双端契约，设备注册、应用原始通信、撤权、转配和跨平台原生行为按对应入口分别验收。
+过期、重放、地址错配、来源撤销及目标失效均拒绝。模拟会话使用目标超管的实际权限，持续记录真实平台操作者、来源会话和目标账号；退出模拟只撤销模拟会话，保留平台本人会话。密码、令牌、交接码和设备秘密不进入审计。
+
+人员会话与设备凭据、接入应用密钥分别管理。通信核对设备状态、凭据、当前使用关系及精确 Topic，应用不会因创建者退出管理端而失效，也不继承其人员权限。通信合同见[物联中心](../guide/iot-center.md)。
+
+## 验证边界
+
+人员身份恢复复用 `center:recovery` 的快照、隔离、核对和恢复状态机。System 账号、角色及关联直接绑定 Tenant；角色指纹包含公共菜单启停与祖先目录，客户主体指纹包含当前 Tenant 归属和状态。权威清单缺失或指纹不匹配的主体保持隔离，旧会话与未消费模拟交接码不会恢复。MQTT 节点使用同一恢复门，不维护独立 Broker 人员库。
+
+`php tests/tenant.php sqlite` 验证全新安装、入口冲突、同名账号、RBAC、超管保护、品牌、交接码重放及来源撤销等真实 HTTP 行为，并在停止 HTTP 后验证统一身份恢复及重启后的旧会话拒绝。MySQL 与 PostgreSQL 分别追加对应原生工具根目录参数，由测试创建并清理专用数据库实例。该恢复验证不包含物理备份或复制故障。模型反向同步另用 `php tests/model-sync.php <MySQL工具根目录>`。
+
+PHP 三库、浏览器、TypePHP 全量 AOT、无源码运行、TLS MQTT 及正式平台矩阵是独立结果。历史版本的原生证据不能证明当前重构完成，当前候选必须按对应入口重新验收后才能用于发布。

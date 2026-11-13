@@ -12,6 +12,7 @@ use Type\Orm\Model;
 final class Business extends Model
 {
     public string $id;
+
     public string $value;
 }
 
@@ -20,5 +21,6 @@ final class Business extends Model
 final class Effect extends Model
 {
     public string $id;
+
     public string $value;
 }

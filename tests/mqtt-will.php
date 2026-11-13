@@ -9,7 +9,7 @@ function mqttWillConnect(int $version, string $id, string $topic, string $payloa
 {
     $connectProperties = $expiry === null ? '' : "\x11" . pack('N', $expiry);
     $willProperties = ($delay === 0 ? '' : "\x18" . pack('N', $delay)) . $properties;
-    return mqttPacket(0x10, mqttField('MQTT') . chr($version) . chr(0xc4 | ($clean ? 2 : 0) | ($qos << 3) | ($retain ? 32 : 0))
+    return mqttPacket(0x10, mqttField('MQTT') . chr($version) . chr(0xC4 | ($clean ? 2 : 0) | ($qos << 3) | ($retain ? 32 : 0))
         . pack('n', $keepalive) . ($version === 5 ? mqttLength(strlen($connectProperties)) . $connectProperties : '') . mqttField($id)
         . ($version === 5 ? mqttLength(strlen($willProperties)) . $willProperties : '') . mqttField($topic) . mqttField($payload)
         . mqttField('example') . mqttField('mqtt-test-secret'));
@@ -21,7 +21,7 @@ function mqttWillSilence(mixed $socket, float $seconds): void
     $read = [$socket];
     $write = [];
     $except = [];
-    expect(stream_select($read, $write, $except, (int) $seconds, (int) (($seconds - floor($seconds)) * 1000000)) === 0, '遗嘱在禁止窗口内发布或连接意外关闭');
+    expect(stream_select($read, $write, $except, (int)$seconds, (int)(($seconds - floor($seconds)) * 1000000)) === 0, '遗嘱在禁止窗口内发布或连接意外关闭');
 }
 
 /**
@@ -48,7 +48,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
     require_once $root . '/tests/mqtt-qos1.php';
     require_once $root . '/tests/mqtt-retained.php';
     require_once $root . '/tests/mqtt-sessions.php';
-    $tools = NativeDatabase::tools('pgsql', (string) (getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
+    $tools = NativeDatabase::tools('pgsql', (string)(getenv('TYPE_PGSQL_TOOLS') ?: $root . '/.cache/macos-libpq/17.11'));
     $database = new NativeDatabase($consumer . '/will-primary', 'pgsql', $tools);
     $sync = null;
     $process = null;
@@ -70,7 +70,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
         $primary = $sync->connection();
         $standby = $sync->standby();
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-        $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+        $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
         fclose($listener);
         $start = function (bool $tls = false, array $overrides = []) use ($command, $consumer, $environment, $port): Process {
             $settings = array_replace($environment, $overrides);
@@ -105,7 +105,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
                 $certificate = $tls ? $consumer . '/certificate.pem' : null;
                 foreach ([4, 5] as $version) {
                     foreach ([0, 1, 2] as $qos) {
-                        $id = 'will-binary-' . (int) $tls . '-' . $version . '-' . $qos;
+                        $id = 'will-binary-' . (int)$tls . '-' . $version . '-' . $qos;
                         $topic = 'example/' . $id;
                         $payload = $qos === 2 ? str_repeat("\0\xff\xfe", 21845) : "\0\xffbinary";
                         $subscriber = mqttWillSubscriber($port, $id . '-s', $topic, $version === 4 ? 5 : 4, 2, $certificate);
@@ -114,7 +114,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
                         $properties = "\x03" . mqttField('binary/test') . "\x09" . mqttField("\0\xff") . "\x26" . mqttField('x') . mqttField('a') . "\x26" . mqttField('x') . mqttField('b');
                         mqttWrite($publisher, mqttWillConnect($version, $id, $topic, $payload, $qos, true, properties: $version === 5 ? $properties : ''));
                         mqttAck($publisher, $version);
-                        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_wills WHERE client_id = '" . $id . "'")->fetchColumn() === 1, 'CONNACK 早于遗嘱同步保存');
+                        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_wills WHERE client_id = '" . $id . "'")->fetchColumn() === 1, 'CONNACK 早于遗嘱同步保存');
                         fclose($publisher);
                         $delivered = mqttRetainedRead($subscriber, $version === 4 ? 5 : 4);
                         expect($delivered['topic'] === $topic && $delivered['payload'] === $payload && $delivered['qos'] === $qos && !$delivered['retain'], '跨版本实时遗嘱内容/QoS/RETAIN 错误');
@@ -133,7 +133,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
                 }
                 foreach ([4, 5] as $version) {
                     foreach ([0, 1, 2] as $qos) {
-                        $id = 'will-shared-' . (int) $tls . '-' . $version . '-' . $qos;
+                        $id = 'will-shared-' . (int)$tls . '-' . $version . '-' . $qos;
                         $topic = 'example/' . $id;
                         $filter = '$share/wills/' . $topic;
                         $member = mqttWillSubscriber($port, $id . '-member', $filter, 5, 2, $certificate);
@@ -154,11 +154,11 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
                             mqttWillSilence($target, 0.1);
                             mqttWrite($target, "\xe0\0");
                             fclose($target);
-                            $cases++;
+                            ++$cases;
                         }
                     }
                 }
-                echo successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, $certificate ?? 'plain', 'wills'], $consumer);
+                echo successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, $certificate ?? 'plain', 'wills'], $consumer);
                 $stopped = $process->stop(12);
                 expect($stopped->successful() && $stopped->stderr === '', '遗嘱 TCP/TLS 停止失败：' . $stopped->stderr);
                 $statistics[] = json_decode($stopped->stdout, true);
@@ -172,7 +172,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
                 array_push($sockets, $subscriber, $publisher);
                 mqttWrite($publisher, mqttWillConnect($version, $id, $topic, 'disconnect', 1));
                 mqttAck($publisher, $version);
-                mqttWrite($publisher, $version === 4 ? "\xe0\0" : mqttPacket(0xe0, chr($reason)));
+                mqttWrite($publisher, $version === 4 ? "\xe0\0" : mqttPacket(0xE0, chr($reason)));
                 expect(mqttRead($publisher) === '', '客户端 DISCONNECT 没有结束网络');
                 fclose($publisher);
                 if ($reason === 4) {
@@ -185,7 +185,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
                     expect($standby->query("SELECT cause FROM type_mqtt_will_audit WHERE client_id = '" . $id . "'")->fetchColumn() === 'normal', '正常取消的结束原因不一致');
                 }
                 fclose($subscriber);
-                $cases++;
+                ++$cases;
             }
             foreach ([[2, 10, 2], [5, 1, 1], [5, 0, 0], [5, null, 0], [2, 4294967295, 2]] as [$delay, $expiry, $expected]) {
                 $id = 'will-delay-' . $delay . '-' . ($expiry ?? 'default');
@@ -210,7 +210,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
             // 接管与离线重连各覆盖继续同会话、Clean Start 和 Delay=0。
             foreach ([false, true] as $online) {
                 foreach ([[false, 3], [true, 3], [false, 0]] as [$clean, $delay]) {
-                    $id = 'will-race-' . (int) $online . '-' . (int) $clean . '-' . $delay;
+                    $id = 'will-race-' . (int)$online . '-' . (int)$clean . '-' . $delay;
                     $topic = 'example/' . $id;
                     $subscriber = mqttWillSubscriber($port, $id . '-s', $topic);
                     $old = mqttSocket($port);
@@ -240,11 +240,11 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
                     expect(mqttRead($next) === '', '新连接正常结束失败');
                     fclose($next);
                     fclose($subscriber);
-                    $cases++;
+                    ++$cases;
                 }
             }
             foreach ([false, true] as $endSession) {
-                $id = 'will-request-delay-' . (int) $endSession;
+                $id = 'will-request-delay-' . (int)$endSession;
                 $topic = 'example/' . $id;
                 $subscriber = mqttWillSubscriber($port, $id . '-s', $topic);
                 $publisher = mqttSocket($port);
@@ -252,7 +252,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
                 mqttWrite($publisher, mqttWillConnect(5, $id, $topic, 'requested-delay', 1, false, 2, 30));
                 mqttAck($publisher, 5);
                 $began = microtime(true);
-                mqttWrite($publisher, mqttPacket(0xe0, $endSession ? "\x04\x05\x11\0\0\0\0" : "\x04"));
+                mqttWrite($publisher, mqttPacket(0xE0, $endSession ? "\x04\x05\x11\0\0\0\0" : "\x04"));
                 expect(mqttRead($publisher) === '', '主动遗嘱未关闭');
                 fclose($publisher);
                 stream_set_timeout($subscriber, 5);
@@ -261,7 +261,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
                 expect($message['payload'] === 'requested-delay' && ($endSession ? $elapsed < 2 : $elapsed >= 2), '主动遗嘱忽略 Delay 或 DISCONNECT Session Expiry');
                 mqttRetainedComplete($subscriber, $message);
                 fclose($subscriber);
-                $cases++;
+                ++$cases;
             }
             // 到期后才继续同一会话不能取消旧遗嘱，即使调度尚未读到该记录。
             $subscriber = mqttWillSubscriber($port, 'will-late-s', 'example/will-late');
@@ -281,7 +281,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
             mqttWillSilence($subscriber, 1.2);
             fclose($next);
             fclose($subscriber);
-            $cases++;
+            ++$cases;
             // 合法性与 CONNECT 授权拒绝不会留下遗嘱；失败报文通过真实监听输入。
             foreach ([
                 mqttWillConnect(5, 'bad-will-topic', 'example/+', 'x'),
@@ -300,9 +300,9 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
                 $reply = mqttRead($bad);
                 expect($reply === '' || (ord($reply[0]) === 0x20 && ord($reply[3]) !== 0), '非法遗嘱 CONNECT 得到成功响应');
                 fclose($bad);
-                $cases++;
+                ++$cases;
             }
-            expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_wills WHERE client_id LIKE 'bad-will-%'")->fetchColumn() === 0, '非法配置遗留可发布遗嘱');
+            expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_wills WHERE client_id LIKE 'bad-will-%'")->fetchColumn() === 0, '非法配置遗留可发布遗嘱');
             // Keep Alive 和协议错误都是 Broker 可观察到的网络结束原因。
             foreach ([true, false] as $timeout) {
                 $id = $timeout ? 'will-keepalive' : 'will-protocol';
@@ -325,7 +325,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
                 mqttRetainedComplete($subscriber, $message);
                 fclose($publisher);
                 fclose($subscriber);
-                $cases++;
+                ++$cases;
             }
         }
         if ($restartOnly || $failureOnly) {
@@ -387,7 +387,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
             expect($message['payload'] === "restart\0\xff" && $message['qos'] === 2, '重启后遗嘱原件丢失');
             mqttRetainedComplete($subscriber, $message);
             mqttWillSilence($subscriber, 1.2);
-            expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '重启重复发布遗嘱');
+            expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '重启重复发布遗嘱');
             fclose($subscriber);
             $cases += 3;
         }
@@ -407,10 +407,10 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
         mqttUntil(fn (): bool => $standby->query("SELECT outcome FROM type_mqtt_will_audit WHERE client_id = 'will-denied'")->fetchColumn() === 'denied', '到期遗嘱未重新授权并记录失败');
         mqttWillSilence($subscriber, 0.5);
         fclose($subscriber);
-        $cases++;
+        ++$cases;
         // CONNECT 在 SyncRep 中被取消时，不能把已落库而未接纳的遗嘱留到重启误发。
         foreach ([true, false] as $clean) {
-            $id = 'will-open-unknown-' . (int) $clean;
+            $id = 'will-open-unknown-' . (int)$clean;
             $topic = 'example/' . $id;
             $previous = mqttSocket($port);
             $sockets[] = $previous;
@@ -427,7 +427,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
             $gate = $sync->connection();
             $gate->beginTransaction();
             $gate->query("SELECT id FROM type_mqtt_sessions WHERE client_id = '" . $id . "' FOR UPDATE")->fetchColumn();
-            $gatePid = (int) $gate->query('SELECT pg_backend_pid()')->fetchColumn();
+            $gatePid = (int)$gate->query('SELECT pg_backend_pid()')->fetchColumn();
             mqttWrite($publisher, mqttWillConnect(5, $id, $topic, 'never-accepted', 1, false, 0, 60, $clean));
             // 观察受控行锁的真实阻塞关系，不依赖存储实现先读取哪些会话字段。
             $backend = mqttUntil(fn (): mixed => $primary->query("SELECT pid FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'"
@@ -435,8 +435,8 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
             $standby->query('SELECT pg_wal_replay_pause()')->fetchColumn();
             $gate->rollBack();
             $gate = null;
-            mqttUntil(fn (): mixed => $primary->query('SELECT pid FROM pg_stat_activity WHERE pid = ' . (int) $backend . " AND wait_event = 'SyncRep'")->fetchColumn(), '打开遗嘱未进入同步等待');
-            $primary->query('SELECT pg_cancel_backend(' . (int) $backend . ')')->fetchColumn();
+            mqttUntil(fn (): mixed => $primary->query('SELECT pid FROM pg_stat_activity WHERE pid = ' . (int)$backend . " AND wait_event = 'SyncRep'")->fetchColumn(), '打开遗嘱未进入同步等待');
+            $primary->query('SELECT pg_cancel_backend(' . (int)$backend . ')')->fetchColumn();
             stream_set_timeout($publisher, 10);
             expect(mqttRead($publisher) === "\x20\x03\0\x88\0", '未知保存被误认为已接纳 CONNECT');
             fclose($publisher);
@@ -481,10 +481,10 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
             $standby->query('SELECT pg_wal_replay_pause()')->fetchColumn();
             $gate->rollBack();
             $gate = null;
-            mqttUntil(fn (): mixed => $primary->query('SELECT pid FROM pg_stat_activity WHERE pid = ' . (int) $backend . " AND wait_event = 'SyncRep'")->fetchColumn(), '遗嘱接管未进入真实同步等待');
-            expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 0, '同步暂停失效');
+            mqttUntil(fn (): mixed => $primary->query('SELECT pid FROM pg_stat_activity WHERE pid = ' . (int)$backend . " AND wait_event = 'SyncRep'")->fetchColumn(), '遗嘱接管未进入真实同步等待');
+            expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 0, '同步暂停失效');
             if ($cancel) {
-                $primary->query('SELECT pg_cancel_backend(' . (int) $backend . ')')->fetchColumn();
+                $primary->query('SELECT pg_cancel_backend(' . (int)$backend . ')')->fetchColumn();
             }
             stream_set_timeout($subscriber, 12);
             $began = microtime(true);
@@ -492,10 +492,10 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
             $elapsed = microtime(true) - $began;
             expect($elapsed < 11.0, '遗嘱 worker 没有硬截止');
             fclose($subscriber);
-            mqttUntil(fn (): bool => (int) $primary->query('SELECT COUNT(*) FROM pg_stat_activity WHERE pid = ' . (int) $backend)->fetchColumn() === 0, '遗嘱故障 worker 遗留后端');
-            expect((int) $primary->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '未知遗嘱提交丢失或重复接管');
+            mqttUntil(fn (): bool => (int)$primary->query('SELECT COUNT(*) FROM pg_stat_activity WHERE pid = ' . (int)$backend)->fetchColumn() === 0, '遗嘱故障 worker 遗留后端');
+            expect((int)$primary->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '未知遗嘱提交丢失或重复接管');
             $standby->query('SELECT pg_wal_replay_resume()')->fetchColumn();
-            mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '遗嘱未知事实恢复后丢失');
+            mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '遗嘱未知事实恢复后丢失');
             $subscriber = mqttSocket($port);
             $sockets[] = $subscriber;
             mqttWrite($subscriber, mqttSessionConnect(5, $id . '-s', false, 60));
@@ -504,7 +504,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
             expect($message['payload'] === 'durable-once' && $message['qos'] === 2 && !$message['duplicate'], '遗嘱未知提交未按离线首次交付恢复');
             mqttRetainedComplete($subscriber, $message);
             mqttWillSilence($subscriber, 1.3);
-            expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '故障重试生成重复遗嘱原件');
+            expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '故障重试生成重复遗嘱原件');
             fclose($subscriber);
             $faults[] = ['cancelled' => $cancel, 'seconds' => $elapsed, 'backend_released' => true, 'message_count' => 1];
             $cases += 4;
@@ -554,7 +554,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
         mqttWrite($willPublisher, mqttWillConnect(5, 'will-quota', 'example/will-quota', 'after-release', 1, true));
         mqttAck($willPublisher, 5);
         fclose($willPublisher);
-        mqttUntil(fn (): bool => (int) $standby->query("SELECT last_reason FROM type_mqtt_wills WHERE client_id = 'will-quota'")->fetchColumn() === 0x97, '遗嘱配额失败不可观察');
+        mqttUntil(fn (): bool => (int)$standby->query("SELECT last_reason FROM type_mqtt_wills WHERE client_id = 'will-quota'")->fetchColumn() === 0x97, '遗嘱配额失败不可观察');
         mqttWillSilence($subscriber, 0.5);
         mqttRetainedPublish($publisher, 5, 'example/will-quota-full', '', 1);
         stream_set_timeout($subscriber, 6);
@@ -562,7 +562,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
         expect($message['payload'] === 'after-release', '配额释放后待发遗嘱未恢复');
         mqttRetainedComplete($subscriber, $message);
         mqttWillSilence($subscriber, 1.2);
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_wills WHERE client_id = 'will-quota'")->fetchColumn() === 0, '遗嘱终结未释放载荷');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_wills WHERE client_id = 'will-quota'")->fetchColumn() === 0, '遗嘱终结未释放载荷');
         fclose($subscriber);
         fclose($publisher);
         $cases += 3;
@@ -578,7 +578,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
         $empty = mqttRetainedRead($subscriber, 5);
         expect($empty['payload'] === '' && !$empty['retain'], '空遗嘱没有正常实时交付');
         mqttRetainedComplete($subscriber, $empty);
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = 'example/will-quota'")->fetchColumn() === 0, '空遗嘱未清理保留事实');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = 'example/will-quota'")->fetchColumn() === 0, '空遗嘱未清理保留事实');
         fclose($subscriber);
         $small = mqttWillSubscriber($port, 'will-small-s', 'example/will-small', properties: "\x27" . pack('N', 128) . "\x22\0\x01");
         $sockets[] = $small;
@@ -603,7 +603,7 @@ function mqttWillCases(string $root, string $consumer, array $command, array $wo
         $statistics[] = json_decode($result->stdout, true);
         foreach ($statistics as $counts) {
             foreach (['connections', 'subscriptions', 'bufferedBytes', 'pendingCommits', 'closingSessions', 'retainedQueued', 'retainedPending', 'retainedBytes', 'willPending', 'quarantinedCommits'] as $field) {
-                expect((int) $counts[$field] === 0, '遗嘱退出未释放：' . $field);
+                expect((int)$counts[$field] === 0, '遗嘱退出未释放：' . $field);
             }
         }
         return ['cases' => $cases, 'windows' => $windows, 'faults' => $faults, 'replication' => $sync->evidence(), 'statistics' => $statistics];

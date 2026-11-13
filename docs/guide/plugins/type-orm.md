@@ -61,14 +61,24 @@ declare(strict_types=1);
 namespace DocsExample;
 
 use Type\Orm\Model;
-use Type\Orm\Attribute\Table;
 
-#[Table('users')]
+/**
+ * 用户资料。
+ * @property int $id 记录标识。
+ * @property string $name 显示名称。
+ * @property int $age 年龄。
+ * @method static \Type\Orm\ModelQuery<static> query(string $alias = '')
+ * @method static static|null find(int|string $id)
+ * @method static static create(array $values)
+ */
 final class User extends Model
 {
-    public int $id;
-    public string $name;
-    public int $age;
+    protected string $table = 'users';
+    protected array $schema = [
+        'id' => ['type' => 'int', 'comment' => '记录标识。'],
+        'name' => ['type' => 'string', 'comment' => '显示名称。'],
+        'age' => ['type' => 'int', 'comment' => '年龄。'],
+    ];
 }
 ```
 

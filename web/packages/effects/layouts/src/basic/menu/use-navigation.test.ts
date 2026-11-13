@@ -24,14 +24,6 @@ vi.mock('@vben/utils', () => ({
   openWindow: (...args: unknown[]) => openWindow(...args),
 }));
 
-function fallbackResolved(path: string) {
-  return {
-    href: path,
-    matched: [{ name: 'FallbackNotFound' }],
-    name: 'FallbackNotFound',
-  };
-}
-
 function routeResolved(path: string) {
   return {
     href: `/#${path}`,
@@ -45,32 +37,6 @@ describe('useNavigation', () => {
     vi.clearAllMocks();
     getRoutes.mockReturnValue([]);
     resolve.mockImplementation((path: string) => routeResolved(path));
-  });
-
-  it('pushes dynamic plugin paths when current router resolve still points to fallback', async () => {
-    getRoutes.mockReturnValue([
-      {
-        meta: {
-          link: 'https://stale.example.test',
-          openInNewWindow: true,
-          query: { stale: '1' },
-        },
-        path: '/system/material/sync-log',
-      },
-    ]);
-    resolve.mockImplementation((path: string) => fallbackResolved(path));
-
-    const { navigation, willOpenedByWindow } = useNavigation();
-
-    expect(willOpenedByWindow('/system/material/sync-log')).toBe(false);
-    await navigation('/system/material/sync-log');
-
-    expect(push).toHaveBeenCalledWith({
-      path: '/system/material/sync-log',
-      query: {},
-    });
-    expect(openWindow).not.toHaveBeenCalled();
-    expect(openRouteInNewWindow).not.toHaveBeenCalled();
   });
 
   it('keeps resolved route query and new-window metadata when route is stable', async () => {
@@ -112,7 +78,7 @@ describe('useNavigation', () => {
         meta: {
           link: 'https://old.example.test',
         },
-        path: '/system/plugin/page',
+        path: '/system/report/removed',
       },
     ]);
 
@@ -120,10 +86,10 @@ describe('useNavigation', () => {
     getRoutes.mockReturnValue([]);
     afterEachHandler?.();
 
-    await navigation('/system/plugin/page');
+    await navigation('/system/report/removed');
 
     expect(push).toHaveBeenCalledWith({
-      path: '/system/plugin/page',
+      path: '/system/report/removed',
       query: {},
     });
     expect(openWindow).not.toHaveBeenCalled();

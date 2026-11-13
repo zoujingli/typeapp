@@ -13,6 +13,7 @@ use Swoole\Coroutine\Http\Server;
 use Swoole\Coroutine\Socket;
 use Swoole\Http\Request;
 use Swoole\Http\Response;
+use Swoole\Timer;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\ResponseEmitter;
 use Type\Runtime\Cancellation;
@@ -25,12 +26,11 @@ use Type\Runtime\ManagedResource;
 final class ResponseDeadlineCleanup implements ManagedResource
 {
     public float $elapsed = 0.0;
+
     public bool $completed = false;
 
     /** 不分配外部资源，只登记后续真实挂起的清理阶段。 */
-    public function start(): void
-    {
-    }
+    public function start(): void {}
 
     /** 清理需要独立完成一次原生等待，取消或提前返回均由调用者观察。 */
     public function stop(): void
@@ -41,7 +41,11 @@ final class ResponseDeadlineCleanup implements ManagedResource
     }
 }
 
-/** 独立 TCP 客户端停止读取后，直接观察 HTTP 发送、作用域及原生收尾结果。 */
+/**
+ * 独立 TCP 客户端停止读取后，直接观察 HTTP 发送、作用域及原生收尾结果。
+ * @internal
+ * @coversNothing
+ */
 #[RunTestsInSeparateProcesses]
 #[PreserveGlobalState(false)]
 final class HttpResponseDeadlineTest extends TestCase
@@ -116,7 +120,7 @@ final class HttpResponseDeadlineTest extends TestCase
                         });
                     }
                     if ($mode === 'shorten') {
-                        \Swoole\Timer::after(30, static function () use ($deadline): void {
+                        Timer::after(30, static function () use ($deadline): void {
                             $deadline->shorten(0.02);
                         });
                     }
@@ -158,7 +162,7 @@ final class HttpResponseDeadlineTest extends TestCase
                     }
                     $request = "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
                     if ($client->sendAll($request, 1.0) !== strlen($request)
-                        || !str_starts_with((string) $client->recv(1024, 1.0), 'HTTP/1.1 200')) {
+                        || !str_starts_with((string)$client->recv(1024, 1.0), 'HTTP/1.1 200')) {
                         throw new \RuntimeException('HTTP 截止响应未实际开始');
                     }
                     $result = $done->pop(0.5);

@@ -1,10 +1,10 @@
-import type { ZodRawShape } from 'zod';
+import type { ZodType } from 'zod';
 
 import type { ComputedRef } from 'vue';
 
 import type { ExtendedFormApi, FormActions, VbenFormProps } from './types';
 
-import { computed, unref, useSlots } from 'vue';
+import { computed, toRaw, unref, useSlots } from 'vue';
 
 import { createContext } from '@vben-core/shadcn-ui';
 import { isString, mergeWithArrayOverride, set } from '@vben-core/shared/utils';
@@ -47,14 +47,14 @@ export function useFormInitial(
   function generateInitialValues() {
     const initialValues: Record<string, any> = {};
 
-    const zodObject: ZodRawShape = {};
+    const zodObject: Record<string, ZodType> = {};
     (unref(props).schema || []).forEach((item) => {
       if (Reflect.has(item, 'defaultValue')) {
         set(initialValues, item.fieldName, item.defaultValue);
       } else if (item.rules && !isString(item.rules)) {
         // 检查规则是否适合提取默认值
-        const customDefaultValue = getCustomDefaultValue(item.rules);
-        zodObject[item.fieldName] = item.rules;
+        const customDefaultValue = getCustomDefaultValue(toRaw(item.rules));
+        zodObject[item.fieldName] = toRaw(item.rules);
         if (customDefaultValue !== undefined) {
           initialValues[item.fieldName] = customDefaultValue;
         }

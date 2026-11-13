@@ -2,8 +2,9 @@ import type { Preferences } from './types';
 
 const defaultPreferences: Preferences = {
   app: {
-    accessMode: 'backend',
+    accessMode: 'frontend',
     authPageLayout: 'panel-right',
+    checkUpdatesInterval: 1,
     colorGrayMode: false,
     colorWeakMode: false,
     compact: false,
@@ -16,8 +17,10 @@ const defaultPreferences: Preferences = {
     contentPaddingTop: 0,
     defaultAvatar:
       'https://unpkg.com/@vbenjs/static-source@0.1.7/source/avatar-v1.webp',
-    defaultHomePath: '/entry',
+    defaultHomePath: '/analytics',
     dynamicTitle: true,
+    enableCheckUpdates: true,
+    enableCopyPreferences: true,
     enablePreferences: true,
     enableRefreshToken: false,
     enableStickyPreferencesNavigationBar: true,
@@ -27,6 +30,7 @@ const defaultPreferences: Preferences = {
     loginExpiredMode: 'page',
     name: 'Vben Admin',
     preferencesButtonPosition: 'auto',
+    timezone: 'Asia/Shanghai',
     watermark: false,
     watermarkContent: '',
     zIndex: 200,
@@ -83,6 +87,7 @@ const defaultPreferences: Preferences = {
     collapsedButton: true,
     collapsedShowTitle: false,
     collapseWidth: 60,
+    draggable: true,
     enable: true,
     expandOnHover: true,
     extraCollapse: false,
@@ -103,6 +108,7 @@ const defaultPreferences: Preferences = {
     showIcon: true,
     showMaximize: true,
     showMore: true,
+    showRefresh: true,
     styleType: 'chrome',
     visitHistory: true,
     wheelable: true,
@@ -118,6 +124,7 @@ const defaultPreferences: Preferences = {
     fontSize: 16,
     semiDarkHeader: false,
     semiDarkSidebar: false,
+    semiDarkSidebarSub: false,
   },
   transition: {
     enable: true,

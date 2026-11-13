@@ -51,14 +51,14 @@ try {
                 echo '本机原生数据库独立ORM消费：' . $driver . '/' . $mode . "\n";
                 $output = nativeDatabaseCommand([PHP_BINARY, $root . '/tests/orm-suite-consumer.php', $driver, '--' . $mode], $environment, $secrets, $work . '/' . $mode . '.log', 1800);
                 expect(preg_match('#报告：(.*?/verification\.json)\s*$#u', $output, $matches) === 1, 'ORM消费入口没有返回验证记录');
-                $evidence = json_decode((string) file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
+                $evidence = json_decode((string)file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
                 expect($evidence['driver'] === $driver && $evidence['mode'] === $mode && $evidence['race'] === ['conflict', 'updated'], 'ORM消费没有保持驱动、模式或双进程唯一更新');
                 $expected = ['zoujingli/type-orm', 'zoujingli/type-orm-' . $driver, 'zoujingli/type-runtime'];
                 expect($evidence['production_packages'] === $expected, 'ORM消费混入了未选生产依赖');
                 $record = ['evidence' => $matches[1], 'evidence-sha256' => hash_file('sha256', $matches[1])];
                 if ($mode === 'native') {
                     $artifact = dirname($matches[1]) . '/build/type-app';
-                    $built = json_decode((string) file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+                    $built = json_decode((string)file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
                     expect(hash_file('sha256', $artifact) === $built['sha256'], '原生ORM产物摘要不符');
                     $record['artifact-sha256'] = $built['sha256'];
                     $record['build-id'] = $built['build-id'];

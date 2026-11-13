@@ -11,16 +11,20 @@ use Type\Runtime\ExecutionOwner;
 final class RedisStateStore implements LeasedStateStore
 {
     private RedisConnection $redis;
+
     private string $root;
+
     private int $milliseconds;
+
     private ?RedisLease $lease = null;
+
     private ?ExecutionOwner $owner = null;
 
     /**
      * 绑定稳定应用/组名与借用的 script 连接，存储不负责关闭外层连接。
      *
-     * @param int $leaseMilliseconds 整个 tick 的租约时长，10 至 3600000 毫秒。
-     * @throws LeaseException 身份或租约配置无效。
+     * @param int $leaseMilliseconds 整个 tick 的租约时长，10 至 3600000 毫秒
+     * @throws LeaseException 身份或租约配置无效
      */
     public function __construct(RedisConnection $redis, string $application, string $name = 'default', int $leaseMilliseconds = 30000)
     {
@@ -42,7 +46,7 @@ final class RedisStateStore implements LeasedStateStore
     /**
      * 获取组租约并仅在首代初始化状态；已有代次但状态丢失时停止以保留现场。
      *
-     * @throws LeaseException 已占用、租约冲突或共享状态缺失。
+     * @throws LeaseException 已占用、租约冲突或共享状态缺失
      */
     public function acquire(): void
     {
@@ -72,7 +76,7 @@ LUA, [$this->root . ':state'], [$this->lease->generation(), StateCodec::encode([
     /**
      * 返回本次 acquire() 的租约，供任务包装为自身作用域权限。
      *
-     * @throws LeaseException 当前存储未持有租约。
+     * @throws LeaseException 当前存储未持有租约
      */
     public function lease(): ExecutionLease
     {
@@ -105,7 +109,7 @@ LUA, [$this->root . ':state'], [$this->lease->generation(), StateCodec::encode([
     /**
      * 验证编码预算，先续租再在持有权保护下覆盖状态，不给状态和代次设置 TTL。
      *
-     * @param array{protocol: int, cursors: array<string, int>, records: list<array<string, mixed>>} $state 待保存的完整状态。
+     * @param array{protocol: int, cursors: array<string, int>, records: list<array<string, mixed>>} $state 待保存的完整状态
      */
     public function save(array $state): void
     {

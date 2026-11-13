@@ -4,14 +4,16 @@ declare(strict_types=1);
 
 namespace app\common\middleware;
 
+use app\common\bootstrap\RuntimeCapabilities;
+use app\common\bootstrap\RuntimeCapabilityException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use Throwable;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Message\Factory;
 use Type\Log\Logger;
+use Type\Log\Output;
 use Type\Orm\ModelException;
 use Type\Runtime\CapacityException;
 use Type\Runtime\TaskException;
@@ -25,7 +27,9 @@ use Type\Validate\ValidationException;
 final class ApiErrors implements MiddlewareInterface
 {
     private Factory $messages;
+
     private bool $debug;
+
     private string $basePath;
 
     /** 只保存响应工厂、明确的调试权限和代码路径根，不保存配置值或异常对象。 */
@@ -49,7 +53,7 @@ final class ApiErrors implements MiddlewareInterface
         }
         try {
             return $handler->handle($request->withAttribute('app.request_id', $requestId));
-        } catch (\app\common\bootstrap\RuntimeCapabilityException $capabilityError) {
+        } catch (RuntimeCapabilityException $capabilityError) {
             return $this->response(503, ['error' => $capabilityError->errorCode()], $requestId);
         } catch (HttpError $httpError) {
             return $this->response($httpError->status(), ['error' => $httpError->errorCode()], $requestId);
@@ -73,7 +77,7 @@ final class ApiErrors implements MiddlewareInterface
             }
 
             return $this->failure($modelError, $request, $requestId);
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             if (CapacityException::matches($error)) {
                 return $this->response(503, ['error' => 'resource_capacity_exceeded'], $requestId)->withHeader('Retry-After', '1');
             }
@@ -82,7 +86,7 @@ final class ApiErrors implements MiddlewareInterface
     }
 
     /** 不字符串化异常或记录消息、参数；调试日志只选取代码位置、函数名与异常类型。 */
-    private function failure(Throwable $error, ServerRequestInterface $request, string $requestId): ResponseInterface
+    private function failure(\Throwable $error, ServerRequestInterface $request, string $requestId): ResponseInterface
     {
         $filename = str_replace('\\', '/', $error->getFile());
         $base = rtrim(str_replace('\\', '/', $this->basePath), '/');
@@ -94,7 +98,7 @@ final class ApiErrors implements MiddlewareInterface
             'exception_type' => get_class($error),
             'file' => $location === '' ? '[native]' : $location,
             'line' => max(0, $error->getLine()),
-            'build_id' => \app\common\bootstrap\RuntimeCapabilities::buildId(),
+            'build_id' => RuntimeCapabilities::buildId(),
         ];
         if ($this->debug) {
             $frames = [];
@@ -113,7 +117,7 @@ final class ApiErrors implements MiddlewareInterface
                 // 只复制允许的字段；原始 frame 可能含令牌或请求对象，不能交给日志层。
                 $frames[] = [
                     'file' => substr($frameFile, strlen($base) + 1),
-                    'line' => max(0, (int) ($frame['line'] ?? 0)),
+                    'line' => max(0, (int)($frame['line'] ?? 0)),
                     'function' => is_string($frame['function'] ?? null) ? $frame['function'] : '[unknown]',
                 ];
             }
@@ -123,7 +127,7 @@ final class ApiErrors implements MiddlewareInterface
         if ($logger instanceof Logger) {
             $logger->error('HTTP 内部错误', $details);
         } else {
-            $output = \Type\Log\Output::stream(STDERR, 1, 8192, 8192);
+            $output = Output::stream(STDERR, 1, 8192, 8192);
             try {
                 $output->enqueue(json_encode($details, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n");
                 $output->stop(0.05);

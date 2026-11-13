@@ -11,10 +11,11 @@ use Type\Queue\JobContext;
 final class RetryJob implements Job
 {
     public static array $handled = [];
+
     /**
      * 为每次尝试登记资源并检查租约，按演练载荷触发超时或业务失败。
      *
-     * @param array<array-key, mixed> $payload 可包含 slow 等受控故障字段。
+     * @param array<array-key, mixed> $payload 可包含 slow 等受控故障字段
      */
     public function handle(JobContext $context, array $payload): void
     {

@@ -5,8 +5,7 @@ declare(strict_types=1);
 /** 复用双端隔离装置，通过真实 HTTP 检查注册资格的权限、幂等、期限和审计事务。 */
 function iotEnrollmentChecks(Closure $request, PDO $inspection, string $driver, string $address, string $platform, string $password): array
 {
-    $call = static fn (string $method, string $path, string $token, ?array $body = null, int $status = 200, array $headers = [], string $error = ''): array
-        => $request($method, $path, $token, $headers, $body, $status, $error);
+    $call = static fn (string $method, string $path, string $token, ?array $body = null, int $status = 200, array $headers = [], string $error = ''): array => $request($method, $path, $token, $headers, $body, $status, $error);
     $tenant = bin2hex(random_bytes(16));
     $other = bin2hex(random_bytes(16));
     $call('POST', '/admin/tenants', $platform, ['id' => $tenant, 'name' => '注册授权甲', 'new_customer' => true, 'owner_login' => 'enrollment-owner', 'owner_name' => '授权客户', 'owner_password' => $password]);
@@ -42,7 +41,7 @@ function iotEnrollmentChecks(Closure $request, PDO $inspection, string $driver, 
     $call('POST', $path, $platform, array_replace($input, ['register_expires_at' => time() - 1]), 422, [], 'enrollment_expired');
     $issued = $call('POST', $path, $platform, $input, 201)['data'];
     expect($issued['authorization']['id'] === $id && $issued['authorization']['remaining'] === 2 && $issued['authorization']['status'] === 'available'
-        && $issued['replayed'] === false && preg_match('/^' . $id . '\\.[a-f0-9]{64}$/D', $issued['code']) === 1, '签发结果或一次性注册码不完整');
+        && $issued['replayed'] === false && preg_match('/^' . $id . '\.[a-f0-9]{64}$/D', $issued['code']) === 1, '签发结果或一次性注册码不完整');
     $secret = explode('.', $issued['code'], 2)[1];
     $stored = $inspection->prepare('SELECT secret_hash FROM iot_device_enrollments WHERE id = ?');
     $stored->execute([$id]);
@@ -119,8 +118,7 @@ function iotEnrollmentChecks(Closure $request, PDO $inspection, string $driver, 
 /** 设备通过公开注册入口消费资格；观察真实额度、绑定、重试和凭据，不伪造物模型。 */
 function iotRegistrationChecks(Closure $request, PDO $inspection, string $driver, string $address, string $platform, string $password): array
 {
-    $call = static fn (string $method, string $path, string $token, ?array $body = null, int $status = 200, array $headers = [], string $error = ''): array
-        => $request($method, $path, $token, $headers, $body, $status, $error);
+    $call = static fn (string $method, string $path, string $token, ?array $body = null, int $status = 200, array $headers = [], string $error = ''): array => $request($method, $path, $token, $headers, $body, $status, $error);
     $path = '/public/devices/register';
     $input = ['id' => bin2hex(random_bytes(16)), 'tenant_id' => bin2hex(random_bytes(16)), 'device_id' => bin2hex(random_bytes(16)),
         'name' => '无物模型设备', 'code' => str_repeat('0', 32) . '.' . str_repeat('0', 64)];
@@ -135,13 +133,13 @@ function iotRegistrationChecks(Closure $request, PDO $inspection, string $driver
     $input['code'] = $grant['code'];
     $call('POST', $path, '', array_replace($input, ['tenant_id' => $other]), 401, [], 'registration_credentials_invalid');
     $call('POST', $path, '', $input + ['product_id' => bin2hex(random_bytes(16))], 422, [], 'unexpected_field');
-    $modelsBefore = (int) $inspection->query('SELECT COUNT(*) FROM iot_models')->fetchColumn();
+    $modelsBefore = (int)$inspection->query('SELECT COUNT(*) FROM iot_models')->fetchColumn();
     $registered = $call('POST', $path, '', $input, 201)['data'];
     expect($registered['device']['id'] === $input['device_id'] && $registered['device']['product_id'] === null
         && !array_key_exists('model_version', $registered['device']) && $registered['device']['connection']['status'] === 'unknown'
         && $registered['replayed'] === false && strlen($registered['credential']['password']) === 64, '注册没有形成独立的设备、未知连接状态和一次性凭据');
     expect(str_ends_with($registered['credential']['topics']['publish'], '/raw/up') && str_ends_with($registered['credential']['topics']['subscribe'], '/raw/down'), '新设备主题会进入旧数据解析链');
-    expect((int) $inspection->query('SELECT COUNT(*) FROM iot_models')->fetchColumn() === $modelsBefore, '注册通过伪造物模型规避约束');
+    expect((int)$inspection->query('SELECT COUNT(*) FROM iot_models')->fetchColumn() === $modelsBefore, '注册通过伪造物模型规避约束');
     $replayed = $call('POST', $path, '', $input)['data'];
     expect($replayed['replayed'] === true && $replayed['credential'] === null && $replayed['device']['ownership_id'] === $registered['device']['ownership_id'], '响应丢失重试重复消费资格或回显旧凭据');
     $call('POST', $path, '', array_replace($input, ['name' => '不同请求意图']), 409, [], 'registration_request_conflict');
@@ -205,7 +203,7 @@ function iotRegistrationChecks(Closure $request, PDO $inspection, string $driver
     foreach (['iot_devices' => 'id', 'iot_device_ownerships' => 'device_id', 'iot_device_credentials' => 'device_id', 'iot_device_connections' => 'device_id', 'iot_device_enrollment_bindings' => 'device_id'] as $table => $column) {
         $orphan = $inspection->prepare('SELECT COUNT(*) FROM ' . $table . ' WHERE ' . $column . ' = ?');
         $orphan->execute([$failure['device_id']]);
-        expect((int) $orphan->fetchColumn() === 0, '注册审计失败遗留部分提交：' . $table);
+        expect((int)$orphan->fetchColumn() === 0, '注册审计失败遗留部分提交：' . $table);
         $orphan->closeCursor();
     }
     expect($call('GET', $grantPath . '/' . $next['authorization']['id'], $platform)['data']['authorization']['registered_count'] === 1, '注册审计失败仍消费额度');
@@ -213,7 +211,7 @@ function iotRegistrationChecks(Closure $request, PDO $inspection, string $driver
     $call('POST', $grantPath . '/' . $next['authorization']['id'] . '/disable', $platform, ['tenant_id' => $tenant, 'version' => 3]);
     $call('POST', $path, '', array_replace($failure, ['id' => bin2hex(random_bytes(16)), 'device_id' => bin2hex(random_bytes(16))]), 409, [], 'enrollment_unavailable');
     // 使用本轮独立来源的最后一个预算，观察失败也计数；到期恢复只调整测试账本的时钟边界。
-    expect((int) $inspection->query('SELECT COUNT(*) FROM iot_registration_attempts')->fetchColumn() === 1, '测试来源账本不是唯一记录');
+    expect((int)$inspection->query('SELECT COUNT(*) FROM iot_registration_attempts')->fetchColumn() === 1, '测试来源账本不是唯一记录');
     $inspection->exec('UPDATE iot_registration_attempts SET attempts = 59, window_started = ' . time());
     $call('POST', $path, '', array_replace($failure, ['code' => str_repeat('0', 32) . '.' . str_repeat('0', 64)]), 401, [], 'registration_credentials_invalid');
     $call('POST', $path, '', $failure, 429, [], 'registration_rate_limited');

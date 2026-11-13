@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { findMenuByPath, findRootMenuByPath } from '../find-menu-by-path';
 
-// 菜单匹配测试数据
+// 示例菜单数据
 const menus: any[] = [
   { path: '/', children: [] },
   { path: '/about', children: [] },

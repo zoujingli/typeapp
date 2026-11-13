@@ -32,16 +32,16 @@ try {
         $application = null;
         try {
             $deadline = microtime(true) + 5;
-            do {
+            while (true) {
                 $output = $proxy->stdout();
                 if (str_contains($output, "\n")) {
                     break;
                 }
                 expect($proxy->running() && microtime(true) < $deadline, '生成服务故障代理未就绪');
                 usleep(1000);
-            } while (true);
+            }
             $port = trim(explode("\n", $output)[0]);
-            expect(ctype_digit($port) && (int) $port > 0 && (int) $port <= 65535, '故障代理没有返回有效端口');
+            expect(ctype_digit($port) && (int)$port > 0 && (int)$port <= 65535, '故障代理没有返回有效端口');
             $applicationEnvironment = array_replace($environment, ['TYPE_MYSQL_HOST' => '127.0.0.1', 'TYPE_MYSQL_PORT' => $port, 'TYPE_MYSQL_DATABASE' => $name]);
             $application = new Process([PHP_BINARY, $root . '/tests/operations.php', $target, 'mysql', 'unknown'], $root, $applicationEnvironment);
             $result = $application->wait(60);

@@ -11,6 +11,8 @@ use Type\Core\Http\Pipeline;
 use Type\Core\Http\RequestPolicy;
 use Type\Core\Http\Router;
 use Type\Core\Http\SwooleServer;
+use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
 use Type\Orm\Migration\MigrationConsole;
 use Type\Orm\Migration\Migrator;
 use Type\Runtime\CoroutineRuntime;
@@ -21,7 +23,7 @@ use TypeApp\ModelExample\Drivers;
 /**
  * 在 Swoole 协程内运行 ORM、缓存、Outbox、队列和日志的组合示例。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
@@ -30,7 +32,7 @@ function main(int $argc, array $argv): void
         integrationScenario($argc, $argv);
         return;
     }
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+    CoroutineRuntime::run(static function () use ($argc, $argv): void {
         integrationScenario($argc, $argv);
     });
 }
@@ -38,7 +40,7 @@ function main(int $argc, array $argv): void
 /**
  * 按显式驱动和角色运行组合业务，输出验证结果并关闭本轮管理器。
  *
- * @param list<string> $argv 程序路径及组合业务参数。
+ * @param list<string> $argv 程序路径及组合业务参数
  */
 function integrationScenario(int $argc, array $argv): void
 {
@@ -48,8 +50,8 @@ function integrationScenario(int $argc, array $argv): void
             echo "完整集成应用：scenario、serve、migrate。\n";
             return;
         }
-        $driver = Drivers::create((string) (getenv('TYPE_MODEL_DRIVER') ?: 'sqlite'));
-        $application = (string) getenv('TYPE_INTEGRATION_APP');
+        $driver = Drivers::create((string)(getenv('TYPE_MODEL_DRIVER') ?: 'sqlite'));
+        $application = (string)getenv('TYPE_INTEGRATION_APP');
         if ($application === '') {
             throw new InvalidArgumentException('集成应用必须有独立命名空间');
         }
@@ -64,10 +66,10 @@ function integrationScenario(int $argc, array $argv): void
             return;
         }
         if ($mode === 'serve') {
-            $manager = new \Type\Orm\DatabaseManager(['default' => $driver]);
-            \Type\Orm\Db::configure($manager);
+            $manager = new DatabaseManager(['default' => $driver]);
+            Db::configure($manager);
             $port = filter_var(getenv('TYPE_HTTP_PORT'), FILTER_VALIDATE_INT);
-            $token = (string) getenv('TYPE_INTEGRATION_TOKEN');
+            $token = (string)getenv('TYPE_INTEGRATION_TOKEN');
             if (!is_int($port) || $port < 1 || $port > 65535 || strlen($token) < 32) {
                 throw new InvalidArgumentException('集成 HTTP 启动配置无效');
             }

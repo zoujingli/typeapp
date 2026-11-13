@@ -11,7 +11,7 @@ final class WindowsSdkPlatform extends Windows
 {
     /**
      * 沿用上游编译检查，再按官方 SDK 布局核验 PHP/PHPX 的真实 PE 运行库。
-     * @return list<array<string, string>> 构建警告与需要补齐的运行库说明。
+     * @return list<array<string, string>> 构建警告与需要补齐的运行库说明
      */
     public function getBuildLibraryWarnings(string $phpDir, string $phpxDir, string $buildMode, bool $checkPhpxRuntime = true): array
     {

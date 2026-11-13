@@ -29,7 +29,7 @@ TypeApp 面向低开销、高并发的应用：把可提前完成的工作放在
 
 ## 当前性能证据
 
-当前 TypePHP 开发快照（0.9.6）/ PHPX 2.9.5 / Swoole `64988849` 尚未完成同条件性能对照。此前 0.9.5 / 2.9.4 的输入、测量和未验证范围见[历史升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.5.md)，不能据此宣称新基线性能等价或提升。
+当前 TypePHP 提交 `c5599c5c` / PHPX 2.9.8 / Swoole `81404909` 尚未完成同条件性能对照。此前 0.9.5 / 2.9.4 的输入、测量和未验证范围见[历史升级记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.5.md)，不能据此宣称新基线性能等价或提升。
 
 历史 TypePHP 0.9.3 / PHPX 2.9.2 升级在 macOS ARM64 做过同业务、同平台、同负载对照，覆盖短 JSON、MySQL/PostgreSQL/SQLite CRUD、真实锁等待及 1 MiB 文件流。多轮和交替顺序测量未确认持续性能退化，原始方法与结果见[历史升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.3.md)。
 

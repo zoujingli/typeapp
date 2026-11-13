@@ -1,6 +1,9 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\BuildPlatform;
+use Type\Build\BundledSwoole;
+use Type\Testing\Process;
 
 // 测试故障仍保留消息与调用位置；参数不能泄漏凭据或延长 PDO 生命周期，阻塞专用数据库清理。
 ini_set('zend.exception_ignore_args', '1');
@@ -28,7 +31,7 @@ function testSwooleVersion(): string
     static $version = null;
     if ($version === null) {
         $manifest = dirname(__DIR__) . '/plugin/type-build/resources/swoole/manifest.json';
-        $data = json_decode((string) file_get_contents($manifest), true, 32, JSON_THROW_ON_ERROR);
+        $data = json_decode((string)file_get_contents($manifest), true, 32, JSON_THROW_ON_ERROR);
         if (!is_string($data['swoole'] ?? null) || $data['swoole'] === '') {
             throw new RuntimeException('测试需要有效的内置 Swoole 版本');
         }
@@ -44,11 +47,11 @@ function testSwooleVersion(): string
  * 保留 source.reference，避免 path 仓库重新生成参考值破坏工具链身份校验。
  * 第一方组件仍由调用者显式提供；消费者复制安装后独立编译。
  *
- * @return list<array{type: string, package: array<string, mixed>}> Composer package 仓库列表。
+ * @return list<array{type: string, package: array<string, mixed>}> composer package 仓库列表
  */
 function localComposerRepositories(string $root): array
 {
-    $lock = json_decode((string) file_get_contents($root . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
+    $lock = json_decode((string)file_get_contents($root . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
     $installed = require $root . '/vendor/composer/installed.php';
     $packages = [];
     foreach (array_merge($lock['packages'] ?? [], $lock['packages-dev'] ?? []) as $package) {
@@ -71,7 +74,7 @@ function localComposerRepositories(string $root): array
 /**
  * 捕获两个输出流，避免子进程因管道写满而互相等待。
  *
- * @param array<string,string>|null $environment 显式子进程环境；null 继承控制器环境。
+ * @param null|array<string,string> $environment 显式子进程环境；null 继承控制器环境
  */
 function execute(array $command, ?string $directory = null, ?array $environment = null): array
 {
@@ -99,7 +102,7 @@ function execute(array $command, ?string $directory = null, ?array $environment 
 /**
  * 要求测试前提或观察结果为真；失败消息由调用者提供，不应包含凭据。
  *
- * @throws RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function expect(bool $condition, string $message): void
 {
@@ -219,8 +222,8 @@ function menuLeafPaths(array $menus): array
  * 执行参数数组并要求零退出码，成功时返回标准输出。
  *
  * @param list<string> $command
- * @param array<string,string>|null $environment 显式子进程环境；null 继承控制器环境。
- * @throws RuntimeException 命令执行失败。
+ * @param null|array<string,string> $environment 显式子进程环境；null 继承控制器环境
+ * @throws RuntimeException 命令执行失败
  */
 function successful(array $command, ?string $directory = null, ?array $environment = null): string
 {
@@ -250,12 +253,12 @@ function controlledRuntimeEnvironment(array $environment): array
 /**
  * 将已选共享运行库复制到独立消费者的运行目录，移走或禁读源码时仍能按原摘要加载。
  *
- * @return array{file:string,sha256:string} 相对消费者根的显式模块声明。
+ * @return array{file:string,sha256:string} 相对消费者根的显式模块声明
  */
 function independentSwooleModule(string $work): array
 {
     $override = getenv('TYPE_SWOOLE_MODULE');
-    $source = is_string($override) && is_file($override) ? $override : (new \Type\Build\BundledSwoole())->select()['file'];
+    $source = is_string($override) && is_file($override) ? $override : (new BundledSwoole())->select()['file'];
     $relative = 'runtime/' . (PHP_OS_FAMILY === 'Windows' ? 'php_swoole.dll' : 'swoole.so');
     $sha256 = hash_file('sha256', $source);
     expect(mkdir($work . '/runtime', 0700) && copy($source, $work . '/' . $relative)
@@ -267,15 +270,15 @@ function independentSwooleModule(string $work): array
 function unixProcessStates(?int $parent = null): array
 {
     expect(($parent === null || $parent > 0) && in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true), '进程观察需要明确Unix进程身份');
-    $process = new \Type\Testing\Process(['ps', '-A', '-o', 'pid=,ppid=,stat=']);
+    $process = new Process(['ps', '-A', '-o', 'pid=,ppid=,stat=']);
     try {
         $result = $process->wait(2);
         expect($result->successful() && trim($result->stdout) !== '', '不能确认子进程清单：进程观察失败');
         $children = [];
         foreach (explode("\n", trim($result->stdout)) as $line) {
             expect(preg_match('/^\s*([1-9][0-9]*)\s+([0-9]+)\s+(\S+)\s*$/D', $line, $match) === 1, '进程观察格式不符');
-            if ($parent === null || (int) $match[2] === $parent) {
-                $children[(int) $match[1]] = ['parent' => (int) $match[2], 'state' => $match[3]];
+            if ($parent === null || (int)$match[2] === $parent) {
+                $children[(int)$match[1]] = ['parent' => (int)$match[2], 'state' => $match[3]];
             }
         }
         ksort($children, SORT_NUMERIC);
@@ -288,7 +291,7 @@ function unixProcessStates(?int $parent = null): array
 /**
  * 验证原生产物并构造启动参数；隔离模式仅用于 Linux chroot，要求目录不含 PHP CLI 或 vendor。
  *
- * @param list<string> $environmentKeys 隔离提权时明确保留的环境变量名。
+ * @param list<string> $environmentKeys 隔离提权时明确保留的环境变量名
  * @return list<string>
  */
 function nativeCommand(string $target, bool $isolated = false, array $environmentKeys = []): array
@@ -310,13 +313,13 @@ function nativeCommand(string $target, bool $isolated = false, array $environmen
 
         return [...$prefix, 'env', 'PHPRC=/app/php.ini', 'PHP_INI_SCAN_DIR=/app/php.d', 'chroot', $target, '/app/type-app'];
     }
-    if (!class_exists(\Type\Build\BuildPlatform::class)) {
+    if (!class_exists(BuildPlatform::class)) {
         // 格式校验不应要求主仓未使用的数据库或Redis扩展；独立控制器复用同一轻量校验类。
         $verifier = dirname(__DIR__) . '/plugin/type-build/src/BuildPlatform.php';
         expect(is_file($verifier), '独立验收控制器缺少原生格式校验类');
         require_once $verifier;
     }
-    (new \Type\Build\BuildPlatform())->assertArtifact($target);
+    (new BuildPlatform())->assertArtifact($target);
 
     $nativeIni = getenv('TYPE_NATIVE_PHP_INI');
     if ($nativeIni !== false) {

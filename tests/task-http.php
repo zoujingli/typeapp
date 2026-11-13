@@ -19,14 +19,14 @@ if (isset($argv[1]) && $argv[1] !== '--php') {
 }
 $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
 expect(is_resource($socket), '无法分配子任务请求端口');
-$port = (int) substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
+$port = (int)substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
 fclose($socket);
 $trace = tempnam(sys_get_temp_dir(), 'type_task_http_');
 $log = tmpfile();
 expect($trace !== false && $log !== false, '无法准备子任务请求日志');
 $environment = getenv();
 $environment['TYPE_TASK_TRACE'] = $trace;
-$environment['TYPE_HTTP_PORT'] = (string) $port;
+$environment['TYPE_HTTP_PORT'] = (string)$port;
 $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => $log, 2 => $log], $pipes, null, $environment);
 expect(is_resource($process), '无法启动子任务 HTTP');
 try {
@@ -73,7 +73,7 @@ try {
     }
     expect(str_contains(file_get_contents($trace), 'close:disconnect'), '客户端断开后的子任务没有清理');
     [$status, $body] = httpRequest($port, 'GET', '/probe');
-    expect($status === 200 && (int) json_decode($body, true)['marker'] === 7, '断开请求污染后续结果');
+    expect($status === 200 && (int)json_decode($body, true)['marker'] === 7, '断开请求污染后续结果');
     echo "HTTP 超时、活动连接容量、客户端断开与后续请求恢复通过。\n";
 } finally {
     if (proc_get_status($process)['running']) {

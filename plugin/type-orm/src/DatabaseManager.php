@@ -4,27 +4,36 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Type\Runtime\ExecutionScope;
 use Type\Runtime\DeploymentBudget;
+use Type\Runtime\ExecutionScope;
 
 /** 命名数据源、主从端点与凭据代次的所有者；复用同一运行时资源池协议。 */
 final class DatabaseManager
 {
     private array $drivers = [];
+
     private array $readers = [];
+
     private array $databases = [];
+
     private array $retired = [];
+
     private int $capacity;
+
     private int $idleLimit;
+
     private bool $closed = false;
+
     private ?DeploymentBudget $budget;
+
     private int $waiterLimit;
+
     private float $waitSeconds;
 
     /**
      * 各命名连接与旧凭据代次共用预算；协程等待上限单位为秒。
      *
-     * @param array<string, Driver|array{master: Driver, reader?: Driver|null}> $connections 命名端点或逻辑主从数据源。
+     * @param array<string, array{master: Driver, reader?: null|Driver}|Driver> $connections 命名端点或逻辑主从数据源
      */
     public function __construct(array $connections, int $capacity = 4, int $idleLimit = 2, ?DeploymentBudget $budget = null, int $waiterLimit = 64, float $waitSeconds = 1.0)
     {
@@ -113,8 +122,8 @@ final class DatabaseManager
     /**
      * 读取当前命名端点配置身份，不建立连接。
      *
-     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码。
-     * @throws DatabaseException 名称未声明。
+     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码
+     * @throws DatabaseException 名称未声明
      */
     public function identity(string $name = 'default'): array
     {
@@ -127,7 +136,7 @@ final class DatabaseManager
     /**
      * 收集已排空的旧代并返回活动池计数，不把旧代计为可借用端点。
      *
-     * @return array{active: array<string, array<string, int|float>>, 'retired-generations': array<string, int>}
+     * @return array{active: array<string, array<string, float|int>>, 'retired-generations': array<string, int>}
      */
     public function statistics(): array
     {

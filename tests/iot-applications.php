@@ -5,8 +5,7 @@ declare(strict_types=1);
 /** 双端真实 HTTP 验证接入应用管理；协议认证和撤权另由同一 MQTT 装置验证。 */
 function iotApplicationChecks(Closure $request, PDO $inspection, string $driver, string $address, string $platform, string $password): array
 {
-    $call = static fn (string $method, string $path, string $token, ?array $body = null, int $status = 200, array $headers = [], string $error = ''): array
-        => $request($method, $path, $token, $headers, $body, $status, $error);
+    $call = static fn (string $method, string $path, string $token, ?array $body = null, int $status = 200, array $headers = [], string $error = ''): array => $request($method, $path, $token, $headers, $body, $status, $error);
     $call('GET', '/admin/applications', $platform);
     $tenant = bin2hex(random_bytes(16));
     $other = bin2hex(random_bytes(16));
@@ -66,7 +65,7 @@ function iotApplicationChecks(Closure $request, PDO $inspection, string $driver,
     expect(!$changed['application']['enabled'], '控制端不能按独立权限停用客户应用');
     $call('POST', $base . '/issue', $customer, ['version' => 6], 409, $headers, 'application_disabled');
     $call('POST', $base . '/enable', $customer, ['version' => 6], 200, $headers);
-    $brokerVersion = (int) $inspection->query('SELECT MAX(version) FROM broker_access_revisions')->fetchColumn();
+    $brokerVersion = (int)$inspection->query('SELECT MAX(version) FROM platform_mqtt_access_revision')->fetchColumn();
     $call(
         'POST',
         '/customer/tenants/' . $tenant . '/broker/access/principals/' . $input['id'],
@@ -117,8 +116,8 @@ function iotApplicationChecks(Closure $request, PDO $inspection, string $driver,
     }
     $counts = static function () use ($inspection): array {
         $result = [];
-        foreach (['iot_applications', 'broker_access_principals', 'broker_access_credentials', 'broker_access_revisions'] as $table) {
-            $result[$table] = (int) $inspection->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
+        foreach (['iot_applications', 'platform_mqtt_access_principal', 'platform_mqtt_access_credential', 'platform_mqtt_access_revision'] as $table) {
+            $result[$table] = (int)$inspection->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
         }
         return $result;
     };
@@ -159,11 +158,11 @@ function iotApplicationGrantChecks(Closure $call, PDO $database, string $driver,
     $saved = $call('POST', $path, $customer, $input, 200, $headers)['data'];
     expect($saved['changed'] && $saved['grant']['version'] === 1 && $saved['grant']['current'] && $saved['grant']['receive'] && !$saved['grant']['subscribe']
         && $saved['application']['version'] === $before['version'] + 1 && $saved['application']['key'] === $before['key'], '接收资格必须显式创建，不能自动订阅或轮换密钥');
-    $rules = $database->prepare('SELECT publish, subscribe, max_qos FROM broker_access_grants WHERE principal_id = ?');
+    $rules = $database->prepare('SELECT publish, subscribe, max_qos FROM platform_mqtt_access_grant WHERE principal_id = ?');
     $rules->execute([$application]);
     $rows = $rules->fetchAll(PDO::FETCH_ASSOC);
     $rules->closeCursor();
-    expect(count($rows) === 1 && (int) $rows[0]['publish'] === 0 && (int) $rows[0]['subscribe'] === 0 && (int) $rows[0]['max_qos'] === 2, '接收资格不应自动扩大 MQTT 收发或裁剪既有 QoS');
+    expect(count($rows) === 1 && (int)$rows[0]['publish'] === 0 && (int)$rows[0]['subscribe'] === 0 && (int)$rows[0]['max_qos'] === 2, '接收资格不应自动扩大 MQTT 收发或裁剪既有 QoS');
     $repeated = $call('POST', $path, $customer, array_replace($input, ['version' => 1]), 200, $headers)['data'];
     expect(!$repeated['changed'] && $repeated['application'] === $saved['application'] && $repeated['grant'] === $saved['grant'], '相同权限不能发布空变更');
     $call('POST', $path, $customer, $input, 409, $headers, 'stale_version');
@@ -209,7 +208,7 @@ function iotApplicationGrantChecks(Closure $call, PDO $database, string $driver,
     }
     $snapshot = static function () use ($database): array {
         $rows = [];
-        foreach (['iot_applications', 'iot_application_grants', 'broker_access_grants', 'broker_access_revisions'] as $table) {
+        foreach (['iot_applications', 'iot_application_grants', 'platform_mqtt_access_grant', 'platform_mqtt_access_revision'] as $table) {
             $rows[$table] = $database->query('SELECT * FROM ' . $table . ' ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
         }
         return $rows;

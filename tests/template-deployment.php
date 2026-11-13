@@ -5,6 +5,8 @@ declare(strict_types=1);
 // 宿主验收控制器；不属于应用生产源码，也不会复制进 scratch 镜像。
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+use Type\Build\ArtifactManifest;
+use Type\Build\BuildPlatform;
 use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Testing\Assert;
@@ -15,7 +17,7 @@ use Type\Testing\ProcessResult;
  * 以秒数预算执行模板部署控制命令，输出上限为 4 MiB，退出路径均停止进程。
  *
  * @param list<string> $command
- * @param array<string, string>|null $environment null 表示继承当前环境。
+ * @param null|array<string, string> $environment null 表示继承当前环境
  */
 function deploymentProcess(array $command, ?array $environment = null, float $seconds = 15.0): ProcessResult
 {
@@ -31,7 +33,7 @@ function deploymentProcess(array $command, ?array $environment = null, float $se
  * 要求模板部署命令在秒数预算内成功，返回标准输出供进一步验证。
  *
  * @param list<string> $command
- * @param array<string, string>|null $environment
+ * @param null|array<string, string> $environment
  */
 function deploymentSuccessful(array $command, ?array $environment = null, float $seconds = 15.0): string
 {
@@ -47,7 +49,7 @@ function deploymentSuccessful(array $command, ?array $environment = null, float 
  */
 function deploymentJson(string $file): array
 {
-    $document = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+    $document = json_decode((string)file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
     Assert::true(is_array($document), '部署验收记录必须是 JSON 对象');
     return $document;
 }
@@ -70,7 +72,7 @@ function deploymentDatabase(string $action, string $driver, string $database): v
     if ($driver === 'mysql') {
         $connection = (new MysqlDriver(
             getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1',
-            (int) (getenv('TYPE_MYSQL_PORT') ?: '3306'),
+            (int)(getenv('TYPE_MYSQL_PORT') ?: '3306'),
             getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test',
             getenv('TYPE_MYSQL_USER') ?: 'root',
             getenv('TYPE_MYSQL_PASSWORD') ?: ''
@@ -78,7 +80,7 @@ function deploymentDatabase(string $action, string $driver, string $database): v
     } elseif ($driver === 'pgsql') {
         $connection = (new PgsqlDriver(
             getenv('TYPE_PGSQL_HOST') ?: '127.0.0.1',
-            (int) (getenv('TYPE_PGSQL_PORT') ?: '5432'),
+            (int)(getenv('TYPE_PGSQL_PORT') ?: '5432'),
             getenv('TYPE_PGSQL_DATABASE') ?: 'type_app_test',
             getenv('TYPE_PGSQL_USER') ?: 'type_app',
             getenv('TYPE_PGSQL_PASSWORD') ?: ''
@@ -104,7 +106,7 @@ function deploymentImage(string $image, string $container, string $directory, st
     Assert::same(['PHPRC=/app/php.ini', 'PHP_INI_SCAN_DIR=/app/php.d'], $imageEnvironment, '镜像环境带入了非运行配置');
     deploymentSuccessful(['docker', 'create', '--name', $container, '--network=none', $image, 'help']);
     try {
-        $manifest = (new Type\Build\ArtifactManifest())->read($artifact);
+        $manifest = (new ArtifactManifest())->read($artifact);
         $vendorLibraries = [];
         foreach ($manifest['native-libraries'] as $library) {
             if (str_contains($library['path'], '/vendor/')) {
@@ -196,7 +198,7 @@ function deploymentRun(string $preparedFile, string $image, string $directory): 
     Assert::same(1, count(array_filter($sources, static fn (string $path): bool => $path === $entry)), '应用装配入口必须且只能编译一次');
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($consumer . '/app', FilesystemIterator::SKIP_DOTS)) as $file) {
         if ($file->isFile() && $file->getExtension() === 'php') {
-            $sourcePath = Type\Build\BuildPlatform::path($file->getPathname());
+            $sourcePath = BuildPlatform::path($file->getPathname());
             $transformed = isset($originalSources[$sourcePath])
                 && is_array($originalSources[$sourcePath])
                 && ($originalSources[$sourcePath]['sha256'] ?? null) === hash_file('sha256', $sourcePath)

@@ -11,20 +11,28 @@ use Type\Testing\Process;
 final class PostgresSync
 {
     private ?Process $replica = null;
+
     private ?PDO $primary = null;
+
     private array $environment;
+
     private array $report = ['state' => 'preparing', 'topology' => 'same-host-primary-and-standby'];
+
     private int $port;
+
     private string $password;
+
     private bool $windowsStarted = false;
+
     private ?string $originalSynchronous = null;
+
     private bool $synchronousChanged = false;
 
     /**
-     * @param NativeDatabase|array<string,string> $database 本轮主库所有者或已提升恢复库的显式TYPE_PGSQL环境。
+     * @param array<string,string>|NativeDatabase $database 本轮主库所有者或已提升恢复库的显式TYPE_PGSQL环境
      * @param array<string,string> $tools NativeDatabase::tools('pgsql', ...) 的工具清单。
      */
-    public function __construct(NativeDatabase|array $database, private string $directory, private array $tools, private string $name = 'iot_sync')
+    public function __construct(array|NativeDatabase $database, private string $directory, private array $tools, private string $name = 'iot_sync')
     {
         expect(preg_match('/^[a-z][a-z0-9_]{0,47}$/D', $name) === 1, '同步备库名称必须明确且合法');
         $parent = str_replace('\\', '/', realpath(dirname($directory)) ?: '');
@@ -38,7 +46,7 @@ final class PostgresSync
         expect(($this->environment['TYPE_PGSQL_HOST'] ?? '') === '127.0.0.1', '同步装置只可连接本机隔离主库');
         $this->password = $this->environment['TYPE_PGSQL_PASSWORD'];
         $this->primary = $this->connect(false);
-        $primaryDirectory = str_replace('\\', '/', realpath((string) $this->primary->query('SHOW data_directory')->fetchColumn()) ?: '');
+        $primaryDirectory = str_replace('\\', '/', realpath((string)$this->primary->query('SHOW data_directory')->fetchColumn()) ?: '');
         $ownedDirectory = str_replace('\\', '/', realpath($this->environment['TYPE_PGSQL_OWNED_DATA'] ?? '') ?: '');
         $runnerTemporary = str_replace('\\', '/', realpath($this->environment['RUNNER_TEMP'] ?? '') ?: '');
         $ownedWindows = PHP_OS_FAMILY === 'Windows' && ($this->environment['GITHUB_ACTIONS'] ?? '') === 'true'
@@ -47,13 +55,13 @@ final class PostgresSync
         expect($primaryDirectory !== '' && (PHP_OS_FAMILY === 'Windows' ? $ownedWindows : str_starts_with($primaryDirectory, $build . '/'))
             && $this->primary->query('SELECT pg_is_in_recovery()')->fetchColumn() === false, '同步装置必须连接本轮拥有的隔离主库');
         if ($ownedWindows) {
-            $this->originalSynchronous = (string) $this->primary->query('SHOW synchronous_standby_names')->fetchColumn();
+            $this->originalSynchronous = (string)$this->primary->query('SHOW synchronous_standby_names')->fetchColumn();
         }
         $settings = $this->primary->query("SELECT current_setting('fsync') AS fsync, current_setting('full_page_writes') AS full_page_writes, current_setting('wal_level') AS wal_level")->fetch(PDO::FETCH_ASSOC);
         expect($settings['fsync'] === 'on' && $settings['full_page_writes'] === 'on' && in_array($settings['wal_level'], ['replica', 'logical'], true), '主库未满足 WAL 持久化前置条件');
         $socket = stream_socket_server('tcp://127.0.0.1:0', $number, $message);
         expect(is_resource($socket), '无法分配隔离备库端口');
-        $this->port = (int) substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
+        $this->port = (int)substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
         fclose($socket);
         $passwordFile = $directory . '/pgpass';
         $pass = '127.0.0.1:' . $this->environment['TYPE_PGSQL_PORT'] . ':*:' . $this->environment['TYPE_PGSQL_USER'] . ':' . $this->password . "\n";
@@ -64,7 +72,7 @@ final class PostgresSync
         try {
             nativeDatabaseCommand(
                 [$basebackup, '-h', '127.0.0.1', '-p', $this->environment['TYPE_PGSQL_PORT'],
-                '-U', $this->environment['TYPE_PGSQL_USER'], '-D', $directory . '/data', '-R', '-X', 'stream', '-c', 'fast', '--no-password'],
+                    '-U', $this->environment['TYPE_PGSQL_USER'], '-D', $directory . '/data', '-R', '-X', 'stream', '-c', 'fast', '--no-password'],
                 $this->environment,
                 [$this->password],
                 $directory . '/basebackup.log',
@@ -206,7 +214,7 @@ final class PostgresSync
             $this->report['standby_stopped'] = false;
             return;
         }
-        $this->replica = new Process([$this->tools['postgres'], '-D', $this->directory . '/data', '-h', '127.0.0.1', '-p', (string) $this->port,
+        $this->replica = new Process([$this->tools['postgres'], '-D', $this->directory . '/data', '-h', '127.0.0.1', '-p', (string)$this->port,
             '-k', '', '-c', 'primary_conninfo=' . $information, '-c', 'hot_standby=on'], $this->directory, $this->environment, 16777216);
         $this->report['standby_stopped'] = false;
     }

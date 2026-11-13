@@ -14,16 +14,18 @@ use Type\Runtime\QueryStringException;
 final class RequestBody implements ManagedResource
 {
     private RequestLimits $limits;
+
     private array $streams = [];
+
     /** 复用接入层相同的请求预算，持有本次解析创建的所有正文流。 */
     public function __construct(RequestLimits $limits)
     {
         $this->limits = $limits;
     }
+
     /** 登记资源生命周期；解析流按需创建，此时无需分配。 */
-    public function start(): void
-    {
-    }
+    public function start(): void {}
+
     /** 关闭本解析器创建的全部正文与上传流，随后清空持有列表。 */
     public function stop(): void
     {
@@ -69,9 +71,9 @@ final class RequestBody implements ManagedResource
     /**
      * 多行 Cookie 等价于分号连接；重复名称拒绝，沿用两个 HTTP 入口的相同字段预算。
      *
-     * @param list<string> $headers 未经原生 Cookie 解析的请求头。
+     * @param list<string> $headers 未经原生 Cookie 解析的请求头
      * @return array<string, string>
-     * @throws HttpError Cookie 名称、结构或字段数量不符合限制。
+     * @throws HttpError cookie 名称、结构或字段数量不符合限制
      */
     public function cookies(array $headers): array
     {
@@ -97,7 +99,7 @@ final class RequestBody implements ManagedResource
 
     /**
      * 按媒体类型处理受限表单或 multipart；JSON 只校验结构预算，保留原始正文。
-     * @throws HttpError 正文、字段、上传或编码违反输入限制。
+     * @throws HttpError 正文、字段、上传或编码违反输入限制
      */
     public function parse(ServerRequestInterface $request, string $content): ServerRequestInterface
     {
@@ -181,7 +183,7 @@ final class RequestBody implements ManagedResource
             }
             $start = $headerEnd + 4;
             $next = $start;
-            do {
+            while (true) {
                 $next = strpos($content, "\r\n" . $boundary, $next);
                 if ($next === false) {
                     throw new HttpError(400, 'incomplete_multipart');
@@ -191,7 +193,7 @@ final class RequestBody implements ManagedResource
                     break;
                 }
                 $next += 2;
-            } while (true);
+            }
             if ($next - $start > ($isFile ? $this->limits->fileBytes : $this->limits->fieldBytes)) {
                 throw new HttpError(413, $isFile ? 'upload_too_large' : 'field_too_large');
             }

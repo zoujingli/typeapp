@@ -13,7 +13,7 @@ use Type\Runtime\ExecutionScope;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function leaseExpect(bool $condition, string $message): void
 {
@@ -25,15 +25,15 @@ function leaseExpect(bool $condition, string $message): void
 /**
  * 按参数运行队列续租、故障重领与旧 token 拒绝，崩溃阶段需要外部监督。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    $mode = (string) ($argv[1] ?? 'normal');
-    $application = (string) (getenv('TYPE_QUEUE_APPLICATION') ?: 'lease-test-' . bin2hex(random_bytes(8)));
+    $mode = (string)($argv[1] ?? 'normal');
+    $application = (string)(getenv('TYPE_QUEUE_APPLICATION') ?: 'lease-test-' . bin2hex(random_bytes(8)));
     $manager = new RedisManager(['default' => new RedisConfiguration(
-        (string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
-        (int) (getenv('TYPE_REDIS_PORT') ?: 6379)
+        (string)(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
+        (int)(getenv('TYPE_REDIS_PORT') ?: 6379)
     )]);
     $scope = new ExecutionScope();
     try {
@@ -44,7 +44,7 @@ function main(int $argc, array $argv): void
             $queue->publish(new Message('crashed-message', 'probe', 1, ['value' => '不能丢失']));
             $reservation = $queue->reserve('crashed-worker');
             leaseExpect($reservation !== null, '崩溃前没有领取任务');
-            posix_kill((int) getmypid(), 9);
+            posix_kill((int)getmypid(), 9);
             throw new RuntimeException('进程没有被终止');
         }
         if ($mode === 'recover') {

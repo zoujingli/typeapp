@@ -7,7 +7,6 @@ namespace TypeTests\Unit;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
-use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 use Swoole\Timer;
 use Type\Runtime\Cancellation;
@@ -16,7 +15,11 @@ use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\TaskException;
 
-/** 通过作用域、通知与原生计时器统计验证共享截止，不访问实现字段。 */
+/**
+ * 通过作用域、通知与原生计时器统计验证共享截止，不访问实现字段。
+ * @internal
+ * @coversNothing
+ */
 #[RunTestsInSeparateProcesses]
 #[PreserveGlobalState(false)]
 final class DeadlineTest extends TestCase
@@ -36,7 +39,7 @@ final class DeadlineTest extends TestCase
             $deadline = new Deadline(5.0);
             $scopes = [];
             try {
-                for ($index = 0; $index < 4; $index++) {
+                for ($index = 0; $index < 4; ++$index) {
                     $scopes[] = new ExecutionScope($deadline);
                 }
                 self::assertSame(1, self::timerCount() - $before);

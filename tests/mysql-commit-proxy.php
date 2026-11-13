@@ -7,7 +7,7 @@ $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
 if ($listener === false) {
     throw new RuntimeException('无法启动故障代理');
 }
-$port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+$port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
 echo $port . PHP_EOL;
 flush();
 $client = stream_socket_accept($listener, 10);
@@ -30,7 +30,7 @@ $deadline = microtime(true) + 30;
  * 在同一绝对截止时间内处理故障代理短写，等待不会延长总预算；连接仍由调用者关闭。
  *
  * @param resource $target
- * @param float $deadline microtime(true) 时间基准的绝对秒数。
+ * @param float $deadline microtime(true) 时间基准的绝对秒数
  */
 function proxyWrite($target, string $bytes, float $deadline): void
 {

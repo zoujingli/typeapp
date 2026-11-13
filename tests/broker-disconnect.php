@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/support.php';
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
+use Type\Build\NativePackage;
 use Type\Mqtt\Client;
 use Type\Mqtt\ProtocolError;
 use Type\Testing\HttpClient;
@@ -29,14 +30,13 @@ if (!function_exists('identityCommand')) {
  * 独立管理端按精确 owner 与会话代次断开当前网络连接；发送 MQTT 5 0x98，保留协议允许恢复的会话。
  * 默认 SQLite QoS0 明文路径；持久会话恢复由 mqtt-sessions 的 PostgreSQL 身份场景覆盖。
  */
-
 $root = dirname(__DIR__);
 $target = $argv[1] ?? '--php';
 $driver = $argv[2] ?? 'sqlite';
 expect(in_array($driver, ['sqlite', 'mysql', 'pgsql'], true), '断开验收需要明确的受支持驱动');
 if ($target === '--php') {
     $swoole = getenv('TYPE_SWOOLE_MODULE');
-    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string)ini_get('extension_dir'), '/') . '/swoole.so';
     expect(is_file($swoole), 'PHP 断开验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
     $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
 } else {
@@ -54,7 +54,7 @@ foreach ($argv as $argument) {
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '无源码断开验收使用macOS内核策略及原生产物');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $sourceRoot = realpath($built['identity']['description']['facts']['workspace']);
     expect(is_string($sourceRoot), '无源码验收必须能定位实际编译输入');
@@ -104,7 +104,7 @@ try {
     $secrets[] = $password;
     identityCommand([...$command, 'broker:user', 'access-admin', '断开管理员'], $environment + ['BROKER_ADMIN_PASSWORD' => $password]);
     $addresses = [];
-    for ($index = 0; $index < 3; $index++) {
+    for ($index = 0; $index < 3; ++$index) {
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorText);
         expect(is_resource($listener), '无法选择断开测试端口');
         $addresses[] = stream_socket_get_name($listener, false);
@@ -130,10 +130,10 @@ try {
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $plain = static function (string $method, string $path, string $token, string $body, int $status) use ($client, $server, &$checks): array {
@@ -144,7 +144,7 @@ try {
         $response = $client->request($method, $path, $headers, $body);
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $auth = $request('POST', '/broker/auth/login', '', ['login' => 'access-admin', 'password' => $password], 200)['data'];
@@ -170,7 +170,7 @@ try {
         usleep(100000);
     } while (microtime(true) < $deadline);
     expect(($nodes['total'] ?? 0) === 1, '断开节点未上报');
-    $mqtt = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'disconnect-live', 'broker-client', $mqttPassword, sessionExpiry: 0, allowPlaintext: true);
+    $mqtt = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'disconnect-live', 'broker-client', $mqttPassword, sessionExpiry: 0, allowPlaintext: true);
     expect(!$mqtt->connect(true), '管理断开前不应报告会话恢复');
     expect($mqtt->subscribe('broker-disconnect/keep', 0) === 0, '引导前缀应授予QoS0订阅');
     $connections = ['items' => []];
@@ -242,7 +242,7 @@ try {
         $mqtt->stop();
     } catch (Throwable) {
     }
-    $mqtt = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'disconnect-live', 'broker-client', $mqttPassword, sessionExpiry: 0, allowPlaintext: true);
+    $mqtt = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'disconnect-live', 'broker-client', $mqttPassword, sessionExpiry: 0, allowPlaintext: true);
     expect(!$mqtt->connect(true), '凭据有效时重连失败');
     expect($mqtt->subscribe('broker-disconnect/keep', 0) === 0, '管理断开后合法凭据不能再订阅');
     $late = ['items' => []];
@@ -307,10 +307,10 @@ try {
         usleep(10000);
     } while (microtime(true) < $deadline);
     $appRequest = static function (string $method, string $path, string $token, array $headers, ?array $data, int $status) use ($appClient, $appServer, &$checks): array {
-        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '双端 ' . $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $appServer->stdout() . $appServer->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $platformToken = $appRequest('POST', '/admin/auth/login', '', [], ['login' => 'platform-admin', 'password' => $appPassword], 200)['data']['accessToken'];

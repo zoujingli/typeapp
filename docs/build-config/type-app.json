@@ -141,20 +141,20 @@
         "lifetime": "singleton"
       },
       {
-        "id": "identity.admin",
+        "id": "identity.platform",
         "class": "app\\common\\service\\IdentityService",
         "arguments": [
           {
-            "value": "admin"
+            "value": "platform"
           }
         ]
       },
       {
-        "id": "auth.admin",
-        "class": "app\\iot\\middleware\\IotAuthentication",
+        "id": "auth.platform",
+        "class": "app\\common\\middleware\\IdentityAuthentication",
         "arguments": [
           {
-            "service": "identity.admin"
+            "service": "identity.platform"
           },
           {
             "service": "http.messages"
@@ -162,41 +162,20 @@
         ]
       },
       {
-        "id": "identity.customer",
+        "id": "identity.system",
         "class": "app\\common\\service\\IdentityService",
         "arguments": [
           {
-            "value": "customer"
+            "value": "system"
           }
         ]
       },
       {
-        "id": "auth.customer",
-        "class": "app\\iot\\middleware\\IotAuthentication",
+        "id": "auth.system",
+        "class": "app\\common\\middleware\\IdentityAuthentication",
         "arguments": [
           {
-            "service": "identity.customer"
-          },
-          {
-            "service": "http.messages"
-          }
-        ]
-      },
-      {
-        "id": "identity.broker",
-        "class": "app\\common\\service\\IdentityService",
-        "arguments": [
-          {
-            "value": "broker"
-          }
-        ]
-      },
-      {
-        "id": "auth.broker",
-        "class": "app\\iot\\middleware\\IotAuthentication",
-        "arguments": [
-          {
-            "service": "identity.broker"
+            "service": "identity.system"
           },
           {
             "service": "http.messages"
@@ -280,18 +259,6 @@
         ]
       },
       {
-        "id": "command.app:upgrade",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "app:upgrade"
-          }
-        ]
-      },
-      {
         "id": "command.web:install",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
@@ -328,38 +295,38 @@
         ]
       },
       {
-        "id": "command.iot:backup",
+        "id": "command.center:backup",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
           {
             "service": "application.context"
           },
           {
-            "value": "iot:backup"
+            "value": "center:backup"
           }
         ]
       },
       {
-        "id": "command.iot:wal",
+        "id": "command.center:wal",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
           {
             "service": "application.context"
           },
           {
-            "value": "iot:wal"
+            "value": "center:wal"
           }
         ]
       },
       {
-        "id": "command.iot:recovery",
+        "id": "command.center:recovery",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
           {
             "service": "application.context"
           },
           {
-            "value": "iot:recovery"
+            "value": "center:recovery"
           }
         ]
       },
@@ -376,134 +343,86 @@
         ]
       },
       {
-        "id": "command.iot:mqtt-install",
+        "id": "command.center:mqtt-install",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
           {
             "service": "application.context"
           },
           {
-            "value": "iot:mqtt-install"
+            "value": "center:mqtt-install"
           }
         ]
       },
       {
-        "id": "command.iot:mqtt-statistics",
+        "id": "command.center:mqtt-statistics",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
           {
             "service": "application.context"
           },
           {
-            "value": "iot:mqtt-statistics"
+            "value": "center:mqtt-statistics"
           }
         ]
       },
       {
-        "id": "command.iot:mqtt-nodes",
+        "id": "command.center:mqtt-nodes",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
           {
             "service": "application.context"
           },
           {
-            "value": "iot:mqtt-nodes"
+            "value": "center:mqtt-nodes"
           }
         ]
       },
       {
-        "id": "command.iot:mqtt-fence",
+        "id": "command.center:mqtt-fence",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
           {
             "service": "application.context"
           },
           {
-            "value": "iot:mqtt-fence"
+            "value": "center:mqtt-fence"
           }
         ]
       },
       {
-        "id": "command.iot:mqtt-fence-result",
+        "id": "command.center:mqtt-fence-result",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
           {
             "service": "application.context"
           },
           {
-            "value": "iot:mqtt-fence-result"
+            "value": "center:mqtt-fence-result"
           }
         ]
       },
       {
-        "id": "command.iot:mqtt-store",
+        "id": "command.center:mqtt-store",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
           {
             "service": "application.context"
           },
           {
-            "value": "iot:mqtt-store"
+            "value": "center:mqtt-store"
           }
         ]
       },
       {
-        "id": "command.iot:mqtt-access",
+        "id": "command.center:mqtt-access",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
           {
             "service": "application.context"
           },
           {
-            "value": "iot:mqtt-access"
-          }
-        ]
-      },
-      {
-        "id": "command.broker:install",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "broker:install"
-          }
-        ]
-      },
-      {
-        "id": "command.broker:migrate",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "broker:migrate"
-          }
-        ]
-      },
-      {
-        "id": "command.broker:recovery",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "broker:recovery"
-          }
-        ]
-      },
-      {
-        "id": "command.broker:user",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
-        "arguments": [
-          {
-            "service": "application.context"
-          },
-          {
-            "value": "broker:user"
+            "value": "center:mqtt-access"
           }
         ]
       },
@@ -568,32 +487,20 @@
         ]
       },
       {
-        "id": "command.broker:audit-clean",
-        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "id": "audit.platform",
+        "class": "app\\common\\service\\AuditRetentionTask",
         "arguments": [
           {
-            "service": "application.context"
-          },
-          {
-            "value": "broker:audit-clean"
+            "value": "platform"
           }
         ]
       },
       {
-        "id": "audit.admin",
+        "id": "audit.system",
         "class": "app\\common\\service\\AuditRetentionTask",
         "arguments": [
           {
-            "value": "admin"
-          }
-        ]
-      },
-      {
-        "id": "audit.customer",
-        "class": "app\\common\\service\\AuditRetentionTask",
-        "arguments": [
-          {
-            "value": "customer"
+            "value": "system"
           }
         ]
       },
@@ -602,12 +509,7 @@
         "class": "app\\common\\middleware\\JsonBody"
       }
     ],
-    "bindings": [
-      {
-        "type": "app\\common\\service\\IdentityService",
-        "service": "identity.broker"
-      }
-    ],
+    "bindings": [],
     "commands": [
       {
         "name": "app:check",
@@ -634,10 +536,6 @@
         "service": "command.app:install"
       },
       {
-        "name": "app:upgrade",
-        "service": "command.app:upgrade"
-      },
-      {
         "name": "web:install",
         "service": "command.web:install"
       },
@@ -650,64 +548,48 @@
         "service": "command.migrate"
       },
       {
-        "name": "iot:backup",
-        "service": "command.iot:backup"
+        "name": "center:backup",
+        "service": "command.center:backup"
       },
       {
-        "name": "iot:wal",
-        "service": "command.iot:wal"
+        "name": "center:wal",
+        "service": "command.center:wal"
       },
       {
-        "name": "iot:recovery",
-        "service": "command.iot:recovery"
+        "name": "center:recovery",
+        "service": "command.center:recovery"
       },
       {
         "name": "app:audit-clean",
         "service": "command.app:audit-clean"
       },
       {
-        "name": "iot:mqtt-install",
-        "service": "command.iot:mqtt-install"
+        "name": "center:mqtt-install",
+        "service": "command.center:mqtt-install"
       },
       {
-        "name": "iot:mqtt-statistics",
-        "service": "command.iot:mqtt-statistics"
+        "name": "center:mqtt-statistics",
+        "service": "command.center:mqtt-statistics"
       },
       {
-        "name": "iot:mqtt-nodes",
-        "service": "command.iot:mqtt-nodes"
+        "name": "center:mqtt-nodes",
+        "service": "command.center:mqtt-nodes"
       },
       {
-        "name": "iot:mqtt-fence",
-        "service": "command.iot:mqtt-fence"
+        "name": "center:mqtt-fence",
+        "service": "command.center:mqtt-fence"
       },
       {
-        "name": "iot:mqtt-fence-result",
-        "service": "command.iot:mqtt-fence-result"
+        "name": "center:mqtt-fence-result",
+        "service": "command.center:mqtt-fence-result"
       },
       {
-        "name": "iot:mqtt-store",
-        "service": "command.iot:mqtt-store"
+        "name": "center:mqtt-store",
+        "service": "command.center:mqtt-store"
       },
       {
-        "name": "iot:mqtt-access",
-        "service": "command.iot:mqtt-access"
-      },
-      {
-        "name": "broker:install",
-        "service": "command.broker:install"
-      },
-      {
-        "name": "broker:migrate",
-        "service": "command.broker:migrate"
-      },
-      {
-        "name": "broker:recovery",
-        "service": "command.broker:recovery"
-      },
-      {
-        "name": "broker:user",
-        "service": "command.broker:user"
+        "name": "center:mqtt-access",
+        "service": "command.center:mqtt-access"
       },
       {
         "name": "broker:store-install",
@@ -728,26 +610,21 @@
       {
         "name": "broker:node-fence-result",
         "service": "command.broker:node-fence-result"
-      },
-      {
-        "name": "broker:audit-clean",
-        "service": "command.broker:audit-clean"
       }
     ],
     "http": {
       "middleware": {
-        "admin.auth": "auth.admin",
-        "customer.auth": "auth.customer",
-        "broker.auth": "auth.broker",
-        "broker.probe": "auth.probe",
-        "body.json": "body.json"
+        "platform.auth": "auth.platform",
+        "system.auth": "auth.system",
+        "body.json": "body.json",
+        "mqtt.probe": "auth.probe"
       }
     },
     "jobs": [],
     "schedules": [
       {
-        "id": "audit.admin",
-        "service": "audit.admin",
+        "id": "audit.platform",
+        "service": "audit.platform",
         "schedule": {
           "interval": 60
         },
@@ -757,8 +634,8 @@
         "catch-up-limit": 1
       },
       {
-        "id": "audit.customer",
-        "service": "audit.customer",
+        "id": "audit.system",
+        "service": "audit.system",
         "schedule": {
           "interval": 60
         },

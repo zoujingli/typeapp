@@ -13,9 +13,7 @@ use Type\Queue\QueueException;
 final class DeliverProduct implements Job
 {
     /** 服务每次任务独立装配，不捕获启动期连接。 */
-    public function __construct(private DeliveryService $service)
-    {
-    }
+    public function __construct(private DeliveryService $service) {}
 
     /** @param array<array-key,mixed> $payload 固定整数商品身份，其他输入不作为权限。 */
     public function handle(JobContext $context, array $payload): void

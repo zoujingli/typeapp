@@ -10,18 +10,17 @@ use Type\Testing\Process;
 /**
  * 独立消费 type-core WebSocket 示例：全量 AOT、无源码运行、明文 WS 与 WSS 回显。
  */
-
 function wsNativeExtensionArgs(array $extensions): array
 {
     $arguments = [];
-    $directory = (string) ini_get('extension_dir');
+    $directory = (string)ini_get('extension_dir');
     foreach ($extensions as $extension) {
         if (extension_loaded($extension)) {
             continue;
         }
         $module = $directory . '/' . $extension . '.so';
         if ($extension === 'swoole') {
-            $module = (string) (getenv('TYPE_SWOOLE_MODULE') ?: $module);
+            $module = (string)(getenv('TYPE_SWOOLE_MODULE') ?: $module);
         }
         if (!is_file($module)) {
             continue;
@@ -63,7 +62,7 @@ function wsNativePhpxHome(string $consumer): string
     foreach (['phpx_exception_policy.h', 'phpx_cast_policy.h'] as $header) {
         expect(is_file($locked . '/' . $header) && copy($locked . '/' . $header, $home . '/include/' . $header), '无法覆盖 PHPX 策略头文件');
     }
-    $phpx = (string) file_get_contents($home . '/include/phpx.h');
+    $phpx = (string)file_get_contents($home . '/include/phpx.h');
     if (!str_contains($phpx, 'phpx_exception_policy.h')) {
         $needle = "#include \"phpx_native_gc.h\"\n";
         expect(str_contains($phpx, $needle), 'PHPX 头文件缺少 native_gc 插入点');
@@ -78,7 +77,7 @@ function wsNativePort(): int
 {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($listener), '无法分配原生 WebSocket 端口');
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
     return $port;
 }
@@ -108,7 +107,7 @@ function wsNativeReady(Process $process, int $port, string $cafile = ''): void
 /**
  * 以 5 秒连接和读取超时完成测试握手；返回的连接由调用者关闭，响应头由调用者核验。
  *
- * @return array{resource, string, string} 连接、原始响应头、客户端握手随机键。
+ * @return array{resource, string, string} 连接、原始响应头、客户端握手随机键
  */
 function wsNativeHandshake(int $port, bool $tls, string $cafile = ''): array
 {
@@ -146,7 +145,7 @@ function wsNativeFrame(string $payload): string
     $header = chr(0x82) . chr(0x80 | $length);
     $mask = random_bytes(4);
     $masked = '';
-    for ($i = 0; $i < $length; $i++) {
+    for ($i = 0; $i < $length; ++$i) {
         $masked .= $payload[$i] ^ $mask[$i % 4];
     }
     return $header . $mask . $masked;
@@ -190,7 +189,7 @@ $verified = [];
 $failure = null;
 $previousPhpx = getenv('PHPX_HOME');
 try {
-    $toolchain = json_decode((string) file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
+    $toolchain = json_decode((string)file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
     $repositories = [];
     foreach (['type-core', 'type-runtime', 'type-build'] as $package) {
         $repositories[] = ['type' => 'path', 'url' => '../../plugin/' . $package,
@@ -204,7 +203,7 @@ try {
     file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     copy($root . '/examples/websocket/main.php', $consumer . '/app/main.php');
     copy($root . '/toolchain.lock.json', $consumer . '/toolchain.lock.json');
-    $module = (string) (getenv('TYPE_SWOOLE_MODULE') ?: ini_get('extension_dir') . '/swoole.so');
+    $module = (string)(getenv('TYPE_SWOOLE_MODULE') ?: ini_get('extension_dir') . '/swoole.so');
     expect(is_file($module), '原生 WebSocket 编译需要匹配 SDK 的 Swoole 模块');
     expect(copy($module, $consumer . '/swoole.so'), '无法固定 Swoole 运行模块');
     $hash = hash_file('sha256', $consumer . '/swoole.so');
@@ -217,12 +216,12 @@ try {
             'modules' => ['swoole' => ['file' => 'swoole.so', 'sha256' => $hash]],
         ]],
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
-    successful([(string) (getenv('COMPOSER_BINARY') ?: 'composer'), 'install', '--no-interaction', '--no-scripts', '--no-plugins', '--no-progress'], $consumer);
+    successful([(string)(getenv('COMPOSER_BINARY') ?: 'composer'), 'install', '--no-interaction', '--no-scripts', '--no-plugins', '--no-progress'], $consumer);
     expect(!is_link($consumer . '/vendor/zoujingli/type-core') && !is_link($consumer . '/vendor/zoujingli/type-runtime'), '独立 WebSocket 消费不能使用主仓生产软链接');
     putenv('PHPX_HOME=' . wsNativePhpxHome($consumer));
     $buildOutput = successful([PHP_BINARY, ...wsNativeExtensionArgs(['pdo_pgsql']), $consumer . '/vendor/bin/type', $consumer . '/type-app.json'], $consumer);
     file_put_contents($consumer . '/build.log', $buildOutput);
-    $report = json_decode((string) file_get_contents($consumer . '/build/websocket/type-app.build.json'), true, 512, JSON_THROW_ON_ERROR);
+    $report = json_decode((string)file_get_contents($consumer . '/build/websocket/type-app.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $production = array_keys($report['production-packages']);
     sort($production);
     expect($production === ['psr/http-factory', 'psr/http-message', 'psr/http-server-handler', 'psr/http-server-middleware',
@@ -262,7 +261,7 @@ try {
     $verified['source_removal'] = wsNativePreserveSources($consumer);
 
     $wsPort = wsNativePort();
-    $wsProcess = new Process([...$command, 'server', '127.0.0.1', (string) $wsPort], $runtime, $environment);
+    $wsProcess = new Process([...$command, 'server', '127.0.0.1', (string)$wsPort], $runtime, $environment);
     $socket = null;
     try {
         wsNativeReady($wsProcess, $wsPort);
@@ -309,7 +308,7 @@ try {
 
     $wssPort = wsNativePort();
     $wssProcess = new Process([
-        ...$command, 'server', '127.0.0.1', (string) $wssPort, $consumer . '/certificate.pem', $consumer . '/private.pem',
+        ...$command, 'server', '127.0.0.1', (string)$wssPort, $consumer . '/certificate.pem', $consumer . '/private.pem',
     ], $runtime, $environment);
     $wss = null;
     try {

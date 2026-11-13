@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace TypeApp\Integration;
 
-use DateTimeImmutable;
 use Type\Cache\JsonCodec;
 use Type\Cache\NamespaceStore;
 use Type\Cache\SignedSerializer;
@@ -52,7 +51,7 @@ final class Scenario
     /**
      * 根据驱动声明模型、消息意图和审查凭据表，不在运行中猜测迁移内容。
      *
-     * @return list<\Type\Orm\Migration\Migration>
+     * @return list<Migration>
      */
     public static function migrations(Driver $driver): array
     {
@@ -60,28 +59,31 @@ final class Scenario
         return array_merge(\TypeApp\OrmSuite\Schema::plan($driver->name()), [(new Store())->migration($driver->name(), '202609090003'),
             new Migration('202609090004', '保存文章审查任务幂等效果', ['CREATE TABLE integration_audits (id VARCHAR(128) PRIMARY KEY, article_id INTEGER NOT NULL, observed_views INTEGER NOT NULL)' . $engine], $driver->name() !== 'mysql')]);
     }
+
     /** 为文章 DTO 建立独立缓存命名空间，租约绑定外层作用域。 */
     public static function cache(RedisManager $redis, ExecutionScope $scope, string $application): TypedCache
     {
         return new TypedCache(new NamespaceStore($redis->connection($scope, 'cache', Purpose::SCRIPT), $application, 'integration', 'article-dto'), JsonCodec::data('article-dto-v1'), 3000);
     }
+
     /** 从显式环境建立可靠消息和可淘汰缓存两个连接名，调用方负责关闭。 */
     public static function redis(): RedisManager
     {
-        $reliable = new RedisConfiguration((string) getenv('TYPE_REDIS_HOST'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379));
-        $cache = new RedisConfiguration((string) getenv('TYPE_INTEGRATION_CACHE_HOST'), (int) (getenv('TYPE_INTEGRATION_CACHE_PORT') ?: 6379));
+        $reliable = new RedisConfiguration((string)getenv('TYPE_REDIS_HOST'), (int)(getenv('TYPE_REDIS_PORT') ?: 6379));
+        $cache = new RedisConfiguration((string)getenv('TYPE_INTEGRATION_CACHE_HOST'), (int)(getenv('TYPE_INTEGRATION_CACHE_PORT') ?: 6379));
         return new RedisManager(['queue' => $reliable, 'cache' => $cache], [Purpose::SCRIPT => 4]);
     }
+
     /**
      * 验证可靠存储隔离后运行业务闭环；返回实际观察结果，finally 收尾已打开资源。
      *
-     * @return array<string, mixed> 业务与资源验证结果。
+     * @return array<string, mixed> 业务与资源验证结果
      */
     public static function run(Driver $driver, string $application): array
     {
         StoragePolicy::verify(
-            new RedisConfiguration((string) getenv('TYPE_REDIS_HOST'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379)),
-            new RedisConfiguration((string) getenv('TYPE_INTEGRATION_CACHE_HOST'), (int) (getenv('TYPE_INTEGRATION_CACHE_PORT') ?: 6379))
+            new RedisConfiguration((string)getenv('TYPE_REDIS_HOST'), (int)(getenv('TYPE_REDIS_PORT') ?: 6379)),
+            new RedisConfiguration((string)getenv('TYPE_INTEGRATION_CACHE_HOST'), (int)(getenv('TYPE_INTEGRATION_CACHE_PORT') ?: 6379))
         );
         (new Migrator($driver, 'type_integration_migrations'))->run(self::migrations($driver));
         $scope = new ExecutionScope(null, ['trace_id' => $application]);
@@ -89,7 +91,7 @@ final class Scenario
         Db::configure($manager);
         $redis = self::redis();
         $outbox = new Store();
-        $logs = new LogManager($application, ['app' => new Channel(Output::file((string) getenv('TYPE_INTEGRATION_LOG')))]);
+        $logs = new LogManager($application, ['app' => new Channel(Output::file((string)getenv('TYPE_INTEGRATION_LOG')))]);
         $scope->open($logs);
         $logger = $logs->logger($scope);
         try {
@@ -107,7 +109,7 @@ final class Scenario
                 $connection = Db::connection('default', true);
                 $articleId = $connection->transaction(static function (Connection $transaction) use ($input, $outbox): int {
                     $user = new User(['name' => $input->get('name'), 'active' => true, 'external_id' => '123456789012345678901234567890',
-                        'credit' => '12345678901234567890.12', 'profile' => ['level' => 'editor'], 'joined_at' => new DateTimeImmutable('2026-09-09T00:30:01.123456Z'), 'secret' => '内部字段']);
+                        'credit' => '12345678901234567890.12', 'profile' => ['level' => 'editor'], 'joined_at' => new \DateTimeImmutable('2026-09-09T00:30:01.123456Z'), 'secret' => '内部字段']);
                     $user->save();
                     $article = new Article(['user_id' => $user->getId(), 'title' => $input->get('title'), 'status' => 'published', 'views' => 0]);
                     $article->save();
@@ -145,8 +147,8 @@ final class Scenario
                 self::check(count($scheduler->tick()) === 1 && $scheduler->tick() === [] && $worker->runOnce(), '调度到队列再到模型的路径不完整或重复');
                 $audited = $cache->remember($key, static fn (): array => Reader::article($articleId));
                 $connection = Db::connection('default', true);
-                self::check($audited['status'] === 'audited' && (int) $connection->table('integration_audits')->aggregate('COUNT') === 1, '审查状态或任务幂等记录不正确');
-                $psr = new SimpleCache(new NamespaceStore($redis->connection($scope, 'cache', Purpose::SCRIPT), $application, 'integration', 'psr'), new SignedSerializer((string) getenv('TYPE_INTEGRATION_HMAC'), [\stdClass::class]), 30);
+                self::check($audited['status'] === 'audited' && (int)$connection->table('integration_audits')->aggregate('COUNT') === 1, '审查状态或任务幂等记录不正确');
+                $psr = new SimpleCache(new NamespaceStore($redis->connection($scope, 'cache', Purpose::SCRIPT), $application, 'integration', 'psr'), new SignedSerializer((string)getenv('TYPE_INTEGRATION_HMAC'), [\stdClass::class]), 30);
                 $object = new \stdClass();
                 $object->article = $articleId;
                 $object->data = [null, false, '1', 1];
@@ -165,6 +167,7 @@ final class Scenario
             $redis->close();
         }
     }
+
     private static function check(bool $condition, string $message): void
     {
         if (!$condition) {

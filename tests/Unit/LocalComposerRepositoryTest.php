@@ -9,7 +9,11 @@ use Type\Testing\Process;
 
 require_once dirname(__DIR__) . '/support.php';
 
-/** 通过真实禁网安装验证独立工具链保留版本、来源提交及文件内容。 */
+/**
+ * 通过真实禁网安装验证独立工具链保留版本、来源提交及文件内容。
+ * @internal
+ * @coversNothing
+ */
 final class LocalComposerRepositoryTest extends TestCase
 {
     /** 禁网解析实际组件清单；开发分支沿用包内别名，旧 Runtime 必须在安装前被拒绝。 */
@@ -19,9 +23,9 @@ final class LocalComposerRepositoryTest extends TestCase
         $directory = $root . '/build/runtime dependency-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($directory, 0700));
         try {
-            $composer = (string) getenv('COMPOSER_BINARY');
+            $composer = (string)getenv('COMPOSER_BINARY');
             if ($composer === '' && PHP_OS_FAMILY === 'Windows') {
-                $composer = (string) getenv('PHP_HOME') . '/composer.phar';
+                $composer = (string)getenv('PHP_HOME') . '/composer.phar';
             }
             if ($composer === '') {
                 $composer = trim(\successful(['which', 'composer']));
@@ -62,11 +66,11 @@ final class LocalComposerRepositoryTest extends TestCase
                     self::assertFileDoesNotExist($consumer . '/composer.lock');
                     continue;
                 }
-                $lock = json_decode((string) file_get_contents($consumer . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
+                $lock = json_decode((string)file_get_contents($consumer . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
                 $packages = array_column($lock['packages'], null, 'name');
                 self::assertSame($version, $packages['zoujingli/type-runtime']['version']);
                 foreach (array_keys($requires) as $name) {
-                    $source = json_decode((string) file_get_contents($root . '/plugin/' . substr($name, strlen('zoujingli/')) . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+                    $source = json_decode((string)file_get_contents($root . '/plugin/' . substr($name, strlen('zoujingli/')) . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
                     self::assertSame($source['require']['zoujingli/type-runtime'], $packages[$name]['require']['zoujingli/type-runtime']);
                 }
             }
@@ -81,15 +85,15 @@ final class LocalComposerRepositoryTest extends TestCase
         $directory = $root . '/build/offline composer-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($directory, 0700));
         try {
-            $toolchain = json_decode((string) file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
+            $toolchain = json_decode((string)file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
             $configuration = ['name' => 'type-tests/offline-toolchain',
                 'require' => ['swoole/typephp' => \testToolchainVersion('typephp'), 'swoole/phpx' => \testToolchainVersion('phpx')],
                 'repositories' => [...\localComposerRepositories($root), ['packagist.org' => false]],
                 'config' => ['allow-plugins' => false]];
             file_put_contents($directory . '/composer.json', json_encode($configuration, JSON_THROW_ON_ERROR));
-            $composer = (string) getenv('COMPOSER_BINARY');
+            $composer = (string)getenv('COMPOSER_BINARY');
             if ($composer === '' && PHP_OS_FAMILY === 'Windows') {
-                $composer = (string) getenv('PHP_HOME') . '/composer.phar';
+                $composer = (string)getenv('PHP_HOME') . '/composer.phar';
             }
             if ($composer === '') {
                 $composer = trim(\successful(['which', 'composer']));

@@ -6,12 +6,10 @@ import { isFunction } from '@vben/utils';
 
 import axios from 'axios';
 
-export const REQUEST_ERROR_HANDLED_FLAG = '__vbenRequestErrorHandled';
-
 export const defaultResponseInterceptor = ({
   codeField = 'code',
   dataField = 'data',
-  successCode = 200,
+  successCode = 0,
 }: {
   /** 响应数据中代表访问结果的字段名 */
   codeField: string;
@@ -62,14 +60,10 @@ export const authenticateResponseInterceptor = ({
   return {
     rejected: async (error) => {
       const { config, response } = error;
-      const responseCode = Number(response?.data?.code ?? response?.status);
-      // 项目后端 HTTP status 固定 200，Token 失效必须按 body.code=401 判断。
-      if (responseCode !== 401) {
+      // 如果不是 401 错误，直接抛出异常
+      if (response?.status !== 401) {
         throw error;
       }
-      // 认证失败由认证拦截器统一触发重新登录；后续通用错误提示只负责透传，
-      // 避免同一轮 profile/codes 等并发 401 把后端原始文案重复弹出。
-      error[REQUEST_ERROR_HANDLED_FLAG] = true;
       // 判断是否启用了 refreshToken 功能
       // 如果没有启用或者已经是重试请求了，直接跳转到重新登录
       if (!enableRefreshToken || config.__isRetryRequest) {
@@ -102,9 +96,6 @@ export const authenticateResponseInterceptor = ({
         return client.request(error.config.url, { ...error.config });
       } catch (refreshError) {
         // 如果刷新 token 失败，处理错误（如强制登出或跳转登录页面）
-        if (refreshError && typeof refreshError === 'object') {
-          (refreshError as Record<string, any>)[REQUEST_ERROR_HANDLED_FLAG] = true;
-        }
         client.refreshTokenQueue.forEach((callback) => callback(''));
         client.refreshTokenQueue = [];
         console.error('Refresh token failed, please login again.');
@@ -126,9 +117,6 @@ export const errorMessageResponseInterceptor = (
       if (axios.isCancel(error)) {
         return Promise.reject(error);
       }
-      if (error?.[REQUEST_ERROR_HANDLED_FLAG]) {
-        return Promise.reject(error);
-      }
 
       const err: string = error?.toString?.() ?? '';
       let errMsg = '';
@@ -138,13 +126,12 @@ export const errorMessageResponseInterceptor = (
         errMsg = $t('ui.fallback.http.requestTimeout');
       }
       if (errMsg) {
-        error[REQUEST_ERROR_HANDLED_FLAG] = true;
         makeErrorMessage?.(errMsg, error);
         return Promise.reject(error);
       }
 
-      let errorMessage = '';
-      const status = Number(error?.response?.data?.code ?? error?.response?.status);
+      let errorMessage: string;
+      const status = error?.response?.status;
 
       switch (status) {
         case 400: {
@@ -171,7 +158,6 @@ export const errorMessageResponseInterceptor = (
           errorMessage = $t('ui.fallback.http.internalServerError');
         }
       }
-      error[REQUEST_ERROR_HANDLED_FLAG] = true;
       makeErrorMessage?.(errorMessage, error);
       return Promise.reject(error);
     },

@@ -7,8 +7,10 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Build\ArtifactCache;
 use Type\Build\ArtifactManifest;
-use Type\Build\BuildIdentity;
+use Type\Build\BuildCapabilities;
 use Type\Build\BuildEnvironment;
+use Type\Build\BuildIdentity;
+use Type\Build\BuildWorkspace;
 
 $root = dirname(__DIR__);
 $work = $root . '/build/cache-check-' . bin2hex(random_bytes(5));
@@ -19,7 +21,7 @@ file_put_contents($work . '/resource.txt', 'resource-one');
 file_put_contents($work . '/composer.lock', '{"packages":[]}');
 file_put_contents($work . '/generator.php', '<?php const GENERATION = 1;');
 $builder = new BuildIdentity();
-$facts = ['abi' => ['php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'architecture' => php_uname('m')],
+$facts = ['abi' => ['php' => PHP_VERSION, 'zts' => (bool)PHP_ZTS, 'architecture' => php_uname('m')],
     'parameters' => ['optimize' => 2], 'capabilities' => ['messages' => ['example' => [1]], 'schema' => ['main' => [1]]]];
 $snapshot = static fn (array $overrides = []): array => $builder->create([
     'sources' => $builder->sources([$work . '/src']), 'resources' => [$work . '/resource.txt'],
@@ -46,12 +48,12 @@ file_put_contents($work . '/src/added.php', '<?php function added(): void {}');
 expect($snapshot()['id'] !== $initial['id'], '新增生产源码没有进入身份');
 unlink($work . '/src/added.php');
 expect($snapshot()['id'] === $initial['id'], '回到相同输入后身份不能复现');
-$capabilities = (new Type\Build\BuildCapabilities())->collect(['capabilities' => ['schema' => ['main' => [2, 1]]],
+$capabilities = (new BuildCapabilities())->collect(['capabilities' => ['schema' => ['main' => [2, 1]]],
     'application' => ['jobs' => [['type' => 'message', 'version' => 1], ['type' => 'message', 'version' => 2]]]], []);
 expect($capabilities['schema']['main'] === [1, 2] && $capabilities['messages']['message'] === [1, 2], '声明与真实任务注册没有形成版本能力集合');
 $rejected = false;
 try {
-    (new Type\Build\BuildCapabilities())->collect(
+    (new BuildCapabilities())->collect(
         ['capabilities' => ['schema' => ['main' => [1]]]],
         [['extra' => ['type' => ['capabilities' => ['schema' => ['main' => [2]]]]]]]
     );
@@ -60,12 +62,12 @@ try {
 }
 expect($rejected, '冲突的 schema 能力被静默覆盖');
 file_put_contents($work . '/.env', 'TYPE_PASSWORD=not-for-build');
-$staged = (new Type\Build\BuildWorkspace())->create($work, $work . '/build/isolated', $initial['description']['inputs']);
+$staged = (new BuildWorkspace())->create($work, $work . '/build/isolated', $initial['description']['inputs']);
 expect(is_file($staged['directory'] . '/src/main.php') && !is_file($staged['directory'] . '/.env'), '隔离输入遗漏源码或混入运行秘密');
 $secretIdentity = $builder->create(['inputs' => [$work . '/.env']], []);
 $rejected = false;
 try {
-    (new Type\Build\BuildWorkspace())->create($work, $work . '/build/rejected', $secretIdentity['description']['inputs']);
+    (new BuildWorkspace())->create($work, $work . '/build/rejected', $secretIdentity['description']['inputs']);
 } catch (RuntimeException $error) {
     $rejected = true;
 }
@@ -86,12 +88,12 @@ foreach (file('/proc/self/maps') as $mapping) {
 }
 expect($runtimeLibrary !== null, '无法找到当前进程真实加载的 libc');
 $manifest = ['build-id' => $initial['id'], 'application' => 'cache-fixture', 'version' => 'test',
-    'runtime' => ['php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'architecture' => php_uname('m'), 'os' => PHP_OS_FAMILY, 'extensions' => ['json' => phpversion('json')]],
+    'runtime' => ['php' => PHP_VERSION, 'zts' => (bool)PHP_ZTS, 'architecture' => php_uname('m'), 'os' => PHP_OS_FAMILY, 'extensions' => ['json' => phpversion('json')]],
     'native-libraries' => [['name' => 'fixture-library', 'path' => $runtimeLibrary, 'sha256' => hash_file('sha256', $runtimeLibrary)]], 'capabilities' => $facts['capabilities']];
 $cache = new ArtifactCache($work . '/cache');
 $builds = 0;
 $compile = static function (string $candidate) use ($fixture, &$builds): void {
-    $builds++;
+    ++$builds;
     copy($fixture, $candidate);
     chmod($candidate, 0755);
 };
@@ -147,7 +149,7 @@ expect(Type\Generated\BuildIdentity::info()['build-id'] === $initial['id'], '生
 Type\Generated\BuildIdentity::verifyRuntime();
 file_put_contents($work . '/identity.json', json_encode(['identity' => $initial, 'manifest' => $manifest], JSON_THROW_ON_ERROR));
 $processes = [];
-for ($index = 0; $index < 2; $index++) {
+for ($index = 0; $index < 2; ++$index) {
     $out = tmpfile();
     $err = tmpfile();
     $process = proc_open([PHP_BINARY, __DIR__ . '/build-cache-worker.php', $work], [0 => ['file', '/dev/null', 'r'], 1 => $out, 2 => $err], $pipes);

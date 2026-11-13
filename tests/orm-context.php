@@ -15,8 +15,8 @@ use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\TaskException;
 
-expect(extension_loaded('swoole') && version_compare((string) phpversion('swoole'), '6.2', '>=')
-    && version_compare((string) phpversion('swoole'), '7', '<'), 'ORM 协程专项需要 Swoole >=6.2 <7');
+expect(extension_loaded('swoole') && version_compare((string)phpversion('swoole'), '6.2', '>=')
+    && version_compare((string)phpversion('swoole'), '7', '<'), 'ORM 协程专项需要 Swoole >=6.2 <7');
 expect(extension_loaded('pdo_sqlite'), 'ORM 协程专项需要 PDO SQLite');
 
 $directory = dirname(__DIR__) . '/build/orm-context-' . bin2hex(random_bytes(5));
@@ -54,7 +54,7 @@ try {
                         expect($connection !== $outer && $connection->transactionDepth() === 0, '子任务继承了父连接或事务');
                         return Db::transaction(static function () use ($connection, $scope): array {
                             expect($connection->transactionDepth() === 1, '子任务事务未独立建立');
-                            return ['tenant' => $scope->binding('tenant_id'), 'value' => (int) $connection->query('SELECT 7 AS value')[0]['value']];
+                            return ['tenant' => $scope->binding('tenant_id'), 'value' => (int)$connection->query('SELECT 7 AS value')[0]['value']];
                         });
                     });
                     expect($child->await() === ['tenant' => 'tenant-a', 'value' => 7], '子任务可信上下文或独立事务返回值不符');
@@ -150,7 +150,7 @@ try {
                 }
             });
             $ownerResult = $ownerTask->await();
-            expect($ownerResult !== 'allowed' && str_contains((string) $ownerResult, '执行者'), '数据库连接被跨协程使用');
+            expect($ownerResult !== 'allowed' && str_contains((string)$ownerResult, '执行者'), '数据库连接被跨协程使用');
             $connection->close();
         } finally {
             $ownerScope->close();
@@ -161,7 +161,7 @@ try {
             $timeoutTask = $timeoutScope->spawn(static function (ExecutionScope $child) use ($database): int {
                 $connection = $database->connect($child);
                 Coroutine::sleep(0.08);
-                return (int) $connection->query('SELECT 1 AS value')[0]['value'];
+                return (int)$connection->query('SELECT 1 AS value')[0]['value'];
             });
             Coroutine::sleep(0.005);
             try {

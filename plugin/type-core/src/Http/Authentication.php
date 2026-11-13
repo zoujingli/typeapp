@@ -4,28 +4,29 @@ declare(strict_types=1);
 
 namespace Type\Core\Http;
 
-use Closure;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use RuntimeException;
 
 /** 通过应用认证回调建立可信 Identity，再向后续处理链传递。 */
 final class Authentication implements MiddlewareInterface
 {
-    private Closure $authenticate;
-    private Closure $authorize;
+    private \Closure $authenticate;
+
+    private \Closure $authorize;
+
     private ResponseFactoryInterface $responses;
+
     private StreamFactoryInterface $streams;
 
     /**
-     * @param Closure(string): ?Identity $authenticate 接收 Bearer 令牌。
-     * @param Closure(Identity, CanonicalRequest, string): bool $authorize 依次接收身份、规范请求和 HTTP 方法。
+     * @param \Closure(string): ?Identity $authenticate 接收 Bearer 令牌
+     * @param \Closure(Identity, CanonicalRequest, string): bool $authorize 依次接收身份、规范请求和 HTTP 方法
      */
-    public function __construct(Closure $authenticate, Closure $authorize, ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
+    public function __construct(\Closure $authenticate, \Closure $authorize, ResponseFactoryInterface $responses, StreamFactoryInterface $streams)
     {
         $this->authenticate = $authenticate;
         $this->authorize = $authorize;
@@ -38,7 +39,7 @@ final class Authentication implements MiddlewareInterface
     {
         $canonical = $request->getAttribute('type.request');
         if (!$canonical instanceof CanonicalRequest) {
-            throw new RuntimeException('鉴权前必须执行 RequestPolicy');
+            throw new \RuntimeException('鉴权前必须执行 RequestPolicy');
         }
         $headers = $request->getHeader('Authorization');
         $matches = [];
@@ -50,7 +51,7 @@ final class Authentication implements MiddlewareInterface
             return $this->error(401, 'unauthenticated')->withHeader('WWW-Authenticate', 'Bearer');
         }
         if (!$identity instanceof Identity) {
-            throw new RuntimeException('认证器必须返回 Identity 或 null');
+            throw new \RuntimeException('认证器必须返回 Identity 或 null');
         }
         if (($this->authorize)($identity, $canonical, $request->getMethod()) !== true) {
             return $this->error(403, 'forbidden');
@@ -61,6 +62,6 @@ final class Authentication implements MiddlewareInterface
     private function error(int $status, string $code): ResponseInterface
     {
         return $this->responses->createResponse($status)->withHeader('Content-Type', 'application/json')
-            ->withBody($this->streams->createStream((string) json_encode(['error' => $code], JSON_THROW_ON_ERROR)));
+            ->withBody($this->streams->createStream((string)json_encode(['error' => $code], JSON_THROW_ON_ERROR)));
     }
 }

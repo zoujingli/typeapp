@@ -1,7 +1,7 @@
 {
   "extends": "../../internal/tsconfig/web-app.json",
   "compilerOptions": {
-    "baseUrl": ".",
+    "allowImportingTsExtensions": true,
     "paths": { "#/*": ["./src/*"] },
     "moduleResolution": "bundler"
   },

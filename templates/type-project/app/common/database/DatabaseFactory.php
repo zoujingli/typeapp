@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\common\database;
 
 use Type\Core\Config\Repository;
+use Type\Orm\DatabaseException;
 use Type\Orm\Driver;
 use Type\Orm\Sqlite\SqliteDriver;
 
@@ -16,7 +17,7 @@ final class DatabaseFactory
     /**
      * 只构造驱动配置；文件目录由显式迁移准备，连接由请求或迁移作用域持有。
      *
-     * @throws \Type\Orm\DatabaseException SQLite 路径或驱动配置不满足要求。
+     * @throws DatabaseException SQLite 路径或驱动配置不满足要求
      */
     public static function create(Repository $configuration, string $basePath): Driver
     {

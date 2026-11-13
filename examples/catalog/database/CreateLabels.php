@@ -16,6 +16,4 @@ use Type\Orm\Attribute\Schema;
         'tenant_id' => ['type' => 'string', 'length' => 40], 'product_id' => ['type' => 'integer'], 'label_id' => ['type' => 'integer'],
     ], 'primary' => ['tenant_id', 'product_id', 'label_id']],
 ])]
-final class CreateLabels
-{
-}
+final class CreateLabels {}

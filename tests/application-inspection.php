@@ -8,6 +8,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 use Type\Build\ApplicationInspection;
 use Type\Build\DevelopmentBuilder;
 use Type\Testing\Process;
+use Type\Testing\ProcessResult;
 
 $root = dirname(__DIR__);
 $work = $root . '/build/inspection space ' . bin2hex(random_bytes(6));
@@ -43,17 +44,17 @@ PHP;
     copy($root . '/composer.lock', $work . '/composer.lock');
     $settings = ['sources' => ['src'], 'build-directory' => 'build/compiler', 'application' => [
         'enabled' => ['example/inspection'], 'config' => ['name' => ['env' => 'INSPECTION_SECRET', 'default' => 'secret-default-sentinel']],
-        'services' => [['id' => 'value', 'class' => 'InspectionFixture\\Value', 'factory' => ['class' => 'InspectionFixture\\Factory', 'method' => 'create']]],
-        'bindings' => [['type' => 'InspectionFixture\\Value::$name', 'config' => 'name']],
-        'commands' => [['name' => 'show', 'class' => 'InspectionFixture\\Show']],
-        'events' => [['class' => 'InspectionFixture\\Notice', 'listeners' => [['class' => 'InspectionFixture\\Observe', 'method' => 'handle']]]]],
+        'services' => [['id' => 'value', 'class' => 'InspectionFixture\Value', 'factory' => ['class' => 'InspectionFixture\Factory', 'method' => 'create']]],
+        'bindings' => [['type' => 'InspectionFixture\Value::$name', 'config' => 'name']],
+        'commands' => [['name' => 'show', 'class' => 'InspectionFixture\Show']],
+        'events' => [['class' => 'InspectionFixture\Notice', 'listeners' => [['class' => 'InspectionFixture\Observe', 'method' => 'handle']]]]],
         'capabilities' => ['schema' => ['users' => [1]], 'messages' => [], 'cache' => []]];
     $file = $work . '/type-app.json';
     file_put_contents($file, json_encode($settings, JSON_THROW_ON_ERROR));
     $environment = getenv();
     $environment['INSPECTION_SECRET'] = 'secret-environment-sentinel';
     $environment['DATABASE_URL'] = 'mysql://unreachable.invalid:1/secret-url-sentinel';
-    $invoke = static function (array $arguments) use ($root, $environment): \Type\Testing\ProcessResult {
+    $invoke = static function (array $arguments) use ($root, $environment): ProcessResult {
         $process = new Process([PHP_BINARY, $root . '/vendor/bin/type', ...$arguments], sys_get_temp_dir(), $environment);
         try {
             return $process->wait(15);
@@ -66,7 +67,7 @@ PHP;
     $report = json_decode($json->stdout, true, 512, JSON_THROW_ON_ERROR);
     expect($report['protocol'] === 1 && $report['kind'] === 'application-declarations'
         && $report['assembly']['commands'] === ['show'] && $report['assembly']['services']['value']['lifetime'] === 'execution', '离线报告缺少装配事实');
-    expect($report['assembly']['events'][0]['listeners'][0]['class'] === 'InspectionFixture\\Observe', '离线报告缺少事件监听根');
+    expect($report['assembly']['events'][0]['listeners'][0]['class'] === 'InspectionFixture\Observe', '离线报告缺少事件监听根');
     foreach (['secret-default-sentinel', 'secret-environment-sentinel', 'secret-url-sentinel', 'file_put_contents'] as $secret) {
         expect(!str_contains($json->stdout, $secret), '离线报告泄露配置值或工厂源码');
     }

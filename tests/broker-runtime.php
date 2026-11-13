@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/vendor/autoload.php';
 require_once __DIR__ . '/native-database.php';
 require_once __DIR__ . '/postgres-sync.php';
 
+use Type\Build\NativePackage;
 use Type\Mqtt\Client;
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
@@ -30,7 +31,6 @@ if (!function_exists('identityCommand')) {
  * 握手 CA 在线重载，以及监听配置校验保存后由运维重启生效。
  * 需要 PostgreSQL 同步存储；SQLite 双端身份路径只证明 403/422。
  */
-
 function runtimeCertField(string $value): string
 {
     return pack('n', strlen($value)) . $value;
@@ -111,7 +111,7 @@ function runtimeCertRead(mixed $socket): string
 /**
  * 建立 5 秒超时且校验 CA 与回环主机名的 TLS 连接，可携带测试客户端证书。
  *
- * @return resource 成功连接由调用者关闭。
+ * @return resource 成功连接由调用者关闭
  */
 function runtimeCertSocket(int $port, string $ca, ?string $client = null, ?string $clientKey = null): mixed
 {
@@ -227,7 +227,7 @@ $driver = $argv[2] ?? 'pgsql';
 expect($driver === 'pgsql', '运行配置验收需要 PostgreSQL 同步存储');
 if ($target === '--php') {
     $swoole = getenv('TYPE_SWOOLE_MODULE');
-    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string)ini_get('extension_dir'), '/') . '/swoole.so';
     expect(is_file($swoole), 'PHP 运行配置验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
     $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
 } else {
@@ -245,7 +245,7 @@ foreach ($argv as $argument) {
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '无源码运行配置验收使用macOS内核策略及原生产物');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $sourceRoot = realpath($built['identity']['description']['facts']['workspace']);
     expect(is_string($sourceRoot), '无源码验收必须能定位实际编译输入');
@@ -256,7 +256,7 @@ if ($noSource) {
     }
     $command = [...$policy, $runtime . '/run'];
 }
-$databaseTools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+$databaseTools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
 $fixtureDatabase = new NativeDatabase($base . '/primary', 'pgsql', $databaseTools);
 $fixtureSync = new PostgresSync($fixtureDatabase, $base . '/standby', $databaseTools, 'broker_runtime_sync');
 $environment = getenv();
@@ -310,7 +310,7 @@ try {
     $secrets[] = $password;
     identityCommand([...$command, 'broker:user', 'access-admin', '运行配置管理员'], $environment + ['BROKER_ADMIN_PASSWORD' => $password]);
     $addresses = [];
-    for ($index = 0; $index < 5; $index++) {
+    for ($index = 0; $index < 5; ++$index) {
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorText);
         expect(is_resource($listener), '无法选择运行配置测试端口');
         $addresses[] = stream_socket_get_name($listener, false);
@@ -336,10 +336,10 @@ try {
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $auth = $request('POST', '/broker/auth/login', '', ['login' => 'access-admin', 'password' => $password], 200)['data'];
@@ -347,16 +347,16 @@ try {
     $secrets[] = $token;
     $mqttPassword = bin2hex(random_bytes(16));
     $secrets[] = $mqttPassword;
-    $tlsPort = (int) substr(strrchr($addresses[1], ':'), 1);
-    $mtlsPort = (int) substr(strrchr($addresses[3], ':'), 1);
-    $nextPort = (int) substr(strrchr($addresses[4], ':'), 1);
+    $tlsPort = (int)substr(strrchr($addresses[1], ':'), 1);
+    $mtlsPort = (int)substr(strrchr($addresses[3], ':'), 1);
+    $nextPort = (int)substr(strrchr($addresses[4], ':'), 1);
     $handshakeCa = $base . '/certs/handshake-ca.pem';
     expect(copy($certs['ca'], $handshakeCa) === true, '无法复制握手 CA 文件');
     $nodeEnvironment = $environment + [
         'BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => $mqttPassword,
         'BROKER_TOPIC_PREFIX' => 'broker-runtime/', 'BROKER_NODE_ID' => 'runtime-node',
         'BROKER_LISTEN' => '127.0.0.1', 'BROKER_PLAINTEXT' => 'false',
-        'BROKER_PORT' => (string) $tlsPort, 'BROKER_MTLS_PORT' => (string) $mtlsPort,
+        'BROKER_PORT' => (string)$tlsPort, 'BROKER_MTLS_PORT' => (string)$mtlsPort,
         'BROKER_CERTIFICATE' => $certs['server'], 'BROKER_PRIVATE_KEY' => $certs['key'],
         'BROKER_CLIENT_CA' => $handshakeCa,
     ];
@@ -414,7 +414,7 @@ try {
     $firstAck = runtimeCertRead($firstSocket);
     expect(ord($firstAck[0]) === 0x20 && ord($firstAck[3]) === 0, '首个握手 CA 客户端未能接入');
     $beforeReload = $request('GET', '/broker/runtime', $token, null, 200);
-    $reloadAt = (int) ($beforeReload['handshake']['reloads'] ?? 0);
+    $reloadAt = (int)($beforeReload['handshake']['reloads'] ?? 0);
     $extraCa = $request('POST', '/broker/access/cas', $token, ['pem' => $certs['extraCaPem'], 'expected_version' => $bound['version']], 200)['data'];
     $deadline = microtime(true) + 12;
     do {
@@ -510,7 +510,7 @@ try {
         $oldFailed = true;
     }
     expect($oldFailed, '运维重启前旧端口仍可接入');
-    $nodeEnvironment['BROKER_PORT'] = (string) $nextPort;
+    $nodeEnvironment['BROKER_PORT'] = (string)$nextPort;
     $node = new Process([...$command, 'broker:run'], $root, $nodeEnvironment);
     runtimeCertWait($node, $nextPort, $certs['ca']);
     $certHash = hash_file('sha256', $certs['server']);
@@ -598,10 +598,10 @@ try {
         usleep(10000);
     } while (microtime(true) < $deadline);
     $appRequest = static function (string $method, string $path, string $token, array $headers, ?array $data, int $status) use ($appClient, $appServer, &$checks): array {
-        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '双端 ' . $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $appServer->stdout() . $appServer->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $platformToken = $appRequest('POST', '/admin/auth/login', '', [], ['login' => 'platform-admin', 'password' => $appPassword], 200)['data']['accessToken'];

@@ -11,12 +11,14 @@ use Type\Orm\ModelObserver;
 final class ArticleObserver implements ModelObserver
 {
     private array $events = [];
+
     /** 记录事件并拒绝指定标题的创建，其他操作继续执行。 */
     public function onEvent(string $event, Model $model): bool
     {
         $this->events[] = $event;
         return !($event === 'creating' && $model->get('title') === '取消发布');
     }
+
     /**
      * 返回当前阶段的事件顺序，供业务套件断言。
      *
@@ -26,6 +28,7 @@ final class ArticleObserver implements ModelObserver
     {
         return $this->events;
     }
+
     /** 仅重置观察日志，不修改任何模型或数据库状态。 */
     public function clear(): void
     {

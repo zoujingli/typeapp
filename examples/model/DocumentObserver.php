@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace TypeApp\ModelExample;
 
-use RuntimeException;
 use Type\Orm\Model;
 use Type\Orm\ModelObserver;
 
@@ -21,7 +20,7 @@ final class DocumentObserver implements ModelObserver
             return false;
         }
         if ($event === 'updated' && $model->get('title') === 'FAIL') {
-            throw new RuntimeException('后置事件失败');
+            throw new \RuntimeException('后置事件失败');
         }
         return true;
     }
@@ -35,6 +34,7 @@ final class DocumentObserver implements ModelObserver
     {
         return $this->events;
     }
+
     /** 清空观察记录，隔开同一演练中的各个操作阶段。 */
     public function clear(): void
     {

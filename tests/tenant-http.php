@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use TypeApp\ModelExample\Drivers;
 
 require __DIR__ . '/support.php';
 require __DIR__ . '/http-support.php';
@@ -10,7 +11,7 @@ require dirname(__DIR__) . '/examples/model/Drivers.php';
 $root = dirname(__DIR__);
 $kind = $argv[2] ?? 'mysql';
 expect(in_array($kind, ['mysql', 'pgsql', 'sqlite'], true), '未知租户测试驱动');
-$admin = $kind === 'sqlite' ? null : TypeApp\ModelExample\Drivers::create($kind)->connect();
+$admin = $kind === 'sqlite' ? null : Drivers::create($kind)->connect();
 $createdDatabases = [];
 $createdUsers = [];
 $createdSchemas = [];
@@ -65,7 +66,7 @@ try {
             $qualifier = '"' . $id . '".';
         } else {
             $databaseName = $record . '/' . $tenant . '.sqlite';
-            $seed = TypeApp\ModelExample\Drivers::create('sqlite', $databaseName)->connect();
+            $seed = Drivers::create('sqlite', $databaseName)->connect();
             $sqliteFiles[] = $databaseName;
         }
         $seed->exec('CREATE TABLE ' . $qualifier . 'tenant_values (id INTEGER PRIMARY KEY, owner VARCHAR(255), visits INTEGER)');
@@ -87,9 +88,9 @@ try {
     }
     $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($socket), '无法分配租户端口');
-    $port = (int) substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
     fclose($socket);
-    $environment['TYPE_HTTP_PORT'] = (string) $port;
+    $environment['TYPE_HTTP_PORT'] = (string)$port;
     if (isset($argv[1]) && $argv[1] !== '--php') {
         $command = nativeCommand($argv[1]);
     } else {
@@ -111,9 +112,9 @@ try {
         } usleep(10000);
     }
     expect($ready, '租户服务没有就绪');
-    for ($pass = 0; $pass < 2; $pass++) {
+    for ($pass = 0; $pass < 2; ++$pass) {
         $requests = [];
-        for ($index = 0; $index < 8; $index++) {
+        for ($index = 0; $index < 8; ++$index) {
             $tenant = $index % 2 === 0 ? 'alpha' : 'beta';
             $requests[] = [$tenant, tenantRequest($port, $tenant . '-token', $tenant)];
         }
@@ -140,12 +141,12 @@ try {
         $boundary = json_decode($body, true);
         expect($status === 200 && $boundary['cross_database_denied'] === ($kind === 'sqlite' ? null : true), '数据库权限探针没有维持声明边界');
         expect($boundary['isolation'] === ($kind === 'sqlite' ? 'trusted-file-mapping' : 'database-permissions'), 'SQLite文件映射被冒称数据库账号权限');
-        for ($repeat = 0; $repeat < 3; $repeat++) {
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
             [$status, $body] = receiveHttp(tenantRequest($port, $tenant . '-token', $tenant));
             expect($status === 200 && json_decode($body, true)['owner'] === $tenant, '租约复用后租户错误');
         }
-        $inspection = $admin ?? TypeApp\ModelExample\Drivers::create('sqlite', $targets[$tenant]['database'])->connect();
-        expect((int) $inspection->query('SELECT visits FROM ' . $targets[$tenant]['qualifier'] . 'tenant_values WHERE id = 1')->fetchColumn() === 1, '失败租户事务仍有持久写入');
+        $inspection = $admin ?? Drivers::create('sqlite', $targets[$tenant]['database'])->connect();
+        expect((int)$inspection->query('SELECT visits FROM ' . $targets[$tenant]['qualifier'] . 'tenant_values WHERE id = 1')->fetchColumn() === 1, '失败租户事务仍有持久写入');
         $inspection = null;
     }
     echo "两个授权租户的模型、会话复用、回滚、代次和缓存隔离通过。\n";
@@ -217,7 +218,7 @@ foreach ($rows as $row) {
     $reused[$tenant] = ($reused[$tenant] ?? false) || $row['context']['reused_idle'];
     if ($row['context']['failed']) {
         expect($row['context']['outcome'] === 'ROLLED_BACK', '失败租户事务没有回滚');
-        $failures++;
+        ++$failures;
     }
 }
 expect($failures === 2 && is_array($shutdown), '失败与停止日志不完整');

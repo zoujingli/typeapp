@@ -2,21 +2,22 @@
 
 declare(strict_types=1);
 
-use Type\Validate\Field;
-use Type\Validate\Helper\ValidateHelper;
-use Type\Validate\Input;
-use Type\Validate\Schema;
-use Type\Validate\ValidationException;
+use Type\Orm\Connection;
+use Type\Orm\DatabaseException;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
-use Type\Orm\DatabaseException;
-use Type\Orm\Connection;
 use Type\Orm\Model;
 use Type\Orm\ModelDefinition;
 use Type\Orm\ModelField;
 use Type\Orm\ModelQuery;
 use Type\Orm\Sqlite\SqliteDriver;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
+use Type\Validate\Field;
+use Type\Validate\Helper\ValidateHelper;
+use Type\Validate\Input;
+use Type\Validate\Schema;
+use Type\Validate\ValidationException;
 
 /** 测试模型通过公开映射水合，字段类型继续由 ModelQuery 校验。 */
 final class TypeHelperUser extends Model
@@ -325,8 +326,8 @@ function helpersDefaults(): void
 /** 显式入口只使用测试自建输入，不读取隐式全局请求。 */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::enableIo();
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
+    CoroutineRuntime::enableIo();
+    CoroutineRuntime::run(static function (): void {
         helpersDefaults();
         $rules = ['age' => Field::integer()->required(), 'active' => Field::boolean()->required(), 'note' => Field::text()->nullable(), 'missing' => Field::text()];
         $checked = _vali($rules, ['age' => 0, 'active' => false, 'note' => null, 'ignored' => '不返回']);
@@ -363,7 +364,7 @@ function main(int $argc, array $argv): void
         Db::configure($database);
         $scope = new ExecutionScope();
         try {
-            $scope->run(static function (ExecutionScope $current) use ($database, &$scope, $argv): void {
+            $scope->run(static function (ExecutionScope $current) use (&$scope): void {
                 $connection = Db::connection('default', true);
                 $connection->execute('CREATE TABLE helper_users (id INTEGER PRIMARY KEY, tenant INTEGER NOT NULL, age INTEGER NOT NULL, active INTEGER NOT NULL, note TEXT, name TEXT NOT NULL)');
                 foreach ([[1, 1, 0, 0, null, '中文甲'], [2, 1, 18, 1, '', '中文乙'], [3, 1, 30, 1, '备注', 'Other'], [4, 2, 20, 1, null, '中文甲']] as $row) {

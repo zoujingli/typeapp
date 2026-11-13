@@ -5,6 +5,8 @@ declare(strict_types=1);
 $root = getenv('TYPE_APP_TEST_DIRECTORY') ?: dirname(__DIR__);
 require $root . '/vendor/autoload.php';
 
+use Type\Orm\ModelException;
+use Type\Runtime\TaskException;
 use Type\Testing\Assert;
 use Type\Testing\Process;
 use Type\Testing\Suite;
@@ -110,7 +112,7 @@ $suite->test('生成Job的异常、有限重试、显式取消与清理后确认
         Assert::same($mode === 'queue-invalid' ? [1, 2, 3] : [1, 2], array_column($result['observations'], 'attempt'));
         foreach ($result['observations'] as $observation) {
             Assert::same($result['message'], $observation['message']);
-            Assert::same('app\\catalog\\job\\DeliverProduct', $observation['role']);
+            Assert::same('app\catalog\job\DeliverProduct', $observation['role']);
             Assert::same(1, $observation['starts']);
             Assert::same('closed', $observation['scope']);
             Assert::true($observation['closed']);
@@ -130,7 +132,7 @@ $suite->test('生成Job的异常、有限重试、显式取消与清理后确认
             Assert::same(1, $result['worker']['quarantined']);
             Assert::same(0, $result['worker']['completed']);
             Assert::same(0, $result['effects']);
-            Assert::same([['attempt' => 3, 'reason' => 'attempts_exhausted:Type\\Queue\\QueueException']], $result['quarantine']);
+            Assert::same([['attempt' => 3, 'reason' => 'attempts_exhausted:Type\Queue\QueueException']], $result['quarantine']);
         } elseif ($mode === 'queue-cancel') {
             Assert::same(0, $result['first']['effects']);
             Assert::same(0, $result['first']['worker']['completed']);
@@ -170,7 +172,7 @@ $suite->test('生成Task的异常、显式取消、未完收尾及持久游标',
         Assert::same('failed', $record['state']);
         $observation = $result['observations'][0];
         Assert::same($record['occurrence_id'], $observation['occurrence']);
-        Assert::same('app\\catalog\\task\\CatalogTask', $observation['role']);
+        Assert::same('app\catalog\task\CatalogTask', $observation['role']);
         Assert::same(1, $observation['starts']);
         Assert::same('closed', $observation['scope']);
         Assert::true($observation['closed']);
@@ -188,7 +190,7 @@ $suite->test('生成Task的异常、显式取消、未完收尾及持久游标',
         } else {
             Assert::same(null, $record['result']);
             Assert::same(1800000000, $record['finished_at']);
-            Assert::same($mode === 'schedule-cancel' ? Type\Runtime\TaskException::class : Type\Orm\ModelException::class, $record['error']['type']);
+            Assert::same($mode === 'schedule-cancel' ? TaskException::class : ModelException::class, $record['error']['type']);
             Assert::same(null, $record['cleanup_error']);
         }
         Assert::same('stopped', $result['stopped']['state']);
@@ -244,7 +246,7 @@ try {
     // 精确清理本轮隔离命名空间，永不 FLUSHDB 或清理其他应用键。
     $redis = new Redis();
     try {
-        $redis->connect(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1', (int) (getenv('TYPE_REDIS_PORT') ?: 6379), 2);
+        $redis->connect(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1', (int)(getenv('TYPE_REDIS_PORT') ?: 6379), 2);
         $patterns = ['type:queue:{' . hash('sha256', $namespace . "\0catalog") . '}*',
             'type:cache:{' . hash('sha256', json_encode([$namespace, 'tutorial', 'json-data-v1'], JSON_THROW_ON_ERROR)) . '}*'];
         foreach ($patterns as $pattern) {

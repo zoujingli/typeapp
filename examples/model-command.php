@@ -2,19 +2,26 @@
 
 declare(strict_types=1);
 
+use Type\Orm\Connection;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
+use Type\Orm\Helper\QueryHelper;
+use Type\Orm\ManyToMany;
 use Type\Orm\ModelException;
+use Type\Orm\ModelField;
+use Type\Orm\ModelQuery;
+use Type\Orm\Relation;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
-use TypeApp\ModelExample\User;
 use TypeApp\ModelExample\Drivers;
-use TypeApp\ModelExample\ScopedRecord;
 use TypeApp\ModelExample\ScopedLabel;
+use TypeApp\ModelExample\ScopedRecord;
+use TypeApp\ModelExample\User;
 
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function modelExpect(bool $condition, string $message): void
 {
@@ -26,7 +33,7 @@ function modelExpect(bool $condition, string $message): void
 /**
  * 核对非法模型操作的精确错误码，未抛错或错误码不同均使演练失败。
  *
- * @param Closure(): mixed $operation 预期被模型接口拒绝的操作。
+ * @param Closure(): mixed $operation 预期被模型接口拒绝的操作
  */
 function modelRejects(Closure $operation, string $expectedCode): void
 {
@@ -62,7 +69,7 @@ function modelMappingChecks(): void
     modelReadonlyRejects(static fn () => $mapping->__construct(
         'replaced',
         'id',
-        ['id' => new \Type\Orm\ModelField('id', 'integer')],
+        ['id' => new ModelField('id', 'integer')],
         false,
         null,
         null,
@@ -82,7 +89,7 @@ function modelMappingChecks(): void
     modelExpect($field->sameMapping($fieldBefore) && $field->normalize('保留原策略') === '保留原策略', '字段重入失败前改写了策略');
     modelReadonlyRejects(static fn () => $relation->__construct(
         'HasOne',
-        static fn (\Type\Orm\Connection $connection, string $alias): \Type\Orm\ModelQuery => ScopedRecord::query($alias)->onConnection($connection),
+        static fn (Connection $connection, string $alias): ModelQuery => ScopedRecord::query($alias)->onConnection($connection),
         'age',
         'user_id',
         'replaced',
@@ -92,7 +99,7 @@ function modelMappingChecks(): void
         'replaced'
     ));
     modelExpect(
-        $relation->sourceKey() === 'id' && $relation->loader() instanceof \Type\Orm\ManyToMany,
+        $relation->sourceKey() === 'id' && $relation->loader() instanceof ManyToMany,
         '关系重入失败前改写了类型或关联键'
     );
     $draft = new User(['name' => '映射复用']);
@@ -103,13 +110,13 @@ function modelMappingChecks(): void
 /**
  * 在所选驱动验证模型 CRUD、水合、部分字段与安全输出，依赖显式当前作用域。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::enableIo();
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
-        $driverName = (string) ($argv[1] ?? 'sqlite');
+    CoroutineRuntime::enableIo();
+    CoroutineRuntime::run(static function () use ($argv): void {
+        $driverName = (string)($argv[1] ?? 'sqlite');
         $database = new DatabaseManager(['default' => Drivers::create($driverName), 'archive' => Drivers::create($driverName)], 1, 0);
         Db::configure($database);
         $scope = new ExecutionScope();
@@ -167,7 +174,7 @@ function main(int $argc, array $argv): void
                 modelRejects(static fn () => json_encode($fresh, JSON_THROW_ON_ERROR), 'model_invalid');
                 modelRejects(static fn () => serialize($fresh), 'model_invalid');
                 $helper = User::search(['active' => true, 'keyword' => '已修改'])->equal('active')->like(['keyword' => 'name']);
-                modelExpect($helper instanceof \Type\Orm\Helper\QueryHelper, '静态 search 没有返回查询助手');
+                modelExpect($helper instanceof QueryHelper, '静态 search 没有返回查询助手');
                 $pending = User::query()->master();
                 $committed = [];
                 $result = Db::transaction(static function () use ($pending, &$committed): string {
@@ -268,7 +275,7 @@ function modelTenantChecks(ExecutionScope $scope, string $keySql, string $driver
         modelExpect($base->where('title', '=', '不存在')->orWhere('title', '=', 'tenant-b')->count() === 0, 'OR 放宽了租户范围');
         modelExpect($base->count() === 1 && $base->find($ids['tenant-b']) === null && count($base->paginate(1, 10)->items()) === 1, '查询或分页泄露其他租户');
         modelExpect(ScopedLabel::query()->count() === 1 && ScopedLabel::query()->first()->getScopeId() === '普通业务值', '自定义字段范围错误');
-        $related = \Type\Orm\Relation::hasMany(static fn (\Type\Orm\Connection $connection): \Type\Orm\ModelQuery => ScopedRecord::query()->onConnection($connection), 'user_id');
+        $related = Relation::hasMany(static fn (Connection $connection): ModelQuery => ScopedRecord::query()->onConnection($connection), 'user_id');
         $global = User::query()->with('records', $related)->find($userId);
         modelExpect(count($global->related('records')) === 1 && $global->related('records')[0]->getTenantId() === 'tenant-a', '全局模型关系没有隔离目标租户');
         $partial = $base->select(['title'])->find($ids['tenant-a']);

@@ -3,14 +3,17 @@
 declare(strict_types=1);
 
 use Swoole\Coroutine;
+use Swoole\Coroutine\Channel;
 use Swoole\Coroutine\Scheduler;
+use Swoole\Runtime;
 use Type\Orm\Database;
 use Type\Orm\Mysql\MysqlDriver;
+use Type\Runtime\CapacityException;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
-use Type\Runtime\CoroutineRuntime;
-use Type\Runtime\TaskException;
 use Type\Runtime\ManagedResource;
+use Type\Runtime\TaskException;
 
 /** 通过受管资源公开契约观察关闭次数，不依赖数据库或外部服务。 */
 final class TaskCleanupResource implements ManagedResource
@@ -18,21 +21,19 @@ final class TaskCleanupResource implements ManagedResource
     public int $stops = 0;
 
     /** 不分配外部资源，仅用于验证 Scope 对资源生命周期的调用。 */
-    public function start(): void
-    {
-    }
+    public function start(): void {}
 
     /** 累计资源关闭次数，确认嵌套和异常退出没有遗漏或重复收尾。 */
     public function stop(): void
     {
-        $this->stops++;
+        ++$this->stops;
     }
 }
 
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function taskExpect(bool $condition, string $message): void
 {
@@ -44,7 +45,7 @@ function taskExpect(bool $condition, string $message): void
 /** 无业务模型或外部服务的运行时契约，同一入口用于 PHP 和全量 AOT 验收。 */
 function verifyCurrentScopes(): void
 {
-    $flags = \Swoole\Runtime::getHookFlags();
+    $flags = Runtime::getHookFlags();
     $failure = new RuntimeException('保留原始异常');
     try {
         CoroutineRuntime::run(static function () use ($failure): void {
@@ -106,7 +107,7 @@ function verifyCurrentScopes(): void
                 }
                 taskExpect(ExecutionScope::current() === $scope, '异常后没有恢复外层作用域');
                 taskExpect($scope->spawn(static fn (ExecutionScope $child): ?string => $child->binding('tenant_id'))->await() === null, '子任务隐式继承父租户');
-                $release = new \Swoole\Coroutine\Channel(1);
+                $release = new Channel(1);
                 $child = $scope->spawn(static function (ExecutionScope $own) use ($scope, $release): string {
                     taskExpect($release->pop(1) === true, '子任务没有收到继续信号');
                     taskExpect(ExecutionScope::current() === $own && $own !== $scope, '子任务继承了父作用域');
@@ -124,7 +125,7 @@ function verifyCurrentScopes(): void
                     taskExpect($child->await() === 'verified-a', '子任务快照被父后续绑定修改');
                     taskExpect($inner->binding('tenant_id') === 'verified-c', '子任务污染父绑定');
                 }, ['tenant_id' => 'verified-c']);
-                $rawResult = new \Swoole\Coroutine\Channel(1);
+                $rawResult = new Channel(1);
                 Coroutine::create(static function () use ($rawResult): void {
                     try {
                         ExecutionScope::current();
@@ -141,9 +142,9 @@ function verifyCurrentScopes(): void
                 taskExpect($scope->binding('tenant_id') === null, '消息关联值被当成可信身份');
             });
             try {
-                $parent->run(static fn (ExecutionScope $scope): int => 0, ['bad' => new \stdClass()]);
+                $parent->run(static fn (ExecutionScope $scope): int => 0, ['bad' => new stdClass()]);
                 throw new RuntimeException('绑定允许可变对象');
-            } catch (\InvalidArgumentException) {
+            } catch (InvalidArgumentException) {
             }
             try {
                 ExecutionScope::current();
@@ -165,7 +166,7 @@ function verifyCurrentScopes(): void
             $parent->close();
         }
     });
-    taskExpect($result === 42 && \Swoole\Runtime::getHookFlags() === $flags, '入口返回值或 hook 配置改变');
+    taskExpect($result === 42 && Runtime::getHookFlags() === $flags, '入口返回值或 hook 配置改变');
     try {
         ExecutionScope::current();
         throw new RuntimeException('非协程取得当前作用域');
@@ -177,7 +178,7 @@ function verifyCurrentScopes(): void
 /**
  * 验证当前作用域、协程子任务、截止与延迟清理；scope-only 模式不依赖外部服务。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
@@ -186,7 +187,7 @@ function main(int $argc, array $argv): void
         echo "当前作用域、嵌套恢复、可信值快照与协程隔离通过。\n";
         return;
     }
-    \Type\Runtime\CoroutineRuntime::enableIo();
+    CoroutineRuntime::enableIo();
     $scheduler = new Scheduler();
     $failure = null;
     $scheduler->add(static function () use (&$failure): void {
@@ -235,11 +236,11 @@ function main(int $argc, array $argv): void
             taskExpect($tree->activeTasks() === 0, '完成子任务没有归还执行预算');
 
             $database = new Database(new MysqlDriver(
-                (string) (getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1'),
-                (int) (getenv('TYPE_MYSQL_PORT') ?: 3306),
-                (string) (getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test'),
-                (string) (getenv('TYPE_MYSQL_USER') ?: 'root'),
-                (string) (getenv('TYPE_MYSQL_PASSWORD') ?: '')
+                (string)(getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1'),
+                (int)(getenv('TYPE_MYSQL_PORT') ?: 3306),
+                (string)(getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test'),
+                (string)(getenv('TYPE_MYSQL_USER') ?: 'root'),
+                (string)(getenv('TYPE_MYSQL_PASSWORD') ?: '')
             ), 1, 1);
             $scope = new ExecutionScope(new Deadline(1), [], 2, 1);
             $started = false;
@@ -266,7 +267,7 @@ function main(int $argc, array $argv): void
             $full = false;
             try {
                 $database->connect($peer, 0);
-            } catch (\Type\Runtime\CapacityException $error) {
+            } catch (CapacityException $error) {
                 $full = true;
             }
             $peer->close();

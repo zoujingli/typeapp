@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace app\catalog\service;
 
+use app\catalog\event\ProductChanged;
 use app\catalog\model\Label;
 use app\catalog\model\Product;
-use app\catalog\event\ProductChanged;
 use Type\Cache\Attribute\Cacheable;
 use Type\Cache\Attribute\CacheEvict;
 use Type\Cache\TypedCache;
@@ -16,11 +16,13 @@ use Type\Orm\Db;
 use Type\Orm\ModelException;
 use Type\Orm\ModelQuery;
 use Type\Orm\Outbox\Store;
+use Type\Runtime\ExecutionScope;
 
 /** 原 Service 类型负责目录业务；连接由当前执行作用域借用。 */
 final class ProductService
 {
     private int $loads = 0;
+
     /** @param array{name?:string} $filters 白名单搜索器输入。 */
     public function page(array $filters): array
     {
@@ -100,10 +102,10 @@ final class ProductService
     #[Cacheable(cache: 'cache', key: 'product:{tenant}:{id}', ttlMilliseconds: 60000, database: 'catalog')]
     public function cached(TypedCache $cache, string $tenant, int $id): ?array
     {
-        if ($tenant !== \Type\Runtime\ExecutionScope::current()->binding('tenant_id')) {
+        if ($tenant !== ExecutionScope::current()->binding('tenant_id')) {
             throw new \RuntimeException('catalog_cache_tenant_mismatch');
         }
-        $this->loads++;
+        ++$this->loads;
         $record = Product::query()->find($id);
         return $record instanceof Product ? $record->present() : null;
     }
@@ -112,7 +114,7 @@ final class ProductService
     #[Cacheable(cache: 'cache', key: 'failed:{tenant}', ttlMilliseconds: 60000, database: 'catalog')]
     public function failing(TypedCache $cache, string $tenant): string
     {
-        $this->loads++;
+        ++$this->loads;
         throw new \RuntimeException('catalog_loader_failed');
     }
 
@@ -125,7 +127,7 @@ final class ProductService
     /**
      * 原类型内调用 cached 仍受声明约束；只在同源最外层确认提交后失效。
      * 同步事件不发送外部副作用，afterCommit 不代替持久 Outbox。
-     * @throws \RuntimeException 演练失败触发回滚，不自动重试未知提交。
+     * @throws \RuntimeException 演练失败触发回滚，不自动重试未知提交
      */
     #[Transactional(database: 'catalog')]
     #[CacheEvict(cache: 'cache', key: 'product:{tenant}:{id}', database: 'catalog')]

@@ -5,6 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+use Type\Build\ArtifactManifest;
 use Type\Build\BuildPlatform;
 use Type\Build\NativePackage;
 use Type\Build\SourceSet;
@@ -82,7 +83,7 @@ foreach ($release['files'] as $name => $file) {
         $resourcePaths[] = $name;
     }
 }
-$buildManifest = (new Type\Build\ArtifactManifest())->read($artifact);
+$buildManifest = (new ArtifactManifest())->read($artifact);
 expect(($buildManifest['generator-protocols']['identity'] ?? null) === 5, '原生材料契约需要身份生成协议5');
 expect(!isset($release['files']['NOTICE']) && !is_file($created['directory'] . '/NOTICE'), '无NOTICE的应用被附加其他项目的NOTICE');
 if ($licenseOnly) {
@@ -95,7 +96,7 @@ $applicationResources = array_values(array_filter($resourcePaths, static fn (str
 expect(count($applicationResources) === 2 && in_array($resourcePrefix . 'data/asset.txt', $applicationResources, true)
     && in_array($resourcePrefix . 'empty.bin', $applicationResources, true), '应用配置或Composer中的资源被遗漏');
 expect(in_array($resourcePrefix . 'notices/dependencies.json', $resourcePaths, true), '构建材料没有进入同一资源清单');
-$notices = json_decode((string) file_get_contents($created['directory'] . '/' . $resourcePrefix . 'notices/dependencies.json'), true, 128, JSON_THROW_ON_ERROR);
+$notices = json_decode((string)file_get_contents($created['directory'] . '/' . $resourcePrefix . 'notices/dependencies.json'), true, 128, JSON_THROW_ON_ERROR);
 $dependencyDocuments = 0;
 foreach ($notices['components'] as $component) {
     if ($component['kind'] === 'application') {
@@ -103,15 +104,15 @@ foreach ($notices['components'] as $component) {
     }
     foreach ($component['documents'] as $document) {
         expect(($release['files'][$resourcePrefix . $document['resource']]['sha256'] ?? null) === $document['sha256'], '依赖原始材料在发布时被遗漏或替换');
-        $dependencyDocuments++;
+        ++$dependencyDocuments;
     }
 }
 expect($dependencyDocuments > 0, '资源验收未覆盖实际生产依赖的许可原文');
 // 改写外部受信摘要仍不能给应用套用另一个项目的许可。
 $descriptor = $created['directory'] . '/release.json';
-$savedDescriptor = (string) file_get_contents($descriptor);
+$savedDescriptor = (string)file_get_contents($descriptor);
 $licenseFile = $created['directory'] . '/LICENSE';
-$savedLicense = is_file($licenseFile) ? (string) file_get_contents($licenseFile) : null;
+$savedLicense = is_file($licenseFile) ? (string)file_get_contents($licenseFile) : null;
 file_put_contents($licenseFile, "Unrelated application license\n");
 clearstatcache(true, $licenseFile);
 $forged = $release;
@@ -138,12 +139,12 @@ try {
     clearstatcache(true, $licenseFile);
 }
 $resourceFile = $created['directory'] . '/' . $resourcePrefix . 'data/asset.txt';
-$saved = (string) file_get_contents($resourceFile);
+$saved = (string)file_get_contents($resourceFile);
 file_put_contents($resourceFile, chr(ord($saved[0]) ^ 1) . substr($saved, 1));
 $tampered = (new Process($command, $created['directory'], $environment))->wait(10);
 expect(!$tampered->successful() && str_contains($tampered->stdout . $tampered->stderr, '发布文件完整性校验失败'), '资源等长篡改没有被编译后的发布文件校验拒绝');
 $descriptor = $created['directory'] . '/release.json';
-$savedDescriptor = (string) file_get_contents($descriptor);
+$savedDescriptor = (string)file_get_contents($descriptor);
 $forged = $release;
 $forged['files'][$resourcePrefix . 'data/asset.txt']['sha256'] = hash_file('sha256', $resourceFile);
 file_put_contents($descriptor, json_encode($forged, JSON_THROW_ON_ERROR));

@@ -7,6 +7,8 @@ require $argv[1] ?? dirname(__DIR__) . '/vendor/autoload.php';
 require __DIR__ . '/scheduler-wait.php';
 
 use Psr\Clock\ClockInterface;
+use Type\Runtime\CoroutineRuntime;
+use Type\Runtime\ExecutionScope;
 use Type\Runtime\ManagedResource;
 use Type\Scheduler\CronSchedule;
 use Type\Scheduler\Definition;
@@ -20,9 +22,8 @@ use Type\Scheduler\TaskContext;
 final class TestSchedulerClock implements ClockInterface
 {
     /** 保存当前测试时刻，timestamp 单位为 Unix 秒。 */
-    public function __construct(public int $timestamp)
-    {
-    }
+    public function __construct(public int $timestamp) {}
+
     /** 将当前测试秒数转换为不可变时间，用于触发确定的调度窗口。 */
     public function now(): DateTimeImmutable
     {
@@ -34,13 +35,13 @@ final class TestSchedulerClock implements ClockInterface
 final class TestScheduledTask implements Task
 {
     public static array $scopes = [];
+
     public static array $events = [];
+
     private int $calls = 0;
 
     /** 设置本轮任务和资源收尾的故障开关，不改变调度器实现。 */
-    public function __construct(private bool $failure = false, private bool $cleanupFailure = false)
-    {
-    }
+    public function __construct(private bool $failure = false, private bool $cleanupFailure = false) {}
 
     /**
      * 验证当前作用域并登记受管资源，记录调用后按配置触发故障。
@@ -49,10 +50,10 @@ final class TestScheduledTask implements Task
      */
     public function run(TaskContext $context): array
     {
-        expect(\Type\Runtime\ExecutionScope::current() === $context->scope(), '调度任务当前作用域错误');
+        expect(ExecutionScope::current() === $context->scope(), '调度任务当前作用域错误');
         self::$scopes[] = $context->scope();
         $context->scope()->open(new TestScheduledResource($this->cleanupFailure));
-        $this->calls++;
+        ++$this->calls;
         self::$events[] = 'run';
         if ($this->failure) {
             throw new RuntimeException('任务失败');
@@ -65,14 +66,14 @@ final class TestScheduledTask implements Task
 final class TestScheduledResource implements ManagedResource
 {
     /** 指定资源关闭时是否抛出测试异常。 */
-    public function __construct(private bool $failure)
-    {
-    }
+    public function __construct(private bool $failure) {}
+
     /** 记录资源已进入任务作用域，供生命周期顺序断言使用。 */
     public function start(): void
     {
         TestScheduledTask::$events[] = 'start';
     }
+
     /** 记录资源关闭事件，再按故障开关抛错，以验证其余清理仍会继续。 */
     public function stop(): void
     {
@@ -106,8 +107,8 @@ expect(scheduledTimes(new CronSchedule('45 1 * * *', 'Australia/Lord_Howe', 'bot
 expect(scheduledTimes(new CronSchedule('0 0 L * *'), '2028-02-28T23:59:59Z', '2028-03-01T00:00:00Z') === ['2028-02-29 00:00:00'], 'Cron 解析库没有处理闰年月末');
 expect((new IntervalSchedule(10, 5))->occurrences(5, 46, 3) === [25, 35, 45], '固定锚点间隔或最新补跑上限错误');
 
-\Type\Runtime\CoroutineRuntime::enableIo();
-\Type\Runtime\CoroutineRuntime::run(static function (): void {
+CoroutineRuntime::enableIo();
+CoroutineRuntime::run(static function (): void {
     $directory = dirname(__DIR__) . '/build/type_scheduler_' . bin2hex(random_bytes(8));
     expect(mkdir($directory, 0700), '无法建立调度测试状态目录');
     try {

@@ -13,7 +13,7 @@ interface QuotaUpdates
     /**
      * 返回管理库当前最新配额快照；无版本时返回 null。
      *
-     * @return array{version:int,limits:array<string,int>}|null version 从 1 起；limits 为已校验的有界整数。
+     * @return null|array{version:int,limits:array<string,int>} version 从 1 起；limits 为已校验的有界整数
      */
     public function nextQuota(): ?array;
 }

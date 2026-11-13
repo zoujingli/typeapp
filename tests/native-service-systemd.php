@@ -74,7 +74,7 @@ function systemdReady(string $unit, HttpClient $client, array $prefix, int $prev
 {
     $deadline = microtime(true) + 30;
     do {
-        $pid = (int) systemdProperty($unit, 'MainPID', $prefix);
+        $pid = (int)systemdProperty($unit, 'MainPID', $prefix);
         if ($pid > 0 && $pid !== $previous) {
             try {
                 if ($client->request('GET', '/readyz')->status === 200) {
@@ -161,7 +161,7 @@ try {
     $replacement = systemdReady($unit, $client, $prefix, $pid);
     $listed = $client->request('GET', '/admin/users?search=systemd-user', $headers);
     expect($listed->status === 200 && $listed->json()['data']['total'] === 1, 'systemd重启后丢失外部数据');
-    $restarts = (int) systemdProperty($unit, 'NRestarts', $prefix);
+    $restarts = (int)systemdProperty($unit, 'NRestarts', $prefix);
     expect($restarts >= 1, '没有记录服务管理器自动重启');
     expect(systemdRemote(['systemctl', '--user', 'stop', $unit], $prefix)['code'] === 0, '系统服务停止失败');
     expect(systemdProperty($unit, 'MainPID', $prefix) === '0' && systemdProperty($unit, 'ExecMainStatus', $prefix) === '0'
@@ -170,7 +170,7 @@ try {
     expect($journal['code'] === 0 && !str_contains($journal['stdout'], $token), '系统日志不可读取或泄漏令牌');
     $verified = ['platform' => 'Linux', 'manager' => 'systemd', 'service-sha256' => $digest, 'release-sha256' => $record['release-sha256'],
         'delivery' => $single ? 'single-executable' : 'directory', 'artifact-sha256' => hash_file('sha256', $expectedProgram),
-        'build-id' => $record['build-id'], 'pid' => $pid, 'replacement-pid' => $replacement, 'port' => (int) $port, 'restart-count' => $restarts,
+        'build-id' => $record['build-id'], 'pid' => $pid, 'replacement-pid' => $replacement, 'port' => (int)$port, 'restart-count' => $restarts,
         'checks' => ['native-loader-and-app', 'systemd-verify', 'analyzer-runtime-isolated', 'unprivileged-user', 'private-external-config', 'production-debug-override', 'health-auth-crud', 'crash-restart', 'persistent-data', 'normal-stop', 'journal-redaction']];
 } finally {
     if ($linked) {

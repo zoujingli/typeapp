@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
 use Swoole\Coroutine;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\ManagedResource;
@@ -13,14 +12,16 @@ use Type\Runtime\ManagedResource;
 final class Db implements ManagedResource
 {
     private const CONTEXT_KEY = 'type.orm.scopes';
+
     private static ?DatabaseManager $configured = null;
+
     private static int $active = 0;
+
     private array $sessions = [];
+
     private bool $closed = false;
 
-    private function __construct(private DatabaseManager $manager, private ExecutionScope $scope)
-    {
-    }
+    private function __construct(private DatabaseManager $manager, private ExecutionScope $scope) {}
 
     /** 在所属进程/线程启动期装配；管理器只有配置和池，不携带当前请求连接。 */
     public static function configure(DatabaseManager $manager): void
@@ -32,17 +33,17 @@ final class Db implements ManagedResource
     }
 
     /**
-     * @param Closure(): mixed $operation 同数据源事务体，无连接参数。
-     * @param string $mode default 或 SQLite 的 immediate；遵守底层事务模式限制。
+     * @param \Closure(): mixed $operation 同数据源事务体，无连接参数
+     * @param string $mode default 或 SQLite 的 immediate；遵守底层事务模式限制
      */
-    public static function transaction(Closure $operation, string $database = 'default', string $mode = 'default'): mixed
+    public static function transaction(\Closure $operation, string $database = 'default', string $mode = 'default'): mixed
     {
         $session = self::current()->session($database);
         return $session->transaction(static fn (Connection $connection): mixed => $operation(), $mode);
     }
 
-    /** @param Closure(): void $operation 提交确认后执行，不自动重试。 */
-    public static function afterCommit(Closure $operation, string $database = 'default'): void
+    /** @param \Closure(): void $operation 提交确认后执行，不自动重试。 */
+    public static function afterCommit(\Closure $operation, string $database = 'default'): void
     {
         self::connection($database, true)->afterCommit($operation);
     }
@@ -72,6 +73,33 @@ final class Db implements ManagedResource
     {
         $session = self::current()->session($database);
         return $master ? $session->write() : $session->read();
+    }
+
+    /** @internal 由 ExecutionScope 登记，不能单独开始业务事务。 */
+    public function start(): void
+    {
+        $this->scope->assertActive();
+        ++self::$active;
+    }
+
+    /** @internal 解除当前协程引用，物理租约仍由原作用域按真实在途状态收尾。 */
+    public function stop(): void
+    {
+        $this->scope->assertOwner();
+        if ($this->closed) {
+            return;
+        }
+        $this->closed = true;
+        $this->sessions = [];
+        $context = Coroutine::getContext();
+        $scopes = $context[self::CONTEXT_KEY] ?? [];
+        unset($scopes[spl_object_id($this->scope)]);
+        if ($scopes === []) {
+            unset($context[self::CONTEXT_KEY]);
+        } else {
+            $context[self::CONTEXT_KEY] = $scopes;
+        }
+        --self::$active;
     }
 
     private static function current(): self
@@ -105,32 +133,5 @@ final class Db implements ManagedResource
         }
         $this->sessions[$database] ??= $this->manager->session($this->scope, $database);
         return $this->sessions[$database];
-    }
-
-    /** @internal 由 ExecutionScope 登记，不能单独开始业务事务。 */
-    public function start(): void
-    {
-        $this->scope->assertActive();
-        self::$active++;
-    }
-
-    /** @internal 解除当前协程引用，物理租约仍由原作用域按真实在途状态收尾。 */
-    public function stop(): void
-    {
-        $this->scope->assertOwner();
-        if ($this->closed) {
-            return;
-        }
-        $this->closed = true;
-        $this->sessions = [];
-        $context = Coroutine::getContext();
-        $scopes = $context[self::CONTEXT_KEY] ?? [];
-        unset($scopes[spl_object_id($this->scope)]);
-        if ($scopes === []) {
-            unset($context[self::CONTEXT_KEY]);
-        } else {
-            $context[self::CONTEXT_KEY] = $scopes;
-        }
-        self::$active--;
     }
 }

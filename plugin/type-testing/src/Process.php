@@ -15,22 +15,30 @@ use Type\Runtime\Deadline;
 final class Process
 {
     private mixed $process = null;
+
     private array $pipes = [];
+
     private array $outputFiles = [];
+
     private string $stdout = '';
+
     private string $stderr = '';
+
     private bool $exceeded = false;
+
     private ?array $exit = null;
+
     private ?ProcessResult $result = null;
+
     private int $maximumBytes;
 
     /**
-     * @param list<string> $command 原样传递的可执行文件及参数，不经过 shell。
-     * @param array<string,string>|null $environment 显式子进程环境；null 继承当前环境。
-     * @param string|null $stdinFile 以只读二进制方式连接标准输入的普通文件；相对调用方工作目录解析。null保持空输入。
+     * @param list<string> $command 原样传递的可执行文件及参数，不经过 shell
+     * @param null|array<string,string> $environment 显式子进程环境；null 继承当前环境
+     * @param null|string $stdinFile 以只读二进制方式连接标准输入的普通文件；相对调用方工作目录解析。null保持空输入。
      *                               调用者保持输入文件内容稳定直到进程结束；此接口不锁定文件，也不把内容加载到父进程内存。
-     * @throws \InvalidArgumentException 命令、输出预算或输入文件无效；目录、设备和NUL路径不接受。
-     * @throws \RuntimeException 无法准备输出或启动进程，已打开的临时文件会关闭。
+     * @throws \InvalidArgumentException 命令、输出预算或输入文件无效；目录、设备和NUL路径不接受
+     * @throws \RuntimeException 无法准备输出或启动进程，已打开的临时文件会关闭
      */
     public function __construct(array $command, ?string $directory = null, ?array $environment = null, int $maximumBytes = 2097152, ?string $stdinFile = null)
     {
@@ -53,7 +61,7 @@ final class Process
             if ($resolvedInput === false || !is_file($resolvedInput) || !is_readable($resolvedInput)) {
                 throw new \InvalidArgumentException('标准输入需要可读的普通文件');
             }
-            $inputPath = (string) $resolvedInput;
+            $inputPath = (string)$resolvedInput;
         }
         $descriptors = [0 => ['file', $inputPath, 'rb'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
         $readers = [];
@@ -118,12 +126,14 @@ final class Process
         }
         return $this->exit === null;
     }
+
     /** 返回目前已捕获的标准输出；字节总数受 maximumBytes 约束。 */
     public function stdout(): string
     {
         $this->read();
         return $this->stdout;
     }
+
     /** 返回目前已捕获的标准错误，不附加命令参数或环境值。 */
     public function stderr(): string
     {
@@ -163,6 +173,12 @@ final class Process
         return $this->terminate($graceSeconds, false);
     }
 
+    /** 返回仍在运行的子进程PID，供操作系统资源观测；进程结束后返回null。 */
+    public function pid(): ?int
+    {
+        return $this->running() ? (int)proc_get_status($this->process)['pid'] : null;
+    }
+
     private function terminate(float $seconds, bool $timeout): ProcessResult
     {
         if ($this->result !== null) {
@@ -170,7 +186,7 @@ final class Process
         }
         if ($this->running()) {
             if (PHP_OS_FAMILY !== 'Windows' || !function_exists('sapi_windows_generate_ctrl_event')
-                || !sapi_windows_generate_ctrl_event(PHP_WINDOWS_EVENT_CTRL_BREAK, (int) proc_get_status($this->process)['pid'])) {
+                || !sapi_windows_generate_ctrl_event(PHP_WINDOWS_EVENT_CTRL_BREAK, (int)proc_get_status($this->process)['pid'])) {
                 proc_terminate($this->process, 15);
             }
         }
@@ -191,12 +207,6 @@ final class Process
         return $this->finish($timeout);
     }
 
-    /** 返回仍在运行的子进程PID，供操作系统资源观测；进程结束后返回null。 */
-    public function pid(): ?int
-    {
-        return $this->running() ? (int) proc_get_status($this->process)['pid'] : null;
-    }
-
     private function finish(bool $timeout): ProcessResult
     {
         $this->read(true);
@@ -209,7 +219,7 @@ final class Process
         $this->outputFiles = [];
         $closed = proc_close($this->process);
         $this->process = null;
-        $signal = ($this->exit['signaled'] ?? false) ? (int) $this->exit['termsig'] : null;
+        $signal = ($this->exit['signaled'] ?? false) ? (int)$this->exit['termsig'] : null;
         $code = $this->exit['exitcode'] ?? $closed;
         if ($code < 0 && $signal !== null) {
             $code = 128 + $signal;
@@ -221,8 +231,8 @@ final class Process
     private function read(bool $finishing = false): void
     {
         foreach ($this->pipes as $index => $pipe) {
-            $iterations = $finishing ? (int) ceil($this->maximumBytes / 8192) + 1 : 16;
-            for ($read = 0; $read < $iterations; $read++) {
+            $iterations = $finishing ? (int)ceil($this->maximumBytes / 8192) + 1 : 16;
+            for ($read = 0; $read < $iterations; ++$read) {
                 $chunk = fread($pipe, 8192);
                 if ($chunk === false || $chunk === '') {
                     break;

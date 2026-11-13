@@ -241,7 +241,7 @@ function cleanPackageRecovery(array $context): array
             expect(trim(cleanPackageCommand([...$context['backend-query'], 'SELECT COUNT(*) FROM admin_users'], 10, $context['environment'])) === '3', '恢复修改了原数据库');
         } else {
             $source = new PDO('sqlite:' . $data . '/var/app.sqlite');
-            expect((int) $source->query('SELECT COUNT(*) FROM admin_users')->fetchColumn() === 3, '恢复覆盖了原SQLite数据');
+            expect((int)$source->query('SELECT COUNT(*) FROM admin_users')->fetchColumn() === 3, '恢复覆盖了原SQLite数据');
             unset($source);
         }
         recoveryVerify($backup, $trusted, $expected);

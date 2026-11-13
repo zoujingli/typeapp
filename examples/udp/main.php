@@ -20,12 +20,12 @@ function main(int $argc, array $argv): void
         $budget = new DeploymentBudget(16, 1, 0, 1, 0, 1);
         $scope = new ExecutionScope();
         $server = $argv[1] === 'server';
-        $socket = new UdpSocket($budget->poolBudget(), $argv[2], $server ? (int) $argv[3] : 0);
+        $socket = new UdpSocket($budget->poolBudget(), $argv[2], $server ? (int)$argv[3] : 0);
         try {
             $scope->run(static function (ExecutionScope $current) use ($scope, $socket, $server, $argv): void {
                 $scope->open($socket);
                 if (!$server) {
-                    $socket->sendTo($argv[2], (int) $argv[3], $argv[4] ?? 'hello');
+                    $socket->sendTo($argv[2], (int)$argv[3], $argv[4] ?? 'hello');
                 }
                 $packet = $socket->receive(5.0);
                 if ($server) {

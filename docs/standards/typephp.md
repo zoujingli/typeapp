@@ -4,16 +4,18 @@
 
 ## 锁定身份
 
-- TypePHP：`dev-master`，提交 `840c626c2505d2214708d129557adef3604a3576`（源码版本 `0.9.6`，尚非正式发行版）
-- PHPX：`v2.9.5`，提交 `13cf717579b216d4a4fa49fe4439573b4d072e71`
-- Swoole：固定开发快照 `64988849fa898e510a38039912610cab6e9cf3f5`，运行时字符串 `6.3.0RC1`
-- PHP：`8.5.10 ZTS`（目标平台 SDK 必须与实际 PHP、架构和线程模式一致）
+- TypePHP：`dev-master`，提交 `c5599c5c9e8597e7124dd79db94739cabe39c526`，开发主线固定提交
+- PHPX：`v2.9.8`，提交 `90e6d22a9c3f4d5dbd2c75d62e90bf5adfe58c89`
+- Swoole：源码适配固定开发快照 `814049090dd9ba8000adc6cd09ad09dd3f0c9989`，运行时字符串 `6.3.0RC1`
+- PHP：`8.5.12 ZTS`（目标平台 SDK 必须与实际 PHP、架构和线程模式一致）
 
-PHP、TypePHP 与 PHPX 的准确依赖以根 `composer.lock` 和 `toolchain.lock.json` 为准；模板也必须携带相同的工具链身份。Swoole 的固定源码与逐平台模块身份以[内置清单](../../plugin/type-build/resources/swoole/manifest.json)为准，重建状态见[构建输入](../../plugin/type-build/resources/swoole/README.md)。上面的 Swoole 提交是 RC1 后的开发快照，不能称为正式 6.3.0；官方稳定线 6.2.5 与当前 6.3 快照分叉，不能在没有重新适配、重建和完整验收的情况下替换它。
+以上是当前开发候选的源码与工具链身份。仓库附带的历史 Swoole 共享模块仍使用 PHP 8.5.12 和旧适配清单，不能作为本候选的验证证据；选择门禁会拒绝不匹配的模块。新组合的完整 AOT、无源码运行与正式平台/profile 矩阵须重新验收，固定版本不表示兼容性已经通过。下文的历史缺口与适配撤除条件仍需按新上游逐项复核。
 
-当前采用上述 TypePHP 开发快照与 PHPX 2.9.5。根项目使用 `composer install` 安装锁文件中的精确提交；模板和无锁文件的独立消费者使用 `dev-master#完整提交`。构建入口再次校验工具链锁和源码摘要，拒绝未经适配的分支漂移。根清单不重复声明 commit-ref，保持 Composer 严格校验无警告。旧版 TypePHP 的 `~2.9.4` 约束本身允许 2.9.5；升级需要重新核对原生适配与行为，而不是受该版本约束禁止。
+PHP、TypePHP 与 PHPX 的准确依赖以根 `composer.lock` 和 `toolchain.lock.json` 为准；模板也必须携带相同的工具链身份。Swoole 源码适配提交由 `SwooleThreadSource::REFERENCE` 固定，逐平台模块身份记录在[内置清单](../../plugin/type-build/resources/swoole/manifest.json)，重建状态见[构建输入](../../plugin/type-build/resources/swoole/README.md)。上面的 Swoole 提交是 RC1 后的开发快照，不能称为正式 6.3.0；官方稳定线 6.2.5 与当前 6.3 快照分叉，不能在没有重新适配、重建和完整验收的情况下替换它。
 
-TypePHP 0.9.5 的匿名类会回退到嵌入 opcode 或 `eval`，本仓构建入口明确拒绝该路径；生产实现使用具名类。静态 PHP embed 构建与源码是否全量 AOT 是两项独立检查，不能以嵌入业务字节码替代编译。Nano 的能力边界不覆盖当前应用的 Swoole、数据库及任务系统，本次不采用。
+当前采用上述 TypePHP 开发快照与 PHPX 2.9.8。根项目使用 `composer install` 安装锁文件中的精确提交；模板和无锁文件的独立消费者使用 `dev-master#完整提交`。构建入口再次校验工具链锁和源码摘要，拒绝未经适配的分支漂移。根清单不重复声明 commit-ref；声明、锁文件与实际原生产物分别核对。
+
+当前锁定 TypePHP 的匿名类会回退到嵌入 opcode 或 `eval`，本仓构建入口明确拒绝该路径；生产实现使用具名类。静态 PHP embed 构建与源码是否全量 AOT 是两项独立检查，不能以嵌入业务字节码替代编译。Nano 的能力边界不覆盖当前应用的 Swoole、数据库及任务系统，本次不采用。
 
 ## 语言规则
 
@@ -25,7 +27,7 @@ TypePHP 使用严格编译边界：推断的标量局部变量使用固定原生
 
 ## 对象默认参数的编译适配
 
-TypePHP 0.9.5 已在独立函数上下文中生成 `new Outer(new Inner())` 等默认值，保留临时声明、按序求值和清理。项目删除原有 `parseParamDefaultValue()` 覆写，直接复用上游实现；具名类构造、普通方法及函数继续使用原签名。
+当前锁定 TypePHP 已在独立函数上下文中生成 `new Outer(new Inner())` 等默认值，保留临时声明、按序求值和清理。项目删除原有 `parseParamDefaultValue()` 覆写，直接复用上游实现；具名类构造、普通方法及函数继续使用原签名。
 
 上游 Zend 包装入口还会把默认值工厂作为 C++ 调用实参而提前求值。兼容层在此入口按 PHPX 的参数缺失判断选择分支，包括命名参数跳位的 `IS_UNDEF`；显式参数或 `null` 不执行默认构造。对象每次省略参数重新创建，内层构造异常立即传播，不继续构造外层对象。
 
@@ -33,17 +35,17 @@ TypePHP 0.9.5 已在独立函数上下文中生成 `new Outer(new Inner())` 等�
 
 该修复不改变已发布 RC14 的字节；旧版独立应用需要安装包含修复并固定身份的构建组件。升级上游后，应先移除本适配进行同一组 PHP/原生回归，确认参数缺失判断也已覆盖，再删除剩余包装适配及摘要门禁。业务包的全量 AOT 与实际签发、验签等流程仍须单独验收。
 
-## 字符串三元分支的编译适配
+## 字符串三元分支
 
-TypePHP 0.9.5 将空字符串降级为 PHPX 2.9.4 的共享 `const String`，但类型属性的读取仍可能返回 `Variant`。`$omitTopic ? '' : $this->topic` 两侧都推断为 PHP `string`，直接生成的 C++ 三元表达式却类型不兼容；此问题可在不加载项目适配的上游编译器中复现。
+当前锁定 TypePHP 的三元表达式生成器同时检查两支的实际存储类型，字符串属性与共享空串的存储不同时，在各自分支中使用官方转换入口；带临时语句的分支也使用同一结果转换机制。
 
-构建兼容层仅在完整三元表达式的两支均为字符串时，利用上游转换接口将未证明存储类型的分支转为 `String`。转换保留在原分支求值位置，条件、惰性、临时量清理及异常仍由上游流程负责，不修改业务源码或关闭共享空串优化。
+项目已撤除字符串三元表达式的覆写与摘要门禁，直接复用上游。业务保留正常三元写法，不修改源码或关闭共享空串优化。
 
-`composer test:native-string-ternary` 对照 PHP/AOT 的正反分支、属性与局部量、嵌套、构造临时量、求值次数和异常，并删除输入源码后运行。适配绑定生成器及转换接口的源码摘要；上游同时覆盖直接三元和带临时语句的分支后，以同一回归验证再撤除。发布后的 `7fe846c7` 仅修正带临时语句的返回转换，不能单独覆盖当前直接三元缺口。
+`tests/fixtures/string-ternary.php` 对照 PHP/AOT 的正反分支、属性与局部量、嵌套、构造临时量、求值次数和异常，并删除输入源码后运行。固定新上游和 PHPX 的独立对照已在 macOS ARM64 通过；项目完整适配与全量 AOT 仍须通过各自门禁，不能用该局部结果替代。
 
 ## 继承构造器提升属性的作用域
 
-TypePHP 0.9.5 为普通 Zend 类生成提升属性赋值时，PHPX 的 `setProperty()` 使用实际对象类作为写入作用域。子类继承父构造器时，父类的 `private` 属性可能被错误写成子类动态属性，随后父方法无法读取已声明的属性槽。
+当前锁定 TypePHP 为普通 Zend 类生成提升属性赋值时，PHPX 的 `setProperty()` 使用实际对象类作为写入作用域。子类继承父构造器时，父类的 `private` 属性可能被错误写成子类动态属性，随后父方法无法读取已声明的属性槽。
 
 当前 TypePHP 已使用声明类作用域写入提升属性，TypeApp 删除 `genPropertyPromotion()` 覆写，直接复用上游生成器。普通类使用构造器声明类，trait 使用组合后的声明作用域；类型、可见性与 `readonly` 继续由 Zend 检查。
 
@@ -51,19 +53,19 @@ TypePHP 0.9.5 为普通 Zend 类生成提升属性赋值时，PHPX 的 `setPrope
 
 ## 接口 self 常量的编译适配
 
-TypePHP 0.9.5 在接口内解析 `self::` 时使用类专用名称入口，可能把 `Token\RegisteredClaims` 误解析为 `Token\`。例如接口中的 `ALL = [self::AUDIENCE]` 虽然可以编译链接，却会在原生程序进入 `main` 之前初始化失败。
+当前锁定 TypePHP 在接口内解析 `self::` 时使用类专用名称入口，可能把 `Token\RegisteredClaims` 误解析为 `Token\`。例如接口中的 `ALL = [self::AUDIENCE]` 虽然可以编译链接，却会在原生程序进入 `main` 之前初始化失败。
 
 `TypephpCompatibility` 仅在当前声明确实为接口时，将该次常量查找中的 `self` 规范化为接口完整名称，再交给上游解析；不改原声明 AST、常量注册顺序或普通类的 `self` 语义。适配核对预处理、作用域及常量解析源码摘要，`composer test:native-interface-constants` 对照 PHP/原生程序验证前向常量、嵌套数组、`self::class`、接口继承、实现类覆盖、命名空间隔离与全局接口。上游升级后用同一回归证明原实现已修复，再撤除适配；该结果不替代业务包完整运行验收。
 
 ## 类数组常量的原生符号隔离
 
-PHP 类常量大小写敏感，方法名称大小写不敏感；`UNFINISHED` 数组常量与 `unfinished()` 方法可以同时声明。TypePHP 0.9.5 为两者生成相同的小写 C++ 名称时会导致编译歧义，只有大小写不同的多个数组常量也会相互碰撞。
+PHP 类常量大小写敏感，方法名称大小写不敏感；`UNFINISHED` 数组常量与 `unfinished()` 方法可以同时声明。当前锁定 TypePHP 为两者生成相同的小写 C++ 名称时会导致编译歧义，只有大小写不同的多个数组常量也会相互碰撞。
 
 当前 TypePHP 的 `getNativeClassConstName()` 已统一生成独立且保留常量名大小写的符号。TypeApp 删除自有符号分配及包装逻辑，线程存储声明也调用同一上游入口。`composer test:native-class-constants` 对照 PHP/AOT 检查同名方法、大小写常量、继承、接口、trait、动态读取和写时复制；删除适配后，macOS ARM64 的同一回归及无输入源码运行通过，业务无需改名。
 
 ## 已声明 toString 方法的编译适配
 
-TypePHP 0.9.5 优先把 `toString()` 当作转换关键字，会将用户方法调用编译成 `php::toString()`。静态类型能解析到真实方法声明时，兼容层跳过关键字入口，继续使用上游方法分发；涵盖类、接口及父接口、继承、类型属性和函数返回值。
+当前锁定 TypePHP 优先把 `toString()` 当作转换关键字，会将用户方法调用编译成 `php::toString()`。静态类型能解析到真实方法声明时，兼容层跳过关键字入口，继续使用上游方法分发；涵盖类、接口及父接口、继承、类型属性和函数返回值。
 
 具体类在 `object`、`mixed`、引用或链式返回中被擦除时，零参数 `toString()` 根据实际对象的方法表查找真实声明，再通过既有 Zend/PHPX 调用入口执行 AOT 方法；保留词法可见性、原返回值及异常，接收者只求值一次。返回值不预先固定为字符串，方法 callable 也保留真实方法绑定。此路径不加载业务源码。
 
@@ -71,7 +73,7 @@ TypePHP 0.9.5 优先把 `toString()` 当作转换关键字，会将用户方法�
 
 ## 数组引用参数的闭包捕获
 
-TypePHP 0.9.5 把无默认值的 `array &$value` 编译为固定 `php::Array&`。局部闭包可使用 C++ 引用，但闭包传给其他调用者时需要 Zend 引用存储；上游会拒绝对该固定参数执行 `use (&$value)`。
+当前锁定 TypePHP 把无默认值的 `array &$value` 编译为固定 `php::Array&`。局部闭包可使用 C++ 引用，但闭包传给其他调用者时需要 Zend 引用存储；上游会拒绝对该固定参数执行 `use (&$value)`。
 
 兼容层复用上游捕获分析，仅将普通具名函数或方法中被闭包引用捕获的数组引用参数编译为已有 `php::Ref` ABI。PHP 参数签名与数组类型检查保持不变，调用侧引用桥接和异常写回继续由上游实现。闭包修改元素或替换整个数组后，即使抛异常，调用方也能观察到修改；业务若只在成功后替换原状态，仍需先使用独立候选副本。
 
@@ -95,7 +97,7 @@ TypePHP 0.9.5 把无默认值的 `array &$value` 编译为固定 `php::Array&`�
 
 PHPX 2.9.4 的普通 embed 入口在请求启动后登记临时应用模块，退出时先卸载该模块，再调用 `php_embed_shutdown()`。错误处理器或原生回调仍持有业务对象时，后续对象清理可能读取已经释放的类元数据。Windows 教程的停服访问冲突已定位到这一路径；仅提前执行一次循环回收不能释放仍被引用的对象。
 
-PHPX 2.9.5 已在请求启动前登记持久应用模块；TypePHP 默认生成入口仍用 `php::eval()` 分派 `main`，因此本框架继续使用直接调用 AOT 入口的已有宿主，并与 Swoole 编译线程共用生命周期管理。宿主在 `php_module_startup()` 前登记应用模块，退出依次结束请求、模块、SAPI 和线程存储。普通应用不因此启用业务线程或要求额外线程 SDK。`exit()` 由外层请求边界处理，保留退出码和析构；退出信号不进入业务 `catch`，也不执行被中断栈中的 `finally`，与 PHP 退出语义一致。不能在活动业务栈内提前卸载模块。扩展、SAPI 和 Nano 构建沿用其各自边界。
+PHPX 2.9.8 已在请求启动前登记持久应用模块；TypePHP 默认生成入口仍用 `php::eval()` 分派 `main`，因此本框架继续使用直接调用 AOT 入口的已有宿主，并与 Swoole 编译线程共用生命周期管理。宿主在 `php_module_startup()` 前登记应用模块，退出依次结束请求、模块、SAPI 和线程存储。普通应用不因此启用业务线程或要求额外线程 SDK。`exit()` 由外层请求边界处理，保留退出码和析构；退出信号不进入业务 `catch`，也不执行被中断栈中的 `finally`，与 PHP 退出语义一致。不能在活动业务栈内提前卸载模块。扩展、SAPI 和 Nano 构建沿用其各自边界。
 
 当前 TypePHP 按平台换行生成请求关闭阶段，适配片段使用同一 `PHP_EOL`，覆盖 Windows CRLF 与 Unix LF；仍绑定固定源码摘要并要求唯一匹配，不以宽泛文本替换掩盖生成器变化。
 
@@ -113,11 +115,11 @@ PHPX 2.9.5 已在请求启动前登记持久应用模块；TypePHP 默认生成�
 
 PHPX 的调试实现在 `src/core/debug.cc`，并提供异常/转换策略头文件。TypeApp 仍只在独立、固定的 PHPX 源码副本上应用线程与协程隔离、finalizer bailout 和可写字符串副本适配；共享 `vendor` 或 SDK 不直接改写。适配原文摘要和唯一替换由 `Type\Build\PhpxThreadSource` 门禁，完成后必须重新编译整份 PHPX。
 
-2.9.5 已将持久字符串转换为 interned 存储，TypeApp 删除重复转换补丁，直接复用上游；线程/协程状态隔离、finalizer 和可写字符串适配仍由项目承担。Windows 的 C 与 C++ 编译统一使用静态 CRT，并通过 TypePHP 的 `section_gc` 接口控制发布代码裁剪。新基线必须使用对应源码与产物重新验证；[RC14 历史验收](../evidence/typephp-upgrade-0.9.4.md)不作为新基线的通过证据。
+PHPX 2.9.8 已将持久字符串转换为 interned 存储，TypeApp 删除重复转换补丁，直接复用上游；线程/协程状态隔离、finalizer 和可写字符串适配仍由项目承担。Windows 的 C 与 C++ 编译统一使用静态 CRT，并通过 TypePHP 的 `section_gc` 接口控制发布代码裁剪。新基线必须使用对应源码与产物重新验证；[RC14 历史验收](../evidence/typephp-upgrade-0.9.4.md)不作为新基线的通过证据。
 
 TypePHP 编译器的属性访问边界仍由 `Type\Build\TypephpCompatibility` 承接，适配只接受锁定版本的源码摘要。上游已实现的能力优先直接复用，新的版本升级若使适配不再必要，应先用等价回归用例证明后删除门禁和补丁。
 
 ## 一手依据
 
-- [固定 TypePHP 开发快照](https://github.com/swoole/typephp/tree/840c626c2505d2214708d129557adef3604a3576)
-- [PHPX v2.9.5](https://github.com/swoole/phpx/tree/v2.9.5)
+- [固定 TypePHP 开发快照](https://github.com/swoole/typephp/tree/c5599c5c9e8597e7124dd79db94739cabe39c526)
+- [PHPX v2.9.8](https://github.com/swoole/phpx/tree/v2.9.8)

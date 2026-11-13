@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Core\Http\Message;
 
-use InvalidArgumentException;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UriInterface;
@@ -13,7 +12,9 @@ use Psr\Http\Message\UriInterface;
 class Request extends Message implements RequestInterface
 {
     private string $method;
+
     private UriInterface $uri;
+
     private ?string $target = null;
 
     /** 校验方法并由 URI 初始化 Host，正文流仍由调用方按生命周期管理。 */
@@ -41,7 +42,7 @@ class Request extends Message implements RequestInterface
     public function withRequestTarget(string $requestTarget): RequestInterface
     {
         if ($requestTarget === '' || preg_match('/[\x00-\x20\x7f]/', $requestTarget)) {
-            throw new InvalidArgumentException('HTTP 请求目标无效');
+            throw new \InvalidArgumentException('HTTP 请求目标无效');
         }
         $copy = clone $this;
         $copy->target = $requestTarget;
@@ -83,7 +84,7 @@ class Request extends Message implements RequestInterface
     private function validateMethod(string $method): void
     {
         if (!preg_match('/^[!#$%&\x27*+.^_`|~0-9A-Za-z-]+$/D', $method)) {
-            throw new InvalidArgumentException('HTTP 方法无效');
+            throw new \InvalidArgumentException('HTTP 方法无效');
         }
     }
 

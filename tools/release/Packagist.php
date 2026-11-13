@@ -55,10 +55,10 @@ final class Packagist
 
     /**
      * 展开官方差量元数据，核对目标版本的真实来源；旧版本可能继承前项的source字段。
-     * @internal 发布等待与回执核验的共同解析边界，不属于应用运行时。
-     * @param array<string,mixed> $document Composer v2静态版本索引。
-     * @return array{package:string,version:string,source:string}|null 未索引目标版本时返回null。
-     * @throws \RuntimeException 元数据格式未知、同版本重复或来源提交不匹配。
+     * @internal 发布等待与回执核验的共同解析边界，不属于应用运行时
+     * @param array<string,mixed> $document composer v2静态版本索引
+     * @return null|array{package:string,version:string,source:string} 未索引目标版本时返回null
+     * @throws \RuntimeException 元数据格式未知、同版本重复或来源提交不匹配
      */
     public static function indexedVersion(array $document, string $name, string $version, string $split): ?array
     {

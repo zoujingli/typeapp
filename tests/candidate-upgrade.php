@@ -8,6 +8,7 @@ require dirname(__DIR__) . '/tools/release/UpgradeBaseline.php';
 use Type\Build\ArtifactManifest;
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
+use Type\Testing\ProcessResult;
 use TypeApp\Release\UpgradeBaseline;
 
 // 当前 profile 使用真实公开旧程序建立非空安装；测试控制器不替代应用执行迁移。
@@ -72,7 +73,7 @@ try {
         $owner = null;
         $environment['DB_DATABASE'] = $ownedDatabase;
     }
-    $run = static function (array $arguments) use ($command, $environment, $directory, $base, &$commandId): \Type\Testing\ProcessResult {
+    $run = static function (array $arguments) use ($command, $environment, $directory, $base, &$commandId): ProcessResult {
         return runtimeCommand($command, $arguments, $environment, dirname($directory), $base . '/command-' . (++$commandId) . '.log');
     };
     $password = bin2hex(random_bytes(24));
@@ -91,14 +92,14 @@ try {
         : $driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $environment['DB_DATABASE'];
     $database = new PDO($dsn, $environment['DB_USERNAME'] ?? '', $environment['DB_PASSWORD'] ?? '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
     $sourceDevices = $database->query('SELECT * FROM iot_devices ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
-    $sourceCompatibility = $database->query('SELECT * FROM broker_compatibility')->fetchAll(PDO::FETCH_ASSOC);
+    $sourceCompatibility = $database->query('SELECT * FROM platform_mqtt_compatibility')->fetchAll(PDO::FETCH_ASSOC);
     $before = runtimeDataIdentity($database, $driver);
     $roles = [];
     $permissions = [];
     foreach (['admin', 'customer'] as $realm) {
         $roles[$realm] = $database->query('SELECT * FROM ' . $realm . '_roles ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
         $permissions[$realm] = [];
-        foreach ($database->query('SELECT role_id, permission FROM ' . $realm . '_role_permissions')->fetchAll(PDO::FETCH_ASSOC) as $binding) {
+        foreach ($database->query('SELECT role_id, permission FROM ' . $realm . '_role_permission')->fetchAll(PDO::FETCH_ASSOC) as $binding) {
             $permissions[$realm][] = $binding['role_id'] . ':' . $binding['permission'];
         }
     }
@@ -107,7 +108,7 @@ try {
         $database->exec('VACUUM INTO ' . $database->quote($backup));
     } else {
         $suffix = PHP_OS_FAMILY === 'Windows' ? '.exe' : '';
-        $toolRoot = realpath((string) getenv('TYPE_' . strtoupper($driver) . '_TOOLS'));
+        $toolRoot = realpath((string)getenv('TYPE_' . strtoupper($driver) . '_TOOLS'));
         expect(is_string($toolRoot), '升级备份缺少对应数据库工具目录');
         $tool = $toolRoot . '/bin/' . ($driver === 'mysql' ? 'mysqldump' : 'pg_dump') . $suffix;
         expect(is_file($tool), '升级备份工具不存在');
@@ -133,7 +134,7 @@ try {
     $upgrade = ['app:upgrade', '--offline', '--backup', 'backup', '--sha256', hash_file('sha256', $backup)];
     $first = $run($upgrade);
     expect($first->successful() && json_decode($first->stdout, true, 64, JSON_THROW_ON_ERROR)['status'] === 'upgrade_in_progress', '首批升级未保留可续跑状态：' . $first->stderr);
-    expect((int) $database->query('SELECT COUNT(*) FROM iot_device_upgrade_records')->fetchColumn() === 100, '首批未按既定100台边界执行');
+    expect((int)$database->query('SELECT COUNT(*) FROM iot_device_upgrade_records')->fetchColumn() === 100, '首批未按既定100台边界执行');
     $blocked = $run(['serve']);
     expect(!$blocked->successful() && str_contains($blocked->stderr, 'upgrade_data_incomplete'), '未完成转换时开放了当前业务');
     $stale = runtimeCommand([$old], ['serve'], $legacyEnvironment, dirname($directory), $base . '/stale-runtime.log');

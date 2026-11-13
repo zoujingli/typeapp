@@ -16,7 +16,7 @@ use TypeApp\CacheExample\SerializableNote;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function psrCacheExpect(bool $condition, string $message): void
 {
@@ -28,13 +28,13 @@ function psrCacheExpect(bool $condition, string $message): void
 /**
  * 使用独立 Redis 验证 PSR-16 值类型、TTL、签名和永久数据回收。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
     $manager = new RedisManager(['default' => new RedisConfiguration(
-        (string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
-        (int) (getenv('TYPE_REDIS_PORT') ?: 6379)
+        (string)(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
+        (int)(getenv('TYPE_REDIS_PORT') ?: 6379)
     )], [Purpose::SCRIPT => 3]);
     $scope = new ExecutionScope();
     try {
@@ -63,7 +63,7 @@ function main(int $argc, array $argv): void
         $cache->set('recursive', $recursive);
         $read = $cache->get('recursive');
         psrCacheExpect($read->self === $read, '循环对象引用丢失');
-        $array = \std::any([]);
+        $array = std::any([]);
         $array['self'] = &$array;
         $cache->set('recursive-array', $array);
         $read = $cache->get('recursive-array');
@@ -117,7 +117,7 @@ function main(int $argc, array $argv): void
         psrCacheExpect(!$untrusted->has('object'), '不同密钥或类型策略读取了对象');
         $cache->clear();
         $removed = 0;
-        for ($index = 0; $index < 10; $index++) {
+        for ($index = 0; $index < 10; ++$index) {
             $removed += $cache->collect(10);
         }
         psrCacheExpect($removed >= 15, '永久 TTL 旧代数据没有回收');

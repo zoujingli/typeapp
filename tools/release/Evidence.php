@@ -21,23 +21,24 @@ final class Evidence
             'fixed-candidate',
             null,
             $plan['items'],
-            (string) getenv('TYPE_RELEASE_EVIDENCE_RUN'),
-            (string) getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT')
+            (string)getenv('TYPE_RELEASE_EVIDENCE_RUN'),
+            (string)getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT')
         );
     }
+
     /** @throws \RuntimeException 本轮消费任务缺失、失败或身份不一致。 */
     public static function consumption(string $root, array $plan): void
     {
         Batch::nativeEvidence($root, $plan['source']);
-        $id = (string) getenv('GITHUB_RUN_ID');
-        $attempt = (string) getenv('GITHUB_RUN_ATTEMPT');
+        $id = (string)getenv('GITHUB_RUN_ID');
+        $attempt = (string)getenv('GITHUB_RUN_ATTEMPT');
         if (!preg_match('/^[1-9][0-9]*$/D', $id) || !preg_match('/^[1-9][0-9]*$/D', $attempt)) {
             throw new \RuntimeException('公开版本需要当前Actions执行身份');
         }
         $endpoint = 'repos/zoujingli/typeapp/actions/runs/' . $id . '/attempts/' . $attempt;
         $run = json_decode(Process::output(['gh', 'api', $endpoint], $root), true, 64, JSON_THROW_ON_ERROR);
-        $jobs = Batch::actionsJobs($root, (int) $id, (int) $attempt);
-        self::verifyConsumptionJobs($run, $jobs, $plan['source'], $plan['version'], (int) $id, (int) $attempt);
+        $jobs = Batch::actionsJobs($root, (int)$id, (int)$attempt);
+        self::verifyConsumptionJobs($run, $jobs, $plan['source'], $plan['version'], (int)$id, (int)$attempt);
         self::reports($root, $plan);
     }
 
@@ -101,8 +102,8 @@ final class Evidence
             'packagist-tag',
             $version,
             $plan['items'],
-            (string) getenv('GITHUB_RUN_ID'),
-            (string) getenv('GITHUB_RUN_ATTEMPT')
+            (string)getenv('GITHUB_RUN_ID'),
+            (string)getenv('GITHUB_RUN_ATTEMPT')
         );
     }
 
@@ -112,6 +113,6 @@ final class Evidence
         if (!is_file($file)) {
             throw new \RuntimeException('缺少发布回执：' . basename($file));
         }
-        return json_decode((string) file_get_contents($file), true, 128, JSON_THROW_ON_ERROR);
+        return json_decode((string)file_get_contents($file), true, 128, JSON_THROW_ON_ERROR);
     }
 }

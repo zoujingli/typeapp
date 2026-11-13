@@ -7,6 +7,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 require __DIR__ . '/native-package-sandbox.php';
 require __DIR__ . '/native-application-deployment.php';
 
+use Type\Build\ArtifactManifest;
 use Type\Build\NativePackage;
 use Type\Testing\Process;
 
@@ -25,7 +26,7 @@ $candidatePackage = getenv('TYPE_RELEASE_PACKAGE');
 if (is_string($candidatePackage) && $candidatePackage !== '') {
     $package = realpath($candidatePackage);
     expect(is_string($package) && testPathIsWithin($package, $root . '/build'), '候选发布包必须属于本轮构建目录');
-    $created = ['directory' => $package, 'manifest-sha256' => (string) getenv('TYPE_RELEASE_PACKAGE_SHA256')];
+    $created = ['directory' => $package, 'manifest-sha256' => (string)getenv('TYPE_RELEASE_PACKAGE_SHA256')];
 } else {
     $created = json_decode(successful([PHP_BINARY, $project . '/vendor/bin/type',
         'package-directory', $artifact, $base . '/release', $project . '/.env.example'], $project), true, 512, JSON_THROW_ON_ERROR);
@@ -38,9 +39,9 @@ expect(isset($release['files']['OPERATIONS.md']) && file_get_contents($package .
 expect(isset($release['files']['LICENSE'], $release['files']['NOTICE'])
     && file_get_contents($package . '/LICENSE') === file_get_contents($project . '/LICENSE')
     && file_get_contents($package . '/NOTICE') === file_get_contents($project . '/NOTICE'), '发布未包含当前应用的完整第一方许可证材料');
-$compiledIdentity = (new Type\Build\ArtifactManifest())->read($artifact);
+$compiledIdentity = (new ArtifactManifest())->read($artifact);
 $resourcePrefix = $release['artifact']['path'] . '.resources/' . $compiledIdentity['resource-generation'] . '/';
-$notices = json_decode((string) file_get_contents($package . '/' . $resourcePrefix . $compiledIdentity['dependency-notices']['index']), true, 128, JSON_THROW_ON_ERROR);
+$notices = json_decode((string)file_get_contents($package . '/' . $resourcePrefix . $compiledIdentity['dependency-notices']['index']), true, 128, JSON_THROW_ON_ERROR);
 $thirdPartyDocuments = 0;
 foreach ($notices['components'] as $component) {
     if ($component['id'] !== 'composer:psr/http-message') {
@@ -49,7 +50,7 @@ foreach ($notices['components'] as $component) {
     expect($component['license-declared'] === 'MIT', '第三方许可声明被应用许可替代');
     foreach ($component['documents'] as $document) {
         expect(($release['files'][$resourcePrefix . $document['resource']]['sha256'] ?? null) === $document['sha256'], '第三方许可原文被遗漏或替换');
-        $thirdPartyDocuments++;
+        ++$thirdPartyDocuments;
     }
 }
 expect($thirdPartyDocuments > 0, '发布验收未覆盖第三方生产依赖的实际许可原文');
@@ -85,7 +86,7 @@ if (PHP_OS_FAMILY === 'Darwin' || (PHP_OS_FAMILY === 'Linux' && getenv('TYPE_BWR
     $command = sandboxPackageCommand($root, $package, [$runtime]);
     $isolated = true;
 } elseif (PHP_OS_FAMILY === 'Windows') {
-    $environment['SystemRoot'] = (string) getenv('SystemRoot');
+    $environment['SystemRoot'] = (string)getenv('SystemRoot');
     $environment['TEMP'] = sys_get_temp_dir();
 }
 $help = (new Process([...$command, 'help'], $package, $environment))->wait(10);
@@ -106,7 +107,7 @@ expect($audit->successful() && $audit->stdout === "运行环境完整性校验�
 $initializationStatus = verifyNativeApplicationDeployment($project, $package, $runtime, $command, $environment, $driver, $release['embedded-resources'] ?? [], $isolated);
 
 $example = $package . '/config/env.example';
-$original = (string) file_get_contents($example);
+$original = (string)file_get_contents($example);
 expect($original !== '', '等长篡改验收需要非空配置示例');
 file_put_contents($example, chr(ord($original[0]) ^ 1) . substr($original, 1));
 $tamperRejected = false;
@@ -121,9 +122,9 @@ file_put_contents($example, $original);
 $publisher->verify($package, $created['manifest-sha256']);
 // 旧协议3产物继续发布；使用新验包入口时，顶层应用原文也必须与其构建归属一致。
 $noticeFile = $package . '/NOTICE';
-$savedNotice = (string) file_get_contents($noticeFile);
+$savedNotice = (string)file_get_contents($noticeFile);
 $descriptor = $package . '/release.json';
-$savedDescriptor = (string) file_get_contents($descriptor);
+$savedDescriptor = (string)file_get_contents($descriptor);
 file_put_contents($noticeFile, "Unrelated application NOTICE\n");
 clearstatcache(true, $noticeFile);
 $forged = $release;
@@ -133,7 +134,7 @@ file_put_contents($descriptor, json_encode($forged, JSON_THROW_ON_ERROR));
 try {
     $materialRejected = false;
     try {
-        $publisher->verify($package, (string) hash_file('sha256', $descriptor));
+        $publisher->verify($package, (string)hash_file('sha256', $descriptor));
     } catch (RuntimeException $error) {
         $materialRejected = str_contains($error->getMessage(), '第一方材料不属于编译应用');
     }

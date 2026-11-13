@@ -4,20 +4,18 @@ declare(strict_types=1);
 
 namespace app\common\input;
 
+use Type\Core\Http\HttpError;
 use Type\Validate\Data;
 use Type\Validate\Field;
 use Type\Validate\Input;
 use Type\Validate\Schema;
 use Type\Validate\ValidatedInput;
-use Type\Core\Http\HttpError;
 
 /** 站点更新的版本和变更对象；具体品牌、主题白名单由原 SiteSettings 继续拥有。 */
 final class SiteUpdateInput implements ValidatedInput
 {
     /** 只持有本次已验证对象，不提供运行配置或身份覆盖入口。 */
-    public function __construct(public int $version, public array $changes)
-    {
-    }
+    public function __construct(public int $version, public array $changes) {}
 
     /** 正文只能包含 version 与 changes，嵌套业务规则保持在原服务。 */
     public static function schema(): Schema

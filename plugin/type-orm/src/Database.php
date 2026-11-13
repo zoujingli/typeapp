@@ -4,22 +4,30 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
+use Type\Runtime\DeploymentBudget;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\ResourcePool;
-use Type\Runtime\DeploymentBudget;
 use Type\Runtime\ReusableResource;
 
 /** 单一驱动身份的延迟资源池；作用域拥有连接租约，应用拥有池。 */
 final class Database
 {
     private ?ResourcePool $pool = null;
+
     private Driver $driver;
+
     private int $capacity;
+
     private int $idleLimit;
+
     private bool $closed = false;
+
     private bool $retired = false;
+
     private ?DeploymentBudget $budget;
+
     private int $waiterLimit;
+
     private float $waitSeconds;
 
     /** 池在当前线程首次借用时创建；等待单位为秒，0 禁止排队。 */
@@ -73,7 +81,7 @@ final class Database
     /**
      * 读取本池的租约、空闲、等待及隔离计数，未借用时不创建物理连接。
      *
-     * @return array<string, int|float>
+     * @return array<string, float|int>
      */
     public function statistics(): array
     {
@@ -95,10 +103,11 @@ final class Database
         $this->retired = true;
         $this->pool?->retire();
     }
+
     /**
      * 取得驱动声明的端点与会话身份。
      *
-     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码。
+     * @return array<string, mixed> 包含驱动、端点、逻辑库、角色与凭据代次，不包含密码
      */
     public function identity(): array
     {

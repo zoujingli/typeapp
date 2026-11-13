@@ -16,11 +16,13 @@ use Type\Validate\Schema;
 final class Endpoint implements RequestHandlerInterface
 {
     private string $application;
+
     /** 保存当前应用的缓存隔离身份。 */
     public function __construct(string $application)
     {
         $this->application = $application;
     }
+
     /** 校验查询 ID，在请求作用域内获取文章 DTO；结束时关闭本次创建的 Redis 管理器。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {

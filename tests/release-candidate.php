@@ -39,7 +39,7 @@ if ($operation === 'prepare') {
     expect($identity['version'] === substr($version, 1) && isset($identity['embedded-resources']['web/index.html']), '候选版本或内嵌前端缺失');
     $buildReportFile = $artifact . '.build.json';
     expect(is_file($buildReportFile) && !is_link($buildReportFile), '候选缺少对应的构建报告');
-    $buildReport = json_decode((string) file_get_contents($buildReportFile), true, 512, JSON_THROW_ON_ERROR);
+    $buildReport = json_decode((string)file_get_contents($buildReportFile), true, 512, JSON_THROW_ON_ERROR);
     expect(is_array($buildReport) && ($buildReport['sha256'] ?? null) === hash_file('sha256', $artifact)
         && is_array($buildReport['size-breakdown'] ?? null), '构建报告与候选程序不一致');
     $identityProfile = $identity['profile'] ?? [];
@@ -59,14 +59,14 @@ if ($operation === 'prepare') {
         'size-breakdown' => $buildReport['size-breakdown'],
         'file' => $filename, 'sha256' => $created['sha256'], 'bytes' => $created['bytes'], 'build-id' => $created['build-id'],
         'system-libraries' => $created['system-libraries'],
-        'sdk-manifest-sha256' => hash_file('sha256', (string) getenv('TYPE_STATIC_RUNTIME')),
+        'sdk-manifest-sha256' => hash_file('sha256', (string)getenv('TYPE_STATIC_RUNTIME')),
         'artifact-sha256' => hash_file('sha256', $artifact), 'embedded-resources' => $identity['embedded-resources'],
-        'frontend-manifest-sha256' => hash_file('sha256', (string) getenv('TYPE_FRONTEND_MANIFEST'))]);
+        'frontend-manifest-sha256' => hash_file('sha256', (string)getenv('TYPE_FRONTEND_MANIFEST'))]);
 } elseif ($operation === 'test') {
     $driver = $argv[2] ?? '';
     expect(in_array($driver, ['mysql', 'pgsql', 'sqlite'], true), '候选测试需要明确数据库');
     expect($profile === null || $driver === $profile, 'profile 候选只能验收对应数据库');
-    $record = json_decode((string) file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
+    $record = json_decode((string)file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
     expect(($record['protocol'] ?? null) === 2 && $record['file'] === Candidate::filename($version, $platform, $profile), '不能把历史目录包作为单程序候选');
     $candidate = $work . '/attachments/' . $record['file'];
     (new SingleProgram())->verify($candidate, $record['sha256']);
@@ -86,7 +86,7 @@ if ($operation === 'prepare') {
             $database = new NativeDatabase($work . '/database-' . $driver, $driver, $tools);
             $environment = array_replace($environment, $database->environment());
             // 数据库自己的受限 PATH 只用于数据库进程；嵌套验收仍须找到已准备的 Node 等控制端工具。
-            $environment['PATH'] = (string) getenv('PATH');
+            $environment['PATH'] = (string)getenv('PATH');
             if ($driver !== 'sqlite') {
                 $environment['TYPE_' . strtoupper($driver) . '_TOOLS'] = $driver === 'mysql' ? $argv[3] : $argv[4];
             }
@@ -158,7 +158,7 @@ if ($operation === 'prepare') {
 } elseif ($operation === 'service') {
     expect(PHP_OS_FAMILY !== 'Windows' && $profile !== null && count($argv) === 4, '服务验收需要 profile 和两个数据库工具目录');
     require __DIR__ . '/native-database.php';
-    $record = json_decode((string) file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
+    $record = json_decode((string)file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
     $candidate = $work . '/attachments/' . $record['file'];
     (new SingleProgram())->verify($candidate, $record['sha256']);
     $tools = $profile === 'sqlite' ? [] : NativeDatabase::tools($profile, $profile === 'mysql' ? $argv[2] : $argv[3]);
@@ -177,29 +177,29 @@ if ($operation === 'prepare') {
         $database->close();
     }
 } elseif ($operation === 'materials') {
-    $record = json_decode((string) file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
-    $sdk = (string) getenv('TYPE_STATIC_RUNTIME');
+    $record = json_decode((string)file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
+    $sdk = (string)getenv('TYPE_STATIC_RUNTIME');
     expect(hash_file('sha256', $sdk) === $record['sdk-manifest-sha256'], '重建材料必须来自候选构建使用的同一 SDK');
     $name = 'typeapp-rebuild-' . substr($version, 1) . '-' . $platform . ($profile === null ? '' : '-' . $profile) . '.zip';
     $command = [PHP_OS_FAMILY === 'Windows' ? 'python' : 'python3', $root . '/tools/release/rebuild-materials.py',
         '--sdk', dirname($sdk), '--output', $work . '/attachments/' . $name, '--version', $version, '--platform', $platform];
     if (PHP_OS_FAMILY === 'Windows') {
         $command[] = '--dependencies';
-        $command[] = (string) getenv('TYPE_REBUILD_DEPENDENCIES');
+        $command[] = (string)getenv('TYPE_REBUILD_DEPENDENCIES');
     }
     $result = (new Process($command, $root))->wait(900);
     file_put_contents($work . '/materials.log', $result->stdout . $result->stderr);
     expect($result->successful(), '重建材料封存失败：' . $result->stdout . $result->stderr);
-    $record['rebuild'] = json_decode((string) file_get_contents($work . '/attachments/' . substr($name, 0, -4) . '.json'), true, 64, JSON_THROW_ON_ERROR);
+    $record['rebuild'] = json_decode((string)file_get_contents($work . '/attachments/' . substr($name, 0, -4) . '.json'), true, 64, JSON_THROW_ON_ERROR);
     Reports::report($stateFile, $record);
 } elseif ($operation === 'finish') {
-    $record = json_decode((string) file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
+    $record = json_decode((string)file_get_contents($stateFile), true, 64, JSON_THROW_ON_ERROR);
     foreach ($profile === null ? ['mysql', 'pgsql', 'sqlite'] : [$profile] as $driver) {
-        $check = json_decode((string) file_get_contents($work . '/' . $driver . '.json'), true, 32, JSON_THROW_ON_ERROR);
+        $check = json_decode((string)file_get_contents($work . '/' . $driver . '.json'), true, 32, JSON_THROW_ON_ERROR);
         $record['acceptance'][$driver] = $check;
     }
     if (PHP_OS_FAMILY !== 'Windows') {
-        $record['service'] = json_decode((string) file_get_contents($work . '/service.json'), true, 32, JSON_THROW_ON_ERROR);
+        $record['service'] = json_decode((string)file_get_contents($work . '/service.json'), true, 32, JSON_THROW_ON_ERROR);
     }
     $record['status'] = 'passed';
     Candidate::verify($record, $work . '/attachments', Reports::output(['git', 'rev-parse', 'HEAD'], $root), $version, $platform, $profile);

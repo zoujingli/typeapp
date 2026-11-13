@@ -7,6 +7,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Build\ArtifactManifest;
 use Type\Build\BuildPlatform;
+use Type\Build\NativePackage;
 use Type\Testing\Process;
 
 $root = dirname(__DIR__);
@@ -121,9 +122,9 @@ expect(
 );
 if (PHP_OS_FAMILY === 'Windows') {
     // 复用本轮小型真实 AOT，提前验证发布启动器；全量应用仍保留独立搬迁验收。
-    $package = (new Type\Build\NativePackage())->create($artifact, $consumer . '/moved release');
-    $packageEnvironment = ['SystemRoot' => (string) getenv('SystemRoot'), 'TEMP' => sys_get_temp_dir(),
-        'PATH' => (string) getenv('SystemRoot') . '/System32', 'TYPE_APP_RELEASE_SHA256' => $package['manifest-sha256']];
+    $package = (new NativePackage())->create($artifact, $consumer . '/moved release');
+    $packageEnvironment = ['SystemRoot' => (string)getenv('SystemRoot'), 'TEMP' => sys_get_temp_dir(),
+        'PATH' => (string)getenv('SystemRoot') . '/System32', 'TYPE_APP_RELEASE_SHA256' => $package['manifest-sha256']];
     $packageResult = (new Process([$package['directory'] . '/run.cmd', 'verify-deployment'], $consumer, $packageEnvironment))->wait(15);
     expect(
         $packageResult->successful() && $packageResult->stdout === "deployment-ok\n" && $packageResult->stderr === '',
@@ -184,11 +185,11 @@ if ($sdkChange) {
                 $result = $child->wait(300);
                 file_put_contents($consumer . '/sdk-concurrent-' . $index . '.log', $result->stdout . $result->stderr);
                 if ($result->successful()) {
-                    $completed++;
+                    ++$completed;
                 } else {
                     expect($result->exitCode === 1 && !$result->timedOut && !$result->outputExceeded
                         && $result->stdout === '' && trim($result->stderr) === '构建失败：构建锁等待超时', '并发候选并非成功或明确的有界锁拒绝');
-                    $rejected++;
+                    ++$rejected;
                 }
             }
         } finally {

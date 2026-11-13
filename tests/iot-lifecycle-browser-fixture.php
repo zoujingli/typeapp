@@ -13,11 +13,11 @@ use Type\Testing\Process;
 $root = dirname(__DIR__);
 expect(isset($argv[1], $argv[2]) && ctype_digit($argv[2]), '用法：php tests/iot-lifecycle-browser-fixture.php <原生产物或--php> <隔离HTTP端口>；TYPE_PGSQL_TOOLS提供原生工具');
 $command = $argv[1] === '--php' ? [PHP_BINARY, '-d', 'memory_limit=512M', $root . '/bin/typeapp'] : nativeCommand($argv[1]);
-$port = (int) $argv[2];
+$port = (int)$argv[2];
 expect($port > 1024 && $port < 65536, 'HTTP端口无效');
 $base = $root . '/build/iot-lifecycle-browser-' . bin2hex(random_bytes(6));
 expect(mkdir($base, 0700), '无法创建隔离浏览器装置');
-$tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+$tools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
 $database = new NativeDatabase($base . '/primary', 'pgsql', $tools);
 $sync = null;
 $server = null;
@@ -38,8 +38,8 @@ try {
             unset($environment[$key]);
         }
     }
-    $environment = array_replace($environment, ['PATH' => (string) getenv('PATH'), 'APP_BASE_PATH' => $base, 'DB_DRIVER' => 'pgsql',
-        'APP_API_TOKEN' => bin2hex(random_bytes(32)), 'APP_CACHE_ENABLED' => 'false', 'APP_DEBUG' => 'true', 'APP_PORT' => (string) $port,
+    $environment = array_replace($environment, ['PATH' => (string)getenv('PATH'), 'APP_BASE_PATH' => $base, 'DB_DRIVER' => 'pgsql',
+        'APP_API_TOKEN' => bin2hex(random_bytes(32)), 'APP_CACHE_ENABLED' => 'false', 'APP_DEBUG' => 'true', 'APP_PORT' => (string)$port,
         'APP_ALLOWED_HOSTS' => '127.0.0.1:' . $port,
         'APP_ADMIN_PASSWORD' => 'Lifecycle-admin-password-2026', 'APP_CUSTOMER_PASSWORD' => 'Lifecycle-browser-password-2026']);
     foreach (['HOST' => 'HOST', 'PORT' => 'PORT', 'DATABASE' => 'DATABASE', 'USERNAME' => 'USER', 'PASSWORD' => 'PASSWORD'] as $destination => $source) {
@@ -58,10 +58,10 @@ try {
     chmod($base . '/private.pem', 0600);
     $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $error);
     expect(is_resource($listener), '无法分配Broker端口');
-    $mqttPort = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $mqttPort = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
     $environment += ['IOT_MQTT_COMMAND' => json_encode($command, JSON_THROW_ON_ERROR), 'IOT_MQTT_CERTIFICATE' => 'certificate.pem',
-        'IOT_MQTT_PRIVATE_KEY' => 'private.pem', 'IOT_MQTT_PORT' => (string) $mqttPort, 'IOT_MQTT_NODE_ID' => 'lifecycle-browser'];
+        'IOT_MQTT_PRIVATE_KEY' => 'private.pem', 'IOT_MQTT_PORT' => (string)$mqttPort, 'IOT_MQTT_NODE_ID' => 'lifecycle-browser'];
     $run = static function (array $arguments) use ($command, $root, $environment): string {
         $process = new Process([...$command, ...$arguments], $root, $environment);
         try {
@@ -77,7 +77,7 @@ try {
     $server = new Process([...$command, 'serve'], $root, $environment);
     $client = new HttpClient('http://127.0.0.1:' . $port);
     $ready = false;
-    for ($attempt = 0; $attempt < 100; $attempt++) {
+    for ($attempt = 0; $attempt < 100; ++$attempt) {
         try {
             if ($client->request('GET', '/readyz')->status === 200) {
                 $ready = true;

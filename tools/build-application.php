@@ -5,6 +5,8 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/vendor/autoload.php';
 require __DIR__ . '/distribution/Process.php';
 
+use Type\Build\BuildPlatform;
+use Type\Build\StaticRuntimeSdk;
 use TypeApp\Distribution\Process;
 
 // 正式前端只构建一次，各平台验证同一清单后全量AOT；版本只写临时配置。
@@ -14,7 +16,7 @@ try {
         throw new InvalidArgumentException('用法：php tools/build-application.php [--shared-development]');
     }
     // 正常交付必须静态构建；共享库只用于既有开发与回归场景，不能进入发布候选。
-    if (($argv[1] ?? '') !== '--shared-development' && Type\Build\StaticRuntimeSdk::selected() === null) {
+    if (($argv[1] ?? '') !== '--shared-development' && StaticRuntimeSdk::selected() === null) {
         throw new RuntimeException('单程序构建需要目标平台的 TYPE_STATIC_RUNTIME 清单；不会回退为目录包。制备与验收范围见 docs/guide/deployment.md。');
     }
     $frontend = getenv('TYPE_FRONTEND_MANIFEST');
@@ -26,7 +28,7 @@ try {
         echo Process::output([PHP_BINARY, $root . '/tools/frontend-resources.php', 'record', $frontend], $root) . "\n";
     }
     echo Process::output([PHP_BINARY, $root . '/tools/frontend-resources.php', 'verify', $frontend], $root) . "\n";
-    $settings = json_decode((string) file_get_contents($root . '/docs/build-config/type-app.json'), true, 64, JSON_THROW_ON_ERROR);
+    $settings = json_decode((string)file_get_contents($root . '/docs/build-config/type-app.json'), true, 64, JSON_THROW_ON_ERROR);
     $version = getenv('TYPE_RELEASE_VERSION');
     if (is_string($version) && $version !== '') {
         if (!preg_match('/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-rc\.[1-9][0-9]*)?$/D', $version)) {
@@ -43,9 +45,9 @@ try {
     $seconds = (hrtime(true) - $started) / 1e9;
     // 仅由原候选性能验收请求记录；计时绑定这次真实编译，不为补证据重新编译产物。
     if (getenv('TYPE_BENCHMARK_BUILD_TIMING') === '1') {
-        $runtime = Type\Build\StaticRuntimeSdk::selected(getenv('TYPEAPP_BUILD_PROFILE') ?: null);
-        $artifact = (new Type\Build\BuildPlatform())->output($root . '/' . $settings['output']);
-        $report = json_decode((string) file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+        $runtime = StaticRuntimeSdk::selected(getenv('TYPEAPP_BUILD_PROFILE') ?: null);
+        $artifact = (new BuildPlatform())->output($root . '/' . $settings['output']);
+        $report = json_decode((string)file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
         if ($runtime === null || ($report['cache']['hit'] ?? true) !== false || ($report['sha256'] ?? '') !== hash_file('sha256', $artifact)
             || ($report['manifest']['runtime-linkage'] ?? '') !== 'static') {
             throw new RuntimeException('原候选编译计时需要本轮真实静态编译；缓存命中不能作为冷编译结果');

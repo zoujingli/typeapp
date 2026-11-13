@@ -1,9 +1,10 @@
 <?php
 
 declare(strict_types=1);
+use Type\Testing\HttpClient;
 
 /** 在身份测试建立的真实HTTP与隔离数据库上执行产品纵向验收，不直接调用内部业务类。 */
-function iotProductChecks(Closure $appRequest, PDO $inspection, string $driver, string $address, string $platform, string $password, Type\Testing\HttpClient $client): array
+function iotProductChecks(Closure $appRequest, PDO $inspection, string $driver, string $address, string $platform, string $password, HttpClient $client): array
 {
     $call = static fn (string $method, string $path, string $token, ?array $data = null, int $status = 200, array $headers = []): array => $appRequest($method, $path, $token, $headers, $data, $status)['data'] ?? [];
     $tenantA = bin2hex(random_bytes(16));
@@ -82,7 +83,7 @@ function iotProductChecks(Closure $appRequest, PDO $inspection, string $driver, 
     $beforeLegacy = $inspection->query('SELECT * FROM iot_models')->fetchAll(PDO::FETCH_ASSOC);
     $request('DELETE', $products . '/' . $legacy['id'], $admin, $tenantA, ['version' => 1], 409, 'product_referenced');
     expect($inspection->query('SELECT * FROM iot_models')->fetchAll(PDO::FETCH_ASSOC) === $beforeLegacy, '分类删除改变了旧模型原件');
-    for ($index = 0; $index < 19; $index++) {
+    for ($index = 0; $index < 19; ++$index) {
         $request('POST', $products, $admin, $tenantA, ['name' => '分页分类-' . $index], 201);
     }
     $first = $request('GET', $products, $readonly, $tenantA, null, 200);
@@ -122,7 +123,7 @@ function iotProductChecks(Closure $appRequest, PDO $inspection, string $driver, 
     expect($race === [200, 409], '分类修改不能同时接受同一资料版本');
     $owner = $call('GET', '/customer/auth/me', $admin, null, 200, $headers);
     $customer = $call('GET', '/admin/customers/' . $owner['user']['id'], $platform)['items'][0];
-    $simulation = $call('POST', '/admin/customers/' . $customer['id'] . '/impersonate', $platform, ['version' => (int) $customer['version']]);
+    $simulation = $call('POST', '/admin/customers/' . $customer['id'] . '/impersonate', $platform, ['version' => (int)$customer['version']]);
     $simToken = $simulation['accessToken'];
     $simProduct = $request('POST', $products, $simToken, $tenantA, ['name' => '模拟产品'], 201)['data'];
     $query = $inspection->prepare("SELECT actor_id, details FROM customer_audit WHERE subject_id = ? AND action = 'product.created'");
@@ -141,7 +142,7 @@ function iotProductChecks(Closure $appRequest, PDO $inspection, string $driver, 
     $request('POST', $products, $simToken, $tenantA, ['name' => '已失效模拟'], 401, 'unauthenticated');
     // 锁竞争不保证请求顺序；在测试持锁期间撤销准确来源，确定性验证锁后复核。
     $freshPlatform = $call('POST', '/admin/auth/login', '', ['login' => 'same-login', 'password' => $password])['accessToken'];
-    $queuedToken = $call('POST', '/admin/customers/' . $customer['id'] . '/impersonate', $freshPlatform, ['version' => (int) $customer['version']])['accessToken'];
+    $queuedToken = $call('POST', '/admin/customers/' . $customer['id'] . '/impersonate', $freshPlatform, ['version' => (int)$customer['version']])['accessToken'];
     $queuedContext = $call('GET', '/customer/auth/me', $queuedToken, null, 200, $headers)['identity'];
     $queuedWrite = identityCompete($inspection, $driver, $address, [
         ['POST', $products, $queuedToken, ['name' => '持锁撤权禁止写入'], $headers],

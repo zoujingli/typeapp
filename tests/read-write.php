@@ -1,6 +1,9 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\BuildPlatform;
+use Type\Build\ModelCompiler;
+use Type\Testing\Process;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -61,12 +64,12 @@ try {
             expect($name === $environment['TYPE_PRIMARY_DATABASE'], '主从逻辑库名不一致');
         }
     }
-    $generated = (new Type\Build\ModelCompiler())->compile([$root . '/examples/model/Models.php']);
+    $generated = (new ModelCompiler())->compile([$root . '/examples/model/Models.php']);
     file_put_contents($work . '/models.php', $generated['code']);
     if (isset($argv[1]) && $argv[1] !== '--php') {
         if (PHP_OS_FAMILY === 'Windows') {
-            $artifact = Type\Build\BuildPlatform::resolve($argv[1]);
-            (new Type\Build\BuildPlatform())->assertArtifact($artifact);
+            $artifact = BuildPlatform::resolve($argv[1]);
+            (new BuildPlatform())->assertArtifact($artifact);
             $build = json_decode(file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
             $ini = $build['runtime-profile']['ini'];
             expect(is_file($ini) && is_dir(dirname($ini) . '/php.d'), '原生主从运行配置缺失');
@@ -81,7 +84,7 @@ try {
             . '; require ' . var_export($root . '/examples/read-write-command.php', true) . '; main($argc, $argv);';
         $command = [PHP_BINARY, '-r', $launcher];
     }
-    $process = new Type\Testing\Process([...$command, $driver], $root, $environment);
+    $process = new Process([...$command, $driver], $root, $environment);
     try {
         $result = $process->wait(60);
         $report['output'] = $result->stdout . $result->stderr;

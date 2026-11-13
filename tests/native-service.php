@@ -6,8 +6,8 @@ require __DIR__ . '/support.php';
 require __DIR__ . '/service-database.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-use Type\Build\BuildPlatform;
 use Type\Build\ArtifactManifest;
+use Type\Build\BuildPlatform;
 use Type\Build\NativePackage;
 use Type\Build\SingleProgram;
 use Type\Testing\HttpClient;
@@ -95,7 +95,7 @@ function serviceControl(array $arguments): array
 function servicePid(string $target): int
 {
     $state = serviceControl(['print', $target]);
-    return $state['code'] === 0 && preg_match('/\bpid = ([0-9]+)/', $state['stdout'], $match) === 1 ? (int) $match[1] : 0;
+    return $state['code'] === 0 && preg_match('/\bpid = ([0-9]+)/', $state['stdout'], $match) === 1 ? (int)$match[1] : 0;
 }
 
 /** 在 20 秒轮询预算内要求新服务进程号且 /readyz 成功，返回已观察到的新进程号。 */
@@ -133,9 +133,9 @@ try {
     expect($bootstrap['code'] === 0, 'launchd注册失败：' . $bootstrap['stderr']);
     $loaded = true;
     $pid = readyService($target, $client);
-    $command = trim(successful(['/bin/ps', '-p', (string) $pid, '-o', 'comm=']));
+    $command = trim(successful(['/bin/ps', '-p', (string)$pid, '-o', 'comm=']));
     expect($command === $expectedProgram, 'launchd主进程不是指定原生应用：' . $command);
-    expect((int) trim(successful(['/bin/ps', '-p', (string) $pid, '-o', 'uid='])) === posix_geteuid() && posix_geteuid() !== 0, 'launchd应用没有以预期非root账号运行');
+    expect((int)trim(successful(['/bin/ps', '-p', (string)$pid, '-o', 'uid='])) === posix_geteuid() && posix_geteuid() !== 0, 'launchd应用没有以预期非root账号运行');
     expect($client->request('GET', '/admin/users')->status === 401, '服务入口丢失授权');
     $login = $client->request('POST', '/admin/auth/login', ['Content-Type' => 'application/json'], json_encode([
         'login' => 'launchd-admin', 'password' => $password,
@@ -179,7 +179,7 @@ try {
     $record = ['platform' => PHP_OS_FAMILY, 'manager' => 'launchd', 'release-sha256' => $package['manifest-sha256'],
         'service-sha256' => $service['manifest-sha256'], 'artifact-sha256' => hash_file('sha256', $artifact),
         'delivery' => $single ? 'single-executable' : 'directory',
-        'pid' => $pid, 'replacement-pid' => $replacement, 'port' => (int) $port,
+        'pid' => $pid, 'replacement-pid' => $replacement, 'port' => (int)$port,
         'checks' => ['public-cli', 'real-native-process', 'private-external-config', 'production-debug-override', 'health-auth-crud', 'crash-restart', 'data-survives', 'sigterm-exit-zero', 'no-success-restart', 'private-logs', 'release-unchanged']];
 } finally {
     if ($loaded) {

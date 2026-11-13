@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 use Type\Orm\Connection;
 use Type\Orm\Database;
+use Type\Orm\DatabaseException;
 use Type\Orm\Mysql\MysqlDriver;
+use Type\Runtime\CapacityException;
 use Type\Runtime\ExecutionScope;
 
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function databaseExpect(bool $condition, string $message): void
 {
@@ -22,7 +24,7 @@ function databaseExpect(bool $condition, string $message): void
 /**
  * 在专属 MySQL 数据库验证真实读写、事务、连接复用边界及退出清理。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
@@ -32,11 +34,11 @@ function main(int $argc, array $argv): void
     }
     $scope = new ExecutionScope();
     $driver = new MysqlDriver(
-        (string) (getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1'),
-        (int) (getenv('TYPE_MYSQL_PORT') ?: '3306'),
-        (string) (getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test'),
-        (string) (getenv('TYPE_MYSQL_USER') ?: 'root'),
-        (string) (getenv('TYPE_MYSQL_PASSWORD') ?: '')
+        (string)(getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1'),
+        (int)(getenv('TYPE_MYSQL_PORT') ?: '3306'),
+        (string)(getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test'),
+        (string)(getenv('TYPE_MYSQL_USER') ?: 'root'),
+        (string)(getenv('TYPE_MYSQL_PASSWORD') ?: '')
     );
     $database = new Database($driver, 1, 1);
     try {
@@ -72,7 +74,7 @@ function main(int $argc, array $argv): void
         $full = false;
         try {
             $database->connect($scope, 0);
-        } catch (\Type\Runtime\CapacityException $error) {
+        } catch (CapacityException $error) {
             $full = true;
         }
         databaseExpect($full, '连接池超过容量继续借用');
@@ -81,7 +83,7 @@ function main(int $argc, array $argv): void
         $sqlError = false;
         try {
             $connection->query('SELECT nonexistent_column FROM type_app_probe');
-        } catch (\Type\Orm\DatabaseException $error) {
+        } catch (DatabaseException $error) {
             $sqlError = str_contains($error->getMessage(), 'SQLSTATE') && !str_contains($error->getMessage(), 'nonexistent_column');
         }
         databaseExpect($sqlError, '数据库错误未分类或泄露了原始 SQL');
@@ -94,7 +96,7 @@ function main(int $argc, array $argv): void
         }
         databaseExpect($released, '归还后的连接仍可使用');
         $next = $database->connect($scope);
-        databaseExpect((int) $next->query('SELECT 7 AS value')[0]['value'] === 7, '作用域内无法再次借用');
+        databaseExpect((int)$next->query('SELECT 7 AS value')[0]['value'] === 7, '作用域内无法再次借用');
         $next->close();
         databaseExpect($database->statistics()['idle'] === 0 && $database->statistics()['leased'] === 0, 'MySQL 安全关闭后不应保留物理会话');
         $scope->close();

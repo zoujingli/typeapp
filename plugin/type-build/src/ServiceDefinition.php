@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
-
 /** 从受信单程序或历史目录包生成系统服务配置；不安装服务或修改运行数据。 */
 final class ServiceDefinition
 {
@@ -15,7 +13,7 @@ final class ServiceDefinition
      *
      * @param array{name:string, 'runtime-directory':string, user?:string, scope?:string, 'release-directory'?:string, arguments?:list<string>, 'stop-seconds'?:int, 'restart-seconds'?:int, 'windows-wrapper'?:array{path:string, sha256:string}} $settings 只接受公开部署参数；秘密由运行根的.env提供。
      * @return array{directory:string, manager:string, descriptor:string, 'manifest-sha256':string}
-     * @throws RuntimeException 发布摘要、参数或包装器不可信，目录重叠、目标已存在或无法完整写入。
+     * @throws \RuntimeException 发布摘要、参数或包装器不可信，目录重叠、目标已存在或无法完整写入
      */
     public function create(string $releaseDirectory, string $destination, string $releaseSha256, array $settings): array
     {
@@ -35,46 +33,46 @@ final class ServiceDefinition
         $family = $release['runtime']['os'];
         $platform = new BuildPlatform($family);
         if (array_diff(array_keys($settings), ['name', 'runtime-directory', 'user', 'scope', 'release-directory', 'arguments', 'stop-seconds', 'restart-seconds', 'windows-wrapper']) !== []) {
-            throw new RuntimeException('服务声明包含未知字段；秘密不能作为服务生成参数');
+            throw new \RuntimeException('服务声明包含未知字段；秘密不能作为服务生成参数');
         }
         $name = $settings['name'] ?? null;
         if (!is_string($name) || preg_match('/^[A-Za-z][A-Za-z0-9]{0,63}$/D', $name) !== 1) {
-            throw new RuntimeException('跨平台服务名称必须以字母开头且只包含字母数字，最多64字符');
+            throw new \RuntimeException('跨平台服务名称必须以字母开头且只包含字母数字，最多64字符');
         }
         $target = $this->path($settings['release-directory'] ?? $releaseDirectory, $platform);
         $program = $this->path($target . '/' . ($single ? $entry : ($family === 'Windows' ? 'bin/app.exe' : 'run')), $platform);
         $runtime = $this->path($settings['runtime-directory'] ?? null, $platform);
         if ($this->overlaps($target, $runtime, $family)) {
-            throw new RuntimeException('运行数据根与不可变发布目录必须分离');
+            throw new \RuntimeException('运行数据根与不可变发布目录必须分离');
         }
         $arguments = $settings['arguments'] ?? ['serve'];
         if (!is_array($arguments) || !array_is_list($arguments) || $arguments === [] || count($arguments) > 32) {
-            throw new RuntimeException('服务参数必须为1到32项的公开参数数组');
+            throw new \RuntimeException('服务参数必须为1到32项的公开参数数组');
         }
         foreach ($arguments as $argument) {
             if (!is_string($argument) || strlen($argument) > 512 || preg_match('//u', $argument) !== 1
                 || preg_match('/[\x00-\x1f\x7f]/', $argument) || ($family === 'Windows' && str_contains($argument, '%'))) {
-                throw new RuntimeException('服务参数无效；Windows不接受环境变量插值');
+                throw new \RuntimeException('服务参数无效；Windows不接受环境变量插值');
             }
         }
         $stop = $settings['stop-seconds'] ?? 30;
         $restart = $settings['restart-seconds'] ?? 10;
         if (!is_int($stop) || $stop < 1 || $stop > 300 || !is_int($restart) || $restart < 1 || $restart > 3600) {
-            throw new RuntimeException('服务停止预算须为1到300秒，重启间隔须为1到3600秒');
+            throw new \RuntimeException('服务停止预算须为1到300秒，重启间隔须为1到3600秒');
         }
         $user = $settings['user'] ?? '';
         $scope = $settings['scope'] ?? ($family === 'Windows' ? 'system' : 'user');
         if (!in_array($scope, ['user', 'system'], true) || ($family === 'Windows' && $scope !== 'system')) {
-            throw new RuntimeException('服务作用域只接受user/system；Windows只支持system');
+            throw new \RuntimeException('服务作用域只接受user/system；Windows只支持system');
         }
         if ($family !== 'Windows' && (!is_string($user) || preg_match('/^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/D', $user) !== 1 || strtolower($user) === 'root')) {
-            throw new RuntimeException('Unix服务必须显式指定非root运行账号');
+            throw new \RuntimeException('Unix服务必须显式指定非root运行账号');
         }
         if ($family === 'Windows' && isset($settings['user'])) {
-            throw new RuntimeException('Windows配置固定使用LocalService，不接受账号密码或默认LocalSystem');
+            throw new \RuntimeException('Windows配置固定使用LocalService，不接受账号密码或默认LocalSystem');
         }
         if ($family !== 'Windows' && isset($settings['windows-wrapper'])) {
-            throw new RuntimeException('非Windows目标不接受Windows包装器');
+            throw new \RuntimeException('非Windows目标不接受Windows包装器');
         }
         // APP_ENV 来自外置配置，不能在服务管理器中覆盖演示环境；应用缺省为 prod。
         $environment = ['APP_BASE_PATH' => $runtime, 'APP_DEBUG' => 'false', 'TYPE_APP_RELEASE_SHA256' => $releaseSha256];
@@ -95,15 +93,15 @@ final class ServiceDefinition
             if (!is_array($wrapper) || array_keys($wrapper) === [] || array_diff(array_keys($wrapper), ['path', 'sha256']) !== []
                 || !is_string($wrapper['path'] ?? null) || !is_string($wrapper['sha256'] ?? null)
                 || preg_match('/^[a-f0-9]{64}$/D', $wrapper['sha256']) !== 1) {
-                throw new RuntimeException('Windows服务需要显式提供WinSW 2.12.0包装器及外部受信SHA256');
+                throw new \RuntimeException('Windows服务需要显式提供WinSW 2.12.0包装器及外部受信SHA256');
             }
             $wrapper['path'] = BuildPlatform::resolve($wrapper['path']);
             BuildLock::path($wrapper['path']);
             if (!is_file($wrapper['path']) || filesize($wrapper['path']) > 134217728 || BuildPlatform::format($wrapper['path']) !== 'PE'
-                || !hash_equals($wrapper['sha256'], (string) hash_file('sha256', $wrapper['path']))) {
-                throw new RuntimeException('Windows服务包装器格式或受信摘要不一致');
+                || !hash_equals($wrapper['sha256'], (string)hash_file('sha256', $wrapper['path']))) {
+                throw new \RuntimeException('Windows服务包装器格式或受信摘要不一致');
             }
-            $system = $this->path((string) getenv('SystemRoot'), $platform);
+            $system = $this->path((string)getenv('SystemRoot'), $platform);
             $environment += ['PHP_HOME' => '', 'PHPX_HOME' => '', 'PATH' => $system . '/System32'];
             if (!$single) {
                 $environment += ['TYPE_APP_RUNTIME_ROOT' => $target, 'PHPRC' => $target . '/runtime/php.ini',
@@ -117,19 +115,19 @@ final class ServiceDefinition
         $parent = BuildPlatform::resolve(dirname($destination));
         $leaf = basename($destination);
         if ($leaf === '' || $leaf === '.' || $leaf === '..' || preg_match('/[\x00-\x1f\x7f]/', $leaf)) {
-            throw new RuntimeException('服务输出目录名称无效');
+            throw new \RuntimeException('服务输出目录名称无效');
         }
         $destination = $parent . '/' . $leaf;
         BuildLock::path($destination);
         if ($this->overlaps($destination, $releaseDirectory, $family) || $this->overlaps($destination, $target, $family) || $this->overlaps($destination, $runtime, $family)) {
-            throw new RuntimeException('服务配置、运行数据与不可变发布目录必须分离');
+            throw new \RuntimeException('服务配置、运行数据与不可变发布目录必须分离');
         }
         if (file_exists($destination) || is_link($destination)) {
-            throw new RuntimeException('服务输出目录已存在，不能覆盖已安装配置');
+            throw new \RuntimeException('服务输出目录已存在，不能覆盖已安装配置');
         }
         $stage = $destination . '.building-' . bin2hex(random_bytes(6));
         if (!mkdir($stage, 0700)) {
-            throw new RuntimeException('无法创建服务配置暂存目录');
+            throw new \RuntimeException('无法创建服务配置暂存目录');
         }
         try {
             $platform->privateCache($stage, true);
@@ -137,7 +135,7 @@ final class ServiceDefinition
             $hashes = [];
             foreach ($files as $file => $content) {
                 if (file_put_contents($stage . '/' . $file, $content, LOCK_EX) !== strlen($content)) {
-                    throw new RuntimeException('服务配置写入不完整');
+                    throw new \RuntimeException('服务配置写入不完整');
                 }
                 chmod($stage . '/' . $file, 0600);
                 $hashes[$file] = hash('sha256', $content);
@@ -145,22 +143,22 @@ final class ServiceDefinition
             if ($wrapper !== null) {
                 $wrapperFile = $name . '.exe';
                 if (!copy($wrapper['path'], $stage . '/' . $wrapperFile) || hash_file('sha256', $stage . '/' . $wrapperFile) !== $wrapper['sha256']) {
-                    throw new RuntimeException('Windows包装器复制中发生变化');
+                    throw new \RuntimeException('Windows包装器复制中发生变化');
                 }
                 $hashes[$wrapperFile] = $wrapper['sha256'];
             }
             $record = ['protocol' => 1, 'manager' => $manager, 'platform' => $family, 'scope' => $scope, 'name' => $name,
                 'release-directory' => $target, 'runtime-directory' => $runtime, 'release-sha256' => $releaseSha256,
                 'delivery' => $single ? 'single-executable' : 'directory', 'program' => $program,
-                'build-id' => $buildId, 'user' => $family === 'Windows' ? 'NT AUTHORITY\\LocalService' : $user,
+                'build-id' => $buildId, 'user' => $family === 'Windows' ? 'NT AUTHORITY\LocalService' : $user,
                 'descriptor' => $filename, 'files' => $hashes, 'installed' => false, 'runtime-verified' => false];
             $json = json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
             if (file_put_contents($stage . '/service.json', $json, LOCK_EX) !== strlen($json)) {
-                throw new RuntimeException('无法写入服务生成记录');
+                throw new \RuntimeException('无法写入服务生成记录');
             }
             chmod($stage . '/service.json', 0600);
             if (!rename($stage, $destination)) {
-                throw new RuntimeException('无法原子发布服务配置');
+                throw new \RuntimeException('无法原子发布服务配置');
             }
             return ['directory' => $destination, 'manager' => $manager, 'descriptor' => $destination . '/' . $filename, 'manifest-sha256' => hash('sha256', $json)];
         } finally {
@@ -179,14 +177,14 @@ final class ServiceDefinition
     {
         if (!is_string($value) || preg_match('//u', $value) !== 1 || preg_match('/[\x00-\x1f\x7f]/', $value)
             || !$platform->absolute($value) || strlen($value) > 2048) {
-            throw new RuntimeException('服务路径必须是有效的目标平台绝对路径');
+            throw new \RuntimeException('服务路径必须是有效的目标平台绝对路径');
         }
         $path = $platform->family() === 'Windows' ? str_replace('\\', '/', $value) : $value;
         $path = rtrim($path, '/');
         if ($path === '' || trim($path) !== $path || ($platform->family() === 'Linux' && str_ends_with($path, '\\'))
             || preg_match('~^[A-Za-z]:$~D', $path) || preg_match('~(?:^|/)\.{1,2}(?:/|$)~', $path) || str_contains($path, '//')
             || ($platform->family() === 'Windows' && (str_contains($path, '%') || str_contains($path, ';')))) {
-            throw new RuntimeException('服务路径不能为文件系统根、跳转或包含插值');
+            throw new \RuntimeException('服务路径不能为文件系统根、跳转或包含插值');
         }
         return $path;
     }
@@ -227,7 +225,7 @@ final class ServiceDefinition
 
     private function systemdQuote(string $value): string
     {
-        $value = str_replace(['\\', '"', '%'], ['\\\\', '\\"', '%%'], $value);
+        $value = str_replace(['\\', '"', '%'], ['\\\\', '\"', '%%'], $value);
         return '"' . $value . '"';
     }
 
@@ -254,10 +252,10 @@ final class ServiceDefinition
             // CommandLineToArgvW规则：引号前和结束引号前的反斜线必须加倍。
             $quoted = '"';
             $slashes = 0;
-            for ($index = 0; $index < strlen($argument); $index++) {
+            for ($index = 0; $index < strlen($argument); ++$index) {
                 $character = $argument[$index];
                 if ($character === '\\') {
-                    $slashes++;
+                    ++$slashes;
                     continue;
                 }
                 $quoted .= str_repeat('\\', $character === '"' ? $slashes * 2 + 1 : $slashes) . $character;

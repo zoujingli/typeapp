@@ -13,7 +13,7 @@ final class SqlStatement
         $quote = '';
         $ended = false;
         $length = strlen($sql);
-        for ($index = 0; $index < $length; $index++) {
+        for ($index = 0; $index < $length; ++$index) {
             $character = $sql[$index];
             if ($quote !== '') {
                 if ($character === '\\') {
@@ -21,7 +21,7 @@ final class SqlStatement
                 }
                 if ($character === $quote) {
                     if ($index + 1 < $length && $sql[$index + 1] === $quote) {
-                        $index++;
+                        ++$index;
                     } else {
                         $quote = '';
                     }

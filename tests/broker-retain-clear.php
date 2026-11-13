@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/vendor/autoload.php';
 require_once __DIR__ . '/native-database.php';
 require_once __DIR__ . '/postgres-sync.php';
 
+use Type\Build\NativePackage;
 use Type\Mqtt\Client;
 use Type\Mqtt\Message;
 use Type\Testing\HttpClient;
@@ -31,14 +32,13 @@ if (!function_exists('identityCommand')) {
  * 独立管理端预览并明确清除指定保留原件；按 resource_id 与代次匹配，不制造普通发布、不撤回已有交付。
  * 需要 PostgreSQL 同步存储；SQLite QoS0 不能证明持久清保留。
  */
-
 $root = dirname(__DIR__);
 $target = $argv[1] ?? '--php';
 $driver = $argv[2] ?? 'pgsql';
 expect($driver === 'pgsql', '清保留验收需要 PostgreSQL 同步存储');
 if ($target === '--php') {
     $swoole = getenv('TYPE_SWOOLE_MODULE');
-    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string)ini_get('extension_dir'), '/') . '/swoole.so';
     expect(is_file($swoole), 'PHP 清保留验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
     $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
 } else {
@@ -56,7 +56,7 @@ foreach ($argv as $argument) {
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '无源码清保留验收使用macOS内核策略及原生产物');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $sourceRoot = realpath($built['identity']['description']['facts']['workspace']);
     expect(is_string($sourceRoot), '无源码验收必须能定位实际编译输入');
@@ -67,7 +67,7 @@ if ($noSource) {
     }
     $command = [...$policy, $runtime . '/run'];
 }
-$databaseTools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+$databaseTools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
 $fixtureDatabase = new NativeDatabase($base . '/primary', 'pgsql', $databaseTools);
 $fixtureSync = new PostgresSync($fixtureDatabase, $base . '/standby', $databaseTools, 'broker_retain_sync');
 $environment = getenv();
@@ -122,7 +122,7 @@ try {
     $secrets[] = $password;
     identityCommand([...$command, 'broker:user', 'access-admin', '清保留管理员'], $environment + ['BROKER_ADMIN_PASSWORD' => $password]);
     $addresses = [];
-    for ($index = 0; $index < 3; $index++) {
+    for ($index = 0; $index < 3; ++$index) {
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorText);
         expect(is_resource($listener), '无法选择清保留测试端口');
         $addresses[] = stream_socket_get_name($listener, false);
@@ -148,10 +148,10 @@ try {
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $plain = static function (string $method, string $path, string $token, string $body, int $status) use ($client, $server, &$checks): array {
@@ -162,7 +162,7 @@ try {
         $response = $client->request($method, $path, $headers, $body);
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $auth = $request('POST', '/broker/auth/login', '', ['login' => 'access-admin', 'password' => $password], 200)['data'];
@@ -187,7 +187,7 @@ try {
         usleep(100000);
     } while (microtime(true) < $deadline);
     expect(($nodes['total'] ?? 0) === 1, '清保留节点未上报');
-    $port = (int) $nodeEnvironment['BROKER_PORT'];
+    $port = (int)$nodeEnvironment['BROKER_PORT'];
     $holder = new Client('127.0.0.1', $port, 'retain-holder', 'broker-client', $mqttPassword, sessionExpiry: 0, allowPlaintext: true);
     expect(!$holder->connect(true), '在途订阅者不应报告已恢复');
     expect($holder->subscribe('broker-retain/keep') === 1, '在途订阅者应获得 QoS1 订阅');
@@ -223,16 +223,16 @@ try {
     expect($otherItem['items'] !== [] && $otherItem['items'][0]['topic'] === 'broker-retain/other', '对照保留未进入资源查询');
     $item = $keepItem['items'][0];
     $preview = $request('GET', '/broker/resources/retained/' . $item['id'] . '/clearance-preview', $token, null, 200);
-    expect($preview['id'] === $item['id'] && $preview['generation'] === (int) $item['generation']
+    expect($preview['id'] === $item['id'] && $preview['generation'] === (int)$item['generation']
         && $preview['impact']['future_replay_cancelled'] === true && $preview['impact']['no_ordinary_publish'] === true
         && $preview['impact']['existing_deliveries_kept'] === true, '清除预览丢失精确目标或影响');
     $encodedPreview = json_encode($preview, JSON_THROW_ON_ERROR);
     expect(!str_contains($encodedPreview, $keepPayload) && !str_contains($encodedPreview, $otherPayload), '清除预览泄漏保留载荷');
     $request('GET', '/broker/resources/retained/' . $item['id'] . '/clearance-preview', '', null, 401);
     $plain('POST', '/broker/resources/retained/' . $item['id'] . '/clear', $token, 'confirmed=true', 415);
-    $request('POST', '/broker/resources/retained/' . $item['id'] . '/clear', $token, ['generation' => (int) $item['generation']], 422);
+    $request('POST', '/broker/resources/retained/' . $item['id'] . '/clear', $token, ['generation' => (int)$item['generation']], 422);
     $request('POST', '/broker/resources/retained/' . str_repeat('0', 32) . '/clear', $token, ['generation' => 1, 'confirmed' => true], 404);
-    $body = ['generation' => (int) $item['generation'], 'confirmed' => true];
+    $body = ['generation' => (int)$item['generation'], 'confirmed' => true];
     $operationId = bin2hex(random_bytes(16));
     $accepted = $request('POST', '/broker/resources/retained/' . $item['id'] . '/clear', $token, $body + ['operation_id' => $operationId], 200);
     expect($accepted['kind'] === 'retain_clear' && $accepted['outcome'] === 'pending', '清保留受理被当成已完成');
@@ -286,25 +286,25 @@ try {
     } while (microtime(true) < $deadline);
     expect($staleList['items'] !== [], '代次对照保留未进入资源查询');
     $staleItem = $staleList['items'][0];
-    $oldGeneration = (int) $staleItem['generation'];
+    $oldGeneration = (int)$staleItem['generation'];
     $replaced = 'replaced-secret-' . bin2hex(random_bytes(8));
     $secrets[] = $replaced;
     expect($publisher->publish(new Message('broker-retain/stale', $replaced, '', 1, 0, true)) === 0, '代次对照替换保留失败');
     $deadline = microtime(true) + 10;
     do {
         $staleList = $request('GET', '/broker/resources/retained?topic=' . rawurlencode('broker-retain/stale') . '&limit=20', $token, null, 200);
-        if ($staleList['items'] !== [] && (int) $staleList['items'][0]['generation'] !== $oldGeneration) {
+        if ($staleList['items'] !== [] && (int)$staleList['items'][0]['generation'] !== $oldGeneration) {
             break;
         }
         usleep(50000);
     } while (microtime(true) < $deadline);
     expect($staleList['items'] !== [] && $staleList['items'][0]['id'] === $staleItem['id']
-        && (int) $staleList['items'][0]['generation'] !== $oldGeneration, '替换未形成新的原件代次');
+        && (int)$staleList['items'][0]['generation'] !== $oldGeneration, '替换未形成新的原件代次');
     $request('POST', '/broker/resources/retained/' . $staleItem['id'] . '/clear', $token, [
         'generation' => $oldGeneration, 'confirmed' => true,
     ], 409);
     $current = $request('GET', '/broker/resources/retained/' . $staleItem['id'], $token, null, 200)['item'];
-    expect((int) $current['generation'] !== $oldGeneration, '旧代次清除删除了并发替换的新原件');
+    expect((int)$current['generation'] !== $oldGeneration, '旧代次清除删除了并发替换的新原件');
     $audit = $request('GET', '/broker/audit?action=broker.retained.clear&operation_id=' . $operationId, $token, null, 200);
     expect($audit['items'] !== [] && $audit['items'][0]['operation_id'] === $operationId, '清保留未留下可对账审计');
     $encoded = json_encode($audit, JSON_THROW_ON_ERROR);
@@ -347,10 +347,10 @@ try {
         usleep(10000);
     } while (microtime(true) < $deadline);
     $appRequest = static function (string $method, string $path, string $token, array $headers, ?array $data, int $status) use ($appClient, $appServer, &$checks): array {
-        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '双端 ' . $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $appServer->stdout() . $appServer->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $platformToken = $appRequest('POST', '/admin/auth/login', '', [], ['login' => 'platform-admin', 'password' => $appPassword], 200)['data']['accessToken'];

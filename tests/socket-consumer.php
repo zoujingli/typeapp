@@ -20,17 +20,17 @@ $handshakeEcho = $handshake && ($scenarioArguments[1] ?? '') === '--with-echo';
 $serverOnly = $protocol === 'tcp' && ($scenarioArguments[0] ?? '') === '--server-only';
 $backpressureOnly = $protocol === 'tcp' && ($scenarioArguments[0] ?? '') === '--backpressure-only';
 $httpOnly = $protocol === 'tcp' && ($scenarioArguments[0] ?? '') === '--http-only';
-expect($argc === 2 + (int) $verify + (int) ($handshake || $serverOnly || $backpressureOnly || $httpOnly) + (int) $handshakeEcho, '用法：php tests/' . $protocol . '-consumer.php <build 下独立消费者绝对目录> [--verify] [--http-only|--server-only|--backpressure-only|--handshake-only [--with-echo]]');
+expect($argc === 2 + (int)$verify + (int)($handshake || $serverOnly || $backpressureOnly || $httpOnly) + (int)$handshakeEcho, '用法：php tests/' . $protocol . '-consumer.php <build 下独立消费者绝对目录> [--verify] [--http-only|--server-only|--backpressure-only|--handshake-only [--with-echo]]');
 $scenario = $httpOnly ? 'http' : ($backpressureOnly ? 'backpressure' : ($serverOnly ? 'server' : ($handshakeEcho ? 'handshake-echo' : ($handshake ? 'handshake' : 'full'))));
 expect(BuildPlatform::contains($root . '/build', $work) && !str_contains($work, '..'), '消费者必须在主仓 build 内');
 $artifact = (new BuildPlatform())->output($work . '/build/native/type-app');
 $runner = new BuildEnvironment();
-$environment = $runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME'));
+$environment = $runner->environment((string)getenv('PHP_HOME'), (string)getenv('PHPX_HOME'));
 // 安装与编译子进程使用已核验的 CLI 扩展配置；运行期仍由产物自己的探针选择模块。
 $environment['PHPRC'] = php_ini_loaded_file() ?: '';
-$environment['PHP_INI_SCAN_DIR'] = (string) (getenv('PHP_INI_SCAN_DIR') ?: '');
-$environment['COMPOSER_CACHE_DIR'] = (string) (getenv('COMPOSER_CACHE_DIR') ?: $root . '/.cache/composer');
-$environment['COMPOSER_DISABLE_NETWORK'] = (string) (getenv('COMPOSER_DISABLE_NETWORK') ?: '0');
+$environment['PHP_INI_SCAN_DIR'] = (string)(getenv('PHP_INI_SCAN_DIR') ?: '');
+$environment['COMPOSER_CACHE_DIR'] = (string)(getenv('COMPOSER_CACHE_DIR') ?: $root . '/.cache/composer');
+$environment['COMPOSER_DISABLE_NETWORK'] = (string)(getenv('COMPOSER_DISABLE_NETWORK') ?: '0');
 if (!$verify) {
     expect(!file_exists($work) && mkdir($work . '/app', 0700, true), '需要尚不存在的独立消费者目录');
     $composer = [
@@ -57,10 +57,10 @@ if (!$verify) {
     expect(copy($root . '/toolchain.lock.json', $work . '/toolchain.lock.json'), '无法复制工具链锁');
     expect(copy(__DIR__ . '/fixtures/compiled-' . $protocol . '.php', $work . '/app/main.php'), '无法复制消费者入口');
     // 示例整体参与编译；只改入口名称以便同一产物从 example 命令调用。
-    $example = str_replace('function main(', 'function ' . $protocol . 'ExampleMain(', (string) file_get_contents($root . '/examples/' . $protocol . '/main.php'), $count);
+    $example = str_replace('function main(', 'function ' . $protocol . 'ExampleMain(', (string)file_get_contents($root . '/examples/' . $protocol . '/main.php'), $count);
     expect($count === 1, '示例必须有唯一声明入口');
     file_put_contents($work . '/app/example.php', $example);
-    $composerBinary = (string) (getenv('COMPOSER_BINARY') ?: trim(successful(['which', 'composer'])));
+    $composerBinary = (string)(getenv('COMPOSER_BINARY') ?: trim(successful(['which', 'composer'])));
     expect(is_file($composerBinary), '需要 COMPOSER_BINARY 指向真实 Composer 脚本');
     file_put_contents($work . '/install.log', $runner->run([PHP_BINARY, $composerBinary, 'install', '--no-interaction',
         '--no-scripts', '--no-plugins', '--no-progress'], $work, $environment + ['COMPOSER_HOME' => $work . '/composer-home'], 300));
@@ -70,7 +70,7 @@ if (!$verify) {
     echo strtoupper($protocol) . " 独立消费安装完成，开始全量 AOT。\n";
     file_put_contents($work . '/build.log', $runner->run([PHP_BINARY, $work . '/vendor/bin/type', $work . '/type-app.json'], $work, $environment, 900));
 }
-$report = json_decode((string) file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+$report = json_decode((string)file_get_contents($artifact . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
 expect(hash_file('sha256', $artifact) === $report['sha256'], '原生产物摘要不符');
 $packages = array_keys($report['production-packages']);
 sort($packages);
@@ -120,7 +120,7 @@ try {
         file_put_contents($run . '/key.pem', $private);
         chmod($run . '/key.pem', 0600);
     }
-    $peer = new Process([(string) (getenv('NODE_BINARY') ?: 'node'), __DIR__ . '/fixtures/' . $protocol . '-peer.mjs', $run . '/peers.json'], $run);
+    $peer = new Process([(string)(getenv('NODE_BINARY') ?: 'node'), __DIR__ . '/fixtures/' . $protocol . '-peer.mjs', $run . '/peers.json'], $run);
     $deadline = microtime(true) + 5;
     while (!is_file($run . '/peers.json') && microtime(true) < $deadline && $peer->running()) {
         usleep(10000);
@@ -133,7 +133,7 @@ try {
         $execution = $application->wait(40);
         $failures = [];
         foreach (glob($observation . '/*.failure') ?: [] as $failure) {
-            $failures[basename($failure)] = (string) file_get_contents($failure);
+            $failures[basename($failure)] = (string)file_get_contents($failure);
         }
         file_put_contents($observation . '/execution.json', json_encode(['exit' => $execution->exitCode, 'signal' => $execution->signal,
             'stdout' => $execution->stdout, 'stderr' => $execution->stderr, 'failures' => $failures,
@@ -143,7 +143,7 @@ try {
         expect($result['active_threads'] === 1 && $result['exits'] === ($mode === 'thread' ? [0, 0] : [0]), '线程或退出码不符');
         $workers = [];
         foreach ($mode === 'thread' ? ['left', 'right'] : ['main'] as $role) {
-            $worker = json_decode((string) file_get_contents($observation . '/' . $role . '.json'), true, 512, JSON_THROW_ON_ERROR);
+            $worker = json_decode((string)file_get_contents($observation . '/' . $role . '.json'), true, 512, JSON_THROW_ON_ERROR);
             expect($worker['checks'] >= ($serverOnly || $backpressureOnly ? 12 : ($handshake ? 12 : 75)) && $worker['coroutines'] === 0 && $worker['process'] === $result['process'], '通信场景不足或协程残留');
             expect(($worker['native_id'] !== $result['main_thread']) === ($mode === 'thread'), '业务线程身份不符');
             $workers[$role] = $worker;
@@ -151,8 +151,8 @@ try {
         expect($mode !== 'thread' || $workers['left']['native_id'] !== $workers['right']['native_id'], '两个业务线程身份相同');
         $results[] = ['mode' => $mode, 'result' => $result, 'workers' => $workers];
     }
-    $peers = json_decode((string) file_get_contents($run . '/peers.json'), true, 512, JSON_THROW_ON_ERROR);
-    $application = new Process([...$command, 'example', 'client', '127.0.0.1', (string) $peers[$protocol === 'udp' ? 'udp4' : 'echo4']['port'], 'example-echo'], $run, $environment);
+    $peers = json_decode((string)file_get_contents($run . '/peers.json'), true, 512, JSON_THROW_ON_ERROR);
+    $application = new Process([...$command, 'example', 'client', '127.0.0.1', (string)$peers[$protocol === 'udp' ? 'udp4' : 'echo4']['port'], 'example-echo'], $run, $environment);
     $exampleResult = $application->wait(8);
     file_put_contents($run . '/example.json', json_encode(['exit' => $exampleResult->exitCode, 'stdout' => $exampleResult->stdout,
         'stderr' => $exampleResult->stderr], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
@@ -171,7 +171,7 @@ file_put_contents($run . '/verification.json', json_encode(['build-id' => $repor
     'iocp_trace' => $iocpTrace,
     'scope' => $scenario,
     'peer_sha256' => hash_file('sha256', __DIR__ . '/fixtures/' . $protocol . '-peer.mjs'),
-    'peer_burst_delay_ms' => $protocol === 'udp' ? (int) (getenv('TYPE_TEST_UDP_BURST_DELAY_MS') ?: 0) : null,
+    'peer_burst_delay_ms' => $protocol === 'udp' ? (int)(getenv('TYPE_TEST_UDP_BURST_DELAY_MS') ?: 0) : null,
     'platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'source_count' => count($report['sources']), 'packages' => $packages,
     'no_source' => PHP_OS_FAMILY === 'Darwin' ? 'kernel-denied' : 'not-verified', 'runs' => $results], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 echo strtoupper($protocol) . ($serverOnly || $backpressureOnly ? ' 定向 AOT 验证通过：' : ($handshake ? ' 慢握手定向 AOT 验证通过：' : ' 六个生产包全量 AOT、双线程重建、主线程协程和独立对端验收通过：')) . $run . "\n";

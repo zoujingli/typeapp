@@ -121,7 +121,7 @@ PHP;
         // build是明确可写的生成/产物目录，其余输入必须保持原始字节。
         if (!str_starts_with($relative, 'build/')) {
             expect(hash_file('sha256', $inputs . '/' . $relative) === $digest, '只读输入变化：' . $relative);
-            $checked++;
+            ++$checked;
         }
     }
     $runtime = $base . '/runtime';

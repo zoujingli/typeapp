@@ -13,11 +13,17 @@ use Swoole\Coroutine\Socket;
 final class WorkerSocket
 {
     private ?Socket $listener = null;
+
     private ?Socket $connection = null;
+
     private string $identity = '';
+
     private string $acknowledgement = '';
+
     private bool $verified = false;
+
     private bool $authenticated = false;
+
     private int $port;
 
     /** 创建仅绑定 IPv4 回环的短生命周期入口；只能在所属业务协程内调用。 */
@@ -42,7 +48,7 @@ final class WorkerSocket
     /** @return array<string,string> 只传给本次子进程，不放入命令参数或日志。 */
     public function environment(): array
     {
-        return ['MQTT_WORKER_PORT' => (string) $this->port, 'MQTT_WORKER_TOKEN' => $this->token];
+        return ['MQTT_WORKER_PORT' => (string)$this->port, 'MQTT_WORKER_TOKEN' => $this->token];
     }
 
     /** 父进程是否已核对双方身份并发完确认；业务请求只能在此后发送。 */
@@ -52,7 +58,7 @@ final class WorkerSocket
     }
 
     /** 有限等待一次数据；空值交由现有调用者在原操作截止内继续观察。 */
-    public function read(int $length, float $seconds): string|false
+    public function read(int $length, float $seconds): false|string
     {
         if (!$this->ready($seconds) || $this->connection === null) {
             return false;
@@ -61,7 +67,7 @@ final class WorkerSocket
     }
 
     /** 有限发送一个块；暂未认证或本次等待到期返回 0，其他错误返回 false。 */
-    public function write(string $bytes, float $seconds): int|false
+    public function write(string $bytes, float $seconds): false|int
     {
         if (!$this->ready($seconds) || $this->connection === null) {
             return 0;
@@ -86,16 +92,16 @@ final class WorkerSocket
     /** 子进程只连接父进程传入的回环端口；双向证明采用不同标签，密钥本身不经过网络。 */
     public static function connect(): Socket
     {
-        $port = (string) getenv('MQTT_WORKER_PORT');
-        $token = (string) getenv('MQTT_WORKER_TOKEN');
-        if (preg_match('/^[1-9][0-9]{0,4}$/D', $port) !== 1 || (int) $port > 65535
+        $port = (string)getenv('MQTT_WORKER_PORT');
+        $token = (string)getenv('MQTT_WORKER_TOKEN');
+        if (preg_match('/^[1-9][0-9]{0,4}$/D', $port) !== 1 || (int)$port > 65535
             || preg_match('/^[a-f0-9]{64}$/D', $token) !== 1) {
             throw new \RuntimeException('MQTT worker IPC 启动身份无效');
         }
         $socket = new Socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
         try {
             $proof = self::proof('worker', $token);
-            if (!$socket->connect('127.0.0.1', (int) $port, 1.0) || $socket->sendAll($proof, 1.0) !== strlen($proof)) {
+            if (!$socket->connect('127.0.0.1', (int)$port, 1.0) || $socket->sendAll($proof, 1.0) !== strlen($proof)) {
                 throw new \RuntimeException('MQTT worker IPC 连接失败');
             }
             $response = $socket->recvLine(65, 1.0);

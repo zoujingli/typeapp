@@ -11,19 +11,26 @@ use Type\Redis\ScriptGuard;
 final class Queue
 {
     private RedisConnection $redis;
+
     private string $root;
+
     private string $group;
+
     private int $leaseMilliseconds;
+
     private int $capacity;
+
     private int $retention;
+
     private array $counts = ['publish_rejected' => 0, 'storage_failures' => 0, 'lease_rejected' => 0];
+
     /**
      * 绑定稳定应用/队列命名空间和借用的 script 连接，不接管连接关闭责任。
      *
-     * @param int $leaseMilliseconds 单次领取租约，10 至 3600000 毫秒。
-     * @param int $capacity 全部在库消息容量，1 至 1000000 条。
-     * @param int $retentionSeconds 隔离记录保留期，1 至 31536000 秒。
-     * @throws QueueException 身份或容量配置无效。
+     * @param int $leaseMilliseconds 单次领取租约，10 至 3600000 毫秒
+     * @param int $capacity 全部在库消息容量，1 至 1000000 条
+     * @param int $retentionSeconds 隔离记录保留期，1 至 31536000 秒
+     * @throws QueueException 身份或容量配置无效
      */
     public function __construct(RedisConnection $redis, string $application, string $name = 'default', int $leaseMilliseconds = 30000, int $capacity = 10000, int $retentionSeconds = 604800)
     {
@@ -42,8 +49,8 @@ final class Queue
     /**
      * 在容量允许时原子追加消息；可选 guard 与投递须使用同一 RedisConnection。
      *
-     * @return string Redis Stream 投递标识；不同于业务消息 ID。
-     * @throws QueueException 回执格式未知，需核对实际入库，不能盲目重新投递。
+     * @return string redis Stream 投递标识；不同于业务消息 ID
+     * @throws QueueException 回执格式未知，需核对实际入库，不能盲目重新投递
      */
     public function publish(Message $message, ?ScriptGuard $guard = null): string
     {
@@ -58,7 +65,7 @@ LUA;
         try {
             $receipt = $guard === null ? $this->script($script, $keys, $arguments) : $guard->execute($this->redis, $script, $keys, $arguments);
         } catch (\Throwable $error) {
-            $this->counts['publish_rejected']++;
+            ++$this->counts['publish_rejected'];
             throw $error;
         }
         if (!is_string($receipt) || !preg_match('/^[0-9]+-[0-9]+$/D', $receipt)) {
@@ -76,9 +83,9 @@ LUA;
     /**
      * 保存延迟消息，到期后由 promote() 转入 Stream；0 毫秒直接投递。
      *
-     * @param int $delayMilliseconds 0 至 31536000000 毫秒。
-     * @return string 延迟记录标识，或零延迟时的 Stream 标识。
-     * @throws QueueException 延迟超出范围。
+     * @param int $delayMilliseconds 0 至 31536000000 毫秒
+     * @return string 延迟记录标识，或零延迟时的 Stream 标识
+     * @throws QueueException 延迟超出范围
      */
     public function publishDelayed(Message $message, int $delayMilliseconds): string
     {
@@ -96,13 +103,13 @@ redis.call('ZADD',KEYS[4],due,ARGV[2]); redis.call('HSET',KEYS[2],ARGV[2],cjson.
 return ARGV[2]
 LUA;
         try {
-            return (string) $this->script(
+            return (string)$this->script(
                 $script,
                 [$this->root . ':stream', $this->root . ':delayed-data', $this->root . ':quarantine-data', $this->root . ':delayed'],
                 [$this->capacity, $id, $message->encode(), $delayMilliseconds]
             );
         } catch (\Throwable $error) {
-            $this->counts['publish_rejected']++;
+            ++$this->counts['publish_rejected'];
             throw $error;
         }
     }
@@ -110,8 +117,8 @@ LUA;
     /**
      * 按 Redis 时间原子转移已到期消息，不改变稳定消息 ID。
      *
-     * @param int $limit 单次最多转移 1 至 1000 条。
-     * @return int 实际转入 Stream 的记录数量。
+     * @param int $limit 单次最多转移 1 至 1000 条
+     * @return int 实际转入 Stream 的记录数量
      */
     public function promote(int $limit = 100): int
     {
@@ -126,14 +133,14 @@ for _,id in ipairs(due) do
 end
 return count
 LUA;
-        return (int) $this->script($script, [$this->root . ':delayed', $this->root . ':delayed-data', $this->root . ':stream'], [$limit]);
+        return (int)$this->script($script, [$this->root . ':delayed', $this->root . ':delayed-data', $this->root . ':stream'], [$limit]);
     }
 
     /**
      * 非阻塞地领取一条新投递并原子登记持有者凭据与租期。
      *
-     * @return Reservation|null 无可领取消息时返回 null。
-     * @throws QueueException 消费者非法、返回协议错误或非法消息已隔离。
+     * @return null|Reservation 无可领取消息时返回 null
+     * @throws QueueException 消费者非法、返回协议错误或非法消息已隔离
      */
     public function reserve(string $consumer): ?Reservation
     {
@@ -157,7 +164,7 @@ LUA;
     /**
      * 从有限待处理窗口接管租期到期的旧投递；存活旧持有者会被 token 拒绝。
      *
-     * @return Reservation|null 本次窗口没有可接管投递时返回 null。
+     * @return null|Reservation 本次窗口没有可接管投递时返回 null
      */
     public function reclaim(string $consumer): ?Reservation
     {
@@ -182,38 +189,6 @@ return false
 LUA;
         $result = $this->script($script, [$this->root . ':stream', $this->root . ':leases'], [$this->group, $consumer, $token, $this->leaseMilliseconds]);
         return $this->reservation($result, $consumer, $token);
-    }
-
-    private function reservation(mixed $result, string $consumer, string $token): ?Reservation
-    {
-        if ($result === false || $result === null) {
-            return null;
-        }
-        if (!is_array($result) || count($result) !== 4 || !is_array($result[1])) {
-            throw new QueueException('invalid_stream', 'Streams 返回格式不兼容');
-        }
-        $fields = [];
-        for ($index = 0; $index < count($result[1]); $index += 2) {
-            $fields[$result[1][$index]] = $result[1][$index + 1];
-        }
-        $attempt = filter_var($fields['attempt'] ?? '1', FILTER_VALIDATE_INT);
-        $encoded = (string) ($fields['message'] ?? '');
-        try {
-            if (!is_int($attempt) || $attempt < 1 || $attempt > 100000) {
-                throw new QueueException('invalid_attempt', '任务尝试次数无效');
-            }
-            $message = Message::decode($encoded);
-        } catch (QueueException $error) {
-            if (!$this->transfer((string) $result[0], $consumer, $token, $encoded, 1, $error->errorCode(), null)) {
-                throw new QueueException('lease_lost', '隔离非法载荷时租约失效');
-            }
-            throw new QueueException('quarantined', '非法任务载荷已隔离');
-        }
-        $enqueuedAt = (int) ($fields['enqueued_at'] ?? explode('-', (string) $result[0])[0]);
-        if ($enqueuedAt < 1) {
-            $enqueuedAt = (int) explode('-', (string) $result[0])[0];
-        }
-        return new Reservation($this, (string) $result[0], $consumer, $token, $message, $attempt + (int) $result[2] - 1, $enqueuedAt, max(0, (int) $result[3] - $enqueuedAt));
     }
 
     /**
@@ -266,7 +241,7 @@ LUA;
             array_merge([$this->group, $reservation->streamId(), $reservation->consumer(), $reservation->token()], $arguments)
         );
         if (!is_array($result) || ($result[0] ?? null) !== 1) {
-            $this->counts['lease_rejected']++;
+            ++$this->counts['lease_rejected'];
             throw new QueueException('lease_lost', '旧任务租约不能继续受管副作用');
         }
         return $result[1] ?? null;
@@ -275,7 +250,7 @@ LUA;
     /**
      * 读取一份 Redis 队列统计并附加当前实例错误计数；不把读取失败当作零积压。
      *
-     * @return array<string, int> 条数、容量、消息年龄毫秒及本地累计计数。
+     * @return array<string, int> 条数、容量、消息年龄毫秒及本地累计计数
      */
     public function statistics(): array
     {
@@ -287,8 +262,8 @@ return {redis.call('XLEN',KEYS[1]),redis.call('HLEN',KEYS[2]),redis.call('HLEN',
 LUA,
             [$this->root . ':stream', $this->root . ':leases', $this->root . ':delayed-data', $this->root . ':quarantine-data']
         );
-        return ['messages' => (int) $result[0], 'leased' => (int) $result[1], 'delayed' => (int) $result[2], 'quarantined' => (int) $result[3],
-            'capacity' => $this->capacity, 'backlog' => (int) $result[0] + (int) $result[2], 'oldest_stream_age_ms' => (int) $result[4]] + $this->counts;
+        return ['messages' => (int)$result[0], 'leased' => (int)$result[1], 'delayed' => (int)$result[2], 'quarantined' => (int)$result[3],
+            'capacity' => $this->capacity, 'backlog' => (int)$result[0] + (int)$result[2], 'oldest_stream_age_ms' => (int)$result[4]] + $this->counts;
     }
 
     /**
@@ -320,33 +295,11 @@ LUA,
         );
     }
 
-    private function transfer(string $id, string $consumer, string $token, string $message, int $attempt, string $reason, ?int $delay, int $enqueuedAt = 0): bool
-    {
-        if ($reason === '' || strlen($reason) > 2000 || ($delay !== null && ($delay < 0 || $delay > 86400000))) {
-            throw new QueueException('invalid_transfer', '任务转移原因或延迟无效');
-        }
-        $script = $this->guard() . <<<'LUA'
-
-local milliseconds=now[1]*1000+math.floor(now[2]/1000)
-local due=milliseconds+tonumber(ARGV[8]); local attempt=tonumber(ARGV[6])
-if ARGV[9]=='retry' then attempt=attempt+1 end
-local record=cjson.encode({message=ARGV[5],attempt=attempt,reason=ARGV[7],due=due,enqueued_at=tonumber(ARGV[10])})
-redis.call('ZADD',KEYS[3],due,ARGV[2]); redis.call('HSET',KEYS[4],ARGV[2],record)
-redis.call('XACK',KEYS[1],ARGV[1],ARGV[2]); redis.call('XDEL',KEYS[1],ARGV[2]); redis.call('HDEL',KEYS[2],ARGV[2]); return 1
-LUA;
-        $destination = $delay === null ? 'quarantine' : 'delayed';
-        return $this->script(
-            $script,
-            [$this->root . ':stream', $this->root . ':leases', $this->root . ':' . $destination, $this->root . ':' . $destination . '-data'],
-            [$this->group, $id, $consumer, $token, $message, $attempt, $reason, $delay ?? $this->retention * 1000, $delay === null ? 'quarantine' : 'retry', $enqueuedAt]
-        ) === 1;
-    }
-
     /**
      * 读取尚在保留期内的隔离记录，不删除或重放消息。
      *
-     * @param int $limit 返回 1 至 1000 条。
-     * @return list<array{receipt: string, message: string, attempt: int, reason: string, due: int, enqueued_at: int}> due 为保留截止的 Unix 毫秒。
+     * @param int $limit 返回 1 至 1000 条
+     * @return list<array{receipt: string, message: string, attempt: int, reason: string, due: int, enqueued_at: int}> due 为保留截止的 Unix 毫秒
      */
     public function quarantined(int $limit = 100): array
     {
@@ -365,8 +318,8 @@ LUA;
     /**
      * 显式重放仍在保留期内的隔离记录，保留业务消息 ID 并将尝试次数重置为 1。
      *
-     * @return string 新 Stream 投递标识。
-     * @throws QueueException 标识非法、记录缺失或已过保留期。
+     * @return string 新 Stream 投递标识
+     * @throws QueueException 标识非法、记录缺失或已过保留期
      */
     public function replay(string $receipt): string
     {
@@ -389,8 +342,8 @@ LUA;
     /**
      * 按 Redis 时间有界删除已过保留期的隔离记录，不删除待处理消息。
      *
-     * @param int $limit 单次最多删除 1 至 1000 条。
-     * @return int 实际删除条数。
+     * @param int $limit 单次最多删除 1 至 1000 条
+     * @return int 实际删除条数
      */
     public function collect(int $limit = 100): int
     {
@@ -399,7 +352,61 @@ LUA;
 local time=redis.call('TIME'); local ids=redis.call('ZRANGEBYSCORE',KEYS[1],'-inf',time[1]*1000+math.floor(time[2]/1000),'LIMIT',0,ARGV[1])
 for _,id in ipairs(ids) do redis.call('HDEL',KEYS[2],id); redis.call('ZREM',KEYS[1],id) end; return #ids
 LUA;
-        return (int) $this->script($script, [$this->root . ':quarantine', $this->root . ':quarantine-data'], [$limit]);
+        return (int)$this->script($script, [$this->root . ':quarantine', $this->root . ':quarantine-data'], [$limit]);
+    }
+
+    private function reservation(mixed $result, string $consumer, string $token): ?Reservation
+    {
+        if ($result === false || $result === null) {
+            return null;
+        }
+        if (!is_array($result) || count($result) !== 4 || !is_array($result[1])) {
+            throw new QueueException('invalid_stream', 'Streams 返回格式不兼容');
+        }
+        $fields = [];
+        for ($index = 0; $index < count($result[1]); $index += 2) {
+            $fields[$result[1][$index]] = $result[1][$index + 1];
+        }
+        $attempt = filter_var($fields['attempt'] ?? '1', FILTER_VALIDATE_INT);
+        $encoded = (string)($fields['message'] ?? '');
+        try {
+            if (!is_int($attempt) || $attempt < 1 || $attempt > 100000) {
+                throw new QueueException('invalid_attempt', '任务尝试次数无效');
+            }
+            $message = Message::decode($encoded);
+        } catch (QueueException $error) {
+            if (!$this->transfer((string)$result[0], $consumer, $token, $encoded, 1, $error->errorCode(), null)) {
+                throw new QueueException('lease_lost', '隔离非法载荷时租约失效');
+            }
+            throw new QueueException('quarantined', '非法任务载荷已隔离');
+        }
+        $enqueuedAt = (int)($fields['enqueued_at'] ?? explode('-', (string)$result[0])[0]);
+        if ($enqueuedAt < 1) {
+            $enqueuedAt = (int)explode('-', (string)$result[0])[0];
+        }
+        return new Reservation($this, (string)$result[0], $consumer, $token, $message, $attempt + (int)$result[2] - 1, $enqueuedAt, max(0, (int)$result[3] - $enqueuedAt));
+    }
+
+    private function transfer(string $id, string $consumer, string $token, string $message, int $attempt, string $reason, ?int $delay, int $enqueuedAt = 0): bool
+    {
+        if ($reason === '' || strlen($reason) > 2000 || ($delay !== null && ($delay < 0 || $delay > 86400000))) {
+            throw new QueueException('invalid_transfer', '任务转移原因或延迟无效');
+        }
+        $script = $this->guard() . <<<'LUA'
+
+local milliseconds=now[1]*1000+math.floor(now[2]/1000)
+local due=milliseconds+tonumber(ARGV[8]); local attempt=tonumber(ARGV[6])
+if ARGV[9]=='retry' then attempt=attempt+1 end
+local record=cjson.encode({message=ARGV[5],attempt=attempt,reason=ARGV[7],due=due,enqueued_at=tonumber(ARGV[10])})
+redis.call('ZADD',KEYS[3],due,ARGV[2]); redis.call('HSET',KEYS[4],ARGV[2],record)
+redis.call('XACK',KEYS[1],ARGV[1],ARGV[2]); redis.call('XDEL',KEYS[1],ARGV[2]); redis.call('HDEL',KEYS[2],ARGV[2]); return 1
+LUA;
+        $destination = $delay === null ? 'quarantine' : 'delayed';
+        return $this->script(
+            $script,
+            [$this->root . ':stream', $this->root . ':leases', $this->root . ':' . $destination, $this->root . ':' . $destination . '-data'],
+            [$this->group, $id, $consumer, $token, $message, $attempt, $reason, $delay ?? $this->retention * 1000, $delay === null ? 'quarantine' : 'retry', $enqueuedAt]
+        ) === 1;
     }
 
     private function limit(int $limit): void
@@ -426,7 +433,7 @@ LUA;
             [$this->group, $reservation->streamId(), $reservation->consumer(), $reservation->token(), $action, $this->leaseMilliseconds]
         ) === 1;
         if (!$valid) {
-            $this->counts['lease_rejected']++;
+            ++$this->counts['lease_rejected'];
         }
         return $valid;
     }
@@ -436,7 +443,7 @@ LUA;
         try {
             return $this->redis->script($script, $keys, $arguments);
         } catch (\Throwable $error) {
-            $this->counts['storage_failures']++;
+            ++$this->counts['storage_failures'];
             throw $error;
         }
     }

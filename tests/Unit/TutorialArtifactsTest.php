@@ -4,14 +4,19 @@ declare(strict_types=1);
 
 namespace TypeTests\Unit;
 
-use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\TestCase;
+use Type\Build\BuildPlatform;
 use Type\Testing\Process;
 
 require_once dirname(__DIR__) . '/support.php';
 require_once dirname(__DIR__) . '/tutorial-artifacts.php';
 
-/** 真文件故障验证失败证据先保全、再清理；不编译应用或复制 SDK。 */
+/**
+ * 真文件故障验证失败证据先保全、再清理；不编译应用或复制 SDK。
+ * @internal
+ * @coversNothing
+ */
 final class TutorialArtifactsTest extends TestCase
 {
     public function testFailedConsumerPreservesBytesInputsAndInterruptedDeployment(): void
@@ -93,12 +98,6 @@ final class TutorialArtifactsTest extends TestCase
         }
     }
 
-    public static function preservationCases(): iterable
-    {
-        yield 'preserved-before-cleanup' => [false];
-        yield 'preservation-failed-keeps-original' => [true];
-    }
-
     #[DataProvider('preservationCases')]
     public function testSingleProgramPreparationFailureIsPreservedBeforeCleanup(bool $conflict): void
     {
@@ -159,9 +158,15 @@ PHP);
         }
     }
 
+    public static function preservationCases(): iterable
+    {
+        yield 'preserved-before-cleanup' => [false];
+        yield 'preservation-failed-keeps-original' => [true];
+    }
+
     private function directory(): string
     {
-        $root = \Type\Build\BuildPlatform::resolve(dirname(__DIR__, 2)) . '/build/tutorial-artifacts-' . bin2hex(random_bytes(6));
+        $root = BuildPlatform::resolve(dirname(__DIR__, 2)) . '/build/tutorial-artifacts-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($root, 0700));
         return $root;
     }

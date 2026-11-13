@@ -5,19 +5,137 @@ declare(strict_types=1);
 namespace TypeTests\Unit;
 
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
+use Type\Build\DevelopmentBuilder;
 use Type\Build\ModelCompiler;
+use Type\Testing\Process;
 
-/** 静态声明错误在构建前拒绝；业务行为通过三库独立消费者另行验收。 */
+/**
+ * 静态声明错误在构建前拒绝；业务行为通过三库独立消费者另行验收。
+ * @internal
+ * @coversNothing
+ */
 final class PhpModelCompilerTest extends TestCase
 {
+    /** 无效配置不能退回默认值或执行表达式，字段声明也不能遮蔽业务属性。 */
+    public function testInvalidSchemaDeclarationsAreRejectedBeforeLoading(): void
+    {
+        $prefix = '<?php declare(strict_types=1); namespace InvalidSchema; use Type\Orm\Model; use Type\Orm\Attribute\Table; ';
+        $declarations = [
+            'protected string $table = "readings";',
+            'protected array $schema = ["id" => "int"];',
+            'protected $table = null; protected array $schema = ["id" => "int"];',
+            'protected string $table = "readings"; protected $autoIncrement = null; protected array $schema = ["id" => "int"];',
+            'protected string $table = "readings"; protected array $schema = ["id" => "??int"];',
+            'protected string $table = "readings"; protected array $schema = ["id" => ["type" => "int", "nullable" => null]];',
+            'protected string $table = "readings"; protected array $schema = ["id" => ["type" => "?int", "nullable" => false]];',
+            'protected string $table = "readings"; protected array $schema = ["id" => "int", "id" => "string"];',
+            'protected string $table = "readings"; protected array $schema = ["id" => "float"];',
+            'protected string $table = "readings"; protected array $schema = ["id" => ["type" => "string", "integerRange" => "unsigned64"]];',
+            'protected string $table = "readings"; protected array $schema = ["id" => ["type" => "bigint", "integerRange" => "uint128"]];',
+            'protected string $table = "readings"; protected array $schema = ["id" => getenv("MODEL_FIELD")];',
+            'protected string $table = "readings"; protected array $schema = ["id" => "int"]; public int $id;',
+            'protected string $table = "readings"; protected array $hidden = ["missing"]; protected array $schema = ["id" => "int"];',
+            'protected string $table = "readings"; protected array $schema = ["schema" => "int"];',
+        ];
+        $directory = dirname(__DIR__, 2) . '/build/model-invalid-schema-' . bin2hex(random_bytes(6));
+        self::assertTrue(mkdir($directory, 0700));
+        $file = $directory . '/Reading.php';
+        try {
+            foreach ($declarations as $declaration) {
+                file_put_contents($file, $prefix . 'final class Reading extends Model {' . $declaration . '}');
+                try {
+                    (new ModelCompiler())->compile([$file]);
+                    self::fail('非法声明被接受：' . $declaration);
+                } catch (\RuntimeException $failure) {
+                    self::assertNotSame('', $failure->getMessage());
+                }
+                self::assertFalse(class_exists('InvalidSchema\Reading', false));
+            }
+            file_put_contents($file, $prefix . '#[Table("readings")] final class Reading extends Model { protected string $table = "readings"; protected array $schema = ["id" => "int"]; }');
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('不能混合');
+            (new ModelCompiler())->compile([$file]);
+        } finally {
+            unlink($file);
+            rmdir($directory);
+        }
+    }
+
+    /** 简洁声明保持精确数值、空值、隐藏字段和对象属性的实际行为。 */
+    public function testSchemaDeclarationProducesManagedObjectsWithoutLoadingTheSource(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $directory = $root . '/build/model-schema-' . bin2hex(random_bytes(6));
+        self::assertTrue(mkdir($directory, 0700));
+        $source = <<<'PHP'
+<?php
+declare(strict_types=1);
+namespace CompactModels;
+use Type\Orm\Model;
+final class Reading extends Model
+{
+    protected string $table = 'center_reading';
+    protected bool $autoIncrement = false;
+    protected array $hidden = ['payload'];
+    protected array $schema = [
+        'id' => 'string',
+        'amount' => ['type' => 'decimal', 'precision' => 12, 'scale' => 4, 'comment' => '精确读数'],
+        'payload' => ['type' => 'json', 'nullable' => false],
+        'counter' => ['type' => 'bigint', 'integerRange' => 'unsigned64'],
+        'memo' => '?string',
+    ];
+    public function label(): string { return $this->id . ':' . $this->amount; }
+}
+PHP;
+        try {
+            file_put_contents($directory . '/Reading.php', $source);
+            $result = (new ModelCompiler())->compile([$directory . '/Reading.php']);
+            self::assertCount(1, $result['models']);
+            self::assertFalse(class_exists('CompactModels\Reading', false));
+            file_put_contents($directory . '/generated.php', $result['code']);
+            $program = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; require ' . var_export($directory . '/generated.php', true) . '; '
+                . <<<'PHP'
+Type\Runtime\CoroutineRuntime::run(static function (): void {
+    $scope = new Type\Runtime\ExecutionScope();
+    try {
+        $scope->run(static function (Type\Runtime\ExecutionScope $current): void {
+            $model = new CompactModels\Reading(['id' => 'sensor', 'amount' => '12.3000', 'payload' => ['raw' => true], 'counter' => '18446744073709551615', 'memo' => null]);
+            $model->amount = '19.1250';
+            if ($model->label() !== 'sensor:19.1250' || $model->counter !== '18446744073709551615' || $model->memo !== null || array_key_exists('payload', $model->toArray())) {
+                throw new RuntimeException('模型对象或输出策略错误');
+            }
+            try { $model->payload = null; } catch (Type\Orm\ModelException $error) {
+                if ($error->errorCode() === 'invalid_field_type') { echo 'managed schema object'; return; }
+                throw $error;
+            }
+            throw new RuntimeException('非空 JSON 字段接受了 null');
+        });
+    } finally { $scope->close(); }
+});
+PHP;
+            $process = new Process([PHP_BINARY, '-r', $program], $directory, getenv());
+            try {
+                $executed = $process->wait(10);
+                self::assertTrue($executed->successful(), $executed->stdout . $executed->stderr);
+                self::assertSame('managed schema object', $executed->stdout);
+            } finally {
+                $process->stop();
+            }
+        } finally {
+            foreach (glob($directory . '/*') as $file) {
+                unlink($file);
+            }
+            rmdir($directory);
+        }
+    }
+
     /** 缓存槽属于生成器；公开字段和非公开业务状态都不能静默覆盖它。 */
     public function testGeneratedMappingCachePropertyCannotBeDeclared(): void
     {
         $directory = dirname(__DIR__, 2) . '/build/model-mapping-member-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($directory, 0700));
         $file = $directory . '/Record.php';
-        $prefix = '<?php declare(strict_types=1); namespace ModelMappingMember; use Type\\Orm\\Model; use Type\\Orm\\Attribute\\Table; '
+        $prefix = '<?php declare(strict_types=1); namespace ModelMappingMember; use Type\Orm\Model; use Type\Orm\Attribute\Table; '
             . "#[Table('records')] final class Record extends Model { public int \$id; ";
         try {
             foreach (['public string $__typeMapping;', 'private static ?object $__typeMapping = null;', 'protected int $other, $__typeMapping;'] as $member) {
@@ -25,7 +143,7 @@ final class PhpModelCompilerTest extends TestCase
                 $rejected = false;
                 try {
                     (new ModelCompiler())->compile([$file]);
-                } catch (RuntimeException $failure) {
+                } catch (\RuntimeException $failure) {
                     $rejected = true;
                     self::assertStringContainsString('模型属性与生成映射缓存冲突', $failure->getMessage());
                 }
@@ -44,7 +162,7 @@ final class PhpModelCompilerTest extends TestCase
         $directory = $root . '/build/model-members-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($directory, 0700));
         $file = $directory . '/Record.php';
-        $prefix = '<?php declare(strict_types=1); namespace ModelMembers; use Type\\Orm\\Model; use Type\\Orm\\Attribute\\{Table, Column}; '
+        $prefix = '<?php declare(strict_types=1); namespace ModelMembers; use Type\Orm\Model; use Type\Orm\Attribute\{Table, Column}; '
             . "#[Table('records')] final class Record extends Model { public int \$id; ";
         try {
             foreach (['public string $state;', 'private string $values;'] as $member) {
@@ -52,7 +170,7 @@ final class PhpModelCompilerTest extends TestCase
                 $rejected = false;
                 try {
                     (new ModelCompiler())->compile([$file, $root . '/plugin/type-orm/src/Model.php']);
-                } catch (RuntimeException $failure) {
+                } catch (\RuntimeException $failure) {
                     $rejected = true;
                     self::assertStringContainsString('模型属性与 Model 基类成员冲突', $failure->getMessage());
                 }
@@ -71,7 +189,7 @@ final class PhpModelCompilerTest extends TestCase
     /** 验证非法模型声明在构建期被拒绝，且检查过程不加载业务类。 */
     public function testInvalidDeclarationsAreRejectedWithoutLoadingBusinessCode(): void
     {
-        $prefix = '<?php declare(strict_types=1); namespace ModelInvalid; use Type\\Orm\\Model; use Type\\Orm\\Attribute\\{Table, Column, HasMany, BelongsToMany}; ';
+        $prefix = '<?php declare(strict_types=1); namespace ModelInvalid; use Type\Orm\Model; use Type\Orm\Attribute\{Table, Column, HasMany, BelongsToMany}; ';
         $invalid = [
             "#[Table('users')] class User extends Model { public int \$id; public string \$name; #[Column(name: 'name')] public string \$duplicate; }",
             "#[Table('users')] class User extends Model { public int \$id; public string \$id; }",
@@ -130,11 +248,11 @@ final class PhpModelCompilerTest extends TestCase
                 $rejected = false;
                 try {
                     (new ModelCompiler())->compile([$file]);
-                } catch (RuntimeException) {
+                } catch (\RuntimeException) {
                     $rejected = true;
                 }
                 self::assertTrue($rejected, $source);
-                self::assertFalse(class_exists('ModelInvalid\\User', false));
+                self::assertFalse(class_exists('ModelInvalid\User', false));
             }
         } finally {
             unlink($file);
@@ -168,7 +286,7 @@ PHP;
             $first = $compiler->compile([$file]);
             self::assertSame($first, $compiler->compile([$file]));
             self::assertSame([str_replace('\\', '/', realpath($file))], $first['originals']);
-            self::assertSame('ModelIdentity\\User', $first['models'][0]['class']);
+            self::assertSame('ModelIdentity\User', $first['models'][0]['class']);
             self::assertStringContainsString('class Companion', $first['code']);
             self::assertStringContainsString('presentName', $first['code']);
             self::assertStringContainsString("public static function query(string \$alias = '')", $first['code']);
@@ -186,7 +304,7 @@ PHP;
             self::assertStringNotContainsString('function setUpdatedAt', $managed['code']);
             file_put_contents($file, str_replace("#[Table('users')]", "#[Table('users', createdAt: 'updated_at', updatedAt: 'created_at')]", $timestamps));
             self::assertNotSame(hash('sha256', $managed['code']), hash('sha256', $compiler->compile([$file])['code']));
-            self::assertFalse(class_exists('ModelIdentity\\User', false));
+            self::assertFalse(class_exists('ModelIdentity\User', false));
         } finally {
             unlink($file);
             rmdir($directory);
@@ -196,7 +314,7 @@ PHP;
     /** 验证旧模型配置始终给出明确迁移诊断。 */
     public function testLegacyConfigurationAlwaysReportsMigration(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('models 配置已移除');
         (new ModelCompiler())->assertConfiguration(['models' => []]);
     }
@@ -243,12 +361,12 @@ PHP;
                     ],
                     [
                         'name' => 'zoujingli/type-orm', 'version' => '1.0.0', 'install-path' => '../zoujingli/type-orm',
-                        'autoload' => ['files' => ['src/functions.php'], 'psr-4' => ['Type\\Orm\\' => 'src/']],
+                        'autoload' => ['files' => ['src/functions.php'], 'psr-4' => ['Type\Orm\\' => 'src/']],
                         'extra' => ['type' => ['protocol' => 1, 'sources' => ['src']]],
                     ],
                 ],
             ];
-            $builder = new \Type\Build\DevelopmentBuilder();
+            $builder = new DevelopmentBuilder();
             $generation = '';
             foreach (['adapted', 'changed'] as $marker) {
                 $metadata['packages'][0]['extra']['type']['rewrites'][0]['replacements'][0]['to'] = "return '{$marker}';";
@@ -258,8 +376,8 @@ PHP;
                 self::assertSame($prepared, $builder->prepare($directory, 'application.json', 'build/development'));
                 $generation = $prepared['generation'];
                 $program = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; require '
-                    . var_export($prepared['directory'] . '/generated-models.php', true) . '; echo DependencyModels\\User::marker();';
-                $process = new \Type\Testing\Process([PHP_BINARY, '-r', $program], $directory, getenv());
+                    . var_export($prepared['directory'] . '/generated-models.php', true) . '; echo DependencyModels\User::marker();';
+                $process = new Process([PHP_BINARY, '-r', $program], $directory, getenv());
                 try {
                     $result = $process->wait(10);
                     self::assertTrue($result->successful(), $result->stdout . $result->stderr);

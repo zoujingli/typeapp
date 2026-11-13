@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Core\Http\Message;
 
-use InvalidArgumentException;
 use Psr\Http\Message\MessageInterface;
 use Psr\Http\Message\StreamInterface;
 
@@ -12,8 +11,11 @@ use Psr\Http\Message\StreamInterface;
 abstract class Message implements MessageInterface
 {
     protected string $protocol = '1.1';
+
     protected array $headers = [];
+
     protected array $headerNames = [];
+
     protected StreamInterface $body;
 
     /** 绑定正文流，不复制其内容；流的关闭责任由消息使用者明确管理。 */
@@ -32,7 +34,7 @@ abstract class Message implements MessageInterface
     public function withProtocolVersion(string $version): MessageInterface
     {
         if (!preg_match('/^[0-9]+(?:\.[0-9]+)?$/D', $version)) {
-            throw new InvalidArgumentException('HTTP 协议版本无效');
+            throw new \InvalidArgumentException('HTTP 协议版本无效');
         }
         $copy = clone $this;
         $copy->protocol = $version;
@@ -72,7 +74,7 @@ abstract class Message implements MessageInterface
 
     /**
      * 返回替换该头全部值的副本，拒绝非法名称或控制字符。
-     * @param string|int|float|list<string|int|float> $value 单值或非空值列表。
+     * @param float|int|list<float|int|string>|string $value 单值或非空值列表
      */
     public function withHeader(string $name, $value): MessageInterface
     {
@@ -91,7 +93,7 @@ abstract class Message implements MessageInterface
 
     /**
      * 返回追加同名头值的副本，保留已有头名称的大小写。
-     * @param string|int|float|list<string|int|float> $value 单值或非空值列表。
+     * @param float|int|list<float|int|string>|string $value 单值或非空值列表
      */
     public function withAddedHeader(string $name, $value): MessageInterface
     {
@@ -99,7 +101,7 @@ abstract class Message implements MessageInterface
         $values = $this->normalizeValues($value);
         $copy = clone $this;
         $lower = strtolower($name);
-        $original = (string) ($copy->headerNames[$lower] ?? $name);
+        $original = (string)($copy->headerNames[$lower] ?? $name);
         $copy->headerNames[$lower] = $original;
         $copy->headers[$original] = array_merge($copy->headers[$original] ?? [], $values);
         return $copy;
@@ -134,7 +136,7 @@ abstract class Message implements MessageInterface
     private function validateName(string $name): void
     {
         if (!preg_match('/^[!#$%&\x27*+.^_`|~0-9A-Za-z-]+$/D', $name)) {
-            throw new InvalidArgumentException('HTTP 消息头名称无效');
+            throw new \InvalidArgumentException('HTTP 消息头名称无效');
         }
     }
 
@@ -142,16 +144,16 @@ abstract class Message implements MessageInterface
     {
         $values = is_array($value) ? $value : [$value];
         if ($values === []) {
-            throw new InvalidArgumentException('HTTP 消息头值不能为空数组');
+            throw new \InvalidArgumentException('HTTP 消息头值不能为空数组');
         }
         $normalized = [];
         foreach ($values as $entry) {
             if (!is_string($entry) && !is_int($entry) && !is_float($entry)) {
-                throw new InvalidArgumentException('HTTP 消息头值必须是字符串或数字');
+                throw new \InvalidArgumentException('HTTP 消息头值必须是字符串或数字');
             }
-            $entry = (string) $entry;
+            $entry = (string)$entry;
             if (preg_match('/[\x00-\x08\x0a-\x1f\x7f]/', $entry)) {
-                throw new InvalidArgumentException('HTTP 消息头值不允许控制字符');
+                throw new \InvalidArgumentException('HTTP 消息头值不允许控制字符');
             }
             $normalized[] = trim($entry, " \t");
         }

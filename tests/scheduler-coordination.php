@@ -51,7 +51,7 @@ function coordinationWaitExpired(RedisConnection $redis, string $key): void
 
 $manager = new RedisManager(['default' => new RedisConfiguration(
     getenv('TYPE_REDIS_HOST') ?: '127.0.0.1',
-    (int) (getenv('TYPE_REDIS_PORT') ?: 6379)
+    (int)(getenv('TYPE_REDIS_PORT') ?: 6379)
 )], [Purpose::SCRIPT => 4]);
 $scope = new ExecutionScope();
 $application = 'type_coordination_' . bin2hex(random_bytes(8));
@@ -77,7 +77,7 @@ try {
     coordinationWaitExpired($ordinary, $lockKey);
     $newStore->acquire();
     $new = $newStore->lease();
-    expect((int) $new->generation() > (int) $oldGeneration, '租约替换没有单调增加代次');
+    expect((int)$new->generation() > (int)$oldGeneration, '租约替换没有单调增加代次');
     coordinationReject(static fn () => $old->renew(), 'lease_lost');
     coordinationReject(static fn () => $old->effect("return redis.call('SET',KEYS[1],'old')", [$application . ':effect']), 'lease_lost');
     coordinationReject(static fn () => $oldStore->save(['protocol' => 1, 'cursors' => [], 'records' => []]), 'lease_lost');
@@ -144,7 +144,7 @@ try {
     $broken = $brokenStore->lease();
     $clientId = $first->identity();
     $admin = new Redis();
-    expect($admin->connect(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1', (int) (getenv('TYPE_REDIS_PORT') ?: 6379)), '无法建立故障注入客户端');
+    expect($admin->connect(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1', (int)(getenv('TYPE_REDIS_PORT') ?: 6379)), '无法建立故障注入客户端');
     $admin->rawCommand('CLIENT', 'KILL', 'ID', $clientId);
     coordinationReject(static fn () => $broken->renew(), 'lease_lost');
     coordinationReject(static fn () => $broken->effect("return redis.call('SET',KEYS[1],'invalid')", [$application . ':effect']), 'lease_lost');

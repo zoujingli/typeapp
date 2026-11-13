@@ -8,7 +8,15 @@ PHP 文件使用无 BOM 的 UTF-8、LF、四空格缩进和 `declare(strict_type
 
 Model 的持久化字段声明可沿用数据库列的 snake_case 名称，以保持现有字段映射、赋值键与投影协议；普通对象属性和方法仍使用 camelCase。需要不同属性名时用 `Column(name: '数据库列名')` 显式映射，不因格式整理改写已有字段契约。模型声明由构建期生成器转换为受管属性，缺失与 null 由模型状态区分，不为满足普通属性初始化要求补入虚假的字段默认值。
 
-格式基线为 PHP CS Fixer 的 PSR-12 规则和仓库显式安全规则。`composer cs-check` 只检查，`composer cs-fix` 只做已声明的非 risky 格式修正。配置排除 vendor、build、运行数据；不启用类型迁移、隐式裁参、语义重写或自动替换事务逻辑的规则。格式化后仍需语法、公共行为和相关 AOT 验收。
+格式基线由根目录 `.php-cs-fixer.dist.php` 统一维护，采用 Symfony / PHP CS Fixer 样式规则及 PSR-12。统一短数组与解构、import 分组和字母排序、PHPDoc 左对齐、类成员分组、单引号、拼接空格及无空格类型转换等样式；具体规则及例外以该配置为准。
+
+`composer cs-check` 只检查，`composer cs-fix` 只做已声明的非 risky 修正。保持关闭 risky 的 `use_arrow_functions`、`declare_strict_types`，不由格式工具调整 TypePHP 闭包或严格类型语义；文件仍须按本标准显式声明严格类型。许可证和归属遵守本项目约定。配置覆盖第一方 PHP 与命令入口，排除 vendor、build、运行数据及用于行为复现的 fixtures；保留顺序执行、无缓存的确定性检查。格式化后仍需语法、公共行为和相关 AOT 验收。
+
+`fully_qualified_strict_types.import_symbols` 保持关闭：当前 PHP CS Fixer 对带 shebang 的全局命令自动插入 `use` 时会放到 `declare(strict_types=1)` 之前，导致 PHP 拒绝加载。显式 import 仍按统一规则排序；命令入口和普通 PHP 共同接受语法检查。
+
+每个命名空间的 `use` 放在首次使用及函数声明之前。导入仅影响其后的词法解析；不能把函数内全限定名缩短后，将导入留在该函数或线程入口之后。格式化后的类名解析仍须保持原语义。
+
+`phpdoc_no_alias_tag` 只统一 `type/link`，保留 `@property-read` 与 `@property-write`；读写方向是模型及 IDE 的实际约束，不转换成通用 `@property`。
 
 ## PHPDoc
 

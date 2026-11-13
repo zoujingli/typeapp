@@ -14,7 +14,7 @@ use TypeApp\CacheExample\Profile;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function cacheExpect(bool $condition, string $message): void
 {
@@ -26,16 +26,16 @@ function cacheExpect(bool $condition, string $message): void
 /**
  * 以专属缓存命名空间验证类型、TTL、回源、代次隔离与有界回收。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
     $manager = new RedisManager(['default' => new RedisConfiguration(
-        (string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
-        (int) (getenv('TYPE_REDIS_PORT') ?: 6379)
+        (string)(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
+        (int)(getenv('TYPE_REDIS_PORT') ?: 6379)
     )], [Purpose::SCRIPT => 4]);
     $scope = new ExecutionScope();
-    $application = (string) (getenv('TYPE_CACHE_APPLICATION') ?: 'cache-test-' . bin2hex(random_bytes(8)));
+    $application = (string)(getenv('TYPE_CACHE_APPLICATION') ?: 'cache-test-' . bin2hex(random_bytes(8)));
     try {
         $redis = $manager->connection($scope, 'default', Purpose::SCRIPT);
         $store = new NamespaceStore($redis, $application, 'test', 'v1');
@@ -79,7 +79,7 @@ function main(int $argc, array $argv): void
         cacheExpect(!$cache->get('deleted')->hit(), '零 TTL 没有删除');
         $calls = 0;
         $loader = static function () use (&$calls): array {
-            $calls++;
+            ++$calls;
             return ['id' => 1];
         };
         cacheExpect($cache->remember('origin', $loader) === ['id' => 1] && $cache->remember('origin', $loader) === ['id' => 1]
@@ -118,7 +118,7 @@ function main(int $argc, array $argv): void
         $cache->put('gc2', '回收2', 10000);
         $cache->clear();
         $removed = 0;
-        for ($index = 0; $index < 20; $index++) {
+        for ($index = 0; $index < 20; ++$index) {
             $removed += $cache->collect(2);
         }
         cacheExpect($removed >= 2, '旧代缓存没有被有界回收');

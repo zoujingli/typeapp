@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Psr\Log\InvalidArgumentException;
 use Type\Log\Channel;
 use Type\Log\Formatter;
 use Type\Log\LogManager;
@@ -14,16 +15,17 @@ final class UnsafeLogValue implements Stringable, JsonSerializable
     /**
      * 故意拒绝隐式转文本，供日志消息失败和上下文隔离路径验证。
      *
-     * @throws RuntimeException 每次调用均失败。
+     * @throws RuntimeException 每次调用均失败
      */
     public function __toString(): string
     {
         throw new RuntimeException('不能转换');
     }
+
     /**
      * 故意拒绝对象序列化，验证格式化器只记录未知对象类型。
      *
-     * @throws RuntimeException 每次调用均失败。
+     * @throws RuntimeException 每次调用均失败
      */
     public function jsonSerialize(): mixed
     {
@@ -34,7 +36,7 @@ final class UnsafeLogValue implements Stringable, JsonSerializable
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function behaviorExpect(bool $condition, string $message): void
 {
@@ -46,7 +48,7 @@ function behaviorExpect(bool $condition, string $message): void
 /**
  * 验证脱敏、任意上下文、共享格式化预算与日志作用域隔离。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
@@ -60,7 +62,7 @@ function main(int $argc, array $argv): void
         === ['nested' => [0 => '[TRUNCATED]', 1 => '[TRUNCATED]', '__truncated' => true]], '深度截断的占位值也必须消耗条目预算');
     $file = tempnam(sys_get_temp_dir(), 'type_log_file_');
     behaviorExpect($file !== false, '无法创建日志文件验证路径');
-    $output = Output::file((string) $file, maxRecordBytes: 16384);
+    $output = Output::file((string)$file, maxRecordBytes: 16384);
     $logs = new LogManager(
         'build-one',
         ['app' => new Channel($output), 'security' => new Channel($output, 'warning')],
@@ -68,11 +70,11 @@ function main(int $argc, array $argv): void
     );
     $scope = new ExecutionScope(context: ['command_id' => 'one']);
     try {
-        $id = \std::any('request-original');
+        $id = std::any('request-original');
         $context = ['request_id' => &$id, 'nested' => ['value' => &$id], 'password' => 'scope-secret', 'command_id' => 'forged'];
         $logger = $logs->logger($scope, $context);
         $id = 'request-changed';
-        $recursive = \std::any([]);
+        $recursive = std::any([]);
         $recursive['self'] = &$recursive;
         $closed = fopen(PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r');
         fclose($closed);
@@ -85,11 +87,11 @@ function main(int $argc, array $argv): void
         $invalidLevel = false;
         try {
             $logger->log('invalid', 'bad');
-        } catch (Psr\Log\InvalidArgumentException $error) {
+        } catch (InvalidArgumentException $error) {
             $invalidLevel = true;
         }
         behaviorExpect($invalidLevel, '非法级别必须抛 PSR-3 异常');
-        $foreign = \std::any(false);
+        $foreign = std::any(false);
         (new Fiber(function () use ($logger, &$foreign): void {
             try {
                 $logger->info('不能跨 Fiber');
@@ -113,7 +115,7 @@ function main(int $argc, array $argv): void
             $next->close();
         }
         $logs->stop();
-        $wire = (string) file_get_contents((string) $file);
+        $wire = (string)file_get_contents((string)$file);
         $rows = array_map(static fn (string $line): array => json_decode($line, true, 512, JSON_THROW_ON_ERROR), explode("\n", rtrim($wire, "\n")));
         behaviorExpect(count($rows) === 4 && $rows[0]['correlation']['request_id'] === 'request-original'
             && $rows[0]['correlation']['nested']['value'] === 'request-original' && $rows[0]['correlation']['command_id'] === 'one', '关联上下文没有生成不可变快照或覆盖了 Scope 标识');
@@ -126,8 +128,8 @@ function main(int $argc, array $argv): void
     } finally {
         $scope->close();
         $logs->stop();
-        if (is_file((string) $file)) {
-            unlink((string) $file);
+        if (is_file((string)$file)) {
+            unlink((string)$file);
         }
     }
     echo "日志文件、多通道、作用域隔离、任意上下文与脱敏通过。\n";

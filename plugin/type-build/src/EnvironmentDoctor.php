@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use Throwable;
-
 /** 只读诊断开发依赖和构建前提；不读dotenv、不连接业务服务，不替代实际验收。 */
 final class EnvironmentDoctor
 {
@@ -14,11 +12,11 @@ final class EnvironmentDoctor
     {
         $project = (new BuildProject())->read($configuration);
         $root = $project['root'];
-        $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+        $composer = json_decode((string)file_get_contents($root . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
         $vendorSetting = $composer['config']['vendor-dir'] ?? 'vendor';
         $platform = new BuildPlatform();
         $vendor = $platform->absolute($vendorSetting) ? $vendorSetting : $root . '/' . $vendorSetting;
-        $installed = is_file($vendor . '/composer/installed.json') ? json_decode((string) file_get_contents($vendor . '/composer/installed.json'), true, 512, JSON_THROW_ON_ERROR) : [];
+        $installed = is_file($vendor . '/composer/installed.json') ? json_decode((string)file_get_contents($vendor . '/composer/installed.json'), true, 512, JSON_THROW_ON_ERROR) : [];
         $packages = array_column($installed['packages'] ?? [], null, 'name');
         $missing = [];
         $extensions = [];
@@ -48,8 +46,8 @@ final class EnvironmentDoctor
             'composer-installed' => is_file($vendor . '/autoload.php'), 'missing-packages' => $missing, 'extensions' => $extensions];
         $development['ready'] = $development['php-range-matches'] && $development['composer-installed'] && $missing === [] && !in_array(false, $extensions, true);
         $lockFile = $root . '/toolchain.lock.json';
-        $lock = is_file($lockFile) ? json_decode((string) file_get_contents($lockFile), true, 512, JSON_THROW_ON_ERROR) : [];
-        $build = ['ready' => false, 'toolchain-lock' => $lock !== [], 'php-abi-matches' => ($lock['php'] ?? null) === PHP_VERSION && ($lock['zts'] ?? null) === (bool) PHP_ZTS,
+        $lock = is_file($lockFile) ? json_decode((string)file_get_contents($lockFile), true, 512, JSON_THROW_ON_ERROR) : [];
+        $build = ['ready' => false, 'toolchain-lock' => $lock !== [], 'php-abi-matches' => ($lock['php'] ?? null) === PHP_VERSION && ($lock['zts'] ?? null) === (bool)PHP_ZTS,
             'php-home' => getenv('PHP_HOME') ?: null, 'phpx-home' => getenv('PHPX_HOME') ?: null, 'issues' => []];
         if (!$build['toolchain-lock']) {
             $build['issues'][] = 'toolchain_lock_missing';
@@ -75,7 +73,7 @@ final class EnvironmentDoctor
                 if (!$found) {
                     $build['issues'][] = 'compiler_not_found';
                 }
-            } catch (Throwable $error) {
+            } catch (\Throwable $error) {
                 $build['issues'][] = 'sdk_invalid';
                 $build['diagnostic'] = $error->getMessage();
             }

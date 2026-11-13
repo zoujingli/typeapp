@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require(getenv('TYPE_TESTING_AUTOLOAD') ?: dirname(__DIR__) . '/vendor/autoload.php');
+require getenv('TYPE_TESTING_AUTOLOAD') ?: dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Testing\Assert;
 use Type\Testing\AssertionFailed;

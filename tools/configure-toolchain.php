@@ -1,6 +1,9 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\BuildPlatform;
+use TypePhp\Platform\Linux;
+use TypePhp\Platform\Macos;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -21,7 +24,7 @@ function sdkCommand(string $configuration, string $option): string
 
 /**
  * 创建 SDK 来源链接；相同链接可复用，任何不同目标或普通文件均拒绝覆盖。
- * @throws RuntimeException 目标已占用、来源变化或链接创建失败。
+ * @throws RuntimeException 目标已占用、来源变化或链接创建失败
  */
 function sdkLink(string $source, string $target): void
 {
@@ -37,7 +40,7 @@ function sdkLink(string $source, string $target): void
 /**
  * 保存不可变模块副本，避免扩展目录内的外部软链接越过构建身份边界。
  *
- * @throws RuntimeException 既有目标不匹配、源字节变化或无法无覆盖地发布副本。
+ * @throws RuntimeException 既有目标不匹配、源字节变化或无法无覆盖地发布副本
  */
 function sdkModuleCopy(string $source, string $target, string $sha256): void
 {
@@ -63,9 +66,9 @@ function sdkModuleCopy(string $source, string $target, string $sha256): void
 /**
  * 为显式补充模块生成独立扩展视图，不安装或覆盖原SDK中的文件。
  *
- * @param list<string> $declarations 扩展名=共享模块绝对路径；同名声明只允许一次。
- * @return array<string,array{file:string,sha256:string}> 扩展文件名到实际字节来源；包含原SDK的其他模块。
- * @throws RuntimeException 声明、原SDK目录、模块格式或文件读取无效。
+ * @param list<string> $declarations 扩展名=共享模块绝对路径；同名声明只允许一次
+ * @return array<string,array{file:string,sha256:string}> 扩展文件名到实际字节来源；包含原SDK的其他模块
+ * @throws RuntimeException 声明、原SDK目录、模块格式或文件读取无效
  */
 function sdkExtensions(string $configuration, array $declarations): array
 {
@@ -95,7 +98,7 @@ function sdkExtensions(string $configuration, array $declarations): array
     foreach ($sources as $filename => $source) {
         $file = realpath($source);
         if (preg_match('/^[A-Za-z0-9_][A-Za-z0-9._+\-]*\.so$/D', $filename) !== 1 || $file === false || !is_file($file)
-            || \Type\Build\BuildPlatform::format($file) !== (PHP_OS_FAMILY === 'Darwin' ? 'Mach-O' : 'ELF')) {
+            || BuildPlatform::format($file) !== (PHP_OS_FAMILY === 'Darwin' ? 'Mach-O' : 'ELF')) {
             throw new RuntimeException('SDK扩展不是本平台的有效共享模块：' . $filename);
         }
         $hash = hash_file('sha256', $file);
@@ -115,7 +118,7 @@ try {
         throw new InvalidArgumentException('用法：php tools/configure-toolchain.php <SDK 缓存绝对目录> <当前 php-config 绝对路径> [扩展名=模块绝对路径 ...]');
     }
     $lock = json_decode(file_get_contents(dirname(__DIR__) . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
-    if (!in_array(PHP_OS_FAMILY, ['Linux', 'Darwin'], true) || PHP_VERSION !== $lock['php'] || (bool) PHP_ZTS !== $lock['zts'] || sdkCommand($configuration, '--version') !== PHP_VERSION) {
+    if (!in_array(PHP_OS_FAMILY, ['Linux', 'Darwin'], true) || $lock['php'] !== PHP_VERSION || (bool)PHP_ZTS !== $lock['zts'] || sdkCommand($configuration, '--version') !== PHP_VERSION) {
         throw new RuntimeException('当前 PHP 与 SDK 必须匹配锁定的 Unix ZTS 工具链');
     }
     $libraryName = PHP_OS_FAMILY === 'Darwin' ? 'libphp.dylib' : 'libphp.so';
@@ -153,12 +156,12 @@ try {
         foreach ($extensionFiles as $filename => $extensionFile) {
             sdkModuleCopy($extensionFile['file'], $extensionDirectory . '/' . $filename, $extensionFile['sha256']);
         }
-        $extensionCase = '  --extension-dir) printf \'%s\\n\' ' . escapeshellarg($extensionDirectory) . ";;\n";
+        $extensionCase = '  --extension-dir) printf \'%s\n\' ' . escapeshellarg($extensionDirectory) . ";;\n";
     }
     $wrapper = "#!/bin/sh\ncase \"\$1\" in\n"
-        . '  --prefix) printf \'%s\\n\' ' . escapeshellarg($directory) . ";;\n"
-        . '  --lib-dir) printf \'%s\\n\' ' . escapeshellarg($directory . '/lib') . ";;\n"
-        . '  --lib-embed) printf \'%s\\n\' ' . escapeshellarg($directory . '/lib/' . $libraryName) . ";;\n"
+        . '  --prefix) printf \'%s\n\' ' . escapeshellarg($directory) . ";;\n"
+        . '  --lib-dir) printf \'%s\n\' ' . escapeshellarg($directory . '/lib') . ";;\n"
+        . '  --lib-embed) printf \'%s\n\' ' . escapeshellarg($directory . '/lib/' . $libraryName) . ";;\n"
         . $extensionCase
         . '  *) exec ' . escapeshellarg($configuration) . " \"\$@\";;\nesac\n";
     foreach (['bin/php-config' => $wrapper, 'identity.json' => $json] as $relative => $contents) {
@@ -175,7 +178,7 @@ try {
         throw new RuntimeException('无法设置 SDK 配置的执行权限');
     }
     putenv('PHP_HOME=' . $directory);
-    $platform = PHP_OS_FAMILY === 'Darwin' ? new TypePhp\Platform\Macos() : new TypePhp\Platform\Linux();
+    $platform = PHP_OS_FAMILY === 'Darwin' ? new Macos() : new Linux();
     $resolved = $platform->detectPhpLibs($directory);
     if (realpath($resolved['embed'] ?? '') !== $library) {
         throw new RuntimeException('TypePHP 与当前 PHP 选中了不同的 embed 库');

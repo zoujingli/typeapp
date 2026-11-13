@@ -9,13 +9,13 @@ use TypeApp\ValidationExample\UserInput;
 /**
  * 按命令参数校验 JSON、query 与 PATCH，输出有效数据或不含原值的结构化错误。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
     try {
-        $input = Input::json((string) ($argv[1] ?? '{}'), 2048, 8)->withQuery((string) ($argv[2] ?? ''));
-        $data = UserInput::schema()->validate($input, (string) ($argv[4] ?? 'default'), ($argv[3] ?? '') === 'patch');
+        $input = Input::json((string)($argv[1] ?? '{}'), 2048, 8)->withQuery((string)($argv[2] ?? ''));
+        $data = UserInput::schema()->validate($input, (string)($argv[4] ?? 'default'), ($argv[3] ?? '') === 'patch');
         echo json_encode(['data' => $data->toArray()], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . PHP_EOL;
     } catch (ValidationException $error) {
         echo json_encode(['status' => $error->status(), 'error' => $error->errorCode(), 'fields' => $error->errors()], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . PHP_EOL;

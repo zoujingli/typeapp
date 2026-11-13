@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
-use InvalidArgumentException;
-
 /** 不可变行为声明；每个观察器的作用域由应用显式注入。 */
 final class ModelBehavior
 {
     private array $observers = [];
+
     private array $getters = [];
+
     private array $setters = [];
 
     /** 返回追加观察器的新行为声明，原声明保持不变。 */
@@ -22,8 +21,8 @@ final class ModelBehavior
         return $copy;
     }
 
-    /** @param Closure(mixed): mixed $transform 接收字段原值并返回读取值。 */
-    public function getter(string $field, Closure $transform): ModelBehavior
+    /** @param \Closure(mixed): mixed $transform 接收字段原值并返回读取值。 */
+    public function getter(string $field, \Closure $transform): ModelBehavior
     {
         $this->field($field);
         $copy = clone $this;
@@ -31,8 +30,8 @@ final class ModelBehavior
         return $copy;
     }
 
-    /** @param Closure(mixed): mixed $transform 接收输入值并返回待存值。 */
-    public function setter(string $field, Closure $transform): ModelBehavior
+    /** @param \Closure(mixed): mixed $transform 接收输入值并返回待存值。 */
+    public function setter(string $field, \Closure $transform): ModelBehavior
     {
         $this->field($field);
         $copy = clone $this;
@@ -66,7 +65,7 @@ final class ModelBehavior
     private function field(string $field): void
     {
         if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $field)) {
-            throw new InvalidArgumentException('行为字段名无效');
+            throw new \InvalidArgumentException('行为字段名无效');
         }
     }
 }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Core\Http\Message;
 
-use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
 
@@ -12,6 +11,7 @@ use Psr\Http\Message\StreamInterface;
 final class Response extends Message implements ResponseInterface
 {
     private int $status;
+
     private string $reason;
 
     /** 接受 100 至 599 状态；空原因短语采用内置标准文本，不关闭正文流。 */
@@ -48,7 +48,7 @@ final class Response extends Message implements ResponseInterface
     private function validateStatus(int $code, string $reason): void
     {
         if ($code < 100 || $code > 599 || preg_match('/[\x00-\x08\x0a-\x1f\x7f]/', $reason)) {
-            throw new InvalidArgumentException('HTTP 状态码或原因短语无效');
+            throw new \InvalidArgumentException('HTTP 状态码或原因短语无效');
         }
     }
 
@@ -74,6 +74,6 @@ final class Response extends Message implements ResponseInterface
             506 => 'Variant Also Negotiates', 507 => 'Insufficient Storage', 508 => 'Loop Detected',
             510 => 'Not Extended', 511 => 'Network Authentication Required',
         ];
-        return (string) ($reasons[$code] ?? '');
+        return (string)($reasons[$code] ?? '');
     }
 }

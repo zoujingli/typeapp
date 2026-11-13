@@ -14,11 +14,12 @@ require __DIR__ . '/release/SizeGate.php';
 
 use TypeApp\Distribution\Batch;
 use TypeApp\Distribution\Process;
+use TypeApp\Release\Candidate;
+use TypeApp\Release\Evidence;
 use TypeApp\Release\GitHub;
 use TypeApp\Release\Packagist;
 use TypeApp\Release\Plan;
-use TypeApp\Release\Evidence;
-use TypeApp\Release\Candidate;
+use TypeApp\Release\SizeGate;
 
 /** 输出固定Actions参数；不接收自由格式换行或脚本。 */
 function releaseOutput(string $key, string $value): void
@@ -58,8 +59,8 @@ try {
             throw new RuntimeException('请选择该版本tag作为工作流ref，不能从main重试其他源码版本');
         }
         $existing = $api->find('zoujingli/typeapp', $version);
-        $run = (string) getenv('GITHUB_RUN_ID');
-        $attempt = (string) getenv('GITHUB_RUN_ATTEMPT');
+        $run = (string)getenv('GITHUB_RUN_ID');
+        $attempt = (string)getenv('GITHUB_RUN_ATTEMPT');
         if ($existing !== null) {
             if (!preg_match('/<!-- typeapp-candidate source=([a-f0-9]{40}) run=([1-9][0-9]*) attempt=([1-9][0-9]*) -->/', $existing['body'], $match)
                 || $match[1] !== $source || $existing['target_commitish'] !== $source) {
@@ -76,7 +77,7 @@ try {
     } elseif ($operation === 'restore') {
         $assets = $work . '/assets';
         $file = $api->download('zoujingli/typeapp', $version, 'release-manifest.json', $assets);
-        $manifest = json_decode((string) file_get_contents($file), true, 64, JSON_THROW_ON_ERROR);
+        $manifest = json_decode((string)file_get_contents($file), true, 64, JSON_THROW_ON_ERROR);
         if (($manifest['source'] ?? '') !== $source || ($manifest['version'] ?? '') !== $version
             || ($manifest['candidate-run'] ?? '') !== getenv('TYPE_RELEASE_EVIDENCE_RUN')
             || ($manifest['candidate-attempt'] ?? '') !== getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT')) {
@@ -113,11 +114,11 @@ try {
     } elseif ($operation === 'candidate') {
         Evidence::tutorialCandidate($root, $plan);
         Batch::nativeEvidence($root, $source);
-        $run = (string) getenv('TYPE_RELEASE_EVIDENCE_RUN');
-        $attempt = (string) getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT');
+        $run = (string)getenv('TYPE_RELEASE_EVIDENCE_RUN');
+        $attempt = (string)getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT');
         $assets = $work . '/assets';
         $sealedFile = $assets . '/release-manifest.json';
-        $sealed = is_file($sealedFile) ? json_decode((string) file_get_contents($sealedFile), true, 128, JSON_THROW_ON_ERROR) : null;
+        $sealed = is_file($sealedFile) ? json_decode((string)file_get_contents($sealedFile), true, 128, JSON_THROW_ON_ERROR) : null;
         $manifest = ['protocol' => 3, 'source' => $source, 'version' => $version, 'candidate-run' => $run, 'candidate-attempt' => $attempt,
             'delivery' => 'single-executable', 'native-libraries-statically-linked' => true, 'profiles' => Candidate::PROFILES, 'programs' => []];
         $sums = '';
@@ -129,7 +130,7 @@ try {
                 if (!is_file($recordFile) || is_link($recordFile)) {
                     throw new RuntimeException('缺少 profile 候选回执：' . $key);
                 }
-                $record = json_decode((string) file_get_contents($recordFile), true, 64, JSON_THROW_ON_ERROR);
+                $record = json_decode((string)file_get_contents($recordFile), true, 64, JSON_THROW_ON_ERROR);
                 Candidate::verify($record, $assets, $source, $version, $platform, $profile);
                 $frontend ??= $record['frontend-manifest-sha256'];
                 if ($frontend !== $record['frontend-manifest-sha256']) {
@@ -155,8 +156,8 @@ try {
                 $manifest['programs'][$key]['rebuild']['artifact'] = $artifact;
             }
             $baseline = $api->sizeBaseline($version);
-            $policy = json_decode((string) file_get_contents($root . '/.github/release-size-policy.json'), true, 64, JSON_THROW_ON_ERROR);
-            $manifest['size-gate'] = \TypeApp\Release\SizeGate::verify($manifest['programs'], $baseline['manifest'] ?? null, $policy, $version);
+            $policy = json_decode((string)file_get_contents($root . '/.github/release-size-policy.json'), true, 64, JSON_THROW_ON_ERROR);
+            $manifest['size-gate'] = SizeGate::verify($manifest['programs'], $baseline['manifest'] ?? null, $policy, $version);
             $manifest['size-gate']['baseline-manifest-sha256'] = $baseline['sha256'] ?? null;
             $manifest['size-gate']['baseline-release-id'] = $baseline['release-id'] ?? null;
         }
@@ -181,14 +182,14 @@ try {
             'run' => getenv('GITHUB_RUN_ID'), 'attempt' => getenv('GITHUB_RUN_ATTEMPT'), 'status' => 'passed']);
     } elseif ($operation === 'children') {
         Evidence::reports($root, $plan);
-        $consumption = json_decode((string) file_get_contents($work . '/consumption.json'), true, 32, JSON_THROW_ON_ERROR);
+        $consumption = json_decode((string)file_get_contents($work . '/consumption.json'), true, 32, JSON_THROW_ON_ERROR);
         if (($consumption['source'] ?? '') !== $source || ($consumption['version'] ?? '') !== $version
             || ($consumption['run'] ?? '') !== getenv('GITHUB_RUN_ID') || ($consumption['attempt'] ?? '') !== getenv('GITHUB_RUN_ATTEMPT')
             || ($consumption['status'] ?? '') !== 'passed') {
             throw new RuntimeException('公开子仓前需要主仓令牌核验本轮消费任务');
         }
-        $batch = json_decode((string) file_get_contents($root . '/build/distribution/batch-result.json'), true, 64, JSON_THROW_ON_ERROR);
-        $mapping = json_decode((string) file_get_contents($root . '/.github/distribution.json'), true, 64, JSON_THROW_ON_ERROR);
+        $batch = json_decode((string)file_get_contents($root . '/build/distribution/batch-result.json'), true, 64, JSON_THROW_ON_ERROR);
+        $mapping = json_decode((string)file_get_contents($root . '/.github/distribution.json'), true, 64, JSON_THROW_ON_ERROR);
         Batch::verifyReport($root, $source, $batch, $mapping);
         if ($batch['version'] !== $version || $batch['mode'] !== 'tag') {
             throw new RuntimeException('子仓Release缺少本版本分发回执');
@@ -216,7 +217,7 @@ try {
         }
     } elseif ($operation === 'publish') {
         Evidence::consumption($root, $plan);
-        $receipt = json_decode((string) file_get_contents($work . '/children.json'), true, 64, JSON_THROW_ON_ERROR);
+        $receipt = json_decode((string)file_get_contents($work . '/children.json'), true, 64, JSON_THROW_ON_ERROR);
         if (($receipt['source'] ?? '') !== $source || ($receipt['version'] ?? '') !== $version || count($receipt['items'] ?? []) !== 16) {
             throw new RuntimeException('主仓公开前缺少完整16子仓回执');
         }
@@ -229,7 +230,7 @@ try {
             }
         }
         // 公开前再次回读全部附件；candidate使用最初封存的artifact，禁止重新构建替换。
-        $manifest = json_decode((string) file_get_contents($work . '/assets/release-manifest.json'), true, 64, JSON_THROW_ON_ERROR);
+        $manifest = json_decode((string)file_get_contents($work . '/assets/release-manifest.json'), true, 64, JSON_THROW_ON_ERROR);
         $records = $manifest['programs'] ?? $manifest['platforms'] ?? [];
         foreach ([...array_column(array_merge(...array_map(static fn (array $record): array => Candidate::attachments($record, false), array_values($records))), 'file'), 'SHA256SUMS', 'release-manifest.json'] as $name) {
             $api->asset('zoujingli/typeapp', $version, $work . '/assets/' . $name);

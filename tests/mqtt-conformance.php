@@ -41,7 +41,7 @@ function mqttConformanceCases(string $root, string $consumer, array $command, ar
     require_once $root . '/tests/mqtt-qos1.php';
     require_once $root . '/tests/native-database.php';
     require_once $root . '/tests/postgres-sync.php';
-    $tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+    $tools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
     $database = new NativeDatabase($consumer . '/conformance-primary', 'pgsql', $tools);
     $sync = null;
     $broker = null;
@@ -62,7 +62,7 @@ function mqttConformanceCases(string $root, string $consumer, array $command, ar
             $installation->stop();
         }
         $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $error);
-        $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+        $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
         fclose($listener);
         $broker = new Process([...$command, '--port=' . $port], $consumer, $environment);
         mqttUntil(function () use ($port, $broker, $consumer): bool {
@@ -78,7 +78,7 @@ function mqttConformanceCases(string $root, string $consumer, array $command, ar
             }
         }, '一致性Broker未就绪', 10.0);
         $client = new Process([getenv('TYPE_PYTHON') ?: 'python3', $root . '/tests/mqtt-conformance.py', 'run',
-            '--port', (string) $port, '--ca', $consumer . '/certificate.pem', '--output', $consumer . '/conformance',
+            '--port', (string)$port, '--ca', $consumer . '/certificate.pem', '--output', $consumer . '/conformance',
             '--paho', getenv('TYPE_PAHO_TESTING') ?: $root . '/build/paho-testing',
             '--mosquitto', getenv('TYPE_MOSQUITTO_SOURCE') ?: $root . '/build/mosquitto',
             '--mosquitto-bin', getenv('TYPE_MOSQUITTO_BIN') ?: $root . '/build/mosquitto-build/client',

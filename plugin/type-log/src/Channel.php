@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace Type\Log;
 
+use Psr\Log\InvalidArgumentException;
+
 /** 将最低日志级别绑定到一个输出；多个通道可共享同一输出容量。 */
 final class Channel
 {
     private Output $output;
+
     private int $minimum;
 
     /**
      * 登记输出与最低 PSR-3 级别，不在构造时打开文件。
      *
-     * @throws \Psr\Log\InvalidArgumentException 最低级别不属于 PSR-3。
+     * @throws InvalidArgumentException 最低级别不属于 PSR-3
      */
     public function __construct(Output $output, string $minimumLevel = 'debug')
     {
@@ -26,6 +29,7 @@ final class Channel
     {
         return $this->output;
     }
+
     /** 按标准级别权重判断是否记录；不执行格式化或输出。 */
     public function accepts(int $weight): bool
     {

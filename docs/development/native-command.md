@@ -31,9 +31,11 @@ macOS 手动选择 `scope=pressure` 可单独编译 HTTP 背压场景，并连�
 
 PostgreSQL 的本机 TLS 夹具通过 libpq `hostaddr`/`PGHOSTADDR` 固定连接本轮 IPv4 数据库，证书身份仍按 `host` 和 `verify-full` 校验。这样错误主机名测试不会因 `localhost.` 被解析为未监听的 IPv6 地址而变成连接拒绝；检查先证明该名称到达同一数据目录，再执行 PHP/AOT 的 TLS 拒绝断言。此地址设置仅属于独立测试进程。
 
-构建组件在 [plugin/type-build/resources/swoole](../../plugin/type-build/resources/swoole/README.md) 保存这四个平台的 Swoole 模块、固定来源、SHA-256 和第三方许可证。匹配 PHP 8.5.10 ZTS 的构建默认直接读取本地文件，不下载或重新编译 Swoole。选择顺序为真实 embed 已内置、显式 `runtime.modules`、有效的 `TYPE_SWOOLE_MODULE`、构建组件内置清单。清单缺失、没有匹配 ABI、摘要不符或源码适配已变更时明确失败；独立应用通过 Composer 安装完整的 `type-build` 后使用相同规则，其他扩展继续按 SDK 或显式候选解析。
+构建组件在 [plugin/type-build/resources/swoole](../../plugin/type-build/resources/swoole/README.md) 保存模块、固定来源、SHA-256 和第三方许可证。当前锁定 PHP 8.5.12 ZTS；macOS ARM64 已重建对应模块并完成模块、TLS、HTTP、DNS、curl 及线程重建验证，其他正式平台仍须重建。历史 PHP 8.5.10 模块保留原身份，不能据此放行当前源码。选择顺序为真实 embed 已内置、显式 `runtime.modules`、有效的 `TYPE_SWOOLE_MODULE`、构建组件内置清单。清单缺失、没有匹配 ABI、摘要不符或源码适配已变更时明确失败；独立应用使用相同规则。
 
 `tools/prepare-swoole-module.sh` 和 Windows SDK 准备脚本默认复用这些文件。维护者显式设置 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 才下载固定 Swoole 源码并应用当前适配；Unix 重建还需提供 `RUNNER_TEMP` 和 `SWOOLE_CONFIGURE_OPTS`。PHP SDK、PHPX 及其他依赖的准备不因此变为离线。内置共享模块是构建输入，最终程序静态链接和启动不释放运行库仍按[静态验证记录](static-runtime-feasibility.md)推进。
+
+macOS 的 `tools/rebuild-bundled-swoole.sh` 可通过 `TYPE_OPENSSL_PREFIX` 选择独立且已核对的 OpenSSL 安装，前缀须包含头文件、`libssl.a`、`libcrypto.a` 与 `LICENSE.txt`。重建不会修改共享 SDK；模块校验使用隔离 PHP 配置，避免加载 SDK 中已存在的另一份 Swoole。当前模块静态链接 OpenSSL 4.1.0、c-ares 1.34.9 和 Brotli 1.2.1；libpq 与 SQLite 的准确版本和摘要见模块清单，完整依赖升级及应用矩阵仍独立验收。
 
 依赖要求 `ext-sodium` 时，可使用[隔离 sodium 模块](sodium-module.md)入口，保持共享 SDK 与 vendor 不变。CLI 安装检查、共享 embed 加载和生产静态 SDK 分别验收，不忽略 Composer 平台依赖。
 

@@ -10,9 +10,9 @@ final class Resource
 {
     /**
      * 声明资源路径和名称，only 仅公开列出的约定动作。
-     * @param list<string> $only 需要生成路由的控制器动作名。
-     * @param array<string, string> $constraints 参数名到匹配约束。
-     * @param list<class-string> $middleware 按声明顺序调用的中间件类。
+     * @param list<string> $only 需要生成路由的控制器动作名
+     * @param array<string, string> $constraints 参数名到匹配约束
+     * @param list<class-string> $middleware 按声明顺序调用的中间件类
      */
     public function __construct(
         public string $path,
@@ -21,6 +21,5 @@ final class Resource
         public array $only = ['index', 'create', 'store', 'show', 'edit', 'update', 'destroy'],
         public array $constraints = [],
         public array $middleware = []
-    ) {
-    }
+    ) {}
 }

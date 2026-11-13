@@ -5,7 +5,7 @@ import type { RouteLocationNormalizedLoaded } from 'vue-router';
 import type { MenuRecordRaw } from '@vben/types';
 
 import { computed, onMounted, useSlots, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 
 import { useRefresh } from '@vben/hooks';
 import { $t, i18n } from '@vben/locales';
@@ -15,12 +15,12 @@ import {
   usePreferences,
 } from '@vben/preferences';
 import { useAccessStore, useTabbarStore, useTimezoneStore } from '@vben/stores';
-import { cloneDeep, generateMenus, mapTree } from '@vben/utils';
+import { cloneDeep, mapTree } from '@vben/utils';
 
 import { VbenAdminLayout } from '@vben-core/layout-ui';
 import { VbenBackTop, VbenLogo } from '@vben-core/shadcn-ui';
 
-import { Breadcrumb, Preferences } from '../widgets';
+import { Breadcrumb, CheckUpdates, Preferences } from '../widgets';
 import { LayoutContent, LayoutContentSpinner } from './content';
 import { Copyright } from './copyright';
 import { LayoutFooter } from './footer';
@@ -36,13 +36,14 @@ import { LayoutTabbar } from './tabbar';
 
 defineOptions({ name: 'BasicLayout' });
 
-const emit = defineEmits<{ clearPreferencesAndLogout: []; clickLogo: []; savePreferences: [] }>();
+const emit = defineEmits<{ clearPreferencesAndLogout: []; clickLogo: [] }>();
 
 const {
   isDark,
   isHeaderNav,
   isMixedNav,
   isMobile,
+  isSideMode,
   isSideMixedNav,
   isHeaderMixedNav,
   isHeaderSidebarNav,
@@ -52,32 +53,16 @@ const {
   theme,
 } = usePreferences();
 const accessStore = useAccessStore();
-const router = useRouter();
 const timezoneStore = useTimezoneStore();
 const { refresh } = useRefresh();
 
-function hasStableMenuOrder(menus: MenuRecordRaw[]): boolean {
-  return menus.every((menu) => {
-    const currentOk = typeof menu?.order === 'number';
-    const childrenOk = Array.isArray(menu?.children)
-      ? hasStableMenuOrder(menu.children)
-      : true;
-    return currentOk && childrenOk;
-  });
-}
-
-function normalizeAccessMenus() {
-  if (
-    preferences.app.accessMode === 'backend' &&
-    accessStore.accessRoutes.length > 0 &&
-    !hasStableMenuOrder(accessStore.accessMenus)
-  ) {
-    accessStore.setAccessMenus(generateMenus(accessStore.accessRoutes, router));
-  }
-}
-
 const sidebarTheme = computed(() => {
   const dark = isDark.value || preferences.theme.semiDarkSidebar;
+  return dark ? 'dark' : 'light';
+});
+
+const sidebarThemeSub = computed(() => {
+  const dark = isDark.value || preferences.theme.semiDarkSidebarSub;
   return dark ? 'dark' : 'light';
 });
 
@@ -122,6 +107,15 @@ const showHeaderNav = computed(() => {
     !isMobile.value &&
     (isHeaderNav.value || isMixedNav.value || isHeaderMixedNav.value)
   );
+});
+
+const logoTheme = computed(() => {
+  const showLogoInHeader =
+    !isSideMode.value ||
+    isHeaderSidebarNav.value ||
+    isMixedNav.value ||
+    isMobile.value;
+  return showLogoInHeader ? headerTheme.value : sidebarTheme.value;
 });
 
 const {
@@ -173,10 +167,6 @@ function clearPreferencesAndLogout() {
   emit('clearPreferencesAndLogout');
 }
 
-function savePreferences() {
-  emit('savePreferences');
-}
-
 function clickLogo() {
   emit('clickLogo');
 }
@@ -197,17 +187,8 @@ function autoCollapseMenuByRouteMeta(route: RouteLocationNormalizedLoaded) {
 const route = useRoute();
 
 onMounted(() => {
-  normalizeAccessMenus();
   autoCollapseMenuByRouteMeta(route);
 });
-
-watch(
-  () => accessStore.accessRoutes,
-  () => {
-    normalizeAccessMenus();
-  },
-  { deep: true, immediate: true },
-);
 
 watch(
   () => preferences.app.layout,
@@ -261,8 +242,9 @@ const headerSlots = computed(() => {
     :header-theme="headerTheme"
     :header-toggle-sidebar-button="preferences.widget.sidebarToggle"
     :header-visible="preferences.header.enable"
-    :is-mobile="isMobile"
+    :is-mobile="preferences.app.isMobile"
     :layout="layout"
+    :sidebar-draggable="preferences.sidebar.draggable"
     :sidebar-collapse="preferences.sidebar.collapsed"
     :sidebar-collapse-show-title="preferences.sidebar.collapsedShowTitle"
     :sidebar-enable="sidebarVisible"
@@ -274,6 +256,7 @@ const headerSlots = computed(() => {
     :sidebar-hidden="preferences.sidebar.hidden"
     :sidebar-mixed-width="preferences.sidebar.mixedWidth"
     :sidebar-theme="sidebarTheme"
+    :sidebar-theme-sub="sidebarThemeSub"
     :sidebar-width="preferences.sidebar.width"
     :side-collapse-width="preferences.sidebar.collapseWidth"
     :tabbar-enable="preferences.tabbar.enable"
@@ -295,6 +278,9 @@ const headerSlots = computed(() => {
       (value: boolean) =>
         updatePreferences({ sidebar: { extraCollapse: value } })
     "
+    @update:sidebar-width="
+      (value: number) => updatePreferences({ sidebar: { width: value } })
+    "
   >
     <!-- logo -->
     <template #logo>
@@ -306,7 +292,7 @@ const headerSlots = computed(() => {
         :src="preferences.logo.source"
         :src-dark="preferences.logo.sourceDark"
         :text="preferences.app.name"
-        :theme="showHeaderNav ? headerTheme : theme"
+        :theme="logoTheme"
         @click="clickLogo"
       >
         <template v-if="$slots['logo-text']" #text>
@@ -319,7 +305,6 @@ const headerSlots = computed(() => {
       <LayoutHeader
         :theme="theme"
         @clear-preferences-and-logout="clearPreferencesAndLogout"
-        @save-preferences="savePreferences"
       >
         <template
           v-if="!showHeaderNav && preferences.breadcrumb.enable"
@@ -345,6 +330,12 @@ const headerSlots = computed(() => {
         </template>
         <template #user-dropdown>
           <slot name="user-dropdown"></slot>
+        </template>
+        <template v-if="$slots['global-search']" #global-search>
+          <slot name="global-search"></slot>
+        </template>
+        <template v-if="$slots.fullscreen" #fullscreen>
+          <slot name="fullscreen"></slot>
         </template>
         <template #notification>
           <slot name="notification"></slot>
@@ -390,7 +381,7 @@ const headerSlots = computed(() => {
         :collapse="preferences.sidebar.extraCollapse"
         :menus="wrapperMenus(extraMenus)"
         :rounded="isMenuRounded"
-        :theme="sidebarTheme"
+        :theme="sidebarThemeSub"
       />
     </template>
     <template #side-extra-title>
@@ -398,7 +389,7 @@ const headerSlots = computed(() => {
         v-if="preferences.logo.enable"
         :fit="preferences.logo.fit"
         :text="preferences.app.name"
-        :theme="theme"
+        :theme="sidebarThemeSub"
       >
         <template v-if="$slots['logo-text']" #text>
           <slot name="logo-text"></slot>
@@ -416,7 +407,6 @@ const headerSlots = computed(() => {
 
     <!-- 主体内容 -->
     <template #content>
-      <slot name="content-before"></slot>
       <LayoutContent />
     </template>
 
@@ -424,24 +414,31 @@ const headerSlots = computed(() => {
       <LayoutContentSpinner />
     </template>
 
-    <!-- 页脚只承载版权信息，需同时满足用户页脚偏好与后台版权总开关，避免禁用版权时渲染空页脚。 -->
-    <template v-if="preferences.footer.enable && preferences.copyright.enable" #footer>
+    <!-- 页脚 -->
+    <template v-if="preferences.footer.enable" #footer>
       <LayoutFooter>
-        <Copyright v-bind="preferences.copyright" />
+        <Copyright
+          v-if="preferences.copyright.enable"
+          v-bind="preferences.copyright"
+        />
       </LayoutFooter>
     </template>
 
     <template #extra>
       <slot name="extra"></slot>
-      <Transition v-if="preferences.widget.lockScreen" name="slide-up">
+      <CheckUpdates
+        v-if="preferences.app.enableCheckUpdates"
+        :check-updates-interval="preferences.app.checkUpdatesInterval"
+      />
+
+      <Transition v-if="preferences.widget.lockScreen || accessStore.isLockScreen" name="slide-up">
         <slot v-if="accessStore.isLockScreen" name="lock-screen"></slot>
       </Transition>
 
       <template v-if="preferencesButtonPosition.fixed">
         <Preferences
-          class="z-100 fixed bottom-20 right-0"
+          class="fixed top-1/2 right-0 z-100 -translate-y-1/2 transform"
           @clear-preferences-and-logout="clearPreferencesAndLogout"
-          @save-preferences="savePreferences"
         />
       </template>
       <VbenBackTop />

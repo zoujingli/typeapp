@@ -1,8 +1,14 @@
 {
-  "php": "8.5.10",
+  "php": "8.5.12",
   "zts": true,
-  "typephp": {"version": "dev-master", "reference": "840c626c2505d2214708d129557adef3604a3576"},
-  "phpx": {"version": "2.9.5", "reference": "13cf717579b216d4a4fa49fe4439573b4d072e71"},
+  "typephp": {
+    "version": "dev-master",
+    "reference": "c5599c5c9e8597e7124dd79db94739cabe39c526"
+  },
+  "phpx": {
+    "version": "2.9.8",
+    "reference": "90e6d22a9c3f4d5dbd2c75d62e90bf5adfe58c89"
+  },
   "platform": "linux",
   "primary-architecture": "x86_64"
 }

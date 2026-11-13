@@ -9,7 +9,6 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use RuntimeException;
 use Type\Orm\ModelException;
 use Type\Orm\TransactionException;
 use Type\Runtime\ExecutionScope;
@@ -22,6 +21,7 @@ use Type\Validate\ValidationException;
 final class TagHandler implements RequestHandlerInterface
 {
     private ResponseFactoryInterface $responses;
+
     private StreamFactoryInterface $streams;
 
     /** 注入消息工厂，不在处理器构造时借用数据库连接。 */
@@ -36,7 +36,7 @@ final class TagHandler implements RequestHandlerInterface
     {
         $scope = $request->getAttribute('type.scope');
         if (!$scope instanceof ExecutionScope) {
-            throw new RuntimeException('标签请求缺少作用域');
+            throw new \RuntimeException('标签请求缺少作用域');
         }
         try {
             $query = (new Schema(['id' => Field::integer()->from('query')->cast()->required()->range(1, PHP_INT_MAX)]))
@@ -93,6 +93,6 @@ final class TagHandler implements RequestHandlerInterface
             $result = ['error' => $error->errorCode()];
         }
         return $this->responses->createResponse($status)->withHeader('Content-Type', 'application/json')
-            ->withBody($this->streams->createStream((string) json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
+            ->withBody($this->streams->createStream((string)json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
     }
 }

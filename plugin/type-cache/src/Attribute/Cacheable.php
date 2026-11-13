@@ -9,7 +9,5 @@ namespace Type\Cache\Attribute;
 final class Cacheable
 {
     /** 原方法由标准入口转换；同逻辑数据源的活动事务绕过共享缓存且不填充。 */
-    public function __construct(public string $cache, public string $key, public int $ttlMilliseconds = 60000, public string $database = 'default')
-    {
-    }
+    public function __construct(public string $cache, public string $key, public int $ttlMilliseconds = 60000, public string $database = 'default') {}
 }

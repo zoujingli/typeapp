@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use app\common\bootstrap\Application;
 
 // 仅本地开发 CLI；生产执行 build/type-project，禁止以此启动器作源码解释回退。
 $root = __DIR__;
@@ -19,7 +20,7 @@ try {
         require $root . '/app/common/bootstrap/Application.php';
     }
     // 明确的开发权限入参，不通过 putenv 覆盖使用者配置，更不由 HTTP 输入开启。
-    app\common\bootstrap\Application::run($argv, true);
+    Application::run($argv, true);
 } catch (Throwable $error) {
     fwrite(STDERR, '应用开发启动失败：' . $error->getMessage() . "\n");
     exit(1);

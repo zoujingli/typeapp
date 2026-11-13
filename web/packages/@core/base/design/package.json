@@ -1,6 +1,6 @@
 {
   "name": "@vben-core/design",
-  "version": "5.6.0",
+  "version": "5.7.0",
   "homepage": "https://github.com/vbenjs/vue-vben-admin",
   "bugs": "https://github.com/vbenjs/vue-vben-admin/issues",
   "repository": {
@@ -8,7 +8,7 @@
     "url": "git+https://github.com/vbenjs/vue-vben-admin.git",
     "directory": "packages/@vben-core/base/design"
   },
-  "license": "Apache-2.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "pnpm vite build",
@@ -18,17 +18,22 @@
     "dist",
     "src"
   ],
-  "main": "./src/index.ts",
-  "module": "./src/index.ts",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
   "exports": {
     "./bem": {
       "development": "./src/scss-bem/bem.scss",
-      "default": "./src/scss-bem/bem.scss"
+      "production": "./src/scss-bem/bem.scss",
+      "default": "./dist/bem.scss"
+    },
+    "./theme": {
+      "default": "./src/css/global.css"
     },
     ".": {
       "types": "./src/index.ts",
       "development": "./src/index.ts",
-      "default": "./src/index.ts"
+      "production": "./src/index.ts",
+      "default": "./dist/design.css"
     }
   },
   "publishConfig": {
@@ -37,5 +42,8 @@
         "default": "./dist/index.mjs"
       }
     }
+  },
+  "dependencies": {
+    "@iconify/json": "catalog:"
   }
 }

@@ -7,6 +7,8 @@ require_once dirname(__DIR__) . '/vendor/autoload.php';
 require_once __DIR__ . '/native-database.php';
 require_once __DIR__ . '/postgres-sync.php';
 
+use Type\Build\NativePackage;
+use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
 /** 本轮维护进程只有显式命令和有界输出；失败响应必须确实退出且不冒充成功JSON。 */
@@ -177,7 +179,7 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
         $environment['APP_CUSTOMER_PASSWORD'] = 'Recovery-password-2026';
         $report['installation'] = iotRecoveryRun([...$command, 'app:install', 'platform', '恢复管理人员', 'owner', '恢复客户人员', '恢复初始客户'], $environment, true, 45)['data'];
     }
-    $http = new Type\Testing\HttpClient('http://127.0.0.1:' . $environment['APP_PORT']);
+    $http = new HttpClient('http://127.0.0.1:' . $environment['APP_PORT']);
     $request = static function (string $method, string $path, string $token, ?string $tenant, ?array $data, int $status = 200) use ($http, &$report): array {
         $headers = ['Content-Type' => 'application/json'];
         if ($token !== '') {
@@ -186,7 +188,7 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
         if ($tenant !== '' && $tenant !== null) {
             $headers['X-Tenant-Id'] = $tenant;
         }
-        $response = $http->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $http->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '恢复事实管理入口失败：' . $method . ' ' . $path . ' ' . $response->status . ' ' . $response->body);
         $report['http_checks'] = ($report['http_checks'] ?? 0) + 1;
         return $response->json();
@@ -298,7 +300,7 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
             expect($retained->fetchColumn() === base64_encode("recovery-down\0binary"), '真实 MQTT 保留消息字节不符');
             $queued = $database->prepare("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = ? AND state = 'pending' AND qos = 1 AND NOT started");
             $queued->execute([$device['id']]);
-            expect((int) $queued->fetchColumn() === 1, '离线持久会话没有保留真实待投递消息');
+            expect((int)$queued->fetchColumn() === 1, '离线持久会话没有保留真实待投递消息');
             $report['device_id'] = $device['id'];
             $report['client'] = 'MQTT.js 5.15.0';
             $report['tls'] = true;
@@ -364,8 +366,8 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
         } elseif ($phase === 'reopen') {
             foreach ($context['devices'] as $kind => $registration) {
                 $detail = $request('GET', $path . '/devices/' . $registration['device']['id'], $token, $tenant, null)['data'];
-                expect((int) $detail['recovery_verified'] === ($kind === 'stable' ? 1 : 0), '真实恢复后错误放行或隔离设备：' . $kind);
-                $report['device_authorization'][$kind] = ['id' => $detail['id'], 'verified' => (int) $detail['recovery_verified']];
+                expect((int)$detail['recovery_verified'] === ($kind === 'stable' ? 1 : 0), '真实恢复后错误放行或隔离设备：' . $kind);
+                $report['device_authorization'][$kind] = ['id' => $detail['id'], 'verified' => (int)$detail['recovery_verified']];
                 if ($kind !== 'stable') {
                     $denied = $request(
                         'POST',
@@ -417,7 +419,7 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
         'eventTimers', 'pendingCommits', 'closingSessions'] as $resource) {
         expect($report['broker'][$resource] === 0, '备份前Broker仍有活动资源：' . $resource);
     }
-    expect((int) $database->query("SELECT COUNT(*) FROM pg_stat_activity WHERE datname=current_database() AND application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0, '备份前Broker后台数据库连接未清理');
+    expect((int)$database->query("SELECT COUNT(*) FROM pg_stat_activity WHERE datname=current_database() AND application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0, '备份前Broker后台数据库连接未清理');
     $facts = iotRecoveryFacts($database);
     foreach (['iot_devices', 'iot_device_enrollments', 'iot_device_enrollment_bindings', 'iot_applications', 'iot_application_grants',
         'type_mqtt_sessions', 'type_mqtt_messages', 'type_mqtt_deliveries', 'type_mqtt_retained'] as $table) {
@@ -431,13 +433,13 @@ function iotRecoveryPhysicalSeed(array $command, array $environment, string $dir
 function iotRecoveryPhysical(array $command, array $environment, string $base, array &$report): void
 {
     $root = dirname(__DIR__);
-    $clientRoot = realpath((string) getenv('TYPE_MQTT_CLIENT_ROOT'));
+    $clientRoot = realpath((string)getenv('TYPE_MQTT_CLIENT_ROOT'));
     expect(is_string($clientRoot) && is_file($clientRoot . '/node_modules/mqtt/package.json'), 'TYPE_MQTT_CLIENT_ROOT需要已安装MQTT.js 5.15.0的测试依赖根');
     $directory = $base . '/physical chain';
     expect(mkdir($directory, 0700), '不能建立物理恢复测试目录');
     $archive = $directory . '/wal';
     expect(mkdir($archive, 0700), '不能建立独立WAL测试目录');
-    $tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+    $tools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
     foreach (['pg_basebackup', 'pg_combinebackup', 'pg_verifybackup'] as $name) {
         $binary = $tools['root'] . '/bin/' . $name;
         expect(is_executable($binary), '缺少PostgreSQL物理备份工具：' . $name);
@@ -496,8 +498,8 @@ function iotRecoveryPhysical(array $command, array $environment, string $base, a
         $report['combined_manifest_sha256'] = hash_file('sha256', $combined . '/backup_manifest');
         $source->exec("INSERT INTO recovery_probe VALUES (3, 'wal-only')");
         $expected = iotRecoveryFacts($source);
-        $restoreLsn = (string) $source->query("SELECT pg_create_restore_point('iot_recovery_target')")->fetchColumn();
-        $walName = (string) $source->query('SELECT pg_walfile_name(' . $source->quote($restoreLsn) . '::pg_lsn)')->fetchColumn();
+        $restoreLsn = (string)$source->query("SELECT pg_create_restore_point('iot_recovery_target')")->fetchColumn();
+        $walName = (string)$source->query('SELECT pg_walfile_name(' . $source->quote($restoreLsn) . '::pg_lsn)')->fetchColumn();
         $report['current_authority'] = [];
         iotRecoveryPhysicalSeed($command, $dbEnvironment, $directory, $source, $report['current_authority'], $context, 'current');
         // 当前权威来源仍是实际完成撤权与转移的源主库；此时所有业务写入角色均已退出。
@@ -530,7 +532,7 @@ function iotRecoveryPhysical(array $command, array $environment, string $base, a
         expect(file_put_contents($combined . '/recovery.signal', '') === 0, '不能建立恢复信号');
         $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $message);
         expect(is_resource($listener), '不能分配隔离恢复端口');
-        $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+        $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
         fclose($listener);
         $restoreHook = iotRecoveryHook(
             [...$command, 'iot:wal', 'restore', $archive],
@@ -539,9 +541,9 @@ function iotRecoveryPhysical(array $command, array $environment, string $base, a
         );
         $started = hrtime(true);
         $recovered = new Process(
-            [$tools['postgres'], '-D', $combined, '-h', '127.0.0.1', '-p', (string) $port, '-k', '',
-            '-c', 'archive_mode=off', '-c', 'restore_command=' . $restoreHook,
-            '-c', 'recovery_target_name=iot_recovery_target', '-c', 'recovery_target_action=pause', '-c', 'hot_standby=on'],
+            [$tools['postgres'], '-D', $combined, '-h', '127.0.0.1', '-p', (string)$port, '-k', '',
+                '-c', 'archive_mode=off', '-c', 'restore_command=' . $restoreHook,
+                '-c', 'recovery_target_name=iot_recovery_target', '-c', 'recovery_target_action=pause', '-c', 'hot_standby=on'],
             $directory,
             $dbEnvironment,
             16777216
@@ -567,7 +569,7 @@ function iotRecoveryPhysical(array $command, array $environment, string $base, a
         } while (microtime(true) < $deadline);
         expect($restored !== null, '恢复未在预算内到达指定暂停点');
         expect($restored->query('SELECT pg_is_in_recovery()')->fetchColumn() === true, '授权核对前恢复库已开放写入');
-        expect(realpath((string) $restored->query('SHOW data_directory')->fetchColumn()) === $combined, '恢复查询连接了原库');
+        expect(realpath((string)$restored->query('SHOW data_directory')->fetchColumn()) === $combined, '恢复查询连接了原库');
         expect(iotRecoveryFacts($restored) === $expected, '恢复点业务事实与备份链不一致');
         expect($restored->query('SELECT count(*) FROM recovery_probe')->fetchColumn() === 3, '未应用WAL增量或越过恢复点');
         $report['recovery_seconds'] = (hrtime(true) - $started) / 1e9;
@@ -578,11 +580,11 @@ function iotRecoveryPhysical(array $command, array $environment, string $base, a
         expect($report['old_backup_manifests_preserved'], '恢复改写原备份');
         expect($restored->query('SELECT pg_promote(true, 60)')->fetchColumn() === true, '受控恢复主库没有在旧源退出后提升');
         $restored = null;
-        $newEnvironment = array_replace($dbEnvironment, ['TYPE_PGSQL_PORT' => (string) $port]);
+        $newEnvironment = array_replace($dbEnvironment, ['TYPE_PGSQL_PORT' => (string)$port]);
         $recoveredSync = new PostgresSync($newEnvironment, $directory . '/recovered-standby', $tools);
         $restored = $recoveredSync->connection();
         $report['reopened_sync'] = $recoveredSync->evidence();
-        $maintenanceEnvironment = array_replace($context['environment'], ['DB_PORT' => (string) $port]);
+        $maintenanceEnvironment = array_replace($context['environment'], ['DB_PORT' => (string)$port]);
         $report['authorization_reconciliation'] = [];
         $reconcileStarted = hrtime(true);
         $id = bin2hex(random_bytes(16));
@@ -592,17 +594,17 @@ function iotRecoveryPhysical(array $command, array $environment, string $base, a
         }
         $steps = ['isolating' => 0, 'reviewing' => 0, 'restoring' => 0];
         foreach (['isolating' => 'isolate', 'reviewing' => 'review', 'restoring' => 'restore'] as $stage => $action) {
-            for ($batch = 0; $batch < 100 && $state['state'] === $stage; $batch++) {
+            for ($batch = 0; $batch < 100 && $state['state'] === $stage; ++$batch) {
                 $arguments = $action === 'review' ? [$authorityFile, $authorityDigest, $state['cursor'] === '' ? '0' : $state['cursor']] : [];
                 $state = iotRecoveryRun([...$command, 'iot:recovery', $action, $id, ...$arguments], $maintenanceEnvironment);
-                $steps[$stage]++;
+                ++$steps[$stage];
             }
             expect($state['state'] !== $stage, '物理恢复核对未在有界批次内完成：' . $stage);
         }
         expect($state['state'] === 'ready', '真实物理恢复核对没有允许重新开放');
         expect(
-            (int) $restored->query('SELECT count(*) FROM admin_sessions')->fetchColumn() === 0
-            && (int) $restored->query('SELECT count(*) FROM customer_sessions')->fetchColumn() === 0,
+            (int)$restored->query('SELECT count(*) FROM admin_sessions')->fetchColumn() === 0
+            && (int)$restored->query('SELECT count(*) FROM customer_sessions')->fetchColumn() === 0,
             '物理恢复后旧登录或模拟会话复活'
         );
         $report['authorization_reconciliation'] = ['state' => $state, 'steps' => $steps, 'seconds' => (hrtime(true) - $reconcileStarted) / 1e9,
@@ -674,7 +676,7 @@ $noSource = in_array('--no-source', $argv, true);
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '当前无源码策略需要macOS原生应用');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $policy = ['sandbox-exec', '-f', $root . '/tests/fixtures/iot-no-source.sb'];
     foreach (['APP' => $root . '/app', 'PLUGIN' => $root . '/plugin', 'VENDOR' => $root . '/vendor', 'CONFIG' => $root . '/config',

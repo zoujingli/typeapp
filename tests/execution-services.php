@@ -5,6 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+use Swoole\Coroutine;
 use Type\Core\Application;
 use Type\Core\Command;
 use Type\Core\Configuration;
@@ -17,8 +18,11 @@ use Type\Runtime\ManagedResource;
 final class ExecutionServiceProbe implements Command, ManagedResource
 {
     public int $starts = 0;
+
     public int $stops = 0;
+
     public bool $failStop = false;
+
     public ExecutionScope $scope;
 
     public function __construct()
@@ -34,12 +38,12 @@ final class ExecutionServiceProbe implements Command, ManagedResource
 
     public function start(): void
     {
-        $this->starts++;
+        ++$this->starts;
     }
 
     public function stop(): void
     {
-        $this->stops++;
+        ++$this->stops;
         if ($this->failStop) {
             throw new RuntimeException('probe_stop_failed');
         }
@@ -56,12 +60,12 @@ CoroutineRuntime::run(static function (): void {
             $parent->open($first);
             expect($first->starts === 1, '同资源被重复启动');
             $children = [];
-            for ($index = 0; $index < 2; $index++) {
+            for ($index = 0; $index < 2; ++$index) {
                 $children[] = $parent->spawn(static function (ExecutionScope $child): int {
                     expect($child->binding('tenant_id') === null && $child->binding('identity_id') === null, '子任务隐式继承父身份');
                     $value = $child->service('probe', static fn (): ExecutionServiceProbe => new ExecutionServiceProbe());
                     $child->open($value);
-                    \Swoole\Coroutine::sleep(0.001);
+                    Coroutine::sleep(0.001);
                     expect($value->scope === $child && $value->starts === 1, '并发服务串用父实例');
                     return spl_object_id($child);
                 });

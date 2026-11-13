@@ -9,9 +9,9 @@ final class UniqueIdentity
 {
     /**
      * 返回完整匹配的真实索引，不接受声明代替数据库约束。
-     * @param list<string> $fields 模型属性名，包含租户模型的可信租户字段。
+     * @param list<string> $fields 模型属性名，包含租户模型的可信租户字段
      * @return array{name: string, columns: list<string>, nullable: bool, partial: bool, expression: bool}
-     * @throws ModelException 字段重复、缺少租户列或没有完整非空唯一索引。
+     * @throws ModelException 字段重复、缺少租户列或没有完整非空唯一索引
      */
     public static function resolve(ModelDefinition $definition, Connection $connection, array $fields): array
     {

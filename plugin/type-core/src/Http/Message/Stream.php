@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Type\Core\Http\Message;
 
-use InvalidArgumentException;
 use Psr\Http\Message\StreamInterface;
 use RuntimeException;
-use Throwable;
 
 /** 拥有底层 PHP 流的 PSR-7 正文适配器；显式关闭或分离决定资源归属。 */
 final class Stream implements StreamInterface
@@ -16,12 +14,12 @@ final class Stream implements StreamInterface
 
     /**
      * 接管有效流资源，关闭此对象也会关闭该句柄；原调用方不再并行管理它。
-     * @param resource $resource 已打开的 PHP stream 资源。
+     * @param resource $resource 已打开的 PHP stream 资源
      */
     public function __construct(mixed $resource)
     {
         if (!is_resource($resource) || get_resource_type($resource) !== 'stream') {
-            throw new InvalidArgumentException('正文必须使用有效的流资源');
+            throw new \InvalidArgumentException('正文必须使用有效的流资源');
         }
         $this->resource = $resource;
     }
@@ -40,7 +38,7 @@ final class Stream implements StreamInterface
                 $this->rewind();
             }
             return $this->getContents();
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             return '';
         }
     }
@@ -52,7 +50,7 @@ final class Stream implements StreamInterface
             $closed = fclose($this->resource);
             $this->resource = null;
             if (!$closed) {
-                throw new RuntimeException('无法确认流已成功刷新并关闭');
+                throw new \RuntimeException('无法确认流已成功刷新并关闭');
             }
         }
         $this->resource = null;
@@ -60,7 +58,7 @@ final class Stream implements StreamInterface
 
     /**
      * 分离句柄但不关闭，关闭责任转交调用者。
-     * @return resource|null
+     * @return null|resource
      */
     public function detach(): mixed
     {
@@ -76,7 +74,7 @@ final class Stream implements StreamInterface
             return null;
         }
         $stat = fstat($this->resource);
-        return $stat === false ? null : (int) $stat['size'];
+        return $stat === false ? null : (int)$stat['size'];
     }
 
     /** 返回当前字节偏移；已关闭或底层不支持定位时抛出 RuntimeException。 */
@@ -85,7 +83,7 @@ final class Stream implements StreamInterface
         $this->assertOpen();
         $position = ftell($this->resource);
         if ($position === false) {
-            throw new RuntimeException('无法读取流位置');
+            throw new \RuntimeException('无法读取流位置');
         }
         return $position;
     }
@@ -99,7 +97,7 @@ final class Stream implements StreamInterface
     /** 仅有效句柄声明支持定位时返回 true。 */
     public function isSeekable(): bool
     {
-        return is_resource($this->resource) && (bool) $this->getMetadata('seekable');
+        return is_resource($this->resource) && (bool)$this->getMetadata('seekable');
     }
 
     /** 按字节偏移定位；不支持定位、参考位置非法或底层失败时抛出 RuntimeException。 */
@@ -107,7 +105,7 @@ final class Stream implements StreamInterface
     {
         if (!$this->isSeekable() || !in_array($whence, [SEEK_SET, SEEK_CUR, SEEK_END], true)
             || @fseek($this->resource, $offset, $whence) !== 0) {
-            throw new RuntimeException('流不支持指定位置');
+            throw new \RuntimeException('流不支持指定位置');
         }
     }
 
@@ -120,18 +118,18 @@ final class Stream implements StreamInterface
     /** 按有效句柄的打开模式判断是否允许写入。 */
     public function isWritable(): bool
     {
-        return is_resource($this->resource) && strpbrk((string) $this->getMetadata('mode'), 'waxc+') !== false;
+        return is_resource($this->resource) && strpbrk((string)$this->getMetadata('mode'), 'waxc+') !== false;
     }
 
     /** 写入字节并返回实际数量，允许短写；调用方负责循环直至完成或停止。 */
     public function write(string $string): int
     {
         if (!$this->isWritable()) {
-            throw new RuntimeException('流不可写');
+            throw new \RuntimeException('流不可写');
         }
         $written = @fwrite($this->resource, $string);
         if ($written === false) {
-            throw new RuntimeException('无法写入流');
+            throw new \RuntimeException('无法写入流');
         }
         return $written;
     }
@@ -139,21 +137,21 @@ final class Stream implements StreamInterface
     /** 按有效句柄的打开模式判断是否允许读取。 */
     public function isReadable(): bool
     {
-        return is_resource($this->resource) && strpbrk((string) $this->getMetadata('mode'), 'r+') !== false;
+        return is_resource($this->resource) && strpbrk((string)$this->getMetadata('mode'), 'r+') !== false;
     }
 
     /** 最多读取指定字节数，0 返回空文本；负数或不可读流会抛出 RuntimeException。 */
     public function read(int $length): string
     {
         if ($length < 0 || !$this->isReadable()) {
-            throw new RuntimeException('流不可读或读取长度无效');
+            throw new \RuntimeException('流不可读或读取长度无效');
         }
         if ($length === 0) {
             return '';
         }
         $content = @fread($this->resource, $length);
         if ($content === false) {
-            throw new RuntimeException('无法读取流');
+            throw new \RuntimeException('无法读取流');
         }
         return $content;
     }
@@ -162,11 +160,11 @@ final class Stream implements StreamInterface
     public function getContents(): string
     {
         if (!$this->isReadable()) {
-            throw new RuntimeException('流不可读');
+            throw new \RuntimeException('流不可读');
         }
         $content = @stream_get_contents($this->resource);
         if ($content === false) {
-            throw new RuntimeException('无法读取流内容');
+            throw new \RuntimeException('无法读取流内容');
         }
         return $content;
     }
@@ -181,7 +179,7 @@ final class Stream implements StreamInterface
     private function assertOpen(): void
     {
         if (!is_resource($this->resource)) {
-            throw new RuntimeException('流已经关闭或分离');
+            throw new \RuntimeException('流已经关闭或分离');
         }
     }
 }

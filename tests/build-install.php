@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\BuildEnvironment;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -14,7 +15,7 @@ $composer = ['name' => 'type-tests/build-install', 'license' => 'Apache-2.0',
     'repositories' => [['type' => 'path', 'url' => '../../tests/fixtures/build-plugin', 'options' => ['symlink' => false]], ['packagist.org' => false]],
     'config' => ['allow-plugins' => true], 'scripts' => ['post-install-cmd' => '@php -r "file_put_contents(\'script-ran.txt\',\'unexpected\');"']];
 file_put_contents($work . '/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
-$environment = new Type\Build\BuildEnvironment();
+$environment = new BuildEnvironment();
 $setupEnvironment = $environment->environment();
 $setupEnvironment['COMPOSER_HOME'] = $work . '/setup-composer';
 $environment->run([PHP_BINARY, $composerBinary, 'update', '--no-install', '--no-plugins', '--no-scripts', '--no-interaction', '--no-progress'], $work, $setupEnvironment, 60);

@@ -11,20 +11,13 @@ use Type\Build\BuildIdentity;
 
 require_once dirname(__DIR__) . '/support.php';
 
-/** 只验证性能证据的来源边界；合成数值不作为真实程序性能结论。 */
+/**
+ * 只验证性能证据的来源边界；合成数值不作为真实程序性能结论。
+ * @internal
+ * @coversNothing
+ */
 final class BenchmarkTest extends TestCase
 {
-    /** @return iterable<string,array{string}> 保留历史读取，并拒绝新协议缺项或跨源码拼接。 */
-    public static function evidenceCases(): iterable
-    {
-        foreach (['valid', 'legacy', 'changed-preparation', 'wrong-source', 'wrong-artifact', 'wrong-runtime', 'wrong-platform', 'missing-generation-round', 'missing-declaration',
-            'static-valid', 'static-windows-valid', 'static-wrong-profile', 'static-mixed-sdk', 'static-changed-sdk-archive', 'static-reordered-sdk-archives',
-            'static-missing-candidate', 'static-changed-timing',
-            'static-other-database', 'static-shared-ini', 'static-missing-sampling'] as $case) {
-            yield $case => [$case];
-        }
-    }
-
     /** 从公开比较命令验证准备、测量原件与固定源码必须对应同一组身份。 */
     #[DataProvider('evidenceCases')]
     public function testComparisonBindsPreparationAndMeasurements(string $case): void
@@ -148,7 +141,7 @@ final class BenchmarkTest extends TestCase
                             unset($measurement['sampling']);
                         }
                     }
-                    for ($round = 0; $round < 3; $round++) {
+                    for ($round = 0; $round < 3; ++$round) {
                         $row = ['iterations' => 100, 'warmup' => 10, 'concurrency' => 1, 'p50_ms' => 1.0, 'p95_ms' => 2.0, 'p99_ms' => 3.0,
                             'operations_per_second' => 10.0, 'cpu_seconds' => 1.0, 'max_sampled_rss_bytes' => 1000];
                         $measurement['repetitions'][] = ['short-json' => $row, 'crud' => $row, 'slow-database' => $row];
@@ -176,7 +169,7 @@ final class BenchmarkTest extends TestCase
                 self::assertSame(0, $status, $stdout . $stderr);
                 $files = glob($root . '/' . $measurementDirectory . '/comparison-*.json');
                 self::assertCount(1, $files);
-                $comparison = json_decode((string) file_get_contents($files[0]), true, 512, JSON_THROW_ON_ERROR);
+                $comparison = json_decode((string)file_get_contents($files[0]), true, 512, JSON_THROW_ON_ERROR);
                 self::assertCount($case === 'legacy' ? 0 : 2, $comparison['generation_and_build']);
                 if ($case !== 'legacy') {
                     self::assertSame($sources['new'], $comparison['generation_and_build']['new']['source']);
@@ -208,6 +201,17 @@ final class BenchmarkTest extends TestCase
             foreach (array_reverse($directories) as $directory) {
                 \removeTestDirectory($directory);
             }
+        }
+    }
+
+    /** @return iterable<string,array{string}> 保留历史读取，并拒绝新协议缺项或跨源码拼接。 */
+    public static function evidenceCases(): iterable
+    {
+        foreach (['valid', 'legacy', 'changed-preparation', 'wrong-source', 'wrong-artifact', 'wrong-runtime', 'wrong-platform', 'missing-generation-round', 'missing-declaration',
+            'static-valid', 'static-windows-valid', 'static-wrong-profile', 'static-mixed-sdk', 'static-changed-sdk-archive', 'static-reordered-sdk-archives',
+            'static-missing-candidate', 'static-changed-timing',
+            'static-other-database', 'static-shared-ini', 'static-missing-sampling'] as $case) {
+            yield $case => [$case];
         }
     }
 

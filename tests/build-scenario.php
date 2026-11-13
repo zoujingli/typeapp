@@ -177,7 +177,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     $withSwoole = ($argv[1] ?? '') === '--with-swoole';
     if ($withSwoole) {
         array_splice($argv, 1, 1);
-        $argc--;
+        --$argc;
     }
     $stage = ($argv[1] ?? '') === '--stage';
     expect($stage ? $argc === 4 : $argc === 2, '用法：php tests/build-scenario.php [--with-swoole] [--stage] <主仓构建场景> [新快照目录]');

@@ -4,14 +4,29 @@ declare(strict_types=1);
 
 namespace TypeApp\Tests\Unit;
 
-use PHPUnit\Framework\TestCase;
-use Type\Build\BuildProfile;
 use app\common\bootstrap\RuntimeCapabilities;
-use RuntimeException;
+use app\common\bootstrap\RuntimeCapabilityException;
+use app\common\bootstrap\Settings;
+use app\common\middleware\ApiErrors;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+use Type\Build\BuildProfile;
+use Type\Build\ConfigCompiler;
+use Type\Core\Http\Message\Factory;
+use Type\Generated\BuildIdentity;
+use Type\Testing\Process;
 
+/**
+ * @internal
+ * @coversNothing
+ */
 final class BuildProfileTest extends TestCase
 {
-    private string|false $originalProfile;
+    private false|string $originalProfile;
 
     /** 每个用例显式隔离构建选择，不能继承运行 PHPUnit 的发布 profile。 */
     protected function setUp(): void
@@ -21,10 +36,19 @@ final class BuildProfileTest extends TestCase
         self::assertContains(getenv('TYPEAPP_BUILD_PROFILE'), [false, '']);
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('invalidProfiles')]
+    protected function tearDown(): void
+    {
+        // 锁定运行库支持标准删除语义；显式空值与未声明分别还原，避免污染后续配置来源判断。
+        $setting = $this->originalProfile === false
+            ? 'TYPEAPP_BUILD_PROFILE' : 'TYPEAPP_BUILD_PROFILE=' . $this->originalProfile;
+        self::assertTrue(putenv($setting));
+        self::assertSame($this->originalProfile, getenv('TYPEAPP_BUILD_PROFILE'));
+    }
+
+    #[DataProvider('invalidProfiles')]
     public function testRejectsInvalidConfiguration(array $settings): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         BuildProfile::resolve($settings);
     }
 
@@ -48,19 +72,10 @@ final class BuildProfileTest extends TestCase
             try {
                 BuildProfile::assertExtensions($extensions, $profile);
                 self::fail('Invalid extension set accepted');
-            } catch (RuntimeException $error) {
+            } catch (\RuntimeException $error) {
                 self::assertNotSame('', $error->getMessage());
             }
         }
-    }
-
-    protected function tearDown(): void
-    {
-        // 锁定运行库支持标准删除语义；显式空值与未声明分别还原，避免污染后续配置来源判断。
-        $setting = $this->originalProfile === false
-            ? 'TYPEAPP_BUILD_PROFILE' : 'TYPEAPP_BUILD_PROFILE=' . $this->originalProfile;
-        self::assertTrue(putenv($setting));
-        self::assertSame($this->originalProfile, getenv('TYPEAPP_BUILD_PROFILE'));
     }
 
     public function testResolvesDatabaseAndImplicitRedisClosure(): void
@@ -78,7 +93,7 @@ final class BuildProfileTest extends TestCase
     public function testRejectsUnknownProfileAndDatabase(): void
     {
         putenv('TYPEAPP_BUILD_PROFILE=oracle');
-        $this->expectException(RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         BuildProfile::resolve(['build-profiles' => ['sqlite' => ['database' => 'sqlite', 'features' => ['web']]]]);
     }
 
@@ -103,19 +118,19 @@ final class BuildProfileTest extends TestCase
         $source = "    ZEND_MOD_REQUIRED(\"pdo\")\n    ZEND_MOD_REQUIRED(\"pdo_mysql\")\n    ZEND_MOD_REQUIRED(\"redis\")\n";
         self::assertSame("    ZEND_MOD_REQUIRED(\"pdo\")\n", BuildProfile::targetModuleDependencies($source, ['pdo', 'pdo_sqlite']));
         self::assertSame($source, BuildProfile::targetModuleDependencies($source, ['pdo', 'pdo_mysql', 'redis']));
-        $this->expectException(RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('未提供的扩展');
         BuildProfile::targetModuleDependencies("    ZEND_MOD_REQUIRED(\"intl\")\n", ['pdo', 'pdo_sqlite']);
     }
 
-    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    #[RunInSeparateProcess]
     public function testGeneratedIdentityEnforcesCapabilitiesAndAllowsUnprofiledDevelopment(): void
     {
         require dirname(__DIR__) . '/fixtures/build-profile/identity.php';
-        \Type\Generated\BuildIdentity::$profile = ['name' => null, 'database' => null, 'features' => []];
+        BuildIdentity::$profile = ['name' => null, 'database' => null, 'features' => []];
         self::assertFalse(RuntimeCapabilities::profile()['verified']);
         RuntimeCapabilities::requireFeature('redis');
-        \Type\Generated\BuildIdentity::$profile = ['name' => 'sqlite', 'database' => 'sqlite', 'features' => ['web']];
+        BuildIdentity::$profile = ['name' => 'sqlite', 'database' => 'sqlite', 'features' => ['web']];
         self::assertTrue(RuntimeCapabilities::profile()['verified']);
         RuntimeCapabilities::assertDatabase('sqlite');
         RuntimeCapabilities::requireFeature('web');
@@ -135,30 +150,30 @@ final class BuildProfileTest extends TestCase
     /** 关闭的功能通过 HTTP 仍返回稳定错误，不能被内部错误脱敏分支吞掉。 */
     public function testUnavailableCapabilityRemainsExplicitInHttpResponses(): void
     {
-        $messages = new \Type\Core\Http\Message\Factory();
-        $handler = new class () implements \Psr\Http\Server\RequestHandlerInterface {
-            public function handle(\Psr\Http\Message\ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface
+        $messages = new Factory();
+        $handler = new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
             {
-                throw new \app\common\bootstrap\RuntimeCapabilityException('feature_unavailable', 'exports');
+                throw new RuntimeCapabilityException('feature_unavailable', 'exports');
             }
         };
-        $response = (new \app\common\middleware\ApiErrors($messages))->process($messages->createServerRequest('GET', '/exports'), $handler);
+        $response = (new ApiErrors($messages))->process($messages->createServerRequest('GET', '/exports'), $handler);
         self::assertSame(503, $response->getStatusCode());
-        self::assertSame('feature_unavailable', json_decode((string) $response->getBody(), true, 32, JSON_THROW_ON_ERROR)['error']);
+        self::assertSame('feature_unavailable', json_decode((string)$response->getBody(), true, 32, JSON_THROW_ON_ERROR)['error']);
     }
 
     /** 进程提供数据库配置时，保存无关字段仍校验实际 profile；不能把缺省 SQLite 当作待运行驱动。 */
-    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
-    #[\PHPUnit\Framework\Attributes\DataProvider('externalDatabaseProfiles')]
+    #[RunInSeparateProcess]
+    #[DataProvider('externalDatabaseProfiles')]
     public function testConfigurationUpdateUsesEffectiveProfileAndProtectsProcessOverrides(string $driver): void
     {
         require dirname(__DIR__) . '/fixtures/build-profile/identity.php';
-        \Type\Generated\BuildIdentity::$profile = ['name' => $driver, 'database' => $driver, 'features' => ['web']];
+        BuildIdentity::$profile = ['name' => $driver, 'database' => $driver, 'features' => ['web']];
         $root = dirname(__DIR__, 2);
         $directory = $root . '/build/profile-settings-' . bin2hex(random_bytes(6));
         mkdir($directory, 0700);
         $configuration = json_decode(file_get_contents($root . '/docs/build-config/type-app.json'), true, 64, JSON_THROW_ON_ERROR);
-        $generated = (new \Type\Build\ConfigCompiler())->generate($root, $configuration['config']);
+        $generated = (new ConfigCompiler())->generate($root, $configuration['config']);
         file_put_contents($directory . '/ProjectConfig.php', $generated['code']);
         require $directory . '/ProjectConfig.php';
         $original = ['DB_DRIVER' => getenv('DB_DRIVER'), 'APP_NAME' => getenv('APP_NAME')];
@@ -167,13 +182,13 @@ final class BuildProfileTest extends TestCase
             self::assertTrue(putenv('APP_NAME'));
             self::assertFalse(getenv('APP_NAME'));
             file_put_contents($directory . '/.env', '');
-            $view = \app\common\bootstrap\Settings::configurationView($directory);
-            $saved = \app\common\bootstrap\Settings::configurationUpdate($directory, $view['version'], ['APP_NAME' => 'profile-settings']);
+            $view = Settings::configurationView($directory);
+            $saved = Settings::configurationUpdate($directory, $view['version'], ['APP_NAME' => 'profile-settings']);
             self::assertTrue($saved['restart_required']);
-            self::assertSame($driver, \app\common\bootstrap\Settings::load($directory)->text('database.driver'));
+            self::assertSame($driver, Settings::load($directory)->text('database.driver'));
             self::assertStringNotContainsString('DB_DRIVER', file_get_contents($directory . '/.env'));
             try {
-                \app\common\bootstrap\Settings::configurationUpdate($directory, $saved['version'], ['DB_DRIVER' => 'sqlite']);
+                Settings::configurationUpdate($directory, $saved['version'], ['DB_DRIVER' => 'sqlite']);
                 self::fail('管理端覆盖了进程只读字段');
             } catch (\InvalidArgumentException $error) {
                 self::assertSame('configuration_field_read_only', $error->getMessage());
@@ -182,9 +197,9 @@ final class BuildProfileTest extends TestCase
             self::assertFalse(getenv('DB_DRIVER'));
             $before = file_get_contents($directory . '/.env');
             try {
-                \app\common\bootstrap\Settings::configurationUpdate($directory, $saved['version'], ['DB_DRIVER' => 'sqlite']);
+                Settings::configurationUpdate($directory, $saved['version'], ['DB_DRIVER' => 'sqlite']);
                 self::fail('保存了与程序不匹配的数据库');
-            } catch (\app\common\bootstrap\RuntimeCapabilityException $error) {
+            } catch (RuntimeCapabilityException $error) {
                 self::assertSame('runtime_profile_database_mismatch', $error->errorCode());
             }
             self::assertSame($before, file_get_contents($directory . '/.env'));
@@ -215,15 +230,15 @@ final class BuildProfileTest extends TestCase
         try {
             $environment = array_replace(getenv(), ['TYPEAPP_BUILD_PROFILE' => '', 'TYPEAPP_BUILD_CONFIGURATION' => $configuration, 'TYPEAPP_BUILD_FEATURES' => 'web']);
             $command = [PHP_BINARY, $root . '/tools/build-profile.php', 'sqlite'];
-            $result = (new \Type\Testing\Process($command, $directory, $environment))->wait(10);
+            $result = (new Process($command, $directory, $environment))->wait(10);
             self::assertTrue($result->successful(), $result->stderr);
             self::assertSame("web\n", $result->stdout);
             $environment['TYPEAPP_BUILD_FEATURES'] = 'redis,web';
-            $result = (new \Type\Testing\Process($command, $directory, $environment))->wait(10);
+            $result = (new Process($command, $directory, $environment))->wait(10);
             self::assertSame(1, $result->exitCode);
             self::assertStringContainsString('功能闭包冲突', $result->stderr);
             $environment['TYPEAPP_BUILD_FEATURES'] = '';
-            $result = (new \Type\Testing\Process([PHP_BINARY, $root . '/tools/build-profile.php', 'mysql'], $directory, $environment))->wait(10);
+            $result = (new Process([PHP_BINARY, $root . '/tools/build-profile.php', 'mysql'], $directory, $environment))->wait(10);
             self::assertSame(1, $result->exitCode);
             self::assertStringContainsString('未知 SDK profile', $result->stderr);
         } finally {

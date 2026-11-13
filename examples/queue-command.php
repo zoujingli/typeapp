@@ -11,6 +11,7 @@ use Type\Queue\Worker;
 use Type\Redis\Purpose;
 use Type\Redis\RedisConfiguration;
 use Type\Redis\RedisManager;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use TypeApp\QueueExample\Increment;
 use TypeApp\QueueExample\Resource;
@@ -18,7 +19,7 @@ use TypeApp\QueueExample\Resource;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function queueExpect(bool $condition, string $message): void
 {
@@ -30,11 +31,11 @@ function queueExpect(bool $condition, string $message): void
 /**
  * 在 Swoole 协程内运行消息注册、消费和确认示例，资源装配留在同一执行者内。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function queueMain(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+    CoroutineRuntime::run(static function () use ($argc, $argv): void {
         queueScenario($argc, $argv);
     });
 }
@@ -42,7 +43,7 @@ function queueMain(int $argc, array $argv): void
 /**
  * 在现有协程内建立专属队列，验证任务注册、幂等消费和作用域收尾。
  *
- * @param list<string> $argv 程序路径及 help 参数。
+ * @param list<string> $argv 程序路径及 help 参数
  */
 function queueScenario(int $argc, array $argv): void
 {
@@ -51,8 +52,8 @@ function queueScenario(int $argc, array $argv): void
         return;
     }
     $manager = new RedisManager(['default' => new RedisConfiguration(
-        (string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
-        (int) (getenv('TYPE_REDIS_PORT') ?: 6379)
+        (string)(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
+        (int)(getenv('TYPE_REDIS_PORT') ?: 6379)
     )], [Purpose::SCRIPT => 4]);
     $scope = new ExecutionScope();
     $prefix = 'type_job_test_' . bin2hex(random_bytes(8));

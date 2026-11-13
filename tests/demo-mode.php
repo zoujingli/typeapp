@@ -152,7 +152,7 @@ try {
         expect($login->status === 200, '演示登录失败：' . $realm);
         $headers = ['Authorization' => 'Bearer ' . $login->json()['data']['accessToken'], 'Content-Type' => 'application/json'];
         expect($client->request('GET', '/' . $realm . '/auth/me', $headers)->status === 200, '演示身份查询失败');
-        $tenant = (string) $database->query('SELECT id FROM iot_tenants LIMIT 1')->fetchColumn();
+        $tenant = (string)$database->query('SELECT id FROM iot_tenants LIMIT 1')->fetchColumn();
         $product = str_repeat('a', 32);
         $paths = $realm === 'admin'
             ? [['PUT', '/admin/site'], ['PUT', '/admin/configuration'], ['POST', '/admin/users'], ['PATCH', '/admin/users/' . $product], ['DELETE', '/admin/users/' . $product . '/sessions'],
@@ -200,7 +200,7 @@ function demoStoreChecks(array $command, ?string $artifact): void
     $root = dirname(__DIR__);
     $base = $root . '/build/demo-store-' . bin2hex(random_bytes(6));
     expect(mkdir($base, 0700), '无法创建 Demo 存储验收目录');
-    $tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+    $tools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
     $database = PHP_OS_FAMILY === 'Windows' ? null : new NativeDatabase($base . '/primary', 'pgsql', $tools);
     $sync = null;
     $inspection = null;
@@ -283,10 +283,10 @@ function demoStoreChecks(array $command, ?string $artifact): void
         $operation = bin2hex(random_bytes(16));
         $victim = $sync->connection();
         $victim->prepare("SELECT set_config('application_name', ?, false)")->execute(['type_mqtt_' . $operation]);
-        $victimPid = (int) $victim->query('SELECT pg_backend_pid()')->fetchColumn();
+        $victimPid = (int)$victim->query('SELECT pg_backend_pid()')->fetchColumn();
         $cleanup = $call(['action' => 'cleanup', 'operation_id' => $operation]);
         expect($cleanup['state'] === 'unknown' && $cleanup['released'], 'Demo 未保留精确清理证明');
-        expect((int) $inspection->query('SELECT COUNT(*) FROM pg_stat_activity WHERE pid = ' . $victimPid)->fetchColumn() === 0, '精确清理后本次后端仍存在');
+        expect((int)$inspection->query('SELECT COUNT(*) FROM pg_stat_activity WHERE pid = ' . $victimPid)->fetchColumn() === 0, '精确清理后本次后端仍存在');
         expect($snapshot() === $before, '精确清理修改了协议数据');
         $report['checks'][] = 'cleanup-terminates-only-owned-operation';
         $report['status'] = 'passed';

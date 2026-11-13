@@ -15,6 +15,4 @@ use Type\Orm\Attribute\Schema;
         'updated_at' => ['type' => 'integer', 'bits' => 64],
     ], 'primary' => ['id'], 'indexes' => [['name' => 'catalog_product_identity', 'columns' => ['tenant_id', 'code'], 'unique' => true]]],
 ])]
-final class CreateProduct
-{
-}
+final class CreateProduct {}

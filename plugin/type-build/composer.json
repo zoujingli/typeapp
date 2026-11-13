@@ -9,7 +9,7 @@
     "composer-runtime-api": "^2.2",
     "zoujingli/type-runtime": "~1.0.0@dev",
     "nikic/php-parser": "^5.8",
-    "swoole/phpx": "2.9.5",
+    "swoole/phpx": "2.9.8",
     "swoole/typephp": "dev-master"
   },
   "autoload": {

@@ -12,11 +12,11 @@ final class Measurements
     /**
      * 预热后采样同一文章读取，记录延迟与资源用量；不据单次结果宣称跨机器性能。
      *
-     * @return array<string, mixed> 当前运行的测量结果。
+     * @return array<string, mixed> 当前运行的测量结果
      */
     public static function run(DatabaseManager $database, int $articleId): array
     {
-        for ($warmup = 0; $warmup < 50; $warmup++) {
+        for ($warmup = 0; $warmup < 50; ++$warmup) {
             Reader::article($articleId);
         }
         $samples = [];
@@ -24,7 +24,7 @@ final class Measurements
         $started = hrtime(true);
         $baseline = memory_get_usage(true);
         memory_reset_peak_usage();
-        for ($iteration = 0; $iteration < 500; $iteration++) {
+        for ($iteration = 0; $iteration < 500; ++$iteration) {
             $before = hrtime(true);
             $row = Reader::article($articleId);
             if ($row['views'] !== 1 || $row['status'] !== 'audited') {
@@ -53,7 +53,7 @@ final class Measurements
     {
         $status = self::read('/proc/self/status');
         $matches = [];
-        return preg_match('/^VmRSS:\s+(\d+)\s+kB$/m', $status, $matches) === 1 ? (int) $matches[1] * 1024 : null;
+        return preg_match('/^VmRSS:\s+(\d+)\s+kB$/m', $status, $matches) === 1 ? (int)$matches[1] * 1024 : null;
     }
 
     private static function environment(): array
@@ -64,9 +64,9 @@ final class Measurements
         preg_match('/^(?:model name|Hardware)\s*:\s*(.+)$/m', $cpu, $matches);
         preg_match('/^MemTotal:\s+(\d+)\s+kB$/m', self::read('/proc/meminfo'), $memory);
         return ['os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'kernel' => php_uname('r'),
-            'php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'swoole' => phpversion('swoole'), 'redis' => phpversion('redis'),
+            'php' => PHP_VERSION, 'zts' => (bool)PHP_ZTS, 'swoole' => phpversion('swoole'), 'redis' => phpversion('redis'),
             'cpu_model' => $matches[1] ?? '未由平台提供', 'logical_cpus' => preg_match_all('/^processor\s*:/m', $cpu),
-            'system_memory_bytes' => isset($memory[1]) ? (int) $memory[1] * 1024 : null,
+            'system_memory_bytes' => isset($memory[1]) ? (int)$memory[1] * 1024 : null,
             'cgroup_cpu_max' => trim(self::read('/sys/fs/cgroup/cpu.max')), 'cgroup_memory_max' => trim(self::read('/sys/fs/cgroup/memory.max'))];
     }
 

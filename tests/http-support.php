@@ -31,8 +31,8 @@ function sendHttp(int $port, string $method, string $path, string $marker = '', 
 /**
  * 读取 HTTP 响应并解码 chunked 正文，返回状态及原始头文本；成功或失败均关闭传入连接。
  *
- * @param resource $connection 所有权在调用时转入本函数。
- * @return array{int, string, string} 状态码、正文、小写响应头。
+ * @param resource $connection 所有权在调用时转入本函数
+ * @return array{int, string, string} 状态码、正文、小写响应头
  */
 function receiveHttp($connection): array
 {
@@ -59,7 +59,7 @@ function receiveHttp($connection): array
             $body = $decoded;
         }
         preg_match('/^HTTP\/1\.[01] (\d{3})/', $headers, $status);
-        return [(int) ($status[1] ?? 0), $body, strtolower($headers)];
+        return [(int)($status[1] ?? 0), $body, strtolower($headers)];
     } finally {
         fclose($connection);
     }

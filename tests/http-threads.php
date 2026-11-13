@@ -16,7 +16,7 @@ $work = BuildPlatform::path($argv[1] ?? '');
 $verify = ($argv[2] ?? '') === '--verify';
 expect($argc === ($verify ? 3 : 2) && BuildPlatform::contains($root . '/build', $work) && !str_contains($work, '..'), '需要 build 下独立消费者目录及可选 --verify');
 $runner = new BuildEnvironment();
-$environment = controlledRuntimeEnvironment($runner->environment((string) getenv('PHP_HOME'), (string) getenv('PHPX_HOME')));
+$environment = controlledRuntimeEnvironment($runner->environment((string)getenv('PHP_HOME'), (string)getenv('PHPX_HOME')));
 // 独立消费者沿用当前控制器，不修改共享 SDK 的默认 ini。
 $environment['PHPRC'] = php_ini_loaded_file() ?: '';
 $environment['PHP_INI_SCAN_DIR'] = getenv('PHP_INI_SCAN_DIR') ?: '';
@@ -55,7 +55,7 @@ if (!$verify) {
     foreach (['thread-exit-gate.cc', 'thread-exit-gate.stub.php'] as $fixture) {
         expect(copy(__DIR__ . '/fixtures/' . $fixture, $work . '/app/' . $fixture), '无法复制最终线程析构夹具');
     }
-    $composerBinary = (string) (getenv('COMPOSER_BINARY') ?: trim(successful(['which', 'composer'])));
+    $composerBinary = (string)(getenv('COMPOSER_BINARY') ?: trim(successful(['which', 'composer'])));
     expect(is_file($composerBinary), '需要真实 Composer 脚本');
     file_put_contents($work . '/install.log', $runner->run([PHP_BINARY, $composerBinary, 'install', '--no-interaction',
         '--no-scripts', '--no-plugins', '--no-progress'], $work, $environment + ['COMPOSER_HOME' => $work . '/composer-home'], 300));
@@ -94,7 +94,7 @@ if (PHP_OS_FAMILY === 'Darwin') {
         $root . '/plugin/type-core/src/Http/SwooleServer.php'], $work) === "source-denied\n", '源码禁读没有生效');
 }
 $runs = [];
-for ($round = 0; $round < 3; $round++) {
+for ($round = 0; $round < 3; ++$round) {
     $directory = $work . '/run-' . bin2hex(random_bytes(5));
     expect(mkdir($directory, 0700), '无法准备独立运行目录');
     $server = new Process([...$policy, $binary, $directory], $work, $runEnvironment);
@@ -107,22 +107,22 @@ for ($round = 0; $round < 3; $round++) {
         $port = json_decode(file_get_contents($directory . '/listener.json'), true, flags: JSON_THROW_ON_ERROR)['port'];
         $client = new HttpClient('http://127.0.0.1:' . $port);
         $counts = [1 => 0, 2 => 0];
-        for ($request = 0; $request < 100; $request++) {
-            $response = $client->request('GET', '/normal', ['X-Test-Token' => (string) $request]);
+        for ($request = 0; $request < 100; ++$request) {
+            $response = $client->request('GET', '/normal', ['X-Test-Token' => (string)$request]);
             $data = $response->json();
-            expect($response->status === 200 && $data['token'] === (string) $request && $data['port'] === $port, 'PSR 请求字段不符');
-            $counts[$data['worker']]++;
+            expect($response->status === 200 && $data['token'] === (string)$request && $data['port'] === $port, 'PSR 请求字段不符');
+            ++$counts[$data['worker']];
         }
         $inputChecks = httpThreadInputs($port);
         $connection = stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 2);
         stream_set_timeout($connection, 2);
         try {
             $identity = null;
-            for ($request = 0; $request < 20; $request++) {
+            for ($request = 0; $request < 20; ++$request) {
                 fwrite($connection, "GET /child HTTP/1.1\r\nHost: localhost\r\nX-Test-Connection: keepalive\r\nX-Test-Token: " . $request . "\r\n\r\n");
                 [$status, $body] = httpThreadRead($connection);
                 $data = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
-                expect($status === 200 && $data['token'] === (string) $request, 'keep-alive 请求状态或清理串用');
+                expect($status === 200 && $data['token'] === (string)$request, 'keep-alive 请求状态或清理串用');
                 $identity ??= $data['thread'];
                 expect($identity === $data['thread'], '同一连接迁移了线程');
             }
@@ -133,7 +133,7 @@ for ($round = 0; $round < 3; $round++) {
         $idleByWorker = [1 => 0, 2 => 0];
         try {
             $connectionCount = $isWindows ? 8 : 16;
-            for ($index = 0; $index < $connectionCount; $index++) {
+            for ($index = 0; $index < $connectionCount; ++$index) {
                 $socket = stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 2);
                 expect(is_resource($socket), '无法建立连接预算观察者');
                 stream_set_timeout($socket, 2);
@@ -141,7 +141,7 @@ for ($round = 0; $round < 3; $round++) {
                 fwrite($socket, "GET /normal HTTP/1.1\r\nHost: localhost\r\n\r\n");
                 [$status, $body] = httpThreadRead($socket);
                 expect($status === 200, '已分配连接没有进入 PSR 链');
-                $idleByWorker[json_decode($body, true, flags: JSON_THROW_ON_ERROR)['worker']]++;
+                ++$idleByWorker[json_decode($body, true, flags: JSON_THROW_ON_ERROR)['worker']];
             }
             expect($idleByWorker === ($isWindows ? [1 => 8, 2 => 0] : [1 => 8, 2 => 8]), '每线程连接份额没有限制总额');
             foreach ([$idle[0], $idle[count($idle) - 1]] as $socket) {
@@ -179,7 +179,7 @@ for ($round = 0; $round < 3; $round++) {
         $connections = [];
         $accepted = 0;
         $rejected = 0;
-        for ($request = 0; $request < 40; $request++) {
+        for ($request = 0; $request < 40; ++$request) {
             $connections[] = sendHttp($port, 'GET', '/slow');
         }
         foreach ($connections as $pending) {
@@ -192,23 +192,23 @@ for ($round = 0; $round < 3; $round++) {
         $replacementConnections = [];
         if ($isWindows) {
             // Windows 当前按生产约定只有一个自绑定业务线程；仍验证停止前请求可继续完成。
-            for ($request = 0; $request < 30; $request++) {
+            for ($request = 0; $request < 30; ++$request) {
                 $data = $client->request('GET', '/normal')->json();
                 expect($data['worker'] === 1 && $data['generation'] === 1, 'Windows 自绑定线程状态不符');
-                $replacement[$data['worker']]++;
+                ++$replacement[$data['worker']];
             }
         } else {
             file_put_contents($directory . '/retire', 'retire');
             httpThreadWait($server, $directory . '/retired');
-            for ($request = 0; $request < 30; $request++) {
+            for ($request = 0; $request < 30; ++$request) {
                 expect($client->request('GET', '/normal')->json()['worker'] === 2, '退役副本影响了存活监听');
             }
             file_put_contents($directory . '/replace', 'replace');
             httpThreadWait($server, $directory . '/ready-1-2.json');
-            for ($request = 0; $request < 100; $request++) {
+            for ($request = 0; $request < 100; ++$request) {
                 $data = $client->request('GET', '/normal')->json();
                 expect($data['generation'] === ($data['worker'] === 1 ? 2 : 1), '旧代请求状态串入重建线程');
-                $replacement[$data['worker']]++;
+                ++$replacement[$data['worker']];
             }
             $replacementConnections = httpThreadObserveWorkers($port, [1 => 2, 2 => 1]);
         }
@@ -244,7 +244,7 @@ for ($round = 0; $round < 3; $round++) {
     }
 }
 $supervision = [];
-for ($round = 0; $round < 3; $round++) {
+for ($round = 0; $round < 3; ++$round) {
     foreach (['supervised-http', 'supervised-signal', 'partial', 'exit', 'startup-stall', 'stall', 'exit-gate'] as $mode) {
         if ($mode === 'supervised-signal' && PHP_OS_FAMILY === 'Windows') {
             continue; // Windows 控制台事件由该目标实际宿主验收，不伪造 POSIX 信号。
@@ -278,12 +278,12 @@ for ($round = 0; $round < 3; $round++) {
                 httpThreadWait($server, $directory . '/block-entered');
                 httpThreadWait($server, $directory . '/probe-progress-1');
                 $progressFile = $directory . '/probe-progress-1';
-                $progress = (int) file_get_contents($progressFile);
+                $progress = (int)file_get_contents($progressFile);
                 $advanced = false;
                 $deadline = microtime(true) + 1.0;
                 do {
                     clearstatcache(true, $progressFile);
-                    if ((int) file_get_contents($progressFile) > $progress) {
+                    if ((int)file_get_contents($progressFile) > $progress) {
                         $advanced = true;
                         break;
                     }
@@ -350,7 +350,7 @@ function httpThreadObserveWorkers(int $port, array $generations): array
     $connections = [];
     $counts = [1 => 0, 2 => 0];
     try {
-        for ($index = 0; $index < 16; $index++) {
+        for ($index = 0; $index < 16; ++$index) {
             $socket = stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 2);
             expect(is_resource($socket), '无法建立重建线程观察连接');
             $connections[] = $socket;
@@ -359,7 +359,7 @@ function httpThreadObserveWorkers(int $port, array $generations): array
             [$status, $body] = httpThreadRead($socket);
             $data = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
             expect($status === 200 && $data['generation'] === $generations[$data['worker']], '共享监听没有进入预期线程代次');
-            $counts[$data['worker']]++;
+            ++$counts[$data['worker']];
         }
         expect($counts === [1 => 8, 2 => 8], '重建没有恢复两个有界监听副本');
         return $counts;
@@ -401,7 +401,7 @@ function httpThreadInputs(int $port): int
         if ($code !== null) {
             expect(json_decode($body, true, flags: JSON_THROW_ON_ERROR)['error'] === $code, $name . ' 错误码不符');
         }
-        $checks++;
+        ++$checks;
     }
     foreach (['1.0', '1.1'] as $version) {
         $socket = stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 2);
@@ -413,7 +413,7 @@ function httpThreadInputs(int $port): int
             && $data['headers']['x-values'] === ['first', 'second']
             && $data['headers']['accept'] === ['text/plain', 'application/json']
             && $data['cookies'] === ['a' => '0', 'b' => 'test value'], 'PSR 多值头、版本或 Cookie 丢失');
-        $checks++;
+        ++$checks;
     }
     $socket = stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $error, 2);
     stream_set_timeout($socket, 2);
@@ -424,7 +424,7 @@ function httpThreadInputs(int $port): int
             [$status, $body] = httpThreadRead($socket);
             $data = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
             expect($status === $expected && ($status !== 200 || $data['identity'] === $token), 'keep-alive 授权或身份串用');
-            $checks++;
+            ++$checks;
         }
     } finally {
         fclose($socket);
@@ -506,12 +506,12 @@ function httpThreadRead(mixed $connection): array
             $body .= substr($chunk, 0, $length);
         }
     } else {
-        expect(preg_match('/\r\nContent-Length: ([0-9]+)\r\n/i', $headers, $size) === 1 && (int) $size[1] <= 16384, '响应长度缺失或超量');
-        while (strlen($body) < (int) $size[1]) {
-            $bytes = fread($connection, (int) $size[1] - strlen($body));
+        expect(preg_match('/\r\nContent-Length: ([0-9]+)\r\n/i', $headers, $size) === 1 && (int)$size[1] <= 16384, '响应长度缺失或超量');
+        while (strlen($body) < (int)$size[1]) {
+            $bytes = fread($connection, (int)$size[1] - strlen($body));
             expect(is_string($bytes) && $bytes !== '', '响应正文提前结束');
             $body .= $bytes;
         }
     }
-    return [(int) $status[1], $body];
+    return [(int)$status[1], $body];
 }

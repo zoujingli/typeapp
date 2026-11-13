@@ -37,7 +37,7 @@ function schedulerWaitChecks(string $directory): array
         $started = hrtime(true);
         // 先观察首轮公开输出，下一次事件分发时控制台已经进入间隔等待。
         if (in_array($case, ['stop', 'invalid-stop', 'storage-failure', 'cancel'], true)) {
-            $observer = (int) Timer::tick(1, static function (int $timerId) use ($case, $scheduler, $directory, $cid, &$published, &$acted, &$actionFailed): void {
+            $observer = (int)Timer::tick(1, static function (int $timerId) use ($case, $scheduler, $directory, $cid, &$published, &$acted, &$actionFailed): void {
                 if (!$published) {
                     return;
                 }
@@ -64,7 +64,7 @@ function schedulerWaitChecks(string $directory): array
                 }
             });
         }
-        $guard = (int) Timer::after(1000, static function () use ($scheduler, &$guarded): void {
+        $guard = (int)Timer::after(1000, static function () use ($scheduler, &$guarded): void {
             $guarded = true;
             $scheduler->stop(0.0);
         });

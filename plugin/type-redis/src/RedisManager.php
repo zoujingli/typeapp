@@ -4,44 +4,48 @@ declare(strict_types=1);
 
 namespace Type\Redis;
 
-use InvalidArgumentException;
-use Type\Runtime\ExecutionScope;
-use Type\Runtime\ResourcePool;
 use Type\Runtime\DeploymentBudget;
 use Type\Runtime\ExecutionOwner;
+use Type\Runtime\ExecutionScope;
+use Type\Runtime\ResourcePool;
 
 /** 按端点与用途复用运行时资源池；各次业务借用由 ExecutionScope 独立拥有。 */
 final class RedisManager
 {
     private array $configurations = [];
+
     private array $capacities;
+
     private array $pools = [];
+
     private ?ExecutionOwner $owner = null;
+
     private ?DeploymentBudget $budget;
+
     private bool $closed = false;
 
     /**
      * 声明端点与各用途容量，首次借用才创建池。
      *
-     * @param array<string, RedisConfiguration> $configurations 1 至 64 个命名端点。
-     * @param array<string, int> $capacities 以 Purpose 常量为键，各容量为 1 至 1024。
-     * @param ?DeploymentBudget $budget 同一连接域各用途及管理器共用的部署预算；不跨线程传对象。
+     * @param array<string, RedisConfiguration> $configurations 1 至 64 个命名端点
+     * @param array<string, int> $capacities 以 Purpose 常量为键，各容量为 1 至 1024
+     * @param ?DeploymentBudget $budget 同一连接域各用途及管理器共用的部署预算；不跨线程传对象
      */
     public function __construct(array $configurations, array $capacities = [], ?DeploymentBudget $budget = null)
     {
         if ($configurations === [] || count($configurations) > 64) {
-            throw new InvalidArgumentException('Redis 必须声明 1 至 64 个命名连接');
+            throw new \InvalidArgumentException('Redis 必须声明 1 至 64 个命名连接');
         }
         foreach ($configurations as $name => $configuration) {
             if (!is_string($name) || !preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $name) || !$configuration instanceof RedisConfiguration) {
-                throw new InvalidArgumentException('Redis 命名连接无效');
+                throw new \InvalidArgumentException('Redis 命名连接无效');
             }
             $this->configurations[$name] = $configuration;
         }
         $defaults = [Purpose::COMMAND => 4, Purpose::BLOCKING => 1, Purpose::PIPELINE => 1, Purpose::TRANSACTION => 1, Purpose::SCRIPT => 1];
         foreach ($capacities as $purpose => $capacity) {
             if (!isset($defaults[$purpose]) || !is_int($capacity) || $capacity < 1 || $capacity > 1024) {
-                throw new InvalidArgumentException('Redis 用途容量无效');
+                throw new \InvalidArgumentException('Redis 用途容量无效');
             }
             $defaults[$purpose] = $capacity;
         }
@@ -74,7 +78,7 @@ final class RedisManager
     /**
      * 读取当前进程各命名连接、用途池的计数；未借用用途不创建池。
      *
-     * @return array<string, array<string, int|float>>
+     * @return array<string, array<string, float|int>>
      */
     public function statistics(): array
     {

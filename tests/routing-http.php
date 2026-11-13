@@ -1,6 +1,11 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\RouteCompiler;
+use Type\Core\Http\Message\Factory;
+use Type\Core\Http\Router;
+use TypeApp\Generated\Routes;
+use TypeApp\RoutingExample\BooksController;
 
 require __DIR__ . '/support.php';
 require __DIR__ . '/http-support.php';
@@ -10,25 +15,25 @@ $root = dirname(__DIR__);
 $variant = $argv[2] ?? 'explicit';
 expect(in_array($variant, ['explicit', 'attributes'], true), '路由验证只接受 explicit 或 attributes');
 $settings = json_decode(file_get_contents($root . '/docs/build-config/type-routing-' . ($variant === 'attributes' ? 'attributes' : 'http') . '.json'), true, 512, JSON_THROW_ON_ERROR);
-$compiler = new Type\Build\RouteCompiler();
+$compiler = new RouteCompiler();
 $generated = $compiler->generate($root, $compiler->declarations($root, $settings['routing']), array_map(static fn (string $file): string => $root . '/' . $file, array_merge($settings['sources'], ['plugin/type-validate/src'])));
 $generatedFile = tempnam(sys_get_temp_dir(), 'type_routes_');
 $log = tmpfile();
 expect($generatedFile !== false && $log !== false, '无法创建路由验证文件');
 file_put_contents($generatedFile, $generated['code']);
 require $generatedFile;
-$messages = new Type\Core\Http\Message\Factory();
-$links = new Type\Core\Http\Router($messages, $messages);
-TypeApp\Generated\Routes::register($links, [TypeApp\RoutingExample\BooksController::class => static fn () => throw new RuntimeException('生成链接不能构造控制器')], [
+$messages = new Factory();
+$links = new Router($messages, $messages);
+Routes::register($links, [BooksController::class => static fn () => throw new RuntimeException('生成链接不能构造控制器')], [
     'group' => static fn () => throw new RuntimeException('生成链接不能构造中间件'),
     'route' => static fn () => throw new RuntimeException('生成链接不能构造中间件'),
 ]);
 $address = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
 expect(is_resource($address), '无法分配路由 HTTP 验证端口');
-$port = (int) substr(strrchr(stream_socket_get_name($address, false), ':'), 1);
+$port = (int)substr(strrchr(stream_socket_get_name($address, false), ':'), 1);
 fclose($address);
 $environment = getenv();
-$environment['TYPE_HTTP_PORT'] = (string) $port;
+$environment['TYPE_HTTP_PORT'] = (string)$port;
 $launcher = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; require ' . var_export($generatedFile, true)
     . '; require ' . var_export($root . '/examples/routing/Controllers.php', true)
     . '; require ' . var_export($root . '/examples/routing/Middleware.php', true)

@@ -50,7 +50,7 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $comman
             in_array($action, ['disable', 'retire'], true) ? '/admin/devices/' . $device['id'] . '/' . $action : $devices . '/' . $device['id'] . '/' . $action,
             in_array($action, ['disable', 'retire'], true) ? $evidence['platform_token'] : $evidence['admin_token'],
             in_array($action, ['disable', 'retire'], true) ? null : $evidence['tenant'],
-            ['version' => (int) $device['version'], 'confirm_device_id' => $device['id']],
+            ['version' => (int)$device['version'], 'confirm_device_id' => $device['id']],
             202
         )['data'];
         if ($changed['credential'] !== null) {
@@ -75,7 +75,7 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $comman
     };
     $finish = static function (Process $client, float $seconds = 25.0): array {
         $result = $client->wait($seconds);
-        expect($result->successful(), '生命周期标准客户端失败（exit=' . $result->exitCode . ', timeout=' . (int) $result->timedOut . '）：' . $result->stderr);
+        expect($result->successful(), '生命周期标准客户端失败（exit=' . $result->exitCode . ', timeout=' . (int)$result->timedOut . '）：' . $result->stderr);
         $lines = explode("\n", trim($result->stdout));
         return json_decode($lines[count($lines) - 1], true, 16, JSON_THROW_ON_ERROR);
     };
@@ -92,12 +92,12 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $comman
     $sessionCount = static function (array $created, PDO $connection): int {
         $query = $connection->prepare('SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id = ?');
         $query->execute([$created['device']['id']]);
-        return (int) $query->fetchColumn();
+        return (int)$query->fetchColumn();
     };
     $pendingCount = static function (array $created, PDO $connection): int {
         $query = $connection->prepare("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = ? AND state = 'pending'");
         $query->execute([$created['device']['id']]);
-        return (int) $query->fetchColumn();
+        return (int)$query->fetchColumn();
     };
     $signal = static function (Process $process, int $signal): void {
         $pid = $process->pid();
@@ -107,11 +107,11 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $comman
         // HTTP套件留下的意图也必须经真实Broker完成；装置不伪造完成字段。
         $drainStarted = microtime(true);
         $drainSamples = [];
-        $initialPending = (int) $database->query('SELECT COUNT(*) FROM iot_authorization_invalidations WHERE completed_at IS NULL')->fetchColumn();
+        $initialPending = (int)$database->query('SELECT COUNT(*) FROM iot_authorization_invalidations WHERE completed_at IS NULL')->fetchColumn();
         expect($initialPending <= 20, '生命周期夹具留下了超出本套范围的管理意图');
         $wait(
             static function () use ($database, $base, $drainStarted, &$drainSamples): bool {
-                $pending = (int) $database->query('SELECT COUNT(*) FROM iot_authorization_invalidations WHERE completed_at IS NULL')->fetchColumn();
+                $pending = (int)$database->query('SELECT COUNT(*) FROM iot_authorization_invalidations WHERE completed_at IS NULL')->fetchColumn();
                 if ($drainSamples === [] || end($drainSamples)['pending'] !== $pending) {
                     $drainSamples[] = ['seconds' => microtime(true) - $drainStarted, 'pending' => $pending];
                     file_put_contents($base . '/lifecycle-initial-drain.json', json_encode($drainSamples, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
@@ -138,7 +138,7 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $comman
                 expect($broker->running(), '正常撤权使整个Broker退出：' . $broker->stderr());
             }
             expect(
-                (int) $database->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE payload = decode('" . bin2hex('revoked-publication') . "', 'hex')")->fetchColumn() === 0,
+                (int)$database->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE payload = decode('" . bin2hex('revoked-publication') . "', 'hex')")->fetchColumn() === 0,
                 '撤权后的旧发布仍进入持久消息'
             );
 
@@ -258,10 +258,10 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $comman
         $standby->query('SELECT pg_wal_replay_pause()')->fetchColumn();
         $database->commit();
         $backend = $wait(static function () use ($database, $terminating): mixed {
-            return $database->query('SELECT pid FROM pg_stat_activity WHERE pid = ' . (int) $terminating . " AND wait_event = 'SyncRep'")->fetchColumn();
+            return $database->query('SELECT pid FROM pg_stat_activity WHERE pid = ' . (int)$terminating . " AND wait_event = 'SyncRep'")->fetchColumn();
         }, '撤权终止没有进入真实SyncRep等待', 10.0);
         expect($read($unknown)['authorization']['status'] === 'pending', '同步等待期间把撤权标成enforced');
-        expect($database->query('SELECT pg_cancel_backend(' . (int) $backend . ')')->fetchColumn(), '无法取消本次撤权同步等待');
+        expect($database->query('SELECT pg_cancel_backend(' . (int)$backend . ')')->fetchColumn(), '无法取消本次撤权同步等待');
         $wait(static fn (): bool => $sessionCount($unknown, $database) === 0, '取消同步等待后主库终止事实不可见');
         expect($read($unknown)['authorization']['status'] === 'pending', '主库终止可见但没有同步证明时标成enforced');
         $failed = $broker->wait(20);
@@ -270,7 +270,7 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $comman
         expect($read($unknown)['authorization']['status'] === 'pending', '未知终止结果错误确认了撤权');
         $standby->query('SELECT pg_wal_replay_resume()')->fetchColumn();
         $wait(
-            static fn (): bool => (int) $database->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0,
+            static fn (): bool => (int)$database->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0,
             '未知撤权退出后留下未清理数据库后端'
         );
         $broker = $startBroker();
@@ -280,7 +280,7 @@ function iotLifecycleMqttChecks(Closure $request, array $evidence, array $comman
         $stopped = $broker->stop(15);
         expect($stopped->successful(), '生命周期Broker正常停止失败：' . $stopped->stderr);
         $wait(
-            static fn (): bool => (int) $database->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0,
+            static fn (): bool => (int)$database->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0,
             '正常停止后留下设备接入数据库后端'
         );
         $brokerLogs .= $stopped->stdout . $stopped->stderr;

@@ -12,7 +12,7 @@ final class Plan
     /**
      * 生成当前数据库方言与故障场景的迁移声明，先限制测试表前缀。
      *
-     * @return list<\Type\Orm\Migration\Migration> 按版本顺序排列的迁移。
+     * @return list<Migration> 按版本顺序排列的迁移
      */
     public static function migrations(string $driver, string $prefix): array
     {

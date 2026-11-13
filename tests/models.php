@@ -1,12 +1,13 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ModelCompiler;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 $root = dirname(__DIR__);
-$generated = (new Type\Build\ModelCompiler())->compile([$root . '/examples/model/Models.php'])['code'];
+$generated = (new ModelCompiler())->compile([$root . '/examples/model/Models.php'])['code'];
 $file = tempnam($root . '/build', 'type_models_');
 expect($file !== false, '无法创建模型生成文件');
 file_put_contents($file, $generated);
@@ -24,7 +25,7 @@ try {
     expect($status === 0 && $stdout === "模型 CRUD、生成水合、部分字段、安全输出与状态检查通过。\n" && $stderr === '', '模型验收失败：' . $stdout . $stderr);
     $rejected = false;
     try {
-        (new Type\Build\ModelCompiler())->assertConfiguration(['models' => []]);
+        (new ModelCompiler())->assertConfiguration(['models' => []]);
     } catch (RuntimeException) {
         $rejected = true;
     }

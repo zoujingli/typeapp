@@ -5,1021 +5,106 @@ declare(strict_types=1);
 namespace Type\Build;
 
 use Composer\InstalledVersions;
-use RuntimeException;
+use PhpParser\Modifiers;
+use PhpParser\Node;
+use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayDimFetch;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\Closure;
+use PhpParser\Node\Expr\Exit_;
+use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
+use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\StaticPropertyFetch;
+use PhpParser\Node\FunctionLike;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\Name\FullyQualified;
+use PhpParser\Node\Param;
+use PhpParser\Node\Stmt\Class_;
+use PhpParser\Node\Stmt\ClassLike;
+use PhpParser\Node\Stmt\ClassMethod;
+use PhpParser\Node\Stmt\Function_;
+use PhpParser\Node\Stmt\Unset_;
+use PhpParser\NodeAbstract;
+use TypePhp\Analysis\ReferenceCaptureAnalyzer;
+use TypePhp\Backend\CompilerBackend;
+use TypePhp\Backend\Msvc;
+use TypePhp\Build\CompileOptions;
 use TypePhp\Build\CompilerRuntime;
+use TypePhp\Build\LinkOptions;
+use TypePhp\CompilerBase;
+use TypePhp\Context\FunctionContext;
+use TypePhp\Entity\ArgInfo;
+use TypePhp\Entity\ClassDef;
+use TypePhp\Entity\FunctionDef;
+use TypePhp\Platform\PlatformBase;
 use TypePhp\Translator;
+use TypePhp\Type;
 
 /** 构建期限定适配：保留 Zend 异常边界，按正常请求生命周期运行完整 embed 应用。 */
 final class TypephpCompatibility extends Translator
 {
+    private const REFERENCES = [
+        'swoole/typephp' => 'c5599c5c9e8597e7124dd79db94739cabe39c526',
+        'swoole/phpx' => '90e6d22a9c3f4d5dbd2c75d62e90bf5adfe58c89',
+    ];
+
     private bool $propertyCompatibilityVerified = false;
+
     private bool $defaultCompatibilityVerified = false;
-    private bool $stringSelectionVerified = false;
-    /** @var list<\PhpParser\Node\Expr> 当前字符串三元表达式的两个分支。 */
-    private array $stringSelectionBranches = [];
+
     private bool $interfaceConstantCompatibilityVerified = false;
+
     private bool $declaredMethodCompatibilityVerified = false;
+
     private bool $callArgumentsCompatibilityVerified = false;
+
     private bool $referenceCaptureVerified = false;
+
     private bool $exitCompatibilityVerified = false;
+
     /** @var array<string, true> 需要真实 Zend 参数帧的具名函数与方法。 */
     private array $argumentFunctions = [];
-    /** @var \WeakMap<\TypePhp\Context\FunctionContext, string>|null 编译期作用域到局部帧变量的映射。 */
+
+    /** @var null|\WeakMap<FunctionContext, string> 编译期作用域到局部帧变量的映射。 */
     private ?\WeakMap $argumentFrames = null;
-    /** @var list<\PhpParser\Node\Param> 当前闭包自己的参数，不包含捕获变量。 */
+
+    /** @var list<Param> 当前闭包自己的参数，不包含捕获变量。 */
     private array $argumentClosureParams = [];
+
+    private bool $closureUsesCallArguments = false;
+
     private ?StaticRuntimeSdk $staticRuntimeSdk = null;
-
-    /** 静态构建直接绑定归档，不让编译器按 -l 名称优先选中 SDK 或 Homebrew 的共享库。 */
-    protected function getLinkCommandOptions(): \TypePhp\Build\LinkOptions
-    {
-        $options = parent::getLinkCommandOptions();
-        $static = $this->staticRuntime();
-        if ($static === null) {
-            return $options;
-        }
-        $values = $options->toArray();
-        $values['section_gc'] = empty($values['debug']);
-        $values['libraries'] = [];
-        $values['library_paths'] = [];
-        $values['rpath'] = [];
-        if (PHP_OS_FAMILY === 'Windows') {
-            // MSVC 后端不消费 Unix 的 post_ldflags；使用其完整路径库参数入口。
-            $values['libraries'] = $static->linkFlags();
-            $values['post_ldflags'] = '';
-        } else {
-            $values['post_ldflags'] = implode(' ', array_map('escapeshellarg', $static->linkFlags()));
-        }
-        return new \TypePhp\Build\LinkOptions($values);
-    }
-
-    /** 内部 INI 和直接启动策略只作用于明确选择了静态 SDK 的产物。 */
-    protected function getCommonCompileCommandOptions(): \TypePhp\Build\CompileOptions
-    {
-        $options = parent::getCommonCompileCommandOptions();
-        if ($this->threaded()) {
-            $values = $options->toArray();
-            $values['user_defines'][] = 'TYPE_APP_COMPILED_THREADS=1';
-            $options = new \TypePhp\Build\CompileOptions($values);
-        }
-        $static = $this->staticRuntime();
-        if ($static !== null) {
-            $values = $options->toArray();
-            // 使用上游统一参数为 C/C++ 生成可裁剪分节；Unix 链接标志仍由 SDK 提供。
-            $values['section_gc'] = empty($values['debug']);
-            $values['user_defines'][] = 'TYPE_APP_STATIC_RUNTIME=1';
-            $hostHeaders = rtrim(BuildPlatform::path((string) getenv('PHP_HOME')), '/') . (PHP_OS_FAMILY === 'Windows' ? '/SDK/include' : '/include/php');
-            $hostPhpx = rtrim(BuildPlatform::path($this->getPhpxDir()), '/');
-            $includes = [];
-            foreach ($values['include_paths'] as $path) {
-                $path = BuildPlatform::path($path);
-                if (PHP_OS_FAMILY === 'Windows' && ($path === $hostPhpx || str_starts_with($path, $hostPhpx . '/'))) {
-                    continue;
-                }
-                $includes[] = $path === $hostHeaders || str_starts_with($path, $hostHeaders . '/')
-                    ? $static->includeDirectory() . substr($path, strlen($hostHeaders)) : $path;
-            }
-            if (PHP_OS_FAMILY === 'Windows') {
-                array_push($includes, ...$static->windowsIncludeDirectories());
-                array_push($values['user_defines'], 'ZEND_ENABLE_STATIC_TSRMLS_CACHE=1', 'NOMINMAX');
-            }
-            $values['include_paths'] = $includes;
-            return new \TypePhp\Build\CompileOptions($values);
-        }
-        return $options;
-    }
-
-    private function staticRuntime(): ?StaticRuntimeSdk
-    {
-        // 一个编译进程只读入一次 SDK；构建结束仍由 NativeBuilder 重核全部输入。
-        $profile = getenv('TYPEAPP_BUILD_PROFILE');
-        return $this->staticRuntimeSdk ??= StaticRuntimeSdk::selected(is_string($profile) && $profile !== '' ? $profile : null);
-    }
-
-    /** 静态 Windows 构建保留 TypePHP 的翻译、并行编译与链接流程，只替换 CRT 选择。 */
-    protected function getCompilerBackend(): \TypePhp\Backend\CompilerBackend
-    {
-        $backend = parent::getCompilerBackend();
-        if (PHP_OS_FAMILY === 'Windows' && $this->staticRuntime() !== null && !$backend instanceof WindowsStaticBackend) {
-            if (!$backend instanceof \TypePhp\Backend\Msvc) {
-                throw new RuntimeException('Windows 静态 SDK 需要 MSVC 后端');
-            }
-            $this->compilerBackend = new WindowsStaticBackend($backend->getPlatform(), $backend->getCompilerCommand(), $backend->getLinkerCommand());
-        }
-        return $this->compilerBackend;
-    }
-
-    private const REFERENCES = [
-        'swoole/typephp' => '840c626c2505d2214708d129557adef3604a3576',
-        'swoole/phpx' => '13cf717579b216d4a4fa49fe4439573b4d072e71',
-    ];
 
     /**
      * 核对已安装工具链身份后初始化构建期适配，不执行应用启动代码。
      *
-     * @throws RuntimeException 编译器/PHPX引用或实际编译器目录与锁定身份不一致。
+     * @throws \RuntimeException 编译器/PHPX引用或实际编译器目录与锁定身份不一致
      */
     public static function install(string $compilerRoot): void
     {
         foreach (self::REFERENCES as $package => $reference) {
             if (InstalledVersions::getReference($package) !== $reference) {
-                throw new RuntimeException('编译器兼容适配需要重新核对工具版本：' . $package);
+                throw new \RuntimeException('编译器兼容适配需要重新核对工具版本：' . $package);
             }
         }
-        if (realpath($compilerRoot) !== realpath((string) InstalledVersions::getInstallPath('swoole/typephp'))) {
-            throw new RuntimeException('编译器入口与锁定安装目录不一致');
+        if (realpath($compilerRoot) !== realpath((string)InstalledVersions::getInstallPath('swoole/typephp'))) {
+            throw new \RuntimeException('编译器入口与锁定安装目录不一致');
         }
         // 上游构造函数先创建默认 build，再解析 --build-dir；默认输出属于应用而非只读 vendor。
         $applicationRoot = getcwd();
         if ($applicationRoot === false) {
-            throw new RuntimeException('无法确定应用构建工作目录');
+            throw new \RuntimeException('无法确定应用构建工作目录');
         }
         new self($applicationRoot, CompilerRuntime::source($compilerRoot, $compilerRoot . '/bin/tpc.php'));
-    }
-
-    protected function buildFuncCallConfig(): array
-    {
-        $configuration = parent::buildFuncCallConfig();
-        // PHPX 2.9.5 的快速路径调用对象钩子后仍未检查 EG(exception)。标准 php::call 已检查
-        // 并传播同一异常，也正确清理序列化资源。普通函数和 universal methods 共用此映射。
-        // 上游依据：swoole/phpx@13cf7175 的 include/std/json.h 与 include/std/misc.h。
-        unset($configuration['json_encode'], $configuration['serialize'], $configuration['unserialize']);
-        $configuration['func_get_arg']['namedArgs'] = ['position'];
-        return $configuration;
-    }
-
-    /** 内省的参数展开不能落回读取错误调用帧的内部函数入口。 */
-    protected function parseFuncCallWithOptimizer(string $name, \PhpParser\Node\Expr\FuncCall $expr): string|false
-    {
-        if (in_array($name, ['func_get_args', 'func_get_arg', 'func_num_args'], true) && $this->hasUnpackCallArg($expr->args)) {
-            throw new RuntimeException('参数内省不支持动态展开，请直接调用 ' . $name . '()');
-        }
-        return parent::parseFuncCallWithOptimizer($name, $expr);
-    }
-
-    /** 用户态 Zend 包装只检查必需参数下限；未知命名参数和类型仍由原入口检查。 */
-    protected function genParameterCountCheck(int $requiredArgCount, int $declaredArgCount, bool $variadic): string
-    {
-        $this->assertCallArgumentsCompatibility();
-        return parent::genParameterCountCheck($requiredArgCount, $declaredArgCount, true);
-    }
-
-    /** 预处理时标记参数内省，避免直接 C++ 调用借用外层 Zend 帧。 */
-    protected function parseFunctionDecl(\PhpParser\Node\Stmt\Function_|\PhpParser\Node\Stmt\ClassMethod $v): \TypePhp\Entity\FunctionDef
-    {
-        $function = parent::parseFunctionDecl($v);
-        $this->preserveCapturedArrayReferences($v, $function);
-        if ($this->usesCallArguments($v->stmts ?? [])) {
-            $this->assertCallArgumentsCompatibility();
-            if ($function->generator || $this->classDef?->nativeObject || $this->functionRequiresNativeAbi($function)) {
-                throw new RuntimeException('参数内省需要普通 Zend 函数或方法，不支持 Generator 或 Native ABI：' . $v->name);
-            }
-            $this->argumentFunctions[$this->getFunctionName($v)] = true;
-            // 元组返回的独立 C++ 入口不能绕过参数帧。
-            $function->multiReturnCount = 0;
-        }
-        return $function;
-    }
-
-    /**
-     * 被闭包再次引用捕获的数组形参使用现有 Zend Ref ABI，不能复制成固定 Array 槽。
-     * 公开 PHP 签名及入口类型检查不变；调用侧的引用桥接和异常写回继续由上游持有。
-     */
-    private function preserveCapturedArrayReferences(
-        \PhpParser\Node\Stmt\Function_|\PhpParser\Node\Stmt\ClassMethod $node,
-        \TypePhp\Entity\FunctionDef $function
-    ): void {
-        if ($function->stub || $function->generator || $this->classDef?->nativeObject || $this->functionRequiresNativeAbi($function)) {
-            return;
-        }
-        $arguments = array_filter($function->argInfoList, static fn (\TypePhp\Entity\ArgInfo $argument): bool =>
-            $argument->type === \TypePhp\Type::ARRAY_REF && $argument->byRef && !$argument->variadic
-            && $argument->typedArray === null && $argument->stdContainer === null);
-        if ($arguments === []) {
-            return;
-        }
-        $this->assertReferenceCaptureCompatibility();
-        $captures = (new \TypePhp\Analysis\ReferenceCaptureAnalyzer())->analyze($node->stmts)['captures'];
-        $changed = false;
-        foreach ($arguments as $index => $argument) {
-            if (!isset($captures[$argument->phpName])) {
-                continue;
-            }
-            $type = $this->buildTypeCheckFromNode($node->params[$index]->type, true);
-            $argument->type = \TypePhp\Type::REF;
-            $argument->typeCheck = $type['check'];
-            $argument->typeStr = $type['typeStr'];
-            $argument->typeNode = $node->params[$index]->type;
-            $changed = true;
-        }
-        if ($changed) {
-            $function->params = implode(', ', array_map(fn (\TypePhp\Entity\ArgInfo $argument): string => $argument->variadic
-                ? \TypePhp\Type::ARRAY . ' ' . $argument->name : $this->genArgumentDeclaration($argument), $function->argInfoList));
-        }
-    }
-
-    /** 参数 ABI、捕获分析和生成规则须来自同一已核对版本，不绕过固定存储的引用保护。 */
-    private function assertReferenceCaptureCompatibility(): void
-    {
-        if ($this->referenceCaptureVerified) {
-            return;
-        }
-        $compiler = InstalledVersions::getInstallPath('swoole/typephp');
-        foreach ([
-            'src/Preprocessor.php' => '20feb0bacf189feeb58f6ffa6e48df1b53a5dac8ec0d4278d14c8d63ff801fb0',
-            'src/Translator.php' => '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913',
-            'src/Analysis/ReferenceCaptureAnalyzer.php' => '0732aa48bae23c3ff1c547f08ffc48c829560ae98cb2fff11189d6de35df688c',
-            'src/Context/CompilationStateTrait.php' => '158d16dc36e46951f601fd4b996d6920aa4475270e4696ce8958c455cf786484',
-            'src/Generator/ClosureGenerator.php' => 'fc23c9113e8b90e0f24e4819506190de592aa565fae340caed594b15e7af5882',
-            'src/Generator/CallArgumentGenerator.php' => 'd0e5b1e9248a312749911e3d6d063f2be91b230a296e2a6ded7aba694d74e6e0',
-            'src/Generator/TypeCheckGenerator.php' => 'f9e88981fa70ebc76e135ca8a477c994ee314fd9506d8dca6556b31f4a628018',
-        ] as $file => $sha256) {
-            if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
-                throw new RuntimeException('数组引用参数捕获适配需要重新核对 TypePHP：' . $file);
-            }
-        }
-        $this->referenceCaptureVerified = true;
-    }
-
-    /** 只扫描当前函数体，内层闭包和类拥有独立参数作用域。 */
-    private function usesCallArguments(mixed $nodes): bool
-    {
-        foreach (is_array($nodes) ? $nodes : [$nodes] as $node) {
-            if (!$node instanceof \PhpParser\Node
-                || $node instanceof \PhpParser\Node\FunctionLike
-                || $node instanceof \PhpParser\Node\Stmt\ClassLike) {
-                continue;
-            }
-            if ($node instanceof \PhpParser\Node\Expr\FuncCall && $node->name instanceof \PhpParser\Node\Name) {
-                $target = $this->resolveStaticFunctionCallTarget($node->name);
-                if (in_array($target['lower'], ['func_get_args', 'func_get_arg', 'func_num_args'], true)
-                    && ($target['definitelyGlobal'] || $target['namespacedFallback'])) {
-                    return true;
-                }
-            }
-            foreach ($node->getSubNodeNames() as $field) {
-                if ($this->usesCallArguments($node->{$field})) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /** 具名调用允许额外位置参数，但仍检查缺参、命名覆盖和未知命名参数。 */
-    protected function checkNativeCallArgs(\PhpParser\Node\Expr\CallLike $expr, \TypePhp\Entity\FunctionDef $funcDef, array $args, string $name): void
-    {
-        if (!$funcDef->stub && !$this->functionRequiresNativeAbi($funcDef)
-            && !$funcDef->hasVariadicArg() && count($args) > count($funcDef->argInfoList)) {
-            $this->assertCallArgumentsCompatibility();
-            $this->validateNativeNamedCallArgs($funcDef, $args);
-            // 只限制数量检查所看的签名段；原调用 AST 与实际传入的所有值完整保留。
-            parent::checkNativeCallArgs($expr, $funcDef, array_slice($args, 0, count($funcDef->argInfoList)), $name);
-            return;
-        }
-        parent::checkNativeCallArgs($expr, $funcDef, $args, $name);
-    }
-
-    /** 需要内省或含额外实参的普通调用统一进入已编译的 Zend 包装。 */
-    protected function shouldUseDynamicCallForNativeArgs(string $nativeFunc, array $args): bool
-    {
-        $function = $this->getFunction($nativeFunc);
-        if (isset($this->argumentFunctions[$nativeFunc])
-            || (!$function->stub && !$this->functionRequiresNativeAbi($function)
-                && !$function->hasVariadicArg() && count($args) > count($function->argInfoList))) {
-            return true;
-        }
-        return parent::shouldUseDynamicCallForNativeArgs($nativeFunc, $args);
-    }
-
-    /** 已解析方法指针直接进入 Zend；PHPX 的 callScoped 只接受方法名或 callable。 */
-    protected function genRuntimeObjectMethodCall(
-        string $object,
-        string $method,
-        array $args,
-        string $funcName = '',
-        string $className = '',
-        bool $requiresDynamicScope = true,
-    ): string {
-        $function = $className === '' ? null : $this->findAotMethodFunctionDef($className, $funcName);
-        if ($function !== null && ($this->needsCallArgumentsFrame($function)
-            || (!$function->hasVariadicArg() && count($args) > count($function->argInfoList)))) {
-            // 可见性已由原生方法解析验证，直接传指针避免其被 Variant(bool) 转换为 1。
-            $requiresDynamicScope = false;
-        }
-        return parent::genRuntimeObjectMethodCall($object, $method, $args, $funcName, $className, $requiresDynamicScope);
-    }
-
-    /** 动态分派仍用 AOT 符号定位具名函数的引用参数，不将引用退化为值副本。 */
-    protected function genRuntimeFunctionCall(
-        string $callable,
-        array $args,
-        string $funcName = '',
-        string $className = '',
-        bool $separateNamedArgs = true,
-        string $scope = '',
-    ): string {
-        if ($className === '' && $funcName !== '') {
-            $native = $this->findNativeFunction('\\' . ltrim($funcName, '\\'));
-            if ($native !== false && $this->shouldUseDynamicCallForNativeArgs($native, $args)) {
-                $funcName = $native;
-            }
-        }
-        return parent::genRuntimeFunctionCall($callable, $args, $funcName, $className, $separateNamedArgs, $scope);
-    }
-
-    /** self/static 的快捷入口也必须保留被调用者自己的帧及晚绑定类。 */
-    protected function parseStaticCall(\PhpParser\Node\Expr\StaticCall $expr): string
-    {
-        if ($expr->class instanceof \PhpParser\Node\Name && in_array(strtolower($expr->class->toString()), ['self', 'static'], true)
-            && $expr->name instanceof \PhpParser\Node\Identifier) {
-            $method = $this->findAotMethodFunctionDef($this->getFullClassName(), $expr->name->toString());
-            if ($method !== null && ($this->needsCallArgumentsFrame($method)
-                || (!$method->hasVariadicArg() && count($expr->args) > count($method->argInfoList)))) {
-                // 沿用上游可见性和签名检查，实际参数仍完整传入 Zend。
-                $class = $this->getFullClassName();
-                $this->getNativeMethod($expr, $class, $method->name);
-                $calledClass = $this->getCalledCeExpr();
-                $pointer = strtolower($expr->class->toString()) === 'static'
-                    ? 'php::getMethod(' . $calledClass . ', ' . $this->getLiteralString($method->name) . ')'
-                    : $this->getMethodPtr($class, $method->name);
-                if (!($this->getMethodFlags($class, $method->name) & \PhpParser\Modifiers::STATIC)) {
-                    return $this->genRuntimeObjectMethodCall('this_', $pointer, $expr->args, $method->name, $class);
-                }
-                return $this->genRuntimeFunctionCall($calledClass . ', ' . $pointer, $expr->args, $method->name, $class);
-            }
-        }
-        return parent::parseStaticCall($expr);
-    }
-
-    /** 魔术方法不能从优化入口直接进入需要参数内省的函数体。 */
-    protected function parseDirectNativeMagicCall(\PhpParser\Node\Expr\MethodCall $expr, string $object, string $class, string $method): ?string
-    {
-        $function = $class === '' ? null : $this->findAotMethodFunctionDef($class, '__call');
-        return $function !== null && $this->needsCallArgumentsFrame($function)
-            ? null : parent::parseDirectNativeMagicCall($expr, $object, $class, $method);
-    }
-
-    /** 方法元数据归一到预处理登记的原生名称，继承方法使用实际声明类。 */
-    private function needsCallArgumentsFrame(\TypePhp\Entity\FunctionDef $function): bool
-    {
-        $class = $function->declaringClass === '' ? '' : $this->getClass($function->declaringClass)->name;
-        return isset($this->argumentFunctions[$this->getNativeName($function->name, $function->namespace, $class)]);
-    }
-
-    /** 闭包内省只读取本次闭包参数，不能读取外层具名函数的签名。 */
-    protected function genClosure(\PhpParser\Node\Expr\ArrowFunction|\PhpParser\Node\Expr\Closure $expr, array $params, array $uses = []): string
-    {
-        $previous = $this->argumentClosureParams;
-        $this->argumentClosureParams = $params;
-        try {
-            if ($this->usesCallArguments($expr instanceof \PhpParser\Node\Expr\ArrowFunction ? $expr->expr : $expr->stmts)
-                && $this->closureContainsYield($expr)) {
-                throw new RuntimeException('参数内省暂不支持 Generator 闭包');
-            }
-            return parent::genClosure($expr, $params, $uses);
-        } finally {
-            $this->argumentClosureParams = $previous;
-        }
-    }
-
-    /** 含内省别名的局部闭包同样保留 Zend 入口，不降级为无调用帧的 C++ lambda。 */
-    protected function parseNativeLocalClosureAssignment(\PhpParser\Node\Expr\Assign $assign): ?string
-    {
-        $closure = $assign->expr;
-        if (($closure instanceof \PhpParser\Node\Expr\Closure || $closure instanceof \PhpParser\Node\Expr\ArrowFunction)
-            && $this->usesCallArguments($closure instanceof \PhpParser\Node\Expr\ArrowFunction ? $closure->expr : $closure->stmts)) {
-            return null;
-        }
-        return parent::parseNativeLocalClosureAssignment($assign);
-    }
-
-    /** 每个 C++ 栈帧独立持有对应 Zend 帧，协程挂起和递归都不共享可变状态。 */
-    private function callArgumentsFrame(): string
-    {
-        $this->assertCallArgumentsCompatibility();
-        $this->argumentFrames ??= new \WeakMap();
-        return $this->argumentFrames[$this->context] ??= $this->genTmpVarName();
-    }
-
-    /** 在用户函数体执行前捕获参数帧，并拒绝意外绕过 Zend 包装的调用。 */
-    protected function genScopeVarDecl(): string
-    {
-        $frame = $this->argumentFrames[$this->context] ?? null;
-        if ($frame === null) {
-            return parent::genScopeVarDecl();
-        }
-        $capture = 'zend_execute_data *const ' . $frame . ' = EG(current_execute_data);' . PHP_EOL;
-        if (!$this->context->inClosure) {
-            $function = $this->functionDef;
-            $pointer = $function->method ? $this->getMethodPtr($function->declaringClass, $function->name)
-                : $this->getFuncPtr($function->getNamespacedName());
-            $capture .= 'if (!' . $frame . ' || ' . $frame . '->func->internal_function.handler != '
-                . $pointer . '->internal_function.handler) { zend_throw_error(nullptr, "runtime_argument_frame_mismatch"); php::throwErrorIfOccurred(); }' . PHP_EOL;
-        }
-        // getMethodPtr/getFuncPtr 可能登记新的局部符号，在最终声明生成前完成。
-        return parent::genScopeVarDecl() . $capture;
-    }
-
-    /** 参数列表使用本次实参数量；已声明位置读取当前局部值，额外位置保留原值。 */
-    protected function genFuncGetArgs(string $name, \PhpParser\Node\Expr\FuncCall $expr, array $config): string
-    {
-        $frame = $this->callArgumentsFrame();
-        $values = $this->genTmpVarName();
-        $index = $this->genTmpVarName();
-        $code = '([&]() { php::Array ' . $values . '; for (uint32_t ' . $index . ' = 0; '
-            . $index . ' < ZEND_CALL_NUM_ARGS(' . $frame . '); ++' . $index . ') { ';
-        $arguments = $this->context->inClosure ? $this->argumentClosureParams : $this->functionDef->argInfoList;
-        foreach ($arguments as $position => $argument) {
-            if ($argument->variadic) {
-                break;
-            }
-            $variable = $argument instanceof \PhpParser\Node\Param ? $this->parseIdentifier($argument->var) : $argument->name;
-            $code .= 'if (' . $index . ' == ' . $position . ') { ' . $values . '.appendValue(php::Var(' . $variable . ')); } else ';
-        }
-        return $code . '{ ' . $values . '.appendValue(php::Var(ZEND_CALL_ARG(' . $frame . ', ' . $index . ' + 1))); } } return ' . $values . '; }())';
-    }
-
-    /** 数量来自当前调用帧，省略的默认参数不增加数量，命名跳位遵守 Zend 规则。 */
-    protected function genFuncNumArgs(string $name, \PhpParser\Node\Expr\FuncCall $expr, array $config): string
-    {
-        return '(static_cast<php::Int>(ZEND_CALL_NUM_ARGS(' . $this->callArgumentsFrame() . ')))';
-    }
-
-    /** 允许运行时位置，越界按 PHP 抛出 ValueError，而非编译期截断到签名。 */
-    protected function genFuncGetArg(string $name, \PhpParser\Node\Expr\FuncCall $expr, array $config): string
-    {
-        $index = $this->genTmpVarName();
-        $value = $this->getArg($expr, 0);
-        $frame = $this->callArgumentsFrame();
-        $arguments = $this->genFuncGetArgs($name, $expr, $config);
-        return '([&](php::Var ' . $index . ') -> php::Var { '
-            . 'if (!' . $index . '.isInt()) { php::throwArgumentTypeError(' . $index . ', "func_get_arg", 1, "position", "int"); } '
-            . 'if (php::toInt(' . $index . ') < 0) { zend_value_error("func_get_arg(): Argument #1 ($position) must be greater than or equal to 0"); php::throwErrorIfOccurred(); } '
-            . 'if (php::toInt(' . $index . ') >= ZEND_CALL_NUM_ARGS(' . $frame . ')) { '
-            . 'zend_value_error("func_get_arg(): Argument #1 ($position) must be less than the number of the arguments passed to the currently executed function"); php::throwErrorIfOccurred(); } '
-            . 'return ' . $arguments . '.offsetGet(php::toInt(' . $index . ')); })(' . $value . ')';
-    }
-
-    /** 参数兼容只接受审查过的声明、分发、闭包和优化器源码。 */
-    private function assertCallArgumentsCompatibility(): void
-    {
-        if ($this->callArgumentsCompatibilityVerified) {
-            return;
-        }
-        $compiler = InstalledVersions::getInstallPath('swoole/typephp');
-        foreach ([
-            'src/CompilerBase.php' => '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30',
-            'src/Preprocessor.php' => '20feb0bacf189feeb58f6ffa6e48df1b53a5dac8ec0d4278d14c8d63ff801fb0',
-            'src/Translator.php' => '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913',
-            'src/Generator/ParameterCountCheckGenerator.php' => '491fffd20a20d554ecc46bfaedfa0179535b9cfa36264e8e2f81a785e79fa273',
-            'src/Generator/ClosureGenerator.php' => 'fc23c9113e8b90e0f24e4819506190de592aa565fae340caed594b15e7af5882',
-            'src/Generator/CallArgumentGenerator.php' => 'd0e5b1e9248a312749911e3d6d063f2be91b230a296e2a6ded7aba694d74e6e0',
-            'src/Optimizer/FuncCallOptimizer.php' => '8627ec85b3d0173ba3d704d36243eee99e9af43d50b9e598b6a20c32c3779b9a',
-            'src/Parser/FunctionCallTrait.php' => 'd7bf37b372b8541b8205079a1f04e9ea942d6e58148fe1094e88ad8bb6d9e7e7',
-            'src/Parser/MethodCallTrait.php' => 'b35e79713ced34b1eb5e90fc8c8f752902c8b543bb8910df7f325e4cab3d1523',
-            'src/Analysis/LocalClosureAnalyzer.php' => 'f1cf6e659bd03fbc6282cc028fca3790a0603b36e8753b5b13d45eb82f0525b2',
-        ] as $file => $sha256) {
-            if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
-                throw new RuntimeException('调用实参适配需要重新核对 TypePHP：' . $file);
-            }
-        }
-        $this->callArgumentsCompatibilityVerified = true;
-    }
-
-    /** 上游匿名类使用 opcode 或 eval，不能计入本项目的全量 AOT 产物。 */
-    protected function parseNew(\PhpParser\Node\Expr\New_ $expr): string
-    {
-        if ($expr->class instanceof \PhpParser\Node\Stmt\Class_) {
-            throw new RuntimeException('全量 AOT 不支持匿名类解释回退，请声明具名类');
-        }
-        return parent::parseNew($expr);
-    }
-
-    /** 已声明的 toString 是用户方法；仅未声明时沿用 TypePHP 的转换关键字。 */
-    protected function parseMethodCall(\PhpParser\Node\Expr\MethodCall $expr): string
-    {
-        if ($expr->name instanceof \PhpParser\Node\Identifier
-            && strtolower($expr->name->toString()) === 'tostring') {
-            if (!$this->declaredMethodCompatibilityVerified) {
-                $compiler = InstalledVersions::getInstallPath('swoole/typephp');
-                foreach ([
-                    'src/CompilerBase.php' => '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30',
-                    'src/Parser/MethodCallTrait.php' => 'b35e79713ced34b1eb5e90fc8c8f752902c8b543bb8910df7f325e4cab3d1523',
-                    'src/Parser/UniversalMethodCall.php' => '8c2b963287246a9b54d709ff1174a903e913d4c5c07d0fa3fe650bb523e6ffea',
-                    'src/Parser/PropertyAccessTrait.php' => 'f507a357cfb3f85e0f7d9e282e3e26304f0c9f1b5a3e8f04673b1f60a0c69fee',
-                    'src/Generator/CallArgumentGenerator.php' => 'd0e5b1e9248a312749911e3d6d063f2be91b230a296e2a6ded7aba694d74e6e0',
-                ] as $file => $sha256) {
-                    if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
-                        throw new RuntimeException('已声明方法适配需要重新核对 TypePHP：' . $file);
-                    }
-                }
-                $this->declaredMethodCompatibilityVerified = true;
-            }
-            $declaration = $this->resolveCalledFunctionDef($expr);
-            if ($declaration === null
-                && ($expr->var instanceof \PhpParser\Node\Expr\PropertyFetch || $expr->var instanceof \PhpParser\Node\Expr\StaticPropertyFetch)
-                && $expr->var->name instanceof \PhpParser\Node\Identifier) {
-                if ($expr->var instanceof \PhpParser\Node\Expr\PropertyFetch) {
-                    $this->getPropertyIdentifier($expr->var, $expr->var->var, $expr->var->name);
-                } elseif ($expr->var instanceof \PhpParser\Node\Expr\StaticPropertyFetch) {
-                    $this->resolveNativeStaticPropertyFetch($expr->var);
-                }
-                $property = $this->getNativePropertyDef($expr->var);
-                if ($property !== null && $property->class !== '') {
-                    $declaration = $this->findAotMethodFunctionDef($property->class, $expr->name->toString());
-                }
-            }
-            if ($declaration !== null || $expr->isFirstClassCallable()) {
-                // 复用上游跳过关键字的入口；后续仍负责可见性、继承和接收者单次求值。
-                $expr = clone $expr;
-                $expr->setAttribute('nativeKeywordCall', true);
-            }
-        }
-        return parent::parseMethodCall($expr);
-    }
-
-    /** 未知对象的真实方法返回动态值，不能沿转换关键字预先固定为字符串。 */
-    protected function detectTypeOfExpr($expr): string
-    {
-        if ($expr instanceof \PhpParser\Node\Expr\MethodCall
-            && $expr->name instanceof \PhpParser\Node\Identifier
-            && $expr->name->toString() === 'toString') {
-            if ($expr->isFirstClassCallable()) {
-                return \TypePhp\Type::OBJECT;
-            }
-            $declaration = $this->resolveCalledFunctionDef($expr);
-            if ($declaration !== null) {
-                return $declaration->returnType;
-            }
-            if (in_array(parent::detectTypeOfExpr($expr->var), [\TypePhp\Type::OBJECT, \TypePhp\Type::VAR, \TypePhp\Type::REF], true)) {
-                return \TypePhp\Type::VAR;
-            }
-        }
-        return parent::detectTypeOfExpr($expr);
-    }
-
-    /** 类型擦除后按实际类查找声明；无真实方法时保留上游转换，接收者仅求值一次。 */
-    protected function genToConvertCall(string $receiver, string $method, string $receiverType = ''): string
-    {
-        if ($method !== 'toString'
-            || !in_array($receiverType, [\TypePhp\Type::OBJECT, \TypePhp\Type::VAR, \TypePhp\Type::REF], true)) {
-            return parent::genToConvertCall($receiver, $method, $receiverType);
-        }
-        $call = $this->classDef !== null && $this->methodDef !== null
-            ? 'php::callScoped(value, "toString", ' . $this->getCallableScopeExpr() . ')'
-            : 'value.call("toString")';
-        return '([&](php::Var value) -> php::Var {'
-            . ' if (value.isObject() && zend_hash_str_exists(&value.ce()->function_table, "tostring", 8)) {'
-            . ' return ' . $call . '; } return php::toString(value); })(' . $receiver . ')';
-    }
-
-    /** 接口中的 self 属于当前接口；上游类专用名称入口会丢掉接口名。 */
-    protected function parseClassConstFetch(\PhpParser\Node\Expr\ClassConstFetch $expr): string
-    {
-        if ($this->classDef === null && $this->interface !== '' && $this->interfaceDef !== null
-            && $this->isNameExpr($expr->class) && $this->parseIdentifier($expr->class) === 'self') {
-            if (!$this->interfaceConstantCompatibilityVerified) {
-                $compiler = InstalledVersions::getInstallPath('swoole/typephp');
-                foreach ([
-                    'src/CompilerBase.php' => '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30',
-                    'src/Preprocessor.php' => '20feb0bacf189feeb58f6ffa6e48df1b53a5dac8ec0d4278d14c8d63ff801fb0',
-                    'src/Parser/ClassConstantFetchTrait.php' => '6a92cb3779a5cb2132cc88c46d139da75b6932d7f931218808b6d824ebbfbbf0',
-                ] as $file => $sha256) {
-                    if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
-                        throw new RuntimeException('接口 self 常量适配需要重新核对 TypePHP：' . $file);
-                    }
-                }
-                $this->interfaceConstantCompatibilityVerified = true;
-            }
-            // 仅规范化本次查找的目标；保留原声明 AST、常量注册顺序和上游解析流程。
-            $resolved = clone $expr;
-            $resolved->class = new \PhpParser\Node\Name\FullyQualified($this->interfaceDef->getNamespacedName(false), $expr->class->getAttributes());
-            return parent::parseClassConstFetch($resolved);
-        }
-        return parent::parseClassConstFetch($expr);
-    }
-
-    /** Zend 回调只在参数缺失时创建默认值，避免 C++ 实参求值提前触发构造及异常。 */
-    protected function genWrapperFunctionArgs(
-        string $fn,
-        \TypePhp\Entity\FunctionDef $functionDef,
-        string $displayName,
-        array $implicitMethodArgs = [],
-    ): string {
-        $code = parent::genWrapperFunctionArgs($fn, $functionDef, $displayName, $implicitMethodArgs);
-        $nativeName = str_starts_with($fn, self::PREFIX) ? substr($fn, strlen(self::PREFIX)) : $fn;
-        foreach ($functionDef->argInfoList as $index => $argument) {
-            if (!$argument->variadic && $argument->type === \TypePhp\Type::ARRAY) {
-                // 上游直接 toArray 会把错误类型转换为数组；Zend 用户函数应先拒绝。
-                $value = 'php::getCallArg(' . $index . ')';
-                $check = 'if (' . $index . ' < php::getCallArgNum() && !Z_ISUNDEF_P(ZEND_CALL_ARG(EG(current_execute_data), '
-                    . ($index + 1) . ')) && !' . $value . '.isArray()) { php::throwArgumentTypeError('
-                    . $value . ', ' . $this->getLiteralString($displayName) . ', ' . ($index + 1) . ', '
-                    . $this->getLiteralString($argument->phpName ?: $this->unescapeVarName($argument->name)) . ', "array"); }' . PHP_EOL;
-                $declaration = $this->getDefaultArgumentType($argument) . ' arg_' . $argument->name . ' = ';
-                $code = str_replace($declaration, $check . $declaration, $code, $count);
-                if ($count !== 1) {
-                    throw new RuntimeException('数组参数包装适配需要重新核对生成结构：' . $displayName);
-                }
-            }
-            if ($argument->variadic || !$argument->hasDefaultValue()) {
-                continue;
-            }
-            $this->assertDefaultCompatibility();
-            $default = $this->genDefaultArgumentExpr($nativeName, $index);
-            $getter = $argument->byRef ? 'php::getCallArgByRef' : 'php::getCallArg';
-            $type = $argument->byRef ? 'php::Ref' : 'php::Var';
-            // 与 PHPX 2.9.5 的 getCallArg/getCallArgByRef 保持一致：命名参数跳位是
-            // IS_UNDEF，显式 null 则是已提供的值；短路判断避免读取越界调用帧。
-            $missing = $index . ' >= php::getCallArgNum() || Z_ISUNDEF_P(ZEND_CALL_ARG(EG(current_execute_data), ' . ($index + 1) . '))';
-            $replacement = '((' . $missing . ') ? ' . $type . '(' . $default . ') : ' . $getter . '(' . $index . '))';
-            $code = str_replace($getter . '(' . $index . ', ' . $default . ')', $replacement, $code, $count);
-            if ($count !== 1) {
-                throw new RuntimeException('默认参数包装适配需要重新核对生成结构：' . $displayName);
-            }
-        }
-        return $code;
-    }
-
-    /** 降级、临时作用域和包装入口必须是同一受审上游实现，版本字符串相同也不能绕过。 */
-    private function assertDefaultCompatibility(): void
-    {
-        if ($this->defaultCompatibilityVerified) {
-            return;
-        }
-        $compiler = InstalledVersions::getInstallPath('swoole/typephp');
-        foreach ([
-            'src/CompilerBase.php' => '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30',
-            'src/Preprocessor.php' => '20feb0bacf189feeb58f6ffa6e48df1b53a5dac8ec0d4278d14c8d63ff801fb0',
-            'src/Translator.php' => '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913',
-            'src/Generator/DefaultArgumentGenerator.php' => '09efd00e6088e813c4380eb828e7c74bd7f8d22113525f579c3d4b1051ba6678',
-            'src/Context/FunctionContext.php' => '6477a62b0a9470464ebd9777c555ef26760df96b8a0845ffa384a705df3f8ba2',
-        ] as $file => $sha256) {
-            if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
-                throw new RuntimeException('默认对象参数适配需要重新核对 TypePHP：' . $file);
-            }
-        }
-        $this->defaultCompatibilityVerified = true;
-    }
-
-    /** 共享空串为 const String；同为 PHP string 的属性仍可能使用 Variant 存储。 */
-    protected function parseTernary(\PhpParser\Node\Expr\Ternary $expr): string
-    {
-        if ($expr->if === null || $this->detectTypeOfExpr($expr->if) !== \TypePhp\Type::STR
-            || $this->detectTypeOfExpr($expr->else) !== \TypePhp\Type::STR) {
-            return parent::parseTernary($expr);
-        }
-        $this->assertStringSelectionCompatibility();
-        $previous = $this->stringSelectionBranches;
-        $this->stringSelectionBranches = [$expr->if, $expr->else];
-        try {
-            return parent::parseTernary($expr);
-        } finally {
-            $this->stringSelectionBranches = $previous;
-        }
-    }
-
-    /** 在分支原有求值位置转换，保留惰性、临时量清理和单次求值。 */
-    protected function parseExprAsValue(\PhpParser\Node $expr): string
-    {
-        $value = parent::parseExprAsValue($expr);
-        if (in_array($expr, $this->stringSelectionBranches, true)
-            && $this->getLoweredExpressionType($expr) !== \TypePhp\Type::STR) {
-            $value = $this->convertExprFromType(\TypePhp\Type::STR, $value);
-            $expr->setAttribute(self::ATTR_LOWERED_TYPE, \TypePhp\Type::STR);
-        }
-        return $value;
-    }
-
-    /** 上游同时覆盖直接三元和带临时量分支后，用同一行为回归撤除此适配。 */
-    private function assertStringSelectionCompatibility(): void
-    {
-        if ($this->stringSelectionVerified) {
-            return;
-        }
-        $compiler = InstalledVersions::getInstallPath('swoole/typephp');
-        foreach ([
-            'src/CompilerBase.php' => '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30',
-            'src/Parser/SelectionExpressionTrait.php' => '10b298d8682e61bb8207d1fd634d3085618e6cfe82813366911143fab78714cb',
-            'src/Parser/TypeConversionTrait.php' => '62ad6ea84056b8aab7bee64d755c676da23597c3255b860a7900dab9a27a41f6',
-        ] as $file => $sha256) {
-            if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
-                throw new RuntimeException('字符串三元分支适配需要重新核对 TypePHP：' . $file);
-            }
-        }
-        $this->stringSelectionVerified = true;
-    }
-
-    protected function getPlatform(): \TypePhp\Platform\PlatformBase
-    {
-        if (PHP_OS_FAMILY === 'Windows' && !$this->platform instanceof WindowsSdkPlatform) {
-            $this->platform = new WindowsSdkPlatform(isZts: (bool) PHP_ZTS);
-        }
-        return parent::getPlatform();
-    }
-
-    /** PHPX attrRef 对值钩子返回空引用；原生调用必须恢复虚拟属性的拒绝边界。 */
-    protected function emitDynamicPropertyFetchRef(\PhpParser\Node\Expr\PropertyFetch $expr, \PhpParser\NodeAbstract $errorNode): string
-    {
-        $result = parent::emitDynamicPropertyFetchRef($expr, $errorNode);
-        if (preg_match('/^(.*)\.attrRef\((.*)\)$/sD', $result, $parts) !== 1) {
-            return $result;
-        }
-        $this->assertPropertyCompatibility();
-        // 使用 Zend 属性访问元数据，仅补齐引擎权限语义；不加载、反射或解释业务模型。
-        return '([&]() -> php::Ref { auto object = ' . $parts[1] . '; php::Str name = ' . $parts[2] . '; '
-            . 'if (object.isObject()) { auto info = zend_get_property_info(object.ce(), name.str(), true); '
-            . 'if (info && info != ZEND_WRONG_PROPERTY_INFO && (info->flags & ZEND_ACC_VIRTUAL) && info->hooks '
-            . '&& info->hooks[ZEND_PROPERTY_HOOK_GET] && !(info->hooks[ZEND_PROPERTY_HOOK_GET]->common.fn_flags & ZEND_ACC_RETURN_REFERENCE)) '
-            . '{ php::throwError("Cannot take reference of a virtual property without a reference getter"); } } '
-            . 'return object.attrRef(name); })()';
-    }
-
-    /** unset 数组元素也属于间接写入，不能只读取值钩子的临时数组。 */
-    protected function parseUnset(\PhpParser\Node\Stmt\Unset_ $node): string
-    {
-        $restore = [];
-        foreach ($node->vars as $variable) {
-            $target = $variable;
-            $arrays = [];
-            while ($target instanceof \PhpParser\Node\Expr\ArrayDimFetch) {
-                $arrays[] = $target;
-                $target = $target->var;
-            }
-            if ($arrays === [] || !$target instanceof \PhpParser\Node\Expr\PropertyFetch) {
-                continue;
-            }
-            $this->assertPropertyCompatibility();
-            foreach ($arrays as $array) {
-                $restore[] = [$array, $array->getAttributes()];
-                $array->setAttribute(self::ATTR_ARRAY_DIM_FETCH_UPDATE, true);
-            }
-            $restore[] = [$target, $target->getAttributes()];
-            $target->setAttribute(self::ATTR_PROPERTY_FETCH_UPDATE, true);
-        }
-        try {
-            return parent::parseUnset($node);
-        } finally {
-            foreach (array_reverse($restore) as [$target, $attributes]) {
-                $target->setAttributes($attributes);
-            }
-        }
-    }
-
-    private function assertPropertyCompatibility(): void
-    {
-        if ($this->propertyCompatibilityVerified) {
-            return;
-        }
-        $source = InstalledVersions::getInstallPath('swoole/typephp') . '/src/Parser/PropertyAccessTrait.php';
-        $runtime = InstalledVersions::getInstallPath('swoole/phpx') . '/src/core/variant.cc';
-        if (hash_file('sha256', $source) !== 'f507a357cfb3f85e0f7d9e282e3e26304f0c9f1b5a3e8f04673b1f60a0c69fee'
-            || hash_file('sha256', $runtime) !== '721b964d45a190af8730df91547149381155745b01f4bab3f28b3c6552bf8fb1') {
-            throw new RuntimeException('虚拟属性适配需要重新核对 TypePHP/PHPX 原文');
-        }
-        $this->propertyCompatibilityVerified = true;
-    }
-
-    /** 显式线程入口决定线程存储及受控 PHPX ABI；普通 embed 不额外要求线程 SDK。 */
-    private function threaded(): bool
-    {
-        return $this->isBuildModeBin() && $this->hasFunction('type_app_compiled_thread_run');
-    }
-
-    /** 完整 embed 先注册应用模块再开启请求，避免退出时类元数据早于对象释放。 */
-    private function fullEmbed(): bool
-    {
-        return $this->isBuildModeBin() && $this->hasSapi('embed') && !$this->isNanoMode() && !$this->isSapiBuild();
-    }
-
-    /** 未静态解析的属性读取必须携带调用方权限，不能沿用 PHPX 的接收对象权限。 */
-    protected function parsePropertyFetch(\PhpParser\Node\Expr\PropertyFetch $expr): string
-    {
-        $result = parent::parsePropertyFetch($expr);
-        if ($this->isPropertyFetchUpdate($expr) && $this->getNativePropertyDef($expr)?->virtual
-            && !$this->isNativeObjectPropertyHook($expr)) {
-            // 静态类型的 getter 快路径也必须经过引擎的间接写入检查。
-            $result = $this->parseIdentifier($expr->var) . '.attr(' . $this->propertyNameToStr($expr->name, literal: true) . ', php::AttrMode::Update)';
-        }
-        if ($this->threaded() && $this->getNativePropertyDef($expr) === null) {
-            $result = $this->threadPropertyRead($result);
-        }
-        return $this->guardVirtualPropertyUpdate($result);
-    }
-
-    /** Zend 值钩子读取的数组不能作为间接赋值目标；不能静默修改临时数组。 */
-    private function guardVirtualPropertyUpdate(string $result): string
-    {
-        if (preg_match('/^typephp_read_property_cached\((.*), (.*), php::AttrMode::Update, (.*)\)$/sD', $result, $parts) === 1) {
-            $body = 'typephp_read_property_cached(object, name, php::AttrMode::Update, ' . $parts[3] . ')';
-        } elseif (preg_match('/^type_app_read_property\((.*), (.*), (.*), php::AttrMode::Update\)$/sD', $result, $parts) === 1) {
-            $body = 'type_app_read_property(object, name, ' . $parts[3] . ', php::AttrMode::Update)';
-        } elseif (preg_match('/^(.*)\.attr\((.*), php::AttrMode::Update\)$/sD', $result, $parts) === 1) {
-            $body = 'object.attr(name, php::AttrMode::Update)';
-        } else {
-            return $result;
-        }
-        if (str_starts_with($parts[2], 'get_persistent_prop(')) {
-            // 已解析的普通属性通过属性指针读取；虚拟属性使用 getter 或名称访问。
-            return $result;
-        }
-        $this->assertPropertyCompatibility();
-        return '([&]() -> php::Var { auto object = ' . $parts[1] . '; php::Str name = ' . $parts[2] . '; '
-            . 'if (object.isObject()) { auto info = zend_get_property_info(object.ce(), name.str(), true); '
-            . 'if (info && info != ZEND_WRONG_PROPERTY_INFO && (info->flags & ZEND_ACC_VIRTUAL) && info->hooks '
-            . '&& info->hooks[ZEND_PROPERTY_HOOK_GET] && !(info->hooks[ZEND_PROPERTY_HOOK_GET]->common.fn_flags & ZEND_ACC_RETURN_REFERENCE)) '
-            . '{ php::throwError("Indirect modification of a virtual property without a reference getter is not allowed"); } } '
-            . 'return ' . $body . '; })()';
-    }
-
-    /** 普通、复合与数组间接写入复用同一调用方权限边界。 */
-    private function threadPropertyRead(string $result): string
-    {
-        $source = InstalledVersions::getInstallPath('swoole/typephp') . '/src/Parser/PropertyAccessTrait.php';
-        if (hash_file('sha256', $source) !== 'f507a357cfb3f85e0f7d9e282e3e26304f0c9f1b5a3e8f04673b1f60a0c69fee') {
-            throw new RuntimeException('属性作用域适配需要重新核对 TypePHP 原文');
-        }
-        $scope = $this->classDef?->trait ? 'const_cast<zend_class_entry *>(php::FakeScopeGuard::current())'
-            : ($this->class ? $this->getLocalClassEntryPtr($this->getFullClassName()) : 'nullptr');
-        if (preg_match('/^typephp_read_property_cached\((.*), (php::AttrMode::\w+), [^,]+\)$/sD', $result, $parts) === 1) {
-            return 'type_app_read_property(' . $parts[1] . ', ' . $scope . ', ' . $parts[2] . ')';
-        }
-        if (preg_match('/^(.*)\.attr\((.*), (php::AttrMode::\w+)\)$/sD', $result, $parts) === 1) {
-            if (str_starts_with($parts[2], 'get_persistent_prop(')) {
-                // nullsafe 参数也可能包含已解析属性；偏移不能交给按名称读取的适配。
-                return $result;
-            }
-            return 'type_app_read_property(' . $parts[1] . ', ' . $parts[2] . ', ' . $scope . ', ' . $parts[3] . ')';
-        }
-        if (preg_match('/^(.*)\.getProperty\((.*)\)$/sD', $result, $parts) === 1) {
-            return 'type_app_read_property(' . $parts[1] . ', ' . $parts[2] . ', ' . $scope . ', php::AttrMode::Get)';
-        }
-        return $result;
-    }
-
-    protected function emitDynamicPropertyRead(string $object, string $property, ?string $cache = null): string
-    {
-        $result = parent::emitDynamicPropertyRead($object, $property, $cache);
-        return $this->threaded() ? $this->threadPropertyRead($result) : $result;
-    }
-
-    protected function emitDynamicPropertyAppendArray(string $object, string $property, string $value, ?string $cache = null): string
-    {
-        if (str_starts_with($property, 'get_persistent_prop(') || $this->usesTraitPropertyScope($object)) {
-            return parent::emitDynamicPropertyAppendArray($object, $property, $value, $cache);
-        }
-        if ($this->threaded() && !$this->usesTraitPropertyScope($object)) {
-            return $this->guardVirtualPropertyUpdate($this->threadPropertyRead($object . '.attr(' . $property . ', php::AttrMode::Update)')) . '.newItem() = ' . $value;
-        }
-        return $this->guardVirtualPropertyUpdate($object . '.attr(' . $property . ', php::AttrMode::Update)') . '.newItem() = ' . $value;
-    }
-
-    protected function emitDynamicPropertyUpdateArray(string $object, string $property, string $dim, string $value, ?string $cache = null): string
-    {
-        if (str_starts_with($property, 'get_persistent_prop(') || $this->usesTraitPropertyScope($object)) {
-            return parent::emitDynamicPropertyUpdateArray($object, $property, $dim, $value, $cache);
-        }
-        if ($this->threaded() && !$this->usesTraitPropertyScope($object)) {
-            return $this->guardVirtualPropertyUpdate($this->threadPropertyRead($object . '.attr(' . $property . ', php::AttrMode::Update)')) . '.item(' . $dim . ', true) = ' . $value;
-        }
-        return $this->guardVirtualPropertyUpdate($object . '.attr(' . $property . ', php::AttrMode::Update)') . '.item(' . $dim . ', true) = ' . $value;
-    }
-
-    /** nullsafe 的属性访问在前置 lambda 中生成，同样必须保留调用方权限和短路。 */
-    protected function parseNullsafeExpr(\PhpParser\Node\Expr\PropertyFetch|\PhpParser\Node\Expr\MethodCall|\PhpParser\Node\Expr\NullsafePropertyFetch|\PhpParser\Node\Expr\NullsafeMethodCall $expr): string
-    {
-        $start = count($this->context->beforeStmtLines);
-        $result = parent::parseNullsafeExpr($expr);
-        if (!$this->threaded()) {
-            return $result;
-        }
-        $source = InstalledVersions::getInstallPath('swoole/typephp') . '/src/Parser/NullsafeAccessTrait.php';
-        if (hash_file('sha256', $source) !== 'f05775fb8e4657d93566a3466bb1f4b36b36031d7c31cd8211e0a6a81b6d621f') {
-            throw new RuntimeException('nullsafe 属性适配需要重新核对 TypePHP 原文');
-        }
-        for ($index = $start; $index < count($this->context->beforeStmtLines); ++$index) {
-            $this->context->beforeStmtLines[$index] = preg_replace_callback(
-                '/^([ \t]*[A-Za-z0-9_]+ = )([A-Za-z0-9_]+\.attr\(.*\));(\r?)$/m',
-                fn (array $parts): string => $parts[1] . $this->threadPropertyRead($parts[2]) . ';' . $parts[3],
-                $this->context->beforeStmtLines[$index]
-            ) ?? throw new RuntimeException('nullsafe 属性生成结果无法适配');
-        }
-        return $result;
-    }
-
-    /** AOT 回调显式绑定声明作用域，不改写或伪造 Zend 用户函数栈。 */
-    protected function markUserCodeCallableScope(): void
-    {
-        if (!$this->threaded() && !$this->fullEmbed()) {
-            parent::markUserCodeCallableScope();
-        }
-    }
-
-    protected function markInternalFunctionCallbackCall(string $function, array $args): void
-    {
-        parent::markInternalFunctionCallbackCall($function, $args);
-        if (!$this->threaded() && !$this->fullEmbed()) {
-            return;
-        }
-        foreach ($args as $argument) {
-            $mode = $argument->getAttribute(self::ATTR_SCOPED_CALLBACK);
-            if ($mode === 'normalize') {
-                $argument->setAttribute(self::ATTR_SCOPED_CALLBACK, 'callable');
-            } elseif ($mode === 'normalize-unpacked') {
-                $argument->setAttribute(self::ATTR_SCOPED_CALLBACK, null);
-            }
-        }
-    }
-
-    /** 解包后才知道位置的回调复用锁定编译器自己的描述表和 PHPX 的 CallableScope。 */
-    protected function parseCallArgs(array $args, string $funcName = '', string $className = '', bool $separateNamedArgs = true, bool $forceArrayArgs = false, bool $preserveExistingReferences = false): string
-    {
-        $result = parent::parseCallArgs($args, $funcName, $className, $separateNamedArgs, $forceArrayArgs, $preserveExistingReferences);
-        if ((!$this->threaded() && !$this->fullEmbed()) || !$this->methodDef || $className !== '' || $forceArrayArgs || !$separateNamedArgs) {
-            return $result;
-        }
-        $base = InstalledVersions::getInstallPath('swoole/typephp') . '/src/CompilerBase.php';
-        if (hash_file('sha256', $base) !== '80e1f5dee2c046bf033f40f62740a64d1b16baeb1431f1cbaaa050a4f9ee8f30') {
-            throw new RuntimeException('回调适配需要重新核对 TypePHP 描述表');
-        }
-        // 读取构建器的固定静态表，不在生产反射业务签名或猜测 callable 参数。
-        $variables = (new \ReflectionMethod(\TypePhp\CompilerBase::class, 'markInternalFunctionCallbackCall'))->getStaticVariables();
-        $descriptors = $variables['callbackArgs'][strtolower(ltrim($funcName, '\\'))] ?? [];
-        if ($descriptors === [] || (!$this->hasUnpackCallArg($args) && ($descriptors[0][2] ?? '') !== 'dynamic-map')) {
-            return $result;
-        }
-        if (preg_match('/^(php::VarList\{.*\}|[A-Za-z0-9_]+)(?:, ([A-Za-z0-9_]+)\.array\(\))?$/sD', $result, $parts) !== 1) {
-            throw new RuntimeException('回调适配遇到未审查的参数容器');
-        }
-        $temporary = $this->genTmpVarName();
-        $values = str_replace('php::VarList{', 'php::ArgList{', $parts[1]);
-        $this->context->beforeStmtLines[] = 'php::Args ' . $temporary . '{' . $values . '};';
-        $named = isset($parts[2]) ? $parts[2] . '.array()' : 'nullptr';
-        foreach ($descriptors as $descriptor) {
-            $this->context->beforeStmtLines[] = 'type_app_prepare_callback(' . $temporary . ', ' . $named . ', '
-                . $descriptor[0] . ', ' . $this->genCharPtr($descriptor[1], true) . ', '
-                . (($descriptor[2] ?? '') === 'dynamic-map' ? 'true' : 'false') . ', ' . $this->getCallableScopeExpr() . ');';
-        }
-        return $temporary . (isset($parts[2]) ? ', ' . $named : '');
-    }
-
-    /** 完整 embed 的 exit 结束当前 Zend 请求，由外层宿主回收，不在活动业务栈内卸载模块。 */
-    protected function parseExit(\PhpParser\Node\Expr\Exit_ $node): string
-    {
-        $call = parent::parseExit($node);
-        if (!$this->threaded() && !$this->fullEmbed()) {
-            return $call;
-        }
-        $call = $node->expr === null ? 'php::exit(0)' : str_replace('php::aotExit(', 'php::exit(', $call);
-        return '[&]() -> php::Var { ' . $call . '; return php::null; }()';
-    }
-
-    /** Zend 的退出信号不属于业务 Throwable；跳过 catch/finally，由请求宿主统一关闭。 */
-    protected function parseTryCatch(mixed $statement): string
-    {
-        $code = parent::parseTryCatch($statement);
-        if (!$this->threaded() && !$this->fullEmbed()) {
-            return $code;
-        }
-        if (!$this->exitCompatibilityVerified) {
-            $source = InstalledVersions::getInstallPath('swoole/typephp') . '/src/Parser/ExceptionControlFlowTrait.php';
-            if (hash_file('sha256', $source) !== 'ccc6bbab3029f5d61f699422747f61711a158b5729857380985592e1bcd17c9c') {
-                throw new RuntimeException('embed 退出适配需要固定异常控制流原文');
-            }
-            $this->exitCompatibilityVerified = true;
-        }
-        // 嵌套节点已生成相同守卫时不重复插入；普通异常仍走上游的完整处理路径。
-        $adapted = preg_replace(
-            '/(catch\s*\(zend_object \*(_ex|_catch_throw_ex)\) \{\R)([ \t]*)([A-Za-z_][A-Za-z0-9_]* = php::catchException\(\);)/',
-            '$1$3if (zend_is_graceful_exit($2)) { throw; }' . PHP_EOL . '$3$4',
-            $code,
-            -1,
-            $count
-        );
-        if (!is_string($adapted) || $count < 1) {
-            throw new RuntimeException('embed 退出适配缺少异常边界');
-        }
-        return $adapted;
-    }
-
-    /** 全局嵌套数组沿用编译器的数组初始化计划，保留原实现遗漏的临时变量。 */
-    protected function parseConstDef(mixed $statement): void
-    {
-        parent::parseConstDef($statement);
-        if (!$this->threaded() || $this->compilerPhase !== self::PHASE_CONVERT) {
-            return;
-        }
-        foreach ($statement->consts as $constant) {
-            if ($constant->value instanceof \PhpParser\Node\Expr\Array_) {
-                $this->resetFunction();
-                $plan = $this->buildLiteralArrayInitPlan($constant->value);
-                $name = ($this->namespace === '' ? '' : $this->namespace . '\\') . $constant->name->toString();
-                $this->constants[$this->escapeConstVar($name)]->value = "[&]() {\n" . $plan->init
-                    . 'php::Array type_app_constant_value = ' . $plan->expr . ";\n" . $plan->clean
-                    . "return type_app_constant_value;\n}()";
-            }
-        }
     }
 
     /** 在上游格式化前按已登记符号调整生成存储；不修改已安装编译器源码。 */
@@ -1027,30 +112,30 @@ final class TypephpCompatibility extends Translator
     {
         if (basename($file) === 'extension-' . $this->targetName . '.cc') {
             if (!$this->threaded() && $this->isBuildModeBin() && $this->hasSapi('embed') && !$this->isNanoMode()) {
-                if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913'
+                if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '5ecb6156ea7c448f4e83f7aabb231c0e334ce588a99f294a0d8db8abbc1917b6'
                     || hash_file('sha256', InstalledVersions::getInstallPath('swoole/phpx') . '/src/misc/typephp_runtime.cc') !== 'a89a13944a0a4ba75229e2fadaa08581f839fbbd10c9d5a1b73e10f9c34c9078') {
-                    throw new RuntimeException('embed 请求生命周期适配需要重新核对 TypePHP/PHPX 原文');
+                    throw new \RuntimeException('embed 请求生命周期适配需要重新核对 TypePHP/PHPX 原文');
                 }
                 if (!$this->fullEmbed()) {
                     // 混合 SAPI 继续使用上游宿主，保留业务分派前结束启动阶段的既有行为。
                     $content = preg_replace('/^php::eval\(/m', "PG(during_request_startup) = false;\nphp::eval(", $content, -1, $count);
                     if (!is_string($content) || $count !== 1) {
-                        throw new RuntimeException('embed 业务入口阶段适配缺少唯一主入口分派');
+                        throw new \RuntimeException('embed 业务入口阶段适配缺少唯一主入口分派');
                     }
                 }
             }
         }
         if ($this->staticRuntime() !== null && basename($file) === 'extension-' . $this->targetName . '.cc') {
-            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913') {
-                throw new RuntimeException('静态 profile 模块依赖适配需要重新核对 TypePHP 原文');
+            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '5ecb6156ea7c448f4e83f7aabb231c0e334ce588a99f294a0d8db8abbc1917b6') {
+                throw new \RuntimeException('静态 profile 模块依赖适配需要重新核对 TypePHP 原文');
             }
             // 0.9.5 按显式声明生成启动依赖；继续核对生成模块表与目标 profile，
             // 受限可选驱动之外的未知扩展仍失败，不能掩盖真实依赖遗漏。
             $content = BuildProfile::targetModuleDependencies($content, $this->extensionDependencies);
         }
         if ($this->threaded() || $this->fullEmbed()) {
-            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '423191468b08babf501dc9dcbdbf5ddfbb4371b43562ac8dd0a782a6bf6dd913') {
-                throw new RuntimeException('线程生成适配需要重新核对 TypePHP 原文');
+            if (hash_file('sha256', InstalledVersions::getInstallPath('swoole/typephp') . '/src/Translator.php') !== '5ecb6156ea7c448f4e83f7aabb231c0e334ce588a99f294a0d8db8abbc1917b6') {
+                throw new \RuntimeException('线程生成适配需要重新核对 TypePHP 原文');
             }
             $extension = basename($file) === 'extension-' . $this->targetName . '.cc';
             // TypePHP 0.9 将声明拆成多个 *_decl.h；只有运行时声明头仍带旧版标记。
@@ -1155,12 +240,12 @@ CPP;
                     $storage[$name] = $constant->type;
                 }
                 foreach (array_merge($this->symbols->classes(), $this->symbols->interfaces()) as $class) {
-                    if ($class instanceof \TypePhp\Entity\ClassDef && $class->trait !== null) {
+                    if ($class instanceof ClassDef && $class->trait !== null) {
                         continue;
                     }
                     foreach ($class->constants as $constant) {
-                        if ($constant->type === \TypePhp\Type::ARRAY) {
-                            $storage[$this->getNativeClassConstName($constant->name, $class->namespace, $class->name)] = \TypePhp\Type::VAR;
+                        if ($constant->type === Type::ARRAY) {
+                            $storage[$this->getNativeClassConstName($constant->name, $class->namespace, $class->name)] = Type::VAR;
                         }
                     }
                 }
@@ -1173,7 +258,7 @@ CPP;
                 if ($extension) {
                     $cleanup = '';
                     foreach ($this->constants as $name => $constant) {
-                        if (in_array($constant->type, [\TypePhp\Type::STR, \TypePhp\Type::ARRAY], true)) {
+                        if (in_array($constant->type, [Type::STR, Type::ARRAY], true)) {
                             $cleanup .= $name . ".unset();\n";
                         }
                     }
@@ -1185,12 +270,12 @@ CPP;
                 $start = strpos($content, 'PHP_RINIT_FUNCTION(' . $module . ') {');
                 $end = strpos($content, 'PHP_RSHUTDOWN_FUNCTION(' . $module . ') {', $start === false ? 0 : $start);
                 if ($start === false || $end === false) {
-                    throw new RuntimeException('线程生成适配缺少请求生命周期');
+                    throw new \RuntimeException('线程生成适配缺少请求生命周期');
                 }
                 $request = substr($content, $start, $end - $start);
                 $request = preg_replace('/^php::eval\([^\r\n]+\);\r?\n/m', '', $request, 1, $count);
                 if ($count !== 1 || !is_string($request)) {
-                    throw new RuntimeException('线程生成适配缺少唯一主入口分派');
+                    throw new \RuntimeException('线程生成适配缺少唯一主入口分派');
                 }
                 $request = $this->threadReplace($request, 'php::request_init();', "type_app_request_phase = 1;\nzend_try {\ntry {\nphp::request_init();\ntype_app_request_phase = 2;");
                 // 报告异常时其对象和编译缓存仍然存活；PHP 8.5 的异常报告可能返回，必须显式 bailout。
@@ -1243,7 +328,7 @@ CPP . "\n" . $request;
                     $minitStart = strpos($content, 'PHP_MINIT_FUNCTION(' . $module . ') {');
                     $minitEnd = strpos($content, 'PHP_MSHUTDOWN_FUNCTION(' . $module . ') {');
                     if ($minitStart === false || $minitEnd === false) {
-                        throw new RuntimeException('线程生成适配缺少模块生命周期');
+                        throw new \RuntimeException('线程生成适配缺少模块生命周期');
                     }
                     $minit = substr($content, $minitStart, $minitEnd - $minitStart);
                     $minit = $this->threadReplace($minit, 'return SUCCESS;', $flags . 'return SUCCESS;');
@@ -1296,11 +381,1003 @@ CPP . "\n" . $request;
         $compiledSource = realpath($cppFile);
         if (($this->threaded() || $this->fullEmbed()) && $runtimeSource !== false && $compiledSource !== false && $compiledSource === $runtimeSource) {
             if (hash_file('sha256', $runtimeSource) !== 'a89a13944a0a4ba75229e2fadaa08581f839fbbd10c9d5a1b73e10f9c34c9078') {
-                throw new RuntimeException('embed 请求生命周期适配需要固定 PHPX 原文');
+                throw new \RuntimeException('embed 请求生命周期适配需要固定 PHPX 原文');
             }
             $cppFile = __DIR__ . '/Native/thread-runtime.cc';
         }
         parent::compileFile($cppFile, $objectFile, $parallel);
+    }
+
+    /** 原生业务/组件源码只读；所有.o/.obj归入本次构建目录，保留原源码的include语义。 */
+    public function getObjectFile(string $cppFile): string
+    {
+        // 空翻译单元清理也会查询一个尚不存在的生成文件，先按构建位置分流。
+        $source = BuildPlatform::path($cppFile);
+        $build = BuildPlatform::resolve($this->getBuildDir());
+        $misc = BuildPlatform::resolve($this->getPhpxDir() . '/src/misc');
+        if (BuildPlatform::contains($build, $source) || BuildPlatform::contains($misc, $source)) {
+            return parent::getObjectFile($cppFile);
+        }
+        $source = BuildPlatform::resolve($cppFile);
+        $directory = $build . '/native-objects';
+        if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
+            throw new \RuntimeException('无法创建原生中间产物目录');
+        }
+        return $directory . '/' . hash('sha256', $source) . $this->getPlatform()->getObjectExtension();
+    }
+
+    /** 静态构建直接绑定归档，不让编译器按 -l 名称优先选中 SDK 或 Homebrew 的共享库。 */
+    protected function getLinkCommandOptions(): LinkOptions
+    {
+        $options = parent::getLinkCommandOptions();
+        $static = $this->staticRuntime();
+        if ($static === null) {
+            return $options;
+        }
+        $values = $options->toArray();
+        $values['section_gc'] = empty($values['debug']);
+        $values['libraries'] = [];
+        $values['library_paths'] = [];
+        $values['rpath'] = [];
+        if (PHP_OS_FAMILY === 'Windows') {
+            // MSVC 后端不消费 Unix 的 post_ldflags；使用其完整路径库参数入口。
+            $values['libraries'] = $static->linkFlags();
+            $values['post_ldflags'] = '';
+        } else {
+            $values['post_ldflags'] = implode(' ', array_map('escapeshellarg', $static->linkFlags()));
+        }
+        return new LinkOptions($values);
+    }
+
+    /** 内部 INI 和直接启动策略只作用于明确选择了静态 SDK 的产物。 */
+    protected function getCommonCompileCommandOptions(): CompileOptions
+    {
+        $options = parent::getCommonCompileCommandOptions();
+        if ($this->threaded()) {
+            $values = $options->toArray();
+            $values['user_defines'][] = 'TYPE_APP_COMPILED_THREADS=1';
+            $options = new CompileOptions($values);
+        }
+        $static = $this->staticRuntime();
+        if ($static !== null) {
+            $values = $options->toArray();
+            // 使用上游统一参数为 C/C++ 生成可裁剪分节；Unix 链接标志仍由 SDK 提供。
+            $values['section_gc'] = empty($values['debug']);
+            $values['user_defines'][] = 'TYPE_APP_STATIC_RUNTIME=1';
+            $hostHeaders = rtrim(BuildPlatform::path((string)getenv('PHP_HOME')), '/') . (PHP_OS_FAMILY === 'Windows' ? '/SDK/include' : '/include/php');
+            $hostPhpx = rtrim(BuildPlatform::path($this->getPhpxDir()), '/');
+            $includes = [];
+            foreach ($values['include_paths'] as $path) {
+                $path = BuildPlatform::path($path);
+                if (PHP_OS_FAMILY === 'Windows' && ($path === $hostPhpx || str_starts_with($path, $hostPhpx . '/'))) {
+                    continue;
+                }
+                $includes[] = $path === $hostHeaders || str_starts_with($path, $hostHeaders . '/')
+                    ? $static->includeDirectory() . substr($path, strlen($hostHeaders)) : $path;
+            }
+            if (PHP_OS_FAMILY === 'Windows') {
+                array_push($includes, ...$static->windowsIncludeDirectories());
+                array_push($values['user_defines'], 'ZEND_ENABLE_STATIC_TSRMLS_CACHE=1', 'NOMINMAX');
+            }
+            $values['include_paths'] = $includes;
+            return new CompileOptions($values);
+        }
+        return $options;
+    }
+
+    /** 静态 Windows 构建保留 TypePHP 的翻译、并行编译与链接流程，只替换 CRT 选择。 */
+    protected function getCompilerBackend(): CompilerBackend
+    {
+        $backend = parent::getCompilerBackend();
+        if (PHP_OS_FAMILY === 'Windows' && $this->staticRuntime() !== null && !$backend instanceof WindowsStaticBackend) {
+            if (!$backend instanceof Msvc) {
+                throw new \RuntimeException('Windows 静态 SDK 需要 MSVC 后端');
+            }
+            $this->compilerBackend = new WindowsStaticBackend($backend->getPlatform(), $backend->getCompilerCommand(), $backend->getLinkerCommand());
+        }
+        return $this->compilerBackend;
+    }
+
+    protected function buildFuncCallConfig(): array
+    {
+        $configuration = parent::buildFuncCallConfig();
+        // PHPX 2.9.5 的快速路径调用对象钩子后仍未检查 EG(exception)。标准 php::call 已检查
+        // 并传播同一异常，也正确清理序列化资源。普通函数和 universal methods 共用此映射。
+        // 上游依据：swoole/phpx@13cf7175 的 include/std/json.h 与 include/std/misc.h。
+        unset($configuration['json_encode'], $configuration['serialize'], $configuration['unserialize']);
+        $configuration['func_get_arg']['namedArgs'] = ['position'];
+        return $configuration;
+    }
+
+    /** 内省的参数展开不能落回读取错误调用帧的内部函数入口。 */
+    protected function parseFuncCallWithOptimizer(string $name, FuncCall $expr): false|string
+    {
+        $normalizedName = strtolower(ltrim($name, '\\'));
+        $separator = strrpos($normalizedName, '\\');
+        $normalizedName = $separator === false ? $normalizedName : substr($normalizedName, $separator + 1);
+        if (in_array($normalizedName, ['func_get_args', 'func_get_arg', 'func_num_args'], true) && $this->hasUnpackCallArg($expr->args)) {
+            throw new \RuntimeException('参数内省不支持动态展开，请直接调用 ' . $name . '()');
+        }
+        if ($this->functionDef !== null && $this->needsCallArgumentsFrame($this->functionDef)) {
+            return match ($normalizedName) {
+                'func_get_args' => $this->genFuncGetArgs($name, $expr, []),
+                'func_get_arg' => $this->genFuncGetArg($name, $expr, []),
+                'func_num_args' => $this->genFuncNumArgs($name, $expr, []),
+                default => parent::parseFuncCallWithOptimizer($name, $expr),
+            };
+        }
+        return parent::parseFuncCallWithOptimizer($name, $expr);
+    }
+
+    /**
+     * 当前优化器对全局 fallback 名称的登记会把参数内省重新降级为动态调用；
+     * 已登记的用户函数直接使用当前 Zend 帧适配，避免落回 `php::call()`。
+     */
+    protected function parseFuncCall(FuncCall $expr): string
+    {
+        if ($expr->name instanceof Name && $this->functionDef !== null && $this->needsCallArgumentsFrame($this->functionDef)) {
+            $name = strtolower(ltrim($expr->name->toString(), '\\'));
+            $separator = strrpos($name, '\\');
+            $name = $separator === false ? $name : substr($name, $separator + 1);
+            if (in_array($name, ['func_get_args', 'func_get_arg', 'func_num_args'], true)) {
+                return match ($name) {
+                    'func_get_args' => $this->genFuncGetArgs($name, $expr, []),
+                    'func_get_arg' => $this->genFuncGetArg($name, $expr, []),
+                    default => $this->genFuncNumArgs($name, $expr, []),
+                };
+            }
+        }
+        return parent::parseFuncCall($expr);
+    }
+
+    /** 用户态 Zend 包装只检查必需参数下限；未知命名参数和类型仍由原入口检查。 */
+    protected function genParameterCountCheck(int $requiredArgCount, int $declaredArgCount, bool $variadic): string
+    {
+        $this->assertCallArgumentsCompatibility();
+        return parent::genParameterCountCheck($requiredArgCount, $declaredArgCount, true);
+    }
+
+    /** 预处理时标记参数内省，避免直接 C++ 调用借用外层 Zend 帧。 */
+    protected function parseFunctionDecl(ClassMethod|Function_ $v): FunctionDef
+    {
+        $function = parent::parseFunctionDecl($v);
+        $this->preserveCapturedArrayReferences($v, $function);
+        if ($this->usesCallArguments($v->stmts ?? [])) {
+            $this->assertCallArgumentsCompatibility();
+            if ($function->generator || $this->classDef?->nativeObject || $this->functionRequiresNativeAbi($function)) {
+                throw new \RuntimeException('参数内省需要普通 Zend 函数或方法，不支持 Generator 或 Native ABI：' . $v->name);
+            }
+            $this->argumentFunctions[$this->getFunctionName($v)] = true;
+            // 元组返回的独立 C++ 入口不能绕过参数帧。
+            $function->multiReturnCount = 0;
+        }
+        return $function;
+    }
+
+    /** 具名调用允许额外位置参数，但仍检查缺参、命名覆盖和未知命名参数。 */
+    protected function checkNativeCallArgs(CallLike $expr, FunctionDef $funcDef, array $args, string $name): void
+    {
+        if (!$funcDef->stub && !$this->functionRequiresNativeAbi($funcDef)
+            && !$funcDef->hasVariadicArg() && count($args) > count($funcDef->argInfoList)) {
+            $this->assertCallArgumentsCompatibility();
+            $this->validateNativeNamedCallArgs($funcDef, $args);
+            // 只限制数量检查所看的签名段；原调用 AST 与实际传入的所有值完整保留。
+            parent::checkNativeCallArgs($expr, $funcDef, array_slice($args, 0, count($funcDef->argInfoList)), $name);
+            return;
+        }
+        parent::checkNativeCallArgs($expr, $funcDef, $args, $name);
+    }
+
+    /** 需要内省或含额外实参的普通调用统一进入已编译的 Zend 包装。 */
+    protected function shouldUseDynamicCallForNativeArgs(string $nativeFunc, array $args): bool
+    {
+        $function = $this->getFunction($nativeFunc);
+        if (isset($this->argumentFunctions[$nativeFunc])
+            || (!$function->stub && !$this->functionRequiresNativeAbi($function)
+                && !$function->hasVariadicArg() && count($args) > count($function->argInfoList))) {
+            return true;
+        }
+        return parent::shouldUseDynamicCallForNativeArgs($nativeFunc, $args);
+    }
+
+    /** 已解析方法指针直接进入 Zend；PHPX 的 callScoped 只接受方法名或 callable。 */
+    protected function genRuntimeObjectMethodCall(
+        string $object,
+        string $method,
+        array $args,
+        string $funcName = '',
+        string $className = '',
+        bool $requiresDynamicScope = true,
+    ): string {
+        $function = $className === '' ? null : $this->findAotMethodFunctionDef($className, $funcName);
+        if ($function !== null && ($this->needsCallArgumentsFrame($function)
+            || (!$function->hasVariadicArg() && count($args) > count($function->argInfoList)))) {
+            // 可见性已由原生方法解析验证，直接传指针避免其被 Variant(bool) 转换为 1。
+            $requiresDynamicScope = false;
+        }
+        return parent::genRuntimeObjectMethodCall($object, $method, $args, $funcName, $className, $requiresDynamicScope);
+    }
+
+    /** 动态分派仍用 AOT 符号定位具名函数的引用参数，不将引用退化为值副本。 */
+    protected function genRuntimeFunctionCall(
+        string $callable,
+        array $args,
+        string $funcName = '',
+        string $className = '',
+        bool $separateNamedArgs = true,
+        string $scope = '',
+    ): string {
+        if ($className === '' && $funcName !== '') {
+            $native = $this->findNativeFunction('\\' . ltrim($funcName, '\\'));
+            if ($native !== false && $this->shouldUseDynamicCallForNativeArgs($native, $args)) {
+                $funcName = $native;
+            }
+        }
+        return parent::genRuntimeFunctionCall($callable, $args, $funcName, $className, $separateNamedArgs, $scope);
+    }
+
+    /** self/static 的快捷入口也必须保留被调用者自己的帧及晚绑定类。 */
+    protected function parseStaticCall(StaticCall $expr): string
+    {
+        if ($expr->class instanceof Name && in_array(strtolower($expr->class->toString()), ['self', 'static'], true)
+            && $expr->name instanceof Identifier) {
+            $method = $this->findAotMethodFunctionDef($this->getFullClassName(), $expr->name->toString());
+            if ($method !== null && ($this->needsCallArgumentsFrame($method)
+                || (!$method->hasVariadicArg() && count($expr->args) > count($method->argInfoList)))) {
+                // 沿用上游可见性和签名检查，实际参数仍完整传入 Zend。
+                $class = $this->getFullClassName();
+                $this->getNativeMethod($expr, $class, $method->name);
+                $calledClass = $this->getCalledCeExpr();
+                $pointer = strtolower($expr->class->toString()) === 'static'
+                    ? 'php::getMethod(' . $calledClass . ', ' . $this->getLiteralString($method->name) . ')'
+                    : $this->getMethodPtr($class, $method->name);
+                if (!($this->getMethodFlags($class, $method->name) & Modifiers::STATIC)) {
+                    return $this->genRuntimeObjectMethodCall('this_', $pointer, $expr->args, $method->name, $class);
+                }
+                return $this->genRuntimeFunctionCall($calledClass . ', ' . $pointer, $expr->args, $method->name, $class);
+            }
+        }
+        return parent::parseStaticCall($expr);
+    }
+
+    /** 魔术方法不能从优化入口直接进入需要参数内省的函数体。 */
+    protected function parseDirectNativeMagicCall(MethodCall $expr, string $object, string $class, string $method): ?string
+    {
+        $function = $class === '' ? null : $this->findAotMethodFunctionDef($class, '__call');
+        return $function !== null && $this->needsCallArgumentsFrame($function)
+            ? null : parent::parseDirectNativeMagicCall($expr, $object, $class, $method);
+    }
+
+    /** 闭包内省只读取本次闭包参数，不能读取外层具名函数的签名。 */
+    protected function genClosure(ArrowFunction|Closure $expr, array $params, array $uses = []): string
+    {
+        $previous = $this->argumentClosureParams;
+        $previousUsesCallArguments = $this->closureUsesCallArguments;
+        $this->argumentClosureParams = $params;
+        try {
+            $this->closureUsesCallArguments = $this->usesCallArguments($expr instanceof ArrowFunction ? $expr->expr : $expr->stmts);
+            if ($this->closureUsesCallArguments
+                && $this->closureContainsYield($expr)) {
+                throw new \RuntimeException('参数内省暂不支持 Generator 闭包');
+            }
+            return parent::genClosure($expr, $params, $uses);
+        } finally {
+            $this->argumentClosureParams = $previous;
+            $this->closureUsesCallArguments = $previousUsesCallArguments;
+        }
+    }
+
+    /** 含内省别名的局部闭包同样保留 Zend 入口，不降级为无调用帧的 C++ lambda。 */
+    protected function parseNativeLocalClosureAssignment(Assign $assign): ?string
+    {
+        $closure = $assign->expr;
+        if (($closure instanceof Closure || $closure instanceof ArrowFunction)
+            && $this->usesCallArguments($closure instanceof ArrowFunction ? $closure->expr : $closure->stmts)) {
+            return null;
+        }
+        return parent::parseNativeLocalClosureAssignment($assign);
+    }
+
+    /** 在用户函数体执行前捕获参数帧，并拒绝意外绕过 Zend 包装的调用。 */
+    protected function genScopeVarDecl(): string
+    {
+        $frame = $this->argumentFrames[$this->context] ?? null;
+        if ($frame === null && $this->functionDef !== null && $this->needsCallArgumentsFrame($this->functionDef)) {
+            $frame = $this->callArgumentsFrame();
+        }
+        if ($frame === null) {
+            return parent::genScopeVarDecl();
+        }
+        $capture = 'zend_execute_data *const ' . $frame . ' = EG(current_execute_data);' . PHP_EOL;
+        if (!$this->context->inClosure) {
+            $function = $this->functionDef;
+            $pointer = $function->method ? $this->getMethodPtr($function->declaringClass, $function->name)
+                : $this->getFuncPtr($function->getNamespacedName());
+            $capture .= 'if (!' . $frame . ' || ' . $frame . '->func->internal_function.handler != '
+                . $pointer . '->internal_function.handler) { zend_throw_error(nullptr, "runtime_argument_frame_mismatch"); php::throwErrorIfOccurred(); }' . PHP_EOL;
+        }
+        // getMethodPtr/getFuncPtr 可能登记新的局部符号，在最终声明生成前完成。
+        return parent::genScopeVarDecl() . $capture;
+    }
+
+    /** 参数列表使用本次实参数量；已声明位置读取当前局部值，额外位置保留原值。 */
+    protected function genFuncGetArgs(string $name, FuncCall $expr, array $config): string
+    {
+        $frame = $this->callArgumentsFrame();
+        $values = $this->genTmpVarName();
+        $index = $this->genTmpVarName();
+        $code = '([&]() { php::Array ' . $values . '; for (uint32_t ' . $index . ' = 0; '
+            . $index . ' < ZEND_CALL_NUM_ARGS(' . $frame . '); ++' . $index . ') { ';
+        $arguments = $this->context->inClosure ? $this->argumentClosureParams : $this->functionDef->argInfoList;
+        foreach ($arguments as $position => $argument) {
+            if ($argument->variadic) {
+                break;
+            }
+            $variable = $argument instanceof Param ? $this->parseIdentifier($argument->var) : $argument->name;
+            $code .= 'if (' . $index . ' == ' . $position . ') { ' . $values . '.appendValue(php::Var(' . $variable . ')); } else ';
+        }
+        return $code . '{ ' . $values . '.appendValue(php::Var(ZEND_CALL_ARG(' . $frame . ', ' . $index . ' + 1))); } } return ' . $values . '; }())';
+    }
+
+    /** 数量来自当前调用帧，省略的默认参数不增加数量，命名跳位遵守 Zend 规则。 */
+    protected function genFuncNumArgs(string $name, FuncCall $expr, array $config): string
+    {
+        return '(static_cast<php::Int>(ZEND_CALL_NUM_ARGS(' . $this->callArgumentsFrame() . ')))';
+    }
+
+    /** 允许运行时位置，越界按 PHP 抛出 ValueError，而非编译期截断到签名。 */
+    protected function genFuncGetArg(string $name, FuncCall $expr, array $config): string
+    {
+        $index = $this->genTmpVarName();
+        $value = $this->getArg($expr, 0);
+        $frame = $this->callArgumentsFrame();
+        $arguments = $this->genFuncGetArgs($name, $expr, $config);
+        return '([&](php::Var ' . $index . ') -> php::Var { '
+            . 'if (!' . $index . '.isInt()) { php::throwArgumentTypeError(' . $index . ', "func_get_arg", 1, "position", "int"); } '
+            . 'if (php::toInt(' . $index . ') < 0) { zend_value_error("func_get_arg(): Argument #1 ($position) must be greater than or equal to 0"); php::throwErrorIfOccurred(); } '
+            . 'if (php::toInt(' . $index . ') >= ZEND_CALL_NUM_ARGS(' . $frame . ')) { '
+            . 'zend_value_error("func_get_arg(): Argument #1 ($position) must be less than the number of the arguments passed to the currently executed function"); php::throwErrorIfOccurred(); } '
+            . 'return ' . $arguments . '.offsetGet(php::toInt(' . $index . ')); })(' . $value . ')';
+    }
+
+    /** 上游匿名类使用 opcode 或 eval，不能计入本项目的全量 AOT 产物。 */
+    protected function parseNew(New_ $expr): string
+    {
+        if ($expr->class instanceof Class_) {
+            throw new \RuntimeException('全量 AOT 不支持匿名类解释回退，请声明具名类');
+        }
+        return parent::parseNew($expr);
+    }
+
+    /** 已声明的 toString 是用户方法；仅未声明时沿用 TypePHP 的转换关键字。 */
+    protected function parseMethodCall(MethodCall $expr): string
+    {
+        if ($expr->name instanceof Identifier
+            && strtolower($expr->name->toString()) === 'tostring') {
+            if (!$this->declaredMethodCompatibilityVerified) {
+                $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+                foreach ([
+                    'src/CompilerBase.php' => '27bd997c6c4ae287962a2872f0ce88225d8469ac3db65eb948b27263fa064bef',
+                    'src/Parser/MethodCallTrait.php' => '40fe7f2ae5e07c5789ec36dc23a6817aaa39cbbcc1dda2f7d5cfb49655785a3f',
+                    'src/Parser/UniversalMethodCall.php' => 'c8e528b3b2c6ee5889fbed3f2ce0dcd0f7bfe3e1db55a5efdd2f3b53e05a36c3',
+                    'src/Parser/PropertyAccessTrait.php' => '73262ab7996307b51ea7eda81e898c3208aa2d23d45a123372d47fd7d40203a4',
+                    'src/Generator/CallArgumentGenerator.php' => '0015d57f6437d95827881d0242c192c1455d0597df598a5314ed7fcca98de741',
+                ] as $file => $sha256) {
+                    if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                        throw new \RuntimeException('已声明方法适配需要重新核对 TypePHP：' . $file);
+                    }
+                }
+                $this->declaredMethodCompatibilityVerified = true;
+            }
+            $declaration = $this->resolveCalledFunctionDef($expr);
+            if ($declaration === null
+                && ($expr->var instanceof PropertyFetch || $expr->var instanceof StaticPropertyFetch)
+                && $expr->var->name instanceof Identifier) {
+                if ($expr->var instanceof PropertyFetch) {
+                    $this->getPropertyIdentifier($expr->var, $expr->var->var, $expr->var->name);
+                } elseif ($expr->var instanceof StaticPropertyFetch) {
+                    $this->resolveNativeStaticPropertyFetch($expr->var);
+                }
+                $property = $this->getNativePropertyDef($expr->var);
+                if ($property !== null && $property->class !== '') {
+                    $declaration = $this->findAotMethodFunctionDef($property->class, $expr->name->toString());
+                }
+            }
+            if ($declaration !== null || $expr->isFirstClassCallable()) {
+                // 复用上游跳过关键字的入口；后续仍负责可见性、继承和接收者单次求值。
+                $expr = clone $expr;
+                $expr->setAttribute('nativeKeywordCall', true);
+            }
+        }
+        return parent::parseMethodCall($expr);
+    }
+
+    /** 未知对象的真实方法返回动态值，不能沿转换关键字预先固定为字符串。 */
+    protected function detectTypeOfExpr($expr): string
+    {
+        if ($expr instanceof MethodCall
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'toString') {
+            if ($expr->isFirstClassCallable()) {
+                return Type::OBJECT;
+            }
+            $declaration = $this->resolveCalledFunctionDef($expr);
+            if ($declaration !== null) {
+                return $declaration->returnType;
+            }
+            if (in_array(parent::detectTypeOfExpr($expr->var), [Type::OBJECT, Type::VAR, Type::REF], true)) {
+                return Type::VAR;
+            }
+        }
+        return parent::detectTypeOfExpr($expr);
+    }
+
+    /** 类型擦除后按实际类查找声明；无真实方法时保留上游转换，接收者仅求值一次。 */
+    protected function genToConvertCall(string $receiver, string $method, string $receiverType = ''): string
+    {
+        if ($method !== 'toString'
+            || !in_array($receiverType, [Type::OBJECT, Type::VAR, Type::REF], true)) {
+            return parent::genToConvertCall($receiver, $method, $receiverType);
+        }
+        $call = $this->classDef !== null && $this->methodDef !== null
+            ? 'php::callScoped(value, "toString", ' . $this->getCallableScopeExpr() . ')'
+            : 'value.call("toString")';
+        return '([&](php::Var value) -> php::Var {'
+            . ' if (value.isObject() && zend_hash_str_exists(&value.ce()->function_table, "tostring", 8)) {'
+            . ' return ' . $call . '; } return php::toString(value); })(' . $receiver . ')';
+    }
+
+    /** 接口中的 self 属于当前接口；上游类专用名称入口会丢掉接口名。 */
+    protected function parseClassConstFetch(ClassConstFetch $expr): string
+    {
+        if ($this->classDef === null && $this->interface !== '' && $this->interfaceDef !== null
+            && $this->isNameExpr($expr->class) && $this->parseIdentifier($expr->class) === 'self') {
+            if (!$this->interfaceConstantCompatibilityVerified) {
+                $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+                foreach ([
+                    'src/CompilerBase.php' => '27bd997c6c4ae287962a2872f0ce88225d8469ac3db65eb948b27263fa064bef',
+                    'src/Preprocessor.php' => '0d690bbeb1204a11dcecde85629f611d513c19c70033c24b07f8b3cb06f701a5',
+                    'src/Parser/ClassConstantFetchTrait.php' => 'eb4a2065ef39818b7fa1298211633dcbe30c4b27c8633ddc7614693fe09194f1',
+                ] as $file => $sha256) {
+                    if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                        throw new \RuntimeException('接口 self 常量适配需要重新核对 TypePHP：' . $file);
+                    }
+                }
+                $this->interfaceConstantCompatibilityVerified = true;
+            }
+            // 仅规范化本次查找的目标；保留原声明 AST、常量注册顺序和上游解析流程。
+            $resolved = clone $expr;
+            $resolved->class = new FullyQualified($this->interfaceDef->getNamespacedName(false), $expr->class->getAttributes());
+            return parent::parseClassConstFetch($resolved);
+        }
+        return parent::parseClassConstFetch($expr);
+    }
+
+    /** Zend 回调只在参数缺失时创建默认值，避免 C++ 实参求值提前触发构造及异常。 */
+    protected function genWrapperFunctionArgs(
+        string $fn,
+        FunctionDef $functionDef,
+        string $displayName,
+        array $implicitMethodArgs = [],
+    ): string {
+        $code = parent::genWrapperFunctionArgs($fn, $functionDef, $displayName, $implicitMethodArgs);
+        $nativeName = str_starts_with($fn, self::PREFIX) ? substr($fn, strlen(self::PREFIX)) : $fn;
+        foreach ($functionDef->argInfoList as $index => $argument) {
+            if (!$argument->variadic && $argument->type === Type::ARRAY) {
+                // 上游直接 toArray 会把错误类型转换为数组；Zend 用户函数应先拒绝。
+                $value = 'php::getCallArg(' . $index . ')';
+                $check = 'if (' . $index . ' < php::getCallArgNum() && !Z_ISUNDEF_P(ZEND_CALL_ARG(EG(current_execute_data), '
+                    . ($index + 1) . ')) && !' . $value . '.isArray()) { php::throwArgumentTypeError('
+                    . $value . ', ' . $this->getLiteralString($displayName) . ', ' . ($index + 1) . ', '
+                    . $this->getLiteralString($argument->phpName ?: $this->unescapeVarName($argument->name)) . ', "array"); }' . PHP_EOL;
+                $declaration = $this->getDefaultArgumentType($argument) . ' arg_' . $argument->name . ' = ';
+                $code = str_replace($declaration, $check . $declaration, $code, $count);
+                if ($count !== 1) {
+                    throw new \RuntimeException('数组参数包装适配需要重新核对生成结构：' . $displayName);
+                }
+            }
+            if ($argument->variadic || !$argument->hasDefaultValue()) {
+                continue;
+            }
+            $this->assertDefaultCompatibility();
+            $default = $this->genDefaultArgumentExpr($nativeName, $index);
+            $getter = $argument->byRef ? 'php::getCallArgByRef' : 'php::getCallArg';
+            $type = $argument->byRef ? 'php::Ref' : 'php::Var';
+            // 与 PHPX 2.9.5 的 getCallArg/getCallArgByRef 保持一致：命名参数跳位是
+            // IS_UNDEF，显式 null 则是已提供的值；短路判断避免读取越界调用帧。
+            $missing = $index . ' >= php::getCallArgNum() || Z_ISUNDEF_P(ZEND_CALL_ARG(EG(current_execute_data), ' . ($index + 1) . '))';
+            $replacement = '((' . $missing . ') ? ' . $type . '(' . $default . ') : ' . $getter . '(' . $index . '))';
+            $code = str_replace($getter . '(' . $index . ', ' . $default . ')', $replacement, $code, $count);
+            if ($count !== 1) {
+                throw new \RuntimeException('默认参数包装适配需要重新核对生成结构：' . $displayName);
+            }
+        }
+        return $code;
+    }
+
+    protected function getPlatform(): PlatformBase
+    {
+        if (PHP_OS_FAMILY === 'Windows' && !$this->platform instanceof WindowsSdkPlatform) {
+            $this->platform = new WindowsSdkPlatform(isZts: (bool)PHP_ZTS);
+        }
+        return parent::getPlatform();
+    }
+
+    /** PHPX attrRef 对值钩子返回空引用；原生调用必须恢复虚拟属性的拒绝边界。 */
+    protected function emitDynamicPropertyFetchRef(PropertyFetch $expr, NodeAbstract $errorNode): string
+    {
+        $result = parent::emitDynamicPropertyFetchRef($expr, $errorNode);
+        if (preg_match('/^(.*)\.attrRef\((.*)\)$/sD', $result, $parts) !== 1) {
+            return $result;
+        }
+        $this->assertPropertyCompatibility();
+        // 使用 Zend 属性访问元数据，仅补齐引擎权限语义；不加载、反射或解释业务模型。
+        return '([&]() -> php::Ref { auto object = ' . $parts[1] . '; php::Str name = ' . $parts[2] . '; '
+            . 'if (object.isObject()) { auto info = zend_get_property_info(object.ce(), name.str(), true); '
+            . 'if (info && info != ZEND_WRONG_PROPERTY_INFO && (info->flags & ZEND_ACC_VIRTUAL) && info->hooks '
+            . '&& info->hooks[ZEND_PROPERTY_HOOK_GET] && !(info->hooks[ZEND_PROPERTY_HOOK_GET]->common.fn_flags & ZEND_ACC_RETURN_REFERENCE)) '
+            . '{ php::throwError("Cannot take reference of a virtual property without a reference getter"); } } '
+            . 'return object.attrRef(name); })()';
+    }
+
+    /** unset 数组元素也属于间接写入，不能只读取值钩子的临时数组。 */
+    protected function parseUnset(Unset_ $node): string
+    {
+        $restore = [];
+        foreach ($node->vars as $variable) {
+            $target = $variable;
+            $arrays = [];
+            while ($target instanceof ArrayDimFetch) {
+                $arrays[] = $target;
+                $target = $target->var;
+            }
+            if ($arrays === [] || !$target instanceof PropertyFetch) {
+                continue;
+            }
+            $this->assertPropertyCompatibility();
+            foreach ($arrays as $array) {
+                $restore[] = [$array, $array->getAttributes()];
+                $array->setAttribute(self::ATTR_ARRAY_DIM_FETCH_UPDATE, true);
+            }
+            $restore[] = [$target, $target->getAttributes()];
+            $target->setAttribute(self::ATTR_PROPERTY_FETCH_UPDATE, true);
+        }
+        try {
+            return parent::parseUnset($node);
+        } finally {
+            foreach (array_reverse($restore) as [$target, $attributes]) {
+                $target->setAttributes($attributes);
+            }
+        }
+    }
+
+    /** 未静态解析的属性读取必须携带调用方权限，不能沿用 PHPX 的接收对象权限。 */
+    protected function parsePropertyFetch(PropertyFetch $expr): string
+    {
+        $result = parent::parsePropertyFetch($expr);
+        if ($this->isPropertyFetchUpdate($expr) && $this->getNativePropertyDef($expr)?->virtual
+            && !$this->isNativeObjectPropertyHook($expr)) {
+            // 静态类型的 getter 快路径也必须经过引擎的间接写入检查。
+            $result = $this->parseIdentifier($expr->var) . '.attr(' . $this->propertyNameToStr($expr->name, literal: true) . ', php::AttrMode::Update)';
+        }
+        if ($this->threaded() && $this->getNativePropertyDef($expr) === null) {
+            $result = $this->threadPropertyRead($result);
+        }
+        return $this->guardVirtualPropertyUpdate($result);
+    }
+
+    protected function emitDynamicPropertyRead(string $object, string $property, ?string $cache = null): string
+    {
+        $result = parent::emitDynamicPropertyRead($object, $property, $cache);
+        return $this->threaded() ? $this->threadPropertyRead($result) : $result;
+    }
+
+    protected function emitDynamicPropertyAppendArray(string $object, string $property, string $value, ?string $cache = null): string
+    {
+        if (str_starts_with($property, 'get_persistent_prop(') || $this->usesTraitPropertyScope($object)) {
+            return parent::emitDynamicPropertyAppendArray($object, $property, $value, $cache);
+        }
+        if ($this->threaded() && !$this->usesTraitPropertyScope($object)) {
+            return $this->guardVirtualPropertyUpdate($this->threadPropertyRead($object . '.attr(' . $property . ', php::AttrMode::Update)')) . '.newItem() = ' . $value;
+        }
+        return $this->guardVirtualPropertyUpdate($object . '.attr(' . $property . ', php::AttrMode::Update)') . '.newItem() = ' . $value;
+    }
+
+    protected function emitDynamicPropertyUpdateArray(string $object, string $property, string $dim, string $value, ?string $cache = null): string
+    {
+        if (str_starts_with($property, 'get_persistent_prop(') || $this->usesTraitPropertyScope($object)) {
+            return parent::emitDynamicPropertyUpdateArray($object, $property, $dim, $value, $cache);
+        }
+        if ($this->threaded() && !$this->usesTraitPropertyScope($object)) {
+            return $this->guardVirtualPropertyUpdate($this->threadPropertyRead($object . '.attr(' . $property . ', php::AttrMode::Update)')) . '.item(' . $dim . ', true) = ' . $value;
+        }
+        return $this->guardVirtualPropertyUpdate($object . '.attr(' . $property . ', php::AttrMode::Update)') . '.item(' . $dim . ', true) = ' . $value;
+    }
+
+    /** nullsafe 的属性访问在前置 lambda 中生成，同样必须保留调用方权限和短路。 */
+    protected function parseNullsafeExpr(MethodCall|NullsafeMethodCall|NullsafePropertyFetch|PropertyFetch $expr, bool $probeProperty = false): string
+    {
+        $before = $this->context->statements->peekBefore();
+        $start = count($before);
+        $result = parent::parseNullsafeExpr($expr, $probeProperty);
+        if (!$this->threaded()) {
+            return $result;
+        }
+        $source = InstalledVersions::getInstallPath('swoole/typephp') . '/src/Parser/NullsafeAccessTrait.php';
+        if (hash_file('sha256', $source) !== '45ea6c2c95a3d712731ceb0be5fa601eb80b6ea1b4843d044c3e3163c2d388e6') {
+            throw new \RuntimeException('nullsafe 属性适配需要重新核对 TypePHP 原文');
+        }
+        $lines = $this->context->statements->takeBefore();
+        for ($index = $start; $index < count($lines); ++$index) {
+            $lines[$index] = preg_replace_callback(
+                '/^([ \t]*[A-Za-z0-9_]+ = )([A-Za-z0-9_]+\.attr\(.*\));(\r?)$/m',
+                fn (array $parts): string => $parts[1] . $this->threadPropertyRead($parts[2]) . ';' . $parts[3],
+                $lines[$index]
+            ) ?? throw new \RuntimeException('nullsafe 属性生成结果无法适配');
+        }
+        foreach ($lines as $line) {
+            $this->context->statements->addBefore($line);
+        }
+        return $result;
+    }
+
+    /** AOT 回调显式绑定声明作用域，不改写或伪造 Zend 用户函数栈。 */
+    protected function markUserCodeCallableScope(): void
+    {
+        if (!$this->threaded() && !$this->fullEmbed()) {
+            parent::markUserCodeCallableScope();
+        }
+    }
+
+    protected function markInternalFunctionCallbackCall(string $function, array $args): void
+    {
+        parent::markInternalFunctionCallbackCall($function, $args);
+        if (!$this->threaded() && !$this->fullEmbed()) {
+            return;
+        }
+        foreach ($args as $argument) {
+            $mode = $argument->getAttribute(self::ATTR_SCOPED_CALLBACK);
+            if ($mode === 'normalize') {
+                $argument->setAttribute(self::ATTR_SCOPED_CALLBACK, 'callable');
+            } elseif ($mode === 'normalize-unpacked') {
+                $argument->setAttribute(self::ATTR_SCOPED_CALLBACK, null);
+            }
+        }
+    }
+
+    /** 解包后才知道位置的回调复用锁定编译器自己的描述表和 PHPX 的 CallableScope。 */
+    protected function parseCallArgs(array $args, string $funcName = '', string $className = '', bool $separateNamedArgs = true, bool $forceArrayArgs = false, bool $preserveExistingReferences = false): string
+    {
+        $result = parent::parseCallArgs($args, $funcName, $className, $separateNamedArgs, $forceArrayArgs, $preserveExistingReferences);
+        if ((!$this->threaded() && !$this->fullEmbed()) || !$this->methodDef || $className !== '' || $forceArrayArgs || !$separateNamedArgs) {
+            return $result;
+        }
+        $base = InstalledVersions::getInstallPath('swoole/typephp') . '/src/CompilerBase.php';
+        if (hash_file('sha256', $base) !== '27bd997c6c4ae287962a2872f0ce88225d8469ac3db65eb948b27263fa064bef') {
+            throw new \RuntimeException('回调适配需要重新核对 TypePHP 描述表');
+        }
+        // 读取构建器的固定静态表，不在生产反射业务签名或猜测 callable 参数。
+        $variables = (new \ReflectionMethod(CompilerBase::class, 'markInternalFunctionCallbackCall'))->getStaticVariables();
+        $descriptors = $variables['callbackArgs'][strtolower(ltrim($funcName, '\\'))] ?? [];
+        if ($descriptors === [] || (!$this->hasUnpackCallArg($args) && ($descriptors[0][2] ?? '') !== 'dynamic-map')) {
+            return $result;
+        }
+        if (preg_match('/^(php::VarList\{.*\}|[A-Za-z0-9_]+)(?:, ([A-Za-z0-9_]+)\.array\(\))?$/sD', $result, $parts) !== 1) {
+            throw new \RuntimeException('回调适配遇到未审查的参数容器');
+        }
+        $temporary = $this->genTmpVarName();
+        $values = str_replace('php::VarList{', 'php::ArgList{', $parts[1]);
+        $this->context->statements->addBefore('php::Args ' . $temporary . '{' . $values . '};');
+        $named = isset($parts[2]) ? $parts[2] . '.array()' : 'nullptr';
+        foreach ($descriptors as $descriptor) {
+            $this->context->statements->addBefore('type_app_prepare_callback(' . $temporary . ', ' . $named . ', '
+                . $descriptor[0] . ', ' . $this->genCharPtr($descriptor[1], true) . ', '
+                . (($descriptor[2] ?? '') === 'dynamic-map' ? 'true' : 'false') . ', ' . $this->getCallableScopeExpr() . ');');
+        }
+        return $temporary . (isset($parts[2]) ? ', ' . $named : '');
+    }
+
+    /** 完整 embed 的 exit 结束当前 Zend 请求，由外层宿主回收，不在活动业务栈内卸载模块。 */
+    protected function parseExit(Exit_ $node): string
+    {
+        $call = parent::parseExit($node);
+        if (!$this->threaded() && !$this->fullEmbed()) {
+            return $call;
+        }
+        $call = $node->expr === null ? 'php::exit(0)' : str_replace('php::aotExit(', 'php::exit(', $call);
+        return '[&]() -> php::Var { ' . $call . '; return php::null; }()';
+    }
+
+    /** Zend 的退出信号不属于业务 Throwable；跳过 catch/finally，由请求宿主统一关闭。 */
+    protected function parseTryCatch(mixed $statement): string
+    {
+        $code = parent::parseTryCatch($statement);
+        if (!$this->threaded() && !$this->fullEmbed()) {
+            return $code;
+        }
+        if (!$this->exitCompatibilityVerified) {
+            $source = InstalledVersions::getInstallPath('swoole/typephp') . '/src/Parser/ExceptionControlFlowTrait.php';
+            if (hash_file('sha256', $source) !== '28fc6b21a288f715d9394ed013eb3acb278d839e45e839fae8111bb7d98bba96') {
+                throw new \RuntimeException('embed 退出适配需要固定异常控制流原文');
+            }
+            $this->exitCompatibilityVerified = true;
+        }
+        // 嵌套节点已生成相同守卫时不重复插入；普通异常仍走上游的完整处理路径。
+        $adapted = preg_replace(
+            '/(catch\s*\(zend_object \*(_ex|_catch_throw_ex)\) \{\R)([ \t]*)([A-Za-z_][A-Za-z0-9_]* = php::catchException\(\);)/',
+            '$1$3if (zend_is_graceful_exit($2)) { throw; }' . PHP_EOL . '$3$4',
+            $code,
+            -1,
+            $count
+        );
+        if (!is_string($adapted) || $count < 1) {
+            throw new \RuntimeException('embed 退出适配缺少异常边界');
+        }
+        return $adapted;
+    }
+
+    /** 全局嵌套数组沿用编译器的数组初始化计划，保留原实现遗漏的临时变量。 */
+    protected function parseConstDef(mixed $statement): void
+    {
+        parent::parseConstDef($statement);
+        if (!$this->threaded() || $this->compilerPhase !== self::PHASE_CONVERT) {
+            return;
+        }
+        foreach ($statement->consts as $constant) {
+            if ($constant->value instanceof Array_) {
+                $this->resetFunction();
+                $plan = $this->buildLiteralArrayInitPlan($constant->value);
+                $name = ($this->namespace === '' ? '' : $this->namespace . '\\') . $constant->name->toString();
+                $this->constants[$this->escapeConstVar($name)]->value = "[&]() {\n" . $plan->init
+                    . 'php::Array type_app_constant_value = ' . $plan->expr . ";\n" . $plan->clean
+                    . "return type_app_constant_value;\n}()";
+            }
+        }
+    }
+
+    private function staticRuntime(): ?StaticRuntimeSdk
+    {
+        // 一个编译进程只读入一次 SDK；构建结束仍由 NativeBuilder 重核全部输入。
+        $profile = getenv('TYPEAPP_BUILD_PROFILE');
+        return $this->staticRuntimeSdk ??= StaticRuntimeSdk::selected(is_string($profile) && $profile !== '' ? $profile : null);
+    }
+
+    /**
+     * 被闭包再次引用捕获的数组形参使用现有 Zend Ref ABI，不能复制成固定 Array 槽。
+     * 公开 PHP 签名及入口类型检查不变；调用侧的引用桥接和异常写回继续由上游持有。
+     */
+    private function preserveCapturedArrayReferences(
+        ClassMethod|Function_ $node,
+        FunctionDef $function
+    ): void {
+        if ($function->stub || $function->generator || $this->classDef?->nativeObject || $this->functionRequiresNativeAbi($function)) {
+            return;
+        }
+        $arguments = array_filter($function->argInfoList, static fn (ArgInfo $argument): bool => $argument->type === Type::ARRAY_REF && $argument->byRef && !$argument->variadic
+            && $argument->typedArray === null && $argument->stdContainer === null);
+        if ($arguments === []) {
+            return;
+        }
+        $this->assertReferenceCaptureCompatibility();
+        $captures = (new ReferenceCaptureAnalyzer())->analyze($node->stmts)['captures'];
+        $changed = false;
+        foreach ($arguments as $index => $argument) {
+            if (!isset($captures[$argument->phpName])) {
+                continue;
+            }
+            $type = $this->buildTypeCheckFromNode($node->params[$index]->type, true);
+            $argument->type = Type::REF;
+            $argument->typeCheck = $type['check'];
+            $argument->typeStr = $type['typeStr'];
+            $argument->typeNode = $node->params[$index]->type;
+            $changed = true;
+        }
+        if ($changed) {
+            $function->params = implode(', ', array_map(fn (ArgInfo $argument): string => $argument->variadic
+                ? Type::ARRAY . ' ' . $argument->name : $this->genArgumentDeclaration($argument), $function->argInfoList));
+        }
+    }
+
+    /** 参数 ABI、捕获分析和生成规则须来自同一已核对版本，不绕过固定存储的引用保护。 */
+    private function assertReferenceCaptureCompatibility(): void
+    {
+        if ($this->referenceCaptureVerified) {
+            return;
+        }
+        $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+        foreach ([
+            'src/Preprocessor.php' => '0d690bbeb1204a11dcecde85629f611d513c19c70033c24b07f8b3cb06f701a5',
+            'src/Translator.php' => '5ecb6156ea7c448f4e83f7aabb231c0e334ce588a99f294a0d8db8abbc1917b6',
+            'src/Analysis/ReferenceCaptureAnalyzer.php' => '0732aa48bae23c3ff1c547f08ffc48c829560ae98cb2fff11189d6de35df688c',
+            'src/Context/CompilationStateTrait.php' => 'e9cffd401bdd0ab10f2af5e3a35f7b952432c328525b7e70cb77a97fe4216fa2',
+            'src/Generator/ClosureGenerator.php' => '5210422d218e5167193114f7c1a6a055f8ef3524fdf09852874a388527ffc5dd',
+            'src/Generator/CallArgumentGenerator.php' => '0015d57f6437d95827881d0242c192c1455d0597df598a5314ed7fcca98de741',
+            'src/Generator/TypeCheckGenerator.php' => '42d3a06f4c51ebb92bb203c0b60e18035250fe137c6085482b0e35cdbc7cdc83',
+        ] as $file => $sha256) {
+            if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                throw new \RuntimeException('数组引用参数捕获适配需要重新核对 TypePHP：' . $file);
+            }
+        }
+        $this->referenceCaptureVerified = true;
+    }
+
+    /** 只扫描当前函数体，内层闭包和类拥有独立参数作用域。 */
+    private function usesCallArguments(mixed $nodes): bool
+    {
+        foreach (is_array($nodes) ? $nodes : [$nodes] as $node) {
+            if (!$node instanceof Node
+                || $node instanceof FunctionLike
+                || $node instanceof ClassLike) {
+                continue;
+            }
+            if ($node instanceof FuncCall) {
+                $callName = $node->name instanceof Name || $node->name instanceof Identifier
+                    ? strtolower(ltrim($node->name->toString(), '\\')) : '';
+                if (in_array($callName, ['func_get_args', 'func_get_arg', 'func_num_args'], true)) {
+                    return true;
+                }
+                if ($node->name instanceof Name) {
+                    $target = $this->resolveStaticFunctionCallTarget($node->name);
+                    if (in_array($target['lower'], ['func_get_args', 'func_get_arg', 'func_num_args'], true)
+                        && ($target['definitelyGlobal'] || $target['namespacedFallback'])) {
+                        return true;
+                    }
+                }
+            }
+            foreach ($node->getSubNodeNames() as $field) {
+                if ($this->usesCallArguments($node->{$field})) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 方法元数据归一到预处理登记的原生名称，继承方法使用实际声明类。 */
+    private function needsCallArgumentsFrame(FunctionDef $function): bool
+    {
+        if ($this->context->inClosure && $this->closureUsesCallArguments) {
+            return true;
+        }
+        $class = $function->declaringClass === '' ? '' : $this->getClass($function->declaringClass)->name;
+        $native = $this->getNativeName($function->name, $function->namespace, $class);
+        if (isset($this->argumentFunctions[$native])) {
+            return true;
+        }
+        $scope = $function->declaringClass !== '' ? $function->declaringClass : $function->namespace;
+        $canonical = strtolower(str_replace('\\', '__', ltrim($scope, '\\'))) . '__' . strtolower($function->name);
+        return isset($this->argumentFunctions[$canonical]);
+    }
+
+    /** 每个 C++ 栈帧独立持有对应 Zend 帧，协程挂起和递归都不共享可变状态。 */
+    private function callArgumentsFrame(): string
+    {
+        $this->assertCallArgumentsCompatibility();
+        $this->argumentFrames ??= new \WeakMap();
+        return $this->argumentFrames[$this->context] ??= $this->genTmpVarName();
+    }
+
+    /** 参数兼容只接受审查过的声明、分发、闭包和优化器源码。 */
+    private function assertCallArgumentsCompatibility(): void
+    {
+        if ($this->callArgumentsCompatibilityVerified) {
+            return;
+        }
+        $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+        foreach ([
+            'src/CompilerBase.php' => '27bd997c6c4ae287962a2872f0ce88225d8469ac3db65eb948b27263fa064bef',
+            'src/Preprocessor.php' => '0d690bbeb1204a11dcecde85629f611d513c19c70033c24b07f8b3cb06f701a5',
+            'src/Translator.php' => '5ecb6156ea7c448f4e83f7aabb231c0e334ce588a99f294a0d8db8abbc1917b6',
+            'src/Generator/ParameterCountCheckGenerator.php' => '491fffd20a20d554ecc46bfaedfa0179535b9cfa36264e8e2f81a785e79fa273',
+            'src/Generator/ClosureGenerator.php' => '5210422d218e5167193114f7c1a6a055f8ef3524fdf09852874a388527ffc5dd',
+            'src/Generator/CallArgumentGenerator.php' => '0015d57f6437d95827881d0242c192c1455d0597df598a5314ed7fcca98de741',
+            'src/Optimizer/FuncCallOptimizer.php' => '675d4e918dce285ddb451af9f22b08b3c967fe1414bb52d60409603fc9956e94',
+            'src/Parser/FunctionCallTrait.php' => '877463e628d08d4fee91d4ab7b264cb3643d43c05aa88b9be21aea208488e4ff',
+            'src/Parser/MethodCallTrait.php' => '40fe7f2ae5e07c5789ec36dc23a6817aaa39cbbcc1dda2f7d5cfb49655785a3f',
+            'src/Analysis/LocalClosureAnalyzer.php' => 'f1cf6e659bd03fbc6282cc028fca3790a0603b36e8753b5b13d45eb82f0525b2',
+        ] as $file => $sha256) {
+            if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                throw new \RuntimeException('调用实参适配需要重新核对 TypePHP：' . $file);
+            }
+        }
+        $this->callArgumentsCompatibilityVerified = true;
+    }
+
+    /** 降级、临时作用域和包装入口必须是同一受审上游实现，版本字符串相同也不能绕过。 */
+    private function assertDefaultCompatibility(): void
+    {
+        if ($this->defaultCompatibilityVerified) {
+            return;
+        }
+        $compiler = InstalledVersions::getInstallPath('swoole/typephp');
+        foreach ([
+            'src/CompilerBase.php' => '27bd997c6c4ae287962a2872f0ce88225d8469ac3db65eb948b27263fa064bef',
+            'src/Preprocessor.php' => '0d690bbeb1204a11dcecde85629f611d513c19c70033c24b07f8b3cb06f701a5',
+            'src/Translator.php' => '5ecb6156ea7c448f4e83f7aabb231c0e334ce588a99f294a0d8db8abbc1917b6',
+            'src/Generator/DefaultArgumentGenerator.php' => '744462d2e0c001de127ca0429d33e1d20869dc02d42f6c62999bf0033c74d829',
+            'src/Context/FunctionContext.php' => '486a62ff6276d703fc1944b1479bf5a483557ebb804c88b56786657b4b355dc4',
+        ] as $file => $sha256) {
+            if (!is_file($compiler . '/' . $file) || hash_file('sha256', $compiler . '/' . $file) !== $sha256) {
+                throw new \RuntimeException('默认对象参数适配需要重新核对 TypePHP：' . $file);
+            }
+        }
+        $this->defaultCompatibilityVerified = true;
+    }
+
+    private function assertPropertyCompatibility(): void
+    {
+        if ($this->propertyCompatibilityVerified) {
+            return;
+        }
+        $source = InstalledVersions::getInstallPath('swoole/typephp') . '/src/Parser/PropertyAccessTrait.php';
+        $runtime = InstalledVersions::getInstallPath('swoole/phpx') . '/src/core/variant.cc';
+        if (hash_file('sha256', $source) !== '73262ab7996307b51ea7eda81e898c3208aa2d23d45a123372d47fd7d40203a4'
+            || hash_file('sha256', $runtime) !== '721b964d45a190af8730df91547149381155745b01f4bab3f28b3c6552bf8fb1') {
+            throw new \RuntimeException('虚拟属性适配需要重新核对 TypePHP/PHPX 原文');
+        }
+        $this->propertyCompatibilityVerified = true;
+    }
+
+    /** 显式线程入口决定线程存储及受控 PHPX ABI；普通 embed 不额外要求线程 SDK。 */
+    private function threaded(): bool
+    {
+        return $this->isBuildModeBin() && $this->hasFunction('type_app_compiled_thread_run');
+    }
+
+    /** 完整 embed 先注册应用模块再开启请求，避免退出时类元数据早于对象释放。 */
+    private function fullEmbed(): bool
+    {
+        return $this->isBuildModeBin() && $this->hasSapi('embed') && !$this->isNanoMode() && !$this->isSapiBuild();
+    }
+
+    /** Zend 值钩子读取的数组不能作为间接赋值目标；不能静默修改临时数组。 */
+    private function guardVirtualPropertyUpdate(string $result): string
+    {
+        if (preg_match('/^typephp_read_property_cached\((.*), (.*), php::AttrMode::Update, (.*)\)$/sD', $result, $parts) === 1) {
+            $body = 'typephp_read_property_cached(object, name, php::AttrMode::Update, ' . $parts[3] . ')';
+        } elseif (preg_match('/^type_app_read_property\((.*), (.*), (.*), php::AttrMode::Update\)$/sD', $result, $parts) === 1) {
+            $body = 'type_app_read_property(object, name, ' . $parts[3] . ', php::AttrMode::Update)';
+        } elseif (preg_match('/^(.*)\.attr\((.*), php::AttrMode::Update\)$/sD', $result, $parts) === 1) {
+            $body = 'object.attr(name, php::AttrMode::Update)';
+        } else {
+            return $result;
+        }
+        if (str_starts_with($parts[2], 'get_persistent_prop(')) {
+            // 已解析的普通属性通过属性指针读取；虚拟属性使用 getter 或名称访问。
+            return $result;
+        }
+        $this->assertPropertyCompatibility();
+        return '([&]() -> php::Var { auto object = ' . $parts[1] . '; php::Str name = ' . $parts[2] . '; '
+            . 'if (object.isObject()) { auto info = zend_get_property_info(object.ce(), name.str(), true); '
+            . 'if (info && info != ZEND_WRONG_PROPERTY_INFO && (info->flags & ZEND_ACC_VIRTUAL) && info->hooks '
+            . '&& info->hooks[ZEND_PROPERTY_HOOK_GET] && !(info->hooks[ZEND_PROPERTY_HOOK_GET]->common.fn_flags & ZEND_ACC_RETURN_REFERENCE)) '
+            . '{ php::throwError("Indirect modification of a virtual property without a reference getter is not allowed"); } } '
+            . 'return ' . $body . '; })()';
+    }
+
+    /** 普通、复合与数组间接写入复用同一调用方权限边界。 */
+    private function threadPropertyRead(string $result): string
+    {
+        $source = InstalledVersions::getInstallPath('swoole/typephp') . '/src/Parser/PropertyAccessTrait.php';
+        if (hash_file('sha256', $source) !== '73262ab7996307b51ea7eda81e898c3208aa2d23d45a123372d47fd7d40203a4') {
+            throw new \RuntimeException('属性作用域适配需要重新核对 TypePHP 原文');
+        }
+        $scope = $this->classDef?->trait ? 'const_cast<zend_class_entry *>(php::FakeScopeGuard::current())'
+            : ($this->class ? $this->getLocalClassEntryPtr($this->getFullClassName()) : 'nullptr');
+        if (preg_match('/^typephp_read_property_cached\((.*), (php::AttrMode::\w+), [^,]+\)$/sD', $result, $parts) === 1) {
+            return 'type_app_read_property(' . $parts[1] . ', ' . $scope . ', ' . $parts[2] . ')';
+        }
+        if (preg_match('/^(.*)\.attr\((.*), (php::AttrMode::\w+)\)$/sD', $result, $parts) === 1) {
+            if (str_starts_with($parts[2], 'get_persistent_prop(')) {
+                // nullsafe 参数也可能包含已解析属性；偏移不能交给按名称读取的适配。
+                return $result;
+            }
+            return 'type_app_read_property(' . $parts[1] . ', ' . $parts[2] . ', ' . $scope . ', ' . $parts[3] . ')';
+        }
+        if (preg_match('/^(.*)\.getProperty\((.*)\)$/sD', $result, $parts) === 1) {
+            return 'type_app_read_property(' . $parts[1] . ', ' . $parts[2] . ', ' . $scope . ', php::AttrMode::Get)';
+        }
+        return $result;
     }
 
     private function threadReplace(string $source, string $before, string $after, bool $allowMissing = false): string
@@ -1311,7 +1388,7 @@ CPP . "\n" . $request;
         }
         if ($count !== 1) {
             $preview = preg_replace('/\s+/', ' ', trim($before));
-            throw new RuntimeException('线程生成适配的替换位置不唯一: count=' . $count . ', before=' . substr((string) $preview, 0, 240));
+            throw new \RuntimeException('线程生成适配的替换位置不唯一: count=' . $count . ', before=' . substr((string)$preview, 0, 240));
         }
         return str_replace($before, $after, $source);
     }
@@ -1342,23 +1419,5 @@ static void type_app_thread_constants(zend_class_entry *ce) {
     } ZEND_HASH_FOREACH_END();
 }
 CPP;
-    }
-
-    /** 原生业务/组件源码只读；所有.o/.obj归入本次构建目录，保留原源码的include语义。 */
-    public function getObjectFile(string $cppFile): string
-    {
-        // 空翻译单元清理也会查询一个尚不存在的生成文件，先按构建位置分流。
-        $source = BuildPlatform::path($cppFile);
-        $build = BuildPlatform::resolve($this->getBuildDir());
-        $misc = BuildPlatform::resolve($this->getPhpxDir() . '/src/misc');
-        if (BuildPlatform::contains($build, $source) || BuildPlatform::contains($misc, $source)) {
-            return parent::getObjectFile($cppFile);
-        }
-        $source = BuildPlatform::resolve($cppFile);
-        $directory = $build . '/native-objects';
-        if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
-            throw new RuntimeException('无法创建原生中间产物目录');
-        }
-        return $directory . '/' . hash('sha256', $source) . $this->getPlatform()->getObjectExtension();
     }
 }

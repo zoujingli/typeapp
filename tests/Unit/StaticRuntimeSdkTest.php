@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace TypeTests\Unit;
 
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use Type\Build\StaticRuntimeSdk;
 
 require_once dirname(__DIR__) . '/support.php';
 
-/** 静态输入的独立路径、ABI、内容和源码适配门禁；真实链接另由原生验收证明。 */
+/**
+ * 静态输入的独立路径、ABI、内容和源码适配门禁；真实链接另由原生验收证明。
+ * @internal
+ * @coversNothing
+ */
 final class StaticRuntimeSdkTest extends TestCase
 {
     public function testSdkSelectionRejectsDriftAndNeverFallsBackToDynamicLibraries(): void
@@ -23,8 +26,8 @@ final class StaticRuntimeSdkTest extends TestCase
         $archive = $work . '/lib/' . $archiveName;
         // 空 ar 归档仅验证清单协议，不能作为可运行 SDK 或原生成功证据。
         file_put_contents($archive, "!<arch>\n");
-        $data = ['protocol' => 1, 'os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS,
-            'debug' => (bool) PHP_DEBUG, 'integer-size' => PHP_INT_SIZE, 'headers' => [],
+        $data = ['protocol' => 1, 'os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'), 'php' => PHP_VERSION, 'zts' => (bool)PHP_ZTS,
+            'debug' => (bool)PHP_DEBUG, 'integer-size' => PHP_INT_SIZE, 'headers' => [],
             'archives' => [['file' => 'lib/' . $archiveName, 'sha256' => hash_file('sha256', $archive)]], 'patches' => [],
             'sources' => ['swoole' => StaticRuntimeSdk::swooleSource()]];
         $headers = [];
@@ -121,7 +124,7 @@ final class StaticRuntimeSdkTest extends TestCase
         try {
             new StaticRuntimeSdk($manifest);
             self::fail('无效静态输入不能被接受');
-        } catch (RuntimeException $error) {
+        } catch (\RuntimeException $error) {
             self::assertStringContainsString($message, $error->getMessage());
         }
     }

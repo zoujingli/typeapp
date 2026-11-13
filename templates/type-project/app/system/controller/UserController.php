@@ -25,6 +25,7 @@ use Type\Validate\ValidationException;
 final class UserController
 {
     private UserService $users;
+
     private Factory $messages;
 
     /** 注入生成的事务调用入口和响应工厂；连接由框架在执行时借用。 */
@@ -37,7 +38,7 @@ final class UserController
     /**
      * 每页固定 20 条；连接在当前请求作用域结束时归还。
      *
-     * @throws ValidationException 筛选、分页或排序未通过白名单；不能用客户端文本指定 SQL 列或方向表达式。
+     * @throws ValidationException 筛选、分页或排序未通过白名单；不能用客户端文本指定 SQL 列或方向表达式
      */
     #[Route('/users', methods: ['GET'], name: 'index')]
     public function index(ServerRequestInterface $request): ResponseInterface
@@ -66,8 +67,8 @@ final class UserController
     /**
      * 只接受有界 JSON 对象，创建成功返回 201 与数据库确认后的记录。
      *
-     * @throws ValidationException JSON 数据或创建字段不符合输入声明。
-     * @throws HttpError 请求体不是 application/json。
+     * @throws ValidationException JSON 数据或创建字段不符合输入声明
+     * @throws HttpError 请求体不是 application/json
      */
     #[Route('/users', methods: ['POST'], name: 'store')]
     public function store(ServerRequestInterface $request): ResponseInterface
@@ -90,8 +91,8 @@ final class UserController
     /**
      * 局部更新区分未传字段与 null；业务版本冲突由统一错误中间件映射为 409。
      *
-     * @throws ValidationException 路由参数或补丁数据无效。
-     * @throws HttpError 请求体不是 application/json。
+     * @throws ValidationException 路由参数或补丁数据无效
+     * @throws HttpError 请求体不是 application/json
      */
     #[Route('/users/{id}', methods: ['PATCH'], name: 'update', constraints: ['id' => '[1-9][0-9]*'])]
     public function update(ServerRequestInterface $request): ResponseInterface
@@ -111,7 +112,7 @@ final class UserController
     /**
      * 执行软删除；重复删除按不存在处理，不暴露内部生命周期字段。
      *
-     * @throws ValidationException 路由 id 无效。
+     * @throws ValidationException 路由 id 无效
      */
     #[Route('/users/{id}', methods: ['DELETE'], name: 'destroy', constraints: ['id' => '[1-9][0-9]*'])]
     public function destroy(ServerRequestInterface $request): ResponseInterface

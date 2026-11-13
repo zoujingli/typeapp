@@ -9,7 +9,7 @@ use Type\Testing\Process;
 
 /**
  * 通过既有构建器选择入口加载本轮隔离副本，保留公开准备命令的全部行为。
- * @return list<string> 直接传给子进程的参数，不经 shell 拼接。
+ * @return list<string> 直接传给子进程的参数，不经 shell 拼接
  */
 function generationCommand(string $root): array
 {
@@ -41,7 +41,7 @@ function concurrentGenerations(string $root, array $environment, ?array $expecte
     $completed = [];
     $started = microtime(true);
     try {
-        for ($slot = 0; $slot < 8; $slot++) {
+        for ($slot = 0; $slot < 8; ++$slot) {
             $processes[$slot] = new Process(generationCommand($root), $root, $environment);
         }
         do {
@@ -56,7 +56,7 @@ function concurrentGenerations(string $root, array $environment, ?array $expecte
                 $generation = json_decode($result->stdout, true, 512, JSON_THROW_ON_ERROR);
                 $expected ??= $generation;
                 expect($generation === $expected, '并发子进程加载了不同或不完整代次');
-                $steps[$slot]++;
+                ++$steps[$slot];
                 if ($steps[$slot] === $totalSteps) {
                     $completed[$slot] = microtime(true) - $started;
                     unset($processes[$slot]);
@@ -79,7 +79,7 @@ function concurrentGenerations(string $root, array $environment, ?array $expecte
 
 /**
  * 公开准备入口必须明确拒绝输入，不将超时当作拒绝；异常时收回准确子进程。
- * @param float $seconds 有索引时只校验完整性；索引缺失时须包含完整生成的等待预算。
+ * @param float $seconds 有索引时只校验完整性；索引缺失时须包含完整生成的等待预算
  */
 function rejectedGeneration(string $root, array $environment, string $reason, float $seconds = 5.0): void
 {

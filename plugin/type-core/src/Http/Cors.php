@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Core\Http;
 
-use InvalidArgumentException;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -15,16 +14,20 @@ use Psr\Http\Server\RequestHandlerInterface;
 final class Cors implements MiddlewareInterface
 {
     private array $origins;
+
     private array $methods;
+
     private array $headers;
+
     private bool $credentials;
+
     private ResponseFactoryInterface $responses;
 
     /**
      * 建立跨域访问白名单，凭据模式不能采用通配来源。
-     * @param list<string> $origins 允许的来源。
-     * @param list<string> $methods 允许的 HTTP 方法。
-     * @param list<string> $headers 允许的请求头。
+     * @param list<string> $origins 允许的来源
+     * @param list<string> $methods 允许的 HTTP 方法
+     * @param list<string> $headers 允许的请求头
      */
     public function __construct(
         ResponseFactoryInterface $responses,
@@ -34,21 +37,21 @@ final class Cors implements MiddlewareInterface
         bool $credentials = false
     ) {
         if ($origins === [] || ($credentials && in_array('*', $origins, true))) {
-            throw new InvalidArgumentException('CORS 凭据必须搭配明确来源');
+            throw new \InvalidArgumentException('CORS 凭据必须搭配明确来源');
         }
         foreach ($origins as $origin) {
             if (!is_string($origin) || ($origin !== '*' && !preg_match('/^https?:\/\/[A-Za-z0-9.\[\]:-]+$/D', $origin))) {
-                throw new InvalidArgumentException('CORS origin 无效');
+                throw new \InvalidArgumentException('CORS origin 无效');
             }
         }
         foreach ($methods as $method) {
             if (!is_string($method) || !preg_match('/^[A-Z]+$/D', $method)) {
-                throw new InvalidArgumentException('CORS 方法无效');
+                throw new \InvalidArgumentException('CORS 方法无效');
             }
         }
         foreach ($headers as $header) {
             if (!is_string($header) || !preg_match('/^[a-z0-9-]+$/D', $header)) {
-                throw new InvalidArgumentException('CORS 消息头名称无效');
+                throw new \InvalidArgumentException('CORS 消息头名称无效');
             }
         }
         $this->responses = $responses;

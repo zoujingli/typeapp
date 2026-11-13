@@ -5,12 +5,14 @@ declare(strict_types=1);
 require __DIR__ . '/build-scenario.php';
 require __DIR__ . '/native-database.php';
 
-use Type\Build\BuildPlatform;
-use Type\Build\BuildIdentity;
 use Type\Build\ArtifactManifest;
-use Type\Build\StaticRuntimeSdk;
+use Type\Build\BuildIdentity;
+use Type\Build\BuildPlatform;
+use Type\Build\EmbeddedResourceCompiler;
 use Type\Build\NativePackage;
 use Type\Build\PackageArchive;
+use Type\Build\StaticRuntimeSdk;
+use TypeApp\Release\Candidate;
 
 /** 只复制构建所需PHPX源文件；旧SDK和安装目录保持原样。 */
 function benchmarkPhpxSources(string $source, string $target): void
@@ -32,8 +34,8 @@ function benchmarkPhpxSources(string $source, string $target): void
  * 归档恢复后用自己的运行库完成完整性校验。原 INI 和构建报告单独保留身份，
  * 恢复包使用现有发布器生成的相对路径 INI；这不是静态部署或性能通过的证据。
  *
- * @param array<string,mixed> $build 原程序的已核验构建报告。
- * @return array<string,mixed> 归档、原配置、构建身份和实际恢复结果。
+ * @param array<string,mixed> $build 原程序的已核验构建报告
+ * @return array<string,mixed> 归档、原配置、构建身份和实际恢复结果
  */
 function benchmarkPreserveRuntime(string $root, string $work, string $artifact, array $build): array
 {
@@ -82,15 +84,15 @@ function benchmarkPreserveRuntime(string $root, string $work, string $artifact, 
 /**
  * 从各版本自身的公开 prepare 入口测量冷生成与完整代次复用；不执行应用或改变生产声明。
  *
- * @param array<string,string> $environment 本版本的已核验构建环境。
- * @return array<string,mixed> 三轮原始耗时及同一生成清单的内容身份。
+ * @param array<string,string> $environment 本版本的已核验构建环境
+ * @return array<string,mixed> 三轮原始耗时及同一生成清单的内容身份
  */
 function benchmarkGeneration(string $project, array $environment, string $work): array
 {
     $output = $project . '/build/benchmark/development';
     $record = ['repetitions' => 3, 'reuse_warmup' => 1, 'cold_seconds' => [], 'reuse_seconds' => [],
         'timing_scope' => '公开 type prepare 子进程的完整耗时，包含启动、输入审计和生成或代次完整性核验；冷指无生成目录，不指操作系统文件缓存。'];
-    for ($round = 0; $round < 3; $round++) {
+    for ($round = 0; $round < 3; ++$round) {
         if (is_dir($output)) {
             removeTestDirectory($output);
         }
@@ -108,7 +110,7 @@ function benchmarkGeneration(string $project, array $environment, string $work):
             $generation = $prepared['generation'] ?? '';
             expect(is_string($generation) && preg_match('/^[a-f0-9]{64}$/D', $generation) === 1
                 && BuildPlatform::resolve($prepared['directory'] ?? '') === $output . '/' . $generation, '生成报告不属于本轮专用目录');
-            $manifest = (string) file_get_contents($output . '/' . $generation . '/manifest.json');
+            $manifest = (string)file_get_contents($output . '/' . $generation . '/manifest.json');
             expect(hash('sha256', $manifest) === $generation, '生成清单与公开入口身份不符');
             $decoded = json_decode($manifest, true, 512, JSON_THROW_ON_ERROR);
             $files = $decoded['declarations']['files'] ?? $decoded['files'] ?? null;
@@ -134,7 +136,7 @@ function benchmarkGeneration(string $project, array $environment, string $work):
 /**
  * 比较共享 SDK 所依赖的工具链与制备源码；两个版本还必须各自验证其 ABI、补丁和归档。
  *
- * @return array<string,string> 本轮实际复用的源码摘要，不把可变 SDK 路径当作身份。
+ * @return array<string,string> 本轮实际复用的源码摘要，不把可变 SDK 路径当作身份
  */
 function benchmarkStaticInputs(string $project, string $current, array $sdk): array
 {
@@ -176,7 +178,7 @@ function benchmarkStaticInputs(string $project, string $current, array $sdk): ar
     // 编译器和 PHPX 必须来自同一锁定提交；框架包源码差异是本轮比较对象。
     $locked = [];
     foreach ([$current, $project] as $directory) {
-        $lock = json_decode((string) file_get_contents($directory . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
+        $lock = json_decode((string)file_get_contents($directory . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
         $packages = [];
         foreach (array_merge($lock['packages'], $lock['packages-dev']) as $package) {
             if (in_array($package['name'], ['swoole/typephp', 'swoole/phpx'], true)) {
@@ -224,13 +226,13 @@ function prepareStaticBenchmarks(string $root, array $arguments): void
     };
     $candidateFile = $root . '/build/release-candidate/attachments/' . $platform . '-' . $profile . '.json';
     expect(is_file($candidateFile) && !is_link($candidateFile), '须先完成原静态候选 finish 封存');
-    $candidate = json_decode((string) file_get_contents($candidateFile), true, 512, JSON_THROW_ON_ERROR);
-    $filename = \TypeApp\Release\Candidate::verify($candidate, dirname($candidateFile), $commits['new'], (string) getenv('TYPE_RELEASE_VERSION'), $platform, $profile);
+    $candidate = json_decode((string)file_get_contents($candidateFile), true, 512, JSON_THROW_ON_ERROR);
+    $filename = Candidate::verify($candidate, dirname($candidateFile), $commits['new'], (string)getenv('TYPE_RELEASE_VERSION'), $platform, $profile);
     $newArtifact = dirname($candidateFile) . '/' . $filename;
     $newReport = (new BuildPlatform())->output($root . '/build/app/type-app') . '.build.json';
     $timingFile = $root . '/build/static-benchmark-build.json';
     expect(is_file($timingFile) && !is_link($timingFile), '原候选缺少本轮编译计时，不能重新编译补造');
-    $timing = json_decode((string) file_get_contents($timingFile), true, 512, JSON_THROW_ON_ERROR);
+    $timing = json_decode((string)file_get_contents($timingFile), true, 512, JSON_THROW_ON_ERROR);
     expect(($timing['protocol'] ?? null) === 1 && ($timing['source'] ?? null) === $commits['new'] && ($timing['profile'] ?? null) === $profile
         && ($timing['sha256'] ?? null) === $candidate['sha256'] && ($timing['build_id'] ?? null) === $candidate['build-id']
         && ($timing['report_sha256'] ?? null) === hash_file('sha256', $newReport)
@@ -254,8 +256,8 @@ function prepareStaticBenchmarks(string $root, array $arguments): void
         'php' => PHP_VERSION, 'php_cli_sha256' => hash_file('sha256', PHP_BINARY), 'php_memory_limit' => ini_get('memory_limit'),
         'controller_ini_sha256' => $timing['controller_ini_sha256'], 'variants' => []];
     try {
-        $resources = (new \Type\Build\EmbeddedResourceCompiler())->collect($root, [['source' => 'web/dist', 'target' => 'web']]);
-        $frontend = (new \Type\Build\EmbeddedResourceCompiler())->manifest($resources);
+        $resources = (new EmbeddedResourceCompiler())->collect($root, [['source' => 'web/dist', 'target' => 'web']]);
+        $frontend = (new EmbeddedResourceCompiler())->manifest($resources);
         // 前端必须逐字节一致；各版本自己的依赖许可仍由完整原生清单和程序摘要绑定。
         $candidateFrontend = array_filter($candidate['embedded-resources'], static fn (string $path): bool => str_starts_with($path, 'web/'), ARRAY_FILTER_USE_KEY);
         expect($frontend !== [] && $frontend === $candidateFrontend, '静态基准前端与封存候选不同');
@@ -274,8 +276,8 @@ function prepareStaticBenchmarks(string $root, array $arguments): void
                 '--no-interaction', '--prefer-dist', '--no-progress'], $environment, [], $work . '/install.log', 600);
             $inspection = json_decode(nativeDatabaseCommand(
                 [PHP_BINARY, '-r',
-                'require $argv[1]; echo json_encode(["sdk" => (new Type\\Build\\StaticRuntimeSdk($argv[2], $argv[3]))->identity(), "profile" => Type\\Build\\BuildProfile::selected(Type\\Build\\BuildProfile::resolve(json_decode(file_get_contents($argv[4]), true, 512, JSON_THROW_ON_ERROR)))], JSON_THROW_ON_ERROR);',
-                $project . '/vendor/autoload.php', $sdkPath, $profile, $project . '/docs/build-config/type-app.json'],
+                    'require $argv[1]; echo json_encode(["sdk" => (new Type\Build\StaticRuntimeSdk($argv[2], $argv[3]))->identity(), "profile" => Type\Build\BuildProfile::selected(Type\Build\BuildProfile::resolve(json_decode(file_get_contents($argv[4]), true, 512, JSON_THROW_ON_ERROR)))], JSON_THROW_ON_ERROR);',
+                    $project . '/vendor/autoload.php', $sdkPath, $profile, $project . '/docs/build-config/type-app.json'],
                 $environment,
                 [],
                 $work . '/sdk-inputs.json',
@@ -287,7 +289,7 @@ function prepareStaticBenchmarks(string $root, array $arguments): void
             foreach ($resources as $path => $resource) {
                 scenarioCopy($resource['source'], $project . '/web/dist/' . substr($path, 4));
             }
-            $settings = json_decode((string) file_get_contents($project . '/docs/build-config/type-app.json'), true, 512, JSON_THROW_ON_ERROR);
+            $settings = json_decode((string)file_get_contents($project . '/docs/build-config/type-app.json'), true, 512, JSON_THROW_ON_ERROR);
             $settings['version'] = substr($candidate['version'], 1);
             $settings['output'] = 'build/b/type-app';
             $settings['build-directory'] = 'build/b/c';
@@ -320,7 +322,7 @@ echo json_encode(['maximum_bytes' => strlen($longest), 'limit' => 259, 'longest_
 PHP;
                 nativeDatabaseCommand(
                     [PHP_BINARY, '-r', $pathProbe, $project . '/vendor/autoload.php', $project,
-                    $project . '/build/benchmark/development/' . $generation['identity']['generation'] . '/manifest.json'],
+                        $project . '/build/benchmark/development/' . $generation['identity']['generation'] . '/manifest.json'],
                     $environment,
                     [],
                     $work . '/windows-paths.json',
@@ -344,7 +346,7 @@ PHP;
                 $artifact = (new BuildPlatform())->output($project . '/build/b/type-app');
                 $reportFile = $artifact . '.build.json';
             }
-            $build = json_decode((string) file_get_contents($reportFile), true, 512, JSON_THROW_ON_ERROR);
+            $build = json_decode((string)file_get_contents($reportFile), true, 512, JSON_THROW_ON_ERROR);
             $manifest = (new ArtifactManifest())->read($artifact);
             expect(hash_file('sha256', $artifact) === $build['sha256'] && $manifest === $build['manifest'] && ($build['cache']['hit'] ?? true) === false
                 && ($manifest['runtime-linkage'] ?? null) === 'static' && BuildIdentity::digest($manifest['static-runtime'] ?? null) === BuildIdentity::digest($sdk)
@@ -445,18 +447,18 @@ try {
         $environment['PHPX_HOME'] = $phpx;
         // 每个版本使用自己的受审适配，不能拿新版补丁或模块冒充 RC 基线。
         nativeDatabaseCommand([PHP_BINARY, '-n', '-r',
-            'require $argv[1]; echo json_encode((new Type\\Build\\PhpxThreadSource())->apply($argv[2]), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);',
+            'require $argv[1]; echo json_encode((new Type\Build\PhpxThreadSource())->apply($argv[2]), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);',
             $project . '/plugin/type-build/src/PhpxThreadSource.php', $phpx], $environment, [], $work . '/phpx-adaptations.json', 30);
         $swoole = json_decode(successful([PHP_BINARY, '-n', '-r',
-            'require $argv[1]; echo json_encode((new Type\\Build\\BundledSwoole())->select(), JSON_THROW_ON_ERROR);',
+            'require $argv[1]; echo json_encode((new Type\Build\BundledSwoole())->select(), JSON_THROW_ON_ERROR);',
             $project . '/plugin/type-build/src/BundledSwoole.php'], $project, $environment), true, 32, JSON_THROW_ON_ERROR);
         $bundle = json_decode(file_get_contents($swoole['manifest']), true, 32, JSON_THROW_ON_ERROR);
         // 前端仅构建一次；两个程序嵌入相同真实资源，避免资产差异混入工具链对照。
-        $resources = (new \Type\Build\EmbeddedResourceCompiler())->collect($root, [['source' => 'web/dist', 'target' => 'web']]);
+        $resources = (new EmbeddedResourceCompiler())->collect($root, [['source' => 'web/dist', 'target' => 'web']]);
         foreach ($resources as $path => $resource) {
             scenarioCopy($resource['source'], $project . '/web/dist/' . substr($path, 4));
         }
-        $frontend = (new \Type\Build\EmbeddedResourceCompiler())->manifest($resources);
+        $frontend = (new EmbeddedResourceCompiler())->manifest($resources);
         echo $variant . "：在同一PHP SDK构建独立PHPX。\n";
         nativeDatabaseCommand(['cmake', '-S', $phpx, '-B', $phpx . '/build', '-DCMAKE_BUILD_TYPE=Release',
             '-DBUILD_TESTS=OFF', '-DBUILD_EXT=OFF', '-Dphp_dir=' . $phpHome], $environment, [], $work . '/cmake.log', 120);

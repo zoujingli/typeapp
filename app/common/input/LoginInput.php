@@ -14,9 +14,7 @@ use Type\Validate\ValidatedInput;
 final class LoginInput implements ValidatedInput
 {
     /** 口令只属于本次请求，不进入日志、配置或跨任务上下文。 */
-    public function __construct(public string $login, public string $password)
-    {
-    }
+    public function __construct(public string $login, public string $password) {}
 
     /** 复用原账号语法、长度与字段白名单。 */
     public static function schema(): Schema

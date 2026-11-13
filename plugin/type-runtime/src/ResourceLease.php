@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace Type\Runtime;
 
-use Closure;
-use RuntimeException;
-
 /** 作用域独占的池租约；借用资源不跨执行者，归还不早于实际操作完成。 */
 final class ResourceLease implements ManagedResource
 {
     private ResourcePool $pool;
+
     private ExecutionScope $scope;
+
     private int $id;
+
     private bool $released = false;
 
     /** @internal 仅由池为已分配的资源创建，调用者通过 ResourcePool::borrow() 借用。 */
@@ -21,6 +21,18 @@ final class ResourceLease implements ManagedResource
         $this->pool = $pool;
         $this->scope = $scope;
         $this->id = $id;
+    }
+
+    /** 租约不能序列化到其他线程或进程；跨线程只发送业务数据。 */
+    public function __serialize(): array
+    {
+        throw new TaskException('resource_transfer_forbidden', '资源租约不能跨线程或进程传递');
+    }
+
+    /** 独占租约不能复制，重复所有者会破坏归还时机。 */
+    public function __clone(): void
+    {
+        throw new TaskException('resource_transfer_forbidden', '资源租约不能复制');
     }
 
     /** 登记租约时检查作用域仍可用；物理资源由池负责创建。 */
@@ -37,13 +49,13 @@ final class ResourceLease implements ManagedResource
 
     /**
      * 在所有者作用域内取得资源；有在途操作时应使用 hold() 管理持有期。
-     * @throws RuntimeException 作用域不可用、租约已归还或资源不可借用。
+     * @throws \RuntimeException 作用域不可用、租约已归还或资源不可借用
      */
     public function resource(): ReusableResource
     {
         $this->scope->assertActive();
         if ($this->released) {
-            throw new RuntimeException('资源租约已经归还');
+            throw new \RuntimeException('资源租约已经归还');
         }
 
         return $this->pool->resource($this->id);
@@ -61,28 +73,16 @@ final class ResourceLease implements ManagedResource
 
     /**
      * 操作退出前继续占用池容量；关闭意图不会提前复用活动资源。
-     * @param Closure(ReusableResource): mixed $operation 接收本租约持有的资源。
-     * @throws RuntimeException 作用域不可用、租约已归还或池资源不可借用。
+     * @param \Closure(ReusableResource): mixed $operation 接收本租约持有的资源
+     * @throws \RuntimeException 作用域不可用、租约已归还或池资源不可借用
      */
-    public function hold(Closure $operation): mixed
+    public function hold(\Closure $operation): mixed
     {
         // 池在 hold 内取得并校验资源，此处只检查租约自身状态。
         $this->scope->assertActive();
         if ($this->released) {
-            throw new RuntimeException('资源租约已经归还');
+            throw new \RuntimeException('资源租约已经归还');
         }
         return $this->pool->hold($this->id, $operation);
-    }
-
-    /** 租约不能序列化到其他线程或进程；跨线程只发送业务数据。 */
-    public function __serialize(): array
-    {
-        throw new TaskException('resource_transfer_forbidden', '资源租约不能跨线程或进程传递');
-    }
-
-    /** 独占租约不能复制，重复所有者会破坏归还时机。 */
-    public function __clone(): void
-    {
-        throw new TaskException('resource_transfer_forbidden', '资源租约不能复制');
     }
 }

@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 namespace Type\Mqtt;
 
-use Closure;
 use Type\Orm\Connection;
 use Type\Orm\Database;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
 use Type\Orm\Driver;
 use Type\Orm\TransactionOutcome;
-use Type\Runtime\Deadline;
 use Type\Runtime\CoroutineRuntime;
+use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
 
 /**
@@ -28,8 +27,8 @@ final class PostgresStore
      * 预算同时计入待完成消息原件及每份待交付副本；完成事实保留，不靠删除未完成记录腾空间。
      * 保留事实另外计入 maximumRetainedMessages/maximumRetainedBytes，期限按 Unix 秒保存。
      *
-     * @param string $standbyName 单个节点名或逗号分隔的至多三个节点名；Patroni切换时仍须选择其中恰好一个合格同步备库。
-     * @throws \InvalidArgumentException 驱动、同步备库白名单或待处理预算非法。
+     * @param string $standbyName 单个节点名或逗号分隔的至多三个节点名；Patroni切换时仍须选择其中恰好一个合格同步备库
+     * @throws \InvalidArgumentException 驱动、同步备库白名单或待处理预算非法
      */
     public function __construct(
         private Driver $driver,
@@ -144,6 +143,68 @@ final class PostgresStore
         return $disappeared && $released;
     }
 
+    /**
+     * 在受控worker中执行业务同步事务，和Broker接管共用租约、截止、WAL及同步备库证明。
+     * 回调须在给定连接产生本次写入；已有未知记录不能以只读可见性代替新的持久屏障。
+     * 不在回调中自行提交、发送网络消息或泄漏连接；只有committed且released才能对外确认。
+     * @param \Closure(Connection): array<string,mixed> $operation 一个有界业务事务，结果仅在证明成功后返回
+     * @param string $mode default或schema，沿用驱动真实事务模式
+     */
+    public function transaction(string $operationId, \Closure $operation, string $mode = 'default'): CommitResult
+    {
+        return CoroutineRuntime::run(function () use ($operationId, $operation, $mode): CommitResult {
+            if (!self::identifier($operationId, 32) || !in_array($mode, ['default', 'schema'], true)) {
+                return new CommitResult($operationId, 'rejected', 0x83);
+            }
+            $database = new DatabaseManager(['default' => $this->driver], 1, 0);
+            Db::configure($database);
+            $scope = new ExecutionScope(new Deadline(3.0));
+            $connection = null;
+            $state = 'rejected';
+            $reason = 0x88;
+            $barrier = '';
+            $replicas = [];
+            $released = true;
+            $value = [];
+            try {
+                $scope->run(function (ExecutionScope $current) use ($operationId, $operation, $mode, $scope, &$connection, &$state, &$reason, &$barrier, &$replicas, &$value): void {
+                    $connection = Db::connection('default', true);
+                    $connection->rawQuery("SELECT set_config('application_name', ?, false), set_config('synchronous_commit', 'remote_apply', false), "
+                        . "set_config('statement_timeout', '1500', false), set_config('lock_timeout', '1000', false), "
+                        . "set_config('idle_in_transaction_session_timeout', '1500', false)", ['type_mqtt_' . $operationId]);
+                    if ($this->synchronous($connection)) {
+                        $value = $connection->transaction(function (Connection $transaction) use ($operation): array {
+                            if (!$this->synchronous($transaction)) {
+                                throw new ProtocolError(0x88);
+                            }
+                            return $operation($transaction);
+                        }, $mode);
+                        // COMMIT 可能在 SyncRep 被取消后仍返回 true；它本身不足以证明同步接管。
+                        $state = 'unknown';
+                        // remote_apply 在等待备库前已刷盘本次 COMMIT。取实际刷盘末尾，避免 insert 指针把尚无记录的下一页头计入屏障。
+                        $barrier = (string)$connection->query('SELECT pg_current_wal_flush_lsn()::text AS lsn')[0]['lsn'];
+                        do {
+                            $replicas = $this->replicas($connection, $barrier);
+                            if (count($replicas) === 1 && self::truth($replicas[0]['proven']) && $this->synchronous($connection)) {
+                                $state = 'committed';
+                                $reason = 0;
+                                break;
+                            }
+                            usleep(10000);
+                        } while (!$scope->deadline()->expired());
+                    }
+                });
+            } catch (\Throwable $failure) {
+                $outcome = $connection === null ? TransactionOutcome::NOT_STARTED : $connection->transactionOutcome();
+                $state = in_array($outcome, [TransactionOutcome::UNKNOWN, TransactionOutcome::COMMITTED], true) ? 'unknown' : 'rejected';
+                $reason = $state === 'rejected' && $failure instanceof ProtocolError ? $failure->reason : 0x88;
+            } finally {
+                $released = $this->release($scope, $database);
+            }
+            return new CommitResult($operationId, $state, $reason, $barrier === '' ? [] : ['wal_lsn' => $barrier, 'replicas' => $replicas], $released, $state === 'committed' ? $value : []);
+        });
+    }
+
     private function run(array $request): CommitResult
     {
         $operationId = is_string($request['operation_id'] ?? null) ? $request['operation_id'] : '';
@@ -204,68 +265,6 @@ final class PostgresStore
         }, $request['action'] === 'install' ? 'schema' : 'default');
     }
 
-    /**
-     * 在受控worker中执行业务同步事务，和Broker接管共用租约、截止、WAL及同步备库证明。
-     * 回调须在给定连接产生本次写入；已有未知记录不能以只读可见性代替新的持久屏障。
-     * 不在回调中自行提交、发送网络消息或泄漏连接；只有committed且released才能对外确认。
-     * @param Closure(Connection): array<string,mixed> $operation 一个有界业务事务，结果仅在证明成功后返回。
-     * @param string $mode default或schema，沿用驱动真实事务模式。
-     */
-    public function transaction(string $operationId, Closure $operation, string $mode = 'default'): CommitResult
-    {
-        return CoroutineRuntime::run(function () use ($operationId, $operation, $mode): CommitResult {
-            if (!self::identifier($operationId, 32) || !in_array($mode, ['default', 'schema'], true)) {
-                return new CommitResult($operationId, 'rejected', 0x83);
-            }
-            $database = new DatabaseManager(['default' => $this->driver], 1, 0);
-            Db::configure($database);
-            $scope = new ExecutionScope(new Deadline(3.0));
-            $connection = null;
-            $state = 'rejected';
-            $reason = 0x88;
-            $barrier = '';
-            $replicas = [];
-            $released = true;
-            $value = [];
-            try {
-                $scope->run(function (ExecutionScope $current) use ($operationId, $operation, $mode, $scope, &$connection, &$state, &$reason, &$barrier, &$replicas, &$value): void {
-                    $connection = Db::connection('default', true);
-                    $connection->rawQuery("SELECT set_config('application_name', ?, false), set_config('synchronous_commit', 'remote_apply', false), "
-                        . "set_config('statement_timeout', '1500', false), set_config('lock_timeout', '1000', false), "
-                        . "set_config('idle_in_transaction_session_timeout', '1500', false)", ['type_mqtt_' . $operationId]);
-                    if ($this->synchronous($connection)) {
-                        $value = $connection->transaction(function (Connection $transaction) use ($operation): array {
-                            if (!$this->synchronous($transaction)) {
-                                throw new ProtocolError(0x88);
-                            }
-                            return $operation($transaction);
-                        }, $mode);
-                        // COMMIT 可能在 SyncRep 被取消后仍返回 true；它本身不足以证明同步接管。
-                        $state = 'unknown';
-                        // remote_apply 在等待备库前已刷盘本次 COMMIT。取实际刷盘末尾，避免 insert 指针把尚无记录的下一页头计入屏障。
-                        $barrier = (string) $connection->query('SELECT pg_current_wal_flush_lsn()::text AS lsn')[0]['lsn'];
-                        do {
-                            $replicas = $this->replicas($connection, $barrier);
-                            if (count($replicas) === 1 && self::truth($replicas[0]['proven']) && $this->synchronous($connection)) {
-                                $state = 'committed';
-                                $reason = 0;
-                                break;
-                            }
-                            usleep(10000);
-                        } while (!$scope->deadline()->expired());
-                    }
-                });
-            } catch (\Throwable $failure) {
-                $outcome = $connection === null ? TransactionOutcome::NOT_STARTED : $connection->transactionOutcome();
-                $state = in_array($outcome, [TransactionOutcome::UNKNOWN, TransactionOutcome::COMMITTED], true) ? 'unknown' : 'rejected';
-                $reason = $state === 'rejected' && $failure instanceof ProtocolError ? $failure->reason : 0x88;
-            } finally {
-                $released = $this->release($scope, $database);
-            }
-            return new CommitResult($operationId, $state, $reason, $barrier === '' ? [] : ['wal_lsn' => $barrier, 'replicas' => $replicas], $released, $state === 'committed' ? $value : []);
-        });
-    }
-
     private function release(ExecutionScope $scope, Database|DatabaseManager $database): bool
     {
         $released = true;
@@ -309,7 +308,7 @@ final class PostgresStore
             || self::truth($settings['recovery'])) {
             return [];
         }
-        $selection = trim((string) $settings['names']);
+        $selection = trim((string)$settings['names']);
         $match = [];
         if (preg_match('/^(?:FIRST\s+)?1\s*\(\s*([^()]+?)\s*\)$/iD', $selection, $match) === 1) {
             $selection = trim($match[1]);
@@ -639,7 +638,7 @@ final class PostgresStore
     {
         foreach (['protocol', 'expiry', 'session_generation', 'qos', 'options', 'subscription_identifier', 'byte_size', 'generation', 'client_id_bytes', 'topic_bytes', 'filter_bytes'] as $field) {
             if (isset($row[$field])) {
-                $row[$field] = (int) $row[$field];
+                $row[$field] = (int)$row[$field];
             }
         }
         foreach (['connection_confirmed', 'durable', 'shared', 'started'] as $field) {
@@ -683,29 +682,29 @@ final class PostgresStore
         $pendingShared = 0;
         $sharedQos2Inflight = 0;
         foreach ($deliveries as $row) {
-            $total = (int) $row['total'];
-            if ((int) $row['qos'] === 1) {
+            $total = (int)$row['total'];
+            if ((int)$row['qos'] === 1) {
                 $pendingQos1 += $total;
-            } elseif ((int) $row['qos'] === 2) {
+            } elseif ((int)$row['qos'] === 2) {
                 $pendingQos2 += $total;
             }
             if (self::truth($row['shared'])) {
                 $pendingShared += $total;
-                if ((int) $row['qos'] === 2 && self::truth($row['started'])) {
+                if ((int)$row['qos'] === 2 && self::truth($row['started'])) {
                     $sharedQos2Inflight += $total;
                 }
             }
         }
-        return ['subscriptions' => (int) $subscriptions[0]['total'], 'pending_messages' => (int) $backlog[0]['total'], 'pending_bytes' => (int) $backlog[0]['bytes'],
+        return ['subscriptions' => (int)$subscriptions[0]['total'], 'pending_messages' => (int)$backlog[0]['total'], 'pending_bytes' => (int)$backlog[0]['bytes'],
             'pending_qos1' => $pendingQos1, 'pending_qos2' => $pendingQos2, 'pending_shared' => $pendingShared,
-            'shared_qos2_inflight' => $sharedQos2Inflight, 'will_pending' => (int) $will[0]['total']];
+            'shared_qos2_inflight' => $sharedQos2Inflight, 'will_pending' => (int)$will[0]['total']];
     }
 
     /** 保留详情只统计该 Topic 的在途交付与仍引用本原件的快照，不含载荷。 */
     private function resourceRetainedCounts(Connection $connection, array $item): array
     {
-        $topic = (string) ($item['topic'] ?? '');
-        $generation = (int) ($item['generation'] ?? 0);
+        $topic = (string)($item['topic'] ?? '');
+        $generation = (int)($item['generation'] ?? 0);
         $pending = $connection->query(
             'SELECT COUNT(*) AS total FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id '
             . "WHERE m.topic = ? AND d.state = 'pending'",
@@ -716,9 +715,9 @@ final class PostgresStore
             [$topic, $generation]
         );
         return [
-            'pending_deliveries' => (int) $pending[0]['total'],
-            'snapshot_references' => (int) $snapshots[0]['total'],
-            'byte_size' => (int) ($item['byte_size'] ?? 0),
+            'pending_deliveries' => (int)$pending[0]['total'],
+            'snapshot_references' => (int)$snapshots[0]['total'],
+            'byte_size' => (int)($item['byte_size'] ?? 0),
         ];
     }
 
@@ -815,10 +814,10 @@ final class PostgresStore
             if (isset($activeDelivery['owner_id'])) {
                 $this->owned($connection, $activeDelivery['session_id'], $activeDelivery['owner_id']);
             } elseif ($connection->query("SELECT id FROM type_mqtt_sessions WHERE id = ? AND node_run_id <> '' AND owner_id IS NOT NULL", [$activeDelivery['session_id']]) !== []) {
-                throw new ProtocolError(0x8e);
+                throw new ProtocolError(0x8E);
             }
         }
-        $normalized = new Message($message['topic'], (string) base64_decode($message['payload'], true), (string) base64_decode($message['properties'], true), $message['qos']);
+        $normalized = new Message($message['topic'], (string)base64_decode($message['payload'], true), (string)base64_decode($message['properties'], true), $message['qos']);
         // 新 Broker 显式携带原始截止；旧 accept 接口的相对期限只在首次接管转换一次。
         $interval = $message['expiry'] ?? ($normalized->attributes[0x02] ?? null);
         $expiresAt = array_key_exists('expires_at', $message) ? $message['expires_at'] : ($interval === null ? null : time() + $interval);
@@ -853,7 +852,7 @@ final class PostgresStore
                     $deliveries[] = ['id' => hash('sha256', $message['id'] . $destination['id']), 'session_id' => $destination['id'],
                         'client_id' => $destination['client_id'], 'packet_id' => 0, 'qos' => $qos,
                         'volatile_owner' => $qos === 0 ? $destination['owner_id'] : '',
-                        'retain' => ($message['retain'] ?? false) && (int) $destination['protocol'] === 5 && $selection['retain'],
+                        'retain' => ($message['retain'] ?? false) && (int)$destination['protocol'] === 5 && $selection['retain'],
                         'subscription_identifiers' => $selection['identifiers']];
                     if (in_array($destination['id'], $queuedSessions, true)) {
                         $queuedRecipients[] = $destination['id'];
@@ -881,7 +880,7 @@ final class PostgresStore
                 }
             } while (count($groups) === 32);
         }
-        $bytes = strlen($message['topic']) + strlen((string) base64_decode($message['payload'], true)) + strlen((string) base64_decode($message['properties'], true));
+        $bytes = strlen($message['topic']) + strlen((string)base64_decode($message['payload'], true)) + strlen((string)base64_decode($message['properties'], true));
         $this->capacity($connection, $message['session_id'], $deliveries, $bytes);
         if ($message['retain'] ?? false) {
             $this->retain($connection, $message, $bytes);
@@ -928,7 +927,7 @@ final class PostgresStore
             'SELECT resource_id, topic, generation FROM type_mqtt_retained WHERE resource_id = ? FOR UPDATE',
             [$request['resource_id']]
         );
-        if ($rows === [] || (int) $rows[0]['generation'] !== $request['generation']) {
+        if ($rows === [] || (int)$rows[0]['generation'] !== $request['generation']) {
             return ['cleared' => false, 'waiting' => false];
         }
         $this->removeRetainedOriginal($connection, $rows[0]['topic']);
@@ -950,7 +949,7 @@ final class PostgresStore
             $this->removeRetainedOriginal($connection, $message['topic']);
             return;
         }
-        $generation = (int) $connection->query('UPDATE type_mqtt_retained_clock SET generation = generation + 1 WHERE singleton RETURNING generation')[0]['generation'];
+        $generation = (int)$connection->query('UPDATE type_mqtt_retained_clock SET generation = generation + 1 WHERE singleton RETURNING generation')[0]['generation'];
         $old = $connection->query('SELECT generation, byte_size FROM type_mqtt_retained WHERE topic = ?', [$message['topic']]);
         $preserve = $old !== [] && $connection->query(
             'SELECT id FROM type_mqtt_retained_snapshots WHERE generation >= ? AND generation < ? LIMIT 1',
@@ -958,8 +957,8 @@ final class PostgresStore
         ) !== [];
         $usage = $connection->query('SELECT COUNT(*) AS messages, COALESCE(SUM(byte_size), 0) AS bytes FROM '
             . '(SELECT byte_size FROM type_mqtt_retained WHERE topic <> ? UNION ALL SELECT byte_size FROM type_mqtt_retained_history) retained', [$message['topic']])[0];
-        if ((int) $usage['messages'] + ($preserve ? 1 : 0) + 1 > $this->maximumRetainedMessages
-            || (int) $usage['bytes'] + ($preserve ? (int) $old[0]['byte_size'] : 0) + $bytes > $this->maximumRetainedBytes) {
+        if ((int)$usage['messages'] + ($preserve ? 1 : 0) + 1 > $this->maximumRetainedMessages
+            || (int)$usage['bytes'] + ($preserve ? (int)$old[0]['byte_size'] : 0) + $bytes > $this->maximumRetainedBytes) {
             throw new ProtocolError(0x97);
         }
         if ($preserve) {
@@ -969,7 +968,7 @@ final class PostgresStore
                 [$generation, $message['topic']]
             );
         }
-        $normalized = new Message($message['topic'], (string) base64_decode($message['payload'], true), (string) base64_decode($message['properties'], true));
+        $normalized = new Message($message['topic'], (string)base64_decode($message['payload'], true), (string)base64_decode($message['properties'], true));
         $connection->execute(
             'INSERT INTO type_mqtt_retained (topic, payload, properties, qos, client_id, byte_size, expires_at, expiry_interval, generation) '
             . "VALUES (?, decode(?, 'base64'), decode(?, 'base64'), ?, ?, ?, ?, ?, ?) ON CONFLICT (topic) DO UPDATE SET "
@@ -984,7 +983,7 @@ final class PostgresStore
     private function removeRetainedOriginal(Connection $connection, string $topic): void
     {
         $this->pruneRetained($connection);
-        $generation = (int) $connection->query('UPDATE type_mqtt_retained_clock SET generation = generation + 1 WHERE singleton RETURNING generation')[0]['generation'];
+        $generation = (int)$connection->query('UPDATE type_mqtt_retained_clock SET generation = generation + 1 WHERE singleton RETURNING generation')[0]['generation'];
         $old = $connection->query('SELECT generation FROM type_mqtt_retained WHERE topic = ?', [$topic]);
         if ($old === []) {
             return;
@@ -1018,16 +1017,16 @@ final class PostgresStore
         $rows = $connection->query('SELECT id, topic, options, identifier FROM type_mqtt_retained_snapshots WHERE session_id = ? ORDER BY created_at, id LIMIT 101', [$request['session_id']]);
         $count = count($rows);
         foreach ($rows as $snapshot) {
-            if (($request['subscriptions']['t:' . $snapshot['topic']] ?? null) !== ['options' => (int) $snapshot['options'], 'identifier' => (int) $snapshot['identifier']]) {
+            if (($request['subscriptions']['t:' . $snapshot['topic']] ?? null) !== ['options' => (int)$snapshot['options'], 'identifier' => (int)$snapshot['identifier']]) {
                 $connection->execute('DELETE FROM type_mqtt_retained_snapshots WHERE id = ?', [$snapshot['id']]);
-                $count--;
+                --$count;
             }
         }
         $requested = $request['retained'] ?? [];
         if ($count + count($requested) > 100) {
             throw new ProtocolError(0x97);
         }
-        $generation = (int) $connection->query('SELECT generation FROM type_mqtt_retained_clock WHERE singleton')[0]['generation'];
+        $generation = (int)$connection->query('SELECT generation FROM type_mqtt_retained_clock WHERE singleton')[0]['generation'];
         foreach ($requested as $snapshot) {
             $connection->execute(
                 'INSERT INTO type_mqtt_retained_snapshots(id, session_id, topic, options, identifier, generation) VALUES (?, ?, ?, ?, ?, ?)',
@@ -1038,7 +1037,7 @@ final class PostgresStore
         $snapshots = [];
         foreach ($connection->query('SELECT id, topic, options, identifier, cursor FROM type_mqtt_retained_snapshots WHERE session_id = ? ORDER BY created_at, id LIMIT 100', [$request['session_id']]) as $saved) {
             $snapshots[] = ['snapshot_id' => $saved['id'], 'topic' => $saved['topic'], 'cursor' => $saved['cursor'],
-                'subscription' => ['options' => (int) $saved['options'], 'identifier' => (int) $saved['identifier']]];
+                'subscription' => ['options' => (int)$saved['options'], 'identifier' => (int)$saved['identifier']]];
         }
         return $snapshots;
     }
@@ -1074,7 +1073,7 @@ final class PostgresStore
                 return ['found' => false, 'cursor' => $cursor, 'done' => true];
             }
             $snapshot = $snapshots[0];
-            if ($snapshot['topic'] !== $topic || $snapshot['cursor'] !== $cursor || (((int) $snapshot['options'] & 4) !== 0) !== $request['no_local']) {
+            if ($snapshot['topic'] !== $topic || $snapshot['cursor'] !== $cursor || (((int)$snapshot['options'] & 4) !== 0) !== $request['no_local']) {
                 throw new ProtocolError(0x83);
             }
             $columns = 'topic, payload, properties, qos, client_id, expires_at, expiry_interval';
@@ -1118,10 +1117,10 @@ final class PostgresStore
         }
         $retained = $rows[0];
         $message = ['client_id' => $retained['client_id'], 'topic' => $retained['topic'], 'payload' => $retained['payload'],
-            'properties' => $retained['properties'], 'qos' => (int) $retained['qos']];
+            'properties' => $retained['properties'], 'qos' => (int)$retained['qos']];
         return ['found' => true, 'message' => $message, ...$progress,
-            'expires_at' => $retained['expires_at'] === null ? null : (int) $retained['expires_at'],
-            'expiry_interval' => $retained['expiry_interval'] === null ? null : (int) $retained['expiry_interval']];
+            'expires_at' => $retained['expires_at'] === null ? null : (int)$retained['expires_at'],
+            'expiry_interval' => $retained['expiry_interval'] === null ? null : (int)$retained['expiry_interval']];
     }
 
     private function capacity(Connection $connection, string $publisherSession, array $deliveries, int $bytes): void
@@ -1129,8 +1128,8 @@ final class PostgresStore
         $pending = $this->pendingQuery();
         $global = $connection->query('SELECT COUNT(*) AS messages, COALESCE(SUM(byte_size), 0) AS bytes FROM (' . $pending . ') AS pending')[0];
         $reservation = 1 + count($deliveries);
-        if ((int) $global['messages'] + $reservation > $this->maximumPendingMessages
-            || (int) $global['bytes'] + $bytes * $reservation > $this->maximumPendingBytes) {
+        if ((int)$global['messages'] + $reservation > $this->maximumPendingMessages
+            || (int)$global['bytes'] + $bytes * $reservation > $this->maximumPendingBytes) {
             throw new ProtocolError(0x97);
         }
         $sessions = [$publisherSession => 1];
@@ -1138,7 +1137,7 @@ final class PostgresStore
             if (($delivery['group_id'] ?? '') !== '') {
                 $groupUsage = $connection->query('SELECT COUNT(*) AS messages, COALESCE(SUM(m.byte_size), 0) AS bytes '
                     . "FROM type_mqtt_deliveries d JOIN type_mqtt_messages m ON m.id = d.message_id WHERE d.group_id = ? AND d.state = 'pending'", [$delivery['group_id']])[0];
-                if ((int) $groupUsage['messages'] + 1 > $this->maximumSharedMessages || (int) $groupUsage['bytes'] + $bytes > $this->maximumSharedBytes) {
+                if ((int)$groupUsage['messages'] + 1 > $this->maximumSharedMessages || (int)$groupUsage['bytes'] + $bytes > $this->maximumSharedBytes) {
                     throw new ProtocolError(0x97);
                 }
                 continue;
@@ -1161,7 +1160,7 @@ final class PostgresStore
             $application = ($existing[$session]['capacity_class'] ?? 'device') === 'application';
             $messageLimit = $application ? $this->maximumApplicationMessages : $this->maximumDeviceMessages;
             $byteLimit = $application ? $this->maximumApplicationBytes : $this->maximumDeviceBytes;
-            if ((int) ($existing[$session]['messages'] ?? 0) + $count > $messageLimit || (int) ($existing[$session]['bytes'] ?? 0) + $bytes * $count > $byteLimit) {
+            if ((int)($existing[$session]['messages'] ?? 0) + $count > $messageLimit || (int)($existing[$session]['bytes'] ?? 0) + $bytes * $count > $byteLimit) {
                 throw new ProtocolError(0x97);
             }
         }
@@ -1184,9 +1183,9 @@ final class PostgresStore
         $categories = $connection->query("SELECT CASE WHEN p.group_id <> '' THEN 'shared' ELSE COALESCE(s.capacity_class, 'device') END AS category, "
             . 'COUNT(*) AS messages, COALESCE(SUM(p.byte_size), 0) AS bytes FROM (' . $this->pendingQuery() . ') p '
             . "LEFT JOIN type_mqtt_sessions s ON s.id = p.session_id AND p.group_id = '' GROUP BY category");
-        $values = ['sessions' => (int) $sessions['total'], 'persistentSessions' => (int) $sessions['persistent'],
-            'deviceSessions' => (int) $sessions['devices'], 'applicationSessions' => (int) $sessions['applications'],
-            'subscriptions' => (int) $sessions['subscriptions'], 'pendingMessages' => (int) $pending['messages'], 'pendingBytes' => (int) $pending['bytes'],
+        $values = ['sessions' => (int)$sessions['total'], 'persistentSessions' => (int)$sessions['persistent'],
+            'deviceSessions' => (int)$sessions['devices'], 'applicationSessions' => (int)$sessions['applications'],
+            'subscriptions' => (int)$sessions['subscriptions'], 'pendingMessages' => (int)$pending['messages'], 'pendingBytes' => (int)$pending['bytes'],
             'devicePendingMessages' => 0, 'devicePendingBytes' => 0, 'applicationPendingMessages' => 0, 'applicationPendingBytes' => 0,
             'sharedPendingMessages' => 0, 'sharedPendingBytes' => 0,
             'maximumSessions' => $this->maximumSessions, 'maximumPendingMessages' => $this->maximumPendingMessages, 'maximumPendingBytes' => $this->maximumPendingBytes,
@@ -1194,18 +1193,18 @@ final class PostgresStore
             'maximumApplicationMessages' => $this->maximumApplicationMessages, 'maximumApplicationBytes' => $this->maximumApplicationBytes,
             'maximumSharedMessages' => $this->maximumSharedMessages, 'maximumSharedBytes' => $this->maximumSharedBytes];
         foreach ($categories as $category) {
-            $values[$category['category'] . 'PendingMessages'] = (int) $category['messages'];
-            $values[$category['category'] . 'PendingBytes'] = (int) $category['bytes'];
+            $values[$category['category'] . 'PendingMessages'] = (int)$category['messages'];
+            $values[$category['category'] . 'PendingBytes'] = (int)$category['bytes'];
         }
         foreach (['retained', 'wills'] as $table) {
             $rows = $connection->query('SELECT COUNT(*) AS messages, COALESCE(SUM(byte_size), 0) AS bytes FROM type_mqtt_' . $table)[0];
-            $values[$table . 'Messages'] = (int) $rows['messages'];
-            $values[$table . 'Bytes'] = (int) $rows['bytes'];
+            $values[$table . 'Messages'] = (int)$rows['messages'];
+            $values[$table . 'Bytes'] = (int)$rows['bytes'];
         }
         $history = $connection->query('SELECT COUNT(*) AS messages, COALESCE(SUM(byte_size), 0) AS bytes FROM type_mqtt_retained_history')[0];
-        $values['retainedHistoryMessages'] = (int) $history['messages'];
-        $values['retainedHistoryBytes'] = (int) $history['bytes'];
-        $values['retainedSnapshots'] = (int) $connection->query('SELECT COUNT(*) AS snapshots FROM type_mqtt_retained_snapshots')[0]['snapshots'];
+        $values['retainedHistoryMessages'] = (int)$history['messages'];
+        $values['retainedHistoryBytes'] = (int)$history['bytes'];
+        $values['retainedSnapshots'] = (int)$connection->query('SELECT COUNT(*) AS snapshots FROM type_mqtt_retained_snapshots')[0]['snapshots'];
         return $values;
     }
 
@@ -1217,7 +1216,7 @@ final class PostgresStore
             return;
         }
         try {
-            $limits = json_decode((string) $rows[0]['snapshot_json'], true, 8, JSON_THROW_ON_ERROR);
+            $limits = json_decode((string)$rows[0]['snapshot_json'], true, 8, JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
             throw new ProtocolError(0x83);
         }
@@ -1237,13 +1236,13 @@ final class PostgresStore
         $store = [];
         foreach (['maximumSessions', 'maximumPendingMessages', 'maximumPendingBytes', 'maximumDeviceMessages', 'maximumDeviceBytes',
             'maximumApplicationMessages', 'maximumApplicationBytes', 'maximumSharedMessages', 'maximumSharedBytes'] as $key) {
-            $store[$key] = (int) $request['limits'][$key];
+            $store[$key] = (int)$request['limits'][$key];
         }
         $encoded = json_encode($store, JSON_THROW_ON_ERROR);
         $existing = $connection->query('SELECT version FROM type_mqtt_quotas WHERE id = 1 FOR UPDATE');
         if ($existing === []) {
             $connection->execute('INSERT INTO type_mqtt_quotas (id, version, snapshot_json) VALUES (1, ?, ?)', [$request['version'], $encoded]);
-        } elseif ((int) $existing[0]['version'] <= $request['version']) {
+        } elseif ((int)$existing[0]['version'] <= $request['version']) {
             $connection->execute('UPDATE type_mqtt_quotas SET version = ?, snapshot_json = ?, updated_at = clock_timestamp() WHERE id = 1', [$request['version'], $encoded]);
         }
         return ['version' => $request['version'], 'applied' => true];
@@ -1252,29 +1251,29 @@ final class PostgresStore
     /** @param array<string, mixed> $limits */
     private function assignQuotas(array $limits): void
     {
-        $this->maximumSessions = min(20000, max(1, (int) ($limits['maximumSessions'] ?? $this->maximumSessions)));
-        $this->maximumPendingMessages = min(2000000, max(1, (int) ($limits['maximumPendingMessages'] ?? $this->maximumPendingMessages)));
-        $this->maximumPendingBytes = min(4294967296, max(1, (int) ($limits['maximumPendingBytes'] ?? $this->maximumPendingBytes)));
-        $this->maximumDeviceMessages = min(10000, max(1, (int) ($limits['maximumDeviceMessages'] ?? $this->maximumDeviceMessages)));
-        $this->maximumDeviceBytes = min(16777216, max(1, (int) ($limits['maximumDeviceBytes'] ?? $this->maximumDeviceBytes)));
-        $this->maximumApplicationMessages = min(1000000, max(1, (int) ($limits['maximumApplicationMessages'] ?? $this->maximumApplicationMessages)));
-        $this->maximumApplicationBytes = min(2147483648, max(1, (int) ($limits['maximumApplicationBytes'] ?? $this->maximumApplicationBytes)));
-        $this->maximumSharedMessages = min(1000000, max(1, (int) ($limits['maximumSharedMessages'] ?? $this->maximumSharedMessages)));
-        $this->maximumSharedBytes = min(2147483648, max(1, (int) ($limits['maximumSharedBytes'] ?? $this->maximumSharedBytes)));
+        $this->maximumSessions = min(20000, max(1, (int)($limits['maximumSessions'] ?? $this->maximumSessions)));
+        $this->maximumPendingMessages = min(2000000, max(1, (int)($limits['maximumPendingMessages'] ?? $this->maximumPendingMessages)));
+        $this->maximumPendingBytes = min(4294967296, max(1, (int)($limits['maximumPendingBytes'] ?? $this->maximumPendingBytes)));
+        $this->maximumDeviceMessages = min(10000, max(1, (int)($limits['maximumDeviceMessages'] ?? $this->maximumDeviceMessages)));
+        $this->maximumDeviceBytes = min(16777216, max(1, (int)($limits['maximumDeviceBytes'] ?? $this->maximumDeviceBytes)));
+        $this->maximumApplicationMessages = min(1000000, max(1, (int)($limits['maximumApplicationMessages'] ?? $this->maximumApplicationMessages)));
+        $this->maximumApplicationBytes = min(2147483648, max(1, (int)($limits['maximumApplicationBytes'] ?? $this->maximumApplicationBytes)));
+        $this->maximumSharedMessages = min(1000000, max(1, (int)($limits['maximumSharedMessages'] ?? $this->maximumSharedMessages)));
+        $this->maximumSharedBytes = min(2147483648, max(1, (int)($limits['maximumSharedBytes'] ?? $this->maximumSharedBytes)));
     }
 
     private function complete(Connection $connection, array $request): void
     {
         $outcome = $request['outcome'] ?? 'acknowledged';
         $rows = $connection->query('SELECT message_id, session_id, qos, state, phase, ack_reason FROM type_mqtt_deliveries WHERE id = ? FOR UPDATE', [$request['delivery_id']]);
-        if (count($rows) !== 1 || ($outcome === 'acknowledged' && (int) $rows[0]['qos'] === 0)
+        if (count($rows) !== 1 || ($outcome === 'acknowledged' && (int)$rows[0]['qos'] === 0)
             || (isset($request['owner_id']) && $rows[0]['session_id'] !== $request['session_id'])
-            || ($outcome === 'queued' && (int) $rows[0]['qos'] !== 0) || ($rows[0]['state'] !== 'pending'
-                && ($rows[0]['state'] !== $outcome || (int) $rows[0]['ack_reason'] !== $request['reason']))) {
+            || ($outcome === 'queued' && (int)$rows[0]['qos'] !== 0) || ($rows[0]['state'] !== 'pending'
+                && ($rows[0]['state'] !== $outcome || (int)$rows[0]['ack_reason'] !== $request['reason']))) {
             throw new ProtocolError(0x83);
         }
         if ($rows[0]['state'] === 'pending') {
-            $qos = (int) $rows[0]['qos'];
+            $qos = (int)$rows[0]['qos'];
             $phase = $rows[0]['phase'];
             if (($outcome === 'rejected' && ($qos !== 2 || $phase !== 'wait_pubrec' || $request['reason'] < 0x80))
                 || ($outcome === 'not_found' && ($qos !== 2 || $phase !== 'wait_pubcomp' || $request['reason'] !== 0x92))
@@ -1296,7 +1295,7 @@ final class PostgresStore
     private function received(Connection $connection, array $request): void
     {
         $rows = $connection->query('SELECT session_id, qos, state, phase FROM type_mqtt_deliveries WHERE id = ? FOR UPDATE', [$request['delivery_id']]);
-        if (count($rows) !== 1 || (int) $rows[0]['qos'] !== 2 || $rows[0]['state'] !== 'pending'
+        if (count($rows) !== 1 || (int)$rows[0]['qos'] !== 2 || $rows[0]['state'] !== 'pending'
             || (isset($request['owner_id']) && $rows[0]['session_id'] !== $request['session_id'])
             || !in_array($rows[0]['phase'], ['wait_pubrec', 'wait_pubcomp'], true)) {
             throw new ProtocolError(0x83);
@@ -1311,8 +1310,8 @@ final class PostgresStore
             'SELECT qos, inbound_state, inbound_reason FROM type_mqtt_messages WHERE id = ? AND publisher_session = ? FOR UPDATE',
             [$request['message_id'], $request['session_id']]
         );
-        if (count($rows) !== 1 || (int) $rows[0]['qos'] !== 2 || !in_array($rows[0]['inbound_state'], ['received', 'released'], true)
-            || ($rows[0]['inbound_state'] === 'released' && (int) $rows[0]['inbound_reason'] !== $request['reason'])) {
+        if (count($rows) !== 1 || (int)$rows[0]['qos'] !== 2 || !in_array($rows[0]['inbound_state'], ['received', 'released'], true)
+            || ($rows[0]['inbound_state'] === 'released' && (int)$rows[0]['inbound_reason'] !== $request['reason'])) {
             throw new ProtocolError(0x83);
         }
         $connection->execute("UPDATE type_mqtt_messages SET inbound_state = 'released', inbound_reason = ? WHERE id = ?", [$request['reason'], $request['message_id']]);
@@ -1381,7 +1380,7 @@ final class PostgresStore
             if (in_array($request['action'], ['node_fence', 'node_fence_result'], true)) {
                 foreach (['actor', 'proof_ref'] as $field) {
                     if (!is_string($request[$field] ?? null) || $request[$field] === '' || strlen($request[$field]) > 256
-                        || preg_match('/[\\x00-\\x1f\\x7f]/', $request[$field]) === 1) {
+                        || preg_match('/[\x00-\x1f\x7f]/', $request[$field]) === 1) {
                         throw new \InvalidArgumentException('节点硬隔离登记需要明确操作人及外部证据标识');
                     }
                 }
@@ -1562,7 +1561,7 @@ final class PostgresStore
             || (array_key_exists('expires_at', $message) && (
                 (($normalized->attributes[0x02] ?? null) === null) !== ($message['expires_at'] === null)
                 || ($message['expires_at'] !== null && (!is_int($message['expires_at']) || $message['expires_at'] < 0
-                    || $message['expires_at'] > time() + (int) $normalized->attributes[0x02]))
+                    || $message['expires_at'] > time() + (int)$normalized->attributes[0x02]))
             ))) {
             throw new \InvalidArgumentException('消息截止时间无效');
         }
@@ -1606,7 +1605,7 @@ final class PostgresStore
         $action = $request['action'];
         if ($action === 'node_statistics') {
             return ['nodes' => $connection->query('SELECT node_id, run_id, generation, state, actor, proof_ref FROM type_mqtt_nodes ORDER BY node_id LIMIT 32'),
-                'pending_fences' => (int) $connection->query('SELECT COUNT(*) AS total FROM type_mqtt_fences')[0]['total']];
+                'pending_fences' => (int)$connection->query('SELECT COUNT(*) AS total FROM type_mqtt_fences')[0]['total']];
         }
         // 传输请求身份每次不同；原动作身份冻结目标，避免清理一次重试时误杀同动作的另一个后端。
         $actionId = $request['action_operation_id'] ?? $request['operation_id'];
@@ -1617,8 +1616,8 @@ final class PostgresStore
                 if ($previous['action'] !== 'node_fence' || $previous['node_id'] !== $request['node_id']
                     || $previous['run_id'] !== $request['node_run_id'] || $previous['actor'] !== $request['actor']
                     || $previous['proof_ref'] !== $request['proof_ref'] || $previous['observation_run'] !== ($request['observation_run'] ?? '')
-                    || (isset($request['generation']) && (int) $previous['generation'] !== $request['generation'])) {
-                    throw new ProtocolError(0x8e);
+                    || (isset($request['generation']) && (int)$previous['generation'] !== $request['generation'])) {
+                    throw new ProtocolError(0x8E);
                 }
                 // 写入同值产生本次同步屏障；不刷新原事实时间，更不能重新隔离同名节点的新运行。
                 $connection->execute('UPDATE type_mqtt_node_audit SET operation_id = operation_id WHERE operation_id = ?', [$actionId]);
@@ -1627,7 +1626,7 @@ final class PostgresStore
                     ['type_mqtt_' . $request['origin_request_id']]
                 ) === [];
                 return ['fenced' => true, 'operation_id' => $actionId, 'node_id' => $previous['node_id'],
-                    'node_run_id' => $previous['run_id'], 'generation' => (int) $previous['generation'],
+                    'node_run_id' => $previous['run_id'], 'generation' => (int)$previous['generation'],
                     'observation_run' => $previous['observation_run'], 'origin_released' => $originReleased];
             }
             if ($action === 'node_fence_result') {
@@ -1641,12 +1640,12 @@ final class PostgresStore
                 throw new ProtocolError(0x88);
             }
             if ($rows !== [] && ($rows[0]['state'] === 'active' || $rows[0]['run_id'] === $request['node_run_id'])) {
-                throw new ProtocolError(0x8e);
+                throw new ProtocolError(0x8E);
             }
-            if ($rows === [] && (int) $connection->query('SELECT COUNT(*) AS total FROM type_mqtt_nodes')[0]['total'] >= 32) {
+            if ($rows === [] && (int)$connection->query('SELECT COUNT(*) AS total FROM type_mqtt_nodes')[0]['total'] >= 32) {
                 throw new ProtocolError(0x97);
             }
-            $generation = $rows === [] ? 1 : (int) $rows[0]['generation'] + 1;
+            $generation = $rows === [] ? 1 : (int)$rows[0]['generation'] + 1;
             $connection->execute(
                 'INSERT INTO type_mqtt_nodes (node_id, run_id, generation, state) VALUES (?, ?, ?, ?) '
                 . "ON CONFLICT (node_id) DO UPDATE SET run_id = EXCLUDED.run_id, generation = EXCLUDED.generation, state = 'active', actor = '', proof_ref = '', updated_at = clock_timestamp()",
@@ -1655,10 +1654,10 @@ final class PostgresStore
             return ['generation' => $generation];
         }
         if ($rows === [] || $rows[0]['run_id'] !== $request['node_run_id']) {
-            throw new ProtocolError(0x8e);
+            throw new ProtocolError(0x8E);
         }
-        if ($action === 'node_fence' && isset($request['generation']) && (int) $rows[0]['generation'] !== $request['generation']) {
-            throw new ProtocolError(0x8e);
+        if ($action === 'node_fence' && isset($request['generation']) && (int)$rows[0]['generation'] !== $request['generation']) {
+            throw new ProtocolError(0x8E);
         }
         if ($action === 'node_close' || $action === 'node_fence') {
             $actor = $action === 'node_close' ? 'broker' : $request['actor'];
@@ -1673,7 +1672,7 @@ final class PostgresStore
                 return ['fenced' => true];
             }
             return ['fenced' => true, 'operation_id' => $actionId, 'node_id' => $request['node_id'], 'node_run_id' => $request['node_run_id'],
-                'generation' => (int) $rows[0]['generation'], 'observation_run' => $request['observation_run'] ?? ''];
+                'generation' => (int)$rows[0]['generation'], 'observation_run' => $request['observation_run'] ?? ''];
         }
         $this->activeNode($connection, $request);
         foreach ($request['closed_owners'] ?? [] as $closedOwner) {
@@ -1683,8 +1682,8 @@ final class PostgresStore
         $lost = $connection->query('SELECT s.* FROM type_mqtt_sessions s JOIN type_mqtt_nodes n ON n.node_id = s.node_id '
             . "WHERE s.owner_id IS NOT NULL AND s.node_run_id <> '' AND (n.state = 'fenced' OR n.run_id <> s.node_run_id) ORDER BY s.id LIMIT 100 FOR UPDATE OF s");
         foreach ($lost as $session) {
-            $this->scheduleWill($connection, $session, (int) $session['expiry'], 'network_lost');
-            if ((int) $session['expiry'] === 0) {
+            $this->scheduleWill($connection, $session, (int)$session['expiry'], 'network_lost');
+            if ((int)$session['expiry'] === 0) {
                 $this->eraseSession($connection, $session, md5($request['operation_id'] . $session['id']), 'network_lost', $session['principal']);
             } else {
                 $connection->execute("UPDATE type_mqtt_sessions SET owner_id = NULL, expires_at = CASE WHEN expiry IN (-1, 4294967295) THEN NULL ELSE clock_timestamp() + expiry * interval '1 second' END WHERE id = ?", [$session['id']]);
@@ -1717,7 +1716,7 @@ final class PostgresStore
         if (!is_string($request['node_run_id'] ?? null) || !self::identifier($request['node_run_id'], 32)
             || !is_string($request['node_id'] ?? null)
             || $connection->query("SELECT node_id FROM type_mqtt_nodes WHERE node_id = ? AND run_id = ? AND state = 'active'", [$request['node_id'], $request['node_run_id']]) === []) {
-            throw new ProtocolError(0x8e);
+            throw new ProtocolError(0x8E);
         }
     }
 
@@ -1728,7 +1727,7 @@ final class PostgresStore
             || $connection->query("SELECT node_id FROM type_mqtt_nodes WHERE node_id = ? AND run_id = ? AND state = 'active'", [$session['node_id'], $session['node_run_id']]) === []) {
             return;
         }
-        if ((int) $connection->query('SELECT COUNT(*) AS total FROM type_mqtt_fences')[0]['total'] >= $this->maximumSessions) {
+        if ((int)$connection->query('SELECT COUNT(*) AS total FROM type_mqtt_fences')[0]['total'] >= $this->maximumSessions) {
             throw new ProtocolError(0x97);
         }
         $connection->execute(
@@ -1766,8 +1765,8 @@ final class PostgresStore
             // 仅用于已独占监听的单节点重启；此动作不是跨节点选主或旧主隔离证明。
             $rows = $connection->query('SELECT * FROM type_mqtt_sessions WHERE node_id = ? AND owner_id IS NOT NULL ORDER BY id LIMIT 100 FOR UPDATE', [$request['node_id']]);
             foreach ($rows as $lost) {
-                $this->scheduleWill($connection, $lost, (int) $lost['expiry'], 'network_lost');
-                if ((int) $lost['expiry'] === 0) {
+                $this->scheduleWill($connection, $lost, (int)$lost['expiry'], 'network_lost');
+                if ((int)$lost['expiry'] === 0) {
                     $this->eraseSession($connection, $lost, md5($request['operation_id'] . $lost['id']), 'network_lost', $lost['principal']);
                 } else {
                     $connection->execute("UPDATE type_mqtt_sessions SET owner_id = NULL, expires_at = CASE WHEN expiry IN (-1, 4294967295) THEN NULL ELSE clock_timestamp() + expiry * interval '1 second' END WHERE id = ?", [$lost['id']]);
@@ -1792,7 +1791,7 @@ final class PostgresStore
             $rows = $connection->query('SELECT *, (expires_at IS NOT NULL AND expires_at <= clock_timestamp()) AS expired '
                 . 'FROM type_mqtt_sessions WHERE client_id = ? FOR UPDATE', [$request['client_id']]);
             $present = $rows !== [];
-            $generation = $present ? (int) $rows[0]['generation'] + 1 : 1;
+            $generation = $present ? (int)$rows[0]['generation'] + 1 : 1;
             if ($present) {
                 $this->fenceOwner($connection, $rows[0]);
             }
@@ -1810,7 +1809,7 @@ final class PostgresStore
                 throw new ProtocolError(0x87);
             }
             if ($present && ($request['clean_start'] || self::truth($rows[0]['expired']) || !$samePrincipal
-                || ((int) $rows[0]['expiry'] === 0))) {
+                || ((int)$rows[0]['expiry'] === 0))) {
                 $cause = $request['clean_start'] ? 'client_clean' : (self::truth($rows[0]['expired']) ? 'expired' : 'authorization_changed');
                 $this->eraseSession($connection, $rows[0], $request['operation_id'], $cause, $request['principal']);
                 $present = false;
@@ -1819,7 +1818,7 @@ final class PostgresStore
             if ($present) {
                 // 直接接管在线所有者也必须先认定旧网络结束；与本节点关闭路径使用同一事务规则。
                 if ($rows[0]['owner_id'] !== null) {
-                    $this->scheduleWill($connection, $rows[0], (int) $rows[0]['expiry'], 'taken_over');
+                    $this->scheduleWill($connection, $rows[0], (int)$rows[0]['expiry'], 'taken_over');
                 }
                 $cancelled = $connection->query('SELECT * FROM type_mqtt_wills WHERE session_id = ? AND delay > 0 '
                     . 'AND due_at > clock_timestamp() FOR UPDATE', [$sessionId]);
@@ -1828,7 +1827,7 @@ final class PostgresStore
                 }
             }
             if (!$present) {
-                if ((int) $connection->query('SELECT COUNT(*) AS total FROM type_mqtt_sessions')[0]['total'] >= $this->maximumSessions) {
+                if ((int)$connection->query('SELECT COUNT(*) AS total FROM type_mqtt_sessions')[0]['total'] >= $this->maximumSessions) {
                     throw new ProtocolError(0x97);
                 }
                 $connection->execute(
@@ -1846,11 +1845,11 @@ final class PostgresStore
             $connection->execute('UPDATE type_mqtt_wills SET node_id = ?, node_run_id = ? WHERE client_id = ?', [$request['node_id'], $nodeRun, $request['client_id']]);
             if (($request['will'] ?? null) !== null) {
                 $will = $request['will'];
-                $bytes = strlen($will['topic']) + strlen((string) base64_decode($will['payload'], true)) + strlen((string) base64_decode($will['properties'], true))
+                $bytes = strlen($will['topic']) + strlen((string)base64_decode($will['payload'], true)) + strlen((string)base64_decode($will['properties'], true))
                     + strlen($request['client_id']) + strlen($request['principal'])
                     + ($identity === null ? 0 : strlen(json_encode($identity->data(), JSON_THROW_ON_ERROR)));
                 $usage = $connection->query('SELECT COUNT(*) AS total, COALESCE(SUM(byte_size), 0) AS bytes FROM type_mqtt_wills')[0];
-                if ((int) $usage['total'] >= 20000 || (int) $usage['bytes'] + $bytes > $this->maximumPendingBytes) {
+                if ((int)$usage['total'] >= 20000 || (int)$usage['bytes'] + $bytes > $this->maximumPendingBytes) {
                     throw new ProtocolError(0x97);
                 }
                 $connection->execute('INSERT INTO type_mqtt_wills (id, session_id, node_id, client_id, principal, protocol, message, delay, byte_size, node_run_id, access_identity) '
@@ -1873,7 +1872,7 @@ final class PostgresStore
             $terminated = false;
             if (isset($request['session_id'])) {
                 $rows = $connection->query('SELECT * FROM type_mqtt_sessions WHERE id = ? FOR UPDATE', [$request['session_id']]);
-                if ($rows !== [] && (int) $rows[0]['generation'] === $request['session_generation']) {
+                if ($rows !== [] && (int)$rows[0]['generation'] === $request['session_generation']) {
                     $waitingClient = $rows[0]['client_id'];
                     $waitingPrincipal = $rows[0]['principal'];
                     $waitingIdentity = $rows[0]['access_identity'] !== null
@@ -1925,7 +1924,7 @@ final class PostgresStore
             if ($rows === []) {
                 return [];
             }
-            $this->scheduleWill($connection, $rows[0], $request['expiry'], $request['cause'] ?? 'network_lost', (float) ($request['ended_at'] ?? 0.0));
+            $this->scheduleWill($connection, $rows[0], $request['expiry'], $request['cause'] ?? 'network_lost', (float)($request['ended_at'] ?? 0.0));
             if ($request['expiry'] === 0) {
                 $this->eraseSession($connection, $rows[0], $request['operation_id'], 'client_closed', $rows[0]['principal']);
             } else {
@@ -1992,19 +1991,19 @@ final class PostgresStore
             return [];
         }
         $delivery = $rows[0];
-        if (((int) $delivery['qos'] === 0 && ($delivery['volatile_owner'] !== $request['owner_id'] || self::truth($delivery['started'])))
+        if (((int)$delivery['qos'] === 0 && ($delivery['volatile_owner'] !== $request['owner_id'] || self::truth($delivery['started'])))
             || (!self::truth($delivery['started']) && self::truth($delivery['expired']))) {
             $this->complete($connection, ['delivery_id' => $delivery['id'], 'reason' => 0, 'outcome' => 'expired']);
             return ['skipped' => true];
         }
-        $packetId = (int) $delivery['packet_id'];
-        if ($packetId === 0 && (int) $delivery['qos'] > 0) {
+        $packetId = (int)$delivery['packet_id'];
+        if ($packetId === 0 && (int)$delivery['qos'] > 0) {
             $used = $connection->query("SELECT packet_id FROM type_mqtt_deliveries WHERE session_id = ? AND state = 'pending' AND packet_id > 0", [$request['session_id']]);
             $occupied = array_fill_keys($ignored, true);
             foreach ($used as $entry) {
-                $occupied[(int) $entry['packet_id']] = true;
+                $occupied[(int)$entry['packet_id']] = true;
             }
-            for ($candidate = 1; $candidate <= 65535; $candidate++) {
+            for ($candidate = 1; $candidate <= 65535; ++$candidate) {
                 if (!isset($occupied[$candidate])) {
                     $packetId = $candidate;
                     break;
@@ -2017,14 +2016,14 @@ final class PostgresStore
         $connection->execute('UPDATE type_mqtt_deliveries SET packet_id = ?, started = true WHERE id = ?', [$packetId, $delivery['id']]);
         $expiryInterval = null;
         if ($delivery['expires_at'] !== null) {
-            $original = new Message($delivery['topic'], (string) base64_decode($delivery['payload'], true), (string) base64_decode($delivery['properties'], true));
+            $original = new Message($delivery['topic'], (string)base64_decode($delivery['payload'], true), (string)base64_decode($delivery['properties'], true));
             $expiryInterval = $original->attributes[0x02] ?? null;
         }
-        return ['delivery' => ['id' => $delivery['id'], 'packet_id' => $packetId, 'qos' => (int) $delivery['qos'], 'phase' => $delivery['phase'],
+        return ['delivery' => ['id' => $delivery['id'], 'packet_id' => $packetId, 'qos' => (int)$delivery['qos'], 'phase' => $delivery['phase'],
             'duplicate' => self::truth($delivery['started']), 'topic' => $delivery['topic'], 'payload' => str_replace("\n", '', $delivery['payload']),
-            'properties' => str_replace("\n", '', $delivery['properties']), 'age' => (int) $delivery['age'], 'retain' => self::truth($delivery['retain']),
+            'properties' => str_replace("\n", '', $delivery['properties']), 'age' => (int)$delivery['age'], 'retain' => self::truth($delivery['retain']),
             'subscription_identifiers' => json_decode($delivery['subscription_identifiers'], true, 16, JSON_THROW_ON_ERROR),
-            'expires_at' => $delivery['expires_at'] === null ? null : (int) $delivery['expires_at'], 'expiry_interval' => $expiryInterval,
+            'expires_at' => $delivery['expires_at'] === null ? null : (int)$delivery['expires_at'], 'expiry_interval' => $expiryInterval,
             'shared_filter' => $delivery['shared_filter']]];
     }
 
@@ -2041,7 +2040,7 @@ final class PostgresStore
             $this->finishWill($connection, $will, 'cancelled', 0);
             return;
         }
-        $delay = (int) $will['delay'];
+        $delay = (int)$will['delay'];
         if ($expiry >= 0 && $expiry !== 4294967295) {
             $delay = min($delay, $expiry);
         }
@@ -2073,7 +2072,7 @@ final class PostgresStore
             return ['will' => ['id' => $will['id'], 'session_id' => $will['session_id'], 'client_id' => $will['client_id'],
                 'principal' => array_key_exists('username', $message) ? $message['username'] : $will['principal'],
                 'access_identity' => $will['access_identity'] === null ? null : json_decode($will['access_identity'], true, 4, JSON_THROW_ON_ERROR),
-                'protocol' => (int) $will['protocol'], 'message' => $message]];
+                'protocol' => (int)$will['protocol'], 'message' => $message]];
         }
         $rows = $connection->query('SELECT * FROM type_mqtt_wills WHERE id = ? AND due_at <= clock_timestamp() FOR UPDATE', [$request['will_id']]);
         if ($rows === []) {
@@ -2127,7 +2126,7 @@ final class PostgresStore
         if ($rows[0]['node_run_id'] !== '') {
             $this->activeNode($connection, ['node_id' => $rows[0]['node_id'], 'node_run_id' => $rows[0]['node_run_id']]);
             if (!$allowWaiting && $this->waiting($connection, $rows[0]['client_id'])) {
-                throw new ProtocolError(0x8e);
+                throw new ProtocolError(0x8E);
             }
         }
         return $rows[0];
@@ -2198,7 +2197,7 @@ final class PostgresStore
         }
         $subscriptions = json_decode($delivery['subscriptions'], true, 16, JSON_THROW_ON_ERROR);
         $subscription = TopicFilter::subscription($subscriptions['t:' . $delivery['shared_filter']]);
-        $qos = min((int) $delivery['published_qos'], $subscription['options'] & 3);
+        $qos = min((int)$delivery['published_qos'], $subscription['options'] & 3);
         $packetId = 0;
         if ($request['action'] === 'shared_claim') {
             if ($subscription !== $request['subscription']) {
@@ -2214,11 +2213,11 @@ final class PostgresStore
                     json_encode($subscription['identifier'] > 0 ? [$subscription['identifier']] : [], JSON_THROW_ON_ERROR), $qos === 2 ? 'wait_pubrec' : 'none',
                     $qos === 0 ? $request['owner_id'] : '', $delivery['id']]);
         }
-        $original = new Message($delivery['topic'], (string) base64_decode($delivery['payload'], true), (string) base64_decode($delivery['properties'], true));
+        $original = new Message($delivery['topic'], (string)base64_decode($delivery['payload'], true), (string)base64_decode($delivery['properties'], true));
         return ['cursor' => $delivery['id'], 'subscription' => $subscription, 'delivery' => ['id' => $delivery['id'], 'packet_id' => $packetId,
             'qos' => $qos, 'phase' => $qos === 2 ? 'wait_pubrec' : 'none', 'duplicate' => false, 'topic' => $delivery['topic'],
             'payload' => str_replace("\n", '', $delivery['payload']), 'properties' => str_replace("\n", '', $delivery['properties']),
-            'age' => (int) $delivery['age'], 'expires_at' => $delivery['expires_at'] === null ? null : (int) $delivery['expires_at'],
+            'age' => (int)$delivery['age'], 'expires_at' => $delivery['expires_at'] === null ? null : (int)$delivery['expires_at'],
             'expiry_interval' => $original->attributes[0x02] ?? null, 'retain' => self::truth($delivery['published_retain']) && ($subscription['options'] & 8) !== 0,
             'subscription_identifiers' => $subscription['identifier'] > 0 ? [$subscription['identifier']] : [], 'shared_filter' => $delivery['shared_filter']]];
     }
@@ -2321,7 +2320,7 @@ final class PostgresStore
             throw new \InvalidArgumentException('关闭会话的客户端身份无效');
         }
         if (isset($request['ended_at']) && ((!is_float($request['ended_at']) && !is_int($request['ended_at']))
-            || !is_finite((float) $request['ended_at']) || $request['ended_at'] <= 0 || $request['ended_at'] > microtime(true) + 1.0)) {
+            || !is_finite((float)$request['ended_at']) || $request['ended_at'] <= 0 || $request['ended_at'] > microtime(true) + 1.0)) {
             throw new \InvalidArgumentException('网络结束时间无效');
         }
         if ($request['action'] === 'session_open' && ($request['will'] ?? null) !== null) {

@@ -10,10 +10,11 @@ require __DIR__ . '/windows-native-sandbox.php';
 require __DIR__ . '/tutorial-artifacts.php';
 
 use Type\Build\ArtifactManifest;
+use Type\Build\BuildPlatform;
 use Type\Testing\Process;
 
-$root = Type\Build\BuildPlatform::resolve(dirname(__DIR__));
-$project = Type\Build\BuildPlatform::resolve(getenv('TYPE_PACKAGE_PROJECT') ?: $root);
+$root = BuildPlatform::resolve(dirname(__DIR__));
+$project = BuildPlatform::resolve(getenv('TYPE_PACKAGE_PROJECT') ?: $root);
 expect(is_string($project) && is_file($project . '/.env.example'), '需要被验收应用的配置示例');
 expect($argc === 2 && in_array(PHP_OS_FAMILY, ['Darwin', 'Linux', 'Windows'], true), '用法：PHP tests/native-single-program.php <完整静态应用>');
 expect(PHP_OS_FAMILY !== 'Linux' || getenv('TYPE_BWRAP_BINARY') !== false, 'Linux 单程序验收必须提供原生隔离工具');

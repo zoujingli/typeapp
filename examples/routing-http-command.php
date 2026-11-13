@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Type\Core\Http\Message\Factory;
+use Type\Core\Http\RequestLimits;
 use Type\Core\Http\Router;
 use Type\Core\Http\SwooleServer;
 use TypeApp\Generated\Routes;
@@ -12,7 +13,7 @@ use TypeApp\RoutingExample\TraceMiddleware;
 /**
  * 启动生成路由与分层中间件示例，供真实 HTTP 检查匹配和实例隔离。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
@@ -27,6 +28,6 @@ function main(int $argc, array $argv): void
         'group' => static fn (): TraceMiddleware => new TraceMiddleware('P'),
         'route' => static fn (): TraceMiddleware => new TraceMiddleware('R'),
     ]);
-    $limits = new \Type\Core\Http\RequestLimits(bytes: 32768, fields: 10, depth: 8, fileBytes: 32768, fieldBytes: 32768);
+    $limits = new RequestLimits(bytes: 32768, fields: 10, depth: 8, fileBytes: 32768, fieldBytes: 32768);
     (new SwooleServer($router, $messages, $messages, $messages, $limits))->serve('127.0.0.1', $port);
 }

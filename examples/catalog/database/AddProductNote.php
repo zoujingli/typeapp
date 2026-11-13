@@ -10,6 +10,4 @@ use Type\Orm\Attribute\Schema;
 #[Schema(version: '004_catalog_note', description: '商品增加可空备注', snapshot: 'snapshots/product-note.json', operations: [
     ['action' => 'add-column', 'table' => 'catalog_products', 'name' => 'note', 'column' => ['type' => 'string', 'length' => 200, 'nullable' => true]],
 ])]
-final class AddProductNote
-{
-}
+final class AddProductNote {}

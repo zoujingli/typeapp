@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Mqtt;
 
-use Closure;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
@@ -15,27 +14,40 @@ use Type\Runtime\ExecutionScope;
  */
 final class PendingCommit
 {
-    /** @var resource|null 独立命令进程；只有观察到退出后才回收句柄并归还配额。 */
-    private mixed $process = null;
-    /** @var array<int, resource> 子进程标准输入与合并输出；只关闭本实例持有的句柄。 */
-    private array $pipes = [];
-    private ?WorkerSocket $socket = null;
-    private string $token = '';
-    private string $input = '';
-    private string $output = '';
-    private string $serializedRequest;
-    private bool $authenticated = false;
-    private bool $killed = false;
-    private bool $cleaning = false;
-    private ?CommitResult $received = null;
-    private ?CommitResult $result = null;
-    private Deadline $deadline;
     public readonly string $operationId;
 
+    /** @var null|resource 独立命令进程；只有观察到退出后才回收句柄并归还配额。 */
+    private mixed $process = null;
+
+    /** @var array<int, resource> 子进程标准输入与合并输出；只关闭本实例持有的句柄。 */
+    private array $pipes = [];
+
+    private ?WorkerSocket $socket = null;
+
+    private string $token = '';
+
+    private string $input = '';
+
+    private string $output = '';
+
+    private string $serializedRequest;
+
+    private bool $authenticated = false;
+
+    private bool $killed = false;
+
+    private bool $cleaning = false;
+
+    private ?CommitResult $received = null;
+
+    private ?CommitResult $result = null;
+
+    private Deadline $deadline;
+
     /**
-     * @param list<string> $command 显式编译应用命令，不经过 shell；该入口须识别 --store-worker-pipe。
-     * @param array<string,mixed> $request 由 PostgresStore 定义的消息/交付操作；不包含连接凭据。
-     * @throws \RuntimeException 无法取得本地 IPC 或进程资源。
+     * @param list<string> $command 显式编译应用命令，不经过 shell；该入口须识别 --store-worker-pipe
+     * @param array<string,mixed> $request 由 PostgresStore 定义的消息/交付操作；不包含连接凭据
+     * @throws \RuntimeException 无法取得本地 IPC 或进程资源
      */
     public function __construct(private array $command, array $request, private float $seconds = 5.0)
     {
@@ -64,6 +76,27 @@ final class PendingCommit
     {
         return CoroutineRuntime::run(function (): ?CommitResult {
             return $this->pollCurrent();
+        });
+    }
+
+    /** 缩短当前本地等待；已收到的确认不撤销，仍等待本地退出，未确认或未释放的远端工作继续精确清理。 */
+    public function cancel(): void
+    {
+        $this->deadline->shorten(0.0);
+    }
+
+    /**
+     * 显式应用 worker 入口；本方法拥有 IPC，存储实现拥有数据库租约，返回时二者均已释放。
+     * 必须在隔离子进程运行；父进程负责硬截止和未知远端资源隔离。
+     * @param null|(\Closure(array<string,mixed>): CommitResult) $operation 应用显式绑定的业务执行入口；cleanup始终由存储精确清理
+     */
+    public static function work(PostgresStore $store, string $endpoint, ?\Closure $operation = null): void
+    {
+        if ($endpoint !== 'pipe') {
+            throw new \InvalidArgumentException('MQTT 持久 worker 只接受受控进程的私有 IPC');
+        }
+        CoroutineRuntime::run(static function () use ($store, $operation): void {
+            self::workCurrent($store, $operation);
         });
     }
 
@@ -106,12 +139,6 @@ final class PendingCommit
             $this->closePipe();
         }
         return $this->result;
-    }
-
-    /** 缩短当前本地等待；已收到的确认不撤销，仍等待本地退出，未确认或未释放的远端工作继续精确清理。 */
-    public function cancel(): void
-    {
-        $this->deadline->shorten(0.0);
     }
 
     private function launch(): void
@@ -234,10 +261,9 @@ final class PendingCommit
                     $this->cancel();
                 }
                 break;
-            } else {
-                $this->output = substr($this->output, $written);
-                $budget -= $written;
             }
+            $this->output = substr($this->output, $written);
+            $budget -= $written;
         }
     }
 
@@ -251,7 +277,7 @@ final class PendingCommit
         $read = $writing ? [] : [$pipe];
         $write = $writing ? [$pipe] : [];
         $except = [];
-        return @stream_select($read, $write, $except, 0, (int) ceil($remaining * 1000000.0)) > 0;
+        return @stream_select($read, $write, $except, 0, (int)ceil($remaining * 1000000.0)) > 0;
     }
 
     private function closePipe(): void
@@ -266,24 +292,9 @@ final class PendingCommit
         $this->output = '';
     }
 
-    /**
-     * 显式应用 worker 入口；本方法拥有 IPC，存储实现拥有数据库租约，返回时二者均已释放。
-     * 必须在隔离子进程运行；父进程负责硬截止和未知远端资源隔离。
-     * @param (Closure(array<string,mixed>): CommitResult)|null $operation 应用显式绑定的业务执行入口；cleanup始终由存储精确清理。
-     */
-    public static function work(PostgresStore $store, string $endpoint, ?Closure $operation = null): void
+    private static function workCurrent(PostgresStore $store, ?\Closure $operation): void
     {
-        if ($endpoint !== 'pipe') {
-            throw new \InvalidArgumentException('MQTT 持久 worker 只接受受控进程的私有 IPC');
-        }
-        CoroutineRuntime::run(static function () use ($store, $operation): void {
-            self::workCurrent($store, $operation);
-        });
-    }
-
-    private static function workCurrent(PostgresStore $store, ?Closure $operation): void
-    {
-        $token = (string) getenv('MQTT_WORKER_TOKEN');
+        $token = (string)getenv('MQTT_WORKER_TOKEN');
         if (preg_match('/^[a-f0-9]{64}$/D', $token) !== 1) {
             throw new \RuntimeException('MQTT 持久 worker 缺少调用身份');
         }

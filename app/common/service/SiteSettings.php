@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace app\common\service;
 
-use app\common\model\SiteSetting;
+use app\platform\model\PlatformSetting;
+use app\system\model\SystemSetting;
 use Type\Core\Http\HttpError;
 use Type\Orm\Db;
 use Type\Orm\Model;
@@ -36,7 +37,7 @@ final class SiteSettings
             'breadcrumb_enable' => 1,
             'breadcrumb_show_icon' => 1,
             'breadcrumb_style' => 'normal',
-            'tabbar_enable' => 0,
+            'tabbar_enable' => 1,
             'tabbar_style' => 'chrome',
             'footer_enable' => 0,
             'footer_fixed' => 0,
@@ -44,26 +45,26 @@ final class SiteSettings
     }
 
     /** @return array<string, mixed> 从主库读取公开投影，使保存后的登录页立即采用当前设置。 */
-    public static function publicView(): array
+    public static function publicView(string $realm = 'platform'): array
     {
-        return self::view(self::row(), false);
+        return self::view(self::row($realm), false);
     }
 
     /** @return array<string, mixed> 管理端投影包含并发版本和更新时间，但不暴露单例主键。 */
-    public static function adminView(): array
+    public static function managementView(string $realm = 'platform'): array
     {
-        return self::view(self::row(), true);
+        return self::view(self::row($realm), true);
     }
 
     /**
      * 在调用方已有授权事务中更新站点设置；所有可写字段均在此处再次校验。
      *
-     * @param array<string, mixed> $changes 只接受固定字段，不接受任意主题或脚本内容。
-     * @return array<string, mixed> 更新后的管理端投影和实际变化键。
-     * @throws \LogicException 调用方未建立授权事务。
-     * @throws HttpError 输入非法、尚未完成安装或读取的版本已过期。
+     * @param array<string, mixed> $changes 只接受固定字段，不接受任意主题或脚本内容
+     * @return array<string, mixed> 更新后的管理端投影和实际变化键
+     * @throws \LogicException 调用方未建立授权事务
+     * @throws HttpError 输入非法、尚未完成安装或读取的版本已过期
      */
-    public static function update(int $version, array $changes): array
+    public static function update(int $version, array $changes, string $realm = 'platform'): array
     {
         if ($version < 1 || $changes === []) {
             throw new HttpError(422, 'site_settings_input_invalid');
@@ -73,12 +74,14 @@ final class SiteSettings
         if ($connection->transactionDepth() < 1) {
             throw new \LogicException('site_settings_requires_transaction');
         }
-        $query = SiteSetting::query()->master()->where('id', '=', 1);
+        self::realm($realm);
+        $query = $realm === 'system' ? SystemSetting::query()->master()->where('id', '=', 1)
+            : PlatformSetting::query()->master()->where('id', '=', $realm === 'platform' ? 1 : 2);
         $model = ($connection->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
         if ($model === null) {
             throw new HttpError(503, 'installation_incomplete');
         }
-        if ($model->get('version') !== $version) {
+        if ($model->version !== $version) {
             throw new HttpError(409, 'stale_version');
         }
         $model->fill($normalized);
@@ -88,13 +91,22 @@ final class SiteSettings
     }
 
     /** 站点是全局业务单例；没有对应记录时不以默认值掩盖未完成的安装。 */
-    private static function row(): Model
+    private static function row(string $realm): Model
     {
-        $model = SiteSetting::query()->master()->find(1);
+        self::realm($realm);
+        $model = $realm === 'system' ? SystemSetting::query()->master()->find(1)
+            : PlatformSetting::query()->master()->find($realm === 'platform' ? 1 : 2);
         if ($model === null) {
             throw new HttpError(503, 'installation_incomplete');
         }
         return $model;
+    }
+
+    private static function realm(string $realm): void
+    {
+        if (!in_array($realm, ['platform', 'system', 'system-default'], true)) {
+            throw new HttpError(422, 'settings_realm_invalid');
+        }
     }
 
     /** @param array<string, mixed> $changes @return array<string, mixed> */
@@ -173,36 +185,36 @@ final class SiteSettings
         if ($url === false || strlen($value) > 512) {
             return false;
         }
-        $scheme = strtolower((string) parse_url($value, PHP_URL_SCHEME));
-        return in_array($scheme, ['http', 'https'], true) && (string) parse_url($value, PHP_URL_HOST) !== '';
+        $scheme = strtolower((string)parse_url($value, PHP_URL_SCHEME));
+        return in_array($scheme, ['http', 'https'], true) && (string)parse_url($value, PHP_URL_HOST) !== '';
     }
 
     /** @return array<string, mixed> 只输出固定业务字段，不把完整模型或持久化身份暴露给客户端。 */
-    private static function view(Model $model, bool $admin): array
+    private static function view(Model $model, bool $platform): array
     {
         $result = [
-            'name' => (string) $model->get('name'),
-            'official_url' => (string) $model->get('official_url'),
-            'description' => (string) $model->get('description'),
-            'logo_url' => (string) $model->get('logo_url'),
-            'timezone' => (string) $model->get('timezone'),
+            'name' => (string)$model->name,
+            'official_url' => (string)$model->official_url,
+            'description' => (string)$model->description,
+            'logo_url' => (string)$model->logo_url,
+            'timezone' => (string)$model->timezone,
             'theme' => [
-                'mode' => (string) $model->get('theme_mode'),
-                'colorPrimary' => (string) $model->get('theme_color'),
-                'radius' => (string) $model->get('theme_radius'),
+                'mode' => (string)$model->theme_mode,
+                'colorPrimary' => (string)$model->theme_color,
+                'radius' => (string)$model->theme_radius,
             ],
             'preferences' => [
-                'layout' => (string) $model->get('layout_mode'),
-                'sidebar' => ['collapsed' => (bool) $model->get('sidebar_collapsed')],
-                'navigation' => ['styleType' => (string) $model->get('navigation_style'), 'split' => (bool) $model->get('navigation_split')],
-                'breadcrumb' => ['enable' => (bool) $model->get('breadcrumb_enable'), 'showIcon' => (bool) $model->get('breadcrumb_show_icon'), 'styleType' => (string) $model->get('breadcrumb_style')],
-                'tabbar' => ['enable' => (bool) $model->get('tabbar_enable'), 'styleType' => (string) $model->get('tabbar_style')],
-                'footer' => ['enable' => (bool) $model->get('footer_enable'), 'fixed' => (bool) $model->get('footer_fixed')],
+                'layout' => (string)$model->layout_mode,
+                'sidebar' => ['collapsed' => (bool)$model->sidebar_collapsed],
+                'navigation' => ['styleType' => (string)$model->navigation_style, 'split' => (bool)$model->navigation_split],
+                'breadcrumb' => ['enable' => (bool)$model->breadcrumb_enable, 'showIcon' => (bool)$model->breadcrumb_show_icon, 'styleType' => (string)$model->breadcrumb_style],
+                'tabbar' => ['enable' => (bool)$model->tabbar_enable, 'styleType' => (string)$model->tabbar_style],
+                'footer' => ['enable' => (bool)$model->footer_enable, 'fixed' => (bool)$model->footer_fixed],
             ],
         ];
-        if ($admin) {
-            $result['version'] = (int) $model->get('version');
-            $result['updated_at'] = (int) $model->get('updated_at');
+        if ($platform) {
+            $result['version'] = (int)$model->version;
+            $result['updated_at'] = (int)$model->updated_at;
         }
         return $result;
     }

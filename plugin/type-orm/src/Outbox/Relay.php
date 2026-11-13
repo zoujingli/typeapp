@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Type\Orm\Outbox;
 
-use Closure;
-use Throwable;
 use Type\Orm\Connection;
 use Type\Orm\Database;
-use Type\Orm\DatabaseManager;
 use Type\Orm\DatabaseException;
+use Type\Orm\DatabaseManager;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionOwner;
 use Type\Runtime\ExecutionScope;
@@ -19,11 +17,17 @@ use Type\Runtime\WorkLifecycle;
 final class Relay
 {
     private Database|DatabaseManager $database;
+
     private Store $store;
+
     private Publisher $publisher;
+
     private string $source;
+
     private int $executionMilliseconds;
+
     private WorkLifecycle $lifecycle;
+
     private ExecutionOwner $owner;
 
     /**
@@ -50,8 +54,8 @@ final class Relay
 
     /**
      * 用短作用域领取并逐条外部投递，目标接受后重新借同来源连接登记凭据。
-     * @param int $limit 本批领取 1 至 1000 条消息。
-     * @return int 已成功登记接受凭据的条数；停止或异常时可能已有部分消息接受。
+     * @param int $limit 本批领取 1 至 1000 条消息
+     * @return int 已成功登记接受凭据的条数；停止或异常时可能已有部分消息接受
      */
     public function runOnce(int $limit = 100): int
     {
@@ -73,10 +77,10 @@ final class Relay
                 if (!$accepted) {
                     throw new DatabaseException('发布完成但 Outbox token 已失效，消息可能重复，需要后续对账');
                 }
-                $published++;
+                ++$published;
             }
             return $published;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->lifecycle->stop(0.0);
             throw $error;
         } finally {
@@ -96,7 +100,7 @@ final class Relay
         return $this->lifecycle->ready();
     }
 
-    /** @return array<string, int|bool|string> 当前角色就绪、在途及排空状态。 */
+    /** @return array<string, bool|int|string> 当前角色就绪、在途及排空状态。 */
     public function statistics(): array
     {
         return $this->lifecycle->statistics();
@@ -109,8 +113,8 @@ final class Relay
             : $this->database->connect($scope);
     }
 
-    /** @param Closure(ExecutionScope): mixed $operation 当前有界阶段，结束后不保留连接。 */
-    private function scoped(Deadline $deadline, Closure $operation): mixed
+    /** @param \Closure(ExecutionScope): mixed $operation 当前有界阶段，结束后不保留连接。 */
+    private function scoped(Deadline $deadline, \Closure $operation): mixed
     {
         $scope = new ExecutionScope($deadline);
         $this->lifecycle->attach($scope);
@@ -119,12 +123,12 @@ final class Relay
         try {
             $result = $scope->run($operation);
             $scope->assertActive();
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $failure = $error;
         }
         try {
             $scope->close();
-        } catch (Throwable $cleanup) {
+        } catch (\Throwable $cleanup) {
             if ($failure !== null) {
                 throw new DatabaseException('Outbox 阶段失败且资源收尾失败：' . $cleanup->getMessage(), 0, $failure);
             }

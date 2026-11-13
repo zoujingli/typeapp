@@ -8,27 +8,41 @@ namespace Type\Mqtt;
 final class ConnectPacket
 {
     public int $version = 0;
+
     public string $clientId = '';
+
     public bool $assignedIdentifier = false;
+
     public bool $cleanStart = true;
+
     public int $keepAlive = 0;
+
     public ?string $username = null;
+
     public ?string $password = null;
+
     public bool $will = false;
+
     public int $willQos = 0;
+
     public bool $willRetain = false;
+
     public string $willTopic = '';
+
     public string $willPayload = '';
+
     /** @var array<int, mixed> MQTT 5 CONNECT 属性，缺失与零值分开。 */
     public array $properties = [];
+
     /** @var array<int, mixed> MQTT 5 遗嘱属性。 */
     public array $willProperties = [];
+
     /** 可作为 PUBLISH 转发的原始属性，不含 Will Delay。 */
     public string $willPublicationProperties = '';
 
     /**
      * CONNECT 是每条网络连接的首个报文；调用方先验证固定头及完整长度。
-     * @throws ProtocolError 格式、字段或协议版本不合法。
+     * @throws ProtocolError 格式、字段或协议版本不合法
      */
     public function decode(string $payload): void
     {
@@ -82,7 +96,7 @@ final class ConnectPacket
             throw new ProtocolError();
         }
         if (isset($this->properties[0x15])) {
-            throw new ProtocolError(0x8c);
+            throw new ProtocolError(0x8C);
         }
     }
 }

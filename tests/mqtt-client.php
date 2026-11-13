@@ -480,7 +480,7 @@ function mqttClientPeerCases(string $consumer, array $command, array $environmen
                     }
                 } elseif ($scenario === 'duplicate-inbound') {
                     $body = mqttField('example/wire') . "\0\x01\0payload";
-                    mqttWrite($socket, mqttPacket(0x32, $body) . mqttPacket(0x3a, $body));
+                    mqttWrite($socket, mqttPacket(0x32, $body) . mqttPacket(0x3A, $body));
                     $started = microtime(true);
                     expect(mqttRead($socket) === "\x40\x02\0\x01" && microtime(true) - $started >= 0.15, 'Client提前或错误确认入站');
                 } elseif ($scenario === 'resume-publication') {
@@ -491,14 +491,14 @@ function mqttClientPeerCases(string $consumer, array $command, array $environmen
                     expect(is_resource($socket), '未知发布未由调用方显式重连');
                     stream_set_timeout($socket, 3);
                     $resume = mqttRead($socket);
-                    expect(ord($resume[9]) === 0xc0, '重连错误设置CleanStart');
+                    expect(ord($resume[9]) === 0xC0, '重连错误设置CleanStart');
                     mqttWrite($socket, mqttPacket(0x20, "\x01\0\0"));
                     $duplicate = mqttRead($socket);
-                    expect(ord($duplicate[0]) === 0x3a && substr($duplicate, 1) === substr($original, 1), '重连没有复用原标识和内容');
+                    expect(ord($duplicate[0]) === 0x3A && substr($duplicate, 1) === substr($original, 1), '重连没有复用原标识和内容');
                     mqttWrite($socket, "\x40\x02\0\x01");
                 } elseif ($scenario === 'receive-excess-window') {
                     $bytes = '';
-                    for ($identifier = 1; $identifier <= 3; $identifier++) {
+                    for ($identifier = 1; $identifier <= 3; ++$identifier) {
                         $bytes .= mqttPacket(0x32, mqttField('example/wire') . pack('n', $identifier) . "\0x");
                     }
                     mqttWrite($socket, $bytes);
@@ -575,7 +575,7 @@ function mqttClientCases(string $root, string $consumer, array $command, array $
 {
     require_once $root . '/tests/native-database.php';
     require_once $root . '/tests/postgres-sync.php';
-    $tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+    $tools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
     $database = new NativeDatabase($consumer . '/client-primary', 'pgsql', $tools);
     $sync = null;
     $broker = null;
@@ -589,9 +589,9 @@ function mqttClientCases(string $root, string $consumer, array $command, array $
         expect($installed->successful() && $installed->stderr === '' && json_decode($installed->stdout, true, 32, JSON_THROW_ON_ERROR)['state'] === 'committed', '客户端测试Broker持久安装失败：' . $installed->stderr);
         foreach ([false, true] as $tls) {
             $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $error);
-            $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+            $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
             fclose($listener);
-            $environment['CLIENT_PORT'] = (string) $port;
+            $environment['CLIENT_PORT'] = (string)$port;
             $environment['CLIENT_CA'] = $tls ? $consumer . '/certificate.pem' : '';
             $environment['MQTT_CERTIFICATE'] = $environment['CLIENT_CA'];
             $environment['MQTT_PRIVATE_KEY'] = $tls ? $consumer . '/private.pem' : '';
@@ -649,7 +649,7 @@ function testMqttJsClient(string $directory): string
         expect(is_file($cli), '当前 Node 安装缺少 npm CLI');
         $npm = [$node, $cli];
     }
-    $install = new \Type\Testing\Process(
+    $install = new Process(
         [...$npm, 'install', '--ignore-scripts', '--no-audit', '--no-fund'],
         $directory,
         getenv()
@@ -663,7 +663,7 @@ function testMqttJsClient(string $directory): string
         $install->stop();
     }
     expect(is_file($directory . '/node_modules/mqtt/package.json'), 'MQTT.js 5.15.0 未安装到独立目录');
-    $version = json_decode((string) file_get_contents($directory . '/node_modules/mqtt/package.json'), true, 16, JSON_THROW_ON_ERROR);
+    $version = json_decode((string)file_get_contents($directory . '/node_modules/mqtt/package.json'), true, 16, JSON_THROW_ON_ERROR);
     expect(($version['version'] ?? '') === '5.15.0', 'MQTT.js 版本不是锁定的 5.15.0');
     return $directory;
 }

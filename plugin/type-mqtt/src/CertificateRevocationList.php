@@ -12,24 +12,22 @@ namespace Type\Mqtt;
 final class CertificateRevocationList
 {
     /**
-     * @param list<string> $serials 已规范化的证书序列号十六进制。
+     * @param list<string> $serials 已规范化的证书序列号十六进制
      */
-    private function __construct(private array $serials, private int $thisUpdate, private int $nextUpdate)
-    {
-    }
+    private function __construct(private array $serials, private int $thisUpdate, private int $nextUpdate) {}
 
     /**
      * 读取 PEM CRL 文件，并用配置 CA 文件中任一份证书的公钥核对签名与有效期窗口。
-     * @throws \RuntimeException PEM、签名、算法或时间无效。
+     * @throws \RuntimeException PEM、签名、算法或时间无效
      */
     public static function fromFiles(string $path, string $caPath): self
     {
-        return self::fromPem((string) file_get_contents($path), (string) file_get_contents($caPath));
+        return self::fromPem((string)file_get_contents($path), (string)file_get_contents($caPath));
     }
 
     /**
      * 解析 PEM CRL，并用 CA PEM 包中任一份证书的公钥核对签名。
-     * @throws \RuntimeException PEM、签名、算法或时间无效。
+     * @throws \RuntimeException PEM、签名、算法或时间无效
      */
     public static function fromPem(string $pem, string $caPem): self
     {
@@ -152,10 +150,10 @@ final class CertificateRevocationList
             throw new \RuntimeException('MQTT 客户端 CRL 编码截断');
         }
         $first = ord($bytes[$cursor]);
-        $cursor++;
+        ++$cursor;
         $length = $first;
         if (($first & 0x80) !== 0) {
-            $count = $first & 0x7f;
+            $count = $first & 0x7F;
             if ($count < 1 || $count > 4 || $cursor + $count > $limit) {
                 throw new \RuntimeException('MQTT 客户端 CRL 长度非法');
             }
@@ -163,8 +161,8 @@ final class CertificateRevocationList
             $index = 0;
             while ($index < $count) {
                 $length = ($length << 8) | ord($bytes[$cursor]);
-                $cursor++;
-                $index++;
+                ++$cursor;
+                ++$index;
             }
         }
         if ($length < 0 || $cursor + $length > $limit) {
@@ -252,7 +250,7 @@ final class CertificateRevocationList
                     }
                     $serials[] = self::integerHex(substr($bytes, $serialStart, $serialLength));
                 }
-            } elseif ($tag !== 0xa0) {
+            } elseif ($tag !== 0xA0) {
                 throw new \RuntimeException('MQTT 客户端 CRL TBS 尾部编码无效');
             }
         }
@@ -267,20 +265,20 @@ final class CertificateRevocationList
         }
         $oid = substr($bytes, $oidStart, $oidLength);
         $first = ord($oid[0]);
-        $parts = [(string) intdiv($first, 40), (string) ($first % 40)];
+        $parts = [(string)intdiv($first, 40), (string)($first % 40)];
         $value = 0;
         $index = 1;
         $length = strlen($oid);
         while ($index < $length) {
             $byte = ord($oid[$index]);
-            $value = ($value << 7) | ($byte & 0x7f);
+            $value = ($value << 7) | ($byte & 0x7F);
             if (($byte & 0x80) === 0) {
-                $parts[] = (string) $value;
+                $parts[] = (string)$value;
                 $value = 0;
             } elseif ($index === $length - 1) {
                 throw new \RuntimeException('MQTT 客户端 CRL 签名算法标识截断');
             }
-            $index++;
+            ++$index;
         }
         return implode('.', $parts);
     }
@@ -298,14 +296,14 @@ final class CertificateRevocationList
     private static function time(int $tag, string $value): int
     {
         if ($tag === 0x17 && preg_match('/^([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})Z$/D', $value, $match) === 1) {
-            $year = (int) $match[1];
-            $stamp = gmmktime((int) $match[4], (int) $match[5], (int) $match[6], (int) $match[2], (int) $match[3], $year >= 50 ? $year + 1900 : $year + 2000);
+            $year = (int)$match[1];
+            $stamp = gmmktime((int)$match[4], (int)$match[5], (int)$match[6], (int)$match[2], (int)$match[3], $year >= 50 ? $year + 1900 : $year + 2000);
             if ($stamp !== false) {
                 return $stamp;
             }
         }
         if ($tag === 0x18 && preg_match('/^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})Z$/D', $value, $match) === 1) {
-            $stamp = gmmktime((int) $match[4], (int) $match[5], (int) $match[6], (int) $match[2], (int) $match[3], (int) $match[1]);
+            $stamp = gmmktime((int)$match[4], (int)$match[5], (int)$match[6], (int)$match[2], (int)$match[3], (int)$match[1]);
             if ($stamp !== false) {
                 return $stamp;
             }

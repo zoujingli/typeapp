@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace TypeTests\Unit;
 
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use Type\Build\WindowsStaticBackend;
 use TypePhp\Platform\Windows;
 
-/** 验证锁定编译器的实际命令入口；真实 Windows 链接和运行另由静态 SDK 探针验收。 */
+/**
+ * 验证锁定编译器的实际命令入口；真实 Windows 链接和运行另由静态 SDK 探针验收。
+ * @internal
+ * @coversNothing
+ */
 final class WindowsStaticBackendTest extends TestCase
 {
     public function testCppAndNativeCUseTheSameStaticCrt(): void
@@ -41,14 +44,14 @@ final class WindowsStaticBackendTest extends TestCase
 
     public function testExplicitDynamicCrtDoesNotSilentlyChangeTheStaticTarget(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('CRT 参数');
         (new WindowsStaticBackend(new Windows()))->buildCompileOptions(['cxxflags' => '/MD']);
     }
 
     public function testCBridgeRejectsConflictingCrt(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('CRT 参数');
         (new WindowsStaticBackend(new Windows()))->buildCCompileCommand('bridge.c', 'bridge.obj', ['cflags' => '/MT']);
     }

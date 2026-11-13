@@ -4,24 +4,25 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
-use InvalidArgumentException;
-
 /** @internal 单外键关联的有界预加载实现。 */
 final class KeyRelation extends Relation
 {
-    private Closure $target;
+    private \Closure $target;
+
     private string $source;
+
     private string $related;
+
     private bool $many;
+
     private int $batchSize;
 
-    /** @param Closure(Connection): ModelQuery $target 接收关联查询所用连接。 */
-    public function __construct(Closure $target, string $source, string $related, bool $many, int $batchSize)
+    /** @param \Closure(Connection): ModelQuery $target 接收关联查询所用连接。 */
+    public function __construct(\Closure $target, string $source, string $related, bool $many, int $batchSize)
     {
         if ($batchSize < 1 || $batchSize > 1000 || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $source)
             || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $related)) {
-            throw new InvalidArgumentException('关系键或批量大小无效');
+            throw new \InvalidArgumentException('关系键或批量大小无效');
         }
         $this->target = $target;
         $this->source = $source;
@@ -65,7 +66,7 @@ final class KeyRelation extends Relation
                 if (!is_int($key) && !is_string($key)) {
                     throw new ModelException('invalid_relation_key', '关系键必须是整数或字符串');
                 }
-                $keys['key:' . (string) $key] = $key;
+                $keys['key:' . (string)$key] = $key;
             }
         }
         $grouped = [];
@@ -78,7 +79,7 @@ final class KeyRelation extends Relation
             $query = $target->including([$this->related])->whereIn($this->related, $chunk)->orderedForRelation();
             $rows = $budget === null ? $query->get() : $query->getBounded($budget->remaining(), $budget);
             foreach ($rows as $row) {
-                $key = 'key:' . (string) $row->rawValue($this->related);
+                $key = 'key:' . (string)$row->rawValue($this->related);
                 if (!array_key_exists($key, $keys)) {
                     throw new ModelException('relation_key_comparison', '数据库关联键比较与模型值不一致，请统一键的规范化和排序规则');
                 }
@@ -90,7 +91,7 @@ final class KeyRelation extends Relation
         }
         foreach ($models as $model) {
             $key = $model->rawValue($this->source);
-            $related = $key === null ? [] : ($grouped['key:' . (string) $key] ?? []);
+            $related = $key === null ? [] : ($grouped['key:' . (string)$key] ?? []);
             $model->setRelation($name, $this->many ? $related : ($related[0] ?? null));
         }
     }

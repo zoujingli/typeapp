@@ -5,8 +5,8 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-use Type\Build\SourceSet;
 use Type\Build\SourceRewriter;
+use Type\Build\SourceSet;
 
 $root = dirname(__DIR__);
 $packageRoot = $root . '/vendor/dragonmantank/cron-expression';
@@ -29,9 +29,9 @@ foreach ($result['mapping'] as $entry) {
 $loader = '$loader = require ' . var_export($root . '/vendor/autoload.php', true) . ';'
     . 'require ' . var_export($root . '/vendor/swoole/typephp/src/polyfills.php', true) . ';'
     . '$loader->addClassMap(' . var_export($classes, true) . ');';
-$exercise = 'foreach (["*", "0", "59", "60", "*/5", "1-10", "1.2", "bad"] as $value) { echo json_encode((new Cron\\MinutesField())->validate($value)), "\\n"; } '
-    . 'foreach (["0 0 15 * 1", "*/5 1-5 * * 2-6", "0 0 29 2 *"] as $expression) { foreach ((new Cron\\CronExpression($expression))->getMultipleRunDates(4, "2026-01-01", false, true, "UTC") as $date) { echo $date->format("c"), "\\n"; } }'
-    . 'foreach ([new DateTime("2026-01-01 12:30:00"), new DateTimeImmutable("2026-01-01 12:30:00")] as $initial) { foreach ([new Cron\\MinutesField(), new Cron\\HoursField(), new Cron\\DayOfMonthField(), new Cron\\DayOfWeekField(), new Cron\\MonthField()] as $field) { foreach ([false, true] as $invert) { $date = clone $initial; $field->increment($date, $invert); echo get_class($date), ":", $date->format("c"), "\\n"; } } }';
+$exercise = 'foreach (["*", "0", "59", "60", "*/5", "1-10", "1.2", "bad"] as $value) { echo json_encode((new Cron\MinutesField())->validate($value)), "\n"; } '
+    . 'foreach (["0 0 15 * 1", "*/5 1-5 * * 2-6", "0 0 29 2 *"] as $expression) { foreach ((new Cron\CronExpression($expression))->getMultipleRunDates(4, "2026-01-01", false, true, "UTC") as $date) { echo $date->format("c"), "\n"; } }'
+    . 'foreach ([new DateTime("2026-01-01 12:30:00"), new DateTimeImmutable("2026-01-01 12:30:00")] as $initial) { foreach ([new Cron\MinutesField(), new Cron\HoursField(), new Cron\DayOfMonthField(), new Cron\DayOfWeekField(), new Cron\MonthField()] as $field) { foreach ([false, true] as $invert) { $date = clone $initial; $field->increment($date, $invert); echo get_class($date), ":", $date->format("c"), "\n"; } } }';
 $loader .= $exercise;
 $adapted = successful([PHP_BINARY, '-r', $loader]);
 $original = successful([PHP_BINARY, '-r', 'require ' . var_export($root . '/vendor/autoload.php', true) . ';' . $exercise]);

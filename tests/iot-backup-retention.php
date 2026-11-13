@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/iot-recovery.php';
 
+use Type\Build\NativePackage;
 use Type\Testing\Process;
 
 /** 真实备份链的私有破坏性资源；不修改共享物理恢复/授权验收装置。 */
@@ -12,7 +13,7 @@ function iotBackupRetention(array $command, array $environment, string $base, ar
     $root = dirname(__DIR__);
     $archive = $base . '/archive';
     expect(mkdir($archive, 0700), '不能创建本轮归档目录');
-    $tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+    $tools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
     $report['tools'] = [];
     foreach (['pg_basebackup', 'pg_verifybackup', 'pg_combinebackup', 'pg_controldata', 'pg_waldump'] as $name) {
         $program = $tools['root'] . '/bin/' . $name;
@@ -81,8 +82,8 @@ function iotBackupRetention(array $command, array $environment, string $base, ar
             }
         }
         $source->exec("INSERT INTO retention_probe VALUES ('wal-only')");
-        $restoreLsn = (string) $source->query("SELECT pg_create_restore_point('retention_target')")->fetchColumn();
-        $lastWal = (string) $source->query('SELECT pg_walfile_name(' . $source->quote($restoreLsn) . '::pg_lsn)')->fetchColumn();
+        $restoreLsn = (string)$source->query("SELECT pg_create_restore_point('retention_target')")->fetchColumn();
+        $lastWal = (string)$source->query('SELECT pg_walfile_name(' . $source->quote($restoreLsn) . '::pg_lsn)')->fetchColumn();
         $source->exec("INSERT INTO retention_probe VALUES ('after-target')");
         $source->query('SELECT pg_switch_wal()')->fetchColumn();
         $deadline = microtime(true) + 90;
@@ -100,7 +101,7 @@ function iotBackupRetention(array $command, array $environment, string $base, ar
         $foreignEnvironment['PGPASSWORD'] = $foreignEnvironment['TYPE_PGSQL_PASSWORD'];
         nativeDatabaseCommand(
             [$tools['root'] . '/bin/pg_basebackup', '-h', '127.0.0.1', '-p', $foreignEnvironment['TYPE_PGSQL_PORT'],
-            '-U', $foreignEnvironment['TYPE_PGSQL_USER'], '-X', 'stream', '-c', 'fast', '--no-password', '-D', $archive . '/incoming/foreign'],
+                '-U', $foreignEnvironment['TYPE_PGSQL_USER'], '-X', 'stream', '-c', 'fast', '--no-password', '-D', $archive . '/incoming/foreign'],
             $foreignEnvironment,
             [$foreignEnvironment['TYPE_PGSQL_PASSWORD']],
             $base . '/foreign-backup.log',
@@ -257,7 +258,7 @@ function iotBackupRetention(array $command, array $environment, string $base, ar
         expect(unlink($archive . '/' . $retiringNames[0]) && unlink($archive . '/' . $retiringNames[1] . '.sha256'), '不能建立本轮WAL成对中断状态');
         $run(['pin', 'obsolete', 'too-late'], 'recovery_backup_chain_invalid');
         $removed = 0;
-        for ($batch = 0; $batch < 100; $batch++) {
+        for ($batch = 0; $batch < 100; ++$batch) {
             $progress = $run($clean);
             expect($progress['removed_objects'] <= 100, '删除批次越界');
             $removed += $progress['removed_objects'];
@@ -273,7 +274,7 @@ function iotBackupRetention(array $command, array $environment, string $base, ar
         }
         $parallel = [];
         try {
-            for ($index = 0; $index < 2; $index++) {
+            for ($index = 0; $index < 2; ++$index) {
                 $parallel[] = new Process([...$command, 'iot:backup', 'clean', $archive, $tools['root'], '100'], $root, $environment, 1048576);
             }
             foreach ($parallel as $process) {
@@ -295,7 +296,7 @@ function iotBackupRetention(array $command, array $environment, string $base, ar
         file_put_contents($combined . '/recovery.signal', '');
         $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $message);
         expect(is_resource($listener), '不能分配本轮恢复端口');
-        $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+        $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
         fclose($listener);
         $restoreHook = iotRecoveryHook(
             [...$command, 'iot:wal', 'restore', $archive],
@@ -307,7 +308,7 @@ function iotBackupRetention(array $command, array $environment, string $base, ar
             $environment,
             [escapeshellarg(str_replace('%', '%%', $combined) . '/%p'), "'%f'"]
         );
-        $recovered = new Process([$tools['postgres'], '-D', $combined, '-h', '127.0.0.1', '-p', (string) $port, '-k', '',
+        $recovered = new Process([$tools['postgres'], '-D', $combined, '-h', '127.0.0.1', '-p', (string)$port, '-k', '',
             '-c', 'archive_mode=on', '-c', 'archive_command=' . $promotedArchiveHook, '-c', 'restore_command=' . $restoreHook, '-c', 'recovery_target_name=retention_target',
             '-c', 'recovery_target_action=pause', '-c', 'hot_standby=on'], $base, $dbEnvironment, 16777216);
         $deadline = microtime(true) + 90;
@@ -329,7 +330,7 @@ function iotBackupRetention(array $command, array $environment, string $base, ar
             }
             usleep(100000);
         } while (microtime(true) < $deadline);
-        expect($restored !== null && realpath((string) $restored->query('SHOW data_directory')->fetchColumn()) === $combined, '恢复未在本轮数据根到达暂停点');
+        expect($restored !== null && realpath((string)$restored->query('SHOW data_directory')->fetchColumn()) === $combined, '恢复未在本轮数据根到达暂停点');
         $phases = $restored->query('SELECT phase FROM retention_probe ORDER BY phase')->fetchAll(PDO::FETCH_COLUMN);
         expect($phases === ['base', 'boundary', 'incremental', 'latest', 'obsolete', 'wal-only'], '清理后真实链没有恢复到WAL目标或越过目标');
         foreach (['base', 'incremental', 'boundary', 'latest'] as $id) {
@@ -348,16 +349,16 @@ function iotBackupRetention(array $command, array $environment, string $base, ar
         expect($restored->query('SELECT pg_promote(true, 60)')->fetchColumn() === true, '本轮隔离恢复库未提升');
         $promotedEnvironment = array_replace($dbEnvironment, ['PGPASSWORD' => $password]);
         nativeDatabaseCommand(
-            [$tools['root'] . '/bin/pg_basebackup', '-h', '127.0.0.1', '-p', (string) $port,
-            '-U', $dbEnvironment['TYPE_PGSQL_USER'], '-X', 'stream', '-c', 'fast', '--no-password',
-            '--manifest-checksums=SHA256', '-D', $archive . '/incoming/promoted'],
+            [$tools['root'] . '/bin/pg_basebackup', '-h', '127.0.0.1', '-p', (string)$port,
+                '-U', $dbEnvironment['TYPE_PGSQL_USER'], '-X', 'stream', '-c', 'fast', '--no-password',
+                '--manifest-checksums=SHA256', '-D', $archive . '/incoming/promoted'],
             $promotedEnvironment,
             [$password],
             $base . '/promoted-backup.log',
             120
         );
         $restored->exec("INSERT INTO retention_probe VALUES ('promoted')");
-        $promotedWal = (string) $restored->query('SELECT pg_walfile_name(pg_current_wal_insert_lsn())')->fetchColumn();
+        $promotedWal = (string)$restored->query('SELECT pg_walfile_name(pg_current_wal_insert_lsn())')->fetchColumn();
         $restored->query('SELECT pg_switch_wal()')->fetchColumn();
         $deadline = microtime(true) + 90;
         do {
@@ -376,7 +377,7 @@ function iotBackupRetention(array $command, array $environment, string $base, ar
         expect($promotedPlan['plan']['validated_timeline'] === 2 && $promotedPlan['plan']['validated_through_wal'] === $promotedWal
             && hash_file('sha256', $archive . '/00000002.history') === $historyHash, '跨真实history切点的WAL校验未完成或删除了history');
         expect(($run(['status'])['backups']['latest']['state'] ?? 'removed') !== 'active', '新timeline重新校验复活了旧退役备份');
-        for ($batch = 0; $promotedPlan['has_more'] && $batch < 100; $batch++) {
+        for ($batch = 0; $promotedPlan['has_more'] && $batch < 100; ++$batch) {
             $promotedPlan = $run($clean);
         }
         expect(!$promotedPlan['has_more'] && !isset($run(['status'])['backups']['latest']), '新timeline登记后旧退役进度没有收敛');
@@ -417,7 +418,7 @@ $noSource = in_array('--no-source', $argv, true);
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '当前无源码策略需要macOS原生应用');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $policy = ['sandbox-exec', '-f', $root . '/tests/fixtures/iot-no-source.sb'];
     foreach (['APP' => $root . '/app', 'PLUGIN' => $root . '/plugin', 'VENDOR' => $root . '/vendor', 'CONFIG' => $root . '/config',

@@ -6,14 +6,15 @@ namespace TypeApp\Release;
 
 use Type\Build\ArtifactManifest;
 use Type\Build\BuildIdentity;
+use TypeApp\Distribution\Process;
 
 /** 教程候选与公开消费各自核对同一封存程序；历史基线不能替代新源码验收。 */
 final class TutorialEvidence
 {
     /**
      * 在候选准入或公开前回读三 profile 的文件、身份与隔离行为证据。
-     * @param array<string,array<string,mixed>> $items 同一固定源码的组件与模板拆分计划。
-     * @return array<string,mixed> 已核对报告，不触发构建或发布。
+     * @param array<string,array<string,mixed>> $items 同一固定源码的组件与模板拆分计划
+     * @return array<string,mixed> 已核对报告，不触发构建或发布
      */
     public static function verify(string $file, string $source, string $channel, ?string $version, array $items, ?string $onlyProfile = null): array
     {
@@ -214,12 +215,29 @@ final class TutorialEvidence
                 throw new \RuntimeException('教程安装组件未匹配固定拆分来源：' . $name);
             }
             if ($channel === 'packagist-tag' && (($package['source']['reference'] ?? '') !== $items[$name]['split']
-                    || ltrim($package['version'], 'v') !== ltrim((string) $version, 'v') || ($package['dist']['type'] ?? '') === 'path')) {
+                    || ltrim($package['version'], 'v') !== ltrim((string)$version, 'v') || ($package['dist']['type'] ?? '') === 'path')) {
                 throw new \RuntimeException('教程公开消费版本或默认Packagist来源不一致：' . $name);
             }
             if ($channel === 'fixed-candidate' && ($package['dist']['type'] ?? '') !== 'path') {
                 throw new \RuntimeException('教程候选没有使用已核对的固定组件快照：' . $name);
             }
+        }
+    }
+
+    /** 精确验证固定快照文件集合；不允许链接、遗漏或额外PHP实现混入。 */
+    public static function snapshot(string $directory, array $expected): void
+    {
+        $actual = [];
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS)) as $entry) {
+            if (!$entry->isFile() || $entry->isLink()) {
+                throw new \RuntimeException('固定快照只允许普通文件');
+            }
+            $actual[str_replace('\\', '/', substr($entry->getPathname(), strlen($directory) + 1))] = hash_file('sha256', $entry->getPathname());
+        }
+        ksort($actual);
+        ksort($expected);
+        if ($expected === [] || $actual !== $expected) {
+            throw new \RuntimeException('安装内容偏离固定组件或模板快照');
         }
     }
 
@@ -317,28 +335,11 @@ final class TutorialEvidence
 
     private static function metadata(string $root, string $split): array
     {
-        [$status, $bytes] = \TypeApp\Distribution\Process::run(['git', 'show', $split . ':composer.json'], $root, false);
+        [$status, $bytes] = Process::run(['git', 'show', $split . ':composer.json'], $root, false);
         if ($status !== 0) {
             throw new \RuntimeException('无法读取固定组件或模板声明');
         }
         return json_decode($bytes, true, 512, JSON_THROW_ON_ERROR);
-    }
-
-    /** 精确验证固定快照文件集合；不允许链接、遗漏或额外PHP实现混入。 */
-    public static function snapshot(string $directory, array $expected): void
-    {
-        $actual = [];
-        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS)) as $entry) {
-            if (!$entry->isFile() || $entry->isLink()) {
-                throw new \RuntimeException('固定快照只允许普通文件');
-            }
-            $actual[str_replace('\\', '/', substr($entry->getPathname(), strlen($directory) + 1))] = hash_file('sha256', $entry->getPathname());
-        }
-        ksort($actual);
-        ksort($expected);
-        if ($expected === [] || $actual !== $expected) {
-            throw new \RuntimeException('安装内容偏离固定组件或模板快照');
-        }
     }
 
     /** 从固定Git树计算教程输入，报告不能自行把旧教程标成当前源码。 */
@@ -350,7 +351,7 @@ final class TutorialEvidence
             return $snapshots[$key];
         }
         $files = [];
-        [$status, $tree] = \TypeApp\Distribution\Process::run(['git', 'ls-tree', '-r', '-z', $source . ':' . $prefix], $root, false);
+        [$status, $tree] = Process::run(['git', 'ls-tree', '-r', '-z', $source . ':' . $prefix], $root, false);
         if ($status !== 0) {
             throw new \RuntimeException('无法读取固定教程Git树');
         }
@@ -358,7 +359,7 @@ final class TutorialEvidence
             if (!preg_match('/^100(?:644|755) blob [a-f0-9]{40}\t(.+)$/sD', $entry, $match)) {
                 throw new \RuntimeException('固定教程Git树包含非普通文件');
             }
-            [$status, $bytes] = \TypeApp\Distribution\Process::run(['git', 'show', $source . ':' . ($prefix === '' ? '' : $prefix . '/') . $match[1]], $root, false);
+            [$status, $bytes] = Process::run(['git', 'show', $source . ':' . ($prefix === '' ? '' : $prefix . '/') . $match[1]], $root, false);
             if ($status !== 0) {
                 throw new \RuntimeException('无法读取固定教程Git字节');
             }
@@ -374,7 +375,7 @@ final class TutorialEvidence
         if (!is_file($file) || is_link($file)) {
             throw new \RuntimeException('缺少教程验收证据：' . basename($file));
         }
-        return json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+        return json_decode((string)file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
     }
 
     /** 将证据限定在报告目录内，并回读原始字节摘要。 */
@@ -383,7 +384,7 @@ final class TutorialEvidence
         $path = $entry['file'] ?? '';
         if (!is_string($path) || !preg_match('~^[a-zA-Z0-9_./-]+$~D', $path) || str_starts_with($path, '/')
             || in_array('..', explode('/', $path), true) || is_link($base . '/' . $path)
-            || !is_file($base . '/' . $path) || str_replace('\\', '/', (string) realpath($base . '/' . $path)) !== str_replace('\\', '/', (string) realpath($base)) . '/' . $path
+            || !is_file($base . '/' . $path) || str_replace('\\', '/', (string)realpath($base . '/' . $path)) !== str_replace('\\', '/', (string)realpath($base)) . '/' . $path
             || ($entry['sha256'] ?? '') !== hash_file('sha256', $base . '/' . $path)) {
             throw new \RuntimeException('教程验收文件缺失、越界或摘要冲突');
         }

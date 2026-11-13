@@ -1,23 +1,25 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\BuildProfile;
+use Type\Build\StaticRuntimeSdk;
 
 // 仅导出本轮已实际链接并独立运行的归档；不把构建宿主 DLL 混入目标 SDK。
 if (($argc !== 4 && $argc !== 5) || PHP_OS_FAMILY !== 'Windows' || PHP_VERSION !== '8.5.10' || !PHP_ZTS) {
     throw new InvalidArgumentException('需要 Windows PHP 8.5.10 ZTS、运行库工作目录、依赖目录、依赖验证报告和可选 profile');
 }
 $root = dirname(__DIR__, 2);
-$work = str_replace('\\', '/', (string) realpath($argv[1]));
-$dependencies = str_replace('\\', '/', (string) realpath($argv[2]));
+$work = str_replace('\\', '/', (string)realpath($argv[1]));
+$dependencies = str_replace('\\', '/', (string)realpath($argv[2]));
 $sdk = $work . '/sdk';
 $php = $work . '/php-8.5.10';
 $phpx = $work . '/phpx-13cf717579b216d4a4fa49fe4439573b4d072e71';
 if ($work === '' || $dependencies === '' || file_exists($sdk) || is_link($sdk)) {
     throw new RuntimeException('SDK 导出需要有效的任务输入和未使用的目标目录');
 }
-$runtime = json_decode((string) file_get_contents($work . '/evidence/verification.json'), true, 64, JSON_THROW_ON_ERROR);
-$values = json_decode((string) file_get_contents($work . '/phpx-static/evidence/verification.json'), true, 64, JSON_THROW_ON_ERROR);
-$dependencyReport = json_decode((string) file_get_contents($argv[3]), true, 64, JSON_THROW_ON_ERROR);
+$runtime = json_decode((string)file_get_contents($work . '/evidence/verification.json'), true, 64, JSON_THROW_ON_ERROR);
+$values = json_decode((string)file_get_contents($work . '/phpx-static/evidence/verification.json'), true, 64, JSON_THROW_ON_ERROR);
+$dependencyReport = json_decode((string)file_get_contents($argv[3]), true, 64, JSON_THROW_ON_ERROR);
 $profile = $argv[4] ?? 'all';
 if (!in_array($profile, ['sqlite', 'mysql', 'pgsql', 'all'], true)) {
     throw new InvalidArgumentException('Windows 静态 SDK profile 无效：' . $profile);
@@ -27,7 +29,7 @@ foreach (['BuildPlatform', 'BuildLock', 'StaticRuntimeSdk'] as $class) {
     require $root . '/plugin/type-build/src/' . $class . '.php';
 }
 $configuration = getenv('TYPEAPP_BUILD_CONFIGURATION') ?: $root . '/docs/build-config/type-app.json';
-$profiles = \Type\Build\BuildProfile::resolve(json_decode((string) file_get_contents($configuration), true, 64, JSON_THROW_ON_ERROR));
+$profiles = BuildProfile::resolve(json_decode((string)file_get_contents($configuration), true, 64, JSON_THROW_ON_ERROR));
 $features = $profile === 'all' ? array_values(array_unique(array_merge(...array_column($profiles['profiles'], 'features'))))
     : ($profiles['profiles'][$profile]['features'] ?? throw new RuntimeException('未知 SDK profile'));
 sort($features);
@@ -148,7 +150,7 @@ foreach (glob(dirname($dependencies) . '/vcpkg/info/*_x64-typeapp-static.list') 
         continue;
     }
     $package = explode('_', basename($list), 2)[0];
-    $spdx = json_decode((string) file_get_contents($dependencies . '/share/' . $package . '/vcpkg.spdx.json'), true, 64, JSON_THROW_ON_ERROR);
+    $spdx = json_decode((string)file_get_contents($dependencies . '/share/' . $package . '/vcpkg.spdx.json'), true, 64, JSON_THROW_ON_ERROR);
     $metadata = $spdx['packages'][0];
     if ($metadata['name'] !== $package || !is_string($metadata['versionInfo'] ?? null)) {
         throw new RuntimeException('依赖归档来源元数据不一致');
@@ -174,13 +176,13 @@ foreach (glob(dirname($dependencies) . '/vcpkg/info/*_x64-typeapp-static.list') 
 if (array_diff_key($locations, $notices) !== []) {
     throw new RuntimeException('静态运行库尚有缺少许可材料的归档');
 }
-$manifest = ['protocol' => 1, 'profile' => $profile, 'features' => $features, 'php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'debug' => (bool) PHP_DEBUG,
+$manifest = ['protocol' => 1, 'profile' => $profile, 'features' => $features, 'php' => PHP_VERSION, 'zts' => (bool)PHP_ZTS, 'debug' => (bool)PHP_DEBUG,
     'integer-size' => PHP_INT_SIZE, 'os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
     'archives' => $archives, 'headers' => $headers, 'notices' => $notices, 'patches' => [],
     'preparation' => ['compiler' => 'MSVC x64', 'crt' => 'static', 'dependency-source' => $dependencyReport['source'],
         'dependency-manifest-sha256' => $dependencyReport['manifest_sha256'], 'dependency-triplet-sha256' => $dependencyReport['triplet_sha256'],
         'runtime-probe-sha256' => $runtime['artifact_sha256'], 'phpx-probe-sha256' => $values['program_sha256']]];
-$manifest['sources']['swoole'] = Type\Build\StaticRuntimeSdk::swooleSource();
+$manifest['sources']['swoole'] = StaticRuntimeSdk::swooleSource();
 if (($runtime['extensions']['swoole'] ?? null) !== $manifest['sources']['swoole']['runtime-version']) {
     throw new RuntimeException('静态探针的 Swoole 版本与固定源码不一致');
 }
@@ -195,11 +197,11 @@ foreach (array_values(array_filter(['php.tar.xz', 'swoole.tar.gz', $redisEnabled
     $manifest['sources'][$source] = ['sha256' => hash_file('sha256', $work . '/' . $source)];
 }
 foreach (['adaptations.json', 'extension-adaptations.json', 'phpx-adaptations.json'] as $report) {
-    $manifest['adaptations'][$report] = json_decode((string) file_get_contents($work . '/evidence/' . $report), true, 64, JSON_THROW_ON_ERROR);
+    $manifest['adaptations'][$report] = json_decode((string)file_get_contents($work . '/evidence/' . $report), true, 64, JSON_THROW_ON_ERROR);
 }
 $encoded = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
 if (file_put_contents($sdk . '/manifest.json', $encoded) !== strlen($encoded)) {
     throw new RuntimeException('无法完整写入静态 SDK 身份');
 }
-new Type\Build\StaticRuntimeSdk($sdk . '/manifest.json');
+new StaticRuntimeSdk($sdk . '/manifest.json');
 echo 'Windows 静态 SDK 已导出；应用 AOT 与部署尚须独立验收。' . PHP_EOL;

@@ -38,6 +38,7 @@ const [Form, { resetForm, validate, getValues, getFieldComponentRef }] =
         {
           component: 'VbenInputPassword' as const,
           componentProps: {
+            autocomplete: 'new-password',
             placeholder: $t('ui.widgets.lockScreen.placeholder'),
           },
           fieldName: 'lockScreenPassword',
@@ -96,7 +97,7 @@ async function handleSubmit() {
             class="size-20"
             dot-class="bottom-0 right-1 border-2 size-4 bg-green-500"
           />
-          <div class="text-foreground my-6 flex items-center font-medium">
+          <div class="my-6 flex items-center font-medium text-foreground">
             {{ text }}
           </div>
         </div>

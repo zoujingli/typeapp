@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace TypeApp\OrmSuite;
 
-use RuntimeException;
+use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
 use Type\Orm\Driver;
-use Type\Orm\DatabaseManager;
-use Type\Orm\Migration\Migrator;
 use Type\Orm\Migration\MigrationException;
+use Type\Orm\Migration\Migrator;
 use Type\Runtime\ExecutionScope;
 
 /** 冻结建表、真实字段语义和有数据演进，复用既有迁移记录、失败与恢复协议。 */
@@ -113,7 +112,7 @@ final class SchemaExercise
     private static function check(bool $condition, string $message): void
     {
         if (!$condition) {
-            throw new RuntimeException($message);
+            throw new \RuntimeException($message);
         }
     }
 }

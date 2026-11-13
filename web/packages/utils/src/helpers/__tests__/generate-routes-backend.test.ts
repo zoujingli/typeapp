@@ -18,7 +18,7 @@ function findRoute(rows: any[], path: string): any {
 }
 
 describe('generateRoutesByBackend', () => {
-  it('resolves plugin page aliases without falling back to not found', async () => {
+  it('resolves an exact registered page key without falling back to not found', async () => {
     const dashboardComponent = vi.fn();
     const notFoundComponent = vi.fn();
 

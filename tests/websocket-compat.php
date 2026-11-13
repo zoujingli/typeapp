@@ -81,7 +81,7 @@ function compatClosed(string $file, int $opened): array
 {
     $deadline = microtime(true) + 8;
     do {
-        $events = is_file($file) ? json_decode((string) file_get_contents($file), true) : [];
+        $events = is_file($file) ? json_decode((string)file_get_contents($file), true) : [];
         if (is_array($events) && count(array_filter($events, static fn (array $event): bool => $event['kind'] === 'close')) >= $opened) {
             return $events;
         }
@@ -101,12 +101,12 @@ function compatSettlements(array $events, int $expected): void
         if ($event['kind'] === 'open') {
             expect(!isset($active[$fd]), '同一活动连接被重复接受');
             $active[$fd] = true;
-            $opened++;
+            ++$opened;
         } elseif ($event['kind'] === 'close') {
             expect(isset($active[$fd]), '未接受的连接或已结算连接再次触发 close');
             expect(is_int($event['details']['reactor_id']), 'close 第二参数不是 reactor ID');
             unset($active[$fd]);
-            $closed++;
+            ++$closed;
         }
     }
     expect($active === [] && $opened === $expected && $closed === $expected, '连接关闭结算遗漏');
@@ -117,7 +117,7 @@ function compatCommand(): array
 {
     $native = getenv('TYPE_WS_NATIVE_COMMAND');
     return is_string($native) && $native !== '' ? json_decode($native, true, 16, JSON_THROW_ON_ERROR) : [
-        PHP_BINARY, '-d', 'extension=' . (string) getenv('TYPE_SWOOLE_MODULE'), '-r',
+        PHP_BINARY, '-d', 'extension=' . (string)getenv('TYPE_SWOOLE_MODULE'), '-r',
         'require $argv[1]; require $argv[2]; main(4, [$argv[2], $argv[3], $argv[4], $argv[5]]);',
         dirname(__DIR__) . '/vendor/autoload.php', __DIR__ . '/fixtures/websocket-compat.php',
     ];
@@ -128,10 +128,10 @@ function compatStart(string $work, array $options): array
 {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($listener), '无法分配回环端口');
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
     $file = $work . '/' . $port . '.json';
-    $process = new Process([...compatCommand(), (string) $port, $file, json_encode($options, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)], $work);
+    $process = new Process([...compatCommand(), (string)$port, $file, json_encode($options, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)], $work);
     $deadline = microtime(true) + 10;
     try {
         do {
@@ -173,8 +173,8 @@ try {
     foreach ([false, true] as $fallback) {
         $socket = compatConnect($closing['port'], '/submission');
         compatFrame($socket);
-        $events = json_decode((string) file_get_contents($closing['file']), true, 16, JSON_THROW_ON_ERROR);
-        $fd = (int) end($events)['fd'];
+        $events = json_decode((string)file_get_contents($closing['file']), true, 16, JSON_THROW_ON_ERROR);
+        $fd = (int)end($events)['fd'];
         $path = '/disconnect-result?fd=' . $fd . ($fallback ? '&fallback=1' : '');
         expect(compatHttp($closing['port'], $path) === ['first' => true, 'repeat' => false], '关闭提交结果或重复关闭结果不正确');
         if ($fallback) {
@@ -204,7 +204,7 @@ try {
     $rejectedStatistics = compatHttp($rejectedUpgrade['port'], '/stop');
     expect($rejectedStatistics['accepted'] === 0 && $rejectedStatistics['rejected'] === 1, '拒绝握手被错误登记为业务连接');
     expect($rejectedUpgrade['process']->wait(10)->successful(), '握手拒绝验收服务未正常退出');
-    compatSettlements(json_decode((string) file_get_contents($rejectedUpgrade['file']), true, 16, JSON_THROW_ON_ERROR), 0);
+    compatSettlements(json_decode((string)file_get_contents($rejectedUpgrade['file']), true, 16, JSON_THROW_ON_ERROR), 0);
     $checks[] = 'legacy_unaccepted_handshake_close';
     $options = ['max_frame_bytes' => 50 * 1024 * 1024, 'max_queued_bytes' => 50 * 1024 * 1024,
         'package_max_length' => 50 * 1024 * 1024 + 14, 'max_connections' => 4,

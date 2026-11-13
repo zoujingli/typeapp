@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use TypeApp\Distribution\Process;
 
 /** 导出固定 Git 对象并核对完整普通文件集合；调用者负责回收目录与归档。 */
 function fixedSnapshot(string $root, string $object, string $directory): array
@@ -13,7 +14,7 @@ function fixedSnapshot(string $root, string $object, string $directory): array
     }
     expect(mkdir($directory, 0700), '无法创建固定快照');
     $tar = $directory . '.tar';
-    TypeApp\Distribution\Process::output(['git', '-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'archive', '--format=tar', '--output=' . $tar, $object], $root);
+    Process::output(['git', '-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'archive', '--format=tar', '--output=' . $tar, $object], $root);
     expect((new PharData($tar))->extractTo($directory), '无法导出固定快照');
     $files = [];
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS)) as $entry) {

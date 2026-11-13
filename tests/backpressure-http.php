@@ -9,14 +9,14 @@ $binary = $argv[1] ?? '--php';
 $command = $binary === '--php' ? [PHP_BINARY, '-d', 'swoole.enable_library=On', '-r', 'require ' . var_export($root . '/vendor/autoload.php', true)
     . '; require ' . var_export($root . '/examples/backpressure/Endpoint.php', true) . '; require ' . var_export($root . '/examples/backpressure-http-command.php', true) . '; main($argc, $argv);'] : nativeCommand($binary);
 $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-$port = (int) substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
+$port = (int)substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
 fclose($socket);
 $trace = tempnam(sys_get_temp_dir(), 'type_pressure_trace_');
 $logs = tempnam(sys_get_temp_dir(), 'type_pressure_log_');
 $gate = tempnam(sys_get_temp_dir(), 'type_pressure_gate_');
 $output = tmpfile();
 $environment = getenv();
-$environment['TYPE_HTTP_PORT'] = (string) $port;
+$environment['TYPE_HTTP_PORT'] = (string)$port;
 $environment['TYPE_BACKPRESSURE_TRACE'] = $trace;
 $environment['TYPE_BACKPRESSURE_LOG'] = $logs;
 $environment['TYPE_BACKPRESSURE_GATE'] = $gate;
@@ -55,16 +55,16 @@ try {
     expect($status === 503 && str_contains($body, 'resource_capacity_exceeded'), '跨身份连接绕过共享容量：' . $body);
     expect(unlink($gate), '无法释放连接预算夹具');
     expect(receiveHttp($one)[0] === 200 && receiveHttp($two)[0] === 200, '正常慢 SQL 被提前释放');
-    for ($round = 0; $round < 8; $round++) {
+    for ($round = 0; $round < 8; ++$round) {
         expect(file_put_contents($gate, '') === 0, '无法建立请求容量夹具');
         $entered = count(file($trace, FILE_IGNORE_NEW_LINES));
         $connections = [];
-        for ($i = 0; $i < 4; $i++) {
+        for ($i = 0; $i < 4; ++$i) {
             $connections[] = sendHttp($port, 'GET', '/hold');
         }
         pressureWait($trace, $entered + 4);
         $overflow = [];
-        for ($i = 0; $i < 44; $i++) {
+        for ($i = 0; $i < 44; ++$i) {
             $overflow[] = sendHttp($port, 'GET', '/hold');
             // 第一轮故意跨过旧夹具的 250ms 占用窗口，容量断言不依赖发送速度。
             if ($round === 0) {
@@ -75,7 +75,7 @@ try {
         foreach ($overflow as $connection) {
             [$status, $body] = receiveHttp($connection);
             expect($status === 503, '在途请求占满时仍接收新请求：' . $body);
-            $rejected++;
+            ++$rejected;
         }
         [$status, $body] = httpRequest($port, 'GET', '/readyz');
         expect($status === 503 && $body === '{"ready":false}', '超载时就绪仍为真');
@@ -86,9 +86,9 @@ try {
         foreach ($connections as $connection) {
             [$status] = receiveHttp($connection);
             if ($status === 200) {
-                $success++;
+                ++$success;
             } elseif ($status === 503) {
-                $rejected++;
+                ++$rejected;
             }
         }
         expect($success === 4 && $rejected === 44, '在途请求没有按固定容量拒绝：' . $success . '/' . $rejected);

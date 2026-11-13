@@ -33,31 +33,37 @@ final class BooksController
     {
         return $this->reply($request, 'index');
     }
+
     /** 回显新建表单动作，验证静态路径优先于参数路径。 */
     public function create(ServerRequestInterface $request): ResponseInterface
     {
         return $this->reply($request, 'create');
     }
+
     /** 回显资源创建动作，验证 POST 的生成映射。 */
     public function store(ServerRequestInterface $request): ResponseInterface
     {
         return $this->reply($request, 'store');
     }
+
     /** 回显单条资源动作及经过约束的路径 ID。 */
     public function show(ServerRequestInterface $request): ResponseInterface
     {
         return $this->reply($request, 'show');
     }
+
     /** 回显编辑动作，验证嵌套路径与参数匹配。 */
     public function edit(ServerRequestInterface $request): ResponseInterface
     {
         return $this->reply($request, 'edit');
     }
+
     /** 回显资源更新动作，验证生成的写入方法映射。 */
     public function update(ServerRequestInterface $request): ResponseInterface
     {
         return $this->reply($request, 'update');
     }
+
     /** 回显删除动作，不对任何实际业务数据执行删除。 */
     public function destroy(ServerRequestInterface $request): ResponseInterface
     {
@@ -131,7 +137,7 @@ final class BooksController
     {
         $messages = new Factory();
         return $messages->createResponse()->withHeader('Content-Type', 'application/json')
-            ->withBody($messages->createStream((string) json_encode([
+            ->withBody($messages->createStream((string)json_encode([
                 'greeting' => $this->greeting, 'action' => $action, 'route' => $request->getAttribute('type.route'),
                 'parameters' => $request->getAttribute('type.route.params'), 'trace' => $request->getAttribute('trace', ''),
             ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
@@ -142,9 +148,7 @@ final class BooksController
 final class SearchInput implements ValidatedInput
 {
     /** 保留有效查询字段供示例动作使用。 */
-    public function __construct(public Data $data)
-    {
-    }
+    public function __construct(public Data $data) {}
 
     /** query 不参与 body 或 route 合并。 */
     public static function schema(): Schema
@@ -163,9 +167,7 @@ final class SearchInput implements ValidatedInput
 final class BookInput implements ValidatedInput
 {
     /** 保存有效字段；对象只属于当前请求。 */
-    public function __construct(public Data $data)
-    {
-    }
+    public function __construct(public Data $data) {}
 
     /** 必填、可空及默认值继续使用现有 Field 规则。 */
     public static function schema(): Schema
@@ -189,9 +191,7 @@ final class BookInput implements ValidatedInput
 final class SourceInput implements ValidatedInput
 {
     /** 保留分源校验后的结果。 */
-    public function __construct(public Data $data)
-    {
-    }
+    public function __construct(public Data $data) {}
 
     /** 路径身份不能被同名 query 覆盖；标量 header 不接受多个值。 */
     public static function schema(): Schema

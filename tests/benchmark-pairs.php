@@ -4,9 +4,9 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-use Type\Build\BuildPlatform;
-use Type\Build\BuildIdentity;
 use Type\Build\ArtifactManifest;
+use Type\Build\BuildIdentity;
+use Type\Build\BuildPlatform;
 use Type\Build\StaticRuntimeSdk;
 use Type\Testing\Process;
 
@@ -17,11 +17,11 @@ $diagnostic = ($argv[5] ?? '') === '--diagnostic';
 $diagnosticDriver = $diagnostic ? ($argv[6] ?? '') : null;
 $order = $diagnostic ? 'ABBA+BAAB' : ($static ? ($argv[6] ?? 'old-first') : ($argv[5] ?? 'old-first'));
 expect(
-    ($diagnostic ? ($argc === 7 && in_array($diagnosticDriver, ['sqlite', 'mysql', 'pgsql'], true)
+    $diagnostic ? ($argc === 7 && in_array($diagnosticDriver, ['sqlite', 'mysql', 'pgsql'], true)
         && ($static ? $profile === $diagnosticDriver : in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true)))
         : (in_array($order, ['old-first', 'new-first'], true)
             && ($static ? (in_array($argc, [5, 7], true) && ($argc === 5 || $argv[5] === '--order') && in_array($profile, ['sqlite', 'mysql', 'pgsql'], true))
-                : (in_array($argc, [5, 6], true) && in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true))))),
+                : (in_array($argc, [5, 6], true) && in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true)))),
     '用法：PHP tests/benchmark-pairs.php <旧版准备根> <新版准备根> <MySQL工具根> <PostgreSQL工具根> [old-first|new-first]；静态模式改用 --static-profile <数据库> [--order <顺序>]；额外诊断以 --diagnostic <数据库> 替代顺序参数，执行 ABBA+BAAB，不能用于正式比较'
 );
 $old = BuildPlatform::resolve($argv[1]);
@@ -152,7 +152,7 @@ try {
                 $record['diagnostic']['cells'][$position]['exit_code'] = $result->exitCode;
             }
             expect($result->successful(), ($diagnostic ? '额外诊断' : '正式') . '测量失败，见本轮日志：' . $label);
-            expect(preg_match('#真实应用三类负载测量完成：(build/[^\\r\\n]+)#u', $result->stdout, $matches) === 1, '缺少测量报告');
+            expect(preg_match('#真实应用三类负载测量完成：(build/[^\r\n]+)#u', $result->stdout, $matches) === 1, '缺少测量报告');
             $report = trim($matches[1]);
             $measurement = json_decode(file_get_contents($root . '/' . $report), true, 512, JSON_THROW_ON_ERROR);
             expect($measurement['status'] === ($diagnostic ? 'diagnostic-not-compared' : 'passed')

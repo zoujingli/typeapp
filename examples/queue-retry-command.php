@@ -10,7 +10,9 @@ use Type\Queue\RetryPolicy;
 use Type\Queue\Worker;
 use Type\Redis\Purpose;
 use Type\Redis\RedisConfiguration;
+use Type\Redis\RedisException;
 use Type\Redis\RedisManager;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use TypeApp\QueueExample\Resource;
 use TypeApp\QueueExample\RetryJob;
@@ -18,7 +20,7 @@ use TypeApp\QueueExample\RetryJob;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function retryExpect(bool $condition, string $message): void
 {
@@ -30,11 +32,11 @@ function retryExpect(bool $condition, string $message): void
 /**
  * 在协程内验证延迟提升、有限重试、隔离与转移故障后的恢复。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+    CoroutineRuntime::run(static function () use ($argc, $argv): void {
         queueRetryScenario($argc, $argv);
     });
 }
@@ -42,13 +44,13 @@ function main(int $argc, array $argv): void
 /**
  * 验证延迟、超时、重试与隔离转移，使用随机应用命名空间避免混入其他消息。
  *
- * @param list<string> $argv 程序路径及演练参数。
+ * @param list<string> $argv 程序路径及演练参数
  */
 function queueRetryScenario(int $argc, array $argv): void
 {
     $manager = new RedisManager(['default' => new RedisConfiguration(
-        (string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
-        (int) (getenv('TYPE_REDIS_PORT') ?: 6379)
+        (string)(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'),
+        (int)(getenv('TYPE_REDIS_PORT') ?: 6379)
     )], [Purpose::SCRIPT => 5]);
     $scope = new ExecutionScope();
     $application = 'type_retry_' . bin2hex(random_bytes(8));
@@ -60,7 +62,7 @@ function queueRetryScenario(int $argc, array $argv): void
         // 100ms执行预算必须保留小数秒，不能在原生整数除法下变为零。
         $policy = new RetryPolicy(3, 20, 40, 100);
         $worker = new Worker($queue, $registry, 'worker', $policy);
-        for ($attempt = 1; $attempt <= 10; $attempt++) {
+        for ($attempt = 1; $attempt <= 10; ++$attempt) {
             $delay = $policy->delay($attempt);
             retryExpect($delay >= 10 && $delay <= 40, '退避抖动超出配置');
         }
@@ -126,7 +128,7 @@ function queueRetryScenario(int $argc, array $argv): void
         $failed = false;
         try {
             $reservation->retry('simulated_failure', 10);
-        } catch (\Type\Redis\RedisException) {
+        } catch (RedisException) {
             $failed = true;
         }
         retryExpect($failed, '没有触发服务端失败');

@@ -22,21 +22,21 @@ final class Endpoint implements RequestHandlerInterface
     {
         $factory = new Factory();
         $scope = $request->getAttribute('type.scope');
-        $directory = (string) getenv('TYPE_UPLOAD_DIRECTORY');
+        $directory = (string)getenv('TYPE_UPLOAD_DIRECTORY');
         $storage = new UploadStorage($directory, 196608, 4);
         $mode = $request->getUri()->getPath();
         $marker = $request->getHeaderLine('X-Test-Marker');
         $scope->open(new Lifecycle($scope, $marker));
         if (in_array($mode, ['/download', '/fail-stream', '/fail-first', '/timeout-stream', '/disconnect'], true)) {
             return $factory->createResponse()->withHeader('Content-Type', 'application/octet-stream')
-                ->withBody(new DownloadStream($factory->createStreamFromFile((string) getenv('TYPE_DOWNLOAD_FILE')), $scope, $marker, $mode));
+                ->withBody(new DownloadStream($factory->createStreamFromFile((string)getenv('TYPE_DOWNLOAD_FILE')), $scope, $marker, $mode));
         }
         if ($mode === '/stats') {
             $data = $storage->statistics();
         } elseif ($mode === '/form') {
             $data = ['fields' => $request->getParsedBody()];
         } elseif ($mode === '/file') {
-            return $factory->createResponse()->withBody($storage->open((string) ($request->getQueryParams()['key'] ?? '')));
+            return $factory->createResponse()->withBody($storage->open((string)($request->getQueryParams()['key'] ?? '')));
         } else {
             $files = $request->getUploadedFiles();
             $keys = [];
@@ -61,20 +61,22 @@ final class Endpoint implements RequestHandlerInterface
 final class Lifecycle implements ManagedResource
 {
     private ExecutionScope $scope;
+
     private string $marker;
+
     /** 绑定本次 Scope 与迹线标记，不在构造时写文件。 */
     public function __construct(ExecutionScope $scope, string $marker)
     {
         $this->scope = $scope;
         $this->marker = $marker;
     }
+
     /** 不分配额外资源，观察重点在请求退出的 stop。 */
-    public function start(): void
-    {
-    }
+    public function start(): void {}
+
     /** 记录作用域状态，供外部测试检查流关闭与 Scope 退出的先后。 */
     public function stop(): void
     {
-        file_put_contents((string) getenv('TYPE_UPLOAD_TRACE'), 'scope:' . $this->marker . ':' . $this->scope->state() . "\n", FILE_APPEND | LOCK_EX);
+        file_put_contents((string)getenv('TYPE_UPLOAD_TRACE'), 'scope:' . $this->marker . ':' . $this->scope->state() . "\n", FILE_APPEND | LOCK_EX);
     }
 }

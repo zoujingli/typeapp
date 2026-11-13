@@ -6,6 +6,8 @@ namespace Type\Core;
 
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
+use Swoole\Event;
+use Type\Runtime\CapacityException;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionOwner;
 use Type\Runtime\ManagedResource;
@@ -21,34 +23,55 @@ use Type\Runtime\TaskException;
 final class UdpSocket implements ManagedResource
 {
     private ResourceBudget $budget;
+
     private ExecutionOwner $threadOwner;
+
     private ?ExecutionOwner $owner = null;
+
     private ?Socket $socket = null;
+
     private string $address;
+
     private int $port;
+
     private bool $ipv6;
+
     private int $maxDatagramBytes;
+
     private int $socketBufferBytes;
+
     private float $writeTimeout;
+
     private float $effectiveWriteTimeout = 0.0;
+
     private string $state = 'new';
+
     private bool $allocated = false;
+
     private bool $stopping = false;
+
     private bool $closeScheduled = false;
+
     private int $operation = -1;
+
     private array $local = [];
+
     private int $receiveBufferBytes = 0;
+
     private int $sendBufferBytes = 0;
+
     private int $received = 0;
+
     private int $sent = 0;
+
     private int $oversized = 0;
 
     /**
      * 只接受数字 IP，IPv6 不隐式接收 IPv4；端口 0 由系统分配。
      *
      * 同一线程的全部端点与退役代次必须注入同一部署分额，不能每个端点复制预算。
-     * @param array{socket_buffer_size?: int, write_timeout?: float|int} $options 沿用 Swoole 选项名，超时单位秒。
-     * @throws TaskException 地址、端口、单报文上限或原生缓冲/期限配置无效。
+     * @param array{socket_buffer_size?: int, write_timeout?: float|int} $options 沿用 Swoole 选项名，超时单位秒
+     * @throws TaskException 地址、端口、单报文上限或原生缓冲/期限配置无效
      */
     public function __construct(ResourceBudget $budget, string $address, int $port = 0, int $maxDatagramBytes = 8192, array $options = [])
     {
@@ -59,7 +82,7 @@ final class UdpSocket implements ManagedResource
         if ((!$ipv4 && !$ipv6) || $port < 0 || $port > 65535 || $maxDatagramBytes < 1 || $maxDatagramBytes > 65507
             || array_diff(array_keys($options), ['socket_buffer_size', 'write_timeout']) !== []
             || !is_int($buffer) || $buffer < 65536 || $buffer > 1048576
-            || (!is_float($timeout) && !is_int($timeout)) || !is_finite((float) $timeout) || $timeout <= 0 || $timeout > 60) {
+            || (!is_float($timeout) && !is_int($timeout)) || !is_finite((float)$timeout) || $timeout <= 0 || $timeout > 60) {
             throw new TaskException('udp_invalid_configuration', 'UDP 需要数字 IP、有效端口、1–65507 字节报文、64 KiB–1 MiB 缓冲与 (0,60] 秒发送期限');
         }
         $this->budget = $budget;
@@ -69,13 +92,27 @@ final class UdpSocket implements ManagedResource
         $this->ipv6 = $ipv6;
         $this->maxDatagramBytes = $maxDatagramBytes;
         $this->socketBufferBytes = $buffer;
-        $this->writeTimeout = (float) $timeout;
+        $this->writeTimeout = (float)$timeout;
     }
+
+    /** 活动原生资源禁止序列化、线程传递和复制。 */
+    public function __serialize(): array
+    {
+        throw new TaskException('resource_transfer_forbidden', 'UDP 端点不能序列化或跨线程传递');
+    }
+
+    /** 不允许从外部数据恢复资源归属与额度。 */
+    public function __unserialize(array $data): void
+    {
+        throw new TaskException('resource_transfer_forbidden', 'UDP 端点必须在所属线程创建');
+    }
+
+    private function __clone(): void {}
 
     /**
      * 在已有协程中取得一份额度、配置并绑定原生 Socket；失败仍按真实关闭时序结算。
-     * @throws TaskException 缺少协程能力、端点已退役或原生配置/绑定失败。
-     * @throws \Type\Runtime\CapacityException 同线程共享的端点额度已满。
+     * @throws TaskException 缺少协程能力、端点已退役或原生配置/绑定失败
+     * @throws CapacityException 同线程共享的端点额度已满
      */
     public function start(): void
     {
@@ -98,20 +135,20 @@ final class UdpSocket implements ManagedResource
             $this->socket = new Socket($this->ipv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
             // Windows 即使本端关闭 SO_REUSEADDR，也允许另一端主动复用；必须在 bind 前声明独占。
             if (PHP_OS_FAMILY === 'Windows'
-                && !$this->socket->setOption(SOL_SOCKET, (int) constant('SO_EXCLUSIVEADDRUSE'), 1)) {
+                && !$this->socket->setOption(SOL_SOCKET, (int)constant('SO_EXCLUSIVEADDRUSE'), 1)) {
                 $this->fail('udp_option_failed');
             }
-            $timeoutMicros = max(1, (int) ceil($this->writeTimeout * 1000000.0));
+            $timeoutMicros = max(1, (int)ceil($this->writeTimeout * 1000000.0));
             if (!$this->socket->setOption(SOL_SOCKET, SO_RCVBUF, $this->socketBufferBytes)
                 || !$this->socket->setOption(SOL_SOCKET, SO_SNDBUF, $this->socketBufferBytes)
                 || ($this->ipv6 && !$this->socket->setOption(IPPROTO_IPV6, IPV6_V6ONLY, 1))
                 || !$this->socket->setOption(SOL_SOCKET, SO_SNDTIMEO, ['sec' => intdiv($timeoutMicros, 1000000), 'usec' => $timeoutMicros % 1000000])) {
                 throw new TaskException('udp_option_failed', 'UDP 原生选项配置失败');
             }
-            $this->receiveBufferBytes = (int) $this->socket->getOption(SOL_SOCKET, SO_RCVBUF);
-            $this->sendBufferBytes = (int) $this->socket->getOption(SOL_SOCKET, SO_SNDBUF);
+            $this->receiveBufferBytes = (int)$this->socket->getOption(SOL_SOCKET, SO_RCVBUF);
+            $this->sendBufferBytes = (int)$this->socket->getOption(SOL_SOCKET, SO_SNDBUF);
             $timeout = $this->socket->getOption(SOL_SOCKET, SO_SNDTIMEO);
-            $this->effectiveWriteTimeout = (float) $timeout['sec'] + (float) $timeout['usec'] / 1000000.0;
+            $this->effectiveWriteTimeout = (float)$timeout['sec'] + (float)$timeout['usec'] / 1000000.0;
             // Linux 会双倍报告 socket_buffer_size；实测值不得超过已预留的两倍。
             if ($this->receiveBufferBytes < 1 || $this->sendBufferBytes < 1
                 || $this->receiveBufferBytes > 2 * $this->socketBufferBytes || $this->sendBufferBytes > 2 * $this->socketBufferBytes) {
@@ -130,7 +167,7 @@ final class UdpSocket implements ManagedResource
             if (!is_array($local) || !isset($local['address'], $local['port'])) {
                 $this->fail('udp_address_failed');
             }
-            $this->local = ['address' => (string) $local['address'], 'port' => (int) $local['port']];
+            $this->local = ['address' => (string)$local['address'], 'port' => (int)$local['port']];
             $this->state = 'active';
         } catch (\Throwable $error) {
             $this->state = 'stopping';
@@ -145,7 +182,7 @@ final class UdpSocket implements ManagedResource
      * 原生接收保留至多 65536 字节，超应用上限的报文被完整消费后拒绝，不返回截断成功。
      * 普通 IPv4/IPv6 UDP 都小于原生缓冲；不支持 IPv6 jumbogram。
      * @return array{data: string, address: string, port: int}
-     * @throws TaskException 等待期限无效、端点已停止、报文超长、来源缺失或原生接收失败。
+     * @throws TaskException 等待期限无效、端点已停止、报文超长、来源缺失或原生接收失败
      */
     public function receive(float $timeout = 1.0): array
     {
@@ -164,13 +201,13 @@ final class UdpSocket implements ManagedResource
                 $this->fail('udp_receive_failed');
             }
             if (strlen($data) > $this->maxDatagramBytes) {
-                $this->oversized++;
+                ++$this->oversized;
                 throw new TaskException('udp_datagram_too_large', 'UDP 收到超过应用上限的完整报文，已消费并拒绝');
             }
             if (!isset($peer['address'], $peer['port']) || !is_string($peer['address']) || !is_int($peer['port'])) {
                 throw new TaskException('udp_peer_unavailable', '原生 UDP 未写回来源地址；空报文需要已修正的 Swoole Socket');
             }
-            $this->received++;
+            ++$this->received;
             return ['data' => $data, 'address' => $peer['address'], 'port' => $peer['port']];
         } finally {
             $this->operation = -1;
@@ -182,7 +219,7 @@ final class UdpSocket implements ManagedResource
 
     /**
      * 提交一个报文，不分片、不自动重试；返回字节数只表示本地提交，不保证远端收到。
-     * @throws TaskException 地址族/长度无效、已停止、超时、取消或原生发送失败。
+     * @throws TaskException 地址族/长度无效、已停止、超时、取消或原生发送失败
      */
     public function sendTo(string $address, int $port, string $data): int
     {
@@ -192,7 +229,7 @@ final class UdpSocket implements ManagedResource
             throw new TaskException('udp_invalid_peer', 'UDP 对端必须是同地址族的数字 IP 与有效非零端口');
         }
         if (strlen($data) > $this->maxDatagramBytes) {
-            $this->oversized++;
+            ++$this->oversized;
             throw new TaskException('udp_datagram_too_large', 'UDP 待发报文超过应用上限，未提交');
         }
         $this->operation = Coroutine::getCid();
@@ -207,7 +244,7 @@ final class UdpSocket implements ManagedResource
             if ($written !== strlen($data)) {
                 throw new TaskException('udp_partial_send', 'UDP 未完整提交报文，不自动重发');
             }
-            $this->sent++;
+            ++$this->sent;
             return $written;
         } finally {
             $this->operation = -1;
@@ -251,7 +288,7 @@ final class UdpSocket implements ManagedResource
         }
     }
 
-    /** @return array<string, int|float|string|bool> 同线程可观察在途、实际发送期限与缓冲预算；内核丢包不伪造成功计数。 */
+    /** @return array<string, bool|float|int|string> 同线程可观察在途、实际发送期限与缓冲预算；内核丢包不伪造成功计数。 */
     public function statistics(): array
     {
         $this->threadOwner->assertCurrent();
@@ -261,22 +298,6 @@ final class UdpSocket implements ManagedResource
             'socket_buffer_size' => $this->socketBufferBytes, 'receive_buffer_bytes' => $this->receiveBufferBytes,
             'send_buffer_bytes' => $this->sendBufferBytes, 'native_receive_bytes' => 65536, 'native_write_bytes' => 65536,
             'received' => $this->received, 'sent' => $this->sent, 'oversized' => $this->oversized];
-    }
-
-    /** 活动原生资源禁止序列化、线程传递和复制。 */
-    public function __serialize(): array
-    {
-        throw new TaskException('resource_transfer_forbidden', 'UDP 端点不能序列化或跨线程传递');
-    }
-
-    /** 不允许从外部数据恢复资源归属与额度。 */
-    public function __unserialize(array $data): void
-    {
-        throw new TaskException('resource_transfer_forbidden', 'UDP 端点必须在所属线程创建');
-    }
-
-    private function __clone(): void
-    {
     }
 
     private function assertActive(): void
@@ -320,7 +341,7 @@ final class UdpSocket implements ManagedResource
         }
         $this->socket = null;
         // 固定上游 defer 按登记顺序执行：Socket 析构先登记真实关闭，本回调随后结算。
-        if (!\Swoole\Event::defer(function (): void {
+        if (!Event::defer(function (): void {
             $this->settle();
         })) {
             throw new TaskException('udp_close_pending', 'UDP 关闭结算未登记，继续保留资源额度');

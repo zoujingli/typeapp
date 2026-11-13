@@ -242,7 +242,7 @@ if ($driver === 'sqlite') {
     $rebuildState = migrationResult($command, ['status']);
     expect($rebuildState[0]['state'] === 'applied' && $rebuildState[1]['state'] === 'failed', '重建失败没有准确保留迁移阶段');
     expect($pdo->query('SELECT label FROM ' . $rebuildPrefix . '_items WHERE id = 1')->fetchColumn() === '保留引用'
-        && (int) $pdo->query('SELECT item_id FROM ' . $rebuildPrefix . '_references WHERE id = 1')->fetchColumn() === 1
+        && (int)$pdo->query('SELECT item_id FROM ' . $rebuildPrefix . '_references WHERE id = 1')->fetchColumn() === 1
         && !migrationTableExists($pdo, $driver, $rebuildPrefix . '_replacement'), '外键失败没有回滚原表、数据及引用');
     $pdo->exec('UPDATE ' . $rebuildPrefix . '_gate SET id = 0');
     migrationResult($command, ['recover', '202609080002', 'retry', '已核对原表和引用保留，修复数据复制条件']);

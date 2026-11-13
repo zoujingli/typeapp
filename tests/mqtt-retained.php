@@ -209,7 +209,7 @@ function mqttRetainedSnapshotCases(int $port, string $consumer, PDO $primary): a
         mqttRetainedPublish($publisher, 5, $topic, 'new-after-disconnect', 0);
         mqttUntil(fn (): bool => $primary->query("SELECT encode(payload, 'hex') FROM type_mqtt_retained WHERE topic = 'example/retained-snapshot/resume'")->fetchColumn() === bin2hex('new-after-disconnect'), '断线期间新保留值没有提交');
         file_put_contents($gate . '.released', 'continue');
-        mqttUntil(fn (): bool => (int) $primary->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id = 'snapshot-resume' AND owner_id IS NULL")->fetchColumn() === 1, '持久快照会话没有结束旧所有权');
+        mqttUntil(fn (): bool => (int)$primary->query("SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id = 'snapshot-resume' AND owner_id IS NULL")->fetchColumn() === 1, '持久快照会话没有结束旧所有权');
         $subscriber = mqttSocket($port);
         mqttWrite($subscriber, mqttSessionConnect(5, 'snapshot-resume', false, 60));
         mqttSessionAck($subscriber, true);
@@ -217,7 +217,7 @@ function mqttRetainedSnapshotCases(int $port, string $consumer, PDO $primary): a
         expect($previous['payload'] === 'old-before-disconnect' && $previous['retain'] && !$previous['duplicate'], '恢复没有继续订阅时的未接管快照');
         mqttRetainedComplete($subscriber, $previous);
         mqttRetainedQuiet($subscriber);
-        mqttWrite($subscriber, mqttPacket(0xe0, "\0\x05\x11\0\0\0\0"));
+        mqttWrite($subscriber, mqttPacket(0xE0, "\0\x05\x11\0\0\0\0"));
         expect(mqttRead($subscriber) === '', '快照恢复会话没有按零期限结束');
         $report['persistent-resume'] = 'unaccepted-original-survives-disconnect-and-later-replacement';
     } finally {
@@ -314,8 +314,8 @@ function mqttRetainedSnapshotCases(int $port, string $consumer, PDO $primary): a
             }
         }
     }
-    mqttUntil(fn (): bool => (int) $primary->query('SELECT COUNT(*) FROM type_mqtt_retained_snapshots')->fetchColumn() === 0, '完成读取后快照引用未回收');
-    mqttUntil(fn (): bool => (int) $primary->query('SELECT COUNT(*) FROM type_mqtt_retained_history')->fetchColumn() === 0, '完成读取后旧版本未回收');
+    mqttUntil(fn (): bool => (int)$primary->query('SELECT COUNT(*) FROM type_mqtt_retained_snapshots')->fetchColumn() === 0, '完成读取后快照引用未回收');
+    mqttUntil(fn (): bool => (int)$primary->query('SELECT COUNT(*) FROM type_mqtt_retained_history')->fetchColumn() === 0, '完成读取后旧版本未回收');
     return $report;
 }
 
@@ -337,15 +337,15 @@ function mqttRetainedCases(int $port, PDO $primary, PDO $standby): array
         // 真实 WAL 页尾的 insert 指针包含下一页 24 字节头，而已刷盘末尾没有下一条记录。
         // 只在本轮隔离数据库生成有界填充；保留读取不能因为不存在的 WAL 而判为未知。
         $positions = [];
-        for ($attempt = 0; $attempt < 2048; $attempt++) {
+        for ($attempt = 0; $attempt < 2048; ++$attempt) {
             $primary->query("SELECT pg_logical_emit_message(true, 'mqtt_test', '')")->fetchColumn();
             $positions = $primary->query('SELECT pg_current_wal_insert_lsn()::text AS inserted, pg_current_wal_flush_lsn()::text AS flushed, '
                 . 'pg_wal_lsn_diff(pg_current_wal_insert_lsn(), pg_current_wal_flush_lsn())::int AS gap')->fetch(PDO::FETCH_ASSOC);
-            if ((int) $positions['gap'] === 24) {
+            if ((int)$positions['gap'] === 24) {
                 break;
             }
         }
-        expect((int) $positions['gap'] === 24, '未建立真实 WAL 页边界夹具');
+        expect((int)$positions['gap'] === 24, '未建立真实 WAL 页边界夹具');
         mqttWrite($subscriber, mqttSubscription(5, 'example/retained/wal-boundary'));
         expect(mqttRead($subscriber) === mqttSubscriptionAck(5), 'WAL 页边界订阅失败');
         $boundary = mqttRetainedRead($subscriber, 5);
@@ -353,7 +353,7 @@ function mqttRetainedCases(int $port, PDO $primary, PDO $standby): array
         fclose($publisher);
         fclose($subscriber);
         mqttDatabaseIdle($primary);
-        $cases++;
+        ++$cases;
         foreach ([4, 5] as $version) {
             foreach ([0, 1, 2] as $qos) {
                 $topic = 'example/retained/' . $version . '/' . $qos;
@@ -406,7 +406,7 @@ function mqttRetainedCases(int $port, PDO $primary, PDO $standby): array
                     expect($deleted['payload'] === '' && !$deleted['retain'], '清除保留仍应实时转发空载荷');
                     mqttRetainedComplete($receiver, $deleted);
                 }
-                expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = '" . $topic . "'")->fetchColumn() === 0, '空载荷没有同步清除保留事实');
+                expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = '" . $topic . "'")->fetchColumn() === 0, '空载荷没有同步清除保留事实');
                 mqttDatabaseIdle($primary);
                 mqttWrite($later, mqttSubscription($version, $topic, 3, 2));
                 expect(mqttRead($later) === mqttSubscriptionAck($version, "\x02", 3), '删除后订阅失败');
@@ -438,7 +438,7 @@ function mqttRetainedCases(int $port, PDO $primary, PDO $standby): array
                 mqttRetainedQuiet($subscriber);
             }
             mqttDatabaseIdle($primary);
-            $cases++;
+            ++$cases;
         }
         mqttWrite($subscriber, mqttSubscription(5, $topic, 5, 0x29));
         expect(mqttRead($subscriber) === mqttSubscriptionAck(5, "\x01", 5), 'RAP 订阅失败');
@@ -468,14 +468,14 @@ function mqttRetainedCases(int $port, PDO $primary, PDO $standby): array
         $message = mqttRetainedRead($subscriber, 5);
         $remaining = unpack('N', substr($message['properties'], 1, 4))[1];
         expect($message['properties'][0] === "\x02" && $remaining > 0 && $remaining < 4 && $message['qos'] === 0, '保留期限被刷新或未降低 QoS');
-        mqttUntil(fn (): bool => time() >= (int) $standby->query("SELECT expires_at FROM type_mqtt_retained WHERE topic = 'example/retained/expiry'")->fetchColumn(), '保留期限未到期');
+        mqttUntil(fn (): bool => time() >= (int)$standby->query("SELECT expires_at FROM type_mqtt_retained WHERE topic = 'example/retained/expiry'")->fetchColumn(), '保留期限未到期');
         mqttWrite($subscriber, mqttSubscription(5, 'example/retained/expiry', 2, 0));
         expect(mqttRead($subscriber) === mqttSubscriptionAck(5, "\0", 2), '到期后订阅失败');
         mqttRetainedQuiet($subscriber);
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = 'example/retained/expiry'")->fetchColumn() === 0, '到期记录没有清理');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = 'example/retained/expiry'")->fetchColumn() === 0, '到期记录没有清理');
         mqttRetainedPublish($publisher, 5, 'example/retained/zero', 'old', 1);
         mqttRetainedPublish($publisher, 5, 'example/retained/zero', 'zero', 1, "\x02\0\0\0\0");
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = 'example/retained/zero'")->fetchColumn() === 0, '零期限没有清除旧值');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = 'example/retained/zero'")->fetchColumn() === 0, '零期限没有清除旧值');
         $cases += 4;
         fclose($subscriber);
         mqttRetainedPublish($publisher, 5, 'example/retained/large', str_repeat('x', 256), 1);
@@ -489,7 +489,7 @@ function mqttRetainedCases(int $port, PDO $primary, PDO $standby): array
         mqttWrite($limited, mqttSubscription(5, 'denied/retained', 2, 1));
         expect(mqttRead($limited) === mqttSubscriptionAck(5, "\x87", 2), '订阅权限拒绝不符');
         mqttRetainedQuiet($limited);
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'retain-limited'")->fetchColumn() === 0, '超限保留副本占用持久积压');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'retain-limited'")->fetchColumn() === 0, '超限保留副本占用持久积压');
         fclose($limited);
         $denied = mqttSocket($port);
         $sockets[] = $denied;
@@ -497,7 +497,7 @@ function mqttRetainedCases(int $port, PDO $primary, PDO $standby): array
         mqttAck($denied, 5);
         mqttWrite($denied, mqttRetainedPacket(5, 'example/read-only/retained', 'denied', 1));
         expect(mqttRead($denied) === "\xe0\x02\x87\0", '保留发布授权拒绝不符');
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = 'example/read-only/retained'")->fetchColumn() === 0, '拒绝授权仍保存保留事实');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_retained WHERE topic = 'example/read-only/retained'")->fetchColumn() === 0, '拒绝授权仍保存保留事实');
         fclose($denied);
         $cases += 3;
         $parallel = mqttSocket($port);
@@ -546,7 +546,7 @@ function mqttRetainedCases(int $port, PDO $primary, PDO $standby): array
         $pid = mqttUntil(fn (): mixed => $primary->query("SELECT pid FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%' AND wait_event = 'SyncRep'")->fetchColumn(), '保留写入没有等待真实同步');
         mqttQuiet($publisher);
         mqttQuiet($observer);
-        $primary->query('SELECT pg_cancel_backend(' . (int) $pid . ')')->fetchColumn();
+        $primary->query('SELECT pg_cancel_backend(' . (int)$pid . ')')->fetchColumn();
         stream_set_timeout($publisher, 8);
         expect(mqttRead($publisher) === "\xe0\x02\x83\0", '未知保留写入未返回标准 Implementation specific error');
         expect($primary->query("SELECT encode(payload, 'hex') FROM type_mqtt_retained WHERE topic = 'example/retained/unknown'")->fetchColumn() === bin2hex('unconfirmed'), '取消同步后本地事实未保留');
@@ -620,7 +620,7 @@ function mqttRetainedLimits(string $consumer, array $command, array $environment
         mqttAck($publisher, 5);
         mqttRetainedPublish($publisher, 5, 'example/capacity/a', '', 1);
         mqttRetainedPublish($publisher, 5, 'example/capacity/c', 'c', 1);
-        expect((int) $standby->query('SELECT COUNT(*) FROM type_mqtt_retained')->fetchColumn() === 2, '保留删除没有释放独立配额');
+        expect((int)$standby->query('SELECT COUNT(*) FROM type_mqtt_retained')->fetchColumn() === 2, '保留删除没有释放独立配额');
         mqttWrite($publisher, mqttSubscription(5, 'example/capacity/b', 2, 1));
         expect(mqttRead($publisher) === mqttSubscriptionAck(5, "\x01", 2), '满额保留存储不能建立独立待投递副本');
         $message = mqttRetainedRead($publisher, 5);
@@ -643,7 +643,7 @@ function mqttRetainedLimits(string $consumer, array $command, array $environment
         $live = mqttRetainedRead($snapshot, 5);
         expect($live['payload'] === 'new-b' && !$live['retain'], '容量内保留替换没有实时消息');
         mqttRetainedComplete($snapshot, $live);
-        expect((int) $standby->query('SELECT COUNT(*) FROM type_mqtt_retained_history')->fetchColumn() === 1, '旧快照没有计入保留容量');
+        expect((int)$standby->query('SELECT COUNT(*) FROM type_mqtt_retained_history')->fetchColumn() === 1, '旧快照没有计入保留容量');
         mqttWrite($publisher, mqttRetainedPacket(5, 'example/capacity/c', 'c', 1));
         expect(mqttRead($publisher) === "\xe0\x02\x97\0", '当前值与旧快照共同超出条数仍接管');
         fclose($publisher);
@@ -651,7 +651,7 @@ function mqttRetainedLimits(string $consumer, array $command, array $environment
         $previous = mqttRetainedRead($snapshot, 5);
         expect($previous['payload'] === 'b' && $previous['retain'], '容量拒绝破坏了订阅时旧值');
         mqttRetainedComplete($snapshot, $previous);
-        mqttUntil(fn (): bool => (int) $standby->query('SELECT COUNT(*) FROM type_mqtt_retained_history')->fetchColumn() === 0, '已接管快照没有归还旧版本容量');
+        mqttUntil(fn (): bool => (int)$standby->query('SELECT COUNT(*) FROM type_mqtt_retained_history')->fetchColumn() === 0, '已接管快照没有归还旧版本容量');
         $publisher = mqttSocket($port);
         $sockets[] = $publisher;
         mqttWrite($publisher, mqttConnect(5, 'retain-history-after', 0));

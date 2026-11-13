@@ -7,10 +7,11 @@ namespace TypeApp\Rollout;
 use Type\Cache\NamespaceStore;
 use Type\Cache\TypedCache;
 use Type\Core\Http\HttpControl;
+use Type\Core\Http\HttpServerInterface;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\Router;
 use Type\Core\Http\SwooleServer;
-use Type\Core\Http\HttpServerInterface;
+use Type\Generated\BuildIdentity;
 use Type\Orm\Connection;
 use Type\Orm\Database;
 use Type\Orm\DatabaseManager;
@@ -26,10 +27,11 @@ use Type\Queue\Worker;
 use Type\Redis\Purpose;
 use Type\Redis\RedisConfiguration;
 use Type\Redis\RedisManager;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
-use Type\Runtime\ReleaseCompatibility;
 use Type\Runtime\ProcessSignals;
+use Type\Runtime\ReleaseCompatibility;
 use TypeApp\ModelExample\Drivers;
 use TypeApp\OutboxExample\Delivered;
 
@@ -45,10 +47,11 @@ final class Application
             'cache' => ['users' => [$release]],
         ]);
     }
+
     /**
      * 监听角色直接进入原生服务，其他角色进入统一协程再装配资源。
      *
-     * @param list<string> $arguments 含程序路径的角色命令参数。
+     * @param list<string> $arguments 含程序路径的角色命令参数
      */
     public static function run(int $release, array $arguments): void
     {
@@ -59,10 +62,29 @@ final class Application
             self::execute($release, $arguments);
             return;
         }
-        \Type\Runtime\CoroutineRuntime::enableIo();
-        \Type\Runtime\CoroutineRuntime::run(static function () use ($release, $arguments): void {
+        CoroutineRuntime::enableIo();
+        CoroutineRuntime::run(static function () use ($release, $arguments): void {
             self::execute($release, $arguments);
         });
+    }
+
+    /** 要求消息与缓存指向两个不同 Redis 端点，返回由调用方关闭的管理器。 */
+    public static function redis(): RedisManager
+    {
+        $queue = (string)getenv('TYPE_REDIS_HOST');
+        $cache = (string)getenv('TYPE_ROLLOUT_CACHE_HOST');
+        $queuePort = (int)(getenv('TYPE_REDIS_PORT') ?: 6379);
+        $cachePort = (int)(getenv('TYPE_ROLLOUT_CACHE_PORT') ?: 6379);
+        if ($queue === '' || $cache === '' || ($queue === $cache && $queuePort === $cachePort)) {
+            throw new \InvalidArgumentException('演练缓存与可靠队列需要独立 Redis 实例');
+        }
+        return new RedisManager(['queue' => new RedisConfiguration($queue, $queuePort), 'cache' => new RedisConfiguration($cache, $cachePort)]);
+    }
+
+    /** 按发布版本创建缓存编码器，底层租约绑定当前作用域。 */
+    public static function cache(RedisManager $manager, ExecutionScope $scope, int $release): TypedCache
+    {
+        return new TypedCache(new NamespaceStore($manager->connection($scope, 'cache', Purpose::SCRIPT), (string)getenv('TYPE_ROLLOUT_APP'), 'test', 'users'), new Codec($release), 2000);
     }
 
     private static function execute(int $release, array $arguments): void
@@ -70,9 +92,9 @@ final class Application
         try {
             $compatibility = self::compatibility($release);
             $mode = $arguments[1] ?? 'metadata';
-            if (class_exists(\Type\Generated\BuildIdentity::class, false)) {
-                \Type\Generated\BuildIdentity::verifyRuntime();
-                $build = \Type\Generated\BuildIdentity::info();
+            if (class_exists(BuildIdentity::class, false)) {
+                BuildIdentity::verifyRuntime();
+                $build = BuildIdentity::info();
                 $declared = new ReleaseCompatibility($build['version'], $build['capabilities']);
                 if ($declared->metadata() != $compatibility->metadata()) {
                     throw new \RuntimeException('二进制版本与运行协议声明不一致');
@@ -83,14 +105,14 @@ final class Application
                 return;
             }
             if ($mode === 'consumer-check') {
-                $compatibility->assertConsumer('user.changed', (int) ($arguments[2] ?? 1));
+                $compatibility->assertConsumer('user.changed', (int)($arguments[2] ?? 1));
                 self::output(['compatible' => true]);
                 return;
             }
-            $driver = Drivers::create((string) (getenv('TYPE_MODEL_DRIVER') ?: 'sqlite'));
+            $driver = Drivers::create((string)(getenv('TYPE_MODEL_DRIVER') ?: 'sqlite'));
             $migrator = new Migrator($driver);
             if ($mode === 'migrate') {
-                $phase = (int) ($arguments[2] ?? 1);
+                $phase = (int)($arguments[2] ?? 1);
                 if ($phase > ($release === 1 ? 1 : 2)) {
                     throw new \InvalidArgumentException('普通迁移不能隐式执行破坏性收缩');
                 }
@@ -137,7 +159,7 @@ final class Application
                 $router = new Router($messages, $messages);
                 $router->add('GET', '/user', static fn (): Endpoint => new Endpoint($driver, $release, $schema));
                 $server = self::server($router, $messages);
-                $server->serve((string) (getenv('TYPE_HTTP_LISTEN') ?: '127.0.0.1'), $port);
+                $server->serve((string)(getenv('TYPE_HTTP_LISTEN') ?: '127.0.0.1'), $port);
                 return;
             }
             $scope = new ExecutionScope();
@@ -146,7 +168,7 @@ final class Application
             $manager = self::redis();
             $store = new Store();
             try {
-                $queue = new Queue($manager->connection($scope, 'queue', Purpose::SCRIPT), (string) getenv('TYPE_ROLLOUT_APP'), 'rollout', 2000, 100);
+                $queue = new Queue($manager->connection($scope, 'queue', Purpose::SCRIPT), (string)getenv('TYPE_ROLLOUT_APP'), 'rollout', 2000, 100);
                 if ($mode === 'write') {
                     $id = $arguments[2] ?? '';
                     $name = $arguments[3] ?? '';
@@ -181,7 +203,7 @@ final class Application
                     $connection = $databaseManager->connect($scope);
                     self::output(['queue' => $queue->statistics(), 'effects' => $connection->table('type_outbox_effects')->orderBy('id')->get(),
                         'quarantine' => $queue->quarantined(), 'queue_identity' => $queue->identity(),
-                        'cache_identity' => (new NamespaceStore($manager->connection($scope, 'cache', Purpose::SCRIPT), (string) getenv('TYPE_ROLLOUT_APP'), 'test', 'users'))->identity()]);
+                        'cache_identity' => (new NamespaceStore($manager->connection($scope, 'cache', Purpose::SCRIPT), (string)getenv('TYPE_ROLLOUT_APP'), 'test', 'users'))->identity()]);
                 } elseif ($mode === 'worker') {
                     $registry = new Registry();
                     foreach ($compatibility->metadata()['capabilities']['messages']['user.changed'] as $version) {
@@ -221,29 +243,14 @@ final class Application
             exit(70);
         }
     }
-    /** 要求消息与缓存指向两个不同 Redis 端点，返回由调用方关闭的管理器。 */
-    public static function redis(): RedisManager
-    {
-        $queue = (string) getenv('TYPE_REDIS_HOST');
-        $cache = (string) getenv('TYPE_ROLLOUT_CACHE_HOST');
-        $queuePort = (int) (getenv('TYPE_REDIS_PORT') ?: 6379);
-        $cachePort = (int) (getenv('TYPE_ROLLOUT_CACHE_PORT') ?: 6379);
-        if ($queue === '' || $cache === '' || ($queue === $cache && $queuePort === $cachePort)) {
-            throw new \InvalidArgumentException('演练缓存与可靠队列需要独立 Redis 实例');
-        }
-        return new RedisManager(['queue' => new RedisConfiguration($queue, $queuePort), 'cache' => new RedisConfiguration($cache, $cachePort)]);
-    }
+
     /** 演练共用同一HTTP业务；服务端统一使用Swoole并启用协程I/O。 */
     private static function server(Router $router, Factory $messages): HttpServerInterface
     {
-        \Type\Runtime\CoroutineRuntime::enableIo();
+        CoroutineRuntime::enableIo();
         return new SwooleServer($router, $messages, $messages, $messages, null, new HttpControl(probes: true));
     }
-    /** 按发布版本创建缓存编码器，底层租约绑定当前作用域。 */
-    public static function cache(RedisManager $manager, ExecutionScope $scope, int $release): TypedCache
-    {
-        return new TypedCache(new NamespaceStore($manager->connection($scope, 'cache', Purpose::SCRIPT), (string) getenv('TYPE_ROLLOUT_APP'), 'test', 'users'), new Codec($release), 2000);
-    }
+
     private static function output(array $data): void
     {
         echo json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";

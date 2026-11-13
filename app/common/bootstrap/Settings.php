@@ -4,21 +4,22 @@ declare(strict_types=1);
 
 namespace app\common\bootstrap;
 
-use app\generated\ProjectConfig;
 use app\common\database\DatabaseFactory;
-use InvalidArgumentException;
-use RuntimeException;
-use Throwable;
+use app\common\middleware\TenantContext;
+use app\generated\ProjectConfig;
 use Type\Core\Config\Environment;
 use Type\Core\Config\Repository;
+use Type\Core\Http\HttpControl;
 use Type\Core\Http\RequestLimits;
 use Type\Core\Http\RequestPolicy;
-use Type\Core\Http\HttpControl;
 use Type\Orm\DatabaseManager;
+use Type\Redis\Purpose;
 use Type\Redis\RedisConfiguration;
 use Type\Redis\RedisManager;
-use Type\Redis\Purpose;
+use Type\Runtime\CoroutineRuntime;
+use Type\Runtime\Deadline;
 use Type\Runtime\DeploymentBudget;
+use Type\Runtime\ExecutionScope;
 
 /**
  * 选择应用数据根并建立本次启动的配置快照。
@@ -30,7 +31,7 @@ final class Settings
     /**
      * APP_BASE_PATH 由进程环境提供，不能依赖尚未定位的 .env 自己改变所在目录。
      *
-     * @throws InvalidArgumentException 指定的应用根不是已存在的绝对目录。
+     * @throws \InvalidArgumentException 指定的应用根不是已存在的绝对目录
      */
     public static function basePath(string $entry = '', bool $development = false): string
     {
@@ -40,7 +41,7 @@ final class Settings
         if ($base === false) {
             $program = realpath($entry);
             if ($program === false && $entry !== '' && !str_contains($entry, '/') && !str_contains($entry, '\\')) {
-                foreach (explode(PATH_SEPARATOR, (string) getenv('PATH')) as $directory) {
+                foreach (explode(PATH_SEPARATOR, (string)getenv('PATH')) as $directory) {
                     if ($directory !== '' && is_file($directory . '/' . $entry) && is_executable($directory . '/' . $entry)) {
                         $program = realpath($directory . '/' . $entry);
                         break;
@@ -48,16 +49,16 @@ final class Settings
                 }
             }
             if ($program === false || !is_file($program)) {
-                throw new InvalidArgumentException('无法定位软件目录，请显式设置 APP_BASE_PATH');
+                throw new \InvalidArgumentException('无法定位软件目录，请显式设置 APP_BASE_PATH');
             }
             $base = $development ? dirname($program, 2) : dirname($program);
         }
         if (!is_string($base) || !self::absolutePath($base)) {
-            throw new InvalidArgumentException('APP_BASE_PATH 必须为已存在的绝对目录');
+            throw new \InvalidArgumentException('APP_BASE_PATH 必须为已存在的绝对目录');
         }
         $resolved = realpath($base);
         if ($resolved === false || !is_dir($resolved)) {
-            throw new InvalidArgumentException('APP_BASE_PATH 必须为已存在的绝对目录');
+            throw new \InvalidArgumentException('APP_BASE_PATH 必须为已存在的绝对目录');
         }
 
         return $resolved;
@@ -66,7 +67,7 @@ final class Settings
     /**
      * 进程环境覆盖 .env；缺省值由编译过的 config 声明提供，不写回全局环境。
      *
-     * @throws InvalidArgumentException 环境数据或配置类型不符合声明。
+     * @throws \InvalidArgumentException 环境数据或配置类型不符合声明
      */
     public static function load(string $basePath, string $role = 'database'): Repository
     {
@@ -110,7 +111,8 @@ final class Settings
         $hosts = self::list($settings->text('app.http.allowed_hosts'));
         return new RequestPolicy(
             $hosts === [] ? ['127.0.0.1:' . $port, 'localhost:' . $port] : $hosts,
-            self::list($settings->text('app.http.trusted_proxies'))
+            self::list($settings->text('app.http.trusted_proxies')),
+            static fn (string $authority): bool => TenantContext::allowsAuthority($authority, $settings->text('app.tenant.base_domain'))
         );
     }
 
@@ -126,7 +128,7 @@ final class Settings
     {
         $threads = self::integer($settings, 'app.http.threads', 1, 256);
         if ($threads > self::integer($settings, 'database.budget.threads', 1, 256)) {
-            throw new InvalidArgumentException('HTTP 线程数超过部署连接预算的线程数');
+            throw new \InvalidArgumentException('HTTP 线程数超过部署连接预算的线程数');
         }
         return PHP_OS_FAMILY === 'Windows' ? 1 : $threads;
     }
@@ -176,7 +178,7 @@ final class Settings
         RuntimeCapabilities::requireFeature('redis');
         RuntimeCapabilities::requireFeature($purpose);
         if (!in_array($purpose, ['scheduler'], true)) {
-            throw new InvalidArgumentException('Redis 配置用途无效');
+            throw new \InvalidArgumentException('Redis 配置用途无效');
         }
         $prefix = 'app.' . $purpose . '.redis_';
         $password = $settings->text($prefix . 'password');
@@ -202,7 +204,7 @@ final class Settings
      */
     public static function configurationDefinitions(): array
     {
-        $definitions = [
+        return [
             'APP_NAME' => ['path' => 'app.name', 'label' => '应用名称', 'group' => '应用', 'type' => 'string', 'editable' => true, 'secret' => false],
             'APP_ENV' => ['path' => 'app.environment', 'label' => '运行环境（修改后重启）', 'group' => '应用', 'type' => 'enum', 'editable' => false, 'secret' => false, 'options' => ['dev', 'prod', 'demo']],
             'APP_DEBUG' => ['path' => 'app.debug', 'label' => '调试模式', 'group' => '应用', 'type' => 'boolean', 'editable' => true, 'secret' => false],
@@ -263,8 +265,6 @@ final class Settings
             'IOT_MQTT_NODE_ID' => ['path' => 'app.mqtt.node_id', 'label' => 'MQTT 节点 ID', 'group' => 'MQTT', 'type' => 'string', 'editable' => true, 'secret' => false],
             'IOT_MQTT_CLUSTERED' => ['path' => 'app.mqtt.clustered', 'label' => 'MQTT 集群模式', 'group' => 'MQTT', 'type' => 'boolean', 'editable' => true, 'secret' => false],
         ];
-
-        return $definitions;
     }
 
     /**
@@ -285,12 +285,12 @@ final class Settings
                 'path' => '', 'label' => $key, 'group' => '其他', 'type' => 'string', 'editable' => false,
                 'secret' => preg_match('/(?:PASSWORD|TOKEN|PRIVATE_KEY|PASSPHRASE|SECRET|CREDENTIAL|COMMAND)/', $key) === 1,
             ];
-            $secret = (bool) $definition['secret'];
+            $secret = (bool)$definition['secret'];
             $field = [
                 'key' => $key, 'label' => $definition['label'], 'group' => $definition['group'], 'type' => $definition['type'],
-                'editable' => (bool) $definition['editable'] && !$secret, 'secret' => $secret,
-                'source' => (string) ($meta['source'] ?? 'unknown'), 'read_only' => (bool) ($meta['read_only'] ?? false),
-                'reason' => $meta['reason'] ?? null, 'file_present' => (bool) ($meta['file_present'] ?? false), 'value' => null,
+                'editable' => (bool)$definition['editable'] && !$secret, 'secret' => $secret,
+                'source' => (string)($meta['source'] ?? 'unknown'), 'read_only' => (bool)($meta['read_only'] ?? false),
+                'reason' => $meta['reason'] ?? null, 'file_present' => (bool)($meta['file_present'] ?? false), 'value' => null,
             ];
             if (isset($definition['options'])) {
                 $field['options'] = $definition['options'];
@@ -313,13 +313,13 @@ final class Settings
     public static function configurationUpdate(string $basePath, string $version, array $changes): array
     {
         if (preg_match('/^[a-f0-9]{64}$/D', $version) !== 1 || $changes === []) {
-            throw new InvalidArgumentException('configuration_input_invalid');
+            throw new \InvalidArgumentException('configuration_input_invalid');
         }
         $definitions = self::configurationDefinitions();
         foreach ($changes as $key => $value) {
-            if (!is_string($key) || !isset($definitions[$key]) || !(bool) $definitions[$key]['editable'] || (bool) $definitions[$key]['secret']
+            if (!is_string($key) || !isset($definitions[$key]) || !(bool)$definitions[$key]['editable'] || (bool)$definitions[$key]['secret']
                 || getenv($key) !== false) {
-                throw new InvalidArgumentException('configuration_field_read_only');
+                throw new \InvalidArgumentException('configuration_field_read_only');
             }
             $definition = $definitions[$key];
             $valid = match ($definition['type']) {
@@ -330,7 +330,7 @@ final class Settings
                 default => false,
             };
             if (!$valid) {
-                throw new InvalidArgumentException('configuration_value_invalid');
+                throw new \InvalidArgumentException('configuration_value_invalid');
             }
         }
         $lock = self::configurationLock($basePath);
@@ -338,7 +338,7 @@ final class Settings
             $path = $basePath . '/.env';
             $contents = self::configurationRead($path, false, true);
             if (!hash_equals($version, hash('sha256', $contents))) {
-                throw new RuntimeException('config_version_conflict');
+                throw new \RuntimeException('config_version_conflict');
             }
             $updated = self::replaceEnvironmentValues($contents, $changes);
             $fileEnvironment = Environment::parse($updated, false);
@@ -356,62 +356,14 @@ final class Settings
         }
     }
 
-    /** 将管理端的标量值编码为 Environment 解析器可接受的单行值。 */
-    private static function encodeEnvironmentValue(mixed $value): string
-    {
-        if (is_bool($value)) {
-            return $value ? 'true' : 'false';
-        }
-        if (is_int($value)) {
-            return (string) $value;
-        }
-        if (!is_string($value) || strlen($value) > 4096 || preg_match('/[\x00-\x1F\x7F]/', $value) === 1) {
-            throw new InvalidArgumentException('configuration_value_invalid');
-        }
-        if ($value !== '' && preg_match('/^[A-Za-z0-9_\.\/:@%+,\-]+$/D', $value) === 1) {
-            return $value;
-        }
-        return "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], $value) . "'";
-    }
-
-    /** 只替换明确键的整行内容，保留其他注释和部署方未登记的键。 */
-    private static function replaceEnvironmentValues(string $contents, array $changes): string
-    {
-        $parts = preg_split('/(\r\n|\r|\n)/', $contents, -1, PREG_SPLIT_DELIM_CAPTURE);
-        if ($parts === false) {
-            throw new RuntimeException('config_read_failed');
-        }
-        $seen = [];
-        for ($index = 0; $index < count($parts); $index += 2) {
-            $line = (string) ($parts[$index] ?? '');
-            if (preg_match('/^([ \t]*)(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=/', $line, $matches) !== 1) {
-                continue;
-            }
-            $key = (string) $matches[2];
-            if (!array_key_exists($key, $changes)) {
-                continue;
-            }
-            $parts[$index] = (string) $matches[1] . $key . '=' . self::encodeEnvironmentValue($changes[$key]);
-            $seen[$key] = true;
-        }
-        $updated = implode('', $parts);
-        foreach ($changes as $key => $value) {
-            if (!isset($seen[$key])) {
-                $updated .= (str_ends_with($updated, "\n") || str_ends_with($updated, "\r") || $updated === '' ? '' : "\n")
-                    . $key . '=' . self::encodeEnvironmentValue($value) . "\n";
-            }
-        }
-        return $updated;
-    }
-
     /**
      * 配置管理检查 all，运行角色检查自身需求；不连接服务、不建库、不启动角色。
-     * @param string $role all、http、database 或 scheduler。
+     * @param string $role all、http、database 或 scheduler
      */
     public static function validateRuntimeConfiguration(Repository $settings, string $basePath, string $role = 'all'): void
     {
         if (!in_array($role, ['all', 'http', 'database', 'scheduler'], true)) {
-            throw new InvalidArgumentException('configuration_role_invalid');
+            throw new \InvalidArgumentException('configuration_role_invalid');
         }
         self::environment($settings, false);
         if ($settings->boolean('cache.enabled')) {
@@ -427,7 +379,7 @@ final class Settings
         self::databaseBudget($settings);
         $capacity = self::integer($settings, 'database.pool.capacity', 1, 1024);
         if (self::integer($settings, 'database.pool.idle', 0, 1024) > $capacity) {
-            throw new InvalidArgumentException('数据库空闲连接数不能超过池容量');
+            throw new \InvalidArgumentException('数据库空闲连接数不能超过池容量');
         }
         DatabaseFactory::validate($settings, $basePath);
         if ($role === 'all' || $role === 'http') {
@@ -448,8 +400,8 @@ final class Settings
     /**
      * 离线维护同一 .env；只有显式 remember 在真实依赖检查成功后更新私有恢复副本。
      * 不加载业务数据库或恢复门，不向输出提供配置值；恢复不会改变任何运行进程。
-     * @param list<string> $arguments 仅 check 接受 --connect、--remember；remember 隐含 connect。
-     * @return array<string, mixed> exit 为 0 有效、2 无效、3 连接失败、4 文件恢复成功待重启、5 文件操作失败。
+     * @param list<string> $arguments 仅 check 接受 --connect、--remember；remember 隐含 connect
+     * @return array<string, mixed> exit 为 0 有效、2 无效、3 连接失败、4 文件恢复成功待重启、5 文件操作失败
      */
     public static function configurationCommand(string $basePath, string $command, array $arguments): array
     {
@@ -460,7 +412,7 @@ final class Settings
                 || ($command === 'config:restore' && $arguments !== [])
                 || count(array_unique($arguments)) !== count($arguments)
                 || array_diff($arguments, ['--connect', '--remember']) !== []) {
-                throw new InvalidArgumentException('config:check [--connect] [--remember]；config:restore 不接受参数');
+                throw new \InvalidArgumentException('config:check [--connect] [--remember]；config:restore 不接受参数');
             }
             $remember = in_array('--remember', $arguments, true);
             $restore = $command === 'config:restore';
@@ -479,12 +431,12 @@ final class Settings
                 try {
                     $restoredEnvironment = Environment::parse($contents);
                     ProjectConfig::load($restoredEnvironment);
-                } catch (Throwable) {
+                } catch (\Throwable) {
                     $result['effective_configuration'] = 'invalid_process_override';
                 }
                 $description = $fileEnvironment->describe();
                 foreach ($description['fields'] as $key => $field) {
-                    if (getenv((string) $key) !== false) {
+                    if (getenv((string)$key) !== false) {
                         $field['source'] = 'process';
                         $field['read_only'] = true;
                         $field['reason'] = 'process_environment_requires_operator_restart';
@@ -512,18 +464,18 @@ final class Settings
             }
             if ($remember) {
                 if (self::configurationRead($basePath . '/.env', false, true) !== $contents) {
-                    throw new RuntimeException('config_version_conflict');
+                    throw new \RuntimeException('config_version_conflict');
                 }
                 $record = ['format' => 1, 'version' => $result['version'], 'contents' => base64_encode($contents),
                     'checked_at' => time(), 'process_keys' => array_keys(array_filter($result['fields'], static fn (array $field): bool => $field['read_only']))];
                 self::configurationReplace($basePath . '/runtime/config/last-valid.json', json_encode($record, JSON_THROW_ON_ERROR) . "\n", true);
             }
             return $result + ['exit' => 0, 'status' => $remember ? 'valid_remembered' : 'valid'];
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $message = $error->getMessage();
             $fileFailure = preg_match('/^config_[a-z_]+$/D', $message) === 1;
             return $result + ['exit' => $fileFailure ? 5 : 2, 'status' => $fileFailure ? $message : 'config_invalid',
-                'reason' => $error instanceof InvalidArgumentException || str_starts_with($message, 'dotenv ') ? $message : null];
+                'reason' => $error instanceof \InvalidArgumentException || str_starts_with($message, 'dotenv ') ? $message : null];
         } finally {
             if (is_resource($lock)) {
                 flock($lock, LOCK_UN);
@@ -532,221 +484,16 @@ final class Settings
         }
     }
 
-    /** 配置检查只探测构建产物声明的真实业务用途。 */
-    private static function redisEnabled(Repository $settings, string $purpose): bool
-    {
-        return RuntimeCapabilities::hasFeature($purpose);
-    }
-
-    /** @return array<string, string> 每个真实依赖独立返回结果；不输出驱动异常、DSN或凭据。 */
-    private static function checkDependencies(Repository $settings, string $basePath): array
-    {
-        $results = [];
-        try {
-            DatabaseFactory::requireExisting($settings, $basePath);
-            \Type\Runtime\CoroutineRuntime::run(static function () use ($settings, $basePath): void {
-                $manager = self::database($settings, $basePath, 1);
-                $scope = new \Type\Runtime\ExecutionScope(new \Type\Runtime\Deadline(2.0));
-                try {
-                    if ((int) ($manager->connect($scope)->query('SELECT 1 AS value')[0]['value'] ?? 0) !== 1) {
-                        throw new RuntimeException('dependency_failed');
-                    }
-                } finally {
-                    try {
-                        $scope->close();
-                    } finally {
-                        $manager->close();
-                    }
-                }
-            });
-            $results['database'] = 'ok';
-        } catch (Throwable) {
-            $results['database'] = 'failed';
-        }
-        foreach (['scheduler'] as $purpose) {
-            if (!self::redisEnabled($settings, $purpose)) {
-                $results['redis_' . $purpose] = 'disabled';
-                continue;
-            }
-            try {
-                $redis = self::redis($settings, $basePath, $purpose)->connect();
-                try {
-                    if ($redis->ping() === false) {
-                        throw new RuntimeException('dependency_failed');
-                    }
-                } finally {
-                    $redis->close();
-                }
-                $results['redis_' . $purpose] = 'ok';
-            } catch (Throwable) {
-                $results['redis_' . $purpose] = 'failed';
-            }
-        }
-        return $results;
-    }
-
-    /** @return resource 原生文件锁；启动期同步等待至多五秒，无业务协程或数据库依赖。 */
-    private static function configurationLock(string $basePath): mixed
-    {
-        foreach (['runtime', 'runtime/config'] as $relative) {
-            $directory = $basePath . '/' . $relative;
-            clearstatcache(true, $directory);
-            if (!file_exists($directory) && !is_link($directory) && !@mkdir($directory, 0700)) {
-                clearstatcache(true, $directory);
-                if (!is_dir($directory)) {
-                    throw new RuntimeException('config_directory_unavailable');
-                }
-            }
-            $stat = @lstat($directory);
-            if ($stat === false || ($stat['mode'] & 0170000) !== 0040000
-                || ($relative === 'runtime/config' && PHP_OS_FAMILY !== 'Windows' && ($stat['mode'] & 0077) !== 0)) {
-                throw new RuntimeException('config_directory_unsafe');
-            }
-        }
-        $path = $basePath . '/runtime/config/.lock';
-        self::configurationFile($path, false, true);
-        $lock = @fopen($path, 'c+b');
-        if ($lock === false) {
-            throw new RuntimeException('config_lock_unavailable');
-        }
-        try {
-            if (!@chmod($path, 0600)) {
-                throw new RuntimeException('config_permissions_failed');
-            }
-            self::configurationIdentity($path, $lock, true);
-            $deadline = hrtime(true) + 5000000000;
-            while (!flock($lock, LOCK_EX | LOCK_NB)) {
-                if (hrtime(true) >= $deadline) {
-                    throw new RuntimeException('config_lock_timeout');
-                }
-                usleep(10000);
-            }
-            self::configurationIdentity($path, $lock, true);
-            return $lock;
-        } catch (Throwable $error) {
-            fclose($lock);
-            throw $error;
-        }
-    }
-
-    /** @return array<string, mixed> 拒绝软链、硬链、特殊文件；可选缺失仅用于首次写入。 */
-    private static function configurationFile(string $path, bool $private, bool $optional): array
-    {
-        clearstatcache(true, $path);
-        $stat = @lstat($path);
-        if ($stat === false && $optional && !file_exists($path) && !is_link($path)) {
-            return [];
-        }
-        if ($stat === false || ($stat['mode'] & 0170000) !== 0100000 || $stat['nlink'] !== 1
-            || ($private && PHP_OS_FAMILY !== 'Windows' && ($stat['mode'] & 0077) !== 0)) {
-            throw new RuntimeException('config_file_unsafe');
-        }
-        return $stat;
-    }
-
-    /** 打开后再次核对身份，避免在检查与打开之间接受被替换的路径。 */
-    private static function configurationIdentity(string $path, mixed $stream, bool $private): void
-    {
-        $stat = self::configurationFile($path, $private, false);
-        $opened = fstat($stream);
-        if ($opened === false || $stat['dev'] !== $opened['dev'] || $stat['ino'] !== $opened['ino'] || $stat['mode'] !== $opened['mode']) {
-            throw new RuntimeException('config_file_changed');
-        }
-    }
-
-    private static function configurationRead(string $path, bool $private, bool $optional = false): string
-    {
-        $stat = self::configurationFile($path, $private, $optional);
-        if ($stat === []) {
-            return '';
-        }
-        $limit = $private ? 1500000 : 1048576;
-        if ($stat['size'] > $limit) {
-            throw new RuntimeException('config_file_too_large');
-        }
-        $stream = @fopen($path, 'rb');
-        if ($stream === false) {
-            throw new RuntimeException('config_read_failed');
-        }
-        try {
-            self::configurationIdentity($path, $stream, $private);
-            $contents = stream_get_contents($stream, $limit + 1);
-            if ($contents === false || strlen($contents) > $limit) {
-                throw new RuntimeException('config_read_failed');
-            }
-            return $contents;
-        } finally {
-            fclose($stream);
-        }
-    }
-
-    private static function lastValid(string $basePath): string
-    {
-        $record = json_decode(self::configurationRead($basePath . '/runtime/config/last-valid.json', true), true, 8, JSON_THROW_ON_ERROR);
-        if (!is_array($record) || ($record['format'] ?? null) !== 1 || !is_string($record['version'] ?? null) || !is_string($record['contents'] ?? null)) {
-            throw new RuntimeException('config_backup_invalid');
-        }
-        $contents = base64_decode($record['contents'], true);
-        if ($contents === false || strlen($contents) > 1048576 || !hash_equals($record['version'], hash('sha256', $contents))) {
-            throw new RuntimeException('config_backup_invalid');
-        }
-        return $contents;
-    }
-
-    /** 持锁写入同目录固定暂存槽；进程中断后可重写，绝不先截断当前文件或有效副本。 */
-    private static function configurationReplace(string $path, #[\SensitiveParameter] string $contents, bool $private): void
-    {
-        self::configurationFile($path, $private, true);
-        $temporary = $path . '.next';
-        self::configurationFile($temporary, true, true);
-        $stream = @fopen($temporary, 'c+b');
-        if ($stream === false) {
-            throw new RuntimeException('config_write_failed');
-        }
-        try {
-            if (!@chmod($temporary, 0600)) {
-                throw new RuntimeException('config_permissions_failed');
-            }
-            self::configurationIdentity($temporary, $stream, true);
-            if (!ftruncate($stream, 0) || fwrite($stream, $contents) !== strlen($contents) || !fflush($stream) || !fsync($stream)) {
-                throw new RuntimeException('config_write_failed');
-            }
-            fclose($stream);
-            $stream = null;
-            self::configurationFile($path, $private, true);
-            if (!@rename($temporary, $path)) {
-                throw new RuntimeException('config_replace_failed');
-            }
-            if (PHP_OS_FAMILY !== 'Windows') {
-                $directory = @fopen(dirname($path), 'r');
-                if ($directory === false) {
-                    throw new RuntimeException('config_durability_unknown');
-                }
-                try {
-                    if (!fsync($directory)) {
-                        throw new RuntimeException('config_durability_unknown');
-                    }
-                } finally {
-                    fclose($directory);
-                }
-            }
-        } finally {
-            if (is_resource($stream)) {
-                fclose($stream);
-            }
-        }
-    }
-
     /**
      * 环境只取启动配置；保留开发入口参数的调用兼容性，不允许其覆盖 demo。
      *
-     * @throws InvalidArgumentException APP_ENV 无效；旧值须显式迁移后重启。
+     * @throws \InvalidArgumentException APP_ENV 无效；旧值须显式迁移后重启
      */
     public static function environment(Repository $configuration, bool $developmentEntry): string
     {
         $environment = $configuration->text('app.environment');
         if (!in_array($environment, ['dev', 'prod', 'demo'], true)) {
-            throw new InvalidArgumentException('APP_ENV 只接受 dev、prod 或 demo；development 请改为 dev，production 请改为 prod');
+            throw new \InvalidArgumentException('APP_ENV 只接受 dev、prod 或 demo；development 请改为 dev，production 请改为 prod');
         }
 
         return $environment;
@@ -770,16 +517,16 @@ final class Settings
         }
 
         return str_starts_with($path, '/')
-            || preg_match('~^[A-Za-z]:[\\\\/]~D', $path) === 1
-            || preg_match('~^\\\\\\\\[^\\\\/]+[\\\\/][^\\\\/]+(?:[\\\\/]|$)~D', $path) === 1;
+            || preg_match('~^[A-Za-z]:[\\\/]~D', $path) === 1
+            || preg_match('~^\\\\\\\[^\\\/]+[\\\/][^\\\/]+(?:[\\\/]|$)~D', $path) === 1;
     }
 
-    /** @throws InvalidArgumentException 已取得的配置整数不在该用途的允许范围内。 */
+    /** @throws \InvalidArgumentException 已取得的配置整数不在该用途的允许范围内。 */
     public static function integer(Repository $configuration, string $key, int $minimum, int $maximum): int
     {
         $value = $configuration->integer($key);
         if ($value < $minimum || $value > $maximum) {
-            throw new InvalidArgumentException('启动配置整数越界：' . $key);
+            throw new \InvalidArgumentException('启动配置整数越界：' . $key);
         }
 
         return $value;
@@ -789,7 +536,7 @@ final class Settings
      * 解析最多 64 项的配置列表；空字符串表示使用调用方的明确默认值。
      *
      * @return list<string>
-     * @throws InvalidArgumentException 列表含空项或超出容量。
+     * @throws \InvalidArgumentException 列表含空项或超出容量
      */
     public static function list(string $value): array
     {
@@ -798,9 +545,262 @@ final class Settings
         }
         $values = array_map('trim', explode(',', $value));
         if (count($values) > 64 || in_array('', $values, true)) {
-            throw new InvalidArgumentException('启动配置列表无效');
+            throw new \InvalidArgumentException('启动配置列表无效');
         }
 
         return $values;
+    }
+
+    /** 将管理端的标量值编码为 Environment 解析器可接受的单行值。 */
+    private static function encodeEnvironmentValue(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+        if (is_int($value)) {
+            return (string)$value;
+        }
+        if (!is_string($value) || strlen($value) > 4096 || preg_match('/[\x00-\x1F\x7F]/', $value) === 1) {
+            throw new \InvalidArgumentException('configuration_value_invalid');
+        }
+        if ($value !== '' && preg_match('/^[A-Za-z0-9_\.\/:@%+,\-]+$/D', $value) === 1) {
+            return $value;
+        }
+        return "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], $value) . "'";
+    }
+
+    /** 只替换明确键的整行内容，保留其他注释和部署方未登记的键。 */
+    private static function replaceEnvironmentValues(string $contents, array $changes): string
+    {
+        $parts = preg_split('/(\r\n|\r|\n)/', $contents, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if ($parts === false) {
+            throw new \RuntimeException('config_read_failed');
+        }
+        $seen = [];
+        for ($index = 0; $index < count($parts); $index += 2) {
+            $line = (string)($parts[$index] ?? '');
+            if (preg_match('/^([ \t]*)(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=/', $line, $matches) !== 1) {
+                continue;
+            }
+            $key = (string)$matches[2];
+            if (!array_key_exists($key, $changes)) {
+                continue;
+            }
+            $parts[$index] = (string)$matches[1] . $key . '=' . self::encodeEnvironmentValue($changes[$key]);
+            $seen[$key] = true;
+        }
+        $updated = implode('', $parts);
+        foreach ($changes as $key => $value) {
+            if (!isset($seen[$key])) {
+                $updated .= (str_ends_with($updated, "\n") || str_ends_with($updated, "\r") || $updated === '' ? '' : "\n")
+                    . $key . '=' . self::encodeEnvironmentValue($value) . "\n";
+            }
+        }
+        return $updated;
+    }
+
+    /** 配置检查只探测构建产物声明的真实业务用途。 */
+    private static function redisEnabled(Repository $settings, string $purpose): bool
+    {
+        return RuntimeCapabilities::hasFeature($purpose);
+    }
+
+    /** @return array<string, string> 每个真实依赖独立返回结果；不输出驱动异常、DSN或凭据。 */
+    private static function checkDependencies(Repository $settings, string $basePath): array
+    {
+        $results = [];
+        try {
+            DatabaseFactory::requireExisting($settings, $basePath);
+            CoroutineRuntime::run(static function () use ($settings, $basePath): void {
+                $manager = self::database($settings, $basePath, 1);
+                $scope = new ExecutionScope(new Deadline(2.0));
+                try {
+                    if ((int)($manager->connect($scope)->query('SELECT 1 AS value')[0]['value'] ?? 0) !== 1) {
+                        throw new \RuntimeException('dependency_failed');
+                    }
+                } finally {
+                    try {
+                        $scope->close();
+                    } finally {
+                        $manager->close();
+                    }
+                }
+            });
+            $results['database'] = 'ok';
+        } catch (\Throwable) {
+            $results['database'] = 'failed';
+        }
+        foreach (['scheduler'] as $purpose) {
+            if (!self::redisEnabled($settings, $purpose)) {
+                $results['redis_' . $purpose] = 'disabled';
+                continue;
+            }
+            try {
+                $redis = self::redis($settings, $basePath, $purpose)->connect();
+                try {
+                    if ($redis->ping() === false) {
+                        throw new \RuntimeException('dependency_failed');
+                    }
+                } finally {
+                    $redis->close();
+                }
+                $results['redis_' . $purpose] = 'ok';
+            } catch (\Throwable) {
+                $results['redis_' . $purpose] = 'failed';
+            }
+        }
+        return $results;
+    }
+
+    /** @return resource 原生文件锁；启动期同步等待至多五秒，无业务协程或数据库依赖。 */
+    private static function configurationLock(string $basePath): mixed
+    {
+        foreach (['runtime', 'runtime/config'] as $relative) {
+            $directory = $basePath . '/' . $relative;
+            clearstatcache(true, $directory);
+            if (!file_exists($directory) && !is_link($directory) && !@mkdir($directory, 0700)) {
+                clearstatcache(true, $directory);
+                if (!is_dir($directory)) {
+                    throw new \RuntimeException('config_directory_unavailable');
+                }
+            }
+            $stat = @lstat($directory);
+            if ($stat === false || ($stat['mode'] & 0170000) !== 0040000
+                || ($relative === 'runtime/config' && PHP_OS_FAMILY !== 'Windows' && ($stat['mode'] & 0077) !== 0)) {
+                throw new \RuntimeException('config_directory_unsafe');
+            }
+        }
+        $path = $basePath . '/runtime/config/.lock';
+        self::configurationFile($path, false, true);
+        $lock = @fopen($path, 'c+b');
+        if ($lock === false) {
+            throw new \RuntimeException('config_lock_unavailable');
+        }
+        try {
+            if (!@chmod($path, 0600)) {
+                throw new \RuntimeException('config_permissions_failed');
+            }
+            self::configurationIdentity($path, $lock, true);
+            $deadline = hrtime(true) + 5000000000;
+            while (!flock($lock, LOCK_EX | LOCK_NB)) {
+                if (hrtime(true) >= $deadline) {
+                    throw new \RuntimeException('config_lock_timeout');
+                }
+                usleep(10000);
+            }
+            self::configurationIdentity($path, $lock, true);
+            return $lock;
+        } catch (\Throwable $error) {
+            fclose($lock);
+            throw $error;
+        }
+    }
+
+    /** @return array<string, mixed> 拒绝软链、硬链、特殊文件；可选缺失仅用于首次写入。 */
+    private static function configurationFile(string $path, bool $private, bool $optional): array
+    {
+        clearstatcache(true, $path);
+        $stat = @lstat($path);
+        if ($stat === false && $optional && !file_exists($path) && !is_link($path)) {
+            return [];
+        }
+        if ($stat === false || ($stat['mode'] & 0170000) !== 0100000 || $stat['nlink'] !== 1
+            || ($private && PHP_OS_FAMILY !== 'Windows' && ($stat['mode'] & 0077) !== 0)) {
+            throw new \RuntimeException('config_file_unsafe');
+        }
+        return $stat;
+    }
+
+    /** 打开后再次核对身份，避免在检查与打开之间接受被替换的路径。 */
+    private static function configurationIdentity(string $path, mixed $stream, bool $private): void
+    {
+        $stat = self::configurationFile($path, $private, false);
+        $opened = fstat($stream);
+        if ($opened === false || $stat['dev'] !== $opened['dev'] || $stat['ino'] !== $opened['ino'] || $stat['mode'] !== $opened['mode']) {
+            throw new \RuntimeException('config_file_changed');
+        }
+    }
+
+    private static function configurationRead(string $path, bool $private, bool $optional = false): string
+    {
+        $stat = self::configurationFile($path, $private, $optional);
+        if ($stat === []) {
+            return '';
+        }
+        $limit = $private ? 1500000 : 1048576;
+        if ($stat['size'] > $limit) {
+            throw new \RuntimeException('config_file_too_large');
+        }
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new \RuntimeException('config_read_failed');
+        }
+        try {
+            self::configurationIdentity($path, $stream, $private);
+            $contents = stream_get_contents($stream, $limit + 1);
+            if ($contents === false || strlen($contents) > $limit) {
+                throw new \RuntimeException('config_read_failed');
+            }
+            return $contents;
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    private static function lastValid(string $basePath): string
+    {
+        $record = json_decode(self::configurationRead($basePath . '/runtime/config/last-valid.json', true), true, 8, JSON_THROW_ON_ERROR);
+        if (!is_array($record) || ($record['format'] ?? null) !== 1 || !is_string($record['version'] ?? null) || !is_string($record['contents'] ?? null)) {
+            throw new \RuntimeException('config_backup_invalid');
+        }
+        $contents = base64_decode($record['contents'], true);
+        if ($contents === false || strlen($contents) > 1048576 || !hash_equals($record['version'], hash('sha256', $contents))) {
+            throw new \RuntimeException('config_backup_invalid');
+        }
+        return $contents;
+    }
+
+    /** 持锁写入同目录固定暂存槽；进程中断后可重写，绝不先截断当前文件或有效副本。 */
+    private static function configurationReplace(string $path, #[\SensitiveParameter] string $contents, bool $private): void
+    {
+        self::configurationFile($path, $private, true);
+        $temporary = $path . '.next';
+        self::configurationFile($temporary, true, true);
+        $stream = @fopen($temporary, 'c+b');
+        if ($stream === false) {
+            throw new \RuntimeException('config_write_failed');
+        }
+        try {
+            if (!@chmod($temporary, 0600)) {
+                throw new \RuntimeException('config_permissions_failed');
+            }
+            self::configurationIdentity($temporary, $stream, true);
+            if (!ftruncate($stream, 0) || fwrite($stream, $contents) !== strlen($contents) || !fflush($stream) || !fsync($stream)) {
+                throw new \RuntimeException('config_write_failed');
+            }
+            fclose($stream);
+            $stream = null;
+            self::configurationFile($path, $private, true);
+            if (!@rename($temporary, $path)) {
+                throw new \RuntimeException('config_replace_failed');
+            }
+            if (PHP_OS_FAMILY !== 'Windows') {
+                $directory = @fopen(dirname($path), 'r');
+                if ($directory === false) {
+                    throw new \RuntimeException('config_durability_unknown');
+                }
+                try {
+                    if (!fsync($directory)) {
+                        throw new \RuntimeException('config_durability_unknown');
+                    }
+                } finally {
+                    fclose($directory);
+                }
+            }
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
     }
 }

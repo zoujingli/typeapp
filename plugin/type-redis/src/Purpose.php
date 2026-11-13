@@ -8,9 +8,13 @@ namespace Type\Redis;
 final class Purpose
 {
     public const COMMAND = 'command';
+
     public const BLOCKING = 'blocking';
+
     public const PIPELINE = 'pipeline';
+
     public const TRANSACTION = 'transaction';
+
     public const SCRIPT = 'script';
 
     /**

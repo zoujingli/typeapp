@@ -15,21 +15,13 @@ require_once dirname(__DIR__, 2) . '/tools/distribution/Process.php';
 require_once dirname(__DIR__, 2) . '/tools/distribution/Batch.php';
 require_once dirname(__DIR__, 2) . '/tools/distribution/Publisher.php';
 
-/** 经真实 Git 发布得到报告，在下游命令入口验证完整性，外部服务只允许触达拒绝哨兵。 */
+/**
+ * 经真实 Git 发布得到报告，在下游命令入口验证完整性，外部服务只允许触达拒绝哨兵。
+ * @internal
+ * @coversNothing
+ */
 final class DistributionReportTest extends TestCase
 {
-    /** 每个入口都必须独立拒绝被改写的报告，不能只相信完成标志。 */
-    public static function reports(): iterable
-    {
-        foreach (['template', 'consumer'] as $entry) {
-            foreach (['valid-branch', 'valid-tag', 'id', 'source', 'protocol', 'mode', 'version',
-                'failed-item', 'item-split', 'item-reference', 'item-source', 'missing-item', 'extra-item', 'shallow'] as $change) {
-                yield $entry . '-' . $change => [$entry, $change];
-            }
-        }
-        yield 'consumer-valid-workspace' => ['consumer', 'valid-workspace'];
-    }
-
     /** 验证下游消费整个已提交批次的身份和结果，拒绝部分成功、篡改或缺失记录。 */
     #[DataProvider('reports')]
     public function testDownstreamChecksTheEntireCommittedBatch(string $entry, string $change): void
@@ -46,7 +38,7 @@ final class DistributionReportTest extends TestCase
                 self::assertTrue(copy($root . '/' . $file, $directory . '/' . $file));
             }
             file_put_contents($directory . '/vendor/autoload.php', '<?php require ' . var_export($root . '/vendor/autoload.php', true) . ';');
-            $mapping = json_decode((string) file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
+            $mapping = json_decode((string)file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
             $mapping['packages'] = ['type-runtime' => $mapping['packages']['type-runtime']];
             file_put_contents($directory . '/.github/distribution.json', json_encode($mapping, JSON_THROW_ON_ERROR));
             foreach (['gh', 'composer'] as $tool) {
@@ -54,7 +46,7 @@ final class DistributionReportTest extends TestCase
             }
             file_put_contents($directory . '/.gitignore', "/build/\n");
             // 预期取提交中的 LF 原文；工作区另写 CRLF，模拟 Windows 检出但不改变消费身份。
-            $toolchain = str_replace("\r\n", "\n", (string) file_get_contents($root . '/toolchain.lock.json'));
+            $toolchain = str_replace("\r\n", "\n", (string)file_get_contents($root . '/toolchain.lock.json'));
             $workingToolchain = str_replace("\n", "\r\n", $toolchain);
             $example = "<?php\nfunction main(): void {}\n";
             file_put_contents($directory . '/toolchain.lock.json', $workingToolchain);
@@ -138,13 +130,13 @@ final class DistributionReportTest extends TestCase
                     $consumers = glob($checkout . '/build/batch-consumer-*');
                     self::assertCount(1, $consumers);
                     $consumer = $consumers[0];
-                    $composer = json_decode((string) file_get_contents($consumer . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+                    $composer = json_decode((string)file_get_contents($consumer . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
                     self::assertSame(['zoujingli/type-runtime' => $tag ? 'v1.0.0' : 'dev-main#' . $plan['items']['type-runtime']['split']], $composer['require']);
                     self::assertFileExists($consumer . '/main.php');
                     self::assertSame($example, file_get_contents($consumer . '/main.php'));
                     // Windows 的 Git/PHP 可能把工作区文本写成 CRLF；批次身份比较规范化换行，
                     // 仍比较完整锁文件内容，避免把检出格式当成工具链篡改。
-                    $consumedToolchain = str_replace(["\r\n", "\r"], "\n", (string) file_get_contents($consumer . '/toolchain.lock.json'));
+                    $consumedToolchain = str_replace(["\r\n", "\r"], "\n", (string)file_get_contents($consumer . '/toolchain.lock.json'));
                     self::assertSame($toolchain, $consumedToolchain);
                 }
             } else {
@@ -155,5 +147,17 @@ final class DistributionReportTest extends TestCase
         } finally {
             \removeTestDirectory($directory);
         }
+    }
+
+    /** 每个入口都必须独立拒绝被改写的报告，不能只相信完成标志。 */
+    public static function reports(): iterable
+    {
+        foreach (['template', 'consumer'] as $entry) {
+            foreach (['valid-branch', 'valid-tag', 'id', 'source', 'protocol', 'mode', 'version',
+                'failed-item', 'item-split', 'item-reference', 'item-source', 'missing-item', 'extra-item', 'shallow'] as $change) {
+                yield $entry . '-' . $change => [$entry, $change];
+            }
+        }
+        yield 'consumer-valid-workspace' => ['consumer', 'valid-workspace'];
     }
 }

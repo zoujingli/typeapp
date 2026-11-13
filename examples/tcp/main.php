@@ -17,8 +17,8 @@ function main(int $argc, array $argv): void
         $plan = new DeploymentBudget(16, 1, 0, 1, 0, 1);
         $scope = new ExecutionScope();
         $socket = $argv[1] === 'client'
-            ? TcpSocket::client($plan->poolBudget(), $argv[2], (int) $argv[3])
-            : TcpSocket::listener($plan->poolBudget(), $argv[2], (int) $argv[3]);
+            ? TcpSocket::client($plan->poolBudget(), $argv[2], (int)$argv[3])
+            : TcpSocket::listener($plan->poolBudget(), $argv[2], (int)$argv[3]);
         try {
             $scope->run(static function (ExecutionScope $current) use ($scope, $socket, $argv): void {
                 $scope->open($socket);

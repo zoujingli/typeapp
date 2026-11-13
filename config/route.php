@@ -3,5 +3,5 @@
 declare(strict_types=1);
 
 return [
-    'class' => 'app\\generated\\Routes',
+    'class' => 'app\generated\Routes',
 ];

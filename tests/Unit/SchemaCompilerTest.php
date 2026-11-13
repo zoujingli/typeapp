@@ -5,13 +5,18 @@ declare(strict_types=1);
 namespace TypeTests\Unit;
 
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use Type\Build\BuildIdentity;
+use Type\Build\BuildPlatform;
+use Type\Build\DevelopmentBuilder;
 use Type\Build\SchemaCompiler;
 use Type\Build\SchemaSql;
 use Type\Orm\Migration\Migration;
 
-/** 冻结结果是显式审查输入，普通编译不能隐式修复或执行声明源码。 */
+/**
+ * 冻结结果是显式审查输入，普通编译不能隐式修复或执行声明源码。
+ * @internal
+ * @coversNothing
+ */
 final class SchemaCompilerTest extends TestCase
 {
     /** 验证可重复准备、生产工厂及缺失/篡改/协议变化拒绝，同时保全旧迁移身份。 */
@@ -36,7 +41,7 @@ final class SchemaCompilerTest extends TestCase
             self::assertFalse($compiler->prepare($source)['created']);
             self::assertSame($bytes, file_get_contents($snapshot));
             $result = $compiler->compile([$source]);
-            self::assertSame([\Type\Build\BuildPlatform::resolve($snapshot)], $compiler->inputs([$source]));
+            self::assertSame([BuildPlatform::resolve($snapshot)], $compiler->inputs([$source]));
             self::assertFalse(class_exists('SchemaFixture\\' . $class, false));
             self::assertStringNotContainsString('file_get_contents', $result['code']);
             eval(substr($result['code'], 5));
@@ -91,16 +96,16 @@ final class SchemaCompilerTest extends TestCase
             file_put_contents($directory . '/composer.lock', '{}');
             file_put_contents($directory . '/application.json', '{"sources":["app"]}');
             file_put_contents($directory . '/vendor/autoload.php', '<?php');
-            file_put_contents($directory . '/vendor/zoujingli/type-orm/src/Marker.php', '<?php namespace Type\\Orm; final class Marker {}');
+            file_put_contents($directory . '/vendor/zoujingli/type-orm/src/Marker.php', '<?php namespace Type\Orm; final class Marker {}');
             file_put_contents($directory . '/vendor/composer/installed.json', json_encode(['packages' => [[
                 'name' => 'zoujingli/type-orm', 'version' => '1.0.0', 'install-path' => '../zoujingli/type-orm',
-                'autoload' => ['psr-4' => ['Type\\Orm\\' => 'src/']],
+                'autoload' => ['psr-4' => ['Type\Orm\\' => 'src/']],
                 'extra' => ['type' => ['protocol' => 1, 'sources' => ['src']]],
             ]]], JSON_THROW_ON_ERROR));
             $source = $directory . '/app/Create.php';
             file_put_contents($source, $this->source('Cached'));
             (new SchemaCompiler())->prepare($source);
-            $builder = new \Type\Build\DevelopmentBuilder();
+            $builder = new DevelopmentBuilder();
             $first = $builder->prepare($directory, 'application.json', 'build/development');
             self::assertFileExists($first['directory'] . '/generated-schema.php');
             self::assertSame($first, $builder->prepare($directory, 'application.json', 'build/development'));
@@ -199,7 +204,7 @@ final class SchemaCompilerTest extends TestCase
         try {
             $operation();
             self::fail('非法 Schema 未拒绝');
-        } catch (RuntimeException $exception) {
+        } catch (\RuntimeException $exception) {
             if ($message !== '') {
                 self::assertStringContainsString($message, $exception->getMessage());
             } else {

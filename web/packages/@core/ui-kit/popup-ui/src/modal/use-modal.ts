@@ -114,8 +114,12 @@ export function useVbenModal<TParentModalProps extends ModalProps = ModalProps>(
     (props: ModalProps, { attrs, slots }) => {
       return () =>
         h(
-          VbenModal as any,
-          { ...props, ...attrs, modalApi: extendedApi } as Record<string, any>,
+          VbenModal,
+          {
+            ...props,
+            ...attrs,
+            modalApi: extendedApi,
+          },
           slots,
         );
     },

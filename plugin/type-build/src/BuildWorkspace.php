@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
-
 /** 将已核验输入复制到独立目录，运行配置、Git 认证和未声明文件不进入构建挂载。 */
 final class BuildWorkspace
 {
     /**
      * 复制已核验输入到项目 build 下的新目录，SDK 独立提供，秘密与认证文件拒绝进入。
-     * @param array<string, array<string, array{sha256: string, bytes: int}>> $groups 构建身份中的文件组。
-     * @param list<string> $auditPaths 保留自动加载审计关系所需的占位路径。
+     * @param array<string, array<string, array{sha256: string, bytes: int}>> $groups 构建身份中的文件组
+     * @param list<string> $auditPaths 保留自动加载审计关系所需的占位路径
      * @return array{directory: string, files: int, inputs-sha256: string}
      */
     public function create(string $root, string $destination, array $groups, array $auditPaths = []): array
@@ -21,10 +19,10 @@ final class BuildWorkspace
         $destination = BuildPlatform::path($destination);
         BuildLock::path($destination);
         if (!BuildPlatform::contains($root . '/build', $destination) || file_exists($destination)) {
-            throw new RuntimeException('隔离输入必须使用项目 build 下尚不存在的目录');
+            throw new \RuntimeException('隔离输入必须使用项目 build 下尚不存在的目录');
         }
         if (!mkdir($destination, 0700, true)) {
-            throw new RuntimeException('无法创建隔离构建目录');
+            throw new \RuntimeException('无法创建隔离构建目录');
         }
         $files = [];
         foreach ($groups as $group => $inputs) {
@@ -33,23 +31,23 @@ final class BuildWorkspace
             } // SDK 与系统头文件来自另行固定身份的只读工具链。
             foreach ($inputs as $file => $expected) {
                 if (!BuildPlatform::contains($root, $file)) {
-                    throw new RuntimeException('隔离构建输入位于项目外，请先复制安装路径依赖');
+                    throw new \RuntimeException('隔离构建输入位于项目外，请先复制安装路径依赖');
                 }
                 $relative = substr($file, strlen($root) + 1);
                 foreach (explode('/', $relative) as $component) {
                     $sensitiveName = strtolower($component);
                     if ($sensitiveName === '.git' || $sensitiveName === 'auth.json' || $sensitiveName === '.env' || str_starts_with($sensitiveName, '.env.')
                         || in_array($sensitiveName, ['id_rsa', 'id_ed25519', 'credentials.json'], true)) {
-                        throw new RuntimeException('隔离输入包含运行秘密或认证文件');
+                        throw new \RuntimeException('隔离输入包含运行秘密或认证文件');
                     }
                 }
                 $target = $destination . '/' . $relative;
                 BuildLock::path($target);
                 if (!is_dir(dirname($target)) && !mkdir(dirname($target), 0755, true)) {
-                    throw new RuntimeException('无法准备隔离输入目录');
+                    throw new \RuntimeException('无法准备隔离输入目录');
                 }
-                if (!copy($file, $target) || !hash_equals($expected['sha256'], (string) hash_file('sha256', $target))) {
-                    throw new RuntimeException('隔离输入复制期间内容变化');
+                if (!copy($file, $target) || !hash_equals($expected['sha256'], (string)hash_file('sha256', $target))) {
+                    throw new \RuntimeException('隔离输入复制期间内容变化');
                 }
                 chmod($target, is_executable($file) ? 0755 : 0644);
                 $files[$relative] = $expected['sha256'];
@@ -58,7 +56,7 @@ final class BuildWorkspace
         $placeholders = [];
         foreach ($auditPaths as $path) {
             if (!BuildPlatform::contains($root, $path)) {
-                throw new RuntimeException('自动加载审计路径超出隔离项目');
+                throw new \RuntimeException('自动加载审计路径超出隔离项目');
             }
             $relative = substr($path, strlen($root) + 1);
             $target = $destination . '/' . $relative;
@@ -92,7 +90,7 @@ final class BuildWorkspace
                     }
                     $real = BuildPlatform::resolve($alias);
                     if (!BuildPlatform::contains($root, $real)) {
-                        throw new RuntimeException('隔离安装不能保留项目外的 Composer 包链接');
+                        throw new \RuntimeException('隔离安装不能保留项目外的 Composer 包链接');
                     }
                     $relative = substr($alias, strlen($root) + 1);
                     $target = $destination . '/' . $relative;
@@ -114,12 +112,12 @@ final class BuildWorkspace
                                 mkdir(dirname($copyTarget), 0755, true);
                             }
                             if (!copy($destination . '/' . $known, $copyTarget) || hash_file('sha256', $copyTarget) !== $digest) {
-                                throw new RuntimeException('Windows路径包输入复制失败');
+                                throw new \RuntimeException('Windows路径包输入复制失败');
                             }
                             $files[$copyRelative] = $digest;
                         }
                     } elseif (!file_exists($target) && !symlink($link, $target)) {
-                        throw new RuntimeException('无法重建隔离 Composer 包链接');
+                        throw new \RuntimeException('无法重建隔离 Composer 包链接');
                     }
                 }
             }

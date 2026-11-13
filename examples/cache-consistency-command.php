@@ -19,7 +19,7 @@ use TypeApp\ModelExample\Drivers;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function consistencyExpect(bool $condition, string $message): void
 {
@@ -31,14 +31,14 @@ function consistencyExpect(bool $condition, string $message): void
 /**
  * 组合独立 Redis 与数据库验证回填交错、提交失效和回滚保留。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    $driver = (string) ($argv[1] ?? 'sqlite');
-    $primary = (string) getenv($driver === 'sqlite' ? 'TYPE_PRIMARY_FILE' : 'TYPE_PRIMARY_DATABASE');
+    $driver = (string)($argv[1] ?? 'sqlite');
+    $primary = (string)getenv($driver === 'sqlite' ? 'TYPE_PRIMARY_FILE' : 'TYPE_PRIMARY_DATABASE');
     $databases = new DatabaseManager(['primary' => Drivers::create($driver, $primary)]);
-    $redis = new RedisManager(['default' => new RedisConfiguration((string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379))]);
+    $redis = new RedisManager(['default' => new RedisConfiguration((string)(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int)(getenv('TYPE_REDIS_PORT') ?: 6379))]);
     $scope = new ExecutionScope();
     $otherScope = new ExecutionScope();
     try {
@@ -51,7 +51,7 @@ function main(int $argc, array $argv): void
         $inventory = new Inventory($session, $cache);
         // 真实交错：先读旧值、再提交新值并失效，最后旧读取回填。
         $stale = $cache->remember('inventory-1', static function () use ($session, $inventory): int {
-            $value = (int) $session->read()->table('type_inventory')->where('id', '=', 1)->first()['amount'];
+            $value = (int)$session->read()->table('type_inventory')->where('id', '=', 1)->first()['amount'];
             $inventory->change(1, 2);
             return $value;
         });
@@ -70,7 +70,7 @@ function main(int $argc, array $argv): void
         $attempted = 0;
         try {
             (new CacheReader($cache, true))->read('source-error', static function (bool $strong) use (&$attempted): int {
-                $attempted++;
+                ++$attempted;
                 throw new RedisException('source_failed', 'UNKNOWN', '回源本身失败');
             });
         } catch (RedisException) {
@@ -79,13 +79,13 @@ function main(int $argc, array $argv): void
         // 杀死专属测试 Redis 会话，不能伪装缓存始终可用。
         $clientId = $script->identity();
         $admin = new Redis();
-        $admin->connect((string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379));
+        $admin->connect((string)(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int)(getenv('TYPE_REDIS_PORT') ?: 6379));
         $admin->rawCommand('CLIENT', 'KILL', 'ID', $clientId);
         $admin->close();
         $calls = 0;
         $fallback = new CacheReader($cache, true);
         consistencyExpect($fallback->read('failure-key', static function (bool $strong) use (&$calls): int {
-            $calls++;
+            ++$calls;
             return 7;
         }) === 7 && $calls === 1, '缓存故障回源重复执行或没有明确策略');
         $rejected = false;

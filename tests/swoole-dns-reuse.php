@@ -5,26 +5,30 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+use Swoole\Coroutine;
+use Swoole\Coroutine\Socket;
+use Swoole\Coroutine\System;
+use Swoole\Event;
 use Type\Build\BuildPlatform;
 use Type\Testing\Process;
 
 // 独立子进程直接调用原生 API；外层截止能捕获取消后仍没有完成通知的挂起。
 if (($argv[1] ?? '') === '--probe') {
-    $input = json_decode((string) file_get_contents($argv[2]), true, 512, JSON_THROW_ON_ERROR);
+    $input = json_decode((string)file_get_contents($argv[2]), true, 512, JSON_THROW_ON_ERROR);
     $mode = $argv[3];
     $output = $argv[4];
-    Swoole\Coroutine::set(['dns_server' => '127.0.0.1:' . $input['dns']['port'],
+    Coroutine::set(['dns_server' => '127.0.0.1:' . $input['dns']['port'],
         'dns_cache_capacity' => 0, 'hook_flags' => 0, 'log_file' => $output . '.log']);
     $results = [];
     $failure = null;
-    Swoole\Coroutine::create(static function () use ($input, $mode, $output, &$results, &$failure): void {
+    Coroutine::create(static function () use ($input, $mode, $output, &$results, &$failure): void {
         try {
-            for ($round = 0; $round < 16; $round++) {
+            for ($round = 0; $round < 16; ++$round) {
                 file_put_contents($output . '.checkpoint.json', json_encode(['round' => $round, 'operation' => 'dns'], JSON_THROW_ON_ERROR));
                 if ($mode === 'dns') {
-                    expect(Swoole\Coroutine\System::gethostbyname('tcp.typeapp.test', AF_INET, 0.5) === '127.0.0.1', '原生 DNS 结果不符');
+                    expect(System::gethostbyname('tcp.typeapp.test', AF_INET, 0.5) === '127.0.0.1', '原生 DNS 结果不符');
                 }
-                $socket = new Swoole\Coroutine\Socket(AF_INET, SOCK_DGRAM, 0);
+                $socket = new Socket(AF_INET, SOCK_DGRAM, 0);
                 $fd = $socket->fd;
                 try {
                     // 独立 DNS 对端也是有界 UDP 请求/响应对端；请求有唯一编号并校验返回地址。
@@ -47,9 +51,9 @@ if (($argv[1] ?? '') === '--probe') {
             $failure = get_class($error) . ': ' . $error->getMessage();
         }
     });
-    Swoole\Event::wait();
+    Event::wait();
     echo json_encode(['mode' => $mode, 'results' => $results, 'failure' => $failure,
-        'coroutines' => Swoole\Coroutine::stats()['coroutine_num']], JSON_THROW_ON_ERROR) . "\n";
+        'coroutines' => Coroutine::stats()['coroutine_num']], JSON_THROW_ON_ERROR) . "\n";
     exit($failure === null && count($results) === 16 ? 0 : 1);
 }
 
@@ -57,7 +61,7 @@ $root = BuildPlatform::resolve(dirname(__DIR__));
 $directory = BuildPlatform::path($argv[1] ?? '');
 expect($argc === 2 && BuildPlatform::contains($root . '/build', $directory) && !str_contains($directory, '..'), '需要 build 下的独立 DNS 句柄复用验证目录');
 expect(!file_exists($directory) && mkdir($directory, 0700, true), 'DNS 句柄复用验证目录必须尚不存在');
-$peer = new Process([(string) (getenv('NODE_BINARY') ?: 'node'), __DIR__ . '/fixtures/tcp-peer.mjs', $directory . '/peers.json', '--dns-only'], $directory);
+$peer = new Process([(string)(getenv('NODE_BINARY') ?: 'node'), __DIR__ . '/fixtures/tcp-peer.mjs', $directory . '/peers.json', '--dns-only'], $directory);
 $application = null;
 $results = [];
 try {

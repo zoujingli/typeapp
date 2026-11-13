@@ -13,13 +13,21 @@ use Type\Orm\Model;
 final class Product extends Model
 {
     public int $id;
+
     public string $tenant_id;
+
     public string $code;
+
     public string $name;
+
     public ?string $note;
+
     public int $version;
+
     public int $created_at;
+
     public int $updated_at;
+
     #[BelongsToMany(Label::class, 'catalog_product_labels', 'product_id', 'label_id', pivotTenant: 'tenant_id')]
     public array $labels;
 

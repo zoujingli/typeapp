@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace app\common\bootstrap;
 
-use app\broker\service\CompatService;
-use app\iot\service\RecoveryService;
+use app\center\service\RecoveryService;
+use app\common\database\Schema;
+use app\platform\mqtt\service\CompatService;
 use Type\Orm\DatabaseManager;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
@@ -14,16 +15,18 @@ use Type\Runtime\ExecutionScope;
 final class HttpReadiness
 {
     private float $checkedAt = 0.0;
+
     private bool $healthy = false;
+
     private bool $checking = false;
+
     private string $installation = '';
+
     /** @var array<string,string> 本执行者当前程序声明的迁移摘要。 */
     private array $migrations = [];
 
     /** 管理器与业务请求共用额度；实例不能跨线程共享。 */
-    public function __construct(private DatabaseManager $database, private bool $broker = false)
-    {
-    }
+    public function __construct(private DatabaseManager $database) {}
 
     /**
      * 最多每两秒一次真实检查；并发探针只读五秒内的已完成状态，过期关闭就绪。
@@ -40,8 +43,7 @@ final class HttpReadiness
         try {
             $connection = $this->database->connect($scope, 'default', 0.0);
             if ($this->migrations === []) {
-                $plan = $this->broker ? \app\broker\database\Schema::migrations($connection->driverName())
-                    : \app\common\database\Schema::migrations($connection->driverName());
+                $plan = Schema::migrations($connection->driverName());
                 foreach ($plan as $migration) {
                     $this->migrations[$migration->version()] = $migration->checksum();
                 }
@@ -52,7 +54,7 @@ final class HttpReadiness
             }
             foreach ($applied as $record) {
                 if ($record['state'] !== 'applied' || !isset($this->migrations[$record['version']])
-                    || !hash_equals($this->migrations[$record['version']], (string) $record['checksum'])) {
+                    || !hash_equals($this->migrations[$record['version']], (string)$record['checksum'])) {
                     return $this->healthy = false;
                 }
             }
@@ -60,19 +62,17 @@ final class HttpReadiness
             if (!$compatibility['recorded'] || !$compatibility['compatible']) {
                 return $this->healthy = false;
             }
-            RecoveryService::ready($connection, $this->broker ? 'broker' : 'app');
-            if (!$this->broker) {
-                \app\iot\service\DeviceUpgrade::ready($connection);
-                $row = $connection->table('app_installation')->where('id', '=', 1)->first();
-                if ($row === null || (int) $row['schema_version'] !== 1) {
-                    return $this->healthy = false;
-                }
-                $identity = (string) $row['installation_id'];
-                if ($this->installation !== '' && $this->installation !== $identity) {
-                    return $this->healthy = false;
-                }
-                $this->installation = $identity;
+            RecoveryService::ready($connection);
+            Schema::ready($connection);
+            $row = $connection->table('platform_installation')->where('id', '=', 1)->first();
+            if ($row === null || (int)$row['schema_version'] !== Schema::VERSION) {
+                return $this->healthy = false;
             }
+            $identity = (string)$row['installation_id'];
+            if ($this->installation !== '' && $this->installation !== $identity) {
+                return $this->healthy = false;
+            }
+            $this->installation = $identity;
             $scope->assertActive();
             $this->healthy = true;
         } catch (\Throwable) {

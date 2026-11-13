@@ -8,6 +8,7 @@ namespace Type\Orm;
 final class SqlDialect
 {
     private string $driver;
+
     private string $version;
 
     /** 固定受支持驱动和可确认的服务版本，不把 MariaDB 自动视为 MySQL。 */
@@ -137,7 +138,7 @@ final class SqlDialect
             } else {
                 throw new DatabaseException('JSON 路径片段无效');
             }
-            $segments[] = (string) $segment;
+            $segments[] = (string)$segment;
         }
         $encoded = json_encode($value, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
         if ($this->driver === 'mysql') {
@@ -170,6 +171,6 @@ final class SqlDialect
             throw new DatabaseException('查询参数不接受非有限数值');
         }
 
-        return is_bool($value) ? (int) $value : $value;
+        return is_bool($value) ? (int)$value : $value;
     }
 }

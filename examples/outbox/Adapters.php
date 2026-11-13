@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace TypeApp\OutboxExample;
 
-use Type\Orm\Db;
 use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
 use Type\Orm\Outbox\Publisher;
 use Type\Orm\Outbox\Record;
+use Type\Orm\Outbox\Relay;
 use Type\Orm\Outbox\Store;
 use Type\Queue\Job;
 use Type\Queue\JobContext;
@@ -15,15 +16,21 @@ use Type\Queue\Message;
 use Type\Queue\Queue;
 use Type\Redis\RedisConnection;
 use Type\Runtime\ExecutionScope;
+use Type\Runtime\ManagedResource;
 
 /** 将 Outbox 意图转换为队列消息；保留稳定 ID，支持发布后崩溃的受控演练。 */
 final class QueuePublisher implements Publisher
 {
     private Queue $queue;
+
     private bool $crash;
+
     private DatabaseManager $database;
+
     private ?RedisConnection $control;
+
     private string $signal;
+
     /** 借用队列并选择是否在投递成功后终止当前测试进程。 */
     public function __construct(Queue $queue, DatabaseManager $database, bool $crash = false, ?RedisConnection $control = null, string $signal = '')
     {
@@ -33,6 +40,7 @@ final class QueuePublisher implements Publisher
         $this->control = $control;
         $this->signal = $signal;
     }
+
     /** 发布同身份消息并返回 Stream 回执；crash 模式故意在标记 Outbox 前杀死进程。 */
     public function publish(Record $record): string
     {
@@ -43,7 +51,7 @@ final class QueuePublisher implements Publisher
         }
         $receipt = $this->queue->publish(new Message($record->id(), $record->topic(), $record->version(), $record->payload(), $record->context()));
         if ($this->crash) {
-            posix_kill((int) getmypid(), 9);
+            posix_kill((int)getmypid(), 9);
         }
         if ($this->control !== null) {
             $this->control->command('SET', [$this->signal . ':accepted', $receipt, 'EX', 30]);
@@ -64,15 +72,17 @@ final class QueuePublisher implements Publisher
 final class Delivered implements Job
 {
     private Store $store;
+
     /** 注入 Outbox 存储；命名源连接在每次任务作用域内获取。 */
     public function __construct(Store $store)
     {
         $this->store = $store;
     }
+
     /**
      * 在同一命名数据库事务中记录消费与 Model 效果，连接归本次任务作用域。
      *
-     * @param array<array-key, mixed> $payload 本次任务的 JSON 业务数据。
+     * @param array<array-key, mixed> $payload 本次任务的 JSON 业务数据
      */
     public function handle(JobContext $context, array $payload): void
     {
@@ -86,11 +96,14 @@ final class Delivered implements Job
 }
 
 /** 使用真实发布作用域验证预算、停止与清理失败；不把故障当作外部接受。 */
-final class FaultPublisher implements Publisher, \Type\Runtime\ManagedResource
+final class FaultPublisher implements Publisher, ManagedResource
 {
     private string $mode;
-    private ?\Type\Orm\Outbox\Relay $relay = null;
+
+    private ?Relay $relay = null;
+
     private ?ExecutionScope $scope = null;
+
     private bool $recovered = false;
 
     /** 选择一个明确、有限的故障阶段。 */
@@ -100,7 +113,7 @@ final class FaultPublisher implements Publisher, \Type\Runtime\ManagedResource
     }
 
     /** 仅为演练在真实 Publisher 执行中触发角色停止。 */
-    public function bind(\Type\Orm\Outbox\Relay $relay): void
+    public function bind(Relay $relay): void
     {
         $this->relay = $relay;
     }
@@ -125,9 +138,7 @@ final class FaultPublisher implements Publisher, \Type\Runtime\ManagedResource
     }
 
     /** 无外部资源，仅在 stop 注入明确失败。 */
-    public function start(): void
-    {
-    }
+    public function start(): void {}
 
     /** 资源真实恢复前持续报告失败，不能提前归还在途额度。 */
     public function stop(): void

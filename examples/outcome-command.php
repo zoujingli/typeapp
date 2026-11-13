@@ -5,22 +5,22 @@ declare(strict_types=1);
 use Type\Orm\AfterCommitException;
 use Type\Orm\Connection;
 use Type\Orm\Database;
+use Type\Orm\DatabaseException;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
-use Type\Orm\Mysql\MysqlDriver;
-use Type\Orm\DatabaseException;
 use Type\Orm\ModelException;
+use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\TransactionException;
 use Type\Orm\TransactionOutcome;
-use Type\Runtime\ExecutionScope;
 use Type\Runtime\CoroutineRuntime;
+use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\Drivers;
 use TypeApp\ModelExample\User;
 
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function outcomeExpect(bool $condition, string $message): void
 {
@@ -32,7 +32,7 @@ function outcomeExpect(bool $condition, string $message): void
 /**
  * 在协程内验证事务提交结果与提交后回调，故障模式保留未知结果。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
@@ -45,11 +45,11 @@ function main(int $argc, array $argv): void
 /**
  * 区分已提交、回滚与未知事务结果，检查回调和模型状态；故障模式使用受控连接。
  *
- * @param list<string> $argv 程序路径与数据库或故障模式。
+ * @param list<string> $argv 程序路径与数据库或故障模式
  */
 function runOutcome(int $argc, array $argv): void
 {
-    $mode = (string) ($argv[1] ?? 'sqlite');
+    $mode = (string)($argv[1] ?? 'sqlite');
     $fault = str_starts_with($mode, 'fault-');
     $database = new Database(Drivers::create($fault ? 'mysql' : $mode), 1, 0);
     $scope = new ExecutionScope();
@@ -58,11 +58,11 @@ function runOutcome(int $argc, array $argv): void
         $scope->run(static function (ExecutionScope $current) use ($fault, $mode, $database, $scope, &$rwManager): void {
             if ($fault) {
                 $rwManager = new DatabaseManager(['default' => ['master' => Drivers::create('mysql'), 'reader' => new MysqlDriver(
-                    (string) (getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1'),
-                    (int) (getenv('TYPE_MYSQL_PORT') ?: 3306),
-                    (string) (getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test'),
-                    (string) (getenv('TYPE_MYSQL_USER') ?: 'root'),
-                    (string) (getenv('TYPE_MYSQL_PASSWORD') ?: ''),
+                    (string)(getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1'),
+                    (int)(getenv('TYPE_MYSQL_PORT') ?: 3306),
+                    (string)(getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test'),
+                    (string)(getenv('TYPE_MYSQL_USER') ?: 'root'),
+                    (string)(getenv('TYPE_MYSQL_PASSWORD') ?: ''),
                     1,
                     'reader'
                 )]]);
@@ -73,11 +73,11 @@ function runOutcome(int $argc, array $argv): void
                 $outcome = '';
                 try {
                     Db::transaction(static function () use (&$calls, &$callbacks, &$model): void {
-                        $calls++;
+                        ++$calls;
                         $model = new User(['name' => '故障写入', 'age' => 20, 'active' => true, 'secret' => '内部']);
                         $model->save();
                         Db::afterCommit(static function () use (&$callbacks): void {
-                            $callbacks++;
+                            ++$callbacks;
                         });
                     });
                 } catch (TransactionException $error) {
@@ -112,7 +112,7 @@ function runOutcome(int $argc, array $argv): void
             $committedFailure = false;
             try {
                 $connection->transaction(static function (Connection $transaction) use (&$calls, &$log): void {
-                    $calls++;
+                    ++$calls;
                     outcomeExpect($transaction->transactionOutcome() === TransactionOutcome::ACTIVE, '活动状态错误');
                     $transaction->table('type_outcome_probe')->insert(['id' => 1, 'value' => '已提交']);
                     $transaction->afterCommit(static function () use (&$log): void {

@@ -5,13 +5,15 @@ declare(strict_types=1);
 namespace app\common\bootstrap;
 
 use app\common\database\DatabaseFactory;
+use Swoole\Timer;
 use Type\Core\Config\Repository;
+use Type\Generated\CommandApplication;
 use Type\Orm\Db;
 use Type\Redis\Purpose;
-use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\Cancellation;
-use Type\Runtime\ProcessSignals;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
+use Type\Runtime\ProcessSignals;
 use Type\Scheduler\RedisStateStore;
 use Type\Scheduler\Scheduler;
 use Type\Scheduler\SchedulerConsole;
@@ -22,7 +24,7 @@ final class ApplicationScheduler
 {
     /**
      * 显式执行一次、读取历史或有限轮询；调用结束关闭本角色的数据库与 Redis 连接。
-     * @param list<string> $arguments 与 SchedulerConsole 相同的 once/history/work 参数。
+     * @param list<string> $arguments 与 SchedulerConsole 相同的 once/history/work 参数
      */
     public static function run(Repository $settings, string $basePath, array $arguments): int
     {
@@ -41,22 +43,22 @@ final class ApplicationScheduler
             $stopping->cancel();
         });
         try {
-            return (int) CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments, $signals, $stopping): int {
+            return (int)CoroutineRuntime::run(static function () use ($settings, $basePath, $arguments, $signals, $stopping): int {
                 $database = Settings::database($settings, $basePath);
                 Db::configure($database);
                 $redis = Settings::redisManager($settings, $basePath, 'scheduler');
                 $scope = new ExecutionScope();
                 try {
-                    return (int) $scope->run(static function (ExecutionScope $current) use ($settings, $basePath, $redis, $arguments, $signals, $stopping): int {
+                    return (int)$scope->run(static function (ExecutionScope $current) use ($settings, $basePath, $redis, $arguments, $signals, $stopping): int {
                         $store = new RedisStateStore($redis->connection($current, 'scheduler', Purpose::SCRIPT), $settings->text('app.scheduler.namespace'), 'maintenance', 60000);
-                        $application = new \Type\Generated\CommandApplication(ApplicationContext::configuration($basePath, '', false, $settings));
+                        $application = new CommandApplication(ApplicationContext::configuration($basePath, '', false, $settings));
                         $definitions = $application->schedules();
                         $scheduler = new Scheduler(new SystemClock(), $store, $definitions, 1000, 2, 20000);
                         $subscription = $stopping->subscribe(static function () use ($scheduler): void {
                             $scheduler->stop();
                         });
                         // 同一原生事件循环在任务 I/O 和空闲等待期间分发 Windows 控制事件。
-                        $timer = \Swoole\Timer::tick(50, static function (int $timerId) use ($signals): void {
+                        $timer = Timer::tick(50, static function (int $timerId) use ($signals): void {
                             $signals->dispatch();
                         });
                         try {
@@ -67,7 +69,7 @@ final class ApplicationScheduler
                             return (new SchedulerConsole($scheduler))->run($arguments);
                         } finally {
                             if ($timer !== false) {
-                                \Swoole\Timer::clear($timer);
+                                Timer::clear($timer);
                             }
                             $stopping->unsubscribe($subscription);
                             $scheduler->stop();

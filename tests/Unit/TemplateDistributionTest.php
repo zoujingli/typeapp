@@ -7,6 +7,7 @@ namespace TypeTests\Unit;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Type\Testing\Process;
+use Type\Testing\ProcessResult;
 use TypeApp\Distribution\Batch;
 use TypeApp\Distribution\Publisher;
 
@@ -15,23 +16,13 @@ require_once dirname(__DIR__, 2) . '/tools/distribution/Process.php';
 require_once dirname(__DIR__, 2) . '/tools/distribution/Batch.php';
 require_once dirname(__DIR__, 2) . '/tools/distribution/Publisher.php';
 
-/** 使用本地裸仓执行真实模板发布与克隆，GitHub 元数据和 Composer 在测试边界截断。 */
+/**
+ * 使用本地裸仓执行真实模板发布与克隆，GitHub 元数据和 Composer 在测试边界截断。
+ * @internal
+ * @coversNothing
+ */
 final class TemplateDistributionTest extends TestCase
 {
-    /** 远端已写入与重新克隆验证是两个独立结果。 */
-    public static function publicationCases(): iterable
-    {
-        yield 'success' => ['success'];
-        yield 'clone-failed' => ['clone-failed'];
-        yield 'publish-failed' => ['publish-failed'];
-        yield 'invalid-batch' => ['invalid-batch'];
-        yield 'unprepared-tag' => ['unprepared-tag'];
-        foreach (['dispatch', 'partial-suite', 'failed-job', 'skipped-summary', 'wrong-sha', 'wrong-repository',
-            'wrong-branch', 'wrong-workflow', 'pull-request', 'incomplete-jobs'] as $case) {
-            yield $case => [$case];
-        }
-    }
-
     /** 验证模板发布报告区分准备、发布和检出结果，重复发布保留正确的固定批次身份。 */
     #[DataProvider('publicationCases')]
     public function testPublicationReportIncludesCheckoutOutcome(string $case): void
@@ -53,7 +44,7 @@ final class TemplateDistributionTest extends TestCase
             }
             $result = $this->publish($directory, $source, $environment);
             self::assertSame($expectedSuccess, $result->successful(), $result->stdout . $result->stderr);
-            $report = json_decode((string) file_get_contents($directory . '/build/distribution/template.json'), true, 512, JSON_THROW_ON_ERROR);
+            $report = json_decode((string)file_get_contents($directory . '/build/distribution/template.json'), true, 512, JSON_THROW_ON_ERROR);
             self::assertSame($source, $report['source']);
             self::assertSame($expectedSuccess, $report['checkout-verified']);
             if ($expectedSuccess) {
@@ -66,7 +57,7 @@ final class TemplateDistributionTest extends TestCase
                 self::assertSame($report['tree'], trim(\successful(['git', 'rev-parse', 'HEAD^{tree}'], $checkout)));
                 $repeat = $this->publish($directory, $source, $environment);
                 self::assertTrue($repeat->successful(), $repeat->stderr);
-                $again = json_decode((string) file_get_contents($directory . '/build/distribution/template.json'), true, 512, JSON_THROW_ON_ERROR);
+                $again = json_decode((string)file_get_contents($directory . '/build/distribution/template.json'), true, 512, JSON_THROW_ON_ERROR);
                 self::assertSame('already-current', $again['status']);
                 self::assertTrue($again['checkout-verified']);
             } else {
@@ -95,11 +86,16 @@ final class TemplateDistributionTest extends TestCase
         }
     }
 
-    /** 同批模板、报告和组件都必须准确，标签消费沿用标签模式。 */
-    public static function consumerCases(): iterable
+    /** 远端已写入与重新克隆验证是两个独立结果。 */
+    public static function publicationCases(): iterable
     {
-        foreach (['branch', 'tag', 'wrong-batch', 'wrong-template-batch', 'failed-checkout', 'dirty-template',
-            'ignored-template-file', 'wrong-template-commit', 'missing-template-source'] as $case) {
+        yield 'success' => ['success'];
+        yield 'clone-failed' => ['clone-failed'];
+        yield 'publish-failed' => ['publish-failed'];
+        yield 'invalid-batch' => ['invalid-batch'];
+        yield 'unprepared-tag' => ['unprepared-tag'];
+        foreach (['dispatch', 'partial-suite', 'failed-job', 'skipped-summary', 'wrong-sha', 'wrong-repository',
+            'wrong-branch', 'wrong-workflow', 'pull-request', 'incomplete-jobs'] as $case) {
             yield $case => [$case];
         }
     }
@@ -121,7 +117,7 @@ final class TemplateDistributionTest extends TestCase
                 file_put_contents($directory . '/build/distribution/batch-result.json', json_encode($batch, JSON_THROW_ON_ERROR));
             } elseif (in_array($case, ['failed-checkout', 'wrong-template-batch'], true)) {
                 $path = $directory . '/build/distribution/template.json';
-                $report = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+                $report = json_decode((string)file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
                 if ($case === 'failed-checkout') {
                     $report['status'] = 'failed';
                     $report['checkout-verified'] = false;
@@ -151,7 +147,7 @@ final class TemplateDistributionTest extends TestCase
             if (in_array($case, ['branch', 'tag'], true)) {
                 self::assertStringContainsString('模板安装哨兵', $output);
                 self::assertCount(1, $consumers);
-                $composer = json_decode((string) file_get_contents($consumers[0] . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+                $composer = json_decode((string)file_get_contents($consumers[0] . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
                 foreach ($batch['items'] as $name => $item) {
                     $scope = in_array($name, ['type-build', 'type-testing'], true) ? 'require-dev' : 'require';
                     self::assertSame($case === 'tag' ? '1.0.0' : '1.0.x-dev', $composer[$scope][$item['package']]);
@@ -165,6 +161,15 @@ final class TemplateDistributionTest extends TestCase
             }
         } finally {
             $this->remove($directory);
+        }
+    }
+
+    /** 同批模板、报告和组件都必须准确，标签消费沿用标签模式。 */
+    public static function consumerCases(): iterable
+    {
+        foreach (['branch', 'tag', 'wrong-batch', 'wrong-template-batch', 'failed-checkout', 'dirty-template',
+            'ignored-template-file', 'wrong-template-commit', 'missing-template-source'] as $case) {
+            yield $case => [$case];
         }
     }
 
@@ -184,7 +189,7 @@ final class TemplateDistributionTest extends TestCase
         file_put_contents($directory . '/vendor/autoload.php', '<?php require ' . var_export($root . '/vendor/autoload.php', true) . ';');
         file_put_contents($directory . '/.gitignore', "/build/\n/vendor/\n");
         file_put_contents($directory . '/toolchain.lock.json', '{}');
-        $mapping = json_decode((string) file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
+        $mapping = json_decode((string)file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
         $mapping['packages'] = array_intersect_key($mapping['packages'], array_flip(['type-runtime', 'type-orm-sqlite', 'type-build', 'type-testing']));
         file_put_contents($directory . '/.github/distribution.json', json_encode($mapping, JSON_THROW_ON_ERROR));
         $composer = ['name' => 'zoujingli/type-project', 'type' => 'project', 'license' => 'Apache-2.0', 'require' => [], 'require-dev' => [],
@@ -271,10 +276,10 @@ PHP);
     }
 
     /** 执行实际发布 CLI，所有 Git 远端在该子进程内改写为本轮本地裸仓。 */
-    private function publish(string $directory, string $source, array $environment): \Type\Testing\ProcessResult
+    private function publish(string $directory, string $source, array $environment): ProcessResult
     {
         $batchFile = $directory . '/build/distribution/batch-result.json';
-        $batch = json_decode((string) file_get_contents($batchFile), true, 512, JSON_THROW_ON_ERROR);
+        $batch = json_decode((string)file_get_contents($batchFile), true, 512, JSON_THROW_ON_ERROR);
         $process = new Process([PHP_BINARY, $directory . '/tools/distribute-template.php', $source, $batchFile, $batch['mode'], $batch['version']], $directory, $environment);
         try {
             $result = $process->wait(30);

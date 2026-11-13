@@ -74,7 +74,7 @@ try {
             'require-dev' => ['zoujingli/type-build' => '1.0.x-dev'], 'config' => ['vendor-dir' => $root . '/vendor', 'allow-plugins' => false]], JSON_THROW_ON_ERROR));
         copy($root . '/composer.lock', $consumer . '/composer.lock');
         copy($root . '/toolchain.lock.json', $consumer . '/toolchain.lock.json');
-        file_put_contents($consumer . '/main.php', '<?php declare(strict_types=1); function main(): void { \\Type\\Generated\\BuildIdentity::verifyRuntime(); echo "gnu-cache-ok\\n"; }');
+        file_put_contents($consumer . '/main.php', '<?php declare(strict_types=1); function main(): void { \Type\Generated\BuildIdentity::verifyRuntime(); echo "gnu-cache-ok\n"; }');
         file_put_contents($consumer . '/build.json', json_encode(['name' => 'gnu-cache-test', 'entry' => 'main.php', 'output' => 'build/app',
             'build-directory' => 'build/compiler', 'compiler' => ['optimize' => 2, 'debug' => false, 'jobs' => 2]], JSON_THROW_ON_ERROR));
         $command = [PHP_BINARY, $root . '/vendor/bin/type', 'build', $consumer . '/build.json'];
@@ -86,7 +86,7 @@ try {
             file_put_contents($base . '/' . $step . '.log', $stdout . $stderr);
             expect($exit === 0, '真实GNU构建失败，见：' . $base . '/' . $step . '.log');
             expect(successful([$consumer . '/build/app']) === "gnu-cache-ok\n", '真实GNU产物未执行或运行库身份错误');
-            $build = json_decode((string) file_get_contents($consumer . '/build/app.build.json'), true, 512, JSON_THROW_ON_ERROR);
+            $build = json_decode((string)file_get_contents($consumer . '/build/app.build.json'), true, 512, JSON_THROW_ON_ERROR);
             $reports[$step] = ['build-id' => $build['build-id'], 'sha256' => $build['sha256'], 'cache-hit' => $build['cache']['hit']];
         }
         expect(!$reports['first']['cache-hit'] && $reports['repeat']['cache-hit'] && !$reports['changed']['cache-hit'] && $reports['restored']['cache-hit'], 'SDK变更后仍复用旧产物或相同输入不能复用');

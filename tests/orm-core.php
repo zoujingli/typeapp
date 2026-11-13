@@ -1,6 +1,9 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ModelCompiler;
+use Type\Build\SchemaCompiler;
+use Type\Testing\Process;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -19,17 +22,17 @@ try {
     if ($driver === 'sqlite') {
         $environment['TYPE_SQLITE_FILE'] = $work . '/business.sqlite';
     }
-    $models = (new Type\Build\ModelCompiler())->compile([$root . '/examples/orm-suite/Models.php']);
+    $models = (new ModelCompiler())->compile([$root . '/examples/orm-suite/Models.php']);
     file_put_contents($work . '/models.php', $models['code']);
     $launch = 'require ' . var_export($root . '/vendor/autoload.php', true) . '; require ' . var_export($work . '/models.php', true) . ';';
-    $schemas = (new Type\Build\SchemaCompiler())->compile([$root . '/examples/orm-suite']);
+    $schemas = (new SchemaCompiler())->compile([$root . '/examples/orm-suite']);
     file_put_contents($work . '/schema.php', $schemas['code']);
     $launch .= 'require ' . var_export($work . '/schema.php', true) . ';';
     foreach (['drivers/' . $driver . '.php', 'Schema.php', 'SchemaExercise.php', 'ArticleObserver.php', 'CoreExercise.php', 'MutationExercise.php', 'Suite.php'] as $file) {
         $launch .= 'require ' . var_export($root . '/examples/orm-suite/' . $file, true) . ';';
     }
-    $launch .= 'Type\\Runtime\\CoroutineRuntime::enableIo(); echo json_encode(TypeApp\\OrmSuite\\Suite::run(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), PHP_EOL;';
-    $process = new Type\Testing\Process([PHP_BINARY, '-r', $launch], $root, $environment);
+    $launch .= 'Type\Runtime\CoroutineRuntime::enableIo(); echo json_encode(TypeApp\OrmSuite\Suite::run(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), PHP_EOL;';
+    $process = new Process([PHP_BINARY, '-r', $launch], $root, $environment);
     try {
         $result = $process->wait(60);
         file_put_contents($work . '/result.log', $result->stdout . $result->stderr);

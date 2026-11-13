@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
-
 /** 编译期关系声明的运行表示；目标查询工厂显式生成，不反射模型。 */
 final readonly class RelationDefinition
 {
-    /** @param Closure(Connection, string): ModelQuery $target 参数为连接和内部关联别名。 */
+    /** @param \Closure(Connection, string): ModelQuery $target 参数为连接和内部关联别名。 */
     public function __construct(
         private string $kind,
-        private Closure $target,
+        private \Closure $target,
         private string $source,
         private string $related,
         private string $table = '',
@@ -33,7 +31,7 @@ final readonly class RelationDefinition
     }
 
     /** 复用批量关系算法与中间表操作，不创建逐模型加载器。 */
-    public function loader(?Closure $constraint = null, string $nested = ''): Relation
+    public function loader(?\Closure $constraint = null, string $nested = ''): Relation
     {
         $target = $this->target;
         $factory = static function (Connection $connection) use ($target, $constraint, $nested): ModelQuery {
@@ -47,7 +45,7 @@ final readonly class RelationDefinition
     }
 
     /** @internal 约束先应用于目标模型，关联键始终在约束之后以 AND 合入。 */
-    public function correlated(Connection $connection, string $parentColumn, string $alias, ?Closure $constraint, int $depth): ModelQuery
+    public function correlated(Connection $connection, string $parentColumn, string $alias, ?\Closure $constraint, int $depth): ModelQuery
     {
         $query = ($this->target)($connection, $alias)->atRelationDepth($depth);
         if ($constraint !== null) {

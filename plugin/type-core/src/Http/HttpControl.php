@@ -11,17 +11,25 @@ use Type\Runtime\ExecutionScope;
 final class HttpControl
 {
     private array $scopes = [];
+
     private array $quarantined = [];
+
     private bool $accepting = true;
+
     private ?Deadline $drain = null;
+
     private int $rejected = 0;
+
     private int $cleanupFailures = 0;
+
     private int $completed = 0;
+
     private int $peak = 0;
+
     /**
      * 为一个 HTTP 宿主设定请求、连接和子任务上限；所有时间预算均以秒表示。
-     * @param ?\Closure():bool $readiness 应用提供的有界依赖状态；仅 /readyz 调用，异常视为未就绪。
-     * @throws \InvalidArgumentException 并发上限或业务、排空、清理预算不一致。
+     * @param ?\Closure():bool $readiness 应用提供的有界依赖状态；仅 /readyz 调用，异常视为未就绪
+     * @throws \InvalidArgumentException 并发上限或业务、排空、清理预算不一致
      */
     public function __construct(
         public readonly int $maximumRequests = 64,
@@ -40,12 +48,13 @@ final class HttpControl
             throw new \InvalidArgumentException('HTTP 并发、截止或排空预算无效');
         }
     }
+
     /** 为本次请求保留额度并建立作用域，满载或停止接单时返回 null。 */
     public function begin(): ?ExecutionScope
     {
         $this->reap();
         if (!$this->ready()) {
-            $this->rejected++;
+            ++$this->rejected;
             return null;
         }
         $scope = new ExecutionScope(new Deadline($this->requestSeconds), [], $this->maximumChildren, $this->cleanupSeconds);
@@ -53,21 +62,23 @@ final class HttpControl
         $this->peak = max($this->peak, count($this->scopes));
         return $scope;
     }
+
     /** 发送及作用域收尾后登记结果；未完全关闭的作用域继续占额并撤销就绪。 */
     public function finish(ExecutionScope $scope, bool $cleanupFailed): void
     {
         $id = spl_object_id($scope);
         if ($cleanupFailed) {
-            $this->cleanupFailures++;
+            ++$this->cleanupFailures;
         }
         if ($scope->state() === 'closed') {
             unset($this->scopes[$id]);
-            $this->completed++;
+            ++$this->completed;
         } else {
             $this->quarantined[$id] = true;
             $this->accepting = false;
         }
     }
+
     /** 停止接单并缩短全部在途作用域的截止，重复调用不会延长排空期。 */
     public function stop(): void
     {
@@ -78,19 +89,22 @@ final class HttpControl
             $scope->limitCleanup($this->drain);
         }
     }
+
     /** 当前仍接单且有请求额度时返回 true，不替代外部依赖健康检查。 */
     public function ready(): bool
     {
         return $this->accepting && count($this->scopes) < $this->maximumRequests;
     }
+
     /** 读取停止接单状态，true 不代表请求已经排空。 */
     public function stopping(): bool
     {
         return !$this->accepting;
     }
+
     /**
      * 生成已启用的 /readyz 或 /livez 探针；其他情况返回 null。
-     * @return array{status: int, body: array<string, bool>}|null
+     * @return null|array{status: int, body: array<string, bool>}
      */
     public function probe(string $path): ?array
     {
@@ -110,21 +124,24 @@ final class HttpControl
         }
         return ['status' => $ready ? 200 : 503, 'body' => ['ready' => $ready]];
     }
+
     /** 检查隔离清理或排空超期是否需要宿主终止；此方法本身不杀进程。 */
     public function mustTerminate(): bool
     {
         $this->reap();
         return $this->quarantined !== [] || ($this->drain !== null && $this->drain->expired() && $this->scopes !== []);
     }
+
     /** 刷新延迟收尾后检查是否已停止接单且没有在途请求。 */
     public function drained(): bool
     {
         $this->reap();
         return !$this->accepting && $this->scopes === [];
     }
+
     /**
      * 返回当前宿主的请求与清理统计，隔离资源仍计入 in_flight。
-     * @return array<string, int|bool>
+     * @return array<string, bool|int>
      */
     public function statistics(): array
     {
@@ -134,12 +151,13 @@ final class HttpControl
             'quarantined' => count($this->quarantined), 'rejected' => $this->rejected, 'cleanup_failures' => $this->cleanupFailures, 'completed' => $this->completed,
             'peak_in_flight' => $this->peak];
     }
+
     private function reap(): void
     {
         foreach ($this->quarantined as $id => $unused) {
             if ($this->scopes[$id]->state() === 'closed') {
                 unset($this->quarantined[$id], $this->scopes[$id]);
-                $this->completed++;
+                ++$this->completed;
             }
         }
     }

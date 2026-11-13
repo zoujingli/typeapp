@@ -1,12 +1,13 @@
 <?php
 
 declare(strict_types=1);
+use Type\Testing\Process;
 
 /** 最终应用命令执行真实审计清理，Redis 游标跨命令和服务崩溃保持，不以组件测试代替。 */
 function iotSchedulerChecks(PDO $database, array $command, array $environment, string $base): array
 {
     require_once __DIR__ . '/native-rollout-redis.php';
-    $redis = new NativeRolloutRedis($base . '/scheduler-redis', (string) getenv('TYPE_REDIS_SERVER'));
+    $redis = new NativeRolloutRedis($base . '/scheduler-redis', (string)getenv('TYPE_REDIS_SERVER'));
     $parameters = $redis->environment();
     $environment = array_replace($environment, [
         'TYPE_APP_TRACE' => '1',
@@ -14,7 +15,7 @@ function iotSchedulerChecks(PDO $database, array $command, array $environment, s
         'APP_SCHEDULER_REDIS_PORT' => $parameters['TYPE_REDIS_PORT'],
     ]);
     $run = static function (string $action) use ($command, $environment): array {
-        $process = new Type\Testing\Process([...$command, 'app:schedule', $action], dirname(__DIR__), $environment);
+        $process = new Process([...$command, 'app:schedule', $action], dirname(__DIR__), $environment);
         try {
             $result = $process->wait(60);
             expect($result->successful(), '应用调度失败：' . $result->stdout . $result->stderr);
@@ -40,8 +41,8 @@ function iotSchedulerChecks(PDO $database, array $command, array $environment, s
             expect($first[$index]['result']['deleted'] === 1, '原生调度未按保留期删除准确记录');
             $statement = $database->prepare('SELECT COUNT(*) FROM ' . $realm . '_audit WHERE id = ?');
             $statement->execute([$ids[$realm]]);
-            expect((int) $statement->fetchColumn() === 0, '调度声称成功但业务效果未提交');
-            expect((int) $database->query('SELECT COUNT(*) FROM ' . $realm . '_audit')->fetchColumn() > 0, '调度误删除了未到期审计');
+            expect((int)$statement->fetchColumn() === 0, '调度声称成功但业务效果未提交');
+            expect((int)$database->query('SELECT COUNT(*) FROM ' . $realm . '_audit')->fetchColumn() > 0, '调度误删除了未到期审计');
         }
         expect($run('history') === $first, '命令重启丢失调度结果');
         $redis->crashAndRestartReliable();
@@ -53,7 +54,7 @@ function iotSchedulerChecks(PDO $database, array $command, array $environment, s
         foreach ($second as $record) {
             expect($record['state'] === 'succeeded' && $record['result']['deleted'] === 0, '下一分钟调度改变已清理事实');
         }
-        $work = new Type\Testing\Process([...$command, 'app:schedule', 'work', '100', '60000'], dirname(__DIR__), $environment);
+        $work = new Process([...$command, 'app:schedule', 'work', '100', '60000'], dirname(__DIR__), $environment);
         try {
             $readyBy = microtime(true) + 10;
             do {

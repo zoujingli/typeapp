@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace TypeApp\HttpExample;
 
 use Psr\Http\Message\ResponseFactoryInterface;
-use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use RuntimeException;
+use Swoole\Coroutine;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\ManagedResource;
 
@@ -36,6 +36,7 @@ final class Greeting
 final class RequestResource implements ManagedResource
 {
     private string $file;
+
     private string $marker;
 
     /** 登记本次资源的迹线路径与标记，空路径表示不输出。 */
@@ -66,6 +67,7 @@ final class RequestResource implements ManagedResource
 final class MarkerMiddleware implements MiddlewareInterface
 {
     private string $marker;
+
     private int $calls = 0;
 
     /** 固定当前中间件的顺序标记，不保存全局请求。 */
@@ -77,14 +79,14 @@ final class MarkerMiddleware implements MiddlewareInterface
     /** 追加本实例轨迹并让出一次协程，观察并发请求是否串用中间件状态。 */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $this->calls++;
-        $request = $request->withAttribute('trace', (string) $request->getAttribute('trace', '') . $this->marker)
+        ++$this->calls;
+        $request = $request->withAttribute('trace', (string)$request->getAttribute('trace', '') . $this->marker)
             ->withAttribute('calls', $this->calls);
-        if (\Swoole\Coroutine::getCid() >= 0) {
-            \Swoole\Coroutine::sleep(0.005);
+        if (Coroutine::getCid() >= 0) {
+            Coroutine::sleep(0.005);
         }
 
-        return $handler->handle($request)->withHeader('X-Middleware-' . $this->marker, (string) $this->calls);
+        return $handler->handle($request)->withHeader('X-Middleware-' . $this->marker, (string)$this->calls);
     }
 }
 
@@ -92,10 +94,15 @@ final class MarkerMiddleware implements MiddlewareInterface
 final class HealthHandler implements RequestHandlerInterface
 {
     private Greeting $greeting;
+
     private ResponseFactoryInterface $responses;
+
     private StreamFactoryInterface $streams;
+
     private string $traceFile;
+
     private int $calls = 0;
+
     private string $marker = '';
 
     /** 注入共享消息工厂、问候依赖与专属迹线位置。 */
@@ -112,18 +119,18 @@ final class HealthHandler implements RequestHandlerInterface
     {
         $scope = $request->getAttribute('type.scope');
         if (!$scope instanceof ExecutionScope) {
-            throw new RuntimeException('请求缺少自己的执行作用域');
+            throw new \RuntimeException('请求缺少自己的执行作用域');
         }
         $marker = $request->getHeaderLine('X-Test-Marker');
-        $this->calls++;
+        ++$this->calls;
         $this->marker = $marker;
         $scope->open(new RequestResource($this->traceFile, $marker));
-        \Swoole\Coroutine::sleep($marker === 'draining' ? 0.2 : 0.01);
+        Coroutine::sleep($marker === 'draining' ? 0.2 : 0.01);
         $body = json_encode(['message' => $this->greeting->text(), 'marker' => $this->marker,
             'trace' => $request->getAttribute('trace'), 'calls' => $request->getAttribute('calls'), 'handler_calls' => $this->calls], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
         return $this->responses->createResponse(200)->withHeader('Content-Type', 'application/json')
-            ->withBody($this->streams->createStream((string) $body));
+            ->withBody($this->streams->createStream((string)$body));
     }
 }
 
@@ -141,12 +148,12 @@ final class FailingHandler implements RequestHandlerInterface
     /**
      * 登记资源后抛出含占位秘密的错误，响应层不得原样泄漏该消息。
      *
-     * @throws RuntimeException 此故障入口总是失败。
+     * @throws \RuntimeException 此故障入口总是失败
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $scope = $request->getAttribute('type.scope');
         $scope->open(new RequestResource($this->traceFile, 'failed'));
-        throw new RuntimeException('不能暴露的密码 password=example');
+        throw new \RuntimeException('不能暴露的密码 password=example');
     }
 }

@@ -15,6 +15,4 @@ use Type\Orm\Attribute\Schema;
     ['action' => 'drop-column', 'table' => 'type_suite_catalog', 'name' => 'spare'],
     ['action' => 'rename-table', 'table' => 'type_suite_catalog', 'to' => 'type_suite_catalog_entries'],
 ])]
-final class CatalogAlter
-{
-}
+final class CatalogAlter {}

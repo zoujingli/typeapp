@@ -12,6 +12,4 @@ use Type\Orm\Attribute\Schema;
         'id' => ['type' => 'string', 'length' => 128], 'product_id' => ['type' => 'integer'],
     ], 'primary' => ['id']],
 ])]
-final class CreateDelivery
-{
-}
+final class CreateDelivery {}

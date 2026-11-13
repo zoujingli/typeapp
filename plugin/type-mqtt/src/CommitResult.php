@@ -8,11 +8,11 @@ namespace Type\Mqtt;
 final class CommitResult
 {
     /**
-     * @param string $state committed、rejected 或 unknown；只有 committed 允许成功协议确认。
-     * @param int $reason MQTT 5 原因码；0、0x83、0x87、0x88、0x8e或0x97；连接阶段自行映射不适用于CONNACK的接管原因。
-     * @param array{wal_lsn?:string,replicas?:list<array<string,mixed>>} $proof 同一主库观察到的同步备库及 WAL 位置。
-     * @param bool $released 当前调用的数据库租约和作用域是否已释放。
-     * @param array<string,mixed> $value 同一已证明事务读取的有界结果；包含消息时不得完整记录日志。
+     * @param string $state committed、rejected 或 unknown；只有 committed 允许成功协议确认
+     * @param int $reason MQTT 5 原因码；0、0x83、0x87、0x88、0x8e或0x97；连接阶段自行映射不适用于CONNACK的接管原因
+     * @param array{wal_lsn?:string,replicas?:list<array<string,mixed>>} $proof 同一主库观察到的同步备库及 WAL 位置
+     * @param bool $released 当前调用的数据库租约和作用域是否已释放
+     * @param array<string,mixed> $value 同一已证明事务读取的有界结果；包含消息时不得完整记录日志
      */
     public function __construct(
         public readonly string $operationId,
@@ -22,7 +22,7 @@ final class CommitResult
         public readonly bool $released = true,
         public readonly array $value = []
     ) {
-        if (!in_array($state, ['committed', 'rejected', 'unknown'], true) || !in_array($reason, [0, 0x83, 0x87, 0x88, 0x8e, 0x97], true)
+        if (!in_array($state, ['committed', 'rejected', 'unknown'], true) || !in_array($reason, [0, 0x83, 0x87, 0x88, 0x8E, 0x97], true)
             || ($state === 'committed' && ($reason !== 0 || ($proof['wal_lsn'] ?? '') === '' || ($proof['replicas'] ?? []) === []))) {
             throw new \InvalidArgumentException('MQTT 持久提交结果无效');
         }

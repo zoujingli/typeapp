@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace app\catalog\controller;
 
-use app\catalog\service\ProductService;
 use app\catalog\input\ProductInput;
 use app\catalog\input\SearchInput;
+use app\catalog\service\ProductService;
 use Psr\Http\Message\ServerRequestInterface;
-use Type\Core\Http\Attribute\Route;
 use Type\Core\Http\Attribute\Group;
+use Type\Core\Http\Attribute\Route;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Orm\ModelException;
@@ -19,9 +19,7 @@ use Type\Orm\ModelException;
 final class ProductController
 {
     /** 服务由应用共同装配，不持有请求或连接。 */
-    public function __construct(private ProductService $service)
-    {
-    }
+    public function __construct(private ProductService $service) {}
 
     /** @return array{data:array} 最多二十条记录。 */
     #[Route('/products', methods: ['GET'], name: 'products.index')]

@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace Type\Redis;
 
-use Throwable;
 use Type\Runtime\ReusableResource;
 
 /** @internal 原生客户端只在受管租约内操作。 */
 final class RedisSession implements ReusableResource
 {
     private \Redis $client;
+
     private RedisConfiguration $configuration;
+
     private bool $failed = false;
+
     private bool $reusable = true;
+
     private string $queued = '';
 
     /** 建立本物理会话，创建失败不会向池交付可用资源。 */
@@ -26,7 +29,7 @@ final class RedisSession implements ReusableResource
     /**
      * 在健康会话发送已校验命令，I/O 中断标记结果 UNKNOWN。
      *
-     * @param list<string|int|float> $arguments
+     * @param list<float|int|string> $arguments
      */
     public function command(string $command, array $arguments): mixed
     {
@@ -45,7 +48,7 @@ final class RedisSession implements ReusableResource
     /**
      * 执行已校验批次；任何未确认结果都使会话失效。
      *
-     * @param list<array{0: string, 1: list<string|int|float>}> $commands
+     * @param list<array{0: string, 1: list<float|int|string>}> $commands
      * @return list<mixed>
      */
     public function pipeline(array $commands): array
@@ -102,7 +105,7 @@ final class RedisSession implements ReusableResource
     /**
      * 将命令入队并执行 EXEC，冲突返回未提交结果，不重跑回调。
      *
-     * @param list<array{0: string, 1: list<string|int|float>}> $commands
+     * @param list<array{0: string, 1: list<float|int|string>}> $commands
      */
     public function transaction(array $commands): TransactionResult
     {
@@ -144,7 +147,7 @@ final class RedisSession implements ReusableResource
             if (!$this->client->unwatch()) {
                 $this->failed = true;
             }
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->failed = true;
         }
     }
@@ -153,7 +156,7 @@ final class RedisSession implements ReusableResource
      * 执行脚本后禁止物理连接复用，避免未知脚本状态泄露到后续请求。
      *
      * @param list<string> $keys
-     * @param list<string|int|float> $arguments
+     * @param list<float|int|string> $arguments
      */
     public function script(string $script, array $keys, array $arguments): mixed
     {
@@ -189,9 +192,17 @@ final class RedisSession implements ReusableResource
             $this->client->setOption(\Redis::OPT_PREFIX, '');
             $this->client->setOption(\Redis::OPT_MAX_RETRIES, 0);
             return $this->client->getLastError() === null;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->close();
             return false;
+        }
+    }
+
+    /** 池丢弃会话时确认关闭；异常交给池保留隔离额度，不能静默当作成功。 */
+    public function close(): void
+    {
+        if ($this->client->isConnected()) {
+            $this->client->close();
         }
     }
 
@@ -207,14 +218,6 @@ final class RedisSession implements ReusableResource
         if ($this->client->getLastError() !== null) {
             $this->failed = true;
             throw new RedisException('server_error', $outcome, 'Redis 服务器拒绝命令');
-        }
-    }
-
-    /** 池丢弃会话时确认关闭；异常交给池保留隔离额度，不能静默当作成功。 */
-    public function close(): void
-    {
-        if ($this->client->isConnected()) {
-            $this->client->close();
         }
     }
 }

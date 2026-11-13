@@ -14,7 +14,11 @@ require_once dirname(__DIR__) . '/support.php';
 require_once dirname(__DIR__, 2) . '/tools/distribution/Process.php';
 require_once dirname(__DIR__, 2) . '/tools/release/TutorialEvidence.php';
 
-/** 教程发布门槛拒绝历史基线、混合产物和缺失隔离行为；真实原生执行由三库入口验证。 */
+/**
+ * 教程发布门槛拒绝历史基线、混合产物和缺失隔离行为；真实原生执行由三库入口验证。
+ * @internal
+ * @coversNothing
+ */
 final class TutorialEvidenceTest extends TestCase
 {
     /** 每个数据库均可独立通过候选或准确版本校验；两种来源不能交换。 */

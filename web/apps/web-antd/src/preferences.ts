@@ -1,132 +1,116 @@
 import type { Preferences } from '@vben/preferences';
-import type { PublicSiteSettings } from './api';
-import { preferences, resetPreferences, updatePreferences } from '@vben/preferences';
+import type { PublicSiteSettings } from './api/contracts';
+import { preferences, preferencesManager, resetPreferences, updatePreferences } from '@vben/preferences';
 import { watch } from 'vue';
 
-type PreferenceScope = 'anonymous' | `${string}-${string}` | `customer-impersonation-${string}-${string}`;
 type PreferencePatch = { [K in keyof Preferences]?: Partial<Preferences[K]> };
-
-let activeScope: PreferenceScope = 'anonymous';
+type JsonRecord = Record<string, unknown>;
+let activeScope = 'anonymous';
+let activeHomePath = '/system/profile';
 let defaults: PreferencePatch = {};
+let baseline: JsonRecord = {};
 let started = false;
 let switching = false;
-let activeHomePath = '/profile';
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+const cacheKey = () => `typeapp.preferences.${activeScope}`;
 
-function cacheKey(scope: PreferenceScope): string {
-  return `typeapp-iot-v1-scope-${scope}-preferences`;
+/** 品牌与身份由当前端管理；语言、通知在具备完整业务支持后开放。 */
+export function isPersonalPreference(path: string): boolean {
+  const [section, field] = path.split('.');
+  if (!section || !field) return false;
+  if (section === 'app') return ['layout', 'timezone', 'colorWeakMode', 'colorGrayMode', 'contentCompact', 'contentCompactWidth', 'preferencesButtonPosition', 'dynamicTitle', 'watermark', 'watermarkContent', 'enableCheckUpdates', 'enableCopyPreferences', 'enableStickyPreferencesNavigationBar'].includes(field);
+  if (section === 'widget' && ['languageToggle', 'notification'].includes(field)) return false;
+  return ['theme', 'sidebar', 'navigation', 'breadcrumb', 'tabbar', 'footer', 'header', 'widget', 'shortcutKeys', 'transition'].includes(section);
 }
 
-function readCache(scope: PreferenceScope): Partial<Preferences> | null {
-  const raw = localStorage.getItem(cacheKey(scope));
-  if (!raw) return null;
-  try {
-    const value = JSON.parse(raw) as { value?: Partial<Preferences> };
-    return value.value && typeof value.value === 'object' ? value.value : null;
-  } catch {
-    localStorage.removeItem(cacheKey(scope));
-    return null;
+function permitted(value: JsonRecord): PreferencePatch {
+  const result: JsonRecord = {};
+  for (const section of ['app', 'theme', 'sidebar', 'navigation', 'breadcrumb', 'tabbar', 'footer', 'header', 'widget', 'shortcutKeys', 'transition']) {
+    const fields = value[section];
+    const known = preferences[section as keyof Preferences] as unknown as JsonRecord;
+    if (!fields || typeof fields !== 'object' || Array.isArray(fields) || !known) continue;
+    const selected: JsonRecord = {};
+    for (const field of Object.keys(known)) {
+      if (!isPersonalPreference(`${section}.${field}`)) continue;
+      const item = (fields as JsonRecord)[field];
+      if (section === 'app' && field === 'timezone' && typeof item === 'string') {
+        try { new Intl.DateTimeFormat('zh-CN', { timeZone: item }); } catch { continue; }
+      }
+      if (item !== undefined && typeof item === typeof known[field] && (typeof item !== 'object' || item === null)) selected[field] = item;
+    }
+    if (Object.keys(selected).length) result[section] = selected;
   }
+  return result as PreferencePatch;
 }
-
-function writeCache(scope: PreferenceScope) {
-  localStorage.setItem(cacheKey(scope), JSON.stringify({ value: JSON.parse(JSON.stringify(preferences)) }));
-}
-
-/** 个人缓存只影响展示习惯，站点名称、入口和授权模式以当前站点默认值为准。 */
-function withoutBrandFields(value: Partial<Preferences>): Partial<Preferences> {
-  const result = JSON.parse(JSON.stringify(value)) as PreferencePatch;
-  const app = result.app as Partial<Preferences['app']> | undefined;
-  if (app) {
-    app.name = undefined;
-    app.defaultHomePath = undefined;
-    app.accessMode = undefined;
+function differences(value: JsonRecord, initial: JsonRecord): JsonRecord {
+  const patch: JsonRecord = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      const child = differences(item as JsonRecord, (initial[key] || {}) as JsonRecord);
+      if (Object.keys(child).length) patch[key] = child;
+    } else if (JSON.stringify(item) !== JSON.stringify(initial[key])) patch[key] = item;
   }
-  result.logo = undefined;
-  result.copyright = undefined;
-  return result as Partial<Preferences>;
+  return patch;
 }
-
-function restore(scope: PreferenceScope) {
-  resetPreferences();
+function personalPatch(): PreferencePatch {
+  try { return permitted(JSON.parse(localStorage.getItem(cacheKey()) || '{}')); }
+  catch { localStorage.removeItem(cacheKey()); return {}; }
+}
+function persist() {
+  const patch = permitted(differences(clone(preferences) as unknown as JsonRecord, baseline));
+  if (Object.keys(patch).length) localStorage.setItem(cacheKey(), JSON.stringify(patch));
+  else localStorage.removeItem(cacheKey());
+}
+function restore() {
+  switching = true;
+  preferencesManager.setInitialPreferences(defaults);
+  void resetPreferences();
   updatePreferences(defaults);
-  const stored = readCache(scope);
-  if (stored) updatePreferences(withoutBrandFields(stored));
+  baseline = clone(preferences) as unknown as JsonRecord;
+  updatePreferences(personalPatch());
+  switching = false;
 }
 
-/** 将站点配置映射到 Vben 已接通的原生偏好字段，品牌字段不允许被个人缓存覆盖。 */
+/** 当前端默认值只影响展示；品牌、入口和身份配置不进入个人覆盖。 */
 export function sitePreferenceOverrides(site: Omit<PublicSiteSettings, 'environment'>): PreferencePatch {
   return {
-    app: { name: site.name, defaultHomePath: activeHomePath, accessMode: 'frontend', locale: 'zh-CN', layout: site.preferences.layout },
+    app: { name: site.name, defaultHomePath: activeHomePath, accessMode: 'frontend', locale: 'zh-CN', timezone: site.timezone, layout: site.preferences.layout },
     // VbenLogo 在图片为空时仍展示文字品牌；图片加载失败由原生 Avatar 提供回退。
     logo: { enable: true, source: site.logo_url },
-    copyright: { enable: site.preferences.footer.enable, companyName: site.name, companySiteLink: site.official_url },
+    copyright: { enable: site.preferences.footer.enable, companyName: site.name, companySiteLink: site.official_url, settingShow: false },
     theme: { mode: site.theme.mode, colorPrimary: site.theme.colorPrimary, radius: site.theme.radius },
     sidebar: { collapsed: site.preferences.sidebar.collapsed },
     navigation: { styleType: site.preferences.navigation.styleType, split: site.preferences.navigation.split },
     breadcrumb: { enable: site.preferences.breadcrumb.enable, showIcon: site.preferences.breadcrumb.showIcon, styleType: site.preferences.breadcrumb.styleType },
     tabbar: { enable: site.preferences.tabbar.enable, styleType: site.preferences.tabbar.styleType },
     footer: { enable: site.preferences.footer.enable, fixed: site.preferences.footer.fixed },
-    widget: { globalSearch: false, notification: false, languageToggle: false, lockScreen: false, fullscreen: false, timezone: false, refresh: false },
+    widget: { globalSearch: true, notification: false, languageToggle: false, lockScreen: true, fullscreen: true, timezone: true, refresh: true },
   };
 }
 
-/** 初始化站点默认值并开始按账号、身份域保存 Vben 原生个人偏好。 */
+
 export function configurePreferences(site: PublicSiteSettings) {
   defaults = sitePreferenceOverrides(site);
-  updatePreferences(defaults);
-  if (started) return;
-  started = true;
-  watch(preferences, () => {
-    if (!switching) writeCache(activeScope);
-  }, { deep: true });
-  restore(activeScope);
+  if (!started) {
+    started = true;
+    watch(preferences, () => { if (!switching) persist(); }, { deep: true, flush: 'sync' });
+  }
+  restore();
 }
-
-/** 站点设置更新后立即应用新默认值，个人已明确选择的字段仍保留。 */
 export function applySitePreferences(site: Omit<PublicSiteSettings, 'environment'>) {
-  const previous = defaults;
   defaults = sitePreferenceOverrides(site);
-  const patch = JSON.parse(JSON.stringify(defaults)) as PreferencePatch;
-  const preserve = (section: keyof Preferences, field: string) => {
-    const current = preferences[section] as unknown as Record<string, unknown>;
-    const oldDefaults = previous[section] as unknown as Record<string, unknown> | undefined;
-    if (oldDefaults && current[field] !== oldDefaults[field]) {
-      const next = patch[section] as unknown as Record<string, unknown> | undefined;
-      if (next) delete next[field];
-    }
-  };
-  for (const field of ['layout']) preserve('app', field);
-  for (const field of ['mode', 'colorPrimary', 'radius']) preserve('theme', field);
-  for (const field of ['collapsed']) preserve('sidebar', field);
-  for (const field of ['styleType', 'split']) preserve('navigation', field);
-  for (const field of ['enable', 'showIcon', 'styleType']) preserve('breadcrumb', field);
-  for (const field of ['enable', 'styleType']) preserve('tabbar', field);
-  for (const field of ['enable', 'fixed']) preserve('footer', field);
-  updatePreferences(patch);
+  if (started) restore();
 }
-
-/** 切换登录域或账号时隔离个人缓存，模拟登录再增加独立来源键。 */
-export function switchPreferencesScope(realm: string = '', userId: string = '', impersonating = false, actorId = '') {
-  if (!started) return;
-  const homePath = realm === 'admin' ? '/admin/profile' : realm === 'broker' ? '/broker/nodes' : '/profile';
-  const next: PreferenceScope = !userId ? 'anonymous' : impersonating
-    ? `customer-impersonation-${actorId || 'unknown'}-${userId}`
-    : `${realm}-${userId}`;
-  if (next === activeScope && homePath === activeHomePath) return;
-  writeCache(activeScope);
-  // 恢复另一身份偏好时抑制持久化监听，防止中间默认值覆盖目标缓存。
-  switching = true;
-  activeScope = next;
-  activeHomePath = homePath;
-  defaults = { ...defaults, app: { ...defaults.app, defaultHomePath: homePath } };
-  restore(activeScope);
-  switching = false;
+export function switchPreferencesScope(realm = 'system', userId = '', impersonating = false, actorId = '', tenantId = '') {
+  const scope = [realm, tenantId || 'platform', userId || 'anonymous', impersonating ? actorId : 'self'].join('.');
+  if (!started || scope === activeScope) return;
+  persist();
+  activeScope = scope;
+  activeHomePath = `/${realm}/profile`;
+  defaults = { ...defaults, app: { ...defaults.app, defaultHomePath: activeHomePath } };
+  restore();
 }
-
-/** 清除当前账号个人覆盖，只恢复最近取得的站点默认值，不影响身份和业务数据。 */
 export function resetScopedPreferences() {
-  localStorage.removeItem(cacheKey(activeScope));
-  switching = true;
-  restore(activeScope);
-  switching = false;
+  localStorage.removeItem(cacheKey());
+  restore();
 }

@@ -4,32 +4,39 @@ declare(strict_types=1);
 
 namespace Type\Runtime;
 
-use Closure;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
-use Throwable;
 
 /** 受父作用域管理的协程结果；任务及后代收尾完成前持续占用执行额度。 */
 final class ManagedTask
 {
     private ExecutionOwner $owner;
+
     private Cancellation $cancellation;
+
     private Cancellation $parentCancellation;
+
     private int $parentSubscription;
+
     private Deadline $deadline;
+
     private Channel $completion;
+
     private bool $finished = false;
+
     private bool $observed = false;
+
     private mixed $result = null;
-    private ?Throwable $error = null;
+
+    private ?\Throwable $error = null;
 
     /**
-     * @param Closure(ExecutionScope): mixed $operation 作用域内的任务体。
-     * @param array<string, string> $context 父作用域的上下文快照，不携带父资源。
-     * @param Closure(ManagedTask): void $finished 完成并清理后的通知。
-     * @param array<string, string> $bindings 应用显式传给子任务的绑定值快照，不隐式继承父绑定。
+     * @param \Closure(ExecutionScope): mixed $operation 作用域内的任务体
+     * @param array<string, string> $context 父作用域的上下文快照，不携带父资源
+     * @param \Closure(ManagedTask): void $finished 完成并清理后的通知
+     * @param array<string, string> $bindings 应用显式传给子任务的绑定值快照，不隐式继承父绑定
      */
-    public function __construct(Closure $operation, Deadline $deadline, array $context, int $childLimit, float $cleanupSeconds, TaskBudget $budget, Cancellation $parentCancellation, Closure $finished, array $bindings = [])
+    public function __construct(\Closure $operation, Deadline $deadline, array $context, int $childLimit, float $cleanupSeconds, TaskBudget $budget, Cancellation $parentCancellation, \Closure $finished, array $bindings = [])
     {
         if (!extension_loaded('swoole') || Coroutine::getCid() < 0) {
             throw new TaskException('coroutine_required', '受管子任务需要 Swoole 协程上下文');
@@ -46,12 +53,12 @@ final class ManagedTask
             $scope = new ExecutionScope($this->deadline, $context, $childLimit, $cleanupSeconds, $this->cancellation, $budget);
             try {
                 $this->result = $scope->run($operation, $bindings);
-            } catch (Throwable $error) {
+            } catch (\Throwable $error) {
                 $this->error = $error;
             } finally {
                 try {
                     $scope->close();
-                } catch (Throwable $error) {
+                } catch (\Throwable $error) {
                     if ($this->error === null) {
                         $this->error = $error;
                     } else {
@@ -78,10 +85,10 @@ final class ManagedTask
 
     /**
      * 等待结果或重抛任务异常；实时响应共享截止的缩短，超时不提前归还仍在途的资源。
-     * @param float|null $seconds 本次最多等待的秒数，null 沿用共享截止。
-     * @throws TaskException 等待超时，错误码为 task_timeout。
-     * @throws \InvalidArgumentException 等待秒数为负数或非有限值。
-     * @throws Throwable 任务执行或清理失败。
+     * @param null|float $seconds 本次最多等待的秒数，null 沿用共享截止
+     * @throws TaskException 等待超时，错误码为 task_timeout
+     * @throws \InvalidArgumentException 等待秒数为负数或非有限值
+     * @throws \Throwable 任务执行或清理失败
      */
     public function await(?float $seconds = null): mixed
     {
@@ -129,6 +136,7 @@ final class ManagedTask
         $this->owner->assertCurrent();
         $this->cancellation->cancel();
     }
+
     /** 只有任务、后代及其作用域完成收尾后才返回 true。 */
     public function finished(): bool
     {
@@ -144,7 +152,7 @@ final class ManagedTask
     }
 
     /** @internal 未由业务 await 观察的失败交给父作用域。 */
-    public function unobservedError(): ?Throwable
+    public function unobservedError(): ?\Throwable
     {
         if ($this->observed || ($this->cancellation->cancelled() && $this->error instanceof TaskException
             && in_array($this->error->errorCode(), ['cancelled', 'deadline_exceeded'], true))) {

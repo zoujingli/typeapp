@@ -138,7 +138,52 @@ flowchart LR
 
 ## 声明模型
 
-在 `app/` 的领域 `model/` 目录中声明直接继承 `Type\Orm\Model` 的业务类，用 `#[Table(...)]` 指定表，用公开类型属性声明字段。物联中心的身份、租户、成员、角色、站点、分类、设备、注册资格及接入应用使用 Model；跨实体授权、协议持久状态和恢复仍保留受控数据库操作，不表示整个应用都能由单表 CRUD 表达。`Column` 补充列名、精确类型、赋值权限和输出可见性，可空性来自 `?string` 等 PHP 类型。
+在 `app/` 的领域 `model/` 目录中声明直接继承 `Type\Orm\Model` 的业务类。默认使用 `$table` 与 `$schema`，字段在一处定义；业务读取和修改对象属性，查询返回模型对象。物联中心的 Platform、System、Center 模型使用这一声明方式；协议持久状态、迁移和恢复等基础设施按实际职责使用受控数据库接口。
+
+```php
+/**
+ * 设备读数。
+ * @property string $id 读数标识。
+ * @property-read string $tenant_id 所属客户。
+ * @property string $amount 精确读数。
+ * @property string|null $memo 备注。
+ * @method static \Type\Orm\ModelQuery<static> query(string $alias = '')
+ * @method static static|null find(int|string $id)
+ * @method static static create(array $values)
+ */
+final class Reading extends \Type\Orm\Model
+{
+    protected string $table = 'center_reading';
+    protected bool $autoIncrement = false;
+    protected ?string $tenantKey = 'tenant_id';
+    protected array $schema = [
+        'id' => ['type' => 'string', 'comment' => '读数标识。'],
+        'tenant_id' => ['type' => 'string', 'comment' => '所属客户。'],
+        'amount' => ['type' => 'decimal', 'precision' => 18, 'scale' => 6, 'comment' => '精确读数。'],
+        'memo' => ['type' => '?string', 'required' => false, 'comment' => '备注。'],
+    ];
+}
+```
+
+示例类放在自己的命名空间中，并纳入应用 `sources`。在已绑定可信 Tenant 的作用域内，业务调用 `Reading::create([...])`、`Reading::find($id)`，通过 `$reading->amount = '12.300000'` 与 `$reading->save()` 更新记录；`tenant_id` 由框架注入。模型字段不是请求参数白名单，Service 仍须明确选择获准写入的业务字段。
+
+| 声明 | 含义 |
+| --- | --- |
+| `$table`、`$schema` | 必须同时声明的静态 `protected` 配置，表名和字段映射 |
+| `$pk`、`$autoIncrement` | 主键属性名，默认 `id`；是否由数据库生成，默认 `true` |
+| `$database` | 逻辑数据源，默认 `default`，不包含连接凭据 |
+| `$tenantKey` | 可信 Tenant 属性名；物理列 `tenant_id` 自动启用隔离，不可用 null 绕过 |
+| `$versionKey` | 乐观锁字段；创建时由框架初始化 |
+| `$createTime`、`$updateTime`、`$deleteTime` | 受管创建、更新及软删除字段；未声明时不自动猜测 |
+| `$hidden` | 从默认公开输出隐藏的属性名列表，也可逐字段设置 `visible: false` |
+
+字段可简写为 `'name' => 'string'`、`'memo' => '?string'`，或使用选项映射。`type` 支持 `int/integer`、`bool/boolean`、`string`、`array/json`、`decimal`、`bigint`、`datetime`。`array` 只接受数组，`json` 接受合法 JSON 值；显式 `nullable` 决定 null 是否有效。其余选项为 `column`、`fillable`、`visible`、`required`、`precision`、`scale`、`integerRange`、`comment`。`required: false` 允许创建时省略，省略与传 null 分开，数据库默认值须重新查询取得。
+
+`decimal` 与 `bigint` 以字符串保存，避免浮点和宿主整数溢出。`bigint` 可指定 `integerRange: 'signed64'` 或 `'unsigned64'`，完整端点分别为 `-9223372036854775808…9223372036854775807` 和 `0…18446744073709551615`，越界在赋值时拒绝；未指定时继续按十进制精度约束。数据库物理范围也必须容纳声明，不能把无符号范围绑定到有符号列。
+
+配置与字段不能使用相同的属性名；需要时用 `column` 设置别名。与 `Model` 基类成员重名的列同样使用别名，例如 `'status' => ['type' => 'string', 'column' => 'state']`。手写模型用 `@property` 描述字段、`@property-read` 描述受管字段，用 `ModelQuery<static>` 提供查询结果类型；[MySQL 反向同步](scaffolding.md#mysql-反向同步模型)会生成这些提示和字段注释。
+
+原有 `#[Table]`、公开类型属性和 `#[Column]` 继续支持；同一类不能与 `$table/$schema` 混用。关系仍在模型上使用 `BelongsTo/HasOne/HasMany/BelongsToMany` 明确声明，业务方法与关系不会生成另一层基类或 Repository。
 
 构建器从 `sources` 静态识别模型，保留原类名和业务方法，生成字段映射、水合工厂、查询入口和属性钩子。应用验证租户访问资格、角色权限和设备归属后绑定可信上下文；框架按模型租户字段自动限定查询与写入，缺失或冲突时拒绝操作，业务无需逐次追加租户条件。PHP 开发入口先加载本代转换结果，AOT 编译同一结果；业务源码、完整转换结果和生成器身份都进入审计。不要直接加载未经准备的模型源码。
 

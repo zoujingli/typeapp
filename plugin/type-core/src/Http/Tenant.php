@@ -8,8 +8,11 @@ namespace Type\Core\Http;
 final class Tenant
 {
     private string $id;
+
     private string $connection;
+
     private string $cacheNamespace;
+
     /** 验证租户标识及资源映射格式，连接名指向应用已声明的连接配置。 */
     public function __construct(string $id, string $connection, string $cacheNamespace)
     {
@@ -20,16 +23,19 @@ final class Tenant
         $this->connection = $connection;
         $this->cacheNamespace = $cacheNamespace;
     }
+
     /** 返回授权检查使用的租户标识。 */
     public function id(): string
     {
         return $this->id;
     }
+
     /** 返回固定数据库连接配置名，不包含连接凭据。 */
     public function connection(): string
     {
         return $this->connection;
     }
+
     /** 返回该租户独立的缓存命名空间。 */
     public function cacheNamespace(): string
     {

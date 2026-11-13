@@ -10,7 +10,7 @@ function provisionSecret(string $root, string $name, string $file): void
 {
     $output = tmpfile();
     try {
-        for ($attempt = 0; $attempt < 3; $attempt++) {
+        for ($attempt = 0; $attempt < 3; ++$attempt) {
             $process = proc_open(['gh', 'secret', 'set', $name, '--repo', 'zoujingli/typeapp'], [0 => ['file', $file, 'r'], 1 => $output, 2 => $output], $pipes, $root);
             if (is_resource($process) && proc_close($process) === 0) {
                 return;
@@ -48,7 +48,7 @@ try {
             throw new RuntimeException('组件源码位置或包名不匹配：' . $name);
         }
         $composer = json_decode(file_get_contents($root . '/' . $prefix . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
-        $description = trim((string) ($composer['description'] ?? ''));
+        $description = trim((string)($composer['description'] ?? ''));
         if (($composer['name'] ?? '') !== $package['composer-name'] || ($composer['license'] ?? '') !== 'Apache-2.0'
             || $description === '' || str_contains($description, "\n") || str_contains($description, "\r")) {
             throw new RuntimeException('组件包名、Apache-2.0 或简介不完整：' . $name);

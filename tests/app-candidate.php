@@ -11,7 +11,7 @@ use Type\Build\BuildPlatform;
 
 /**
  * 同一生产候选验证全新安装、旧入口失效、双端物联目录与独立 Broker。
- * 用法：php tests/app-candidate.php <产物或--php> <sqlite|mysql|pgsql> [--no-source] [--browser-dist=<隔离前端>]
+ * 用法：php tests/app-candidate.php <产物或--php> <sqlite|mysql|pgsql> [--no-source] [--browser-dist=<隔离前端>].
  */
 $root = dirname(__DIR__);
 $target = $argv[1] ?? '--php';
@@ -32,10 +32,10 @@ if ($target !== '--php') {
     $target = $resolved;
 }
 
-$config = json_decode((string) file_get_contents($root . '/docs/build-config/type-app.json'), true, 16, JSON_THROW_ON_ERROR);
+$config = json_decode((string)file_get_contents($root . '/docs/build-config/type-app.json'), true, 16, JSON_THROW_ON_ERROR);
 expect(
     !isset($config['entry'])
-    && ($config['application']['bootstrap'] ?? []) === ['class' => 'app\\common\\bootstrap\\Application', 'method' => 'bootstrap']
+    && ($config['application']['bootstrap'] ?? []) === ['class' => 'app\common\bootstrap\Application', 'method' => 'bootstrap']
     && ($config['sources'] ?? []) === ['app']
     && ($config['output'] ?? '') === 'build/app/type-app'
     && !str_contains(json_encode($config, JSON_THROW_ON_ERROR), 'templates/type-project'),
@@ -47,7 +47,7 @@ expect(mkdir($base, 0700), '无法创建候选验收目录');
 $environment = getenv();
 if ($target !== '--php') {
     $environment = array_replace($environment, (new BuildPlatform())->environment(getenv('PHP_HOME') ?: '', getenv('PHPX_HOME') ?: ''));
-    $built = json_decode((string) file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+    $built = json_decode((string)file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $environment['TYPE_NATIVE_PHP_INI'] = getenv('TYPE_NATIVE_PHP_INI') ?: $built['runtime-profile']['ini'];
 }
 
@@ -74,7 +74,7 @@ try {
         );
         expect(false, '未带 --app/--broker 的旧身份入口仍可通过');
     } catch (RuntimeException $failure) {
-        $legacyLog = is_file($base . '/legacy-identity.log') ? (string) file_get_contents($base . '/legacy-identity.log') : $failure->getMessage();
+        $legacyLog = is_file($base . '/legacy-identity.log') ? (string)file_get_contents($base . '/legacy-identity.log') : $failure->getMessage();
         expect(str_contains($legacyLog, '旧 /iot/auth'), '旧身份入口失败原因不符');
     }
     $report['checks'][] = 'legacy-iot-auth-entry-rejected';

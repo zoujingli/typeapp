@@ -9,7 +9,11 @@ use PHPUnit\Framework\TestCase;
 use Type\Orm\DatabaseException;
 use Type\Orm\Mysql\MysqlDriver;
 
-/** 通过驱动公开配置与身份验证时区边界，不连接数据库。 */
+/**
+ * 通过驱动公开配置与身份验证时区边界，不连接数据库。
+ * @internal
+ * @coversNothing
+ */
 final class MysqlTimezoneTest extends TestCase
 {
     public function testExistingConstructorKeepsUtcAndOtherIdentityFields(): void

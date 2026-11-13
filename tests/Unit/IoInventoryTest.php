@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace TypeTests\Unit;
 
-use IoInventory;
 use PHPUnit\Framework\TestCase;
 
 require_once dirname(__DIR__) . '/io-inventory.php';
 
-/** 检查通信候选不会在审计中遗漏；解析源码不执行网络操作。 */
+/**
+ * 检查通信候选不会在审计中遗漏；解析源码不执行网络操作。
+ * @internal
+ * @coversNothing
+ */
 final class IoInventoryTest extends TestCase
 {
     /** 加载审计器不执行控制器，直接运行仍在缺少构建身份时失败。 */
@@ -26,9 +29,9 @@ final class IoInventoryTest extends TestCase
         $root = dirname(__DIR__, 2);
         $emitter = 'plugin/type-core/src/Http/ResponseEmitter.php';
         $server = 'plugin/type-core/src/Http/SwooleServer.php';
-        $inventory = new IoInventory();
-        $emission = $inventory->inspect((string) file_get_contents($root . '/' . $emitter), $emitter);
-        $lifecycle = $inventory->inspect((string) file_get_contents($root . '/' . $server), $server);
+        $inventory = new \IoInventory();
+        $emission = $inventory->inspect((string)file_get_contents($root . '/' . $emitter), $emitter);
+        $lifecycle = $inventory->inspect((string)file_get_contents($root . '/' . $server), $server);
         $end = array_values(array_filter($emission['calls'], static fn (array $call): bool => $call['receiver'] === '$output' && $call['target'] === 'end'));
         $shutdown = array_values(array_filter($lifecycle['calls'], static fn (array $call): bool => $call['receiver'] === '$server' && $call['target'] === 'shutdown'));
 
@@ -41,7 +44,7 @@ final class IoInventoryTest extends TestCase
             self::assertArrayNotHasKey('tasks', $call);
             self::assertGreaterThan(0, $call['line']);
         }
-        self::assertStringContainsString('Type\\Core\\Http\\SwooleServer::serve/closure@', $shutdown[0]['owner']);
+        self::assertStringContainsString('Type\Core\Http\SwooleServer::serve/closure@', $shutdown[0]['owner']);
     }
 
     /** 原生双端常用方法进入候选，但同名应用方法和动态调用不能被误判为已解析。 */
@@ -72,10 +75,10 @@ function communicate(HttpClient $client, Socket $socket, Response $response, obj
     $socket->{$method}();
 }
 PHP;
-        $scan = (new IoInventory())->inspect($source, 'application/communications.php');
+        $scan = (new \IoInventory())->inspect($source, 'application/communications.php');
         self::assertCount(13, $scan['calls']);
         foreach ($scan['calls'] as $call) {
-            self::assertSame('Audit\\communicate', $call['owner']);
+            self::assertSame('Audit\communicate', $call['owner']);
             self::assertSame('requires-review', $call['resolution']);
             self::assertSame('requires-call-chain-review', $call['phase']);
             self::assertSame($call['target'] === '$method' ? null : 'method-needs-receiver-resolution', $call['io_candidate']);
@@ -106,17 +109,17 @@ function connect(): void
     namespace\stream_socket_client();
 }
 PHP;
-        $calls = (new IoInventory())->inspect($source, 'application/aliases.php')['calls'];
+        $calls = (new \IoInventory())->inspect($source, 'application/aliases.php')['calls'];
         self::assertCount(6, $calls);
-        self::assertSame('Swoole\\Coroutine\\Http\\Server', $calls[0]['target']);
+        self::assertSame('Swoole\Coroutine\Http\Server', $calls[0]['target']);
         self::assertSame('extension-resource', $calls[0]['io_candidate']);
-        self::assertSame('Swoole\\Coroutine\\Socket', $calls[1]['target']);
+        self::assertSame('Swoole\Coroutine\Socket', $calls[1]['target']);
         self::assertSame('extension-resource', $calls[1]['io_candidate']);
-        self::assertSame('Audit\\Socket', $calls[2]['target']);
+        self::assertSame('Audit\Socket', $calls[2]['target']);
         self::assertNull($calls[2]['io_candidate']);
         self::assertSame('swoole', $calls[3]['io_candidate']);
         self::assertSame('stream', $calls[4]['io_candidate']);
-        self::assertSame('Audit\\stream_socket_client', $calls[5]['target']);
+        self::assertSame('Audit\stream_socket_client', $calls[5]['target']);
         self::assertNull($calls[5]['io_candidate']);
     }
 }

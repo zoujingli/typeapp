@@ -7,10 +7,10 @@ use Type\Build\BuildLock;
 /**
  * 维护端验证完整备份字节，不把摘要当作来源真实性或加密证明。
  *
- * @param array{driver:string,'release-sha256':string,'build-id':string}|array{} $expected 恢复操作提供来自当前受信发布的身份；空数组仅检查备份字节。
- * @return array<string,mixed> 已检查协议、字节及明确提供的恢复身份。
- * @throws RuntimeException 路径、协议或文件摘要不符。
- * @throws JsonException 清单不是有效JSON。
+ * @param array{driver:string,'release-sha256':string,'build-id':string}|array{} $expected 恢复操作提供来自当前受信发布的身份；空数组仅检查备份字节
+ * @return array<string,mixed> 已检查协议、字节及明确提供的恢复身份
+ * @throws RuntimeException 路径、协议或文件摘要不符
+ * @throws JsonException 清单不是有效JSON
  */
 function recoveryVerify(string $directory, string $trusted, array $expected = []): array
 {
@@ -39,8 +39,8 @@ function recoveryVerify(string $directory, string $trusted, array $expected = []
 /**
  * 只向不存在的新数据根恢复配置与资源，不覆盖任何既有目标。
  *
- * @param array{driver:string,'release-sha256':string,'build-id':string}|array{} $expected 当前受信发布及驱动身份。
- * @throws RuntimeException 备份无效、目标已存在或明确资源无法恢复。
+ * @param array{driver:string,'release-sha256':string,'build-id':string}|array{} $expected 当前受信发布及驱动身份
+ * @throws RuntimeException 备份无效、目标已存在或明确资源无法恢复
  */
 function recoveryData(string $backup, string $trusted, string $destination, int $uid, array $expected = []): void
 {
@@ -61,7 +61,7 @@ function recoveryData(string $backup, string $trusted, string $destination, int 
 /**
  * 只读检查用户对象；恢复不通过DROP/CLEAN清空既有数据库。
  *
- * @throws RuntimeException 驱动不是MySQL或PostgreSQL。
+ * @throws RuntimeException 驱动不是MySQL或PostgreSQL
  */
 function recoveryEmptyQuery(string $driver): string
 {

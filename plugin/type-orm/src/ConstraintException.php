@@ -4,24 +4,26 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use PDOException;
-
 /** 数据库确认的约束失败；无法确认目标时保留空身份，不允许据此恢复竞争。 */
 final class ConstraintException extends DatabaseException
 {
     private string $kind;
+
     private string $constraint;
+
     private array $columns;
+
     private string $sqlState;
+
     private int $vendorCode;
 
     /** @internal SQLSTATE 和驱动码决定类别，文本只用于提取服务端报告的目标。 */
-    public function __construct(string $driver, PDOException $error)
+    public function __construct(string $driver, \PDOException $error)
     {
         $info = $error->errorInfo ?? [];
-        $this->sqlState = (string) ($info[0] ?? $error->getCode());
-        $this->vendorCode = (int) ($info[1] ?? 0);
-        $message = (string) ($info[2] ?? '');
+        $this->sqlState = (string)($info[0] ?? $error->getCode());
+        $this->vendorCode = (int)($info[1] ?? 0);
+        $message = (string)($info[2] ?? '');
         $this->kind = 'other';
         $this->constraint = '';
         $this->columns = [];

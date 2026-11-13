@@ -7,6 +7,10 @@ namespace TypeAppTests\Unit;
 use PHPUnit\Framework\TestCase;
 use Type\Build\ArtifactSize;
 
+/**
+ * @internal
+ * @coversNothing
+ */
 final class ArtifactSizeTest extends TestCase
 {
     /** MSVC 发布链接的 POGO 区段布局不是 PDB；只接受完整且有界的该类元数据。 */
@@ -15,7 +19,7 @@ final class ArtifactSizeTest extends TestCase
         $path = tempnam(dirname(__DIR__, 2) . '/build', 'pe-pogo-');
         $dos = substr_replace(str_pad('MZ', 64, "\0"), pack('V', 64), 60, 4);
         $coff = "PE\0\0" . pack('vvVVVvv', 0x8664, 1, 0, 0, 0, 168, 0);
-        $optional = substr_replace(pack('v', 0x20b) . str_repeat("\0", 166), pack('VV', 4112, 28), 160, 8);
+        $optional = substr_replace(pack('v', 0x20B) . str_repeat("\0", 166), pack('VV', 4112, 28), 160, 8);
         $payload = pack('VVV', 0, 4096, 16) . str_pad('.text', 8, "\0");
         $section = str_pad('.text', 8, "\0") . pack('VVVVVVvvV', 64, 4096, 64, 296, 0, 0, 0, 0, 0x60000020);
         $directory = pack('VVvvVVVV', 0, 0, 0, 0, 13, 20, 4140, 340);
@@ -50,7 +54,7 @@ final class ArtifactSizeTest extends TestCase
         try {
             $dos = substr_replace(str_pad('MZ', 64, "\0"), pack('V', 64), 60, 4);
             $coff = "PE\0\0" . pack('vvVVVvv', 0x8664, 1, 0, 0, 0, 168, 0);
-            $optional = pack('v', 0x20b) . str_repeat("\0", 166);
+            $optional = pack('v', 0x20B) . str_repeat("\0", 166);
             $section = str_pad('.text', 8, "\0") . pack('VVVVVVvvV', 16, 4096, 16, 296, 0, 0, 0, 0, 0x60000020);
             file_put_contents($path, $dos . $coff . $optional . $section . str_repeat('x', 16));
             $size = ArtifactSize::measure($path, [], []);
@@ -70,7 +74,7 @@ final class ArtifactSizeTest extends TestCase
     {
         $path = tempnam(dirname(__DIR__, 2) . '/build', 'macho-size-');
         try {
-            $header = pack('VVVVVVVV', 0xfeedfacf, 0x100000c, 0, 2, 1, 152, 0, 0);
+            $header = pack('VVVVVVVV', 0xFEEDFACF, 0x100000C, 0, 2, 1, 152, 0, 0);
             $segment = pack('VV', 0x19, 152) . str_pad('__TEXT', 16, "\0") . pack('PPPPVVVV', 4096, 4096, 0, 200, 5, 5, 1, 0);
             $section = str_pad('__text', 16, "\0") . str_pad('__TEXT', 16, "\0") . pack('PPVVVVVVVV', 4280, 16, 184, 4, 0, 0, 0x80000400, 0, 0, 0);
             file_put_contents($path, $header . $segment . $section . str_repeat('x', 16));

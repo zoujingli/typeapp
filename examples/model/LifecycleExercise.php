@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace TypeApp\ModelExample;
 
-use RuntimeException;
 use Type\Orm\Connection;
 use Type\Orm\ModelBehavior;
 use Type\Orm\ModelException;
@@ -16,7 +15,7 @@ final class LifecycleExercise
     /**
      * 在当前连接验证生命周期与事务回滚，不将观察器记录当作提交事实。
      *
-     * @return array<string, mixed> 演练结果摘要。
+     * @return array<string, mixed> 演练结果摘要
      */
     public static function verify(Connection $connection): array
     {
@@ -62,7 +61,7 @@ final class LifecycleExercise
         $changed->setTitle(' fail ');
         try {
             $changed->save();
-        } catch (RuntimeException $error) {
+        } catch (\RuntimeException $error) {
             self::check($error->getMessage() === '后置事件失败', '后置事件错误丢失');
         }
         self::check(Document::query()->find($id)->getTitle() === 'bulk', '后置事件失败后没有回滚写入');
@@ -85,7 +84,7 @@ final class LifecycleExercise
     private static function check(bool $condition, string $message): void
     {
         if (!$condition) {
-            throw new RuntimeException($message);
+            throw new \RuntimeException($message);
         }
     }
 }

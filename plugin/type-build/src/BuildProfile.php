@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
-
 /**
  * 构建期数据库与功能闭包。
  *
@@ -22,13 +20,13 @@ final class BuildProfile
     /**
      * 将锁定编译器推断的 Zend 启动依赖限定到真实 embed 已验证的模块表。
      * 源码仍全量编译；只有数据库和 Redis 的条件调用允许在目标中不可用。
-     * @param list<string> $extensions 真实目标 embed 的完整扩展列表。
-     * @internal 由 TypephpCompatibility 在核对上游源码摘要后调用。
+     * @param list<string> $extensions 真实目标 embed 的完整扩展列表
+     * @internal 由 TypephpCompatibility 在核对上游源码摘要后调用
      */
     public static function targetModuleDependencies(string $source, array $extensions): string
     {
         if ($extensions === []) {
-            throw new RuntimeException('静态目标缺少已验证的模块表');
+            throw new \RuntimeException('静态目标缺少已验证的模块表');
         }
         $target = array_map('strtolower', $extensions);
         $count = 0;
@@ -38,12 +36,12 @@ final class BuildProfile
                 return $match[0];
             }
             if (!in_array($name, ['pdo_mysql', 'pdo_pgsql', 'pdo_sqlite', 'redis'], true)) {
-                throw new RuntimeException('编译源码引用了静态目标未提供的扩展：' . $name);
+                throw new \RuntimeException('编译源码引用了静态目标未提供的扩展：' . $name);
             }
             return '';
         }, $source, -1, $count);
         if ($result === null || $count === 0) {
-            throw new RuntimeException('静态 profile 模块依赖生成格式发生变化');
+            throw new \RuntimeException('静态 profile 模块依赖生成格式发生变化');
         }
         return $result;
     }
@@ -54,12 +52,12 @@ final class BuildProfile
         $drivers = array_values(array_intersect($extensions, ['pdo_mysql', 'pdo_pgsql', 'pdo_sqlite']));
         if ($drivers !== ['pdo_' . $profile['database']]
             || in_array('redis', $extensions, true) !== in_array('redis', $profile['features'], true)) {
-            throw new RuntimeException('真实扩展集合与 profile 数据库或 Redis 能力不一致');
+            throw new \RuntimeException('真实扩展集合与 profile 数据库或 Redis 能力不一致');
         }
         $excluded = ['phar', 'xdebug', 'pcov', 'sqlite3', 'mysqli', 'pgsql', 'session', 'tokenizer'];
         foreach ([...$excluded, 'dom', 'xml', 'intl', 'zip'] as $extension) {
             if (in_array($extension, $extensions, true) && (in_array($extension, $excluded, true) || !in_array($extension, $profile['features'], true))) {
-                throw new RuntimeException('静态 SDK 包含未声明的生产扩展：' . $extension);
+                throw new \RuntimeException('静态 SDK 包含未声明的生产扩展：' . $extension);
             }
         }
     }
@@ -77,32 +75,32 @@ final class BuildProfile
         $declarations = $settings['build-profiles'] ?? null;
         if ($declarations === null) {
             if ($requested !== null) {
-                throw new RuntimeException('未声明 build-profiles，不能选择 profile');
+                throw new \RuntimeException('未声明 build-profiles，不能选择 profile');
             }
             return ['selected' => null, 'profiles' => []];
         }
         if (!is_array($declarations) || array_is_list($declarations) || $declarations === [] || count($declarations) > 32) {
-            throw new RuntimeException('build-profiles 必须是有限的命名对象');
+            throw new \RuntimeException('build-profiles 必须是有限的命名对象');
         }
         $profiles = [];
         foreach ($declarations as $name => $declaration) {
             if (!is_string($name) || preg_match('/^[a-z][a-z0-9_-]{0,31}$/D', $name) !== 1
                 || !is_array($declaration) || array_diff(array_keys($declaration), ['database', 'features']) !== []) {
-                throw new RuntimeException('构建 profile 名称或声明无效');
+                throw new \RuntimeException('构建 profile 名称或声明无效');
             }
             $database = $declaration['database'] ?? null;
             $features = $declaration['features'] ?? null;
             if (!is_string($database) || !in_array($database, self::DATABASES, true)
                 || !is_array($features) || !array_is_list($features) || $features === [] || count($features) > 64) {
-                throw new RuntimeException('构建 profile 的 database 或 features 无效：' . $name);
+                throw new \RuntimeException('构建 profile 的 database 或 features 无效：' . $name);
             }
             $normalized = [];
             foreach ($features as $feature) {
                 if (!is_string($feature) || preg_match('/^[a-z][a-z0-9_-]{0,31}$/D', $feature) !== 1) {
-                    throw new RuntimeException('构建 profile 功能名称无效：' . $name);
+                    throw new \RuntimeException('构建 profile 功能名称无效：' . $name);
                 }
                 if (in_array($feature, ['phar', 'xdebug', 'pcov', 'composer'], true)) {
-                    throw new RuntimeException('构建或调试工具不能声明为生产功能：' . $feature);
+                    throw new \RuntimeException('构建或调试工具不能声明为生产功能：' . $feature);
                 }
                 $normalized[] = $feature;
             }
@@ -125,7 +123,7 @@ final class BuildProfile
             $profiles[$name] = ['database' => $database, 'features' => $normalized];
         }
         if ($requested !== null && (!is_string($requested) || !isset($profiles[$requested]))) {
-            throw new RuntimeException('未知构建 profile：' . (string) $requested);
+            throw new \RuntimeException('未知构建 profile：' . (string)$requested);
         }
         if ($requested === null && count($profiles) === 1) {
             $requested = array_key_first($profiles);
@@ -143,7 +141,7 @@ final class BuildProfile
     /**
      * 过滤生产包声明中的数据库扩展，保持 Composer 包源码仍完整编译。
      * @param list<string> $extensions
-     * @param array{name:string,database:string,features:list<string>}|null $profile
+     * @param null|array{name:string,database:string,features:list<string>} $profile
      * @return list<string>
      */
     public static function runtimeExtensions(array $extensions, ?array $profile): array
@@ -179,7 +177,7 @@ final class BuildProfile
 
     /**
      * 返回本 profile 明确拒绝的可选数据库和运行能力，写入产物身份供发布清单审计。
-     * @param array{name:string,database:string,features:list<string>}|null $profile
+     * @param null|array{name:string,database:string,features:list<string>} $profile
      * @return list<string>
      */
     public static function rejectedCapabilities(?array $profile): array

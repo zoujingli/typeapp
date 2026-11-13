@@ -60,11 +60,11 @@ function mqttSharedSchedulingCase(int $port, ?string $certificate, string $prefi
         mqttWrite($receiver, "\xe0\0");
         expect(mqttRead($receiver) === '', '调度回归的持久会话未离线');
         fclose($receiver);
-        for ($sequence = 0; $sequence < 8; $sequence++) {
+        for ($sequence = 0; $sequence < 8; ++$sequence) {
             mqttSharedPublish($publisher, $ordinary, 'ordinary-' . $sequence);
             mqttSharedPublish($publisher, $shared, 'shared-' . $sequence);
         }
-        mqttWrite($publisher, mqttPacket(0xe0, "\0\x05\x11\0\0\0\0"));
+        mqttWrite($publisher, mqttPacket(0xE0, "\0\x05\x11\0\0\0\0"));
         expect(mqttRead($publisher) === '', '调度回归的发布会话未结束');
         fclose($publisher);
         $receiver = mqttSocket($port, $certificate);
@@ -72,7 +72,7 @@ function mqttSharedSchedulingCase(int $port, ?string $certificate, string $prefi
         mqttWrite($receiver, mqttSessionConnect(5, $clientId, false, 120));
         mqttSessionAck($receiver, true);
         $messages = [];
-        for ($index = 0; $index < 16; $index++) {
+        for ($index = 0; $index < 16; ++$index) {
             $received = mqttRetainedRead($receiver, 5);
             expect($received['qos'] === 1 && !$received['duplicate'], '调度轮换改变了初次可靠交付');
             $messages[] = $received['payload'];
@@ -84,7 +84,7 @@ function mqttSharedSchedulingCase(int $port, ?string $certificate, string $prefi
         }
         expect(count(array_unique($messages)) === 16, '调度轮换丢失或重复积压消息');
         mqttQuiet($receiver);
-        mqttWrite($receiver, mqttPacket(0xe0, "\0\x05\x11\0\0\0\0"));
+        mqttWrite($receiver, mqttPacket(0xE0, "\0\x05\x11\0\0\0\0"));
         expect(mqttRead($receiver) === '', '调度回归未结束会话');
         return $messages;
     } finally {
@@ -107,7 +107,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
     require_once __DIR__ . '/mqtt-retained.php';
     require_once __DIR__ . '/mqtt-sessions.php';
     require_once __DIR__ . '/mqtt-subscriptions.php';
-    $tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+    $tools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
     $database = new NativeDatabase($consumer . '/shared-primary', 'pgsql', $tools);
     $sync = null;
     $process = null;
@@ -130,7 +130,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
             $environment['MQTT_CERTIFICATE'] = $certificate ?? '';
             $environment['MQTT_PRIVATE_KEY'] = $tls ? $consumer . '/private.pem' : '';
             $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-            $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+            $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
             fclose($listener);
             $start = function () use ($command, $consumer, &$environment, $port, $tls): Process {
                 $running = new Process([...$command, '--port=' . $port, ...($tls ? [] : ['--plaintext'])], $consumer, $environment);
@@ -149,7 +149,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
             $prefix = 'shared-' . ($tls ? 'tls-' : 'tcp-');
             $traces[$prefix . 'scheduling'] = mqttSharedSchedulingCase($port, $certificate, $prefix);
             $cases += 2;
-            echo successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string) $port, $certificate ?? 'plain', 'shared'], $consumer);
+            echo successful(['node', $root . '/tests/mqtt-standard-client.mjs', $consumer, (string)$port, $certificate ?? 'plain', 'shared'], $consumer);
             $open = function (string $id, bool $clean = true, int $expiry = 120, string $properties = '') use ($port, $certificate, &$sockets, $prefix): mixed {
                 $socket = mqttSocket($port, $certificate);
                 $sockets[] = $socket;
@@ -165,7 +165,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
                 expect($ack === mqttSubscriptionAck(5, chr($options & 3)), '共享订阅未授予：' . substr($filter, 0, 80) . '，字节数=' . strlen($filter) . '，响应=' . bin2hex($ack));
             };
             $close = function (mixed $socket, bool $terminate = true): void {
-                mqttWrite($socket, $terminate ? mqttPacket(0xe0, "\0\x05\x11\0\0\0\0") : "\xe0\0");
+                mqttWrite($socket, $terminate ? mqttPacket(0xE0, "\0\x05\x11\0\0\0\0") : "\xe0\0");
                 expect(mqttRead($socket) === '', '共享成员未正常断开');
                 fclose($socket);
             };
@@ -179,7 +179,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
             expect($received['topic'] === $actual && $received['payload'] === 'long-filter', '长共享过滤器未按原字节路由');
             mqttRetainedComplete($a, $received);
             $close($a);
-            $cases++;
+            ++$cases;
             // 公开 AccessPolicy 给予独立测试客户端系统 Topic 权限，匹配仍按真实外层过滤器。
             $system = [];
             foreach (['member', 'publisher'] as $role) {
@@ -208,7 +208,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
                 }
                 mqttWrite($system[0], mqttSubscription(5, $filter, 1, 0, false));
                 expect(mqttRead($system[0]) === mqttSubscriptionAck(5, "\0", 1, false), '系统 Topic 共享取消失败');
-                $cases++;
+                ++$cases;
             }
             foreach ($system as $socket) {
                 $close($socket);
@@ -216,7 +216,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
             // 普通与共享共用100个过滤器预算；替换不增加数量。
             $a = $open('subscription-limit');
             $filters = [];
-            for ($index = 0; $index < 99; $index++) {
+            for ($index = 0; $index < 99; ++$index) {
                 $filters['example/' . $prefix . 'limit-' . $index] = 0x21;
             }
             $filter = '$share/limit/example/' . $prefix . 'limit-shared';
@@ -257,7 +257,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
             $close($a);
             $cases += 3;
             $topic = 'example/' . $prefix . 'fanout/x';
-            $group = '$share/a/' . 'example/' . $prefix . 'fanout/+';
+            $group = '$share/a/example/' . $prefix . 'fanout/+';
             $a = $open('a');
             $b = $open('b');
             $c = $open('c');
@@ -265,13 +265,13 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
             $subscribe($b, $group, 1, 9);
             $subscribe($c, '$share/b/example/' . $prefix . 'fanout/+', 1, 11);
             $subscribe($c, 'example/' . $prefix . 'fanout/+', 1, 13);
-            for ($sequence = 0; $sequence < 8; $sequence++) {
+            for ($sequence = 0; $sequence < 8; ++$sequence) {
                 mqttSharedPublish($publisher, $topic, 'm-' . $sequence);
                 [$selected, $delivery] = mqttSharedReceive([$a, $b]);
                 expect($delivery['payload'] === 'm-' . $sequence && mqttDeliveryProperties($delivery['properties'])['identifiers'] === [$selected === 0 ? 7 : 9], '组选择混用了成员标识');
                 mqttRetainedComplete([$a, $b][$selected], $delivery);
                 $ids = [];
-                for ($copy = 0; $copy < 2; $copy++) {
+                for ($copy = 0; $copy < 2; ++$copy) {
                     $received = mqttRetainedRead($c, 5);
                     expect($received['payload'] === 'm-' . $sequence, '普通或另一组丢失独立副本');
                     $ids[] = mqttDeliveryProperties($received['properties'])['identifiers'][0];
@@ -279,7 +279,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
                 }
                 sort($ids);
                 expect($ids === [11, 13], '普通和共享被错误合并');
-                $cases++;
+                ++$cases;
             }
             mqttSharedQuiet($a);
             mqttSharedQuiet($b);
@@ -298,7 +298,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
                     expect($received['qos'] === min($granted, $published) && $received['retain'] && $received['payload'] === $payload
                         && mqttDeliveryProperties($received['properties'])['identifiers'] === [21], '共享 QoS/RAP/标识不匹配');
                     mqttRetainedComplete($a, $received);
-                    $cases++;
+                    ++$cases;
                 }
                 $close($a);
             }
@@ -317,7 +317,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
             expect($received['payload'] === 'offline-first' && !$received['duplicate'], '离线组积压未从重启恢复');
             mqttRetainedComplete($a, $received);
             $close($a);
-            $cases++;
+            ++$cases;
             $publisher = $open('publisher-again');
             // 格式、选项和共享前缀授权。所有非法报文使用新连接。
             foreach (['$share//example/x', '$share/g/', '$share/g', '$share/g+/example/x', '$share/g/example/#/x'] as $invalidFilter) {
@@ -325,33 +325,33 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
                 mqttWrite($a, mqttSubscription(5, $invalidFilter, 1, 1));
                 expect(mqttRead($a) === "\xe0\x02\x82\0", '非法共享格式未按协议错误拒绝');
                 fclose($a);
-                $cases++;
+                ++$cases;
             }
             foreach ([5, 49, 65, 3] as $options) {
                 $a = $open('options');
                 mqttWrite($a, mqttSubscription(5, '$share/g/example/x', 1, $options));
                 expect(mqttRead($a) === "\xe0\x02" . chr($options === 65 ? 0x81 : 0x82) . "\0", '非法共享选项未拒绝');
                 fclose($a);
-                $cases++;
+                ++$cases;
             }
             $a = $open('auth');
             foreach (['$share/g/denied/#', '$share/another/denied/#', '$share/g/#'] as $deniedFilter) {
                 mqttWrite($a, mqttSubscription(5, $deniedFilter, 1, 1));
                 expect(mqttRead($a) === mqttSubscriptionAck(5, "\x87"), '改共享组名扩大了 Topic 权限');
-                $cases++;
+                ++$cases;
             }
             $subscribe($a, '$share/组 名/example/' . $prefix . 'utf8', 1);
             mqttSharedPublish($publisher, 'example/' . $prefix . 'utf8', 'utf8');
             mqttRetainedComplete($a, mqttRetainedRead($a, 5));
             $close($a);
-            $cases++;
+            ++$cases;
             $a = $open('identity');
             $actual = 'example/' . $prefix . 'identity';
             $subscribe($a, '$share/same/' . $actual . '/#', 1, 42);
             $subscribe($a, '$share/same/' . $actual . '/+', 1, 43);
             mqttSharedPublish($publisher, $actual . '/x', 'overlap');
             $ids = [];
-            for ($copy = 0; $copy < 2; $copy++) {
+            for ($copy = 0; $copy < 2; ++$copy) {
                 $received = mqttRetainedRead($a, 5);
                 $ids[] = mqttDeliveryProperties($received['properties'])['identifiers'][0];
                 mqttRetainedComplete($a, $received);
@@ -359,7 +359,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
             sort($ids);
             expect($ids === [42, 43], '同名不同过滤器被合并');
             $close($a);
-            $cases++;
+            ++$cases;
             // 历史保留对共享 RH=0/1/2 都不重放，重订选项/标识覆盖且精确取消。
             $actual = 'example/' . $prefix . 'retained';
             mqttSharedPublish($publisher, $actual, 'historical', 1, true);
@@ -438,7 +438,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
             }
             // 慢成员 Receive Maximum=1，组内其他成员继续消费；QoS 1 等原会话并在终止时改投。
             foreach ([false, true] as $terminate) {
-                $actual = 'example/' . $prefix . 'qos1-' . (int) $terminate;
+                $actual = 'example/' . $prefix . 'qos1-' . (int)$terminate;
                 $filter = '$share/qos1/' . $actual;
                 $a = $open('qos1-a', true, 120, "\x21\0\x01");
                 $subscribe($a, $filter, 1);
@@ -533,7 +533,7 @@ function mqttSharedCases(string $root, string $consumer, array $command, array $
             expect($received['payload'] === 'new-session', '到期会话或新组恢复了旧积压');
             mqttRetainedComplete($a, $received);
             $close($a);
-            $cases++;
+            ++$cases;
             $close($publisher);
             // 精确截住共享归属提交：主库 started 可见但同步取消，socket 不得收到 PUBLISH。
             $actual = 'example/' . $prefix . 'claim-unknown';
@@ -557,7 +557,7 @@ SQL);
             $primary->query('SELECT pg_advisory_lock(1954115693, 103)')->fetchColumn();
             try {
                 $a = $open('unknown-a', false);
-                $pid = (int) mqttUntil(fn (): mixed => $primary->query('SELECT a.pid FROM pg_stat_activity a JOIN pg_locks l ON l.pid = a.pid '
+                $pid = (int)mqttUntil(fn (): mixed => $primary->query('SELECT a.pid FROM pg_stat_activity a JOIN pg_locks l ON l.pid = a.pid '
                     . "WHERE a.application_name LIKE 'type_mqtt_%' AND l.locktype = 'advisory' AND l.classid = 1954115693 AND l.objid = 103 AND NOT l.granted")->fetchColumn(), '共享归属没有进入精确故障窗口');
                 $standby->query('SELECT pg_wal_replay_pause()')->fetchColumn();
                 $primary->query('SELECT pg_advisory_unlock(1954115693, 103)')->fetchColumn();
@@ -570,7 +570,7 @@ SQL);
                 $statement->execute([$actual]);
                 $intent = $statement->fetch(PDO::FETCH_ASSOC);
                 $statement = null;
-                expect($intent['started'] && (int) $intent['packet_id'] > 0 && $intent['phase'] === 'wait_pubrec', '取消同步没有保留共享发送意图');
+                expect($intent['started'] && (int)$intent['packet_id'] > 0 && $intent['phase'] === 'wait_pubrec', '取消同步没有保留共享发送意图');
             } finally {
                 $standby->query('SELECT pg_wal_replay_resume()')->fetchColumn();
                 $primary->query('SELECT pg_advisory_unlock_all()')->fetchColumn();
@@ -582,7 +582,7 @@ SQL);
             mqttSharedQuiet($b);
             $a = $open('unknown-a', false);
             $received = mqttRetainedRead($a, 5);
-            expect($received['duplicate'] && $received['id'] === (int) $intent['packet_id'] && $received['payload'] === 'intent-before-socket'
+            expect($received['duplicate'] && $received['id'] === (int)$intent['packet_id'] && $received['payload'] === 'intent-before-socket'
                 && mqttDeliveryProperties($received['properties'])['identifiers'] === [71], '未知归属恢复没有保持原成员、标识及 DUP');
             mqttRetainedComplete($a, $received);
             $close($a);
@@ -620,7 +620,7 @@ SQL);
                 $a = $open('quota-a', false);
                 if ($limit === 'count') {
                     $payloads = [];
-                    for ($copy = 0; $copy < 2; $copy++) {
+                    for ($copy = 0; $copy < 2; ++$copy) {
                         $received = mqttRetainedRead($a, 5);
                         $payloads[] = $received['payload'];
                         mqttRetainedComplete($a, $received);

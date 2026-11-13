@@ -12,7 +12,7 @@ final class AfterCommitException extends TransactionException
     /**
      * 记录最终提交之后的回调错误；数据库提交事实保持 COMMITTED。
      *
-     * @param list<\Throwable> $errors 各回调按执行顺序产生的错误。
+     * @param list<\Throwable> $errors 各回调按执行顺序产生的错误
      */
     public function __construct(array $errors)
     {

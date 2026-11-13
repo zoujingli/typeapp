@@ -50,7 +50,7 @@ try {
     $operationSettings['build-directory'] = 'build/operations/compiler';
     file_put_contents($consumer . '/operations.json', json_encode($operationSettings, JSON_THROW_ON_ERROR));
     $operationLauncher = 'require ' . var_export($consumer . '/vendor/autoload.php', true)
-        . '; (new \\Type\\Build\\DevelopmentBuilder())->loadConfiguration(' . var_export($consumer . '/operations.json', true) . '); main($argc, $argv);';
+        . '; (new \Type\Build\DevelopmentBuilder())->loadConfiguration(' . var_export($consumer . '/operations.json', true) . '); main($argc, $argv);';
     $operationCommand = [PHP_BINARY, '-r', $operationLauncher];
     if (($argv[1] ?? '') === '--native') {
         successful([PHP_BINARY, $consumer . '/vendor/bin/type', $consumer . '/operations.json'], $consumer);

@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use Type\Orm\Connection;
+use Type\Orm\DatabaseException;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
 use Type\Orm\ModelException;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\Article;
 use TypeApp\ModelExample\ArticleTags;
@@ -14,7 +16,7 @@ use TypeApp\ModelExample\Drivers;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function pivotExpect(bool $condition, string $message): void
 {
@@ -26,28 +28,28 @@ function pivotExpect(bool $condition, string $message): void
 /**
  * 验证多对多挂载、同步、事务与中间表字段；竞争阶段由参数显式选择。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::enableIo();
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
-        $driver = (string) ($argv[1] ?? 'sqlite');
+    CoroutineRuntime::enableIo();
+    CoroutineRuntime::run(static function () use ($argv): void {
+        $driver = (string)($argv[1] ?? 'sqlite');
         $database = new DatabaseManager(['default' => Drivers::create($driver)], 1, 0);
         Db::configure($database);
         $scope = new ExecutionScope();
         try {
-            $scope->run(static function (ExecutionScope $current) use ($database, &$scope, $argv, $driver): void {
+            $scope->run(static function (ExecutionScope $current) use (&$scope, $argv, $driver): void {
                 $connection = Db::connection('default', true);
                 if (($argv[2] ?? '') === 'race') {
                     $parent = Article::query()->find(10);
-                    $barrier = (string) getenv('TYPE_PIVOT_BARRIER');
+                    $barrier = (string)getenv('TYPE_PIVOT_BARRIER');
                     if ($barrier === '') {
                         throw new RuntimeException('并发验证缺少同步文件');
                     }
                     file_put_contents($barrier, "ready\n", FILE_APPEND | LOCK_EX);
                     $deadline = microtime(true) + 5;
-                    while (substr_count((string) file_get_contents($barrier), "\n") < 2) {
+                    while (substr_count((string)file_get_contents($barrier), "\n") < 2) {
                         if (microtime(true) >= $deadline) {
                             throw new RuntimeException('并发验证等待超时');
                         }
@@ -101,7 +103,7 @@ function main(int $argc, array $argv): void
                 pivotExpect($result === ['attached' => 0, 'detached' => 2, 'updated' => 0], '同步空集合没有只移除当前父记录的关系');
                 pivotExpect(count(Article::query()->with('tags', $tags)->find(11)->related('tags')) === 2, '同步误删了其他文章关系');
                 try {
-                    $connection->transaction(static function (Connection $transaction) use ($tags, $b): void {
+                    $connection->transaction(static function (Connection $transaction) use ($b): void {
                         $b->relation('tags')->attach(101, ['position' => 6]);
                         throw new RuntimeException('回滚关系');
                     });
@@ -113,7 +115,7 @@ function main(int $argc, array $argv): void
                 $rejected = false;
                 try {
                     $connection->table('type_model_article_tag')->insert(['article_id' => 11, 'tag_id' => 100, 'position' => 0]);
-                } catch (\Type\Orm\DatabaseException) {
+                } catch (DatabaseException) {
                     $rejected = true;
                 }
                 pivotExpect($rejected, '数据库没有真实唯一关系约束');

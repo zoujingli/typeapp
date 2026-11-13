@@ -5,8 +5,8 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-use Type\Build\ArtifactManifest;
 use Type\Build\ArtifactCache;
+use Type\Build\ArtifactManifest;
 use Type\Build\BuildIdentity;
 use Type\Build\BuildPlatform;
 
@@ -40,7 +40,7 @@ try {
     $cache = new ArtifactCache($directory . '/cache');
     $compilations = 0;
     $compiler = static function (string $candidate) use ($fixture, &$compilations): void {
-        $compilations++;
+        ++$compilations;
         copy($fixture, $candidate);
         chmod($candidate, 0755);
     };
@@ -58,8 +58,8 @@ try {
     }
     expect($rejected, '尾部被修改的跨平台产物没有拒绝');
     $windows = new BuildPlatform('Windows');
-    expect($windows->absolute('C:\\work\\project') && $windows->absolute('D:/SDK') && !$windows->absolute('C:relative')
-        && !$windows->absolute('\\\\server\\share') && !$windows->absolute('https://example.test'), 'Windows路径语义混入相对盘符或远程目录');
+    expect($windows->absolute('C:\work\project') && $windows->absolute('D:/SDK') && !$windows->absolute('C:relative')
+        && !$windows->absolute('\\\server\share') && !$windows->absolute('https://example.test'), 'Windows路径语义混入相对盘符或远程目录');
     expect($windows->output('build/tool') === 'build/tool.exe' && $windows->output('build/tool.exe') === 'build/tool.exe', 'Windows产物后缀不稳定');
     $environment = (new BuildPlatform())->environment('', '');
     expect(!isset($environment['COMPOSER_AUTH'], $environment['SSH_AUTH_SOCK'], $environment['GITHUB_TOKEN']), '平台环境继承了认证变量');

@@ -7,20 +7,21 @@ namespace TypeApp\TenantExample;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Swoole\Coroutine;
 use Type\Cache\JsonCodec;
 use Type\Cache\NamespaceStore;
 use Type\Cache\TypedCache;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\Tenant;
+use Type\Log\LogManager;
 use Type\Orm\Connection;
+use Type\Orm\DatabaseException;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
-use Type\Orm\DatabaseException;
 use Type\Orm\Model;
 use Type\Orm\ModelDefinition;
 use Type\Orm\ModelField;
 use Type\Orm\ModelQuery;
-use Type\Log\LogManager;
 use Type\Redis\Purpose;
 use Type\Redis\RedisManager;
 use Type\Runtime\ExecutionScope;
@@ -32,8 +33,11 @@ use Type\Validate\Schema;
 final class Endpoint implements RequestHandlerInterface
 {
     private DatabaseManager $databases;
+
     private array $replacements;
+
     private RedisManager $redis;
+
     private LogManager $logs;
 
     /** 池与日志归应用生命周期所有，处理器仅持有当前请求的租约。 */
@@ -44,6 +48,7 @@ final class Endpoint implements RequestHandlerInterface
         $this->redis = $redis;
         $this->logs = $logs;
     }
+
     /** 拒绝未授权租户资源，再在当前请求作用域内执行业务与隔离检查。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -69,12 +74,12 @@ final class Endpoint implements RequestHandlerInterface
         try {
             $connection = Db::connection($tenant->connection(), true);
             $identity = $connection->identity();
-            $generation = (int) $identity['credential-generation'];
+            $generation = (int)$identity['credential-generation'];
             $currentOwner = $connection->query('SELECT owner FROM tenant_values WHERE id = ?', [1])[0]['owner'];
             $baseline = match ($identity['driver']) {
                 'mysql' => $connection->query('SELECT @@SESSION.time_zone AS value')[0]['value'] === '+00:00',
                 'pgsql' => $connection->query('SELECT current_schema() AS value')[0]['value'] === $identity['session']['schema'],
-                default => (int) $connection->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1,
+                default => (int)$connection->query('PRAGMA foreign_keys')[0]['foreign_keys'] === 1,
             };
             if ($currentOwner !== $tenant->id() || !$baseline) {
                 throw new \RuntimeException('租户会话基线或当前资源不一致');
@@ -114,7 +119,7 @@ final class Endpoint implements RequestHandlerInterface
                     } catch (DatabaseException $error) {
                         $cause = $error->getPrevious();
                         $denied = $cause instanceof \PDOException && ($identity['driver'] === 'mysql'
-                            ? in_array((int) ($cause->errorInfo[1] ?? 0), [1044, 1142], true) : ($cause->errorInfo[0] ?? '') === '42501');
+                            ? in_array((int)($cause->errorInfo[1] ?? 0), [1044, 1142], true) : ($cause->errorInfo[0] ?? '') === '42501');
                     }
                 }
                 $value = ['tenant' => $tenant->id(), 'cross_database_denied' => $denied,
@@ -143,8 +148,8 @@ final class Endpoint implements RequestHandlerInterface
                     default => 'PRAGMA foreign_keys = OFF',
                 });
             }
-            \Swoole\Coroutine::sleep(0.005);
-            return $factory->createResponse()->withHeader('Content-Type', 'application/json')->withBody($factory->createStream((string) json_encode($value, JSON_THROW_ON_ERROR)));
+            Coroutine::sleep(0.005);
+            return $factory->createResponse()->withHeader('Content-Type', 'application/json')->withBody($factory->createStream((string)json_encode($value, JSON_THROW_ON_ERROR)));
         } catch (\Throwable $failure) {
             $failed = true;
             throw $failure;
@@ -158,9 +163,7 @@ final class Endpoint implements RequestHandlerInterface
 }
 
 /** 物理数据库隔离示例；逻辑数据源固定在各具体模型，HTTP 输入只参与授权。 */
-abstract class TenantValue extends Model
-{
-}
+abstract class TenantValue extends Model {}
 
 /** 绑定租户甲数据源的具名模型，供跨请求连接隔离回归。 */
 final class AlphaValue extends TenantValue

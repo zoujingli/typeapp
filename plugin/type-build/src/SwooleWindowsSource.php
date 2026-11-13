@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
-
 /** 固定 Swoole Windows 构建适配；共享模块与静态核心共用相同的官方实现。 */
 final class SwooleWindowsSource
 {
@@ -14,7 +12,7 @@ final class SwooleWindowsSource
      * 上游修复对应缺口且 Windows 原生回归通过后撤除。
      *
      * @return array<string,array{before:string,after:string}>
-     * @throws RuntimeException 原文摘要、替换次数或文件保存不符。
+     * @throws \RuntimeException 原文摘要、替换次数或文件保存不符
      */
     public function apply(string $directory): array
     {
@@ -24,7 +22,7 @@ final class SwooleWindowsSource
             'ext-src/swoole_runtime.cc' => '7319e162e3646d4c603b5c67e3dbe1b8d8a636966b9fc6691544374a46d285e0',
             'src/coroutine/iocp.cc' => 'f42ba99a3d30d10b39885304d0e529c3018756512eac4882868ea313cc9bcc0d',
             'src/coroutine/iocp_socket.cc' => '419ca0c4d91fd32c042ecbfb582400f8cede4c9e27d77a241c36a2682a0d983f',
-            'src/network/dns.cc' => '07ac0cc8522c9f24e4d01ee0deae16382939e396c98961f5c9ba1293cfb1ac85',
+            'src/network/dns.cc' => 'e240c4bd57199cac80200aee678582d440c84ce8f9bb2ea39a37ac21cefc1ff9',
             'src/network/address.cc' => 'e0b57b87c89b3b3689e9ec2c5fe01dcda006655f4edc21100199ba056deda352',
             'src/coroutine/socket.cc' => 'e66deecae2081274199349b39c51f20fee4d21e0f5a90f057c3a6506ac95d361',
             'php_swoole.h' => '210b685a580ee97d28f58da223157f605bc705e384f7f6b6cbb32ae0abd8bc75',
@@ -33,19 +31,19 @@ final class SwooleWindowsSource
         foreach ($hashes as $file => $digest) {
             $path = $directory . '/' . $file;
             if (!is_file($path) || is_link($path) || hash_file('sha256', $path) !== $digest) {
-                throw new RuntimeException('Swoole Windows 适配需要固定原文：' . $file);
+                throw new \RuntimeException('Swoole Windows 适配需要固定原文：' . $file);
             }
-            $sources[$file] = (string) file_get_contents($path);
+            $sources[$file] = (string)file_get_contents($path);
         }
         $replacements = [
             'CHECK_LIB("libpq.lib", "swoole", PHP_PGSQL_DIR)' => 'CHECK_LIB("libpq.lib;pq.lib", "swoole", null)',
-            'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PGSQL_DIR)' => 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PHP_BUILD + "\\\\include\\\\libpq;" + PHP_PHP_BUILD + "\\\\include\\\\postgresql")',
+            'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PGSQL_DIR)' => 'CHECK_HEADER_ADD_INCLUDE("libpq-fe.h", "CFLAGS_SWOOLE", PHP_PHP_BUILD + "\\\include\\\libpq;" + PHP_PHP_BUILD + "\\\include\\\postgresql")',
             'CHECK_LIB("sqlite3.lib", "swoole", null)' => 'CHECK_LIB("libsqlite3.lib;sqlite3.lib", "swoole", null)',
             'CHECK_LIB("libzstd.lib", "swoole", null)' => 'CHECK_LIB("libzstd_a.lib;libzstd.lib;zstd.lib", "swoole", null)',
             'CHECK_LIB("cares.lib", "swoole", PHP_CARES_DIR)' => 'CHECK_LIB("cares.lib", "swoole", null)',
             'CHECK_HEADER_ADD_INCLUDE("ares.h", "CFLAGS_SWOOLE", PHP_CARES_DIR)' => 'CHECK_HEADER_ADD_INCLUDE("ares.h", "CFLAGS_SWOOLE", null)',
-            'swoole_source_files += PHP_THIRDPARTY_DIR + "\\\\pdo_pgsql\\\\pgsql_driver.c ";' => 'swoole_source_files += "ext-src\\\\swoole_pgsql.cc ";' . "\n\t\t" . 'swoole_source_files += PHP_THIRDPARTY_DIR + "\\\\pdo_pgsql\\\\pgsql_driver.c ";',
-            'swoole_source_files += "thirdparty\\\\pdo_sqlite\\\\sqlite_driver.c ";' => 'swoole_source_files += "ext-src\\\\swoole_sqlite.cc ";' . "\n\t\t" . 'swoole_source_files += "thirdparty\\\\pdo_sqlite\\\\sqlite_driver.c ";',
+            'swoole_source_files += PHP_THIRDPARTY_DIR + "\\\pdo_pgsql\\\pgsql_driver.c ";' => 'swoole_source_files += "ext-src\\\swoole_pgsql.cc ";' . "\n\t\t" . 'swoole_source_files += PHP_THIRDPARTY_DIR + "\\\pdo_pgsql\\\pgsql_driver.c ";',
+            'swoole_source_files += "thirdparty\\\pdo_sqlite\\\sqlite_driver.c ";' => 'swoole_source_files += "ext-src\\\swoole_sqlite.cc ";' . "\n\t\t" . 'swoole_source_files += "thirdparty\\\pdo_sqlite\\\sqlite_driver.c ";',
         ];
         foreach ($replacements as $before => $after) {
             $sources['config.w32'] = $this->replace($sources['config.w32'], $before, $after);
@@ -156,18 +154,7 @@ CPP
         }
 CPP
         );
-        // c-ares 的回调在 Windows 使用 UINT_PTR；Swoole 的 Socket 也使用 swSocketFd。
-        // 回调和索引均保留官方 ares_socket_t，不能为通过编译而截断 64 位句柄。
-        $sources['src/network/dns.cc'] = $this->replace(
-            $sources['src/network/dns.cc'],
-            'std::unordered_map<int, network::Socket *> sockets;',
-            'std::unordered_map<ares_socket_t, network::Socket *> sockets;'
-        );
-        $sources['src/network/dns.cc'] = $this->replace(
-            $sources['src/network/dns.cc'],
-            'ctx.ares_opts.sock_state_cb = [](void *arg, int fd, int readable, int writable) {',
-            'ctx.ares_opts.sock_state_cb = [](void *arg, ares_socket_t fd, int readable, int writable) {'
-        );
+        // 上游已统一使用 ares_socket_t，删除回调和索引类型补丁；剩余日志与真实关闭适配继续保留。
         foreach ([
             '"[sock_state_cb], fd=%d, readable=%d, writable=%d", fd, readable, writable' => '"[sock_state_cb], fd=%llu, readable=%d, writable=%d", static_cast<unsigned long long>(fd), readable, writable',
             '"error events, fd=%d", fd' => '"error events, fd=%llu", static_cast<unsigned long long>(fd)',
@@ -220,7 +207,7 @@ CPP
         $report = [];
         foreach ($sources as $file => $source) {
             if (file_put_contents($directory . '/' . $file, $source) !== strlen($source)) {
-                throw new RuntimeException('无法保存 Swoole Windows 源码适配：' . $file);
+                throw new \RuntimeException('无法保存 Swoole Windows 源码适配：' . $file);
             }
             $report[$file] = ['before' => $hashes[$file], 'after' => hash('sha256', $source)];
         }
@@ -230,7 +217,7 @@ CPP
     private function replace(string $source, string $before, string $after): string
     {
         if (substr_count($source, $before) !== 1) {
-            throw new RuntimeException('Swoole Windows 源码适配位置不唯一');
+            throw new \RuntimeException('Swoole Windows 源码适配位置不唯一');
         }
         return str_replace($before, $after, $source);
     }

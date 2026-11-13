@@ -5,19 +5,18 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+use Pdo\Sqlite;
+use Type\Orm\Driver;
 use Type\Orm\Migration\Migration;
 use Type\Orm\Migration\MigrationException;
 use Type\Orm\Migration\Migrator;
-use Type\Orm\Driver;
 use Type\Orm\Sqlite\SqliteDriver;
 
 /** 在真实 SQLite 回调中暂停迁移，方便第二个独立进程竞争同一公开入口。 */
 final class SqliteMigrationLockDriver implements Driver
 {
     /** 保存真实 SQLite 驱动及本轮锁测试的就绪、放行哨兵路径，不改变连接身份。 */
-    public function __construct(private SqliteDriver $driver, private string $ready, private string $release)
-    {
-    }
+    public function __construct(private SqliteDriver $driver, private string $ready, private string $release) {}
 
     /** 沿用真实驱动名，使锁测试仍走 SQLite 方言。 */
     public function name(): string
@@ -46,7 +45,7 @@ final class SqliteMigrationLockDriver implements Driver
     {
         // PDO 的旧 sqliteCreateFunction 在 PHP 8.5 弃用；测试需要真实驱动专属接口。
         $identity = $this->driver->identity();
-        $pdo = new \Pdo\Sqlite('sqlite:' . $identity['database'], null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $pdo = new Sqlite('sqlite:' . $identity['database'], null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         $pdo->exec('PRAGMA busy_timeout = 100');
         $pdo->exec('PRAGMA foreign_keys = ON');
         $mode = $pdo->query('PRAGMA journal_mode = WAL');

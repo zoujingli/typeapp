@@ -4,25 +4,26 @@ declare(strict_types=1);
 
 namespace Type\Cache;
 
-use InvalidArgumentException;
 use Type\Redis\RedisConnection;
 
 /** 原子维护代次、键索引和旧代回收；只操作当前应用命名空间。 */
 final class NamespaceStore
 {
     private RedisConnection $redis;
+
     private string $root;
+
     private int $maxPayload;
 
     /**
      * 绑定 SCRIPT 用途连接及应用、环境、格式身份，不取得连接所有权。
      *
-     * @param int $maxPayload 单值载荷字节上限，范围 1 至 16 MiB。
+     * @param int $maxPayload 单值载荷字节上限，范围 1 至 16 MiB
      */
     public function __construct(RedisConnection $redis, string $application, string $environment, string $format, int $maxPayload = 1048576)
     {
         if ($application === '' || $environment === '' || $format === '' || $maxPayload < 1 || $maxPayload > 16777216) {
-            throw new InvalidArgumentException('缓存命名空间或载荷上限无效');
+            throw new \InvalidArgumentException('缓存命名空间或载荷上限无效');
         }
         $this->redis = $redis;
         $this->root = 'type:cache:{' . hash('sha256', json_encode([$application, $environment, $format], JSON_THROW_ON_ERROR)) . '}';
@@ -38,8 +39,8 @@ final class NamespaceStore
     /**
      * 同次读取固定代次，并用位置返回结果，避免 PHP 键转换影响映射。
      *
-     * @param list<string> $keys 最多 1000 个键。
-     * @return array{generation: string, values: list<string|false>} 缺失或单值过大使用 false。
+     * @param list<string> $keys 最多 1000 个键
+     * @return array{generation: string, values: list<false|string>} 缺失或单值过大使用 false
      */
     public function read(array $keys): array
     {
@@ -56,13 +57,13 @@ return out
 LUA;
         $result = $this->redis->script(
             $script,
-            [$this->root . ':active', $this->root, (string) $this->maxPayload],
+            [$this->root . ':active', $this->root, (string)$this->maxPayload],
             array_merge([bin2hex(random_bytes(16))], $hashes)
         );
         if (!is_array($result) || count($result) !== count($keys) + 1) {
             throw new CacheException('缓存读取结果不完整');
         }
-        $generation = (string) array_shift($result);
+        $generation = (string)array_shift($result);
         $this->generation($generation);
         return ['generation' => $generation, 'values' => $result];
     }
@@ -71,25 +72,25 @@ LUA;
      * generation 与回源时观察的代次不一致时不写入，避免 clear 后回填旧内容。
      *
      * @param list<string> $keys
-     * @param list<string> $payloads 与键逐位置对应，单批总载荷不超过 16 MiB。
-     * @param int|null $ttlMilliseconds 正数为毫秒 TTL，null 为永久并登记回收索引。
+     * @param list<string> $payloads 与键逐位置对应，单批总载荷不超过 16 MiB
+     * @param null|int $ttlMilliseconds 正数为毫秒 TTL，null 为永久并登记回收索引
      */
     public function write(string $generation, array $keys, array $payloads, ?int $ttlMilliseconds): bool
     {
         $this->generation($generation);
         $hashes = $this->keys($keys);
         if (count($keys) !== count($payloads) || !array_is_list($payloads) || ($ttlMilliseconds !== null && $ttlMilliseconds < 1)) {
-            throw new InvalidArgumentException('缓存写入数量或 TTL 无效');
+            throw new \InvalidArgumentException('缓存写入数量或 TTL 无效');
         }
         $arguments = [$generation, $ttlMilliseconds === null ? 0 : $ttlMilliseconds];
         $bytes = 0;
         foreach ($payloads as $index => $payload) {
             if (!is_string($payload) || strlen($payload) > $this->maxPayload) {
-                throw new InvalidArgumentException('缓存载荷无效或超限');
+                throw new \InvalidArgumentException('缓存载荷无效或超限');
             }
             $bytes += strlen($payload);
             if ($bytes > 16777216) {
-                throw new InvalidArgumentException('缓存批次总载荷超出 16 MiB');
+                throw new \InvalidArgumentException('缓存批次总载荷超出 16 MiB');
             }
             $arguments[] = $hashes[$index];
             $arguments[] = $payload;
@@ -113,7 +114,7 @@ LUA;
     /**
      * 删除当前代指定键并更新索引；已不存在的键仍视为成功。
      *
-     * @param list<string> $keys 最多 1000 个非空键。
+     * @param list<string> $keys 最多 1000 个非空键
      */
     public function delete(array $keys): bool
     {
@@ -145,7 +146,7 @@ LUA;
     public function collect(int $limit = 100): int
     {
         if ($limit < 1 || $limit > 1000) {
-            throw new InvalidArgumentException('缓存回收批量必须为 1 至 1000');
+            throw new \InvalidArgumentException('缓存回收批量必须为 1 至 1000');
         }
         $script = <<<'LUA'
 local budget=tonumber(ARGV[1]); local removed=0
@@ -159,18 +160,18 @@ while budget>0 do
 end
 return removed
 LUA;
-        return (int) $this->redis->script($script, [$this->root . ':retired', $this->root], [$limit]);
+        return (int)$this->redis->script($script, [$this->root . ':retired', $this->root], [$limit]);
     }
 
     private function keys(array $keys): array
     {
         if (!array_is_list($keys) || count($keys) > 1000) {
-            throw new InvalidArgumentException('缓存批次必须是最多 1000 个键的列表');
+            throw new \InvalidArgumentException('缓存批次必须是最多 1000 个键的列表');
         }
         $hashes = [];
         foreach ($keys as $key) {
             if (!is_string($key) || $key === '' || strlen($key) > 1024 || str_contains($key, "\0")) {
-                throw new InvalidArgumentException('缓存键必须是非空且不超长的字符串');
+                throw new \InvalidArgumentException('缓存键必须是非空且不超长的字符串');
             }
             $hashes[] = hash('sha256', $key);
         }

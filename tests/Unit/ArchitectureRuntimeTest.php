@@ -6,18 +6,28 @@ namespace TypeTests\Unit;
 
 use app\common\bootstrap\Settings;
 use app\common\middleware\ApiErrors;
+use app\generated\ProjectConfig;
+use PHPUnit\Framework\AssertionFailedError;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Type\Build\ConfigCompiler;
 use Type\Core\Config\Environment;
 use Type\Core\Http\ActionHandler;
 use Type\Core\Http\HttpControl;
 use Type\Core\Http\Message\Factory;
+use Type\Generated\BuildIdentity;
 use Type\Log\Channel;
 use Type\Log\LogManager;
 use Type\Log\Output;
 use Type\Runtime\ExecutionScope;
 
-/** 配置入口、生产诊断和探针的公开行为回归，不连接外部服务。 */
+/**
+ * 配置入口、生产诊断和探针的公开行为回归，不连接外部服务。
+ * @internal
+ * @coversNothing
+ */
 final class ArchitectureRuntimeTest extends TestCase
 {
     private string $directory;
@@ -27,8 +37,8 @@ final class ArchitectureRuntimeTest extends TestCase
         $root = dirname(__DIR__, 2);
         $this->directory = $root . '/build/architecture test-' . bin2hex(random_bytes(6));
         mkdir($this->directory, 0700);
-        if (!class_exists(\app\generated\ProjectConfig::class)) {
-            $generated = (new ConfigCompiler())->generate($root, ['class' => 'app\\generated\\ProjectConfig',
+        if (!class_exists(ProjectConfig::class)) {
+            $generated = (new ConfigCompiler())->generate($root, ['class' => 'app\generated\ProjectConfig',
                 'files' => ['config/app.php', 'config/database.php', 'config/cache.php']]);
             file_put_contents($this->directory . '/ProjectConfig.php', $generated['code']);
             require $this->directory . '/ProjectConfig.php';
@@ -61,11 +71,11 @@ final class ArchitectureRuntimeTest extends TestCase
             file_put_contents($this->directory . '/.env', $contents);
             $result = Settings::configurationCommand($this->directory, 'config:check', []);
             self::assertSame(2, $result['exit'], $contents);
-            $settings = \app\generated\ProjectConfig::load(Environment::parse($contents, false));
+            $settings = ProjectConfig::load(Environment::parse($contents, false));
             try {
                 Settings::validateRuntimeConfiguration($settings, $this->directory, 'http');
                 self::fail('启动预检接受了非法配置');
-            } catch (\PHPUnit\Framework\AssertionFailedError $error) {
+            } catch (AssertionFailedError $error) {
                 throw $error;
             } catch (\Throwable) {
                 self::assertTrue(true);
@@ -74,7 +84,7 @@ final class ArchitectureRuntimeTest extends TestCase
             try {
                 Settings::configurationUpdate($this->directory, hash('sha256', "# preserve\n"), $changes);
                 self::fail('管理保存接受了非法配置');
-            } catch (\PHPUnit\Framework\AssertionFailedError $error) {
+            } catch (AssertionFailedError $error) {
                 throw $error;
             } catch (\Throwable) {
                 self::assertSame("# preserve\n", file_get_contents($this->directory . '/.env'));
@@ -90,20 +100,20 @@ final class ArchitectureRuntimeTest extends TestCase
     /** 数据库维护不依赖 HTTP 上传盘；旧缓存开关始终明确拒绝。 */
     public function testRoleBoundaryAndUnusedCacheAreExplicit(): void
     {
-        $settings = \app\generated\ProjectConfig::load(Environment::parse('APP_UPLOAD_TEMP=/missing-test-upload', false));
+        $settings = ProjectConfig::load(Environment::parse('APP_UPLOAD_TEMP=/missing-test-upload', false));
         Settings::validateRuntimeConfiguration($settings, $this->directory, 'database');
         self::assertFalse(Settings::configurationDefinitions()['APP_CACHE_ENABLED']['editable']);
-        $settings = \app\generated\ProjectConfig::load(Environment::parse('APP_CACHE_ENABLED=true', false));
+        $settings = ProjectConfig::load(Environment::parse('APP_CACHE_ENABLED=true', false));
         $this->expectExceptionMessage('feature_unavailable');
         Settings::validateRuntimeConfiguration($settings, $this->directory);
     }
 
     /** 未启用 Redis 的 profile 不验证无调用者的连接预算。 */
-    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    #[RunInSeparateProcess]
     public function testUnselectedRedisDoesNotBlockConfigurationCheck(): void
     {
         require dirname(__DIR__) . '/fixtures/build-profile/identity.php';
-        \Type\Generated\BuildIdentity::$profile = ['name' => 'sqlite', 'database' => 'sqlite', 'features' => ['web']];
+        BuildIdentity::$profile = ['name' => 'sqlite', 'database' => 'sqlite', 'features' => ['web']];
         file_put_contents($this->directory . '/.env', "REDIS_SERVER_BUDGET=2\nREDIS_ADMIN_RESERVE=16\n");
         $result = Settings::configurationCommand($this->directory, 'config:check', []);
         self::assertSame(0, $result['exit']);
@@ -123,7 +133,7 @@ final class ArchitectureRuntimeTest extends TestCase
             $requestId = str_repeat('a', 32);
             $request = $messages->createServerRequest('GET', '/failure')->withAttribute('app.request_id', $requestId)
                 ->withAttribute('app.logger', $manager->logger($scope, ['request_id' => $requestId]));
-            $handler = new ActionHandler(static function (\Psr\Http\Message\ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface {
+            $handler = new ActionHandler(static function (ServerRequestInterface $request): ResponseInterface {
                 throw new \RuntimeException('sql-password-token-secret-canary');
             });
             $response = (new ApiErrors($messages, $debug, dirname(__DIR__, 2)))->process($request, $handler);
@@ -135,7 +145,7 @@ final class ArchitectureRuntimeTest extends TestCase
             $line = stream_get_contents($stream);
             self::assertStringContainsString('RuntimeException', $line);
             self::assertStringContainsString($requestId, $line);
-            self::assertStringNotContainsString('sql-password-token-secret-canary', $line . (string) $response->getBody());
+            self::assertStringNotContainsString('sql-password-token-secret-canary', $line . (string)$response->getBody());
             self::assertSame($debug, str_contains($line, 'frames'));
             fclose($stream);
         }
@@ -147,7 +157,7 @@ final class ArchitectureRuntimeTest extends TestCase
         $healthy = false;
         $checks = 0;
         $control = new HttpControl(1, 1, probes: true, readiness: static function () use (&$healthy, &$checks): bool {
-            $checks++;
+            ++$checks;
             return $healthy;
         });
         self::assertSame(503, $control->probe('/readyz')['status']);

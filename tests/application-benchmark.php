@@ -16,7 +16,7 @@ use Type\Testing\Process;
 /** 真实持有目标行/SQLite写锁，释放由本进程负责；父进程仅提供专用测试环境。 */
 function benchmarkHoldLock(): void
 {
-    $driver = (string) getenv('DB_DRIVER');
+    $driver = (string)getenv('DB_DRIVER');
     $dsn = $driver === 'sqlite' ? 'sqlite:' . getenv('APP_BASE_PATH') . '/data/benchmark.sqlite'
         : $driver . ':host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_DATABASE');
     $pdo = new PDO($dsn, getenv('DB_USERNAME') ?: null, getenv('DB_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
@@ -27,15 +27,15 @@ function benchmarkHoldLock(): void
     }
     try {
         $statement = $pdo->prepare('UPDATE admin_users SET version = version WHERE id = ?');
-        $statement->execute([(string) getenv('TYPE_BENCHMARK_USER')]);
-        file_put_contents((string) getenv('TYPE_BENCHMARK_READY'), 'locked');
+        $statement->execute([(string)getenv('TYPE_BENCHMARK_USER')]);
+        file_put_contents((string)getenv('TYPE_BENCHMARK_READY'), 'locked');
         usleep(50000);
     } finally {
         $driver === 'sqlite' ? $pdo->exec('ROLLBACK') : $pdo->rollBack();
     }
 }
 
-/** @return array<string,int|float> 观测被测进程树；每次捕获耗时单独保存，控制器不计入服务。 */
+/** @return array<string,float|int> 观测被测进程树；每次捕获耗时单独保存，控制器不计入服务。 */
 function benchmarkUsage(Process $process, ?Process $sampler = null, ?string $directory = null): array
 {
     $started = hrtime(true);
@@ -52,7 +52,7 @@ function benchmarkUsage(Process $process, ?Process $sampler = null, ?string $dir
             expect($sampler->running() && $process->running() && microtime(true) < $until, 'Windows 资源采样失败或超时：' . $sampler->stderr());
             usleep(1000);
         }
-        $sample = json_decode((string) file_get_contents($response), true, 512, JSON_THROW_ON_ERROR);
+        $sample = json_decode((string)file_get_contents($response), true, 512, JSON_THROW_ON_ERROR);
         expect(($sample['request'] ?? '') === $request && ($sample['pid'] ?? null) === $pid
             && is_int($sample['rss_bytes'] ?? null) && $sample['rss_bytes'] > 0
             && is_numeric($sample['cpu_seconds'] ?? null) && $sample['cpu_seconds'] >= 0
@@ -67,8 +67,8 @@ function benchmarkUsage(Process $process, ?Process $sampler = null, ?string $dir
     foreach (explode("\n", $text) as $line) {
         if (preg_match('/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(?:(\d+)-)?([0-9:.]+)\s*$/D', $line, $match) === 1) {
             $parts = array_reverse(explode(':', $match[5]));
-            $rows[(int) $match[1]] = ['parent' => (int) $match[2], 'rss' => (int) $match[3] * 1024,
-                'cpu' => (float) $parts[0] + (float) ($parts[1] ?? 0) * 60 + (float) ($parts[2] ?? 0) * 3600 + (float) ($match[4] ?? 0) * 86400];
+            $rows[(int)$match[1]] = ['parent' => (int)$match[2], 'rss' => (int)$match[3] * 1024,
+                'cpu' => (float)$parts[0] + (float)($parts[1] ?? 0) * 60 + (float)($parts[2] ?? 0) * 3600 + (float)($match[4] ?? 0) * 86400];
         }
     }
     expect(isset($rows[$pid]), '无法读取实际CPU/RSS');
@@ -92,12 +92,12 @@ function benchmarkUsage(Process $process, ?Process $sampler = null, ?string $dir
 }
 
 /**
- * @param Closure():float $operation 返回实际请求路径耗时，准备和采样开销另记在总窗口。
- * @param bool $diagnostic 仅额外诊断保存正式操作的原顺序；预热仍在测量窗口之外。
+ * @param Closure():float $operation 返回实际请求路径耗时，准备和采样开销另记在总窗口
+ * @param bool $diagnostic 仅额外诊断保存正式操作的原顺序；预热仍在测量窗口之外
  */
 function benchmarkSample(Process $server, Closure $operation, int $warmup, int $iterations, ?Process $sampler = null, ?string $directory = null, bool $diagnostic = false): array
 {
-    for ($index = 0; $index < $warmup; $index++) {
+    for ($index = 0; $index < $warmup; ++$index) {
         expect($server->running(), '预热期间服务退出');
         $operation();
     }
@@ -105,7 +105,7 @@ function benchmarkSample(Process $server, Closure $operation, int $warmup, int $
     $samples = [$before];
     $latencies = [];
     $started = hrtime(true);
-    for ($index = 0; $index < $iterations; $index++) {
+    for ($index = 0; $index < $iterations; ++$index) {
         expect($server->running(), '测量期间服务退出');
         $milliseconds = $operation();
         expect(is_finite($milliseconds) && $milliseconds >= 0, '无效延迟样本');
@@ -122,8 +122,8 @@ function benchmarkSample(Process $server, Closure $operation, int $warmup, int $
     sort($latencies, SORT_NUMERIC);
     $measurement = ['warmup' => $warmup, 'iterations' => $iterations, 'concurrency' => 1, 'wall_seconds' => $elapsed,
         'operations_per_second' => $iterations / $elapsed, 'latencies_ms' => $latencies,
-        'p50_ms' => $latencies[(int) ceil($iterations * 0.5) - 1], 'p95_ms' => $latencies[(int) ceil($iterations * 0.95) - 1],
-        'p99_ms' => $latencies[(int) ceil($iterations * 0.99) - 1], 'cpu_seconds' => $after['cpu_seconds'] - $before['cpu_seconds'],
+        'p50_ms' => $latencies[(int)ceil($iterations * 0.5) - 1], 'p95_ms' => $latencies[(int)ceil($iterations * 0.95) - 1],
+        'p99_ms' => $latencies[(int)ceil($iterations * 0.99) - 1], 'cpu_seconds' => $after['cpu_seconds'] - $before['cpu_seconds'],
         'max_sampled_rss_bytes' => max(array_column($samples, 'rss_bytes')), 'resource_samples' => $samples,
         'sampling_seconds' => array_sum(array_column($samples, 'sampling_seconds')),
         'window_sampling_seconds' => array_sum(array_column(array_slice($samples, 1, -1), 'sampling_seconds')),
@@ -205,7 +205,7 @@ if ($external) {
         $externalSettings[$key] = $value;
     }
     expect($externalSettings['HOST'] === '127.0.0.1' && $externalSettings['DATABASE'] === 'type_app_test'
-        && ctype_digit($externalSettings['PORT']) && (int) $externalSettings['PORT'] > 0 && (int) $externalSettings['PORT'] < 65536, '外部数据库必须是本轮回环专用实例');
+        && ctype_digit($externalSettings['PORT']) && (int)$externalSettings['PORT'] > 0 && (int)$externalSettings['PORT'] < 65536, '外部数据库必须是本轮回环专用实例');
 }
 $base = $root . '/build/application-benchmark-' . bin2hex(random_bytes(6));
 expect(mkdir($base, 0700), '无法创建基准目录');
@@ -231,7 +231,7 @@ if ($diagnostic) {
         'note' => '只用于定位顺序与请求阶段差异；计时区间及三类业务断言沿用正式测量，不进入 benchmark-compare。'];
 }
 try {
-    for ($round = 0; $round < $repetitions; $round++) {
+    for ($round = 0; $round < $repetitions; ++$round) {
         $work = $base . '/round-' . $round;
         expect(mkdir($work . '/app', 0700, true) && mkdir($work . '/php.d', 0700), '无法准备本轮数据目录');
         $database = null;
@@ -301,8 +301,8 @@ try {
                 expect(mkdir($samplingDirectory, 0700), '无法创建本轮资源采样目录');
                 $samplerStarted = hrtime(true);
                 $sampler = new Process(
-                    [(string) getenv('SystemRoot') . '/System32/WindowsPowerShell/v1.0/powershell.exe', '-NoLogo', '-NoProfile', '-NonInteractive',
-                    '-ExecutionPolicy', 'Bypass', '-File', $root . '/tests/windows-benchmark-sampler.ps1', '-TargetProcessId', (string) $server->pid(), '-Directory', $samplingDirectory],
+                    [(string)getenv('SystemRoot') . '/System32/WindowsPowerShell/v1.0/powershell.exe', '-NoLogo', '-NoProfile', '-NonInteractive',
+                        '-ExecutionPolicy', 'Bypass', '-File', $root . '/tests/windows-benchmark-sampler.ps1', '-TargetProcessId', (string)$server->pid(), '-Directory', $samplingDirectory],
                     $root,
                     (new BuildPlatform())->phpEnvironment()
                 );
@@ -311,7 +311,7 @@ try {
                     expect($sampler->running() && microtime(true) < $until, 'Windows 资源采样器未就绪：' . $sampler->stderr());
                     usleep(1000);
                 }
-                expect(file_get_contents($samplingDirectory . '/ready') === (string) $server->pid(), '资源采样器绑定了不同程序');
+                expect(file_get_contents($samplingDirectory . '/ready') === (string)$server->pid(), '资源采样器绑定了不同程序');
                 $lifecycle['sampler'] = ['startup_seconds' => (hrtime(true) - $samplerStarted) / 1e9,
                     'controller_sha256' => hash_file('sha256', $root . '/tests/windows-benchmark-sampler.ps1')];
             }
@@ -387,7 +387,7 @@ try {
             $slowStatuses = [];
             $measurements['slow-database'] = benchmarkSample($server, static function () use ($client, $headers, $work, $root, $controllerEnvironment, $driver, &$lockUser, &$slowStatuses): float {
                 $ready = $work . '/lock-ready';
-                $childEnvironment = $controllerEnvironment + ['TYPE_BENCHMARK_USER' => (string) $lockUser['id'], 'TYPE_BENCHMARK_READY' => $ready];
+                $childEnvironment = $controllerEnvironment + ['TYPE_BENCHMARK_USER' => (string)$lockUser['id'], 'TYPE_BENCHMARK_READY' => $ready];
                 $holder = new Process([PHP_BINARY, __FILE__, '--hold-lock'], $root, $childEnvironment);
                 try {
                     $deadline = microtime(true) + 5;

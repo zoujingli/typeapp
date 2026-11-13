@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace app\common\database;
 
-use app\common\bootstrap\Settings;
 use app\common\bootstrap\RuntimeCapabilities;
-use InvalidArgumentException;
+use app\common\bootstrap\Settings;
 use Type\Core\Config\Repository;
 use Type\Orm\DatabaseException;
 use Type\Orm\Driver;
@@ -21,12 +20,12 @@ use Type\Orm\Sqlite\SqliteDriver;
  */
 final class DatabaseFactory
 {
-    /** @throws InvalidArgumentException 驱动名称不在当前应用允许的三库列表中。 */
+    /** @throws \InvalidArgumentException 驱动名称不在当前应用允许的三库列表中。 */
     public static function name(Repository $configuration): string
     {
         $driver = $configuration->text('database.driver');
         if (!in_array($driver, ['mysql', 'pgsql', 'sqlite'], true)) {
-            throw new InvalidArgumentException('DB_DRIVER 只接受 mysql、pgsql 或 sqlite');
+            throw new \InvalidArgumentException('DB_DRIVER 只接受 mysql、pgsql 或 sqlite');
         }
         RuntimeCapabilities::assertDatabase($driver);
 
@@ -52,8 +51,8 @@ final class DatabaseFactory
     /**
      * 创建驱动配置对象；不会迁移、创建数据库账号或连接外部数据库。
      *
-     * @throws DatabaseException 驱动参数或本地 CA 文件无效。
-     * @throws InvalidArgumentException 应用配置、端口或 SQLite 路径无效。
+     * @throws DatabaseException 驱动参数或本地 CA 文件无效
+     * @throws \InvalidArgumentException 应用配置、端口或 SQLite 路径无效
      */
     public static function create(Repository $configuration, string $basePath): Driver
     {
@@ -99,7 +98,7 @@ final class DatabaseFactory
     /**
      * 仅显式初始化入口调用；按需创建私有 SQLite 数据目录，不删除已有数据。
      *
-     * @throws InvalidArgumentException 本地数据库路径无效或目录无法创建。
+     * @throws \InvalidArgumentException 本地数据库路径无效或目录无法创建
      */
     public static function prepareMigration(Repository $configuration, string $basePath): void
     {
@@ -108,19 +107,19 @@ final class DatabaseFactory
         }
         $directory = dirname(self::sqliteFile($configuration, $basePath));
         if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
-            throw new InvalidArgumentException('无法创建 SQLite 示例数据目录');
+            throw new \InvalidArgumentException('无法创建 SQLite 示例数据目录');
         }
     }
 
     /**
      * 非初始化命令拒绝 SQLite 隐式建库；存在文件不等于迁移版本已全部就绪。
      *
-     * @throws InvalidArgumentException SQLite 文件不存在，需先显式运行 app:install。
+     * @throws \InvalidArgumentException SQLite 文件不存在，需先显式运行 app:install
      */
     public static function requireExisting(Repository $configuration, string $basePath): void
     {
         if (self::name($configuration) === 'sqlite' && !is_file(self::sqliteFile($configuration, $basePath))) {
-            throw new InvalidArgumentException('SQLite 数据库尚未初始化，请先运行 app:install；独立 Broker 使用 broker:install');
+            throw new \InvalidArgumentException('SQLite 数据库尚未初始化，请先运行 app:install');
         }
     }
 
@@ -129,11 +128,11 @@ final class DatabaseFactory
     {
         $filename = $configuration->text('database.sqlite_file');
         if ($filename === '' || $filename === ':memory:' || str_contains($filename, "\0") || str_ends_with($filename, '/')) {
-            throw new InvalidArgumentException('DB_SQLITE_FILE 必须为本地数据库文件路径；示例不使用内存库');
+            throw new \InvalidArgumentException('DB_SQLITE_FILE 必须为本地数据库文件路径；示例不使用内存库');
         }
         $resolved = Settings::absolutePath($filename) ? $filename : $basePath . '/' . $filename;
         if (is_dir($resolved)) {
-            throw new InvalidArgumentException('DB_SQLITE_FILE 不能指向目录');
+            throw new \InvalidArgumentException('DB_SQLITE_FILE 不能指向目录');
         }
 
         return $resolved;

@@ -9,7 +9,5 @@ namespace Type\Cache\Attribute;
 final class CacheEvict
 {
     /** database 省略时沿用同方法 Transactional 的数据源，其他情况使用 default。 */
-    public function __construct(public string $cache, public string $key = '', public bool $all = false, public string $database = 'default')
-    {
-    }
+    public function __construct(public string $cache, public string $key = '', public bool $all = false, public string $database = 'default') {}
 }

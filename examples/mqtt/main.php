@@ -3,37 +3,45 @@
 declare(strict_types=1);
 
 use Type\Mqtt\AccessIdentity;
-use Type\Mqtt\CertificateAccessPolicy;
-use Type\Mqtt\IdentityAccessPolicy;
 use Type\Mqtt\Broker;
 use Type\Mqtt\BrokerOptions;
+use Type\Mqtt\CertificateAccessPolicy;
 use Type\Mqtt\ConnectPacket;
+use Type\Mqtt\IdentityAccessPolicy;
 use Type\Mqtt\PendingCommit;
 use Type\Mqtt\PostgresStore;
 use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Runtime\Arguments;
+use Type\Runtime\CoroutineRuntime;
 
 /** 独立消费者显式提供认证；示例凭据从环境取得，不接受空密码或匿名连接。 */
 final class ExampleMqttAccess implements IdentityAccessPolicy, CertificateAccessPolicy
 {
     private string $password;
+
     private string $servicePassword;
+
     private string $username;
+
     /** @var list<string> */
     private array $clientFingerprints;
+
     private string $clientOverlap;
+
     private AccessIdentity $identity;
+
     private AccessIdentity $serviceIdentity;
+
     private AccessIdentity $certificateIdentity;
 
     /** 启动时读取数据配置；缺少凭据立即拒绝启动。 */
     public function __construct()
     {
-        $this->password = (string) getenv('MQTT_PASSWORD');
-        $this->servicePassword = (string) getenv('MQTT_SERVICE_PASSWORD');
-        $this->username = (string) (getenv('MQTT_USERNAME') ?: 'example');
+        $this->password = (string)getenv('MQTT_PASSWORD');
+        $this->servicePassword = (string)getenv('MQTT_SERVICE_PASSWORD');
+        $this->username = (string)(getenv('MQTT_USERNAME') ?: 'example');
         $this->clientFingerprints = [];
-        foreach (explode(',', (string) getenv('MQTT_CLIENT_FINGERPRINT')) as $item) {
+        foreach (explode(',', (string)getenv('MQTT_CLIENT_FINGERPRINT')) as $item) {
             $item = strtolower(str_replace(':', '', trim($item)));
             if ($item === '') {
                 continue;
@@ -43,12 +51,12 @@ final class ExampleMqttAccess implements IdentityAccessPolicy, CertificateAccess
             }
             $this->clientFingerprints[] = $item;
         }
-        $this->clientOverlap = (string) getenv('MQTT_CLIENT_OVERLAP');
-        $this->identity = new AccessIdentity('example', (string) (getenv('MQTT_CREDENTIAL_ID') ?: 'example-account'), mqttBudget('MQTT_CREDENTIAL_VERSION', 1));
+        $this->clientOverlap = (string)getenv('MQTT_CLIENT_OVERLAP');
+        $this->identity = new AccessIdentity('example', (string)(getenv('MQTT_CREDENTIAL_ID') ?: 'example-account'), mqttBudget('MQTT_CREDENTIAL_VERSION', 1));
         $this->serviceIdentity = new AccessIdentity('example-service', 'service-account', 1);
         $this->certificateIdentity = new AccessIdentity(
             'example',
-            (string) (getenv('MQTT_CLIENT_CREDENTIAL_ID') ?: 'example-client-cert'),
+            (string)(getenv('MQTT_CLIENT_CREDENTIAL_ID') ?: 'example-client-cert'),
             mqttBudget('MQTT_CLIENT_CREDENTIAL_VERSION', 1),
             'mtls'
         );
@@ -121,47 +129,47 @@ final class ExampleMqttAccess implements IdentityAccessPolicy, CertificateAccess
 /** 示例启动参数是数据配置；非法、空白和超限值由此处及资源所有者拒绝。 */
 function mqttBudget(string $name, int $default): int
 {
-    $value = (string) getenv($name);
+    $value = (string)getenv($name);
     if ($value !== '' && preg_match('/^[0-9]{1,10}$/D', $value) !== 1) {
         throw new RuntimeException('MQTT 容量配置需要十进制整数');
     }
-    return $value === '' ? $default : (int) $value;
+    return $value === '' ? $default : (int)$value;
 }
 
 /** 使用 --plaintext 显式启动回环调试；省略时证书和私钥均须从启动环境提供。 */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::enableIo();
+    CoroutineRuntime::enableIo();
     $arguments = new Arguments(
         $argv,
         ['host', 'port', 'ws-port', 'wss-port', 'mtls-port', 'allowed-origins', 'terminate-session', 'actor', 'node-id', 'fence-node', 'node-run-id', 'proof-ref'],
         ['plaintext', 'install-store', 'store-statistics', 'clustered', 'node-statistics', 'store-worker-pipe']
     );
-    $workerConfiguration = (string) getenv('MQTT_WORKER_COMMAND');
+    $workerConfiguration = (string)getenv('MQTT_WORKER_COMMAND');
     $workerCommand = $workerConfiguration === '' ? [] : json_decode($workerConfiguration, true, 32, JSON_THROW_ON_ERROR);
     if (!is_array($workerCommand)) {
         throw new RuntimeException('MQTT_WORKER_COMMAND 必须是显式命令参数数组');
     }
     if ($arguments->has('store-worker-pipe')) {
-        $retainedMessages = (string) getenv('MQTT_RETAINED_MAX_MESSAGES');
-        $retainedBytes = (string) getenv('MQTT_RETAINED_MAX_BYTES');
-        $sharedMessages = (string) getenv('MQTT_SHARED_MAX_MESSAGES');
-        $sharedBytes = (string) getenv('MQTT_SHARED_MAX_BYTES');
+        $retainedMessages = (string)getenv('MQTT_RETAINED_MAX_MESSAGES');
+        $retainedBytes = (string)getenv('MQTT_RETAINED_MAX_BYTES');
+        $sharedMessages = (string)getenv('MQTT_SHARED_MAX_MESSAGES');
+        $sharedBytes = (string)getenv('MQTT_SHARED_MAX_BYTES');
         $store = new PostgresStore(
             new PgsqlDriver(
-                (string) getenv('TYPE_PGSQL_HOST'),
-                (int) getenv('TYPE_PGSQL_PORT'),
-                (string) getenv('TYPE_PGSQL_DATABASE'),
-                (string) getenv('TYPE_PGSQL_USER'),
-                (string) getenv('TYPE_PGSQL_PASSWORD')
+                (string)getenv('TYPE_PGSQL_HOST'),
+                (int)getenv('TYPE_PGSQL_PORT'),
+                (string)getenv('TYPE_PGSQL_DATABASE'),
+                (string)getenv('TYPE_PGSQL_USER'),
+                (string)getenv('TYPE_PGSQL_PASSWORD')
             ),
-            (string) (getenv('MQTT_STANDBY') ?: 'iot_sync'),
+            (string)(getenv('MQTT_STANDBY') ?: 'iot_sync'),
             mqttBudget('MQTT_PENDING_MAX_MESSAGES', 2000000),
             mqttBudget('MQTT_PENDING_MAX_BYTES', 4294967296),
-            $retainedMessages === '' ? 2000000 : (int) $retainedMessages,
-            $retainedBytes === '' ? 4294967296 : (int) $retainedBytes,
-            $sharedMessages === '' ? 1000000 : (int) $sharedMessages,
-            $sharedBytes === '' ? 2147483648 : (int) $sharedBytes,
+            $retainedMessages === '' ? 2000000 : (int)$retainedMessages,
+            $retainedBytes === '' ? 4294967296 : (int)$retainedBytes,
+            $sharedMessages === '' ? 1000000 : (int)$sharedMessages,
+            $sharedBytes === '' ? 2147483648 : (int)$sharedBytes,
             mqttBudget('MQTT_MAX_SESSIONS', 20000),
             mqttBudget('MQTT_DEVICE_MAX_MESSAGES', 10000),
             mqttBudget('MQTT_DEVICE_MAX_BYTES', 16777216),
@@ -203,9 +211,9 @@ function main(int $argc, array $argv): void
     $mtlsPort = $arguments->integer('mtls-port', 0, 0, 65535);
     $wssPort = $arguments->integer('wss-port', 0, 0, 65535);
     $broker = new Broker(new ExampleMqttAccess(), new BrokerOptions(
-        certificate: (string) getenv('MQTT_CERTIFICATE'),
-        privateKey: (string) getenv('MQTT_PRIVATE_KEY'),
-        privateKeyPassphrase: (string) getenv('MQTT_PRIVATE_KEY_PASSPHRASE'),
+        certificate: (string)getenv('MQTT_CERTIFICATE'),
+        privateKey: (string)getenv('MQTT_PRIVATE_KEY'),
+        privateKeyPassphrase: (string)getenv('MQTT_PRIVATE_KEY_PASSPHRASE'),
         allowPlaintext: $arguments->has('plaintext'),
         maximumConnections: mqttBudget('MQTT_MAX_CONNECTIONS', 10100),
         maximumDeviceConnections: mqttBudget('MQTT_MAX_DEVICE_CONNECTIONS', 10000),
@@ -215,15 +223,15 @@ function main(int $argc, array $argv): void
         wssPort: $wssPort,
         allowedOrigins: $origins,
         mtlsPort: $mtlsPort,
-        clientCa: ($mtlsPort > 0 || $wssPort > 0) ? (string) getenv('MQTT_CLIENT_CA') : '',
-        clientCrl: ($mtlsPort > 0 || $wssPort > 0) ? (string) getenv('MQTT_CLIENT_CRL') : '',
-        clientCrlUrl: ($mtlsPort > 0 || $wssPort > 0) ? (string) getenv('MQTT_CLIENT_CRL_URL') : '',
+        clientCa: ($mtlsPort > 0 || $wssPort > 0) ? (string)getenv('MQTT_CLIENT_CA') : '',
+        clientCrl: ($mtlsPort > 0 || $wssPort > 0) ? (string)getenv('MQTT_CLIENT_CRL') : '',
+        clientCrlUrl: ($mtlsPort > 0 || $wssPort > 0) ? (string)getenv('MQTT_CLIENT_CRL_URL') : '',
         clientCrlInterval: ($mtlsPort > 0 || $wssPort > 0) ? mqttBudget('MQTT_CLIENT_CRL_INTERVAL', 300) : 300,
-        clientRevoke: ($mtlsPort > 0 || $wssPort > 0) ? (string) getenv('MQTT_CLIENT_REVOKE') : '',
-        clientOverlap: ($mtlsPort > 0 || $wssPort > 0) ? (string) getenv('MQTT_CLIENT_OVERLAP') : '',
-        sniHost: (string) getenv('MQTT_SNI_HOST'),
-        sniCertificate: (string) getenv('MQTT_SNI_CERTIFICATE'),
-        sniPrivateKey: (string) getenv('MQTT_SNI_PRIVATE_KEY')
+        clientRevoke: ($mtlsPort > 0 || $wssPort > 0) ? (string)getenv('MQTT_CLIENT_REVOKE') : '',
+        clientOverlap: ($mtlsPort > 0 || $wssPort > 0) ? (string)getenv('MQTT_CLIENT_OVERLAP') : '',
+        sniHost: (string)getenv('MQTT_SNI_HOST'),
+        sniCertificate: (string)getenv('MQTT_SNI_CERTIFICATE'),
+        sniPrivateKey: (string)getenv('MQTT_SNI_PRIVATE_KEY')
     ), $workerCommand, nodeId: $arguments->text('node-id', 'default'), classify: function (ConnectPacket $connect): string {
         return $connect->username === 'service' ? 'application' : 'device';
     });

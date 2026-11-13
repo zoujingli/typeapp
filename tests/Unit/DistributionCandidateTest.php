@@ -4,24 +4,19 @@ declare(strict_types=1);
 
 namespace TypeTests\Unit;
 
-use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\TestCase;
 use Type\Testing\Process;
 
 require_once dirname(__DIR__) . '/support.php';
 
-/** 经真实 Git 快照执行候选准备，在安装前验证固定输入及失败报告。 */
+/**
+ * 经真实 Git 快照执行候选准备，在安装前验证固定输入及失败报告。
+ * @internal
+ * @coversNothing
+ */
 final class DistributionCandidateTest extends TestCase
 {
-    /** 导出属性可能删减或改写归档，固定候选必须拒绝这种字节偏离。 */
-    public static function archiveAttributes(): iterable
-    {
-        yield 'committed-inputs' => ['', '需要显式TYPE_COMPOSER_PHAR'];
-        yield 'automatic-crlf' => ['', '需要显式TYPE_COMPOSER_PHAR', true];
-        yield 'export-ignore' => ["src/Value.php export-ignore\n", 'Git 快照文件集合不一致'];
-        yield 'export-subst' => ["src/Value.php export-subst\n", 'Git 快照字节不一致'];
-    }
-
     /** 验证候选构建读取固定 Git 输入，并在 Git 属性或后续准备失败时保全对应证据。 */
     #[DataProvider('archiveAttributes')]
     public function testCandidatePreparationKeepsGitInputsAndFailureEvidence(string $attributes, string $expectedFailure, bool $autocrlf = false): void
@@ -39,7 +34,7 @@ final class DistributionCandidateTest extends TestCase
             }
             file_put_contents($directory . '/vendor/autoload.php', '<?php require ' . var_export($root . '/vendor/autoload.php', true) . ';');
             file_put_contents($directory . '/.gitignore', "/vendor/\n/build/\n");
-            $mapping = json_decode((string) file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
+            $mapping = json_decode((string)file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
             $mapping['packages'] = ['type-runtime' => $mapping['packages']['type-runtime']];
             file_put_contents($directory . '/.github/distribution.json', json_encode($mapping, JSON_THROW_ON_ERROR));
             self::assertTrue(copy($root . '/.github/template-distribution.json', $directory . '/.github/template-distribution.json'));
@@ -82,7 +77,7 @@ final class DistributionCandidateTest extends TestCase
             self::assertCount(1, $candidates);
             $candidate = $candidates[0];
             self::assertFileExists($candidate . '/verification.json');
-            $report = json_decode((string) file_get_contents($candidate . '/verification.json'), true, 512, JSON_THROW_ON_ERROR);
+            $report = json_decode((string)file_get_contents($candidate . '/verification.json'), true, 512, JSON_THROW_ON_ERROR);
             self::assertSame('failed', $report['status']);
             self::assertSame($source, $report['source']);
             self::assertStringContainsString($expectedFailure, $report['failure']);
@@ -96,5 +91,14 @@ final class DistributionCandidateTest extends TestCase
         } finally {
             \removeTestDirectory($directory);
         }
+    }
+
+    /** 导出属性可能删减或改写归档，固定候选必须拒绝这种字节偏离。 */
+    public static function archiveAttributes(): iterable
+    {
+        yield 'committed-inputs' => ['', '需要显式TYPE_COMPOSER_PHAR'];
+        yield 'automatic-crlf' => ['', '需要显式TYPE_COMPOSER_PHAR', true];
+        yield 'export-ignore' => ["src/Value.php export-ignore\n", 'Git 快照文件集合不一致'];
+        yield 'export-subst' => ["src/Value.php export-subst\n", 'Git 快照字节不一致'];
     }
 }

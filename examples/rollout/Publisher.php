@@ -12,11 +12,12 @@ use Type\Queue\Queue;
 final class Publisher implements \Type\Orm\Outbox\Publisher
 {
     private Queue $queue;
+
     private int $delayMilliseconds;
 
     /**
-     * @param int $delayMilliseconds 延迟消息的毫秒数；默认保持五秒，慢切换演练最多两分钟。
-     * @throws \InvalidArgumentException 延迟不在有界演练窗口内。
+     * @param int $delayMilliseconds 延迟消息的毫秒数；默认保持五秒，慢切换演练最多两分钟
+     * @throws \InvalidArgumentException 延迟不在有界演练窗口内
      */
     public function __construct(Queue $queue, int $delayMilliseconds = 5000)
     {

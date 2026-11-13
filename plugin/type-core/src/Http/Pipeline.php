@@ -8,13 +8,14 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use RuntimeException;
 
 /** 按显式次序组合 PSR-15 中间件，每次请求保留独立的后续处理位置。 */
 final class Pipeline implements RequestHandlerInterface
 {
     private array $factories;
+
     private RequestHandlerInterface $handler;
+
     private int $position;
 
     /** @param list<\Closure(): MiddlewareInterface> $factories 每次处理都调用零参数工厂。 */
@@ -33,7 +34,7 @@ final class Pipeline implements RequestHandlerInterface
         }
         $middleware = ($this->factories[$this->position])();
         if (!$middleware instanceof MiddlewareInterface) {
-            throw new RuntimeException('中间件工厂没有返回 PSR-15 中间件');
+            throw new \RuntimeException('中间件工厂没有返回 PSR-15 中间件');
         }
 
         return $middleware->process($request, new Pipeline($this->factories, $this->handler, $this->position + 1));

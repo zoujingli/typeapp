@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Composer\Autoload\ClassLoader;
 
 // 构建工具只加载自己的依赖闭包，应用的 autoload.files 留给 AOT 检查。
 if (isset($GLOBALS['__type_build_vendor_directory'])) {
@@ -23,7 +24,8 @@ $packages = [];
 foreach ($installed['packages'] ?? [] as $package) {
     $packages[$package['name']] = $package;
 }
-$queue = ['zoujingli/type-build'];
+// 结构同步只额外加载已安装的 MySQL 驱动闭包，仍不执行应用自动加载文件。
+$queue = ($argv[1] ?? '') === 'model:sync' ? ['zoujingli/type-build', 'zoujingli/type-orm-mysql'] : ['zoujingli/type-build'];
 $allowed = [];
 $functionFiles = [];
 while ($queue !== []) {
@@ -37,7 +39,7 @@ while ($queue !== []) {
     }
     $package = $packages[$name] ?? throw new RuntimeException('构建依赖未安装：' . $name);
     $directory = $name === 'zoujingli/type-build' && isset($GLOBALS['__type_build_source_directory'])
-        ? realpath((string) $GLOBALS['__type_build_source_directory'])
+        ? realpath((string)$GLOBALS['__type_build_source_directory'])
         : realpath($vendorDirectory . '/composer/' . $package['install-path']);
     if ($directory === false) {
         throw new RuntimeException('构建依赖路径不存在：' . $name);
@@ -75,9 +77,9 @@ $owns = static function (string $file) use ($allowed): bool {
     return false;
 };
 require_once $vendorDirectory . '/composer/ClassLoader.php';
-$loader = new Composer\Autoload\ClassLoader($vendorDirectory);
+$loader = new ClassLoader($vendorDirectory);
 foreach (require $vendorDirectory . '/composer/autoload_psr4.php' as $prefix => $directories) {
-    if (isset($GLOBALS['__type_build_source_directory']) && $prefix === 'Type\\Build\\') {
+    if (isset($GLOBALS['__type_build_source_directory']) && $prefix === 'Type\Build\\') {
         continue;
     }
     $directories = array_values(array_filter($directories, $owns));
@@ -93,10 +95,10 @@ foreach (require $vendorDirectory . '/composer/autoload_namespaces.php' as $pref
 }
 $classMap = [];
 foreach (require $vendorDirectory . '/composer/autoload_classmap.php' as $class => $file) {
-    if (isset($GLOBALS['__type_build_source_directory']) && str_starts_with($class, 'Type\\Build\\')) {
+    if (isset($GLOBALS['__type_build_source_directory']) && str_starts_with($class, 'Type\Build\\')) {
         continue;
     }
-    if ($class === 'Composer\\InstalledVersions' || $owns($file)) {
+    if ($class === 'Composer\InstalledVersions' || $owns($file)) {
         $classMap[$class] = $file;
     }
 }
@@ -104,7 +106,7 @@ $sourceDirectory = $GLOBALS['__type_build_source_directory'] ?? null;
 if (is_string($sourceDirectory) && is_dir($sourceDirectory)) {
     $sourceDirectory = realpath($sourceDirectory) ?: $sourceDirectory;
     $sourceDirectory = rtrim($sourceDirectory, '/\\') . '/src';
-    $loader->addPsr4('Type\\Build\\', [PHP_OS_FAMILY === 'Windows' ? str_replace('\\', '/', $sourceDirectory) : $sourceDirectory]);
+    $loader->addPsr4('Type\Build\\', [PHP_OS_FAMILY === 'Windows' ? str_replace('\\', '/', $sourceDirectory) : $sourceDirectory]);
 }
 $loader->addClassMap($classMap);
 $loader->register(true);

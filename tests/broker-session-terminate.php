@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/vendor/autoload.php';
 require_once __DIR__ . '/native-database.php';
 require_once __DIR__ . '/postgres-sync.php';
 
+use Type\Build\NativePackage;
 use Type\Mqtt\Client;
 use Type\Mqtt\Message;
 use Type\Mqtt\ProtocolError;
@@ -32,14 +33,13 @@ if (!function_exists('identityCommand')) {
  * 独立管理端预览并明确终止指定持久会话；按 session_id 与代次匹配，发送 MQTT 5 0x98 后删除该会话。
  * 需要 PostgreSQL 同步存储；SQLite QoS0 不能证明持久终止。
  */
-
 $root = dirname(__DIR__);
 $target = $argv[1] ?? '--php';
 $driver = $argv[2] ?? 'pgsql';
 expect($driver === 'pgsql', '会话终止验收需要 PostgreSQL 同步存储');
 if ($target === '--php') {
     $swoole = getenv('TYPE_SWOOLE_MODULE');
-    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+    $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string)ini_get('extension_dir'), '/') . '/swoole.so';
     expect(is_file($swoole), 'PHP 会话终止验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
     $command = [PHP_BINARY, '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
 } else {
@@ -57,7 +57,7 @@ foreach ($argv as $argument) {
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '无源码会话终止验收使用macOS内核策略及原生产物');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $sourceRoot = realpath($built['identity']['description']['facts']['workspace']);
     expect(is_string($sourceRoot), '无源码验收必须能定位实际编译输入');
@@ -68,7 +68,7 @@ if ($noSource) {
     }
     $command = [...$policy, $runtime . '/run'];
 }
-$databaseTools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+$databaseTools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
 $fixtureDatabase = new NativeDatabase($base . '/primary', 'pgsql', $databaseTools);
 $fixtureSync = new PostgresSync($fixtureDatabase, $base . '/standby', $databaseTools, 'broker_session_sync');
 $environment = getenv();
@@ -124,7 +124,7 @@ try {
     $secrets[] = $password;
     identityCommand([...$command, 'broker:user', 'access-admin', '终止管理员'], $environment + ['BROKER_ADMIN_PASSWORD' => $password]);
     $addresses = [];
-    for ($index = 0; $index < 3; $index++) {
+    for ($index = 0; $index < 3; ++$index) {
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorText);
         expect(is_resource($listener), '无法选择终止测试端口');
         $addresses[] = stream_socket_get_name($listener, false);
@@ -150,10 +150,10 @@ try {
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $plain = static function (string $method, string $path, string $token, string $body, int $status) use ($client, $server, &$checks): array {
@@ -164,7 +164,7 @@ try {
         $response = $client->request($method, $path, $headers, $body);
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $auth = $request('POST', '/broker/auth/login', '', ['login' => 'access-admin', 'password' => $password], 200)['data'];
@@ -189,13 +189,13 @@ try {
         usleep(100000);
     } while (microtime(true) < $deadline);
     expect(($nodes['total'] ?? 0) === 1, '终止节点未上报');
-    $keep = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'session-keep', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
-    $other = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'session-other', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
+    $keep = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'session-keep', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
+    $other = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'session-other', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
     expect(!$keep->connect(true), '目标会话不应报告已恢复');
     expect($keep->subscribe('broker-session/keep') === 1, '目标会话应获得 QoS1 订阅');
     expect(!$other->connect(true), '对照会话不应报告已恢复');
     expect($other->subscribe('broker-session/other') === 1, '对照会话应获得 QoS1 订阅');
-    $publisher = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'session-publisher', 'broker-client', $mqttPassword, sessionExpiry: 0, allowPlaintext: true);
+    $publisher = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'session-publisher', 'broker-client', $mqttPassword, sessionExpiry: 0, allowPlaintext: true);
     $publisher->connect(true);
     expect($publisher->publish(new Message('broker-session/keep', 'queued-keep', qos: 1)) === 0, '目标积压发布未获 PUBACK');
     $held = $keep->receive(5.0);
@@ -218,23 +218,23 @@ try {
     expect($sessions['items'] !== [] && $sessions['items'][0]['client_id'] === 'session-keep', '持久会话未进入资源查询');
     $item = $sessions['items'][0];
     $preview = $request('GET', '/broker/resources/sessions/' . $item['id'] . '/termination-preview', $token, null, 200);
-    expect($preview['session_id'] === $item['id'] && (int) $preview['session_generation'] === (int) $item['session_generation']
+    expect($preview['session_id'] === $item['id'] && (int)$preview['session_generation'] === (int)$item['session_generation']
         && $preview['counts']['subscriptions'] >= 1 && ($preview['impact']['effect'] ?? '') === 'terminate_session'
         && ($preview['impact']['other_sessions_unaffected'] ?? false) === true
-        && ((int) ($preview['counts']['pending_qos1'] ?? 0) >= 1 || (int) ($preview['counts']['pending_messages'] ?? 0) >= 1), '终止预览未反映真实订阅、积压或精确目标');
+        && ((int)($preview['counts']['pending_qos1'] ?? 0) >= 1 || (int)($preview['counts']['pending_messages'] ?? 0) >= 1), '终止预览未反映真实订阅、积压或精确目标');
     $encodedPreview = json_encode($preview, JSON_THROW_ON_ERROR);
     expect(!str_contains($encodedPreview, $mqttPassword) && !str_contains($encodedPreview, '"payload"'), '终止预览包含秘密或载荷');
-    $body = ['session_generation' => (int) $item['session_generation'], 'node_id' => $item['node_id'], 'confirmed' => true];
+    $body = ['session_generation' => (int)$item['session_generation'], 'node_id' => $item['node_id'], 'confirmed' => true];
     $request('POST', '/broker/resources/sessions/' . $item['id'] . '/terminate', '', $body, 401);
     $request('POST', '/broker/resources/sessions/' . $item['id'] . '/terminate', $token, $body, 403, ['X-Tenant-Id' => bin2hex(random_bytes(16))]);
     $plain('POST', '/broker/resources/sessions/' . $item['id'] . '/terminate', $token, '{}', 415);
     $request('POST', '/broker/resources/sessions/' . $item['id'] . '/terminate', $token, $body + ['client_id' => 'session-keep'], 422);
     $request('POST', '/broker/resources/sessions/' . $item['id'] . '/terminate', $token, [
-        'session_generation' => (int) $item['session_generation'], 'node_id' => $item['node_id'],
+        'session_generation' => (int)$item['session_generation'], 'node_id' => $item['node_id'],
     ], 422);
     $request('POST', '/broker/resources/sessions/' . str_repeat('0', 32) . '/terminate', $token, $body, 404);
     $request('POST', '/broker/resources/sessions/' . $item['id'] . '/terminate', $token, [
-        'session_generation' => (int) $item['session_generation'] + 1, 'node_id' => $item['node_id'], 'confirmed' => true,
+        'session_generation' => (int)$item['session_generation'] + 1, 'node_id' => $item['node_id'], 'confirmed' => true,
     ], 409);
     $operationId = bin2hex(random_bytes(16));
     $accepted = $request('POST', '/broker/resources/sessions/' . $item['id'] . '/terminate', $token, $body + ['operation_id' => $operationId], 200);
@@ -275,11 +275,11 @@ try {
         $keep->stop();
     } catch (Throwable) {
     }
-    $keep = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'session-keep', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
+    $keep = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'session-keep', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
     expect(!$keep->connect(false), '终止后旧会话仍被恢复');
     $others = $request('GET', '/broker/resources/sessions?client_id=session-other&limit=20', $token, null, 200);
     expect($others['items'] !== [] && $others['items'][0]['client_id'] === 'session-other', '终止误伤了其他持久会话');
-    $offline = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'session-offline', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
+    $offline = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'session-offline', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
     expect(!$offline->connect(true), '离线目标不应报告已恢复');
     expect($offline->subscribe('broker-session/offline') === 1, '离线目标应获得 QoS1 订阅');
     $offlineSessions = ['items' => []];
@@ -299,7 +299,7 @@ try {
     expect($offlineSessions['items'] !== [] && $offlineSessions['items'][0]['client_id'] === 'session-offline', '离线目标会话未进入资源查询');
     $offlineItem = $offlineSessions['items'][0];
     $offline->close(true);
-    $offlineBody = ['session_generation' => (int) $offlineItem['session_generation'], 'node_id' => $offlineItem['node_id'], 'confirmed' => true];
+    $offlineBody = ['session_generation' => (int)$offlineItem['session_generation'], 'node_id' => $offlineItem['node_id'], 'confirmed' => true];
     $offlineOperation = bin2hex(random_bytes(16));
     $offlineAccepted = $request('POST', '/broker/resources/sessions/' . $offlineItem['id'] . '/terminate', $token, $offlineBody + ['operation_id' => $offlineOperation], 200);
     expect($offlineAccepted['kind'] === 'session_terminate' && $offlineAccepted['outcome'] === 'pending', '离线终止受理被当成已完成');
@@ -317,7 +317,7 @@ try {
         '离线会话终止未完成：' . json_encode($offlineStatus)
     );
     $request('GET', '/broker/resources/sessions/' . $offlineItem['id'], $token, null, 404);
-    $stale = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'session-stale', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
+    $stale = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'session-stale', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
     expect(!$stale->connect(true), '代次对照不应报告已恢复');
     expect($stale->subscribe('broker-session/stale') === 1, '代次对照应获得 QoS1 订阅');
     $staleSessions = ['items' => []];
@@ -336,14 +336,14 @@ try {
     } while (microtime(true) < $deadline);
     expect($staleSessions['items'] !== [] && $staleSessions['items'][0]['client_id'] === 'session-stale', '代次对照会话未进入资源查询');
     $staleItem = $staleSessions['items'][0];
-    $oldGeneration = (int) $staleItem['session_generation'];
+    $oldGeneration = (int)$staleItem['session_generation'];
     $stale->close(true);
-    $stale = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'session-stale', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
+    $stale = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'session-stale', 'broker-client', $mqttPassword, sessionExpiry: 86400, allowPlaintext: true);
     expect($stale->connect(false), '预览后重连应恢复仍有效会话');
     $deadline = microtime(true) + 10;
     do {
         $staleSessions = $request('GET', '/broker/resources/sessions?client_id=session-stale&limit=20', $token, null, 200);
-        if ($staleSessions['items'] !== [] && (int) $staleSessions['items'][0]['session_generation'] !== $oldGeneration) {
+        if ($staleSessions['items'] !== [] && (int)$staleSessions['items'][0]['session_generation'] !== $oldGeneration) {
             break;
         }
         try {
@@ -354,7 +354,7 @@ try {
         usleep(50000);
     } while (microtime(true) < $deadline);
     expect($staleSessions['items'] !== [] && $staleSessions['items'][0]['id'] === $staleItem['id']
-        && (int) $staleSessions['items'][0]['session_generation'] !== $oldGeneration, '重连未形成新的会话代次');
+        && (int)$staleSessions['items'][0]['session_generation'] !== $oldGeneration, '重连未形成新的会话代次');
     $request('POST', '/broker/resources/sessions/' . $staleItem['id'] . '/terminate', $token, [
         'session_generation' => $oldGeneration, 'node_id' => $staleItem['node_id'], 'confirmed' => true,
     ], 409);
@@ -400,10 +400,10 @@ try {
         usleep(10000);
     } while (microtime(true) < $deadline);
     $appRequest = static function (string $method, string $path, string $token, array $headers, ?array $data, int $status) use ($appClient, $appServer, &$checks): array {
-        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '双端 ' . $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $appServer->stdout() . $appServer->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $platformToken = $appRequest('POST', '/admin/auth/login', '', [], ['login' => 'platform-admin', 'password' => $appPassword], 200)['data']['accessToken'];

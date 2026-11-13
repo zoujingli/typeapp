@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Runtime;
 
-use Closure;
-use Throwable;
-
 /**
  * 独占进程停止信号并恢复注册前状态；不决定排空策略，也不执行任何业务工作。
  *
@@ -17,27 +14,36 @@ use Throwable;
 final class ProcessSignals
 {
     private static int $owner = 0;
+
     private int $process;
+
     private bool $attached = false;
+
     private bool $delivered = false;
+
     private bool $native = false;
+
     private bool $windows = false;
+
     private bool $asynchronous = false;
+
     private array $previous = [];
-    private ?Closure $callback = null;
-    private ?Closure $windowsHandler = null;
+
+    private ?\Closure $callback = null;
+
+    private ?\Closure $windowsHandler = null;
 
     /** 所有权绑定创建进程；不能把已注册对象用于fork后的子进程。 */
     public function __construct()
     {
-        $this->process = (int) getmypid();
+        $this->process = (int)getmypid();
     }
 
     /**
-     * @param Closure():void $callback 至多调用一次的停止通知，不接收系统数据。
-     * @throws TaskException 无信号能力、存在其他所有者或无法完成注册。
+     * @param \Closure():void $callback 至多调用一次的停止通知，不接收系统数据
+     * @throws TaskException 无信号能力、存在其他所有者或无法完成注册
      */
-    public function attach(Closure $callback): void
+    public function attach(\Closure $callback): void
     {
         $this->assertProcess();
         if ($this->attached || self::$owner !== 0) {
@@ -79,7 +85,7 @@ final class ProcessSignals
                 }
             }
             pcntl_async_signals(true);
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->close();
             throw $error;
         }
@@ -103,7 +109,7 @@ final class ProcessSignals
         }
         $failed = false;
         foreach ($this->previous as $signal => $handler) {
-            if (!pcntl_signal((int) $signal, $handler)) {
+            if (!pcntl_signal((int)$signal, $handler)) {
                 $failed = true;
             }
         }
@@ -149,7 +155,7 @@ final class ProcessSignals
 
     private function assertProcess(): void
     {
-        if ($this->process !== (int) getmypid()) {
+        if ($this->process !== (int)getmypid()) {
             throw new TaskException('wrong_process', '停止信号所有者不能跨进程复用');
         }
     }

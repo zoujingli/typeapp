@@ -10,14 +10,13 @@ final class Group
 {
     /**
      * 为控制器路由声明共同前缀、约束与中间件。
-     * @param list<class-string> $middleware 按声明顺序调用的中间件类。
-     * @param array<string, string> $constraints 参数名到匹配约束。
+     * @param list<class-string> $middleware 按声明顺序调用的中间件类
+     * @param array<string, string> $constraints 参数名到匹配约束
      */
     public function __construct(
         public string $prefix = '',
         public string $namePrefix = '',
         public array $middleware = [],
         public array $constraints = []
-    ) {
-    }
+    ) {}
 }

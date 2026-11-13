@@ -6,6 +6,7 @@ use Type\Orm\Connection;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
 use Type\Orm\ModelException;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\Counter;
 use TypeApp\ModelExample\Drivers;
@@ -13,7 +14,7 @@ use TypeApp\ModelExample\Drivers;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function optimisticExpect(bool $condition, string $message): void
 {
@@ -25,25 +26,25 @@ function optimisticExpect(bool $condition, string $message): void
 /**
  * 验证模型版本冲突与回滚状态；竞争模式由外部测试启动独立进程。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::enableIo();
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
-        $driver = (string) ($argv[1] ?? 'sqlite');
+    CoroutineRuntime::enableIo();
+    CoroutineRuntime::run(static function () use ($argv): void {
+        $driver = (string)($argv[1] ?? 'sqlite');
         $database = new DatabaseManager(['default' => Drivers::create($driver)], 1, 0);
         Db::configure($database);
         $scope = new ExecutionScope();
         try {
-            $scope->run(static function (ExecutionScope $current) use ($database, &$scope, $argv, $driver): void {
+            $scope->run(static function (ExecutionScope $current) use (&$scope, $argv): void {
                 $connection = Db::connection('default', true);
                 if (($argv[2] ?? '') === 'race') {
                     $counter = Counter::query()->find(3);
-                    $barrier = (string) getenv('TYPE_OPTIMISTIC_BARRIER');
+                    $barrier = (string)getenv('TYPE_OPTIMISTIC_BARRIER');
                     file_put_contents($barrier, "ready\n", FILE_APPEND | LOCK_EX);
                     $deadline = microtime(true) + 5;
-                    while (substr_count((string) file_get_contents($barrier), "\n") < 2) {
+                    while (substr_count((string)file_get_contents($barrier), "\n") < 2) {
                         if (microtime(true) > $deadline) {
                             throw new RuntimeException('并发版本验证超时');
                         }

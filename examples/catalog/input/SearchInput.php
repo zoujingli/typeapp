@@ -13,9 +13,7 @@ use Type\Validate\ValidatedInput;
 final class SearchInput implements ValidatedInput
 {
     /** 保存验证后的白名单数据，保留字段缺失状态。 */
-    public function __construct(public Data $data)
-    {
-    }
+    public function __construct(public Data $data) {}
 
     /** 查询只接受明确声明的名称搜索值。 */
     public static function schema(): Schema

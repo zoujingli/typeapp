@@ -14,6 +14,7 @@ require __DIR__ . '/native-database.php';
 require __DIR__ . '/native-rollout-redis.php';
 require __DIR__ . '/tutorial-artifacts.php';
 
+use Type\Build\BuildPlatform;
 use TypeApp\Distribution\Batch;
 use TypeApp\Distribution\Process as GitProcess;
 use TypeApp\Release\Packagist;
@@ -44,8 +45,8 @@ if ($public) {
 $source = $public ? GitProcess::output(['git', 'rev-parse', '--verify', 'refs/tags/' . $reference . '^{commit}'], $root) : $reference;
 expect(preg_match('/^[a-f0-9]{40}$/D', $source) === 1, '候选必须指定完整固定提交SHA');
 $version = $public ? $reference : null;
-$root = Type\Build\BuildPlatform::resolve($root);
-$base = Type\Build\BuildPlatform::path($options['output'] ?? $root . '/build/tutorial-delivery-' . bin2hex(random_bytes(6)));
+$root = BuildPlatform::resolve($root);
+$base = BuildPlatform::path($options['output'] ?? $root . '/build/tutorial-delivery-' . bin2hex(random_bytes(6)));
 expect(str_starts_with($base, $root . '/build/') && !file_exists($base) && mkdir($base, 0700, true), '报告目录必须是主仓build下的新目录');
 $platform = match (PHP_OS_FAMILY) {
     'Darwin' => 'macos-arm64', 'Windows' => 'windows-x64',
@@ -88,7 +89,7 @@ try {
         $environment['TYPE_TEMPLATE_CANDIDATE_MANIFEST'] = $base . '/snapshot.json';
     } else {
         // 只回读默认索引和准确远端tag；此入口没有push、分发或Release写入。
-        $report['packagist'] = Packagist::wait($items, (string) $version, 60);
+        $report['packagist'] = Packagist::wait($items, (string)$version, 60);
         $receipts = [];
         foreach ($plan['items'] as $name => $item) {
             $remote = GitProcess::output(['git', 'ls-remote', 'https://github.com/' . $item['repository'] . '.git', 'refs/tags/' . $version, 'refs/tags/' . $version . '^{}'], $root);
@@ -99,7 +100,7 @@ try {
                 'reference' => 'refs/tags/' . $version, 'status' => 'already-current'];
         }
         file_put_contents($base . '/batch-result.json', json_encode(Batch::collect($plan, $receipts), JSON_THROW_ON_ERROR));
-        $packagistTemplate = Type\Build\BuildPlatform::path(trim(nativeDatabaseCommand([PHP_BINARY, $root . '/tools/prepare-packagist-template.php', (string) $version], $environment, [], $base . '/template-install.log', 180)));
+        $packagistTemplate = BuildPlatform::path(trim(nativeDatabaseCommand([PHP_BINARY, $root . '/tools/prepare-packagist-template.php', (string)$version], $environment, [], $base . '/template-install.log', 180)));
         expect(str_starts_with($packagistTemplate, $root . '/build/template-packagist-'), '公开模板下载目录越界');
         TutorialEvidence::snapshot($packagistTemplate, $snapshot['template']['files']);
         $tree = GitProcess::output(['git', 'rev-parse', $source . ':templates/type-project'], $root);
@@ -160,7 +161,7 @@ try {
             }
         }
         expect(preg_match('#应用模板独立 ' . $driver . ' 消费验证通过：([^\r\n]+)#u', $output, $match) === 1, '教程缺少真实消费者回执');
-        $consumer = Type\Build\BuildPlatform::resolve(trim($match[1]));
+        $consumer = BuildPlatform::resolve(trim($match[1]));
         expect(is_string($consumer) && str_starts_with($consumer, $root . '/build/'), '消费者目录越界');
         $consumers[$consumer] = $driver;
         $files = ['consumer' => ['verification.json', 'consumer.json'], 'lock' => ['composer.lock', 'composer.lock']];
@@ -168,7 +169,7 @@ try {
             $files['tutorial'] = ['catalog-candidate.json', 'tutorial.json'];
         }
         if (!$baseline && !$php) {
-            $artifact = (new Type\Build\BuildPlatform())->output($consumer . '/build/type-project');
+            $artifact = (new BuildPlatform())->output($consumer . '/build/type-project');
             $files += ['deployment' => ['deployment.json', 'deployment.json'], 'program' => [substr($artifact, strlen($consumer) + 1), PHP_OS_FAMILY === 'Windows' ? 'app.exe' : 'app'],
                 'deployment-log' => ['deployment-tutorial.log', 'deployment-tutorial.log'],
                 'build' => [substr($artifact, strlen($consumer) + 1) . '.build.json', 'build.json']];

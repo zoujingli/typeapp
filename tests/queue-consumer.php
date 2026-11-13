@@ -40,7 +40,7 @@ try {
         $command = nativeCommand($consumer . '/build/queue/type-app');
         $receipt['build'] = json_decode(file_get_contents($consumer . '/build/queue/type-app.build.json'), true, 512, JSON_THROW_ON_ERROR);
     } else {
-        $launcher = 'require "vendor/autoload.php"; (new Type\\Build\\DevelopmentBuilder())->loadConfiguration("application.json"); main($argc,$argv);';
+        $launcher = 'require "vendor/autoload.php"; (new Type\Build\DevelopmentBuilder())->loadConfiguration("application.json"); main($argc,$argv);';
         $command = [PHP_BINARY, '-r', $launcher, '--'];
     }
     expect(str_contains(successful([...$command, '--help'], $consumer), '队列验证'), '独立队列帮助入口失败');

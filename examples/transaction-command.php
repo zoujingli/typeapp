@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Type\Orm\Connection;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
+use Type\Runtime\CapacityException;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\Drivers;
 use TypeApp\ModelExample\TransactionExercise;
@@ -12,18 +14,18 @@ use TypeApp\ModelExample\TransactionExercise;
 /**
  * 验证嵌套事务、回滚模型失效与租约所有权，结束时关闭作用域和管理器。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::enableIo();
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
-        $name = (string) ($argv[1] ?? 'sqlite');
+    CoroutineRuntime::enableIo();
+    CoroutineRuntime::run(static function () use ($argv): void {
+        $name = (string)($argv[1] ?? 'sqlite');
         $database = new DatabaseManager(['default' => Drivers::create($name)], 1, 0);
         Db::configure($database);
         $scope = new ExecutionScope();
         try {
-            $scope->run(static function (ExecutionScope $current) use ($database, &$scope, $argv, $name): void {
+            $scope->run(static function (ExecutionScope $current) use ($database, &$scope, $name): void {
                 $connection = Db::connection('default', true);
                 $key = match ($name) {
                     'mysql' => 'BIGINT PRIMARY KEY AUTO_INCREMENT',
@@ -70,7 +72,7 @@ function main(int $argc, array $argv): void
                         $peer = new ExecutionScope();
                         try {
                             $database->connect($peer, 'default', 0);
-                        } catch (\Type\Runtime\CapacityException $error) {
+                        } catch (CapacityException $error) {
                             $held = true;
                         } finally {
                             $peer->close();

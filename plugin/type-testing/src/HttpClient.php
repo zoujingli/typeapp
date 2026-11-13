@@ -10,14 +10,18 @@ use Type\Runtime\Deadline;
 final class HttpClient
 {
     private string $endpoint;
+
     private string $hostHeader;
+
     private float $seconds;
+
     private int $maximumBytes;
+
     /**
      * 配置独立协议测试客户端；仅接受 HTTP(S) 的主机与端口。
-     * @param float $seconds 每次请求包含连接、写入和读取的总秒数，范围为 (0, 60]。
-     * @param int $maximumBytes 请求和响应正文的字节上限，范围为 1 至 64 MiB。
-     * @throws \InvalidArgumentException 地址包含凭据、查询、片段、非根路径或预算无效。
+     * @param float $seconds 每次请求包含连接、写入和读取的总秒数，范围为 (0, 60]
+     * @param int $maximumBytes 请求和响应正文的字节上限，范围为 1 至 64 MiB
+     * @throws \InvalidArgumentException 地址包含凭据、查询、片段、非根路径或预算无效
      */
     public function __construct(string $base, float $seconds = 3.0, int $maximumBytes = 2097152)
     {
@@ -39,9 +43,9 @@ final class HttpClient
 
     /**
      * 通过独立连接发送一次请求，任何返回或异常路径都会关闭连接。
-     * @param array<string, string> $headers 业务请求头；帧长度和连接头由客户端管理。
-     * @throws \InvalidArgumentException 请求参数无效、正文超量或覆盖受控请求头。
-     * @throws \RuntimeException 连接、截止、响应帧或响应容量检查失败。
+     * @param array<string, string> $headers 业务请求头；帧长度和连接头由客户端管理
+     * @throws \InvalidArgumentException 请求参数无效、正文超量或覆盖受控请求头
+     * @throws \RuntimeException 连接、截止、响应帧或响应容量检查失败
      */
     public function request(string $method, string $target, array $headers = [], string $body = ''): HttpResponse
     {
@@ -113,7 +117,7 @@ final class HttpClient
         if (isset($headers['transfer-encoding'], $headers['content-length']) || count($headers['content-length'] ?? []) > 1) {
             throw new \RuntimeException('HTTP 响应帧字段冲突');
         }
-        if ($method === 'HEAD' || in_array((int) $status[1], [204, 304], true)) {
+        if ($method === 'HEAD' || in_array((int)$status[1], [204, 304], true)) {
             if ($body !== '') {
                 throw new \RuntimeException('无正文响应包含了数据');
             }
@@ -122,13 +126,13 @@ final class HttpClient
                 throw new \RuntimeException('HTTP 测试客户端不支持该传输编码');
             }
             $body = $this->chunks($body);
-        } elseif (isset($headers['content-length']) && (!preg_match('/^[0-9]+$/D', $headers['content-length'][0]) || (string) strlen($body) !== (ltrim($headers['content-length'][0], '0') ?: '0'))) {
+        } elseif (isset($headers['content-length']) && (!preg_match('/^[0-9]+$/D', $headers['content-length'][0]) || (string)strlen($body) !== (ltrim($headers['content-length'][0], '0') ?: '0'))) {
             throw new \RuntimeException('HTTP 响应正文与声明长度不一致');
         }
         if (strlen($body) > $this->maximumBytes) {
             throw new \RuntimeException('HTTP 正文超过预算');
         }
-        return new HttpResponse((int) $status[1], $headers, $body);
+        return new HttpResponse((int)$status[1], $headers, $body);
     }
 
     private function chunks(string $body): string
@@ -144,7 +148,7 @@ final class HttpClient
             if (!preg_match('/^[a-fA-F0-9]{1,8}$/D', $size)) {
                 throw new \RuntimeException('分块响应长度无效');
             }
-            $length = (int) hexdec($size);
+            $length = (int)hexdec($size);
             $offset = $end + 2;
             if ($length === 0) {
                 if (substr($body, $offset) !== "\r\n") {
@@ -159,13 +163,14 @@ final class HttpClient
             $offset += $length + 2;
         }
     }
+
     private function timeout(mixed $stream, Deadline $deadline): void
     {
         $remaining = $deadline->remaining() ?? 0.0;
         if ($remaining <= 0) {
             throw new \RuntimeException('HTTP 测试总截止预算已用尽');
         }
-        $seconds = (int) floor($remaining);
-        stream_set_timeout($stream, $seconds, max(1, (int) (($remaining - $seconds) * 1000000)));
+        $seconds = (int)floor($remaining);
+        stream_set_timeout($stream, $seconds, max(1, (int)(($remaining - $seconds) * 1000000)));
     }
 }

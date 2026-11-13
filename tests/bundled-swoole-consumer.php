@@ -83,7 +83,7 @@ try {
     foreach ($manifest['licenses'] as $file => $sha256) {
         expect(hash_file('sha256', $bundle . '/' . $file) === $sha256, '安装改变了原始许可证：' . $file);
     }
-    $command = [PHP_BINARY, '-n', '-r', 'require $argv[1]; echo json_encode((new Type\\Build\\BundledSwoole())->select(), JSON_THROW_ON_ERROR);',
+    $command = [PHP_BINARY, '-n', '-r', 'require $argv[1]; echo json_encode((new Type\Build\BundledSwoole())->select(), JSON_THROW_ON_ERROR);',
         $work . '/dependencies/autoload.php'];
     $selected = json_decode(successful($command, $work), true, 32, JSON_THROW_ON_ERROR);
     expect(str_starts_with(str_replace('\\', '/', $selected['file']), str_replace('\\', '/', $bundle) . '/'), '选择器仍在使用主仓资源');

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
 use TypePhp\Backend\Msvc;
 
 /** 锁定 TypePHP MSVC 后端的静态 CRT 适配，编译与链接仍复用上游命令生成器。 */
@@ -30,7 +29,7 @@ final class WindowsStaticBackend extends Msvc
         $config['section_gc'] = empty($config['debug']);
         $flags = parent::buildLinkOptions($config);
         if (substr_count($flags, ' /NODEFAULTLIB:LIBCMT') !== 1) {
-            throw new RuntimeException('TypePHP MSVC 链接运行库规则需要重新核对');
+            throw new \RuntimeException('TypePHP MSVC 链接运行库规则需要重新核对');
         }
         $flags = str_replace(' /NODEFAULTLIB:LIBCMT', ' /NODEFAULTLIB:MSVCRT', $flags);
         return empty($config['debug']) ? $flags . ' /DEBUG:NONE /INCREMENTAL:NO' : $flags;
@@ -41,7 +40,7 @@ final class WindowsStaticBackend extends Msvc
     {
         if (preg_match_all('/ (?<crt>\/(?:MDd?|MTd?))(?=\s|$)/', $command, $matches) !== 1
             || $matches['crt'][0] !== '/MD') {
-            throw new RuntimeException('TypePHP MSVC CRT 参数需要重新核对');
+            throw new \RuntimeException('TypePHP MSVC CRT 参数需要重新核对');
         }
         return str_replace(' /MD', ' /MT', $command);
     }

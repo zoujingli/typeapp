@@ -8,6 +8,7 @@ namespace Type\Orm;
 final class ModelState
 {
     private bool $valid = true;
+
     private bool $writing = false;
 
     /** 永久标记当前共享状态失效，克隆也不能绕过回滚后的失效事实。 */

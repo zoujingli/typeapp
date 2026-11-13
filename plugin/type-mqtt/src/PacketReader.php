@@ -8,13 +8,13 @@ namespace Type\Mqtt;
 final class PacketReader
 {
     private int $offset = 0;
+
     private string $forwardProperties = '';
+
     private int $expiryOffset = -1;
 
     /** 原始字节不经过 JSON 或文本转码。 */
-    public function __construct(private string $bytes)
-    {
-    }
+    public function __construct(private string $bytes) {}
 
     /** 剩余字节数用于拒绝额外载荷。 */
     public function remaining(): int
@@ -29,7 +29,7 @@ final class PacketReader
             throw new ProtocolError();
         }
         $value = 0;
-        for ($index = 0; $index < $length; $index++) {
+        for ($index = 0; $index < $length; ++$index) {
             $value = $value * 256 + ord($this->bytes[$this->offset++]);
         }
         return $value;
@@ -40,7 +40,7 @@ final class PacketReader
     {
         $value = 0;
         $multiplier = 1;
-        for ($index = 0; $index < 4; $index++) {
+        for ($index = 0; $index < 4; ++$index) {
             $byte = $this->integer(1);
             $value += ($byte & 127) * $multiplier;
             if (($byte & 128) === 0) {
@@ -82,8 +82,8 @@ final class PacketReader
     }
 
     /**
-     * @return array<int, mixed> 合法属性值；User Property 保留顺序和重复项。
-     * @throws ProtocolError 属性不属于报文、重复单值属性或非法属性值。
+     * @return array<int, mixed> 合法属性值；User Property 保留顺序和重复项
+     * @throws ProtocolError 属性不属于报文、重复单值属性或非法属性值
      */
     public function properties(string $packet): array
     {
@@ -94,11 +94,11 @@ final class PacketReader
         $allowed = match ($packet) {
             'connect' => [0x11, 0x21, 0x27, 0x22, 0x19, 0x17, 0x26, 0x15, 0x16],
             'will' => [0x18, 0x01, 0x02, 0x03, 0x08, 0x09, 0x26],
-            'disconnect' => [0x11, 0x1f, 0x26],
+            'disconnect' => [0x11, 0x1F, 0x26],
             'publish' => [0x01, 0x02, 0x03, 0x08, 0x09, 0x23, 0x26],
-            'subscribe' => [0x0b, 0x26],
+            'subscribe' => [0x0B, 0x26],
             'unsubscribe' => [0x26],
-            'puback', 'pubrec', 'pubrel', 'pubcomp' => [0x1f, 0x26],
+            'puback', 'pubrec', 'pubrel', 'pubcomp' => [0x1F, 0x26],
             default => throw new \InvalidArgumentException('未知 MQTT 属性上下文'),
         };
         while ($properties->remaining() > 0) {
@@ -115,7 +115,7 @@ final class PacketReader
                     throw new ProtocolError(0x82);
                 }
                 $values[$identifier] = $valueByte;
-            } elseif ($identifier === 0x0b) {
+            } elseif ($identifier === 0x0B) {
                 $subscription = $properties->variable();
                 if ($subscription === 0) {
                     throw new ProtocolError(0x82);

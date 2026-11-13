@@ -4,11 +4,20 @@ declare(strict_types=1);
 
 namespace TypeTests\Unit;
 
+use OperationBundle\Item;
+use OperationBundle\Service;
 use PHPUnit\Framework\TestCase;
-use Type\Build\OperationCompiler;
 use Type\Build\ApplicationGeneration;
+use Type\Build\BuildPlatform;
+use Type\Build\OperationCompiler;
+use Type\Runtime\CoroutineRuntime;
+use Type\Runtime\ExecutionScope;
 
-/** 通过公开生成入口核对跨命名空间后的文档类型，不加载业务类。 */
+/**
+ * 通过公开生成入口核对跨命名空间后的文档类型，不加载业务类。
+ * @internal
+ * @coversNothing
+ */
 final class OperationDocumentationTest extends TestCase
 {
     /** Model 与 Service 共存时最终映射同一文件，保留构造器和其他声明且拒绝重转。 */
@@ -36,19 +45,19 @@ final class Service {
 PHP);
             $result = (new ApplicationGeneration())->generate($root, [], [$source], [], [], ['zoujingli/type-orm' => 'dev'], $root . '/generated');
             $symbols = $result['metadata']['symbols']['classes'];
-            $target = $symbols['operationbundle\\service']['file'];
-            self::assertSame($target, $symbols['operationbundle\\item']['file']);
-            self::assertSame($target, $symbols['operationbundle\\companion']['file']);
+            $target = $symbols['operationbundle\service']['file'];
+            self::assertSame($target, $symbols['operationbundle\item']['file']);
+            self::assertSame($target, $symbols['operationbundle\companion']['file']);
             self::assertSame(['source:0' => $target], $result['metadata']['replacements']);
-            self::assertSame([\Type\Build\BuildPlatform::resolve($root . '/generated/generated-operations.php')], $result['sources']);
+            self::assertSame([BuildPlatform::resolve($root . '/generated/generated-operations.php')], $result['sources']);
             require $result['sources'][0];
-            $service = new \OperationBundle\Service('kept-');
+            $service = new Service('kept-');
             self::assertSame('kept-companion', $service->label());
-            \Type\Runtime\CoroutineRuntime::run(static function (): void {
-                $scope = new \Type\Runtime\ExecutionScope();
+            CoroutineRuntime::run(static function (): void {
+                $scope = new ExecutionScope();
                 try {
-                    $scope->run(static function (\Type\Runtime\ExecutionScope $current): void {
-                        $item = new \OperationBundle\Item();
+                    $scope->run(static function (ExecutionScope $current): void {
+                        $item = new Item();
                         $item->name = 'model';
                         self::assertSame('model', $item->name);
                     });
@@ -112,15 +121,15 @@ PHP);
             self::assertStringContainsString('Fault: Fault', $code);
             self::assertStringContainsString('list<Row>', $code);
             self::assertStringContainsString('Fault::CODE', $code);
-            self::assertStringContainsString('\\Closure(Row): Clock', $code);
+            self::assertStringContainsString('\Closure(Row): Clock', $code);
             self::assertStringContainsString("text: 'Row'", $code);
             self::assertStringContainsString('@param T $value', $code);
-            self::assertStringContainsString('LocalResult|Types\\Payload|Clock|null', $code);
+            self::assertStringContainsString('LocalResult|Types\Payload|Clock|null', $code);
             self::assertStringContainsString('@throws Fault original failure', $code);
             self::assertStringContainsString('Payload as Row', $code);
             self::assertStringContainsString('class LocalResult', $code);
             self::assertSame($result, $compiler->generate($root, $mapping, [$file]));
-            self::assertFalse(class_exists('DocFixture\\Business\\Service', false));
+            self::assertFalse(class_exists('DocFixture\Business\Service', false));
         } finally {
             if (is_file($file)) {
                 unlink($file);
@@ -160,7 +169,7 @@ PHP);
             self::assertStringContainsString('@template T of Row', $code);
             self::assertStringContainsString('@phpstan-import-type Row from Row', $code);
             self::assertStringContainsString('size: int<min, max>', $code);
-            self::assertStringNotContainsString('private \\GenericDoc\\Service $service', $code);
+            self::assertStringNotContainsString('private \GenericDoc\Service $service', $code);
             self::assertStringContainsString('@param Values $values', $code);
             self::assertStringContainsString('@return T|Min|self', $code);
             self::assertStringContainsString('@property string $notForwarded', $code);

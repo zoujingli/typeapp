@@ -7,7 +7,7 @@ use Type\Runtime\Arguments;
 /**
  * 解析有界重复次数并输出问候，作为无业务依赖的原生入口示例。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
@@ -20,7 +20,7 @@ function main(int $argc, array $argv): void
 
         $name = $arguments->text('name', 'typeapp');
         $repeat = $arguments->integer('repeat', 1, 1, 5);
-        for ($index = 0; $index < $repeat; $index++) {
+        for ($index = 0; $index < $repeat; ++$index) {
             echo '你好，' . $name . "！\n";
         }
     } catch (InvalidArgumentException $error) {

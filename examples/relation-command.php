@@ -8,6 +8,7 @@ use Type\Orm\Db;
 use Type\Orm\ModelException;
 use Type\Orm\ModelQuery;
 use Type\Orm\Relation;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\Article;
 use TypeApp\ModelExample\Drivers;
@@ -17,7 +18,7 @@ use TypeApp\ModelExample\User;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function relationExpect(bool $condition, string $message): void
 {
@@ -29,17 +30,17 @@ function relationExpect(bool $condition, string $message): void
 /**
  * 验证三类模型关系、批量加载、缺失值及查询预算，不访问生产数据。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::enableIo();
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
-        $database = new DatabaseManager(['default' => Drivers::create((string) ($argv[1] ?? 'sqlite'))], 1, 0);
+    CoroutineRuntime::enableIo();
+    CoroutineRuntime::run(static function () use ($argv): void {
+        $database = new DatabaseManager(['default' => Drivers::create((string)($argv[1] ?? 'sqlite'))], 1, 0);
         Db::configure($database);
         $scope = new ExecutionScope();
         try {
-            $scope->run(static function (ExecutionScope $current) use ($database, &$scope, $argv): void {
+            $scope->run(static function (ExecutionScope $current) use (&$scope): void {
                 $connection = Db::connection('default', true);
                 $connection->raw('CREATE TEMPORARY TABLE type_model_users (id INTEGER PRIMARY KEY, display_name VARCHAR(255), age INTEGER, active BOOLEAN, secret VARCHAR(255), note VARCHAR(255) NULL)');
                 $connection->raw('CREATE TEMPORARY TABLE type_model_articles (id INTEGER PRIMARY KEY, user_id INTEGER NULL, title VARCHAR(255))');

@@ -4,24 +4,30 @@ declare(strict_types=1);
 
 namespace app\common\service;
 
-use Closure;
+use Type\Generated\EmbeddedResources;
 
 /** 前端资源安装事务；只修改清单托管路径，恢复记录始终位于公开目录之外。 */
 final class FrontendAssets
 {
     private string $control;
+
     private string $generation;
+
     private array $files;
-    private Closure $reader;
+
+    private \Closure $reader;
+
     private mixed $lock = null;
+
     private ?array $transaction = null;
+
     private array $report = [];
 
     /**
-     * @param array<string,array{bytes:int,sha256:string}> $files 公开目录相对路径及原文摘要。
-     * @param Closure(string,int,int):string $reader 有界读取指定资源的原文字节。
+     * @param array<string,array{bytes:int,sha256:string}> $files 公开目录相对路径及原文摘要
+     * @param \Closure(string,int,int):string $reader 有界读取指定资源的原文字节
      */
-    public function __construct(private string $base, array $files, Closure $reader)
+    public function __construct(private string $base, array $files, \Closure $reader)
     {
         if ($files === [] || !isset($files['index.html']) || count($files) > 1000) {
             throw new FrontendException('前端资源不完整，请先构建前端再生成应用');
@@ -49,12 +55,12 @@ final class FrontendAssets
     {
         $files = [];
         if (!$development) {
-            foreach (\Type\Generated\EmbeddedResources::manifest() as $path => $entry) {
+            foreach (EmbeddedResources::manifest() as $path => $entry) {
                 if (str_starts_with($path, 'web/')) {
                     $files[substr($path, 4)] = $entry;
                 }
             }
-            return new self($base, $files, static fn (string $path, int $offset, int $length): string => \Type\Generated\EmbeddedResources::read('web/' . $path, $offset, $length));
+            return new self($base, $files, static fn (string $path, int $offset, int $length): string => EmbeddedResources::read('web/' . $path, $offset, $length));
         }
         $source = dirname(__DIR__, 3) . '/web/dist';
         if (!is_dir($source) || is_link($source)) {
@@ -68,7 +74,7 @@ final class FrontendAssets
             if ($entry->isFile()) {
                 $path = str_replace('\\', '/', substr($entry->getPathname(), strlen($source) + 1));
                 self::path($path);
-                $files[$path] = ['bytes' => $entry->getSize(), 'sha256' => (string) hash_file('sha256', $entry->getPathname())];
+                $files[$path] = ['bytes' => $entry->getSize(), 'sha256' => (string)hash_file('sha256', $entry->getPathname())];
             }
         }
         return new self($base, $files, static function (string $path, int $offset, int $length) use ($source): string {
@@ -85,7 +91,7 @@ final class FrontendAssets
 
     /**
      * 只读访问静态资源清单，安装器与HTTP入口共享同一身份。
-     * @return array<string,array{bytes:int,sha256:string}> 公开目录相对路径到资源身份。
+     * @return array<string,array{bytes:int,sha256:string}> 公开目录相对路径到资源身份
      */
     public function manifest(): array
     {
@@ -94,8 +100,8 @@ final class FrontendAssets
 
     /**
      * 安装或预览；失败后尝试恢复旧版本，无法恢复时保留事务记录。
-     * @return array<string,mixed> 代次、文件数量、变更明细、冲突和完成状态。
-     * @throws FrontendException 资源、权限或并发冲突；调用者可在修复原因后重试。
+     * @return array<string,mixed> 代次、文件数量、变更明细、冲突和完成状态
+     * @throws FrontendException 资源、权限或并发冲突；调用者可在修复原因后重试
      */
     public function install(bool $force = false, bool $dryRun = false): array
     {
@@ -110,8 +116,8 @@ final class FrontendAssets
     /**
      * 暂存并复核全部新文件，再允许调用者初始化数据库；互斥锁持续到commit/close。
      * dry-run不创建目录、锁文件或恢复记录。
-     * @return array<string,mixed> 预览报告；prepare成功不表示已安装完成。
-     * @throws FrontendException 资源不完整、目标冲突、其他安装占用锁或暂存失败。
+     * @return array<string,mixed> 预览报告；prepare成功不表示已安装完成
+     * @throws FrontendException 资源不完整、目标冲突、其他安装占用锁或暂存失败
      */
     public function prepare(bool $force = false, bool $dryRun = false): array
     {
@@ -156,7 +162,7 @@ final class FrontendAssets
                     throw new FrontendException('前端公开目录与暂存目录必须位于同一文件系统');
                 }
             }
-            $old = is_file($target) ? (string) hash_file('sha256', $target) : null;
+            $old = is_file($target) ? (string)hash_file('sha256', $target) : null;
             $new = $this->files[$path]['sha256'] ?? null;
             if ($old === $new) {
                 continue;
@@ -219,8 +225,8 @@ final class FrontendAssets
 
     /**
      * 提交已准备的资源；installed.json是完成边界，后续清理失败不覆盖已完成结果。
-     * @return array<string,mixed> 安装报告，ready为true表示已写入完成标记。
-     * @throws FrontendException 未准备、外部写入冲突或文件提交失败，调用者仍须close。
+     * @return array<string,mixed> 安装报告，ready为true表示已写入完成标记
+     * @throws FrontendException 未准备、外部写入冲突或文件提交失败，调用者仍须close
      */
     public function commit(): array
     {
@@ -232,7 +238,7 @@ final class FrontendAssets
         $this->writeJson($this->control . '/transaction.json', $transaction);
         foreach ($transaction['changes'] as $path => $change) {
             $target = $this->safe('public/' . $path, true);
-            $actual = is_file($target) ? (string) hash_file('sha256', $target) : null;
+            $actual = is_file($target) ? (string)hash_file('sha256', $target) : null;
             if ($actual !== $change['old']) {
                 throw new FrontendException('安装期间前端文件被其他写入者改变');
             }
@@ -310,7 +316,7 @@ final class FrontendAssets
         if (filesize($journal) > 1048576) {
             throw new FrontendException('前端恢复记录过大');
         }
-        $transaction = json_decode((string) file_get_contents($journal), true, 32, JSON_THROW_ON_ERROR);
+        $transaction = json_decode((string)file_get_contents($journal), true, 32, JSON_THROW_ON_ERROR);
         if (!is_array($transaction) || !preg_match('/^[a-f0-9]{24}$/D', $transaction['id'] ?? '')
             || !is_array($transaction['changes'] ?? null) || count($transaction['changes']) > 2000) {
             throw new FrontendException('前端恢复记录无效');
@@ -332,7 +338,7 @@ final class FrontendAssets
             foreach (array_reverse($transaction['changes'], true) as $path => $change) {
                 self::path($path);
                 $target = $this->safe('public/' . $path, true);
-                $actual = is_file($target) ? (string) hash_file('sha256', $target) : null;
+                $actual = is_file($target) ? (string)hash_file('sha256', $target) : null;
                 if (!in_array($actual, [$change['old'], $change['new']], true)) {
                     throw new FrontendException('前端恢复发现未登记的文件变动');
                 }
@@ -365,7 +371,7 @@ final class FrontendAssets
         if (filesize($path) > 1048576) {
             throw new FrontendException('已安装前端清单过大');
         }
-        $state = json_decode((string) file_get_contents($path), true, 32, JSON_THROW_ON_ERROR);
+        $state = json_decode((string)file_get_contents($path), true, 32, JSON_THROW_ON_ERROR);
         if (!is_array($state) || !is_array($state['files'] ?? null) || count($state['files']) > 1000) {
             throw new FrontendException('已安装前端清单无效');
         }

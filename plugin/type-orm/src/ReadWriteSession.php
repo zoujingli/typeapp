@@ -4,18 +4,23 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
 use Type\Runtime\ExecutionScope;
 
 /** 一个执行作用域的主从选择；只有活动事务固定主库，普通写入不改变后续读取。 */
 final class ReadWriteSession
 {
     private DatabaseManager $manager;
+
     private ExecutionScope $scope;
+
     private string $primaryName;
+
     private ?string $replicaName;
+
     private ?Connection $primary = null;
+
     private ?Connection $replica = null;
+
     private string $outcome = TransactionOutcome::NOT_STARTED;
 
     /** 绑定当前作用域及同逻辑库的主从名称，配置验证不借用物理连接。 */
@@ -60,8 +65,8 @@ final class ReadWriteSession
         return $this->primary();
     }
 
-    /** @param Closure(Connection): mixed $operation 接收实际主库事务连接。 */
-    public function transaction(Closure $operation, string $mode = 'default'): mixed
+    /** @param \Closure(Connection): mixed $operation 接收实际主库事务连接。 */
+    public function transaction(\Closure $operation, string $mode = 'default'): mixed
     {
         $connection = $this->write();
         try {

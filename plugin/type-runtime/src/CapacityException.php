@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Type\Runtime;
 
+use Swoole\Exception;
+
 /** 框架容量拒绝；同时识别显式文件候选在所属 PHP 线程抛出的原生拒绝。 */
 final class CapacityException extends \RuntimeException
 {
@@ -14,6 +16,6 @@ final class CapacityException extends \RuntimeException
     public static function matches(\Throwable $error): bool
     {
         return $error instanceof self
-            || ($error instanceof \Swoole\Exception && $error->getMessage() === 'aio_capacity_exceeded');
+            || ($error instanceof Exception && $error->getMessage() === 'aio_capacity_exceeded');
     }
 }

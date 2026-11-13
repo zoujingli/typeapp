@@ -35,7 +35,7 @@ function brokerMetrics(HttpResponse $response): array
         );
         $series = $match[1] . ($match[2] ?? '');
         expect(isset($types[$match[1]]) && !isset($samples[$series]), 'Broker指标样本缺少类型或重复');
-        $samples[$series] = (int) $match[3];
+        $samples[$series] = (int)$match[3];
     }
     expect(
         count($samples) <= 4096 && isset($samples['typeapp_broker_ready'], $samples['typeapp_broker_store_available']),
@@ -48,13 +48,13 @@ function brokerMetrics(HttpResponse $response): array
 function brokerConcurrentReads(array $environment, string $token): array
 {
     $clientCode = 'require getenv("BROKER_TEST_ROOT")."/vendor/autoload.php";'
-        . '$client=new Type\\Testing\\HttpClient("http://127.0.0.1:".getenv("APP_PORT"),15.0);'
+        . '$client=new Type\Testing\HttpClient("http://127.0.0.1:".getenv("APP_PORT"),15.0);'
         . '$response=$client->request("GET","/broker/nodes",["Authorization"=>"Bearer ".getenv("BROKER_TEST_TOKEN")]);'
         . 'echo json_encode(["status"=>$response->status,"body"=>$response->json()],JSON_THROW_ON_ERROR);';
     $clients = [];
     $results = [];
     try {
-        for ($index = 0; $index < 2; $index++) {
+        for ($index = 0; $index < 2; ++$index) {
             $clients[] = new Process(
                 [PHP_BINARY, '-n', '-d', 'zend.exception_ignore_args=1', '-r', $clientCode],
                 dirname(__DIR__),
@@ -77,10 +77,10 @@ function brokerConcurrentReads(array $environment, string $token): array
 /**
  * 同一应用与节点上的真实持久队列、慢确认和同步依赖故障；调用方持有主备和服务生命周期。
  *
- * @param Closure(string,string,string,?array,int,array=): array $request 已登录宿主的真实HTTP入口。
- * @param array<string,string> $environment 当前节点受控测试环境。
- * @param Closure(string): void|null $browserStage 可选浏览器阶段；只协调测试装置，不改变生产响应。
- * @return array<string,mixed> 不含令牌、凭据和完整消息载荷的原始观察。
+ * @param Closure(string,string,string,?array,int,array=): array $request 已登录宿主的真实HTTP入口
+ * @param array<string,string> $environment 当前节点受控测试环境
+ * @param null|Closure(string): void $browserStage 可选浏览器阶段；只协调测试装置，不改变生产响应
+ * @return array<string,mixed> 不含令牌、凭据和完整消息载荷的原始观察
  */
 function brokerObservability(
     PostgresSync $sync,
@@ -108,11 +108,11 @@ function brokerObservability(
         expect(in_array($response->status, [200, 503], true), '就绪探针未返回明确可用/不可用状态');
         $data = $response->json()['data'];
         expect(($response->status === 200) === $data['ready'], '就绪HTTP状态与正文相互矛盾');
-        $checks++;
+        ++$checks;
         return $data;
     };
     $metrics = static function () use ($http, $probeToken, &$checks): array {
-        $checks++;
+        ++$checks;
         return brokerMetrics($http->request('GET', '/broker/metrics', ['Authorization' => 'Bearer ' . $probeToken]));
     };
     $await = static function (Closure $condition, float $seconds = 12.0) use ($health): array {
@@ -140,7 +140,7 @@ function brokerObservability(
         $browserStage?->__invoke('healthy');
         $denied = new Client(
             '127.0.0.1',
-            (int) $environment['BROKER_PORT'],
+            (int)$environment['BROKER_PORT'],
             'broker-observe-denied',
             $environment['BROKER_CLIENT_USERNAME'],
             'deliberately-wrong-password',
@@ -156,7 +156,7 @@ function brokerObservability(
         $denied->stop();
         $consumer = new Client(
             '127.0.0.1',
-            (int) $environment['BROKER_PORT'],
+            (int)$environment['BROKER_PORT'],
             'broker-observe-slow',
             $environment['BROKER_CLIENT_USERNAME'],
             $environment['BROKER_CLIENT_PASSWORD'],
@@ -167,7 +167,7 @@ function brokerObservability(
         );
         $publisher = new Client(
             '127.0.0.1',
-            (int) $environment['BROKER_PORT'],
+            (int)$environment['BROKER_PORT'],
             'broker-observe-publisher',
             $environment['BROKER_CLIENT_USERNAME'],
             $environment['BROKER_CLIENT_PASSWORD'],
@@ -179,7 +179,7 @@ function brokerObservability(
         expect($consumer->subscribe($topic) === 1, '慢消费者必须获得实际QoS1订阅');
         $publisher->connect(true);
         $snapshots['publications'] = [];
-        for ($index = 0; $index < 6; $index++) {
+        for ($index = 0; $index < 6; ++$index) {
             $publicationStarted = microtime(true);
             $snapshots['publishing'] = $index;
             expect(
@@ -191,7 +191,7 @@ function brokerObservability(
         // 有意暂缓两个已交付消息的业务确认，Broker只能占用客户端声明的两个在途槽。
         $held = [];
         $snapshots['received'] = [];
-        for ($index = 0; $index < 2; $index++) {
+        for ($index = 0; $index < 2; ++$index) {
             $held[] = $consumer->receive(5.0);
             expect($held[$index] !== null && $held[$index]['receipt'] !== '', '慢消费样本缺少实际待确认消息');
             $snapshots['received'][] = ['expected' => $index, 'actual' => substr($held[$index]['message']->payload, strlen($payload)), 'duplicate' => $held[$index]['duplicate']];
@@ -229,7 +229,7 @@ function brokerObservability(
         foreach ($held as $message) {
             $consumer->acknowledge($message['receipt']);
         }
-        for ($index = 2; $index < 6; $index++) {
+        for ($index = 2; $index < 6; ++$index) {
             $receiveStarted = microtime(true);
             $message = $consumer->receive(5.0);
             $snapshots['received'][] = ['expected' => $index, 'actual' => $message === null ? null : substr($message['message']->payload, strlen($payload)),
@@ -278,7 +278,7 @@ function brokerObservability(
         $registry = identityCommand([...$command, 'broker:nodes'], $environment);
         $newRegistered = array_values(array_filter($registry['nodes'], static fn (array $registered): bool => $registered['node_id'] === $observation['node_id']));
         expect(count($newRegistered) === 1 && $newRegistered[0]['state'] === 'active' && $newObservation['run_id'] !== $observation['run_id']
-            && (int) $newRegistered[0]['generation'] === $snapshots['isolation']['generation'] + 1, '恢复后必须取得新节点运行及代次');
+            && (int)$newRegistered[0]['generation'] === $snapshots['isolation']['generation'] + 1, '恢复后必须取得新节点运行及代次');
         $staleFence = identityCommand($snapshots['isolation']['command'], $environment);
         $reconciled = identityCommand([...$command, 'broker:node-fence-result', $snapshots['isolation']['operation_id']], $environment);
         foreach ([$staleFence, $reconciled] as $original) {
@@ -371,8 +371,8 @@ function brokerFenceConcurrentCommands(PostgresSync $sync, array $arguments, arr
     try {
         $locker->beginTransaction();
         $locker->exec('LOCK TABLE broker_broker_operations IN SHARE MODE');
-        $lockerPid = (int) $locker->query('SELECT pg_backend_pid()')->fetchColumn();
-        for ($index = 0; $index < 2; $index++) {
+        $lockerPid = (int)$locker->query('SELECT pg_backend_pid()')->fetchColumn();
+        for ($index = 0; $index < 2; ++$index) {
             $processes[] = new Process($arguments, dirname(__DIR__), $environment);
         }
         $deadline = microtime(true) + 12;
@@ -419,7 +419,7 @@ function brokerFenceConcurrentCommands(PostgresSync $sync, array $arguments, arr
             $context['operation_id'] === $operationId && $context['origin_request_id'] === $operationId
             && $state['operation']['stage'] === 'completed' && $state['operation']['result'] === 'success'
             && ($stages['accepted'] ?? 0) === 1 && ($stages['executing'] ?? 0) === 1 && ($stages['completed'] ?? 0) === 1
-            && ($stages['unknown'] ?? 0) <= 1 && count($state['events']) === (int) $state['operation']['version']
+            && ($stages['unknown'] ?? 0) <= 1 && count($state['events']) === (int)$state['operation']['version']
             && is_array($state['store']) && $state['store']['operation_id'] === $operationId,
             '并发原命令没有共享冻结身份、唯一阶段事件和持久隔离事实'
         );
@@ -467,7 +467,7 @@ function brokerFenceLateUnknown(PostgresSync $sync, array $command, array $argum
         sort($stages);
         expect(
             $completed['operation_id'] === $operationId && $completed['stage'] === 'completed' && $completed['result'] === 'success'
-            && $stages === ['accepted', 'completed', 'executing'] && (int) $before['operation']['version'] === 3,
+            && $stages === ['accepted', 'completed', 'executing'] && (int)$before['operation']['version'] === 3,
             '迟到未知回归必须先由真实原命令完成且此前没有unknown阶段'
         );
         $standby->query('SELECT pg_wal_replay_pause()')->fetchColumn();
@@ -485,7 +485,7 @@ function brokerFenceLateUnknown(PostgresSync $sync, array $command, array $argum
         $after = brokerFenceAuditState($inspection, $operationId);
         expect(
             $after['operation']['stage'] === 'completed' && $after['operation']['result'] === 'success'
-            && (int) $after['operation']['version'] === 4 && count($after['events']) === 4
+            && (int)$after['operation']['version'] === 4 && count($after['events']) === 4
             && $after['operation']['context_json'] === $before['operation']['context_json']
             && $after['operation']['context_hash'] === $before['operation']['context_hash'] && $after['store'] === $before['store'],
             '迟到unknown降级已完成动作、改变冻结上下文或重执行隔离'
@@ -548,7 +548,7 @@ function brokerFenceUnknownCommand(PostgresSync $sync, array $arguments, array $
             if (is_array($row) && $row['stage'] === 'executing') {
                 $origin = json_decode($row['context_json'], true, 16, JSON_THROW_ON_ERROR)['origin_request_id'];
                 // pg_stat_activity在事务内缓存快照，独立自动提交连接才能看到刚启动的worker。
-                $waiting = (int) $inspection->query('SELECT COUNT(*) FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid '
+                $waiting = (int)$inspection->query('SELECT COUNT(*) FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid '
                     . 'WHERE a.datname = current_database() AND a.usename = session_user AND a.application_name = ' . $inspection->quote('type_mqtt_' . $origin)
                     . " AND l.relation = 'type_mqtt_node_audit'::regclass AND NOT l.granted")->fetchColumn() === 1;
                 if ($waiting) {
@@ -626,7 +626,7 @@ function iotFenceAuditCommands(PostgresSync $sync, array $command, array $enviro
         $activeRun = '';
         $registered = identityCommand([...$command, 'iot:mqtt-nodes'], $environment);
         expect(count($registered['nodes']) === 1 && $registered['nodes'][0]['node_id'] === $nodeId
-            && $registered['nodes'][0]['run_id'] === $runId && (int) $registered['nodes'][0]['generation'] === 1
+            && $registered['nodes'][0]['run_id'] === $runId && (int)$registered['nodes'][0]['generation'] === 1
             && $registered['nodes'][0]['state'] === 'fenced', 'IoT节点命令没有取得已回收旧运行');
         $operationId = bin2hex(random_bytes(16));
         $proof = 'owned-native-worker-reaped-' . bin2hex(random_bytes(12));
@@ -639,7 +639,7 @@ function iotFenceAuditCommands(PostgresSync $sync, array $command, array $enviro
         $report['completed_state'] = $original;
         $stages = array_column($original['events'], 'stage');
         sort($stages);
-        expect($stages === ['accepted', 'completed', 'executing'] && (int) $original['operation']['version'] === 3, 'IoT正常原命令没有完整且唯一的三阶段事件');
+        expect($stages === ['accepted', 'completed', 'executing'] && (int)$original['operation']['version'] === 3, 'IoT正常原命令没有完整且唯一的三阶段事件');
         $context = json_decode($original['operation']['context_json'], true, 16, JSON_THROW_ON_ERROR);
         expect($context['operation_id'] === $operationId && $context['origin_request_id'] === $operationId
             && $context['actor_id'] === 'iot-audit-test' && $context['tenant_id'] === null && $context['subject_id'] === $runId
@@ -694,7 +694,7 @@ function iotFenceAuditCommands(PostgresSync $sync, array $command, array $enviro
             && $resolved['fenced'] && !$resolved['observation_isolated'], 'IoT未知原ID没有在同步恢复及原worker释放后完成');
         $resolvedState = brokerFenceAuditState($inspection, $unknownId, 'admin');
         $report['resolved_state'] = $resolvedState;
-        expect($resolvedState['operation']['stage'] === 'completed' && (int) $resolvedState['operation']['version'] === 4
+        expect($resolvedState['operation']['stage'] === 'completed' && (int)$resolvedState['operation']['version'] === 4
             && count($resolvedState['events']) === 4 && $resolvedState['store'] === $unknownState['store'], 'IoT未知恢复重复隔离或没有保留原安全事实');
         foreach ($unknownState['events'] as $event) {
             expect(in_array($event, $resolvedState['events'], true), 'IoT未知恢复修改了原阶段事件');
@@ -738,7 +738,7 @@ function iotFenceAuditCommands(PostgresSync $sync, array $command, array $enviro
                 expect($worker(['action' => 'node_close', 'node_id' => $nodeId, 'node_run_id' => $activeRun]) === ['fenced' => true], 'IoT新节点登记未回收');
             }
             $report['cleanup']['node_registration_closed'] = true;
-            $report['cleanup']['workers_absent'] = (int) $inspection->query("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0;
+            $report['cleanup']['workers_absent'] = (int)$inspection->query("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0;
             $standby = $sync->standby();
             $report['cleanup']['standby_replay_resumed'] = $standby->query('SELECT pg_is_wal_replay_paused()')->fetchColumn() === false;
             expect(!in_array(false, $report['cleanup'], true), 'IoT隔离验收仍有未回收worker或未恢复备库');
@@ -762,7 +762,7 @@ function brokerIsolateObservedNode(PostgresSync $sync, array $command, array $en
     try {
         $deadline = microtime(true) + 12;
         do {
-            $workers = (int) $inspection->query("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name LIKE 'type_mqtt_%'")->fetchColumn();
+            $workers = (int)$inspection->query("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name LIKE 'type_mqtt_%'")->fetchColumn();
             if ($workers === 0) {
                 break;
             }
@@ -809,13 +809,13 @@ function brokerIsolateObservedNode(PostgresSync $sync, array $command, array $en
             }
         }
         expect($original['operation']['stage'] === 'completed' && $original['operation']['result'] === 'success'
-            && (int) $original['operation']['version'] === 4, '未知恢复后的操作当前结果没有单调推进至完成');
+            && (int)$original['operation']['version'] === 4, '未知恢复后的操作当前结果没有单调推进至完成');
         $context = json_decode($original['operation']['context_json'], true, 16, JSON_THROW_ON_ERROR);
         expect($context['operation_id'] === $operationId && $context['origin_request_id'] === $unknown['origin_request_id']
             && $context['authorization']['source'] === 'operator-command' && $context['authorization']['decision'] === 'allowed'
             && $context['authorization']['required_action'] === 'broker.node_fence' && $context['actor_id'] === 'broker-test'
             && $context['target']['node_id'] === $observation['node_id'] && $context['target']['node_run_id'] === $registered[0]['run_id']
-            && $context['target']['observation_run'] === $observation['run_id'] && $context['target']['generation'] === (int) $registered[0]['generation']
+            && $context['target']['observation_run'] === $observation['run_id'] && $context['target']['generation'] === (int)$registered[0]['generation']
             && $context['impact']['proof_hash'] === hash('sha256', $proof) && $context['impact']['confirmed'] === true
             && $context['impact']['target_count'] === 1, '节点动作审计没有冻结准确权限、目标代次和确认摘要');
         expect($original['store']['proof_ref'] === 'sha256:' . hash('sha256', $proof)
@@ -843,14 +843,14 @@ function brokerIsolateObservedNode(PostgresSync $sync, array $command, array $en
         try {
             $inspection->beginTransaction();
             $inspection->exec('UPDATE broker_audit SET details = details WHERE operation_id = ' . $inspection->quote($operationId));
-            $lockerPid = (int) $inspection->query('SELECT pg_backend_pid()')->fetchColumn();
+            $lockerPid = (int)$inspection->query('SELECT pg_backend_pid()')->fetchColumn();
             $interrupted = new Process([...$command, 'broker:audit-clean', '2'], dirname(__DIR__), $environment);
             $blocked = false;
             $deadline = microtime(true) + 3;
             do {
                 // 保持锁事务，同时丢弃统计快照以观察随后启动的清理进程。
                 $inspection->query('SELECT pg_stat_clear_snapshot()')->fetchColumn();
-                $blocked = (int) $inspection->query('SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() '
+                $blocked = (int)$inspection->query('SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() '
                     . 'AND usename = session_user AND ' . $lockerPid . ' = ANY(pg_blocking_pids(pid))')->fetchColumn() > 0;
                 if ($blocked) {
                     break;
@@ -883,7 +883,7 @@ function brokerIsolateObservedNode(PostgresSync $sync, array $command, array $en
     }
     $concurrent = brokerFenceConcurrentCommands($sync, $arguments, $environment);
     $lateUnknown = brokerFenceLateUnknown($sync, $command, $arguments, $environment);
-    return ['generation' => (int) $registered[0]['generation'], 'old_process_and_workers_absent' => true,
+    return ['generation' => (int)$registered[0]['generation'], 'old_process_and_workers_absent' => true,
         'wrong_observation_rejected' => true, 'fenced' => true, 'operation_id' => $operationId, 'unknown' => $unknown,
         'concurrent_first_acceptance' => $concurrent, 'late_query_unknown' => $lateUnknown,
         'audit_events_pruned' => 4, 'operation_fact' => $retained['operation'], 'store_fact' => $retained['store'], 'command' => $arguments];
@@ -894,8 +894,8 @@ function brokerIsolateObservedNode(PostgresSync $sync, array $command, array $en
  * 调用方须先停止本轮节点和浏览器，保持同一个Swoole管理宿主及主备存活；本函数不重启宿主。
  * 只临时改变本轮隔离数据库角色的LOGIN，原有管理连接和第二个存储连接保持可用。
  *
- * @param array<string,string> $environment 与管理宿主一致的受控测试环境，令牌仅通过子进程环境传递。
- * @return array<string,mixed> 无密码、令牌或SQL载荷的响应、准确worker身份和清理事实。
+ * @param array<string,string> $environment 与管理宿主一致的受控测试环境，令牌仅通过子进程环境传递
+ * @return array<string,mixed> 无密码、令牌或SQL载荷的响应、准确worker身份和清理事实
  */
 function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string $probeToken, array $environment, Process $server, int &$checks, string $base): array
 {
@@ -903,15 +903,15 @@ function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string
     expect(($environment['DB_HOST'] ?? '') === '127.0.0.1', '并发隔离回归需要本机PostgreSQL');
     $inspection = $sync->connection();
     $standby = $sync->standby();
-    $role = (string) $inspection->query('SELECT session_user')->fetchColumn();
-    $dataDirectory = realpath((string) $inspection->query('SHOW data_directory')->fetchColumn());
+    $role = (string)$inspection->query('SELECT session_user')->fetchColumn();
+    $dataDirectory = realpath((string)$inspection->query('SHOW data_directory')->fetchColumn());
     expect($role === ($environment['DB_USERNAME'] ?? '') && preg_match('/^[a-z_][a-z0-9_]*$/D', $role) === 1
         && $inspection->query('SELECT current_database()')->fetchColumn() === ($environment['DB_DATABASE'] ?? '')
-        && (string) $inspection->query('SHOW port')->fetchColumn() === ($environment['DB_PORT'] ?? '')
+        && (string)$inspection->query('SHOW port')->fetchColumn() === ($environment['DB_PORT'] ?? '')
         && is_string($dataDirectory) && str_starts_with($dataDirectory, $root . '/build/broker-observability-'), '不能修改不属于本轮观测装置的数据库角色');
     $roleSql = '"' . $role . '"';
     expect($inspection->query('SELECT rolcanlogin FROM pg_roles WHERE rolname = session_user')->fetchColumn() === true, '测试角色初始LOGIN状态异常');
-    $locker = (int) $inspection->query('SELECT pg_backend_pid()')->fetchColumn();
+    $locker = (int)$inspection->query('SELECT pg_backend_pid()')->fetchColumn();
     $workerQuery = $inspection->prepare('SELECT pid, application_name, client_port, wait_event, query_start::text FROM pg_stat_activity '
         . "WHERE datname = current_database() AND usename = session_user AND application_name ~ '^type_mqtt_[a-f0-9]{32}$' "
         . "AND backend_type = 'client backend'");
@@ -923,7 +923,7 @@ function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string
         return $waitQuery->fetchAll(PDO::FETCH_ASSOC);
     };
     $clientCode = 'require getenv("BROKER_TEST_ROOT")."/vendor/autoload.php";'
-        . '$response=(new Type\\Testing\\HttpClient("http://127.0.0.1:".getenv("APP_PORT"),12.0))'
+        . '$response=(new Type\Testing\HttpClient("http://127.0.0.1:".getenv("APP_PORT"),12.0))'
         . '->request("GET","/broker/health/ready",["Authorization"=>"Bearer ".getenv("BROKER_TEST_TOKEN")]);'
         . 'echo json_encode(["status"=>$response->status,"data"=>$response->json()["data"]],JSON_THROW_ON_ERROR);';
     $clients = [];
@@ -936,7 +936,7 @@ function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string
         $descendants = [];
         foreach ($states as $pid => $state) {
             $ancestor = $state['parent'];
-            for ($depth = 0; $depth < 8 && $ancestor !== $owner && isset($states[$ancestor]); $depth++) {
+            for ($depth = 0; $depth < 8 && $ancestor !== $owner && isset($states[$ancestor]); ++$depth) {
                 $ancestor = $states[$ancestor]['parent'];
             }
             if ($ancestor === $owner) {
@@ -953,7 +953,7 @@ function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string
         $workerQuery->execute();
         expect($workerQuery->fetchAll(PDO::FETCH_ASSOC) === [], '并发隔离前节点、浏览器或存储工作仍未排空');
         $baseline = $http->request('GET', '/broker/health/ready', ['Authorization' => 'Bearer ' . $probeToken]);
-        $checks++;
+        ++$checks;
         $report['baseline'] = $baseline->json()['data']['store'];
         expect($report['baseline']['state'] === 'available' && !$report['baseline']['quarantined'], '并发隔离前存储没有取得真实同步证明');
         $initialDescendants = $serverDescendants();
@@ -978,7 +978,7 @@ function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string
         // 第二个HTTP客户端在定位首个本地worker期间启动，不延长生产的一秒锁等待预算。
         $clients['second'] = new Process([PHP_BINARY, '-n', '-d', 'zend.exception_ignore_args=1', '-r', $clientCode], $root, $clientEnvironment);
         $report['stage'] = 'worker_identity';
-        $clientPort = (int) $backends['first']['client_port'];
+        $clientPort = (int)$backends['first']['client_port'];
         expect($clientPort > 0 && $clientPort <= 65535, '首个探针缺少本机TCP连接身份');
         $sockets = new Process(['lsof', '-nP', '-a', '-iTCP:' . $clientPort, '-sTCP:ESTABLISHED', '-Fpn'], $root, null, 65536);
         try {
@@ -991,21 +991,21 @@ function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string
         $candidate = 0;
         foreach (explode("\n", $socketResult->stdout) as $line) {
             if (preg_match('/^p([1-9][0-9]*)$/D', $line, $match) === 1) {
-                $candidate = (int) $match[1];
+                $candidate = (int)$match[1];
             } elseif ($line === 'n127.0.0.1:' . $clientPort . '->127.0.0.1:' . $environment['DB_PORT']) {
                 $matches[$candidate] = true;
             }
         }
         expect(count($matches) === 1 && !isset($matches[0]), '首个数据库连接没有唯一的本地worker');
-        $workerPid = (int) array_key_first($matches);
+        $workerPid = (int)array_key_first($matches);
         $processes = unixProcessStates();
         $ownerPid = $server->pid();
         $ancestor = $workerPid;
-        for ($depth = 0; $depth < 8 && $ancestor !== $ownerPid && isset($processes[$ancestor]); $depth++) {
+        for ($depth = 0; $depth < 8 && $ancestor !== $ownerPid && isset($processes[$ancestor]); ++$depth) {
             $ancestor = $processes[$ancestor]['parent'];
         }
         expect($ownerPid !== null && $ancestor === $ownerPid && $workerPid !== $ownerPid, '准确存储worker不属于本轮管理宿主');
-        $identity = new Process(['ps', '-p', (string) $workerPid, '-o', 'command='], $root, null, 65536);
+        $identity = new Process(['ps', '-p', (string)$workerPid, '-o', 'command='], $root, null, 65536);
         try {
             $identityResult = $identity->wait(1);
             expect($identityResult->successful() && preg_match('/(?:^|\s)broker:store(?:\s|$)/', $identityResult->stdout) === 1
@@ -1069,12 +1069,12 @@ function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string
         $report['first_client'] = ['exit_code' => $first->exitCode, 'timed_out' => $first->timedOut, 'signal' => $first->signal];
         expect($first->successful(), '首个测试客户端没有正常退出');
         $report['first'] = json_decode($first->stdout, true, 64, JSON_THROW_ON_ERROR);
-        $checks++;
+        ++$checks;
         expect($report['first']['status'] === 503 && $report['first']['data']['store']['quarantined'] === true
             && $report['first']['data']['store']['metrics'] === null, '真实cleanup无法连接后首个探针没有保留隔离');
         $report['second'] = json_decode($second->stdout, true, 64, JSON_THROW_ON_ERROR);
         $report['interleaving_seconds'] = microtime(true) - $started;
-        $checks++;
+        ++$checks;
         expect(
             $report['second']['status'] === 503 && $report['second']['data']['store']['quarantined'] === true
             && $report['second']['data']['store']['state'] === 'quarantined' && $report['second']['data']['store']['metrics'] === null,
@@ -1089,7 +1089,7 @@ function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string
         $report['stage'] = 'retained_quarantine';
         $inspection->query('SELECT pg_advisory_lock(1954115693, 1)')->fetchColumn();
         $locked = true;
-        for ($index = 0; $index < 2; $index++) {
+        for ($index = 0; $index < 2; ++$index) {
             $clients['retained_' . $index] = new Process([PHP_BINARY, '-n', '-d', 'zend.exception_ignore_args=1', '-r', $clientCode], $root, $clientEnvironment);
             $retained = $clients['retained_' . $index];
             $deadline = microtime(true) + 3;
@@ -1106,7 +1106,7 @@ function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string
             expect($retainedResult->successful(), '隔离后的探针没有在预算内返回');
             $retainedData = json_decode($retainedResult->stdout, true, 64, JSON_THROW_ON_ERROR);
             $report['retained'][] = ['response' => $retainedData, 'observed_workers' => $observedWorkers];
-            $checks++;
+            ++$checks;
             expect($retainedData['status'] === 503 && $retainedData['data']['store']['quarantined'] === true
                 && $retainedData['data']['store']['state'] === 'quarantined' && $retainedData['data']['store']['metrics'] === null
                 && $observedWorkers === [], '后续探针自动解除隔离或重新启动持久worker');
@@ -1173,7 +1173,7 @@ function brokerConcurrentQuarantine(PostgresSync $sync, HttpClient $http, string
         if ($cleanup !== []) {
             $report['status'] = 'failed';
         }
-        $snapshots = is_file($base . '/observability.json') ? json_decode((string) file_get_contents($base . '/observability.json'), true, 64, JSON_THROW_ON_ERROR) : [];
+        $snapshots = is_file($base . '/observability.json') ? json_decode((string)file_get_contents($base . '/observability.json'), true, 64, JSON_THROW_ON_ERROR) : [];
         $snapshots['concurrent_quarantine'] = $report;
         file_put_contents($base . '/observability.json', json_encode($snapshots, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
         $waiters = null;
@@ -1227,7 +1227,7 @@ if (realpath($argv[0] ?? '') === __FILE__) {
     require_once __DIR__ . '/postgres-sync.php';
     $testRoot = dirname(__DIR__);
     $testArguments = $argv;
-    $databaseTools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+    $databaseTools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
     $fixtureRoot = $testRoot . '/build/broker-observability-' . bin2hex(random_bytes(6));
     expect(mkdir($fixtureRoot, 0700), '无法创建Broker观测验收根');
     $fixtureDatabase = null;

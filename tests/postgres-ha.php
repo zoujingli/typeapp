@@ -8,14 +8,23 @@ use Type\Testing\Process;
 final class PostgresHa
 {
     private array $processes = [];
+
     private array $nodes = [];
+
     private array $nodeEnvironments = [];
+
     private array $report = ['state' => 'preparing', 'topology' => 'same-host-three-patroni-three-etcd', 'watchdog' => 'off', 'hard_fencing_verified' => false, 'faults' => []];
+
     private array $environment;
+
     private string $password;
+
     private string $patroni;
+
     private string $haproxy;
+
     private int $writerPort;
+
     private bool $closed = false;
 
     /** @param array<string,string> $tools 已由NativeDatabase验证的PostgreSQL工具清单。 */
@@ -115,7 +124,7 @@ final class PostgresHa
             foreach ($this->nodes as $name => $ports) {
                 $suffix = strtoupper(substr($name, -1));
                 $writerEnvironment['IOT_HA_DB_' . $suffix] = '127.0.0.1:' . $ports['postgres'];
-                $writerEnvironment['IOT_HA_API_PORT_' . $suffix] = (string) $ports['api'];
+                $writerEnvironment['IOT_HA_API_PORT_' . $suffix] = (string)$ports['api'];
                 $writerEnvironment['IOT_HA_HOST_' . $suffix] = 'localhost';
             }
             $writerConfig = dirname(__DIR__) . '/docs/deployment/iot-ha/haproxy.cfg';
@@ -135,7 +144,7 @@ final class PostgresHa
     /** @return array<string,string> 本轮写入口、TLS与测试凭据；不得将返回值写入证据。 */
     public function environment(): array
     {
-        return ['TYPE_PGSQL_HOST' => '127.0.0.1', 'TYPE_PGSQL_PORT' => (string) $this->writerPort, 'TYPE_PGSQL_USER' => 'iot_cluster_admin',
+        return ['TYPE_PGSQL_HOST' => '127.0.0.1', 'TYPE_PGSQL_PORT' => (string)$this->writerPort, 'TYPE_PGSQL_USER' => 'iot_cluster_admin',
             'TYPE_PGSQL_PASSWORD' => $this->password, 'TYPE_PGSQL_DATABASE' => 'iot_ha', 'TYPE_PGSQL_CA' => $this->directory . '/tls/certificate.pem',
             'TYPE_PGSQL_STANDBY_NAMES' => 'iot_a,iot_b,iot_c'];
     }
@@ -220,7 +229,7 @@ final class PostgresHa
                 $stopped[] = $name;
             }
         }
-        $this->wait('同步备库仍在运行', fn (): bool => (int) $this->connection()->query("SELECT count(*) FROM pg_stat_replication WHERE sync_state = 'sync'")->fetchColumn() === 0);
+        $this->wait('同步备库仍在运行', fn (): bool => (int)$this->connection()->query("SELECT count(*) FROM pg_stat_replication WHERE sync_state = 'sync'")->fetchColumn() === 0);
         return $stopped;
     }
 
@@ -240,7 +249,7 @@ final class PostgresHa
     {
         $leader = $this->leader();
         $connection = $this->connection('postgres', $leader);
-        $cluster = json_decode((string) $this->http($this->nodes[$leader]['api'], '/cluster')['body'], true, 32, JSON_THROW_ON_ERROR);
+        $cluster = json_decode((string)$this->http($this->nodes[$leader]['api'], '/cluster')['body'], true, 32, JSON_THROW_ON_ERROR);
         $members = array_map(static fn (array $member): array => array_intersect_key($member, array_flip(['name', 'role', 'state', 'timeline'])), $cluster['members']);
         return ['leader' => $leader, 'members' => $members, 'settings' => $connection->query("SELECT current_setting('synchronous_standby_names') AS names, current_setting('synchronous_commit') AS commit, current_setting('fsync') AS fsync, current_setting('full_page_writes') AS full_page_writes")->fetch(PDO::FETCH_ASSOC),
             'replication' => $connection->query('SELECT application_name, state, sync_state, flush_lsn::text, replay_lsn::text FROM pg_stat_replication ORDER BY application_name')->fetchAll(PDO::FETCH_ASSOC)];
@@ -348,7 +357,7 @@ final class PostgresHa
             'http' => ['timeout' => 1, 'ignore_errors' => true, 'header' => "Connection: close\r\n"]]);
         $body = @file_get_contents('https://127.0.0.1:' . $port . $path, false, $context);
         $headers = http_get_last_response_headers() ?? [];
-        return ['status' => preg_match('#^HTTP/\S+ (\d+)#', $headers[0] ?? '', $match) === 1 ? (int) $match[1] : 0, 'body' => $body];
+        return ['status' => preg_match('#^HTTP/\S+ (\d+)#', $headers[0] ?? '', $match) === 1 ? (int)$match[1] : 0, 'body' => $body];
     }
 
     private function startNode(string $name): void
@@ -379,7 +388,7 @@ final class PostgresHa
 
     private function tool(string $key): string
     {
-        $path = realpath((string) getenv($key));
+        $path = realpath((string)getenv($key));
         expect($path !== false && is_file($path) && is_executable($path), 'HA验收缺少明确工具：' . $key);
         return $path;
     }
@@ -388,7 +397,7 @@ final class PostgresHa
     {
         $socket = stream_socket_server('tcp://127.0.0.1:0', $number, $error);
         expect(is_resource($socket), '无法分配本轮HA端口');
-        $port = (int) substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
+        $port = (int)substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
         fclose($socket);
         return $port;
     }

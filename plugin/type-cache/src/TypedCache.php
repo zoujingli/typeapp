@@ -4,27 +4,26 @@ declare(strict_types=1);
 
 namespace Type\Cache;
 
-use Closure;
-use InvalidArgumentException;
-use Throwable;
-
 /** 以显式 codec 和有限毫秒 TTL 保存业务数据；并发回源不互斥。 */
 final class TypedCache
 {
     private NamespaceStore $store;
+
     private Codec $codec;
+
     private int $ttl;
+
     private int $maximumTtl;
 
     /**
      * 配置有限 TTL 缓存；期限单位均为毫秒，默认值必须为正且不超过最大值。
      *
-     * @throws InvalidArgumentException 默认期限或上限无效；最大期限不能超过一年。
+     * @throws \InvalidArgumentException 默认期限或上限无效；最大期限不能超过一年
      */
     public function __construct(NamespaceStore $store, Codec $codec, int $ttlMilliseconds = 60000, int $maximumTtlMilliseconds = 86400000)
     {
         if ($ttlMilliseconds < 1 || $maximumTtlMilliseconds < $ttlMilliseconds || $maximumTtlMilliseconds > 31536000000) {
-            throw new InvalidArgumentException('类型化缓存必须使用有限且有上限的 TTL');
+            throw new \InvalidArgumentException('类型化缓存必须使用有限且有上限的 TTL');
         }
         $this->store = $store;
         $this->codec = $codec;
@@ -65,12 +64,12 @@ final class TypedCache
      *
      * @param list<string> $keys
      * @param list<mixed> $values
-     * @param int|null $ttlMilliseconds null 沿用默认，超过最大值拒绝。
+     * @param null|int $ttlMilliseconds null 沿用默认，超过最大值拒绝
      */
     public function putMany(array $keys, array $values, ?int $ttlMilliseconds = null): bool
     {
         if (count($keys) !== count($values) || !array_is_list($values)) {
-            throw new InvalidArgumentException('缓存键和值必须对应');
+            throw new \InvalidArgumentException('缓存键和值必须对应');
         }
         $payloads = [];
         foreach ($values as $value) {
@@ -87,12 +86,12 @@ final class TypedCache
     /**
      * 校验 TTL 后读取缓存，命中直接返回；回源异常不缓存，旧代结果不回填新代，不提供并发回源互斥。
      *
-     * @param Closure(): mixed $loader 零参数回源，依赖通过显式捕获传入。
-     * @param int|null $ttlMilliseconds null 沿用默认；非正数仍可命中，未命中回源后不回填。
-     * @param bool $bypass 为 true 时只回源，不读取或回填缓存，也不应用 TTL。
-     * @throws InvalidArgumentException 未绕过缓存时 TTL 超限，在读取和回源之前拒绝。
+     * @param \Closure(): mixed $loader 零参数回源，依赖通过显式捕获传入
+     * @param null|int $ttlMilliseconds null 沿用默认；非正数仍可命中，未命中回源后不回填
+     * @param bool $bypass 为 true 时只回源，不读取或回填缓存，也不应用 TTL
+     * @throws \InvalidArgumentException 未绕过缓存时 TTL 超限，在读取和回源之前拒绝
      */
-    public function remember(string $key, Closure $loader, ?int $ttlMilliseconds = null, bool $bypass = false): mixed
+    public function remember(string $key, \Closure $loader, ?int $ttlMilliseconds = null, bool $bypass = false): mixed
     {
         if ($bypass) {
             return $loader();
@@ -115,6 +114,7 @@ final class TypedCache
     {
         return $this->store->delete([$key]);
     }
+
     /**
      * 批量删除当前代的键，已缺失的键不构成失败。
      *
@@ -124,11 +124,13 @@ final class TypedCache
     {
         return $this->store->delete($keys);
     }
+
     /** 切换代次立即失效；返回新代身份，旧数据留待有界回收。 */
     public function clear(): string
     {
         return $this->store->clear();
     }
+
     /** 回收旧代，limit 限制本次索引及代次处理量，返回实际删除键数。 */
     public function collect(int $limit = 100): int
     {
@@ -139,7 +141,7 @@ final class TypedCache
     {
         $value ??= $this->ttl;
         if ($value > $this->maximumTtl) {
-            throw new InvalidArgumentException('缓存 TTL 超出配置上限');
+            throw new \InvalidArgumentException('缓存 TTL 超出配置上限');
         }
         return $value;
     }
@@ -157,7 +159,7 @@ final class TypedCache
         }
         try {
             return new CacheItem(true, $this->codec->decode(substr($payload, strlen($prefix))));
-        } catch (Throwable) {
+        } catch (\Throwable) {
             return new CacheItem(false);
         }
     }

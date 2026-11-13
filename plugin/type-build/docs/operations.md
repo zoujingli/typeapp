@@ -4,7 +4,7 @@
 
 单程序构建将 Swoole 及其他非系统原生运行库静态链接进主程序，启动不释放运行库。部署使用目标平台的程序和外置配置，无需另行安装 PHP、Swoole 或构建工具；页面只在显式安装时生成。外部数据库、Redis、证书与持久数据按业务需要管理，已发布版本和实际平台范围见[环境与依赖](https://iots.top/#/guide/environment)。历史目录包仍须保留原完整布局。
 
-当前主仓源码构建基线为 PHP `8.5.10 ZTS`、TypePHP 固定开发快照（`0.9.6`）、PHPX `2.9.5`，Swoole 固定为提交 `64988849` 的 6.3 开发快照（版本字符串 `6.3.0RC1`）；各平台模块升级状态见[构建输入](../resources/swoole/README.md)，本手册不扩大平台支持范围。当前迁移结果见[平台与验收](https://iots.top/#/guide/platforms)，RC14 的历史验收仍见[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。每个平台和数据库 profile 必须使用各自匹配的 SDK 和最终程序验证，不能沿用 RC13 的身份或结论。
+当前主仓源码构建基线为 PHP `8.5.12 ZTS`、TypePHP 提交 `c5599c5c`、PHPX `2.9.8`，Swoole 固定为提交 `81404909` 的 6.3 开发快照（版本字符串 `6.3.0RC1`）；各平台模块升级状态见[构建输入](../resources/swoole/README.md)，本手册不扩大平台支持范围。当前迁移结果见[平台与验收](https://iots.top/#/guide/platforms)，RC14 的历史验收仍见[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。每个平台和数据库 profile 必须使用各自匹配的 SDK 和最终程序验证，不能沿用 RC13 的身份或结论。
 
 ## 1. 固定部署对象
 
@@ -29,7 +29,7 @@
 
 ## 2. 首次部署
 
-物联中心的页面已经编入程序。空库初始化使用 `./app app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>`，初始口令从 `APP_ADMIN_PASSWORD`、`APP_CUSTOMER_PASSWORD` 受控环境读取；它会先暂存页面，再初始化数据库，最后写入应用根的 `public/`。普通启动不释放资源。数据库成功但页面失败时运行 `./app web:install --force` 修复，不能重新初始化数据库。下面的 `migrate run` 仅适用于开放该命令的通用应用。
+物联中心的页面已经编入程序。空库初始化使用 `APP_PLATFORM_PASSWORD=受控平台口令 ./app app:install <平台账号> <姓名>`，初始口令从 `APP_ADMIN_PASSWORD`、`APP_CUSTOMER_PASSWORD` 受控环境读取；它会先暂存页面，再初始化数据库，最后写入应用根的 `public/`。普通启动不释放资源。数据库成功但页面失败时运行 `./app web:install --force` 修复，不能重新初始化数据库。下面的 `migrate run` 仅适用于开放该命令的通用应用。
 
 1. 为所选驱动准备独立数据库及受限业务账号。SQLite准备私有、可写的数据父目录；其他驱动由数据库管理员创建库和账号。
 2. 在外部运行根配置`.env`或受控进程环境，设置`APP_BASE_PATH`、数据库连接、监听/Host白名单和令牌。生产保持`APP_ENV=prod`、`APP_DEBUG=false`；密钥不写入构建或发布物。

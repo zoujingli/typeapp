@@ -9,7 +9,7 @@ final class Batch
 {
     /**
      * 核对同一主仓 SHA、工作流及执行轮次的完整原生验收；单项手动重跑不能用于发布。
-     * @throws \RuntimeException 缺少完整成功结果或任务列表不完整。
+     * @throws \RuntimeException 缺少完整成功结果或任务列表不完整
      */
     public static function nativeEvidence(string $root, string $source): string
     {
@@ -20,14 +20,14 @@ final class Batch
         if ($releaseRun !== false && $releaseRun !== '') {
             $attempt = getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT');
             $version = getenv('TYPE_RELEASE_VERSION');
-            if (!ctype_digit($releaseRun) || (int) $releaseRun < 1 || !is_string($attempt) || !ctype_digit($attempt) || (int) $attempt < 1
+            if (!ctype_digit($releaseRun) || (int)$releaseRun < 1 || !is_string($attempt) || !ctype_digit($attempt) || (int)$attempt < 1
                 || !is_string($version) || !preg_match('/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-rc\.[1-9][0-9]*)?$/D', $version)) {
                 throw new \RuntimeException('发布验收需要准确运行、轮次和版本');
             }
             $endpoint = 'repos/zoujingli/typeapp/actions/runs/' . $releaseRun . '/attempts/' . $attempt;
             $run = json_decode(Process::output(['gh', 'api', $endpoint], $root), true, 512, JSON_THROW_ON_ERROR);
-            $jobs = self::actionsJobs($root, (int) $releaseRun, (int) $attempt);
-            self::verifyReleaseEvidence($run, $jobs, $source, $version, (int) $releaseRun, (int) $attempt);
+            $jobs = self::actionsJobs($root, (int)$releaseRun, (int)$attempt);
+            self::verifyReleaseEvidence($run, $jobs, $source, $version, (int)$releaseRun, (int)$attempt);
             return 'https://github.com/zoujingli/typeapp/actions/runs/' . $releaseRun . '/attempts/' . $attempt;
         }
         $runs = json_decode(Process::output(['gh', 'api', 'repos/zoujingli/typeapp/actions/workflows/native-command.yml/runs?head_sha=' . $source . '&status=success&per_page=100'], $root), true, 512, JSON_THROW_ON_ERROR);
@@ -59,7 +59,7 @@ final class Batch
      * 读取固定轮次的全部任务；发布矩阵超过一页时仍核对完整数量与唯一任务身份。
      *
      * @return array{total_count:int, jobs:list<array<string,mixed>>}
-     * @throws \RuntimeException 分页缺失、数量变化或重复任务可能混入其他读取结果。
+     * @throws \RuntimeException 分页缺失、数量变化或重复任务可能混入其他读取结果
      */
     public static function actionsJobs(string $root, int $run, int $attempt): array
     {
@@ -144,7 +144,7 @@ final class Batch
         foreach ($staticJobs as $platform => $label) {
             foreach (['sqlite', 'mysql', 'pgsql'] as $profile) {
                 $matches = array_values(array_filter($jobs['jobs'], static function (array $job) use ($profile, $label): bool {
-                    $name = (string) ($job['name'] ?? '');
+                    $name = (string)($job['name'] ?? '');
                     return str_contains($name, $profile . ' · ' . $label);
                 }));
                 if (count($matches) !== 1) {
@@ -186,10 +186,10 @@ final class Batch
     /**
      * 单组件与批次共用固定提交的内容检查，全部通过后才生成拆分提交。
      *
-     * @param array<string, array<string, string>> $packages 全部组件映射，用于核对第一方依赖。
+     * @param array<string, array<string, string>> $packages 全部组件映射，用于核对第一方依赖
      * @return array{package: string, repository: string, branch: string, split: string, tree: string, write-secret: string}
-     * @throws \InvalidArgumentException 未指定完整提交 SHA。
-     * @throws \RuntimeException 映射、分发材料、依赖或拆分内容不符合公开发布约定。
+     * @throws \InvalidArgumentException 未指定完整提交 SHA
+     * @throws \RuntimeException 映射、分发材料、依赖或拆分内容不符合公开发布约定
      */
     public static function package(string $root, string $source, string $name, array $packages): array
     {
@@ -255,10 +255,10 @@ final class Batch
     /**
      * 下游从完整 Git 历史重建计划，并重新核对每项回执，完成标记不能替代校验。
      *
-     * @param array<string, mixed> $report 上游汇总报告。
-     * @param array<string, mixed> $mapping 固定提交中的组件映射。
-     * @throws \InvalidArgumentException 报告中的批次模式或版本无效。
-     * @throws \RuntimeException 报告不完整、身份不一致或缺少完整 Git 历史。
+     * @param array<string, mixed> $report 上游汇总报告
+     * @param array<string, mixed> $mapping 固定提交中的组件映射
+     * @throws \InvalidArgumentException 报告中的批次模式或版本无效
+     * @throws \RuntimeException 报告不完整、身份不一致或缺少完整 Git 历史
      */
     public static function verifyReport(string $root, string $source, array $report, array $mapping): void
     {
@@ -284,9 +284,9 @@ final class Batch
 
     /**
      * 逐项匹配计划身份和回执；任一缺失、错配或失败都会使整个批次 incomplete。
-     * @param array<string, mixed> $plan 固定源码生成的计划。
-     * @param array<string, array<string, mixed>> $reports 组件名到实际分发回执。
-     * @return array<string, mixed> 汇总结果；跨仓发布本身不具有原子性。
+     * @param array<string, mixed> $plan 固定源码生成的计划
+     * @param array<string, array<string, mixed>> $reports 组件名到实际分发回执
+     * @return array<string, mixed> 汇总结果；跨仓发布本身不具有原子性
      */
     public static function collect(array $plan, array $reports): array
     {

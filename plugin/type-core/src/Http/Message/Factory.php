@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Core\Http\Message;
 
-use InvalidArgumentException;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
@@ -17,16 +16,9 @@ use Psr\Http\Message\UploadedFileFactoryInterface;
 use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Message\UriFactoryInterface;
 use Psr\Http\Message\UriInterface;
-use RuntimeException;
 
 /** 共享的 PSR-17 工厂，创建消息值对象及有明确所有者的正文流。 */
-final class Factory implements
-    StreamFactoryInterface,
-    UriFactoryInterface,
-    RequestFactoryInterface,
-    ResponseFactoryInterface,
-    ServerRequestFactoryInterface,
-    UploadedFileFactoryInterface
+final class Factory implements StreamFactoryInterface, UriFactoryInterface, RequestFactoryInterface, ResponseFactoryInterface, ServerRequestFactoryInterface, UploadedFileFactoryInterface
 {
     /** 把已打开的流包装为上传对象；大小以字节计，客户端元数据不视为可信。 */
     public function createUploadedFile(
@@ -41,8 +33,8 @@ final class Factory implements
 
     /**
      * 创建带独立空正文流的服务端请求，不读取 PHP 请求全局变量。
-     * @param string|UriInterface $uri 原始 URI 或已解析值对象。
-     * @param array<string, mixed> $serverParams 宿主提供的元数据。
+     * @param string|UriInterface $uri 原始 URI 或已解析值对象
+     * @param array<string, mixed> $serverParams 宿主提供的元数据
      */
     public function createServerRequest(string $method, $uri, array $serverParams = []): ServerRequestInterface
     {
@@ -51,7 +43,7 @@ final class Factory implements
 
     /**
      * 创建带独立空正文流的请求，并由 URI 初始化 Host。
-     * @param string|UriInterface $uri 原始 URI 或已解析值对象。
+     * @param string|UriInterface $uri 原始 URI 或已解析值对象
      */
     public function createRequest(string $method, $uri): RequestInterface
     {
@@ -75,7 +67,7 @@ final class Factory implements
     {
         $resource = fopen('php://temp', 'w+b');
         if ($resource === false) {
-            throw new RuntimeException('无法创建正文流');
+            throw new \RuntimeException('无法创建正文流');
         }
         $stream = new Stream($resource);
         $length = strlen($content);
@@ -83,7 +75,7 @@ final class Factory implements
         while ($offset < $length) {
             $written = $stream->write(substr($content, $offset));
             if ($written === 0) {
-                throw new RuntimeException('正文流写入没有进展');
+                throw new \RuntimeException('正文流写入没有进展');
             }
             $offset += $written;
         }
@@ -95,27 +87,27 @@ final class Factory implements
     public function createStreamFromFile(string $filename, string $mode = 'r'): StreamInterface
     {
         if (!preg_match('/^[rwaxc][bte+]*$/D', $mode)) {
-            throw new InvalidArgumentException('流打开模式无效');
+            throw new \InvalidArgumentException('流打开模式无效');
         }
         if ($filename === '' || str_contains($filename, "\0")) {
-            throw new RuntimeException('流文件名无效');
+            throw new \RuntimeException('流文件名无效');
         }
         $resource = @fopen($filename, $mode);
         if ($resource === false) {
-            throw new RuntimeException('无法打开流文件');
+            throw new \RuntimeException('无法打开流文件');
         }
         return new Stream($resource);
     }
 
     /**
      * 接管可读流资源，不复制内容；原持有者不得再独立关闭该句柄。
-     * @param resource $resource 已打开且允许读取的流。
+     * @param resource $resource 已打开且允许读取的流
      */
     public function createStreamFromResource($resource): StreamInterface
     {
         if (!is_resource($resource) || get_resource_type($resource) !== 'stream'
-            || strpbrk((string) stream_get_meta_data($resource)['mode'], 'r+') === false) {
-            throw new InvalidArgumentException('流工厂需要可读的流资源');
+            || strpbrk((string)stream_get_meta_data($resource)['mode'], 'r+') === false) {
+            throw new \InvalidArgumentException('流工厂需要可读的流资源');
         }
         return new Stream($resource);
     }
@@ -126,7 +118,7 @@ final class Factory implements
             return $uri;
         }
         if (!is_string($uri)) {
-            throw new InvalidArgumentException('请求 URI 必须是字符串或 UriInterface');
+            throw new \InvalidArgumentException('请求 URI 必须是字符串或 UriInterface');
         }
         return $this->createUri($uri);
     }

@@ -4,22 +4,20 @@ declare(strict_types=1);
 
 namespace TypeApp\OrmSuite;
 
-use Closure;
-use DateTimeImmutable;
-use RuntimeException;
 use Type\Orm\Connection;
+use Type\Orm\DatabaseException;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
-use Type\Orm\DatabaseException;
+use Type\Orm\Helper\QueryHelper;
 use Type\Orm\Migration\Migration;
 use Type\Orm\Migration\MigrationException;
 use Type\Orm\Migration\Migrator;
 use Type\Orm\ModelBehavior;
 use Type\Orm\ModelException;
 use Type\Orm\ModelQuery;
+use Type\Orm\Relation;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
-use Type\Orm\Relation;
 
 /** 一个业务流程，三种安装仅替换 DriverFactory 与声明式物理存储。 */
 final class Suite
@@ -32,6 +30,53 @@ final class Suite
     public static function run(): array
     {
         return CoroutineRuntime::run(static fn (): array => self::execute());
+    }
+
+    /** 等待另一独立进程后尝试保存同一旧版本，返回成功或冲突结果。 */
+    public static function race(Connection $connection, int $id): string
+    {
+        $article = Article::query()->find($id);
+        self::awaitPeer();
+        $article->setViews($article->getViews() + 1);
+        try {
+            $article->save();
+            return 'updated';
+        } catch (ModelException $error) {
+            if ($error->errorCode() !== 'optimistic_conflict') {
+                throw $error;
+            }
+            return 'conflict';
+        }
+    }
+
+    /**
+     * 核对双进程竞争后仅一次更新留存，返回精确版本与计数。
+     *
+     * @return array{views: int, version: int}
+     */
+    public static function verifyRace(Connection $connection, int $id): array
+    {
+        $article = Article::query()->find($id);
+        self::check($article->getViews() === 1 && $article->getVersion() === 2, '两个独立进程没有留下唯一成功版本');
+        return ['views' => 1, 'version' => 2];
+    }
+
+    /** 两个真实进程同时更新同一行，数据库计算新值和版本，避免读改写丢失。 */
+    public static function incrementRace(Connection $connection, int $id): string
+    {
+        self::awaitPeer();
+        for ($index = 0; $index < 20; ++$index) {
+            self::check(Article::query()->where('id', '=', $id)->increment('views') === 1, '原子更新影响行数错误');
+        }
+        return 'incremented';
+    }
+
+    /** 两进程各二十次更新全部保留，版本同步递增。 */
+    public static function verifyIncrementRace(Connection $connection, int $id): array
+    {
+        $article = Article::query()->findOrFail($id);
+        self::check($article->views === 41 && $article->version === 42, '原子更新丢失值或版本');
+        return ['views' => $article->views, 'version' => $article->version];
     }
 
     private static function execute(): array
@@ -58,7 +103,7 @@ final class Suite
                 $connection = Db::connection('default', true);
                 $user = User::create(['name' => '用户甲', 'active' => true, 'external_id' => '123456789012345678901234567890',
                     'credit' => '12345678901234567890.12', 'profile' => ['tier' => 'gold', 'enabled' => true, 'number' => 1],
-                    'joined_at' => new DateTimeImmutable('2026-09-09T08:30:01.123456+08:00'), 'secret' => '仅供内部']);
+                    'joined_at' => new \DateTimeImmutable('2026-09-09T08:30:01.123456+08:00'), 'secret' => '仅供内部']);
                 self::check($user->isPersisted() && $user->getId() > 0, '静态模型创建或主键返回错误');
                 $freshUser = User::find($user->getId());
                 self::check(User::find(2147483647) === null
@@ -73,7 +118,7 @@ final class Suite
                     && !array_key_exists('secret', $freshUser->toArray()), '模型精确类型、JSON、时间或隐藏字段不一致');
                 (new Details(['user_id' => $user->getId(), 'bio' => '个人简介']))->save();
                 $observer = new ArticleObserver();
-                $behavior = (new ModelBehavior())->observe($observer)->setter('title', static fn (mixed $value): mixed => trim((string) $value));
+                $behavior = (new ModelBehavior())->observe($observer)->setter('title', static fn (mixed $value): mixed => trim((string)$value));
                 $article = new Article(['user_id' => $user->getId(), 'title' => ' 第一篇 ', 'status' => 'published', 'views' => 0], false, $behavior);
                 $article->save();
                 self::check($article->getTitle() === '第一篇' && $observer->events() === ['saving', 'creating', 'created', 'saved'], '创建事件或修改器没有贯通');
@@ -122,9 +167,9 @@ final class Suite
                         self::check(self::reject(static fn () => Db::connection('archive'), 'cross_database_transaction'), '事务内访问另一逻辑库');
                         $rolledBack = new Article(['user_id' => $user->getId(), 'title' => '不应保存', 'status' => 'draft', 'views' => 0]);
                         $rolledBack->save();
-                        throw new RuntimeException('撤销发布');
+                        throw new \RuntimeException('撤销发布');
                     });
-                } catch (RuntimeException $error) {
+                } catch (\RuntimeException $error) {
                     self::check($error->getMessage() === '撤销发布', '事务错误丢失');
                 }
                 self::check($base->count() === 3 && self::reject(static fn () => $rolledBack->getTitle(), 'model_invalid'), '回滚没有同步模型失效');
@@ -138,7 +183,7 @@ final class Suite
                 self::check(User::query()->master()->find($user->getId())->getName() === '用户甲'
                     && Db::connection() === $connection, '未配置副本时没有使用主库');
                 $helper = User::search(['active' => true, 'name' => '用户甲'])->equal('active')->like('name');
-                self::check($helper instanceof \Type\Orm\Helper\QueryHelper && $helper->query()->firstOrFail()->getId() === $user->getId(), '静态 search 与模型水合不一致');
+                self::check($helper instanceof QueryHelper && $helper->query()->firstOrFail()->getId() === $user->getId(), '静态 search 与模型水合不一致');
                 $unfiltered = User::search(['enabled' => true, 'keyword' => '用户甲', 'sort' => 'name', 'page' => 1, 'page_size' => 1]);
                 $filtered = $unfiltered->equal(['enabled' => 'active'])->like(['keyword' => 'name'])->order(['name']);
                 self::check($filtered->query()->firstOrFail()->getId() === $user->getId()
@@ -180,7 +225,7 @@ final class Suite
             try {
                 $other = $manager->connect($scope, 'default');
                 $connection->transaction(static function (Connection $transaction) use ($query, $other, $articleId): void {
-                    self::check((int) $query->lockForUpdate()->first()['id'] === $articleId, '没有取得文章行锁');
+                    self::check((int)$query->lockForUpdate()->first()['id'] === $articleId, '没有取得文章行锁');
                     $other->transaction(static function (Connection $transaction) use ($other, $articleId): void {
                         self::check($other->table('type_suite_articles')->where('id', '=', $articleId)->lockForUpdate(true)->get() === [], 'SKIP LOCKED 没有跳过另一个连接持有的锁');
                     });
@@ -217,55 +262,16 @@ final class Suite
         return $capabilities;
     }
 
-    /** 等待另一独立进程后尝试保存同一旧版本，返回成功或冲突结果。 */
-    public static function race(Connection $connection, int $id): string
-    {
-        $article = Article::query()->find($id);
-        self::awaitPeer();
-        $article->setViews($article->getViews() + 1);
-        try {
-            $article->save();
-            return 'updated';
-        } catch (ModelException $error) {
-            if ($error->errorCode() !== 'optimistic_conflict') {
-                throw $error;
-            }
-            return 'conflict';
-        }
-    }
-
-    /**
-     * 核对双进程竞争后仅一次更新留存，返回精确版本与计数。
-     *
-     * @return array{views: int, version: int}
-     */
-    public static function verifyRace(Connection $connection, int $id): array
-    {
-        $article = Article::query()->find($id);
-        self::check($article->getViews() === 1 && $article->getVersion() === 2, '两个独立进程没有留下唯一成功版本');
-        return ['views' => 1, 'version' => 2];
-    }
-
-    /** 两个真实进程同时更新同一行，数据库计算新值和版本，避免读改写丢失。 */
-    public static function incrementRace(Connection $connection, int $id): string
-    {
-        self::awaitPeer();
-        for ($index = 0; $index < 20; $index++) {
-            self::check(Article::query()->where('id', '=', $id)->increment('views') === 1, '原子更新影响行数错误');
-        }
-        return 'incremented';
-    }
-
     /** 两进程各写一次就绪标记；读写均持锁，兼容 Windows 的强制文件锁。 */
     private static function awaitPeer(): void
     {
-        $file = (string) getenv('TYPE_SUITE_BARRIER');
+        $file = (string)getenv('TYPE_SUITE_BARRIER');
         if ($file === '' || !is_file($file)) {
-            throw new RuntimeException('缺少并发验证屏障');
+            throw new \RuntimeException('缺少并发验证屏障');
         }
         $handle = fopen($file, 'r+b');
         if ($handle === false) {
-            throw new RuntimeException('无法打开并发验证屏障');
+            throw new \RuntimeException('无法打开并发验证屏障');
         }
         $announced = false;
         $deadline = microtime(true) + 10;
@@ -276,16 +282,16 @@ final class Suite
                     try {
                         if (!$announced) {
                             if (fseek($handle, 0, SEEK_END) !== 0 || fwrite($handle, "ready\n") !== 6 || !fflush($handle)) {
-                                throw new RuntimeException('无法写入并发验证屏障');
+                                throw new \RuntimeException('无法写入并发验证屏障');
                             }
                             $announced = true;
                         }
                         if (!rewind($handle)) {
-                            throw new RuntimeException('无法定位并发验证屏障');
+                            throw new \RuntimeException('无法定位并发验证屏障');
                         }
                         $contents = stream_get_contents($handle, 64);
                         if ($contents === false) {
-                            throw new RuntimeException('无法读取并发验证屏障');
+                            throw new \RuntimeException('无法读取并发验证屏障');
                         }
                         if (substr_count($contents, "\n") >= 2) {
                             return;
@@ -296,21 +302,13 @@ final class Suite
                 }
                 usleep(1000);
             }
-            throw new RuntimeException('并发更新屏障超时');
+            throw new \RuntimeException('并发更新屏障超时');
         } finally {
             fclose($handle);
         }
     }
 
-    /** 两进程各二十次更新全部保留，版本同步递增。 */
-    public static function verifyIncrementRace(Connection $connection, int $id): array
-    {
-        $article = Article::query()->findOrFail($id);
-        self::check($article->views === 41 && $article->version === 42, '原子更新丢失值或版本');
-        return ['views' => $article->views, 'version' => $article->version];
-    }
-
-    private static function reject(Closure $operation, string $code = ''): bool
+    private static function reject(\Closure $operation, string $code = ''): bool
     {
         try {
             $operation();
@@ -327,7 +325,7 @@ final class Suite
     private static function check(bool $condition, string $message): void
     {
         if (!$condition) {
-            throw new RuntimeException($message);
+            throw new \RuntimeException($message);
         }
     }
 }

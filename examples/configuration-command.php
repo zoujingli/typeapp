@@ -12,7 +12,7 @@ function main(int $argc, array $argv): void
     if ($argc !== 2) {
         throw new InvalidArgumentException('配置验收必须传入明确的测试 dotenv 文件');
     }
-    $environment = Environment::load((string) $argv[1]);
+    $environment = Environment::load((string)$argv[1]);
     $configuration = ConfigurationFixture::load($environment);
     if ($configuration->text('app.name') !== '运行时配置' || $configuration->integer('app.port') !== 9527
         || !$configuration->boolean('app.debug') || $configuration->get('app.ratio') !== 1.25

@@ -16,6 +16,7 @@ use Type\Validate\ValidationException;
 final class Handler implements RequestHandlerInterface
 {
     private ResponseFactoryInterface $responses;
+
     private StreamFactoryInterface $streams;
 
     /** 注入 PSR 响应与流工厂，校验规则不依赖 HTTP 运行时全局状态。 */
@@ -41,6 +42,6 @@ final class Handler implements RequestHandlerInterface
             $result = ['error' => $error->errorCode(), 'fields' => $error->errors()];
         }
         return $this->responses->createResponse($status)->withHeader('Content-Type', 'application/json; charset=utf-8')
-            ->withBody($this->streams->createStream((string) json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
+            ->withBody($this->streams->createStream((string)json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
     }
 }

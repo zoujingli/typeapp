@@ -22,7 +22,9 @@ use Type\Runtime\Arguments;
 final class IoInventory
 {
     private Standard $printer;
+
     private array $calls = [];
+
     private array $definitions = [];
 
     /** 准备仅用于展示 AST 表达式的打印器；不加载或执行被审计的生产源码。 */
@@ -93,7 +95,7 @@ final class IoInventory
                 'phase' => 'requires-call-chain-review'];
         }
         foreach ($node->getSubNodeNames() as $name) {
-            $value = $node->$name;
+            $value = $node->{$name};
             foreach (is_array($value) ? $value : [$value] as $child) {
                 if ($child instanceof Node) {
                     $this->visit($child, $file, $owner, $class, $namespace);

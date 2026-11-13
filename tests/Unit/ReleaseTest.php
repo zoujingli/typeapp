@@ -6,11 +6,14 @@ namespace TypeTests\Unit;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Type\Build\BuildProfile;
 use TypeApp\Distribution\Batch;
+use TypeApp\Distribution\Process;
+use TypeApp\Release\Candidate;
 use TypeApp\Release\Evidence;
 use TypeApp\Release\GitHub;
 use TypeApp\Release\Plan;
-use TypeApp\Release\Candidate;
+use TypeApp\Release\UpgradeBaseline;
 
 require_once dirname(__DIR__) . '/support.php';
 require_once dirname(__DIR__, 2) . '/tools/distribution/Process.php';
@@ -21,7 +24,11 @@ require_once dirname(__DIR__, 2) . '/tools/release/GitHub.php';
 require_once dirname(__DIR__, 2) . '/tools/release/Candidate.php';
 require_once dirname(__DIR__, 2) . '/tools/release/UpgradeBaseline.php';
 
-/** 发布资格测试使用完整任务证据；Release外部边界使用保存真实文件的命令哨兵。 */
+/**
+ * 发布资格测试使用完整任务证据；Release外部边界使用保存真实文件的命令哨兵。
+ * @internal
+ * @coversNothing
+ */
 final class ReleaseTest extends TestCase
 {
     /** HTTP 下载不携带 POSIX 执行位，准备入口须先恢复权限再验证可执行形态。 */
@@ -56,21 +63,21 @@ final class ReleaseTest extends TestCase
             chmod($file, 0644);
             putenv('TYPEAPP_BUILD_PROFILE=sqlite');
             $command = [PHP_BINARY, $root . '/tools/release/prepare-upgrade-baseline.php'];
-            [$code, $output, $error] = \TypeApp\Distribution\Process::run($command, $root);
+            [$code, $output, $error] = Process::run($command, $root);
             self::assertSame(0, $code, $error);
             clearstatcache(true, $file);
             self::assertTrue(is_executable($file));
             self::assertSame($program['sha256'], hash_file('sha256', $file));
             self::assertStringContainsString('已核对公开升级基线', $output);
-            self::assertSame(0, \TypeApp\Distribution\Process::run($command, $root)[0]);
+            self::assertSame(0, Process::run($command, $root)[0]);
             chmod($file, 0644);
             file_put_contents($file, 'tampered');
-            self::assertNotSame(0, \TypeApp\Distribution\Process::run($command, $root)[0]);
+            self::assertNotSame(0, Process::run($command, $root)[0]);
             unlink($file);
             file_put_contents($root . '/outside', $header);
             chmod($root . '/outside', 0644);
             symlink($root . '/outside', $file);
-            self::assertNotSame(0, \TypeApp\Distribution\Process::run($command, $root)[0]);
+            self::assertNotSame(0, Process::run($command, $root)[0]);
             clearstatcache(true, $root . '/outside');
             self::assertFalse(is_executable($root . '/outside'));
         } finally {
@@ -169,14 +176,6 @@ final class ReleaseTest extends TestCase
         }
     }
 
-    /** @return iterable<string,array{string}> 每种管理数据库均需同一程序及公开旧版升级证据。 */
-    public static function managementProfiles(): iterable
-    {
-        foreach (['sqlite', 'mysql', 'pgsql'] as $profile) {
-            yield $profile => [$profile];
-        }
-    }
-
     /** profile 候选必须提供对应依赖闭包、只读与真实升级证据；通信项不能借用另一个程序。 */
     #[DataProvider('managementProfiles')]
     public function testProfileCandidateRejectsMissingOrMismatchedDependencyFacts(string $profile): void
@@ -198,11 +197,11 @@ final class ReleaseTest extends TestCase
         foreach ($required as $feature) {
             $business[$feature] = ['status' => 'passed', 'artifact-sha256' => $sha, 'log-sha256' => str_repeat('e', 64)];
         }
-        $business['iot-upgrade']['baseline'] = \TypeApp\Release\UpgradeBaseline::expected('linux-x64', $profile);
+        $business['iot-upgrade']['baseline'] = UpgradeBaseline::expected('linux-x64', $profile);
         $record = [
             'protocol' => 2, 'delivery' => 'single-executable', 'status' => 'passed', 'source' => $source,
             'version' => $version, 'platform' => 'linux-x64', 'profile' => $profile, 'database' => $profile,
-            'profile-facts' => ['name' => $profile, 'database' => $profile, 'features' => ['iot', 'mqtt', 'redis'], 'rejected-capabilities' => \Type\Build\BuildProfile::rejectedCapabilities(['database' => $profile, 'features' => ['iot', 'mqtt', 'redis']])],
+            'profile-facts' => ['name' => $profile, 'database' => $profile, 'features' => ['iot', 'mqtt', 'redis'], 'rejected-capabilities' => BuildProfile::rejectedCapabilities(['database' => $profile, 'features' => ['iot', 'mqtt', 'redis']])],
             'features' => ['iot', 'mqtt', 'redis'],
             'runtime-extensions' => ['pdo_' . $profile, 'redis'], 'static-archives' => ['libphp.a', 'lib' . $profile . '.a'],
             'system-libraries' => ['libc.so.6'], 'file' => $name, 'sha256' => $sha, 'bytes' => filesize($root . '/' . $name),
@@ -268,18 +267,12 @@ final class ReleaseTest extends TestCase
         }
     }
 
-    /** @return iterable<string, array{string, string, bool}> 真实路径与其允许的构建目录。 */
-    public static function candidatePaths(): iterable
+    /** @return iterable<string,array{string}> 每种管理数据库均需同一程序及公开旧版升级证据。 */
+    public static function managementProfiles(): iterable
     {
-        yield 'windows-realpath' => ['C:\\workspace\\app\\build\\unpacked release', 'C:\\workspace\\app/build', true];
-        yield 'windows-forward' => ['C:/workspace/app/build/unpacked release', 'C:/workspace/app/build', true];
-        yield 'windows-sibling' => ['C:\\workspace\\app\\build-other\\release', 'C:\\workspace\\app/build', false];
-        yield 'windows-outside' => ['C:\\workspace\\other\\release', 'C:\\workspace\\app/build', false];
-        yield 'windows-unc' => ['\\\\server\\share\\app\\build\\release', '\\\\server\\share\\app/build', true];
-        yield 'unix-realpath' => ['/workspace/app/build/unpacked release', '/workspace/app/build', true];
-        yield 'unix-sibling' => ['/workspace/app/build-other/release', '/workspace/app/build', false];
-        yield 'unix-backslash-is-a-filename' => ['/workspace/app/build\\release', '/workspace/app/build', false];
-        yield 'root-is-not-a-candidate' => ['/workspace/app/build', '/workspace/app/build', false];
+        foreach (['sqlite', 'mysql', 'pgsql'] as $profile) {
+            yield $profile => [$profile];
+        }
     }
 
     /** 验收入口按realpath得到的原生分隔符判定边界，Windows候选也必须能进入真实部署验证。 */
@@ -289,11 +282,18 @@ final class ReleaseTest extends TestCase
         self::assertSame($expected, \testPathIsWithin($path, $directory));
     }
 
-    public static function invalidVersions(): iterable
+    /** @return iterable<string, array{string, string, bool}> 真实路径与其允许的构建目录。 */
+    public static function candidatePaths(): iterable
     {
-        foreach (['1.0.0', 'v01.0.0', 'v1.0', 'v1.0.0-beta.1', 'v1.0.0-rc.0', 'v1.0.0-rc.01', "v1.0.0\n", 'main', 'v1.0.0+local'] as $version) {
-            yield [$version];
-        }
+        yield 'windows-realpath' => ['C:\workspace\app\build\unpacked release', 'C:\workspace\app/build', true];
+        yield 'windows-forward' => ['C:/workspace/app/build/unpacked release', 'C:/workspace/app/build', true];
+        yield 'windows-sibling' => ['C:\workspace\app\build-other\release', 'C:\workspace\app/build', false];
+        yield 'windows-outside' => ['C:\workspace\other\release', 'C:\workspace\app/build', false];
+        yield 'windows-unc' => ['\\\server\share\app\build\release', '\\\server\share\app/build', true];
+        yield 'unix-realpath' => ['/workspace/app/build/unpacked release', '/workspace/app/build', true];
+        yield 'unix-sibling' => ['/workspace/app/build-other/release', '/workspace/app/build', false];
+        yield 'unix-backslash-is-a-filename' => ['/workspace/app/build\release', '/workspace/app/build', false];
+        yield 'root-is-not-a-candidate' => ['/workspace/app/build', '/workspace/app/build', false];
     }
 
     #[DataProvider('invalidVersions')]
@@ -301,6 +301,13 @@ final class ReleaseTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
         Plan::version($version);
+    }
+
+    public static function invalidVersions(): iterable
+    {
+        foreach (['1.0.0', 'v01.0.0', 'v1.0', 'v1.0.0-beta.1', 'v1.0.0-rc.0', 'v1.0.0-rc.01', "v1.0.0\n", 'main', 'v1.0.0+local'] as $version) {
+            yield [$version];
+        }
     }
 
     public function testReleaseMustSatisfyEveryFirstPartyDependency(): void
@@ -321,14 +328,14 @@ final class ReleaseTest extends TestCase
         self::assertTrue(mkdir($directory . '/templates/type-project', 0700, true));
         self::assertTrue(mkdir($directory . '/.github', 0700));
         try {
-            $mapping = json_decode((string) file_get_contents($project . '/.github/distribution.json'), true, 64, JSON_THROW_ON_ERROR);
+            $mapping = json_decode((string)file_get_contents($project . '/.github/distribution.json'), true, 64, JSON_THROW_ON_ERROR);
             copy($project . '/.github/distribution.json', $directory . '/.github/distribution.json');
             foreach ($mapping['packages'] as $definition) {
                 mkdir($directory . '/' . $definition['prefix'], 0700, true);
                 copy($project . '/' . $definition['prefix'] . '/composer.json', $directory . '/' . $definition['prefix'] . '/composer.json');
             }
             $file = $directory . '/templates/type-project/composer.json';
-            $template = json_decode((string) file_get_contents($project . '/templates/type-project/composer.json'), true, 64, JSON_THROW_ON_ERROR);
+            $template = json_decode((string)file_get_contents($project . '/templates/type-project/composer.json'), true, 64, JSON_THROW_ON_ERROR);
             unset($template['require']['zoujingli/type-runtime'], $template['require']['zoujingli/type-orm']);
             file_put_contents($file, json_encode($template, JSON_THROW_ON_ERROR));
             \successful(['git', 'init', '-b', 'main'], $directory);
@@ -343,7 +350,7 @@ final class ReleaseTest extends TestCase
             self::assertSame($original, hash_file('sha256', $file));
             $result = Plan::prepareTemplate($directory, 'v1.0.0-rc.99');
             self::assertTrue($result['changed']);
-            $prepared = json_decode((string) file_get_contents($file), true, 64, JSON_THROW_ON_ERROR);
+            $prepared = json_decode((string)file_get_contents($file), true, 64, JSON_THROW_ON_ERROR);
             self::assertSame('RC', $prepared['minimum-stability']);
             self::assertTrue($prepared['prefer-stable']);
             foreach (['core', 'orm', 'orm-sqlite', 'runtime', 'validate', 'log'] as $component) {
@@ -367,7 +374,7 @@ final class ReleaseTest extends TestCase
             }
             self::assertSame($result['sha256'], hash_file('sha256', $file));
             Plan::prepareTemplate($directory, 'v1.0.0');
-            $stable = json_decode((string) file_get_contents($file), true, 64, JSON_THROW_ON_ERROR);
+            $stable = json_decode((string)file_get_contents($file), true, 64, JSON_THROW_ON_ERROR);
             self::assertSame('stable', $stable['minimum-stability']);
             self::assertSame('1.0.0', $stable['require']['zoujingli/type-runtime']);
             $stable['repositories'] = [['type' => 'path', 'url' => '../../plugin/*']];
@@ -389,10 +396,10 @@ final class ReleaseTest extends TestCase
     public function testPdoDriverReleaseRejectsRuntimeBeforeHookContract(): void
     {
         $root = dirname(__DIR__, 2);
-        $mapping = json_decode((string) file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
+        $mapping = json_decode((string)file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
         $packages = array_column($mapping['packages'], 'composer-name');
         foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
-            $package = json_decode((string) file_get_contents($root . '/plugin/type-orm-' . $driver . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+            $package = json_decode((string)file_get_contents($root . '/plugin/type-orm-' . $driver . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
             self::assertArrayHasKey('zoujingli/type-runtime', $package['require']);
             foreach (['v1.0.0-rc.15', 'v1.0.0-rc.16', 'v1.0.0', 'v1.0.1'] as $version) {
                 Plan::dependencies($package, $version, $packages);
@@ -423,34 +430,17 @@ final class ReleaseTest extends TestCase
                 file_put_contents($root . '/web/dist/' . $name, 'fixture');
             }
             $command = [PHP_BINARY, $root . '/tools/frontend-resources.php'];
-            [$code, , $error] = \TypeApp\Distribution\Process::run([...$command, 'record', 'manifest.json'], $root);
+            [$code, , $error] = Process::run([...$command, 'record', 'manifest.json'], $root);
             self::assertSame(1, $code);
             self::assertStringContainsString('依赖锁文件', $error);
             self::assertFileDoesNotExist($root . '/manifest.json');
             file_put_contents($root . '/web/pnpm-lock.yaml', 'frozen dependencies');
-            self::assertSame(0, \TypeApp\Distribution\Process::run([...$command, 'record', 'manifest.json'], $root)[0]);
-            self::assertSame(0, \TypeApp\Distribution\Process::run([...$command, 'verify', 'manifest.json'], $root)[0]);
+            self::assertSame(0, Process::run([...$command, 'record', 'manifest.json'], $root)[0]);
+            self::assertSame(0, Process::run([...$command, 'verify', 'manifest.json'], $root)[0]);
             file_put_contents($root . '/web/pnpm-lock.yaml', 'changed dependencies');
-            self::assertSame(1, \TypeApp\Distribution\Process::run([...$command, 'verify', 'manifest.json'], $root)[0]);
+            self::assertSame(1, Process::run([...$command, 'verify', 'manifest.json'], $root)[0]);
         } finally {
             \removeTestDirectory($root);
-        }
-    }
-
-    public static function evidenceCases(): iterable
-    {
-        foreach (['native', 'consumption'] as $kind) {
-            foreach (['valid', 'sha', 'tag', 'attempt', 'workflow', 'missing', 'failed', 'duplicate', 'pagination'] as $change) {
-                yield $kind . '-' . $change => [$kind, $change];
-            }
-        }
-        foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
-            yield 'missing-static-' . $platform => ['native', 'missing-static-' . $platform];
-        }
-        yield 'native-with-tutorials' => ['native', 'with-tutorials'];
-        yield 'tutorial-cannot-replace-static' => ['native', 'tutorial-only'];
-        foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
-            yield 'missing-toolchain-' . $platform => ['native', 'missing-toolchain-' . $platform];
         }
     }
 
@@ -501,7 +491,7 @@ final class ReleaseTest extends TestCase
                 default => 'linux-x64 / Linux x64 原生验收 · toolchain',
             };
             $jobs['jobs'] = array_values(array_filter($jobs['jobs'], static fn (array $job): bool => $job['name'] !== $missing));
-            $jobs['total_count']--;
+            --$jobs['total_count'];
         }
         if (str_starts_with($change, 'missing-static-')) {
             $platform = substr($change, strlen('missing-static-'));
@@ -511,7 +501,7 @@ final class ReleaseTest extends TestCase
                 default => 'sqlite · 静态单程序 · ' . $platform,
             };
             $jobs['jobs'] = array_values(array_filter($jobs['jobs'], static fn (array $job): bool => $job['name'] !== $missing));
-            $jobs['total_count']--;
+            --$jobs['total_count'];
         }
         switch ($change) {
             case 'sha': $run['head_sha'] = str_repeat('b', 40);
@@ -523,12 +513,12 @@ final class ReleaseTest extends TestCase
             case 'workflow': $run['path'] = '.github/workflows/native-command.yml';
                 break;
             case 'missing': array_pop($jobs['jobs']);
-                $jobs['total_count']--;
+                --$jobs['total_count'];
                 break;
             case 'failed': $jobs['jobs'][2]['conclusion'] = 'failure';
                 break;
             case 'duplicate': $jobs['jobs'][] = $jobs['jobs'][0];
-                $jobs['total_count']++;
+                ++$jobs['total_count'];
                 break;
             case 'pagination': $jobs['total_count']++;
                 break;
@@ -545,6 +535,23 @@ final class ReleaseTest extends TestCase
         self::assertTrue($valid);
     }
 
+    public static function evidenceCases(): iterable
+    {
+        foreach (['native', 'consumption'] as $kind) {
+            foreach (['valid', 'sha', 'tag', 'attempt', 'workflow', 'missing', 'failed', 'duplicate', 'pagination'] as $change) {
+                yield $kind . '-' . $change => [$kind, $change];
+            }
+        }
+        foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
+            yield 'missing-static-' . $platform => ['native', 'missing-static-' . $platform];
+        }
+        yield 'native-with-tutorials' => ['native', 'with-tutorials'];
+        yield 'tutorial-cannot-replace-static' => ['native', 'tutorial-only'];
+        foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
+            yield 'missing-toolchain-' . $platform => ['native', 'missing-toolchain-' . $platform];
+        }
+    }
+
     /** 超过一页的消费任务仍可通过；丢页、重复任务和读取中变化不能获得发布资格。 */
     public function testConsumptionReadsEveryPageFromTheSameAttempt(): void
     {
@@ -555,7 +562,7 @@ final class ReleaseTest extends TestCase
         $run = ['id' => 123, 'run_attempt' => 2, 'head_sha' => $source, 'head_branch' => 'v1.0.0-rc.1',
             'head_repository' => ['full_name' => 'zoujingli/typeapp'], 'path' => '.github/workflows/release.yml', 'event' => 'push'];
         $jobs = [];
-        for ($index = 0; $index < 101; $index++) {
+        for ($index = 0; $index < 101; ++$index) {
             $jobs[] = ['id' => $index + 1, 'name' => 'matrix-' . $index, 'head_sha' => $source, 'status' => 'completed', 'conclusion' => 'success'];
         }
         foreach (['distribute / plan', 'distribute / collect', 'distribute / consume', 'template / template'] as $index => $name) {
@@ -577,7 +584,7 @@ PHP);
             Evidence::verifyConsumptionJobs($run, $result, $source, 'v1.0.0-rc.1', 123, 2);
             $broken = [[], [$pages[0]]];
             $changed = $pages;
-            $changed[1]['total_count']++;
+            ++$changed[1]['total_count'];
             $broken[] = $changed;
             $duplicate = $pages;
             $duplicate[1]['jobs'][0] = $pages[0]['jobs'][0];

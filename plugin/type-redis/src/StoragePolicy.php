@@ -10,9 +10,9 @@ final class StoragePolicy
     /**
      * 临时连接两个服务并只读检查故障域、容量与持久化策略，所有退出路径关闭连接。
      *
-     * @param string $appendFsync 接受 always 或 everysec；不修改 Redis 配置。
+     * @param string $appendFsync 接受 always 或 everysec；不修改 Redis 配置
      * @return array{reliable: array<string, mixed>, cache: array<string, mixed>, isolated: bool, configured_fsync_window_seconds: int}
-     * @throws RedisException 服务相同、存储策略不符或无法取得诊断信息。
+     * @throws RedisException 服务相同、存储策略不符或无法取得诊断信息
      */
     public static function verify(RedisConfiguration $reliable, RedisConfiguration $cache, string $appendFsync = 'always'): array
     {
@@ -52,7 +52,7 @@ final class StoragePolicy
             throw new RedisException('policy_unavailable', 'NOT_STARTED', '无法读取 Redis 真实存储策略，请为启动检查提供只读诊断权限');
         }
         return ['instance' => $server['run_id'], 'role' => $replication['role'] ?? '', 'eviction' => $settings['maxmemory-policy'] ?? '',
-            'maxmemory' => (int) ($settings['maxmemory'] ?? 0), 'appendonly' => ($settings['appendonly'] ?? '') === 'yes',
+            'maxmemory' => (int)($settings['maxmemory'] ?? 0), 'appendonly' => ($settings['appendonly'] ?? '') === 'yes',
             'appendfsync' => $settings['appendfsync'] ?? '', 'aof_write_status' => $persistence['aof_last_write_status'] ?? 'unknown'];
     }
 }

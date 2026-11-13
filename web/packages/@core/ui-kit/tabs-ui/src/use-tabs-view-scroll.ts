@@ -2,29 +2,17 @@ import type { TabsProps } from './types';
 
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
+import { VbenScrollbar } from '@vben-core/shadcn-ui';
+
 import { useDebounceFn } from '@vueuse/core';
 
 type DomElement = Element | null | undefined;
-type ScrollbarElement = {
-  $el?: HTMLElement | null;
-};
 
-export interface TabsViewScrollBindings {
-  handleScrollAt: (payload: { left: boolean; right: boolean }) => void;
-  handleWheel: (event: WheelEvent) => void;
-  initScrollbar: () => Promise<void>;
-  scrollbarRef: ReturnType<typeof ref<ScrollbarElement | null>>;
-  scrollDirection: (direction: 'left' | 'right', distance?: number) => void;
-  scrollIsAtLeft: ReturnType<typeof ref<boolean>>;
-  scrollIsAtRight: ReturnType<typeof ref<boolean>>;
-  showScrollButton: ReturnType<typeof ref<boolean>>;
-}
-
-export function useTabsViewScroll(props: TabsProps): TabsViewScrollBindings {
+export function useTabsViewScroll(props: TabsProps) {
   let resizeObserver: null | ResizeObserver = null;
   let mutationObserver: MutationObserver | null = null;
   let tabItemCount = 0;
-  const scrollbarRef = ref<ScrollbarElement | null>(null);
+  const scrollbarRef = ref<InstanceType<typeof VbenScrollbar> | null>(null);
   const scrollViewportEl = ref<DomElement>(null);
   const showScrollButton = ref(false);
   const scrollIsAtLeft = ref(true);
@@ -32,7 +20,7 @@ export function useTabsViewScroll(props: TabsProps): TabsViewScrollBindings {
 
   function getScrollClientWidth() {
     const scrollbarEl = scrollbarRef.value?.$el;
-    if (!scrollbarEl || !scrollViewportEl.value) return null;
+    if (!scrollbarEl || !scrollViewportEl.value) return {};
 
     const scrollbarWidth = scrollbarEl.clientWidth;
     const scrollViewWidth = scrollViewportEl.value.clientWidth;
@@ -47,9 +35,7 @@ export function useTabsViewScroll(props: TabsProps): TabsViewScrollBindings {
     direction: 'left' | 'right',
     distance: number = 150,
   ) {
-    const size = getScrollClientWidth();
-    if (!size) return;
-    const { scrollbarWidth, scrollViewWidth } = size;
+    const { scrollbarWidth, scrollViewWidth } = getScrollClientWidth();
 
     if (!scrollbarWidth || !scrollViewWidth) return;
 
@@ -75,9 +61,6 @@ export function useTabsViewScroll(props: TabsProps): TabsViewScrollBindings {
     const viewportEl = scrollbarEl?.querySelector(
       'div[data-reka-scroll-area-viewport]',
     );
-    if (!viewportEl) {
-      return;
-    }
 
     scrollViewportEl.value = viewportEl;
     calcShowScrollbarButton();
@@ -127,14 +110,10 @@ export function useTabsViewScroll(props: TabsProps): TabsViewScrollBindings {
     }
     await nextTick();
     const viewportEl = scrollViewportEl.value;
-    const size = getScrollClientWidth();
-    if (!size) {
-      return;
-    }
-    const { scrollbarWidth } = size;
+    const { scrollbarWidth } = getScrollClientWidth();
     const { scrollWidth } = viewportEl;
 
-    if (!scrollbarWidth || scrollbarWidth >= scrollWidth) {
+    if (scrollbarWidth >= scrollWidth) {
       return;
     }
 
@@ -152,14 +131,10 @@ export function useTabsViewScroll(props: TabsProps): TabsViewScrollBindings {
       return;
     }
 
-    const size = getScrollClientWidth();
-    if (!size || !size.scrollbarWidth) {
-      showScrollButton.value = false;
-      return;
-    }
+    const { scrollbarWidth } = getScrollClientWidth();
 
     showScrollButton.value =
-      scrollViewportEl.value.scrollWidth > size.scrollbarWidth;
+      scrollViewportEl.value.scrollWidth > scrollbarWidth;
   }
 
   const handleScrollAt = useDebounceFn(({ left, right }) => {

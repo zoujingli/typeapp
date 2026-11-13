@@ -8,14 +8,18 @@ namespace Type\Runtime;
 final class DeploymentBudget
 {
     private int $perProcess;
+
     private int $perThread;
+
     private array $plan;
+
     private ?ResourceBudget $budget = null;
+
     private ?ExecutionOwner $owner = null;
 
     /**
      * 所有角色使用同一部署计划，每线程只获得其中一份，不复制整个进程额度。
-     * @param int $threadsPerProcess 最大同时使用连接的线程数，含主线程和未 join 的旧代。
+     * @param int $threadsPerProcess 最大同时使用连接的线程数，含主线程和未 join 的旧代
      */
     public function __construct(int $serverLimit, int $replicas, int $surge, int $processesPerReplica, int $administrationReserve, int $threadsPerProcess = 1)
     {
@@ -38,6 +42,7 @@ final class DeploymentBudget
             'threads_per_process' => $threadsPerProcess, 'per_thread' => $this->perThread,
             'maximum_application_connections' => $this->perThread * $threadsPerProcess * $totalProcesses];
     }
+
     /** 每线程只创建一个实例，并注入该服务端连接域的全部池及凭据代次。 */
     public function poolBudget(): ResourceBudget
     {
@@ -46,6 +51,7 @@ final class DeploymentBudget
         $this->budget ??= new ResourceBudget($this->perThread);
         return $this->budget;
     }
+
     /**
      * 返回部署容量分配快照，不代表服务端实际连接数。
      * @return array<string, int>

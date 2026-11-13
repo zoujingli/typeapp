@@ -5,15 +5,20 @@ declare(strict_types=1);
 namespace Type\Build;
 
 use Composer\InstalledVersions;
-use RuntimeException;
+use PhpParser\Node\Stmt\ClassLike;
+use PhpParser\NodeFinder;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\NameResolver;
+use PhpParser\ParserFactory;
+use TypePhp\Build\FileScanner;
 
 /** 将显式声明的生产源码交给 TypePHP；本类只在构建环境运行。 */
 final class NativeBuilder
 {
     /**
      * 在输出锁内审计、生成并全量 AOT；仅成功候选可替换应用产物。
-     * @return array<string, mixed> 本次构建的源码、身份、缓存及产物报告。
-     * @throws RuntimeException 声明、工具链、完整性、运行探针或编译失败。
+     * @return array<string, mixed> 本次构建的源码、身份、缓存及产物报告
+     * @throws \RuntimeException 声明、工具链、完整性、运行探针或编译失败
      */
     public function build(string $configuration): array
     {
@@ -27,7 +32,7 @@ final class NativeBuilder
 
     /**
      * 先完成同一输入审计，再复制隔离构建输入，不执行应用业务入口。
-     * @return array<string, mixed> 隔离目录、输入摘要及本次审计报告。
+     * @return array<string, mixed> 隔离目录、输入摘要及本次审计报告
      */
     public function stage(string $configuration, string $destination): array
     {
@@ -39,6 +44,46 @@ final class NativeBuilder
         return BuildLock::run($output . '.lock', fn (): array => $this->buildLocked($configuration, $destination));
     }
 
+    /**
+     * 运行配置已经提供 token_get_all 时不追加模块；否则要求当前进程能指出一个已存在的词法模块。
+     *
+     * @return list<string>
+     */
+    public static function tokenizerLoadArguments(bool $runtimeHasTokenizer, ?string $moduleFile): array
+    {
+        if ($runtimeHasTokenizer) {
+            return [];
+        }
+        if (!is_string($moduleFile) || !is_file($moduleFile)) {
+            throw new \RuntimeException('编译子进程缺少 tokenizer，当前运行配置没有可加载的词法模块');
+        }
+
+        return ['-d', 'extension=' . BuildPlatform::resolve($moduleFile)];
+    }
+
+    /** 从已加载的 INI 文本解析 tokenizer 模块；相对名称按扩展目录补齐，注释行不生效。 */
+    public static function tokenizerModuleFromIni(string $ini, string $extensionDirectory): ?string
+    {
+        $found = null;
+        $matched = preg_match_all('/^[ \t]*extension[ \t]*=[ \t]*"?([^"\r\n;#]+)"?[ \t]*$/mi', $ini, $matches);
+        if ($matched === false || $matches[1] === []) {
+            return self::tokenizerModuleInDirectory($extensionDirectory);
+        }
+        foreach ($matches[1] as $value) {
+            $value = trim($value);
+            $base = strtolower(basename(str_replace('\\', '/', $value)));
+            if (!in_array($base, ['tokenizer', 'tokenizer.so', 'php_tokenizer.dll'], true)) {
+                continue;
+            }
+            $candidate = self::existingTokenizerFile($value, $extensionDirectory, $base);
+            if ($candidate !== null) {
+                $found = $candidate;
+            }
+        }
+
+        return $found ?? self::tokenizerModuleInDirectory($extensionDirectory);
+    }
+
     private function buildLocked(string $configuration, ?string $stage): array
     {
         $configuration = BuildPlatform::resolve($configuration);
@@ -48,31 +93,31 @@ final class NativeBuilder
         $composer = $this->json($root . '/composer.json');
         $this->json($root . '/composer.lock');
         $toolchain = $this->json($root . '/toolchain.lock.json');
-        if (PHP_VERSION !== ($toolchain['php'] ?? null) || (bool) PHP_ZTS !== ($toolchain['zts'] ?? null)) {
-            throw new RuntimeException('当前 PHP 与应用锁定的工具链不一致');
+        if (PHP_VERSION !== ($toolchain['php'] ?? null) || (bool)PHP_ZTS !== ($toolchain['zts'] ?? null)) {
+            throw new \RuntimeException('当前 PHP 与应用锁定的工具链不一致');
         }
         foreach (['typephp', 'phpx'] as $tool) {
             $packageName = 'swoole/' . $tool;
-            if (ltrim((string) InstalledVersions::getPrettyVersion($packageName), 'v') !== ($toolchain[$tool]['version'] ?? null)
+            if (ltrim((string)InstalledVersions::getPrettyVersion($packageName), 'v') !== ($toolchain[$tool]['version'] ?? null)
                 || InstalledVersions::getReference($packageName) !== ($toolchain[$tool]['reference'] ?? null)) {
-                throw new RuntimeException('编译工具身份与应用锁定不一致：' . $packageName);
+                throw new \RuntimeException('编译工具身份与应用锁定不一致：' . $packageName);
             }
         }
         $assembled = array_key_exists('application', $settings);
         if ($assembled && (!is_array($settings['application']) || array_key_exists('entry', $settings))) {
-            throw new RuntimeException('application 装配必须是对象，且不能同时指定手写 entry');
+            throw new \RuntimeException('application 装配必须是对象，且不能同时指定手写 entry');
         }
         $output = $this->destination($root, $this->string($settings, 'output'));
         $reportFile = $this->destination($root, $this->string($settings, 'output') . '.build.json');
         $buildDirectory = $this->destination($root, $this->string($settings, 'build-directory'));
         $name = $this->string($settings, 'name');
         if (!preg_match('/^[a-z][a-z0-9-]*$/D', $name)) {
-            throw new RuntimeException('应用名称只能包含小写字母、数字和短横线');
+            throw new \RuntimeException('应用名称只能包含小写字母、数字和短横线');
         }
 
         $vendorSetting = $composer['config']['vendor-dir'] ?? 'vendor';
         if (!is_string($vendorSetting) || $vendorSetting === '') {
-            throw new RuntimeException('Composer 依赖目录必须是非空路径');
+            throw new \RuntimeException('Composer 依赖目录必须是非空路径');
         }
         $vendorDirectory = BuildPlatform::resolve((new BuildPlatform())->absolute($vendorSetting) ? $vendorSetting : $root . '/' . $vendorSetting);
         $installed = $this->json($vendorDirectory . '/composer/installed.json');
@@ -83,11 +128,11 @@ final class NativeBuilder
         $sources = $assembled ? [] : [$this->source($root, $this->string($settings, 'entry'))];
         $applicationSources = $settings['sources'] ?? [];
         if (!is_array($applicationSources) || !array_is_list($applicationSources)) {
-            throw new RuntimeException('应用 sources 必须是路径列表');
+            throw new \RuntimeException('应用 sources 必须是路径列表');
         }
         foreach ($applicationSources as $source) {
             if (!is_string($source)) {
-                throw new RuntimeException('应用源码路径必须是字符串');
+                throw new \RuntimeException('应用源码路径必须是字符串');
             }
             $sources[] = $this->source($root, $source);
         }
@@ -95,7 +140,7 @@ final class NativeBuilder
         $imports = $settings['imports'] ?? [];
         $projectImports = $composer['extra']['type']['imports'] ?? [];
         if (!is_array($imports) || !is_array($projectImports)) {
-            throw new RuntimeException('imports 必须是按包名登记的适配映射');
+            throw new \RuntimeException('imports 必须是按包名登记的适配映射');
         }
         $imports += $projectImports;
         $sourceSets = [];
@@ -109,14 +154,14 @@ final class NativeBuilder
         foreach ($selected as $owner => $selectedPackage) {
             $declaredImports = $selectedPackage['extra']['type']['imports'] ?? [];
             if (!is_array($declaredImports)) {
-                throw new RuntimeException('依赖适配声明必须是映射：' . $owner);
+                throw new \RuntimeException('依赖适配声明必须是映射：' . $owner);
             }
             foreach ($declaredImports as $importName => $adapter) {
                 if (($importOrigins[$importName] ?? '') === 'application-import') {
                     continue;
                 }
                 if (isset($imports[$importName]) && $imports[$importName] != $adapter) {
-                    throw new RuntimeException('多个生产包提供冲突的依赖适配：' . $importName);
+                    throw new \RuntimeException('多个生产包提供冲突的依赖适配：' . $importName);
                 }
                 $imports[$importName] = $adapter;
                 $importOrigins[$importName] = 'package-import:' . $owner;
@@ -128,7 +173,7 @@ final class NativeBuilder
             if ($metadata === [] && isset($imports[$packageName])) {
                 $metadata = $imports[$packageName];
                 if (!is_array($metadata) || ($metadata['version'] ?? null) !== ltrim($package['version'], 'v')) {
-                    throw new RuntimeException('第三方适配版本与已安装包不一致：' . $packageName);
+                    throw new \RuntimeException('第三方适配版本与已安装包不一致：' . $packageName);
                 }
                 $origin = $importOrigins[$packageName];
             }
@@ -140,7 +185,7 @@ final class NativeBuilder
             array_push($sources, ...$sourceSet['sources']);
             foreach ($sourceSet['resources'] as $resource) {
                 if (isset($resources[$resource['target']])) {
-                    throw new RuntimeException('资源目标冲突：' . $resource['target']);
+                    throw new \RuntimeException('资源目标冲突：' . $resource['target']);
                 }
                 $resources[$resource['target']] = $resource;
             }
@@ -152,11 +197,11 @@ final class NativeBuilder
         $composerResources = $composer['extra']['type']['resources'] ?? [];
         $applicationResources = $settings['resources'] ?? [];
         if (!is_array($composerResources) || !is_array($applicationResources)) {
-            throw new RuntimeException('应用资源必须是声明列表');
+            throw new \RuntimeException('应用资源必须是声明列表');
         }
         foreach ((new SourceSet())->resources($root, $composer['name'], array_merge($composerResources, $applicationResources)) as $resource) {
             if (isset($resources[$resource['target']])) {
-                throw new RuntimeException('资源目标冲突：' . $resource['target']);
+                throw new \RuntimeException('资源目标冲突：' . $resource['target']);
             }
             $resources[$resource['target']] = $resource;
         }
@@ -164,7 +209,7 @@ final class NativeBuilder
         $phpHome = getenv('PHP_HOME') ?: '';
         $phpxHome = getenv('PHPX_HOME') ?: '';
         if (!PHP_ZTS || $phpHome === '' || $phpxHome === '') {
-            throw new RuntimeException('原生构建需要锁定的ZTS环境，并设置PHP_HOME与PHPX_HOME');
+            throw new \RuntimeException('原生构建需要锁定的ZTS环境，并设置PHP_HOME与PHPX_HOME');
         }
         if (array_key_exists('threads', $settings)
             && (!is_file($phpxHome . '/include/phpx.h') || !is_file($phpxHome . '/src/core/base.cc') || !is_file($phpxHome . '/src/core/debug.cc')
@@ -175,21 +220,21 @@ final class NativeBuilder
                 || hash_file('sha256', $phpxHome . '/src/core/debug.cc') !== PhpxThreadSource::DEBUG_SHA256
                 || hash_file('sha256', $phpxHome . '/src/core/native_gc.cc') !== PhpxThreadSource::NATIVE_GC_SHA256
                 || hash_file('sha256', $phpxHome . '/src/core/string.cc') !== PhpxThreadSource::STRING_SHA256)) {
-            throw new RuntimeException('线程应用需要已适配并重新编译的 PHPX 线程 SDK');
+            throw new \RuntimeException('线程应用需要已适配并重新编译的 PHPX 线程 SDK');
         }
         $platform = new BuildPlatform();
         $profileDeclaration = BuildProfile::resolve($settings);
         $buildProfile = BuildProfile::selected($profileDeclaration);
         $static = StaticRuntimeSdk::selected($buildProfile['name'] ?? null);
         if ($static !== null && $buildProfile === null && $profileDeclaration['profiles'] !== []) {
-            throw new RuntimeException('静态构建必须明确选择 TYPEAPP_BUILD_PROFILE');
+            throw new \RuntimeException('静态构建必须明确选择 TYPEAPP_BUILD_PROFILE');
         }
         if ($static !== null && $buildProfile !== null) {
             $sdkFeatures = $static->identity()['features'] ?? null;
             if (!is_array($sdkFeatures) || array_values(array_filter($sdkFeatures, 'is_string')) !== $sdkFeatures
                     || array_values(array_unique($sdkFeatures)) !== $sdkFeatures
                     || $sdkFeatures !== $buildProfile['features']) {
-                throw new RuntimeException('静态运行 SDK 的功能闭包与构建 profile 不一致');
+                throw new \RuntimeException('静态运行 SDK 的功能闭包与构建 profile 不一致');
             }
         }
         $libraries = $platform->runtimeLibraries($phpHome, $phpxHome);
@@ -202,7 +247,7 @@ final class NativeBuilder
         $embeddedManifest = $embeddedCompiler->manifest($embeddedFiles);
         foreach ($embeddedFiles as $target => $embeddedFile) {
             if (isset($resources[$target])) {
-                throw new RuntimeException('内嵌与外置资源目标冲突：' . $target);
+                throw new \RuntimeException('内嵌与外置资源目标冲突：' . $target);
             }
         }
         foreach ($embeddedCompiler->sources($embeddedFiles) as $filename => $contents) {
@@ -237,22 +282,22 @@ final class NativeBuilder
         $applicationAuditInputs = $generation['autoload-inputs'];
         $compilerOptions = $settings['compiler'] ?? [];
         if (!is_array($compilerOptions) || array_diff(array_keys($compilerOptions), ['optimize', 'debug', 'jobs']) !== []) {
-            throw new RuntimeException('compiler 只支持 optimize、debug 与 jobs');
+            throw new \RuntimeException('compiler 只支持 optimize、debug 与 jobs');
         }
         $compilerOptions += ['optimize' => 2, 'debug' => false, 'jobs' => 2];
         if (!is_int($compilerOptions['optimize']) || $compilerOptions['optimize'] < 0 || $compilerOptions['optimize'] > 3
             || !is_bool($compilerOptions['debug']) || !is_int($compilerOptions['jobs']) || $compilerOptions['jobs'] < 1 || $compilerOptions['jobs'] > 64) {
-            throw new RuntimeException('编译参数超出支持范围');
+            throw new \RuntimeException('编译参数超出支持范围');
         }
         $projectFile = $buildDirectory . '/project.yml';
         // entry 可以位于 sources 目录内；按锁定编译器规则展开并去重，不把头文件当作编译单元。
         // 原目录声明仍保留给构建身份与完成前重扫，确保新增文件或头文件变化不会绕过缓存检查。
         $compilerSources = [];
         foreach ($compiledDeclarations as $sourcePath) {
-            $entries = is_dir($sourcePath) ? (new \TypePhp\Build\FileScanner($sourcePath))->scan() : [$sourcePath];
+            $entries = is_dir($sourcePath) ? (new FileScanner($sourcePath))->scan() : [$sourcePath];
             foreach ($entries as $sourceFile) {
                 // 声明生成会把目录展开为文件，展开后的输入也必须遵守编译器分类。
-                if (!\TypePhp\Build\FileScanner::isPhpFile($sourceFile) && !\TypePhp\Build\FileScanner::isNativeSourceFile($sourceFile)) {
+                if (!FileScanner::isPhpFile($sourceFile) && !FileScanner::isNativeSourceFile($sourceFile)) {
                     continue;
                 }
                 $resolvedSource = BuildPlatform::resolve($sourceFile);
@@ -266,11 +311,11 @@ final class NativeBuilder
         // Composer 代理负责把构建环境的自动加载器传给 TypePHP。
         $binDirectory = $GLOBALS['_composer_bin_dir'] ?? null;
         if (!is_string($binDirectory)) {
-            throw new RuntimeException('请通过 Composer 生成的 type 命令执行构建');
+            throw new \RuntimeException('请通过 Composer 生成的 type 命令执行构建');
         }
         $compiler = $binDirectory . '/type-compiler';
         if (!is_file($compiler)) {
-            throw new RuntimeException('TypePHP 编译入口不存在');
+            throw new \RuntimeException('TypePHP 编译入口不存在');
         }
         $extensions = [];
         foreach (array_merge([$composer], array_values($selected)) as $package) {
@@ -287,11 +332,11 @@ final class NativeBuilder
         $environment = new BuildEnvironment();
         $runtimeDeclaration = $settings['runtime'] ?? [];
         if (!is_array($runtimeDeclaration)) {
-            throw new RuntimeException('runtime必须是按原生平台声明的对象');
+            throw new \RuntimeException('runtime必须是按原生平台声明的对象');
         }
         if (array_key_exists('threads', $settings)) {
             if (!is_array($runtimeDeclaration[PHP_OS_FAMILY] ?? []) || !is_array($runtimeDeclaration[PHP_OS_FAMILY]['extensions'] ?? [])) {
-                throw new RuntimeException('线程应用的运行声明与 extensions 必须为数组');
+                throw new \RuntimeException('线程应用的运行声明与 extensions 必须为数组');
             }
             $runtimeDeclaration[PHP_OS_FAMILY]['extensions'][] = 'swoole';
         }
@@ -346,24 +391,24 @@ final class NativeBuilder
         foreach ($profile['module-files'] as $extension => $moduleFile) {
             $moduleKey = PHP_OS_FAMILY === 'Windows' ? strtolower($moduleFile) : $moduleFile;
             if (($libraryHashes[$moduleKey] ?? null) !== $profile['module-sha256'][$extension]) {
-                throw new RuntimeException('运行扩展在指纹收集中变化：' . $extension);
+                throw new \RuntimeException('运行扩展在指纹收集中变化：' . $extension);
             }
         }
         $noticeDeclaration = $settings['notices'] ?? [];
         if (!is_array($noticeDeclaration)) {
-            throw new RuntimeException('notices必须是声明对象');
+            throw new \RuntimeException('notices必须是声明对象');
         }
         if ($static !== null) {
             $declaredNative = $noticeDeclaration['native'][PHP_OS_FAMILY] ?? [];
             if (!is_array($declaredNative)) {
-                throw new RuntimeException('notices.native 必须按平台声明材料');
+                throw new \RuntimeException('notices.native 必须按平台声明材料');
             }
             $noticeDeclaration['native'][PHP_OS_FAMILY] = array_replace($static->notices(), $declaredNative);
         }
         $notices = (new DependencyNotices())->collect($buildDirectory . '/dependency-notices', $noticePackages, $noticeLibraries, $noticeDeclaration);
         foreach ($notices['resources'] as $resource) {
             if (isset($resources[$resource['target']])) {
-                throw new RuntimeException('依赖材料与资源目标冲突：' . $resource['target']);
+                throw new \RuntimeException('依赖材料与资源目标冲突：' . $resource['target']);
             }
             $resources[$resource['target']] = $resource;
         }
@@ -371,7 +416,7 @@ final class NativeBuilder
         if ($static !== null) {
             foreach ($resources as $target => $resource) {
                 if (isset($embeddedFiles[$target])) {
-                    throw new RuntimeException('静态程序内嵌资源目标冲突：' . $target);
+                    throw new \RuntimeException('静态程序内嵌资源目标冲突：' . $target);
                 }
                 $embeddedFiles[$target] = ['source' => $resource['source'], 'bytes' => filesize($resource['source']), 'sha256' => $resource['sha256']];
                 $embeddedAuxiliaryFiles[] = $resource['source'];
@@ -385,23 +430,22 @@ final class NativeBuilder
         }
         // 材料与其他资源共用内容分代和原文摘要；失败构建不覆盖旧代次。
         ksort($resources);
-        $resourceIdentity = hash('sha256', json_encode(array_map(static fn (array $resource): array =>
-            ['package' => $resource['package'], 'target' => $resource['target'], 'sha256' => $resource['sha256']], $resources), JSON_THROW_ON_ERROR));
+        $resourceIdentity = hash('sha256', json_encode(array_map(static fn (array $resource): array => ['package' => $resource['package'], 'target' => $resource['target'], 'sha256' => $resource['sha256']], $resources), JSON_THROW_ON_ERROR));
         foreach ($resources as &$resource) {
             $destination = $this->destination($root, $settings['output'] . '.resources/' . $resourceIdentity . '/' . $resource['target']);
             $this->directory(dirname($destination));
             if (is_file($destination)) {
                 if (hash_file('sha256', $destination) !== $resource['sha256']) {
-                    throw new RuntimeException('已有内容寻址资源与声明不符：' . $resource['target']);
+                    throw new \RuntimeException('已有内容寻址资源与声明不符：' . $resource['target']);
                 }
             } else {
                 $temporary = tempnam(dirname($destination), '.type_resource_');
                 if ($temporary === false) {
-                    throw new RuntimeException('无法创建资源临时文件');
+                    throw new \RuntimeException('无法创建资源临时文件');
                 }
                 try {
                     if (!copy($resource['source'], $temporary) || hash_file('sha256', $temporary) !== $resource['sha256'] || !rename($temporary, $destination)) {
-                        throw new RuntimeException('无法复制或校验运行资源：' . $resource['target']);
+                        throw new \RuntimeException('无法复制或校验运行资源：' . $resource['target']);
                     }
                 } finally {
                     if (is_file($temporary)) {
@@ -427,7 +471,7 @@ final class NativeBuilder
         $iniFile = getenv('PHPRC');
         if ($iniFile !== false && $iniFile !== '') {
             if (!is_file($iniFile)) {
-                throw new RuntimeException('编译子进程的PHPRC必须指向已存在文件');
+                throw new \RuntimeException('编译子进程的PHPRC必须指向已存在文件');
             }
             $compilerEnvironment['PHPRC'] = BuildPlatform::resolve($iniFile);
         }
@@ -440,7 +484,7 @@ final class NativeBuilder
                     continue;
                 }
                 if (!is_dir($directory)) {
-                    throw new RuntimeException('编译子进程的PHP_INI_SCAN_DIR必须指向已存在目录');
+                    throw new \RuntimeException('编译子进程的PHP_INI_SCAN_DIR必须指向已存在目录');
                 }
                 $scanDirectories[] = BuildPlatform::resolve($directory);
             }
@@ -461,17 +505,17 @@ final class NativeBuilder
                     $compilerEnvironment
                 ));
                 if ($loaded !== '1') {
-                    throw new RuntimeException('编译子进程无法加载 tokenizer');
+                    throw new \RuntimeException('编译子进程无法加载 tokenizer');
                 }
             }
             $available = $environment->run(
                 [PHP_BINARY, ...$threadCompilerArguments, '-r',
-                'echo PHP_ZTS && class_exists("Swoole\\\\Thread", false) && method_exists("Swoole\\\\Thread", "startNative") && defined("Swoole\\\\Thread::NATIVE_ENTRY_ABI") && constant("Swoole\\\\Thread::NATIVE_ENTRY_ABI") === 2 && filter_var(ini_get("swoole.enable_fiber_mock"), FILTER_VALIDATE_BOOL) ? "ready" : "missing";'],
+                    'echo PHP_ZTS && class_exists("Swoole\\\Thread", false) && method_exists("Swoole\\\Thread", "startNative") && defined("Swoole\\\Thread::NATIVE_ENTRY_ABI") && constant("Swoole\\\Thread::NATIVE_ENTRY_ABI") === 2 && filter_var(ini_get("swoole.enable_fiber_mock"), FILTER_VALIDATE_BOOL) ? "ready" : "missing";'],
                 $root,
                 $compilerEnvironment
             );
             if ($available !== 'ready') {
-                throw new RuntimeException('线程应用需要启用 ZTS Thread 和 startNative 的受控 Swoole 模块');
+                throw new \RuntimeException('线程应用需要启用 ZTS Thread 和 startNative 的受控 Swoole 模块');
             }
         }
         $toolPackages = $this->productionPackages(['require' => ['zoujingli/type-build' => '*']], $packages);
@@ -484,11 +528,11 @@ final class NativeBuilder
         $headers = array_keys($identityBuilder->files(array_merge($packageRoots, array_filter($sources, 'is_dir')), ['h', 'hh', 'hpp', 'hxx', 'inc', 'inl', 'tcc']));
         $extraInputs = $settings['native-inputs'] ?? [];
         if (!is_array($extraInputs) || !array_is_list($extraInputs)) {
-            throw new RuntimeException('native-inputs 必须是显式构建输入列表');
+            throw new \RuntimeException('native-inputs 必须是显式构建输入列表');
         }
         foreach ($extraInputs as &$input) {
             if (!is_string($input)) {
-                throw new RuntimeException('构建输入路径无效');
+                throw new \RuntimeException('构建输入路径无效');
             } $input = $this->source($root, $input);
         }
         unset($input);
@@ -509,7 +553,7 @@ final class NativeBuilder
             'composer-runtime' => [$vendorDirectory . '/composer', $vendorDirectory . '/autoload.php', $binDirectory], 'native' => $native['files']];
         $version = $settings['version'] ?? '0.0.0-dev';
         if (!is_string($version) || !preg_match('/^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$/D', $version)) {
-            throw new RuntimeException('应用版本标识无效');
+            throw new \RuntimeException('应用版本标识无效');
         }
         $capabilities = (new BuildCapabilities())->collect($settings, $selected);
         $nativeFacts = $native;
@@ -580,7 +624,7 @@ final class NativeBuilder
                 $work = $buildDirectory . '/attempts/' . bin2hex(random_bytes(4));
                 $this->directory($work);
                 $command = [PHP_BINARY, ...$threadCompilerArguments, '-d', 'auto_prepend_file=', '-d', 'auto_append_file=', '-d', 'opcache.enable_cli=0', '-d', 'opcache.preload=',
-                    $compiler, $projectFile, '--mode', 'bin', '--output', $candidate, '--build-dir', $work, '--job', (string) $compilerOptions['jobs'], '--no-progress'];
+                    $compiler, $projectFile, '--mode', 'bin', '--output', $candidate, '--build-dir', $work, '--job', (string)$compilerOptions['jobs'], '--no-progress'];
                 // Windows 的独立消费者可能复用不完整的 TypePHP 增量清单；
                 // 强制重建声明头，避免生成身份源引用不存在的 *_decl.h。
                 if (PHP_OS_FAMILY === 'Windows') {
@@ -593,18 +637,18 @@ final class NativeBuilder
                 $groups['sources'] = $identityBuilder->sources($sources);
                 $groups['embedded-resources'] = [...array_column((new EmbeddedResourceCompiler())->collect($root, $settings['embedded-resources'] ?? []), 'source'), ...$embeddedAuxiliaryFiles];
                 if ($identityBuilder->create($groups, $facts)['id'] !== $identity['id']) {
-                    throw new RuntimeException('构建过程中输入发生变化，拒绝发布或缓存该产物');
+                    throw new \RuntimeException('构建过程中输入发生变化，拒绝发布或缓存该产物');
                 }
             },
             function () use ($identityBuilder, $groups, $facts, $sources, $identity, $buildDirectory, $noticePackages, $noticeLibraries, $noticeDeclaration, $notices, $root, $settings, $embeddedAuxiliaryFiles): void {
                 $currentNotices = (new DependencyNotices())->collect($buildDirectory . '/dependency-notices-check', $noticePackages, $noticeLibraries, $noticeDeclaration);
                 if ($currentNotices['summary']['index-sha256'] !== $notices['summary']['index-sha256']) {
-                    throw new RuntimeException('恢复产物前依赖材料已增加、删除或改变');
+                    throw new \RuntimeException('恢复产物前依赖材料已增加、删除或改变');
                 }
                 $groups['sources'] = $identityBuilder->sources($sources);
                 $groups['embedded-resources'] = [...array_column((new EmbeddedResourceCompiler())->collect($root, $settings['embedded-resources'] ?? []), 'source'), ...$embeddedAuxiliaryFiles];
                 if ($identityBuilder->create($groups, $facts)['id'] !== $identity['id']) {
-                    throw new RuntimeException('恢复产物前输入已经变化');
+                    throw new \RuntimeException('恢复产物前输入已经变化');
                 }
             },
             function (string $candidate) use ($environment, $compilerEnvironment, $root, $static, $embeddedManifest): array {
@@ -644,7 +688,7 @@ final class NativeBuilder
             'composer-lock-sha256' => hash_file('sha256', $root . '/composer.lock'),
             'toolchain-lock-sha256' => hash_file('sha256', $root . '/toolchain.lock.json'),
             'php' => PHP_VERSION,
-            'zts' => (bool) PHP_ZTS,
+            'zts' => (bool)PHP_ZTS,
             'architecture' => php_uname('m'),
             'build-extensions' => array_map(static fn (string $extension): array => ['name' => $extension, 'version' => phpversion($extension)], get_loaded_extensions()),
             'runtime-profile' => ['ini' => $profile['ini'], 'probe' => $profile['probe'], 'extensions' => $profile['extensions'], 'functions' => $profile['functions']],
@@ -690,14 +734,14 @@ final class NativeBuilder
             $name = array_shift($queue);
             if ($this->platformPackage($name)) {
                 if (str_starts_with($name, 'ext-') && !extension_loaded(substr($name, 4))) {
-                    throw new RuntimeException('构建环境缺少生产依赖声明的扩展：' . $name);
+                    throw new \RuntimeException('构建环境缺少生产依赖声明的扩展：' . $name);
                 }
                 continue;
             }
             if (isset($selected[$name])) {
                 continue;
             }
-            $package = $installed[$name] ?? throw new RuntimeException('生产依赖未安装：' . $name);
+            $package = $installed[$name] ?? throw new \RuntimeException('生产依赖未安装：' . $name);
             $selected[$name] = $package;
             array_push($queue, ...array_keys($package['require'] ?? []));
         }
@@ -709,11 +753,11 @@ final class NativeBuilder
     {
         $text = is_file($file) ? file_get_contents($file) : false;
         if ($text === false) {
-            throw new RuntimeException('无法读取配置：' . $file);
+            throw new \RuntimeException('无法读取配置：' . $file);
         }
         $value = json_decode($text, true, 512, JSON_THROW_ON_ERROR);
         if (!is_array($value)) {
-            throw new RuntimeException('配置必须是对象：' . $file);
+            throw new \RuntimeException('配置必须是对象：' . $file);
         }
 
         return $value;
@@ -722,7 +766,7 @@ final class NativeBuilder
     private function string(array $value, string $key): string
     {
         if (!isset($value[$key]) || !is_string($value[$key]) || $value[$key] === '') {
-            throw new RuntimeException('缺少有效配置：' . $key);
+            throw new \RuntimeException('缺少有效配置：' . $key);
         }
 
         return $value[$key];
@@ -738,7 +782,7 @@ final class NativeBuilder
     {
         $resolved = realpath($root . '/' . $relative);
         if ($resolved === false || !BuildPlatform::contains($root, $resolved)) {
-            throw new RuntimeException('源码不存在或超出所属项目：' . $relative);
+            throw new \RuntimeException('源码不存在或超出所属项目：' . $relative);
         }
 
         return BuildPlatform::path($resolved);
@@ -748,22 +792,22 @@ final class NativeBuilder
     private function uniqueSymbols(array $sources): void
     {
         $names = [];
-        $parser = (new \PhpParser\ParserFactory())->createForNewestSupportedVersion();
+        $parser = (new ParserFactory())->createForNewestSupportedVersion();
         foreach ($sources as $file) {
             if (pathinfo($file, PATHINFO_EXTENSION) !== 'php') {
                 continue;
             }
-            $nodes = $parser->parse((string) file_get_contents($file));
-            $traverser = new \PhpParser\NodeTraverser(new \PhpParser\NodeVisitor\NameResolver());
+            $nodes = $parser->parse((string)file_get_contents($file));
+            $traverser = new NodeTraverser(new NameResolver());
             $nodes = $traverser->traverse($nodes ?? []);
-            $finder = new \PhpParser\NodeFinder();
-            foreach ($finder->findInstanceOf($nodes, \PhpParser\Node\Stmt\ClassLike::class) as $node) {
+            $finder = new NodeFinder();
+            foreach ($finder->findInstanceOf($nodes, ClassLike::class) as $node) {
                 if ($node->name === null || !isset($node->namespacedName)) {
                     continue;
                 }
                 $name = strtolower($node->namespacedName->toString());
                 if (isset($names[$name])) {
-                    throw new RuntimeException('生产源码与生成声明存在重复类：' . $node->namespacedName->toString());
+                    throw new \RuntimeException('生产源码与生成声明存在重复类：' . $node->namespacedName->toString());
                 }
                 $names[$name] = true;
             }
@@ -773,59 +817,19 @@ final class NativeBuilder
     private function destination(string $root, string $relative): string
     {
         if (!str_starts_with($relative, 'build/') || str_contains($relative, '..') || str_contains($relative, '\\')) {
-            throw new RuntimeException('产物必须位于项目 build 目录内');
+            throw new \RuntimeException('产物必须位于项目 build 目录内');
         }
         $cursor = $root;
         foreach (explode('/', $relative) as $segment) {
             $cursor .= '/' . $segment;
             if (is_link($cursor)) {
-                throw new RuntimeException('产物路径不能经过符号链接');
+                throw new \RuntimeException('产物路径不能经过符号链接');
             }
         }
 
         $target = $root . '/' . $relative;
         BuildLock::path($target);
         return $target;
-    }
-
-    /**
-     * 运行配置已经提供 token_get_all 时不追加模块；否则要求当前进程能指出一个已存在的词法模块。
-     *
-     * @return list<string>
-     */
-    public static function tokenizerLoadArguments(bool $runtimeHasTokenizer, ?string $moduleFile): array
-    {
-        if ($runtimeHasTokenizer) {
-            return [];
-        }
-        if (!is_string($moduleFile) || !is_file($moduleFile)) {
-            throw new RuntimeException('编译子进程缺少 tokenizer，当前运行配置没有可加载的词法模块');
-        }
-
-        return ['-d', 'extension=' . BuildPlatform::resolve($moduleFile)];
-    }
-
-    /** 从已加载的 INI 文本解析 tokenizer 模块；相对名称按扩展目录补齐，注释行不生效。 */
-    public static function tokenizerModuleFromIni(string $ini, string $extensionDirectory): ?string
-    {
-        $found = null;
-        $matched = preg_match_all('/^[ \t]*extension[ \t]*=[ \t]*"?([^"\r\n;#]+)"?[ \t]*$/mi', $ini, $matches);
-        if ($matched === false || $matches[1] === []) {
-            return self::tokenizerModuleInDirectory($extensionDirectory);
-        }
-        foreach ($matches[1] as $value) {
-            $value = trim($value);
-            $base = strtolower(basename(str_replace('\\', '/', $value)));
-            if (!in_array($base, ['tokenizer', 'tokenizer.so', 'php_tokenizer.dll'], true)) {
-                continue;
-            }
-            $candidate = self::existingTokenizerFile($value, $extensionDirectory, $base);
-            if ($candidate !== null) {
-                $found = $candidate;
-            }
-        }
-
-        return $found ?? self::tokenizerModuleInDirectory($extensionDirectory);
     }
 
     private function runtimeProvidesTokenizer(string $runtimeIni, BuildEnvironment $environment, string $root, array $compilerEnvironment): bool
@@ -849,7 +853,7 @@ final class NativeBuilder
                 $chunks[] = $text;
             }
         }
-        foreach (explode(',', (string) php_ini_scanned_files()) as $file) {
+        foreach (explode(',', (string)php_ini_scanned_files()) as $file) {
             $file = trim($file);
             if ($file === '' || !is_file($file)) {
                 continue;
@@ -869,7 +873,7 @@ final class NativeBuilder
         $normalized = str_replace('\\', '/', $value);
         $absolute = str_starts_with($normalized, '/')
             || str_starts_with($value, '\\')
-            || preg_match('/^[A-Za-z]:[\\\\\\/]/', $value) === 1;
+            || preg_match('/^[A-Za-z]:[\\\\\/]/', $value) === 1;
         $candidates = [];
         if ($absolute) {
             $candidates[] = $value;
@@ -911,7 +915,7 @@ final class NativeBuilder
     private function directory(string $directory): void
     {
         if (!is_dir($directory) && !@mkdir($directory, 0755, true) && !is_dir($directory)) {
-            throw new RuntimeException('无法创建构建目录：' . $directory);
+            throw new \RuntimeException('无法创建构建目录：' . $directory);
         }
     }
 
@@ -923,15 +927,15 @@ final class NativeBuilder
     private function writeText(string $file, string $text): void
     {
         if (is_link($file)) {
-            throw new RuntimeException('构建配置或报告不能写入符号链接');
+            throw new \RuntimeException('构建配置或报告不能写入符号链接');
         }
         $temporary = tempnam(dirname($file), '.type_build_');
         if ($temporary === false) {
-            throw new RuntimeException('无法创建构建配置或报告临时文件');
+            throw new \RuntimeException('无法创建构建配置或报告临时文件');
         }
         try {
             if (file_put_contents($temporary, $text) !== strlen($text) || !rename($temporary, $file)) {
-                throw new RuntimeException('无法写入构建配置或报告');
+                throw new \RuntimeException('无法写入构建配置或报告');
             }
         } finally {
             if (is_file($temporary)) {

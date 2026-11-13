@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Core\Http\Message;
 
-use InvalidArgumentException;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UploadedFileInterface;
@@ -14,15 +13,20 @@ use Psr\Http\Message\UriInterface;
 final class ServerRequest extends Request implements ServerRequestInterface
 {
     private array $serverParams;
+
     private array $cookies = [];
+
     private array $query = [];
+
     private array $uploads = [];
+
     private mixed $parsedBody = null;
+
     private array $attributes = [];
 
     /**
      * 保存宿主传入的请求元数据，查询、Cookie、上传和解析正文需另行设置。
-     * @param array<string, mixed> $serverParams 宿主创建时的服务器参数快照。
+     * @param array<string, mixed> $serverParams 宿主创建时的服务器参数快照
      */
     public function __construct(string $method, UriInterface $uri, StreamInterface $body, array $serverParams = [])
     {
@@ -50,7 +54,7 @@ final class ServerRequest extends Request implements ServerRequestInterface
 
     /**
      * 在副本中设置已解析 Cookie，不修改原始 Cookie 头。
-     * @param array<string, mixed> $cookies 已解析的 Cookie 参数。
+     * @param array<string, mixed> $cookies 已解析的 Cookie 参数
      */
     public function withCookieParams(array $cookies): ServerRequestInterface
     {
@@ -70,7 +74,7 @@ final class ServerRequest extends Request implements ServerRequestInterface
 
     /**
      * 在副本中替换查询快照，不修改 URI 中的原始查询文本。
-     * @param array<string, mixed> $query 已验证的查询参数。
+     * @param array<string, mixed> $query 已验证的查询参数
      */
     public function withQueryParams(array $query): ServerRequestInterface
     {
@@ -81,7 +85,7 @@ final class ServerRequest extends Request implements ServerRequestInterface
 
     /**
      * 返回上传对象树，上传流仍受请求或其资源所有者管理。
-     * @return array<string|int, UploadedFileInterface|array>
+     * @return array<int|string, array|UploadedFileInterface>
      */
     public function getUploadedFiles(): array
     {
@@ -90,7 +94,7 @@ final class ServerRequest extends Request implements ServerRequestInterface
 
     /**
      * 验证上传树只含数组及上传对象，再返回设置该树的副本。
-     * @param array<string|int, UploadedFileInterface|array> $uploadedFiles 已解析上传树。
+     * @param array<int|string, array|UploadedFileInterface> $uploadedFiles 已解析上传树
      */
     public function withUploadedFiles(array $uploadedFiles): ServerRequestInterface
     {
@@ -108,12 +112,12 @@ final class ServerRequest extends Request implements ServerRequestInterface
 
     /**
      * 接受数组、对象或 null 并返回副本，不改变原始正文流。
-     * @param array|object|null $data 已解析正文。
+     * @param null|array|object $data 已解析正文
      */
     public function withParsedBody($data): ServerRequestInterface
     {
         if ($data !== null && !is_array($data) && !is_object($data)) {
-            throw new InvalidArgumentException('解析正文必须是数组、对象或 null');
+            throw new \InvalidArgumentException('解析正文必须是数组、对象或 null');
         }
         $copy = clone $this;
         $copy->parsedBody = $data;
@@ -157,7 +161,7 @@ final class ServerRequest extends Request implements ServerRequestInterface
             if (is_array($file)) {
                 $this->validateUploads($file);
             } elseif (!$file instanceof UploadedFileInterface) {
-                throw new InvalidArgumentException('上传文件树只允许数组和 UploadedFileInterface');
+                throw new \InvalidArgumentException('上传文件树只允许数组和 UploadedFileInterface');
             }
         }
     }

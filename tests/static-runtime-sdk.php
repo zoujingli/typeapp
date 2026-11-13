@@ -6,6 +6,7 @@ require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Type\Build\BuildEnvironment;
+use Type\Build\BuildProfile;
 use Type\Build\RuntimeProfile;
 use Type\Build\StaticRuntimeSdk;
 
@@ -41,9 +42,9 @@ $profile = (new RuntimeProfile())->prepare(
 );
 expect($profile['module-files'] === [] && $profile['module-sha256'] === [], '静态 embed 加载了外置扩展');
 if ($sdkProfile !== 'all') {
-    Type\Build\BuildProfile::assertExtensions(array_keys($profile['extensions']), ['database' => $sdkProfile, 'features' => $sdkFeatures]);
+    BuildProfile::assertExtensions(array_keys($profile['extensions']), ['database' => $sdkProfile, 'features' => $sdkFeatures]);
 }
-$libraries = StaticRuntimeSdk::verifyArtifact($profile['probe'], new BuildEnvironment(), ['PATH' => (string) getenv('PATH')]);
+$libraries = StaticRuntimeSdk::verifyArtifact($profile['probe'], new BuildEnvironment(), ['PATH' => (string)getenv('PATH')]);
 $record = ['platform' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
     'sdk-manifest-sha256' => hash_file('sha256', $sdk->manifestPath()), 'probe-sha256' => hash_file('sha256', $profile['probe']),
     'extensions' => $profile['extensions'], 'module-files' => $profile['module-files'], 'system-libraries' => $libraries];

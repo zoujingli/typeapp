@@ -1,13 +1,14 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\OperationCompiler;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 $root = dirname(__DIR__);
 $source = $root . '/examples/operations/UserService.php';
-$compiler = new Type\Build\OperationCompiler();
+$compiler = new OperationCompiler();
 $result = $compiler->generate($root, [], [$source]);
 expect(is_array($result['operations'] ?? null), '公开生成结果缺少操作声明');
 
@@ -22,7 +23,7 @@ function rejectedOperation(string $declaration, string $message): void
         file_put_contents($phpFile, "<?php\ndeclare(strict_types=1);\nnamespace TypeApp\\InvalidOperation;\n" . $declaration);
         $failed = false;
         try {
-            (new Type\Build\OperationCompiler())->generate(dirname(__DIR__), [], [$phpFile]);
+            (new OperationCompiler())->generate(dirname(__DIR__), [], [$phpFile]);
         } catch (RuntimeException) {
             $failed = true;
         }
@@ -37,56 +38,56 @@ $invalidCases = [
     ['abstract class Service { abstract public function run(): void; }', '抽象类'],
     ['final class Service { public function run($value): void {} }', '未 typed 参数'],
     ['final class Service { public function run(int $value) {} }', '未 typed 返回'],
-    ['final class Service { public function run(): never { throw new \\RuntimeException(); } }', 'never 返回'],
+    ['final class Service { public function run(): never { throw new \RuntimeException(); } }', 'never 返回'],
     ['final class Service { public function run(int &$value): void {} }', '引用参数'],
     ['final class Service { public function run(int ...$values): void {} }', 'variadic 参数'],
     ['final class Service { public function &run(): int {} }', '引用返回'],
-    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional(database: "invalid name")] public function run(int $value): void {} }', '非法数据源名称'],
-    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional(foo: "connection")] public function run(\\Type\\Orm\\Connection $connection): void {} }', '未知 Attribute 参数'],
-    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional("default", database: "default")] public function run(\\Type\\Orm\\Connection $connection): void {} }', '重复 Attribute 参数'],
-    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional] #[\\Type\\Orm\\Attribute\\Transactional] public function run(\\Type\\Orm\\Connection $connection): void {} }', '重复 Attribute'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "cache", key: "x:{id}")] public function run(\\Type\\Cache\\TypedCache $cache, int $id, string $tenant): string { return ""; } }', '遗漏缓存标量参数'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "cache", key: "x:{value}")] public function run(\\Type\\Cache\\TypedCache $cache, array $value): string { return ""; } }', '数组缓存键'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "missing", key: "x")] public function run(): string { return ""; } }', '缺失缓存实例'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "cache", key: "x", ttlMilliseconds: 0)] public function run(\\Type\\Cache\\TypedCache $cache): string { return ""; } }', '无限缓存 TTL'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "cache", key: "x")] #[\\Type\\Orm\\Attribute\\Transactional] public function run(\\Type\\Cache\\TypedCache $cache, \\Type\\Orm\\Connection $connection): string { return ""; } }', '缓存与事务组合'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\CacheEvict(cache: "cache", key: "x", all: true)] public function run(\\Type\\Cache\\TypedCache $cache): void {} }', '混合单键和全部失效'],
-    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional] private function run(\\Type\\Orm\\Connection $connection): void {} }', '私有方法属性'],
-    ['#[\\Type\\Orm\\Attribute\\Transactional] final class Service { public function run(): void {} }', '类属性误用'],
-    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional] public function __construct(\\Type\\Orm\\Connection $connection) {} }', '构造器属性误用'],
+    ['final class Service { #[\Type\Orm\Attribute\Transactional(database: "invalid name")] public function run(int $value): void {} }', '非法数据源名称'],
+    ['final class Service { #[\Type\Orm\Attribute\Transactional(foo: "connection")] public function run(\Type\Orm\Connection $connection): void {} }', '未知 Attribute 参数'],
+    ['final class Service { #[\Type\Orm\Attribute\Transactional("default", database: "default")] public function run(\Type\Orm\Connection $connection): void {} }', '重复 Attribute 参数'],
+    ['final class Service { #[\Type\Orm\Attribute\Transactional] #[\Type\Orm\Attribute\Transactional] public function run(\Type\Orm\Connection $connection): void {} }', '重复 Attribute'],
+    ['final class Service { #[\Type\Cache\Attribute\Cacheable(cache: "cache", key: "x:{id}")] public function run(\Type\Cache\TypedCache $cache, int $id, string $tenant): string { return ""; } }', '遗漏缓存标量参数'],
+    ['final class Service { #[\Type\Cache\Attribute\Cacheable(cache: "cache", key: "x:{value}")] public function run(\Type\Cache\TypedCache $cache, array $value): string { return ""; } }', '数组缓存键'],
+    ['final class Service { #[\Type\Cache\Attribute\Cacheable(cache: "missing", key: "x")] public function run(): string { return ""; } }', '缺失缓存实例'],
+    ['final class Service { #[\Type\Cache\Attribute\Cacheable(cache: "cache", key: "x", ttlMilliseconds: 0)] public function run(\Type\Cache\TypedCache $cache): string { return ""; } }', '无限缓存 TTL'],
+    ['final class Service { #[\Type\Cache\Attribute\Cacheable(cache: "cache", key: "x")] #[\Type\Orm\Attribute\Transactional] public function run(\Type\Cache\TypedCache $cache, \Type\Orm\Connection $connection): string { return ""; } }', '缓存与事务组合'],
+    ['final class Service { #[\Type\Cache\Attribute\CacheEvict(cache: "cache", key: "x", all: true)] public function run(\Type\Cache\TypedCache $cache): void {} }', '混合单键和全部失效'],
+    ['final class Service { #[\Type\Orm\Attribute\Transactional] private function run(\Type\Orm\Connection $connection): void {} }', '私有方法属性'],
+    ['#[\Type\Orm\Attribute\Transactional] final class Service { public function run(): void {} }', '类属性误用'],
+    ['final class Service { #[\Type\Orm\Attribute\Transactional] public function __construct(\Type\Orm\Connection $connection) {} }', '构造器属性误用'],
     ['trait Shared { public function run(): void {} } final class Service { use Shared; }', 'Trait 方法不能被静默漏掉'],
     ['class ParentService { public function run(): void {} } final class Service extends ParentService {}', '继承方法不能被静默漏掉'],
-    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional] public string $name; public function run(): void {} }', '字段上的方法属性'],
-    ['final class Service { public function run(#[\\Type\\Cache\\Attribute\\CacheEvict(cache: "cache", all: true)] int $value): void {} }', '形参上的方法属性'],
+    ['final class Service { #[\Type\Orm\Attribute\Transactional] public string $name; public function run(): void {} }', '字段上的方法属性'],
+    ['final class Service { public function run(#[\Type\Cache\Attribute\CacheEvict(cache: "cache", all: true)] int $value): void {} }', '形参上的方法属性'],
     ['if (false) { final class Service { public function run(): void {} } }', '条件声明类'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "cache", key: "x")] public function run(\\Type\\Cache\\TypedCache $cache, object $value): string { return ""; } }', '对象参数不能从缓存身份逃逸'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "cache", key: "x:{cache}")] public function run(\\Type\\Cache\\TypedCache $cache): string { return ""; } }', '缓存连接不是标量key'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "cache", key: "x")] public function run(\\Type\\Cache\\TypedCache $cache): void {} }', '缓存void'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "cache", key: "x")] #[\\Type\\Cache\\Attribute\\CacheEvict(cache: "cache", all: true)] public function run(\\Type\\Cache\\TypedCache $cache): string { return ""; } }', '缓存与清理组合'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\CacheEvict(cache: "cache")] public function run(\\Type\\Cache\\TypedCache $cache): void {} }', '失效缺少key'],
-    ['final class Service { #[\\Type\\Cache\\Attribute\\Cacheable(cache: "cache", key: "x:{id")] public function run(\\Type\\Cache\\TypedCache $cache, int $id): string { return ""; } }', '未闭合key模板'],
-    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional] public function run(): string { return __METHOD__; } }', '原方法魔术常量不能被改名'],
-    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional] public function run(): int { return __LINE__; } }', '源码位置常量不能静默变化'],
-    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional] public function run(): \\Generator { yield 1; } }', '生成器'],
-    ['final class Service { #[\\Type\\Orm\\Attribute\\Transactional(database: "named")] #[\\Type\\Cache\\Attribute\\CacheEvict(cache: "cache", key: "x", database: "default")] public function run(\\Type\\Cache\\TypedCache $cache): void {} }', '事务与失效数据源不一致'],
+    ['final class Service { #[\Type\Cache\Attribute\Cacheable(cache: "cache", key: "x")] public function run(\Type\Cache\TypedCache $cache, object $value): string { return ""; } }', '对象参数不能从缓存身份逃逸'],
+    ['final class Service { #[\Type\Cache\Attribute\Cacheable(cache: "cache", key: "x:{cache}")] public function run(\Type\Cache\TypedCache $cache): string { return ""; } }', '缓存连接不是标量key'],
+    ['final class Service { #[\Type\Cache\Attribute\Cacheable(cache: "cache", key: "x")] public function run(\Type\Cache\TypedCache $cache): void {} }', '缓存void'],
+    ['final class Service { #[\Type\Cache\Attribute\Cacheable(cache: "cache", key: "x")] #[\Type\Cache\Attribute\CacheEvict(cache: "cache", all: true)] public function run(\Type\Cache\TypedCache $cache): string { return ""; } }', '缓存与清理组合'],
+    ['final class Service { #[\Type\Cache\Attribute\CacheEvict(cache: "cache")] public function run(\Type\Cache\TypedCache $cache): void {} }', '失效缺少key'],
+    ['final class Service { #[\Type\Cache\Attribute\Cacheable(cache: "cache", key: "x:{id")] public function run(\Type\Cache\TypedCache $cache, int $id): string { return ""; } }', '未闭合key模板'],
+    ['final class Service { #[\Type\Orm\Attribute\Transactional] public function run(): string { return __METHOD__; } }', '原方法魔术常量不能被改名'],
+    ['final class Service { #[\Type\Orm\Attribute\Transactional] public function run(): int { return __LINE__; } }', '源码位置常量不能静默变化'],
+    ['final class Service { #[\Type\Orm\Attribute\Transactional] public function run(): \Generator { yield 1; } }', '生成器'],
+    ['final class Service { #[\Type\Orm\Attribute\Transactional(database: "named")] #[\Type\Cache\Attribute\CacheEvict(cache: "cache", key: "x", database: "default")] public function run(\Type\Cache\TypedCache $cache): void {} }', '事务与失效数据源不一致'],
 ];
 foreach ($invalidCases as [$declaration, $message]) {
     if (!str_contains($declaration, '#[')) {
-        $declaration = str_replace('public function', '#[\\Type\\Orm\\Attribute\\Transactional] public function', $declaration);
-        $declaration = str_replace('public static function', '#[\\Type\\Orm\\Attribute\\Transactional] public static function', $declaration);
+        $declaration = str_replace('public function', '#[\Type\Orm\Attribute\Transactional] public function', $declaration);
+        $declaration = str_replace('public static function', '#[\Type\Orm\Attribute\Transactional] public static function', $declaration);
     }
     rejectedOperation($declaration, $message);
 }
 $missingRejected = false;
 try {
-    $compiler->generate($root, ['classes' => ['TypeApp\\Generated\\Unknown' => 'TypeApp\\Missing\\Service']], [$source]);
+    $compiler->generate($root, ['classes' => ['TypeApp\Generated\Unknown' => 'TypeApp\Missing\Service']], [$source]);
 } catch (RuntimeException) {
     $missingRejected = true;
 }
 expect($missingRejected, '未纳入生产源码的业务类被接受');
 $collisionRejected = false;
 try {
-    $compiler->generate($root, ['classes' => ['TypeApp\\Operations\\UserService' => 'TypeApp\\Operations\\UserService']], [$source]);
+    $compiler->generate($root, ['classes' => ['TypeApp\Operations\UserService' => 'TypeApp\Operations\UserService']], [$source]);
 } catch (RuntimeException) {
     $collisionRejected = true;
 }
@@ -110,7 +111,7 @@ $sideEffect = tempnam(sys_get_temp_dir(), 'type_operation_side_effect_');
 expect($sideEffect !== false, '无法准备业务源码不执行验证');
 $sideEffectSource = $sideEffect . '.php';
 try {
-    file_put_contents($sideEffectSource, '<?php namespace TypeApp\\SideEffect; file_put_contents(' . var_export($sideEffect, true)
+    file_put_contents($sideEffectSource, '<?php namespace TypeApp\SideEffect; file_put_contents(' . var_export($sideEffect, true)
         . ', "executed"); final class Service { /** @Transactional */ public function run(): void {} }');
     $withoutImplicit = $compiler->generate($root, [], [$sideEffectSource]);
     expect(file_get_contents($sideEffect) === '', '生成器执行了业务源码');

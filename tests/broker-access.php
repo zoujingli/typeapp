@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/support.php';
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
+use Type\Build\NativePackage;
 use Type\Mqtt\Client;
 use Type\Mqtt\ProtocolError;
 use Type\Testing\HttpClient;
@@ -33,7 +34,7 @@ if ($target === '--php') {
     $runtimeOptions = [];
     if (!extension_loaded('swoole')) {
         $swoole = getenv('TYPE_SWOOLE_MODULE');
-        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string)ini_get('extension_dir'), '/') . '/swoole.so';
         expect(is_file($swoole), 'PHP 授权验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
         $runtimeOptions = ['-d', 'extension=' . $swoole];
     }
@@ -56,7 +57,7 @@ foreach ($argv as $argument) {
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '无源码授权验收使用macOS内核策略及原生产物');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $sourceRoot = realpath($built['identity']['description']['facts']['workspace']);
     expect(is_string($sourceRoot), '无源码验收必须能定位实际编译输入');
@@ -136,7 +137,7 @@ try {
     $secrets[] = $password;
     identityCommand([...$command, 'broker:user', 'access-admin', '授权管理员'], $environment + ['BROKER_ADMIN_PASSWORD' => $password]);
     $addresses = [];
-    for ($index = 0; $index < 3; $index++) {
+    for ($index = 0; $index < 3; ++$index) {
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorText);
         expect(is_resource($listener), '无法选择授权测试端口');
         $addresses[] = stream_socket_get_name($listener, false);
@@ -162,10 +163,10 @@ try {
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $auth = $request('POST', '/broker/auth/login', '', ['login' => 'access-admin', 'password' => $password], 200)['data'];
@@ -204,7 +205,7 @@ try {
     $request('POST', '/broker/access/principals/' . $principal['id'], $token, [
         'name' => $principal['name'], 'enabled' => 1, 'expected_version' => 0, 'grants' => $principal['grants'],
     ], 409);
-    $mqttOld = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'access-old', 'broker-client', $mqttPassword, caFile: $certificateFile, sessionExpiry: 0, allowPlaintext: !$tls);
+    $mqttOld = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'access-old', 'broker-client', $mqttPassword, caFile: $certificateFile, sessionExpiry: 0, allowPlaintext: !$tls);
     expect(!$mqttOld->connect(true), '旧连接不应报告会话恢复');
     expect($mqttOld->subscribe('broker-access/one', 0) === 0, '引导前缀应授予QoS0订阅');
     $connections = ['items' => []];
@@ -239,7 +240,7 @@ try {
         try {
             $mqttOld->subscribe('broker-access/two', 0);
         } catch (ProtocolError $failure) {
-            expect(in_array($failure->reason, [0x87, 0x83, 0x82, 0x8e], true), '旧连接拒绝原因应是未授权或会话接管');
+            expect(in_array($failure->reason, [0x87, 0x83, 0x82, 0x8E], true), '旧连接拒绝原因应是未授权或会话接管');
             $disconnected = true;
             $disconnectObservation = 'protocol:' . $failure->reason;
             break;
@@ -253,7 +254,7 @@ try {
         try {
             $mqttOld->receive(0.15);
         } catch (ProtocolError $failure) {
-            expect($failure->reason === 0x87 || $failure->reason === 0x8e, '旧连接断开原因应是未授权或会话接管');
+            expect($failure->reason === 0x87 || $failure->reason === 0x8E, '旧连接断开原因应是未授权或会话接管');
             $disconnected = true;
             $disconnectObservation = 'protocol:' . $failure->reason;
             break;
@@ -280,12 +281,12 @@ try {
     } while (microtime(true) < $deadline);
     expect(!$oldPresent && microtime(true) <= $deadline, '旧连接关闭后未在原预算内清理资源观察');
     $report['revocation'] = ['connection_result' => $disconnectObservation, 'old_owner_removed' => true, 'node_running' => true];
-    $mqttNew = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'access-new', 'broker-client', $rotated, caFile: $certificateFile, sessionExpiry: 0, allowPlaintext: !$tls);
+    $mqttNew = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'access-new', 'broker-client', $rotated, caFile: $certificateFile, sessionExpiry: 0, allowPlaintext: !$tls);
     expect(!$mqttNew->connect(true), '新代次连接失败');
     expect($mqttNew->subscribe('broker-access/allowed', 0) === 0, '新凭据应获得收紧后的前缀订阅');
     $oldRejected = false;
     try {
-        $stale = new Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'access-stale', 'broker-client', $mqttPassword, caFile: $certificateFile, sessionExpiry: 0, allowPlaintext: !$tls);
+        $stale = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'access-stale', 'broker-client', $mqttPassword, caFile: $certificateFile, sessionExpiry: 0, allowPlaintext: !$tls);
         $stale->connect(true);
     } catch (ProtocolError) {
         $oldRejected = true;
@@ -368,10 +369,10 @@ try {
         usleep(10000);
     } while (microtime(true) < $deadline);
     $appRequest = static function (string $method, string $path, string $token, array $headers, ?array $data, int $status) use ($appClient, $appServer, &$checks): array {
-        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '双端 ' . $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $appServer->stdout() . $appServer->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $platformToken = $appRequest('POST', '/admin/auth/login', '', [], ['login' => 'platform-admin', 'password' => $appPassword], 200)['data']['accessToken'];

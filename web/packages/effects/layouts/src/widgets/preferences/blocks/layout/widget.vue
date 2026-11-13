@@ -7,6 +7,7 @@ import { $t } from '@vben/locales';
 
 import SelectItem from '../select-item.vue';
 import SwitchItem from '../switch-item.vue';
+import { usePreferencesPolicy } from '../../use-preferences-policy';
 
 defineOptions({
   name: 'PreferenceInterfaceControl',
@@ -23,6 +24,8 @@ const appPreferencesButtonPosition = defineModel<string>(
   'appPreferencesButtonPosition',
 );
 const widgetRefresh = defineModel<boolean>('widgetRefresh');
+const widgetTimezone = defineModel<boolean>('widgetTimezone');
+const editable = usePreferencesPolicy();
 
 const positionItems = computed((): SelectOption[] => [
   {
@@ -37,6 +40,10 @@ const positionItems = computed((): SelectOption[] => [
     label: $t('preferences.position.fixed'),
     value: 'fixed',
   },
+  {
+    label: $t('preferences.position.userDropdown'),
+    value: 'user-dropdown',
+  },
 ]);
 </script>
 
@@ -47,13 +54,13 @@ const positionItems = computed((): SelectOption[] => [
   <SwitchItem v-model="widgetThemeToggle">
     {{ $t('preferences.widget.themeToggle') }}
   </SwitchItem>
-  <SwitchItem v-model="widgetLanguageToggle">
+  <SwitchItem v-if="editable('widget.languageToggle')" v-model="widgetLanguageToggle">
     {{ $t('preferences.widget.languageToggle') }}
   </SwitchItem>
   <SwitchItem v-model="widgetFullscreen">
     {{ $t('preferences.widget.fullscreen') }}
   </SwitchItem>
-  <SwitchItem v-model="widgetNotification">
+  <SwitchItem v-if="editable('widget.notification')" v-model="widgetNotification">
     {{ $t('preferences.widget.notification') }}
   </SwitchItem>
   <SwitchItem v-model="widgetLockScreen">
@@ -64,6 +71,9 @@ const positionItems = computed((): SelectOption[] => [
   </SwitchItem>
   <SwitchItem v-model="widgetRefresh">
     {{ $t('preferences.widget.refresh') }}
+  </SwitchItem>
+  <SwitchItem v-model="widgetTimezone">
+    {{ $t('preferences.widget.timezone') }}
   </SwitchItem>
   <SelectItem v-model="appPreferencesButtonPosition" :items="positionItems">
     {{ $t('preferences.position.title') }}

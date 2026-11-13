@@ -1,14 +1,16 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ArtifactManifest;
+use Type\Build\BuildLock;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 /** 构建期打包工具；本文件和 Composer 都不进入运行目录。 */
 function packageResources(string $artifact, string $sandbox): void
 {
-    Type\Build\BuildLock::path($sandbox);
-    $reader = new Type\Build\ArtifactManifest();
+    BuildLock::path($sandbox);
+    $reader = new ArtifactManifest();
     $snapshot = $sandbox . '/app/type-app';
     if (!copy($artifact, $snapshot) || !chmod($snapshot, 0755)) {
         throw new RuntimeException('无法创建原生产物快照');
@@ -18,11 +20,11 @@ function packageResources(string $artifact, string $sandbox): void
     foreach ($manifest['resources'] ?? [] as $resource) {
         $relative = $manifest['resource-generation'] . '/' . $resource['target'];
         $source = $artifact . '.resources/' . $relative;
-        if (preg_match('/\.(?:php[0-9]?|phtml|phar|inc)$/i', $resource['target']) || preg_match('/<\?(?:php\s|=)/i', (string) file_get_contents($source))) {
+        if (preg_match('/\.(?:php[0-9]?|phtml|phar|inc)$/i', $resource['target']) || preg_match('/<\?(?:php\s|=)/i', (string)file_get_contents($source))) {
             throw new RuntimeException('部署资源不允许包含 PHP 源码');
         }
         $target = $sandbox . '/app/type-app.resources/' . $relative;
-        Type\Build\BuildLock::path($target);
+        BuildLock::path($target);
         if (!is_dir(dirname($target)) && !mkdir(dirname($target), 0755, true)) {
             throw new RuntimeException('无法创建部署资源目录');
         }
@@ -45,7 +47,7 @@ function packageIni(string $input, string $sandbox): void
     }
     $declarations = [];
     foreach ($files as $file) {
-        foreach (preg_split('/\r\n|\r|\n/', (string) file_get_contents($file)) as $line) {
+        foreach (preg_split('/\r\n|\r|\n/', (string)file_get_contents($file)) as $line) {
             $line = trim($line);
             if ($line === '' || str_starts_with($line, ';') || str_starts_with($line, '#') || preg_match('/^\[[A-Za-z0-9 _.-]+\]$/D', $line)) {
                 continue;
@@ -76,7 +78,7 @@ function packageIni(string $input, string $sandbox): void
         'display_errors' => 'stderr', 'display_startup_errors' => '1', 'log_errors' => '0', 'memory_limit' => '256M', 'date.timezone' => 'UTC'];
     $extensions = [];
     $declared = [];
-    $extensionDirectory = (string) ini_get('extension_dir');
+    $extensionDirectory = (string)ini_get('extension_dir');
     foreach ($declarations as [$key, $value]) {
         if ($key === 'extension_dir') {
             $extensionDirectory = $value;
@@ -89,7 +91,7 @@ function packageIni(string $input, string $sandbox): void
                 $path .= '.so';
             }
             $resolved = realpath($path);
-            if ($resolved === false || !is_file($resolved) || file_get_contents($resolved, false, null, 0, 4) !== "\x7fELF" || preg_match('/[\s"$\\\\]/', $resolved)) {
+            if ($resolved === false || !is_file($resolved) || file_get_contents($resolved, false, null, 0, 4) !== "\x7fELF" || preg_match('/[\s"$\\\]/', $resolved)) {
                 throw new RuntimeException('运行扩展不是可确认的本地 ELF');
             }
             if (!isset($declared[$key . ':' . $resolved])) {
@@ -161,12 +163,12 @@ function packageIni(string $input, string $sandbox): void
 /** 保留原路径及 SONAME 别名；别名必须指向同一份真实 ELF，不能平铺覆盖。 */
 function packageLibraries(string $artifact, string $sandbox): void
 {
-    $manifest = (new Type\Build\ArtifactManifest())->read($artifact);
-    $paths = preg_split('/\r\n|\r|\n/', trim((string) stream_get_contents(STDIN)));
+    $manifest = (new ArtifactManifest())->read($artifact);
+    $paths = preg_split('/\r\n|\r|\n/', trim((string)stream_get_contents(STDIN)));
     $aliases = [];
     foreach ($manifest['native-libraries'] ?? [] as $library) {
         if (!is_string($library['path'] ?? null) || !is_string($library['sha256'] ?? null) || !is_string($library['name'] ?? null)
-            || !is_file($library['path']) || !hash_equals($library['sha256'], (string) hash_file('sha256', $library['path']))) {
+            || !is_file($library['path']) || !hash_equals($library['sha256'], (string)hash_file('sha256', $library['path']))) {
             throw new RuntimeException('部署运行库与构建清单不一致');
         }
         $paths[] = $library['path'];
@@ -184,11 +186,11 @@ function packageLibraries(string $artifact, string $sandbox): void
             throw new RuntimeException('部署运行库不是 ELF 文件');
         }
         $target = $sandbox . $resolved;
-        Type\Build\BuildLock::path($target);
+        BuildLock::path($target);
         if (!is_dir(dirname($target)) && !mkdir(dirname($target), 0755, true)) {
             throw new RuntimeException('无法创建运行库目录');
         }
-        $hash = (string) hash_file('sha256', $resolved);
+        $hash = (string)hash_file('sha256', $resolved);
         if (file_exists($target)) {
             if (hash_file('sha256', $target) !== $hash) {
                 throw new RuntimeException('部署运行库路径冲突');
@@ -211,7 +213,7 @@ function packageLibraries(string $artifact, string $sandbox): void
                 }
                 continue;
             }
-            Type\Build\BuildLock::path($link);
+            BuildLock::path($link);
             if (is_file($link)) {
                 if (hash_file('sha256', $link) !== $hash) {
                     throw new RuntimeException('部署运行库别名冲突');
@@ -230,7 +232,7 @@ function packageLibraries(string $artifact, string $sandbox): void
 
 /**
  * 为隔离运行目录复制有界 hosts/DNS 配置，并固定仅使用 files/DNS 的名称解析。
- * @throws RuntimeException 配置含 NUL、超过 1 MiB 或无法写入目标。
+ * @throws RuntimeException 配置含 NUL、超过 1 MiB 或无法写入目标
  */
 function packageNetwork(string $sandbox): void
 {
@@ -258,7 +260,7 @@ function packageNetwork(string $sandbox): void
 /** 只生成明确的原生模块启动资源，绝不复制宿主 SNMP 认证或持久状态。 */
 function packageRuntime(string $sandbox): void
 {
-    $extensions = preg_split('/\r\n|\r|\n/', trim((string) stream_get_contents(STDIN)));
+    $extensions = preg_split('/\r\n|\r|\n/', trim((string)stream_get_contents(STDIN)));
     if (in_array('snmp', $extensions, true)) {
         foreach (['/etc/snmp', '/var/lib/snmp/cert_indexes'] as $directory) {
             if (!is_dir($sandbox . $directory) && !mkdir($sandbox . $directory, 0755, true)) {
@@ -292,7 +294,7 @@ function packageDiscard(string $sandbox): void
     }
     foreach ($mounts as $mount) {
         $parts = explode(' ', trim($mount));
-        $point = strtr($parts[4] ?? '', ['\\040' => ' ', '\\011' => "\t", '\\012' => "\n", '\\134' => '\\']);
+        $point = strtr($parts[4] ?? '', ['\040' => ' ', '\011' => "\t", '\012' => "\n", '\134' => '\\']);
         if ($point === $sandbox || str_starts_with($point, $sandbox . '/')) {
             throw new RuntimeException('隔离目录仍有挂载，不能清理');
         }
@@ -318,7 +320,7 @@ try {
         throw new InvalidArgumentException('用法：package-native-runtime.php <resources|ini|libraries|runtime|discard> <输入> <隔离目录>');
     }
     if ($argv[1] === 'resources') {
-        Type\Build\BuildLock::run($argv[2] . '.lock', static function () use ($argv): void {
+        BuildLock::run($argv[2] . '.lock', static function () use ($argv): void {
             packageResources($argv[2], $argv[3]);
         });
     } elseif ($argv[1] === 'ini') {

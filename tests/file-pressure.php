@@ -8,7 +8,7 @@ require __DIR__ . '/http-support.php';
 /**
  * 发送受控 multipart 上传；complete 为 false 时声明额外 4096 字节以保持请求在途。
  *
- * @return resource 由 pressureClose 读取结果并关闭的测试连接。
+ * @return resource 由 pressureClose 读取结果并关闭的测试连接
  */
 function pressureUpload(int $port, string $path, string $content, bool $complete = true): mixed
 {
@@ -44,7 +44,7 @@ function pressureClose(mixed $socket): int
             return 0;
         }
         expect(preg_match('/^HTTP\/1\.[01] (\d{3})/', $wire, $match) === 1, '压力响应不是明确 HTTP 状态或连接拒绝');
-        return (int) $match[1];
+        return (int)$match[1];
     } finally {
         fclose($socket);
     }
@@ -58,8 +58,7 @@ function pressureFill(string $path): void
     try {
         // 文件系统可以拒绝整块扩展而仍剩余不足一块的空间，继续实际写到 ENOSPC。
         foreach ([16384, 512, 1] as $bytes) {
-            while (@fwrite($handle, str_repeat('p', $bytes)) === $bytes) {
-            }
+            while (@fwrite($handle, str_repeat('p', $bytes)) === $bytes);
         }
         $failure = error_get_last();
         expect(is_array($failure) && str_contains($failure['message'], 'errno=28'), '专属卷没有实际拒绝单字节写入并报告 ENOSPC');
@@ -86,7 +85,7 @@ $command = $binary === '--php' ? [PHP_BINARY, '-d', 'swoole.enable_library=On', 
     . ';require ' . var_export($root . '/examples/files/DownloadStream.php', true) . ';require ' . var_export($root . '/examples/file-http-command.php', true) . ';main($argc,$argv);'] : nativeCommand($binary);
 $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
 expect(is_resource($listener), '无法分配上传压力端口');
-$port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+$port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
 fclose($listener);
 $storage = $storageRoot . '/storage';
 expect(mkdir($storage, 0700), '无法建立专属上传目录');
@@ -94,7 +93,7 @@ $trace = tempnam(sys_get_temp_dir(), 'type_pressure_trace_');
 $download = tempnam(sys_get_temp_dir(), 'type_pressure_download_');
 $log = tmpfile();
 $environment = getenv();
-$environment['TYPE_HTTP_PORT'] = (string) $port;
+$environment['TYPE_HTTP_PORT'] = (string)$port;
 $environment['TYPE_UPLOAD_DIRECTORY'] = $storage;
 $environment['TYPE_UPLOAD_TRACE'] = $trace;
 $environment['TYPE_DOWNLOAD_FILE'] = $download;
@@ -118,15 +117,15 @@ try {
     expect($ready, '上传压力服务没有就绪');
     expect(pressureClose(pressureUpload($port, '/temporary', str_repeat('w', 32768))) === 200, '压力前上传未通过');
     clearstatcache();
-    $incomingBaseline = (int) disk_total_space($incoming) - (int) disk_free_space($incoming);
+    $incomingBaseline = (int)disk_total_space($incoming) - (int)disk_free_space($incoming);
     $peak = 0;
-    for ($index = 0; $index < 24; $index++) {
+    for ($index = 0; $index < 24; ++$index) {
         $sockets[] = pressureUpload($port, '/temporary', str_repeat('x', 98304), false);
     }
     $deadline = microtime(true) + 0.3;
     do {
         clearstatcache();
-        $peak = max($peak, (int) disk_total_space($incoming) - (int) disk_free_space($incoming) - $incomingBaseline);
+        $peak = max($peak, (int)disk_total_space($incoming) - (int)disk_free_space($incoming) - $incomingBaseline);
         usleep(1000);
     } while (microtime(true) < $deadline);
     foreach ($sockets as $socket) {
@@ -141,7 +140,7 @@ try {
     expect(glob($incoming . '/swoole.upfile.*') === [] && $peak <= disk_total_space($incoming), '并发中断越过暂存硬容量或遗留无主上传');
     pressureFill($incomingPadding);
     $statuses = [];
-    for ($index = 0; $index < 8; $index++) {
+    for ($index = 0; $index < 8; ++$index) {
         $sockets[] = pressureUpload($port, '/temporary', str_repeat('f', 65536));
     }
     foreach ($sockets as $socket) {

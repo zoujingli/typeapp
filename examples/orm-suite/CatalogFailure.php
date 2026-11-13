@@ -11,6 +11,4 @@ use Type\Orm\Attribute\Schema;
     ['action' => 'add-column', 'table' => 'type_suite_catalog_entries', 'name' => 'retry_marker', 'column' => ['type' => 'string', 'nullable' => true]],
     ['action' => 'drop-column', 'table' => 'type_suite_catalog_entries', 'name' => 'missing_column'],
 ])]
-final class CatalogFailure
-{
-}
+final class CatalogFailure {}

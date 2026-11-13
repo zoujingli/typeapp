@@ -133,7 +133,7 @@ foreach (PHP_OS_FAMILY === 'Darwin' ? $formulas : [] as $formula => [$names, $li
     if ($formula === 'sqlite') {
         // SQLite 随实际 SDK 安装的公开头文件包含原始 public-domain 声明。
         // 保留整份原文及摘要，不能给新归档沿用旧版本 NOTICE。
-        $sqliteHeader = (string) file_get_contents($prefix . '/include/sqlite3.h');
+        $sqliteHeader = (string)file_get_contents($prefix . '/include/sqlite3.h');
         if (!str_contains(substr($sqliteHeader, 0, 2048), 'disclaims copyright to this source code')
             || !str_contains($sqliteHeader, '#define SQLITE_VERSION        "' . preg_replace('/_\d+$/', '', basename($prefix)) . '"')) {
             throw new RuntimeException('SQLite SDK 版本或许可原文需要重新核对');
@@ -226,7 +226,7 @@ foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sdk . '/i
     }
 }
 ksort($headers);
-$manifest = ['protocol' => 1, 'profile' => $profile, 'php' => PHP_VERSION, 'zts' => (bool) PHP_ZTS, 'debug' => (bool) PHP_DEBUG,
+$manifest = ['protocol' => 1, 'profile' => $profile, 'php' => PHP_VERSION, 'zts' => (bool)PHP_ZTS, 'debug' => (bool)PHP_DEBUG,
     'integer-size' => PHP_INT_SIZE, 'os' => PHP_OS_FAMILY, 'architecture' => php_uname('m'),
     'archives' => $archives, 'headers' => array_values($headers), 'notices' => $notices, 'patches' => [],
     'sources' => [

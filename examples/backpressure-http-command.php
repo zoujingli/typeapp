@@ -15,17 +15,17 @@ use TypeApp\Backpressure\Endpoint;
 /**
  * 启动连接预算与 HTTP 背压示例；数据库、日志路径与监听参数来自受控测试环境。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
     CoroutineRuntime::enableIo();
     $driver = new MysqlDriver(
-        (string) (getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1'),
-        (int) (getenv('TYPE_MYSQL_PORT') ?: 3306),
-        (string) (getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test'),
-        (string) (getenv('TYPE_MYSQL_USER') ?: 'root'),
-        (string) (getenv('TYPE_MYSQL_PASSWORD') ?: '')
+        (string)(getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1'),
+        (int)(getenv('TYPE_MYSQL_PORT') ?: 3306),
+        (string)(getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test'),
+        (string)(getenv('TYPE_MYSQL_USER') ?: 'root'),
+        (string)(getenv('TYPE_MYSQL_PASSWORD') ?: '')
     );
     $budget = new DeploymentBudget(60, 3, 1, 6, 12); // 每进程至多 2 条，含全部身份和轮换代次。
     // 等待时间为 0：额度用尽时立即拒绝，不等待夹具释放租约。
@@ -37,5 +37,5 @@ function main(int $argc, array $argv): void
     foreach (['state', 'slow', 'alternate', 'quick', 'hold', 'deadline', 'leak', 'stop'] as $path) {
         $router->add('GET', '/' . $path, static fn (): Endpoint => new Endpoint($databases, $control, $budget));
     }
-    (new SwooleServer($router, $factory, $factory, $factory, null, $control))->serve('127.0.0.1', (int) getenv('TYPE_HTTP_PORT'));
+    (new SwooleServer($router, $factory, $factory, $factory, null, $control))->serve('127.0.0.1', (int)getenv('TYPE_HTTP_PORT'));
 }

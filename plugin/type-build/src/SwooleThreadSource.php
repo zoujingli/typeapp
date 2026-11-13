@@ -4,18 +4,16 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
-
 /** 为固定上游补充编译线程入口、退出通知与进程级中断钩子；线程创建、请求及回收仍由 Swoole 承担。 */
 final class SwooleThreadSource
 {
-    public const REFERENCE = '64988849fa898e510a38039912610cab6e9cf3f5';
+    public const REFERENCE = '814049090dd9ba8000adc6cd09ad09dd3f0c9989';
 
     /**
      * 只修改显式提供的隔离源码副本；原文摘要或替换次数不匹配时拒绝。
      *
      * @return array<string, array{before: string, after: string}>
-     * @throws RuntimeException 源码不是受审版本或无法保存适配结果。
+     * @throws \RuntimeException 源码不是受审版本或无法保存适配结果
      */
     public function apply(string $directory): array
     {
@@ -31,9 +29,9 @@ final class SwooleThreadSource
         foreach ($hashes as $file => $hash) {
             $path = $directory . '/' . $file;
             if (!is_file($path) || is_link($path) || hash_file('sha256', $path) !== $hash) {
-                throw new RuntimeException('Swoole 线程适配需要固定原文：' . $file);
+                throw new \RuntimeException('Swoole 线程适配需要固定原文：' . $file);
             }
-            $contents[$file] = (string) file_get_contents($path);
+            $contents[$file] = (string)file_get_contents($path);
         }
         $source = $contents['ext-src/swoole_thread.cc'];
         // 原生 ArrayItem 没有填充 null，to_array 的未初始化槽会重复前值；控制参数必须保留明确空槽。
@@ -280,7 +278,7 @@ CPP);
         $report = [];
         foreach ($contents as $file => $content) {
             if (file_put_contents($directory . '/' . $file, $content) !== strlen($content)) {
-                throw new RuntimeException('无法保存 Swoole 线程适配：' . $file);
+                throw new \RuntimeException('无法保存 Swoole 线程适配：' . $file);
             }
             $report[$file] = ['before' => $hashes[$file], 'after' => hash('sha256', $content)];
         }
@@ -340,7 +338,7 @@ CPP);
     private function replace(string $source, string $before, string $after): string
     {
         if (substr_count($source, $before) !== 1) {
-            throw new RuntimeException('Swoole 原文替换位置不唯一，拒绝继续');
+            throw new \RuntimeException('Swoole 原文替换位置不唯一，拒绝继续');
         }
         return str_replace($before, $after, $source);
     }

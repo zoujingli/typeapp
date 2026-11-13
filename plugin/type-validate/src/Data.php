@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Validate;
 
-use Closure;
-use InvalidArgumentException;
-
 /** 保存Schema输出的有效字段（含显式默认值）；PATCH不为缺失字段制造默认值。 */
 final class Data
 {
@@ -15,7 +12,7 @@ final class Data
     /**
      * 保存调用方提供的数据，不重复校验；业务通常使用Schema生成此对象。
      *
-     * @param array<string, mixed> $values 已通过校验的有效字段。
+     * @param array<string, mixed> $values 已通过校验的有效字段
      */
     public function __construct(array $values)
     {
@@ -31,12 +28,12 @@ final class Data
     /**
      * 读取有效值，null不与缺失混同。
      *
-     * @throws InvalidArgumentException 结果中没有该字段。
+     * @throws \InvalidArgumentException 结果中没有该字段
      */
     public function get(string $field): mixed
     {
         if (!$this->has($field)) {
-            throw new InvalidArgumentException('字段没有提供：' . $field);
+            throw new \InvalidArgumentException('字段没有提供：' . $field);
         }
         return $this->values[$field];
     }
@@ -47,8 +44,8 @@ final class Data
         return $this->values;
     }
 
-    /** @param Closure(Data): object $factory 将本次已校验数据映射为显式 DTO。 */
-    public function map(Closure $factory): object
+    /** @param \Closure(Data): object $factory 将本次已校验数据映射为显式 DTO。 */
+    public function map(\Closure $factory): object
     {
         return $factory($this);
     }

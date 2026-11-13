@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * 只保全本轮消费者的程序、诊断及最小输入，不复制 SDK、vendor 或数据库。
  * 调用方仍持有原目录；任一复制或摘要核对失败时必须保留原件，不能继续清理。
- * @param list<string> $paths 相对来源目录的明确文件或目录。
+ * @param list<string> $paths 相对来源目录的明确文件或目录
  * @return array<string,array{sha256:string,bytes:int}>
  */
 function copyTutorialArtifacts(string $source, string $destination, array $paths): array
@@ -65,8 +65,8 @@ function archiveTutorialConsumer(string $consumer, string $destination, string $
             $generatedPhp = in_array($relative, ['build/compiler/generated-operations.php', 'build/compiler/assembled-application.php'], true);
             $generatedCpp = preg_match(
                 '~^build/compiler/attempts/[a-f0-9]{8}/(?:'
-                . '(?:app/catalog/(?:service/Reliability|event/(?:AuditChanged|ProductChanged))|vendor/zoujingli/type-orm/src/Connection|generated-operations|assembled-application)\\.cc'
-                . '|include/php_[A-Za-z0-9_]*(?:app_catalog_service_Reliability|app_catalog_event_(?:AuditChanged|ProductChanged)|vendor_zoujingli_type_orm_src_Connection|generated_operations|assembled_application)_[a-f0-9]{10}_decl\\.h)$~D',
+                . '(?:app/catalog/(?:service/Reliability|event/(?:AuditChanged|ProductChanged))|vendor/zoujingli/type-orm/src/Connection|generated-operations|assembled-application)\.cc'
+                . '|include/php_[A-Za-z0-9_]*(?:app_catalog_service_Reliability|app_catalog_event_(?:AuditChanged|ProductChanged)|vendor_zoujingli_type_orm_src_Connection|generated_operations|assembled_application)_[a-f0-9]{10}_decl\.h)$~D',
                 $relative
             ) === 1;
             if ($file->isFile() && (str_ends_with($file->getFilename(), '.log') || str_ends_with($file->getFilename(), '.build.json')

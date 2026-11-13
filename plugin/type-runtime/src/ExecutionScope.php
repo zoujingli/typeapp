@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Runtime;
 
-use RuntimeException;
-use Throwable;
-use Closure;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 
@@ -20,27 +17,43 @@ final class ExecutionScope
     private string $state = 'active';
 
     private ExecutionOwner $owner;
+
     private Deadline $deadline;
+
     private Cancellation $cancellation;
+
     private array $context = [];
+
     private array $bindings = [];
+
     /** execution 服务缓存只属于本作用域，真实收尾完成后释放。 */
     private array $executionServices = [];
+
     private array $children = [];
+
     private array $childErrors = [];
+
     private int $childSequence = 0;
+
     private int $childLimit;
+
     private float $cleanupSeconds;
+
     private bool $resourcesClosed = false;
+
     private bool $closeInProgress = false;
+
     private ?Deadline $shutdownDeadline = null;
+
     private TaskBudget $taskBudget;
+
     private ?Channel $completion = null;
+
     private int $deadlineSubscription = 0;
 
     /**
      * 未传取消对象时拥有本作用域的到期通知；传入时由调用方保留取消所有权。
-     * @param array<string, string> $context 只保存有界关联标识；资源句柄和可变对象必须由当前作用域登记。
+     * @param array<string, string> $context 只保存有界关联标识；资源句柄和可变对象必须由当前作用域登记
      */
     public function __construct(?Deadline $deadline = null, array $context = [], int $childLimit = 16, float $cleanupSeconds = 5.0, ?Cancellation $cancellation = null, ?TaskBudget $taskBudget = null)
     {
@@ -70,14 +83,14 @@ final class ExecutionScope
 
     /**
      * 在每次发起工作前校验执行者、生命周期、取消和业务截止。
-     * @throws TaskException 已取消或截止预算耗尽。
-     * @throws RuntimeException 已关闭、正在关闭或跨执行者使用。
+     * @throws TaskException 已取消或截止预算耗尽
+     * @throws \RuntimeException 已关闭、正在关闭或跨执行者使用
      */
     public function assertActive(): void
     {
         $this->assertOwner();
         if ($this->state !== 'active') {
-            throw new RuntimeException('执行作用域已经关闭或正在关闭');
+            throw new \RuntimeException('执行作用域已经关闭或正在关闭');
         }
         if ($this->deadline->expired()) {
             throw new TaskException('deadline_exceeded', '执行作用域截止预算已用尽');
@@ -90,8 +103,8 @@ final class ExecutionScope
     /**
      * 取得当前协程显式绑定的作用域；不向父协程查找或继承资源。
      *
-     * @throws TaskException 不在协程内、未绑定作用域、已取消或截止。
-     * @throws RuntimeException 作用域已关闭或不属于当前执行者。
+     * @throws TaskException 不在协程内、未绑定作用域、已取消或截止
+     * @throws \RuntimeException 作用域已关闭或不属于当前执行者
      */
     public static function current(): self
     {
@@ -112,12 +125,12 @@ final class ExecutionScope
      *
      * 新作用域不会继承外层绑定；同作用域重入暂时覆盖指定值，返回后恢复。
      * 绑定值只能由应用验证后显式提供，构造时的关联 context 不会自动成为绑定值。
-     * @param Closure(ExecutionScope): mixed $operation 当前工作。
-     * @param array<string, string> $bindings 应用确认的字符串值，不接受资源或可变对象。
-     * @throws TaskException 不在协程内、作用域已取消或截止。
-     * @throws RuntimeException 作用域已关闭或不属于当前执行者。
+     * @param \Closure(ExecutionScope): mixed $operation 当前工作
+     * @param array<string, string> $bindings 应用确认的字符串值，不接受资源或可变对象
+     * @throws TaskException 不在协程内、作用域已取消或截止
+     * @throws \RuntimeException 作用域已关闭或不属于当前执行者
      */
-    public function run(Closure $operation, array $bindings = []): mixed
+    public function run(\Closure $operation, array $bindings = []): mixed
     {
         $this->assertActive();
         CoroutineRuntime::assertAvailable();
@@ -158,15 +171,15 @@ final class ExecutionScope
     /**
      * 在当前作用域内惰性取得 execution 服务；同一作用域复用，子作用域不会继承。
      *
-     * @internal 供已生成的直接工厂复用实例，不用于运行时查找服务声明。
-     * @param Closure(): mixed $factory 只负责构造服务，不应在构造阶段打开外部资源。
-     * @throws RuntimeException 作用域已关闭、正在关闭或跨执行者使用。
+     * @internal 供已生成的直接工厂复用实例，不用于运行时查找服务声明
+     * @param \Closure(): mixed $factory 只负责构造服务，不应在构造阶段打开外部资源
+     * @throws \RuntimeException 作用域已关闭、正在关闭或跨执行者使用
      */
-    public function service(string $id, Closure $factory): mixed
+    public function service(string $id, \Closure $factory): mixed
     {
         $this->assertActive();
         if (self::current() !== $this) {
-            throw new RuntimeException('执行服务必须在所属作用域绑定后构造');
+            throw new \RuntimeException('执行服务必须在所属作用域绑定后构造');
         }
         if (!array_key_exists($id, $this->executionServices)) {
             $instance = $factory();
@@ -185,7 +198,7 @@ final class ExecutionScope
 
     /**
      * 先登记所有权再启动资源，同一实例只启动一次；启动失败仍交由 close() 收尾。
-     * @throws \Throwable 作用域不可用或资源启动失败；创建者仍须在 finally 关闭作用域。
+     * @throws \Throwable 作用域不可用或资源启动失败；创建者仍须在 finally 关闭作用域
      */
     public function open(ManagedResource $resource): void
     {
@@ -200,7 +213,7 @@ final class ExecutionScope
 
     /**
      * 取消并收尾当前作用域；监听异常不跳过后续清理，重复关闭不重复释放。
-     * @throws RuntimeException 取消监听、子任务或资源清理失败；已能收尾的资源仍会释放。
+     * @throws \RuntimeException 取消监听、子任务或资源清理失败；已能收尾的资源仍会释放
      */
     public function close(): void
     {
@@ -217,7 +230,7 @@ final class ExecutionScope
             $errors = [];
             try {
                 $this->cancellation->cancel();
-            } catch (Throwable $cancelError) {
+            } catch (\Throwable $cancelError) {
                 // 监听异常仍需报告，但不能跳过子任务与已登记资源的收尾。
                 $errors[] = $cancelError->getMessage();
             }
@@ -240,11 +253,11 @@ final class ExecutionScope
                 }
             }
             if (!$this->resourcesClosed) {
-                for ($index = count($this->resources) - 1; $index >= 0; $index--) {
+                for ($index = count($this->resources) - 1; $index >= 0; --$index) {
                     try {
                         $this->resources[$index]->stop();
                         unset($this->resources[$index]);
-                    } catch (Throwable $error) {
+                    } catch (\Throwable $error) {
                         $errors[] = $error->getMessage();
                     }
                 }
@@ -264,7 +277,7 @@ final class ExecutionScope
                 $this->completion?->close();
             }
             if ($errors !== []) {
-                throw new RuntimeException('资源清理失败：' . implode('；', $errors));
+                throw new \RuntimeException('资源清理失败：' . implode('；', $errors));
             }
         } finally {
             $this->closeInProgress = false;
@@ -278,14 +291,14 @@ final class ExecutionScope
     }
 
     /**
-     * @internal 仅在 close 后由所属任务等待真实收尾；取消等待不能提前归还子树额度。
-     * @throws RuntimeException 作用域尚未开始关闭，或调用者不是所属执行者。
+     * @internal 仅在 close 后由所属任务等待真实收尾；取消等待不能提前归还子树额度
+     * @throws \RuntimeException 作用域尚未开始关闭，或调用者不是所属执行者
      */
     public function awaitClosed(): void
     {
         $this->assertOwner();
         if ($this->state === 'active') {
-            throw new RuntimeException('等待收尾前必须关闭执行作用域');
+            throw new \RuntimeException('等待收尾前必须关闭执行作用域');
         }
         if ($this->state === 'closed') {
             return;
@@ -296,16 +309,19 @@ final class ExecutionScope
             $this->completion->pop();
         }
     }
+
     /** 返回任务树共享的截止对象；缩短它会影响现有子任务。 */
     public function deadline(): Deadline
     {
         return $this->deadline;
     }
+
     /** 供受管等待登记取消通知；取消只表达意图，不能代替 close 或真实完成。 */
     public function cancellation(): Cancellation
     {
         return $this->cancellation;
     }
+
     /** 角色停止时共享剩余清理预算；只影响等待，不提前释放仍在执行的资源。 */
     public function limitCleanup(Deadline $deadline): void
     {
@@ -313,11 +329,13 @@ final class ExecutionScope
             $this->shutdownDeadline = $deadline;
         }
     }
+
     /** 返回创建时的上下文快照；修改返回数组不会影响当前或父作用域。 */
     public function context(): array
     {
         return $this->context;
     }
+
     /** 返回当前作用域尚未完整收尾的直接子任务数量。 */
     public function activeTasks(): int
     {
@@ -325,10 +343,10 @@ final class ExecutionScope
     }
 
     /**
-     * @param Closure(ExecutionScope): mixed $operation 子任务始终接收自己的作用域。
-     * @param array<string, string> $bindings 应用显式传给子任务的已验证标识；默认不继承父身份或租户。
+     * @param \Closure(ExecutionScope): mixed $operation 子任务始终接收自己的作用域
+     * @param array<string, string> $bindings 应用显式传给子任务的已验证标识；默认不继承父身份或租户
      */
-    public function spawn(Closure $operation, array $bindings = []): ManagedTask
+    public function spawn(\Closure $operation, array $bindings = []): ManagedTask
     {
         $this->assertActive();
         $snapshot = [];
@@ -372,7 +390,7 @@ final class ExecutionScope
                 },
                 $snapshot
             );
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             unset($this->children[$id]);
             $this->taskBudget->release();
             throw $error;
@@ -382,5 +400,4 @@ final class ExecutionScope
         }
         return $task;
     }
-
 }

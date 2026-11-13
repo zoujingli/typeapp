@@ -7,7 +7,7 @@ use Type\Core\Http\Message\Factory;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function messageExpect(bool $condition, string $message): void
 {
@@ -19,7 +19,7 @@ function messageExpect(bool $condition, string $message): void
 /**
  * 离线验证 PSR 消息、URI 与流的实际字节和不可变复制语义。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
@@ -27,9 +27,9 @@ function main(int $argc, array $argv): void
     $stream = $factory->createStream('原生正文');
     messageExpect($stream->tell() === 0 && $stream->getSize() === 12, '工厂必须生成定位于开头的流');
     messageExpect($stream->read(6) === '原生' && $stream->getContents() === '正文', '流没有保留字节内容与当前位置');
-    messageExpect((string) $stream === '原生正文', '字符串转换必须从流开头读取');
+    messageExpect((string)$stream === '原生正文', '字符串转换必须从流开头读取');
     $stream->rewind();
-    messageExpect($stream->write('PSR') === 3 && (string) $stream === 'PSR生正文', '可写流内容错误');
+    messageExpect($stream->write('PSR') === 3 && (string)$stream === 'PSR生正文', '可写流内容错误');
     $resource = $stream->detach();
     messageExpect(is_resource($resource) && !$stream->isReadable() && !$stream->isWritable() && $stream->getSize() === null, '分离后流仍然可用');
     fclose($resource);
@@ -39,14 +39,14 @@ function main(int $argc, array $argv): void
     } catch (RuntimeException $error) {
         $closed = true;
     }
-    messageExpect($closed && (string) $stream === '', '分离流必须拒绝读取且字符串转换安全');
+    messageExpect($closed && (string)$stream === '', '分离流必须拒绝读取且字符串转换安全');
     $uri = $factory->createUri('HTTPS://Example.COM:443/a%2Fb?q=原生#片段');
     messageExpect($uri->getScheme() === 'https' && $uri->getHost() === 'example.com' && $uri->getPort() === null, 'URI 大小写或标准端口错误');
-    messageExpect((string) $uri === 'https://example.com/a%2Fb?q=%E5%8E%9F%E7%94%9F#%E7%89%87%E6%AE%B5', 'URI 编码不正确或出现重复编码');
+    messageExpect((string)$uri === 'https://example.com/a%2Fb?q=%E5%8E%9F%E7%94%9F#%E7%89%87%E6%AE%B5', 'URI 编码不正确或出现重复编码');
     $changedUri = $uri->withPath('new path')->withQuery('x=%2F&y=%')->withFragment('')->withPort(8443);
-    messageExpect((string) $changedUri === 'https://example.com:8443/new%20path?x=%2F&y=%25' && $uri->getPath() === '/a%2Fb', 'URI 修改没有保留原对象');
-    messageExpect((string) $factory->createUri()->withPath('//relative') === '/relative', '无 authority URI 路径错误');
-    messageExpect((string) $factory->createUri('http://[::1]:8080/')->withUserInfo('甲', 'a:b') === 'http://%E7%94%B2:a:b@[::1]:8080/', 'URI 用户信息或 IPv6 错误');
+    messageExpect((string)$changedUri === 'https://example.com:8443/new%20path?x=%2F&y=%25' && $uri->getPath() === '/a%2Fb', 'URI 修改没有保留原对象');
+    messageExpect((string)$factory->createUri()->withPath('//relative') === '/relative', '无 authority URI 路径错误');
+    messageExpect((string)$factory->createUri('http://[::1]:8080/')->withUserInfo('甲', 'a:b') === 'http://%E7%94%B2:a:b@[::1]:8080/', 'URI 用户信息或 IPv6 错误');
     $invalidPort = false;
     try {
         $uri->withPort(65536);
@@ -57,7 +57,7 @@ function main(int $argc, array $argv): void
     $response = $factory->createResponse(201)->withHeader('X-Trace', ' one ')->withAddedHeader('x-trace', ['two']);
     $changed = $response->withHeader('X-Trace', 'three')->withStatus(404)->withBody($factory->createStream('新正文'));
     messageExpect($response->getHeader('X-TRACE') === ['one', 'two'] && $response->getHeaders()['X-Trace'] === ['one', 'two'], '消息头未忽略查询大小写或丢失原始名称');
-    messageExpect($response->getStatusCode() === 201 && $response->getReasonPhrase() === 'Created' && (string) $response->getBody() === '', '响应修改污染原对象');
+    messageExpect($response->getStatusCode() === 201 && $response->getReasonPhrase() === 'Created' && (string)$response->getBody() === '', '响应修改污染原对象');
     messageExpect($changed->getStatusCode() === 404 && $changed->getReasonPhrase() === 'Not Found' && $changed->getHeaderLine('x-trace') === 'three', '响应状态或替换消息头失败');
     messageExpect(!$changed->withoutHeader('X-TRACE')->hasHeader('x-trace') && $changed->hasHeader('x-trace'), '移除消息头污染原对象');
     $injection = false;
@@ -97,8 +97,8 @@ function main(int $argc, array $argv): void
     messageExpect($target !== false, '无法创建上传测试路径');
     try {
         $upload->getStream()->read(3);
-        $upload->moveTo((string) $target);
-        messageExpect(file_get_contents((string) $target) === '上传正文', '移动文件没有保留完整内容');
+        $upload->moveTo((string)$target);
+        messageExpect(file_get_contents((string)$target) === '上传正文', '移动文件没有保留完整内容');
         $moved = false;
         try {
             $upload->getStream();
@@ -108,13 +108,13 @@ function main(int $argc, array $argv): void
         messageExpect($moved, '移动完成后仍然可以获取原上传流');
         $movedAgain = false;
         try {
-            $upload->moveTo((string) $target);
+            $upload->moveTo((string)$target);
         } catch (RuntimeException $error) {
             $movedAgain = true;
         }
         messageExpect($movedAgain, '同一上传文件允许重复移动');
     } finally {
-        unlink((string) $target);
+        unlink((string)$target);
     }
     $failedUpload = $factory->createUploadedFile($factory->createStream(), 0, UPLOAD_ERR_PARTIAL);
     $partialRejected = false;

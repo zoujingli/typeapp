@@ -1,12 +1,12 @@
 <?php
 
 declare(strict_types=1);
+use Type\Testing\Process;
 
 /** 无通信历史的转配经真实 HTTP 完成；持久隔离另由 MQTT 同步装置验证，不能互相替代。 */
 function iotReassignmentChecks(Closure $request, PDO $database, string $driver, string $address, string $platform, string $password): array
 {
-    $call = static fn (string $method, string $path, string $token, ?array $body = null, int $status = 200, array $headers = [], string $error = ''): array
-        => $request($method, $path, $token, $headers, $body, $status, $error);
+    $call = static fn (string $method, string $path, string $token, ?array $body = null, int $status = 200, array $headers = [], string $error = ''): array => $request($method, $path, $token, $headers, $body, $status, $error);
     $call('GET', '/admin/reassignments', $platform);
     $source = bin2hex(random_bytes(16));
     $target = bin2hex(random_bytes(16));
@@ -77,7 +77,7 @@ function iotReassignmentChecks(Closure $request, PDO $database, string $driver, 
     expect(!str_contains(json_encode($call('GET', $adminPath, $platform), JSON_THROW_ON_ERROR), $completed['credential']['password']), '普通转配查询泄漏一次性凭据');
     $history = $database->prepare('SELECT COUNT(*) FROM iot_device_ownerships WHERE device_id = ?');
     $history->execute([$device['id']]);
-    expect((int) $history->fetchColumn() === 2, '重试创建了多个使用关系');
+    expect((int)$history->fetchColumn() === 2, '重试创建了多个使用关系');
     $history->closeCursor();
     $second = $register('版本竞争设备')['device'];
     $race = identityCompete($database, $driver, $address, [
@@ -97,7 +97,7 @@ function iotReassignmentChecks(Closure $request, PDO $database, string $driver, 
     }
     $snapshot = static function () use ($database): array {
         $rows = [];
-        foreach (['iot_devices', 'iot_device_ownerships', 'iot_device_credentials', 'iot_device_reassignments', 'iot_application_grants', 'broker_access_revisions'] as $table) {
+        foreach (['iot_devices', 'iot_device_ownerships', 'iot_device_credentials', 'iot_device_reassignments', 'iot_application_grants', 'platform_mqtt_access_revision'] as $table) {
             $rows[$table] = $database->query('SELECT * FROM ' . $table . ' ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
         }
         return $rows;
@@ -121,7 +121,7 @@ function iotReassignmentChecks(Closure $request, PDO $database, string $driver, 
 }
 
 /** 双节点真实协议场景；测试进程只暂停/终止自己启动的节点，退出路径始终解除暂停。 */
-function iotReassignmentMqttChecks(array $command, array $environment, string $base, PDO $database, \Type\Testing\Process $first): array
+function iotReassignmentMqttChecks(array $command, array $environment, string $base, PDO $database, Process $first): array
 {
     $root = dirname(__DIR__);
     $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $reason);
@@ -133,11 +133,11 @@ function iotReassignmentMqttChecks(array $command, array $environment, string $b
     $client = null;
     $frozen = false;
     $gate = $base . '/reassignment-stage';
-    $windowsFault = static function (string $action, \Type\Testing\Process $process) use ($root, $base, $command): array {
+    $windowsFault = static function (string $action, Process $process) use ($root, $base, $command): array {
         $pid = $process->pid();
         expect(is_int($pid), 'Windows 故障目标须仍是本轮运行节点');
-        $helper = new \Type\Testing\Process(['pwsh', '-NoProfile', '-NonInteractive', '-File', $root . '/tests/windows-process-fault.ps1',
-            '-Action', $action, '-TargetProcessId', (string) $pid, '-Artifact', $command[count($command) - 1],
+        $helper = new Process(['pwsh', '-NoProfile', '-NonInteractive', '-File', $root . '/tests/windows-process-fault.ps1',
+            '-Action', $action, '-TargetProcessId', (string)$pid, '-Artifact', $command[count($command) - 1],
             '-Receipt', $base . '/reassignment-windows-process.json'], $root);
         try {
             $result = $helper->wait(45);
@@ -157,16 +157,16 @@ function iotReassignmentMqttChecks(array $command, array $environment, string $b
         } while (microtime(true) < $until);
         throw new RuntimeException($message);
     };
-    $launch = static function () use ($environment, $command, $root, $port, $node, $database, $wait): \Type\Testing\Process {
+    $launch = static function () use ($environment, $command, $root, $port, $node, $database, $wait): Process {
         $wait(static function () use ($database, $node): bool {
-            $query = $database->prepare('SELECT expires_at FROM broker_resource_runs WHERE node_id = ?');
+            $query = $database->prepare('SELECT expires_at FROM platform_mqtt_resource_run WHERE node_id = ?');
             $query->execute([$node]);
             $expires = $query->fetchColumn();
-            return $expires === false || (int) $expires <= time();
+            return $expires === false || (int)$expires <= time();
         }, '旧运行观察未在有效期内结束');
-        return new \Type\Testing\Process([...$command, 'iot:mqtt'], $root, array_replace($environment, ['IOT_MQTT_NODE_ID' => $node, 'IOT_MQTT_PORT' => $port]));
+        return new Process([...$command, 'iot:mqtt'], $root, array_replace($environment, ['IOT_MQTT_NODE_ID' => $node, 'IOT_MQTT_PORT' => $port]));
     };
-    $startNode = static function (\Type\Testing\Process $process) use ($wait, $port): void {
+    $startNode = static function (Process $process) use ($wait, $port): void {
         $wait(static function () use ($process, $port): bool {
             expect($process->running(), '第二节点提前退出：' . $process->stderr());
             $socket = @stream_socket_client('tcp://127.0.0.1:' . $port, $number, $reason, 0.1);
@@ -180,7 +180,7 @@ function iotReassignmentMqttChecks(array $command, array $environment, string $b
     try {
         $second = $launch();
         $startNode($second);
-        $client = new \Type\Testing\Process(
+        $client = new Process(
             ['node', $root . '/tests/iot-device-client.mjs', 'reassignments'],
             $root,
             array_replace($environment, ['TYPE_REASSIGNMENT_GATE' => $gate, 'TYPE_REASSIGNMENT_PORT' => $port])
@@ -189,7 +189,7 @@ function iotReassignmentMqttChecks(array $command, array $environment, string $b
         $processed = [];
         while ($client->running()) {
             expect(microtime(true) < $until, '转配组合场景超过总预算');
-            $phase = is_file($gate . '.json') ? json_decode((string) file_get_contents($gate . '.json'), true, 8, JSON_THROW_ON_ERROR) : null;
+            $phase = is_file($gate . '.json') ? json_decode((string)file_get_contents($gate . '.json'), true, 8, JSON_THROW_ON_ERROR) : null;
             if ($phase !== null && !isset($processed[$phase['stage']])) {
                 if ($phase['stage'] === 'freeze') {
                     $frozen = true;
@@ -205,7 +205,7 @@ function iotReassignmentMqttChecks(array $command, array $environment, string $b
                     expect($record['status'] === 'isolating' && $record['isolation_id'] !== null, '冻结节点期间错误交接了设备');
                     $active = $database->prepare('SELECT COUNT(*) FROM type_mqtt_sessions WHERE client_id = ? AND node_id = ?');
                     $active->execute([$phase['device'], $node]);
-                    expect((int) $active->fetchColumn() === 1, '装置没有真实跨节点旧会话');
+                    expect((int)$active->fetchColumn() === 1, '装置没有真实跨节点旧会话');
                     $run = $database->prepare('SELECT run_id FROM type_mqtt_nodes WHERE node_id = ?');
                     $run->execute([$node]);
                     $runId = $run->fetchColumn();

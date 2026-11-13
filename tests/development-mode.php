@@ -5,6 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+use Type\Build\ArtifactManifest;
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
@@ -113,7 +114,7 @@ try {
                 // 生产始终保留受控原因；启动权限只决定能否增加调用帧，不能退回无原因日志。
                 expect(array_keys($details) === ['error', 'request_id', 'exception_type', 'file', 'line', 'build_id']
                     && !str_contains($logs, '"frames"'), '生产环境被配置或HTTP头打开了额外调试详情');
-                $identity = (new \Type\Build\ArtifactManifest())->read(realpath($target));
+                $identity = (new ArtifactManifest())->read(realpath($target));
                 expect(
                     $details['build_id'] === $identity['build-id'] && $failures[0]['build_id'] === $identity['build-id'],
                     '生产原因日志没有绑定实际验收程序'

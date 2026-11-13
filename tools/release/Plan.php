@@ -72,7 +72,7 @@ final class Plan
      * 在 tag 之前准备正常模板源码；重复准备同一版本不改字节，不创建提交或标签。
      *
      * @return array{version:string, file:string, changed:bool, sha256:string}
-     * @throws \RuntimeException 版本已有标签、组件约束冲突或模板无法安全写入。
+     * @throws \RuntimeException 版本已有标签、组件约束冲突或模板无法安全写入
      */
     public static function prepareTemplate(string $root, string $version): array
     {
@@ -83,14 +83,14 @@ final class Plan
         if (Process::output(['git', 'tag', '--list', $version], $root) !== '') {
             throw new \RuntimeException('版本标签已存在，不能重新准备其发布源码');
         }
-        $mapping = json_decode((string) file_get_contents($root . '/.github/distribution.json'), true, 64, JSON_THROW_ON_ERROR);
+        $mapping = json_decode((string)file_get_contents($root . '/.github/distribution.json'), true, 64, JSON_THROW_ON_ERROR);
         $components = [];
         foreach ($mapping['packages'] ?? [] as $name => $definition) {
             if (!preg_match('/^type-[a-z0-9-]+$/D', $name) || ($definition['prefix'] ?? '') !== 'plugin/' . $name
                 || ($definition['composer-name'] ?? '') !== 'zoujingli/' . $name) {
                 throw new \RuntimeException('模板版本准备遇到非法组件映射');
             }
-            $component = json_decode((string) file_get_contents($root . '/' . $definition['prefix'] . '/composer.json'), true, 64, JSON_THROW_ON_ERROR);
+            $component = json_decode((string)file_get_contents($root . '/' . $definition['prefix'] . '/composer.json'), true, 64, JSON_THROW_ON_ERROR);
             if (($component['name'] ?? '') !== $definition['composer-name']) {
                 throw new \RuntimeException('模板版本准备遇到组件身份冲突');
             }
@@ -106,7 +106,7 @@ final class Plan
         if (!is_file($file) || is_link($file)) {
             throw new \RuntimeException('模板依赖声明必须是普通文件');
         }
-        $original = (string) file_get_contents($file);
+        $original = (string)file_get_contents($file);
         $composer = json_decode($original, true, 64, JSON_THROW_ON_ERROR);
         $prepared = self::templateDependencies($composer, $version, $components);
         $changed = $composer != $prepared;
@@ -135,10 +135,10 @@ final class Plan
     /**
      * 固定模板第一方依赖闭包，生产依赖优先；第三方约束与其他应用配置不变。
      *
-     * @param array<string,mixed> $composer 模板原始 Composer 声明。
-     * @param array<string,array<string,mixed>> $components 同一源码的组件声明，按 Composer 包名索引。
-     * @return array<string,mixed> tag 前应提交的模板声明。
-     * @throws \RuntimeException 模板驱动不唯一、闭包缺失或组件不接受该版本。
+     * @param array<string,mixed> $composer 模板原始 Composer 声明
+     * @param array<string,array<string,mixed>> $components 同一源码的组件声明，按 Composer 包名索引
+     * @return array<string,mixed> tag 前应提交的模板声明
+     * @throws \RuntimeException 模板驱动不唯一、闭包缺失或组件不接受该版本
      */
     public static function templateDependencies(array $composer, string $version, array $components): array
     {

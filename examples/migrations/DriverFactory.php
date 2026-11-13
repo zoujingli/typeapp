@@ -19,7 +19,7 @@ final class DriverFactory
         if ($driver === 'mysql') {
             return new MysqlDriver(
                 getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1',
-                (int) (getenv('TYPE_MYSQL_PORT') ?: '3306'),
+                (int)(getenv('TYPE_MYSQL_PORT') ?: '3306'),
                 getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test',
                 getenv('TYPE_MYSQL_USER') ?: 'root',
                 getenv('TYPE_MYSQL_PASSWORD') ?: ''
@@ -28,7 +28,7 @@ final class DriverFactory
         if ($driver === 'pgsql') {
             return new PgsqlDriver(
                 getenv('TYPE_PGSQL_HOST') ?: '127.0.0.1',
-                (int) (getenv('TYPE_PGSQL_PORT') ?: '5432'),
+                (int)(getenv('TYPE_PGSQL_PORT') ?: '5432'),
                 getenv('TYPE_PGSQL_DATABASE') ?: 'type_app_test',
                 getenv('TYPE_PGSQL_USER') ?: 'type_app',
                 getenv('TYPE_PGSQL_PASSWORD') ?: ''

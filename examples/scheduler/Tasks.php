@@ -4,18 +4,19 @@ declare(strict_types=1);
 
 namespace TypeApp\SchedulerExample;
 
-use DateTimeImmutable;
 use Psr\Clock\ClockInterface;
+use Type\Runtime\ExecutionScope;
+use Type\Runtime\ManagedResource;
 use Type\Scheduler\Task;
 use Type\Scheduler\TaskContext;
-use Type\Runtime\ManagedResource;
-use Type\Runtime\ExecutionScope;
 
 /** 有界故障演练从启动配置选择，Task 及其依赖仍由生成工厂逐次构造。 */
 final class ScenarioTask implements Task
 {
     private SummaryTask $summary;
+
     private string $scenario;
+
     private ExecutionScope $scope;
 
     /** 构造时即核对当前调度执行作用域。 */
@@ -57,14 +58,12 @@ final class CleanupFailureTask implements Task, ManagedResource
     }
 
     /** 不分配外部资源，使故障集中发生在清理阶段。 */
-    public function start(): void
-    {
-    }
+    public function start(): void {}
 
     /**
      * 故意抛出清理错误，验证调度器保留未完成的资源状态。
      *
-     * @throws \RuntimeException 每次调用均失败。
+     * @throws \RuntimeException 每次调用均失败
      */
     public function stop(): void
     {
@@ -75,19 +74,20 @@ final class CleanupFailureTask implements Task, ManagedResource
 /** 可手动推进的示例时钟，用于固定计划、回拨与补跑窗口。 */
 final class ControlledClock implements ClockInterface
 {
-    private DateTimeImmutable $date;
+    private \DateTimeImmutable $date;
 
     /** 解析显式时间文本，不读取当前系统时间替代测试输入。 */
     public function __construct(string $date)
     {
-        $this->date = new DateTimeImmutable($date);
+        $this->date = new \DateTimeImmutable($date);
     }
 
     /** 返回当前受控时间，不推进时钟。 */
-    public function now(): DateTimeImmutable
+    public function now(): \DateTimeImmutable
     {
         return $this->date;
     }
+
     /** 按给定秒数推进受控时间，供连续 tick 使用。 */
     public function advance(int $seconds): void
     {
@@ -99,6 +99,7 @@ final class ControlledClock implements ClockInterface
 final class SummaryTask implements Task
 {
     private ExecutionScope $scope;
+
     private int $calls = 0;
 
     /** 记录自动注入依赖的构造作用域，不跨 occurrence 共享。 */
@@ -106,10 +107,11 @@ final class SummaryTask implements Task
     {
         $this->scope = ExecutionScope::current();
     }
+
     /**
      * 检查任务 Scope 归属并返回当前 occurrence 与计划时刻。
      *
-     * @return array<string, mixed> 可持久记录的计划摘要。
+     * @return array<string, mixed> 可持久记录的计划摘要
      */
     public function run(TaskContext $context): array
     {
@@ -128,7 +130,7 @@ final class InterruptedTask implements Task
     /** 故意以 SIGKILL 终止演练进程，留下 running 记录供新执行者识别中断。 */
     public function run(TaskContext $context): array
     {
-        posix_kill((int) getmypid(), 9);
+        posix_kill((int)getmypid(), 9);
         throw new \RuntimeException('测试进程没有按预期中断');
     }
 }

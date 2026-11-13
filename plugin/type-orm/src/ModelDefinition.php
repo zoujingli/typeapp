@@ -4,42 +4,46 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use InvalidArgumentException;
-use DateTimeImmutable;
-use DateTimeZone;
+use Type\Runtime\ExecutionScope;
 
 /** 模型的静态数据库映射；负责字段、生命周期、租户和实际存储一致性。 */
 final readonly class ModelDefinition
 {
     private string $table;
+
     private string $key;
+
     private array $fields;
+
     private bool $generatedKey;
+
     private ?string $softDelete;
+
     private ?string $version;
+
     private ?string $tenant;
 
     /**
      * 固定字段与关系映射，并检查租户、版本、软删除和受管时间声明之间的约束。
      *
-     * @param array<string, ModelField> $fields 模型属性名到字段策略。
-     * @param array<string, RelationDefinition> $relations 模型属性名到关系策略。
-     * @param class-string<Model>|string $modelClass 生成模型的稳定类身份，底层手工映射可为空。
-     * @param ?string $createdAt 受管创建时间属性，支持非空 integer 或 datetime。
-     * @param ?string $updatedAt 受管更新时间属性，不接受业务赋值。
+     * @param array<string, ModelField> $fields 模型属性名到字段策略
+     * @param array<string, RelationDefinition> $relations 模型属性名到关系策略
+     * @param class-string<Model>|string $modelClass 生成模型的稳定类身份，底层手工映射可为空
+     * @param ?string $createdAt 受管创建时间属性，支持非空 integer 或 datetime
+     * @param ?string $updatedAt 受管更新时间属性，不接受业务赋值
      */
     public function __construct(string $table, string $key, array $fields, bool $generatedKey = true, ?string $softDelete = null, ?string $version = null, private array $relations = [], private string $database = 'default', ?string $tenant = null, private string $modelClass = '', private ?string $createdAt = null, private ?string $updatedAt = null)
     {
         if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/D', $table) || !isset($fields[$key])
             || preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $database) !== 1) {
-            throw new InvalidArgumentException('模型表或主键映射无效');
+            throw new \InvalidArgumentException('模型表或主键映射无效');
         }
         $columns = [];
         $checked = [];
         foreach ($fields as $name => $field) {
             if (!is_string($name) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $name) || !$field instanceof ModelField
                 || in_array(strtolower($field->column()), $columns, true)) {
-                throw new InvalidArgumentException('模型字段映射无效或数据库列重复');
+                throw new \InvalidArgumentException('模型字段映射无效或数据库列重复');
             }
             $columns[] = strtolower($field->column());
             $checked[$name] = $field;
@@ -54,18 +58,18 @@ final readonly class ModelDefinition
         }
         if ($tenant !== null && (!isset($checked[$tenant]) || $checked[$tenant]->allowsNull()
             || !in_array($checked[$tenant]->typeName(), ['integer', 'string', 'bigint'], true))) {
-            throw new InvalidArgumentException('租户字段必须是已映射的非空字符串或整数身份');
+            throw new \InvalidArgumentException('租户字段必须是已映射的非空字符串或整数身份');
         }
         $this->tenant = $tenant;
         $this->generatedKey = $generatedKey;
         if ($softDelete !== null && (!isset($fields[$softDelete]) || $fields[$softDelete]->typeName() !== 'datetime'
             || !$fields[$softDelete]->allowsNull() || $fields[$softDelete]->fillable())) {
-            throw new InvalidArgumentException('软删除字段必须是不可批量赋值的可空时间字段');
+            throw new \InvalidArgumentException('软删除字段必须是不可批量赋值的可空时间字段');
         }
         $this->softDelete = $softDelete;
         if ($version !== null && (!isset($fields[$version]) || $fields[$version]->typeName() !== 'integer'
             || $fields[$version]->allowsNull() || $fields[$version]->fillable() || $version === $key)) {
-            throw new InvalidArgumentException('版本字段必须是不可赋值的非空整数');
+            throw new \InvalidArgumentException('版本字段必须是不可赋值的非空整数');
         }
         $this->version = $version;
         foreach ([$createdAt, $updatedAt] as $timestamp) {
@@ -73,13 +77,13 @@ final readonly class ModelDefinition
                 || $checked[$timestamp]->fillable() || !in_array($checked[$timestamp]->typeName(), ['integer', 'datetime'], true)
                 || in_array($timestamp, [$key, $this->tenant, $softDelete, $version], true)
                 || $createdAt === $updatedAt)) {
-                throw new InvalidArgumentException('受管时间必须是独立、不可赋值的非空整数或时间字段');
+                throw new \InvalidArgumentException('受管时间必须是独立、不可赋值的非空整数或时间字段');
             }
         }
         foreach ($relations as $name => $relation) {
             if (!is_string($name) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $name) || isset($fields[$name])
                 || !$relation instanceof RelationDefinition || !isset($fields[$relation->sourceKey()])) {
-                throw new InvalidArgumentException('模型关系映射无效或与字段冲突');
+                throw new \InvalidArgumentException('模型关系映射无效或与字段冲突');
             }
         }
     }
@@ -89,6 +93,7 @@ final readonly class ModelDefinition
     {
         return $this->table;
     }
+
     /** 返回逻辑数据源名称，由 Db 在当前作用域选路。 */
     public function database(): string
     {
@@ -102,7 +107,7 @@ final readonly class ModelDefinition
     }
 
     /** 当前应用已经验证的租户值；关联 context 与查询输入不能代替可信绑定。 */
-    public function tenantIdentity(\Type\Runtime\ExecutionScope $scope): int|string|null
+    public function tenantIdentity(ExecutionScope $scope): int|string|null
     {
         if ($this->tenant === null) {
             return null;
@@ -113,21 +118,25 @@ final readonly class ModelDefinition
         }
         return $this->field($this->tenant)->normalize($value, true);
     }
+
     /** 返回模型主键属性名，与真实数据库列名可能不同。 */
     public function key(): string
     {
         return $this->key;
     }
+
     /** 表示插入时是否允许由数据库生成主键。 */
     public function generatedKey(): bool
     {
         return $this->generatedKey;
     }
+
     /** 返回受管软删除时间属性；null 表示默认执行物理删除。 */
     public function softDeleteField(): ?string
     {
         return $this->softDelete;
     }
+
     /** 返回受管乐观锁属性；null 表示没有模型版本比较。 */
     public function versionField(): ?string
     {
@@ -147,15 +156,15 @@ final readonly class ModelDefinition
     }
 
     /**
-     * @internal 为一次 SQL 写入采样时间；批量新增必须复用同一份结果。
-     * @return array<string, int|DateTimeImmutable> 模型属性值，继续经过字段编码和实际存储校验。
+     * @internal 为一次 SQL 写入采样时间；批量新增必须复用同一份结果
+     * @return array<string, \DateTimeImmutable|int> 模型属性值，继续经过字段编码和实际存储校验
      */
-    public function writeTimestamps(bool $creating, ?DateTimeImmutable $instant = null): array
+    public function writeTimestamps(bool $creating, ?\DateTimeImmutable $instant = null): array
     {
         if ($this->updatedAt === null && (!$creating || $this->createdAt === null)) {
             return [];
         }
-        $now = ($instant ?? new DateTimeImmutable('now', new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('UTC'));
+        $now = ($instant ?? new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->setTimezone(new \DateTimeZone('UTC'));
         $values = [];
         foreach ([$creating ? $this->createdAt : null, $this->updatedAt] as $name) {
             if ($name !== null) {
@@ -164,6 +173,7 @@ final readonly class ModelDefinition
         }
         return $values;
     }
+
     /**
      * 按声明顺序列出模型字段，不含关系与计算值。
      *
@@ -255,18 +265,22 @@ final readonly class ModelDefinition
                 if (in_array($type, ['text', 'tinytext', 'mediumtext', 'longtext', 'character varying', 'varchar'], true)) {
                     $safe = true;
                 } elseif (preg_match('/^(?:var)?char(?:acter(?: varying)?)?\(([0-9]+)\)/', $type, $match)) {
-                    $safe = (int) $match[1] >= 26;
+                    $safe = (int)$match[1] >= 26;
                 } elseif ($driver === 'mysql') {
                     $safe = preg_match('/^(?:datetime|timestamp)\(6\)$/D', $type) === 1;
                 } elseif (preg_match('/^timestamp(?:\(([0-9]+)\))? (?:with|without) time zone$/D', $type, $match)) {
-                    $safe = !isset($match[1]) || $match[1] === '' || (int) $match[1] >= 6;
+                    $safe = !isset($match[1]) || $match[1] === '' || (int)$match[1] >= 6;
                 }
+            } elseif ($field->typeName() === 'bigint' && $field->integerRange() !== null
+                && preg_match('/^bigint(?:\([0-9]+\))?(?: unsigned)?(?: zerofill)?$/D', $type) === 1) {
+                // 完整 64 位端点由十进制字符串校验，不能以十进制位数截去合法边界值。
+                $safe = $field->integerRange() === (str_contains($type, 'unsigned') ? 'unsigned64' : 'signed64');
             } elseif (in_array($type, ['text', 'tinytext', 'mediumtext', 'longtext', 'numeric', 'character varying', 'varchar'], true)) {
                 $safe = true;
             } elseif (preg_match('/^(?:var)?char(?:acter(?: varying)?)?\(([0-9]+)\)/', $type, $match)) {
-                $safe = (int) $match[1] >= max(1, $field->precision() - $field->scale()) + $field->scale() + ($field->scale() > 0 ? 1 : 0) + 1;
+                $safe = (int)$match[1] >= max(1, $field->precision() - $field->scale()) + $field->scale() + ($field->scale() > 0 ? 1 : 0) + 1;
             } elseif (preg_match('/^(?:numeric|decimal)\(([0-9]+),([0-9]+)\)/', $type, $match)) {
-                $safe = (int) $match[2] >= $field->scale() && (int) $match[1] - (int) $match[2] >= $field->precision() - $field->scale();
+                $safe = (int)$match[2] >= $field->scale() && (int)$match[1] - (int)$match[2] >= $field->precision() - $field->scale();
             } else {
                 $safeDigits = ['tinyint' => 2, 'smallint' => 4, 'mediumint' => 6, 'int' => 9, 'integer' => 9, 'bigint' => 18];
                 preg_match('/^[a-z]+/', $type, $match);
@@ -282,7 +296,7 @@ final readonly class ModelDefinition
     /**
      * 整数运算要求真实整型列；精确数值运算要求真实数值列，文本仅用于无损读写。
      *
-     * @throws ModelException integer_arithmetic_unsupported 或 exact_arithmetic_unsupported 表示物理存储会改变数值语义。
+     * @throws ModelException integer_arithmetic_unsupported 或 exact_arithmetic_unsupported 表示物理存储会改变数值语义
      */
     public function assertArithmeticStorage(Connection $connection, string $name): void
     {

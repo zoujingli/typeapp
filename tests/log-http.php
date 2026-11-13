@@ -10,10 +10,10 @@ $log = tmpfile();
 expect($file !== false && $log !== false, '无法准备 HTTP 日志验证');
 $address = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
 expect(is_resource($address), '无法分配 HTTP 日志验证端口');
-$port = (int) substr(strrchr(stream_socket_get_name($address, false), ':'), 1);
+$port = (int)substr(strrchr(stream_socket_get_name($address, false), ':'), 1);
 fclose($address);
 $environment = getenv();
-$environment['TYPE_HTTP_PORT'] = (string) $port;
+$environment['TYPE_HTTP_PORT'] = (string)$port;
 $environment['TYPE_HTTP_LOG_FILE'] = $file;
 $launcher = 'require ' . var_export($root . '/tests/log-bootstrap.php', true) . '; require '
     . var_export($root . '/examples/log/Http.php', true) . '; require '
@@ -37,7 +37,7 @@ try {
     }
     expect($ready, '日志 HTTP 服务没有就绪');
     $connections = [];
-    for ($index = 0; $index < 24; $index++) {
+    for ($index = 0; $index < 24; ++$index) {
         $connections[$index] = sendHttp($port, 'GET', '/log', 'request-' . $index);
     }
     foreach ($connections as $index => $connection) {
@@ -67,7 +67,7 @@ try {
     rewind($log);
     $output = stream_get_contents($log);
     fclose($log);
-    $wire = (string) file_get_contents($file);
+    $wire = (string)file_get_contents($file);
     unlink($file);
     if ($output !== '') {
         fwrite(STDERR, $output);
@@ -86,7 +86,7 @@ foreach ($rows as $row) {
     }
     expect($row['message'] !== 'expired-request', '失效 Logger 产生了日志');
 }
-for ($index = 0; $index < 24; $index++) {
+for ($index = 0; $index < 24; ++$index) {
     expect($seen['request-' . $index] === ['request-start', 'request-step', 'request-complete'], '请求日志顺序或关联错误');
 }
 expect($seen['request-next'] === ['request-start', 'request-complete'] && $seen['request-fail'] === ['request-start', 'request-failed'], '新请求或异常日志路径错误');

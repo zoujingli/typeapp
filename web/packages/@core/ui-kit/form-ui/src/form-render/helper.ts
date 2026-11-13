@@ -1,54 +1,26 @@
-import type {
-  AnyZodObject,
-  ZodDefault,
-  ZodEffects,
-  ZodNumber,
-  ZodString,
-  ZodTypeAny,
-} from 'zod';
+import type { ZodType } from 'zod';
 
+import { toRaw } from 'vue';
 import { isObject, isString } from '@vben-core/shared/utils';
 
-/**
- * Get the lowest level Zod type.
- * This will unpack optionals, refinements, etc.
- */
-export function getBaseRules<
-  ChildType extends AnyZodObject | ZodTypeAny = ZodTypeAny,
->(schema: ChildType | ZodEffects<ChildType>): ChildType | null {
+/** Zod 4 将转换放入 pipe；只展开包装，不执行转换或校验。 */
+export function getBaseRules<T extends ZodType = ZodType>(schema: T): T | null {
   if (!schema || isString(schema)) return null;
-  if ('innerType' in schema._def)
-    return getBaseRules(schema._def.innerType as ChildType);
-
-  if ('schema' in schema._def)
-    return getBaseRules(schema._def.schema as ChildType);
-
-  return schema as ChildType;
+  schema = toRaw(schema);
+  const definition = schema._def as { type: string; innerType?: T; in?: T };
+  if (definition.innerType) return getBaseRules(definition.innerType);
+  if (definition.type === 'pipe' && definition.in) return getBaseRules(definition.in);
+  return schema;
 }
 
-/**
- * Search for a "ZodDefault" in the Zod stack and return its value.
- */
-export function getDefaultValueInZodStack(schema: ZodTypeAny): any {
-  if (!schema || isString(schema)) {
-    return;
-  }
-  const typedSchema = schema as unknown as ZodDefault<ZodNumber | ZodString>;
-
-  if (typedSchema._def.typeName === 'ZodDefault')
-    return typedSchema._def.defaultValue();
-
-  if ('innerType' in typedSchema._def) {
-    return getDefaultValueInZodStack(
-      typedSchema._def.innerType as unknown as ZodTypeAny,
-    );
-  }
-  if ('schema' in typedSchema._def) {
-    return getDefaultValueInZodStack(
-      (typedSchema._def as any).schema as ZodTypeAny,
-    );
-  }
-
+/** 默认值使用 Zod 4 的值访问器，保留上游默认值工厂的惰性行为。 */
+export function getDefaultValueInZodStack(schema: ZodType): unknown {
+  if (!schema || isString(schema)) return undefined;
+  schema = toRaw(schema);
+  const definition = schema._def as { type: string; defaultValue?: unknown; innerType?: ZodType; in?: ZodType };
+  if (definition.type === 'default') return definition.defaultValue;
+  if (definition.innerType) return getDefaultValueInZodStack(definition.innerType);
+  if (definition.type === 'pipe' && definition.in) return getDefaultValueInZodStack(definition.in);
   return undefined;
 }
 

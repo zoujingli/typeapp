@@ -6,6 +6,9 @@ require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 require dirname(__DIR__) . '/vendor/swoole/typephp/src/polyfills.php';
 
+use Swoole\Coroutine;
+use Swoole\Coroutine\Socket;
+use Swoole\Event;
 use Type\Build\BuildPlatform;
 use Type\Core\TcpSocket;
 use Type\Runtime\CoroutineRuntime;
@@ -18,7 +21,7 @@ expect($argc === 2 && BuildPlatform::contains($root . '/build', $directory) && !
 expect(!file_exists($directory) && mkdir($directory, 0700, true), '绑定验证目录必须尚不存在');
 CoroutineRuntime::enableIo();
 $results = [];
-Swoole\Coroutine::create(static function () use (&$results): void {
+Coroutine::create(static function () use (&$results): void {
     foreach (['127.0.0.1', '::1'] as $address) {
         $budget = new ResourceBudget(2);
         $listener = TcpSocket::listener($budget, $address);
@@ -48,10 +51,10 @@ Swoole\Coroutine::create(static function () use (&$results): void {
         }
     }
 });
-Swoole\Event::wait();
+Event::wait();
 // 对照短截止与原生拒绝完成时间；采样不修改生产连接预算，也不把超时当成拒绝通过。
 $refusal = [];
-Swoole\Coroutine::create(static function () use (&$refusal): void {
+Coroutine::create(static function () use (&$refusal): void {
     $budget = new ResourceBudget(1);
     $listener = TcpSocket::listener($budget, '127.0.0.1');
     $listener->start();
@@ -59,7 +62,7 @@ Swoole\Coroutine::create(static function () use (&$refusal): void {
     $listener->stop();
     $listener->awaitClosed(1);
     foreach ([0.2, 5.0] as $timeout) {
-        $socket = new Swoole\Coroutine\Socket(AF_INET, SOCK_STREAM, 0);
+        $socket = new Socket(AF_INET, SOCK_STREAM, 0);
         $began = hrtime(true);
         try {
             $connected = $socket->connect('127.0.0.1', $port, $timeout);
@@ -70,8 +73,8 @@ Swoole\Coroutine::create(static function () use (&$refusal): void {
         }
     }
 });
-Swoole\Event::wait();
-$coroutines = Swoole\Coroutine::stats()['coroutine_num'];
+Event::wait();
+$coroutines = Coroutine::stats()['coroutine_num'];
 $passed = count($results) === 2 && !in_array(false, array_column($results, 'passed'), true) && $coroutines === 0;
 file_put_contents($directory . '/verification.json', json_encode(['passed' => $passed, 'platform' => PHP_OS_FAMILY,
     'swoole' => phpversion('swoole'), 'coroutines' => $coroutines, 'results' => $results, 'refusal' => $refusal], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));

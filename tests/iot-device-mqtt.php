@@ -9,9 +9,9 @@ require __DIR__ . '/postgres-sync.php';
 
 $root = dirname(__DIR__);
 $target = $argv[1] ?? '--php';
-$tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
-$clientRoot = realpath((string) getenv('TYPE_MQTT_CLIENT_ROOT'));
-expect((is_string($clientRoot) && is_file($clientRoot . '/node_modules/mqtt/package.json')), 'TYPE_MQTT_CLIENT_ROOT需要已安装MQTT.js 5.15.0的测试依赖根');
+$tools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
+$clientRoot = realpath((string)getenv('TYPE_MQTT_CLIENT_ROOT'));
+expect(is_string($clientRoot) && is_file($clientRoot . '/node_modules/mqtt/package.json'), 'TYPE_MQTT_CLIENT_ROOT需要已安装MQTT.js 5.15.0的测试依赖根');
 $base = $root . '/build/iot-device-mqtt-' . bin2hex(random_bytes(6));
 expect(mkdir($base, 0700), '无法创建接入测试根');
 $database = PHP_OS_FAMILY === 'Windows' ? null : new NativeDatabase($base . '/primary', 'pgsql', $tools);
@@ -22,9 +22,9 @@ try {
     // runner 可为预装数据库设置 PGPASSWORD；复制必须使用本轮主库的专用凭据文件。
     $sync = new PostgresSync(array_replace($parameters, ['PGPASSWORD' => bin2hex(random_bytes(24))]), $base . '/standby', $tools);
     $environment = array_replace(getenv(), $parameters);
-    $environment['PATH'] = (string) getenv('PATH');
+    $environment['PATH'] = (string)getenv('PATH');
     $environment['TYPE_MQTT_CLIENT_ROOT'] = $clientRoot ?: '';
-    $environment['TYPE_PGSQL_STANDBY_PORT'] = (string) $sync->standby()->query('SHOW port')->fetchColumn();
+    $environment['TYPE_PGSQL_STANDBY_PORT'] = (string)$sync->standby()->query('SHOW port')->fetchColumn();
     $output = nativeDatabaseCommand(
         [PHP_BINARY, $root . '/tests/iot-identity.php', $target, 'pgsql', '--devices', '--device-mqtt', ...array_slice($argv, 2)],
         $environment,

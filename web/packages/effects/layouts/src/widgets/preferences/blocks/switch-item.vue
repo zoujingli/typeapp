@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useSlots } from 'vue';
+import { useId, useSlots } from 'vue';
 
 import { CircleHelp } from '@vben/icons';
 
@@ -9,7 +9,7 @@ defineOptions({
   name: 'PreferenceSwitchItem',
 });
 
-withDefaults(defineProps<{ disabled?: boolean; tip?: string }>(), {
+const props = withDefaults(defineProps<{ disabled?: boolean; tip?: string }>(), {
   disabled: false,
   tip: '',
 });
@@ -17,8 +17,10 @@ withDefaults(defineProps<{ disabled?: boolean; tip?: string }>(), {
 const checked = defineModel<boolean>();
 
 const slots = useSlots();
+const labelId = useId();
 
 function handleClick() {
+  if (props.disabled) return;
   checked.value = !checked.value;
 }
 </script>
@@ -28,10 +30,10 @@ function handleClick() {
     :class="{
       'pointer-events-none opacity-50': disabled,
     }"
-    class="hover:bg-accent my-1 flex w-full items-center justify-between rounded-md px-2 py-2.5"
+    class="my-1 flex w-full items-center justify-between rounded-md px-2 py-2.5 hover:bg-accent"
     @click="handleClick"
   >
-    <span class="flex items-center text-sm">
+    <span :id="labelId" class="flex items-center text-sm">
       <slot></slot>
 
       <VbenTooltip v-if="slots.tip || tip" side="bottom">
@@ -47,9 +49,9 @@ function handleClick() {
         </slot>
       </VbenTooltip>
     </span>
-    <span v-if="$slots.shortcut" class="ml-auto mr-2 text-xs opacity-60">
+    <span v-if="$slots.shortcut" class="mr-2 ml-auto text-xs opacity-60">
       <slot name="shortcut"></slot>
     </span>
-    <Switch v-model="checked" @click.stop />
+    <Switch v-model="checked" :aria-labelledby="labelId" :disabled="disabled" @click.stop />
   </div>
 </template>

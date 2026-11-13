@@ -4,26 +4,24 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
-
 /** 将线程入口标识编译为确定的函数调用，运行时只传字符串数据。 */
 final class ThreadCompiler
 {
     /**
-     * @param array<string, string> $entries 入口标识到完整函数名或 Class::method。
-     * @throws RuntimeException 标识或静态调用声明无效。
+     * @param array<string, string> $entries 入口标识到完整函数名或 Class::method
+     * @throws \RuntimeException 标识或静态调用声明无效
      */
     public function generate(array $entries): string
     {
         if ($entries === [] || count($entries) > 128) {
-            throw new RuntimeException('threads 需要 1–128 个显式编译入口');
+            throw new \RuntimeException('threads 需要 1–128 个显式编译入口');
         }
         $checks = [];
         $calls = [];
         foreach ($entries as $id => $call) {
             if (!is_string($id) || preg_match('/^[a-z][a-z0-9_.-]{0,63}$/D', $id) !== 1
-                || !is_string($call) || preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*(?:::[A-Za-z_][A-Za-z0-9_]*)?$/D', $call) !== 1) {
-                throw new RuntimeException('threads 入口需要稳定标识及完整函数名或 Class::method');
+                || !is_string($call) || preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\\\[A-Za-z_][A-Za-z0-9_]*)*(?:::[A-Za-z_][A-Za-z0-9_]*)?$/D', $call) !== 1) {
+                throw new \RuntimeException('threads 入口需要稳定标识及完整函数名或 Class::method');
             }
             $literal = var_export($id, true);
             $checks[] = '$entry === ' . $literal;

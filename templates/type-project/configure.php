@@ -16,7 +16,7 @@ $composerFile = __DIR__ . '/composer.json';
 $target = __DIR__ . '/app/common/database/DatabaseFactory.php';
 $source = __DIR__ . '/scaffold/' . $driver . '.php';
 foreach ([$composerFile, $target, $source] as $file) {
-    if (!is_file($file) || is_link($file) || str_replace('\\', '/', (string) realpath($file)) !== str_replace('\\', '/', $file)) {
+    if (!is_file($file) || is_link($file) || str_replace('\\', '/', (string)realpath($file)) !== str_replace('\\', '/', $file)) {
         throw new RuntimeException('模板配置只接受项目内的普通文件');
     }
 }

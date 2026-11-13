@@ -10,7 +10,7 @@ final class PackageRuntime
     /** 返回BuildIdentity内的方法；仅Darwin选择随产物编译的原生摘要函数。 */
     public function methods(string $platform = 'Linux'): string
     {
-        return str_replace('TYPE_PACKAGE_SHA256(', $platform === 'Darwin' ? '\\type_app_native_file_sha256(' : "hash_file('sha256', ", <<<'PHP'
+        return str_replace('TYPE_PACKAGE_SHA256(', $platform === 'Darwin' ? '\type_app_native_file_sha256(' : "hash_file('sha256', ", <<<'PHP'
     /** 启动器明确指定发布根；缺失表示传统构建目录运行，不猜测当前工作目录。 */
     private static function packageRoot(array $manifest): string
     {

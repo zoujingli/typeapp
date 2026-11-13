@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
-
 /** 不可变条件组；回调返回新条件，不修改既有查询。 */
 final class Conditions
 {
     private SqlDialect $dialect;
+
     private array $clauses = [];
+
     private array $parameters = [];
+
     // 1 恒真、0 恒假、-1 取决于数据，用于识别空 NOT IN 等显式无约束写入。
     private int $truth = 1;
 
@@ -52,7 +53,7 @@ final class Conditions
     /**
      * 组合值集合或同连接子查询；空 IN 恒假、空 NOT IN 恒真。
      *
-     * @param list<scalar>|Query $values 集合不接受 null，需用独立 NULL 条件。
+     * @param list<scalar>|Query $values 集合不接受 null，需用独立 NULL 条件
      */
     public function whereIn(string $column, array|Query $values, bool $not = false, string $boolean = 'AND'): Conditions
     {
@@ -87,8 +88,8 @@ final class Conditions
         return $this->whereIn($column, $values, true);
     }
 
-    /** @param Closure(Conditions): Conditions $group 接收独立条件组并返回组合后的条件。 */
-    public function whereGroup(Closure $group, string $boolean = 'AND'): Conditions
+    /** @param \Closure(Conditions): Conditions $group 接收独立条件组并返回组合后的条件。 */
+    public function whereGroup(\Closure $group, string $boolean = 'AND'): Conditions
     {
         $result = $group(new Conditions($this->dialect, $this->connection));
         if (!$result instanceof Conditions || $result->sql() === '' || $result->dialect !== $this->dialect || $result->connection !== $this->connection) {
@@ -111,7 +112,7 @@ final class Conditions
     /**
      * 按方言组合 JSON 标量相等，区分缺失路径与 JSON null。
      *
-     * @param list<string|int> $path 字段名或非负下标组成的路径。
+     * @param list<int|string> $path 字段名或非负下标组成的路径
      */
     public function whereJson(string $column, array $path, mixed $value, string $boolean = 'AND'): Conditions
     {
@@ -134,14 +135,6 @@ final class Conditions
         return $this->append(($not ? 'NOT EXISTS (' : 'EXISTS (') . $statement[0] . ')', $statement[1], $boolean);
     }
 
-    private function subquery(Query $query): array
-    {
-        if ($this->connection === null) {
-            throw new DatabaseException('子查询条件需要由连接创建的条件组');
-        }
-        return $query->compileFor($this->connection);
-    }
-
     /** 识别恒真条件，用于拒绝未声明 allowAll 的全范围写入。 */
     public function unconstrained(): bool
     {
@@ -157,11 +150,19 @@ final class Conditions
     /**
      * 按占位符出现顺序返回参数，不执行数据库操作。
      *
-     * @return list<scalar|null>
+     * @return list<null|scalar>
      */
     public function parameters(): array
     {
         return $this->parameters;
+    }
+
+    private function subquery(Query $query): array
+    {
+        if ($this->connection === null) {
+            throw new DatabaseException('子查询条件需要由连接创建的条件组');
+        }
+        return $query->compileFor($this->connection);
     }
 
     private function append(string $sql, array $parameters, string $boolean, int $truth = -1): Conditions

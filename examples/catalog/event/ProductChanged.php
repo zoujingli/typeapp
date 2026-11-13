@@ -11,7 +11,5 @@ final class ProductChanged
     public array $transactions = [];
 
     /** 商品 ID 已由数据库写入确定，phase 说明调用者选择的时机。 */
-    public function __construct(public int $productId, public string $phase)
-    {
-    }
+    public function __construct(public int $productId, public string $phase) {}
 }

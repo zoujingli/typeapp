@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Type\Testing\Process;
 
 /** 三库真实HTTP管理语义；受控无凭据装置只测试启用，不冒充Broker隔离证明。 */
 function iotLifecycleChecks(Closure $request, array $tokens, string $tenantA, string $tenantB, PDO $database, array $evidence, array $environment, string $base, string $address, string $password): array
@@ -21,7 +22,7 @@ function iotLifecycleChecks(Closure $request, array $tokens, string $tenantA, st
     $request('POST', $path . '/' . $id . '/rotate', $admin, $tenantA, array_replace($payload, ['version' => 2]), 409, 'stale_version');
     $rotated = $request('POST', $path . '/' . $id . '/rotate', $admin, $tenantA, $payload, 202)['data'];
     expect($rotated['device']['authorization']['status'] === 'pending' && $rotated['device']['authorization']['completed_at'] === null
-        && $rotated['device']['lifecycle'] === 'inactive' && (int) $rotated['device']['version'] === 2, '轮换只能声明持久意图，不能伪造Broker完成或设备激活');
+        && $rotated['device']['lifecycle'] === 'inactive' && (int)$rotated['device']['version'] === 2, '轮换只能声明持久意图，不能伪造Broker完成或设备激活');
     expect($rotated['credential']['password'] !== $created['credential']['password'] && $rotated['credential']['username'] !== $created['credential']['username'], '轮换须产生独立秘密与主体');
     $credentials = $database->prepare('SELECT id, secret_hash, status, revoked_at FROM iot_device_credentials WHERE device_id = ? ORDER BY id');
     $credentials->execute([$id]);
@@ -96,18 +97,18 @@ function iotLifecycleChecks(Closure $request, array $tokens, string $tenantA, st
                 $payload['version'] = 2;
             }
             $changed = $request('POST', $target . '/' . $action, $token, $scope, $payload, $action === 'enable' ? 200 : 202)['data']['device'];
-            expect((int) $changed['version'] === $payload['version'] + 1, '独立敏感节点没有推进准确版本');
+            expect((int)$changed['version'] === $payload['version'] + 1, '独立敏感节点没有推进准确版本');
         }
     }
     $raced = $newDevice('等待设备锁的准确版本');
     $racedId = $raced['device']['id'];
     if ($environment['DB_DRIVER'] !== 'sqlite') {
-        $clientCode = 'require $argv[1]."/vendor/autoload.php"; $client=new Type\\Testing\\HttpClient(getenv("TEST_LIFECYCLE_ORIGIN"),10); $response=$client->request("POST",getenv("TEST_LIFECYCLE_PATH"),["Content-Type"=>"application/json","Authorization"=>"Bearer ".getenv("TEST_LIFECYCLE_TOKEN"),"X-Tenant-Id"=>getenv("TEST_LIFECYCLE_TENANT")],getenv("TEST_LIFECYCLE_PAYLOAD")); $body=$response->json(); echo json_encode(["status"=>$response->status,"error"=>$body["error"]??null]);';
+        $clientCode = 'require $argv[1]."/vendor/autoload.php"; $client=new Type\Testing\HttpClient(getenv("TEST_LIFECYCLE_ORIGIN"),10); $response=$client->request("POST",getenv("TEST_LIFECYCLE_PATH"),["Content-Type"=>"application/json","Authorization"=>"Bearer ".getenv("TEST_LIFECYCLE_TOKEN"),"X-Tenant-Id"=>getenv("TEST_LIFECYCLE_TENANT")],getenv("TEST_LIFECYCLE_PAYLOAD")); $body=$response->json(); echo json_encode(["status"=>$response->status,"error"=>$body["error"]??null]);';
         $database->beginTransaction();
         $process = null;
         try {
             $database->prepare('UPDATE iot_devices SET version = version + 1 WHERE id = ?')->execute([$racedId]);
-            $process = new Type\Testing\Process([PHP_BINARY, '-r', $clientCode, dirname(__DIR__)], dirname(__DIR__), array_replace($environment, [
+            $process = new Process([PHP_BINARY, '-r', $clientCode, dirname(__DIR__)], dirname(__DIR__), array_replace($environment, [
                 'TEST_LIFECYCLE_ORIGIN' => 'http://' . $address, 'TEST_LIFECYCLE_PATH' => $path . '/' . $racedId . '/rotate',
                 'TEST_LIFECYCLE_TOKEN' => $admin, 'TEST_LIFECYCLE_TENANT' => $tenantA,
                 'TEST_LIFECYCLE_PAYLOAD' => json_encode(['version' => 1, 'confirm_device_id' => $racedId], JSON_THROW_ON_ERROR)]));

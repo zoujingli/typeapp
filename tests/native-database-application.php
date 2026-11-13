@@ -60,7 +60,7 @@ try {
                 }
                 $output = nativeDatabaseCommand([PHP_BINARY, $root . '/tests/iot-identity.php', $command, $driver, '--app'], $environment, $secrets, $work . '/' . $label . '.log', 120);
                 expect(preg_match('#通过：(.*?/verification\.json)\s*$#u', $output, $matches) === 1, '物联中心入口没有返回真实验收报告');
-                $evidence = json_decode((string) file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
+                $evidence = json_decode((string)file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
                 expect($evidence['status'] === 'passed' && $evidence['driver'] === $driver && $evidence['native'] === ($mode === 'native'), '物联中心报告的驱动、入口模式或结果不符');
                 if ($mode === 'native') {
                     expect($evidence['binary_sha256'] === $report['artifact-sha256'], '三库没有使用同一原生产物');

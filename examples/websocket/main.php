@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Swoole\Coroutine;
+use Swoole\Event;
 use Type\Core\WebSocket\Client;
 use Type\Core\WebSocket\Server;
 use Type\Runtime\CoroutineRuntime;
@@ -23,7 +24,7 @@ function main(int $argc, array $argv): void
     CoroutineRuntime::assertAvailable();
     $role = $argv[1];
     $host = $argv[2];
-    $port = (int) $argv[3];
+    $port = (int)$argv[3];
     $plan = new DeploymentBudget(16, 1, 0, 1, 0, 1);
     if ($role === 'server') {
         if ($argc !== 4 && $argc !== 6) {
@@ -72,5 +73,5 @@ function main(int $argc, array $argv): void
             $scope->close();
         }
     });
-    Swoole\Event::wait();
+    Event::wait();
 }

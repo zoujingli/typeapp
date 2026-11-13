@@ -15,8 +15,8 @@ final class ProcessResult
         public readonly bool $timedOut,
         public readonly bool $outputExceeded,
         public readonly ?int $signal
-    ) {
-    }
+    ) {}
+
     /** 仅退出码为零、无终止信号且没有超时或输出超量时返回 true。 */
     public function successful(): bool
     {

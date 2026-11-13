@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ArtifactManifest;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -8,7 +9,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 /** 打包回归使用真正 TypePHP ELF；只改变外部资源清单，不伪造原生执行。 */
 function packagingArtifact(string $source, string $directory, array $resources): string
 {
-    $reader = new Type\Build\ArtifactManifest();
+    $reader = new ArtifactManifest();
     $manifest = $reader->read($source);
     $target = $directory . '/type-app';
     $input = fopen($source, 'rb');
@@ -100,7 +101,7 @@ try {
     } else {
         $inputIni = file_get_contents($nativeIni);
         expect(is_string($inputIni), 'Linux 打包回归需要已准备的运行 ini');
-        $extensionDirectory = (string) ini_get('extension_dir');
+        $extensionDirectory = (string)ini_get('extension_dir');
         $aliasDirectory = $work . '/extension-alias';
         expect(symlink($extensionDirectory, $aliasDirectory), '无法建立扩展目录别名');
         $inputIni = preg_replace('/^\s*extension_dir\s*=.*$/mi', '', $inputIni);
@@ -123,7 +124,7 @@ try {
             foreach ($extensions[1] as $extensionPath) {
                 expect(is_file($sandbox . $extensionPath) && realpath($extensionPath) === $extensionPath, '部署扩展没有使用存在的真实绝对路径');
             }
-            $reader = new Type\Build\ArtifactManifest();
+            $reader = new ArtifactManifest();
             foreach ($reader->read($artifact)['native-libraries'] as $library) {
                 expect(is_file($sandbox . $library['path']) && hash_file('sha256', $sandbox . $library['path']) === $library['sha256'], '部署包丢失了原始 ABI 校验路径');
             }

@@ -17,7 +17,7 @@ function isolatedAssert(bool $condition, string $message): void
  */
 function isolatedJson(string $file): array
 {
-    $value = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+    $value = json_decode((string)file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
     isolatedAssert(is_array($value), '验收记录必须是 JSON 对象：' . $file);
     return $value;
 }
@@ -61,7 +61,7 @@ function isolatedSnapshot(string $directory, string $stageFile): array
     foreach ($manifest['files'] as $relative => $digest) {
         $file = realpath($directory . '/' . $relative);
         isolatedAssert($file !== false && str_starts_with($file, $directory . '/') && is_file($file), '输入文件缺失或越出快照：' . $relative);
-        isolatedAssert(is_string($digest) && hash_equals($digest, (string) hash_file('sha256', $file)), '输入摘要变化：' . $relative);
+        isolatedAssert(is_string($digest) && hash_equals($digest, (string)hash_file('sha256', $file)), '输入摘要变化：' . $relative);
     }
     $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST);
     $links = 0;
@@ -88,9 +88,9 @@ function isolatedSnapshot(string $directory, string $stageFile): array
             isolatedAssert($resolved === false || str_starts_with($resolved, $directory . '/'), '快照软链接超出隔离输入：' . $relative);
             // Composer 未参与本次生产/构建的 dev 包可保留内部悬空别名；不能因此复制多余源码。
             if ($resolved === false) {
-                $inactiveLinks++;
+                ++$inactiveLinks;
             }
-            $links++;
+            ++$links;
         } elseif ($entry->isFile() && $relative !== 'build-inputs.json' && !isset($manifest['files'][$relative])) {
             isolatedAssert(($manifest['audit-placeholders'][$relative] ?? null) === 'excluded-file' && $entry->getSize() === 0, '输入中出现未声明文件：' . $relative);
         }
@@ -109,10 +109,10 @@ function isolatedBoundary(string $originalRoot, int $expectedUid, string $execut
     isolatedAssert(PHP_OS_FAMILY === 'Linux', '边界检查必须运行在真实 Linux 容器');
     isolatedAssert($expectedUid >= 0 && posix_geteuid() === $expectedUid, '构建进程没有切回明确的调用用户');
     if ($execution === 'host') {
-        isolatedAssert(is_readable('/etc/snmp/snmp.conf') && str_contains((string) file_get_contents('/etc/snmp/snmp.conf'), "\nmibs :\n")
+        isolatedAssert(is_readable('/etc/snmp/snmp.conf') && str_contains((string)file_get_contents('/etc/snmp/snmp.conf'), "\nmibs :\n")
             && is_dir('/var/lib/snmp/cert_indexes'), '无凭据的原生模块启动资源对构建用户不可见');
     }
-    $state = (string) file_get_contents('/proc/self/status');
+    $state = (string)file_get_contents('/proc/self/status');
     foreach (['CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'] as $capabilitySet) {
         isolatedAssert(preg_match('/^' . $capabilitySet . ':\s+0+$/m', $state) === 1, '隔离进程仍拥有 Linux capability 集合：' . $capabilitySet);
     }
@@ -199,7 +199,7 @@ function isolatedReport(string $directory, string $image): array
     ksort($expected);
     ksort($actual);
     isolatedAssert($expected !== [] && $actual === $expected, '实际编译产物没有覆盖完整生产依赖闭包');
-    isolatedAssert(trim((string) file_get_contents($directory . '/native.log')) === '原生命令验证通过，共 9 个输出和错误行为用例。', '九项原生命令验证未完成或出现额外错误输出');
+    isolatedAssert(trim((string)file_get_contents($directory . '/native.log')) === '原生命令验证通过，共 9 个输出和错误行为用例。', '九项原生命令验证未完成或出现额外错误输出');
     $sourceCount = count($build['identity']['description']['inputs']['sources']);
     return ['protocol' => 1, 'status' => 'passed', 'scope' => '公开 stage → 断网只读全量 AOT → 既有九项原生命令',
         'execution' => str_starts_with($image, 'sha256:') ? 'container' : 'host-bubblewrap',
@@ -215,7 +215,7 @@ try {
     $result = match ($mode) {
         'configuration' => isolatedConfiguration($argv[2] ?? ''),
         'snapshot' => isolatedSnapshot($argv[2] ?? '', $argv[3] ?? ''),
-        'boundary' => isolatedBoundary($argv[2] ?? '', isset($argv[3]) && preg_match('/^[0-9]+$/D', (string) $argv[3]) === 1 ? (int) $argv[3] : -1, $argv[4] ?? ''),
+        'boundary' => isolatedBoundary($argv[2] ?? '', isset($argv[3]) && preg_match('/^[0-9]+$/D', (string)$argv[3]) === 1 ? (int)$argv[3] : -1, $argv[4] ?? ''),
         'report' => isolatedReport($argv[2] ?? '', $argv[3] ?? ''),
         default => throw new RuntimeException('用法：isolated-build.php configuration <配置> | snapshot <目录> <stage记录> | boundary | report <验收目录> <镜像摘要>'),
     };

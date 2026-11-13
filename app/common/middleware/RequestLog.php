@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace app\common\middleware;
 
+use app\common\bootstrap\RuntimeCapabilities;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -27,8 +28,8 @@ final class RequestLog implements MiddlewareInterface
     /**
      * 日志资源由请求作用域持有，成功、失败与取消路径均交给作用域清理。
      *
-     * @throws \RuntimeException 请求不含框架执行作用域。
-     * @throws \Throwable 下游未处理的业务或基础设施异常。
+     * @throws \RuntimeException 请求不含框架执行作用域
+     * @throws \Throwable 下游未处理的业务或基础设施异常
      */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
@@ -36,7 +37,7 @@ final class RequestLog implements MiddlewareInterface
         if (!$scope instanceof ExecutionScope) {
             throw new \RuntimeException('请求日志需要受管请求作用域');
         }
-        $logs = new LogManager(\app\common\bootstrap\RuntimeCapabilities::buildId(), ['app' => new Channel(Output::stdout(128, 65536, 8192))], 0.05);
+        $logs = new LogManager(RuntimeCapabilities::buildId(), ['app' => new Channel(Output::stdout(128, 65536, 8192))], 0.05);
         $scope->open($logs);
         $requestId = bin2hex(random_bytes(16));
         $logger = $logs->logger($scope, ['request_id' => $requestId, 'application' => $this->application]);

@@ -22,9 +22,26 @@ use Type\Runtime\TaskException;
 final class Client implements ManagedResource
 {
     private ?ExecutionScope $scope = null;
+
     private ?NativeClient $client = null;
+
     private bool $stopped = false;
+
     private bool $requesting = false;
+
+    /** HTTP 资源不能复制或通过序列化转移到其他执行者。 */
+    public function __serialize(): array
+    {
+        throw new TaskException('resource_transfer_forbidden', 'HTTP 客户端不能序列化');
+    }
+
+    /** 不从外部数据恢复执行归属。 */
+    public function __unserialize(array $data): void
+    {
+        throw new TaskException('resource_transfer_forbidden', 'HTTP 客户端必须在当前执行环境创建');
+    }
+
+    private function __clone(): void {}
 
     /** 登记当前作用域；不创建连接，通常由 request() 自动调用。 */
     public function start(): void
@@ -49,10 +66,10 @@ final class Client implements ManagedResource
      * 不接受部分响应；默认不协商压缩，显式 Accept-Encoding 仍返回未解压的正文字节。
      * URL 只允许 HTTP/HTTPS，不携带凭据或片段；请求头不得接管 Host、长度或连接协议。
      *
-     * @param array<string,string> $headers 单值请求头；名称不区分大小写且不得重复。
+     * @param array<string,string> $headers 单值请求头；名称不区分大小写且不得重复
      * @param array{ssl_cafile?:string,ssl_host_name?:string,ssl_protocols?:int} $tlsOptions
      *                                                                                       沿用 Swoole 选项；HTTPS 始终校验证书链与主机名，仅允许 TLS 1.2/1.3。
-     * @throws TaskException 配置、归属、预算、取消、传输或真实清理失败；错误不含目标凭据。
+     * @throws TaskException 配置、归属、预算、取消、传输或真实清理失败；错误不含目标凭据
      */
     public function request(
         string $method,
@@ -126,7 +143,7 @@ final class Client implements ManagedResource
             }
             // 原生分阶段计时；只有请求自身预算更短时才另设总期限，作用域等待共用 Deadline。
             if ($seconds > 0 && !$scopeDeadline) {
-                $timer = Timer::after(max(1, (int) $milliseconds), static function () use ($client, &$timedOut): void {
+                $timer = Timer::after(max(1, (int)$milliseconds), static function () use ($client, &$timedOut): void {
                     $timedOut = true;
                     $client->close();
                 });
@@ -148,9 +165,9 @@ final class Client implements ManagedResource
                 throw new TaskException('http_client_request_failed', 'HTTP 请求未完整完成，errno=' . $client->errCode);
             }
             $factory = new Factory();
-            $response = $factory->createResponse((int) $client->statusCode);
+            $response = $factory->createResponse((int)$client->statusCode);
             foreach (is_array($client->headers) ? $client->headers : [] as $name => $values) {
-                $response = $response->withHeader((string) $name, $values);
+                $response = $response->withHeader((string)$name, $values);
             }
             $response->getBody()->write($receivedBody);
             $response->getBody()->rewind();
@@ -168,7 +185,7 @@ final class Client implements ManagedResource
 
     /**
      * 撤销后续请求并关闭连接；跨执行者不能代替其收尾，应通过 scope 的 Cancellation 取消。
-     * @throws TaskException 原生连接尚未完成关闭；不会清除仍被持有的资源。
+     * @throws TaskException 原生连接尚未完成关闭；不会清除仍被持有的资源
      */
     public function stop(): void
     {
@@ -178,22 +195,6 @@ final class Client implements ManagedResource
         if ($this->requesting) {
             throw new TaskException('http_client_cleanup_incomplete', 'HTTP 在途请求尚未返回');
         }
-    }
-
-    /** HTTP 资源不能复制或通过序列化转移到其他执行者。 */
-    public function __serialize(): array
-    {
-        throw new TaskException('resource_transfer_forbidden', 'HTTP 客户端不能序列化');
-    }
-
-    /** 不从外部数据恢复执行归属。 */
-    public function __unserialize(array $data): void
-    {
-        throw new TaskException('resource_transfer_forbidden', 'HTTP 客户端必须在当前执行环境创建');
-    }
-
-    private function __clone(): void
-    {
     }
 
     private function closeConnection(): void
@@ -223,7 +224,7 @@ final class Client implements ManagedResource
         }
         $tls = $parts['scheme'] === 'https';
         $host = trim($parts['host'], '[]');
-        $port = (int) ($parts['port'] ?? ($tls ? 443 : 80));
+        $port = (int)($parts['port'] ?? ($tls ? 443 : 80));
         if ($port < 1 || $port > 65535 || preg_match('/^[a-zA-Z0-9.:%_-]+$/D', $host) !== 1) {
             throw new TaskException('http_client_invalid_configuration', 'HTTP 主机或端口无效');
         }
@@ -266,7 +267,7 @@ final class Client implements ManagedResource
         if (array_diff(array_keys($options), ['ssl_cafile', 'ssl_host_name', 'ssl_protocols']) !== []) {
             throw new TaskException('http_client_invalid_configuration', 'HTTP 含未声明的 TLS 选项');
         }
-        $protocols = (int) (\SWOOLE_SSL_TLSv1_2 | \SWOOLE_SSL_TLSv1_3);
+        $protocols = (int)(\SWOOLE_SSL_TLSv1_2 | \SWOOLE_SSL_TLSv1_3);
         $options += ['ssl_host_name' => $host, 'ssl_protocols' => $protocols];
         if (!is_string($options['ssl_host_name']) || $options['ssl_host_name'] === ''
             || preg_match('/[\x00-\x20\x7f]/', $options['ssl_host_name']) === 1

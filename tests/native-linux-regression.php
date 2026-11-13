@@ -101,7 +101,7 @@ try {
             $log = $base . '/' . $consumer . '.log';
             $output = nativeDatabaseCommand([PHP_BINARY, $root . '/tests/' . $consumer . '.php', '--native'], $environment, [], $log, 1800);
             // 调度独立安装已回收消费者目录，报告保存在相邻文件；组合消费者仍保留目录内报告。
-            expect(preg_match('#通过：(' . preg_quote($root . '/build/', '#') . $reportPattern . ')\\s*$#u', $output, $matches) === 1
+            expect(preg_match('#通过：(' . preg_quote($root . '/build/', '#') . $reportPattern . ')\s*$#u', $output, $matches) === 1
                 && is_file($matches[1]) && !is_link($matches[1]), '调度消费者没有返回本轮实际验收报告');
             $evidence = json_decode(file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
             expect($evidence['status'] === 'passed' && $evidence['native'] === true, '调度消费者没有完成PHP及原生行为');

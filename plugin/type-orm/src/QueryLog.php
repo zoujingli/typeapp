@@ -4,23 +4,25 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
-use Throwable;
 use Type\Runtime\ManagedResource;
 
 /** 作用域拥有的有界查询监听；停止后解除连接引用，记录仍可供调用方检查。 */
 final class QueryLog implements ManagedResource
 {
     private array $records = [];
+
     private int $bytes = 0;
+
     private int $dropped = 0;
+
     private int $listenerFailures = 0;
+
     private bool $active = false;
 
-    /** @param Closure(QueryEvent): mixed|null $listener 查询完成后调用，异常单独记录。 */
+    /** @param null|\Closure(QueryEvent): mixed $listener 查询完成后调用，异常单独记录。 */
     public function __construct(
-        private ?Closure $listener,
-        private ?Closure $detach,
+        private ?\Closure $listener,
+        private ?\Closure $detach,
         private int $maxRecords,
         private int $maxBytes,
         private bool $includeValues,
@@ -91,8 +93,8 @@ final class QueryLog implements ManagedResource
         if ($this->listener !== null) {
             try {
                 ($this->listener)(new QueryEvent($event));
-            } catch (Throwable $error) {
-                $this->listenerFailures++;
+            } catch (\Throwable $error) {
+                ++$this->listenerFailures;
                 $this->append(['type' => 'listener_error', 'error_class' => get_class($error), 'sql_sha256' => $event['sql_sha256']]);
             }
         }
@@ -100,16 +102,16 @@ final class QueryLog implements ManagedResource
 
     private function append(array $record): void
     {
-        $size = (int) strlen(json_encode($record, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR));
+        $size = (int)strlen(json_encode($record, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR));
         if ($size > $this->maxBytes) {
-            $this->dropped++;
+            ++$this->dropped;
             return;
         }
         while ($this->records !== [] && (count($this->records) >= $this->maxRecords || $this->bytes + $size > $this->maxBytes)) {
             $removed = array_shift($this->records);
-            $removedBytes = (int) strlen(json_encode($removed, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR));
+            $removedBytes = (int)strlen(json_encode($removed, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR));
             $this->bytes -= $removedBytes;
-            $this->dropped++;
+            ++$this->dropped;
         }
         $this->records[] = $record;
         $this->bytes += $size;

@@ -7,6 +7,9 @@ namespace Type\Core;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 use Swoole\Coroutine\Socket;
+use Swoole\Event;
+use Swoole\Timer;
+use Type\Runtime\CapacityException;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionOwner;
 use Type\Runtime\ManagedResource;
@@ -22,22 +25,39 @@ use Type\Runtime\TaskException;
 final class TcpSocket implements ManagedResource
 {
     private ExecutionOwner $owner;
+
     private ?Socket $socket = null;
+
     private string $state = 'new';
+
     private bool $allocated = false;
+
     private bool $stopping = false;
+
     private bool $closeScheduled = false;
+
     private bool $expired = false;
+
     private bool $readClosed = false;
+
     private bool $writeClosed = false;
+
     private array $operations = [];
+
     private ?Channel $completion = null;
+
     private array $local = [];
+
     private array $peer = [];
+
     private int $receiveBufferBytes = 0;
+
     private int $sendBufferBytes = 0;
+
     private int $writingBytes = 0;
+
     private int $receivedBytes = 0;
+
     private int $sentBytes = 0;
 
     private function __construct(
@@ -51,13 +71,27 @@ final class TcpSocket implements ManagedResource
         $this->owner = new ExecutionOwner(false);
     }
 
+    /** 活动原生连接与监听禁止序列化、跨线程传递和复制。 */
+    public function __serialize(): array
+    {
+        throw new TaskException('resource_transfer_forbidden', 'TCP 资源不能序列化或跨线程传递');
+    }
+
+    /** 不允许从外部数据恢复资源归属及额度。 */
+    public function __unserialize(array $data): void
+    {
+        throw new TaskException('resource_transfer_forbidden', 'TCP 资源必须在所属线程创建');
+    }
+
+    private function __clone(): void {}
+
     /**
      * 创建尚未连接的客户端。数字 IPv6 使用 AF_INET6，域名沿原生 AF_INET DNS 解析。
      * TLS 用 open_ssl=true 启用，默认校验证书链及 ssl_host_name（缺省取 host）。
      *
      * @param array{socket_buffer_size?: int, open_ssl?: bool, ssl_cafile?: string, ssl_host_name?: string,
-     *     ssl_cert_file?: string, ssl_key_file?: string, ssl_verify_peer?: bool, ssl_protocols?: int} $options 原生名称及含义。
-     * @throws TaskException 地址、端口、字节上限或 TLS 配置无效。
+     *     ssl_cert_file?: string, ssl_key_file?: string, ssl_verify_peer?: bool, ssl_protocols?: int} $options 原生名称及含义
+     * @throws TaskException 地址、端口、字节上限或 TLS 配置无效
      */
     public static function client(ResourceBudget $budget, string $host, int $port, int $maxChunkBytes = 65536, array $options = []): self
     {
@@ -70,8 +104,8 @@ final class TcpSocket implements ManagedResource
      * 监听、等待接入的预留槽及全部连接共用注入的线程部署分额；backlog 仅限制内核等待队列。
      *
      * @param array{backlog?: int, socket_buffer_size?: int, open_ssl?: bool, ssl_cert_file?: string,
-     *     ssl_key_file?: string, ssl_cafile?: string, ssl_verify_peer?: bool, ssl_protocols?: int} $options TLS 监听必须提供证书和私钥。
-     * @throws TaskException 监听位置、缓冲或 TLS 配置无效。
+     *     ssl_key_file?: string, ssl_cafile?: string, ssl_verify_peer?: bool, ssl_protocols?: int} $options TLS 监听必须提供证书和私钥
+     * @throws TaskException 监听位置、缓冲或 TLS 配置无效
      */
     public static function listener(ResourceBudget $budget, string $address, int $port = 0, int $maxChunkBytes = 65536, array $options = []): self
     {
@@ -81,8 +115,8 @@ final class TcpSocket implements ManagedResource
     /**
      * 启动客户端、监听或已接入连接；timeout 是本次 DNS、连接与握手合计截止，单位秒。
      * 接入后的 TLS 握手在调用本方法的协程完成，不占用监听协程。启动失败自动停止。
-     * @throws TaskException 缺少协程、已经退役、截止、取消、绑定、连接或 TLS 失败。
-     * @throws \Type\Runtime\CapacityException 线程共享额度已满。
+     * @throws TaskException 缺少协程、已经退役、截止、取消、绑定、连接或 TLS 失败
+     * @throws CapacityException 线程共享额度已满
      */
     public function start(float $timeout = 5.0): void
     {
@@ -103,7 +137,7 @@ final class TcpSocket implements ManagedResource
         $expiresAt = hrtime(true) / 1000000000.0 + $timeout;
         $timer = \std::any(false);
         try {
-            $timer = \Swoole\Timer::after(max(1, (int) ceil($timeout * 1000.0)), function (): void {
+            $timer = Timer::after(max(1, (int)ceil($timeout * 1000.0)), function (): void {
                 $this->expired = true;
                 if (isset($this->operations['start'])) {
                     Coroutine::cancel($this->operations['start']);
@@ -123,7 +157,7 @@ final class TcpSocket implements ManagedResource
             }
             if ($this->kind === 'listener') {
                 // Winsock 的地址复用允许第二个监听抢占端口；沿用 UDP 的原生独占设置。
-                $bindOption = PHP_OS_FAMILY === 'Windows' ? (int) constant('SO_EXCLUSIVEADDRUSE') : SO_REUSEADDR;
+                $bindOption = PHP_OS_FAMILY === 'Windows' ? (int)constant('SO_EXCLUSIVEADDRUSE') : SO_REUSEADDR;
                 if (!$this->socket->setOption(SOL_SOCKET, $bindOption, 1)
                     || (str_contains($this->host, ':') && !$this->socket->setOption(IPPROTO_IPV6, IPV6_V6ONLY, 1))) {
                     $this->fail('tcp_option_failed');
@@ -156,8 +190,8 @@ final class TcpSocket implements ManagedResource
             $this->stop();
             throw $error;
         } finally {
-            if ($timer !== false && \Swoole\Timer::exists($timer)) {
-                \Swoole\Timer::clear($timer);
+            if ($timer !== false && Timer::exists($timer)) {
+                Timer::clear($timer);
             }
             $this->finish('start');
         }
@@ -166,8 +200,8 @@ final class TcpSocket implements ManagedResource
     /**
      * 先预留一份额度，再交给原生 accept；满额立即拒绝，不接入后排队。
      * 返回尚待 start 的连接，可在同线程的另一协程交给 ExecutionScope::open；交接失败须 stop。
-     * @throws TaskException 期限、监听状态、重复接入、取消或原生接入失败。
-     * @throws \Type\Runtime\CapacityException 共享连接额度已满。
+     * @throws TaskException 期限、监听状态、重复接入、取消或原生接入失败
+     * @throws CapacityException 共享连接额度已满
      */
     public function accept(float $timeout = 5.0): self
     {
@@ -196,7 +230,7 @@ final class TcpSocket implements ManagedResource
     /**
      * 返回至多 maxChunkBytes 的字节流片段；空字符串仅表示读 EOF，不代表一条空消息。
      * 超时/取消不吞掉已经返回的字节，也不自建累积缓冲，调用者负责协议边界和总消息上限。
-     * @throws TaskException 资源状态、并发读取、等待超时、取消或网络错误。
+     * @throws TaskException 资源状态、并发读取、等待超时、取消或网络错误
      */
     public function receive(float $timeout = 5.0): string
     {
@@ -211,7 +245,7 @@ final class TcpSocket implements ManagedResource
                 $this->fail('tcp_receive_failed');
             }
             $this->readClosed = $data === '';
-            $this->receivedBytes += (int) strlen($data);
+            $this->receivedBytes += (int)strlen($data);
             return $data;
         } finally {
             $this->finish('read');
@@ -221,7 +255,7 @@ final class TcpSocket implements ManagedResource
     /**
      * 原生 sendAll 在一次期限内提交至多 maxChunkBytes；成功只表示本地提交。
      * 短写、取消或错误会停止连接，结果可能部分到达，调用者不得自动重发同一业务。
-     * @throws TaskException 长度超限、写半关闭、重复写、超时、取消、短写或网络错误。
+     * @throws TaskException 长度超限、写半关闭、重复写、超时、取消、短写或网络错误
      */
     public function send(string $data, float $timeout = 5.0): int
     {
@@ -243,7 +277,7 @@ final class TcpSocket implements ManagedResource
             if ($written === false || $written !== strlen($data)) {
                 $this->fail('tcp_partial_write');
             }
-            $this->sentBytes += (int) $written;
+            $this->sentBytes += (int)$written;
             return $written;
         } catch (\Throwable $error) {
             $this->stop();
@@ -256,7 +290,7 @@ final class TcpSocket implements ManagedResource
 
     /**
      * 关闭写方向后仍可读取对端剩余数据；沿用原生 TLS close_notify/SHUT_WR，不等待远端确认。
-     * @throws TaskException 非活动连接、在途写入或原生半关闭失败。
+     * @throws TaskException 非活动连接、在途写入或原生半关闭失败
      */
     public function shutdownWrite(): void
     {
@@ -307,7 +341,7 @@ final class TcpSocket implements ManagedResource
 
     /**
      * 在已有协程中等待 stop 的真实完成；超时/取消只结束等待，仍保留未关闭资源的额度。
-     * @throws TaskException 未停止、期限无效或关闭仍未完成。
+     * @throws TaskException 未停止、期限无效或关闭仍未完成
      */
     public function awaitClosed(float $timeout = 5.0): void
     {
@@ -337,22 +371,6 @@ final class TcpSocket implements ManagedResource
             'receive_buffer_bytes' => $this->receiveBufferBytes, 'send_buffer_bytes' => $this->sendBufferBytes,
             'read_closed' => $this->readClosed, 'write_closed' => $this->writeClosed,
             'received_bytes' => $this->receivedBytes, 'sent_bytes' => $this->sentBytes];
-    }
-
-    /** 活动原生连接与监听禁止序列化、跨线程传递和复制。 */
-    public function __serialize(): array
-    {
-        throw new TaskException('resource_transfer_forbidden', 'TCP 资源不能序列化或跨线程传递');
-    }
-
-    /** 不允许从外部数据恢复资源归属及额度。 */
-    public function __unserialize(array $data): void
-    {
-        throw new TaskException('resource_transfer_forbidden', 'TCP 资源必须在所属线程创建');
-    }
-
-    private function __clone(): void
-    {
     }
 
     private function assertCoroutine(): void
@@ -413,16 +431,16 @@ final class TcpSocket implements ManagedResource
         if (!$this->socket->setOption(SOL_SOCKET, SO_RCVBUF, $bytes) || !$this->socket->setOption(SOL_SOCKET, SO_SNDBUF, $bytes)) {
             $this->fail('tcp_option_failed');
         }
-        $this->receiveBufferBytes = (int) $this->socket->getOption(SOL_SOCKET, SO_RCVBUF);
-        $this->sendBufferBytes = (int) $this->socket->getOption(SOL_SOCKET, SO_SNDBUF);
+        $this->receiveBufferBytes = (int)$this->socket->getOption(SOL_SOCKET, SO_RCVBUF);
+        $this->sendBufferBytes = (int)$this->socket->getOption(SOL_SOCKET, SO_SNDBUF);
         // macOS 可能在连接事件之后异步恢复自动调优；让出一次协程后重新应用声明值。
         if ($retryAfterAutotune && ($this->receiveBufferBytes > 2 * $bytes || $this->sendBufferBytes > 2 * $bytes)) {
             Coroutine::sleep(0.001);
             if (!$this->socket->setOption(SOL_SOCKET, SO_RCVBUF, $bytes) || !$this->socket->setOption(SOL_SOCKET, SO_SNDBUF, $bytes)) {
                 $this->fail('tcp_option_failed');
             }
-            $this->receiveBufferBytes = (int) $this->socket->getOption(SOL_SOCKET, SO_RCVBUF);
-            $this->sendBufferBytes = (int) $this->socket->getOption(SOL_SOCKET, SO_SNDBUF);
+            $this->receiveBufferBytes = (int)$this->socket->getOption(SOL_SOCKET, SO_RCVBUF);
+            $this->sendBufferBytes = (int)$this->socket->getOption(SOL_SOCKET, SO_SNDBUF);
         }
         if ($this->receiveBufferBytes < 1 || $this->sendBufferBytes < 1
             || $this->receiveBufferBytes > 2 * $bytes || $this->sendBufferBytes > 2 * $bytes) {
@@ -446,7 +464,7 @@ final class TcpSocket implements ManagedResource
             $this->socket->close();
         }
         $this->socket = null;
-        if (!\Swoole\Event::defer(function (): void {
+        if (!Event::defer(function (): void {
             $this->settle();
         })) {
             throw new TaskException('tcp_close_pending', 'TCP 关闭结算未登记，继续保留额度');

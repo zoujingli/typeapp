@@ -3,21 +3,24 @@
 declare(strict_types=1);
 
 use Type\Orm\Connection;
+use Type\Orm\DatabaseException;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
-use Type\Orm\DatabaseException;
 use Type\Orm\ModelException;
 use Type\Orm\ModelQuery;
 use Type\Orm\Relation;
+use Type\Orm\RowStream;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\Article;
 use TypeApp\ModelExample\Drivers;
+use TypeApp\ModelExample\Tag;
 use TypeApp\ModelExample\User;
 
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function paginationExpect(bool $condition, string $message): void
 {
@@ -29,7 +32,7 @@ function paginationExpect(bool $condition, string $message): void
 /**
  * 执行预期非法查询并只识别数据库或模型拒绝，不吞掉其他实现错误。
  *
- * @param Closure(): mixed $operation 预期被拒绝的公开操作。
+ * @param Closure(): mixed $operation 预期被拒绝的公开操作
  */
 function paginationReject(Closure $operation): bool
 {
@@ -44,18 +47,18 @@ function paginationReject(Closure $operation): bool
 /**
  * 在指定三库驱动上验证分页、分块遍历与内存增长，作用域退出后释放连接。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::enableIo();
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argv): void {
-        $driver = (string) ($argv[1] ?? 'sqlite');
+    CoroutineRuntime::enableIo();
+    CoroutineRuntime::run(static function () use ($argv): void {
+        $driver = (string)($argv[1] ?? 'sqlite');
         $database = new DatabaseManager(['default' => Drivers::create($driver)], 1, 1);
         Db::configure($database);
         $scope = new ExecutionScope();
         try {
-            $scope->run(static function (ExecutionScope $current) use ($database, &$scope, $argv, $driver): void {
+            $scope->run(static function (ExecutionScope $current) use ($database, &$scope, $driver): void {
                 $connection = Db::connection('default', true);
                 $connection->raw('CREATE TEMPORARY TABLE type_model_users (id INTEGER PRIMARY KEY, display_name VARCHAR(255) NOT NULL, age INTEGER NOT NULL, active BOOLEAN NOT NULL, secret VARCHAR(255) NOT NULL, note TEXT NULL)');
                 $connection->raw('CREATE TEMPORARY TABLE type_model_articles (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, title VARCHAR(255) NOT NULL)');
@@ -63,7 +66,7 @@ function main(int $argc, array $argv): void
                 $articles = $connection->table('type_model_articles');
                 $rows = [];
                 $posts = [];
-                for ($id = 1; $id <= 17; $id++) {
+                for ($id = 1; $id <= 17; ++$id) {
                     $rows[] = ['id' => $id, 'display_name' => '人员' . $id, 'age' => intdiv($id - 1, 3), 'active' => true, 'secret' => '不输出', 'note' => null];
                     $posts[] = ['id' => $id * 2, 'user_id' => $id, 'title' => '文章甲'];
                     $posts[] = ['id' => $id * 2 + 1, 'user_id' => $id, 'title' => '文章乙'];
@@ -112,7 +115,7 @@ function main(int $argc, array $argv): void
                 paginationExpect($modelPage->total() === 17 && $modelPage->items()[0]->getId() === 6 && count($modelPage->items()[0]->related('articles')) === 2, '模型分页没有加载本页关系');
                 $batches = 0;
                 $modelCount = $modelQuery->chunk(4, static function (array $models) use (&$batches, $connection): void {
-                    $batches++;
+                    ++$batches;
                     $reads = $connection->statistics()['read_attempts'];
                     paginationExpect(count($models) <= 4, '模型分批超过父记录上限');
                     foreach ($models as $model) {
@@ -129,14 +132,14 @@ function main(int $argc, array $argv): void
                 $connection->raw('CREATE TEMPORARY TABLE type_pagination_user_tags (user_id INTEGER NOT NULL, tag_id INTEGER NOT NULL, PRIMARY KEY (user_id, tag_id))');
                 $connection->table('type_model_tags')->insert(['id' => 1, 'label' => '标签', 'internal' => '']);
                 $connection->table('type_pagination_user_tags')->insertMany([['user_id' => 1, 'tag_id' => 1], ['user_id' => 2, 'tag_id' => 1]]);
-                $tags = Relation::belongsToMany(static fn (Connection $connection): ModelQuery => \TypeApp\ModelExample\Tag::query()->onConnection($connection), 'type_pagination_user_tags', 'user_id', 'tag_id');
+                $tags = Relation::belongsToMany(static fn (Connection $connection): ModelQuery => Tag::query()->onConnection($connection), 'type_pagination_user_tags', 'user_id', 'tag_id');
                 $tagged = User::query()->with('tags', $tags);
                 paginationExpect(count($tagged->cursorPaginate(2, null, 5)->items()[0]->related('tags')) === 1, '多对多有界预加载结果错误');
                 paginationExpect(paginationReject(static fn () => $tagged->cursorPaginate(2, null, 3)), '中间表没有计入共享行数预算');
                 paginationExpect($users->chunk(4, static fn (array $rows): bool => false) === 4, '普通批次不能提前退出');
                 paginationExpect(paginationReject(static fn () => $connection->transaction(static fn (Connection $transaction): int => $modelQuery->chunk(4, static fn (array $models): mixed => null))), '事务保留模型使分批无界');
                 $stream = $users->orderBy('id')->stream(4);
-                paginationExpect((int) $stream->next()['id'] === 1 && $database->statistics()['active']['default']['leased'] === 1, '流没有持有连接租约');
+                paginationExpect((int)$stream->next()['id'] === 1 && $database->statistics()['active']['default']['leased'] === 1, '流没有持有连接租约');
                 $foreign = new Fiber(static function () use ($stream): bool {
                     try {
                         $stream->next();
@@ -157,7 +160,7 @@ function main(int $argc, array $argv): void
                 }
                 paginationExpect($poolRejected, '流持有期间连接池容量提前归还');
                 $stream->close();
-                paginationExpect($stream->closed() && $stream->next() === null && (int) $users->aggregate('COUNT') === 17, '流关闭没有恢复后续查询');
+                paginationExpect($stream->closed() && $stream->next() === null && (int)$users->aggregate('COUNT') === 17, '流关闭没有恢复后续查询');
                 $early = $users->stream(3);
                 paginationExpect($early->each(static fn (array $row): bool => false) === 1 && $early->closed(), '提前中断没有关闭流');
                 $failed = $users->stream(3);
@@ -168,15 +171,15 @@ function main(int $argc, array $argv): void
                 } catch (RuntimeException $error) {
                     paginationExpect($error->getMessage() === '导出中断', '清理掩盖了导出异常');
                 }
-                paginationExpect($failed->closed() && (int) $users->aggregate('COUNT') === 17, '异常中断后数据库不可用');
-                paginationExpect(paginationReject(static fn () => $connection->transaction(static fn (Connection $transaction): \Type\Orm\RowStream => $users->stream())), '事务内开启独占流没有拒绝');
+                paginationExpect($failed->closed() && (int)$users->aggregate('COUNT') === 17, '异常中断后数据库不可用');
+                paginationExpect(paginationReject(static fn () => $connection->transaction(static fn (Connection $transaction): RowStream => $users->stream())), '事务内开启独占流没有拒绝');
 
                 // 数据在固定大小批次创建；导出检验阶段不保留预期结果列表。
                 $users->allowAll()->delete();
                 $payload = str_repeat('x', 2048);
                 for ($start = 1; $start <= 20000; $start += 250) {
                     $batch = [];
-                    for ($id = $start; $id < $start + 250; $id++) {
+                    for ($id = $start; $id < $start + 250; ++$id) {
                         $batch[] = ['id' => $id, 'display_name' => '导出' . $id, 'age' => $id, 'active' => true, 'secret' => '', 'note' => $payload];
                     }
                     $users->insertMany($batch);
@@ -191,7 +194,7 @@ function main(int $argc, array $argv): void
                 $sum = 0;
                 $count = $export->each(static function (array $row) use (&$sum): void {
                     paginationExpect(strlen($row['note']) === 2048, '流式导出字段不完整');
-                    $sum += (int) $row['id'];
+                    $sum += (int)$row['id'];
                 });
                 $growth = max(0, memory_get_peak_usage(false) - $baseline);
                 paginationExpect($export->closed() && $count === 20000 && $sum === 200010000 && $growth < 12 * 1024 * 1024, '大结果导出没有保持数量、顺序或有界内存');
@@ -213,7 +216,7 @@ function main(int $argc, array $argv): void
                 $pending->close();
                 $scope = new ExecutionScope();
                 $reopened = $database->connect($scope);
-                paginationExpect((int) $reopened->query('SELECT 7 AS value')[0]['value'] === 7, '流清理后连接池不能重新借用');
+                paginationExpect((int)$reopened->query('SELECT 7 AS value')[0]['value'] === 7, '流清理后连接池不能重新借用');
                 $reopened->close();
                 echo json_encode(['driver' => $driver, 'rows' => $count, 'sum' => $sum, 'peak_growth' => $growth, 'model_peak_growth' => $modelGrowth, 'leased' => $database->statistics()['active']['default']['leased']], JSON_THROW_ON_ERROR) . PHP_EOL;
             });

@@ -4,25 +4,31 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use JsonSerializable;
-use Closure;
-use DateTimeImmutable;
-use DateTimeZone;
 use Type\Runtime\ExecutionScope;
 
 /** 持久化字段封装在状态中，生成访问器同样经过未加载与失效检查。 */
-abstract class Model implements JsonSerializable
+abstract class Model implements \JsonSerializable
 {
     private ModelDefinition $definition;
+
     private array $values = [];
+
     private array $original = [];
+
     private bool $persisted;
+
     private ModelState $state;
+
     private array $relations = [];
+
     private ?array $pivotValues = null;
+
     private ?ModelBehavior $behavior;
+
     private array $computed = [];
+
     private ExecutionScope $execution;
+
     private int|string|null $tenantIdentity;
 
     protected function __construct(ModelDefinition $definition, array $values, bool $persisted = false, ?ModelBehavior $behavior = null)
@@ -57,12 +63,49 @@ abstract class Model implements JsonSerializable
         }
     }
 
+    /** 拼错属性不能创建游离于模型状态的动态字段。 */
+    final public function __set(string $name, mixed $value): void
+    {
+        $this->assertValid();
+        throw new ModelException('unknown_field', '模型属性没有声明：' . $name);
+    }
+
+    /** 缺失属性不同于已声明但未加载的字段。 */
+    final public function __get(string $name): mixed
+    {
+        $this->assertValid();
+        throw new ModelException('unknown_field', '模型属性没有声明：' . $name);
+    }
+
+    /**
+     * 拒绝序列化持久化状态；跨作用域数据传输应使用显式 DTO。
+     *
+     * @throws ModelException 模型状态不可用，或以 serialization_unsupported 拒绝序列化
+     */
+    public function __serialize(): array
+    {
+        $this->assertValid();
+        throw new ModelException('serialization_unsupported', '模型请通过显式 DTO 输出，不序列化持久化状态');
+    }
+
+    /**
+     * 拒绝从载荷重建持久化模型；必须使用声明的水合工厂。
+     *
+     * @param array<string, mixed> $data
+     * @throws ModelException 始终拒绝，以 serialization_unsupported 报告
+     */
+    public function __unserialize(array $data): void
+    {
+        throw new ModelException('serialization_unsupported', '模型必须通过声明的水合工厂创建');
+    }
+
     /** 检查当前有效模型是否已持久化，不重新访问数据库。 */
     public function isPersisted(): bool
     {
         $this->assertValid();
         return $this->persisted;
     }
+
     /** 取得本模型的静态映射；失效或跨作用域模型不可继续读取。 */
     public function definition(): ModelDefinition
     {
@@ -76,7 +119,7 @@ abstract class Model implements JsonSerializable
      * 句柄不执行隐式查询；attach、detach、sync 会在真正写入时再次检查
      * 模型是否持久化、仍属于当前执行作用域及租户范围。
      *
-     * @throws ModelException 关系未声明、父模型失效或执行作用域不匹配时拒绝。
+     * @throws ModelException 关系未声明、父模型失效或执行作用域不匹配时拒绝
      */
     public function relation(string $name): RelationHandle
     {
@@ -129,24 +172,10 @@ abstract class Model implements JsonSerializable
         $this->values[$field] = $mapping->normalize($this->behavior === null ? $value : $this->behavior->write($field, $value));
     }
 
-    /** 拼错属性不能创建游离于模型状态的动态字段。 */
-    final public function __set(string $name, mixed $value): void
-    {
-        $this->assertValid();
-        throw new ModelException('unknown_field', '模型属性没有声明：' . $name);
-    }
-
-    /** 缺失属性不同于已声明但未加载的字段。 */
-    final public function __get(string $name): mixed
-    {
-        $this->assertValid();
-        throw new ModelException('unknown_field', '模型属性没有声明：' . $name);
-    }
-
     /**
      * 整批校验通过才更新内存字段，非法字段不会留下部分赋值。
      *
-     * @param array<string, mixed> $values 使用模型属性名，不能传任意数据库列。
+     * @param array<string, mixed> $values 使用模型属性名，不能传任意数据库列
      */
     public function fill(array $values): void
     {
@@ -192,8 +221,8 @@ abstract class Model implements JsonSerializable
     /**
      * 保存当前作用域模型的变更，复用字段、租户、版本和行为约束；实际写入时统一维护受管时间。
      *
-     * @return string created、updated、unchanged 或前置行为取消时的 cancelled。
-     * @throws ModelException 状态、字段、必填、存储精度或乐观锁约束不满足。
+     * @return string created、updated、unchanged 或前置行为取消时的 cancelled
+     * @throws ModelException 状态、字段、必填、存储精度或乐观锁约束不满足
      */
     public function save(): string
     {
@@ -238,89 +267,6 @@ abstract class Model implements JsonSerializable
         });
     }
 
-    private function saveRecord(Connection $connection): string
-    {
-        $this->assertValid();
-        $connection->trackModel($this);
-        $key = $this->definition->key();
-        $query = $this->persisted ? $this->recordQuery($connection) : $connection->table($this->definition->table());
-        if ($this->persisted && $this->dirty() === []) {
-            return 'unchanged';
-        }
-        $version = $this->definition->versionField();
-        if (!$this->persisted && $version !== null) {
-            $this->values[$version] = 1;
-        }
-        if (!$this->event('saving', true) || !$this->event($this->persisted ? 'updating' : 'creating', true)) {
-            return 'cancelled';
-        }
-        if (!$this->persisted) {
-            $softDelete = $this->definition->softDeleteField();
-            if ($softDelete !== null && !array_key_exists($softDelete, $this->values)) {
-                $this->values[$softDelete] = null;
-            }
-            $timestamps = $this->definition->writeTimestamps(true);
-            $insertValues = array_merge($this->values, $timestamps);
-            foreach ($this->definition->names() as $name) {
-                if ($name === $key && $this->definition->generatedKey()) {
-                    continue;
-                }
-                if ($this->definition->field($name)->required() && !array_key_exists($name, $insertValues)) {
-                    throw new ModelException('required_field', '新增模型缺少必需字段：' . $name);
-                }
-            }
-            $row = $this->encode($insertValues);
-            $this->definition->assertStorage($connection, array_keys($insertValues));
-            if ($row === []) {
-                throw new ModelException('empty_insert', '新增模型至少需要一个显式字段');
-            }
-            if (!array_key_exists($key, $this->values) && $this->definition->generatedKey()) {
-                if (($query->capabilities()['insert-returning'] ?? false) === true) {
-                    $rows = $query->insertReturning([$row], [$this->definition->field($key)->column()]);
-                    $id = $rows[0][$this->definition->field($key)->column()];
-                } else {
-                    $query->insert($row);
-                    $id = $connection->lastInsertId();
-                }
-                $this->values[$key] = $this->definition->field($key)->normalize($id, true);
-            } else {
-                $query->insert($row);
-            }
-            $this->values = array_merge($this->values, $timestamps);
-            $this->persisted = true;
-            $this->original = $this->values;
-            $this->event('created', false);
-            $this->event('saved', false);
-            return 'created';
-        }
-        $dirty = $this->dirty();
-        if ($dirty === []) {
-            return 'unchanged';
-        }
-        $timestamps = $this->definition->writeTimestamps(false);
-        $dirty = array_merge($dirty, $timestamps);
-        $target = $query->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
-        $expectedVersion = $this->version();
-        $values = $this->encode($dirty);
-        if ($expectedVersion !== null) {
-            $target = $target->where($this->definition->field($version)->column(), '=', $expectedVersion);
-            $values[$this->definition->field($version)->column()] = $this->nextVersion($expectedVersion);
-        }
-        $this->definition->assertStorage($connection, array_keys($dirty));
-        $affected = $target->update($values);
-        if ($expectedVersion !== null) {
-            $this->assertVersionWrite($connection, $affected, $expectedVersion, false);
-            $this->values[$version] = $expectedVersion + 1;
-        } elseif ($affected === 0 && $target->first() === null) {
-            throw new ModelException('not_found', '更新目标已经不存在');
-        }
-        $this->values = array_merge($this->values, $timestamps);
-        $this->original = $this->values;
-        $this->event('updated', false);
-        $this->event('saved', false);
-        return $affected === 0 ? 'unchanged' : 'updated';
-    }
-
     /** 按映射执行软删除或物理删除，保留版本与租户约束；前置事件可取消。 */
     public function delete(): bool
     {
@@ -333,62 +279,6 @@ abstract class Model implements JsonSerializable
     {
         $connection = $this->connection();
         return $this->writing($connection, fn (): bool => $this->deleteRecord($connection, true));
-    }
-
-    private function deleteRecord(Connection $connection, bool $force): bool
-    {
-        $this->assertValid();
-        $connection->trackModel($this);
-        if (!$this->persisted) {
-            throw new ModelException('not_persisted', '未持久化模型不能删除');
-        }
-        if (!$this->event($force ? 'forceDeleting' : 'deleting', true)) {
-            return false;
-        }
-        $key = $this->definition->key();
-        $query = $this->recordQuery($connection)->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
-        $version = $this->definition->versionField();
-        $expectedVersion = $this->version();
-        if ($expectedVersion !== null) {
-            $query = $query->where($this->definition->field($version)->column(), '=', $expectedVersion);
-        }
-        $soft = $this->definition->softDeleteField();
-        if ($soft !== null && !$force) {
-            $value = new DateTimeImmutable('now', new DateTimeZone('UTC'));
-            $managed = array_merge([$soft => $value], $this->definition->writeTimestamps(false, $value));
-            $this->definition->assertStorage($connection, array_keys($managed));
-            $values = $this->encode($managed);
-            if ($expectedVersion !== null) {
-                $values[$this->definition->field($version)->column()] = $this->nextVersion($expectedVersion);
-            }
-            $affected = $query->whereNull($this->definition->field($soft)->column())->update($values);
-            if ($expectedVersion !== null) {
-                $this->assertVersionWrite($connection, $affected, $expectedVersion, true);
-            }
-            if ($affected > 0) {
-                foreach ($managed as $name => $stored) {
-                    $this->values[$name] = $stored;
-                    $this->original[$name] = $stored;
-                }
-                $this->forgetRelations();
-            }
-            if ($affected > 0 && $expectedVersion !== null) {
-                $this->values[$version] = $expectedVersion + 1;
-                $this->original[$version] = $expectedVersion + 1;
-            }
-        } else {
-            $affected = $query->delete();
-            if ($expectedVersion !== null) {
-                $this->assertVersionWrite($connection, $affected, $expectedVersion, false);
-            }
-        }
-        if ($affected > 0) {
-            $this->event($force ? 'forceDeleted' : 'deleted', false);
-        }
-        if ($soft === null || $force) {
-            $this->invalidate();
-        }
-        return $affected > 0;
     }
 
     /** 恢复支持软删除的已持久化模型，成功后清除旧关系快照。 */
@@ -449,35 +339,6 @@ abstract class Model implements JsonSerializable
         $this->event('retrieved', false);
     }
 
-    private function event(string $name, bool $cancellable): bool
-    {
-        return $this->behavior === null || $this->behavior->dispatch($name, $this, $cancellable);
-    }
-
-    private function connection(): Connection
-    {
-        if (ExecutionScope::current() !== $this->execution) {
-            throw new ModelException('model_scope_mismatch', '模型不能跨执行作用域持久化，请在当前作用域重新查询');
-        }
-        $this->assertValid();
-        return Db::connection($this->definition->database(), true);
-    }
-
-    private function assertTenantValue(mixed $value): void
-    {
-        if ($this->definition->field($this->definition->tenantField())->normalize($value) !== $this->tenantIdentity) {
-            throw new ModelException('tenant_scope_conflict', '普通模型赋值不能改变租户归属');
-        }
-    }
-
-    private function recordQuery(Connection $connection): Query
-    {
-        $this->assertValid();
-        $query = $connection->table($this->definition->table());
-        $field = $this->definition->tenantField();
-        return $field === null ? $query : $query->where($this->definition->field($field)->column(), '=', $this->definition->field($field)->encode($this->tenantIdentity));
-    }
-
     /** @internal 水合保留原始租户身份，未显式选择的租户字段不冒充已加载业务字段。 */
     public function retainProjection(array $fields): void
     {
@@ -487,68 +348,12 @@ abstract class Model implements JsonSerializable
         }
     }
 
-    private function writing(Connection $connection, Closure $operation): mixed
-    {
-        $this->state->enterWrite();
-        try {
-            if ($this->behavior === null && $this->definition->versionField() === null) {
-                return $operation();
-            }
-            $mode = $connection->driverName() === 'sqlite' && $connection->transactionDepth() === 0 ? 'immediate' : 'default';
-            return $connection->transaction(static fn (Connection $transaction): mixed => $operation(), $mode);
-        } finally {
-            $this->state->leaveWrite();
-        }
-    }
-
-    private function version(): ?int
-    {
-        $field = $this->definition->versionField();
-        return $field === null ? null : $this->original[$field];
-    }
-
-    private function nextVersion(int $version): int
-    {
-        if ($version >= PHP_INT_MAX) {
-            throw new ModelException('version_exhausted', '版本计数已达到上限');
-        }
-        return $version + 1;
-    }
-
-    private function assertVersionWrite(Connection $connection, int $affected, int $expected, bool $allowNoop): void
-    {
-        if ($affected === 1) {
-            return;
-        }
-        if ($affected > 1) {
-            throw new ModelException('non_unique_key', '模型主键必须唯一');
-        }
-        $key = $this->definition->key();
-        $version = $this->definition->versionField();
-        $query = $this->recordQuery($connection)->select(['type_version' => $this->definition->field($version)->column()])
-            ->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
-        // MySQL RR 下必须读当前记录，不能用旧快照把已删除误判为版本冲突。
-        if ($connection->driverName() !== 'sqlite') {
-            $query = $query->lockForUpdate();
-        }
-        $rows = $query->get();
-        if ($rows === []) {
-            throw new ModelException('not_found', '写入目标已经不存在');
-        }
-        if ((int) $rows[0]['type_version'] !== $expected) {
-            throw new ModelException('optimistic_conflict', '版本已过期，请重新查询');
-        }
-        if (!$allowNoop) {
-            throw new ModelException('write_not_applied', '数据库未执行预期的版本写入');
-        }
-    }
-
     /**
      * 只输出显式选择且允许可见的字段、已加载关系与计算值。
      *
      * @param list<string> $fields
-     * @param array<string, list<string>> $relations 关系名到目标字段列表。
-     * @param list<string> $computed 只读计算结果别名。
+     * @param array<string, list<string>> $relations 关系名到目标字段列表
+     * @param list<string> $computed 只读计算结果别名
      * @return array<string, mixed>
      */
     public function project(array $fields, array $relations = [], array $computed = []): array
@@ -645,7 +450,7 @@ abstract class Model implements JsonSerializable
     /**
      * 读取已加载关系，不触发 SQL；缺失抛 relation_not_loaded。
      *
-     * @return Model|list<Model>|null
+     * @return null|list<Model>|Model
      */
     public function related(string $name): mixed
     {
@@ -704,28 +509,6 @@ abstract class Model implements JsonSerializable
         return $this->toArray();
     }
 
-    /**
-     * 拒绝序列化持久化状态；跨作用域数据传输应使用显式 DTO。
-     *
-     * @throws ModelException 模型状态不可用，或以 serialization_unsupported 拒绝序列化。
-     */
-    public function __serialize(): array
-    {
-        $this->assertValid();
-        throw new ModelException('serialization_unsupported', '模型请通过显式 DTO 输出，不序列化持久化状态');
-    }
-
-    /**
-     * 拒绝从载荷重建持久化模型；必须使用声明的水合工厂。
-     *
-     * @param array<string, mixed> $data
-     * @throws ModelException 始终拒绝，以 serialization_unsupported 报告。
-     */
-    public function __unserialize(array $data): void
-    {
-        throw new ModelException('serialization_unsupported', '模型必须通过声明的水合工厂创建');
-    }
-
     protected function assertValid(): void
     {
         $this->state->assertValid();
@@ -734,6 +517,230 @@ abstract class Model implements JsonSerializable
         }
         if ($this->definition->tenantIdentity($this->execution) !== $this->tenantIdentity) {
             throw new ModelException('tenant_context_changed', '已有模型的租户上下文已经改变');
+        }
+    }
+
+    private function saveRecord(Connection $connection): string
+    {
+        $this->assertValid();
+        $connection->trackModel($this);
+        $key = $this->definition->key();
+        $query = $this->persisted ? $this->recordQuery($connection) : $connection->table($this->definition->table());
+        if ($this->persisted && $this->dirty() === []) {
+            return 'unchanged';
+        }
+        $version = $this->definition->versionField();
+        if (!$this->persisted && $version !== null) {
+            $this->values[$version] = 1;
+        }
+        if (!$this->event('saving', true) || !$this->event($this->persisted ? 'updating' : 'creating', true)) {
+            return 'cancelled';
+        }
+        if (!$this->persisted) {
+            $softDelete = $this->definition->softDeleteField();
+            if ($softDelete !== null && !array_key_exists($softDelete, $this->values)) {
+                $this->values[$softDelete] = null;
+            }
+            $timestamps = $this->definition->writeTimestamps(true);
+            $insertValues = array_merge($this->values, $timestamps);
+            foreach ($this->definition->names() as $name) {
+                if ($name === $key && $this->definition->generatedKey()) {
+                    continue;
+                }
+                if ($this->definition->field($name)->required() && !array_key_exists($name, $insertValues)) {
+                    throw new ModelException('required_field', '新增模型缺少必需字段：' . $name);
+                }
+            }
+            $row = $this->encode($insertValues);
+            $this->definition->assertStorage($connection, array_keys($insertValues));
+            if ($row === []) {
+                throw new ModelException('empty_insert', '新增模型至少需要一个显式字段');
+            }
+            if (!array_key_exists($key, $this->values) && $this->definition->generatedKey()) {
+                if (($query->capabilities()['insert-returning'] ?? false) === true) {
+                    $rows = $query->insertReturning([$row], [$this->definition->field($key)->column()]);
+                    $id = $rows[0][$this->definition->field($key)->column()];
+                } else {
+                    $query->insert($row);
+                    $id = $connection->lastInsertId();
+                }
+                $this->values[$key] = $this->definition->field($key)->normalize($id, true);
+            } else {
+                $query->insert($row);
+            }
+            $this->values = array_merge($this->values, $timestamps);
+            $this->persisted = true;
+            $this->original = $this->values;
+            $this->event('created', false);
+            $this->event('saved', false);
+            return 'created';
+        }
+        $dirty = $this->dirty();
+        if ($dirty === []) {
+            return 'unchanged';
+        }
+        $timestamps = $this->definition->writeTimestamps(false);
+        $dirty = array_merge($dirty, $timestamps);
+        $target = $query->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
+        $expectedVersion = $this->version();
+        $values = $this->encode($dirty);
+        if ($expectedVersion !== null) {
+            $target = $target->where($this->definition->field($version)->column(), '=', $expectedVersion);
+            $values[$this->definition->field($version)->column()] = $this->nextVersion($expectedVersion);
+        }
+        $this->definition->assertStorage($connection, array_keys($dirty));
+        $affected = $target->update($values);
+        if ($expectedVersion !== null) {
+            $this->assertVersionWrite($connection, $affected, $expectedVersion, false);
+            $this->values[$version] = $expectedVersion + 1;
+        } elseif ($affected === 0 && $target->first() === null) {
+            throw new ModelException('not_found', '更新目标已经不存在');
+        }
+        $this->values = array_merge($this->values, $timestamps);
+        $this->original = $this->values;
+        $this->event('updated', false);
+        $this->event('saved', false);
+        return $affected === 0 ? 'unchanged' : 'updated';
+    }
+
+    private function deleteRecord(Connection $connection, bool $force): bool
+    {
+        $this->assertValid();
+        $connection->trackModel($this);
+        if (!$this->persisted) {
+            throw new ModelException('not_persisted', '未持久化模型不能删除');
+        }
+        if (!$this->event($force ? 'forceDeleting' : 'deleting', true)) {
+            return false;
+        }
+        $key = $this->definition->key();
+        $query = $this->recordQuery($connection)->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
+        $version = $this->definition->versionField();
+        $expectedVersion = $this->version();
+        if ($expectedVersion !== null) {
+            $query = $query->where($this->definition->field($version)->column(), '=', $expectedVersion);
+        }
+        $soft = $this->definition->softDeleteField();
+        if ($soft !== null && !$force) {
+            $value = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+            $managed = array_merge([$soft => $value], $this->definition->writeTimestamps(false, $value));
+            $this->definition->assertStorage($connection, array_keys($managed));
+            $values = $this->encode($managed);
+            if ($expectedVersion !== null) {
+                $values[$this->definition->field($version)->column()] = $this->nextVersion($expectedVersion);
+            }
+            $affected = $query->whereNull($this->definition->field($soft)->column())->update($values);
+            if ($expectedVersion !== null) {
+                $this->assertVersionWrite($connection, $affected, $expectedVersion, true);
+            }
+            if ($affected > 0) {
+                foreach ($managed as $name => $stored) {
+                    $this->values[$name] = $stored;
+                    $this->original[$name] = $stored;
+                }
+                $this->forgetRelations();
+            }
+            if ($affected > 0 && $expectedVersion !== null) {
+                $this->values[$version] = $expectedVersion + 1;
+                $this->original[$version] = $expectedVersion + 1;
+            }
+        } else {
+            $affected = $query->delete();
+            if ($expectedVersion !== null) {
+                $this->assertVersionWrite($connection, $affected, $expectedVersion, false);
+            }
+        }
+        if ($affected > 0) {
+            $this->event($force ? 'forceDeleted' : 'deleted', false);
+        }
+        if ($soft === null || $force) {
+            $this->invalidate();
+        }
+        return $affected > 0;
+    }
+
+    private function event(string $name, bool $cancellable): bool
+    {
+        return $this->behavior === null || $this->behavior->dispatch($name, $this, $cancellable);
+    }
+
+    private function connection(): Connection
+    {
+        if (ExecutionScope::current() !== $this->execution) {
+            throw new ModelException('model_scope_mismatch', '模型不能跨执行作用域持久化，请在当前作用域重新查询');
+        }
+        $this->assertValid();
+        return Db::connection($this->definition->database(), true);
+    }
+
+    private function assertTenantValue(mixed $value): void
+    {
+        if ($this->definition->field($this->definition->tenantField())->normalize($value) !== $this->tenantIdentity) {
+            throw new ModelException('tenant_scope_conflict', '普通模型赋值不能改变租户归属');
+        }
+    }
+
+    private function recordQuery(Connection $connection): Query
+    {
+        $this->assertValid();
+        $query = $connection->table($this->definition->table());
+        $field = $this->definition->tenantField();
+        return $field === null ? $query : $query->where($this->definition->field($field)->column(), '=', $this->definition->field($field)->encode($this->tenantIdentity));
+    }
+
+    private function writing(Connection $connection, \Closure $operation): mixed
+    {
+        $this->state->enterWrite();
+        try {
+            if ($this->behavior === null && $this->definition->versionField() === null) {
+                return $operation();
+            }
+            $mode = $connection->driverName() === 'sqlite' && $connection->transactionDepth() === 0 ? 'immediate' : 'default';
+            return $connection->transaction(static fn (Connection $transaction): mixed => $operation(), $mode);
+        } finally {
+            $this->state->leaveWrite();
+        }
+    }
+
+    private function version(): ?int
+    {
+        $field = $this->definition->versionField();
+        return $field === null ? null : $this->original[$field];
+    }
+
+    private function nextVersion(int $version): int
+    {
+        if ($version >= PHP_INT_MAX) {
+            throw new ModelException('version_exhausted', '版本计数已达到上限');
+        }
+        return $version + 1;
+    }
+
+    private function assertVersionWrite(Connection $connection, int $affected, int $expected, bool $allowNoop): void
+    {
+        if ($affected === 1) {
+            return;
+        }
+        if ($affected > 1) {
+            throw new ModelException('non_unique_key', '模型主键必须唯一');
+        }
+        $key = $this->definition->key();
+        $version = $this->definition->versionField();
+        $query = $this->recordQuery($connection)->select(['type_version' => $this->definition->field($version)->column()])
+            ->where($this->definition->field($key)->column(), '=', $this->rawValue($key));
+        // MySQL RR 下必须读当前记录，不能用旧快照把已删除误判为版本冲突。
+        if ($connection->driverName() !== 'sqlite') {
+            $query = $query->lockForUpdate();
+        }
+        $rows = $query->get();
+        if ($rows === []) {
+            throw new ModelException('not_found', '写入目标已经不存在');
+        }
+        if ((int)$rows[0]['type_version'] !== $expected) {
+            throw new ModelException('optimistic_conflict', '版本已过期，请重新查询');
+        }
+        if (!$allowNoop) {
+            throw new ModelException('write_not_applied', '数据库未执行预期的版本写入');
         }
     }
 

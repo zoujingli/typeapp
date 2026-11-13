@@ -8,9 +8,7 @@ namespace Type\Orm;
 final class QueryEvent
 {
     /** @internal 接收已经脱敏和限制大小的查询完成数据。 */
-    public function __construct(private array $data)
-    {
-    }
+    public function __construct(private array $data) {}
 
     /** 不可变的事件数据副本，不携带异常对象或数据库资源。 */
     public function toArray(): array

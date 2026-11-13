@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace TypeTests\Unit;
 
-use PDO;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
+use Swoole\Coroutine;
+use Swoole\Coroutine\Scheduler;
+use Swoole\Runtime;
+use Swoole\Thread;
 use Type\Orm\Database;
 use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\Pgsql\PgsqlDriver;
@@ -16,7 +19,11 @@ use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\TaskException;
 
-/** 真实 Swoole hook 与驱动入口的契约回归；每项隔离进程级 handler，不连接外部数据库。 */
+/**
+ * 真实 Swoole hook 与驱动入口的契约回归；每项隔离进程级 handler，不连接外部数据库。
+ * @internal
+ * @coversNothing
+ */
 #[RunTestsInSeparateProcesses]
 #[PreserveGlobalState(false)]
 final class OrmCoroutineHooksTest extends TestCase
@@ -26,16 +33,16 @@ final class OrmCoroutineHooksTest extends TestCase
         if (!extension_loaded('swoole') || !extension_loaded('pdo_sqlite')) {
             self::markTestSkipped('需要实际 Swoole 和 PDO SQLite 验证协程入口');
         }
-        \Swoole\Runtime::enableCoroutine(0);
+        Runtime::enableCoroutine(0);
     }
 
     /** 同步维护连接不需要开启协程 hook，也不被未使用的数据源能力阻塞。 */
     public function testSynchronousConnectionDoesNotRequireCoroutineHooks(): void
     {
         $pdo = (new SqliteDriver(':memory:'))->connect();
-        self::assertSame('sqlite', $pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
-        self::assertSame(1, (int) $pdo->query('SELECT 1')->fetchColumn());
-        self::assertSame(0, \Swoole\Runtime::getHookFlags());
+        self::assertSame('sqlite', $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME));
+        self::assertSame(1, (int)$pdo->query('SELECT 1')->fetchColumn());
+        self::assertSame(0, Runtime::getHookFlags());
     }
 
     /** 缺 hook 必须先于真实连接失败，不能让物理连接或池额度残留。 */
@@ -44,7 +51,7 @@ final class OrmCoroutineHooksTest extends TestCase
         $drivers = [[new SqliteDriver(':memory:'), defined('SWOOLE_HOOK_PDO_SQLITE')]];
         if (extension_loaded('pdo_mysql')) {
             $drivers[] = [new MysqlDriver('127.0.0.1', 1, 'unreachable', 'fixture', ''),
-                extension_loaded('mysqlnd') && defined('Pdo\\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')];
+                extension_loaded('mysqlnd') && defined('Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')];
         }
         if (extension_loaded('pdo_pgsql')) {
             $drivers[] = [new PgsqlDriver('127.0.0.1', 1, 'unreachable', 'fixture', ''), defined('SWOOLE_HOOK_PDO_PGSQL')];
@@ -60,7 +67,7 @@ final class OrmCoroutineHooksTest extends TestCase
                     self::assertSame($available ? 'swoole_hook_startup_required' : 'swoole_pdo_hook_unavailable', $error->errorCode());
                     self::assertSame(0, $database->statistics()['created']);
                     self::assertSame(0, $database->statistics()['leased']);
-                    self::assertSame(0, \Swoole\Runtime::getHookFlags());
+                    self::assertSame(0, Runtime::getHookFlags());
                 } finally {
                     $scope->close();
                     $database->close();
@@ -75,14 +82,14 @@ final class OrmCoroutineHooksTest extends TestCase
         if (!defined('SWOOLE_HOOK_PDO_SQLITE')) {
             self::markTestSkipped('当前 Swoole 没有编译 SQLite hook');
         }
-        $selected = (int) constant('SWOOLE_HOOK_PDO_SQLITE');
-        \Swoole\Runtime::enableCoroutine($selected);
+        $selected = (int)constant('SWOOLE_HOOK_PDO_SQLITE');
+        Runtime::enableCoroutine($selected);
         CoroutineRuntime::run(static function () use ($selected): void {
             $pdo = (new SqliteDriver(':memory:'))->connect();
             $pdo->exec('CREATE TABLE hook_records (id INTEGER PRIMARY KEY, title TEXT NOT NULL)');
             $pdo->exec("INSERT INTO hook_records (title) VALUES ('selected profile')");
             self::assertSame('selected profile', $pdo->query('SELECT title FROM hook_records')->fetchColumn());
-            self::assertSame($selected, \Swoole\Runtime::getHookFlags());
+            self::assertSame($selected, Runtime::getHookFlags());
         });
     }
 
@@ -90,7 +97,7 @@ final class OrmCoroutineHooksTest extends TestCase
     public function testStartupEnablesAvailableDriverHooksWithoutDriverMutation(): void
     {
         CoroutineRuntime::enableIo();
-        $flags = \Swoole\Runtime::getHookFlags();
+        $flags = Runtime::getHookFlags();
         CoroutineRuntime::run(static function () use ($flags): void {
             foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
                 if (!extension_loaded('pdo_' . $driver)) {
@@ -100,7 +107,7 @@ final class OrmCoroutineHooksTest extends TestCase
                     continue;
                 }
                 CoroutineRuntime::assertPdoHooks($driver);
-                self::assertSame($flags, \Swoole\Runtime::getHookFlags());
+                self::assertSame($flags, Runtime::getHookFlags());
             }
         });
     }
@@ -109,15 +116,15 @@ final class OrmCoroutineHooksTest extends TestCase
     public function testStartupSynchronizesHooksForAnAlreadyRunningCoroutine(): void
     {
         $observed = null;
-        $scheduler = new \Swoole\Coroutine\Scheduler();
+        $scheduler = new Scheduler();
         $scheduler->set(['hook_flags' => 0]);
         self::assertNotSame(false, $scheduler->add(static function () use (&$observed): void {
-            self::assertGreaterThanOrEqual(0, \Swoole\Coroutine::getCid());
+            self::assertGreaterThanOrEqual(0, Coroutine::getCid());
             CoroutineRuntime::enableIo();
-            $observed = \Swoole\Runtime::getHookFlags();
+            $observed = Runtime::getHookFlags();
             self::assertNotSame(0, $observed);
             if (extension_loaded('pdo_mysql') && extension_loaded('mysqlnd')
-                && defined('Pdo\\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')) {
+                && defined('Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')) {
                 CoroutineRuntime::assertPdoHooks('mysql');
             }
         }));
@@ -129,7 +136,7 @@ final class OrmCoroutineHooksTest extends TestCase
     /** 原生线程只同步本地选项；缺失、替换或运行中的启动消息不能改变 hook 配置。 */
     public function testNativeThreadInheritsOnlyItsValidatedStartupMessage(): void
     {
-        if (!class_exists(\Swoole\Thread::class, false) || !defined('SWOOLE_HOOK_PDO_SQLITE')) {
+        if (!class_exists(Thread::class, false) || !defined('SWOOLE_HOOK_PDO_SQLITE')) {
             self::markTestSkipped('需要真实 Swoole Thread 和 SQLite hook');
         }
         $root = dirname(__DIR__, 2);
@@ -172,7 +179,7 @@ file_put_contents($arguments[2], json_encode($result, JSON_THROW_ON_ERROR));
 PHP);
         try {
             CoroutineRuntime::enableIo();
-            $flags = \Swoole\Runtime::getHookFlags();
+            $flags = Runtime::getHookFlags();
             $cases = [
                 [json_encode(['probe', 'payload', $flags], JSON_THROW_ON_ERROR), false, null],
                 ['["probe","payload"]', false, 'compiled_thread_message_invalid'],
@@ -183,10 +190,10 @@ PHP);
             ];
             foreach ($cases as $index => [$message, $replace, $expected]) {
                 $output = $directory . '/' . $index . '.json';
-                $thread = new \Swoole\Thread($script, $message, $root, $output, $replace);
+                $thread = new Thread($script, $message, $root, $output, $replace);
                 self::assertTrue($thread->join());
                 self::assertSame(0, $thread->getExitStatus());
-                $result = json_decode((string) file_get_contents($output), true, 512, JSON_THROW_ON_ERROR);
+                $result = json_decode((string)file_get_contents($output), true, 512, JSON_THROW_ON_ERROR);
                 if ($expected !== null) {
                     self::assertSame($expected, $result['error']);
                     self::assertSame($result['initial'], $result['flags']);
@@ -197,9 +204,9 @@ PHP);
                     self::assertSame($flags, $result['inherited']);
                     self::assertSame($flags, $result['flags']);
                 }
-                self::assertSame($flags, \Swoole\Runtime::getHookFlags());
+                self::assertSame($flags, Runtime::getHookFlags());
             }
-            self::assertSame(1, \Swoole\Thread::activeCount());
+            self::assertSame(1, Thread::activeCount());
             try {
                 CoroutineRuntime::enterThread(json_encode(['probe', 'payload', $flags], JSON_THROW_ON_ERROR));
                 self::fail('主线程接受了业务线程启动消息');

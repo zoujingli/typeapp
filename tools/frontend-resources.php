@@ -37,7 +37,7 @@ try {
     if ($operation === 'record') {
         Process::report($path, $record);
     } else {
-        $expected = json_decode((string) file_get_contents($path), true, 64, JSON_THROW_ON_ERROR);
+        $expected = json_decode((string)file_get_contents($path), true, 64, JSON_THROW_ON_ERROR);
         if (BuildIdentity::digest($expected) !== BuildIdentity::digest($record)) {
             throw new RuntimeException('共享前端与固定源码、锁文件或资源字节不一致');
         }

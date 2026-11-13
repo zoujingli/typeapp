@@ -12,7 +12,7 @@ final class Schema
     /**
      * 为同一业务声明三库等价表与约束，保留主键和字段存储的真实差异。
      *
-     * @return list<\Type\Orm\Migration\Migration>
+     * @return list<Migration>
      */
     public static function plan(string $driver): array
     {

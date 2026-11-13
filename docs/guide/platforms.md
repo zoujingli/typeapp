@@ -10,7 +10,7 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 当前公开版本为 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14)。同一源码已完成四平台完整验收，四个平台各提供 `sqlite`、`mysql`、`pgsql` 程序；12 个最终程序均完成对应数据库的隔离部署和公开下载摘要核验。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
 
-当前 `main` 使用 TypePHP `840c626c` 开发快照（源码版本 0.9.6）、PHPX 2.9.5 和 Swoole `64988849`（运行时 `6.3.0RC1`）。四平台共享模块由[重建运行 42354619862](https://github.com/zoujingli/typeapp/actions/runs/42354619862)从源码 `e8b4ba7` 构建，模块、适配和依赖摘要已逐项核对，见[构建输入](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。
+当前 `main` 使用 TypePHP `c5599c5c` 开发快照（源码版本 0.9.6）、PHPX 2.9.8 和 Swoole `81404909`（运行时 `6.3.0RC1`）。四平台共享模块由[重建运行 42354619862](https://github.com/zoujingli/typeapp/actions/runs/42354619862)从源码 `e8b4ba7` 构建，模块、适配和依赖摘要已逐项核对，见[构建输入](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。
 
 2026-11-07 的完整原生工作流均已通过。以下保留每个平台实际运行的 TypeApp 源码身份：
 
@@ -27,7 +27,7 @@ Windows 复验修正了新版 TypePHP 请求关闭片段的 CRLF 匹配；Unix �
 
 本轮验证共享库开发产物，未重建十二个静态单程序，也未完成新旧版本的同条件性能对照；不改变下述 RC14 的已发布范围。此前 Swoole `c9745c4` 的运行记录见[历史平台结果](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md#历史结果)。
 
-RC14 使用 PHP 8.5.10 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及提交 `4aff74a9`、运行时字符串 `6.3.0RC1` 的 Swoole 开发快照。新版共享模块已完成四平台重建，完整应用与十二个静态程序均已通过本批发布门禁。准确源码、各轮结果及最终程序摘要统一维护在[升级证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，不将旧提交或其他平台结果计为当前候选通过。
+RC14 使用 PHP 8.5.12 ZTS、TypePHP 0.9.4、PHPX 2.9.3，以及提交 `4aff74a9`、运行时字符串 `6.3.0RC1` 的 Swoole 开发快照。新版共享模块已完成四平台重建，完整应用与十二个静态程序均已通过本批发布门禁。准确源码、各轮结果及最终程序摘要统一维护在[升级证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，不将旧提交或其他平台结果计为当前候选通过。
 
 下表记录 RC14 的已发布范围，源码为 `683f6d4d30e1e99b6a93f6a6fb45625fbd87138a`，正式发布运行是 [37138941959](https://github.com/zoujingli/typeapp/actions/runs/37138941959)。
 
@@ -60,7 +60,7 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 开发环境需要 PHP `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选 PDO 驱动；原生构建还需要匹配目标 OS/架构的 PHP ZTS/embed SDK、PHPX 和编译工具。Linux/macOS 使用对应原生工具链，Windows x64 使用匹配的 ZTS SDK 与 MSVC；准备入口见 GitHub 上的[原生命令与 SDK](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-command.md)。
 
-当前源码的原生构建基线为 PHP 8.5.10 ZTS、固定 TypePHP 开发快照（0.9.6）、PHPX 2.9.5，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 固定为 `64988849` 开发快照，运行时报告 `6.3.0RC1`，不是正式 6.3.0；源码、构建开关、模块摘要和官方内置库配置分别记录。模块升级状态见[构建输入](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。CLI 加载成功还需要对应 embed 环境验证，不能只复制一个扩展文件就认定 ABI 匹配。
+当前源码的原生构建基线为 PHP 8.5.12 ZTS、当前锁定 TypePHP 主线提交、PHPX 2.9.8，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 固定为 `81404909` 开发快照，运行时报告 `6.3.0RC1`，不是正式 6.3.0；源码、构建开关、模块摘要和官方内置库配置分别记录。模块升级状态见[构建输入](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。CLI 加载成功还需要对应 embed 环境验证，不能只复制一个扩展文件就认定 ABI 匹配。
 
 此前 0.9.5 / 2.9.4 的早期 macOS ARM64 完整应用、三库和独立线程结果见[工具链升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.5.md)。较早的双端物联架构候选 `3818a30` 已有 11 个平台/profile 组合的静态工作流成功，但其 Windows PostgreSQL 复验在测试备库启动时发生文件访问拒绝；该候选的完整矩阵未结项，不代表当前 `main` 的平台状态。Linux x64 SQLite 候选已更新到只读 Demo；逐项结果见[开发候选与现场记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/iot-redesign-20261024.md)，不改变上表 RC14 的公开发布范围。
 

@@ -14,7 +14,7 @@ expect(is_string($notice) && str_contains($notice, 'Copyright 2026 Anyon')
 $manifests = [$root . '/composer.json', $root . '/templates/type-project/composer.json', ...glob($root . '/plugin/type-*/composer.json')];
 expect($manifests !== [] && count($manifests) === 17, '第一方 Composer 清单数量不符');
 foreach ($manifests as $manifest) {
-    $package = json_decode((string) file_get_contents($manifest), true, 512, JSON_THROW_ON_ERROR);
+    $package = json_decode((string)file_get_contents($manifest), true, 512, JSON_THROW_ON_ERROR);
     expect(($package['license'] ?? null) === 'Apache-2.0', '第一方 Composer 清单未使用 Apache-2.0：' . str_replace($root . '/', '', $manifest));
 }
 
@@ -34,7 +34,7 @@ expect(is_string($webLicense) && str_contains($webLicense, $license) && str_cont
     && str_contains($webLicense, 'UPSTREAM.md'), 'Web LICENSE 未保留完整文本及上游引用');
 expect(file_get_contents($root . '/plugin/type-build/NOTICE') === $notice, '构建组件 NOTICE 与根文本不一致');
 
-$lock = json_decode((string) file_get_contents($root . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
+$lock = json_decode((string)file_get_contents($root . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
 $localPackages = [];
 foreach ([...($lock['packages'] ?? []), ...($lock['packages-dev'] ?? [])] as $package) {
     if (is_string($package['name'] ?? null) && str_starts_with($package['name'], 'zoujingli/type-')) {

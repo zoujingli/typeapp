@@ -50,14 +50,14 @@ try {
     $key = $saved->save();
     expect($key === $saved->save(), '重复保存不是同一存储键');
     $scope->close();
-    expect((string) $storage->open($key) === 'saved', '显式保存没有转移所有权');
+    expect((string)$storage->open($key) === 'saved', '显式保存没有转移所有权');
     $storage->remove($key);
     if (getenv('TYPE_UPLOAD_FAULT_DIRECTORY')) {
         $storage = new UploadStorage($directory, 16777216, 2);
         $scope = new ExecutionScope();
         $padding = fopen($directory . '/fault-padding', 'wb');
-        while (@fwrite($padding, str_repeat('p', 16384)) === 16384) {
-        } fclose($padding);
+        while (@fwrite($padding, str_repeat('p', 16384)) === 16384);
+        fclose($padding);
         $failed = false;
         try {
             $storage->receive($factory->createStream(str_repeat('z', 32768)), $scope, 65536);

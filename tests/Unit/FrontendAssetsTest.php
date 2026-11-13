@@ -7,11 +7,15 @@ namespace TypeTests\Unit;
 use app\common\service\FrontendAssets;
 use app\common\service\FrontendPages;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use Type\Build\EmbeddedResourceCompiler;
 use Type\Core\Http\Message\Factory;
+use Type\Testing\Process;
 
-/** 通过真实文件和公开安装入口验证前端升级，不触及数据库或本机站点。 */
+/**
+ * 通过真实文件和公开安装入口验证前端升级，不触及数据库或本机站点。
+ * @internal
+ * @coversNothing
+ */
 final class FrontendAssetsTest extends TestCase
 {
     private string $root;
@@ -44,7 +48,7 @@ final class FrontendAssetsTest extends TestCase
         try {
             $next->install();
             self::fail('不同版本没有要求显式force');
-        } catch (RuntimeException $error) {
+        } catch (\RuntimeException $error) {
             self::assertStringContainsString('--force', $error->getMessage());
         }
         $next->install(true);
@@ -65,7 +69,7 @@ final class FrontendAssetsTest extends TestCase
             try {
                 $this->assets(['index.html' => 'other'])->install(true);
                 self::fail('并发安装取得了同一写锁');
-            } catch (RuntimeException $error) {
+            } catch (\RuntimeException $error) {
                 self::assertStringContainsString('正在进行', $error->getMessage());
             }
         } finally {
@@ -75,7 +79,7 @@ final class FrontendAssetsTest extends TestCase
         try {
             $bad->install(true);
             self::fail('错误摘要被安装');
-        } catch (RuntimeException $error) {
+        } catch (\RuntimeException $error) {
             self::assertStringContainsString('摘要', $error->getMessage());
         }
         self::assertSame('first', file_get_contents($this->root . '/public/index.html'));
@@ -92,7 +96,7 @@ final class FrontendAssetsTest extends TestCase
         $get = $messages->createServerRequest('GET', 'http://localhost/');
         $response = $pages->respond($get, $messages);
         self::assertSame(200, $response->getStatusCode());
-        self::assertSame('<html>test</html>', (string) $response->getBody());
+        self::assertSame('<html>test</html>', (string)$response->getBody());
         self::assertSame('no-cache', $response->getHeaderLine('Cache-Control'));
         self::assertSame(304, $pages->respond($get->withHeader('If-None-Match', $response->getHeaderLine('ETag')), $messages)->getStatusCode());
         $head = $pages->respond($get->withMethod('HEAD'), $messages);
@@ -118,7 +122,7 @@ final class FrontendAssetsTest extends TestCase
         if (!@symlink($this->root . '/outside', $this->root . '/public')) {
             self::markTestSkipped('当前测试账户不能创建符号链接');
         }
-        $this->expectException(RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         try {
             $assets->install(true);
         } finally {
@@ -143,7 +147,7 @@ final class FrontendAssetsTest extends TestCase
         file_put_contents($this->root . '/dist/index.html', 'next');
         self::assertNotSame($first, $compiler->manifest($compiler->collect($this->root, $declarations)));
         file_put_contents($this->root . '/dist/.env', 'secret');
-        $this->expectException(RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         $compiler->collect($this->root, $declarations);
     }
 
@@ -187,7 +191,7 @@ $assets = new \app\common\service\FrontendAssets($base, ['index.html' => ['bytes
     });
 $assets->install(true);
 PHP);
-        $process = new \Type\Testing\Process([PHP_BINARY, $script, dirname(__DIR__, 2), $this->root], $this->root, getenv());
+        $process = new Process([PHP_BINARY, $script, dirname(__DIR__, 2), $this->root], $this->root, getenv());
         try {
             $deadline = microtime(true) + 5;
             while (!is_file($this->root . '/ready') && microtime(true) < $deadline && $process->running()) {

@@ -4,19 +4,17 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
-
 /** 显式协程 HTTP 候选：复用已绑定套接字、原生接受循环和解析器，不进入默认线程适配。 */
 final class SwooleHttpSource
 {
-    public const REFERENCE = '64988849fa898e510a38039912610cab6e9cf3f5';
+    public const REFERENCE = '814049090dd9ba8000adc6cd09ad09dd3f0c9989';
 
     /**
      * 仅修改隔离原文；上游提供等价套接字入口并处理共享监听 EAGAIN 后撤除。
      * fromSocket 保持当前线程的 Socket 引用，由调用者在 start 结束后关闭并释放副本。
      *
      * @return array<string, array{before: string, after: string}>
-     * @throws RuntimeException 固定原文、唯一替换或保存失败；失败副本不可用于构建。
+     * @throws \RuntimeException 固定原文、唯一替换或保存失败；失败副本不可用于构建
      */
     public function apply(string $directory): array
     {
@@ -24,15 +22,15 @@ final class SwooleHttpSource
             'ext-src/swoole_http_server_coro.cc' => '048a9a11ae9d3e17b875a5d3a4706d228584128630c5ec83b7ddeadeb0765849',
             'ext-src/stubs/php_swoole_http_server_coro.stub.php' => 'c656a32f9758ac831d2213ed6fe64aac9dffc3e1211f90f853786cfa2edc992a',
             'ext-src/swoole_http_request.cc' => '95d327443e6f80637a55b398548615ddcdc959d932a11866e39118f278705b2b',
-            'ext-src/php_swoole_http.h' => 'dbf75116b35c65eb4624e9ed5268beadc9e3397e3c4f296bbf02b9bc706300a3',
+            'ext-src/php_swoole_http.h' => '86cb79c6c4b64431429ac9741305542da0b8aefa445bb4391440ba9bbb8c79e2',
         ];
         $contents = [];
         foreach ($hashes as $file => $hash) {
             $path = $directory . '/' . $file;
             if (!is_file($path) || is_link($path) || hash_file('sha256', $path) !== $hash) {
-                throw new RuntimeException('Swoole HTTP 适配需要固定原文：' . $file);
+                throw new \RuntimeException('Swoole HTTP 适配需要固定原文：' . $file);
             }
-            $contents[$file] = (string) file_get_contents($path);
+            $contents[$file] = (string)file_get_contents($path);
         }
         $source = $contents['ext-src/swoole_http_server_coro.cc'];
         $source = $this->replace($source, '    zval zclients;', "    zval zclients;\n    zval zlistener;");
@@ -134,7 +132,7 @@ CPP);
         $report = [];
         foreach ($contents as $file => $content) {
             if (file_put_contents($directory . '/' . $file, $content) !== strlen($content)) {
-                throw new RuntimeException('无法保存 Swoole HTTP 适配：' . $file);
+                throw new \RuntimeException('无法保存 Swoole HTTP 适配：' . $file);
             }
             $report[$file] = ['before' => $hashes[$file], 'after' => hash('sha256', $content)];
         }
@@ -345,7 +343,7 @@ CPP, <<<'CPP'
     }
     hs->socket->cancel(SW_EVENT_READ);
 CPP);
-        $source = $this->replace($source, <<<'CPP'
+        return $this->replace($source, <<<'CPP'
         zend_hash_move_forward(Z_ARRVAL_P(&hs->zclients));
         SocketImpl *sock = php_swoole_get_socket(zconn);
         if (sock->get_socket()->recv_wait) {
@@ -365,13 +363,12 @@ CPP, <<<'CPP'
             }
         }
 CPP);
-        return $source;
     }
 
     private function replace(string $source, string $original, string $replacement): string
     {
         if (substr_count($source, $original) !== 1) {
-            throw new RuntimeException('Swoole HTTP 适配位置不唯一');
+            throw new \RuntimeException('Swoole HTTP 适配位置不唯一');
         }
         return str_replace($original, $replacement, $source);
     }

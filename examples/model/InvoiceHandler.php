@@ -9,7 +9,6 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use RuntimeException;
 use Type\Orm\ModelException;
 use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
@@ -21,6 +20,7 @@ use Type\Validate\ValidationException;
 final class InvoiceHandler implements RequestHandlerInterface
 {
     private ResponseFactoryInterface $responses;
+
     private StreamFactoryInterface $streams;
 
     /** 注入消息工厂；运行时模型查询使用请求作用域连接。 */
@@ -35,7 +35,7 @@ final class InvoiceHandler implements RequestHandlerInterface
     {
         $scope = $request->getAttribute('type.scope');
         if (!$scope instanceof ExecutionScope) {
-            throw new RuntimeException('金额请求缺少作用域');
+            throw new \RuntimeException('金额请求缺少作用域');
         }
         try {
             $allowed = ['id', 'external_id', 'amount', 'happened_at', 'note'];
@@ -85,6 +85,6 @@ final class InvoiceHandler implements RequestHandlerInterface
             $result = ['error' => $error->errorCode()];
         }
         return $this->responses->createResponse($status)->withHeader('Content-Type', 'application/json')
-            ->withBody($this->streams->createStream((string) json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
+            ->withBody($this->streams->createStream((string)json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
     }
 }

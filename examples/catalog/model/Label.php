@@ -12,6 +12,8 @@ use Type\Orm\Model;
 final class Label extends Model
 {
     public int $id;
+
     public string $tenant_id;
+
     public string $code;
 }

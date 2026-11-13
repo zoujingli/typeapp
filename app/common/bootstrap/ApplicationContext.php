@@ -5,15 +5,16 @@ declare(strict_types=1);
 namespace app\common\bootstrap;
 
 use app\common\database\DatabaseFactory;
-use InvalidArgumentException;
-use Type\Core\Configuration;
 use Type\Core\Config\Repository;
+use Type\Core\Configuration;
+use Type\Core\Http\HttpError;
 
 /** 单次应用装配持有的启动数据；配置只在需要的角色读取，不持有活动连接或请求身份。 */
 final class ApplicationContext
 {
-    private ?Repository $repository = null;
     public bool $development;
+
+    private ?Repository $repository = null;
 
     /** snapshot 只由宿主传入，不落盘或进入构建声明及诊断；空值表示延迟读取启动配置。 */
     public function __construct(public string $basePath, public string $program, string $development, private string $snapshot)
@@ -41,7 +42,7 @@ final class ApplicationContext
 
     /**
      * 独立角色共用一个受控原生worker命令；未配置时保留QoS0开发入口，不宣称可靠接收就绪。
-     * @return list<string> 完整存储角色命令；空列表表示未配置。
+     * @return list<string> 完整存储角色命令；空列表表示未配置
      */
     public static function brokerWorker(Repository $settings): array
     {
@@ -50,15 +51,15 @@ final class ApplicationContext
             return [];
         }
         if (DatabaseFactory::name($settings) !== 'pgsql' || trim($settings->text('app.broker.standby')) === '') {
-            throw new InvalidArgumentException('BROKER_COMMAND需要PostgreSQL及明确的BROKER_STANDBY_NAMES同步后端');
+            throw new \InvalidArgumentException('BROKER_COMMAND需要PostgreSQL及明确的BROKER_STANDBY_NAMES同步后端');
         }
         $command = json_decode($encoded, true, 8, JSON_THROW_ON_ERROR);
         if (!is_array($command) || !array_is_list($command) || $command === [] || count($command) > 16) {
-            throw new InvalidArgumentException('BROKER_COMMAND必须为当前应用的显式命令参数数组');
+            throw new \InvalidArgumentException('BROKER_COMMAND必须为当前应用的显式命令参数数组');
         }
         foreach ($command as $argument) {
             if (!is_string($argument) || $argument === '' || strlen($argument) > 4096 || str_contains($argument, "\0")) {
-                throw new InvalidArgumentException('BROKER_COMMAND参数无效');
+                throw new \InvalidArgumentException('BROKER_COMMAND参数无效');
             }
         }
         return [...$command, 'broker:store'];
@@ -88,22 +89,21 @@ final class ApplicationContext
                 return [];
             }
         }
-        return [...$command, 'iot:mqtt-store'];
+        return [...$command, 'center:mqtt-store'];
     }
 
     /** @return list<string> 物联持久资源观察及转配复用同一已配置角色，空值明确表示未配置。 */
-    public static function iotStoreWorker(string $encoded): array
+    public static function centerStoreWorker(string $encoded): array
     {
         $command = $encoded === '' ? [] : json_decode($encoded, true, 8, JSON_THROW_ON_ERROR);
         if (!is_array($command) || !array_is_list($command) || count($command) > 16) {
-            throw new \Type\Core\Http\HttpError(503, 'broker_resource_store_unavailable');
+            throw new HttpError(503, 'broker_resource_store_unavailable');
         }
         foreach ($command as $argument) {
             if (!is_string($argument) || $argument === '' || strlen($argument) > 4096 || str_contains($argument, "\0")) {
-                throw new \Type\Core\Http\HttpError(503, 'broker_resource_store_unavailable');
+                throw new HttpError(503, 'broker_resource_store_unavailable');
             }
         }
-        return $command === [] ? [] : [...$command, 'iot:mqtt-store'];
+        return $command === [] ? [] : [...$command, 'center:mqtt-store'];
     }
-
 }

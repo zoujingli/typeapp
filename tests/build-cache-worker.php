@@ -1,11 +1,12 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ArtifactCache;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 $work = $argv[1];
 $input = json_decode(file_get_contents($work . '/identity.json'), true, 512, JSON_THROW_ON_ERROR);
-$result = (new Type\Build\ArtifactCache($work . '/shared-cache'))->materialize(
+$result = (new ArtifactCache($work . '/shared-cache'))->materialize(
     $input['identity'],
     $input['manifest'],
     $work . '/worker-' . getmypid(),

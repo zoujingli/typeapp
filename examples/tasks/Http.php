@@ -18,12 +18,15 @@ use Type\Runtime\TaskException;
 final class Connections
 {
     private Driver $driver;
+
     private ?Database $database = null;
+
     /** 保存驱动声明，构造时不建立物理连接。 */
     public function __construct(Driver $driver)
     {
         $this->driver = $driver;
     }
+
     /** 首次使用才建立受限数据库实例，后续请求复用同一管理对象。 */
     public function get(): Database
     {
@@ -36,18 +39,22 @@ final class Connections
 final class Trace implements ManagedResource
 {
     private string $file;
+
     private string $marker;
+
     /** 登记迹线文件与单次执行标记，不在构造时写文件。 */
     public function __construct(string $file, string $marker)
     {
         $this->file = $file;
         $this->marker = $marker;
     }
+
     /** 追加开启记录，使外部测试观察资源已进入作用域。 */
     public function start(): void
     {
         file_put_contents($this->file, 'open:' . $this->marker . PHP_EOL, FILE_APPEND | LOCK_EX);
     }
+
     /** 追加关闭记录，使外部测试核对真实清理时刻。 */
     public function stop(): void
     {
@@ -59,8 +66,11 @@ final class Trace implements ManagedResource
 final class Endpoint implements RequestHandlerInterface
 {
     private Connections $connections;
+
     private string $mode;
+
     private string $trace;
+
     /** 注入本执行单元连接来源、故障模式与专属迹线路径。 */
     public function __construct(Connections $connections, string $mode, string $trace)
     {
@@ -68,6 +78,7 @@ final class Endpoint implements RequestHandlerInterface
         $this->mode = $mode;
         $this->trace = $trace;
     }
+
     /** 在当前 HTTP 作用域中运行指定任务模式；不把子任务尚未结束视为已释放。 */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -103,6 +114,6 @@ final class Endpoint implements RequestHandlerInterface
                 $result = ['error' => $error->errorCode()];
             }
         }
-        return $factory->createResponse($status)->withHeader('Content-Type', 'application/json')->withBody($factory->createStream((string) json_encode($result, JSON_THROW_ON_ERROR)));
+        return $factory->createResponse($status)->withHeader('Content-Type', 'application/json')->withBody($factory->createStream((string)json_encode($result, JSON_THROW_ON_ERROR)));
     }
 }

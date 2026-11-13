@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Scheduler;
 
-use Throwable;
-
 /** 独立调度命令；生产守护进程可循环调用，测试使用有界 work 次数。 */
 final class SchedulerConsole
 {
@@ -20,8 +18,8 @@ final class SchedulerConsole
     /**
      * 运行 help、once、history 或有限 work；输出 JSON 历史，调用方传递退出状态。
      *
-     * @param list<string> $arguments 不含程序路径；work 的间隔单位为毫秒。
-     * @return int 成功为 0，失败为 70，本地存储执行冲突为 75。
+     * @param list<string> $arguments 不含程序路径；work 的间隔单位为毫秒
+     * @return int 成功为 0，失败为 70，本地存储执行冲突为 75
      */
     public function run(array $arguments): int
     {
@@ -38,10 +36,10 @@ final class SchedulerConsole
             $ticks = 1;
             $milliseconds = 0;
             if ($action === 'work' && count($arguments) === 3
-                && preg_match('/^[1-9][0-9]{0,5}$/D', (string) $arguments[1])
-                && preg_match('/^[1-9][0-9]{0,4}$/D', (string) $arguments[2])) {
-                $ticks = (int) $arguments[1];
-                $milliseconds = (int) $arguments[2];
+                && preg_match('/^[1-9][0-9]{0,5}$/D', (string)$arguments[1])
+                && preg_match('/^[1-9][0-9]{0,4}$/D', (string)$arguments[2])) {
+                $ticks = (int)$arguments[1];
+                $milliseconds = (int)$arguments[2];
                 if ($milliseconds > 60000) {
                     throw new \InvalidArgumentException('TYPE_SCHEDULER_CONFIG：轮询间隔最多 60000 毫秒');
                 }
@@ -49,7 +47,7 @@ final class SchedulerConsole
                 throw new \InvalidArgumentException('TYPE_SCHEDULER_CONFIG：调度命令参数无效');
             }
             $status = 0;
-            for ($tick = 0; $tick < $ticks; $tick++) {
+            for ($tick = 0; $tick < $ticks; ++$tick) {
                 if (!$this->scheduler->ready()) {
                     break;
                 }
@@ -69,7 +67,7 @@ final class SchedulerConsole
             }
 
             return $status;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             fwrite(STDERR, $error->getMessage() . PHP_EOL);
             return str_contains($error->getMessage(), 'TYPE_SCHEDULER_BUSY') ? 75 : 70;
         }

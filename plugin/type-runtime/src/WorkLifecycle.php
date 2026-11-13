@@ -8,32 +8,38 @@ namespace Type\Runtime;
 final class WorkLifecycle
 {
     private int $process;
+
     private bool $ready = true;
+
     private bool $active = false;
+
     private bool $cleanupPending = false;
+
     private ?ExecutionScope $scope = null;
+
     private ?Deadline $drain = null;
+
     private int $rejected = 0;
 
     /** 绑定当前进程的单工作角色；fork 后应在新进程重新创建。 */
     public function __construct()
     {
-        $this->process = (int) getmypid();
+        $this->process = (int)getmypid();
     }
 
     /**
      * 占用唯一在途位置；停止接单后返回 false，不继续预取。
-     * @throws TaskException 当前角色已有未完成工作或在另一进程使用。
+     * @throws TaskException 当前角色已有未完成工作或在另一进程使用
      */
     public function begin(): bool
     {
         $this->assertProcess();
         if (!$this->ready) {
-            $this->rejected++;
+            ++$this->rejected;
             return false;
         }
         if ($this->active) {
-            $this->rejected++;
+            ++$this->rejected;
             throw new TaskException('work_busy', '当前角色已有在途执行，不能继续预取');
         }
         $this->active = true;
@@ -74,7 +80,7 @@ final class WorkLifecycle
 
     /**
      * 撤销就绪并限制在途工作的剩余排空秒数，重复调用只会缩短预算。
-     * @throws \InvalidArgumentException 秒数不在 0 至 60 范围内或不是有限值。
+     * @throws \InvalidArgumentException 秒数不在 0 至 60 范围内或不是有限值
      */
     public function stop(float $seconds = 5.0): void
     {
@@ -101,6 +107,7 @@ final class WorkLifecycle
         $this->assertProcess();
         return $this->ready;
     }
+
     /**
      * 刷新已完成的延迟清理，并返回角色状态与单工作额度。
      * @return array{ready: bool, state: string, in_flight: int, execution_limit: int, prefetch_limit: int, rejected: int, drain_expired: bool}
@@ -118,7 +125,7 @@ final class WorkLifecycle
 
     private function assertProcess(): void
     {
-        if ($this->process !== (int) getmypid()) {
+        if ($this->process !== (int)getmypid()) {
             throw new TaskException('wrong_process', '工作生命周期不能跨进程共享');
         }
     }

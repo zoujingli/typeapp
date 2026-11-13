@@ -1,6 +1,10 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ModelCompiler;
+use Type\Orm\Database;
+use Type\Runtime\ExecutionScope;
+use TypeApp\ModelExample\Drivers;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -13,15 +17,15 @@ $originalDatabase = getenv('TYPE_MYSQL_DATABASE');
 $testDatabase = 'type_outcome_test_' . bin2hex(random_bytes(6));
 $generated = tempnam(sys_get_temp_dir(), 'type_outcome_models_');
 expect($generated !== false, '无法准备故障模型');
-$compiler = new Type\Build\ModelCompiler();
+$compiler = new ModelCompiler();
 file_put_contents($generated, $compiler->compile([$root . '/examples/model/Models.php'])['code']);
-$admin = TypeApp\ModelExample\Drivers::create('mysql')->connect();
+$admin = Drivers::create('mysql')->connect();
 $admin->exec('CREATE DATABASE `' . $testDatabase . '`');
 putenv('TYPE_MYSQL_DATABASE=' . $testDatabase);
-$probeScope = new Type\Runtime\ExecutionScope();
-$probeDatabase = new Type\Orm\Database(TypeApp\ModelExample\Drivers::create('mysql'), 1, 0);
+$probeScope = new ExecutionScope();
+$probeDatabase = new Database(Drivers::create('mysql'), 1, 0);
 try {
-    $pdo = TypeApp\ModelExample\Drivers::create('mysql')->connect();
+    $pdo = Drivers::create('mysql')->connect();
     $pdo->exec('CREATE TABLE type_model_users (id BIGINT PRIMARY KEY AUTO_INCREMENT, display_name VARCHAR(255), age INTEGER, active BOOLEAN, secret VARCHAR(255), note VARCHAR(255) NULL)');
     $probe = $probeDatabase->connect($probeScope);
     if (isset($argv[1]) && $argv[1] !== '--php') {
@@ -44,7 +48,7 @@ try {
         expect(is_resource($proxy), '无法启动提交故障代理');
         try {
             stream_set_timeout($pipes[1], 5);
-            $port = (int) fgets($pipes[1]);
+            $port = (int)fgets($pipes[1]);
             expect($port > 0 && $port <= 65535, '故障代理未监听');
             putenv('TYPE_MYSQL_HOST=127.0.0.1');
             putenv('TYPE_MYSQL_PORT=' . $port);
@@ -55,7 +59,7 @@ try {
             expect(json_decode($stdout, true) === $expected, '事务体被重试、回调被误执行或模型没有失效：' . $stdout);
             $marker = trim(stream_get_contents($pipes[1]));
             expect($marker === ['begin' => 'dropped_begin', 'before' => 'dropped_before_commit', 'after' => 'commit_confirmed_and_dropped'][$mode], '没有发生指定故障');
-            expect((int) $probe->table('type_model_users')->aggregate('COUNT') === ($mode === 'after' ? 1 : 0), '故障后的真实持久化次数错误');
+            expect((int)$probe->table('type_model_users')->aggregate('COUNT') === ($mode === 'after' ? 1 : 0), '故障后的真实持久化次数错误');
         } finally {
             putenv('TYPE_MYSQL_HOST=' . $backendHost);
             putenv('TYPE_MYSQL_PORT=' . $backendPort);

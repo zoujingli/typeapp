@@ -155,7 +155,8 @@ class RequestClient {
           : {}),
       });
       return response as T;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // 应用按真实 HTTP 状态处理会话撤销及字段错误，必须保留完整 Axios 错误。
       throw error;
     }
   }

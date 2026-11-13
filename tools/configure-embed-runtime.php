@@ -9,8 +9,8 @@ try {
     if (!in_array($mode, ['base', 'shared'], true) || ($mode === 'shared' && !is_file($pcntl)) || PHP_VERSION !== '8.5.10' || !PHP_ZTS) {
         throw new RuntimeException('embed 运行库必须匹配锁定 PHP ZTS');
     }
-    $ini = (string) (php_ini_loaded_file() === false ? '' : file_get_contents(php_ini_loaded_file()));
-    foreach (explode(',', (string) php_ini_scanned_files()) as $file) {
+    $ini = (string)(php_ini_loaded_file() === false ? '' : file_get_contents(php_ini_loaded_file()));
+    foreach (explode(',', (string)php_ini_scanned_files()) as $file) {
         if (trim($file) !== '') {
             $ini .= "\n" . file_get_contents(trim($file));
         }
@@ -23,7 +23,7 @@ try {
             if ($directive === false) {
                 throw new RuntimeException('无法解析原运行扩展声明');
             }
-            if (in_array(strtolower(basename((string) array_values($directive)[0])), ['pcntl', 'pcntl.so'], true)) {
+            if (in_array(strtolower(basename((string)array_values($directive)[0])), ['pcntl', 'pcntl.so'], true)) {
                 continue;
             }
         }

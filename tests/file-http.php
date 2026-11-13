@@ -11,7 +11,7 @@ $command = $binary === '--php' ? [PHP_BINARY, '-d', 'swoole.enable_library=On', 
     'require ' . var_export($root . '/vendor/autoload.php', true) . '; require ' . var_export($root . '/examples/files/Endpoint.php', true)
     . '; require ' . var_export($root . '/examples/files/DownloadStream.php', true) . '; require ' . var_export($root . '/examples/file-http-command.php', true) . '; main($argc, $argv);'] : nativeCommand($binary);
 $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-$port = (int) substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
+$port = (int)substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
 fclose($socket);
 $directory = sys_get_temp_dir() . '/type_files_' . bin2hex(random_bytes(8));
 mkdir($directory, 0700);
@@ -19,11 +19,11 @@ $download = tempnam(sys_get_temp_dir(), 'type_download_');
 $trace = tempnam(sys_get_temp_dir(), 'type_files_trace_');
 $log = tmpfile();
 $file = fopen($download, 'wb');
-for ($i = 0; $i < 512; $i++) {
+for ($i = 0; $i < 512; ++$i) {
     fwrite($file, str_repeat('0123456789abcdef', 1024));
 } fclose($file);
 $environment = getenv();
-$environment['TYPE_HTTP_PORT'] = (string) $port;
+$environment['TYPE_HTTP_PORT'] = (string)$port;
 $environment['TYPE_UPLOAD_DIRECTORY'] = $directory;
 $environment['TYPE_DOWNLOAD_FILE'] = $download;
 $environment['TYPE_UPLOAD_TRACE'] = $trace;
@@ -31,7 +31,7 @@ $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => $log, 2 =>
 /**
  * 以 3 秒流超时发送完整上传正文，读取响应后关闭连接。
  *
- * @return array{int, string, string} 状态码、正文、小写响应头。
+ * @return array{int, string, string} 状态码、正文、小写响应头
  */
 function uploadRequest(int $port, string $path, string $content, string $type = 'application/octet-stream'): array
 {
@@ -49,7 +49,7 @@ function uploadRequest(int $port, string $path, string $content, string $type = 
 /**
  * 按固定测试边界构造 multipart 正文；filename 为 null 表示普通字段，否则表示上传文件。
  *
- * @param list<array{string, ?string, string}> $parts 字段名、可空文件名、内容。
+ * @param list<array{string, ?string, string}> $parts 字段名、可空文件名、内容
  */
 function multipart(array $parts): string
 {
@@ -147,7 +147,7 @@ try {
         usleep(10000);
     } while (microtime(true) < $deadline);
     expect(preg_match('/stream:stalled-reader:active:(\d+)\nscope:stalled-reader:closing/', $events, $match) === 1
-        && (int) $match[1] > 0 && (int) $match[1] < 4096, '停止读取后没有在截止内结束，或未触发真实发送背压：' . ($match[1] ?? '未关闭'));
+        && (int)$match[1] > 0 && (int)$match[1] < 4096, '停止读取后没有在截止内结束，或未触发真实发送背压：' . ($match[1] ?? '未关闭'));
     $received = strlen($prefix);
     while (!feof($connection)) {
         $chunk = fread($connection, 65536);
@@ -176,7 +176,7 @@ try {
     foreach (['complete', 'head', 'first-failed', 'timed-out', 'failed', 'disconnect'] as $marker) {
         expect(preg_match('/stream:' . $marker . ':active:(\d+)\nscope:' . $marker . ':closing/', $events, $match) === 1, '响应流未在作用域关闭前清理：' . $marker);
         if ($marker === 'disconnect') {
-            expect((int) $match[1] < 512, '客户端断开后仍读取完整文件');
+            expect((int)$match[1] < 512, '客户端断开后仍读取完整文件');
         }
     }
     [$status, $body] = httpRequest($port, 'GET', '/stats');

@@ -24,7 +24,7 @@ function catalogCommand(array $fallback, array $environment, bool $server = fals
         $command[$index] = $argument = str_replace('{{test}}', 'catalog', $argument);
         if (str_contains($argument, '{{port}}')) {
             $port = $environment['APP_PORT'] ?? '';
-            Assert::true(ctype_digit($port) && (int) $port > 0 && (int) $port <= 65535, '目录验收发布端口无效');
+            Assert::true(ctype_digit($port) && (int)$port > 0 && (int)$port <= 65535, '目录验收发布端口无效');
             $command[$index] = str_replace('{{port}}', $port, $argument);
         }
     }
@@ -58,7 +58,7 @@ function catalogStop(Process $process, string $root, array $settings): void
 
 // 并发请求控制器复用同一公开客户端，令牌只通过进程环境传递。
 if (($argv[1] ?? '') === '--ensure-request') {
-    $client = new HttpClient((string) getenv('TYPE_CATALOG_URL'), 5);
+    $client = new HttpClient((string)getenv('TYPE_CATALOG_URL'), 5);
     $response = $client->request('POST', '/products/ensure', [
         'Authorization' => 'Bearer ' . getenv('APP_API_TOKEN'), 'Content-Type' => 'application/json', 'X-Tenant' => 'catalog-a',
     ], '{"code":"contended","name":"竞争创建"}');

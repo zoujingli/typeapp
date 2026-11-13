@@ -8,6 +8,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 require dirname(__DIR__) . '/examples/model/Drivers.php';
 
 use Type\Testing\Process;
+use TypeApp\ModelExample\Drivers;
 
 $root = dirname(__DIR__);
 $driver = $argv[2] ?? 'sqlite';
@@ -31,7 +32,7 @@ $report = ['status' => 'running', 'driver' => $driver, 'mode' => ($argv[1] ?? '-
     'relay_sha256' => hash_file('sha256', $root . '/plugin/type-orm/src/Outbox/Relay.php')];
 try {
     if ($driver !== 'sqlite') {
-        $admin = TypeApp\ModelExample\Drivers::create($driver)->connect();
+        $admin = Drivers::create($driver)->connect();
         $admin->exec('CREATE DATABASE ' . $databaseName);
         $created = true;
         $admin->exec('CREATE DATABASE ' . $otherDatabase);
@@ -95,8 +96,8 @@ try {
     $relay = new Process([...$command, $driver, 'concurrent-relay'], $root);
     $control = new Redis();
     try {
-        expect($control->connect(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1', (int) (getenv('TYPE_REDIS_PORT') ?: 6379)), '无法观测并发投递');
-        $signal = (string) getenv('TYPE_OUTBOX_APPLICATION');
+        expect($control->connect(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1', (int)(getenv('TYPE_REDIS_PORT') ?: 6379)), '无法观测并发投递');
+        $signal = (string)getenv('TYPE_OUTBOX_APPLICATION');
         $until = microtime(true) + 5.0;
         while ($control->get($signal . ':accepted') === false) {
             expect($relay->running() && microtime(true) < $until, 'Relay没有在预算内真实发布：' . $relay->stdout() . $relay->stderr());
@@ -110,7 +111,7 @@ try {
     } finally {
         $relay->stop();
         if ($control->isConnected()) {
-            $control->del((string) getenv('TYPE_OUTBOX_APPLICATION') . ':accepted', (string) getenv('TYPE_OUTBOX_APPLICATION') . ':consumed');
+            $control->del((string)getenv('TYPE_OUTBOX_APPLICATION') . ':accepted', (string)getenv('TYPE_OUTBOX_APPLICATION') . ':consumed');
             $control->close();
         }
     }

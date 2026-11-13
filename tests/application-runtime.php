@@ -7,7 +7,15 @@ require_once dirname(__DIR__) . '/vendor/autoload.php';
 require_once __DIR__ . '/native-database.php';
 require_once __DIR__ . '/native-rollout-redis.php';
 
+use app\broker\service\CompatService;
 use Type\Build\BuildPlatform;
+use Type\Redis\Purpose;
+use Type\Redis\RedisConfiguration;
+use Type\Redis\RedisManager;
+use Type\Runtime\CapacityException;
+use Type\Runtime\CoroutineRuntime;
+use Type\Runtime\DeploymentBudget;
+use Type\Runtime\ExecutionScope;
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
 use Type\Testing\ProcessResult;
@@ -60,13 +68,13 @@ function runtimeIdentityUpgrade(PDO $database, string $driver, array $before, ar
     $grants = !isset($before['iot_application_grants']);
     $relationships = !isset($before['iot_device_reassignments']);
     $newTables = [...($enrollments ? ['iot_device_enrollments', 'iot_device_enrollment_bindings'] : []), ...($applications ? ['iot_applications'] : []), ...($grants ? ['iot_application_grants'] : []), ...($relationships ? ['iot_device_reassignments'] : [])];
-    $excluded = ['admin_roles', 'customer_roles', 'admin_role_permissions', 'customer_role_permissions', 'iot_devices', 'broker_compatibility', 'iot_architecture_upgrade', 'iot_device_upgrade_records', ...$newTables];
+    $excluded = ['admin_roles', 'customer_roles', 'admin_role_permissions', 'customer_role_permissions', 'iot_devices', 'platform_mqtt_compatibility', 'iot_architecture_upgrade', 'iot_device_upgrade_records', ...$newTables];
     $business = static fn (array $tables): array => array_diff_key($tables, array_fill_keys($excluded, true));
     $comparable = $relationships ? runtimeDataIdentity($database, $driver, ['iot_device_ownerships' => 'id, device_id, tenant_id, started_at, ended_at']) : $after;
     expect($business($comparable) === $business($before), '身份增量修改了已有业务数据');
     if ($relationships) {
         expect(
-            (int) $database->query('SELECT COUNT(*) FROM iot_device_ownerships WHERE expires_at IS NOT NULL OR expiry_context IS NOT NULL OR access_started <> 1 OR version <> 1')->fetchColumn() === 0,
+            (int)$database->query('SELECT COUNT(*) FROM iot_device_ownerships WHERE expires_at IS NOT NULL OR expiry_context IS NOT NULL OR access_started <> 1 OR version <> 1')->fetchColumn() === 0,
             '旧使用关系必须保持无新增期限、通信历史未知及初始版本'
         );
     }
@@ -76,14 +84,14 @@ function runtimeIdentityUpgrade(PDO $database, string $driver, array $before, ar
     foreach (['admin' => ['read', 'issue', 'disable', 'reset'], 'customer' => ['read']] as $realm => $actions) {
         $current = $database->query('SELECT * FROM ' . $realm . '_roles ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
         $expected = $roles[$realm];
-        expect(array_filter($expected, static fn (array $role): bool => (int) $role['protected'] === 0) !== [], '升级夹具必须包含普通角色，不能空验不增权');
+        expect(array_filter($expected, static fn (array $role): bool => (int)$role['protected'] === 0) !== [], '升级夹具必须包含普通角色，不能空验不增权');
         $expectedPermissions = $permissions[$realm];
         foreach ($expected as $index => $role) {
-            if ((int) $role['protected'] !== 1) {
+            if ((int)$role['protected'] !== 1) {
                 continue;
             }
-            $version = (int) $role['version'] + (int) $enrollments + (int) $applications + (int) $grants + (int) $relationships;
-            $expected[$index]['version'] = is_string($role['version']) ? (string) $version : $version;
+            $version = (int)$role['version'] + (int)$enrollments + (int)$applications + (int)$grants + (int)$relationships;
+            $expected[$index]['version'] = is_string($role['version']) ? (string)$version : $version;
             foreach ($enrollments ? $actions : [] as $action) {
                 $expectedPermissions[] = $role['id'] . ':' . $realm . '.enrollments.' . $action;
             }
@@ -99,7 +107,7 @@ function runtimeIdentityUpgrade(PDO $database, string $driver, array $before, ar
         }
         expect($current === $expected, '迁移必须只推进受保护角色的版本');
         $actualPermissions = [];
-        foreach ($database->query('SELECT role_id, permission FROM ' . $realm . '_role_permissions')->fetchAll(PDO::FETCH_ASSOC) as $binding) {
+        foreach ($database->query('SELECT role_id, permission FROM ' . $realm . '_role_permission')->fetchAll(PDO::FETCH_ASSOC) as $binding) {
             $actualPermissions[] = $binding['role_id'] . ':' . $binding['permission'];
         }
         sort($actualPermissions, SORT_STRING);
@@ -136,23 +144,23 @@ function runtimeDeviceUpgrade(PDO $database, array $devices, array $compatibilit
             expect($actual[$field] === null, '设备仍依赖旧处理链：' . $field);
             $actual[$field] = $device[$field];
         }
-        expect((int) $actual['transfer_frozen'] === 0 && (int) $actual['version'] === (int) $device['version'] + 1
-            && (int) $actual['updated_at'] >= (int) $device['updated_at'], '设备转换版本或时序错误');
+        expect((int)$actual['transfer_frozen'] === 0 && (int)$actual['version'] === (int)$device['version'] + 1
+            && (int)$actual['updated_at'] >= (int)$device['updated_at'], '设备转换版本或时序错误');
         foreach (['transfer_frozen', 'version', 'updated_at'] as $field) {
             $actual[$field] = $device[$field];
         }
         if ($quarantined) {
-            expect((int) $actual['recovery_verified'] === 0 && $actual['lifecycle'] === ($device['lifecycle'] === 'retired' ? 'retired' : 'disabled'), '不明确设备未保持隔离');
+            expect((int)$actual['recovery_verified'] === 0 && $actual['lifecycle'] === ($device['lifecycle'] === 'retired' ? 'retired' : 'disabled'), '不明确设备未保持隔离');
             $actual['recovery_verified'] = $device['recovery_verified'];
             $actual['lifecycle'] = $device['lifecycle'];
         }
         expect($actual === $device, '设备转换改写了未授权字段');
     }
-    $actual = $database->query('SELECT * FROM broker_compatibility')->fetchAll(PDO::FETCH_ASSOC);
+    $actual = $database->query('SELECT * FROM platform_mqtt_compatibility')->fetchAll(PDO::FETCH_ASSOC);
     expect(count($actual) === count($compatibility), '兼容身份数量改变');
     foreach ($actual as $index => $row) {
-        expect((int) $row['runtime_epoch'] === \app\broker\service\CompatService::EPOCH
-            && (int) $row['min_runtime_epoch'] === \app\broker\service\CompatService::EPOCH, '未关闭旧程序运行门');
+        expect((int)$row['runtime_epoch'] === CompatService::EPOCH
+            && (int)$row['min_runtime_epoch'] === CompatService::EPOCH, '未关闭旧程序运行门');
         foreach (['runtime_epoch', 'min_runtime_epoch', 'updated_at'] as $field) {
             $row[$field] = $compatibility[$index][$field];
         }
@@ -184,25 +192,25 @@ function runtimeProbe(HttpClient $client, Process $server, string $path, int $ex
 /** 用两个管理器及不同用途触发同一真实 Redis 部署额度，验证释放后可继续借用。 */
 function runtimeRedisBudget(array $environment): void
 {
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($environment): void {
-        $budget = new \Type\Runtime\DeploymentBudget(2, 1, 0, 1, 0);
-        $configuration = new \Type\Redis\RedisConfiguration($environment['TYPE_REDIS_HOST'], (int) $environment['TYPE_REDIS_PORT']);
-        $first = new \Type\Redis\RedisManager(['default' => $configuration], [], $budget);
-        $second = new \Type\Redis\RedisManager(['default' => $configuration], [], $budget);
-        $one = new \Type\Runtime\ExecutionScope();
-        $two = new \Type\Runtime\ExecutionScope();
+    CoroutineRuntime::run(static function () use ($environment): void {
+        $budget = new DeploymentBudget(2, 1, 0, 1, 0);
+        $configuration = new RedisConfiguration($environment['TYPE_REDIS_HOST'], (int)$environment['TYPE_REDIS_PORT']);
+        $first = new RedisManager(['default' => $configuration], [], $budget);
+        $second = new RedisManager(['default' => $configuration], [], $budget);
+        $one = new ExecutionScope();
+        $two = new ExecutionScope();
         try {
-            $first->connection($one, 'default', \Type\Redis\Purpose::SCRIPT, 0)->script('return 1', []);
-            $second->connection($two, 'default', \Type\Redis\Purpose::BLOCKING, 0);
+            $first->connection($one, 'default', Purpose::SCRIPT, 0)->script('return 1', []);
+            $second->connection($two, 'default', Purpose::BLOCKING, 0);
             $rejected = false;
             try {
-                $second->connection($two, 'default', \Type\Redis\Purpose::COMMAND, 0);
-            } catch (\Type\Runtime\CapacityException) {
+                $second->connection($two, 'default', Purpose::COMMAND, 0);
+            } catch (CapacityException) {
                 $rejected = true;
             }
             expect($rejected, '不同管理器/用途复制了 Redis 总额度');
             $one->close();
-            expect($second->connection($two, 'default', \Type\Redis\Purpose::COMMAND, 0)->command('PING') !== false, '归还后无法重新借用');
+            expect($second->connection($two, 'default', Purpose::COMMAND, 0)->command('PING') !== false, '归还后无法重新借用');
         } finally {
             $one->close();
             $two->close();
@@ -271,7 +279,7 @@ function runtimeBusinessFixture(array $command, array $environment, string $dire
             'kind' => 'records', 'from' => time() - 3600, 'to' => time(), 'timezone' => 'Asia/Shanghai', 'sort' => 'sampled_asc'], 202);
         expect($job['status'] === 'queued', '升级前没有留下未完成任务');
         $special = [];
-        for ($index = 0; $index < 102; $index++) {
+        for ($index = 0; $index < 102; ++$index) {
             $extra = $create($path . '/devices', ['name' => '升级批次设备 ' . $index, 'product_id' => $product['id'], 'model_version' => 1], 201)['device'];
             if ($index < 3) {
                 $special[] = $extra['id'];
@@ -427,7 +435,7 @@ try {
                     'state' => 'pending', 'token' => '', 'lease_until' => 0, 'attempts' => 0, 'created_at' => time()]);
             }
             $sourceDevices = $database->query('SELECT * FROM iot_devices ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
-            $sourceCompatibility = $database->query('SELECT * FROM broker_compatibility')->fetchAll(PDO::FETCH_ASSOC);
+            $sourceCompatibility = $database->query('SELECT * FROM platform_mqtt_compatibility')->fetchAll(PDO::FETCH_ASSOC);
             $before = runtimeDataIdentity($database, $driver);
             $registrationPending = !isset($before['iot_registration_attempts']);
             $enrollmentPending = !isset($before['iot_device_enrollments']);
@@ -440,7 +448,7 @@ try {
                 foreach (['admin', 'customer'] as $realm) {
                     $enrollmentRoles[$realm] = $database->query('SELECT * FROM ' . $realm . '_roles ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
                     $enrollmentPermissions[$realm] = [];
-                    foreach ($database->query('SELECT role_id, permission FROM ' . $realm . '_role_permissions')->fetchAll(PDO::FETCH_ASSOC) as $binding) {
+                    foreach ($database->query('SELECT role_id, permission FROM ' . $realm . '_role_permission')->fetchAll(PDO::FETCH_ASSOC) as $binding) {
                         $enrollmentPermissions[$realm][] = $binding['role_id'] . ':' . $binding['permission'];
                     }
                 }
@@ -484,7 +492,7 @@ try {
             $bad = $run(['app:upgrade', '--offline', '--backup', 'backup', '--sha256', str_repeat('0', 64)]);
             expect(!$bad->successful() && str_contains($bad->stderr, 'upgrade_backup_digest_mismatch'), '错误备份摘要未拒绝');
             if ($dataPending) {
-                $activeNode = $database->prepare('INSERT INTO broker_resource_runs (slot, node_id, run_id, observed_at, expires_at, connections) VALUES (?, ?, ?, ?, ?, ?)');
+                $activeNode = $database->prepare('INSERT INTO platform_mqtt_resource_run (slot, node_id, run_id, observed_at, expires_at, connections) VALUES (?, ?, ?, ?, ?, ?)');
                 $activeNode->execute([31, 'upgrade-running-fixture', bin2hex(random_bytes(16)), time(), time() + 60, 0]);
                 $activeNode->closeCursor();
                 try {
@@ -493,7 +501,7 @@ try {
                     expect(!$activeRefusal->successful() && str_contains($activeRefusal->stderr, 'upgrade_writers_active'), '活动 MQTT 观察未阻止离线升级');
                     expect(runtimeDataIdentity($database, $driver) === $activeBefore, '活动写角色拒绝仍改写业务状态');
                 } finally {
-                    $database->exec("DELETE FROM broker_resource_runs WHERE node_id = 'upgrade-running-fixture'");
+                    $database->exec("DELETE FROM platform_mqtt_resource_run WHERE node_id = 'upgrade-running-fixture'");
                 }
                 // 让真实 107 的第二条 DDL 失败：MySQL 保留首条，事务 DDL 必须回滚。
                 $database->exec('CREATE TABLE iot_device_upgrade_records (fixture_id INTEGER PRIMARY KEY)');
@@ -516,7 +524,7 @@ try {
             if ($fixture['legacy']) {
                 expect($preflightData['data_upgrade']['has_more_devices'] && count($preflightData['data_upgrade']['devices']) === 100, '预检未显式分页');
                 expect($firstData['status'] === 'upgrade_in_progress' && !$firstData['restart_required']
-                    && (int) $database->query('SELECT COUNT(*) FROM iot_device_upgrade_records')->fetchColumn() === 100, '首批未形成可续跑进度');
+                    && (int)$database->query('SELECT COUNT(*) FROM iot_device_upgrade_records')->fetchColumn() === 100, '首批未形成可续跑进度');
                 $blocked = $run(['serve']);
                 expect(!$blocked->successful() && str_contains($blocked->stderr, 'upgrade_data_incomplete'), '转换未完成时开放业务入口');
                 $oldRun = runtimeCommand($legacyCommands[$driver], ['serve'], $env, dirname($directory), $directory . '/stale-runtime.log');
@@ -667,12 +675,12 @@ try {
             }
             expect($client->request('GET', '/public/site')->status === 200, '真实 API 故障恢复失败');
             $checks[] = 'production-error-correlation-and-recovery';
-            $database->exec('ALTER TABLE broker_compatibility RENAME TO runtime_hidden_compatibility');
+            $database->exec('ALTER TABLE platform_mqtt_compatibility RENAME TO runtime_hidden_compatibility');
             try {
                 runtimeProbe($client, $server, '/readyz', 503);
                 runtimeProbe($client, $server, '/livez', 200);
             } finally {
-                $database->exec('ALTER TABLE runtime_hidden_compatibility RENAME TO broker_compatibility');
+                $database->exec('ALTER TABLE runtime_hidden_compatibility RENAME TO platform_mqtt_compatibility');
             }
             runtimeProbe($client, $server, '/readyz', 200);
             $checks[] = 'readiness-dependency-failure-and-recovery';
@@ -709,7 +717,7 @@ try {
 
             // 锁住真实审计表，先从 Redis 观察 running，再在在途 I/O 时停止或撤销租约。
             $observer = new Redis();
-            expect($observer->connect($redisEnv['TYPE_REDIS_HOST'], (int) $redisEnv['TYPE_REDIS_PORT'], 1), '无法观察本轮 Redis');
+            expect($observer->connect($redisEnv['TYPE_REDIS_HOST'], (int)$redisEnv['TYPE_REDIS_PORT'], 1), '无法观察本轮 Redis');
             foreach (['stop', 'lease-loss'] as $fault) {
                 $namespace = $env['APP_SCHEDULER_NAMESPACE'] . '-' . $fault;
                 $stateRoot = 'type:scheduler:{' . hash('sha256', $namespace . "\0maintenance") . '}';

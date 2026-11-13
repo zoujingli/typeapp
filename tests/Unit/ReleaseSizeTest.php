@@ -11,6 +11,10 @@ use TypeApp\Release\SizeGate;
 require_once dirname(__DIR__, 2) . '/tools/release/Candidate.php';
 require_once dirname(__DIR__, 2) . '/tools/release/SizeGate.php';
 
+/**
+ * @internal
+ * @coversNothing
+ */
 final class ReleaseSizeTest extends TestCase
 {
     public function testFirstProfileReleaseHasNoInventedBaseline(): void

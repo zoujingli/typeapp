@@ -7,8 +7,10 @@ $consumer = $argv[1];
 require $consumer . '/vendor/autoload.php';
 $command = ($argv[2] ?? '') === '--native' ? nativeCommand($consumer . '/build/type-app') : [PHP_BINARY, $consumer . '/run.php'];
 
+use Psr\Clock\ClockInterface;
 use Type\Redis\RedisConfiguration;
 use Type\Redis\RedisManager;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use Type\Scheduler\Definition;
 use Type\Scheduler\FileStateStore;
@@ -16,7 +18,6 @@ use Type\Scheduler\IntervalSchedule;
 use Type\Scheduler\Scheduler;
 use Type\Scheduler\Task;
 use Type\Scheduler\TaskContext;
-use Psr\Clock\ClockInterface;
 
 $schedulerStop = json_decode(successful([...$command, 'scheduler-stop']), true, 512, JSON_THROW_ON_ERROR);
 expect($schedulerStop['stopping']['ready'] === false && $schedulerStop['stopping']['state'] === 'draining'
@@ -39,10 +40,10 @@ if (in_array('--scheduler-stop-only', $argv, true)) {
     exit(0);
 }
 
-\Type\Runtime\CoroutineRuntime::run(static function () use ($command): void {
+CoroutineRuntime::run(static function () use ($command): void {
     $port = getenv('TYPE_RELIABLE_PORT');
-    expect($port === false || (ctype_digit($port) && (int) $port >= 1 && (int) $port <= 65535), '可靠存储端口无效');
-    $configuration = new RedisConfiguration(getenv('TYPE_RELIABLE_HOST'), $port === false ? 6379 : (int) $port);
+    expect($port === false || (ctype_digit($port) && (int)$port >= 1 && (int)$port <= 65535), '可靠存储端口无效');
+    $configuration = new RedisConfiguration(getenv('TYPE_RELIABLE_HOST'), $port === false ? 6379 : (int)$port);
     $admin = $configuration->connect();
     $manager = new RedisManager(['default' => $configuration]);
     $scope = new ExecutionScope();
@@ -64,11 +65,11 @@ if (in_array('--scheduler-stop-only', $argv, true)) {
                 } while (microtime(true) < $deadline);
                 expect($admin->get($application . ':started') === 'yes', 'worker 没有进入真实在途任务');
                 if ($mode === 'paused-pull') {
-                    $client = (string) $admin->get($application . ':client');
+                    $client = (string)$admin->get($application . ':client');
                     $blocked = false;
                     $deadline = microtime(true) + 2;
                     do {
-                        $state = (string) $admin->rawCommand('CLIENT', 'LIST', 'ID', $client);
+                        $state = (string)$admin->rawCommand('CLIENT', 'LIST', 'ID', $client);
                         if (str_contains($state, 'cmd=eval ') && preg_match('/ flags=[^ ]*b/', $state)) {
                             $blocked = true;
                             break;
@@ -146,7 +147,7 @@ if (in_array('--scheduler-stop-only', $argv, true)) {
         expect($admin->get($application . ':count') === '2', '持续失租演练没有覆盖已发生的幂等效果');
         echo "持续失租拒绝通过：效果已发生仍须完成确认，耗尽后隔离不能报成成功。\n";
         $file = sys_get_temp_dir() . '/type-stop-scheduler-' . bin2hex(random_bytes(6)) . '.json';
-        $clock = new /** 为任务排空测试固定调度时刻，避免等待真实分钟边界。 */ class () implements ClockInterface {
+        $clock = new /** 为任务排空测试固定调度时刻，避免等待真实分钟边界。 */ class implements ClockInterface {
             /** 返回 Unix 第 600 秒的不可变时间，确定触发本轮调度任务。 */
             public function now(): DateTimeImmutable
             {
@@ -155,11 +156,10 @@ if (in_array('--scheduler-stop-only', $argv, true)) {
         };
         $scheduler = null;
         $factory = static function (TaskContext $context) use (&$scheduler): Task {
-            return new /** 在任务内部触发调度器停止，用于验证超过排空期限后上下文取消。 */ class ($scheduler) implements Task {
+            return new /** 在任务内部触发调度器停止，用于验证超过排空期限后上下文取消。 */ class($scheduler) implements Task {
                 /** 借用正在执行本任务的调度器，仅用于注入停止信号。 */
-                public function __construct(private Scheduler $scheduler)
-                {
-                }
+                public function __construct(private Scheduler $scheduler) {}
+
                 /**
                  * 请求 0.01 秒排空并等待 0.03 秒，再检查任务已取消；取消未生效时返回空结果暴露测试失败。
                  *

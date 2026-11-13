@@ -15,10 +15,10 @@ fi
 : "${RUNNER_TEMP:?需要 runner 临时目录}"
 : "${SWOOLE_CONFIGURE_OPTS:?需要 Swoole 配置选项}"
 # 固定 6.3 开发线的受审提交，运行时报告 6.3.0RC1；不得用浮动分支或发行名称代替源码身份。
-task_reference='64988849fa898e510a38039912610cab6e9cf3f5'
+task_reference='814049090dd9ba8000adc6cd09ad09dd3f0c9989'
 task_archive="$RUNNER_TEMP/swoole-src.tar.gz"
 task_source="$RUNNER_TEMP/swoole-src-$task_reference"
-task_digest='d4e9e5bff6f19430e69425ddf2b485c045a5b0c2551af38b5efd6f79d1fe30a1'
+task_digest='126c61b57c2cf27ff4a9aa6d9bef65ffebb3f6e60826e77c37c5edf1c5b6a19d'
 task_module="$task_root/.cache/native-modules/swoole.so"
 
 curl --fail --location --silent --show-error \

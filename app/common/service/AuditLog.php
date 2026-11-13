@@ -4,25 +4,32 @@ declare(strict_types=1);
 
 namespace app\common\service;
 
-use InvalidArgumentException;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Orm\Connection;
+use Type\Runtime\ExecutionScope;
 
 /** 人员操作审计与业务变更共用事务；显式允许字段避免记录凭据和任意业务载荷。 */
 final class AuditLog
 {
     /** 审计上下文与单条事实分开限额，默认100项列表仍受1MiB响应预算约束。 */
     private const CONTEXT_BYTES = 8192;
+
     private const FACT_BYTES = 4096;
 
     /**
-     * @param string|Identity|array<string, mixed> $actorId 认证身份或可信持久来源保留真实人员；设备事件可传明确设备标识。
-     * @param array<string, string|int> $details 只接受不含秘密的角色、版本与身份上下文；配置变更仅记录字段名。
-     * @throws InvalidArgumentException 事件或附加字段不在允许范围。
+     * @param array<string, mixed>|Identity|string $actorId 认证身份或可信持久来源保留真实人员；设备事件可传明确设备标识
+     * @param array<string, int|string> $details 只接受不含秘密的角色、版本与身份上下文；配置变更仅记录字段名
+     * @throws \InvalidArgumentException 事件或附加字段不在允许范围
      */
-    public static function append(Connection $connection, ?string $tenantId, string|Identity|array $actorId, string $action, string $subjectId, string $result = 'success', array $details = [], string $realm = 'iot'): void
+    public static function append(Connection $connection, ?string $tenantId, array|Identity|string $actorId, string $action, string $subjectId, string $result = 'success', array $details = [], string $realm = 'system'): void
     {
+        if ($realm === 'system' && $tenantId === null) {
+            $tenantId = ExecutionScope::current()->binding('tenant_id');
+            if ($tenantId === null) {
+                $realm = 'platform';
+            }
+        }
         $actorKey = is_string($actorId) ? $actorId : '';
         if (!is_string($actorId)) {
             $context = $actorId instanceof Identity ? IdentityService::context($actorId, $tenantId ?? '') : $actorId;
@@ -31,40 +38,40 @@ final class AuditLog
             }
             if ($context !== []) {
                 $actorKey = $context['actor_id'];
-                $details += ['actor_realm' => $context['actor_realm'], 'customer_id' => $context['customer_id'], 'session_id' => $context['session_id'],
+                $details += ['actor_realm' => $context['actor_realm'], 'user_id' => $context['user_id'], 'session_id' => $context['session_id'],
                     'source_session_id' => $context['source_session_id'], 'impersonation_id' => $context['impersonation_id'], 'scope_key' => $context['key']];
                 if ($context['impersonation_id'] !== '') {
-                    $details['context'] = 'customer-impersonation';
+                    $details['context'] = 'system-impersonation';
                 }
             }
         }
-        if (!in_array($realm, ['iot', 'broker', 'admin', 'customer'], true)) {
-            throw new InvalidArgumentException('audit_realm_invalid');
+        if (!in_array($realm, ['platform', 'system'], true)) {
+            throw new \InvalidArgumentException('audit_realm_invalid');
         }
         if (!preg_match('/^[a-z][a-z0-9_.]{1,79}$/D', $action) || !in_array($result, ['success', 'denied', 'unknown', 'failed'], true)) {
-            throw new InvalidArgumentException('审计动作或结果无效');
+            throw new \InvalidArgumentException('审计动作或结果无效');
         }
         foreach ($details as $key => $value) {
             if (in_array($key, ['receive_allowed', 'send_allowed', 'subscribe_allowed'], true)) {
                 if ($action !== 'application.device_authorization' || !in_array($value, [0, 1], true)) {
-                    throw new InvalidArgumentException('审计通信权限无效');
+                    throw new \InvalidArgumentException('审计通信权限无效');
                 }
                 continue;
             }
             // 配置页一次保存多个字段，使用独立有界字段清单，不能截断或放宽其他审计事实。
             if ($key === 'changed_fields') {
-                if (!in_array($action, ['admin.site.update', 'admin.configuration.update'], true) || !is_string($value)
+                if (!in_array($action, ['platform.site.update', 'system.site.update', 'platform.configuration.update'], true) || !is_string($value)
                     || strlen($value) > 4096 || ($value !== '' && preg_match('/^[A-Za-z][A-Za-z0-9_.]*(?:,[A-Za-z][A-Za-z0-9_.]*)*$/D', $value) !== 1)) {
-                    throw new InvalidArgumentException('审计变更字段无效');
+                    throw new \InvalidArgumentException('审计变更字段无效');
                 }
                 continue;
             }
-            if (!in_array($key, ['role', 'previous_role', 'version', 'context', 'reason', 'device_id', 'ownership_id', 'deadline_at', 'attempt_id', 'scheduled_at', 'claimed_at', 'mqtt_reason', 'kind', 'result_status', 'content_hash', 'switch_id', 'source_version', 'target_version', 'boundary_sequence', 'support_id', 'grantee_id', 'expires_at', 'control_allowed', 'alarm_allowed', 'export_allowed', 'actor_realm', 'customer_id', 'session_id', 'source_session_id', 'impersonation_id', 'scope_key'], true)
-                || (!is_string($value) && !is_int($value)) || strlen((string) $value) > ($key === 'reason' && str_starts_with($action, 'support.') ? 400 : 100)) {
-                throw new InvalidArgumentException('审计附加字段不在脱敏允许范围');
+            if (!in_array($key, ['role', 'previous_role', 'version', 'context', 'reason', 'device_id', 'ownership_id', 'deadline_at', 'attempt_id', 'scheduled_at', 'claimed_at', 'mqtt_reason', 'kind', 'result_status', 'content_hash', 'switch_id', 'source_version', 'target_version', 'boundary_sequence', 'support_id', 'grantee_id', 'expires_at', 'control_allowed', 'alarm_allowed', 'export_allowed', 'actor_realm', 'user_id', 'session_id', 'source_session_id', 'impersonation_id', 'scope_key'], true)
+                || (!is_string($value) && !is_int($value)) || strlen((string)$value) > ($key === 'reason' && str_starts_with($action, 'support.') ? 400 : 100)) {
+                throw new \InvalidArgumentException('审计附加字段不在脱敏允许范围');
             }
         }
-        $details += ['context' => $tenantId === null ? 'identity' : 'tenant-member'];
+        $details += ['context' => $tenantId === null ? 'identity' : 'system-user'];
         $connection->table($realm . '_audit')->insert([
             'id' => bin2hex(random_bytes(16)), 'tenant_id' => $tenantId, 'actor_id' => $actorKey,
             'action' => $action, 'subject_id' => $subjectId, 'result' => $result,
@@ -74,9 +81,9 @@ final class AuditLog
 
     /**
      * 新身份审计共用Broker的有界键集查询；平台查询两端脱敏事实，客户只查询当前租户。
-     * @param string $source 详情的准确审计表来源；列表留空，不能跨来源复用相同事件ID。
-     * @param bool $brokerOnly 只查询Broker类别并额外要求资源读取权限；不把普通审计权限扩展为资源能力。
-     * @return array<string, mixed> 每页及详情均重新授权，游标绑定会话、来源与本次权限。
+     * @param string $source 详情的准确审计表来源；列表留空，不能跨来源复用相同事件ID
+     * @param bool $brokerOnly 只查询Broker类别并额外要求资源读取权限；不把普通审计权限扩展为资源能力
+     * @return array<string, mixed> 每页及详情均重新授权，游标绑定会话、来源与本次权限
      */
     public static function search(Connection $connection, Identity $identity, string $realm, string $tenantId, string $query, string $eventId = '', string $source = '', bool $brokerOnly = false): array
     {
@@ -84,7 +91,7 @@ final class AuditLog
         if ($brokerOnly && !in_array($realm . '.broker.read', $access['permissions'], true)) {
             throw new HttpError(403, 'permission_denied');
         }
-        if (($eventId === '') !== ($source === '') || ($source !== '' && !in_array($source, $realm === 'admin' ? ['admin', 'customer'] : ['customer'], true))) {
+        if (($eventId === '') !== ($source === '') || ($source !== '' && !in_array($source, $realm === 'platform' ? ['platform', 'system'] : ['system'], true))) {
             throw new HttpError(400, 'audit_source_invalid');
         }
         $result = self::events($connection, $realm, $access, $query, $eventId, true, $source, $brokerOnly);
@@ -97,17 +104,17 @@ final class AuditLog
     /**
      * 保存已经由调用者确认的事实；审计去重不授权重执行外部动作，也不代替同步提交或资源释放证明。
      * 同步事件只写180天日志；异步事件锁定原操作，冻结身份、授权来源、准确目标和确认影响。
-     * @param array<string, mixed> $operation 完整白名单操作上下文，最多8KiB；重试传入原冻结上下文。
-     * @param string $eventKey 与stage相同；本票每操作最多五份阶段回执，不能随每次轮询增加键。
-     * @param array{request_id:string,stage:string,result:string,facts:array<string,string|bool>} $event 请求ID仅作首次传输关联，不进入逻辑去重摘要。
-     * @return array<string, mixed> 原事件身份及当前操作阶段；duplicate/expired不表示可再次执行动作。
+     * @param array<string, mixed> $operation 完整白名单操作上下文，最多8KiB；重试传入原冻结上下文
+     * @param string $eventKey 与stage相同；本票每操作最多五份阶段回执，不能随每次轮询增加键
+     * @param array{request_id:string,stage:string,result:string,facts:array<string,bool|string>} $event 请求ID仅作首次传输关联，不进入逻辑去重摘要
+     * @return array<string, mixed> 原事件身份及当前操作阶段；duplicate/expired不表示可再次执行动作
      */
     public static function recordBroker(Connection $connection, string $realm, array $operation, string $eventKey, array $event): array
     {
         self::realm($realm);
         $context = self::operationContext($operation);
         if (isset($context['identity']) && $context['identity']['realm'] !== $realm) {
-            throw new InvalidArgumentException('broker_audit_identity_invalid');
+            throw new \InvalidArgumentException('broker_audit_identity_invalid');
         }
         self::shape($event, ['request_id', 'stage', 'result', 'facts']);
         $stage = $event['stage'];
@@ -116,23 +123,23 @@ final class AuditLog
             || !in_array($event['result'], match ($stage) {
                 'accepted', 'executing' => ['pending'], 'unknown' => ['unknown'], 'completed' => ['success'], default => ['failed', 'denied'],
             }, true) || !is_array($event['facts'])) {
-            throw new InvalidArgumentException('broker_audit_event_invalid');
+            throw new \InvalidArgumentException('broker_audit_event_invalid');
         }
         $facts = $event['facts'];
         foreach ($facts as $key => $value) {
             if (!in_array($key, ['reason', 'store_confirmed', 'resources_released', 'observation_isolated'], true)
                 || ($key === 'reason' ? !self::code($value, 100) : !is_bool($value))) {
-                throw new InvalidArgumentException('broker_audit_facts_invalid');
+                throw new \InvalidArgumentException('broker_audit_facts_invalid');
             }
         }
         ksort($facts);
         if (strlen(self::json($facts)) > self::FACT_BYTES || ($context['mode'] === 'sync' && !in_array($stage, ['completed', 'failed'], true))) {
-            throw new InvalidArgumentException('broker_audit_event_invalid');
+            throw new \InvalidArgumentException('broker_audit_event_invalid');
         }
         if ($context['mode'] === 'async' && $stage === 'completed'
             && (($facts['store_confirmed'] ?? false) !== true || ($facts['resources_released'] ?? false) !== true
                 || ($context['target']['observation_run'] !== '' && ($facts['observation_isolated'] ?? false) !== true))) {
-            throw new InvalidArgumentException('broker_audit_completion_unproven');
+            throw new \InvalidArgumentException('broker_audit_completion_unproven');
         }
         $contextJson = self::json($context);
         $contentHash = hash('sha256', self::json([$context, $eventKey, $stage, $event['result'], $facts]));
@@ -145,9 +152,12 @@ final class AuditLog
             $version = 1;
             $receipts = [];
             if ($context['mode'] === 'async') {
-                $table = $realm . '_broker_operations';
+                $table = $realm . '_mqtt_operation';
                 $candidate = ['operation_id' => $context['operation_id'], 'context_json' => $contextJson, 'context_hash' => hash('sha256', $contextJson),
                     'stage' => 'accepted', 'result' => 'pending', 'version' => 0, 'receipts_json' => '{}', 'created_at' => $now, 'updated_at' => $now];
+                if ($realm === 'system') {
+                    $candidate['tenant_id'] = $context['tenant_id'];
+                }
                 // 唯一键只有operation_id；冲突只同值更新主键，绝不覆盖已有上下文或阶段。
                 if ($transaction->driverName() === 'mysql') {
                     $transaction->table($table)->upsertAnyUnique([$candidate], ['operation_id']);
@@ -159,16 +169,16 @@ final class AuditLog
                 if ($stored === null || $stored['context_hash'] !== $candidate['context_hash'] || $stored['context_json'] !== $contextJson) {
                     throw new HttpError(409, 'broker_audit_operation_conflict');
                 }
-                $receipts = json_decode((string) $stored['receipts_json'], true, 8, JSON_THROW_ON_ERROR);
+                $receipts = json_decode((string)$stored['receipts_json'], true, 8, JSON_THROW_ON_ERROR);
                 if (isset($receipts[$eventKey])) {
                     $original = $receipts[$eventKey];
                     if ($original['content_hash'] !== $contentHash) {
                         throw new HttpError(409, 'broker_audit_event_conflict');
                     }
-                    $expired = (int) $original['created_at'] <= $now - 180 * 86400
+                    $expired = (int)$original['created_at'] <= $now - 180 * 86400
                         || $transaction->table($realm . '_audit')->where('id', '=', $original['event_id'])->first() === null;
                     unset($original['content_hash']);
-                    return $original + ['duplicate' => true, 'expired' => $expired, 'current_stage' => $stored['stage'], 'current_result' => $stored['result'], 'version' => (int) $stored['version']];
+                    return $original + ['duplicate' => true, 'expired' => $expired, 'current_stage' => $stored['stage'], 'current_result' => $stored['result'], 'version' => (int)$stored['version']];
                 }
                 if ($receipts === [] && $stage !== 'accepted') {
                     throw new HttpError(409, 'broker_audit_operation_not_accepted');
@@ -181,10 +191,10 @@ final class AuditLog
                     $currentStage = $stored['stage'];
                     $currentResult = $stored['result'];
                 }
-                $version = (int) $stored['version'] + 1;
+                $version = (int)$stored['version'] + 1;
                 $receipts[$eventKey] = $receipt;
                 if (count($receipts) > 5 || strlen(self::json($receipts)) > self::CONTEXT_BYTES) {
-                    throw new InvalidArgumentException('broker_audit_receipt_budget');
+                    throw new \InvalidArgumentException('broker_audit_receipt_budget');
                 }
                 $transaction->table($table)->where('operation_id', '=', $context['operation_id'])->update([
                     'stage' => $currentStage, 'result' => $currentResult, 'version' => $version, 'receipts_json' => self::json($receipts), 'updated_at' => $now,
@@ -207,22 +217,22 @@ final class AuditLog
     {
         self::realm($realm);
         if (!self::identifier($operationId)) {
-            throw new InvalidArgumentException('broker_audit_operation_invalid');
+            throw new \InvalidArgumentException('broker_audit_operation_invalid');
         }
-        $row = $connection->table($realm . '_broker_operations')->where('operation_id', '=', $operationId)->first();
+        $row = $connection->table($realm . '_mqtt_operation')->where('operation_id', '=', $operationId)->first();
         if ($row === null) {
             return null;
         }
-        return json_decode((string) $row['context_json'], true, 8, JSON_THROW_ON_ERROR) + [
-            'current_stage' => $row['stage'], 'current_result' => $row['result'], 'version' => (int) $row['version'],
+        return json_decode((string)$row['context_json'], true, 8, JSON_THROW_ON_ERROR) + [
+            'current_stage' => $row['stage'], 'current_result' => $row['result'], 'version' => (int)$row['version'],
         ];
     }
 
     /**
-     * 当前独立、平台或单租户授权的事件列表/详情；SQL先限定宿主及归属，游标不是授权凭据。
-     * @param array<string, mixed> $authorization 本次请求的人员、角色、动作目录及唯一支持来源。
-     * @param string $query 原始查询串，只接受固定筛选；UTC秒闭区间，默认20、最多100项。
-     * @return array<string, mixed> 有界键集页，或重新授权读取的完整脱敏详情；无全表计数。
+     * 当前平台或单租户授权的事件列表/详情；SQL先限定身份域及归属，游标不是授权凭据。
+     * @param array<string, mixed> $authorization 本次请求的人员、角色、动作目录及唯一支持来源
+     * @param string $query 原始查询串，只接受固定筛选；UTC秒闭区间，默认20、最多100项
+     * @return array<string, mixed> 有界键集页，或重新授权读取的完整脱敏详情；无全表计数
      */
     public static function brokerSearch(Connection $connection, string $realm, array $authorization, string $query, string $eventId = ''): array
     {
@@ -231,25 +241,48 @@ final class AuditLog
         return self::events($connection, $realm, $access, $query, $eventId);
     }
 
+    /**
+     * 受控维护命令单次删除至多1000条创建满180天的审计；不清理接收账本或其他业务表。
+     * 每批事务独立提交，不推进外部游标；失败或进程中断后可重跑，未知提交也不会扩展删除范围。
+     * @return array{deleted: int, has_more: bool, cutoff: int}
+     */
+    public static function prune(Connection $connection, int $batch, string $realm = 'system'): array
+    {
+        self::realm($realm);
+        if ($batch < 1 || $batch > 1000) {
+            throw new \InvalidArgumentException('审计清理批次必须为1至1000');
+        }
+        $cutoff = time() - 180 * 86400;
+        return $connection->transaction(static function (Connection $transaction) use ($batch, $cutoff, $realm): array {
+            $rows = $transaction->table($realm . '_audit')->where('created_at', '<=', $cutoff)->orderBy('created_at')->orderBy('id')->limit($batch)->get();
+            $deleted = 0;
+            foreach ($rows as $row) {
+                $deleted += $transaction->table($realm . '_audit')->where('id', '=', $row['id'])->where('created_at', '<=', $cutoff)->delete();
+            }
+            $remaining = $transaction->table($realm . '_audit')->where('created_at', '<=', $cutoff)->limit(1)->first();
+            return ['deleted' => $deleted, 'has_more' => $remaining !== null, 'cutoff' => $cutoff];
+        }, $connection->driverName() === 'sqlite' && $connection->transactionDepth() === 0 ? 'immediate' : 'default');
+    }
+
     /** 固定SQL投影、筛选及排序共用一个分页所有者；应用来源作为相同时间与ID之后的稳定收尾。 */
     private static function events(Connection $connection, string $realm, array $access, string $query, string $eventId, bool $application = false, string $source = '', bool $brokerOnly = false): array
     {
         $error = $application ? 'audit' : 'broker_audit';
         $input = self::queryInput($query, $error);
-        $limit = isset($input['limit']) ? (int) $input['limit'] : 20;
+        $limit = isset($input['limit']) ? (int)$input['limit'] : 20;
         $cursor = $input['cursor'] ?? '';
         unset($input['limit'], $input['cursor']);
         ksort($input);
         $binding = hash('sha256', self::json([...[$realm, $access, $input, $limit, $application], ...($brokerOnly ? ['broker'] : [])]));
         $predicates = [];
         $parameters = [];
-        if ($brokerOnly || (!$application && $access['scope'] !== 'standalone')) {
+        if ($brokerOnly || !$application) {
             $predicates[] = "a.category = 'broker'";
         } elseif ($application && !in_array($realm . '.broker.read', $access['permissions'], true)) {
             // 普通审计入口也执行资源权限过滤，不能绕过Broker专用入口读取同一事件。
             $predicates[] = "a.category <> 'broker'";
         }
-        if ($application ? $realm === 'customer' : $access['scope'] === 'tenant') {
+        if ($application ? $realm === 'system' : $access['scope'] === 'tenant') {
             $predicates[] = 'a.tenant_id = ?';
             $parameters[] = $application ? $access['identity']['tenant_id'] : $access['tenant_id'];
         }
@@ -273,7 +306,7 @@ final class AuditLog
         } elseif ($cursor !== '') {
             $after = self::cursor($cursor, $error);
             if (($after['context'] ?? null) !== $binding || count($after) !== ($application ? 4 : 3) || !self::identifier($after['id'] ?? null)
-                || ($application && !in_array($after['audit_realm'] ?? null, $realm === 'admin' ? ['admin', 'customer'] : ['customer'], true))
+                || ($application && !in_array($after['audit_realm'] ?? null, $realm === 'platform' ? ['platform', 'system'] : ['system'], true))
                 || !is_int($after['created_at'] ?? null) || $after['created_at'] < 0 || $after['created_at'] > 253402300799) {
                 throw new HttpError(400, $error . '_cursor_invalid');
             }
@@ -291,7 +324,7 @@ final class AuditLog
             $fields = 'id, tenant_id, actor_id, action, subject_id, result, details, created_at';
             $branches = [];
             $bound = [];
-            foreach ($source !== '' ? [$source] : ($realm === 'admin' ? ['admin', 'customer'] : ['customer']) as $tableRealm) {
+            foreach ($source !== '' ? [$source] : ($realm === 'platform' ? ['platform', 'system'] : ['system']) as $tableRealm) {
                 $projection = 'SELECT ' . $fields . ', category, operation_id, request_id, stage'
                     . ", '" . $tableRealm . "' AS audit_realm FROM " . $tableRealm . '_audit';
                 // 每个来源先按索引限定至limit+1，再合并至多202行；不把整张双端日志表物化后排序。
@@ -333,7 +366,7 @@ final class AuditLog
 
     private static function eventProjection(Connection $connection, string $realm, array $row, bool $detail): array
     {
-        $details = json_decode((string) $row['details'], true, 8, JSON_THROW_ON_ERROR);
+        $details = json_decode((string)$row['details'], true, 8, JSON_THROW_ON_ERROR);
         $operation = null;
         if ($row['category'] === 'broker' && isset($details['facts'])) {
             if ($detail && isset($details['operation'])) {
@@ -344,13 +377,13 @@ final class AuditLog
             $origin = $details['identity'] ?? [];
             $details = $details['facts'];
             if ($origin !== []) {
-                $details += ['actor_realm' => $origin['actor_realm'], 'customer_id' => $origin['customer_id'], 'session_id' => $origin['session_id'],
+                $details += ['actor_realm' => $origin['actor_realm'], 'user_id' => $origin['user_id'], 'session_id' => $origin['session_id'],
                     'source_session_id' => $origin['source_session_id'], 'impersonation_id' => $origin['impersonation_id'], 'scope_key' => $origin['key'],
-                    'context' => $origin['impersonation_id'] !== '' ? 'customer-impersonation' : ($origin['realm'] === 'admin' ? 'platform' : 'tenant-member')];
+                    'context' => $origin['impersonation_id'] !== '' ? 'system-impersonation' : ($origin['realm'] === 'platform' ? 'platform' : 'tenant-member')];
             }
         }
         $item = ['id' => $row['id'], 'tenant_id' => $row['tenant_id'], 'actor_id' => $row['actor_id'], 'action' => $row['action'],
-            'subject_id' => $row['subject_id'], 'result' => $row['result'], 'details' => $details, 'created_at' => (int) $row['created_at'],
+            'subject_id' => $row['subject_id'], 'result' => $row['result'], 'details' => $details, 'created_at' => (int)$row['created_at'],
             'category' => $row['category'], 'operation_id' => $row['operation_id'], 'request_id' => $row['request_id'], 'stage' => $row['stage']];
         if (isset($row['audit_realm'])) {
             $item['audit_realm'] = $row['audit_realm'];
@@ -382,13 +415,13 @@ final class AuditLog
                     throw new HttpError(400, $error . '_cursor_invalid');
                 }
             } elseif ($field === 'limit') {
-                if (preg_match('/^[1-9][0-9]{0,2}$/D', $value) !== 1 || (int) $value > 100) {
+                if (preg_match('/^[1-9][0-9]{0,2}$/D', $value) !== 1 || (int)$value > 100) {
                     throw new HttpError(400, $error . '_query_invalid');
                 }
             } elseif ($value === '') {
                 continue;
             } elseif ($field === 'from' || $field === 'to') {
-                if (preg_match('/^(?:0|[1-9][0-9]{0,11})$/D', $value) !== 1 || (int) $value > 253402300799) {
+                if (preg_match('/^(?:0|[1-9][0-9]{0,11})$/D', $value) !== 1 || (int)$value > 253402300799) {
                     throw new HttpError(400, $error . '_query_invalid');
                 }
             } elseif (($field === 'operation_id' && !self::identifier($value))
@@ -398,7 +431,7 @@ final class AuditLog
                 || ($field === 'result' && !in_array($value, ['pending', 'success', 'failed', 'denied', 'unknown'], true))) {
                 throw new HttpError(400, $error . '_query_invalid');
             }
-            $input[$field] = $field === 'from' || $field === 'to' ? (int) $value : $value;
+            $input[$field] = $field === 'from' || $field === 'to' ? (int)$value : $value;
         }
         if (isset($input['from'], $input['to']) && $input['from'] > $input['to']) {
             throw new HttpError(422, 'invalid_time_range');
@@ -409,14 +442,14 @@ final class AuditLog
     private static function queryAuthorization(string $realm, array $authorization): array
     {
         self::shape($authorization, ['scope', 'actor_id', 'role', 'permissions', 'tenant_id', 'support_id', 'support_version', 'support_expires_at']);
-        if (!in_array($authorization['scope'], ['standalone', 'platform', 'tenant'], true) || !self::identifier($authorization['actor_id'])
+        if (!in_array($authorization['scope'], ['platform', 'tenant'], true) || !self::identifier($authorization['actor_id'])
             || !self::code($authorization['role'], 64) || !self::identifier($authorization['tenant_id'], true)
             || !self::identifier($authorization['support_id'], true) || !self::optionalNumber($authorization['support_version'])
             || !self::optionalNumber($authorization['support_expires_at'])
-            || (($authorization['scope'] === 'standalone') !== ($realm === 'broker'))
+            || (($authorization['scope'] === 'platform') !== ($realm === 'platform'))
             || (($authorization['scope'] === 'tenant') !== ($authorization['tenant_id'] !== null))
             || ($authorization['scope'] !== 'tenant' && $authorization['support_id'] !== null)) {
-            throw new InvalidArgumentException('broker_audit_authorization_invalid');
+            throw new \InvalidArgumentException('broker_audit_authorization_invalid');
         }
         $authorization['permissions'] = self::permissions($authorization['permissions']);
         ksort($authorization);
@@ -431,31 +464,31 @@ final class AuditLog
             || !in_array($operation['mode'], ['sync', 'async'], true) || !self::text($operation['actor_id'], 32)
             || !self::identifier($operation['tenant_id'], true) || !self::code($operation['action'], 80) || !self::text($operation['subject_id'], 100)
             || !is_array($operation['authorization']) || !is_array($operation['target']) || !is_array($operation['impact'])) {
-            throw new InvalidArgumentException('broker_audit_context_invalid');
+            throw new \InvalidArgumentException('broker_audit_context_invalid');
         }
         if (isset($operation['identity'])) {
             $identity = $operation['identity'];
             if (!is_array($identity)) {
-                throw new InvalidArgumentException('broker_audit_identity_invalid');
+                throw new \InvalidArgumentException('broker_audit_identity_invalid');
             }
-            self::shape($identity, ['realm', 'actor_id', 'actor_realm', 'customer_id', 'session_id', 'source_session_id', 'impersonation_id', 'tenant_id', 'key']);
-            if (!in_array($identity['realm'], ['admin', 'customer'], true) || !in_array($identity['actor_realm'], ['admin', 'customer'], true)
+            self::shape($identity, ['realm', 'actor_id', 'actor_realm', 'user_id', 'session_id', 'source_session_id', 'impersonation_id', 'tenant_id', 'key']);
+            if (!in_array($identity['realm'], ['platform', 'system'], true) || !in_array($identity['actor_realm'], ['platform', 'system'], true)
                 || !self::identifier($identity['actor_id']) || !self::identifier($identity['session_id'])
                 || $identity['actor_id'] !== $operation['actor_id'] || $identity['tenant_id'] !== ($operation['tenant_id'] ?? '')
-                || ($identity['realm'] === 'admin' ? ($identity['tenant_id'] !== '' || $identity['customer_id'] !== '' || $identity['actor_realm'] !== 'admin')
-                    : (!self::identifier($identity['tenant_id']) || !self::identifier($identity['customer_id'])))
+                || ($identity['realm'] === 'platform' ? ($identity['tenant_id'] !== '' || $identity['user_id'] !== '' || $identity['actor_realm'] !== 'platform')
+                    : (!self::identifier($identity['tenant_id']) || !self::identifier($identity['user_id'])))
                 || ($identity['source_session_id'] === '' ? ($identity['impersonation_id'] !== '' || $identity['actor_realm'] !== $identity['realm']
-                    || ($identity['realm'] === 'customer' && $identity['actor_id'] !== $identity['customer_id']))
-                    : (!self::identifier($identity['source_session_id']) || $identity['realm'] !== 'customer' || $identity['actor_realm'] !== 'admin'
+                    || ($identity['realm'] === 'system' && $identity['actor_id'] !== $identity['user_id']))
+                    : (!self::identifier($identity['source_session_id']) || $identity['realm'] !== 'system' || $identity['actor_realm'] !== 'platform'
                         || $identity['impersonation_id'] !== $identity['session_id']))
-                || $identity['key'] !== hash('sha256', json_encode([$identity['realm'], $identity['actor_id'], $identity['realm'] === 'customer' ? $identity['customer_id'] : $identity['actor_id'],
+                || $identity['key'] !== hash('sha256', json_encode([$identity['realm'], $identity['actor_id'], $identity['realm'] === 'system' ? $identity['user_id'] : $identity['actor_id'],
                     $identity['session_id'], $identity['source_session_id'], $identity['tenant_id']], JSON_THROW_ON_ERROR))) {
-                throw new InvalidArgumentException('broker_audit_identity_invalid');
+                throw new \InvalidArgumentException('broker_audit_identity_invalid');
             }
             ksort($identity);
             $operation['identity'] = $identity;
         } elseif (array_key_exists('identity', $operation)) {
-            throw new InvalidArgumentException('broker_audit_identity_invalid');
+            throw new \InvalidArgumentException('broker_audit_identity_invalid');
         }
         $authorization = $operation['authorization'];
         self::shape($authorization, ['source', 'role', 'permissions', 'required_action', 'decision', 'support_id', 'support_version', 'support_expires_at']);
@@ -463,7 +496,7 @@ final class AuditLog
             || !in_array($authorization['decision'], ['allowed', 'denied'], true) || !self::identifier($authorization['support_id'], true)
             || !self::optionalNumber($authorization['support_version']) || !self::optionalNumber($authorization['support_expires_at'])
             || ($authorization['support_id'] !== null && $operation['tenant_id'] === null)) {
-            throw new InvalidArgumentException('broker_audit_context_invalid');
+            throw new \InvalidArgumentException('broker_audit_context_invalid');
         }
         $authorization['permissions'] = self::permissions($authorization['permissions']);
         ksort($authorization);
@@ -473,14 +506,14 @@ final class AuditLog
             || ($target['node_run_id'] !== '' && !self::identifier($target['node_run_id']))
             || ($target['observation_run'] !== '' && !self::identifier($target['observation_run']))
             || !is_int($target['generation']) || $target['generation'] < 0) {
-            throw new InvalidArgumentException('broker_audit_target_invalid');
+            throw new \InvalidArgumentException('broker_audit_target_invalid');
         }
         ksort($target);
         $impact = $operation['impact'];
         self::shape($impact, ['confirmed', 'effect', 'target_count', 'proof_hash']);
         if (!is_bool($impact['confirmed']) || !self::code($impact['effect'], 100) || !is_int($impact['target_count']) || $impact['target_count'] < 0 || $impact['target_count'] > 100
             || !is_string($impact['proof_hash']) || ($impact['proof_hash'] !== '' && preg_match('/^[a-f0-9]{64}$/D', $impact['proof_hash']) !== 1)) {
-            throw new InvalidArgumentException('broker_audit_impact_invalid');
+            throw new \InvalidArgumentException('broker_audit_impact_invalid');
         }
         ksort($impact);
         $operation['authorization'] = $authorization;
@@ -488,7 +521,7 @@ final class AuditLog
         $operation['impact'] = $impact;
         ksort($operation);
         if (strlen(self::json($operation)) > self::CONTEXT_BYTES) {
-            throw new InvalidArgumentException('broker_audit_context_budget');
+            throw new \InvalidArgumentException('broker_audit_context_budget');
         }
         return $operation;
     }
@@ -496,11 +529,11 @@ final class AuditLog
     private static function permissions(mixed $permissions): array
     {
         if (!is_array($permissions) || !array_is_list($permissions) || count($permissions) > 64) {
-            throw new InvalidArgumentException('broker_audit_permissions_invalid');
+            throw new \InvalidArgumentException('broker_audit_permissions_invalid');
         }
         foreach ($permissions as $permission) {
             if (!self::code($permission, 80)) {
-                throw new InvalidArgumentException('broker_audit_permissions_invalid');
+                throw new \InvalidArgumentException('broker_audit_permissions_invalid');
             }
         }
         $permissions = array_values(array_unique($permissions));
@@ -511,19 +544,19 @@ final class AuditLog
     private static function shape(array $value, array $fields): void
     {
         if (count($value) !== count($fields)) {
-            throw new InvalidArgumentException('broker_audit_shape_invalid');
+            throw new \InvalidArgumentException('broker_audit_shape_invalid');
         }
         foreach ($fields as $field) {
             if (!array_key_exists($field, $value)) {
-                throw new InvalidArgumentException('broker_audit_shape_invalid');
+                throw new \InvalidArgumentException('broker_audit_shape_invalid');
             }
         }
     }
 
     private static function realm(string $realm): void
     {
-        if (!in_array($realm, ['iot', 'broker', 'admin', 'customer'], true)) {
-            throw new InvalidArgumentException('audit_realm_invalid');
+        if (!in_array($realm, ['platform', 'system'], true)) {
+            throw new \InvalidArgumentException('audit_realm_invalid');
         }
     }
 
@@ -565,28 +598,5 @@ final class AuditLog
             throw new HttpError(400, $error . '_cursor_invalid');
         }
         return $cursor;
-    }
-
-    /**
-     * 受控维护命令单次删除至多1000条创建满180天的审计；不清理接收账本或其他业务表。
-     * 每批事务独立提交，不推进外部游标；失败或进程中断后可重跑，未知提交也不会扩展删除范围。
-     * @return array{deleted: int, has_more: bool, cutoff: int}
-     */
-    public static function prune(Connection $connection, int $batch, string $realm = 'iot'): array
-    {
-        self::realm($realm);
-        if ($batch < 1 || $batch > 1000) {
-            throw new InvalidArgumentException('审计清理批次必须为1至1000');
-        }
-        $cutoff = time() - 180 * 86400;
-        return $connection->transaction(static function (Connection $transaction) use ($batch, $cutoff, $realm): array {
-            $rows = $transaction->table($realm . '_audit')->where('created_at', '<=', $cutoff)->orderBy('created_at')->orderBy('id')->limit($batch)->get();
-            $deleted = 0;
-            foreach ($rows as $row) {
-                $deleted += $transaction->table($realm . '_audit')->where('id', '=', $row['id'])->where('created_at', '<=', $cutoff)->delete();
-            }
-            $remaining = $transaction->table($realm . '_audit')->where('created_at', '<=', $cutoff)->limit(1)->first();
-            return ['deleted' => $deleted, 'has_more' => $remaining !== null, 'cutoff' => $cutoff];
-        }, $connection->driverName() === 'sqlite' && $connection->transactionDepth() === 0 ? 'immediate' : 'default');
     }
 }

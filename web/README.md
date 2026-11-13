@@ -1,84 +1,39 @@
-# 物联中心双端管理应用
+# TypeApp 物联管理端
 
-TypeApp 第一方 Web 源码按 [Apache License 2.0](LICENSE) 发布，版权主体为 Anyon，官方网站为
-[iots.top](https://iots.top)。Vben Admin Pro、SmartAdminDeveloper 及其他上游材料保留其原始许可证，详见
-[UPSTREAM.md](UPSTREAM.md) 与 [web/LICENSE](LICENSE)。
+这是 TypeApp 的单一 Web 工程，按 Platform、System、Center 三个运行角色装配页面和接口。前端使用 Vue Vben Admin 5.7.0 的 Ant Design Vue 应用能力，业务页面由本仓库维护；上游来源、许可证和同步提交见 [UPSTREAM.md](UPSTREAM.md)。
 
-产品与物模型页面已接入客户工作区，使用固定 `customer.products.read` / `customer.products.manage` 节点。列表、草稿编辑、发布与精确历史版本复用现有页面和模型编辑器；查询只读、撤权清理及模拟来源沿双端公共机制。接口与历史消费者边界见[产品与物模型](../docs/development/iot-products.md)。
+## 目录
 
-设备页由双端共用：客户登记并管理当前租户设备，平台查询全局资产、维护名称及接入生命周期。查询、登记、资料、启停、退役、轮换和吊销各自授权；平台资产不附带客户遥测、私有导出或控制。密码只在登记或轮换响应显示一次，关闭即清除；HTTP 202 保持“等待 Broker 撤权”，响应未知时先读取当前状态，不能自动再生成密码。接口见[设备说明](../docs/development/iot-devices.md)。
+- `apps/web-antd/src/router/routes/platform.ts`：Platform 平台配置、客户、平台 RBAC、MQTT 运维和模拟登录入口。
+- `apps/web-antd/src/router/routes/system.ts`：当前客户的用户、角色、系统品牌和审计。
+- `apps/web-antd/src/router/routes/center.ts`：当前客户的分类、设备、接入应用、注册资格、通信观察和转配。
+- `apps/web-antd/src/api`：按运行角色拆分的请求契约和可信客户上下文。
+- `packages`、`internal`：Vben 工作区公共能力和构建工具。
 
-Vben Admin Pro 的 Ant Design Vue 应用。业务源码在 `apps/web-antd/src`，公共工作区在 `packages`，构建工具在 `internal`；来源与许可见 [UPSTREAM.md](UPSTREAM.md)。两端复用布局、请求、登录和个人页，账号域、令牌及当前权限独立。
+所有业务 CRUD 优先使用后端模型服务；跨客户目录、MQTT 运行观测、审计和恢复投影等基础设施查询保留明确的基础查询边界。
 
-## 启动与构建
+## 入口与身份
 
-使用 Node.js 20.19 以上及 `pnpm@10.28.2`，以 `web` 为工作目录：
+| 入口 | 未登录页 | 登录字段 |
+| --- | --- | --- |
+| 主域名 | `/#/system/login` | 客户选择、账号、密码 |
+| 客户子域名 | 自动读取客户公开配置 | 账号、密码 |
+| `/s/{saas_id}/` | 固定客户并读取公开配置 | 账号、密码 |
+| 平台 | `/#/platform/login` | 平台账号、密码 |
+
+客户选择使用 `/public/saas` 分页接口；客户公开配置使用 `/public/context` 或 `/s/{saas_id}/public/context`。固定路径和子域名只定位客户，身份资格仍由后端会话和 RBAC 校验。System 与 Center 共用客户 System 会话，Platform 会话独立。
+
+## 开发与构建
+
+工具链由 `package.json` 和 `pnpm-lock.yaml` 锁定：Node.js 26.13.1、pnpm 12.18.0、Vue 3.5.45、Vite 8.3.8、TypeScript 7.0.2。使用 `web` 目录作为工作目录：
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm typecheck
 pnpm build
-IOT_API_ORIGIN=http://127.0.0.1:8080 pnpm dev
+IOT_API_ORIGIN=http://127.0.0.1:9501 pnpm dev
 ```
 
-开发服务器绑定 `127.0.0.1:5173`，把 `/public`、`/admin`、`/customer`、`/broker` 代理到指定的隔离后端；`IOT_API_ORIGIN` 只用于开发服务器，不打入浏览器。生产构建生成忽略入仓的 `web/dist`，并原样携带 `LICENSE`、`NOTICE` 与 `UPSTREAM.md`，不会自动部署或替换本地站点。生产页面与 API 使用同源入口。
+`IOT_API_ORIGIN` 只影响开发服务器代理。生产构建输出到 `web/dist`，由后端安装流程编入应用；构建同时携带第一方许可证、第三方许可证和来源说明。
 
-主仓 `composer typeapp:build` 会冻结安装前端依赖、执行类型检查与构建，再把 `dist` 作为资源编入 TypePHP 生成的程序。原生部署首次执行 `app:install` 时安装到应用根的 `public/`；后续用 `web:install --dry-run --force` 预览，再用 `web:install --force` 更新。普通启动不写出资源，部署端无需 Node.js 或 pnpm。当前交付仍是携带原生运行库的目录归档，安装和修复步骤见[构建与部署](../docs/guide/deployment.md#前端安装与更新)。
-
-后端先用 `app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>` 初始化空库；密码只由 `APP_ADMIN_PASSWORD`、`APP_CUSTOMER_PASSWORD` 的受控进程环境提供。没有共享默认密码，已有库不会清空或升级。具体命令、原生构建及运行边界见[标准物联应用说明](../docs/development/typeapp.md)。
-
-## 当前入口
-
-路由定义在 `apps/web-antd/src/router.ts`，继续使用 Hash 模式。下表路径位于 URL 的 `#` 后，例如 `/#/admin/login`。
-
-| 路由 | 行为 |
-| --- | --- |
-| `/`、`/profile` | 默认客户工作区；未登录跳转 `/login` |
-| `/login` | 客户账号登录 |
-| `/admin`、`/admin/profile` | 平台工作区；未登录跳转 `/admin/login` |
-| `/admin/login` | 独立管理账号登录 |
-| `/admin/users` | 平台人员查询、创建、资料、启停、密码、会话及单人/批量多角色分配 |
-| `/admin/customers` | 客户全局账号查询、创建、资料、启停、独立密码重置及会话撤销 |
-| `/admin/roles` | 固定权限树、自定义角色创建、复制、资料、启停、删除及权限编辑 |
-| `/admin/tenants` | 平台租户列表、详情、创建、资料和启停；创建或准确关联初始客户管理员 |
-| `/admin/site` | 站点名称、官网、Logo、说明和默认界面，版本冲突保护及变更字段审计 |
-| `/admin/configuration` | 查看运行配置来源，维护非敏感启动参数；敏感字段脱敏，保存后提示重启 |
-| `/tenants` | 当前客户的有效租户目录、筛选及工作区切换 |
-| `/members` | 当前租户成员查询、创建或关联客户、局部资料、启停、移除及多角色分配 |
-| `/roles` | 当前租户自定义角色、固定权限树、复制、资料、启停、删除及权限维护 |
-| `/products`、`/products/:product/models` | 当前租户产品、模型草稿、发布与精确历史版本 |
-| `/devices` | 当前租户设备登记、资料、详情与接入生命周期 |
-| `/admin/devices` | 全局设备资产、归属筛选、资料与接入生命周期 |
-| `/devices/:device` | 设备详情、当前数据、指令及模型切换 |
-| `/history` | 原始历史、分钟聚合、曲线及异步 CSV 导出任务 |
-| `/transfers` | 设备转移申请、审批及分阶段状态 |
-| `/alarm-rules`、`/alarms`、`/notifications` | 告警规则版本、告警确认与站内通知 |
-| `/audit`、`/admin/audit`、`/operations`、`/admin/operations` | 对应账号域的操作审计和运行概览 |
-| `/broker/login` | 独立 Broker 管理账号登录 |
-| `/broker/nodes`、`/broker/resources`、`/broker/access`、`/broker/audit` | 原独立 Broker 管理页面，由独立宿主提供 API |
-| `/broker-resources`、`/broker-access` | 当前租户 Broker 资源与授权版本 |
-| `/admin/broker`、`/admin/broker-access` | 平台 Broker 资源与授权版本 |
-
-双端通过 `/<realm>/auth/login|me|logout` 完成认证，其中 `realm` 只接受 `admin`、`customer`；会话来自后端认证，不采信浏览器自报身份。个人工作区数据为 `/<realm>/profile`。后端提供固定菜单、权限目录及当前有效权限，直接 API 调用同样授权；无角色显示无权限状态并允许退出。客户当前租户来自本人有效成员关系，平台会话不接受租户或旧支持头。
-
-客户列表中的“模拟登录”单独要求 `admin.customers.impersonate`，确认后以客户当前租户权限进入工作区。公共布局持续显示真实管理人员、客户及租户，亮暗主题与窄屏共用同一提示。模拟令牌和租户选择独立保存；退出只撤销本次模拟，返回仍有效的管理端，保留客户原登录。来源失效时清除模拟上下文并回到管理端重新认证，不自动借用保存的真实客户令牌重试。个人登录资料仅在真实客户登录中维护，模拟业务操作不要求客户密码。客户端不再发送旧 `X-Support-Id`。
-
-客户即使尚未加入租户或没有业务角色，也可在个人工作区修改自己的登录名、姓名及密码。`PATCH /customer/account` 与 `POST /customer/account/password` 只接受本人当前会话、预期版本和原密码，不接受目标账号、租户或模拟头。原密码连续错误五次锁定五分钟；改密撤销所有旧会话并要求重新登录。平台客户管理的资料、状态、密码和会话分别授权，不能从普通资料接口夹带敏感字段；停用客户不能使有效租户失去最后一位最高管理员。客户角色仍由各租户成员关系承担，不分配平台角色。
-
-令牌分别保存在当前浏览器的 `sessionStorage`，两端可以各自登录和恢复。切换账号域取消旧请求、清除旧身份与菜单，再读取本域令牌；会话过期只清除对应域。共享请求层仍采用 Vben `RequestClient` 和真实 HTTP 状态。详情和页面错误按现有组件呈现，亮暗主题、窄屏及长文本遵守[页面标准](../docs/standards/iot-web.md)。
-
-## 重构范围与证据
-
-当前开放已经接入新身份的双端工作区、平台人员与角色管理、客户全局账号及本人资料、平台租户、客户租户目录及成员管理，以及独立 Broker 页面。平台角色只从固定节点授权，新建和复制角色默认停用；敏感账号操作与角色写入各自授权，后端检查当前权限、目标保护和版本。管理页复用搜索、表格、抽屉与危险动作确认，保存中禁止关闭，冲突保留输入并刷新列表，关闭后可按最新记录重新编辑；读失败可重试，撤权清除数据与动作，没有后台轮询。
-
-租户创建在同一授权事务内建立客户（或按登录名精确关联已有客户）、成员和三个初始角色。关联已有客户只建立本租户关系，不接受其密码或全局资料。客户端生成稳定租户标识，重复提交返回冲突；创建结果不确定时先查询该标识。每个启用租户须保留有效最高管理员。停用只取消该租户资格，客户账号及其他租户保持；工作区选择保存在本标签会话中，导航和刷新后由服务端按精确成员关系重验，切换取消旧异步请求。租户目录默认20条、最多100条，选择不受身份预览前100条的限制。
-
-成员页复用人员管理页面，通过 `/customer/members` 和准确的 `X-Tenant-Id` 操作当前租户。创建新客户时，账号、成员及初始角色一并提交；关联已有客户只接受准确登录标识及本租户姓名，不接受全局密码或资料。启停、移除及多角色分配仅影响本租户，版本冲突或整批任一目标非法时整体回滚；包含停用角色的潜在权限也不能超过操作者当前权限。切换租户和撤权会清理旧请求、抽屉、选择及秘密输入。
-
-双端角色页使用同一组件，完整展示后端固定目录；节点不能由客户自建。租户角色名称只在本租户唯一，新建和复制默认停用，复制不带人员绑定或最高管理员保护标记。当前有效角色权限取并集，停用、删除或收紧权限立即影响后续请求；删除同步清理绑定并推进成员版本，旧分配表单不能覆盖变化。初始操作员和只读角色可以修改或删除，最高管理员的必要节点、启用状态和最后有效人员受保护。复制、启用、修改已有角色和成员绑定均检查操作者当前权限及目标潜在权限，停用角色不能成为间接提权入口。
-
-旧租户接口、固定角色成员页及其支持授权入口已移除。产品、设备、历史、指令、转移、告警、通知与导出已接入双端授权入口；完整设备通信、后台角色和恢复组合仍需按[实现规划](../docs/guide/roadmap.md)验收，不能以页面存在替代业务闭环。
-
-初始最高管理员拥有当前固定目录全部节点；租户操作员和只读成员初始仅含个人工作区权限。安装会保存默认站点信息，但不生成演示设备或遥测，没有共享默认密码。默认值、站点设置流程与未接通字段见[物联中心指南](../docs/guide/iot-center.md#准备后端与人员账号)。
-
-当前采用 Vben 的 BasicLayout、菜单、主题和偏好；业务列表与编辑主要使用 Ant Design Vue 及应用自定义封装，尚未完全达到[页面标准](../docs/standards/iot-web.md)。导航组与路由层级、原生用户入口、表单/表格/抽屉替换和个人默认值合并仍需收口。浏览器专项可通过 `TYPE_APP_BROWSER_CASES=site` 配合 `tests/iot-identity.php --php sqlite --app --browser-dist=<绝对构建目录>` 验证真实站点读取、整页保存、并发冲突、权限及桌面/窄屏界面。完整双端回归不设置该变量。
+页面沿用 Vben 的认证布局、应用布局、表单、VXE 表格、抽屉、弹窗、用户入口、主题和偏好面板。个人偏好按端、客户、账号和模拟操作者保存，只记录显式覆盖；恢复默认后重新使用当前端配置。页面标准见 [物联网中心 Web 页面标准](../docs/standards/iot-web.md)。

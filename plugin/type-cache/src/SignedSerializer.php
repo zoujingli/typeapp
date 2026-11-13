@@ -4,24 +4,23 @@ declare(strict_types=1);
 
 namespace Type\Cache;
 
-use ReflectionReference;
-use SplObjectStorage;
-use Throwable;
-
 /** 保留 PHP 类型的签名序列化；签名用于完整性校验，不提供数据加密。 */
 final class SignedSerializer
 {
     private string $secret;
+
     private array $classes;
+
     private string $policy;
+
     private int $limit;
 
     /**
      * 建立受信类型策略；密钥从运行配置传入，不能写入编译常量。
      *
-     * @param list<class-string> $classes 已加载的受信对象类型，其序列化钩子属于应用代码。
-     * @param int $maxBytes 含签名头的总载荷字节上限，范围 128 至 16 MiB。
-     * @throws InvalidCacheArgument 密钥少于 32 字节、类型不存在或限制无效。
+     * @param list<class-string> $classes 已加载的受信对象类型，其序列化钩子属于应用代码
+     * @param int $maxBytes 含签名头的总载荷字节上限，范围 128 至 16 MiB
+     * @throws InvalidCacheArgument 密钥少于 32 字节、类型不存在或限制无效
      */
     public function __construct(#[\SensitiveParameter] string $secret, array $classes = [], int $maxBytes = 1048576)
     {
@@ -45,10 +44,10 @@ final class SignedSerializer
     public function encode(mixed $value, string $namespace, string $generation, string $key): string
     {
         $references = [];
-        $this->inspect($value, new SplObjectStorage(), $references, 0);
+        $this->inspect($value, new \SplObjectStorage(), $references, 0);
         try {
             $payload = serialize($value);
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             throw new CacheException('缓存值不能序列化', 0, $error);
         }
         if (strlen($payload) > $this->limit - 136) {
@@ -61,7 +60,7 @@ final class SignedSerializer
     /**
      * 先校验身份、签名与载荷结构，再调用受信类型的反序列化过程。
      *
-     * @throws CacheException 载荷过大、被篡改、类型不符或解码失败。
+     * @throws CacheException 载荷过大、被篡改、类型不符或解码失败
      */
     public function decode(string $value, string $namespace, string $generation, string $key): mixed
     {
@@ -80,7 +79,7 @@ final class SignedSerializer
                 throw new CacheException('序列化缓存无法解码');
             }
             return $result;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             throw new CacheException('缓存对象解码失败', 0, $error);
         }
     }
@@ -90,7 +89,7 @@ final class SignedSerializer
         return hash_hmac('sha256', $namespace . "\0" . $generation . "\0" . hash('sha256', $key) . "\0" . $this->policy . "\0" . $payload, $this->secret);
     }
 
-    private function inspect(mixed &$value, SplObjectStorage $objects, array &$references, int $depth): void
+    private function inspect(mixed &$value, \SplObjectStorage $objects, array &$references, int $depth): void
     {
         if ($depth > 64) {
             throw new InvalidCacheArgument('缓存值深度超限');
@@ -114,7 +113,7 @@ final class SignedSerializer
         }
         if (is_array($value)) {
             foreach (array_keys($value) as $key) {
-                $reference = ReflectionReference::fromArrayElement($value, $key);
+                $reference = \ReflectionReference::fromArrayElement($value, $key);
                 if ($reference !== null) {
                     $id = bin2hex($reference->getId());
                     if (isset($references[$id])) {

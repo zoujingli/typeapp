@@ -5,6 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+use Type\Build\ModelCompiler;
 use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\Pgsql\PgsqlDriver;
 use Type\Testing\Assert;
@@ -59,7 +60,7 @@ try {
             $environment['PHP_INI_SCAN_DIR'] = dirname($nativeIni) . '/php.d';
         }
     } else {
-        $models = new Type\Build\ModelCompiler();
+        $models = new ModelCompiler();
         $file = $work . '/models.php';
         file_put_contents($file, $models->compile([$root . '/examples/orm-suite/Models.php'])['code']);
         $launch = 'require ' . var_export($root . '/vendor/autoload.php', true) . ';require ' . var_export($file, true) . ';';
@@ -76,12 +77,12 @@ try {
     if ($driver === 'sqlite') {
         $environment['TYPE_SQLITE_FILE'] = $isolated ? '/tmp/' . basename($work) . '.sqlite' : $work . '/database.sqlite';
     } elseif ($driver === 'mysql') {
-        $admin = (new MysqlDriver(getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1', (int) (getenv('TYPE_MYSQL_PORT') ?: 3306), getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test', getenv('TYPE_MYSQL_USER') ?: 'root', getenv('TYPE_MYSQL_PASSWORD') ?: ''))->connect();
+        $admin = (new MysqlDriver(getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1', (int)(getenv('TYPE_MYSQL_PORT') ?: 3306), getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test', getenv('TYPE_MYSQL_USER') ?: 'root', getenv('TYPE_MYSQL_PASSWORD') ?: ''))->connect();
         $admin->exec('CREATE DATABASE ' . $database);
         $created = true;
         $environment['TYPE_MYSQL_DATABASE'] = $database;
     } else {
-        $admin = (new PgsqlDriver(getenv('TYPE_PGSQL_HOST') ?: '127.0.0.1', (int) (getenv('TYPE_PGSQL_PORT') ?: 5432), getenv('TYPE_PGSQL_DATABASE') ?: 'type_app_test', getenv('TYPE_PGSQL_USER') ?: 'type_app', getenv('TYPE_PGSQL_PASSWORD') ?: ''))->connect();
+        $admin = (new PgsqlDriver(getenv('TYPE_PGSQL_HOST') ?: '127.0.0.1', (int)(getenv('TYPE_PGSQL_PORT') ?: 5432), getenv('TYPE_PGSQL_DATABASE') ?: 'type_app_test', getenv('TYPE_PGSQL_USER') ?: 'type_app', getenv('TYPE_PGSQL_PASSWORD') ?: ''))->connect();
         $admin->exec('CREATE DATABASE ' . $database);
         $created = true;
         $environment['TYPE_PGSQL_DATABASE'] = $database;
@@ -89,7 +90,7 @@ try {
     $process = new Process([...$command, 'scenario'], $root, $environment);
     try {
         $result = $process->wait(120);
-        Assert::true($result->successful(), '集成场景失败（exit=' . $result->exitCode . ', timeout=' . (int) $result->timedOut . '）：'
+        Assert::true($result->successful(), '集成场景失败（exit=' . $result->exitCode . ', timeout=' . (int)$result->timedOut . '）：'
             . $result->stderr . ($result->stdout !== '' ? "\n" . $result->stdout : ''));
         $report = json_decode($result->stdout, true, 512, JSON_THROW_ON_ERROR);
     } finally {

@@ -51,6 +51,6 @@ final class Endpoint implements RequestHandlerInterface
             }
         }
         return $factory->createResponse($status)->withHeader('Content-Type', 'application/json')
-            ->withBody($factory->createStream((string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
+            ->withBody($factory->createStream((string)json_encode($value, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
     }
 }

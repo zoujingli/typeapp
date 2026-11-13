@@ -14,11 +14,13 @@ final class ReadBudget
             throw new ModelException('invalid_read_budget', '模型读取预算必须在 1 至 100000 行之间');
         }
     }
+
     /** 返回尚未水合的行数额度；父模型、子模型和中间表共用。 */
     public function remaining(): int
     {
         return $this->remaining;
     }
+
     /** 先检查再扣减读取额度，超限明确抛错，不静默截断数据。 */
     public function consume(int $rows): void
     {

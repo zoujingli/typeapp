@@ -22,7 +22,7 @@ function mqttQos2Migration(PDO $primary): array
 /** 测试线编码不调用组件消息与确认实现。 */
 function mqttQos2Publish(int $version, string $topic, string $payload, int $identifier, bool $duplicate = false, string $properties = ''): string
 {
-    return mqttPacket($duplicate ? 0x3c : 0x34, mqttField($topic) . pack('n', $identifier)
+    return mqttPacket($duplicate ? 0x3C : 0x34, mqttField($topic) . pack('n', $identifier)
         . ($version === 5 ? mqttLength(strlen($properties)) . $properties : '') . $payload);
 }
 
@@ -40,7 +40,7 @@ function mqttQos2Cases(int $port, PDO $primary, PDO $standby): array
     $failures = [];
     try {
         expect($standby->query("SELECT encode(payload, 'hex') FROM type_mqtt_messages WHERE topic = 'example/legacy'")->fetchColumn() === '00ff', '旧 QoS 1 原件未在迁移后保留');
-        $cases++;
+        ++$cases;
         $publisher = mqttSocket($port);
         $subscriber = mqttSocket($port);
         array_push($sockets, $publisher, $subscriber);
@@ -62,7 +62,7 @@ function mqttQos2Cases(int $port, PDO $primary, PDO $standby): array
             mqttWrite($publisher, mqttQos2Ack(0x62, $exchange));
             expect(mqttRead($publisher) === mqttQos2Ack(0x70, $exchange), 'QoS 2 别名交换未完成');
             mqttDatabaseIdle($primary);
-            $cases++;
+            ++$cases;
         }
         $facts = $standby->query("SELECT topic, encode(properties, 'hex') AS properties FROM type_mqtt_messages WHERE client_id = 'alias-durable-p'")->fetchAll(PDO::FETCH_ASSOC);
         expect(count($facts) === 2, '别名发布未持久接管两次');
@@ -80,11 +80,11 @@ function mqttQos2Cases(int $port, PDO $primary, PDO $standby): array
         expect(mqttRead($publisher) === mqttQos2Ack(0x50, 4), '持久层用展开长度误拒绝合法1MiB报文');
         mqttWrite($publisher, mqttQos2Ack(0x62, 4));
         expect(mqttRead($publisher) === mqttQos2Ack(0x70, 4), '可靠大别名交换未终结');
-        expect((int) $standby->query("SELECT MAX(octet_length(payload)) FROM type_mqtt_messages WHERE client_id = 'alias-durable-p'")->fetchColumn() === 1048564, '大别名载荷未同步保存');
-        $cases++;
+        expect((int)$standby->query("SELECT MAX(octet_length(payload)) FROM type_mqtt_messages WHERE client_id = 'alias-durable-p'")->fetchColumn() === 1048564, '大别名载荷未同步保存');
+        ++$cases;
         fclose($publisher);
         fclose($subscriber);
-        $cases++;
+        ++$cases;
         foreach ([4, 5] as $version) {
             $publisher = mqttSocket($port);
             $subscriber = mqttSocket($port);
@@ -126,21 +126,21 @@ function mqttQos2Cases(int $port, PDO $primary, PDO $standby): array
             expect(mqttRead($publisher) === mqttQos2Ack(0x70, 17), '新交换未完成');
             mqttWrite($subscriber, mqttQos2Ack(0x50, 2, $version === 5 ? 0x87 : null));
             if ($version === 5) {
-                mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'qos2-subscriber-5' AND state = 'rejected' AND ack_reason = 135")->fetchColumn() === 1, '负 PUBREC 未持久终结');
+                mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'qos2-subscriber-5' AND state = 'rejected' AND ack_reason = 135")->fetchColumn() === 1, '负 PUBREC 未持久终结');
                 mqttQuiet($subscriber);
             } else {
                 expect(mqttRead($subscriber) === mqttQos2Ack(0x62, 2), '第二份 PUBREL 缺失');
                 mqttWrite($subscriber, mqttQos2Ack(0x70, 2));
             }
             mqttDatabaseIdle($primary);
-            expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 2, '重复握手产生多次持久交付');
+            expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 2, '重复握手产生多次持久交付');
             $cases += 12;
             fclose($publisher);
             fclose($subscriber);
         }
         foreach ([4, 5] as $version) {
             $packets = [mqttQos2Ack(0x50, 0), mqttQos2Ack(0x62, 0), mqttQos2Ack(0x70, 0),
-                mqttQos2Ack(0x60, 1), mqttQos2Ack(0x6a, 1), mqttQos2Ack(0x50, 1, 0x7f),
+                mqttQos2Ack(0x60, 1), mqttQos2Ack(0x6A, 1), mqttQos2Ack(0x50, 1, 0x7F),
                 mqttPacket(0x62, "\0\x01\0\x03\x21\0\x01"), mqttPacket(0x70, "\0\x01\0\x02\x1f\0")];
             foreach ($packets as $index => $packet) {
                 $invalid = mqttSocket($port);
@@ -151,7 +151,7 @@ function mqttQos2Cases(int $port, PDO $primary, PDO $standby): array
                 $reply = mqttRead($invalid);
                 expect($version === 4 ? $reply === '' : str_starts_with($reply, "\xe0\x02"), '非法 QoS 2 控制报文未拒绝');
                 fclose($invalid);
-                $cases++;
+                ++$cases;
             }
         }
         // 接收额度覆盖 QoS 2 到 PUBCOMP 的整个交换，PUBREC 不能提前归还发送窗口。
@@ -173,7 +173,7 @@ function mqttQos2Cases(int $port, PDO $primary, PDO $standby): array
         expect(mqttRead($publisher) === "\xe0\x02\x97\0", 'PUBREC 提前归还 QoS 2 窗口');
         mqttQuiet($subscriber);
         mqttWrite($subscriber, mqttQos2Ack(0x70, 1, 0x92));
-        mqttUntil(fn (): bool => (int) $standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'qos2-window-s' AND state = 'not_found'")->fetchColumn() === 1, 'PUBCOMP 0x92 被记作成功送达');
+        mqttUntil(fn (): bool => (int)$standby->query("SELECT COUNT(*) FROM type_mqtt_deliveries WHERE client_id = 'qos2-window-s' AND state = 'not_found'")->fetchColumn() === 1, 'PUBCOMP 0x92 被记作成功送达');
         fclose($publisher);
         fclose($subscriber);
         $cases += 3;
@@ -231,7 +231,7 @@ function mqttQos2Cases(int $port, PDO $primary, PDO $standby): array
         mqttQuiet($publisher);
         $standby->query('SELECT pg_wal_replay_resume()')->fetchColumn();
         expect(mqttRead($publisher) === mqttQos2Ack(0x70, 7) && mqttRead($publisher) === mqttQos2Ack(0x70, 7), '重复 PUBREL 丢失 PUBCOMP');
-        expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/qos2-pending'")->fetchColumn() === 1, '在途重复被再次持久接管');
+        expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = 'example/qos2-pending'")->fetchColumn() === 1, '在途重复被再次持久接管');
         fclose($publisher);
         $cases += 4;
         // 每个新增持久推进阶段都在真实 SyncRep 中取消；可见状态不能换成成功协议响应。
@@ -270,14 +270,14 @@ function mqttQos2Cases(int $port, PDO $primary, PDO $standby): array
             mqttWrite($affected, $input);
             $backend = mqttUntil(fn (): mixed => $primary->query("SELECT pid FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%' AND wait_event = 'SyncRep'")->fetchColumn(), 'QoS 2 阶段没有进入真实 SyncRep');
             mqttQuiet($affected);
-            $primary->query('SELECT pg_cancel_backend(' . (int) $backend . ')')->fetchColumn();
+            $primary->query('SELECT pg_cancel_backend(' . (int)$backend . ')')->fetchColumn();
             expect(mqttRead($affected) === "\xe0\x02\x83\0", '未知 QoS 2 同步结果未返回标准 Implementation specific error');
-            mqttUntil(fn (): bool => (int) $primary->query('SELECT COUNT(*) FROM pg_stat_activity WHERE pid = ' . (int) $backend)->fetchColumn() === 0, 'QoS 2 取消后遗留后端');
+            mqttUntil(fn (): bool => (int)$primary->query('SELECT COUNT(*) FROM pg_stat_activity WHERE pid = ' . (int)$backend)->fetchColumn() === 0, 'QoS 2 取消后遗留后端');
             $standby->query('SELECT pg_wal_replay_resume()')->fetchColumn();
             fclose($publisher);
             fclose($subscriber);
             mqttDatabaseIdle($primary);
-            expect((int) $standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '未知事实被删除或自动重复接管');
+            expect((int)$standby->query("SELECT COUNT(*) FROM type_mqtt_messages WHERE topic = '" . $topic . "'")->fetchColumn() === 1, '未知事实被删除或自动重复接管');
             $failures[$stage] = 'unknown-without-success-response-backend-released';
             $cases += 3;
         }

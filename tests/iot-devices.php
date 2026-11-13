@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Type\Testing\Process;
 
 /** 通过双端真实HTTP登记设备；数据库仅用于核对持久事实和确定性并发故障装置。 */
 function iotDeviceChecks(Closure $appRequest, PDO $database, string $driver, string $address, string $platform, string $password): array
@@ -165,7 +166,7 @@ function iotDeviceChecks(Closure $appRequest, PDO $database, string $driver, str
         $call('POST', $rolePath . '/' . $editRole['id'] . '/status', $actor, ['version' => 2, 'enabled' => false], $scopeHeaders);
         $request('PATCH', $target, $editor, $tenant, ['name' => '撤权写入', 'version' => $renamed['version']], 403, 'permission_denied');
     }
-    $before = (int) $renamed['version'];
+    $before = (int)$renamed['version'];
     $races = identityCompete($database, $driver, $address, [
         ['PATCH', $assetPath, $platform, ['name' => '平台竞争', 'version' => $before]],
         ['PATCH', $detailPath, $admin, ['name' => '客户竞争', 'version' => $before], $headers],
@@ -238,12 +239,12 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
     file_put_contents($base . '/private.pem', $privatePem);
     chmod($base . '/private.pem', 0600);
     $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $message);
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
     $environment['IOT_MQTT_COMMAND'] ??= json_encode($command, JSON_THROW_ON_ERROR);
     $environment['IOT_MQTT_CERTIFICATE'] = 'certificate.pem';
     $environment['IOT_MQTT_PRIVATE_KEY'] = 'private.pem';
-    $environment['IOT_MQTT_PORT'] = (string) $port;
+    $environment['IOT_MQTT_PORT'] = (string)$port;
     $environment['IOT_MQTT_NODE_ID'] = 't14-test';
     $ha = in_array('--ha', $GLOBALS['argv'], true);
     $cluster = in_array('--cluster', $GLOBALS['argv'], true);
@@ -269,28 +270,28 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
     $process = null;
     $clientFixtureFile = $base . '/device-client-fixture.json';
     try {
-        $installed = (new Type\Testing\Process([...$command, 'iot:mqtt-install'], $root, $environment))->wait(15);
+        $installed = (new Process([...$command, 'iot:mqtt-install'], $root, $environment))->wait(15);
         expect($installed->successful(), '应用MQTT存储安装失败：' . $installed->stderr);
         if (in_array('--operations-quarantine-only', $GLOBALS['argv'], true)) {
             expect(in_array('--operations', $GLOBALS['argv'], true), '隔离专项需要运行概览入口');
             return ['scope' => 'operations-quarantine-only', 'operations_quarantine' => iotOperationsQuarantine($command, $environment, $evidence, $database)];
         }
-        $start = static function () use ($command, $environment, $port, $root, $database, $ha): Type\Testing\Process {
+        $start = static function () use ($command, $environment, $port, $root, $database, $ha): Process {
             // 调用者已确认旧进程退出；强杀没有停止观察，按真实有效期等待同名节点可重新登记。
             // HA故障会关闭旧主连接；观察须重新经受测写入口建立，不能复用测试控制器的旧PDO。
             $observationDatabase = $ha ? $GLOBALS['postgresHa']->connection($environment['DB_DATABASE']) : $database;
             $until = microtime(true) + 20;
-            $observation = $observationDatabase->prepare('SELECT expires_at FROM broker_resource_runs WHERE node_id = ?');
-            do {
+            $observation = $observationDatabase->prepare('SELECT expires_at FROM platform_mqtt_resource_run WHERE node_id = ?');
+            while (true) {
                 $observation->execute([$environment['IOT_MQTT_NODE_ID']]);
                 $expiresAt = $observation->fetchColumn();
-                if ($expiresAt === false || (int) $expiresAt <= time()) {
+                if ($expiresAt === false || (int)$expiresAt <= time()) {
                     break;
                 }
                 expect(microtime(true) < $until, '旧节点观察未在既定有效期内结束');
                 usleep(20000);
-            } while (true);
-            $process = new Type\Testing\Process([...$command, 'iot:mqtt'], $root, $environment);
+            }
+            $process = new Process([...$command, 'iot:mqtt'], $root, $environment);
             try {
                 $until = microtime(true) + 10;
                 do {
@@ -320,11 +321,11 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
             require_once __DIR__ . '/iot-reassignments.php';
             return iotReassignmentMqttChecks($command, $clientEnvironment, $base, $database, $process);
         }
-        $run = static function (string $mode, Type\Testing\Process $broker) use ($clientEnvironment, $root, $database, $base, &$cases): void {
-            $client = new Type\Testing\Process(
+        $run = static function (string $mode, Process $broker) use ($clientEnvironment, $root, $database, $base, &$cases): void {
+            $client = new Process(
                 ['node', $root . '/tests/iot-device-client.mjs', $mode],
                 $root,
-                $clientEnvironment + ['TYPE_DEVICE_BROKER_PID' => (string) $broker->pid()]
+                $clientEnvironment + ['TYPE_DEVICE_BROKER_PID' => (string)$broker->pid()]
             );
             try {
                 // 通信授权及资源分页包含多次发布、查询和持久确认；整组预算不改变单次协议/撤权期限。
@@ -342,7 +343,7 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
                     $broker->stop(15);
                 }
                 expect($result->successful(), '设备标准客户端验证失败（mode=' . $mode . ', exit=' . $result->exitCode
-                    . ', timeout=' . (int) $result->timedOut . ', outputExceeded=' . (int) $result->outputExceeded
+                    . ', timeout=' . (int)$result->timedOut . ', outputExceeded=' . (int)$result->outputExceeded
                     . ', signal=' . ($result->signal ?? 'none') . '）：'
                     . $result->stderr . $result->stdout . $broker->stderr() . $broker->stdout());
                 $cases[$mode][] = json_decode(trim($result->stdout), true, 8, JSON_THROW_ON_ERROR);
@@ -353,11 +354,11 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
         if (in_array('--communication-mqtt', $GLOBALS['argv'], true)) {
             $before = [];
             foreach (['iot_models', 'iot_ingestion_facts', 'iot_alarms', 'iot_commands'] as $table) {
-                $before[$table] = (int) $database->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
+                $before[$table] = (int)$database->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
             }
             $run('communication', $process);
             foreach ($before as $table => $count) {
-                expect((int) $database->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn() === $count, '原始通信不能进入旧处理链：' . $table);
+                expect((int)$database->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn() === $count, '原始通信不能进入旧处理链：' . $table);
             }
             expect($process->stop(15)->successful(), '设备应用通信节点没有正常退出');
             return ['client' => 'MQTT.js 5.15.0', 'tls' => true, 'cases' => $cases, 'no_legacy_processing' => true, 'broker_stopped' => true];
@@ -368,13 +369,13 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
             return ['client' => 'MQTT.js 5.15.0', 'tls' => true, 'cases' => $cases, 'broker_stopped' => true];
         }
         if (in_array('--registration-mqtt', $GLOBALS['argv'], true)) {
-            $rawBefore = (int) $database->query('SELECT COUNT(*) FROM iot_devices WHERE model_version IS NULL')->fetchColumn();
-            $telemetryBefore = (int) $database->query('SELECT COUNT(*) FROM iot_ingestion_facts')->fetchColumn();
-            $modelsBefore = (int) $database->query('SELECT COUNT(*) FROM iot_models')->fetchColumn();
+            $rawBefore = (int)$database->query('SELECT COUNT(*) FROM iot_devices WHERE model_version IS NULL')->fetchColumn();
+            $telemetryBefore = (int)$database->query('SELECT COUNT(*) FROM iot_ingestion_facts')->fetchColumn();
+            $modelsBefore = (int)$database->query('SELECT COUNT(*) FROM iot_models')->fetchColumn();
             $run('registration', $process);
-            expect((int) $database->query('SELECT COUNT(*) FROM iot_ingestion_facts')->fetchColumn() === $telemetryBefore
-                && (int) $database->query('SELECT COUNT(*) FROM iot_models')->fetchColumn() === $modelsBefore, '原始设备注册和上行创建了物模型或遥测');
-            expect((int) $database->query('SELECT COUNT(*) FROM iot_devices WHERE model_version IS NULL')->fetchColumn() === $rawBefore + 2, '真实接入没有使用注册资格创建的设备');
+            expect((int)$database->query('SELECT COUNT(*) FROM iot_ingestion_facts')->fetchColumn() === $telemetryBefore
+                && (int)$database->query('SELECT COUNT(*) FROM iot_models')->fetchColumn() === $modelsBefore, '原始设备注册和上行创建了物模型或遥测');
+            expect((int)$database->query('SELECT COUNT(*) FROM iot_devices WHERE model_version IS NULL')->fetchColumn() === $rawBefore + 2, '真实接入没有使用注册资格创建的设备');
             $retained = $database->query("SELECT encode(payload, 'hex') FROM type_mqtt_retained WHERE topic LIKE '%/raw/up'")->fetchAll(PDO::FETCH_COLUMN);
             expect($retained !== [] && array_values(array_unique($retained)) === ['00ff80110a41'], '原始二进制消息没有按原字节持久保存');
             expect($process->stop(15)->successful(), '注册接入节点没有正常退出');
@@ -450,7 +451,7 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
         $willCount = static function (string $outcome) use ($database, $evidence): int {
             $query = $database->prepare('SELECT COUNT(*) FROM type_mqtt_will_audit WHERE client_id = ? AND outcome = ?');
             $query->execute([$evidence['device']['id'], $outcome]);
-            return (int) $query->fetchColumn();
+            return (int)$query->fetchColumn();
         };
         $awaitWill = static function (string $outcome, int $previous) use ($willCount, $process): void {
             $until = microtime(true) + 16;
@@ -514,7 +515,7 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
         expect(!$process->running(), '故障Broker未退出');
         $process = $start();
         $run('restart', $process);
-        $faultClient = new Type\Testing\Process(['node', $root . '/tests/iot-device-client.mjs', 'observation-failure'], $root, $clientEnvironment);
+        $faultClient = new Process(['node', $root . '/tests/iot-device-client.mjs', 'observation-failure'], $root, $clientEnvironment);
         try {
             $until = microtime(true) + 15;
             do {
@@ -539,7 +540,7 @@ function iotDeviceMqttChecks(Closure $request, array $evidence, array $command, 
             $faultClient->stop();
         }
         expect(
-            (int) $database->query("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0,
+            (int)$database->query("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name LIKE 'type_mqtt_%'")->fetchColumn() === 0,
             '接入工作进程退出后仍留有数据库后端'
         );
         $process = $start();

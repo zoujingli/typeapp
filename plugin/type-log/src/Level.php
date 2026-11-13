@@ -12,7 +12,7 @@ final class Level
     /**
      * 严格接受标准小写级别，不隐式转换数字或对象。
      *
-     * @throws InvalidArgumentException 级别不是有效的 PSR-3 字符串。
+     * @throws InvalidArgumentException 级别不是有效的 PSR-3 字符串
      */
     public static function weight(mixed $level): int
     {

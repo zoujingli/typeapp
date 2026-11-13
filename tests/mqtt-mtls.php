@@ -5,8 +5,8 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-use Type\Testing\Process;
 use Type\Mqtt\CertificateRevocationList;
+use Type\Testing\Process;
 
 /**
  * 专用 mTLS 入口：Swoole 校验客户端证书链，Broker 再核用途、有效期和签名 CRL。
@@ -14,7 +14,6 @@ use Type\Mqtt\CertificateRevocationList;
  * `--native` 另做独立消费者全量 AOT；`--crl-only` 单独复现 PHP HTTPS 刷新闭环。
  * 不覆盖管理端登记、换证页面或集群 5 秒证明。
  */
-
 function mqttMtlsField(string $value): string
 {
     return pack('n', strlen($value)) . $value;
@@ -63,7 +62,7 @@ function mqttMtlsPort(string $host = '127.0.0.1'): int
     $address = str_contains($host, ':') ? '[' . $host . ']' : $host;
     $listener = stream_socket_server('tcp://' . $address . ':0', $errno, $error);
     expect(is_resource($listener), '无法分配临时端口：' . $host . ' ' . $error);
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
     return $port;
 }
@@ -83,7 +82,7 @@ function mqttMtlsPhp(): array
 function mqttMtlsExtensionArgs(array $extensions, bool $forChild = false): array
 {
     $arguments = [];
-    $directory = (string) ini_get('extension_dir');
+    $directory = (string)ini_get('extension_dir');
     // 子进程继承 INI，但不继承父进程命令行的 -d 扩展配置。
     $loaded = $forChild
         ? json_decode(successful([PHP_BINARY, '-r', 'echo json_encode(get_loaded_extensions(), JSON_THROW_ON_ERROR);']), true, 32, JSON_THROW_ON_ERROR)
@@ -94,7 +93,7 @@ function mqttMtlsExtensionArgs(array $extensions, bool $forChild = false): array
         }
         $module = $directory . '/' . $extension . '.so';
         if ($extension === 'swoole') {
-            $module = (string) (getenv('TYPE_SWOOLE_MODULE') ?: $module);
+            $module = (string)(getenv('TYPE_SWOOLE_MODULE') ?: $module);
         }
         if (!is_file($module)) {
             continue;
@@ -250,11 +249,11 @@ function mqttMtlsCertificates(string $directory): array
     mqttMtlsIssue($directory, 'server', '20200101000000Z', '20200102000000Z', $directory . '/expired-server-leaf.pem', 11, 'intermediate.pem', 'intermediate.key', 'server.csr');
     mqttMtlsIssue($directory, 'client', gmdate('YmdHis', time() - 3600) . 'Z', gmdate('YmdHis', time() + 86400 * 30) . 'Z', $directory . '/wrong-server-leaf.pem', 12, 'intermediate.pem', 'intermediate.key', 'server.csr');
     mqttMtlsIssue($directory, 'server', '20400101000000Z', '20400102000000Z', $directory . '/future-server-leaf.pem', 13, 'intermediate.pem', 'intermediate.key', 'server.csr');
-    expect(file_put_contents($paths['expiredServer'], (string) file_get_contents($directory . '/expired-server-leaf.pem') . $intPem) !== false, '无法写出过期服务端证书链');
-    expect(file_put_contents($paths['wrongServer'], (string) file_get_contents($directory . '/wrong-server-leaf.pem') . $intPem) !== false, '无法写出错误用途服务端证书链');
-    expect(file_put_contents($paths['futureServer'], (string) file_get_contents($directory . '/future-server-leaf.pem') . $intPem) !== false, '无法写出尚未生效服务端证书链');
+    expect(file_put_contents($paths['expiredServer'], (string)file_get_contents($directory . '/expired-server-leaf.pem') . $intPem) !== false, '无法写出过期服务端证书链');
+    expect(file_put_contents($paths['wrongServer'], (string)file_get_contents($directory . '/wrong-server-leaf.pem') . $intPem) !== false, '无法写出错误用途服务端证书链');
+    expect(file_put_contents($paths['futureServer'], (string)file_get_contents($directory . '/future-server-leaf.pem') . $intPem) !== false, '无法写出尚未生效服务端证书链');
     mqttMtlsIssue($directory, 'sni', '20200101000000Z', '20200102000000Z', $directory . '/expired-sni-leaf.pem', 14, 'intermediate.pem', 'intermediate.key', 'sni.csr');
-    expect(file_put_contents($paths['expiredSni'], (string) file_get_contents($directory . '/expired-sni-leaf.pem') . $intPem) !== false, '无法写出过期 SNI 证书链');
+    expect(file_put_contents($paths['expiredSni'], (string)file_get_contents($directory . '/expired-sni-leaf.pem') . $intPem) !== false, '无法写出过期 SNI 证书链');
     mqttMtlsRevokeFile($paths['revoke'], [mqttMtlsSerial($paths['platform'])]);
     mqttMtlsOverlapFile($paths['overlap'], []);
     mqttMtlsCrl($directory, $paths['crl'], ['04']);
@@ -264,7 +263,7 @@ function mqttMtlsCertificates(string $directory): array
 /**
  * 建立 5 秒超时的测试 TLS 连接，独立指定连接地址与证书主机名，并可携带客户端证书。
  *
- * @return resource 成功连接及捕获的证书信息由调用者使用，连接由调用者关闭。
+ * @return resource 成功连接及捕获的证书信息由调用者使用，连接由调用者关闭
  */
 function mqttMtlsSocket(int $port, string $ca, ?string $client = null, ?string $clientKey = null, int $crypto = STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT, string $ciphers = '', string $peer = '127.0.0.1', string $connectHost = ''): mixed
 {
@@ -439,7 +438,7 @@ function mqttMtlsWsFrame(string $payload, int $opcode = 0x2): string
     }
     $mask = random_bytes(4);
     $masked = '';
-    for ($i = 0; $i < $length; $i++) {
+    for ($i = 0; $i < $length; ++$i) {
         $masked .= $payload[$i] ^ $mask[$i % 4];
     }
     return $header . $mask . $masked;
@@ -458,8 +457,8 @@ function mqttMtlsWsRead(mixed $socket): string
         expect($chunk !== false && $chunk !== '', 'WebSocket 帧头读取失败');
         $header .= $chunk;
     }
-    $opcode = ord($header[0]) & 0x0f;
-    $length = ord($header[1]) & 0x7f;
+    $opcode = ord($header[0]) & 0x0F;
+    $length = ord($header[1]) & 0x7F;
     $masked = (ord($header[1]) & 0x80) !== 0;
     if ($length === 126) {
         $extended = fread($socket, 2);
@@ -483,7 +482,7 @@ function mqttMtlsWsRead(mixed $socket): string
     }
     if ($masked) {
         $decoded = '';
-        for ($i = 0; $i < $length; $i++) {
+        for ($i = 0; $i < $length; ++$i) {
             $decoded .= $payload[$i] ^ $mask[$i % 4];
         }
         $payload = $decoded;
@@ -492,7 +491,7 @@ function mqttMtlsWsRead(mixed $socket): string
         $code = strlen($payload) >= 2 ? unpack('n', substr($payload, 0, 2))[1] : 0;
         throw new RuntimeException('WebSocket 已关闭：' . $code);
     }
-    if ($opcode === 0x9 || $opcode === 0xa) {
+    if ($opcode === 0x9 || $opcode === 0xA) {
         return mqttMtlsWsRead($socket);
     }
     return $payload;
@@ -501,7 +500,7 @@ function mqttMtlsWsRead(mixed $socket): string
 /** 读取 PEM 证书文件，返回小写无冒号的 SHA-256 指纹用于证书身份比对。 */
 function mqttMtlsFingerprint(string $pem): string
 {
-    $certificate = openssl_x509_read((string) file_get_contents($pem));
+    $certificate = openssl_x509_read((string)file_get_contents($pem));
     expect($certificate !== false, '无法读取测试证书');
     $fingerprint = openssl_x509_fingerprint($certificate, 'sha256', false);
     expect(is_string($fingerprint), '无法计算证书指纹');
@@ -513,7 +512,7 @@ function mqttMtlsIssue(string $directory, string $extensions, string $notBefore,
 {
     successful([
         'openssl', 'x509', '-req', '-in', $directory . '/' . $csr, '-CA', $directory . '/' . $issuer, '-CAkey', $directory . '/' . $issuerKey,
-        '-set_serial', (string) $serial, '-extfile', $directory . '/openssl.cnf', '-extensions', $extensions,
+        '-set_serial', (string)$serial, '-extfile', $directory . '/openssl.cnf', '-extensions', $extensions,
         '-not_before', $notBefore, '-not_after', $notAfter, '-out', $output,
     ]);
     expect(is_file($output) && is_readable($output), '无法签发测试证书');
@@ -567,10 +566,10 @@ function mqttMtlsOverlapFile(string $path, array $lines): void
 /** 运行本轮 mTLS 测试专属 HTTPS CRL 源，参数来自显式测试环境；服务端不要求客户端证书。 */
 function mqttMtlsServeCrlHttps(): void
 {
-    $port = (int) getenv('MQTT_MTLS_CRL_HTTPS_PORT');
-    $file = (string) getenv('MQTT_MTLS_CRL_HTTPS_FILE');
-    $certificate = (string) getenv('MQTT_CERTIFICATE');
-    $privateKey = (string) getenv('MQTT_PRIVATE_KEY');
+    $port = (int)getenv('MQTT_MTLS_CRL_HTTPS_PORT');
+    $file = (string)getenv('MQTT_MTLS_CRL_HTTPS_FILE');
+    $certificate = (string)getenv('MQTT_CERTIFICATE');
+    $privateKey = (string)getenv('MQTT_PRIVATE_KEY');
     expect($port > 0 && is_file($file) && is_file($certificate) && is_file($privateKey), 'HTTPS CRL 源配置无效');
     $context = stream_context_create(['ssl' => [
         'local_cert' => $certificate,
@@ -603,7 +602,7 @@ function mqttMtlsServeCrlHttps(): void
                 break;
             }
         }
-        $body = (string) file_get_contents($file);
+        $body = (string)file_get_contents($file);
         $wire = 'HTTP/1.0 200 OK' . "\r\n" . 'Content-Type: application/pkix-crl' . "\r\n"
             . 'Content-Length: ' . strlen($body) . "\r\n" . 'Connection: close' . "\r\n\r\n" . $body;
         @fwrite($client, $wire);
@@ -643,7 +642,7 @@ function mqttMtlsCrlRefresh(array $launcher, array $php, string $root, string $c
     $httpsPort = mqttMtlsPort();
     $https = new Process([...$php, __FILE__], $root, array_replace($environment, [
         'MQTT_MTLS_CRL_HTTPS' => '1',
-        'MQTT_MTLS_CRL_HTTPS_PORT' => (string) $httpsPort,
+        'MQTT_MTLS_CRL_HTTPS_PORT' => (string)$httpsPort,
         'MQTT_MTLS_CRL_HTTPS_FILE' => $certs['crl'],
     ]));
     try {
@@ -663,9 +662,9 @@ function mqttMtlsCrlRefresh(array $launcher, array $php, string $root, string $c
             $ack = mqttMtlsRead($live);
             expect(ord($ack[0]) === 0x20 && ord($ack[3]) === 0, 'HTTPS CRL 刷新前 CONNECT 失败：' . bin2hex($ack));
             // 吊销列表本身有效，但整个 HTTP 正文超限；不能写入缓存或断开当前合法连接。
-            $accepted = (string) file_get_contents($crlCache);
+            $accepted = (string)file_get_contents($crlCache);
             mqttMtlsCrl(dirname($certs['crl']), $certs['crl'], ['04', mqttMtlsSerial($certs['client'])]);
-            $revoked = (string) file_get_contents($certs['crl']);
+            $revoked = (string)file_get_contents($certs['crl']);
             expect(file_put_contents($certs['crl'], $revoked . str_repeat("\n", 1048577)) !== false, '无法写入超限 CRL 装置');
             usleep(2200000);
             expect(file_get_contents($crlCache) === $accepted, '超限 HTTPS 响应覆盖了已接纳 CRL');
@@ -690,7 +689,7 @@ function mqttMtlsCrlRefresh(array $launcher, array $php, string $root, string $c
 /** 读取 PEM 文件中的证书序列号并按吊销列表规则统一十六进制表示。 */
 function mqttMtlsSerial(string $pem): string
 {
-    $certificate = openssl_x509_read((string) file_get_contents($pem));
+    $certificate = openssl_x509_read((string)file_get_contents($pem));
     expect($certificate !== false, '无法读取测试证书序列号');
     $parsed = openssl_x509_parse($certificate, false);
     expect(is_array($parsed) && isset($parsed['serialNumberHex']) && is_string($parsed['serialNumberHex']), '无法解析证书序列号');
@@ -700,7 +699,7 @@ function mqttMtlsSerial(string $pem): string
 /** 读取 PEM 文件中证书的到期时间，返回 Unix 秒数。 */
 function mqttMtlsNotAfter(string $pem): int
 {
-    $certificate = openssl_x509_read((string) file_get_contents($pem));
+    $certificate = openssl_x509_read((string)file_get_contents($pem));
     expect($certificate !== false, '无法读取测试证书有效期');
     $parsed = openssl_x509_parse($certificate, false);
     expect(is_array($parsed) && isset($parsed['validTo_time_t']) && is_int($parsed['validTo_time_t']), '无法解析证书到期时间');
@@ -710,7 +709,7 @@ function mqttMtlsNotAfter(string $pem): int
 /**
  * 在秒数轮询预算内发送 PING 并观察断开，过滤 PINGRESP 后返回 DISCONNECT 或剩余字节供调用方断言。
  *
- * @param resource $socket 连接由调用者持有并关闭。
+ * @param resource $socket 连接由调用者持有并关闭
  */
 function mqttMtlsAwaitDisconnect(mixed $socket, float $seconds): string
 {
@@ -730,10 +729,10 @@ function mqttMtlsAwaitDisconnect(mixed $socket, float $seconds): string
             $wire .= $chunk;
             while ($wire !== '') {
                 $type = ord($wire[0]) >> 4;
-                if ($type === 0xe && strlen($wire) >= 4) {
+                if ($type === 0xE && strlen($wire) >= 4) {
                     return substr($wire, 0, 4);
                 }
-                if ($type === 0xd && strlen($wire) >= 2) {
+                if ($type === 0xD && strlen($wire) >= 2) {
                     $wire = substr($wire, 2);
                     continue;
                 }
@@ -753,7 +752,7 @@ function mqttMtlsAwaitDisconnect(mixed $socket, float $seconds): string
 /**
  * 在秒数轮询预算内以 PING 探测关闭，写失败、EOF 或 DISCONNECT 均视为关闭；超时返回 false。
  *
- * @param resource $socket 连接由调用者持有并关闭。
+ * @param resource $socket 连接由调用者持有并关闭
  */
 function mqttMtlsClosed(mixed $socket, float $seconds): bool
 {
@@ -770,10 +769,10 @@ function mqttMtlsClosed(mixed $socket, float $seconds): bool
         }
         if (is_string($chunk) && $chunk !== '') {
             $type = ord($chunk) >> 4;
-            if ($type === 0xe) {
+            if ($type === 0xE) {
                 return true;
             }
-            if ($type === 0xd) {
+            if ($type === 0xD) {
                 @fread($socket, 1);
                 continue;
             }
@@ -849,7 +848,7 @@ function mqttMtlsWsHandshake(int $port, string $ca, ?string $client = null, ?str
 /**
  * 把 MQTT 报文封装为客户端二进制 WSS 帧，要求一次完整写出。
  *
- * @param resource $socket 连接仍由调用者负责关闭。
+ * @param resource $socket 连接仍由调用者负责关闭
  */
 function mqttMtlsWsWrite(mixed $socket, string $packet): void
 {
@@ -903,7 +902,7 @@ function mqttMtlsPhpxHome(string $consumer): string
     foreach (['phpx_exception_policy.h', 'phpx_cast_policy.h'] as $header) {
         expect(is_file($locked . '/' . $header) && copy($locked . '/' . $header, $home . '/include/' . $header), '无法覆盖 PHPX 策略头文件');
     }
-    $phpx = (string) file_get_contents($home . '/include/phpx.h');
+    $phpx = (string)file_get_contents($home . '/include/phpx.h');
     if (!str_contains($phpx, 'phpx_exception_policy.h')) {
         $needle = "#include \"phpx_native_gc.h\"\n";
         expect(str_contains($phpx, $needle), 'PHPX 头文件缺少 native_gc 插入点');
@@ -1184,7 +1183,7 @@ try {
         $shortAck = mqttMtlsRead($short);
         expect(ord($shortAck[0]) === 0x20 && ord($shortAck[3]) === 0, '短时证书 CONNECT 失败：' . bin2hex($shortAck));
         expect(!mqttMtlsClosed($short, 2.0), '证书尚未到期会话已被断开');
-        expect(mqttMtlsClosed($short, (float) max(5, $expires - time() + 5)), '客户端证书到期后已连接会话没有断开');
+        expect(mqttMtlsClosed($short, (float)max(5, $expires - time() + 5)), '客户端证书到期后已连接会话没有断开');
         fclose($short);
         $verified['expire-live'] = true;
 
@@ -1192,7 +1191,7 @@ try {
         $liveLeaf = $liveDir . '/live-server-leaf.pem';
         $liveChain = $liveDir . '/live-server.pem';
         mqttMtlsIssue($liveDir, 'server', gmdate('YmdHis', time() - 60) . 'Z', gmdate('YmdHis', time() + 15) . 'Z', $liveLeaf, 15, 'intermediate.pem', 'intermediate.key', 'server.csr');
-        expect(file_put_contents($liveChain, (string) file_get_contents($liveLeaf) . (string) file_get_contents($liveDir . '/intermediate.pem')) !== false, '无法写出短时服务端证书链');
+        expect(file_put_contents($liveChain, (string)file_get_contents($liveLeaf) . (string)file_get_contents($liveDir . '/intermediate.pem')) !== false, '无法写出短时服务端证书链');
         $liveExpires = mqttMtlsNotAfter($liveChain);
         expect($liveExpires - time() >= 8, '短时服务端证书剩余有效期过短');
         $liveTls = mqttMtlsPort();
@@ -1210,8 +1209,8 @@ try {
             $liveAck = mqttMtlsRead($liveClient);
             expect(ord($liveAck[0]) === 0x20 && ord($liveAck[3]) === 0, '短时服务端证书 CONNECT 失败：' . bin2hex($liveAck));
             expect(!mqttMtlsClosed($liveClient, 2.0), '服务端证书尚未到期会话已被断开');
-            $stop = mqttMtlsAwaitDisconnect($liveClient, (float) max(6, $liveExpires - time() + 4));
-            expect(strlen($stop) >= 3 && ord($stop[0]) === 0xe0 && ord($stop[2]) === 0x8b, '服务端证书到期没有 DISCONNECT 0x8b：' . bin2hex($stop));
+            $stop = mqttMtlsAwaitDisconnect($liveClient, (float)max(6, $liveExpires - time() + 4));
+            expect(strlen($stop) >= 3 && ord($stop[0]) === 0xE0 && ord($stop[2]) === 0x8B, '服务端证书到期没有 DISCONNECT 0x8b：' . bin2hex($stop));
             fclose($liveClient);
             $lateFailed = false;
             try {
@@ -1247,7 +1246,7 @@ try {
         $idle = mqttMtlsRead($keepAlive);
         $elapsed = microtime(true) - $keepStarted;
         expect($idle === "\xe0\x02\x8d\x00", 'mTLS Keep Alive 超时没有 DISCONNECT 0x8d：' . bin2hex($idle));
-        expect($elapsed >= 1.3 && $elapsed < 2.8, 'mTLS Keep Alive 没有按 1.5 倍超时：' . (string) $elapsed);
+        expect($elapsed >= 1.3 && $elapsed < 2.8, 'mTLS Keep Alive 没有按 1.5 倍超时：' . (string)$elapsed);
         fclose($keepAlive);
         $verified['keep-alive'] = true;
 
@@ -1327,7 +1326,7 @@ try {
 
         expect(mqttMtlsRejected($mtlsPort, $certs['ca'], $certs['rotated'], $certs['clientKey'], 'mtls-rotated-before'), '未进入重叠窗口的换证证书已被接受');
         $verified['reject-overlap-before'] = true;
-        mqttMtlsOverlapFile($certs['overlap'], [mqttMtlsFingerprint($certs['rotated']) . ' ' . (string) (time() + 30)]);
+        mqttMtlsOverlapFile($certs['overlap'], [mqttMtlsFingerprint($certs['rotated']) . ' ' . (string)(time() + 30)]);
         usleep(200000);
         $overlapLive = mqttMtlsSocket($mtlsPort, $certs['ca'], $certs['rotated'], $certs['clientKey']);
         mqttMtlsWrite($overlapLive, mqttMtlsConnect('mtls-overlap-live', false));
@@ -1335,8 +1334,8 @@ try {
         expect(ord($overlapAck[0]) === 0x20 && ord($overlapAck[3]) === 0, '换证重叠窗口内 CONNECT 失败：' . bin2hex($overlapAck));
         $verified['overlap-accept'] = true;
         mqttMtlsOverlapFile($certs['overlap'], [
-            mqttMtlsFingerprint($certs['rotated']) . ' ' . (string) (time() + 30),
-            mqttMtlsFingerprint($certs['revoked']) . ' ' . (string) (time() + 30),
+            mqttMtlsFingerprint($certs['rotated']) . ' ' . (string)(time() + 30),
+            mqttMtlsFingerprint($certs['revoked']) . ' ' . (string)(time() + 30),
         ]);
         expect(mqttMtlsRejected($mtlsPort, $certs['ca'], $certs['revoked'], $certs['clientKey'], 'mtls-overlap-revoked'), '重叠窗口给了已吊销证书宽限');
         $verified['overlap-no-revoke-grace'] = true;
@@ -1346,7 +1345,7 @@ try {
         $verified['overlap-live'] = true;
         expect(mqttMtlsRejected($mtlsPort, $certs['ca'], $certs['rotated'], $certs['clientKey'], 'mtls-overlap-ended'), '重叠结束后旧证书仍被接受');
         $verified['overlap-ended'] = true;
-        mqttMtlsOverlapFile($certs['overlap'], [mqttMtlsFingerprint($certs['rotated']) . ' ' . (string) (time() + 30)]);
+        mqttMtlsOverlapFile($certs['overlap'], [mqttMtlsFingerprint($certs['rotated']) . ' ' . (string)(time() + 30)]);
         usleep(200000);
         $renewed = mqttMtlsSocket($mtlsPort, $certs['ca'], $certs['rotated'], $certs['clientKey']);
         mqttMtlsWrite($renewed, mqttMtlsConnect('mtls-overlap-renew', false));
@@ -1408,7 +1407,7 @@ try {
 
     if ($native) {
         expect(mkdir($consumer . '/app', 0700, true), '无法创建独立消费者目录');
-        $toolchain = json_decode((string) file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
+        $toolchain = json_decode((string)file_get_contents($root . '/toolchain.lock.json'), true, 512, JSON_THROW_ON_ERROR);
         $repositories = [];
         foreach (['type-mqtt', 'type-core', 'type-runtime', 'type-orm', 'type-orm-pgsql', 'type-build'] as $package) {
             $repositories[] = ['type' => 'path', 'url' => '../../plugin/' . $package,
@@ -1422,7 +1421,7 @@ try {
         file_put_contents($consumer . '/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         copy($root . '/examples/mqtt/main.php', $consumer . '/app/main.php');
         copy($root . '/toolchain.lock.json', $consumer . '/toolchain.lock.json');
-        $module = (string) (getenv('TYPE_SWOOLE_MODULE') ?: ini_get('extension_dir') . '/swoole.so');
+        $module = (string)(getenv('TYPE_SWOOLE_MODULE') ?: ini_get('extension_dir') . '/swoole.so');
         expect(is_file($module), '原生 mTLS 编译需要匹配 SDK 的 Swoole 模块');
         expect(copy($module, $consumer . '/swoole.so'), '无法固定 Swoole 运行模块');
         // TLS 由后续同模块的真实 mTLS、WSS 与 HTTPS 行为证明；OpenSSL 可静态链接，
@@ -1442,7 +1441,7 @@ try {
         putenv('PHPX_HOME=' . mqttMtlsPhpxHome($consumer));
         $buildOutput = successful([PHP_BINARY, ...mqttMtlsExtensionArgs(['pdo_pgsql'], true), $consumer . '/vendor/bin/type', $consumer . '/type-app.json'], $consumer);
         file_put_contents($consumer . '/build.log', $buildOutput);
-        $report = json_decode((string) file_get_contents($consumer . '/build/mqtt/type-app.build.json'), true, 512, JSON_THROW_ON_ERROR);
+        $report = json_decode((string)file_get_contents($consumer . '/build/mqtt/type-app.build.json'), true, 512, JSON_THROW_ON_ERROR);
         $production = array_keys($report['production-packages']);
         sort($production);
         expect($production === ['psr/http-factory', 'psr/http-message', 'psr/http-server-handler', 'psr/http-server-middleware',
@@ -1505,8 +1504,8 @@ try {
         $verified['native'] = [
             'artifact' => $report['sha256'],
             'platform' => PHP_OS_FAMILY,
-            'architecture' => (string) ($report['architecture'] ?? ''),
-            'php' => (string) ($report['php'] ?? ''),
+            'architecture' => (string)($report['architecture'] ?? ''),
+            'php' => (string)($report['php'] ?? ''),
             'mtls' => true,
             'wss' => true,
             'revoke-https' => true,

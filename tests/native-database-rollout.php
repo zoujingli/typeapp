@@ -13,7 +13,7 @@ $root = BuildPlatform::resolve(dirname(__DIR__));
 expect(in_array(PHP_OS_FAMILY, ['Darwin', 'Linux'], true) && posix_geteuid() > 0 && $argc === 5, '用法：非root Linux/macOS PHP tests/native-database-rollout.php <双版本preparation.json> <MySQL根目录> <PostgreSQL根目录> <redis-server>');
 $preparationFile = realpath($argv[1]);
 expect($preparationFile !== false && is_file($preparationFile), '需要已构建的双版本准备清单');
-$prepared = json_decode((string) file_get_contents($preparationFile), true, 512, JSON_THROW_ON_ERROR);
+$prepared = json_decode((string)file_get_contents($preparationFile), true, 512, JSON_THROW_ON_ERROR);
 expect(($prepared['platform'] ?? '') === PHP_OS_FAMILY, '需要本平台原生双版本产物');
 foreach (['old' => '1.0.0', 'new' => '1.1.0'] as $variant => $version) {
     $item = $prepared['variants'][$variant] ?? [];
@@ -48,8 +48,8 @@ try {
             $secrets = $driver === 'sqlite' ? [] : [$environment['TYPE_' . strtoupper($driver) . '_PASSWORD']];
             $output = nativeDatabaseCommand([PHP_BINARY, $root . '/tests/packaged-rollout.php', $preparationFile, $driver, '--native-services'], $environment, $secrets, $work . '/rollout.log', 420);
             expect(preg_match('#新旧原生发布包无源码升级与兼容回滚通过：(.*?/verification\.json)\s*$#u', $output, $matches) === 1, '回滚入口没有返回验证记录');
-            $evidence = json_decode((string) file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
-            $scenario = json_decode((string) file_get_contents($evidence['scenario']), true, 512, JSON_THROW_ON_ERROR);
+            $evidence = json_decode((string)file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
+            $scenario = json_decode((string)file_get_contents($evidence['scenario']), true, 512, JSON_THROW_ON_ERROR);
             $effects = array_column($scenario['effects'], 'id');
             sort($effects);
             expect($evidence['variants'] === $prepared['variants'] && $evidence['services']['execution'] === 'native'

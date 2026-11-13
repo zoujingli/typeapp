@@ -10,7 +10,9 @@ use app\catalog\runtime\FixedClock;
 use app\catalog\runtime\Infrastructure;
 use app\catalog\runtime\QueuePublisher;
 use app\catalog\runtime\WorkObservation;
-use RuntimeException;
+use app\common\bootstrap\Settings;
+use Swoole\Coroutine;
+use Swoole\Timer;
 use Type\Core\BusinessEvents;
 use Type\Core\Configuration;
 use Type\Core\Http\Client;
@@ -18,17 +20,17 @@ use Type\Generated\CommandApplication;
 use Type\Orm\Db;
 use Type\Orm\Outbox\Relay;
 use Type\Orm\Outbox\Store;
-use Type\Queue\Worker;
 use Type\Queue\Job;
 use Type\Queue\JobContext;
 use Type\Queue\Message;
 use Type\Queue\QueueException;
 use Type\Queue\Registry;
 use Type\Queue\RetryPolicy;
+use Type\Queue\Worker;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\TaskException;
-use Type\Scheduler\FileStateStore;
 use Type\Scheduler\Definition;
+use Type\Scheduler\FileStateStore;
 use Type\Scheduler\Scheduler;
 use Type\Scheduler\SystemClock;
 use Type\Scheduler\Task;
@@ -41,9 +43,7 @@ final class Reliability
     private array $workObservations = [];
 
     /** 基础设施由命令资源声明启动；业务服务仍由共同构造装配提供。 */
-    public function __construct(private ProductService $products, private Infrastructure $infrastructure, private Store $store, private BusinessEvents $events)
-    {
-    }
+    public function __construct(private ProductService $products, private Infrastructure $infrastructure, private Store $store, private BusinessEvents $events) {}
 
     /** @return array<string,mixed> 有限命令步骤与稳定结果，不执行隐式重试。 */
     public function execute(string $marker): array
@@ -80,7 +80,7 @@ final class Reliability
             try {
                 $accepted = $relay->runOnce(10);
                 return ['accepted' => $accepted, 'completed' => false];
-            } catch (RuntimeException $error) {
+            } catch (\RuntimeException $error) {
                 if ($marker !== 'relay-fail' || $error->getMessage() !== 'catalog_accepted_without_receipt') {
                     throw $error;
                 }
@@ -209,7 +209,7 @@ final class Reliability
         $timestamp = $this->infrastructure->settings->integer('catalog.clock');
         $clock = $timestamp === 0 ? new SystemClock() : new FixedClock($timestamp);
         $cursor = $this->infrastructure->settings->text('catalog.cursor');
-        if (!\app\common\bootstrap\Settings::absolutePath($cursor)) {
+        if (!Settings::absolutePath($cursor)) {
             $cursor = $this->infrastructure->basePath . '/' . $cursor;
         }
         $store = new FileStateStore($cursor);
@@ -263,7 +263,7 @@ final class Reliability
         $deadline = microtime(true) + 5.0;
         while ($worker->statistics()['received'] < $received && microtime(true) < $deadline) {
             if (!$worker->runOnce()) {
-                \Swoole\Coroutine::sleep(0.01);
+                Coroutine::sleep(0.01);
             }
         }
         self::expect($worker->statistics()['received'] === $received, 'catalog_work_receive_timeout');
@@ -305,7 +305,7 @@ final class Reliability
         $result = [];
         foreach ($this->workObservations as $index => $observation) {
             self::expect($observation->role !== null, 'catalog_work_role_missing');
-            for ($previous = 0; $previous < $index; $previous++) {
+            for ($previous = 0; $previous < $index; ++$previous) {
                 self::expect($observation->scope !== $this->workObservations[$previous]->scope
                     && $observation->role !== $this->workObservations[$previous]->role, 'catalog_work_instance_reused');
             }
@@ -326,11 +326,11 @@ final class Reliability
         self::expect($this->products->cached($cache, 'catalog-a', 999999) === null, 'catalog_cache_null');
         $this->products->cached($cache, 'catalog-a', 999999);
         self::expect($this->products->loads() === 2, 'catalog_cache_null_miss');
-        for ($attempt = 0; $attempt < 2; $attempt++) {
+        for ($attempt = 0; $attempt < 2; ++$attempt) {
             try {
                 $this->products->failing($cache, 'catalog-a');
                 throw new \LogicException('catalog_failure_cached');
-            } catch (RuntimeException $expected) {
+            } catch (\RuntimeException $expected) {
                 self::expect($expected->getMessage() === 'catalog_loader_failed', 'catalog_wrong_loader_failure');
             }
         }
@@ -340,7 +340,7 @@ final class Reliability
         try {
             $this->products->change($cache, 'catalog-a', $id, '应回滚', $this->events, $rollbackSync, $rollbackAfter, $this->store, true);
             throw new \LogicException('catalog_rollback_missing');
-        } catch (RuntimeException $expected) {
+        } catch (\RuntimeException $expected) {
             self::expect($expected->getMessage() === 'catalog_change_rolled_back', 'catalog_wrong_rollback');
         }
         self::expect($rollbackSync->transactions === [true] && $rollbackAfter->transactions === [], 'catalog_rollback_event');
@@ -379,14 +379,14 @@ final class Reliability
         $task = ExecutionScope::current()->spawn(static function (ExecutionScope $child) use ($mode, $url, $tls): array {
             $timer = null;
             if ($mode === 'https-cancel') {
-                $timer = \Swoole\Timer::after(30, static function () use ($child): void {
+                $timer = Timer::after(30, static function () use ($child): void {
                     $child->cancellation()->cancel();
                 });
             }
             try {
                 $response = (new Client())->request('GET', $url, [], '', $mode === 'https-timeout' ? 0.05 : 2.0, 4096, $tls);
                 try {
-                    return ['status' => $response->getStatusCode(), 'body' => (string) $response->getBody()];
+                    return ['status' => $response->getStatusCode(), 'body' => (string)$response->getBody()];
                 } finally {
                     $response->getBody()->close();
                 }
@@ -394,7 +394,7 @@ final class Reliability
                 return ['error' => $error->errorCode()];
             } finally {
                 if ($timer !== null) {
-                    \Swoole\Timer::clear($timer);
+                    Timer::clear($timer);
                 }
             }
         });
@@ -408,7 +408,7 @@ final class Reliability
     private static function expect(bool $condition, string $error): void
     {
         if (!$condition) {
-            throw new RuntimeException($error);
+            throw new \RuntimeException($error);
         }
     }
 }

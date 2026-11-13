@@ -7,13 +7,19 @@ namespace TypeTests\Unit;
 use app\common\bootstrap\Settings;
 use app\common\service\IdentityService;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Type\Core\Config\Repository;
 use Type\Core\Http\ActionHandler;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\ReadOnlyPolicy;
 
-/** 环境和已匹配路由的边界；真实身份与持久数据由 demo-mode.php 复核。 */
+/**
+ * 环境和已匹配路由的边界；真实身份与持久数据由 demo-mode.php 复核。
+ * @internal
+ * @coversNothing
+ */
 final class DemoModeTest extends TestCase
 {
     public function testEnvironmentIsAuthoritativeAndDebugRequiresDevEntry(): void
@@ -44,7 +50,7 @@ final class DemoModeTest extends TestCase
     {
         $factory = new Factory();
         $executed = 0;
-        $handler = new ActionHandler(static function (\Psr\Http\Message\ServerRequestInterface $request) use ($factory, &$executed): \Psr\Http\Message\ResponseInterface {
+        $handler = new ActionHandler(static function (ServerRequestInterface $request) use ($factory, &$executed): ResponseInterface {
             ++$executed;
             return $factory->createResponse(204);
         });

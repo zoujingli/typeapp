@@ -155,7 +155,7 @@ foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/
         expect(mkdir($target, 0700), '无法复制IoT生产目录');
     } else {
         expect(copy($source->getPathname(), $target), '无法复制IoT生产实现');
-        $sourceCount++;
+        ++$sourceCount;
     }
 }
 file_put_contents($base . '/app/main.php', simulatorApplication($root));
@@ -166,7 +166,7 @@ $repositories[0]['url'] = '../../plugin/*';
 $repositories[0]['options']['symlink'] = false;
 $configuration = ['name' => 'type-tests/device-simulator', 'type' => 'project', 'license' => 'Apache-2.0', 'require' => $composer['require'],
     'require-dev' => ['zoujingli/type-build' => '~1.0.0@dev', 'swoole/typephp' => testToolchainVersion('typephp'), 'swoole/phpx' => $toolchain['phpx']['version']],
-    'autoload' => ['psr-4' => ['app\\iot\\' => 'app/iot/'], 'classmap' => ['app/main.php']], 'repositories' => $repositories,
+    'autoload' => ['psr-4' => ['app\iot\\' => 'app/iot/'], 'classmap' => ['app/main.php']], 'repositories' => $repositories,
     'minimum-stability' => 'dev', 'prefer-stable' => true, 'config' => ['allow-plugins' => false]];
 file_put_contents($base . '/composer.json', json_encode($configuration, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 copy($root . '/toolchain.lock.json', $base . '/toolchain.lock.json');
@@ -213,7 +213,7 @@ openssl_pkey_export($key, $privatePem);
 file_put_contents($base . '/certificate.pem', $certificatePem);
 file_put_contents($base . '/private.pem', $privatePem);
 chmod($base . '/private.pem', 0600);
-$tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+$tools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
 $database = new NativeDatabase($base . '/primary', 'pgsql', $tools);
 $sync = null;
 $broker = null;
@@ -236,9 +236,9 @@ try {
     $installed = (new Process([...$command, '--install-store'], $base, $environment))->wait(10);
     expect($installed->successful() && $installed->stderr === '' && json_decode($installed->stdout, true, 32, JSON_THROW_ON_ERROR)['state'] === 'committed', '模拟器Broker安装失败：' . $installed->stderr);
     $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $error);
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
-    $environment['SIMULATOR_PORT'] = (string) $port;
+    $environment['SIMULATOR_PORT'] = (string)$port;
     $startBroker = static function () use ($command, $base, $environment, $port): Process {
         $process = new Process([...$command, '--port=' . $port], $base, $environment);
         $until = microtime(true) + 10.0;
@@ -258,7 +258,7 @@ try {
     $verifier = new Client('127.0.0.1', $port, 'simulator-verifier', 'verifier', $environment['SIMULATOR_SECRET'], $base . '/certificate.pem');
     $verifier->connect(true);
     $startDevice = static function (string $name, int $seed = 1, array $overrides = []) use ($command, $base, $environment): Process {
-        return new Process([...$command, '--simulator'], $base, array_replace($environment, ['SIMULATOR_DEVICE' => md5($name), 'SIMULATOR_SEED' => (string) $seed], $overrides));
+        return new Process([...$command, '--simulator'], $base, array_replace($environment, ['SIMULATOR_DEVICE' => md5($name), 'SIMULATOR_SEED' => (string)$seed], $overrides));
     };
     $observations = [];
     $up = static function (string $name) use ($verifier, &$observations): string {

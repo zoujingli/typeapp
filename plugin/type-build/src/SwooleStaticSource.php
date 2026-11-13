@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
-
 /** 静态链接时分离 Swoole 协程 PDO 与 PHP 原生 PDO 的内部 C 符号，保留两套驱动及公开接口。 */
 final class SwooleStaticSource
 {
@@ -16,7 +14,7 @@ final class SwooleStaticSource
      * 不修改 PDO 类名、方法名或驱动注册名，宏仅作用于 Swoole 自身的编译单元。
      *
      * @return array<string, array{before: string, after: string}>
-     * @throws RuntimeException 原文身份、替换位置或保存失败。
+     * @throws \RuntimeException 原文身份、替换位置或保存失败
      */
     public function apply(string $directory): array
     {
@@ -59,11 +57,11 @@ final class SwooleStaticSource
         foreach ($declarations as $file => $declaration) {
             $path = $directory . '/' . $file;
             if (!is_file($path) || is_link($path) || hash_file('sha256', $path) !== $declaration['sha256']) {
-                throw new RuntimeException('Swoole 静态 PDO 适配需要固定原文：' . $file);
+                throw new \RuntimeException('Swoole 静态 PDO 适配需要固定原文：' . $file);
             }
-            $source = (string) file_get_contents($path);
+            $source = (string)file_get_contents($path);
             if (substr_count($source, $declaration['guard']) !== 1) {
-                throw new RuntimeException('Swoole 静态 PDO 适配位置不唯一：' . $file);
+                throw new \RuntimeException('Swoole 静态 PDO 适配位置不唯一：' . $file);
             }
             $macros = $declaration['guard'] . "\n\n/* TypeApp: isolate coroutine PDO symbols when linked with PHP core. */\n";
             foreach ($declaration['symbols'] as $symbol) {
@@ -74,7 +72,7 @@ final class SwooleStaticSource
         $report = [];
         foreach ($pending as $file => $source) {
             if (file_put_contents($directory . '/' . $file, $source) !== strlen($source)) {
-                throw new RuntimeException('无法保存 Swoole 静态 PDO 适配：' . $file);
+                throw new \RuntimeException('无法保存 Swoole 静态 PDO 适配：' . $file);
             }
             $report[$file] = ['before' => $declarations[$file]['sha256'], 'after' => hash('sha256', $source)];
         }

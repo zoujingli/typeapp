@@ -13,9 +13,7 @@ use Type\Validate\ValidatedInput;
 final class ProductInput implements ValidatedInput
 {
     /** 保存已经验证的字段，PATCH 缺失与显式 null 保持不同。 */
-    public function __construct(public Data $data)
-    {
-    }
+    public function __construct(public Data $data) {}
 
     /** 写入仅接受业务字段；租户、主键、版本和自动时间不在输入中。 */
     public static function schema(): Schema

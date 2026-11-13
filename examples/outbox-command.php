@@ -2,16 +2,17 @@
 
 declare(strict_types=1);
 
-use Type\Orm\Connection;
+use Type\Orm\AfterCommitException;
+use Type\Orm\DatabaseException;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
-use Type\Orm\ModelException;
-use Type\Orm\AfterCommitException;
-use Type\Orm\TransactionOutcome;
 use Type\Orm\Migration\Migration;
 use Type\Orm\Migration\Migrator;
+use Type\Orm\ModelException;
 use Type\Orm\Outbox\Relay;
 use Type\Orm\Outbox\Store;
+use Type\Orm\TransactionException;
+use Type\Orm\TransactionOutcome;
 use Type\Queue\JobContext;
 use Type\Queue\Queue;
 use Type\Queue\Registry;
@@ -19,16 +20,18 @@ use Type\Queue\Worker;
 use Type\Redis\Purpose;
 use Type\Redis\RedisConfiguration;
 use Type\Redis\RedisManager;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use TypeApp\ModelExample\Drivers;
-use TypeApp\OutboxExample\Delivered;
-use TypeApp\OutboxExample\QueuePublisher;
 use TypeApp\OutboxExample\Business;
+use TypeApp\OutboxExample\Delivered;
+use TypeApp\OutboxExample\FaultPublisher;
+use TypeApp\OutboxExample\QueuePublisher;
 
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function outboxExpect(bool $condition, string $message): void
 {
@@ -40,12 +43,12 @@ function outboxExpect(bool $condition, string $message): void
 /**
  * 在 Swoole 协程内运行显式 Outbox 角色，每轮有界处理并收尾资源。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::enableIo();
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+    CoroutineRuntime::enableIo();
+    CoroutineRuntime::run(static function () use ($argc, $argv): void {
         outboxScenario($argc, $argv);
     });
 }
@@ -53,7 +56,7 @@ function main(int $argc, array $argv): void
 /**
  * 按角色选择事务意图、发布、消费、重放或回收，故障阶段不伪造提交结果。
  *
- * @param list<string> $argv 程序路径、驱动和明确角色。
+ * @param list<string> $argv 程序路径、驱动和明确角色
  */
 function outboxScenario(int $argc, array $argv): void
 {
@@ -61,8 +64,8 @@ function outboxScenario(int $argc, array $argv): void
         echo "Outbox 独立角色：<mysql|pgsql|sqlite> setup|relay|consume|replay|consume-replay|collect|tokens；每轮有界执行并关闭资源。\n";
         return;
     }
-    $driver = Drivers::create((string) ($argv[1] ?? 'sqlite'));
-    $mode = (string) ($argv[2] ?? 'setup');
+    $driver = Drivers::create((string)($argv[1] ?? 'sqlite'));
+    $mode = (string)($argv[2] ?? 'setup');
     // 正向领取需要容纳 I/O 与调度延迟；tokens 单独构造旧租约过期，不能让新领取也只有 100ms。
     $forward = in_array($mode, ['setup', 'relay', 'consume', 'replay', 'consume-replay', 'consume-unknown', 'prepare-concurrent', 'concurrent-relay', 'consume-early', 'verify-concurrent'], true)
         || getenv('TYPE_OUTBOX_DEPLOYMENT_CHECK') === '1' && in_array($mode, ['setup', 'relay', 'consume-replay'], true);
@@ -115,7 +118,7 @@ function outboxScenario(int $argc, array $argv): void
                         $conflict = false;
                         try {
                             $store->enqueue('stable-business', 'delivered', 1, ['value' => '冲突'], database: 'outbox');
-                        } catch (\Type\Orm\DatabaseException) {
+                        } catch (DatabaseException) {
                             $conflict = true;
                         }
                         outboxExpect($conflict, '冲突内容覆盖了原消息意图');
@@ -135,11 +138,11 @@ function outboxScenario(int $argc, array $argv): void
                 $outcome = '';
                 try {
                     Db::transaction(static function () use ($store, &$calls): void {
-                        $calls++;
+                        ++$calls;
                         (new Business(['id' => 'stable-business', 'value' => '未知提交']))->save();
                         $store->enqueue('stable-business', 'delivered', 1, ['value' => '未知提交'], database: 'outbox');
                     }, 'outbox');
-                } catch (\Type\Orm\TransactionException $error) {
+                } catch (TransactionException $error) {
                     $outcome = $error->outcome();
                 }
                 outboxExpect($outcome === 'UNKNOWN' && $calls === 1, '提交结果未知被误确认或自动重做业务');
@@ -173,12 +176,12 @@ function outboxScenario(int $argc, array $argv): void
                 }
                 Db::transaction(static fn (): bool => $store->enqueue('unconsumed', 'delivered', 1, ['value' => '保留对账'], database: 'outbox'), 'outbox');
                 $old = $store->claim($connection, 1)[0];
-                $foreign = new DatabaseManager(['other' => Drivers::create($driver->name(), (string) getenv('TYPE_OUTBOX_OTHER_DATABASE'))]);
+                $foreign = new DatabaseManager(['other' => Drivers::create($driver->name(), (string)getenv('TYPE_OUTBOX_OTHER_DATABASE'))]);
                 try {
                     $rejected = false;
                     try {
                         $store->accepted($foreign->connect($scope, 'other'), $old, 'wrong-source');
-                    } catch (\Type\Orm\DatabaseException $error) {
+                    } catch (DatabaseException $error) {
                         $rejected = str_contains($error->getMessage(), '原领取数据源');
                     }
                     outboxExpect($rejected, '另一真实数据库接受了原来源的领取凭据');
@@ -209,7 +212,7 @@ function outboxScenario(int $argc, array $argv): void
                     } finally {
                         $preparation->close();
                     }
-                    $publisher = new \TypeApp\OutboxExample\FaultPublisher($fault);
+                    $publisher = new FaultPublisher($fault);
                     $relay = new Relay($database, $store, $publisher, 'outbox', $fault === 'timeout' ? 100 : 1000);
                     $publisher->bind($relay);
                     $failure = '';
@@ -241,16 +244,16 @@ function outboxScenario(int $argc, array $argv): void
                 return;
             }
             // 仅发布/消费角色需要 Redis；help/setup/collect/tokens 不得构造连接管理器。
-            $manager = new RedisManager(['default' => new RedisConfiguration((string) (getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379))]);
+            $manager = new RedisManager(['default' => new RedisConfiguration((string)(getenv('TYPE_REDIS_HOST') ?: '127.0.0.1'), (int)(getenv('TYPE_REDIS_PORT') ?: 6379))]);
             try {
-                $queue = new Queue($manager->connection($scope, 'default', Purpose::SCRIPT), (string) getenv('TYPE_OUTBOX_APPLICATION'));
+                $queue = new Queue($manager->connection($scope, 'default', Purpose::SCRIPT), (string)getenv('TYPE_OUTBOX_APPLICATION'));
                 if ($mode === 'crash' || $mode === 'relay' || $mode === 'replay' || $mode === 'concurrent-relay') {
                     if ($mode === 'replay') {
                         $connection = $database->connect($scope, 'outbox');
                         outboxExpect($store->replay($connection, 'stable-business', '验证人工对账重放'), '重放窗口内不能重放');
                         $connection->close();
                     }
-                    $relay = new Relay($database, $store, new QueuePublisher($queue, $database, $mode === 'crash', $mode === 'concurrent-relay' ? $manager->connection($scope) : null, (string) getenv('TYPE_OUTBOX_APPLICATION')), 'outbox');
+                    $relay = new Relay($database, $store, new QueuePublisher($queue, $database, $mode === 'crash', $mode === 'concurrent-relay' ? $manager->connection($scope) : null, (string)getenv('TYPE_OUTBOX_APPLICATION')), 'outbox');
                     $count = $relay->runOnce(10);
                     outboxExpect($count === 1, 'relay 没有发布保留意图');
                     $relay->stop();
@@ -273,11 +276,11 @@ function outboxScenario(int $argc, array $argv): void
                         $early = $store->status($connection, 'concurrent-business');
                         outboxExpect($processed === 1 && $early['state'] === 'claimed' && $early['accepted_receipt'] === null
                             && $early['consumed_receipt'] === 'receipt:concurrent-business', '消费被Outbox接受凭据阻塞或提前假报发布完成');
-                        $manager->connection($scope)->command('SET', [(string) getenv('TYPE_OUTBOX_APPLICATION') . ':consumed', 'yes', 'EX', 30]);
+                        $manager->connection($scope)->command('SET', [(string)getenv('TYPE_OUTBOX_APPLICATION') . ':consumed', 'yes', 'EX', 30]);
                         echo "实际消费先于Outbox接受登记完成。\n";
                         return;
                     }
-                    outboxExpect($processed === ($mode === 'consume' ? 2 : 1) && (int) $connection->table('type_outbox_effects')->aggregate('COUNT') === 1, '重发消息产生重复效果');
+                    outboxExpect($processed === ($mode === 'consume' ? 2 : 1) && (int)$connection->table('type_outbox_effects')->aggregate('COUNT') === 1, '重发消息产生重复效果');
                     $record = $store->status($connection, 'stable-business');
                     outboxExpect($record['state'] === 'published' && $record['consumed_receipt'] === 'receipt:stable-business' && $record['accepted_receipt'] !== null, '没有保留接受和消费凭据');
                     outboxExpect($store->collect($connection) === 0, '保留窗口内删除了消息意图');

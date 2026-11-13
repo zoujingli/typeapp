@@ -8,7 +8,11 @@ use PHPUnit\Framework\TestCase;
 
 require_once dirname(__DIR__) . '/support.php';
 
-/** 内置模块通过内容、机器类型和适配身份核验，不能用占位文件替代原生扩展。 */
+/**
+ * 内置模块通过内容、机器类型和适配身份核验，不能用占位文件替代原生扩展。
+ * @internal
+ * @coversNothing
+ */
 final class BundledSwooleTest extends TestCase
 {
     /** 核验入仓模块及许可材料的摘要、原生文件格式和机器类型与清单一致。 */
@@ -16,7 +20,7 @@ final class BundledSwooleTest extends TestCase
     {
         $directory = dirname(__DIR__, 2) . '/plugin/type-build/resources/swoole';
         $manifest = json_decode(file_get_contents($directory . '/manifest.json'), true, 32, JSON_THROW_ON_ERROR);
-        $machines = ['Darwin-arm64-8.5.10-zts' => 0x100000c, 'Linux-arm64-8.5.10-zts' => 183,
+        $machines = ['Darwin-arm64-8.5.12-zts' => 0x100000C, 'Darwin-arm64-8.5.10-zts' => 0x100000C, 'Linux-arm64-8.5.10-zts' => 183,
             'Linux-x64-8.5.10-zts' => 62, 'Windows-x64-8.5.10-zts' => 0x8664];
         self::assertSame(array_keys($machines), array_keys($manifest['modules']));
         foreach ($manifest['modules'] as $target => $module) {
@@ -119,7 +123,7 @@ final class BundledSwooleTest extends TestCase
     private function select(string $component): array
     {
         return \execute([PHP_BINARY, '-n', '-d', 'display_errors=stderr', '-r',
-            'require $argv[1]; echo json_encode((new Type\\Build\\BundledSwoole())->select(), JSON_THROW_ON_ERROR);',
+            'require $argv[1]; echo json_encode((new Type\Build\BundledSwoole())->select(), JSON_THROW_ON_ERROR);',
             $component . '/src/BundledSwoole.php'], dirname($component));
     }
 

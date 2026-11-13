@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Type\Orm\Attribute;
 
-use Attribute;
-
 /** 补充数据库列、精确类型与赋值/输出策略；类型和可空性首先由 PHP 属性声明确定。 */
-#[Attribute(Attribute::TARGET_PROPERTY)]
+#[\Attribute(\Attribute::TARGET_PROPERTY)]
 final class Column
 {
     /** 补充属性映射；null 策略沿用生成器按属性类型与生命周期推导的默认值。 */
@@ -18,7 +16,7 @@ final class Column
         public bool $visible = true,
         public ?bool $required = null,
         public int $precision = 65,
-        public ?int $scale = null
-    ) {
-    }
+        public ?int $scale = null,
+        public ?string $integerRange = null
+    ) {}
 }

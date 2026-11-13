@@ -43,8 +43,8 @@ if ($nativeServices && $driver !== 'sqlite') {
     foreach (['HOST', 'PORT', 'DATABASE', 'USER', 'PASSWORD'] as $key) {
         expect(isset($environment[$prefix . $key]) && $environment[$prefix . $key] !== '', '原生服务模式需要显式专用测试数据库参数：' . $prefix . $key);
     }
-    expect(ctype_digit($environment[$prefix . 'PORT']) && (int) $environment[$prefix . 'PORT'] > 0
-        && (int) $environment[$prefix . 'PORT'] <= 65535, '测试数据库端口无效');
+    expect(ctype_digit($environment[$prefix . 'PORT']) && (int)$environment[$prefix . 'PORT'] > 0
+        && (int)$environment[$prefix . 'PORT'] <= 65535, '测试数据库端口无效');
 }
 if (!$nativeServices) {
     $environment['TYPE_MYSQL_PASSWORD'] = 'rollout-mysql-' . bin2hex(random_bytes(20));

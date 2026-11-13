@@ -9,7 +9,7 @@ final class RequestLimits
 {
     /**
      * 声明字节、字段、深度和上传数量预算；临时上传目录须位于容量受限的专用文件系统。
-     * @throws \InvalidArgumentException 任一预算无效或临时空间不能满足声明。
+     * @throws \InvalidArgumentException 任一预算无效或临时空间不能满足声明
      */
     public function __construct(
         public readonly int $bytes = 1048576,
@@ -39,7 +39,7 @@ final class RequestLimits
 
     /**
      * 仅检查 JSON 结构深度和字段数量，不负责解码或验证全部 JSON 语法。
-     * @throws HttpError 结构深度或字段数量超过请求预算。
+     * @throws HttpError 结构深度或字段数量超过请求预算
      */
     public function json(string $content): void
     {
@@ -48,7 +48,7 @@ final class RequestLimits
         $escape = false;
         $fields = 0;
         $length = strlen($content);
-        for ($offset = 0; $offset < $length; $offset++) {
+        for ($offset = 0; $offset < $length; ++$offset) {
             $character = $content[$offset];
             if ($quoted) {
                 if ($escape) {
@@ -65,7 +65,7 @@ final class RequestLimits
             }
             $top = count($stack) - 1;
             if ($top >= 0 && $stack[$top] === 'next' && $character !== ']') {
-                $fields++;
+                ++$fields;
                 $stack[$top] = 'array';
             }
             if ($character === '"') {
@@ -78,7 +78,7 @@ final class RequestLimits
             } elseif ($character === ']' || $character === '}') {
                 array_pop($stack);
             } elseif ($character === ':') {
-                $fields++;
+                ++$fields;
             } elseif ($character === ',' && $top >= 0 && $stack[$top] === 'array') {
                 $stack[$top] = 'next';
             }

@@ -6,6 +6,7 @@ require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 require __DIR__ . '/native-database.php';
 
+use Pdo\Mysql;
 use Type\Build\BuildPlatform;
 
 $root = dirname(__DIR__);
@@ -56,8 +57,8 @@ try {
     $dsn = $driver . ':host=' . $wrongHost . ';port=' . $port . ';dbname=type_app_test';
     $options = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION];
     if ($driver === 'mysql') {
-        $options[\Pdo\Mysql::ATTR_SSL_CA] = $base . '/ca.pem';
-        $options[\Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = false;
+        $options[Mysql::ATTR_SSL_CA] = $base . '/ca.pem';
+        $options[Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = false;
     } else {
         // libpq 将连接地址与证书主机名分开：固定本轮 IPv4，避免 localhost. 解析到未监听的 ::1。
         // PHP/AOT 子进程沿用同一 hostaddr，verify-full 仍必须拒绝原始错误主机名。

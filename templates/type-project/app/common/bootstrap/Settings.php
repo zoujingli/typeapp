@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace app\common\bootstrap;
 
 use app\generated\ProjectConfig;
-use InvalidArgumentException;
 use Type\Core\Config\Environment;
 use Type\Core\Config\Repository;
 
@@ -19,18 +18,18 @@ final class Settings
     /**
      * APP_BASE_PATH 由进程环境提供，不能依赖尚未定位的 .env 自己改变所在目录。
      *
-     * @throws InvalidArgumentException 指定的应用根不是已存在的绝对目录。
+     * @throws \InvalidArgumentException 指定的应用根不是已存在的绝对目录
      */
     public static function basePath(): string
     {
         $configured = getenv('APP_BASE_PATH');
         $base = $configured === false ? getcwd() : $configured;
         if (!is_string($base) || !self::absolutePath($base)) {
-            throw new InvalidArgumentException('APP_BASE_PATH 必须为已存在的绝对目录');
+            throw new \InvalidArgumentException('APP_BASE_PATH 必须为已存在的绝对目录');
         }
         $resolved = realpath($base);
         if ($resolved === false || !is_dir($resolved)) {
-            throw new InvalidArgumentException('APP_BASE_PATH 必须为已存在的绝对目录');
+            throw new \InvalidArgumentException('APP_BASE_PATH 必须为已存在的绝对目录');
         }
 
         return $resolved;
@@ -39,7 +38,7 @@ final class Settings
     /**
      * 进程环境覆盖 .env；缺省值由编译过的 config 声明提供，不写回全局环境。
      *
-     * @throws InvalidArgumentException 环境数据或配置类型不符合声明。
+     * @throws \InvalidArgumentException 环境数据或配置类型不符合声明
      */
     public static function load(string $basePath): Repository
     {
@@ -49,13 +48,13 @@ final class Settings
     /**
      * 环境只取启动配置；保留开发入口参数的调用兼容性，不允许其覆盖 demo。
      *
-     * @throws InvalidArgumentException APP_ENV 无效；旧值须显式迁移后重启。
+     * @throws \InvalidArgumentException APP_ENV 无效；旧值须显式迁移后重启
      */
     public static function environment(Repository $configuration, bool $developmentEntry): string
     {
         $environment = $configuration->text('app.environment');
         if (!in_array($environment, ['dev', 'prod', 'demo'], true)) {
-            throw new InvalidArgumentException('APP_ENV 只接受 dev、prod 或 demo；development 请改为 dev，production 请改为 prod');
+            throw new \InvalidArgumentException('APP_ENV 只接受 dev、prod 或 demo；development 请改为 dev，production 请改为 prod');
         }
 
         return $environment;
@@ -79,16 +78,16 @@ final class Settings
         }
 
         return str_starts_with($path, '/')
-            || preg_match('~^[A-Za-z]:[\\\\/]~D', $path) === 1
-            || preg_match('~^\\\\\\\\[^\\\\/]+[\\\\/][^\\\\/]+(?:[\\\\/]|$)~D', $path) === 1;
+            || preg_match('~^[A-Za-z]:[\\\/]~D', $path) === 1
+            || preg_match('~^\\\\\\\[^\\\/]+[\\\/][^\\\/]+(?:[\\\/]|$)~D', $path) === 1;
     }
 
-    /** @throws InvalidArgumentException 已取得的配置整数不在该用途的允许范围内。 */
+    /** @throws \InvalidArgumentException 已取得的配置整数不在该用途的允许范围内。 */
     public static function integer(Repository $configuration, string $key, int $minimum, int $maximum): int
     {
         $value = $configuration->integer($key);
         if ($value < $minimum || $value > $maximum) {
-            throw new InvalidArgumentException('启动配置整数越界：' . $key);
+            throw new \InvalidArgumentException('启动配置整数越界：' . $key);
         }
 
         return $value;
@@ -98,7 +97,7 @@ final class Settings
      * 解析最多 64 项的配置列表；空字符串表示使用调用方的明确默认值。
      *
      * @return list<string>
-     * @throws InvalidArgumentException 列表含空项或超出容量。
+     * @throws \InvalidArgumentException 列表含空项或超出容量
      */
     public static function list(string $value): array
     {
@@ -107,7 +106,7 @@ final class Settings
         }
         $values = array_map('trim', explode(',', $value));
         if (count($values) > 64 || in_array('', $values, true)) {
-            throw new InvalidArgumentException('启动配置列表无效');
+            throw new \InvalidArgumentException('启动配置列表无效');
         }
 
         return $values;

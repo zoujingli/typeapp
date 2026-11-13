@@ -6,6 +6,7 @@ use Type\Queue\Queue;
 use Type\Redis\Purpose;
 use Type\Redis\RedisConfiguration;
 use Type\Redis\RedisManager;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use Type\Scheduler\Definition;
 use Type\Scheduler\IntervalSchedule;
@@ -21,11 +22,11 @@ use TypeApp\SchedulerExample\ControlledClock;
 /**
  * 执行 Redis 多实例调度命令，在协程结束后向进程传递退出码。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    $status = (int) \Type\Runtime\CoroutineRuntime::run(
+    $status = (int)CoroutineRuntime::run(
         static fn (): int => schedulerCoordinationScenario($argc, $argv)
     );
     // 协程内的 exit() 会变成 Swoole\ExitException，父进程看不到调度状态码。
@@ -38,7 +39,7 @@ function main(int $argc, array $argv): void
 /**
  * 创建同一 Redis 目标的状态与队列，执行有限调度并关闭借用资源。
  *
- * @param list<string> $argv 程序路径与控制台参数。
+ * @param list<string> $argv 程序路径与控制台参数
  */
 function schedulerCoordinationScenario(int $argc, array $argv): int
 {
@@ -49,7 +50,7 @@ function schedulerCoordinationScenario(int $argc, array $argv): int
     $application = getenv('TYPE_COORDINATION_APP') ?: 'type-app-coordination';
     $manager = new RedisManager(['default' => new RedisConfiguration(
         getenv('TYPE_REDIS_HOST') ?: '127.0.0.1',
-        (int) (getenv('TYPE_REDIS_PORT') ?: 6379)
+        (int)(getenv('TYPE_REDIS_PORT') ?: 6379)
     )]);
     $scope = new ExecutionScope();
     $status = 70;

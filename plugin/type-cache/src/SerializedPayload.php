@@ -8,8 +8,11 @@ namespace Type\Cache;
 final class SerializedPayload
 {
     private string $payload;
+
     private array $classes;
+
     private int $position = 0;
+
     private int $nodes = 0;
 
     /**
@@ -26,7 +29,7 @@ final class SerializedPayload
     /**
      * 验证完整载荷、深度、节点数及对象类型；尾随数据或未知类型明确拒绝。
      *
-     * @throws CacheException 载荷不满足受信序列化格式。
+     * @throws CacheException 载荷不满足受信序列化格式
      */
     public function verify(): void
     {
@@ -86,7 +89,7 @@ final class SerializedPayload
                 if ($count > 50000) {
                     throw new CacheException('对象字段数量超限');
                 }
-                for ($index = 0; $index < $count * 2; $index++) {
+                for ($index = 0; $index < $count * 2; ++$index) {
                     $this->value($depth + 1);
                 }
             }
@@ -100,7 +103,7 @@ final class SerializedPayload
             if ($count > 50000) {
                 throw new CacheException('序列化数组数量超限');
             }
-            for ($index = 0; $index < $count * 2; $index++) {
+            for ($index = 0; $index < $count * 2; ++$index) {
                 $this->value($depth + 1);
             }
             $this->literal('}');
@@ -127,13 +130,13 @@ final class SerializedPayload
     {
         $start = $this->position;
         while ($this->position < strlen($this->payload) && ctype_digit($this->payload[$this->position])) {
-            $this->position++;
+            ++$this->position;
         }
         $digits = substr($this->payload, $start, $this->position - $start);
         if ($digits === '' || strlen($digits) > 8) {
             throw new CacheException('序列化长度无效');
         }
-        return (int) $digits;
+        return (int)$digits;
     }
 
     private function literal(string $value): void
@@ -141,7 +144,7 @@ final class SerializedPayload
         if (($this->payload[$this->position] ?? '') !== $value) {
             throw new CacheException('序列化语法无效');
         }
-        $this->position++;
+        ++$this->position;
     }
 
     private function allowed(string $class): void

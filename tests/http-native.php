@@ -20,13 +20,13 @@ if ($mode === 'PHP') {
 }
 $address = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
 expect(is_resource($address), '无法分配 HTTP 验证端口');
-$port = (int) substr(strrchr(stream_socket_get_name($address, false), ':'), 1);
+$port = (int)substr(strrchr(stream_socket_get_name($address, false), ':'), 1);
 fclose($address);
 $trace = tempnam(sys_get_temp_dir(), 'type_http_trace_');
 $log = tmpfile();
 expect($trace !== false && $log !== false, '无法创建 HTTP 验证日志');
 $environment = getenv();
-$environment['TYPE_HTTP_PORT'] = (string) $port;
+$environment['TYPE_HTTP_PORT'] = (string)$port;
 $environment['TYPE_HTTP_TRACE'] = $trace;
 $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => $log, 2 => $log], $pipes, null, $environment);
 expect(is_resource($process), '无法启动 HTTP 原生产物');
@@ -52,7 +52,7 @@ try {
     ], '注入处理器或中间件顺序错误：' . $body);
     expect(str_contains($headers, 'x-middleware-a: 1') && str_contains($headers, 'x-middleware-b: 1'), '中间件响应未返回');
     $connections = [];
-    for ($index = 0; $index < 24; $index++) {
+    for ($index = 0; $index < 24; ++$index) {
         $connections[$index] = sendHttp($port, 'GET', '/health', 'request-' . $index);
     }
     foreach ($connections as $index => $connection) {

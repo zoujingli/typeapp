@@ -15,7 +15,7 @@ expect(count($records) === 2, '级别过滤没有控制输出记录数量');
 expect($records[0]['level'] === 'info' && $records[0]['channel'] === 'app' && $records[0]['message'] === '你好，开发者'
     && $records[0]['build_id'] === 'build-test-2026' && $records[0]['correlation'] === ['command_id' => 'command-one']
     && $records[0]['context'] === ['name' => '开发者', 'count' => 1], '日志消息、结构或关联信息错误');
-expect((bool) preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/D', $records[0]['time']), '日志时间必须是 UTC 微秒格式');
+expect((bool)preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/D', $records[0]['time']), '日志时间必须是 UTC 微秒格式');
 foreach (['credential-secret', 'nested-secret', 'exception-secret', 'raw-bearer-secret'] as $secret) {
     expect(!str_contains($stdout, $secret), '敏感值没有脱敏');
 }

@@ -8,7 +8,7 @@ use Type\Testing\Process;
 function mqttCapacityConnect(int $version, string $id, bool $application = false, bool $clean = true, int $expiry = 120): string
 {
     $properties = "\x11" . pack('N', $expiry) . "\x21\0\x01";
-    return mqttPacket(0x10, mqttField('MQTT') . chr($version) . chr($clean ? 0xc2 : 0xc0) . pack('n', 30)
+    return mqttPacket(0x10, mqttField('MQTT') . chr($version) . chr($clean ? 0xC2 : 0xC0) . pack('n', 30)
         . ($version === 5 ? mqttLength(strlen($properties)) . $properties : '') . mqttField($id)
         . mqttField($application ? 'service' : 'example') . mqttField($application ? 'service-test-secret' : 'mqtt-test-secret'));
 }
@@ -23,7 +23,7 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
     require_once __DIR__ . '/mqtt-qos2.php';
     require_once __DIR__ . '/mqtt-retained.php';
     require_once __DIR__ . '/mqtt-subscriptions.php';
-    $tools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+    $tools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
     $database = new NativeDatabase($consumer . '/capacity-primary', 'pgsql', $tools);
     $sync = null;
     $process = null;
@@ -54,7 +54,7 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
             && $defaults['maximumDeviceMessages'] === 10000 && $defaults['maximumDeviceBytes'] === 16777216
             && $defaults['maximumApplicationMessages'] === 1000000 && $defaults['maximumApplicationBytes'] === 2147483648
             && $defaults['maximumSharedMessages'] === 1000000 && $defaults['maximumSharedBytes'] === 2147483648, '默认持久额度与规格不符');
-        $cases++;
+        ++$cases;
         foreach ([false, true] as $tls) {
             $certificate = $tls ? $consumer . '/certificate.pem' : null;
             $environment['MQTT_CERTIFICATE'] = $certificate ?? '';
@@ -64,7 +64,7 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
             $environment['MQTT_MAX_SERVICE_CONNECTIONS'] = '1';
             $environment['MQTT_MAX_SESSIONS'] = '3';
             $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-            $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+            $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
             fclose($listener);
             $start = function () use ($command, $consumer, &$environment, $port, $tls): Process {
                 $running = new Process([...$command, '--port=' . $port, ...($tls ? [] : ['--plaintext'])], $consumer, $environment);
@@ -88,7 +88,7 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
                 return $socket;
             };
             $close = function (mixed $socket, bool $terminate = true): void {
-                mqttWrite($socket, $terminate ? mqttPacket(0xe0, "\0\x05\x11\0\0\0\0") : "\xe0\0");
+                mqttWrite($socket, $terminate ? mqttPacket(0xE0, "\0\x05\x11\0\0\0\0") : "\xe0\0");
                 expect(mqttRead($socket) === '', '容量会话未关闭');
                 fclose($socket);
             };
@@ -101,7 +101,7 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
                 $failure = mqttRead($denied);
                 expect(ord($failure[3]) === ($version === 5 ? 0x97 : 3), '设备满额没有标准拒绝');
                 fclose($denied);
-                $cases++;
+                ++$cases;
             }
             $service = $open('capacity-service', true);
             $denied = mqttSocket($port, $certificate);
@@ -114,7 +114,7 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
             fclose($wrong);
             mqttQuiet($service);
             $filters = [];
-            for ($index = 0; $index < 100; $index++) {
+            for ($index = 0; $index < 100; ++$index) {
                 $filters['example/capacity/filter/' . $index] = 33;
             }
             mqttWrite($a, mqttSubscribeFilters(5, $filters));
@@ -147,7 +147,7 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
             $service = $open('capacity-service', true, false);
             $close($service);
             mqttUntil(fn (): bool => $usage()['sessions'] === 0, '退出未释放分类会话');
-            for ($cycle = 0; $cycle < 20; $cycle++) {
+            for ($cycle = 0; $cycle < 20; ++$cycle) {
                 $repeated = $open('capacity-cycle', $cycle % 2 === 0, true, 0);
                 $close($repeated);
             }
@@ -185,7 +185,7 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
                     $publisher = mqttSocket($port, $certificate);
                     mqttWrite($publisher, mqttCapacityConnect($version, $id . '-publisher-' . $sequence, false, true, 0));
                     mqttAck($publisher, $version);
-                    $payload = str_pad((string) $sequence, 24 - strlen($topic), '.');
+                    $payload = str_pad((string)$sequence, 24 - strlen($topic), '.');
                     mqttWrite($publisher, mqttReliablePublish($version, $topic, $payload, 1));
                     $response = mqttRead($publisher);
                     expect($accepted ? $response === "\x40\x02\0\x01"
@@ -198,7 +198,7 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
                     }
                     fclose($publisher);
                 };
-                for ($index = 1; $index <= $limit; $index++) {
+                for ($index = 1; $index <= $limit; ++$index) {
                     $publish($index, 5, true);
                 }
                 $full = $usage();
@@ -213,8 +213,8 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
                 $subscriber = $open($id, $application, false);
                 $first = mqttRetainedRead($subscriber, 5);
                 $expected = [];
-                for ($sequence = 1; $sequence <= $limit; $sequence++) {
-                    $expected[] = str_pad((string) $sequence, 24 - strlen($topic), '.');
+                for ($sequence = 1; $sequence <= $limit; ++$sequence) {
+                    $expected[] = str_pad((string)$sequence, 24 - strlen($topic), '.');
                 }
                 expect(in_array($first['payload'], $expected, true), '已接受原件在恢复前丢失');
                 $publish(20, 5, false);
@@ -222,7 +222,7 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
                 mqttUntil(fn (): bool => $usage()['pendingMessages'] === 2 * ($limit - 1), '确认未释放原件及副本容量');
                 $publish(21, 5, true);
                 $received = [];
-                for ($index = 0; $index < $limit; $index++) {
+                for ($index = 0; $index < $limit; ++$index) {
                     $message = mqttRetainedRead($subscriber, 5);
                     $received[] = $message['payload'];
                     mqttRetainedComplete($subscriber, $message);
@@ -273,12 +273,12 @@ function mqttCapacityCases(string $root, string $consumer, array $command, array
 /** 验证真实网络连接上限；无持久worker的QoS0引擎场景不能代替设备同步接收及24小时负载。 */
 function mqttConnectionScaleCases(string $consumer, array $command, array $environment): array
 {
-    $devices = (int) (getenv('MQTT_SCALE_DEVICES') ?: 10000);
+    $devices = (int)(getenv('MQTT_SCALE_DEVICES') ?: 10000);
     expect($devices > 512 && $devices <= 10000, '连接规模须为513..10000');
     $services = 100;
-    $environment['MQTT_MAX_CONNECTIONS'] = (string) ($devices + $services);
-    $environment['MQTT_MAX_DEVICE_CONNECTIONS'] = (string) $devices;
-    $environment['MQTT_MAX_SERVICE_CONNECTIONS'] = (string) $services;
+    $environment['MQTT_MAX_CONNECTIONS'] = (string)($devices + $services);
+    $environment['MQTT_MAX_DEVICE_CONNECTIONS'] = (string)$devices;
+    $environment['MQTT_MAX_SERVICE_CONNECTIONS'] = (string)$services;
     $environment['MQTT_SERVICE_PASSWORD'] = 'service-test-secret';
     $environment['MQTT_WORKER_COMMAND'] = '';
     $results = [];
@@ -288,7 +288,7 @@ function mqttConnectionScaleCases(string $consumer, array $command, array $envir
         $environment['MQTT_CERTIFICATE'] = $certificate ?? '';
         $environment['MQTT_PRIVATE_KEY'] = $tls ? $consumer . '/private.pem' : '';
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-        $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+        $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
         fclose($listener);
         $process = new Process([...$command, '--port=' . $port, ...($tls ? [] : ['--plaintext'])], $consumer, $environment);
         try {
@@ -303,7 +303,7 @@ function mqttConnectionScaleCases(string $consumer, array $command, array $envir
                 usleep(10000);
             } while (microtime(true) < $until);
             $started = microtime(true);
-            for ($index = 0; $index < $devices; $index++) {
+            for ($index = 0; $index < $devices; ++$index) {
                 $socket = mqttSocket($port, $certificate);
                 $sockets[] = $socket;
                 $version = $index % 2 === 0 ? 5 : 4;
@@ -315,7 +315,7 @@ function mqttConnectionScaleCases(string $consumer, array $command, array $envir
             mqttWrite($overflow, mqttConnect(5, 'scale-device-overflow', 0));
             expect(ord(mqttRead($overflow)[3]) === 0x97, '设备满额未保留服务入口或未返回标准配额失败');
             fclose($overflow);
-            for ($index = 0; $index < $services; $index++) {
+            for ($index = 0; $index < $services; ++$index) {
                 $socket = mqttSocket($port, $certificate);
                 $sockets[] = $socket;
                 mqttWrite($socket, mqttPacket(0x10, mqttField('MQTT') . "\x05\xc2\0\0\0" . mqttField('scale-service-' . $index)
@@ -330,7 +330,7 @@ function mqttConnectionScaleCases(string $consumer, array $command, array $envir
             }
             $liveConnections = count($sockets);
             $connectedSeconds = microtime(true) - $started;
-            $rss = successful(['ps', '-o', 'rss=', '-p', (string) $process->pid()], $consumer);
+            $rss = successful(['ps', '-o', 'rss=', '-p', (string)$process->pid()], $consumer);
             expect(preg_match('/^[0-9]+$/D', trim($rss)) === 1, '不能读取实际Broker RSS');
             foreach ($sockets as $socket) {
                 mqttWrite($socket, "\xe0\0");
@@ -338,7 +338,7 @@ function mqttConnectionScaleCases(string $consumer, array $command, array $envir
             }
             $sockets = [];
             // 关闭后的事件注册须允许描述符复用，继续用公开连接和PING验证。
-            for ($cycle = 0; $cycle < 20; $cycle++) {
+            for ($cycle = 0; $cycle < 20; ++$cycle) {
                 $socket = mqttSocket($port, $certificate);
                 $sockets[] = $socket;
                 mqttWrite($socket, mqttConnect(5, 'scale-reuse-' . $cycle, 0));
@@ -359,7 +359,7 @@ function mqttConnectionScaleCases(string $consumer, array $command, array $envir
                 && $counts['connectionQuotaRefusals'] >= 1, '原生事件额度或拒绝统计错误');
             $results[] = ['transport' => $tls ? 'tls' : 'tcp', 'device_connections' => $devices, 'service_connections' => $services,
                 'confirmed_live_connections' => $liveConnections, 'connect_and_ping_seconds' => $connectedSeconds,
-                'broker_rss_sample_bytes' => (int) trim($rss) * 1024, 'statistics' => $counts];
+                'broker_rss_sample_bytes' => (int)trim($rss) * 1024, 'statistics' => $counts];
         } catch (Throwable $error) {
             $failure = $process->stop(10);
             throw new RuntimeException('连接规模验证失败：transport=' . ($tls ? 'tls' : 'tcp') . ', opened=' . count($sockets)

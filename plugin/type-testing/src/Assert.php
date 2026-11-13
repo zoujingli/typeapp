@@ -14,16 +14,18 @@ final class Assert
             throw new AssertionFailed($message);
         }
     }
+
     /** @throws AssertionFailed 类型或值不完全相同；不做数字字符串等隐式转换。 */
     public static function same(mixed $expected, mixed $actual, string $message = '实际值与预期值或类型不一致'): void
     {
         self::true($expected === $actual, $message);
     }
+
     /**
      * 执行一次操作并返回符合预期类型的真实异常，便于进一步检查错误码。
-     * @param \Closure(): mixed $operation 零参数执行并观察指定异常。
-     * @param class-string<\Throwable> $class 允许的异常类或其父类。
-     * @throws AssertionFailed 没有异常或异常类型不匹配。
+     * @param \Closure(): mixed $operation 零参数执行并观察指定异常
+     * @param class-string<\Throwable> $class 允许的异常类或其父类
+     * @throws AssertionFailed 没有异常或异常类型不匹配
      */
     public static function throws(\Closure $operation, string $class, string $message = '没有抛出预期异常'): \Throwable
     {

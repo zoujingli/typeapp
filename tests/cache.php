@@ -19,7 +19,7 @@ if (isset($argv[1]) && $argv[1] !== '--php') {
 expect($status === 0 && $stdout === "类型化缓存、缺失值、TTL、回源、代次隔离与有界回收通过。\n" && $stderr === '', '缓存验收失败：' . $stdout . $stderr);
 $children = [];
 try {
-    for ($index = 0; $index < 8; $index++) {
+    for ($index = 0; $index < 8; ++$index) {
         $output = tmpfile();
         expect($output !== false, '无法创建并发缓存输出');
         $process = proc_open([...$command, 'clear'], [0 => ['file', '/dev/null', 'r'], 1 => $output, 2 => $output], $pipes);

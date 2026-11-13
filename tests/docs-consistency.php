@@ -94,7 +94,7 @@ foreach (docsCheckFiles($root, ['app', 'bin', 'config', 'plugin', 'templates'], 
 // 文档里的 `/admin/login`、`/broker/login` 等页面地址没有后端路由与菜单项，属正常。
 $routerSource = $root . '/web/apps/web-antd/src/router.ts';
 if (is_file($routerSource)) {
-    $router = (string) file_get_contents($routerSource);
+    $router = (string)file_get_contents($routerSource);
     if (preg_match_all("/path:\\s*'([^']+)'/", $router, $matches) > 0) {
         foreach ($matches[1] as $pagePath) {
             $normalized = docsCheckPath($pagePath);
@@ -109,8 +109,8 @@ if (is_file($routerSource)) {
     }
 }
 
-$manifest = json_decode((string) file_get_contents($root . '/composer.json'), true, 32, JSON_THROW_ON_ERROR);
-$scripts = array_keys((array) ($manifest['scripts'] ?? []));
+$manifest = json_decode((string)file_get_contents($root . '/composer.json'), true, 32, JSON_THROW_ON_ERROR);
+$scripts = array_keys((array)($manifest['scripts'] ?? []));
 
 // 文档中的 `test:*`、`typeapp:*` 形式同样指 Composer 脚本，一并纳入已知命令。
 foreach ($scripts as $script) {
@@ -140,7 +140,7 @@ $documents = array_values(array_unique($documents));
 sort($documents);
 
 foreach ($documents as $document) {
-    $lines = explode("\n", (string) file_get_contents($root . '/' . $document));
+    $lines = explode("\n", (string)file_get_contents($root . '/' . $document));
     foreach ($lines as $index => $line) {
         $recorded = false;
         foreach ($removedHints as $hint) {
@@ -170,7 +170,7 @@ foreach ($documents as $document) {
                 if (in_array(basename($clean), ['LICENSE', 'NOTICE'], true)) {
                     continue;
                 }
-                $checked++;
+                ++$checked;
                 $candidate = str_starts_with($clean, '/')
                     ? $root . '/docs' . $clean
                     : dirname($root . '/' . $document) . '/' . $clean;
@@ -187,7 +187,7 @@ foreach ($documents as $document) {
             $matches
         ) > 0) {
             foreach ($matches[1] as $script) {
-                $checked++;
+                ++$checked;
                 if (!is_file($root . '/' . $script)) {
                     $failures[] = $location . ' 脚本不存在：' . $script;
                 }
@@ -200,7 +200,7 @@ foreach ($documents as $document) {
                 if (!isset($namespaces[explode(':', $command, 2)[0]])) {
                     continue;
                 }
-                $checked++;
+                ++$checked;
                 if (!isset($commands[$command])) {
                     $failures[] = $location . ' 命令未注册：' . $command;
                 }
@@ -214,7 +214,7 @@ foreach ($documents as $document) {
             $matches
         ) > 0) {
             foreach ($matches[1] as $path) {
-                $checked++;
+                ++$checked;
                 $normalized = docsCheckPath($path);
                 if (isset($routes[$normalized]) || isset($menus[$normalized])) {
                     continue;
@@ -236,7 +236,7 @@ foreach ($documents as $document) {
         // 这类通配写法与 `composer install` 这类内置命令都不参与。
         if (preg_match_all('/composer\s+([a-z][a-z0-9_-]*(?::[a-z0-9_-]+)+)/', $line, $matches) > 0) {
             foreach ($matches[1] as $script) {
-                $checked++;
+                ++$checked;
                 if (!in_array($script, $scripts, true)) {
                     $failures[] = $location . ' Composer 脚本不存在：composer ' . $script;
                 }
@@ -250,12 +250,12 @@ foreach ($documents as $document) {
 $callPattern = '/(?:identityCommand|\$run|nativeCommand|Process)\(\s*\[[^\]]*?[\'"]((?:iot|app|broker):[a-z][a-z0-9-]*)[\'"]/';
 
 foreach (docsCheckFiles($root, ['tests', 'tools', 'examples'], ['php', 'sh', 'mjs']) as $source) {
-    $text = (string) file_get_contents($root . '/' . $source);
+    $text = (string)file_get_contents($root . '/' . $source);
     if (preg_match_all($callPattern, $text, $matches) === 0) {
         continue;
     }
     foreach ($matches[1] as $command) {
-        $checked++;
+        ++$checked;
         if (isset($commands[$command])) {
             continue;
         }

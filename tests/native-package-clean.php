@@ -225,7 +225,7 @@ try {
         expect(trim(cleanPackageCommand([...$backendQuery, 'SELECT COUNT(*) FROM admin_users'], 10, $secretEnvironment)) === '2', 'HTTP业务未写入所声明的真实数据库');
     } else {
         $databaseFile = new PDO('sqlite:' . $data . '/var/app.sqlite');
-        expect((int) $databaseFile->query('SELECT COUNT(*) FROM admin_users')->fetchColumn() === 2, 'SQLite数据没有持久化到本轮目录');
+        expect((int)$databaseFile->query('SELECT COUNT(*) FROM admin_users')->fetchColumn() === 2, 'SQLite数据没有持久化到本轮目录');
         unset($databaseFile);
     }
     cleanPackageCommand(['docker', 'stop', '--timeout', '10', $container]);

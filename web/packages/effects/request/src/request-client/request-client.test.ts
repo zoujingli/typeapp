@@ -1,3 +1,4 @@
+import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -8,8 +9,8 @@ describe('requestClient', () => {
   let requestClient: RequestClient;
 
   beforeEach(() => {
+    mock = new MockAdapter(axios);
     requestClient = new RequestClient();
-    mock = new MockAdapter(requestClient.instance);
   });
 
   afterEach(() => {
@@ -49,36 +50,27 @@ describe('requestClient', () => {
 
   it('should handle network errors', async () => {
     mock.onGet('/test/error').networkError();
-    try {
-      await requestClient.get('/test/error');
-      expect(true).toBe(false);
-    } catch (error: any) {
-      expect(error.isAxiosError).toBe(true);
-      expect(error.message).toBe('Network Error');
-    }
+    await expect(requestClient.get('/test/error')).rejects.toMatchObject({
+      isAxiosError: true,
+      message: 'Network Error',
+    });
   });
 
   it('should handle timeout', async () => {
     mock.onGet('/test/timeout').timeout();
-    try {
-      await requestClient.get('/test/timeout');
-      expect(true).toBe(false);
-    } catch (error: any) {
-      expect(error.isAxiosError).toBe(true);
-      expect(error.code).toBe('ECONNABORTED');
-    }
+    await expect(requestClient.get('/test/timeout')).rejects.toMatchObject({
+      isAxiosError: true,
+      code: 'ECONNABORTED',
+    });
   });
 
-  it('should preserve response metadata for http errors', async () => {
-    mock.onGet('/test/forbidden').reply(403, { info: 'forbidden' });
-
-    try {
-      await requestClient.get('/test/forbidden');
-      expect(true).toBe(false);
-    } catch (error: any) {
-      expect(error.response?.status).toBe(403);
-      expect(error.response?.data).toEqual({ info: 'forbidden' });
-    }
+  it('preserves HTTP status and response details for application authorization', async () => {
+    const details = { error: 'permission_denied', request_id: 'request-test' };
+    mock.onGet('/test/forbidden').reply(403, details);
+    await expect(requestClient.get('/test/forbidden')).rejects.toMatchObject({
+      isAxiosError: true,
+      response: { status: 403, data: details },
+    });
   });
 
   it('should successfully upload a file', async () => {
@@ -103,7 +95,7 @@ describe('requestClient', () => {
 
     mock.onGet('/test/download').reply(200, mockFileContent);
 
-    const res = await requestClient.download('/test/download');
+    const res = await requestClient.download<any>('/test/download');
 
     expect(res.data).toBeInstanceOf(Blob);
   });

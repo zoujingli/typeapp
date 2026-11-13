@@ -15,14 +15,17 @@ use Type\Scheduler\TaskContext;
 final class QueueDispatchTask implements Task
 {
     private Queue $queue;
+
     private string $type;
+
     private int $version;
+
     private array $payload;
 
     /**
      * 登记要投递的固定协议和载荷，不接管队列 Redis 连接。
      *
-     * @param array<array-key, mixed> $payload 受限 JSON 业务数据。
+     * @param array<array-key, mixed> $payload 受限 JSON 业务数据
      */
     public function __construct(Queue $queue, string $type, int $version, array $payload)
     {
@@ -36,7 +39,7 @@ final class QueueDispatchTask implements Task
      * 用 occurrence ID 生成稳定消息身份，在同一 Redis 租约脚本保护下投递。
      *
      * @return array{message_id: string, receipt: string}
-     * @throws LeaseException 当前计划不能提供 Redis 原子保护。
+     * @throws LeaseException 当前计划不能提供 Redis 原子保护
      */
     public function run(TaskContext $context): array
     {

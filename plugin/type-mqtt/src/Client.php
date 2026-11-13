@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Type\Mqtt;
 
+use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
+use Swoole\Timer;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionOwner;
@@ -17,34 +19,59 @@ use Type\Runtime\ExecutionOwner;
 final class Client
 {
     private ?Socket $socket = null;
+
     private ?ExecutionOwner $owner = null;
+
     private ?ExecutionOwner $threadOwner = null;
+
     private bool $connected = false;
+
     private bool $stopped = false;
+
     private string $input = '';
+
     private ?Deadline $partial = null;
+
     private ?Deadline $ping = null;
+
     private float $lastRead = 0.0;
+
     private float $lastWrite = 0.0;
+
     private int $effectiveKeepAlive = 30;
+
     private int $serverMaximum = 268435455;
+
     private int $serverQos = 2;
+
     private bool $serverRetain = true;
+
     private bool $serverWildcards = true;
+
     private bool $serverIdentifiers = true;
+
     private bool $serverShared = false;
+
     private int $nextIdentifier = 1;
+
     private int $waitingIdentifier = 0;
+
     private int $waitingType = 0;
+
     private ?int $response = null;
+
     /** @var list<array{message: Message, receipt: string, duplicate: bool, subscription_identifiers: list<int>}> */
     private array $messages = [];
+
     /** @var array<string,array{identifier:int,fingerprint:string}> 网络代次内的显式确认凭据。 */
     private array $incoming = [];
+
     /** @var array<int,string> 标识映射到仍未确认的凭据，防止活跃连接内重复交付。 */
     private array $identifiers = [];
+
     private int $queuedBytes = 0;
-    /** @var array{message:Message,identifier:int,fingerprint:string}|null 未知出站仅在同一实例内保留。 */
+
+    /** @var null|array{message:Message,identifier:int,fingerprint:string} 未知出站仅在同一实例内保留。 */
     private ?array $publication = null;
 
     /**
@@ -53,22 +80,22 @@ final class Client
      * 不预分配报文槽；排队上限为receiveMaximum条和maximumPacketBytes×receiveMaximum字节。
      * 网络统一使用官方协程 Socket；非协程调用由现有 CoroutineRuntime 启动官方 Scheduler。
      * 在协程内建连时绑定到该执行者；coroutine为真时另要求入口已经处于协程。
-     * @throws \InvalidArgumentException 身份、网络位置、TLS或预算非法。
+     * @throws \InvalidArgumentException 身份、网络位置、TLS或预算非法
      */
     public function __construct(
         private string $host,
-        private int    $port,
+        private int $port,
         private string $clientId,
         private string $username,
         private string $password,
         private string $caFile = '',
         private string $peerName = '',
-        private int    $keepAlive = 30,
-        private int    $sessionExpiry = 86400,
-        private int    $maximumPacketBytes = 1048576,
-        private int    $receiveMaximum = 32,
-        private bool   $allowPlaintext = false,
-        private bool   $coroutine = false
+        private int $keepAlive = 30,
+        private int $sessionExpiry = 86400,
+        private int $maximumPacketBytes = 1048576,
+        private int $receiveMaximum = 32,
+        private bool $allowPlaintext = false,
+        private bool $coroutine = false
     ) {
         if (@inet_pton($host) === false || $port < 1 || $port > 65535 || strlen($peerName) > 253 || str_contains($peerName, "\0")
             || $clientId === '' || $keepAlive < 1 || $keepAlive > 65535 || $sessionExpiry < 0 || $sessionExpiry > 4294967295
@@ -83,12 +110,18 @@ final class Client
         }
     }
 
+    /** 作用域退出同样释放连接；不会以析构替代业务确认。 */
+    public function __destruct()
+    {
+        $this->close(false);
+    }
+
     /**
      * 建立一个明确的新网络连接，返回 CONNACK Session Present；不自动重连或重发业务。
      * 同实例已有未知QoS1时，恢复会话后只能用相同消息再次publish；Clean Start或会话不存在则重新开始协议交换。
-     * @throws ProtocolError 服务端拒绝或响应非法。
-     * @throws \RuntimeException TLS、网络、截止或取消失败；错误不表示先前发布未被接收。
-     * @throws \LogicException 已持有连接，或所选协程模式没有协程上下文。
+     * @throws ProtocolError 服务端拒绝或响应非法
+     * @throws \RuntimeException TLS、网络、截止或取消失败；错误不表示先前发布未被接收
+     * @throws \LogicException 已持有连接，或所选协程模式没有协程上下文
      */
     public function connect(bool $cleanStart = false, float $timeout = 5.0): bool
     {
@@ -99,7 +132,7 @@ final class Client
         $deadline = self::deadline($timeout);
         $this->threadOwner = new ExecutionOwner(false);
         CoroutineRuntime::assertAvailable();
-        $inCoroutine = \Swoole\Coroutine::getCid() >= 0;
+        $inCoroutine = Coroutine::getCid() >= 0;
         if ($this->coroutine && !$inCoroutine) {
             throw new \LogicException('mqtt_client_coroutine_required');
         }
@@ -113,7 +146,7 @@ final class Client
                 $this->connectSocket($deadline);
                 $connectProperties = "\x11" . pack('N', $this->sessionExpiry) . "\x21" . pack('n', $this->receiveMaximum)
                     . "\x27" . pack('N', $this->maximumPacketBytes) . "\x22\0\0";
-                $body = self::field('MQTT') . "\x05" . chr($cleanStart ? 0xc2 : 0xc0) . pack('n', $this->keepAlive)
+                $body = self::field('MQTT') . "\x05" . chr($cleanStart ? 0xC2 : 0xC0) . pack('n', $this->keepAlive)
                     . PacketReader::encodeVariable(strlen($connectProperties)) . $connectProperties . self::field($this->clientId)
                     . self::field($this->username) . pack('n', strlen($this->password)) . $this->password;
                 $this->write(self::packet(0x10, $body), $deadline);
@@ -130,7 +163,7 @@ final class Client
             if ($reader->remaining() !== 0 || $flags > 1 || ($flags !== 0 && ($cleanStart || $reason !== 0))) {
                 throw new ProtocolError(0x82);
             }
-            if (!in_array($reason, [0, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8c, 0x90, 0x95, 0x97, 0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9f], true)) {
+            if (!in_array($reason, [0, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8C, 0x90, 0x95, 0x97, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9F], true)) {
                 throw new ProtocolError(0x82);
             }
             if ($reason !== 0) {
@@ -141,7 +174,7 @@ final class Client
             $this->serverRetain = ($properties['values'][0x25] ?? 1) === 1;
             $this->serverWildcards = ($properties['values'][0x28] ?? 1) === 1;
             $this->serverIdentifiers = ($properties['values'][0x29] ?? 1) === 1;
-            $this->serverShared = ($properties['values'][0x2a] ?? 1) === 1;
+            $this->serverShared = ($properties['values'][0x2A] ?? 1) === 1;
             $this->effectiveKeepAlive = $properties['values'][0x13] ?? $this->keepAlive;
             $this->connected = true;
             if ($flags === 0) {
@@ -156,7 +189,7 @@ final class Client
 
     /**
      * 订阅一个过滤器，返回授予QoS；支持0/1与MQTT5订阅选项及标识，拒绝结果抛异常。
-     * @throws ProtocolError 过滤器、选项、协商能力或 SUBACK 拒绝。
+     * @throws ProtocolError 过滤器、选项、协商能力或 SUBACK 拒绝
      */
     public function subscribe(string $filter, int $options = 1, int $subscriptionIdentifier = 0, float $timeout = 5.0): int
     {
@@ -169,7 +202,7 @@ final class Client
             }
             TopicFilter::validate(substr($filter, $separator + 1));
         }
-        if (($options & 3) > 1 || ($options & 0xc0) !== 0 || (($options >> 4) & 3) > 2
+        if (($options & 3) > 1 || ($options & 0xC0) !== 0 || (($options >> 4) & 3) > 2
             || $options < 0 || $subscriptionIdentifier < 0 || $subscriptionIdentifier > 268435455
             || (!$this->serverWildcards && strpbrk($filter, '+#') !== false) || (!$this->serverIdentifiers && $subscriptionIdentifier > 0)
             || (str_starts_with($filter, '$share/') && (!$this->serverShared || ($options & 4) !== 0))) {
@@ -190,7 +223,7 @@ final class Client
     public function unsubscribe(string $filter, float $timeout = 5.0): int
     {
         $identifier = $this->reserve();
-        return $this->exchange(0xa2, pack('n', $identifier) . "\0" . self::field($filter), 0xb0, $identifier, $timeout);
+        return $this->exchange(0xA2, pack('n', $identifier) . "\0" . self::field($filter), 0xB0, $identifier, $timeout);
     }
 
     /**
@@ -200,7 +233,7 @@ final class Client
     public function publish(Message $message, float $timeout = 5.0): int
     {
         if ($message->qos !== 1 || $this->serverQos < 1 || ($message->retain && !$this->serverRetain)) {
-            throw new ProtocolError($message->retain && !$this->serverRetain ? 0x9a : 0x9b);
+            throw new ProtocolError($message->retain && !$this->serverRetain ? 0x9A : 0x9B);
         }
         // 在摘要和完整报文分配前按实际编码长度检查，调用方的大载荷不能制造超预算复制。
         $bodyBytes = 4 + strlen($message->topic) + strlen(PacketReader::encodeVariable(strlen($message->properties)))
@@ -233,7 +266,7 @@ final class Client
     /**
      * 等待一条消息；普通等待截止返回null，协议/网络失败抛异常并关闭连接。
      * receipt仅对本次连接有效，QoS0为空；保留原始属性顺序，订阅标识作为交付元数据分开返回。
-     * @return array{message:Message,receipt:string,duplicate:bool,subscription_identifiers:list<int>}|null
+     * @return null|array{message:Message,receipt:string,duplicate:bool,subscription_identifiers:list<int>}
      */
     public function receive(float $timeout = 1.0): ?array
     {
@@ -256,7 +289,7 @@ final class Client
 
     /**
      * 仅显式业务确认发送 PUBACK；写出完成才移除本次凭据。过期回执凭据或重复确认均拒绝。
-     * @throws \LogicException 凭据不属于当前待确认交付。
+     * @throws \LogicException 凭据不属于当前待确认交付
      */
     public function acknowledge(string $receipt, int $reason = 0, float $timeout = 3.0): void
     {
@@ -279,7 +312,7 @@ final class Client
 
     /**
      * 所属执行者有界尝试DISCONNECT后释放网络，不确认入站；false允许同线程控制方直接关闭。
-     * @throws \RuntimeException 跨线程关闭，或其他执行者尝试正常协议关闭。
+     * @throws \RuntimeException 跨线程关闭，或其他执行者尝试正常协议关闭
      */
     public function close(bool $graceful = true): void
     {
@@ -313,13 +346,7 @@ final class Client
     public function statistics(): array
     {
         return ['connected' => $this->connected, 'buffered_bytes' => strlen($this->input) + $this->queuedBytes,
-                'queued' => count($this->messages), 'unacknowledged' => count($this->incoming), 'publication_unknown' => $this->publication !== null];
-    }
-
-    /** 作用域退出同样释放连接；不会以析构替代业务确认。 */
-    public function __destruct()
-    {
-        $this->close(false);
+            'queued' => count($this->messages), 'unacknowledged' => count($this->incoming), 'publication_unknown' => $this->publication !== null];
     }
 
     private function exchange(int $header, string $body, int $responseType, int $identifier, float $timeout, bool $encoded = false): int
@@ -370,7 +397,7 @@ final class Client
         $reader = new PacketReader($frame['body']);
         if (($header >> 4) === 3) {
             $this->incomingMessage($header, $reader);
-        } elseif (in_array($header, [0x40, 0x90, 0xb0], true)) {
+        } elseif (in_array($header, [0x40, 0x90, 0xB0], true)) {
             $identifier = $reader->integer(2);
             if ($identifier === 0 || $identifier !== $this->waitingIdentifier || $header !== $this->waitingType || $this->response !== null) {
                 throw new ProtocolError(0x82);
@@ -387,7 +414,7 @@ final class Client
             } else {
                 $this->properties($reader, 'ack');
                 $reason = $reader->integer(1);
-                if (!in_array($reason, $header === 0x90 ? [0, 1, 0x80, 0x83, 0x87, 0x8f, 0x91, 0x97, 0x9e, 0xa1, 0xa2] : [0, 0x11, 0x80, 0x83, 0x87, 0x8f, 0x91], true)) {
+                if (!in_array($reason, $header === 0x90 ? [0, 1, 0x80, 0x83, 0x87, 0x8F, 0x91, 0x97, 0x9E, 0xA1, 0xA2] : [0, 0x11, 0x80, 0x83, 0x87, 0x8F, 0x91], true)) {
                     throw new ProtocolError(0x82);
                 }
             }
@@ -395,11 +422,11 @@ final class Client
                 throw new ProtocolError(0x81);
             }
             $this->response = $reason;
-        } elseif ($header === 0xd0 && $reader->remaining() === 0 && $this->ping !== null) {
+        } elseif ($header === 0xD0 && $reader->remaining() === 0 && $this->ping !== null) {
             $this->ping = null;
-        } elseif ($header === 0xe0) {
+        } elseif ($header === 0xE0) {
             $reason = $reader->remaining() === 0 ? 0 : $reader->integer(1);
-            if (!in_array($reason, [0, 0x80, 0x81, 0x82, 0x83, 0x87, 0x89, 0x8b, 0x8d, 0x8e, 0x8f, 0x90, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2], true)) {
+            if (!in_array($reason, [0, 0x80, 0x81, 0x82, 0x83, 0x87, 0x89, 0x8B, 0x8D, 0x8E, 0x8F, 0x90, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F, 0xA0, 0xA1, 0xA2], true)) {
                 throw new ProtocolError(0x82);
             }
             if ($reader->remaining() > 0) {
@@ -447,7 +474,7 @@ final class Client
         }
         $this->queuedBytes += $bytes;
         $this->messages[] = ['message' => $message, 'receipt' => $receipt, 'duplicate' => ($header & 8) !== 0,
-                             'subscription_identifiers' => $properties['identifiers']];
+            'subscription_identifiers' => $properties['identifiers']];
     }
 
     /** 服务端属性上下文复用严格字节游标；仅交付订阅标识可重复，别名已明确协商为0。 */
@@ -459,28 +486,28 @@ final class Client
         $identifiers = [];
         $forward = '';
         $allowed = match ($context) {
-            'connack' => [0x11, 0x21, 0x24, 0x25, 0x27, 0x12, 0x22, 0x1f, 0x26, 0x28, 0x29, 0x2a, 0x13, 0x1a, 0x1c],
-            'publish' => [0x01, 0x02, 0x03, 0x08, 0x09, 0x0b, 0x26],
-            'disconnect' => [0x1f, 0x26, 0x1c],
-            default => [0x1f, 0x26],
+            'connack' => [0x11, 0x21, 0x24, 0x25, 0x27, 0x12, 0x22, 0x1F, 0x26, 0x28, 0x29, 0x2A, 0x13, 0x1A, 0x1C],
+            'publish' => [0x01, 0x02, 0x03, 0x08, 0x09, 0x0B, 0x26],
+            'disconnect' => [0x1F, 0x26, 0x1C],
+            default => [0x1F, 0x26],
         };
         while ($properties->remaining() > 0) {
             $start = strlen($raw) - $properties->remaining();
             $property = $properties->variable();
-            if (!in_array($property, $allowed, true) || ($property !== 0x26 && $property !== 0x0b && array_key_exists($property, $values))) {
+            if (!in_array($property, $allowed, true) || ($property !== 0x26 && $property !== 0x0B && array_key_exists($property, $values))) {
                 throw new ProtocolError(0x82);
             }
             if ($property === 0x26) {
                 // 客户端协商不消费User Property；逐项校验原字节，PUBLISH由Message保留其完整语义。
                 $properties->text();
                 $properties->text();
-            } elseif ($property === 0x0b) {
+            } elseif ($property === 0x0B) {
                 $subscription = $properties->variable();
                 if ($subscription === 0 || count($identifiers) >= 100) {
                     throw new ProtocolError(0x82);
                 }
                 $identifiers[] = $subscription;
-            } elseif (in_array($property, [0x01, 0x24, 0x25, 0x28, 0x29, 0x2a], true)) {
+            } elseif (in_array($property, [0x01, 0x24, 0x25, 0x28, 0x29, 0x2A], true)) {
                 $byte = $properties->integer(1);
                 if ($byte > 1) {
                     throw new ProtocolError(0x82);
@@ -503,7 +530,7 @@ final class Client
             } else {
                 $values[$property] = $properties->text();
             }
-            if ($context === 'publish' && $property !== 0x0b) {
+            if ($context === 'publish' && $property !== 0x0B) {
                 $forward .= substr($raw, $start, strlen($raw) - $properties->remaining() - $start);
             }
         }
@@ -519,7 +546,7 @@ final class Client
                 $length = 0;
                 $multiplier = 1;
                 $headerLength = 0;
-                for ($index = 1; $index < min(strlen($this->input), 5); $index++) {
+                for ($index = 1; $index < min(strlen($this->input), 5); ++$index) {
                     $byte = ord($this->input[$index]);
                     $length += ($byte & 127) * $multiplier;
                     if (($byte & 128) === 0) {
@@ -561,7 +588,7 @@ final class Client
                 return null;
             }
             // 已缓冲报文保持同步解析；只有需要网络时建立一次上下文，分片续收复用该协程。
-            if (\Swoole\Coroutine::getCid() < 0) {
+            if (Coroutine::getCid() < 0) {
                 $receivedFrame = CoroutineRuntime::run(function () use ($deadline, $required): ?array {
                     return $this->frame($deadline, $required);
                 });
@@ -601,7 +628,7 @@ final class Client
         if ($deadline->expired()) {
             throw new \RuntimeException('mqtt_client_timeout');
         }
-        $written = CoroutineRuntime::run(function () use ($packet, $deadline): int|false {
+        $written = CoroutineRuntime::run(function () use ($packet, $deadline): false|int {
             return $this->socket->sendAll($packet, max(0.000001, $deadline->remaining() ?? 0.001));
         });
         if ($written !== strlen($packet)) {
@@ -669,8 +696,8 @@ final class Client
             return;
         }
         $settings = ['open_ssl' => true, 'ssl_verify_peer' => true, 'ssl_allow_self_signed' => false,
-                     'ssl_host_name' => $this->peerName === '' ? $this->host : $this->peerName,
-                     'ssl_protocols' => SWOOLE_SSL_TLSv1_2 | SWOOLE_SSL_TLSv1_3];
+            'ssl_host_name' => $this->peerName === '' ? $this->host : $this->peerName,
+            'ssl_protocols' => SWOOLE_SSL_TLSv1_2 | SWOOLE_SSL_TLSv1_3];
         if ($this->caFile !== '') {
             $settings['ssl_cafile'] = $this->caFile;
         }
@@ -680,7 +707,7 @@ final class Client
         if ($deadline->expired()) {
             throw new \RuntimeException('mqtt_client_timeout');
         }
-        $timer = \Swoole\Timer::after(max(1, (int)ceil(($deadline->remaining() ?? 0.001) * 1000.0)), static function () use ($socket): void {
+        $timer = Timer::after(max(1, (int)ceil(($deadline->remaining() ?? 0.001) * 1000.0)), static function () use ($socket): void {
             $socket->cancel(SWOOLE_EVENT_READ);
         });
         if ($timer === false) {
@@ -695,8 +722,8 @@ final class Client
                 throw new \RuntimeException('mqtt_client_timeout');
             }
         } finally {
-            if (\Swoole\Timer::exists($timer)) {
-                \Swoole\Timer::clear($timer);
+            if (Timer::exists($timer)) {
+                Timer::clear($timer);
             }
         }
     }

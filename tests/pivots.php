@@ -1,6 +1,8 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ModelCompiler;
+use TypeApp\ModelExample\Drivers;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -9,7 +11,7 @@ require dirname(__DIR__) . '/examples/model/Drivers.php';
 $root = dirname(__DIR__);
 $driver = $argv[2] ?? 'sqlite';
 expect(in_array($driver, ['mysql', 'pgsql', 'sqlite'], true), '未知多对多验证驱动');
-$compiler = new Type\Build\ModelCompiler();
+$compiler = new ModelCompiler();
 $generated = tempnam(sys_get_temp_dir(), 'type_pivot_models_');
 $sqlite = tempnam(sys_get_temp_dir(), 'type_pivot_db_');
 expect($generated !== false && $sqlite !== false, '无法准备关系验证');
@@ -23,7 +25,7 @@ try {
     if ($driver === 'sqlite') {
         putenv($environmentKey . '=' . $sqlite);
     } else {
-        $admin = TypeApp\ModelExample\Drivers::create($driver)->connect();
+        $admin = Drivers::create($driver)->connect();
         $admin->exec('CREATE DATABASE ' . $databaseName);
         $created = true;
         putenv($environmentKey . '=' . $databaseName);
@@ -45,7 +47,7 @@ try {
     putenv('TYPE_PIVOT_BARRIER=' . $barrier);
     $children = [];
     try {
-        for ($index = 0; $index < 2; $index++) {
+        for ($index = 0; $index < 2; ++$index) {
             $output = tmpfile();
             expect($output !== false, '无法准备并发输出');
             $process = proc_open([...$command, $driver, 'race'], [0 => ['file', '/dev/null', 'r'], 1 => $output, 2 => $output], $pipes);

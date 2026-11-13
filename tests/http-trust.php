@@ -8,7 +8,7 @@ require __DIR__ . '/http-support.php';
 /**
  * 发送带可覆盖身份和代理头的真实 HTTP 请求，读取结果后关闭连接。
  *
- * @param array<string, string|int> $headers
+ * @param array<string, int|string> $headers
  * @return array{int, string, string}
  */
 function trustRequest(int $port, string $path, array $headers = [], string $method = 'GET', string $body = ''): array
@@ -39,12 +39,12 @@ if (isset($argv[1]) && $argv[1] !== '--php') {
 foreach ([false, true] as $trusted) {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($listener), '无法分配测试端口');
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
     $log = tmpfile();
     expect($log !== false, '无法准备测试日志');
     $environment = getenv();
-    $environment['TYPE_HTTP_PORT'] = (string) $port;
+    $environment['TYPE_HTTP_PORT'] = (string)$port;
     $environment['TYPE_TRUST_PROXY'] = $trusted ? '1' : '0';
     $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => $log, 2 => $log], $pipes, null, $environment);
     expect(is_resource($process), '无法启动 HTTP 信任入口');

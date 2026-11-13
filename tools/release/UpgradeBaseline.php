@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TypeApp\Release;
 
+use Type\Build\BuildPlatform;
+
 /** 升级只接受固定公开版本的原始字节；源码夹具与自行重建不能代替已发布旧程序。 */
 final class UpgradeBaseline
 {
@@ -26,8 +28,8 @@ final class UpgradeBaseline
     }
 
     /**
-     * @return array<string,mixed> 可写入候选回执的固定基线身份。
-     * @throws \RuntimeException 清单或程序摘要、大小、来源、平台不符。
+     * @return array<string,mixed> 可写入候选回执的固定基线身份
+     * @throws \RuntimeException 清单或程序摘要、大小、来源、平台不符
      */
     public static function verify(string $directory, string $platform, string $profile): array
     {
@@ -45,7 +47,7 @@ final class UpgradeBaseline
             || filesize($path) !== $expected['bytes'] || hash_file('sha256', $path) !== $expected['sha256']) {
             throw new \RuntimeException('公开升级基线程序身份不匹配');
         }
-        (new \Type\Build\BuildPlatform())->assertArtifact($path);
+        (new BuildPlatform())->assertArtifact($path);
         return $expected;
     }
 }

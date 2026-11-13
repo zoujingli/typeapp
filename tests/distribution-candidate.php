@@ -24,7 +24,7 @@ function candidateArchive(string $root, string $split, string $directory): array
 /**
  * 从完整固定快照安装并验证IoT应用，不改变分发映射或声明最终候选已冻结。
  *
- * @throws RuntimeException 安装、输入审计、完整编译或真实公开行为失败；保留本轮日志和状态。
+ * @throws RuntimeException 安装、输入审计、完整编译或真实公开行为失败；保留本轮日志和状态
  */
 function candidateIot(string $root, string $source): void
 {
@@ -123,8 +123,8 @@ function candidateIot(string $root, string $source): void
         $record['source_inputs'] = count($built['sources']);
         $record['checks'][] = 'complete-iot-production-aot';
         $environment['TYPE_NATIVE_PHP_INI'] = $built['runtime-profile']['ini'];
-        $mysql = (string) getenv('TYPE_MYSQL_TOOLS');
-        $pgsql = (string) getenv('TYPE_PGSQL_TOOLS');
+        $mysql = (string)getenv('TYPE_MYSQL_TOOLS');
+        $pgsql = (string)getenv('TYPE_PGSQL_TOOLS');
         $scenarios = [
             'package' => ['native-package.php', [], 180],
             'framework-databases' => ['native-database-application.php', [$mysql, $pgsql], 600],
@@ -264,7 +264,7 @@ try {
         $base . '/template.log',
         1800
     );
-    expect(preg_match('#应用模板独立 sqlite 消费验证通过：([^\\r\\n]+)#u', $output, $matches) === 1, '候选模板没有返回实际消费结果');
+    expect(preg_match('#应用模板独立 sqlite 消费验证通过：([^\r\n]+)#u', $output, $matches) === 1, '候选模板没有返回实际消费结果');
     $templateConsumer = realpath(trim($matches[1]));
     expect(is_string($templateConsumer) && str_starts_with($templateConsumer, $root . '/build/template-sqlite-'), '模板消费者不属于本轮范围');
     foreach ($record['components'] as $name => $component) {

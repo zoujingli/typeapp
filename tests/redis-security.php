@@ -11,7 +11,7 @@ use Type\Redis\RedisManager;
 use Type\Runtime\ExecutionScope;
 
 $host = getenv('TYPE_REDIS_HOST') ?: '127.0.0.1';
-$port = (int) (getenv('TYPE_REDIS_PORT') ?: 6379);
+$port = (int)(getenv('TYPE_REDIS_PORT') ?: 6379);
 $admin = new Redis();
 expect($admin->connect($host, $port), '无法连接受控 Redis');
 $name = 'type_acl_' . bin2hex(random_bytes(8));

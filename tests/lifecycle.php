@@ -1,12 +1,13 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ModelCompiler;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 $root = dirname(__DIR__);
-$compiler = new Type\Build\ModelCompiler();
+$compiler = new ModelCompiler();
 $file = tempnam(sys_get_temp_dir(), 'type_lifecycle_models_');
 expect($file !== false, '无法准备生命周期模型');
 file_put_contents($file, $compiler->compile([$root . '/examples/model/Models.php'])['code']);

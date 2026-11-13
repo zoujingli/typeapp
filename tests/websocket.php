@@ -32,7 +32,7 @@ function wsFrame(string $payload, int $opcode, bool $fin = true): string
     }
     $mask = random_bytes(4);
     $masked = '';
-    for ($i = 0; $i < $length; $i++) {
+    for ($i = 0; $i < $length; ++$i) {
         $masked .= $payload[$i] ^ $mask[$i % 4];
     }
     return $header . $mask . $masked;
@@ -43,7 +43,7 @@ function wsPort(): int
 {
     $listener = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
     expect(is_resource($listener), '无法分配测试端口');
-    $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+    $port = (int)substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
     fclose($listener);
     return $port;
 }
@@ -60,7 +60,7 @@ function wsStart(array $options = [], bool $lease = false): array
     $environment = getenv();
     expect(is_array($environment), '无法读取测试进程环境');
     unset($environment['PHPRC'], $environment['PHP_INI_SCAN_DIR']);
-    $environment['TYPE_WS_PORT'] = (string) $port;
+    $environment['TYPE_WS_PORT'] = (string)$port;
     $environment['TYPE_WS_OPTIONS'] = json_encode($options, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
     $environment['TYPE_WS_LEASE'] = $marker;
     $process = new Process(
@@ -68,7 +68,7 @@ function wsStart(array $options = [], bool $lease = false): array
         $root,
         $environment
     );
-    wsReady($process, $port, isset($options['open_ssl']) && $options['open_ssl'] === true ? (string) $options['ssl_cert_file'] : '');
+    wsReady($process, $port, isset($options['open_ssl']) && $options['open_ssl'] === true ? (string)$options['ssl_cert_file'] : '');
     return ['process' => $process, 'port' => $port, 'lease' => $marker];
 }
 
@@ -102,7 +102,7 @@ function wsReady(Process $process, int $port, string $cafile = ''): void
 /**
  * 创建验证测试 CA 和回环主机名的 TLS 客户端上下文。
  *
- * @return resource 供测试连接借用的流上下文。
+ * @return resource 供测试连接借用的流上下文
  */
 function wsTlsContext(string $cafile, int $crypto = STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT)
 {
@@ -215,7 +215,7 @@ function wsHttp(int $port, string $path, bool $tls = false, string $cafile = '')
     stream_set_timeout($http, 5);
     $request = "GET {$path} HTTP/1.1\r\nHost: 127.0.0.1:{$port}\r\nConnection: close\r\n\r\n";
     expect(fwrite($http, $request) === strlen($request), 'HTTP 请求未写完');
-    $response = (string) stream_get_contents($http);
+    $response = (string)stream_get_contents($http);
     fclose($http);
     return $response;
 }
@@ -226,7 +226,7 @@ function wsLease(string $path): string
     $deadline = microtime(true) + 5;
     $value = '';
     while (microtime(true) < $deadline) {
-        $value = is_file($path) ? (string) file_get_contents($path) : '';
+        $value = is_file($path) ? (string)file_get_contents($path) : '';
         if ($value === 'closed') {
             return $value;
         }
@@ -243,7 +243,7 @@ function wsRejected(int $port, array $headers, bool $tls = false, array $tlsOpti
         $client->start();
         $client->send('probe', true);
         return $client->receive(2.0) === null;
-    } catch (\Throwable $error) {
+    } catch (Throwable $error) {
         return true;
     } finally {
         $client->stop();
@@ -257,8 +257,8 @@ function wsRejected(int $port, array $headers, bool $tls = false, array $tlsOpti
  */
 function wsPhp(): array
 {
-    $directory = (string) ini_get('extension_dir');
-    $swoole = (string) (getenv('TYPE_SWOOLE_MODULE') ?: $directory . '/swoole.so');
+    $directory = (string)ini_get('extension_dir');
+    $swoole = (string)(getenv('TYPE_SWOOLE_MODULE') ?: $directory . '/swoole.so');
     expect(is_file($swoole), 'WebSocket 验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中的 swoole.so');
     $command = [PHP_BINARY];
     foreach (['mysqlnd', 'swoole'] as $extension) {
@@ -480,7 +480,7 @@ try {
             $unverified = false;
             try {
                 Client::create(new ResourceBudget(2), '127.0.0.1', $secure['port'], '/ws', true)->start();
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $unverified = true;
             }
             expect($unverified, 'WSS 客户端缺少 CA 时必须拒绝自签名证书');
@@ -498,7 +498,7 @@ try {
                     5.0,
                     ['ssl_cafile' => $tls['certificate'], 'ssl_host_name' => 'wrong.invalid']
                 )->start();
-            } catch (\Throwable $error) {
+            } catch (Throwable $error) {
                 $wrongName = true;
             }
             expect($wrongName, 'WSS 客户端主机名不匹配时必须失败');

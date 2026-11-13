@@ -9,9 +9,7 @@ use TypeApp\Distribution\Process;
 /** GitHub Release的受限写入：标签不移动，附件不覆盖，重试逐项回读真实字节。 */
 final class GitHub
 {
-    public function __construct(private string $root)
-    {
-    }
+    public function __construct(private string $root) {}
 
     /** 包括当前令牌可见的草稿；API失败不能当作Release不存在。 */
     public function find(string $repository, string $version): ?array
@@ -44,7 +42,7 @@ final class GitHub
                     continue;
                 }
                 $path = $this->download('zoujingli/typeapp', $release['tag_name'], 'release-manifest.json', $directory);
-                $manifest = json_decode((string) file_get_contents($path), true, 128, JSON_THROW_ON_ERROR);
+                $manifest = json_decode((string)file_get_contents($path), true, 128, JSON_THROW_ON_ERROR);
                 $sha = hash_file('sha256', $path);
                 unlink($path);
                 if (($manifest['protocol'] ?? null) === 3) {
@@ -182,11 +180,11 @@ final class GitHub
     /**
      * 写入成功后最多七次读取、六十三秒退避，覆盖实测六十秒缓存窗口；不重复写入。
      * API错误直接传播，超出预算仍失败并保留草稿供原候选重试。
-     * @return array<string,mixed>|null 可回读的Release；公开操作还须观察到draft=false。
+     * @return null|array<string,mixed> 可回读的Release；公开操作还须观察到draft=false
      */
     private function afterWrite(string $repository, string $version, bool $published): ?array
     {
-        for ($attempt = 0; $attempt < 7; $attempt++) {
+        for ($attempt = 0; $attempt < 7; ++$attempt) {
             if ($attempt > 0) {
                 sleep(1 << ($attempt - 1));
             }
@@ -202,7 +200,7 @@ final class GitHub
     private function scope(string $repository, string $version): void
     {
         Plan::version($version);
-        $mapping = json_decode((string) file_get_contents($this->root . '/.github/distribution.json'), true, 64, JSON_THROW_ON_ERROR);
+        $mapping = json_decode((string)file_get_contents($this->root . '/.github/distribution.json'), true, 64, JSON_THROW_ON_ERROR);
         $allowed = [...array_column($mapping['packages'], 'repository'), 'zoujingli/type-project', 'zoujingli/typeapp'];
         if (!in_array($repository, $allowed, true)) {
             throw new \RuntimeException('Release仓库不属于固定映射');

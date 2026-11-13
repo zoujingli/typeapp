@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ArtifactManifest;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -8,7 +9,7 @@ $root = dirname(__DIR__);
 $isolated = ($argv[1] ?? '') === '--chroot';
 $container = ($argv[1] ?? '') === '--docker-image';
 $artifact = $isolated || $container ? ($argv[3] ?? '') : ($argv[1] ?? $root . '/build/identity/type-app');
-$manifest = (new Type\Build\ArtifactManifest())->read($artifact);
+$manifest = (new ArtifactManifest())->read($artifact);
 $command = $container ? cleanRuntimeCommand($argv[2] ?? '') : ($isolated ? nativeCommand($argv[2] ?? '', true) : nativeCommand($artifact));
 [$status, $stdout, $stderr] = execute($command);
 expect($status === 0 && $stderr === '', '构建身份入口失败或产生运行警告：' . $stdout . $stderr);

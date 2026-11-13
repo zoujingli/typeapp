@@ -15,7 +15,7 @@ final class CoreCommand implements Command
     /**
      * 将框架命令的参数交给迁移控制台，返回其退出状态。
      *
-     * @param list<string> $arguments 不含命令名称的控制台参数。
+     * @param list<string> $arguments 不含命令名称的控制台参数
      */
     public function run(Configuration $configuration, array $arguments): int
     {

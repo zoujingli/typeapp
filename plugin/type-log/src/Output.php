@@ -4,28 +4,41 @@ declare(strict_types=1);
 
 namespace Type\Log;
 
-use InvalidArgumentException;
-use RuntimeException;
-use Throwable;
+use Type\Runtime\LocalFile;
 
 /** 普通文件及非阻塞流的有界日志缓冲；输出失败通过计数呈现，不递归写错误日志。 */
 final class Output
 {
     private mixed $stream = null;
+
     private string $destination;
+
     private bool $ownsStream = true;
+
     private ?bool $wasBlocking = null;
+
     private ?int $process = null;
+
     private bool $stopped = false;
+
     private bool $failed = false;
+
     private bool $draining = false;
+
     private array $queue = [];
+
     private int $head = 0;
+
     private int $offset = 0;
+
     private int $bytes = 0;
+
     private int $maxRecords;
+
     private int $maxBytes;
+
     private int $maxRecordBytes;
+
     private array $counts = ['accepted' => 0, 'written' => 0, 'dropped_full' => 0, 'dropped_oversize' => 0,
         'dropped_failure' => 0, 'dropped_stop' => 0, 'write_failures' => 0, 'drain_timeouts' => 0, 'partial_records' => 0,
         'high_water_records' => 0, 'high_water_bytes' => 0];
@@ -34,7 +47,7 @@ final class Output
     {
         if ($maxRecords < 1 || $maxRecords > 100000 || $maxBytes < 256 || $maxBytes > 67108864
             || $maxRecordBytes < 256 || $maxRecordBytes > $maxBytes) {
-            throw new InvalidArgumentException('日志输出容量无效');
+            throw new \InvalidArgumentException('日志输出容量无效');
         }
         $this->destination = $destination;
         $this->maxRecords = $maxRecords;
@@ -45,7 +58,7 @@ final class Output
     /**
      * 建立延迟打开的 stdout 输出；条数、总字节与单条字节均有上限。
      *
-     * @throws InvalidArgumentException 容量参数越界。
+     * @throws \InvalidArgumentException 容量参数越界
      */
     public static function stdout(int $maxRecords = 1024, int $maxBytes = 1048576, int $maxRecordBytes = 4096): Output
     {
@@ -55,12 +68,12 @@ final class Output
     /**
      * 建立本地文件追加输出；父目录由应用准备，实际打开时拒绝符号链接和非普通文件。
      *
-     * @param string $path 本地绝对路径；Windows 使用完整盘符路径，不接受 URL/UNC/设备路径。
-     * @throws InvalidArgumentException 路径或容量参数无效。
+     * @param string $path 本地绝对路径；Windows 使用完整盘符路径，不接受 URL/UNC/设备路径
+     * @throws \InvalidArgumentException 路径或容量参数无效
      */
     public static function file(string $path, int $maxRecords = 1024, int $maxBytes = 1048576, int $maxRecordBytes = 4096): Output
     {
-        return new Output(\Type\Runtime\LocalFile::path($path, false), $maxRecords, $maxBytes, $maxRecordBytes);
+        return new Output(LocalFile::path($path, false), $maxRecords, $maxBytes, $maxRecordBytes);
     }
 
     /** 普通文件直接写入；其他流接管非阻塞模式，借用流停止后恢复被修改的模式。 */
@@ -72,12 +85,12 @@ final class Output
         bool $closeStream = false
     ): Output {
         if (!is_resource($stream) || get_resource_type($stream) !== 'stream') {
-            throw new InvalidArgumentException('日志输出需要有效流资源');
+            throw new \InvalidArgumentException('日志输出需要有效流资源');
         }
         $output = new Output('', $maxRecords, $maxBytes, $maxRecordBytes);
         $output->stream = $stream;
         $output->ownsStream = $closeStream;
-        $output->process = (int) getmypid();
+        $output->process = (int)getmypid();
         $output->prepareStream();
         return $output;
     }
@@ -85,31 +98,31 @@ final class Output
     /**
      * 接纳一条完整记录到内存；满载、过大、停止或失败时整体丢弃并累计计数。
      *
-     * @return bool true 仅表示已入缓冲，不表示持久写出。
+     * @return bool true 仅表示已入缓冲，不表示持久写出
      */
     public function enqueue(string $line): bool
     {
         $this->assertProcess();
         if ($this->stopped) {
-            $this->counts['dropped_stop']++;
+            ++$this->counts['dropped_stop'];
             return false;
         }
         if ($this->failed) {
-            $this->counts['dropped_failure']++;
+            ++$this->counts['dropped_failure'];
             return false;
         }
         $length = strlen($line);
         if ($length > $this->maxRecordBytes) {
-            $this->counts['dropped_oversize']++;
+            ++$this->counts['dropped_oversize'];
             return false;
         }
         if (count($this->queue) >= $this->maxRecords || $this->bytes + $length > $this->maxBytes) {
-            $this->counts['dropped_full']++;
+            ++$this->counts['dropped_full'];
             return false;
         }
         $this->queue[] = $line;
         $this->bytes += $length;
-        $this->counts['accepted']++;
+        ++$this->counts['accepted'];
         $this->counts['high_water_records'] = max($this->counts['high_water_records'], count($this->queue));
         $this->counts['high_water_bytes'] = max($this->counts['high_water_bytes'], $this->bytes);
         return true;
@@ -118,14 +131,14 @@ final class Output
     /**
      * 在给定秒数内尝试写出缓冲，保留部分写出的偏移；失败使输出退役。
      *
-     * @return bool 本次调用结束时缓冲是否为空。
-     * @throws InvalidArgumentException 秒数非有限值或不在 0 至 60 之间。
+     * @return bool 本次调用结束时缓冲是否为空
+     * @throws \InvalidArgumentException 秒数非有限值或不在 0 至 60 之间
      */
     public function drain(float $seconds = 0.0): bool
     {
         $this->assertProcess();
         if (!is_finite($seconds) || $seconds < 0 || $seconds > 60) {
-            throw new InvalidArgumentException('日志排空预算需要在 0 到 60 秒之间');
+            throw new \InvalidArgumentException('日志排空预算需要在 0 到 60 秒之间');
         }
         if ($this->draining || $this->stopped || $this->failed) {
             return $this->queue === [];
@@ -140,7 +153,7 @@ final class Output
                 $line = $this->queue[$this->head];
                 try {
                     $written = @fwrite($this->stream, substr($line, $this->offset));
-                } catch (Throwable $error) {
+                } catch (\Throwable $error) {
                     $written = false;
                 }
                 if ($written === false) {
@@ -150,10 +163,10 @@ final class Output
                 if ($written > 0) {
                     $this->offset += $written;
                     if ($this->offset === strlen($line)) {
-                        $this->bytes -= (int) strlen($line);
+                        $this->bytes -= (int)strlen($line);
                         unset($this->queue[$this->head++]);
                         $this->offset = 0;
-                        $this->counts['written']++;
+                        ++$this->counts['written'];
                         if ($this->queue === []) {
                             $this->queue = [];
                             $this->head = 0;
@@ -169,7 +182,7 @@ final class Output
                 $remaining = $deadline - hrtime(true) / 1e9;
                 if ($remaining <= 0) {
                     if ($seconds > 0) {
-                        $this->counts['drain_timeouts']++;
+                        ++$this->counts['drain_timeouts'];
                     } return false;
                 }
                 if ($written === 0) {
@@ -177,8 +190,8 @@ final class Output
                     $write = [$this->stream];
                     $except = [];
                     try {
-                        $ready = @stream_select($read, $write, $except, 0, (int) min(1000000, ceil($remaining * 1e6)));
-                    } catch (Throwable $error) {
+                        $ready = @stream_select($read, $write, $except, 0, (int)min(1000000, ceil($remaining * 1e6)));
+                    } catch (\Throwable $error) {
                         $ready = false;
                     }
                     if ($ready === false) {
@@ -202,7 +215,7 @@ final class Output
         }
         $this->drain($seconds);
         if ($this->offset > 0) {
-            $this->counts['partial_records']++;
+            ++$this->counts['partial_records'];
         }
         $this->counts['dropped_stop'] += count($this->queue);
         $this->queue = [];
@@ -216,7 +229,7 @@ final class Output
     /**
      * 读取输出累计计数与当前积压；部分写入不计作完整 written。
      *
-     * @return array<string, int|bool> 累计数量、积压条数/字节及 failed/stopped 状态。
+     * @return array<string, bool|int> 累计数量、积压条数/字节及 failed/stopped 状态
      */
     public function stats(): array
     {
@@ -228,9 +241,9 @@ final class Output
     private function assertProcess(): void
     {
         if ($this->process === null) {
-            $this->process = (int) getmypid();
-        } elseif ($this->process !== (int) getmypid()) {
-            throw new RuntimeException('日志输出不能跨进程复用，请在工作进程内创建');
+            $this->process = (int)getmypid();
+        } elseif ($this->process !== (int)getmypid()) {
+            throw new \RuntimeException('日志输出不能跨进程复用，请在工作进程内创建');
         }
     }
 
@@ -241,7 +254,7 @@ final class Output
         }
         try {
             if ($this->destination !== 'php://stdout') {
-                \Type\Runtime\LocalFile::path($this->destination);
+                LocalFile::path($this->destination);
             }
             $this->stream = @fopen($this->destination, 'ab');
             if (!is_resource($this->stream)) {
@@ -249,11 +262,11 @@ final class Output
                 return false;
             }
             if ($this->destination !== 'php://stdout') {
-                \Type\Runtime\LocalFile::assertOpened($this->destination, $this->stream);
+                LocalFile::assertOpened($this->destination, $this->stream);
             }
             $this->prepareStream();
             return true;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->fail();
             return false;
         }
@@ -262,19 +275,19 @@ final class Output
     private function prepareStream(): void
     {
         $metadata = stream_get_meta_data($this->stream);
-        if (strpbrk((string) $metadata['mode'], 'waxc+') === false
+        if (strpbrk((string)$metadata['mode'], 'waxc+') === false
             || !in_array($metadata['stream_type'], ['STDIO', 'tcp_socket', 'unix_socket', 'generic_socket'], true)) {
-            throw new InvalidArgumentException('日志只接受可写本地文件、标准输出或原生 socket 流');
+            throw new \InvalidArgumentException('日志只接受可写本地文件、标准输出或原生 socket 流');
         }
         $stat = fstat($this->stream);
         // 普通磁盘文件不具备非阻塞等待语义，Windows PHP 也不支持切换其模式。
         // 仅按已打开句柄识别普通文件；管道、设备和 socket 仍须支持非阻塞。
         $regularFile = $metadata['stream_type'] === 'STDIO' && is_array($stat)
-            && (((int) $stat['mode'] & 0170000) === 0100000);
+            && (((int)$stat['mode'] & 0170000) === 0100000);
         if (!$regularFile) {
-            $wasBlocking = (bool) ($metadata['blocked'] ?? true);
+            $wasBlocking = (bool)($metadata['blocked'] ?? true);
             if (!stream_set_blocking($this->stream, false)) {
-                throw new InvalidArgumentException('日志输出不能设置非阻塞模式');
+                throw new \InvalidArgumentException('日志输出不能设置非阻塞模式');
             }
             $this->wasBlocking = $wasBlocking;
         }
@@ -283,9 +296,9 @@ final class Output
 
     private function fail(): void
     {
-        $this->counts['write_failures']++;
+        ++$this->counts['write_failures'];
         if ($this->offset > 0) {
-            $this->counts['partial_records']++;
+            ++$this->counts['partial_records'];
         }
         $this->counts['dropped_failure'] += count($this->queue);
         $this->queue = [];
@@ -305,7 +318,7 @@ final class Output
                 } elseif ($this->wasBlocking !== null) {
                     @stream_set_blocking($this->stream, $this->wasBlocking);
                 }
-            } catch (Throwable $error) { /* 输出已经退役，不向业务路径递归报告。 */
+            } catch (\Throwable $error) { /* 输出已经退役，不向业务路径递归报告。 */
             }
         }
         $this->stream = null;

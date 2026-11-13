@@ -23,13 +23,13 @@ try {
         $closed = false;
         $client = new Redis();
         try {
-            $closed = !$client->connect('127.0.0.1', (int) $firstEnvironment[$key], 0.2);
+            $closed = !$client->connect('127.0.0.1', (int)$firstEnvironment[$key], 0.2);
         } catch (RedisException) {
             $closed = true;
         }
         expect($closed, '已关闭的实例仍接受连接');
         $other = new Redis();
-        expect($other->connect('127.0.0.1', (int) $secondEnvironment[$key], 0.2) && $other->ping() !== false, '关闭影响了其他所有者的实例');
+        expect($other->connect('127.0.0.1', (int)$secondEnvironment[$key], 0.2) && $other->ping() !== false, '关闭影响了其他所有者的实例');
         $other->close();
     }
     foreach ([[$base . '/first', $server], [$base . '/invalid', __FILE__], [$base . '/failed-start', PHP_BINARY]] as [$directory, $binary]) {

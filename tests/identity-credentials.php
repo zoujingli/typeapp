@@ -1,6 +1,8 @@
 <?php
 
 declare(strict_types=1);
+use Type\Testing\Process;
+use TypeApp\ModelExample\Drivers;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -9,7 +11,7 @@ require dirname(__DIR__) . '/examples/model/Drivers.php';
 $root = dirname(__DIR__);
 $driver = $argv[2] ?? 'mysql';
 expect(in_array($driver, ['mysql', 'pgsql'], true), '密码验证请选择网络数据库');
-$admin = TypeApp\ModelExample\Drivers::create($driver)->connect();
+$admin = Drivers::create($driver)->connect();
 $user = 'type_rotate_' . bin2hex(random_bytes(6));
 $first = bin2hex(random_bytes(24));
 $second = bin2hex(random_bytes(24));
@@ -63,7 +65,7 @@ try {
             $baselineEnvironment = getenv();
             $baselineEnvironment['TYPE_IDENTITY_SCHEMA'] = $schema;
             $baselineEnvironment['TYPE_IDENTITY_ROLE'] = $user;
-            $baseline = new Type\Testing\Process([...$command, $driver, 'session-baseline'], $root, $baselineEnvironment);
+            $baseline = new Process([...$command, $driver, 'session-baseline'], $root, $baselineEnvironment);
             try {
                 $baselineResult = $baseline->wait(30);
                 expect($baselineResult->successful() && $baselineResult->stderr === ''

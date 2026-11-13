@@ -9,20 +9,21 @@ final class Message
 {
     /** @var array<int, mixed> 已校验的 MQTT 5 属性；User Property 保留顺序与重复项。 */
     public readonly array $attributes;
+
     private float $receivedAt;
 
     /**
      * @param string $properties MQTT 5 属性原始字节，不含 Property Length；MQTT 3.1.1 留空。
-     * @param int $elapsedSeconds 恢复持久原件时已经等待的整秒数，不能重新获得原期限。
-     * @param bool $retain 发布者请求替换保留事实；实际出站 RETAIN 由本次交付决定。
-     * @throws ProtocolError Topic、属性或显式 UTF-8 载荷非法；连接级 Topic Alias 必须先由连接解析。
+     * @param int $elapsedSeconds 恢复持久原件时已经等待的整秒数，不能重新获得原期限
+     * @param bool $retain 发布者请求替换保留事实；实际出站 RETAIN 由本次交付决定
+     * @throws ProtocolError topic、属性或显式 UTF-8 载荷非法；连接级 Topic Alias 必须先由连接解析
      */
     public function __construct(public readonly string $topic, public readonly string $payload, public readonly string $properties = '', public readonly int $qos = 0, int $elapsedSeconds = 0, public readonly bool $retain = false)
     {
         if (!in_array($qos, [0, 1, 2], true)) {
-            throw new ProtocolError(0x9b);
+            throw new ProtocolError(0x9B);
         }
-        $this->receivedAt = (float) hrtime(true) / 1000000000.0 - (float) max(0, $elapsedSeconds);
+        $this->receivedAt = (float)hrtime(true) / 1000000000.0 - (float)max(0, $elapsedSeconds);
         if ($topic === '' || strlen($topic) > 65535 || strpbrk($topic, '+#') !== false) {
             throw new ProtocolError(0x90);
         }
@@ -46,14 +47,14 @@ final class Message
         if (!isset($this->attributes[0x02])) {
             return null;
         }
-        return max(0, (int) $this->attributes[0x02] - (int) floor((float) hrtime(true) / 1000000000.0 - $this->receivedAt));
+        return max(0, (int)$this->attributes[0x02] - (int)floor((float)hrtime(true) / 1000000000.0 - $this->receivedAt));
     }
 
     /** 在创建持久请求时把剩余单调预算转换为 Unix 秒截止；null 表示无期限。 */
     public function expiresAt(): ?int
     {
         $remaining = $this->remaining();
-        return $remaining === null ? null : time() + (int) $remaining;
+        return $remaining === null ? null : time() + (int)$remaining;
     }
 
     /**

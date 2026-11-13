@@ -5,6 +5,11 @@ declare(strict_types=1);
 require_once __DIR__ . '/support.php';
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
+use app\common\service\SiteSettings;
+use Type\Build\ArtifactManifest;
+use Type\Build\NativePackage;
+use Type\Mqtt\Client;
+use Type\Mqtt\ProtocolError;
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
 
@@ -27,8 +32,8 @@ function identityCommand(array $command, array $environment): array
                     $diagnostic = str_replace($value, '<REDACTED>', $diagnostic);
                 }
             }
-            throw new RuntimeException('人员命令结果无效：exit=' . $result->exitCode . ', timed-out=' . (int) $result->timedOut
-                . ', output-exceeded=' . (int) $result->outputExceeded . ', signal=' . ($result->signal ?? 'none')
+            throw new RuntimeException('人员命令结果无效：exit=' . $result->exitCode . ', timed-out=' . (int)$result->timedOut
+                . ', output-exceeded=' . (int)$result->outputExceeded . ', signal=' . ($result->signal ?? 'none')
                 . ', seconds=' . ((hrtime(true) - $started) / 1e9) . ', budget-seconds=30, stdout-bytes=' . strlen($result->stdout)
                 . ', stdout-sha256=' . hash('sha256', $result->stdout) . "\n" . substr($diagnostic, 0, 8192), 0, $failure);
         }
@@ -39,8 +44,8 @@ function identityCommand(array $command, array $environment): array
 
 /**
  * 真实HTTP请求等待安装行锁后竞争；只用于本轮隔离数据库。
- * @param ?Closure(list<array{method: string, path: string, status: int, error: ?string}>): void $observe 仅接收状态与稳定错误码，不复制凭据或响应正文。
- * @return list<int> 按发送顺序返回状态码。
+ * @param ?Closure(list<array{method: string, path: string, status: int, error: ?string}>): void $observe 仅接收状态与稳定错误码，不复制凭据或响应正文
+ * @return list<int> 按发送顺序返回状态码
  */
 function identityCompete(PDO $inspection, string $driver, string $address, array $requests, ?Closure $beforeRelease = null, ?Closure $observe = null): array
 {
@@ -49,7 +54,7 @@ function identityCompete(PDO $inspection, string $driver, string $address, array
         $inspection->exec('BEGIN IMMEDIATE');
     } else {
         $inspection->beginTransaction();
-        $inspection->query('SELECT id FROM app_installation WHERE id = 1 FOR UPDATE')->closeCursor();
+        $inspection->query('SELECT id FROM platform_installation WHERE id = 1 FOR UPDATE')->closeCursor();
     }
     $locked = true;
     try {
@@ -59,7 +64,7 @@ function identityCompete(PDO $inspection, string $driver, string $address, array
             expect(is_resource($socket), '无法建立并发授权连接');
             $sockets[] = $socket;
             stream_set_timeout($socket, 15);
-            $body = json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR);
+            $body = json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR);
             $headers = '';
             foreach ($entry[4] ?? [] as $header => $value) {
                 $headers .= $header . ': ' . $value . "\r\n";
@@ -82,7 +87,7 @@ function identityCompete(PDO $inspection, string $driver, string $address, array
         foreach ($sockets as $index => $socket) {
             $response = stream_get_contents($socket);
             expect(preg_match('/^HTTP\/1\.1 (\d{3})/', $response, $matched) === 1, '并发授权响应无效');
-            $statuses[] = (int) $matched[1];
+            $statuses[] = (int)$matched[1];
             $parts = explode("\r\n\r\n", $response, 2);
             $responseBody = $parts[1] ?? '';
             if (preg_match('/\r\nTransfer-Encoding:\s*chunked\r?$/im', $parts[0]) === 1) {
@@ -90,7 +95,7 @@ function identityCompete(PDO $inspection, string $driver, string $address, array
                 while ($responseBody !== '') {
                     $line = strpos($responseBody, "\r\n");
                     expect($line !== false && preg_match('/^[a-fA-F0-9]{1,8}$/D', substr($responseBody, 0, $line)) === 1, '并发响应分块长度无效');
-                    $size = (int) hexdec(substr($responseBody, 0, $line));
+                    $size = (int)hexdec(substr($responseBody, 0, $line));
                     $responseBody = substr($responseBody, $line + 2);
                     if ($size === 0) {
                         expect($responseBody === "\r\n", '并发响应结束分块无效');
@@ -105,7 +110,7 @@ function identityCompete(PDO $inspection, string $driver, string $address, array
             $payload = json_decode($responseBody, true);
             $error = $payload['error'] ?? null;
             $observations[] = ['method' => $requests[$index][0], 'path' => explode('?', $requests[$index][1], 2)[0],
-                'status' => (int) $matched[1], 'error' => is_string($error) && preg_match('/^[a-z_]{1,80}$/D', $error) === 1 ? $error : null];
+                'status' => (int)$matched[1], 'error' => is_string($error) && preg_match('/^[a-z_]{1,80}$/D', $error) === 1 ? $error : null];
         }
         if ($observe !== null) {
             $observe($observations);
@@ -146,7 +151,7 @@ function identityBrokerChecks(Closure $request, PDO $database, array $fixture, s
         '/customer/tenants/' . $tenant . '/devices/' . $fixture['device']['id'] . '/commands',
         $tokens['alice'],
         $headers,
-        ['command_id' => bin2hex(random_bytes(16)), 'identifier' => 'switch', 'values' => ['on' => true], 'version' => (int) $fixture['device']['version']],
+        ['command_id' => bin2hex(random_bytes(16)), 'identifier' => 'switch', 'values' => ['on' => true], 'version' => (int)$fixture['device']['version']],
         404
     );
     $call('GET', $path . '/resources/connections', $tokens['platform'], $headers, null, 401);
@@ -162,11 +167,11 @@ function identityBrokerChecks(Closure $request, PDO $database, array $fixture, s
     // 只构造本轮查询边界；真实连接与协议状态仍由MQTT专项产生。
     $node = bin2hex(random_bytes(16));
     $owners = [bin2hex(random_bytes(16)), bin2hex(random_bytes(16)), bin2hex(random_bytes(16))];
-    $database->prepare('INSERT INTO broker_resource_runs (slot, node_id, run_id, observed_at, expires_at, connections) VALUES (0, ?, ?, ?, ?, 3)')->execute(['app-broker-fixture', $node, time(), time() + 60]);
+    $database->prepare('INSERT INTO platform_mqtt_resource_run (slot, node_id, run_id, observed_at, expires_at, connections) VALUES (0, ?, ?, ?, ?, 3)')->execute(['app-broker-fixture', $node, time(), time() + 60]);
     try {
         foreach ($owners as $index => $id) {
             $scope = 'iot:' . ($index === 2 ? $other : $tenant);
-            $database->prepare('INSERT INTO broker_resource_connections (owner_id, observation_run, client_id, client_hash, session_id, session_generation, node_id, node_run_id, node_generation, resource_scope, scope_hash, protocol, transport, durable, observed_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1, ?, ?, 5, ?, 0, ?)')
+            $database->prepare('INSERT INTO platform_mqtt_resource_connection (owner_id, observation_run, client_id, client_hash, session_id, session_generation, node_id, node_run_id, node_generation, resource_scope, scope_hash, protocol, transport, durable, observed_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1, ?, ?, 5, ?, 0, ?)')
                 ->execute([$id, $node, $id, hash('sha256', $id), bin2hex(random_bytes(16)), 'app-broker-fixture', $node, $scope, hash('sha256', $scope), 'tls', time()]);
         }
         $first = $call('GET', $path . '/resources/connections?limit=1', $tokens['alice'], $headers);
@@ -289,7 +294,7 @@ function identityBrokerChecks(Closure $request, PDO $database, array $fixture, s
         $call('PUT', '/admin/roles/' . $auditRole['id'] . '/permissions', $tokens['platform'], [], ['version' => $auditRole['version'], 'permissions' => ['identity.read', 'admin.audit.read', 'admin.broker.read']]);
         expect($call('GET', '/admin/audit/customer/' . $event['id'], $auditToken)['item'] === $detail, '同时授权后普通审计详情未恢复');
         $call('POST', '/admin/auth/logout', $auditToken);
-        $database->prepare('UPDATE broker_resource_runs SET expires_at = ? WHERE run_id = ?')->execute([time() - 1, $node]);
+        $database->prepare('UPDATE platform_mqtt_resource_run SET expires_at = ? WHERE run_id = ?')->execute([time() - 1, $node]);
         $unknown = $call('GET', $path . '/resources/connections/' . $owners[0], $tokens['alice'], $headers)['item'];
         expect(!$unknown['connection_confirmed'] && $unknown['state'] === 'unknown', '过期连接被查询伪装为健康');
         $source = $call('POST', '/admin/auth/login', '', [], ['login' => 'same-login', 'password' => $password])['data'];
@@ -300,10 +305,10 @@ function identityBrokerChecks(Closure $request, PDO $database, array $fixture, s
         $call('GET', $path . '/audit', $simulation['accessToken'], $headers, null, 401);
     } finally {
         foreach ($owners as $id) {
-            $database->prepare('DELETE FROM broker_connection_operations WHERE owner_id = ?')->execute([$id]);
-            $database->prepare('DELETE FROM broker_resource_connections WHERE owner_id = ?')->execute([$id]);
+            $database->prepare('DELETE FROM platform_mqtt_connection_operation WHERE owner_id = ?')->execute([$id]);
+            $database->prepare('DELETE FROM platform_mqtt_resource_connection WHERE owner_id = ?')->execute([$id]);
         }
-        $database->prepare('DELETE FROM broker_resource_runs WHERE run_id = ?')->execute([$node]);
+        $database->prepare('DELETE FROM platform_mqtt_resource_run WHERE run_id = ?')->execute([$node]);
     }
     $menus = $call('GET', '/customer/auth/me', $tokens['alice'], $headers)['data']['menus'];
     expect(in_array('/broker-resources', menuPaths($menus), true) && in_array('/broker-access', menuPaths($menus), true)
@@ -393,7 +398,7 @@ function identityAuditChecks(Closure $request, PDO $database, array $fixture, ar
     $cutoff = time() - 180 * 86400;
     $ids = array_map(static fn (int $index): string => bin2hex(random_bytes(16)), range(0, 3));
     $facts = [];
-    foreach (['app_installation', 'admin_sessions', 'customer_sessions', 'admin_broker_operations', 'iot_authorization_invalidations'] as $table) {
+    foreach (['platform_installation', 'admin_sessions', 'customer_sessions', 'admin_broker_operations', 'iot_authorization_invalidations'] as $table) {
         $facts[$table] = $database->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
     }
     foreach (['admin', 'customer'] as $realm) {
@@ -428,7 +433,7 @@ function identityAuditChecks(Closure $request, PDO $database, array $fixture, ar
             $interrupted->stop();
             $database->rollBack();
         }
-        expect((int) $database->query('SELECT COUNT(*) FROM ' . $realm . '_audit WHERE created_at <= ' . $cutoff)->fetchColumn() === 4, '清理中断留下部分删除');
+        expect((int)$database->query('SELECT COUNT(*) FROM ' . $realm . '_audit WHERE created_at <= ' . $cutoff)->fetchColumn() === 4, '清理中断留下部分删除');
         $pruned = identityCommand([...$command, 'app:audit-clean', $realm, '2'], $environment)['data'];
         expect($pruned['deleted'] === 2 && $pruned['has_more'], '到期清理必须限定本批');
         $resumed = identityCommand([...$command, 'app:audit-clean', $realm, '2'], $environment)['data'];
@@ -506,10 +511,10 @@ function identityImpersonationCases(callable $request, PDO $inspection, string $
     $call('PUT', 'roles/' . $fullRole['id'] . '/permissions', ['version' => 2, 'permissions' => ['identity.read']]);
     $call('GET', 'roles', null, 403, $simulated);
     $call('PUT', 'roles/' . $fullRole['id'] . '/permissions', ['version' => 3, 'permissions' => array_keys($catalog)]);
-    $call('POST', 'members/' . $member['id'] . '/status', ['version' => (int) $member['version'], 'enabled' => false]);
+    $call('POST', 'members/' . $member['id'] . '/status', ['version' => (int)$member['version'], 'enabled' => false]);
     $call('GET', 'auth/me', null, 403, $simulated);
     $call('GET', 'auth/me', null, 200, $simulated, $tenants[1]);
-    $call('POST', 'members/' . $member['id'] . '/status', ['version' => (int) $member['version'] + 1, 'enabled' => true]);
+    $call('POST', 'members/' . $member['id'] . '/status', ['version' => (int)$member['version'] + 1, 'enabled' => true]);
     $adminCall('POST', 'tenants/' . $tenants[0] . '/status', ['version' => 1, 'enabled' => false]);
     $call('GET', 'auth/me', null, 403, $simulated);
     $adminCall('POST', 'tenants/' . $tenants[0] . '/status', ['version' => 2, 'enabled' => true]);
@@ -525,14 +530,14 @@ function identityImpersonationCases(callable $request, PDO $inspection, string $
     $call('GET', 'auth/me', null, 200, $real);
     $request('GET', '/admin/auth/me', $originToken, [], null, 200);
     $tokens = [];
-    for ($index = 0; $index < 11; $index++) {
+    for ($index = 0; $index < 11; ++$index) {
         $tokens[] = $start($originToken)['accessToken'];
     }
     $valid = 0;
     foreach ($tokens as $credential) {
         $check = $inspection->prepare('SELECT COUNT(*) FROM customer_sessions WHERE token_hash = ?');
         $check->execute([hash('sha256', $credential)]);
-        $valid += (int) $check->fetchColumn();
+        $valid += (int)$check->fetchColumn();
         $check->closeCursor();
     }
     expect($valid === 10, '模拟会话预算未生效：' . $valid);
@@ -552,9 +557,9 @@ function identityImpersonationCases(callable $request, PDO $inspection, string $
     $originToken = $sourceLogin()['accessToken'];
     $active = $start($originToken)['accessToken'];
     $user = $adminCall('GET', 'users/' . $source['id'])['items'][0];
-    $adminCall('POST', 'users/' . $source['id'] . '/status', ['version' => (int) $user['version'], 'enabled' => false]);
+    $adminCall('POST', 'users/' . $source['id'] . '/status', ['version' => (int)$user['version'], 'enabled' => false]);
     $call('GET', 'auth/me', null, 401, $active);
-    $adminCall('POST', 'users/' . $source['id'] . '/status', ['version' => (int) $user['version'] + 1, 'enabled' => true]);
+    $adminCall('POST', 'users/' . $source['id'] . '/status', ['version' => (int)$user['version'] + 1, 'enabled' => true]);
     $originToken = $sourceLogin()['accessToken'];
     $active = $start($originToken)['accessToken'];
     $adminCall('DELETE', 'customers/' . $target['id'] . '/sessions', ['version' => 1]);
@@ -574,9 +579,9 @@ function identityImpersonationCases(callable $request, PDO $inspection, string $
         $inspection->exec("CREATE TRIGGER impersonation_failure BEFORE INSERT ON admin_audit WHEN NEW.action = 'identity.impersonated' BEGIN SELECT RAISE(ABORT, 'controlled impersonation audit failure'); END");
     }
     try {
-        $before = (int) $inspection->query('SELECT COUNT(*) FROM customer_sessions')->fetchColumn();
+        $before = (int)$inspection->query('SELECT COUNT(*) FROM customer_sessions')->fetchColumn();
         $start($originToken, 500, 4);
-        expect((int) $inspection->query('SELECT COUNT(*) FROM customer_sessions')->fetchColumn() === $before, '审计失败仍提交模拟会话');
+        expect((int)$inspection->query('SELECT COUNT(*) FROM customer_sessions')->fetchColumn() === $before, '审计失败仍提交模拟会话');
     } finally {
         $inspection->exec('DROP TRIGGER impersonation_failure' . ($driver === 'pgsql' ? ' ON admin_audit' : ''));
         if ($driver === 'pgsql') {
@@ -600,7 +605,7 @@ function identityRoleCases(callable $request, PDO $inspection, string $driver, s
     $tenant = $tenants[0];
     $headers = ['X-Tenant-Id' => $tenant];
     $call = static fn (string $method, string $path, ?array $data = null, int $status = 200, ?string $as = null, ?string $scope = null): array => $request($method, $path, $as ?? $customer, ['X-Tenant-Id' => $scope ?? $tenant], $data, $status)['data'] ?? [];
-    $binding = static fn (array $row): array => ['id' => $row['id'], 'version' => (int) $row['version']];
+    $binding = static fn (array $row): array => ['id' => $row['id'], 'version' => (int)$row['version']];
     $role = static fn (string $id): array => $call('GET', '/customer/roles/' . $id)['items'][0];
     $login = static fn (string $name): string => $request('POST', '/customer/auth/login', '', [], ['login' => $name, 'password' => $password], 200)['data']['accessToken'];
     $catalog = $call('GET', '/customer/roles');
@@ -609,7 +614,7 @@ function identityRoleCases(callable $request, PDO $inspection, string $driver, s
     $first = $call('POST', '/customer/roles', ['name' => '成员查询', 'permissions' => ['customer.members.read']]);
     $second = $call('POST', '/customer/roles', ['name' => '角色查询', 'permissions' => ['customer.roles.read']]);
     $other = $call('POST', '/customer/roles', ['name' => '成员查询', 'permissions' => ['customer.roles.read']], 200, null, $tenants[1]);
-    expect((int) $first['enabled'] === 0 && $first['scope_id'] !== $other['scope_id'], '角色创建默认状态或租户归属错误');
+    expect((int)$first['enabled'] === 0 && $first['scope_id'] !== $other['scope_id'], '角色创建默认状态或租户归属错误');
     $call('POST', '/customer/roles', ['name' => '成员查询', 'permissions' => []], 409);
     foreach ([['*'], ['customer.*'], ['admin.roles.read'], ['customer.roles.read', 'customer.roles.read']] as $invalid) {
         $call('POST', '/customer/roles', ['name' => '非法节点', 'permissions' => $invalid], 422);
@@ -637,10 +642,10 @@ function identityRoleCases(callable $request, PDO $inspection, string $driver, s
     expect($role($second['id'])['permissions'] === ['customer.roles.read'], '旧角色详情回显退役权限');
     expect($call('GET', '/customer/auth/me', null, 200, $workerToken)['permissions'] === ['customer.roles.read'], '旧角色扩张当前人员权限');
     $copy = $call('POST', '/customer/roles/' . $second['id'] . '/copy', ['version' => 4, 'name' => '查询副本']);
-    expect((int) $copy['enabled'] === 0 && (int) $copy['protected'] === 0 && $copy['permissions'] === ['customer.roles.read'], '复制角色错误继承状态或缺权限');
+    expect((int)$copy['enabled'] === 0 && (int)$copy['protected'] === 0 && $copy['permissions'] === ['customer.roles.read'], '复制角色错误继承状态或缺权限');
     $legacyCheck = $inspection->prepare('SELECT COUNT(*) FROM customer_role_permissions WHERE role_id = ? AND permission = ?');
     $legacyCheck->execute([$second['id'], $legacyPermission]);
-    $legacyCount = (int) $legacyCheck->fetchColumn();
+    $legacyCount = (int)$legacyCheck->fetchColumn();
     // SQLite 游标持有读取快照；观察结束即归还，避免后续真实并发装置升级事务时自锁。
     $legacyCheck->closeCursor();
     expect($legacyCount === 1, '读取或复制角色篡改了历史权限原件');
@@ -682,7 +687,7 @@ function identityRoleCases(callable $request, PDO $inspection, string $driver, s
     }
     try {
         $call('DELETE', '/customer/roles/' . $second['id'], ['version' => 4], 500);
-        expect($role($second['id']) === $before && (int) $call('GET', '/customer/members/' . $worker['id'])['items'][0]['version'] === 2, '角色删除审计失败未回滚关系和成员版本');
+        expect($role($second['id']) === $before && (int)$call('GET', '/customer/members/' . $worker['id'])['items'][0]['version'] === 2, '角色删除审计失败未回滚关系和成员版本');
         $call('GET', '/customer/roles', null, 200, $workerToken);
     } finally {
         $inspection->exec('DROP TRIGGER role_test_failure' . ($driver === 'pgsql' ? ' ON customer_audit' : ''));
@@ -699,10 +704,10 @@ function identityRoleCases(callable $request, PDO $inspection, string $driver, s
     expect(in_array($sorted, [[200, 404], [200, 409]], true), '并发删除和停用留下两个成功变更');
     $current = $call('GET', '/customer/roles?search=' . rawurlencode('角色查询'))['items'];
     if ($current !== []) {
-        $call('DELETE', '/customer/roles/' . $second['id'], ['version' => (int) $current[0]['version']]);
+        $call('DELETE', '/customer/roles/' . $second['id'], ['version' => (int)$current[0]['version']]);
     }
     $after = $call('GET', '/customer/members/' . $worker['id'])['items'][0];
-    expect((int) $after['version'] === 3 && !in_array($second['id'], array_column($after['roles'], 'id'), true), '角色删除未清除关系或推进成员版本');
+    expect((int)$after['version'] === 3 && !in_array($second['id'], array_column($after['roles'], 'id'), true), '角色删除未清除关系或推进成员版本');
     $call('GET', '/customer/roles', null, 403, $workerToken);
     $call('PUT', '/customer/members/roles', ['members' => [$binding($worker)], 'roles' => []], 409);
     $initial = array_column($catalog['items'], null, 'name')['操作员'];
@@ -722,7 +727,7 @@ function identityRoleCases(callable $request, PDO $inspection, string $driver, s
     sort($sorted);
     $remainingQuery = $inspection->prepare('SELECT COUNT(DISTINCT m.id) FROM customer_members m JOIN customer_users u ON u.id = m.user_id JOIN customer_member_roles b ON b.member_id = m.id AND b.tenant_id = m.tenant_id JOIN customer_roles r ON r.id = b.role_id AND r.scope_id = m.tenant_id WHERE m.tenant_id = ? AND m.enabled = 1 AND m.recovery_verified = 1 AND u.enabled = 1 AND u.recovery_verified = 1 AND r.enabled = 1 AND r.protected = 1 AND r.recovery_verified = 1');
     $remainingQuery->execute([$tenant]);
-    $remainingHighest = (int) $remainingQuery->fetchColumn();
+    $remainingHighest = (int)$remainingQuery->fetchColumn();
     $remainingQuery->closeCursor();
     expect($sorted === [200, 409] && $remainingHighest === 1, '并发解绑和删除的最高管理员保护结果错误：' . json_encode(['responses' => $highestResponses, 'remaining_highest' => $remainingHighest], JSON_THROW_ON_ERROR));
     expect(in_array('last_tenant_admin', array_column($highestResponses, 'error'), true), '并发拒绝未命中最后最高管理员保护：' . json_encode($highestResponses, JSON_THROW_ON_ERROR));
@@ -742,7 +747,7 @@ function identityMemberCases(callable $request, PDO $inspection, string $driver,
     $headers = ['X-Tenant-Id' => $tenant];
     $call = static fn (string $method, string $path, ?array $data = null, int $status = 200, ?string $as = null, ?string $scope = null): array => $request($method, $path, $as ?? $customer, ['X-Tenant-Id' => $scope ?? $tenant], $data, $status)['data'] ?? [];
     $member = static fn (string $id): array => $call('GET', '/customer/members/' . $id)['items'][0];
-    $binding = static fn (array $row): array => ['id' => $row['id'], 'version' => (int) $row['version']];
+    $binding = static fn (array $row): array => ['id' => $row['id'], 'version' => (int)$row['version']];
     $login = static fn (string $name): string => $request('POST', '/customer/auth/login', '', [], ['login' => $name, 'password' => $password], 200)['data']['accessToken'];
     $roles = $call('GET', '/customer/roles')['items'];
     $byName = array_column($roles, null, 'name');
@@ -780,7 +785,7 @@ function identityMemberCases(callable $request, PDO $inspection, string $driver,
     $call('GET', '/customer/members/' . $joined['id'], null, 404);
     $call('PATCH', '/customer/members/' . $joined['id'], ['version' => 2, 'name' => '串租户'], 404);
     $call('POST', '/customer/members', array_replace($values, ['login' => 'bad-role-client', 'roles' => [$otherReadonly]]), 404);
-    expect((int) $inspection->query("SELECT COUNT(*) FROM customer_users WHERE login = 'bad-role-client'")->fetchColumn() === 0, '跨租户角色失败留下孤立客户');
+    expect((int)$inspection->query("SELECT COUNT(*) FROM customer_users WHERE login = 'bad-role-client'")->fetchColumn() === 0, '跨租户角色失败留下孤立客户');
     $before = $member($id);
     $call('PUT', '/customer/members/roles', ['members' => [$binding($before), $binding($joined)], 'roles' => []], 404);
     expect($member($id) === $before, '跨租户批量失败未整体回滚');
@@ -825,14 +830,14 @@ function identityMemberCases(callable $request, PDO $inspection, string $driver,
     $call('POST', '/customer/members/' . $owner['id'] . '/status', ['version' => 1, 'enabled' => true], 403, $delegate);
     $call('PUT', '/customer/members/roles', ['members' => [$binding($member($again['id']))], 'roles' => [$highest]], 403, $delegate);
     $call('POST', '/customer/members', array_replace($values, ['login' => 'escalated-member', 'roles' => [$highest]]), 403, $delegate);
-    expect((int) $inspection->query("SELECT COUNT(*) FROM customer_users WHERE login = 'escalated-member'")->fetchColumn() === 0, '越权创建保留了账号');
+    expect((int)$inspection->query("SELECT COUNT(*) FROM customer_users WHERE login = 'escalated-member'")->fetchColumn() === 0, '越权创建保留了账号');
     $revokedToken = $login('delegated-member');
     $before = $member($again['id']);
-    $revoked = identityCompete($inspection, $driver, $address, [['PATCH', '/customer/members/' . $again['id'], $revokedToken, ['version' => (int) $before['version'], 'name' => '撤权后修改'], $headers]], static function () use ($inspection, $revokedToken): void {
+    $revoked = identityCompete($inspection, $driver, $address, [['PATCH', '/customer/members/' . $again['id'], $revokedToken, ['version' => (int)$before['version'], 'name' => '撤权后修改'], $headers]], static function () use ($inspection, $revokedToken): void {
         $inspection->prepare('DELETE FROM customer_sessions WHERE token_hash = ?')->execute([hash('sha256', $revokedToken)]);
     });
     expect($revoked === [401] && $member($again['id']) === $before, '等待授权锁时未重验会话');
-    $counts = static fn (): array => array_map(static fn (string $table): int => (int) $inspection->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn(), ['customer_users', 'customer_members', 'customer_member_roles', 'customer_audit']);
+    $counts = static fn (): array => array_map(static fn (string $table): int => (int)$inspection->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn(), ['customer_users', 'customer_members', 'customer_member_roles', 'customer_audit']);
     $beforeCounts = $counts();
     if ($driver === 'pgsql') {
         $inspection->exec("CREATE FUNCTION member_test_failure() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN IF NEW.action = ''authorization.assigned'' THEN RAISE EXCEPTION ''controlled member audit failure''; END IF; RETURN NEW; END'");
@@ -879,9 +884,9 @@ function identityCustomerCases(callable $request, PDO $inspection, string $drive
     $other = $call('POST', '/admin/customers', ['login' => 'other-client', 'name' => '其他客户', 'password' => $password]);
     $id = $account['id'];
     $current = $user($id);
-    expect(!isset($current['roles']) && !isset($current['password_hash']) && (int) $current['version'] === 1, '客户投影不能含平台角色或凭据');
+    expect(!isset($current['roles']) && !isset($current['password_hash']) && (int)$current['version'] === 1, '客户投影不能含平台角色或凭据');
     $page = $call('GET', '/admin/customers?search=global-client&per_page=1');
-    expect((int) $page['total'] === 1 && count($page['items']) === 1 && in_array('/admin/customers', menuPaths($page['menus']), true), '客户筛选和固定菜单不一致');
+    expect((int)$page['total'] === 1 && count($page['items']) === 1 && in_array('/admin/customers', menuPaths($page['menus']), true), '客户筛选和固定菜单不一致');
     $call('GET', '/admin/customers/' . str_repeat('f', 32), null, 404);
     $sessions = [$login('global-client', $password), $login('global-client', $password)];
     $me = $call('GET', '/customer/auth/me', null, 200, $sessions[0]);
@@ -892,11 +897,11 @@ function identityCustomerCases(callable $request, PDO $inspection, string $drive
     $request('PATCH', '/customer/account', $sessions[0], ['X-Tenant-Id' => str_repeat('a', 32)], $self, 403);
     $request('PATCH', '/customer/account', $sessions[0], ['X-Impersonation-Id' => str_repeat('a', 32)], $self, 403);
     $call('PATCH', '/customer/account', array_replace($self, ['current_password' => 'wrong-secret']), 403, $sessions[0]);
-    expect((int) $user($id)['version'] === 1, '原密码错误仍修改了资料版本');
+    expect((int)$user($id)['version'] === 1, '原密码错误仍修改了资料版本');
     $call('PATCH', '/customer/account', $self + ['enabled' => false], 422, $sessions[0]);
     $call('PATCH', '/customer/account', array_replace($self, ['login' => 'other-client']), 409, $sessions[0]);
     $updated = $call('PATCH', '/customer/account', array_replace($self, ['login' => 'global-renamed']), 200, $sessions[0]);
-    expect((int) $updated['version'] === 2 && $updated['name'] === '本人资料', '本人资料未提交');
+    expect((int)$updated['version'] === 2 && $updated['name'] === '本人资料', '本人资料未提交');
     $call('PATCH', '/customer/account', $self, 409, $sessions[0]);
     $call('GET', '/customer/auth/me', null, 200, $sessions[1]);
     $call('POST', '/customer/auth/login', ['login' => 'global-client', 'password' => $password], 401, '');
@@ -928,7 +933,7 @@ function identityCustomerCases(callable $request, PDO $inspection, string $drive
         ['POST', '/admin/customers', $token, ['login' => 'global-unique', 'name' => '并发二', 'password' => $password]],
     ]);
     sort($uniqueStatuses);
-    expect($uniqueStatuses === [200, 409] && (int) $call('GET', '/admin/customers?search=global-unique')['total'] === 1, '并发创建同名客户未确定拒绝');
+    expect($uniqueStatuses === [200, 409] && (int)$call('GET', '/admin/customers?search=global-unique')['total'] === 1, '并发创建同名客户未确定拒绝');
     // 客户密码和会话删除必须随真实审计失败一起回滚。
     if ($driver === 'pgsql') {
         $inspection->exec("CREATE FUNCTION customer_test_failure() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN IF NEW.subject_id = ''{$id}'' THEN RAISE EXCEPTION ''controlled customer audit failure''; END IF; RETURN NEW; END'");
@@ -940,7 +945,7 @@ function identityCustomerCases(callable $request, PDO $inspection, string $drive
     }
     $before = $user($id);
     try {
-        $call('POST', '/admin/customers/' . $id . '/password', ['version' => (int) $before['version'], 'password' => $password . '-reset'], 500);
+        $call('POST', '/admin/customers/' . $id . '/password', ['version' => (int)$before['version'], 'password' => $password . '-reset'], 500);
         expect($user($id) === $before, '审计失败没有回滚客户版本');
         foreach ($sessions as $active) {
             $call('GET', '/customer/auth/me', null, 200, $active);
@@ -952,33 +957,33 @@ function identityCustomerCases(callable $request, PDO $inspection, string $drive
             $inspection->exec('DROP FUNCTION customer_test_failure()');
         }
     }
-    $call('POST', '/admin/customers/' . $id . '/password', ['version' => (int) $before['version'], 'password' => $password . '-reset']);
+    $call('POST', '/admin/customers/' . $id . '/password', ['version' => (int)$before['version'], 'password' => $password . '-reset']);
     foreach ($sessions as $old) {
         $call('GET', '/customer/auth/me', null, 401, $old);
     }
     $call('POST', '/customer/auth/login', ['login' => 'global-renamed', 'password' => $password . '-self'], 401, '');
     foreach (['sessions', 'status'] as $action) {
         $sessions = [$login('global-renamed', $password . '-reset'), $login('global-renamed', $password . '-reset')];
-        $call($action === 'sessions' ? 'DELETE' : 'POST', '/admin/customers/' . $id . '/' . $action, ['version' => (int) $user($id)['version']] + ($action === 'status' ? ['enabled' => false] : []));
+        $call($action === 'sessions' ? 'DELETE' : 'POST', '/admin/customers/' . $id . '/' . $action, ['version' => (int)$user($id)['version']] + ($action === 'status' ? ['enabled' => false] : []));
         foreach ($sessions as $old) {
             $call('GET', '/customer/auth/me', null, 401, $old);
         }
     }
     $call('POST', '/customer/auth/login', ['login' => 'global-renamed', 'password' => $password . '-reset'], 401, '');
-    $call('POST', '/admin/customers/' . $id . '/status', ['version' => (int) $user($id)['version'], 'enabled' => true]);
+    $call('POST', '/admin/customers/' . $id . '/status', ['version' => (int)$user($id)['version'], 'enabled' => true]);
     $active = $login('global-renamed', $password . '-reset');
-    $revoked = identityCompete($inspection, $driver, $address, [['PATCH', '/customer/account', $active, ['version' => (int) $user($id)['version'], 'login' => 'global-renamed', 'name' => '不能保存', 'current_password' => $password . '-reset']]], static function () use ($inspection, $active): void {
+    $revoked = identityCompete($inspection, $driver, $address, [['PATCH', '/customer/account', $active, ['version' => (int)$user($id)['version'], 'login' => 'global-renamed', 'name' => '不能保存', 'current_password' => $password . '-reset']]], static function () use ($inspection, $active): void {
         $inspection->prepare('DELETE FROM customer_sessions WHERE token_hash = ?')->execute([hash('sha256', $active)]);
     });
     expect($revoked === [401] && $user($id)['name'] !== '不能保存', '排队期间撤销本人会话仍能写入');
     $highest = $call('GET', '/admin/customers?search=same-login')['items'][0];
-    $call('POST', '/admin/customers/' . $highest['id'] . '/status', ['version' => (int) $highest['version'], 'enabled' => false], 409);
-    expect((int) $user($highest['id'])['enabled'] === 1, '全局停用使有效租户失去最高管理员');
+    $call('POST', '/admin/customers/' . $highest['id'] . '/status', ['version' => (int)$highest['version'], 'enabled' => false], 409);
+    expect((int)$user($highest['id'])['enabled'] === 1, '全局停用使有效租户失去最高管理员');
     $active = $login('global-renamed', $password . '-reset');
-    for ($attempt = 0; $attempt < 5; $attempt++) {
-        $call('POST', '/customer/account/password', ['version' => (int) $user($id)['version'], 'current_password' => 'wrong-secret', 'password' => $password], 403, $active);
+    for ($attempt = 0; $attempt < 5; ++$attempt) {
+        $call('POST', '/customer/account/password', ['version' => (int)$user($id)['version'], 'current_password' => 'wrong-secret', 'password' => $password], 403, $active);
     }
-    $call('POST', '/customer/account/password', ['version' => (int) $user($id)['version'], 'current_password' => $password . '-reset', 'password' => $password], 403, $active);
+    $call('POST', '/customer/account/password', ['version' => (int)$user($id)['version'], 'current_password' => $password . '-reset', 'password' => $password], 403, $active);
     $call('POST', '/customer/auth/login', ['login' => 'global-renamed', 'password' => $password . '-reset'], 401, '');
     $events = $inspection->query("SELECT actor_id, action, details FROM admin_audit WHERE subject_id = '{$id}' AND result = 'success'")->fetchAll(PDO::FETCH_ASSOC);
     expect(count($events) >= 6 && $events[0]['actor_id'] !== $id, '客户全局管理没有记录平台真实来源');
@@ -1024,7 +1029,7 @@ function identityTenantCases(callable $request, PDO $inspection, string $driver,
     }
     $current(str_repeat('f', 32), 403);
     $edited = $call('PATCH', '/admin/tenants/' . $first['id'], ['version' => 1, 'name' => '已编辑租户']);
-    expect((int) $edited['version'] === 2, '租户资料未推进版本');
+    expect((int)$edited['version'] === 2, '租户资料未推进版本');
     $call('PATCH', '/admin/tenants/' . $first['id'], ['version' => 1, 'name' => '陈旧资料'], 409);
     $call('POST', '/admin/tenants/' . $first['id'] . '/status', ['version' => 2, 'enabled' => false]);
     $current($first['id'], 403);
@@ -1040,7 +1045,7 @@ function identityTenantCases(callable $request, PDO $inspection, string $driver,
     });
     expect($highestStatuses === [409], '等待授权锁期间最高管理员失效仍启用了租户');
     $call('POST', '/admin/tenants/' . $first['id'] . '/status', ['version' => 3, 'enabled' => true], 409);
-    expect((int) $tenant($first['id'])['enabled'] === 0 && (int) $tenant($first['id'])['version'] === 3, '没有有效最高管理员仍启用了租户');
+    expect((int)$tenant($first['id'])['enabled'] === 0 && (int)$tenant($first['id'])['version'] === 3, '没有有效最高管理员仍启用了租户');
     $disableMember->execute([1, $first['id']]);
     $call('POST', '/admin/tenants/' . $first['id'] . '/status', ['version' => 3, 'enabled' => true]);
     $concurrent = identityCompete($inspection, $driver, $address, [
@@ -1059,7 +1064,7 @@ function identityTenantCases(callable $request, PDO $inspection, string $driver,
     $counts = static function () use ($inspection): array {
         $result = [];
         foreach (['iot_tenants', 'customer_users', 'customer_members', 'customer_roles', 'customer_role_permissions', 'customer_member_roles', 'admin_audit', 'customer_audit'] as $table) {
-            $result[$table] = (int) $inspection->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
+            $result[$table] = (int)$inspection->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
         } return $result;
     };
     $before = $counts();
@@ -1086,7 +1091,7 @@ function identityTenantCases(callable $request, PDO $inspection, string $driver,
     $insertTenant = $inspection->prepare('INSERT INTO iot_tenants (id, name, created_at) VALUES (?, ?, ?)');
     $insertMember = $inspection->prepare('INSERT INTO customer_members (id, tenant_id, user_id, created_at) VALUES (?, ?, ?, ?)');
     try {
-        for ($index = 1; $index <= 101; $index++) {
+        for ($index = 1; $index <= 101; ++$index) {
             $id = str_pad(dechex($index), 32, '0', STR_PAD_LEFT);
             $fixtures[] = $id;
             $insertTenant->execute([$id, '分页边界' . $index, time()]);
@@ -1095,7 +1100,7 @@ function identityTenantCases(callable $request, PDO $inspection, string $driver,
         $selected = $current($second['id']);
         expect(count($selected['tenants']) === 100 && !in_array($second['id'], array_column($selected['tenants'], 'id'), true) && $selected['tenant']['id'] === $second['id'], '第100条以后的有效工作区无法选择');
         $page = $request('GET', '/customer/tenants?page=2&per_page=100', $customer, [], null, 200)['data'];
-        expect((int) $page['total'] === 103 && count($page['items']) === 3, '客户工作区分页丢失成员关系');
+        expect((int)$page['total'] === 103 && count($page['items']) === 3, '客户工作区分页丢失成员关系');
     } finally {
         foreach ($fixtures as $id) {
             $inspection->prepare('DELETE FROM customer_members WHERE tenant_id = ?')->execute([$id]);
@@ -1112,12 +1117,12 @@ function identityTenantCases(callable $request, PDO $inspection, string $driver,
     $globalBefore = $inspection->query("SELECT id, name, password_hash, enabled, version FROM customer_users WHERE login = 'tenant-owner'")->fetch(PDO::FETCH_ASSOC);
     $added = $call('POST', '/admin/customers', ['login' => 'tenant-managed', 'name' => '平台新增管理员', 'password' => $password]);
     $currentTenant = $tenant($first['id']);
-    $call('POST', '/admin/tenants/' . $first['id'] . '/administrators', ['version' => (int) $currentTenant['version'], 'login' => 'tenant-managed', 'new_customer' => false]);
+    $call('POST', '/admin/tenants/' . $first['id'] . '/administrators', ['version' => (int)$currentTenant['version'], 'login' => 'tenant-managed', 'new_customer' => false]);
     $currentTenant = $tenant($first['id']);
     $addedAdmin = array_values(array_filter($currentTenant['administrators'], static fn (array $item): bool => $item['login'] === 'tenant-managed'))[0] ?? null;
     expect($addedAdmin !== null && $addedAdmin['id'] === $added['id'], '平台新增管理员没有建立准确成员关系');
     $currentTenant = $tenant($first['id']);
-    $call('POST', '/admin/tenants/' . $first['id'] . '/administrators', ['version' => (int) $currentTenant['version'], 'login' => 'tenant-created-admin', 'new_customer' => true, 'owner_name' => '平台创建管理员', 'owner_password' => $password]);
+    $call('POST', '/admin/tenants/' . $first['id'] . '/administrators', ['version' => (int)$currentTenant['version'], 'login' => 'tenant-created-admin', 'new_customer' => true, 'owner_name' => '平台创建管理员', 'owner_password' => $password]);
     $currentTenant = $tenant($first['id']);
     $createdAdmin = array_values(array_filter($currentTenant['administrators'], static fn (array $item): bool => $item['login'] === 'tenant-created-admin'))[0] ?? null;
     expect($createdAdmin !== null, '平台新增客户账号没有建立最高管理员关系');
@@ -1130,14 +1135,14 @@ function identityTenantCases(callable $request, PDO $inspection, string $driver,
     $highestRole = array_values(array_filter($tenantRoles, static fn (array $item): bool => $item['name'] === '最高管理员'))[0] ?? null;
     expect($highestRole !== null, '租户角色目录缺少最高管理员');
     $ownerMember = $request('GET', '/customer/members?search=tenant-owner', $customer, ['X-Tenant-Id' => $first['id']], null, 200)['data']['items'][0];
-    $request('PUT', '/customer/members/roles', $customer, ['X-Tenant-Id' => $first['id']], ['members' => [['id' => $ownerMember['id'], 'version' => (int) $ownerMember['version']]], 'roles' => [['id' => $highestRole['id'], 'version' => (int) $highestRole['version']], ['id' => $role['id'], 'version' => (int) $role['version']]]], 200);
+    $request('PUT', '/customer/members/roles', $customer, ['X-Tenant-Id' => $first['id']], ['members' => [['id' => $ownerMember['id'], 'version' => (int)$ownerMember['version']]], 'roles' => [['id' => $highestRole['id'], 'version' => (int)$highestRole['version']], ['id' => $role['id'], 'version' => (int)$role['version']]]], 200);
     expect(count(array_filter($tenant($second['id'])['administrators'], static fn (array $item): bool => $item['login'] === 'tenant-owner')) === 1, '客户角色分配误删了同一账号其他租户的角色绑定');
     $currentTenant = $tenant($first['id']);
     $ownerAdmin = array_values(array_filter($currentTenant['administrators'], static fn (array $item): bool => $item['login'] === 'tenant-owner'))[0] ?? null;
     expect($ownerAdmin !== null, '租户详情缺少原始最高管理员成员版本');
     $replacement = $call('POST', '/admin/customers', ['login' => 'tenant-replacement', 'name' => '平台替换管理员', 'password' => $password]);
     $currentTenant = $tenant($first['id']);
-    $call('PUT', '/admin/tenants/' . $first['id'] . '/administrators', ['version' => (int) $currentTenant['version'], 'login' => 'tenant-replacement', 'new_customer' => false, 'replace_member_id' => $ownerAdmin['member_id'], 'replace_member_version' => (int) $ownerAdmin['member_version']]);
+    $call('PUT', '/admin/tenants/' . $first['id'] . '/administrators', ['version' => (int)$currentTenant['version'], 'login' => 'tenant-replacement', 'new_customer' => false, 'replace_member_id' => $ownerAdmin['member_id'], 'replace_member_version' => (int)$ownerAdmin['member_version']]);
     $currentTenant = $tenant($first['id']);
     $replacementAdmin = array_values(array_filter($currentTenant['administrators'], static fn (array $item): bool => $item['login'] === 'tenant-replacement'))[0] ?? null;
     expect($replacementAdmin !== null && count(array_filter($currentTenant['administrators'], static fn (array $item): bool => $item['login'] === 'tenant-owner')) === 0, '原子替换没有准确调整最高管理员绑定');
@@ -1147,19 +1152,19 @@ function identityTenantCases(callable $request, PDO $inspection, string $driver,
     expect(in_array($role['id'], array_column($ownerDetail['roles'], 'id'), true), '替换最高管理员错误删除成员的其他角色');
     expect($inspection->query("SELECT id, name, password_hash, enabled, version FROM customer_users WHERE login = 'tenant-owner'")->fetch(PDO::FETCH_ASSOC) === $globalBefore, '平台更换最高管理员修改了客户全局账号');
     $currentTenant = $tenant($first['id']);
-    $call('DELETE', '/admin/tenants/' . $first['id'] . '/administrators/' . $replacementAdmin['member_id'], ['version' => (int) $currentTenant['version'], 'member_version' => (int) $replacementAdmin['member_version']]);
+    $call('DELETE', '/admin/tenants/' . $first['id'] . '/administrators/' . $replacementAdmin['member_id'], ['version' => (int)$currentTenant['version'], 'member_version' => (int)$replacementAdmin['member_version']]);
     $currentTenant = $tenant($first['id']);
     expect(count(array_filter($currentTenant['administrators'], static fn (array $item): bool => $item['login'] === 'tenant-replacement')) === 0, '平台移除最高管理员未生效');
-    $call('POST', '/admin/tenants/' . $first['id'] . '/administrators', ['version' => (int) $currentTenant['version'], 'login' => 'tenant-owner', 'new_customer' => false]);
+    $call('POST', '/admin/tenants/' . $first['id'] . '/administrators', ['version' => (int)$currentTenant['version'], 'login' => 'tenant-owner', 'new_customer' => false]);
     $currentTenant = $tenant($first['id']);
     $addedAdmin = array_values(array_filter($currentTenant['administrators'], static fn (array $item): bool => $item['login'] === 'tenant-managed'))[0] ?? null;
-    $call('DELETE', '/admin/tenants/' . $first['id'] . '/administrators/' . $addedAdmin['member_id'], ['version' => (int) $currentTenant['version'], 'member_version' => (int) $addedAdmin['member_version']]);
+    $call('DELETE', '/admin/tenants/' . $first['id'] . '/administrators/' . $addedAdmin['member_id'], ['version' => (int)$currentTenant['version'], 'member_version' => (int)$addedAdmin['member_version']]);
     $currentTenant = $tenant($first['id']);
-    $call('DELETE', '/admin/tenants/' . $first['id'] . '/administrators/' . $createdAdmin['member_id'], ['version' => (int) $currentTenant['version'], 'member_version' => (int) $createdAdmin['member_version']]);
+    $call('DELETE', '/admin/tenants/' . $first['id'] . '/administrators/' . $createdAdmin['member_id'], ['version' => (int)$currentTenant['version'], 'member_version' => (int)$createdAdmin['member_version']]);
     $currentTenant = $tenant($first['id']);
     $ownerAdmin = array_values(array_filter($currentTenant['administrators'], static fn (array $item): bool => $item['login'] === 'tenant-owner'))[0] ?? null;
-    $call('DELETE', '/admin/tenants/' . $first['id'] . '/administrators/' . $ownerAdmin['member_id'], ['version' => (int) $currentTenant['version'], 'member_version' => (int) $ownerAdmin['member_version']], 409);
-    $request('POST', '/admin/tenants/' . $first['id'] . '/administrators', $limited, [], ['version' => (int) $currentTenant['version'], 'login' => 'tenant-replacement', 'new_customer' => false], 403);
+    $call('DELETE', '/admin/tenants/' . $first['id'] . '/administrators/' . $ownerAdmin['member_id'], ['version' => (int)$currentTenant['version'], 'member_version' => (int)$ownerAdmin['member_version']], 409);
+    $request('POST', '/admin/tenants/' . $first['id'] . '/administrators', $limited, [], ['version' => (int)$currentTenant['version'], 'login' => 'tenant-replacement', 'new_customer' => false], 403);
     $audit = $inspection->prepare("SELECT actor_id, tenant_id, subject_id FROM admin_audit WHERE action = 'admin.tenants.administrators.replace' AND tenant_id = ? ORDER BY created_at DESC LIMIT 1");
     $audit->execute([$first['id']]);
     $administratorAudit = $audit->fetch(PDO::FETCH_ASSOC);
@@ -1179,13 +1184,13 @@ function identityAdminCases(callable $request, PDO $inspection, string $driver, 
     expect(in_array('admin.roles.assign', $catalog, true) && in_array('/admin/tenants', menuPaths($rolePage['menus']), true), '平台固定节点与租户菜单不一致');
     $create = static fn (string $login): array => $call('POST', '/admin/users', ['login' => $login, 'name' => $login, 'password' => $password]);
     $bind = static fn (array $users, array $roles, int $status = 200, ?string $as = null): array => $call('PUT', '/admin/users/roles', [
-        'users' => array_map(static fn (array $item): array => ['id' => $item['id'], 'version' => (int) $item['version']], $users),
-        'roles' => array_map(static fn (array $item): array => ['id' => $item['id'], 'version' => (int) $item['version']], $roles),
+        'users' => array_map(static fn (array $item): array => ['id' => $item['id'], 'version' => (int)$item['version']], $users),
+        'roles' => array_map(static fn (array $item): array => ['id' => $item['id'], 'version' => (int)$item['version']], $roles),
     ], $status, $as);
     $compete = static fn (array $requests, ?Closure $beforeRelease = null): array => identityCompete($inspection, $driver, $address, $requests, $beforeRelease);
     $newRole = static function (string $name, array $permissions) use ($call): array {
         $created = $call('POST', '/admin/roles', ['name' => $name, 'permissions' => $permissions]);
-        expect((int) $created['enabled'] === 0 && (int) $created['protected'] === 0, '新角色不能复制保护标记或隐式启用');
+        expect((int)$created['enabled'] === 0 && (int)$created['protected'] === 0, '新角色不能复制保护标记或隐式启用');
         return $call('POST', '/admin/roles/' . $created['id'] . '/status', ['version' => 1, 'enabled' => true]);
     };
     $first = $create('team-first');
@@ -1196,7 +1201,7 @@ function identityAdminCases(callable $request, PDO $inspection, string $driver, 
     $delegate = $user($delegate['id']);
     $call('POST', '/admin/users', ['login' => 'team-first', 'name' => '重复', 'password' => $password], 409);
     $edited = $call('PATCH', '/admin/users/' . $first['id'], ['version' => 1, 'login' => 'team-first', 'name' => '新姓名']);
-    expect((int) $edited['version'] === 2 && $edited['name'] === '新姓名', '资料修改没有推进版本');
+    expect((int)$edited['version'] === 2 && $edited['name'] === '新姓名', '资料修改没有推进版本');
     $call('PATCH', '/admin/users/' . $first['id'], ['version' => 1, 'login' => 'team-first', 'name' => '旧表单'], 409);
     $call('PATCH', '/admin/users/' . $first['id'], ['version' => 2, 'login' => 'team-first', 'name' => '资料', 'password' => $password], 422);
     $readRole = $newRole('人员查询', ['identity.read', 'admin.users.read']);
@@ -1210,7 +1215,7 @@ function identityAdminCases(callable $request, PDO $inspection, string $driver, 
     $effective = $call('GET', '/admin/auth/me', null, 200, $firstToken);
     expect(count($effective['permissions']) === 3 && count(menuLeafPaths($effective['menus'])) === 3 && in_array('/admin/identity', menuPaths($effective['menus']), true), '启用角色没有按当前作用域取并集或菜单分组');
     $call('POST', '/admin/users', ['login' => 'forbidden', 'name' => '不允许', 'password' => $password], 403, $firstToken);
-    $call('DELETE', '/admin/users/' . $first['id'] . '/sessions', ['version' => (int) $user($first['id'])['version']], 403, $delegateToken);
+    $call('DELETE', '/admin/users/' . $first['id'] . '/sessions', ['version' => (int)$user($first['id'])['version']], 403, $delegateToken);
     $call('POST', '/admin/roles', ['name' => '非法节点', 'permissions' => ['admin.*']], 422);
     $call('POST', '/admin/roles', ['name' => '越权角色', 'permissions' => ['admin.users.sessions']], 403, $delegateToken);
     $call('POST', '/admin/roles/' . $highest['id'] . '/copy', ['version' => 1, 'name' => '越权复制'], 403, $delegateToken);
@@ -1219,7 +1224,7 @@ function identityAdminCases(callable $request, PDO $inspection, string $driver, 
     $call('POST', '/admin/roles/' . $highRole['id'] . '/status', ['version' => 3, 'enabled' => true], 403, $delegateToken);
     $call('POST', '/admin/roles/' . $highRole['id'] . '/copy', ['version' => 3, 'name' => '停用复制旁路'], 403, $delegateToken);
     $bind([$user($second['id'])], [$role($highRole['id'])]);
-    $call('POST', '/admin/users/' . $second['id'] . '/password', ['version' => (int) $user($second['id'])['version'], 'password' => $password . '-new'], 403, $delegateToken);
+    $call('POST', '/admin/users/' . $second['id'] . '/password', ['version' => (int)$user($second['id'])['version'], 'password' => $password . '-new'], 403, $delegateToken);
     $beforeFirst = $user($first['id']);
     $beforeSecond = $user($second['id']);
     $bind([$beforeFirst, $beforeSecond], [$readRole], 403, $delegateToken);
@@ -1237,11 +1242,11 @@ function identityAdminCases(callable $request, PDO $inspection, string $driver, 
     } else {
         $inspection->exec("CREATE TRIGGER app_test_batch_failure BEFORE INSERT ON admin_audit WHEN NEW.subject_id = '{$faultSubject}' BEGIN SELECT RAISE(ABORT, 'controlled batch audit failure'); END");
     }
-    $auditBefore = (int) $inspection->query('SELECT COUNT(*) FROM admin_audit')->fetchColumn();
+    $auditBefore = (int)$inspection->query('SELECT COUNT(*) FROM admin_audit')->fetchColumn();
     try {
         $bind([$beforeFirst, $beforeSecond], [$extraRole], 500);
         expect($user($first['id']) === $beforeFirst && $user($second['id']) === $beforeSecond, '第二人审计失败未回滚整批版本和绑定');
-        expect((int) $inspection->query('SELECT COUNT(*) FROM admin_audit')->fetchColumn() === $auditBefore, '失败批次留下成功审计');
+        expect((int)$inspection->query('SELECT COUNT(*) FROM admin_audit')->fetchColumn() === $auditBefore, '失败批次留下成功审计');
     } finally {
         $inspection->exec('DROP TRIGGER app_test_batch_failure' . ($driver === 'pgsql' ? ' ON admin_audit' : ''));
         if ($driver === 'pgsql') {
@@ -1250,7 +1255,7 @@ function identityAdminCases(callable $request, PDO $inspection, string $driver, 
     }
     $conflictRequests = [];
     foreach (['并发资料一', '并发资料二'] as $newName) {
-        $conflictRequests[] = ['PATCH', '/admin/users/' . $first['id'], $token, ['version' => (int) $beforeFirst['version'], 'login' => $beforeFirst['login'], 'name' => $newName]];
+        $conflictRequests[] = ['PATCH', '/admin/users/' . $first['id'], $token, ['version' => (int)$beforeFirst['version'], 'login' => $beforeFirst['login'], 'name' => $newName]];
     }
     $versionStatuses = $compete($conflictRequests);
     sort($versionStatuses);
@@ -1259,7 +1264,7 @@ function identityAdminCases(callable $request, PDO $inspection, string $driver, 
     $staleRole['version'] = 1;
     $bind([$user($first['id'])], [$staleRole], 409);
     $copy = $call('POST', '/admin/roles/' . $readRole['id'] . '/copy', ['version' => 2, 'name' => '查询副本']);
-    expect((int) $copy['enabled'] === 0 && $copy['permissions'] === $readRole['permissions'], '角色复制未保留权限或错误复制启用状态');
+    expect((int)$copy['enabled'] === 0 && $copy['permissions'] === $readRole['permissions'], '角色复制未保留权限或错误复制启用状态');
     $copy = $call('PATCH', '/admin/roles/' . $copy['id'], ['version' => 1, 'name' => '查询副本修改']);
     $copy = $call('PUT', '/admin/roles/' . $copy['id'] . '/permissions', ['version' => 2, 'permissions' => ['identity.read']]);
     $copy = $call('POST', '/admin/roles/' . $copy['id'] . '/status', ['version' => 3, 'enabled' => true]);
@@ -1271,22 +1276,22 @@ function identityAdminCases(callable $request, PDO $inspection, string $driver, 
         $call($method, '/admin/roles/' . $highest['id'] . $suffix, ['version' => 1] + ($suffix === '/status' ? ['enabled' => false] : ($suffix === '/permissions' ? ['permissions' => []] : [])), 409);
     }
     $bind([$user($owner)], [], 409);
-    $call('POST', '/admin/users/' . $owner . '/status', ['version' => (int) $user($owner)['version'], 'enabled' => false], 409);
+    $call('POST', '/admin/users/' . $owner . '/status', ['version' => (int)$user($owner)['version'], 'enabled' => false], 409);
     $bind([$user($first['id'])], [$readRole]);
     $current = $user($first['id']);
-    $call('POST', '/admin/users/' . $first['id'] . '/password', ['version' => (int) $current['version'], 'password' => $password . '-new']);
+    $call('POST', '/admin/users/' . $first['id'] . '/password', ['version' => (int)$current['version'], 'password' => $password . '-new']);
     $call('GET', '/admin/auth/me', null, 401, $firstToken);
     $call('POST', '/admin/auth/login', ['login' => 'team-first', 'password' => $password], 401, '');
     $newToken = $call('POST', '/admin/auth/login', ['login' => 'team-first', 'password' => $password . '-new'], 200, '')['accessToken'];
-    $call('DELETE', '/admin/users/' . $first['id'] . '/sessions', ['version' => (int) $user($first['id'])['version']]);
+    $call('DELETE', '/admin/users/' . $first['id'] . '/sessions', ['version' => (int)$user($first['id'])['version']]);
     $call('GET', '/admin/auth/me', null, 401, $newToken);
-    $call('POST', '/admin/users/' . $first['id'] . '/status', ['version' => (int) $user($first['id'])['version'], 'enabled' => false]);
+    $call('POST', '/admin/users/' . $first['id'] . '/status', ['version' => (int)$user($first['id'])['version'], 'enabled' => false]);
     $call('POST', '/admin/auth/login', ['login' => 'team-first', 'password' => $password . '-new'], 401, '');
-    $call('POST', '/admin/users/' . $first['id'] . '/status', ['version' => (int) $user($first['id'])['version'], 'enabled' => true]);
+    $call('POST', '/admin/users/' . $first['id'] . '/status', ['version' => (int)$user($first['id'])['version'], 'enabled' => true]);
     $disabled = $call('POST', '/admin/roles/' . $readRole['id'] . '/status', ['version' => 2, 'enabled' => false]);
     $newToken = $call('POST', '/admin/auth/login', ['login' => 'team-first', 'password' => $password . '-new'], 200, '')['accessToken'];
     expect($call('GET', '/admin/auth/me', null, 200, $newToken)['permissions'] === [], '角色停用没有影响旧会话');
-    $call('POST', '/admin/roles/' . $readRole['id'] . '/status', ['version' => (int) $disabled['version'], 'enabled' => true]);
+    $call('POST', '/admin/roles/' . $readRole['id'] . '/status', ['version' => (int)$disabled['version'], 'enabled' => true]);
     $revokedStatuses = $compete([['POST', '/admin/users', $delegateToken, ['login' => 'revoked-in-flight', 'name' => '不能创建', 'password' => $password]]], static function () use ($inspection, $delegateToken): void {
         $inspection->prepare('DELETE FROM admin_sessions WHERE token_hash = ?')->execute([hash('sha256', $delegateToken)]);
     });
@@ -1297,7 +1302,7 @@ function identityAdminCases(callable $request, PDO $inspection, string $driver, 
     $ownerToken = $call('POST', '/admin/auth/login', ['login' => 'team-owner', 'password' => $password], 200, '')['accessToken'];
     $ownerRequests = [];
     foreach ([[$user($owner), $token], [$user($secondOwner['id']), $ownerToken]] as [$target, $credential]) {
-        $ownerRequests[] = ['POST', '/admin/users/' . $target['id'] . '/status', $credential, ['version' => (int) $target['version'], 'enabled' => false]];
+        $ownerRequests[] = ['POST', '/admin/users/' . $target['id'] . '/status', $credential, ['version' => (int)$target['version'], 'enabled' => false]];
     }
     $statuses = $compete($ownerRequests);
     $sorted = $statuses;
@@ -1305,13 +1310,13 @@ function identityAdminCases(callable $request, PDO $inspection, string $driver, 
     expect($sorted === [200, 409], '并发停用必须只允许一位最高管理员成功');
     if ($statuses[0] === 200) {
         $current = $call('GET', '/admin/users/' . $owner, null, 200, $ownerToken)['items'][0];
-        $call('POST', '/admin/users/' . $owner . '/status', ['version' => (int) $current['version'], 'enabled' => true], 200, $ownerToken);
+        $call('POST', '/admin/users/' . $owner . '/status', ['version' => (int)$current['version'], 'enabled' => true], 200, $ownerToken);
         $token = $call('POST', '/admin/auth/login', ['login' => 'same-login', 'password' => $password], 200, '')['accessToken'];
     }
     // 以下调用显式用恢复后的令牌，闭包原令牌可能因上面停用而失效。
     $currentOwner = $request('GET', '/admin/users/' . $secondOwner['id'], $token, [], null, 200)['data']['items'][0];
-    if ((int) $currentOwner['enabled'] === 1) {
-        $request('POST', '/admin/users/' . $secondOwner['id'] . '/status', $token, [], ['version' => (int) $currentOwner['version'], 'enabled' => false], 200);
+    if ((int)$currentOwner['enabled'] === 1) {
+        $request('POST', '/admin/users/' . $secondOwner['id'] . '/status', $token, [], ['version' => (int)$currentOwner['version'], 'enabled' => false], 200);
     }
     $audit = $inspection->query("SELECT actor_id, action, details FROM admin_audit WHERE actor_id <> 'provisioning'")->fetchAll(PDO::FETCH_ASSOC);
     expect(count($audit) > 20 && !str_contains(json_encode($audit), $password) && !str_contains(json_encode($audit), $token), '管理审计缺失或泄漏凭据');
@@ -1353,7 +1358,7 @@ if ($target === '--php') {
     if ($loadedSwoole === '') {
         $swoole = getenv('TYPE_SWOOLE_MODULE');
         $moduleName = PHP_OS_FAMILY === 'Windows' ? 'php_swoole.dll' : 'swoole.so';
-        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/\\') . '/' . $moduleName;
+        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string)ini_get('extension_dir'), '/\\') . '/' . $moduleName;
         expect(is_file($swoole), 'PHP 身份验收需要 TYPE_SWOOLE_MODULE 或 extension_dir 中匹配平台的 Swoole 模块');
         array_push($command, '-d', 'extension=' . $swoole);
     } else {
@@ -1364,8 +1369,8 @@ if ($target === '--php') {
 } else {
     $target = realpath($target);
     expect($target !== false && is_file($target . '.build.json'), '原生身份验收需要原生产物与构建元数据');
-    $built = json_decode((string) file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
-    $identity = (new Type\Build\ArtifactManifest())->read($target, null, $built['sha256']);
+    $built = json_decode((string)file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
+    $identity = (new ArtifactManifest())->read($target, null, $built['sha256']);
     if (($identity['runtime-linkage'] ?? null) === 'static') {
         // 单程序已固定内嵌 INI；搬迁原 EXE 复验无需恢复构建机的临时配置目录。
         $command = [$target];
@@ -1384,7 +1389,7 @@ $noSource = in_array('--no-source', $argv, true);
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '本项无源码隔离使用macOS内核策略及原生产物');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     // 输入快照与主仓可位于不同目录；拒读目标取自产物的真实构建身份。
     $sourceRoot = realpath($built['identity']['description']['facts']['workspace']);
@@ -1503,7 +1508,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         $dsn = $driver === 'sqlite' ? 'sqlite:' . $base . '/identity.sqlite' : $driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $environment['DB_DATABASE'];
         $inspection = new PDO($dsn, $environment['DB_USERNAME'] ?? null, $environment['DB_PASSWORD'] ?? null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         if ($driver === 'pgsql') {
-            $report['inspection_pid'] = (int) $inspection->query('SELECT pg_backend_pid()')->fetchColumn();
+            $report['inspection_pid'] = (int)$inspection->query('SELECT pg_backend_pid()')->fetchColumn();
         }
         $inspection->exec('CREATE TABLE app_test_existing (value INTEGER NOT NULL)');
         $inspection->exec('INSERT INTO app_test_existing (value) VALUES (73)');
@@ -1527,24 +1532,24 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         } finally {
             $existing->stop();
         }
-        expect((int) $inspection->query('SELECT value FROM app_test_existing')->fetchColumn() === 73, '初始化修改了已有数据');
+        expect((int)$inspection->query('SELECT value FROM app_test_existing')->fetchColumn() === 73, '初始化修改了已有数据');
         // 只移除本例刚创建的单张哨兵表；应用自身不能删除它。
         $inspection->exec('DROP TABLE app_test_existing');
         $installed = identityCommand($installCommand, $environment + $credentials)['data'];
-        $initial = $inspection->query('SELECT installation_id FROM app_installation')->fetchColumn();
+        $initial = $inspection->query('SELECT installation_id FROM platform_installation')->fetchColumn();
         expect($initial === $installed['installation_id'], '安装身份不一致');
         foreach (['admin', 'customer'] as $realm) {
-            $row = $inspection->query('SELECT * FROM ' . $realm . '_users')->fetch(PDO::FETCH_ASSOC);
+            $row = $inspection->query('SELECT * FROM ' . $realm . '_user')->fetch(PDO::FETCH_ASSOC);
             expect(!array_key_exists('platform_admin', $row) && password_verify($credentials[$realm === 'admin' ? 'APP_ADMIN_PASSWORD' : 'APP_CUSTOMER_PASSWORD'], $row['password_hash']), '新账号域仍依赖平台标记或口令存储错误');
             $inspection->beginTransaction();
             try {
-                $conflictSql = 'INSERT INTO ' . $realm . '_users (id, login, name, password_hash, created_at) SELECT ?, login, name, password_hash, created_at FROM ' . $realm . '_users';
+                $conflictSql = 'INSERT INTO ' . $realm . '_users (id, login, name, password_hash, created_at) SELECT ?, login, name, password_hash, created_at FROM ' . $realm . '_user';
                 $inspection->prepare($conflictSql)->execute([bin2hex(random_bytes(16))]);
                 throw new RuntimeException('唯一冲突未拒绝');
             } catch (PDOException $conflict) {
                 $inspection->rollBack();
             }
-            expect((int) $inspection->query('SELECT COUNT(*) FROM ' . $realm . '_users')->fetchColumn() === 1, '唯一冲突后保留了额外账号');
+            expect((int)$inspection->query('SELECT COUNT(*) FROM ' . $realm . '_user')->fetchColumn() === 1, '唯一冲突后保留了额外账号');
         }
         $repeat = new Process($installCommand, $root, $environment + $credentials);
         try {
@@ -1553,7 +1558,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         } finally {
             $repeat->stop();
         }
-        expect($inspection->query('SELECT installation_id FROM app_installation')->fetchColumn() === $initial, '重复安装修改了原身份');
+        expect($inspection->query('SELECT installation_id FROM platform_installation')->fetchColumn() === $initial, '重复安装修改了原身份');
         $listener = stream_socket_server('tcp://127.0.0.1:0', $number, $error);
         expect(is_resource($listener), '无法分配双端端口');
         $address = stream_socket_get_name($listener, false);
@@ -1585,7 +1590,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
             $started = hrtime(true);
             $status = null;
             try {
-                $response = $requestClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+                $response = $requestClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
                 $status = $response->status;
             } finally {
                 // 只记录路径和耗时，不记录请求体、查询参数、令牌或账号凭据。
@@ -1608,7 +1613,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
                     expect(!str_contains($response->body, $data[$secretField]), '双端响应回显口令');
                 }
             }
-            $checks++;
+            ++$checks;
             return json_decode($response->body, true, 32, JSON_THROW_ON_ERROR);
         };
         if ($driver === 'pgsql') {
@@ -1621,7 +1626,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         }
         try {
             $request('POST', '/admin/auth/login', '', [], ['login' => 'same-login', 'password' => $password], 500);
-            expect((int) $inspection->query('SELECT COUNT(*) FROM admin_sessions')->fetchColumn() === 0, '审计失败仍提交了登录会话');
+            expect((int)$inspection->query('SELECT COUNT(*) FROM admin_sessions')->fetchColumn() === 0, '审计失败仍提交了登录会话');
         } finally {
             $inspection->exec('DROP TRIGGER app_test_audit_failure' . ($driver === 'pgsql' ? ' ON admin_audit' : ''));
             if ($driver === 'pgsql') {
@@ -1663,10 +1668,10 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         $siteAudit = $inspection->query("SELECT action, result, details FROM admin_audit WHERE action = 'admin.site.update' ORDER BY created_at DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
         expect($siteAudit !== false && $siteAudit['result'] === 'success' && str_contains($siteAudit['details'], 'name'), '站点配置审计未落库');
         // 与真实设置表单一样提交全部字段，防止字段名清单超过普通审计原因的100字节上限。
-        $siteFields = \app\common\service\SiteSettings::defaults();
+        $siteFields = SiteSettings::defaults();
         foreach ($siteFields as $siteKey => $siteValue) {
             if (is_int($siteValue)) {
-                $siteFields[$siteKey] = (bool) $siteValue;
+                $siteFields[$siteKey] = (bool)$siteValue;
             }
         }
         $fullSite = $request('PUT', '/admin/site', $adminToken, [], ['version' => 2, 'changes' => $siteFields], 200)['data'];
@@ -1696,11 +1701,11 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
             }
         }
         // 公共站点改用 Model 后仍需遵守安装就绪门，而非只检查设置行存在。
-        $inspection->exec('UPDATE app_installation SET schema_version = 2 WHERE id = 1');
+        $inspection->exec('UPDATE platform_installation SET schema_version = 2 WHERE id = 1');
         try {
             $request('GET', '/public/site', '', [], null, 503, 'installation_incomplete');
         } finally {
-            $inspection->exec('UPDATE app_installation SET schema_version = 1 WHERE id = 1');
+            $inspection->exec('UPDATE platform_installation SET schema_version = 1 WHERE id = 1');
         }
         $report['site_settings'] = ['defaults' => true, 'full_form_saved' => true, 'complete_field_audit' => true,
             'stale_version_rejected' => true, 'unchanged_save_versioned' => true, 'audit_rollback' => true, 'installation_gate' => true];
@@ -1748,12 +1753,12 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         expect($request('GET', '/admin/auth/me', $adminToken, [], null, 200)['data']['permissions'] === [], '无角色不能取得权限');
         $request('GET', '/admin/profile', $adminToken, [], null, 403);
         $inspection->prepare('INSERT INTO admin_user_roles (user_id, role_id) VALUES (?, ?)')->execute([$adminBinding['user_id'], $adminBinding['role_id']]);
-        $management = identityAdminCases($request, $inspection, $driver, $address, $adminToken, $password, (string) $installed['admin']['id']);
+        $management = identityAdminCases($request, $inspection, $driver, $address, $adminToken, $password, (string)$installed['admin']['id']);
         $adminToken = $management['token'];
         unset($management['token']);
         $report['admin_management'] = $management;
-        $report['tenant_management'] = identityTenantCases($request, $inspection, $driver, $address, $adminToken, $password, (string) $installed['admin']['id']);
-        $report['customer_management'] = identityCustomerCases($request, $inspection, $driver, $address, $adminToken, $password, (string) $installed['admin']['id']);
+        $report['tenant_management'] = identityTenantCases($request, $inspection, $driver, $address, $adminToken, $password, (string)$installed['admin']['id']);
+        $report['customer_management'] = identityCustomerCases($request, $inspection, $driver, $address, $adminToken, $password, (string)$installed['admin']['id']);
         $report['member_management'] = identityMemberCases($request, $inspection, $driver, $address, $adminToken, $customerToken, $password, $installed['tenant_id']);
         $report['role_management'] = identityRoleCases($request, $inspection, $driver, $address, $adminToken, $customerToken, $password);
         $report['impersonation'] = identityImpersonationCases($request, $inspection, $driver, $address, $adminToken, $customerToken, $password);
@@ -1826,7 +1831,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
                 if (in_array('--ha', $argv, true)) {
                     // 旧主已真实退出；后续身份夹具使用新控制连接，应用自身的重连另由HA HTTP断言证明。
                     $inspection = $GLOBALS['postgresHa']->connection($environment['DB_DATABASE']);
-                    $report['inspection_pid_after_ha'] = (int) $inspection->query('SELECT pg_backend_pid()')->fetchColumn();
+                    $report['inspection_pid_after_ha'] = (int)$inspection->query('SELECT pg_backend_pid()')->fetchColumn();
                 }
             }
             $deviceSnapshot = $deviceRequest('GET', $deviceEvidence['path'], $deviceEvidence['token'], $deviceEvidence['tenant'], null, 200)['data'];
@@ -2001,7 +2006,7 @@ if (in_array('--broker', $argv, true)) {
             $repeat->stop();
         }
         $addresses = [];
-        for ($index = 0; $index < 2; $index++) {
+        for ($index = 0; $index < 2; ++$index) {
             $listener = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorText);
             expect(is_resource($listener), '无法选择独立管理测试端口');
             $addresses[] = stream_socket_get_name($listener, false);
@@ -2045,9 +2050,9 @@ if (in_array('--broker', $argv, true)) {
             if ($token !== '') {
                 $headers['Authorization'] = 'Bearer ' . $token;
             }
-            $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+            $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
             expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-            $checks++;
+            ++$checks;
             return $response->json();
         };
         $request('GET', '/broker/nodes', '', null, 401);
@@ -2110,7 +2115,7 @@ if (in_array('--broker', $argv, true)) {
             $failedReads = $request('GET', '/broker/audit?action=broker.resource.read&result=failed', $token, null, 200)['items'];
             expect(count($failedReads) === 1 && $failedReads[0]['details'] === ['reason' => 'broker_resource_store_unavailable'], '独立持久查询失败必须保存脱敏失败事实');
         }
-        $checks++;
+        ++$checks;
         $probeToken = $environment['BROKER_PROBE_TOKEN'];
         foreach (['/broker/health/live', '/broker/health/ready', '/broker/metrics'] as $probePath) {
             $request('GET', $probePath, '', null, 401);
@@ -2134,7 +2139,7 @@ if (in_array('--broker', $argv, true)) {
             $emptyMetrics['typeapp_broker_ready'] === 0 && !isset($emptyMetrics['typeapp_broker_connections{slot="0"}']),
             '空节点指标不能伪造连接样本'
         );
-        $checks++;
+        ++$checks;
         $request('GET', '/demo', $token, null, 404);
         $request('GET', '/broker/nodes', $token, null, 403, ['X-Tenant-Id' => bin2hex(random_bytes(16))]);
         $request('GET', '/broker/nodes?per_page=101', $token, null, 422);
@@ -2152,14 +2157,14 @@ if (in_array('--broker', $argv, true)) {
             }
             usleep(100000);
         } while (microtime(true) < $deadline);
-        expect($nodes['total'] === 1 && $nodes['items'][0]['state'] === 'reporting' && $nodes['items'][0]['listener']['port'] === (int) $nodeEnvironment['BROKER_PORT'], '实际节点与监听器观察缺失');
-        $mqttClient = new Type\Mqtt\Client('127.0.0.1', (int) $nodeEnvironment['BROKER_PORT'], 'broker-observation-client', 'broker-client', $nodeEnvironment['BROKER_CLIENT_PASSWORD'], sessionExpiry: 0, allowPlaintext: true);
+        expect($nodes['total'] === 1 && $nodes['items'][0]['state'] === 'reporting' && $nodes['items'][0]['listener']['port'] === (int)$nodeEnvironment['BROKER_PORT'], '实际节点与监听器观察缺失');
+        $mqttClient = new Client('127.0.0.1', (int)$nodeEnvironment['BROKER_PORT'], 'broker-observation-client', 'broker-client', $nodeEnvironment['BROKER_CLIENT_PASSWORD'], sessionExpiry: 0, allowPlaintext: true);
         $mqttClient->connect(true);
         $deadline = microtime(true) + 7;
         do {
             try {
                 $mqttClient->receive(0.05);
-            } catch (Type\Mqtt\ProtocolError $protocolFailure) {
+            } catch (ProtocolError $protocolFailure) {
                 throw new RuntimeException('节点连接被断开，原因：' . dechex($protocolFailure->reason), 0, $protocolFailure);
             }
             $nodes = $request('GET', '/broker/nodes?node_id=' . rawurlencode($nodeEnvironment['BROKER_NODE_ID']), $token, null, 200);
@@ -2199,7 +2204,7 @@ if (in_array('--broker', $argv, true)) {
                     rename($base . '/browser-stage.tmp', $base . '/browser-stage.json');
                     $deadline = microtime(true) + 90;
                     do {
-                        $acknowledged = is_file($base . '/browser-ack.json') ? json_decode((string) file_get_contents($base . '/browser-ack.json'), true) : null;
+                        $acknowledged = is_file($base . '/browser-ack.json') ? json_decode((string)file_get_contents($base . '/browser-ack.json'), true) : null;
                         if (($acknowledged['stage'] ?? '') === $stage && ($acknowledged['status'] ?? '') === 'passed') {
                             return;
                         }
@@ -2290,7 +2295,7 @@ if (in_array('--broker', $argv, true)) {
         $staleMetrics = brokerMetrics($client->request('GET', '/broker/metrics', ['Authorization' => 'Bearer ' . $probeToken]));
         expect($staleMetrics['typeapp_broker_ready'] === 0 && $staleMetrics['typeapp_broker_node_reporting{slot="0"}'] === 0
             && !isset($staleMetrics['typeapp_broker_connections{slot="0"}']), '过期节点指标必须保留失联事实并停止输出旧连接量');
-        $checks++;
+        ++$checks;
         if ($observability) {
             $brokerReport['crashed_node_isolation'] = brokerIsolateObservedNode($GLOBALS['brokerObservabilitySync'], $command, $nodeEnvironment, $nodes['items'][0]);
             unset($brokerReport['crashed_node_isolation']['command']);
@@ -2321,7 +2326,7 @@ if (in_array('--broker', $argv, true)) {
             $inspection->query('SELECT id FROM iot_users LIMIT 1');
             throw new RuntimeException('独立安装不能创建 IoT 人员表');
         } catch (PDOException) {
-            $checks++;
+            ++$checks;
         }
         $legacyAuditId = bin2hex(random_bytes(16));
         $legacyInsert = $inspection->prepare('INSERT INTO broker_audit (id, tenant_id, actor_id, action, subject_id, result, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
@@ -2330,14 +2335,14 @@ if (in_array('--broker', $argv, true)) {
         expect($legacyDetail['operation'] === null && $legacyDetail['operation_id'] === null && $legacyDetail['category'] === 'legacy'
             && $legacyDetail['details'] === ['context' => 'identity'], '旧独立身份审计必须可查，不能补造历史操作或权限');
         expect(
-            (int) $inspection->query("SELECT COUNT(*) FROM broker_broker_operations o INNER JOIN broker_audit a ON a.operation_id = o.operation_id WHERE a.action LIKE 'identity.%' OR a.action = 'broker.resource.read'")->fetchColumn() === 0,
+            (int)$inspection->query("SELECT COUNT(*) FROM broker_broker_operations o INNER JOIN broker_audit a ON a.operation_id = o.operation_id WHERE a.action LIKE 'identity.%' OR a.action = 'broker.resource.read'")->fetchColumn() === 0,
             '同步身份与轮询读取不能积累永久操作行'
         );
         $inspection->exec('UPDATE broker_users SET platform_admin = 0');
         $browserStage?->__invoke('denied');
         if ($browser !== null) {
             expect($browser->wait(10)->successful(), 'Broker浏览器验收没有正常结束');
-            $brokerReport['browser'] = json_decode((string) file_get_contents($base . '/browser-report.json'), true, 64, JSON_THROW_ON_ERROR);
+            $brokerReport['browser'] = json_decode((string)file_get_contents($base . '/browser-report.json'), true, 64, JSON_THROW_ON_ERROR);
             expect(($brokerReport['browser']['status'] ?? '') === 'passed', 'Broker浏览器报告尚未通过');
         }
         $request('GET', '/broker/nodes', $token, null, 403);

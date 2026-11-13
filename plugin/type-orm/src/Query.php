@@ -4,35 +4,57 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-use Closure;
-
 /** 受管连接上的不可变表查询，组合 SQL 与绑定参数，不隐式继承模型生命周期语义。 */
 final class Query
 {
     private Connection $connection;
+
     private SqlDialect $dialect;
+
     private string $table;
+
     private string $tableName;
+
     private string $alias;
+
     private string $aliasName;
+
     private Conditions $conditions;
+
     private Conditions $having;
+
     private array $columns = ['*'];
+
     private array $joins = [];
+
     private array $groups = [];
+
     private array $orders = [];
+
     private array $orderFields = [];
+
     private bool $aggregated = false;
+
     private int $limit = 0;
+
     private int $offset = 0;
+
     private bool $all = false;
+
     private string $lock = '';
+
     private array $selectParameters = [];
+
     private array $fromParameters = [];
+
     private array $joinParameters = [];
+
     private array $unions = [];
+
     private bool $distinct = false;
+
     private bool $derived = false;
+
     private array $uniqueOrder = [];
 
     /** 绑定已借出的连接并验证表名/别名；不接受原始 SQL 表达式作为标识符。 */
@@ -125,8 +147,8 @@ final class Query
         return $this->whereIn($column, $values, true);
     }
 
-    /** @param Closure(Conditions): Conditions $group 接收独立条件组并返回组合后的条件。 */
-    public function whereGroup(Closure $group, string $boolean = 'AND'): Query
+    /** @param \Closure(Conditions): Conditions $group 接收独立条件组并返回组合后的条件。 */
+    public function whereGroup(\Closure $group, string $boolean = 'AND'): Query
     {
         $next = clone $this;
         $next->conditions = $this->conditions->whereGroup($group, $boolean);
@@ -137,7 +159,7 @@ final class Query
     /**
      * 按实际方言比较 JSON 标量，不支持复合对象包含匹配。
      *
-     * @param list<string|int> $path 最多 16 个字段名或非负下标。
+     * @param list<int|string> $path 最多 16 个字段名或非负下标
      */
     public function whereJson(string $column, array $path, mixed $value, string $boolean = 'AND'): Query
     {
@@ -319,7 +341,7 @@ final class Query
      *
      * 即使该列已排序也先验证标识符和方向；不改变 orderBy 及分页对重复列的严格契约。
      *
-     * @throws DatabaseException 排序标识符无效或方向不为 ASC/DESC。
+     * @throws DatabaseException 排序标识符无效或方向不为 ASC/DESC
      */
     public function orderByIfAbsent(string $column, string $direction = 'ASC'): Query
     {
@@ -359,7 +381,7 @@ final class Query
     /**
      * 执行当前投影并一次性返回全部结果。
      *
-     * @return list<array<string, mixed>> 未命中返回空列表。
+     * @return list<array<string, mixed>> 未命中返回空列表
      */
     public function get(): array
     {
@@ -382,8 +404,8 @@ final class Query
     /**
      * 打开事务外独占租约的结果流；调用者必须在作用域结束前关闭。
      *
-     * @param int $batchSize 每批最多 1 至 1000 行。
-     * @param int $maxRowBytes 单行字节上限，范围 1 至 16 MiB。
+     * @param int $batchSize 每批最多 1 至 1000 行
+     * @param int $maxRowBytes 单行字节上限，范围 1 至 16 MiB
      */
     public function stream(int $batchSize = 250, int $maxRowBytes = 1048576): RowStream
     {
@@ -402,7 +424,7 @@ final class Query
         $counted = clone $this;
         $counted->orders = [];
         $counted->orderFields = [];
-        $total = (int) self::fromSub($counted, '__type_page')->aggregate('COUNT');
+        $total = (int)self::fromSub($counted, '__type_page')->aggregate('COUNT');
         $items = $ordered->limit($perPage, ($page - 1) * $perPage)->get();
         return new Page($items, $total, $page, $perPage);
     }
@@ -422,40 +444,6 @@ final class Query
         return new SimplePage($rows, $page, $perPage, $more);
     }
 
-    private function offsetPaginationQuery(string $primaryKey): Query
-    {
-        if ($this->limit !== 0 || $this->lock !== '') {
-            throw new DatabaseException('分页不接受已有 LIMIT 或行锁');
-        }
-        if (!$this->complex(false)) {
-            return $this->paginationQuery($primaryKey);
-        }
-        if ($this->uniqueOrder === []) {
-            throw new DatabaseException('复杂结果分页必须通过 uniqueOrderBy 声明唯一排序键');
-        }
-        $query = clone $this;
-        foreach ($this->uniqueOrder as $column) {
-            $query = $query->orderByIfAbsent($column);
-        }
-        $seen = [];
-        foreach ($query->orderFields as $field) {
-            if (in_array($field['column'], $seen, true)) {
-                throw new DatabaseException('分页排序列不能重复');
-            }
-            $seen[] = $field['column'];
-        }
-        if (count($seen) > 8) {
-            throw new DatabaseException('分页最多支持八个排序列');
-        }
-        return $query;
-    }
-
-    private function complex(bool $includeAlias = true): bool
-    {
-        return ($includeAlias && $this->alias !== '') || $this->joins !== [] || $this->groups !== [] || $this->having->sql() !== ''
-            || $this->aggregated || $this->distinct || $this->derived || $this->unions !== [];
-    }
-
     /** 按稳定单表排序继续读取，after 必须来自同一查询身份；不支持复杂结果游标。 */
     public function cursorPaginate(int $perPage = 100, ?string $after = null, string $primaryKey = 'id'): CursorPage
     {
@@ -469,7 +457,7 @@ final class Query
             $query = $query->whereGroup(static function (Conditions $outer) use ($fields, $values): Conditions {
                 foreach ($fields as $index => $field) {
                     $outer = $outer->whereGroup(static function (Conditions $inner) use ($fields, $values, $index, $field): Conditions {
-                        for ($before = 0; $before < $index; $before++) {
+                        for ($before = 0; $before < $index; ++$before) {
                             $inner = $inner->where($fields[$before]['column'], '=', $values[$before]);
                         }
                         return $inner->where($field['column'], $field['direction'] === 'ASC' ? '>' : '<', $values[$index]);
@@ -501,8 +489,8 @@ final class Query
         return new CursorPage($rows, $more ? CursorToken::encode($shape, $values) : null);
     }
 
-    /** @param Closure(array): mixed $consumer 接收本批行；可返回 void，仅 false 提前退出。 */
-    public function chunk(int $size, Closure $consumer, string $primaryKey = 'id'): int
+    /** @param \Closure(array): mixed $consumer 接收本批行；可返回 void，仅 false 提前退出。 */
+    public function chunk(int $size, \Closure $consumer, string $primaryKey = 'id'): int
     {
         $cursor = null;
         $count = 0;
@@ -520,68 +508,6 @@ final class Query
             unset($items, $page);
         } while ($cursor !== null);
         return $count;
-    }
-
-    private function pageSize(int $size): void
-    {
-        if ($size < 1 || $size > 1000) {
-            throw new DatabaseException('分页大小必须在 1 至 1000 之间');
-        }
-    }
-
-    private function paginationQuery(string $primaryKey): Query
-    {
-        if ($this->complex(false) || $this->limit !== 0 || $this->lock !== '') {
-            throw new DatabaseException('确定分页只接受没有 Join、聚合、行锁或已有 LIMIT 的单表查询');
-        }
-        foreach ($this->columns as $column) {
-            if (str_contains($column, '__type_cursor_')) {
-                throw new DatabaseException('分页投影占用了内部别名前缀');
-            }
-        }
-        $columns = [];
-        $primary = [];
-        foreach ($this->connection->columns($this->tableName) as $column) {
-            if (str_starts_with($column['name'], '__type_cursor_')) {
-                throw new DatabaseException('表列占用了分页内部别名前缀');
-            }
-            $columns[$column['name']] = $column;
-            if ($column['primary']) {
-                $primary[] = $column['name'];
-            }
-        }
-        if ($primary !== [$primaryKey]) {
-            throw new DatabaseException('分页需要真实的单列主键作为唯一排序收尾');
-        }
-        $query = $this;
-        $ordered = [];
-        foreach ($this->orderFields as $field) {
-            $orderedColumn = $this->paginationColumn($field['column']);
-            if (in_array($orderedColumn, $ordered, true)) {
-                throw new DatabaseException('分页排序列不能重复');
-            }
-            $ordered[] = $orderedColumn;
-        }
-        if (!in_array($primaryKey, $ordered, true)) {
-            $query = $query->orderBy(($this->aliasName === '' ? '' : $this->aliasName . '.') . $primaryKey);
-        }
-        if (count($query->orderFields) > 8) {
-            throw new DatabaseException('分页最多支持八个排序列');
-        }
-        foreach ($query->orderFields as $field) {
-            $column = $columns[$this->paginationColumn($field['column'])] ?? null;
-            if ($column === null || $column['nullable'] || preg_match('/json|blob|bytea|binary|real|double|float/i', $column['type'])) {
-                throw new DatabaseException('分页排序只接受真实的非 NULL、非浮点、非 JSON/二进制列');
-            }
-        }
-        return $query;
-    }
-
-    /** 分页校验对应真实表列，SQL 排序仍保留本表别名。 */
-    private function paginationColumn(string $column): string
-    {
-        return $this->aliasName !== '' && str_starts_with($column, $this->aliasName . '.')
-            ? substr($column, strlen($this->aliasName) + 1) : $column;
     }
 
     /** 预览参数化 SQL，不执行目标查询，也不要求预览时已经开启事务。 */
@@ -605,54 +531,10 @@ final class Query
         return $this->selectStatement(false);
     }
 
-    private function selectStatement(bool $executing = true): array
-    {
-        if ($this->lock !== '' && (($executing && $this->connection->transactionDepth() === 0) || $this->groups !== [] || $this->having->sql() !== '' || $this->aggregated || $this->distinct || $this->unions !== [])) {
-            throw new DatabaseException('行锁读取需要活动事务和非聚合查询');
-        }
-        $sql = 'SELECT ' . ($this->distinct ? 'DISTINCT ' : '') . implode(', ', $this->columns) . ' FROM ' . $this->table;
-        if ($this->alias !== '') {
-            $sql .= ' AS ' . $this->alias;
-        }
-        if ($this->joins !== []) {
-            $sql .= ' ' . implode(' ', $this->joins);
-        }
-        if ($this->conditions->sql() !== '') {
-            $sql .= ' WHERE ' . $this->conditions->sql();
-        }
-        if ($this->groups !== []) {
-            $sql .= ' GROUP BY ' . implode(', ', $this->groups);
-        }
-        if ($this->having->sql() !== '') {
-            $sql .= ' HAVING ' . $this->having->sql();
-        }
-        $parameters = array_merge($this->selectParameters, $this->fromParameters, $this->joinParameters, $this->conditions->parameters(), $this->having->parameters());
-        if ($this->unions !== []) {
-            $sql = 'SELECT * FROM (' . $sql . ') AS ' . $this->dialect->identifier('__type_union_0');
-            foreach ($this->unions as $index => $union) {
-                $sql .= ($union[1] ? ' UNION ALL ' : ' UNION ') . 'SELECT * FROM (' . $union[0][0]
-                    . ') AS ' . $this->dialect->identifier('__type_union_' . ($index + 1));
-                $parameters = array_merge($parameters, $union[0][1]);
-            }
-            $sql = 'SELECT * FROM (' . $sql . ') AS ' . $this->dialect->identifier('__type_union');
-        }
-        if ($this->orders !== []) {
-            $sql .= ' ORDER BY ' . implode(', ', $this->orders);
-        }
-        if ($this->limit !== 0) {
-            $sql .= ' LIMIT ? OFFSET ?';
-            $parameters[] = $this->limit;
-            $parameters[] = $this->offset;
-        }
-        $sql .= $this->lock;
-
-        return [$sql, $parameters];
-    }
-
     /**
      * 按当前偏移最多读取一行；未命中返回 null。
      *
-     * @return array<string, mixed>|null
+     * @return null|array<string, mixed>
      */
     public function first(): ?array
     {
@@ -695,13 +577,6 @@ final class Query
             }
         }
         return $values;
-    }
-
-    /** 已形成的集合/分组投影从结果列提取，不能只改写 UNION 首支的列数。 */
-    private function extractionQuery(): Query
-    {
-        return $this->unions !== [] || $this->groups !== [] || $this->aggregated || $this->distinct
-            ? self::fromSub($this, '__type_values') : $this;
     }
 
     /** 空结果使用稳定模型错误码报告。 */
@@ -760,7 +635,7 @@ final class Query
     /**
      * 插入一行并返回数据库影响行数，不触发模型字段策略或模型事件。
      *
-     * @param array<string, scalar|null> $row 实际数据库列到值的映射。
+     * @param array<string, null|scalar> $row 实际数据库列到值的映射
      */
     public function insert(array $row): int
     {
@@ -782,7 +657,7 @@ final class Query
     /**
      * 在支持 RETURNING 的方言插入并读取指定列，不模拟 MySQL 返回能力。
      *
-     * @param list<array<string, scalar|null>> $rows
+     * @param list<array<string, null|scalar>> $rows
      * @param list<string> $columns
      * @return list<array<string, mixed>>
      */
@@ -882,7 +757,7 @@ final class Query
     /**
      * 执行单条集合 UPDATE；缺少有效条件须显式 allowAll，不隐式逐行加载。
      *
-     * @param array<string, scalar|null> $values
+     * @param array<string, null|scalar> $values
      */
     public function update(array $values): int
     {
@@ -898,24 +773,6 @@ final class Query
         return $this->updateValues($values, $version, true);
     }
 
-    private function updateValues(array $values, ?string $version, bool $guarded = false): int
-    {
-        $this->writeShape(true);
-        $this->requireWriteIntent();
-        $row = $this->rows([$values]);
-        $assignments = [];
-        foreach ($row[0] as $column) {
-            $assignments[] = $this->dialect->identifier($column, false, false) . ' = ?';
-        }
-        if ($version !== null) {
-            $assignments[] = $this->versionAssignment($version);
-        }
-        $sql = ($guarded && $this->connection->driverName() === 'sqlite' ? 'UPDATE OR ABORT ' : 'UPDATE ')
-            . $this->table . ' SET ' . implode(', ', $assignments) . $this->whereSql($this->conditions);
-
-        return $this->connection->execute($sql, array_merge($row[1], $this->conditions->parameters()));
-    }
-
     /** 单条条件 UPDATE 原子增加；返回数据库报告的影响行数，不预读。 */
     public function increment(string $column, int $amount = 1): int
     {
@@ -929,9 +786,9 @@ final class Query
     }
 
     /**
-     * @internal 模型写入须由事务包裹；integer 保留模型整数值域，不改变底层表查询的通用数值语义。
-     * @param array<string, mixed> $managed 与算术写入共用一条 SQL 的已编码受管列，不能覆盖目标或版本列。
-     * @throws DatabaseException 约束或整数值域失败，不把失败行过滤为部分成功。
+     * @internal 模型写入须由事务包裹；integer 保留模型整数值域，不改变底层表查询的通用数值语义
+     * @param array<string, mixed> $managed 与算术写入共用一条 SQL 的已编码受管列，不能覆盖目标或版本列
+     * @throws DatabaseException 约束或整数值域失败，不把失败行过滤为部分成功
      */
     public function adjust(string $column, int $amount, bool $decrement, ?string $version = null, bool $integer = false, array $managed = []): int
     {
@@ -976,25 +833,6 @@ final class Query
             . $this->whereSql($this->conditions), array_merge($parameters, $this->conditions->parameters()));
     }
 
-    /** 让数据库在同一语句中拒绝非法版本，避免 SQLite 溢出升 REAL 或竞争窗口。 */
-    private function versionAssignment(string $version, bool $qualified = false): string
-    {
-        $target = $this->dialect->identifier($version, false, false);
-        $column = ($qualified ? $this->table . '.' : '') . $target;
-        $valid = $column . ' >= 1 AND ' . $column . ' < ' . PHP_INT_MAX;
-        if ($this->connection->driverName() === 'sqlite') {
-            $valid .= ' AND typeof(' . $column . ") = 'integer'";
-        }
-        // 非法分支在赋值求值时失败，不依赖可能被触发器跳过的 NOT NULL 检查。
-        // 含列的表达式防止 PostgreSQL/MySQL 在有效分支执行前折叠常量错误。
-        $failure = match ($this->connection->driverName()) {
-            'sqlite' => 'abs(-9223372036854775807 - 1)',
-            'pgsql' => '1 / (' . $column . ' - ' . $column . ')',
-            'mysql' => 'CAST(9223372036854775807 AS SIGNED) + CAST(' . $column . ' - ' . $column . ' + 1 AS SIGNED)',
-        };
-        return $target . ' = CASE WHEN ' . $valid . ' THEN ' . $column . ' + 1 ELSE ' . $failure . ' END';
-    }
-
     /** 每行通过一个非 NULL 键匹配；单条 CASE UPDATE 不隐式逐条重试。 */
     public function updateMany(string $key, array $rows): int
     {
@@ -1014,7 +852,7 @@ final class Query
             if (!is_int($value) && !is_string($value)) {
                 throw new DatabaseException('批量更新匹配键只接受整数或字符串');
             }
-            $identity = (string) $value;
+            $identity = (string)$value;
             if (in_array($identity, $seen, true)) {
                 throw new DatabaseException('批量更新不能重复同一个匹配键');
             }
@@ -1051,13 +889,6 @@ final class Query
         return $this->connection->execute('DELETE FROM ' . $this->table . $this->whereSql($this->conditions), $this->conditions->parameters());
     }
 
-    private function requireWriteIntent(): void
-    {
-        if (!$this->all && $this->conditions->unconstrained()) {
-            throw new DatabaseException('无约束更新或删除必须显式调用 allowAll');
-        }
-    }
-
     /** @internal 添加模型默认范围之前验证调用者提供的写入条件。 */
     public function assertWriteIntent(): void
     {
@@ -1069,6 +900,197 @@ final class Query
     {
         $this->writeShape(true);
         $this->requireWriteIntent();
+    }
+
+    private function offsetPaginationQuery(string $primaryKey): Query
+    {
+        if ($this->limit !== 0 || $this->lock !== '') {
+            throw new DatabaseException('分页不接受已有 LIMIT 或行锁');
+        }
+        if (!$this->complex(false)) {
+            return $this->paginationQuery($primaryKey);
+        }
+        if ($this->uniqueOrder === []) {
+            throw new DatabaseException('复杂结果分页必须通过 uniqueOrderBy 声明唯一排序键');
+        }
+        $query = clone $this;
+        foreach ($this->uniqueOrder as $column) {
+            $query = $query->orderByIfAbsent($column);
+        }
+        $seen = [];
+        foreach ($query->orderFields as $field) {
+            if (in_array($field['column'], $seen, true)) {
+                throw new DatabaseException('分页排序列不能重复');
+            }
+            $seen[] = $field['column'];
+        }
+        if (count($seen) > 8) {
+            throw new DatabaseException('分页最多支持八个排序列');
+        }
+        return $query;
+    }
+
+    private function complex(bool $includeAlias = true): bool
+    {
+        return ($includeAlias && $this->alias !== '') || $this->joins !== [] || $this->groups !== [] || $this->having->sql() !== ''
+            || $this->aggregated || $this->distinct || $this->derived || $this->unions !== [];
+    }
+
+    private function pageSize(int $size): void
+    {
+        if ($size < 1 || $size > 1000) {
+            throw new DatabaseException('分页大小必须在 1 至 1000 之间');
+        }
+    }
+
+    private function paginationQuery(string $primaryKey): Query
+    {
+        if ($this->complex(false) || $this->limit !== 0 || $this->lock !== '') {
+            throw new DatabaseException('确定分页只接受没有 Join、聚合、行锁或已有 LIMIT 的单表查询');
+        }
+        foreach ($this->columns as $column) {
+            if (str_contains($column, '__type_cursor_')) {
+                throw new DatabaseException('分页投影占用了内部别名前缀');
+            }
+        }
+        $columns = [];
+        $primary = [];
+        foreach ($this->connection->columns($this->tableName) as $column) {
+            if (str_starts_with($column['name'], '__type_cursor_')) {
+                throw new DatabaseException('表列占用了分页内部别名前缀');
+            }
+            $columns[$column['name']] = $column;
+            if ($column['primary']) {
+                $primary[] = $column['name'];
+            }
+        }
+        if ($primary !== [$primaryKey]) {
+            throw new DatabaseException('分页需要真实的单列主键作为唯一排序收尾');
+        }
+        $query = $this;
+        $ordered = [];
+        foreach ($this->orderFields as $field) {
+            $orderedColumn = $this->paginationColumn($field['column']);
+            if (in_array($orderedColumn, $ordered, true)) {
+                throw new DatabaseException('分页排序列不能重复');
+            }
+            $ordered[] = $orderedColumn;
+        }
+        if (!in_array($primaryKey, $ordered, true)) {
+            $query = $query->orderBy(($this->aliasName === '' ? '' : $this->aliasName . '.') . $primaryKey);
+        }
+        if (count($query->orderFields) > 8) {
+            throw new DatabaseException('分页最多支持八个排序列');
+        }
+        foreach ($query->orderFields as $field) {
+            $column = $columns[$this->paginationColumn($field['column'])] ?? null;
+            if ($column === null || $column['nullable'] || preg_match('/json|blob|bytea|binary|real|double|float/i', $column['type'])) {
+                throw new DatabaseException('分页排序只接受真实的非 NULL、非浮点、非 JSON/二进制列');
+            }
+        }
+        return $query;
+    }
+
+    /** 分页校验对应真实表列，SQL 排序仍保留本表别名。 */
+    private function paginationColumn(string $column): string
+    {
+        return $this->aliasName !== '' && str_starts_with($column, $this->aliasName . '.')
+            ? substr($column, strlen($this->aliasName) + 1) : $column;
+    }
+
+    private function selectStatement(bool $executing = true): array
+    {
+        if ($this->lock !== '' && (($executing && $this->connection->transactionDepth() === 0) || $this->groups !== [] || $this->having->sql() !== '' || $this->aggregated || $this->distinct || $this->unions !== [])) {
+            throw new DatabaseException('行锁读取需要活动事务和非聚合查询');
+        }
+        $sql = 'SELECT ' . ($this->distinct ? 'DISTINCT ' : '') . implode(', ', $this->columns) . ' FROM ' . $this->table;
+        if ($this->alias !== '') {
+            $sql .= ' AS ' . $this->alias;
+        }
+        if ($this->joins !== []) {
+            $sql .= ' ' . implode(' ', $this->joins);
+        }
+        if ($this->conditions->sql() !== '') {
+            $sql .= ' WHERE ' . $this->conditions->sql();
+        }
+        if ($this->groups !== []) {
+            $sql .= ' GROUP BY ' . implode(', ', $this->groups);
+        }
+        if ($this->having->sql() !== '') {
+            $sql .= ' HAVING ' . $this->having->sql();
+        }
+        $parameters = array_merge($this->selectParameters, $this->fromParameters, $this->joinParameters, $this->conditions->parameters(), $this->having->parameters());
+        if ($this->unions !== []) {
+            $sql = 'SELECT * FROM (' . $sql . ') AS ' . $this->dialect->identifier('__type_union_0');
+            foreach ($this->unions as $index => $union) {
+                $sql .= ($union[1] ? ' UNION ALL ' : ' UNION ') . 'SELECT * FROM (' . $union[0][0]
+                    . ') AS ' . $this->dialect->identifier('__type_union_' . ($index + 1));
+                $parameters = array_merge($parameters, $union[0][1]);
+            }
+            $sql = 'SELECT * FROM (' . $sql . ') AS ' . $this->dialect->identifier('__type_union');
+        }
+        if ($this->orders !== []) {
+            $sql .= ' ORDER BY ' . implode(', ', $this->orders);
+        }
+        if ($this->limit !== 0) {
+            $sql .= ' LIMIT ? OFFSET ?';
+            $parameters[] = $this->limit;
+            $parameters[] = $this->offset;
+        }
+        $sql .= $this->lock;
+
+        return [$sql, $parameters];
+    }
+
+    /** 已形成的集合/分组投影从结果列提取，不能只改写 UNION 首支的列数。 */
+    private function extractionQuery(): Query
+    {
+        return $this->unions !== [] || $this->groups !== [] || $this->aggregated || $this->distinct
+            ? self::fromSub($this, '__type_values') : $this;
+    }
+
+    private function updateValues(array $values, ?string $version, bool $guarded = false): int
+    {
+        $this->writeShape(true);
+        $this->requireWriteIntent();
+        $row = $this->rows([$values]);
+        $assignments = [];
+        foreach ($row[0] as $column) {
+            $assignments[] = $this->dialect->identifier($column, false, false) . ' = ?';
+        }
+        if ($version !== null) {
+            $assignments[] = $this->versionAssignment($version);
+        }
+        $sql = ($guarded && $this->connection->driverName() === 'sqlite' ? 'UPDATE OR ABORT ' : 'UPDATE ')
+            . $this->table . ' SET ' . implode(', ', $assignments) . $this->whereSql($this->conditions);
+
+        return $this->connection->execute($sql, array_merge($row[1], $this->conditions->parameters()));
+    }
+
+    /** 让数据库在同一语句中拒绝非法版本，避免 SQLite 溢出升 REAL 或竞争窗口。 */
+    private function versionAssignment(string $version, bool $qualified = false): string
+    {
+        $target = $this->dialect->identifier($version, false, false);
+        $column = ($qualified ? $this->table . '.' : '') . $target;
+        $valid = $column . ' >= 1 AND ' . $column . ' < ' . PHP_INT_MAX;
+        if ($this->connection->driverName() === 'sqlite') {
+            $valid .= ' AND typeof(' . $column . ") = 'integer'";
+        }
+        // 非法分支在赋值求值时失败，不依赖可能被触发器跳过的 NOT NULL 检查。
+        // 含列的表达式防止 PostgreSQL/MySQL 在有效分支执行前折叠常量错误。
+        $failure = match ($this->connection->driverName()) {
+            'sqlite' => 'abs(-9223372036854775807 - 1)',
+            'pgsql' => '1 / (' . $column . ' - ' . $column . ')',
+            'mysql' => 'CAST(9223372036854775807 AS SIGNED) + CAST(' . $column . ' - ' . $column . ' + 1 AS SIGNED)',
+        };
+        return $target . ' = CASE WHEN ' . $valid . ' THEN ' . $column . ' + 1 ELSE ' . $failure . ' END';
+    }
+
+    private function requireWriteIntent(): void
+    {
+        if (!$this->all && $this->conditions->unconstrained()) {
+            throw new DatabaseException('无约束更新或删除必须显式调用 allowAll');
+        }
     }
 
     private function writeShape(bool $conditions): void

@@ -4,35 +4,41 @@ declare(strict_types=1);
 
 namespace Type\Redis;
 
-use InvalidArgumentException;
-use Throwable;
-
 /** 单个 Redis 端点的不可变连接配置；不提供 Cluster 或 Sentinel 路由。 */
 final class RedisConfiguration
 {
     private string $host;
+
     private int $port;
+
     private int $database;
+
     private ?string $password;
+
     private ?string $username;
+
     private float $connectTimeout;
+
     private float $readTimeout;
+
     private bool $tls;
+
     private ?string $caFile;
 
     /**
      * 保存连接基线，构造时不访问 Redis；认证与 TLS 在实际连接时完成。
      *
-     * @param float $connectTimeout 建连超时，单位秒，范围 (0, 60]。
-     * @param float $readTimeout 读取超时，单位秒，范围 (0, 60]。
-     * @param string|null $caFile 可读 CA 文件；必须同时启用 TLS。
-     * @throws InvalidArgumentException 地址、凭据组合、期限或证书配置无效。
+     * @param float $connectTimeout 建连超时，单位秒，范围 (0, 60]
+     * @param float $readTimeout 读取超时，单位秒，范围 (0, 60]
+     * @param null|string $caFile 可读 CA 文件；必须同时启用 TLS
+     * @throws \InvalidArgumentException 地址、凭据组合、期限或证书配置无效
      */
     public function __construct(
         string $host = '127.0.0.1',
         int $port = 6379,
         int $database = 0,
-        #[\SensitiveParameter] ?string $password = null,
+        #[\SensitiveParameter]
+        ?string $password = null,
         ?string $username = null,
         float $connectTimeout = 1.0,
         float $readTimeout = 1.0,
@@ -43,7 +49,7 @@ final class RedisConfiguration
             || !is_finite($connectTimeout) || !is_finite($readTimeout) || $connectTimeout <= 0 || $readTimeout <= 0
             || $connectTimeout > 60 || $readTimeout > 60 || ($username !== null && ($username === '' || $password === null))
             || ($caFile !== null && (!$tls || !is_file($caFile) || !is_readable($caFile)))) {
-            throw new InvalidArgumentException('Redis 地址、认证、超时或 TLS 配置无效');
+            throw new \InvalidArgumentException('Redis 地址、认证、超时或 TLS 配置无效');
         }
         $this->host = $host;
         $this->port = $port;
@@ -65,8 +71,8 @@ final class RedisConfiguration
     /**
      * 建立非持久 phpredis 会话，完成认证、选库及 TLS 校验，并关闭自动重试。
      *
-     * @return \Redis 调用者负责关闭的原生连接，未启用前缀和序列化。
-     * @throws RedisException 扩展缺失或初始化失败，操作状态为 NOT_STARTED。
+     * @return \Redis 调用者负责关闭的原生连接，未启用前缀和序列化
+     * @throws RedisException 扩展缺失或初始化失败，操作状态为 NOT_STARTED
      */
     public function connect(): \Redis
     {
@@ -100,7 +106,7 @@ final class RedisConfiguration
                 throw new \RuntimeException('数据库选择未完成');
             }
             return $client;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             throw new RedisException('connect_failed', 'NOT_STARTED', 'Redis 连接初始化失败', $error);
         }
     }

@@ -132,7 +132,7 @@ try {
         usleep(50000);
     }
     expect(is_file($directory . '/checking'), '未进入本轮延迟检查夹具');
-    $checkPid = (int) file_get_contents($directory . '/checking');
+    $checkPid = (int)file_get_contents($directory . '/checking');
     $stopStarted = microtime(true);
     $stopped = $watcher->stop(10);
     expect($stopped->successful(), '监督器没有正常停止：' . $stopped->stderr);
@@ -149,10 +149,10 @@ try {
 }
 file_put_contents($directory . '/verification.json', json_encode(
     ['platform' => PHP_OS_FAMILY, 'php' => PHP_VERSION,
-    'http-processes' => [$first['pid'], $second['pid'], $third['pid'], $fourth['pid'], $renamed['pid']],
-    'cancelled-check-pid' => $checkPid, 'port' => $environment['TYPE_WATCH_PORT'], 'temporary-env-removed' => !file_exists($directory . '/.env'),
-    'checks' => ['actual-http', 'mtime-preserving-source-change', 'invalid-input-retains-service', 'dotenv-failure-redacted',
-        'dotenv-reload', 'declaration-rename', 'missing-input-retains-service', 'repaired-declaration-reloads', 'pending-check-cancelled', 'http-child-removed']],
+        'http-processes' => [$first['pid'], $second['pid'], $third['pid'], $fourth['pid'], $renamed['pid']],
+        'cancelled-check-pid' => $checkPid, 'port' => $environment['TYPE_WATCH_PORT'], 'temporary-env-removed' => !file_exists($directory . '/.env'),
+        'checks' => ['actual-http', 'mtime-preserving-source-change', 'invalid-input-retains-service', 'dotenv-failure-redacted',
+            'dotenv-reload', 'declaration-rename', 'missing-input-retains-service', 'repaired-declaration-reloads', 'pending-check-cancelled', 'http-child-removed']],
     JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
 ));
 echo 'watch验收记录：' . $directory . "/verification.json\n";

@@ -9,7 +9,7 @@ import type {
   FormShape,
 } from '../types';
 
-import { computed } from 'vue';
+import { computed, toRaw } from 'vue';
 
 import { Form } from '@vben-core/shadcn-ui';
 import {
@@ -60,11 +60,11 @@ const shapes = computed(() => {
   const resultShapes: FormShape[] = [];
   props.schema?.forEach((schema) => {
     const { fieldName } = schema;
-    const rules = schema.rules as ZodTypeAny;
+    const rules = toRaw(schema.rules) as ZodTypeAny;
 
     let typeName = '';
     if (rules && !isString(rules)) {
-      typeName = rules._def.typeName;
+      typeName = rules._def.type;
     }
 
     const baseRules = getBaseRules(rules) as ZodTypeAny;
@@ -72,7 +72,7 @@ const shapes = computed(() => {
     resultShapes.push({
       default: getDefaultValueInZodStack(rules),
       fieldName,
-      required: !['ZodNullable', 'ZodOptional'].includes(typeName),
+      required: !['nullable', 'optional'].includes(typeName),
       rules: baseRules,
     });
   });
@@ -157,7 +157,7 @@ const computedSchema = computed(
           ...schema.formFieldProps,
         },
         formItemClass: cn(
-          'flex-shrink-0',
+          'shrink-0',
           { hidden },
           formItemClass,
           resolvedSchemaFormItemClass,

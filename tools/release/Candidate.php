@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TypeApp\Release;
 
+use Type\Build\BuildProfile;
+
 require_once __DIR__ . '/UpgradeBaseline.php';
 
 /** 跨平台汇总只接收同一可执行文件的回执；不会把历史目录归档升级为单程序证据。 */
@@ -34,7 +36,7 @@ final class Candidate
      * 个矩阵边界，避免少一个 profile 时仍创建部分 Release。
      *
      * @param array<string, mixed> $records
-     * @throws \RuntimeException 矩阵缺项、重复或包含未知组合。
+     * @throws \RuntimeException 矩阵缺项、重复或包含未知组合
      */
     public static function assertMatrix(array $records): void
     {
@@ -47,7 +49,7 @@ final class Candidate
         }
         foreach ($records as $key => $record) {
             if (!is_array($record)) {
-                throw new \RuntimeException('候选矩阵回执必须是对象：' . (string) $key);
+                throw new \RuntimeException('候选矩阵回执必须是对象：' . (string)$key);
             }
         }
     }
@@ -67,8 +69,8 @@ final class Candidate
     }
 
     /**
-     * @throws \RuntimeException 平台回执、profile 对应数据库验收或待上传字节不属于同一单程序。
-     * @return string 已核对的附件文件名。
+     * @return string 已核对的附件文件名
+     * @throws \RuntimeException 平台回执、profile 对应数据库验收或待上传字节不属于同一单程序
      */
     public static function verify(array $record, string $assets, string $source, string $version, string $platform, ?string $profile = null): string
     {
@@ -106,7 +108,7 @@ final class Candidate
                     && $value !== []
                     && array_filter($value, static fn (mixed $item): bool => !is_string($item) || $item === '') === [];
             };
-            $expectedRejected = is_array($features) ? \Type\Build\BuildProfile::rejectedCapabilities(['database' => $profile, 'features' => $features]) : [];
+            $expectedRejected = is_array($features) ? BuildProfile::rejectedCapabilities(['database' => $profile, 'features' => $features]) : [];
             if (!is_array($facts) || ($facts['name'] ?? null) !== $profile || ($facts['database'] ?? null) !== $profile
                 || !$validList($features) || !is_array($rejected) || !array_is_list($rejected)
                 || array_filter($rejected, static fn (mixed $item): bool => !is_string($item) || $item === '') !== []
@@ -118,14 +120,14 @@ final class Candidate
                     return !is_int($size[$key] ?? null) || $size[$key] < 0;
                 }) !== []
                 || ($size['stripped'] ?? false) !== true || ($platform !== 'macos-arm64' && $size['symbols'] !== 0)
-                || $size['total'] !== $record['bytes'] || $size['code'] + $size['data'] !== $size['total'] || $size['frontend'] > $size['data']) {
+                || $size['total'] !== $record['bytes'] || $size['total'] !== $size['code'] + $size['data'] || $size['frontend'] > $size['data']) {
                 throw new \RuntimeException('候选缺少可审计的 profile 依赖闭包：' . $platform . '/' . $profile);
             }
             $databaseExtensions = array_values(array_filter($extensions, static fn (string $extension): bool => in_array($extension, ['pdo_mysql', 'pdo_pgsql', 'pdo_sqlite'], true)));
             if ($databaseExtensions !== ['pdo_' . $profile]) {
                 throw new \RuntimeException('候选数据库扩展与 profile 不一致：' . $platform . '/' . $profile);
             }
-            \Type\Build\BuildProfile::assertExtensions($extensions, $facts);
+            BuildProfile::assertExtensions($extensions, $facts);
         }
         foreach ($profile === null ? ['mysql', 'pgsql', 'sqlite'] : [$profile] as $driver) {
             $test = $record['acceptance'][$driver] ?? [];

@@ -9,7 +9,11 @@ use Type\Testing\Process;
 
 require_once dirname(__DIR__) . '/support.php';
 
-/** 覆盖测试命令哨兵的跨平台参数、输出和退出码契约，避免 shell 改写参数。 */
+/**
+ * 覆盖测试命令哨兵的跨平台参数、输出和退出码契约，避免 shell 改写参数。
+ * @internal
+ * @coversNothing
+ */
 final class TestCommandTest extends TestCase
 {
     /** 独立验收控制器只复制格式校验类，不能隐式依赖主仓 Composer 自动加载。 */
@@ -40,7 +44,7 @@ PHP;
             unset($environment['TYPE_NATIVE_PHP_INI']);
             $process = new Process(
                 [PHP_BINARY, '-n', '-r', $controller, $directory . '/tests/support.php',
-                PHP_BINARY, '-n', '-r', 'echo "standalone-verifier\\n";'],
+                    PHP_BINARY, '-n', '-r', 'echo "standalone-verifier\n";'],
                 $directory,
                 $environment
             );
@@ -136,12 +140,12 @@ echo json_encode(array_slice($argv, 1), JSON_THROW_ON_ERROR);
 fwrite(STDERR, "fixture stderr\n");
 exit(37);
 PHP);
-            $arguments = ['', 'two words', '"quoted"', 'C:\\path with space\\', '\\"', '%PATH%', '!PATH!', '&|<>^', '中文'];
+            $arguments = ['', 'two words', '"quoted"', 'C:\path with space\\', '\"', '%PATH%', '!PATH!', '&|<>^', '中文'];
             $controller = 'require $argv[1]; require $argv[2]; $command = array_slice($argv, 3); '
-                . 'echo json_encode([execute($command), \\TypeApp\\Distribution\\Process::run($command, getcwd())], JSON_THROW_ON_ERROR);';
+                . 'echo json_encode([execute($command), \TypeApp\Distribution\Process::run($command, getcwd())], JSON_THROW_ON_ERROR);';
             $process = new Process(
                 [PHP_BINARY, '-r', $controller, $root . '/tests/support.php',
-                $root . '/tools/distribution/Process.php', 'typeapp-fixture', ...$arguments],
+                    $root . '/tools/distribution/Process.php', 'typeapp-fixture', ...$arguments],
                 $directory,
                 \testCommandEnvironment($directory . '/space bin', getenv())
             );

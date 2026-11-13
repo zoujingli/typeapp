@@ -16,7 +16,7 @@ final class AuditRetentionTask implements Task
     /** 注册时固定管理端或客户端，不接受外部表名。 */
     public function __construct(string $realm)
     {
-        if (!in_array($realm, ['admin', 'customer'], true)) {
+        if (!in_array($realm, ['platform', 'system'], true)) {
             throw new \InvalidArgumentException('审计调度身份域无效');
         }
         $this->realm = $realm;

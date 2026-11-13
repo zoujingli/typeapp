@@ -43,8 +43,8 @@ function generateMenus(
       link,
       order,
       title = '',
+      query,
     } = meta;
-    const routeSort = Number((route as Record<string, any>).sort ?? NaN);
 
     // 确保菜单名称不为空
     const name = (title || routeName || '') as string;
@@ -62,38 +62,24 @@ function generateMenus(
       });
     }
 
-    // 目录菜单没有页面组件，点击时必须进入 redirect 指向的首个真实页面，避免 RouterView 渲染空白。
-    const redirectPath =
-      !link && redirect && !hideChildrenInMenu && resultChildren.length > 0
-        ? String(redirect)
-        : undefined;
-
     // 确定最终路径
-    const resultPath = hideChildrenInMenu
-      ? link || redirect || path
-      : link || path;
+    const resultPath = hideChildrenInMenu ? redirect || path : link || path;
 
-    const menuItem: MenuRecordRaw = {
+    return {
       activeIcon,
       badge,
       badgeType,
       badgeVariants,
       icon,
       name,
-      order:
-        typeof order === 'number' ? order : Number.isFinite(routeSort) ? 0 - routeSort : undefined,
+      query,
+      order,
       parent: route.parent,
       parents: route.parents,
       path: resultPath,
       show: !meta.hideInMenu,
       children: resultChildren,
     };
-
-    if (redirectPath) {
-      menuItem.redirectPath = redirectPath;
-    }
-
-    return menuItem;
   });
 
   // 对菜单进行排序，避免order=0时被替换成999的问题

@@ -11,10 +11,10 @@ use Type\Testing\Process;
 /**
  * 目录包和单程序共用同一业务验收，防止两种交付形式悄悄缩减功能检查。
  *
- * @param list<string> $command 已通过隔离探针的启动参数。
- * @param array<string,string> $environment 受控部署环境；专用数据库在本函数创建并在finally删除。
- * @param array<string,array{bytes:int,sha256:string}> $embeddedResources 程序内嵌清单，只安装其中的web前缀。
- * @return array 初始化的预算、时间和真实进程结果。
+ * @param list<string> $command 已通过隔离探针的启动参数
+ * @param array<string,string> $environment 受控部署环境；专用数据库在本函数创建并在finally删除
+ * @param array<string,array{bytes:int,sha256:string}> $embeddedResources 程序内嵌清单，只安装其中的web前缀
+ * @return array 初始化的预算、时间和真实进程结果
  */
 function verifyNativeApplicationDeployment(string $project, string $package, string $runtime, array $command, array $environment, string $driver, array $embeddedResources, bool $isolated, bool $single = false): array
 {
@@ -33,10 +33,10 @@ function verifyNativeApplicationDeployment(string $project, string $package, str
                 expect(is_string($value) && $value !== '', '发布验收需要专用数据库参数：' . $prefix . $key);
                 $settings[$key] = $value;
             }
-            expect(ctype_digit($settings['PORT']) && (int) $settings['PORT'] > 0 && (int) $settings['PORT'] < 65536, '发布验收数据库端口无效');
+            expect(ctype_digit($settings['PORT']) && (int)$settings['PORT'] > 0 && (int)$settings['PORT'] < 65536, '发布验收数据库端口无效');
             $databaseDriver = $driver === 'mysql'
-                ? new MysqlDriver($settings['HOST'], (int) $settings['PORT'], $settings['DATABASE'], $settings['USER'], $settings['PASSWORD'])
-                : new PgsqlDriver($settings['HOST'], (int) $settings['PORT'], $settings['DATABASE'], $settings['USER'], $settings['PASSWORD']);
+                ? new MysqlDriver($settings['HOST'], (int)$settings['PORT'], $settings['DATABASE'], $settings['USER'], $settings['PASSWORD'])
+                : new PgsqlDriver($settings['HOST'], (int)$settings['PORT'], $settings['DATABASE'], $settings['USER'], $settings['PASSWORD']);
             $admin = $databaseDriver->connect();
             $admin->exec('CREATE DATABASE ' . $database);
             $databaseCreated = true;
@@ -169,7 +169,7 @@ function verifyNativeApplicationDeployment(string $project, string $package, str
                 expect($page->status === 200 && hash('sha256', $page->body) === $webFiles['web/index.html']['sha256'], '登录页面与内嵌入口不同');
                 $head = $client->request('HEAD', '/');
                 expect($head->status === 200 && $head->body === '', 'HEAD页面响应携带了正文');
-                expect($head->header('Content-Length') === [(string) $webFiles['web/index.html']['bytes']]
+                expect($head->header('Content-Length') === [(string)$webFiles['web/index.html']['bytes']]
                     && $head->header('Content-Type') === $page->header('Content-Type')
                     && $head->header('ETag') === $page->header('ETag'), 'HEAD页面元数据与GET不一致');
                 $cached = $client->request('GET', '/', ['If-None-Match' => '"' . $webFiles['web/index.html']['sha256'] . '"']);
@@ -181,7 +181,7 @@ function verifyNativeApplicationDeployment(string $project, string $package, str
                         expect($asset->status === 200 && hash('sha256', $asset->body) === $file['sha256'], '静态脚本服务字节不同');
                         $assetHead = $client->request('HEAD', '/' . substr($path, 4));
                         expect($assetHead->status === 200 && $assetHead->body === ''
-                            && $assetHead->header('Content-Length') === [(string) $file['bytes']]
+                            && $assetHead->header('Content-Length') === [(string)$file['bytes']]
                             && $assetHead->header('Cache-Control') === $asset->header('Cache-Control'), 'HEAD静态资源长度或缓存策略与GET不一致');
                         break;
                     }

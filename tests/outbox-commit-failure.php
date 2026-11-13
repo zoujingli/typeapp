@@ -40,22 +40,21 @@ try {
     };
     expect($run('setup-schema', $directEnvironment) === '', 'Outbox故障场景迁移失败');
     foreach (['before', 'after'] as $mode) {
-
         $proxyEnvironment = array_replace($environment, ['TYPE_PROXY_HOST' => $backendHost, 'TYPE_PROXY_PORT' => $backendPort, 'TYPE_PROXY_MODE' => $mode]);
         $proxy = new Process([PHP_BINARY, $root . '/tests/mysql-commit-proxy.php'], $root, $proxyEnvironment);
         $application = null;
         try {
             $deadline = microtime(true) + 5;
-            do {
+            while (true) {
                 $output = $proxy->stdout();
                 if (str_contains($output, "\n")) {
                     break;
                 }
                 expect($proxy->running() && microtime(true) < $deadline, 'Outbox业务故障代理未就绪');
                 usleep(1000);
-            } while (true);
+            }
             $port = trim(explode("\n", $output)[0]);
-            expect(ctype_digit($port) && (int) $port > 0 && (int) $port <= 65535, '故障代理没有返回有效端口');
+            expect(ctype_digit($port) && (int)$port > 0 && (int)$port <= 65535, '故障代理没有返回有效端口');
             $applicationEnvironment = array_replace($directEnvironment, ['TYPE_MYSQL_HOST' => '127.0.0.1', 'TYPE_MYSQL_PORT' => $port, 'TYPE_MYSQL_DATABASE' => $name]);
             $application = new Process([...$command, 'mysql', 'unknown'], $root, $applicationEnvironment);
             $result = $application->wait(60);
@@ -65,12 +64,12 @@ try {
             $marker = $mode === 'before' ? 'dropped_before_commit' : 'commit_confirmed_and_dropped';
             expect($proxied->successful() && $proxied->stderr === '' && trim($proxied->stdout) === $port . "\n" . $marker, '没有真实切断指定COMMIT边界');
             $expected = $mode === 'before' ? 0 : 1;
-            expect((int) $probe->query('SELECT COUNT(*) FROM type_outbox_business')->fetchColumn() === $expected
-                && (int) $probe->query('SELECT COUNT(*) FROM type_outbox')->fetchColumn() === $expected, '未知提交的业务和消息意图未保持原子持久化');
+            expect((int)$probe->query('SELECT COUNT(*) FROM type_outbox_business')->fetchColumn() === $expected
+                && (int)$probe->query('SELECT COUNT(*) FROM type_outbox')->fetchColumn() === $expected, '未知提交的业务和消息意图未保持原子持久化');
             if ($mode === 'after') {
                 expect($run('relay', $directEnvironment) === "消息发布及 token 标记通过。\n", '未知提交的持久意图未由Relay恢复');
                 expect($run('consume-unknown', $directEnvironment) === "重复投递幂等消费与保留凭据通过。\n", '未知提交消息没有实际消费');
-                expect((int) $probe->query('SELECT COUNT(*) FROM type_outbox_effects')->fetchColumn() === 1, '未知提交自动重做业务或未产生消费效果');
+                expect((int)$probe->query('SELECT COUNT(*) FROM type_outbox_effects')->fetchColumn() === 1, '未知提交自动重做业务或未产生消费效果');
             }
         } finally {
             try {

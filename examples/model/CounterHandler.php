@@ -9,7 +9,6 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use RuntimeException;
 use Type\Orm\ModelException;
 use Type\Orm\TransactionException;
 use Type\Runtime\ExecutionScope;
@@ -22,6 +21,7 @@ use Type\Validate\ValidationException;
 final class CounterHandler implements RequestHandlerInterface
 {
     private ResponseFactoryInterface $responses;
+
     private StreamFactoryInterface $streams;
 
     /** 注入 PSR 工厂，模型连接由当前请求作用域提供。 */
@@ -36,7 +36,7 @@ final class CounterHandler implements RequestHandlerInterface
     {
         $scope = $request->getAttribute('type.scope');
         if (!$scope instanceof ExecutionScope) {
-            throw new RuntimeException('版本请求缺少作用域');
+            throw new \RuntimeException('版本请求缺少作用域');
         }
         try {
             $method = $request->getMethod();
@@ -88,6 +88,6 @@ final class CounterHandler implements RequestHandlerInterface
             $result = ['error' => 'transaction_failed', 'outcome' => $error->outcome()];
         }
         return $this->responses->createResponse($status)->withHeader('Content-Type', 'application/json')
-            ->withBody($this->streams->createStream((string) json_encode($result, JSON_THROW_ON_ERROR)));
+            ->withBody($this->streams->createStream((string)json_encode($result, JSON_THROW_ON_ERROR)));
     }
 }

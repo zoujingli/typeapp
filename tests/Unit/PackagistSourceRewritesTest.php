@@ -10,7 +10,11 @@ use Type\Build\SourceSet;
 
 require_once dirname(__DIR__) . '/support.php';
 
-/** 使用实际依赖源码验证公开索引处理后的适配声明，避免本地 path 安装掩盖分发差异。 */
+/**
+ * 使用实际依赖源码验证公开索引处理后的适配声明，避免本地 path 安装掩盖分发差异。
+ * @internal
+ * @coversNothing
+ */
 final class PackagistSourceRewritesTest extends TestCase
 {
     /** Packagist 元数据会移除字符串中的换行；公开安装与本地声明必须生成完全相同的源码。 */
@@ -18,8 +22,8 @@ final class PackagistSourceRewritesTest extends TestCase
     {
         $root = dirname(__DIR__, 2);
         $packageRoot = $root . '/vendor/dragonmantank/cron-expression';
-        $package = json_decode((string) file_get_contents($packageRoot . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
-        $provider = json_decode((string) file_get_contents($root . '/plugin/type-scheduler/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+        $package = json_decode((string)file_get_contents($packageRoot . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+        $provider = json_decode((string)file_get_contents($root . '/plugin/type-scheduler/composer.json'), true, 512, JSON_THROW_ON_ERROR);
         $original = $provider['extra']['type']['imports']['dragonmantank/cron-expression'];
         $indexed = $original;
         foreach ($indexed['rewrites'] as &$rewrite) {

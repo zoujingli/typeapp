@@ -51,7 +51,7 @@ expect(is_file($project . '/build/legacy-snapshot/legacy.json'), '未声明 proj
 
 $protected = $project . '/build/program/type-app';
 file_put_contents($protected, '此前产物不能被非法配置覆盖');
-foreach ([null, 42, [], '', '/', $project, '../../missing', '../../../unrelated', "../..\0", '..\\..', 'file://../..'] as $invalidRoot) {
+foreach ([null, 42, [], '', '/', $project, '../../missing', '../../../unrelated', "../..\0", '..\..', 'file://../..'] as $invalidRoot) {
     $invalid = $settings;
     $invalid['project-root'] = $invalidRoot;
     file_put_contents($nested, json_encode($invalid, JSON_THROW_ON_ERROR));

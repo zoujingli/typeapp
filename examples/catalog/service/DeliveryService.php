@@ -14,9 +14,7 @@ use Type\Runtime\ExecutionScope;
 final class DeliveryService
 {
     /** Store 只含固定表名与保留策略；连接来自当前任务作用域。 */
-    public function __construct(private Store $store)
-    {
-    }
+    public function __construct(private Store $store) {}
 
     /** make 的共同服务契约；任务的实际业务入口使用 consume。 */
     public function execute(string $marker): array

@@ -17,6 +17,7 @@ use Type\Redis\RedisConfiguration;
 use Type\Redis\RedisException;
 use Type\Redis\RedisManager;
 use Type\Redis\StoragePolicy;
+use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use Type\Scheduler\Definition;
 use Type\Scheduler\FileStateStore;
@@ -33,7 +34,7 @@ use TypeApp\SchedulerExample\ControlledClock;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function reliabilityExpect(bool $condition, string $message): void
 {
@@ -49,18 +50,18 @@ function reliabilityPort(string $name): int
     if ($value === false) {
         return 6379;
     }
-    if (!ctype_digit($value) || (int) $value < 1 || (int) $value > 65535) {
+    if (!ctype_digit($value) || (int)$value < 1 || (int)$value > 65535) {
         throw new InvalidArgumentException($name . '必须是有效端口');
     }
-    return (int) $value;
+    return (int)$value;
 }
 
 /**
  * 在演练的五秒预算内接任已收尾的失租执行者，仍由公开租约协议决定何时重领。
  *
- * @return array{completed: int, lease_losses: int, message_age_ms: int} 已确认投递数、失租次数及所处理消息的最大年龄。
- * @throws QueueException 非失租错误不重试；未知写入结果不能当作租约到期。
- * @throws RuntimeException 旧执行者未收尾、仍有隔离消息或恢复超出预算。
+ * @return array{completed: int, lease_losses: int, message_age_ms: int} 已确认投递数、失租次数及所处理消息的最大年龄
+ * @throws QueueException 非失租错误不重试；未知写入结果不能当作租约到期
+ * @throws RuntimeException 旧执行者未收尾、仍有隔离消息或恢复超出预算
  */
 function reliabilityRecover(Queue $queue, Registry $registry, Worker $worker): array
 {
@@ -82,7 +83,7 @@ function reliabilityRecover(Queue $queue, Registry $registry, Worker $worker): a
             }
             $workerState = $worker->statistics();
             reliabilityExpect(!$worker->ready() && $workerState['in_flight'] === 0, '失租执行者尚未停止或收尾，不能接任');
-            $leaseLosses++;
+            ++$leaseLosses;
             $worker = new Worker($queue, $registry, 'recover-' . getmypid() . '-' . $leaseLosses, new RetryPolicy(5, 10, 10, 3000));
         }
         $queueState = $queue->statistics();
@@ -122,11 +123,11 @@ function reliabilitySchedulerStop(): void
 /**
  * 在协程入口内运行可靠 Redis、停止与恢复演练，故障模式由显式参数选择。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
-    \Type\Runtime\CoroutineRuntime::run(static function () use ($argc, $argv): void {
+    CoroutineRuntime::run(static function () use ($argc, $argv): void {
         taskReliabilityScenario($argc, $argv);
     });
 }
@@ -134,11 +135,11 @@ function main(int $argc, array $argv): void
 /**
  * 在专属可靠 Redis 执行播种、恢复、写满或停止阶段，按真实副作用核对。
  *
- * @param list<string> $argv 程序路径与显式故障演练阶段。
+ * @param list<string> $argv 程序路径与显式故障演练阶段
  */
 function taskReliabilityScenario(int $argc, array $argv): void
 {
-    $mode = (string) ($argv[1] ?? 'seed');
+    $mode = (string)($argv[1] ?? 'seed');
     if ($mode === 'scheduler-stop') {
         reliabilitySchedulerStop();
         return;
@@ -212,18 +213,18 @@ function taskReliabilityScenario(int $argc, array $argv): void
             $queue->publish(new Message('pressure-one', 'durable', 1, []));
             $queue->publish(new Message('pressure-two', 'durable', 1, []));
             $cacheClient = $cache->connect();
-            for ($index = 0; $index < 256; $index++) {
+            for ($index = 0; $index < 256; ++$index) {
                 $cacheClient->set('evict:' . $index, str_repeat('C', 65536));
             }
             reliabilityExpect(
-                (int) $cacheClient->info('stats')['evicted_keys'] > 0 && $queue->statistics()['messages'] === 2,
+                (int)$cacheClient->info('stats')['evicted_keys'] > 0 && $queue->statistics()['messages'] === 2,
                 '缓存淘汰压力影响可靠消息或未产生真实淘汰'
             );
             $cacheClient->close();
             $admin = $reliable->connect();
             $filled = false;
             $keys = [];
-            for ($index = 0; $index < 1000; $index++) {
+            for ($index = 0; $index < 1000; ++$index) {
                 $key = 'pressure:' . $index;
                 try {
                     $admin->set($key, str_repeat('R', 65536));
@@ -284,7 +285,7 @@ function taskReliabilityScenario(int $argc, array $argv): void
             $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
             reliabilityExpect($pair !== false, '无法建立日志故障管道');
             stream_set_blocking($pair[0], false);
-            for ($index = 0; $index < 8192; $index++) {
+            for ($index = 0; $index < 8192; ++$index) {
                 if (fwrite($pair[0], str_repeat('F', 4096)) === 0) {
                     break;
                 }
@@ -292,7 +293,7 @@ function taskReliabilityScenario(int $argc, array $argv): void
             $output = Output::stream($pair[0], 3, 2048, 1024);
             $logs = new LogManager('reliability-test', ['app' => new Channel($output)], 0.02);
             $logger = $logs->logger($scope);
-            for ($index = 0; $index < 100; $index++) {
+            for ($index = 0; $index < 100; ++$index) {
                 $logger->warning('存储压力', ['attempt' => $index]);
             }
             reliabilityExpect($output->stats()['pending_records'] === 3 && $output->stats()['dropped_full'] === 97
@@ -328,7 +329,7 @@ function taskReliabilityScenario(int $argc, array $argv): void
                 echo json_encode(['stopping' => $worker->statistics()], JSON_THROW_ON_ERROR) . PHP_EOL;
             });
             if ($mode === 'paused-pull') {
-                $ordinary->command('SET', [$application . ':client', (string) $redis->identity()]);
+                $ordinary->command('SET', [$application . ':client', (string)$redis->identity()]);
                 $ordinary->command('SET', [$application . ':started', 'yes']);
                 $admin = $reliable->connect();
                 $admin->rawCommand('CLIENT', 'PAUSE', 500, 'WRITE');

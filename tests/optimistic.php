@@ -1,6 +1,10 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\ModelCompiler;
+use Type\Orm\Database;
+use Type\Runtime\ExecutionScope;
+use TypeApp\ModelExample\Drivers;
 
 require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -9,7 +13,7 @@ require dirname(__DIR__) . '/examples/model/Drivers.php';
 $root = dirname(__DIR__);
 $driver = $argv[2] ?? 'sqlite';
 expect(in_array($driver, ['mysql', 'pgsql', 'sqlite'], true), '未知版本验证驱动');
-$compiler = new Type\Build\ModelCompiler();
+$compiler = new ModelCompiler();
 $generated = tempnam(sys_get_temp_dir(), 'type_version_models_');
 $sqlite = tempnam(sys_get_temp_dir(), 'type_version_db_');
 expect($generated !== false && $sqlite !== false, '无法准备版本验证');
@@ -23,7 +27,7 @@ try {
     if ($driver === 'sqlite') {
         putenv($environmentKey . '=' . $sqlite);
     } else {
-        $admin = TypeApp\ModelExample\Drivers::create($driver)->connect();
+        $admin = Drivers::create($driver)->connect();
         $admin->exec('CREATE DATABASE ' . $databaseName);
         $created = true;
         putenv($environmentKey . '=' . $databaseName);
@@ -43,7 +47,7 @@ try {
     putenv('TYPE_OPTIMISTIC_BARRIER=' . $barrier);
     $children = [];
     try {
-        for ($index = 0; $index < 2; $index++) {
+        for ($index = 0; $index < 2; ++$index) {
             $output = tmpfile();
             expect($output !== false, '无法创建并发输出');
             $process = proc_open([...$command, $driver, 'race'], [0 => ['file', '/dev/null', 'r'], 1 => $output, 2 => $output], $pipes);
@@ -60,11 +64,11 @@ try {
         }
         sort($results);
         expect($results === ['conflict', 'updated'], '并发旧版本没有且只有一个写入成功');
-        $scope = new Type\Runtime\ExecutionScope();
-        $database = new Type\Orm\Database(TypeApp\ModelExample\Drivers::create($driver), 1, 0);
+        $scope = new ExecutionScope();
+        $database = new Database(Drivers::create($driver), 1, 0);
         try {
             $row = $database->connect($scope)->table('type_model_counters')->where('id', '=', 3)->first();
-            expect((int) $row['version'] === 2 && (int) $row['value'] === 1, '并发写入发生丢失更新或重复推进版本');
+            expect((int)$row['version'] === 2 && (int)$row['value'] === 1, '并发写入发生丢失更新或重复推进版本');
         } finally {
             $scope->close();
             $database->close();

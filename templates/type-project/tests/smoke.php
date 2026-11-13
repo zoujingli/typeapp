@@ -24,7 +24,7 @@ function templateCommand(array $fallback, array $environment, bool $server = fal
         $command[$index] = $argument = str_replace('{{test}}', 'smoke', $argument);
         if (str_contains($argument, '{{port}}')) {
             $port = $environment['APP_PORT'] ?? '';
-            Assert::true(ctype_digit($port) && (int) $port > 0 && (int) $port <= 65535, '应用验收发布端口无效');
+            Assert::true(ctype_digit($port) && (int)$port > 0 && (int)$port <= 65535, '应用验收发布端口无效');
             $command[$index] = str_replace('{{port}}', $port, $argument);
         }
     }

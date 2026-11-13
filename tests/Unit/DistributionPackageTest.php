@@ -6,7 +6,6 @@ namespace TypeTests\Unit;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use Type\Testing\Process;
 use TypeApp\Distribution\Batch;
 
@@ -14,30 +13,13 @@ require_once dirname(__DIR__) . '/support.php';
 require_once dirname(__DIR__, 2) . '/tools/distribution/Process.php';
 require_once dirname(__DIR__, 2) . '/tools/distribution/Batch.php';
 
-/** 从真实 Git 对象核对分发材料，工作区副本不能补足提交中的缺项。 */
+/**
+ * 从真实 Git 对象核对分发材料，工作区副本不能补足提交中的缺项。
+ * @internal
+ * @coversNothing
+ */
 final class DistributionPackageTest extends TestCase
 {
-    /** 同一组真实提交分别经过单组件入口和批次计划检查。 */
-    public static function packageContents(): iterable
-    {
-        yield 'complete' => ['', null, ''];
-        yield 'git-attributes' => ['.gitattributes', "*.php text eol=lf\n", ''];
-        yield 'versioned-third-party-license' => ['resources/swoole/LICENSES/openssl@3/LICENSE.txt', 'upstream-license', ''];
-        yield 'missing-license' => ['LICENSE', null, '缺少分发文件'];
-        yield 'missing-notice' => ['NOTICE', null, '缺少分发文件'];
-        yield 'missing-readme' => ['README.md', null, '缺少分发文件'];
-        yield 'truncated-license' => ['LICENSE', 'Apache-2.0', '完整许可文本'];
-        yield 'empty-notice' => ['NOTICE', " \n", '分发说明不能为空'];
-        yield 'empty-readme' => ['README.md', "\n", '分发说明不能为空'];
-        yield 'unapproved-file' => ['auth.json', '{}', '分发包包含未允许内容'];
-        yield 'unapproved-hidden-file' => ['.gitconfig', '[core]', '分发包包含未允许内容'];
-        yield 'nested-secret' => ['resources/swoole/auth.json', '{}', '分发包包含未允许内容'];
-        yield 'unmapped-dependency' => ['composer.json', json_encode([
-            'name' => 'zoujingli/type-runtime', 'type' => 'library', 'license' => 'Apache-2.0',
-            'require' => ['zoujingli/type-unmapped' => '^1.0'],
-        ], JSON_THROW_ON_ERROR), '插件依赖尚未映射'];
-    }
-
     /** 验证分发计划要求固定提交中的组件材料完整，工作区补写不能改变被验证的提交。 */
     #[DataProvider('packageContents')]
     public function testPlanRequiresCompleteCommittedPackageMaterials(string $changed, ?string $content, string $failure): void
@@ -52,13 +34,13 @@ final class DistributionPackageTest extends TestCase
             foreach (['tools/distribute-plugin.php', 'tools/distribution/Process.php', 'tools/distribution/Batch.php'] as $file) {
                 self::assertTrue(copy($root . '/' . $file, $directory . '/' . $file));
             }
-            $mapping = json_decode((string) file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
+            $mapping = json_decode((string)file_get_contents($root . '/.github/distribution.json'), true, 512, JSON_THROW_ON_ERROR);
             $mapping['packages'] = ['type-runtime' => $mapping['packages']['type-runtime']];
             file_put_contents($directory . '/.github/distribution.json', json_encode($mapping, JSON_THROW_ON_ERROR));
             // 外部操作哨兵确保本地拒绝回归不会接触真实 GitHub。
             \writeTestPhpCommand($directory . '/bin/gh', 'fwrite(STDERR, "分发外部操作哨兵\n"); exit(99);');
             $package = $directory . '/plugin/type-runtime';
-            $license = (string) file_get_contents($root . '/LICENSE');
+            $license = (string)file_get_contents($root . '/LICENSE');
             file_put_contents($directory . '/LICENSE', $license);
             file_put_contents($directory . '/toolchain.lock.json', '{}');
             file_put_contents($package . '/LICENSE', $license);
@@ -103,7 +85,7 @@ final class DistributionPackageTest extends TestCase
                 file_put_contents($package . '/' . $changed, $changed === 'LICENSE' ? $license : '工作区补齐不能改变固定提交');
             }
             if ($failure !== '') {
-                $this->expectException(RuntimeException::class);
+                $this->expectException(\RuntimeException::class);
                 $this->expectExceptionMessage($failure);
             }
             $plan = Batch::plan($directory, $source, 'branch', '', $mapping);
@@ -112,5 +94,26 @@ final class DistributionPackageTest extends TestCase
         } finally {
             \removeTestDirectory($directory);
         }
+    }
+
+    /** 同一组真实提交分别经过单组件入口和批次计划检查。 */
+    public static function packageContents(): iterable
+    {
+        yield 'complete' => ['', null, ''];
+        yield 'git-attributes' => ['.gitattributes', "*.php text eol=lf\n", ''];
+        yield 'versioned-third-party-license' => ['resources/swoole/LICENSES/openssl@3/LICENSE.txt', 'upstream-license', ''];
+        yield 'missing-license' => ['LICENSE', null, '缺少分发文件'];
+        yield 'missing-notice' => ['NOTICE', null, '缺少分发文件'];
+        yield 'missing-readme' => ['README.md', null, '缺少分发文件'];
+        yield 'truncated-license' => ['LICENSE', 'Apache-2.0', '完整许可文本'];
+        yield 'empty-notice' => ['NOTICE', " \n", '分发说明不能为空'];
+        yield 'empty-readme' => ['README.md', "\n", '分发说明不能为空'];
+        yield 'unapproved-file' => ['auth.json', '{}', '分发包包含未允许内容'];
+        yield 'unapproved-hidden-file' => ['.gitconfig', '[core]', '分发包包含未允许内容'];
+        yield 'nested-secret' => ['resources/swoole/auth.json', '{}', '分发包包含未允许内容'];
+        yield 'unmapped-dependency' => ['composer.json', json_encode([
+            'name' => 'zoujingli/type-runtime', 'type' => 'library', 'license' => 'Apache-2.0',
+            'require' => ['zoujingli/type-unmapped' => '^1.0'],
+        ], JSON_THROW_ON_ERROR), '插件依赖尚未映射'];
     }
 }

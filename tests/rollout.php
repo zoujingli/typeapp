@@ -6,6 +6,7 @@ require __DIR__ . '/support.php';
 require dirname(__DIR__) . '/vendor/autoload.php';
 require __DIR__ . '/native-package-sandbox.php';
 
+use Type\Build\ModelCompiler;
 use Type\Cache\NamespaceStore;
 use Type\Orm\Mysql\MysqlDriver;
 use Type\Orm\Pgsql\PgsqlDriver;
@@ -49,7 +50,7 @@ mkdir($directory, 0700, true);
 $environment['TYPE_ROLLOUT_DATA_DIRECTORY'] = $directory;
 if (!$native) {
     // PHP 辅助路径也使用生成模型；原生路径由完整构建配置收集相同生产模型。
-    $models = (new Type\Build\ModelCompiler())->compile([$root . '/examples/outbox/Models.php']);
+    $models = (new ModelCompiler())->compile([$root . '/examples/outbox/Models.php']);
     file_put_contents($directory . '/models.php', $models['code']);
 }
 foreach (['old', 'new'] as $version) {
@@ -83,7 +84,7 @@ function rolloutCommand(array $command, array $environment, bool $server = false
         expect(is_string($argument) && !str_contains($argument, "\0"), '发布命令参数无效');
         if (str_contains($argument, '{{port}}')) {
             $port = $environment['TYPE_HTTP_PORT'] ?? '';
-            expect(ctype_digit($port) && (int) $port > 0 && (int) $port < 65536, '发布HTTP端口无效');
+            expect(ctype_digit($port) && (int)$port > 0 && (int)$port < 65536, '发布HTTP端口无效');
             $argument = str_replace('{{port}}', $port, $argument);
         }
         $argument = str_replace('{{data-directory}}', $environment['TYPE_ROLLOUT_DATA_DIRECTORY'], $argument);
@@ -104,7 +105,7 @@ function rolloutStop(Process $process, float $seconds): ProcessResult
 /**
  * 在 10 秒内执行发布演练命令，按 success 开关要求成功或保留原结果，退出路径停止进程。
  *
- * @param array<string, mixed>|list<string> $command 原生、PHP 或目录包启动描述。
+ * @param array<string, mixed>|list<string> $command 原生、PHP 或目录包启动描述
  * @param list<string> $arguments
  * @param array<string, string> $environment
  */
@@ -120,8 +121,8 @@ function rolloutCall(array $command, array $arguments, array $environment, bool 
                     $diagnostic = str_replace($value, '<REDACTED>', $diagnostic);
                 }
             }
-            expect($result->successful(), '发布演练命令失败：exit=' . $result->exitCode . ', timeout=' . (int) $result->timedOut
-                . ', signal=' . (string) $result->signal . "\n" . $diagnostic);
+            expect($result->successful(), '发布演练命令失败：exit=' . $result->exitCode . ', timeout=' . (int)$result->timedOut
+                . ', signal=' . (string)$result->signal . "\n" . $diagnostic);
         } return $result;
     } finally {
         $process->stop();
@@ -151,7 +152,7 @@ function rolloutHttp(array $command, array $environment): array
     do {
         if (!$process->running()) {
             $result = $process->wait(0);
-            throw new RuntimeException('发布演练 HTTP 提前退出：exit=' . $result->exitCode . ', signal=' . (string) $result->signal
+            throw new RuntimeException('发布演练 HTTP 提前退出：exit=' . $result->exitCode . ', signal=' . (string)$result->signal
                 . "\n" . $result->stdout . $result->stderr);
         }
         try {
@@ -190,17 +191,17 @@ function rolloutWorker(array $command, array $environment): Process
     throw new RuntimeException('worker 没有进入就绪');
 }
 try {
-    $policy = StoragePolicy::verify(new RedisConfiguration((string) getenv('TYPE_REDIS_HOST'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379)), new RedisConfiguration((string) getenv('TYPE_ROLLOUT_CACHE_HOST'), (int) (getenv('TYPE_ROLLOUT_CACHE_PORT') ?: 6379)));
+    $policy = StoragePolicy::verify(new RedisConfiguration((string)getenv('TYPE_REDIS_HOST'), (int)(getenv('TYPE_REDIS_PORT') ?: 6379)), new RedisConfiguration((string)getenv('TYPE_ROLLOUT_CACHE_HOST'), (int)(getenv('TYPE_ROLLOUT_CACHE_PORT') ?: 6379)));
     expect($policy['isolated'], '发布演练没有隔离缓存与可靠队列');
     if ($driver === 'sqlite') {
         $environment['TYPE_SQLITE_FILE'] = $directory . '/database.sqlite';
     } elseif ($driver === 'mysql') {
-        $admin = (new MysqlDriver(getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1', (int) (getenv('TYPE_MYSQL_PORT') ?: 3306), getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test', getenv('TYPE_MYSQL_USER') ?: 'root', getenv('TYPE_MYSQL_PASSWORD') ?: ''))->connect();
+        $admin = (new MysqlDriver(getenv('TYPE_MYSQL_HOST') ?: '127.0.0.1', (int)(getenv('TYPE_MYSQL_PORT') ?: 3306), getenv('TYPE_MYSQL_DATABASE') ?: 'type_app_test', getenv('TYPE_MYSQL_USER') ?: 'root', getenv('TYPE_MYSQL_PASSWORD') ?: ''))->connect();
         $admin->exec('CREATE DATABASE ' . $database);
         $createdDatabase = true;
         $environment['TYPE_MYSQL_DATABASE'] = $database;
     } else {
-        $admin = (new PgsqlDriver(getenv('TYPE_PGSQL_HOST') ?: '127.0.0.1', (int) (getenv('TYPE_PGSQL_PORT') ?: 5432), getenv('TYPE_PGSQL_DATABASE') ?: 'type_app_test', getenv('TYPE_PGSQL_USER') ?: 'type_app', getenv('TYPE_PGSQL_PASSWORD') ?: ''))->connect();
+        $admin = (new PgsqlDriver(getenv('TYPE_PGSQL_HOST') ?: '127.0.0.1', (int)(getenv('TYPE_PGSQL_PORT') ?: 5432), getenv('TYPE_PGSQL_DATABASE') ?: 'type_app_test', getenv('TYPE_PGSQL_USER') ?: 'type_app', getenv('TYPE_PGSQL_PASSWORD') ?: ''))->connect();
         $admin->exec('CREATE DATABASE ' . $database);
         $createdDatabase = true;
         $environment['TYPE_PGSQL_DATABASE'] = $database;
@@ -215,7 +216,7 @@ try {
         expect(!$invalidRelay->successful() && str_contains($invalidRelay->stderr, '发布演练延迟'), '非法延迟未在投递前拒绝');
     }
     $relayStarted = microtime(true);
-    rolloutCall($old, ['relay', (string) $delayMilliseconds], $environment);
+    rolloutCall($old, ['relay', (string)$delayMilliseconds], $environment);
     $oldWorker = rolloutWorker($old, $environment);
     $children[] = $oldWorker;
     [$oldHttp, $oldClient] = rolloutHttp($old, $environment);
@@ -239,7 +240,7 @@ try {
     $oldStopped = rolloutStop($oldWorker, 2);
     expect($oldStopped->signal !== 9 && str_contains($oldStopped->stdout, '"ready":false'), '旧消费者没有先撤销就绪再排空');
     $stats = json_decode(rolloutCall($new, ['stats'], $environment)->stdout, true, 512, JSON_THROW_ON_ERROR);
-    $consumerSwitchMilliseconds = (int) ((microtime(true) - $relayStarted) * 1000);
+    $consumerSwitchMilliseconds = (int)((microtime(true) - $relayStarted) * 1000);
     expect($stats['queue']['delayed'] === 1, '旧延迟消息没有保留到消费者切换：' . json_encode([
         'delay-ms' => $delayMilliseconds, 'relay-start-to-consumer-switch-ms' => $consumerSwitchMilliseconds,
         'queue' => $stats['queue'], 'effect-ids' => array_column($stats['effects'], 'id'),
@@ -290,12 +291,12 @@ try {
         $admin->exec('DROP DATABASE ' . $database);
     }
     $scope = new ExecutionScope();
-    $manager = new RedisManager(['queue' => new RedisConfiguration((string) getenv('TYPE_REDIS_HOST'), (int) (getenv('TYPE_REDIS_PORT') ?: 6379)), 'cache' => new RedisConfiguration((string) getenv('TYPE_ROLLOUT_CACHE_HOST'), (int) (getenv('TYPE_ROLLOUT_CACHE_PORT') ?: 6379))]);
+    $manager = new RedisManager(['queue' => new RedisConfiguration((string)getenv('TYPE_REDIS_HOST'), (int)(getenv('TYPE_REDIS_PORT') ?: 6379)), 'cache' => new RedisConfiguration((string)getenv('TYPE_ROLLOUT_CACHE_HOST'), (int)(getenv('TYPE_ROLLOUT_CACHE_PORT') ?: 6379))]);
     try {
         $roots = ['queue' => (new Queue($manager->connection($scope, 'queue', Purpose::SCRIPT), $environment['TYPE_ROLLOUT_APP'], 'rollout'))->identity(),
             'cache' => (new NamespaceStore($manager->connection($scope, 'cache', Purpose::SCRIPT), $environment['TYPE_ROLLOUT_APP'], 'test', 'users'))->identity()];
         foreach ($roots as $name => $prefix) {
-            $connection = (new RedisConfiguration((string) getenv($name === 'queue' ? 'TYPE_REDIS_HOST' : 'TYPE_ROLLOUT_CACHE_HOST'), (int) (getenv($name === 'queue' ? 'TYPE_REDIS_PORT' : 'TYPE_ROLLOUT_CACHE_PORT') ?: 6379)))->connect();
+            $connection = (new RedisConfiguration((string)getenv($name === 'queue' ? 'TYPE_REDIS_HOST' : 'TYPE_ROLLOUT_CACHE_HOST'), (int)(getenv($name === 'queue' ? 'TYPE_REDIS_PORT' : 'TYPE_ROLLOUT_CACHE_PORT') ?: 6379)))->connect();
             $iterator = null;
             do {
                 $keys = $connection->scan($iterator, $prefix . ':*', 100);

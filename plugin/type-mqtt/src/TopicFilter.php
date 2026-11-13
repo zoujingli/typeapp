@@ -64,8 +64,8 @@ final class TopicFilter
 
     /**
      * 同一接收者的重叠订阅合并一份交付；先排除 No Local，再取最高 QoS、任一 RAP 和每个匹配标识。
-     * @param array<string,int|array{options:int,identifier:int}> $subscriptions 已验证且获过滤器授权的订阅。
-     * @return array{qos:int,retain:bool,identifiers:list<int>} qos=-1 表示没有匹配；相同标识的多次出现不得去重。
+     * @param array<string,array{options:int,identifier:int}|int> $subscriptions 已验证且获过滤器授权的订阅
+     * @return array{qos:int,retain:bool,identifiers:list<int>} qos=-1 表示没有匹配；相同标识的多次出现不得去重
      */
     public static function select(array $subscriptions, string $topic, bool $sameClient): array
     {

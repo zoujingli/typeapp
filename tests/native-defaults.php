@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Type\Build\BundledSwoole;
 
 require __DIR__ . '/support.php';
 
@@ -10,7 +11,7 @@ expect(in_array($fixture, ['nested-default', 'string-ternary', 'interface-consta
 $extensions = [];
 if ($fixture === 'call-arguments-coroutine') {
     require $root . '/vendor/autoload.php';
-    $extensions[] = (new \Type\Build\BundledSwoole())->select()['file'];
+    $extensions[] = (new BundledSwoole())->select()['file'];
 }
 $php = [PHP_BINARY, '-n'];
 foreach ($extensions as $extension) {
@@ -47,7 +48,7 @@ try {
     expect(unlink($source), '无法删除已编译的测试输入');
     $ini = "display_errors=stderr\n";
     foreach ($extensions as $extension) {
-        $ini .= 'extension="' . addcslashes($extension, '\\"') . '"' . "\n";
+        $ini .= 'extension="' . addcslashes($extension, '\"') . '"' . "\n";
     }
     expect(mkdir($work . '/php.d', 0700) && file_put_contents($work . '/runtime.ini', $ini) !== false, '无法创建隔离运行配置');
     $environment = getenv();

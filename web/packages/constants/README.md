@@ -15,7 +15,5 @@ pnpm add @vben/constants
 ### 使用
 
 ```ts
-import { SUPPORT_LANGUAGES } from '@vben/constants';
+import { LOGIN_PATH } from '@vben/constants';
 ```
-
-认证入口、登录页和业务首页由插件 `auth-entry.ts` 声明，公共常量包不承载插件默认路径。

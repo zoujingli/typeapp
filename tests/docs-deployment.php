@@ -14,15 +14,15 @@ declare(strict_types=1);
 require __DIR__ . '/support.php';
 
 $root = dirname(__DIR__);
-$builder = (string) file_get_contents($root . '/docs/build-site.sh');
-$runner = (string) file_get_contents($root . '/tools/deploy-docs-site.sh');
+$builder = (string)file_get_contents($root . '/docs/build-site.sh');
+$runner = (string)file_get_contents($root . '/tools/deploy-docs-site.sh');
 
 /** 读取括号内的导出清单。 */
 $exported = [];
 if (preg_match('/site_files=\(([^)]*)\)/', $builder, $matched) !== 1) {
     expect(false, 'docs/build-site.sh 缺少 site_files 导出清单');
 }
-foreach (preg_split('/\s+/', trim((string) $matched[1])) ?: [] as $entry) {
+foreach (preg_split('/\s+/', trim((string)$matched[1])) ?: [] as $entry) {
     if ($entry !== '') {
         $exported[] = $entry;
     }
@@ -35,7 +35,7 @@ if (preg_match_all('/for required in ([^;]+); do/', $runner, $matched) < 2) {
 }
 foreach ([0, 1] as $index) {
     $entries = [];
-    foreach (preg_split('/\s+/', trim((string) $matched[1][$index])) ?: [] as $entry) {
+    foreach (preg_split('/\s+/', trim((string)$matched[1][$index])) ?: [] as $entry) {
         if ($entry !== '') {
             $entries[] = $entry;
         }
@@ -48,11 +48,11 @@ $exported[] = 'channel.js';
 if (preg_match('/^\s+(index\.html\|[^)\n]+)\)/m', $runner, $matched) !== 1) {
     expect(false, 'tools/deploy-docs-site.sh 缺少发布白名单文件条目');
 }
-$whitelist = explode('|', (string) $matched[1]);
+$whitelist = explode('|', (string)$matched[1]);
 if (preg_match('/^\s+((?:assets|guide)\|[^)\n]*)\)/m', $runner, $matched) !== 1) {
     expect(false, 'tools/deploy-docs-site.sh 缺少发布白名单目录条目');
 }
-foreach (explode('|', (string) $matched[1]) as $entry) {
+foreach (explode('|', (string)$matched[1]) as $entry) {
     if (!str_contains($entry, '*')) {
         $whitelist[] = $entry;
     }

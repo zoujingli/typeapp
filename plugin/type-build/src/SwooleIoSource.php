@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
-
 /** 尚未放行的文件 AIO 适配候选；仅由显式文件验收调用，不进入默认线程构建。 */
 final class SwooleIoSource
 {
@@ -30,24 +28,24 @@ final class SwooleIoSource
      * 显式准备文件候选；先核验文件原文，再组合既有线程适配。
      *
      * @return array<string, array{before: string, after: string}>
-     * @throws RuntimeException 源码不是固定原文或无法保存；失败副本不可用于构建。
+     * @throws \RuntimeException 源码不是固定原文或无法保存；失败副本不可用于构建
      */
     public function apply(string $directory): array
     {
         foreach (self::HASHES as $file => $hash) {
             $path = $directory . '/' . $file;
             if (!is_file($path) || is_link($path) || hash_file('sha256', $path) !== $hash) {
-                throw new RuntimeException('Swoole 文件候选需要固定原文：' . $file);
+                throw new \RuntimeException('Swoole 文件候选需要固定原文：' . $file);
             }
         }
         $report = (new SwooleThreadSource())->apply($directory);
         $contents = [];
         foreach (self::HASHES as $file => $hash) {
-            $contents[$file] = (string) file_get_contents($directory . '/' . $file);
+            $contents[$file] = (string)file_get_contents($directory . '/' . $file);
         }
         foreach ($this->adapt($contents) as $file => $content) {
             if (file_put_contents($directory . '/' . $file, $content) !== strlen($content)) {
-                throw new RuntimeException('无法保存 Swoole 文件候选：' . $file);
+                throw new \RuntimeException('无法保存 Swoole 文件候选：' . $file);
             }
             $report[$file] = ['before' => self::HASHES[$file], 'after' => hash('sha256', $content)];
         }
@@ -57,10 +55,10 @@ final class SwooleIoSource
     /**
      * 在已核验的源码中补齐原生提交、完成和文件缓冲约束。
      *
-     * @internal 由文件候选入口核验原文并组合线程适配。
-     * @param array<string, string> $contents 固定上游源码；线程补丁可已在内存中应用。
+     * @internal 由文件候选入口核验原文并组合线程适配
+     * @param array<string, string> $contents 固定上游源码；线程补丁可已在内存中应用
      * @return array<string, string>
-     * @throws RuntimeException 精确替换位置不唯一。
+     * @throws \RuntimeException 精确替换位置不唯一
      */
     public function adapt(array $contents): array
     {
@@ -1983,7 +1981,7 @@ CPP);
     private static function replace(string $source, string $before, string $after): string
     {
         if (substr_count($source, $before) !== 1) {
-            throw new RuntimeException('Swoole I/O 原文替换位置不唯一，拒绝继续');
+            throw new \RuntimeException('Swoole I/O 原文替换位置不唯一，拒绝继续');
         }
         return str_replace($before, $after, $source);
     }

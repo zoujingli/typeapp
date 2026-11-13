@@ -10,7 +10,7 @@ use Type\Runtime\ExecutionScope;
 /**
  * 将当前示例的行为断言转为明确失败，避免只输出成功文字而忽略实际状态。
  *
- * @throws \RuntimeException 条件不成立。
+ * @throws RuntimeException 条件不成立
  */
 function failureExpect(bool $condition, string $message): void
 {
@@ -22,7 +22,7 @@ function failureExpect(bool $condition, string $message): void
 /**
  * 用自有子进程管道制造满载和断开，验证有限日志排空并回收进程。
  *
- * @param list<string> $argv 程序路径与该示例的显式参数。
+ * @param list<string> $argv 程序路径与该示例的显式参数
  */
 function main(int $argc, array $argv): void
 {
@@ -31,7 +31,7 @@ function main(int $argc, array $argv): void
     $pipe = $pipes[0];
     stream_set_blocking($pipe, false);
     $filled = false;
-    for ($index = 0; $index < 8192; $index++) {
+    for ($index = 0; $index < 8192; ++$index) {
         if (fwrite($pipe, str_repeat('F', 4096)) === 0) {
             $filled = true;
             break;
@@ -43,7 +43,7 @@ function main(int $argc, array $argv): void
     $scope = new ExecutionScope();
     try {
         $logger = $logs->logger($scope);
-        for ($index = 0; $index < 20; $index++) {
+        for ($index = 0; $index < 20; ++$index) {
             $logger->info('blocked-output', ['index' => $index]);
         }
         $logger->info(str_repeat('large-record', 1024));
@@ -68,7 +68,7 @@ function main(int $argc, array $argv): void
     stream_set_blocking($recover[0], false);
     stream_set_blocking($recover[1], false);
     $filled = false;
-    for ($index = 0; $index < 8192; $index++) {
+    for ($index = 0; $index < 8192; ++$index) {
         if (fwrite($recover[0], str_repeat('F', 4096)) === 0) {
             $filled = true;
             break;
@@ -80,14 +80,14 @@ function main(int $argc, array $argv): void
     $scope = new ExecutionScope();
     try {
         $logger = $logs->logger($scope);
-        for ($index = 0; $index < 5; $index++) {
+        for ($index = 0; $index < 5; ++$index) {
             $logger->info('queued', ['index' => $index]);
         }
         failureExpect($recovery->stats()['pending_records'] === 3 && $recovery->stats()['dropped_full'] === 2, '恢复前容量策略错误');
-        while (fread($recover[1], 8192) !== '') {
-        }
+        while (fread($recover[1], 8192) !== '');
+
         $logs->drain(0.05);
-        $wire = (string) stream_get_contents($recover[1]);
+        $wire = (string)stream_get_contents($recover[1]);
         $rows = array_map(static fn (string $line): array => json_decode($line, true, 512, JSON_THROW_ON_ERROR), explode("\n", rtrim($wire, "\n")));
         failureExpect(array_column(array_column($rows, 'context'), 'index') === [0, 1, 2]
             && $recovery->stats()['written'] === 3 && $recovery->stats()['pending_bytes'] === 0, '恢复后记录顺序、完整性或缓冲释放错误');

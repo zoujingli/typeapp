@@ -30,6 +30,21 @@ flowchart TB
 
 组件在构建时选择并锁定，新增生产组件需要重新编译。`type-build`、`type-testing` 等开发工具只在对应阶段使用。物联中心是应用实例，其业务不进入通用组件，见[物联网中心](iot-center.md)。
 
+业务按 Controller、Service、Model 组织：Controller 处理输入和响应，Service 验证身份与权限、组织事务和业务规则，Model 表达字段、关系与持久状态。Service 直接使用模型对象，通用能力通过现有核心组件接入；不为单一实现增加 Repository、通用 CRUD 继承树或额外转发层。
+
+```mermaid
+flowchart LR
+  Request[HTTP / 命令 / 任务] --> Controller[Controller<br/>输入与响应]
+  Controller --> Service[Service<br/>授权、事务与业务规则]
+  Service --> Model[Model / ModelQuery<br/>字段、关系与对象读写]
+  Service --> Core[核心组件<br/>缓存、事件、队列与通信]
+  Model --> Scope[Swoole 执行作用域<br/>连接租约与资源回收]
+  Core --> Scope
+  Scope --> Storage[(数据库及外部服务)]
+```
+
+命令与任务可以直接调用 Service，不必经过 HTTP Controller。模型的简洁声明在构建时转换为受管类型属性；TypePHP 编译同一模型和业务实现，Swoole 提供协程、线程及网络能力。模型配置不在每次请求重新扫描，活动模型和连接也不跨作用域共享。
+
 ## 精简装配与标准共用
 
 TypeApp 优先复用 PSR、Swoole 以及现有 `ExecutionScope`、`ManagedResource` 和配置约定。构建器依据应用声明、构造器类型与显式绑定生成直接调用代码，组件只在通信、存储、日志、队列等真实替换边界使用接口；不增加通用运行时容器、未知源码扫描、AOP 代理或万能基础类。应用按声明顺序启动资源、按逆序停止资源，启动失败回收已启动部分，停止先拒绝新工作再在有界期限内排空。

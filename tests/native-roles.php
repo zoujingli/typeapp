@@ -43,7 +43,7 @@ function roleWrite(string $file, array $value): void
  */
 function roleJson(string $file): array
 {
-    $value = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+    $value = json_decode((string)file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
     Assert::true(is_array($value), '独立角色记录不是对象');
     return $value;
 }

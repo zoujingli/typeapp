@@ -1,9 +1,8 @@
 interface NotificationItem {
   id: number | string;
-  avatar?: string;
+  avatar: string;
   date: string;
   isRead?: boolean;
-  level?: 'error' | 'info' | 'success' | 'warning';
   message: string;
   title: string;
   /**
@@ -13,6 +12,8 @@ interface NotificationItem {
   link?: string;
   query?: Record<string, any>;
   state?: Record<string, any>;
+  /** 业务字段 */
+  [key: string]: any;
 }
 
 export type { NotificationItem };

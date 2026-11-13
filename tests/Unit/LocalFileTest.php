@@ -9,7 +9,11 @@ use Type\Log\Output;
 use Type\Runtime\LocalFile;
 use Type\Scheduler\FileStateStore;
 
-/** 通过真实文件核对日志与调度状态的共用本地路径边界。 */
+/**
+ * 通过真实文件核对日志与调度状态的共用本地路径边界。
+ * @internal
+ * @coversNothing
+ */
 final class LocalFileTest extends TestCase
 {
     private string $directory;

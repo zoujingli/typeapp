@@ -3,14 +3,13 @@
   "swoole": "6.3.0RC1",
   "source": {
     "repository": "https://github.com/swoole/swoole-src",
-    "reference": "64988849fa898e510a38039912610cab6e9cf3f5",
-    "archive-sha256": "d4e9e5bff6f19430e69425ddf2b485c045a5b0c2551af38b5efd6f79d1fe30a1",
+    "reference": "814049090dd9ba8000adc6cd09ad09dd3f0c9989",
+    "archive-sha256": "126c61b57c2cf27ff4a9aa6d9bef65ffebb3f6e60826e77c37c5edf1c5b6a19d",
     "channel": "development-snapshot",
-    "base-tag": "v6.3.0-rc1",
-    "commits-after-tag": 205
+    "base-tag": "v6.3.0-rc1"
   },
   "php-abi": {
-    "version": "8.5.10",
+    "version": "8.5.12",
     "module-api": 20250925,
     "zts": true,
     "debug": false,
@@ -18,10 +17,10 @@
   },
   "native-entry-abi": 2,
   "patches": {
-    "SwooleThreadSource": "8007ca473f13392cd30a13158c03d258cc0ec1664241b2938532289a76dcb41c",
-    "SwooleHttpSource": "195826004a6ad2d6149d7071b1544c8758b2ce338690f5402e26527be81a008c",
-    "SwooleWindowsSource": "e03bb51f6d17d428838eacfb7d4dee0bd006be1c356dd890a589ec769b94cc73",
-    "SwooleSocketSource": "f7b72c4671ca7fc52d663c6cc0ea02d4d56f4ba2eaf006ebb56df1fae0080dcb"
+    "SwooleThreadSource": "a2d5f273e451394bb114ad5333d25b663c4b780072adcab7257093750cbb8d74",
+    "SwooleHttpSource": "cad84057554cfd383d91467376dabd98690f3fc4eb8a6b31335afa44708e76b1",
+    "SwooleWindowsSource": "a52d45fd67c374d6506eccb158268b609277686738113a850cd3bf7b45bd8b3c",
+    "SwooleSocketSource": "eaa79633c214b6e9a211cc242c99c06a3ad5bce6c3f9dc7393596caa84e28d6e"
   },
   "adapted-sources": {
     "SwooleThreadSource": {
@@ -64,18 +63,131 @@
         "after": "0ac1e46fb33f50849f9475f4a62c73978e80dc56a693c2f42b1b1d91dc44b4a8"
       },
       "ext-src/php_swoole_http.h": {
-        "before": "dbf75116b35c65eb4624e9ed5268beadc9e3397e3c4f296bbf02b9bc706300a3",
-        "after": "e2eb6e87a118847988c0b62a4d8c1b43d9e89c5b325e28fdf880db9ae7683e53"
+        "before": "86cb79c6c4b64431429ac9741305542da0b8aefa445bb4391440ba9bbb8c79e2",
+        "after": "b3708fef6b288cb887fd91ecb9bbf1bd1f37ddeaedd73804ae0e1841852a8fe4"
       }
     },
     "tls": {
       "src/network/socket.cc": {
-        "before": "db139e1299fc85dce9204322c0776c6248b581ccac157a5f5ad10316bb8e99ff",
-        "after": "43b348f2af31dab52052d3fc05d077a8496b3c47728cfde033269e15a8e2a199"
+        "before": "df69b369fadd27c1436df75d3b0f5e2eb44cf6925f7e94fd4c55b95a79a11a7b",
+        "after": "f8e6e9b091e3b7b81796dca22207ff055250aac5cae9adb6c00a18f687b8a724"
       }
     }
   },
   "modules": {
+    "Darwin-arm64-8.5.12-zts": {
+      "file": "macos-arm64/php-8.5.12-zts/swoole.so",
+      "sha256": "e20048a9e585e1fb66df78ce3c0a6a1555167d0a907faa7c3dc81dfe37b572a9",
+      "bytes": 10207200,
+      "verification": {
+        "status": "passed",
+        "php": "8.5.12",
+        "zts": true,
+        "swoole": "6.3.0RC1",
+        "source": "814049090dd9ba8000adc6cd09ad09dd3f0c9989",
+        "platform": "Darwin",
+        "architecture": "arm64",
+        "native_entry_abi": 2,
+        "coroutine_and_sqlite": true,
+        "pgsql_connection_failure": true,
+        "sha256": "e20048a9e585e1fb66df78ce3c0a6a1555167d0a907faa7c3dc81dfe37b572a9",
+        "bytes": 10207200
+      },
+      "build": {
+        "source-commit": "5729204b7cf8713b41e3eca77210c4cbd17b4e46",
+        "source-state": "working-tree",
+        "maintenance-files-sha256": {
+          "tools/rebuild-bundled-swoole.sh": "2afb17314a33c26d800d3546c03b3239c6049abdd18d474c755365081112ab13",
+          "tools/verify-swoole-module.php": "37feb3c264f399cc94643fd74d5c1e25b429ca140e527a89549601d033f9e820",
+          "plugin/type-build/src/SwooleThreadSource.php": "a2d5f273e451394bb114ad5333d25b663c4b780072adcab7257093750cbb8d74",
+          "plugin/type-build/src/SwooleHttpSource.php": "cad84057554cfd383d91467376dabd98690f3fc4eb8a6b31335afa44708e76b1",
+          "plugin/type-build/src/SwooleSocketSource.php": "eaa79633c214b6e9a211cc242c99c06a3ad5bce6c3f9dc7393596caa84e28d6e"
+        },
+        "verification-scope": "module-load-coroutine-sqlite-pgsql-refusal-tls-http-dns-curl-thread-restart",
+        "execution": "local-native-arm64",
+        "deployment-target": "15.0",
+        "configure": [
+          "--enable-swoole=shared",
+          "--enable-swoole-thread",
+          "--enable-sockets",
+          "--enable-mysqlnd",
+          "--enable-cares",
+          "--enable-swoole-pgsql",
+          "--enable-swoole-sqlite",
+          "--enable-swoole-curl",
+          "--with-openssl-dir=<verified-openssl-prefix>"
+        ],
+        "static-library-link": "-Wl,-load_hidden,<archive>",
+        "system-libraries": [
+          "libcurl",
+          "libz",
+          "libSystem",
+          "libc++"
+        ],
+        "static-archives-sha256": {
+          "libpq.a": "31c2bac31c4cb32309137789ea12d3ed5aeefaa8aea2b17f0370f4670b2e78c5",
+          "libpgcommon_shlib.a": "9e43beaea6b3a4e7378c218d0a3c444369511e47bb82600a379cb6c702e5e5c5",
+          "libpgport_shlib.a": "a0431161c58353151b934a1471aa5f3018adb8108883bbbcbdb8ed5348759ea9",
+          "libssl.a": "1b0be1d84f31ab412248ba1fa68cbc40ac5913e4f175ec377b442006dd3e4c7a",
+          "libcrypto.a": "6def6d5020c121f6c542142844a151d65f45550498a9a848f1709fe731d1f459",
+          "libsqlite3.a": "dcdefa6687281be63e125c8a40625abd36a2b5c9f25d703b1e3ee354a4daab29",
+          "libcares.a": "060748f43c807b2d4378cd1af7df4ba8cb4471442793e1b1fef58d86276ceb94",
+          "libbrotlienc.a": "c074b8f60953e46f8a4469b7499dd0ed16678cd55ee7e43f67d885545907fc05",
+          "libbrotlidec.a": "408eb480af71321d0b6f2c1316c7cc8b061a95f5d8e855c29783240b578cab2b",
+          "libbrotlicommon.a": "77dac019bd865ed1015a446f8d3250e119764f7f58088377e6dbd3c5b875256e"
+        },
+        "dependencies": {
+          "postgresql": "17.11",
+          "openssl": "4.1.0",
+          "sqlite": "3.53.4",
+          "c-ares": "1.34.9",
+          "brotli": "1.2.1"
+        },
+        "dependency-sources": {
+          "openssl": {
+            "version": "4.1.0",
+            "url": "https://github.com/openssl/openssl/releases/download/openssl-4.1.0/openssl-4.1.0.tar.gz",
+            "sha256": "50c17baf54cb008f6ce42d50deb4b28050a1aad711636cabd4b241c7e90cc2fd"
+          },
+          "postgresql": {
+            "version": "17.11",
+            "url": "https://ftp.postgresql.org/pub/source/v17.11/postgresql-17.11.tar.bz2",
+            "sha256": "dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979"
+          },
+          "sqlite": {
+            "version": "3.53.4",
+            "url": "https://www.sqlite.org/2026/sqlite-autoconf-3530400.tar.gz",
+            "sha256": "0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c"
+          }
+        },
+        "official-library-header-sha256": "1cd388a69aa2a5be7d9d2d7572a8f360de4df6a946d493127058f1164637d004",
+        "behavior-verification": {
+          "tls": {
+            "passed": true,
+            "sha256": "cacaec0bf398837d48788b9cc39f92410e2e2ab9c33ddfc4cd3392fd7a923f8d",
+            "roles": [
+              "main",
+              "first",
+              "restart"
+            ],
+            "deadline-cases": 10
+          },
+          "http": {
+            "passed": true,
+            "sha256": "fe18eb4e457b6c13e891216862e3b59507e6f2010a758d912f0815233151595a"
+          },
+          "dns": {
+            "passed": true,
+            "sha256": "266d01a13bbe1f5da8020bc58fef0187f3cd47be21a1f23889a6b39a3c7a0f46"
+          },
+          "curl": {
+            "passed": true,
+            "sha256": "419880e2cc7d1f32a454bf3f0ae735248429917e8a0fa55a10611f97c183f080",
+            "responses-per-role": 36
+          }
+        }
+      }
+    },
     "Darwin-arm64-8.5.10-zts": {
       "file": "macos-arm64/php-8.5.10-zts/swoole.so",
       "sha256": "f67a16c06d53ade2a05f5e3646c2f3114d90b756fe54d8159d49950c2e94c6fe",
@@ -558,6 +670,21 @@
     "LICENSES/swoole/thirdparty/php/LICENSE": "080d0d0cca64181ef8bf1df9fba0c6f0c485f78f79540c479a45b593bb3b33b5",
     "LICENSES/swoole/thirdparty/php/ssh2/LICENSE": "ac7c56f1e416ce6e60abcf26269395128bc9e5a2e4f3293e5dcc124aac606508",
     "LICENSES/zlib/LICENSE": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
-    "LICENSES/zstd/LICENSE": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+    "LICENSES/zstd/LICENSE": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8",
+    "macos-arm64/php-8.5.12-zts/LICENSES/openssl/LICENSE.txt": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+    "macos-arm64/php-8.5.12-zts/LICENSES/c-ares/LICENSE.md": "460f5e768fda3752ca2169a95df062578a10fb126bfd65f3b9b1a1bed2f84807",
+    "macos-arm64/php-8.5.12-zts/LICENSES/brotli/LICENSE": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
+    "macos-arm64/php-8.5.12-zts/LICENSES/postgresql/COPYRIGHT": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd",
+    "macos-arm64/php-8.5.12-zts/LICENSES/sqlite/sqlite3.h": "919e7f2e8ed1d8f56ac17b412b8971c76aa5d1a879752cc6058f75e7d5910e1d",
+    "macos-arm64/php-8.5.12-zts/LICENSES/swoole/LICENSE": "d0764616053bc4b1bd1e74a26bedd16a04f1bf979ecff92fe77ff114892852ae",
+    "macos-arm64/php-8.5.12-zts/LICENSES/swoole/thirdparty/boost/asm/LICENSE": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
+    "macos-arm64/php-8.5.12-zts/LICENSES/swoole/thirdparty/hiredis/COPYING": "dca05ce8fc87a8261783b4aed0deef8becc9350b6aa770bc714d0c1833b896eb",
+    "macos-arm64/php-8.5.12-zts/LICENSES/swoole/thirdparty/llhttp/LICENSE": "ebca854e0134cd256d673627c20499f42577eb74bacf08b9f25b626a73c91277",
+    "macos-arm64/php-8.5.12-zts/LICENSES/swoole/thirdparty/llhttp/LICENSE-MIT": "ebca854e0134cd256d673627c20499f42577eb74bacf08b9f25b626a73c91277",
+    "macos-arm64/php-8.5.12-zts/LICENSES/swoole/thirdparty/nghttp2/COPYING": "6b94f3abc1aabd0c72a7c7d92a77f79dda7c8a0cb3df839a97890b4116a2de2a",
+    "macos-arm64/php-8.5.12-zts/LICENSES/swoole/thirdparty/nghttp2/LICENSE": "ffa41df32d0576b95b72a2ee2026157d553bc099fe8e7f20e4cf3cb72ecca7b1",
+    "macos-arm64/php-8.5.12-zts/LICENSES/swoole/thirdparty/nlohmann/LICENSE.MIT": "c983d69523377819db3c377b390d5644f5ec53bec9b7c4a0f1ed893bb743d045",
+    "macos-arm64/php-8.5.12-zts/LICENSES/swoole/thirdparty/php/LICENSE": "080d0d0cca64181ef8bf1df9fba0c6f0c485f78f79540c479a45b593bb3b33b5",
+    "macos-arm64/php-8.5.12-zts/LICENSES/swoole/thirdparty/php/ssh2/LICENSE": "ac7c56f1e416ce6e60abcf26269395128bc9e5a2e4f3293e5dcc124aac606508"
   }
 }

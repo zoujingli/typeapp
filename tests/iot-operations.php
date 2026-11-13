@@ -157,7 +157,7 @@ PHP;
         $remaining = $database->prepare('SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND usename = ?');
         iotOperationsWait(static function () use ($remaining, $role): array {
             $remaining->execute([$role]);
-            return ['count' => (int) $remaining->fetchColumn()];
+            return ['count' => (int)$remaining->fetchColumn()];
         }, static fn (array $state): bool => $state['count'] === 0, '人工精确清理后统计后端仍存在', 3);
         $database->query('SELECT pg_advisory_unlock(1954115693, 1)');
         $locked = false;
@@ -165,7 +165,7 @@ PHP;
         $statistics = identityCommand([...$command, 'iot:mqtt-statistics'], $testEnvironment);
         expect(isset($statistics['pendingMessages']), '恢复登录和清理后独立正式统计入口仍不可用');
         $evidence['independent_statistics'] = $statistics;
-        for ($refresh = 0; $refresh < 2; $refresh++) {
+        for ($refresh = 0; $refresh < 2; ++$refresh) {
             $retained = iotOperationsPlatform($testEnvironment, $fixture)['store'];
             expect($retained['state'] === 'unavailable' && $retained['metrics'] === null && $retained['quarantined'], '同一HTTP进程自动解除未确认清理隔离');
             $evidence['retained'][] = $retained;
@@ -214,7 +214,8 @@ function iotOperationsMqttChecks(
     PDO $database,
     Process $broker,
     Process $worker,
-    #[SensitiveParameter] string $password,
+    #[SensitiveParameter]
+    string $password,
     Closure $restartBroker
 ): array {
     $root = dirname(__DIR__);
@@ -253,10 +254,10 @@ function iotOperationsMqttChecks(
             json_encode(['name' => $longName, 'product_id' => $fixture['second']['device']['product_id'], 'model_version' => 1], JSON_THROW_ON_ERROR)
         );
         expect($registered->status === 201, '长名称设备必须经正式注册入口创建');
-        $dist = realpath((string) getenv('TYPE_OPERATIONS_DIST'));
+        $dist = realpath((string)getenv('TYPE_OPERATIONS_DIST'));
         expect(is_string($dist) && is_file($dist . '/index.html'), '概览浏览器需要本轮独立生产前端');
         $call = static function (string $method, string $path, string $token, array $body, array $extra = []) use ($http): array {
-            $response = $http->request($method, $path, $extra + ['Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'], json_encode($body === [] ? (object) [] : $body, JSON_THROW_ON_ERROR));
+            $response = $http->request($method, $path, $extra + ['Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'], json_encode($body === [] ? (object)[] : $body, JSON_THROW_ON_ERROR));
             expect($response->status === 200, '观察浏览器身份准备失败：' . $response->body);
             return $response->json()['data'];
         };

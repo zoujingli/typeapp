@@ -8,3 +8,4 @@
 .DS_Store
 *.o
 *.obj
+/.playwright-cli

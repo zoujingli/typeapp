@@ -105,11 +105,7 @@ export function useVbenDrawer<
   const Drawer = defineComponent(
     (props: DrawerProps, { attrs, slots }) => {
       return () =>
-        h(
-          VbenDrawer as any,
-          { ...props, ...attrs, drawerApi: extendedApi } as Record<string, any>,
-          slots,
-        );
+        h(VbenDrawer, { ...props, ...attrs, drawerApi: extendedApi }, slots);
     },
     // eslint-disable-next-line vue/one-component-per-file
     {

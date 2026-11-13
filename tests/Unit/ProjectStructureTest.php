@@ -9,7 +9,11 @@ use TypeTests\Support\ModelFirstBoundary;
 
 require_once dirname(__DIR__) . '/Support/ModelFirstBoundary.php';
 
-/** 检查可独立组合的包声明与应用结构，不连接外部服务。 */
+/**
+ * 检查可独立组合的包声明与应用结构，不连接外部服务。
+ * @internal
+ * @coversNothing
+ */
 final class ProjectStructureTest extends TestCase
 {
     /** 项目展示名与 GitHub 地址统一，组件和模板的安装标识保持兼容。 */
@@ -39,7 +43,7 @@ final class ProjectStructureTest extends TestCase
             $configuration = $this->json($root . '/docs/build-config/' . $scenario . '.json');
             self::assertSame([$composer['name']], $configuration['application']['enabled']);
         }
-        self::assertStringContainsString('APP_NAME=TypeApp', (string) file_get_contents($root . '/.env.example'));
+        self::assertStringContainsString('APP_NAME=TypeApp', (string)file_get_contents($root . '/.env.example'));
     }
 
     /** 业务由根 Composer 加载，开发工具与组件发行内容分别维护。 */
@@ -98,8 +102,8 @@ final class ProjectStructureTest extends TestCase
             self::assertNotContains($tool, $production);
         }
         $development = array_column($lock['packages-dev'], null, 'name');
-        self::assertSame('13.3.3', ltrim($development['phpunit/phpunit']['version'], 'v'));
-        self::assertSame('3.95.25', ltrim($development['friendsofphp/php-cs-fixer']['version'], 'v'));
+        self::assertSame('13.4.6', ltrim($development['phpunit/phpunit']['version'], 'v'));
+        self::assertSame('3.95.30', ltrim($development['friendsofphp/php-cs-fixer']['version'], 'v'));
         $toolchain = $this->json($root . '/toolchain.lock.json');
         foreach (['typephp', 'phpx'] as $component) {
             self::assertSame($toolchain[$component]['version'], ltrim($development['swoole/' . $component]['version'], 'v'));
@@ -119,44 +123,57 @@ final class ProjectStructureTest extends TestCase
         self::assertSame([
             'app/common/service/IdentityService.php',
             'app/common/service/RoleService.php',
-            'app/iot/service/TenantService.php',
+            'app/common/service/MenuService.php',
             'app/common/service/SiteSettings.php',
-            'app/iot/service/ProductService.php',
+            'app/platform/service/TenantService.php',
+            'app/platform/service/ImpersonationService.php',
+            'app/center/service/ProductService.php',
+            'app/common/middleware/TenantContext.php',
             'app/common/controller/AuthController.php',
-            'app/admin/controller/AdminController.php',
-            'app/iot/controller/ProductController.php',
+            'app/common/controller/IdentityController.php',
+            'app/platform/controller/PlatformController.php',
+            'app/platform/controller/TenantController.php',
+            'app/platform/controller/MenuController.php',
+            'app/platform/controller/ImpersonationController.php',
+            'app/system/controller/SystemController.php',
+            'app/center/controller/ProductController.php',
         ], $policy['files']);
         $sources = [];
         foreach ($policy['files'] as $file) {
-            $sources[$file] = (string) file_get_contents($root . '/' . $file);
+            $sources[$file] = (string)file_get_contents($root . '/' . $file);
         }
         $violations = (new ModelFirstBoundary())->violations($sources, $policy['exceptions']);
         self::assertSame([], $violations, implode("\n", $violations));
     }
 
-    /** 角色权限是固定目录中的受控值集合，不扩展成独立业务实体。 */
+    /** 权限是平台菜单目录的稳定值；角色通过受管关系绑定，System 中间表保留 Tenant 范围。 */
     public function testRolePermissionValuesRemainControlledByTheAuthorizationService(): void
     {
         $root = dirname(__DIR__, 2);
-        $schema = (string) file_get_contents($root . '/app/common/database/Schema.php');
+        $schema = (string)file_get_contents($root . '/app/common/database/Schema.php');
         self::assertStringContainsString('PRIMARY KEY (role_id, permission)', $schema);
 
-        $service = (string) file_get_contents($root . '/app/common/service/RoleService.php');
-        self::assertStringContainsString('private static function canGrant', $service);
-        self::assertStringContainsString('count(array_unique($grants))', $service);
-        self::assertStringContainsString('array_diff($grants, array_keys(self::catalog($realm)))', $service);
-        self::assertStringContainsString('$connection->table($realm . \'_role_permissions\')->where(\'role_id\', \'=\', $id)->delete()', $service);
+        $models = (new \Type\Build\ModelCompiler())->compile([$root . '/app/platform/model', $root . '/app/system/model'])['models'];
+        $models = array_column($models, null, 'class');
+        $platform = $models['app\platform\model\PlatformRole']['relations']['menus'];
+        $system = $models['app\system\model\SystemRole']['relations']['menus'];
+        self::assertSame('platform_role_permission', $platform['table']);
+        self::assertSame('app\platform\model\PlatformMenu', $platform['target']);
+        self::assertSame('permission', $platform['targetKey']);
+        self::assertSame('system_role_permission', $system['table']);
+        self::assertSame('app\system\model\SystemMenu', $system['target']);
+        self::assertSame('tenant_id', $system['pivotTenant']);
+        self::assertSame('permission', $system['targetKey']);
 
-        $documentation = (string) file_get_contents($root . '/docs/development/iot-identity.md');
-        self::assertStringContainsString('权限值集合仅由 `RoleService`', $documentation);
-        self::assertStringContainsString('不是可由客户端任意新增的实体', $documentation);
-        self::assertStringContainsString('initializeScope`、`directory`、`requireHighest`、`role`、`changeRole`', $documentation);
+        $documentation = (string)file_get_contents($root . '/docs/development/iot-identity.md');
+        self::assertStringContainsString('角色与菜单的关联由 `RoleService`', $documentation);
+        self::assertStringContainsString('客户不能修改菜单目录', $documentation);
     }
 
     /** @return array<string, mixed> 已检查的项目声明。 */
     private function json(string $file): array
     {
-        $decoded = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+        $decoded = json_decode((string)file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($decoded);
         return $decoded;
     }

@@ -8,12 +8,14 @@ namespace Type\Runtime;
 final class CompatibilityException extends \RuntimeException
 {
     private string $reason;
+
     /** 保存机器可判定的兼容性原因和可读说明。 */
     public function __construct(string $reason, string $message)
     {
         parent::__construct($message);
         $this->reason = $reason;
     }
+
     /** 返回 schema_incompatible 或 message_incompatible 等稳定原因。 */
     public function reason(): string
     {

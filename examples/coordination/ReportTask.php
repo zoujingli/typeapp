@@ -13,8 +13,11 @@ use Type\Scheduler\TaskContext;
 final class ReportTask implements Task
 {
     private RedisConnection $redis;
+
     private QueueDispatchTask $dispatch;
+
     private string $key;
+
     private string $mode;
 
     /** 注入同一 Redis 目标、投递任务和故障模式；外部角色负责连接生命周期。 */
@@ -38,7 +41,7 @@ final class ReportTask implements Task
             throw new \RuntimeException('任务缺少 Redis 租约保护');
         }
         if ($this->mode === 'hold' || $this->mode === 'paused') {
-            $guard->execute($this->redis, "return redis.call('SET',KEYS[1],ARGV[1])", [$this->key . ':ready'], [(string) getmypid()]);
+            $guard->execute($this->redis, "return redis.call('SET',KEYS[1],ARGV[1])", [$this->key . ':ready'], [(string)getmypid()]);
         }
         if ($this->mode === 'hold') {
             $deadline = microtime(true) + 10;

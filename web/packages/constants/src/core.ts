@@ -1,6 +1,11 @@
+/**
+ * @zh_CN 登录页面 url 地址
+ */
+export const LOGIN_PATH = '/auth/login';
+
 export interface LanguageOption {
   label: string;
-  value: 'en-US' | 'zh-CN' | 'zh-TW';
+  value: 'en-US' | 'zh-CN';
 }
 
 /**
@@ -12,11 +17,7 @@ export const SUPPORT_LANGUAGES: LanguageOption[] = [
     value: 'zh-CN',
   },
   {
-    label: '繁體中文',
-    value: 'zh-TW',
-  },
-  {
-    label: 'English (US)',
+    label: 'English',
     value: 'en-US',
   },
 ];

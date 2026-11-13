@@ -4,20 +4,18 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use RuntimeException;
-
 /** 将显式静态资源生成原生常量；产物读取不依赖原始目录或解压运行库。 */
 final class EmbeddedResourceCompiler
 {
     /**
      * 收集受控目录，内容排序和原文摘要共同决定内嵌资源身份。
-     * @param list<array{source:string,target:string}> $declarations 项目根相对目录及目标前缀。
-     * @return array<string, array{source:string,bytes:int,sha256:string}> 按目标路径排序的文件。
+     * @param list<array{source:string,target:string}> $declarations 项目根相对目录及目标前缀
+     * @return array<string, array{source:string,bytes:int,sha256:string}> 按目标路径排序的文件
      */
     public function collect(string $root, array $declarations): array
     {
         if (!array_is_list($declarations)) {
-            throw new RuntimeException('embedded-resources 必须是声明列表');
+            throw new \RuntimeException('embedded-resources 必须是声明列表');
         }
         $root = BuildPlatform::resolve($root);
         $files = [];
@@ -25,7 +23,7 @@ final class EmbeddedResourceCompiler
         $total = 0;
         foreach ($declarations as $declaration) {
             if (!is_array($declaration) || !is_string($declaration['source'] ?? null) || !is_string($declaration['target'] ?? null)) {
-                throw new RuntimeException('内嵌资源需要 source 目录和 target 前缀');
+                throw new \RuntimeException('内嵌资源需要 source 目录和 target 前缀');
             }
             $this->relative($declaration['source']);
             $this->relative($declaration['target']);
@@ -33,13 +31,13 @@ final class EmbeddedResourceCompiler
             foreach (explode('/', $declaration['source']) as $segment) {
                 $directory .= '/' . $segment;
                 if (is_link($directory) || !is_dir($directory)) {
-                    throw new RuntimeException('内嵌资源来源必须是项目内普通目录');
+                    throw new \RuntimeException('内嵌资源来源必须是项目内普通目录');
                 }
             }
             $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::SELF_FIRST);
             foreach ($iterator as $entry) {
                 if ($entry->isLink()) {
-                    throw new RuntimeException('内嵌资源不接受符号链接');
+                    throw new \RuntimeException('内嵌资源不接受符号链接');
                 }
                 $relative = str_replace('\\', '/', substr($entry->getPathname(), strlen($directory) + 1));
                 $this->relative($relative);
@@ -48,24 +46,24 @@ final class EmbeddedResourceCompiler
                 }
                 if (!$entry->isFile() || preg_match('/\.(?:php[0-9]?|phtml|phar|inc|so|dylib|dll|pem|key)$/iD', $relative)
                     || preg_match('~(?:^|/)(?:auth\.json|id_(?:rsa|ed25519|ecdsa|dsa))$~iD', $relative)) {
-                    throw new RuntimeException('内嵌资源不接受源码、原生库或秘密文件');
+                    throw new \RuntimeException('内嵌资源不接受源码、原生库或秘密文件');
                 }
                 $target = $declaration['target'] . '/' . $relative;
                 if (isset($folded[strtolower($target)])) {
-                    throw new RuntimeException('内嵌资源目标重复或存在大小写冲突：' . $target);
+                    throw new \RuntimeException('内嵌资源目标重复或存在大小写冲突：' . $target);
                 }
                 $bytes = $entry->getSize();
                 $total += $bytes;
                 if (count($files) >= 1000 || $total > 67108864) {
-                    throw new RuntimeException('内嵌资源超过1000个文件或64MiB构建预算');
+                    throw new \RuntimeException('内嵌资源超过1000个文件或64MiB构建预算');
                 }
-                $files[$target] = ['source' => $entry->getPathname(), 'bytes' => $bytes, 'sha256' => (string) hash_file('sha256', $entry->getPathname())];
+                $files[$target] = ['source' => $entry->getPathname(), 'bytes' => $bytes, 'sha256' => (string)hash_file('sha256', $entry->getPathname())];
                 $folded[strtolower($target)] = true;
             }
         }
         ksort($files);
         if ($declarations !== [] && $files === []) {
-            throw new RuntimeException('声明的内嵌资源目录为空');
+            throw new \RuntimeException('声明的内嵌资源目录为空');
         }
         return $files;
     }
@@ -83,8 +81,8 @@ final class EmbeddedResourceCompiler
 
     /**
      * 静态读取产物时也验证资源协议；不执行待检查程序或依赖构建端文件。
-     * @param array<string,array{bytes:int,sha256:string}> $manifest 程序内资源身份。
-     * @throws RuntimeException 清单条目、路径、大小或跨平台映射无效。
+     * @param array<string,array{bytes:int,sha256:string}> $manifest 程序内资源身份
+     * @throws \RuntimeException 清单条目、路径、大小或跨平台映射无效
      */
     public function validate(array $manifest): void
     {
@@ -94,24 +92,24 @@ final class EmbeddedResourceCompiler
             if (!is_string($path) || !is_array($file) || !is_int($file['bytes'] ?? null) || $file['bytes'] < 0
                 || !is_string($file['sha256'] ?? null) || !preg_match('/^[a-f0-9]{64}$/D', $file['sha256'])
                 || count($file) !== 2) {
-                throw new RuntimeException('内嵌资源清单格式无效');
+                throw new \RuntimeException('内嵌资源清单格式无效');
             }
             $this->relative($path);
             $key = strtolower($path);
             if (isset($paths[$key]) || preg_match('/\.(?:php[0-9]?|phtml|phar|inc|so|dylib|dll|pem|key)$/iD', $path)
                 || preg_match('~(?:^|/)(?:auth\.json|id_(?:rsa|ed25519|ecdsa|dsa))$~iD', $path)) {
-                throw new RuntimeException('内嵌资源清单存在冲突或秘密路径');
+                throw new \RuntimeException('内嵌资源清单存在冲突或秘密路径');
             }
             $paths[$key] = true;
             $total += $file['bytes'];
             if (count($paths) > 1000 || $total > 67108864) {
-                throw new RuntimeException('内嵌资源清单超出预算');
+                throw new \RuntimeException('内嵌资源清单超出预算');
             }
         }
         foreach (array_keys($paths) as $path) {
             for ($parent = dirname($path); $parent !== '.'; $parent = dirname($parent)) {
                 if (isset($paths[$parent])) {
-                    throw new RuntimeException('内嵌资源文件与目录冲突');
+                    throw new \RuntimeException('内嵌资源文件与目录冲突');
                 }
             }
         }
@@ -120,7 +118,7 @@ final class EmbeddedResourceCompiler
     /**
      * C++数组绕开平台字符串常量长度限制；读取每次最多64KiB，不在启动时复制整份载荷。
      * @param array<string, array{source:string,bytes:int,sha256:string}> $files
-     * @return array<string,string> 同次AOT使用的桥接声明、数据及访问类。
+     * @return array<string,string> 同次AOT使用的桥接声明、数据及访问类
      */
     public function sources(array $files): array
     {
@@ -136,7 +134,7 @@ final class EmbeddedResourceCompiler
         foreach ($files as $path => $file) {
             $contents = file_get_contents($file['source']);
             if ($contents === false || strlen($contents) !== $file['bytes'] || hash('sha256', $contents) !== $file['sha256']) {
-                throw new RuntimeException('生成内嵌资源期间输入改变：' . $path);
+                throw new \RuntimeException('生成内嵌资源期间输入改变：' . $path);
             }
             $id = count($entries);
             $cpp .= 'static const unsigned char resource_' . $id . "[] = {\n";
@@ -170,12 +168,12 @@ CPP;
     private function relative(string $path): void
     {
         if (!preg_match('~^[A-Za-z0-9][A-Za-z0-9._/-]*$~D', $path)) {
-            throw new RuntimeException('内嵌资源路径必须是安全相对路径');
+            throw new \RuntimeException('内嵌资源路径必须是安全相对路径');
         }
         foreach (explode('/', $path) as $part) {
             if ($part === '' || str_starts_with($part, '.') || str_ends_with($part, '.')
                 || preg_match('/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iD', $part)) {
-                throw new RuntimeException('内嵌资源路径包含不允许的片段');
+                throw new \RuntimeException('内嵌资源路径包含不允许的片段');
             }
         }
     }

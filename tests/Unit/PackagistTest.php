@@ -11,17 +11,13 @@ use TypeApp\Release\Packagist;
 
 require_once dirname(__DIR__, 2) . '/tools/release/Packagist.php';
 
-/** 静态索引必须按Composer差量协议还原，缓存中的详情页不参与版本资格判断。 */
+/**
+ * 静态索引必须按Composer差量协议还原，缓存中的详情页不参与版本资格判断。
+ * @internal
+ * @coversNothing
+ */
 final class PackagistTest extends TestCase
 {
-    /** @return iterable<string,array{string}> 当前与历史版本的公共索引边界。 */
-    public static function metadataCases(): iterable
-    {
-        foreach (['plain', 'minified', 'missing', 'wrong-source', 'removed-source', 'duplicate', 'wrong-package', 'unknown-format'] as $case) {
-            yield $case => [$case];
-        }
-    }
-
     /** 来源字段的继承和显式删除都应生效，不能把新版本记录冒充旧版本通过。 */
     #[DataProvider('metadataCases')]
     public function testStaticMetadataRetainsVersionAndSourceIdentity(string $case): void
@@ -53,5 +49,13 @@ final class PackagistTest extends TestCase
         }
         $actual = Packagist::indexedVersion($document, $name, 'v1.0.0-rc.4', $source);
         self::assertSame($case === 'missing' ? null : ['package' => $name, 'version' => 'v1.0.0-rc.4', 'source' => $source], $actual);
+    }
+
+    /** @return iterable<string,array{string}> 当前与历史版本的公共索引边界。 */
+    public static function metadataCases(): iterable
+    {
+        foreach (['plain', 'minified', 'missing', 'wrong-source', 'removed-source', 'duplicate', 'wrong-package', 'unknown-format'] as $case) {
+            yield $case => [$case];
+        }
     }
 }

@@ -14,7 +14,11 @@ require_once dirname(__DIR__, 2) . '/tools/release/Plan.php';
 require_once dirname(__DIR__, 2) . '/tools/release/Candidate.php';
 require_once dirname(__DIR__, 2) . '/tools/release/GitHub.php';
 
-/** 在真实命令边界核对分页 Artifact 身份及历史体积基线，哨兵不发送远端请求。 */
+/**
+ * 在真实命令边界核对分页 Artifact 身份及历史体积基线，哨兵不发送远端请求。
+ * @internal
+ * @coversNothing
+ */
 final class ReleaseArtifactTest extends TestCase
 {
     public function testArtifactsBindEveryProfileToSourceAttemptAndUnexpiredDigest(): void

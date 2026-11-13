@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/vendor/autoload.php';
 require_once __DIR__ . '/native-database.php';
 require_once __DIR__ . '/postgres-sync.php';
 
+use Type\Build\NativePackage;
 use Type\Mqtt\Client;
 use Type\Testing\HttpClient;
 use Type\Testing\Process;
@@ -163,7 +164,7 @@ if ($target === '--php') {
         $command = [PHP_BINARY, '-d', 'memory_limit=512M', $root . '/bin/typeapp'];
     } else {
         $swoole = getenv('TYPE_SWOOLE_MODULE');
-        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string) ini_get('extension_dir'), '/') . '/swoole.so';
+        $swoole = is_string($swoole) && $swoole !== '' ? $swoole : rtrim((string)ini_get('extension_dir'), '/') . '/swoole.so';
         expect(is_file($swoole), 'PHP 调试凭据验收需要已加载Swoole或TYPE_SWOOLE_MODULE');
         $command = [PHP_BINARY, '-d', 'memory_limit=512M', '-d', 'extension=' . $swoole, $root . '/bin/typeapp'];
     }
@@ -182,7 +183,7 @@ foreach ($argv as $argument) {
 if ($noSource) {
     expect($target !== '--php' && PHP_OS_FAMILY === 'Darwin', '无源码调试凭据验收使用macOS内核策略及原生产物');
     $runtime = $base . '/runtime';
-    (new Type\Build\NativePackage())->create($target, $runtime);
+    (new NativePackage())->create($target, $runtime);
     $built = json_decode(file_get_contents($target . '.build.json'), true, 512, JSON_THROW_ON_ERROR);
     $sourceRoot = realpath($built['identity']['description']['facts']['workspace']);
     expect(is_string($sourceRoot), '无源码验收必须能定位实际编译输入');
@@ -193,7 +194,7 @@ if ($noSource) {
     }
     $command = [...$policy, $runtime . '/run'];
 }
-$databaseTools = NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS'));
+$databaseTools = NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS'));
 $fixtureDatabase = new NativeDatabase($base . '/primary', 'pgsql', $databaseTools);
 $fixtureSync = new PostgresSync($fixtureDatabase, $base . '/standby', $databaseTools, 'broker_debug_sync');
 $environment = getenv();
@@ -257,7 +258,7 @@ try {
     $secrets[] = $password;
     identityCommand([...$command, 'broker:user', 'access-admin', '调试订阅管理员'], $environment + ['BROKER_ADMIN_PASSWORD' => $password]);
     $addresses = [];
-    for ($index = 0; $index < 5; $index++) {
+    for ($index = 0; $index < 5; ++$index) {
         $listener = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorText);
         expect(is_resource($listener), '无法选择调试凭据测试端口');
         $addresses[] = stream_socket_get_name($listener, false);
@@ -284,10 +285,10 @@ try {
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $client->request($method, $path, $headers, $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $server->stdout() . $server->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $auth = $request('POST', '/broker/auth/login', '', ['login' => 'access-admin', 'password' => $password], 200)['data'];
@@ -296,13 +297,13 @@ try {
     $request('POST', '/broker/debug', $token, ['unexpected' => true], 422);
     $mqttPassword = bin2hex(random_bytes(16));
     $secrets[] = $mqttPassword;
-    $tlsPort = (int) substr(strrchr($addresses[1], ':'), 1);
-    $wssPort = (int) substr(strrchr($addresses[3], ':'), 1);
+    $tlsPort = (int)substr(strrchr($addresses[1], ':'), 1);
+    $wssPort = (int)substr(strrchr($addresses[3], ':'), 1);
     $nodeEnvironment = $environment + [
         'BROKER_CLIENT_USERNAME' => 'broker-client', 'BROKER_CLIENT_PASSWORD' => $mqttPassword,
         'BROKER_TOPIC_PREFIX' => 'broker-debug/', 'BROKER_NODE_ID' => 'debug-node',
         'BROKER_LISTEN' => '127.0.0.1', 'BROKER_PLAINTEXT' => 'false',
-        'BROKER_PORT' => (string) $tlsPort, 'BROKER_WSS_PORT' => (string) $wssPort,
+        'BROKER_PORT' => (string)$tlsPort, 'BROKER_WSS_PORT' => (string)$wssPort,
         'BROKER_CERTIFICATE' => $certs['server'], 'BROKER_PRIVATE_KEY' => $certs['key'],
         'BROKER_ALLOWED_ORIGINS' => $previewOrigin,
     ];
@@ -433,10 +434,10 @@ try {
     $occupancy = $request('GET', '/broker/debug', $tokenC, null, 200)['occupancy'];
     expect(($occupancy['person_used'] ?? 0) === 2 && ($occupancy['global_used'] ?? 0) === 2, '同一人员占用未计为 2：' . json_encode($occupancy));
     $holdItems = [];
-    for ($index = 1; $index <= 9; $index++) {
+    for ($index = 1; $index <= 9; ++$index) {
         $login = sprintf('debug-slot-%02d', $index);
         identityCommand([...$command, 'broker:user', $login, '调试名额用户' . $index], $environment + ['BROKER_ADMIN_PASSWORD' => $password]);
-        for ($session = 0; $session < 2; $session++) {
+        for ($session = 0; $session < 2; ++$session) {
             $slotToken = $request('POST', '/broker/auth/login', '', ['login' => $login, 'password' => $password], 200)['data']['accessToken'];
             $secrets[] = $slotToken;
             $slotCred = $request('POST', '/broker/debug', $slotToken, [], 200)['data'];
@@ -574,10 +575,10 @@ try {
         usleep(10000);
     } while (microtime(true) < $deadline);
     $appRequest = static function (string $method, string $path, string $token, array $headers, ?array $data, int $status) use ($appClient, $appServer, &$checks): array {
-        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object) [] : $data, JSON_THROW_ON_ERROR));
+        $response = $appClient->request($method, $path, $headers + ($token === '' ? [] : ['Authorization' => 'Bearer ' . $token]) + ['Content-Type' => 'application/json'], $data === null ? '' : json_encode($data === [] ? (object)[] : $data, JSON_THROW_ON_ERROR));
         expect($response->status === $status, '双端 ' . $method . ' ' . $path . ' 预期 ' . $status . '，实际 ' . $response->status . ' ' . $response->body
             . ($response->status >= 500 ? ' ' . $appServer->stdout() . $appServer->stderr() : ''));
-        $checks++;
+        ++$checks;
         return $response->json();
     };
     $platformToken = $appRequest('POST', '/admin/auth/login', '', [], ['login' => 'platform-admin', 'password' => $appPassword], 200)['data']['accessToken'];
@@ -602,7 +603,7 @@ try {
             'APP_BROWSER_TENANT' => $tenantId,
             'BROKER_SERVICE_USERNAME' => 'service:business',
             'BROKER_SERVICE_PASSWORD' => $servicePassword,
-            'BROKER_SERVICE_PORT' => (string) $tlsPort,
+            'BROKER_SERVICE_PORT' => (string)$tlsPort,
             'BROKER_SERVICE_CA' => $certs['ca'],
             'BROKER_SERVICE_CLIENT_ID' => 'service-preempt-browser',
         ]));

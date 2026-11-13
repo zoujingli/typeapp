@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace TypeApp\ModelExample;
 
-use RuntimeException;
 use Type\Orm\Connection;
 use Type\Orm\Model;
 use Type\Orm\ModelException;
@@ -15,7 +14,7 @@ final class TransactionExercise
     /**
      * 验证嵌套事务中的模型对象状态与回滚失效，保留外层可继续执行的边界。
      *
-     * @return array<string, mixed> 实际观察到的事务结果。
+     * @return array<string, mixed> 实际观察到的事务结果
      */
     public static function verify(Connection $connection): array
     {
@@ -30,9 +29,9 @@ final class TransactionExercise
                     self::check($inner->transactionDepth() === 2, '内层没有使用同一连接的 savepoint');
                     $state['inner'] = new User(['name' => '内层回滚', 'age' => 21, 'active' => true, 'secret' => '内部']);
                     $state['inner']->save();
-                    throw new RuntimeException('回滚内层');
+                    throw new \RuntimeException('回滚内层');
                 });
-            } catch (RuntimeException $error) {
+            } catch (\RuntimeException $error) {
                 self::check($error->getMessage() === '回滚内层', '内层原始错误没有保留');
             }
             self::invalid($state['inner']);
@@ -49,9 +48,9 @@ final class TransactionExercise
                     $state['merged']->save();
                     $state['clone'] = clone $state['merged'];
                 });
-                throw new RuntimeException('回滚外层');
+                throw new \RuntimeException('回滚外层');
             });
-        } catch (RuntimeException $error) {
+        } catch (\RuntimeException $error) {
             self::check($error->getMessage() === '回滚外层', '外层原始错误没有保留');
         }
         self::invalid($state['partial']);
@@ -78,28 +77,28 @@ final class TransactionExercise
             $model->get('id');
         } catch (ModelException $error) {
             if ($error->errorCode() === 'model_invalid') {
-                $checks++;
+                ++$checks;
             }
         }
         try {
             $model->related('profile');
         } catch (ModelException $error) {
             if ($error->errorCode() === 'model_invalid') {
-                $checks++;
+                ++$checks;
             }
         }
         try {
             json_encode($model, JSON_THROW_ON_ERROR);
         } catch (ModelException $error) {
             if ($error->errorCode() === 'model_invalid') {
-                $checks++;
+                ++$checks;
             }
         }
         try {
             serialize($model);
         } catch (ModelException $error) {
             if ($error->errorCode() === 'model_invalid') {
-                $checks++;
+                ++$checks;
             }
         }
         self::check($checks === 4, '失效模型仍能访问字段、关系或序列化');
@@ -108,7 +107,7 @@ final class TransactionExercise
     private static function check(bool $condition, string $message): void
     {
         if (!$condition) {
-            throw new RuntimeException($message);
+            throw new \RuntimeException($message);
         }
     }
 }

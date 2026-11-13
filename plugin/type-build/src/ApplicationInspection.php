@@ -4,19 +4,14 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-use FilesystemIterator;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use RuntimeException;
-
 /** 复用构建分析的离线应用检查；报告只选择声明身份，不包含配置值或业务源码。 */
 final class ApplicationInspection
 {
     /**
      * 在私有临时目录运行与 PHP/AOT 相同的生成分析，所有临时字节在退出时回收。
      *
-     * @return array<string, mixed> 协议 1 的声明报告；不是编译或部署成功证明。
-     * @throws RuntimeException 项目输入、声明、类型或依赖不符合构建契约。
+     * @return array<string, mixed> 协议 1 的声明报告；不是编译或部署成功证明
+     * @throws \RuntimeException 项目输入、声明、类型或依赖不符合构建契约
      */
     public function inspect(string $configuration): array
     {
@@ -27,11 +22,11 @@ final class ApplicationInspection
         $selected = [...($settings['sources'] ?? []), ...(isset($settings['entry']) ? [$settings['entry']] : [])];
         foreach ($selected as $source) {
             if (!is_string($source) || str_contains($source, "\0")) {
-                throw new RuntimeException('应用检查需要有效的源码路径');
+                throw new \RuntimeException('应用检查需要有效的源码路径');
             }
             $file = BuildPlatform::resolve($root . '/' . $source);
             if (!BuildPlatform::contains($root, $file)) {
-                throw new RuntimeException('应用检查源码必须属于项目');
+                throw new \RuntimeException('应用检查源码必须属于项目');
             }
             $sources[] = $file;
         }
@@ -40,11 +35,11 @@ final class ApplicationInspection
         $build = $root . '/build';
         BuildLock::path($build);
         if (!is_dir($build) && !mkdir($build, 0700, true) && !is_dir($build)) {
-            throw new RuntimeException('无法建立离线检查工作目录');
+            throw new \RuntimeException('无法建立离线检查工作目录');
         }
         $directory = $build . '/.application-inspection-' . bin2hex(random_bytes(12));
         if (!mkdir($directory, 0700)) {
-            throw new RuntimeException('无法建立离线检查临时目录');
+            throw new \RuntimeException('无法建立离线检查临时目录');
         }
         try {
             $result = (new ApplicationGeneration())->generate(
@@ -74,7 +69,7 @@ final class ApplicationInspection
                 'jobs' => $assembly['jobs'] ?? [], 'schedules' => $assembly['schedules'] ?? [],
                 'capabilities' => $this->capabilities($settings)];
         } finally {
-            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
                 if ($entry->isDir() && !$entry->isLink()) {
                     rmdir($entry->getPathname());
                 } else {

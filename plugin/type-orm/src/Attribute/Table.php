@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Type\Orm\Attribute;
 
-use Attribute;
-
 /** 构建期模型表声明；键和生命周期参数引用 PHP 属性名。 */
-#[Attribute(Attribute::TARGET_CLASS)]
+#[\Attribute(\Attribute::TARGET_CLASS)]
 final class Table
 {
     /**
@@ -24,6 +22,5 @@ final class Table
         public ?string $tenant = null,
         public ?string $createdAt = null,
         public ?string $updatedAt = null
-    ) {
-    }
+    ) {}
 }

@@ -68,7 +68,7 @@ function iotHaMqttChecks(array $fixture, array $command, array $environment, arr
         throw new RuntimeException('同一HTTP进程未通过新请求回收旧主连接');
     };
     $step = static function (int $stage) use ($clientEnvironment, $environment, $root, $ha, $fixture, $base, &$report, &$broker): void {
-        $client = new Process(['node', $root . '/tests/iot-device-client.mjs', 'ha-step'], $root, $clientEnvironment + ['TYPE_HA_STAGE' => (string) $stage]);
+        $client = new Process(['node', $root . '/tests/iot-device-client.mjs', 'ha-step'], $root, $clientEnvironment + ['TYPE_HA_STAGE' => (string)$stage]);
         try {
             $result = $client->wait(90);
             if (!$result->successful()) {
@@ -133,7 +133,7 @@ function iotHaMqttChecks(array $fixture, array $command, array $environment, arr
         $broker = $restartBroker();
         $step(5);
         $stopRoles(true);
-        $report['backend_count_after_stop'] = (int) $ha->connection()->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'")->fetchColumn();
+        $report['backend_count_after_stop'] = (int)$ha->connection()->query("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name LIKE 'type_mqtt_%'")->fetchColumn();
         expect($report['backend_count_after_stop'] === 0, 'HA角色退出后仍保留持久工作后端');
         return $report;
     } finally {
@@ -148,12 +148,12 @@ function iotHaMqttChecks(array $fixture, array $command, array $environment, arr
 $haRoot = dirname(__DIR__);
 if (!in_array('--infrastructure-only', $argv, true)) {
     // 与单主备设备装置相同：先解析外部客户端目录，再交给需要绝对路径的Node createRequire。
-    $haClientRoot = realpath((string) getenv('TYPE_MQTT_CLIENT_ROOT'));
+    $haClientRoot = realpath((string)getenv('TYPE_MQTT_CLIENT_ROOT'));
     expect(is_string($haClientRoot) && is_file($haClientRoot . '/node_modules/mqtt/package.json'), 'TYPE_MQTT_CLIENT_ROOT需要已安装MQTT.js 5.15.0的测试依赖根');
     putenv('TYPE_MQTT_CLIENT_ROOT=' . $haClientRoot);
 }
 $haDirectory = $haRoot . '/build/iot-ha-' . bin2hex(random_bytes(6));
-$ha = new PostgresHa($haDirectory, NativeDatabase::tools('pgsql', (string) getenv('TYPE_PGSQL_TOOLS')));
+$ha = new PostgresHa($haDirectory, NativeDatabase::tools('pgsql', (string)getenv('TYPE_PGSQL_TOOLS')));
 $GLOBALS['postgresHa'] = $ha;
 try {
     if (in_array('--infrastructure-only', $argv, true)) {

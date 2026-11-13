@@ -124,7 +124,7 @@ try {
     expect(Process::output(['git', '--git-dir=' . $remotes['type-core'], 'rev-parse', 'refs/tags/v1.0.0'], $workspace) === $tag['items']['type-core']['split'], '旧标签被改写');
     expect(Publisher::publish($source, $remotes['type-core'], $plan, 'type-core')['status'] === 'failed', '过期批次覆盖了新子仓');
     $race = Batch::plan($source, $second, 'tag', 'v1.0.1', $mapping);
-    for ($index = 0; $index < 2; $index++) {
+    for ($index = 0; $index < 2; ++$index) {
         $pid = pcntl_fork();
         expect($pid !== -1, '无法启动分发竞争进程');
         if ($pid === 0) {
