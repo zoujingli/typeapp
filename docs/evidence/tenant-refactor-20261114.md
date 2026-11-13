@@ -8,7 +8,7 @@
 - `pnpm --dir web exec vitest run apps/web-antd/src/preferences.test.ts apps/web-antd/src/screen-lock.test.ts`：2 个文件、3 个测试通过。
 - `pnpm --dir web build`：Vite 8.3.8 生产构建通过；保留大分块提示，未将其当作性能验收通过。
 - PHP 8.5.12 ZTS（Swoole 6.3.0RC1、PDO MySQL/PostgreSQL/SQLite）下 `composer validate --strict`：通过。
-- PHP CS-Fixer 3.95.30：916 个文件检查通过，0 个待修正。
+- PHP CS-Fixer 3.95.30：918 个文件检查通过，0 个待修正。
 - PHPUnit 13.4.6：306 tests、18,005 assertions 通过。
 - `php tests/check.php`：963 个文件、3 个分发拒绝用例、文档站边界检查通过。
 - `php tests/docs-consistency.php`：1,504 处引用、131 条路由、292 个命令、247 个 Composer 脚本通过。
@@ -26,7 +26,7 @@
 
 ## 当前实现范围
 
-Platform、System、Center 的职责、Tenant 入口、主域名客户选择、子域名和 `/t/{tenant_id}/` 固定路径、双身份会话、RBAC、菜单分组与图标、模拟登录、Vben 5.7.0 页面、模型优先 CRUD、设备注册限流 Model、表字段注释、MySQL `model:sync` 和发布包安装说明均已同步到当前源码。
+Platform、System、Center 的职责、Tenant 入口、主域名客户选择、子域名和 `/t/{tenant_id}/` 固定路径、双身份会话、RBAC、菜单分组与图标、模拟登录、Vben 5.7.0 页面、模型优先 CRUD、设备注册限流/凭据/连接投影 Model、表字段注释、MySQL `model:sync` 和发布包安装说明均已同步到当前源码。
 
 核心表使用 `platform_*`、`system_*`、`center_*` 和 `platform_mqtt_*` 前缀。Platform 跨 Tenant 的接入应用目录使用不带 `tenantKey` 的 `ApplicationDirectory` 只读 Model，写入仍使用带 Tenant 范围的 `ClientApplication`。MQTT 协议持久状态使用组件自身的 `type_mqtt_*` 表；审计、恢复、运行观测和协议认证热路径保留受控基础设施查询，并在数据库指南中说明边界。
 
