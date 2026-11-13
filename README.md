@@ -6,7 +6,7 @@ TypeApp 是面向原生交付的 PHP 应用框架。用 PHP 编写业务，按�
 
 **交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** 已公开的 [RC14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14) 按 Linux x64 / ARM64、macOS ARM64、Windows x64 × `sqlite`、`mysql`、`pgsql` 提供 12 个静态单程序；每个程序只包含对应 profile 的数据库驱动和已启用能力。按平台与数据库选择一个下载项；安装方法见[版本安装](docs/guide/releases.md)，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
 
-文档站：[iots.top](https://iots.top)。新业务从 `type-project` 创建；主仓附带的物联中心展示框架如何组成业务产品。也可以访问[在线 Demo](https://demo.iots.top)，使用账号 `admin`、密码 `admin` 体验物联中心。
+文档站：[iots.top](https://iots.top)。新业务从 `type-project` 创建；主仓附带的物联中心展示框架如何组成业务产品。也可以访问[在线 Demo](https://demo.iots.top)，使用页面公布的演示身份体验物联中心；正式安装不会预置通用账号或默认口令。
 
 ## 从开发到运行
 
