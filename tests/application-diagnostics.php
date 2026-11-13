@@ -25,7 +25,7 @@ foreach (array_keys($environment) as $key) {
         unset($environment[$key]);
     }
 }
-$environment += ['APP_BASE_PATH' => $base, 'APP_ADMIN_PASSWORD' => $secret, 'APP_CUSTOMER_PASSWORD' => $secret . '-customer',
+$environment += ['APP_BASE_PATH' => $base, 'APP_PLATFORM_PASSWORD' => $secret,
     'APP_DEBUG' => 'false', 'APP_ENV' => 'prod', 'APP_CACHE_ENABLED' => 'false',
     'DB_DRIVER' => 'sqlite', 'DB_SQLITE_FILE' => $base . '/invalid.sqlite'];
 try {
@@ -33,7 +33,7 @@ try {
     file_put_contents($environment['DB_SQLITE_FILE'], str_repeat($secret, 100));
     foreach (['0', '1'] as $trace) {
         $environment['TYPE_APP_TRACE'] = $trace;
-        $process = new Process([...$command, 'app:install', 'trace-admin', '诊断管理员', 'trace-customer', '诊断客户', '诊断租户'], $root, $environment);
+        $process = new Process([...$command, 'app:install', 'platform-root', '诊断平台超管'], $root, $environment);
         try {
             $failure = $process->wait(10);
             $output = $failure->stdout . $failure->stderr;

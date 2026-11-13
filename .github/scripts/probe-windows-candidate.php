@@ -44,11 +44,11 @@ try {
             'DB_DRIVER' => 'pgsql', 'DB_HOST' => (string) getenv('TYPE_PGSQL_HOST'), 'DB_PORT' => (string) getenv('TYPE_PGSQL_PORT'),
             'DB_DATABASE' => $database, 'DB_USERNAME' => (string) getenv('TYPE_PGSQL_USER'), 'DB_PASSWORD' => (string) getenv('TYPE_PGSQL_PASSWORD'),
             'APP_API_TOKEN' => bin2hex(random_bytes(20)), 'TYPE_APP_RELEASE_SHA256' => $record['manifest-sha256'], 'TYPE_APP_TRACE' => '1',
-            'APP_ADMIN_PASSWORD' => $password, 'APP_CUSTOMER_PASSWORD' => $password . '-customer'];
+            'APP_PLATFORM_PASSWORD' => $password];
         $process = null;
         try {
             $started = microtime(true);
-            $process = new Process([$package . '/run.cmd', 'app:install', 'package-admin', '发布管理员', 'package-customer', '发布客户', '发布租户'], $package, $environment);
+            $process = new Process([$package . '/run.cmd', 'app:install', 'platform-root', '发布平台超管'], $package, $environment);
             $samples = [];
             // 只观察状态和等待类型；不记录 SQL、参数、连接凭据或业务值。
             $inspection = $admin->prepare('SELECT state, wait_event_type, wait_event, EXTRACT(EPOCH FROM clock_timestamp() - query_start) AS query_seconds FROM pg_stat_activity WHERE datname = ?');
