@@ -1,12 +1,18 @@
 # Platform / System / Center Tenant 重构验收记录
 
-日期：2026-11-14。源码基线为当前 `main`，工作区结束时无未提交修改。本记录只描述本轮实际执行的检查，不替代三库、AOT、无源码和真实 MQTT 验收。
+日期：2026-11-14。源码基线为当前 `main`，本记录只描述本轮实际执行的检查，不替代 MySQL/PostgreSQL、AOT、无源码和真实 MQTT 验收。
 
 ## 已通过
 
 - `pnpm --dir web typecheck`：通过。
 - `pnpm --dir web exec vitest run apps/web-antd/src/preferences.test.ts apps/web-antd/src/screen-lock.test.ts`：2 个文件、3 个测试通过。
 - `pnpm --dir web build`：Vite 8.3.8 生产构建通过；保留大分块提示，未将其当作性能验收通过。
+- PHP 8.5.12 ZTS（Swoole 6.3.0RC1、PDO MySQL/PostgreSQL/SQLite）下 `composer validate --strict`：通过。
+- PHP CS-Fixer 3.95.30：915 个文件检查通过，0 个待修正。
+- PHPUnit 13.4.6：306 tests、18,005 assertions 通过。
+- `php tests/check.php`：962 个文件、3 个分发拒绝用例、文档站边界检查通过。
+- `php tests/docs-consistency.php`：1,504 处引用、131 条路由、292 个命令、247 个 Composer 脚本通过。
+- `php tests/tenant.php sqlite`：空库安装、模块表前缀、主域/子域/固定路径、RBAC、独立品牌、模拟交接、MQTT 模拟观测、恢复核对和真实 HTTP 隔离通过。
 - 活动源码、前端、文档、CI 和验收入口扫描：未发现 `SaaS`、`saas_id`、`public/saas`、`/s/`、旧双账号安装变量、旧客户成员模型、旧 `iot:*` 恢复命令或未加模块前缀的 `broker_nodes` 表名。
 - `docs/build-config/type-app.json` JSON 解析通过；活动 GitHub 工作流 YAML 解析通过。
 - 当前工作区 `git diff --check` 通过；提交按功能拆分并保留中文背景、影响和验证说明。
@@ -19,8 +25,10 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 
 ## 未验证及阻塞
 
-当前执行环境没有 `php` 和 `composer`，Docker daemon 也不可用；无法执行 PHP lint、CS-Fixer、PHPUnit、`composer test:tenant*`、真实 MySQL/PostgreSQL/SQLite 管理闭环、`model:sync`、TypePHP AOT、无源码运行或真实 TLS MQTT/持久会话/撤权/转配验收。
+当前使用工作区已有的 PHP 8.5.12 ZTS SDK 与临时 Composer 2.10.3 phar 完成 PHP 静态检查、单元测试和 SQLite 管理闭环；未把临时工具写入仓库。Docker daemon 仍不可用，因此无法用容器替代正式平台验收。
 
-仓库目标工具链记录在 `toolchain.lock.json`：PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8；本机实际 Node.js 为 26.13.1，pnpm 为 11.15.1，而前端工作区声明 pnpm 12.18.0。前端检查结果因此只证明在当前可用 Node/pnpm 环境下的静态与生产构建行为。
+设备注册首次 SQLite 闭环发现 `DeviceOwnership` 创建时遗漏可空字段，已补齐 `ended_at`、`expires_at`、`expiry_context` 的显式 `null` 并复验通过。
+
+仓库目标工具链记录在 `toolchain.lock.json`：PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8；本机实际 Node.js 为 26.13.1，pnpm 为 11.15.1，而前端工作区声明 pnpm 12.18.0。前端检查结果仍只证明在当前可用 Node/pnpm 环境下的静态与生产构建行为。
 
 补齐匹配 PHP/Swoole PDO hook、Composer、MySQL/PostgreSQL 工具和 TypePHP SDK 后，必须按 `docs/development/test-entrypoints.md` 顺序重跑全部门禁，并以同一源码、锁文件和原生产物记录最终结果。
