@@ -3,9 +3,9 @@
 ## 原生 WAL 维护入口
 
 ```text
-type-app iot:wal archive <私有归档目录> <源文件> <WAL名称>
-type-app iot:wal restore <私有归档目录> <WAL名称> <新目标文件>
-type-app iot:wal verify <私有归档目录> <WAL名称>
+type-app center:wal archive <私有归档目录> <源文件> <WAL名称>
+type-app center:wal restore <私有归档目录> <WAL名称> <新目标文件>
+type-app center:wal verify <私有归档目录> <WAL名称>
 ```
 
 维护者预先创建 Linux/macOS 私有归档目录，权限为 `0700`。入口只读取外置 `APP_ENV` 并校验环境，不加载完整业务配置、不连接数据库，数据库故障不阻止已产生 WAL 的归档。操作成功退出零并输出文件名称、字节数和 SHA-256；`verify` 只输出字节数和 SHA-256。失败退出一，标准错误沿用应用错误前缀，随后是稳定的 `recovery_*` 错误码。
@@ -25,11 +25,11 @@ type-app iot:wal verify <私有归档目录> <WAL名称>
 ## 备份登记与七天保留清理
 
 ```text
-type-app iot:backup register <私有归档目录> <备份ID> <PG17工具根>
-type-app iot:backup status <私有归档目录>
-type-app iot:backup pin <私有归档目录> <备份ID> <保护ID>
-type-app iot:backup unpin <私有归档目录> <备份ID> <保护ID>
-type-app iot:backup clean <私有归档目录> <PG17工具根> [批次1至100]
+type-app center:backup register <私有归档目录> <备份ID> <PG17工具根>
+type-app center:backup status <私有归档目录>
+type-app center:backup pin <私有归档目录> <备份ID> <保护ID>
+type-app center:backup unpin <私有归档目录> <备份ID> <保护ID>
+type-app center:backup clean <私有归档目录> <PG17工具根> [批次1至100]
 ```
 
 复用同一个 `RecoveryArchive` 维护者及 WAL 私有根，每个根只接受一个 PostgreSQL system identifier 与 WAL segment size。`incoming/<备份ID>` 由维护者预先创建父目录，使用官方 `pg_basebackup` 完成自包含、plain 格式备份后才执行 `register`。ID 与保护ID均为小写字母开头的1–64位小写字母、数字、下划线或连字符。目录和文件不得开放组或其他用户访问；拒绝 tablespace 符号链接、硬链接、特殊文件和未完成的备份。登记后禁止外部修改 `backups`、`retiring`、持久清单或已归档 WAL；数据根和工具安装位置仅供可信维护者管理。
@@ -53,12 +53,12 @@ timeline不变时，恢复已提交意图的后续批次不重跑全库校验；
 ## 恢复后的授权核对
 
 ```text
-type-app iot:recovery snapshot
-type-app iot:recovery status
-type-app iot:recovery begin <恢复ID> <操作人> <已完成隔离的依据>
-type-app iot:recovery isolate <恢复ID>
-type-app iot:recovery review <恢复ID> <私有清单文件> <已核对SHA256> <偏移量>
-type-app iot:recovery restore <恢复ID>
+type-app center:recovery snapshot
+type-app center:recovery status
+type-app center:recovery begin <恢复ID> <操作人> <已完成隔离的依据>
+type-app center:recovery isolate <恢复ID>
+type-app center:recovery review <恢复ID> <私有清单文件> <已核对SHA256> <偏移量>
+type-app center:recovery restore <恢复ID>
 ```
 
 旧系统、恢复实例和当前授权来源的隔离由维护者负责。必须先停止 HTTP、Broker 和后台写入进程，隔离旧节点及设备网络，确认恢复库仅供维护命令访问。`begin` 的依据是审计引用，不会执行或证明基础设施隔离；启动门也不会主动终止已运行的进程。不能让旧进程与核对流程并发写入。

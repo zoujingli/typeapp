@@ -72,8 +72,8 @@ PostgreSQL `pg_hba` 只允许 TLS 与 SCRAM；网络来源进一步收窄至实�
 管理命令使用已配置的数据库与编译应用入口：
 
 ```bash
-build/app/type-app iot:mqtt-nodes
-build/app/type-app iot:mqtt-fence <node-id> <run-id> <actor> <proof-ref>
+build/app/type-app center:mqtt-nodes
+build/app/type-app center:mqtt-fence <node-id> <run-id> <actor> <proof-ref>
 ```
 
 先通过统计取得并核对精确旧 `node_id/run_id/generation`，再由资源拥有者实际隔离该运行及继承监听或连接的 worker，确认它们不能恢复任何旧网络输出，最后登记对应 `actor/proof_ref`。证据标识引用实际基础设施操作和完成时间线；命令本身不执行硬隔离，也不会凭非空字符串证明机器已断电。不得在旧进程仅暂停、短暂失联或隔离结果未知时登记成功。正常 Broker 在全部网络和工作释放后自动登记退休；异常退出且登记失败时仍须完成受控隔离流程。
