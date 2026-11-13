@@ -87,5 +87,4 @@ jobs:
             build/app/type-app.exe
             build/app/type-app.exe.build.json
             build/app/compiler/compile.log
-            build/iot-identity-*/*.log
             build/single program-*/verification.json

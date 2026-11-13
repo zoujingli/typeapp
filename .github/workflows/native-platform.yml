@@ -338,7 +338,6 @@ jobs:
             build/**/type-app.exe.build.json
             build/**/type-app.exe.resources/**
             build/windows-database-*/*.log
-            build/iot-identity-*/*.log
             build/windows-runtime-*/*.log
             build/windows-runtime-*/*-source.json
             build/orm-suite-*/source-inputs.json
