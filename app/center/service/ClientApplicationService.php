@@ -225,6 +225,7 @@ final class ClientApplicationService
     {
         $username = (string)($request['username'] ?? '');
         $id = preg_match('/^app:[a-f0-9]{32}$/D', $username) === 1 ? substr($username, 4) : '';
+        // MQTT 认证热路径只接收受控 Connection，固定投影不能把活动模型跨 worker 传递。
         $row = $id === '' ? null : $connection->table('center_application')->where('id', '=', $id)->first();
         $credential = $row === null ? null : $connection->table('platform_mqtt_access_credential')->where('id', '=', $row['credential_id'])->where('principal_id', '=', $id)->first();
         $principal = $row === null ? null : $connection->table('platform_mqtt_access_principal')->where('id', '=', $id)->where('tenant_id', '=', $row['tenant_id'])->first();
@@ -325,6 +326,7 @@ final class ClientApplicationService
     /** 凭据仅投影状态与代次，发布状态取真实节点回执，不按 enabled 猜测网络隔离结果。 */
     private static function project(array $row): array
     {
+        // 发布回执和凭据状态属于协议基础设施投影，业务应用实体本身仍由 ClientApplication 管理。
         $connection = Db::connection('default', true);
         $credential = $connection->table('platform_mqtt_access_credential')->where('id', '=', $row['credential_id'])->where('principal_id', '=', $row['id'])->first();
         $publication = $connection->table('platform_mqtt_access_revision')->select(['id'])->where('version', '=', (int)$row['access_version'])->where('tenant_id', '=', $row['tenant_id'])->first();
