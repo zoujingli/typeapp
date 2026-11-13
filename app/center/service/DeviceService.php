@@ -85,7 +85,8 @@ final class DeviceService
                         'ownership_id' => bin2hex(random_bytes(16)), 'name' => $data['name'], 'lifecycle' => 'inactive',
                         'transfer_id' => null, 'transfer_frozen' => false, 'recovery_verified' => true]);
                     $now = $device->getCreatedAt();
-                    DeviceOwnership::create(['id' => $device->getOwnershipId(), 'device_id' => $device->getId(), 'started_at' => $now, 'access_started' => false]);
+                    DeviceOwnership::create(['id' => $device->getOwnershipId(), 'device_id' => $device->getId(), 'started_at' => $now,
+                        'ended_at' => null, 'expires_at' => null, 'expiry_context' => null, 'access_started' => false]);
                     $transaction->table('center_device_connection')->insert(['device_id' => $device->getId(), 'ownership_id' => $device->getOwnershipId(), 'status' => 'unknown']);
                     $credentialId = bin2hex(random_bytes(16));
                     $credentialSecret = bin2hex(random_bytes(32));
