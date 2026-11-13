@@ -8,6 +8,7 @@ use app\center\model\Device;
 use app\center\model\DeviceEnrollment;
 use app\center\model\DeviceEnrollmentBinding;
 use app\center\model\DeviceOwnership;
+use app\center\model\DeviceRegistrationAttempt;
 use app\center\model\Product;
 use app\common\service\AuditLog;
 use app\common\service\IdentityService;
@@ -371,23 +372,22 @@ final class DeviceService
         $connection = Db::connection('default', true);
         $allowed = Db::transaction(static function () use ($clientIp): bool {
             RoleService::lockAuthorization();
-            $transaction = Db::connection('default', true);
             $now = time();
-            $transaction->table('center_registration_attempt')->where('window_started', '<=', $now - 60)->delete();
+            DeviceRegistrationAttempt::query()->master()->where('window_started', '<=', $now - 60)->delete();
             $source = hash('sha256', $clientIp);
-            $query = $transaction->table('center_registration_attempt')->where('source_hash', '=', $source);
-            $previous = $query->first();
+            $previous = DeviceRegistrationAttempt::query()->master()->find($source);
             if ($previous !== null) {
-                if ((int)$previous['attempts'] >= 60) {
+                if ($previous->getAttempts() >= 60) {
                     return false;
                 }
-                $query->update(['attempts' => (int)$previous['attempts'] + 1]);
+                $previous->setAttempts($previous->getAttempts() + 1);
+                $previous->save();
                 return true;
             }
-            if ((int)$transaction->table('center_registration_attempt')->aggregate('COUNT') >= 1024) {
+            if (DeviceRegistrationAttempt::query()->master()->count() >= 1024) {
                 return false;
             }
-            $transaction->table('center_registration_attempt')->insert(['source_hash' => $source, 'window_started' => $now, 'attempts' => 1]);
+            DeviceRegistrationAttempt::create(['source_hash' => $source, 'window_started' => $now, 'attempts' => 1]);
             return true;
         }, 'default', $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
         if (!$allowed) {
