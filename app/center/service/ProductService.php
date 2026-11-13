@@ -64,7 +64,6 @@ final class ProductService
             $this->version($product->version, $version);
             if ($data === null) {
                 // 分类存在设备引用时拒绝删除，检查与删除在同一授权事务内。
-                $transaction = Db::connection('default', true);
                 if (Device::query()->master()->where('product_id', '=', $productId)->exists()) {
                     throw new HttpError(409, 'product_referenced');
                 }

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace app\common\service;
 
 use app\platform\model\PlatformMenu;
+use app\platform\model\PlatformRole;
 use app\system\model\SystemMenu;
+use app\system\model\SystemRole;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Orm\Db;
@@ -224,7 +226,7 @@ final class MenuService
             }
             if ($delete) {
                 if (self::query($realm)->where('parent_id', '=', $id)->first() !== null
-                    || Db::connection('default', true)->table($realm . '_role_permission')->where('permission', '=', $menu->permission)->first() !== null) {
+                    || self::roleQuery($realm)->whereHas('menus', static fn (ModelQuery $menus): ModelQuery => $menus->where('permission', '=', $menu->permission))->exists()) {
                     throw new HttpError(409, 'menu_in_use');
                 }
                 $menu->delete();
@@ -296,6 +298,12 @@ final class MenuService
     private static function make(string $realm, array $values): Model
     {
         return $realm === 'platform' ? new PlatformMenu($values) : new SystemMenu($values);
+    }
+
+    /** 通过角色模型检查目录引用，避免菜单服务直接读取角色权限中间表。 */
+    private static function roleQuery(string $realm): ModelQuery
+    {
+        return $realm === 'platform' ? PlatformRole::query()->master() : SystemRole::query()->master();
     }
 
     private static function active(string $realm): array
