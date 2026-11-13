@@ -8,6 +8,7 @@ use app\center\model\ClientApplication;
 use app\common\service\AuditLog;
 use app\common\service\IdentityService;
 use app\common\service\RoleService;
+use app\platform\model\ApplicationDirectory;
 use app\platform\model\Tenant;
 use app\platform\mqtt\service\AccessService;
 use app\platform\mqtt\service\ResourceObservations;
@@ -40,27 +41,17 @@ final class ClientApplicationService
                 return ['items' => $items, 'total' => $result->total(), 'page' => $page, 'per_page' => $perPage, 'context' => $context];
             }, ['tenant_id' => $tenantId]);
         }
+        // 平台跨 Tenant 目录使用无隐式租户范围的只读 Model；业务写入仍在可信 Tenant 范围内使用 ClientApplication。
+        $query = ApplicationDirectory::query()->master();
         if ($tenantId !== '') {
-            return ExecutionScope::current()->run(static function (ExecutionScope $scope) use ($page, $perPage, $context): array {
-                $result = ClientApplication::query()->master()->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
-                $items = [];
-                foreach ($result->items() as $model) {
-                    $items[] = self::publicProjection($model);
-                }
-                return ['items' => $items, 'total' => $result->total(), 'page' => $page, 'per_page' => $perPage, 'context' => $context];
-            }, ['tenant_id' => $tenantId]);
+            $query = $query->where('tenant_id', '=', $tenantId);
         }
-        // 平台跨客户目录使用显式投影，业务写入仍在可信租户范围内使用 Model。
-        $rows = Db::connection('default', true)->table('center_application')->select([...self::FIELDS, 'credential_id']);
-        if ($tenantId !== '') {
-            $rows = $rows->where('tenant_id', '=', $tenantId);
-        }
-        $total = (int)$rows->aggregate('COUNT');
+        $result = $query->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
         $items = [];
-        foreach ($rows->orderBy('created_at', 'DESC')->orderBy('id')->limit($perPage, ($page - 1) * $perPage)->get() as $row) {
-            $items[] = self::project($row);
+        foreach ($result->items() as $model) {
+            $items[] = self::project($model->project(self::FIELDS) + ['credential_id' => $model->getCredentialId()]);
         }
-        return ['items' => $items, 'total' => $total, 'page' => $page, 'per_page' => $perPage, 'context' => $context];
+        return ['items' => $items, 'total' => $result->total(), 'page' => $page, 'per_page' => $perPage, 'context' => $context];
     }
 
     /** 读取真实密钥状态和发布回执；GET 不更改凭据、应用版本或在线观察。 */
@@ -74,12 +65,11 @@ final class ClientApplicationService
             }
             return ['application' => self::publicProjection($model), 'context' => $context];
         }
-        $query = Db::connection('default', true)->table('center_application')->select([...self::FIELDS, 'credential_id'])->where('id', '=', $id);
-        $row = $query->first();
-        if ($row === null) {
+        $model = ApplicationDirectory::query()->master()->find($id);
+        if ($model === null) {
             throw new HttpError(404, 'application_not_found');
         }
-        return ['application' => self::project($row), 'context' => $context];
+        return ['application' => self::project($model->project(self::FIELDS) + ['credential_id' => $model->getCredentialId()]), 'context' => $context];
     }
 
     /**

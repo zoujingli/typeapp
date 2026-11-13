@@ -154,7 +154,7 @@ final class ProjectStructureTest extends TestCase
         $schema = (string)file_get_contents($root . '/app/common/database/Schema.php');
         self::assertStringContainsString('PRIMARY KEY (role_id, permission)', $schema);
 
-        $models = (new \Type\Build\ModelCompiler())->compile([$root . '/app/platform/model', $root . '/app/system/model'])['models'];
+        $models = (new \Type\Build\ModelCompiler())->compile([$root . '/app/platform/model', $root . '/app/system/model', $root . '/app/center/model'])['models'];
         $models = array_column($models, null, 'class');
         $platform = $models['app\platform\model\PlatformRole']['relations']['menus'];
         $system = $models['app\system\model\SystemRole']['relations']['menus'];
@@ -165,6 +165,9 @@ final class ProjectStructureTest extends TestCase
         self::assertSame('app\system\model\SystemMenu', $system['target']);
         self::assertSame('tenant_id', $system['pivotTenant']);
         self::assertSame('permission', $system['targetKey']);
+        $directory = $models['app\\platform\\model\\ApplicationDirectory'];
+        self::assertSame('center_application', $directory['table']);
+        self::assertNull($directory['tenant']);
 
         $documentation = (string)file_get_contents($root . '/docs/development/iot-identity.md');
         self::assertStringContainsString('角色与菜单的关联由 `RoleService`', $documentation);
