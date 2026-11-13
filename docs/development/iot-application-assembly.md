@@ -12,7 +12,7 @@ flowchart TD
   Bootstrap --> Commands[生成命令入口]
   Generated --> Commands
   Generated --> Routes[控制器及身份中间件工厂]
-  Generated --> Schedules[audit.admin / audit.customer]
+  Generated --> Schedules[audit.platform / audit.system]
   Http --> Request[请求 scope]
   Routes --> Request
   Commands --> Roles[MQTT 存储 / 授权 / 维护角色]
@@ -44,7 +44,7 @@ flowchart TD
 | --- | --- | --- |
 | 原始通信 | `center:mqtt` / `broker:run` | MQTT 节点持有监听、会话与有界协议状态，认证和持久操作经受控 worker 执行 |
 | 协议存储与授权 | `center:mqtt-store` / `broker:store` | 仅由当前宿主管理的内部命令，独立作用域借用数据库，退出时归还 |
-| 审计维护 | `app:schedule`；`audit.admin` / `audit.customer` | 保留每 60 秒计划、skip 错过策略、Redis 游标及独立 occurrence scope |
+| 审计维护 | `app:schedule`；`audit.platform` / `audit.system` | 保留每 60 秒计划、skip 错过策略、Redis 游标及独立 occurrence scope |
 | 恢复核对 | `center:recovery` | 停服维护、分批核对、固定清单及当前授权证据 |
 
 当前应用不再登记业务消息 Job。退出的通知、导出、遥测和统计角色不由计划任务重新拉起；框架的 Queue、Outbox、Job 注册和 Scheduler 机制仍由独立组件与教程消费。默认 profile 保留 `web,mqtt,iot,scheduler`，因维护调度仍使用 Redis 而保留相应原生依赖。
