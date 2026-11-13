@@ -14,26 +14,10 @@ require __DIR__ . '/support.php';
 
 $root = dirname(__DIR__);
 
-/** 当前验收不把已退出人员后台和旧协议装置误判为生产命令调用者。 */
+/** 历史装置只保存原始证据，不把旧提交中的命令误判为当前生产调用者。 */
 function docsCheckLegacySource(string $file): bool
 {
-    return str_starts_with($file, 'tests/broker-')
-        || in_array($file, [
-            'tests/iot-identity.php',
-            'tests/application-runtime.php',
-            'tests/candidate-upgrade.php',
-            'tests/backup-recovery.php',
-            'tests/development-mode.php',
-            'tests/demo-mode.php',
-            'tests/iot-backup-retention.php',
-            'tests/iot-cluster-mqtt.php',
-            'tests/iot-devices.php',
-            'tests/iot-lifecycle-browser-fixture.php',
-            'tests/iot-lifecycle-mqtt.php',
-            'tests/iot-operations.php',
-            'tests/iot-reassignments.php',
-            'tests/iot-recovery.php',
-        ], true);
+    return str_starts_with($file, 'tests/archive/legacy/');
 }
 
 // 文档明确记录实现已移除时的语义标记：同一行命中则跳过该引用。

@@ -10,21 +10,18 @@ use Type\Build\ArtifactManifest;
 use Type\Build\BuildPlatform;
 
 /**
- * 同一生产候选验证全新安装、旧入口失效、双端物联目录与独立 Broker。
- * 用法：php tests/app-candidate.php <产物或--php> <sqlite|mysql|pgsql> [--no-source] [--browser-dist=<隔离前端>].
+ * 同一生产候选验证 Platform、System、Center 和 Tenant 全新安装闭环。
+ * 用法：php tests/app-candidate.php <产物或--php> <sqlite|mysql|pgsql> [--no-source].
  */
 $root = dirname(__DIR__);
 $target = $argv[1] ?? '--php';
 $driver = $argv[2] ?? 'sqlite';
 $noSource = in_array('--no-source', $argv, true);
-$browserOptions = array_values(array_filter($argv, static fn (string $value): bool => str_starts_with($value, '--browser-dist=')));
-expect(in_array($driver, ['sqlite', 'mysql', 'pgsql'], true), '候选验收需要明确驱动');
+expect(in_array($driver, ['sqlite', 'mysql', 'pgsql'], true), 'Tenant 候选验收需要明确驱动');
 expect(
-    ($target === '--php' || is_file($target))
-    && array_diff(array_slice($argv, 3), array_merge($noSource ? ['--no-source'] : [], $browserOptions)) === [],
-    '用法：php tests/app-candidate.php <产物或--php> <sqlite|mysql|pgsql> [--no-source] [--browser-dist=<隔离前端>]'
+    ($target === '--php' || is_file($target)) && array_diff(array_slice($argv, 3), $noSource ? ['--no-source'] : []) === [],
+    '用法：php tests/app-candidate.php <产物或--php> <sqlite|mysql|pgsql> [--no-source]'
 );
-expect(count($browserOptions) <= 1, '浏览器产物只能指定一次');
 expect(!$noSource || $target !== '--php', '无源码验收需要原生产物');
 if ($target !== '--php') {
     $resolved = realpath($target);
@@ -58,47 +55,24 @@ $report = [
     'native' => $target !== '--php',
     'no_source' => $noSource,
     'production_source' => ['entry' => 'generated-main', 'bootstrap' => $config['application']['bootstrap'], 'sources' => $config['sources'], 'output' => $config['output']],
-    'type_project_is_not_iot_candidate' => true,
-    'historical_evidence_unchanged' => true,
+    'tenant_architecture' => true,
     'impersonation_kept' => true,
     'checks' => [],
 ];
 try {
-    try {
-        nativeDatabaseCommand(
-            [PHP_BINARY, $root . '/tests/iot-identity.php', $target, $driver],
-            $environment,
-            [],
-            $base . '/legacy-identity.log',
-            30
-        );
-        expect(false, '未带 --app/--broker 的旧身份入口仍可通过');
-    } catch (RuntimeException $failure) {
-        $legacyLog = is_file($base . '/legacy-identity.log') ? (string)file_get_contents($base . '/legacy-identity.log') : $failure->getMessage();
-        expect(str_contains($legacyLog, '旧 /iot/auth'), '旧身份入口失败原因不符');
+    $tenant = [PHP_BINARY, $root . '/tests/tenant.php', $driver];
+    if ($driver !== 'sqlite') {
+        $tools = getenv('TYPE_' . strtoupper($driver) . '_TOOLS');
+        expect(is_string($tools) && $tools !== '', '网络数据库候选需要 TYPE_' . strtoupper($driver) . '_TOOLS');
+        $tenant[] = $tools;
     }
-    $report['checks'][] = 'legacy-iot-auth-entry-rejected';
-
-    $identity = [PHP_BINARY, $root . '/tests/iot-identity.php', $target, $driver, '--app'];
-    if ($noSource) {
-        $identity[] = '--no-source';
+    if ($target !== '--php') {
+        $tenant[] = $target;
     }
-    if ($browserOptions !== []) {
-        $identity[] = $browserOptions[0];
-    }
-    $output = nativeDatabaseCommand($identity, $environment, [], $base . '/app-identity.log', $browserOptions === [] ? 240 : 900);
-    expect(preg_match('#通过：(.*?/verification\.json)\s*$#u', $output, $matches) === 1, '双端候选没有返回通过证据');
-    $report['app_identity'] = ['evidence' => substr($matches[1], strlen($root) + 1), 'sha256' => hash_file('sha256', $matches[1])];
-    $report['checks'][] = 'fresh-app-install-dual-end-old-entries-rejected';
-
-    $broker = [PHP_BINARY, $root . '/tests/iot-identity.php', $target, $driver, '--broker'];
-    if ($noSource) {
-        $broker[] = '--no-source';
-    }
-    $output = nativeDatabaseCommand($broker, $environment, [], $base . '/broker.log', 300);
-    expect(preg_match('#通过：(.*?/verification\.json)\s*$#u', $output, $matches) === 1, '独立 Broker 候选没有返回通过证据');
-    $report['broker'] = ['evidence' => substr($matches[1], strlen($root) + 1), 'sha256' => hash_file('sha256', $matches[1])];
-    $report['checks'][] = 'same-binary-broker-install-and-login';
+    $output = nativeDatabaseCommand($tenant, $environment, [], $base . '/tenant.log', 900);
+    expect(str_contains($output, 'Tenant 空库安装、独立同名账号'), 'Tenant 候选没有返回当前管理闭环通过证据');
+    $report['tenant'] = ['output_sha256' => hash('sha256', $output)];
+    $report['checks'][] = 'fresh-tenant-platform-system-center-install';
 
     if ($target !== '--php') {
         $manifest = (new ArtifactManifest())->read($target);
@@ -118,7 +92,7 @@ try {
     if (($report['status'] ?? '') !== 'passed') {
         $report['status'] = 'failed';
     }
-    foreach (['legacy-identity.log', 'app-identity.log', 'broker.log'] as $log) {
+    foreach (['tenant.log'] as $log) {
         if (is_file($base . '/' . $log)) {
             $report['logs'][$log] = hash_file('sha256', $base . '/' . $log);
         }

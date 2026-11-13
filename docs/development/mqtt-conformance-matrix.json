@@ -2524,28 +2524,28 @@
       "status": "not-run",
       "assertions": [
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "文本帧没有按 1003 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 331
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "不匹配 Origin 没有按 1008 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 302
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "握手未选择 mqtt 子协议",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 316
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "跨 WebSocket 消息的 CONNECT 半包未重组",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
@@ -2565,28 +2565,28 @@
       "status": "not-run",
       "assertions": [
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "文本帧没有按 1003 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 331
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "不匹配 Origin 没有按 1008 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 302
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "握手未选择 mqtt 子协议",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 316
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "跨 WebSocket 消息的 CONNECT 半包未重组",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
@@ -2618,28 +2618,28 @@
       "status": "not-run",
       "assertions": [
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "文本帧没有按 1003 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 331
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "不匹配 Origin 没有按 1008 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 302
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "握手未选择 mqtt 子协议",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 316
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "跨 WebSocket 消息的 CONNECT 半包未重组",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
@@ -7326,28 +7326,28 @@
       "status": "not-run",
       "assertions": [
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "文本帧没有按 1003 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 331
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "不匹配 Origin 没有按 1008 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 302
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "握手未选择 mqtt 子协议",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 316
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "跨 WebSocket 消息的 CONNECT 半包未重组",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
@@ -7367,28 +7367,28 @@
       "status": "not-run",
       "assertions": [
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "文本帧没有按 1003 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 331
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "不匹配 Origin 没有按 1008 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 302
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "握手未选择 mqtt 子协议",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 316
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "跨 WebSocket 消息的 CONNECT 半包未重组",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
@@ -7420,28 +7420,28 @@
       "status": "not-run",
       "assertions": [
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "文本帧没有按 1003 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 331
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "不匹配 Origin 没有按 1008 关闭",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 302
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "握手未选择 mqtt 子协议",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",
           "line": 316
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "跨 WebSocket 消息的 CONNECT 半包未重组",
           "fileSha256": "ceadab391cb726e9f8ad5e9db414e88def49836b32abea55179d52cf96a3f2a4",

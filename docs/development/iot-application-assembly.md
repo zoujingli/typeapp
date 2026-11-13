@@ -53,6 +53,6 @@ flowchart TD
 
 ## 验证入口与限制
 
-`tests/iot-identity.php` 及三库控制器验证双端、分类、设备、资格、应用、转配、运维及 `--scheduler`；MQTT 使用独立 PostgreSQL 同步主备与 TLS 客户端。完整参数见[验收入口](test-entrypoints.md)。Redis 测试要求 `TYPE_REDIS_SERVER` 指向同平台受控服务。
+`tests/tenant.php` 及三库入口验证 Platform、System、Center、分类、设备、资格、应用、转配、运维和恢复核对；通用 MQTT 使用独立 PostgreSQL 同步主备与 TLS 客户端。完整参数见[验收入口](test-entrypoints.md)。Redis 测试要求 `TYPE_REDIS_SERVER` 指向同平台受控服务。
 
 HTTP 覆盖白名单、PATCH 缺失/null、跨客户、版本、审计故障回滚、重启与排空。原始通信覆盖凭据、逐设备授权、协议持久状态及撤权；恢复核对同时覆盖注册资格与应用。此前包含旧数据处理链的程序证据保留原身份，不能作为当前源码验收。最终 AOT、无源码与平台矩阵分别记录。

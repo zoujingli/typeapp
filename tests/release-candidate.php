@@ -77,9 +77,6 @@ if ($operation === 'prepare') {
     $hiddenDist = $work . '/unavailable-dist';
     expect(is_dir($dist) && !file_exists($hiddenDist) && rename($dist, $hiddenDist), '无法移走构建端dist以验证内嵌资源');
     try {
-        if ($driver === 'pgsql' && in_array('iot', $record['features'], true) && in_array('mqtt', $record['features'], true)) {
-            $environment['TYPE_MQTT_CLIENT_ROOT'] = testMqttJsClient($work . '/mqtt-client');
-        }
         if (count($argv) === 5) {
             require __DIR__ . '/native-database.php';
             $tools = $driver === 'sqlite' ? [] : NativeDatabase::tools($driver, $driver === 'mysql' ? $argv[3] : $argv[4]);
@@ -105,23 +102,13 @@ if ($operation === 'prepare') {
         try {
             $features = $record['features'];
             $checks = [];
-            if (in_array('mqtt', $features, true)) {
-                $checks['mqtt'] = ['tests/broker-access.php', $candidate, $driver, '--tls'];
-            }
             if (in_array('iot', $features, true)) {
-                $checks['iot'] = ['tests/iot-identity.php', $candidate, $driver,
-                    '--app', '--audit', '--products', '--devices', '--enrollments', '--registration', '--applications', '--reassignments', '--operations'];
-                $checks['iot-demo'] = ['tests/demo-mode.php', $candidate, '--driver=' . $driver];
-                $upgradeReceipt = $work . '/' . $driver . '-upgrade.json';
-                $checks['iot-upgrade'] = ['tests/candidate-upgrade.php', $candidate, $driver, $root . '/build/upgrade-baseline', $upgradeReceipt];
-                if ($driver === 'pgsql' && in_array('mqtt', $features, true)) {
-                    $checks['iot-communication'] = ['tests/iot-device-mqtt.php', $candidate, '--communication-mqtt'];
-                    $checks['iot-reassignment'] = ['tests/iot-device-mqtt.php', $candidate, '--reassignments-mqtt'];
-                    $checks['iot-demo-store'] = ['tests/demo-mode.php', $candidate, '--driver=pgsql', '--pgsql-store'];
+                $tenant = ['tests/tenant.php', $driver];
+                if ($driver !== 'sqlite') {
+                    $tenant[] = $driver === 'mysql' ? ($argv[3] ?? '') : ($argv[4] ?? '');
                 }
-            }
-            if (in_array('scheduler', $features, true)) {
-                $checks['scheduler'] = ['tests/iot-identity.php', $candidate, $driver, '--app', '--scheduler'];
+                $tenant[] = $candidate;
+                $checks['tenant'] = $tenant;
             }
             foreach ($checks as $feature => $arguments) {
                 $businessResult = (new Process([PHP_BINARY, ...$arguments], $root, $environment))->wait(900);
@@ -130,12 +117,6 @@ if ($operation === 'prepare') {
                 expect($businessResult->successful(), '最终候选业务验收失败：' . $feature . "\n" . $businessResult->stdout . $businessResult->stderr);
                 expect(hash_file('sha256', $candidate) === $record['sha256'], '业务验收期间候选字节改变');
                 $business[$feature] = ['status' => 'passed', 'artifact-sha256' => $record['sha256'], 'log-sha256' => hash_file('sha256', $log)];
-                if ($feature === 'iot-upgrade') {
-                    $upgraded = json_decode(file_get_contents($upgradeReceipt), true, 64, JSON_THROW_ON_ERROR);
-                    expect(($upgraded['status'] ?? null) === 'passed' && ($upgraded['driver'] ?? null) === $driver
-                        && ($upgraded['artifact-sha256'] ?? null) === $record['sha256'], '升级回执不属于同一候选');
-                    $business[$feature]['baseline'] = $upgraded['baseline'];
-                }
             }
         } finally {
             unlink($candidate . '.build.json');
@@ -165,7 +146,7 @@ if ($operation === 'prepare') {
     $database = new NativeDatabase($work . '/service-database', $profile, $tools);
     try {
         $environment = array_replace(getenv(), $database->environment(), ['TYPE_SERVICE_DRIVER' => $profile, 'TYPE_SERVICE_ARTIFACT' => $candidate]);
-        $command = PHP_OS_FAMILY === 'Darwin' ? [PHP_BINARY, $root . '/tests/native-service.php', $candidate]
+        $command = PHP_OS_FAMILY === 'Darwin' ? [PHP_BINARY, $root . '/tests/archive/legacy/native-service.php', $candidate]
             : ['bash', $root . '/.github/scripts/run-linux-service.sh'];
         $result = (new Process($command, $root, $environment))->wait(600);
         file_put_contents($work . '/service.log', $result->stdout . $result->stderr);

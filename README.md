@@ -58,7 +58,7 @@ php dev.php check
 ```text
 plugin/type-*/       Plugins，可独立组合的 Composer 包
 templates/type-project/  独立业务应用起点
-app/                 成品案例物联中心（common / admin / broker / iot）
+app/                 成品案例物联中心（common / platform / system / center）
 web/                 物联中心 Vben Admin Pro 管理端
 config/              成品案例的应用、数据库配置与路由声明
 docs/guide/          公开使用指南（发布到 iots.top）

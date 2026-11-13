@@ -98,9 +98,9 @@ php tests/native.php --chroot "$task_sandbox"
 
 ## 组件与通信验收
 
-启动与运行修复可用 `php tests/application-runtime.php <完整应用产物> <MySQL工具根> <PostgreSQL工具根> <redis-server> [已发布旧版目录]` 验证。该入口在 `build/` 新建含空格的专用应用目录与三库/Redis 实例，从不同工作目录调用同一程序，验证配置拒绝、真实备份与重复升级、迁移恢复、生产 500 关联、依赖故障下的就绪以及调度停止/失锁。可选旧版目录须包含公开 `release-manifest.json` 和当前平台三个 profile 的程序，先逐项核对摘要，再由旧程序安装、新程序升级及更新页面；未提供时由当前程序安装。结束后关闭专用进程，报告和日志留在输出目录供归档；不访问本机业务数据。当前入口使用 Unix 停止信号，覆盖 Linux/macOS，不能作为 Windows 控制事件验收。
+历史候选运行装置已归档到 `tests/archive/legacy/application-runtime.php`，不作为当前发布门禁。当前应用使用 `tests/tenant.php` 验证全新安装、管理 API、恢复核对和资源回收；生产升级必须按全新空库策略由发布批次单独设计和验收，不读取旧客户数据。
 
-补充 `php tests/iot-identity-databases.php <同一产物> <MySQL工具根> <PostgreSQL工具根> --app --no-source` 验证三库完整身份业务及无源码运行。开发 embed 允许同产物验三库；静态 Release 每个程序只有一个数据库 profile，必须继续走各平台对应的发布候选验收。当前修复的准确结果见[运行修复证据](../evidence/system-architecture-fixes-20261004.md)。
+补充 `php tests/tenant.php mysql <MySQL工具根> <同一产物>` 和 `php tests/tenant.php pgsql <PostgreSQL工具根> <同一产物>` 验证三库完整身份业务及无源码运行。开发 embed 允许同产物验三库；静态 Release 每个程序只有一个数据库 profile，必须继续走各平台对应的发布候选验收。当前修复的准确结果见[运行修复证据](../evidence/system-architecture-fixes-20261004.md)。
 
 在匹配的 SDK 环境中，`php tests/build-platform-native.php` 验证真实产物、运行库身份和缓存；`php tests/helpers-build.php` 全量编译 SQLite、ORM、校验与运行组件，并对照 PHP 和原生业务结果。这些入口使用自身的测试目录，不等同于完整应用或无源码部署验收。
 

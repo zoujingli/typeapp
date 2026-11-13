@@ -16,7 +16,7 @@ use Type\Core\Http\Message\Factory;
 use Type\Core\Http\ReadOnlyPolicy;
 
 /**
- * 环境和已匹配路由的边界；真实身份与持久数据由 demo-mode.php 复核。
+ * 环境和已匹配路由的边界；真实身份与持久数据由 Tenant 管理入口复核。
  * @internal
  * @coversNothing
  */
@@ -54,10 +54,10 @@ final class DemoModeTest extends TestCase
             ++$executed;
             return $factory->createResponse(204);
         });
-        $policy = new ReadOnlyPolicy(['admin.login', 'admin.logout']);
-        foreach ([['POST', 'admin.site'], ['PUT', 'admin.login'], ['PATCH', 'admin.users'], ['DELETE', 'admin.users'], ['POST', 'admin.login.extra'], ['POST', '']] as [$method, $route]) {
+        $policy = new ReadOnlyPolicy(['platform.login', 'platform.logout']);
+        foreach ([['POST', 'platform.site'], ['PUT', 'platform.login'], ['PATCH', 'platform.users'], ['DELETE', 'platform.users'], ['POST', 'platform.login.extra'], ['POST', '']] as [$method, $route]) {
             try {
-                $policy->process($factory->createServerRequest($method, '/admin/auth/login')->withAttribute('type.route', $route), $handler);
+                $policy->process($factory->createServerRequest($method, '/platform/auth/login')->withAttribute('type.route', $route), $handler);
                 self::fail('写入未被拒绝');
             } catch (HttpError $error) {
                 self::assertSame(403, $error->status());
@@ -65,19 +65,19 @@ final class DemoModeTest extends TestCase
             }
         }
         self::assertSame(0, $executed);
-        foreach ([['GET', 'admin.site'], ['HEAD', 'admin.site'], ['OPTIONS', 'admin.site'], ['POST', 'admin.login'], ['POST', 'admin.logout']] as [$method, $route]) {
+        foreach ([['GET', 'platform.site'], ['HEAD', 'platform.site'], ['OPTIONS', 'platform.site'], ['POST', 'platform.login'], ['POST', 'platform.logout']] as [$method, $route]) {
             self::assertSame(204, $policy->process($factory->createServerRequest($method, '/')->withAttribute('type.route', $route), $handler)->getStatusCode());
         }
         self::assertSame(5, $executed);
         try {
-            (new ReadOnlyPolicy())->process($factory->createServerRequest('POST', '/')->withAttribute('type.route', 'admin.login'), $handler);
+            (new ReadOnlyPolicy())->process($factory->createServerRequest('POST', '/')->withAttribute('type.route', 'platform.login'), $handler);
             self::fail('模板默认放行了认证写入');
         } catch (HttpError $error) {
             self::assertSame('demo_readonly', $error->errorCode());
         }
     }
 
-    public function testOrdinaryAccountValidationAcceptsAdminCredentials(): void
+    public function testOrdinaryAccountValidationAcceptsPlatformCredentials(): void
     {
         IdentityService::validateAccount('admin', '管理员', 'admin');
         IdentityService::validateAccount('ordinary', '普通账号', 'abcde');

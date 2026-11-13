@@ -87,7 +87,7 @@ try {
                 }
                 $serviceEnvironment['TYPE_TEMPLATE_EXPECTED_MESSAGE'] = $evidence['business-message'];
                 echo nativeDatabaseCommand(
-                    [PHP_BINARY, $root . '/tests/native-service-systemd.php', $service['directory'] . '/service.json', $service['manifest-sha256']],
+                    [PHP_BINARY, $root . '/tests/archive/legacy/native-service-systemd.php', $service['directory'] . '/service.json', $service['manifest-sha256']],
                     $serviceEnvironment,
                     [],
                     $work . '/systemd.log',

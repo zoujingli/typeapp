@@ -58,15 +58,16 @@ try {
                 if ($mode === 'native') {
                     $environment['TYPE_NATIVE_PHP_INI'] = $built['runtime-profile']['ini'];
                 }
-                $output = nativeDatabaseCommand([PHP_BINARY, $root . '/tests/iot-identity.php', $command, $driver, '--app'], $environment, $secrets, $work . '/' . $label . '.log', 120);
-                expect(preg_match('#通过：(.*?/verification\.json)\s*$#u', $output, $matches) === 1, '物联中心入口没有返回真实验收报告');
-                $evidence = json_decode((string)file_get_contents($matches[1]), true, 512, JSON_THROW_ON_ERROR);
-                expect($evidence['status'] === 'passed' && $evidence['driver'] === $driver && $evidence['native'] === ($mode === 'native'), '物联中心报告的驱动、入口模式或结果不符');
-                if ($mode === 'native') {
-                    expect($evidence['binary_sha256'] === $report['artifact-sha256'], '三库没有使用同一原生产物');
+                $tenant = [PHP_BINARY, $root . '/tests/tenant.php', $driver];
+                if ($driver !== 'sqlite') {
+                    $tenant[] = $tools[$driver]['root'];
                 }
-                $entry[$label . '-evidence'] = $matches[1];
-                $entry[$label . '-evidence-sha256'] = hash_file('sha256', $matches[1]);
+                if ($mode === 'native') {
+                    $tenant[] = $artifact;
+                }
+                $output = nativeDatabaseCommand($tenant, $environment, $secrets, $work . '/' . $label . '.log', 900);
+                expect(str_contains($output, 'Tenant 空库安装、独立同名账号'), 'Tenant 入口没有返回当前管理闭环通过证据');
+                $entry[$label . '-output-sha256'] = hash('sha256', $output);
                 echo $output;
             } catch (Throwable $failure) {
                 $failed = $failure;

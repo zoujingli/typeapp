@@ -36,7 +36,7 @@ $result = (new Type\Build\ConfigCompiler())->generate($root, [
 
 这里是构建工具调用示意，不是生产入口。结果包含生成类名 `class`、实际配置输入的绝对路径列表 `files` 以及生成源码 `code`。调用者将 `files` 纳入完整构建身份，将 `code` 纳入 AOT 源码；原配置不能同时被当作业务 PHP 编译单元。
 
-`files` 必须显式列出，不能通过通配符或运行时目录搜索补全。路径去掉第一个目录和 `.php` 后映射为配置 section：`config/app.php` 为 `app`，`config/admin/auth.php` 为 `admin.auth`。其他显式目录采用同一规则；因此两个目录都声明 `app.php` 会冲突。路径段只接受以字母或下划线开头、后续包含字母、数字、下划线或连字符的名称；拒绝绝对路径、`..`、符号链接与项目外文件。
+`files` 必须显式列出，不能通过通配符或运行时目录搜索补全。路径去掉第一个目录和 `.php` 后映射为配置 section：`config/app.php` 为 `app`，`config/platform/auth.php` 为 `platform.auth`。其他显式目录采用同一规则；因此两个目录都声明 `app.php` 会冲突。路径段只接受以字母或下划线开头、后续包含字母、数字、下划线或连字符的名称；拒绝绝对路径、`..`、符号链接与项目外文件。
 
 每个文件严格由一个 `declare(strict_types=1);` 和一个 `return` 数组组成；允许注释。支持嵌套数组、字符串、整数、有限浮点数、`true`、`false`、`null`、正负数字以及 `env('静态键', 标量或 null 默认值)`。数组键只能是整数或不含点的非空字符串，重复键明确拒绝；数字字符串键及负数字键的后续追加沿用当前 PHP 规则。
 

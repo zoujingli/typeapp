@@ -82,7 +82,7 @@ build/app/type-app iot:mqtt-fence <node-id> <run-id> <actor> <proof-ref>
 
 ```bash
 php tests/mqtt-consumer.php --native --cluster-only
-php tests/iot-device-mqtt.php build/app/type-app --cluster --no-source
+composer test:mqtt-mtls
 ```
 
 ## 本机可重复故障入口
@@ -91,8 +91,7 @@ php tests/iot-device-mqtt.php build/app/type-app --cluster --no-source
 
 ```bash
 composer typeapp:build
-php tests/iot-ha.php --infrastructure-only
-php tests/iot-ha.php build/app/type-app --no-source
+`tests/tenant.php` 负责当前 Platform/System/Center 的新安装和逻辑恢复核对；PostgreSQL/Patroni/etcd/HAProxy 的物理故障与跨节点 MQTT 验收属于发布现场专项，当前仓库不提供旧版一键脚本。
 ```
 
 入口仅在 `build/iot-ha-<随机值>` 下建立新私有数据，所有监听仅在回环。`PostgresHa` 拥有三个真实 Patroni/PostgreSQL、三个 etcd 投票者、三个仅供注入 DCS 网络故障的 TCP 转发及一个写入口。启动检查除明确的本机回环公告地址外不允许 Patroni 校验错误；正式部署没有这个例外。

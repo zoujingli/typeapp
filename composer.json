@@ -76,12 +76,6 @@
     "typeapp": "@php bin/typeapp",
     "typeapp:prepare": "@php bin/typeapp-prepare",
     "web:build": ["Composer\\Config::disableProcessTimeout", "pnpm --dir web install --frozen-lockfile", "pnpm --dir web typecheck", "pnpm --dir web build"],
-    "test:iot-identity": "@php tests/iot-identity.php --php sqlite --app",
-    "test:iot-identity-native": "@php tests/iot-identity.php build/app/type-app sqlite --app",
-    "test:iot-identity-databases": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/iot-identity-databases.php"
-    ],
     "test:tenant": "@php tests/tenant.php sqlite",
     "test:tenant-native": "@php tests/tenant.php sqlite build/app/type-app",
     "test:tenant-mysql": [
@@ -127,13 +121,11 @@
       "@php vendor/bin/type watch docs/build-config/type-app.json"
     ],
     "test:development-watch": "@php tests/development-watch.php",
-    "test:demo-mode": "@php tests/demo-mode.php --php",
     "test:project-create": "@php tests/project-create.php",
     "typeapp:package": "@php vendor/bin/type package build/app/type-app build/typeapp-iot",
     "test:package": "@php tests/native-package.php build/app/type-app",
     "test:package-resources": "@php tests/package-resources.php",
     "test:service-definition": "@php tests/service-definition.php build/app/type-app",
-    "test:service-launchd": "@php tests/native-service.php build/app/type-app",
     "test:runtime-profile": "@php tests/runtime-profile.php",
     "test:bundled-swoole-consumer": "@php tests/bundled-swoole-consumer.php",
     "test:license": "@php tests/license.php",
@@ -143,7 +135,6 @@
       "Composer\\Config::disableProcessTimeout",
       "@php tests/notices-build.php"
     ],
-    "test:native-package-clean": "@php tests/native-package-clean.php",
     "test:native-database-recovery": [
       "Composer\\Config::disableProcessTimeout",
       "@php tests/native-database-recovery.php"
@@ -562,98 +553,6 @@
     "test:websocket-native": [
       "Composer\\Config::disableProcessTimeout",
       "@php tests/websocket-native.php"
-    ],
-    "test:broker-access": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-access.php --php sqlite"
-    ],
-    "test:broker-access-native": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-access.php build/app/type-app sqlite --no-source"
-    ],
-    "test:broker-certificates": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-certificates.php --php sqlite"
-    ],
-    "test:broker-certificates-native": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-certificates.php build/app/type-app sqlite --no-source"
-    ],
-    "test:broker-disconnect": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-disconnect.php --php sqlite"
-    ],
-    "test:broker-disconnect-native": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-disconnect.php build/app/type-app sqlite --no-source"
-    ],
-    "test:broker-session-terminate": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-session-terminate.php --php pgsql"
-    ],
-    "test:broker-session-terminate-native": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-session-terminate.php build/app/type-app pgsql --no-source"
-    ],
-    "test:broker-retain-clear": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-retain-clear.php --php pgsql"
-    ],
-    "test:broker-retain-clear-native": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-retain-clear.php build/app/type-app pgsql --no-source"
-    ],
-    "test:broker-quota": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-quota.php --php pgsql"
-    ],
-    "test:broker-quota-native": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-quota.php build/app/type-app pgsql --no-source"
-    ],
-    "test:broker-runtime": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-runtime.php --php pgsql"
-    ],
-    "test:broker-runtime-native": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-runtime.php build/app/type-app pgsql --no-source"
-    ],
-    "test:broker-debug": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-debug.php --php pgsql"
-    ],
-    "test:broker-debug-native": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-debug.php build/app/type-app pgsql --no-source"
-    ],
-    "test:broker-compat": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-compat.php --php pgsql"
-    ],
-    "test:broker-compat-native": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-compat.php build/app/type-app pgsql --no-source"
-    ],
-    "test:broker-recovery": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-recovery.php --php pgsql"
-    ],
-    "test:broker-interop": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-interop.php --php pgsql"
-    ],
-    "test:broker-interop-native": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-interop.php build/app/type-app pgsql --no-source"
-    ],
-    "test:broker-candidate": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-candidate.php --php"
-    ],
-    "test:broker-candidate-native": [
-      "Composer\\Config::disableProcessTimeout",
-      "@php tests/broker-candidate.php build/app/type-app --no-source --independent"
     ],
     "build:outcomes": "@php tests/build-scenario.php docs/build-config/type-outcomes.json",
     "test:outcomes-native": [

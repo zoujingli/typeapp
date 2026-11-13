@@ -18,7 +18,7 @@ MQTT 3.1.1 与 5.0 的兼容性以 OASIS 正文为准，编号附录只用于交
 php tests/mqtt-consumer.php --native --qos2 --retained --session --will --subscriptions --shared --capacity
 php tests/mqtt-consumer.php --native --conformance-only
 TYPE_MQTT_CONFORMANCE_TOOLS=cli,probe php tests/mqtt-consumer.php --native --conformance-only
-composer test:broker-interop
+composer test:mqtt-websocket
 ```
 
 `TYPE_PAHO_TESTING`、`TYPE_MOSQUITTO_SOURCE`、`TYPE_MOSQUITTO_BIN` 和 `TYPE_PYTHON` 指定外部工具。`TYPE_MQTT_CONFORMANCE_CASE` 按逗号选择完整用例标识；未选择的用例应报告 `not-run`。消费者负责测试 Broker、连接与同步数据库的停止，报告保存于独立输出目录。

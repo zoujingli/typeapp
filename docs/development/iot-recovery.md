@@ -78,9 +78,10 @@ type-app iot:recovery restore <恢复ID>
 从仓库根使用[原生开发环境](native-command.md)中的锁定工具链和真实 PostgreSQL 工具目录：
 
 ```sh
-php tests/iot-recovery.php --php
-php tests/iot-recovery.php build/app/type-app --no-source
-php tests/iot-recovery.php build/app/type-app --no-source --physical
+composer test:tenant
+composer test:tenant-native
+
+物理备份、WAL 和同步主备故障需要按发布批次在专用 PostgreSQL 环境中执行，不能用逻辑 Tenant 恢复测试替代。
 ```
 
 `--physical` 属于独立恢复脚本。身份三库入口不接受旧 `--recovery` 组合，不能据其基础身份结果判断恢复通过；当前入口关系见[验收入口](test-entrypoints.md)。以下说明当前恢复装置的行为，结果以对应报告及程序身份为准，单机物理链不代替全平台或独立故障域。

@@ -195,7 +195,7 @@ final class Reading extends \Type\Orm\Model
 产品服务的调用方式如下：应用入口已经绑定执行作用域，`$identity` 来自认证结果，产品服务重新核对当前权限后建立可信租户范围。调用方不用借还连接，也不把请求头中的租户值直接交给模型作为授权依据。
 
 ```php
-use app\iot\service\ProductService;
+use app\center\service\ProductService;
 
 $products = new ProductService();
 $created = $products->create($identity, $tenantId, '温湿度传感器', '仓库环境采集');

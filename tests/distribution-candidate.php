@@ -110,9 +110,9 @@ function candidateIot(string $root, string $source): void
         sort($names);
         sort($compiled);
         expect($names === $compiled && in_array('zoujingli/type-mqtt', $names, true)
-            && $manifest['composer-lock-sha256'] === $record['composer_lock_sha256'], 'IoT完整生产依赖或锁定身份不匹配');
+            && $manifest['composer-lock-sha256'] === $record['composer_lock_sha256'], '物联中心完整生产依赖或锁定身份不匹配');
         foreach ($built['source-sets'] as $set) {
-            expect($set['exclusions'] === [], 'IoT完整候选不能排除生产文件');
+            expect($set['exclusions'] === [], '物联中心完整候选不能排除生产文件');
         }
         $record['artifact_sha256'] = hash_file('sha256', $artifact);
         $record['build_id'] = $manifest['build-id'];
@@ -128,13 +128,15 @@ function candidateIot(string $root, string $source): void
         $scenarios = [
             'package' => ['native-package.php', [], 180],
             'framework-databases' => ['native-database-application.php', [$mysql, $pgsql], 600],
-            'iot-databases' => ['iot-identity-databases.php', [$mysql, $pgsql, '--no-source', '--app', '--audit', '--products', '--devices', '--enrollments', '--registration', '--applications', '--reassignments', '--operations'], 1500],
-            'iot-mqtt' => ['iot-device-mqtt.php', ['--communication-mqtt', '--no-source'], 720],
+            'tenant-management' => ['tenant.php', ['sqlite', $artifact], 900],
         ];
         foreach ($scenarios as $name => [$script, $arguments, $seconds]) {
-            echo '正在运行同一IoT产物公开验收：' . $name . "\n";
+            echo '正在运行同一物联中心产物公开验收：' . $name . "\n";
+            $command = $script === 'tenant.php'
+                ? [PHP_BINARY, $consumer . '/tests/' . $script, ...$arguments]
+                : [PHP_BINARY, $consumer . '/tests/' . $script, $artifact, ...$arguments];
             $output = nativeDatabaseCommand(
-                [PHP_BINARY, $consumer . '/tests/' . $script, $artifact, ...$arguments],
+                $command,
                 $environment,
                 [],
                 $base . '/' . $name . '.log',

@@ -139,22 +139,22 @@
       "reason": "断言映射供当前产物验证使用，运行结果须按完整条款和目标平台分别确认。",
       "assertions": [
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "文本帧没有按 1003 关闭"
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "不匹配 Origin 没有按 1008 关闭"
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "握手未选择 mqtt 子协议"
         },
         {
-          "file": "tests/broker-interop.php",
+          "file": "tests/archive/legacy/broker-interop.php",
           "function": "interopWsHandshakeCases",
           "needle": "跨 WebSocket 消息的 CONNECT 半包未重组"
         }

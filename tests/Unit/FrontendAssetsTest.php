@@ -106,7 +106,7 @@ final class FrontendAssetsTest extends TestCase
         self::assertSame($response->getHeaderLine('Content-Length'), $head->getHeaderLine('Content-Length'));
         $head->getBody()->close();
         self::assertSame(405, $pages->respond($get->withMethod('POST'), $messages)->getStatusCode());
-        foreach (['/secret.txt', '/admin/users', '/public/site', '/assets/missing.js', '/%2e%2e/config'] as $path) {
+        foreach (['/secret.txt', '/platform/users', '/public/site', '/assets/missing.js', '/%2e%2e/config'] as $path) {
             self::assertNull($pages->respond($messages->createServerRequest('GET', 'http://localhost' . $path), $messages));
         }
     }
