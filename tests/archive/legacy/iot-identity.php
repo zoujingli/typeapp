@@ -1875,7 +1875,7 @@ if (in_array('--app', $argv, true) || in_array('--products', $argv, true) || in_
         $browserOptions = array_values(array_filter($argv, static fn (string $value): bool => str_starts_with($value, '--browser-dist=')));
         if ($browserOptions !== []) {
             expect($driver === 'sqlite' && count($browserOptions) === 1, '双端浏览器只使用本轮SQLite装置');
-            $browser = new Process(['node', $root . '/tests/app-identity-browser.mjs', $base, substr($browserOptions[0], 15), 'http://' . $address], $root, $environment + $credentials);
+            $browser = new Process(['node', $root . '/tests/archive/legacy/app-identity-browser.mjs', $base, substr($browserOptions[0], 15), 'http://' . $address], $root, $environment + $credentials);
             try {
                 $browserResult = $browser->wait(390);
                 file_put_contents($base . '/browser.log', str_replace(array_values($credentials), '<REDACTED>', $browserResult->stdout . $browserResult->stderr));
