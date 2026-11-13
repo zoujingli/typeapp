@@ -5,7 +5,7 @@ import { applySitePreferences, switchPreferencesScope } from '../preferences';
 import type { Realm, User, Menu, PublicSiteSettings, IdentityContext, Tenant, AccessPage } from './contracts';
 
 /** 固定客户入口的可信路径前缀；客户标识为不可变的 32 位小写十六进制值。 */
-export const entryBase = /^\/s\/[a-f0-9]{32}(?=\/|$)/.exec(window.location.pathname)?.[0] || '';
+export const entryBase = /^\/t\/[a-f0-9]{32}(?=\/|$)/.exec(window.location.pathname)?.[0] || '';
 export const entryContext = reactive<{ bound: boolean; tenant: Tenant | null; loaded: boolean }>({ bound: false, tenant: null, loaded: false });
 export const session = reactive<{ realm: Realm; token: string; user: User | null; tenant: Tenant | null; identity: IdentityContext | null; impersonating: boolean; returnToPlatform: boolean; generation: number; notice: string; permissions: string[]; menus: Menu[] }>({
   realm: 'system', token: '', user: null, tenant: null, identity: null, impersonating: false, returnToPlatform: false,
@@ -215,8 +215,8 @@ export async function request<T>(path: string, options: { method?: string; data?
     throw new ApiError('demo_readonly', 403);
   }
   // 固定路径沿用当前路径；子域名保持当前域名的直接 API 入口，主域名选定客户后才补固定路径。
-  const prefix = path.startsWith('/platform') || path.startsWith('/s/') ? '' : entryBase
-    || (!entryContext.bound && /^\/(system|center)\//.test(path) && session.tenant ? `/s/${session.tenant.id}` : '');
+  const prefix = path.startsWith('/platform') || path.startsWith('/t/') ? '' : entryBase
+    || (!entryContext.bound && /^\/(system|center)\//.test(path) && session.tenant ? `/t/${session.tenant.id}` : '');
   if (options.tenant && session.realm === 'system' && options.tenant !== session.tenant?.id) throw new ApiError('tenant_context_mismatch', 403);
   const controller = new AbortController();
   const generation = session.generation;
@@ -253,7 +253,7 @@ let contextRequest: AbortController | undefined;
 export async function loadSiteSettings(tenant?: Tenant | null, realm: Realm = window.location.hash.startsWith('#/platform') ? 'platform' : 'system') {
   const generation = ++contextGeneration;
   contextRequest?.abort(); contextRequest = new AbortController();
-  const path = realm === 'platform' ? '/platform/public/context' : tenant ? `/s/${tenant.id}/public/context` : '/public/context';
+  const path = realm === 'platform' ? '/platform/public/context' : tenant ? `/t/${tenant.id}/public/context` : '/public/context';
   const current = await request<{ realm: Realm; bound: boolean; tenant: Tenant | null; site: Omit<PublicSiteSettings, 'environment'>; environment: PublicSiteSettings['environment'] }>(path, { public: true, signal: contextRequest.signal });
   if (generation !== contextGeneration) throw new DOMException('客户配置请求已取消', 'AbortError');
   Object.assign(siteSettings, current.site, { environment: current.environment });
@@ -271,7 +271,7 @@ export async function login(login: string, password: string, realm: Realm = 'sys
   session.token = result.accessToken; session.user = result.user; session.notice = '';
   sessionStorage.setItem(sessionKey(), result.accessToken);
   if (realm === 'system' && !entryContext.bound && tenant) {
-    window.location.assign(`/s/${tenant.id}/#${'/system/profile'}`);
+    window.location.assign(`/t/${tenant.id}/#${'/system/profile'}`);
     return;
   }
   await loadUser();

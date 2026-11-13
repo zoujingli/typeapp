@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: true,
-      proxy: Object.fromEntries(['/public', '/platform', '/system', '/center', '^/s/[a-f0-9]{32}/(?:public|system|center)(?:/|$)'].map(path => [path, { target: env.IOT_API_ORIGIN || 'http://127.0.0.1:8080', changeOrigin: true }])),
+      proxy: Object.fromEntries(['/public', '/platform', '/system', '/center', '^/t/[a-f0-9]{32}/(?:public|system|center)(?:/|$)'].map(path => [path, { target: env.IOT_API_ORIGIN || 'http://127.0.0.1:8080', changeOrigin: true }])),
     },
     build: { outDir: '../../dist', emptyOutDir: true },
   };

@@ -28,12 +28,12 @@ Platform 模型位于 `app/platform/model`，System 模型位于 `app/system/mod
 | --- | --- |
 | 主域名根目录 | 默认 `/#/system/login`；搜索、分页选择启用客户后填写账号与密码 |
 | 登记客户子域名 | 加载该客户品牌和主题，只填写账号与密码 |
-| `/s/{saas_id}/` | 固定客户，刷新和深链接保留范围 |
+| `/t/{tenant_id}/` | 固定客户，刷新和深链接保留范围 |
 | `/#/platform/login` | 平台账号与密码，身份独立 |
 
-主域名选定客户后请求 `/s/{saas_id}/system/auth/login`，成功进入该固定路径工作区；子域名保持当前域名。切换客户会清空账号、密码和错误，并取消旧配置请求，防止响应乱序覆盖当前客户。
+主域名选定客户后请求 `/t/{tenant_id}/system/auth/login`，成功进入该固定路径工作区；子域名保持当前域名。切换客户会清空账号、密码和错误，并取消旧配置请求，防止响应乱序覆盖当前客户。
 
-`GET /public/saas` 只提供启用客户的标识与名称。`GET /public/context`、`GET /s/{saas_id}/public/context` 和平台的 `/platform/public/context` 仅返回登录展示白名单。认证接口为各域的 `POST /{realm}/auth/login`、`GET /{realm}/auth/me`、`POST /{realm}/auth/logout`，令牌通过 Bearer 头传递；System 与 Center API 必须位于匹配的客户入口下。
+`GET /public/tenants` 只提供启用客户的标识与名称。`GET /public/context`、`GET /t/{tenant_id}/public/context` 和平台的 `/platform/public/context` 仅返回登录展示白名单。认证接口为各域的 `POST /{realm}/auth/login`、`GET /{realm}/auth/me`、`POST /{realm}/auth/logout`，令牌通过 Bearer 头传递；System 与 Center API 必须位于匹配的客户入口下。
 
 请求先经过可信代理与 Host 规范化，再由 `TenantContext` 核对登记子域名或固定路径。未知子域名、停用客户、域名/路径冲突、会话与入口客户不一致均拒绝；客户端请求头不能授予 Tenant 身份。只有通过平台授权的管理操作，才在目标客户子作用域内访问 System 模型，退出后恢复外层绑定。
 

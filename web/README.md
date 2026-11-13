@@ -18,10 +18,10 @@
 | --- | --- | --- |
 | 主域名 | `/#/system/login` | 客户选择、账号、密码 |
 | 客户子域名 | 自动读取客户公开配置 | 账号、密码 |
-| `/s/{saas_id}/` | 固定客户并读取公开配置 | 账号、密码 |
+| `/t/{tenant_id}/` | 固定客户并读取公开配置 | 账号、密码 |
 | 平台 | `/#/platform/login` | 平台账号、密码 |
 
-客户选择使用 `/public/saas` 分页接口；客户公开配置使用 `/public/context` 或 `/s/{saas_id}/public/context`。固定路径和子域名只定位客户，身份资格仍由后端会话和 RBAC 校验。System 与 Center 共用客户 System 会话，Platform 会话独立。
+客户选择使用 `/public/tenants` 分页接口；客户公开配置使用 `/public/context` 或 `/t/{tenant_id}/public/context`。固定路径和子域名只定位客户，身份资格仍由后端会话和 RBAC 校验。System 与 Center 共用客户 System 会话，Platform 会话独立。
 
 ## 开发与构建
 

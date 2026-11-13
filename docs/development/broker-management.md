@@ -67,7 +67,7 @@ build/app/type-app broker:node-fence-result <operation-id>
 | --- | --- | --- |
 | 独立管理 | `GET /broker/audit` | `broker_admin`，拒绝租户和支持头；包含独立身份历史。 |
 | 平台管理端 | `GET /admin/broker/audit` | 同时要求 `admin.audit.read`、`admin.broker.read`；只查询双端 Broker 类别，拒绝租户和伪来源头。 |
-| SaaS 当前租户 | `GET /customer/tenants/{tenant}/broker/audit` | 路径与租户头一致，每次重验 `customer.audit.read`、`customer.broker.read` 及当前客户或模拟来源。 |
+| Tenant 当前租户 | `GET /customer/tenants/{tenant}/broker/audit` | 路径与租户头一致，每次重验 `customer.audit.read`、`customer.broker.read` 及当前客户或模拟来源。 |
 
 在独立及客户列表路径后追加事件 ID 查询详情；平台详情追加 `{source}/{id}`，其中 `source` 为 `admin` 或 `customer`。筛选接受 `actor_id`、`subject_id`、`operation_id`、`action`、`stage`、`result`、`from`、`to`；时间是 UTC 秒闭区间。`limit` 默认20、最大100，使用 `created_at DESC, id DESC` 键集分页，返回 `items`、`next_cursor`、`has_more`、`total: null`、`limit`。游标绑定完整当前授权、筛选和页大小；每页和详情都重新授权，不能沿用上一页权限。未知或重复参数拒绝，响应不超过1 MiB，不执行全表计数。
 
@@ -107,7 +107,7 @@ build/app/type-app app:audit-clean customer 1000
 | --- | --- | --- |
 | 独立管理 | `GET/POST /broker/access/principals`、`GET /broker/access/revisions` | `broker_admin` 且 `platform_admin`，拒绝租户和支持头 |
 | 平台管理端 | `GET/POST /admin/broker/access/principals`、`GET /admin/broker/access/revisions` | `admin.broker.read` 查看，`admin.broker.write` 发布/重试/回退 |
-| SaaS 当前租户 | `GET/POST /customer/tenants/{tenant}/broker/access/principals` | 路径与租户头一致，每次重验 `customer.broker.read` 或 `customer.broker.write` |
+| Tenant 当前租户 | `GET/POST /customer/tenants/{tenant}/broker/access/principals` | 路径与租户头一致，每次重验 `customer.broker.read` 或 `customer.broker.write` |
 
 发布、重试、回退使用 POST：`/broker/access/revisions/{id}/retry` 与 `/rollback`（平台与客户路径同样加前缀）。写入使用乐观 `expected_version`，冲突返回 `409 broker_access_version_conflict`。审计动作 `broker.access.read|publish|retry|rollback`，事实只保留 `reason`。页面为 `/broker/access`、`/admin/broker-access`、`/broker-access`，可见页每 5 秒刷新版本状态。
 
@@ -119,7 +119,7 @@ build/app/type-app app:audit-clean customer 1000
 | --- | --- | --- |
 | 独立管理 | `GET/POST /broker/access/cas`、主体 `certificates` | `broker_admin` 且 `platform_admin` |
 | 平台管理端 | `/admin/broker/access/cas` | `admin.broker.write` |
-| SaaS 当前租户 | `/customer/tenants/{tenant}/broker/access/cas` | 路径与租户头一致，`customer.broker.write` |
+| Tenant 当前租户 | `/customer/tenants/{tenant}/broker/access/cas` | 路径与租户头一致，`customer.broker.write` |
 
 ### 换证重叠与旧连接退出
 
@@ -133,7 +133,7 @@ build/app/type-app app:audit-clean customer 1000
 | --- | --- | --- |
 | 独立管理 | `GET/POST /broker/access/cas/{id}/crl`、`/broker/access/revocations` | `broker_admin` 且 `platform_admin` |
 | 平台管理端 | `/admin/broker/access/cas/{id}/crl`、`/admin/broker/access/revocations` | `admin.broker.write` |
-| SaaS 当前租户 | `/customer/tenants/{tenant}/broker/access/cas/{id}/crl`、`.../revocations` | 路径与租户头一致，`customer.broker.write` |
+| Tenant 当前租户 | `/customer/tenants/{tenant}/broker/access/cas/{id}/crl`、`.../revocations` | 路径与租户头一致，`customer.broker.write` |
 
 ### 精确断开并保留可恢复会话
 
@@ -141,7 +141,7 @@ build/app/type-app app:audit-clean customer 1000
 | --- | --- | --- | --- |
 | 独立管理 | `POST /broker/resources/connections/{id}/disconnect` | `GET /broker/operations/{id}` | `broker_admin` 且 `platform_admin` |
 | 平台管理端 | `POST /admin/broker/resources/connections/{id}/disconnect` | `GET /admin/broker/operations/{id}` | `admin.broker.write` |
-| SaaS 当前租户 | `POST /customer/tenants/{tenant}/broker/resources/connections/{id}/disconnect` | `GET /customer/tenants/{tenant}/broker/operations/{id}` | 路径与租户头一致，`customer.broker.write` |
+| Tenant 当前租户 | `POST /customer/tenants/{tenant}/broker/resources/connections/{id}/disconnect` | `GET /customer/tenants/{tenant}/broker/operations/{id}` | 路径与租户头一致，`customer.broker.write` |
 
 ### 预览并明确终止指定持久会话
 
@@ -149,7 +149,7 @@ build/app/type-app app:audit-clean customer 1000
 | --- | --- | --- | --- | --- |
 | 独立管理 | `GET /broker/resources/sessions/{id}/termination-preview` | `POST /broker/resources/sessions/{id}/terminate` | `GET /broker/operations/{id}` | `broker_admin` 且 `platform_admin` |
 | 平台管理端 | `GET /admin/broker/resources/sessions/{id}/termination-preview` | `POST /admin/broker/resources/sessions/{id}/terminate` | `GET /admin/broker/operations/{id}` | 预览 `admin.broker.read`，终止 `admin.broker.write` |
-| SaaS 当前租户 | `GET /customer/tenants/{tenant}/broker/resources/sessions/{id}/termination-preview` | `POST /customer/tenants/{tenant}/broker/resources/sessions/{id}/terminate` | `GET /customer/tenants/{tenant}/broker/operations/{id}` | 路径与租户头一致；预览 `customer.broker.read`，终止 `customer.broker.write` |
+| Tenant 当前租户 | `GET /customer/tenants/{tenant}/broker/resources/sessions/{id}/termination-preview` | `POST /customer/tenants/{tenant}/broker/resources/sessions/{id}/terminate` | `GET /customer/tenants/{tenant}/broker/operations/{id}` | 路径与租户头一致；预览 `customer.broker.read`，终止 `customer.broker.write` |
 
 ### 清除指定保留原件而不撤回已有交付
 
@@ -157,7 +157,7 @@ build/app/type-app app:audit-clean customer 1000
 | --- | --- | --- | --- | --- |
 | 独立管理 | `GET /broker/resources/retained/{id}/clearance-preview` | `POST /broker/resources/retained/{id}/clear` | `GET /broker/operations/{id}` | `broker_admin` 且 `platform_admin` |
 | 平台管理端 | `GET /admin/broker/resources/retained/{id}/clearance-preview` | `POST /admin/broker/resources/retained/{id}/clear` | `GET /admin/broker/operations/{id}` | 预览 `admin.broker.read`，清除 `admin.broker.write` |
-| SaaS 当前租户 | `GET /customer/tenants/{tenant}/broker/resources/retained/{id}/clearance-preview` | `POST /customer/tenants/{tenant}/broker/resources/retained/{id}/clear` | `GET /customer/tenants/{tenant}/broker/operations/{id}` | 路径与租户头一致；预览 `customer.broker.read`，清除 `customer.broker.write` |
+| Tenant 当前租户 | `GET /customer/tenants/{tenant}/broker/resources/retained/{id}/clearance-preview` | `POST /customer/tenants/{tenant}/broker/resources/retained/{id}/clear` | `GET /customer/tenants/{tenant}/broker/operations/{id}` | 路径与租户头一致；预览 `customer.broker.read`，清除 `customer.broker.write` |
 
 ### 在线降低配额并保留已确认积压
 
@@ -165,7 +165,7 @@ build/app/type-app app:audit-clean customer 1000
 | --- | --- | --- | --- | --- |
 | 独立管理 | `GET /broker/quotas` | `POST /broker/quotas/preview` | `POST /broker/quotas`、`/quotas/revisions/{id}/retry`、`/rollback` | `broker_admin` 且 `platform_admin` |
 | 平台管理端 | `GET /admin/broker/quotas` | `POST /admin/broker/quotas/preview` | 对应 `/admin/broker/quotas*` | 读取 `admin.broker.read`，发布 `admin.broker.write` |
-| SaaS 当前租户 | `GET /customer/tenants/{tenant}/broker/quotas` | `POST .../quotas/preview` | 写入一律 403 | 路径与租户头一致；只读 `customer.broker.read` |
+| Tenant 当前租户 | `GET /customer/tenants/{tenant}/broker/quotas` | `POST .../quotas/preview` | 写入一律 403 | 路径与租户头一致；只读 `customer.broker.read` |
 
 ### 滚动应用监听、节点证书和运行配置
 
@@ -175,7 +175,7 @@ build/app/type-app app:audit-clean customer 1000
 | --- | --- | --- | --- | --- |
 | 独立管理 | `GET /broker/runtime` | `POST /broker/runtime/preview` | `POST /broker/runtime`、`/runtime/revisions/{id}/retry`、`/rollback` | `broker_admin` 且 `platform_admin` |
 | 平台管理端 | `GET /admin/broker/runtime` | `POST /admin/broker/runtime/preview` | 对应 `/admin/broker/runtime*` | 读取 `admin.broker.read`，保存 `admin.broker.write` |
-| SaaS 当前租户 | `GET /customer/tenants/{tenant}/broker/runtime` | `POST .../runtime/preview` | 写入一律 403 | 路径与租户头一致；只读 `customer.broker.read` |
+| Tenant 当前租户 | `GET /customer/tenants/{tenant}/broker/runtime` | `POST .../runtime/preview` | 写入一律 403 | 路径与租户头一致；只读 `customer.broker.read` |
 
 ### 使用短期凭据进行授权 WSS 实时订阅
 
@@ -185,7 +185,7 @@ build/app/type-app app:audit-clean customer 1000
 | --- | --- | --- | --- | --- |
 | 独立管理 | `GET /broker/debug` | `POST /broker/debug` | `POST /broker/debug/revoke` | `broker_admin` 且 `platform_admin` |
 | 平台管理端 | `GET /admin/broker/debug` | 一律 403 | 一律 403 | 页面存在；不能取得租户载荷 |
-| SaaS 当前租户 | `GET /customer/tenants/{tenant}/broker/debug` | `POST .../debug` | `POST .../debug/revoke` | 路径与租户头一致；`customer.broker.read` 可签发订阅凭据 |
+| Tenant 当前租户 | `GET /customer/tenants/{tenant}/broker/debug` | `POST .../debug` | `POST .../debug/revoke` | 路径与租户头一致；`customer.broker.read` 可签发订阅凭据 |
 
 ### 有界调试发布并为业务服务优先释放名额
 
@@ -199,7 +199,7 @@ build/app/type-app app:audit-clean customer 1000
 | --- | --- | --- | --- |
 | 独立管理 | `GET /broker/compat` | 无写入入口 | `broker_admin` 且 `platform_admin` |
 | 平台管理端 | `GET /admin/broker/compat` | 一律 405 | `admin.broker.read` |
-| SaaS 当前租户 | `GET /customer/tenants/{tenant}/broker/compat` | 一律 405 | 路径与租户头一致；只读 `customer.broker.read` |
+| Tenant 当前租户 | `GET /customer/tenants/{tenant}/broker/compat` | 一律 405 | 路径与租户头一致；只读 `customer.broker.read` |
 
 独立节点页展示代次、危险回退已阻止及上述维护步骤。租户与平台只读查询同一快照。
 
@@ -213,7 +213,7 @@ build/app/type-app app:audit-clean customer 1000
 | --- | --- | --- | --- |
 | 独立管理 | `GET /broker/recovery` | 无写入入口 | `broker_admin` 且 `platform_admin` |
 | 平台管理端 | `GET /admin/broker/recovery` | 一律 405 | `admin.broker.read` |
-| SaaS 当前租户 | `GET /customer/tenants/{tenant}/broker/recovery` | 一律 405 | 路径与租户头一致；只读 `customer.broker.read` |
+| Tenant 当前租户 | `GET /customer/tenants/{tenant}/broker/recovery` | 一律 405 | 路径与租户头一致；只读 `customer.broker.read` |
 
 独立节点页展示核对宿主与进度；授权页和调试页展示 `recovery_verified`。租户与平台只读查询同一进度。
 

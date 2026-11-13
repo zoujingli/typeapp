@@ -21,12 +21,12 @@
 | --- | --- |
 | 主域名根入口 | 默认 `/#/system/login`，先搜索、分页选择客户，再输入账号与密码 |
 | 登记客户子域名 | 加载该客户品牌和主题，只输入账号与密码 |
-| `/s/{saas_id}/` 固定路径 | 固定客户，刷新和深链接保留工作区 |
+| `/t/{tenant_id}/` 固定路径 | 固定客户，刷新和深链接保留工作区 |
 | 平台入口 | `/#/platform/login`，平台账号与密码 |
 
-平台 API 使用 `/platform/*`。客户固定路径 API 使用 `/s/{saas_id}/system/*` 和 `/s/{saas_id}/center/*`；子域名直接使用 `/system/*`、`/center/*`。客户来自可信入口，请求头和正文不能授予客户身份；未知域名、停用客户以及入口、会话或路径冲突均拒绝。
+平台 API 使用 `/platform/*`。客户固定路径 API 使用 `/t/{tenant_id}/system/*` 和 `/t/{tenant_id}/center/*`；子域名直接使用 `/system/*`、`/center/*`。客户来自可信入口，请求头和正文不能授予客户身份；未知域名、停用客户以及入口、会话或路径冲突均拒绝。
 
-未登录展示接口为 `/public/saas`、`/public/context` 和 `/platform/public/context`，只返回公开白名单。主域名选择客户后通过固定路径登录；更换客户会取消旧请求、清空账号、密码和错误，旧响应不会覆盖新客户配置。
+未登录展示接口为 `/public/tenants`、`/public/context` 和 `/platform/public/context`，只返回公开白名单。主域名选择客户后通过固定路径登录；更换客户会取消旧请求、清空账号、密码和错误，旧响应不会覆盖新客户配置。
 
 ## 安装与开通客户
 
@@ -127,14 +127,14 @@ IOT_API_ORIGIN=http://127.0.0.1:9501 pnpm --dir web dev
 例如，客户工作区在已认证的当前客户范围内创建应用：
 
 ```http
-POST /s/{saas_id}/center/applications
+POST /t/{tenant_id}/center/applications
 Authorization: Bearer <客户人员令牌>
 Content-Type: application/json
 
 {"id":"93c2a69096b84484bd42e52a832783ef","name":"客户业务系统"}
 ```
 
-首次响应为 `201`，`data.application` 是公开应用信息，`data.credential` 是一次性交付；重试为 `200`，`credential=null`。普通详情使用 `GET /s/{saas_id}/center/applications/{application}`。Platform 对应 `/platform/applications` 和 `/platform/applications/{application}`，创建及变更请求体包含 `tenant_id`，不携带客户工作区头。
+首次响应为 `201`，`data.application` 是公开应用信息，`data.credential` 是一次性交付；重试为 `200`，`credential=null`。普通详情使用 `GET /t/{tenant_id}/center/applications/{application}`。Platform 对应 `/platform/applications` 和 `/platform/applications/{application}`，创建及变更请求体包含 `tenant_id`，不携带客户工作区头。
 
 变更入口是 `POST .../{application}/{action}`，`action` 为 `update`、`enable`、`disable`、`rotate`、`revoke` 或 `issue`，请求体携带当前 `version`；仅 `update` 另带 `name`。旧表单返回 `stale_version`；前次隔离未完成时返回 `broker_access_publish_paused`，应先核对发布详情，不能通过重试强行越过。
 
@@ -172,7 +172,7 @@ sequenceDiagram
 查询使用 `GET .../applications/{application}/devices?page=1&per_page=20`，返回分页授权、当前关系及应用发布状态。保存示例：
 
 ```http
-POST /s/{saas_id}/center/applications/{application}/devices/{device}
+POST /t/{tenant_id}/center/applications/{application}/devices/{device}
 Authorization: Bearer <客户人员令牌>
 Content-Type: application/json
 
@@ -263,8 +263,8 @@ stateDiagram-v2
 | 同一入口，`operation=reassign` | `platform.reassignments.create`；`id`、`version`、`target_tenant_id` |
 | `GET /platform/reassignments[/{id}]` | `platform.reassignments.read`；列表支持 `page`、`per_page` |
 | `POST /platform/reassignments/{id}` | `platform.reassignments.advance`；`action: "advance"`、当前记录 `version` |
-| `GET /s/{saas_id}/center/reassignments[/{id}]` | `center.reassignments.read`；仅本客户转出或接收记录 |
-| `POST /s/{saas_id}/center/reassignments/{id}` | `center.reassignments.accept`；目标客户提交 `action: "accept"`、确认请求 `id`、记录 `version` |
+| `GET /t/{tenant_id}/center/reassignments[/{id}]` | `center.reassignments.read`；仅本客户转出或接收记录 |
+| `POST /t/{tenant_id}/center/reassignments/{id}` | `center.reassignments.accept`；目标客户提交 `action: "accept"`、确认请求 `id`、记录 `version` |
 
 客户范围由登记域名或固定路径确定，客户端请求头不能授予或切换范围。普通角色须明确取得新增权限；`demo` 拒绝发起、推进、设置期限和确认接收。
 
@@ -297,8 +297,8 @@ Platform 签发需要 `platform.enrollments.issue`，换码与停用分别需要
 | `POST /platform/enrollments` | 签发，提供 `id`、`tenant_id`、`name`、`capacity`、`register_expires_at`（Unix 秒） |
 | `GET /platform/enrollments/{authorization}` | 查询公开资格及绑定记录分页 |
 | `POST /platform/enrollments/{authorization}/{action}` | 提供准确 `tenant_id`、`version`；`action=reset` 一次性交付新注册码，`action=disable` 禁止新的注册 |
-| `GET /s/{saas_id}/center/enrollments` | 客户查看当前可信范围内的资格 |
-| `GET /s/{saas_id}/center/enrollments/{authorization}` | 客户查看自身资格的真实绑定记录 |
+| `GET /t/{tenant_id}/center/enrollments` | 客户查看当前可信范围内的资格 |
+| `GET /t/{tenant_id}/center/enrollments/{authorization}` | 客户查看自身资格的真实绑定记录 |
 
 列表和绑定分页使用 `page`、`per_page`，默认 20 条，单页最多 100 条。注册码的注册期限只约束新的注册，不自动限制已注册设备的使用期；已注册设备撤权继续走设备生命周期。设备通过 `POST /public/devices/register` 消费资格，成功时一次性交付独立接入凭据。重复请求只确认原注册结果；秘密遗失由有权人员轮换恢复。完整请求、错误码与原始 Topic 见[设备注册教程](../development/iot-devices.md)。签发或注册成功均不代表设备已经建立网络连接。
 

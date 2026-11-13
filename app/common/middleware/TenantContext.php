@@ -72,7 +72,7 @@ final class TenantContext implements MiddlewareInterface
             throw new HttpError(404, 'tenant_not_found');
         }
         $prefix = '';
-        if (preg_match('#^/s/([a-f0-9]{32})(/.*)?$#D', $path, $matches) === 1) {
+        if (preg_match('#^/t/([a-f0-9]{32})(/.*)?$#D', $path, $matches) === 1) {
             if ($tenant !== null && $tenant->get('id') !== $matches[1]) {
                 throw new HttpError(403, 'tenant_context_mismatch');
             }
@@ -80,7 +80,7 @@ final class TenantContext implements MiddlewareInterface
             if ($tenant === null) {
                 throw new HttpError(404, 'tenant_not_found');
             }
-            $prefix = '/s/' . $matches[1];
+            $prefix = '/t/' . $matches[1];
             $path = $matches[2] ?? '/';
         }
         if ($tenant !== null && !$tenant->get('enabled')) {

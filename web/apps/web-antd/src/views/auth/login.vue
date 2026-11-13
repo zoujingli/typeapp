@@ -22,7 +22,7 @@ async function fetchTenants(append = false) {
   const generation = ++listGeneration; searching.value = true;
   const nextPage = append ? page.value + 1 : 1;
   try {
-    const data = await request<Page<Tenant>>('/public/saas', { params: { search: search.value, page: nextPage, per_page: 20 }, public: true, signal: listController.signal });
+    const data = await request<Page<Tenant>>('/public/tenants', { params: { search: search.value, page: nextPage, per_page: 20 }, public: true, signal: listController.signal });
     if (generation !== listGeneration) return;
     choices.value = append ? [...choices.value, ...data.items] : data.items;
     total.value = data.total; page.value = nextPage;

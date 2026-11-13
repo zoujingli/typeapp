@@ -108,7 +108,7 @@ final class ImpersonationService
         }
         $uri = new Uri($origin);
         if ($entry === 'path') {
-            return (string)$uri->withPath('/s/' . $tenant->id);
+            return (string)$uri->withPath('/t/' . $tenant->id);
         }
         $domain = $this->context->settings()->text('app.tenant.base_domain');
         if ($entry !== 'subdomain' || $domain === '' || $tenant->subdomain === null) {

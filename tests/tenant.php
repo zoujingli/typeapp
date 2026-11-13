@@ -120,7 +120,7 @@ try {
         expect($response->status === $status, $method . ' ' . $path . ' 状态错误：' . $response->status . '，错误码：' . ($payload['error'] ?? 'none') . ($response->status >= 500 ? '\n' . substr($server->stdout() . $server->stderr(), -5000) : ''));
         return $payload;
     };
-    expect($request('GET', '/public/saas')['items'] === [], '空库不应预置客户');
+    expect($request('GET', '/public/tenants')['items'] === [], '空库不应预置客户');
     $context = $request('GET', '/public/context')['data'];
     expect($context['realm'] === 'system' && !$context['bound'] && $context['tenant'] === null, '主域名应进入未选客户的 System 登录');
     $token = $request('POST', '/platform/auth/login', ['login' => 'platform-root', 'password' => $environment['APP_PLATFORM_PASSWORD']])['data']['accessToken'];
@@ -145,7 +145,7 @@ try {
     $retry = $request('POST', '/platform/tenants', $creation, $token)['data'];
     expect($retry['replayed'] && $retry['credential'] === null && $retry['tenant']['id'] === $first['tenant']['id'], '重试重复开通或交付秘密');
     $second = $request('POST', '/platform/tenants', array_replace($creation, ['request_id' => bin2hex(random_bytes(16)), 'name' => '客户乙', 'subdomain' => 'beta']), $token)['data'];
-    $prefix = '/s/' . $first['tenant']['id'];
+    $prefix = '/t/' . $first['tenant']['id'];
     $config = $request('GET', $prefix . '/public/context')['data'];
     expect($config['bound'] && $config['tenant']['id'] === $first['tenant']['id'] && $config['site']['name'] === '客户甲', '客户配置未独立');
     $userToken = $request('POST', $prefix . '/system/auth/login', ['login' => 'root-user', 'password' => $first['credential']['password']])['data']['accessToken'];
@@ -156,12 +156,12 @@ try {
     $subdomain = ['X-Forwarded-Host' => 'alpha.tenant.test', 'X-Forwarded-Proto' => 'http'];
     $bound = $request('GET', '/public/context', [], '', 200, $subdomain)['data'];
     expect($bound['bound'] && $bound['tenant']['id'] === $first['tenant']['id'] && $bound['site']['name'] === '客户甲', '子域名未固定客户配置');
-    $request('GET', '/public/saas', [], '', 404, $subdomain);
+    $request('GET', '/public/tenants', [], '', 404, $subdomain);
     $request('GET', '/platform/auth/me', [], $token, 404, $subdomain);
-    $request('GET', '/s/' . $second['tenant']['id'] . '/public/context', [], '', 403, $subdomain);
+    $request('GET', '/t/' . $second['tenant']['id'] . '/public/context', [], '', 403, $subdomain);
     $request('GET', '/public/context', [], '', 400, ['X-Forwarded-Host' => 'unknown.tenant.test', 'X-Forwarded-Proto' => 'http']);
-    $request('GET', '/s/' . $second['tenant']['id'] . '/system/auth/me', [], $userToken, 401);
-    $request('POST', '/s/' . $second['tenant']['id'] . '/system/auth/login', ['login' => 'root-user', 'password' => $first['credential']['password']], '', 401);
+    $request('GET', '/t/' . $second['tenant']['id'] . '/system/auth/me', [], $userToken, 401);
+    $request('POST', '/t/' . $second['tenant']['id'] . '/system/auth/login', ['login' => 'root-user', 'password' => $first['credential']['password']], '', 401);
     $request('GET', '/platform/auth/me', [], $userToken, 401);
     $request('GET', '/admin/auth/me', [], $token, 404);
     $roles = $request('GET', $prefix . '/system/roles', [], $userToken)['items'];
@@ -181,7 +181,7 @@ try {
     $request('POST', $prefix . '/system/users/' . $system['user']['id'] . '/password', ['version' => 1, 'password' => bin2hex(random_bytes(16))], $ordinaryToken, 403);
     $request('PUT', $prefix . '/system/roles/assign', ['users' => [['id' => $ordinary['id'], 'version' => 2]], 'roles' => [['id' => $roles[0]['id'], 'version' => $roles[0]['version']]]], $ordinaryToken, 403);
     $request('PUT', $prefix . '/system/roles/assign', ['users' => [['id' => $system['user']['id'], 'version' => 1]], 'roles' => []], $userToken, 409);
-    $request('PUT', '/s/' . $second['tenant']['id'] . '/system/roles/assign', ['users' => [['id' => $ordinary['id'], 'version' => 2]], 'roles' => []], $request('POST', '/s/' . $second['tenant']['id'] . '/system/auth/login', ['login' => 'root-user', 'password' => $second['credential']['password']])['data']['accessToken'], 404);
+    $request('PUT', '/t/' . $second['tenant']['id'] . '/system/roles/assign', ['users' => [['id' => $ordinary['id'], 'version' => 2]], 'roles' => []], $request('POST', '/t/' . $second['tenant']['id'] . '/system/auth/login', ['login' => 'root-user', 'password' => $second['credential']['password']])['data']['accessToken'], 404);
     $role = $request('PUT', $prefix . '/system/roles/' . $role['id'] . '/permissions', ['version' => $role['version'], 'menu_ids' => []], $userToken)['data'];
     $request('GET', $prefix . '/system/users', [], $ordinaryToken, 403);
     $directory = $request('GET', '/platform/menus/system', [], $token)['items'];
@@ -196,11 +196,11 @@ try {
     $settings = $request('GET', $prefix . '/system/site', [], $userToken);
     $updated = $request('PUT', $prefix . '/system/site', ['version' => $settings['version'], 'changes' => ['name' => '甲方系统', 'theme_mode' => 'dark']], $userToken);
     expect($request('GET', $prefix . '/public/context')['data']['site']['name'] === '甲方系统', '客户配置保存未生效');
-    expect($request('GET', '/s/' . $second['tenant']['id'] . '/public/context')['data']['site']['name'] === '客户乙', '客户品牌串用');
+    expect($request('GET', '/t/' . $second['tenant']['id'] . '/public/context')['data']['site']['name'] === '客户乙', '客户品牌串用');
     $handoffInput = ['version' => 1, 'user_id' => $system['user']['id'], 'user_version' => 1, 'entry' => 'path'];
     $handoff = $request('POST', '/platform/tenants/' . $first['tenant']['id'] . '/impersonate', $handoffInput, $token)['data'];
     expect($handoff['target'] === 'http://' . $address . $prefix && $handoff['expiresAt'] <= time() + 60, '交接码未绑定目标或期限');
-    $request('POST', '/s/' . $second['tenant']['id'] . '/system/auth/handoff', ['code' => $handoff['code']], '', 401);
+    $request('POST', '/t/' . $second['tenant']['id'] . '/system/auth/handoff', ['code' => $handoff['code']], '', 401);
     $simulated = $request('POST', $prefix . '/system/auth/handoff', ['code' => $handoff['code']])['data']['accessToken'];
     $simulatedMe = $request('GET', $prefix . '/system/auth/me', [], $simulated)['data'];
     expect($simulatedMe['identity']['actor_id'] === $installed['platform']['id'] && $simulatedMe['identity']['user_id'] === $system['user']['id'] && $simulatedMe['permissions'] === $request('GET', $prefix . '/system/auth/me', [], $userToken)['data']['permissions'], '模拟未使用真实来源或目标权限');
@@ -222,7 +222,7 @@ try {
     $product = $request('POST', $prefix . '/center/products', ['name' => '温度设备', 'description' => '原始通信分类'], $userToken, 201)['data'];
     expect($product['tenant_id'] === $first['tenant']['id'], '分类未使用入口客户');
     expect($request('GET', $prefix . '/center/products', [], $userToken)['total'] === 1, '分类分页无效');
-    $request('GET', '/s/' . $second['tenant']['id'] . '/center/products/' . $product['id'], [], $request('POST', '/s/' . $second['tenant']['id'] . '/system/auth/login', ['login' => 'root-user', 'password' => $second['credential']['password']])['data']['accessToken'], 404);
+    $request('GET', '/t/' . $second['tenant']['id'] . '/center/products/' . $product['id'], [], $request('POST', '/t/' . $second['tenant']['id'] . '/system/auth/login', ['login' => 'root-user', 'password' => $second['credential']['password']])['data']['accessToken'], 404);
     $product = $request('PATCH', $prefix . '/center/products/' . $product['id'], ['version' => $product['version'], 'name' => '采集设备'], $userToken)['data'];
     $request('DELETE', $prefix . '/center/products/' . $product['id'], ['version' => $product['version']], $userToken);
     $request('GET', $prefix . '/center/devices', [], $userToken);
@@ -248,10 +248,10 @@ try {
     expect($granted['grant']['receive'] && $granted['grant']['send'] && $granted['grant']['subscribe'], '原始通信设备授权未保存');
     expect(str_starts_with($granted['grant']['topics']['publish'], 'iot/' . $first['tenant']['id'] . '/devices/'), '设备精确 Topic 协议被改写');
     $request('POST', $grantPath, $grantInput, $userToken, 409);
-    $otherToken = $request('POST', '/s/' . $second['tenant']['id'] . '/system/auth/login', ['login' => 'root-user', 'password' => $second['credential']['password']])['data']['accessToken'];
-    $request('GET', '/s/' . $second['tenant']['id'] . '/center/applications/' . $application['id'], [], $otherToken, 404);
-    $request('GET', '/s/' . $second['tenant']['id'] . '/center/enrollments/' . $enrollment['authorization']['id'], [], $otherToken, 404);
-    $request('GET', '/s/' . $second['tenant']['id'] . '/center/applications/' . $application['id'] . '/devices', [], $otherToken, 404);
+    $otherToken = $request('POST', '/t/' . $second['tenant']['id'] . '/system/auth/login', ['login' => 'root-user', 'password' => $second['credential']['password']])['data']['accessToken'];
+    $request('GET', '/t/' . $second['tenant']['id'] . '/center/applications/' . $application['id'], [], $otherToken, 404);
+    $request('GET', '/t/' . $second['tenant']['id'] . '/center/enrollments/' . $enrollment['authorization']['id'], [], $otherToken, 404);
+    $request('GET', '/t/' . $second['tenant']['id'] . '/center/applications/' . $application['id'] . '/devices', [], $otherToken, 404);
     $revoked = $request('POST', $grantPath, array_replace($grantInput, ['version' => $granted['grant']['version'], 'receive' => false, 'send' => false, 'subscribe' => false]), $userToken)['data'];
     expect(!$revoked['grant']['receive'] && !$revoked['grant']['send'] && !$revoked['grant']['subscribe'], '通信授权撤销未保存');
     // 观测夹具在授权业务之后运行，防止模拟节点改变后续发布必须取得的真实节点回执。

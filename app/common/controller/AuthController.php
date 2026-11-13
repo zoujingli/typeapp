@@ -28,7 +28,7 @@ final class AuthController
     public function __construct(private Factory $messages, private ApplicationContext $context) {}
 
     /** 主域名只公开启用客户标识和展示名，不提供人员或内部配置。 */
-    #[Route('/public/saas', name: 'public.saas')]
+    #[Route('/public/tenants', name: 'public.tenants')]
     public function tenants(ServerRequestInterface $request): ResponseInterface
     {
         if ($request->getAttribute('app.tenant_bound', false)) {

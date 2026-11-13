@@ -75,7 +75,7 @@ final class Application
                 echo "备份保留：center:backup register <私有归档目录> <备份ID> <PG17工具根>；clean <私有归档目录> <PG17工具根> [批次1至100]；status <私有归档目录>；pin|unpin <私有归档目录> <备份ID> <保护ID>。\n";
                 echo "恢复核对：center:recovery <snapshot|status|begin|isolate|review|restore>；snapshot输出敏感身份摘要，begin需恢复ID、操作人和已完成隔离的依据，review需恢复ID、私有清单、已核对SHA256和偏移量。备份恢复后须核对当前账号、角色、证书与调试授权再开放。\n";
                 echo "DB_DRIVER 必须与程序的数据库 profile 一致；空库执行 app:install 后 serve，生产默认使用 Swoole 线程与协程。System 与 Center 共用当前 Tenant 的 System 会话，Platform 身份独立。\n";
-                echo "前端安装：web:install [--force] [--dry-run]。首次app:install同时安装页面；强制更新只处理内置页面文件，不修改数据库、上传或配置。主域名默认 /#/system/login；平台 /#/platform/login；客户固定路径 /s/{saas_id}/ 或登记子域名。\n";
+                echo "前端安装：web:install [--force] [--dry-run]。首次app:install同时安装页面；强制更新只处理内置页面文件，不修改数据库、上传或配置。主域名默认 /#/system/login；平台 /#/platform/login；客户固定路径 /t/{tenant_id}/ 或登记子域名。\n";
 
                 return 0;
             }
