@@ -114,7 +114,7 @@ final class NativePackage
             $this->write($stage, $launcher, $this->launcher($binary, $interpreter), 'launcher', $files, 0755);
             $instructions = "# 原生发布目录\n\n本目录不包含业务PHP源码、Composer或编译工具链。\n\n1. 从独立受信渠道核对release.json的SHA-256及发布来源。\n2. 将config/env.example复制为.env并填写实际配置，或通过外部环境/APP_BASE_PATH指定配置。秘密不应回写发布包。\n3. 执行./run verify-runtime（Windows为run.cmd verify-runtime）完成目标机审计，再按应用help执行迁移与启动。\n4. 数据、日志和.env由部署环境维护；升级采用新的版本目录，不覆盖旧目录。数据库变更的回滚能力由迁移计划决定。\n\n启动时检查文件字节与实际加载库，不替代发布渠道的真实性验证或操作系统安全。构建报告中的系统版本/映像要求仍适用；未经对应平台验收不得宣称支持。\n";
             if (isset($manifest['embedded-resources']['web/index.html'])) {
-                $instructions .= "\n## 内嵌页面\n\n前端原件已编入程序，运行包不需要外置dist或Node.js。物联中心首次在空库执行./run app:install <管理账号> <管理姓名> <客户账号> <客户姓名> <租户名>，口令由APP_ADMIN_PASSWORD、APP_CUSTOMER_PASSWORD环境提供；安装同时写入应用根public。使用./run web:install --dry-run --force预览升级，再执行./run web:install --force更新页面。Windows使用run.cmd。普通启动不释放页面或运行库。\n\n数据库初始化成功而页面失败时，仅修复页面，不重新初始化数据库；安装锁和恢复记录在var/web-install。停止旧HTTP后更新页面再启动新程序，上传和其他非托管内容会保留。当前原生库仍位于目录包中，前端内嵌不代表完整静态单文件已完成。\n";
+                $instructions .= "\n## 内嵌页面\n\n前端原件已编入程序，运行包不需要外置dist或Node.js。物联中心首次在空库执行./run app:install <平台账号> <姓名>，平台初始口令由APP_PLATFORM_PASSWORD受控环境提供；安装只建立平台安装身份、公共菜单和平台超管，不预置Tenant或业务数据，同时写入应用根public。使用./run web:install --dry-run --force预览升级，再执行./run web:install --force更新页面。Windows使用run.cmd。普通启动不释放页面或运行库。\n\n数据库初始化成功而页面失败时，仅修复页面，不重新初始化数据库；安装锁和恢复记录在var/web-install。停止旧HTTP后更新页面再启动新程序，上传和其他非托管内容会保留。当前原生库仍位于目录包中，前端内嵌不代表完整静态单文件已完成。\n";
             }
             $this->write($stage, 'DEPLOY.md', $instructions, 'deployment-instructions', $files);
             $operations = file_get_contents(dirname(__DIR__) . '/docs/operations.md');

@@ -29,7 +29,7 @@
 
 ## 2. 首次部署
 
-物联中心的页面已经编入程序。空库初始化使用 `APP_PLATFORM_PASSWORD=受控平台口令 ./app app:install <平台账号> <姓名>`，初始口令从 `APP_ADMIN_PASSWORD`、`APP_CUSTOMER_PASSWORD` 受控环境读取；它会先暂存页面，再初始化数据库，最后写入应用根的 `public/`。普通启动不释放资源。数据库成功但页面失败时运行 `./app web:install --force` 修复，不能重新初始化数据库。下面的 `migrate run` 仅适用于开放该命令的通用应用。
+物联中心的页面已经编入程序。空库初始化使用 `APP_PLATFORM_PASSWORD=受控平台口令 ./app app:install <平台账号> <姓名>`，平台初始口令只从 `APP_PLATFORM_PASSWORD` 受控环境读取；它会先暂存页面，再初始化数据库，建立平台安装身份、公共菜单和平台超管，不预置 Tenant 或业务数据，最后写入应用根的 `public/`。普通启动不释放资源。数据库成功但页面失败时运行 `./app web:install --force` 修复，不能重新初始化数据库。下面的 `migrate run` 仅适用于开放该命令的通用应用。
 
 1. 为所选驱动准备独立数据库及受限业务账号。SQLite准备私有、可写的数据父目录；其他驱动由数据库管理员创建库和账号。
 2. 在外部运行根配置`.env`或受控进程环境，设置`APP_BASE_PATH`、数据库连接、监听/Host白名单和令牌。生产保持`APP_ENV=prod`、`APP_DEBUG=false`；密钥不写入构建或发布物。
