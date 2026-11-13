@@ -8,6 +8,7 @@ use app\center\model\DeviceEnrollment;
 use app\center\model\DeviceEnrollmentBinding;
 use app\common\service\AuditLog;
 use app\common\service\RoleService;
+use app\platform\model\EnrollmentDirectory;
 use app\platform\model\Tenant;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
@@ -50,17 +51,17 @@ final class EnrollmentService
                 return ['items' => $items, 'total' => $result->total(), 'page' => $page, 'per_page' => $perPage, 'context' => $context];
             }, ['tenant_id' => $tenantId]);
         }
-        // 平台目录跨客户，使用明确白名单投影；不能用无租户上下文绕过模型隔离。
-        $rows = Db::connection('default', true)->table('center_device_enrollment')->select(self::PUBLIC_FIELDS);
+        // 平台目录跨客户，使用显式无 TenantKey 的只读 Model；不能把客户模型放到无范围上下文。
+        $rows = EnrollmentDirectory::query()->master()->select(self::PUBLIC_FIELDS);
         if ($tenantId !== '') {
             $rows = $rows->where('tenant_id', '=', $tenantId);
         }
-        $total = (int)$rows->aggregate('COUNT');
-        $items = $rows->orderBy('created_at', 'DESC')->orderBy('id')->limit($perPage, ($page - 1) * $perPage)->get();
-        foreach ($items as $index => $item) {
-            $items[$index] = self::project($item);
+        $result = $rows->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
+        $items = [];
+        foreach ($result->items() as $enrollment) {
+            $items[] = self::project($enrollment->project(self::PUBLIC_FIELDS));
         }
-        return ['items' => $items, 'total' => $total, 'page' => $page, 'per_page' => $perPage, 'context' => $context];
+        return ['items' => $items, 'total' => $result->total(), 'page' => $page, 'per_page' => $perPage, 'context' => $context];
     }
 
     /**
@@ -78,7 +79,8 @@ final class EnrollmentService
             $model = DeviceEnrollment::query()->master()->select(self::PUBLIC_FIELDS)->find($id);
             $row = $model?->project(self::PUBLIC_FIELDS);
         } else {
-            $row = Db::connection('default', true)->table('center_device_enrollment')->select(self::PUBLIC_FIELDS)->where('id', '=', $id)->first();
+            $model = EnrollmentDirectory::query()->master()->select(self::PUBLIC_FIELDS)->find($id);
+            $row = $model?->project(self::PUBLIC_FIELDS);
         }
         if ($row === null) {
             throw new HttpError(404, 'enrollment_not_found');
@@ -102,16 +104,13 @@ final class EnrollmentService
     {
         return $this->write($identity, 'issue', $data['tenant_id'], $data['id'], function (Identity $current) use ($data): array {
             $requestHash = hash('sha256', json_encode([$data['tenant_id'], $data['name'], $data['capacity'], $data['register_expires_at']], JSON_THROW_ON_ERROR));
-            $existing = DeviceEnrollment::query()->master()->find($data['id']);
+            // 幂等标识是全局主键，先用 Platform 只读目录跨 Tenant 核对，避免另一客户命中时落成裸数据库冲突。
+            $existing = EnrollmentDirectory::query()->master()->find($data['id']);
             if ($existing !== null) {
                 if (!hash_equals($existing->getRequestHash(), $requestHash)) {
                     throw new HttpError(409, 'enrollment_request_conflict');
                 }
                 return ['authorization' => self::project($existing->project(self::PUBLIC_FIELDS)), 'code' => null, 'replayed' => true];
-            }
-            // 同一全局 ID 不能被另一客户重新使用；现有授权写锁序列化并发签发。
-            if (Db::connection('default', true)->table('center_device_enrollment')->where('id', '=', $data['id'])->first() !== null) {
-                throw new HttpError(409, 'enrollment_request_conflict');
             }
             if ($data['register_expires_at'] <= time()) {
                 throw new HttpError(422, 'enrollment_expired');

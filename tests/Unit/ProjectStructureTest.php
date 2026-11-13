@@ -127,6 +127,7 @@ final class ProjectStructureTest extends TestCase
             'app/common/service/SiteSettings.php',
             'app/platform/service/TenantService.php',
             'app/platform/service/ImpersonationService.php',
+            'app/center/service/EnrollmentService.php',
             'app/center/service/ProductService.php',
             'app/common/middleware/TenantContext.php',
             'app/common/controller/AuthController.php',
