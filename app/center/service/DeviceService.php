@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace app\center\service;
 
 use app\center\model\Device;
+use app\center\model\DeviceConnection;
+use app\center\model\DeviceCredential;
 use app\center\model\DeviceEnrollment;
 use app\center\model\DeviceEnrollmentBinding;
 use app\center\model\DeviceOwnership;
@@ -88,11 +90,13 @@ final class DeviceService
                     $now = $device->getCreatedAt();
                     DeviceOwnership::create(['id' => $device->getOwnershipId(), 'device_id' => $device->getId(), 'started_at' => $now,
                         'ended_at' => null, 'expires_at' => null, 'expiry_context' => null, 'access_started' => false]);
-                    $transaction->table('center_device_connection')->insert(['device_id' => $device->getId(), 'ownership_id' => $device->getOwnershipId(), 'status' => 'unknown']);
+                    DeviceConnection::create(['device_id' => $device->getId(), 'ownership_id' => $device->getOwnershipId(), 'owner_id' => null,
+                        'node_id' => null, 'run_id' => null, 'status' => 'unknown', 'observed_at' => null]);
                     $credentialId = bin2hex(random_bytes(16));
                     $credentialSecret = bin2hex(random_bytes(32));
-                    $transaction->table('center_device_credential')->insert(['id' => $credentialId, 'device_id' => $device->getId(), 'ownership_id' => $device->getOwnershipId(),
-                        'secret_hash' => hash('sha256', $credentialSecret), 'status' => 'active', 'created_at' => $now, 'revoked_at' => null]);
+                    DeviceCredential::create(['id' => $credentialId, 'device_id' => $device->getId(), 'ownership_id' => $device->getOwnershipId(),
+                        'secret_hash' => hash('sha256', $credentialSecret), 'status' => 'active', 'recovery_verified' => true,
+                        'created_at' => $now, 'revoked_at' => null]);
                     DeviceEnrollmentBinding::create(['ownership_id' => $device->getOwnershipId(), 'device_id' => $device->getId(),
                         'enrollment_id' => $id, 'registered_at' => $now, 'request_id' => $data['id'], 'request_hash' => $requestHash]);
                     $grant->setRegisteredCount($grant->getRegisteredCount() + 1);
@@ -254,8 +258,9 @@ final class DeviceService
             if ($action === 'rotate') {
                 $credentialId = bin2hex(random_bytes(16));
                 $secret = bin2hex(random_bytes(32));
-                $transaction->table('center_device_credential')->insert(['id' => $credentialId, 'device_id' => $deviceId, 'ownership_id' => $device['ownership_id'],
-                    'secret_hash' => hash('sha256', $secret), 'status' => 'active', 'created_at' => $now, 'revoked_at' => null]);
+                DeviceCredential::create(['id' => $credentialId, 'device_id' => $deviceId, 'ownership_id' => $device['ownership_id'],
+                    'secret_hash' => hash('sha256', $secret), 'status' => 'active', 'recovery_verified' => true,
+                    'created_at' => $now, 'revoked_at' => null]);
                 $credential = self::credential($device, $credentialId, $secret);
             }
             AuditLog::append($transaction, $device['tenant_id'], $current, 'device.' . $action, $deviceId, 'success', ['version' => $version + 1, 'context' => 'device'], $realm);
@@ -314,8 +319,9 @@ final class DeviceService
         }
         $id = bin2hex(random_bytes(16));
         $secret = bin2hex(random_bytes(32));
-        $transaction->table('center_device_credential')->insert(['id' => $id, 'device_id' => $device['id'], 'ownership_id' => $device['ownership_id'],
-            'secret_hash' => hash('sha256', $secret), 'status' => 'active', 'created_at' => time(), 'revoked_at' => null]);
+        DeviceCredential::create(['id' => $id, 'device_id' => $device['id'], 'ownership_id' => $device['ownership_id'],
+            'secret_hash' => hash('sha256', $secret), 'status' => 'active', 'recovery_verified' => true,
+            'created_at' => time(), 'revoked_at' => null]);
         return self::credential($device, $id, $secret);
     }
 
