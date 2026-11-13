@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\center\service;
 
 use app\center\model\Device;
+use app\center\model\DeviceAuthorizationInvalidation;
 use app\center\model\DeviceConnection;
 use app\center\model\DeviceCredential;
 use app\center\model\DeviceEnrollment;
@@ -214,15 +215,17 @@ final class DeviceService
             if ($device['transfer_id'] !== null && ($action !== 'update' || array_key_exists('product_id', $data))) {
                 throw new HttpError(409, 'reassignment_in_progress');
             }
-            $pending = $transaction->table('center_authorization_invalidation')->where('device_id', '=', $deviceId);
-            $previous = ($transaction->driverName() === 'sqlite' ? $pending : $pending->lockForUpdate())->first();
-            if ($previous !== null && $previous['completed_at'] === null) {
+            $previous = ExecutionScope::current()->run(static function () use ($transaction, $deviceId): ?DeviceAuthorizationInvalidation {
+                $pending = DeviceAuthorizationInvalidation::query()->master()->onConnection($transaction)->where('device_id', '=', $deviceId);
+                return ($transaction->driverName() === 'sqlite' ? $pending : $pending->lockForUpdate())->first();
+            }, ['tenant_id' => $device['tenant_id']]);
+            if ($previous !== null && $previous->getCompletedAt() === null) {
                 throw new HttpError(409, 'device_authorization_pending');
             }
             if (($action === 'enable' && $device['lifecycle'] !== 'disabled') || ($action === 'disable' && $device['lifecycle'] === 'disabled')) {
                 throw new HttpError(409, 'device_lifecycle_conflict');
             }
-            $credentialQuery = $transaction->table('center_device_credential')->where('device_id', '=', $deviceId)->where('status', '=', 'active')->limit(2);
+            $credentialQuery = DeviceCredential::query()->master()->onConnection($transaction)->where('device_id', '=', $deviceId)->where('status', '=', 'active')->limit(2);
             $credentials = ($transaction->driverName() === 'sqlite' ? $credentialQuery : $credentialQuery->lockForUpdate())->get();
             if (count($credentials) > 1) {
                 throw new HttpError(409, 'device_credential_conflict');
@@ -274,37 +277,45 @@ final class DeviceService
         if ($transaction->transactionDepth() < 1) {
             throw new \LogicException('device_transaction_required');
         }
-        $query = $transaction->table('center_authorization_invalidation')->where('device_id', '=', $device['id']);
-        $previous = ($transaction->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
-        $credentialQuery = $transaction->table('center_device_credential')->where('device_id', '=', $device['id'])->where('status', '=', 'active')->limit(2);
-        $credentials = ($transaction->driverName() === 'sqlite' ? $credentialQuery : $credentialQuery->lockForUpdate())->get();
-        if ($credentials === [] && $allowRevoked) {
-            $credentialQuery = $transaction->table('center_device_credential')->where('device_id', '=', $device['id'])->where('ownership_id', '=', $device['ownership_id'])
-                ->orderBy('created_at', 'DESC')->orderBy('id', 'DESC')->limit(1);
+        return ExecutionScope::current()->run(static function () use ($transaction, $device, $actor, $allowRevoked): string {
+            $pending = DeviceAuthorizationInvalidation::query()->master()->onConnection($transaction)->where('device_id', '=', $device['id']);
+            $previous = ($transaction->driverName() === 'sqlite' ? $pending : $pending->lockForUpdate())->first();
+            $credentialQuery = DeviceCredential::query()->master()->onConnection($transaction)->where('device_id', '=', $device['id'])
+                ->where('status', '=', 'active')->limit(2);
             $credentials = ($transaction->driverName() === 'sqlite' ? $credentialQuery : $credentialQuery->lockForUpdate())->get();
-        }
-        if (($previous !== null && $previous['completed_at'] === null) || count($credentials) !== 1 || $credentials[0]['ownership_id'] !== $device['ownership_id']) {
-            throw new HttpError(409, 'device_authorization_pending');
-        }
-        $old = $credentials[0];
-        $context = $actor instanceof Identity ? IdentityService::context($actor, $device['tenant_id']) : $actor;
-        if (!in_array($context['realm'] ?? '', ['platform', 'system'], true)) {
-            throw new HttpError(403, 'identity_context_invalid');
-        }
-        $now = time();
-        $transaction->table('center_device_credential')->where('id', '=', $old['id'])->update(['status' => 'revoked', 'revoked_at' => $now]);
-        $intent = ['device_id' => $device['id'], 'id' => bin2hex(random_bytes(16)), 'principal' => $device['id'] . ':' . $old['id'],
-            'actor_id' => $context['actor_id'], 'tenant_id' => $device['tenant_id'], 'actor_realm' => $context['realm'],
-            'context_json' => json_encode(['actor_realm' => $context['actor_realm'], 'user_id' => $context['user_id'], 'session_id' => $context['session_id'],
-                'source_session_id' => $context['source_session_id'], 'impersonation_id' => $context['impersonation_id'], 'scope_key' => $context['key'],
-                'context' => $context['impersonation_id'] === '' ? 'device' : 'system-impersonation'], JSON_THROW_ON_ERROR),
-            'requested_at' => $now, 'completed_at' => null, 'node_id' => null];
-        if ($previous === null) {
-            $transaction->table('center_authorization_invalidation')->insert($intent);
-        } else {
-            $transaction->table('center_authorization_invalidation')->where('device_id', '=', $device['id'])->update($intent);
-        }
-        return $intent['id'];
+            if ($credentials === [] && $allowRevoked) {
+                $credentialQuery = DeviceCredential::query()->master()->onConnection($transaction)->where('device_id', '=', $device['id'])
+                    ->where('ownership_id', '=', $device['ownership_id'])->orderBy('created_at', 'DESC')->orderBy('id', 'DESC')->limit(1);
+                $credentials = ($transaction->driverName() === 'sqlite' ? $credentialQuery : $credentialQuery->lockForUpdate())->get();
+            }
+            if (($previous !== null && $previous->getCompletedAt() === null) || count($credentials) !== 1
+                || $credentials[0]->getOwnershipId() !== $device['ownership_id']) {
+                throw new HttpError(409, 'device_authorization_pending');
+            }
+            $old = $credentials[0];
+            $context = $actor instanceof Identity ? IdentityService::context($actor, $device['tenant_id']) : $actor;
+            if (!in_array($context['realm'] ?? '', ['platform', 'system'], true)) {
+                throw new HttpError(403, 'identity_context_invalid');
+            }
+            $now = time();
+            $old->setStatus('revoked');
+            $old->setRevokedAt($now);
+            $old->save();
+            $intent = ['device_id' => $device['id'], 'id' => bin2hex(random_bytes(16)), 'principal' => $device['id'] . ':' . $old->getId(),
+                'actor_id' => $context['actor_id'], 'tenant_id' => $device['tenant_id'], 'actor_realm' => $context['realm'],
+                'context_json' => json_encode(['actor_realm' => $context['actor_realm'], 'user_id' => $context['user_id'], 'session_id' => $context['session_id'],
+                    'source_session_id' => $context['source_session_id'], 'impersonation_id' => $context['impersonation_id'], 'scope_key' => $context['key'],
+                    'context' => $context['impersonation_id'] === '' ? 'device' : 'system-impersonation'], JSON_THROW_ON_ERROR),
+                'requested_at' => $now, 'completed_at' => null, 'node_id' => null];
+            if ($previous === null) {
+                DeviceAuthorizationInvalidation::create($intent);
+            } else {
+                unset($intent['device_id']);
+                $previous->fill($intent);
+                $previous->save();
+            }
+            return $intent['id'];
+        }, ['tenant_id' => $device['tenant_id']]);
     }
 
     /** 仅在旧主体隔离证明和新归属同事务激活时生成一次秘密；查询或重复请求不得调用。 */
@@ -313,16 +324,21 @@ final class DeviceService
         if ($transaction->transactionDepth() < 1) {
             throw new \LogicException('device_transaction_required');
         }
-        if ($transaction->table('center_device_credential')->where('device_id', '=', $device['id'])->where('status', '=', 'active')->first() !== null
-            || $transaction->table('center_authorization_invalidation')->where('device_id', '=', $device['id'])->whereNull('completed_at')->first() !== null) {
-            throw new HttpError(409, 'device_authorization_pending');
-        }
-        $id = bin2hex(random_bytes(16));
-        $secret = bin2hex(random_bytes(32));
-        DeviceCredential::create(['id' => $id, 'device_id' => $device['id'], 'ownership_id' => $device['ownership_id'],
-            'secret_hash' => hash('sha256', $secret), 'status' => 'active', 'recovery_verified' => true,
-            'created_at' => time(), 'revoked_at' => null]);
-        return self::credential($device, $id, $secret);
+        return ExecutionScope::current()->run(static function () use ($transaction, $device): array {
+            $active = DeviceCredential::query()->master()->onConnection($transaction)->where('device_id', '=', $device['id'])
+                ->where('status', '=', 'active')->first();
+            $pending = DeviceAuthorizationInvalidation::query()->master()->onConnection($transaction)->where('device_id', '=', $device['id'])
+                ->whereNull('completed_at')->first();
+            if ($active !== null || $pending !== null) {
+                throw new HttpError(409, 'device_authorization_pending');
+            }
+            $id = bin2hex(random_bytes(16));
+            $secret = bin2hex(random_bytes(32));
+            DeviceCredential::create(['id' => $id, 'device_id' => $device['id'], 'ownership_id' => $device['ownership_id'],
+                'secret_hash' => hash('sha256', $secret), 'status' => 'active', 'recovery_verified' => true,
+                'created_at' => time(), 'revoked_at' => null]);
+            return self::credential($device, $id, $secret);
+        }, ['tenant_id' => $device['tenant_id']]);
     }
 
     /**
@@ -408,14 +424,17 @@ final class DeviceService
         if ($device === null) {
             throw new HttpError(404, 'device_not_found');
         }
-        $active = $connection->table('center_device_credential')->where('device_id', '=', $deviceId)->where('ownership_id', '=', $device['ownership_id'])
-            ->where('status', '=', 'active')->where('recovery_verified', '=', 1)->first();
-        $result = self::observed($device) + ['credential_active' => $active !== null];
-        $ownership = $connection->table('center_device_ownership')->where('id', '=', $device['ownership_id'])->first();
-        $result['usage'] = $ownership === null ? null : ['started_at' => (int)$ownership['started_at'],
-            'ended_at' => $ownership['ended_at'] === null ? null : (int)$ownership['ended_at'],
-            'expires_at' => $ownership['expires_at'] === null ? null : (int)$ownership['expires_at'],
-            'available' => TransferService::ownershipCurrent($connection, $device)];
+        $state = ExecutionScope::current()->run(static function () use ($connection, $device): array {
+            $active = DeviceCredential::query()->master()->onConnection($connection)->where('device_id', '=', $device['id'])
+                ->where('ownership_id', '=', $device['ownership_id'])->where('status', '=', 'active')
+                ->where('recovery_verified', '=', true)->first();
+            $ownership = DeviceOwnership::query()->master()->onConnection($connection)->find($device['ownership_id']);
+            return ['credential_active' => $active !== null, 'ownership' => $ownership === null ? null : [
+                'started_at' => $ownership->getStartedAt(), 'ended_at' => $ownership->getEndedAt(), 'expires_at' => $ownership->getExpiresAt(),
+            ]];
+        }, ['tenant_id' => $device['tenant_id']]);
+        $result = self::observed($device) + ['credential_active' => $state['credential_active']];
+        $result['usage'] = $state['ownership'] === null ? null : $state['ownership'] + ['available' => TransferService::ownershipCurrent($connection, $device)];
         return $realm === 'platform' ? $result : $result + ['topics' => self::topics($device)];
     }
 

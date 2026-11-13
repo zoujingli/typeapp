@@ -33,6 +33,24 @@ function namePages(records: RouteRecordRaw[], parent = '') {
 }
 namePages(routes);
 export const router = createRouter({ history: createWebHashHistory(), routes });
+
+/** 将服务端可管理的菜单元数据同步到 Vben 路由，页面标题、图标和排序保持单一来源。 */
+function syncRouteMenuMeta(menus: Menu[]) {
+  const metadata = new Map<string, Menu>();
+  const visit = (items: Menu[]) => {
+    for (const item of items) {
+      metadata.set(item.path, item);
+      if (item.children) visit(item.children);
+    }
+  };
+  visit(menus);
+  for (const record of router.getRoutes()) {
+    const item = metadata.get(record.path);
+    if (!item) continue;
+    record.meta = { ...record.meta, title: item.name, icon: item.icon, order: item.order };
+  }
+}
+
 router.beforeEach(async to => {
   const realm = to.meta.realm === 'platform' ? 'platform' : 'system';
   if (realm === 'platform' && entryContext.bound) return '/system/login';
@@ -41,6 +59,7 @@ router.beforeEach(async to => {
   if (!session.token) return loginPath(realm);
   try { await loadUser(); }
   catch (error) { return isCanceled(error) ? false : loginPath(realm); }
+  syncRouteMenuMeta(session.menus);
   if (typeof to.meta.permission === 'string' && !session.permissions.includes(to.meta.permission)) return `/${realm}/profile`;
   const directory = to.matched.at(-1);
   if (directory?.meta.directory) {

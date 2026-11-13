@@ -14,7 +14,7 @@
 | 节点 | `/platform/broker/nodes` | 无平台级入口 | `platform.broker.read` |
 | 审计 | `/platform/broker/audit` | Tenant 审计按 `system.audit.read` 过滤 | 对应审计权限 |
 
-API 统一使用 `/platform/*`、`/center/*`。固定 Tenant 入口使用 `/t/{tenant_id}/platform/*` 或 `/t/{tenant_id}/center/*`；子域名直接使用对应模块路径。客户端不能提交 Tenant 头来改变范围。
+API 统一使用 `/platform/*`、`/center/*`。固定 Tenant 入口使用 `/t/{tenant_id}/system/*`、`/t/{tenant_id}/center/*` 及其公开上下文；Platform 是全局入口，不挂在 Tenant 路径下。子域名直接使用对应模块路径。客户端不能提交 Tenant 头来改变范围。
 
 ## 运行与撤权
 
