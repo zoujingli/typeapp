@@ -165,7 +165,7 @@ final class ProjectStructureTest extends TestCase
         self::assertSame('app\system\model\SystemMenu', $system['target']);
         self::assertSame('tenant_id', $system['pivotTenant']);
         self::assertSame('permission', $system['targetKey']);
-        $directory = $models['app\\platform\\model\\ApplicationDirectory'];
+        $directory = $models['app\platform\model\ApplicationDirectory'];
         self::assertSame('center_application', $directory['table']);
         self::assertNull($directory['tenant']);
 
