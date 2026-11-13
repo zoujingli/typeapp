@@ -7,6 +7,7 @@ namespace app\center\service;
 use app\center\model\ApplicationGrant;
 use app\center\model\ClientApplication;
 use app\center\model\Device;
+use app\center\model\DeviceOwnership;
 use app\common\service\AuditLog;
 use app\common\service\IdentityService;
 use app\common\service\RoleService;
@@ -79,11 +80,11 @@ final class ApplicationGrantService
                     if ($grant !== null && $grant->getDeviceId() !== $deviceId) {
                         throw new HttpError(409, 'application_device_relationship_changed');
                     }
-                    $connection = Db::connection('default', true);
                     $device = Device::query()->master()->find($deviceId);
-                    $ownership = $connection->table('center_device_ownership')->where('id', '=', $data['ownership_id'])->where('device_id', '=', $deviceId)->where('tenant_id', '=', $tenantId)->first();
-                    if ($enabled && ($device === null || $ownership === null || $ownership['ended_at'] !== null
-                        || ($ownership['expires_at'] !== null && (int)$ownership['expires_at'] <= time()) || $device->getOwnershipId() !== $data['ownership_id'])) {
+                    $ownership = DeviceOwnership::query()->master()->where('id', '=', $data['ownership_id'])
+                        ->where('device_id', '=', $deviceId)->first();
+                    if ($enabled && ($device === null || $ownership === null || $ownership->getEndedAt() !== null
+                        || ($ownership->getExpiresAt() !== null && $ownership->getExpiresAt() <= time()) || $device->getOwnershipId() !== $data['ownership_id'])) {
                         throw new HttpError(409, 'application_device_relationship_changed');
                     }
                     if ($enabled && (!$device->getRecoveryVerified()
@@ -93,6 +94,7 @@ final class ApplicationGrantService
                     if ($grant === null && !$enabled) {
                         throw new HttpError(422, 'application_grant_empty');
                     }
+                    $connection = Db::connection('default', true);
                     $changed = $grant === null || $grant->getReceive() !== $data['receive'] || $grant->getSend() !== $data['send'] || $grant->getSubscribe() !== $data['subscribe'];
                     if (!$changed) {
                         return ['grant' => self::project($grant), 'application' => ClientApplicationService::publicProjection($app), 'changed' => false];
@@ -195,12 +197,12 @@ final class ApplicationGrantService
     private static function project(ApplicationGrant $model): array
     {
         $row = $model->project(self::FIELDS);
-        $connection = Db::connection('default', true);
-        $device = $connection->table('center_device')->where('id', '=', $row['device_id'])->where('tenant_id', '=', $row['tenant_id'])->where('ownership_id', '=', $row['ownership_id'])->first();
-        $ownership = $connection->table('center_device_ownership')->where('id', '=', $row['ownership_id'])->where('tenant_id', '=', $row['tenant_id'])->whereNull('ended_at')->first();
+        $device = Device::query()->master()->where('id', '=', $row['device_id'])->where('ownership_id', '=', $row['ownership_id'])->first();
+        $ownership = DeviceOwnership::query()->master()->where('id', '=', $row['ownership_id'])
+            ->where('device_id', '=', $row['device_id'])->whereNull('ended_at')->first();
         $row['current'] = $device !== null && $ownership !== null;
-        $row['device_name'] = $device === null ? '' : $device['name'];
-        $row['topics'] = $row['current'] ? DeviceService::topics($device) : null;
+        $row['device_name'] = $device?->getName() ?? '';
+        $row['topics'] = $row['current'] ? DeviceService::topics($device->project(['id', 'tenant_id', 'ownership_id'])) : null;
         return $row;
     }
 }

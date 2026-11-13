@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\center\service;
 
 use app\center\model\DeviceEnrollment;
+use app\center\model\DeviceEnrollmentBinding;
 use app\common\service\AuditLog;
 use app\common\service\RoleService;
 use app\platform\model\Tenant;
@@ -82,14 +83,13 @@ final class EnrollmentService
         if ($row === null) {
             throw new HttpError(404, 'enrollment_not_found');
         }
-        $bindings = Db::connection('default', true)->table('center_device_enrollment_binding')
-            ->select(['ownership_id', 'device_id', 'registered_at'])->where('enrollment_id', '=', $id);
-        $total = (int)$bindings->aggregate('COUNT');
-        $items = $bindings->orderBy('registered_at', 'DESC')->orderBy('ownership_id')->limit($perPage, ($page - 1) * $perPage)->get();
-        foreach ($items as $index => $item) {
-            $items[$index]['registered_at'] = (int)$item['registered_at'];
+        $bindings = DeviceEnrollmentBinding::query()->master()->where('enrollment_id', '=', $id)
+            ->orderBy('registered_at', 'DESC')->orderBy('ownership_id')->paginate($page, $perPage, 'ownership_id');
+        $items = [];
+        foreach ($bindings->items() as $binding) {
+            $items[] = $binding->project(['ownership_id', 'device_id', 'registered_at']);
         }
-        return ['authorization' => self::project($row), 'bindings' => ['items' => $items, 'total' => $total, 'page' => $page, 'per_page' => $perPage], 'context' => $context];
+        return ['authorization' => self::project($row), 'bindings' => ['items' => $items, 'total' => $bindings->total(), 'page' => $page, 'per_page' => $perPage], 'context' => $context];
     }
 
     /**

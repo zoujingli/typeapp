@@ -6,6 +6,8 @@ namespace app\center\service;
 
 use app\center\model\Device;
 use app\center\model\DeviceEnrollment;
+use app\center\model\DeviceEnrollmentBinding;
+use app\center\model\DeviceOwnership;
 use app\center\model\Product;
 use app\common\service\AuditLog;
 use app\common\service\IdentityService;
@@ -57,13 +59,13 @@ final class DeviceService
                     }
                     $transaction = Db::connection('default', true);
                     $requestHash = hash('sha256', json_encode([$data['tenant_id'], $data['device_id'], $data['name'], $id], JSON_THROW_ON_ERROR));
-                    $previous = $transaction->table('center_device_enrollment_binding')->where('request_id', '=', $data['id'])->first();
+                    $previous = DeviceEnrollmentBinding::query()->master()->where('request_id', '=', $data['id'])->first();
                     if ($previous !== null) {
-                        if ($previous['enrollment_id'] !== $id || !hash_equals($previous['request_hash'], $requestHash)) {
+                        if ($previous->getEnrollmentId() !== $id || !hash_equals((string)$previous->getRequestHash(), $requestHash)) {
                             throw new HttpError(409, 'registration_request_conflict');
                         }
                         $existing = Device::query()->master()->find($data['device_id']);
-                        if ($existing === null || $existing->getOwnershipId() !== $previous['ownership_id']) {
+                        if ($existing === null || $existing->getOwnershipId() !== $previous->getOwnershipId()) {
                             throw new HttpError(409, 'registration_ownership_changed');
                         }
                         return ['device' => self::project($transaction, $existing->getId(), 'system'), 'credential' => null, 'replayed' => true];
@@ -83,13 +85,13 @@ final class DeviceService
                         'ownership_id' => bin2hex(random_bytes(16)), 'name' => $data['name'], 'lifecycle' => 'inactive',
                         'transfer_id' => null, 'transfer_frozen' => false, 'recovery_verified' => true]);
                     $now = $device->getCreatedAt();
-                    $transaction->table('center_device_ownership')->insert(['id' => $device->getOwnershipId(), 'device_id' => $device->getId(), 'tenant_id' => $data['tenant_id'], 'started_at' => $now, 'access_started' => 0]);
+                    DeviceOwnership::create(['id' => $device->getOwnershipId(), 'device_id' => $device->getId(), 'started_at' => $now, 'access_started' => false]);
                     $transaction->table('center_device_connection')->insert(['device_id' => $device->getId(), 'ownership_id' => $device->getOwnershipId(), 'status' => 'unknown']);
                     $credentialId = bin2hex(random_bytes(16));
                     $credentialSecret = bin2hex(random_bytes(32));
                     $transaction->table('center_device_credential')->insert(['id' => $credentialId, 'device_id' => $device->getId(), 'ownership_id' => $device->getOwnershipId(),
                         'secret_hash' => hash('sha256', $credentialSecret), 'status' => 'active', 'created_at' => $now, 'revoked_at' => null]);
-                    $transaction->table('center_device_enrollment_binding')->insert(['ownership_id' => $device->getOwnershipId(), 'device_id' => $device->getId(),
+                    DeviceEnrollmentBinding::create(['ownership_id' => $device->getOwnershipId(), 'device_id' => $device->getId(),
                         'enrollment_id' => $id, 'registered_at' => $now, 'request_id' => $data['id'], 'request_hash' => $requestHash]);
                     $grant->setRegisteredCount($grant->getRegisteredCount() + 1);
                     $grant->save();
