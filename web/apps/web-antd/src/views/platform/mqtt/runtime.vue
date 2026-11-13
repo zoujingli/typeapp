@@ -200,7 +200,7 @@ watch(historyOpen, value => { if (value) mqttDrawer1.open(); else mqttDrawer1.cl
     <Alert v-else-if="canRead && !canWrite" class="mb-4" type="info" show-icon message="当前角色可查看已保存配置与节点加载身份，保存、重试和回退需要平台 MQTT 写入权限。" />
     <Alert v-else class="mb-4" type="info" show-icon message="本页只校验并保存。监听、端口与节点证书路径须由运维重启后生效。握手 CA 在节点心跳后在线重载，已有连接保持到吊销或到期。私钥不会出现在页面或接口中。" />
     <Card title="监听配置" :bordered="false" class="mb-4">
-      <ConfigForm :common-config="{ disabled: busy || publishing || !canWrite, componentProps: { class: 'w-full' } }" /><Space class="mb-3"><Button type="primary" :loading="previewBusy" :disabled="!canRead || publishing" @click="runPreview">预览调整</Button><Button :disabled="busy || publishing" @click="resetDraft">重置</Button></Space>
+      <ConfigForm :common-config="{ disabled: busy || publishing || !canWrite, componentProps: { class: 'w-full' } }" /><Space class="mb-4"><Button type="primary" :loading="previewBusy" :disabled="!canRead || publishing" @click="runPreview">预览调整</Button><Button :disabled="busy || publishing" @click="resetDraft">重置</Button></Space>
       <Alert v-if="previewFailure" :message="previewFailure" type="error" show-icon class="mt-4" />
     </Card>
     <Card title="节点已加载配置" :bordered="false">

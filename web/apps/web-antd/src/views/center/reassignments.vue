@@ -68,14 +68,14 @@ async function change(action: 'advance' | 'accept') {
 onBeforeUnmount(() => { detailGeneration++; listPending?.abort(); detailPending?.abort(); });
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-3" /><Grid :table-title="platform ? '设备转配' : '转配接收'">
+  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid :table-title="platform ? '设备转配' : '转配接收'">
     <template #status="{ row }"><Tag :color="['ended', 'completed'].includes(row.status) ? 'success' : 'processing'">{{ reassignmentStatusNames[row.status as DeviceReassignment['status']] }}</Tag></template>
     <template #actions="{ row }"><Button type="link" size="small" :disabled="saving" @click="read(row)">查看处理</Button></template>
   </Grid><Detail><template v-if="selected">
-    <Alert v-if="detailFailure" :message="detailFailure" type="error" class="mb-3" /><Space wrap class="mb-3"><Tag>{{ reassignmentStatusNames[selected.status] }}</Tag><Button :loading="detailBusy" :disabled="saving" @click="read(selected)">读取当前状态</Button>
+    <Alert v-if="detailFailure" :message="detailFailure" type="error" class="mb-4" show-icon /><Space wrap class="mb-4"><Tag>{{ reassignmentStatusNames[selected.status] }}</Tag><Button :loading="detailBusy" :disabled="saving" @click="read(selected)">读取当前状态</Button>
       <Button v-if="platform && allowed('advance') && selected.status === 'isolating'" :disabled="saving || detailBusy || isDemo()" @click="confirm('advance')">核验并推进</Button>
       <Button v-if="!platform && allowed('accept') && selected.target_tenant_id === session.tenant?.id && selected.status === 'awaiting_acceptance'" type="primary" :disabled="saving || detailBusy || isDemo()" @click="confirm('accept')">确认接收</Button></Space>
-    <Alert v-for="reason in selected.pending_reasons" :key="reason" :message="reassignmentPendingNames[reason] || reason" type="info" class="mb-3" />
+    <Alert v-for="reason in selected.pending_reasons" :key="reason" :message="reassignmentPendingNames[reason] || reason" type="info" class="mb-4" show-icon />
     <Descriptions class="break-all" :column="1" bordered><DescriptionsItem label="设备名称">{{ selected.device_name }}</DescriptionsItem><DescriptionsItem label="设备标识">{{ selected.device_id }}</DescriptionsItem><DescriptionsItem label="处理标识">{{ selected.id }}</DescriptionsItem><DescriptionsItem label="来源客户">{{ selected.source_tenant_id }}</DescriptionsItem><DescriptionsItem label="目标客户">{{ selected.target_tenant_id || '无，仅结束使用' }}</DescriptionsItem><DescriptionsItem label="旧使用关系">{{ selected.ownership_id }}</DescriptionsItem><DescriptionsItem label="新使用关系">{{ selected.new_ownership_id || '尚未建立' }}</DescriptionsItem><DescriptionsItem label="持久隔离证明">{{ selected.requires_store ? '需要存储回执与保留消息核验' : '已确认没有接入历史' }}</DescriptionsItem><DescriptionsItem v-for="(proof, direction) in selected.retained" :key="direction" :label="direction === 'publish' ? '旧上行保留消息' : '旧下行保留消息'">{{ proof.state === 'absent' ? '核验不存在' : '清理待完成' }}{{ proof.checked_at ? ` · ${time(proof.checked_at)}` : '' }}</DescriptionsItem><DescriptionsItem label="记录版本">{{ selected.version }}</DescriptionsItem><DescriptionsItem label="更新时间">{{ time(selected.updated_at) }}</DescriptionsItem></Descriptions>
   </template></Detail><DeviceCredentialView ref="secret" /></Page>
 </template>

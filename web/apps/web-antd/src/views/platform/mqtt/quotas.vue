@@ -209,7 +209,7 @@ watch(historyOpen, value => { if (value) mqttDrawer1.open(); else mqttDrawer1.cl
     <Alert v-else-if="canRead && !canWrite" class="mb-4" type="info" show-icon message="当前角色可查看额度与超额，发布、重试和回退需要平台 MQTT 写入权限。" />
     <Alert v-else-if="result.waiting_release" class="mb-4" type="warning" show-icon message="当前用量已高于拟生效或已生效额度；已确认积压会保留到自然释放，新的超额占用将被拒绝。" />
     <Card title="额度设置" :bordered="false" class="mb-4">
-      <ConfigForm :common-config="{ disabled: busy || publishing || !canWrite, componentProps: { class: 'w-full' } }" /><Space class="mb-3"><Button type="primary" :loading="previewBusy" :disabled="!canRead || publishing" @click="runPreview">预览调整</Button><Button :disabled="busy || publishing" @click="resetDraft">重置</Button></Space>
+      <ConfigForm :common-config="{ disabled: busy || publishing || !canWrite, componentProps: { class: 'w-full' } }" /><Space class="mb-4"><Button type="primary" :loading="previewBusy" :disabled="!canRead || publishing" @click="runPreview">预览调整</Button><Button :disabled="busy || publishing" @click="resetDraft">重置</Button></Space>
       <Alert v-if="previewFailure" :message="previewFailure" type="error" show-icon class="mt-4" />
     </Card>
     <Card title="当前用量" :bordered="false">

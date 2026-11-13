@@ -61,7 +61,7 @@ function act(role: RoleRecord, action: 'status' | 'delete') {
 onBeforeUnmount(() => pending?.abort());
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-3" /><Grid :table-title="session.realm === 'platform' ? '平台角色' : '角色管理'">
+  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid :table-title="session.realm === 'platform' ? '平台角色' : '角色管理'">
     <template #toolbar-tools><Button v-if="can('create') && can('permissions')" type="primary" :disabled="isDemo()" @click="edit(null, 'create')">新增角色</Button></template>
     <template #status="{ row }"><Tag :color="row.enabled ? 'success' : 'default'">{{ row.enabled ? '启用' : '停用' }}</Tag></template>
     <template #permissions="{ row }">{{ row.permissions.length }}</template><template #protected="{ row }"><Tag v-if="row.protected" color="gold">超级管理员</Tag></template>
@@ -74,5 +74,5 @@ onBeforeUnmount(() => pending?.abort());
         <MenuItem v-if="can('delete')" :disabled="Boolean(row.protected)" danger @click="act(row, 'delete')">删除</MenuItem>
       </Menu></template></Dropdown>
     </Space></template>
-  </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-3" /><Form v-if="mode !== 'permissions'" /><Tree v-if="mode === 'create' || mode === 'permissions'" checkable check-strictly :checked-keys="checked" :tree-data="tree" @check="value => checked = Array.isArray(value) ? value as string[] : value.checked as string[]" /></Editor></Page>
+  </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Form v-if="mode !== 'permissions'" /><Tree v-if="mode === 'create' || mode === 'permissions'" checkable check-strictly :checked-keys="checked" :tree-data="tree" @check="value => checked = Array.isArray(value) ? value as string[] : value.checked as string[]" /></Editor></Page>
 </template>

@@ -139,7 +139,7 @@ onBeforeUnmount(() => { version++; pending?.abort(); clearInterval(timer); docum
           <template v-else-if="column.field === 'actions'"><Button type="link" size="small" @click="detail = record">详情</Button></template>
         </template>
       </Grid>
-    <p class="mt-3 text-sm text-muted-foreground">{{ result ? `采样查询时间：${time(result.generated_at)}` : '等待首次查询' }}</p>
+    <p class="mt-4 text-sm text-muted-foreground">{{ result ? `采样查询时间：${time(result.generated_at)}` : '等待首次查询' }}</p>
     <DetailDrawer>
       <Alert v-if="detail" class="mb-4" type="info" show-icon message="详情保留打开时的采样。节点暂不可达或采样过期时，数值仅作历史观察。" />
       <Descriptions class="break-all" v-if="detail" bordered :column="{ xs: 1, sm: 2 }" layout="vertical">

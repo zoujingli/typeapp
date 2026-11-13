@@ -77,12 +77,12 @@ function show(row: Enrollment) { selected.value = row; detailDrawer.open(); }
 onBeforeUnmount(() => { pending?.abort(); detailGeneration++; secret.value = ''; });
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-3" /><Grid table-title="设备注册资格">
+  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid table-title="设备注册资格">
     <template #toolbar-tools><Button v-if="can('issue')" type="primary" @click="issue">签发资格</Button></template>
     <template #capacity="{ row }">{{ row.registered_count }} / {{ row.capacity }} 已注册</template><template #status="{ row }"><Tag>{{ statuses[row.status as Enrollment['status']] }}</Tag></template>
     <template #actions="{ row }"><Space><Button type="link" size="small" @click="show(row)">详情</Button><Button v-if="can('reset')" type="link" size="small" :disabled="row.status !== 'available'" @click="change(row, 'reset')">重置注册码</Button><Button v-if="can('disable')" type="link" size="small" danger :disabled="!row.enabled" @click="change(row, 'disable')">停用</Button></Space></template>
-  </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-3" /><Form /></Editor>
-  <Secret><Alert type="warning" show-icon class="mb-3" message="关闭后无法再次查看，遗失时请重置。" /><p>资格标识：{{ secretId }}</p><Input.TextArea :value="secret" readonly :rows="4" aria-label="一次性注册码" /></Secret>
-  <Detail><Descriptions v-if="selected" :column="1" bordered class="break-all mb-4"><DescriptionsItem label="资格标识">{{ selected.id }}</DescriptionsItem><DescriptionsItem label="客户标识">{{ selected.tenant_id }}</DescriptionsItem><DescriptionsItem label="可用额度">{{ selected.remaining }}</DescriptionsItem><DescriptionsItem label="已注册数量">{{ selected.registered_count }}</DescriptionsItem><DescriptionsItem label="状态">{{ statuses[selected.status] }}</DescriptionsItem></Descriptions><Alert v-if="detailFailure" :message="detailFailure" type="error" class="mb-3" /><Bindings table-title="设备注册记录" /></Detail>
+  </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Form /></Editor>
+  <Secret><Alert type="warning" show-icon class="mb-4" message="关闭后无法再次查看，遗失时请重置。" /><p>资格标识：{{ secretId }}</p><Input.TextArea :value="secret" readonly :rows="4" aria-label="一次性注册码" /></Secret>
+  <Detail><Descriptions v-if="selected" :column="1" bordered class="break-all mb-4"><DescriptionsItem label="资格标识">{{ selected.id }}</DescriptionsItem><DescriptionsItem label="客户标识">{{ selected.tenant_id }}</DescriptionsItem><DescriptionsItem label="可用额度">{{ selected.remaining }}</DescriptionsItem><DescriptionsItem label="已注册数量">{{ selected.registered_count }}</DescriptionsItem><DescriptionsItem label="状态">{{ statuses[selected.status] }}</DescriptionsItem></Descriptions><Alert v-if="detailFailure" :message="detailFailure" type="error" class="mb-4" show-icon /><Bindings table-title="设备注册记录" /></Detail>
   </Page>
 </template>

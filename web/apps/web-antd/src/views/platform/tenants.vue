@@ -103,18 +103,18 @@ async function copyCredential() {
 onBeforeUnmount(() => { pending?.abort(); credential.value = null; });
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-3" /><Grid table-title="客户管理"><template #toolbar-tools><Button v-if="can('create')" type="primary" :disabled="isDemo()" @click="edit(null)">开通客户</Button></template>
+  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid table-title="客户管理"><template #toolbar-tools><Button v-if="can('create')" type="primary" :disabled="isDemo()" @click="edit(null)">开通客户</Button></template>
     <template #status="{ row }"><Tag :color="row.enabled ? 'success' : 'default'">{{ row.enabled ? '启用' : '停用' }}</Tag></template>
     <template #actions="{ row }"><Space><Button v-if="can('update')" type="link" size="small" :disabled="isDemo()" @click="edit(row)">编辑</Button><Button type="link" size="small" @click="manage(row)">超管</Button><Button v-if="can('status')" type="link" size="small" :disabled="isDemo()" @click="status(row)">{{ row.enabled ? '停用' : '启用' }}</Button></Space></template>
-  </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-3" /><Form /></Editor>
-  <Administrators><Alert v-if="adminFailure" :message="adminFailure" type="error" class="mb-3" /><AdminGrid :table-title="target?.name"><template #toolbar-tools><Button v-if="can('administrators.manage')" :disabled="isDemo()" @click="editAdmin('add')">新增超管</Button></template>
+  </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Form /></Editor>
+  <Administrators><Alert v-if="adminFailure" :message="adminFailure" type="error" class="mb-4" show-icon /><AdminGrid :table-title="target?.name"><template #toolbar-tools><Button v-if="can('administrators.manage')" :disabled="isDemo()" @click="editAdmin('add')">新增超管</Button></template>
     <template #status="{ row }"><Tag :color="row.enabled ? 'success' : 'default'">{{ row.enabled ? '启用' : '停用' }}</Tag></template>
     <template #actions="{ row }"><Space><Button v-if="can('impersonate')" type="link" size="small" :disabled="isDemo() || !row.enabled || !target?.enabled" @click="simulate(row)">模拟登录</Button>
       <Dropdown v-if="can('administrators.manage')" :trigger="['click']"><Button type="link" size="small" :disabled="isDemo()">更多</Button><template #overlay><Menu>
         <MenuItem @click="changeAdmin(row, 'password')">重置口令</MenuItem><MenuItem @click="editAdmin('replace', row)">替换超管</MenuItem><MenuItem @click="changeAdmin(row, 'status')">{{ row.enabled ? '停用' : '启用' }}</MenuItem><MenuItem danger @click="changeAdmin(row, 'remove')">移除超管</MenuItem>
       </Menu></template></Dropdown>
     </Space></template>
-  </AdminGrid></Administrators><AdminEditor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-3" /><AdminForm /></AdminEditor>
-  <SecretView><Alert message="请立即保存口令，关闭后将不再显示。" type="warning" show-icon class="mb-4" /><p>账号：{{ credential?.user.login }}</p><Input.Password :value="credential?.password" readonly autocomplete="off" /><Button class="mt-3" @click="copyCredential">复制口令</Button></SecretView>
+  </AdminGrid></Administrators><AdminEditor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><AdminForm /></AdminEditor>
+  <SecretView><Alert message="请立即保存口令，关闭后将不再显示。" type="warning" show-icon class="mb-4" /><p>账号：{{ credential?.user.login }}</p><Input.Password :value="credential?.password" readonly autocomplete="off" /><Button class="mt-4" @click="copyCredential">复制口令</Button></SecretView>
   </Page>
 </template>

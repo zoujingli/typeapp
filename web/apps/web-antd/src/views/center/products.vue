@@ -58,9 +58,9 @@ async function show(product: Product) {
 onBeforeUnmount(() => pending?.abort());
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-3" /><Grid table-title="设备分类">
+  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid table-title="设备分类">
     <template #toolbar-tools><Button v-if="canEdit" type="primary" @click="edit(null)">创建分类</Button></template>
     <template #actions="{ row }"><Space><Button type="link" size="small" @click="show(row)">详情</Button><Button v-if="canEdit" type="link" size="small" @click="edit(row)">编辑</Button><Button v-if="canEdit" type="link" size="small" danger @click="remove(row)">删除</Button></Space></template>
-  </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-3" /><Form /></Editor>
+  </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Form /></Editor>
   <Detail><Descriptions class="break-all" v-if="detail" :column="1" bordered><DescriptionsItem label="分类名称">{{ detail.name }}</DescriptionsItem><DescriptionsItem label="分类标识">{{ detail.id }}</DescriptionsItem><DescriptionsItem label="说明">{{ detail.description || '未填写' }}</DescriptionsItem><DescriptionsItem label="记录版本">{{ detail.version }}</DescriptionsItem></Descriptions></Detail></Page>
 </template>

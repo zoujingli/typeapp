@@ -293,7 +293,7 @@ const [Publishes] = useVbenVxeGrid<PublishRecord>({ gridOptions: { columns: publ
         <DescriptionsItem label="调试名额">{{ occupancyText }}</DescriptionsItem>
         <DescriptionsItem label="已淘汰显示">{{ evicted }} 条</DescriptionsItem>
       </Descriptions>
-      <Alert v-if="secret" type="warning" class="mb-4" message="本次口令只显示一次，刷新后需重新签发。"><template #description><code class="break-all">{{ secret }}</code></template></Alert>
+      <Alert v-if="secret" type="warning" class="mb-4" message="本次口令只显示一次，刷新后需重新签发。" show-icon><template #description><code class="break-all">{{ secret }}</code></template></Alert>
       <div class="grid grid-cols-1 items-center gap-3 md:grid-cols-[minmax(0,1fr)_200px_auto]">
         <Input v-model:value="testPayload" aria-label="测试发布内容" :disabled="status !== 'connected'" :maxlength="65536" />
         <Select v-model:value="publishQos" aria-label="测试发布 QoS" :options="[{ value: 0, label: 'QoS 0 无回执' }, { value: 1, label: 'QoS 1 MQTT 回执' }]" />

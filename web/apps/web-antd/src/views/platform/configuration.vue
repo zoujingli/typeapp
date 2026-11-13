@@ -49,7 +49,7 @@ onMounted(load);
 <template>
   <Page title="运行配置" description="查看配置来源并维护非敏感启动参数。" header-class="flex-wrap gap-4">
     <template #extra><Space><Button :loading="loading" :disabled="saving" @click="load">刷新</Button><Button v-if="canManage" type="primary" :loading="saving" :disabled="!view || loading || conflicted" @click="save">保存配置</Button></Space></template>
-    <Alert v-if="pendingRestart || view?.restart_required" type="warning" class="mb-3" message="配置已写入，重启后生效；当前进程不会热加载。" /><Alert v-if="failure" :message="failure" type="error" class="mb-3" />
-    <Spin :spinning="loading"><Card :bordered="false"><Form :common-config="{ disabled: loading || saving, componentProps: { class: 'w-full' } }" /></Card></Spin><Alert v-if="view?.undeclared.length" type="info" class="mt-3" message="以下配置键未纳入网页管理，不会读取或修改其值" :description="view.undeclared.join('、')" />
+    <Alert v-if="pendingRestart || view?.restart_required" type="warning" class="mb-4" message="配置已写入，重启后生效；当前进程不会热加载。" show-icon /><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon />
+    <Spin :spinning="loading"><Card :bordered="false"><Form :common-config="{ disabled: loading || saving, componentProps: { class: 'w-full' } }" /></Card></Spin><Alert v-if="view?.undeclared.length" type="info" class="mt-4" message="以下配置键未纳入网页管理，不会读取或修改其值" :description="view.undeclared.join('、')" show-icon />
   </Page>
 </template>

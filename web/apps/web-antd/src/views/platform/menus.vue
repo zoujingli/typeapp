@@ -62,11 +62,11 @@ watch(directory, () => grid.reload()); onBeforeUnmount(() => pending?.abort());
 </script>
 <template>
   <Page><Tabs v-model:active-key="directory" class="mb-4 rounded-md bg-card px-4"><TabPane key="platform" tab="平台菜单" /><TabPane key="system" tab="子系统菜单" /></Tabs>
-    <Alert v-if="failure" :message="failure" type="error" class="mb-3" /><Grid table-title="菜单目录"><template #toolbar-tools><Button v-if="canManage" type="primary" :disabled="isDemo()" @click="edit(null)">新增菜单</Button></template>
+    <Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid table-title="菜单目录"><template #toolbar-tools><Button v-if="canManage" type="primary" :disabled="isDemo()" @click="edit(null)">新增菜单</Button></template>
     <template #kind="{ row }">{{ { directory: '目录', page: '页面', action: '操作' }[row.kind as 'directory' | 'page' | 'action'] }}</template>
     <template #status="{ row }"><Tag :color="row.enabled ? 'success' : 'default'">{{ row.enabled ? '启用' : '停用' }}</Tag></template>
     <template #hidden="{ row }">{{ row.hidden ? '隐藏' : '显示' }}</template>
     <template #actions="{ row }"><Space><Button v-if="canManage" type="link" size="small" :disabled="isDemo()" @click="edit(row)">编辑</Button><Button v-if="canManage" type="link" size="small" danger :disabled="isDemo() || row.guarded" @click="remove(row)">删除</Button></Space></template>
-    </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-3" /><Form /></Editor>
+    </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Form /></Editor>
   </Page>
 </template>

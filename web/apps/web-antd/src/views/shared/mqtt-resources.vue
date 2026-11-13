@@ -332,7 +332,7 @@ onBeforeUnmount(() => { clear(); clearInterval(timer); clearInterval(clock); doc
           <Button :disabled="controlsDisabled || page === 0" @click="load(page - 1)">上一页</Button><Button :disabled="controlsDisabled || !result?.has_more" @click="load(page + 1, result?.next_cursor || null)">下一页</Button></div>
       </div></template>
     </Grid>
-    <p class="mt-3 text-sm text-muted-foreground" aria-live="polite">采样时间：{{ result ? display(result.observed_at, 'observed_at') : '尚无数据' }}{{ busy ? ' · 刷新中' : '' }} · 可见时每 5 秒刷新</p>
+    <p class="mt-4 text-sm text-muted-foreground" aria-live="polite">采样时间：{{ result ? display(result.observed_at, 'observed_at') : '尚无数据' }}{{ busy ? ' · 刷新中' : '' }} · 可见时每 5 秒刷新</p>
     <DetailDrawer>
       <template v-if="detail"><p class="mb-4 text-sm text-muted-foreground">详情保留打开时的采样：{{ display(detail.observed_at, 'observed_at') }}{{ stale(detail.item, detail.observed_at) ? ' · 已过期，当前状态未知' : '' }}</p>
         <Descriptions class="break-all" bordered :column="{ xs: 1, sm: 1, md: 2 }" layout="vertical" size="small">

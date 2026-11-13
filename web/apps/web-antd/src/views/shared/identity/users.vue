@@ -93,7 +93,7 @@ onBeforeUnmount(() => pending?.abort());
 </script>
 <template>
   <Page auto-content-height>
-    <Alert v-if="failure" :message="failure" type="error" show-icon class="mb-3" />
+    <Alert v-if="failure" :message="failure" type="error" show-icon class="mb-4" />
     <Grid :table-title="session.realm === 'platform' ? '平台用户' : '用户管理'">
       <template #toolbar-tools><Space wrap><Button v-if="can('users.create')" type="primary" :disabled="isDemo()" @click="edit(null, 'create')">新增用户</Button><Button v-if="can('roles.assign') && can('roles.read')" :disabled="isDemo()" @click="chooseRoles()">批量分配角色</Button></Space></template>
       <template #status="{ row }"><Tag :color="row.enabled ? 'success' : 'default'">{{ row.enabled ? '启用' : '停用' }}</Tag></template>
@@ -109,7 +109,7 @@ onBeforeUnmount(() => pending?.abort());
         </Menu></template></Dropdown>
       </Space></template>
     </Grid>
-    <Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-3" /><Form /></Editor>
-    <Assignment><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-3" /><Select v-model:value="selectedRoles" mode="multiple" class="w-full" show-search :filter-option="false" :loading="roleBusy" :options="roleOptions.map(role => ({ label: `${role.name}${role.enabled ? '' : '（停用）'}`, value: role.id }))" @search="value => { roleSearch = value; readRoles(); }" /><Button v-if="rolePage * 100 < roleTotal" :loading="roleBusy" class="mt-3" @click="readRoles(true)">加载更多角色</Button></Assignment>
+    <Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Form /></Editor>
+    <Assignment><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Select v-model:value="selectedRoles" mode="multiple" class="w-full" show-search :filter-option="false" :loading="roleBusy" :options="roleOptions.map(role => ({ label: `${role.name}${role.enabled ? '' : '（停用）'}`, value: role.id }))" @search="value => { roleSearch = value; readRoles(); }" /><Button v-if="rolePage * 100 < roleTotal" :loading="roleBusy" class="mt-4" @click="readRoles(true)">加载更多角色</Button></Assignment>
   </Page>
 </template>

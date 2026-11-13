@@ -37,7 +37,7 @@ function restore() { resetScopedPreferences(); message.success('已恢复当前�
 </script>
 <template>
   <Page title="个人中心" description="管理个人资料、账号安全和当前浏览器的界面偏好。">
-    <Alert v-if="failure" :message="failure" type="error" class="mb-4" /><Alert v-if="!session.permissions.length" message="尚未分配业务角色，请联系管理员。" type="info" class="mb-4" />
+    <Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Alert v-if="!session.permissions.length" message="尚未分配业务角色，请联系管理员。" type="info" class="mb-4" show-icon />
     <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
       <Card :bordered="false">
         <div class="flex flex-col items-center gap-3 py-4 text-center">
@@ -62,6 +62,6 @@ function restore() { resetScopedPreferences(); message.success('已恢复当前�
         </Card>
       </div>
     </div>
-    <Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-3" /><Alert v-if="mode === 'password'" message="修改密码后，所有旧登录会话将失效。" type="warning" class="mb-3" /><Form /></Editor>
+    <Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Alert v-if="mode === 'password'" message="修改密码后，所有旧登录会话将失效。" type="warning" class="mb-4" show-icon /><Form /></Editor>
   </Page>
 </template>
