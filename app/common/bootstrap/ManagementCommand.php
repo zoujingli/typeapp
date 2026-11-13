@@ -776,7 +776,7 @@ final class ManagementCommand implements Command
                         $generation = (int)$registered['generation'];
                     }
                 }
-                $row = $realm === 'broker' ? $connection->table('broker_nodes')->where('node_id', '=', $arguments[0])->where('run_id', '=', $observation)->first() : null;
+                $row = $realm === 'broker' ? $connection->table('platform_mqtt_node')->where('node_id', '=', $arguments[0])->where('run_id', '=', $observation)->first() : null;
                 if ($generation < 1 || ($realm === 'broker' && ($row === null
                     || (json_decode($row['metrics_json'], true, 8, JSON_THROW_ON_ERROR)['nodeGeneration'] ?? 0) !== $generation))) {
                     throw new \InvalidArgumentException('节点运行与采样代次不匹配');
@@ -834,12 +834,12 @@ final class ManagementCommand implements Command
             $receipt = $connection->transaction(static function (Connection $transaction) use ($operation, $realm, $requestId): array {
                 $current = AuditLog::brokerOperation($transaction, $realm, $operation['operation_id']);
                 if ($realm === 'broker' && ($current['current_stage'] ?? '') !== 'completed') {
-                    $observed = $transaction->table('broker_nodes')->where('node_id', '=', $operation['target']['node_id'])
+                    $observed = $transaction->table('platform_mqtt_node')->where('node_id', '=', $operation['target']['node_id'])
                         ->where('run_id', '=', $operation['target']['observation_run'])->lockForUpdate()->first();
                     if ($observed === null || (json_decode($observed['metrics_json'], true, 8, JSON_THROW_ON_ERROR)['nodeGeneration'] ?? 0) !== $operation['target']['generation']) {
                         throw new \RuntimeException('broker_observation_owner_lost');
                     }
-                    $transaction->table('broker_nodes')->where('node_id', '=', $operation['target']['node_id'])
+                    $transaction->table('platform_mqtt_node')->where('node_id', '=', $operation['target']['node_id'])
                         ->where('run_id', '=', $operation['target']['observation_run'])->update(['stopped' => 2]);
                 }
                 return AuditLog::recordBroker($transaction, $realm, $operation, 'completed', [
