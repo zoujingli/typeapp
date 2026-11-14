@@ -144,4 +144,5 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - 锁定 PHP 8.5.12 ZTS + 原生 Swoole profile 下 `tests/tenant.php sqlite` 通过；覆盖登录、站点保存、产品查询/创建/修改/删除、RBAC、模拟登录和 Tenant 隔离。
 - 同一代码基线重新执行 `tools/build-application.php --shared-development`：前端 7,875 modules、TypePHP 297 个 C++ 文件编译链接通过；AOT build id 为 `87930082d588b92ca842bc3e49b9a4758edffd6a3b0608d9d57f1bc77662e553`，程序 SHA-256 为 `2868603cf099b6cb3b83403d928aaf2e5a71eb39faf4f69a69e419568d81abbb`。
 - 使用同一 AOT 程序、隔离外部 PHP 扩展扫描目录后执行 `tests/tenant.php sqlite` 通过；外部扩展重复加载警告没有计入程序 JSON 响应，临时执行包装器已清理。
+- 在锁定 PHP 8.5.12 ZTS、原生 Swoole profile、绝对 PATH 和 `PHP_INI_SCAN_DIR=/dev/null` 下重跑完整 PHPUnit：309 tests、18,031 assertions 全部通过；此前系统 PHP 或子进程未使用锁定 PATH 的失败仅属于运行库环境污染。
 - 本轮临时 PostgreSQL 主库、同步备库、HTTP、Broker 和探针进程均已停止，工作区没有遗留运行进程。
