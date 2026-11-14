@@ -169,14 +169,15 @@ final class RoleService
         if ($id !== '') {
             $query = $query->where('id', '=', $id);
         }
-        if (($filters['search'] ?? '') !== '') {
-            $query = $query->where('name', 'LIKE', '%' . $filters['search'] . '%');
-        }
-        if (($filters['enabled'] ?? -1) !== -1) {
-            $query = $query->where('enabled', '=', (bool)$filters['enabled']);
-        }
         $query = $query->with($kind === 'users' ? 'roles' : 'menus');
-        $page = $query->orderBy('created_at', 'DESC')->orderBy('id')->paginate($filters['page'] ?? 1, $filters['per_page'] ?? 20);
+        $page = \_query($query, [
+            'search' => $filters['search'] ?? '',
+            'enabled' => ($filters['enabled'] ?? -1) === -1 ? '' : (bool)$filters['enabled'],
+            'page' => $filters['page'] ?? 1,
+            'page_size' => $filters['per_page'] ?? 20,
+        ])->like('search')->equal('enabled')
+            ->order(['created_at' => 'created_at', 'id' => 'id'], ['created_at' => 'DESC', 'id' => 'ASC'])
+            ->paginatePage(20, 100, 100000);
         $items = [];
         foreach ($page->items() as $model) {
             $item = $model->project($kind === 'roles' ? ['id', 'name', 'enabled', 'protected', 'version', 'created_at'] : ['id', 'login', 'name', 'enabled', 'version', 'created_at']);

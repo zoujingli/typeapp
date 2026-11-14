@@ -34,7 +34,9 @@ final class ClientApplicationService
         }
         if ($realm === 'system') {
             return ExecutionScope::current()->run(static function (ExecutionScope $scope) use ($page, $perPage, $context): array {
-                $result = ClientApplication::query()->master()->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
+                $result = \_query(ClientApplication::query()->master(), ['page' => $page, 'page_size' => $perPage])
+                    ->order(['created_at' => 'created_at', 'id' => 'id'], ['created_at' => 'DESC', 'id' => 'ASC'])
+                    ->paginatePage($perPage, 100, 100000);
                 $items = [];
                 foreach ($result->items() as $model) {
                     $items[] = self::publicProjection($model);
@@ -43,11 +45,10 @@ final class ClientApplicationService
             }, ['tenant_id' => $tenantId]);
         }
         // 平台跨 Tenant 目录使用无隐式租户范围的只读 Model；业务写入仍在可信 Tenant 范围内使用 ClientApplication。
-        $query = ApplicationDirectory::query()->master();
-        if ($tenantId !== '') {
-            $query = $query->where('tenant_id', '=', $tenantId);
-        }
-        $result = $query->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
+        $result = \_query(ApplicationDirectory::query()->master(), [
+            'tenant_id' => $tenantId, 'page' => $page, 'page_size' => $perPage,
+        ])->equal('tenant_id')->order(['created_at' => 'created_at', 'id' => 'id'], ['created_at' => 'DESC', 'id' => 'ASC'])
+            ->paginatePage($perPage, 100, 100000);
         $items = [];
         foreach ($result->items() as $model) {
             $items[] = self::project($model->project(self::FIELDS) + ['credential_id' => $model->getCredentialId()]);

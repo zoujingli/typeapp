@@ -163,7 +163,9 @@ final class TransferService
         if ($realm === 'system') {
             $query = $query->whereGroup(static fn (ModelConditions $group): ModelConditions => $group->where('source_tenant_id', '=', $tenant)->orWhere('target_tenant_id', '=', $tenant));
         }
-        $rows = $query->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
+        $rows = \_query($query, ['page' => $page, 'page_size' => $perPage])
+            ->order(['created_at' => 'created_at', 'id' => 'id'], ['created_at' => 'DESC', 'id' => 'ASC'])
+            ->paginatePage($perPage, 100, 100000);
         $items = [];
         foreach ($rows->items() as $model) {
             $items[] = self::relationshipProjection($connection, $model);

@@ -33,7 +33,9 @@ final class EnrollmentService
         }
         if ($realm === 'system') {
             return ExecutionScope::current()->run(static function (ExecutionScope $scope) use ($page, $perPage, $context): array {
-                $result = DeviceEnrollment::query()->master()->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
+                $result = \_query(DeviceEnrollment::query()->master(), ['page' => $page, 'page_size' => $perPage])
+                    ->order(['created_at' => 'created_at', 'id' => 'id'], ['created_at' => 'DESC', 'id' => 'ASC'])
+                    ->paginatePage($perPage, 100, 100000);
                 $items = [];
                 foreach ($result->items() as $enrollment) {
                     $items[] = self::project($enrollment->project(self::PUBLIC_FIELDS));
@@ -52,11 +54,10 @@ final class EnrollmentService
             }, ['tenant_id' => $tenantId]);
         }
         // 平台目录跨客户，使用显式无 TenantKey 的只读 Model；不能把客户模型放到无范围上下文。
-        $rows = EnrollmentDirectory::query()->master()->select(self::PUBLIC_FIELDS);
-        if ($tenantId !== '') {
-            $rows = $rows->where('tenant_id', '=', $tenantId);
-        }
-        $result = $rows->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
+        $result = \_query(EnrollmentDirectory::query()->master()->select(self::PUBLIC_FIELDS), [
+            'tenant_id' => $tenantId, 'page' => $page, 'page_size' => $perPage,
+        ])->equal('tenant_id')->order(['created_at' => 'created_at', 'id' => 'id'], ['created_at' => 'DESC', 'id' => 'ASC'])
+            ->paginatePage($perPage, 100, 100000);
         $items = [];
         foreach ($result->items() as $enrollment) {
             $items[] = self::project($enrollment->project(self::PUBLIC_FIELDS));
@@ -85,8 +86,10 @@ final class EnrollmentService
         if ($row === null) {
             throw new HttpError(404, 'enrollment_not_found');
         }
-        $bindings = DeviceEnrollmentBinding::query()->master()->where('enrollment_id', '=', $id)
-            ->orderBy('registered_at', 'DESC')->orderBy('ownership_id')->paginate($page, $perPage);
+        $bindings = \_query(DeviceEnrollmentBinding::query()->master()->where('enrollment_id', '=', $id), [
+            'page' => $page, 'page_size' => $perPage,
+        ])->order(['registered_at' => 'registered_at', 'ownership_id' => 'ownership_id'], ['registered_at' => 'DESC', 'ownership_id' => 'ASC'])
+            ->paginatePage($perPage, 100, 100000);
         $items = [];
         foreach ($bindings->items() as $binding) {
             $items[] = $binding->project(['ownership_id', 'device_id', 'registered_at']);

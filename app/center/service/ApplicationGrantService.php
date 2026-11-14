@@ -32,7 +32,10 @@ final class ApplicationGrantService
             throw new HttpError(422, 'invalid_pagination');
         }
         return ExecutionScope::current()->run(static function (ExecutionScope $scope) use ($application, $page, $perPage, $view): array {
-            $rows = ApplicationGrant::query()->master()->where('application_id', '=', $application)->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
+            $rows = \_query(ApplicationGrant::query()->master()->where('application_id', '=', $application), [
+                'page' => $page, 'page_size' => $perPage,
+            ])->order(['created_at' => 'created_at', 'id' => 'id'], ['created_at' => 'DESC', 'id' => 'ASC'])
+                ->paginatePage($perPage, 100, 100000);
             $items = [];
             foreach ($rows->items() as $model) {
                 $items[] = self::project($model);
