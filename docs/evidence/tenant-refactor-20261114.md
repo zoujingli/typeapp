@@ -155,3 +155,13 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - 使用同一静态程序执行 `tests/tenant.php sqlite` 通过，覆盖空库安装、模块表前缀、主域/固定路径入口、RBAC、品牌、模拟交接、MQTT 模拟观测、恢复核对及真实 HTTP Tenant 隔离。
 - 使用同一静态程序执行 `tests/native-single-program.php build/app/type-app` 通过，覆盖单程序导出与覆盖保护、只读程序目录、不同工作目录、外部 PHP 配置忽略、内嵌许可材料、平台用户/角色 CRUD、HTTP 页面和优雅停止。
 - 首次以 `PHP_INI_SCAN_DIR=/dev/null` 启动 Tenant 夹具时，动态观测夹具按预期拒绝“协程 I/O 需要原生 Swoole”；随后注入锁定 runtime profile 的原生 Swoole 扩展目录重跑通过。该前置配置拒绝不计为业务或 SQLite 兼容性失败。
+
+## 当前 UI/入口修复后的最终静态复验
+
+在上述输入边界、页面异步状态和可信 Host 修复后，重新执行当前 SQLite 静态 profile：
+
+- TypePHP AOT 编译链接 298 个 C++ 文件通过；当前 `build/app/type-app` build id 为 `8fd33460a329982fb4a7f3d143496010d372de8c80bfa638b281d33206433184`，SHA-256 为 `acaa9f83f25a2d8853976b64284b3554f1e88b09e33ef2bd5107582a43e8afc2`。
+- 同一静态程序的 `tests/tenant.php sqlite` 通过，覆盖空库安装、Tenant 入口、RBAC、品牌、模拟交接、MQTT 观测、恢复核对和真实 HTTP 隔离；`tests/native-single-program.php build/app/type-app` 通过，覆盖单程序导出、只读程序目录、外部配置隔离、内嵌许可和真实业务页面。
+- 前端 `pnpm@12.18.0 typecheck`、生产构建（7,875 modules）和 Vitest（2 files / 3 tests）通过；PHP CS Fixer 918 文件、0 修正；文档一致性检查 1,507 处引用通过。
+- MQTT 运行配置与配额页面在首个成功响应前不再展示伪默认数据，增加 Spin/Empty/loading；权限变化会清空旧数据。MQTT 快捷导航现在同时校验 `platform.broker.read` 和服务端菜单目录；应用、注册资格和转配详情抽屉接入 Vben loading 状态；角色与菜单授权加载提供 loading/empty 反馈；用户表单补齐自动填充语义；客户超管读取失败显示页面错误。
+- `TenantContext::allowsAuthority()` 对 Host 与配置的 `TENANT_BASE_DOMAIN` 统一小写；实际静态 HTTP 服务以 `Host: DEMO.LOCALHOST:18124` 请求公开上下文返回 200 且绑定正确 Tenant。真实 Chromium 进一步验证 `demo.localhost` 子域登录不显示客户下拉并保持子域名，`/t/{tenant_id}/` 固定路径登录不显示下拉并保持固定路径。
