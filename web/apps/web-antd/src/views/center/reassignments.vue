@@ -71,7 +71,7 @@ onBeforeUnmount(() => { detailGeneration++; listPending?.abort(); detailPending?
   <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid :table-title="platform ? '设备转配' : '转配接收'">
     <template #status="{ row }"><Tag :color="['ended', 'completed'].includes(row.status) ? 'success' : 'processing'">{{ reassignmentStatusNames[row.status as DeviceReassignment['status']] }}</Tag></template>
     <template #actions="{ row }"><Button type="link" size="small" :disabled="saving" @click="read(row)">查看处理</Button></template>
-  </Grid><Detail><template v-if="selected">
+  </Grid><Detail :loading="detailBusy"><template v-if="selected">
     <Alert v-if="detailFailure" :message="detailFailure" type="error" class="mb-4" show-icon /><Space wrap class="mb-4"><Tag>{{ reassignmentStatusNames[selected.status] }}</Tag><Button :loading="detailBusy" :disabled="saving" @click="read(selected)">读取当前状态</Button>
       <Button v-if="platform && allowed('advance') && selected.status === 'isolating'" :disabled="saving || detailBusy || isDemo()" @click="confirm('advance')">核验并推进</Button>
       <Button v-if="!platform && allowed('accept') && selected.target_tenant_id === session.tenant?.id && selected.status === 'awaiting_acceptance'" type="primary" :disabled="saving || detailBusy || isDemo()" @click="confirm('accept')">确认接收</Button></Space>

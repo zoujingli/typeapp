@@ -319,7 +319,7 @@ watch(historyOpen, value => { if (value) mqttDrawer2.open(); else mqttDrawer2.cl
 
 <template>
   <Page title="MQTT 授权" :description="`平台接入主体、受信 CA 与 Topic 授权 · 当前版本 v${result.current_version}${paused ? ' · 已暂停后续发布' : ''}`" header-class="flex-wrap gap-4">
-    <template #extra><Space wrap><Button @click="showHistory">版本生效</Button><Button v-if="canWrite" type="primary" @click="edit(null)" :disabled="isDemo()">新增主体</Button></Space></template>
+    <template #extra><Space wrap><Button :disabled="!canRead" @click="showHistory">版本生效</Button><Button v-if="canWrite" type="primary" @click="edit(null)" :disabled="isDemo()">新增主体</Button></Space></template>
     <Alert v-if="failure" class="mb-4" type="error" show-icon role="alert" :message="denied ? failure : `授权刷新失败：${failure}`" />
     <Alert v-if="!canRead" class="mb-4" type="warning" show-icon message="当前账号无权查看 Broker 授权" />
     <Alert v-else-if="canRead && !canWrite" class="mb-4" type="info" show-icon message="当前角色可查看授权版本，保存、重试和回退需要写入权限。" />
@@ -356,7 +356,7 @@ watch(historyOpen, value => { if (value) mqttDrawer2.open(); else mqttDrawer2.cl
         <div class="flex flex-wrap items-center gap-3"><Button :loading="caSaving" :disabled="isDemo() || (!platformSerial.trim() || paused)" @click="savePlatformSerial">平台吊销</Button></div>
       </Form></CollapsePanel></Collapse>
       <div class="mb-4 flex flex-wrap items-center justify-between gap-4"><span class="text-muted-foreground leading-7">{{ cas.items.length }} 份受信 CA</span></div>
-      <MqttGrid1 :grid-options="{ columns: [{ title: '主体', field: 'subject' }, { title: '指纹', field: 'fingerprint', slots: { default: 'cell' }, width: 180 }, { title: '核对', field: 'verified', slots: { default: 'cell' }, width: 90 }, { title: '获取状态', field: 'fetch', slots: { default: 'cell' }, width: 140 }, { title: '执行状态', field: 'execute', slots: { default: 'cell' }, width: 160 }, { title: '恢复条件', field: 'recovery', slots: { default: 'cell' } }, { title: '操作', field: 'actions', slots: { default: 'cell' }, width: 90 }], pagerConfig: { enabled: false }, rowConfig: { keyField: 'id' } }" :table-data="cas.items">
+      <MqttGrid1 :grid-options="{ columns: [{ title: '主体', field: 'subject' }, { title: '指纹', field: 'fingerprint', slots: { default: 'cell' }, width: 180 }, { title: '核对', field: 'verified', slots: { default: 'cell' }, width: 90 }, { title: '获取状态', field: 'fetch', slots: { default: 'cell' }, width: 140 }, { title: '执行状态', field: 'execute', slots: { default: 'cell' }, width: 160 }, { title: '恢复条件', field: 'recovery', slots: { default: 'cell' } }, { title: '操作', field: 'actions', slots: { default: 'cell' }, width: 90 }], loading: busy, pagerConfig: { enabled: false }, rowConfig: { keyField: 'id' } }" :table-data="cas.items">
         <template #cell="{ column, row: record }">
           <template v-if="column.field === 'fingerprint'">{{ fingerprintText((record as Authority).fingerprint) }}</template>
           <template v-else-if="column.field === 'verified'"><Tag :color="Number((record as Authority).recovery_verified) === 0 ? 'warning' : undefined">{{ Number((record as Authority).recovery_verified) === 0 ? '待核对' : '已核对' }}</Tag></template>
@@ -388,7 +388,7 @@ watch(historyOpen, value => { if (value) mqttDrawer2.open(); else mqttDrawer2.cl
         </div>
         <FormItem v-if="editing" label="登记客户端证书公钥" class="col-span-full"><Input.TextArea v-model:value="form.certificatePem" aria-label="客户端证书公钥" placeholder="粘贴单份客户端证书 PEM，不要包含私钥" :rows="4" :maxlength="16384" @update:value="clearPreview" /></FormItem>
         <FormItem v-if="editing" label="换证重叠秒数" class="col-span-full">
-          <InputNumber v-model:value="form.overlapSeconds" aria-label="换证重叠秒数" :min="0" :max="86400" :precision="0" :disabled="form.revokeFingerprints.length > 0" style="width:100%" @change="clearPreview" />
+          <InputNumber v-model:value="form.overlapSeconds" aria-label="换证重叠秒数" :min="0" :max="86400" :precision="0" :disabled="form.revokeFingerprints.length > 0" class="w-full" @change="clearPreview" />
           <p class="text-muted-foreground leading-7">默认 86400 秒。勾选吊销则立即失效，不使用重叠窗口。</p>
         </FormItem>
         <div v-if="editing" class="col-span-full grant-list">

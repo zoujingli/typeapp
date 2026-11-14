@@ -14,8 +14,8 @@ const failure = ref(''); const saveFailure = ref('');
 let pending: AbortController | undefined;
 const [Form, form] = useVbenForm(reactive({ showDefaultActions: false, layout: 'vertical', commonConfig: { componentProps: { class: 'w-full' } }, schema: computed(() => [
   ...(mode.value !== 'password' ? [
-    { fieldName: 'login', label: '账号', component: 'Input' as const, rules: z.string().regex(/^[a-z0-9][a-z0-9_.@-]{2,99}$/, '请输入3至100位小写账号') },
-    { fieldName: 'name', label: '姓名', component: 'Input' as const, rules: z.string().trim().min(1, '请输入姓名').max(100) },
+    { fieldName: 'login', label: '账号', component: 'Input' as const, componentProps: { autocomplete: 'username', maxlength: 100 }, rules: z.string().regex(/^[a-z0-9][a-z0-9_.@-]{2,99}$/, '请输入3至100位小写账号') },
+    { fieldName: 'name', label: '姓名', component: 'Input' as const, componentProps: { autocomplete: 'name', maxlength: 100 }, rules: z.string().trim().min(1, '请输入姓名').max(100) },
   ] : []),
   ...(mode.value !== 'update' ? [{ fieldName: 'password', label: '密码', component: 'InputPassword' as const, componentProps: { autocomplete: 'new-password', maxlength: 72 }, rules: z.string().min(5, '请输入至少5位密码').max(72) }] : []),
 ]) }));

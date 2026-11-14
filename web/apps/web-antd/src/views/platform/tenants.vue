@@ -65,8 +65,14 @@ const [AdminGrid, adminGrid] = useVbenVxeGrid<AccountRecord>({ gridOptions: { co
   { title: '操作', fixed: 'right', width: 220, slots: { default: 'actions' } },
 ], pagerConfig: { pageSize: 20, pageSizes: [20, 50, 100] }, proxyConfig: { autoLoad: false, ajax: { query: async ({ page }: { page: { currentPage: number; pageSize: number } }) => {
   if (!target.value) return { items: [], total: 0 };
-  const data = await request<{ items: TenantDetails[] }>(`/platform/tenants/${target.value.id}`); target.value = data.items[0]!;
-  return request<PageResult<AccountRecord>>(`/platform/tenants/${target.value.id}/administrators`, { params: { page: page.currentPage, per_page: page.pageSize } });
+  adminFailure.value = '';
+  try {
+    const data = await request<{ items: TenantDetails[] }>(`/platform/tenants/${target.value.id}`); target.value = data.items[0]!;
+    return await request<PageResult<AccountRecord>>(`/platform/tenants/${target.value.id}/administrators`, { params: { page: page.currentPage, per_page: page.pageSize } });
+  } catch (error) {
+    if (!isCanceled(error)) adminFailure.value = errorText(error);
+    throw error;
+  }
 } } } } });
 function manage(tenant: TenantDetails) { target.value = tenant; adminFailure.value = ''; administrators.open(); }
 const adminAction = ref<'add' | 'replace'>('add'); const oldAdmin = ref<AccountRecord | null>(null);

@@ -10,7 +10,7 @@ import { useRoute } from 'vue-router';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { useVbenVxeGrid } from '../../../adapter/vxe-table';
 import { useVbenForm } from '../../../adapter/form';
-import { Alert, Button, Card, Checkbox, Space, Modal, Tag, message } from 'ant-design-vue';
+import { Alert, Button, Card, Checkbox, Empty, Space, Spin, Modal, Tag, message } from 'ant-design-vue';
 import { ApiError, errorText, isCanceled, isDemo, request, session } from '../../../api/identity';
 
 type ConfigKey = 'listen' | 'port' | 'ws_port' | 'wss_port' | 'mtls_port' | 'plaintext' | 'allowed_origins';
@@ -48,10 +48,12 @@ const tenant = computed(() => session.realm === 'system' && !platform.value ? se
 const base = computed(() => '/platform/broker');
 const canRead = computed(() => session.permissions.includes('platform.broker.read'));
 const canWrite = computed(() => !isDemo() && session.permissions.includes('platform.broker.write'));
-const result = ref<RuntimePage>({
-  config: emptyConfig(), restart_required: true, loaded: [], handshake: { sha256: '', reloads: 0, failures: 0 },
+const emptyPage = (): RuntimePage => ({
+  config: emptyConfig(), restart_required: false, loaded: [], handshake: { sha256: '', reloads: 0, failures: 0 },
   current_version: 0, publish_paused: false, revision: null,
 });
+const result = ref<RuntimePage>(emptyPage());
+const hasData = ref(false);
 const draft = reactive<RuntimeConfig>(emptyConfig());
 const preview = ref<RuntimePage | null>(null);
 const revisions = ref<RevisionPage>({ items: [], total: 0, page: 1, per_page: 20, current_version: 0, publish_paused: false });
@@ -66,6 +68,9 @@ const statusNames: Record<string, string> = { pending: '待生效', partial: '�
 const stageNames: Record<string, string> = { accepted: '已受理', executing: '执行中', completed: '已完成', failed: '失败', unknown: '未知' };
 const nodeNames: Record<string, string> = { applied: '已应用', pending: '待应用', isolated: '已隔离' };
 const paused = computed(() => result.value.publish_paused || !!(revisions.value.items[0] && ['pending', 'partial'].includes(revisions.value.items[0].status)));
+const pageDescription = computed(() => hasData.value
+  ? `平台监听与节点证书 · 当前版本 v${result.value.current_version}${paused.value ? ' · 已暂停后续保存' : ''}`
+  : '平台监听与节点证书 · 等待读取');
 const revisionColumns: VxeTableGridOptions<Revision>['columns'] = [
   { title: '版本', field: 'version', width: 80 }, { title: '发布状态', field: 'status', slots: { default: 'cell' }, width: 140 },
   { title: '操作阶段', field: 'stage', slots: { default: 'cell' }, width: 110 }, { title: '收紧边界', field: 'tightening', slots: { default: 'cell' }, width: 110 },
@@ -93,12 +98,13 @@ async function load(background = false) {
   try {
     const data = await request<RuntimePage>(`${base.value}/runtime`, { tenant: tenant.value, signal: pending.signal });
     if (current === generation) {
-      result.value = data; failure.value = ''; denied.value = false;
+      result.value = data; hasData.value = true; failure.value = ''; denied.value = false;
       if (!preview.value && !publishing.value && !draftDirty) await syncDraft(data.config);
     }
   } catch (error) {
     if (current === generation && !isCanceled(error)) {
       failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
+      if (denied.value) { hasData.value = false; result.value = emptyPage(); revisions.value = { items: [], total: 0, page: 1, per_page: 20, current_version: 0, publish_paused: false }; preview.value = null; }
     }
   } finally { if (current === generation) busy.value = false; }
 }
@@ -172,7 +178,7 @@ async function syncDraft(values: typeof draft) {
   finally { syncingDraft = false; }
 }
 watch(() => [session.generation, session.realm, session.tenant?.id, session.identity?.key, canRead.value, route.path], () => {
-  generation++; pending?.abort(); preview.value = null; confirmed.value = false; failure.value = ''; denied.value = false;
+  generation++; pending?.abort(); result.value = emptyPage(); hasData.value = false; revisions.value = { items: [], total: 0, page: 1, per_page: 20, current_version: 0, publish_paused: false }; preview.value = null; confirmed.value = false; failure.value = ''; denied.value = false;
   historyOpen.value = false; previewFailure.value = ''; publishFailure.value = '';
 
   void load();
@@ -193,27 +199,29 @@ watch(historyOpen, value => { if (value) mqttDrawer1.open(); else mqttDrawer1.cl
 </script>
 
 <template>
-  <Page title="MQTT 运行配置" :description="`平台监听与节点证书 · 当前版本 v${result.current_version}${paused ? ' · 已暂停后续保存' : ''}`" header-class="flex-wrap gap-4">
-    <template #extra><Button @click="showHistory">版本生效</Button></template>
+  <Page title="MQTT 运行配置" :description="pageDescription" header-class="flex-wrap gap-4">
+    <template #extra><Button :disabled="!canRead" @click="showHistory">版本生效</Button></template>
     <Alert v-if="failure" class="mb-4" type="error" show-icon role="alert" :message="denied ? failure : `运行配置刷新失败：${failure}`" />
     <Alert v-if="!canRead" class="mb-4" type="warning" show-icon message="当前账号无权查看 Broker 运行配置" />
     <Alert v-else-if="canRead && !canWrite" class="mb-4" type="info" show-icon message="当前角色可查看已保存配置与节点加载身份，保存、重试和回退需要平台 MQTT 写入权限。" />
     <Alert v-else class="mb-4" type="info" show-icon message="本页只校验并保存。监听、端口与节点证书路径须由运维重启后生效。握手 CA 在节点心跳后在线重载，已有连接保持到吊销或到期。私钥不会出现在页面或接口中。" />
-    <Card title="监听配置" :bordered="false" class="mb-4">
-      <ConfigForm :common-config="{ disabled: busy || publishing || !canWrite, componentProps: { class: 'w-full' } }" /><Space class="mb-4"><Button type="primary" :loading="previewBusy" :disabled="!canRead || publishing" @click="runPreview">预览调整</Button><Button :disabled="busy || publishing" @click="resetDraft">重置</Button></Space>
-      <Alert v-if="previewFailure" :message="previewFailure" type="error" show-icon class="mt-4" />
-    </Card>
-    <Card title="节点已加载配置" :bordered="false">
-      <div class="mb-4 flex flex-wrap items-center justify-between gap-4"><span class="text-muted-foreground leading-7">握手 CA {{ result.handshake.sha256 ? result.handshake.sha256.slice(0, 12) : '尚未上报' }}{{ result.handshake.reloads ? ` · 已重载 ${result.handshake.reloads} 次` : '' }}{{ busy ? ' · 刷新中' : '' }}</span><Button :loading="busy" :disabled="!canRead" @click="load()">刷新</Button></div>
-      <MqttGrid1 :grid-options="{ columns: [{ title: '节点', field: 'node_id', width: 160 }, { title: '已加载端口', field: 'port', slots: { default: 'cell' }, width: 120 }, { title: '证书指纹', field: 'cert', slots: { default: 'cell' }, width: 180 }, { title: '握手 CA', field: 'ca', slots: { default: 'cell' }, width: 180 }], pagerConfig: { enabled: false }, rowConfig: { keyField: 'node_id' } }" :table-data="result.loaded">
-        <template #cell="{ column, row: record }">
-          <template v-if="column.field === 'port'">{{ record.config.port }} / {{ record.config.mtls_port || '—' }}</template>
-          <template v-else-if="column.field === 'cert'">{{ record.certificate_sha256 ? record.certificate_sha256.slice(0, 16) : '—' }}</template>
-          <template v-else-if="column.field === 'ca'">{{ record.handshake_ca_sha256 ? record.handshake_ca_sha256.slice(0, 16) : '—' }}</template>
-        </template>
-      </MqttGrid1>
-    </Card>
-    <Card v-if="preview" :bordered="false" class="mt-4">
+    <Spin :spinning="busy && !hasData">
+      <template v-if="hasData">
+        <Card title="监听配置" :bordered="false" class="mb-4">
+          <ConfigForm :common-config="{ disabled: busy || publishing || !canWrite, componentProps: { class: 'w-full' } }" /><Space class="mb-4"><Button type="primary" :loading="previewBusy" :disabled="!canRead || publishing" @click="runPreview">预览调整</Button><Button :disabled="busy || publishing" @click="resetDraft">重置</Button></Space>
+          <Alert v-if="previewFailure" :message="previewFailure" type="error" show-icon class="mt-4" />
+        </Card>
+        <Card title="节点已加载配置" :bordered="false">
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-4"><span class="text-muted-foreground leading-7">握手 CA {{ result.handshake.sha256 ? result.handshake.sha256.slice(0, 12) : '尚未上报' }}{{ result.handshake.reloads ? ` · 已重载 ${result.handshake.reloads} 次` : '' }}{{ busy ? ' · 刷新中' : '' }}</span><Button :loading="busy" :disabled="!canRead" @click="load()">刷新</Button></div>
+          <MqttGrid1 :grid-options="{ columns: [{ title: '节点', field: 'node_id', width: 160 }, { title: '已加载端口', field: 'port', slots: { default: 'cell' }, width: 120 }, { title: '证书指纹', field: 'cert', slots: { default: 'cell' }, width: 180 }, { title: '握手 CA', field: 'ca', slots: { default: 'cell' }, width: 180 }], loading: busy, pagerConfig: { enabled: false }, rowConfig: { keyField: 'node_id' } }" :table-data="result.loaded">
+            <template #cell="{ column, row: record }">
+              <template v-if="column.field === 'port'">{{ record.config.port }} / {{ record.config.mtls_port || '—' }}</template>
+              <template v-else-if="column.field === 'cert'">{{ record.certificate_sha256 ? record.certificate_sha256.slice(0, 16) : '—' }}</template>
+              <template v-else-if="column.field === 'ca'">{{ record.handshake_ca_sha256 ? record.handshake_ca_sha256.slice(0, 16) : '—' }}</template>
+            </template>
+          </MqttGrid1>
+        </Card>
+        <Card v-if="preview" :bordered="false" class="mt-4">
       <template #title>保存预览</template>
       <Alert v-if="previewFailure" :message="previewFailure" type="error" show-icon class="mb-4" role="alert" />
       <Alert v-if="publishFailure" :message="publishFailure" type="error" show-icon class="mb-4" role="alert" />
@@ -227,7 +235,10 @@ watch(historyOpen, value => { if (value) mqttDrawer1.open(); else mqttDrawer1.cl
       <div v-if="canWrite" class="mt-4 flex flex-wrap items-center gap-3">
         <Button type="primary" :loading="publishing" :disabled="isDemo() || (!confirmed || paused)" @click="publish">保存配置</Button>
       </div>
-    </Card>
+        </Card>
+      </template>
+      <Empty v-else-if="!busy" description="暂无可读取的运行配置" />
+    </Spin>
     <MqttDrawer1 title="运行配置版本生效" class="w-full max-w-5xl" :footer="false">
       <Alert v-if="historyFailure" :message="historyFailure" type="error" show-icon class="mb-4" role="alert" />
       <MqttGrid3 :grid-options="{ columns: revisionColumns, loading: historyBusy, pagerConfig: revisionPagination, rowConfig: { keyField: 'id' } }" :table-data="revisions.items" :grid-events="{ pageChange: (page: { currentPage: number; pageSize: number }) => loadRevisions(page.currentPage) }">

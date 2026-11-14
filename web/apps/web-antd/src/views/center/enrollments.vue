@@ -16,7 +16,7 @@ const platform = computed(() => session.realm === 'platform');
 const endpoint = computed(() => platform.value ? '/platform/enrollments' : '/center/enrollments');
 const can = (action: string) => platform.value && session.permissions.includes(`platform.enrollments.${action}`) && !isDemo();
 const failure = ref(''); const saveFailure = ref(''); const detailFailure = ref(''); const secret = ref(''); const secretId = ref('');
-const selected = ref<Enrollment>(); let requestId = ''; let pending: AbortController | undefined; let detailGeneration = 0;
+const selected = ref<Enrollment>(); const detailBusy = ref(false); let requestId = ''; let pending: AbortController | undefined; let detailGeneration = 0;
 const statuses = { available: '可注册', expired: '注册期限已过', exhausted: '额度已用完', disabled: '已停用', unverified: '待恢复核对' };
 const [Form, form] = useVbenForm({ showDefaultActions: false, layout: 'vertical', commonConfig: { componentProps: { class: 'w-full' } }, schema: [
   { fieldName: 'tenant_id', label: '客户标识', component: 'Input', rules: z.string().regex(/^[a-f0-9]{32}$/, '请输入完整客户标识') },
@@ -26,7 +26,7 @@ const [Form, form] = useVbenForm({ showDefaultActions: false, layout: 'vertical'
 ] });
 const [Editor, editor] = useVbenModal({ title: '签发设备注册资格', onConfirm: save, onClosed: () => form.resetForm() });
 const [Secret, secretModal] = useVbenModal({ title: '保存一次性注册码', footer: false, onOpenChange(open) { if (!open) { secret.value = ''; secretId.value = ''; } } });
-const [Detail, detailDrawer] = useVbenDrawer({ title: '注册资格详情', footer: false, class: 'w-full max-w-3xl', onOpened: () => { void bindings.reload(); }, onClosed() { detailGeneration++; selected.value = undefined; } });
+const [Detail, detailDrawer] = useVbenDrawer({ title: '注册资格详情', footer: false, class: 'w-full max-w-3xl', onOpened: async () => { detailBusy.value = true; try { await bindings.reload(); } finally { detailBusy.value = false; } }, onClosed() { detailGeneration++; selected.value = undefined; } });
 const [Grid, grid] = useVbenVxeGrid<Enrollment>({ ...(platform.value ? { formOptions: { schema: [{ fieldName: 'tenant_id', label: '客户标识', component: 'Input' as const }] } } : {}), gridOptions: {
   columns: [{ field: 'name', title: '资格名称', minWidth: 200 }, ...(platform.value ? [{ field: 'tenant_id', title: '客户标识', minWidth: 280 }] : []),
     { title: '注册额度', width: 160, slots: { default: 'capacity' } }, { field: 'register_expires_at', title: '注册截止', width: 185, formatter: ({ cellValue }: { cellValue: string | number }) => displayDateTime(Number(cellValue) * 1000) },
@@ -73,7 +73,7 @@ function change(row: Enrollment, action: 'reset' | 'disable') {
     } catch (error) { message.error(errorText(error)); throw error; }
   } });
 }
-function show(row: Enrollment) { selected.value = row; detailDrawer.open(); }
+function show(row: Enrollment) { selected.value = row; detailFailure.value = ''; detailDrawer.open(); }
 onBeforeUnmount(() => { pending?.abort(); detailGeneration++; secret.value = ''; });
 </script>
 <template>
@@ -83,6 +83,6 @@ onBeforeUnmount(() => { pending?.abort(); detailGeneration++; secret.value = '';
     <template #actions="{ row }"><Space><Button type="link" size="small" @click="show(row)">详情</Button><Button v-if="can('reset')" type="link" size="small" :disabled="row.status !== 'available'" @click="change(row, 'reset')">重置注册码</Button><Button v-if="can('disable')" type="link" size="small" danger :disabled="!row.enabled" @click="change(row, 'disable')">停用</Button></Space></template>
   </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Form /></Editor>
   <Secret><Alert type="warning" show-icon class="mb-4" message="关闭后无法再次查看，遗失时请重置。" /><p>资格标识：{{ secretId }}</p><Input.TextArea :value="secret" readonly :rows="4" aria-label="一次性注册码" /></Secret>
-  <Detail><Descriptions v-if="selected" :column="1" bordered class="break-all mb-4"><DescriptionsItem label="资格标识">{{ selected.id }}</DescriptionsItem><DescriptionsItem label="客户标识">{{ selected.tenant_id }}</DescriptionsItem><DescriptionsItem label="可用额度">{{ selected.remaining }}</DescriptionsItem><DescriptionsItem label="已注册数量">{{ selected.registered_count }}</DescriptionsItem><DescriptionsItem label="状态">{{ statuses[selected.status] }}</DescriptionsItem></Descriptions><Alert v-if="detailFailure" :message="detailFailure" type="error" class="mb-4" show-icon /><Bindings table-title="设备注册记录" /></Detail>
+  <Detail :loading="detailBusy"><Descriptions v-if="selected" :column="1" bordered class="break-all mb-4"><DescriptionsItem label="资格标识">{{ selected.id }}</DescriptionsItem><DescriptionsItem label="客户标识">{{ selected.tenant_id }}</DescriptionsItem><DescriptionsItem label="可用额度">{{ selected.remaining }}</DescriptionsItem><DescriptionsItem label="已注册数量">{{ selected.registered_count }}</DescriptionsItem><DescriptionsItem label="状态">{{ statuses[selected.status] }}</DescriptionsItem></Descriptions><Alert v-if="detailFailure" :message="detailFailure" type="error" class="mb-4" show-icon /><Bindings table-title="设备注册记录" /></Detail>
   </Page>
 </template>

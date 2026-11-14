@@ -6,13 +6,13 @@ import { useVbenForm, z } from '../../adapter/form';
 import { useVbenVxeGrid } from '../../adapter/vxe-table';
 import { errorText, isCanceled, isDemo, loadUser, request, session } from '../../api/identity';
 interface MenuNode { id: string; parent_id: string | null; realm: string; name: string; kind: 'directory' | 'page' | 'action'; permission: string | null; component: string; icon: string; order_number: number; enabled: boolean; hidden: boolean; guarded: boolean; version: number }
-const directory = ref<'platform' | 'system'>('platform'); const rows = ref<MenuNode[]>([]); const bindings = ref<MenuNode[]>([]); const editing = ref<MenuNode | null>(null); const failure = ref(''); const saveFailure = ref('');
+const directory = ref<'platform' | 'system'>('platform'); const rows = ref<MenuNode[]>([]); const bindings = ref<MenuNode[]>([]); const bindingsBusy = ref(false); const editing = ref<MenuNode | null>(null); const failure = ref(''); const saveFailure = ref('');
 const canManage = computed(() => session.permissions.includes('platform.menus.manage'));
 let pending: AbortController | undefined;
 const [Form, form] = useVbenForm({ showDefaultActions: false, layout: 'vertical', commonConfig: { componentProps: { class: 'w-full' } }, schema: [
   { fieldName: 'name', label: '名称', component: 'Input', rules: z.string().trim().min(1, '请输入名称').max(100) },
   { fieldName: 'kind', label: '类型', component: 'Select', defaultValue: 'directory', componentProps: () => ({ disabled: !!editing.value, options: [{ label: '目录', value: 'directory' }, { label: '页面', value: 'page' }, { label: '操作', value: 'action' }] }) },
-  { fieldName: 'permission', label: '登记能力', component: 'Select', componentProps: () => ({ allowClear: true, disabled: !!editing.value, options: bindings.value.filter(node => !rows.value.some(row => row.permission === node.permission)).map(node => ({ label: `${node.name} · ${node.permission}`, value: node.permission })) }), dependencies: { triggerFields: ['kind'], show: values => values.kind !== 'directory' } },
+  { fieldName: 'permission', label: '登记能力', component: 'Select', componentProps: () => ({ allowClear: true, loading: bindingsBusy.value, disabled: !!editing.value || bindingsBusy.value, options: bindings.value.filter(node => !rows.value.some(row => row.permission === node.permission)).map(node => ({ label: `${node.name} · ${node.permission}`, value: node.permission })) }), dependencies: { triggerFields: ['kind'], show: values => values.kind !== 'directory' } },
   { fieldName: 'parent_id', label: '上级', component: 'Select', componentProps: () => ({ allowClear: true, options: rows.value.filter(node => node.kind !== 'action' && node.id !== editing.value?.id).map(node => ({ label: node.name, value: node.id })) }) },
   { fieldName: 'icon', label: '图标', component: 'IconPicker', defaultValue: '' },
   { fieldName: 'order_number', label: '排序', component: 'InputNumber', defaultValue: 0 },
@@ -36,8 +36,10 @@ async function edit(node: MenuNode | null) {
   editor.setState({ title: node ? '编辑菜单' : '新增菜单' }).open();
   await form.resetForm(); await form.setValues(node || { name: '', kind: 'directory', parent_id: null, permission: null, icon: '', order_number: 0, enabled: true, hidden: false });
   if (!node) {
+    bindingsBusy.value = true;
     try { bindings.value = (await request<{ items: MenuNode[] }>(`/platform/menu-bindings/${directory.value}`)).items; }
-    catch (error) { saveFailure.value = errorText(error); }
+    catch (error) { bindings.value = []; if (!isCanceled(error)) saveFailure.value = errorText(error); }
+    finally { bindingsBusy.value = false; }
   }
 }
 async function save() {

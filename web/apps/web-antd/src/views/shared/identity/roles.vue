@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AccessPage, RoleRecord } from '../../../api/contracts';
 import { computed, onBeforeUnmount, ref } from 'vue';
-import { Alert, Button, Dropdown, Menu, MenuItem, Modal, Space, Tag, Tree, message } from 'ant-design-vue';
+import { Alert, Button, Dropdown, Empty, Menu, MenuItem, Modal, Space, Spin, Tag, Tree, message } from 'ant-design-vue';
 import { Page, useVbenModal } from '@vben/common-ui';
 import { useVbenForm, z } from '../../../adapter/form';
 import { useVbenVxeGrid } from '../../../adapter/vxe-table';
@@ -9,7 +9,7 @@ import { errorText, isCanceled, isDemo, loadUser, request, session } from '../..
 interface Node { id: string; parent_id: string | null; name: string; permission: string | null; enabled: boolean }
 interface TreeNode { key: string; title: string; disabled: boolean; checkable: boolean; children: TreeNode[] }
 const base = computed(() => `/${session.realm}`); const can = (action: string) => session.permissions.includes(`${session.realm}.roles.${action}`);
-const failure = ref(''); const saveFailure = ref(''); const editing = ref<RoleRecord | null>(null); const nodes = ref<Node[]>([]); const checked = ref<string[]>([]);
+const failure = ref(''); const saveFailure = ref(''); const editing = ref<RoleRecord | null>(null); const nodes = ref<Node[]>([]); const checked = ref<string[]>([]); const menuBusy = ref(false);
 const mode = ref<'create' | 'copy' | 'update' | 'permissions'>('create'); let pending: AbortController | undefined;
 const tree = computed(() => {
   const children = (parent: string | null, enabled = true): TreeNode[] => nodes.value.filter(node => node.parent_id === parent).map(node => ({ key: node.id, title: node.name, checkable: !!node.permission,
@@ -36,8 +36,10 @@ async function edit(role: RoleRecord | null, action: typeof mode.value) {
   editor.setState({ title: { create: '新增角色', copy: '复制角色', update: '编辑角色', permissions: '角色菜单授权' }[action] }).open();
   await form.setValues({ name: action === 'copy' ? `${role?.name}副本` : role?.name || '' });
   if (action === 'create' || action === 'permissions') {
+    menuBusy.value = true;
     try { nodes.value = (await request<{ items: Node[] }>(session.realm === 'platform' ? '/platform/role-menus' : '/system/menus')).items; }
-    catch (error) { saveFailure.value = errorText(error); }
+    catch (error) { nodes.value = []; if (!isCanceled(error)) saveFailure.value = errorText(error); }
+    finally { menuBusy.value = false; }
   }
 }
 async function save() {
@@ -74,5 +76,5 @@ onBeforeUnmount(() => pending?.abort());
         <MenuItem v-if="can('delete')" :disabled="Boolean(row.protected)" danger @click="act(row, 'delete')">删除</MenuItem>
       </Menu></template></Dropdown>
     </Space></template>
-  </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Form v-if="mode !== 'permissions'" /><Tree v-if="mode === 'create' || mode === 'permissions'" checkable check-strictly :checked-keys="checked" :tree-data="tree" @check="value => checked = Array.isArray(value) ? value as string[] : value.checked as string[]" /></Editor></Page>
+  </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Form v-if="mode !== 'permissions'" /><Spin v-if="mode === 'create' || mode === 'permissions'" :spinning="menuBusy"><Tree v-if="tree.length" checkable check-strictly :checked-keys="checked" :tree-data="tree" @check="value => checked = Array.isArray(value) ? value as string[] : value.checked as string[]" /><Empty v-else-if="!menuBusy" description="暂无可授权菜单" /></Spin></Editor></Page>
 </template>

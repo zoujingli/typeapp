@@ -23,7 +23,9 @@ async function lock(password: string) {
   catch { message.error('锁屏失败，请重试。'); }
   return false;
 }
-const mqttSections = [['', '资源'], ['/access', '授权'], ['/quotas', '配额'], ['/runtime', '配置'], ['/debug', '调试'], ['/nodes', '节点']];
+const mqttSections = [['', '资源'], ['/access', '授权'], ['/quotas', '配额'], ['/runtime', '配置'], ['/debug', '调试'], ['/nodes', '节点']] as const;
+const hasMenuPath = (menus: Menu[], path: string): boolean => menus.some(menu => menu.path === path || (menu.children ? hasMenuPath(menu.children, path) : false));
+const visibleMqttSections = computed(() => session.permissions.includes('platform.broker.read') && hasMenuPath(session.menus, '/platform/broker') ? mqttSections : []);
 watchEffect(() => { access.setAccessMenus(session.menus); access.setAccessCodes(session.permissions); });
 watch(() => session.token, token => { if (!token) void router.replace(sessionExitPath()); });
 async function leave() {
@@ -42,7 +44,7 @@ async function leave() {
         <template #message>正在模拟 {{ session.user?.name }}</template>
         <template #description><Space wrap><span>操作者：{{ session.identity?.actor_name }} · 客户：{{ session.tenant?.name }}</span><Button :loading="leaving" @click="leave">退出模拟</Button></Space></template>
       </Alert>
-      <Space v-if="route.path.startsWith('/platform/broker')" wrap size="small" class="mx-4 mb-4 mt-2" aria-label="MQTT 管理导航"><Button v-for="[path, name] in mqttSections" :key="path" size="small" :type="route.path === '/platform/broker' + path ? 'primary' : 'default'" @click="router.push('/platform/broker' + path)">{{ name }}</Button></Space>
+      <Space v-if="route.path.startsWith('/platform/broker') && visibleMqttSections.length" wrap size="small" class="mx-4 mb-4 mt-2" aria-label="MQTT 管理导航"><Button v-for="[path, name] in visibleMqttSections" :key="path" size="small" :type="route.path === '/platform/broker' + path ? 'primary' : 'default'" @click="router.push('/platform/broker' + path)">{{ name }}</Button></Space>
     </template>
     <template #header-left-60><span class="px-3 text-sm font-medium text-foreground">{{ session.realm === 'platform' ? '平台管理' : session.tenant?.name }}</span></template>
     <template #global-search><GlobalSearch :key="searchKey" :history-key="searchKey" :menus="searchMenus" :enable-shortcut-key="preferences.shortcutKeys.enable && preferences.shortcutKeys.globalSearch" class="mr-1 sm:mr-4" /></template>

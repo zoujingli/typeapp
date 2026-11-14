@@ -10,7 +10,7 @@ import { useRoute } from 'vue-router';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { useVbenVxeGrid } from '../../../adapter/vxe-table';
 import { useVbenForm } from '../../../adapter/form';
-import { Alert, Button, Card, Checkbox, Space, Modal, Tag, message } from 'ant-design-vue';
+import { Alert, Button, Card, Checkbox, Empty, Space, Spin, Modal, Tag, message } from 'ant-design-vue';
 import { ApiError, errorText, isCanceled, isDemo, request, session } from '../../../api/identity';
 
 type LimitKey =
@@ -57,11 +57,13 @@ const tenant = computed(() => session.realm === 'system' && !platform.value ? se
 const base = computed(() => '/platform/broker');
 const canRead = computed(() => session.permissions.includes('platform.broker.read'));
 const canWrite = computed(() => !isDemo() && session.permissions.includes('platform.broker.write'));
-const result = ref<QuotaPage>({
+const emptyPage = (): QuotaPage => ({
   limits: { ...emptyLimits }, ceilings: { ...emptyLimits, maximumConnections: 10100 } as Record<LimitKey, number>,
   usage: { ...emptyUsage }, excess: { ...emptyUsage }, waiting_release: false, store_available: false,
   current_version: 0, publish_paused: false, revision: null,
 });
+const result = ref<QuotaPage>(emptyPage());
+const hasData = ref(false);
 const draft = reactive<Record<LimitKey, number>>({ ...emptyLimits });
 const preview = ref<QuotaPage | null>(null);
 const revisions = ref<RevisionPage>({ items: [], total: 0, page: 1, per_page: 20, current_version: 0, publish_paused: false });
@@ -76,6 +78,9 @@ const statusNames: Record<string, string> = { pending: '待生效', partial: '�
 const stageNames: Record<string, string> = { accepted: '已受理', executing: '执行中', completed: '已完成', failed: '失败', unknown: '未知' };
 const nodeNames: Record<string, string> = { applied: '已应用', pending: '待应用', isolated: '已隔离' };
 const paused = computed(() => result.value.publish_paused || !!(revisions.value.items[0] && ['pending', 'partial'].includes(revisions.value.items[0].status)));
+const pageDescription = computed(() => hasData.value
+  ? `平台连接、会话与消息额度 · 当前版本 v${result.value.current_version}${paused.value ? ' · 已暂停后续发布' : ''}${result.value.waiting_release ? ' · 超额等待自然释放' : ''}`
+  : '平台连接、会话与消息额度 · 等待读取');
 const revisionColumns: VxeTableGridOptions<Revision>['columns'] = [
   { title: '版本', field: 'version', width: 80 }, { title: '发布状态', field: 'status', slots: { default: 'cell' }, width: 140 },
   { title: '操作阶段', field: 'stage', slots: { default: 'cell' }, width: 110 }, { title: '降低额度', field: 'lowering', slots: { default: 'cell' }, width: 110 },
@@ -102,12 +107,13 @@ async function load(background = false) {
   try {
     const data = await request<QuotaPage>(`${base.value}/quotas`, { tenant: tenant.value, signal: pending.signal });
     if (current === generation) {
-      result.value = data; failure.value = ''; denied.value = false;
+      result.value = data; hasData.value = true; failure.value = ''; denied.value = false;
       if (!preview.value && !publishing.value && !draftDirty) await syncDraft(data.limits);
     }
   } catch (error) {
     if (current === generation && !isCanceled(error)) {
       failure.value = errorText(error); denied.value = error instanceof ApiError && error.status === 403 && error.code !== 'demo_readonly';
+      if (denied.value) { hasData.value = false; result.value = emptyPage(); revisions.value = { items: [], total: 0, page: 1, per_page: 20, current_version: 0, publish_paused: false }; preview.value = null; }
     }
   } finally { if (current === generation) busy.value = false; }
 }
@@ -181,7 +187,7 @@ async function syncDraft(values: typeof draft) {
   finally { syncingDraft = false; }
 }
 watch(() => [session.generation, session.realm, session.tenant?.id, session.identity?.key, canRead.value, route.path], () => {
-  generation++; pending?.abort(); preview.value = null; confirmed.value = false; failure.value = ''; denied.value = false;
+  generation++; pending?.abort(); result.value = emptyPage(); hasData.value = false; revisions.value = { items: [], total: 0, page: 1, per_page: 20, current_version: 0, publish_paused: false }; preview.value = null; confirmed.value = false; failure.value = ''; denied.value = false;
   historyOpen.value = false; previewFailure.value = ''; publishFailure.value = '';
 
   void load();
@@ -202,27 +208,29 @@ watch(historyOpen, value => { if (value) mqttDrawer1.open(); else mqttDrawer1.cl
 </script>
 
 <template>
-  <Page title="MQTT 配额" :description="`平台连接、会话与消息额度 · 当前版本 v${result.current_version}${paused ? ' · 已暂停后续发布' : ''}${result.waiting_release ? ' · 超额等待自然释放' : ''}`" header-class="flex-wrap gap-4">
-    <template #extra><Button @click="showHistory">版本生效</Button></template>
+  <Page title="MQTT 配额" :description="pageDescription" header-class="flex-wrap gap-4">
+    <template #extra><Button :disabled="!canRead" @click="showHistory">版本生效</Button></template>
     <Alert v-if="failure" class="mb-4" type="error" show-icon role="alert" :message="denied ? failure : `额度刷新失败：${failure}`" />
     <Alert v-if="!canRead" class="mb-4" type="warning" show-icon message="当前账号无权查看 Broker 配额" />
     <Alert v-else-if="canRead && !canWrite" class="mb-4" type="info" show-icon message="当前角色可查看额度与超额，发布、重试和回退需要平台 MQTT 写入权限。" />
     <Alert v-else-if="result.waiting_release" class="mb-4" type="warning" show-icon message="当前用量已高于拟生效或已生效额度；已确认积压会保留到自然释放，新的超额占用将被拒绝。" />
-    <Card title="额度设置" :bordered="false" class="mb-4">
-      <ConfigForm :common-config="{ disabled: busy || publishing || !canWrite, componentProps: { class: 'w-full' } }" /><Space class="mb-4"><Button type="primary" :loading="previewBusy" :disabled="!canRead || publishing" @click="runPreview">预览调整</Button><Button :disabled="busy || publishing" @click="resetDraft">重置</Button></Space>
-      <Alert v-if="previewFailure" :message="previewFailure" type="error" show-icon class="mt-4" />
-    </Card>
-    <Card title="当前用量" :bordered="false">
-      <div class="mb-4 flex flex-wrap items-center justify-between gap-4"><span class="text-muted-foreground leading-7">当前用量{{ result.store_available ? '' : '（持久用量未知）' }}{{ busy ? ' · 刷新中' : '' }}</span><Button :loading="busy" :disabled="!canRead" @click="load()">刷新</Button></div>
-      <MqttGrid1 :grid-options="{ columns: [{ title: '额度', field: 'label', width: 180 }, { title: '当前限额', field: 'limit', slots: { default: 'cell' }, width: 140 }, { title: '实际用量', field: 'usage', slots: { default: 'cell' }, width: 140 }, { title: '超额', field: 'excess', slots: { default: 'cell' }, width: 140 }], pagerConfig: { enabled: false }, rowConfig: { keyField: 'key' } }" :table-data="fields">
-        <template #cell="{ column, row: record }">
-          <template v-if="column.field === 'limit'">{{ result.limits[(record as typeof fields[number]).key] }}</template>
-          <template v-else-if="column.field === 'usage'">{{ usageText(result.usage[(record as typeof fields[number]).usage]) }}</template>
-          <template v-else-if="column.field === 'excess'"><Tag :color="(result.excess[(record as typeof fields[number]).usage] || 0) > 0 ? 'warning' : 'success'">{{ excessText(result.excess[(record as typeof fields[number]).usage]) }}</Tag></template>
-        </template>
-      </MqttGrid1>
-    </Card>
-    <Card v-if="preview" :bordered="false" class="mt-4">
+    <Spin :spinning="busy && !hasData">
+      <template v-if="hasData">
+        <Card title="额度设置" :bordered="false" class="mb-4">
+          <ConfigForm :common-config="{ disabled: busy || publishing || !canWrite, componentProps: { class: 'w-full' } }" /><Space class="mb-4"><Button type="primary" :loading="previewBusy" :disabled="!canRead || publishing" @click="runPreview">预览调整</Button><Button :disabled="busy || publishing" @click="resetDraft">重置</Button></Space>
+          <Alert v-if="previewFailure" :message="previewFailure" type="error" show-icon class="mt-4" />
+        </Card>
+        <Card title="当前用量" :bordered="false">
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-4"><span class="text-muted-foreground leading-7">当前用量{{ result.store_available ? '' : '（持久用量未知）' }}{{ busy ? ' · 刷新中' : '' }}</span><Button :loading="busy" :disabled="!canRead" @click="load()">刷新</Button></div>
+          <MqttGrid1 :grid-options="{ columns: [{ title: '额度', field: 'label', width: 180 }, { title: '当前限额', field: 'limit', slots: { default: 'cell' }, width: 140 }, { title: '实际用量', field: 'usage', slots: { default: 'cell' }, width: 140 }, { title: '超额', field: 'excess', slots: { default: 'cell' }, width: 140 }], loading: busy, pagerConfig: { enabled: false }, rowConfig: { keyField: 'key' } }" :table-data="fields">
+            <template #cell="{ column, row: record }">
+              <template v-if="column.field === 'limit'">{{ result.limits[(record as typeof fields[number]).key] }}</template>
+              <template v-else-if="column.field === 'usage'">{{ usageText(result.usage[(record as typeof fields[number]).usage]) }}</template>
+              <template v-else-if="column.field === 'excess'"><Tag :color="(result.excess[(record as typeof fields[number]).usage] || 0) > 0 ? 'warning' : 'success'">{{ excessText(result.excess[(record as typeof fields[number]).usage]) }}</Tag></template>
+            </template>
+          </MqttGrid1>
+        </Card>
+        <Card v-if="preview" :bordered="false" class="mt-4">
       <template #title>调整预览</template>
       <Alert v-if="previewFailure" :message="previewFailure" type="error" show-icon class="mb-4" role="alert" />
       <Alert v-if="publishFailure" :message="publishFailure" type="error" show-icon class="mb-4" role="alert" />
@@ -237,7 +245,10 @@ watch(historyOpen, value => { if (value) mqttDrawer1.open(); else mqttDrawer1.cl
       <div v-if="canWrite" class="mt-4 flex flex-wrap items-center gap-3">
         <Button type="primary" :loading="publishing" :disabled="isDemo() || (!confirmed || paused)" @click="publish">发布额度</Button>
       </div>
-    </Card>
+        </Card>
+      </template>
+      <Empty v-else-if="!busy" description="暂无可读取的 MQTT 配额" />
+    </Spin>
     <MqttDrawer1 title="额度版本生效" class="w-full max-w-5xl" :footer="false">
       <Alert v-if="historyFailure" :message="historyFailure" type="error" show-icon class="mb-4" role="alert" />
       <MqttGrid3 :grid-options="{ columns: revisionColumns, loading: historyBusy, pagerConfig: revisionPagination, rowConfig: { keyField: 'id' } }" :table-data="revisions.items" :grid-events="{ pageChange: (page: { currentPage: number; pageSize: number }) => loadRevisions(page.currentPage) }">
