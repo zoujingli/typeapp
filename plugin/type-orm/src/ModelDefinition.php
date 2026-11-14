@@ -51,11 +51,8 @@ final readonly class ModelDefinition
         $this->table = $table;
         $this->key = $key;
         $this->fields = $checked;
-        foreach ($checked as $name => $field) {
-            if ($tenant === null && $field->column() === 'tenant_id') {
-                $tenant = $name;
-            }
-        }
+        // 租户边界必须由模型显式声明；仅凭字段名推导会把平台的跨 Tenant
+        // 目录模型误判为租户模型，导致可信目录查询在无客户上下文时被拒绝。
         if ($tenant !== null && (!isset($checked[$tenant]) || $checked[$tenant]->allowsNull()
             || !in_array($checked[$tenant]->typeName(), ['integer', 'string', 'bigint'], true))) {
             throw new \InvalidArgumentException('租户字段必须是已映射的非空字符串或整数身份');

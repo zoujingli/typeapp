@@ -103,10 +103,8 @@ final class ModelSchemaSynchronizer
                 $auto = $auto || str_contains(strtolower($column['extra']), 'auto_increment');
             }
         }
-        $tenant = $aliases['tenant_id'] ?? (isset($schema['tenant_id']) ? 'tenant_id' : null);
-        if (array_key_exists('tenantKey', $values) && $values['tenantKey'] !== $tenant) {
-            throw new \RuntimeException('模型同步不能改变既有 Tenant 隔离声明');
-        }
+        $tenantDeclared = array_key_exists('tenantKey', $values);
+        $tenant = $tenantDeclared ? $values['tenantKey'] : ($aliases['tenant_id'] ?? (isset($schema['tenant_id']) ? 'tenant_id' : null));
         $keys = array_values(array_diff($primary, [$tenant]));
         if (count($keys) !== 1 || (count($primary) !== 1 && (count($primary) !== 2 || $tenant === null))) {
             throw new \RuntimeException('模型同步需要单主键，或 tenant_id 与单一业务主键组成的复合主键');

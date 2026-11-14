@@ -100,3 +100,20 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - macOS ARM64 target 27.0 的 PostgreSQL 静态 profile 已完成：SDK 记录 PostgreSQL 17.11，AOT SHA-256 为 `9f62300b2db55ccd29ff9d37539a1fc73b70a1291647ec480e807b62419bb34b`、build id 为 `a915a1e6b47877263e26e3b84a9075621c9b756b6025413be88987dcbb81176d`；`tests/tenant.php pgsql` 使用真实 PostgreSQL 17.11 通过，embed-probe 含 `pdo_pgsql`。
 - macOS ARM64 target 27.0 的 MySQL 静态 profile 已完成：SDK 记录 MySQL 8.4.11 profile，AOT SHA-256 为 `1855ac7f3948faecb527cb97fe74b5cd3b9057be0b6c79b3d5ff903d84d070ea`、build id 为 `e4c703b4f928375cfd387ca612f0b40547a8d621d5a988d371ea2f5d38804075`；`tests/tenant.php mysql` 使用真实 MySQL 8.4.11 通过，embed-probe 含 `pdo_mysql`。
 - 平台人员目录验收同步修正为当前列表响应契约；普通人员搜索由 Model 查询条件完成，避免把业务字段误当作模型列。
+
+## 当前 HEAD 的 PostgreSQL 静态追加验证
+
+修复前源码提交为 `9a81c9d07ea689b6bb285d260516452797f4264e`；本节保留该阶段的静态基线。使用仓库内锁定的 macOS ARM64 PostgreSQL 静态 SDK（PHP 8.5.12 ZTS、PHPX 2.9.8、Swoole 6.3.0RC1、PostgreSQL 17.11）重建当前应用，TypePHP 全量编译 302 个 C++ 文件并完成静态链接。
+
+- 当前 AOT 程序 `build/app/type-app` SHA-256 为 `7d7965b882e00730138157dbc9ca439983001154c3276aeb89edaaebf256269b`，build id 为 `94a3c44e90f919c4aec11d1c77fedef982a4695070ca358101601d37c7473d8b`，profile 为 `pgsql`，运行时链接为 `static`。
+- 同一 AOT 程序执行 `tests/tenant.php pgsql`，使用真实 PostgreSQL 17.11 隔离实例通过 Tenant 空库安装、模块表前缀、主域/子域/固定路径、RBAC、品牌、模拟交接、MQTT 模拟观测、恢复核对和真实 HTTP 隔离。
+- Windows 侧只读核对通过：工作流固定 Windows 原生 runner，SDK、数据库和静态候选均有版本及 SHA-256 校验；当前 macOS ARM64 环境没有 Windows runner、PowerShell、PE SDK 和 Windows 数据库，因此 Windows SDK、正式四平台矩阵仍保持未验证。
+- 本节基线不包含后续租户作用域修复；后续修复与最终 AOT 身份见下一节。代码和文档未加入外部项目对照说明。
+
+## 租户作用域修复后的最终 AOT MQTT 追加验证
+
+本轮真实设备探针发现 `center:mqtt-access` 的设备认证路径把含 `tenant_id` 的跨 Tenant 目录 Model 误当作租户 Model，触发 `tenant_scope_required` 并被 Broker 映射为 MQTT 0x88。已完成三层修复：ORM 不再按字段名自动推导租户边界；Platform 的 `DeviceDirectory`、`EnrollmentDirectory`、`ApplicationDirectory` 显式声明 `tenantKey = null`；设备认证读取 Tenant Model 时显式绑定可信作用域。模型编译器和 MySQL 反向同步器同步保留显式空声明。
+
+- 修复后的最终 macOS ARM64 PostgreSQL 静态 AOT 程序 build id 为 `f102346735a8a7245a4772805da10f2e028985c43dd505be3b180db245b2b2b5`，SHA-256 为 `ae3ad2f822bda19f71225df57418d4571599f4bec15116f12c060d98ef31a0e3`，profile 为 `pgsql`，运行时链接为 `static`。
+- `build/aot-device-mqtt-recheck.php` 使用真实 PostgreSQL 17.11 同步备库、当前 AOT 程序和 TLS Broker 完成通过：Tenant/设备注册、凭据签发、设备首次 TLS CONNECT、持久会话重连并返回 Session Present、撤权后现有连接关闭、旧凭据重连被拒绝。最终回执为 `status=passed`、`session_present=true`、`revocation_reconnect_denied=true`。
+- 本轮临时 PostgreSQL 主库、同步备库、HTTP、Broker 和探针进程均已停止，工作区没有遗留运行进程。

@@ -35,6 +35,9 @@ final class EnrollmentDirectory extends Model
 
     protected bool $autoIncrement = false;
 
+    /** 平台目录按全局注册资格读取，不能自动从 tenant_id 字段推导租户范围。 */
+    protected ?string $tenantKey = null;
+
     protected array $schema = [
         'id' => ['type' => 'string', 'comment' => '注册资格的稳定标识。'],
         'tenant_id' => ['type' => 'string', 'fillable' => false, 'comment' => '所属 Tenant 标识；平台目录只读展示。'],

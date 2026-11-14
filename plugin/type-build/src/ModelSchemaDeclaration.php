@@ -154,7 +154,8 @@ final class ModelSchemaDeclaration
         $node->stmts = $retained;
         return ['table' => [
             'name' => $values['table'], 'primary' => $values['pk'] ?? 'id', 'generatedPrimary' => $values['autoIncrement'] ?? true,
-            'database' => $values['database'] ?? 'default', 'tenant' => $values['tenantKey'] ?? null, 'version' => $values['versionKey'] ?? null,
+            'database' => $values['database'] ?? 'default', 'tenant' => $values['tenantKey'] ?? null,
+            'tenantDeclared' => array_key_exists('tenantKey', $values), 'version' => $values['versionKey'] ?? null,
             'createdAt' => $values['createTime'] ?? null, 'updatedAt' => $values['updateTime'] ?? null, 'softDelete' => $values['deleteTime'] ?? null,
         ], 'fields' => $overrides];
     }

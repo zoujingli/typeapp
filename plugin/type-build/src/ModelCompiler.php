@@ -230,6 +230,7 @@ final class ModelCompiler
         $model = ['class' => $class, 'table' => $table['name'] ?? '', 'primary' => $table['primary'] ?? 'id',
             'generated-primary' => $table['generatedPrimary'] ?? true, 'soft-delete' => $table['softDelete'] ?? null,
             'version' => $table['version'] ?? null, 'database' => $table['database'] ?? 'default', 'tenant' => $table['tenant'] ?? null,
+            'tenant-explicit' => $table['tenantDeclared'] ?? false,
             'created-at' => $table['createdAt'] ?? null, 'updated-at' => $table['updatedAt'] ?? null, 'fields' => [], 'relations' => []];
         if (!is_string($model['database']) || preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $model['database']) !== 1) {
             throw new \RuntimeException('模型逻辑数据源名称无效：' . $class);
@@ -372,7 +373,7 @@ final class ModelCompiler
             }
             $known[strtolower($model['class'])] = true;
             foreach (array_keys($model) as $key) {
-                if (!in_array($key, ['class', 'table', 'primary', 'generated-primary', 'fields', 'soft-delete', 'version', 'relations', 'database', 'tenant', 'created-at', 'updated-at'], true)) {
+                if (!in_array($key, ['class', 'table', 'primary', 'generated-primary', 'fields', 'soft-delete', 'version', 'relations', 'database', 'tenant', 'tenant-explicit', 'created-at', 'updated-at'], true)) {
                     throw new \RuntimeException('未知模型配置：' . $key);
                 }
             }
@@ -385,8 +386,9 @@ final class ModelCompiler
             $createdAt = $model['created-at'] ?? null;
             $updatedAt = $model['updated-at'] ?? null;
             $tenant = $model['tenant'];
+            $tenantExplicit = (bool)($model['tenant-explicit'] ?? false);
             foreach ($fields as $name => $field) {
-                if ($tenant === null && ($field['column'] ?? $name) === 'tenant_id') {
+                if (!$tenantExplicit && $tenant === null && ($field['column'] ?? $name) === 'tenant_id') {
                     $tenant = $name;
                 }
             }

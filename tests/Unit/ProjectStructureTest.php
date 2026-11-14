@@ -179,6 +179,9 @@ final class ProjectStructureTest extends TestCase
         self::assertSame('center_device', $deviceDirectory['table']);
         self::assertNull($deviceDirectory['tenant']);
         self::assertFalse($deviceDirectory['fields']['name']['fillable']);
+        $enrollmentDirectory = $models['app\platform\model\EnrollmentDirectory'];
+        self::assertSame('center_device_enrollment', $enrollmentDirectory['table']);
+        self::assertNull($enrollmentDirectory['tenant']);
 
         $documentation = (string)file_get_contents($root . '/docs/development/iot-identity.md');
         self::assertStringContainsString('角色与菜单的关联由 `RoleService`', $documentation);

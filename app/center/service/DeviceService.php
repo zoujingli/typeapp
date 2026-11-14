@@ -628,7 +628,10 @@ final class DeviceService
                     $allowed = false;
                     $reason = 'device_ownership_unavailable';
                 }
-                $tenant = Tenant::query()->master()->onConnection($connection)->find($device['tenant_id']);
+                $tenant = ExecutionScope::current()->run(
+                    static fn (): ?Tenant => Tenant::query()->master()->onConnection($connection)->find($device['tenant_id']),
+                    ['tenant_id' => $device['tenant_id']]
+                );
                 if ($allowed && ($tenant === null || !$tenant->getEnabled())) {
                     $allowed = false;
                     $reason = 'tenant_unavailable';
@@ -714,7 +717,10 @@ final class DeviceService
             $allowed = false;
             $reason = 'device_ownership_unavailable';
         }
-        $tenant = Tenant::query()->master()->onConnection($connection)->find($device['tenant_id']);
+        $tenant = ExecutionScope::current()->run(
+            static fn (): ?Tenant => Tenant::query()->master()->onConnection($connection)->find($device['tenant_id']),
+            ['tenant_id' => $device['tenant_id']]
+        );
         if ($allowed && ($tenant === null || !$tenant->getEnabled())) {
             $allowed = false;
             $reason = 'tenant_unavailable';
