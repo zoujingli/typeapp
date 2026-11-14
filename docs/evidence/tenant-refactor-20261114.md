@@ -1,6 +1,6 @@
 # Platform / System / Center Tenant 重构验收记录
 
-日期：2026-11-14。当前执行基线为 `01814595ec430c8fbe740625a32b77fcf9f7d655`；本记录只描述该基线及其对应环境中实际执行的检查，不替代 MySQL/PostgreSQL、静态单程序、无源码和正式平台矩阵验收。
+日期：2026-11-14。本记录按各节列出的源码、工具链和产物身份记录实际检查；不替代 MySQL/PostgreSQL、静态单程序、无源码和正式平台矩阵验收。
 
 本轮在 PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8（`90e6d22a9c3f4d5dbd2c75d62e90bf5adfe58c89`）上重新完成线程源码适配、PHPX 编译、全量 AOT 和原生 SQLite Tenant 验收。
 
@@ -82,4 +82,19 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - 同一 AOT 产物注入受控 runtime profile 后，`tests/tenant.php sqlite`、`mysql`（MySQL 8.4.11）和 `pgsql`（PostgreSQL 17.11）Tenant 闭环全部通过；覆盖空库安装、模块表前缀、登录入口、RBAC、品牌、模拟交接、MQTT 模拟观测、恢复核对和真实 HTTP 隔离。
 - `tests/model-sync.php` 在真实 MySQL 8.4.11 上通过预览、生成、重复同步、字段注释、默认值、生成列、字段增删保护、非法输入拒绝和 Tenant 隔离 CRUD。
 - AOT 首次未注入 runtime profile 时的 MySQL `internal_error` 已定位为启动配置缺失；补充 `PHPRC` 和 `PHP_INI_SCAN_DIR` 后同一产物通过，不能把首次配置错误记作数据库兼容性失败。
-- 本机 macOS ARM64 以 `TYPE_STATIC_MINIMUM_MACOS=27.0` 成功制备 SQLite 静态 SDK，清单位于任务临时目录并完成输入摘要与许可登记；随后使用已适配 PHPX 线程 SDK 进行静态应用构建时，embed-probe 子进程以退出码 `-1` 终止，直接运行生成的 probe 可复现退出码 `139`。LLDB 定位到 Swoole `php_swoole_runtime_minit` 对静态 embed 中缺失的 `php` stream wrapper 解引用；未生成可接受的静态单程序候选。当前静态 SDK 成功不能替代静态应用链接、无源码运行和发布包验收。
+- 静态适配前的历史复现：macOS ARM64 `embed-probe` 在 Swoole `php_swoole_runtime_minit` 解引用尚未登记的 `php` stream wrapper 时退出；该问题及修复依据见下方追加章节。
+
+## 静态 embed 修复与无源码验收追加
+
+在当前锁定工具链下，静态 embed 探针曾因 Swoole 在模块初始化阶段读取尚未登记的 `php` stream wrapper 而发生空指针崩溃。本轮新增静态适配：Unix 静态 embed 直接引用 PHP 内置的 `php_stream_php_wrapper`，并保留 Swoole 源码原文摘要校验；Windows 适配仍由既有 Windows 源码适配负责，避免改变其固定原文顺序。静态 SDK 清单的 PHPX 许可版本同步为锁定的 2.9.8。
+
+- `TYPE_STATIC_MINIMUM_MACOS=27.0 bash tools/prepare-static-macos.sh build/static-macos-patched sqlite`：SQLite 静态 SDK 制备通过，清单记录 PHP 8.5.12 ZTS、PHPX 2.9.8、Swoole 6.3.0RC1、macOS ARM64 和目标系统版本。
+- `tools/build-application.php` 使用该 SDK 重新完成 302 个 C++ 文件编译和静态链接；加入身份目录搜索修复后，最终应用 SHA-256 为 `83d6911156dc7984ad782a62b0ecba71f5bde1b14b5f3c1453f1732c192e14a7`，build id 为 `f2b89e2692f7f5707c8457b367cd0ff57e306cbc6c946c194f9c8872e6cb403e`，依赖材料完整。
+- 静态 `embed-probe` 返回 PHP 8.5.12、ZTS、embed、Swoole 6.3.0RC1 和 pdo_sqlite；`otool -L` 仅包含系统库、系统框架和 libcurl/libz 等系统提供项。
+- 同一静态程序执行 `tests/tenant.php sqlite` 通过，覆盖空库安装、Tenant 入口、RBAC、品牌、模拟交接、MQTT 观测、恢复核对和 HTTP 隔离。
+- 将静态程序置于仓库外、仅设置临时 `APP_BASE_PATH` 后执行安装及 HTTP 服务，`/readyz` 返回 200；该过程未读取源码、Composer 或 SDK 文件。
+- `tests/native-single-program.php build/app/type-app` 通过，覆盖只读程序目录、不同工作目录、内嵌资源、外部 INI 忽略、许可证材料、平台用户/角色 CRUD、HTTP 页面和正常停止；测试夹具已同步为当前顶层分页响应契约。
+- Platform 用户搜索回归已通过动态入口和最终静态程序验证：`/platform/users?search=package-user` 返回 HTTP 200 且 `total=1`；搜索同时匹配账号和姓名，分页参数进入 `_query()`。
+- 使用项目声明的 `npx --yes pnpm@12.18.0 --dir web typecheck`、`build` 和前端 Vitest：类型检查、生产构建（7,875 modules）及 3 个测试全部通过。
+- 同一单程序验收还核对了单程序导出与覆盖保护、外部 PHP 配置忽略、54 份内嵌许可原文、前端重复安装保护、默认站点和优雅停止；临时回执已核对后清理。
+- 平台人员目录验收同步修正为当前列表响应契约；普通人员搜索由 Model 查询条件完成，避免把业务字段误当作模型列。
