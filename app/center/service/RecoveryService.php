@@ -70,7 +70,7 @@ final class RecoveryService
                 if ($previous->get('id') === $id && $previous->get('actor') === $actor && $previous->get('proof') === $proof) {
                     return self::status($transaction);
                 }
-                if ($previous->get('phase') !== 'ready' || $previous->get('id') === $id) {
+                if ($previous->get('state') !== 'ready' || $previous->get('id') === $id) {
                     throw new HttpError(409, 'recovery_already_started');
                 }
                 CenterRecovery::query()->master()->onConnection($transaction)->where('id', '=', $previous->get('id'))->update(['slot' => null]);
@@ -79,7 +79,7 @@ final class RecoveryService
                 throw new HttpError(409, 'recovery_identity_conflict');
             }
             CenterRecovery::create(['slot' => 1, 'id' => $id, 'actor' => $actor, 'proof' => $proof,
-                'phase' => 'isolating', 'kind_index' => 0, 'cursor' => '', 'started_at' => time(), 'completed_at' => null,
+                'state' => 'isolating', 'kind_index' => 0, 'cursor' => '', 'started_at' => time(), 'completed_at' => null,
                 'review_sha256' => '', 'reviewed_at' => null]);
             AuditLog::append($transaction, null, $actor, 'recovery.started', $id, 'success', ['context' => 'operator-command'], 'platform');
             return self::status($transaction);
@@ -92,7 +92,7 @@ final class RecoveryService
         self::identity($id);
         return $connection->transaction(static function (Connection $transaction) use ($id): array {
             $recovery = self::requireRun($transaction, $id);
-            if ($recovery->get('phase') !== 'isolating') {
+            if ($recovery->get('state') !== 'isolating') {
                 return self::status($transaction);
             }
             $kinds = self::kinds();
@@ -112,7 +112,7 @@ final class RecoveryService
                 $cursor = '';
             }
             CenterRecovery::query()->master()->onConnection($transaction)->where('slot', '=', 1)->update(['kind_index' => $index, 'cursor' => $cursor,
-                'phase' => $index === count($kinds) ? 'reviewing' : 'isolating']);
+                'state' => $index === count($kinds) ? 'reviewing' : 'isolating']);
             return self::status($transaction);
         }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
     }
@@ -159,10 +159,10 @@ final class RecoveryService
             if ($recovery->get('review_sha256') !== '' && $recovery->get('review_sha256') !== $digest) {
                 throw new HttpError(409, 'recovery_review_conflict');
             }
-            if (in_array($recovery->get('phase'), ['restoring', 'ready'], true) && $recovery->get('review_sha256') === $digest) {
+            if (in_array($recovery->get('state'), ['restoring', 'ready'], true) && $recovery->get('review_sha256') === $digest) {
                 return self::status($transaction);
             }
-            if ($recovery->get('phase') !== 'reviewing') {
+            if ($recovery->get('state') !== 'reviewing') {
                 throw new HttpError(409, 'recovery_review_conflict');
             }
             $next = (int)$recovery->get('cursor');
@@ -185,7 +185,7 @@ final class RecoveryService
             }
             $next = min($offset + 100, count($snapshot['records']));
             CenterRecovery::query()->master()->onConnection($transaction)->where('slot', '=', 1)->update(['review_sha256' => $digest, 'cursor' => (string)$next,
-                'phase' => $next === count($snapshot['records']) ? 'restoring' : 'reviewing', 'kind_index' => 0,
+                'state' => $next === count($snapshot['records']) ? 'restoring' : 'reviewing', 'kind_index' => 0,
                 'reviewed_at' => time()]);
             if ($next === count($snapshot['records'])) {
                 CenterRecovery::query()->master()->onConnection($transaction)->where('slot', '=', 1)->update(['cursor' => '']);
@@ -200,10 +200,10 @@ final class RecoveryService
         self::identity($id);
         return $connection->transaction(static function (Connection $transaction) use ($id): array {
             $recovery = self::requireRun($transaction, $id);
-            if ($recovery->get('phase') === 'ready') {
+            if ($recovery->get('state') === 'ready') {
                 return self::status($transaction);
             }
-            if ($recovery->get('phase') !== 'restoring') {
+            if ($recovery->get('state') !== 'restoring') {
                 throw new HttpError(409, 'recovery_not_reviewed');
             }
             $kinds = self::kinds();
@@ -249,7 +249,7 @@ final class RecoveryService
                     CenterRecovery::query()->master()->onConnection($transaction)->where('slot', '=', 1)->update(['kind_index' => $nextIndex, 'cursor' => $cursor]);
                 } else {
                     self::fenceStaleMqttNodes($transaction);
-                    CenterRecovery::query()->master()->onConnection($transaction)->where('slot', '=', 1)->update(['phase' => 'ready', 'completed_at' => time()]);
+                    CenterRecovery::query()->master()->onConnection($transaction)->where('slot', '=', 1)->update(['state' => 'ready', 'completed_at' => time()]);
                     AuditLog::append($transaction, null, (string)$recovery->get('actor'), 'recovery.ready', $id, 'success', ['context' => 'operator-command'], 'platform');
                 }
             }
@@ -265,7 +265,7 @@ final class RecoveryService
     public static function ready(Connection $connection): void
     {
         $run = CenterRecovery::query()->master()->onConnection($connection)->where('slot', '=', 1)->first();
-        if ($run !== null && $run->get('phase') !== 'ready') {
+        if ($run !== null && $run->get('state') !== 'ready') {
             throw new HttpError(503, 'recovery_isolated');
         }
     }
@@ -282,7 +282,7 @@ final class RecoveryService
             $counts[$kind] = ['total' => (int)$connection->table('center_recovery_subject')->where('recovery_id', '=', $run->get('id'))->where('kind', '=', $kind)->aggregate('COUNT'),
                 'approved' => (int)$connection->table('center_recovery_subject')->where('recovery_id', '=', $run->get('id'))->where('kind', '=', $kind)->where('approved', '=', 1)->aggregate('COUNT')];
         }
-        return ['id' => $run->get('id'), 'state' => $run->get('phase'), 'host' => 'app', 'kind_index' => (int)$run->get('kind_index'), 'cursor' => $run->get('cursor'),
+        return ['id' => $run->get('id'), 'state' => $run->get('state'), 'host' => 'app', 'kind_index' => (int)$run->get('kind_index'), 'cursor' => $run->get('cursor'),
             'started_at' => (int)$run->get('started_at'), 'reviewed_at' => $run->get('reviewed_at') === null ? null : (int)$run->get('reviewed_at'),
             'completed_at' => $run->get('completed_at') === null ? null : (int)$run->get('completed_at'), 'subjects' => $counts];
     }

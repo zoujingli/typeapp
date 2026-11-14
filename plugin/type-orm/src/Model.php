@@ -17,7 +17,7 @@ abstract class Model implements \JsonSerializable
 
     private bool $persisted;
 
-    private ModelState $state;
+    private ModelState $modelState;
 
     private array $relations = [];
 
@@ -36,7 +36,7 @@ abstract class Model implements \JsonSerializable
         $this->execution = ExecutionScope::current();
         $this->definition = $definition;
         $this->tenantIdentity = $definition->tenantIdentity($this->execution);
-        $this->state = new ModelState();
+        $this->modelState = new ModelState();
         $this->persisted = $persisted;
         $this->behavior = $behavior;
         if ($persisted) {
@@ -500,7 +500,7 @@ abstract class Model implements \JsonSerializable
     /** @internal 使共享模型状态失效，回滚、删除等路径由 ORM 调用。 */
     public function invalidate(): void
     {
-        $this->state->invalidate();
+        $this->modelState->invalidate();
     }
 
     /** JSON 序列化沿用安全字段投影，不泄露持久化状态或自动展开关系。 */
@@ -511,7 +511,7 @@ abstract class Model implements \JsonSerializable
 
     protected function assertValid(): void
     {
-        $this->state->assertValid();
+        $this->modelState->assertValid();
         if (ExecutionScope::current() !== $this->execution) {
             throw new ModelException('model_scope_mismatch', '模型属于另一执行作用域，请在当前作用域重新查询');
         }
@@ -690,7 +690,7 @@ abstract class Model implements \JsonSerializable
 
     private function writing(Connection $connection, \Closure $operation): mixed
     {
-        $this->state->enterWrite();
+        $this->modelState->enterWrite();
         try {
             if ($this->behavior === null && $this->definition->versionField() === null) {
                 return $operation();
@@ -698,7 +698,7 @@ abstract class Model implements \JsonSerializable
             $mode = $connection->driverName() === 'sqlite' && $connection->transactionDepth() === 0 ? 'immediate' : 'default';
             return $connection->transaction(static fn (Connection $transaction): mixed => $operation(), $mode);
         } finally {
-            $this->state->leaveWrite();
+            $this->modelState->leaveWrite();
         }
     }
 

@@ -165,7 +165,7 @@ PHP;
         $prefix = '<?php declare(strict_types=1); namespace ModelMembers; use Type\Orm\Model; use Type\Orm\Attribute\{Table, Column}; '
             . "#[Table('records')] final class Record extends Model { public int \$id; ";
         try {
-            foreach (['public string $state;', 'private string $values;'] as $member) {
+            foreach (['private string $modelState;', 'private string $values;'] as $member) {
                 file_put_contents($file, $prefix . $member . ' }');
                 $rejected = false;
                 try {

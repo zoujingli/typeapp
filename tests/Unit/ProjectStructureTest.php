@@ -205,13 +205,16 @@ final class ProjectStructureTest extends TestCase
     public function testRecoveryStateUsesTheCenterModelBoundary(): void
     {
         $root = dirname(__DIR__, 2);
-        $models = (new \Type\Build\ModelCompiler())->compile([$root . '/app/center/model'])['models'];
+        $compiled = (new \Type\Build\ModelCompiler())->compile([$root . '/app/center/model']);
+        $models = $compiled['models'];
         $models = array_column($models, null, 'class');
         $recovery = $models['app\center\model\CenterRecovery'];
         self::assertSame('center_recovery', $recovery['table']);
         self::assertSame('id', $recovery['primary']);
         self::assertNull($recovery['tenant']);
-        self::assertSame('state', $recovery['fields']['phase']['column']);
+        self::assertArrayHasKey('state', $recovery['fields']);
+        self::assertArrayNotHasKey('column', $recovery['fields']['state']);
+        self::assertStringContainsString('getState()', $compiled['code']);
         self::assertTrue($recovery['fields']['slot']['nullable']);
         $service = (string)file_get_contents($root . '/app/center/service/RecoveryService.php');
         self::assertStringContainsString('CenterRecovery::query()', $service);

@@ -16,7 +16,7 @@ use Type\Orm\Model;
  * @property null|int $slot 当前活动槽位，1 表示唯一活动恢复，空值表示历史记录。
  * @property string $actor 发起恢复操作的维护者标识。
  * @property string $proof 已完成隔离依据的受控引用。
- * @property string $phase 恢复阶段：isolating、reviewing、restoring 或 ready。
+ * @property string $state 恢复阶段：isolating、reviewing、restoring 或 ready。
  * @property int $kind_index 当前主体种类索引。
  * @property string $cursor 当前主体种类内的有序游标。
  * @property int $started_at 恢复开始时间，UTC Unix 秒。
@@ -38,7 +38,7 @@ final class CenterRecovery extends Model
         'slot' => ['type' => 'integer', 'nullable' => true, 'comment' => '当前活动槽位，1 表示唯一活动恢复，空值表示历史记录。'],
         'actor' => ['type' => 'string', 'comment' => '发起恢复操作的维护者标识。'],
         'proof' => ['type' => 'string', 'visible' => false, 'comment' => '已完成隔离依据的受控引用。'],
-        'phase' => ['type' => 'string', 'column' => 'state', 'comment' => '恢复阶段：isolating、reviewing、restoring 或 ready。'],
+        'state' => ['type' => 'string', 'comment' => '恢复阶段：isolating、reviewing、restoring 或 ready。'],
         'kind_index' => ['type' => 'integer', 'comment' => '当前主体种类索引。'],
         'cursor' => ['type' => 'string', 'comment' => '当前主体种类内的有序游标。'],
         'started_at' => ['type' => 'integer', 'comment' => '恢复开始时间，UTC Unix 秒。'],
