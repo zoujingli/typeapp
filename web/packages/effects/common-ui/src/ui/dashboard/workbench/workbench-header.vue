@@ -3,6 +3,7 @@ import { VbenAvatar } from '@vben-core/shadcn-ui';
 
 interface Props {
   avatar?: string;
+  stats?: { label: string; value: number | string }[];
 }
 
 defineOptions({
@@ -11,6 +12,7 @@ defineOptions({
 
 withDefaults(defineProps<Props>(), {
   avatar: '',
+  stats: () => [],
 });
 </script>
 <template>
@@ -27,19 +29,10 @@ withDefaults(defineProps<Props>(), {
         <slot name="description"></slot>
       </span>
     </div>
-    <div class="mt-4 flex flex-1 justify-end md:mt-0">
-      <div class="flex flex-col justify-center text-right">
-        <span class="text-foreground/80"> 待办 </span>
-        <span class="text-2xl">2/10</span>
-      </div>
-
-      <div class="mx-12 flex flex-col justify-center text-right md:mx-16">
-        <span class="text-foreground/80"> 项目 </span>
-        <span class="text-2xl">8</span>
-      </div>
-      <div class="mr-4 flex flex-col justify-center text-right md:mr-10">
-        <span class="text-foreground/80"> 团队 </span>
-        <span class="text-2xl">300</span>
+    <div v-if="stats.length" class="mt-4 flex flex-1 justify-end gap-8 md:mt-0 md:gap-12">
+      <div v-for="stat in stats" :key="stat.label" class="flex flex-col justify-center text-right last:mr-4 md:last:mr-10">
+        <span class="text-foreground/80">{{ stat.label }}</span>
+        <span class="text-2xl">{{ stat.value }}</span>
       </div>
     </div>
   </div>

@@ -17,6 +17,8 @@
 
 原生布局的项目适配还包括：转发搜索与全屏插槽；偏好按钮连接原生抽屉；偏好编辑策略限制当前应用支持的字段；控件补齐可访问名称及真实禁用状态。搜索历史使用调用方的身份域键，并在菜单变化后重新核对授权路径。偏好管理器使用 `toRaw` 合并以保留连续更新的响应性，支持关闭内置缓存及替换当前端默认值；TypeApp 在应用入口按账号保存差量偏好。
 
+工作台沿用上游 `AnalysisOverview`、`WorkbenchHeader`、`WorkbenchProject`、`WorkbenchQuickNav`、`WorkbenchTodo` 和 `WorkbenchTrends`。`WorkbenchHeader` 的项目适配增加可选真实统计属性，默认不渲染统计，避免带入上游示例数字。
+
 锁屏组件接受应用提供的口令验证与锁定回调，时钟支持当前账号时区。TypeApp 在当前标签页保存绑定真实会话的加盐摘要，刷新恢复锁屏，退出或身份变化清理；上游默认调用方式保留。锁屏设置按钮的中英文文案同步修正。标签页恢复仅保存已授权导航路径，业务组件在离开时释放，详情与一次性秘密不作为页面缓存保存。
 
 `apps/web-antd` 的入口、业务路由、请求协议和物联网组件由 TypeApp 维护。实际依赖与工具版本以 `package.json`、工作区目录及 `pnpm-lock.yaml` 为准。TypeScript 主工具链为 7；当前正式 vue-tsc 和 Vue SFC 编译器仍通过官方 `@typescript/typescript6` 包提供的旧编译器 API 检查 Vue SFC，共享解析见 `scripts/typescript-bridge.mjs`。该检查结果属于 Vue 检查器桥接，不能等同于 TypeScript 7 原生 Vue 检查。
