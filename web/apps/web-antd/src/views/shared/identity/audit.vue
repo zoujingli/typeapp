@@ -13,9 +13,9 @@ const broker = computed(() => route.meta.auditScope === 'mqtt');
 const platform = computed(() => session.realm === 'platform');
 const endpoint = computed(() => `/${session.realm}${broker.value ? '/broker' : ''}/audit`);
 const title = computed(() => broker.value ? 'MQTT 操作审计' : '操作审计');
-const failure = ref(''); const busy = ref(false); const detail = ref<BrokerAuditDetail['item']>(); const result = ref<BrokerAuditPage>();
+const failure = ref(''); const busy = ref(false); const detailBusy = ref(false); const detailFailure = ref(''); const detail = ref<BrokerAuditDetail['item']>(); const result = ref<BrokerAuditPage>();
 const page = ref(0); const limit = ref(20); const cursors = ref<(string | null)[]>([null]);
-let pending: AbortController | undefined; let generation = 0; let applied: Record<string, unknown> = {};
+let pending: AbortController | undefined; let detailPending: AbortController | undefined; let generation = 0; let detailGeneration = 0; let applied: Record<string, unknown> = {};
 const outcomes: Record<string, { label: string; color: string }> = {
   pending: { label: '待确定', color: 'processing' }, success: { label: '成功', color: 'green' }, denied: { label: '拒绝', color: 'orange' },
   unknown: { label: '结果未知', color: 'gold' }, failed: { label: '失败', color: 'red' },
@@ -58,7 +58,7 @@ const [Grid, grid] = useVbenVxeGrid<Audit>({ formOptions, gridOptions: { columns
   { field: 'result', title: '执行结果', width: 100, slots: { default: 'result' } },
   { title: '操作', width: 80, fixed: 'right', slots: { default: 'actions' } },
 ], pagerConfig: { enabled: false }, rowConfig: { keyField: 'id' } } });
-const [Detail, drawer] = useVbenDrawer({ title: '审计详情', footer: false, class: 'w-full max-w-3xl', onClosed: () => { detail.value = undefined; } });
+const [Detail, drawer] = useVbenDrawer({ title: '审计详情', footer: false, class: 'w-full max-w-3xl', onClosed: () => { detailGeneration++; detailPending?.abort(); detailPending = undefined; detailBusy.value = false; detail.value = undefined; } });
 async function load(target = page.value) {
   const current = ++generation; pending?.abort(); pending = new AbortController(); busy.value = true; failure.value = ''; grid.setLoading(true);
   try {
@@ -69,11 +69,14 @@ async function load(target = page.value) {
   finally { if (current === generation) { busy.value = false; grid.setLoading(false); } }
 }
 async function show(item: Audit) {
-  failure.value = '';
-  try { detail.value = (await request<BrokerAuditDetail>(`${endpoint.value}/${platform.value ? `${item.audit_realm}/` : ''}${item.id}`)).item; drawer.open(); }
-  catch (error) { if (!isCanceled(error)) failure.value = errorText(error); }
+  const current = ++detailGeneration; detailPending?.abort(); detailPending = new AbortController(); detailBusy.value = true; detailFailure.value = ''; detail.value = undefined; drawer.open();
+  try {
+    const data = await request<BrokerAuditDetail>(`${endpoint.value}/${platform.value ? `${item.audit_realm}/` : ''}${item.id}`, { signal: detailPending.signal });
+    if (current === detailGeneration) detail.value = data.item;
+  } catch (error) { if (!isCanceled(error) && current === detailGeneration) detailFailure.value = errorText(error); }
+  finally { if (current === detailGeneration) { detailBusy.value = false; detailPending = undefined; } }
 }
-onMounted(() => load(0)); onBeforeUnmount(() => { generation++; pending?.abort(); });
+onMounted(() => load(0)); onBeforeUnmount(() => { generation++; detailGeneration++; pending?.abort(); detailPending?.abort(); });
 </script>
 <template>
   <Page auto-content-height>
@@ -92,6 +95,6 @@ onMounted(() => load(0)); onBeforeUnmount(() => { generation++; pending?.abort()
         </div>
       </template>
     </Grid>
-    <Detail><Descriptions class="break-all" v-if="detail" :column="1" bordered><DescriptionsItem label="发生时间">{{ time(detail.created_at) }}</DescriptionsItem><DescriptionsItem label="操作类型">{{ detail.action }}</DescriptionsItem><DescriptionsItem label="真实操作人员">{{ detail.actor_id }}</DescriptionsItem><DescriptionsItem label="业务主体">{{ detail.subject_id }}</DescriptionsItem><DescriptionsItem label="所属客户">{{ detail.tenant_id || '平台' }}</DescriptionsItem><DescriptionsItem label="审计来源">{{ detail.audit_realm === 'platform' ? '平台' : '客户系统' }}</DescriptionsItem><DescriptionsItem label="执行结果">{{ outcomes[detail.result]?.label || detail.result }}</DescriptionsItem><DescriptionsItem v-if="detail.operation_id" label="操作标识">{{ detail.operation_id }}</DescriptionsItem><DescriptionsItem v-if="detail.request_id" label="请求标识">{{ detail.request_id }}</DescriptionsItem><DescriptionsItem v-if="detail.stage" label="事件阶段">{{ stages[detail.stage] || detail.stage }}</DescriptionsItem><DescriptionsItem v-for="(value, key) in detail.details" :key="key" :label="labels[key] || key"><span class="whitespace-pre-wrap break-all">{{ display(value) }}</span></DescriptionsItem><DescriptionsItem v-if="detail.operation" label="当前操作状态"><span class="whitespace-pre-wrap break-all">{{ display(detail.operation) }}</span></DescriptionsItem></Descriptions></Detail>
+    <Detail :loading="detailBusy"><Alert v-if="detailFailure" :message="detailFailure" type="error" show-icon class="mb-4" /><Descriptions class="break-all" v-if="detail" :column="1" bordered><DescriptionsItem label="发生时间">{{ time(detail.created_at) }}</DescriptionsItem><DescriptionsItem label="操作类型">{{ detail.action }}</DescriptionsItem><DescriptionsItem label="真实操作人员">{{ detail.actor_id }}</DescriptionsItem><DescriptionsItem label="业务主体">{{ detail.subject_id }}</DescriptionsItem><DescriptionsItem label="所属客户">{{ detail.tenant_id || '平台' }}</DescriptionsItem><DescriptionsItem label="审计来源">{{ detail.audit_realm === 'platform' ? '平台' : '客户系统' }}</DescriptionsItem><DescriptionsItem label="执行结果">{{ outcomes[detail.result]?.label || detail.result }}</DescriptionsItem><DescriptionsItem v-if="detail.operation_id" label="操作标识">{{ detail.operation_id }}</DescriptionsItem><DescriptionsItem v-if="detail.request_id" label="请求标识">{{ detail.request_id }}</DescriptionsItem><DescriptionsItem v-if="detail.stage" label="事件阶段">{{ stages[detail.stage] || detail.stage }}</DescriptionsItem><DescriptionsItem v-for="(value, key) in detail.details" :key="key" :label="labels[key] || key"><span class="whitespace-pre-wrap break-all">{{ display(value) }}</span></DescriptionsItem><DescriptionsItem v-if="detail.operation" label="当前操作状态"><span class="whitespace-pre-wrap break-all">{{ display(detail.operation) }}</span></DescriptionsItem></Descriptions></Detail>
   </Page>
 </template>

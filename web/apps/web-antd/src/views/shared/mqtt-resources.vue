@@ -311,7 +311,7 @@ onBeforeUnmount(() => { clear(); clearInterval(timer); clearInterval(clock); doc
 </script>
 
 <template>
-  <Page>
+  <Page auto-content-height>
     <Alert v-if="failure" class="mb-4" type="error" show-icon role="alert" :message="denied ? failure : `资源刷新失败：${failure}`" />
     <Alert v-if="!canRead" class="mb-4" type="warning" show-icon message="当前账号无权查看 Broker 资源" />
     <Alert v-if="expired" class="mb-4" type="warning" show-icon message="观察已过期，当前连接和投递状态未知" />

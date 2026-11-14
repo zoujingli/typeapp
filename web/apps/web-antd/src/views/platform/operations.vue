@@ -66,7 +66,7 @@ onBeforeUnmount(() => { generation++; pending?.abort(); clearInterval(timer); do
 </script>
 
 <template>
-  <Page title="运行概览" header-class="flex-wrap gap-4">
+  <Page auto-content-height title="运行概览" header-class="flex-wrap gap-4">
     <template #extra><Button :loading="busy" :disabled="!canRead" @click="load">刷新</Button></template>
     <Alert v-if="!canRead" message="当前账号无权查看此概览" type="warning" show-icon class="mb-4" />
     <Alert v-if="failure" :message="denied ? '当前账号无权查看此概览' : '页面刷新失败'" :description="`${failure}${result ? ' 以下保留上次成功读取的数据，不能据此推定设备离线。' : ''}`" type="error" show-icon role="alert" class="mb-4" />
