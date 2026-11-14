@@ -47,3 +47,18 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 仓库目标工具链记录在 `toolchain.lock.json`：PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8；本机实际 Node.js 为 26.13.1，pnpm 为 11.15.1，而前端工作区声明 pnpm 12.18.0。前端检查结果仍只证明在当前可用 Node/pnpm 环境下的静态与生产构建行为。
 
 仍未验证：静态 SDK 单程序交付、删除源码后的发布包运行、正式平台/profile 矩阵、物联中心 AOT 产物上的真实设备身份 MQTT 持久会话/跨 Tenant 撤权与转配，以及 Windows SDK。当前 `--shared-development` 产物用于开发和原生回归，不能替代静态单程序发布候选；直接运行原生程序时必须通过发布启动器或显式提供其受控 `PHPRC`，否则 Swoole 共享模块不会加载。上述 MQTT 结果属于独立通信组件源运行验收，不替代当前应用生产产物验收。补齐匹配的静态 SDK 和真实 MQTT 设备环境后，按 `docs/development/test-entrypoints.md` 顺序重跑剩余门禁，并以同一源码、锁文件和原生产物记录最终结果。
+
+## 当前提交追加验证
+
+提交 `1fb2a25fca07e128975290a41a117a3f7417adf7` 后，针对 ORM 内部状态槽改名及恢复模型 `state` 字段重新执行：
+
+- `bin/typeapp-prepare --json`：通过；当前模型生成包含 `CenterRecovery::getState()`。
+- `ProjectStructureTest`、`ModelFirstBoundaryTest`、`ModelSchemaSynchronizerTest`：15 tests、631 assertions 通过。
+- `composer cs-check`：922 个文件通过，0 个待修正。
+- `php tests/check.php`：969 个文件、3 个分发拒绝用例、文档站边界检查通过。
+- `pnpm --dir web typecheck` 与 `pnpm --dir web build`：通过；Vite 8.3.8 转换 7,875 modules。
+- 锁定 PHP 8.5.12 ZTS、PHPX 2.9.8 下 `tools/build-application.php --shared-development`：全量 301 个 C++ 文件编译、链接通过；当前原生程序 `build/app/type-app` SHA-256 为 `a00ac52e25934e66c8d9ba18ada577aaffce86651983022aa0b5388be3080776`，build id 为 `44ae4901bbe571d9345aaf240a01839ac4270aba972c11591465e677933afb4d`。
+- 同一当前 AOT 程序的 `tests/tenant.php sqlite`、`mysql`（8.4.11）和 `pgsql`（17.11）Tenant 闭环均通过。
+- 同一锁定环境的 `tests/model-sync.php`：真实 MySQL 结构反向同步、注释、生成列、字段保护和 Tenant CRUD 通过。
+
+本追加记录仍不扩大“未验证及阻塞”中列出的静态单程序、无源码部署、正式平台矩阵和真实设备持久 MQTT 边界。
