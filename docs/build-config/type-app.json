@@ -16,6 +16,7 @@
   "sources": [
     "app"
   ],
+  "migrations": "database/migrations",
   "embedded-resources": [
     {
       "source": "web/dist",

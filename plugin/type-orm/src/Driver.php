@@ -6,10 +6,14 @@ namespace Type\Orm;
 
 use PDO;
 
-/** 数据库端点协议；建立会话与证明会话可复用由具体驱动负责。 */
+/**
+ * 数据库端点协议；建立会话与证明会话可复用由具体驱动负责。
+ */
 interface Driver
 {
-    /** 返回 SQL 方言使用的驱动名：mysql、pgsql 或 sqlite。 */
+    /**
+     * 返回 SQL 方言使用的驱动名：mysql、pgsql 或 sqlite。
+     */
     public function name(): string;
 
     /**
@@ -31,4 +35,9 @@ interface Driver
      * 返回 true 才允许保留同一物理连接；无法证明干净时返回 false 或抛出异常。
      */
     public function reset(\PDO $pdo): bool;
+
+    /**
+     * 返回该驱动的迁移结构、初始化数据和互斥实现。
+     */
+    public function migrations(): \Type\Orm\Migration\MigrationDriver;
 }

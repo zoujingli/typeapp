@@ -1,24 +1,30 @@
 # 三库原生迁移
 
-`type-orm` 提供迁移内容、执行器、状态与恢复入口，复用已有 `Database`、`Connection`、`ExecutionScope`。每次操作只连接选择的数据库，使用独立会话并在结束时销毁；没有 Redis、HTTP 或 core 的运行依赖。
+`type-orm` 提供迁移内容、执行器、状态与恢复入口。每种数据库驱动实现 `MigrationDriver`，负责结构读取、初始化数据、DDL 事务能力和互斥锁。新增驱动实现该接口后，现有 `up` 与 `generate` 即可使用，不必再改执行器里的库名分支。应用构建配置显式登记 `migrations` 目录；TypePHP 构建期读取匿名 `SchemaMigration`，生成 `app\generated\Migrations` 静态注册表，生产运行不再扫描或 include 迁移 PHP 文件。
+
+正向 `up` 用脚本建立或更新数据库。反向 `generate` 从当前库生成完整结构，并带上安装标记、平台默认设置和菜单目录。`down` 只在作者明确写出时用于回滚，不是反向生成的含义。
 
 ## 公共入口
 
-`Migration($version, $description, $statements, $transactional)` 定义一份不可变的 SQL 迁移；应用将定义与框架一起交给 TypePHP 编译。版本必须唯一，执行器按版本字符串排序。版本、描述、SQL 顺序与事务声明共同生成 SHA-256 校验值。历史定义被修改或从计划遗漏都会拒绝执行；后续变化使用新版本。
+`Migration($version, $description, $statements, $transactional, $downStatements)` 是执行器保存的不可变 SQL。业务脚本放在 `database/migrations/{序号}_{名称}.php`，`return new class extends SchemaMigration`，用 `up(Schema)` 与 `down(Schema)` 描述结构，再由 `compile($driver)` 得到上述对象。版本来自文件名，执行器按版本字符串排序。版本、描述、SQL 顺序、事务声明和显式 down 内容共同生成 SHA-256 校验值；没有 down 的历史版本只能前进执行。
 
 `Migrator($driver, $table = 'type_migrations')` 的公共方法为：
 
 - `status($migrations)`：只读当前状态，可在其他迁移运行中查看；新数据库返回 `pending`，不提前建立记录表。
 - `run($migrations)`：取得互斥锁后建立记录表，跳过 `applied`，按顺序执行待处理版本。发现任何 `running/failed` 时拒绝自动重试。
+- `rollback($migrations, $steps = 1)`：按已应用版本倒序执行显式 down，默认回滚一步；没有 down 或失败状态会明确拒绝。
+- `generate($version, $description)`：只读反向读取当前数据库结构，返回带 up/down 的 `Migration`、可保存的 `SchemaMigration` 草稿、warnings 和 integrity 报告，不自动写源码或登记历史；无法安全表达的索引、外键、检查约束或默认表达式会标记为不完整。
 - `history()`：读取开始、失败、完成和恢复记录，含执行次数、时间及说明。
 - `recover($migrations, $version, 'retry'|'applied', $reason)`：在同一个互斥边界内恢复中断或失败版本，必须提供非空说明。`retry` 重新允许执行同一内容；`applied` 登记维护者已经人工完成并核对的结果。
 
-`MigrationConsole` 为这四个接口提供 JSON 命令输出和退出码。独立 ORM 原生命令与 core 的 `migrate` 命令适配器调用同一个对象，没有复制执行逻辑。`help` 不连接数据库；core 的总入口 `help/check` 继续保持离线行为。
+`MigrationConsole` 为这些接口提供 JSON 命令输出和退出码，支持 `status`、`run/up`、`rollback/down [steps]`、`generate <version> <description>`、`history` 和 `recover`。独立 ORM 原生命令与 core 的 `migrate` 命令适配器调用同一个对象，没有复制执行逻辑。`help` 不连接数据库；core 的总入口 `help/check` 继续保持离线行为。
 
 ```bash
 composer build:migrations
 build/migrations/type-app status
 build/migrations/type-app run
+build/migrations/type-app rollback 1
+build/migrations/type-app generate 202611140001 '当前结构快照'
 build/migrations/type-app history
 build/migrations/type-app recover 202609080001 retry '已核对并清理部分 DDL，允许重试'
 

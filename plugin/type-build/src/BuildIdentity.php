@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-/** 内容身份只保存文件摘要与声明，不读取目录外的隐式运行配置。 */
+/**
+ * 内容身份只保存文件摘要与声明，不读取目录外的隐式运行配置。
+ */
 final class BuildIdentity
 {
     public const PROTOCOL = 1;
 
-    public const GENERATORS = ['declarations' => 1, 'application' => 2, 'events' => 1, 'models' => 4, 'schema' => 1, 'routing' => 2, 'queue' => 2, 'schedules' => 1, 'identity' => 5, 'embedded-resources' => 1, 'source-adaptations' => 1,
+    public const GENERATORS = ['declarations' => 1, 'application' => 2, 'events' => 1, 'models' => 4, 'schema' => 1, 'migrations' => 1, 'routing' => 2, 'queue' => 2, 'schedules' => 1, 'identity' => 5, 'embedded-resources' => 1, 'source-adaptations' => 1,
         'configuration' => 1, 'operations' => 2, 'threads' => 2];
 
     /**
@@ -76,7 +78,9 @@ final class BuildIdentity
         return array_keys($this->files($paths, ['php', 'c', 'cc', 'cpp', 'cxx', 's', 'm', 'mm', 'h', 'hh', 'hpp', 'hxx', 'inc', 'inl', 'tcc']));
     }
 
-    /** 对规范化 JSON 计算 SHA-256；映射顺序不改变摘要，列表顺序参与身份。 */
+    /**
+     * 对规范化 JSON 计算 SHA-256；映射顺序不改变摘要，列表顺序参与身份。
+     */
     public static function digest(mixed $value): string
     {
         return hash('sha256', json_encode(self::canonical($value), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));

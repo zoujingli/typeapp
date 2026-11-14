@@ -25,7 +25,7 @@ ORM 使用 PDO 访问数据库协议，Swoole 提供协程上下文、等待、C
 | 关系 | 四类关系、嵌套预加载、补加载、关系条件和计数/求和；多对多 `attach/detach/sync` | 关系读取不隐式发 SQL；没有专用多态、穿透关系或关系创建助手 |
 | 软删除与生命周期 | 实例恢复/物理删除、受管创建和更新时间、获取器/修改器和显式观察器 | 没有集合恢复/强制删除或 `fresh/refresh` 专用接口；重新读主库取得新对象 |
 | 事务、路由与租户 | 同库事务、保存点、提交后回调、乐观锁、主从与可信上下文范围 | 子任务独立事务；未知提交需要对账，不能自动重试 |
-| 迁移与外部效果 | 版本化 SQL、Schema 三库冻结建表与有限结构变更、历史校验/恢复及事务 Outbox | 应用实现投递与目标幂等；没有迁移 `down` 或在线结构自动同步 |
+| 迁移与外部效果 | 脚本建立或更新数据库，也能从当前库生成带初始化数据的完整脚本 | 初始化数据只含安装标记、平台默认设置和菜单；口令与业务记录不进入生成脚本 |
 
 批量冲突写入遵守各库的真实唯一约束和影响行数语义；会话复用的剩余范围见 [ORM 补齐顺序](roadmap.md#orm-补齐顺序)，便捷方法按实际调用需求增加。隐式懒加载、动态扫描和共享活动模型不属于当前执行方式。真实三库与编译范围见[独立消费矩阵](https://github.com/zoujingli/typeapp/blob/main/docs/development/orm-consumer-matrix.md)。
 
@@ -94,7 +94,7 @@ Swoole 在可让出的数据库等待期间调度其他协程；ORM 负责把连
 
 开发和构建环境需匹配 PDO 驱动与 Swoole 构建能力；生产单程序已静态链接所需非系统运行库，用户无需另行安装或启动 Swoole。数据库服务、配置和数据的维护要求见[环境与依赖](environment.md)和[构建与部署](deployment.md)。
 
-缺少所选驱动的编译能力报 `swoole_pdo_hook_unavailable`，已有能力但未在启动期启用报 `swoole_hook_startup_required`。检查不在业务协程里修改全局 hook，也不因未使用的数据库驱动阻止连接。协程外的同步迁移和工具仍可使用 PDO；是否真正让出等待由真实锁等待验收确认。
+缺少所选驱动的编译能力报 `swoole_pdo_hook_unavailable`，已有能力但未在启动期启用报 `swoole_hook_startup_required`。检查不在业务协程里修改全局 hook，也不因未使用的数据库驱动阻止连接。物联中心的 `app:install` 用 `CoroutineRuntime::run()` 执行迁移和初始写入，因此与 HTTP 一样要求所选驱动的 PDO hook。当前静态 PHP 若只编入 `pdo_pgsql` 而没有 `SWOOLE_HOOK_PDO_PGSQL`，安装和 HTTP 会停在 `swoole_pdo_hook_unavailable`，不能改成在协程里阻塞等待。协程外直接调用 `Migrator` 的同步工具仍可使用 PDO；是否真正让出等待由真实锁等待验收确认。
 
 ## 选择数据库
 
@@ -106,20 +106,62 @@ Swoole 在可让出的数据库等待期间调度其他协程；ORM 负责把连
 
 物联中心的发布程序按数据库 profile 分开构建，`DB_DRIVER` 必须与下载程序一致，否则返回 `runtime_profile_database_mismatch`。开发环境可在已安装驱动间选择，独立模板在首次安装前确定驱动。更换程序或配置不会迁移原数据，也不会删除旧数据库。
 
-## 显式迁移
+## 脚本与数据库
 
-当前 `main` 支持通过 `#[Schema]` 声明新模块表及有限结构变更，显式 `php vendor/bin/type schema:prepare <声明.php>` 冻结并审查三库 SQL，再追加到已有迁移列表。开发和 AOT 构建只核验快照；旧迁移不改写。此能力尚未包含 RC14，完整流程与各库存储、失败恢复差异见[Schema 声明与冻结迁移](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。
+正向执行 `SchemaMigration` 的 `up()`。迁移文件是 `database/migrations/003_products.php`，`return new class`，文件名就是版本。脚本里用 `Schema::create`、`Schema::table`、`hasTable`、`hasColumn` 和 `insert` 描述结构与初始行，而不是手写各数据库的 SQL。`integer()` 是 32 位整数，`bigInteger()` 在三种数据库上都是 `BIGINT`。表注释和列注释只写入 MySQL 的 `COMMENT`。`insert` 的表名和列名使用与建表相同的小写标识符规则并加引号，值只接受 null、布尔、有限数字和文本。`pretend` 只展开这些声明会生成的语句，不写数据库。迁移目录由构建期编译成静态注册表，运行时不读取目录脚本。反向 `generate` 仍然从当前库读取结构，同时返回可直接回滚的 `Migration`、可保存的匿名 `SchemaMigration` 草稿和完整性报告；提交前要审查 warnings 并确认 Blueprint 能表达全部结构。
 
-物联中心通过 `app:install` 初始化空库，同时建立身份、租户和权限数据，具体参数见[Platform/System 身份初始化](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-identity.md#初始化)。安装完成后，在本仓库根查询迁移状态：
+```php
+<?php
+
+declare(strict_types=1);
+
+use Type\Orm\Migration\SchemaMigration;
+use Type\Orm\Schema\Blueprint;
+use Type\Orm\Schema\Schema;
+
+return new class extends SchemaMigration {
+    public function description(): string
+    {
+        return '创建产品';
+    }
+
+    public function up(Schema $schema): void
+    {
+        if ($schema->hasTable('products')) {
+            return;
+        }
+        $schema->create('products', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('name', 100)->comment('产品名称');
+        });
+    }
+
+    public function down(Schema $schema): void
+    {
+        $schema->dropIfExists('products');
+    }
+};
+```
 
 ```bash
 composer typeapp:migrate -- status
-composer typeapp:migrate -- history
+composer typeapp:migrate -- pretend
+composer typeapp:migrate -- up
 ```
 
-物联中心的 `migrate` 提供 `status`、`history` 和经核对后的 `recover`，不提供独立建表的 `run`。通用应用模板使用 `php dev.php migrate run` 初始化自身模型所需的表，并提供 `status`、`history` 查询；模板不包含物联中心的身份安装流程。框架迁移按版本和校验和执行，已完成版本重复运行保持幂等。
+`generate` 只读数据库，不改迁移记录。提交前审查生成的 `up()`。`app:install` 只接受空库，在迁移之后创建平台账号；重复安装会拒绝且不清库。
 
-物联中心只接受全新空库安装。检测到已有安装或旧表时返回 `installation_incompatible`，不自动转换、不清库，也不提供业务升级分支；需要切换版本时由运维按发布批次准备新空库并完成现场迁移。
+```mermaid
+flowchart LR
+  Script[迁移脚本] -->|up| Database[(数据库)]
+  Database -->|generate| Script
+```
+
+物联中心的 `app:install` 只负责空库首次身份初始化。开发入口另提供 `migrate generate`。框架按版本和校验和执行，已完成版本重复运行保持幂等。
+
+物联中心的 `app:install` 只负责空库首次身份初始化；安装后与通用应用一样使用 ORM 的 `migrate status`、`migrate run/up`、`migrate rollback/down`、`migrate history` 和 `migrate recover`。开发入口另提供只读 `migrate generate <version> <description>`，从当前数据库输出可审查的标准 Migration 草稿，不自动覆盖源码。框架迁移按版本和校验和执行，已完成版本重复运行保持幂等；没有显式 down 的版本不能回滚。
+
+物联中心首次身份安装只接受全新空库。检测到旧安装或不兼容模式时返回 `installation_incompatible`，不自动转换、不清库；已完成当前安装基线的部署可由运维审查后使用 `migrate run/up` 应用后续版本，回滚只执行脚本明确声明的 `down`。
 
 ```mermaid
 flowchart LR
@@ -229,7 +271,7 @@ flowchart LR
 
 这些例外不授予普通 CRUD 绕过模型的权利。`CenterRuntimeMetric` 的普通读取通过 ModelQuery，只有 `recordObservation()` 内的两条原子 SQL 属于已登记的运行观察例外；`CenterRecovery` 的状态读取、创建和推进通过 ModelQuery，`center_recovery_subject` 因 `(recovery_id, kind, subject_id)` 复合主键超出当前单主键 ORM 能力，继续由 `RecoveryService` 在固定白名单内执行受控查询，不能用任一列冒充主键；审计动态联合查询、恢复游标和 MQTT 协议表也必须按具体方法登记。后续迁移先验证真实事务和租户边界，再扩大覆盖范围。
 
-当前身份目录、Tenant、产品、注册资格、应用、授权明细和转配列表均通过具体 Model 的 `query()` 与 `_query()` 白名单助手完成筛选、排序和有界分页；`_query()` 只消费调用者显式声明的字段，不读取 Request，也不决定授权或租户范围。Center 设备运行观察、恢复、审计和协议接入服务仍纳入同一 Model-first 静态门禁；每个保留的表、查询或原子执行入口都绑定到完整方法及表达式，删除或改写调用后对应登记会立即报未使用。普通设备目录通过 `DeviceDirectory` 只读模型读取，跨模型投影和协议热路径只有在无法保持原子语义时才保留受控底层入口。
+当前身份目录、Tenant、产品、注册资格、应用、授权明细和转配列表均通过具体 Model 的 `query()` 与 `_query()` 白名单助手完成筛选、排序和有界分页；`_query()` 只消费调用者显式声明的字段，不读取 Request，也不决定授权或租户范围。`ModelQuery` 在执行时附上模型声明的租户和软删除范围。`Connection::table()` 不附上这些范围；平台按已加载设备更新 `center_device` 时，条件同时写入该行的 `tenant_id`、`id` 和 `version`。`_query()->like()` 把输入中的 `%`、`_` 和 `!` 当作字面量，SQL 使用 `ESCAPE '!'`。Center 设备运行观察、恢复、审计和协议接入服务仍纳入同一 Model-first 静态门禁；每个保留的表、查询或原子执行入口都绑定到完整方法及表达式，删除或改写调用后对应登记会立即报未使用。普通设备目录通过 `DeviceDirectory` 只读模型读取，跨模型投影和协议热路径只有在无法保持原子语义时才保留受控底层入口。
 
 ## 字段与修改
 

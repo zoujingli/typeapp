@@ -9,10 +9,13 @@ use app\common\database\Schema;
 use app\platform\mqtt\service\CompatService;
 use Type\Orm\DatabaseManager;
 use Type\Orm\Db;
+use Type\Orm\Migration\SchemaMigration;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
 
-/** 每个 HTTP 执行者缓存必需数据库和恢复门的状态，不探测后台角色的可选 Redis。 */
+/**
+ * 每个 HTTP 执行者缓存必需数据库和恢复门的状态，不探测后台角色的可选 Redis。
+ */
 final class HttpReadiness
 {
     private float $checkedAt = 0.0;
@@ -23,10 +26,14 @@ final class HttpReadiness
 
     private string $installation = '';
 
-    /** @var array<string,string> 本执行者当前程序声明的迁移摘要。 */
+    /**
+     * @var array<string,string> 本执行者当前程序声明的迁移摘要。
+     */
     private array $migrations = [];
 
-    /** 管理器与业务请求共用额度；实例不能跨线程共享。 */
+    /**
+     * 管理器与业务请求共用额度；实例不能跨线程共享。
+     */
     public function __construct(private DatabaseManager $database) {}
 
     /**
@@ -47,7 +54,8 @@ final class HttpReadiness
                 if ($this->migrations === []) {
                     $plan = Schema::migrations($connection->driverName());
                     foreach ($plan as $migration) {
-                        $this->migrations[$migration->version()] = $migration->checksum();
+                        $compiled = $migration instanceof SchemaMigration ? $migration->compile($connection->driverName()) : $migration;
+                        $this->migrations[$compiled->version()] = $compiled->checksum();
                     }
                 }
                 $applied = $connection->query('SELECT version, checksum, state FROM type_migrations');

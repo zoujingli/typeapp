@@ -48,7 +48,6 @@ try {
         return $files;
     };
     $make(['module', 'app\catalog\Product', '--table=products', '--route=/products', '--role=users', '--version=002_products', '--migration-registry=app\common\database\Schema']);
-    successful([PHP_BINARY, $work . '/vendor/bin/type', 'schema:prepare', $work . '/app/catalog/database/CreateProduct.php'], sys_get_temp_dir());
     $make(['service', 'app\work\Marker']);
     $make(['command', 'app\work\PrintMarker', '--service=app\work\Marker', '--name=marker']);
     $make(['job', 'app\work\MarkerJob', '--service=app\work\Marker', '--type=marker', '--version=1']);
@@ -160,12 +159,12 @@ try {
             unlink($work . '/app/linked');
         }
         if (function_exists('posix_geteuid') && posix_geteuid() !== 0) {
-            chmod($work . '/app/common/database/Schema.php', 0444);
+            chmod($work . '/database/migrations', 0555);
             try {
-                expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'module', 'app\readonly\Product', '--table=readonly', '--route=/readonly', '--role=users', '--version=004_readonly', '--migration-registry=app\common\database\Schema'])[0] !== 0, '只读关联文件没有拒绝');
+                expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'module', 'app\readonly\Product', '--table=readonly', '--route=/readonly', '--role=users', '--version=004_readonly', '--migration-registry=app\common\database\Schema'])[0] !== 0, '只读迁移目录没有拒绝');
                 expect(!is_dir($work . '/app/readonly') && file_get_contents($config) === $before, '只读目标留下半个模块');
             } finally {
-                chmod($work . '/app/common/database/Schema.php', 0644);
+                chmod($work . '/database/migrations', 0755);
             }
         }
     }

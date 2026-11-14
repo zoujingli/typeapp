@@ -159,7 +159,7 @@ $user->save();
 
 // 列表：输入白名单、排序和输出投影分别明确。
 $models = User::search(['name' => '林晓'])->equal('name')->query()
-    ->where('age', '>=', 18)->orderBy('id')->limit(20)->get();
+    ->where('age', '>=', 18)->order('id')->limit(20)->get();
 $rows = array_map(static fn (User $item): array => $item->project(['id', 'name', 'age']), $models);
 
 // 多步业务变更：闭包无需接收或向模型传递连接。
@@ -377,9 +377,9 @@ sequenceDiagram
 
 ## 迁移与 Outbox
 
-`Migration($version, $description, $statements, $transactional)` 保存版本化 SQL。`Migrator($driver)` 提供 `status/run/history/recover`；已执行版本不能改写或从计划删除，后续变化新增版本。MySQL 声明非事务 DDL；PostgreSQL 和 SQLite 普通 DDL 可与成功记录原子提交。
+迁移脚本继承 `SchemaMigration`，用 `description()`、`up(Schema $schema)` 和 `down(Schema $schema)` 调用 `Schema::create`、`Schema::table`、`hasTable`、`hasColumn`、`insert` 与 `dropIfExists`。版本来自文件名，脚本不再声明 `version()`。`compile($driver)` 得到当前驱动的 `Migration`。`insert` 引用小写标识符，值只接受标量或 null。表注释和列注释只写入 MySQL。`Migrator($driver)` 提供 `status/run/up/rollback/down/generate/history/recover`；已执行版本不能改写或从计划删除，后续变化新增版本。没有 down 的版本不能回滚。MySQL 声明非事务 DDL；PostgreSQL 和 SQLite 普通 DDL 可与成功记录原子提交。物联中心的 `app:install` 在协程内调用 `Migrator`，因此需要所选驱动的 PDO hook。
 
-迁移中断或失败后先核对实际数据库，使用 `recover($migrations, $version, 'retry'|'applied', $reason)` 显式恢复；没有自动 down。标准应用的实际迁移命令见[数据库指南](../database.md#显式迁移)。
+迁移中断或失败后先核对实际数据库，使用 `recover($migrations, $version, 'retry'|'applied', $reason)` 显式恢复；`rollback` 只执行脚本声明的 down，不猜测逆操作。标准应用的实际迁移命令见[数据库指南](../database.md#显式迁移)。
 
 需要可靠外部投递时，先创建 `Type\Orm\Outbox\Store` 实例，通过 `$store->migration($driverName, $version)` 取得建表迁移，加入应用迁移计划。它是实例方法，返回 Migration 声明，不会自行创建表。业务在 `Db::transaction(..., 'outbox')` 或同源 Transactional 声明内调用 `$store->enqueue($id, $topic, $version, $payload, database: 'outbox')`，与声明相同数据源的 Model 一起提交或回滚；无事务或跨来源直接拒绝，业务不传 Connection。基础设施显式事务连接使用 `enqueueUsing()`，消费对应 `consumed()` / `consumedUsing()`，详见[命名来源与恢复协议](https://github.com/zoujingli/typeapp/blob/main/docs/development/outbox.md)。
 
@@ -394,25 +394,52 @@ declare(strict_types=1);
 
 use Type\Orm\Connection;
 use Type\Orm\Database;
-use Type\Orm\Migration\Migration;
 use Type\Orm\Migration\Migrator;
+use Type\Orm\Migration\SchemaMigration;
 use Type\Orm\Outbox\Store;
+use Type\Orm\Schema\Blueprint;
+use Type\Orm\Schema\Schema;
 use Type\Orm\Sqlite\SqliteDriver;
 use Type\Runtime\ExecutionScope;
 
-/**
- * 显式迁移后，在同一事务内创建用户与投递意图；每次运行创建一位新用户。
- *
- * @param list<string> $argv 第二项为专用示例数据库的绝对文件路径。
- */
+// database/migrations/001_users.php 的文件名就是版本。
+return new class extends SchemaMigration
+{
+    public function description(): string
+    {
+        return '创建示例用户表';
+    }
+
+    public function up(Schema $schema): void
+    {
+        if ($schema->hasTable('users')) {
+            return;
+        }
+        $schema->create('users', static function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('name', 100);
+            $table->integer('age');
+        });
+    }
+
+    public function down(Schema $schema): void
+    {
+        $schema->dropIfExists('users');
+    }
+};
+```
+
+应用启动时按文件名绑定版本，再编译成当前驱动的迁移：
+
+```php
 function main(int $argc, array $argv): void
 {
     $driver = new SqliteDriver($argv[1] ?? '');
     $store = new Store();
+    $users = include dirname(__DIR__) . '/database/migrations/001_users.php';
+    $users->bindVersion('001_users');
     $migrations = [
-        new Migration('001', '创建示例用户表', [
-            'CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, age INTEGER NOT NULL)',
-        ]),
+        $users->compile('sqlite'),
         $store->migration('sqlite', '002'),
     ];
     $migrator = new Migrator($driver);

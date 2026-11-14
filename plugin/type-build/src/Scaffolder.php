@@ -10,7 +10,9 @@ use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\ParserFactory;
 
-/** 在明确项目内生成可编辑源码；复用 PSR-4、构建声明和既有 Schema/任务装配协议。 */
+/**
+ * 在明确项目内生成可编辑源码；复用 PSR-4、构建声明和既有 Schema/任务装配协议。
+ */
 final class Scaffolder
 {
     /**
@@ -70,8 +72,8 @@ final class Scaffolder
 
     private function generate(string $configuration, string $kind, string $class, array $options): array
     {
-        if (!in_array($kind, ['module', 'model', 'input', 'service', 'controller', 'migration', 'command', 'job', 'task'], true)) {
-            throw new \RuntimeException('make 类型只接受 module/model/input/service/controller/migration/command/job/task');
+        if (!in_array($kind, ['module', 'model', 'input', 'service', 'controller', 'migration', 'migration-script', 'command', 'job', 'task'], true)) {
+            throw new \RuntimeException('make 类型只接受 module/model/input/service/controller/migration/migration-script/command/job/task');
         }
         $project = (new BuildProject())->read($configuration);
         $root = $project['root'];
@@ -87,7 +89,7 @@ final class Scaffolder
         }
         $parts = $this->classParts($class);
         $requirements = ['zoujingli/type-core'];
-        if (in_array($kind, ['module', 'model', 'migration', 'controller'], true) || ($kind === 'service' && isset($options['model']))) {
+        if (in_array($kind, ['module', 'model', 'migration', 'migration-script', 'controller'], true) || ($kind === 'service' && isset($options['model']))) {
             $requirements[] = 'zoujingli/type-orm';
         }
         if (in_array($kind, ['module', 'input', 'controller'], true)) {
@@ -109,29 +111,22 @@ final class Scaffolder
         $variables = $parts;
         $controller = null;
         if ($kind === 'module') {
-            foreach (['table', 'route', 'role', 'version', 'migration-registry'] as $key) {
+            foreach (['table', 'route', 'role', 'version'] as $key) {
                 $this->required($options, $key);
             }
             $base = $parts['namespace'];
             $name = $parts['name'];
-            $classes = ['model' => $base . '\model\\' . $name, 'input' => $base . '\input\\' . $name . 'Input',
-                'service' => $base . '\service\\' . $name . 'Service', 'controller' => $base . '\controller\\' . $name . 'Controller',
-                'migration' => $base . '\database\Create' . $name];
+            $classes = ['model' => $base . '\model\\' . $name,
+                'service' => $base . '\service\\' . $name . 'Service', 'controller' => $base . '\controller\\' . $name . 'Controller'];
             $variables += ['model' => $classes['model'], 'modelName' => $name, 'service' => $classes['service'], 'serviceName' => $name . 'Service',
-                'input' => $classes['input'], 'inputName' => $name . 'Input'];
+                'description' => '创建 ' . $variables['table']];
             $variables = $this->variables($variables, $options);
-            $operations = [['action' => 'create', 'table' => $variables['table'], 'columns' => [
-                'id' => ['type' => 'integer', 'auto' => true], 'name' => ['type' => 'string', 'length' => 100],
-                'version' => ['type' => 'integer', 'default' => 1]], 'primary' => ['id']]];
-            $variables['operations'] = var_export($operations, true);
             foreach ($classes as $type => $target) {
                 $path = $this->classFile($root, $composer, $target);
                 $files[$path] = $this->render($type, array_replace($variables, $this->classParts($target)));
             }
+            $files[$this->migrationPath($root, $variables['version'])] = $this->render('migration-script', $variables);
             $controller = $this->classFile($root, $composer, $classes['controller']);
-            $registry = $this->classFile($root, $composer, $options['migration-registry']);
-            $originals[$registry] = $this->existing($registry);
-            $files[$registry] = $this->appendMigration($originals[$registry], $classes['migration']);
         } else {
             foreach (['model', 'service', 'input'] as $dependency) {
                 if (isset($options[$dependency])) {
@@ -158,12 +153,18 @@ final class Scaffolder
             if ($kind === 'model') {
                 $this->required($options, 'table');
             }
-            if ($kind === 'migration') {
+            if (in_array($kind, ['migration', 'migration-script'], true)) {
                 $this->required($options, 'version');
             }
             $variables = $this->variables($variables, $options);
+            if (in_array($kind, ['migration', 'migration-script'], true)) {
+                $path = $this->migrationPath($root, $variables['version']);
+                $files[$path] = $this->render('migration-script', $variables);
+            } else {
             $path = $this->classFile($root, $composer, $class);
-            $files[$path] = $this->render($kind === 'service' && !isset($options['model']) ? 'plain-service' : $kind, $variables);
+            $template = $kind === 'service' && !isset($options['model']) ? 'plain-service' : $kind;
+            $files[$path] = $this->render($template, $variables);
+            }
             if ($kind === 'controller') {
                 $controller = $path;
             }
@@ -231,7 +232,9 @@ final class Scaffolder
         return ['kind' => $kind, 'class' => $class, 'files' => array_map(static fn (string $path): string => substr($path, strlen($root) + 1), array_keys($files))];
     }
 
-    /** 任务模板需要明确的同步业务契约，拒绝留下调用不存在方法的源码。 */
+    /**
+     * 任务模板需要明确的同步业务契约，拒绝留下调用不存在方法的源码。
+     */
     private function validateService(string $source): void
     {
         $nodes = (new ParserFactory())->createForNewestSupportedVersion()->parse($source) ?? [];
@@ -340,30 +343,25 @@ final class Scaffolder
         return (string)file_get_contents($file);
     }
 
-    /** 只在明确 migrations 方法的唯一直接数组 return 中追加，不重写历史 SQL 或迁移字节。 */
-    private function appendMigration(string $source, string $class): string
+    /**
+     * 迁移脚本按版本文件名放在 database/migrations，不生成具名类。
+     */
+    private function migrationPath(string $root, string $version): string
     {
-        $nodes = (new ParserFactory())->createForNewestSupportedVersion()->parse($source) ?? [];
-        $methods = (new NodeFinder())->find($nodes, static fn (Node $node): bool => $node instanceof Node\Stmt\ClassMethod && $node->name->toString() === 'migrations');
-        if (count($methods) !== 1 || !$methods[0]->isPublic() || !$methods[0]->isStatic()) {
-            throw new \RuntimeException('make migration-registry 需要唯一 public static migrations 方法');
+        if (!preg_match('/^[0-9]{3}_[a-z][a-z0-9_]{0,60}$/D', $version)) {
+            throw new \RuntimeException('make 迁移文件必须命名为 序号_名称，例如 003_notes');
         }
-        $returns = array_values(array_filter($methods[0]->stmts ?? [], static fn (Node $node): bool => $node instanceof Node\Stmt\Return_ && $node->expr instanceof Node\Expr\Array_));
-        if (count($returns) !== 1 || count($methods[0]->params) !== 1 || $methods[0]->params[0]->var->name !== 'driver'
-            || (string)$methods[0]->params[0]->type !== 'string' || (string)$methods[0]->returnType !== 'array') {
-            throw new \RuntimeException('make 迁移登记需要明确 migrations(string $driver) 的直接数组 return');
+        $path = $root . '/database/migrations/' . $version . '.php';
+        BuildLock::path($path);
+        if (!BuildPlatform::contains($root, $path)) {
+            throw new \RuntimeException('make 迁移路径越界');
         }
-        $array = $returns[0]->expr;
-        $position = $array->getEndFilePos();
-        if ($source[$position] !== ']') {
-            throw new \RuntimeException('make 迁移登记只接受短数组，不能猜测其他表达式');
-        }
-        $last = $array->items === [] ? null : end($array->items);
-        $comma = $last === null || str_contains(substr($source, $last->getEndFilePos() + 1, $position - $last->getEndFilePos() - 1), ',') ? '' : ',';
-        return substr($source, 0, $position) . $comma . '\\' . $class . '::migration($driver)' . substr($source, $position);
+        return $path;
     }
 
-    /** 完整暂存并在每次发布前复核路径和原字节；失败精确回滚本轮写入。 */
+    /**
+     * 完整暂存并在每次发布前复核路径和原字节；失败精确回滚本轮写入。
+     */
     private function publish(string $root, array $files, array $originals, array $settings, array $composer, ?array $routing): void
     {
         $stage = $root . '/.type-make-' . bin2hex(random_bytes(8));

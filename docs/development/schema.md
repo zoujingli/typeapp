@@ -1,8 +1,13 @@
-# Schema 声明与冻结迁移
+# 迁移脚本
 
-当前 `main` 新增 `Type\Orm\Attribute\Schema` 和 `type schema:prepare`，尚未包含在 RC14。Schema 声明属于构建输入；显式准备生成三库 SQL，普通开发和 AOT 构建只核验并嵌入冻结内容。它不查询在线结构，也不自动同步表。
+应用结构由 `database/migrations/{序号}_{名称}.php` 返回的匿名 `SchemaMigration` 建立或更新。文件名就是版本，`compile($driver)` 得到当前驱动的 SQL。`generate` 从当前数据库生成同一形状的脚本，并可带上初始化数据。`#[Schema]` 与 `schema:prepare` 不再作为新的建模入口；已有示例里的冻结快照只服务尚未迁走的独立套件。
+
+执行与回读见[数据库指南](../guide/database.md#脚本与数据库)和[原生迁移](native-migrations.md)。
+
 
 ## 声明、准备与审查
+
+下面保留的是尚未迁走的 `#[Schema]` 快照准备流程，不是新的迁移写法。新脚本放在 `database/migrations/{序号}_{名称}.php`，返回匿名 `SchemaMigration`。
 
 在应用生产 `sources` 范围内新增独立文件 `app/common/database/CreateProducts.php`。文件只包含具名命名空间、导入、`strict_types` 和一个无成员、无继承的迁移类：
 
@@ -64,11 +69,11 @@ php vendor/bin/type schema:prepare app/common/database/CreateProducts.php
 
 ## 接入现有迁移入口
 
-开发与 AOT 共用的生成器提供 `CreateProducts::migration(string $driver): Migration`。在应用已有的 `common/database/Schema::migrations($driver)` 返回列表末尾加入 `CreateProducts::migration($driver)`；保留所有历史版本、描述、SQL 顺序和事务标志。这里没有第二套迁移注册表，也不重新声明已发布模板、应用或 Broker 的旧表。
+应用迁移放在 `database/migrations/{序号}_{名称}.php`，文件 `return new class extends SchemaMigration`。文件名就是版本，目录按文件名顺序加载，不声明具名类，也不把新版本写进注册表。`up` 与 `down` 使用 `Schema::hasTable`、`Schema::hasColumn`、`Schema::create`、`Schema::table`、`Schema::insert` 和 `Schema::dropIfExists`。`insert` 的表名和列名必须是小写标识符，值只接受 null、布尔、有限数字和文本。物联中心的 Platform、MQTT 与 Center 脚本都在这个目录里，由同一个 `Migrator` 执行。不得再写三份驱动 SQL，也不得另开安装入口。
 
-调用应用现有的 `Migrator::status($plan)` 检查状态，随后显式 `run($plan)`。独立模板的外层入口是 `php dev.php migrate status` 与 `php dev.php migrate run`；物联中心使用已有安装或升级流程。Schema 不自行开放额外安装入口。完整基础设施调用可运行 `examples/orm-suite/SchemaExercise.php`，它与三库独立消费者共用同一计划。
+调用应用现有的 `Migrator::status($plan)` 检查状态，随后显式 `run($plan)` 或按需 `rollback($plan, $steps)`。独立模板的外层入口是 `php dev.php migrate status/run/rollback`；物联中心首次使用 `app:install`，后续使用同一 ORM 迁移计划升级。开发入口的 `migrate generate` 只读输出当前数据库结构草稿；Schema 不自行开放额外安装入口。完整基础设施调用可运行 `examples/orm-suite/SchemaExercise.php`，它与三库独立消费者共用同一计划。
 
-生成类内嵌三库 SQL，只依据已安装驱动的名称返回既有 `Migration` 对象。生产不加载声明 PHP 或 JSON，沿用版本排序、迁移锁、checksum、状态和恢复协议。正常显式 SQL `new Migration(...)` 入口继续保留。
+`SchemaMigration::compile($driver)` 按当前驱动生成 SQL，并交给迁移锁、checksum、状态和恢复协议。生产迁移不加载外部 SQL 文件。
 
 迁移成功后，业务用 `#[Table('products')]` 模型及公开 `create/find/query/save/forceDelete` 操作。模型字段与 Schema 各自负责业务规范化和真实数据库结构，修改模型不自动改变表。精确数值在 Model 中使用 decimal 字符串，UTC 时间使用 `DateTimeImmutable`；二进制列由基础设施参数或驱动原生二进制表示操作，本能力不引入 Model binary 编解码器。
 
@@ -78,7 +83,8 @@ php vendor/bin/type schema:prepare app/common/database/CreateProducts.php
 | --- | --- | --- | --- |
 | `string`，`length` 默认255 | `VARCHAR(n)` | `VARCHAR(n)` | `VARCHAR(n)`，不强制长度 |
 | `text` | `TEXT` | `TEXT` | `TEXT` |
-| `integer`，`bits` 32或64，默认64 | `INTEGER/BIGINT` | `INTEGER/BIGINT` | `INTEGER`，不模拟32位范围 |
+| `integer` | `INTEGER` | `INTEGER` | `INTEGER` |
+| `bigInteger` | `BIGINT` | `BIGINT` | `BIGINT` |
 | `boolean` | `BOOLEAN` | `BOOLEAN` | `INTEGER`，不模拟独立布尔类型 |
 | `decimal`，`precision/scale` 默认30/0 | `DECIMAL(p,s)` | `DECIMAL(p,s)` | `TEXT`，保全十进制字符串，不提供数据库精度约束 |
 | `datetime` | `DATETIME(6)` | `TIMESTAMP(6) WITHOUT TIME ZONE` | `TEXT`，保存 UTC 六位微秒值 |
@@ -86,7 +92,7 @@ php vendor/bin/type schema:prepare app/common/database/CreateProducts.php
 
 普通字段默认非空。`nullable: true` 接受空值。`default` 只接受对应类型的常量；decimal 必须是精度内的字符串，datetime 必须为完整 UTC `2026-10-06T00:00:00.000001Z`。text/binary 仅接受可空列的 null 默认值。字符串默认值不接受零字节或反斜杠，避免 MySQL SQL 模式改变含义；不接受 `CURRENT_TIMESTAMP`、函数或 SQL 表达式。
 
-标识符为最多63字节的小写字母、数字和下划线，首字符为字母；主键和索引列名必须不重复且存在于建表声明。自增只用于没有默认值的单列整数主键。MySQL 使用 InnoDB；SQLite 的自增使用真实 `AUTOINCREMENT`。索引长度、字符集、排序规则等服务器限制仍由实际数据库检查，不能把 SQLite 类型亲和性视为三库一致的约束。
+标识符为最多63字节的小写字母、数字和下划线，首字符为字母；主键和索引列名必须不重复且存在于建表声明。建表、加列和 `Schema::insert` 使用同一套标识符检查。自增只用于没有默认值的单列整数主键。`integer()` 是 32 位 `INTEGER`，`bigInteger()` 在三种数据库上都是 `BIGINT`。表注释和列注释只出现在 MySQL 的 `COMMENT` 中，PostgreSQL 与 SQLite 不另发 `COMMENT ON`。MySQL 使用 InnoDB；SQLite 的自增使用真实 `AUTOINCREMENT`。索引长度、字符集、排序规则等服务器限制仍由实际数据库检查，不能把 SQLite 类型亲和性视为三库一致的约束。
 
 ## 以新版本演进
 

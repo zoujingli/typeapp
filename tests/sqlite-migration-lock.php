@@ -12,13 +12,19 @@ use Type\Orm\Migration\MigrationException;
 use Type\Orm\Migration\Migrator;
 use Type\Orm\Sqlite\SqliteDriver;
 
-/** 在真实 SQLite 回调中暂停迁移，方便第二个独立进程竞争同一公开入口。 */
+/**
+ * 在真实 SQLite 回调中暂停迁移，方便第二个独立进程竞争同一公开入口。
+ */
 final class SqliteMigrationLockDriver implements Driver
 {
-    /** 保存真实 SQLite 驱动及本轮锁测试的就绪、放行哨兵路径，不改变连接身份。 */
+    /**
+     * 保存真实 SQLite 驱动及本轮锁测试的就绪、放行哨兵路径，不改变连接身份。
+     */
     public function __construct(private SqliteDriver $driver, private string $ready, private string $release) {}
 
-    /** 沿用真实驱动名，使锁测试仍走 SQLite 方言。 */
+    /**
+     * 沿用真实驱动名，使锁测试仍走 SQLite 方言。
+     */
     public function name(): string
     {
         return $this->driver->name();
@@ -34,13 +40,22 @@ final class SqliteMigrationLockDriver implements Driver
         return $this->driver->identity();
     }
 
-    /** 委托真实驱动恢复会话基线，只有底层确认可复用时才返回 true。 */
+    /**
+     * 委托真实驱动恢复会话基线，只有底层确认可复用时才返回 true。
+     */
     public function reset(PDO $pdo): bool
     {
         return $this->driver->reset($pdo);
     }
 
-    /** 建立 WAL 与完整同步的真实 SQLite 会话，并注册等待放行文件的测试函数；连接由会话所有者释放。 */
+    public function migrations(): \Type\Orm\Migration\MigrationDriver
+    {
+        return $this->driver->migrations();
+    }
+
+    /**
+     * 建立 WAL 与完整同步的真实 SQLite 会话，并注册等待放行文件的测试函数；连接由会话所有者释放。
+     */
     public function connect(): PDO
     {
         // PDO 的旧 sqliteCreateFunction 在 PHP 8.5 弃用；测试需要真实驱动专属接口。
@@ -69,7 +84,9 @@ final class SqliteMigrationLockDriver implements Driver
     }
 }
 
-/** @return list<Migration> 固定迁移内容，两次执行必须使用相同校验和。 */
+/**
+ * @return list<Migration> 固定迁移内容，两次执行必须使用相同校验和。
+ */
 function sqliteLockConcurrentPlan(): array
 {
     return [
@@ -78,7 +95,9 @@ function sqliteLockConcurrentPlan(): array
     ];
 }
 
-/** @param Closure(): mixed $operation 只从公开迁移入口观察竞争与失败码。 */
+/**
+ * @param Closure(): mixed $operation 只从公开迁移入口观察竞争与失败码。
+ */
 function sqliteLockRejects(Closure $operation, string $expected): void
 {
     try {
@@ -91,7 +110,9 @@ function sqliteLockRejects(Closure $operation, string $expected): void
     throw new RuntimeException('迁移锁没有拒绝操作：' . $expected);
 }
 
-/** @return array{process: resource, stdout: resource, stderr: resource} */
+/**
+ * @return array{process: resource, stdout: resource, stderr: resource}
+ */
 function sqliteLockProcess(array $arguments): array
 {
     $stdout = tmpfile();
@@ -104,7 +125,9 @@ function sqliteLockProcess(array $arguments): array
     return ['process' => $process, 'stdout' => $stdout, 'stderr' => $stderr];
 }
 
-/** 等待明确就绪标记；失败时只读取本轮测试进程的输出。 */
+/**
+ * 等待明确就绪标记；失败时只读取本轮测试进程的输出。
+ */
 function sqliteLockReady(array $running, string $ready): void
 {
     $deadline = microtime(true) + 5.0;
@@ -119,7 +142,9 @@ function sqliteLockReady(array $running, string $ready): void
     }
 }
 
-/** 验证子进程真实成功退出；不用 Unix 信号字段证明 Windows 行为。 */
+/**
+ * 验证子进程真实成功退出；不用 Unix 信号字段证明 Windows 行为。
+ */
 function sqliteLockFinished(array $running): void
 {
     $deadline = microtime(true) + 5.0;
@@ -139,7 +164,9 @@ function sqliteLockFinished(array $running): void
     expect(($status === 0 || ($status === -1 && $state['exitcode'] === 0)) && $output === "completed\n" && $error === '', '迁移子进程失败：' . $output . $error);
 }
 
-/** 无论断言是否成功，都停止当前测试拥有的子进程并回收临时缓冲。 */
+/**
+ * 无论断言是否成功，都停止当前测试拥有的子进程并回收临时缓冲。
+ */
 function sqliteLockCleanup(array $running): void
 {
     if (is_resource($running['process'])) {

@@ -36,15 +36,15 @@ Database 通过 type-runtime 的有界池按作用域借还会话。Connection �
 
 模型 CRUD、事务结果与作用域收尾的完整路径见[数据库与模型](https://iots.top/#/guide/database)。`ModelQuery::update/delete` 以单条写入 SQL 保留字段、租户、软删除及版本约束，没有额外行数上限；集合操作不触发逐模型观察器，已有对象需重新读取。没有业务条件时须显式 `allowAll()`。`insertMany` 逐行校验字段并补入可信租户及初始版本、软删除状态，执行一条 INSERT，返回影响数量；不猜测主键、不触发逐模型事件，失败回滚整批。当前 `main` 新增 `Model::firstOrCreate`、PostgreSQL/SQLite 的 `Model::upsert` 与 MySQL 的 `Model::upsertAnyUnique`，使用真实唯一索引证明身份安全，尚未包含 RC14。具体约束及验收边界见[唯一身份与冲突写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#唯一身份与冲突写入)。
 
-`ModelQuery::sum/avg/min/max` 在模型可见范围内统计，保留读路由、字段映射及数据库数值精度；空集或全 null 返回 null，数值文本列的精确算术明确拒绝。并发查找或创建使用 `firstOrCreate`，仅恢复已确认的目标唯一竞争；重新加载可在当前作用域显式读主库取得新对象。完整[能力边界](https://iots.top/#/guide/database?id=常用能力边界)区分已有模型能力、底层 SQL 与待补接口。协程中创建 PDO 前检查所选驱动：缺官方构建能力报 `swoole_pdo_hook_unavailable`，未启用 hook 报 `swoole_hook_startup_required`；同步工具保持原有行为。
+`ModelQuery::sum/avg/min/max` 在模型可见范围内统计，保留读路由、字段映射及数据库数值精度；空集或全 null 返回 null，数值文本列的精确算术明确拒绝。并发查找或创建使用 `firstOrCreate`，仅恢复已确认的目标唯一竞争；重新加载可在当前作用域显式读主库取得新对象。完整[能力边界](https://iots.top/#/guide/database?id=常用能力边界)区分已有模型能力、底层 SQL 与待补接口。协程中创建 PDO 前检查所选驱动：缺官方构建能力报 `swoole_pdo_hook_unavailable`，未启用 hook 报 `swoole_hook_startup_required`。`app:install` 在协程内迁移，同样受这条检查约束；协程外直接调用 `Migrator` 的同步工具保持原有行为。`_query()->like()` 将输入中的 `%`、`_` 和 `!` 作为字面量，并使用 `ESCAPE '!'`。
 
 `Table(createdAt: 'created_at', updatedAt: 'updated_at')` 显式声明受管时间：非空 `int` 属性存 Unix 秒，`DateTimeImmutable` 属性存 UTC 微秒。创建时两者共用一次取时，实际更新只维护更新时间；`insertMany`、集合更新、算术和软删除沿用同一规则。字段不接受业务赋值，也不能兼任主键、租户、版本或软删除。无变化 `save()` 不更新时间或版本，`touch()` 仍只推进版本；业务事件时间由业务决定。此能力属于当前 `main`，未包含已发布的 RC14，升级组件及构建器后重新生成应用，详见[受管时间教程](https://iots.top/#/guide/database?id=受管创建和更新时间)。
 
 ## 迁移
 
-`Type\Orm\Migration\Migration`、`Migrator` 和 `MigrationConsole` 提供已编译的迁移计划、三库互斥、内容校验、执行历史与显式失败恢复。迁移只连接选择的数据库；MySQL 明确使用非事务 DDL，PostgreSQL、SQLite 普通 DDL 与成功记录原子提交。完整用法和恢复边界见开发主仓 `docs/development/native-migrations.md`。
+`Type\Orm\Migration\SchemaMigration` 用 `description/up/down` 描述结构，文件名提供版本，`compile($driver)` 得到 `Migration`。`Schema::insert` 与建表共用小写标识符检查；表注释和列注释只写入 MySQL。`Migrator` 和 `MigrationConsole` 负责三库互斥、内容校验、执行历史、升级、回滚与显式失败恢复。迁移只连接选择的数据库；MySQL 明确使用非事务 DDL，PostgreSQL、SQLite 普通 DDL 与成功记录原子提交。完整用法和恢复边界见开发主仓 `docs/development/native-migrations.md`。
 
-全新应用可以调用 `Migrator::run($migrations, true)`：在同一迁移锁内检查空数据库（PostgreSQL 为当前 schema），在创建任何迁移记录前以 `TYPE_MIGRATION_NOT_EMPTY` 拒绝已有对象。默认第二个参数为 `false`，既有版本化迁移行为不变；空库建表失败同样保留真实记录，不自动清库或重试 MySQL DDL。
+全新应用可以调用 `Migrator::run($migrations, true)`：在同一迁移锁内检查空数据库（PostgreSQL 为当前 schema），在创建任何迁移记录前以 `TYPE_MIGRATION_NOT_EMPTY` 拒绝已有对象。默认第二个参数为 `false`，既有版本化迁移行为不变；`rollback($migrations, $steps)` 只执行显式 down，`generate($version, $description)` 只读生成当前结构草稿；空库建表失败同样保留真实记录，不自动清库或重试 MySQL DDL。
 
 SQLite 人工审查的表重建计划可在事务迁移中使用精确的 `PRAGMA defer_foreign_keys = ON/OFF`。进入延迟检查及恢复即时检查前均验证外键开启和实际引用，损坏时回滚；不允许关闭外键，也不放宽普通业务事务。表数据、索引、触发器及级联影响仍由迁移作者明确处理，详见[原生迁移边界](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-migrations.md#sql-与恢复边界)。
 
@@ -72,7 +72,7 @@ function findAdultUsers(string $name): array
 {
     $models = User::search(['name' => $name])->equal('name')->query()
         ->where('age', '>=', 18)
-        ->orderBy('id')
+        ->order('id')
         ->limit(20)
         ->get();
     return array_map(static fn (User $user): array => $user->project(['id', 'name', 'age']), $models);

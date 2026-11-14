@@ -11,6 +11,7 @@
   },
   "development": {"entry": "dev.php", "prepare": "prepare.php", "output": "build/development", "check": ["check"], "test": ["tests/smoke.php"]},
   "sources": ["app"],
+  "migrations": "database/migrations",
   "runtime": {
     "Linux": {"extensions": ["pcntl"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]},
     "Darwin": {"extensions": ["pcntl"], "functions": ["pcntl_signal", "pcntl_async_signals", "pcntl_signal_get_handler"]}

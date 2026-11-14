@@ -11,7 +11,9 @@ use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\ParserFactory;
 use Type\Runtime\CoroutineRuntime;
 
-/** 开发与 AOT 共用的声明生成过程；先审计原源码，再生成完整替换和直接调用入口。 */
+/**
+ * 开发与 AOT 共用的声明生成过程；先审计原源码，再生成完整替换和直接调用入口。
+ */
 final class ApplicationGeneration
 {
     /**
@@ -51,6 +53,18 @@ final class ApplicationGeneration
             }
             $effective[] = $this->write($directory, 'generated-config.php', $configuration['code'], $generated);
             unset($configuration['code']);
+        }
+        $migrationGeneration = [];
+        if (isset($settings['migrations'])) {
+            if (!is_string($settings['migrations']) || $settings['migrations'] === '') {
+                throw new \RuntimeException('migrations 必须是迁移目录路径');
+            }
+            if (!isset($included['zoujingli/type-orm'])) {
+                throw new \RuntimeException('迁移目录需要安装 type-orm 生产依赖');
+            }
+            $migrationGeneration = (new MigrationCompiler())->compile($root, $settings['migrations']);
+            $this->write($directory, 'generated-migrations.php', $migrationGeneration['code'], $generated);
+            $effective[] = $directory . '/generated-migrations.php';
         }
         $schemas = (new SchemaCompiler())->compile($effective);
         if ($schemas['schemas'] !== []) {
@@ -162,10 +176,13 @@ final class ApplicationGeneration
         $identity = BuildIdentity::digest(['sources' => $sourceHashes, 'generation' => $metadata]);
         return ['sources' => $effective, 'original-sources' => $originals, 'generated' => $generated, 'metadata' => $metadata,
             'identity' => $identity, 'adaptation' => $adaptation, 'models' => $models, 'configuration' => $configuration,
-            'routing' => $routing, 'operations' => $operations, 'schemas' => $schemas, 'assembly' => $assembly, 'autoload-inputs' => $audit];
+            'routing' => $routing, 'operations' => $operations, 'schemas' => $schemas, 'assembly' => $assembly,
+            'migrations' => $migrationGeneration, 'autoload-inputs' => $audit];
     }
 
-    /** 同一生成过程登记完整字节；输出文件不承载运行秘密。 */
+    /**
+     * 同一生成过程登记完整字节；输出文件不承载运行秘密。
+     */
     private function write(string $directory, string $name, string $code, array &$generated): string
     {
         $target = $directory . '/' . $name;
@@ -177,7 +194,9 @@ final class ApplicationGeneration
         return $target;
     }
 
-    /** 核对生成后的完整符号表；开发类映射与 AOT 重复声明拒绝使用同一结果。 */
+    /**
+     * 核对生成后的完整符号表；开发类映射与 AOT 重复声明拒绝使用同一结果。
+     */
     private function symbols(array $sources, array $references): array
     {
         $symbols = ['classes' => [], 'functions' => []];

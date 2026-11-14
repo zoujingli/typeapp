@@ -17,7 +17,9 @@ function generationCommand(string $root): array
     return [PHP_BINARY, '-d', 'memory_limit=128M', '-d', 'auto_prepend_file=' . $root . '/tooling/select.php', $root . '/bin/typeapp-prepare', '--json'];
 }
 
-/** 通过公开准备命令取得代次；只为本轮 fixture 使用主仓已安装的构建依赖。 */
+/**
+ * 通过公开准备命令取得代次；只为本轮 fixture 使用主仓已安装的构建依赖。
+ */
 function preparedGeneration(string $root, array $environment): array
 {
     $process = new Process(generationCommand($root), $root, $environment);
@@ -98,7 +100,7 @@ $root = dirname(__DIR__);
 $work = $root . '/build/development-generation-' . bin2hex(random_bytes(6));
 expect(mkdir($work, 0700), '无法准备开发生成测试目录');
 try {
-    foreach (['app', 'config', 'bin'] as $directory) {
+    foreach (['app', 'config', 'bin', 'database'] as $directory) {
         foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/' . $directory, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST) as $entry) {
             $relative = substr($entry->getPathname(), strlen($root) + 1);
             expect(!$entry->isLink(), '测试只复制明确普通源码');

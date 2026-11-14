@@ -6,13 +6,19 @@ namespace Type\Build;
 
 use PhpParser\ParserFactory;
 
-/** 共享开发生成模块：源码和声明生成整代代码，不读取运行秘密或执行配置。 */
+/**
+ * 共享开发生成模块：源码和声明生成整代代码，不读取运行秘密或执行配置。
+ */
 final class DevelopmentBuilder
 {
-    /** @var list<string> 本次已审计的原始文件，仅用于当前准备调用的加载。 */
+    /**
+     * @var list<string> 本次已审计的原始文件，仅用于当前准备调用的加载。
+     */
     private array $preparedSources = [];
 
-    /** @var array<string, string> 同一 PHP 进程不能混用同一应用的不同声明代次。 */
+    /**
+     * @var array<string, string> 同一 PHP 进程不能混用同一应用的不同声明代次。
+     */
     private static array $loaded = [];
 
     /**
@@ -118,6 +124,9 @@ final class DevelopmentBuilder
                 if (isset($composerFilePaths[BuildPlatform::resolve($file)])) {
                     if (!isset($replaced[BuildPlatform::resolve($file)])) {
                         unset($loadFiles[$file]);
+                        // 构建 bootstrap 已按唯一清单加载该 Composer files 入口；
+                        // 告知 Composer，避免开发代次加载阶段再次执行同一函数文件。
+                        $GLOBALS['__composer_autoload_files'][$composerFilePaths[BuildPlatform::resolve($file)]] = true;
                         continue;
                     }
                     $GLOBALS['__composer_autoload_files'][$composerFilePaths[BuildPlatform::resolve($file)]] = true;
@@ -176,15 +185,22 @@ final class DevelopmentBuilder
         $production = (new SourceSet())->productionSources($root, $build);
         array_push($sources, ...$production['sources']);
         $sources = array_values(array_unique($sources));
+        $migrationDirectory = null;
+        if (isset($build['migrations'])) {
+            if (!is_string($build['migrations']) || $build['migrations'] === '') {
+                throw new \RuntimeException('migrations 必须是迁移目录路径');
+            }
+            $migrationDirectory = $this->input($root, $build['migrations']);
+        }
         $this->preparedSources = (new BuildIdentity())->sources($sources);
-        $inputs = $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations']);
+        $inputs = $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'], $migrationDirectory);
         if (($inputs['project/' . str_replace('\\', '/', $configuration)] ?? '') !== hash('sha256', $buildSource)) {
             throw new \RuntimeException('读取开发声明期间输入发生变化，请重新启动');
         }
         $reference = $directory . '/.inputs-' . hash('sha256', json_encode($inputs, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         $cached = $this->reuse($directory, $reference, $inputs);
         if ($cached !== null) {
-            if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'])) {
+            if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'], $migrationDirectory)) {
                 throw new \RuntimeException('复用开发代次期间输入发生变化，请重新启动');
             }
             return $cached;
@@ -205,13 +221,13 @@ final class DevelopmentBuilder
                 }
                 usleep(10000);
             }
-            if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'])) {
+            if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'], $migrationDirectory)) {
                 throw new \RuntimeException('等待开发生成期间输入发生变化，请重新启动');
             }
             // 等锁时可能已有同输入进程发布；只有真正缺少代次才解析语法和生成。
             $cached = $this->reuse($directory, $reference, $inputs);
             if ($cached !== null) {
-                if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'])) {
+                if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'], $migrationDirectory)) {
                     throw new \RuntimeException('复用开发代次期间输入发生变化，请重新启动');
                 }
                 return $cached;
@@ -230,7 +246,7 @@ final class DevelopmentBuilder
                     $production['included'],
                     $staging
                 );
-                if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'])) {
+                if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'], $migrationDirectory)) {
                     throw new \RuntimeException('开发生成期间源码或配置发生变化，请重新启动；没有加载旧代代码');
                 }
                 $manifest = ['protocol' => 2, 'inputs' => $inputs, 'declarations' => $result['metadata'], 'declaration-generation' => $result['identity']];
@@ -248,7 +264,7 @@ final class DevelopmentBuilder
                 if (file_put_contents($staging . '/manifest.json', $encoded, LOCK_EX) !== strlen($encoded)) {
                     throw new \RuntimeException('无法完整写入开发生成清单');
                 }
-                if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'])) {
+                if ($inputs !== $this->inputs($root, $build, $sources, $configuration, $entryFiles, $production['declarations'], $migrationDirectory)) {
                     throw new \RuntimeException('发布开发代次前输入发生变化，请重新启动');
                 }
                 if (!rename($staging, $target)) {
@@ -276,7 +292,9 @@ final class DevelopmentBuilder
         }
     }
 
-    /** 按输入摘要读取不可变索引；已存在但损坏时拒绝，不重新生成来掩盖损坏。 */
+    /**
+     * 按输入摘要读取不可变索引；已存在但损坏时拒绝，不重新生成来掩盖损坏。
+     */
     private function reuse(string $directory, string $reference, array $inputs): ?array
     {
         if (!file_exists($reference) && !is_link($reference)) {
@@ -292,7 +310,9 @@ final class DevelopmentBuilder
         return $this->verifyGeneration($directory, $generation, $inputs);
     }
 
-    /** 输入、清单内容身份和生成文件逐项相符才可加载；索引本身不授予信任。 */
+    /**
+     * 输入、清单内容身份和生成文件逐项相符才可加载；索引本身不授予信任。
+     */
     private function verifyGeneration(string $directory, string $generation, array $inputs): array
     {
         $target = $directory . '/' . $generation;
@@ -312,7 +332,7 @@ final class DevelopmentBuilder
             throw new \RuntimeException('已存在的开发代次清单损坏，拒绝使用');
         }
         foreach ($declarations['files'] as $name => $hash) {
-            if (!is_string($name) || preg_match('~^(?:generated-(?:config|models|schema|thread-entries|operations|routes|jobs)\.php|assembled-application\.php|adapted-sources/[a-f0-9]{64}/[A-Za-z0-9_.-]+\.php)$~D', $name) !== 1) {
+            if (!is_string($name) || preg_match('~^(?:generated-(?:config|models|schema|migrations|thread-entries|operations|routes|jobs)\.php|assembled-application\.php|adapted-sources/[a-f0-9]{64}/[A-Za-z0-9_.-]+\.php)$~D', $name) !== 1) {
                 throw new \RuntimeException('开发代次文件路径损坏，拒绝使用');
             }
             BuildLock::path($target . '/' . $name);
@@ -347,7 +367,9 @@ final class DevelopmentBuilder
             'declaration-generation' => $manifest['declaration-generation']];
     }
 
-    /** 将清单中的逻辑文件引用恢复到本次已审计路径，不接受任意绝对路径或目录跳转。 */
+    /**
+     * 将清单中的逻辑文件引用恢复到本次已审计路径，不接受任意绝对路径或目录跳转。
+     */
     private function resolveReference(mixed $reference, string $directory, array $files): string
     {
         if (is_string($reference) && preg_match('/^source:(0|[1-9][0-9]*)$/D', $reference, $match) === 1
@@ -360,7 +382,9 @@ final class DevelopmentBuilder
         throw new \RuntimeException('开发代次文件引用损坏，拒绝使用');
     }
 
-    /** 仅持生成锁时发布完整索引；原子替换临时文件，其他进程不读取半写记录。 */
+    /**
+     * 仅持生成锁时发布完整索引；原子替换临时文件，其他进程不读取半写记录。
+     */
     private function publishReference(string $reference, string $generation): void
     {
         $temporary = tempnam(dirname($reference), '.pending-index-');
@@ -411,7 +435,7 @@ final class DevelopmentBuilder
      * @param list<string> $sources 解析后的生产源码入口
      * @return array<string, string> 稳定相对身份到 SHA-256 的有序映射
      */
-    private function inputs(string $root, array $build, array $sources, string $configuration, array $entryFiles, array $dependencyDeclarations): array
+    private function inputs(string $root, array $build, array $sources, string $configuration, array $entryFiles, array $dependencyDeclarations, ?string $migrationDirectory = null): array
     {
         $inputs = [];
         foreach ((new SchemaCompiler())->inputs($sources) as $index => $snapshot) {
@@ -424,6 +448,9 @@ final class DevelopmentBuilder
             'tooling' => dirname((new \ReflectionClass(ModelCompiler::class))->getFileName()),
             'parser' => dirname((new \ReflectionClass(ParserFactory::class))->getFileName()),
         ];
+        if ($migrationDirectory !== null) {
+            $groups['migrations'] = $migrationDirectory;
+        }
         foreach ($sources as $index => $source) {
             $groups['source-' . $index] = $source;
         }

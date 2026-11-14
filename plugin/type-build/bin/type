@@ -29,7 +29,7 @@ TypeApp 开发与构建工具（生产运行使用单个主程序，配置独立
   type prepare <构建配置.json>
   type schema:prepare <独立Schema声明.php>
   type inspect-application <构建配置.json> [--json]
-  type make <构建配置.json> <module|model|input|service|controller|migration|command|job|task> <完整类名> [--选项=值...]
+  type make <构建配置.json> <module|model|input|service|controller|migration|migration-script|command|job|task> <完整类名> [--选项=值...]
   type model:sync <构建配置.json> <完整类名> --table=表名 --connection=连接.json [--write] [--drop-missing]
   type dev <构建配置.json> [应用参数...]
   type watch <构建配置.json> [应用参数...]

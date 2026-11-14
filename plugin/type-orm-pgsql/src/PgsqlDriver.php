@@ -11,7 +11,9 @@ use Type\Orm\Driver;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\TaskException;
 
-/** PostgreSQL 驱动配置与会话初始化；连接生命周期交由 ORM 资源池管理。 */
+/**
+ * PostgreSQL 驱动配置与会话初始化；连接生命周期交由 ORM 资源池管理。
+ */
 final class PgsqlDriver implements Driver
 {
     private string $dsn;
@@ -71,7 +73,9 @@ final class PgsqlDriver implements Driver
             'session' => ['schema' => $schema, 'database-role' => $databaseRole, 'timezone' => 'UTC', 'date-style' => 'ISO, YMD']];
     }
 
-    /** 返回 PostgreSQL 对应的固定方言名称。 */
+    /**
+     * 返回 PostgreSQL 对应的固定方言名称。
+     */
     public function name(): string
     {
         return 'pgsql';
@@ -119,7 +123,9 @@ final class PgsqlDriver implements Driver
         }
     }
 
-    /** @internal PostgreSQL 官方 DISCARD ALL 清除角色、变量、临时对象、通知及会话锁。 */
+    /**
+     * @internal PostgreSQL 官方 DISCARD ALL 清除角色、变量、临时对象、通知及会话锁。
+     */
     public function reset(\PDO $pdo): bool
     {
         if ($pdo->inTransaction()) {
@@ -141,5 +147,13 @@ final class PgsqlDriver implements Driver
             $pdo->exec('SET search_path TO "' . $this->schema . '"');
         }
         $pdo->exec('SET default_transaction_read_only = ' . ($this->identity['role'] === 'reader' ? 'ON' : 'OFF'));
+    }
+
+    /**
+     * 返回 PostgreSQL 的结构读取、初始化数据和 advisory lock。
+     */
+    public function migrations(): \Type\Orm\Migration\MigrationDriver
+    {
+        return new PgsqlMigration();
     }
 }

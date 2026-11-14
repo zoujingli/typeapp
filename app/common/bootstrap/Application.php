@@ -39,16 +39,22 @@ use Type\Runtime\ExecutionScope;
 use Type\Runtime\TaskException;
 use Type\Runtime\ThreadSupervisor;
 
-/** 同一应用声明的启动及 HTTP 所有者；命令实现由生成服务图按需构造。 */
+/**
+ * 同一应用声明的启动及 HTTP 所有者；命令实现由生成服务图按需构造。
+ */
 final class Application
 {
-    /** 原生生成 main 调用此明确入口，保留主程序的退出状态桥接。 */
+    /**
+     * 原生生成 main 调用此明确入口，保留主程序的退出状态桥接。
+     */
     public static function bootstrap(array $arguments, bool $development): void
     {
         $GLOBALS['type_app_exit_status'] = self::run($arguments, $development);
     }
 
-    /** 开发与原生共用命令装配；离线帮助不要求配置、Composer 或数据库。 */
+    /**
+     * 开发与原生共用命令装配；离线帮助不要求配置、Composer 或数据库。
+     */
     public static function run(array $arguments, bool $development = false): int
     {
         $command = $arguments[1] ?? 'help';
@@ -61,7 +67,7 @@ final class Application
                     fwrite(STDERR, "help 不接受额外参数\n");
                     return 1;
                 }
-                echo "TypeApp 物联中心：help、check、verify-runtime、serve、app:install <平台账号> <姓名>、migrate <status|history|recover>。平台初始口令由 APP_PLATFORM_PASSWORD 的受控进程环境提供；客户由平台开通并一次性交付随机口令。\n";
+                echo "TypeApp 物联中心：help、check、verify-runtime、serve、app:install <平台账号> <姓名>、migrate <status|run|up|generate|rollback|down|history|recover>。平台初始口令由 APP_PLATFORM_PASSWORD 的受控进程环境提供；客户由平台开通并一次性交付随机口令。\n";
                 echo "运行配置：config:check [--connect] [--remember]；config:restore 恢复最后通过连接检查的文件，成功退出4表示仍须运维重启。\n";
                 echo "安装边界：仅支持全新空库；旧安装明确拒绝，不自动转换或清库。\n";
                 echo "内嵌许可：licenses 查看索引，licenses <notices/资源路径> 查看对应原文。\n";
@@ -168,7 +174,9 @@ final class Application
         }));
     }
 
-    /** 返回服务器可复用的有界输入声明，不打开临时文件或创建目录。 */
+    /**
+     * 返回服务器可复用的有界输入声明，不打开临时文件或创建目录。
+     */
     public static function requestLimits(Repository $settings): RequestLimits
     {
         return Settings::requestLimits($settings);
@@ -204,7 +212,9 @@ final class Application
         );
     }
 
-    /** 运行已选择的服务器，并在正常退出或异常后关闭；不会自动迁移或生成生产源码。 */
+    /**
+     * 运行已选择的服务器，并在正常退出或异常后关闭；不会自动迁移或生成生产源码。
+     */
     public static function serve(Repository $settings, string $basePath, bool $development = false): void
     {
         Settings::validateRuntimeConfiguration($settings, $basePath, 'http');
@@ -239,7 +249,9 @@ final class Application
         }
     }
 
-    /** 编译期登记的 HTTP 线程入口；每线程从同一启动数据建立自己的配置与资源。 */
+    /**
+     * 编译期登记的 HTTP 线程入口；每线程从同一启动数据建立自己的配置与资源。
+     */
     public static function httpThread(string $payload): int
     {
         $data = json_decode($payload, true, 64, JSON_THROW_ON_ERROR);

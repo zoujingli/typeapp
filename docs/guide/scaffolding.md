@@ -12,15 +12,14 @@
 php vendor/bin/type make type-app.json module 'app\catalog\Product' \
   --table=products --route=/products --role=users --version=002_products \
   '--migration-registry=app\common\database\Schema'
-php vendor/bin/type schema:prepare app/catalog/database/CreateProduct.php
 php vendor/bin/type inspect-application type-app.json
-php vendor/bin/type dev type-app.json migrate run
+php vendor/bin/type dev type-app.json migrate up
 php vendor/bin/type dev type-app.json serve
 ```
 
-生成的五个类位于 `app/catalog/model`、`input`、`service`、`controller` 和 `database`。迁移登记器只追加新迁移调用，不改写历史 SQL。准备命令冻结三库结果；审查并提交声明与快照后再部署。后续结构变化必须新建迁移，不能修改已发布快照。
+生成的模型、服务、控制器和迁移脚本位于 `app/catalog`。迁移登记器只追加新的 `migration($driver)` 调用，不改写历史 SQL。控制器用 `_vali` 接收名称，Service 通过模型对象保存。后续结构变化新建迁移脚本，不能改写已经应用到数据库的版本。
 
-模型持有 `id/name/version`，`present()` 明确输出这三个字段。输入类保留字段存在性；Service 的原类型方法声明事务，控制器由共同装配注入这个 Service，不传递 Connection。列表按 id 稳定排序且最多二十条。控制器先要求认证产生的 Identity，再核对明确角色；模板默认令牌只有 `users` 角色。
+模型持有 `id/name/version`，`present()` 明确输出这三个字段。Service 的原类型方法声明事务，控制器由共同装配注入这个 Service，不传递 Connection。列表按 id 稳定排序且最多二十条。控制器先要求认证产生的 Identity，再核对明确角色；模板默认令牌只有 `users` 角色。
 
 ```sh
 curl -i -H "Authorization: Bearer $APP_API_TOKEN" -H 'Content-Type: application/json' \
@@ -43,13 +42,14 @@ php vendor/bin/type make type-app.json service 'app\notes\NoteService' '--model=
 php vendor/bin/type make type-app.json controller 'app\notes\NoteController' \
   '--service=app\notes\NoteService' '--input=app\notes\NoteInput' --route=/notes --role=users
 php vendor/bin/type make type-app.json migration 'app\notes\CreateNotes' --version=003_notes
+php vendor/bin/type make type-app.json migration-script 'app\notes\CreateNotesV2' --version=004_notes_v2
 ```
 
-单独迁移输出空操作列表，须按 [Schema](plugins/type-orm.md) 填写业务结构，再准备快照并显式追加到迁移列表。空操作不会通过 `schema:prepare`。单独 Controller/Service 使用与模块相同的 `name` 字段示范契约；改变模型字段时同步修改输入、Service 和公开投影。
+`migration` 与 `migration-script` 都在 `database/migrations/{序号}_{名称}.php` 写入 `return new class extends SchemaMigration`。文件名就是版本，构建期按目录顺序编译成静态迁移注册表，不生成具名脚本类，也不在运行时扫描目录。结构生成命令 `migrate generate <版本> <描述>` 只读输出当前数据库快照，审查后保存为同名脚本；改变模型字段时同步输入、Service 和公开投影。
 
 ## MySQL 反向同步模型
 
-`model:sync` 从已安装的 `type-orm-mysql` 读取当前数据库的持久基础表，生成或更新简洁模型声明、字段说明和 IDE 提示。它只读数据库结构，写入目标是项目源码；建表与结构变更继续由迁移管理。默认返回预览及新增、移除字段清单，显式 `--write` 才发布源码。
+`model:sync` 从已安装的 `type-orm-mysql` 读取当前数据库的持久基础表，生成或更新简洁模型声明、字段说明和 IDE 提示。它只读数据库结构，写入目标是项目源码；建表与结构变更继续由迁移管理。默认返回预览及新增、移除字段清单，显式 `--write` 才发布源码。没有数据库连接时，可以用同一套声明从迁移 Blueprint 生成新模型：记录 `Schema` 收集表和列注释，`MigrationModelGenerator` 只补尚未有模型的表，并写上 `@property` 与 `where/order/with` 提示。
 
 准备仅当前开发者可读的连接 JSON 文件，不将凭据写进构建配置、命令参数或版本库：
 

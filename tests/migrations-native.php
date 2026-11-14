@@ -60,7 +60,9 @@ function migrationFailure(array $command, array $arguments, string $code, int $e
     expect($status === $exitCode && str_contains($stderr, $code) && $stdout === '', '迁移没有按约定失败：' . $stdout . $stderr);
 }
 
-/** 连接本轮迁移测试选定的真实数据库，SQLite 使用指定临时文件；连接由调用者释放。 */
+/**
+ * 连接本轮迁移测试选定的真实数据库，SQLite 使用指定临时文件；连接由调用者释放。
+ */
 function migrationPdo(string $driver, string $file): PDO
 {
     if ($driver === 'mysql') {
@@ -83,7 +85,9 @@ function migrationPdo(string $driver, string $file): PDO
     return new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 }
 
-/** 按实际数据库方言检查当前库或 schema 中的表，表名通过绑定参数传入。 */
+/**
+ * 按实际数据库方言检查当前库或 schema 中的表，表名通过绑定参数传入。
+ */
 function migrationTableExists(PDO $pdo, string $driver, string $table): bool
 {
     $sql = $driver === 'mysql' ? 'SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'
@@ -115,6 +119,15 @@ $again = migrationResult($command, ['run']);
 expect($again[0]['attempts'] === 1, '迁移被重复执行');
 $pdo = migrationPdo($driver, $file);
 expect($pdo->query('SELECT label FROM ' . $prefix . '_items WHERE id = 1')->fetchColumn() === '中文迁移', 'DDL 与数据迁移没有实际生效');
+putenv('TYPE_MIGRATION_SCENARIO=rollback');
+$rollbackPrefix = $prefix . 'b';
+putenv('TYPE_MIGRATION_PREFIX=' . $rollbackPrefix);
+expect(migrationResult($command, ['run'])[0]['state'] === 'applied', '可逆迁移没有执行');
+expect(migrationResult($command, ['rollback'])[0]['state'] === 'rolled_back', '标准 rollback 没有按步回滚');
+expect(!migrationTableExists($pdo, $driver, $rollbackPrefix . '_rollback'), 'rollback 没有删除迁移对象');
+expect(migrationResult($command, ['down'])[0]['state'] === 'rolled_back', '重复 down 未保持幂等状态');
+putenv('TYPE_MIGRATION_SCENARIO=normal');
+putenv('TYPE_MIGRATION_PREFIX=' . $prefix);
 putenv('TYPE_MIGRATION_SCENARIO=index');
 $indexed = migrationResult($command, ['run']);
 expect(count($indexed) === 2 && $indexed[0]['attempts'] === 1 && $indexed[1]['state'] === 'applied', '追加版本或非事务索引迁移失败');
@@ -260,8 +273,8 @@ if ($driver === 'sqlite') {
     $pdo->exec('DROP TABLE ' . $rebuildPrefix . '_references');
 }
 
-foreach ([$prefix, $failurePrefix, $manualPrefix, $crashPrefix, $rebuildPrefix] as $generatedPrefix) {
-    foreach (['_items', '_gate', '_migrations_events', '_migrations'] as $suffix) {
+foreach ([$prefix, $rollbackPrefix, $failurePrefix, $manualPrefix, $crashPrefix, $rebuildPrefix] as $generatedPrefix) {
+    foreach (['_items', '_rollback', '_gate', '_migrations_events', '_migrations'] as $suffix) {
         $pdo->exec('DROP TABLE IF EXISTS ' . $generatedPrefix . $suffix);
     }
 }

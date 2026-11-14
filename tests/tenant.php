@@ -62,6 +62,33 @@ try {
     } finally {
         $install->stop();
     }
+    $migrationStatus = new Process([...$command, 'migrate', 'status'], $root, $environment);
+    try {
+        $statusResult = $migrationStatus->wait(30);
+        expect($statusResult->successful(), '安装后的 migrate status 失败：' . $statusResult->stderr);
+        $statusPayload = json_decode($statusResult->stdout, true, 64, JSON_THROW_ON_ERROR);
+        expect(is_array($statusPayload) && array_column($statusPayload, 'version') !== [], 'migrate status 未返回版本计划');
+    } finally {
+        $migrationStatus->stop();
+    }
+    $migrationUp = new Process([...$command, 'migrate', 'up'], $root, $environment);
+    try {
+        $upResult = $migrationUp->wait(30);
+        expect($upResult->successful(), '已安装数据库执行 migrate up 失败：' . $upResult->stderr);
+    } finally {
+        $migrationUp->stop();
+    }
+    if ($program === '') {
+        $migrationGenerate = new Process([...$command, 'migrate', 'generate', '900_structure_snapshot', '当前结构快照'], $root, $environment);
+        try {
+            $generateResult = $migrationGenerate->wait(30);
+            expect($generateResult->successful(), '开发入口执行 migrate generate 失败：' . $generateResult->stderr);
+            $generatedPayload = json_decode($generateResult->stdout, true, 64, JSON_THROW_ON_ERROR);
+            expect(($generatedPayload['driver'] ?? '') === $driver && str_contains((string)($generatedPayload['source'] ?? ''), '900_structure_snapshot'), 'migrate generate 未返回标准 Migration 草稿');
+        } finally {
+            $migrationGenerate->stop();
+        }
+    }
     $schema = $driver === 'sqlite' ? new PDO('sqlite:' . $work . '/tenant.sqlite')
         : new PDO($driver . ':host=' . $environment['DB_HOST'] . ';port=' . $environment['DB_PORT'] . ';dbname=' . $environment['DB_DATABASE'], $environment['DB_USERNAME'], $environment['DB_PASSWORD']);
     $schema->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -73,6 +100,9 @@ try {
         'pgsql' => 'SELECT tablename FROM pg_tables WHERE schemaname = current_schema()',
         default => "SELECT name FROM sqlite_schema WHERE type = 'table'",
     })->fetchAll(PDO::FETCH_COLUMN);
+    $migrationVersions = $schema->query("SELECT version FROM type_migrations WHERE state = 'applied' ORDER BY version")->fetchAll(PDO::FETCH_COLUMN);
+    expect(in_array('020_platform_system', $migrationVersions, true) && in_array('040_center_core', $migrationVersions, true)
+        && !in_array('300_platform_system_center', $migrationVersions, true), '安装必须通过统一 ORM 迁移计划记录模块版本');
     foreach (['platform_installation', 'platform_tenant', 'platform_menu', 'platform_user', 'platform_role', 'platform_session',
         'system_menu', 'system_user', 'system_role', 'system_session', 'system_user_role', 'system_role_permission',
         'center_product', 'center_device', 'platform_mqtt_node', 'platform_mqtt_resource_connection'] as $table) {

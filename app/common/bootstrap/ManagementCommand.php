@@ -38,10 +38,14 @@ use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\ExecutionScope;
 use Type\Runtime\TaskException;
 
-/** 统一装配中的管理命令；保留各角色的运行、失败及资源回收实现。 */
+/**
+ * 统一装配中的管理命令；保留各角色的运行、失败及资源回收实现。
+ */
 final class ManagementCommand implements Command
 {
-    /** 命令名来自构建声明，配置归本应用启动上下文。 */
+    /**
+     * 命令名来自构建声明，配置归本应用启动上下文。
+     */
     public function __construct(private ApplicationContext $context, private string $name) {}
 
     /**
@@ -175,7 +179,7 @@ final class ManagementCommand implements Command
                 throw new \InvalidArgumentException('未知应用命令，请使用 help');
             }
             if ($command === 'migrate' && (count($arguments) === 2 || (count($arguments) === 3 && $arguments[2] === 'help'))) {
-                echo "迁移查询：status、history；异常记录核对：recover <版本> <retry|applied> <恢复说明>。全新空库仅通过 app:install 初始化，run 不开放。\n";
+                echo "迁移命令：status、run/up、generate <版本> <描述>、history、recover <版本> <retry|applied> <恢复说明>。全新空库通过 app:install 初始化，已安装数据库可用 run/up 应用待执行迁移。\n";
 
                 return 0;
             }
@@ -207,7 +211,7 @@ final class ManagementCommand implements Command
                 return 0;
             }
             if ($command === 'migrate') {
-                return self::migrate($settings, $basePath, array_slice($arguments, 2));
+                return self::migrate($settings, $basePath, array_slice($arguments, 2), $development);
             }
             if ($command === 'app:audit-clean') {
                 self::pruneRecords($settings, $basePath, array_slice($arguments, 2));
@@ -276,14 +280,16 @@ final class ManagementCommand implements Command
      * @param list<string> $arguments 不含程序名和 migrate 的动作参数
      * @throws \InvalidArgumentException 参数无效或非初始化角色缺少 SQLite 文件
      */
-    public static function migrate(Repository $settings, string $basePath, array $arguments): int
+    public static function migrate(Repository $settings, string $basePath, array $arguments, bool $development = false): int
     {
-        if (!((count($arguments) === 1 && in_array($arguments[0], ['run', 'status', 'history'], true))
+        if (!((count($arguments) === 1 && in_array($arguments[0], ['run', 'up', 'status', 'history', 'rollback', 'down'], true))
+            || (count($arguments) === 2 && in_array($arguments[0], ['rollback', 'down'], true))
+            || (count($arguments) === 3 && $arguments[0] === 'generate')
             || (count($arguments) === 4 && $arguments[0] === 'recover'))) {
             throw new \InvalidArgumentException('迁移命令参数无效，请使用 migrate help');
         }
-        if ($arguments === ['run']) {
-            throw new \InvalidArgumentException('请使用 app:install 初始化全新空库；旧安装不支持接入或自动转换');
+        if ($arguments[0] === 'generate' && !$development) {
+            throw new \InvalidArgumentException('迁移结构生成仅允许开发入口');
         }
         DatabaseFactory::requireExisting($settings, $basePath);
 
@@ -294,7 +300,9 @@ final class ManagementCommand implements Command
         });
     }
 
-    /** Demo 只开放无业务写入的命令；操作人维护时须停服并显式切换环境。 */
+    /**
+     * Demo 只开放无业务写入的命令；操作人维护时须停服并显式切换环境。
+     */
     private static function demoCommand(string $environment, string $command, array $arguments): void
     {
         if ($environment !== 'demo') {
@@ -318,7 +326,9 @@ final class ManagementCommand implements Command
         }
     }
 
-    /** 同一受控管道保留查询及精确清理；Demo 不允许通过内部 worker 绕过通信写入限制。 */
+    /**
+     * 同一受控管道保留查询及精确清理；Demo 不允许通过内部 worker 绕过通信写入限制。
+     */
     private static function storeWorker(PostgresStore $store, Repository $settings): void
     {
         $readonly = Settings::environment($settings, false) === 'demo';
@@ -488,7 +498,9 @@ final class ManagementCommand implements Command
         $access = new DeviceAccess($command, $settings->text('app.mqtt.node_id'), $limits);
         $certificate = $settings->text('app.mqtt.certificate');
         $privateKey = $settings->text('app.mqtt.private_key');
-        /** 握手 CA 文件交给 Broker 做 TLS 校验；节点心跳按当前受信 CA 公钥重写该文件。 */
+        /**
+         * 握手 CA 文件交给 Broker 做 TLS 校验；节点心跳按当前受信 CA 公钥重写该文件。
+         */
         $clientCa = $settings->text('app.mqtt.client_ca');
         $broker = new Broker(
             $access,
@@ -564,7 +576,9 @@ final class ManagementCommand implements Command
         });
     }
 
-    /** 协议节点与持久角色复用应用安装、恢复门及平台审计，不维护另一套人员身份。 */
+    /**
+     * 协议节点与持久角色复用应用安装、恢复门及平台审计，不维护另一套人员身份。
+     */
     private static function broker(Repository $settings, string $basePath, string $command, array $arguments): int
     {
         if (!in_array($command, ['broker:run', 'broker:store-install', 'broker:store', 'broker:nodes', 'broker:node-fence', 'broker:node-fence-result'], true)
@@ -630,7 +644,9 @@ final class ManagementCommand implements Command
             $plaintext = $settings->boolean('app.broker.plaintext');
             $certificate = $settings->text('app.broker.certificate');
             $privateKey = $settings->text('app.broker.private_key');
-            /** 相对路径按应用根解析；空值表示本节点未开 mTLS。节点心跳按当前受信 CA 重写该文件。 */
+            /**
+             * 相对路径按应用根解析；空值表示本节点未开 mTLS。节点心跳按当前受信 CA 重写该文件。
+             */
             $clientCa = $settings->text('app.broker.client_ca');
             $options = new BrokerOptions(
                 certificate: $certificate === '' || Settings::absolutePath($certificate) ? $certificate : $basePath . '/' . $certificate,
@@ -688,7 +704,9 @@ final class ManagementCommand implements Command
         return 0;
     }
 
-    /** @param list<string> $worker 显式同步存储命令；查询只返回有界节点元数据。 */
+    /**
+     * @param list<string> $worker 显式同步存储命令；查询只返回有界节点元数据。
+     */
     private static function brokerNodes(array $worker): void
     {
         if ($worker === []) {

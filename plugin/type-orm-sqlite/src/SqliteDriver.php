@@ -7,10 +7,13 @@ namespace Type\Orm\Sqlite;
 use PDO;
 use Type\Orm\DatabaseException;
 use Type\Orm\Driver;
+use Type\Orm\Migration\MigrationDriver;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\TaskException;
 
-/** SQLite 驱动配置与会话初始化；连接生命周期交由 ORM 资源池管理。 */
+/**
+ * SQLite 驱动配置与会话初始化；连接生命周期交由 ORM 资源池管理。
+ */
 final class SqliteDriver implements Driver
 {
     private string $filename;
@@ -51,13 +54,17 @@ final class SqliteDriver implements Driver
         $this->memoryIdentity = bin2hex(random_bytes(16));
     }
 
-    /** 返回 SQLite 对应的固定方言名称。 */
+    /**
+     * 返回 SQLite 对应的固定方言名称。
+     */
     public function name(): string
     {
         return 'sqlite';
     }
 
-    /** @internal 任意 PRAGMA、临时对象与附加库无法完整重置时关闭会话。 */
+    /**
+     * @internal 任意 PRAGMA、临时对象与附加库无法完整重置时关闭会话。
+     */
     public function reset(\PDO $pdo): bool
     {
         return false;
@@ -119,5 +126,13 @@ final class SqliteDriver implements Driver
         } catch (\PDOException $error) {
             throw new DatabaseException('SQLite 连接或初始化失败', 0, $error);
         }
+    }
+
+    /**
+     * 返回 SQLite 的结构读取、初始化数据和文件锁。
+     */
+    public function migrations(): MigrationDriver
+    {
+        return new SqliteMigration();
     }
 }

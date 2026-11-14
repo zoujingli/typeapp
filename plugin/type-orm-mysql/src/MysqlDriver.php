@@ -11,7 +11,9 @@ use Type\Orm\Driver;
 use Type\Runtime\CoroutineRuntime;
 use Type\Runtime\TaskException;
 
-/** MySQL 驱动配置与会话初始化；连接生命周期交由 ORM 资源池管理。 */
+/**
+ * MySQL 驱动配置与会话初始化；连接生命周期交由 ORM 资源池管理。
+ */
 final class MysqlDriver implements Driver
 {
     private string $host;
@@ -76,13 +78,17 @@ final class MysqlDriver implements Driver
         $this->timeZone = $timeZone === '-00:00' ? '+00:00' : $timeZone;
     }
 
-    /** 返回 MySQL 对应的固定方言名称。 */
+    /**
+     * 返回 MySQL 对应的固定方言名称。
+     */
     public function name(): string
     {
         return 'mysql';
     }
 
-    /** @internal 标准 PDO MySQL 没有完整会话重置接口，归还时退役物理连接。 */
+    /**
+     * @internal 标准 PDO MySQL 没有完整会话重置接口，归还时退役物理连接。
+     */
     public function reset(\PDO $pdo): bool
     {
         return false;
@@ -145,5 +151,13 @@ final class MysqlDriver implements Driver
         } catch (\PDOException $error) {
             throw new DatabaseException('MySQL 连接失败', 0, $error);
         }
+    }
+
+    /**
+     * 返回 MySQL 的结构读取、初始化数据和会话锁。
+     */
+    public function migrations(): \Type\Orm\Migration\MigrationDriver
+    {
+        return new MysqlMigration();
     }
 }

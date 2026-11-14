@@ -12,7 +12,9 @@ use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\ParserFactory;
 use TypePhp\Build\FileScanner;
 
-/** 将显式声明的生产源码交给 TypePHP；本类只在构建环境运行。 */
+/**
+ * 将显式声明的生产源码交给 TypePHP；本类只在构建环境运行。
+ */
 final class NativeBuilder
 {
     /**
@@ -61,7 +63,9 @@ final class NativeBuilder
         return ['-d', 'extension=' . BuildPlatform::resolve($moduleFile)];
     }
 
-    /** 从已加载的 INI 文本解析 tokenizer 模块；相对名称按扩展目录补齐，注释行不生效。 */
+    /**
+     * 从已加载的 INI 文本解析 tokenizer 模块；相对名称按扩展目录补齐，注释行不生效。
+     */
     public static function tokenizerModuleFromIni(string $ini, string $extensionDirectory): ?string
     {
         $found = null;
@@ -537,6 +541,12 @@ final class NativeBuilder
         }
         unset($input);
         $declarations = array_merge([$configuration, $root . '/composer.json'], $configurationFiles, $notices['files'], $generation['schemas']['files']);
+        if (isset($settings['migrations'])) {
+            if (!is_string($settings['migrations']) || $settings['migrations'] === '') {
+                throw new \RuntimeException('migrations 必须是迁移目录路径');
+            }
+            $declarations[] = $this->source($root, $settings['migrations']);
+        }
         foreach ($packageRoots as $packageRoot) {
             if (is_file($packageRoot . '/composer.json')) {
                 $declarations[] = $packageRoot . '/composer.json';
@@ -772,7 +782,9 @@ final class NativeBuilder
         return $value[$key];
     }
 
-    /** 嵌套配置显式选择所属项目；不依赖当前工作目录，也不自动向上搜索其他项目。 */
+    /**
+     * 嵌套配置显式选择所属项目；不依赖当前工作目录，也不自动向上搜索其他项目。
+     */
     private function projectRoot(string $configuration, array $settings): string
     {
         return (new BuildProject())->root($configuration, $settings);
@@ -788,7 +800,9 @@ final class NativeBuilder
         return BuildPlatform::path($resolved);
     }
 
-    /** 编译前核对手写及各生成器类名，避免后续输出覆盖或隐藏重复声明。 */
+    /**
+     * 编译前核对手写及各生成器类名，避免后续输出覆盖或隐藏重复声明。
+     */
     private function uniqueSymbols(array $sources): void
     {
         $names = [];

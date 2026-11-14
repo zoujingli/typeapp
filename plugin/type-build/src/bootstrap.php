@@ -26,6 +26,11 @@ foreach ($installed['packages'] ?? [] as $package) {
 }
 // 结构同步只额外加载已安装的 MySQL 驱动闭包，仍不执行应用自动加载文件。
 $queue = ($argv[1] ?? '') === 'model:sync' ? ['zoujingli/type-build', 'zoujingli/type-orm-mysql'] : ['zoujingli/type-build'];
+// 应用声明了 database/migrations 时，MigrationCompiler 需要构建期的 ORM Schema 类型；
+// 按已安装包可选加载，不能把 type-orm 变成所有项目的强制构建依赖。
+if (isset($packages['zoujingli/type-orm'])) {
+    $queue[] = 'zoujingli/type-orm';
+}
 $allowed = [];
 $functionFiles = [];
 while ($queue !== []) {
