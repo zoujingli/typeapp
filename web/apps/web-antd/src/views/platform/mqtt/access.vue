@@ -5,7 +5,7 @@ import { displayDateTime } from '../../../display';
  * 握手 CA 文件不在本页更新；保存成功不等于集群生效。隐藏页停止轮询。
  */
 import type { VxeTableGridOptions } from '../../../adapter/vxe-table';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { useVbenVxeGrid } from '../../../adapter/vxe-table';
@@ -171,8 +171,9 @@ async function edit(item: Principal | null) {
   Object.assign(form.value, { name: item?.name || '', login: item?.login || '', password: '', enabled: item?.enabled ?? true, rotate: false,
     certificatePem: '', overlapSeconds: 86400, revokeFingerprints: [],
     grants: item?.grants.length ? item.grants.map(grant => ({ ...grant })) : [{ topic: '', publish: true, subscribe: true, max_qos: 2 }] });
-  await principalForm.setValues({ name: form.value.name, login: form.value.login, password: '', enabled: form.value.enabled, rotate: false });
   open.value = true;
+  await nextTick();
+  await principalForm.setValues({ name: form.value.name, login: form.value.login, password: '', enabled: form.value.enabled, rotate: false });
 }
 function addGrant() { if (form.value.grants.length < 32) form.value.grants.push({ topic: '', publish: true, subscribe: true, max_qos: 2 }); }
 function removeGrant(index: number) { form.value.grants.splice(index, 1); if (form.value.grants.length === 0) addGrant(); }
