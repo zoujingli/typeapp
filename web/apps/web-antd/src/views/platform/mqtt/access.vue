@@ -384,9 +384,9 @@ watch(historyOpen, value => { if (value) mqttDrawer2.open(); else mqttDrawer2.cl
       <p class="text-muted-foreground leading-7">保存成功只表示本版本已写入。收紧权限后新认证立即按新事实拒绝，健康节点约 5 秒内停止旧连接收发并断开；部分失败会暂停后续发布。正常换证可设 0–24 小时重叠，吊销、停用和收权无宽限。客户端证书须由已登记 CA 签发，只提交公钥 PEM。</p>
       <PrincipalForm :common-config="{ disabled: saving, componentProps: { class: 'w-full' } }" />
       <Form layout="vertical" class="grid grid-cols-1 gap-x-5 md:grid-cols-2" :disabled="saving">
-        <div v-if="editing" class="col-span-full grant-list">
+        <div v-if="editing" class="col-span-full flex flex-col gap-2">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-4"><span>已绑定证书</span></div>
-          <div v-for="item in (editing.certificates || []).filter(row => row.status === 'active')" :key="item.id" class="grant-row cert-row">
+          <div v-for="item in (editing.certificates || []).filter(row => row.status === 'active')" :key="item.id" class="grid grid-cols-1 items-center gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
             <span>{{ item.subject }} · {{ fingerprintText(item.fingerprint) }} · {{ overlapText(item) }}</span>
             <Checkbox :checked="form.revokeFingerprints.includes(item.fingerprint)" aria-label="吊销证书" @change="() => toggleRevoke(item.fingerprint)">吊销</Checkbox>
           </div>
@@ -402,16 +402,16 @@ watch(historyOpen, value => { if (value) mqttDrawer2.open(); else mqttDrawer2.cl
             <Button :loading="previewBusy" :disabled="isDemo() || (!form.certificatePem.trim())" @click="previewRotation">预览换证</Button>
           </div>
           <Alert v-if="previewFailure" :message="previewFailure" type="error" show-icon class="mb-4" role="alert" />
-          <div v-if="preview" class="preview-box">
+          <Card v-if="preview" size="small" class="mt-3">
             <p>新证书 {{ preview.incoming.subject }} · {{ fingerprintText(preview.incoming.fingerprint) }}</p>
             <p>{{ preview.tightening ? '将立即收紧旧证书' : `重叠 ${preview.overlap_seconds} 秒` }}{{ preview.overlap_until ? `，截止 ${time(preview.overlap_until)}` : '' }}</p>
             <p v-if="preview.retiring.length === 0" class="text-muted-foreground leading-7">没有需要退出的旧证书</p>
             <p v-for="item in preview.retiring" :key="item.id">{{ item.action === 'revoke' ? '立即吊销' : '重叠' }} · {{ fingerprintText(item.fingerprint) }}</p>
-          </div>
+          </Card>
         </div>
-        <div class="col-span-full grant-list">
+        <div class="col-span-full flex flex-col gap-2">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-4"><span>Topic 授权</span><Button size="small" :disabled="isDemo() || (form.grants.length >= 32)" @click="addGrant">添加规则</Button></div>
-          <div v-for="(grant, index) in form.grants" :key="index" class="grant-row">
+          <div v-for="(grant, index) in form.grants" :key="index" class="grid grid-cols-1 items-center gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_110px_auto]">
             <Input v-model:value="grant.topic" aria-label="授权主题" placeholder="以 / 结尾表示前缀" :maxlength="200" />
             <Checkbox v-model:checked="grant.publish">发布</Checkbox>
             <Checkbox v-model:checked="grant.subscribe">订阅</Checkbox>
@@ -440,11 +440,3 @@ watch(historyOpen, value => { if (value) mqttDrawer2.open(); else mqttDrawer2.cl
     </MqttDrawer2>
   </Page>
 </template>
-
-<style scoped>
-.grant-list { display: flex; flex-direction: column; gap: 8px; }
-.grant-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 110px auto; gap: 8px; align-items: center; }
-.cert-row { grid-template-columns: minmax(0, 1fr) auto; }
-.preview-box { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; }
-@media (max-width: 760px) { .grant-row { grid-template-columns: 1fr; } }
-</style>
