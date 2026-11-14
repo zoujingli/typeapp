@@ -14,9 +14,6 @@ use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
-use Type\Orm\Connection;
-use Type\Orm\Db;
-use Type\Runtime\ExecutionScope;
 use Type\Validate\Field;
 use Type\Validate\Input;
 
@@ -63,7 +60,7 @@ final class DeviceController
             $declarations[$name] = $field->from('query');
         }
         $query = \_vali($declarations, $input) + ['page' => 1, 'per_page' => 20];
-        return $this->response(200, $this->devices->devices($this->connection($request), $this->identity($request), $tenantId, $query['page'], $query['per_page'], $query, $realm));
+        return $this->response(200, $this->devices->devices($this->identity($request), $tenantId, $query['page'], $query['per_page'], $query, $realm));
     }
 
     /** 详情采用当前身份域投影；资料修改只接受名称及同客户分类，不能更换归属或生命周期。 */
@@ -74,14 +71,13 @@ final class DeviceController
         $realm = $this->realm($request);
         $tenantId = $this->tenant($request, $realm);
         $parameters = $request->getAttribute('type.route.params', []);
-        $connection = $this->connection($request);
         $identity = $this->identity($request);
         if ($request->getMethod() === 'GET') {
-            return $this->response(200, ['data' => $this->devices->device($connection, $identity, $tenantId, $parameters['device'], $realm)]);
+            return $this->response(200, ['data' => $this->devices->device($identity, $tenantId, $parameters['device'], $realm)]);
         }
         $data = $this->payload($request, ['version' => Field::integer()->required()->range(1, 2147483646), 'name' => Field::text()->required()->trim()->length(1, 100),
             'product_id' => Field::text()->nullable()->matches('/^[a-f0-9]{32}$/D')]);
-        return $this->response(200, ['data' => $this->devices->change($connection, $identity, $tenantId, $parameters['device'], 'update', $data['version'], '', $realm, $data)]);
+        return $this->response(200, ['data' => $this->devices->change($identity, $tenantId, $parameters['device'], 'update', $data['version'], '', $realm, $data)]);
     }
 
     /** 202只表示撤权已提交；网络隔离的真实完成由Broker回写，不能用HTTP成功代替。 */
@@ -93,7 +89,7 @@ final class DeviceController
         $tenantId = $this->tenant($request, $realm);
         $parameters = $request->getAttribute('type.route.params', []);
         $data = $this->payload($request, ['version' => Field::integer()->required()->range(1, 2147483646), 'confirm_device_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D')]);
-        $result = $this->devices->change($this->connection($request), $this->identity($request), $tenantId, $parameters['device'], $parameters['action'], $data['version'], $data['confirm_device_id'], $realm);
+        $result = $this->devices->change($this->identity($request), $tenantId, $parameters['device'], $parameters['action'], $data['version'], $data['confirm_device_id'], $realm);
         return $this->response($result['device']['authorization']['status'] === 'pending' ? 202 : 200, ['data' => $result]);
     }
 
@@ -142,15 +138,6 @@ final class DeviceController
             throw new HttpError(401, 'unauthenticated');
         }
         return $identity;
-    }
-
-    private function connection(ServerRequestInterface $request): Connection
-    {
-        $scope = $request->getAttribute('type.scope');
-        if (!$scope instanceof ExecutionScope) {
-            throw new \RuntimeException('设备接口需要受管请求作用域');
-        }
-        return Db::connection('default', true);
     }
 
     private function response(int $status, array $data): ResponseInterface

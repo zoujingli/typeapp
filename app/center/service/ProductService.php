@@ -16,7 +16,7 @@ use Type\Core\Http\Identity;
 use Type\Orm\Connection;
 use Type\Orm\Db;
 use Type\Orm\ModelException;
-use Type\Orm\ModelQuery;
+use Type\Orm\Page;
 use Type\Runtime\ExecutionScope;
 use Type\Validate\ValidationException;
 
@@ -27,11 +27,10 @@ final class ProductService
     public function products(Identity $identity, string $tenantId, int $page, int $perPage, string $name): array
     {
         return $this->run($identity, $tenantId, 'product.listed', $tenantId, false, function (array $context) use ($page, $perPage, $name): array {
-            $rows = Product::query()->master();
-            if ($name !== '') {
-                $rows = $rows->where('name', 'LIKE', '%' . $name . '%');
-            }
-            return $this->productPage($rows->orderBy('created_at', 'DESC')->orderBy('id'), $page, $perPage) + ['context' => $context];
+            $result = \_query(Product::query()->master(), ['name' => $name, 'page' => $page, 'page_size' => $perPage])
+                ->like('name')->order(['created_at' => 'created_at', 'id' => 'id'], ['created_at' => 'DESC', 'id' => 'ASC'])
+                ->paginatePage($perPage, 100, 100000);
+            return $this->productPage($result) + ['context' => $context];
         });
     }
 
@@ -153,12 +152,8 @@ final class ProductService
     }
 
     /** 产品分页只公开资料字段，不暴露永久编号分配器。 */
-    private function productPage(ModelQuery $rows, int $page, int $perPage): array
+    private function productPage(Page $result): array
     {
-        if ($page < 1 || $page > 100000 || $perPage < 1 || $perPage > 100) {
-            throw new HttpError(422, 'invalid_pagination');
-        }
-        $result = $rows->paginate($page, $perPage);
         $items = [];
         foreach ($result->items() as $product) {
             $items[] = $product->project(['id', 'tenant_id', 'name', 'description', 'version', 'created_at', 'updated_at']);

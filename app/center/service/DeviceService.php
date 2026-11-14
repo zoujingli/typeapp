@@ -120,8 +120,9 @@ final class DeviceService
      * @param array{name?: string, product_id?: string, lifecycle?: string, tenant_id?: string} $filters 公开筛选
      * @return array<string, mixed> 有界稳定列表和本次权限；平台权限不含客户业务数据
      */
-    public function devices(Connection $connection, Identity $identity, string $tenantId, int $page, int $perPage, array $filters, string $realm = 'system'): array
+    public function devices(Identity $identity, string $tenantId, int $page, int $perPage, array $filters, string $realm = 'system'): array
     {
+        $connection = Db::connection('default', true);
         return $this->run($connection, $identity, $tenantId, $realm, 'read', 'device.listed', $tenantId, false, static function (Connection $transaction, Identity $current, array $context) use ($tenantId, $page, $perPage, $filters, $realm): array {
             return self::observations($transaction, $realm === 'system' ? $tenantId : '', $page, $perPage, $filters) + ['context' => $context];
         });
@@ -165,8 +166,9 @@ final class DeviceService
      * @return array<string, mixed> 精确目标的只读投影，不返回秘密或验证值
      * @throws HttpError 身份无权查看或目标不在所选范围
      */
-    public function device(Connection $connection, Identity $identity, string $tenantId, string $deviceId, string $realm = 'system'): array
+    public function device(Identity $identity, string $tenantId, string $deviceId, string $realm = 'system'): array
     {
+        $connection = Db::connection('default', true);
         return $this->run($connection, $identity, $tenantId, $realm, 'read', 'device.viewed', $deviceId, false, static function (Connection $transaction, Identity $current, array $context) use ($deviceId, $realm): array {
             $query = $realm === 'system'
                 ? Device::query()->master()->onConnection($transaction)->where('id', '=', $deviceId)
@@ -185,11 +187,12 @@ final class DeviceService
      * @return array{device:array<string,mixed>,credential:null|array<string,mixed>} authorization.pending须等Broker完成，不能当作网络已隔离。
      * @throws HttpError 无权限、确认不符、版本冲突、退役终态或前次撤权尚未完成
      */
-    public function change(Connection $connection, Identity $identity, string $tenantId, string $deviceId, string $action, int $version, string $confirmation, string $realm = 'system', array $data = []): array
+    public function change(Identity $identity, string $tenantId, string $deviceId, string $action, int $version, string $confirmation, string $realm = 'system', array $data = []): array
     {
         if (!in_array($action, ['update', 'rotate', 'revoke', 'disable', 'enable', 'retire'], true)) {
             throw new HttpError(422, 'device_action_invalid');
         }
+        $connection = Db::connection('default', true);
         return $this->run($connection, $identity, $tenantId, $realm, $action, 'device.' . $action, $deviceId, true, static function (Connection $transaction, Identity $current, array $context) use ($deviceId, $action, $version, $confirmation, $realm, $data): array {
             // 锁定读取得等待后真实版本，尤其不能沿用MySQL授权查询建立的旧快照。
             $model = $realm === 'system'

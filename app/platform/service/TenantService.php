@@ -22,6 +22,33 @@ use Type\Runtime\ExecutionScope;
 /** 客户开通与平台对系统超管的显式管理，不建立跨客户人员成员关系。 */
 final class TenantService
 {
+    /** 登录前公开客户选择，只返回启用客户的标识与名称。 */
+    public static function publicListing(array $filters): array
+    {
+        $query = Tenant::query()->master()->where('enabled', '=', true);
+        if (($filters['search'] ?? '') !== '') {
+            $query = $query->where('name', 'LIKE', '%' . $filters['search'] . '%');
+        }
+        $page = \_query($query, ['page' => $filters['page'] ?? 1, 'page_size' => $filters['per_page'] ?? 20])
+            ->order(['name' => 'name', 'id' => 'id'], ['name' => 'ASC', 'id' => 'ASC'])
+            ->paginatePage(20, 100, 100000);
+        $items = [];
+        foreach ($page->items() as $tenant) {
+            $items[] = $tenant->project(['id', 'name']);
+        }
+        return ['items' => $items, 'total' => $page->total(), 'page' => $page->number(), 'per_page' => $page->perPage()];
+    }
+
+    /** 登录前公开客户上下文，只返回公开展示白名单中的客户摘要。 */
+    public static function publicSummary(string $id): array
+    {
+        $tenant = Tenant::query()->master()->where('enabled', '=', true)->find($id);
+        if ($tenant === null) {
+            throw new HttpError(404, 'tenant_not_found');
+        }
+        return $tenant->project(['id', 'name']);
+    }
+
     /** 平台目录与详情；超管清单在指定客户上下文内查询。 */
     public static function listing(Identity $identity, array $filters, string $id = ''): array
     {
@@ -30,13 +57,14 @@ final class TenantService
         if ($id !== '') {
             $query = $query->where('id', '=', $id);
         }
-        if (($filters['search'] ?? '') !== '') {
-            $query = $query->where('name', 'LIKE', '%' . $filters['search'] . '%');
-        }
-        if (($filters['enabled'] ?? -1) !== -1) {
-            $query = $query->where('enabled', '=', (bool)$filters['enabled']);
-        }
-        $page = $query->orderBy('created_at', 'DESC')->orderBy('id')->paginate($filters['page'] ?? 1, $filters['per_page'] ?? 20);
+        $page = \_query($query, [
+            'search' => $filters['search'] ?? '',
+            'enabled' => ($filters['enabled'] ?? -1) === -1 ? '' : (bool)$filters['enabled'],
+            'page' => $filters['page'] ?? 1,
+            'page_size' => $filters['per_page'] ?? 20,
+        ])->like(['search' => 'name'])->equal('enabled')
+            ->order(['created_at' => 'created_at', 'id' => 'id'], ['created_at' => 'DESC', 'id' => 'ASC'])
+            ->paginatePage(20, 100, 100000);
         $items = [];
         foreach ($page->items() as $tenant) {
             $row = $tenant->toArray();

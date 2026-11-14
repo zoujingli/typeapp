@@ -12,7 +12,7 @@ use app\common\middleware\TenantContext;
 use app\common\service\IdentityService;
 use app\common\service\RoleService;
 use app\common\service\SiteSettings;
-use app\platform\model\Tenant;
+use app\platform\service\TenantService;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Type\Core\Http\Attribute\Route;
@@ -41,16 +41,7 @@ final class AuthController
         $data = \_vali(['search' => Field::text()->length(0, 100)->defaultValue('')->from('query'),
             'page' => Field::integer()->cast()->range(1, 100000)->defaultValue(1)->from('query'),
             'per_page' => Field::integer()->cast()->range(1, 100)->defaultValue(20)->from('query')], $input);
-        $query = Tenant::query()->master()->where('enabled', '=', true);
-        if ($data['search'] !== '') {
-            $query = $query->where('name', 'LIKE', '%' . $data['search'] . '%');
-        }
-        $page = $query->orderBy('name')->orderBy('id')->paginate($data['page'], $data['per_page']);
-        $items = [];
-        foreach ($page->items() as $tenant) {
-            $items[] = $tenant->project(['id', 'name']);
-        }
-        return $this->response(['items' => $items, 'total' => $page->total(), 'page' => $page->number(), 'per_page' => $page->perPage()]);
+        return $this->response(TenantService::publicListing($data));
     }
 
     /** 配置白名单先于 Vben 挂载；子域名及固定路径只加载自身客户。 */
@@ -60,7 +51,7 @@ final class AuthController
     {
         $tenantId = (string)$request->getAttribute('app.tenant_id', '');
         $platform = $request->getAttribute('type.route') === 'platform.public-context';
-        $tenant = $tenantId === '' ? null : Tenant::query()->master()->findOrFail($tenantId)->project(['id', 'name']);
+        $tenant = $tenantId === '' ? null : TenantService::publicSummary($tenantId);
         return $this->response(['data' => ['realm' => $platform ? 'platform' : 'system', 'tenant' => $tenant,
             'bound' => $tenant !== null, 'site' => SiteSettings::publicView($tenant !== null ? 'system' : ($platform ? 'platform' : 'system-default')),
             'environment' => Settings::environment($this->context->settings(), $this->context->development)]]);

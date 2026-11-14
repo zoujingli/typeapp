@@ -129,25 +129,7 @@
             "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
         },
         {
-            "owner": "app\\center\\service\\DeviceService::devices",
-            "method": "connection_parameter",
-            "argument": "$connection: Type\\Orm\\Connection",
-            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
-        },
-        {
             "owner": "app\\center\\service\\DeviceService::observations",
-            "method": "connection_parameter",
-            "argument": "$connection: Type\\Orm\\Connection",
-            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
-        },
-        {
-            "owner": "app\\center\\service\\DeviceService::device",
-            "method": "connection_parameter",
-            "argument": "$connection: Type\\Orm\\Connection",
-            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
-        },
-        {
-            "owner": "app\\center\\service\\DeviceService::change",
             "method": "connection_parameter",
             "argument": "$connection: Type\\Orm\\Connection",
             "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
