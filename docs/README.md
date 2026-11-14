@@ -106,4 +106,4 @@ TypePHP 和 Composer 位于构建侧；生产运行执行已编译的业务与�
 
 应用模板和框架组件通过 Packagist 分发，Composer 自动解析传递依赖，无需逐一配置 Git 仓库。公开分发子仓保留源码、许可证与变更记录；可固定安装已发布的 RC，也可跟进开发分支，二者均不代表稳定版。交付范围以各平台实际验收为准。
 
-Linux x64 / ARM64、macOS ARM64、Windows x64 已在同一源码基线上通过默认原生 CI，组件与模板的公开分发及三库原生集成也已通过。各平台的场景和部署隔离范围不同，准确基线与限制见[平台与验收](guide/platforms.md)。全量编译指生产实现进入 TypePHP 的覆盖门槛，不等于测试覆盖率或所有 PHP 包兼容。
+历史版本曾在 Linux x64 / ARM64、macOS ARM64、Windows x64 通过默认原生 CI；当前主线的实际范围以[平台与验收](guide/platforms.md#当前平台状态)和[当前 Tenant 重构验收记录](evidence/tenant-refactor-20261114.md)为准。本轮 macOS ARM64 已完成当前提交的 AOT、三库管理链路和真实 TLS MQTT 验证，Windows SDK 及正式平台/profile 矩阵仍未用当前提交重跑。全量编译指生产实现进入 TypePHP 的覆盖门槛，不等于测试覆盖率或所有 PHP 包兼容。

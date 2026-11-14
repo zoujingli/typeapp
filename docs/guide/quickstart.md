@@ -14,7 +14,7 @@ flowchart TB
 
 ## 准备环境
 
-**已验证平台：Linux x64 / ARM64、macOS ARM64、Windows x64。** 各平台通过的命令、ORM 和应用场景不同，选定环境前先核对[平台支持表](platforms.md#当前平台状态)。
+**平台范围按当前提交分别核对。** 历史版本有 Linux x64 / ARM64、macOS ARM64、Windows x64 的原生记录；当前主线的已验证场景和未完成边界见[平台支持表](platforms.md#当前平台状态)。
 
 以下是开发机要求，完整分工见[环境与依赖](environment.md)：PHP CLI `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选数据库的 PDO 扩展。SQLite 需要 `pdo_sqlite`，无需单独数据库服务；MySQL、PostgreSQL 分别需要 `pdo_mysql`、`pdo_pgsql` 及可连接的数据库服务。HTTP 按平台选择 Swoole worker 或协程服务，并要求可用的停止控制，见[type-core](plugins/type-core.md#启动-http-服务)。下载单文件 Release 时不安装这些构建工具，运行端只准备对应数据库和配置。
 
