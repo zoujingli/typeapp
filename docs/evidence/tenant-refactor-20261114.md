@@ -97,4 +97,6 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - Platform 用户搜索回归已通过动态入口和最终静态程序验证：`/platform/users?search=package-user` 返回 HTTP 200 且 `total=1`；搜索同时匹配账号和姓名，分页参数进入 `_query()`。
 - 使用项目声明的 `npx --yes pnpm@12.18.0 --dir web typecheck`、`build` 和前端 Vitest：类型检查、生产构建（7,875 modules）及 3 个测试全部通过。
 - 同一单程序验收还核对了单程序导出与覆盖保护、外部 PHP 配置忽略、54 份内嵌许可原文、前端重复安装保护、默认站点和优雅停止；临时回执已核对后清理。
+- macOS ARM64 target 27.0 的 PostgreSQL 静态 profile 已完成：SDK 记录 PostgreSQL 17.11，AOT SHA-256 为 `9f62300b2db55ccd29ff9d37539a1fc73b70a1291647ec480e807b62419bb34b`、build id 为 `a915a1e6b47877263e26e3b84a9075621c9b756b6025413be88987dcbb81176d`；`tests/tenant.php pgsql` 使用真实 PostgreSQL 17.11 通过，embed-probe 含 `pdo_pgsql`。
+- macOS ARM64 target 27.0 的 MySQL 静态 profile 已完成：SDK 记录 MySQL 8.4.11 profile，AOT SHA-256 为 `1855ac7f3948faecb527cb97fe74b5cd3b9057be0b6c79b3d5ff903d84d070ea`、build id 为 `e4c703b4f928375cfd387ca612f0b40547a8d621d5a988d371ea2f5d38804075`；`tests/tenant.php mysql` 使用真实 MySQL 8.4.11 通过，embed-probe 含 `pdo_mysql`。
 - 平台人员目录验收同步修正为当前列表响应契约；普通人员搜索由 Model 查询条件完成，避免把业务字段误当作模型列。
