@@ -92,7 +92,7 @@ onBeforeUnmount(() => { version++; pending?.abort(); clearInterval(timer); docum
 </script>
 
 <template>
-  <VbenPage auto-content-height title="MQTT 节点">
+  <VbenPage auto-content-height title="MQTT 节点" description="查看节点健康、监听状态、运行代次与恢复核对。" header-class="flex-wrap gap-4">
     <Alert v-if="failure" class="mb-4" type="error" show-icon role="alert" :message="denied ? failure : `页面刷新失败：${failure}`" />
     <Alert v-if="result" class="mb-4" :type="result.health.ready && !healthExpired ? 'success' : 'warning'" show-icon
       :message="healthExpired ? '就绪观察已过期，当前结果未知' : (healthNames[result.health.state] || '接收状态未知')">

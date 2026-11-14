@@ -141,7 +141,7 @@ onMounted(() => document.addEventListener('visibilitychange', visibility));
 onBeforeUnmount(() => { active = false; clearTimeout(timer); detailGeneration++; productGeneration++; listPending?.abort(); detailPending?.abort(); productPending?.abort(); document.removeEventListener('visibilitychange', visibility); });
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid :table-title="platform ? '设备资产' : '设备管理'">
+  <Page auto-content-height :title="platform ? '设备资产' : '设备管理'" description="管理设备资料、当前使用关系与通信状态。" header-class="flex-wrap gap-4"><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid>
     <template #toolbar-tools><span class="text-sm text-muted-foreground">{{ refreshedAt ? `读取于 ${displayDateTime(refreshedAt, true)}` : '等待数据' }} · 可见时每 5 秒刷新</span></template>
     <template #lifecycle="{ row }"><Tag>{{ lifecycleNames[row.lifecycle as Device['lifecycle']] }}</Tag></template><template #recovery="{ row }"><Tag :color="row.recovery_verified ? 'default' : 'warning'">{{ row.recovery_verified ? '无待处理核对' : '待恢复核对' }}</Tag></template>
     <template #connection="{ row }"><Tag :color="connectionColors[row.connection.status as Device['connection']['status']]">{{ connectionNames[row.connection.status as Device['connection']['status']] }}</Tag></template>

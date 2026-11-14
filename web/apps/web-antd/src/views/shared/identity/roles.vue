@@ -63,7 +63,7 @@ function act(role: RoleRecord, action: 'status' | 'delete') {
 onBeforeUnmount(() => pending?.abort());
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid :table-title="session.realm === 'platform' ? '平台角色' : '角色管理'">
+  <Page auto-content-height :title="session.realm === 'platform' ? '平台角色' : '角色管理'" description="维护角色权限集合、启停状态与人员授权。" header-class="flex-wrap gap-4"><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid>
     <template #toolbar-tools><Button v-if="can('create') && can('permissions')" type="primary" :disabled="isDemo()" @click="edit(null, 'create')">新增角色</Button></template>
     <template #status="{ row }"><Tag :color="row.enabled ? 'success' : 'default'">{{ row.enabled ? '启用' : '停用' }}</Tag></template>
     <template #permissions="{ row }">{{ row.permissions.length }}</template><template #protected="{ row }"><Tag v-if="row.protected" color="gold">超级管理员</Tag></template>

@@ -109,7 +109,7 @@ async function copyCredential() {
 onBeforeUnmount(() => { pending?.abort(); credential.value = null; });
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid table-title="客户管理"><template #toolbar-tools><Button v-if="can('create')" type="primary" :disabled="isDemo()" @click="edit(null)">开通客户</Button></template>
+  <Page auto-content-height title="客户管理" description="开通客户、管理客户域名及超级管理员。" header-class="flex-wrap gap-4"><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid><template #toolbar-tools><Button v-if="can('create')" type="primary" :disabled="isDemo()" @click="edit(null)">开通客户</Button></template>
     <template #status="{ row }"><Tag :color="row.enabled ? 'success' : 'default'">{{ row.enabled ? '启用' : '停用' }}</Tag></template>
     <template #actions="{ row }"><Space><Button v-if="can('update')" type="link" size="small" :disabled="isDemo()" @click="edit(row)">编辑</Button><Button type="link" size="small" @click="manage(row)">超管</Button><Button v-if="can('status')" type="link" size="small" :disabled="isDemo()" @click="status(row)">{{ row.enabled ? '停用' : '启用' }}</Button></Space></template>
   </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Form /></Editor>

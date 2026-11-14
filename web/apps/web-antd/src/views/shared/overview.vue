@@ -19,6 +19,7 @@ import {
   WorkbenchTodo,
   WorkbenchTrends,
 } from '@vben/common-ui';
+import { Alert, Card, Empty } from 'ant-design-vue';
 import { errorText, isCanceled, request, session, siteSettings } from '../../api/identity';
 
 interface PlatformOperations { nodes: { state: string }[]; health: { http_alive: boolean; durable_store_ready: boolean | null } }
@@ -90,12 +91,12 @@ onMounted(load);
     <template #extra><VbenButton :loading="busy" @click="load">刷新</VbenButton></template>
     <div class="flex flex-col gap-4">
       <WorkbenchHeader :avatar="siteSettings.logo_url" :stats="headerStats"><template #title>{{ greeting }}</template><template #description>{{ identityDescription }}</template></WorkbenchHeader>
-      <div v-if="failure" class="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-warning" role="alert"><strong>部分概览数据读取失败</strong><span class="ml-2">{{ failure }}</span></div>
+      <Alert v-if="failure" message="部分概览数据读取失败" :description="failure" type="warning" show-icon role="alert" />
       <AnalysisOverview v-if="overviewItems.length" :items="overviewItems" />
-      <div v-else-if="!busy" class="rounded-md border border-border p-8 text-center text-muted-foreground">暂无可读取的概览数据</div>
+      <Card v-else-if="!busy" :bordered="false"><Empty description="当前权限范围暂无概览数据" /></Card>
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <WorkbenchQuickNav v-if="visibleLinks.length" title="常用入口" :items="quickNavItems" @click="openQuickLink" />
-        <div v-else class="rounded-md border border-border p-6 text-center text-sm text-muted-foreground">当前账号暂无可用快捷入口</div>
+        <Card v-else :bordered="false"><Empty description="当前账号暂无可用快捷入口" /></Card>
         <WorkbenchTodo title="工作台状态" :items="todoItems" readonly />
       </div>
       <div v-if="metrics.length" class="grid grid-cols-1 gap-4 xl:grid-cols-2"><WorkbenchProject title="数据概览" :items="projectItems" /><WorkbenchTrends title="实时指标" :items="trendItems" /></div>

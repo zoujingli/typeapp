@@ -61,7 +61,7 @@ async function show(product: Product) {
 onBeforeUnmount(() => { detailGeneration++; pending?.abort(); detailPending?.abort(); });
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid table-title="设备分类">
+  <Page auto-content-height title="设备分类" description="维护当前客户的设备分类与说明。" header-class="flex-wrap gap-4"><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid>
     <template #toolbar-tools><Button v-if="canEdit" type="primary" @click="edit(null)">创建分类</Button></template>
     <template #actions="{ row }"><Space><Button type="link" size="small" @click="show(row)">详情</Button><Button v-if="canEdit" type="link" size="small" @click="edit(row)">编辑</Button><Button v-if="canEdit" type="link" size="small" danger @click="remove(row)">删除</Button></Space></template>
   </Grid><Editor><Alert v-if="saveFailure" :message="saveFailure" type="error" class="mb-4" show-icon /><Form /></Editor>

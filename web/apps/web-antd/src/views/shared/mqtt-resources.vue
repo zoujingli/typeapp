@@ -311,14 +311,14 @@ onBeforeUnmount(() => { clear(); clearInterval(timer); clearInterval(clock); doc
 </script>
 
 <template>
-  <Page auto-content-height>
+  <Page auto-content-height :title="platform ? 'MQTT 资源' : '连接观察'" :description="platform ? '查看平台 MQTT 节点、连接、会话与消息资源。' : '观察当前客户可见的设备连接与通信状态。'" header-class="flex-wrap gap-4">
     <Alert v-if="failure" class="mb-4" type="error" show-icon role="alert" :message="denied ? failure : `资源刷新失败：${failure}`" />
     <Alert v-if="!canRead" class="mb-4" type="warning" show-icon message="当前账号无权查看 Broker 资源" />
     <Alert v-if="expired" class="mb-4" type="warning" show-icon message="观察已过期，当前连接和投递状态未知" />
     <Tabs v-if="platform" v-model:active-key="resource" class="mb-4 rounded-md bg-card px-4">
       <TabPane v-for="item in resources" :key="item.value" :tab="item.label" :disabled="controlsDisabled" />
     </Tabs>
-    <Grid :table-title="platform ? 'MQTT 资源' : '连接观察'" :form-options="{ ...formOptions, commonConfig: { disabled: controlsDisabled } }" :grid-options="{ columns, loading: busy && !polling }" :table-data="result?.items || []">
+    <Grid :form-options="{ ...formOptions, commonConfig: { disabled: controlsDisabled } }" :grid-options="{ columns, loading: busy && !polling }" :table-data="result?.items || []">
       <template #toolbar-tools><Button :loading="busy" :disabled="!canRead || detailBusy" @click="load()">刷新</Button></template>
         <template #cell="{ column, row: record }">
           <Tag v-if="column.field === 'state'" :color="stale(record) || ['unknown', 'owner_claim', 'unreachable'].includes(record.state) ? 'warning' : 'default'">{{ state(record) }}</Tag>

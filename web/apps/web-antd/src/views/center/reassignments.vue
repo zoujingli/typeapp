@@ -68,7 +68,7 @@ async function change(action: 'advance' | 'accept') {
 onBeforeUnmount(() => { detailGeneration++; listPending?.abort(); detailPending?.abort(); });
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid :table-title="platform ? '设备转配' : '转配接收'">
+  <Page auto-content-height :title="platform ? '设备转配' : '转配接收'" description="处理设备跨客户转配与旧授权隔离。" header-class="flex-wrap gap-4"><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid>
     <template #status="{ row }"><Tag :color="['ended', 'completed'].includes(row.status) ? 'success' : 'processing'">{{ reassignmentStatusNames[row.status as DeviceReassignment['status']] }}</Tag></template>
     <template #actions="{ row }"><Button type="link" size="small" :disabled="saving" @click="read(row)">查看处理</Button></template>
   </Grid><Detail :loading="detailBusy"><template v-if="selected">

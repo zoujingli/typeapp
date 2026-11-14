@@ -7,7 +7,7 @@ import { useVbenModal, VbenFullScreen, VbenIconButton } from '@vben/common-ui';
 import { LockKeyhole } from '@vben/icons';
 import { preferences } from '@vben/preferences';
 import { useAccessStore } from '@vben/stores';
-import { Alert, Button, Space, message } from 'ant-design-vue';
+import { Alert, Button, Space, TabPane, Tabs, message } from 'ant-design-vue';
 import { errorText, isDemo, logout, session, sessionExitPath } from '../api/identity';
 import { lockScreen, verifyScreenPassword } from '../screen-lock';
 const router = useRouter(); const route = useRoute(); const access = useAccessStore(); const leaving = ref(false);
@@ -47,7 +47,9 @@ async function leave() {
         <template #message>正在模拟 {{ session.user?.name }}</template>
         <template #description><Space wrap><span>操作者：{{ session.identity?.actor_name }} · 客户：{{ session.tenant?.name }}</span><Button :loading="leaving" @click="leave">退出模拟</Button></Space></template>
       </Alert>
-      <Space v-if="route.path.startsWith('/platform/broker') && visibleMqttSections.length" wrap size="small" class="mx-4 mb-4 mt-2" aria-label="MQTT 管理导航"><Button v-for="[path, name] in visibleMqttSections" :key="path" size="small" :type="route.path === '/platform/broker' + path ? 'primary' : 'default'" @click="router.push('/platform/broker' + path)">{{ name }}</Button></Space>
+      <Tabs v-if="route.path.startsWith('/platform/broker') && visibleMqttSections.length" :active-key="route.path" type="card" size="small" class="mx-4 mb-4 mt-2 rounded-md bg-card px-2" aria-label="MQTT 管理导航" @change="value => router.push(String(value))">
+        <TabPane v-for="[path, name] in visibleMqttSections" :key="'/platform/broker' + path" :tab="name" :force-render="false" />
+      </Tabs>
     </template>
     <template #header-left-60><span class="px-3 text-sm font-medium text-foreground">{{ session.realm === 'platform' ? '平台管理' : session.tenant?.name }}</span></template>
     <template #global-search><GlobalSearch :key="searchKey" :history-key="searchKey" :menus="searchMenus" :enable-shortcut-key="preferences.shortcutKeys.enable && preferences.shortcutKeys.globalSearch" class="mr-1 sm:mr-4" /></template>

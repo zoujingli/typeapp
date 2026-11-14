@@ -77,7 +77,7 @@ function show(row: Enrollment) { selected.value = row; detailFailure.value = '';
 onBeforeUnmount(() => { pending?.abort(); detailGeneration++; secret.value = ''; });
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid table-title="设备注册资格">
+  <Page auto-content-height title="注册资格" description="管理平台签发的设备注册资格及一次性注册码。" header-class="flex-wrap gap-4"><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid>
     <template #toolbar-tools><Button v-if="can('issue')" type="primary" @click="issue">签发资格</Button></template>
     <template #capacity="{ row }">{{ row.registered_count }} / {{ row.capacity }} 已注册</template><template #status="{ row }"><Tag>{{ statuses[row.status as Enrollment['status']] }}</Tag></template>
     <template #actions="{ row }"><Space><Button type="link" size="small" @click="show(row)">详情</Button><Button v-if="can('reset')" type="link" size="small" :disabled="row.status !== 'available'" @click="change(row, 'reset')">重置注册码</Button><Button v-if="can('disable')" type="link" size="small" danger :disabled="!row.enabled" @click="change(row, 'disable')">停用</Button></Space></template>

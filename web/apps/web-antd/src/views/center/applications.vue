@@ -134,7 +134,7 @@ async function saveGrant() {
 onBeforeUnmount(() => { listPending?.abort(); candidatePending?.abort(); grantGeneration++; candidateGeneration++; credential.value = undefined; });
 </script>
 <template>
-  <Page auto-content-height><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid table-title="接入应用">
+  <Page auto-content-height title="接入应用" description="管理外部系统身份、密钥及逐设备通信授权。" header-class="flex-wrap gap-4"><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon /><Grid>
     <template #toolbar-tools><Button v-if="allowed('create')" type="primary" :disabled="isDemo()" @click="edit()">创建应用</Button></template>
     <template #status="{ row }"><Tag :color="row.enabled ? 'success' : 'default'">{{ row.enabled ? '已启用' : '已停用' }}</Tag></template><template #key="{ row }">v{{ row.key.version }} · {{ row.key.active ? '有效' : '已撤销或待核对' }}</template><template #publication="{ row }">{{ stages[row.publication.stage] || row.publication.stage }}</template>
     <template #actions="{ row }"><Space><Button type="link" size="small" @click="show(row)">详情</Button><Button type="link" size="small" @click="showGrants(row)">设备授权</Button><Dropdown><Button type="link" size="small">更多</Button><template #overlay><Menu><MenuItem v-if="allowed('update')" :disabled="isDemo() || pendingPublication(row)" @click="edit(row)">编辑资料</MenuItem><MenuItem v-for="item in actions(row)" :key="item.action" :danger="item.danger" :disabled="isDemo() || item.disabled || pendingPublication(row)" @click="change(row, item.action as Action, item.label)">{{ item.label }}</MenuItem></Menu></template></Dropdown></Space></template>

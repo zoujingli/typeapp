@@ -92,9 +92,9 @@ async function assign() {
 onBeforeUnmount(() => pending?.abort());
 </script>
 <template>
-  <Page auto-content-height>
+  <Page auto-content-height :title="session.realm === 'platform' ? '平台用户' : '用户管理'" description="维护当前身份域的账号、角色绑定与会话状态。" header-class="flex-wrap gap-4">
     <Alert v-if="failure" :message="failure" type="error" show-icon class="mb-4" />
-    <Grid :table-title="session.realm === 'platform' ? '平台用户' : '用户管理'">
+    <Grid>
       <template #toolbar-tools><Space wrap><Button v-if="can('users.create')" type="primary" :disabled="isDemo()" @click="edit(null, 'create')">新增用户</Button><Button v-if="can('roles.assign') && can('roles.read')" :disabled="isDemo()" @click="chooseRoles()">批量分配角色</Button></Space></template>
       <template #status="{ row }"><Tag :color="row.enabled ? 'success' : 'default'">{{ row.enabled ? '启用' : '停用' }}</Tag></template>
       <template #roles="{ row }"><Space wrap><Tag v-for="role in row.roles" :key="role.id">{{ role.name }}</Tag></Space></template>

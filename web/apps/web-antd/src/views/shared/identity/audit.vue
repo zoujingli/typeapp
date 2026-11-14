@@ -79,9 +79,9 @@ async function show(item: Audit) {
 onMounted(() => load(0)); onBeforeUnmount(() => { generation++; detailGeneration++; pending?.abort(); detailPending?.abort(); });
 </script>
 <template>
-  <Page auto-content-height>
+  <Page auto-content-height :title="title" description="按身份、业务主体和结果核对可追溯操作记录。" header-class="flex-wrap gap-4">
     <Alert v-if="failure" :message="failure" type="error" show-icon class="mb-4" />
-    <Grid :table-title="title" table-title-help="时间按当前账号时区显示；审计保留真实操作者、目标账号与来源会话。" :form-options="{ ...formOptions, commonConfig: { disabled: busy } }">
+    <Grid table-title-help="时间按当前账号时区显示；审计保留真实操作者、目标账号与来源会话。" :form-options="{ ...formOptions, commonConfig: { disabled: busy } }">
       <template #toolbar-tools><Button :loading="busy" @click="load()">刷新</Button></template>
       <template #result="{ row }"><Tag :color="outcomes[row.result]?.color">{{ outcomes[row.result]?.label || row.result }}</Tag></template>
       <template #actions="{ row }"><Button type="link" size="small" @click="show(row)">详情</Button></template>
