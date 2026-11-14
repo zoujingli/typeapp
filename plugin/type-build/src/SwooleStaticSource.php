@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Type\Build;
 
-/** 静态链接时分离 Swoole 协程 PDO 与 PHP 原生 PDO 的内部 C 符号，保留两套驱动及公开接口。 */
+/**
+ * 静态链接时分离 Swoole 协程 PDO 与 PHP 原生 PDO 的内部 C 符号，并修复 Unix embed 的 wrapper 初始化顺序。
+ * Windows 保留既有顺序，由 Windows 源码适配统一处理运行时入口。
+ */
 final class SwooleStaticSource
 {
     public const REFERENCE = '814049090dd9ba8000adc6cd09ad09dd3f0c9989';
@@ -18,6 +21,34 @@ final class SwooleStaticSource
      */
     public function apply(string $directory): array
     {
+        $runtimeSource = null;
+        $runtimeBefore = '7319e162e3646d4c603b5c67e3dbe1b8d8a636966b9fc6691544374a46d285e0';
+        if (PHP_OS_FAMILY !== 'Windows') {
+            $runtime = $directory . '/ext-src/swoole_runtime.cc';
+            if (!is_file($runtime) || is_link($runtime) || hash_file('sha256', $runtime) !== $runtimeBefore) {
+                throw new \RuntimeException('Swoole 静态 embed 适配需要固定原文：ext-src/swoole_runtime.cc');
+            }
+            $runtimeSource = (string)file_get_contents($runtime);
+        }
+        $runtimeInclude = '#include "ext/standard/file.h"';
+        $runtimeAssignment = <<<'CPP'
+    auto *wrappers = php_stream_get_url_stream_wrappers_hash_global();
+    ori_php_stdio_wrapper =
+        static_cast<const php_stream_wrapper *>(zend_hash_str_find_ptr(wrappers, ZEND_STRL("php")));
+CPP;
+        $runtimeReplacement = <<<'CPP'
+    // Static PHP embed can enter Swoole MINIT before the standard extension registers
+    // the "php" wrapper in the runtime hash. Use PHP's immutable built-in wrapper object.
+    ori_php_stdio_wrapper = &php_stream_php_wrapper;
+CPP;
+        if ($runtimeSource !== null && (substr_count($runtimeSource, $runtimeInclude) !== 1 || substr_count($runtimeSource, $runtimeAssignment) !== 1)) {
+            throw new \RuntimeException('Swoole 静态 embed 适配位置不唯一：ext-src/swoole_runtime.cc');
+        }
+        if ($runtimeSource !== null) {
+            $runtimeSource = str_replace($runtimeInclude, $runtimeInclude . "\n#include \"ext/standard/php_fopen_wrappers.h\"", $runtimeSource);
+            $runtimeSource = str_replace($runtimeAssignment, $runtimeReplacement, $runtimeSource);
+        }
+
         $declarations = [
             'ext-src/php_swoole_pgsql.h' => [
                 'sha256' => 'c35f53f5f409b051905042426477f0b32903dc18241baa97295ac0477f5382e8',
@@ -69,12 +100,15 @@ final class SwooleStaticSource
             }
             $pending[$file] = str_replace($declaration['guard'], rtrim($macros), $source);
         }
+        if ($runtimeSource !== null) {
+            $pending['ext-src/swoole_runtime.cc'] = $runtimeSource;
+        }
         $report = [];
         foreach ($pending as $file => $source) {
             if (file_put_contents($directory . '/' . $file, $source) !== strlen($source)) {
-                throw new \RuntimeException('无法保存 Swoole 静态 PDO 适配：' . $file);
+                throw new \RuntimeException('无法保存 Swoole 静态适配：' . $file);
             }
-            $report[$file] = ['before' => $declarations[$file]['sha256'], 'after' => hash('sha256', $source)];
+            $report[$file] = ['before' => $file === 'ext-src/swoole_runtime.cc' ? $runtimeBefore : $declarations[$file]['sha256'], 'after' => hash('sha256', $source)];
         }
         return $report;
     }
