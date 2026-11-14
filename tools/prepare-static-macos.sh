@@ -31,6 +31,10 @@ mkdir -p "$task_work/src" "$task_work/downloads"
 task_work="$(cd "$task_work" && pwd)"
 task_sdk="$task_work/sdk"
 task_php="$PHP_HOME/bin/php"
+# shellcheck disable=SC2016
+task_swoole_source="$($task_php -n -r '$data=json_decode(file_get_contents($argv[1]), true, 32, JSON_THROW_ON_ERROR); $source=$data["source"] ?? null; if (!is_array($source)) { exit(1); } echo $source["reference"], " ", $source["archive-sha256"];' "$task_root/plugin/type-build/resources/swoole/manifest.json")"
+read -r task_swoole_reference task_swoole_archive_sha <<< "$task_swoole_source"
+[[ "$task_swoole_reference" =~ ^[a-f0-9]{40}$ && "$task_swoole_archive_sha" =~ ^[a-f0-9]{64}$ ]] || { echo 'Swoole 清单缺少有效源码身份。' >&2; exit 1; }
 if [[ "$task_profile" != all && "$task_profile" != pgsql ]]; then
     mkdir -p "$task_pgsql/lib"
 fi
@@ -51,19 +55,20 @@ source_archive "${TYPE_STATIC_PHP_ARCHIVE:-}" php-8.5.12.tar.xz https://www.php.
 if [[ "$task_redis_enabled" == 1 ]]; then
     source_archive "${TYPE_STATIC_REDIS_ARCHIVE:-}" redis-6.3.0.tgz https://pecl.php.net/get/redis-6.3.0.tgz 0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5
 fi
-source_archive "${TYPE_STATIC_SWOOLE_ARCHIVE:-}" swoole.tar.gz https://codeload.github.com/swoole/swoole-src/tar.gz/64988849fa898e510a38039912610cab6e9cf3f5 d4e9e5bff6f19430e69425ddf2b485c045a5b0c2551af38b5efd6f79d1fe30a1
+source_archive "${TYPE_STATIC_SWOOLE_ARCHIVE:-}" swoole.tar.gz "https://codeload.github.com/swoole/swoole-src/tar.gz/$task_swoole_reference" "$task_swoole_archive_sha"
 task_source="$task_work/src/php-8.5.12"
 if [[ "$task_redis_enabled" == 1 ]]; then
     mv "$task_work/src/redis-6.3.0" "$task_source/ext/redis"
 fi
-mv "$task_work/src/swoole-src-64988849fa898e510a38039912610cab6e9cf3f5" "$task_source/ext/swoole"
+mv "$task_work/src/swoole-src-$task_swoole_reference" "$task_source/ext/swoole"
 # Composer 锁定的原始 PHPX 复制到任务内适配；不改共享 vendor 或宿主 SDK。
 cp -R "$task_root/vendor/swoole/phpx" "$task_work/src/phpx"
 # shellcheck disable=SC2016
 "$task_php" -n -r '
 require $argv[1] . "/vendor/autoload.php";
-if (Composer\InstalledVersions::getReference("swoole/phpx") !== "13cf717579b216d4a4fa49fe4439573b4d072e71") {
-    throw new RuntimeException("PHPX 来源与锁定版本不符");
+$phpxReference = Composer\InstalledVersions::getReference("swoole/phpx");
+if (!is_string($phpxReference) || preg_match("~^[a-f0-9]{40}$~D", $phpxReference) !== 1) {
+    throw new RuntimeException("PHPX 来源缺少锁定提交");
 }
 $report = [];
 foreach (["Thread", "Http", "Static"] as $kind) {
