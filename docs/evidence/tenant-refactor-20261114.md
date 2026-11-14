@@ -191,7 +191,7 @@ MQTT 授权主体的固定字段（主体名称、登录名、接入密码、轮
 主域客户选择和平台登录现在只有在公开站点配置成功读取后才允许提交；配置请求失败会保留错误提示并禁用登录按钮，避免使用旧配置或本地默认值提交到错误入口。运行配置和站点设置在读取失败或尚未取得数据时使用 Vben/Ant Design `Empty` 与“重新读取”，不再渲染空表单。
 
 - `build/app/type-app` 单程序复验通过，证据为 `build/single program-851b97e98587/verification.json`；平台为 macOS ARM64、SQLite，产物 SHA-256 为 `9037f2ed2eee04d32d317978a88078f12ae7dc5b97350e3d6e0c829c8f037d99`，build id 为 `50eb5ab6b13c01075a88afbedae9c8b7f1707614cdc8f44dff33430a80df0560`。
-- 当前改动已通过 `pnpm@12.18.0 typecheck` 与 `git diff --check`；静态 AOT 前端改动不改变后端二进制，但尚未重新生成新的静态程序。
+- 当前改动已通过 `pnpm@12.18.0 typecheck` 与 `git diff --check`；随后按下方“工作台工具最终静态产物”重新生成并验收静态程序。
 
 ## Vben 设置布局与工作台工具追加
 
@@ -202,4 +202,15 @@ MQTT 授权主体的固定字段（主体名称、登录名、接入密码、轮
 - `pnpm@12.18.0 typecheck`：通过。
 - `pnpm@12.18.0 build`：通过，Vite 8.3.8 转换 7,877 modules；仅保留既有大 chunk 警告。
 - 前端 Vitest：2 个文件、3 个测试全部通过；偏好测试同步覆盖语言和通知工具默认开启。
-- 本轮设置与工作台源码尚未重新嵌入新的静态 AOT 程序；正式平台矩阵、真实 DNS/TLS 和全量逐页 CRUD 仍按未验证处理。
+- 正式平台矩阵、真实 DNS/TLS 和全量逐页 CRUD 仍按未验证处理；最新静态程序身份与同一产物验收见下节。
+
+## 工作台工具最终静态产物
+
+使用同一锁定 macOS ARM64 SQLite 静态 SDK（PHP 8.5.12 ZTS、PHPX 2.9.8、Swoole 6.3.0RC1）重建包含工作台和 Vben 工具的最终程序：TypePHP 编译链接 298 个 C++ 文件通过，前端清单包含 202 个文件、4,574,565 字节。
+
+- build id：`93de2748f610a35e2c11137f6b4b7c1c791029b72796b918089ebd099d943a96`。
+- SHA-256：`307b0a1dbb8bec3bb752c593c7356624d4fc0b7033c3929b9a422e462bf86e18`。
+- 同一程序 `tests/tenant.php sqlite build/app/type-app` 通过，覆盖 Tenant 空库安装、同名账号、主域/固定路径/子域入口、RBAC、品牌、模拟交接、MQTT 模拟观测、恢复核对和真实 HTTP 隔离。
+- 同一程序 `tests/native-single-program.php build/app/type-app` 通过，覆盖只读程序目录、不同工作目录、外部 INI 隔离、内嵌许可、Platform/System/Center 业务、HTTP 和优雅停止；证据为 `build/single program-a8eeab951830/verification.json`。
+- 系统 PHP 直接执行 Tenant 夹具时因缺少原生 Swoole 被拒绝，随后使用锁定 PHP 8.5.12 ZTS 和原生 Swoole profile 重跑通过；该前置环境拒绝不计为业务失败。
+- Windows/Linux 正式 profile、真实 DNS/TLS Web 入口和全量业务页面逐页 CRUD 仍未验证。
