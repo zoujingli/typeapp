@@ -28,7 +28,7 @@ flowchart TB
 
 TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typephp.md)。当前源码锁定 PHP 8.5.12 ZTS、TypePHP `c5599c5c`（v0.10.1 对应提交）及 PHPX 2.9.8，直接复用上游的类常量符号、提升属性作用域和持久字符串实现。工具链与生产依赖分别由 `toolchain.lock.json` 和 `composer.lock` 固定；[语法基线](docs/standards/typephp.md)说明保留适配的原因。实际验证范围见[平台与验收](docs/guide/platforms.md)，已发布版本保留各自的验收身份。
 
-构建组件另附 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 共享模块，用于开发及共享库回归；生产单程序使用静态 SDK。当前源码固定 6.3 开发快照 `64988849`，运行时版本字符串为 `6.3.0RC1`，不是正式 6.3.0。官方稳定线 6.2.5 与当前 6.3 路线分叉；本项目继续沿 6.3 路线更新。模块重建进度见[构建输入](plugin/type-build/resources/swoole/README.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
+构建组件另附 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 共享模块，用于开发及共享库回归；生产单程序使用静态 SDK。当前源码固定 6.3 开发快照 `81404909`，运行时版本字符串为 `6.3.0RC1`，不是正式 6.3.0。官方稳定线 6.2.5 与当前 6.3 路线分叉；本项目继续沿 6.3 路线更新。模块重建进度见[构建输入](plugin/type-build/resources/swoole/README.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
 
 RC14 的四平台回归、十二个单程序、组件与模板分发及公开消费结果见[升级验收记录](docs/evidence/typephp-upgrade-0.9.4.md)。RC 仍是预发布版本；当前 `main` 的后续改动按各自证据记录，不自动继承 RC14 的验收结论。
 

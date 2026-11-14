@@ -197,9 +197,9 @@ if ($taskRuntime) {
         Copy-Item -LiteralPath (Join-Path $taskDeps ('lib/' + $taskAlias[0])) -Destination (Join-Path $taskDeps ('lib/' + $taskAlias[1]))
     }
     if ($taskRedisEnabled) { Get-StaticSource 'https://pecl.php.net/get/redis-6.3.0.tgz' '0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5' 'redis.tar.gz' }
-    Get-StaticSource 'https://codeload.github.com/swoole/swoole-src/tar.gz/64988849fa898e510a38039912610cab6e9cf3f5' 'd4e9e5bff6f19430e69425ddf2b485c045a5b0c2551af38b5efd6f79d1fe30a1' 'swoole.tar.gz'
+    Get-StaticSource 'https://codeload.github.com/swoole/swoole-src/tar.gz/814049090dd9ba8000adc6cd09ad09dd3f0c9989' '126c61b57c2cf27ff4a9aa6d9bef65ffebb3f6e60826e77c37c5edf1c5b6a19d' 'swoole.tar.gz'
     if ($taskRedisEnabled) { Move-Item -LiteralPath (Join-Path $taskWork 'redis-6.3.0') -Destination (Join-Path $taskSource 'ext/redis') }
-    Move-Item -LiteralPath (Join-Path $taskWork 'swoole-src-64988849fa898e510a38039912610cab6e9cf3f5') -Destination (Join-Path $taskSource 'ext/swoole')
+    Move-Item -LiteralPath (Join-Path $taskWork 'swoole-src-814049090dd9ba8000adc6cd09ad09dd3f0c9989') -Destination (Join-Path $taskSource 'ext/swoole')
     & $taskHostPhp -n (Join-Path $PSScriptRoot 'static-windows/prepare-extensions.php') $taskSource (Join-Path $taskEvidence 'extension-adaptations.json')
     if ($LASTEXITCODE -ne 0) { throw '完整扩展的固定源码适配失败。' }
     $taskRedisFlags = @()

@@ -116,7 +116,7 @@ foreach ($taskDependency in $taskDependencies.Keys) {
     Get-VerifiedArchive ('https://downloads.php.net/~windows/php-sdk/deps/vs17/x64/' + $taskDependency) $taskDependencies[$taskDependency] $taskZip
     Expand-Archive -LiteralPath $taskZip -DestinationPath $taskDeps -Force
 }
-$taskSwooleReference = '64988849fa898e510a38039912610cab6e9cf3f5'
+$taskSwooleReference = '814049090dd9ba8000adc6cd09ad09dd3f0c9989'
 $taskSourceDependencies = @{}
 if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
     # PHP curl 扩展已加载并不代表 Swoole 编入原生 curl。使用官方 /MD 静态库，
@@ -156,7 +156,7 @@ if ($env:TYPE_SWOOLE_BUILD_FROM_SOURCE -eq '1') {
     if ($LASTEXITCODE -ne 0 -or $taskCaresDirectives -notmatch '(?i)DEFAULTLIB:"?MSVCRT\b' -or $taskCaresDirectives -match '(?i)DEFAULTLIB:"?LIBCMT') { throw 'c-ares 必须使用共享 PHP 对应的发布 CRT。' }
     $taskSourceDependencies['c-ares'] = @{ version='1.34.8'; reference=$taskCaresReference; 'archive-sha256'=$taskCaresDigest; 'license-sha256'=$taskCaresLicenseDigest; 'library-sha256'=(Get-FileHash -LiteralPath $taskCaresLibrary -Algorithm SHA256).Hash.ToLowerInvariant(); linkage='static'; crt='MD' }
     $taskSwooleArchive = Join-Path $Directory 'swoole.tar.gz'
-    Get-VerifiedArchive ('https://codeload.github.com/swoole/swoole-src/tar.gz/' + $taskSwooleReference) 'd4e9e5bff6f19430e69425ddf2b485c045a5b0c2551af38b5efd6f79d1fe30a1' $taskSwooleArchive
+    Get-VerifiedArchive ('https://codeload.github.com/swoole/swoole-src/tar.gz/' + $taskSwooleReference) '126c61b57c2cf27ff4a9aa6d9bef65ffebb3f6e60826e77c37c5edf1c5b6a19d' $taskSwooleArchive
     & $taskTar -xzf $taskSwooleArchive -C $Directory
     if ($LASTEXITCODE -ne 0) { throw 'Swoole 源码解包失败。' }
     $taskSwoole = Join-Path $Directory ('swoole-src-' + $taskSwooleReference)
