@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace app\system\controller;
 
-use app\common\input\SiteUpdateInput;
+use app\common\input\InputFields;
 use app\common\middleware\TenantContext;
 use app\common\service\AuditLog;
 use app\common\service\RoleService;
@@ -16,6 +16,7 @@ use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Orm\Db;
+use Type\Validate\Field;
 
 /** 当前客户品牌和默认界面配置独立维护；平台只能维护公共登录与新客户初始模板。 */
 final class SystemController
@@ -32,19 +33,21 @@ final class SystemController
         return $this->response(SiteSettings::managementView($realm === 'system' ? 'system' : 'system-default'));
     }
 
-    #[Route('/system/site', methods: ['PUT'], name: 'system.site.manage', middleware: ['system.auth', 'body.json'], input: ['maxBytes' => 16384, 'maxDepth' => 8])]
-    #[Route('/platform/system-defaults', methods: ['PUT'], name: 'platform.system-defaults.manage', middleware: ['platform.auth', 'body.json'], input: ['maxBytes' => 16384, 'maxDepth' => 8])]
-    public function update(SiteUpdateInput $input, ServerRequestInterface $request): ResponseInterface
+    #[Route('/system/site', methods: ['PUT'], name: 'system.site.manage', middleware: ['system.auth', 'body.json'])]
+    #[Route('/platform/system-defaults', methods: ['PUT'], name: 'platform.system-defaults.manage', middleware: ['platform.auth', 'body.json'])]
+    public function update(ServerRequestInterface $request): ResponseInterface
     {
         $identity = $this->identity($request);
         $realm = (string)$identity->attributes()['realm'];
         $settingsRealm = $realm === 'system' ? 'system' : 'system-default';
+        $input = InputFields::body($request, ['version' => Field::integer()->required()->range(1, PHP_INT_MAX), 'changes' => new Field('object')], 'site_settings_input_invalid');
+        $changes = $input['changes'] instanceof \stdClass ? get_object_vars($input['changes']) : $input['changes'];
         $result = RoleService::authorized(
             $identity,
             substr($request->getHeaderLine('Authorization'), 7),
             $realm === 'system' ? 'system.site.manage' : 'platform.defaults.manage',
-            static function (Identity $actor, array $permissions) use ($input, $realm, $settingsRealm): array {
-                $result = SiteSettings::update($input->version, $input->changes, $settingsRealm);
+            static function (Identity $actor, array $permissions) use ($input, $changes, $realm, $settingsRealm): array {
+                $result = SiteSettings::update($input['version'], $changes, $settingsRealm);
                 AuditLog::append(
                     Db::connection('default', true),
                     null,

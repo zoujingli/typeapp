@@ -7,7 +7,7 @@ namespace app\platform\controller;
 use app\common\bootstrap\ApplicationContext;
 use app\common\bootstrap\RuntimeCapabilityException;
 use app\common\bootstrap\Settings;
-use app\common\input\SiteUpdateInput;
+use app\common\input\InputFields;
 use app\common\service\AuditLog;
 use app\common\service\RoleService;
 use app\common\service\SiteSettings;
@@ -20,6 +20,7 @@ use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
 use Type\Orm\Db;
+use Type\Validate\Field;
 use Type\Validate\Input;
 
 /** 平台人员和角色的固定 HTTP 边界；客户端不能选择账号域或提交额外授权字段。 */
@@ -58,12 +59,13 @@ final class PlatformController
     }
 
     /** 站点设置采用固定字段、版本号和授权事务，失败时不覆盖上一份品牌配置。 */
-    #[Route('/site', methods: ['PUT'], name: 'site.manage', middleware: ['body.json'], input: ['maxBytes' => 16384, 'maxDepth' => 8])]
-    public function updateSite(SiteUpdateInput $input, ServerRequestInterface $request): ResponseInterface
+    #[Route('/site', methods: ['PUT'], name: 'site.manage', middleware: ['body.json'])]
+    public function updateSite(ServerRequestInterface $request): ResponseInterface
     {
         $identity = $this->identity($request);
-        $version = $input->version;
-        $changes = $input->changes;
+        $input = InputFields::body($request, ['version' => Field::integer()->required()->range(1, PHP_INT_MAX), 'changes' => new Field('object')], 'site_settings_input_invalid');
+        $version = $input['version'];
+        $changes = $input['changes'] instanceof \stdClass ? get_object_vars($input['changes']) : $input['changes'];
         $token = substr($request->getHeaderLine('Authorization'), 7);
         $result = RoleService::authorized($identity, $token, 'platform.site.manage', function (Identity $current, array $permissions) use ($version, $changes): array {
             $transaction = Db::connection('default', true);

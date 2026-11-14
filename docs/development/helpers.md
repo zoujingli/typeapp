@@ -78,7 +78,7 @@ Query 的分页主键沿用 `id`，ModelQuery 使用模型自身主键；需要�
 
 ## 快捷校验
 
-应用层不再维护另一套 input 解析或校验机制。控制器的普通请求统一使用 `Type\Validate\Input` 配合 `_vali()`；需要让路由动作接收强类型参数时，`ValidatedInput` 只承担已校验数据的 DTO 映射，仍复用同一套 `Schema`、`Field` 和 `_vali()` 语义。应用内的字段白名单辅助类只做来源键拒绝，不新增规则 DSL、隐式合并或数据库访问。
+应用层不再维护另一套 input 解析或校验机制。当前 Platform、System、Center 控制器统一使用 `Type\Validate\Input` 配合 `_vali()`；字段白名单辅助类只做来源键拒绝，场景、PATCH 和默认值继续由 `Schema`、`Field` 和 `_vali()` 负责，不新增应用层 input DTO、规则 DSL、隐式合并或数据库访问。框架保留的可选 `ValidatedInput` 是通用构建能力，当前物联应用不依赖它。
 
 ```php
 $values = _vali([

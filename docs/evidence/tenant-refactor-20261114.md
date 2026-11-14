@@ -137,4 +137,11 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - 锁定 PHP 8.5.12 ZTS、原生 Swoole runtime profile 下 `php tests/app-models.php` 通过，确认身份与 Tenant Model 的无连接 CRUD、`search()` 和可信上下文隔离。
 - `vendor/bin/phpunit --filter 'ModelFirstBoundaryTest|ModelSchemaSynchronizerTest|ProjectStructureTest'` 通过：15 tests、633 assertions。
 - 未注入 Swoole 的系统 PHP 执行 `tests/app-models.php` 按预期返回“协程 I/O 需要原生 Swoole”，该结果记录为环境前置拒绝，不计为业务失败。
+
+## 应用输入边界与当前 AOT 复核
+
+- 删除应用层 `LoginInput`、`SiteUpdateInput`、`ProductSearchInput` 和 `ProductWriteInput`；Platform、System、Center Controller 统一使用现有 `Input`、`_vali()` 和 `InputFields` 白名单，保留登录、站点、查询、创建、PATCH、删除的字段、场景、错误码和版本语义。框架可选 `ValidatedInput` 不再被当前物联应用依赖。
+- 锁定 PHP 8.5.12 ZTS + 原生 Swoole profile 下 `tests/tenant.php sqlite` 通过；覆盖登录、站点保存、产品查询/创建/修改/删除、RBAC、模拟登录和 Tenant 隔离。
+- 同一代码基线重新执行 `tools/build-application.php --shared-development`：前端 7,875 modules、TypePHP 297 个 C++ 文件编译链接通过；AOT build id 为 `87930082d588b92ca842bc3e49b9a4758edffd6a3b0608d9d57f1bc77662e553`，程序 SHA-256 为 `2868603cf099b6cb3b83403d928aaf2e5a71eb39faf4f69a69e419568d81abbb`。
+- 使用同一 AOT 程序、隔离外部 PHP 扩展扫描目录后执行 `tests/tenant.php sqlite` 通过；外部扩展重复加载警告没有计入程序 JSON 响应，临时执行包装器已清理。
 - 本轮临时 PostgreSQL 主库、同步备库、HTTP、Broker 和探针进程均已停止，工作区没有遗留运行进程。

@@ -13,13 +13,13 @@ use Type\Validate\Input;
 final class InputFields
 {
     /** 有界 JSON 请求共用字段白名单；声明之外的归属和权限输入一律拒绝。 */
-    public static function body(ServerRequestInterface $request, array $fields): array
+    public static function body(ServerRequestInterface $request, array $fields, string $unknownCode = 'unexpected_field'): array
     {
         if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
             throw new HttpError(415, 'json_required');
         }
         $input = Input::json(RequestBody::read($request->getBody(), 32768), 32768, 12);
-        self::only($input, 'body', array_keys($fields), 'unexpected_field');
+        self::only($input, 'body', array_keys($fields), $unknownCode);
         return \_vali($fields, $input);
     }
 

@@ -7,7 +7,6 @@ namespace app\common\controller;
 use app\common\bootstrap\ApplicationContext;
 use app\common\bootstrap\Settings;
 use app\common\input\InputFields;
-use app\common\input\LoginInput;
 use app\common\middleware\TenantContext;
 use app\common\service\IdentityService;
 use app\common\service\RoleService;
@@ -58,15 +57,17 @@ final class AuthController
     }
 
     /** 登录字段只有账号与口令；Tenant 来自绑定入口，平台与系统不能混用凭据。 */
-    #[Route('/platform/auth/login', methods: ['POST'], name: 'platform.login', middleware: ['body.json'], input: ['maxBytes' => 16384, 'maxDepth' => 12])]
-    #[Route('/system/auth/login', methods: ['POST'], name: 'system.login', middleware: ['body.json'], input: ['maxBytes' => 16384, 'maxDepth' => 12])]
-    public function login(LoginInput $input, ServerRequestInterface $request): ResponseInterface
+    #[Route('/platform/auth/login', methods: ['POST'], name: 'platform.login', middleware: ['body.json'])]
+    #[Route('/system/auth/login', methods: ['POST'], name: 'system.login', middleware: ['body.json'])]
+    public function login(ServerRequestInterface $request): ResponseInterface
     {
         $realm = $this->realm($request);
         if ($realm === 'system') {
             TenantContext::id($request);
         }
-        return $this->response(['data' => (new IdentityService($realm))->login($input->login, $input->password, (string)$request->getAttribute('app.request_id', ''))]);
+        $input = InputFields::body($request, ['login' => Field::text()->required()->length(3, 100)->matches('/^[a-z0-9][a-z0-9_.@-]{2,99}$/D'),
+            'password' => Field::text()->required()->length(1, 72)], 'identity_input_invalid');
+        return $this->response(['data' => (new IdentityService($realm))->login($input['login'], $input['password'], (string)$request->getAttribute('app.request_id', ''))]);
     }
 
     /** 当前角色与菜单每次重新解析，不在会话中缓存授权。 */
